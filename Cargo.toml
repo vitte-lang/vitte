@@ -1,12 +1,11 @@
 # Cargo.toml — MANIFESTE RACINE (workspace)
-# - Virtual workspace (pas de [package] ici) pour piloter tout le repo.
-# - Déclare les membres, profils, lints, deps communes, et quelques patchs utiles.
-# - Compatible Rust 1.80+ (voir rust-toolchain.toml).
+# - Virtual workspace (pas de [package] ici)
+# - Membres, profils, lints, deps communes, patches.
+# - Compatible Rust 1.80+.
 
 [workspace]
-resolver = "2"                           # résolveur moderne (meilleure gestion des features)
+resolver = "2"
 members = [
-  # ——— tes crates Rust ———
   "crates/vitte-cli",
   "crates/vitte-compiler",
   "crates/vitte-core",
@@ -16,22 +15,20 @@ members = [
   "crates/vitte-tools",
   "crates/vitte-vm",
 ]
-# Répertoires présents dans le repo mais NON Cargo (ou buildés autrement)
 exclude = [
   ".github",
-  "tools",             # scripts/outils (vitc, vitcc, vit-pm, vitte-*, vitx, vitxx…)
-  "modules",           # lib Vitte “pure”
-  "desktop",           # FFI C/C++ (peut devenir un crate plus tard)
+  "tools",
+  "modules",
+  "desktop",
   "hello",
   "hello-vitte",
   "embedded-blink",
-  "kernel",            # code noyau Vitte (peut devenir crates kernel-xxx)
+  "kernel",
   "web-echo",
   "worker-jobs",
   "wasm-add",
 ]
 
-# Valeurs partagées que les crates peuvent "hériter" (Cargo 1.64+)
 [workspace.package]
 edition      = "2021"
 rust-version = "1.80"
@@ -45,9 +42,8 @@ keywords     = ["kernel", "embedded", "wasm", "cli", "vitte"]
 categories   = ["embedded", "os::kernel", "command-line-utilities", "web-programming::http-server"]
 description  = "Monorepo poly-cible (desktop, kernel, embedded, WASM) — fidèle aux traditions, affûté pour la prod."
 
-# Dépendances partagées (référencées dans les crates via { workspace = true })
 [workspace.dependencies]
-# Base “std”
+# Base
 anyhow = "1"
 thiserror = "1"
 rand = "0.8"
@@ -67,47 +63,39 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 
-# CLI / utilités
+# CLI
 clap = { version = "4.5", features = ["derive"] }
 humantime = "2"
 
-# Réseau (si nécessaire dans certaines crates)
+# Réseau
 tokio = { version = "1.39", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "signal"] }
 hyper = { version = "1", features = ["server", "http1"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
-# WASM (si utilisé par une crate, sinon laissez inemployé)
-wasm-bindgen = { version = "0.2", optional = true }
+# WASM (déclaré non-optionnel au workspace — gérer l’optionnalité dans les crates)
+wasm-bindgen = { version = "0.2" }
 
-# FFI / Build C (si une crate colle le code desktop)
+# FFI / Build C (déclaré ici, optionnalité dans les crates via features)
 cc = "1"
-bindgen = { version = "0.70", optional = true }
+bindgen = { version = "0.70" }
 
-# Tests / outils
-proptest = { version = "1", optional = true }
+# Tests / outils (optionnalité gérée par crate)
+proptest = { version = "1" }
 
-# —————————————————————————————————————————————
-# Lints globaux (Rust 1.79+) — hérités dans chaque crate
-# —————————————————————————————————————————————
 [workspace.lints.rust]
 unsafe_code = "forbid"
 unused_extern_crates = "warn"
 unused_imports = "warn"
 dead_code = "warn"
-missing_docs = "allow"     # passe à "warn" si tu veux la doc partout
+missing_docs = "allow"
 
 [workspace.lints.clippy]
 all = "warn"
 pedantic = "warn"
 nursery = "warn"
 cargo = "warn"
-# restricted = "warn"       # active si tu veux le mode “mains propres”
 module_name_repetitions = "allow"
 too_long_first_doc_paragraph = "allow"
-
-# —————————————————————————————————————————————
-# Profils de build (globaux) + overrides par package (facultatifs)
-# —————————————————————————————————————————————
 
 [profile.dev]
 opt-level = 0
@@ -120,53 +108,32 @@ incremental = true
 
 [profile.release]
 opt-level = 3
-debug = 1                     # DWARF léger utile en prod pour backtraces
-lto = "thin"                  # bon compromis perf/temps de build
+debug = 1
+lto = "thin"
 codegen-units = 1
 strip = "symbols"
 panic = "unwind"
 incremental = false
 
-# Profil “profiling”
 [profile.profiling]
 inherits = "release"
 debug = true
 lto = "off"
 strip = "none"
 
-# Overrides (ne s’appliquent que si le package existe dans le workspace)
-# Exemple: si un jour tu crées des crates kernel-no_std en Rust pur :
-# [profile.release.package.kernel-x86_64]
-# panic = "abort"
-# lto = "fat"
-# strip = "none"
-# [profile.release.package.kernel-armv7em]
-# panic = "abort"
-# opt-level = "z"
-# lto = "fat"
-# strip = "symbols"
-
-# —————————————————————————————————————————————
-# Remplacements / patches (optionnels)
-# —————————————————————————————————————————————
 [patch.crates-io]
 # hyper = { git = "https://github.com/YourOrg/hyper", rev = "deadbeef" }
 
-# —————————————————————————————————————————————
-# Méta (outils tiers) — lisible par la CI
-# —————————————————————————————————————————————
 [workspace.metadata]
 scripts.lint = "cargo fmt --all -- --check && cargo clippy --all-targets --all-features -- -D warnings"
 scripts.deny = "cargo deny check -A unlicensed -A sources"
 scripts.test = "cargo test --all --all-features"
 
-# Docs.rs (héritage pour crates publiables)
 [workspace.metadata.docs.rs]
 all-features = true
 default-target = "x86_64-unknown-linux-gnu"
-targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
+targets = ["x86_64-unknown-linux-unknown", "wasm32-unknown-unknown"]
 
-# Release (cargo-release si tu l’utilises)
 [workspace.metadata.release]
 sign-commit = true
 sign-tag = true
