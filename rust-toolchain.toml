@@ -1,64 +1,21 @@
-# rust-toolchain.toml — Toolchain figé & cibles multi-plateformes
-# Objectif : builds reproductibles, DX solide, CI tranquille.
+# rust-toolchain.toml — Toolchain pin + composants stables
+# Objectif: builds reproductibles, CI sereine.
 
 [toolchain]
-# ——— Choisis ton camp ———
-channel = "1.80.0"          # ✅ Pin exact (recommandé en prod/CI)
-# channel = "stable"        # Souple (peut bouger avec le temps)
-# channel = "nightly-2025-08-01"   # Pour activer Miri/expérimentations (voir bloc Nightly plus bas)
+channel = "1.80.0"     # version figée (recommandé pour la CI)
+profile = "minimal"    # installe le strict nécessaire
 
-# Profil d’installation rustup : "minimal", "default", "complete"
-profile = "default"
-
-# Composants à installer d’office avec ce toolchain
+# Composants indispensables (stables, dispo partout)
 components = [
-  "rustfmt",               # formatage
-  "clippy",                # lints utiles
-  "rust-src",              # sources std (indispensable pour no_std, RA, miri…)
-  "llvm-tools-preview",    # cargo-binutils: objdump/size/addr2line…
-  # "rust-analyzer",       # dispo via rustup sur certaines plateformes ; sinon via éditeur
-  # "miri",                # ⚠️ Nightly requis (décommente si tu utilises nightly ci-dessus)
+  "rustfmt",
+  "clippy",
+  "rust-src"
 ]
 
-# Cibles cross utilisées par le monorepo
-targets = [
-  # — Linux desktop/serveur —
-  "x86_64-unknown-linux-gnu",
-
-  # — Kernel bare-metal x86_64 (no_std) —
-  "x86_64-unknown-none",
-
-  # — Embarqué ARMv7E-M (Cortex-M4/M7) —
-  "thumbv7em-none-eabi",
-
-  # — WebAssembly —
-  "wasm32-unknown-unknown",
-  "wasm32-wasi",
-
-  # — (Optionnel) macOS & Windows pour binaires hôtes —
-  # "aarch64-apple-darwin",
-  # "x86_64-apple-darwin",
-  # "x86_64-pc-windows-gnu",
-  # "x86_64-pc-windows-msvc",
-]
-
-# —————————————————————————————————————————————
-# Notes pratiques (la tradition, mais efficace) :
-# - Pinnez explicitement la version (channel="1.xx.y") pour la CI.
-# - Ajoutez/retirez des cibles selon vos crates (évitez de tout installer pour rien).
-# - Certains composants ne sont pas dispo sur toutes les plateformes (ex: rust-analyzer).
-# - Miri reste généralement Nightly : utilisez le channel nightly daté si besoin.
-# —————————————————————————————————————————————
-
-# —————————————————————————————————————————————
-# BONUS Nightly (décommentez si vous passez sur nightly) :
-# [toolchain]
-# channel   = "nightly-2025-08-01"
-# components = [
-#   "rustfmt",
-#   "clippy",
-#   "rust-src",
-#   "llvm-tools-preview",
-#   "miri",            # tests d’exécution interprétés (UB detector)
-# ]
-# —————————————————————————————————————————————
+# 💡 IMPORTANT
+# On n’ajoute PAS ici de cibles cross. Certaines ne sont pas dispo en binaire sur toutes
+# plateformes et font échouer l’installation automatique. Ajoute-les dans la CI/job au besoin :
+#   rustup target add wasm32-unknown-unknown
+#   rustup target add wasm32-wasi
+#   rustup target add thumbv7em-none-eabi
+# (et pour bare-metal x86_64-unknown-none, préfère `-Z build-std` côté build plutôt qu’ici)

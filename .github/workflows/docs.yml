@@ -38,7 +38,6 @@ jobs:
           RUSTDOCFLAGS: -D warnings
         run: |
           cargo doc --workspace --all-features --no-deps
-          # petit index des crates présentes dans target/doc
           mkdir -p site/api
           rsync -a --delete target/doc/ site/api/
           # home API minimal (liste dynamique)
@@ -58,6 +57,14 @@ jobs:
             LIST="${LIST}<li><a href=\"${b}/index.html\">${b}</a></li>"
           done
           perl -0777 -pe "s|<!--LIST-->|$LIST|" -i site/api/index.html
+
+      - name: Upload API artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-docs
+          path: site/api
+          if-no-files-found: error
+          retention-days: 7
 
   doctests:
     name: Doc-tests
@@ -97,6 +104,15 @@ jobs:
           mkdir -p site/guide
           rsync -a --delete docs/book/ site/guide/
 
+      - name: Upload Guide artifact
+        if: steps.has_book.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: guide-docs
+          path: site/guide
+          if-no-files-found: warn
+          retention-days: 7
+
   linkcheck:
     name: Link check (Markdown)
     runs-on: ubuntu-latest
@@ -107,7 +123,6 @@ jobs:
       - name: Lychee (broken links)
         uses: lycheeverse/lychee-action@v2
         with:
-          # scanne tous les README/MD du repo
           args: >-
             --no-progress
             --max-concurrency 8
@@ -124,13 +139,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # récupère les artefacts produits par les jobs (dans le même workspace runner)
-      # (rustdoc & mdbook ont déjà copié sous site/api et site/guide chacun)
-      - name: Ensure site tree
+      - name: Download API artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-docs
+          path: site/api
+
+      - name: Download Guide artifact (if any)
+        uses: actions/download-artifact@v4
+        with:
+          name: guide-docs
+          path: site/guide
+        continue-on-error: true
+
+      - name: Ensure site tree & home
         run: |
           mkdir -p site
           touch site/.nojekyll
-          # home (simple portail vers guide/api)
           cat > site/index.html <<'HTML'
           <!doctype html><meta charset="utf-8">
           <title>Vitte — Documentation</title>
@@ -146,6 +171,9 @@ jobs:
             <a class="card" href="api/"><h3>API</h3><p>rustdoc : crates du workspace</p></a>
           </div>
           HTML
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -163,3 +191,4 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
