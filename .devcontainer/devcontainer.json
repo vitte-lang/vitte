@@ -1,0 +1,90 @@
+{
+  "name": "Vitte Dev",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "username": "vscode",
+      "uid": 1000,
+      "installZsh": "true"
+    },
+    "ghcr.io/devcontainers/features/rust:1": {
+      "profile": "minimal",
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    },
+    "ghcr.io/devcontainers/features/git-lfs:1": {}
+  },
+  "containerEnv": {
+    "CARGO_TERM_COLOR": "always",
+    "RUST_BACKTRACE": "1",
+    "RUSTFLAGS": "-C target-cpu=native"
+  },
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "vadimcn.vscode-lldb",
+        "serayuzgur.crates",
+        "tamasfe.even-better-toml",
+        "eamodio.gitlens",
+        "ms-azuretools.vscode-docker",
+        "ms-vscode.makefile-tools",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint",
+        "streetsidesoftware.code-spell-checker",
+        "yzhang.markdown-all-in-one"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "files.trimTrailingWhitespace": true,
+        "rust-analyzer.checkOnSave.command": "clippy",
+        "rust-analyzer.cargo.features": "all",
+        "rust-analyzer.procMacro.attributes.enable": true,
+        "rust-analyzer.highlightRelated": true,
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "always"
+        },
+        "eslint.validate": [
+          "javascript",
+          "typescript"
+        ],
+        "workbench.colorTheme": "Default Dark Modern"
+      }
+    }
+  },
+  "forwardPorts": [
+    5173,
+    3000,
+    8080,
+    9229
+  ],
+  "portsAttributes": {
+    "5173": {
+      "label": "Vite/Monaco dev"
+    },
+    "3000": {
+      "label": "Web demo"
+    },
+    "8080": {
+      "label": "Misc"
+    },
+    "9229": {
+      "label": "Node Inspect"
+    }
+  },
+  "mounts": [
+    "type=volume,source=vitte-cargo,target=/workspaces/.cargo-cache"
+  ],
+  "postCreateCommand": "bash .devcontainer/scripts/postCreate.sh",
+  "postStartCommand": "bash .devcontainer/scripts/postStart.sh",
+  "onCreateCommand": "",
+  "initializeCommand": "",
+  "postAttachCommand": "bash .devcontainer/scripts/onAttach.sh"
+}

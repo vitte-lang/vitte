@@ -1,0 +1,11 @@
+//! channel — MPSC basique
+struct Sender<T> { __raw: __intrinsics::Chan }
+struct Receiver<T> { __raw: __intrinsics::Chan }
+
+export fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
+  let ch = __intrinsics::chan_new();
+  (Sender{__raw: ch}, Receiver{__raw: ch})
+}
+
+export fn send<T>(s: Sender<T>, v: T) { __intrinsics::chan_send(s.__raw, v) }
+export fn recv<T>(r: Receiver<T>) -> Option<T> { __intrinsics::chan_recv(r.__raw) }

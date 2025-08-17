@@ -1,0 +1,22 @@
+//! Result<T,E> — succès/erreur
+enum Result<T,E> { Ok(T), Err(E) }
+
+impl<T,E> Result<T,E> {
+  fn is_ok(&self) -> bool { match self { Ok(_) => true, Err(_) => false } }
+  fn is_err(&self) -> bool { !self.is_ok() }
+
+  fn map<U>(self, f: fn(T)->U) -> Result<U,E> {
+    match self { Ok(v) => Ok(f(v)), Err(e) => Err(e) }
+  }
+
+  fn unwrap(self) -> T {
+    match self { Ok(v) => v, Err(_e) => panic("unwrap called on Err") }
+  }
+
+  fn unwrap_or(self, default: T) -> T {
+    match self { Ok(v) => v, Err(_e) => default }
+  }
+}
+
+export fn ok<T,E>(v: T) -> Result<T,E> { Ok(v) }
+export fn err<T,E>(e: E) -> Result<T,E> { Err(e) }

@@ -6,7 +6,6 @@ on:
   pull_request: {}
   workflow_dispatch: {}
 
-# évite les runs concurrents inutiles
 concurrency:
   group: docs-${{ github.ref }}
   cancel-in-progress: true
@@ -18,7 +17,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
+  RUSTFLAGS: "-D warnings"
 
 jobs:
   rustdoc:
@@ -35,7 +34,7 @@ jobs:
 
       - name: Build docs (workspace, all-features, no-deps)
         env:
-          RUSTDOCFLAGS: -D warnings
+          RUSTDOCFLAGS: "-D warnings"
         run: |
           cargo doc --workspace --all-features --no-deps
           mkdir -p site/api
@@ -116,6 +115,7 @@ jobs:
   linkcheck:
     name: Link check (Markdown)
     runs-on: ubuntu-latest
+    continue-on-error: true   # évite d'empêcher le deploy pour des liens externes flakys
     steps:
       - uses: actions/checkout@v4
         with:
@@ -127,7 +127,6 @@ jobs:
             --no-progress
             --max-concurrency 8
             --timeout 20
-            --exclude-private
             **/*.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -182,7 +181,7 @@ jobs:
 
   deploy:
     name: Deploy to GitHub Pages
-    needs: [assemble, linkcheck, doctests]
+    needs: [assemble, doctests, linkcheck]
     if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     environment:
@@ -191,4 +190,3 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
-

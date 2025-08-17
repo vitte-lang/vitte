@@ -1,0 +1,13 @@
+//! rand — PRNG XorShift32
+struct Xor32 { state: u32 }
+
+export fn seed(seed: u32) -> Xor32 { Xor32{ state: if seed==0 { 2463534242 } else { seed } } }
+
+impl Xor32 {
+  fn next(&mut self) -> u32 {
+    let mut x = self.state;
+    x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+    self.state = x; x
+  }
+  fn next_f64(&mut self) -> f64 { (self.next() as f64) / 4294967296.0 }
+}

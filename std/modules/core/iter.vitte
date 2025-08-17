@@ -1,0 +1,38 @@
+//! Iter — itérateurs simples
+struct Iter<T> {
+  data: Vec<T>,
+  ix: i32,
+}
+
+export fn from_vec<T>(v: Vec<T>) -> Iter<T> { Iter{ data: v, ix: 0 } }
+
+impl<T> Iter<T> {
+  fn next(&mut self) -> Option<T> {
+    if self.ix >= len(self.data) { return None; }
+    let v = self.data[self.ix];
+    self.ix = self.ix + 1;
+    Some(v)
+  }
+
+  fn map<U>(mut self, f: fn(T)->U) -> Vec<U> {
+    let out: Vec<U> = Vec::new();
+    loop {
+      match self.next() {
+        Some(v) => push(out, f(v)),
+        None => break,
+      }
+    }
+    out
+  }
+
+  fn filter(mut self, pred: fn(T)->bool) -> Vec<T> {
+    let out: Vec<T> = Vec::new();
+    loop {
+      match self.next() {
+        Some(v) => if pred(v) { push(out, v) } else { },
+        None => break,
+      }
+    }
+    out
+  }
+}

@@ -1,143 +1,56 @@
-// editor-plugins/vscode/src/extension.ts
-// Extension VS Code pour Vitte : formatage, diagnostics, et commandes utilitaires.
-// - Format provider branché sur `vitte-fmt`
-// - Diagnostics via `vitc check` (JSON si dispo, fallback texte)
-// - Commandes: build / run / test / fmt / check
-//
-// SPDX-License-Identifier: MIT
-
 import * as vscode from 'vscode';
-import { runFmt } from './format';
-import { runCheckAndReport } from './diag';
-import { runCmdInTerminal } from './utils';
+import { spawn } from 'child_process';
+import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
+
+let client: LanguageClient | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
-  const diag = vscode.languages.createDiagnosticCollection('vitte');
-  context.subscriptions.push(diag);
+  // Formatter
+  context.subscriptions.push(vscode.commands.registerCommand('vitte.format', async () => {
+    const ed = vscode.window.activeTextEditor;
+    if (!ed || ed.document.languageId !== 'vitte') { return; }
+    const formatted = await simpleFormat(ed.document.getText());
+    await ed.edit(b => {
+      const full = new vscode.Range(
+        ed.document.positionAt(0),
+        ed.document.positionAt(ed.document.getText().length)
+      );
+      b.replace(full, formatted);
+    });
+  }));
 
-  // ---------- Formatting provider ----------
-  context.subscriptions.push(
-    vscode.languages.registerDocumentFormattingEditProvider('vitte', {
-      provideDocumentFormattingEdits: async (doc) => {
-        const cfg = vscode.workspace.getConfiguration('vitte', doc.uri);
-        const fmtPath = cfg.get<string>('fmtPath', 'vitte-fmt');
-        const res = await runFmt(fmtPath, doc.getText());
-        if (res.ok) {
-          const full = new vscode.Range(0, 0, doc.lineCount, 0);
-          return [vscode.TextEdit.replace(full, res.text)];
-        } else {
-          vscode.window.showWarningMessage(`vitte-fmt: ${res.error}`);
-          return [];
-        }
-      }
-    })
-  );
+  // Start LSP
+  context.subscriptions.push(vscode.commands.registerCommand('vitte.startLsp', async () => {
+    if (client) { vscode.window.showInformationMessage('Vitte LSP déjà lancé.'); return; }
+    try {
+      const serverCommand = 'vitte-cli';
+      const serverArgs = ['lsp'];
+      const serverOptions: ServerOptions = {
+        command: serverCommand, args: serverArgs, transport: TransportKind.stdio
+      };
+      const clientOptions: LanguageClientOptions = {
+        documentSelector: [{ scheme: 'file', language: 'vitte' }],
+        synchronize: { fileEvents: vscode.workspace.createFileSystemWatcher('**/*.vitte') }
+      };
+      client = new LanguageClient('vitteLsp', 'Vitte LSP', serverOptions, clientOptions);
+      await client.start();
+      vscode.window.showInformationMessage('Vitte LSP lancé.');
+    } catch (e:any) {
+      vscode.window.showErrorMessage('Impossible de démarrer le serveur LSP (vitte-cli lsp).');
+    }
+  }));
 
-  // ---------- Format-on-save fallback ----------
-  // Si l’utilisateur met vitte.formatOnSave=true, on applique un format à l’enregistrement
-  // même si editor.formatOnSave est désactivé. (Si editor.formatOnSave est ON, VS Code
-  // appellera déjà notre provider, donc on s’abstient pour éviter les doublons.)
-  context.subscriptions.push(
-    vscode.workspace.onWillSaveTextDocument(async (e) => {
-      const doc = e.document;
-      if (doc.languageId !== 'vitte') return;
-
-      const vitteCfg = vscode.workspace.getConfiguration('vitte', doc.uri);
-      const wantVitteFormatOnSave = vitteCfg.get<boolean>('formatOnSave', true);
-
-      const editorCfg = vscode.workspace.getConfiguration('editor', doc.uri);
-      const editorFormatOnSave = editorCfg.get<boolean>('formatOnSave', false);
-
-      if (!wantVitteFormatOnSave || editorFormatOnSave) return;
-
-      const fmtPath = vitteCfg.get<string>('fmtPath', 'vitte-fmt');
-      const res = await runFmt(fmtPath, doc.getText());
-      if (!res.ok) {
-        vscode.window.showWarningMessage(`vitte-fmt: ${res.error}`);
-        return;
-      }
-      // Applique l’édition avant l’écriture sur disque
-      const edit = new vscode.WorkspaceEdit();
-      const fullRange = new vscode.Range(0, 0, doc.lineCount, 0);
-      edit.replace(doc.uri, fullRange, res.text);
-      await vscode.workspace.applyEdit(edit);
-    })
-  );
-
-  // ---------- Diagnostics ----------
-  // Au save : `vitc check`
-  context.subscriptions.push(
-    vscode.workspace.onDidSaveTextDocument(async (doc) => {
-      if (doc.languageId !== 'vitte') return;
-      const cfg = vscode.workspace.getConfiguration('vitte', doc.uri);
-      if (!cfg.get<boolean>('enableDiagnostics', true)) return;
-      const vitc = cfg.get<string>('vitcPath', 'vitc');
-      const args = cfg.get<string[]>('checkArgs', ['check']);
-      await runCheckAndReport(diag, vitc, args, doc);
-    })
-  );
-
-  // À l’ouverture d’un fichier Vitte, on peut lancer un check léger (optionnel)
-  context.subscriptions.push(
-    vscode.workspace.onDidOpenTextDocument(async (doc) => {
-      if (doc.languageId !== 'vitte') return;
-      const cfg = vscode.workspace.getConfiguration('vitte', doc.uri);
-      if (!cfg.get<boolean>('enableDiagnostics', true)) return;
-      const vitc = cfg.get<string>('vitcPath', 'vitc');
-      const args = cfg.get<string[]>('checkArgs', ['check']);
-      await runCheckAndReport(diag, vitc, args, doc);
-    })
-  );
-
-  // ---------- Commands ----------
-  context.subscriptions.push(
-    vscode.commands.registerCommand('vitte.check', async () => {
-      const doc = vscode.window.activeTextEditor?.document;
-      if (!doc || doc.languageId !== 'vitte') return;
-      const cfg = vscode.workspace.getConfiguration('vitte', doc.uri);
-      const vitc = cfg.get<string>('vitcPath', 'vitc');
-      const args = cfg.get<string[]>('checkArgs', ['check']);
-      await runCheckAndReport(diag, vitc, args, doc);
-    }),
-
-    vscode.commands.registerCommand('vitte.build', () => {
-      const editor = vscode.window.activeTextEditor;
-      const uri = editor?.document?.uri;
-      const cfg = vscode.workspace.getConfiguration('vitte', uri);
-      runCmdInTerminal(cfg.get<string>('vitcPath', 'vitc'), cfg.get<string[]>('buildArgs', ['build']));
-    }),
-
-    vscode.commands.registerCommand('vitte.run', () => {
-      const editor = vscode.window.activeTextEditor;
-      const uri = editor?.document?.uri;
-      const cfg = vscode.workspace.getConfiguration('vitte', uri);
-      runCmdInTerminal(cfg.get<string>('vitcPath', 'vitc'), cfg.get<string[]>('runArgs', ['run']));
-    }),
-
-    vscode.commands.registerCommand('vitte.test', () => {
-      const editor = vscode.window.activeTextEditor;
-      const uri = editor?.document?.uri;
-      const cfg = vscode.workspace.getConfiguration('vitte', uri);
-      runCmdInTerminal(cfg.get<string>('vitcPath', 'vitc'), cfg.get<string[]>('testArgs', ['test']));
-    }),
-
-    vscode.commands.registerCommand('vitte.fmt', async () => {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor || editor.document.languageId !== 'vitte') return;
-      await vscode.commands.executeCommand('editor.action.formatDocument');
-    })
-  );
-
-  // ---------- Status bar ----------
-  const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-  status.text = 'Vitte';
-  status.tooltip = 'Vitte Language Tools — Check (Ctrl+Alt+C)';
-  status.command = 'vitte.check';
-  status.show();
-  context.subscriptions.push(status);
+  // Auto activate on Vitte file open
+  if (vscode.window.activeTextEditor?.document.languageId === 'vitte') {
+    vscode.commands.executeCommand('vitte.startLsp');
+  }
 }
 
 export function deactivate() {
-  // VS Code nettoie les subscriptions via context.subscriptions,
-  // donc rien de spécial ici.
+  return client?.stop();
+}
+
+// Naive formatter (placeholder) — à remplacer par vitte-fmt si dispo
+async function simpleFormat(src: string): Promise<string> {
+  return src.replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n');
 }
