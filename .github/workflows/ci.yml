@@ -4,6 +4,12 @@ on:
   push:
     branches: [ main, master ]
   pull_request: {}   # toutes les branches/PR
+  workflow_dispatch: {}
+
+# Evite les exécutions concurrentes inutiles
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -22,6 +28,8 @@ jobs:
 
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -34,7 +42,7 @@ jobs:
 
   # 🧪 Build & tests multi-OS + variations de features
   test:
-    name: Test (${{ matrix.os }} • ${{ matrix.toolchain }} • f=${{ matrix.features }})
+    name: Test (${{ matrix.os }} • ${{ matrix.toolchain }} • f=${{ matrix.features || 'none' }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -57,16 +65,16 @@ jobs:
         shell: bash
         run: |
           if [ -n "${{ matrix.features }}" ]; then
-            echo 'FEATURES=--features "${{ matrix.features }}"' >> "$GITHUB_ENV"
+            echo "FEATURES=--features ${{ matrix.features }}" >> "$GITHUB_ENV"
           else
-            echo 'FEATURES=' >> "$GITHUB_ENV"
+            echo "FEATURES=" >> "$GITHUB_ENV"
           fi
 
-      - name: Build (release)
-        shell: bash   # pour que $FEATURES marche aussi sur Windows
+      - name: Build (release, no default features)
+        shell: bash   # fonctionne aussi sous Windows (Git Bash)
         run: cargo build --release --locked --no-default-features $FEATURES
 
-      - name: Test
+      - name: Test (workspace)
         shell: bash
         run: cargo test --all --locked --no-default-features $FEATURES
 
@@ -107,7 +115,7 @@ jobs:
       - name: Doc build (no-deps, deny warnings)
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc --no-deps
+        run: cargo doc --workspace --all-features --no-deps
 
       - name: Build examples (non-blocking)
         shell: bash
