@@ -1,7 +1,5 @@
 # Cargo.toml — MANIFESTE RACINE (workspace)
-# - Virtual workspace (pas de [package] ici)
-# - Membres, profils, lints, deps communes, patches.
-# - Compatible Rust 1.80+.
+# Virtual workspace (pas de [package] ici)
 
 [workspace]
 resolver = "2"
@@ -129,13 +127,18 @@ scripts.lint = "cargo fmt --all -- --check && cargo clippy --all-targets --all-f
 scripts.deny = "cargo deny check -A unlicensed -A sources"
 scripts.test = "cargo test --all --all-features"
 
+# NOTE: docs.rs lit normalement [package.metadata.docs.rs] par crate.
+# Ici c’est de la meta de référence pour la CI interne.
 [workspace.metadata.docs.rs]
 all-features = true
 default-target = "x86_64-unknown-linux-gnu"
-targets = ["x86_64-unknown-linux-unknown", "wasm32-unknown-unknown"]
+targets = ["x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-pc-windows-msvc", "wasm32-unknown-unknown"]
 
 [workspace.metadata.release]
 sign-commit = true
 sign-tag = true
 push = true
 tag-prefix = "v"
+
+[workspace.metadata.deny]
+unmaintained = "deny"
