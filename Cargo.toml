@@ -1,144 +1,87 @@
-# Cargo.toml — WORKSPACE RACINE (virtuel, sans [package])
-# Compatible Rust 1.80+ • Pas de crate au root.
+[package]
+name         = "vitte-cli"
+version      = "0.1.0"
+edition      = "2021"
+rust-version = "1.80"
+license      = "MIT OR Apache-2.0"
+description  = "Vitte — CLI officielle (tooling, build, run, pkg)."
+repository   = "https://github.com/vitte-lang/vitte"
+homepage     = "https://vitte.dev"
+readme       = "README.md"
+categories   = ["command-line-utilities", "development-tools"]
+keywords     = ["vitte", "compiler", "vm", "toolchain"]
+# Script de build (messages post-build & chemins de complétions)
+build        = "build.rs"
 
-[workspace]
-resolver = "2"
+# Binaire principal
+[[bin]]
+name = "vitte"
+path = "src/main.rs"
 
-members = [
-  "crates/vitte-cli",
-  "crates/vitte-compiler",
-  "crates/vitte-core",
-  "crates/vitte-runtime",
-  "crates/stdlib",        # ⚠️ garde seulement si le dossier existe avec un Cargo.toml
-  "crates/vitte-tools",
-  "crates/vitte-vm",
-]
+[features]
+# Pas de features par défaut → la CI pilote (--all-features / --no-default-features)
+default = []
 
-# Dossiers hors build (ne doivent pas contenir de Cargo.toml)
-exclude = [
-  ".github",
-  "tools",
-  "modules",
-  "desktop",
-  "hello",
-  "hello-vitte",
-  "embedded-blink",
-  "kernel",
-  "web-echo",
-  "worker-jobs",
-  "wasm-add",
-]
+# Aligne avec ta matrice CI
+checksum = []
+compress = []
 
-[workspace.package]
-edition       = "2021"
-rust-version  = "1.80"
-license       = "MIT OR Apache-2.0"
-authors       = ["Vincent <you@example.com>"]
-homepage      = "https://example.com/vitte"
-repository    = "https://example.com/vitte/repo"
-documentation = "https://example.com/vitte/docs"
-readme        = "README.md"
-keywords      = ["kernel", "embedded", "wasm", "cli", "vitte"]
-# Catégories crates.io valides
-categories    = ["embedded", "os::kernel", "command-line-utilities", "web-programming::http-server"]
-description   = "Monorepo poly-cible (desktop, kernel, embedded, WASM) — fidèle aux traditions, affûté pour la prod."
+# Génération de complétions (si le code correspondant est présent côté binaire)
+gen-completions = ["dep:clap_complete"]
 
-[workspace.dependencies]
-# Base
-anyhow        = "1"
-thiserror     = "1"
-rand          = "0.8"
-once_cell     = "1"
-parking_lot   = "0.12"
-bytes         = "1"
-base64        = "0.22"
+# Intégrations optionnelles selon les crates présentes dans l'arborescence
+vm       = ["dep:vitte-vm"]
+wasm     = ["dep:vitte-wasm"]
+dap      = ["dep:vitte-dap"]
+debugger = ["dep:vitte-debugger"]
 
-# Logs / Observabilité
-log                 = "0.4"
-env_logger          = { version = "0.11", default-features = false, features = ["auto-color"] }
-tracing             = "0.1"
-tracing-subscriber  = { version = "0.3", features = ["env-filter", "fmt"] }
+[dependencies]
+# Base CLI
+clap = { version = "4.5", features = ["derive", "wrap_help"] }
+# Optionnel : génération des complétions
+clap_complete = { version = "4.5", optional = true }
 
-# (Dé)Sérialisation
-serde       = { version = "1", features = ["derive"] }
-serde_json  = "1"
-toml        = "0.8"
+# Ergonomie erreurs (dep partagée au workspace)
+color-eyre = { workspace = true }
 
-# CLI
-clap       = { version = "4.5", features = ["derive"] }
-humantime  = "2"
+# (Dé)sérialisation commune au workspace
+serde   = { workspace = true, features = ["derive"] }
+bincode = { workspace = true }
 
-# Réseau
-tokio  = { version = "1.39", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "signal"] }
-hyper  = { version = "1", features = ["server", "http1"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+# Dépendances internes (obligatoires)
+vitte-core     = { path = "../vitte-core" }
+vitte-runtime  = { path = "../vitte-runtime" }
+vitte-tools    = { path = "../vitte-tools" }
+vitte-compiler = { path = "../vitte-compiler" }
 
-# WASM (déclare ici; rends-le optionnel dans CHAQUE crate qui l’emploie)
-wasm-bindgen = "0.2"
+# Dépendances internes (optionnelles, activées par features)
+vitte-vm        = { path = "../vitte-vm",        optional = true }
+vitte-wasm      = { path = "../vitte-wasm",      optional = true }
+vitte-dap       = { path = "../vitte-dap",       optional = true }
+vitte-debugger  = { path = "../vitte-debugger",  optional = true }
 
-# FFI / Build C
-cc      = "1"
-bindgen = "0.70"
-
-# Tests / Outils
-proptest = "1"
-
-[workspace.lints.rust]
-unsafe_code             = "forbid"
-unused_imports          = "warn"
-unused_extern_crates    = "warn"
-dead_code               = "warn"
-missing_docs            = "allow"
-
-[workspace.lints.clippy]
-all                        = "warn"
-pedantic                   = "warn"
-nursery                    = "warn"
-cargo                      = "warn"
-module_name_repetitions    = "allow"
-too_long_first_doc_paragraph = "allow"
-
-[profile.dev]
-opt-level        = 0
-debug            = true
-debug-assertions = true
-overflow-checks  = true
-lto              = "off"
-codegen-units    = 256
-incremental      = true
+[dev-dependencies]
+# Tests CLI
+assert_cmd = "2.0"
+predicates = "3.1"
 
 [profile.release]
-opt-level      = 3
-debug          = 1
-lto            = "thin"
-codegen-units  = 1
-strip          = "symbols"
-panic          = "unwind"
-incremental    = false
+lto           = "thin"
+codegen-units = 1
+debug         = 0
+opt-level     = 3
+strip         = "symbols"
 
-[profile.profiling]
-inherits = "release"
-debug    = true
-lto      = "off"
-strip    = "none"
+[profile.dev]
+# Builds dev plus vifs, sans sacrifier l’itération
+debug     = 1
+opt-level = 0
 
-[patch.crates-io]
-# Exemple :
-# hyper = { git = "https://github.com/YourOrg/hyper", rev = "deadbeef" }
+# Docs.rs : build complet (facultatif mais pratique pour la doc API)
+[package.metadata.docs.rs]
+all-features = true
+no-default-features = true
 
-[workspace.metadata]
-# ⚠️ évite de définir un alias "fmt" côté Cargo (sinon shadow de cargo-fmt → récursion).
-scripts.lint = "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --all-features -- -D warnings"
-scripts.deny = "cargo deny check -A unlicensed -A sources"
-scripts.test = "cargo test --workspace --all-features"
-
-[workspace.metadata.docs.rs]
-all-features    = true
-default-target  = "x86_64-unknown-linux-gnu"
-targets         = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
-
-[workspace.metadata.release]
-sign-commit = true
-sign-tag    = true
-push        = true
-tag-prefix  = "v"
+# Badges CI (facultatif ; adapter les chemins si besoin)
+[badges]
+github-actions = { repository = "vitte-lang/vitte", workflow = "CI" }
