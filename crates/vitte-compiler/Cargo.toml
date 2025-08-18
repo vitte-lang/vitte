@@ -1,53 +1,68 @@
+###############################################################################
+# crates/vitte-compiler/Cargo.toml — Compilateur du langage Vitte
+#
+# - Génère le bytecode (Chunk) à partir du source (.vitte)
+# - S’appuie sur vitte-core (bytecode, asm/disasm, opcodes)
+# - Intègre vitte-runtime pour la vérification/interop
+# - Exportée comme une lib (peut être invoquée par vitte-cli ou d’autres outils)
+###############################################################################
+
 [package]
 name = "vitte-compiler"
 version = "0.1.0"
 edition = "2021"
-description = "Frontend du langage Vitte (lexer, parser, AST, codegen vers vitte-core)"
+rust-version = "1.80"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/vitte-lang/vitte"
 authors = ["Vincent <you@example.com>"]
+description = "Vitte compiler — front-end + générateur de bytecode"
+homepage = "https://example.com/vitte"
+repository = "https://github.com/vitte-lang/vitte"
 
 [lib]
 name = "vitte_compiler"
 path = "src/lib.rs"
-crate-type = ["rlib"]
 
-[features]
-# On sépare par couches pour garder un compilateur modulaire.
-default = ["lexer", "parser", "codegen"]
-
-# Lexer basé sur 'logos' (rapide & simple)
-lexer = ["dep:logos"]
-
-# Parser/AST (pas de dep externe requise, mais feature distincte pour modularité)
-parser = []
-
-# Génération de bytecode vers vitte-core (Chunk/Op…)
-codegen = ["dep:vitte-core"]
-
-# Instrumentation optionnelle
-tracing = ["dep:tracing"]
-
-# (exemple) sérialisation pour dumps AST/IR si besoin
-serde = ["dep:serde"]
-
+###############################################################################
+# Dépendances internes
+###############################################################################
 [dependencies]
-anyhow = "1"
-thiserror = "1"
+vitte-core     = { path = "../vitte-core" }
+vitte-runtime  = { path = "../vitte-runtime" }
 
-# Lexer
-logos = { version = "0.14", optional = true }
+###############################################################################
+# Dépendances externes (utilitaires)
+###############################################################################
+color-eyre     = "0.6"    # Gestion élégante des erreurs
+log            = "0.4"    # Logging unifié
+env_logger     = "0.11"   # Backend simple pour `log`
+serde          = { version = "1.0", features = ["derive"] }
+serde_json     = "1.0"
+thiserror      = "1.0"
 
-# Bytecode core (pour la phase codegen)
-vitte-core = { path = "../vitte-core", optional = true }
-
-# Optionnels
-tracing = { version = "0.1", optional = true }
-serde = { version = "1", features = ["derive"], optional = true }
-
+###############################################################################
+# Dev-deps (tests unitaires, fuzz, snapshots…)
+###############################################################################
 [dev-dependencies]
-pretty_assertions = "1"      # diffs lisibles pour tests
-indoc = "2"                  # strings multilignes pour fixtures tests
+insta = "1.38"          # snapshots testing (optionnel)
+proptest = "1.4"        # fuzz/property-based testing
 
-[package.metadata.docs.rs]
-all-features = true
+###############################################################################
+# Features (extensions compiler)
+###############################################################################
+[features]
+default = ["std"]
+std     = []   # compilation avec std
+no_std  = []   # expérimental (compiler portable sans std)
+
+###############################################################################
+# Profil de build
+###############################################################################
+[profile.dev]
+opt-level = 1
+debug = true
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+
