@@ -15,7 +15,7 @@ retry = 2
 # ----- Profiles ----------------------------------------------------------
 [profile.dev]
 opt-level = 1
-debug = true
+debug = true            # (=2) debug complet
 debug-assertions = true
 overflow-checks = true
 incremental = true
@@ -24,8 +24,8 @@ incremental = true
 opt-level = 3
 lto = "thin"
 codegen-units = 1
-debug = 1        # utile pour symboles perf
-strip = "debuginfo"
+debug = 1              # symboles utiles (perf/addr2line)
+strip = "debuginfo"    # enlève le DWARF des binaires finaux
 
 [profile.bench]
 opt-level = 3
@@ -40,16 +40,18 @@ overflow-checks = true
 
 # ----- Env (générique) ---------------------------------------------------
 [env]
-# Optimise pour la machine locale (safe par défaut)
+# ⚠️ Optimise pour la machine locale (non-reproductible).
+# Recommande: garder ici, et désactiver en CI via variables d'env.
 RUSTFLAGS = "-C target-cpu=native"
+# Active les items cfg(docsrs) localement aussi (utile si tu veux tester les docs comme sur docs.rs).
 RUSTDOCFLAGS = "--cfg docsrs"
 
 # ----- Sources / Registry ------------------------------------------------
-# Activer l'index "sparse" (plus rapide & léger)
+# Depuis Cargo 1.68+, le "sparse index" est par défaut. Garder explicite reste OK.
 [source.crates-io]
-replace-with = "sparse-index"
+replace-with = "sparse"
 
-[source.sparse-index]
+[source.sparse]
 registry = "sparse+https://index.crates.io/"
 
 # (Optionnel) Patch de crates internes pendant le dev local
@@ -69,8 +71,7 @@ doc = "doc --workspace --all-features --no-deps"
 bench = "bench --workspace"
 release = "build --workspace --release"
 
-# WASM helpers
-# Requiert nightly si vous utilisez -Z build-std
+# WASM helpers (utilise stable; pour -Z build-std → nightly seulement)
 wasm = "build --target wasm32-unknown-unknown -p vitte-core"
 wasm-wasi = "build --target wasm32-wasi -p vitte-core"
 
@@ -83,14 +84,15 @@ runner = "wasmtime run --dir=."
 # Panic abort recommandé côté wasm "bare" (pas de std)
 rustflags = ["-C", "panic=abort"]
 
-# Exemple de config Linux (décommentez si vous avez lld)
+# Exemple Linux (décommentez si vous avez lld)
 # [target.x86_64-unknown-linux-gnu]
 # linker = "clang"
 # rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
-# Mac (LLVM ld64 par défaut — généralement ok)
+# macOS (ld64 par défaut — généralement ok)
 # [target.aarch64-apple-darwin]
 # rustflags = ["-C", "link-arg=-Wl,-dead_strip"]
 
 # ----- Include overrides -------------------------------------------------
-# Cargo fusionne automatiquement config.local.toml si présent dans ce dossier.
+# Cargo fusionne automatiquement `config.local.toml` si présent dans ce dossier.
+# Idéal pour surcharger RUSTFLAGS ou runners en local/CI.
