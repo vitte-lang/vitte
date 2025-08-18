@@ -1,19 +1,32 @@
+[package]
+name = "vitte-cli"
+version = "0.1.0"
+description = "CLI officielle pour le langage Vitte : build, outils, gestion de projets."
+publish = false
+
+# Hérite des métadonnées du workspace (définies au Cargo.toml racine)
+edition.workspace       = true
+rust-version.workspace  = true
+license.workspace       = true
+repository.workspace    = true
+homepage.workspace      = true
+documentation.workspace = true
+keywords.workspace      = true
+categories.workspace    = true
+
+[[bin]]
+name = "vitte"
+path = "src/main.rs"
+
 [dependencies]
-anyhow = "1"
-clap = { version = "4", features = ["derive"] }
-serde = { version = "1", features = ["derive"] }
-toml = "0.8"
-camino = "1"
-color-eyre = "0.6"
-env_logger = "0.11"
+anyhow             = { workspace = true }
+clap               = { workspace = true, features = ["derive"] }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
 
-# Ces trois-là sont optionnels (activés par features)
-vitte-core = { path = "../vitte-core", optional = true }
-vitte-compiler = { path = "../vitte-compiler", optional = true }
-vitte-vm = { path = "../vitte-vm", optional = true }
+# (ajoute d’autres deps au besoin, mais évite les deps internes tant que non utilisées)
 
-[features]
-default = []
-core = ["vitte-core"]
-compiler = ["core", "vitte-compiler"]
-vm = ["core", "vitte-vm"]
+# Si tu as un build.rs pour afficher les messages post-build (completions),
+# garde cette section ; sinon tu peux la supprimer sans scrupule.
+[build-dependencies]
+dirs-next = "2"

@@ -8,8 +8,7 @@ members = [
   "crates/vitte-compiler",
   "crates/vitte-core",
   "crates/vitte-runtime",
-  "crates/citte",
-  "crates/stdlib",
+  "crates/stdlib",        # ← garde seulement si le dossier existe
   "crates/vitte-tools",
   "crates/vitte-vm",
 ]
@@ -29,7 +28,7 @@ exclude = [
 
 [workspace.package]
 edition      = "2021"
-rust-version = "1.80"
+rust-version = "1.82"                       # aligne avec ta toolchain
 license      = "MIT OR Apache-2.0"
 authors      = ["Vincent <you@example.com>"]
 homepage     = "https://example.com/vitte"
@@ -41,58 +40,59 @@ categories   = ["embedded", "os::kernel", "command-line-utilities", "web-program
 description  = "Monorepo poly-cible (desktop, kernel, embedded, WASM) — fidèle aux traditions, affûté pour la prod."
 
 [workspace.dependencies]
+# ⚠️ AUCUN 'optional = true' ICI. Jamais.
 # Base
-anyhow = "1"
-thiserror = "1"
-rand = "0.8"
-once_cell = "1"
-parking_lot = "0.12"
-bytes = "1"
-base64 = "0.22"
+anyhow        = "1"
+thiserror     = "1"
+rand          = "0.8"
+once_cell     = "1"
+parking_lot   = "0.12"
+bytes         = "1"
+base64        = "0.22"
 
 # Logs / observabilité
-log = "0.4"
-env_logger = { version = "0.11", default-features = false }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+log                 = "0.4"
+env_logger          = { version = "0.11", default-features = false }
+tracing             = "0.1"
+tracing-subscriber  = { version = "0.3", features = ["env-filter", "fmt"] }
 
 # (Dé)Sérialisation
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-toml = "0.8"
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+toml        = "0.8"
 
 # CLI
-clap = { version = "4.5", features = ["derive"] }
-humantime = "2"
+clap       = { version = "4.5", features = ["derive"] }
+humantime  = "2"
 
 # Réseau
-tokio = { version = "1.39", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "signal"] }
-hyper = { version = "1", features = ["server", "http1"] }
+tokio   = { version = "1.39", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "signal"] }
+hyper   = { version = "1", features = ["server", "http1"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
-# WASM (déclaré non-optionnel au workspace — gérer l’optionnalité dans les crates)
-wasm-bindgen = { version = "0.2" }
+# WASM (déclaré non-optionnel au workspace — optionnalité à gérer dans CHAQUE crate)
+wasm-bindgen = "0.2"
 
-# FFI / Build C (déclaré ici, optionnalité dans les crates via features)
-cc = "1"
-bindgen = { version = "0.70" }
+# FFI / Build C (déclaré ici — optionnalité à gérer par crate via features)
+cc      = "1"
+bindgen = "0.70"
 
-# Tests / outils (optionnalité gérée par crate)
-proptest = { version = "1" }
+# Tests / outils
+proptest = "1"
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+unsafe_code          = "forbid"
 unused_extern_crates = "warn"
-unused_imports = "warn"
-dead_code = "warn"
-missing_docs = "allow"
+unused_imports       = "warn"
+dead_code            = "warn"
+missing_docs         = "allow"
 
 [workspace.lints.clippy]
-all = "warn"
-pedantic = "warn"
-nursery = "warn"
-cargo = "warn"
-module_name_repetitions = "allow"
+all                          = "warn"
+pedantic                     = "warn"
+nursery                      = "warn"
+cargo                        = "warn"
+module_name_repetitions      = "allow"
 too_long_first_doc_paragraph = "allow"
 
 [profile.dev]
@@ -100,45 +100,43 @@ opt-level = 0
 debug = true
 debug-assertions = true
 overflow-checks = true
-lto = "off"
+lto = false                # <- était "off", now valid
 codegen-units = 256
 incremental = true
 
 [profile.release]
-opt-level = 3
-debug = 1
-lto = "thin"
-codegen-units = 1
-strip = "symbols"
-panic = "unwind"
-incremental = false
+opt-level      = 3
+debug          = 1
+lto            = "thin"
+codegen-units  = 1
+strip          = "symbols"
+panic          = "unwind"
+incremental    = false
 
 [profile.profiling]
 inherits = "release"
-debug = true
-lto = "off"
-strip = "none"
+debug    = true
+lto      = false                       # ← idem
+strip    = "none"
 
 [patch.crates-io]
 # hyper = { git = "https://github.com/YourOrg/hyper", rev = "deadbeef" }
 
 [workspace.metadata]
-scripts.lint = "cargo fmt --all -- --check && cargo clippy --all-targets --all-features -- -D warnings"
+scripts.lint = "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --all-features -- -D warnings"
 scripts.deny = "cargo deny check -A unlicensed -A sources"
-scripts.test = "cargo test --all --all-features"
+scripts.test = "cargo test --workspace --all-features"
 
-# NOTE: docs.rs lit normalement [package.metadata.docs.rs] par crate.
-# Ici c’est de la meta de référence pour la CI interne.
 [workspace.metadata.docs.rs]
-all-features = true
+all-features   = true
 default-target = "x86_64-unknown-linux-gnu"
-targets = ["x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-pc-windows-msvc", "wasm32-unknown-unknown"]
+targets        = ["x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-pc-windows-msvc", "wasm32-unknown-unknown"]
 
 [workspace.metadata.release]
 sign-commit = true
-sign-tag = true
-push = true
-tag-prefix = "v"
+sign-tag    = true
+push        = true
+tag-prefix  = "v"
 
 [workspace.metadata.deny]
 unmaintained = "deny"

@@ -1,7 +1,7 @@
 [package]
-name = "vitte-core"
+name = "stdlib"
 version = "0.1.0"
-description = "Cœur du langage Vitte : bytecode & primitives (MVP)."
+description = "Bibliothèque standard du langage Vitte (MVP)."
 # Hérite des métadonnées du workspace
 edition.workspace       = true
 rust-version.workspace  = true
@@ -16,15 +16,19 @@ categories.workspace    = true
 path = "src/lib.rs"
 
 [features]
-# std activée par défaut (désactive avec --no-default-features si besoin)
+# std activée par défaut ; désactive-la via --no-default-features si besoin
 default = ["std"]
 std = []
-# Sérialisation optionnelle, exposée aux autres crates
-serde = ["dep:serde"]
+# Sérialisation optionnelle, relaie vers vitte-core
+serde = ["dep:serde", "vitte-core/serde"]
 
 [dependencies]
+# Déps communes (versions prises au workspace)
 anyhow = { workspace = true }
-serde  = { workspace = true, features = ["derive"], optional = true }
+serde  = { workspace = true, optional = true }
+
+# Déps internes
+vitte-core = { path = "../vitte-core" }
 
 [package.metadata.docs.rs]
 all-features = true
