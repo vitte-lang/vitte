@@ -8,62 +8,49 @@
 //! - `asm`       : assembleur texte → `Chunk` (MVP).
 //! - `disasm`    : désassembleur lisible (humain).
 //! - `loader`    : chargement / linkage multi-chunks.
-//! - `runtime::eval` (feature `eval`) : évaluateur léger (tests/REPL).
 //! - `utils`     : briques internes (hash, pretty, etc.).
 //!
 //! ## Features
 //! - **std** *(par défaut)* : active la std (fs, io). Désactive pour no_std(+alloc).
 //! - **alloc-only** : build no_std avec `alloc` (sans fs). Mutuellement exclusif avec `std`.
 //! - **serde** : (dé)sérialisation via serde pour certains helpers/types.
-//! - **tracing** : instrumentation via `tracing`.
-//! - **eval** : inclut `runtime::eval` pour exécuter un `Chunk` facilement.
-//!
-//! > Ajuste ces features dans `Cargo.toml` du workspace.
 
 #![forbid(unsafe_code)]
 #![deny(rust_2018_idioms, unused_must_use)]
 #![cfg_attr(not(debug_assertions), warn(missing_docs))]
+#![cfg_attr(all(not(feature = "std"), feature = "alloc-only"), no_std)]
 
+/* ---------- Garde-fous de configuration ---------- */
 #[cfg(all(not(feature = "std"), not(feature = "alloc-only")))]
 compile_error!("Active la feature `std` ou `alloc-only` (no_std+alloc) pour vitte-core.");
 
 #[cfg(all(feature = "std", feature = "alloc-only"))]
 compile_error!("`std` et `alloc-only` sont mutuellement exclusifs.");
 
-// --- core/alloc imports selon environnement ---
-#![cfg_attr(all(not(feature = "std"), feature = "alloc-only"), no_std)]
+/* ---------- Imports dépendants de l'environnement ---------- */
 #[cfg(all(not(feature = "std"), feature = "alloc-only"))]
 extern crate alloc;
 
 #[cfg(all(not(feature = "std"), feature = "alloc-only"))]
-use alloc::{string::String, vec::Vec, boxed::Box};
+use alloc::{boxed::Box, string::String, vec::Vec};
 
 #[cfg(feature = "std")]
-use std::{string::String, vec::Vec, boxed::Box};
+use std::{string::String, vec::Vec};
 
-#[cfg(feature = "tracing")]
-use tracing::{debug, info, warn};
-
-// ---------- Modules publics ----------
-pub mod bytecode;
+/* ---------- Modules publics ---------- */
 pub mod asm;
 pub mod disasm;
 pub mod loader;
 pub mod utils;
+pub mod bytecode;
 
-#[cfg(feature = "eval")]
-pub mod runtime {
-    /// Évaluateur léger de bytecode (idéal pour tests/REPL).
-    pub mod eval;
-}
+/* (⚠️ ancien bloc #[cfg(feature = "eval")] retiré) */
 
-// ---------- Reexports de confort ----------
-pub use bytecode::{
-    chunk::{Chunk, ChunkFlags, ConstPool, ConstValue, LineTable},
-    op::Op,
-};
+/* ---------- Reexports (un seul bloc, pas de doublons) ---------- */
+pub use bytecode::chunk::{Chunk, ChunkFlags, ConstPool, ConstValue, LineTable};
+pub use bytecode::op::Op; // <- Op vient du sous-module `bytecode::op`
 
-// ---------- Version ----------
+/* ---------- Version ---------- */
 #[cfg(feature = "std")]
 /// Version du crate (lisible, via Cargo).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -79,7 +66,7 @@ pub fn version() -> String {
 /// On expose une valeur neutre.
 pub const VERSION_NO_STD: &str = "vitte-core (no_std)";
 
-// ---------- Erreurs & Résultat ----------
+/* ---------- Erreurs & Résultat ---------- */
 #[cfg(feature = "std")]
 use thiserror::Error;
 
@@ -112,18 +99,18 @@ pub enum Error {
 
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-// ---------- Prelude ----------
+/* ---------- Prelude ---------- */
 pub mod prelude {
     pub use crate::{
-        Chunk, ChunkFlags, ConstPool, ConstValue, LineTable, Op, Result, Error,
-        bytecode::{op, chunk},
+        bytecode::{chunk, op}, // on expose les modules si besoin
         helpers::*,
+        Chunk, ChunkFlags, ConstPool, ConstValue, Error, LineTable, Op, Result,
     };
     #[cfg(feature = "std")]
     pub use crate::version;
 }
 
-// ---------- Macros utilitaires ----------
+/* ---------- Macros utilitaires ---------- */
 #[macro_export]
 macro_rules! vit_assert {
     ($cond:expr, $($arg:tt)*) => {
@@ -148,15 +135,13 @@ macro_rules! vit_assert {
     };
 }
 
-// ---------- Helpers “batteries-incluses” ----------
+/* ---------- Helpers “batteries-incluses” ---------- */
 pub mod helpers {
     use super::*;
     use bytecode::chunk::{CHUNK_MAGIC, CHUNK_VERSION};
 
     /// Crée un `Chunk` vide “prêt à remplir”.
-    pub fn new_chunk(stripped: bool) -> Chunk {
-        Chunk::new(ChunkFlags { stripped })
-    }
+    pub fn new_chunk(stripped: bool) -> Chunk { Chunk::new(ChunkFlags { stripped }) }
 
     /// Ajoute des constantes (raccourcis).
     pub fn k_str(c: &mut Chunk, s: &str) -> u32 { c.add_const(ConstValue::Str(s.into())) }
@@ -168,17 +153,13 @@ pub mod helpers {
     /// Vérifie quelques invariants d’un `Chunk`. Étends selon ton format.
     pub fn validate_chunk(c: &Chunk) -> Result<()> {
         if c.consts.len() > (u32::MAX as usize) {
-            #[cfg(feature = "std")]
-            { return Err(Error::Chunk("trop de constantes".into())); }
-            #[cfg(all(not(feature="std"), feature="alloc-only"))]
-            { return Err(Error::Msg("trop de constantes")); }
+            #[cfg(feature = "std")] { return Err(Error::Chunk("trop de constantes".into())); }
+            #[cfg(all(not(feature="std"), feature="alloc-only"))] { return Err(Error::Msg("trop de constantes")); }
         }
         if let Some(main) = &c.debug.main_file {
             if main.trim().is_empty() {
-                #[cfg(feature = "std")]
-                { return Err(Error::Chunk("debug.main_file vide".into())); }
-                #[cfg(all(not(feature="std"), feature="alloc-only"))]
-                { return Err(Error::Msg("debug.main_file vide")); }
+                #[cfg(feature = "std")] { return Err(Error::Chunk("debug.main_file vide".into())); }
+                #[cfg(all(not(feature="std"), feature="alloc-only"))] { return Err(Error::Msg("debug.main_file vide")); }
             }
         }
         Ok(())
@@ -223,10 +204,8 @@ pub mod helpers {
     impl BytecodeIo for NativeBytecode {
         fn load(&self, bytes: &[u8]) -> Result<Chunk> {
             Chunk::from_bytes(bytes).map_err(|e| {
-                #[cfg(feature = "std")]
-                { Error::Chunk(format!("{e}")) }
-                #[cfg(all(not(feature="std"), feature="alloc-only"))]
-                { Error::Msg("from_bytes failed") }
+                #[cfg(feature = "std")] { Error::Chunk(format!("{e}")) }
+                #[cfg(all(not(feature="std"), feature="alloc-only"))] { Error::Msg("from_bytes failed") }
             })
         }
         fn save(&self, chunk: &mut Chunk) -> Result<Vec<u8>> {
@@ -235,17 +214,11 @@ pub mod helpers {
     }
 }
 
-// ---------- Intégration tracing (optionnelle) ----------
-#[cfg(feature = "tracing")]
-pub fn log_chunk_short(c: &Chunk, tag: &str) {
-    info!(target: "vitte-core", tag, ops = c.ops.len(), consts = c.consts.len(), "Chunk résumé");
-}
-
-// ---------- Serde (optionnelle) ----------
+/* ---------- Serde (optionnelle) ---------- */
 #[cfg(feature = "serde")]
 pub mod serde_support {
     use super::*;
-    use serde::{Serialize, Deserialize};
+    use serde::{Deserialize, Serialize};
 
     /// Exemple d’export JSON “humain” d’un Chunk minimal (métadonnées + op count).
     #[derive(Debug, Serialize, Deserialize)]
@@ -261,14 +234,14 @@ pub mod serde_support {
             Self {
                 ops: c.ops.len(),
                 consts: c.consts.len(),
-                stripped: c.flags.stripped,
+                stripped: c.flags().stripped,
                 main_file: c.debug.main_file.clone(),
             }
         }
     }
 }
 
-// ---------- Tests ----------
+/* ---------- Tests ---------- */
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,24 +265,6 @@ mod tests {
         let err = Chunk::from_bytes(&bytes).unwrap_err();
         let s = format!("{err}");
         assert!(s.to_lowercase().contains("hash"));
-    }
-
-    #[cfg(feature = "eval")]
-    #[test]
-    fn eval_add_print() {
-        use crate::runtime::eval::{eval_chunk, EvalOptions};
-        let mut c = Chunk::new(ChunkFlags { stripped: true });
-        let k2 = c.add_const(ConstValue::I64(2));
-        let k3 = c.add_const(ConstValue::I64(3));
-        c.ops.push(Op::LoadConst(k2));
-        c.ops.push(Op::LoadConst(k3));
-        c.ops.push(Op::Add);
-        c.ops.push(Op::Print);
-        c.ops.push(Op::Return);
-
-        let out = eval_chunk(&c, EvalOptions::default()).unwrap();
-        #[cfg(feature = "std")]
-        assert!(out.stdout.contains('5'));
     }
 
     #[test]

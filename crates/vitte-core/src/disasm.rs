@@ -14,8 +14,10 @@
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
+use crate::bytecode::op::Op;
+use crate::bytecode::op::Op::*;
+use crate::bytecode::{Chunk, ConstValue, Op};
 
-use crate::bytecode::{chunk::Chunk, ConstValue, op::Op};
 
 /// Vue compacte : `PC  (line)  OP [annotations…]`
 pub fn disassemble_compact(chunk: &Chunk) -> String {

@@ -1,14 +1,11 @@
-//! vitte-vm/loader.rs
+//! vitte-core/loader.rs
 //!
 //! Chargeur/Enregistreur binaire de `RawProgram` (défini dans `asm.rs`).
 //!
 //! Format **VITBC** (Little Endian) — compact, stable, extensible, avec intégrité CRC32.
 //!
-//! ```text
 //! FILE:
-//!   HEADER
-//!   SECTIONS
-//!   TRAILER
+//!   HEADER  |  SECTIONS  |  TRAILER
 //!
 //! HEADER:
 //!   magic[6]   = b"VITBC\0"
@@ -25,26 +22,20 @@
 //!   CODE   : n × (opcode u16, argc u8, _pad u8, args[argc] × u64)
 //!
 //! TRAILER:
-//!   crc32  : u32                      (CRC32/IEEE de tout le contenu **après** MAGIC jusqu'avant le trailer)
-//!   vend   : [6] = b"VEND\0\0"        (fin de fichier)
-//! ```
-//!
-//! Remarques :
-//! - Le CRC couvre version..fin_sections pour détecter la corruption.
-//! - Compression zstd optionnelle (feature `zstd`). Le CRC s’applique aux **données décompressées**.
-//! - Le format opère **sur l’IR Raw** (`RawProgram` / `RawOp`), indépendant de votre enum `Op`.
+//!   crc32  : u32  (CRC32/IEEE de tout le contenu après MAGIC jusqu'avant TRAILER)
+//!   vend   : [6] = b"VEND\0\0"
 
+use std::convert::TryInto;
 use std::fmt;
-use std::io::{self, Read, Write};
 use std::fs::File;
+use std::io::{self, Read, Write};
+use std::io::Cursor;
 use std::path::Path;
 
-use crate::asm::{RawOp, RawProgram, DataBlob};
+use crate::asm::{DataBlob, RawOp, RawProgram};
 
 pub const MAGIC: &[u8; 6] = b"VITBC\0";
 pub const TRAILER_MAGIC: &[u8; 6] = b"VEND\0\0";
-
-// Incrémente si tu changes la structure **binaire** (pas l’impl interne).
 pub const FILE_VERSION: u32 = 2;
 
 // Flags
@@ -52,17 +43,21 @@ const FLAG_COMPRESSED_ZSTD: u32 = 0x0000_0001;
 
 // Garde-fous (anti OOM / fichiers malicieux)
 const MAX_NAME_LEN: usize = u16::MAX as usize;
-const MAX_STR_LEN:  usize = 64 * 1024 * 1024;      // 64 MiB par string
-const MAX_BLOB_LEN: usize = 256 * 1024 * 1024;     // 256 MiB par data blob
-const MAX_CONSTS:   u32   = 1_000_000;
-const MAX_DATA:     u32   = 1_000_000;
-const MAX_CODE:     u32   = 10_000_000;
+const MAX_STR_LEN: usize = 64 * 1024 * 1024;   // 64 MiB / string
+const MAX_BLOB_LEN: usize = 256 * 1024 * 1024; // 256 MiB / blob
+const MAX_CONSTS: u32 = 1_000_000;
+const MAX_DATA: u32 = 1_000_000;
+const MAX_CODE: u32 = 10_000_000;
 
 // ---- Compression zstd (optionnelle) ----
+// Les wrappers renvoient des trait objects avec lifetime pour éviter 'static imposé.
 #[cfg(feature = "zstd")]
 mod zstd_io {
     use super::*;
-    pub fn maybe_wrap_writer<W: Write>(w: W, compressed: bool) -> Result<Box<dyn Write>, io::Error> {
+    pub fn maybe_wrap_writer<'a, W>(w: W, compressed: bool) -> io::Result<Box<dyn Write + 'a>>
+    where
+        W: Write + 'a,
+    {
         if compressed {
             let enc = zstd::stream::write::Encoder::new(w, 0)?; // niveau par défaut
             Ok(Box::new(enc.auto_finish()))
@@ -70,7 +65,10 @@ mod zstd_io {
             Ok(Box::new(w))
         }
     }
-    pub fn maybe_wrap_reader<R: Read>(r: R, compressed: bool) -> Result<Box<dyn Read>, io::Error> {
+    pub fn maybe_wrap_reader<'a, R>(r: R, compressed: bool) -> io::Result<Box<dyn Read + 'a>>
+    where
+        R: Read + 'a,
+    {
         if compressed {
             let dec = zstd::stream::read::Decoder::new(r)?;
             Ok(Box::new(dec))
@@ -83,10 +81,16 @@ mod zstd_io {
 #[cfg(not(feature = "zstd"))]
 mod zstd_io {
     use super::*;
-    pub fn maybe_wrap_writer<W: Write>(w: W, _compressed: bool) -> Result<Box<dyn Write>, io::Error> {
+    pub fn maybe_wrap_writer<'a, W>(w: W, _compressed: bool) -> io::Result<Box<dyn Write + 'a>>
+    where
+        W: Write + 'a,
+    {
         Ok(Box::new(w))
     }
-    pub fn maybe_wrap_reader<R: Read>(r: R, _compressed: bool) -> Result<Box<dyn Read>, io::Error> {
+    pub fn maybe_wrap_reader<'a, R>(r: R, _compressed: bool) -> io::Result<Box<dyn Read + 'a>>
+    where
+        R: Read + 'a,
+    {
         Ok(Box::new(r))
     }
 }
@@ -142,7 +146,11 @@ impl From<io::Error> for LoaderError {
 // -----------------------------
 
 /// Sauve vers un fichier (compression facultative).
-pub fn save_raw_program_to_path<P: AsRef<Path>>(path: P, prog: &RawProgram, compress: bool) -> Result<(), LoaderError> {
+pub fn save_raw_program_to_path<P: AsRef<Path>>(
+    path: P,
+    prog: &RawProgram,
+    compress: bool,
+) -> Result<(), LoaderError> {
     #[cfg(not(feature = "zstd"))]
     if compress { return Err(LoaderError::CompressionUnsupported); }
 
@@ -158,14 +166,18 @@ pub fn load_raw_program_from_path<P: AsRef<Path>>(path: P) -> Result<RawProgram,
 
 /// Sauve sur un `Write`. Si `compress == true` et la feature zstd est active,
 /// les sections sont écrites compressées (CRC sur les données **décompressées**).
-pub fn save_raw_program<W: Write>(mut sink: W, prog: &RawProgram, compress: bool) -> Result<(), LoaderError> {
+pub fn save_raw_program<W: Write>(
+    mut sink: W,
+    prog: &RawProgram,
+    compress: bool,
+) -> Result<(), LoaderError> {
     #[cfg(not(feature = "zstd"))]
     if compress { return Err(LoaderError::CompressionUnsupported); }
 
-    // --- On écrit MAGIC puis on bufferise le reste pour calculer le CRC ---
+    // MAGIC
     sink.write_all(MAGIC)?;
 
-    // Corps (header+sections) en mémoire pour CRC
+    // Corps (header+sections) en mémoire pour calculer le CRC
     let mut body = Vec::with_capacity(4096);
 
     // Header + compteurs
@@ -189,22 +201,20 @@ pub fn save_raw_program<W: Write>(mut sink: W, prog: &RawProgram, compress: bool
     write_u32(&mut body, n_data)?;
     write_u32(&mut body, n_code)?;
 
-    // Écrivain de sections (potentiellement compressé) sur le buffer body
-    // (on compresse seulement les SECTIONS, pas l’en-tête)
+    // Sections (optionnellement compressées)
     let mut sect_buf = Vec::with_capacity(8192);
     {
         let writer = zstd_io::maybe_wrap_writer(&mut sect_buf, compress)?;
         write_sections(writer, prog)?;
     }
-    // Ajoute les sections au corps
     body.extend_from_slice(&sect_buf);
 
-    // CRC32 sur `body` (déjà dans l’ordre LE pour les entiers écrits ci-dessus)
+    // CRC + TRAILER
     let crc = crc32_ieee(&body);
     write_u32(&mut body, crc)?;
     body.extend_from_slice(TRAILER_MAGIC);
 
-    // Flush final vers le sink
+    // Flush final
     sink.write_all(&body)?;
     Ok(())
 }
@@ -216,7 +226,7 @@ pub fn load_raw_program<R: Read>(mut source: R) -> Result<RawProgram, LoaderErro
     source.read_exact(&mut magic)?;
     if &magic != MAGIC { return Err(LoaderError::BadMagic); }
 
-    // Lis tout le reste dans un buffer (permet CRC + trailer check).
+    // Lis tout le reste (pour CRC + trailer)
     let mut body = Vec::new();
     source.read_to_end(&mut body)?;
 
@@ -237,7 +247,7 @@ pub fn load_raw_program<R: Read>(mut source: R) -> Result<RawProgram, LoaderErro
         return Err(LoaderError::ChecksumMismatch { expected: exp_crc, got: got_crc });
     }
 
-    // On va maintenant parser `body_no_trailer`.
+    // Parse `body_no_trailer`
     let mut cursor = CursorLE::new(body_no_trailer);
 
     // Header
@@ -265,9 +275,12 @@ pub fn load_raw_program<R: Read>(mut source: R) -> Result<RawProgram, LoaderErro
     guard_counts(n_data, MAX_DATA, "n_data")?;
     guard_counts(n_code, MAX_CODE, "n_code")?;
 
-    // Le reste du buffer correspond aux sections, potentiellement compressées.
+    // Récupère les bytes des sections (potentiellement compressées)
     let sections_bytes = cursor.remaining_bytes();
-    let mut sect_reader: Box<dyn Read> = zstd_io::maybe_wrap_reader(sections_bytes, compressed)?;
+
+    // &[u8] n’implémente pas Read → Cursor<&[u8]> ; lifetime propagée par maybe_wrap_reader
+    let cur = Cursor::new(sections_bytes);
+    let mut sect_reader = zstd_io::maybe_wrap_reader(cur, compressed)?;
 
     // Reconstruire le RawProgram
     let mut prog = RawProgram::default();
@@ -415,7 +428,7 @@ fn read_name_from<R: Read>(r: &mut R) -> Result<String, LoaderError> {
 }
 
 // -----------------------------
-// Petit reader LE sur slice (pour parser le body et garder le reste en « sections »)
+// Petit reader LE (pour parser le body et garder le reste en « sections »)
 // -----------------------------
 struct CursorLE<'a> {
     buf: &'a [u8],
@@ -443,30 +456,37 @@ impl<'a> CursorLE<'a> {
 }
 
 // -----------------------------
-// CRC32 (IEEE, polynôme 0xEDB88320), no_std friendly
+// CRC32 (IEEE, polynôme 0xEDB88320), version safe et const
 // -----------------------------
 fn crc32_ieee(data: &[u8]) -> u32 {
-    const POLY: u32 = 0xEDB88320;
-    static mut TABLE: [u32; 256] = [0; 256];
-    static INIT: std::sync::Once = std::sync::Once::new();
-    unsafe {
-        INIT.call_once(|| {
-            for i in 0..256u32 {
-                let mut c = i;
-                for _ in 0..8 {
-                    c = if (c & 1) != 0 { POLY ^ (c >> 1) } else { c >> 1 };
-                }
-                TABLE[i as usize] = c;
+    const fn make_table() -> [u32; 256] {
+        let mut tbl = [0u32; 256];
+        let mut i = 0;
+        while i < 256 {
+            let mut c = i as u32;
+            let mut j = 0;
+            while j < 8 {
+                c = if (c & 1) != 0 {
+                    0xEDB88320u32 ^ (c >> 1)
+                } else {
+                    c >> 1
+                };
+                j += 1;
             }
-        });
-        let mut c: u32 = 0xFFFF_FFFF;
-        for &b in data {
-            c = TABLE[((c ^ (b as u32)) & 0xFF) as usize] ^ (c >> 8);
+            tbl[i] = c;
+            i += 1;
         }
-        !c
+        tbl
     }
-}
 
+    const TABLE: [u32; 256] = make_table();
+
+    let mut c: u32 = 0xFFFF_FFFF;
+    for &b in data {
+        c = TABLE[((c ^ (b as u32)) & 0xFF) as usize] ^ (c >> 8);
+    }
+    !c
+}
 // -----------------------------
 // Garde-fous
 // -----------------------------
@@ -475,12 +495,11 @@ fn guard_counts(val: u32, max: u32, label: &'static str) -> Result<(), LoaderErr
 }
 
 // -----------------------------
-// Tests (roundtrip, CRC, compression)
+// Tests basiques
 // -----------------------------
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::asm::{ConstPool};
 
     fn sample_prog() -> RawProgram {
         let mut p = RawProgram::default();
@@ -488,7 +507,11 @@ mod tests {
         p.const_pool.ints.insert("X".into(), 7);
         p.const_pool.floats.insert("PI".into(), 3.14);
         p.const_pool.strings.insert("msg".into(), "Hello".into());
-        p.data_blobs.push(DataBlob { name: Some("blob".into()), bytes: vec![1,2,3,4,5,6,7,8], addr: Some(0x1000) });
+        p.data_blobs.push(DataBlob {
+            name: Some("blob".into()),
+            bytes: vec![1,2,3,4,5,6,7,8],
+            addr: Some(0x1000),
+        });
         p.code.push(RawOp { opcode: 0x01, argc: 2, args: [1,2,0] });
         p.code.push(RawOp { opcode: 0x0C, argc: 0, args: [0,0,0] });
         p
@@ -524,7 +547,6 @@ mod tests {
         let prog = sample_prog();
         let mut buf = Vec::new();
         save_raw_program(&mut buf, &prog, false).unwrap();
-        // Corrompre un octet (si possible dans les sections)
         if let Some(b) = buf.get_mut(MAGIC.len() + 12) { *b ^= 0xFF; }
         let err = load_raw_program(&buf[..]).unwrap_err();
         match err {

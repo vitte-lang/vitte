@@ -7,7 +7,7 @@ use std::fmt::{self, Write as _};
 use std::ops::Range;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::bytecode::Op;
+use crate::Op;
 
 /// Numéro de version de format de chunk.
 pub const CHUNK_VERSION: u16 = 1;
@@ -87,17 +87,21 @@ impl ConstPool {
         Self { values: Vec::new(), str_index: HashMap::new() }
     }
 
+    /// Ajoute `v` dans le pool, avec dé-duplication pour `Str`.
+    /// (Fix E0505: on pattern-match par déplacement pour éviter un emprunt de `v` avant move.)
     pub fn add(&mut self, v: ConstValue) -> u32 {
-        match &v {
+        match v {
             ConstValue::Str(s) => {
-                if let Some(&idx) = self.str_index.get(s) {
+                if let Some(&idx) = self.str_index.get(&s) {
                     return idx;
                 }
-                let idx = self.push_raw(v);
-                self.str_index.insert(s.clone(), idx);
+                let idx = self.values.len() as u32;
+                // clone pour stocker la valeur, et on déplace `s` comme clé
+                self.values.push(ConstValue::Str(s.clone()));
+                self.str_index.insert(s, idx);
                 idx
             }
-            _ => self.push_raw(v),
+            other => self.push_raw(other),
         }
     }
 
@@ -111,13 +115,8 @@ impl ConstPool {
         self.values.get(idx as usize)
     }
 
-    pub fn len(&self) -> usize {
-        self.values.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.values.is_empty()
-    }
+    pub fn len(&self) -> usize { self.values.len() }
+    pub fn is_empty(&self) -> bool { self.values.is_empty() }
 
     pub fn iter(&self) -> impl Iterator<Item = (u32, &ConstValue)> {
         self.values.iter().enumerate().map(|(i, v)| (i as u32, v))
@@ -143,9 +142,7 @@ pub struct LineTable {
 }
 
 impl LineTable {
-    pub fn new() -> Self {
-        Self { runs: Vec::new() }
-    }
+    pub fn new() -> Self { Self { runs: Vec::new() } }
 
     pub fn push_line(&mut self, pc: u32, line: u32) {
         match self.runs.last_mut() {
@@ -235,11 +232,7 @@ impl Chunk {
     pub fn compute_hash(&self) -> u64 {
         let mut hasher = Fnv1a64::new();
         fn feed_ser<T: serde::Serialize>(h: &mut Fnv1a64, v: &T) {
-            let bytes = bincode::DefaultOptions::new()
-                .with_fixint_encoding()
-                .with_little_endian()
-                .serialize(v)
-                .expect("serialize ok");
+            let bytes = bincode::serialize(v).expect("serialize ok");
             h.write(&bytes);
         }
         feed_ser(&mut hasher, &self.ops);
@@ -257,19 +250,11 @@ impl Chunk {
 
     pub fn to_bytes(&mut self) -> Vec<u8> {
         self.finalize_header();
-        bincode::DefaultOptions::new()
-            .with_fixint_encoding()
-            .with_little_endian()
-            .serialize(self)
-            .expect("serialize chunk")
+        bincode::serialize(self).expect("serialize chunk")
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ChunkLoadError> {
-        let mut chunk: Self = bincode::DefaultOptions::new()
-            .with_fixint_encoding()
-            .with_little_endian()
-            .deserialize(bytes)
-            .map_err(ChunkLoadError::Bincode)?;
+        let mut chunk: Self = bincode::deserialize(bytes).map_err(ChunkLoadError::Bincode)?;
 
         if chunk.header.magic != CHUNK_MAGIC {
             return Err(ChunkLoadError::BadMagic(chunk.header.magic));
@@ -454,13 +439,10 @@ mod tests {
         let k_num = c.add_const(ConstValue::I64(42));
 
         // ⚠️ Ajuste ces opcodes selon TON enum Op.
-        // Exemples génériques (à adapter si Op::LoadConst prend des champs nommés):
         c.push_op(Op::Nop, Some(1));
-        // Si ton Op est LoadConst(idx): 
+        // Exemple si ton Op possède une variante avec index de constante :
         // c.push_op(Op::LoadConst(k_hello), Some(2));
-        // Si ton Op est LoadConst { dst, k }:
-        // c.push_op(Op::LoadConst { dst: 0, k: k_hello }, Some(2));
-        let _ = k_num; // évite warning si pas utilisé
+        let _ = (k_hello, k_num);
 
         // Sérialisation / intégrité
         let mut bytes = c.to_bytes();

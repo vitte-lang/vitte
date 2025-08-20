@@ -1,8 +1,13 @@
-//! Bytecode core for Vitte: opcodes, chunk format, helpers.
-//! Re-export pour usage simple ailleurs.
+// crates/vitte-core/src/bytecode/mod.rs
 
-pub mod op;
 pub mod chunk;
+pub mod op;
+pub mod format;
 
-pub use op::Op;
-pub use chunk::{Chunk, ChunkFlags, ConstPool, ConstValue, LineTable};
+// Reexports publics (garde uniquement ceux de chunk)
+pub use chunk::{
+    CHUNK_MAGIC, CHUNK_VERSION,
+    Chunk, ChunkFlags, ChunkLoadError,
+    ConstPool, ConstValue, LineTable,
+};
+

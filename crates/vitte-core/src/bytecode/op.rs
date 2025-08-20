@@ -17,31 +17,16 @@
 use serde::{Deserialize, Serialize};
 
 /// Registres/arguments usuels (aliases sémantiques)
-pub type Reg      = u8;
-pub type ConstIx  = u32;
-pub type UpvalueIx= u16;
-pub type LocalIx  = u16;
-pub type FuncIx   = u32;
-
-/// L’ABI d’appel *pile* de Vitte (convention de haut niveau) :
-///
-/// - **Const/LoadX** poussent une valeur (+1)
-/// - **StoreX/Pop** consomment une valeur (−1)
-/// - **BinOp** (Add/Sub/…) consomment 2, poussent 1 (delta −1)
-/// - **UnOp** (Neg/Not) consomment 1, poussent 1 (delta 0)
-/// - **Call/TailCall** : dépend de la cible → delta **indéterminé**
-///   (par convention courante : pile = `[.., callee, arg0..argN-1]` → résultat)
-/// - **Jump/JumpIfFalse** : n’affectent pas la pile (sauf si `JumpIfFalse`
-///   consomme la condition — au choix de l’implémentation de la VM)
-///
-/// Ces règles servent au vérificateur et aux outils (disasm, lints).
+pub type Reg       = u8;
+pub type ConstIx   = u32;
+pub type UpvalueIx = u16;
+pub type LocalIx   = u16;
+pub type FuncIx    = u32;
 
 /// Jeu d’instructions MVP.
 ///
 /// **Compat bincode : ne pas réordonner. Ajouter les nouvelles variantes en bas.**
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash
-         , Default
-         )]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Op {
     // ----- Structure -----
@@ -70,7 +55,7 @@ pub enum Op {
 
     // ----- Contrôle -----
     Jump(i32),                  // pc = pc + 1 + off
-    JumpIfFalse(i32),           // if !cond { jump }   (consommation cond = impl VM)
+    JumpIfFalse(i32),           // if !cond { jump } (consommation cond = impl VM)
     Pop,                        // drop top
 
     // ----- Appels -----
@@ -125,7 +110,7 @@ impl Op {
             Call(_)         => "call",
             TailCall(_)     => "tcall",
             Print           => "print",
-            MakeClosure(_,_)=> "mkclo",
+            MakeClosure(_, _)=> "mkclo",
             LoadUpvalue(_)  => "ldu",
             StoreUpvalue(_) => "stu",
         }
@@ -137,19 +122,18 @@ impl Op {
     pub fn stack_delta(&self) -> Option<i32> {
         use Op::*;
         match *self {
-            Nop | Jump(_) | JumpIfFalse(_)    => Some(0),
+            Nop | Jump(_) | JumpIfFalse(_)        => Some(0),
             LoadConst(_) | LoadTrue | LoadFalse | LoadNull
-                                              => Some(1),
-            LoadLocal(_)                      => Some(1),
-            StoreLocal(_) | Pop | Print       => Some(-1),
-            Add|Sub|Mul|Div|Mod|Eq|Ne|Lt|Le|Gt|Ge
-                                              => Some(-1),   // 2 -> 1
-            Neg|Not                           => Some(0),    // 1 -> 1
-            LoadUpvalue(_)                    => Some(1),
-            StoreUpvalue(_)                   => Some(-1),
-            MakeClosure(_, _)                 => Some(1),
-            Return | ReturnVoid               => None,       // quitte la frame
-            Call(_) | TailCall(_)             => None,       // dépend de la conv d'appel
+                                                  => Some(1),
+            LoadLocal(_)                          => Some(1),
+            StoreLocal(_) | Pop | Print           => Some(-1),
+            Add|Sub|Mul|Div|Mod|Eq|Ne|Lt|Le|Gt|Ge => Some(-1), // 2 -> 1
+            Neg|Not                               => Some(0),  // 1 -> 1
+            LoadUpvalue(_)                        => Some(1),
+            StoreUpvalue(_)                       => Some(-1),
+            MakeClosure(_, _)                     => Some(1),
+            Return | ReturnVoid                   => None,     // quitte la frame
+            Call(_) | TailCall(_)                 => None,     // dépend de la conv d'appel
         }
     }
 
@@ -195,7 +179,7 @@ impl Op {
             JumpIfFalse(_)   => OperandKind::RelOffset,
             Call(_)          => OperandKind::Argc,
             TailCall(_)      => OperandKind::Argc,
-            MakeClosure(_,n) => OperandKind::FuncPlusN(n),
+            MakeClosure(_, n)=> OperandKind::FuncPlusN(n),
             _                => OperandKind::None,
         }
     }
@@ -220,37 +204,37 @@ impl core::fmt::Display for Op {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         use Op::*;
         match *self {
-            Nop             => write!(f, "nop"),
-            Return          => write!(f, "ret"),
-            ReturnVoid      => write!(f, "retv"),
-            LoadConst(ix)   => write!(f, "ldc {}", ix),
-            LoadTrue        => write!(f, "ldtrue"),
-            LoadFalse       => write!(f, "ldfalse"),
-            LoadNull        => write!(f, "ldnull"),
-            LoadLocal(ix)   => write!(f, "ldl {}", ix),
-            StoreLocal(ix)  => write!(f, "stl {}", ix),
-            Add             => write!(f, "add"),
-            Sub             => write!(f, "sub"),
-            Mul             => write!(f, "mul"),
-            Div             => write!(f, "div"),
-            Mod             => write!(f, "mod"),
-            Neg             => write!(f, "neg"),
-            Not             => write!(f, "not"),
-            Eq              => write!(f, "eq"),
-            Ne              => write!(f, "ne"),
-            Lt              => write!(f, "lt"),
-            Le              => write!(f, "le"),
-            Gt              => write!(f, "gt"),
-            Ge              => write!(f, "ge"),
-            Jump(ofs)       => write!(f, "jmp {:+}", ofs),
-            JumpIfFalse(ofs)=> write!(f, "jz {:+}", ofs),
-            Pop             => write!(f, "pop"),
-            Call(argc)      => write!(f, "call {}", argc),
-            TailCall(argc)  => write!(f, "tcall {}", argc),
-            Print           => write!(f, "print"),
+            Nop              => write!(f, "nop"),
+            Return           => write!(f, "ret"),
+            ReturnVoid       => write!(f, "retv"),
+            LoadConst(ix)    => write!(f, "ldc {}", ix),
+            LoadTrue         => write!(f, "ldtrue"),
+            LoadFalse        => write!(f, "ldfalse"),
+            LoadNull         => write!(f, "ldnull"),
+            LoadLocal(ix)    => write!(f, "ldl {}", ix),
+            StoreLocal(ix)   => write!(f, "stl {}", ix),
+            Add              => write!(f, "add"),
+            Sub              => write!(f, "sub"),
+            Mul              => write!(f, "mul"),
+            Div              => write!(f, "div"),
+            Mod              => write!(f, "mod"),
+            Neg              => write!(f, "neg"),
+            Not              => write!(f, "not"),
+            Eq               => write!(f, "eq"),
+            Ne               => write!(f, "ne"),
+            Lt               => write!(f, "lt"),
+            Le               => write!(f, "le"),
+            Gt               => write!(f, "gt"),
+            Ge               => write!(f, "ge"),
+            Jump(ofs)        => write!(f, "jmp {:+}", ofs),
+            JumpIfFalse(ofs) => write!(f, "jz {:+}", ofs),
+            Pop              => write!(f, "pop"),
+            Call(argc)       => write!(f, "call {}", argc),
+            TailCall(argc)   => write!(f, "tcall {}", argc),
+            Print            => write!(f, "print"),
             MakeClosure(fi,n)=> write!(f, "mkclo {} {}", fi, n),
-            LoadUpvalue(ix) => write!(f, "ldu {}", ix),
-            StoreUpvalue(ix)=> write!(f, "stu {}", ix),
+            LoadUpvalue(ix)  => write!(f, "ldu {}", ix),
+            StoreUpvalue(ix) => write!(f, "stu {}", ix),
         }
     }
 }

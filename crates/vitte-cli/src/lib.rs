@@ -10,10 +10,11 @@
 //! les intégrations sont sous features facultatives.
 
 use std::{fs, path::PathBuf};
+
 use anyhow::{anyhow, Context, Result};
+use camino::{Utf8Path, Utf8PathBuf};
 use clap::{Parser, Subcommand};
 use serde::Deserialize;
-use camino::{Utf8Path, Utf8PathBuf};
 
 /// Point d’entrée du binaire (à appeler depuis src/main.rs)
 pub fn run() -> Result<()> {
@@ -65,20 +66,26 @@ enum Cmd {
     },
 }
 
-/// Manifest minimal pour un projet Vitte.
+/* =========================
+   Manifest & structures
+   ========================= */
+
 #[derive(Debug, Deserialize)]
 struct Manifest {
+    #[serde(default)]
     package: Package,
     #[serde(default)]
     bin: Option<Bin>,
     #[serde(default)]
     lib: Option<Lib>,
-    #[serde(default)]
-    targets: Option<Vec<String>>,
+    // Était: targets: Option<Vec<String>>,
+    #[serde(default, rename = "targets")]
+    _targets: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
 struct Package {
+    #[serde(default = "default_pkg_name")]
     name: String,
     #[serde(default = "default_version")]
     version: String,
@@ -88,28 +95,69 @@ struct Package {
     description: Option<String>,
 }
 
+// Impl Default explicite pour coller aux helpers default_*
+impl Default for Package {
+    fn default() -> Self {
+        Self {
+            name: default_pkg_name(),
+            version: default_version(),
+            edition: default_edition(),
+            description: None,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct Bin {
+    /// Chemin source principal (ex: "src/main.vit")
     main: String,
+    /// Nom de sortie (sinon fallback sur package.name)
     #[serde(default)]
     name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct Lib {
+    /// Chemin source lib (ex: "src/lib.vit")
     path: String,
+    /// Nom de la lib (optionnel)
     #[serde(default)]
     name: Option<String>,
 }
 
+/* =========================
+   Defaults & parsing
+   ========================= */
+
+fn default_pkg_name() -> String { "app".into() }
 fn default_version() -> String { "0.1.0".into() }
 fn default_edition() -> String { "2025".into() }
 
 fn read_manifest(path: &Utf8Path) -> Result<Manifest> {
     let s = fs::read_to_string(path).with_context(|| format!("lecture {}", path))?;
-    let m: Manifest = toml::from_str(&s).with_context(|| "TOML invalide")?;
-    Ok(m)
+    parse_manifest(&s).with_context(|| format!("TOML invalide dans {}", path))
 }
+
+/// Parsing manifest, protégé derrière la feature `toml`.
+#[cfg(feature = "toml")]
+fn parse_manifest(s: &str) -> Result<Manifest> {
+    // Dépendance à déclarer dans vitte-cli/Cargo.toml :
+    // toml = { version = "0.8", features = ["parse"] }
+    Ok(toml::from_str::<Manifest>(s)?)
+}
+
+#[cfg(not(feature = "toml"))]
+fn parse_manifest(_s: &str) -> Result<Manifest> {
+    anyhow::bail!(
+        "Cette build n’inclut pas la dépendance TOML. \
+         Activez la feature `toml` de `vitte-cli` et ajoutez \
+         `toml = \"0.8\"` (avec `serde`) à Cargo.toml."
+    );
+}
+
+/* =========================
+   Commandes
+   ========================= */
 
 fn cmd_build(manifest: PathBuf, release: bool) -> Result<()> {
     let manifest = Utf8PathBuf::from_path_buf(manifest).map_err(|_| anyhow!("chemin invalide"))?;
@@ -120,8 +168,17 @@ fn cmd_build(manifest: PathBuf, release: bool) -> Result<()> {
         .to_path_buf();
 
     let profile = if release { "release" } else { "dev" };
-    eprintln!("🏗️  Build `{}` v{}  (profile: {profile})", m.package.name, m.package.version);
+    eprintln!(
+        "🏗️  Build `{}` v{} (edition {}, profile: {profile})",
+        m.package.name, m.package.version, m.package.edition
+    );
+    if let Some(desc) = &m.package.description {
+        if !desc.is_empty() {
+            eprintln!("📝  {}", desc);
+        }
+    }
 
+    #[allow(unused_mut)]
     let mut built_any = false;
 
     // Build lib si présente
@@ -136,7 +193,8 @@ fn cmd_build(manifest: PathBuf, release: bool) -> Result<()> {
         }
         #[cfg(not(feature = "compiler"))]
         {
-            eprintln!("ℹ️  feature `compiler` absente → lib non compilée (squelette).");
+            let lib_name = lib.name.as_deref().unwrap_or("lib");
+            eprintln!("ℹ️  feature `compiler` absente → lib `{lib_name}` non compilée (squelette).");
         }
     }
 
@@ -153,7 +211,10 @@ fn cmd_build(manifest: PathBuf, release: bool) -> Result<()> {
             eprintln!("✅  Binaire bytecode généré → {}", out_path);
         }
         #[cfg(not(feature = "compiler"))]
-        eprintln!("ℹ️  feature `compiler` absente → binaire non compilé (squelette).");
+        {
+            let bin_name = bin.name.as_deref().unwrap_or(&m.package.name);
+            eprintln!("ℹ️  feature `compiler` absente → binaire `{bin_name}` non compilé (squelette).");
+        }
     }
 
     if !built_any {
@@ -223,14 +284,10 @@ fn cmd_test(manifest: PathBuf, filter: Option<String>) -> Result<()> {
     for entry in walk(&tests_dir)? {
         if entry.extension().map(|e| e == "vit").unwrap_or(false) {
             if let Some(f) = &filter {
-                if !entry.to_string_lossy().contains(f) { continue; }
+                if !entry.as_str().contains(f) { continue; }
             }
-            eprintln!("🧪  Test: {}", entry);
-            // MVP : pour l’instant on “valide” symboliquement.
-            // Quand le compiler sera branché :
-            //   1) compiler .vit -> .vitbc
-            //   2) exécuter via VM
-            //   3) comparer stdout attendu (e.g., fichier .out)
+            eprintln!("🧪  Test: {}", entry.as_str());
+            // MVP : placeholder pour pipeline compiler+vm.
             count += 1;
         }
     }
@@ -238,11 +295,14 @@ fn cmd_test(manifest: PathBuf, filter: Option<String>) -> Result<()> {
     Ok(())
 }
 
+/* =========================
+   Impls spécifiques features
+   ========================= */
+
 #[cfg(feature = "compiler")]
 fn build_one_source(src: &Utf8Path, out: &Utf8Path) -> Result<()> {
     use std::fs;
     use std::io::Write;
-    use std::path::Path;
     use vitte_compiler as compiler;
     use vitte_core::bytecode::chunk::Chunk;
 
@@ -250,13 +310,18 @@ fn build_one_source(src: &Utf8Path, out: &Utf8Path) -> Result<()> {
     // Placeholder: tant que le compiler n’est pas codé,
     // on génère un Chunk vide “valide” pour la chaîne outillage.
     let mut chunk = Chunk::new(vitte_core::bytecode::chunk::ChunkFlags { stripped: false });
-    let _ = src; // plus tard: compiler::compile_file(src) -> Chunk
+    let _ = (compiler::compile_file as fn(&Utf8Path) -> _); // future intégration
+    let _ = src;
 
     let bytes = chunk.to_bytes();
     let mut f = fs::File::create(out)?;
     f.write_all(&bytes)?;
     Ok(())
 }
+
+/* =========================
+   Utilitaires
+   ========================= */
 
 fn ensure_exists(path: &Utf8Path, what: &str) -> Result<()> {
     if !path.exists() {
