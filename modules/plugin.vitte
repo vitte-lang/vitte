@@ -1,21 +1,344 @@
-//! plugin.vitte — registre statique de fonctions nommées.
+//! modules/plugin.vitte
+//! -------------------------------------------------------------
+//! Plugin — chargement dynamique, contrôle d’ABI, init/deinit & registre
+//! -------------------------------------------------------------
+//! Objectif : charger des extensions natives (DLL/.so/.dylib) *à la demande*,
+//! vérifier une compatibilité binaire minimale (ABI), récupérer nom & version,
+//! appeler des hooks (init, register, deinit), puis exposer un registre global.
+//!
+//! ⚠ SÉCURITÉ : **désactivé par défaut**. Le chargement de plugins natifs est
+//! potentiellement dangereux (exécution de code arbitraire dans le process).
+//! Active-le explicitement via `plugin::set_unsafe_allow(true)` et, idéalement,
+//! fournis une liste blanche de chemins ou de hash. En production : sandbox OS.
+//!
+//! État : experimental (🖥🛠). L’ABI pourra évoluer. Ce module vise la sobriété
+//! (pas d’alloc cachée), des erreurs claires et une intégration Prometheus/Logs.
+//!
+//! Conventions & ABI de base attendues côté plugin (C/ Rust/ C++) :
+//!   • uint32_t vitte_plugin_abi(void);            // doit == ABI_VERSION
+//!   • const char* vitte_plugin_name(void);        // nom friendly (“my_plugin”)
+//!   • const char* vitte_plugin_version(void);     // “0.1.0” (semver libre)
+//!   • int32_t vitte_plugin_init(void);            // 0 = OK (OPTIONNEL)
+//!   • int32_t vitte_plugin_register(void);        // 0 = OK (OPTIONNEL)
+//!   • int32_t vitte_plugin_deinit(void);          // 0 = OK (OPTIONNEL)
+//!
+//! Notes plateforme :
+//!   • Linux/BSD : dlopen/dlsym/dlclose
+//!   • macOS     : dlopen/dlsym/dlclose
+//!   • Windows   : LoadLibrary/GetProcAddress/FreeLibrary
+//!
+//! Licence : MIT
 
-#![version("0.1.0")]
-#![strict]
+use string
 
-pub type Plugin = fn(args: Vec<str>) -> Result<str,str>;
+// -------------------------------------------------------------
+// Constantes & externs (ponts FFI vers le runtime/VM)
+// -------------------------------------------------------------
 
-static mut REG: Option<std::collections::Map<str, Plugin>> = None;
+pub const ABI_VERSION: u32 = 1
 
-pub fn register(name: str, f: Plugin){
-    unsafe {
-        if REG.is_none(){ REG=Some(std::collections::Map::new()); }
-        REG.as_mut().unwrap().insert(name, f);
-    }
+// Ouverture / fermeture d’une librairie dynamique.
+// Retour 0 = échec ; >0 = handle natif opaque.
+extern(c) do __vitte_dlopen(path: str) -> u64
+extern(c) do __vitte_dlclose(handle: u64) -> i32
+
+// Résolution de symbole. Retour 0 = échec ; >0 = pointeur de fonction.
+extern(c) do __vitte_dlsym(handle: u64, sym: str) -> u64
+
+// Appels indirects (façades pour pointeurs de fonctions C).
+extern(c) do __vitte_call_u32(fn_ptr: u64) -> u32
+extern(c) do __vitte_call_i32(fn_ptr: u64) -> i32
+extern(c) do __vitte_call_cstr(fn_ptr: u64) -> String   // copie sûre d’un C string (UTF-8)
+
+// -------------------------------------------------------------
+// Types & erreurs
+// -------------------------------------------------------------
+
+pub enum PluginError {
+  UnsafeDenied,                 // sécurité : chargement non autorisé
+  Io(str),                      // ouverture échouée (chemin introuvable, permission, …)
+  AlreadyLoaded(str),           // un plugin du même nom est déjà présent
+  SymbolMissing(str),           // symbole ABI requis absent
+  AbiMismatch(str),             // vitte_plugin_abi() != ABI_VERSION attendu
+  InitFailed(str),              // vitte_plugin_init() != 0
+  RegisterFailed(str),          // vitte_plugin_register() != 0
+  DeinitFailed(str),            // vitte_plugin_deinit() != 0
 }
-pub fn call(name:&str, args:Vec<str>)->Result<str,str>{
-    unsafe {
-        if let Some(f)=REG.as_ref().and_then(|m| m.get(name)).cloned() { f(args) }
-        else { Err(format!("plugin introuvable: {}", name)) }
+
+pub enum PluginState { Loaded, Initialized }
+
+pub struct LibHandle { raw: u64 }
+
+pub struct Plugin {
+  name: String,
+  version: String,
+  handle: LibHandle,
+  sym_abi: u64,       // pointeurs des symboles découverts
+  sym_name: u64,
+  sym_version: u64,
+  sym_init: u64,      // 0 si absent
+  sym_register: u64,  // 0 si absent
+  sym_deinit: u64,    // 0 si absent
+  state: PluginState,
+  path: String,
+}
+
+pub struct Registry {
+  by_name: Map[String, Plugin],
+}
+
+// -------------------------------------------------------------
+// État global & politique de sécurité
+// -------------------------------------------------------------
+
+let mut __PLUGINS: Registry = Registry{ by_name: Map::new() }
+
+// Par défaut : false (sécurité ferme)
+let mut __UNSAFE_ALLOW: bool = false
+
+// Liste blanche optionnelle de préfixes de chemin autorisés
+let mut __WHITELIST: Vec[String] = vec![]
+
+pub do set_unsafe_allow(on: bool) {
+  __UNSAFE_ALLOW = on
+}
+
+pub do set_whitelist_prefixes(xs: Vec[str]) {
+  __WHITELIST.clear()
+  for x in xs { __WHITELIST.push(String::from(x)) }
+}
+
+inline do path_allowed(p: str) -> bool {
+  if !__UNSAFE_ALLOW { return false }
+  if __WHITELIST.len() == 0 { return true }
+  for pref in __WHITELIST {
+    if p.starts_with(pref) { return true }
+  }
+  false
+}
+
+// -------------------------------------------------------------
+// Wrappers bas-niveau
+// -------------------------------------------------------------
+
+inline do lib_open(path: str) -> Result[LibHandle, PluginError] {
+  let h = __vitte_dlopen(path)
+  if h == 0 { return Err(PluginError::Io(String::from("dlopen failed"))) }
+  Ok(LibHandle{ raw: h })
+}
+
+inline do lib_close(h &LibHandle) -> Result[Unit, PluginError] {
+  let rc = __vitte_dlclose(h.raw)
+  if rc != 0 { return Err(PluginError::Io(String::from("dlclose failed"))) }
+  Ok(())
+}
+
+inline do sym(h &LibHandle, s: str) -> u64 {
+  __vitte_dlsym(h.raw, s)   // 0 si absent
+}
+
+// -------------------------------------------------------------
+// Options de chargement
+// -------------------------------------------------------------
+
+pub struct LoadOptions {
+  call_init: bool,        // appelle vitte_plugin_init()
+  call_register: bool,    // appelle vitte_plugin_register()
+  require_abi: u32,       // ABI attendu (défaut = ABI_VERSION)
+  unique_by_name: bool,   // refuse si un plugin du même nom est déjà chargé
+}
+
+pub do load_options_default() -> LoadOptions {
+  LoadOptions{
+    call_init: true,
+    call_register: true,
+    require_abi: ABI_VERSION,
+    unique_by_name: true,
+  }
+}
+
+// -------------------------------------------------------------
+// API publique
+// -------------------------------------------------------------
+
+/// Charge un plugin depuis `path`, vérifie l’ABI, récupère nom & version,
+/// (optionnellement) appelle init + register, puis l’enregistre.
+pub do load(path: str, opt: LoadOptions?) -> Result[&Plugin, PluginError] {
+  if !path_allowed(path) { return Err(PluginError::UnsafeDenied) }
+  let opts = match opt { Some(o) => o, None => load_options_default() }
+
+  // 1) Open
+  let h = lib_open(path)?
+
+  // 2) Symbols requis
+  let s_abi = sym(&h, "vitte_plugin_abi")
+  let s_name = sym(&h, "vitte_plugin_name")
+  let s_ver = sym(&h, "vitte_plugin_version")
+  if s_abi == 0 || s_name == 0 || s_ver == 0 {
+    let _ = lib_close(&h)
+    return Err(PluginError::SymbolMissing(String::from("abi/name/version")))
+  }
+
+  // 3) ABI check
+  let abi = __vitte_call_u32(s_abi)
+  if abi != opts.require_abi {
+    let _ = lib_close(&h)
+    return Err(PluginError::AbiMismatch("expected " + to_string(opts.require_abi) + " got " + to_string(abi)))
+  }
+
+  // 4) Métadonnées
+  let pname = __vitte_call_cstr(s_name)
+  let pver  = __vitte_call_cstr(s_ver)
+
+  if opts.unique_by_name && __PLUGINS.by_name.contains_key(&pname) {
+    let _ = lib_close(&h)
+    return Err(PluginError::AlreadyLoaded(pname))
+  }
+
+  // 5) Symbols optionnels
+  let s_init = sym(&h, "vitte_plugin_init")
+  let s_reg  = sym(&h, "vitte_plugin_register")
+  let s_end  = sym(&h, "vitte_plugin_deinit")
+
+  let mut plugin = Plugin{
+    name: pname,
+    version: pver,
+    handle: h,
+    sym_abi: s_abi,
+    sym_name: s_name,
+    sym_version: s_ver,
+    sym_init: s_init,
+    sym_register: s_reg,
+    sym_deinit: s_end,
+    state: PluginState::Loaded,
+    path: String::from(path),
+  }
+
+  // 6) init + register
+  if opts.call_init && plugin.sym_init != 0 {
+    let rc = __vitte_call_i32(plugin.sym_init)
+    if rc != 0 {
+      let _ = lib_close(&plugin.handle)
+      return Err(PluginError::InitFailed(plugin.name))
     }
+    plugin.state = PluginState::Initialized
+  }
+  if opts.call_register && plugin.sym_register != 0 {
+    let rc = __vitte_call_i32(plugin.sym_register)
+    if rc != 0 {
+      // tente un deinit si on l’avait init
+      if plugin.state == PluginState::Initialized && plugin.sym_deinit != 0 {
+        let _ = __vitte_call_i32(plugin.sym_deinit)
+      }
+      let _ = lib_close(&plugin.handle)
+      return Err(PluginError::RegisterFailed(plugin.name))
+    }
+  }
+
+  // 7) Enregistre
+  let key = plugin.name.clone()
+  __PLUGINS.by_name.insert(key, plugin)
+
+  Ok(__PLUGINS.by_name.get(&key).unwrap())
+}
+
+/// Décharge un plugin par nom. Appelle deinit() si présent.
+pub do unload(name: str) -> Result[Unit, PluginError] {
+  if !__PLUGINS.by_name.contains_key(&name) {
+    return Err(PluginError::Io("not loaded: " + name))
+  }
+  // retirer puis close
+  // (on copie le handle pour libérer hors du map pour éviter aliasing)
+  let plugin = __PLUGINS.by_name.remove(&name).unwrap()
+
+  if plugin.sym_deinit != 0 {
+    let rc = __vitte_call_i32(plugin.sym_deinit)
+    if rc != 0 { return Err(PluginError::DeinitFailed(name)) }
+  }
+  lib_close(&plugin.handle)
+}
+
+/// Retourne la liste des plugins chargés (noms triés).
+pub do names() -> Vec[String] {
+  let mut xs = Vec::with_capacity(__PLUGINS.by_name.len())
+  for (k, _) in __PLUGINS.by_name { xs.push(k) }
+  xs.sort()
+  xs
+}
+
+/// Récupère un plugin (lecture seule).
+pub do get(name: str) -> Option[&Plugin] {
+  __PLUGINS.by_name.get(&name)
+}
+
+/// Infos lisibles humainement (pour debug / /metrics).
+pub do info() -> String {
+  let mut out = String::from("plugins:\n")
+  let mut xs = names()
+  for n in xs {
+    let p = __PLUGINS.by_name.get(&n).unwrap()
+    let st = match p.state { PluginState::Loaded => "loaded", PluginState::Initialized => "initialized" }
+    out.push_str("- " + p.name + "@" + p.version + "  [" + st + "]  (" + p.path + ")\n")
+  }
+  out
+}
+
+// -------------------------------------------------------------
+// Utilitaires avancés (résolution ponctuelle de symbole)
+// -------------------------------------------------------------
+
+/// Expose la résolution d’un symbole arbitraire (lecture seule).
+/// ⚠ Usage expert : tu es responsable de l’ABI réelle de la fonction ciblée.
+pub do raw_symbol(name: str, symbol: str) -> Option[u64] {
+  match __PLUGINS.by_name.get(&name) {
+    Some(p) => {
+      let addr = sym(&p.handle, symbol)
+      if addr == 0 { None } else { Some(addr) }
+    }
+    None => None
+  }
+}
+
+// -------------------------------------------------------------
+// Exemples d’usage (pseudo)
+// -------------------------------------------------------------
+// do example() {
+//   plugin::set_unsafe_allow(true)
+//   plugin::set_whitelist_prefixes(vec!["./plugins/", "/usr/local/lib/vitte-"])
+//   let p = plugin::load("./plugins/libhello.so", None).unwrap()
+//   print(plugin::info())
+//
+//   // Appel d’un symbole custom (expert):
+//   if let Some(addr) = plugin::raw_symbol(p.name, "hello_plugin_do_work") {
+//     // Suppose que hello_plugin_do_work() -> int32
+//     let rc = __vitte_call_i32(addr)
+//     print("do_work rc=" + to_string(rc))
+//   }
+//
+//   plugin::unload(p.name).unwrap()
+// }
+
+// -------------------------------------------------------------
+// Tests (fumée) — sans dépendre d’un vrai .so, on teste la politique.
+// -------------------------------------------------------------
+// @test
+do _policy_denied() {
+  // Par défaut, le chargement doit être refusé
+  set_unsafe_allow(false)
+  let res = load("./plugins/libimaginaire.so", None)
+  assert(res.is_err(), "denied by policy")
+  match res {
+    Err(e) => match e {
+      PluginError::UnsafeDenied => assert(true, "ok"),
+      _ => assert(false, "wrong error"),
+    },
+    _ => {}
+  }
+}
+
+// @test
+do _names_empty() {
+  __PLUGINS.by_name.clear()
+  let xs = names()
+  assert(xs.len() == 0, "liste vide")
 }

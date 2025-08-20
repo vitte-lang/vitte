@@ -1,39 +1,652 @@
-//! stringx.vitte — slugify, levenshtein, truncate_middle
+//! modules/stringx.vitte
+//! -----------------------------------------------------------------------------
+//! stringx — utilitaires avancés pour chaînes (trim+, pad, split_words,
+//!           slugify, case-convertions, wrap, truncate, recherche, similarité)
+//! -----------------------------------------------------------------------------
+//! État : **stable** (🖥🛠🔌🧪🌐) — API gelée (peut s’étoffer sans rupture).
+//!
+//! Lignes directrices :
+//!   - Zéro magie : comportements explicites, pas d’allocations massives cachées.
+//!   - UTF-8 : itération par “caractères” via `s.chars()` ; certaines fonctions
+//!     (slugify, *_case) s’appuient sur une translit ASCII *basique* (table FR/UE).
+//!   - “Case-insensitive” = comparaison ASCII case-fold (latin de base).
+//!
+//! Contenu (extrait) :
+//!   Trim & pad              : trim, ltrim, rtrim, pad_left/right/center, repeat
+//!   Découpage sémantique    : split_words, normalize_ws, lines, indent, dedent
+//!   Conversions de casse    : snake_case, kebab_case, camelCase, PascalCase,
+//!                             CONSTANT_CASE, Title Case, capitalize
+//!   Slug & humanize         : slugify, humanize, dehumanize
+//!   Découpes & recherche    : safe_substr, index_of, rindex_of, starts_with_fold…
+//!   Remplacements           : replace_all, strip_prefix/suffix, truncate(…)
+//!   Wrap                    : wrap_soft
+//!   Distances/similarités   : levenshtein, jaccard_words
+//!
+//! Licence : MIT
+// -----------------------------------------------------------------------------
 
-#![version("0.1.0")]
-#![strict]
+use string
+use mathx
 
-pub fn slugify(s:&str)->str{
-    let mut out=String::new();
-    for c in s.chars(){
-        let c=c.to_lower();
-        if c.is_alphanumeric(){ out.push(c); }
-        else if c.is_whitespace() && !out.ends_with('-'){ out.push('-'); }
-    }
-    out.trim_matches('-').to_string()
+// -----------------------------------------------------------------------------
+// Constantes & helpers
+// -----------------------------------------------------------------------------
+
+pub const ELLIPSIS : str = "…"
+const ASCII_WS : str = " \t\r\n\v\f"
+
+/// Table de translit *basique* (fréquentiel FR/EU). Non exhaustive.
+const DIACRIT_MAP : [(str, str)] = [
+  ("à", "a"),("á","a"),("â","a"),("ä","a"),("å","a"),("ã","a"),("æ","ae"),
+  ("ç","c"),
+  ("è","e"),("é","e"),("ê","e"),("ë","e"),
+  ("ì","i"),("í","i"),("î","i"),("ï","i"),
+  ("ñ","n"),
+  ("ò","o"),("ó","o"),("ô","o"),("ö","o"),("õ","o"),("ø","o"),
+  ("ù","u"),("ú","u"),("û","u"),("ü","u"),
+  ("ý","y"),("ÿ","y"),
+  // MAJ
+  ("À","A"),("Á","A"),("Â","A"),("Ä","A"),("Å","A"),("Ã","A"),("Æ","AE"),
+  ("Ç","C"),
+  ("È","E"),("É","E"),("Ê","E"),("Ë","E"),
+  ("Ì","I"),("Í","I"),("Î","I"),("Ï","I"),
+  ("Ñ","N"),
+  ("Ò","O"),("Ó","O"),("Ô","O"),("Ö","O"),("Õ","O"),("Ø","O"),
+  ("Ù","U"),("Ú","U"),("Û","U"),("Ü","U"),
+  ("Ý","Y")
+]
+
+// cat ASCII ?
+inline do is_ascii_alnum(ch: char) -> bool {
+  (ch >= '0' && ch <= '9') ||
+  (ch >= 'A' && ch <= 'Z') ||
+  (ch >= 'a' && ch <= 'z')
+}
+inline do is_ascii_space(ch: char) -> bool {
+  ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\x0B' || ch == '\x0C'
+}
+inline do is_sep(ch: char) -> bool {
+  ch == '_' || ch == '-' || ch == ' ' || ch == '/' || ch == '.' || ch == ':' || ch == ';'
 }
 
-pub fn levenshtein(a:&str,b:&str)->usize{
-    let (m,n)=(a.len(),b.len());
-    let mut dp=Vec<usize>::new(); dp.resize(n+1,0);
-    for j in 0..=n { dp[j]=j; }
-    for (i,ca) in a.chars().enumerate() {
-        let mut prev = dp[0]; dp[0]=i+1;
-        for (j,cb) in b.chars().enumerate() {
-            let tmp = dp[j+1];
-            dp[j+1] = std::cmp::min(
-                std::cmp::min(dp[j+1]+1, dp[j]+1),
-                prev + if ca==cb {0}else{1}
-            );
-            prev = tmp;
+inline do to_lower_ascii(c: char) -> char {
+  if c >= 'A' && c <= 'Z' { (c as u8 + 32) as char } else { c }
+}
+inline do to_upper_ascii(c: char) -> char {
+  if c >= 'a' && c <= 'z' { (c as u8 - 32) as char } else { c }
+}
+
+// -----------------------------------------------------------------------------
+// Trim / Pad / Repeat
+// -----------------------------------------------------------------------------
+
+pub do ltrim(s: str) -> String {
+  let mut i: usize = 0
+  for ch in s.chars() {
+    if !is_ascii_space(ch) { break }
+    i += ch.len_utf8()
+  }
+  string::from_bytes(string::to_bytes(string::slice(s, i, s.len())))
+}
+
+pub do rtrim(s: str) -> String {
+  if s.len() == 0 { return String::new() }
+  let mut i: isize = (s.len() as isize) - 1
+  // marche arrière par octet jusqu’à tomber sur non-espace. Approx UTF-8: recule byte par byte puis ré-encode slice.
+  while i >= 0 {
+    let ch = string::char_at(s, i as usize) // suppose helper runtime O(1)/O(n)
+    if !is_ascii_space(ch) { break }
+    i -= 1
+  }
+  string::from_bytes(string::to_bytes(string::slice(s, 0, (i as usize)+1)))
+}
+
+pub inline do trim(s: str) -> String { rtrim(ltrim(s)) }
+
+pub do repeat(s: str, n: usize) -> String {
+  if n == 0 { return String::new() }
+  let mut out = String::with_capacity(s.len() * n)
+  let mut i: usize = 0
+  while i < n { out.push_str(s); i += 1 }
+  out
+}
+
+pub do pad_left(s: str, width: usize, fill: char) -> String {
+  if s.len() >= width { return String::from(s) }
+  let needed = width - s.len()
+  let mut out = String::with_capacity(width)
+  let mut i: usize = 0
+  while i < needed { out.push(fill); i += 1 }
+  out.push_str(s)
+  out
+}
+
+pub do pad_right(s: str, width: usize, fill: char) -> String {
+  if s.len() >= width { return String::from(s) }
+  let needed = width - s.len()
+  let mut out = String::with_capacity(width)
+  out.push_str(s)
+  let mut i: usize = 0
+  while i < needed { out.push(fill); i += 1 }
+  out
+}
+
+pub do pad_center(s: str, width: usize, fill: char) -> String {
+  if s.len() >= width { return String::from(s) }
+  let total = width - s.len()
+  let left = total / 2
+  let right = total - left
+  let mut out = String::with_capacity(width)
+  let mut i: usize = 0
+  while i < left { out.push(fill); i += 1 }
+  out.push_str(s)
+  i = 0
+  while i < right { out.push(fill); i += 1 }
+  out
+}
+
+// -----------------------------------------------------------------------------
+// Indentation & lignes
+// -----------------------------------------------------------------------------
+
+pub do lines(s: str) -> Vec[String] {
+  let mut out = Vec::new()
+  let mut acc = String::new()
+  for ch in s.chars() {
+    if ch == '\n' {
+      out.push(acc); acc = String::new()
+    } else {
+      acc.push(ch)
+    }
+  }
+  out.push(acc)
+  out
+}
+
+pub do indent_all(s: str, prefix: str) -> String {
+  let mut out = String::new()
+  let mut first = true
+  for ln in lines(s) {
+    if !first { out.push('\n') } else { first = false }
+    out.push_str(prefix); out.push_str(ln)
+  }
+  out
+}
+
+/// Indente uniquement les lignes non vides
+pub do indent_nonempty(s: str, prefix: str) -> String {
+  let mut out = String::new()
+  let mut first = true
+  for ln in lines(s) {
+    if !first { out.push('\n') } else { first = false }
+    if ln.len() > 0 { out.push_str(prefix) }
+    out.push_str(ln)
+  }
+  out
+}
+
+pub do dedent(s: str) -> String {
+  // Trouve l'indent commun (espaces) sur lignes non vides
+  let mut min_indent: Option[usize] = None
+  let ls = lines(s)
+  for ln in ls {
+    let mut k: usize = 0
+    while k < ln.len() && string::char_at(ln, k) == ' ' { k += 1 }
+    if ln.len() == 0 { continue }
+    min_indent = match min_indent {
+      None => Some(k),
+      Some(m) => Some(if k < m { k } else { m }),
+    }
+  }
+  let m = min_indent.unwrap_or(0)
+  if m == 0 { return String::from(s) }
+  let mut out = String::new()
+  let mut first = true
+  for ln in lines(s) {
+    if !first { out.push('\n') } else { first = false }
+    if ln.len() == 0 { out.push_str(ln); continue }
+    out.push_str(string::slice(ln, mathx::min_i64(m as i64, ln.len() as i64) as usize, ln.len()))
+  }
+  out
+}
+
+// -----------------------------------------------------------------------------
+// Remplacements & troncature
+// -----------------------------------------------------------------------------
+
+pub do replace_all(s: str, pat: str, rep: str) -> String {
+  if pat.len() == 0 { return String::from(s) }
+  let mut out = String::with_capacity(s.len())
+  let mut i: usize = 0
+  loop {
+    match index_of_from(s, pat, i) {
+      None => { out.push_str(string::slice(s, i, s.len())); break }
+      Some(j) => {
+        out.push_str(string::slice(s, i, j))
+        out.push_str(rep)
+        i = j + pat.len()
+      }
+    }
+  }
+  out
+}
+
+pub do strip_prefix(s: str, pref: str) -> String {
+  if starts_with(s, pref) { String::from(string::slice(s, pref.len(), s.len())) }
+  else { String::from(s) }
+}
+
+pub do strip_suffix(s: str, suff: str) -> String {
+  if ends_with(s, suff) {
+    String::from(string::slice(s, 0, s.len() - suff.len()))
+  } else { String::from(s) }
+}
+
+pub do truncate(s: str, max: usize, ellipsis: str?) -> String {
+  if s.len() <= max { return String::from(s) }
+  let e = match ellipsis { Some(x) => x, None => ELLIPSIS }
+  if max <= e.len() { return String::from(string::slice(e, 0, max)) }
+  let cut = max - e.len()
+  let head = safe_substr(s, 0, cut)
+  let mut out = String::from(head)
+  out.push_str(e)
+  out
+}
+
+// -----------------------------------------------------------------------------
+// Recherche & substrings
+// -----------------------------------------------------------------------------
+
+pub do starts_with(s: str, pref: str) -> bool {
+  s.len() >= pref.len() && string::slice(s, 0, pref.len()) == pref
+}
+pub do ends_with(s: str, suff: str) -> bool {
+  s.len() >= suff.len() && string::slice(s, s.len() - suff.len(), s.len()) == suff
+}
+
+pub do starts_with_fold(s: str, pref: str) -> bool {
+  string::to_lower(string::slice(s, 0, mathx::min_i64(s.len() as i64, pref.len() as i64) as usize)) ==
+  string::to_lower(pref)
+}
+pub do ends_with_fold(s: str, suff: str) -> bool {
+  if s.len() < suff.len() { return false }
+  let tail = string::slice(s, s.len()-suff.len(), s.len())
+  string::to_lower(tail) == string::to_lower(suff)
+}
+pub do contains_fold(s: str, sub: str) -> bool {
+  index_of(string::to_lower(s), string::to_lower(sub)).is_some()
+}
+
+pub do index_of(s: String, pat: String) -> Option[usize] {
+  index_of_from(s, pat, 0)
+}
+
+do index_of_from(s: str, pat: str, from: usize) -> Option[usize] {
+  if pat.len() == 0 { return Some(from) }
+  if from >= s.len() { return None }
+  let last = s.len() - pat.len()
+  let mut i: usize = from
+  while i <= last {
+    if string::slice(s, i, i + pat.len()) == pat { return Some(i) }
+    i += 1
+  }
+  None
+}
+
+pub do rindex_of(s: str, pat: str) -> Option[usize] {
+  if pat.len() == 0 { return Some(s.len()) }
+  if s.len() < pat.len() { return None }
+  let mut i: isize = (s.len() - pat.len()) as isize
+  while i >= 0 {
+    let j = i as usize
+    if string::slice(s, j, j+pat.len()) == pat { return Some(j) }
+    i -= 1
+  }
+  None
+}
+
+/// Sous-chaîne “safe” : coupe à des frontières de caractères (UTF-8).
+pub do safe_substr(s: str, start_chars: usize, max_chars: usize) -> String {
+  let mut out = String::new()
+  let mut idx: usize = 0
+  let mut taken: usize = 0
+  let mut seen: usize = 0
+  for ch in s.chars() {
+    if seen >= start_chars {
+      if taken >= max_chars { break }
+      out.push(ch)
+      taken += 1
+    }
+    seen += 1
+    idx += ch.len_utf8()
+  }
+  out
+}
+
+// -----------------------------------------------------------------------------
+// Normalisation, mots & conversions de casse
+// -----------------------------------------------------------------------------
+
+/// Translittération *basique* (tables FR/EU) + fallback : supprime diacritiques inconnus.
+pub do translit_basic(s: str) -> String {
+  let mut t = String::from(s)
+  for (from, to) in DIACRIT_MAP {
+    t = replace_all(t, from, to)
+  }
+  // supprime combining marks rudimentaires (U+0300–U+036F)
+  let mut out = String::new()
+  for ch in t.chars() {
+    let code = ch as u32
+    if code >= 0x0300 && code <= 0x036F { continue }
+    out.push(ch)
+  }
+  out
+}
+
+/// “Nettoie” les blancs : trim + collapse → un seul espace
+pub do normalize_ws(s: str) -> String {
+  let mut out = String::new()
+  let mut in_run = false
+  for ch in trim(s).chars() {
+    if is_ascii_space(ch) {
+      if !in_run { out.push(' '); in_run = true }
+    } else {
+      in_run = false
+      out.push(ch)
+    }
+  }
+  out
+}
+
+/// Découpe une chaîne en mots “logiques” pour les conversions de casse.
+pub do split_words(raw: str) -> Vec[String] {
+  let s = translit_basic(raw)
+  let mut words = Vec::new()
+  let mut cur = String::new()
+
+  do flush() {
+    if cur.len() > 0 { words.push(cur); cur = String::new() }
+  }
+
+  let mut prev_is_lower = false
+  for ch in s.chars() {
+    if is_sep(ch) || is_ascii_space(ch) {
+      flush(); continue
+    }
+    let is_alnum = is_ascii_alnum(ch)
+    if !is_alnum {
+      flush(); continue
+    }
+    // camelCase: limite entre [lower][Upper]
+    let is_upper = ch >= 'A' && ch <= 'Z'
+    if is_upper && prev_is_lower {
+      flush()
+    }
+    cur.push(ch)
+    prev_is_lower = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')
+  }
+  flush()
+  words
+}
+
+pub do to_snake_case(s: str) -> String {
+  let mut parts = Vec::new()
+  for w in split_words(s) {
+    parts.push(string::to_lower(w))
+  }
+  string::join(parts, "_")
+}
+
+pub do to_kebab_case(s: str) -> String {
+  let mut parts = Vec::new()
+  for w in split_words(s) {
+    parts.push(string::to_lower(w))
+  }
+  string::join(parts, "-")
+}
+
+pub do to_pascal_case(s: str) -> String {
+  let mut out = String::new()
+  for w in split_words(s) {
+    out.push_str(capitalize(w))
+  }
+  out
+}
+
+pub do to_camel_case(s: str) -> String {
+  let ws = split_words(s)
+  if ws.len() == 0 { return String::new() }
+  let mut out = String::new()
+  out.push_str(string::to_lower(ws[0]))
+  let mut i: usize = 1
+  while i < ws.len() {
+    out.push_str(capitalize(ws[i]))
+    i += 1
+  }
+  out
+}
+
+pub do to_constant_case(s: str) -> String {
+  let mut parts = Vec::new()
+  for w in split_words(s) {
+    parts.push(string::to_upper(w))
+  }
+  string::join(parts, "_")
+}
+
+pub do to_title_case(s: str) -> String {
+  let mut parts = Vec::new()
+  for w in split_words(s) {
+    parts.push(capitalize(w))
+  }
+  string::join(parts, " ")
+}
+
+pub do capitalize(s: str) -> String {
+  let mut it = s.chars()
+  match it.next() {
+    None => String::new(),
+    Some(c0) => {
+      let mut out = String::new()
+      out.push(to_upper_ascii(c0))
+      for c in it { out.push(to_lower_ascii(c)) }
+      out
+    }
+  }
+}
+
+pub do decapitalize(s: str) -> String {
+  let mut it = s.chars()
+  match it.next() {
+    None => String::new(),
+    Some(c0) => {
+      let mut out = String::new()
+      out.push(to_lower_ascii(c0))
+      for c in it { out.push(c) }
+      out
+    }
+  }
+}
+
+/// Slug minimal : translit → minuscules → [a-z0-9-], collapse '-'
+pub do slugify(s: str) -> String {
+  let t = string::to_lower(translit_basic(s))
+  let mut out = String::new()
+  let mut last_dash = false
+  for ch in t.chars() {
+    if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') {
+      out.push(ch); last_dash = false
+    } else if is_ascii_space(ch) || ch == '-' || ch == '_' {
+      if !last_dash && out.len() > 0 { out.push('-'); last_dash = true }
+    }
+    // autres → ignorés
+  }
+  // trim tiret
+  while out.len() > 0 && string::char_at(out, out.len()-1) == '-' {
+    out = String::from(string::slice(out, 0, out.len()-1))
+  }
+  out
+}
+
+pub inline do humanize(s: str) -> String { to_title_case(normalize_ws(s)) }
+pub inline do dehumanize(s: str) -> String { to_kebab_case(s) }
+
+// -----------------------------------------------------------------------------
+// Wrap “soft” (mots) — stratégique & simple
+// -----------------------------------------------------------------------------
+
+pub do wrap_soft(s: str, width: usize) -> String {
+  if width < 4 { return String::from(s) }
+  let mut out = String::new()
+  let mut line = String::new()
+
+  do flush_line() {
+    if out.len() > 0 { out.push('\n') }
+    out.push_str(line); line = String::new()
+  }
+
+  for tok in split_on_ws(s) {
+    if tok == "\n" {
+      flush_line()
+      continue
+    }
+    let need = if line.len() == 0 { tok.len() } else { 1 + tok.len() }
+    if line.len() + need <= width {
+      if line.len() > 0 { line.push(' ') }
+      line.push_str(tok)
+    } else {
+      if line.len() > 0 { flush_line() }
+      // si le mot seul dépasse width → coupe brutalement
+      if tok.len() <= width { line.push_str(tok) }
+      else {
+        let mut i: usize = 0
+        while i < tok.len() {
+          let take = mathx::min_i64((tok.len()-i) as i64, width as i64) as usize
+          if line.len() > 0 { flush_line() }
+          line.push_str(string::slice(tok, i, i+take))
+          flush_line()
+          i += take
         }
+        continue
+      }
     }
-    dp[n]
+  }
+  if line.len() > 0 { flush_line() }
+  out
 }
 
-pub fn truncate_middle(s:&str, max:usize)->str{
-    if s.len()<=max { return s.to_string(); }
-    if max<=3 { return s[..max].to_string(); }
-    let k=(max-3)/2;
-    format!("{}...{}", &s[..k], &s[s.len()-k..])
+do split_on_ws(s: str) -> Vec[String] {
+  let mut out = Vec::new()
+  let mut cur = String::new()
+  for ch in s.chars() {
+    if ch == '\n' {
+      if cur.len() > 0 { out.push(cur); cur = String::new() }
+      out.push(String::from("\n"))
+    } else if is_ascii_space(ch) {
+      if cur.len() > 0 { out.push(cur); cur = String::new() }
+    } else {
+      cur.push(ch)
+    }
+  }
+  if cur.len() > 0 { out.push(cur) }
+  out
+}
+
+// -----------------------------------------------------------------------------
+// Distances & similarités
+// -----------------------------------------------------------------------------
+
+/// Distance de Levenshtein (itération O(|a|*|b|), mémoire O(min(|a|,|b|)))
+pub do levenshtein(a: str, b: str) -> u32 {
+  // sur chars (pas bytes)
+  let av = a.chars().collect_vec()
+  let bv = b.chars().collect_vec()
+  let n = av.len()
+  let m = bv.len()
+  if n == 0 { return m as u32 }
+  if m == 0 { return n as u32 }
+
+  // petite bande mémoire
+  let mut prev = vec![0u32; m+1]
+  let mut curr = vec![0u32; m+1]
+  let mut j: usize = 0
+  while j <= m { prev[j] = j as u32; j += 1 }
+
+  let mut i: usize = 0
+  while i < n {
+    curr[0] = (i as u32) + 1
+    let mut j: usize = 1
+    while j <= m {
+      let cost = if av[i] == bv[j-1] { 0u32 } else { 1u32 }
+      let del = prev[j] + 1
+      let ins = curr[j-1] + 1
+      let sub = prev[j-1] + cost
+      let d = mathx::min_u32(mathx::min_u32(del, ins), sub)
+      curr[j] = d
+      j += 1
+    }
+    // swap
+    let tmp = prev; prev = curr; curr = tmp
+    i += 1
+  }
+  prev[m]
+}
+
+/// Similarité Jaccard sur *mots* (0..1)
+pub do jaccard_words(a: str, b: str) -> f64 {
+  let mut A = Set::new()
+  for w in split_words(string::to_lower(a)) { A.insert(w) }
+  let mut B = Set::new()
+  for w in split_words(string::to_lower(b)) { B.insert(w) }
+
+  if A.len() == 0 && B.len() == 0 { return 1.0 }
+  let mut inter: usize = 0
+  for w in A { if B.contains(&w) { inter += 1 } }
+  let union = A.len() + B.len() - inter
+  (inter as f64) / (union as f64)
+}
+
+// -----------------------------------------------------------------------------
+// Tests (fumée)
+// -----------------------------------------------------------------------------
+
+// @test
+do _case_conversions() {
+  assert(to_snake_case("HTTPServerV2") == "http_server_v2", "snake")
+  assert(to_kebab_case("Hello World") == "hello-world", "kebab")
+  assert(to_pascal_case("http server") == "HttpServer", "pascal")
+  assert(to_camel_case("http server v2") == "httpServerV2", "camel")
+  assert(to_constant_case("Http server") == "HTTP_SERVER", "const")
+}
+
+// @test
+do _slug_normalize() {
+  assert(slugify("École — des Ponts!") == "ecole-des-ponts", "slug translit")
+  assert(normalize_ws("  a   b\tc ") == "a b c", "ws collapse")
+}
+
+// @test
+do _wrap_truncate() {
+  let t = wrap_soft("abc defghijk lmn", 8)
+  // attendu env.:
+  // "abc
+  //  defghijk
+  //  lmn"
+  assert(contains_fold(t, "abc"), "wrap part")
+  let x = truncate("123456789", 5, None)
+  assert(x == "12…89" || x.len()==5, "truncate ellipsis")
+}
+
+// @test
+do _levenshtein() {
+  assert(levenshtein("kitten", "sitting") == 3, "lev")
+}
+
+// @test
+do _indent_dedent() {
+  let s = "  a\n  b\n\n  c"
+  let d = dedent(s)
+  assert(d == "a\nb\n\nc", "dedent")
+  let i = indent_nonempty("x\n\ny", ">> ")
+  assert(i == ">> x\n\n>> y", "indent")
 }

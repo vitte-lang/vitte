@@ -1,18 +1,283 @@
-//! result_ext.vitte — context(), tap_err(), or_log()
+//! modules/result_ext.vitte
+//! -----------------------------------------------------------------------------
+//! result_ext — Combinators & utilitaires pour `Result[T,E]` et `Option[T]`
+//! -----------------------------------------------------------------------------
+//! Objectifs :
+//!   - Rendre le flux d'erreurs plus **lisible** et **composable**.
+//!   - Zéro magie : tout est explicite, pas d'alloc cachée hormis concat de String.
+//!   - Outils standards inspirés de Rust/Haskell/Go, adaptés à Vitte.
+//!
+//! État : **stable** (🖥🛠🔌🧪🌐) — API gelée.
+//!
+//! Panoplie :
+//!   Result → bool/Option        : is_ok, is_err, ok, err, to_option, from_option
+//!   Combinators                 : map, map_err, and_then, or_else, flatten
+//!   Effets (logging/metrics)    : tap_ok, tap_err
+//!   Valeurs de repli            : unwrap_or, unwrap_or_else
+//!   Itérateurs/collections      : collect, try_map, partition, transpose
+//!   Confort                     : ensure, ensure_with, combine2/3, try_finally
+//!   Affinage messages           : join_errors
+//!
+//! Convention :
+//!   - Les fonctions prennent/renvoient `Result[T,E]` par valeur pour rester simples.
+//!   - Là où l'on ne veut pas consommer, on propose la variante `_ref`.
+//!
+//! Licence : MIT
 
-#![version("0.1.0")]
-#![strict]
+use string
 
-pub trait ResultExt<T,E> {
-    fn context(self, msg:&str) -> Result<T,str>;
-    fn tap_err(self, f: fn(&str));
+// -----------------------------------------------------------------------------
+// Signatures de base (rappel) :
+// Result[T,E] = Ok(T) | Err(E)
+// Option[T]   = Some(T) | None
+// -----------------------------------------------------------------------------
+
+// ------------------------- Statut & extraction -------------------------------
+
+pub inline do is_ok_ref[T,E](r: &Result[T,E]) -> bool {
+  match *r { Ok(_) => true, Err(_) => false }
 }
-impl<T> ResultExt<T,str> for Result<T,str> {
-    fn context(self, msg:&str)->Result<T,str>{ self.map_err(|e| format!("{}: {}", msg, e)) }
-    fn tap_err(self, f: fn(&str)){ if let Err(e)=&self { f(e); } }
+pub inline do is_err_ref[T,E](r: &Result[T,E]) -> bool {
+  match *r { Ok(_) => false, Err(_) => true }
 }
 
-pub trait OptionExt<T> { fn or_log(self, m:&str)->Option<T>; }
-impl<T> OptionExt<T> for Option<T> {
-    fn or_log(self, m:&str)->Option<T>{ if self.is_none(){ eprintln!("{}", m); } self }
+pub inline do is_ok[T,E](r: Result[T,E]) -> bool { is_ok_ref(&r) }
+pub inline do is_err[T,E](r: Result[T,E]) -> bool { is_err_ref(&r) }
+
+/// Consomme le Result et retourne `Option[T]`
+pub inline do ok[T,E](r: Result[T,E]) -> Option[T] {
+  match r { Ok(v) => Some(v), Err(_) => None }
+}
+/// Consomme le Result et retourne `Option[E]`
+pub inline do err[T,E](r: Result[T,E]) -> Option[E] {
+  match r { Ok(_) => None, Err(e) => Some(e) }
+}
+
+pub inline do to_option[T,E](r: Result[T,E]) -> Option[T] { ok(r) }
+pub inline do from_option[T,E](o: Option[T], e: E) -> Result[T,E] {
+  match o { Some(v) => Ok(v), None => Err(e) }
+}
+
+// ------------------------- Combinators ---------------------------------------
+
+/// map : Ok(T) → Ok(f(T)) ; Err(E) inchangé
+pub do map[T,U,E](r: Result[T,E], f: do(T) -> U) -> Result[U,E] {
+  match r { Ok(v) => Ok(f(v)), Err(e) => Err(e) }
+}
+
+/// map_err : Err(E) → Err(f(E)) ; Ok(T) inchangé
+pub do map_err[T,E,F](r: Result[T,E], f: do(E) -> F) -> Result[T,F] {
+  match r { Ok(v) => Ok(v), Err(e) => Err(f(e)) }
+}
+
+/// and_then : Ok(T) → f(T) (qui rend Result) ; Err(E) court-circuite
+pub do and_then[T,U,E](r: Result[T,E], f: do(T) -> Result[U,E]) -> Result[U,E] {
+  match r { Ok(v) => f(v), Err(e) => Err(e) }
+}
+
+/// or_else : Err(E) → f(E) (qui rend Result) ; Ok(T) inchangé
+pub do or_else[T,E,F](r: Result[T,E], f: do(E) -> Result[T,F]) -> Result[T,F] {
+  match r { Ok(v) => Ok(v), Err(e) => f(e) }
+}
+
+/// flatten : Result[Result[T,E],E] → Result[T,E]
+pub do flatten[T,E](rr: Result[Result[T,E],E]) -> Result[T,E] {
+  match rr { Ok(inner) => inner, Err(e) => Err(e) }
+}
+
+// ------------------------- Effets (tap) --------------------------------------
+
+/// tap_ok : exécute `g(&T)` si Ok, *sans* modifier le Result
+pub do tap_ok[T,E](r: Result[T,E], g: do(&T) -> Unit) -> Result[T,E] {
+  match r {
+    Ok(v) => { g(&v); Ok(v) },
+    Err(e) => Err(e),
+  }
+}
+/// tap_err : exécute `g(&E)` si Err, *sans* modifier le Result
+pub do tap_err[T,E](r: Result[T,E], g: do(&E) -> Unit) -> Result[T,E] {
+  match r {
+    Ok(v) => Ok(v),
+    Err(e) => { g(&e); Err(e) },
+  }
+}
+
+// ------------------------- Valeurs de repli ----------------------------------
+
+pub inline do unwrap_or[T,E](r: Result[T,E], default: T) -> T {
+  match r { Ok(v) => v, Err(_) => default }
+}
+pub inline do unwrap_or_else[T,E](r: Result[T,E], f: do(E) -> T) -> T {
+  match r { Ok(v) => v, Err(e) => f(e) }
+}
+
+// ------------------------- Ensure (bool → Result) ----------------------------
+
+/// ensure : si `cond` faux → Err(err), sinon Ok(())
+pub inline do ensure[E](cond: bool, err: E) -> Result[Unit,E] {
+  if cond { Ok(()) } else { Err(err) }
+}
+/// ensure_with : fabrique l'erreur *à la demande* (paresseux)
+pub inline do ensure_with[E](cond: bool, f: do() -> E) -> Result[Unit,E] {
+  if cond { Ok(()) } else { Err(f()) }
+}
+
+// ------------------------- Transpose & collect --------------------------------
+
+/// transpose : Option[Result[T,E]] → Result[Option[T],E]
+pub do transpose[T,E](o: Option[Result[T,E]]) -> Result[Option[T],E] {
+  match o {
+    None => Ok(None),
+    Some(Ok(v)) => Ok(Some(v)),
+    Some(Err(e)) => Err(e),
+  }
+}
+
+/// collect : Vec[Result[T,E]] → Result[Vec[T],E] (stop au premier Err)
+pub do collect[T,E](xs: Vec[Result[T,E]]) -> Result[Vec[T],E] {
+  let mut out = Vec::with_capacity(xs.len())
+  for r in xs {
+    match r {
+      Ok(v) => out.push(v),
+      Err(e) => return Err(e),
+    }
+  }
+  Ok(out)
+}
+
+/// try_map : applique `f` et s'arrête au premier Err
+pub do try_map[A,T,E](xs: Vec[A], f: do(A) -> Result[T,E]) -> Result[Vec[T],E] {
+  let mut out = Vec::with_capacity(xs.len())
+  for a in xs {
+    let r = f(a)?
+    out.push(r)
+  }
+  Ok(out)
+}
+
+/// partition : sépare Ok et Err (ne court-circuite pas)
+pub do partition[T,E](xs: Vec[Result[T,E]]) -> (Vec[T], Vec[E]) {
+  let mut okv = Vec::new()
+  let mut erv = Vec::new()
+  for r in xs {
+    match r { Ok(v) => okv.push(v), Err(e) => erv.push(e) }
+  }
+  (okv, erv)
+}
+
+// ------------------------- Combine (zippage) ----------------------------------
+
+/// combine2 : (Result[A,E], Result[B,E]) → Result[(A,B),E]
+pub do combine2[A,B,E](ra: Result[A,E], rb: Result[B,E]) -> Result[(A,B),E] {
+  match (ra, rb) {
+    (Ok(a), Ok(b)) => Ok((a, b)),
+    (Err(e), _) => Err(e),
+    (_, Err(e)) => Err(e),
+  }
+}
+/// combine3 : (A,B,C) avec court-circuit au premier Err
+pub do combine3[A,B,C,E](ra: Result[A,E], rb: Result[B,E], rc: Result[C,E]) -> Result[(A,B,C),E] {
+  let (a, b) = combine2(ra, rb)?
+  match rc {
+    Ok(c) => Ok((a, b, c)),
+    Err(e) => Err(e),
+  }
+}
+
+// ------------------------- finally -------------------------------------------
+
+/// try_finally : exécute `fin()` que le résultat soit Ok *ou* Err, puis le relaye.
+/// Les erreurs `fin` sont ignorées (logguez-les dans `fin` si besoin).
+pub do try_finally[T,E](r: Result[T,E], fin: do() -> Unit) -> Result[T,E] {
+  match r {
+    Ok(v) => { fin(); Ok(v) }
+    Err(e) => { fin(); Err(e) }
+  }
+}
+
+// ------------------------- Affichage / agrégation -----------------------------
+
+/// join_errors : concatène une liste d'erreurs avec un séparateur (lisible humainement).
+/// NB : s'appuie sur `to_string(e)` ; si E n'est pas affichable, fournis ta propre map_err.
+pub do join_errors[E](errs: Vec[E], sep: str) -> String {
+  let mut parts = Vec::with_capacity(errs.len())
+  for e in errs { parts.push(to_string(e)) }
+  string::join(parts, sep)
+}
+
+// ------------------------- Exemples & tests ----------------------------------
+
+// @test
+do _map_and_then() {
+  do parse_i(s: str) -> Result[i64, str] {
+    // jouet
+    let mut neg = false
+    let mut acc: i64 = 0
+    for ch in s.chars() {
+      if ch == '-' { neg = true; continue }
+      let d = (ch as u32) - 48
+      if d > 9 { return Err("NaN") }
+      acc = acc * 10 + (d as i64)
+    }
+    Ok(if neg { -acc } else { acc })
+  }
+
+  let r = parse_i("41")
+  let r2 = map[i64,i64,str](r, |x| x + 1)
+  assert(is_ok(r2), "ok +1")
+  let r3 = and_then[i64,i64,str](r2, |x| if x % 2 == 0 { Ok(x) } else { Err("odd") })
+  assert(is_err(r3), "odd->err")
+}
+
+// @test
+do _tap_and_unwrap() {
+  let mut seen = 0
+  let r = tap_ok[i32,str](Ok(7), |v| { seen = *v })
+  assert(seen == 7, "tap ok")
+  let got = unwrap_or[i32,str](r, 0)
+  assert(got == 7, "unwrap_or")
+  let got2 = unwrap_or_else[i32,str](Err("x"), |_| 42)
+  assert(got2 == 42, "fallback")
+}
+
+// @test
+do _collect_try_map_partition() {
+  do f(x: i32) -> Result[i32, str] { if x % 2 == 0 { Ok(x/2) } else { Err("odd") } }
+  let (oks, ers) = partition[i32,str](vec![f(2), f(3), f(4)])
+  assert(oks == vec![1, 2], "oks")
+  assert(ers.len() == 1, "errs")
+
+  let cm = collect[i32,str](vec![Ok(1), Ok(2), Ok(3)])
+  assert(is_ok(cm), "collect ok")
+
+  let tm = try_map[i32,i32,str](vec![2,4,6], f)
+  assert(tm.unwrap() == vec![1,2,3], "try_map")
+}
+
+// @test
+do _transpose_and_combine() {
+  let t1 = transpose[i32,str](Some(Ok(10))).unwrap()
+  match t1 { Ok(Some(10)) => assert(true,"t1"), _ => assert(false,"t1bad") }
+
+  let t2 = transpose[i32,str](Some(Err("E")))
+  assert(is_err(t2), "t2")
+
+  let z = combine3[i32,i32,i32,str](Ok(1), Ok(2), Ok(3)).unwrap()
+  assert(z == (1,2,3), "zip3")
+}
+
+// @test
+do _ensure_finally_join() {
+  let ok = ensure[str](1+1==2, "math")
+  assert(is_ok(ok), "ensure ok")
+
+  let err = ensure[str](false, "nope")
+  assert(is_err(err), "ensure err")
+
+  let mut flag = 0
+  let r = try_finally[i32,str](Ok(5), || { flag = 1 })
+  assert(flag == 1 && r.unwrap()==5, "finally ok")
+
+  let j = join_errors[str](vec!["a","b","c"], ";")
+  assert(j == "a;b;c", "join")
 }

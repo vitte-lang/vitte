@@ -1,27 +1,378 @@
-//! migrate.vitte — exécute des migrations (id, up/down), consigne un journal.
+//! modules/migrate.vitte
+//! -------------------------------------------------------------
+//! Migrate — moteur de migrations séquentielles (Vxxx__desc)
+//! -------------------------------------------------------------
+//! Objectif : enchaîner des "migrations" (UP/ DOWN optionnel) dans un ordre
+//! strict, avec un registre en mémoire et un backend d’état persistant.
+//!
+//! • Identifiant : entier croissant (u64) — ex: 2025081501
+//! • Nom        : libre, conseillé : "V2025081501__create_users"
+//! • UP/DOWN    : closures ou fonctions. DOWN optionnel.
+//! • État       : fichier texte (par défaut) — 1 migration par ligne :
+//!                  <id>\t<name>\n
+//!
+//! API rapide :
+//!   migrate::register(Migration{ id: 2025081501, name: "init", up: || {...}, down: None })
+//!   migrate::up_all(&store, &ctx)          // applique tout ce qui manque
+//!   migrate::up_to(&store, &ctx, 2025081501)
+//!   migrate::down_to(&store, &ctx, 2025081500)  // rollback jusqu’à id
+//!   migrate::status(&store) -> String
+//!
+//! État : preview (🖥🛠). Pas d’alocations cachées massives, erreurs verboses.
+//! Licence : MIT
 
-#![version("0.1.0")]
-#![strict]
+use string
+use fs
 
-pub struct Step { pub id:u32, pub name:str, pub up: fn()->Result<(),str>, pub down: fn()->Result<(),str> }
-pub struct Plan { pub steps: Vec<Step>, pub journal: str }
+// -------------------- Types — erreurs, signatures, enregistrements --------------------
 
-impl Plan {
-    pub fn new(journal:str)->Self{ Self{ steps:Vec::new(), journal } }
-    pub fn add(mut self, s:Step)->Self{ self.steps.push(s); self }
-    pub fn applied(&self)->std::collections::Set<u32>{
-        let mut set=std::collections::Set::new();
-        if let Ok(txt)=std::fs::read_to_string(&self.journal){
-            for l in txt.lines(){ if l.starts_with("APPLIED ") { if let Ok(id)=l[8..].parse::<u32>(){ set.insert(id);} } }
-        }
-        set
+pub enum MigrateError {
+  Io(str),
+  Parse(str),
+  DuplicateId(u64),
+  UnknownId(u64),
+  OrphanApplied(u64),         // présent dans l’état, pas dans le registre
+  OutOfOrder(str),            // ids non croissants
+  Locked,                     // si un lock est mis en place (future impl.)
+  StepFailed(u64, str),       // id + raison
+  DownNotAvailable(u64),
+}
+
+pub struct Context {
+  // Libre : insère ce que ton app veut partager aux migrations (connexions, etc.)
+  // Exemple : Map[str,String] de paramètres. Tu peux aussi capturer via closures.
+  meta: Map[str,String],
+}
+
+pub do ctx_new() -> Context { Context{ meta: Map::new() } }
+
+// NB: la grammaire Vitte accepte les closures/fn comme valeurs (cf. retry::run).
+// On utilise donc des champs "fn-like".
+type UpFn   = do(&Context) -> Result[Unit, str]
+type DownFn = do(&Context) -> Result[Unit, str]
+
+pub struct Migration {
+  id: u64,
+  name: String,
+  up: UpFn,
+  down: Option[DownFn],
+}
+
+pub struct Applied {
+  id: u64,
+  name: String,
+}
+
+// -------------------- Registre global en mémoire --------------------
+
+let mut __REG: Vec[Migration] = vec![]
+let mut __SORTED: bool = false
+
+/// Enregistre une migration. Vérifie l’unicité de l’id.
+pub do register(m: Migration) -> Result[Unit, MigrateError] {
+  for x in __REG {
+    if x.id == m.id { return Err(MigrateError::DuplicateId(m.id)) }
+  }
+  __REG.push(m)
+  __SORTED = false
+  Ok(())
+}
+
+inline do ensure_sorted() -> Result[Unit, MigrateError] {
+  if __SORTED { return Ok(()) }
+  __REG.sort_by(|a,b| if a.id < b.id { -1 } else if a.id > b.id { 1 } else { 0 })
+  // garde-fous : croissant strict
+  let mut i: usize = 1
+  while i < __REG.len() {
+    if __REG[i-1].id >= __REG[i].id {
+      return Err(MigrateError::OutOfOrder("ids must be strictly increasing"))
     }
-    pub fn up(self)->Result<(),str>{
-        let mut set=self.applied();
-        for s in self.steps.iter().sorted_by(|a,b| a.id.cmp(&b.id)) {
-            if set.contains(s.id){ continue; }
-            (s.up)()?; std::fs::append(&self.journal, format!("APPLIED {}\n", s.id).as_bytes()).map_err(|e| format!("{}",e))?;
-        }
-        Ok(())
+    i += 1
+  }
+  __SORTED = true
+  Ok(())
+}
+
+/// Récupère migration par id.
+inline do get_mig(id: u64) -> Option[&Migration] {
+  for m in __REG { if m.id == id { return Some(m) } }
+  None
+}
+
+// -------------------- Backend d’état — FileStore simple --------------------
+
+pub struct FileStore { path: String }
+
+pub do filestore(path: str) -> FileStore { FileStore{ path: String::from(path) } }
+
+/// Charge les migrations appliquées depuis le fichier d’état.
+/// Format : lignes "<id>\\t<name>"
+pub do load_applied(self &FileStore) -> Result[Vec[Applied], MigrateError] {
+  match fs::read_to_string(self.path) {
+    Ok(txt) => {
+      let mut out = Vec::new()
+      for line in string::split(txt, "\n") {
+        let l = string::trim(line)
+        if l.len() == 0 { continue }
+        let parts = string::split(l, "\t")
+        if parts.len() == 0 { continue }
+        let id_s = parts[0]
+        let id = parse_u64(id_s)
+        if id.is_none() { return Err(MigrateError::Parse("bad id")) }
+        let name = if parts.len() > 1 { parts[1] } else { "" }
+        out.push(Applied{ id: id.unwrap(), name: String::from(name) })
+      }
+      // ordre croissant attendu dans l’état
+      out.sort_by(|a,b| if a.id < b.id { -1 } else if a.id > b.id { 1 } else { 0 })
+      Ok(out)
     }
+    Err(_) => Ok(vec![]), // fichier absent => aucun appliqué
+  }
+}
+
+/// Écrit la liste appliquée au complet (écriture atomique).
+pub do save_applied(self &FileStore, xs: Vec[Applied]) -> Result[Unit, MigrateError] {
+  let mut lines = Vec::with_capacity(xs.len())
+  for a in xs {
+    lines.push(to_string(a.id) + "\t" + a.name)
+  }
+  let body = string::join(lines, "\n") + "\n"
+  match fs::write_atomic(self.path, string::to_bytes(body)) {
+    Ok(()) => Ok(()),
+    Err(e) => Err(MigrateError::Io(to_string(e))),
+  }
+}
+
+// -------------------- Planification --------------------
+
+pub enum Step { Apply(u64), Revert(u64) }
+
+/// Calcule les étapes pour monter jusqu’à `target` (ou tout si None).
+pub do plan_up(applied: Vec[Applied], target: Option[u64]) -> Result[Vec[Step], MigrateError] {
+  ensure_sorted()?
+  // Vérifie que l’état ne contient pas d’orphan (id inconnu)
+  for a in applied {
+    if get_mig(a.id).is_none() { return Err(MigrateError::OrphanApplied(a.id)) }
+  }
+  // Cherche les ids manquants à appliquer
+  let mut steps = Vec::new()
+  let mut cursor: Option[u64] = None
+  for m in __REG {
+    if let Some(t) = target {
+      if m.id > t { break }
+    }
+    let mut already = false
+    for a in applied { if a.id == m.id { already = true; break } }
+    if !already {
+      // ordre : toujours croissant
+      if let Some(prev) = cursor {
+        if m.id <= prev { return Err(MigrateError::OutOfOrder("registry not strictly increasing")) }
+      }
+      cursor = Some(m.id)
+      steps.push(Step::Apply(m.id))
+    }
+  }
+  Ok(steps)
+}
+
+/// Calcule les étapes pour descendre jusqu’à `target` (exclu : on supprime > target).
+pub do plan_down(applied: Vec[Applied], target: u64) -> Result[Vec[Step], MigrateError] {
+  // Revert en ordre décroissant des ids strictement > target
+  let mut xs = Vec::new()
+  for a in applied { xs.push(a.id) }
+  xs.sort_by(|a,b| if a < b { 1 } else if a > b { -1 } else { 0 }) // desc
+  let mut steps = Vec::new()
+  for id in xs {
+    if id > target { steps.push(Step::Revert(id)) }
+  }
+  Ok(steps)
+}
+
+// -------------------- Exécution --------------------
+
+inline do apply_one(id: u64, ctx &Context) -> Result[Unit, MigrateError] {
+  match get_mig(id) {
+    Some(m) => {
+      match (m.up)(ctx) {
+        Ok(()) => Ok(()),
+        Err(e) => Err(MigrateError::StepFailed(id, e)),
+      }
+    }
+    None => Err(MigrateError::UnknownId(id)),
+  }
+}
+
+inline do revert_one(id: u64, ctx &Context) -> Result[Unit, MigrateError] {
+  match get_mig(id) {
+    Some(m) => {
+      match m.down {
+        Some(ref d) => match d(ctx) {
+          Ok(()) => Ok(()),
+          Err(e) => Err(MigrateError::StepFailed(id, e)),
+        },
+        None => Err(MigrateError::DownNotAvailable(id)),
+      }
+    }
+    None => Err(MigrateError::UnknownId(id)),
+  }
+}
+
+/// Applique *toutes* les migrations manquantes.
+pub do up_all(store &FileStore, ctx &Context) -> Result[Unit, MigrateError] {
+  let applied = store.load_applied()?
+  let steps = plan_up(applied, None)?
+  exec_steps(store, ctx, steps)
+}
+
+/// Applique jusqu’à `target` inclus.
+pub do up_to(store &FileStore, ctx &Context, target: u64) -> Result[Unit, MigrateError] {
+  let applied = store.load_applied()?
+  let steps = plan_up(applied, Some(target))?
+  exec_steps(store, ctx, steps)
+}
+
+/// Revert tout ce qui est > target (ne touche pas ≤ target).
+pub do down_to(store &FileStore, ctx &Context, target: u64) -> Result[Unit, MigrateError] {
+  let applied = store.load_applied()?
+  let steps = plan_down(applied, target)?
+  exec_steps(store, ctx, steps)
+}
+
+do exec_steps(store &FileStore, ctx &Context, steps: Vec[Step]) -> Result[Unit, MigrateError] {
+  if steps.len() == 0 { return Ok(()) }
+
+  // Charge l’état courant une 2e fois pour éviter de le passer par valeur,
+  // on réécrira intégralement à la fin.
+  let mut state = store.load_applied()?
+
+  for st in steps {
+    match st {
+      Step::Apply(id) => {
+        apply_one(id, ctx)?
+        // Ajoute à l’état
+        let name = get_mig(id).unwrap().name
+        state.push(Applied{ id, name })
+        // garder l’ordre croissant
+        state.sort_by(|a,b| if a.id < b.id { -1 } else if a.id > b.id { 1 } else { 0 })
+      }
+      Step::Revert(id) => {
+        revert_one(id, ctx)?
+        // Retire de l’état
+        let mut i: usize = 0
+        while i < state.len() {
+          if state[i].id == id { state.remove(i); break }
+          i += 1
+        }
+      }
+    }
+  }
+
+  store.save_applied(state)
+}
+
+// -------------------- Affichage état --------------------
+
+pub do status(store &FileStore) -> Result[String, MigrateError] {
+  ensure_sorted()?
+  let mut out = String::from("# Migration Status\n")
+  let applied = store.load_applied()?
+  let mut app_ids = Vec::new()
+  for a in applied { app_ids.push(a.id) }
+  for m in __REG {
+    let ok = contains_u64(app_ids, m.id)
+    out.push_str(if ok { "✓ " } else { "· " })
+    out.push_str(to_string(m.id) + "  " + m.name + "\n")
+  }
+  Ok(out)
+}
+
+inline do contains_u64(xs: Vec[u64], v: u64) -> bool {
+  for x in xs { if x == v { return true } }
+  false
+}
+
+// -------------------- Parsing utilitaires --------------------
+
+inline do parse_u64(s: str) -> Option[u64] {
+  // Version minimaliste (base 10)
+  let mut v: u64 = 0
+  if s.len() == 0 { return None }
+  for ch in s.chars() {
+    let d = (ch as u32) - 48
+    if d > 9 { return None }
+    v = v * 10 + (d as u64)
+  }
+  Some(v)
+}
+
+// -------------------- Helpers de fabrication --------------------
+
+/// Créateur ergonomique
+pub do mig(id: u64, name: str, up: UpFn) -> Migration {
+  Migration{ id, name: String::from(name), up, down: None }
+}
+pub do mig_with_down(id: u64, name: str, up: UpFn, down: DownFn) -> Migration {
+  Migration{ id, name: String::from(name), up, down: Some(down) }
+}
+
+// -------------------- Exemple d’usage --------------------
+//! Exemple (pseudo) :
+//!
+//! do up_init(ctx &Context) -> Result[Unit, str] {
+//!   // … créer répertoires, fichiers, schémas, clés KV, etc.
+//!   Ok(())
+//! }
+//! do down_init(ctx &Context) -> Result[Unit, str] {
+//!   // … rollback
+//!   Ok(())
+//! }
+//!
+//! do register_all() {
+//!   register(mig_with_down(2025081501, "init", up_init, down_init))?;
+//!   register(mig(2025081701, "add_index_users", |ctx| {
+//!     // …
+//!     Ok(())
+//!   }))?;
+//! }
+//!
+//! do cli_main() -> Result[Unit, str] {
+//!   register_all();
+//!   let store = filestore(".vitte/migrations.state");
+//!   let ctx = ctx_new();
+//!   // Tout monter :
+//!   migrate::up_all(&store, &ctx) map_err(|e| to_string(e))
+//! }
+
+// -------------------- Tests (fumée) --------------------
+// @test
+do _migrate_smoke() {
+  // prépare registre
+  __REG.clear(); __SORTED = false;
+
+  do a1(_ &Context) -> Result[Unit,str] { Ok(()) }
+  do d1(_ &Context) -> Result[Unit,str] { Ok(()) }
+  do a2(_ &Context) -> Result[Unit,str] { Ok(()) }
+
+  register(mig_with_down(1, "first", a1, d1))?;
+  register(mig(2, "second", a2))?;
+
+  let tmp = ".migrate_state_test";
+  // Nettoyage best-effort
+  let _ = fs::remove_file(tmp);
+
+  let store = filestore(tmp);
+  let ctx = ctx_new();
+
+  up_all(&store, &ctx)?;
+  let s = status(&store)?;
+  assert(s.contains("✓ 1"), "applied 1");
+  assert(s.contains("✓ 2"), "applied 2");
+
+  down_to(&store, &ctx, 1)?;
+  let s2 = status(&store)?;
+  assert(s2.contains("✓ 1"), "still 1");
+  assert(!s2.contains("✓ 2"), "2 rolled back");
+
+  // cleanup
+  let _ = fs::remove_file(tmp);
 }

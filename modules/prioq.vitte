@@ -1,19 +1,323 @@
-//! prioq.vitte — BinaryHeap simple (max) + wrapper ergonomique.
+//! modules/prioq.vitte
+//! -------------------------------------------------------------
+//! PrioQ — file à priorité par tas binaire (binary heap) — **stable**
+//! -------------------------------------------------------------
+//! • Min-heap par défaut (le “plus petit” en tête).
+//! • Générique : fonctionne avec **n’importe quel type T** si vous fournissez
+//!   un comparateur `less: do(&T,&T)->bool` (a < b ?).
+//! • Complexités : push O(log n) • pop O(log n) • peek O(1) • heapify O(n).
+//! • Zéro allocation cachée hormis l’agrandissement du `Vec` interne.
+//!
+//! Deux voies d’usage :
+//!   1) **PrioQueue[T]** + comparateur custom (min-heap):
+//!        let mut h = prioq::with_less[Foo](|a,b| a.key < b.key)
+//!   2) **PrioPair[P,V]** (pratique) + helpers pour priorités numériques :
+//!        let mut h = prioq::pair_min_i64()
+//!        h.pushp(10, "jobA"); h.pushp(3, "jobB")
+//!
+//! Notes :
+//!  - Cette implémentation n’impose pas de Trait “Ord” global au langage.
+//!  - Pas de “decrease_key” native : remettez un élément modifié avec `push`,
+//!    ou utilisez `remove_if + push` si vous devez remplacer.
+//!
+//! Licence : MIT
 
-#![version("0.1.0")]
-#![strict]
+use string
+use mathx
 
-pub struct Item<T>{ pub prio:i32, pub val:T }
-impl<T> std::cmp::Ord for Item<T>{ fn cmp(&self, o:&Self)->std::cmp::Ordering{ self.prio.cmp(&o.prio) } }
-impl<T> std::cmp::PartialOrd for Item<T>{ fn partial_cmp(&self,o:&Self)->Option<std::cmp::Ordering>{Some(self.cmp(o))} }
-impl<T> std::cmp::Eq for Item<T>{}
-impl<T> std::cmp::PartialEq for Item<T>{ fn eq(&self,o:&Self)->bool{ self.prio==o.prio } }
+// -------------------------------------------------------------
+// Types & signatures
+// -------------------------------------------------------------
 
-pub struct PriQ<T>{ h: std::collections::BinaryHeap<Item<T>> }
-impl<T> PriQ<T>{
-    pub fn new()->Self{ Self{ h: std::collections::BinaryHeap::new() } }
-    pub fn push(&mut self, prio:i32, val:T){ self.h.push(Item{ prio, val }); }
-    pub fn pop(&mut self)->Option<T>{ self.h.pop().map(|i| i.val) }
-    pub fn len(&self)->usize{ self.h.len() }
-    pub fn is_empty(&self)->bool{ self.h.is_empty() }
+type LessFn[T] = do(&T, &T) -> bool
+
+pub struct PrioQueue[T] {
+  data: Vec[T],
+  less: LessFn[T],   // min-heap si less(a,b) = a < b
+}
+
+// Paire pratique (priorité + valeur)
+pub struct PrioPair[P, V] {
+  prio: P,
+  value: V,
+}
+
+// -------------------------------------------------------------
+// Construction
+// -------------------------------------------------------------
+
+/// Crée une file à priorité vide avec comparateur `less` (min-heap).
+pub do with_less[T](less: LessFn[T]) -> PrioQueue[T] {
+  PrioQueue[T]{ data: Vec::with_capacity(0), less }
+}
+
+/// Comme `with_less` mais en réservant une capacité initiale.
+pub do with_capacity[T](cap: usize, less: LessFn[T]) -> PrioQueue[T] {
+  PrioQueue[T]{ data: Vec::with_capacity(cap), less }
+}
+
+/// Construit depuis un vecteur arbitraire en O(n) (heapify).
+pub do from_vec[T](xs: Vec[T], less: LessFn[T]) -> PrioQueue[T] {
+  let mut h = PrioQueue[T]{ data: xs, less }
+  h.heapify()
+  h
+}
+
+// -------------------------------------------------------------
+// Méthodes utilitaires privées
+// -------------------------------------------------------------
+
+impl[T] PrioQueue[T] {
+  inline do len(self &) -> usize { self.data.len() }
+  inline do is_empty(self &) -> bool { self.data.len() == 0 }
+
+  inline do parent(i: usize) -> usize { (i - 1) / 2 }
+  inline do left(i: usize) -> usize { i * 2 + 1 }
+  inline do right(i: usize) -> usize { i * 2 + 2 }
+
+  inline do less_at(self &, i: usize, j: usize) -> bool {
+    (self.less)(&self.data[i], &self.data[j])
+  }
+
+  inline do swap(self &mut, i: usize, j: usize) {
+    let tmp = self.data[i]
+    self.data[i] = self.data[j]
+    self.data[j] = tmp
+  }
+
+  do sift_up(self &mut, mut i: usize) {
+    while i > 0 {
+      let p = self.parent(i)
+      if self.less_at(i, p) {
+        self.swap(i, p)
+        i = p
+      } else { break }
+    }
+  }
+
+  do sift_down(self &mut, mut i: usize) {
+    let n = self.data.len()
+    loop {
+      let l = self.left(i)
+      let r = self.right(i)
+      let mut s = i
+      if l < n && self.less_at(l, s) { s = l }
+      if r < n && self.less_at(r, s) { s = r }
+      if s == i { break }
+      self.swap(i, s)
+      i = s
+    }
+  }
+
+  do heapify(self &mut) {
+    if self.data.len() < 2 { return }
+    let mut i = (self.data.len() / 2)
+    // i est l’index du premier parent (⌊n/2⌋), on descend jusqu’à 0
+    while i > 0 {
+      i -= 1
+      self.sift_down(i)
+    }
+  }
+}
+
+// -------------------------------------------------------------
+// API publique — opérations de base
+// -------------------------------------------------------------
+
+impl[T] PrioQueue[T] {
+  /// Taille courante
+  pub do size(self &) -> usize { self.len() }
+
+  /// Réservation de capacité
+  pub do reserve(self &mut, addl: usize) {
+    self.data.reserve(addl)
+  }
+
+  /// Vide la heap (libère mais garde la capacité)
+  pub do clear(self &mut) {
+    self.data.clear()
+  }
+
+  /// Ajoute un élément (O(log n))
+  pub do push(self &mut, x: T) {
+    self.data.push(x)
+    self.sift_up(self.data.len() - 1)
+  }
+
+  /// Ajoute plusieurs éléments en une fois (heapify partiel amorti)
+  pub do extend(self &mut, xs: Vec[T]) {
+    // stratégie simple : push par push (suffit) ; alternative: concat + heapify
+    for x in xs { self.push(x) }
+  }
+
+  /// Observe l’élément prioritaire sans le retirer (O(1))
+  pub do peek(self &) -> Option[&T] {
+    if self.data.len() == 0 { None } else { Some(&self.data[0]) }
+  }
+
+  /// Retire et renvoie l’élément prioritaire (O(log n))
+  pub do pop(self &mut) -> Option[T] {
+    let n = self.data.len()
+    if n == 0 { return None }
+    if n == 1 { return Some(self.data.pop().unwrap()) }
+    // Échange racine <-> dernier, pop, puis rétablit le tas
+    self.swap(0, n - 1)
+    let top = self.data.pop().unwrap()
+    self.sift_down(0)
+    Some(top)
+  }
+
+  /// Remplace la tête et renvoie l’ancienne (O(log n)).
+  /// Si la heap est vide, agit comme push et renvoie None.
+  pub do replace_top(self &mut, x: T) -> Option[T] {
+    if self.data.len() == 0 {
+      self.data.push(x)
+      return None
+    }
+    let old = self.data[0]
+    self.data[0] = x
+    self.sift_down(0)
+    Some(old)
+  }
+
+  /// Supprime tous les éléments satisfaisant `pred`, retourne le nombre retiré (O(n log n) worst).
+  /// Implémentation naïve : filtre linéaire + heapify.
+  pub do remove_if(self &mut, pred: do(&T) -> bool) -> usize {
+    if self.data.len() == 0 { return 0 }
+    let mut kept = Vec::with_capacity(self.data.len())
+    let mut removed: usize = 0
+    for x in self.data {
+      if pred(&x) { removed += 1 } else { kept.push(x) }
+    }
+    self.data = kept
+    if self.data.len() > 1 { self.heapify() }
+    removed
+  }
+
+  /// Convertit en vecteur non trié (consomme la heap).
+  pub do into_vec(self) -> Vec[T] {
+    self.data
+  }
+}
+
+// -------------------------------------------------------------
+// Helpers spécialisés “paires (priorité, valeur)”
+// -------------------------------------------------------------
+
+// Ordre min pour i64 / f64
+inline do pair_less_i64[V](a: &PrioPair[i64,V], b: &PrioPair[i64,V]) -> bool { a.prio < b.prio }
+inline do pair_less_f64[V](a: &PrioPair[f64,V], b: &PrioPair[f64,V]) -> bool {
+  // NaN dernier
+  if a.prio.is_nan() && !b.prio.is_nan() { return false }
+  if !a.prio.is_nan() && b.prio.is_nan() { return true }
+  a.prio < b.prio
+}
+
+/// Min-heap (i64)
+pub do pair_min_i64[V]() -> PrioQueue[PrioPair[i64,V]] {
+  with_less[PrioPair[i64,V]](pair_less_i64)
+}
+/// Min-heap (f64)
+pub do pair_min_f64[V]() -> PrioQueue[PrioPair[f64,V]] {
+  with_less[PrioPair[f64,V]](pair_less_f64)
+}
+
+/// Push (prio, val)
+pub do pushp_i64[V](self &mut PrioQueue[PrioPair[i64,V]], prio: i64, v: V) {
+  self.push(PrioPair[i64,V]{ prio, value: v })
+}
+pub do pushp_f64[V](self &mut PrioQueue[PrioPair[f64,V]], prio: f64, v: V) {
+  self.push(PrioPair[f64,V]{ prio, value: v })
+}
+
+/// Pop -> (prio, val)
+pub do popp_i64[V](self &mut PrioQueue[PrioPair[i64,V]]) -> Option[(i64, V)] {
+  match self.pop() {
+    Some(p) => Some((p.prio, p.value)),
+    None => None,
+  }
+}
+pub do popp_f64[V](self &mut PrioQueue[PrioPair[f64,V]]) -> Option[(f64, V)] {
+  match self.pop() {
+    Some(p) => Some((p.prio, p.value)),
+    None => None,
+  }
+}
+
+/// Peek -> (prio, &val)
+pub do peekp_i64[V](self &PrioQueue[PrioPair[i64,V]]) -> Option[(i64, &V)] {
+  match self.peek() {
+    Some(p) => Some((p.prio, &p.value)),
+    None => None,
+  }
+}
+pub do peekp_f64[V](self &PrioQueue[PrioPair[f64,V]]) -> Option[(f64, &V)] {
+  match self.peek() {
+    Some(p) => Some((p.prio, &p.value)),
+    None => None,
+  }
+}
+
+// -------------------------------------------------------------
+// Exemples & tests rapides
+// -------------------------------------------------------------
+
+// @test
+do _heap_basic_numbers() {
+  // Min-heap simple de i64 via paires
+  let mut h = pair_min_i64[str]()
+  h.pushp_i64(5, "cinq")
+  h.pushp_i64(1, "un")
+  h.pushp_i64(3, "trois")
+  assert(h.size() == 3, "size=3")
+  let (p1, v1) = h.popp_i64().unwrap()
+  assert(p1 == 1 && v1 == "un", "first=min")
+  let (p2, _) = h.popp_i64().unwrap()
+  assert(p2 == 3, "second=3")
+  let (p3, _) = h.popp_i64().unwrap()
+  assert(p3 == 5, "third=5")
+  assert(h.is_empty(), "empty at end")
+}
+
+// @test
+do _heap_custom_struct() {
+  struct Job { id: u64, name: String, weight: i64 }
+  let mut h = with_less[Job](|a, b| a.weight < b.weight) // min-heap sur weight
+  h.push(Job{ id: 1, name: "A", weight: 10 })
+  h.push(Job{ id: 2, name: "B", weight: 5 })
+  h.push(Job{ id: 3, name: "C", weight: 7 })
+  assert(h.peek().unwrap().name == "B", "peek=B (weight=5)")
+  let j = h.pop().unwrap()
+  assert(j.id == 2, "pop=B")
+  // replace_top
+  let _ = h.replace_top(Job{ id: 4, name: "D", weight: 20 })
+  assert(h.pop().unwrap().id == 3, "then C (7)")
+  assert(h.pop().unwrap().id == 1, "then A (10)")
+  assert(h.pop().unwrap().id == 4, "then D (20)")
+  assert(h.is_empty(), "empty end")
+}
+
+// @test
+do _remove_if_heapify() {
+  let mut h = pair_min_i64[str]()
+  h.pushp_i64(9, "x")
+  h.pushp_i64(2, "keep")
+  h.pushp_i64(4, "drop")
+  h.pushp_i64(1, "keep2")
+  // supprime toutes les valeurs "drop"
+  let removed = h.remove_if(|p| p.value == "drop")
+  assert(removed == 1, "removed=1")
+  // ordre min conservé
+  let (p, v) = h.popp_i64().unwrap()
+  assert(p == 1 && v == "keep2", "min ok")
+}
+
+// @test
+do _from_vec_heapify() {
+  let xs = vec![ 5, 1, 4, 2, 9, 0 ]
+  let mut h = from_vec[int](xs, |a,b| *a < *b)
+  let mut seq = vec![]
+  while !h.is_empty() { seq.push(h.pop().unwrap()) }
+  // seq doit être triée croissante
+  assert(seq == vec![0,1,2,4,5,9], "sorted pop")
 }

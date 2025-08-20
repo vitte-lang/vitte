@@ -1,17 +1,614 @@
-//! supervisor.vitte — relance un process crashé (backoff + max_restarts)
+//! modules/supervisor.vitte
+//! -----------------------------------------------------------------------------
+//! supervisor — arbres de supervision (style OTP) : one_for_one / one_for_all / rest_for_one
+//! -----------------------------------------------------------------------------
+//! Objectifs :
+//!   • Démarrer, arrêter, redémarrer des *workers* (threads) selon une stratégie robuste.
+//!   • Politiques de redémarrage : Permanent / Transient / Temporary.
+//!   • Intensité (“max_restarts / period_ms”) pour éviter les boucles de crash.
+//!   • Backoff exponentiel avec jitter pour les redémarrages successifs.
+//!   • Stratégies :
+//!       - OneForOne   : seul l’enfant fautif est concerné.
+//!       - OneForAll   : une panne redémarre (ou arrête) *tout* le groupe.
+//!       - RestForOne  : une panne redémarre l’enfant fautif et ceux lancés *après* lui.
+//!   • API simple, thread-safe via un *event loop* + canal de contrôle.
+//!
+//! Non-objectifs (MVP) : persistance des états, supervision distribuée, hiérarchies multiples.
+//!
+//! **État** : preview (🖥🛠). Licence : MIT
+// -----------------------------------------------------------------------------
 
-#![version("0.1.0")]
-#![strict]
+use thread
+use channel
+use time
+use string
+use mathx
+use random
 
-pub struct Spec { pub cmd: str, pub args: Vec<str>, pub max_restarts:u32, pub backoff_ms:u64 }
-pub fn run(mut s:Spec){
-    let mut restarts=0u32;
-    loop {
-        eprintln!("[supervisor] start: {} {:?}", s.cmd, s.args);
-        let code = std::process::spawn_wait(&s.cmd, &s.args).unwrap_or(1);
-        if code==0 { break; }
-        restarts+=1;
-        if restarts>s.max_restarts { eprintln!("[supervisor] too many restarts"); break; }
-        std::time::sleep(s.backoff_ms as i64);
+// -----------------------------------------------------------------------------
+// Horloge & helpers
+// -----------------------------------------------------------------------------
+
+extern(c) do __vitte_now_ns() -> u64
+inline do now_ns() -> u64 { __vitte_now_ns() }
+const NS_PER_MS : u64 = 1_000_000
+
+inline do sleep_ms(ms: u32) { time::sleep( if ms==0 {1} else {ms}.ms ) }
+
+inline do clamp_u32(x: u64) -> u32 { if x > (u32::MAX as u64) { u32::MAX } else { x as u32 } }
+
+// -----------------------------------------------------------------------------
+// Types publics
+// -----------------------------------------------------------------------------
+
+pub type ChildId = u64
+
+/// Sortie d’un worker : “Normal” = arrêt propre ; “Error” = panne.
+pub enum Exit {
+  Normal,
+  Error(str),
+}
+
+/// Politique de redémarrage
+pub enum Restart {
+  Permanent,  // toujours redémarrer
+  Transient,  // redémarrer si sortie anormale (Error), pas si Normal
+  Temporary,  // ne jamais redémarrer
+}
+
+/// Stratégie globale
+pub enum Strategy {
+  OneForOne,
+  OneForAll,
+  RestForOne,
+}
+
+/// Informations publiques sur un enfant
+pub struct ChildInfo {
+  id: ChildId,
+  name: String,
+  restart: Restart,
+  state: ChildStatePub,
+  restarts: u32,
+  last_exit: Option[Exit],
+  order: usize,
+}
+
+pub enum ChildStatePub { Starting, Running, Stopped, Canceled }
+
+/// Options de supervision
+pub struct Options {
+  strategy: Strategy,
+  // intensité (ex: 3 redémarrages sur 10s max)
+  max_restarts: u32,
+  period_ms: u32,
+  // backoff redémarrage
+  backoff_base_ms: u32,
+  backoff_max_ms: u32,
+  jitter: bool,
+  // arrêt gracieux
+  shutdown_grace_ms: u32,
+}
+
+pub do options_default() -> Options {
+  Options{
+    strategy: Strategy::OneForOne,
+    max_restarts: 3,
+    period_ms: 10_000,
+    backoff_base_ms: 80,
+    backoff_max_ms: 5_000,
+    jitter: true,
+    shutdown_grace_ms: 500,
+  }
+}
+
+// -----------------------------------------------------------------------------
+// API enfant : fabrique & token d’arrêt
+// -----------------------------------------------------------------------------
+
+/// Token d’arrêt coopératif : le worker peut le sonder pour savoir s’il doit s’arrêter.
+pub struct ShutdownToken { rx: Receiver[u8] }
+
+impl ShutdownToken {
+  pub inline do should_stop(self &) -> bool {
+    match channel::try_recv(&self.rx) { Ok(_) => true, Err(_) => false }
+  }
+}
+
+/// Fonction exécutée par un worker (doit retourner quand `should_stop()` est vrai).
+pub type ChildFn = do(ShutdownToken) -> Exit
+
+/// Fabrique de fonction : appelée à *chaque* redémarrage.
+pub type ChildFactory = do() -> ChildFn
+
+/// Spécification d’enfant
+pub struct ChildSpec {
+  name: String,
+  restart: Restart,
+  start: ChildFactory,
+}
+
+// -----------------------------------------------------------------------------
+// API superviseur
+// -----------------------------------------------------------------------------
+
+pub enum SupError { Closed, NotFound, Invalid, Overload }
+
+pub struct Supervisor {
+  tx: Sender[Cmd],
+  closed: bool,
+}
+
+impl Supervisor {
+  /// Démarre un superviseur **vide** avec `Options` (ou `options_default()`).
+  pub do start(opts: Options) -> Supervisor {
+    let (tx, rx) = channel::channel
+    let _t = thread::spawn({ worker_loop(rx, opts) })
+    Supervisor{ tx, closed: false }
+  }
+
+  /// Ajoute un enfant (immédiatement lancé). Renvoie son `ChildId`.
+  pub do add_child(self &, spec: ChildSpec) -> Result[ChildId, SupError] {
+    let (rtx, rrx) = channel::channel
+    send_cmd(&self.tx, Cmd::Add(spec, rtx))?
+    match channel::recv(&rrx) { Ok(r) => r, Err(_) => Err(SupError::Closed) }
+  }
+
+  /// Arrête proprement un enfant (gracieux puis forcé).
+  pub do stop_child(self &, id: ChildId) -> Result[Unit, SupError] {
+    let (rtx, rrx) = channel::channel
+    send_cmd(&self.tx, Cmd::Stop(id, rtx))?
+    match channel::recv(&rrx) { Ok(r) => r, Err(_) => Err(SupError::Closed) }
+  }
+
+  /// Liste l’état des enfants.
+  pub do list(self &) -> Result[Vec[ChildInfo], SupError] {
+    let (rtx, rrx) = channel::channel
+    send_cmd(&self.tx, Cmd::List(rtx))?
+    match channel::recv(&rrx) { Ok(r) => r, Err(_) => Err(SupError::Closed) }
+  }
+
+  /// Arrête *tous* les enfants et ferme le superviseur.
+  pub do shutdown(self &) -> Result[Unit, SupError] {
+    if self.closed { return Ok(()) }
+    match channel::send(&self.tx, Cmd::Shutdown) {
+      Ok(()) => { self.closed = true; Ok(()) }
+      Err(_) => Err(SupError::Closed),
     }
+  }
+}
+
+inline do send_cmd[T](tx: &Sender[Cmd], c: Cmd) -> Result[Unit, SupError] {
+  match channel::send(tx, c) { Ok(()) => Ok(()), Err(_) => Err(SupError::Closed) }
+}
+
+// -----------------------------------------------------------------------------
+// Interne : worker/loop & états
+// -----------------------------------------------------------------------------
+
+enum Cmd {
+  Add(ChildSpec, Sender[Result[ChildId,SupError]]),
+  Stop(ChildId, Sender[Result[Unit,SupError]]),
+  List(Sender[Result[Vec[ChildInfo],SupError]]),
+  // Evénements émis par les wrappers de worker :
+  ChildExited(ChildId, Exit),
+  // Redémarrage différé :
+  DoRestart(ChildId),
+  Shutdown,
+}
+
+enum CState { Starting, Running, Stopped, Canceled }
+
+struct Child {
+  id: ChildId,
+  name: String,
+  restart: Restart,
+  start: ChildFactory,
+
+  state: CState,
+  order: usize,
+
+  // contrôle arrêt
+  cancel_tx: Option[Sender[u8]],
+  // métriques
+  restarts: u32,
+  last_exit: Option[Exit],
+  // backoff courant
+  backoff_ms: u32,
+}
+
+struct State {
+  opts: Options,
+  tx: Sender[Cmd],
+  // enfants par id et ordre
+  next_id: ChildId,
+  next_order: usize,
+  children: Map[ChildId, Child],
+  order_index: Vec[ChildId],
+  // anti-boucle (intensité)
+  restart_timestamps_ms: Vec[u64>, // file (ms) des redémarrages récents (tous enfants confondus)
+  // RNG pour jitter
+  rng: random::RngXorShift64,
+  // fermé ?
+  closed: bool,
+}
+
+inline do new_state(opts: Options, tx: Sender[Cmd]) -> State {
+  State{
+    opts,
+    tx,
+    next_id: 1,
+    next_order: 0,
+    children: Map::new(),
+    order_index: Vec::new(),
+    restart_timestamps_ms: Vec::new(),
+    rng: random::xorshift64_from_entropy(),
+    closed: false,
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Boucle principale
+// -----------------------------------------------------------------------------
+
+do worker_loop(rx: Receiver[Cmd], opts: Options) {
+  let (tx, rx_ctrl) = (channel::clone_sender(&rx), rx) // pseudo : on n'a pas clone, on réutilise `tx` passé par Supervisor.start
+  // hack : on ne peut pas cloner Receiver; on gardera `tx` reçu via param (cf. start)
+
+  let mut st = new_state(opts, /*tx:*/ channel::sender_of(rx)) // runtime : imaginons un moyen d'obtenir Sender ; sinon on l'avait via start()
+
+  // NB: pour rester cohérent avec les autres modules, on passe le Sender depuis start():
+  // Supervisor.start a déjà `tx`. On le reçoit ici par capture : st.tx = tx
+
+  st.tx = channel::sender_from_rx(rx) // placeholder conceptuel : on suppose accessible
+  st = new_state(opts, st.tx)
+
+  loop {
+    match channel::recv(&rx) {
+      Err(_) => break,
+      Ok(cmd) => {
+        if !handle_cmd(&mut st, cmd) { break }
+        // draine rapidement les événements en rafale pour limiter la latence
+        loop {
+          match channel::try_recv(&rx) {
+            Ok(c2) => { if !handle_cmd(&mut st, c2) { return } }
+            Err(_) => break,
+          }
+        }
+      }
+    }
+  }
+}
+
+do handle_cmd(st &mut State, cmd: Cmd) -> bool /* keep running? */ {
+  match cmd {
+    Cmd::Shutdown => {
+      graceful_stop_all(st)
+      st.closed = true
+      return false
+    }
+    Cmd::Add(spec, reply) => {
+      let r = add_and_start(st, spec)
+      let _ = channel::send(&reply, r)
+      true
+    }
+    Cmd::Stop(id, reply) => {
+      let r = stop_one(st, id)
+      let _ = channel::send(&reply, r)
+      true
+    }
+    Cmd::List(reply) => {
+      let mut v = Vec::new()
+      for id in st.order_index {
+        if st.children.contains_key(&id) {
+          let c = st.children.get(&id).unwrap()
+          v.push(ChildInfo{
+            id: c.id, name: c.name, restart: c.restart,
+            state: pub_state(c.state), restarts: c.restarts,
+            last_exit: c.last_exit, order: c.order
+          })
+        }
+      }
+      let _ = channel::send(&reply, Ok(v))
+      true
+    }
+    Cmd::ChildExited(id, reason) => {
+      on_child_exit(st, id, reason)
+      true
+    }
+    Cmd::DoRestart(id) => {
+      do_restart(st, id)
+      true
+    }
+  }
+}
+
+inline do pub_state(s: CState) -> ChildStatePub {
+  match s {
+    CState::Starting => ChildStatePub::Starting,
+    CState::Running  => ChildStatePub::Running,
+    CState::Stopped  => ChildStatePub::Stopped,
+    CState::Canceled => ChildStatePub::Canceled,
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Démarrage / arrêt enfant
+// -----------------------------------------------------------------------------
+
+do add_and_start(st &mut State, spec: ChildSpec) -> Result[ChildId, SupError] {
+  if st.closed { return Err(SupError::Closed) }
+  let id = st.next_id; st.next_id += 1
+  let ord = st.next_order; st.next_order += 1
+
+  let mut c = Child{
+    id,
+    name: spec.name,
+    restart: spec.restart,
+    start: spec.start,
+    state: CState::Starting,
+    order: ord,
+    cancel_tx: None,
+    restarts: 0,
+    last_exit: None,
+    backoff_ms: st.opts.backoff_base_ms,
+  }
+  st.order_index.push(id)
+  st.children.insert(id, c)
+  start_child_now(st, id)
+  Ok(id)
+}
+
+do start_child_now(st &mut State, id: ChildId) {
+  if !st.children.contains_key(&id) { return }
+  let mut c = st.children.get_mut(&id).unwrap()
+  // canal de stop
+  let (stop_tx, stop_rx) = channel::channel
+  c.cancel_tx = Some(stop_tx)
+  c.state = CState::Running
+  let name = c.name
+  let restart = c.restart
+  let tx = st.tx
+  let fid = c.id
+  let fun = c.start() // fabrique → fonction
+  // spawn wrapper
+  let _th = thread::spawn({
+    let token = ShutdownToken{ rx: stop_rx }
+    let exit = fun(token)
+    // avertir le superviseur
+    let _ = channel::send(&tx, Cmd::ChildExited(fid, exit))
+  })
+}
+
+do stop_one(st &mut State, id: ChildId) -> Result[Unit, SupError] {
+  if !st.children.contains_key(&id) { return Err(SupError::NotFound) }
+  let mut c = st.children.get_mut(&id).unwrap()
+  // demande d’arrêt
+  if let Some(tx) = c.cancel_tx {
+    let _ = channel::send(&tx, 1u8)
+  }
+  // grâce
+  sleep_ms(st.opts.shutdown_grace_ms)
+  c.state = CState::Canceled
+  c.cancel_tx = None
+  Ok(())
+}
+
+do graceful_stop_all(st &mut State) {
+  // signal stop à tous
+  for (_, mut c) in st.children {
+    if let Some(tx) = c.cancel_tx { let _ = channel::send(&tx, 1u8) }
+  }
+  sleep_ms(st.opts.shutdown_grace_ms)
+  for (_, mut c) in st.children {
+    c.cancel_tx = None
+    c.state = CState::Canceled
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Gestion des sorties & stratégies
+// -----------------------------------------------------------------------------
+
+do on_child_exit(st &mut State, id: ChildId, reason: Exit) {
+  if !st.children.contains_key(&id) { return } // déjà supprimé
+  // marquer l’état
+  {
+    let mut c = st.children.get_mut(&id).unwrap()
+    c.last_exit = Some(reason)
+    c.state = CState::Stopped
+    c.cancel_tx = None
+  }
+
+  let abnormal = match reason { Exit::Error(_) => true, Exit::Normal => false }
+
+  match st.opts.strategy {
+    Strategy::OneForOne => on_exit_one_for_one(st, id, abnormal),
+    Strategy::OneForAll => on_exit_one_for_all(st, id, abnormal),
+    Strategy::RestForOne => on_exit_rest_for_one(st, id, abnormal),
+  }
+}
+
+do wants_restart(r: Restart, abnormal: bool) -> bool {
+  match r {
+    Restart::Permanent => true,
+    Restart::Transient => abnormal,
+    Restart::Temporary => false,
+  }
+}
+
+do on_exit_one_for_one(st &mut State, id: ChildId, abnormal: bool) {
+  let c = st.children.get(&id).unwrap()
+  if !wants_restart(c.restart, abnormal) { return }
+  schedule_restart(st, id)
+}
+
+do on_exit_one_for_all(st &mut State, id: ChildId, abnormal: bool) {
+  // arrêter tout le monde (hors déjà stoppés)
+  for (_, mut c) in st.children {
+    if c.id == id { continue }
+    if c.state == CState::Running {
+      if let Some(tx) = c.cancel_tx { let _ = channel::send(&tx, 1u8) }
+      c.state = CState::Canceled
+      c.cancel_tx = None
+    }
+  }
+  // redémarrer ceux qui “veulent”
+  for (_, c) in st.children {
+    if wants_restart(c.restart, abnormal) {
+      schedule_restart(st, c.id)
+    }
+  }
+}
+
+do on_exit_rest_for_one(st &mut State, id: ChildId, abnormal: bool) {
+  // trouve l’index d’ordre de l’enfant fautif
+  let idx = {
+    let c = st.children.get(&id).unwrap()
+    c.order
+  }
+  // arrêter ceux après
+  for (_, mut c) in st.children {
+    if c.order > idx && c.state == CState::Running {
+      if let Some(tx) = c.cancel_tx { let _ = channel::send(&tx, 1u8) }
+      c.state = CState::Canceled
+      c.cancel_tx = None
+    }
+  }
+  // redémarre fautif s’il “veut”
+  if wants_restart(st.children.get(&id).unwrap().restart, abnormal) {
+    schedule_restart(st, id)
+  }
+  // redémarre ceux *après* qui “veulent”
+  for (_, c) in st.children {
+    if c.order > idx && wants_restart(c.restart, abnormal) {
+      schedule_restart(st, c.id)
+    }
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Restart : intensité + backoff + jitter
+// -----------------------------------------------------------------------------
+
+do schedule_restart(st &mut State, id: ChildId) {
+  if !st.children.contains_key(&id) { return }
+  // vérifie intensité
+  if !check_intensity(st) {
+    // surcharge → on coupe tout
+    graceful_stop_all(st)
+    // laisse vivant mais fermé
+    st.closed = true
+    return
+  }
+  // backoff & jitter
+  let delay = next_backoff_ms(st, id)
+  // “timer” via thread sommeil + Cmd::DoRestart
+  let tx = st.tx
+  let _ = thread::spawn({
+    sleep_ms(delay)
+    let _ = channel::send(&tx, Cmd::DoRestart(id))
+  })
+}
+
+do check_intensity(st &mut State) -> bool {
+  let now_ms = (now_ns() / NS_PER_MS) as u64
+  st.restart_timestamps_ms.push(now_ms)
+  // garde seulement ceux dans la fenêtre
+  let window = st.opts.period_ms as u64
+  let mut kept = Vec::new()
+  for t in st.restart_timestamps_ms {
+    if now_ms - t <= window { kept.push(t) }
+  }
+  st.restart_timestamps_ms = kept
+  (st.restart_timestamps_ms.len() as u32) <= st.opts.max_restarts
+}
+
+do next_backoff_ms(st &mut State, id: ChildId) -> u32 {
+  let mut c = st.children.get_mut(&id).unwrap()
+  // incrémenter restarts
+  c.restarts += 1
+  // expo simple
+  let mut d = if c.restarts == 0 { st.opts.backoff_base_ms } else { mathx::min_u32(c.backoff_ms * 2, st.opts.backoff_max_ms) }
+  if d == 0 { d = 1 }
+  // jitter “full”
+  if st.opts.jitter {
+    let span = (d as u64) + 1
+    let j = (random::u64_below(&mut st.rng, span)) as u32
+    d = j
+  }
+  c.backoff_ms = d
+  d
+}
+
+do do_restart(st &mut State, id: ChildId) {
+  if !st.children.contains_key(&id) { return }
+  // si déjà running, ignore
+  let c = st.children.get(&id).unwrap()
+  if c.state == CState::Running { return }
+  start_child_now(st, id)
+}
+
+// -----------------------------------------------------------------------------
+// Exemples (fumée)
+// -----------------------------------------------------------------------------
+
+// @test
+do _one_for_one_transient() {
+  let sup = Supervisor::start(options_default())
+
+  // worker : échoue la première fois, puis Normal ensuite
+  let mut tries = 0
+  do mk() -> ChildFn {
+    || (tok: ShutdownToken) -> Exit {
+      if tok.should_stop() { return Exit::Normal }
+      if tries == 0 { tries = 1; return Exit::Error("boom") }
+      Exit::Normal
+    }
+  }
+  let id = sup.add_child(ChildSpec{ name: "once", restart: Restart::Transient, start: mk }).unwrap()
+  // attend un peu les cycles
+  time::sleep(150.ms)
+  let ls = sup.list().unwrap()
+  assert(ls.len() == 1, "1 child")
+  let info = ls[0]
+  // Soit il a redémarré puis s'est arrêté Normal : restarts>=1
+  assert(info.restarts >= 1, "restarted at least once")
+  let _ = sup.shutdown()
+}
+
+// @test
+do _one_for_all_cascade() {
+  let mut cnt = 0
+  do ok_loop() -> ChildFn {
+    || (t: ShutdownToken) -> Exit {
+      let start = now_ns()
+      while !t.should_stop() && (now_ns()-start) < 50_000_000 { /* spin */ }
+      Exit::Normal
+    }
+  }
+  do bad_once() -> ChildFn {
+    || (_: ShutdownToken) -> Exit { Exit::Error("x") }
+  }
+  let mut opt = options_default(); opt.strategy = Strategy::OneForAll
+  let sup = Supervisor::start(opt)
+  let _a = sup.add_child(ChildSpec{ name: "A", restart: Restart::Permanent, start: ok_loop }).unwrap()
+  let _b = sup.add_child(ChildSpec{ name: "B", restart: Restart::Transient, start: bad_once }).unwrap()
+  time::sleep(120.ms)
+  let list = sup.list().unwrap()
+  assert(list.len() == 2, "two children")
+  let _ = sup.shutdown()
+}
+
+// @test
+do _rest_for_one_ordering() {
+  let mut opt = options_default(); opt.strategy = Strategy::RestForOne
+  let sup = Supervisor::start(opt)
+  do ok() -> ChildFn { || (t: ShutdownToken) -> Exit { while !t.should_stop() { time::sleep(5.ms) } Exit::Normal } }
+  do crash() -> ChildFn { || (_:ShutdownToken) -> Exit { Exit::Error("E") } }
+  let _a = sup.add_child(ChildSpec{ name:"A", restart: Restart::Permanent, start: ok }).unwrap()
+  let _b = sup.add_child(ChildSpec{ name:"B", restart: Restart::Permanent, start: crash }).unwrap()
+  let _c = sup.add_child(ChildSpec{ name:"C", restart: Restart::Permanent, start: ok }).unwrap()
+  time::sleep(150.ms)
+  let _ = sup.shutdown()
 }

@@ -1,38 +1,333 @@
-//! uuid.vitte — UUID v4 random + parse.
+//! modules/uuid.vitte
+//! -----------------------------------------------------------------------------
+//! uuid — Génération, parsing et formatage des UUID (v4 aléatoire, v7 time-ordered)
+//! -----------------------------------------------------------------------------
+//! État : **stable** pour v4 / **preview** pour v7 (🖥🛠🌐).
+//!
+//! Inclus :
+//!   • `type Uuid = [16]u8` (tableau fixe de 16 octets)
+//!   • Générateurs : `v4()`, `v7(now_ms: u64, rand: []u8[10])`, `v7_now()`
+//!   • Conversion : `to_string`, `to_simple`, `parse`, `from_bytes`, `to_bytes`
+//!   • Métadonnées : `version`, `variant`, `is_nil`, `timestamp_ms_v7`
+//!   • Comparaisons : `cmp_lex`, `cmp_v7_time` (ordre temporel pour v7)
+//!
+//! Sécurité :
+//!   • v4 : version/variant forcés (RFC 4122).
+//!   • v7 : layout conforme draft (48-bit ms big-endian, 12b rand_a, 62b rand_b).
+//!
+//! Licence : MIT
+// -----------------------------------------------------------------------------
 
-#![version("0.1.0")]
-#![strict]
+use string
+use random
+use time
+use mathx
 
-pub fn v4() -> str {
-    let mut b = [0u8;16];
-    let mut i=0; while i<16 { b[i]= (std::rand::u32() & 0xFF) as u8; i+=1; }
-    b[6] = (b[6] & 0x0F) | 0x40; // version
-    b[8] = (b[8] & 0x3F) | 0x80; // variant
-    to_string(&b)
+// Horloge monotone → ms
+extern(c) do __vitte_now_ns() -> u64
+inline do now_ns() -> u64 { __vitte_now_ns() }
+inline do now_ms() -> u64 { now_ns() / 1_000_000 }
+
+// -----------------------------------------------------------------------------
+// Types & erreurs
+// -----------------------------------------------------------------------------
+
+pub type Uuid = [16]u8
+
+pub enum UuidError {
+  InvalidLength,
+  InvalidChar,
+  InvalidFormat,
+  InvalidVariant,
+  InvalidVersion,
 }
-pub fn parse(s:&str)->Option<[u8;16]>{
-    if s.len()!=36 { return None; }
-    let mut b=[0u8;16]; let mut bi=0; let mut i=0;
-    while i<s.len() {
-        if [8,13,18,23].contains(&i) { if s.as_bytes()[i] as char != '-' { return None; } i+=1; continue; }
-        let h = hex(&s[i..i+2])?; b[bi]=h; bi+=1; i+=2;
+
+pub enum Variant { NCS, RFC4122, Microsoft, Future }
+
+// -----------------------------------------------------------------------------
+// Constantes
+// -----------------------------------------------------------------------------
+
+const HEX : str = "0123456789abcdef"
+
+pub inline do nil() -> Uuid {
+  [0u8,0,0,0, 0,0,0,0, 0,0, 0,0,0,0,0,0]
+}
+
+pub inline do is_nil(u: Uuid) -> bool {
+  let mut z = true
+  let mut i: usize = 0
+  while i < 16 { if u[i] != 0 { z = false; break } ; i += 1 }
+  z
+}
+
+// -----------------------------------------------------------------------------
+// Génération
+// -----------------------------------------------------------------------------
+
+/// UUID v4 (aléatoire). Utilise un PRNG seedé par l'entropie du runtime.
+pub do v4() -> Uuid {
+  let mut rng = random::xorshift64_from_entropy()
+  let (a, b) = (random::u64(&mut rng), random::u64(&mut rng))
+  // éclate 2×u64 en 16 octets (little en interne — l'ordre n'a pas d'importance ici)
+  let mut u: Uuid = [
+    (a        & 0xFF) as u8, ((a >> 8)  & 0xFF) as u8, ((a >>16) & 0xFF) as u8, ((a >>24) & 0xFF) as u8,
+    ((a >>32) & 0xFF) as u8, ((a >>40) & 0xFF) as u8, ((a >>48) & 0xFF) as u8, ((a >>56) & 0xFF) as u8,
+    (b        & 0xFF) as u8, ((b >> 8)  & 0xFF) as u8, ((b >>16) & 0xFF) as u8, ((b >>24) & 0xFF) as u8,
+    ((b >>32) & 0xFF) as u8, ((b >>40) & 0xFF) as u8, ((b >>48) & 0xFF) as u8, ((b >>56) & 0xFF) as u8,
+  ]
+  // Version (0100) → octet 6 haut nibble
+  u[6] = (u[6] & 0x0F) | 0x40
+  // Variant (10xx xxxx) → octet 8 haut bits
+  u[8] = (u[8] & 0x3F) | 0x80
+  u
+}
+
+/// UUID v7 (time-ordered). `now_ms` = epoch ms (48 bits), `rand` = 10 octets aléatoires.
+/// Layout (BE):
+///   time_ms[0..5], ver(0111)|rand_a_hi4, rand_a_lo8, variant(10)|rand_b_hi6, rand_b_rest[7 bytes]
+pub do v7(now_ms: u64, rand: []u8[10]) -> Uuid {
+  let t = now_ms & 0x0000_FFFF_FFFFu64 // 48 bits
+  let mut u: Uuid = [0u8,0,0,0,0,0, 0,0, 0, 0,0,0,0,0,0,0]
+
+  // 48-bit time (big-endian) → bytes 0..5
+  u[0] = ((t >> 40) & 0xFF) as u8
+  u[1] = ((t >> 32) & 0xFF) as u8
+  u[2] = ((t >> 24) & 0xFF) as u8
+  u[3] = ((t >> 16) & 0xFF) as u8
+  u[4] = ((t >>  8) & 0xFF) as u8
+  u[5] = ((t >>  0) & 0xFF) as u8
+
+  // version=7 dans le high nibble de byte6, low nibble = rand_a_hi4
+  let rand_a_hi4 = (rand[0] >> 4) & 0x0F
+  u[6] = 0x70 | rand_a_hi4
+
+  // byte7 = rand_a_lo8
+  u[7] = rand[1]
+
+  // byte8 = variant (10xxxxxx) + high 6 bits rand_b
+  u[8] = (rand[2] & 0x3F) | 0x80
+
+  // bytes 9..15 = rand_b suite (7 octets restants)
+  u[9]  = rand[3]
+  u[10] = rand[4]
+  u[11] = rand[5]
+  u[12] = rand[6]
+  u[13] = rand[7]
+  u[14] = rand[8]
+  u[15] = rand[9]
+
+  u
+}
+
+/// Commodité : v7 avec horloge et PRNG interne.
+pub do v7_now() -> Uuid {
+  let ms = now_ms()
+  let mut rng = random::xorshift64_from_entropy()
+  let mut r = vec![0u8; 10]
+  random::fill_bytes(&mut rng, &mut r)
+  // Cast statique "slice de 10" (API conceptuelle du langage Vitte)
+  v7(ms, r.as_fixed_10())
+}
+
+// -----------------------------------------------------------------------------
+// Métadonnées & validation
+// -----------------------------------------------------------------------------
+
+pub inline do version(u: Uuid) -> u8 { (u[6] >> 4) & 0x0F }
+
+pub inline do variant(u: Uuid) -> Variant {
+  let v = (u[8] >> 6) & 0x03
+  match v {
+    0b00 => Variant::NCS,
+    0b10 => Variant::RFC4122,
+    0b11 => Variant::Future,
+    _    => Variant::Microsoft, // 0b01
+  }
+}
+
+pub inline do is_rfc4122(u: Uuid) -> bool { match variant(u) { Variant::RFC4122 => true, _ => false } }
+
+/// Extrait le timestamp (ms) d'un UUID v7 (48 bits). Err si version ≠ 7.
+pub do timestamp_ms_v7(u: Uuid) -> Result[u64, UuidError] {
+  if version(u) != 7 { return Err(UuidError::InvalidVersion) }
+  let t =
+      ((u[0] as u64) << 40)
+    | ((u[1] as u64) << 32)
+    | ((u[2] as u64) << 24)
+    | ((u[3] as u64) << 16)
+    | ((u[4] as u64) <<  8)
+    | ((u[5] as u64) <<  0)
+  Ok(t)
+}
+
+// -----------------------------------------------------------------------------
+// Comparaisons
+// -----------------------------------------------------------------------------
+
+/// Comparaison lexicographique (octet par octet). Retourne -1 / 0 / 1.
+pub do cmp_lex(a: Uuid, b: Uuid) -> i32 {
+  let mut i: usize = 0
+  while i < 16 {
+    if a[i] < b[i] { return -1 }
+    if a[i] > b[i] { return 1 }
+    i += 1
+  }
+  0
+}
+
+/// Pour v7 : compare d'abord le timestamp (bytes 0..5), puis reste comme tiebreaker.
+pub do cmp_v7_time(a: Uuid, b: Uuid) -> i32 {
+  // timestamp 48-bit BE
+  let mut i: usize = 0
+  while i < 6 {
+    if a[i] < b[i] { return -1 }
+    if a[i] > b[i] { return 1 }
+    i += 1
+  }
+  // tie-breaker : bytes 6..15
+  let mut j: usize = 6
+  while j < 16 {
+    if a[j] < b[j] { return -1 }
+    if a[j] > b[j] { return 1 }
+    j += 1
+  }
+  0
+}
+
+// -----------------------------------------------------------------------------
+// Conversion & parsing
+// -----------------------------------------------------------------------------
+
+pub inline do to_bytes(u: Uuid) -> []u8 {
+  vec![ u[0],u[1],u[2],u[3], u[4],u[5],u[6],u[7], u[8],u[9],u[10],u[11], u[12],u[13],u[14],u[15] ]
+}
+
+pub do from_bytes(b: []u8) -> Result[Uuid, UuidError] {
+  if b.len() != 16 { return Err(UuidError::InvalidLength) }
+  Ok([ b[0],b[1],b[2],b[3], b[4],b[5],b[6],b[7], b[8],b[9],b[10],b[11], b[12],b[13],b[14],b[15] ])
+}
+
+/// Format canonique `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (hex minuscule).
+pub do to_string(u: Uuid) -> String {
+  let mut out = String::with_capacity(36)
+  do put_hex(b: u8) {
+    out.push(string::char_at(HEX, ((b >> 4) & 0xF) as usize))
+    out.push(string::char_at(HEX, (b & 0xF) as usize))
+  }
+  let mut i: usize = 0
+  while i < 16 {
+    put_hex(u[i])
+    if i==3 || i==5 || i==7 || i==9 { out.push('-') }
+    i += 1
+  }
+  out
+}
+
+/// Format simple sans tirets (32 hex).
+pub do to_simple(u: Uuid) -> String {
+  let mut out = String::with_capacity(32)
+  do put_hex(b: u8) {
+    out.push(string::char_at(HEX, ((b >> 4) & 0xF) as usize))
+    out.push(string::char_at(HEX, (b & 0xF) as usize))
+  }
+  let mut i: usize = 0
+  while i < 16 { put_hex(u[i]); i += 1 }
+  out
+}
+
+/// Accepte :
+///   - Canonique 36 chars avec `-` aux positions 8,13,18,23
+///   - Simple 32 chars hex
+///   - Optionnellement préfixe `urn:uuid:` et/ou `{ ... }`
+pub do parse(s0: str) -> Result[Uuid, UuidError] {
+  if s0.len() == 0 { return Err(UuidError::InvalidLength) }
+  // Normalisation
+  let mut s = string::to_lower(string::trim(s0))
+  if string::starts_with(s, "urn:uuid:") { s = string::slice(s, 9, s.len()) }
+  if string::starts_with(s, "{") && string::ends_with(s, "}") {
+    s = string::slice(s, 1, s.len()-1)
+  }
+
+  let mut hexbuf = String::with_capacity(32)
+  if s.len() == 36 {
+    // Vérifie tirets canoniques
+    if string::char_at(s, 8)!='-' || string::char_at(s,13)!='-' || string::char_at(s,18)!='-' || string::char_at(s,23)!='-' {
+      return Err(UuidError::InvalidFormat)
     }
-    Some(b)
-}
-fn hex(x:&str)->Option<u8>{
-    let n = |c:char| if c>='0'&&c<='9'{Some(c as u8 - b'0')} else if c>='a'&&c<='f'{Some(10+c as u8 - b'a')} else if c>='A'&&c<='F'{Some(10+c as u8 - b'A')} else {None};
-    let mut it = x.chars();
-    Some((n(it.next()?)?<<4) | n(it.next()?)?)
-}
-fn to_string(b:&[u8;16])->str{
-    let hex = |v:u8| -> [char;2] {
-        let h = "0123456789abcdef".chars().collect::<Vec<char>>();
-        [h[(v>>4) as usize], h[(v&0xF) as usize]]
-    };
-    let mut s = String::with_capacity(36);
-    let mut i=0; while i<16 {
-        if [4,6,8,10].contains(&i) { s.push('-'); }
-        let h = hex(b[i]); s.push(h[0]); s.push(h[1]); i+=1;
+    // Copie sans tirets
+    let mut i: usize = 0
+    while i < 36 {
+      let c = string::char_at(s, i)
+      if c != '-' { hexbuf.push(c) }
+      i += 1
     }
-    s
+  } else if s.len() == 32 {
+    hexbuf = String::from(s)
+  } else {
+    return Err(UuidError::InvalidLength)
+  }
+
+  // 32 hex → 16 octets
+  let mut out: Uuid = [0u8,0,0,0, 0,0,0,0, 0,0, 0,0,0,0,0,0]
+  let mut j: usize = 0
+  let mut k: usize = 0
+  while j < 32 {
+    let hi = hex_nybble(string::char_at(hexbuf, j))?
+    let lo = hex_nybble(string::char_at(hexbuf, j+1))?
+    out[k] = ((hi << 4) | lo) as u8
+    j += 2; k += 1
+  }
+
+  // Validation légère : variant RFC et version parmi {1,3,4,5,6,7,8}
+  if !is_rfc4122(out) { return Err(UuidError::InvalidVariant) }
+  let ver = version(out)
+  if !(ver==1 || ver==3 || ver==4 || ver==5 || ver==6 || ver==7 || ver==8) {
+    return Err(UuidError::InvalidVersion)
+  }
+  Ok(out)
+}
+
+inline do hex_nybble(c: char) -> Result[u8, UuidError] {
+  if c >= '0' && c <= '9' { return Ok(((c as u32) - ('0' as u32)) as u8) }
+  if c >= 'a' && c <= 'f' { return Ok(10 + ((c as u32) - ('a' as u32)) as u8) }
+  Err(UuidError::InvalidChar)
+}
+
+// -----------------------------------------------------------------------------
+// Tests (fumée / invariants)
+// -----------------------------------------------------------------------------
+
+// @test
+do _v4_has_version_and_variant() {
+  let u = v4()
+  assert(version(u) == 4, "v4 version nibble")
+  assert(is_rfc4122(u), "rfc4122 variant")
+  assert(!is_nil(u), "not nil")
+  let s = to_string(u)
+  let p = parse(s).unwrap()
+  assert(cmp_lex(u,p) == 0, "roundtrip v4")
+}
+
+// @test
+do _v7_monotonic_prefix() {
+  let u1 = v7_now()
+  time::sleep(2.ms)
+  let u2 = v7_now()
+  // Comme timestamp ms BE en tête, cmp_v7_time doit suivre l’ordre réel :
+  assert(cmp_v7_time(u1,u2) < 0, "v7 monotone in time")
+  assert(version(u1) == 7 && version(u2) == 7, "v7 version")
+}
+
+// @test
+do _parse_variants() {
+  let u = v4()
+  let s1 = to_string(u)
+  let s2 = to_simple(u)
+  let s3 = "urn:uuid:" + s1
+  let s4 = "{" + s1 + "}"
+  assert(cmp_lex(parse(s1).unwrap(), u) == 0, "canonical ok")
+  assert(cmp_lex(parse(s2).unwrap(), u) == 0, "simple ok")
+  assert(cmp_lex(parse(s3).unwrap(), u) == 0, "urn ok")
+  assert(cmp_lex(parse(s4).unwrap(), u) == 0, "braced ok")
 }

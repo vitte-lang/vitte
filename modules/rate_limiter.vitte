@@ -1,30 +1,435 @@
-//! rate_limiter.vitte — token-bucket (QPS) et fenêtre glissante.
+//! modules/rate_limiter.vitte
+//! -------------------------------------------------------------------
+//! Rate Limiter — Token-Bucket & Leaky-Bucket (GCRA) — preview
+//! -------------------------------------------------------------------
+//! Objectifs :
+//!   • API simple et prévisible : allow/try_acquire/acquire/acquire_timeout
+//!   • Deux algos :
+//!       - TokenBucket (remplissage continu, burst paramétrable)
+//!       - GCRA (leaky-bucket “calendaire” ultra stable, anti-surtension)
+//!   • Thread-safe via Mutex ; pas d’allocations cachées significatives
+//!   • Variante “keyed” (par identifiant) pour multi-clients/tenants
+//!
+//! Unités & conventions :
+//!   - `rate_per_sec` : permits par seconde (f64 > 0)
+//!   - `burst` : capacité maximale (u32 >= 1)
+//!   - `permits` : consommation demandée (u32 >= 1)
+//!   - Horloge : monotone en nanosecondes (u64) via __vitte_now_ns()
+//!
+//! Licence : MIT
 
-#![version("0.1.0")]
-#![strict]
+use mathx
+use time
+use string
+
+// -------------------------------------------------------------------
+// FFI horloge
+// -------------------------------------------------------------------
+
+extern(c) do __vitte_now_ns() -> u64
+
+inline do now_ns() -> u64 { __vitte_now_ns() }
+
+// -------------------------------------------------------------------
+// Erreurs
+// -------------------------------------------------------------------
+
+pub enum RlError {
+  Closed,
+  Timeout,
+  InvalidConfig(str),
+}
+
+// -------------------------------------------------------------------
+// Utils temps
+// -------------------------------------------------------------------
+
+const NS_PER_SEC : f64 = 1_000_000_000.0
+
+inline do secs_to_ns_f64(s: f64) -> f64 { s * NS_PER_SEC }
+inline do ns_to_secs_f64(ns: u64) -> f64 { (ns as f64) / NS_PER_SEC }
+
+// sleep granulaire (borne basse ~1ms)
+inline do sleep_ns(ns: u64) {
+  let ms = (ns / 1_000_000) as u32
+  if ms == 0 { time::sleep(1.ms) } else { time::sleep(ms.ms) }
+}
+
+// -------------------------------------------------------------------
+// Token Bucket
+// -------------------------------------------------------------------
+//
+// Modèle :
+//  - tokens (f64) ∈ [0, burst]
+//  - refill = elapsed_sec * rate_per_sec
+//  - allow si tokens >= permits, sinon on peut attendre
+//
 
 pub struct TokenBucket {
-    cap: u64, refill_per_sec: u64,
-    tokens: std::sync::AtomicU64,
-    last_s: std::sync::AtomicU64,
+  rate_per_sec: f64,  // > 0
+  burst: f64,         // >= 1
+  mu: Mutex[TBState],
+  closed: bool,
+}
+
+struct TBState {
+  tokens: f64,   // [0..burst]
+  last_ns: u64,
+}
+
+pub do token_bucket(rate_per_sec: f64, burst: u32) -> Result[TokenBucket, RlError] {
+  if !(rate_per_sec > 0.0) { return Err(RlError::InvalidConfig("rate_per_sec <= 0")) }
+  if burst == 0 { return Err(RlError::InvalidConfig("burst == 0")) }
+  let now = now_ns()
+  Ok(TokenBucket{
+    rate_per_sec,
+    burst: burst as f64,
+    mu: Mutex::new(TBState{ tokens: burst as f64, last_ns: now }),
+    closed: false,
+  })
 }
 
 impl TokenBucket {
-    pub fn new(qps:u64, burst:u64)->Self {
-        Self{ cap:burst.max(qps), refill_per_sec:qps, tokens:std::sync::AtomicU64::new(burst), last_s:std::sync::AtomicU64::new(0) }
+  inline do is_closed(self &) -> bool { self.closed }
+
+  /// Recharge en fonction du temps écoulé
+  do refill_locked(self &, st &mut TBState, now: u64) {
+    if now <= st.last_ns { return }
+    let elapsed_s = ns_to_secs_f64(now - st.last_ns)
+    st.last_ns = now
+    let added = elapsed_s * self.rate_per_sec
+    let t = st.tokens + added
+    st.tokens = if t > self.burst { self.burst } else { t }
+  }
+
+  /// Non-bloquant : consomme `permits` si dispo, sinon false
+  pub do allow(self &, permits: u32) -> bool {
+    if permits == 0 { return true }
+    if self.closed { return false }
+    let mut st = self.mu.lock()
+    self.refill_locked(&mut st, now_ns())
+    if st.tokens + 1e-12 >= (permits as f64) {
+      st.tokens -= (permits as f64)
+      true
+    } else {
+      false
     }
-    pub fn allow(&self) -> bool {
-        let now = (std::time::now().unix_secs()) as u64;
-        let last = self.last_s.load();
-        if now>last {
-            let delta=now-last;
-            let add = self.refill_per_sec.saturating_mul(delta);
-            let cur = (self.tokens.load()+add).min(self.cap);
-            self.tokens.store(cur);
-            self.last_s.store(now);
+  }
+
+  /// Bloquant : attend jusqu’à disponibilité
+  pub do acquire(self &, permits: u32) -> Result[Unit, RlError] {
+    self.acquire_timeout(permits, 0) // 0 → sans limite (boucle)
+  }
+
+  /// Attente bornée (timeout_ms == 0 => attente infinie)
+  pub do acquire_timeout(self &, permits: u32, timeout_ms: u32) -> Result[Unit, RlError] {
+    if permits == 0 { return Ok(()) }
+    if self.closed { return Err(RlError::Closed) }
+    let start = now_ns()
+    loop {
+      // tentative immédiate
+      {
+        let mut st = self.mu.lock()
+        self.refill_locked(&mut st, now_ns())
+        if st.tokens + 1e-12 >= (permits as f64) {
+          st.tokens -= (permits as f64)
+          return Ok(())
         }
-        let cur = self.tokens.load();
-        if cur==0 { return false; }
-        self.tokens.store(cur-1); true
+        // calcule temps d'attente estimé
+        let deficit = (permits as f64) - st.tokens
+        let secs_needed = deficit / self.rate_per_sec
+        let ns_needed = if secs_needed <= 0.0 { 0 } else { secs_to_ns_f64(secs_needed) as u64 }
+        drop(st) // sortir du lock avant de dormir
+        if timeout_ms > 0 {
+          let elapsed = now_ns() - start
+          if elapsed >= (timeout_ms as u64) * 1_000_000 { return Err(RlError::Timeout) }
+          // dort le minimum entre besoin et reste
+          let remain_ns = (timeout_ms as u64) * 1_000_000 - elapsed
+          let sleep_for = if ns_needed > remain_ns { remain_ns } else { ns_needed }
+          sleep_ns(if sleep_for == 0 { 1_000_000 } else { sleep_for })
+        } else {
+          // attente infinie
+          sleep_ns(if ns_needed == 0 { 1_000_000 } else { ns_needed })
+        }
+      }
     }
+  }
+
+  /// Estime (sans consommer) le délai pour `permits`
+  pub do estimate_wait_ns(self &, permits: u32) -> u64 {
+    if permits == 0 { return 0 }
+    let mut st = self.mu.lock()
+    self.refill_locked(&mut st, now_ns())
+    if st.tokens + 1e-12 >= (permits as f64) { return 0 }
+    let deficit = (permits as f64) - st.tokens
+    let secs_needed = deficit / self.rate_per_sec
+    if secs_needed <= 0.0 { 0 } else { secs_to_ns_f64(secs_needed) as u64 }
+  }
+
+  pub do close(self &) { self.closed = true }
+}
+
+// -------------------------------------------------------------------
+// GCRA (Leaky Bucket “calendaire”)
+// -------------------------------------------------------------------
+//
+// Notation :
+//   T = 1/rate  (ns par token)
+//   τ = burst * T
+//   tat = Theoretical Arrival Time (ns, monotone)
+//   On accepte si new_tat - τ <= now, sinon on attend (new_tat - τ - now)
+//   new_tat = max(now, tat) + permits*T
+//
+// Avantages : jitter borné, flux régulier si permits=1.
+// Idéal pour API “1 req toutes X ms” avec petite marge `burst`.
+//
+
+pub struct Gcra {
+  // paramètres
+  rate_per_sec: f64,
+  burst: u32,
+  // dérivés
+  T_ns: f64,        // ns/token
+  tau_ns: f64,      // marge (ns)
+  // état
+  mu: Mutex[GState],
+  closed: bool,
+}
+
+struct GState {
+  tat_ns: f64,      // stocké en f64 pour addition/compa rapides
+}
+
+pub do gcra(rate_per_sec: f64, burst: u32) -> Result[Gcra, RlError] {
+  if !(rate_per_sec > 0.0) { return Err(RlError::InvalidConfig("rate_per_sec <= 0")) }
+  if burst == 0 { return Err(RlError::InvalidConfig("burst == 0")) }
+  let t = secs_to_ns_f64(1.0 / rate_per_sec)
+  let tau = t * (burst as f64)
+  Ok(Gcra{
+    rate_per_sec, burst, T_ns: t, tau_ns: tau,
+    mu: Mutex::new(GState{ tat_ns: now_ns() as f64 }),
+    closed: false,
+  })
+}
+
+impl Gcra {
+  inline do is_closed(self &) -> bool { self.closed }
+
+  /// Non-bloquant : `true` si l’on peut passer immédiatement
+  pub do allow(self &, permits: u32) -> bool {
+    if permits == 0 { return true }
+    if self.closed { return false }
+    let mut st = self.mu.lock()
+    let nowf = now_ns() as f64
+    let tat = if st.tat_ns > nowf { st.tat_ns } else { nowf }
+    let new_tat = tat + (self.T_ns * (permits as f64))
+    let ok_border = new_tat - self.tau_ns
+    if ok_border <= nowf + 0.5 {
+      st.tat_ns = new_tat
+      true
+    } else {
+      false
+    }
+  }
+
+  /// Bloquant
+  pub do acquire(self &, permits: u32) -> Result[Unit, RlError] {
+    self.acquire_timeout(permits, 0)
+  }
+
+  pub do acquire_timeout(self &, permits: u32, timeout_ms: u32) -> Result[Unit, RlError] {
+    if permits == 0 { return Ok(()) }
+    if self.closed { return Err(RlError::Closed) }
+    let start = now_ns()
+    loop {
+      let wait_ns = self.estimate_wait_ns(permits)
+      if wait_ns == 0 {
+        // commit
+        let mut st = self.mu.lock()
+        let nowf = now_ns() as f64
+        let tat = if st.tat_ns > nowf { st.tat_ns } else { nowf }
+        st.tat_ns = tat + (self.T_ns * (permits as f64))
+        return Ok(())
+      }
+      if timeout_ms > 0 {
+        let elapsed = now_ns() - start
+        let limit = (timeout_ms as u64) * 1_000_000
+        if elapsed >= limit { return Err(RlError::Timeout) }
+        let remain = limit - elapsed
+        let sleep_for = if wait_ns > remain { remain } else { wait_ns }
+        sleep_ns(if sleep_for == 0 { 1_000_000 } else { sleep_for })
+      } else {
+        sleep_ns(if wait_ns == 0 { 1_000_000 } else { wait_ns })
+      }
+    }
+  }
+
+  /// Estimation sans commit
+  pub do estimate_wait_ns(self &, permits: u32) -> u64 {
+    if permits == 0 { return 0 }
+    let st = self.mu.lock()
+    let nowf = now_ns() as f64
+    let tat = if st.tat_ns > nowf { st.tat_ns } else { nowf }
+    let new_tat = tat + (self.T_ns * (permits as f64))
+    let border = new_tat - self.tau_ns
+    if border <= nowf { 0 } else { (border - nowf) as u64 }
+  }
+
+  pub do close(self &) { self.closed = true }
+}
+
+// -------------------------------------------------------------------
+// Rate limiter “keyed” (par identifiant) — TokenBucket & GCRA
+// -------------------------------------------------------------------
+
+pub enum Kind { TB, GCRA }
+
+pub struct KeyedLimiter {
+  kind: Kind,
+  tb_proto: Option[TokenBucket],   // modèle (paramètres seulement)
+  gc_proto: Option[Gcra],          // modèle (paramètres seulement)
+  mu: Mutex[Map[String, AnyLimiter]],
+}
+
+pub enum AnyLimiter {
+  TB(TokenBucket),
+  GC(Gcra),
+}
+
+/// Crée un KeyedLimiter basé sur TokenBucket
+pub do keyed_token_bucket(rate_per_sec: f64, burst: u32) -> Result[KeyedLimiter, RlError] {
+  let tb = token_bucket(rate_per_sec, burst)?
+  Ok(KeyedLimiter{
+    kind: Kind::TB,
+    tb_proto: Some(TokenBucket{ rate_per_sec: tb.rate_per_sec, burst: tb.burst, mu: Mutex::new(TBState{ tokens: 0.0, last_ns: now_ns() }), closed: false }),
+    gc_proto: None,
+    mu: Mutex::new(Map::new()),
+  })
+}
+
+/// Crée un KeyedLimiter basé sur GCRA
+pub do keyed_gcra(rate_per_sec: f64, burst: u32) -> Result[KeyedLimiter, RlError] {
+  let gc = gcra(rate_per_sec, burst)?
+  Ok(KeyedLimiter{
+    kind: Kind::GCRA,
+    tb_proto: None,
+    gc_proto: Some(Gcra{ rate_per_sec: gc.rate_per_sec, burst: gc.burst, T_ns: gc.T_ns, tau_ns: gc.tau_ns, mu: Mutex::new(GState{ tat_ns: now_ns() as f64 }), closed: false }),
+    mu: Mutex::new(Map::new()),
+  })
+}
+
+impl KeyedLimiter {
+  do get_or_create(self &, key: str) -> &mut AnyLimiter {
+    let mut map = self.mu.lock()
+    if !map.contains_key(&key) {
+      let k = String::from(key)
+      let val = match self.kind {
+        Kind::TB => {
+          // clone “logique” (nouvel état)
+          let proto = self.tb_proto.as_ref().unwrap()
+          AnyLimiter::TB(TokenBucket{
+            rate_per_sec: proto.rate_per_sec,
+            burst: proto.burst,
+            mu: Mutex::new(TBState{ tokens: proto.burst, last_ns: now_ns() }),
+            closed: false,
+          })
+        }
+        Kind::GCRA => {
+          let p = self.gc_proto.as_ref().unwrap()
+          AnyLimiter::GC(Gcra{
+            rate_per_sec: p.rate_per_sec,
+            burst: p.burst,
+            T_ns: p.T_ns,
+            tau_ns: p.tau_ns,
+            mu: Mutex::new(GState{ tat_ns: now_ns() as f64 }),
+            closed: false,
+          })
+        }
+      }
+      map.insert(k, val)
+    }
+    map.get_mut(&key).unwrap()
+  }
+
+  pub do allow(self &, key: str, permits: u32) -> bool {
+    match self.get_or_create(key) {
+      AnyLimiter::TB(ref tb) => tb.allow(permits),
+      AnyLimiter::GC(ref gc) => gc.allow(permits),
+    }
+  }
+
+  pub do acquire(self &, key: str, permits: u32) -> Result[Unit, RlError] {
+    match self.get_or_create(key) {
+      AnyLimiter::TB(ref tb) => tb.acquire(permits),
+      AnyLimiter::GC(ref gc) => gc.acquire(permits),
+    }
+  }
+
+  pub do acquire_timeout(self &, key: str, permits: u32, timeout_ms: u32) -> Result[Unit, RlError] {
+    match self.get_or_create(key) {
+      AnyLimiter::TB(ref tb) => tb.acquire_timeout(permits, timeout_ms),
+      AnyLimiter::GC(ref gc) => gc.acquire_timeout(permits, timeout_ms),
+    }
+  }
+
+  pub do estimate_wait_ns(self &, key: str, permits: u32) -> u64 {
+    match self.get_or_create(key) {
+      AnyLimiter::TB(ref tb) => tb.estimate_wait_ns(permits),
+      AnyLimiter::GC(ref gc) => gc.estimate_wait_ns(permits),
+    }
+  }
+
+  pub do close(self &) {
+    let mut map = self.mu.lock()
+    for (_, mut v) in map {
+      match v {
+        AnyLimiter::TB(ref tb) => tb.close(),
+        AnyLimiter::GC(ref gc) => gc.close(),
+      }
+    }
+  }
+}
+
+// -------------------------------------------------------------------
+// Exemples & tests (fumée)
+// -------------------------------------------------------------------
+
+// @test
+do _tb_allow_then_wait() {
+  let tb = token_bucket(10.0, 5).unwrap() // 10/s, burst 5
+  // consomme 5 d’un coup
+  assert(tb.allow(5), "burst")
+  // plus rien immédiatement
+  assert(!tb.allow(1), "must rate-limit now")
+  // attend ~100ms pour 1 token
+  let est = tb.estimate_wait_ns(1)
+  assert(est > 0, "need wait")
+  tb.acquire_timeout(1, 300).unwrap()
+}
+
+// @test
+do _gcra_smooth() {
+  let gc = gcra(5.0, 1).unwrap() // 5/s => T=200ms, burst=1
+  assert(gc.allow(1), "first ok")
+  // tout de suite après, ça devrait être refusé (besoin ~200ms)
+  assert(!gc.allow(1), "too soon")
+  // avec timeout
+  gc.acquire_timeout(1, 500).unwrap()
+}
+
+// @test
+do _keyed_multi() {
+  let kl = keyed_token_bucket(2.0, 2).unwrap() // 2/s, burst 2
+  assert(kl.allow("alice", 2), "alice burst")
+  assert(!kl.allow("alice", 1), "alice limited")
+  // bob a son propre seau
+  assert(kl.allow("bob", 1), "bob ok")
+}
+
+// @test
+do _invalid_configs() {
+  assert(token_bucket(0.0, 1).is_err(), "rate>0")
+  assert(token_bucket(1.0, 0).is_err(), "burst>0")
+  assert(gcra(0.0, 1).is_err(), "rate>0")
+  assert(gcra(1.0, 0).is_err(), "burst>0")
 }

@@ -1,17 +1,273 @@
-//! pool.vitte — pool d’objets avec constructeur & reset.
+//! modules/pool.vitte
+//! -------------------------------------------------------------
+//! Pool — réutilisation d’objets avec capacité bornée (preview)
+//! -------------------------------------------------------------
+//! Objectifs :
+//!   • bornes claires (capacité fixe), 0 surprise
+//!   • zéro alloc cachée lors d’un acquire si un objet est disponible
+//!   • thread-safe via Mutex + channel (sémaphore de permis)
+//!   • hooks : factory (création), reset (nettoyage avant remise en pool)
+//!   • API : acquire / try_acquire / acquire_timeout / with
+//!
+//! Design rapide :
+//!   - Un channel(u8) borné sert de *sémaphore* (cap tokens = slots libres).
+//!   - Un Vec<T> protégé par Mutex stocke les objets *idle*.
+//!   - Si idle est vide et qu’on tient un *permit*, on crée via factory().
+//!   - release → reset(opt) + push idle + restitue le permit au sémaphore.
+//!
+//! ⚠️ RAII : le langage Vitte n’a pas (encore) d’auto-drop standardisé.
+//!   → On fournit un wrapper Pooled[T] avec .give_back() explicite,
+//!     et surtout pool.with(|&mut T| { ... }) qui garantit la remise.
+//!
+//! Licence : MIT
 
-#![version("0.1.0")]
-#![strict]
+use string
+use channel
+use time
 
-pub struct Pool<T> {
-    free: std::collections::VecDeque<T>,
-    make: fn()->T,
-    reset: Option<fn(&mut T)>,
-    mu: std::sync::Mutex<()>,
+// ------------------------------ Types & erreurs ------------------------------
+
+pub enum PoolError {
+  Closed,                // pool fermé
+  Timeout,               // acquire_timeout expiré
 }
-impl<T> Pool<T> {
-    pub fn new(make: fn()->T) -> Self { Self{ free: std::collections::VecDeque::new(), make, reset: None, mu: std::sync::Mutex::new(()) } }
-    pub fn with_reset(make: fn()->T, reset: fn(&mut T)) -> Self { Self{ free: std::collections::VecDeque::new(), make, reset: Some(reset), mu: std::sync::Mutex::new(()) } }
-    pub fn get(&self) -> T { let _g=self.mu.lock(); self.free.pop_front().unwrap_or_else(self.make) }
-    pub fn put(&self, mut obj:T) { if let Some(r)=self.reset { r(&mut obj); } let _g=self.mu.lock(); self.free.push_back(obj); }
+
+type FactoryFn[T] = do() -> T
+type ResetFn[T]   = do(&mut T) -> Unit
+
+/// Élément emprunté au pool. Doit être rendu avec .give_back().
+pub struct Pooled[T] {
+  pool: &Pool[T],
+  item: Option[T],       // None après give_back()
+}
+
+impl[T] Pooled[T] {
+  pub do get(self &) -> &T { self.item.as_ref().unwrap() }
+  pub do get_mut(self &mut) -> &mut T { self.item.as_mut().unwrap() }
+
+  /// Rend l’élément au pool (idempotent).
+  pub do give_back(self &mut) -> Result[Unit, PoolError] {
+    if self.item.is_none() { return Ok(()) }
+    let it = self.item.take().unwrap()
+    self.pool.release(it)
+  }
+}
+
+/// Petit snapshot d’observabilité.
+pub struct PoolStats {
+  cap: usize,
+  total_created: usize,
+  idle: usize,
+  in_use: usize,
+}
+
+/// Pool générique borné.
+pub struct Pool[T] {
+  cap: usize,
+
+  // État protégé
+  mu: Mutex[State[T]],
+
+  // Sémaphore borné de permits (cap tokens)
+  permits_tx: Sender[u8],
+  permits_rx: Receiver[u8],
+
+  // Hooks
+  factory: FactoryFn[T],
+  reset: Option[ResetFn[T]],
+
+  // Statique : est-ce qu’on accepte encore des acquires ?
+  closed: bool,
+}
+
+struct State[T] {
+  total_created: usize,
+  idle: Vec[T],
+}
+
+// ------------------------------ Construction ------------------------------
+
+pub do with_capacity[T](cap: usize, factory: FactoryFn[T], reset: Option[ResetFn[T]]) -> Pool[T] {
+  assert(cap > 0, "pool capacity must be > 0")
+  let (tx, rx) = channel::channel[u8](cap)
+  // Remplit le sémaphore avec cap tokens
+  let mut i: usize = 0
+  while i < cap {
+    // ignore erreurs (channel borné ne doit pas overflow ici)
+    let _ = channel::send(&tx, 1)
+    i += 1
+  }
+  Pool[T]{
+    cap,
+    mu: Mutex::new(State[T]{ total_created: 0, idle: Vec::with_capacity(cap) }),
+    permits_tx: tx,
+    permits_rx: rx,
+    factory,
+    reset,
+    closed: false,
+  }
+}
+
+// ------------------------------ API publique ------------------------------
+
+/// Acquisition bloquante (sans timeout).
+pub do acquire[T](self &Pool[T]) -> Result[Pooled[T], PoolError] {
+  if self.closed { return Err(PoolError::Closed) }
+  // 1) prendre un permit (bloquant)
+  match channel::recv(&self.permits_rx) {
+    Ok(_) => { /* on a un slot */ }
+    Err(_) => return Err(PoolError::Closed),
+  }
+
+  // 2) récupérer ou créer l’objet
+  let mut it_opt: Option[T] = None
+  {
+    let mut st = self.mu.lock()
+    if st.idle.len() > 0 {
+      it_opt = Some(st.idle.pop().unwrap())
+    } else if st.total_created < self.cap {
+      // on créera hors section critique
+      st.total_created += 1
+    } else {
+      // impossible car le permit garantit le slot
+    }
+  }
+  let it = match it_opt {
+    Some(x) => x,
+    None    => (self.factory)(),
+  }
+
+  Ok(Pooled[T]{ pool: self, item: Some(it) })
+}
+
+/// Acquisition non bloquante (None si pas de permit).
+pub do try_acquire[T](self &Pool[T]) -> Option[Pooled[T]] {
+  if self.closed { return None }
+  match channel::try_recv(&self.permits_rx) {
+    Ok(_) => {
+      // même logique d’allocation
+      let mut it_opt: Option[T] = None
+      {
+        let mut st = self.mu.lock()
+        if st.idle.len() > 0 {
+          it_opt = Some(st.idle.pop().unwrap())
+        } else if st.total_created < self.cap {
+          st.total_created += 1
+        }
+      }
+      let it = match it_opt { Some(x) => x, None => (self.factory)() }
+      Some(Pooled[T]{ pool: self, item: Some(it) })
+    }
+    Err(_) => None,
+  }
+}
+
+/// Acquisition avec timeout millisecondes (polling 1ms).
+pub do acquire_timeout[T](self &Pool[T], timeout_ms: u32) -> Result[Pooled[T], PoolError] {
+  if self.closed { return Err(PoolError::Closed) }
+  let mut left = if timeout_ms == 0 { 1 } else { timeout_ms as i64 }
+  loop {
+    if let Some(p) = self.try_acquire() { return Ok(p) }
+    left -= 1
+    if left <= 0 { return Err(PoolError::Timeout) }
+    time::sleep(1.ms)
+  }
+}
+
+/// Exécute une action avec un élément garanti puis le remet.
+pub do with[T, R](self &Pool[T], f: do(&mut T) -> R) -> Result[R, PoolError] {
+  let mut p = self.acquire()?
+  let r = f(p.get_mut())
+  let _ = p.give_back()
+  Ok(r)
+}
+
+/// Remet *explicitement* un objet emprunté (utilisé par Pooled::give_back).
+pub do release[T](self &Pool[T], mut it: T) -> Result[Unit, PoolError] {
+  if let Some(ref reset) = self.reset {
+    reset(&mut it)
+  }
+  {
+    let mut st = self.mu.lock()
+    st.idle.push(it)
+  }
+  // restitue le permit
+  match channel::send(&self.permits_tx, 1) {
+    Ok(()) => Ok(()),
+    Err(_) => Err(PoolError::Closed),
+  }
+}
+
+/// Ferme le pool : les prochains acquires échouent, on vide les idles.
+pub do close[T](self &Pool[T]) {
+  self.closed = true
+  let mut st = self.mu.lock()
+  st.idle.clear()
+}
+
+/// Statistiques rapides (best-effort).
+pub do stats[T](self &Pool[T]) -> PoolStats {
+  let st = self.mu.lock()
+  let idle = st.idle.len()
+  let in_use = if self.cap >= idle { self.cap - idle } else { 0 }
+  PoolStats{
+    cap: self.cap,
+    total_created: st.total_created,
+    idle,
+    in_use,
+  }
+}
+
+// ------------------------------ Exemples & tests ------------------------------
+
+// Objet jouet
+struct Buf { data: Vec[u8] }
+
+do mkbuf() -> Buf { Buf{ data: Vec::with_capacity(4096) } }
+do reset_buf(b &mut Buf) { b.data.clear() }
+
+// @test
+do _pool_smoke() {
+  let pool = with_capacity[Buf](4, mkbuf, Some(reset_buf))
+
+  // acquire + give_back
+  let mut p = pool.acquire().unwrap()
+  p.get_mut().data.push(1)
+  assert(p.get().data.len() == 1, "mut ok")
+  p.give_back().unwrap()
+
+  // with()
+  let out = pool.with(|b| {
+    b.data.push(9)
+    b.data.len()
+  }).unwrap()
+  assert(out == 1, "with len==1")
+
+  // try_acquire (jusqu’à épuisement des permits)
+  let mut guards = Vec::new()
+  loop {
+    match pool.try_acquire() {
+      Some(g) => guards.push(g),
+      None => break,
+    }
+  }
+  let st = pool.stats()
+  assert(st.in_use <= st.cap, "borne respectée")
+
+  // libère tout
+  for g in guards {
+    let mut gg = g
+    let _ = gg.give_back()
+  }
+
+  // timeout
+  let mut gs = Vec::new()
+  for _ in 0..pool.stats().cap {
+    gs.push(pool.acquire().unwrap())
+  }
+  match pool.acquire_timeout(5) { // 5ms
+    Err(PoolError::Timeout) => assert(true, "timeout ok"),
+    _ => assert(false, "timeout attendu"),
+  }
+  for g in gs { let mut gg = g; let _ = gg.give_back(); }
 }

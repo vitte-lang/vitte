@@ -1,29 +1,592 @@
-//! validate.vitte — validations rapides (email/url/uuid/ranges/non-empty, etc.)
+//! modules/validate.vitte
+//! -----------------------------------------------------------------------------
+//! validate — primitives de validation (chaînes, nombres, identifiants, réseaux)
+//! -----------------------------------------------------------------------------
+//! Objectifs :
+//!   • Fonctions `is_*` (bool) et `ensure_*` (→ Result[Unit, ValError]) pour :
+//!       - chaînes : non-vide, longueur, ASCII, alnum, slug, motif (glob `*`/`?`)
+//!       - identifiants : email, uuid (v4/v7), slug
+//!       - réseau : hostname, ipv4, ipv6, url (http/s)
+//!       - numériques : bornes, parsing sûr
+//!       - divers : Luhn (CB/ID), ensemble autorisé (one_of)
+//!   • Combinateurs : `all_of`, `any_of`, avec contexte de champ.
+//!
+//! Non-objectifs (MVP) : i18n complexe, regex PCRE, schémas JSON, IBAN complet.
+//!
+//! État : **stable** (🖥🛠🔌🧪🌐) — Licence : MIT
+// -----------------------------------------------------------------------------
 
-#![version("0.1.0")]
-#![strict]
+use string
+use stringx
+use mathx
+use uuid
 
-pub fn non_empty(s:&str)->bool{ !s.trim().is_empty() }
-pub fn min_len(s:&str, n:usize)->bool{ s.chars().count()>=n }
-pub fn max_len(s:&str, n:usize)->bool{ s.chars().count()<=n }
+// -----------------------------------------------------------------------------
+// Erreurs & alias
+// -----------------------------------------------------------------------------
 
-pub fn is_email(s:&str)->bool{
-    let at = s.find('@'); if at.is_none(){ return false; }
-    let (l,r) = (&s[..at.unwrap()], &s[at.unwrap()+1..]);
-    non_empty(l) && r.contains('.') && !r.starts_with('.') && !r.ends_with('.')
+pub enum ValError {
+  Required,                 // valeur absente / vide
+  TooShort{ min: usize, got: usize },
+  TooLong { max: usize, got: usize },
+  NotAscii,
+  NotPrintableAscii,
+  NonAlnum,
+  InvalidChar{ ch: char },
+  Pattern,                  // ne matche pas le motif
+  Range,                    // hors bornes numériques
+  ParseInt,
+  ParseFloat,
+  NotInSet,
+  InvalidEmail,
+  InvalidHostname,
+  InvalidIpv4,
+  InvalidIpv6,
+  InvalidUrl,
+  InvalidUuid,
+  LuhnFailed,
+  Custom(String),           // message libre
 }
-pub fn is_uuid(s:&str)->bool{
-    let hex = |c:char| c.is_ascii_hexdigit();
-    let ch:Vec<char> = s.chars().collect();
-    if ch.len()!=36 { return false; }
-    for (i,&c) in ch.iter().enumerate() {
-        match i {
-            8|13|18|23 => if c!='-' { return false; },
-            _ => if !hex(c) { return false; }
-        }
+
+pub type VResult = Result[Unit, ValError]
+
+// Ajoute du contexte “nom de champ” à une erreur
+pub inline do with_field(e: ValError, field: str) -> ValError {
+  match e {
+    ValError::Custom(m) => ValError::Custom(field + ": " + m),
+    ValError::Required => ValError::Custom(field + ": required"),
+    ValError::TooShort{min,got} => ValError::Custom(field + ": too short ("+to_string(got)+"/"+to_string(min)+")"),
+    ValError::TooLong{max,got}  => ValError::Custom(field + ": too long ("+to_string(got)+"/"+to_string(max)+")"),
+    ValError::NotAscii => ValError::Custom(field + ": not ascii"),
+    ValError::NotPrintableAscii => ValError::Custom(field + ": not printable ascii"),
+    ValError::NonAlnum => ValError::Custom(field + ": non alnum"),
+    ValError::InvalidChar{ch} => ValError::Custom(field + ": invalid char '"+to_string(ch)+"'"),
+    ValError::Pattern => ValError::Custom(field + ": pattern mismatch"),
+    ValError::Range => ValError::Custom(field + ": out of range"),
+    ValError::ParseInt => ValError::Custom(field + ": invalid integer"),
+    ValError::ParseFloat => ValError::Custom(field + ": invalid float"),
+    ValError::NotInSet => ValError::Custom(field + ": not in allowed set"),
+    ValError::InvalidEmail => ValError::Custom(field + ": invalid email"),
+    ValError::InvalidHostname => ValError::Custom(field + ": invalid hostname"),
+    ValError::InvalidIpv4 => ValError::Custom(field + ": invalid IPv4"),
+    ValError::InvalidIpv6 => ValError::Custom(field + ": invalid IPv6"),
+    ValError::InvalidUrl => ValError::Custom(field + ": invalid URL"),
+    ValError::InvalidUuid => ValError::Custom(field + ": invalid UUID"),
+    ValError::LuhnFailed => ValError::Custom(field + ": invalid checksum (luhn)"),
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Predicates de base (chaînes)
+// -----------------------------------------------------------------------------
+
+pub inline do is_empty(s: str) -> bool { s.len() == 0 }
+pub inline do is_non_empty(s: str) -> bool { s.len() > 0 }
+
+pub inline do is_ascii(s: str) -> bool {
+  for ch in s.chars() { if (ch as u32) > 0x7F { return false } }
+  true
+}
+
+pub inline do is_printable_ascii(s: str) -> bool {
+  for ch in s.chars() {
+    let c = ch as u32
+    if c < 0x20 || c > 0x7E { return false }
+  }
+  true
+}
+
+pub inline do is_alnum_ascii(s: str) -> bool {
+  if s.len()==0 { return false }
+  for ch in s.chars() {
+    let c = ch as u32
+    let A = (c>= 'A' as u32 && c<= 'Z' as u32)
+    let a = (c>= 'a' as u32 && c<= 'z' as u32)
+    let d = (c>= '0' as u32 && c<= '9' as u32)
+    if !(A || a || d) { return false }
+  }
+  true
+}
+
+pub inline do is_slug(s: str) -> bool {
+  if s.len()==0 { return false }
+  if string::char_at(s,0)=='-' || string::char_at(s, s.len()-1)=='-' { return false }
+  let mut prev_dash = false
+  for ch in s.chars() {
+    if ch=='-' {
+      if prev_dash { return false }
+      prev_dash = true
+      continue
     }
-    true
+    prev_dash = false
+    let c = ch as u32
+    let a = (c>= 'a' as u32 && c<= 'z' as u32)
+    let d = (c>= '0' as u32 && c<= '9' as u32)
+    if !(a || d) { return false }
+  }
+  true
 }
-pub fn is_url_http_https(s:&str)->bool{ s.starts_with("http://")||s.starts_with("https://") }
-pub fn in_range_i64(x:i64, lo:i64, hi:i64)->bool{ x>=lo && x<=hi }
-pub fn in_range_f64(x:f64, lo:f64, hi:f64)->bool{ x>=lo && x<=hi }
+
+pub inline do len_between(s: str, min: usize, max: usize) -> bool {
+  s.len() >= min && s.len() <= max
+}
+
+// -----------------------------------------------------------------------------
+// Motif (glob minimal : * et ?), insensible à la casse optionnel
+// -----------------------------------------------------------------------------
+
+pub do matches_glob(s: str, pat: str, case_insensitive: bool) -> bool {
+  let ss = if case_insensitive { string::to_lower(s) } else { String::from(s) }
+  let pp = if case_insensitive { string::to_lower(pat) } else { String::from(pat) }
+  glob_match_core(ss, pp)
+}
+
+do glob_match_core(s: str, p: str) -> bool {
+  // Algorithme classique "backtracking" * et ?
+  let mut si: usize = 0
+  let mut pi: usize = 0
+  let mut star: Option[usize] = None
+  let mut ssaved: usize = 0
+
+  while si < s.len() {
+    if pi < p.len() {
+      let pc = string::char_at(p, pi)
+      if pc == '?' || pc == string::char_at(s, si) {
+        si += 1; pi += 1; continue
+      }
+      if pc == '*' {
+        star = Some(pi)
+        pi += 1
+        ssaved = si
+        continue
+      }
+    }
+    if star.is_some() {
+      pi = star.unwrap() + 1
+      ssaved += 1
+      si = ssaved
+      continue
+    }
+    return false
+  }
+  // consume trailing stars
+  while pi < p.len() && string::char_at(p, pi)=='*' { pi += 1 }
+  pi == p.len()
+}
+
+// -----------------------------------------------------------------------------
+// Hostname / IPv4 / IPv6
+// -----------------------------------------------------------------------------
+
+pub do is_hostname(s: str) -> bool {
+  // RFC-lite : labels [a-z0-9-], pas de début/fin par '-', 1..63 par label, total <=253, au moins 1 point.
+  let ls = stringx::split_words(string::replace_all(s, ".", " ")) // split simple au point
+  if ls.len() < 2 { return false }
+  let mut total = 0
+  for label in ls {
+    let n = label.len()
+    if n==0 || n>63 { return false }
+    total += n + 1
+    let first = string::char_at(label,0)
+    let last  = string::char_at(label,n-1)
+    if first=='-' || last=='-' { return false }
+    for ch in label.chars() {
+      let c = ch as u32
+      let a = (c>='a' as u32 && c<='z' as u32)
+      let d = (c>='0' as u32 && c<='9' as u32)
+      if !(a || d || ch=='-') { return false }
+    }
+  }
+  total-1 <= 253
+}
+
+pub do is_ipv4(s: str) -> bool {
+  // ddd.ddd.ddd.ddd (0..255)
+  let parts = split_char(s, '.')
+  if parts.len() != 4 { return false }
+  for p in parts {
+    if p.len()==0 || (p.len()>1 && string::char_at(p,0)=='0') { /* tolère 0 et 00 ? choisissons strict: pas de leading 0 sauf "0" */ }
+    // digits only
+    for ch in p.chars() { if ch < '0' || ch > '9' { return false } }
+    let mut v: i32 = 0
+    for ch in p.chars() { v = v*10 + ((ch as i32) - ('0' as i32)) }
+    if v < 0 || v > 255 { return false }
+  }
+  true
+}
+
+pub do is_ipv6(s: str) -> bool {
+  // Parser simplifié : hextets 8, compression '::', hextet = 1..4 hex, option IPv4 final.
+  let s2 = if string::starts_with(s,'[') && string::ends_with(s,']') { string::slice(s,1,s.len()-1) } else { String::from(s) }
+  let parts = split_str(s2, "::")
+  if parts.len() > 2 { return false }
+
+  do count_hextets(seg: str) -> i32 {
+    if seg.len()==0 { return 0 }
+    let ps = split_char(seg, ':')
+    let mut c: i32 = 0
+    let mut i: usize = 0
+    while i < ps.len() {
+      let h = ps[i]
+      if i==ps.len()-1 && is_ipv4(h) { c += 2; break } // IPv4 = 2 hextets
+      if h.len()==0 || h.len()>4 { return -1 }
+      for ch in h.chars() {
+        let cl = string::to_lower(string::from_char(ch))
+        let x = string::char_at(cl,0)
+        let ishex = (x>='0'&&x<='9')||(x>='a'&&x<='f')
+        if !ishex { return -1 }
+      }
+      c += 1
+      i += 1
+    }
+    c
+  }
+
+  if parts.len()==1 {
+    return count_hextets(parts[0]) == 8
+  } else {
+    let left  = count_hextets(parts[0])
+    let right = count_hextets(parts[1])
+    if left < 0 || right < 0 { return false }
+    return (left + right) < 8 // au moins un vide pour '::'
+  }
+}
+
+// -----------------------------------------------------------------------------
+// URL (http/https/ws/wss) — parse/valide minimaliste
+// -----------------------------------------------------------------------------
+
+pub struct UrlParts { scheme: String, host: String, port: Option[u16], path_q: String }
+
+pub do parse_url_http(s: str) -> Result[UrlParts, ValError] {
+  if s.len() < 8 { return Err(ValError::InvalidUrl) }
+  if string::contains_fold(s, " ") { return Err(ValError::InvalidUrl) }
+
+  // scheme
+  let low = string::to_lower(s)
+  let p = string::index_of(low, "://")
+  if p.is_none() { return Err(ValError::InvalidUrl) }
+  let idx = p.unwrap()
+  let scheme = string::slice(low, 0, idx)
+  if !(scheme=="http" || scheme=="https" || scheme=="ws" || scheme=="wss") {
+    return Err(ValError::InvalidUrl)
+  }
+  let rest = string::slice(s, idx+3, s.len())
+
+  // host[:port][path...]
+  // handle [ipv6]
+  let mut host = String::new()
+  let mut port: Option[u16] = None
+  let mut path_q = String::from("/")
+
+  if rest.len()==0 { return Err(ValError::InvalidUrl) }
+
+  if string::char_at(rest,0)=='[' {
+    // [ipv6]
+    let end = string::index_of(rest, "]").unwrap_or(0)
+    if end==0 { return Err(ValError::InvalidUrl) }
+    host = string::slice(rest, 0, end+1)
+    let rem = string::slice(rest, end+1, rest.len())
+    if rem.len()>0 && string::char_at(rem,0)==':' {
+      // port
+      let mut k: usize = 1
+      let mut acc = String::new()
+      while k<rem.len() && string::char_at(rem,k) >= '0' && string::char_at(rem,k) <= '9' { acc.push(string::char_at(rem,k)); k+=1 }
+      if acc.len()==0 { return Err(ValError::InvalidUrl) }
+      port = Some(parse_u16(acc)?)
+      path_q = if k<rem.len() { string::slice(rem,k,rem.len()) } else { "/" }
+    } else {
+      path_q = if rem.len()>0 { rem } else { "/" }
+    }
+    if !is_ipv6(host) { return Err(ValError::InvalidIpv6) }
+  } else {
+    // hostname or ipv4
+    // split at first '/', if any
+    let slash = string::index_of(rest,"/")
+    let hostport = if slash.is_some() { string::slice(rest,0,slash.unwrap()) } else { rest }
+    path_q = if slash.is_some() { string::slice(rest, slash.unwrap(), rest.len()) } else { "/" }
+
+    // possible :host:port
+    let colon = string::rindex_of(hostport, ":")
+    if colon.is_some() && !hostport.starts_with("[") {
+      host = string::slice(hostport, 0, colon.unwrap())
+      let ptxt = string::slice(hostport, colon.unwrap()+1, hostport.len())
+      port = Some(parse_u16(ptxt)?)
+    } else {
+      host = hostport
+    }
+
+    // valider host (hostname ou ipv4)
+    let h = string::to_lower(host)
+    if !(is_hostname(h) || is_ipv4(h)) { return Err(ValError::InvalidHostname) }
+  }
+
+  Ok(UrlParts{ scheme: String::from(scheme), host, port, path_q })
+}
+
+inline do parse_u16(s: str) -> Result[u16, ValError] {
+  if s.len()==0 { return Err(ValError::ParseInt) }
+  let mut v: u32 = 0
+  for ch in s.chars() {
+    if ch < '0' || ch > '9' { return Err(ValError::ParseInt) }
+    v = v*10 + ((ch as u32) - ('0' as u32))
+    if v > 65535 { return Err(ValError::Range) }
+  }
+  Ok(v as u16)
+}
+
+// -----------------------------------------------------------------------------
+// Email (RFC-lite)
+// -----------------------------------------------------------------------------
+
+pub do is_email(s: str) -> bool {
+  ensure_email(s).is_ok()
+}
+
+pub do ensure_email(s: str) -> VResult {
+  if s.len()==0 { return Err(ValError::Required) }
+  if string::contains_fold(s, " ") { return Err(ValError::InvalidEmail) }
+  let at = string::index_of(s, "@")
+  if at.is_none() { return Err(ValError::InvalidEmail) }
+  let i = at.unwrap()
+  if string::rindex_of(s, "@").unwrap() != i { return Err(ValError::InvalidEmail) } // une seule '@'
+  let local = string::slice(s, 0, i)
+  let domain = string::slice(s, i+1, s.len())
+  if local.len()==0 || domain.len()==0 { return Err(ValError::InvalidEmail) }
+  if local.len()>64 || s.len()>254 { return Err(ValError::TooLong{max:254, got:s.len()}) }
+  // local-part : ASCII, ., _ % + - autorisés, pas de "..", pas début/fin par '.'
+  if !is_ascii(local) { return Err(ValError::InvalidEmail) }
+  if string::char_at(local,0)=='.' || string::char_at(local,local.len()-1)=='.' { return Err(ValError::InvalidEmail) }
+  let mut prev_dot = false
+  for ch in local.chars() {
+    let ok = (ch>='A'&&ch<='Z')||(ch>='a'&&ch<='z')||(ch>='0'&&ch<='9')||ch=='.'||ch=='_'||ch=='%'||ch=='+'||ch=='-'
+    if !ok { return Err(ValError::InvalidEmail) }
+    if ch=='.' { if prev_dot { return Err(ValError::InvalidEmail) } prev_dot=true } else { prev_dot=false }
+  }
+  // domaine
+  let dl = string::to_lower(domain)
+  if !(is_hostname(dl)) { return Err(ValError::InvalidEmail) }
+  Ok(())
+}
+
+// -----------------------------------------------------------------------------
+// UUID
+// -----------------------------------------------------------------------------
+
+pub inline do is_uuid(s: str) -> bool { uuid::parse(s).is_ok() }
+
+pub do ensure_uuid(s: str) -> VResult {
+  match uuid::parse(s) { Ok(_) => Ok(()), Err(_) => Err(ValError::InvalidUuid) }
+}
+
+// -----------------------------------------------------------------------------
+// Chaînes : ensure_* helpers
+// -----------------------------------------------------------------------------
+
+pub inline do ensure_non_empty(s: str) -> VResult {
+  if s.len()>0 { Ok(()) } else { Err(ValError::Required) }
+}
+pub inline do ensure_ascii(s: str) -> VResult {
+  if is_ascii(s) { Ok(()) } else { Err(ValError::NotAscii) }
+}
+pub inline do ensure_printable_ascii(s: str) -> VResult {
+  if is_printable_ascii(s) { Ok(()) } else { Err(ValError::NotPrintableAscii) }
+}
+pub inline do ensure_len_range(s: str, min: usize, max: usize) -> VResult {
+  if s.len() < min { return Err(ValError::TooShort{min, got:s.len()}) }
+  if s.len() > max { return Err(ValError::TooLong{max, got:s.len()}) }
+  Ok(())
+}
+pub inline do ensure_slug(s: str) -> VResult {
+  if is_slug(s) { Ok(()) } else { Err(ValError::Custom("invalid slug".into())) }
+}
+pub inline do ensure_glob(s: str, pattern: str, ci: bool) -> VResult {
+  if matches_glob(s, pattern, ci) { Ok(()) } else { Err(ValError::Pattern) }
+}
+
+// -----------------------------------------------------------------------------
+// Nombres / parsing et bornes
+// -----------------------------------------------------------------------------
+
+pub do parse_i64(s: str) -> Result[i64, ValError] {
+  if s.len()==0 { return Err(ValError::ParseInt) }
+  let mut i: usize = 0
+  let mut neg = false
+  if string::char_at(s,0)=='+' { i=1 }
+  else if string::char_at(s,0)=='-' { neg=true; i=1 }
+  if i>=s.len() { return Err(ValError::ParseInt) }
+  let mut v: i128 = 0
+  while i<s.len() {
+    let ch = string::char_at(s,i)
+    if ch<'0'||ch>'9' { return Err(ValError::ParseInt) }
+    v = v*10 + ((ch as i128) - ('0' as i128))
+    if (!neg && v> (i64::MAX as i128)) || (neg && -v < (i64::MIN as i128)) { return Err(ValError::Range) }
+    i += 1
+  }
+  Ok(if neg { -(v as i64) } else { v as i64 })
+}
+
+pub do parse_f64(s: str) -> Result[f64, ValError] {
+  // MVP : accepte [-+]?\d+(\.\d+)?([eE][-+]?\d+)?
+  if s.len()==0 { return Err(ValError::ParseFloat) }
+  // déléguer au runtime parseur (hypothétique)
+  match string::to_float64(s) {
+    Some(x) => Ok(x),
+    None => Err(ValError::ParseFloat),
+  }
+}
+
+pub inline do ensure_range_i64(x: i64, lo: i64, hi: i64) -> VResult {
+  if x<lo || x>hi { Err(ValError::Range) } else { Ok(()) }
+}
+pub inline do ensure_range_f64(x: f64, lo: f64, hi: f64) -> VResult {
+  if x<lo || x>hi { Err(ValError::Range) } else { Ok(()) }
+}
+
+// -----------------------------------------------------------------------------
+// Ensemble autorisé & Luhn
+// -----------------------------------------------------------------------------
+
+pub do ensure_one_of[T: Eq](x: &T, allowed: Vec[T]) -> VResult {
+  for a in allowed { if *x == a { return Ok(()) } }
+  Err(ValError::NotInSet)
+}
+
+/// Vérifie l’algorithme de Luhn sur une chaîne (chiffres, espaces/tirets ignorés)
+pub do luhn_ok(s: str) -> bool {
+  let mut sum: i32 = 0
+  let mut alt = false
+  // itère de droite à gauche
+  let mut i: isize = (s.len() as isize) - 1
+  while i >= 0 {
+    let ch = string::char_at(s, i as usize)
+    i -= 1
+    if ch==' ' || ch=='-' { continue }
+    if ch<'0'||ch>'9' { return false }
+    let mut n = (ch as i32) - ('0' as i32)
+    if alt {
+      n *= 2
+      if n > 9 { n -= 9 }
+    }
+    sum += n
+    alt = !alt
+  }
+  (sum % 10) == 0
+}
+
+pub inline do ensure_luhn(s: str) -> VResult {
+  if luhn_ok(s) { Ok(()) } else { Err(ValError::LuhnFailed) }
+}
+
+// -----------------------------------------------------------------------------
+// Combinateurs de règles
+// -----------------------------------------------------------------------------
+
+/// Règle sur &str : None => ok, Some(err) => erreur
+pub type RuleStr = do(str) -> Option[ValError]
+
+pub do all_of(value: str, rules: Vec[RuleStr]) -> VResult {
+  for r in rules {
+    match r(value) {
+      None => { /* ok */ }
+      Some(e) => return Err(e),
+    }
+  }
+  Ok(())
+}
+
+pub do any_of(value: str, rules: Vec[RuleStr]) -> VResult {
+  let mut last: Option[ValError] = None
+  for r in rules {
+    match r(value) {
+      None => return Ok(()),
+      Some(e) => last = Some(e),
+    }
+  }
+  Err(last.unwrap_or(ValError::Custom("no rule matched".into())))
+}
+
+// Usines de règles rapides
+pub inline do rule_non_empty() -> RuleStr { |s| if s.len()>0 { None } else { Some(ValError::Required) } }
+pub inline do rule_len(min: usize, max: usize) -> RuleStr {
+  |s| {
+    if s.len()<min { return Some(ValError::TooShort{min,got:s.len()}) }
+    if s.len()>max { return Some(ValError::TooLong{max,got:s.len()}) }
+    None
+  }
+}
+pub inline do rule_ascii() -> RuleStr { |s| if is_ascii(s) { None } else { Some(ValError::NotAscii) } }
+pub inline do rule_printable_ascii() -> RuleStr { |s| if is_printable_ascii(s) { None } else { Some(ValError::NotPrintableAscii) } }
+pub inline do rule_glob(pat: str, ci: bool) -> RuleStr { |s| if matches_glob(s, pat, ci) { None } else { Some(ValError::Pattern) } }
+pub inline do rule_email() -> RuleStr { |s| match ensure_email(s) { Ok(())=>None, Err(e)=>Some(e) } }
+pub inline do rule_slug() -> RuleStr { |s| if is_slug(s) { None } else { Some(ValError::Custom("invalid slug".into())) } }
+
+// -----------------------------------------------------------------------------
+// Utilitaires internes
+// -----------------------------------------------------------------------------
+
+do split_char(s: str, sep: char) -> Vec[String] {
+  let mut out = Vec::new()
+  let mut cur = String::new()
+  for ch in s.chars() {
+    if ch == sep { out.push(cur); cur = String::new() } else { cur.push(ch) }
+  }
+  out.push(cur)
+  out
+}
+
+do split_str(s: str, needle: str) -> Vec[String] {
+  if needle.len()==0 { return vec![ String::from(s) ] }
+  let mut out = Vec::new()
+  let mut i: usize = 0
+  loop {
+    match stringx::index_of_from(s, needle, i) {
+      None => { out.push(string::slice(s, i, s.len())); break }
+      Some(j) => {
+        out.push(string::slice(s, i, j))
+        i = j + needle.len()
+      }
+    }
+  }
+  out
+}
+
+// -----------------------------------------------------------------------------
+// Exemples / Tests (fumée)
+// -----------------------------------------------------------------------------
+
+// @test
+do _email_ok() {
+  assert(is_email("a.b-c+d_1@example-domain.com"), "email ok")
+  assert(!is_email("bad..dot@x.com"), "email bad")
+}
+
+// @test
+do _hostname_ip() {
+  assert(is_hostname("example.org"), "host ok")
+  assert(is_ipv4("192.168.0.1"), "ipv4 ok")
+  assert(!is_ipv4("256.1.1.1"), "ipv4 range")
+  assert(is_ipv6("2001:db8::1"), "ipv6 ok")
+}
+
+// @test
+do _url_parse() {
+  let u = parse_url_http("https://example.org:8443/api?q=1").unwrap()
+  assert(u.scheme=="https" && u.port.unwrap()==8443 && u.host=="example.org", "url parts")
+  assert(parse_url_http("ftp://x").is_err(), "scheme filtered")
+}
+
+// @test
+do _uuid_luhn() {
+  assert(ensure_uuid("550e8400-e29b-41d4-a716-446655440000").is_ok(), "uuid")
+  assert(luhn_ok("4539 1488 0343 6467"), "luhn ok")
+  assert(!luhn_ok("4539 1488 0343 6468"), "luhn bad")
+}
+
+// @test
+do _combos() {
+  let r = all_of("Hello", vec![ rule_non_empty(), rule_len(1,10), rule_ascii() ])
+  assert(r.is_ok(), "all ok")
+  let r2 = any_of("x", vec![ |s| if s=="y" {None} else {Some(ValError::Custom("no".into()))}, |s| if s=="x"{None}else{Some(ValError::Custom("no".into()))} ])
+  assert(r2.is_ok(), "any ok")
+}

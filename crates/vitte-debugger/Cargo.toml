@@ -1,0 +1,70 @@
+###############################################################################
+# crates/vitte-debugger/Cargo.toml — Débogueur Vitte
+#
+# Fournit :
+#  - API Debug Adapter Protocol (api.rs)
+#  - Gestion des breakpoints, hooks VM, scopes & variables
+#  - Contrôleur de stepping (step.rs)
+#  - État centralisé du débogueur (state.rs)
+#
+# Destiné à être utilisé par vitte-dap (adaptateur DAP) ou vitte-cli (--debug).
+###############################################################################
+
+[package]
+name = "vitte-debugger"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT OR Apache-2.0"
+authors = ["Vincent <you@example.com>"]
+description = "Vitte Debugger — API & contrôleur pour Debug Adapter Protocol"
+homepage = "https://example.com/vitte"
+repository = "https://github.com/vitte-lang/vitte"
+
+[lib]
+name = "vitte_debugger"
+path = "src/lib.rs"
+
+###############################################################################
+# Dépendances internes
+###############################################################################
+[dependencies]
+vitte-core    = { path = "../vitte-core" }
+vitte-runtime = { path = "../vitte-runtime" }
+
+###############################################################################
+# Dépendances externes
+###############################################################################
+color-eyre    = "0.6"    # gestion élégante des erreurs
+thiserror     = "1.0"    # erreurs custom
+serde         = { version = "1.0", features = ["derive"] }
+serde_json    = "1.0"
+log           = "0.4"
+env_logger    = "0.11"
+
+###############################################################################
+# Dev-deps (tests, snapshots, fuzzing)
+###############################################################################
+[dev-dependencies]
+insta     = "1.38"
+proptest  = "1.4"
+
+###############################################################################
+# Features (si tu veux un mode no_std plus tard)
+###############################################################################
+[features]
+default = ["std"]
+std     = []
+no_std  = []
+
+###############################################################################
+# Profils de build
+###############################################################################
+[profile.dev]
+opt-level = 1
+debug = true
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

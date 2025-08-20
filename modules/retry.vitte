@@ -1,29 +1,427 @@
-//! retry.vitte — retry sync avec backoff exponentiel + jitter.
+//! modules/retry.vitte
+//! -----------------------------------------------------------------------------
+//! retry — Backoff & Retry robustes (constant/linéaire/exponentiel + jitter)
+//! -----------------------------------------------------------------------------
+//! Objectifs :
+//!   • API **simple** : `run(policy, || op())` et `run_if(policy, || op(), is_retryable)`
+//!   • Stratégies : constant • linéaire • exponentielle (factor, max_delay)
+//!   • Jitter : none • full • equal • decorrelated (style AWS) pour lisser les pics
+//!   • Bornes : `max_retries`, `max_elapsed_ms` (deadline), estimation de délai
+//!   • Hooks : `on_retry(attempt, delay_ms)` pour log/metrics
+//!   • Async (preview) : `run_async` / `run_if_async`
+//!
+//! ⚠️ Idempotence : **ne** réessayez que des opérations idempotentes (GET, PUT idempotent,
+//! transactions safe à répétition) ou *explicitement* protégées côté serveur.
+//!
+//! État : preview (🖥🛠🌐). Licence : MIT
+//!
+//! Exemples rapides :
+//! ```vitte
+//! use retry
+//!
+//! // 1) Expo + full jitter, borné à 5 tentatives, base=100ms, max=2s
+//! let p = retry::exponential_backoff(max_retries: 5, base_ms: 100, factor: 2.0,
+//!                                    jitter: "full", max_delay_ms: 2000)
+//! let res = retry::run(p, || http_client::get("https://api.example.com/health"))
+//!
+//! // 2) Avec prédicat de réessayage (HTTP seulement 429/5xx)
+//! do retryable_http(e: &HttpError) -> bool {
+//!   match *e {
+//!     HttpError::Timeout => true,
+//!     HttpError::Status(s) => s == 429 || (s >= 500 && s <= 599),
+//!     _ => false,
+//!   }
+//! }
+//! let p2 = retry::exponential_backoff(6, 80, 2.0, "decorrelated", 4000)
+//! let res2 = retry::run_if[Response, HttpError](p2, || http_client::get(url), retryable_http)
+//!
+//! // 3) Constant 250ms, 8 tentatives, sans jitter
+//! let pc = retry::constant_backoff(8, 250, "none", 250)
+//!
+//! // 4) Linéaire : 100, 200, 300, … ms (step=100)
+//! let pl = retry::linear_backoff(10, 100, 100, "equal", 2000)
+//! ```
+//!
+//! Notes :
+//!   - Les temps utilisent l’horloge monotone. Les délais saturent aux bornes positives.
+//!   - `run` renvoie **la dernière erreur** si toutes les tentatives échouent.
+//!   - `run` considère “retryable = toute Err” ; préférez `run_if` pour contrôler.
+//!   - `decorrelated` utilise le délai précédent ; il est restauré entre *runs*.
+//! -----------------------------------------------------------------------------
 
-#![version("0.1.0")]
-#![strict]
+use mathx
+use time
+use string
+use random
 
-pub struct Backoff { pub base_ms:u64, pub factor:f64, pub max_ms:u64, pub jitter_ms:u64 }
-impl Backoff {
-    pub fn default() -> Self { Self{ base_ms:500, factor:2.0, max_ms:30_000, jitter_ms:200 } }
-    pub fn dur(&self, attempt:u32) -> u64 {
-        let exp = (self.base_ms as f64) * self.factor.powi(attempt as int);
-        let mut d = exp as u64;
-        if d > self.max_ms { d = self.max_ms; }
-        d + (std::rand::u32() as u64 % (self.jitter_ms+1))
-    }
+// -----------------------------------------------------------------------------
+// Horloge monotone
+// -----------------------------------------------------------------------------
+
+extern(c) do __vitte_now_ns() -> u64
+inline do now_ns() -> u64 { __vitte_now_ns() }
+const NS_PER_MS : u64 = 1_000_000
+
+inline do sleep_ms(ms: u32) {
+  let m = if ms == 0 { 1 } else { ms } // borne basse ~1ms
+  time::sleep(m.ms)
 }
 
-pub fn retry<T>(mut f: fn()->Result<T,str>, max_attempts:u32, b: Backoff) -> Result<T,str> {
-    let mut i=0;
-    loop {
-        match f() {
-            Ok(v)=>return Ok(v),
-            Err(e)=>{
-                i+=1;
-                if i>=max_attempts { return Err(e); }
-                std::time::sleep(b.dur(i) as i64);
-            }
-        }
+// -----------------------------------------------------------------------------
+// Types & configuration
+// -----------------------------------------------------------------------------
+
+pub enum BackoffKind { Constant, Linear, Exponential }
+
+pub enum JitterKind { None, Full, Equal, Decorrelated }
+
+pub struct Policy {
+  kind: BackoffKind,
+
+  // Constant   : delay_ms = base_ms
+  // Linear     : delay_ms = base_ms + step_ms * (attempt-1)
+  // Exponential: delay_ms = base_ms * factor^(attempt-1)
+  base_ms: u32,
+  step_ms: u32,    // pour linéaire
+  factor: f64,     // pour expo
+
+  max_delay_ms: u32,      // clamp du délai calculé (>= base_ms recommandé)
+  max_retries: u32,       // nb d’essais **supplémentaires** après le premier ? → convention: nombre total d’essais = max_retries (≥1)
+  max_elapsed_ms: u32,    // 0 = illimité
+
+  jitter: JitterKind,
+
+  // Hook : appelé juste avant la sieste, uniquement si on va réessayer
+  on_retry: Option[do(attempt: u32, delay_ms: u32) -> Unit],
+}
+
+// Valeurs sûres
+pub do policy_default() -> Policy {
+  Policy{
+    kind: BackoffKind::Exponential,
+    base_ms: 100,
+    step_ms: 100,
+    factor: 2.0,
+    max_delay_ms: 30_000,
+    max_retries: 5,
+    max_elapsed_ms: 0,
+    jitter: JitterKind::Full,
+    on_retry: None,
+  }
+}
+
+// Constructeurs conviviaux
+pub do constant_backoff(max_retries: u32, delay_ms: u32, jitter: str, max_delay_ms: u32) -> Policy {
+  Policy{
+    kind: BackoffKind::Constant,
+    base_ms: delay_ms,
+    step_ms: 0,
+    factor: 1.0,
+    max_delay_ms: if max_delay_ms == 0 { delay_ms } else { max_delay_ms },
+    max_retries,
+    max_elapsed_ms: 0,
+    jitter: parse_jitter(jitter),
+    on_retry: None,
+  }
+}
+
+pub do linear_backoff(max_retries: u32, base_ms: u32, step_ms: u32, jitter: str, max_delay_ms: u32) -> Policy {
+  Policy{
+    kind: BackoffKind::Linear,
+    base_ms,
+    step_ms,
+    factor: 1.0,
+    max_delay_ms: if max_delay_ms == 0 { base_ms + step_ms * max_retries } else { max_delay_ms },
+    max_retries,
+    max_elapsed_ms: 0,
+    jitter: parse_jitter(jitter),
+    on_retry: None,
+  }
+}
+
+pub do exponential_backoff(max_retries: u32, base_ms: u32, factor: f64, jitter: str, max_delay_ms: u32) -> Policy {
+  let f = if factor < 1.01 { 2.0 } else { factor } // sécurité
+  Policy{
+    kind: BackoffKind::Exponential,
+    base_ms: if base_ms == 0 { 1 } else { base_ms },
+    step_ms: 0,
+    factor: f,
+    max_delay_ms: if max_delay_ms == 0 { 30_000 } else { max_delay_ms },
+    max_retries,
+    max_elapsed_ms: 0,
+    jitter: parse_jitter(jitter),
+    on_retry: None,
+  }
+}
+
+pub do with_max_elapsed(mut p: Policy, ms: u32) -> Policy {
+  p.max_elapsed_ms = ms
+  p
+}
+
+pub do with_on_retry(mut p: Policy, cb: do(u32, u32) -> Unit) -> Policy {
+  p.on_retry = Some(cb)
+  p
+}
+
+inline do parse_jitter(s: str) -> JitterKind {
+  let x = string::to_lower(s)
+  if x == "none" { JitterKind::None }
+  else if x == "equal" { JitterKind::Equal }
+  else if x == "decorrelated" { JitterKind::Decorrelated }
+  else { JitterKind::Full }
+}
+
+// -----------------------------------------------------------------------------
+// Calcul des délais
+// -----------------------------------------------------------------------------
+
+inline do clamp_u64_to_u32(x: u64) -> u32 {
+  if x > (u64::MAX as u64) { return u32::MAX } // impossible ici, garde-fou
+  if x > (u32::MAX as u64) { u32::MAX } else { x as u32 }
+}
+
+do expo_step(base: u32, factor: f64, n: u32) -> u32 {
+  // base * factor^(n-1), en saturant
+  if n <= 1 { return base }
+  let mut delay = base as f64
+  let mut i: u32 = 1
+  while i < n {
+    delay = delay * factor
+    if delay > (u32::MAX as f64) { return u32::MAX }
+    i += 1
+  }
+  delay as u32
+}
+
+inline do compute_base_delay(p: &Policy, attempt: u32, prev_delay: u32) -> u32 {
+  match p.kind {
+    BackoffKind::Constant    => p.base_ms,
+    BackoffKind::Linear      => p.base_ms + (p.step_ms * (if attempt == 0 {0} else {attempt-1})),
+    BackoffKind::Exponential => expo_step(p.base_ms, p.factor, if attempt == 0 {1} else {attempt}),
+  }
+  // attempt est 1-based conceptuellement (tentative #1 → base)
+}
+
+inline do apply_jitter(p: &Policy, mut d: u32, mut rng: &mut random::RngXorShift64, prev_delay: u32) -> u32 {
+  match p.jitter {
+    JitterKind::None => d,
+    JitterKind::Full => {
+      // [0, d]
+      let span = (d as u64) + 1
+      (rng.u64_below(span) as u32)
     }
+    JitterKind::Equal => {
+      // d/2 + U(0, d/2)
+      let half = d / 2
+      let span = (half as u64) + 1
+      half + (rng.u64_below(span) as u32)
+    }
+    JitterKind::Decorrelated => {
+      // D_{n+1} ← U(base, D_n * factor)
+      let upper = {
+        let up = (prev_delay as f64) * (if p.factor < 1.01 { 3.0 } else { p.factor })
+        if up < (p.base_ms as f64) { p.base_ms as f64 } else { up }
+      }
+      let lo = p.base_ms as u64
+      let hi = mathx::max_i64( (upper as i64) as i64, (p.base_ms as i64)) as u64
+      if hi <= lo { p.base_ms } else {
+        let span = (hi - lo) + 1
+        (lo + rng.u64_below(span)) as u32
+      }
+    }
+  }
+}
+
+inline do clamp_delay(p: &Policy, d: u32) -> u32 {
+  if d > p.max_delay_ms { p.max_delay_ms } else { d }
+}
+
+// -----------------------------------------------------------------------------
+// Exécution — sync
+// -----------------------------------------------------------------------------
+
+/// `run` : réessaye **toute** erreur jusqu’à succès ou épuisement.
+/// Préférez `run_if` pour maîtriser le périmètre d’erreurs réessayables.
+pub do run[T,E](p: Policy, op: do() -> Result[T,E]) -> Result[T,E] {
+  run_if[T,E](p, op, |_| true)
+}
+
+/// `run_if` : ne réessaye que si `is_retryable(&E)` renvoie true.
+pub do run_if[T,E](p: Policy, op: do() -> Result[T,E], is_retryable: do(&E) -> bool) -> Result[T,E] {
+  let start = now_ns()
+  let mut rng = random::xorshift64_from_entropy()
+  let mut prev_delay: u32 = p.base_ms
+
+  let total = if p.max_retries == 0 { 1 } else { p.max_retries }
+  let mut attempt: u32 = 1
+
+  loop {
+    let r = op()
+    match r {
+      Ok(v) => return Ok(v),
+      Err(e) => {
+        // stop si non réessayable
+        if !is_retryable(&e) { return Err(e) }
+
+        // stop conditions : tentatives & elapsed
+        if attempt >= total {
+          return Err(e)
+        }
+        if p.max_elapsed_ms > 0 {
+          let elapsed_ms = (now_ns() - start) / NS_PER_MS
+          if elapsed_ms >= (p.max_elapsed_ms as u64) {
+            return Err(e)
+          }
+        }
+
+        // calcule délai
+        let base = compute_base_delay(&p, attempt, prev_delay)
+        let with_jit = apply_jitter(&p, base, &mut rng, prev_delay)
+        let delay = clamp_delay(&p, with_jit)
+        prev_delay = if p.jitter == JitterKind::Decorrelated { delay } else { base }
+
+        // hook
+        if let Some(cb) = p.on_retry {
+          cb(attempt, delay)
+        }
+
+        // dors
+        sleep_ms(delay)
+        attempt += 1
+        // ↻
+      }
+    }
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Exécution — async (preview)
+// -----------------------------------------------------------------------------
+
+// NB: Version illustrative, dépend d’un runtime async coopératif dans Vitte.
+// Ici on “simule” avec sleep bloquant ; un vrai port utiliserait `sleep_async`.
+
+pub async do run_async[T,E](p: Policy, op: async do() -> Result[T,E]) -> Result[T,E] {
+  run_if_async[T,E](p, op, |_| true).await
+}
+
+pub async do run_if_async[T,E](p: Policy, op: async do() -> Result[T,E], is_retryable: do(&E) -> bool) -> Result[T,E] {
+  let start = now_ns()
+  let mut rng = random::xorshift64_from_entropy()
+  let mut prev_delay: u32 = p.base_ms
+
+  let total = if p.max_retries == 0 { 1 } else { p.max_retries }
+  let mut attempt: u32 = 1
+
+  loop {
+    let r = await op()
+    match r {
+      Ok(v) => return Ok(v),
+      Err(e) => {
+        if !is_retryable(&e) { return Err(e) }
+        if attempt >= total { return Err(e) }
+        if p.max_elapsed_ms > 0 {
+          let elapsed_ms = (now_ns() - start) / NS_PER_MS
+          if elapsed_ms >= (p.max_elapsed_ms as u64) { return Err(e) }
+        }
+
+        let base = compute_base_delay(&p, attempt, prev_delay)
+        let with_jit = apply_jitter(&p, base, &mut rng, prev_delay)
+        let delay = clamp_delay(&p, with_jit)
+        prev_delay = if p.jitter == JitterKind::Decorrelated { delay } else { base }
+
+        if let Some(cb) = p.on_retry {
+          cb(attempt, delay)
+        }
+        // TODO: replace by non-bloquant lorsque dispo
+        sleep_ms(delay)
+        attempt += 1
+      }
+    }
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Helpers dédiés (HTTP, etc.)
+// -----------------------------------------------------------------------------
+
+/// `retryable_status` : 429 & 5xx
+pub inline do retryable_status(status: u16) -> bool {
+  status == 429 || (status >= 500 && status <= 599)
+}
+
+/// Exemple : enchaîner sur une op qui renvoie (status, body) au lieu d’un Result
+pub do run_status[T](p: Policy, op: do() -> (u16, T)) -> (u16, T) {
+  let mut attempt: u32 = 1
+  let start = now_ns()
+  let mut rng = random::xorshift64_from_entropy()
+  let mut prev_delay: u32 = p.base_ms
+
+  loop {
+    let (s, v) = op()
+    if !retryable_status(s) { return (s, v) }
+    if attempt >= p.max_retries { return (s, v) }
+    if p.max_elapsed_ms > 0 && ((now_ns() - start) / NS_PER_MS) >= (p.max_elapsed_ms as u64) {
+      return (s, v)
+    }
+    let base = compute_base_delay(&p, attempt, prev_delay)
+    let with_jit = apply_jitter(&p, base, &mut rng, prev_delay)
+    let delay = clamp_delay(&p, with_jit)
+    prev_delay = if p.jitter == JitterKind::Decorrelated { delay } else { base }
+    if let Some(cb) = p.on_retry { cb(attempt, delay) }
+    sleep_ms(delay)
+    attempt += 1
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Tests (fumée) — invariants basiques
+// -----------------------------------------------------------------------------
+
+// @test
+do _expo_monotone() {
+  let p = exponential_backoff(5, 100, 2.0, "none", 5000)
+  let d1 = compute_base_delay(&p, 1, 0)
+  let d2 = compute_base_delay(&p, 2, 0)
+  let d3 = compute_base_delay(&p, 3, 0)
+  assert(d1 == 100 && d2 == 200 && d3 == 400, "expo *2")
+}
+
+// @test
+do _linear_step() {
+  let p = linear_backoff(4, 100, 50, "none", 0)
+  let d1 = compute_base_delay(&p, 1, 0)
+  let d2 = compute_base_delay(&p, 2, 0)
+  let d3 = compute_base_delay(&p, 3, 0)
+  assert(d1==100 && d2==150 && d3==200, "linéaire +50")
+}
+
+// @test
+do _full_jitter_bounded() {
+  let mut rng = random::xorshift64_from_seed(123)
+  let p = exponential_backoff(5, 200, 2.0, "full", 2000)
+  let d = compute_base_delay(&p, 2, 0) // 400
+  let j = apply_jitter(&p, d, &mut rng, d)
+  assert(j <= d, "full jitter ∈ [0,d]")
+}
+
+// @test
+do _decorrelated_range() {
+  let mut rng = random::xorshift64_from_seed(42)
+  let p = exponential_backoff(10, 100, 3.0, "decorrelated", 5000)
+  let j = apply_jitter(&p, 300, &mut rng, 300) // range ≈ [100 ; 900]
+  assert(j >= 100 && j <= 900, "decorrelated in range")
+}
+
+// @test
+do _run_if_stops_on_non_retryable() {
+  // Op renvoie Err("fatal") une fois
+  let mut called = 0
+  do op() -> Result[i32, str] { called += 1; Err("fatal") }
+  do pred(e: &str) -> bool { *e == "transient" }
+  let p = constant_backoff(3, 10, "none", 10)
+  let r = run_if[i32,str](p, op, pred)
+  assert(r.is_err(), "err relayed")
+  assert(called == 1, "pas de retry sur fatal")
 }

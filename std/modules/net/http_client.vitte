@@ -1,0 +1,14 @@
+//! http — client HTTP simple (via FFI)
+import core.result as Result;
+
+struct Response { status: i32, body: String }
+
+export fn get(url: String) -> Result::Result<String, String> {
+  let r: Response = __ffi::http_get(url);
+  if r.status >= 200 && r.status < 300 { Result::ok(r.body) } else { Result::err("HTTP " + r.status) }
+}
+
+export fn post(url: String, body: String, content_type: String) -> Result::Result<String, String> {
+  let r: Response = __ffi::http_post(url, body, content_type);
+  if r.status >= 200 && r.status < 300 { Result::ok(r.body) } else { Result::err("HTTP " + r.status) }
+}

@@ -1,16 +1,433 @@
-//! tracing.vitte — traces basiques: Span::enter/exit, event(), export JSONL.
+//! modules/tracing.vitte
+//! -----------------------------------------------------------------------------
+//! tracing — Spans, événements, propagation de contexte & abonnés
+//! -----------------------------------------------------------------------------
+//! • Ce module fournit une instrumentation légère :
+//!     - **Spans** : débuts/fins, attributs initiaux, parent facultatif
+//!     - **Événements** : niveau, message, champs (clé→val)
+//!     - **Abonnés** (subscribers) : callbacks `on_span_start`, `on_span_end`, `on_event`
+//!     - **Filtrage** par niveau global + par abonné
+//!     - **In-Span helper** : `in_span("name", Level::Info, None, |ctx| { ... })`
+//!     - **Console** : `init_console(None)` pour un rendu humain par défaut
+//!
+//! • État : preview (🖥🛠🌐) — API susceptible d’évoluer.
+//! • Licence : MIT
+//!
+//! # Exemple
+//! ```vitte
+//! use tracing
+//!
+//! do main() {
+//!   tracing::init_console(None)            // abonné console niveau Info
+//!   let (val, span_id) = tracing::in_span[i32]("startup", Level::Info, None, |ctx| {
+//!     tracing::event_in(ctx.id, Level::Info, "booting", map["version" => "0.1.0"])
+//!     42
+//!   })
+//!   tracing::event(Level::Warn, "after-boot", map["answer" => to_string(val)])
+//!
+//!   // Spans manuels
+//!   let sp = tracing::span("work", Level::Debug, None, map["unit"=>"ms"])
+//!   // ... du boulot
+//!   tracing::event_in(sp.id, Level::Debug, "tick", None)
+//!   tracing::end(sp)
+//! }
+//! ```
+//! -----------------------------------------------------------------------------
+//
+//! Design :
+//!   - Thread “tracer” unique recevant des `Cmd` via canal (sérialise l’accès aux abonnés).
+//!   - Abonnés : callbacks simples ; pas de trait objet requis.
+//!   - IDs : u64 pseudo-uniques = now_ns() ^ rnd64 (suffisant pour tracing).
+//!   - Pas de TLS obligatoire : on passe un `SpanCtx` aux closures, et on propose
+//!     `event_in(span_id, ...)` pour rattacher un event à un span explicite.
+//!
+//! Limitations MVP :
+//!   - Pas d’arbre global des spans ; agrégation côté abonnés si besoin.
+//!   - Pas de propagation auto “cross-thread” (fournir/propager l’id explicitement).
+//!   - Pas de macro compile-time ; *overhead* restreint mais non nul.
+//
+// -----------------------------------------------------------------------------
 
-#![version("0.1.0")]
-#![strict]
+use time
+use string
+use random
+use channel
+use thread
+use mathx
 
-pub struct Span { pub name:str, start:u128 }
-pub fn span(name:str)->Span{ Span{ name, start: std::time::now().unix_millis() as u128 } }
-impl Span { pub fn end(self)->str{ let dur=(std::time::now().unix_millis() as u128)-self.start; format!(r#"{{"ts":{},"span":"{}","dur_ms":{}}}"#, self.start, name_quote(&self.name), dur) } }
+// Horloge
+extern(c) do __vitte_now_ns() -> u64
+inline do now_ns() -> u64 { __vitte_now_ns() }
+const NS_PER_MS : u64 = 1_000_000
 
-pub fn event(name:str, kv:std::collections::Map<str,str>)->str{
-    let ts=std::time::now().unix_millis();
-    let mut pairs=String::new(); let mut first=true;
-    for (k,v) in kv.iter(){ if !first{pairs.push(',');} first=false; pairs.push_str(format!(r#""{}":"{}""#, name_quote(k), name_quote(v))); }
-    format!(r#"{{"ts":{},"event":"{}","kv":{{{}}}}}"#, ts, name_quote(name), pairs)
+// -----------------------------------------------------------------------------
+// Types publics
+// -----------------------------------------------------------------------------
+
+pub enum Level { Trace, Debug, Info, Warn, Error }
+
+inline do level_to_i(l: Level) -> i32 {
+  match l {
+    Level::Trace => 0, Level::Debug => 1, Level::Info => 2,
+    Level::Warn  => 3, Level::Error => 4
+  }
 }
-fn name_quote(s:&str)->str{ std::json::escape(s) }
+
+pub type SpanId = u64
+
+pub struct Span {
+  id: SpanId,
+  parent: Option[SpanId],
+  name: String,
+  level: Level,
+  start_ns: u64,
+}
+
+pub struct SpanCtx { id: SpanId }
+
+pub struct Event {
+  ts_ns: u64,
+  level: Level,
+  msg: String,
+  fields: Map[String, String],
+  span: Option[SpanId],
+}
+
+pub struct SpanMeta {
+  id: SpanId,
+  parent: Option[SpanId],
+  name: String,
+  level: Level,
+  start_ns: u64,
+  attrs: Map[String, String],
+}
+
+// Abonné “fonctionnel”
+pub struct Subscriber {
+  id: u32, // rempli par le tracer
+  min_level: Level,
+  on_span_start: Option[do(&SpanMeta) -> Unit],
+  on_span_end:   Option[do(SpanId) -> Unit],
+  on_event:      Option[do(&Event) -> Unit],
+}
+
+// -----------------------------------------------------------------------------
+// API publique
+// -----------------------------------------------------------------------------
+
+/// Initialise un abonné console (stdout) avec `min_level` (par défaut : Info).
+pub do init_console(min_level: Option[Level]) {
+  ensure_tracer()
+  let lvl = match min_level { Some(l) => l, None => Level::Info }
+  let sub = console_subscriber(lvl)
+  let _ = subscribe(sub)
+}
+
+/// Abonne un Subscriber et renvoie son identifiant (`SubId`).
+pub do subscribe(mut sub: Subscriber) -> u32 {
+  ensure_tracer()
+  let (tx, rx) = channel::channel
+  send(Cmd::Register(sub, tx))
+  match channel::recv(&rx) { Ok(id) => id, Err(_) => 0 }
+}
+
+/// Désabonne par identifiant.
+pub do unsubscribe(id: u32) {
+  ensure_tracer()
+  send(Cmd::Unregister(id))
+}
+
+/// Modifie le niveau global minimal (par défaut : Trace).
+pub do set_global_min(level: Level) {
+  ensure_tracer()
+  send(Cmd::SetMin(level))
+}
+
+/// Démarre un span et renvoie son handle (à terminer par `end`).
+pub do span(name: str, level: Level, parent: Option[SpanId], attrs: Map[String,String]?) -> Span {
+  ensure_tracer()
+  let id = gen_id()
+  let s = Span{
+    id, parent,
+    name: String::from(name),
+    level, start_ns: now_ns(),
+  }
+  let meta = SpanMeta{
+    id, parent,
+    name: String::from(name),
+    level, start_ns: s.start_ns,
+    attrs: match attrs { Some(m) => m, None => Map::new() },
+  }
+  send(Cmd::SpanStart(meta))
+  s
+}
+
+/// Termine un span.
+pub do end(s: Span) {
+  ensure_tracer()
+  send(Cmd::SpanEnd(s.id))
+}
+
+/// Exécute une closure dans un span, renvoie `(résultat, span_id)`.
+pub do in_span[T](name: str, level: Level, attrs: Map[String,String]?, f: do(SpanCtx) -> T) -> (T, SpanId) {
+  let sp = span(name, level, None, attrs)
+  let ctx = SpanCtx{ id: sp.id }
+  let out = f(ctx)
+  end(sp)
+  (out, ctx.id)
+}
+
+/// Envoie un événement détaché de tout span.
+pub do event(level: Level, msg: str, fields: Map[String,String]?) {
+  ensure_tracer()
+  let ev = make_event(level, msg, fields, None)
+  send(Cmd::Emit(ev))
+}
+
+/// Envoie un événement rattaché à un span explicite.
+pub do event_in(span: SpanId, level: Level, msg: str, fields: Map[String,String]?) {
+  ensure_tracer()
+  let ev = make_event(level, msg, fields, Some(span))
+  send(Cmd::Emit(ev))
+}
+
+// -----------------------------------------------------------------------------
+// Helpers publics pratiques
+// -----------------------------------------------------------------------------
+
+/// Construit rapidement une map de champs : `map["k"=>"v", "n"=>to_string(x)]`
+pub inline do map() -> Map[String,String] { Map::new() }
+
+pub inline do field(k: str, v: str) -> (String, String) { (String::from(k), String::from(v)) }
+
+pub do fields(pairs: Vec[(String,String)]) -> Map[String,String] {
+  let mut m = Map::new()
+  for (k,v) in pairs { m.insert(k,v) }
+  m
+}
+
+// -----------------------------------------------------------------------------
+// Impl interne : worker & commandes
+// -----------------------------------------------------------------------------
+
+enum Cmd {
+  Register(Subscriber, Sender[u32]),
+  Unregister(u32),
+  SetMin(Level),
+  SpanStart(SpanMeta),
+  SpanEnd(SpanId),
+  Emit(Event),
+  Shutdown,
+}
+
+struct State {
+  subs: Map[u32, Subscriber>,
+  next_sub_id: u32,
+  global_min: Level,
+}
+
+inline do state_new() -> State {
+  State{
+    subs: Map::new(),
+    next_sub_id: 1,
+    global_min: Level::Trace,
+  }
+}
+
+// Bus global
+static mut __TRACE_TX: Option[Sender[Cmd]] = None
+
+inline do bus_set(tx: Sender[Cmd]) {
+  unsafe { __TRACE_TX = Some(tx) }
+}
+inline do bus_get() -> Sender[Cmd] {
+  unsafe { __TRACE_TX.as_ref().unwrap().clone() }
+}
+inline do bus_ready() -> bool {
+  unsafe { __TRACE_TX.is_some() }
+}
+
+inline do ensure_tracer() {
+  if bus_ready() { return }
+  let (tx, rx) = channel::channel
+  bus_set(tx)
+  let _th = thread::spawn({ worker_loop(rx) })
+}
+
+inline do send(c: Cmd) {
+  let tx = bus_get()
+  let _ = channel::send(&tx, c)
+}
+
+do worker_loop(rx: Receiver[Cmd]) {
+  let mut st = state_new()
+  loop {
+    match channel::recv(&rx) {
+      Err(_) => break,
+      Ok(cmd) => {
+        match cmd {
+          Cmd::Shutdown => { st.subs.clear(); break }
+          Cmd::Register(mut sub, reply) => {
+            let id = st.next_sub_id; st.next_sub_id += 1
+            sub.id = id
+            st.subs.insert(id, sub)
+            let _ = channel::send(&reply, id)
+          }
+          Cmd::Unregister(id) => {
+            st.subs.remove(&id)
+          }
+          Cmd::SetMin(l) => { st.global_min = l }
+          Cmd::SpanStart(meta) => {
+            for (_, s) in st.subs {
+              if level_to_i(meta.level) < mathx::max_i32(level_to_i(st.global_min), level_to_i(s.min_level)) { continue }
+              if let Some(cb) = s.on_span_start { cb(&meta) }
+            }
+          }
+          Cmd::SpanEnd(id) => {
+            for (_, s) in st.subs {
+              if let Some(cb) = s.on_span_end { cb(id) }
+            }
+          }
+          Cmd::Emit(ev) => {
+            for (_, s) in st.subs {
+              if level_to_i(ev.level) < mathx::max_i32(level_to_i(st.global_min), level_to_i(s.min_level)) { continue }
+              if let Some(cb) = s.on_event { cb(&ev) }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Génération d’ID & création d’événements
+// -----------------------------------------------------------------------------
+
+inline do gen_id() -> SpanId {
+  let mut rng = random::xorshift64_from_entropy()
+  let r = random::u64_below(&mut rng, 0xFFFF_FFFF_FFFF_FFFFu64)
+  (now_ns() ^ r)
+}
+
+inline do make_event(level: Level, msg: str, fields: Map[String,String]?, span: Option[SpanId]) -> Event {
+  Event{
+    ts_ns: now_ns(),
+    level,
+    msg: String::from(msg),
+    fields: match fields { Some(m) => m, None => Map::new() },
+    span,
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Abonné console (format humain compact)
+// -----------------------------------------------------------------------------
+
+pub do console_subscriber(min: Level) -> Subscriber {
+  Subscriber{
+    id: 0,
+    min_level: min,
+    on_span_start: Some(|m: &SpanMeta| {
+      let ms = (m.start_ns / NS_PER_MS) as u64
+      print("["+level_str(m.level)+"] span:start id="+hex64(m.id)+" name=\""+m.name+"\" t="+to_string(ms)+"ms"+
+        if m.parent.is_some() { " parent="+hex64(m.parent.unwrap()) } else { "" }+
+        fmt_map(" attrs", &m.attrs))
+    }),
+    on_span_end: Some(|id: SpanId| {
+      print("[trace] span:end   id="+hex64(id))
+    }),
+    on_event: Some(|e: &Event| {
+      let ms = (e.ts_ns / NS_PER_MS) as u64
+      print("["+level_str(e.level)+"] event      "+
+        (if e.span.is_some() { "span="+hex64(e.span.unwrap())+" " } else { "" })+
+        "t="+to_string(ms)+"ms msg=\""+e.msg+"\""+fmt_map(" fields", &e.fields))
+    }),
+  }
+}
+
+inline do level_str(l: Level) -> str {
+  match l {
+    Level::Trace => "trace", Level::Debug => "debug", Level::Info => "info",
+    Level::Warn  => "warn",  Level::Error => "error"
+  }
+}
+
+inline do hex64(x: u64) -> String {
+  // format hex minimal : 16 digits
+  let digits = "0123456789abcdef"
+  let mut out = String::new()
+  let mut i: i32 = 15
+  while i >= 0 {
+    let nyb = ((x >> ((i as u64)*4)) & 0xF) as usize
+    out.push(string::char_at(digits, nyb))
+    i -= 1
+  }
+  out
+}
+
+inline do fmt_map(prefix: str, m: &Map[String,String]) -> String {
+  if m.len() == 0 { return String::from("") }
+  let mut out = String::from(prefix+":{")
+  let mut first = true
+  for (k,v) in m {
+    if !first { out.push(',') } else { first = false }
+    out.push_str(k); out.push('='); out.push('"'); out.push_str(v); out.push('"')
+  }
+  out.push('}')
+  out
+}
+
+// -----------------------------------------------------------------------------
+// Tests (fumée)
+// -----------------------------------------------------------------------------
+
+// @test
+do _console_basic() {
+  init_console(Some(Level::Debug))
+  let (x, sid) = in_span[i32]("boot", Level::Info, None, |ctx| {
+    event_in(ctx.id, Level::Debug, "hello", fields(vec![ field("k","v") ]))
+    7
+  })
+  assert(x == 7, "in_span result")
+  event(Level::Warn, "all-good", None)
+}
+
+// @test
+do _subscribe_unsubscribe() {
+  ensure_tracer()
+  let mut count = 0
+  let sub = Subscriber{
+    id: 0,
+    min_level: Level::Trace,
+    on_span_start: Some(|_m| { count += 1 }),
+    on_span_end: None,
+    on_event: None,
+  }
+  let id = subscribe(sub)
+  let s = span("x", Level::Trace, None, None)
+  end(s)
+  unsubscribe(id)
+  let s2 = span("y", Level::Trace, None, None)
+  end(s2)
+  assert(count >= 1, "received at least one start")
+}
+
+// @test
+do _level_filtering() {
+  ensure_tracer()
+  set_global_min(Level::Info)
+  let mut got = 0
+  let sub = Subscriber{
+    id: 0,
+    min_level: Level::Warn,
+    on_span_start: None,
+    on_span_end: None,
+    on_event: Some(|_e| { got += 1 }),
+  }
+  let sid = subscribe(sub)
+  event(Level::Debug, "hidden", None)
+  event(Level::Warn, "visible", None)
+  unsubscribe(sid)
+  assert(got == 1, "filtering works")
+}

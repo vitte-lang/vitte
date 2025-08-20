@@ -1,512 +1,360 @@
-double = (x)->x*2
-trip = (x)->x*3
-//! util.vitte — Boîte à outils standard (autonome)
+//! modules/util.vitte
+//! -----------------------------------------------------------------------------
+//! util — “boîte à outils” transversale, sans dépendances lourdes
+//! -----------------------------------------------------------------------------
+//! But : regrouper des utilitaires *génériques* et stables utilisés par tout le
+//! projet, sans réinventer des modules dédiés (stringx, mathx, retry, etc.).
 //!
-//! Modules fournis :
-//! - log        : logger simple (stderr), niveaux & timestamps
-//! - time       : now(), unix_ms(), sleep(ms), chrono
-//! - path       : join(), normalize(), split_ext(), dirname(), basename()
-//! - fs         : read/write/append, exists, is_file/dir, mkdirp, copy/move, rm_rf, tempdir
-//! - env        : get/set/has, get_bool(), get_u32()
-//! - args       : ArgParser (flags, options, rest), usage()
-//! - proc       : run(cmd, args[], env?), capture (stdout/stderr, code)
-//! - hash       : fnv1a32/64, crc32
-//! - enc        : hex_encode/decode, b64_encode/decode
-//! - text       : trim/split/lines, starts/ends/contains, replace_all, to_lower/upper
-//! - ds         : RingBuffer<T>, LRU<K,V>
+//! Inclut :
+//!   • Contrats & helpers d’erreurs : `ensure`, `bail`, `ctx`
+//!   • Mesures de temps simples : `timeit`, `since_ns`, conversions ns/ms/s
+//!   • Petits contrôles : `clamp`, `bound`, `in_range` (alias fins sur mathx)
+//!   • Encodage hexadécimal : `hex_encode`, `hex_decode`, `is_hex`
+//!   • Octets & endianness : `put_u{16,32,64}_{le,be}`, `get_*`
+//!   • Mémoire / buffers : `zeroize`, `memswap`, `fill`, `consttime_eq`
+//!   • Mini “using” (ensure cleanup) : `with_cleanup`, `using` (resource pattern)
+//!   • Attente active maîtrisée : `spin_until` (test/poll rapide)
 //!
-//! Tout est `std`-friendly pour cible hôte ; en `no_std`/embedded, ne compile que ce qui est dispo (garde les signatures).
+//! Hors-scope :
+//!   • Retry/backoff → voir `modules/retry.vitte`
+//!   • Log/tracing → voir `modules/log.vitte`, `modules/tracing.vitte`
+//!   • String cuisine avancée → `modules/stringx.vitte`
+//!
+//! État : **stable** (🖥🛠🔌🧪🌐). Licence : MIT
+//! -----------------------------------------------------------------------------
 
-#![version("0.1.0")]
-#![strict]
-#![warn("unsafe_ops","unused","dead_code")]
+use string
+use time
+use mathx
 
-//////////////////////////////
-// log — mini logger
-//////////////////////////////
-pub mod log {
-    pub enum Level { Error, Warn, Info, Debug, Trace }
+// Horloge haute résolution (monotone)
+extern(c) do __vitte_now_ns() -> u64
+inline do now_ns() -> u64 { __vitte_now_ns() }
 
-    fn lv_from_env() -> Level {
-        let s = std::env::get("LOG").unwrap_or("info").to_lower();
-        match s.as_str() {
-            "error" => Level::Error,
-            "warn"  => Level::Warn,
-            "info"  => Level::Info,
-            "debug" => Level::Debug,
-            "trace" => Level::Trace,
-            _       => Level::Info,
-        }
-    }
+pub const NS_PER_US : u64 = 1_000
+pub const NS_PER_MS : u64 = 1_000_000
+pub const NS_PER_S  : u64 = 1_000_000_000
 
-    static mut GLOBAL: Level = Level::Info;
+// -----------------------------------------------------------------------------
+// Erreurs & contrats
+// -----------------------------------------------------------------------------
 
-    pub fn init() {
-        unsafe { GLOBAL = lv_from_env(); }
-    }
-
-    fn enabled(l: Level) -> bool {
-        let cur = unsafe { &GLOBAL };
-        match (cur, &l) {
-            (Level::Error, Level::Error) => true,
-            (Level::Warn , Level::Error | Level::Warn) => true,
-            (Level::Info , Level::Error | Level::Warn | Level::Info) => true,
-            (Level::Debug, Level::Error | Level::Warn | Level::Info | Level::Debug) => true,
-            (Level::Trace, _) => true,
-            _ => false,
-        }
-    }
-
-    fn ts() -> str { std::time::now().to_rfc3339() }
-
-    pub fn error(m: str){ if enabled(Level::Error){ eprintln("[ERROR {}] {}", ts(), m) } }
-    pub fn warn (m: str){ if enabled(Level::Warn ){ eprintln("[WARN  {}] {}", ts(), m) } }
-    pub fn info (m: str){ if enabled(Level::Info ){ println ("[INFO  {}] {}", ts(), m) } }
-    pub fn debug(m: str){ if enabled(Level::Debug){ eprintln("[DEBUG {}] {}", ts(), m) } }
-    pub fn trace(m: str){ if enabled(Level::Trace){ eprintln("[TRACE {}] {}", ts(), m) } }
+pub enum UtilError {
+  Msg(String),
+  InvalidHex,
+  OutOfRange,
+  Truncated,
 }
 
-//////////////////////////////
-// time — horloge & chrono
-//////////////////////////////
-pub mod time {
-    pub fn now() -> std::time::Instant { std::time::now() }
-    pub fn unix_ms() -> u128 { std::time::now().unix_millis() as u128 }
-    pub fn sleep(ms: u32) { std::time::sleep(ms as i64) }
+pub inline do err(msg: str) -> UtilError { UtilError::Msg(String::from(msg)) }
 
-    pub struct Chrono { start: std::time::Instant }
-    impl Chrono {
-        pub fn start() -> Self { Self{ start: now() } }
-        pub fn reset(&mut self) { self.start = now(); }
-        pub fn ms(&self) -> u128 { (now() - self.start).as_millis() as u128 }
-        pub fn sec_f(&self) -> f64 { (self.ms() as f64) / 1000.0 }
-    }
+/// Renvoie `Ok(())` si `cond`, sinon `Err(UtilError::Msg(msg))`.
+pub inline do ensure(cond: bool, msg: str) -> Result[Unit, UtilError] {
+  if cond { Ok(()) } else { Err(err(msg)) }
 }
 
-//////////////////////////////
-// path — chemins
-//////////////////////////////
-pub mod path {
-    pub const SEP: char = std::path::SEP;
+/// “Bail” pratique — court-circuite un `Result` avec message.
+pub inline do bail[T](msg: str) -> Result[T, UtilError] { Err(err(msg)) }
 
-    pub fn join(a: str, b: str) -> str {
-        if a.is_empty() { return b.to_string(); }
-        if b.is_empty() { return a.to_string(); }
-        if a.ends_with(SEP) { return format!("{}{}", a, b) }
-        return format!("{}{}{}", a, SEP, b)
-    }
-
-    pub fn normalize(p: str) -> str {
-        let mut parts = Vec<str>::new();
-        for seg in p.split(['/', '\\']) {
-            if seg.is_empty() || seg == "." { continue; }
-            if seg == ".." { if !parts.is_empty(){ parts.pop(); } continue; }
-            parts.push(seg.to_string());
-        }
-        let mut out = if is_abs(p) { String::from(std::path::ROOT) } else { String::new() };
-        let mut i=0;
-        while i<parts.len() {
-            if !out.is_empty() && !out.ends_with(SEP){ out.push(SEP); }
-            out.push_str(parts[i]);
-            i+=1;
-        }
-        if out.is_empty() { return ".".into(); }
-        out
-    }
-
-    pub fn is_abs(p: str) -> bool { std::path::is_absolute(p) }
-    pub fn dirname(p: str) -> str { std::path::parent(p).unwrap_or(".").to_string() }
-    pub fn basename(p: str) -> str { std::path::file_name(p).unwrap_or("").to_string() }
-
-    pub fn split_ext(p: str) -> (str, str) {
-        let name = basename(p);
-        match name.rfind('.') {
-            None => (p.to_string(), "".into()),
-            Some(ix) => {
-                let stem = &p[..p.len()- (name.len()-ix)];
-                let ext  = &name[ix+1..];
-                (stem.to_string(), ext.to_string())
-            }
-        }
-    }
+/// Ajoute du contexte à une erreur texte.
+pub inline do ctx(e: UtilError, more: str) -> UtilError {
+  match e {
+    UtilError::Msg(m) => UtilError::Msg(m + ": " + more),
+    x => x,
+  }
 }
 
-//////////////////////////////
-// fs — fichiers & dirs
-//////////////////////////////
-pub mod fs {
-    use super::path;
+// -----------------------------------------------------------------------------
+// Temps : mesures & conversions
+// -----------------------------------------------------------------------------
 
-    pub fn exists(p: str) -> bool { std::fs::exists(p) }
-    pub fn is_file(p: str) -> bool { std::fs::is_file(p) }
-    pub fn is_dir(p: str) -> bool { std::fs::is_dir(p) }
+/// Durée depuis `t0_ns` (monotone) en nanosecondes.
+pub inline do since_ns(t0_ns: u64) -> u64 { let now = now_ns(); if now >= t0_ns { now - t0_ns } else { 0 } }
 
-    pub fn read_to_string(p: str) -> Result<str, str> {
-        std::fs::read_to_string(p).map_err(|e| format!("{}", e))
-    }
-    pub fn write_string(p: str, s: str) -> Result<(), str> {
-        std::fs::write(p, s.as_bytes()).map_err(|e| format!("{}", e))
-    }
-    pub fn append_string(p: str, s: str) -> Result<(), str> {
-        std::fs::append(p, s.as_bytes()).map_err(|e| format!("{}", e))
-    }
+pub inline do ns_to_ms(ns: u64) -> u64 { ns / NS_PER_MS }
+pub inline do ns_to_s(ns: u64)  -> u64 { ns / NS_PER_S }
+pub inline do ms_to_ns(ms: u64) -> u64 { ms * NS_PER_MS }
 
-    pub fn mkdirp(p: str) -> Result<(), str> { std::fs::create_dir_all(p).map_err(|e| format!("{}", e)) }
-    pub fn rm_rf(p: str) -> Result<(), str> { std::fs::remove_all(p).map_err(|e| format!("{}", e)) }
-    pub fn copy(a: str, b: str) -> Result<(), str> { std::fs::copy(a, b).map(|_| ()).map_err(|e| format!("{}", e)) }
-    pub fn mv(a: str, b: str) -> Result<(), str> { std::fs::rename(a, b).map_err(|e| format!("{}", e)) }
-
-    pub fn tempdir(prefix: str) -> Result<str, str> {
-        let base = std::env::get("TMPDIR").unwrap_or(std::path::tmp_dir());
-        let ts = std::time::now().unix_millis();
-        let dir = path::join(base, format!("{}-{}", prefix, ts));
-        mkdirp(&dir)?;
-        Ok(dir)
-    }
-
-    pub fn list_dir(p: str) -> Result<Vec<str>, str> {
-        std::fs::read_dir(p).map(|entries| {
-            let mut v = Vec<str>::new();
-            for e in entries {
-                v.push(e.path);
-            }
-            v
-        }).map_err(|e| format!("{}", e))
-    }
+/// Exécute `f`, renvoie `(résultat, elapsed_ns)`.
+pub do timeit[T](f: do() -> T) -> (T, u64) {
+  let t0 = now_ns()
+  let out = f()
+  let dt = since_ns(t0)
+  (out, dt)
 }
 
-//////////////////////////////
-// env — variables d'environnement
-//////////////////////////////
-pub mod env {
-    pub fn get(name: str) -> Option<str> { std::env::get(name) }
-    pub fn set(name: str, val: str) { std::env::set(name, val); }
-    pub fn has(name: str) -> bool { std::env::get(name).is_some() }
+// -----------------------------------------------------------------------------
+// Math/controlettes (fins)
+// -----------------------------------------------------------------------------
 
-    pub fn get_bool(name: str, def: bool) -> bool {
-        match get(name).map(|s| s.to_lower().trim().to_string()) {
-            Some(v) if v=="1"||v=="true"||v=="yes" => true,
-            Some(v) if v=="0"||v=="false"||v=="no" => false,
-            _ => def,
-        }
-    }
-    pub fn get_u32(name: str, def: u32) -> u32 {
-        get(name).map(|s| s.parse::<u32>().unwrap_or(def)).unwrap_or(def)
-    }
+pub inline do clamp_i64(x: i64, lo: i64, hi: i64) -> i64 { mathx::max_i64(lo, mathx::min_i64(x, hi)) }
+pub inline do clamp_u64(x: u64, lo: u64, hi: u64) -> u64 { if x < lo { lo } else if x > hi { hi } else { x } }
+
+pub inline do bound(len: usize, idx: isize) -> usize {
+  if idx <= 0 { 0 } else {
+    let u = idx as usize
+    if u > len { len } else { u }
+  }
 }
 
-//////////////////////////////
-// args — parseur de ligne de commande
-//////////////////////////////
-pub mod args {
-    use super::text;
-
-    pub struct ArgParser {
-        pub prog: str,
-        pub flags: std::collections::Set<str>,
-        pub opts: std::collections::Map<str, str>,
-        pub rest: Vec<str>,
-    }
-
-    impl ArgParser {
-        pub fn parse(argv: [str]) -> Self {
-            let prog = if argv.len() > 0 { argv[0].to_string() } else { "app".into() };
-            let mut flags = std::collections::Set::new();
-            let mut opts  = std::collections::Map::new();
-            let mut rest  = Vec<str>::new();
-
-            let mut i = 1;
-            while i < argv.len() {
-                let a = argv[i];
-                if a == "--" {
-                    // tout le reste va dans rest
-                    let mut j = i+1;
-                    while j < argv.len() { rest.push(argv[j].to_string()); j+=1; }
-                    break;
-                }
-                if a.starts_with("--") {
-                    if let Some(eq) = a.find('=') {
-                        let k = &a[2..eq];
-                        let v = &a[eq+1..];
-                        opts.insert(k.to_string(), v.to_string());
-                    } else {
-                        flags.insert(a[2..].to_string());
-                    }
-                } else if a.starts_with('-') && a.len() > 1 {
-                    // flags courts groupés -abc ou -o val
-                    let short = &a[1..];
-                    if short.len() > 1 {
-                        // -abc → -a -b -c
-                        for ch in short.chars() { flags.insert(ch.to_string()); }
-                    } else {
-                        // -o value
-                        let key = short.to_string();
-                        if i+1 < argv.len() && !argv[i+1].starts_with('-') {
-                            opts.insert(key, argv[i+1].to_string());
-                            i += 1;
-                        } else {
-                            flags.insert(key);
-                        }
-                    }
-                } else {
-                    rest.push(a.to_string());
-                }
-                i += 1;
-            }
-            Self { prog, flags, opts, rest }
-        }
-
-        pub fn has(&self, k: str) -> bool {
-            self.flags.contains(k) || self.opts.contains_key(k)
-        }
-        pub fn flag(&self, k: str) -> bool { self.flags.contains(k) }
-        pub fn get(&self, k: str) -> Option<str> { self.opts.get(k).cloned() }
-        pub fn get_u32(&self, k: str, def: u32) -> u32 {
-            self.get(k).map(|s| s.parse::<u32>().unwrap_or(def)).unwrap_or(def)
-        }
-
-        pub fn usage(&self, synopsis: str, details: str) -> str {
-            let mut s = String::new();
-            s.push_str("Usage: "); s.push_str(synopsis); s.push('\n');
-            s.push_str(details); s
-        }
-    }
+pub inline do in_range[T: Ord](x: T, lo: T, hi: T) -> bool {
+  (x >= lo) && (x <= hi)
 }
 
-//////////////////////////////
-// proc — sous-processus (hôte)
-//////////////////////////////
-pub mod proc {
-    pub struct Output { pub code: int, pub stdout: str, pub stderr: str }
+// -----------------------------------------------------------------------------
+// Hex — encodage / décodage
+// -----------------------------------------------------------------------------
 
-    pub fn run(cmd: str, args: [str]) -> Result<int, str> {
-        std::process::spawn(cmd, args).map(|status| status.code).map_err(|e| format!("{}", e))
-    }
+const HEX_DIGITS : str = "0123456789abcdef"
 
-    pub fn capture(cmd: str, args: [str]) -> Result<Output, str> {
-        std::process::capture(cmd, args).map(|out| Output{ code: out.code, stdout: out.stdout, stderr: out.stderr })
-            .map_err(|e| format!("{}", e))
-    }
+pub do is_hex(s: str) -> bool {
+  if s.len() == 0 { return true }
+  for ch in string::to_lower(s).chars() {
+    if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) { return false }
+  }
+  true
 }
 
-//////////////////////////////
-// hash — FNV-1a & CRC32
-//////////////////////////////
-pub mod hash {
-    pub fn fnv1a32(bytes: &[u8]) -> u32 {
-        let mut h: u32 = 0x811C9DC5;
-        for b in bytes {
-            h ^= *b as u32;
-            h = h.wrapping_mul(0x01000193);
-        }
-        h
-    }
-    pub fn fnv1a64(bytes: &[u8]) -> u64 {
-        let mut h: u64 = 0xcbf29ce484222325;
-        for b in bytes {
-            h ^= *b as u64;
-            h = h.wrapping_mul(0x00000100000001B3);
-        }
-        h
-    }
-
-    // CRC32 (poly 0xEDB88320, tableless)
-    pub fn crc32(bytes: &[u8]) -> u32 {
-        let mut crc: u32 = 0xFFFF_FFFF;
-        for b in bytes {
-            let mut x = (crc ^ (*b as u32)) & 0xFF;
-            let mut i = 0;
-            while i < 8 {
-                let m = if (x & 1) != 0 { 0xEDB88320 } else { 0 };
-                x = (x >> 1) ^ m;
-                i += 1;
-            }
-            crc = (crc >> 8) ^ x;
-        }
-        !crc
-    }
+/// Encode en hex (minuscule).
+pub do hex_encode(buf: []u8) -> String {
+  let mut out = String::with_capacity(buf.len() * 2)
+  for b in buf {
+    let hi = ((b >> 4) & 0xF) as usize
+    let lo = (b & 0xF) as usize
+    out.push(string::char_at(HEX_DIGITS, hi))
+    out.push(string::char_at(HEX_DIGITS, lo))
+  }
+  out
 }
 
-//////////////////////////////
-// enc — hex & base64
-//////////////////////////////
-pub mod enc {
-    const HEX: [char;16] = ['0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'];
-
-    pub fn hex_encode(bytes: &[u8]) -> str {
-        let mut out = String::with_capacity(bytes.len()*2);
-        for b in bytes {
-            out.push(HEX[(b >> 4) as usize]);
-            out.push(HEX[(b & 0xF) as usize]);
-        }
-        out
-    }
-
-    pub fn hex_decode(s: str) -> Result<Vec<u8>, str> {
-        if s.len() % 2 != 0 { return Err("hex length must be even"); }
-        let mut v = Vec<u8>::new();
-        let mut i = 0;
-        while i < s.len() {
-            let hi = s[i..i+1].to_lower().chars().next().unwrap();
-            let lo = s[i+1..i+2].to_lower().chars().next().unwrap();
-            let a = hex_val(hi)?; let b = hex_val(lo)?;
-            v.push(((a<<4) | b) as u8);
-            i += 2;
-        }
-        Ok(v)
-    }
-    fn hex_val(c: char) -> Result<u8, str> {
-        match c {
-            '0'..='9' => Ok((c as u8) - b'0'),
-            'a'..='f' => Ok(10 + (c as u8 - b'a')),
-            'A'..='F' => Ok(10 + (c as u8 - b'A')),
-            _ => Err("invalid hex char"),
-        }
-    }
-
-    // base64 (RFC 4648) — encode seulement (decode minimal)
-    const B64: [char;64] = [
-        'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P',
-        'Q','R','S','T','U','V','W','X','Y','Z','a','b','c','d','e','f',
-        'g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v',
-        'w','x','y','z','0','1','2','3','4','5','6','7','8','9','+','/'
-    ];
-
-    pub fn b64_encode(bytes: &[u8]) -> str {
-        let mut out = String::new();
-        let mut i = 0;
-        while i < bytes.len() {
-            let b0 = bytes[i] as u32;
-            let b1 = if i+1 < bytes.len() { bytes[i+1] as u32 } else { 0 };
-            let b2 = if i+2 < bytes.len() { bytes[i+2] as u32 } else { 0 };
-            let triple = (b0<<16) | (b1<<8) | b2;
-
-            out.push(B64[((triple >> 18) & 0x3F) as usize]);
-            out.push(B64[((triple >> 12) & 0x3F) as usize]);
-            if i+1 < bytes.len() { out.push(B64[((triple >> 6) & 0x3F) as usize]); } else { out.push('='); }
-            if i+2 < bytes.len() { out.push(B64[(triple & 0x3F) as usize]); } else { out.push('='); }
-
-            i += 3;
-        }
-        out
-    }
+/// Décode hex (accepte majuscules). Longueur paire requise.
+pub do hex_decode(s: str) -> Result[[]u8, UtilError] {
+  if (s.len() % 2) != 0 { return Err(UtilError::InvalidHex) }
+  let t = string::to_lower(s)
+  let mut out = Vec::with_capacity(s.len() / 2)
+  let mut i: usize = 0
+  while i < t.len() {
+    let hi = hex_val(string::char_at(t, i))?
+    let lo = hex_val(string::char_at(t, i+1))?
+    out.push(((hi << 4) | lo) as u8)
+    i += 2
+  }
+  Ok(out)
 }
 
-//////////////////////////////
-// text — helpers chaînes
-//////////////////////////////
-pub mod text {
-    pub fn trim(s: str) -> str { s.trim().to_string() }
-    pub fn to_lower(s: str) -> str { s.to_lower() }
-    pub fn to_upper(s: str) -> str { s.to_upper() }
-    pub fn starts_with(s: str, p: str) -> bool { s.starts_with(p) }
-    pub fn ends_with(s: str, p: str) -> bool { s.ends_with(p) }
-    pub fn contains(s: str, p: str) -> bool { s.contains(p) }
-
-    pub fn split_ws(s: str) -> Vec<str> {
-        let mut v = Vec<str>::new();
-        for part in s.split_whitespace() { v.push(part.to_string()); }
-        v
-    }
-    pub fn lines(s: str) -> Vec<str> {
-        let mut v = Vec<str>::new();
-        for line in s.split('\n') { v.push(line.to_string()); }
-        v
-    }
-    pub fn replace_all(s: str, from: str, to: str) -> str {
-        s.replace(from, to)
-    }
+inline do hex_val(c: char) -> Result[u8, UtilError] {
+  if c >= '0' && c <= '9' { return Ok(((c as u32) - ('0' as u32)) as u8) }
+  if c >= 'a' && c <= 'f' { return Ok(10 + ((c as u32) - ('a' as u32)) as u8) }
+  Err(UtilError::InvalidHex)
 }
 
-//////////////////////////////
-// ds — petites structures
-//////////////////////////////
-pub mod ds {
-    // RingBuffer<T> à capacité fixe
-    pub struct RingBuffer<T> {
-        buf: Vec<T>, head: usize, len: usize, cap: usize
-    }
-    impl<T: Clone + Default> RingBuffer<T> {
-        pub fn with_capacity(cap: usize) -> Self {
-            let mut v = Vec<T>::new();
-            v.resize(cap, T::default());
-            Self{ buf: v, head: 0, len: 0, cap }
-        }
-        pub fn push(&mut self, x: T) {
-            let idx = (self.head + self.len) % self.cap;
-            self.buf[idx] = x;
-            if self.len < self.cap { self.len += 1; } else { self.head = (self.head + 1) % self.cap; }
-        }
-        pub fn pop(&mut self) -> Option<T> {
-            if self.len == 0 { return None; }
-            let x = self.buf[self.head].clone();
-            self.head = (self.head + 1) % self.cap;
-            self.len -= 1;
-            Some(x)
-        }
-        pub fn iter(&self) -> RingIter<T> { RingIter{ rb: self, i: 0 } }
-        pub fn len(&self) -> usize { self.len }
-        pub fn is_empty(&self) -> bool { self.len == 0 }
-    }
-    pub struct RingIter<'a, T> { rb: &'a RingBuffer<T>, i: usize }
-    impl<'a, T: Clone> RingIter<'a, T> {
-        pub fn next(&mut self) -> Option<T> {
-            if self.i >= self.rb.len { return None; }
-            let idx = (self.rb.head + self.i) % self.rb.cap;
-            self.i += 1;
-            Some(self.rb.buf[idx].clone())
-        }
-    }
+// -----------------------------------------------------------------------------
+// Octets & Endianness
+// -----------------------------------------------------------------------------
 
-    // LRU<K,V> simple (hashmap + liste d’ordre)
-    pub struct Lru<K,V> {
-        cap: usize,
-        map: std::collections::Map<K,(V, usize)>,
-        order: Vec<K>, // du plus vieux (0) au plus récent (fin)
-    }
-    impl<K: Eq + std::hash::Hash + Clone, V> Lru<K,V> {
-        pub fn with_capacity(cap: usize) -> Self {
-            Self{ cap, map: std::collections::Map::new(), order: Vec<K>::new() }
-        }
-        fn touch(&mut self, k: &K) {
-            // retire si présent puis pousse en fin
-            let mut i = 0;
-            while i < self.order.len() {
-                if &self.order[i] == k { self.order.remove(i); break; }
-                i+=1;
-            }
-            self.order.push(k.clone());
-            if self.order.len() > self.cap {
-                if let Some(evict) = self.order.first().cloned() {
-                    self.order.remove(0);
-                    self.map.remove(&evict);
-                }
-            }
-        }
-        pub fn put(&mut self, k: K, v: V) {
-            self.map.insert(k.clone(), (v, 0));
-            self.touch(&k);
-        }
-        pub fn get(&mut self, k: &K) -> Option<&V> {
-            if !self.map.contains_key(k) { return None; }
-            self.touch(k);
-            self.map.get(k).map(|(v,_)| v)
-        }
-        pub fn len(&self) -> usize { self.map.len() }
-    }
+pub inline do put_u16_le(v: u16) -> []u8 { vec![(v & 0xFF) as u8, ((v >> 8) & 0xFF) as u8] }
+pub inline do put_u16_be(v: u16) -> []u8 { vec![((v >> 8) & 0xFF) as u8, (v & 0xFF) as u8] }
+
+pub inline do put_u32_le(v: u32) -> []u8 {
+  vec![(v & 0xFF) as u8, ((v >> 8) & 0xFF) as u8, ((v >> 16) & 0xFF) as u8, ((v >> 24) & 0xFF) as u8]
+}
+pub inline do put_u32_be(v: u32) -> []u8 {
+  vec![((v >> 24) & 0xFF) as u8, ((v >> 16) & 0xFF) as u8, ((v >> 8) & 0xFF) as u8, (v & 0xFF) as u8]
 }
 
-// ————————————————————————————————————————————————
-// re-exports pratiques
-// ————————————————————————————————————————————————
-pub use log::*;
-pub use time::*;
-pub use path::*;
-pub use fs::*;
-pub use env::*;
-pub use args::*;
-pub use proc::*;
-pub use hash::*;
-pub use enc::*;
-pub use text::*;
-pub use ds::*;
+pub inline do put_u64_le(v: u64) -> []u8 {
+  vec![
+    ( v        & 0xFF) as u8, ((v >> 8)  & 0xFF) as u8, ((v >> 16) & 0xFF) as u8, ((v >> 24) & 0xFF) as u8,
+    ((v >> 32) & 0xFF) as u8, ((v >> 40) & 0xFF) as u8, ((v >> 48) & 0xFF) as u8, ((v >> 56) & 0xFF) as u8,
+  ]
+}
+pub inline do put_u64_be(v: u64) -> []u8 {
+  vec![
+    ((v >> 56) & 0xFF) as u8, ((v >> 48) & 0xFF) as u8, ((v >> 40) & 0xFF) as u8, ((v >> 32) & 0xFF) as u8,
+    ((v >> 24) & 0xFF) as u8, ((v >> 16) & 0xFF) as u8, ((v >> 8)  & 0xFF) as u8, ( v        & 0xFF) as u8,
+  ]
+}
+
+pub do get_u16_le(b: []u8, off: usize) -> Result[u16, UtilError] {
+  if off + 2 > b.len() { return Err(UtilError::Truncated) }
+  Ok( (b[off] as u16) | ((b[off+1] as u16) << 8) )
+}
+pub do get_u16_be(b: []u8, off: usize) -> Result[u16, UtilError] {
+  if off + 2 > b.len() { return Err(UtilError::Truncated) }
+  Ok( ((b[off] as u16) << 8) | (b[off+1] as u16) )
+}
+
+pub do get_u32_le(b: []u8, off: usize) -> Result[u32, UtilError] {
+  if off + 4 > b.len() { return Err(UtilError::Truncated) }
+  Ok( (b[off] as u32)
+    | ((b[off+1] as u32) << 8)
+    | ((b[off+2] as u32) << 16)
+    | ((b[off+3] as u32) << 24) )
+}
+pub do get_u32_be(b: []u8, off: usize) -> Result[u32, UtilError] {
+  if off + 4 > b.len() { return Err(UtilError::Truncated) }
+  Ok( ((b[off] as u32) << 24)
+    | ((b[off+1] as u32) << 16)
+    | ((b[off+2] as u32) << 8)
+    |  (b[off+3] as u32) )
+}
+
+pub do get_u64_le(b: []u8, off: usize) -> Result[u64, UtilError] {
+  if off + 8 > b.len() { return Err(UtilError::Truncated) }
+  Ok( (b[off]   as u64)
+    | ((b[off+1] as u64) << 8)
+    | ((b[off+2] as u64) << 16)
+    | ((b[off+3] as u64) << 24)
+    | ((b[off+4] as u64) << 32)
+    | ((b[off+5] as u64) << 40)
+    | ((b[off+6] as u64) << 48)
+    | ((b[off+7] as u64) << 56) )
+}
+pub do get_u64_be(b: []u8, off: usize) -> Result[u64, UtilError] {
+  if off + 8 > b.len() { return Err(UtilError::Truncated) }
+  Ok( ((b[off]   as u64) << 56)
+    | ((b[off+1] as u64) << 48)
+    | ((b[off+2] as u64) << 40)
+    | ((b[off+3] as u64) << 32)
+    | ((b[off+4] as u64) << 24)
+    | ((b[off+5] as u64) << 16)
+    | ((b[off+6] as u64) << 8)
+    |  (b[off+7] as u64) )
+}
+
+// -----------------------------------------------------------------------------
+// Mémoire / buffers
+// -----------------------------------------------------------------------------
+
+/// Remplit `buf` avec `value`.
+pub do fill(buf &mut []u8, value: u8) {
+  let mut i: usize = 0
+  while i < buf.len() { buf[i] = value; i += 1 }
+}
+
+/// Met à zéro la mémoire (best-effort).
+pub inline do zeroize(buf &mut []u8) { fill(buf, 0u8) }
+
+/// Échange deux buffers de même taille (in-place).
+pub do memswap(a &mut []u8, b &mut []u8) -> Result[Unit, UtilError] {
+  if a.len() != b.len() { return Err(UtilError::OutOfRange) }
+  let mut i: usize = 0
+  while i < a.len() {
+    let t = a[i]
+    a[i] = b[i]
+    b[i] = t
+    i += 1
+  }
+  Ok(())
+}
+
+/// Comparaison temps-constant (≈ O(n), sans branche conditionnelle data-dépendante).
+pub do consttime_eq(a: []u8, b: []u8) -> bool {
+  if a.len() != b.len() { return false }
+  let mut diff: u8 = 0
+  let mut i: usize = 0
+  while i < a.len() {
+    diff |= a[i] ^ b[i]
+    i += 1
+  }
+  diff == 0
+}
+
+// -----------------------------------------------------------------------------
+// “RAII sans RAII” : patterns `using` / cleanup garanti
+// -----------------------------------------------------------------------------
+
+/// Exécute `f` puis **toujours** `cleanup` (même en erreur renvoyée par `f`).
+/// NB: `f` n’a pas d’exception/panic dans Vitte (panic = bug), on gère le `Result` métier.
+pub do with_cleanup[T,E](f: do() -> Result[T,E], cleanup: do() -> Unit) -> Result[T,E] {
+  let r = f()
+  cleanup()
+  r
+}
+
+/// Patron `using` : construit `(resource, drop)` → passe au bloc → drop garanti.
+/// Exemple :
+/// ```vitte
+/// do open_tmp() -> (File, do() -> Unit) { /* ... */ }
+/// let out = using(open_tmp, |file| {
+///   file.write(bytes) ; 7
+/// })
+/// ```
+pub do using[R, T](make: do() -> (R, do() -> Unit), body: do(&R) -> T) -> T {
+  let (res, drop) = make()
+  let out = body(&res)
+  drop()
+  out
+}
+
+// -----------------------------------------------------------------------------
+// Attente active maîtrisée (tests/polling)
+// -----------------------------------------------------------------------------
+
+/// Boucle tant que `cond()` est faux, avec micro-sommeil `step_ms`, et stop après `timeout_ms`.
+/// Renvoie `true` si la condition est devenue vraie.
+pub do spin_until(step_ms: u32, timeout_ms: u32, cond: do() -> bool) -> bool {
+  let t0 = now_ns()
+  loop {
+    if cond() { return true }
+    time::sleep(step_ms.ms)
+    let dt = since_ns(t0)
+    if ns_to_ms(dt) >= (timeout_ms as u64) { return false }
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Tests (fumée / invariants)
+// -----------------------------------------------------------------------------
+
+// @test
+do _hex_roundtrip() {
+  let src = vec![0x00, 0x01, 0xAB, 0xCD, 0xEF]
+  let s = hex_encode(src)
+  assert(s == "0001abcdef", "hex lowercase")
+  let back = hex_decode(s).unwrap()
+  assert(back == vec![0x00,0x01,0xAB,0xCD,0xEF], "roundtrip")
+}
+
+// @test
+do _bytes_endian() {
+  let v = 0x1234u16
+  assert(put_u16_le(v) == vec![0x34,0x12], "u16 le")
+  assert(put_u16_be(v) == vec![0x12,0x34], "u16 be")
+  let w = 0xA1B2C3D4u32
+  assert(put_u32_le(w) == vec![0xD4,0xC3,0xB2,0xA1], "u32 le")
+  assert(put_u32_be(w) == vec![0xA1,0xB2,0xC3,0xD4], "u32 be")
+  let z = 0x0102030405060708u64
+  assert(put_u64_be(z)[0] == 0x01, "u64 be prefix")
+  assert(get_u32_le(vec![0x78,0x56,0x34,0x12],0).unwrap() == 0x12345678, "get u32 le")
+}
+
+// @test
+do _mem_ops() {
+  let mut a = vec![1,2,3]
+  let mut b = vec![4,5,6]
+  memswap(&mut a, &mut b).unwrap()
+  assert(a == vec![4,5,6] && b == vec![1,2,3], "memswap")
+  zeroize(&mut a)
+  assert(a == vec![0,0,0], "zeroize")
+  assert(consttime_eq(vec![7,7], vec![7,7]), "cte eq")
+}
+
+// @test
+do _with_cleanup_and_using() {
+  let mut flag = 0
+  let r = with_cleanup(|| -> Result[i32,UtilError] { flag = 1; Ok(42) }, || { flag = 2 }).unwrap()
+  assert(r == 42 && flag == 2, "cleanup ran")
+
+  do mk() -> (String, do() -> Unit) { (String::from("X"), || { flag = 3 }) }
+  let got = using(mk, |s| { assert(s == "X", "resource ok"); 7 })
+  assert(got == 7 && flag == 3, "using ok")
+}
+
+// @test
+do _timeit_spin() {
+  let (v, ns) = timeit(|| { let mut x = 0; let mut i=0; while i<10000 { x += 1; i+=1 } x })
+  assert(v == 10000 && ns > 0, "timeit > 0")
+  let ok = spin_until(1, 5, || true)
+  assert(ok, "spin triviale")
+}

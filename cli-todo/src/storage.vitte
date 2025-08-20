@@ -1,0 +1,102 @@
+use sys.fs as fs;
+use sys.time as time;
+use sys.env as env;
+use sys.path as path;
+use core.stringx as strx;
+use utils.uuid as uuid;
+
+struct Task {
+  id: String,
+  title: String,
+  project: String,
+  tags: Vec<String>,
+  due: String,
+  prio: String,
+  status: String,
+  created: i64,
+  updated: i64,
+  recur: String,
+  notes: String,
+}
+
+export fn empty() -> Task {
+  Task{ id: uuid.v4(), title: "", project: "", tags: [], due: "", prio: "normal", status: "open", created: time.now_unix_ms(), updated: time.now_unix_ms(), recur: "", notes: "" }
+}
+
+fn join_tags(tags: Vec<String>) -> String {
+  let first = true; let out = "";
+  for t in tags { if len(out)==0 { out = t } else { out = out + "," + t } }
+  out
+}
+
+fn split_tags(s: String) -> Vec<String> { strx.split(s, ",") }
+
+export fn load(db: String) -> Vec<Task> {
+  let mut out: Vec<Task> = [];
+  let content = fs.read_to_string(db).unwrap_or("");
+  let lines = strx.split(content, "\n");
+  for line in lines {
+    if len(line)==0 { continue; }
+    let cols = strx.split(line, "\t");
+    let t = Task{
+      id: cols[0],
+      title: if len(cols) > 1 { cols[1] } else { "" },
+      project: if len(cols) > 2 { cols[2] } else { "" },
+      tags: if len(cols) > 3 { split_tags(cols[3]) } else { [] },
+      due: if len(cols) > 4 { cols[4] } else { "" },
+      prio: if len(cols) > 5 { cols[5] } else { "normal" },
+      status: if len(cols) > 6 { cols[6] } else { "open" },
+      created: if len(cols) > 7 { parse_i64(cols[7]) } else { 0 },
+      updated: if len(cols) > 8 { parse_i64(cols[8]) } else { 0 },
+      recur: if len(cols) > 9 { cols[9] } else { "" },
+      notes: if len(cols) > 10 { cols[10] } else { "" },
+    };
+    push(out, t);
+  }
+  out
+}
+
+export fn save(db: String, tasks: Vec<Task>) {
+  let mut buf = "";
+  for t in tasks {
+    let line = t.id + "\t" + t.title + "\t" + t.project + "\t" + join_tags(t.tags)
+      + "\t" + t.due + "\t" + t.prio + "\t" + t.status + "\t" + to_string(t.created) + "\t" + to_string(t.updated)
+      + "\t" + t.recur + "\t" + t.notes + "\n";
+    buf = buf + line;
+  }
+  fs.write_string(db, buf).unwrap_or(());
+}
+
+export fn upsert(db: String, mut t: Task) {
+  let mut xs = load(db);
+  let mut found = false;
+  for i in 0..len(xs) {
+    if xs[i].id == t.id {
+      t.updated = time.now_unix_ms();
+      xs[i] = t;
+      found = true;
+      break;
+    }
+  }
+  if !found {
+    t.created = time.now_unix_ms();
+    t.updated = t.created;
+    push(xs, t);
+  }
+  save(db, xs);
+}
+
+export fn delete(db: String, id: String) {
+  let xs = load(db);
+  let mut out: Vec<Task> = [];
+  for t in xs { if t.id != id { push(out, t); } }
+  save(db, out);
+}
+
+export fn find(db: String, id: String) -> Option<Task> {
+  let xs = load(db);
+  for t in xs { if t.id == id { return Some(t); } }
+  None
+}
+
+fn parse_i64(s: String) -> i64 { __intrinsics::atoi_i64(s) }

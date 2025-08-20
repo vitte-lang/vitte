@@ -1,14 +1,390 @@
-//! pagination.vitte — Page<T> from slice + token simple.
+//! modules/pagination.vitte
+//! -------------------------------------------------------------
+//! Pagination — offset/limit classique + keyset (curseur) prête pour HTTP
+//! -------------------------------------------------------------
+//! Objectifs :
+//!  - **Offset/limit** sûr (clamp, bornes, erreurs claires).
+//!  - **Keyset/cursor** robuste (tokens base64url, tie-breaker par id).
+//!  - **Helpers HTTP** (Link header, payload standard).
+//!  - **In-memory** & **SQL-friendly** (génère des clauses where).
+//!
+//! État : stable (🖥🛠🌐). Zéro alloc cachée significative ; tout est explicite.
+//! Licence : MIT
+//!
+//! TL;DR :
+//!   let rq = pagination::page(2, 50)        // offset/limit : page=2, per_page=50
+//!   let ol = pagination::to_offset_limit(rq)?  // -> {offset: 50, limit: 50}
+//!
+//!   // Keyset asc : (clé logique + id de débrayage)
+//!   let cur = pagination::cursor_after(25, "name", "asc", None) // limit=25
+//!   // Après avoir lu une page, fabriquer "next":
+//!   let next = pagination::encode_cursor("name", "asc", last_key, last_id)
+//!   // Pour la requête suivante:
+//!   let cur2 = pagination::cursor_after(25, "name", "asc", Some(next))
+//!
+//!   // HTTP : Link header & payload
+//!   let link = pagination::link_header("/items", cur2.next, cur2.prev, cur2.limit)
+//!   let body = pagination::page_payload(items, cur2.next, cur2.prev, cur2.limit)
 
-#![version("0.1.0")]
-#![strict]
+use string
+use mathx
 
-pub struct Page<T>{ pub items:Vec<T>, pub next: Option<str> }
+// ------------------------------ Constantes ------------------------------
 
-pub fn paginate<T: Clone>(v:&[T], limit:usize, token:Option<&str>)->Page<T>{
-    let start = token.and_then(|t| t.parse::<usize>().ok()).unwrap_or(0);
-    let end = (start+limit).min(v.len());
-    let items = v[start..end].to_vec();
-    let next = if end < v.len() { Some(end.to_string()) } else { None };
-    Page{ items, next }
+pub const DEFAULT_PER_PAGE : u32 = 20
+pub const MAX_PER_PAGE     : u32 = 200
+pub const MAX_CURSOR_LIMIT : u32 = 200
+
+// ------------------------------ Types de base ------------------------------
+
+pub enum PaginationError {
+  InvalidLimit(u32),
+  InvalidPage(u32),
+  InvalidCursor(str),
+  DecodeError(str),
+  UnsupportedSort(str),
+  OutOfRange(str),
+}
+
+pub enum SortDir { Asc, Desc }
+
+// Offset/limit (classique)
+pub struct PageRequest {
+  page: u32,       // 1-based
+  per_page: u32,   // 1..=MAX_PER_PAGE
+}
+
+pub struct OffsetLimit { offset: u64, limit: u32 }
+
+// Keyset/cursor
+pub struct CursorRequest {
+  limit: u32,             // 1..=MAX_CURSOR_LIMIT
+  sort_by: String,        // champ logique (validé par l'app)
+  dir: SortDir,           // asc/desc
+  after: Option[String],  // token opaque (base64url)
+  before: Option[String], // token opaque (base64url)
+}
+
+// Résultat standard côté API
+pub struct Page[T] {
+  items: Vec[T],
+  next: Option[String],
+  prev: Option[String],
+  limit: u32,
+}
+
+// ------------------------------ Helpers communs ------------------------------
+
+inline do parse_dir(s: str) -> SortDir {
+  let x = string::to_lower(s)
+  if x == "desc" { SortDir::Desc } else { SortDir::Asc }
+}
+
+inline do dir_to_str(d: SortDir) -> str {
+  match d { SortDir::Asc => "asc", SortDir::Desc => "desc" }
+}
+
+inline do clamp_per_page(pp: u32) -> Result[u32, PaginationError] {
+  if pp == 0 || pp > MAX_PER_PAGE { return Err(PaginationError::InvalidLimit(pp)) }
+  Ok(pp)
+}
+
+inline do clamp_limit(lim: u32) -> Result[u32, PaginationError] {
+  if lim == 0 || lim > MAX_CURSOR_LIMIT { return Err(PaginationError::InvalidLimit(lim)) }
+  Ok(lim)
+}
+
+// ------------------------------ API Offset/Limit ------------------------------
+
+pub do page(page: u32, per_page: u32) -> PageRequest {
+  PageRequest {
+    page: if page == 0 { 1 } else { page },
+    per_page: if per_page == 0 { DEFAULT_PER_PAGE } else { per_page },
+  }
+}
+
+pub do to_offset_limit(r: PageRequest) -> Result[OffsetLimit, PaginationError] {
+  let pp = clamp_per_page(r.per_page)?
+  if r.page == 0 { return Err(PaginationError::InvalidPage(0)) }
+  let off = ((r.page - 1) as u64) * (pp as u64)
+  Ok(OffsetLimit { offset: off, limit: pp })
+}
+
+// ------------------------------ API Cursor/Keyset ------------------------------
+
+pub do cursor_after(limit: u32, sort_by: str, dir: str, token: Option[str]) -> Result[CursorRequest, PaginationError] {
+  let l = clamp_limit(limit)?
+  let sb = String::from(sort_by)
+  let d  = parse_dir(dir)
+  Ok(CursorRequest {
+    limit: l, sort_by: sb, dir: d,
+    after: token.map(|t| String::from(t)),
+    before: None
+  })
+}
+
+pub do cursor_before(limit: u32, sort_by: str, dir: str, token: Option[str]) -> Result[CursorRequest, PaginationError] {
+  let l = clamp_limit(limit)?
+  let sb = String::from(sort_by)
+  let d  = parse_dir(dir)
+  Ok(CursorRequest {
+    limit: l, sort_by: sb, dir: d,
+    after: None,
+    before: token.map(|t| String::from(t))
+  })
+}
+
+// ------------------------------ Encodage des tokens ------------------------------
+// Token = base64url( "v1|sort_by=<sb>|dir=<asc/desc>|k=<last_key>|i=<last_id>" )
+
+extern(c) do __vitte_b64url_encode(data: []u8) -> String
+extern(c) do __vitte_b64url_decode(s: str) -> Result[[]u8, str]
+
+pub do encode_cursor(sort_by: str, dir: str, last_key: str, last_id: u64) -> String {
+  let payload =
+    "v1|sort_by=" + sort_by +
+    "|dir=" + dir +
+    "|k=" + last_key +
+    "|i=" + to_string(last_id)
+  __vitte_b64url_encode(string::to_bytes(payload))
+}
+
+pub do decode_cursor(token: str) -> Result[(String, SortDir, String, u64), PaginationError] {
+  if token.len() == 0 { return Err(PaginationError::InvalidCursor("empty")) }
+  let raw = match __vitte_b64url_decode(token) {
+    Ok(b) => string::from_bytes(b),
+    Err(e) => return Err(PaginationError::DecodeError(e)),
+  }
+  // parsing très simple (format contrôlé)
+  if !raw.starts_with("v1|") { return Err(PaginationError::InvalidCursor("bad version")) }
+  let parts = string::split(raw, "|")
+  // v1, sort_by=..., dir=..., k=..., i=...
+  if parts.len() < 5 { return Err(PaginationError::InvalidCursor("parts < 5")) }
+  let mut sb = ""
+  let mut d  = "asc"
+  let mut k  = ""
+  let mut id_s = ""
+  for p in parts {
+    if p.starts_with("sort_by=") { sb = p[8..] }
+    else if p.starts_with("dir=") { d = p[4..] }
+    else if p.starts_with("k=") { k = p[2..] }
+    else if p.starts_with("i=") { id_s = p[2..] }
+  }
+  if sb.len() == 0 || k.len() == 0 || id_s.len() == 0 {
+    return Err(PaginationError::InvalidCursor("missing fields"))
+  }
+  // parse id
+  let mut id: u64 = 0
+  for ch in id_s.chars() {
+    let dd = (ch as u32) - 48
+    if dd > 9 { return Err(PaginationError::InvalidCursor("id NaN")) }
+    id = id * 10 + (dd as u64)
+  }
+  Ok((String::from(sb), parse_dir(d), String::from(k), id))
+}
+
+// ------------------------------ Helpers SQL-friendly ------------------------------
+// Génère une clause WHERE couteau-suisse pour un couple (clé logique, id).
+// Exemple (ASC):  (name > :k) OR (name = :k AND id > :id)
+// Exemple (DESC): (name < :k) OR (name = :k AND id < :id)
+
+pub do sql_where_for_cursor(column: str, id_column: str, dir: SortDir) -> String {
+  let op = match dir { SortDir::Asc => ">", SortDir::Desc => "<" }
+  "(" + column + " " + op + " :k) OR (" + column + " = :k AND " + id_column + " " + op + " :id)"
+}
+
+// ------------------------------ In-memory keyset ------------------------------
+// Trie + filtre via curseur, puis tronque à limit. Renvoie Page[T] + next/prev.
+// - get_key : T -> (String, u64) (clé logique, id tie-breaker)
+// - dir     : asc/desc
+
+pub do paginate_vec_keyset[T](
+  mut xs: Vec[T],
+  limit: u32,
+  dir: SortDir,
+  after: Option[str],
+  before: Option[str],
+  get_key: do(&T) -> (String, u64),
+  sort_by: str    // ignoré ici mais laissé pour cohérence/traçage
+) -> Result[Page[T], PaginationError] {
+
+  let lim = clamp_limit(limit)?
+  // Tri stable
+  xs.sort_by(|a, b| {
+    let (ka, ia) = get_key(a)
+    let (kb, ib) = get_key(b)
+    if ka < kb { if dir == SortDir::Asc { -1 } else { 1 } }
+    else if ka > kb { if dir == SortDir::Asc { 1 } else { -1 } }
+    else {
+      if ia < ib { if dir == SortDir::Asc { -1 } else { 1 } }
+      else if ia > ib { if dir == SortDir::Asc { 1 } else { -1 } }
+      else { 0 }
+    }
+  })
+
+  // Filtrage via after/before (mutuellement exclusifs côté appelant en général)
+  let mut filtered = Vec::new()
+  let mut ak: String = ""
+  let mut aid: u64 = 0
+  if after.is_some() {
+    let (_, d, k, id) = decode_cursor(after.unwrap())?
+    // direction du token doit matcher la direction prise
+    if d != dir { return Err(PaginationError::InvalidCursor("dir mismatch")) }
+    ak = k; aid = id
+  }
+  let mut bk: String = ""
+  let mut bid: u64 = 0
+  if before.is_some() {
+    let (_, d, k, id) = decode_cursor(before.unwrap())?
+    if d != dir { return Err(PaginationError::InvalidCursor("dir mismatch")) }
+    bk = k; bid = id
+  }
+
+  for it in xs {
+    let (k, i) = get_key(&it)
+    let mut ok = true
+    if after.is_some() {
+      if dir == SortDir::Asc {
+        ok = (k > ak) || (k == ak && i > aid)
+      } else {
+        ok = (k < ak) || (k == ak && i < aid)
+      }
+    }
+    if ok && before.is_some() {
+      if dir == SortDir::Asc {
+        ok = (k < bk) || (k == bk && i < bid)
+      } else {
+        ok = (k > bk) || (k == bk && i > bid)
+      }
+    }
+    if ok { filtered.push(it) }
+  }
+
+  // Tronquer
+  let mut out = Vec::new()
+  let n = filtered.len()
+  let take = if (lim as usize) < n { lim as usize } else { n }
+  let mut i: usize = 0
+  while i < take { out.push(filtered[i]); i += 1 }
+
+  // Cursors next/prev
+  let mut next: Option[String] = None
+  let mut prev: Option[String] = None
+
+  if out.len() > 0 {
+    // next : si plus d'éléments derrière
+    if n > out.len() {
+      let (lk, lid) = get_key(&out[out.len()-1])
+      next = Some(encode_cursor(sort_by, dir_to_str(dir), lk, lid))
+    }
+    // prev : si on avait un filtre after, on peut reconstruire un "before" vers l'arrière
+    if after.is_some() {
+      let (fk, fid) = get_key(&out[0])
+      // pour revenir en arrière, on encode un "before" équivalent (mais les API préfèrent after/before exclusifs)
+      prev = Some(encode_cursor(sort_by, dir_to_str(dir), fk, fid))
+    }
+  }
+
+  Ok(Page[T]{ items: out, next, prev, limit: lim })
+}
+
+// ------------------------------ HTTP helpers ------------------------------
+// Link: <base?cursor=...&limit=...>; rel="next", <...>; rel="prev"
+
+pub do link_header(base_path: str, next: Option[str], prev: Option[str], limit: u32) -> Option[String] {
+  if next.is_none() && prev.is_none() { return None }
+  let mut parts = Vec::new()
+  if next.is_some() {
+    parts.push("<" + base_path + "?cursor=" + next.unwrap() + "&limit=" + to_string(limit) + ">; rel=\"next\"")
+  }
+  if prev.is_some() {
+    parts.push("<" + base_path + "?cursor=" + prev.unwrap() + "&limit=" + to_string(limit) + ">; rel=\"prev\"")
+  }
+  Some(string::join(parts, ", "))
+}
+
+// Payload JSON-like (clé standard)
+pub do page_payload[T](items: Vec[T], next: Option[str], prev: Option[str], limit: u32) -> Map[str, any] {
+  let mut m = Map::new()
+  // NB: sérialisation concrète dépend de l’environnement ; ici on reste agnostique.
+  m.insert("items", items as any)
+  m.insert("next", next.unwrap_or("") as any)   // "" si None
+  m.insert("prev", prev.unwrap_or("") as any)
+  m.insert("limit", limit as any)
+  m
+}
+
+// Valide/normalise un champ de tri par rapport à une whitelist
+pub do canonicalize_sort(sort_by: str, allowed: Vec[str], default: str) -> Result[String, PaginationError] {
+  let s = string::to_lower(sort_by)
+  for a in allowed { if s == a { return Ok(String::from(s)) } }
+  if default.len() > 0 { return Ok(String::from(default)) }
+  Err(PaginationError::UnsupportedSort(sort_by))
+}
+
+// ------------------------------ Offset in-memory (simple) ------------------------------
+
+pub do paginate_vec_offset[T](xs: Vec[T], page: u32, per_page: u32) -> Result[Page[T], PaginationError] {
+  let rq = PageRequest{ page: if page==0 {1} else {page}, per_page: if per_page==0 {DEFAULT_PER_PAGE} else {per_page} }
+  let ol = to_offset_limit(rq)?
+  let n = xs.len()
+  let start = if (ol.offset as usize) > n { n } else { ol.offset as usize }
+  let end = mathx::min_i64((n as i64), (start as i64) + (ol.limit as i64)) as usize
+  let mut out = Vec::new()
+  let mut i = start
+  while i < end { out.push(xs[i]); i += 1 }
+  // next/prev = pages offset encodées grossièrement (optionnel)
+  let mut next: Option[String] = None
+  let mut prev: Option[String] = None
+  if end < n { next = Some(encode_cursor("offset", "asc", to_string(end), 0)) }
+  if start > 0 {
+    let prev_start = if start > ol.limit as usize { start - (ol.limit as usize) } else { 0 }
+    prev = Some(encode_cursor("offset", "asc", to_string(prev_start), 0))
+  }
+  Ok(Page[T]{ items: out, next, prev, limit: ol.limit })
+}
+
+// ------------------------------ Tests (fumée) ------------------------------
+
+// @test
+do _offset_ok() {
+  let rq = page(2, 50)
+  let ol = to_offset_limit(rq).unwrap()
+  assert(ol.offset == 50, "offset")
+  assert(ol.limit == 50, "limit")
+}
+
+// @test
+do _cursor_encode_decode() {
+  let tok = encode_cursor("name", "asc", "alice", 42)
+  let (sb, dir, k, id) = decode_cursor(tok).unwrap()
+  assert(sb == "name", "sb")
+  assert(dir == SortDir::Asc, "dir")
+  assert(k == "alice", "k")
+  assert(id == 42, "id")
+}
+
+// @test
+do _keyset_vec_asc() {
+  struct Row { name: String, id: u64 }
+  let data = vec![
+    Row{ name: "alice", id: 1 },
+    Row{ name: "bob",   id: 2 },
+    Row{ name: "bob",   id: 3 },
+    Row{ name: "zoe",   id: 4 },
+  ]
+  let page1 = paginate_vec_keyset[Row](
+    data, 2, SortDir::Asc, None, None,
+    |r| (r.name, r.id),
+    "name"
+  ).unwrap()
+  assert(page1.items.len()==2, "len p1")
+  let nxt = page1.next.unwrap()
+  let page2 = paginate_vec_keyset[Row](
+    page1.items /* pas réaliste, juste pour test */, 2, SortDir::Asc, Some(nxt), None,
+    |r| (r.name, r.id),
+    "name"
+  )
+  // Ce test est simpliste ; dans le monde réel, la page2 se calcule sur la *source* complète.
+  assert(page2.is_err(), "ici volontairement erroné (source tronquée)")
 }

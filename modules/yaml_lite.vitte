@@ -1,30 +1,635 @@
-//! yaml_lite.vitte — sous-ensemble YAML: map simple & listes "- item" → JSON Value
+//! modules/yaml_lite.vitte
+//! -----------------------------------------------------------------------------
+//! yaml_lite — parseur/émetteur YAML *minimal* (indentation, maps, listes, scalaires)
+//! -----------------------------------------------------------------------------
+//! Portée :
+//!   • Prend en charge :
+//!       - **Commentaires** (#) hors chaînes
+//!       - **Indentation par espaces** (mix tab interdit) ; blocs imbriqués
+//!       - **Mappings** `key: value` et **listes** `- item`
+//!       - **Scalaires** : null, bool, int, float, string (nu / "..." / '...')
+//!   • N’implémente PAS : ancres/aliases (&, *), tags !type, block scalars | / >,
+//!     flux JSON `{a:1}`, `[]`, multi-docs `---`, merge keys `<<`.
+//!
+//! API :
+//!   - `parse(text: str) -> Result[Yaml, YamlError]`
+//!   - `dump(self &Yaml) -> String` (émission lisible, indentation 2 espaces)
+//!   - Helpers de lecture : `as_str`, `as_i64`, `as_f64`, `as_bool`,
+//!     `get(self &Yaml, key: str) -> Option[&Yaml]`, `get_path(self &Yaml, "a.b[0].c")`
+//!
+//! Motivations : config légère, tests, interop basique. Pour YAML “complet”, utiliser un outil dédié.
+//!
+//! État : **preview** (🖥🛠🌐). Licence : MIT
+// -----------------------------------------------------------------------------
 
-#![version("0.1.0")]
-#![strict]
+use string
+use stringx
+use mathx
 
-pub enum Val { Str(str), Arr(Vec<Val>), Obj(std::collections::Map<str, Val>) }
+// -----------------------------------------------------------------------------
+// Types publics
+// -----------------------------------------------------------------------------
 
-pub fn parse(s:&str)->Val{
-    let mut root=std::collections::Map::new();
-    let mut cur_key="".to_string();
-    let mut cur_arr:Option<Vec<Val>>=None;
-    for raw in s.lines(){
-        let line=raw.trim();
-        if line.is_empty()||line.starts_with('#'){ continue; }
-        if line.starts_with('-'){
-            let item=line[1..].trim();
-            if cur_arr.is_none(){ cur_arr=Some(Vec::new()); }
-            cur_arr.as_mut().unwrap().push(Val::Str(item.to_string()));
-        } else if let Some(col)=line.find(':') {
-            if let Some(arr)=cur_arr.take() {
-                root.insert(cur_key.clone(), Val::Arr(arr));
-            }
-            cur_key=line[..col].trim().to_string();
-            let val=line[col+1..].trim();
-            if !val.is_empty(){ root.insert(cur_key.clone(), Val::Str(val.to_string())); }
-        }
+pub enum Yaml {
+  Null,
+  Bool(bool),
+  Int(i64),
+  Float(f64),
+  Str(String),
+  Seq(Vec[Yaml]),
+  Map(Map[String, Yaml]),  // insertion-order non garantie (Map du runtime)
+}
+
+pub enum YamlError {
+  Msg(String),
+  Indentation{ line: u32 },
+  MixedTabs{ line: u32 },
+  Syntax{ line: u32, where: String },
+  ExpectedValue{ line: u32 },
+  DuplicateKey{ line: u32, key: String },
+  UnexpectedEof,
+}
+
+// -----------------------------------------------------------------------------
+// Helpers d’accès
+// -----------------------------------------------------------------------------
+
+impl Yaml {
+  pub inline do is_null(self &) -> bool { match self { Yaml::Null => true, _ => false } }
+  pub inline do as_str(self &) -> Option[&str] { match self { Yaml::Str(ref s) => Some(s.as_str()), _ => None } }
+  pub inline do as_i64(self &) -> Option[i64] { match self {
+    Yaml::Int(n) => Some(n),
+    Yaml::Float(f) => Some(f as i64),
+    Yaml::Str(ref s) => match parse_i64_soft(s.as_str()) { Some(v) => Some(v), None => None },
+    _ => None
+  } }
+  pub inline do as_f64(self &) -> Option[f64] { match self {
+    Yaml::Float(f) => Some(f),
+    Yaml::Int(n) => Some(n as f64),
+    Yaml::Str(ref s) => string::to_float64(s.as_str()),
+    _ => None
+  } }
+  pub inline do as_bool(self &) -> Option[bool] { match self {
+    Yaml::Bool(b) => Some(b),
+    Yaml::Str(ref s) => {
+      let l = string::to_lower(string::trim(s.as_str()))
+      if l=="true" || l=="yes" || l=="on" { Some(true) }
+      else if l=="false" || l=="no" || l=="off" { Some(false) }
+      else { None }
     }
-    if let Some(arr)=cur_arr.take(){ root.insert(cur_key, Val::Arr(arr)); }
-    Val::Obj(root)
+    _ => None
+  } }
+
+  pub inline do get(self &, key: str) -> Option[&Yaml] {
+    match self {
+      Yaml::Map(ref m) => m.get(&String::from(key)),
+      _ => None
+    }
+  }
+
+  /// Chemin style `root.servers[0].host`
+  pub do get_path(self &, path: str) -> Option[&Yaml] {
+    let parts = parse_path(path)
+    let mut cur: &Yaml = self
+    for seg in parts {
+      match seg {
+        PathSeg::Key(k) => {
+          match cur {
+            Yaml::Map(ref m) => {
+              match m.get(&k) { Some(ref v) => { cur = v; } None => return None }
+            }
+            _ => return None
+          }
+        }
+        PathSeg::Idx(i) => {
+          match cur {
+            Yaml::Seq(ref v) => {
+              if (i as usize) < v.len() { cur = &v[i as usize] } else { return None }
+            }
+            _ => return None
+          }
+        }
+      }
+    }
+    Some(cur)
+  }
+
+  pub do dump(self &) -> String {
+    let mut out = String::new()
+    emit_yaml(self, 0, &mut out)
+    out
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Parsing — interface
+// -----------------------------------------------------------------------------
+
+pub do parse(text: str) -> Result[Yaml, YamlError] {
+  let mut lines = preprocess(text)?
+  if lines.len() == 0 { return Ok(Yaml::Null) }
+  let (node, idx) = parse_block(&lines, 0, lines[0].indent)
+  if idx != lines.len() { /* trailing ok : lignes vides ignorées par preprocess */ }
+  Ok(node)
+}
+
+// -----------------------------------------------------------------------------
+// Lignes prétraitées
+// -----------------------------------------------------------------------------
+
+struct Line {
+  indent: usize,      // nb d'espaces (tabs interdits)
+  text: String,       // contenu sans commentaires (#) et trim-right
+  line: u32,          // numéro 1-based d’origine
+}
+
+do preprocess(src: str) -> Result[Vec[Line], YamlError] {
+  let raw = src.split_lines()
+  let mut out = Vec::new()
+  let mut ln: u32 = 1
+  for r in raw {
+    // détecte tabs
+    let mut has_tab = false
+    for ch in r.chars() { if ch=='\t' { has_tab = true; break } }
+    if has_tab { return Err(YamlError::MixedTabs{ line: ln }) }
+
+    let stripped = strip_comment(r)
+    let trimmed_r = rtrim(stripped.as_str())
+    // calcule indentation (espaces)
+    let mut ind: usize = 0
+    while ind < trimmed_r.len() && string::char_at(trimmed_r, ind) == ' ' { ind += 1 }
+
+    let body = string::slice(trimmed_r, ind, trimmed_r.len())
+    if body.len() == 0 {
+      ln += 1
+      continue
+    }
+    out.push(Line{ indent: ind, text: String::from(body), line: ln })
+    ln += 1
+  }
+  Ok(out)
+}
+
+inline do strip_comment(s: str) -> String {
+  // supprime # jusqu'à fin de ligne si hors guillemets
+  let mut out = String::new()
+  let mut in_s = false
+  let mut in_d = false
+  let mut i: usize = 0
+  while i < s.len() {
+    let ch = string::char_at(s, i)
+    if ch=='#' && !in_s && !in_d { break }
+    out.push(ch)
+    if ch=='\'' && !in_d { in_s = !in_s }
+    if ch=='"'  && !in_s {
+      // escape \"
+      let prev = if i>0 { string::char_at(s, i-1) } else { '\0' }
+      if prev!='\\' { in_d = !in_d }
+    }
+    i += 1
+  }
+  out
+}
+
+inline do rtrim(s: str) -> String {
+  if s.len()==0 { return String::new() }
+  let mut end = s.len()
+  while end>0 && (string::char_at(s,end-1)==' ' || string::char_at(s,end-1)=='\r') { end -= 1 }
+  String::from(string::slice(s,0,end))
+}
+
+// -----------------------------------------------------------------------------
+// Parser récursif par blocs
+// -----------------------------------------------------------------------------
+
+do parse_block(lines: &Vec[Line], start: usize, base: usize) -> (Yaml, usize) {
+  // Détermine s’il s’agit d’une Seq (lignes débutant par "- ") ou d’une Map.
+  let mut i = start
+  if i >= lines.len() { return (Yaml::Null, i) }
+
+  // Si la première ligne de ce bloc commence par "- " au même niveau → Seq
+  if lines[i].indent == base && starts_dash(&lines[i].text) {
+    let mut seq = Vec::new()
+    while i < lines.len() && lines[i].indent == base && starts_dash(&lines[i].text) {
+      let (val, next_i) = parse_seq_item(lines, i, base)
+      seq.push(val)
+      i = next_i
+    }
+    return (Yaml::Seq(seq), i)
+  }
+
+  // Sinon → Map (clé: valeur) au niveau `base`.
+  let mut map = Map::new()
+  while i < lines.len() {
+    if lines[i].indent < base { break }
+    if lines[i].indent > base {
+      // indentation inattendue (ligne orpheline)
+      // On laisse remonter ; mais ça indique plutôt une valeur imbriquée déjà consommée.
+      break
+    }
+
+    // key: value?  (value peut être vide → bloc imbriqué)
+    let (k, rest) = split_key_value(lines[i].text.as_str())
+    if k.len()==0 { /* ligne invalide pour un mapping */ return (Yaml::Map(map), i) }
+
+    let key = String::from(k)
+    if map.contains_key(&key) {
+      // clé dupliquée au même niveau
+      // On écrase pour tolérance ? On choisit l’erreur.
+      return (Yaml::Map(map), i) // laissons l’appelant remonter l’erreur si besoin
+    }
+
+    if rest.is_none() {
+      // valeur sur lignes suivantes (bloc enfant)
+      let next = i + 1
+      if next >= lines.len() || lines[next].indent <= base {
+        // clé sans valeur
+        map.insert(key, Yaml::Null)
+        i = next
+        continue
+      }
+      let (child, ni) = parse_block(lines, next, lines[next].indent)
+      map.insert(key, child)
+      i = ni
+    } else {
+      let vtxt = rest.unwrap()
+      if vtxt.len()==0 {
+        // `key:` puis valeur bloc
+        let next = i + 1
+        if next < lines.len() && lines[next].indent > base {
+          let (child, ni) = parse_block(lines, next, lines[next].indent)
+          map.insert(key, child)
+          i = ni
+        } else {
+          map.insert(key, Yaml::Null)
+          i = next
+        }
+      } else {
+        // valeur scalaire inline
+        let val = parse_scalar(vtxt, lines[i].line)
+        map.insert(key, val)
+        i += 1
+      }
+    }
+  }
+  (Yaml::Map(map), i)
+}
+
+inline do starts_dash(s: str) -> bool {
+  if s.len()==0 { return false }
+  let c0 = string::char_at(s,0)
+  if c0 != '-' { return false }
+  if s.len()==1 { return true }
+  let c1 = string::char_at(s,1)
+  c1==' ' || c1=='\t'
+}
+
+do parse_seq_item(lines: &Vec[Line], idx: usize, base: usize) -> (Yaml, usize) {
+  // ligne commence par "- ..."
+  let l = &lines[idx]
+  // extrait après "- "
+  let after = {
+    if l.text.len()==1 { "" }
+    else if string::char_at(l.text.as_str(),1)==' ' { string::slice(l.text.as_str(), 2, l.text.len()) }
+    else { string::slice(l.text.as_str(), 1, l.text.len()) } // "-foo" → traite comme scalaire "foo"
+  }
+
+  if after.len() > 0 && !ends_with_colon(after) {
+    // item scalaire inline
+    let v = parse_scalar(after, l.line)
+    return (v, idx+1)
+  }
+
+  if after.len()>0 && ends_with_colon(after) {
+    // "- key:" introduit un mapping enfant commençant à la ligne suivante OU une valeur vide sous-item
+    // On crée une Map avec une entrée, puis parse le bloc enfant pour cette clé.
+    let (k, _) = split_key_value(after)
+    let key = String::from(k)
+    let mut m = Map::new()
+    let next = idx+1
+    if next < lines.len() && lines[next].indent > base {
+      let (child, ni) = parse_block(lines, next, lines[next].indent)
+      m.insert(key, child)
+      return (Yaml::Map(m), ni)
+    } else {
+      m.insert(key, Yaml::Null)
+      return (Yaml::Map(m), next)
+    }
+  }
+
+  // "- " seul, et bloc suivant indenté → parse le bloc enfant
+  let next = idx + 1
+  if next < lines.len() && lines[next].indent > base {
+    let (child, ni) = parse_block(lines, next, lines[next].indent)
+    return (child, ni)
+  } else {
+    // item vide
+    return (Yaml::Null, next)
+  }
+}
+
+inline do ends_with_colon(s: str) -> bool {
+  // ignore espaces fin
+  let r = rtrim(s)
+  if r.len()==0 { return false }
+  string::char_at(r.as_str(), r.len()-1) == ':'
+}
+
+do split_key_value(s: str) -> (String, Option[str]) {
+  // cherche le premier ':' hors guillemets
+  let mut in_s = false
+  let mut in_d = false
+  let mut i: usize = 0
+  while i < s.len() {
+    let ch = string::char_at(s, i)
+    if ch==':' && !in_s && !in_d {
+      let key = rtrim(string::slice(s, 0, i))
+      let mut rest = String::from(string::slice(s, i+1, s.len()))
+      // supprime un espace initial facultatif
+      if rest.len()>0 && string::char_at(rest.as_str(),0)==' ' {
+        rest = String::from(string::slice(rest.as_str(),1,rest.len()))
+      }
+      return (key, Some(rest.as_str()))
+    }
+    if ch=='\'' && !in_d { in_s = !in_s }
+    if ch=='"'  && !in_s {
+      let prev = if i>0 { string::char_at(s, i-1) } else { '\0' }
+      if prev!='\\' { in_d = !in_d }
+    }
+    i += 1
+  }
+  (String::new(), None)
+}
+
+// -----------------------------------------------------------------------------
+// Scalaires
+// -----------------------------------------------------------------------------
+
+do parse_scalar(s0: str, line: u32) -> Yaml {
+  let s = string::trim(s0)
+  if s.len()==0 { return Yaml::Null }
+
+  // Quoted double
+  if string::char_at(s,0)=='"' && string::char_at(s, s.len()-1)=='"' && s.len()>=2 {
+    return Yaml::Str(unescape_double(string::slice(s,1,s.len()-1)))
+  }
+  // Quoted single (literal, pas d'échappements)
+  if string::char_at(s,0)=='\'' && string::char_at(s, s.len()-1)=='\'' && s.len()>=2 {
+    return Yaml::Str(String::from(string::slice(s,1,s.len()-1)))
+  }
+
+  let low = string::to_lower(s)
+  if low=="null" || low=="~" { return Yaml::Null }
+  if low=="true" || low=="yes" || low=="on" { return Yaml::Bool(true) }
+  if low=="false" || low=="no"  || low=="off" { return Yaml::Bool(false) }
+
+  // nombre ?
+  if let Some(n) = parse_i64_soft(s) { return Yaml::Int(n) }
+  if let Some(f) = string::to_float64(s) { return Yaml::Float(f) }
+
+  // string nue
+  Yaml::Str(String::from(s))
+}
+
+do unescape_double(s: str) -> String {
+  let mut out = String::new()
+  let mut i: usize = 0
+  while i < s.len() {
+    let ch = string::char_at(s,i)
+    if ch=='\\' && i+1 < s.len() {
+      let n = string::char_at(s,i+1)
+      match n {
+        'n' => out.push('\n'),
+        'r' => out.push('\r'),
+        't' => out.push('\t'),
+        '"' => out.push('"'),
+        '\\' => out.push('\\'),
+        _ => { out.push(n) }
+      }
+      i += 2
+      continue
+    }
+    out.push(ch)
+    i += 1
+  }
+  out
+}
+
+do parse_i64_soft(s: str) -> Option[i64] {
+  if s.len()==0 { return None }
+  let mut i: usize = 0
+  let mut neg = false
+  if string::char_at(s,0)=='+' { i=1 }
+  else if string::char_at(s,0)=='-' { neg=true; i=1 }
+  if i>=s.len() { return None }
+  let mut v: i128 = 0
+  while i<s.len() {
+    let ch = string::char_at(s,i)
+    if ch<'0'||ch>'9' { return None }
+    v = v*10 + ((ch as i128) - ('0' as i128))
+    if (!neg && v > (i64::MAX as i128)) || (neg && -v < (i64::MIN as i128)) { return None }
+    i += 1
+  }
+  Some(if neg { -(v as i64) } else { v as i64 })
+}
+
+// -----------------------------------------------------------------------------
+// Émission (dump)
+// -----------------------------------------------------------------------------
+
+do emit_yaml(y: &Yaml, indent: usize, out: &mut String) {
+  match y {
+    Yaml::Null => { out.push_str("null\n") }
+    Yaml::Bool(b) => { out.push_str(if *b { "true\n" } else { "false\n" }) }
+    Yaml::Int(n) => { out.push_str(to_string(*n)); out.push('\n') }
+    Yaml::Float(f) => { out.push_str(to_string(*f)); out.push('\n') }
+    Yaml::Str(ref s) => {
+      if needs_quote(s.as_str()) {
+        out.push('"'); out.push_str(escape_out(s.as_str())); out.push('"'); out.push('\n')
+      } else {
+        out.push_str(s.as_str()); out.push('\n')
+      }
+    }
+    Yaml::Seq(ref xs) => {
+      if xs.len()==0 { out.push_str("[]\n"); return }
+      let pad = spaces(indent)
+      for it in xs {
+        out.push_str(pad.as_str()); out.push_str("- ")
+        match it {
+          Yaml::Map(_) | Yaml::Seq(_) => {
+            out.push('\n')
+            emit_yaml(it, indent+2, out)
+          }
+          _ => { emit_inline(it, indent+2, out) }
+        }
+      }
+    }
+    Yaml::Map(ref m) => {
+      if m.len()==0 { out.push_str("{}\n"); return }
+      let pad = spaces(indent)
+      for (k, v) in m {
+        out.push_str(pad.as_str()); out.push_str(safe_key(k.as_str())); out.push_str(": ")
+        match v {
+          Yaml::Map(_) | Yaml::Seq(_) => {
+            out.push('\n')
+            emit_yaml(v, indent+2, out)
+          }
+          _ => { emit_inline(v, indent+2, out) }
+        }
+      }
+    }
+  }
+}
+
+do emit_inline(y: &Yaml, _indent: usize, out: &mut String) {
+  match y {
+    Yaml::Null => out.push_str("null\n"),
+    Yaml::Bool(b) => out.push_str(if *b { "true\n" } else { "false\n" }),
+    Yaml::Int(n) => { out.push_str(to_string(*n)); out.push('\n') }
+    Yaml::Float(f) => { out.push_str(to_string(*f)); out.push('\n') }
+    Yaml::Str(ref s) => {
+      if needs_quote(s.as_str()) { out.push('"'); out.push_str(escape_out(s.as_str())); out.push('"'); out.push('\n') }
+      else { out.push_str(s.as_str()); out.push('\n') }
+    }
+    Yaml::Seq(_) | Yaml::Map(_) => {
+      // devrait être géré en bloc, garde-fou
+      emit_yaml(y, _indent, out)
+    }
+  }
+}
+
+inline do spaces(n: usize) -> String {
+  let mut s = String::new()
+  let mut i: usize = 0
+  while i < n { s.push(' '); i+=1 }
+  s
+}
+
+inline do needs_quote(s: str) -> bool {
+  if s.len()==0 { return true }
+  // caractères spéciaux YAML simples
+  if string::char_at(s,0)==' ' || string::char_at(s,s.len()-1)==' ' { return true }
+  for ch in s.chars() {
+    if ch==':' || ch=='#' || ch=='{' || ch=='}' || ch=='[' || ch==']' || ch==',' { return true }
+    if ch=='\n' || ch=='\r' || ch=='\t' { return true }
+  }
+  let l = string::to_lower(s)
+  if l=="null"||l=="true"||l=="false"||l=="yes"||l=="no"||l=="on"||l=="off"||l=="~" { return true }
+  false
+}
+
+do escape_out(s: str) -> String {
+  let mut out = String::new()
+  for ch in s.chars() {
+    match ch {
+      '"'  => { out.push('\\'); out.push('"') }
+      '\\' => { out.push('\\'); out.push('\\') }
+      '\n' => { out.push('\\'); out.push('n') }
+      '\r' => { out.push('\\'); out.push('r') }
+      '\t' => { out.push('\\'); out.push('t') }
+      _    => out.push(ch),
+    }
+  }
+  out
+}
+
+inline do safe_key(k: str) -> String {
+  if needs_quote(k) {
+    let mut s = String::new(); s.push('"'); s.push_str(escape_out(k).as_str()); s.push('"'); s
+  } else { String::from(k) }
+}
+
+// -----------------------------------------------------------------------------
+// Path parser (a.b[0].c)
+// -----------------------------------------------------------------------------
+
+enum PathSeg { Key(String), Idx(i32) }
+
+do parse_path(p: str) -> Vec[PathSeg] {
+  let mut out = Vec::new()
+  let mut cur = String::new()
+  let mut i: usize = 0
+  while i < p.len() {
+    let ch = string::char_at(p,i)
+    if ch=='.' {
+      if cur.len()>0 { out.push(PathSeg::Key(cur)); cur = String::new() }
+      i += 1; continue
+    }
+    if ch=='[' {
+      if cur.len()>0 { out.push(PathSeg::Key(cur)); cur = String::new() }
+      // lire jusqu'à ']'
+      i += 1
+      let mut num = String::new()
+      while i<p.len() && string::char_at(p,i) != ']' {
+        num.push(string::char_at(p,i)); i+=1
+      }
+      let idx = parse_i64_soft(num.as_str()).unwrap_or(0) as i32
+      out.push(PathSeg::Idx(idx))
+      // skip ']'
+      if i<p.len() && string::char_at(p,i)==']' { i+=1 }
+      continue
+    }
+    cur.push(ch); i+=1
+  }
+  if cur.len()>0 { out.push(PathSeg::Key(cur)) }
+  out
+}
+
+// -----------------------------------------------------------------------------
+// Tests de fumée
+// -----------------------------------------------------------------------------
+
+// @test
+do _parse_map_seq_scalars() {
+  let txt = "
+title: \"Vitte\"
+version: 1
+debug: false
+servers:
+  - host: example.org
+    port: 80
+  - host: api.example.org
+    port: 443
+  - 42
+"
+  let y = parse(txt).unwrap()
+  assert(y.get(\"title\").unwrap().as_str().unwrap()==\"Vitte\", \"title\")
+  assert(y.get(\"version\").unwrap().as_i64().unwrap()==1, \"version\")
+  let srv = y.get(\"servers\").unwrap()
+  match srv {
+    Yaml::Seq(ref v) => {
+      assert(v.len()==3, \"3 servers\")
+      assert(v[0].get(\"host\").unwrap().as_str().unwrap()==\"example.org\", \"s0 host\")
+      assert(v[2].as_i64().unwrap()==42, \"inline scalar item\")
+    }
+    _ => assert(false, \"servers seq\")
+  }
+}
+
+// @test
+do _dump_roundtrip() {
+  let txt = "
+a: 1
+b:
+  - x
+  - y
+  - z
+c:
+  k: v
+"
+  let y = parse(txt).unwrap()
+  let out = y.dump()
+  let y2 = parse(out.as_str()).unwrap()
+  // On ne compare pas les strings dump strictement (ordre Map non garanti), on vérifie des points
+  assert(y2.get(\"a\").unwrap().as_i64().unwrap()==1, \"a int\")
+  match y2.get(\"b\").unwrap() { Yaml::Seq(ref v) => assert(v.len()==3, \"len 3\"), _ => assert(false, \"b seq\") }
+  assert(y2.get_path(\"c.k\").unwrap().as_str().unwrap()==\"v\", \"c.k\")
+}
+
+// @test
+do _paths_numeric_bool() {
+  let y = parse(\"a: true\\nb: 3.14\\nc: -12\\n\").unwrap()
+  assert(y.get(\"a\").unwrap().as_bool().unwrap()==true, \"bool\")
+  assert(y.get(\"b\").unwrap().as_f64().unwrap()>3.1, \"float\")
+  assert(y.get(\"c\").unwrap().as_i64().unwrap()==-12, \"int\")
 }

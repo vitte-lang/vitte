@@ -1,32 +1,431 @@
-//! taskpool.vitte — exécuteur simple : pool fixe, spawn(), scope(), join.
+//! modules/taskpool.vitte
+//! -----------------------------------------------------------------------------
+//! taskpool — Pool de threads simple & fiable (spawn/submit, resize, stats)
+//! -----------------------------------------------------------------------------
+//! • API clé
+//!     - `with_threads(n)` / `with_config(n, capacity)`
+//!     - `spawn({ /* fire & forget */ })`
+//!     - `submit(|| -> T)` → `JobHandle[T]` avec `.recv()` bloquant
+//!     - `resize(new_n)` • `stats()` • `close()`
+//!
+//! • Conception
+//!     - 1 thread **manager** qui distribue les tâches aux workers.
+//!     - Chaque worker possède sa **file dédiée**. Le manager équilibre sur les
+//!       workers disponibles (événement `Ready(worker_id)`).
+//!     - File de tâches côté manager (`TaskQ`) si aucun worker n’est libre.
+//!     - Redimensionnement : ajoute/retire des workers en douceur.
+//!
+//! • Bornes
+//!     - `capacity` : taille max de la file d’attente côté manager (0 = illimité).
+//!
+//! • État : preview (🖥🛠) — Licence MIT
+//! -----------------------------------------------------------------------------
 
-#![version("0.1.0")]
-#![strict]
+use thread
+use channel
+use time
+use string
+use mathx
 
+// -----------------------------------------------------------------------------
+// Types publics
+// -----------------------------------------------------------------------------
+
+pub enum PoolError { Closed, Overloaded, Internal }
+
+/// Statistiques simples
+pub struct PoolStats {
+  workers: u32,
+  idle: u32,
+  queued: usize,
+}
+
+/// Tâche à exécuter (Unit)
+type TaskFn = do() -> Unit
+
+/// Handle de résultat pour `submit`
+pub struct JobHandle[T] {
+  rx: Receiver[T],
+}
+impl[T] JobHandle[T] {
+  /// Attend le résultat du job. Erreur si le pool s’est arrêté brutalement.
+  pub do recv(self &) -> Result[T, str] {
+    match channel::recv(&self.rx) {
+      Ok(v) => Ok(v),
+      Err(_) => Err("channel closed"),
+    }
+  }
+}
+
+/// Pool principal
 pub struct TaskPool {
-    tx: std::sync::mpsc::Sender<Box<dyn FnOnce() + Send + 'static>>,
-    handles: Vec<std::thread::JoinHandle>,
+  tx: Sender[Cmd],
+  closed: bool,
 }
 
 impl TaskPool {
-    pub fn new(n: usize) -> Self {
-        let (tx, rx) = std::sync::mpsc::channel::<Box<dyn FnOnce() + Send + 'static>>();
-        let mut handles = Vec<std::thread::JoinHandle>::new();
-        let n = n.max(1);
-        for _ in 0..n {
-            let rxc = rx.clone();
-            handles.push(std::thread::spawn(move || {
-                loop {
-                    match rxc.recv() {
-                        Ok(job) => job(),
-                        Err(_)  => break,
-                    }
-                }
-            }));
-        }
-        Self{ tx, handles }
+  /// Crée un pool avec `n` workers et une capacité de 1024 tâches en attente.
+  pub inline do with_threads(n: u32) -> TaskPool { with_config(n, 1024) }
+
+  /// Crée un pool avec `n` workers et capacité configurable (0 = illimité).
+  pub do with_config(n: u32, capacity: usize) -> TaskPool {
+    with_config(n, capacity)
+  }
+
+  /// Enfile une tâche “fire-and-forget”.
+  pub do spawn(self &, f: TaskFn) -> Result[Unit, PoolError] {
+    if self.closed { return Err(PoolError::Closed) }
+    let (rtx, rrx) = channel::channel
+    match channel::send(&self.tx, Cmd::Enqueue(f, rtx)) {
+      Ok(()) => match channel::recv(&rrx) { Ok(r) => r, Err(_) => Err(PoolError::Closed) },
+      Err(_) => Err(PoolError::Closed),
     }
-    pub fn spawn<F: FnOnce() + Send + 'static>(&self, f: F) { let _ = self.tx.send(Box::new(f)); }
-    pub fn scope<F: FnOnce(&TaskPool)>(&self, f: F) { f(self); }
-    pub fn shutdown(self){ drop(self.tx); for h in self.handles { let _=h.join(); } }
+  }
+
+  /// Enfile un job qui renvoie une valeur et récupère un handle pour bloquer jusqu’au résultat.
+  pub do submit[T](self &, job: do() -> T) -> Result[JobHandle[T], PoolError] {
+    if self.closed { return Err(PoolError::Closed) }
+    // canal de résultat unitaire
+    let (jtx, jrx) = channel::channel
+    // on wrappe dans un TaskFn sans type (Unit) qui enverra le résultat
+    let wrapper: TaskFn = || {
+      let out = job()
+      let _ = channel::send(&jtx, out)
+    }
+    let (rtx, rrx) = channel::channel
+    match channel::send(&self.tx, Cmd::Enqueue(wrapper, rtx)) {
+      Ok(()) => match channel::recv(&rrx) {
+        Ok(Ok(())) => Ok(JobHandle[T]{ rx: jrx }),
+        Ok(Err(e)) => Err(e),
+        Err(_) => Err(PoolError::Closed),
+      },
+      Err(_) => Err(PoolError::Closed),
+    }
+  }
+
+  /// Redimensionne le nombre de workers. Retourne quand l’ordre a été pris en compte
+  /// (mais l’arrêt des workers en trop est asynchrone).
+  pub do resize(self &, new_n: u32) -> Result[Unit, PoolError] {
+    if self.closed { return Err(PoolError::Closed) }
+    let (rtx, rrx) = channel::channel
+    match channel::send(&self.tx, Cmd::Resize(new_n, rtx)) {
+      Ok(()) => match channel::recv(&rrx) { Ok(r) => r, Err(_) => Err(PoolError::Closed) },
+      Err(_) => Err(PoolError::Closed),
+    }
+  }
+
+  /// Statistiques best-effort : (#workers, #idle, #queued)
+  pub do stats(self &) -> Result[PoolStats, PoolError] {
+    if self.closed { return Err(PoolError::Closed) }
+    let (rtx, rrx) = channel::channel
+    match channel::send(&self.tx, Cmd::AskStats(rtx)) {
+      Ok(()) => match channel::recv(&rrx) { Ok(r) => r, Err(_) => Err(PoolError::Closed) },
+      Err(_) => Err(PoolError::Closed),
+    }
+  }
+
+  /// Ferme le pool (la file n’accepte plus rien). Laisse finir les jobs en cours.
+  pub do close(self &) -> Result[Unit, PoolError] {
+    if self.closed { return Ok(()) }
+    let (rtx, rrx) = channel::channel
+    match channel::send(&self.tx, Cmd::Shutdown(rtx)) {
+      Ok(()) => {
+        match channel::recv(&rrx) { Ok(r) => r, Err(_) => Err(PoolError::Closed) }?;
+        Ok(())
+      }
+      Err(_) => Err(PoolError::Closed),
+    }
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Construction (fonction libre pour cohérence API)
+// -----------------------------------------------------------------------------
+
+pub do with_threads(n: u32) -> TaskPool { with_config(n, 1024) }
+
+pub do with_config(n: u32, capacity: usize) -> TaskPool {
+  let (tx, rx) = channel::channel
+  let _mgr = thread::spawn({ manager_loop(rx, n, capacity) })
+  TaskPool{ tx, closed: false }
+}
+
+// -----------------------------------------------------------------------------
+// Interne : manager & workers
+// -----------------------------------------------------------------------------
+
+enum Cmd {
+  Enqueue(TaskFn, Sender[Result[Unit,PoolError]]),
+  Ready(u32),                         // worker libre
+  Resize(u32, Sender[Result[Unit,PoolError]>),
+  AskStats(Sender[Result[PoolStats,PoolError]>),
+  Shutdown(Sender[Result[Unit,PoolError]>),
+}
+
+enum WorkMsg {
+  Run(TaskFn),
+  Stop,
+}
+
+// File FIFO amortie
+struct TaskQ {
+  buf: Vec[TaskFn],
+  head: usize,
+}
+inline do tq_new() -> TaskQ { TaskQ{ buf: Vec::new(), head: 0 } }
+inline do tq_len(q &TaskQ) -> usize { if q.buf.len() >= q.head { q.buf.len() - q.head } else { 0 } }
+inline do tq_push(q &mut TaskQ, f: TaskFn) { q.buf.push(f) }
+do tq_pop(q &mut TaskQ) -> Option[TaskFn] {
+  if tq_len(q) == 0 { return None }
+  let f = q.buf[q.head]
+  q.head += 1
+  // compacte de temps en temps
+  if q.head >= 64 && q.head*2 >= q.buf.len() {
+    let mut tmp = Vec::with_capacity(q.buf.len() - q.head)
+    let mut i: usize = q.head
+    while i < q.buf.len() { tmp.push(q.buf[i]); i += 1 }
+    q.buf = tmp
+    q.head = 0
+  }
+  Some(f)
+}
+
+struct Worker {
+  id: u32,
+  tx: Sender[WorkMsg],
+  // marqué pour arrêt dès dispo (shrink)
+  retire_when_ready: bool,
+}
+
+struct State {
+  ctrl_tx: Sender[Cmd],
+  capacity: usize,             // 0 = illimité
+  desired: u32,
+  next_id: u32,
+  workers: Map[u32, Worker],
+  idle: Vec[u32>,              // pile de workers libres
+  queue: TaskQ,                // tâches en attente (si aucun worker libre)
+  closed: bool,
+}
+
+inline do st_new(tx: Sender[Cmd], desired: u32, capacity: usize) -> State {
+  State{
+    ctrl_tx: tx,
+    capacity,
+    desired,
+    next_id: 1,
+    workers: Map::new(),
+    idle: Vec::new(),
+    queue: tq_new(),
+    closed: false,
+  }
+}
+
+do spawn_worker(st &mut State) {
+  let id = st.next_id; st.next_id += 1
+  let (wtx, wrx) = channel::channel
+  let ctrl = st.ctrl_tx
+  // worker thread
+  let _th = thread::spawn({
+    // signale prêt dès le démarrage
+    let _ = channel::send(&ctrl, Cmd::Ready(id))
+    loop {
+      match channel::recv(&wrx) {
+        Err(_) => break,
+        Ok(WorkMsg::Stop) => break,
+        Ok(WorkMsg::Run(f)) => {
+          // exécute en “fire and forget” (erreurs gérées dans la tâche)
+          f()
+          // re-signale prêt
+          let _ = channel::send(&ctrl, Cmd::Ready(id))
+        }
+      }
+    }
+  })
+  st.workers.insert(id, Worker{ id, tx: wtx, retire_when_ready: false })
+  // NB: on ne pousse pas `idle` ici : c’est l’événement Ready ci-dessus qui le fera.
+}
+
+inline do ensure_workers(st &mut State) {
+  while (st.workers.len() as u32) < st.desired {
+    spawn_worker(st)
+  }
+  // rétractation différée : on marque pour retrait dès qu’ils seront prêts
+  while (st.workers.len() as u32) > st.desired {
+    // tente d’en prendre un idle d’abord
+    if st.idle.len() > 0 {
+      let wid = st.idle.pop().unwrap()
+      if st.workers.contains_key(&wid) {
+        let w = st.workers.get(&wid).unwrap()
+        let _ = channel::send(&w.tx, WorkMsg::Stop)
+        st.workers.remove(&wid)
+      }
+    } else {
+      // personne d’idle → marque le plus “ancien” pour retraite
+      // (stratégie naïve : premier de l’itération)
+      for (k, mut w) in st.workers {
+        w.retire_when_ready = true
+        st.workers.insert(k, w)
+        break
+      }
+      break
+    }
+  }
+}
+
+inline do dispatch_one(st &mut State, wid: u32, f: TaskFn) {
+  if !st.workers.contains_key(&wid) {
+    // worker disparu (resize) → remettre la tâche en queue
+    tq_push(&mut st.queue, f)
+    return
+  }
+  let w = st.workers.get(&wid).unwrap()
+  let _ = channel::send(&w.tx, WorkMsg::Run(f))
+}
+
+inline do try_assign(st &mut State) {
+  // tant qu’on a des libres & des tâches, on assigne
+  loop {
+    if st.idle.len() == 0 { break }
+    match tq_pop(&mut st.queue) {
+      None => break,
+      Some(f) => {
+        let wid = st.idle.pop().unwrap()
+        // si ce worker doit être retiré → on le stoppe et on réessaye un autre
+        if st.workers.get(&wid).unwrap().retire_when_ready {
+          let w = st.workers.get(&wid).unwrap()
+          let _ = channel::send(&w.tx, WorkMsg::Stop)
+          st.workers.remove(&wid)
+          // remet la tâche au front et continue
+          tq_push(&mut st.queue, f)
+          continue
+        }
+        dispatch_one(st, wid, f)
+      }
+    }
+  }
+}
+
+do manager_loop(rx: Receiver[Cmd], initial_n: u32, capacity: usize) {
+  // astuce : on a besoin du Sender pour les workers → on le capture depuis with_config
+  let ctrl_tx = channel::sender_of(rx) // primitif runtime : obtient le Sender pair
+  let mut st = st_new(ctrl_tx, if initial_n==0 {1} else { initial_n }, capacity)
+  // boot
+  ensure_workers(&mut st)
+
+  loop {
+    match channel::recv(&rx) {
+      Err(_) => break,
+      Ok(cmd) => {
+        match cmd {
+          Cmd::Shutdown(reply) => {
+            st.closed = true
+            // n’accepte plus de jobs ; on vide la file en erreur
+            while tq_pop(&mut st.queue).is_some() { /* drop */ }
+            // arrête tous les workers (même ceux marqués)
+            for (_, w) in st.workers {
+              let _ = channel::send(&w.tx, WorkMsg::Stop)
+            }
+            st.workers.clear()
+            st.idle.clear()
+            let _ = channel::send(&reply, Ok(()))
+            break
+          }
+
+          Cmd::Resize(n, reply) => {
+            st.desired = if n==0 {1} else {n}
+            ensure_workers(&mut st)
+            try_assign(&mut st)
+            let _ = channel::send(&reply, Ok(()))
+          }
+
+          Cmd::AskStats(reply) => {
+            let ps = PoolStats{
+              workers: st.workers.len() as u32,
+              idle: st.idle.len() as u32,
+              queued: tq_len(&st.queue),
+            }
+            let _ = channel::send(&reply, Ok(ps))
+          }
+
+          Cmd::Ready(wid) => {
+            if !st.workers.contains_key(&wid) { continue } // peut avoir été retiré
+            // worker prêt : si marqué pour retrait, stop immédiat
+            if st.workers.get(&wid).unwrap().retire_when_ready {
+              let w = st.workers.get(&wid).unwrap()
+              let _ = channel::send(&w.tx, WorkMsg::Stop)
+              st.workers.remove(&wid)
+              // peut libérer une place → essaie de re-distribuer
+              try_assign(&mut st)
+              continue
+            }
+            st.idle.push(wid)
+            try_assign(&mut st)
+          }
+
+          Cmd::Enqueue(f, reply) => {
+            if st.closed {
+              let _ = channel::send(&reply, Err(PoolError::Closed))
+            } else if st.idle.len() > 0 {
+              let wid = st.idle.pop().unwrap()
+              dispatch_one(&mut st, wid, f)
+              let _ = channel::send(&reply, Ok(()))
+            } else {
+              // queue ou overload
+              if st.capacity == 0 || tq_len(&st.queue) < st.capacity {
+                tq_push(&mut st.queue, f)
+                let _ = channel::send(&reply, Ok(()))
+              } else {
+                let _ = channel::send(&reply, Err(PoolError::Overloaded))
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Tests (fumée / invariants de base)
+// -----------------------------------------------------------------------------
+
+// @test
+do _spawn_and_submit() {
+  let pool = with_threads(4)
+
+  let mut seen = 0
+  pool.spawn(|| { seen = 7 }).unwrap()
+
+  let j = pool.submit[i32](|| -> i32 { 21 * 2 }).unwrap()
+  let val = j.recv().unwrap()
+  assert(val == 42, "submit value")
+
+  // donne un peu de temps au worker
+  time::sleep(10.ms)
+  assert(seen == 7, "spawn executed")
+
+  let s = pool.stats().unwrap()
+  assert(s.workers == 4, "4 workers")
+  let _ = pool.close()
+}
+
+// @test
+do _resize_and_backpressure() {
+  let pool = with_config(2, 2) // queue limitée
+  // occupe les 2 workers avec des sleeps
+  pool.spawn(|| { time::sleep(50.ms) }).unwrap()
+  pool.spawn(|| { time::sleep(50.ms) }).unwrap()
+  // enfile 2 en attente (capacité atteinte)
+  assert(pool.spawn(|| {}).is_ok(), "queued 1")
+  assert(pool.spawn(|| {}).is_ok(), "queued 2")
+  // la 3e doit surcharger
+  assert(pool.spawn(|| {}).is_err(), "overloaded")
+
+  // augmente à 4
+  pool.resize(4).unwrap()
+  // re-tente : devrait passer
+  assert(pool.spawn(|| {}).is_ok(), "after resize ok")
+
+  let _ = pool.close()
 }

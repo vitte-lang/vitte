@@ -1,0 +1,24 @@
+// PWM software très simple : faire varier l'intensité perçue
+extern fn gpio_setup(pin: i32);
+extern fn gpio_write(pin: i32, value: bool);
+extern fn sleep_ms(ms: i32);
+
+const LED = 12;
+
+fn pwm(pin: i32, period_ms: i32, duty_pc: i32) {
+  let on = period_ms * duty_pc / 100;
+  let off = period_ms - on;
+  gpio_write(pin, true);
+  sleep_ms(on);
+  gpio_write(pin, false);
+  sleep_ms(off);
+}
+
+fn main(){
+  gpio_setup(LED);
+  let duty = 0;
+  loop {
+    pwm(LED, 10, duty);
+    duty = (duty + 1) % 100;
+  }
+}

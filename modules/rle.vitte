@@ -1,18 +1,360 @@
-//! rle.vitte — run-length encoding (octets)
+//! modules/rle.vitte
+//! -----------------------------------------------------------------------------
+//! RLE — Run-Length Encoding minimal + variante PackBits
+//! -----------------------------------------------------------------------------
+//! Pourquoi deux saveurs ?
+//!   • **rle8_runs** : format ultra simple (count:u8, byte:u8) répété. Idéal
+//!     pour données très redondantes (zéros, images à aplats). Décodage trivial.
+//!   • **packbits**  : format “mixte” (Apple/PackBits-like) avec blocs littéraux
+//!     et répétitions. Évite de *gonfler* les données non répétitives.
+//!
+//! API clé :
+//!   - `encode_runs([]u8) -> []u8` / `decode_runs([]u8) -> Result[[]u8, RleError]`
+//!   - `encode_packbits([]u8) -> []u8` / `decode_packbits([]u8) -> Result[[]u8, RleError]`
+//!   - `RleRunsEncoder` pour l’encodage *streaming* (push & finish).
+//!   - Helpers : `compress_bound_*`, `encode_str_*`, `decode_to_string_*`
+//!
+//! État : **stable** (🖥🛠🔌🧪🌐). Licence : MIT
+//! -----------------------------------------------------------------------------
+//
+// Notes format “rle8_runs” :
+//   - Séquence de paires (count:u8, value:u8), count ∈ [1..255].
+//   - Une run >255 est émise en plusieurs paires (255, v) + reste.
+//   - Décodage échoue si bytes impairs (troncature).
+//
+// Notes format “packbits” (compatible de facto) :
+//   - Octet de contrôle C (int8 signé dans la version historique).
+//     * 0..127   : littéral de (C+1) octets qui suivent
+//     * 129..255 : répétition du prochain octet sur (257 - C) fois
+//     * 128      : NOP (peut être ignoré ; non émis par encodeur)
+//   - Avantage : données non répétitives restent ~taille+overhead(≈len/128).
+//
+// Invariants : pas d’allocation cachée explosive ; erreurs claires.
+//
+// -----------------------------------------------------------------------------
 
-#![version("0.1.0")]
-#![strict]
+use string
 
-pub fn encode(data:&[u8])->Vec<u8>{
-    let mut out=Vec<u8>::new(); if data.is_empty(){return out;}
-    let mut cur=data[0]; let mut run=1usize;
-    for &b in &data[1..]{
-        if b==cur && run<255 { run+=1; } else { out.push(cur); out.push(run as u8); cur=b; run=1; }
-    }
-    out.push(cur); out.push(run as u8); out
+// -----------------------------------------------------------------------------
+// Erreurs & utilitaires
+// -----------------------------------------------------------------------------
+
+pub enum RleError {
+  Truncated,          // données incomplètes
+  InvalidControl(u8), // packbits : octet de contrôle impossible (rare)
+  Utf8,               // conversion vers String impossible (si impl. stricte)
 }
-pub fn decode(data:&[u8])->Vec<u8>{
-    let mut out=Vec<u8>::new(); let mut i=0;
-    while i+1<data.len(){ let val=data[i]; let cnt=data[i+1]; let mut k=0; while k<cnt { out.push(val); k+=1; } i+=2; }
+
+// Helper : min et clamp basiques (au cas où mathx n’est pas importé ici)
+inline do min_u32(a: u32, b: u32) -> u32 { if a < b { a } else { b } }
+
+// -----------------------------------------------------------------------------
+// RLE simple — (count:u8, value:u8)*
+// -----------------------------------------------------------------------------
+
+/// Encodage “runs only” : (count:u8, value:u8)*
+/// Double la taille sur données aléatoires — à réserver aux flux très répétitifs.
+pub do encode_runs(src: []u8) -> []u8 {
+  let n = src.len()
+  if n == 0 { return vec![] }
+
+  // Heuristique d’allocation : au pire ~ 2 * ceil(n/255) (si runs immenses).
+  // En pratique, on laisse le Vec grandir si besoin.
+  let mut out = Vec::with_capacity(n / 2 + 4)
+
+  let mut i: usize = 0
+  while i < n {
+    let b = src[i]
+    let mut run: u32 = 1
+    // Mesure la run jusqu’au changement, bornée à 0xFFFF_FFFF par prudence.
+    while i + (run as usize) < n && src[i + (run as usize)] == b && run < 0xFFFF_FFFF {
+      run += 1
+    }
+    // Émettre par tronçons de 255 max
+    let mut left = run
+    while left > 0 {
+      let chunk = min_u32(left, 255)
+      out.push(chunk as u8)
+      out.push(b)
+      left -= chunk
+    }
+    i += run as usize
+  }
+  out
+}
+
+/// Décodage “runs only” : échoue si taille impaire.
+pub do decode_runs(encoded: []u8) -> Result[[]u8, RleError] {
+  let n = encoded.len()
+  if n == 0 { return Ok(vec![]) }
+  if (n % 2) != 0 { return Err(RleError::Truncated) }
+
+  // On ne connaît pas la taille exacte sortie → croissance amortie.
+  let mut out = Vec::with_capacity(n) // borne grossière
+
+  let mut i: usize = 0
+  while i < n {
+    let cnt = encoded[i] as usize
+    let val = encoded[i + 1]
+    if cnt == 0 { return Err(RleError::Truncated) } // count==0 interdit
+    // Réserve et émet
+    out.reserve(cnt)
+    let mut k: usize = 0
+    while k < cnt {
+      out.push(val)
+      k += 1
+    }
+    i += 2
+  }
+  Ok(out)
+}
+
+// -----------------------------------------------------------------------------
+// PackBits — mixte runs + littéraux
+// -----------------------------------------------------------------------------
+
+/// Encodage PackBits-like.
+/// N’émet jamais 0x80 (NOP). Contrôles :
+///  - L (0..127)      = littéral de L+1 octets
+///  - R (129..255)    = run de (257 - R) octets d’un même byte
+pub do encode_packbits(src: []u8) -> []u8 {
+  let n = src.len()
+  if n == 0 { return vec![] }
+
+  // capacité initiale : n + n/64 ~ overhead faible
+  let mut out = Vec::with_capacity(n + (n >> 6) + 8)
+
+  let mut i: usize = 0
+  while i < n {
+    // Détecte une run répétée à partir de i
+    let b = src[i]
+    let mut run_len: usize = 1
+    while i + run_len < n && src[i + run_len] == b && run_len < 128 {
+      run_len += 1
+    }
+
+    if run_len >= 2 {
+      // Émettre une répétition (max 128)
+      let ctrl = (257 - (run_len as u16)) as u8 // 129..255
+      out.push(ctrl)
+      out.push(b)
+      i += run_len
+    } else {
+      // Collecte un bloc littéral jusqu’à run répétée ou 128 max
+      let lit_start = i
+      let mut lit_len: usize = 1
+      i += 1
+      while i < n {
+        // si on *pourrait* commencer une run répétée → on s’arrête pour laisser la run
+        if i + 1 < n && src[i] == src[i + 1] { break }
+        lit_len += 1
+        i += 1
+        if lit_len == 128 { break }
+      }
+      // contrôle littéral = len - 1 (0..127)
+      out.push((lit_len - 1) as u8)
+      // payload
+      let mut j: usize = 0
+      while j < lit_len {
+        out.push(src[lit_start + j])
+        j += 1
+      }
+    }
+  }
+  out
+}
+
+pub do decode_packbits(encoded: []u8) -> Result[[]u8, RleError] {
+  let n = encoded.len()
+  if n == 0 { return Ok(vec![]) }
+
+  let mut out = Vec::with_capacity(n) // overhead inconnu
+
+  let mut i: usize = 0
+  while i < n {
+    let ctrl = encoded[i]; i += 1
+
+    if ctrl <= 127 {
+      // littéral de (ctrl+1) octets
+      let lit = (ctrl as usize) + 1
+      if i + lit > n { return Err(RleError::Truncated) }
+      let end = i + lit
+      while i < end { out.push(encoded[i]); i += 1 }
+    } else if ctrl == 128 {
+      // NOP — ignoré (certaines implémentations l’utilisent en padding)
+      // Rien à faire.
+    } else {
+      // répétition : (257 - ctrl) copies du prochain octet
+      if i >= n { return Err(RleError::Truncated) }
+      let b = encoded[i]; i += 1
+      let count = (257u16 - (ctrl as u16)) as usize // 1..128
+      let mut k: usize = 0
+      out.reserve(count)
+      while k < count { out.push(b); k += 1 }
+    }
+  }
+  Ok(out)
+}
+
+// -----------------------------------------------------------------------------
+// Helpers & Streaming
+// -----------------------------------------------------------------------------
+
+/// Borne grossière (sécurisée) sur la taille encodée runs-only.
+pub inline do compress_bound_runs(input_len: usize) -> usize {
+  // Cas worst-case (alternance) : 2 bytes par octet → 2*n
+  // (en réalité, notre implémentation fera 2*n).
+  input_len * 2
+}
+
+/// Borne PackBits (worst-case littéral pur) : len + ceil(len/128)
+pub inline do compress_bound_packbits(input_len: usize) -> usize {
+  input_len + ((input_len + 127) / 128)
+}
+
+/// Chaîne (UTF-8) → bytes encodés runs-only
+pub do encode_str_runs(s: str) -> []u8 {
+  encode_runs(string::to_bytes(s))
+}
+/// Bytes encodés runs-only → String (UTF-8)
+pub do decode_to_string_runs(b: []u8) -> Result[String, RleError] {
+  let bytes = decode_runs(b)?
+  Ok(string::from_bytes(bytes))
+}
+
+/// Chaîne → bytes encodés PackBits
+pub do encode_str_packbits(s: str) -> []u8 {
+  encode_packbits(string::to_bytes(s))
+}
+pub do decode_to_string_packbits(b: []u8) -> Result[String, RleError] {
+  let bytes = decode_packbits(b)?
+  Ok(string::from_bytes(bytes))
+}
+
+// ----------- Streaming encoder (runs-only) -----------
+
+pub struct RleRunsEncoder {
+  out: Vec[u8],
+  curr: u8,
+  count: u32,    // run courante (peut dépasser 255 avant d’être flushée)
+  has: bool,
+}
+
+pub do runs_encoder_new(cap_hint: usize?) -> RleRunsEncoder {
+  RleRunsEncoder{
+    out: Vec::with_capacity(match cap_hint { Some(c) => c, None => 64 }),
+    curr: 0,
+    count: 0,
+    has: false,
+  }
+}
+
+impl RleRunsEncoder {
+  /// Ajoute un octet à l’encodeur.
+  pub do push(self &mut, b: u8) {
+    if !self.has {
+      self.curr = b
+      self.count = 1
+      self.has = true
+      return
+    }
+    if b == self.curr {
+      // continue la run
+      self.count += 1
+      // flush par tronçons de 255 pour garder (u8,count)
+      while self.count >= 255 {
+        self.out.push(255u8)
+        self.out.push(self.curr)
+        self.count -= 255
+      }
+    } else {
+      // flush run courante
+      if self.count > 0 {
+        self.out.push(self.count as u8)
+        self.out.push(self.curr)
+        self.count = 0
+      }
+      // nouvelle run
+      self.curr = b
+      self.count = 1
+    }
+  }
+
+  /// Ajoute un slice d’octets.
+  pub do push_slice(self &mut, xs: []u8) {
+    let mut i: usize = 0
+    while i < xs.len() {
+      self.push(xs[i])
+      i += 1
+    }
+  }
+
+  /// Termine l’encodage et renvoie le buffer (consomme l’encodeur).
+  pub do finish(self) -> []u8 {
+    let mut out = self.out
+    if self.has && self.count > 0 {
+      out.push(self.count as u8)
+      out.push(self.curr)
+      // (self) est consommé, plus rien à nettoyer
+    }
     out
+  }
+
+  /// Reset (vide la sortie et la run courante).
+  pub do reset(self &mut) {
+    self.out.clear()
+    self.count = 0
+    self.has = false
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Tests (fumée / invariants de base)
+// -----------------------------------------------------------------------------
+
+// @test
+do _runs_roundtrip_basic() {
+  let src = vec![0,0,0, 1, 2,2, 3, 3, 3, 3, 4]
+  let enc = encode_runs(src)
+  // (3,0) (1,1) (2,2) (4,3) (1,4) → 10 bytes
+  assert(enc.len() == 10, "taille encodée attendue")
+  let dec = decode_runs(enc).unwrap()
+  assert(dec == vec![0,0,0,1,2,2,3,3,3,3,4], "roundtrip runs")
+}
+
+// @test
+do _runs_truncated() {
+  // count sans value
+  let bad = vec![5]
+  assert(decode_runs(bad).is_err(), "troncature détectée")
+}
+
+// @test
+do _packbits_literal() {
+  let src = vec![1,2,3,4,5,6,7]
+  let enc = encode_packbits(src)
+  // Contrôle littéral unique : 6 (=> 7 octets)
+  assert(enc[0] == 6, "ctrl literal")
+  let dec = decode_packbits(enc).unwrap()
+  assert(dec == vec![1,2,3,4,5,6,7], "roundtrip literal")
+}
+
+// @test
+do _packbits_runs_and_literals() {
+  let src = vec![9,9,9,9, 1,2,3, 8,8, 4,5,6,7,8,9, 0,0,0]
+  let enc = encode_packbits(src)
+  let dec = decode_packbits(enc).unwrap()
+  assert(dec == vec![9,9,9,9,1,2,3,8,8,4,5,6,7,8,9,0,0,0], "roundtrip mixte")
+}
+
+// @test
+do _encoder_streaming() {
+  let mut enc = runs_encoder_new(None)
+  enc.push(7); enc.push(7); enc.push(7)
+  enc.push(1)
+  enc.push_slice(vec![2,2,3])
+  let out = enc.finish()
+  // (3,7) (1,1) (2,2) (1,3) → décode au même flux
+  let dec = decode_runs(out).unwrap()
+  assert(dec == vec![7,7,7,1,2,2,3], "stream ok")
 }

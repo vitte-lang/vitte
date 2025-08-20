@@ -1,0 +1,48 @@
+#compdef todo
+_todo() {
+  _arguments '1:cmd:(add ls list done rm del edit snooze clear archive import export stats help)'         '*::options:->opts'
+  return 0
+}
+#compdef todo
+
+# Zsh completion for `todo` CLI
+# Généré pour cli-todo (Rust / clap)
+
+_todo() {
+  local -a commands
+  local curcontext="$curcontext" state line
+
+  commands=(
+    'add:Add a new todo item'
+    'list:List all todos'
+    'done:Mark a todo as completed'
+    'remove:Remove a todo by ID'
+    'clear:Clear all todos'
+    'help:Show help for a command'
+  )
+
+  _arguments -C \
+    '1: :->cmds' \
+    '*::arg:->args'
+
+  case $state in
+    cmds)
+      _describe -t commands 'todo command' commands
+      ;;
+    args)
+      case $line[1] in
+        add)
+          _message 'Enter the todo description'
+          ;;
+        done|remove)
+          _message 'Enter the todo ID'
+          ;;
+        *)
+          _message 'No more arguments'
+          ;;
+      esac
+      ;;
+  esac
+}
+
+_todo "$@"
