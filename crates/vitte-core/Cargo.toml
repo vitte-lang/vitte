@@ -1,34 +1,80 @@
-# /tests/Cargo.toml
 [package]
-name = "vitte-vm-tests"
+name = "vitte-core"
 version = "0.1.0"
 edition = "2021"
-publish = false
+rust-version = "1.80"
+license = "MIT OR Apache-2.0"
+description = "Cœur du langage Vitte : bytecode, ASM/DISASM, loader, utilitaires."
+repository = "https://github.com/vitte-lang/vitte"
+homepage = "https://github.com/vitte-lang/vitte"
+authors = ["Vincent <you@example.com>"]
+categories = ["compilers", "parsing", "virtualization"]
+keywords = ["vitte", "bytecode", "vm", "compiler", "asm"]
 
-# On exécute le fichier placé à la racine de /tests : integration.rs
-[[test]]
-name = "integration"
-path = "integration.rs"
+[lib]
+name = "vitte_core"
+path = "src/lib.rs"
+crate-type = ["rlib"]
 
+# ──────────────────────────────────────────────────────────────────────────────
+# FEATURES
+# Par défaut: "std" + "serde" ⇒ confort maximal.
+# "alloc-only" pour no_std(+alloc). "postcard" conseillée en no_std.
+# "zstd" active la compression/décompression dans le loader.
+# ──────────────────────────────────────────────────────────────────────────────
 [features]
-# Active ici pour propager vers vitte-vm si tu veux tester la compression
-zstd = ["vitte-vm/zstd"]
-default = [] # pas de compression par défaut pour des tests plus rapides
+default = ["std", "serde"]
 
+# Active l’écosystème std et les deps qui en ont besoin.
+std = [
+    "dep:thiserror",
+    "dep:bincode",
+    "serde/std",
+]
+
+# Mode embarqué : no_std(+alloc). N’active PAS "std".
+alloc-only = []
+
+# Sérialisation via serde (no_std-friendly quand std est OFF).
+serde = ["dep:serde"]
+
+# Sérialisation binaire no_std (plutôt avec alloc-only).
+postcard = ["dep:postcard"]
+
+# Compression zstd pour le loader (save/load).
+zstd = ["dep:zstd"]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DÉPENDANCES
+# ──────────────────────────────────────────────────────────────────────────────
+[dependencies]
+# Erreurs ergonomiques (std uniquement)
+thiserror = { version = "1", optional = true }
+
+# Sérialisation générique (derive). default-features = false pour no_std.
+serde = { version = "1", features = ["derive"], default-features = false, optional = true }
+
+# Sérialisation binaire std
+bincode = { version = "1.3", optional = true }
+
+# Sérialisation binaire no_std
+postcard = { version = "1", default-features = false, optional = true }
+
+# Compression optionnelle
+zstd = { version = "0.13", optional = true }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DEV-DEPS (tests/doc en environnement std)
+# ──────────────────────────────────────────────────────────────────────────────
 [dev-dependencies]
-# Pointe sur le crate local vitte-vm (même workspace)
-vitte-vm = { path = "../vitte-vm", default-features = true }
+serde_json = "1"
+pretty_assertions = "1"
 
-[profile.dev]
-opt-level = 1
-debug = 1
-incremental = true
-
-[profile.test]
-opt-level = 1
-debug = 2
-incremental = true
-
-[profile.release]
-lto = "thin"
-codegen-units = 1
+# ──────────────────────────────────────────────────────────────────────────────
+# DOCS.RS : construire la doc en mode "std" par défaut
+# ──────────────────────────────────────────────────────────────────────────────
+[package.metadata.docs.rs]
+all-features = false
+features = ["std", "serde"]
+no-default-features = false
+rustdoc-args = ["--cfg", "docsrs"]

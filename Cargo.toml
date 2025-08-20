@@ -1,87 +1,27 @@
 [package]
-name         = "vitte-cli"
-version      = "0.1.0"
-edition      = "2021"
-rust-version = "1.80"
-license      = "MIT OR Apache-2.0"
-description  = "Vitte — CLI officielle (tooling, build, run, pkg)."
-repository   = "https://github.com/vitte-lang/vitte"
-homepage     = "https://vitte.dev"
-readme       = "README.md"
-categories   = ["command-line-utilities", "development-tools"]
-keywords     = ["vitte", "compiler", "vm", "toolchain"]
-# Script de build (messages post-build & chemins de complétions)
-build        = "build.rs"
-
-# Binaire principal
-[[bin]]
-name = "vitte"
-path = "src/main.rs"
+name = "vitte-cli"
+version = "0.1.0"
+edition = "2021"
+description = "CLI lib for Vitte"
 
 [features]
-# Pas de features par défaut → la CI pilote (--all-features / --no-default-features)
-default = []
+# On active le parsing TOML par défaut
+default = ["toml"]
 
-# Aligne avec ta matrice CI
-checksum = []
-compress = []
-
-# Génération de complétions (si le code correspondant est présent côté binaire)
-gen-completions = ["dep:clap_complete"]
-
-# Intégrations optionnelles selon les crates présentes dans l'arborescence
-vm       = ["dep:vitte-vm"]
-wasm     = ["dep:vitte-wasm"]
-dap      = ["dep:vitte-dap"]
-debugger = ["dep:vitte-debugger"]
+# Les features exposent proprement les deps optionnelles
+toml = ["dep:toml"]
+core = ["dep:vitte-core"]
+vm = ["dep:vitte-vm"]
+compiler = ["dep:vitte-compiler"]
 
 [dependencies]
-# Base CLI
-clap = { version = "4.5", features = ["derive", "wrap_help"] }
-# Optionnel : génération des complétions
-clap_complete = { version = "4.5", optional = true }
+anyhow = "1"
+camino = "1"
+serde = { version = "1", features = ["derive"] }
+clap = { version = "4", features = ["derive"] }
 
-# Ergonomie erreurs (dep partagée au workspace)
-color-eyre = { workspace = true }
-
-# (Dé)sérialisation commune au workspace
-serde   = { workspace = true, features = ["derive"] }
-bincode = { workspace = true }
-
-# Dépendances internes (obligatoires)
-vitte-core     = { path = "../vitte-core" }
-vitte-runtime  = { path = "../vitte-runtime" }
-vitte-tools    = { path = "../vitte-tools" }
-vitte-compiler = { path = "../vitte-compiler" }
-
-# Dépendances internes (optionnelles, activées par features)
-vitte-vm        = { path = "../vitte-vm",        optional = true }
-vitte-wasm      = { path = "../vitte-wasm",      optional = true }
-vitte-dap       = { path = "../vitte-dap",       optional = true }
-vitte-debugger  = { path = "../vitte-debugger",  optional = true }
-
-[dev-dependencies]
-# Tests CLI
-assert_cmd = "2.0"
-predicates = "3.1"
-
-[profile.release]
-lto           = "thin"
-codegen-units = 1
-debug         = 0
-opt-level     = 3
-strip         = "symbols"
-
-[profile.dev]
-# Builds dev plus vifs, sans sacrifier l’itération
-debug     = 1
-opt-level = 0
-
-# Docs.rs : build complet (facultatif mais pratique pour la doc API)
-[package.metadata.docs.rs]
-all-features = true
-no-default-features = true
-
-# Badges CI (facultatif ; adapter les chemins si besoin)
-[badges]
-github-actions = { repository = "vitte-lang/vitte", workflow = "CI" }
+# Dépendances optionnelles (mappées aux features ci-dessus)
+toml = { version = "0.8", features = ["parse"], optional = true }
+vitte-core = { path = "../vitte-core", optional = true }
+vitte-vm = { path = "../vitte-vm", optional = true }
+vitte-compiler = { path = "../vitte-compiler", optional = true }

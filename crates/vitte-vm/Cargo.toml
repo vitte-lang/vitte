@@ -1,6 +1,46 @@
 [package]
 name = "vitte-vm"
 version = "0.1.0"
-edition = "2021"
+description = "Machine virtuelle Vitte : exécution du bytecode (stack, frames, scheduler — MVP)."
+# Hérite des métadonnées du workspace
+edition.workspace       = true
+rust-version.workspace  = true
+license.workspace       = true
+repository.workspace    = true
+homepage.workspace      = true
+documentation.workspace = true
+keywords.workspace      = true
+categories.workspace    = true
 
+[lib]
+path = "src/lib.rs"
+
+# ───────────────────────────── Features
+[features]
+# std activée par défaut ; désactive avec --no-default-features si besoin
+default = ["std"]
+std = []
+
+# Sérialisation optionnelle, relaie vers vitte-core
+serde = ["dep:serde", "vitte-core/serde"]
+
+# Mode async (scheduler/IO) via tokio — optionnel
+async = ["dep:tokio"]
+
+# Tracing optionnel
+tracing = ["dep:tracing"]
+
+# ───────────────────────────── Dépendances
 [dependencies]
+# Workspace deps
+anyhow   = { workspace = true }
+parking_lot = { workspace = true }
+serde    = { workspace = true, optional = true }
+tracing  = { workspace = true, optional = true }
+tokio    = { workspace = true, features = ["rt-multi-thread","macros","time"], optional = true }
+
+# Crate interne indispensable
+vitte-core = { path = "../vitte-core" }
+
+[package.metadata.docs.rs]
+all-features = true

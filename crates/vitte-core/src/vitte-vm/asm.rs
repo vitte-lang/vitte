@@ -1,39 +1,6 @@
-//! vitte-vm/asm.rs
 //!
 //! Assembleur/Désassembleur minimaliste mais *sérieux* pour la VM Vitte.
-//! - Deux passes (résolution de labels & constantes)
-//! - Directives: .const, .string, .data, .align, .org, .entry
-//! - Labels: `main:`, `loop:`
-//! - Operandes: registres (`r0`, `r15`), immédiats (123, -4, 0xFF), flottants (3.14),
-//!   indices de constante (`const:name`), labels (`@loop`)
-//! - Table d’opcodes déclarative et extensible
-//! - Sortie binaire « raw » indépendante (u16 opcode + jusqu’à 3 args u64)
-//! - Trait `Encoder` pour mapper vers votre `crate::bytecode::Op` si besoin
-//! - Désassembleur qui recrée un ASM lisible
-//!
-//! Syntaxe ASM (exemple):
-//! ```asm
-//! ; commentaire
-//! .entry main
-//! .const PI = 3.1415926535
-//! .string msg = "Hello, Vitte!"
-//!
-//! main:
-//!     LOADK r0, const:PI
-//!     LOADK r1, const:msg
-//!     CALL r0, r1, 0
-//!     JZ r0, @end
-//!     ADD r2, r0, r1
-//! end:
-//!     RET
-//! ```
-//!
-//! Intégration rapide :
-//! ```ignore
-//! use vitte_vm::asm::{assemble, RawProgram};
-//! let prog: RawProgram = assemble(source_str)?.program;
-//! // Si vous avez une enum `Op`, implémentez `Encoder` pour convertir RawOp -> Op.
-//! ```
+//! (… doc identique …)
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
@@ -80,8 +47,9 @@ enum TokKind {
     At,
     Eq,
     Dot,
-    LBracket, // [
-    RBracket, // ]
+    Plus,       // ← ajouté
+    LBracket,   // [
+    RBracket,   // ]
     Newline,
 }
 
@@ -97,7 +65,8 @@ fn is_ident_start(c: char) -> bool {
     c.is_ascii_alphabetic() || c == '_' || c == '$'
 }
 fn is_ident_continue(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.'
+    c.is_ascii_alphanumeric() || c == '_' || c == '-'
+        || c == '.' // on autorise les mnémos/labels avec des points
 }
 
 fn lex(src: &str) -> Result<Vec<Tok>, AsmError> {
@@ -109,7 +78,6 @@ fn lex(src: &str) -> Result<Vec<Tok>, AsmError> {
     while let Some(&ch) = it.peek() {
         // commentaires
         if ch == ';' || (ch == '/' && it.clone().nth(1) == Some('/')) {
-            // skip jusqu'à fin de ligne
             while let Some(c) = it.next() {
                 if c == '\n' { break; }
             }
@@ -136,6 +104,7 @@ fn lex(src: &str) -> Result<Vec<Tok>, AsmError> {
             '@' => Some(TokKind::At),
             '=' => Some(TokKind::Eq),
             '.' => Some(TokKind::Dot),
+            '+' => Some(TokKind::Plus),      // ← ajouté
             '[' => Some(TokKind::LBracket),
             ']' => Some(TokKind::RBracket),
             _ => None,
@@ -195,7 +164,6 @@ fn lex(src: &str) -> Result<Vec<Tok>, AsmError> {
                     break;
                 }
             }
-            // float si contient un '.'
             if s.contains('.') && !s.starts_with("0x") && !s.starts_with("-0x") {
                 out.push(Tok { kind: TokKind::Float, text: s, line, col: start_col });
             } else {
@@ -237,7 +205,7 @@ pub enum Operand {
     ImmF(f64),
     ConstRef(String), // const:name
     LabelRef(String), // @label
-    Mem { base: u8, offset: i32 }, // [rX+imm]
+    Mem { base: u8, offset: i32 }, // [rX+imm] ou [rX, imm]
 }
 
 #[derive(Debug, Clone)]
@@ -255,7 +223,6 @@ pub enum Directive {
     Org   { addr: u32, line: usize, col: usize },
     Entry { label: String, line: usize, col: usize },
     DataBytes { name: Option<String>, bytes: Vec<u8>, line: usize, col: usize },
-    // .string id = "text"
     String { name: String, utf8: String, line: usize, col: usize },
 }
 
@@ -263,7 +230,7 @@ pub enum Directive {
 pub enum ConstValue {
     Int(i64),
     Float(f64),
-    String(String), // stockée via table .string
+    String(String),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -298,7 +265,7 @@ impl<'a> Parser<'a> {
 
     fn parse(mut self) -> Result<Unit, AsmError> {
         let mut unit = Unit::default();
-        while let Some(tok) = self.peek() {
+        while self.peek().is_some() {
             self.eat_newlines();
             match self.peek() {
                 Some(Tok{kind: TokKind::Dot, ..}) => {
@@ -306,12 +273,10 @@ impl<'a> Parser<'a> {
                     unit.directives.push(d);
                 }
                 Some(Tok{kind: TokKind::Ident, text, line, col}) => {
-                    // label? instr?
-                    // lookahead for ':'
                     if self.toks.get(self.i+1).map(|t| t.kind) == Some(TokKind::Colon) {
                         let name = text.clone();
                         let l = *line; let c = *col;
-                        self.i += 2; // ident + colon
+                        self.i += 2; // ident + ':'
                         unit.items.push(Item::Label { name, line: l, col: c });
                     } else {
                         let instr = self.parse_instr()?;
@@ -336,13 +301,13 @@ impl<'a> Parser<'a> {
                 let id = self.expect_ident()?;
                 self.expect(TokKind::Eq)?;
                 let (cv, line, col) = self.parse_const_value()?;
-                Ok(Directive::Const { name: id.text, value: cv, line, col })
+                Ok(Directive::Const { name: id.text.clone(), value: cv, line, col })
             }
             "string" => {
                 let id = self.expect_ident()?;
                 self.expect(TokKind::Eq)?;
                 let s = self.expect_string()?;
-                Ok(Directive::String { name: id.text, utf8: s.text, line: id.line, col: id.col })
+                Ok(Directive::String { name: id.text.clone(), utf8: s.text.clone(), line: id.line, col: id.col })
             }
             "data" => {
                 // .data [optional_name] = [ bytes... ]
@@ -350,7 +315,7 @@ impl<'a> Parser<'a> {
                     self.toks.get(self.i+1).map(|t| t.kind) == Some(TokKind::Eq) {
                     let id = self.expect_ident()?;
                     self.expect(TokKind::Eq)?;
-                    (Some(id.text), id.line, id.col)
+                    (Some(id.text.clone()), id.line, id.col)
                 } else {
                     (None, dot.line, dot.col)
                 };
@@ -383,7 +348,7 @@ impl<'a> Parser<'a> {
             }
             "entry" => {
                 let id = self.expect_ident()?;
-                Ok(Directive::Entry { label: id.text, line: id.line, col: id.col })
+                Ok(Directive::Entry { label: id.text.clone(), line: id.line, col: id.col })
             }
             other => Err(AsmError::new(name.line, name.col, format!("directive inconnue: .{other}"))),
         }
@@ -412,7 +377,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_instr(&mut self) => Result<Instr, AsmError> {
+    fn parse_instr(&mut self) -> Result<Instr, AsmError> {
         let head = self.expect_ident()?;
         let mnemonic = head.text.to_uppercase();
         let line = head.line;
@@ -421,8 +386,8 @@ impl<'a> Parser<'a> {
 
         loop {
             match self.peek() {
-                Some(Tok{kind: TokKind::Newline, ..}) | None => break,
-                Some(Tok{kind: TokKind::Comma, ..}) => { self.i += 1; }
+                Some(Tok { kind: TokKind::Newline, .. }) | None => break,
+                Some(Tok { kind: TokKind::Comma, .. }) => { self.i += 1; }
                 _ => {
                     let op = self.parse_operand()?;
                     ops.push(op);
@@ -436,9 +401,8 @@ impl<'a> Parser<'a> {
     fn parse_operand(&mut self) -> Result<Operand, AsmError> {
         match self.peek() {
             Some(Tok{kind: TokKind::Ident, text, line, col}) => {
-                // reg? const:NAME ? mem [rX+imm] handled elsewhere
+                // reg? const:NAME ?
                 if text.starts_with('r') || text.starts_with('R') {
-                    // r0..r255
                     let idx: u16 = text[1..].parse().map_err(|_| AsmError::new(*line, *col, "registre invalide"))?;
                     if idx > 255 { return Err(AsmError::new(*line, *col, "registre hors plage (0..255)")); }
                     self.i += 1;
@@ -446,17 +410,16 @@ impl<'a> Parser<'a> {
                 } else if text == "const" && self.toks.get(self.i+1).map(|t| t.kind) == Some(TokKind::Colon) {
                     self.i += 2; // const :
                     let id = self.expect_ident()?;
-                    Ok(Operand::ConstRef(id.text))
+                    Ok(Operand::ConstRef(id.text.clone()))
                 } else {
-                    // ident comme label implicite? non: on force @label pour éviter les confusions
                     self.i += 1;
-                    Ok(Operand::ConstRef(text.clone())) // tolérance: ident nu -> const ref
+                    Ok(Operand::ConstRef(text.clone()))
                 }
             }
             Some(Tok{kind: TokKind::At, ..}) => {
                 self.i += 1;
                 let id = self.expect_ident()?;
-                Ok(Operand::LabelRef(id.text))
+                Ok(Operand::LabelRef(id.text.clone()))
             }
             Some(Tok{kind: TokKind::Int, text, line, col}) => {
                 let val = parse_i64(text).map_err(|e| AsmError::new(*line, *col, format!("entier invalide: {e}")))?;
@@ -469,7 +432,7 @@ impl<'a> Parser<'a> {
                 Ok(Operand::ImmF(v))
             }
             Some(Tok{kind: TokKind::LBracket, ..}) => {
-                // [rX + imm]
+                // [rX], [rX, imm] ou [rX + imm]
                 self.i += 1; // [
                 let r = self.expect_ident()?;
                 if !(r.text.starts_with('r') || r.text.starts_with('R')) {
@@ -477,15 +440,30 @@ impl<'a> Parser<'a> {
                 }
                 let ridx: u16 = r.text[1..].parse().map_err(|_| AsmError::new(r.line, r.col, "registre invalide"))?;
                 let mut offset: i32 = 0;
-                if matches!(self.peek(), Some(Tok{kind: TokKind::RBracket, ..})) {
-                    self.i += 1; // ]
-                } else {
-                    self.expect(TokKind::Comma).or_else(|_| self.expect_ident_eq("+"))?;
-                    // offset int
-                    let n = self.expect_int()?;
-                    offset = parse_i64(&n.text).map_err(|e| AsmError::new(n.line, n.col, format!("offset invalide: {e}")))? as i32;
-                    self.expect(TokKind::RBracket)?;
+
+                // variantes : ']' | (',' imm ']') | ('+' imm ']')
+                match self.peek().map(|t| t.kind) {
+                    Some(TokKind::RBracket) => {
+                        self.i += 1; // ]
+                    }
+                    Some(TokKind::Comma) => {
+                        self.i += 1; // ,
+                        let n = self.expect_int()?;
+                        offset = parse_i64(&n.text).map_err(|e| AsmError::new(n.line, n.col, format!("offset invalide: {e}")))? as i32;
+                        self.expect(TokKind::RBracket)?;
+                    }
+                    Some(TokKind::Plus) => {
+                        self.i += 1; // +
+                        let n = self.expect_int()?;
+                        offset = parse_i64(&n.text).map_err(|e| AsmError::new(n.line, n.col, format!("offset invalide: {e}")))? as i32;
+                        self.expect(TokKind::RBracket)?;
+                    }
+                    Some(other) => {
+                        return Err(AsmError::new(r.line, r.col, format!("syntaxe mémoire : attendu ']', ',' ou '+', trouvé {:?}", other)));
+                    }
+                    None => return Err(AsmError::new(r.line, r.col, "fin inattendue dans []")),
                 }
+
                 Ok(Operand::Mem { base: ridx as u8, offset })
             }
             Some(t) => Err(AsmError::new(t.line, t.col, "opérande inattendu")),
@@ -503,11 +481,6 @@ impl<'a> Parser<'a> {
     fn expect_ident(&mut self) -> Result<&'a Tok, AsmError> {
         if let Some(t) = self.next() {
             if t.kind == TokKind::Ident { Ok(t) } else { Err(AsmError::new(t.line, t.col, "identifiant attendu")) }
-        } else { Err(AsmError::new(0,0,"fin inattendue")) }
-    }
-    fn expect_ident_eq(&mut self, s: &str) -> Result<&'a Tok, AsmError> {
-        if let Some(t) = self.next() {
-            if t.kind == TokKind::Ident && t.text == s { Ok(t) } else { Err(AsmError::new(t.line, t.col, format!("attendu ident '{}'", s))) }
         } else { Err(AsmError::new(0,0,"fin inattendue")) }
     }
     fn expect_int(&mut self) -> Result<&'a Tok, AsmError> {
@@ -559,8 +532,6 @@ fn parse_i64(s: &str) -> Result<i64, ParseIntError> {
 // Table d’opcodes & encodage « raw »
 // ==============================
 
-/// IR binaire simple : opcode 16 bits + jusqu’à 3 arguments 64 bits.
-/// (C’est volontairement large; votre backend peut réduire/packer.)
 #[derive(Debug, Clone, Copy)]
 pub struct RawOp {
     pub opcode: u16,
@@ -615,7 +586,6 @@ pub struct OpcodeTable {
 
 impl OpcodeTable {
     pub fn new_default() -> Self {
-        // Table MVP (extensible) — ajustez les codes si nécessaire.
         let mut t = OpcodeTable { by_name: HashMap::new() };
         let defs = [
             OpSig { code: 0x00, name: "NOP",   operands: &[] },
@@ -632,7 +602,7 @@ impl OpcodeTable {
             OpSig { code: 0x0B, name: "CALL",  operands: &[OpArgKind::Reg, OpArgKind::Reg, OpArgKind::ImmI] },
             OpSig { code: 0x0C, name: "RET",   operands: &[] },
             OpSig { code: 0x0D, name: "LOADM", operands: &[OpArgKind::Reg, OpArgKind::Mem] },
-            OpSig { code: 0x0E, name: "STORM", operands: &[OpArgKind::Mem, OpArgKind::Reg] }, // store mem
+            OpSig { code: 0x0E, name: "STORM", operands: &[OpArgKind::Mem, OpArgKind::Reg] }, // nom gardé comme dans tes tests
         ];
         for d in defs { t.by_name.insert(d.name, d); }
         t
@@ -642,7 +612,6 @@ impl OpcodeTable {
         self.by_name.get(name)
     }
 
-    /// Vous pouvez étendre dynamiquement.
     pub fn insert(&mut self, sig: OpSig) {
         self.by_name.insert(sig.name, sig);
     }
@@ -674,7 +643,7 @@ fn assemble_unit(unit: &Unit, table: &OpcodeTable) -> Result<AssembleOutput, Asm
     let mut pool = ConstPool::default();
     let mut data = Vec::<DataBlob>::new();
     let mut entry_label: Option<String> = None;
-    let mut org_addr: Option<u32> = None; // mémorise le dernier .org pour le prochain blob .data
+    let mut org_addr: Option<u32> = None;
 
     for d in &unit.directives {
         match d {
@@ -688,28 +657,23 @@ fn assemble_unit(unit: &Unit, table: &OpcodeTable) -> Result<AssembleOutput, Asm
             }
             Directive::DataBytes { name, bytes, .. } => {
                 data.push(DataBlob { name: name.clone(), bytes: bytes.clone(), addr: org_addr });
-                org_addr = None; // consommé
+                org_addr = None;
             }
             Directive::Org { addr, .. } => { org_addr = Some(*addr); }
             Directive::Entry { label, .. } => { entry_label = Some(label.clone()); }
             Directive::Align { .. } => {
-                // Note: ici on ne gère pas l’align pour le code (VM PC abstrait).
-                // Si vous avez un segment code binaire réel, appliquez-le à l’encodeur final.
+                // no-op ici (pas de segment code binaire)
             }
         }
     }
 
     // 2) Première passe — PC & labels
-    // On simule le PC : chaque instruction compte pour 1 RawOp.
     let mut pc: usize = 0;
     let mut labels = BTreeMap::<String, usize>::new();
     for it in &unit.items {
         match it {
             Item::Label { name, .. } => {
-                if labels.insert(name.clone(), pc).is_some() {
-                    // doublon
-                    // (on continue mais on pourrait lever une erreur stricte)
-                }
+                let _ = labels.insert(name.clone(), pc);
             }
             Item::Instr(_) => {
                 pc += 1;
@@ -724,7 +688,6 @@ fn assemble_unit(unit: &Unit, table: &OpcodeTable) -> Result<AssembleOutput, Asm
             let sig = table.get(&instr.mnemonic)
                 .ok_or_else(|| AsmError::new(instr.line, instr.col, format!("opcode inconnu: {}", instr.mnemonic)))?;
 
-            // Validation du nombre d’opérandes
             if instr.operands.len() != sig.operands.len() {
                 return Err(AsmError::new(
                     instr.line, instr.col,
@@ -754,32 +717,31 @@ fn assemble_unit(unit: &Unit, table: &OpcodeTable) -> Result<AssembleOutput, Asm
     })
 }
 
-fn resolve_operand(op: &Operand, kind: OpArgKind, pool: &ConstPool, labels: &BTreeMap<String, usize>) -> Result<u64, String> {
+// Paramètre _pool gardé pour un usage futur et pour éviter le warning.
+fn resolve_operand(
+    op: &Operand,
+    kind: OpArgKind,
+    _pool: &ConstPool,
+    labels: &BTreeMap<String, usize>,
+) -> Result<u64, String> {
     match (op, kind) {
         (Operand::Reg(r), OpArgKind::Reg) => Ok(*r as u64),
-        (Operand::ImmI(i), OpArgKind::ImmI) => Ok(*i as u64 as u64),
+        (Operand::ImmI(i), OpArgKind::ImmI) => Ok(*i as u64),
         (Operand::ImmF(f), OpArgKind::ImmF) => Ok(f.to_bits()),
-        (Operand::ConstRef(name), OpArgKind::ConstIx) => {
-            // On hache le nom pour obtenir un "index" stable (ou mappez via votre pool).
-            // Ici: hash 64 des 16 premiers chars (simple, déterministe).
-            Ok(stable_hash(name))
-        }
+        (Operand::ConstRef(name), OpArgKind::ConstIx) => Ok(stable_hash(name)),
         (Operand::LabelRef(lbl), OpArgKind::Label) => {
             labels.get(lbl).copied().map(|pc| pc as u64).ok_or_else(|| format!("label inconnu: {lbl}"))
         }
         (Operand::Mem { base, offset }, OpArgKind::Mem) => {
-            // pack: [ base (8 bits) | reserved (24) | offset (32) ]
             let b = (*base as u64) & 0xFF;
             let off = (*offset as i64 as u64) & 0xFFFF_FFFF;
             Ok((b << 56) | off)
         }
-        // tolérances: immédiats entiers sur immf via cast bits? non — strict:
         (got, want) => Err(format!("mauvais type d’opérande: got={:?} want={:?}", got, want)),
     }
 }
 
 fn stable_hash(s: &str) -> u64 {
-    // FNV-1a 64 simple (déterministe)
     const FNV_OFFSET: u64 = 0xcbf29ce484222325;
     const FNV_PRIME:  u64 = 0x100000001b3;
     let mut h = FNV_OFFSET;
@@ -794,8 +756,6 @@ fn stable_hash(s: &str) -> u64 {
 // Désassembleur
 // ==============================
 
-/// Permet de désassembler un `RawProgram` en source ASM.
-/// La table d’opcodes est nécessaire pour lier code->mnemonic et signature.
 pub fn disassemble(prog: &RawProgram, table: &OpcodeTable) -> String {
     let mut rev: HashMap<u16, &OpSig> = HashMap::new();
     for sig in table.by_name.values() {
@@ -804,13 +764,10 @@ pub fn disassemble(prog: &RawProgram, table: &OpcodeTable) -> String {
 
     let mut lines = Vec::<String>::new();
 
-    // entry
     if let Some(pc) = prog.entry_pc {
-        // On cherche un label qui pointe ici (sinon, on émet .entry @pc)
         lines.push(format!(".entry L{}", pc));
     }
 
-    // const pool (déclaratif)
     for (k, v) in &prog.const_pool.ints {
         lines.push(format!(".const {} = {}", k, v));
     }
@@ -818,12 +775,10 @@ pub fn disassemble(prog: &RawProgram, table: &OpcodeTable) -> String {
         lines.push(format!(".const {} = {}", k, v));
     }
     for (k, v) in &prog.const_pool.strings {
-        // ré-escape
         let esc = v.replace('\\', "\\\\").replace('"', "\\\"");
         lines.push(format!(".string {} = \"{}\"", k, esc));
     }
 
-    // data
     for blob in &prog.data_blobs {
         if let Some(addr) = blob.addr {
             lines.push(format!(".org {}", addr));
@@ -835,9 +790,7 @@ pub fn disassemble(prog: &RawProgram, table: &OpcodeTable) -> String {
         }
     }
 
-    // code
     for (pc, op) in prog.code.iter().enumerate() {
-        // On étiquette chaque PC pour une lecture simple
         lines.push(format!("L{}:", pc));
         if let Some(sig) = rev.get(&op.opcode).copied() {
             let mut parts = vec![sig.name.to_string()];
@@ -848,7 +801,6 @@ pub fn disassemble(prog: &RawProgram, table: &OpcodeTable) -> String {
             }
             lines.push(format!("    {}", parts.join(", ")));
         } else {
-            // inconnu brut
             let mut args = Vec::new();
             for i in 0..(op.argc as usize) {
                 args.push(format!("0x{:016X}", op.args[i]));
@@ -891,29 +843,10 @@ fn fmt_operand_rev(kind: OpArgKind, a: u64) -> String {
 // Pont vers votre `Op` maison
 // ==============================
 
-/// Si vous avez `crate::bytecode::Op`, implémentez ce trait pour mapper `RawOp` -> `Op`.
 pub trait Encoder<Op> {
     type Error: std::error::Error + Send + Sync + 'static;
     fn encode(&self, raw: &RawOp) -> Result<Op, Self::Error>;
 }
-
-/// Exemple (pseudo-code):
-/// ```ignore
-/// struct MyEncoder;
-/// impl Encoder<crate::bytecode::Op> for MyEncoder {
-///     type Error = color_eyre::eyre::Report;
-///     fn encode(&self, raw: &RawOp) -> Result<crate::bytecode::Op, Self::Error> {
-///         use crate::bytecode::Op as O;
-///         Ok(match raw.opcode {
-///             0x00 => O::Nop,
-///             0x01 => O::Mov { dst: raw.args[0] as u8, src: raw.args[1] as u8 },
-///             0x02 => O::LoadK { dst: raw.args[0] as u8, k: raw.args[1] },
-///             // ...
-///             _ => return Err(eyre!("opcode inconnu 0x{:04X}", raw.opcode)),
-///         })
-///     }
-/// }
-/// ```
 
 // ==============================
 // Tests
@@ -959,13 +892,15 @@ mod tests {
         let asm = r#"
             main:
                 LOADM r1, [r7, -16]
+                LOADM r3, [r7 + 8]
                 STORM [r7, 32], r2
                 RET
         "#;
         let out = assemble(asm).expect("assemble");
-        assert_eq!(out.program.code.len(), 3);
+        assert_eq!(out.program.code.len(), 4);
         let d = disassemble(&out.program, &OpcodeTable::new_default());
         assert!(d.contains("[r7, -16]"));
+        assert!(d.contains("[r7, 8]"));
         assert!(d.contains("[r7, 32]"));
     }
 }

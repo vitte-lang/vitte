@@ -1,13 +1,16 @@
 [package]
 name = "vitte-tools"
 version = "0.1.0"
-edition = "2021"
 description = "Outils CLI du langage Vitte (asm, disasm, link, fmt, repl)"
-license = "MIT OR Apache-2.0"
-repository = "https://example.com/vitte-lang"
-authors = ["Vincent <you@example.com>"]
-categories = ["command-line-utilities", "development-tools"]
-keywords = ["vitte", "bytecode", "vm", "compiler", "cli"]
+# Hérite des métadonnées du workspace
+edition.workspace       = true
+rust-version.workspace  = true
+license.workspace       = true
+repository.workspace    = true
+homepage.workspace      = true
+documentation.workspace = true
+keywords.workspace      = true
+categories.workspace    = true
 
 [lib]
 name = "vitte_tools"
@@ -16,8 +19,8 @@ crate-type = ["rlib"]
 
 # ───────────────────────────── Features
 [features]
-# Par défaut: couleurs, config du formatter, JSON, et moteur "eval" dispo pour le REPL
-default = ["colors", "fmt-config", "serde", "eval"]
+# Par défaut : couleurs, config du formatter, JSON
+default = ["colors", "fmt-config", "serde"]
 
 # Couleurs (yansi)
 colors = ["dep:yansi"]
@@ -25,87 +28,72 @@ colors = ["dep:yansi"]
 # Config du formatter via .vittefmt.toml
 fmt-config = ["dep:toml", "dep:serde"]
 
-# Sorties JSON (disasm/link manifest)
+# Sorties JSON (disasm/link manifest) + relaie vers vitte-core
 serde = ["dep:serde", "dep:serde_json", "vitte-core/serde"]
 
 # Emplacement d'historique (REPL) dans le répertoire utilisateur
-dirs = ["dep:dirs"]
+dirs = ["dep:dirs-next"]
 
-# Évaluateur léger depuis vitte-core (REPL)
-eval = ["vitte-core/eval"]
-
-# Support VM complète (REPL). Active aussi la dépendance vitte-vm.
+# VM complète (REPL)
 vm = ["dep:vitte-vm"]
 
-# Tracing (optionnel) – si tu veux instrumenter à terme
-tracing = ["dep:tracing", "vitte-core/tracing"]
+# Tracing (optionnel)
+tracing = ["dep:tracing"]
 
-# ───────────────────────────── Dépendances communes
+# Gating des binaires (évite d’échouer si les fichiers bin ne sont pas encore présents)
+bin-asm = []
+bin-disasm = []
+bin-link = []
+bin-fmt = []
+bin-repl = []
+
+# ───────────────────────────── Dépendances
 [dependencies]
-anyhow = "1"
-camino = "1"
-clap = { version = "4", features = ["derive"] }
+# Workspace deps
+anyhow             = { workspace = true }
+clap               = { workspace = true, features = ["derive"] }
+serde              = { workspace = true, optional = true }
+serde_json         = { workspace = true, optional = true }
+toml               = { workspace = true, optional = true }
+tracing            = { workspace = true, optional = true }
+
+# Non-workspace deps (versions explicites)
+camino     = "1"
 color-eyre = "0.6"
+yansi      = { version = "1", optional = true }
+dirs-next  = { version = "2", optional = true }
+rustyline  = "14"
 
-# Optionnelles (gérées par features)
-yansi = { version = "1", optional = true }
-serde = { version = "1", features = ["derive"], optional = true }
-serde_json = { version = "1", optional = true }
-toml = { version = "0.8", optional = true }
-dirs = { version = "5", optional = true }
-tracing = { version = "0.1", optional = true }
-
-# Édition de ligne pour le REPL
-rustyline = "14"
-
-# Cœurs maison (chemins relatifs au workspace)
-vitte-core = { path = "../vitte-core", features = ["serde"] }
+# Crates internes
+vitte-core     = { path = "../vitte-core" }              # la feature `serde` se pilote via la feature locale `serde`
 vitte-compiler = { path = "../vitte-compiler" }
-vitte-vm = { path = "../vitte-vm", optional = true }
+vitte-vm       = { path = "../vitte-vm", optional = true }
 
-# ───────────────────────────── Binaries
-# Assembleur: .vit.s -> .vitbc
+# ───────────────────────────── Binaries (gated)
 [[bin]]
 name = "vitte-asm"
 path = "src/bin/vitte-asm.rs"
+required-features = ["bin-asm"]
 
-# Désassembleur: .vitbc -> texte/JSON
 [[bin]]
 name = "vitte-disasm"
 path = "src/bin/vitte-disasm.rs"
+required-features = ["bin-disasm"]
 
-# Linker: fusion de .vitbc
 [[bin]]
 name = "vitte-link"
 path = "src/bin/vitte-link.rs"
+required-features = ["bin-link"]
 
-# Formatter: sources .vit
 [[bin]]
 name = "vitte-fmt"
 path = "src/bin/vitte-fmt.rs"
+required-features = ["bin-fmt"]
 
-# REPL: nécessite au moins une des features `eval` ou `vm`
 [[bin]]
 name = "vitte-repl"
 path = "src/bin/vitte-repl.rs"
+required-features = ["bin-repl"]
 
-# ───────────────────────────── Dev-deps (confort tests)
-[dev-dependencies]
-pretty_assertions = "1"
-indoc = "2"
-
-# ───────────────────────────── Profils (conseils perf)
-[profile.release]
-lto = true
-codegen-units = 1
-opt-level = "z"         # ou "3" si tu veux maximiser la perf au lieu de la taille
-strip = "symbols"
-
-[profile.dev]
-opt-level = 0
-debug = true
-incremental = true
-
-# ───────────────────────────── Docs.rs: builder toutes les features si besoin
 [package.metadata.docs.rs]
 all-features = true

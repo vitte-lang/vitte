@@ -1,23 +1,21 @@
-# rust-toolchain.toml — Toolchain pin + composants stables
-# Objectif : builds reproductibles et CI sereine.
+# rust-toolchain.toml — Toolchain figé & composants stables
+# Objectif : builds reproductibles, DX solide, CI tranquille.
 
 [toolchain]
-# ⚓ Fige la version de Rust (pinning) pour éviter les surprises.
-channel = "1.80.0"
-# Installe le strict nécessaire (cargo, rustc, rust-std).
+# Monte à 1.82.0 pour éviter les soucis MSRV (backtrace/home).
+channel = "1.82.0"
+
+# Minimal = cargo + rustc + std : rapide, prévisible
 profile = "minimal"
 
-# Composants indispensables (stables, disponibles partout).
+# Composants utiles et stables
 components = [
-  "rustfmt",
-  "clippy",
-  "rust-src",   # utile pour build-std, analyzers, docs locales avancées
+  "rustfmt",             # formatage
+  "clippy",              # lints
+  "rust-src",            # sources std (no_std, RA, build-std, etc.)
+  "llvm-tools-preview",  # objdump/size/addr2line via cargo-binutils
 ]
 
-# ✅ Ne pas lister de cibles ici (certaines indisponibles en binaire → échecs d’insta).
-#    Ajoute-les dans la CI / scripts *au moment où tu en as besoin*, ex. :
-#      rustup target add wasm32-unknown-unknown
-#      rustup target add wasm32-wasi
-#      rustup target add thumbv7em-none-eabi
-#    Pour x86_64-unknown-none (bare-metal), préfère `-Z build-std` côté build plutôt
-#    qu’un ajout global ici.
+# ⚠️ Ne liste PAS de targets ici : certaines ne sont pas dispo partout
+# et l’installation échoue en bloc. Installe-les “à la demande” (script/CI).
+

@@ -1,10 +1,34 @@
-[dependencies]
-anyhow = "1"
-vitte-core = { path = "../vitte-core" }
-vitte-compiler = { path = "../vitte-compiler", optional = true }
-once_cell = { version = "1", optional = true }
+[package]
+name        = "stdlib"
+version     = "0.1.0"
+description = "Bibliothèque standard du langage Vitte (MVP)."
+edition     = "2021"
+rust-version = "1.75"
+license     = "MIT OR Apache-2.0"
+repository  = "https://github.com/vitte-lang/vitte"
+homepage    = "https://vitte-lang.github.io/vitte/"
+documentation = "https://vitte-lang.github.io/vitte/docs"
+keywords    = ["vitte", "language", "stdlib", "vm", "bytecode"]
+categories  = ["development-tools", "compilers"]
+
+[lib]
+path = "src/lib.rs"
 
 [features]
-default = ["compiler","cache"]
-compiler = ["vitte-compiler"]
-cache = ["once_cell"]
+# std activée par défaut ; désactive-la via --no-default-features si besoin
+default = ["std"]
+std = []
+# Sérialisation optionnelle, relaie vers vitte-core
+serde = ["dep:serde", "vitte-core/serde"]
+
+[dependencies]
+# Déps communes (versions explicites pour éviter l’héritage workspace)
+anyhow = "1"
+serde  = { version = "1", features = ["derive"], optional = true }
+
+# Déps internes
+vitte-core = { path = "../vitte-core" }
+
+[package.metadata.docs.rs]
+all-features = true
+>> main
