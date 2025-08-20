@@ -246,7 +246,7 @@ do main() {
 
 - [Documentation Officielle](https://vitte.dev/docs)
 - [Standard Library](https://vitte.dev/std)
-- [RFCs du langage](https://vitte-lang.github.io/vitte/rfcs/index.md)
+- [RFCs du langage](https://vitte-lang.github.io/vitte/rfcs)
 - [Guide Contributeurs](CONTRIBUTING.md)
 
 ---
