@@ -1,18 +1,119 @@
-//! Option<T> — présence/absence de valeur
-enum Option<T> { Some(T), None }
+//! std.core.option — Type Option<T> pour valeurs optionnelles
+//!
+//! Représente : soit `Some(T)` soit `None`.
+//!
+//! Avantages :
+//! - Évite les pointeurs nuls et panics implicites.
+//! - API expressive (unwrap, unwrap_or, map, and_then…).
+//!
+//! Exemple :
+//! ```vitte
+//! let x: Option<int> = Some(5);
+//! let y = x.map(fn(v) => v * 2).unwrap_or(0); // y = 10
+//! let n: Option<int> = None;
+//! if n.is_none() { print("vide"); }
+//! ```
 
-impl<T> Option<T> {
-  fn is_some(&self) -> bool { match self { Some(_) => true, None => false } }
-  fn is_none(&self) -> bool { !self.is_some() }
+module std.core.option
 
-  fn map<U>(self, f: fn(T)->U) -> Option<U> {
-    match self { Some(v) => Some(f(v)), None => None }
-  }
+// —————————————————————————————————————————————
+// Définition
+// —————————————————————————————————————————————
 
-  fn unwrap_or(self, default: T) -> T {
-    match self { Some(v) => v, None => default }
-  }
+public enum Option<T> {
+    Some(T),
+    None
 }
 
-export fn some<T>(v: T) -> Option<T> { Some(v) }
-export fn none<T>() -> Option<T> { None }
+// —————————————————————————————————————————————
+// Implémentation générique
+// —————————————————————————————————————————————
+
+impl<T> Option<T> {
+    // Vérification
+    public fn is_some(self: &Option<T>) -> bool {
+        match self {
+            Some(_) => true,
+            None    => false
+        }
+    }
+
+    public fn is_none(self: &Option<T>) -> bool {
+        return !self.is_some();
+    }
+
+    // Extraction
+    public fn unwrap(self: Option<T>) -> T {
+        match self {
+            Some(v) => v,
+            None    => panic("called unwrap on None")
+        }
+    }
+
+    public fn unwrap_or(self: Option<T>, default: T) -> T {
+        match self {
+            Some(v) => v,
+            None    => default
+        }
+    }
+
+    public fn unwrap_or_else(self: Option<T>, f: fn() -> T) -> T {
+        match self {
+            Some(v) => v,
+            None    => f()
+        }
+    }
+
+    // Mapping
+    public fn map<U>(self: Option<T>, f: fn(T) -> U) -> Option<U> {
+        match self {
+            Some(v) => Some(f(v)),
+            None    => None
+        }
+    }
+
+    public fn and_then<U>(self: Option<T>, f: fn(T) -> Option<U>) -> Option<U> {
+        match self {
+            Some(v) => f(v),
+            None    => None
+        }
+    }
+
+    // Fallback combinators
+    public fn or(self: Option<T>, optb: Option<T>) -> Option<T> {
+        match self {
+            Some(_) => self,
+            None    => optb
+        }
+    }
+
+    public fn or_else(self: Option<T>, f: fn() -> Option<T>) -> Option<T> {
+        match self {
+            Some(_) => self,
+            None    => f()
+        }
+    }
+
+    // Conversion
+    public fn as_ref(self: &Option<T>) -> Option<&T> {
+        match self {
+            Some(ref v) => Some(v),
+            None        => None
+        }
+    }
+
+    public fn as_mut(self: &mut Option<T>) -> Option<&mut T> {
+        match self {
+            Some(ref mut v) => Some(v),
+            None            => None
+        }
+    }
+
+    // Consommation
+    public fn take(self: &mut Option<T>) -> Option<T> {
+        let mut tmp = None;
+        mem::swap(self, &mut tmp);
+        return tmp;
+    }
+}
+
