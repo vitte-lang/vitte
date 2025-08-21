@@ -1,3 +1,173 @@
-//! mp3 — lecture/écriture (intrinsic/ffi)
-export fn decode(b: Bytes) -> Any { __ffi::mp3_decode(b) }
-export fn encode(samples: Any, sample_rate: i32, bitrate_kbps: i32) -> Bytes { __ffi::mp3_encode(samples, sample_rate, bitrate_kbps) }
+// std/modules/audio/mp3.vitte
+// Lecture/écriture MP3 (wrapper minimal).
+// Objectif : API std cohérente. La décodage réel délègue à un backend (minimp3 / lame).
+// Si backend absent → panic "unsupported".
+
+module std.audio.mp3
+
+use std.io
+use std.fs
+
+// ————————————————————————————————————————————————————————————————————————
+// Structures
+// ————————————————————————————————————————————————————————————————————————
+pub struct Mp3Metadata {
+    title:   Option<String>,
+    artist:  Option<String>,
+    album:   Option<String>,
+    year:    Option<String>,
+    comment: Option<String>,
+    genre:   Option<String>,
+    duration_seconds: Option<i64>, // durée estimée (pas toujours fiable)
+}
+
+pub struct Mp3File {
+    path: String,
+    size: i64,
+    meta: Mp3Metadata,
+}
+
+// PCM frame : échantillons interleavés stéréo
+pub struct PcmFrame {
+    sample_rate: i32,
+    channels: i32,
+    data: Vec<i16>,
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// API
+// ————————————————————————————————————————————————————————————————————————
+
+pub fn open(path: &str) -> Result<Mp3File, String> {
+    let data = fs::read(path)?
+    let size = data.len() as i64
+    let meta = parse_metadata(&data)
+    return Ok(Mp3File { path: path.to_string(), size, meta })
+}
+
+pub fn metadata(f: &Mp3File) -> &Mp3Metadata {
+    return &f.meta
+}
+
+/// Décode en PCM tous les frames (attention mémoire).
+/// En std on expose l’API mais on n’a pas de vrai décodeur → panic si pas de backend.
+pub fn decode_all(f: &Mp3File) -> Vec<PcmFrame> {
+    panic("std.audio.mp3: decode not implemented (backend required)")
+}
+
+/// Encode des frames PCM en MP3, écrit dans out_path.
+/// Idem : stub si pas de backend.
+pub fn encode_pcm(frames: &Vec<PcmFrame>, out_path: &str) {
+    panic("std.audio.mp3: encode not implemented (backend required)")
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Parsing métadonnées
+// ————————————————————————————————————————————————————————————————————————
+
+fn parse_metadata(data: &Vec<u8>) -> Mp3Metadata {
+    // check ID3v2 header
+    if data.len() >= 10 && data[0] == 'I'.byte() && data[1] == 'D'.byte() && data[2] == '3'.byte() {
+        return parse_id3v2(data)
+    }
+    // sinon tenter ID3v1
+    if data.len() >= 128 {
+        let off = data.len() - 128
+        if data[off] == 'T'.byte() && data[off+1] == 'A'.byte() && data[off+2] == 'G'.byte() {
+            return parse_id3v1(data, off)
+        }
+    }
+    return Mp3Metadata {
+        title: None, artist: None, album: None, year: None,
+        comment: None, genre: None, duration_seconds: None
+    }
+}
+
+fn parse_id3v1(data: &Vec<u8>, off: i32) -> Mp3Metadata {
+    let title   = str_from_bytes(data[off+3 : off+33])
+    let artist  = str_from_bytes(data[off+33 : off+63])
+    let album   = str_from_bytes(data[off+63 : off+93])
+    let year    = str_from_bytes(data[off+93 : off+97])
+    let comment = str_from_bytes(data[off+97 : off+127])
+    let genre   = Some(data[off+127].to_string())
+    return Mp3Metadata {
+        title, artist, album, year, comment, genre, duration_seconds: None
+    }
+}
+
+fn parse_id3v2(data: &Vec<u8>) -> Mp3Metadata {
+    // super minimal: lit juste TIT2, TPE1, TALB si présents
+    let mut meta = Mp3Metadata {
+        title: None, artist: None, album: None,
+        year: None, comment: None, genre: None, duration_seconds: None
+    }
+    // taille des tags
+    let size = syncsafe_to_int(data[6..10])
+    let end = min(10 + size, data.len())
+    let mut i = 10
+    while i + 10 <= end {
+        let frame_id = str_from_bytes(data[i:i+4])
+        let frame_size = be_u32(data[i+4:i+8])
+        if frame_size <= 0 || i+10+frame_size > end { break }
+        let payload = data[i+10 : i+10+frame_size]
+        let content = str_from_bytes(payload)
+        if frame_id == Some("TIT2".to_string()) { meta.title  = content }
+        if frame_id == Some("TPE1".to_string()) { meta.artist = content }
+        if frame_id == Some("TALB".to_string()) { meta.album  = content }
+        if frame_id == Some("TYER".to_string()) { meta.year   = content }
+        i += 10 + frame_size
+    }
+    return meta
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Helpers binaires / string
+// ————————————————————————————————————————————————————————————————————————
+fn str_from_bytes(b: &Vec<u8>) -> Option<String> {
+    // supprime les \0 et espaces finaux
+    let mut s = String::from_utf8_lossy(b)
+    s = s.trim_matches('\0').trim().to_string()
+    if s.len() == 0 { return None }
+    return Some(s)
+}
+
+fn be_u32(b: &Vec<u8>) -> i32 {
+    return ((b[0] as i32)<<24) | ((b[1] as i32)<<16) | ((b[2] as i32)<<8) | (b[3] as i32)
+}
+
+fn syncsafe_to_int(b: &Vec<u8>) -> i32 {
+    // ID3v2 taille syncsafe (4*7 bits)
+    return ((b[0] as i32 & 0x7F)<<21) |
+           ((b[1] as i32 & 0x7F)<<14) |
+           ((b[2] as i32 & 0x7F)<<7)  |
+           (b[3] as i32 & 0x7F)
+}
+
+fn min(a: i32, b: i32) -> i32 { if a < b { a } else { b } }
+
+// ————————————————————————————————————————————————————————————————————————
+// Tests (lecture métadonnées fictives)
+// ————————————————————————————————————————————————————————————————————————
+test "parse id3v1 minimal" {
+    // fabrique un buffer avec TAG
+    let mut data = Vec<u8>::with_len(128, 0)
+    data[0] = 'T'.byte(); data[1] = 'A'.byte(); data[2] = 'G'.byte()
+    "Song".as_bytes().copy_to(&mut data[3:7])
+    "Artist".as_bytes().copy_to(&mut data[33:39])
+    let meta = parse_id3v1(data, 0)
+    assert meta.title == Some("Song".to_string())
+    assert meta.artist == Some("Artist".to_string())
+}
+
+test "parse id3v2 minimal" {
+    // buffer avec ID3 header (fake)
+    let mut data = Vec<u8>::with_len(100, 0)
+    data[0] = 'I'.byte(); data[1] = 'D'.byte(); data[2] = '3'.byte()
+    data[6] = 0; data[7] = 0; data[8] = 0; data[9] = 20 // taille = 20
+    // Frame: "TIT2", size=4
+    data[10] = 'T'.byte(); data[11] = 'I'.byte(); data[12] = 'T'.byte(); data[13] = '2'.byte()
+    data[14] = 0; data[15] = 0; data[16] = 0; data[17] = 4
+    data[20] = 'A'.byte(); data[21] = 'B'.byte(); data[22] = 'C'.byte(); data[23] = 'D'.byte()
+    let meta = parse_id3v2(data)
+    assert meta.title == Some("ABCD".to_string())
+}

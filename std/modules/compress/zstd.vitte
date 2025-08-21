@@ -1,3 +1,239 @@
-//! zstd
-export fn compress(b: Bytes, level: i32) -> Bytes { __intrinsics::zstd_compress(b, level) }
-export fn decompress(b: Bytes) -> Bytes { __intrinsics::zstd_decompress(b) }
+// std/modules/compress/zstd.vitte
+// Zstandard (RFC 8878) — couche "frame" minimaliste + wrapper backend.
+//
+// Objectif std :
+// - API stable : compress/decompress (déléguées à un backend).
+// - Détection de frame ZSTD (magic 0xFD2FB528 LE) et "skippable" (0x184D2A50..5F LE).
+// - Helpers pour ignorer les frames skippables et "peek" l'en-tête (flags, dict id, content size si présent).
+//
+// ⚠️ Le décodage/encodage réel N'EST PAS ici. Branche un backend fournissant :
+//    zstd_backend::compress(raw: &Vec<u8>, level: i32) -> Vec<u8>
+//    zstd_backend::decompress(frame: &Vec<u8>) -> Vec<u8>
+//
+// Tu peux l’implémenter en Rust (bindgen zstd) ou Vitte+FFI : vitte-zstd-backend.
+
+module std.compress.zstd
+
+// ————————————————————————————————————————————————————————————————————————
+// Constantes
+// ————————————————————————————————————————————————————————————————————————
+const ZSTD_MAGIC:  u32 = 0xFD2FB528u  // en LE sur disque: 28 B5 2F FD
+const SKIP_BASE:   u32 = 0x184D2A50u  // skippable: 0x184D2A50..0x184D2A5F
+
+// ————————————————————————————————————————————————————————————————————————
+// Types
+// ————————————————————————————————————————————————————————————————————————
+pub struct FrameInfo {
+    is_skippable: bool,
+    skippable_tag: u32,        // 0 si non skippable, sinon magic exact
+    single_segment: bool,      // bit d'en-tête (si détectable)
+    has_checksum: bool,        // bit d'en-tête (si détectable)
+    dict_id: Option<u32>,      // si présent
+    content_size: Option<u64>, // si présent (single-segment souvent)
+    header_size: i32,          // octets consommés par l'en-tête
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// API publique — encode/decode (déléguées au backend)
+// ————————————————————————————————————————————————————————————————————————
+pub fn compress(raw: &Vec<u8>, level: i32) -> Vec<u8> {
+    // À brancher : std.compress.zstd_backend (FFI libzstd par ex.)
+    panic("std.compress.zstd: no backend linked (use zstd_backend::compress)")
+}
+
+pub fn decompress(frame: &Vec<u8>) -> Vec<u8> {
+    // À brancher : std.compress.zstd_backend
+    panic("std.compress.zstd: no backend linked (use zstd_backend::decompress)")
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Détection & parsing minimal d'en-tête
+// ————————————————————————————————————————————————————————————————————————
+pub fn looks_like_zstd(data: &Vec<u8>) -> bool {
+    if data.len() < 4 { return false }
+    let m = le_u32(&data[0:4])
+    return m == ZSTD_MAGIC || is_skippable_magic(m)
+}
+
+pub fn is_skippable_magic(m: u32) -> bool {
+    return m >= SKIP_BASE && m <= SKIP_BASE + 0xF
+}
+
+/// Saute une frame "skippable" (magic 0x184D2A5x), renvoie (consommés, tag).
+/// Panique si tronqué.
+pub fn skip_skippable(data: &Vec<u8>, off: i32) -> (i32, u32) {
+    if off + 8 > data.len() { panic("zstd: truncated skippable") }
+    let tag = le_u32(&data[off:off+4])
+    if !is_skippable_magic(tag) { panic("zstd: not a skippable frame") }
+    let size = le_u32(&data[off+4:off+8]) as i32
+    if off + 8 + size > data.len() { panic("zstd: skippable size exceeds buffer") }
+    return (8 + size, tag)
+}
+
+/// Tente de parser l’en-tête d’une frame standard (best effort, sans décoder les blocs).
+/// Renvoie FrameInfo avec ce qu’on peut déduire (flags, dict/content size quand présentes).
+pub fn peek_frame_info(data: &Vec<u8>, off: i32) -> FrameInfo {
+    if off + 4 > data.len() { panic("zstd: truncated buffer") }
+    let magic = le_u32(&data[off:off+4])
+
+    // Skippable: facile (magic + size)
+    if is_skippable_magic(magic) {
+        if off + 8 > data.len() { panic("zstd: truncated skippable header") }
+        let _size = le_u32(&data[off+4:off+8])
+        return FrameInfo {
+            is_skippable: true,
+            skippable_tag: magic,
+            single_segment: false,
+            has_checksum: false,
+            dict_id: None,
+            content_size: None,
+            header_size: 8
+        }
+    }
+
+    if magic != ZSTD_MAGIC { panic("zstd: not a zstd frame") }
+    // Frame Header Descriptor (1 octet)
+    if off + 5 > data.len() { panic("zstd: truncated frame header") }
+    let fhd = data[off + 4]
+
+    // Layout (cf. RFC) — on récupère les 2 drapeaux principaux de manière robuste :
+    //  - S (Single Segment) = bit 5 (0x20)
+    //  - C (Content Checksum) = bit 2 (0x04)
+    let single = (fhd & 0x20) != 0
+    let checksum = (fhd & 0x04) != 0
+
+    // DictID flag: bits 0-1 ; 0=absent, 1=1 byte, 2=2 bytes, 3=4 bytes
+    let did_flag = (fhd & 0x03)
+    // Content Size flag: valeurs dépendent de single_segment :
+    //  si single: 0,1,2,3 -> tailles encodées sur 1,2,4,8 octets (val+1…), sinon sur 0/1/2/8 (?) selon spec.
+    // Pour rester robuste, on lit en suivant la table classique.
+
+    let mut p = off + 5
+    let mut dict_id: Option<u32> = None
+    let mut content_size: Option<u64> = None
+
+    // Si fhd a un "window descriptor" et pas single, il occupe 1 octet ici ; on le saute proprement.
+    if !single {
+        if p >= data.len() { panic("zstd: truncated window descriptor") }
+        let _wd = data[p]; p += 1
+    }
+
+    // DictID
+    if did_flag == 1 {
+        if p + 1 > data.len() { panic("zstd: truncated dict id (1)") }
+        dict_id = Some(data[p] as u32); p += 1
+    } else if did_flag == 2 {
+        if p + 2 > data.len() { panic("zstd: truncated dict id (2)") }
+        dict_id = Some(le_u16(&data[p:p+2]) as u32); p += 2
+    } else if did_flag == 3 {
+        if p + 4 > data.len() { panic("zstd: truncated dict id (4)") }
+        dict_id = Some(le_u32(&data[p:p+4])); p += 4
+    }
+
+    // Content Size
+    // Heuristique sûre inspirée de la spec :
+    //  - single_segment:
+    //      * cs_flag=0 → 1 byte (val + 1)
+    //      * cs_flag=1 → 2 bytes
+    //      * cs_flag=2 → 4 bytes
+    //      * cs_flag=3 → 8 bytes
+    //  - non single:
+    //      * cs_flag=0 → absent
+    //      * cs_flag=1 → 1 byte (val + 1)
+    //      * cs_flag=2 → 2 bytes
+    //      * cs_flag=3 → 8 bytes
+    let cs_flag = ((fhd >> 6) & 0x03)
+    if single {
+        if cs_flag == 0 {
+            if p + 1 > data.len() { panic("zstd: truncated content size (1)") }
+            content_size = Some((data[p] as u64) + 1); p += 1
+        } else if cs_flag == 1 {
+            if p + 2 > data.len() { panic("zstd: truncated content size (2)") }
+            content_size = Some((le_u16(&data[p:p+2]) as u64) + 1); p += 2
+        } else if cs_flag == 2 {
+            if p + 4 > data.len() { panic("zstd: truncated content size (4)") }
+            content_size = Some(le_u32(&data[p:p+4]) as u64 + 1); p += 4
+        } else { // 3
+            if p + 8 > data.len() { panic("zstd: truncated content size (8)") }
+            content_size = Some(le_u64(&data[p:p+8]) + 1); p += 8
+        }
+    } else {
+        if cs_flag == 0 {
+            // absent
+        } else if cs_flag == 1 {
+            if p + 1 > data.len() { panic("zstd: truncated content size (1)") }
+            content_size = Some((data[p] as u64) + 1); p += 1
+        } else if cs_flag == 2 {
+            if p + 2 > data.len() { panic("zstd: truncated content size (2)") }
+            content_size = Some((le_u16(&data[p:p+2]) as u64) + 1); p += 2
+        } else { // 3
+            if p + 8 > data.len() { panic("zstd: truncated content size (8)") }
+            content_size = Some(le_u64(&data[p:p+8]) + 1); p += 8
+        }
+    }
+
+    return FrameInfo {
+        is_skippable: false,
+        skippable_tag: 0,
+        single_segment: single,
+        has_checksum: checksum,
+        dict_id: dict_id,
+        content_size: content_size,
+        header_size: p - off
+    }
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Utils binaires LE
+// ————————————————————————————————————————————————————————————————————————
+fn le_u16(b: &Vec<u8>) -> u32 {
+    return (b[0] as u32) | ((b[1] as u32) << 8)
+}
+fn le_u32(b: &Vec<u8>) -> u32 {
+    return (b[0] as u32) | ((b[1] as u32) << 8) | ((b[2] as u32) << 16) | ((b[3] as u32) << 24)
+}
+fn le_u64(b: &Vec<u8>) -> u64 {
+    return (b[0] as u64)
+         | ((b[1] as u64) << 8) | ((b[2] as u64) << 16) | ((b[3] as u64) << 24)
+         | ((b[4] as u64) << 32) | ((b[5] as u64) << 40) | ((b[6] as u64) << 48) | ((b[7] as u64) << 56)
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Tests (smoke, sans backend)
+// ————————————————————————————————————————————————————————————————————————
+test "magic detection" {
+    let zstd_magic_le = [0x28,0xB5,0x2F,0xFD] // ZSTD_MAGIC in LE
+    assert looks_like_zstd(zstd_magic_le)
+
+    let skip_magic_le = [0x50,0x2A,0x4D,0x18] // SKIP_BASE in LE
+    assert looks_like_zstd(skip_magic_le)
+}
+
+test "skippable skip" {
+    let mut buf = Vec<u8>::new()
+    // magic + size=3 + payload 3B
+    buf.push(0x50); buf.push(0x2A); buf.push(0x4D); buf.push(0x18)
+    buf.push(0x03); buf.push(0x00); buf.push(0x00); buf.push(0x00)
+    buf.push(0xDE); buf.push(0xAD); buf.push(0xBE)
+    let (n, tag) = skip_skippable(buf, 0)
+    assert n == 11
+    assert (tag & 0xFFFFFFF0) == SKIP_BASE
+}
+
+test "peek header flags (best-effort)" {
+    // Frame standard minimal synthétique (magic + fhd + window + cs(1))
+    let mut f = Vec<u8>::new()
+    f.push(0x28); f.push(0xB5); f.push(0x2F); f.push(0xFD) // magic
+    // fhd: single=0, checksum=1, dictID=0, cs_flag=1 => 0b01_0_0_1_00 = 0x44 (approximé)
+    f.push(0x44)
+    // window descriptor (absent si single)
+    f.push(0x3F) // dummy
+    // content size 1 byte (val + 1)
+    f.push(0x09) // => 10
+    let info = peek_frame_info(f, 0)
+    assert !info.is_skippable
+    assert info.has_checksum
+    assert !info.single_segment
+    assert info.content_size == Some(10)
+    assert info.header_size >= 7
+}

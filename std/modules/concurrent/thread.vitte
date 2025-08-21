@@ -1,5 +1,122 @@
-//! thread — spawn/join
-struct JoinHandle<T> { __raw: __intrinsics::Thread }
+// modules/concurrent/thread.vitte
+// Abstraction "threads" minimale pour Vitte.
+// API :
+//   - spawn(f: fn()) -> ThreadHandle
+//   - join(handle: ThreadHandle)
+//   - sleep_ms(ms: i32)
+//   - yield_now()
+//   - current_id() -> i64
+//   - ThreadBuilder { name, stack_size }.spawn(f)
+//
+// ⚠️ Implémentation déléguée à un backend runtime (ex: std.runtime.thread, FFI OS…).
+//    Par défaut ici : stubs qui panic → à remplacer/lier côté plateforme.
+//
+// Motivation : garde une surface std stable, tes modules (taskpool, channel, etc.)
+//              n’ont pas à connaître la plateforme.
 
-export fn spawn<T>(f: fn()->T) -> JoinHandle<T> { __intrinsics::thread_spawn(f) }
-export fn join<T>(h: JoinHandle<T>) -> T { __intrinsics::thread_join(h.__raw) }
+module concurrent.thread
+use std.time
+
+// ————————————————————————————————————————————————————————————————————————
+// Types publics
+// ————————————————————————————————————————————————————————————————————————
+pub struct ThreadHandle {
+    id: i64,
+    // réservé pour backend (join token, handle natif, etc.)
+    _priv: i32,
+}
+
+pub struct ThreadBuilder {
+    name:       Option<String>,
+    stack_size: Option<i32>,
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// API haut niveau
+// ————————————————————————————————————————————————————————————————————————
+pub fn spawn(f: fn()) -> ThreadHandle {
+    return backend_spawn(None, None, f)
+}
+
+pub fn join(h: ThreadHandle) {
+    backend_join(h)
+}
+
+pub fn sleep_ms(ms: i32) {
+    // on passe par std.time pour cohérence
+    time::sleep_ms(ms)
+}
+
+pub fn yield_now() {
+    // yield coopératif le plus portable : dormir 0 ms
+    time::sleep_ms(0)
+}
+
+pub fn current_id() -> i64 {
+    return backend_current_id()
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// ThreadBuilder
+// ————————————————————————————————————————————————————————————————————————
+pub fn builder() -> ThreadBuilder {
+    return ThreadBuilder { name: None, stack_size: None }
+}
+
+impl ThreadBuilder {
+    pub fn name(mut self, n: &str) -> ThreadBuilder {
+        self.name = Some(n.to_string()); return self
+    }
+    pub fn stack_size(mut self, sz: i32) -> ThreadBuilder {
+        if sz < 0 { panic("thread: stack_size must be >= 0") }
+        self.stack_size = Some(sz); return self
+    }
+    pub fn spawn(self, f: fn()) -> ThreadHandle {
+        return backend_spawn(self.name, self.stack_size, f)
+    }
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Backend — stubs par défaut (panic). À remplacer par un module concret.
+// Convention de liaison:
+//   - Un backend réel doit fournir les fonctions suivantes et shadow/override ces stubs
+//     lors du link (ou via feature flag / build.rs).
+// ————————————————————————————————————————————————————————————————————————
+fn backend_spawn(name: Option<String>, stack: Option<i32>, f: fn()) -> ThreadHandle {
+    // NOTE: si tu as un backend, remplace cette fonction. Par ex. via:
+    //   use std.runtime.thread_backend as be
+    //   return be::spawn(name, stack, f)
+    panic("concurrent.thread: no backend linked (provide a runtime with spawn/join)")
+}
+
+fn backend_join(_h: ThreadHandle) {
+    panic("concurrent.thread: no backend linked (join)")
+}
+
+fn backend_current_id() -> i64 {
+    // Valeur sentinelle (utile pour tests qui ne panique pas)
+    return -1
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Helpers optionnels (naming thread courant si supporté par backend)
+// ————————————————————————————————————————————————————————————————————————
+pub fn set_current_name(_name: &str) -> bool {
+    // Stub: renvoie false (non supporté)
+    return false
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Tests (smoke) — ne lancent PAS de threads si backend absent
+// ————————————————————————————————————————————————————————————————————————
+test "sleep & yield do not panic" {
+    sleep_ms(0)
+    yield_now()
+    assert current_id() == -1 // sentinel côté stub
+}
+
+test "builder setters" {
+    let b = builder().name("w1").stack_size(1024*1024)
+    // on ne spawn pas sans backend ; on teste juste que ça compile
+    assert true
+}

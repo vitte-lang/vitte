@@ -1,2 +1,318 @@
-//! hash — SHA-256 (intrinsic)
-export fn sha256(b: Bytes) -> Bytes { __intrinsics::sha256(b) }
+// modules/crypto/hash.vitte
+// Hashes fondamentaux pour Vitte.
+// - SHA-256 : crypto, streaming + one-shot, hex, fichier.
+// - HMAC-SHA256 : authentification de message (RFC4231).
+// - FNV-1a 64-bit : non-crypto, rapide (hash de table, dedup, etc.).
+//
+// Design : zéro dépendance. Pur Vitte. Pensé pour std stable.
+//
+// ⚠️ Sécurité : SHA-256/HMAC sont cryptographiques; FNV-1a ne l'est PAS.
+//    N'utilise pas FNV-1a pour la sécurité (seulement checksums rapides).
+
+module crypto.hash
+use std.fs
+
+// ————————————————————————————————————————————————————————————————————————
+// Utils hex
+// ————————————————————————————————————————————————————————————————————————
+pub fn to_hex_lower(b: &Vec<u8>) -> String {
+    let tab = "0123456789abcdef".as_bytes()
+    let mut out = Vec<u8>::with_len(b.len()*2, 0)
+    let mut i = 0
+    while i < b.len() {
+        let v = b[i] as i32
+        out[i*2]   = tab[(v >> 4) & 0xF]
+        out[i*2+1] = tab[v & 0xF]
+        i += 1
+    }
+    return String::from_utf8_lossy(out)
+}
+pub fn from_hex_lossy(s: &str) -> Vec<u8> {
+    // Accepte A-F/a-f, ignore espaces.
+    let bs = s.as_bytes()
+    let mut tmp = Vec<i32>::new()
+    let mut i = 0
+    while i < bs.len() {
+        let c = bs[i]
+        if c == ' '.byte() || c == '\n'.byte() || c == '\r'.byte() || c == '\t'.byte() {
+            i += 1; continue
+        }
+        let v = hex_val(c)
+        if v < 0 { break }
+        tmp.push(v)
+        i += 1
+    }
+    if tmp.len() % 2 != 0 { panic("hex: odd length") }
+    let mut out = Vec<u8>::with_len(tmp.len()/2, 0)
+    let mut p = 0
+    let mut o = 0
+    while p < tmp.len() {
+        out[o] = ((tmp[p] << 4) | tmp[p+1]) as u8
+        p += 2; o += 1
+    }
+    return out
+}
+fn hex_val(c: u8) -> i32 {
+    if c >= '0'.byte() && c <= '9'.byte() { return (c - '0'.byte()) as i32 }
+    if c >= 'a'.byte() && c <= 'f'.byte() { return 10 + (c - 'a'.byte()) as i32 }
+    if c >= 'A'.byte() && c <= 'F'.byte() { return 10 + (c - 'A'.byte()) as i32 }
+    return -1
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// SHA-256 (FIPS 180-4)
+// ————————————————————————————————————————————————————————————————————————
+pub struct Sha256 {
+    h:   Vec<i32>,  // 8 mots 32-bit
+    buf: Vec<u8>,   // tampon partiel (<64)
+    bits_len: i64,  // longueur totale en bits
+}
+
+pub fn sha256_new() -> Sha256 {
+    // IV constants
+    let mut h = Vec<i32>::with_len(8, 0)
+    h[0]=0x6a09e667; h[1]=0xbb67ae85; h[2]=0x3c6ef372; h[3]=0xa54ff53a
+    h[4]=0x510e527f; h[5]=0x9b05688c; h[6]=0x1f83d9ab; h[7]=0x5be0cd19
+    return Sha256 { h, buf: Vec<u8>::new(), bits_len: 0 }
+}
+
+pub fn sha256_update(s: &mut Sha256, data: &Vec<u8>) {
+    s.bits_len += (data.len() as i64) * 8
+    // consommer en blocs de 64
+    let mut i = 0
+    // si s.buf non vide, compléter d'abord
+    if s.buf.len() > 0 {
+        let need = 64 - s.buf.len()
+        let take = if data.len() < need { data.len() } else { need }
+        s.buf.extend_from_slice(&data[0:take])
+        i += take
+        if s.buf.len() == 64 {
+            sha256_compress(&mut s.h, s.buf)
+            s.buf.clear()
+        }
+    }
+    while i + 64 <= data.len() {
+        sha256_compress(&mut s.h, data[i:i+64].clone())
+        i += 64
+    }
+    if i < data.len() {
+        s.buf.extend_from_slice(&data[i:data.len()])
+    }
+}
+
+pub fn sha256_final(mut s: Sha256) -> Vec<u8> {
+    // padding : 0x80, puis 0x00.. jusqu'à 56 mod 64, puis length 64-bit big-endian
+    s.buf.push(0x80)
+    while (s.buf.len() % 64) != 56 {
+        s.buf.push(0x00)
+    }
+    // longueur en bits, big-endian (64 bits)
+    let len = s.bits_len as i64
+    let mut tail = Vec<u8>::with_len(8, 0)
+    tail[0] = ((len >> 56) & 0xFF) as u8
+    tail[1] = ((len >> 48) & 0xFF) as u8
+    tail[2] = ((len >> 40) & 0xFF) as u8
+    tail[3] = ((len >> 32) & 0xFF) as u8
+    tail[4] = ((len >> 24) & 0xFF) as u8
+    tail[5] = ((len >> 16) & 0xFF) as u8
+    tail[6] = ((len >> 8) & 0xFF) as u8
+    tail[7] = (len & 0xFF) as u8
+    s.buf.extend_from_slice(tail)
+    // compresser les derniers blocs (1 ou 2)
+    let mut i = 0
+    while i + 64 <= s.buf.len() {
+        sha256_compress(&mut s.h, s.buf[i:i+64].clone())
+        i += 64
+    }
+    // sortie big-endian 32 octets
+    let mut out = Vec<u8>::with_len(32, 0)
+    let mut k = 0
+    while k < 8 {
+        let w = s.h[k]
+        out[k*4]   = ((w >> 24) & 0xFF) as u8
+        out[k*4+1] = ((w >> 16) & 0xFF) as u8
+        out[k*4+2] = ((w >> 8) & 0xFF) as u8
+        out[k*4+3] = (w & 0xFF) as u8
+        k += 1
+    }
+    return out
+}
+
+pub fn sha256(data: &Vec<u8>) -> Vec<u8> {
+    let mut s = sha256_new()
+    sha256_update(&mut s, data)
+    return sha256_final(s)
+}
+pub fn sha256_hex(data: &Vec<u8>) -> String { return to_hex_lower(sha256(data)) }
+
+pub fn sha256_file(path: &str) -> Vec<u8> {
+    let d = fs::read(path)?
+    return sha256(d)
+}
+pub fn sha256_file_hex(path: &str) -> String { return to_hex_lower(sha256_file(path)) }
+
+// — internals SHA-256 —
+fn sha256_compress(h: &mut Vec<i32>, block64: &Vec<u8>) {
+    // K constants
+    let K = [
+        0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+        0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+        0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+        0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+        0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+        0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+        0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+        0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+    ]
+
+    // W[0..63]
+    let mut W = Vec<i32>::with_len(64, 0)
+    let mut t = 0
+    while t < 16 {
+        let i = t * 4
+        W[t] = ((block64[i] as i32) << 24)
+             | ((block64[i+1] as i32) << 16)
+             | ((block64[i+2] as i32) << 8)
+             | (block64[i+3] as i32)
+        t += 1
+    }
+    while t < 64 {
+        let s0 = small_sigma0(W[t-15])
+        let s1 = small_sigma1(W[t-2])
+        W[t] = add32(add32(add32(W[t-16], s0), W[t-7]), s1)
+        t += 1
+    }
+
+    let mut a = h[0]; let mut b = h[1]; let mut c = h[2]; let mut d = h[3]
+    let mut e = h[4]; let mut f = h[5]; let mut g = h[6]; let mut zz = h[7]
+
+    t = 0
+    while t < 64 {
+        let S1 = big_sigma1(e)
+        let ch = (e & f) ^ ((!e) & g)
+        let temp1 = add32_5(zz, S1, ch, K[t], W[t])
+        let S0 = big_sigma0(a)
+        let maj = (a & b) ^ (a & c) ^ (b & c)
+        let temp2 = add32(S0, maj)
+
+        zz = g
+        g = f
+        f = e
+        e = add32(d, temp1)
+        d = c
+        c = b
+        b = a
+        a = add32(temp1, temp2)
+
+        t += 1
+    }
+
+    h[0] = add32(h[0], a); h[1] = add32(h[1], b); h[2] = add32(h[2], c); h[3] = add32(h[3], d)
+    h[4] = add32(h[4], e); h[5] = add32(h[5], f); h[6] = add32(h[6], g); h[7] = add32(h[7], zz)
+}
+
+fn rotr32(x: i32, n: i32) -> i32 {
+    let r = ((x >> n) | ((x << (32 - n)) & 0xFFFFFFFF)) & 0xFFFFFFFF
+    return r
+}
+fn big_sigma0(x: i32) -> i32 { return rotr32(x, 2) ^ rotr32(x, 13) ^ rotr32(x, 22) }
+fn big_sigma1(x: i32) -> i32 { return rotr32(x, 6) ^ rotr32(x, 11) ^ rotr32(x, 25) }
+fn small_sigma0(x: i32) -> i32 { return rotr32(x, 7) ^ rotr32(x, 18) ^ ((x >> 3) & 0x1FFFFFFF) }
+fn small_sigma1(x: i32) -> i32 { return rotr32(x, 17) ^ rotr32(x, 19) ^ ((x >> 10) & 0x003FFFFF) }
+fn add32(a: i32, b: i32) -> i32 { return (a + b) & 0xFFFFFFFF }
+fn add32_5(a: i32, b: i32, c: i32, d: i32, e: i32) -> i32 { return ((((a + b) & 0xFFFFFFFF) + c) & 0xFFFFFFFF + d) & 0xFFFFFFFF + e & 0xFFFFFFFF }
+
+// ————————————————————————————————————————————————————————————————————————
+// HMAC-SHA-256
+// ————————————————————————————————————————————————————————————————————————
+const SHA256_BLOCK: i32 = 64
+
+pub fn hmac_sha256(key: &Vec<u8>, data: &Vec<u8>) -> Vec<u8> {
+    // 1) key short/long
+    let mut K = if key.len() > SHA256_BLOCK { sha256(key) } else { key.clone() }
+    if K.len() < SHA256_BLOCK { K.resize(SHA256_BLOCK, 0) }
+
+    // 2) inner/outer pads
+    let mut ipad = Vec<u8>::with_len(SHA256_BLOCK as usize, 0x36)
+    let mut opad = Vec<u8>::with_len(SHA256_BLOCK as usize, 0x5c)
+    let mut i = 0
+    while i < SHA256_BLOCK {
+        ipad[i] ^= K[i]; opad[i] ^= K[i]; i += 1
+    }
+
+    // 3) inner = H( (K^ipad) || data )
+    let mut s1 = sha256_new()
+    sha256_update(&mut s1, ipad)
+    sha256_update(&mut s1, data)
+    let inner = sha256_final(s1)
+
+    // 4) outer = H( (K^opad) || inner )
+    let mut s2 = sha256_new()
+    sha256_update(&mut s2, opad)
+    sha256_update(&mut s2, inner)
+    return sha256_final(s2)
+}
+pub fn hmac_sha256_hex(key: &Vec<u8>, data: &Vec<u8>) -> String {
+    return to_hex_lower(hmac_sha256(key, data))
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// FNV-1a 64-bit (non crypto)
+// ————————————————————————————————————————————————————————————————————————
+const FNV64_OFFSET: i64 = 0xcbf29ce484222325
+const FNV64_PRIME:  i64 = 0x100000001b3
+
+pub fn fnv1a64(data: &Vec<u8>) -> i64 {
+    let mut h = FNV64_OFFSET
+    let mut i = 0
+    while i < data.len() {
+        h = h ^ (data[i] as i64)
+        h = (h * FNV64_PRIME) & 0xFFFFFFFFFFFFFFFF
+        i += 1
+    }
+    return h
+}
+pub fn fnv1a64_hex(data: &Vec<u8>) -> String {
+    // hex 16 chars, lower case
+    let mut b = Vec<u8>::with_len(8, 0)
+    let h = fnv1a64(data)
+    b[0] = (h >> 56) & 0xFF; b[1] = (h >> 48) & 0xFF
+    b[2] = (h >> 40) & 0xFF; b[3] = (h >> 32) & 0xFF
+    b[4] = (h >> 24) & 0xFF; b[5] = (h >> 16) & 0xFF
+    b[6] = (h >> 8) & 0xFF;  b[7] = h & 0xFF
+    return to_hex_lower(b)
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Tests
+// ————————————————————————————————————————————————————————————————————————
+test "sha256 vectors" {
+    // "" → e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+    assert sha256_hex("".as_bytes()) ==
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    // "abc"
+    assert sha256_hex("abc".as_bytes()) ==
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+}
+
+test "hmac-sha256 rfc4231 #1" {
+    // key = 0x0b * 20, data = "Hi There"
+    let mut k = Vec<u8>::with_len(20, 0x0b)
+    let d = "Hi There".as_bytes()
+    let mac = hmac_sha256_hex(k, d)
+    assert mac == "b0344c61d8db38535ca8afceaf0bf12b\
+                   881dc200c9833da726e9376c2e32cff7"
+}
+
+test "fnv1a64 hello" {
+    // 0xa430d84680aabd0b
+    let h = fnv1a64("hello".as_bytes())
+    assert h == 0xA430D84680AABD0B
+}
+
+test "hex roundtrip" {
+    let b = [0xde,0xad,0xbe,0xef].as_bytes()
+    let s = to_hex_lower(b)
+    assert s == "deadbeef"
+    assert from_hex_lossy(s) == b
+}

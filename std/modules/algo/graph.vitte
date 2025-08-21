@@ -1,3 +1,423 @@
-//! graph — algos graphes
-export fn bfs(n: i32, edges: Vec<(i32,i32)>, src: i32) -> Vec<i32> { __intrinsics::graph_bfs(n, edges, src) }
-export fn dijkstra(n: i32, edges: Vec<(i32,i32,i32)>, src: i32) -> Vec<i32> { __intrinsics::graph_dijkstra(n, edges, src) }
+// std/modules/algo/graph.vitte
+// Graphe générique (liste d’adjacence) avec algos classiques.
+// - Orienté ou non
+// - Pondéré (i64) ou non (poids par défaut = 1)
+// - BFS, DFS, Topological Sort (Kahn), Dijkstra (poids >= 0), CC, MST (Kruskal)
+
+module std.algo.graph
+import std.algo.dsu
+
+pub struct Graph {
+    n:        i32,
+    directed: bool,
+    adj:      Vec<Vec<(i32, i64)>>,  // pour chaque u: [(v, w)]
+    m:        i64                     // nombre d’arêtes (non orientées comptées 1 fois)
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+// Construction
+// ———————————————————————————————————————————————————————————————————————————
+
+pub fn graph_new(n: i32, directed: bool) -> Graph {
+    if n < 0 { panic("graph_new: n must be >= 0") }
+    let mut adj = Vec<Vec<(i32,i64)>>::with_capacity(n as usize)
+    let mut i = 0
+    while i < n {
+        adj.push(Vec<(i32,i64)>::new())
+        i += 1
+    }
+    return Graph { n, directed, adj, m: 0 }
+}
+
+fn assert_v(g: &Graph, u: i32) {
+    if u < 0 || u >= g.n {
+        panic("graph: vertex out of bounds: " + u.to_string() + " (n=" + g.n.to_string() + ")")
+    }
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+// Ajout d’arêtes
+// ———————————————————————————————————————————————————————————————————————————
+
+pub fn graph_add_edge(g: &mut Graph, u: i32, v: i32) {
+    graph_add_edge_w(g, u, v, 1)
+}
+
+pub fn graph_add_edge_w(g: &mut Graph, u: i32, v: i32, w: i64) {
+    assert_v(g, u); assert_v(g, v)
+    if !g.directed && u == v {
+        // autoriser les boucles? ici on autorise, mais ça peut biaiser MST
+        // garde comme comportement explicite
+    }
+    g.adj[u].push((v, w))
+    if !g.directed {
+        g.adj[v].push((u, w))
+    }
+    // m compte l’arête logique (non orientée = 1, orientée = 1 aussi)
+    g.m += 1
+}
+
+pub fn graph_edge_count(g: &Graph) -> i64 { return g.m }
+pub fn graph_vertex_count(g: &Graph) -> i32 { return g.n }
+
+pub fn graph_neighbors(g: &Graph, u: i32) -> &Vec<(i32,i64)> {
+    assert_v(g, u)
+    return &g.adj[u]
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+// BFS (non pondéré) — distances en edges, -1 = inatteignable
+// ———————————————————————————————————————————————————————————————————————————
+
+pub fn graph_bfs(g: &Graph, src: i32) -> (Vec<i32>, Vec<i32>) {
+    assert_v(g, src)
+    let n = g.n
+    let mut dist = Vec<i32>::with_len(n as usize, -1)
+    let mut par  = Vec<i32>::with_len(n as usize, -1)
+    let mut q = Vec<i32>::new()
+
+    dist[src] = 0
+    q.push(src)
+    let mut head = 0
+    while head < q.len() {
+        let u = q[head]; head += 1
+        for (v, _w) in g.adj[u] {
+            if dist[v] == -1 {
+                dist[v] = dist[u] + 1
+                par[v]  = u
+                q.push(v)
+            }
+        }
+    }
+    return (dist, par)
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+// DFS — ordres de visite (pre/post) + composantes connexes (non orienté)
+// ———————————————————————————————————————————————————————————————————————————
+
+pub fn graph_dfs_orders(g: &Graph) -> (Vec<i32>, Vec<i32>) {
+    let n = g.n
+    let mut seen = Vec<bool>::with_len(n as usize, false)
+    let mut pre  = Vec<i32>::new()
+    let mut post = Vec<i32>::new()
+
+    let mut stack = Vec<(i32, i32)>::new() // (u, it_index) — simulation récursive
+
+    let mut start = 0
+    while start < n {
+        if !seen[start] {
+            // push frame "enter"
+            stack.push((start, -1))
+            while stack.len() > 0 {
+                let (u, it) = stack.pop()
+                if it == -1 {
+                    // first time we see u
+                    if seen[u] { continue }
+                    seen[u] = true
+                    pre.push(u)
+                    // re-push u with iterator index 0
+                    stack.push((u, 0))
+                } else {
+                    if it < g.adj[u].len() {
+                        let (v, _w) = g.adj[u][it]
+                        // re-push u with next it
+                        stack.push((u, it + 1))
+                        if !seen[v] {
+                            stack.push((v, -1))
+                        }
+                    } else {
+                        // exiting u
+                        post.push(u)
+                    }
+                }
+            }
+        }
+        start += 1
+    }
+    return (pre, post)
+}
+
+pub fn graph_connected_components(g: &Graph) -> Vec<Vec<i32>> {
+    if g.directed {
+        panic("graph_connected_components: requires undirected graph")
+    }
+    let n = g.n
+    let mut seen = Vec<bool>::with_len(n as usize, false)
+    let mut comps = Vec<Vec<i32>>::new()
+
+    let mut s = 0
+    while s < n {
+        if !seen[s] {
+            // BFS/DFS pour collecter une composante
+            let mut q = Vec<i32>::new()
+            q.push(s)
+            seen[s] = true
+            let mut comp = Vec<i32>::new()
+            let mut head = 0
+            while head < q.len() {
+                let u = q[head]; head += 1
+                comp.push(u)
+                for (v, _w) in g.adj[u] {
+                    if !seen[v] {
+                        seen[v] = true
+                        q.push(v)
+                    }
+                }
+            }
+            comps.push(comp)
+        }
+        s += 1
+    }
+    return comps
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+// Topological Sort (Kahn) — renvoie (ok, ordre)
+// ok=false si cycle détecté
+// ———————————————————————————————————————————————————————————————————————————
+
+pub fn graph_toposort(g: &Graph) -> (bool, Vec<i32>) {
+    if !g.directed {
+        panic("graph_toposort: requires directed graph")
+    }
+    let n = g.n
+    let mut indeg = Vec<i32>::with_len(n as usize, 0)
+    let mut u = 0
+    while u < n {
+        for (v, _w) in g.adj[u] {
+            indeg[v] += 1
+        }
+        u += 1
+    }
+    let mut q = Vec<i32>::new()
+    let mut i = 0
+    while i < n {
+        if indeg[i] == 0 { q.push(i) }
+        i += 1
+    }
+
+    let mut order = Vec<i32>::new()
+    let mut head = 0
+    while head < q.len() {
+        let x = q[head]; head += 1
+        order.push(x)
+        for (y, _w) in g.adj[x] {
+            indeg[y] -= 1
+            if indeg[y] == 0 { q.push(y) }
+        }
+    }
+    let ok = (order.len() == n)
+    return (ok, order)
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+// Dijkstra (poids >= 0) — distances i64, parent i32
+// Impl: binary heap maison (min-heap) simplifiée
+// ———————————————————————————————————————————————————————————————————————————
+
+pub fn graph_dijkstra(g: &Graph, src: i32) -> (Vec<i64>, Vec<i32>) {
+    assert_v(g, src)
+    // vérifier qu’il n’existe pas de poids négatif (panique si trouvé)
+    let mut u = 0
+    while u < g.n {
+        for (_v, w) in g.adj[u] {
+            if w < 0 { panic("dijkstra: negative edge weight detected") }
+        }
+        u += 1
+    }
+
+    let n = g.n
+    let inf: i64 = 9_223_372_036_854_775_0 // ~9e18 (sécurité)
+    let mut dist = Vec<i64>::with_len(n as usize, inf)
+    let mut par  = Vec<i32>::with_len(n as usize, -1)
+    dist[src] = 0
+
+    // min-heap simple: stocke (dist, node)
+    let mut heap: Vec<(i64, i32)> = Vec<(i64,i32)>::new()
+    heap_push(&mut heap, (0, src))
+
+    while heap.len() > 0 {
+        let (d, u) = heap_pop(&mut heap) // plus petit d
+        if d != dist[u] { continue } // entrée obsolète
+
+        for (v, w) in g.adj[u] {
+            let nd = d + w
+            if nd < dist[v] {
+                dist[v] = nd
+                par[v]  = u
+                heap_push(&mut heap, (nd, v))
+            }
+        }
+    }
+    return (dist, par)
+}
+
+// Min-heap utilitaires
+fn heap_push(h: &mut Vec<(i64,i32)>, x: (i64,i32)) {
+    h.push(x)
+    let mut i = h.len() - 1
+    while i > 0 {
+        let p = (i - 1) / 2
+        if h[p].0 <= h[i].0 { break }
+        let t = h[p]; h[p] = h[i]; h[i] = t
+        i = p
+    }
+}
+fn heap_pop(h: &mut Vec<(i64,i32)>) -> (i64,i32) {
+    let out = h[0]
+    let last = h.pop()
+    if h.len() > 0 {
+        h[0] = last
+        // sift-down
+        let mut i = 0
+        let n = h.len()
+        loop {
+            let l = 2*i + 1
+            let r = 2*i + 2
+            if l >= n { break }
+            let mut m = l
+            if r < n && h[r].0 < h[l].0 { m = r }
+            if h[i].0 <= h[m].0 { break }
+            let t = h[i]; h[i] = h[m]; h[m] = t
+            i = m
+        }
+    }
+    return out
+}
+
+// Reconstruire un plus court chemin src->dst à partir du parent
+pub fn graph_shortest_path(par: &Vec<i32>, src: i32, dst: i32) -> Vec<i32> {
+    if dst < 0 || dst >= par.len() { panic("graph_shortest_path: dst OOB") }
+    let mut path = Vec<i32>::new()
+    let mut cur = dst
+    while cur != -1 {
+        path.push(cur)
+        if cur == src { break }
+        cur = par[cur]
+    }
+    // si non atteint
+    if path[path.len()-1] != src {
+        return Vec<i32>::new()
+    }
+    // reverse
+    let mut i = 0
+    let mut j = path.len() - 1
+    while i < j {
+        let t = path[i]; path[i] = path[j]; path[j] = t
+        i += 1; j -= 1
+    }
+    return path
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+// MST (Kruskal) — pour graphes non orientés
+// Renvoie (poids_total, edges=[(u,v,w)]) ; suppose pas de poids négatifs prohibés.
+// ———————————————————————————————————————————————————————————————————————————
+
+pub fn graph_mst_kruskal(g: &Graph) -> (i64, Vec<(i32,i32,i64)>) {
+    if g.directed { panic("graph_mst_kruskal: requires undirected graph") }
+    // Extraire toutes les arêtes sans doublons (u < v) si non orienté
+    let mut edges = Vec<(i32,i32,i64)>::new()
+    let mut u = 0
+    while u < g.n {
+        for (v, w) in g.adj[u] {
+            if u < v { edges.push((u, v, w)) } // éviter doublon symétrique
+        }
+        u += 1
+    }
+    // Tri par poids (insertion sort simpliste pour la std; remplaçable par sort natif)
+    sort_edges_by_weight(&mut edges)
+
+    let mut uf = dsu_new(g.n)
+    let mut total: i64 = 0
+    let mut take = Vec<(i32,i32,i64)>::new()
+    let mut i = 0
+    while i < edges.len() {
+        let (a,b,w) = edges[i]
+        if !dsu_same(&mut uf, a, b) {
+            dsu_union(&mut uf, a, b)
+            total += w
+            take.push((a,b,w))
+        }
+        i += 1
+    }
+    return (total, take)
+}
+
+fn sort_edges_by_weight(a: &mut Vec<(i32,i32,i64)>) {
+    // insertion sort (O(m^2)), ok pour petits graphs dans std;
+    // pour gros, remplacer par un sort natif quand dispo.
+    let mut i = 1
+    while i < a.len() {
+        let key = a[i]
+        let mut j = i
+        while j > 0 && a[j-1].2 > key.2 {
+            a[j] = a[j-1]
+            j -= 1
+        }
+        a[j] = key
+        i += 1
+    }
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+/* Tests */
+// ———————————————————————————————————————————————————————————————————————————
+
+test "bfs basic" {
+    let mut g = graph_new(5, false)
+    graph_add_edge(&mut g, 0, 1)
+    graph_add_edge(&mut g, 1, 2)
+    graph_add_edge(&mut g, 3, 4)
+    let (d, p) = graph_bfs(&g, 0)
+    assert d[0] == 0
+    assert d[2] == 2
+    assert d[3] == -1
+    let path = graph_shortest_path(&p, 0, 2)
+    // 0-1-2
+    assert path.len() == 3
+    assert path[0] == 0 && path[2] == 2
+}
+
+test "dfs orders & comps" {
+    let mut g = graph_new(4, false)
+    graph_add_edge(&mut g, 0, 1)
+    graph_add_edge(&mut g, 2, 3)
+    let comps = graph_connected_components(&g)
+    assert comps.len() == 2
+    let (_pre, _post) = graph_dfs_orders(&g)
+    // pas d’assert strict sur l’ordre, juste smoke test
+}
+
+test "toposort dag" {
+    let mut g = graph_new(4, true)
+    graph_add_edge(&mut g, 0, 1)
+    graph_add_edge(&mut g, 1, 2)
+    graph_add_edge(&mut g, 0, 3)
+    let (ok, order) = graph_toposort(&g)
+    assert ok
+    assert order.len() == 4
+}
+
+test "dijkstra simple" {
+    let mut g = graph_new(4, false)
+    graph_add_edge_w(&mut g, 0, 1, 5)
+    graph_add_edge_w(&mut g, 1, 2, 1)
+    graph_add_edge_w(&mut g, 0, 2, 10)
+    let (dist, par) = graph_dijkstra(&g, 0)
+    assert dist[2] == 6
+    let path = graph_shortest_path(&par, 0, 2)
+    assert path.len() == 3 && path[0] == 0 && path[2] == 2
+}
+
+test "mst kruskal" {
+    let mut g = graph_new(4, false)
+    graph_add_edge_w(&mut g, 0, 1, 1)
+    graph_add_edge_w(&mut g, 1, 2, 2)
+    graph_add_edge_w(&mut g, 2, 3, 3)
+    graph_add_edge_w(&mut g, 0, 3, 10)
+    let (tot, edges) = graph_mst_kruskal(&g)
+    assert tot == 1 + 2 + 3
+    assert edges.len() == 3
+}

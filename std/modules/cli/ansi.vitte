@@ -1,4 +1,226 @@
-//! ansi — styles console
-export fn color(s: String, name: String) -> String { __intrinsics::ansi_color(s, name) }
-export fn bold(s: String) -> String { __intrinsics::ansi_bold(s) }
-export fn reset() -> String { __intrinsics::ansi_reset() }
+// std/modules/cli/ansi.vitte
+// Utilitaires ANSI/VT100 : couleurs, styles, curseur, effacements, OSC (titres/hyperliens), strip.
+// Conçu pour être "string-first" (tu composes puis print). Aucune magie I/O ici.
+
+module std.cli.ansi
+
+// ————————————————————————————————————————————————————————————————————————
+// Primitifs
+// ————————————————————————————————————————————————————————————————————————
+const ESC: &str = "\x1b["
+
+fn sgr_code(code: i32) -> String { return ESC + code.to_string() + "m" }         // CSI ... m
+fn csi(cmd: &str) -> String { return ESC + cmd }                                  // CSI ...
+fn osc(payload: &str) -> String { return "\x1b]" + payload + "\x07" }             // OSC ... BEL
+fn osc_st() -> &str { return "\x1b\\" }                                           // OSC terminator (ST)
+
+// ————————————————————————————————————————————————————————————————————————
+// Styles SGR
+// ————————————————————————————————————————————————————————————————————————
+pub fn reset() -> String { return sgr_code(0) }
+pub fn bold() -> String { return sgr_code(1) }
+pub fn dim() -> String { return sgr_code(2) }
+pub fn italic() -> String { return sgr_code(3) }
+pub fn underline() -> String { return sgr_code(4) }
+pub fn blink() -> String { return sgr_code(5) }
+pub fn inverse() -> String { return sgr_code(7) }
+pub fn hidden() -> String { return sgr_code(8) }
+pub fn strikethrough() -> String { return sgr_code(9) }
+
+pub fn no_bold() -> String { return sgr_code(22) }
+pub fn no_italic() -> String { return sgr_code(23) }
+pub fn no_underline() -> String { return sgr_code(24) }
+pub fn no_blink() -> String { return sgr_code(25) }
+pub fn no_inverse() -> String { return sgr_code(27) }
+pub fn no_hidden() -> String { return sgr_code(28) }
+pub fn no_strike() -> String { return sgr_code(29) }
+
+pub fn reset_colors() -> String { return sgr_code(39) + sgr_code(49) }            // FG/BG par défaut
+
+// ————————————————————————————————————————————————————————————————————————
+// Couleurs (8 / 256 / 24-bit truecolor)
+// ————————————————————————————————————————————————————————————————————————
+pub fn fg8(n: i32) -> String { return ESC + "3" + digit(n) + "m" }               // 0..7 (30-37)
+pub fn bg8(n: i32) -> String { return ESC + "4" + digit(n) + "m" }               // 0..7 (40-47)
+// 256-colors
+pub fn fg256(n: i32) -> String { return ESC + "38;5;" + n.to_string() + "m" }
+pub fn bg256(n: i32) -> String { return ESC + "48;5;" + n.to_string() + "m" }
+// truecolor
+pub fn fgrgb(r: i32, g: i32, b: i32) -> String {
+    return ESC + "38;2;" + r.to_string() + ";" + g.to_string() + ";" + b.to_string() + "m"
+}
+pub fn bgrgb(r: i32, g: i32, b: i32) -> String {
+    return ESC + "48;2;" + r.to_string() + ";" + g.to_string() + ";" + b.to_string() + "m"
+}
+
+// Helpers 8-colors: 0=black,1=red,2=green,3=yellow,4=blue,5=magenta,6=cyan,7=white
+pub fn black() -> String { return fg8(0) }
+pub fn red() -> String { return fg8(1) }
+pub fn green() -> String { return fg8(2) }
+pub fn yellow() -> String { return fg8(3) }
+pub fn blue() -> String { return fg8(4) }
+pub fn magenta() -> String { return fg8(5) }
+pub fn cyan() -> String { return fg8(6) }
+pub fn white() -> String { return fg8(7) }
+
+pub fn on_black() -> String { return bg8(0) }
+pub fn on_red() -> String { return bg8(1) }
+pub fn on_green() -> String { return bg8(2) }
+pub fn on_yellow() -> String { return bg8(3) }
+pub fn on_blue() -> String { return bg8(4) }
+pub fn on_magenta() -> String { return bg8(5) }
+pub fn on_cyan() -> String { return bg8(6) }
+pub fn on_white() -> String { return bg8(7) }
+
+// ————————————————————————————————————————————————————————————————————————
+// Composeur pratique
+// ————————————————————————————————————————————————————————————————————————
+pub fn paint(text: &str, pre: &Vec<String>) -> String {
+    // Concatène tous les préfixes (SGR...) + texte + reset
+    let mut out = String::new()
+    let mut i = 0
+    while i < pre.len() { out.push_str(&pre[i]); i += 1 }
+    out.push_str(text)
+    out.push_str(&reset())
+    return out
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Curseur & effacements
+// ————————————————————————————————————————————————————————————————————————
+pub fn cursor_up(n: i32) -> String { return csi(n.to_string() + "A") }
+pub fn cursor_down(n: i32) -> String { return csi(n.to_string() + "B") }
+pub fn cursor_forward(n: i32) -> String { return csi(n.to_string() + "C") }
+pub fn cursor_back(n: i32) -> String { return csi(n.to_string() + "D") }
+pub fn cursor_to(row: i32, col: i32) -> String { return csi(row.to_string() + ";" + col.to_string() + "H") }
+pub fn cursor_save() -> String { return csi("s") }
+pub fn cursor_restore() -> String { return csi("u") }
+pub fn cursor_hide() -> String { return csi("?25l") }
+pub fn cursor_show() -> String { return csi("?25h") }
+
+pub fn clear_screen() -> String { return csi("2J") }           // tout l’écran
+pub fn clear_to_end() -> String { return csi("0J") }           // du curseur à la fin
+pub fn clear_to_start() -> String { return csi("1J") }         // du début au curseur
+pub fn clear_line() -> String { return csi("2K") }             // toute la ligne
+pub fn clear_line_right() -> String { return csi("0K") }       // curseur → fin de ligne
+pub fn clear_line_left() -> String { return csi("1K") }        // début de ligne → curseur
+pub fn clear_scrollback() -> String { return csi("3J") }       // buffer scrollback (xterm)
+
+pub fn scroll_up(n: i32) -> String { return csi(n.to_string() + "S") }
+pub fn scroll_down(n: i32) -> String { return csi(n.to_string() + "T") }
+
+// ————————————————————————————————————————————————————————————————————————
+// OSC: titre de la fenêtre & hyperliens cliquables
+// ————————————————————————————————————————————————————————————————————————
+pub fn set_title(title: &str) -> String {
+    return osc("0;" + title)
+}
+
+pub fn hyperlink(text: &str, url: &str) -> String {
+    // OSC 8 ; ; URL ST  TEXT  OSC 8 ; ; ST
+    let start = "\x1b]8;;" + url + osc_st()
+    let end = "\x1b]8;;" + osc_st()
+    return start + text + end
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Détection (best effort) et Normalisation
+// ————————————————————————————————————————————————————————————————————————
+pub fn supports_truecolor() -> bool {
+    // Heuristique classique: COLORTERM contient "truecolor" ou "24bit"
+    // NOTE: dépend de std.sys.env si dispo ; sinon renvoie true par défaut (safe sur la plupart des terminaux modernes).
+    // Quand l’API env sera fixée, remplace par lire_env("COLORTERM").
+    return true
+}
+
+// Supprime les séquences ANSI (CSI/OSC/SS3 basiques) d’une string.
+// Utile pour logs sans couleurs ou calculer des largeurs d’affichage.
+pub fn strip_ansi(s: &str) -> String {
+    let b = s.as_bytes()
+    let mut out = String::new()
+    let mut i = 0
+    while i < b.len() {
+        let c = b[i]
+        if c == 0x1B { // ESC
+            if i + 1 < b.len() {
+                let n1 = b[i+1]
+                if n1 == b'[' { // CSI
+                    i += 2
+                    while i < b.len() {
+                        let ch = b[i]
+                        // fin CSI: @ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z  ~  m  h  l
+                        if (ch >= b'@' && ch <= b'~') { i += 1; break }
+                        i += 1
+                    }
+                    continue
+                } else if n1 == b']' { // OSC ... BEL/ST
+                    i += 2
+                    while i < b.len() {
+                        let ch = b[i]
+                        if ch == 0x07 { i += 1; break } // BEL
+                        if ch == 0x1B && i + 1 < b.len() && b[i+1] == b'\\' { i += 2; break } // ST
+                        i += 1
+                    }
+                    continue
+                } else if n1 == b'O' { // SS3 (quelques terminaux)
+                    // ESC O x → 3 bytes
+                    i += 3
+                    continue
+                }
+            }
+            // ESC isolé → skip
+            i += 1
+            continue
+        } else {
+            out.push_byte(c)
+            i += 1
+        }
+    }
+    return out
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Petits helpers
+// ————————————————————————————————————————————————————————————————————————
+fn digit(n: i32) -> &str {
+    // 0..7 → "0".."7"; sinon fallback "0"
+    if n == 0 { return "0" }
+    if n == 1 { return "1" }
+    if n == 2 { return "2" }
+    if n == 3 { return "3" }
+    if n == 4 { return "4" }
+    if n == 5 { return "5" }
+    if n == 6 { return "6" }
+    if n == 7 { return "7" }
+    return "0"
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Démos / Tests (smoke)
+// ————————————————————————————————————————————————————————————————————————
+test "paint & reset" {
+    let s = paint("Vitte", [bold(), red()])
+    // Doit commencer par ESC[1m ESC[31m et finir par ESC[0m
+    assert s.starts_with("\x1b[1m\x1b[31m")
+    assert s.ends_with("\x1b[0m")
+    assert s.contains("Vitte")
+}
+
+test "rgb & strip" {
+    let c = fgrgb(12, 34, 56)
+    let txt = c + "hello" + reset()
+    let raw = strip_ansi(txt)
+    assert raw == "hello"
+}
+
+test "cursor and clear compose" {
+    let s = cursor_to(3, 10) + clear_line() + "ok"
+    // On ne teste pas l’effet, juste la concat non vide et la fin texte
+    assert s.ends_with("ok")
+}
+
+test "hyperlink osc8" {
+    let s = hyperlink("docs", "https://vitte-lang.github.io/vitte/")
+    // Contient le texte cliquable
+    assert s.contains("docs")
+}

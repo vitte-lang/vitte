@@ -1,5 +1,294 @@
-//! sqlite
-struct Conn { __raw: __ffi::Sqlite }
-export fn open(path: String) -> Conn { __ffi::sqlite_open(path) }
-export fn exec(mut c: Conn, sql: String) -> bool { __ffi::sqlite_exec(c.__raw, sql) }
-export fn query(mut c: Conn, sql: String) -> Any { __ffi::sqlite_query(c.__raw, sql) }
+// modules/core/db/sqlite.vitte
+// SQLite driver (façade std) — API stable, backend-agnostique.
+// Il te faut brancher un backend FFI (sqlite3) en remplaçant les `be_*`.
+//
+// Features :
+//  - connect/close (DSN ou helpers open_file/open_memory)
+//  - exec(sql, params) -> rows_affected
+//  - query(sql, params) -> SqlResult (rows + columns)
+//  - transactions: begin(mode)/commit/rollback  (mode: "deferred" | "immediate" | "exclusive")
+//  - prepared statements: prepare/exec_stmt/query_stmt/finalize
+//  - last_insert_rowid(), changes()
+//  - DSN builders
+//
+// Notes :
+//  - SQLite est typeless au fond, mais on mappe vers des types forts : NULL, I64, F64, TEXT, BYTES, BOOL.
+//  - Les placeholders attendus : `?`, `?1`, `?2`, … (laisse le backend faire la magie).
+
+module core.db.sqlite
+
+// ————————————————————————————————————————————————————————————————————————
+// Types de valeurs (params / résultats)
+// ————————————————————————————————————————————————————————————————————————
+const T_NULL  : i32 = 0
+const T_I64   : i32 = 1
+const T_F64   : i32 = 2
+const T_BOOL  : i32 = 3
+const T_TEXT  : i32 = 4
+const T_BYTES : i32 = 5
+
+pub struct SqlValue {
+    t:   i32,
+    i64: i64,
+    f64: f64,
+    b:   bool,
+    s:   String,
+    bin: Vec<u8>,
+}
+
+pub fn v_null()         -> SqlValue { return SqlValue{t:T_NULL,  i64:0,  f64:0.0, b:false, s:"".to_string(), bin:Vec<u8>::new()} }
+pub fn v_i64(x: i64)    -> SqlValue { return SqlValue{t:T_I64,   i64:x,  f64:0.0, b:false, s:"".to_string(), bin:Vec<u8>::new()} }
+pub fn v_f64(x: f64)    -> SqlValue { return SqlValue{t:T_F64,   i64:0,  f64:x,   b:false, s:"".to_string(), bin:Vec<u8>::new()} }
+pub fn v_bool(x: bool)  -> SqlValue { return SqlValue{t:T_BOOL,  i64:0,  f64:0.0, b:x,     s:"".to_string(), bin:Vec<u8>::new()} }
+pub fn v_text(x: &str)  -> SqlValue { return SqlValue{t:T_TEXT,  i64:0,  f64:0.0, b:false, s:x.to_string(),  bin:Vec<u8>::new()} }
+pub fn v_bytes(x: &Vec<u8>) -> SqlValue { return SqlValue{t:T_BYTES, i64:0, f64:0.0, b:false, s:"".to_string(), bin:x.clone()} }
+
+// Accessors rapides (panic si type inattendu)
+pub fn as_i64(v: &SqlValue) -> i64   { if v.t==T_I64  { return v.i64 } else { panic("sqlite: not i64") } }
+pub fn as_f64(v: &SqlValue) -> f64   { if v.t==T_F64  { return v.f64 } else { panic("sqlite: not f64") } }
+pub fn as_bool(v:&SqlValue)-> bool   { if v.t==T_BOOL { return v.b   } else { panic("sqlite: not bool") } }
+pub fn as_text(v:&SqlValue)-> String { if v.t==T_TEXT { return v.s.clone() } else { panic("sqlite: not text") } }
+pub fn as_bytes(v:&SqlValue)->Vec<u8>{ if v.t==T_BYTES{ return v.bin.clone() } else { panic("sqlite: not bytes") } }
+pub fn is_null(v:&SqlValue) -> bool  { return v.t == T_NULL }
+
+// ————————————————————————————————————————————————————————————————————————
+// Résultats
+// ————————————————————————————————————————————————————————————————————————
+pub struct SqlResult {
+    columns: Vec<String>,
+    rows:    Vec<Vec<SqlValue>>,
+}
+pub struct SqlRow {
+    cols:  Vec<SqlValue>,
+    names: Vec<String>,
+}
+pub fn row_count(r: &SqlResult) -> i32 { return r.rows.len() }
+pub fn col_count(r: &SqlResult) -> i32 { return r.columns.len() }
+pub fn get_row(r: &SqlResult, i: i32) -> SqlRow {
+    return SqlRow { cols: r.rows[i].clone(), names: r.columns.clone() }
+}
+pub fn row_get(row: &SqlRow, idx: i32) -> SqlValue { return row.cols[idx].clone() }
+pub fn row_get_by_name(row: &SqlRow, name: &str) -> SqlValue {
+    let mut i = 0
+    while i < row.names.len() {
+        if row.names[i].eq_ignore_ascii_case(name) { return row.cols[i].clone() }
+        i += 1
+    }
+    panic("sqlite: column not found: " + name)
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Connexion
+// ————————————————————————————————————————————————————————————————————————
+pub struct SqlConn {
+    handle: i64,
+    open:   bool,
+}
+
+pub fn connect(dsn: &str) -> SqlConn {
+    // DSN exemples :
+    //  - "sqlite://file:./data.db?ro=false&create=true&wal=1"
+    //  - "sqlite://:memory:"
+    let h = be_open(dsn)
+    return SqlConn { handle: h, open: true }
+}
+
+pub fn open_file(path: &str, read_only: bool, create_if_missing: bool, wal: bool) -> SqlConn {
+    let mut q = "sqlite://file:".to_string()
+    q.push_str(path)
+    let mut sep = '?'
+    q.push(sep); q.push_str("ro="); q.push_str(if read_only { "true" } else { "false" }); sep='&'
+    q.push(sep); q.push_str("create="); q.push_str(if create_if_missing { "true" } else { "false" }); 
+    q.push(sep); q.push_str("wal="); q.push_str(if wal { "1" } else { "0" })
+    return connect(q)
+}
+
+pub fn open_memory() -> SqlConn {
+    return connect("sqlite://:memory:")
+}
+
+pub fn close(c: &mut SqlConn) {
+    if !c.open { return }
+    be_close(c.handle)
+    c.open = false
+}
+
+fn ensure(c: &SqlConn) {
+    if !c.open { panic("sqlite: connection is closed") }
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Exec & Query (non préparés)
+// ————————————————————————————————————————————————————————————————————————
+pub fn exec(c: &mut SqlConn, sql: &str, params: &Vec<SqlValue>) -> i64 {
+    ensure(c)
+    return be_exec(c.handle, sql, params)
+}
+
+pub fn query(c: &mut SqlConn, sql: &str, params: &Vec<SqlValue>) -> SqlResult {
+    ensure(c)
+    return be_query(c.handle, sql, params)
+}
+
+pub fn query_one(c: &mut SqlConn, sql: &str, params: &Vec<SqlValue>) -> Option<SqlRow> {
+    let r = query(c, sql, params)
+    if r.rows.len() == 0 { return None }
+    return Some(get_row(r, 0))
+}
+
+pub fn last_insert_rowid(c: &SqlConn) -> i64 {
+    ensure(c)
+    return be_last_insert_rowid(c.handle)
+}
+pub fn changes(c: &SqlConn) -> i64 {
+    ensure(c)
+    return be_changes(c.handle)
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Transactions
+// ————————————————————————————————————————————————————————————————————————
+pub struct SqlTx {
+    handle: i64,
+    active: bool,
+}
+
+pub fn begin(c: &mut SqlConn, mode: &str) -> SqlTx {
+    // mode ∈ {"deferred","immediate","exclusive"} ; sinon "deferred"
+    ensure(c)
+    let m = if mode.len()==0 { "deferred" } else { mode }
+    if !be_begin(c.handle, m) { panic("sqlite: BEGIN failed") }
+    return SqlTx { handle: c.handle, active: true }
+}
+pub fn tx_exec(tx: &mut SqlTx, sql: &str, params: &Vec<SqlValue>) -> i64 {
+    if !tx.active { panic("sqlite: tx not active") }
+    return be_exec(tx.handle, sql, params)
+}
+pub fn tx_query(tx: &mut SqlTx, sql: &str, params: &Vec<SqlValue>) -> SqlResult {
+    if !tx.active { panic("sqlite: tx not active") }
+    return be_query(tx.handle, sql, params)
+}
+pub fn commit(tx: &mut SqlTx) {
+    if !tx.active { return }
+    be_commit(tx.handle)
+    tx.active = false
+}
+pub fn rollback(tx: &mut SqlTx) {
+    if !tx.active { return }
+    be_rollback(tx.handle)
+    tx.active = false
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Prepared statements
+// ————————————————————————————————————————————————————————————————————————
+pub struct SqlStmt {
+    handle: i64, // conn handle
+    sid:    i64, // statement id (backend)
+    sql:    String,
+    cols:   Vec<String>,
+}
+
+pub fn prepare(c: &mut SqlConn, sql: &str) -> SqlStmt {
+    ensure(c)
+    let sid = be_prepare(c.handle, sql)
+    return SqlStmt { handle:c.handle, sid, sql: sql.to_string(), cols: Vec<String>::new() }
+}
+pub fn finalize(stmt: &mut SqlStmt) {
+    be_finalize_stmt(stmt.handle, stmt.sid)
+    stmt.sid = 0
+}
+pub fn exec_stmt(stmt: &mut SqlStmt, params: &Vec<SqlValue>) -> i64 {
+    return be_exec_prepared(stmt.handle, stmt.sid, params)
+}
+pub fn query_stmt(stmt: &mut SqlStmt, params: &Vec<SqlValue>) -> SqlResult {
+    let r = be_query_prepared(stmt.handle, stmt.sid, params)
+    if stmt.cols.len()==0 { stmt.cols = r.columns.clone() }
+    return r
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// PRAGMA helpers (confort minimal)
+// ————————————————————————————————————————————————————————————————————————
+pub fn pragma_journal_wal(c: &mut SqlConn) -> bool {
+    let r = query(c, "PRAGMA journal_mode=WAL", [])
+    return row_count(r) > 0
+}
+pub fn pragma_synchronous_normal(c: &mut SqlConn) -> bool {
+    let _ = exec(c, "PRAGMA synchronous = NORMAL", [])
+    return true
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// DSN helpers
+// ————————————————————————————————————————————————————————————————————————
+pub fn dsn_file(path: &str, read_only: bool, create_if_missing: bool, wal: bool) -> String {
+    let mut q = "sqlite://file:".to_string()
+    q.push_str(path)
+    let mut sep='?'
+    q.push(sep); q.push_str("ro="); q.push_str(if read_only { "true" } else { "false" }); sep='&'
+    q.push(sep); q.push_str("create="); q.push_str(if create_if_missing { "true" } else { "false" }); 
+    q.push(sep); q.push_str("wal="); q.push_str(if wal { "1" } else { "0" })
+    return q
+}
+pub fn dsn_memory() -> String { return "sqlite://:memory:".to_string() }
+
+// ————————————————————————————————————————————————————————————————————————
+// Backend FFI — à implémenter côté runtime (sqlite3)
+// ————————————————————————————————————————————————————————————————————————
+fn be_open(_dsn: &str) -> i64 {
+    panic("sqlite: no backend linked (be_open)")
+}
+fn be_close(_handle: i64) {
+    panic("sqlite: no backend linked (be_close)")
+}
+fn be_exec(_handle: i64, _sql: &str, _params: &Vec<SqlValue>) -> i64 {
+    panic("sqlite: no backend linked (be_exec)")
+}
+fn be_query(_handle: i64, _sql: &str, _params: &Vec<SqlValue>) -> SqlResult {
+    panic("sqlite: no backend linked (be_query)")
+}
+fn be_begin(_handle: i64, _mode: &str) -> bool {
+    panic("sqlite: no backend linked (be_begin)")
+}
+fn be_commit(_handle: i64) {
+    panic("sqlite: no backend linked (be_commit)")
+}
+fn be_rollback(_handle: i64) {
+    panic("sqlite: no backend linked (be_rollback)")
+}
+fn be_prepare(_handle: i64, _sql: &str) -> i64 {
+    panic("sqlite: no backend linked (be_prepare)")
+}
+fn be_finalize_stmt(_handle: i64, _sid: i64) {
+    panic("sqlite: no backend linked (be_finalize_stmt)")
+}
+fn be_exec_prepared(_handle: i64, _sid: i64, _params: &Vec<SqlValue>) -> i64 {
+    panic("sqlite: no backend linked (be_exec_prepared)")
+}
+fn be_query_prepared(_handle: i64, _sid: i64, _params: &Vec<SqlValue>) -> SqlResult {
+    panic("sqlite: no backend linked (be_query_prepared)")
+}
+fn be_last_insert_rowid(_handle: i64) -> i64 {
+    panic("sqlite: no backend linked (be_last_insert_rowid)")
+}
+fn be_changes(_handle: i64) -> i64 {
+    panic("sqlite: no backend linked (be_changes)")
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Tests (hors I/O) — types & surface API
+// ————————————————————————————————————————————————————————————————————————
+test "sqlvalue constructors & accessors" {
+    let a = v_i64(42);   assert as_i64(a) == 42
+    let b = v_text("ok"); assert as_text(b) == "ok"
+    let c = v_bool(true); assert as_bool(c)
+    let d = v_null();     assert is_null(d)
+}
+
+test "dsn builders" {
+    let f = dsn_file("./data.db", false, true, true)
+    assert f.starts_with("sqlite://file:")
+    let m = dsn_memory()
+    assert m == "sqlite://:memory:"
+}

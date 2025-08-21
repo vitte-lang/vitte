@@ -1,3 +1,495 @@
-//! wav — lecture/écriture
-export fn decode(b: Bytes) -> Any { __intrinsics::wav_decode(b) }
-export fn encode(samples: Any, sample_rate: i32, channels: i32) -> Bytes { __intrinsics::wav_encode(samples, sample_rate, channels) }
+// std/modules/audio/wav.vitte
+// RIFF/WAVE reader & writer (PCM / IEEE float).
+// - Lit: 'fmt ' (PCM=1, IEEE_FLOAT=3), 'data', optionnel 'LIST/INFO'
+// - Ecrit: PCM s16 ou float32
+// - Expose PCM interleavé (LRLR...)
+// - Panique sur fichiers corrompus (API std). Variante Result<> possible dans vitte-tools.
+
+module std.audio.wav
+use std.fs
+
+// ————————————————————————————————————————————————————————————————————————
+// Types
+// ————————————————————————————————————————————————————————————————————————
+const WAVE_FORMAT_PCM: i32 = 1
+const WAVE_FORMAT_IEEE_FLOAT: i32 = 3
+
+pub struct WavFormat {
+    audio_format:    i32,  // 1=PCM, 3=IEEE float
+    channels:        i32,
+    sample_rate:     i32,
+    byte_rate:       i32,
+    block_align:     i32,
+    bits_per_sample: i32,
+}
+
+pub struct WavMetadata {
+    format:    WavFormat,
+    data_bytes: i32,
+    // LIST/INFO (optionnel)
+    title:   Option<String>, // INAM
+    artist:  Option<String>, // IART
+    album:   Option<String>, // IPRD
+    comment: Option<String>, // ICMT
+    // durée approximative (arrondie)
+    duration_seconds: Option<i32>,
+}
+
+pub struct WavFile {
+    path:        String,
+    size:        i64,
+    meta:        WavMetadata,
+    data_offset: i32,
+    data_size:   i32,
+}
+
+// buffers PCM interleavés
+pub struct PcmI16 {
+    sample_rate: i32,
+    channels:    i32,
+    data:        Vec<i16>, // LRLR...
+}
+pub struct PcmF32 {
+    sample_rate: i32,
+    channels:    i32,
+    data:        Vec<f32>,
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Ouverture & parsing
+// ————————————————————————————————————————————————————————————————————————
+pub fn open(path: &str) -> WavFile {
+    let buf = fs::read(path)?
+    if buf.len() < 44 {
+        panic("wav: file too small")
+    }
+    if !tag_eq(&buf[0:4], "RIFF") || !tag_eq(&buf[8:12], "WAVE") {
+        panic("wav: missing RIFF/WAVE header")
+    }
+
+    let mut fmt: Option<WavFormat> = None
+    let mut data_off: i32 = -1
+    let mut data_len: i32 = -1
+
+    // LIST/INFO tags
+    let mut inam: Option<String> = None
+    let mut iart: Option<String> = None
+    let mut iprd: Option<String> = None
+    let mut icmt: Option<String> = None
+
+    // Parcours des chunks à partir de 12
+    let mut p: i32 = 12
+    while p + 8 <= buf.len() {
+        let id = &buf[p : p+4]
+        let sz = le_u32(&buf[p+4 : p+8])
+        let data_start = p + 8
+        let data_end   = data_start + sz
+        if data_end > buf.len() { break }
+
+        if tag_eq(id, "fmt ") {
+            // fmt chunk (au moins 16 octets)
+            if sz < 16 { panic("wav: invalid fmt chunk size") }
+            let audio_format    = le_u16(&buf[data_start : data_start+2])
+            let channels        = le_u16(&buf[data_start+2 : data_start+4])
+            let sample_rate     = le_u32(&buf[data_start+4 : data_start+8])
+            let byte_rate       = le_u32(&buf[data_start+8 : data_start+12])
+            let block_align     = le_u16(&buf[data_start+12: data_start+14])
+            let bits_per_sample = le_u16(&buf[data_start+14: data_start+16])
+
+            fmt = Some(WavFormat {
+                audio_format: audio_format,
+                channels: channels,
+                sample_rate: sample_rate,
+                byte_rate: byte_rate,
+                block_align: block_align,
+                bits_per_sample: bits_per_sample,
+            })
+        } else if tag_eq(id, "data") {
+            data_off = data_start
+            data_len = sz
+        } else if tag_eq(id, "LIST") && sz >= 4 {
+            // Sous-chunks 'INFO'
+            let list_type = &buf[data_start : data_start+4]
+            if tag_eq(list_type, "INFO") {
+                let mut q = data_start + 4
+                while q + 8 <= data_end {
+                    let sid = &buf[q : q+4]
+                    let ssz = le_u32(&buf[q+4 : q+8])
+                    let sdat = q + 8
+                    let send = sdat + ssz
+                    if send > data_end { break }
+                    let txt = read_info_string(&buf[sdat : send])
+                    if tag_eq(sid, "INAM") { inam = txt }
+                    if tag_eq(sid, "IART") { iart = txt }
+                    if tag_eq(sid, "IPRD") { iprd = txt }
+                    if tag_eq(sid, "ICMT") { icmt = txt }
+                    q = send + (ssz & 1) // padding 0 si taille impaire
+                }
+            }
+        }
+
+        // Padding à 2 octets
+        p = data_end + (sz & 1)
+    }
+
+    if fmt.is_none() { panic("wav: missing fmt chunk") }
+    if data_off < 0 || data_len < 0 { panic("wav: missing data chunk") }
+
+    let f = fmt.unwrap()
+    if f.channels <= 0 || f.sample_rate <= 0 || f.bits_per_sample <= 0 {
+        panic("wav: invalid fmt parameters")
+    }
+
+    // durée (approx): bytes / (sample_rate * block_align)
+    let mut dur: Option<i32> = None
+    if f.block_align > 0 && f.sample_rate > 0 {
+        let frames = data_len / f.block_align
+        let secs = frames / f.sample_rate
+        dur = Some(secs)
+    }
+
+    let meta = WavMetadata {
+        format: f,
+        data_bytes: data_len,
+        title: inam,
+        artist: iart,
+        album: iprd,
+        comment: icmt,
+        duration_seconds: dur,
+    }
+
+    return WavFile {
+        path: path.to_string(),
+        size: buf.len() as i64,
+        meta,
+        data_offset: data_off,
+        data_size: data_len,
+    }
+}
+
+pub fn metadata(w: &WavFile) -> &WavMetadata { return &w.meta }
+
+// ————————————————————————————————————————————————————————————————————————
+// Lecture PCM (conversion pratique)
+// ————————————————————————————————————————————————————————————————————————
+pub fn read_pcm_i16(path: &str) -> PcmI16 {
+    let buf = fs::read(path)?
+    let wf = open(path) // reparse (simple)
+    let f = wf.meta.format
+    let start = wf.data_offset
+    let end   = start + wf.data_size
+    let data  = &buf[start:end]
+
+    if f.audio_format == WAVE_FORMAT_PCM {
+        if f.bits_per_sample == 16 {
+            // copie directe
+            let count = wf.data_size / 2
+            let mut out = Vec<i16>::with_len(count as usize, 0)
+            let mut i = 0
+            let mut o = 0
+            while i < data.len() {
+                out[o] = le_i16(&data[i:i+2])
+                i += 2; o += 1
+            }
+            return PcmI16 { sample_rate: f.sample_rate, channels: f.channels, data: out }
+        } else if f.bits_per_sample == 24 {
+            // 24-bit → i16 (shift)
+            let frames = wf.data_size / 3
+            let mut out = Vec<i16>::with_len(frames as usize, 0)
+            let mut i = 0
+            let mut o = 0
+            while i + 3 <= data.len() {
+                let s24 = le_i24(&data[i:i+3])
+                out[o] = (s24 >> 8) as i16 // downscale 24→16
+                i += 3; o += 1
+            }
+            return PcmI16 { sample_rate: f.sample_rate, channels: f.channels, data: out }
+        } else if f.bits_per_sample == 32 {
+            // 32-bit PCM signé → clamp to i16
+            let frames = wf.data_size / 4
+            let mut out = Vec<i16>::with_len(frames as usize, 0)
+            let mut i = 0
+            let mut o = 0
+            while i + 4 <= data.len() {
+                let s32 = le_i32(&data[i:i+4])
+                // normaliser sur 15 bits
+                let v = (s32 >> 16)
+                out[o] = clamp_i16(v)
+                i += 4; o += 1
+            }
+            return PcmI16 { sample_rate: f.sample_rate, channels: f.channels, data: out }
+        } else {
+            panic("wav: unsupported PCM bits_per_sample for i16 path")
+        }
+    } else if f.audio_format == WAVE_FORMAT_IEEE_FLOAT {
+        if f.bits_per_sample != 32 { panic("wav float: only 32-bit supported") }
+        // float32 → i16
+        let frames = wf.data_size / 4
+        let mut out = Vec<i16>::with_len(frames as usize, 0)
+        let mut i = 0
+        let mut o = 0
+        while i + 4 <= data.len() {
+            let fv = le_f32(&data[i:i+4])
+            let s = (fv * 32767.0).round()
+            out[o] = clamp_i16(s as i32)
+            i += 4; o += 1
+        }
+        return PcmI16 { sample_rate: f.sample_rate, channels: f.channels, data: out }
+    } else {
+        panic("wav: unsupported audio_format for i16 path")
+    }
+}
+
+pub fn read_pcm_f32(path: &str) -> PcmF32 {
+    let buf = fs::read(path)?
+    let wf = open(path)
+    let f = wf.meta.format
+    let start = wf.data_offset
+    let end   = start + wf.data_size
+    let data  = &buf[start:end]
+
+    if f.audio_format == WAVE_FORMAT_PCM {
+        if f.bits_per_sample == 16 {
+            let frames = wf.data_size / 2
+            let mut out = Vec<f32>::with_len(frames as usize, 0.0)
+            let mut i = 0
+            let mut o = 0
+            while i + 2 <= data.len() {
+                let s = le_i16(&data[i:i+2])
+                out[o] = (s as f32) / 32767.0
+                i += 2; o += 1
+            }
+            return PcmF32 { sample_rate: f.sample_rate, channels: f.channels, data: out }
+        } else if f.bits_per_sample == 24 {
+            let frames = wf.data_size / 3
+            let mut out = Vec<f32>::with_len(frames as usize, 0.0)
+            let mut i = 0
+            let mut o = 0
+            while i + 3 <= data.len() {
+                let s24 = le_i24(&data[i:i+3])
+                out[o] = (s24 as f32) / 8388607.0 // 2^23-1
+                i += 3; o += 1
+            }
+            return PcmF32 { sample_rate: f.sample_rate, channels: f.channels, data: out }
+        } else if f.bits_per_sample == 32 {
+            let frames = wf.data_size / 4
+            let mut out = Vec<f32>::with_len(frames as usize, 0.0)
+            let mut i = 0
+            let mut o = 0
+            while i + 4 <= data.len() {
+                let s32 = le_i32(&data[i:i+4])
+                out[o] = (s32 as f32) / 2147483647.0 // 2^31-1
+                i += 4; o += 1
+            }
+            return PcmF32 { sample_rate: f.sample_rate, channels: f.channels, data: out }
+        } else {
+            panic("wav: unsupported PCM bits_per_sample for f32 path")
+        }
+    } else if f.audio_format == WAVE_FORMAT_IEEE_FLOAT {
+        if f.bits_per_sample != 32 { panic("wav float: only 32-bit supported") }
+        let frames = wf.data_size / 4
+        let mut out = Vec<f32>::with_len(frames as usize, 0.0)
+        let mut i = 0
+        let mut o = 0
+        while i + 4 <= data.len() {
+            out[o] = le_f32(&data[i:i+4])
+            i += 4; o += 1
+        }
+        return PcmF32 { sample_rate: f.sample_rate, channels: f.channels, data: out }
+    } else {
+        panic("wav: unsupported audio_format for f32 path")
+    }
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Ecriture WAV
+// ————————————————————————————————————————————————————————————————————————
+pub fn write_pcm_i16(path: &str, sample_rate: i32, channels: i32, data: &Vec<i16>) {
+    if channels <= 0 || sample_rate <= 0 { panic("wav write: invalid params") }
+    // block_align = channels * 2
+    let block_align = channels * 2
+    let byte_rate   = sample_rate * block_align
+    let data_bytes  = data.len() * 2
+    let riff_size   = 36 + data_bytes
+
+    let mut out = Vec<u8>::new()
+    // RIFF header
+    push_tag(&mut out, "RIFF")
+    push_le_u32(&mut out, riff_size)
+    push_tag(&mut out, "WAVE")
+    // fmt chunk (16 bytes)
+    push_tag(&mut out, "fmt ")
+    push_le_u32(&mut out, 16)
+    push_le_u16(&mut out, WAVE_FORMAT_PCM)
+    push_le_u16(&mut out, channels)
+    push_le_u32(&mut out, sample_rate)
+    push_le_u32(&mut out, byte_rate)
+    push_le_u16(&mut out, block_align)
+    push_le_u16(&mut out, 16)
+    // data chunk
+    push_tag(&mut out, "data")
+    push_le_u32(&mut out, data_bytes)
+    // samples
+    let mut i = 0
+    while i < data.len() {
+        push_le_i16(&mut out, data[i])
+        i += 1
+    }
+    fs::write(path, out)?
+}
+
+pub fn write_pcm_f32(path: &str, sample_rate: i32, channels: i32, data: &Vec<f32>) {
+    if channels <= 0 || sample_rate <= 0 { panic("wav write: invalid params") }
+    let block_align = channels * 4
+    let byte_rate   = sample_rate * block_align
+    let data_bytes  = data.len() * 4
+    let riff_size   = 36 + data_bytes
+
+    let mut out = Vec<u8>::new()
+    push_tag(&mut out, "RIFF")
+    push_le_u32(&mut out, riff_size)
+    push_tag(&mut out, "WAVE")
+    push_tag(&mut out, "fmt ")
+    push_le_u32(&mut out, 16)
+    push_le_u16(&mut out, WAVE_FORMAT_IEEE_FLOAT)
+    push_le_u16(&mut out, channels)
+    push_le_u32(&mut out, sample_rate)
+    push_le_u32(&mut out, byte_rate)
+    push_le_u16(&mut out, block_align)
+    push_le_u16(&mut out, 32)
+    push_tag(&mut out, "data")
+    push_le_u32(&mut out, data_bytes)
+    let mut i = 0
+    while i < data.len() {
+        push_le_f32(&mut out, data[i])
+        i += 1
+    }
+    fs::write(path, out)?
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Helpers binaires
+// ————————————————————————————————————————————————————————————————————————
+fn tag_eq(b: &Vec<u8>, s: &str) -> bool {
+    if b.len() != 4 { return false }
+    let ss = s.as_bytes()
+    return b[0]==ss[0] && b[1]==ss[1] && b[2]==ss[2] && b[3]==ss[3]
+}
+fn read_info_string(b: &Vec<u8>) -> Option<String> {
+    // INFO stocke ASCII/UTF8 avec zéro final parfois ; on trim les \0/espaces
+    let mut s = String::from_utf8_lossy(b)
+    s = s.trim_matches('\0').trim().to_string()
+    if s.len()==0 { return None }
+    return Some(s)
+}
+
+fn le_u16(b: &Vec<u8>) -> i32 { return (b[0] as i32) | ((b[1] as i32)<<8) }
+fn le_u32(b: &Vec<u8>) -> i32 { return (b[0] as i32) | ((b[1] as i32)<<8) | ((b[2] as i32)<<16) | ((b[3] as i32)<<24) }
+fn le_i16(b: &Vec<u8>) -> i16 { return ((b[0] as i16) | ((b[1] as i16)<<8)) }
+fn le_i24(b: &Vec<u8>) -> i32 {
+    // 3 octets little-endian signés
+    let x = (b[0] as i32) | ((b[1] as i32)<<8) | ((b[2] as i32)<<16)
+    // signe sur 24 bits
+    return if (x & 0x00800000) != 0 { x | 0xFF000000 } else { x }
+}
+fn le_i32(b: &Vec<u8>) -> i32 { return (b[0] as i32) | ((b[1] as i32)<<8) | ((b[2] as i32)<<16) | ((b[3] as i32)<<24) }
+fn le_f32(b: &Vec<u8>) -> f32 {
+    let u = le_u32(b)
+    return f32::from_bits(u as u32)
+}
+
+fn push_tag(v: &mut Vec<u8>, s: &str) {
+    let b = s.as_bytes()
+    v.push(b[0]); v.push(b[1]); v.push(b[2]); v.push(b[3])
+}
+fn push_le_u16(v: &mut Vec<u8>, x: i32) {
+    v.push((x & 0xFF) as u8); v.push(((x>>8) & 0xFF) as u8)
+}
+fn push_le_u32(v: &mut Vec<u8>, x: i32) {
+    v.push((x & 0xFF) as u8); v.push(((x>>8) & 0xFF) as u8)
+    v.push(((x>>16) & 0xFF) as u8); v.push(((x>>24) & 0xFF) as u8)
+}
+fn push_le_i16(v: &mut Vec<u8>, x: i16) {
+    v.push((x & 0xFF) as u8); v.push(((x>>8) & 0xFF) as u8)
+}
+fn push_le_f32(v: &mut Vec<u8>, x: f32) {
+    let u = x.to_bits() as i32
+    push_le_u32(v, u)
+}
+fn clamp_i16(x: i32) -> i16 {
+    if x > 32767 { return 32767 }
+    if x < -32768 { return -32768 }
+    return x as i16
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Utils (canaux & frames)
+// ————————————————————————————————————————————————————————————————————————
+pub fn frames_count(samples: i32, channels: i32) -> i32 {
+    if channels <= 0 { panic("frames_count: channels<=0") }
+    return samples / channels
+}
+
+pub fn deinterleave_f32(buf: &Vec<f32>, channels: i32) -> Vec<Vec<f32>> {
+    if channels <= 0 { panic("deinterleave_f32: channels<=0") }
+    let n = frames_count(buf.len(), channels)
+    let mut outs = Vec<Vec<f32>>::with_len(channels as usize, Vec<f32>::with_len(n as usize, 0.0))
+    let mut f = 0
+    while f < n {
+        let mut c = 0
+        while c < channels {
+            outs[c][f] = buf[f*channels + c]
+            c += 1
+        }
+        f += 1
+    }
+    return outs
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Tests (synthèse courte)
+// ————————————————————————————————————————————————————————————————————————
+test "write/read pcm_s16 mono smoke" {
+    // sinus 440 Hz, 0.1 s @ 44.1k
+    let sr = 44100
+    let ch = 1
+    let dur = 4410
+    let mut s = Vec<i16>::with_len(dur as usize, 0)
+    let mut i = 0
+    while i < dur {
+        let t = (i as f32) / (sr as f32)
+        let x = ( (2.0 * 3.14159265 * 440.0 * t).sin() * 0.3 * 32767.0 ).round() as i32
+        s[i] = clamp_i16(x)
+        i += 1
+    }
+    write_pcm_i16("test_s16.wav", sr, ch, &s)
+    let wf = open("test_s16.wav")
+    assert wf.meta.format.audio_format == WAVE_FORMAT_PCM
+    assert wf.meta.format.bits_per_sample == 16
+    assert wf.meta.format.channels == 1
+    let pcm = read_pcm_f32("test_s16.wav")
+    assert pcm.sample_rate == sr && pcm.channels == 1
+    assert pcm.data.len() == dur
+}
+
+test "write/read f32 stereo smoke" {
+    let sr = 48000
+    let ch = 2
+    let n  = 4800
+    let mut s = Vec<f32>::with_len((n*ch) as usize, 0.0)
+    let mut i = 0
+    while i < n {
+        let t = (i as f32) / (sr as f32)
+        // L = 1kHz, R = 500Hz
+        s[i*2]   = (2.0*3.14159265*1000.0*t).sin() * 0.2
+        s[i*2+1] = (2.0*3.14159265*500.0*t).sin() * 0.2
+        i += 1
+    }
+    write_pcm_f32("test_f32.wav", sr, ch, &s)
+    let wf = open("test_f32.wav")
+    assert wf.meta.format.audio_format == WAVE_FORMAT_IEEE_FLOAT
+    assert wf.meta.format.channels == 2
+    let pcm = read_pcm_i16("test_f32.wav")
+    assert pcm.sample_rate == sr && pcm.channels == 2
+    assert frames_count(pcm.data.len(), 2) == n
+}

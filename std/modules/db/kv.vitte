@@ -1,5 +1,371 @@
-//! kv — magasin clé/valeur
-struct Kv { __raw: __intrinsics::Kv }
-export fn open(path: String) -> Kv { Kv{ __raw: __intrinsics::kv_open(path) } }
-export fn get(kv: Kv, k: String) -> Option<Bytes> { __intrinsics::kv_get(kv.__raw, k) }
-export fn set(mut kv: Kv, k: String, v: Bytes) { __intrinsics::kv_set(kv.__raw, k, v) }
+// modules/core/db/kv.vitte
+// KV store générique, backend-agnostique.
+// Pensé pour être branché à un backend (LMDB, SQLite, Rocks, in-memory) via stubs `be_*`.
+// Par défaut, les stubs paniquent → fournis un backend runtime pour activer l'I/O réel.
+//
+// API haut-niveau (bytes):
+//   kv_open(dsn) -> Kv                  // ex: "lmdb://path=/data/cache?db=main&map_mb=256"
+//   kv_open_ns(dsn, ns) -> Kv           // ns = préfixe binaire (isole un keyspace)
+//   kv_close(&mut Kv)
+//   put/get/del/exists
+//   prefix_scan(prefix, limit) -> Vec<(key,val)>
+//   range_scan(start, end_excl, limit)
+//   batch(ops)                          // suite de PUT/DEL (meilleur-effort atomique selon backend)
+//   cas(key, expected_opt, new)         // compare-and-swap (atomique si backend, sinon fallback)
+//   incr_i64(key, delta) -> i64         // incrément (atomique si backend, sinon fallback)
+//
+// Helpers String:
+//   put_str/get_str/del_str/prefix_scan_str(...)
+//
+// Notes:
+//  - Les clés/valeurs sont des octets opaques. L'ordre de scan est l'ordre byte-wise croissant.
+//  - Le namespace `ns` est préfixé comme: [len:u8][ns...][0x00][user_key...]
+//  - Le DSN est libre: le backend choisi doit l'interpréter (ex: lmdb://, sqlite://, mem://).
+
+module core.db.kv
+use std.time
+
+// ————————————————————————————————————————————————————————————————
+// Types publics
+// ————————————————————————————————————————————————————————————————
+pub struct Kv {
+    store:  i64,      // handle backend
+    open:   bool,
+    ns:     Vec<u8>,  // namespace binaire (peut être vide)
+}
+
+pub struct KvOp {
+    kind: i32,        // 0=PUT, 1=DEL
+    key:  Vec<u8>,
+    val:  Vec<u8>,    // vide pour DEL
+}
+
+pub fn op_put(key: &Vec<u8>, val: &Vec<u8>) -> KvOp {
+    return KvOp { kind: 0, key: key.clone(), val: val.clone() }
+}
+pub fn op_del(key: &Vec<u8>) -> KvOp {
+    return KvOp { kind: 1, key: key.clone(), val: Vec<u8>::new() }
+}
+
+// ————————————————————————————————————————————————————————————————
+// Construction / teardown
+// ————————————————————————————————————————————————————————————————
+pub fn kv_open(dsn: &str) -> Kv {
+    let store = be_open(dsn)
+    return Kv { store, open: true, ns: Vec<u8>::new() }
+}
+
+pub fn kv_open_ns(dsn: &str, ns: &Vec<u8>) -> Kv {
+    let store = be_open(dsn)
+    // On encode le namespace une fois pour toutes
+    let ns_enc = encode_ns(ns)
+    return Kv { store, open: true, ns: ns_enc }
+}
+
+pub fn kv_close(db: &mut Kv) {
+    if !db.open { return }
+    be_close(db.store)
+    db.open = false
+}
+
+// ————————————————————————————————————————————————————————————————
+// Opérations de base
+// ————————————————————————————————————————————————————————————————
+pub fn put(db: &mut Kv, key: &Vec<u8>, val: &Vec<u8>) -> bool {
+    ensure(db)
+    let k = make_key(db, key)
+    return be_put(db.store, k, val)
+}
+
+pub fn get(db: &Kv, key: &Vec<u8>) -> Option<Vec<u8>> {
+    ensure(db)
+    let k = make_key(db, key)
+    return be_get(db.store, k)
+}
+
+pub fn del(db: &mut Kv, key: &Vec<u8>) -> bool {
+    ensure(db)
+    let k = make_key(db, key)
+    return be_del(db.store, k)
+}
+
+pub fn exists(db: &Kv, key: &Vec<u8>) -> bool {
+    return get(db, key).is_some()
+}
+
+// ————————————————————————————————————————————————————————————————
+// Scans (ordonnés byte-wise)
+// ————————————————————————————————————————————————————————————————
+pub fn prefix_scan(db: &Kv, prefix: &Vec<u8>, limit: i32) -> Vec<(Vec<u8>, Vec<u8>)> {
+    ensure(db)
+    let start = make_key(db, prefix)
+    let end   = next_prefix_key(start)
+    let pairs = be_range(db.store, start, end, limit)
+    // dépouille le namespace dans les clés retournées
+    return strip_ns_in_pairs(db, pairs)
+}
+
+pub fn range_scan(db: &Kv, start_key: &Vec<u8>, end_excl_key: &Vec<u8>, limit: i32) -> Vec<(Vec<u8>, Vec<u8>)> {
+    ensure(db)
+    let start = make_key(db, start_key)
+    let end   = make_key(db, end_excl_key)
+    let pairs = be_range(db.store, start, end, limit)
+    return strip_ns_in_pairs(db, pairs)
+}
+
+// ————————————————————————————————————————————————————————————————
+// Batch (meilleur-effort atomique selon backend)
+// ————————————————————————————————————————————————————————————————
+pub fn batch(db: &mut Kv, ops: &Vec<KvOp>) -> bool {
+    ensure(db)
+    if ops.len() == 0 { return true }
+    // Essayer via backend dédié si dispo
+    if be_has_batch(db.store) {
+        // Encode batch: [count:u32][ (kind:u8)(klen:u32)(vlen:u32)(k...)(v...) ]*
+        let encoded = encode_batch(db, ops)
+        return be_batch(db.store, encoded)
+    }
+    // Fallback: séquentiel (non atomique)
+    let mut i = 0
+    while i < ops.len() {
+        let op = ops[i]
+        if op.kind == 0 {
+            if !put(db, op.key, op.val) { return false }
+        } else {
+            if !del(db, op.key) { return false }
+        }
+        i += 1
+    }
+    return true
+}
+
+// ————————————————————————————————————————————————————————————————
+// Opérations avancées (CAS / INCR) — atomiques si backend le supporte
+// ————————————————————————————————————————————————————————————————
+pub fn cas(db: &mut Kv, key: &Vec<u8>, expected: Option<Vec<u8>>, new_val: &Vec<u8>) -> bool {
+    ensure(db)
+    let k = make_key(db, key)
+    if be_has_cas(db.store) {
+        return be_cas(db.store, k, expected, new_val)
+    }
+    // Fallback non atomique (attention aux races si multi-writers)
+    let cur = be_get(db.store, k.clone())
+    if !opt_eq(&cur, &expected) { return false }
+    return be_put(db.store, k, new_val)
+}
+
+pub fn incr_i64(db: &mut Kv, key: &Vec<u8>, delta: i64) -> i64 {
+    ensure(db)
+    let k = make_key(db, key)
+    if be_has_incr(db.store) {
+        return be_incr(db.store, k, delta)
+    }
+    // Fallback non atomique: get → add → put
+    let cur = be_get(db.store, k.clone())
+    let mut v: i64 = 0
+    if cur.is_some() { v = decode_i64_le(cur.unwrap()) }
+    let nv = v + delta
+    let enc = encode_i64_le(nv)
+    be_put(db.store, k, enc)
+    return nv
+}
+
+// ————————————————————————————————————————————————————————————————
+// Helpers String (sucre)
+// ————————————————————————————————————————————————————————————————
+pub fn put_str(db: &mut Kv, key: &str, val: &str) -> bool {
+    return put(db, key.as_bytes(), val.as_bytes())
+}
+pub fn get_str(db: &Kv, key: &str) -> Option<String> {
+    let v = get(db, key.as_bytes())
+    if v.is_none() { return None }
+    return Some(String::from_utf8_lossy(v.unwrap()))
+}
+pub fn del_str(db: &mut Kv, key: &str) -> bool {
+    return del(db, key.as_bytes())
+}
+pub fn prefix_scan_str(db: &Kv, prefix: &str, limit: i32) -> Vec<(String, String)> {
+    let pairs = prefix_scan(db, prefix.as_bytes(), limit)
+    let mut out = Vec<(String,String)>::new()
+    let mut i = 0
+    while i < pairs.len() {
+        out.push((String::from_utf8_lossy(pairs[i].0), String::from_utf8_lossy(pairs[i].1)))
+        i += 1
+    }
+    return out
+}
+
+// ————————————————————————————————————————————————————————————————
+// Encodage clés / batch / i64
+// ————————————————————————————————————————————————————————————————
+fn encode_ns(ns: &Vec<u8>) -> Vec<u8> {
+    if ns.len() == 0 { return Vec<u8>::new() }
+    if ns.len() > 255 { panic("kv: namespace too long (>255)") }
+    let mut out = Vec<u8>::with_len(1 + ns.len() + 1, 0)
+    out[0] = ns.len() as u8
+    let mut i = 0
+    while i < ns.len() { out[1+i] = ns[i]; i += 1 }
+    out[1+ns.len()] = 0x00 // séparateur neutre
+    return out
+}
+
+fn make_key(db: &Kv, user_key: &Vec<u8>) -> Vec<u8> {
+    if db.ns.len() == 0 { return user_key.clone() }
+    let mut out = Vec<u8>::with_len(db.ns.len() + user_key.len(), 0)
+    // préfixe namespace déjà encodé
+    let mut i = 0
+    while i < db.ns.len() { out[i] = db.ns[i]; i += 1 }
+    let mut k = 0
+    while k < user_key.len() { out[i+k] = user_key[k]; k += 1 }
+    return out
+}
+
+fn strip_ns_in_pairs(db: &Kv, pairs: Vec<(Vec<u8>, Vec<u8>)>) -> Vec<(Vec<u8>, Vec<u8>)> {
+    if db.ns.len() == 0 { return pairs }
+    let mut out = Vec<(Vec<u8>, Vec<u8>)>::new()
+    let mut i = 0
+    while i < pairs.len() {
+        let mut k = pairs[i].0
+        // retirer db.ns au début
+        if k.len() < db.ns.len() { i += 1; continue }
+        k = k[db.ns.len():k.len()].clone()
+        out.push((k, pairs[i].1))
+        i += 1
+    }
+    return out
+}
+
+// Calcule la borne supérieure exclusive d’un préfixe pour un range scan.
+// start = prefix ; end = prefix avec dernier byte augmenté si possible, sinon prefix + 0xFF sentinel.
+fn next_prefix_key(prefix: &Vec<u8>) -> Vec<u8> {
+    if prefix.len() == 0 { return Vec<u8>::with_len(0,0) } // pas de borne → plein espace
+    let mut out = prefix.clone()
+    let mut i = out.len() - 1
+    loop {
+        if out[i] != 0xFF {
+            out[i] = out[i] + 1
+            out.truncate(i+1)
+            return out
+        }
+        if i == 0 { break }
+        i -= 1
+    }
+    // tout était 0xFF → pas de end strict : utiliser "no upper bound"
+    return Vec<u8>::new()
+}
+
+fn encode_batch(db: &Kv, ops: &Vec<KvOp>) -> Vec<u8> {
+    let mut out = Vec<u8>::new()
+    // count
+    let cnt = ops.len()
+    out.push((cnt & 0xFF) as u8)
+    out.push(((cnt >> 8) & 0xFF) as u8)
+    out.push(((cnt >> 16) & 0xFF) as u8)
+    out.push(((cnt >> 24) & 0xFF) as u8)
+    let mut i = 0
+    while i < ops.len() {
+        let op = ops[i]
+        out.push((op.kind & 0xFF) as u8)
+        let k = make_key(db, op.key)
+        push_u32(&mut out, k.len())
+        push_u32(&mut out, op.val.len())
+        out.extend_from_slice(k)
+        out.extend_from_slice(op.val)
+        i += 1
+    }
+    return out
+}
+
+fn push_u32(out: &mut Vec<u8>, x: i32) {
+    out.push((x & 0xFF) as u8)
+    out.push(((x>>8) & 0xFF) as u8)
+    out.push(((x>>16)& 0xFF) as u8)
+    out.push(((x>>24)& 0xFF) as u8)
+}
+
+fn encode_i64_le(x: i64) -> Vec<u8> {
+    let mut b = Vec<u8>::with_len(8, 0)
+    b[0]=(x & 0xFF) as u8; b[1]=((x>>8)&0xFF) as u8; b[2]=((x>>16)&0xFF) as u8; b[3]=((x>>24)&0xFF) as u8
+    b[4]=((x>>32)&0xFF) as u8; b[5]=((x>>40)&0xFF) as u8; b[6]=((x>>48)&0xFF) as u8; b[7]=((x>>56)&0xFF) as u8
+    return b
+}
+fn decode_i64_le(b: &Vec<u8>) -> i64 {
+    if b.len()!=8 { return 0 }
+    return (b[0] as i64)
+        | ((b[1] as i64)<<8) | ((b[2] as i64)<<16) | ((b[3] as i64)<<24)
+        | ((b[4] as i64)<<32) | ((b[5] as i64)<<40) | ((b[6] as i64)<<48) | ((b[7] as i64)<<56)
+}
+
+fn opt_eq(a: &Option<Vec<u8>>, b: &Option<Vec<u8>>) -> bool {
+    if a.is_none() && b.is_none() { return true }
+    if a.is_none() || b.is_none() { return false }
+    let aa = a.clone().unwrap()
+    let bb = b.clone().unwrap()
+    if aa.len()!=bb.len() { return false }
+    let mut d: u8 = 0
+    let mut i = 0
+    while i < aa.len() { d = d | (aa[i] ^ bb[i]); i += 1 }
+    return d == 0
+}
+
+fn ensure(db: &Kv) {
+    if !db.open { panic("kv: database is closed") }
+}
+
+// ————————————————————————————————————————————————————————————————
+// Backend — stubs à implémenter côté runtime
+// ————————————————————————————————————————————————————————————————
+fn be_open(_dsn: &str) -> i64 {
+    panic("kv: no backend linked (be_open)")
+}
+fn be_close(_store: i64) {
+    panic("kv: no backend linked (be_close)")
+}
+fn be_put(_store: i64, _key: Vec<u8>, _val: &Vec<u8>) -> bool {
+    panic("kv: no backend linked (be_put)")
+}
+fn be_get(_store: i64, _key: Vec<u8>) -> Option<Vec<u8>> {
+    panic("kv: no backend linked (be_get)")
+}
+fn be_del(_store: i64, _key: Vec<u8>) -> bool {
+    panic("kv: no backend linked (be_del)")
+}
+fn be_range(_store: i64, _start: Vec<u8>, _end_excl: Vec<u8>, _limit: i32) -> Vec<(Vec<u8>, Vec<u8>)> {
+    panic("kv: no backend linked (be_range)")
+}
+// optionnels (capabilities)
+fn be_has_batch(_store: i64) -> bool { return false }
+fn be_batch(_store: i64, _encoded_ops: Vec<u8>) -> bool {
+    panic("kv: backend batch not linked (be_batch)")
+}
+fn be_has_cas(_store: i64) -> bool { return false }
+fn be_cas(_store: i64, _key: Vec<u8>, _expected: Option<Vec<u8>>, _new_val: &Vec<u8>) -> bool {
+    panic("kv: backend cas not linked (be_cas)")
+}
+fn be_has_incr(_store: i64) -> bool { return false }
+fn be_incr(_store: i64, _key: Vec<u8>, _delta: i64) -> i64 {
+    panic("kv: backend incr not linked (be_incr)")
+}
+
+// ————————————————————————————————————————————————————————————————
+// Tests (hors I/O) — encodage clés / ranges
+// ————————————————————————————————————————————————————————————————
+test "namespace encoding and key stitching" {
+    let ns = [0x41,0x42].as_bytes() // "AB"
+    let db = Kv { store: 0, open: true, ns: encode_ns(ns) }
+    let k = make_key(&db, "x".as_bytes())
+    // ns enc = [len=2]['A']['B'][0x00] → 4 bytes + 'x'
+    assert k.len() == 5 && k[0]==2 && k[1]==0x41 && k[2]==0x42 && k[3]==0x00 && k[4]=='x'.byte()
+}
+
+test "next_prefix_key logic" {
+    // simple: "ab" → "ac" (exclusive)
+    let a = "ab".as_bytes()
+    let e = next_prefix_key(a)
+    assert e == "ac".as_bytes()
+
+    // tout 0xFF → no upper bound → renvoie []
+    let mut ff = Vec<u8>::with_len(3, 0xFF)
+    let ee = next_prefix_key(ff)
+    assert ee.len() == 0
+}

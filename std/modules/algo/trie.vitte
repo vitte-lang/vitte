@@ -1,5 +1,337 @@
-//! trie — arbre de préfixes
-struct Trie { __raw: __intrinsics::Trie }
-export fn new() -> Trie { Trie{ __raw: __intrinsics::trie_new() } }
-export fn insert(mut t: Trie, s: String) { __intrinsics::trie_insert(t.__raw, s) }
-export fn contains(t: Trie, s: String) -> bool { __intrinsics::trie_contains(t.__raw, s) }
+// std/modules/algo/trie.vitte
+// Trie (prefix tree) pour alphabet [a-z]. Rapide, compact, no deps.
+// Caractère non [a-z] → panic (version "std"); une variante Unicode via map
+// pourra vivre dans vitte-tools si besoin.
+
+module std.algo.trie
+
+// ————————————————————————————————————————————————————————————————————————
+// Noeud du Trie
+// children: indices vers les noeuds, -1 = absent
+// pass: nb de mots passant par ce noeud
+// end: nb de mots finissant à ce noeud
+// ————————————————————————————————————————————————————————————————————————
+struct Node {
+    children: Vec<i32>, // taille 26
+    pass: i32,
+    end:  i32
+}
+
+fn mk_node() -> Node {
+    let mut ch = Vec<i32>::with_len(26, -1)
+    return Node { children: ch, pass: 0, end: 0 }
+}
+
+pub struct Trie {
+    nodes: Vec<Node>, // nodes[0] = racine
+    words: i32        // nombre total de mots stockés
+}
+
+pub fn trie_new() -> Trie {
+    let mut nodes = Vec<Node>::new()
+    nodes.push(mk_node())
+    return Trie { nodes, words: 0 }
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Helpers
+// ————————————————————————————————————————————————————————————————————————
+fn idx(c: u8) -> i32 {
+    if c < 'a'.byte() || c > 'z'.byte() {
+        panic("trie: only [a-z] supported (got: " + c.to_string() + ")")
+    }
+    return (c - 'a'.byte()) as i32
+}
+fn assert_ascii_lower(s: &Vec<u8>) {
+    let mut i = 0
+    while i < s.len() {
+        let c = s[i]
+        if c < 'a'.byte() || c > 'z'.byte() {
+            panic("trie: only [a-z] strings supported")
+        }
+        i += 1
+    }
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Insert / Contains / StartsWith
+// ————————————————————————————————————————————————————————————————————————
+pub fn trie_insert(t: &mut Trie, word: &Vec<u8>) {
+    assert_ascii_lower(word)
+    let mut cur = 0
+    t.nodes[cur].pass += 1
+    let mut i = 0
+    while i < word.len() {
+        let j = idx(word[i])
+        let nxt = t.nodes[cur].children[j]
+        if nxt == -1 {
+            // créer un noeud
+            t.nodes[cur].children[j] = t.nodes.len()
+            t.nodes.push(mk_node())
+        }
+        cur = t.nodes[cur].children[j]
+        t.nodes[cur].pass += 1
+        i += 1
+    }
+    t.nodes[cur].end += 1
+    t.words += 1
+}
+
+pub fn trie_contains(t: &Trie, word: &Vec<u8>) -> bool {
+    let mut cur = 0
+    let mut i = 0
+    while i < word.len() {
+        let j = idx(word[i])
+        let nxt = t.nodes[cur].children[j]
+        if nxt == -1 { return false }
+        cur = nxt
+        i += 1
+    }
+    return t.nodes[cur].end > 0
+}
+
+pub fn trie_starts_with(t: &Trie, prefix: &Vec<u8>) -> bool {
+    let mut cur = 0
+    let mut i = 0
+    while i < prefix.len() {
+        let j = idx(prefix[i])
+        let nxt = t.nodes[cur].children[j]
+        if nxt == -1 { return false }
+        cur = nxt
+        i += 1
+    }
+    return true
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Delete (une seule occurrence)
+// Renvoie true si effacé; false si absent
+// ————————————————————————————————————————————————————————————————————————
+pub fn trie_delete(t: &mut Trie, word: &Vec<u8>) -> bool {
+    if !trie_contains(t, word) { return false }
+    let mut cur = 0
+    t.nodes[cur].pass -= 1
+    let mut i = 0
+    while i < word.len() {
+        let j = idx(word[i])
+        let nxt = t.nodes[cur].children[j]
+        // décrémente le pass du prochain
+        t.nodes[nxt].pass -= 1
+        // si le pass tombe à 0 → on peut couper le lien (GC paresseux)
+        if t.nodes[nxt].pass == 0 {
+            t.nodes[cur].children[j] = -1
+            // on ne purge pas physiquement nodes[nxt] pour garder les indices stables
+            // (compactage optionnel en maintenance)
+            // on va juste marquer la suite comme "perdue"
+            // (les pass de la chaîne suivante sont déjà décrémentés par la boucle)
+        }
+        cur = nxt
+        i += 1
+    }
+    t.nodes[cur].end -= 1
+    t.words -= 1
+    return true
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Comptages
+// ————————————————————————————————————————————————————————————————————————
+pub fn trie_count(t: &Trie) -> i32 { return t.words }
+
+pub fn trie_count_prefix(t: &Trie, prefix: &Vec<u8>) -> i32 {
+    let mut cur = 0
+    let mut i = 0
+    while i < prefix.len() {
+        let j = idx(prefix[i])
+        let nxt = t.nodes[cur].children[j]
+        if nxt == -1 { return 0 }
+        cur = nxt
+        i += 1
+    }
+    // nb de mots sous ce noeud = somme des end dans le sous-arbre,
+    // mais on a pass = nb de mots passant par ici, ce qui inclut tout le sous-arbre.
+    // Attention: pass compte aussi les mots qui continuent plus loin;
+    // or c’est bien ce qu’on veut pour "combien commence par prefix".
+    // MAIS pass inclut la traversée du noeud courant; si prefix vide, racine.pass = total.
+    return t.nodes[cur].pass - 0 // explicite
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Longest prefix of (max match d’un mot dans le trie)
+// ————————————————————————————————————————————————————————————————————————
+pub fn trie_longest_prefix_of(t: &Trie, s: &Vec<u8>) -> i32 {
+    // renvoie la longueur du plus long préfixe de s présent comme mot
+    let mut cur = 0
+    let mut best = 0
+    let mut i = 0
+    while i < s.len() {
+        let j = idx(s[i])
+        let nxt = t.nodes[cur].children[j]
+        if nxt == -1 { break }
+        cur = nxt
+        if t.nodes[cur].end > 0 { best = i + 1 }
+        i += 1
+    }
+    return best
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Collecte de mots (keys with prefix) + Autocomplete
+// ————————————————————————————————————————————————————————————————————————
+pub fn trie_keys_with_prefix(t: &Trie, prefix: &Vec<u8>) -> Vec<Vec<u8>> {
+    let mut cur = 0
+    let mut i = 0
+    while i < prefix.len() {
+        let j = idx(prefix[i])
+        let nxt = t.nodes[cur].children[j]
+        if nxt == -1 { return Vec<Vec<u8>>::new() }
+        cur = nxt
+        i += 1
+    }
+    let mut out = Vec<Vec<u8>>::new()
+    let mut buf = Vec<u8>::new()
+    // recopie du prefix dans le buffer
+    let mut k = 0
+    while k < prefix.len() { buf.push(prefix[k]); k += 1 }
+    dfs_collect(t, cur, &mut buf, &mut out)
+    return out
+}
+
+pub fn trie_autocomplete(t: &Trie, prefix: &Vec<u8>, limit: i32) -> Vec<Vec<u8>> {
+    let mut words = trie_keys_with_prefix(t, prefix)
+    // si limit < words.len(), on tronque
+    if limit >= 0 && words.len() > limit {
+        words.truncate(limit)
+    }
+    return words
+}
+
+fn dfs_collect(t: &Trie, u: i32, buf: &mut Vec<u8>, out: &mut Vec<Vec<u8>>) {
+    // si ce noeud termine des mots, on pousse autant d’occurrences que end
+    let e = t.nodes[u].end
+    let mut c = 0
+    while c < e {
+        out.push(buf.clone())
+        c += 1
+    }
+    // explorer enfants 'a'..'z'
+    let mut j = 0
+    while j < 26 {
+        let v = t.nodes[u].children[j]
+        if v != -1 {
+            buf.push(('a'.byte() + j as u8))
+            dfs_collect(t, v, buf, out)
+            buf.pop()
+        }
+        j += 1
+    }
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Recherche avec wildcard '.' (match n’importe quelle lettre)
+// ————————————————————————————————————————————————————————————————————————
+pub fn trie_search_pattern(t: &Trie, pat: &Vec<u8>) -> bool {
+    return dfs_match(t, 0, pat, 0)
+}
+
+fn dfs_match(t: &Trie, u: i32, pat: &Vec<u8>, i: i32) -> bool {
+    if i == pat.len() {
+        return t.nodes[u].end > 0
+    }
+    let c = pat[i]
+    if c == '.'.byte() {
+        // tester tous les enfants
+        let mut j = 0
+        while j < 26 {
+            let v = t.nodes[u].children[j]
+            if v != -1 && dfs_match(t, v, pat, i+1) { return true }
+            j += 1
+        }
+        return false
+    } else {
+        let j = idx(c)
+        let v = t.nodes[u].children[j]
+        if v == -1 { return false }
+        return dfs_match(t, v, pat, i+1)
+    }
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Conversion utilitaires
+// ————————————————————————————————————————————————————————————————————————
+pub fn str_to_bytes_lower(s: &str) -> Vec<u8> {
+    // ATTENTION: ne downcase pas Unicode. Ici on suppose déjà [a-z].
+    return s.as_bytes().clone()
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Tests
+// ————————————————————————————————————————————————————————————————————————
+test "insert/contains/basic" {
+    let mut t = trie_new()
+    trie_insert(&mut t, "cat".as_bytes())
+    trie_insert(&mut t, "car".as_bytes())
+    trie_insert(&mut t, "dog".as_bytes())
+    assert trie_contains(&t, "cat".as_bytes())
+    assert trie_contains(&t, "car".as_bytes())
+    assert !trie_contains(&t, "cow".as_bytes())
+    assert trie_starts_with(&t, "ca".as_bytes())
+    assert trie_count(&t) == 3
+}
+
+test "delete and counts" {
+    let mut t = trie_new()
+    trie_insert(&mut t, "a".as_bytes())
+    trie_insert(&mut t, "at".as_bytes())
+    trie_insert(&mut t, "atom".as_bytes())
+    assert trie_count_prefix(&t, "a".as_bytes()) == 3
+    assert trie_delete(&mut t, "at".as_bytes())
+    assert !trie_delete(&mut t, "att".as_bytes())
+    assert trie_contains(&t, "a".as_bytes())
+    assert !trie_contains(&t, "at".as_bytes())
+    assert trie_contains(&t, "atom".as_bytes())
+    assert trie_count_prefix(&t, "a".as_bytes()) == 2
+    assert trie_count(&t) == 2
+}
+
+test "longest prefix of" {
+    let mut t = trie_new()
+    trie_insert(&mut t, "inter".as_bytes())
+    trie_insert(&mut t, "internet".as_bytes())
+    trie_insert(&mut t, "internal".as_bytes())
+    let s = "international".as_bytes()
+    let lp = trie_longest_prefix_of(&t, s)
+    // "internet" est présent, longueur = 8
+    assert lp == 8
+}
+
+test "keys with prefix / autocomplete" {
+    let mut t = trie_new()
+    trie_insert(&mut t, "car".as_bytes())
+    trie_insert(&mut t, "card".as_bytes())
+    trie_insert(&mut t, "care".as_bytes())
+    trie_insert(&mut t, "cargo".as_bytes())
+    let words = trie_keys_with_prefix(&t, "car".as_bytes())
+    assert words.len() == 4
+    let small = trie_autocomplete(&t, "car".as_bytes(), 2)
+    assert small.len() == 2
+}
+
+test "wildcard search" {
+    let mut t = trie_new()
+    trie_insert(&mut t, "mad".as_bytes())
+    trie_insert(&mut t, "map".as_bytes())
+    trie_insert(&mut t, "man".as_bytes())
+    assert trie_search_pattern(&t, "ma.".as_bytes())
+    assert trie_search_pattern(&t, "m..".as_bytes())
+    assert !trie_search_pattern(&t, "ma".as_bytes())
+}
+
+test "panic on invalid char" {
+    let mut t = trie_new()
+    // Devrait paniquer: hors alphabet
+    let ok = catch_unwind(|| {
+        trie_insert(&mut t, "Café".as_bytes())
+    })
+    assert ok.is_err()
+}

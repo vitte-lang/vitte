@@ -1,0 +1,143 @@
+// modules/crypto/pbkdf2.vitte
+// PBKDF2 avec PRF = HMAC-SHA256 (RFC 8018).
+// API :
+//   - pbkdf2_hmac_sha256(password, salt, iterations, dk_len) -> Vec<u8>
+//   - pbkdf2_hex(password, salt, iterations, dk_len) -> String
+//   - pbkdf2_str_hex(password_str, salt_str, iterations, dk_len) -> String
+//   - pbkdf2_verify(password, salt, iterations, expected_dk) -> bool (temps constant)
+//
+// Notes cash :
+//   * iterations >= 1, dk_len >= 1
+//   * robustesse O(iterations * ceil(dk_len / 32))
+//   * pas d’optim micro, mais clair et sûr.
+
+module crypto.pbkdf2
+use crypto.hmac as hm
+use crypto.hash as h
+
+const HASH_LEN: i32 = 32  // SHA-256
+
+// ————————————————————————————————————————————————————————————————
+// Derive key
+// ————————————————————————————————————————————————————————————————
+pub fn pbkdf2_hmac_sha256(password: &Vec<u8>, salt: &Vec<u8>, iterations: i32, dk_len: i32) -> Vec<u8> {
+    if iterations < 1 { panic("pbkdf2: iterations must be >= 1") }
+    if dk_len < 1 { panic("pbkdf2: dk_len must be >= 1") }
+
+    let blocks = (dk_len + HASH_LEN - 1) / HASH_LEN
+    let mut out = Vec<u8>::with_len(dk_len as usize, 0)
+
+    let mut b = 1
+    let mut pos = 0
+    while b <= blocks {
+        // U1 = PRF(P, S || INT_32_BE(b))
+        let mut msg = Vec<u8>::new()
+        msg.extend_from_slice(salt)
+        let be = be32(b)
+        msg.push(be[0]); msg.push(be[1]); msg.push(be[2]); msg.push(be[3])
+
+        let mut u = hm::hmac256(password, msg)  // 32 bytes
+        let mut t = u.clone()
+
+        // U2..Uc
+        let mut c = 2
+        while c <= iterations {
+            u = hm::hmac256(password, u)  // Uc = PRF(P, Uc-1)
+            xor_inplace(&mut t, u)
+            c += 1
+        }
+
+        // copier dans out (troncature pour le dernier bloc)
+        let take = if pos + HASH_LEN <= dk_len { HASH_LEN } else { dk_len - pos }
+        let mut i = 0
+        while i < take {
+            out[pos + i] = t[i]
+            i += 1
+        }
+        pos += take
+        b += 1
+    }
+
+    return out
+}
+
+// Hex façades
+pub fn pbkdf2_hex(password: &Vec<u8>, salt: &Vec<u8>, iterations: i32, dk_len: i32) -> String {
+    return h::to_hex_lower(pbkdf2_hmac_sha256(password, salt, iterations, dk_len))
+}
+
+pub fn pbkdf2_str_hex(password_str: &str, salt_str: &str, iterations: i32, dk_len: i32) -> String {
+    return pbkdf2_hex(password_str.as_bytes(), salt_str.as_bytes(), iterations, dk_len)
+}
+
+// Vérification (temps constant)
+pub fn pbkdf2_verify(password: &Vec<u8>, salt: &Vec<u8>, iterations: i32, expected_dk: &Vec<u8>) -> bool {
+    let dk = pbkdf2_hmac_sha256(password, salt, iterations, expected_dk.len())
+    return ct_eq(&dk, expected_dk)
+}
+
+// ————————————————————————————————————————————————————————————————
+// Helpers
+// ————————————————————————————————————————————————————————————————
+fn be32(x: i32) -> Vec<u8> {
+    let mut b = Vec<u8>::with_len(4, 0)
+    b[0] = ((x >> 24) & 0xFF) as u8
+    b[1] = ((x >> 16) & 0xFF) as u8
+    b[2] = ((x >> 8) & 0xFF) as u8
+    b[3] = (x & 0xFF) as u8
+    return b
+}
+fn xor_inplace(dst: &mut Vec<u8>, src: &Vec<u8>) {
+    let mut i = 0
+    while i < dst.len() && i < src.len() {
+        dst[i] = dst[i] ^ src[i]
+        i += 1
+    }
+}
+fn ct_eq(a: &Vec<u8>, b: &Vec<u8>) -> bool {
+    let mut diff: u8 = 0
+    let max = if a.len() > b.len() { a.len() } else { b.len() }
+    let mut i = 0
+    while i < max {
+        let aa = if i < a.len() { a[i] } else { 0u8 }
+        let bb = if i < b.len() { b[i] } else { 0u8 }
+        diff = diff | (aa ^ bb)
+        i += 1
+    }
+    return diff == 0 && a.len() == b.len()
+}
+
+// ————————————————————————————————————————————————————————————————
+// Tests
+// ————————————————————————————————————————————————————————————————
+test "lengths and determinism" {
+    let dk1 = pbkdf2_hmac_sha256("password".as_bytes(), "salt".as_bytes(), 2, 64)
+    let dk2 = pbkdf2_hmac_sha256("password".as_bytes(), "salt".as_bytes(), 2, 64)
+    assert dk1.len() == 64 && dk2.len() == 64
+    assert dk1 == dk2
+}
+
+test "different params change output" {
+    let a = pbkdf2_hmac_sha256("password".as_bytes(), "salt".as_bytes(), 2, 32)
+    let b = pbkdf2_hmac_sha256("password".as_bytes(), "salt".as_bytes(), 3, 32)
+    assert a != b
+}
+
+test "block truncation across boundaries" {
+    let dk32 = pbkdf2_hmac_sha256("p".as_bytes(), "s".as_bytes(), 5, 32)
+    let dk33 = pbkdf2_hmac_sha256("p".as_bytes(), "s".as_bytes(), 5, 33)
+    // le préfixe de 32 octets doit rester identique
+    let mut i = 0
+    while i < 32 { assert dk32[i] == dk33[i]; i += 1 }
+    assert dk33.len() == 33
+}
+
+test "empty password/salt still works" {
+    let dk = pbkdf2_hmac_sha256("".as_bytes(), "".as_bytes(), 1, 32)
+    assert dk.len() == 32
+}
+
+test "verify constant-time ok" {
+    let dk = pbkdf2_hmac_sha256("pw".as_bytes(), "salt".as_bytes(), 10, 32)
+    assert pbkdf2_verify("pw".as_bytes(), "salt".as_bytes(), 10, dk)
+}
