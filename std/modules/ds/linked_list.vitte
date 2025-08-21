@@ -1,5 +1,348 @@
-//! linked_list — liste chaînée
-struct List<T> { __raw: __intrinsics::List }
-export fn new<T>() -> List<T> { List{ __raw: __intrinsics::list_new() } }
-export fn push_front<T>(mut l: List<T>, v: T) { __intrinsics::list_push_front(l.__raw, v) }
-export fn pop_front<T>(mut l: List<T>) -> Option<T> { __intrinsics::list_pop_front(l.__raw) }
+// ============================================================================
+// std/modules/ds/linked_list.vitte
+// LinkedList<T> — liste doublement chaînée, indices stables, O(1) aux bouts,
+// O(n) pour accès indexé, insert/remove en O(1) une fois le nœud ciblé.
+// Hypothèses (Vitte ~ Rust):
+//   - Option<T>: Some/None
+//   - Vec<T>: new(), push(), len(), indexation v[i], etc.
+//   - T: Clone (pour rendre les pops sans uninit/take)
+// Licence: MIT OR Apache-2.0
+// ============================================================================
+
+module ds.linked_list
+
+// ------------------------------ Nœud -----------------------------------------
+
+struct Node<T> where T: Clone {
+    prev: Option<i32>,   // index du nœud précédent
+    next: Option<i32>,   // index du nœud suivant
+    val:  Option<T>,     // Some(val) si actif, None si libre
+}
+
+impl<T> Node<T> where T: Clone {
+    fn new(val: T) -> Self {
+        Self { prev: None, next: None, val: Some(val) }
+    }
+    fn vacant() -> Self {
+        Self { prev: None, next: None, val: None }
+    }
+    fn is_active(&self) -> bool { self.val.is_some() }
+}
+
+// --------------------------- LinkedList --------------------------------------
+
+pub struct LinkedList<T> where T: Clone {
+    nodes: Vec<Node<T>>,   // pool de nœuds (indexés)
+    free:  Vec<i32>,       // pile d’indices libres (réutilisation)
+    head:  Option<i32>,
+    tail:  Option<i32>,
+    len:   i32,
+}
+
+impl<T> LinkedList<T> where T: Clone {
+
+    // Création
+    pub fn new() -> Self {
+        Self {
+            nodes: Vec::new(),
+            free:  Vec::new(),
+            head:  None,
+            tail:  None,
+            len:   0,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool { self.len == 0 }
+    pub fn len(&self) -> i32 { self.len }
+
+    // -------------------------------- lecture --------------------------------
+
+    pub fn front(&self) -> Option<&T> {
+        match self.head {
+            None => None,
+            Some(i) => match &self.nodes[i as usize].val {
+                Some(ref v) => Some(v),
+                None => None,
+            }
+        }
+    }
+
+    pub fn back(&self) -> Option<&T> {
+        match self.tail {
+            None => None,
+            Some(i) => match &self.nodes[i as usize].val {
+                Some(ref v) => Some(v),
+                None => None,
+            }
+        }
+    }
+
+    // get(index logique) : 0 <= index < len
+    pub fn get(&self, index: i32) -> Option<&T> {
+        self.idx_to_ref(index)
+    }
+
+    // -------------------------------- push -----------------------------------
+
+    pub fn push_front(&mut self, value: T) {
+        let idx = self.alloc_node(value)
+        match self.head {
+            None => {
+                self.head = Some(idx)
+                self.tail = Some(idx)
+            }
+            Some(h) => {
+                // chainage: idx <-> h
+                self.nodes[idx as usize].next = Some(h)
+                self.nodes[h as usize].prev   = Some(idx)
+                self.head = Some(idx)
+            }
+        }
+        self.len = self.len + 1
+    }
+
+    pub fn push_back(&mut self, value: T) {
+        let idx = self.alloc_node(value)
+        match self.tail {
+            None => {
+                self.head = Some(idx)
+                self.tail = Some(idx)
+            }
+            Some(t) => {
+                self.nodes[idx as usize].prev = Some(t)
+                self.nodes[t as usize].next   = Some(idx)
+                self.tail = Some(idx)
+            }
+        }
+        self.len = self.len + 1
+    }
+
+    // -------------------------------- pop ------------------------------------
+
+    pub fn pop_front(&mut self) -> Option<T> {
+        let h = match self.head { None => return None, Some(i) => i }
+        let mut out = self.nodes[h as usize].val.clone()
+        // détache h
+        let nxt = self.nodes[h as usize].next
+        match nxt {
+            Some(n) => {
+                self.nodes[n as usize].prev = None
+                self.head = Some(n)
+            }
+            None => {
+                // la liste devient vide
+                self.head = None
+                self.tail = None
+            }
+        }
+        // marque h comme libre
+        self.free_node(h)
+        if out.is_some() { self.len = self.len - 1 }
+        return out
+    }
+
+    pub fn pop_back(&mut self) -> Option<T> {
+        let t = match self.tail { None => return None, Some(i) => i }
+        let mut out = self.nodes[t as usize].val.clone()
+        // détache t
+        let prv = self.nodes[t as usize].prev
+        match prv {
+            Some(p) => {
+                self.nodes[p as usize].next = None
+                self.tail = Some(p)
+            }
+            None => {
+                self.head = None
+                self.tail = None
+            }
+        }
+        self.free_node(t)
+        if out.is_some() { self.len = self.len - 1 }
+        return out
+    }
+
+    // --------------------------- insert/remove index --------------------------
+
+    // insert_at(i, v): insère AVANT l’index logique i (0..len).
+    // i == 0        -> push_front
+    // i == len      -> push_back
+    pub fn insert_at(&mut self, index: i32, value: T) {
+        if index < 0 || index > self.len { panic("LinkedList::insert_at: index hors bornes") }
+        if index == 0 { self.push_front(value); return }
+        if index == self.len { self.push_back(value); return }
+
+        let target = self.nth_index(index).expect("index existant")
+        // nouveau nœud
+        let idx = self.alloc_node(value)
+
+        let prev_opt = self.nodes[target as usize].prev
+        // chainage prev <-> idx <-> target
+        match prev_opt {
+            Some(p) => { self.nodes[p as usize].next = Some(idx) }
+            None    => { self.head = Some(idx) }
+        }
+        self.nodes[idx as usize].prev   = prev_opt
+        self.nodes[idx as usize].next   = Some(target)
+        self.nodes[target as usize].prev = Some(idx)
+
+        self.len = self.len + 1
+    }
+
+    // remove_at(i): supprime et retourne la valeur à l’index logique i
+    pub fn remove_at(&mut self, index: i32) -> Option<T> {
+        if index < 0 || index >= self.len { return None }
+        // cas rapides
+        if index == 0 { return self.pop_front() }
+        if index == self.len - 1 { return self.pop_back() }
+
+        let target = self.nth_index(index).expect("index existant")
+        let prv = self.nodes[target as usize].prev
+        let nxt = self.nodes[target as usize].next
+
+        // déchaîner
+        match prv { Some(p) => self.nodes[p as usize].next = nxt, None => self.head = nxt }
+        match nxt { Some(n) => self.nodes[n as usize].prev = prv, None => self.tail = prv }
+
+        let out = self.nodes[target as usize].val.clone()
+        self.free_node(target)
+        if out.is_some() { self.len = self.len - 1 }
+        return out
+    }
+
+    // -------------------------------- utils ----------------------------------
+
+    pub fn clear(&mut self) {
+        // vide sans libérer le pool : réutilisation rapide
+        let mut i = 0
+        while i < self.nodes.len() as i32 {
+            self.nodes[i as usize].prev = None
+            self.nodes[i as usize].next = None
+            self.nodes[i as usize].val  = None
+            self.free.push(i)
+            i = i + 1
+        }
+        self.head = None
+        self.tail = None
+        self.len  = 0
+    }
+
+    // itérateur lecture (ordre de la liste)
+    pub fn iter(&self) -> LinkedListIter<T> {
+        LinkedListIter { list: self, cur: self.head }
+    }
+
+    // --------------------------- helpers privés -------------------------------
+
+    fn alloc_node(&mut self, value: T) -> i32 {
+        match self.free.pop() {
+            Some(i) => {
+                // réutilise un slot
+                self.nodes[i as usize].prev = None
+                self.nodes[i as usize].next = None
+                self.nodes[i as usize].val  = Some(value)
+                i
+            }
+            None => {
+                let i = self.nodes.len() as i32
+                self.nodes.push(Node::new(value))
+                i
+            }
+        }
+    }
+
+    fn free_node(&mut self, idx: i32) {
+        // marque comme vacant et empile dans free
+        self.nodes[idx as usize].prev = None
+        self.nodes[idx as usize].next = None
+        self.nodes[idx as usize].val  = None
+        self.free.push(idx)
+    }
+
+    // convertit index logique -> &T
+    fn idx_to_ref(&self, index: i32) -> Option<&T> {
+        let node_idx = self.nth_index(index)?
+        match &self.nodes[node_idx as usize].val {
+            Some(ref v) => Some(v),
+            None => None,
+        }
+    }
+
+    // renvoie l’index interne du n-ième élément (0-based)
+    fn nth_index(&self, index: i32) -> Option<i32> {
+        if index < 0 || index >= self.len { return None }
+        // heuristique: partir de la tête ou de la queue selon la proximité
+        let mut cur = if index <= self.len / 2 {
+            // part de head, avance
+            let mut step = 0
+            let mut c = self.head
+            while step < index {
+                match c {
+                    Some(i) => { c = self.nodes[i as usize].next; step = step + 1 }
+                    None => return None
+                }
+            }
+            c
+        } else {
+            // part de tail, recule
+            let mut step = self.len - 1
+            let mut c = self.tail
+            while step > index {
+                match c {
+                    Some(i) => { c = self.nodes[i as usize].prev; step = step - 1 }
+                    None => return None
+                }
+            }
+            c
+        }
+        return cur
+    }
+}
+
+// --------------------------- Itérateur lecture -------------------------------
+
+pub struct LinkedListIter<'a, T> where T: Clone {
+    list: &'a LinkedList<T>,
+    cur:  Option<i32>,
+}
+
+impl<'a, T> LinkedListIter<'a, T> where T: Clone {
+    pub fn next(&mut self) -> Option<&'a T> {
+        let i = match self.cur { None => return None, Some(x) => x }
+        let out = match &self.list.nodes[i as usize].val {
+            Some(ref v) => Some(v),
+            None => None,
+        }
+        self.cur = self.list.nodes[i as usize].next
+        return out
+    }
+}
+
+// ------------------------------ Tests (optionnels) ---------------------------
+
+/*
+#[test]
+fn ll_smoke() {
+    let mut ll = LinkedList::<i32>::new()
+    assert!(ll.is_empty())
+    ll.push_back(1)
+    ll.push_back(2)
+    ll.push_front(0)
+    assert_eq!(ll.len(), 3)
+    assert_eq!(ll.front().copied(), Some(0))
+    assert_eq!(ll.back().copied(),  Some(2))
+    assert_eq!(ll.remove_at(1), Some(1))
+    assert_eq!(ll.pop_front(), Some(0))
+    assert_eq!(ll.pop_back(),  Some(2))
+    assert!(ll.is_empty())
+}
+
+#[test]
+fn ll_insert_middle() {
+    let mut ll = LinkedList::<i32>::new()
+    for i in 0..5 { ll.push_back(i) }       // 0 1 2 3 4
+    ll.insert_at(3, 99)                     // 0 1 2 99 3 4
+    assert_eq!(ll.get(3).copied(), Some(99))
+    assert_eq!(ll.remove_at(3), Some(99))   // 0 1 2 3 4
+    assert_eq!(ll.len(), 5)
+}
+*/

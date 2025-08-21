@@ -1,5 +1,321 @@
-//! deque — file double
-struct Deque<T> { __raw: __intrinsics::Deque }
-export fn new<T>() -> Deque<T> { Deque{ __raw: __intrinsics::deque_new() } }
-export fn push_back<T>(mut d: Deque<T>, v: T) { __intrinsics::deque_push_back(d.__raw, v) }
-export fn pop_front<T>(mut d: Deque<T>) -> Option<T> { __intrinsics::deque_pop_front(d.__raw) }
+// ============================================================================
+// std/modules/ds/deque.vitte
+// Deque<T> — file double-bout (ring buffer dynamique)
+// Ops O(1) amorti : push_front / push_back / pop_front / pop_back / front / back
+// + get(index), clear, reserve, shrink_to_fit, iter (en lecture).
+//
+// Hypothèses Vitte (Rust-like):
+//   - Option<T> : Some(x) / None
+//   - Vec<T>    : new(), len(), push(x), insert(i,x), remove(i), truncate(n), indexation v[i]
+//   - Conversions simples i32 <-> usize via "as"
+//   - Panics: panic(msg)
+// NOTE: pour rester 100% safe sans "uninit", on stocke Vec<Option<T>>.
+//       Cela impose T: Clone si l'on veut réallouer sans "take". Version optimisée
+//       (sans Clone) possible plus tard via un type MaybeUninit<T> de la std.
+// Licence: MIT OR Apache-2.0
+// ============================================================================
+
+module ds.deque
+
+pub struct Deque<T> where T: Clone {
+    buf: Vec<Option<T>>, // anneau de slots (None = vide)
+    cap: i32,            // capacité (== buf.len())
+    head: i32,           // index du premier élément logique
+    len: i32,            // nombre d’éléments stockés
+}
+
+// ------------------------------- impl ---------------------------------------
+
+impl<T> Deque<T> where T: Clone {
+
+    // Crée une deque avec capacité initiale >= 8
+    pub fn new() -> Self {
+        Self::with_capacity(8)
+    }
+
+    pub fn with_capacity(mut cap: i32) -> Self {
+        if cap < 1 { cap = 8 }
+        if cap < 8 { cap = 8 }
+        let mut buf: Vec<Option<T>> = Vec::new()
+        let n = cap as i32
+        let mut i = 0
+        while i < n {
+            buf.push(None)
+            i = i + 1
+        }
+        Self { buf, cap, head: 0, len: 0 }
+    }
+
+    // -------------------------- propriétés ----------------------------------
+
+    pub fn is_empty(&self) -> bool { self.len == 0 }
+    pub fn len(&self) -> i32 { self.len }
+    pub fn capacity(&self) -> i32 { self.cap }
+
+    // -------------------------- helpers internes -----------------------------
+
+    fn wrap(&self, idx: i32) -> i32 {
+        // ((idx % cap) + cap) % cap pour rester dans [0, cap)
+        let m = idx % self.cap
+        if m < 0 { m + self.cap } else { m }
+    }
+
+    fn tail_index(&self) -> i32 { self.wrap(self.head + self.len) }
+
+    fn ensure_capacity_for(&mut self, add: i32) {
+        let need = self.len + add
+        if need <= self.cap { return }
+        let mut new_cap = self.cap
+        while new_cap < need {
+            new_cap = new_cap * 2
+        }
+        self.realloc_to(new_cap)
+    }
+
+    fn maybe_shrink(&mut self) {
+        if self.cap <= 8 { return }
+        if self.len * 4 > self.cap { return } // shrink quand <= 25%
+        let mut new_cap = self.cap / 2
+        if new_cap < 8 { new_cap = 8 }
+        if new_cap < self.len { new_cap = self.len } // garde tout
+        if new_cap != self.cap {
+            self.realloc_to(new_cap)
+        }
+    }
+
+    fn realloc_to(&mut self, new_cap: i32) {
+        let mut new_buf: Vec<Option<T>> = Vec::new()
+        let n = new_cap as i32
+        let mut i = 0
+        while i < n {
+            new_buf.push(None)
+            i = i + 1
+        }
+
+        // recopie stable en partant de head
+        let mut k = 0
+        while k < self.len {
+            let src = self.wrap(self.head + k)
+            // Ici, sans Option::take(), on clone puis remet à None (T: Clone)
+            let v_opt = self.buf[src as usize].clone()
+            match v_opt {
+                Some(v) => {
+                    new_buf[k as usize] = Some(v)
+                }
+                None => {
+                    // ne devrait pas arriver, mais restons tolérants
+                    new_buf[k as usize] = None
+                }
+            }
+            k = k + 1
+        }
+
+        self.buf = new_buf
+        self.cap = new_cap
+        self.head = 0
+        // self.len inchangé
+    }
+
+    // -------------------------- API publique ---------------------------------
+
+    pub fn clear(&mut self) {
+        // Remet tous les slots à None
+        let mut i = 0
+        while i < self.cap {
+            self.buf[i as usize] = None
+            i = i + 1
+        }
+        self.head = 0
+        self.len = 0
+    }
+
+    pub fn reserve(&mut self, additional: i32) {
+        if additional < 0 { return }
+        self.ensure_capacity_for(additional)
+    }
+
+    pub fn shrink_to_fit(&mut self) {
+        let mut target = self.len
+        if target < 8 { target = 8 }
+        if target < self.cap {
+            self.realloc_to(target)
+        }
+    }
+
+    // --------- accès lecture ---------
+
+    pub fn front(&self) -> Option<&T> {
+        if self.len == 0 { return None }
+        let idx = self.head
+        match &self.buf[idx as usize] {
+            Some(ref v) => Some(v),
+            None => None,
+        }
+    }
+
+    pub fn back(&self) -> Option<&T> {
+        if self.len == 0 { return None }
+        let idx = self.wrap(self.head + self.len - 1)
+        match &self.buf[idx as usize] {
+            Some(ref v) => Some(v),
+            None => None,
+        }
+    }
+
+    // Lecture indexée: 0 = front, len-1 = back
+    pub fn get(&self, i: i32) -> Option<&T> {
+        if i < 0 || i >= self.len { return None }
+        let idx = self.wrap(self.head + i)
+        match &self.buf[idx as usize] {
+            Some(ref v) => Some(v),
+            None => None,
+        }
+    }
+
+    // --------- push ---------
+
+    pub fn push_back(&mut self, value: T) {
+        self.ensure_capacity_for(1)
+        let tail = self.tail_index()
+        self.buf[tail as usize] = Some(value)
+        self.len = self.len + 1
+    }
+
+    pub fn push_front(&mut self, value: T) {
+        self.ensure_capacity_for(1)
+        let new_head = self.wrap(self.head - 1)
+        self.buf[new_head as usize] = Some(value)
+        self.head = new_head
+        self.len = self.len + 1
+    }
+
+    // --------- pop ---------
+
+    pub fn pop_back(&mut self) -> Option<T> {
+        if self.len == 0 { return None }
+        let idx = self.wrap(self.head + self.len - 1)
+        let v_opt = self.buf[idx as usize].clone()
+        self.buf[idx as usize] = None
+        self.len = self.len - 1
+        self.maybe_shrink()
+        return v_opt
+    }
+
+    pub fn pop_front(&mut self) -> Option<T> {
+        if self.len == 0 { return None }
+        let idx = self.head
+        let v_opt = self.buf[idx as usize].clone()
+        self.buf[idx as usize] = None
+        self.head = self.wrap(self.head + 1)
+        self.len = self.len - 1
+        self.maybe_shrink()
+        return v_opt
+    }
+
+    // --------- utilitaires ---------
+
+    // Remplace l’élément à l’index logique i et retourne l’ancien si présent
+    pub fn replace(&mut self, i: i32, value: T) -> Option<T> {
+        if i < 0 || i >= self.len { return None }
+        let idx = self.wrap(self.head + i)
+        let old = self.buf[idx as usize].clone()
+        self.buf[idx as usize] = Some(value)
+        return old
+    }
+
+    // Insère à l’avant n éléments d’un coup (value cloné n fois)
+    pub fn extend_front(&mut self, value: T, n: i32) {
+        if n <= 0 { return }
+        self.ensure_capacity_for(n)
+        let mut k = 0
+        while k < n {
+            self.push_front(value.clone())
+            k = k + 1
+        }
+    }
+
+    // Insère à l’arrière n éléments d’un coup (value cloné n fois)
+    pub fn extend_back(&mut self, value: T, n: i32) {
+        if n <= 0 { return }
+        self.ensure_capacity_for(n)
+        let mut k = 0
+        while k < n {
+            self.push_back(value.clone())
+            k = k + 1
+        }
+    }
+
+    // Rotation à gauche de r pas (équiv. pop_front -> push_back répété)
+    pub fn rotate_left(&mut self, r: i32) {
+        if self.len <= 1 { return }
+        let steps = (r % self.len + self.len) % self.len
+        if steps == 0 { return }
+        self.head = self.wrap(self.head + steps)
+    }
+
+    // Rotation à droite de r pas
+    pub fn rotate_right(&mut self, r: i32) {
+        if self.len <= 1 { return }
+        let steps = (r % self.len + self.len) % self.len
+        if steps == 0 { return }
+        self.head = self.wrap(self.head - steps)
+    }
+
+    // Renvoie un itérateur en lecture (snapshot des indices)
+    pub fn iter(&self) -> DequeIter<T> {
+        DequeIter {
+            // on itère en s'appuyant sur les références &T,
+            // l’ordre logique est [0..len)
+            dq: self,
+            i: 0,
+        }
+    }
+}
+
+// ------------------------------ Iterateur ------------------------------------
+
+pub struct DequeIter<'a, T> where T: Clone {
+    dq: &'a Deque<T>,
+    i: i32,
+}
+
+impl<'a, T> DequeIter<'a, T> where T: Clone {
+    pub fn next(&mut self) -> Option<&'a T> {
+        if self.i >= self.dq.len { return None }
+        let out = self.dq.get(self.i)
+        self.i = self.i + 1
+        return out
+    }
+}
+
+// ------------------------------ Tests (optionnel) ----------------------------
+
+// Adapter aux macros de test de Vitte ; exemples:
+//
+// #[test]
+// fn deque_smoke() {
+//     let mut d = Deque::<i32>::with_capacity(4)
+//     assert!(d.is_empty())
+//     d.push_back(1)
+//     d.push_back(2)
+//     d.push_front(0)
+//     assert_eq!(d.len(), 3)
+//     assert_eq!(d.front().copied(), Some(0))
+//     assert_eq!(d.back().copied(),  Some(2))
+//     assert_eq!(d.pop_front(), Some(0))
+//     assert_eq!(d.pop_back(),  Some(2))
+//     assert_eq!(d.pop_back(),  Some(1))
+//     assert!(d.is_empty())
+// }
+//
+// #[test]
+// fn deque_wrap_and_grow() {
+//     let mut d = Deque::<i32>::with_capacity(2)
+//     for i in 0..100 { d.push_back(i) }
+//     for i in 0..50  { assert_eq!(d.pop_front(), Some(i)) }
+//     for i in 100..150 { d.push_front(i) }
+//     assert_eq!(d.len(), 100)
+//     // check random access
+//     assert!(d.get(0).is_some())
+//     assert!(d.get(99).is_some())
+// }

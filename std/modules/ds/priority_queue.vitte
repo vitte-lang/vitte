@@ -1,5 +1,282 @@
-//! priority_queue — file prioritaire
-struct Pq<T> { __raw: __intrinsics::Pq }
-export fn new<T>() -> Pq<T> { Pq{ __raw: __intrinsics::pq_new() } }
-export fn push<T>(mut q: Pq<T>, v: T) { __intrinsics::pq_push(q.__raw, v) }
-export fn pop<T>(mut q: Pq<T>) -> Option<T> { __intrinsics::pq_pop(q.__raw) }
+// ============================================================================
+// std/modules/ds/priority_queue.vitte
+// PriorityQueue<T> — tas binaire (max-heap ou min-heap) générique.
+//
+// Hypothèses Vitte (proches de Rust):
+//   - T: Ord + Clone
+//   - Vec<T> : new(), len(), push(), pop(), swap(i,j), truncate(), reserve(n)
+//   - Option<T> : Some/None
+//   - panic()
+//   - conversions i32 <-> usize via "as"
+// Portabilité : aucune dépendance OS (BSD/Linux/macOS/Windows/WASM ok).
+// Licence : MIT OR Apache-2.0
+// ============================================================================
+
+module ds.priority_queue
+
+pub enum HeapKind { Max, Min }
+
+pub struct PriorityQueue<T> where T: Ord + Clone {
+    kind: HeapKind,
+    data: Vec<T>,
+}
+
+impl<T> PriorityQueue<T> where T: Ord + Clone {
+
+    // ------------------------------- constructeurs ---------------------------
+
+    pub fn new_max() -> Self {
+        Self { kind: HeapKind::Max, data: Vec::new() }
+    }
+
+    pub fn new_min() -> Self {
+        Self { kind: HeapKind::Min, data: Vec::new() }
+    }
+
+    pub fn with_capacity_max(cap: i32) -> Self {
+        let mut v = Vec::new()
+        v.reserve(cap)
+        Self { kind: HeapKind::Max, data: v }
+    }
+
+    pub fn with_capacity_min(cap: i32) -> Self {
+        let mut v = Vec::new()
+        v.reserve(cap)
+        Self { kind: HeapKind::Min, data: v }
+    }
+
+    pub fn from_vec_max(mut v: Vec<T>) -> Self {
+        let mut pq = Self { kind: HeapKind::Max, data: v }
+        pq.heapify()
+        pq
+    }
+
+    pub fn from_vec_min(mut v: Vec<T>) -> Self {
+        let mut pq = Self { kind: HeapKind::Min, data: v }
+        pq.heapify()
+        pq
+    }
+
+    // ------------------------------- infos -----------------------------------
+
+    pub fn kind(&self) -> HeapKind { self.kind }
+    pub fn len(&self) -> i32 { self.data.len() as i32 }
+    pub fn is_empty(&self) -> bool { self.data.len() == 0 }
+    pub fn capacity(&self) -> i32 { self.data.capacity() as i32 }
+
+    // ------------------------------- base API --------------------------------
+
+    pub fn clear(&mut self) {
+        self.data.truncate(0)
+    }
+
+    pub fn reserve(&mut self, additional: i32) {
+        if additional > 0 { self.data.reserve(additional) }
+    }
+
+    pub fn shrink_to_fit(&mut self) {
+        // Vitte: supposons Vec a shrink_to_fit; sinon, recréer
+        // Ici on fait une copie minimale si shrink_to_fit n'existe pas:
+        // (laisser no-op si non dispo)
+    }
+
+    pub fn peek(&self) -> Option<&T> {
+        if self.data.len() == 0 { return None }
+        Some(&self.data[0])
+    }
+
+    // Ajoute un élément et restaure la propriété de tas (sift-up)
+    pub fn push(&mut self, value: T) {
+        self.data.push(value)
+        self.sift_up((self.data.len() as i32) - 1)
+    }
+
+    // Retire l'élément de plus haute priorité (racine) — O(log n)
+    pub fn pop(&mut self) -> Option<T> {
+        let n = self.data.len()
+        if n == 0 { return None }
+        self.data.swap(0, n - 1)
+        let out = self.data.pop()
+        if self.data.len() > 0 {
+            self.sift_down(0)
+        }
+        return out
+    }
+
+    // push_pop: plus efficace que push+pop si tu sais que la racine partira
+    // Renvoie l'ancien top (ou value si le tas était vide)
+    pub fn push_pop(&mut self, value: T) -> T {
+        let n = self.data.len()
+        if n == 0 {
+            // rien à comparer, value fait un aller-retour
+            return value
+        }
+        // Compare à la racine pour décider si on remplace ou si on renvoie value direct
+        let cmp = self.is_higher(&value, &self.data[0])
+        if cmp {
+            // la nouvelle valeur est "plus haute priorité" que la racine :
+            // on renvoie la racine, et on met value en racine, puis sift-down.
+            let top = self.data[0].clone()
+            self.data[0] = value
+            self.sift_down(0)
+            return top
+        } else {
+            // la racine reste meilleure ; on renvoie value sans modifier
+            return value
+        }
+    }
+
+    // Remplace la racine et renvoie l’ancienne (si présente)
+    pub fn replace_top(&mut self, value: T) -> Option<T> {
+        if self.data.len() == 0 {
+            self.data.push(value)
+            return None
+        }
+        let old = self.data[0].clone()
+        self.data[0] = value
+        self.sift_down(0)
+        return Some(old)
+    }
+
+    // Draine la structure en renvoyant un Vec trié selon la priorité:
+    //  - MaxHeap  -> ordre décroissant (du plus grand au plus petit)
+    //  - MinHeap  -> ordre croissant  (du plus petit au plus grand)
+    pub fn into_sorted_vec(mut self) -> Vec<T> {
+        let mut out: Vec<T> = Vec::new()
+        // Heapsort "naïf": pop jusqu'à vider
+        while self.data.len() > 0 {
+            let v = self.pop().unwrap()
+            out.push(v)
+        }
+        return out
+    }
+
+    // ------------------------------ vérification -----------------------------
+
+    // Debug: vérifie la propriété de tas (O(n))
+    pub fn verify(&self) -> bool {
+        let n = self.data.len() as i32
+        let mut i = 0
+        while i < n {
+            let l = self.left(i)
+            let r = self.right(i)
+            if l < n {
+                if self.is_higher(&self.data[l as usize], &self.data[i as usize]) {
+                    return false
+                }
+            }
+            if r < n {
+                if self.is_higher(&self.data[r as usize], &self.data[i as usize]) {
+                    return false
+                }
+            }
+            i = i + 1
+        }
+        true
+    }
+
+    // ------------------------------ internes ---------------------------------
+
+    fn heapify(&mut self) {
+        // Floyd O(n): partir du dernier parent vers 0
+        if self.data.len() <= 1 { return }
+        let mut i = ((self.data.len() as i32) / 2) - 1
+        while i >= 0 {
+            self.sift_down(i as i32)
+            i = i - 1
+        }
+    }
+
+    fn sift_up(&mut self, mut i: i32) {
+        while i > 0 {
+            let p = self.parent(i)
+            // Si data[i] a "plus haute priorité" que data[p], on swap et on monte
+            if self.is_higher(&self.data[i as usize], &self.data[p as usize]) {
+                self.data.swap(i as usize, p as usize)
+                i = p
+            } else {
+                break
+            }
+        }
+    }
+
+    fn sift_down(&mut self, mut i: i32) {
+        let n = self.data.len() as i32
+        loop {
+            let l = self.left(i)
+            let r = self.right(i)
+            let mut best = i
+
+            if l < n && self.is_higher(&self.data[l as usize], &self.data[best as usize]) {
+                best = l
+            }
+            if r < n && self.is_higher(&self.data[r as usize], &self.data[best as usize]) {
+                best = r
+            }
+            if best == i { break }
+            self.data.swap(i as usize, best as usize)
+            i = best
+        }
+    }
+
+    fn parent(&self, i: i32) -> i32 { (i - 1) / 2 }
+    fn left(&self, i: i32) -> i32 { (2 * i) + 1 }
+    fn right(&self, i: i32) -> i32 { (2 * i) + 2 }
+
+    // true si a doit être au-dessus de b selon le type de tas
+    fn is_higher(&self, a: &T, b: &T) -> bool {
+        match self.kind {
+            HeapKind::Max => {
+                // Max-heap: "higher" == a > b
+                return a > b
+            }
+            HeapKind::Min => {
+                // Min-heap: "higher" == a < b
+                return a < b
+            }
+        }
+    }
+}
+
+// ============================================================================
+// (Optionnel) Tests — à adapter aux macros de test de Vitte
+// ============================================================================
+
+/*
+#[test]
+fn pq_max_basic() {
+    let mut pq = PriorityQueue::<i32>::new_max()
+    assert!(pq.is_empty())
+    for x in [3,1,4,1,5,9,2,6] { pq.push(x) }
+    assert!(pq.verify())
+    assert_eq!(pq.peek().copied(), Some(9))
+    let mut out = Vec::new()
+    while let Some(v) = pq.pop() { out.push(v) }
+    // MaxHeap -> décroissant
+    assert_eq!(out, vec![9,6,5,4,3,2,1,1])
+}
+
+#[test]
+fn pq_min_basic() {
+    let mut pq = PriorityQueue::<i32>::new_min()
+    for x in [3,1,4,1,5,9,2,6] { pq.push(x) }
+    assert!(pq.verify())
+    assert_eq!(pq.peek().copied(), Some(1))
+    let mut out = Vec::new()
+    while let Some(v) = pq.pop() { out.push(v) }
+    // MinHeap -> croissant
+    assert_eq!(out, vec![1,1,2,3,4,5,6,9])
+}
+
+#[test]
+fn pq_push_pop_and_replace() {
+    let mut pq = PriorityQueue::<i32>::new_max()
+    for x in [10,7,5] { pq.push(x) } // top=10
+    let ret = pq.push_pop(11)        // 11 > 10 -> renvoie 10, top devient 11
+    assert_eq!(ret, 10)
+    assert_eq!(pq.peek().copied(), Some(11))
+    let old = pq.replace_top(8)      // remplace 11 par 8, restaure heap
+    assert_eq!(old, Some(11))
+    assert!(pq.verify())
+}
+*/

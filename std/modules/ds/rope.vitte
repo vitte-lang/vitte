@@ -1,5 +1,478 @@
-//! rope — chaîne immuable en arbre
-struct Rope { __raw: __intrinsics::Rope }
-export fn from(s: String) -> Rope { Rope{ __raw: __intrinsics::rope_from(s) } }
-export fn concat(a: Rope, b: Rope) -> Rope { __intrinsics::rope_concat(a.__raw, b.__raw) }
-export fn to_string(r: Rope) -> String { __intrinsics::rope_to_string(r.__raw) }
+// ============================================================================
+// std/modules/ds/rope.vitte
+// Rope — structure de texte hiérarchique (AVL) : concat, split, insert, delete
+// API (principale) :
+//   - Rope::new()
+//   - Rope::from_string(s: String) -> Self
+//   - len() -> i32                      // nombre de caractères
+//   - is_empty() -> bool
+//   - to_string() -> String
+//   - insert(pos: i32, s: &String)
+//   - delete(start: i32, len: i32)
+//   - slice(start: i32, len: i32) -> String
+//   - char_at(pos: i32) -> Option<char>
+//   - split_at(pos: i32) -> (Rope, Rope)
+//   - concat_right(rhs: Rope)           // self = concat(self, rhs)
+// Notes :
+//   * Indices en **caractères** (pas en octets).
+//   * On suppose String dispose de : len(), slice(start,len), push_str(), push(char).
+//   * Les feuilles stockent des chunks, taille cible ~ 1024 chars (configurable).
+//   * Équilibrage par AVL : rotations LL/LR/RR/RL.
+// Licence : MIT OR Apache-2.0
+// ============================================================================
+
+module ds.rope
+
+const LEAF_TARGET: i32 = 1024  // taille de chunk « confortable »
+const LEAF_MIN:    i32 = 256   // taille minimale avant fusion (anti-fragmentation)
+
+// ------------------------------- Nœud ----------------------------------------
+
+struct Node {
+    is_leaf: bool,
+    // feuille :
+    text: Option<String>,   // Some pour feuille
+    // interne :
+    left: Option<i32>,      // index dans Rope.nodes
+    right: Option<i32>,     // index dans Rope.nodes
+    // méta :
+    len: i32,               // nb de caractères total dans ce sous-arbre
+    height: i32,            // hauteur AVL (feuille = 1)
+}
+
+impl Node {
+    fn leaf(s: String) -> Self {
+        let l = s.len() as i32
+        Self { is_leaf: true, text: Some(s), left: None, right: None, len: l, height: 1 }
+    }
+    fn internal(lc: Option<i32>, rc: Option<i32>, len: i32, h: i32) -> Self {
+        Self { is_leaf: false, text: None, left: lc, right: rc, len: len, height: h }
+    }
+}
+
+// ------------------------------- Rope ----------------------------------------
+
+pub struct Rope {
+    nodes: Vec<Node>,
+    root: Option<i32>,   // index racine
+}
+
+impl Rope {
+    // --------------------- constructeurs ---------------------
+
+    pub fn new() -> Self {
+        Self { nodes: Vec::new(), root: None }
+    }
+
+    pub fn from_string(s: String) -> Self {
+        // Coupe en chunks ~ LEAF_TARGET puis bâtit un arbre quasi-équilibré
+        let mut r = Self::new()
+        if s.len() as i32 == 0 {
+            return r
+        }
+        // Découpage
+        let mut leaves: Vec<i32> = Vec::new()
+        let mut start: i32 = 0
+        let n = s.len() as i32
+        while start < n {
+            let take = if n - start > LEAF_TARGET { LEAF_TARGET } else { n - start }
+            let chunk = s.slice(start, take)
+            let leaf = r.alloc(Node::leaf(chunk))
+            leaves.push(leaf)
+            start = start + take
+        }
+        // Assemble par paires pour équilibrer
+        r.root = r.build_balanced(&leaves, 0, leaves.len() as i32)
+        return r
+    }
+
+    fn build_balanced(&mut self, leaves: &Vec<i32>, lo: i32, hi: i32) -> Option<i32> {
+        if lo >= hi { return None }
+        if hi - lo == 1 { return Some(leaves[lo as usize]) }
+        let mid = lo + (hi - lo) / 2
+        let l = self.build_balanced(leaves, lo, mid)
+        let r = self.build_balanced(leaves, mid, hi)
+        return Some(self.mk_internal(l, r))
+    }
+
+    // --------------------- infos -----------------------------
+
+    pub fn is_empty(&self) -> bool {
+        match self.root {
+            None => true,
+            Some(i) => self.nodes[i as usize].len == 0
+        }
+    }
+
+    pub fn len(&self) -> i32 {
+        match self.root {
+            None => 0,
+            Some(i) => self.nodes[i as usize].len
+        }
+    }
+
+    // --------------------- lecture ---------------------------
+
+    pub fn to_string(&self) -> String {
+        let mut out = String::new()
+        self.walk_to_string(self.root, &mut out)
+        return out
+    }
+
+    pub fn char_at(&self, pos: i32) -> Option<char> {
+        if pos < 0 || pos >= self.len() { return None }
+        return self.char_at_rec(self.root?, pos)
+    }
+
+    pub fn slice(&self, start: i32, len: i32) -> String {
+        if len <= 0 || start >= self.len() { return String::new() }
+        let mut s = start
+        let mut remain = if start + len > self.len() { self.len() - start } else { len }
+        let (l, mid_r) = self.split_at(start)
+        let (mid, _r) = mid_r.split_at(remain)
+        return mid.to_string()
+    }
+
+    // --------------------- édition ---------------------------
+
+    pub fn insert(&mut self, pos: i32, s: &String) {
+        if s.len() as i32 == 0 { return }
+        let (left, right) = self.split_at(pos)
+        let mid = Rope::from_string(s.clone())
+        let merged = left.concat(mid).concat(right)
+        *self = merged
+    }
+
+    pub fn delete(&mut self, start: i32, len: i32) {
+        if len <= 0 || start >= self.len() { return }
+        let (a, b) = self.split_at(start)
+        let (mid, c) = b.split_at(len)
+        // drop(mid)
+        *self = a.concat(c)
+    }
+
+    pub fn split_at(&self, pos: i32) -> (Rope, Rope) {
+        // Renvoie (gauche, droite) avec |gauche| == clamp(pos)
+        let p = if pos <= 0 { 0 } else if pos >= self.len() { self.len() } else { pos }
+        let mut clone = self.clone()
+        let (l, r) = clone.split_node(clone.root, p)
+        let mut rl = Rope::new(); rl.nodes = clone.nodes.clone(); rl.root = l
+        let mut rr = Rope::new(); rr.nodes = rl.nodes.clone();   rr.root = r
+        // Note: pour rester simple, on copie le pool à chaque split; une version pro ferait un pool partagé.
+        (rl.rebalance_all(), rr.rebalance_all())
+    }
+
+    pub fn concat_right(&mut self, rhs: Rope) {
+        let merged = self.concat(rhs)
+        *self = merged
+    }
+
+    pub fn concat(mut self, mut rhs: Rope) -> Rope {
+        // Concat = join(self.root, rhs.root)
+        if self.root.is_none() { return rhs }
+        if rhs.root.is_none() { return self }
+        // On fusionne les pools naïvement (copie), indices recalculés
+        let (mut new_nodes, map_self) = Self::clone_nodes_with_map(&self.nodes)
+        let (rhs_nodes2, map_rhs) = Self::clone_nodes_with_map(&rhs.nodes)
+
+        // Append rhs nodes
+        let base = new_nodes.len() as i32
+        let mut i = 0
+        while i < rhs_nodes2.len() as i32 {
+            new_nodes.push(rhs_nodes2[i as usize])
+            i += 1
+        }
+        let root_l = map_self[self.root.unwrap() as usize]
+        let root_r = base + map_rhs[rhs.root.unwrap() as usize]
+
+        let mut out = Rope { nodes: new_nodes, root: Some(Self::mk_internal_static(&mut new_nodes, root_l, root_r)) }
+        out.root = Some(out.balance(out.root.unwrap()))
+        return out
+    }
+
+    // --------------------- internes : pool -------------------
+
+    fn alloc(&mut self, n: Node) -> i32 {
+        let id = self.nodes.len() as i32
+        self.nodes.push(n)
+        return id
+    }
+
+    fn mk_internal(&mut self, l: Option<i32>, r: Option<i32>) -> i32 {
+        let (llen, lht) = self.meta(l)
+        let (rlen, rht) = self.meta(r)
+        let len = llen + rlen
+        let h = 1 + Self::max_i32(lht, rht)
+        self.alloc(Node::internal(l, r, len, h))
+    }
+
+    // version statique pour concat (pool externe)
+    fn mk_internal_static(nodes: &mut Vec<Node>, l: i32, r: i32) -> i32 {
+        let (llen, lht) = Self::meta_static(nodes, Some(l))
+        let (rlen, rht) = Self::meta_static(nodes, Some(r))
+        let len = llen + rlen
+        let h = 1 + Self::max_i32(lht, rht)
+        let id = nodes.len() as i32
+        nodes.push(Node::internal(Some(l), Some(r), len, h))
+        id
+    }
+
+    fn meta(&self, id: Option<i32>) -> (i32, i32) {
+        match id {
+            None => (0, 0),
+            Some(i) => (self.nodes[i as usize].len, self.nodes[i as usize].height)
+        }
+    }
+    fn meta_static(nodes: &Vec<Node>, id: Option<i32>) -> (i32, i32) {
+        match id {
+            None => (0, 0),
+            Some(i) => (nodes[i as usize].len, nodes[i as usize].height)
+        }
+    }
+
+    fn height(&self, id: Option<i32>) -> i32 { self.meta(id).1 }
+    fn len_of(&self, id: Option<i32>) -> i32 { self.meta(id).0 }
+
+    fn recalc(&mut self, i: i32) {
+        let (llen, lht) = self.meta(self.nodes[i as usize].left)
+        let (rlen, rht) = self.meta(self.nodes[i as usize].right)
+        if self.nodes[i as usize].is_leaf {
+            self.nodes[i as usize].height = 1
+            self.nodes[i as usize].len = self.nodes[i as usize].text.as_ref().unwrap().len() as i32
+        } else {
+            self.nodes[i as usize].len = llen + rlen
+            self.nodes[i as usize].height = 1 + Self::max_i32(lht, rht)
+        }
+    }
+
+    // --------------------- AVL rotations/balance -----------------------------
+
+    fn balance_factor(&self, i: i32) -> i32 {
+        let l = self.height(self.nodes[i as usize].left)
+        let r = self.height(self.nodes[i as usize].right)
+        l - r
+    }
+
+    fn rotate_left(&mut self, y: i32) -> i32 {
+        let x = self.nodes[y as usize].right.expect("rotate_left: right child")
+        let t2 = self.nodes[x as usize].left
+
+        // y.right = t2
+        self.nodes[y as usize].right = t2
+        self.recalc(y)
+
+        // x.left = y
+        self.nodes[x as usize].left = Some(y)
+        self.recalc(x)
+
+        return x
+    }
+
+    fn rotate_right(&mut self, y: i32) -> i32 {
+        let x = self.nodes[y as usize].left.expect("rotate_right: left child")
+        let t2 = self.nodes[x as usize].right
+
+        // y.left = t2
+        self.nodes[y as usize].left = t2
+        self.recalc(y)
+
+        // x.right = y
+        self.nodes[x as usize].right = Some(y)
+        self.recalc(x)
+
+        return x
+    }
+
+    fn balance(&mut self, i: i32) -> i32 {
+        self.recalc(i)
+        let bf = self.balance_factor(i)
+        if bf > 1 {
+            // left heavy
+            let li = self.nodes[i as usize].left.unwrap()
+            if self.balance_factor(li) < 0 {
+                let new_l = self.rotate_left(li)
+                self.nodes[i as usize].left = Some(new_l)
+            }
+            return self.rotate_right(i)
+        } else if bf < -1 {
+            // right heavy
+            let ri = self.nodes[i as usize].right.unwrap()
+            if self.balance_factor(ri) > 0 {
+                let new_r = self.rotate_right(ri)
+                self.nodes[i as usize].right = Some(new_r)
+            }
+            return self.rotate_left(i)
+        }
+        return i
+    }
+
+    fn rebalance_all(mut self) -> Self {
+        if self.root.is_none() { return self }
+        let r = self.rebalance_rec(self.root.unwrap())
+        self.root = Some(r)
+        return self
+    }
+    fn rebalance_rec(&mut self, i: i32) -> i32 {
+        if self.nodes[i as usize].is_leaf { return i }
+        if let Some(l) = self.nodes[i as usize].left {
+            let nl = self.rebalance_rec(l)
+            self.nodes[i as usize].left = Some(nl)
+        }
+        if let Some(r) = self.nodes[i as usize].right {
+            let nr = self.rebalance_rec(r)
+            self.nodes[i as usize].right = Some(nr)
+        }
+        self.balance(i)
+    }
+
+    // --------------------- split / join --------------------------------------
+
+    fn split_node(&mut self, id: Option<i32>, pos: i32) -> (Option<i32>, Option<i32>) {
+        match id {
+            None => (None, None),
+            Some(i) => {
+                if self.nodes[i as usize].is_leaf {
+                    let s = self.nodes[i as usize].text.as_ref().unwrap()
+                    let n = s.len() as i32
+                    if pos <= 0 {
+                        return (None, Some(i))
+                    } else if pos >= n {
+                        return (Some(i), None)
+                    } else {
+                        let left_s  = s.slice(0, pos)
+                        let right_s = s.slice(pos, n - pos)
+                        let li = self.alloc(Node::leaf(left_s))
+                        let ri = self.alloc(Node::leaf(right_s))
+                        return (Some(li), Some(ri))
+                    }
+                } else {
+                    let l = self.nodes[i as usize].left
+                    let r = self.nodes[i as usize].right
+                    let l_len = self.len_of(l)
+                    if pos < l_len {
+                        let (ll, lr) = self.split_node(l, pos)
+                        let new_right = Self::join_static(self, lr, r)
+                        return (ll, new_right)
+                    } else if pos > l_len {
+                        let (rl, rr) = self.split_node(r, pos - l_len)
+                        let new_left = Self::join_static(self, l, rl)
+                        return (new_left, rr)
+                    } else {
+                        // pos == l_len — coupe juste entre L et R
+                        return (l, r)
+                    }
+                }
+            }
+        }
+    }
+
+    fn join_static(&mut self, left: Option<i32>, right: Option<i32>) -> Option<i32> {
+        match (left, right) {
+            (None, None) => None,
+            (Some(l), None) => Some(l),
+            (None, Some(r)) => Some(r),
+            (Some(l), Some(r)) => {
+                let p = self.mk_internal(Some(l), Some(r))
+                Some(self.balance(p))
+            }
+        }
+    }
+
+    // --------------------- char_at (récursif) --------------------------------
+
+    fn char_at_rec(&self, id: Option<i32>, pos: i32) -> Option<char> {
+        match id {
+            None => None,
+            Some(i) => {
+                let n = &self.nodes[i as usize]
+                if n.is_leaf {
+                    let s = n.text.as_ref().unwrap()
+                    if pos < 0 || pos >= (s.len() as i32) { return None }
+                    return s.slice(pos, 1).chars().nth(0) // supposer slice().chars().nth(0)
+                } else {
+                    let l_len = self.len_of(n.left)
+                    if pos < l_len {
+                        return self.char_at_rec(n.left, pos)
+                    } else {
+                        return self.char_at_rec(n.right, pos - l_len)
+                    }
+                }
+            }
+        }
+    }
+
+    // --------------------- utilitaires ---------------------------------------
+
+    fn clone_nodes_with_map(src: &Vec<Node>) -> (Vec<Node>, Vec<i32>) {
+        let mut dst: Vec<Node> = Vec::new()
+        let mut map: Vec<i32> = Vec::new()
+        let mut i = 0
+        while i < src.len() as i32 {
+            dst.push(src[i as usize].clone())
+            map.push(i)
+            i += 1
+        }
+        (dst, map)
+    }
+
+    fn max_i32(a: i32, b: i32) -> i32 { if a > b { a } else { b } }
+}
+
+// --------------------------- Clone pour Node/Rope ----------------------------
+
+impl Clone for Node {
+    fn clone(&self) -> Self {
+        Self {
+            is_leaf: self.is_leaf,
+            text: match &self.text {
+                Some(s) => Some(s.clone()),
+                None => None,
+            },
+            left: self.left,
+            right: self.right,
+            len: self.len,
+            height: self.height,
+        }
+    }
+}
+
+impl Clone for Rope {
+    fn clone(&self) -> Self {
+        let mut v: Vec<Node> = Vec::new()
+        let mut i = 0
+        while i < self.nodes.len() as i32 {
+            v.push(self.nodes[i as usize].clone())
+            i += 1
+        }
+        Self { nodes: v, root: self.root }
+    }
+}
+
+// ------------------------------- Tests (optionnels) --------------------------
+
+/*
+#[test]
+fn smoke_build_concat_insert_delete() {
+    let mut r = Rope::from_string("Hello ".to_string())
+    r.insert(6, &"world".to_string())
+    assert_eq!(r.to_string(), "Hello world")
+    r.insert(5, &",".to_string())
+    assert_eq!(r.to_string(), "Hello, world")
+    r.delete(5, 2) // supprime ", "
+    assert_eq!(r.to_string(), "Helloworld")
+    let (a,b) = r.split_at(5)
+    assert_eq!(a.to_string(), "Hello")
+    assert_eq!(b.to_string(), "world")
+    let c = a.concat(b)
+    assert_eq!(c.to_string(), "Helloworld")
+}
+
+#[test]
+fn large_text_balance() {
+    let mut base = String::new()
+    for i in 0..10_000 { base.push('x') }
+    let mut r = Rope::from_string(base)
+    r.insert(5000, &"MID".to_string())
+    assert_eq!(r.slice(4998, 7), "xxMIDxx".to_string())
+}
+*/

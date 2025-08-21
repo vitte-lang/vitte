@@ -1,5 +1,401 @@
-//! btree — dictionnaire équilibré
-struct BTree<K,V> { __raw: __intrinsics::BTree }
-export fn new<K,V>() -> BTree<K,V> { BTree{ __raw: __intrinsics::btree_new() } }
-export fn set<K,V>(mut t: BTree<K,V>, k: K, v: V) { __intrinsics::btree_set(t.__raw, k, v) }
-export fn get<K,V>(t: BTree<K,V>, k: K) -> Option<V> { __intrinsics::btree_get(t.__raw, k) }
+// ============================================================================
+// std/modules/ds/btree.vitte
+// BTreeMap<K, V> — B-tree (ordre t >= 2) : get / insert / remove / contains / len
+// Portabilité : aucune API OS ; 100% std (BSD/Linux/macOS/Windows/WASM).
+// Hypothèses "Vitte" (proches de Rust):
+//   - Generics & contraintes: K: Ord + Clone, V: Clone
+//   - Vec<T>, Option<T>, Some/None, panic(), comparisons (<, >, ==)
+//   - Méthodes Vec: len, insert, remove, push, pop, truncate, last, is_empty
+//   - Indexation: v[i], références &mut (pragmatiques)
+// Licence: MIT OR Apache-2.0
+// ============================================================================
+
+module ds.btree
+
+// ---------------------------------------------------------------------------
+// Outils de comparaison
+// ---------------------------------------------------------------------------
+
+pub enum Ordering { Less, Equal, Greater }
+
+fn ord_cmp<K>(a: &K, b: &K) -> Ordering where K: Ord {
+    if a < b { return Ordering::Less }
+    if a > b { return Ordering::Greater }
+    return Ordering::Equal
+}
+
+// ---------------------------------------------------------------------------
+// Nœud du B-tree
+// ---------------------------------------------------------------------------
+
+struct Node<K, V> where K: Ord + Clone, V: Clone {
+    leaf: bool,
+    keys: Vec<K>,
+    vals: Vec<V>,
+    children: Vec<Node<K, V>>,
+}
+
+impl<K, V> Node<K, V> where K: Ord + Clone, V: Clone {
+    fn new_leaf() -> Self {
+        Self { leaf: true, keys: Vec::new(), vals: Vec::new(), children: Vec::new() }
+    }
+    fn new_internal() -> Self {
+        Self { leaf: false, keys: Vec::new(), vals: Vec::new(), children: Vec::new() }
+    }
+    fn len(&self) -> i32 { self.keys.len() as i32 }
+    fn is_full(&self, t: i32) -> bool { self.len() == 2*t - 1 }
+}
+
+// NB: on suppose que Vitte sait cloner récursivement (comme Rust).
+impl<K, V> Clone for Node<K, V> where K: Ord + Clone, V: Clone {
+    fn clone(&self) -> Self {
+        let mut cc: Vec<Node<K,V>> = Vec::new()
+        for i in 0..self.children.len() {
+            cc.push(self.children[i].clone())
+        }
+        Self {
+            leaf: self.leaf,
+            keys: self.keys.clone(),
+            vals: self.vals.clone(),
+            children: cc,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// BTreeMap
+// ---------------------------------------------------------------------------
+
+pub struct BTreeMap<K, V> where K: Ord + Clone, V: Clone {
+    t: i32,       // min_degree (t >= 2)
+    size: i64,    // nombre de paires stockées
+    root: Node<K, V>,
+}
+
+impl<K, V> BTreeMap<K, V> where K: Ord + Clone, V: Clone {
+
+    // Crée un B-tree d'ordre t (t >= 2)
+    pub fn new(min_degree: i32) -> Self {
+        if min_degree < 2 { panic("BTreeMap::new: min_degree doit être >= 2") }
+        Self { t: min_degree, size: 0, root: Node::new_leaf() }
+    }
+
+    pub fn is_empty(&self) -> bool { self.size == 0 }
+    pub fn len(&self) -> i64 { self.size }
+
+    // Renvoie true si la clé existe
+    pub fn contains_key(&self, key: &K) -> bool {
+        self.get(key).is_some()
+    }
+
+    // Recherche : &V si trouvé, None sinon
+    pub fn get(&self, key: &K) -> Option<&V> {
+        self.search_in_node(&self.root, key)
+    }
+
+    fn search_in_node<'a>(&'a self, node: &'a Node<K,V>, key: &K) -> Option<&'a V> {
+        let mut i: i32 = 0
+        while i < node.len() && ord_cmp(&node.keys[i as usize], key) == Ordering::Less {
+            i += 1
+        }
+        if i < node.len() && ord_cmp(&node.keys[i as usize], key) == Ordering::Equal {
+            return Some(&node.vals[i as usize])
+        }
+        if node.leaf { return None }
+        return self.search_in_node(&node.children[i as usize], key)
+    }
+
+    // -----------------------------------------------------------------------
+    // Insertion (CLRS-like)
+    // -----------------------------------------------------------------------
+
+    pub fn insert(&mut self, key: K, value: V) -> Option<V> {
+        let t = self.t
+        if self.root.is_full(t) {
+            // nouvelle racine, split child 0
+            let mut new_root = Node::<K,V>::new_internal()
+            new_root.children.push(self.root.clone())
+            self.split_child(&mut new_root, 0)
+            self.root = new_root
+        }
+        let prev = self.insert_non_full(&mut self.root, key, value)
+        if prev.is_none() { self.size += 1 }
+        return prev
+    }
+
+    // Scinde l'enfant i d'un parent, supposé plein (2t-1 clés)
+    fn split_child(&self, parent: &mut Node<K,V>, i: i32) {
+        let t = self.t as usize
+
+        // y = enfant plein, z = nouveau node
+        let mut y = parent.children[i as usize].clone()
+        let mut z = Node::<K,V> { leaf: y.leaf, keys: Vec::new(), vals: Vec::new(), children: Vec::new() }
+
+        // sauvegarde des médianes avant tronquage
+        let median_key = y.keys[(t-1) as usize].clone()
+        let median_val = y.vals[(t-1) as usize].clone()
+
+        // z prend t-1 clés/vals de droite
+        for j in 0..(t-1) {
+            z.keys.push(y.keys[t + j].clone())
+            z.vals.push(y.vals[t + j].clone())
+        }
+        // enfants si interne
+        if !y.leaf {
+            for j in 0..t {
+                z.children.push(y.children[t + j].clone())
+            }
+        }
+
+        // y se réduit à gauche (t-1 clés, t enfants si interne)
+        y.keys.truncate(t-1)
+        y.vals.truncate(t-1)
+        if !y.leaf { y.children.truncate(t) }
+
+        // parent insère médiane et rattache z
+        parent.keys.insert(i as usize, median_key)
+        parent.vals.insert(i as usize, median_val)
+        parent.children[i as usize] = y
+        parent.children.insert((i+1) as usize, z)
+    }
+
+    fn insert_non_full(&self, node: &mut Node<K,V>, key: K, value: V) -> Option<V> {
+        let t = self.t
+        let mut i: i32 = node.len() - 1
+
+        if node.leaf {
+            // trouver la position
+            while i >= 0 && ord_cmp(&key, &node.keys[i as usize]) == Ordering::Less {
+                i -= 1
+            }
+            let pos = (i + 1) as usize
+
+            if pos < node.keys.len() && ord_cmp(&node.keys[pos], &key) == Ordering::Equal {
+                let old = node.vals[pos].clone()
+                node.vals[pos] = value
+                return Some(old)
+            }
+            node.keys.insert(pos, key)
+            node.vals.insert(pos, value)
+            return None
+        } else {
+            // trouver l'enfant où descendre
+            while i >= 0 && ord_cmp(&key, &node.keys[i as usize]) == Ordering::Less {
+                i -= 1
+            }
+            let child_i = (i + 1) as i32
+
+            if node.children[child_i as usize].is_full(t) {
+                self.split_child(node, child_i)
+                // après split, comparer à la médiane insérée
+                if ord_cmp(&key, &node.keys[child_i as usize]) == Ordering::Greater {
+                    return self.insert_non_full(&mut node.children[(child_i + 1) as usize], key, value)
+                }
+            }
+            return self.insert_non_full(&mut node.children[child_i as usize], key, value)
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Suppression (CLRS-like) — garantit qu’on descend toujours dans un enfant
+    // possédant au moins t clés ; emprunts/fusions sinon.
+    // -----------------------------------------------------------------------
+
+    pub fn remove(&mut self, key: &K) -> Option<V> {
+        let out = self.remove_from_node(&mut self.root, key)
+
+        // si la racine est vide et interne → remonter l'enfant unique
+        if self.root.len() == 0 && !self.root.leaf {
+            let new_root = self.root.children.remove(0)
+            self.root = new_root
+        }
+        if out.is_some() { self.size -= 1 }
+        return out
+    }
+
+    fn remove_from_node(&mut self, node: &mut Node<K,V>, key: &K) -> Option<V> {
+        let mut i: i32 = 0
+        while i < node.len() && ord_cmp(&node.keys[i as usize], key) == Ordering::Less {
+            i += 1
+        }
+
+        if i < node.len() && ord_cmp(&node.keys[i as usize], key) == Ordering::Equal {
+            if node.leaf {
+                // cas 1: dans une feuille → suppression directe
+                let old = node.vals.remove(i as usize)
+                node.keys.remove(i as usize)
+                return Some(old)
+            } else {
+                // cas 2: dans un interne → 3 sous-cas (prédécesseur / successeur / fusion)
+                let t = self.t
+                if node.children[i as usize].len() >= t {
+                    let (pk, pv) = self.pop_max(&mut node.children[i as usize])
+                    let old = node.vals[i as usize].clone()
+                    node.keys[i as usize] = pk
+                    node.vals[i as usize] = pv
+                    return Some(old)
+                }
+                if node.children[(i+1) as usize].len() >= t {
+                    let (sk, sv) = self.pop_min(&mut node.children[(i+1) as usize])
+                    let old = node.vals[i as usize].clone()
+                    node.keys[i as usize] = sk
+                    node.vals[i as usize] = sv
+                    return Some(old)
+                }
+                self.merge_children(node, i)
+                return self.remove_from_node(&mut node.children[i as usize], key)
+            }
+        } else {
+            // non présent ici
+            if node.leaf { return None }
+            let mut child_i = i
+            if node.children[child_i as usize].len() < self.t {
+                self.fill_child(node, child_i)
+                if child_i > node.len() { child_i -= 1 }
+            }
+            return self.remove_from_node(&mut node.children[child_i as usize], key)
+        }
+    }
+
+    // Récupère (et supprime) le max d’un sous-arbre
+    fn pop_max(&mut self, node: &mut Node<K,V>) -> (K, V) {
+        if node.leaf {
+            let v = node.vals.pop().expect("node not empty")
+            let k = node.keys.pop().expect("node not empty")
+            return (k, v)
+        } else {
+            let last = node.children.len() - 1
+            if node.children[last].len() < self.t {
+                self.fill_child(node, (last as i32))
+            }
+            return self.pop_max(&mut node.children[last])
+        }
+    }
+
+    // Récupère (et supprime) le min d’un sous-arbre
+    fn pop_min(&mut self, node: &mut Node<K,V>) -> (K, V) {
+        if node.leaf {
+            let v = node.vals.remove(0)
+            let k = node.keys.remove(0)
+            return (k, v)
+        } else {
+            if node.children[0].len() < self.t {
+                self.fill_child(node, 0)
+            }
+            return self.pop_min(&mut node.children[0])
+        }
+    }
+
+    // Fusion children[i] + (key[i],val[i]) + children[i+1] → children[i]
+    fn merge_children(&mut self, parent: &mut Node<K,V>, i: i32) {
+        let mut left  = parent.children[i as usize].clone()
+        let right     = parent.children[(i+1) as usize].clone()
+
+        // ajouter la clé/val du parent
+        left.keys.push(parent.keys[i as usize].clone())
+        left.vals.push(parent.vals[i as usize].clone())
+
+        // concaténer right
+        for j in 0..right.keys.len() { left.keys.push(right.keys[j].clone()) }
+        for j in 0..right.vals.len() { left.vals.push(right.vals[j].clone()) }
+        if !left.leaf {
+            for j in 0..right.children.len() { left.children.push(right.children[j].clone()) }
+        }
+
+        // réécrire enfant i et supprimer i+1 + la clé i
+        parent.children[i as usize] = left
+        parent.children.remove((i+1) as usize)
+        parent.keys.remove(i as usize)
+        parent.vals.remove(i as usize)
+    }
+
+    // Assure que children[i] possède >= t clés (par emprunt voisin sinon fusion)
+    fn fill_child(&mut self, parent: &mut Node<K,V>, i: i32) {
+        if i > 0 && parent.children[(i-1) as usize].len() >= self.t {
+            self.borrow_from_prev(parent, i)
+        } else if i < parent.len() && parent.children[(i+1) as usize].len() >= self.t {
+            self.borrow_from_next(parent, i)
+        } else {
+            if i < parent.len() {
+                self.merge_children(parent, i)
+            } else {
+                self.merge_children(parent, i - 1)
+            }
+        }
+    }
+
+    // Emprunte au voisin gauche
+    fn borrow_from_prev(&mut self, parent: &mut Node<K,V>, i: i32) {
+        let mut left = parent.children[(i-1) as usize].clone()
+        let mut cur  = parent.children[i as usize].clone()
+
+        // décaler dans cur
+        cur.keys.insert(0, parent.keys[(i-1) as usize].clone())
+        cur.vals.insert(0, parent.vals[(i-1) as usize].clone())
+        if !cur.leaf {
+            let child = left.children.pop().expect("left has child")
+            cur.children.insert(0, child)
+        }
+
+        // remonter clé de left dans parent
+        let lk = left.keys.pop().expect("left key")
+        let lv = left.vals.pop().expect("left val")
+        parent.keys[(i-1) as usize] = lk
+        parent.vals[(i-1) as usize] = lv
+
+        // écrire back
+        parent.children[(i-1) as usize] = left
+        parent.children[i as usize] = cur
+    }
+
+    // Emprunte au voisin droit
+    fn borrow_from_next(&mut self, parent: &mut Node<K,V>, i: i32) {
+        let mut right = parent.children[(i+1) as usize].clone()
+        let mut cur   = parent.children[i as usize].clone()
+
+        cur.keys.push(parent.keys[i as usize].clone())
+        cur.vals.push(parent.vals[i as usize].clone())
+        if !cur.leaf {
+            let child = right.children.remove(0)
+            cur.children.push(child)
+        }
+
+        let rk = right.keys.remove(0)
+        let rv = right.vals.remove(0)
+        parent.keys[i as usize] = rk
+        parent.vals[i as usize] = rv
+
+        parent.children[i as usize] = cur
+        parent.children[(i+1) as usize] = right
+    }
+}
+
+// ---------------------------------------------------------------------------
+// (Optionnel) Tests de fumée — adapter aux macros de test de Vitte
+// ---------------------------------------------------------------------------
+
+/*
+#[test]
+fn smoke_insert_get_remove() {
+    let mut bt = BTreeMap::<i64, i64>::new(8)
+    for i in 0..10_000 {
+        assert!(bt.insert(i, i*i).is_none())
+    }
+    for i in 0..10_000 {
+        assert_eq!(bt.get(&i).copied(), Some(i*i))
+    }
+    for i in (0..10_000).rev() {
+        assert_eq!(bt.remove(&i), Some(i*i))
+    }
+    assert!(bt.is_empty())
+}
+
+#[test]
+fn overwrite_value() {
+    let mut bt = BTreeMap::<i32, i32>::new(4)
+    assert!(bt.insert(42, 1).is_none())
+    assert_eq!(bt.insert(42, 2), Some(1))
+    assert_eq!(bt.get(&42).copied(), Some(2))
+    assert_eq!(bt.len(), 1)
+}
+*/
