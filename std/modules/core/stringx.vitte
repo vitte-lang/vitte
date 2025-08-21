@@ -1,6 +1,533 @@
-//! stringx — utilitaires String
-export fn trim(s: String) -> String { __intrinsics::str_trim(s) }
-export fn split(s: String, sep: String) -> Vec<String> { __intrinsics::str_split(s, sep) }
-export fn starts_with(s: String, prefix: String) -> bool { __intrinsics::str_starts_with(s, prefix) }
-export fn ends_with(s: String, suffix: String) -> bool { __intrinsics::str_ends_with(s, suffix) }
-export fn replace(s: String, from: String, to: String) -> String { __intrinsics::str_replace(s, from, to) }
+//! std.modules.core.stringx — Chaînes UTF‑8 et utilitaires
+//!
+//! Fournit deux types principaux :
+//! - `Str`    : vue/slice UTF‑8 non possédée (ptr,len)
+//! - `String` : chaîne UTF‑8 possédée (mutable, extensible, terminée par \0)
+//!
+//! Plus :
+//! - Validation/itération UTF‑8 (CharsIter, BytesIter)
+//! - Conversions Option/Result pour erreurs de décodage (Utf8Error)
+//! - Recherche/substring/split/trim/starts_with/ends_with/contains
+//! - Transformations ASCII (to_lower_ascii/to_upper_ascii, eq_ignore_ascii_case)
+//! - Concat/insert/replace/join, StringBuilder implicite via String
+//!
+//! ⚠️ Indexation en **octets** par défaut. Utilisez les itérateurs de caractères
+//! pour parcourir des code points Unicode en sécurité. `is_char_boundary(i)`
+//! permet de vérifier un offset octet comme frontière UTF‑8.
+
+module std.modules.core.stringx
+
+use std.core.sys
+use std.core.mem
+use std.modules.core.option
+use std.modules.core.result
+
+// —————————————————————————————————————————————
+// Utils mémoire locales (move pour overlaps)
+// —————————————————————————————————————————————
+
+inline fn mem_copy(dst: *u8, src: *u8, len: usize) {
+    let mut i = 0usize;
+    while i < len { *(dst + i) = *(src + i); i += 1; }
+}
+
+inline fn mem_set(dst: *u8, byte: u8, len: usize) {
+    let mut i = 0usize;
+    while i < len { *(dst + i) = byte; i += 1; }
+}
+
+inline fn mem_move(dst: *u8, src: *u8, len: usize) {
+    if dst == src || len == 0 { return; }
+    if dst < src { mem_copy(dst, src, len); return; }
+    // recopie arrière pour zones qui se chevauchent
+    let mut i = len;
+    while i > 0 { i -= 1; *(dst + i) = *(src + i); }
+}
+
+// —————————————————————————————————————————————
+// UTF‑8 : encodage/décodage/validation
+// —————————————————————————————————————————————
+
+public enum Utf8Error {
+    InvalidLeadingByte,
+    UnexpectedContinuation,
+    OverlongEncoding,
+    CodepointOutOfRange,
+    UnexpectedEnd
+}
+
+inline fn is_cont_byte(b: u8) -> bool { return (b & 0xC0) == 0x80; }
+
+/// Encode un code point Unicode en UTF‑8.
+/// Retourne le nombre d’octets écrits (1..4).
+public fn encode_utf8(cp: char, out: *u8) -> usize {
+    let u = cp as u32;
+    if u <= 0x7F {
+        *out = u as u8; return 1;
+    } else if u <= 0x7FF {
+        *out = (0xC0 | ((u >> 6) & 0x1F)) as u8;
+        *(out + 1) = (0x80 | (u & 0x3F)) as u8;
+        return 2;
+    } else if u >= 0xD800 && u <= 0xDFFF {
+        panic("encode_utf8: surrogate not valid");
+    } else if u <= 0xFFFF {
+        *out = (0xE0 | ((u >> 12) & 0x0F)) as u8;
+        *(out + 1) = (0x80 | ((u >> 6) & 0x3F)) as u8;
+        *(out + 2) = (0x80 | (u & 0x3F)) as u8;
+        return 3;
+    } else if u <= 0x10FFFF {
+        *out = (0xF0 | ((u >> 18) & 0x07)) as u8;
+        *(out + 1) = (0x80 | ((u >> 12) & 0x3F)) as u8;
+        *(out + 2) = (0x80 | ((u >> 6) & 0x3F)) as u8;
+        *(out + 3) = (0x80 | (u & 0x3F)) as u8;
+        return 4;
+    } else {
+        panic("encode_utf8: codepoint out of range");
+    }
+}
+
+/// Décode le caractère suivant à partir d’un offset octet.
+/// Retourne (char, next_index) ou Utf8Error.
+public fn decode_next(buf: *u8, len: usize, idx: usize) -> Result<(char,usize), Utf8Error> {
+    if idx >= len { return Err(UnexpectedEnd); }
+    let b0 = *(buf + idx);
+    if b0 < 0x80u8 {
+        return Ok((b0 as char, idx + 1));
+    }
+    // 2..4 octets
+    let mut need = 0usize;
+    let mut cp: u32 = 0;
+    if (b0 & 0xE0) == 0xC0 { need = 2; cp = (b0 & 0x1F) as u32; if cp == 0 { /*possible overlong*/ } }
+    else if (b0 & 0xF0) == 0xE0 { need = 3; cp = (b0 & 0x0F) as u32; }
+    else if (b0 & 0xF8) == 0xF0 { need = 4; cp = (b0 & 0x07) as u32; }
+    else { return Err(InvalidLeadingByte); }
+
+    if idx + need > len { return Err(UnexpectedEnd); }
+    let mut i = 1usize;
+    while i < need {
+        let b = *(buf + idx + i);
+        if !is_cont_byte(b) { return Err(UnexpectedContinuation); }
+        cp = (cp << 6) | (b as u32 & 0x3F);
+        i += 1;
+    }
+    // Ajuster selon le nombre d’octets
+    if need == 2 { cp &= 0x7FF; if cp < 0x80 { return Err(OverlongEncoding); } }
+    if need == 3 { cp &= 0xFFFF; if cp < 0x800 { return Err(OverlongEncoding); } }
+    if need == 4 { if cp < 0x10000 { return Err(OverlongEncoding); } }
+    if cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) { return Err(CodepointOutOfRange); }
+    return Ok((cp as char, idx + need));
+}
+
+/// Décode le caractère précédent avant l’offset `idx` (idx>0).
+public fn decode_prev(buf: *u8, len: usize, idx: usize) -> Result<(char,usize), Utf8Error> {
+    if idx == 0 || idx > len { return Err(UnexpectedEnd); }
+    let mut i = idx - 1;
+    // recule jusqu’à octet non-continuation
+    let mut back = 0usize;
+    while i > 0 && is_cont_byte(*(buf + i)) { i -= 1; back += 1; if back > 3 { return Err(InvalidLeadingByte); } }
+    return decode_next(buf, len, i);
+}
+
+/// Vérifie l’intégrité UTF‑8 du buffer.
+public fn validate_utf8(ptr: *u8, len: usize) -> Result<(), Utf8Error> {
+    let mut i = 0usize;
+    while i < len {
+        match decode_next(ptr, len, i) {
+            Ok((_, next)) => { i = next; },
+            Err(e) => return Err(e)
+        }
+    }
+    return Ok(());
+}
+
+// —————————————————————————————————————————————
+// Slice UTF‑8 : Str
+// —————————————————————————————————————————————
+
+public struct Str {
+    ptr: *u8,
+    len: usize
+}
+
+impl Str {
+    public fn from_ptr_len(ptr: *u8, len: usize) -> Str { return Str { ptr, len }; }
+    public fn empty() -> Str { return Str { ptr: null, len: 0 }; }
+
+    public fn as_ptr(self: &Str) -> *u8 { return self.ptr; }
+    public fn len(self: &Str) -> usize { return self.len; }
+    public fn is_empty(self: &Str) -> bool { return self.len == 0; }
+
+    /// Vérifie si l’offset octet est frontière de caractère UTF‑8
+    public fn is_char_boundary(self: &Str, idx: usize) -> bool {
+        if idx == 0 || idx == self.len { return true; }
+        let b = *(self.ptr + idx);
+        return (b & 0xC0) != 0x80; // pas une continuation
+    }
+
+    /// Nombre de caractères (coût O(n))
+    public fn char_count(self: &Str) -> usize {
+        let mut c = 0usize; let mut i = 0usize;
+        while i < self.len {
+            let b = *(self.ptr + i);
+            if (b & 0xC0) != 0x80 { c += 1; }
+            i += 1;
+        }
+        return c;
+    }
+
+    /// Sous‑chaîne par offsets octets (vérifie les frontières si `check_utf8=true`)
+    public fn slice(self: &Str, start: usize, end: usize, check_utf8: bool = true) -> Str {
+        if start > end || end > self.len { panic("Str::slice out of range"); }
+        if check_utf8 {
+            if !self.is_char_boundary(start) || !self.is_char_boundary(end) { panic("Str::slice not at char boundary"); }
+        }
+        return Str { ptr: self.ptr + start, len: end - start };
+    }
+
+    public fn starts_with(self: &Str, prefix: Str) -> bool {
+        if prefix.len > self.len { return false; }
+        let mut i = 0usize;
+        while i < prefix.len { if *(self.ptr + i) != *(prefix.ptr + i) { return false; } i += 1; }
+        return true;
+    }
+
+    public fn ends_with(self: &Str, suffix: Str) -> bool {
+        if suffix.len > self.len { return false; }
+        let off = self.len - suffix.len;
+        let mut i = 0usize;
+        while i < suffix.len { if *(self.ptr + off + i) != *(suffix.ptr + i) { return false; } i += 1; }
+        return true;
+    }
+
+    public fn contains(self: &Str, needle: Str) -> bool { return self.find(needle).is_some(); }
+
+    /// Recherche sous‑chaîne (naïf), retourne offset octet
+    public fn find(self: &Str, needle: Str) -> Option<usize> {
+        if needle.len == 0 { return Some(0usize); }
+        if needle.len > self.len { return None; }
+        let limit = self.len - needle.len;
+        let mut i = 0usize;
+        while i <= limit {
+            let mut j = 0usize; let mut ok = true;
+            while j < needle.len {
+                if *(self.ptr + i + j) != *(needle.ptr + j) { ok = false; break; }
+                j += 1;
+            }
+            if ok { return Some(i); }
+            i += 1;
+        }
+        return None;
+    }
+
+    // Comparaisons (lexicographiques par octets)
+    public fn eq(self: &Str, other: Str) -> bool {
+        if self.len != other.len { return false; }
+        let mut i = 0usize; while i < self.len { if *(self.ptr + i) != *(other.ptr + i) { return false; } i += 1; }
+        return true;
+    }
+
+    public fn cmp(self: &Str, other: Str) -> i32 {
+        let n = if self.len < other.len { self.len } else { other.len };
+        let mut i = 0usize;
+        while i < n {
+            let a = *(self.ptr + i); let b = *(other.ptr + i);
+            if a != b { return (a as i32) - (b as i32); }
+            i += 1;
+        }
+        if self.len == other.len { return 0; }
+        return if self.len < other.len { -1 } else { 1 };
+    }
+
+    // ASCII helpers
+    public fn eq_ignore_ascii_case(self: &Str, other: Str) -> bool {
+        if self.len != other.len { return false; }
+        let mut i = 0usize;
+        while i < self.len {
+            let mut a = *(self.ptr + i);
+            let mut b = *(other.ptr + i);
+            if a >= 'A' as u8 && a <= 'Z' as u8 { a = a + 32; }
+            if b >= 'A' as u8 && b <= 'Z' as u8 { b = b + 32; }
+            if a != b { return false; }
+            i += 1;
+        }
+        return true;
+    }
+
+    // Trim (ASCII whitespace)
+    public fn trim(self: &Str) -> Str { return self.trim_start().trim_end(); }
+
+    public fn trim_start(self: &Str) -> Str {
+        let mut i = 0usize;
+        while i < self.len {
+            let c = *(self.ptr + i);
+            if !(c == 9 || c == 10 || c == 13 || c == 32) { break; }
+            i += 1;
+        }
+        return self.slice(i, self.len, false);
+    }
+
+    public fn trim_end(self: &Str) -> Str {
+        if self.len == 0 { return *self; }
+        let mut j = self.len;
+        while j > 0 {
+            let c = *(self.ptr + (j - 1));
+            if !(c == 9 || c == 10 || c == 13 || c == 32) { break; }
+            j -= 1;
+        }
+        return self.slice(0, j, false);
+    }
+
+    // Itérateurs
+    public fn bytes(self: &Str) -> BytesIter { return BytesIter { s: *self, idx: 0 }; }
+    public fn chars(self: &Str) -> CharsIter { return CharsIter { s: *self, idx: 0 }; }
+
+    // Split (par sous‑chaîne)
+    public fn split(self: &Str, delim: Str) -> SplitIter { return SplitIter { s: *self, d: delim, i: 0 }; }
+
+    // Conversion
+    public fn to_string(self: &Str) -> String {
+        let mut out = String::with_capacity(self.len);
+        out.push_str(*self);
+        return out;
+    }
+}
+
+// —————————————————————————————————————————————
+// String possédée (UTF‑8, terminée par \0)
+// —————————————————————————————————————————————
+
+public struct String {
+    ptr: *u8,
+    len: usize,
+    cap: usize
+}
+
+impl String {
+    public fn new() -> String { return String { ptr: null, len: 0, cap: 0 }; }
+
+    public fn with_capacity(capacity: usize) -> String {
+        let cap = if capacity == 0 { 1 } else { capacity };
+        let raw = sys::alloc(cap + 1) as *u8; // +1 pour \0 final
+        if raw == null { panic("String alloc failed"); }
+        *(raw) = 0; // NUL initial
+        return String { ptr: raw, len: 0, cap };
+    }
+
+    fn ensure_cap(self: &mut String, add: usize) {
+        let need = self.len + add;
+        if need <= self.cap { return; }
+        let mut new_cap = if self.cap == 0 { 16 } else { self.cap * 2 };
+        while new_cap < need { new_cap *= 2; }
+        let raw = sys::alloc(new_cap + 1) as *u8;
+        if raw == null { panic("String grow alloc failed"); }
+        if self.len > 0 { mem_copy(raw, self.ptr, self.len); }
+        *(raw + self.len) = 0;
+        if self.ptr != null { sys::free(self.ptr); }
+        self.ptr = raw; self.cap = new_cap;
+    }
+
+    public fn as_str(self: &String) -> Str { return Str { ptr: self.ptr, len: self.len }; }
+    public fn len(self: &String) -> usize { return self.len; }
+    public fn capacity(self: &String) -> usize { return self.cap; }
+    public fn is_empty(self: &String) -> bool { return self.len == 0; }
+
+    public fn clear(self: &mut String) { self.len = 0; if self.ptr != null { *(self.ptr) = 0; } }
+
+    public fn shrink_to_fit(self: &mut String) {
+        if self.len == self.cap { return; }
+        let raw = sys::alloc(self.len + 1) as *u8;
+        if raw == null { return; }
+        if self.len > 0 { mem_copy(raw, self.ptr, self.len); }
+        *(raw + self.len) = 0;
+        if self.ptr != null { sys::free(self.ptr); }
+        self.ptr = raw; self.cap = self.len;
+    }
+
+    // Ajouts
+    public fn push_char(self: &mut String, ch: char) {
+        self.ensure_cap(4);
+        let wrote = encode_utf8(ch, self.ptr + self.len);
+        self.len += wrote; *(self.ptr + self.len) = 0;
+    }
+
+    public fn push_byte(self: &mut String, b: u8) { // utile pour ASCII
+        self.ensure_cap(1);
+        *(self.ptr + self.len) = b; self.len += 1; *(self.ptr + self.len) = 0;
+    }
+
+    public fn push_str(self: &mut String, s: Str) {
+        self.ensure_cap(s.len);
+        mem_copy(self.ptr + self.len, s.ptr, s.len);
+        self.len += s.len; *(self.ptr + self.len) = 0;
+    }
+
+    // Insertion (par offset octet, ne vérifie pas la frontière de char)
+    public fn insert_bytes(self: &mut String, pos: usize, data: Str) {
+        if pos > self.len { panic("String::insert_bytes out of range"); }
+        self.ensure_cap(data.len);
+        // décale la queue
+        mem_move(self.ptr + pos + data.len, self.ptr + pos, self.len - pos);
+        // copie la donnée
+        mem_copy(self.ptr + pos, data.ptr, data.len);
+        self.len += data.len; *(self.ptr + self.len) = 0;
+    }
+
+    // Pop du dernier caractère UTF‑8
+    public fn pop(self: &mut String) -> Option<char> {
+        if self.len == 0 { return None; }
+        match decode_prev(self.ptr, self.len, self.len) {
+            Ok((ch, start)) => { self.len = start; *(self.ptr + self.len) = 0; return Some(ch); },
+            Err(_) => { // si invalide, retire 1 octet par prudence
+                self.len -= 1; *(self.ptr + self.len) = 0; return None;
+            }
+        }
+    }
+
+    // Remplace toutes les occurrences de `from` par `to` (naïf)
+    public fn replace(self: &String, from: Str, to: Str) -> String {
+        if from.len == 0 { // comportement: insérer sep entre bytes
+            let mut out = String::with_capacity(self.len + to.len * (self.len + 1));
+            let s = self.as_str();
+            let mut i = 0usize;
+            out.push_str(to);
+            while i < s.len { out.push_byte(*(s.ptr + i)); out.push_str(to); i += 1; }
+            return out;
+        }
+        let s = self.as_str();
+        // Première passe: compter occurrences
+        let mut count = 0usize; let mut i = 0usize;
+        while i <= s.len - from.len {
+            let mut j = 0usize; let mut ok = true;
+            while j < from.len { if *(s.ptr + i + j) != *(from.ptr + j) { ok = false; break; } j += 1; }
+            if ok { count += 1; i += from.len; } else { i += 1; }
+        }
+        if count == 0 { return self.as_str().to_string(); }
+        let new_len = s.len + count * (to.len - from.len);
+        let mut out = String::with_capacity(new_len);
+        // Deuxième passe: construire
+        i = 0;
+        while i < s.len {
+            if i <= s.len - from.len {
+                let mut j = 0usize; let mut ok = true;
+                while j < from.len { if *(s.ptr + i + j) != *(from.ptr + j) { ok = false; break; } j += 1; }
+                if ok { out.push_str(to); i += from.len; continue; }
+            }
+            out.push_byte(*(s.ptr + i)); i += 1;
+        }
+        return out;
+    }
+
+    // ASCII case transforms (in‑place)
+    public fn make_lower_ascii(self: &mut String) {
+        let mut i = 0usize; while i < self.len {
+            let b = *(self.ptr + i);
+            if b >= 'A' as u8 && b <= 'Z' as u8 { *(self.ptr + i) = b + 32; }
+            i += 1;
+        }
+    }
+    public fn make_upper_ascii(self: &mut String) {
+        let mut i = 0usize; while i < self.len {
+            let b = *(self.ptr + i);
+            if b >= 'a' as u8 && b <= 'z' as u8 { *(self.ptr + i) = b - 32; }
+            i += 1;
+        }
+    }
+
+    public fn to_lower_ascii(self: &String) -> String { let mut s = self.as_str().to_string(); s.make_lower_ascii(); return s; }
+    public fn to_upper_ascii(self: &String) -> String { let mut s = self.as_str().to_string(); s.make_upper_ascii(); return s; }
+
+    // Join d’une liste de Str
+    public fn join(parts: *Str, count: usize, sep: Str) -> String {
+        // calcule taille
+        let mut total = if count == 0 { 0 } else { (count - 1) * sep.len };
+        let mut i = 0usize; while i < count { total += (*(parts + i)).len; i += 1; }
+        let mut out = String::with_capacity(total);
+        i = 0; while i < count {
+            out.push_str(*(parts + i));
+            if i + 1 < count { out.push_str(sep); }
+            i += 1;
+        }
+        return out;
+    }
+
+    // Libération
+    public fn free(self: &mut String) {
+        if self.ptr != null { sys::free(self.ptr); }
+        self.ptr = null; self.len = 0; self.cap = 0;
+    }
+}
+
+// —————————————————————————————————————————————
+// Itérateurs
+// —————————————————————————————————————————————
+
+public struct BytesIter { s: Str, idx: usize }
+impl Iterator<u8> for BytesIter {
+    fn next(self: &mut BytesIter) -> Option<u8> {
+        if self.idx >= self.s.len { return None; }
+        let b = *(self.s.ptr + self.idx); self.idx += 1; return Some(b);
+    }
+}
+
+public struct CharsIter { s: Str, idx: usize }
+impl Iterator<char> for CharsIter {
+    fn next(self: &mut CharsIter) -> Option<char> {
+        if self.idx >= self.s.len { return None; }
+        match decode_next(self.s.ptr, self.s.len, self.idx) {
+            Ok((ch, next)) => { self.idx = next; return Some(ch); },
+            Err(_) => { // caractère invalide : saute un octet
+                self.idx += 1; return Some('\u{FFFD}'); // U+FFFD replacement
+            }
+        }
+    }
+}
+
+public struct SplitIter { s: Str, d: Str, i: usize }
+impl Iterator<Str> for SplitIter {
+    fn next(self: &mut SplitIter) -> Option<Str> {
+        if self.i > self.s.len { return None; }
+        if self.d.len == 0 {
+            if self.i == self.s.len { self.i += 1; return Some(Str::empty()); }
+            let start = self.i; self.i += 1;
+            return Some(self.s.slice(start, start + 1, false));
+        }
+        // chercher delim à partir de i
+        let rest = Str { ptr: self.s.ptr + self.i, len: self.s.len - self.i };
+        match rest.find(self.d) {
+            Some(off) => {
+                let seg = self.s.slice(self.i, self.i + off, false);
+                self.i = self.i + off + self.d.len;
+                return Some(seg);
+            },
+            None => {
+                let seg = self.s.slice(self.i, self.s.len, false);
+                self.i = self.s.len + 1; // terminé
+                return Some(seg);
+            }
+        }
+    }
+}
+
+// —————————————————————————————————————————————
+// Constructions utilitaires
+// —————————————————————————————————————————————
+
+/// Crée un Str validé depuis un buffer UTF‑8 (ne copie pas)
+public fn str_from_utf8(ptr: *u8, len: usize) -> Result<Str, Utf8Error> {
+    match validate_utf8(ptr, len) {
+        Ok(()) => return Ok(Str { ptr, len }),
+        Err(e) => return Err(e)
+    }
+}
+
+/// Crée une String en copiant un buffer UTF‑8 (valide d’abord)
+public fn string_from_utf8(ptr: *u8, len: usize) -> Result<String, Utf8Error> {
+    match validate_utf8(ptr, len) {
+        Ok(()) => {
+            let mut s = String::with_capacity(len);
+            s.push_str(Str { ptr, len });
+            return Ok(s);
+        },
+        Err(e) => return Err(e)
+    }
+}
