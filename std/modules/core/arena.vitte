@@ -1,4 +1,337 @@
-//! arena — allocateur arène (intrinsic)
-struct Arena { __raw: __intrinsics::Arena }
-export fn new() -> Arena { Arena{ __raw: __intrinsics::arena_new() } }
-export fn alloc<T>(mut a: Arena, v: T) -> &T { __intrinsics::arena_alloc(a.__raw, v) }
+// std.core.arena — Allocateur aréna (bump allocator évolutif, aligné)
+//
+// Principes :
+// - Bump O(1) amorti : on avance un offset dans le bloc courant.
+// - Croissance par blocs chaînés ; aucune libération individuelle.
+// - Alignement respecté pour T (alignof(T)).
+// - Marques (Mark) : revenir en arrière (LIFO) sans tout vider.
+// - Utilitaires : alloc_array, alloc_zeroed, dup_bytes, dup_str, make_slice.
+// - Stats : octets utilisés, capacité totale, nombre de blocs.
+//
+// Exemples :
+//   let mut arena = Arena::with_block_size(16 * 1024);
+//   let p = arena.alloc<int>(123);
+//   let m = arena.mark();
+//   let arr = arena.alloc_array<f64>(1024);
+//   arena.reset_to(m); // annule arr
+//   arena.clear();     // remet à zéro tous les offsets
+//   arena.free();      // libère tous les blocs
+
+module std.core.arena
+
+// Hypothèses minimales de plateforme :
+// - sys::alloc(size: usize) -> *u8   : allocation brute (cap octets)
+// - sys::free(ptr: *u8)              : libération brute
+// - (optionnel) sys::debug_print(...): impression de debug
+use std.core.sys
+
+// Helpers mémoire locaux pour éviter dépendances :
+inline fn mem_copy(dst: *u8, src: *u8, len: usize) {
+    let mut i = 0usize;
+    while i < len {
+        *(dst + i) = *(src + i);
+        i += 1;
+    }
+}
+
+inline fn mem_set(dst: *u8, byte: u8, len: usize) {
+    let mut i = 0usize;
+    while i < len {
+        *(dst + i) = byte;
+        i += 1;
+    }
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Détails bas niveau : bloc chaîné
+// ————————————————————————————————————————————————————————————————————————
+
+struct Block {
+    data: *u8,       // début des octets
+    cap:  usize,     // capacité du bloc
+    off:  usize,     // offset courant dans ce bloc
+    next: *Block     // bloc suivant (liste simplement chaînée)
+}
+
+inline fn align_up(value: usize, align: usize) -> usize {
+    // préconditions : align est une puissance de deux
+    return (value + (align - 1)) & ~(align - 1);
+}
+
+inline fn is_pow2(x: usize) -> bool {
+    return x != 0 && (x & (x - 1)) == 0;
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Marque (checkpoint LIFO)
+// ————————————————————————————————————————————————————————————————————————
+
+public struct Mark {
+    block_ptr: *Block,
+    offset:    usize
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Aréna publique
+// ————————————————————————————————————————————————————————————————————————
+
+public struct Arena {
+    head: *Block,            // bloc courant
+    first: *Block,           // premier bloc (racine)
+    default_block_cap: usize,// taille par défaut des nouveaux blocs
+    blocks: usize,           // nb de blocs
+    total_cap: usize,        // somme des capacités
+    total_used: usize        // octets "utilisés" (indicatif)
+}
+
+const DEFAULT_BLOCK: usize = 8 * 1024;
+
+// Crée un bloc brut (header + payload)
+fn new_block(cap: usize) -> *Block {
+    if cap == 0 { panic("arena: block capacity cannot be zero"); }
+
+    let raw = sys::alloc(cap);
+    if raw == null { panic("arena: sys::alloc returned null"); }
+
+    let b = sys::alloc(sizeof(Block)) as *Block;
+    if b == null {
+        sys::free(raw);
+        panic("arena: header alloc failed");
+    }
+
+    (*b).data = raw;
+    (*b).cap  = cap;
+    (*b).off  = 0;
+    (*b).next = null;
+    return b;
+}
+
+impl Arena {
+    // ——————————————————————————————
+    // Constructeurs
+    // ——————————————————————————————
+
+    public fn new() -> Arena {
+        return Arena::with_block_size(DEFAULT_BLOCK);
+    }
+
+    public fn with_capacity(min_capacity: usize) -> Arena {
+        let cap = if min_capacity < DEFAULT_BLOCK { DEFAULT_BLOCK } else { align_up(min_capacity, 16) };
+        return Arena::with_block_size(cap);
+    }
+
+    public fn with_block_size(block_cap: usize) -> Arena {
+        let first = new_block(block_cap);
+        return Arena {
+            head: first,
+            first: first,
+            default_block_cap: block_cap,
+            blocks: 1,
+            total_cap: block_cap,
+            total_used: 0
+        };
+    }
+
+    // ——————————————————————————————
+    // Cycle de vie
+    // ——————————————————————————————
+
+    /// Libère tous les blocs et invalide l’aréna
+    public fn free(self: &mut Arena) {
+        let mut b = self.first;
+        while b != null {
+            let next = (*b).next;
+            sys::free((*b).data);
+            sys::free((b as *u8)); // header
+            b = next;
+        }
+        self.head  = null;
+        self.first = null;
+        self.blocks = 0;
+        self.total_cap = 0;
+        self.total_used = 0;
+        self.default_block_cap = 0;
+    }
+
+    /// Réinitialise tous les offsets, conserve les blocs/capacité
+    public fn clear(self: &mut Arena) {
+        let mut b = self.first;
+        while b != null {
+            (*b).off = 0;
+            b = (*b).next;
+        }
+        self.head = self.first;
+        self.total_used = 0;
+    }
+
+    // ——————————————————————————————
+    // Marques
+    // ——————————————————————————————
+
+    /// Marque l’état courant
+    public fn mark(self: &Arena) -> Mark {
+        return Mark { block_ptr: self.head, offset: if self.head == null { 0 } else { (*self.head).off } };
+    }
+
+    /// Revient à une marque (LIFO). Ne libère pas les blocs, remet les offsets.
+    public fn reset_to(self: &mut Arena, m: Mark) {
+        if self.first == null { return; }
+        // Trouver le bloc de la marque
+        let mut b = self.first;
+        while b != null && b != m.block_ptr {
+            b = (*b).next;
+        }
+        if b == null { panic("arena: invalid mark (block not found)"); }
+
+        // Remettre à zéro tous les blocs après la marque
+        let mut after = (*b).next;
+        while after != null {
+            (*after).off = 0;
+            after = (*after).next;
+        }
+        (*b).off = m.offset;
+        self.head = b;
+
+        // Recalcul indicatif du total_used : somme des off
+        let mut cur = self.first;
+        let mut sum = 0usize;
+        while cur != null {
+            sum += (*cur).off;
+            cur = (*cur).next;
+        }
+        self.total_used = sum;
+    }
+
+    // ——————————————————————————————
+    // Stats
+    // ——————————————————————————————
+
+    public fn stats_blocks(self: &Arena) -> usize { return self.blocks; }
+    public fn stats_total_cap(self: &Arena) -> usize { return self.total_cap; }
+    public fn stats_total_used(self: &Arena) -> usize { return self.total_used; }
+
+    // ——————————————————————————————
+    // Allocation interne avec croissance
+    // ——————————————————————————————
+
+    fn try_alloc_in(self: &mut Arena, b: *Block, size: usize, align: usize) -> *u8 {
+        if !is_pow2(align) { panic("arena: alignment must be power of two"); }
+        let off_aligned = align_up((*b).off, align);
+        if off_aligned > (*b).cap { return null; }
+        if off_aligned + size <= (*b).cap {
+            let p = (*b).data + off_aligned;
+            (*b).off = off_aligned + size;
+            return p;
+        }
+        return null;
+    }
+
+    fn grow_and_alloc(self: &mut Arena, size: usize, align: usize) -> *u8 {
+        // Taille du prochain bloc : max(default_block_cap, size + align)
+        let need = align_up(size, align);
+        let mut new_cap = self.default_block_cap;
+        if need + align > new_cap {
+            new_cap = align_up(need + align, 16);
+        }
+        let nb = new_block(new_cap);
+
+        // Chaîner
+        if self.head != null { (*self.head).next = nb; } else { self.first = nb; }
+        self.head = nb;
+        self.blocks += 1;
+        self.total_cap += new_cap;
+
+        let p = self.try_alloc_in(nb, size, align);
+        if p == null { panic("arena: internal error after grow"); }
+        return p;
+    }
+
+    fn alloc_raw(self: &mut Arena, size: usize, align: usize) -> *u8 {
+        if size == 0 { return null; }
+        if self.head == null {
+            // Recréation d’un premier bloc si clear/free a tout vidé
+            let first = new_block(if size > DEFAULT_BLOCK { align_up(size, 16) } else { DEFAULT_BLOCK });
+            self.first = first;
+            self.head  = first;
+            self.blocks = 1;
+            self.total_cap = (*first).cap;
+            self.default_block_cap = (*first).cap;
+        }
+        let p = self.try_alloc_in(self.head, size, align);
+        if p != null { self.total_used += size; return p; }
+        let gp = self.grow_and_alloc(size, align);
+        self.total_used += size;
+        return gp;
+    }
+
+    // ——————————————————————————————
+    // API typée (panics sur overflow)
+    // ——————————————————————————————
+
+    /// Alloue un T initialisé avec `value`, retourne *T
+    public fn alloc<T>(self: &mut Arena, value: T) -> *T {
+        let p = self.alloc_raw(sizeof(T), alignof(T)) as *T;
+        *p = value;
+        return p;
+    }
+
+    /// Alloue un T non initialisé (contenu indéfini)
+    public fn alloc_uninit<T>(self: &mut Arena) -> *T {
+        return self.alloc_raw(sizeof(T), alignof(T)) as *T;
+    }
+
+    /// Alloue un tableau de `count` éléments non initialisés, retourne *T (début)
+    public fn alloc_array<T>(self: &mut Arena, count: usize) -> *T {
+        if count == 0 { return null; }
+        let total = sizeof(T) * count;
+        return self.alloc_raw(total, alignof(T)) as *T;
+    }
+
+    /// Alloue un tableau et le remplit de zéros
+    public fn alloc_zeroed<T>(self: &mut Arena, count: usize) -> *T {
+        if count == 0 { return null; }
+        let total = sizeof(T) * count;
+        let p = self.alloc_raw(total, alignof(T));
+        mem_set(p, 0, total);
+        return p as *T;
+    }
+
+    /// Duplique un buffer d’octets dans l’aréna
+    public fn dup_bytes(self: &mut Arena, src: *u8, len: usize) -> *u8 {
+        if len == 0 { return null; }
+        let p = self.alloc_raw(len, 1);
+        mem_copy(p, src, len);
+        return p;
+    }
+
+    /// Duplique une chaîne C-like (utf-8) — ajoute un \0 final
+    public fn dup_str(self: &mut Arena, s: *u8, len: usize) -> *u8 {
+        let p = self.alloc_raw(len + 1, 1);
+        mem_copy(p, s, len);
+        *(p + len) = 0;
+        return p;
+    }
+
+    /// Crée une « slice » triviale {ptr, len} stockée dans l’aréna
+    public struct Slice<T> { ptr: *T, len: usize }
+    public fn make_slice<T>(self: &mut Arena, ptr: *T, len: usize) -> *Slice<T> {
+        return self.alloc<Slice<T>>(Slice<T>{ ptr, len });
+    }
+
+    // ——————————————————————————————
+    // Utilitaires de débogage (optionnels)
+    // ——————————————————————————————
+
+    public fn debug_dump(self: &Arena) {
+        // NOP si sys::debug_print indisponible
+        let mut i = 0usize;
+        let mut b = self.first;
+        while b != null {
+            sys::debug_print("arena[", i, "]: off=", (*b).off, " cap=", (*b).cap, "\n");
+            b = (*b).next;
+            i += 1;
+        }
+        sys::debug_print("arena: blocks=", self.blocks, " used=", self.total_used, " cap=", self.total_cap, "\n");
+    }
+}
+
