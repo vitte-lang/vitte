@@ -1,38 +1,200 @@
-//! Iter — itérateurs simples
-struct Iter<T> {
-  data: Vec<T>,
-  ix: i32,
+//! std.core.iter — Abstractions d’itérateurs
+//!
+//! Fournit :
+//! - Trait `Iterator<T>` avec méthode `next()`
+//! - Fonctions d’aide : collect, for_each, fold
+//! - Adaptateurs : map, filter, take, skip, enumerate, chain
+//! - Itérateurs concrets : Range, SliceIter, Empty, Once
+//!
+//! Exemple :
+//! ```vitte
+//! let r = Range::new(0, 10);
+//! let sum = r.map(fn(x) => x*x)
+//!              .filter(fn(x) => x % 2 == 0)
+//!              .take(3)
+//!              .fold(0, fn(acc, x) => acc + x);
+//! ```
+
+module std.core.iter
+
+// —————————————————————————————————————————————
+// Trait de base
+// —————————————————————————————————————————————
+
+public trait Iterator<T> {
+    fn next(self: &mut Self) -> Option<T>;
+
+    // Méthodes par défaut
+    fn for_each(self: &mut Self, f: fn(T)) {
+        while let Some(x) = self.next() { f(x); }
+    }
+
+    fn fold<A>(self: &mut Self, init: A, f: fn(A, T) -> A) -> A {
+        let mut acc = init;
+        while let Some(x) = self.next() {
+            acc = f(acc, x);
+        }
+        return acc;
+    }
+
+    fn collect<V>(self: &mut Self, mut push: fn(&mut V, T), mut new: fn() -> V) -> V {
+        let mut v = new();
+        while let Some(x) = self.next() { push(&mut v, x); }
+        return v;
+    }
 }
 
-export fn from_vec<T>(v: Vec<T>) -> Iter<T> { Iter{ data: v, ix: 0 } }
+// —————————————————————————————————————————————
+// Adaptateurs
+// —————————————————————————————————————————————
 
-impl<T> Iter<T> {
-  fn next(&mut self) -> Option<T> {
-    if self.ix >= len(self.data) { return None; }
-    let v = self.data[self.ix];
-    self.ix = self.ix + 1;
-    Some(v)
-  }
+public struct Map<I,T,U> {
+    iter: I,
+    f: fn(T) -> U
+}
 
-  fn map<U>(mut self, f: fn(T)->U) -> Vec<U> {
-    let out: Vec<U> = Vec::new();
-    loop {
-      match self.next() {
-        Some(v) => push(out, f(v)),
-        None => break,
-      }
+impl<I,T,U> Iterator<U> for Map<I,T,U>
+where I: Iterator<T> {
+    fn next(self: &mut Map<I,T,U>) -> Option<U> {
+        match self.iter.next() {
+            Some(x) => return Some((self.f)(x)),
+            None => return None
+        }
     }
-    out
-  }
+}
 
-  fn filter(mut self, pred: fn(T)->bool) -> Vec<T> {
-    let out: Vec<T> = Vec::new();
-    loop {
-      match self.next() {
-        Some(v) => if pred(v) { push(out, v) } else { },
-        None => break,
-      }
+public struct Filter<I,T> {
+    iter: I,
+    pred: fn(&T) -> bool
+}
+
+impl<I,T> Iterator<T> for Filter<I,T>
+where I: Iterator<T> {
+    fn next(self: &mut Filter<I,T>) -> Option<T> {
+        while let Some(x) = self.iter.next() {
+            if (self.pred)(&x) { return Some(x); }
+        }
+        return None;
     }
-    out
-  }
+}
+
+public struct Take<I,T> {
+    iter: I,
+    remaining: usize
+}
+
+impl<I,T> Iterator<T> for Take<I,T>
+where I: Iterator<T> {
+    fn next(self: &mut Take<I,T>) -> Option<T> {
+        if self.remaining == 0 { return None; }
+        let v = self.iter.next();
+        if v.is_some() { self.remaining -= 1; }
+        return v;
+    }
+}
+
+public struct Skip<I,T> {
+    iter: I,
+    remaining: usize
+}
+
+impl<I,T> Iterator<T> for Skip<I,T>
+where I: Iterator<T> {
+    fn next(self: &mut Skip<I,T>) -> Option<T> {
+        while self.remaining > 0 {
+            if self.iter.next().is_none() { return None; }
+            self.remaining -= 1;
+        }
+        return self.iter.next();
+    }
+}
+
+public struct Enumerate<I,T> {
+    iter: I,
+    idx: usize
+}
+
+impl<I,T> Iterator<(usize,T)> for Enumerate<I,T>
+where I: Iterator<T> {
+    fn next(self: &mut Enumerate<I,T>) -> Option<(usize,T)> {
+        match self.iter.next() {
+            Some(x) => {
+                let i = self.idx;
+                self.idx += 1;
+                return Some((i,x));
+            },
+            None => return None
+        }
+    }
+}
+
+// —————————————————————————————————————————————
+// Itérateurs concrets
+// —————————————————————————————————————————————
+
+public struct Range {
+    cur: i64,
+    end: i64
+}
+
+impl Range {
+    public fn new(start: i64, end: i64) -> Range {
+        return Range { cur: start, end };
+    }
+}
+
+impl Iterator<i64> for Range {
+    fn next(self: &mut Range) -> Option<i64> {
+        if self.cur >= self.end { return None; }
+        let v = self.cur;
+        self.cur += 1;
+        return Some(v);
+    }
+}
+
+public struct SliceIter<T> {
+    ptr: *T,
+    len: usize,
+    idx: usize
+}
+
+impl<T> SliceIter<T> {
+    public fn new(ptr: *T, len: usize) -> SliceIter<T> {
+        return SliceIter { ptr, len, idx: 0 };
+    }
+}
+
+impl<T> Iterator<*T> for SliceIter<T> {
+    fn next(self: &mut SliceIter<T>) -> Option<*T> {
+        if self.idx >= self.len { return None; }
+        let p = self.ptr + self.idx;
+        self.idx += 1;
+        return Some(p);
+    }
+}
+
+public struct Empty<T> {}
+
+impl<T> Iterator<T> for Empty<T> {
+    fn next(self: &mut Empty<T>) -> Option<T> {
+        return None;
+    }
+}
+
+public struct Once<T> {
+    value: Option<T>
+}
+
+impl<T> Once<T> {
+    public fn new(x: T) -> Once<T> {
+        return Once { value: Some(x) };
+    }
+}
+
+impl<T> Iterator<T> for Once<T> {
+    fn next(self: &mut Once<T>) -> Option<T> {
+        let v = self.value;
+        self.value = None;
+        return v;
+    }
 }

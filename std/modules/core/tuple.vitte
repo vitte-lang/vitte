@@ -1,3 +1,97 @@
-//! tuple — helpers
-export fn fst<A,B>(t: (A,B)) -> A { __intrinsics::tuple_fst(t) }
-export fn snd<A,B>(t: (A,B)) -> B { __intrinsics::tuple_snd(t) }
+//! std.modules.core.tuple — Paires et n‑uplets jusqu’à 12 éléments
+//!
+//! Objectif : fournir des tuples (A,B), (A,B,C), …, (T1..T12) avec :
+//! - Accès positionnel .0, .1, …
+//! - Constructeur `new(...)`
+//! - Traits usuels générés quand les éléments les supportent : Eq, Clone, Debug
+//! - Utilitaires spécifiques aux paires : swap(), map_first(), map_second()
+//!
+//! NOTE : Cette version "génère" les implémentations 2..=12 via macros de métaprogrammation
+//! minimalistes (syntaxe inspirée de Rust). Le compilateur Vitte doit déjà supporter
+//! l’expansion simple `macro`/`@repeat`. À défaut, garde simplement les expansions
+//! concrètes produites ci‑dessous.
+
+module std.modules.core.tuple
+
+// —————————————————————————————————————————————
+// Macros de génération (syntaxe proposée pour Vitte)
+// —————————————————————————————————————————————
+
+// tuple_define!(N, T0..TN-1, I0..IN-1) génère le type et le constructeur
+macro tuple_define(N: usize, Ts: ident[], Is: ident[]) {
+    public struct (Ts...) { $(pub Is: Ts),* }
+    impl<(Ts...)> (Ts...) {
+        public fn new($(Is: Ts),*) -> (Ts...) { return ($(Is),*); }
+    }
+}
+
+// tuple_impl_eq!(N, T0.., I0..)
+macro tuple_impl_eq(N: usize, Ts: ident[], Is: ident[]) {
+    impl<$(Ts: Eq),*> Eq for (Ts...) {
+        fn eq(self: &(Ts...), other: &(Ts...)) -> bool {
+            return $(self.Is == other.Is)&&*;
+        }
+    }
+}
+
+// tuple_impl_clone!(N, T0.., I0..)
+macro tuple_impl_clone(N: usize, Ts: ident[], Is: ident[]) {
+    impl<$(Ts: Clone),*> Clone for (Ts...) {
+        fn clone(self: &(Ts...)) -> (Ts...) { return ($(self.Is.clone()),*); }
+    }
+}
+
+// tuple_impl_debug!(N, T0.., I0..)
+macro tuple_impl_debug(N: usize, Ts: ident[], Is: ident[]) {
+    impl<$(Ts: Debug),*> Debug for (Ts...) {
+        fn fmt(self: &(Ts...)) -> String {
+            let mut s = String::new();
+            s.push_str("(");
+            let mut i = 0;
+            // Impression naïve séparée par ", "
+            $(
+                if i > 0 { s.push_str(", "); }
+                s.push_str(format!("{:?}", self.Is).as_str());
+                i += 1;
+            )*
+            s.push_str(")");
+            return s;
+        }
+    }
+}
+
+// Génération 2..=12
+@repeat N in 2..=12 {
+    // Construire les listes de types T0..T{N-1} et indices _0.._{N-1}
+    @let Ts = [@repeat i in 0..N { ident concat(T, i) }];
+    @let Is = [@repeat i in 0..N { ident @index(i) }];
+    tuple_define(N, Ts, Is);
+    tuple_impl_eq(N, Ts, Is);
+    tuple_impl_clone(N, Ts, Is);
+    tuple_impl_debug(N, Ts, Is);
+}
+
+// —————————————————————————————————————————————
+// Utilitaires spécifiques pour les paires (A,B)
+// —————————————————————————————————————————————
+
+impl<A,B> (A,B) {
+    /// Inverse les deux éléments
+    public fn swap(self: (A,B)) -> (B,A) { return (self.1, self.0); }
+
+    /// Applique une fonction au premier élément
+    public fn map_first<C>(self: (A,B), f: fn(A)->C) -> (C,B) { return (f(self.0), self.1); }
+
+    /// Applique une fonction au second élément
+    public fn map_second<C>(self: (A,B), f: fn(B)->C) -> (A,C) { return (self.0, f(self.1)); }
+}
+
+// —————————————————————————————————————————————
+// Compat util : format!(...) minimal — supposé dispo via stringx/formatter
+// Ici on déclare un stub pour compilation séparée si besoin.
+// —————————————————————————————————————————————
+
+// stub basique (à remplacer par std.modules.core.formatter)
+public trait Debug { fn fmt(self: &Self) -> String; }
+
+public fn format<T: Debug>(args: T) -> String { return args.fmt(); }

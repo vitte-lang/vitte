@@ -1,4 +1,301 @@
-//! vec — helpers
-export fn push<T>(mut v: Vec<T>, x: T) { __intrinsics::vec_push(v, x) }
-export fn pop<T>(mut v: Vec<T>) -> Option<T> { __intrinsics::vec_pop(v) }
-export fn clear<T>(mut v: Vec<T>) { __intrinsics::vec_clear(v) }
+//! std.modules.core.vec — Tableau dynamique générique (Vec<T>)
+//!
+//! Caractéristiques :
+//! - Stockage contigu sur le tas (ptr,len,cap)
+//! - Croissance amortie (doublement de capacité)
+//! - API complète : new, with_capacity, push, pop, insert, remove, swap_remove,
+//!   reserve, reserve_exact, shrink_to_fit, clear, truncate, resize_with
+//! - Accès : get/get_mut/at, set, as_ptr/as_mut_ptr
+//! - Copie de tranche : extend_from_slice, from_slice
+//! - Itérateurs : Iter, IterMut
+//! - Algorithmes : sort_by(cmp), binary_search_by(cmp), retain
+//!
+//! Notes :
+//! - `insert/remove` déplacent la queue via mem_move (O(n))
+//! - Les itérateurs deviennent invalides si la Vec est reallouée
+//! - Cette impl implémente un MVP sans destructeurs personnalisés
+//!
+//! Exemple :
+//! ```vitte
+//! let mut v = Vec<int>::new();
+//! v.push(10); v.push(20); v.insert(1, 15);
+//! for x in v.iter() { print(*x); }
+//! v.sort_by(fn(a,b) => *a - *b);
+//! ```
+
+module std.modules.core.vec
+
+use std.core.sys
+use std.core.mem
+use std.modules.core.option // Option<T>
+
+// —————————————————————————————————————————————
+// Helpers mémoire locaux
+// —————————————————————————————————————————————
+
+inline fn mem_copy(dst: *u8, src: *u8, len: usize) {
+    let mut i = 0usize; while i < len { *(dst + i) = *(src + i); i += 1; }
+}
+
+inline fn mem_set(dst: *u8, byte: u8, len: usize) {
+    let mut i = 0usize; while i < len { *(dst + i) = byte; i += 1; }
+}
+
+inline fn mem_move(dst: *u8, src: *u8, len: usize) {
+    if dst == src || len == 0 { return; }
+    if dst < src { mem_copy(dst, src, len); return; }
+    let mut i = len; while i > 0 { i -= 1; *(dst + i) = *(src + i); }
+}
+
+// —————————————————————————————————————————————
+// Vec<T>
+// —————————————————————————————————————————————
+
+public struct Vec<T> {
+    ptr: *T,
+    len: usize,
+    cap: usize
+}
+
+impl<T> Vec<T> {
+    // Construction
+    public fn new() -> Vec<T> { return Vec { ptr: null, len: 0, cap: 0 }; }
+
+    public fn with_capacity(capacity: usize) -> Vec<T> {
+        if capacity == 0 { return Vec::new(); }
+        let raw = sys::alloc(capacity * sizeof(T)) as *T;
+        if raw == null { panic("Vec alloc failed"); }
+        return Vec { ptr: raw, len: 0, cap: capacity };
+    }
+
+    public fn from_slice(src: *T, count: usize) -> Vec<T> {
+        if count == 0 { return Vec::new(); }
+        let raw = sys::alloc(count * sizeof(T)) as *T;
+        if raw == null { panic("Vec from_slice alloc failed"); }
+        mem_copy(raw as *u8, src as *u8, count * sizeof(T));
+        return Vec { ptr: raw, len: count, cap: count };
+    }
+
+    // Destruction
+    public fn free(self: &mut Vec<T>) {
+        if self.ptr != null { sys::free(self.ptr as *u8); }
+        self.ptr = null; self.len = 0; self.cap = 0;
+    }
+
+    // État
+    public fn len(self: &Vec<T>) -> usize { return self.len; }
+    public fn capacity(self: &Vec<T>) -> usize { return self.cap; }
+    public fn is_empty(self: &Vec<T>) -> bool { return self.len == 0; }
+
+    // Réservation / redimensionnement
+    fn grow_to(self: &mut Vec<T>, new_cap: usize) {
+        let nc = if new_cap < 1 { 1 } else { new_cap };
+        let raw = sys::alloc(nc * sizeof(T)) as *T;
+        if raw == null { panic("Vec grow alloc failed"); }
+        if self.len > 0 { mem_copy(raw as *u8, self.ptr as *u8, self.len * sizeof(T)); }
+        if self.ptr != null { sys::free(self.ptr as *u8); }
+        self.ptr = raw; self.cap = nc;
+    }
+
+    fn ensure_cap(self: &mut Vec<T>, add: usize) {
+        let need = self.len + add;
+        if need <= self.cap { return; }
+        let mut nc = if self.cap == 0 { 4 } else { self.cap * 2 };
+        while nc < need { nc *= 2; }
+        self.grow_to(nc);
+    }
+
+    public fn reserve(self: &mut Vec<T>, additional: usize) { self.ensure_cap(additional); }
+
+    public fn reserve_exact(self: &mut Vec<T>, additional: usize) {
+        let need = self.len + additional;
+        if need > self.cap { self.grow_to(need); }
+    }
+
+    public fn shrink_to_fit(self: &mut Vec<T>) {
+        if self.len < self.cap { self.grow_to(self.len); }
+    }
+
+    public fn clear(self: &mut Vec<T>) { self.len = 0; }
+
+    public fn truncate(self: &mut Vec<T>, new_len: usize) {
+        if new_len >= self.len { return; }
+        self.len = new_len;
+    }
+
+    /// Agrandit/réduit à `new_len` en générant les nouveaux éléments via `f()`
+    public fn resize_with(self: &mut Vec<T>, new_len: usize, f: fn() -> T) {
+        if new_len <= self.len { self.len = new_len; return; }
+        let add = new_len - self.len;
+        self.ensure_cap(add);
+        let mut i = 0usize; while i < add { *(self.ptr + self.len + i) = f(); i += 1; }
+        self.len = new_len;
+    }
+
+    // Accès
+    public fn as_ptr(self: &Vec<T>) -> *T { return self.ptr; }
+    public fn as_mut_ptr(self: &mut Vec<T>) -> *T { return self.ptr; }
+
+    public fn get(self: &Vec<T>, idx: usize) -> Option<&T> {
+        if idx >= self.len { return None; }
+        return Some(&( *(self.ptr + idx) ));
+    }
+
+    public fn get_mut(self: &mut Vec<T>, idx: usize) -> Option<&mut T> {
+        if idx >= self.len { return None; }
+        return Some(&mut ( *(self.ptr + idx) ));
+    }
+
+    public fn at(self: &Vec<T>, idx: usize) -> &T {
+        if idx >= self.len { panic("Vec::at out of range"); }
+        return &( *(self.ptr + idx) );
+    }
+
+    public fn set(self: &mut Vec<T>, idx: usize, value: T) {
+        if idx >= self.len { panic("Vec::set out of range"); }
+        *(self.ptr + idx) = value;
+    }
+
+    // Mutations élémentaires
+    public fn push(self: &mut Vec<T>, value: T) {
+        self.ensure_cap(1);
+        *(self.ptr + self.len) = value;
+        self.len += 1;
+    }
+
+    public fn pop(self: &mut Vec<T>) -> Option<T> {
+        if self.len == 0 { return None; }
+        self.len -= 1; let v = *(self.ptr + self.len); return Some(v);
+    }
+
+    public fn insert(self: &mut Vec<T>, idx: usize, value: T) {
+        if idx > self.len { panic("Vec::insert out of range"); }
+        self.ensure_cap(1);
+        // décaler la queue [idx..len) vers la droite d’un cran
+        mem_move((self.ptr + idx + 1) as *u8, (self.ptr + idx) as *u8, (self.len - idx) * sizeof(T));
+        *(self.ptr + idx) = value; self.len += 1;
+    }
+
+    public fn remove(self: &mut Vec<T>, idx: usize) -> T {
+        if idx >= self.len { panic("Vec::remove out of range"); }
+        let v = *(self.ptr + idx);
+        // décaler la queue [idx+1..len) vers la gauche d’un cran
+        if idx + 1 < self.len {
+            mem_move((self.ptr + idx) as *u8, (self.ptr + idx + 1) as *u8, (self.len - idx - 1) * sizeof(T));
+        }
+        self.len -= 1;
+        return v;
+    }
+
+    /// Supprime l’élément `idx` en le remplaçant par le dernier (O(1), non ordonné)
+    public fn swap_remove(self: &mut Vec<T>, idx: usize) -> T {
+        if idx >= self.len { panic("Vec::swap_remove out of range"); }
+        let last_idx = self.len - 1;
+        let v = *(self.ptr + idx);
+        *(self.ptr + idx) = *(self.ptr + last_idx);
+        self.len -= 1;
+        return v;
+    }
+
+    // Bulk
+    public fn extend_from_slice(self: &mut Vec<T>, src: *T, count: usize) {
+        if count == 0 { return; }
+        self.ensure_cap(count);
+        mem_copy((self.ptr + self.len) as *u8, src as *u8, count * sizeof(T));
+        self.len += count;
+    }
+
+    /// Append (copie) tout le contenu de `other` puis le vide
+    public fn append(self: &mut Vec<T>, other: &mut Vec<T>) {
+        if other.len == 0 { return; }
+        self.extend_from_slice(other.ptr, other.len);
+        other.len = 0;
+    }
+
+    /// Filtre en place : conserve uniquement les éléments pour lesquels pred(&T)==true
+    public fn retain(self: &mut Vec<T>, pred: fn(&T)->bool) {
+        let mut w = 0usize; let mut r = 0usize;
+        while r < self.len {
+            let keep = pred(&( *(self.ptr + r) ));
+            if keep {
+                if w != r { *(self.ptr + w) = *(self.ptr + r); }
+                w += 1;
+            }
+            r += 1;
+        }
+        self.len = w;
+    }
+
+    // Itérateurs
+    public fn iter(self: &Vec<T>) -> Iter<T> { return Iter { v: self, i: 0 }; }
+    public fn iter_mut(self: &mut Vec<T>) -> IterMut<T> { return IterMut { v: self, i: 0 }; }
+
+    // Tri et recherche
+    /// Tri en place par comparaison `cmp(&T,&T)->i32` (négatif si a<b, 0 égal, positif si a>b)
+    public fn sort_by(self: &mut Vec<T>, cmp: fn(&T,&T)->i32) {
+        if self.len <= 1 { return; }
+        quicksort(self.ptr, 0, self.len as isize - 1, cmp);
+    }
+
+    /// Recherche dichotomique selon `cmp(item, key)` qui renvoie <0 / 0 / >0
+    /// Retourne Some(index) si trouvé, sinon None (insertion point via param out opt.)
+    public fn binary_search_by(self: &Vec<T>, key: &T, cmp: fn(&T,&T)->i32) -> Option<usize> {
+        let mut lo = 0usize; let mut hi = self.len;
+        while lo < hi {
+            let mid = lo + ((hi - lo) / 2);
+            let ord = cmp(&( *(self.ptr + mid) ), key);
+            if ord == 0 { return Some(mid); }
+            if ord < 0 { lo = mid + 1; } else { hi = mid; }
+        }
+        return None;
+    }
+}
+
+// —————————————————————————————————————————————
+// Itérateurs
+// —————————————————————————————————————————————
+
+public struct Iter<'a,T> { v: &'a Vec<T>, i: usize }
+impl<'a,T> Iterator<&'a T> for Iter<'a,T> {
+    fn next(self: &mut Iter<'a,T>) -> Option<&'a T> {
+        if self.i >= self.v.len { return None; }
+        let p = &( *(self.v.ptr + self.i) );
+        self.i += 1; return Some(p);
+    }
+}
+
+public struct IterMut<'a,T> { v: &'a mut Vec<T>, i: usize }
+impl<'a,T> Iterator<&'a mut T> for IterMut<'a,T> {
+    fn next(self: &mut IterMut<'a,T>) -> Option<&'a mut T> {
+        if self.i >= self.v.len { return None; }
+        let p = &mut ( *(self.v.ptr + self.i) );
+        self.i += 1; return Some(p);
+    }
+}
+
+// —————————————————————————————————————————————
+// Quicksort in‑place (Lomuto-like partition) avec cmp(&T,&T)->i32
+// —————————————————————————————————————————————
+
+fn swap<T>(ptr: *T, a: usize, b: usize) { let tmp = *(ptr + a); *(ptr + a) = *(ptr + b); *(ptr + b) = tmp; }
+
+fn partition<T>(ptr: *T, lo: isize, hi: isize, cmp: fn(&T,&T)->i32) -> isize {
+    let pivot_idx = hi as usize;
+    let mut i = lo - 1;
+    let mut j = lo;
+    while j < hi {
+        if cmp(&( *(ptr + (j as usize)) ), &( *(ptr + pivot_idx) )) <= 0 {
+            i += 1; swap(ptr, i as usize, j as usize);
+        }
+        j += 1;
+    }
+    swap(ptr, (i + 1) as usize, pivot_idx);
+    return i + 1;
+}
+
+fn quicksort<T>(ptr: *T, lo: isize, hi: isize, cmp: fn(&T,&T)->i32) {
+    if lo >= hi { return; }
+    let p = partition(ptr, lo, hi, cmp);
+    if p - 1 > lo { quicksort(ptr, lo, p - 1, cmp); }
+    if p + 1 < hi { quicksort(ptr, p + 1, hi, cmp); }
+}

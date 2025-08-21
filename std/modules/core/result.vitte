@@ -1,22 +1,101 @@
-//! Result<T,E> — succès/erreur
-enum Result<T,E> { Ok(T), Err(E) }
+//! std.modules.core.result — Type Result<T,E> pour gestion d’erreurs
+//!
+//! Inspiré de Rust :
+//!   - `Ok(T)`  : succès
+//!   - `Err(E)` : erreur
+//!
+//! Caractéristiques :
+//! - API expressive (unwrap, unwrap_or, map, map_err, and_then).
+//! - Combine bien avec Option<T> et Rc<T>.
+//!
+//! Exemple :
+//! ```vitte
+//! fn divide(a: int, b: int) -> Result<int,string> {
+//!     if b == 0 { return Err("division par zéro"); }
+//!     return Ok(a / b);
+//! }
+//!
+//! let r = divide(10, 2).map(fn(x) => x*2);
+//! match r { Ok(v) => print(v), Err(e) => print("Erreur: ", e) }
+//! ```
 
-impl<T,E> Result<T,E> {
-  fn is_ok(&self) -> bool { match self { Ok(_) => true, Err(_) => false } }
-  fn is_err(&self) -> bool { !self.is_ok() }
+module std.modules.core.result
 
-  fn map<U>(self, f: fn(T)->U) -> Result<U,E> {
-    match self { Ok(v) => Ok(f(v)), Err(e) => Err(e) }
-  }
+// —————————————————————————————————————————————
+// Définition
+// —————————————————————————————————————————————
 
-  fn unwrap(self) -> T {
-    match self { Ok(v) => v, Err(_e) => panic("unwrap called on Err") }
-  }
-
-  fn unwrap_or(self, default: T) -> T {
-    match self { Ok(v) => v, Err(_e) => default }
-  }
+public enum Result<T,E> {
+    Ok(T),
+    Err(E)
 }
 
-export fn ok<T,E>(v: T) -> Result<T,E> { Ok(v) }
-export fn err<T,E>(e: E) -> Result<T,E> { Err(e) }
+// —————————————————————————————————————————————
+// Implémentation générique
+// —————————————————————————————————————————————
+
+impl<T,E> Result<T,E> {
+    // Vérification
+    public fn is_ok(self: &Result<T,E>) -> bool {
+        match self { Ok(_) => true, Err(_) => false }
+    }
+
+    public fn is_err(self: &Result<T,E>) -> bool {
+        return !self.is_ok();
+    }
+
+    // Extraction
+    public fn unwrap(self: Result<T,E>) -> T {
+        match self {
+            Ok(v)  => v,
+            Err(_) => panic("called unwrap on Err")
+        }
+    }
+
+    public fn unwrap_err(self: Result<T,E>) -> E {
+        match self {
+            Ok(_)  => panic("called unwrap_err on Ok"),
+            Err(e) => e
+        }
+    }
+
+    public fn unwrap_or(self: Result<T,E>, default: T) -> T {
+        match self {
+            Ok(v) => v,
+            Err(_) => default
+        }
+    }
+
+    // Mapping succès
+    public fn map<U>(self: Result<T,E>, f: fn(T) -> U) -> Result<U,E> {
+        match self {
+            Ok(v) => Ok(f(v)),
+            Err(e) => Err(e)
+        }
+    }
+
+    // Mapping erreur
+    public fn map_err<F>(self: Result<T,E>, f: fn(E) -> F) -> Result<T,F> {
+        match self {
+            Ok(v) => Ok(v),
+            Err(e) => Err(f(e))
+        }
+    }
+
+    // Enchaînement
+    public fn and_then<U>(self: Result<T,E>, f: fn(T) -> Result<U,E>) -> Result<U,E> {
+        match self {
+            Ok(v) => f(v),
+            Err(e) => Err(e)
+        }
+    }
+
+    public fn or_else<F>(self: Result<T,E>, f: fn(E) -> Result<T,F>) -> Result<T,F> {
+        match self {
+            Ok(v) => Ok(v),
+            Err(e) => f(e)
+        }
+    }
+}
+
+

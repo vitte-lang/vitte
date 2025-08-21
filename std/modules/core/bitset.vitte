@@ -1,6 +1,209 @@
-//! bitset — ensemble de bits compact
-struct BitSet { __raw: __intrinsics::BitSet }
-export fn with_size(n: i32) -> BitSet { BitSet{ __raw: __intrinsics::bitset_new(n) } }
-export fn set(mut b: BitSet, i: i32) { __intrinsics::bitset_set(b.__raw, i) }
-export fn clear(mut b: BitSet, i: i32) { __intrinsics::bitset_clear(b.__raw, i) }
-export fn test(b: BitSet, i: i32) -> bool { __intrinsics::bitset_test(b.__raw, i) }
+//! std.core.bitset — Ensemble de bits compact (bitset)
+//!
+//! Caractéristiques :
+//! - Stockage en blocs de 64 bits (u64).
+//! - API haut-niveau : set, unset, toggle, test.
+//! - Ops logiques entre bitsets (and/or/xor/not).
+//! - Utilitaires : count_ones, is_empty, clear, fill.
+//! - Itérateur sur les bits actifs.
+//!
+//! Exemple :
+//! ```vitte
+//! let mut bs = BitSet::with_capacity(128);
+//! bs.set(5);
+//! bs.set(64);
+//! if bs.test(64) { print("bit 64 actif"); }
+//! bs.clear();
+//! ```
+
+module std.core.bitset
+
+use std.core.sys
+use std.core.mem
+
+const WORD_BITS: usize = 64;
+
+inline fn word_index(i: usize) -> usize { return i / WORD_BITS; }
+inline fn bit_mask(i: usize) -> u64    { return 1u64 << (i % WORD_BITS); }
+
+public struct BitSet {
+    words: *u64,   // tableau dynamique de u64
+    nbits: usize,  // nb de bits logiques
+    nwords: usize  // nb de mots (words)
+}
+
+impl BitSet {
+    // ——————————————————————————
+    // Constructeurs
+    // ——————————————————————————
+    public fn new() -> BitSet {
+        return BitSet { words: null, nbits: 0, nwords: 0 };
+    }
+
+    public fn with_capacity(bits: usize) -> BitSet {
+        let nwords = if bits == 0 { 0 } else { (bits + WORD_BITS - 1) / WORD_BITS };
+        let buf = if nwords == 0 { null } else { sys::alloc(nwords * sizeof(u64)) as *u64 };
+        if buf != null { mem::set_bytes(buf as *u8, 0, nwords * sizeof(u64)); }
+        return BitSet { words: buf, nbits: bits, nwords };
+    }
+
+    public fn free(self: &mut BitSet) {
+        if self.words != null { sys::free(self.words as *u8); }
+        self.words = null;
+        self.nbits = 0;
+        self.nwords = 0;
+    }
+
+    // ——————————————————————————
+    // Accès / modification
+    // ——————————————————————————
+    public fn set(self: &mut BitSet, i: usize) {
+        if i >= self.nbits { panic("bitset: index out of range"); }
+        let w = word_index(i);
+        self.words[w] |= bit_mask(i);
+    }
+
+    public fn unset(self: &mut BitSet, i: usize) {
+        if i >= self.nbits { panic("bitset: index out of range"); }
+        let w = word_index(i);
+        self.words[w] &= ~bit_mask(i);
+    }
+
+    public fn toggle(self: &mut BitSet, i: usize) {
+        if i >= self.nbits { panic("bitset: index out of range"); }
+        let w = word_index(i);
+        self.words[w] ^= bit_mask(i);
+    }
+
+    public fn test(self: &BitSet, i: usize) -> bool {
+        if i >= self.nbits { return false; }
+        let w = word_index(i);
+        return (self.words[w] & bit_mask(i)) != 0;
+    }
+
+    // ——————————————————————————
+    // Bulk ops
+    // ——————————————————————————
+    public fn clear(self: &mut BitSet) {
+        if self.words != null {
+            mem::set_bytes(self.words as *u8, 0, self.nwords * sizeof(u64));
+        }
+    }
+
+    public fn fill(self: &mut BitSet) {
+        if self.words != null {
+            mem::set_bytes(self.words as *u8, 0xFF, self.nwords * sizeof(u64));
+        }
+    }
+
+    public fn count_ones(self: &BitSet) -> usize {
+        let mut sum = 0usize;
+        let mut i = 0usize;
+        while i < self.nwords {
+            sum += popcount64(self.words[i]);
+            i += 1;
+        }
+        return sum;
+    }
+
+    public fn is_empty(self: &BitSet) -> bool {
+        let mut i = 0usize;
+        while i < self.nwords {
+            if self.words[i] != 0 { return false; }
+            i += 1;
+        }
+        return true;
+    }
+
+    // ——————————————————————————
+    // Logiques entre bitsets (mêmes tailles)
+    // ——————————————————————————
+    public fn bit_and(self: &mut BitSet, other: &BitSet) {
+        if self.nwords != other.nwords { panic("bitset: size mismatch"); }
+        let mut i = 0usize;
+        while i < self.nwords {
+            self.words[i] &= other.words[i];
+            i += 1;
+        }
+    }
+
+    public fn bit_or(self: &mut BitSet, other: &BitSet) {
+        if self.nwords != other.nwords { panic("bitset: size mismatch"); }
+        let mut i = 0usize;
+        while i < self.nwords {
+            self.words[i] |= other.words[i];
+            i += 1;
+        }
+    }
+
+    public fn bit_xor(self: &mut BitSet, other: &BitSet) {
+        if self.nwords != other.nwords { panic("bitset: size mismatch"); }
+        let mut i = 0usize;
+        while i < self.nwords {
+            self.words[i] ^= other.words[i];
+            i += 1;
+        }
+    }
+
+    public fn bit_not(self: &mut BitSet) {
+        let mut i = 0usize;
+        while i < self.nwords {
+            self.words[i] = ~self.words[i];
+            i += 1;
+        }
+    }
+
+    // ——————————————————————————
+    // Itération
+    // ——————————————————————————
+    public fn iter_ones(self: &BitSet) -> BitSetOnesIter {
+        return BitSetOnesIter { bs: self, idx: 0 };
+    }
+
+    // ——————————————————————————
+    // Debug
+    // ——————————————————————————
+    public fn to_string(self: &BitSet) -> String {
+        let s = String::with_capacity(self.nbits);
+        let mut i = 0usize;
+        while i < self.nbits {
+            if self.test(i) { s.push('1'); } else { s.push('0'); }
+            i += 1;
+        }
+        return s;
+    }
+}
+
+// ——————————————————————————
+// Iterateur des bits actifs
+// ——————————————————————————
+
+public struct BitSetOnesIter {
+    bs: *BitSet,
+    idx: usize
+}
+
+impl BitSetOnesIter {
+    public fn next(self: &mut BitSetOnesIter) -> Option<usize> {
+        while self.idx < (*self.bs).nbits {
+            let cur = self.idx;
+            self.idx += 1;
+            if (*self.bs).test(cur) { return Some(cur); }
+        }
+        return None;
+    }
+}
+
+// ——————————————————————————
+// popcount portable (64 bits)
+// ——————————————————————————
+
+fn popcount64(x: u64) -> usize {
+    let mut v = x;
+    let mut c = 0usize;
+    while v != 0 {
+        v &= v - 1;
+        c += 1;
+    }
+    return c;
+}

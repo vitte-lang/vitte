@@ -1,5 +1,147 @@
-//! rc — comptage de références (intrinsic)
-struct Rc<T> { __raw: __intrinsics::Rc }
-export fn new<T>(v: T) -> Rc<T> { Rc{ __raw: __intrinsics::rc_new(v) } }
-export fn clone<T>(r: Rc<T>) -> Rc<T> { __intrinsics::rc_clone(r.__raw) }
-export fn get<T>(r: Rc<T>) -> T { __intrinsics::rc_get(r.__raw) }
+//! std.modules.core.rc — Références comptées Rc<T> + Weak<T>
+//!
+//! Inspiré de Rust Rc/Weak (non thread-safe).
+//! - Rc<T> : propriétaire partagé (compteur fort)
+//! - Weak<T> : référence faible (n’empêche pas la libération)
+//! - clone/drop, downgrade/upgrade, strong_count/weak_count
+//!
+//! Exemple :
+//! ```vitte
+//! let a = Rc<int>::new(42);
+//! let w = a.downgrade();
+//! let b = a.clone();
+//! assert(a.strong_count() == 2);
+//! a.drop(); b.drop();
+//! // Ici la valeur est libérée, w n’est plus upgradable
+//! match w.upgrade() { Some(_) => panic("bug"), None => {} }
+//! ```
+
+module std.modules.core.rc
+
+use std.core.sys
+use std.core.mem
+use std.core.option // Option<T>
+
+// Bloc interne (header)
+struct RcBox<T> {
+    strong: usize, // nb de Rc vivants
+    weak:   usize, // nb de Weak vivants
+    value:  T
+}
+
+public struct Rc<T> { ptr: *RcBox<T> }
+public struct Weak<T> { ptr: *RcBox<T> }
+
+// —————————————————————————————————————————
+// Helpers internes
+// —————————————————————————————————————————
+
+inline fn rcbox_alloc<T>(value: T) -> *RcBox<T> {
+    let raw = sys::alloc(sizeof(RcBox<T>)) as *RcBox<T>;
+    if raw == null { panic("Rc alloc failed"); }
+    (*raw).strong = 1;
+    (*raw).weak   = 0;
+    (*raw).value  = value;
+    return raw;
+}
+
+inline fn maybe_deallocate<T>(b: *RcBox<T>) {
+    // Si plus aucune ref (forte ni faible), libère le header
+    if (*b).strong == 0 && (*b).weak == 0 {
+        sys::free(b as *u8);
+    }
+}
+
+// —————————————————————————————————————————
+// Rc<T>
+// —————————————————————————————————————————
+
+impl<T> Rc<T> {
+    public fn new(value: T) -> Rc<T> {
+        return Rc { ptr: rcbox_alloc(value) };
+    }
+
+    public fn clone(self: &Rc<T>) -> Rc<T> {
+        if self.ptr == null { panic("Rc::clone on null"); }
+        (*self.ptr).strong += 1;
+        return Rc { ptr: self.ptr };
+    }
+
+    public fn get(self: &Rc<T>) -> &T {
+        if self.ptr == null { panic("Rc::get on null"); }
+        return &(*self.ptr).value;
+    }
+
+    public fn get_mut(self: &mut Rc<T>) -> &mut T {
+        if self.ptr == null { panic("Rc::get_mut on null"); }
+        if (*self.ptr).strong != 1 { panic("Rc::get_mut: multiple owners"); }
+        return &mut (*self.ptr).value;
+    }
+
+    public fn strong_count(self: &Rc<T>) -> usize {
+        if self.ptr == null { return 0; }
+        return (*self.ptr).strong;
+    }
+
+    public fn weak_count(self: &Rc<T>) -> usize {
+        if self.ptr == null { return 0; }
+        return (*self.ptr).weak;
+    }
+
+    /// Crée une Weak<T> qui n’empêche pas la destruction de la valeur
+    public fn downgrade(self: &Rc<T>) -> Weak<T> {
+        if self.ptr == null { panic("Rc::downgrade on null"); }
+        (*self.ptr).weak += 1;
+        return Weak { ptr: self.ptr };
+    }
+
+    /// Libère une ref forte ; libère la mémoire quand strong==0 && weak==0
+    public fn drop(self: &mut Rc<T>) {
+        if self.ptr == null { return; }
+        (*self.ptr).strong -= 1;
+        // Lorsque strong atteint 0, la valeur est considérée détruite.
+        // Le header reste tant que weak>0 ; sera libéré par le dernier Weak.
+        let b = self.ptr;
+        self.ptr = null;
+        maybe_deallocate(b);
+    }
+}
+
+// —————————————————————————————————————————
+// Weak<T>
+// —————————————————————————————————————————
+
+impl<T> Weak<T> {
+    public fn new() -> Weak<T> { return Weak { ptr: null }; }
+
+    public fn clone(self: &Weak<T>) -> Weak<T> {
+        if self.ptr != null { (*self.ptr).weak += 1; }
+        return Weak { ptr: self.ptr };
+    }
+
+    /// Tente de créer un Rc<T> si la valeur est toujours vivante (strong>0)
+    public fn upgrade(self: &Weak<T>) -> Option<Rc<T>> {
+        if self.ptr == null { return None; }
+        if (*self.ptr).strong == 0 { return None; }
+        (*self.ptr).strong += 1;
+        return Some(Rc { ptr: self.ptr });
+    }
+
+    public fn drop(self: &mut Weak<T>) {
+        if self.ptr == null { return; }
+        (*self.ptr).weak -= 1;
+        let b = self.ptr;
+        self.ptr = null;
+        maybe_deallocate(b);
+    }
+
+    public fn strong_count(self: &Weak<T>) -> usize {
+        if self.ptr == null { return 0; }
+        return (*self.ptr).strong;
+    }
+
+    public fn weak_count(self: &Weak<T>) -> usize {
+        if self.ptr == null { return 0; }
+        return (*self.ptr).weak;
+    }
+}

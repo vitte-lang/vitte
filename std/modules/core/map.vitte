@@ -1,8 +1,135 @@
-//! map — dictionnaire
-struct Map<K,V> { __raw: __intrinsics::Map }
+//! std.core.map — Dictionnaire clé/valeur (HashMap générique)
+//!
+//! - Stockage par hachage avec sondage linéaire (open addressing).
+//! - Clés et valeurs génériques (Hash + Eq requis).
+//! - API : new, insert, get, remove, contains, clear, len.
+//! - Redimensionnement automatique (load factor ~0.75).
+//!
+//! Exemple :
+//! ```vitte
+//! let mut m = HashMap<string,int>::new();
+//! m.insert("un", 1);
+//! m.insert("deux", 2);
+//! if let Some(v) = m.get("un") { print(v); }
+//! ```
 
-export fn new<K,V>() -> Map<K,V> { Map{ __raw: __intrinsics::map_new() } }
-export fn set<K,V>(mut m: Map<K,V>, k: K, v: V) { __intrinsics::map_set(m.__raw, k, v) }
-export fn get<K,V>(m: Map<K,V>, k: K) -> Option<V> { __intrinsics::map_get(m.__raw, k) }
-export fn has<K,V>(m: Map<K,V>, k: K) -> bool { __intrinsics::map_has(m.__raw, k) }
-export fn remove<K,V>(mut m: Map<K,V>, k: K) -> Option<V> { __intrinsics::map_remove(m.__raw, k) }
+module std.core.map
+
+use std.core.hash
+use std.core.mem
+use std.core.sys
+
+const LOAD_FACTOR_NUM: usize = 3;
+const LOAD_FACTOR_DEN: usize = 4;
+
+enum EntryState { Empty, Occupied, Tombstone }
+
+struct Entry<K,V> {
+    key:   K,
+    value: V,
+    state: EntryState
+}
+
+public struct HashMap<K,V> {
+    entries: *Entry<K,V>,
+    cap:     usize,
+    len:     usize
+}
+
+impl<K: Hash + Eq, V> HashMap<K,V> {
+    // ——————————————————————————————
+    // Constructeurs
+    // ——————————————————————————————
+    public fn new() -> HashMap<K,V> {
+        return HashMap::with_capacity(8);
+    }
+
+    public fn with_capacity(cap: usize) -> HashMap<K,V> {
+        let c = if cap < 8 { 8 } else { cap.next_power_of_two() };
+        let buf = sys::alloc(c * sizeof(Entry<K,V>)) as *Entry<K,V>;
+        if buf != null { mem::set_bytes(buf as *u8, 0, c * sizeof(Entry<K,V>)); }
+        return HashMap { entries: buf, cap: c, len: 0 };
+    }
+
+    public fn free(self: &mut HashMap<K,V>) {
+        if self.entries != null { sys::free(self.entries as *u8); }
+        self.entries = null;
+        self.cap = 0;
+        self.len = 0;
+    }
+
+    // ——————————————————————————————
+    // Opérations de base
+    // ——————————————————————————————
+    fn find_slot(self: &HashMap<K,V>, key: &K) -> usize {
+        let mut idx = (hash::hash(key) as usize) & (self.cap - 1);
+        let mut start = idx;
+        loop {
+            let e = &self.entries[idx];
+            if e.state == EntryState::Empty { return idx; }
+            if e.state == EntryState::Occupied && e.key == *key { return idx; }
+            idx = (idx + 1) & (self.cap - 1);
+            if idx == start { panic("map full"); }
+        }
+    }
+
+    fn resize(self: &mut HashMap<K,V>, new_cap: usize) {
+        let mut new_map = HashMap::with_capacity(new_cap);
+        let mut i = 0usize;
+        while i < self.cap {
+            let e = &self.entries[i];
+            if e.state == EntryState::Occupied {
+                new_map.insert(e.key, e.value);
+            }
+            i += 1;
+        }
+        self.free();
+        *self = new_map;
+    }
+
+    public fn insert(self: &mut HashMap<K,V>, key: K, value: V) {
+        if (self.len * LOAD_FACTOR_DEN) >= (self.cap * LOAD_FACTOR_NUM) {
+            self.resize(self.cap * 2);
+        }
+        let idx = self.find_slot(&key);
+        let e = &mut self.entries[idx];
+        if e.state != EntryState::Occupied {
+            self.len += 1;
+        }
+        e.key = key;
+        e.value = value;
+        e.state = EntryState::Occupied;
+    }
+
+    public fn get(self: &HashMap<K,V>, key: &K) -> Option<&V> {
+        let idx = self.find_slot(key);
+        let e = &self.entries[idx];
+        if e.state == EntryState::Occupied { return Some(&e.value); }
+        return None;
+    }
+
+    public fn contains(self: &HashMap<K,V>, key: &K) -> bool {
+        return self.get(key).is_some();
+    }
+
+    public fn remove(self: &mut HashMap<K,V>, key: &K) -> bool {
+        let idx = self.find_slot(key);
+        let e = &mut self.entries[idx];
+        if e.state == EntryState::Occupied {
+            e.state = EntryState::Tombstone;
+            self.len -= 1;
+            return true;
+        }
+        return false;
+    }
+
+    public fn len(self: &HashMap<K,V>) -> usize { return self.len; }
+
+    public fn is_empty(self: &HashMap<K,V>) -> bool { return self.len == 0; }
+
+    public fn clear(self: &mut HashMap<K,V>) {
+        mem::set_bytes(self.entries as *u8, 0, self.cap * sizeof(Entry<K,V>));
+        self.len = 0;
+    }
+}
+
