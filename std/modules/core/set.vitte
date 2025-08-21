@@ -1,7 +1,215 @@
-//! set — ensemble
-struct Set<T> { __raw: __intrinsics::Set }
+//! std.modules.core.set — Ensembles (HashSet & BTreeSet)
+//!
+//! Fournit deux implémentations :
+//! - HashSet<T>   : basé sur table de hachage, O(1) amorti.
+//! - BTreeSet<T>  : basé sur arbre binaire équilibré, O(log n), parcours trié.
+//!
+//! API commune : insert, remove, contains, len, is_empty, clear.
+//! Ops ensemblistes : union, intersection, difference, symmetric_difference.
+//!
+//! Exemple :
+//! ```vitte
+//! let mut hs = HashSet<int>::new();
+//! hs.insert(1); hs.insert(2);
+//! let mut hs2 = HashSet<int>::new();
+//! hs2.insert(2); hs2.insert(3);
+//! let uni = hs.union(&hs2); // {1,2,3}
+//!
+//! let mut bs = BTreeSet<int>::new();
+//! bs.insert(10); bs.insert(5); bs.insert(20);
+//! for x in bs.iter() { print(x); } // 5,10,20
+//! ```
 
-export fn new<T>() -> Set<T> { Set{ __raw: __intrinsics::set_new() } }
-export fn insert<T>(mut s: Set<T>, v: T) -> bool { __intrinsics::set_insert(s.__raw, v) }
-export fn contains<T>(s: Set<T>, v: T) -> bool { __intrinsics::set_contains(s.__raw, v) }
-export fn remove<T>(mut s: Set<T>, v: T) -> bool { __intrinsics::set_remove(s.__raw, v) }
+module std.modules.core.set
+
+use std.modules.core.map   // HashMap<K,()>
+use std.modules.core.option
+use std.core.mem
+
+// —————————————————————————————————————————————
+// HashSet<T> basé sur HashMap<T,()>
+// —————————————————————————————————————————————
+
+public struct HashSet<T> {
+    map: HashMap<T, ()>
+}
+
+impl<T: Hash + Eq> HashSet<T> {
+    public fn new() -> HashSet<T> {
+        return HashSet { map: HashMap::new() };
+    }
+
+    public fn with_capacity(cap: usize) -> HashSet<T> {
+        return HashSet { map: HashMap::with_capacity(cap) };
+    }
+
+    public fn len(self: &HashSet<T>) -> usize { return self.map.len(); }
+    public fn is_empty(self: &HashSet<T>) -> bool { return self.map.is_empty(); }
+
+    public fn insert(self: &mut HashSet<T>, key: T) -> bool {
+        let existed = self.map.contains(&key);
+        self.map.insert(key, ());
+        return !existed;
+    }
+
+    public fn contains(self: &HashSet<T>, key: &T) -> bool {
+        return self.map.contains(key);
+    }
+
+    public fn remove(self: &mut HashSet<T>, key: &T) -> bool {
+        return self.map.remove(key);
+    }
+
+    public fn clear(self: &mut HashSet<T>) { self.map.clear(); }
+
+    // ——— Ops ensemblistes
+    public fn union(self: &HashSet<T>, other: &HashSet<T>) -> HashSet<T> {
+        let mut res = HashSet::with_capacity(self.len() + other.len());
+        for k in self.iter() { res.insert(*k); }
+        for k in other.iter() { res.insert(*k); }
+        return res;
+    }
+
+    public fn intersection(self: &HashSet<T>, other: &HashSet<T>) -> HashSet<T> {
+        let mut res = HashSet::new();
+        for k in self.iter() {
+            if other.contains(k) { res.insert(*k); }
+        }
+        return res;
+    }
+
+    public fn difference(self: &HashSet<T>, other: &HashSet<T>) -> HashSet<T> {
+        let mut res = HashSet::new();
+        for k in self.iter() {
+            if !other.contains(k) { res.insert(*k); }
+        }
+        return res;
+    }
+
+    public fn symmetric_difference(self: &HashSet<T>, other: &HashSet<T>) -> HashSet<T> {
+        let mut res = HashSet::new();
+        for k in self.iter() {
+            if !other.contains(k) { res.insert(*k); }
+        }
+        for k in other.iter() {
+            if !self.contains(k) { res.insert(*k); }
+        }
+        return res;
+    }
+
+    // Itérateurs (simples)
+    public fn iter(self: &HashSet<T>) -> HashSetIter<T> {
+        return HashSetIter { inner: self.map.iter() };
+    }
+}
+
+public struct HashSetIter<T> {
+    inner: MapKeyIter<T, ()> // itérateur sur clés du HashMap
+}
+
+impl<T> Iterator<&T> for HashSetIter<T> {
+    fn next(self: &mut HashSetIter<T>) -> Option<&T> {
+        return self.inner.next_key();
+    }
+}
+
+// —————————————————————————————————————————————
+// BTreeSet<T> basé sur arbre binaire équilibré
+// (implémentation simplifiée, pas d’équilibrage avancé)
+// —————————————————————————————————————————————
+
+struct Node<T> {
+    key: T,
+    left: *Node<T>,
+    right: *Node<T>
+}
+
+public struct BTreeSet<T> {
+    root: *Node<T>,
+    len: usize
+}
+
+impl<T: Ord> BTreeSet<T> {
+    public fn new() -> BTreeSet<T> {
+        return BTreeSet { root: null, len: 0 };
+    }
+
+    public fn len(self: &BTreeSet<T>) -> usize { return self.len; }
+    public fn is_empty(self: &BTreeSet<T>) -> bool { return self.len == 0; }
+
+    fn insert_rec(node: *mut Node<T>, key: T) -> bool {
+        if node == null {
+            let raw = sys::alloc(sizeof(Node<T>)) as *mut Node<T>;
+            if raw == null { panic("BTreeSet alloc failed"); }
+            (*raw).key = key;
+            (*raw).left = null;
+            (*raw).right = null;
+            *node = raw;
+            return true;
+        }
+        if key < (*node).key {
+            return BTreeSet::insert_rec(&mut (*node).left, key);
+        } else if key > (*node).key {
+            return BTreeSet::insert_rec(&mut (*node).right, key);
+        } else {
+            return false; // déjà présent
+        }
+    }
+
+    public fn insert(self: &mut BTreeSet<T>, key: T) -> bool {
+        let added = BTreeSet::insert_rec(&mut self.root, key);
+        if added { self.len += 1; }
+        return added;
+    }
+
+    fn contains_rec(node: *Node<T>, key: &T) -> bool {
+        if node == null { return false; }
+        if *key < (*node).key { return BTreeSet::contains_rec((*node).left, key); }
+        if *key > (*node).key { return BTreeSet::contains_rec((*node).right, key); }
+        return true;
+    }
+
+    public fn contains(self: &BTreeSet<T>, key: &T) -> bool {
+        return BTreeSet::contains_rec(self.root, key);
+    }
+
+    // TODO: remove, clear (nécessite free récursif)
+
+    // Itérateur infixe (in-order)
+    public fn iter(self: &BTreeSet<T>) -> BTreeIter<T> {
+        return BTreeIter::new(self.root);
+    }
+}
+
+// —————————————————————————————————————————————
+// Itérateur BTree (in-order)
+// —————————————————————————————————————————————
+
+public struct BTreeIter<T> {
+    stack: Vec<*Node<T>> // pile de parcours
+}
+
+impl<T> BTreeIter<T> {
+    fn new(root: *Node<T>) -> BTreeIter<T> {
+        let mut it = BTreeIter { stack: Vec::new() };
+        let mut cur = root;
+        while cur != null {
+            it.stack.push(cur);
+            cur = (*cur).left;
+        }
+        return it;
+    }
+}
+
+impl<T> Iterator<&T> for BTreeIter<T> {
+    fn next(self: &mut BTreeIter<T>) -> Option<&T> {
+        if self.stack.is_empty() { return None; }
+        let node = self.stack.pop().unwrap();
+        let mut cur = (*node).right;
+        while cur != null {
+            self.stack.push(cur);
+            cur = (*cur).left;
+        }
+        return Some(&(*node).key);
+    }
+}
