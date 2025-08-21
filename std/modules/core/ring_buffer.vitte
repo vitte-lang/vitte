@@ -1,5 +1,121 @@
-//! ring_buffer — tampon circulaire
-struct Ring<T> { __raw: __intrinsics::Ring }
-export fn with_capacity<T>(cap: i32) -> Ring<T> { Ring{ __raw: __intrinsics::ring_new(cap) } }
-export fn push<T>(mut r: Ring<T>, v: T) { __intrinsics::ring_push(r.__raw, v) }
-export fn pop<T>(mut r: Ring<T>) -> Option<T> { __intrinsics::ring_pop(r.__raw) }
+//! std.modules.core.ring_buffer — Buffer circulaire générique (RingBuffer<T>)
+//!
+//! Caractéristiques :
+//! - File circulaire fixe, capacité définie à la création.
+//! - O(1) push/pop en amorti.
+//! - Détection pleine/vide.
+//! - Itérateurs basiques.
+//!
+//! Exemple :
+//! ```vitte
+//! let mut rb = RingBuffer<int>::with_capacity(4);
+//! rb.push(10); rb.push(20);
+//! print(rb.pop()); // Some(10)
+//! print(rb.pop()); // Some(20)
+//! print(rb.pop()); // None
+//! ```
+
+module std.modules.core.ring_buffer
+
+use std.core.sys
+use std.core.mem
+use std.modules.core.option // pour Option<T>
+
+// —————————————————————————————————————————————
+// Structure
+// —————————————————————————————————————————————
+
+public struct RingBuffer<T> {
+    buf: *T,
+    cap: usize,   // capacité totale
+    head: usize,  // index lecture
+    tail: usize,  // index écriture
+    len: usize    // nb d’éléments stockés
+}
+
+// —————————————————————————————————————————————
+// Implémentation
+// —————————————————————————————————————————————
+
+impl<T> RingBuffer<T> {
+    // Construction
+    public fn with_capacity(capacity: usize) -> RingBuffer<T> {
+        if capacity == 0 { panic("RingBuffer capacity must be > 0"); }
+        let raw = sys::alloc(capacity * sizeof(T)) as *T;
+        if raw == null { panic("RingBuffer alloc failed"); }
+        return RingBuffer { buf: raw, cap: capacity, head: 0, tail: 0, len: 0 };
+    }
+
+    // Libération mémoire
+    public fn free(self: &mut RingBuffer<T>) {
+        if self.buf != null {
+            sys::free(self.buf as *u8);
+            self.buf = null;
+        }
+        self.cap = 0;
+        self.head = 0;
+        self.tail = 0;
+        self.len = 0;
+    }
+
+    // Taille / état
+    public fn capacity(self: &RingBuffer<T>) -> usize { return self.cap; }
+    public fn len(self: &RingBuffer<T>) -> usize { return self.len; }
+    public fn is_empty(self: &RingBuffer<T>) -> bool { return self.len == 0; }
+    public fn is_full(self: &RingBuffer<T>) -> bool { return self.len == self.cap; }
+
+    // Écriture
+    public fn push(self: &mut RingBuffer<T>, value: T) -> bool {
+        if self.is_full() { return false; }
+        *(self.buf + self.tail) = value;
+        self.tail = (self.tail + 1) % self.cap;
+        self.len += 1;
+        return true;
+    }
+
+    // Lecture
+    public fn pop(self: &mut RingBuffer<T>) -> Option<T> {
+        if self.is_empty() { return None; }
+        let v = *(self.buf + self.head);
+        self.head = (self.head + 1) % self.cap;
+        self.len -= 1;
+        return Some(v);
+    }
+
+    // Lecture sans retirer
+    public fn peek(self: &RingBuffer<T>) -> Option<&T> {
+        if self.is_empty() { return None; }
+        return Some(&( *(self.buf + self.head) ));
+    }
+
+    // Clear
+    public fn clear(self: &mut RingBuffer<T>) {
+        self.head = 0;
+        self.tail = 0;
+        self.len = 0;
+    }
+
+    // Itérateur
+    public fn iter(self: &RingBuffer<T>) -> RingIter<T> {
+        return RingIter { rb: self, idx: 0 };
+    }
+}
+
+// —————————————————————————————————————————————
+// Itérateur simple
+// —————————————————————————————————————————————
+
+public struct RingIter<'a,T> {
+    rb: &'a RingBuffer<T>,
+    idx: usize
+}
+
+impl<'a,T> Iterator<&'a T> for RingIter<'a,T> {
+    fn next(self: &mut RingIter<'a,T>) -> Option<&'a T> {
+        if self.idx >= self.rb.len { return None; }
+        let pos = (self.rb.head + self.idx) % self.rb.cap;
+        self.idx += 1;
+        return Some(&( *(self.rb.buf + pos) ));
+    }
+}
+
