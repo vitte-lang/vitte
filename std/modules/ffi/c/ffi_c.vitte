@@ -1,0 +1,327 @@
+//! std/modules/ffi/c/ffi_c.vitte
+//! -----------------------------------------------------------------------------
+//! FFI C — pont minimal mais complet entre Vitte et l'ABI C.
+//!
+//! • Types C signés/unsigned, pointeurs, size_t/ssize_t, intptr_t/uintptr_t
+//! • Gestion des bibliothèques dynamiques : dlopen/dlsym/dlclose (POSIX),
+//!   LoadLibrary/GetProcAddress/FreeLibrary (Windows).
+//! • errno (POSIX & Windows), strerror
+//! • Malloc/free/realloc/calloc
+//! • Conversions de chaînes: Vitte String <-> C "char* NUL-terminated"
+//! • Couche utilitaire "Library" orientée ressources (RAII-like).
+//!
+//! Sémantique sécurité : tout ce qui touche à des pointeurs bruts est `unsafe`.
+//! Les helpers tentent de borner les UB typiques (NULs, double-free).
+//!
+//! Dépendances supposées de base :
+//! - String, Vec<u8>, Option<T>, Result<T,E>, panic, assert, println
+//! - attributs @cfg(...) de compilation conditionnelle façon Rust
+//! -----------------------------------------------------------------------------
+
+module ffi.c
+
+// -----------------------------------------------------------------------------
+// Types C fondamentaux
+// -----------------------------------------------------------------------------
+pub type c_void      = unit
+pub type c_char      = i8         // C 'char' signé (ABI GNU/Linux par défaut)
+pub type c_schar     = i8
+pub type c_uchar     = u8
+pub type c_short     = i16
+pub type c_ushort    = u16
+pub type c_int       = i32
+pub type c_uint      = u32
+pub type c_long      = isize      // dépend de la plateforme (LP64/LLP64)
+pub type c_ulong     = usize
+pub type c_longlong  = i64
+pub type c_ulonglong = u64
+pub type c_float     = f32
+pub type c_double    = f64
+
+pub type c_size_t    = usize
+pub type c_ssize_t   = isize
+pub type c_ptrdiff_t = isize
+pub type c_intptr_t  = isize
+pub type c_uintptr_t = usize
+
+pub type c_ptr<T>        = *mut T
+pub type c_const_ptr<T>  = *const T
+
+pub const NULL: c_const_ptr<c_void> = 0 as c_const_ptr<c_void>
+
+// -----------------------------------------------------------------------------
+// Sélection plateforme
+// -----------------------------------------------------------------------------
+@cfg(target_os = "windows")
+const IS_WINDOWS: bool = true
+@cfg(not(target_os = "windows"))
+const IS_WINDOWS: bool = false
+
+// -----------------------------------------------------------------------------
+// errno et strerror
+// -----------------------------------------------------------------------------
+@cfg(not(target_os = "windows"))
+extern "c" {
+    // GNU/Linux, Android : __errno_location ; macOS/BSD : __error
+    // On expose une abstraction qui choisit à l'édition de liens.
+    pub fn __errno_location() -> c_ptr<c_int>
+    pub fn __error() -> c_ptr<c_int>
+    pub fn strerror(errnum: c_int) -> c_const_ptr<c_char>
+}
+
+@cfg(target_os = "windows")
+extern "system" {
+    // Windows : errno est thread-local via _errno()
+    pub fn _errno() -> c_ptr<c_int>
+    pub fn strerror(errnum: c_int) -> c_const_ptr<c_char>
+}
+
+pub fn errno_ptr() -> c_ptr<c_int> {
+    if IS_WINDOWS {
+        unsafe { _errno() }
+    } else {
+        // On tente d'abord __errno_location (glibc), sinon __error (BSD)
+        let p = unsafe { __errno_location() }
+        if !p.is_null() { p } else { unsafe { __error() } }
+    }
+}
+
+pub fn get_errno() -> c_int {
+    unsafe { *errno_ptr() }
+}
+
+pub fn set_errno(val: c_int) {
+    unsafe { *errno_ptr() = val }
+}
+
+// -----------------------------------------------------------------------------
+// Allocation C standard
+// -----------------------------------------------------------------------------
+@cfg(not(target_os = "windows"))
+extern "c" {
+    pub fn malloc(size: c_size_t) -> c_ptr<c_void>
+    pub fn calloc(nmemb: c_size_t, size: c_size_t) -> c_ptr<c_void>
+    pub fn realloc(ptr: c_ptr<c_void>, size: c_size_t) -> c_ptr<c_void>
+    pub fn free(ptr: c_ptr<c_void>)
+}
+
+@cfg(target_os = "windows")
+extern "system" {
+    pub fn malloc(size: c_size_t) -> c_ptr<c_void>
+    pub fn calloc(nmemb: c_size_t, size: c_size_t) -> c_ptr<c_void>
+    pub fn realloc(ptr: c_ptr<c_void>, size: c_size_t) -> c_ptr<c_void>
+    pub fn free(ptr: c_ptr<c_void>)
+}
+
+// Safe-ish wrappers
+pub fn c_malloc(size: usize) -> c_ptr<c_void> {
+    unsafe { malloc(size as c_size_t) }
+}
+pub fn c_calloc(nmemb: usize, size: usize) -> c_ptr<c_void> {
+    unsafe { calloc(nmemb as c_size_t, size as c_size_t) }
+}
+pub fn c_realloc(ptr: c_ptr<c_void>, size: usize) -> c_ptr<c_void> {
+    unsafe { realloc(ptr, size as c_size_t) }
+}
+pub fn c_free(ptr: c_ptr<c_void>) {
+    if !ptr.is_null() { unsafe { free(ptr) } }
+}
+
+// -----------------------------------------------------------------------------
+// POSIX dl*   /   Windows loader
+// -----------------------------------------------------------------------------
+@cfg(not(target_os = "windows"))
+extern "c" {
+    pub fn dlopen(path: c_const_ptr<c_char>, flags: c_int) -> c_ptr<c_void>
+    pub fn dlsym(handle: c_ptr<c_void>, symbol: c_const_ptr<c_char>) -> c_ptr<c_void>
+    pub fn dlclose(handle: c_ptr<c_void>) -> c_int
+    pub fn dlerror() -> c_const_ptr<c_char>
+}
+
+// Flags POSIX
+pub const RTLD_LAZY   : c_int = 0x0001
+pub const RTLD_NOW    : c_int = 0x0002
+pub const RTLD_GLOBAL : c_int = 0x0100
+pub const RTLD_LOCAL  : c_int = 0x0000
+
+@cfg(target_os = "windows")
+extern "system" {
+    pub fn LoadLibraryA(path: c_const_ptr<c_char>) -> c_ptr<c_void>
+    pub fn GetProcAddress(hModule: c_ptr<c_void>, name: c_const_ptr<c_char>) -> c_ptr<c_void>
+    pub fn FreeLibrary(hModule: c_ptr<c_void>) -> c_int
+    // FormatMessageA + GetLastError seraient utiles, mais on reste minimal ici.
+}
+
+// -----------------------------------------------------------------------------
+// Chaînes : Vitte String <-> C char*
+// -----------------------------------------------------------------------------
+pub fn to_c_string(s: &String) -> Vec<u8> {
+    // Vérifie absence de NUL interne, puis ajoute le terminateur.
+    if s.contains('\0') {
+        panic("to_c_string: NUL interne interdit pour C");
+    }
+    let mut bytes = s.as_bytes().to_vec();
+    bytes.push(0u8);
+    bytes
+}
+
+pub fn from_c_str(ptr: c_const_ptr<c_char>) -> String {
+    if ptr.is_null() { return String::from("<null>") }
+    // Parcours jusqu’au NUL ; copie dans String en UTF-8 « best effort ».
+    let mut out = Vec::<u8>::new();
+    let mut i: usize = 0;
+    loop {
+        let b = unsafe { *(ptr.offset(i as isize) as c_const_ptr<u8>) };
+        if b == 0u8 { break; }
+        out.push(b);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+// -----------------------------------------------------------------------------
+// Casting pointeur -> fonction (danger zone)
+// -----------------------------------------------------------------------------
+pub unsafe fn cast_fn<T>(sym: c_ptr<c_void>) -> T {
+    // Hypothèse : T est un type "extern 'c' fn(...) -> ...".
+    // UB si la signature ne correspond pas.
+    (sym as usize) as T
+}
+
+// -----------------------------------------------------------------------------
+// Abstraction "Library" multiplateforme
+// -----------------------------------------------------------------------------
+pub struct Library {
+    handle: c_ptr<c_void>,
+    owned:  bool,
+}
+
+impl Library {
+    pub fn open(path: &String) -> Result<Library, String> {
+        let cpath = to_c_string(path);
+        if IS_WINDOWS {
+            let h = unsafe { LoadLibraryA(cpath.as_ptr() as c_const_ptr<c_char>) };
+            if h.is_null() {
+                let e = get_errno();
+                return Err(format("LoadLibraryA a échoué (errno={})", e));
+            }
+            Ok(Library { handle: h, owned: true })
+        } else {
+            // Par défaut : NOW | LOCAL
+            let h = unsafe { dlopen(cpath.as_ptr() as c_const_ptr<c_char>, RTLD_NOW | RTLD_LOCAL) };
+            if h.is_null() {
+                let msg = unsafe { dlerror() };
+                return Err(format("dlopen: {}", from_c_str(msg)));
+            }
+            Ok(Library { handle: h, owned: true })
+        }
+    }
+
+    pub fn open_with_flags(path: &String, flags: c_int) -> Result<Library, String> {
+        if IS_WINDOWS {
+            // Flags POSIX sans sens sous Windows : on ignore et on journalise.
+            self::Library::open(path)
+        } else {
+            let cpath = to_c_string(path);
+            let h = unsafe { dlopen(cpath.as_ptr() as c_const_ptr<c_char>, flags) };
+            if h.is_null() {
+                let msg = unsafe { dlerror() };
+                Err(format("dlopen: {}", from_c_str(msg)))
+            } else {
+                Ok(Library { handle: h, owned: true })
+            }
+        }
+    }
+
+    pub fn is_null(&self) -> bool { self.handle.is_null() }
+
+    pub fn get(&self, symbol: &String) -> Result<c_ptr<c_void>, String> {
+        let csym = to_c_string(symbol);
+        if self.handle.is_null() {
+            return Err(String::from("Library.get: handle nul"));
+        }
+        if IS_WINDOWS {
+            let p = unsafe { GetProcAddress(self.handle, csym.as_ptr() as c_const_ptr<c_char>) };
+            if p.is_null() {
+                Err(format("GetProcAddress: symbole introuvable '{}'", symbol))
+            } else {
+                Ok(p)
+            }
+        } else {
+            // POSIX
+            // On « clear » l’erreur précédente si besoin, via dlerror()
+            unsafe { let _ = dlerror(); }
+            let p = unsafe { dlsym(self.handle, csym.as_ptr() as c_const_ptr<c_char>) };
+            if p.is_null() {
+                let msg = unsafe { dlerror() };
+                Err(format("dlsym('{}'): {}", symbol, from_c_str(msg)))
+            } else {
+                Ok(p)
+            }
+        }
+    }
+
+    pub fn close(&mut self) -> Result<(), String> {
+        if !self.owned || self.handle.is_null() { return Ok(()) }
+        let h = self.handle;
+        self.handle = NULL as c_ptr<c_void>;
+        if IS_WINDOWS {
+            let ok = unsafe { FreeLibrary(h) };
+            if ok == 0 {
+                Err(String::from("FreeLibrary a échoué"))
+            } else { Ok(()) }
+        } else {
+            let rc = unsafe { dlclose(h) };
+            if rc != 0 {
+                Err(String::from("dlclose a échoué"))
+            } else { Ok(()) }
+        }
+    }
+}
+
+// RAII-like (drop)
+impl drop for Library {
+    fn drop(&mut self) {
+        let _ = self.close();
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Utilitaires haut-niveau : appel d'une fonction C typée
+// -----------------------------------------------------------------------------
+pub fn load_fn<T>(lib: &Library, name: &str) -> Result<T, String> {
+    let sym = lib.get(&String::from(name))?;
+    unsafe { Ok(cast_fn::<T>(sym)) }
+}
+
+// -----------------------------------------------------------------------------
+// Helpers : appel à strerror, message d’erreur lisible
+// -----------------------------------------------------------------------------
+pub fn last_os_error() -> String {
+    let e = get_errno();
+    let p = unsafe { strerror(e) };
+    format("errno {}: {}", e, from_c_str(p))
+}
+
+// -----------------------------------------------------------------------------
+// Exemples d’utilisation
+// -----------------------------------------------------------------------------
+#[test]
+fn example_libm_cos() {
+    if IS_WINDOWS { return } // exemple POSIX
+    let lib = Library::open(&String::from("libm.so.6"))
+        .expect("libm introuvable");
+    type CosFn = extern "c" fn(c_double) -> c_double;
+    let cos_fn: CosFn = load_fn::<CosFn>(&lib, "cos").expect("cos introuvable");
+    let r = unsafe { cos_fn(0.0) };
+    assert((r - 1.0).abs() < 1e-12);
+}
+
+#[test]
+fn example_malloc_free() {
+    let p = c_malloc(128);
+    assert(!p.is_null());
+    let p2 = c_realloc(p, 256);
+    assert(!p2.is_null());
+    c_free(p2);
+}
