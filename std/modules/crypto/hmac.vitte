@@ -1,2 +1,134 @@
-//! hmac — HMAC-SHA256 (intrinsic)
-export fn hmac_sha256(key: Bytes, msg: Bytes) -> Bytes { __intrinsics::hmac_sha256(key, msg) }
+// modules/crypto/hmac.vitte
+// HMAC (RFC 2104/4231) — implémentation SHA-256 avec API streaming + one-shot.
+// - hmac256_new(key) -> Hmac256
+// - hmac256_update(&mut ctx, data)
+// - hmac256_final(ctx) -> Vec<u8>
+// - hmac256_final_hex(ctx) -> String
+// - hmac256(key, data) -> Vec<u8>        // one-shot
+// - verify_hmac256(key, data, tag) -> bool (comparaison temps constant)
+//
+// NB: s'appuie sur crypto.hash::Sha256 (déjà présent).
+// Si tu ajoutes SHA-1/SHA-512 plus tard, on dupliquera le pattern.
+
+module crypto.hmac
+use crypto.hash as h
+
+const BLK: i32 = 64 // blocksize SHA-256
+
+pub struct Hmac256 {
+    opad:  Vec<u8>,   // (K ^ opad), prêt à être hashé à la fin
+    inner: h::Sha256, // state = H( (K ^ ipad) || ...data... )
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Construction / streaming
+// ————————————————————————————————————————————————————————————————————————
+pub fn hmac256_new(key: &Vec<u8>) -> Hmac256 {
+    let k0 = normalize_key_sha256(key)
+
+    // Prépare ipad/opad
+    let mut ipad = Vec<u8>::with_len(BLK as usize, 0x36)
+    let mut opad = Vec<u8>::with_len(BLK as usize, 0x5c)
+    let mut i = 0
+    while i < BLK {
+        ipad[i] ^= k0[i]
+        opad[i] ^= k0[i]
+        i += 1
+    }
+
+    // inner = H( (K^ipad) || ... )
+    let mut inner = h::sha256_new()
+    h::sha256_update(&mut inner, ipad)
+
+    return Hmac256 { opad, inner }
+}
+
+fn normalize_key_sha256(key: &Vec<u8>) -> Vec<u8> {
+    // Clé > blocksize → hash ; sinon pad à droite avec 0x00.
+    let mut k = if key.len() > BLK as usize { h::sha256(key) } else { key.clone() }
+    if k.len() < BLK as usize { k.resize(BLK as usize, 0) }
+    return k
+}
+
+pub fn hmac256_update(ctx: &mut Hmac256, data: &Vec<u8>) {
+    h::sha256_update(&mut ctx.inner, data)
+}
+
+pub fn hmac256_final(ctx: Hmac256) -> Vec<u8> {
+    // inner_digest = H( (K^ipad) || message )
+    let inner_digest = h::sha256_final(ctx.inner)
+    // mac = H( (K^opad) || inner_digest )
+    let mut outer = h::sha256_new()
+    h::sha256_update(&mut outer, ctx.opad)
+    h::sha256_update(&mut outer, inner_digest)
+    return h::sha256_final(outer)
+}
+
+pub fn hmac256_final_hex(ctx: Hmac256) -> String {
+    return h::to_hex_lower(hmac256_final(ctx))
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// One-shot & vérification
+// ————————————————————————————————————————————————————————————————————————
+pub fn hmac256(key: &Vec<u8>, data: &Vec<u8>) -> Vec<u8> {
+    // Implémenté via le contexte streaming (équivaut à crypto.hash::hmac_sha256)
+    let mut c = hmac256_new(key)
+    hmac256_update(&mut c, data)
+    return hmac256_final(c)
+}
+
+pub fn verify_hmac256(key: &Vec<u8>, data: &Vec<u8>, tag: &Vec<u8>) -> bool {
+    let mac = hmac256(key, data)
+    return ct_eq(mac, tag)
+}
+
+// Comparaison temps constant (indifférente aux premières différences).
+fn ct_eq(a: &Vec<u8>, b: &Vec<u8>) -> bool {
+    let mut diff: u8 = 0
+    let max = if a.len() > b.len() { a.len() } else { b.len() }
+    let mut i = 0
+    while i < max {
+        let aa = if i < a.len() { a[i] } else { 0u8 }
+        let bb = if i < b.len() { b[i] } else { 0u8 }
+        diff = diff | (aa ^ bb)
+        i += 1
+    }
+    return diff == 0 && a.len() == b.len()
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Tests (vecteurs RFC 4231 + cohérence streaming vs one-shot)
+// ————————————————————————————————————————————————————————————————————————
+test "rfc4231 tc1 (key=0x0b*20, data='Hi There')" {
+    let mut k = Vec<u8>::with_len(20, 0x0b)
+    let d = "Hi There".as_bytes()
+
+    // streaming
+    let mut c = hmac256_new(k)
+    hmac256_update(&mut c, d)
+    let mac1 = hmac256_final_hex(c)
+
+    // one-shot
+    let mac2 = h::to_hex_lower(hmac256(k, d))
+
+    assert mac1 == "b0344c61d8db38535ca8afceaf0bf12b\
+                    881dc200c9833da726e9376c2e32cff7"
+    assert mac1 == mac2
+}
+
+test "long key > 64 bytes folds via hash" {
+    let longk = Vec<u8>::with_len(200, 0xAA)
+    let data = "test".as_bytes()
+    let m1 = h::to_hex_lower(hmac256(longk, data))
+    // égal au même HMAC calculé via crypto.hash::hmac_sha256
+    let m2 = h::to_hex_lower(h::hmac_sha256(longk, data))
+    assert m1 == m2
+}
+
+test "verify constant-time ok" {
+    let k = "key".as_bytes()
+    let d = "data".as_bytes()
+    let t = hmac256(k, d)
+    assert verify_hmac256(k, d, t)
+}

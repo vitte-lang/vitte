@@ -1,5 +1,378 @@
-//! heap — tas binaire min
-struct Heap<T> { __raw: __intrinsics::Heap }
-export fn new<T>() -> Heap<T> { Heap{ __raw: __intrinsics::heap_new() } }
-export fn push<T>(mut h: Heap<T>, v: T) { __intrinsics::heap_push(h.__raw, v) }
-export fn pop<T>(mut h: Heap<T>) -> Option<T> { __intrinsics::heap_pop(h.__raw) }
+// std/modules/algo/heap.vitte
+// Binary Heap (min/max) + Indexed Heap (decrease_key).
+// Priorité i64, valeur i32 (0..cap-1 pour IndexedHeap).
+
+module std.algo.heap
+
+// ————————————————————————————————————————————————————————————————————————
+// Helpers de comparaison
+// ————————————————————————————————————————————————————————————————————————
+
+fn better(is_min: bool, a: i64, b: i64) -> bool {
+    // min-heap: a < b ; max-heap: a > b
+    if is_min { return a < b } else { return a > b }
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Heap simple
+// ————————————————————————————————————————————————————————————————————————
+
+pub struct Heap {
+    data:   Vec<(i64, i32)>, // (key, val)
+    is_min: bool
+}
+
+pub fn heap_new_min() -> Heap {
+    return Heap { data: Vec<(i64,i32)>::new(), is_min: true }
+}
+pub fn heap_new_max() -> Heap {
+    return Heap { data: Vec<(i64,i32)>::new(), is_min: false }
+}
+pub fn heap_len(h: &Heap) -> i32 { return h.data.len() }
+pub fn heap_is_empty(h: &Heap) -> bool { return h.data.len() == 0 }
+pub fn heap_clear(h: &mut Heap) { h.data.clear() }
+
+pub fn heap_peek(h: &Heap) -> (i64, i32) {
+    if h.data.len() == 0 { panic("heap_peek: empty heap") }
+    return h.data[0]
+}
+
+pub fn heap_push(h: &mut Heap, kv: (i64,i32)) {
+    h.data.push(kv)
+    sift_up(h, h.data.len() - 1)
+}
+
+pub fn heap_pop(h: &mut Heap) -> (i64,i32) {
+    if h.data.len() == 0 { panic("heap_pop: empty heap") }
+    let out = h.data[0]
+    let last = h.data.pop()
+    if h.data.len() > 0 {
+        h.data[0] = last
+        sift_down(h, 0)
+    }
+    return out
+}
+
+// Build en O(n)
+pub fn heap_from(items: Vec<(i64,i32)>, is_min: bool) -> Heap {
+    let mut h = Heap { data: items, is_min }
+    if h.data.len() > 1 {
+        let mut i = (h.data.len() - 2) / 2
+        loop {
+            sift_down(&mut h, i)
+            if i == 0 { break }
+            i -= 1
+        }
+    }
+    return h
+}
+
+// — internal sift —
+fn sift_up(h: &mut Heap, mut i: i32) {
+    while i > 0 {
+        let p = (i - 1) / 2
+        if !better(h.is_min, h.data[i].0, h.data[p].0) { break }
+        let t = h.data[p]; h.data[p] = h.data[i]; h.data[i] = t
+        i = p
+    }
+}
+fn sift_down(h: &mut Heap, mut i: i32) {
+    let n = h.data.len()
+    loop {
+        let l = 2*i + 1
+        let r = 2*i + 2
+        if l >= n { break }
+        let mut m = l
+        if r < n && better(h.is_min, h.data[r].0, h.data[l].0) { m = r }
+        if !better(h.is_min, h.data[m].0, h.data[i].0) { break }
+        let t = h.data[i]; h.data[i] = h.data[m]; h.data[m] = t
+        i = m
+    }
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// IndexedHeap : opérations par valeur en O(log n) via position map
+// Valeurs doivent être dans [0, cap).
+// ————————————————————————————————————————————————————————————————————————
+
+pub struct IndexedHeap {
+    data:   Vec<(i64, i32)>, // (key, val)
+    pos:    Vec<i32>,        // pos[val] = index dans data ou -1 si absent
+    is_min: bool
+}
+
+pub fn iheap_new_min(cap: i32) -> IndexedHeap {
+    if cap < 0 { panic("iheap_new_min: cap must be >= 0") }
+    return IndexedHeap {
+        data: Vec<(i64,i32)>::new(),
+        pos:  Vec<i32>::with_len(cap as usize, -1),
+        is_min: true
+    }
+}
+pub fn iheap_new_max(cap: i32) -> IndexedHeap {
+    if cap < 0 { panic("iheap_new_max: cap must be >= 0") }
+    return IndexedHeap {
+        data: Vec<(i64,i32)>::new(),
+        pos:  Vec<i32>::with_len(cap as usize, -1),
+        is_min: false
+    }
+}
+
+pub fn iheap_len(h: &IndexedHeap) -> i32 { return h.data.len() }
+pub fn iheap_is_empty(h: &IndexedHeap) -> bool { return h.data.len() == 0 }
+pub fn iheap_contains(h: &IndexedHeap, v: i32) -> bool {
+    assert_val(h, v)
+    return h.pos[v] != -1
+}
+pub fn iheap_key_of(h: &IndexedHeap, v: i32) -> i64 {
+    assert_val(h, v)
+    let i = h.pos[v]
+    if i == -1 { panic("iheap_key_of: value not present") }
+    return h.data[i].0
+}
+
+pub fn iheap_peek(h: &IndexedHeap) -> (i64,i32) {
+    if h.data.len() == 0 { panic("iheap_peek: empty heap") }
+    return h.data[0]
+}
+
+// Insert (key,val). Panic si val déjà présent.
+pub fn iheap_insert(h: &mut IndexedHeap, key: i64, val: i32) {
+    assert_val(h, val)
+    if h.pos[val] != -1 { panic("iheap_insert: value already present") }
+    let idx = h.data.len()
+    h.data.push((key, val))
+    h.pos[val] = idx
+    iheap_sift_up(h, idx)
+}
+
+// Si absent → insert. Si présent → remplace la clé si "meilleure" selon le heap.
+// Utile pour Dijkstra: relax (decrease_key pour min-heap).
+pub fn iheap_relax(h: &mut IndexedHeap, key: i64, val: i32) {
+    assert_val(h, val)
+    let i = h.pos[val]
+    if i == -1 {
+        iheap_insert(h, key, val)
+        return
+    }
+    let old = h.data[i].0
+    if better(h.is_min, key, old) {
+        h.data[i].0 = key
+        iheap_sift_up(h, i)
+    } else if better(!h.is_min, key, old) {
+        // clé pire → possibilité d’augmenter
+        h.data[i].0 = key
+        iheap_sift_down(h, i)
+    } // sinon inchangé
+}
+
+pub fn iheap_decrease_key(h: &mut IndexedHeap, val: i32, new_key: i64) {
+    if !h.is_min { panic("iheap_decrease_key: only valid on min-heap") }
+    assert_val(h, val)
+    let i = h.pos[val]
+    if i == -1 { panic("iheap_decrease_key: value not present") }
+    if new_key > h.data[i].0 { panic("iheap_decrease_key: new_key is greater") }
+    h.data[i].0 = new_key
+    iheap_sift_up(h, i)
+}
+pub fn iheap_increase_key(h: &mut IndexedHeap, val: i32, new_key: i64) {
+    if h.is_min { panic("iheap_increase_key: only valid on max-heap") }
+    assert_val(h, val)
+    let i = h.pos[val]
+    if i == -1 { panic("iheap_increase_key: value not present") }
+    if new_key < h.data[i].0 { panic("iheap_increase_key: new_key is smaller") }
+    h.data[i].0 = new_key
+    iheap_sift_up(h, i)
+}
+
+pub fn iheap_pop(h: &mut IndexedHeap) -> (i64,i32) {
+    if h.data.len() == 0 { panic("iheap_pop: empty heap") }
+    let out = h.data[0]
+    let last = h.data.pop()
+    h.pos[out.1] = -1
+    if h.data.len() > 0 {
+        h.data[0] = last
+        h.pos[h.data[0].1] = 0
+        iheap_sift_down(h, 0)
+    }
+    return out
+}
+
+pub fn iheap_remove(h: &mut IndexedHeap, val: i32) {
+    assert_val(h, val)
+    let i = h.pos[val]
+    if i == -1 { return } // no-op
+    let last = h.data.pop()
+    h.pos[val] = -1
+    if i < h.data.len() {
+        h.data[i] = last
+        h.pos[h.data[i].1] = i
+        // rétablir l’invariant (up ou down selon la clé)
+        if i > 0 && better(h.is_min, h.data[i].0, h.data[(i-1)/2].0) {
+            iheap_sift_up(h, i)
+        } else {
+            iheap_sift_down(h, i)
+        }
+    }
+}
+
+fn assert_val(h: &IndexedHeap, v: i32) {
+    if v < 0 || v >= h.pos.len() {
+        panic("IndexedHeap: value out of bounds: " + v.to_string())
+    }
+}
+
+// internal sift (IndexedHeap)
+fn iheap_sift_up(h: &mut IndexedHeap, mut i: i32) {
+    while i > 0 {
+        let p = (i - 1) / 2
+        if !better(h.is_min, h.data[i].0, h.data[p].0) { break }
+        // swap i <-> p
+        let vi = h.data[i].1
+        let vp = h.data[p].1
+        let t = h.data[p]; h.data[p] = h.data[i]; h.data[i] = t
+        h.pos[vi] = p
+        h.pos[vp] = i
+        i = p
+    }
+}
+fn iheap_sift_down(h: &mut IndexedHeap, mut i: i32) {
+    let n = h.data.len()
+    loop {
+        let l = 2*i + 1
+        let r = 2*i + 2
+        if l >= n { break }
+        let mut m = l
+        if r < n && better(h.is_min, h.data[r].0, h.data[l].0) { m = r }
+        if !better(h.is_min, h.data[m].0, h.data[i].0) { break }
+        let vm = h.data[m].1
+        let vi = h.data[i].1
+        let t = h.data[i]; h.data[i] = h.data[m]; h.data[m] = t
+        h.pos[vm] = i
+        h.pos[vi] = m
+        i = m
+    }
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Utils de fusion / k-way merge (min-heap)
+// ————————————————————————————————————————————————————————————————————————
+
+pub fn heap_merge_min(a: Heap, b: Heap) -> Heap {
+    if !a.is_min || !b.is_min { panic("heap_merge_min: both heaps must be min-heaps") }
+    // O(n + m) via heapify
+    let mut items = Vec<(i64,i32)>::new()
+    let mut i = 0
+    while i < a.data.len() { items.push(a.data[i]); i += 1 }
+    let mut j = 0
+    while j < b.data.len() { items.push(b.data[j]); j += 1 }
+    return heap_from(items, true)
+}
+
+// K-way merge sur listes déjà triées (non destructif des entrées)
+pub fn kway_merge(lists: Vec<Vec<i64>>) -> Vec<i64> {
+    let k = lists.len()
+    if k == 0 { return Vec<i64>::new() }
+    // Heap de (val, (list_id, idx))
+    let mut h = Heap { data: Vec<(i64,i32)>::new(), is_min: true }
+    let mut idx = Vec<i32>::with_len(k as usize, 0)
+
+    let mut i = 0
+    while i < k {
+        if lists[i].len() > 0 {
+            h.data.push((lists[i][0], i))
+        }
+        i += 1
+    }
+    if h.data.len() > 1 {
+        let mut s = (h.data.len() - 2)/2
+        loop {
+            sift_down(&mut h, s)
+            if s == 0 { break }
+            s -= 1
+        }
+    }
+
+    let mut out = Vec<i64>::new()
+    while !heap_is_empty(&h) {
+        let (val, lid) = heap_pop(&mut h)
+        out.push(val)
+        idx[lid] += 1
+        if idx[lid] < lists[lid].len() {
+            heap_push(&mut h, (lists[lid][idx[lid]], lid))
+        }
+    }
+    return out
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Tests
+// ————————————————————————————————————————————————————————————————————————
+
+test "heap basic min" {
+    let mut h = heap_new_min()
+    heap_push(&mut h, (5, 10))
+    heap_push(&mut h, (3, 11))
+    heap_push(&mut h, (7, 12))
+    assert heap_peek(&h).0 == 3
+    let a = heap_pop(&mut h)
+    assert a.0 == 3 && a.1 == 11
+    let b = heap_pop(&mut h)
+    assert b.0 == 5 && b.1 == 10
+    let c = heap_pop(&mut h)
+    assert c.0 == 7 && c.1 == 12
+}
+
+test "heap basic max" {
+    let mut h = heap_new_max()
+    heap_push(&mut h, (5, 1))
+    heap_push(&mut h, (9, 2))
+    heap_push(&mut h, (7, 3))
+    assert heap_peek(&h).0 == 9
+    assert heap_pop(&mut h).0 == 9
+    assert heap_pop(&mut h).0 == 7
+    assert heap_pop(&mut h).0 == 5
+}
+
+test "heap_from heapify" {
+    let items = [(4,0),(2,0),(9,0),(1,0)]
+    let h = heap_from(items, true)
+    assert heap_len(&h) == 4
+    assert heap_peek(&h).0 == 1
+}
+
+test "indexed heap insert/relax/pop" {
+    let mut h = iheap_new_min(10)
+    iheap_insert(&mut h, 50, 3)
+    iheap_relax(&mut h, 20, 5)
+    iheap_relax(&mut h, 40, 3) // améliore (decrease)
+    iheap_relax(&mut h, 60, 7) // insert nouveau
+    assert iheap_peek(&h).1 == 3
+    iheap_decrease_key(&mut h, 5, 10)
+    assert iheap_peek(&h).1 == 5
+    let (k,v) = iheap_pop(&mut h)
+    assert k == 10 && v == 5
+    assert iheap_contains(&h, 5) == false
+}
+
+test "indexed heap remove mid" {
+    let mut h = iheap_new_min(6)
+    iheap_insert(&mut h, 30, 0)
+    iheap_insert(&mut h, 10, 1)
+    iheap_insert(&mut h, 20, 2)
+    iheap_remove(&mut h, 2)
+    assert !iheap_contains(&h, 2)
+    assert iheap_peek(&h).1 == 1
+}
+
+test "kway merge" {
+    let lists = [
+        [1,4,9],
+        [2,6],
+        [0, 3,7,8]
+    ]
+    let out = kway_merge(lists)
+    assert out.len() == 9
+    assert out[0] == 0 && out[1] == 1 && out[2] == 2
+    assert out[7] == 8 && out[8] == 9
+}

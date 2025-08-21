@@ -1,5 +1,217 @@
-//! dsu — disjoint-set (union-find)
-struct DSU { __raw: __intrinsics::DSU }
-export fn new(n: i32) -> DSU { DSU{ __raw: __intrinsics::dsu_new(n) } }
-export fn find(mut d: DSU, x: i32) -> i32 { __intrinsics::dsu_find(d.__raw, x) }
-export fn unite(mut d: DSU, a: i32, b: i32) { __intrinsics::dsu_unite(d.__raw, a, b) }
+// std/modules/algo/dsu.vitte
+// Disjoint Set Union (Union-Find) — union by size + path compression
+// Indices: 0..n-1
+// Erreurs: panique sur index hors bornes (API std). Variante "safe" possible dans vitte-tools.
+
+module std.algo.dsu
+
+// ———————————————————————————————————————————————————————————————————————————
+// Types
+// ———————————————————————————————————————————————————————————————————————————
+
+pub struct Dsu {
+    parent: Vec<i32>,
+    size:   Vec<i32>,
+    count:  i32,        // nombre d’ensembles
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+// Helpers internes
+// ———————————————————————————————————————————————————————————————————————————
+
+fn assert_index(uf: &Dsu, x: i32) {
+    if x < 0 || x >= uf.parent.len() {
+        panic("dsu: index out of bounds: " + x.to_string() + " (len=" + uf.parent.len().to_string() + ")")
+    }
+}
+
+// Trouve la racine avec compression de chemin (itérative, path-halving)
+fn find_root(uf: &mut Dsu, mut x: i32) -> i32 {
+    // Phase 1: trouver la racine
+    let mut r = x
+    while uf.parent[r] != r {
+        r = uf.parent[r]
+    }
+    // Phase 2: compresser
+    while uf.parent[x] != x {
+        let p = uf.parent[x]
+        uf.parent[x] = r
+        x = p
+    }
+    return r
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+// API publique
+// ———————————————————————————————————————————————————————————————————————————
+
+/// Construit une structure DSU de n éléments (0..n-1).
+pub fn dsu_new(n: i32) -> Dsu {
+    if n < 0 {
+        panic("dsu_new: n must be >= 0")
+    }
+    let mut parent = Vec<i32>::with_capacity(n as usize)
+    let mut size   = Vec<i32>::with_capacity(n as usize)
+    let mut i = 0
+    while i < n {
+        parent.push(i)
+        size.push(1)
+        i += 1
+    }
+    return Dsu { parent, size, count: n }
+}
+
+/// Renvoie le représentant (racine) de x.
+pub fn dsu_find(uf: &mut Dsu, x: i32) -> i32 {
+    assert_index(uf, x)
+    return find_root(uf, x)
+}
+
+/// Fusionne les ensembles de a et b. Renvoie true si une fusion a eu lieu.
+pub fn dsu_union(uf: &mut Dsu, a: i32, b: i32) -> bool {
+    assert_index(uf, a)
+    assert_index(uf, b)
+    let mut ra = find_root(uf, a)
+    let mut rb = find_root(uf, b)
+    if ra == rb {
+        return false
+    }
+    // union by size: attacher la plus petite à la plus grande
+    if uf.size[ra] < uf.size[rb] {
+        let t = ra
+        ra = rb
+        rb = t
+    }
+    uf.parent[rb] = ra
+    uf.size[ra] += uf.size[rb]
+    uf.count -= 1
+    return true
+}
+
+/// Vrai si a et b sont dans le même ensemble.
+pub fn dsu_same(uf: &mut Dsu, a: i32, b: i32) -> bool {
+    assert_index(uf, a)
+    assert_index(uf, b)
+    return find_root(uf, a) == find_root(uf, b)
+}
+
+/// Taille de l’ensemble contenant x.
+pub fn dsu_size_of(uf: &mut Dsu, x: i32) -> i32 {
+    assert_index(uf, x)
+    let r = find_root(uf, x)
+    return uf.size[r]
+}
+
+/// Nombre d’ensembles actuels.
+pub fn dsu_sets(uf: &Dsu) -> i32 {
+    return uf.count
+}
+
+/// Nombre total d’éléments gérés par la DSU.
+pub fn dsu_len(uf: &Dsu) -> i32 {
+    return uf.parent.len()
+}
+
+/// Liste des racines (leaders). Ordre non garanti.
+pub fn dsu_leaders(uf: &mut Dsu) -> Vec<i32> {
+    // On compresse d’abord tout le monde pour stabilité
+    let n = uf.parent.len()
+    let mut i = 0
+    while i < n {
+        // find_root compresse
+        let _ = find_root(uf, i)
+        i += 1
+    }
+    // Un leader est un i tel que parent[i] == i
+    let mut out = Vec<i32>::new()
+    let mut j = 0
+    while j < n {
+        if uf.parent[j] == j {
+            out.push(j)
+        }
+        j += 1
+    }
+    return out
+}
+
+/// Groupes complets en tant que liste de listes. Ordre non garanti.
+pub fn dsu_groups(uf: &mut Dsu) -> Vec<Vec<i32>> {
+    // Stratégie sans HashMap: leaders + indexation linéaire (O(n^2) au pire),
+    // suffisant pour std. Pour gros n, préférer Map<root,Vec>.
+    let leaders = dsu_leaders(uf)
+    let k = leaders.len()
+
+    let mut groups = Vec<Vec<i32>>::with_capacity(k as usize)
+    let mut ii = 0
+    while ii < k {
+        groups.push(Vec<i32>::new())
+        ii += 1
+    }
+
+    let n = uf.parent.len()
+    let mut x = 0
+    while x < n {
+        let r = find_root(uf, x)
+        // trouver l’index du leader r
+        let mut idx = -1
+        let mut t = 0
+        while t < k {
+            if leaders[t] == r {
+                idx = t
+                break
+            }
+            t += 1
+        }
+        if idx < 0 {
+            panic("dsu_groups: leader not found (invariant broken)")
+        }
+        groups[idx].push(x)
+        x += 1
+    }
+    return groups
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+// Tests (smoke + invariants de base)
+// ———————————————————————————————————————————————————————————————————————————
+
+test "basic unions and finds" {
+    let mut uf = dsu_new(5)
+    assert dsu_len(&uf) == 5
+    assert dsu_sets(&uf) == 5
+
+    assert dsu_union(&mut uf, 0, 1)
+    assert dsu_union(&mut uf, 1, 2)
+    assert dsu_union(&mut uf, 3, 4)
+    assert !dsu_union(&mut uf, 2, 0)      // déjà fusionnés
+
+    assert dsu_same(&mut uf, 0, 2)
+    assert !dsu_same(&mut uf, 0, 3)
+
+    assert dsu_sets(&uf) == 2
+    assert dsu_size_of(&mut uf, 1) == 3
+
+    let leaders = dsu_leaders(&mut uf)
+    // 2 ensembles → 2 leaders
+    assert leaders.len() == 2
+
+    let groups = dsu_groups(&mut uf)
+    assert groups.len() == 2
+}
+
+test "idempotent union" {
+    let mut uf = dsu_new(3)
+    assert dsu_union(&mut uf, 0, 1)
+    assert !dsu_union(&mut uf, 1, 0)
+    assert dsu_size_of(&mut uf, 0) == 2
+    assert dsu_sets(&uf) == 2
+}
+
+test "singletons and sizes" {
+    let mut uf = dsu_new(4)
+    assert dsu_size_of(&mut uf, 0) == 1
+    assert dsu_size_of(&mut uf, 3) == 1
+    assert dsu_union(&mut uf, 2, 3)
+    assert dsu_size_of(&mut uf, 2) == 2
+    assert dsu_same(&mut uf, 2, 3)
+}

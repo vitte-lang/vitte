@@ -1,0 +1,372 @@
+// std/modules/compress/deflate.vitte
+// Minimal DEFLATE (RFC1951)
+// - deflate_compress: "stored blocks" only (no compression), BFINAL sur le dernier
+// - deflate_decompress: supporte "stored" (00) et "fixed Huffman" (01)
+//   Panique sur "dynamic Huffman" (10) et réservé (11)
+//
+// Suffisant pour un backend zlib fonctionnel (RFC1950) et pour lire beaucoup de flux simples.
+// On pourra étendre vers "dynamic" plus tard.
+
+module std.compress.deflate
+
+// ————————————————————————————————————————————————————————————————
+// API
+// ————————————————————————————————————————————————————————————————
+pub fn deflate_compress(raw: &Vec<u8>) -> Vec<u8> {
+    // Encode en une suite de blocs "stored" (<= 65535 bytes), alignés sur l'octet.
+    let n = raw.len()
+    let mut out = Vec<u8>::new()
+    let mut bw = BitWriter::new(&mut out)
+
+    let mut pos = 0
+    while pos < n {
+        let chunk = min_i32(65535, n - pos)
+        let last = (pos + chunk == n)
+
+        // Header: BFINAL (1 bit), BTYPE=00 (2 bits)
+        bw.write_bits(if last {1} else {0}, 1)
+        bw.write_bits(0, 2) // stored
+
+        // Align to next byte boundary
+        bw.align_byte()
+
+        // LEN & NLEN (16 bits LE)
+        let len = chunk as i32
+        let nlen = (!len) & 0xFFFF
+        push_le_u16(&mut out, len)
+        push_le_u16(&mut out, nlen)
+
+        // Payload
+        out.extend_from_slice(&raw[pos : pos + chunk])
+
+        pos += chunk
+    }
+
+    bw.finish()
+    return out
+}
+
+pub fn deflate_decompress(comp: &Vec<u8>) -> Vec<u8> {
+    let mut br = BitReader::new(comp)
+    let mut out = Vec<u8>::new()
+
+    loop {
+        // Header block
+        let bfinal = br.read_bits(1)
+        let btype  = br.read_bits(2)
+
+        if btype == 0 {           // stored
+            br.align_byte()
+            let len  = br.read_u16_le()
+            let nlen = br.read_u16_le()
+            if (len ^ nlen) != 0xFFFF { panic("deflate: stored block len/nlen mismatch") }
+            br.copy_bytes(len, &mut out)
+        } else if btype == 1 {    // fixed Huffman
+            decode_fixed_block(&mut br, &mut out)
+        } else if btype == 2 {    // dynamic Huffman
+            panic("deflate: dynamic Huffman not supported (yet)")
+        } else {
+            panic("deflate: reserved btype=3")
+        }
+
+        if bfinal == 1 { break }
+    }
+
+    return out
+}
+
+// ————————————————————————————————————————————————————————————————
+// Fixed Huffman decoding
+// ————————————————————————————————————————————————————————————————
+//
+// Littéral/Longueur (codes 0..287) : schéma "fixed" de la spec :
+//  - codes 0..143  (8 bits)  value 00110000..10111111
+//  - codes 144..255 (9 bits)
+//  - codes 256..279 (7 bits)
+//  - codes 280..287 (8 bits)
+// Distances 0..31 : longueur 5 bits, valeurs 0..31
+//
+// On construit des tables canoniques une fois, puis on lit symboles jusqu'à
+// END_OF_BLOCK = 256.
+
+fn decode_fixed_block(br: &mut BitReader, out: &mut Vec<u8>) {
+    // tables (générées à la volée, coût négligeable)
+    let mut l_code = HuffTable::new()
+    fixed_fill_litlen(&mut l_code)
+    let mut d_code = HuffTable::new()
+    fixed_fill_dist(&mut d_code)
+
+    loop {
+        let sym = l_code.read_symbol(br)
+        if sym < 256 {
+            out.push(sym as u8)
+            continue
+        }
+        if sym == 256 {
+            // end of block
+            break
+        }
+        // length codes 257..285
+        let (base_len, extra_bits) = length_base_extra(sym)
+        let extra = if extra_bits > 0 { br.read_bits(extra_bits) } else { 0 }
+        let length = base_len + extra
+
+        let dsym = d_code.read_symbol(br)
+        if dsym > 29 { panic("deflate: invalid distance symbol") }
+        let (base_dist, dist_extra_bits) = dist_base_extra(dsym)
+        let de = if dist_extra_bits > 0 { br.read_bits(dist_extra_bits) } else { 0 }
+        let dist = base_dist + de
+        if dist == 0 { panic("deflate: distance zero") }
+        if dist as i32 > out.len() { panic("deflate: distance exceeds output") }
+
+        // Copier avec possibilité de chevauchement
+        let start = out.len() - dist as i32
+        let mut i = 0
+        while i < length {
+            let b = out[start + (i % dist as i32)]
+            out.push(b)
+            i += 1
+        }
+    }
+}
+
+fn fixed_fill_litlen(ht: &mut HuffTable) {
+    // Selon RFC1951 §3.2.6
+    // codes 0..143 -> 8 bits (00110000..10111111)
+    ht.add_run(0,   143, 8)
+    // 144..255 -> 9 bits
+    ht.add_run(144, 255, 9)
+    // 256..279 -> 7 bits
+    ht.add_run(256, 279, 7)
+    // 280..287 -> 8 bits
+    ht.add_run(280, 287, 8)
+    ht.build()
+}
+fn fixed_fill_dist(ht: &mut HuffTable) {
+    // 32 codes, tous longueur 5
+    ht.add_run(0, 31, 5)
+    ht.build()
+}
+
+// ————————————————————————————————————————————————————————————————
+// Longueurs & distances (tables de base/extras — RFC1951 §3.2.5)
+// ————————————————————————————————————————————————————————————————
+fn length_base_extra(sym: i32) -> (i32, i32) {
+    // sym in [257..285]
+    // tables compactes
+    if sym < 257 || sym > 285 { panic("deflate: bad length symbol") }
+    let idx = sym - 257
+    // base
+    let base = [
+        3,4,5,6,7,8,9,10,
+        11,13,15,17,19,23,27,31,
+        35,43,51,59,67,83,99,115,
+        131,163,195,227,258
+    ]
+    let eb = [
+        0,0,0,0,0,0,0,0,
+        1,1,1,1,2,2,2,2,
+        3,3,3,3,4,4,4,4,
+        5,5,5,5,0 // 285 -> 258 (no extra)
+    ]
+    // idx 0..28 ; handle 285 separately
+    if sym == 285 { return (258, 0) }
+    return (base[idx], eb[idx])
+}
+
+fn dist_base_extra(sym: i32) -> (i32, i32) {
+    // sym in [0..29]
+    let base = [
+        1,2,3,4, 5,7,9,13,
+        17,25,33,49,65,97,129,193,
+        257,385,513,769,1025,1537,2049,3073,
+        4097,6145,8193,12289,16385,24577
+    ]
+    let eb = [
+        0,0,0,0, 1,1,2,2,
+        3,3,4,4,5,5,6,6,
+        7,7,8,8,9,9,10,10,
+        11,11,12,12,13,13
+    ]
+    return (base[sym], eb[sym])
+}
+
+// ————————————————————————————————————————————————————————————————
+// Bit I/O
+// ————————————————————————————————————————————————————————————————
+struct BitReader {
+    data:  &Vec<u8>,
+    bitp:  i32,   // position en bits (LSB-first)
+}
+
+impl BitReader {
+    fn new(data: &Vec<u8>) -> BitReader {
+        return BitReader { data, bitp: 0 }
+    }
+    fn remaining_bits(&self) -> i32 {
+        return (self.data.len() * 8) - self.bitp
+    }
+    fn read_bits(&mut self, n: i32) -> i32 {
+        if n < 0 || n > 24 { panic("bitreader: bad n") }
+        if self.remaining_bits() < n { panic("deflate: truncated stream (bits)") }
+        let mut acc: i32 = 0
+        let mut read = 0
+        let mut bp = self.bitp
+        while read < n {
+            let byte_index = bp / 8
+            let bit_index  = bp % 8
+            let take = min_i32(8 - bit_index, n - read)
+            let mask = ((1 << take) - 1) << bit_index
+            let b = self.data[byte_index]
+            let bits = ((b as i32) & mask) >> bit_index
+            acc |= bits << read
+            read += take
+            bp += take
+        }
+        self.bitp = bp
+        return acc
+    }
+    fn align_byte(&mut self) {
+        let r = self.bitp % 8
+        if r != 0 { self.bitp += (8 - r) }
+    }
+    fn read_u16_le(&mut self) -> i32 {
+        self.align_byte()
+        if (self.data.len() * 8 - self.bitp) < 16 { panic("deflate: truncated u16") }
+        let lo = self.read_bits(8)
+        let hi = self.read_bits(8)
+        return lo | (hi << 8)
+    }
+    fn copy_bytes(&mut self, len: i32, out: &mut Vec<u8>) {
+        self.align_byte()
+        let byte_pos = self.bitp / 8
+        if byte_pos + len > self.data.len() { panic("deflate: stored block truncated") }
+        out.extend_from_slice(&self.data[byte_pos : byte_pos + len])
+        self.bitp += len * 8
+    }
+}
+
+struct BitWriter<'a> {
+    out:   &'a mut Vec<u8>,
+    buf:   i32,
+    nbits: i32,
+}
+
+impl<'a> BitWriter<'a> {
+    fn new(out: &'a mut Vec<u8>) -> BitWriter<'a> {
+        return BitWriter { out, buf: 0, nbits: 0 }
+    }
+    fn write_bits(&mut self, mut v: i32, mut n: i32) {
+        // LSB-first
+        while n > 0 {
+            let take = min_i32(8 - self.nbits, n)
+            let mask = (1 << take) - 1
+            self.buf |= (v & mask) << self.nbits
+            self.nbits += take
+            v >>= take
+            n -= take
+            if self.nbits == 8 {
+                self.out.push((self.buf & 0xFF) as u8)
+                self.buf = 0
+                self.nbits = 0
+            }
+        }
+    }
+    fn align_byte(&mut self) {
+        if self.nbits > 0 {
+            self.out.push((self.buf & 0xFF) as u8)
+            self.buf = 0
+            self.nbits = 0
+        }
+    }
+    fn finish(&mut self) {
+        self.align_byte()
+    }
+}
+
+// ————————————————————————————————————————————————————————————————
+// Huffman canonique (décodage) — table compacte
+// ————————————————————————————————————————————————————————————————
+struct HuffTable {
+    // On stocke (code -> symbole) via deux tables parallèles "first code" & "first symbol" par longueur.
+    // Lecture bit-à-bit pour retrouver la longueur puis calculer le code.
+    first_code: Vec<i32>,   // code minimal pour chaque longueur L (1..15)
+    first_sym:  Vec<i32>,   // index du premier symbole de longueur L
+    counts:     Vec<i32>,   // nb de symboles par longueur L
+    // Pour fixed, on n'a pas besoin de stocker tous les codes; on dérive directement.
+}
+
+impl HuffTable {
+    fn new() -> HuffTable {
+        return HuffTable {
+            first_code: Vec<i32>::with_len(16, 0),
+            first_sym:  Vec<i32>::with_len(16, 0),
+            counts:     Vec<i32>::with_len(16, 0),
+        }
+    }
+    fn add_run(&mut self, start_sym: i32, end_sym: i32, bitlen: i32) {
+        if bitlen <= 0 || bitlen >= 16 { panic("huff: bad bitlen") }
+        self.counts[bitlen] += (end_sym - start_sym + 1)
+        // Note: On n’a pas besoin des symboles exacts ici : fixed est séquentiel canoniquement.
+        // "build()" va poser first_code/first_sym correctement si on alimente dans l'ordre.
+        // Pour fixed, on triche un peu : on pose first_sym à la valeur minimale des symboles pour chaque longueur.
+        if self.first_sym[bitlen] == 0 || start_sym < self.first_sym[bitlen] {
+            self.first_sym[bitlen] = start_sym
+        }
+    }
+    fn build(&mut self) {
+        // RFC1951: calcul des "first code" par longueur
+        let mut code = 0
+        let mut bl = 1
+        while bl <= 15 {
+            code = (code + self.counts[bl - 1]) << 1
+            self.first_code[bl] = code
+            bl += 1
+        }
+    }
+    fn read_symbol(&self, br: &mut BitReader) -> i32 {
+        // On lit jusqu'à 15 bits, en accumulant un code, et on vérifie si on tombe dans une fenêtre valide.
+        let mut code = 0
+        let mut bl = 1
+        while bl <= 15 {
+            code |= br.read_bits(1) << (bl - 1)  // LSB-first input → accumulate comme décrit
+            let fc = self.first_code[bl]
+            let cnt = self.counts[bl]
+            let idx = code - fc
+            if idx >= 0 && idx < cnt {
+                // symbole = first_sym[bl] + idx
+                return self.first_sym[bl] + idx
+            }
+            bl += 1
+        }
+        panic("huff: no symbol found (corrupted stream)")
+    }
+}
+
+// ————————————————————————————————————————————————————————————————
+// Helpers binaires / utils
+// ————————————————————————————————————————————————————————————————
+fn push_le_u16(out: &mut Vec<u8>, x: i32) {
+    out.push((x & 0xFF) as u8)
+    out.push(((x >> 8) & 0xFF) as u8)
+}
+fn min_i32(a: i32, b: i32) -> i32 { if a < b { a } else { b } }
+
+// ————————————————————————————————————————————————————————————————
+// Tests (smoke)
+// ————————————————————————————————————————————————————————————————
+test "stored roundtrip" {
+    let msg = "hello DEFLATE (stored)!".as_bytes()
+    let c = deflate_compress(msg)
+    let d = deflate_decompress(c)
+    assert d == msg
+}
+
+test "zlib-backend sanity (via stored)" {
+    // Simule l'utilisation depuis zlib.vitte (header/footer hors de ce module)
+    let payload = "vitte std deflate".as_bytes()
+    let c = deflate_compress(payload)
+    // On ne teste ici que le flux deflate lui-même
+    let d = deflate_decompress(c)
+    assert d == payload
+}

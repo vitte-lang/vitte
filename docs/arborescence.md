@@ -3,6 +3,7 @@
 │   ├── .gitignore
 │   ├── config.local.example
 │   ├── config.toml
+│   ├── config.toml.bak.1755515321
 │   ├── README.md
 ├── .devcontainer
 │   ├── scripts
@@ -15,17 +16,6 @@
 │   ├── devcontainer.json
 │   ├── Dockerfile
 │   ├── README.md
-├── .github
-│   ├── ISSUE_TEMPLATE
-│   │   ├── bug.md
-│   │   ├── feature.md
-│   ├── workflows
-│   │   ├── ci.yml
-│   │   ├── docs.yml
-│   │   ├── perf.yml
-│   │   ├── pr-fast.yml
-│   │   ├── release.yml
-│   ├── FUNDING.yml
 ├── assets
 │   ├── branding
 │   │   ├── brand-guidelines.md
@@ -177,10 +167,9 @@
 │   │   │   ├── bytecode
 │   │   │   │   ├── chunk.rs
 │   │   │   │   ├── debuginfo.rs
-│   │   │   │   ├── disasm.rs
 │   │   │   │   ├── format.rs
 │   │   │   │   ├── mod.rs
-│   │   │   │   ├── ops.rs
+│   │   │   │   ├── op.rs
 │   │   │   ├── compiler
 │   │   │   │   ├── config.rs
 │   │   │   │   ├── driver.rs
@@ -193,13 +182,15 @@
 │   │   │   │   ├── pretty.rs
 │   │   │   │   ├── tokenizer.rs
 │   │   │   ├── vitte-vm
+│   │   │   │   ├── asm.rs
 │   │   │   │   ├── interpreter.rs
 │   │   │   │   ├── mod.rs
 │   │   │   │   ├── stack.rs
-│   │   │   ├── asm.rs
 │   │   │   ├── Cargo.toml
+│   │   │   ├── disasm.rs
 │   │   │   ├── lib.rs
 │   │   │   ├── loader.rs
+│   │   │   ├── prelude.rs
 │   │   │   ├── util.rs
 │   │   ├── tests
 │   │   │   ├── integration.rs
@@ -732,6 +723,7 @@
 ├── .gitignore
 ├── arborescence.md
 ├── build.rs
+├── Cargo.lock
 ├── Cargo.toml
 ├── clippy.toml
 ├── CONTRIBUTING.md
@@ -739,8 +731,11 @@
 ├── LICENSE
 ├── main.vitte
 ├── Makefile
+├── package.json
+├── package-lock.json
 ├── README.md
 ├── rustfmt.toml
 ├── rust-toolchain.toml
+├── rustup-init.exe
 ├── tree.ps1
 ```

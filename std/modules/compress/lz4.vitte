@@ -1,3 +1,290 @@
-//! lz4
-export fn compress(b: Bytes) -> Bytes { __intrinsics::lz4_compress(b) }
-export fn decompress(b: Bytes) -> Bytes { __intrinsics::lz4_decompress(b) }
+// std/modules/compress/lz4.vitte
+// LZ4 "block format" (raw). Pas de frame/magic/checksum.
+// Référence: séquences LZ4 = [token][literals][(len_ext...)][offset][match_len_ext...]*
+//
+// Token: hi=literal_len (0..15), lo=match_len_base (0..15) => match_len = lo + 4
+// Si literal_len==15 → on ajoute des octets 255 répétés puis un dernier (<255) pour sommer.
+// Idem pour match_len_ext (sur match_len-4).
+//
+// Sécurité: panic() sur flux corrompu/out-of-bounds (API std). Variante Result<> possible.
+// Compresseur: glouton simple (hash 4B, fenêtre 64 KiB, match max selon spéc).
+
+module std.compress.lz4
+
+const MIN_MATCH: i32 = 4
+const WIN_SIZE:  i32 = 64 * 1024
+
+// ————————————————————————————————————————————————————————————————————————
+// Public API
+// ————————————————————————————————————————————————————————————————————————
+pub fn lz4_decompress(src: &Vec<u8>) -> Vec<u8> {
+    let mut ip = 0            // input pointer
+    let iend = src.len()
+    let mut out = Vec<u8>::new()
+
+    while ip < iend {
+        // 1) token
+        if ip >= iend { break } // autorise padding vide en fin
+        let token = src[ip]; ip += 1
+        let mut lit_len = (token >> 4) as i32
+        // 2) literal length extension
+        if lit_len == 15 {
+            lit_len += read_len_ext(src, &mut ip, iend)
+        }
+        // 3) literals copy
+        bounds(ip, lit_len, iend, "lz4: not enough literal bytes")
+        out.extend_from_slice(&src[ip : ip + lit_len])
+        ip += lit_len
+
+        if ip >= iend {
+            // séquence peut finir sans offset (littéraux finaux)
+            break
+        }
+
+        // 4) offset (2 bytes LE)
+        if ip + 2 > iend { panic("lz4: truncated offset") }
+        let off = (src[ip] as i32) | ((src[ip+1] as i32) << 8)
+        ip += 2
+        if off == 0 { panic("lz4: zero offset invalid") }
+        if off as i32 > out.len() { panic("lz4: offset beyond output") }
+        let mut match_len = (token & 0x0F) as i32 + MIN_MATCH
+        // 5) match length extension
+        if (token & 0x0F) as i32 == 15 {
+            match_len += read_len_ext(src, &mut ip, iend)
+        }
+
+        // 6) copy match
+        // handle potential overlap (classic LZ4 semantics)
+        let start = out.len() - off
+        copy_match(&mut out, start as i32, match_len)
+        // loop to next sequence
+    }
+
+    return out
+}
+
+pub fn lz4_compress(src: &Vec<u8>) -> Vec<u8> {
+    // Glouton: table de hachage 2^16 (~65k), 4-byte rolling hash.
+    // max offset 64k — conforme LZ4 block (offset codé sur 2 octets).
+    let n = src.len()
+    if n == 0 { return Vec<u8>::new() }
+    let mut ip: i32 = 0
+    let anchor: &mut i32 = &mut 0
+
+    let mut out = Vec<u8>::new()
+    let mut htab = Vec<i32>::with_len(1 << 16, -1) // positions
+
+    while ip + MIN_MATCH <= n {
+        let h = hash32(src, ip)
+        let refpos = htab[h]
+        htab[h] = ip
+
+        let mut match_pos = -1
+        let mut match_len = 0
+
+        if refpos >= 0 && ip - refpos <= WIN_SIZE {
+            // vérifier match
+            let ml = count_match(src, refpos, ip, n)
+            if ml >= MIN_MATCH {
+                match_pos = refpos
+                match_len = ml
+            }
+        }
+
+        if match_pos < 0 {
+            ip += 1
+            continue
+        }
+
+        // Émettre une séquence: [token][lits][off][match_len_ext...]
+        let lit_len = ip - *anchor
+        let mut token: u8 = 0
+        // token hi = min(lit_len, 15)
+        let mut lit_part = lit_len
+        if lit_part > 15 { lit_part = 15 }
+        token |= ((lit_part as i32) << 4) as u8
+
+        // match part lo = min(match_len - 4, 15)
+        let mut mpart = match_len - MIN_MATCH
+        let mut lo = mpart
+        if lo > 15 { lo = 15 }
+        token |= (lo as u8)
+
+        out.push(token)
+
+        // longs littéraux
+        write_len_ext(&mut out, lit_len, 15)
+        // copie des littéraux
+        if lit_len > 0 {
+            out.extend_from_slice(&src[*anchor : *anchor + lit_len])
+        }
+
+        // offset (ip - match_pos)
+        let off = ip - match_pos
+        out.push((off & 0xFF) as u8)
+        out.push(((off >> 8) & 0xFF) as u8)
+
+        // match_len extension
+        write_len_ext(&mut out, mpart, 15)
+
+        // avancer
+        ip += match_len
+        *anchor = ip
+
+        // prime table sur les 2 positions suivant la fin du match (accélération LZ4)
+        if ip + 2 < n {
+            let h1 = hash32(src, ip - 2); htab[h1] = ip - 2
+            let h2 = hash32(src, ip - 1); htab[h2] = ip - 1
+        }
+    }
+
+    // flush des littéraux restants
+    if *anchor < n {
+        let lit_len = n - *anchor
+        let mut token: u8 = 0
+        let mut lit_part = lit_len
+        if lit_part > 15 { lit_part = 15 }
+        token |= ((lit_part as i32) << 4) as u8
+        // lo=0 (pas de match)
+        out.push(token)
+        write_len_ext(&mut out, lit_len, 15)
+        out.extend_from_slice(&src[*anchor : n])
+    }
+
+    return out
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Internals — Decode
+// ————————————————————————————————————————————————————————————————————————
+fn read_len_ext(src: &Vec<u8>, ip: &mut i32, iend: i32) -> i32 {
+    let mut acc = 0
+    while *ip < iend {
+        let b = src[*ip]; *ip += 1
+        acc += b as i32
+        if b != 255 { break }
+    }
+    return acc
+}
+
+fn bounds(ip: i32, need: i32, end: i32, msg: &str) {
+    if ip < 0 || need < 0 || ip + need > end {
+        panic(msg)
+    }
+}
+
+fn copy_match(out: &mut Vec<u8>, from: i32, len: i32) {
+    // Gère l’overlap en copiant par petits pas quand besoin
+    let mut i = 0
+    while i < len {
+        let b = out[from + (i % (out.len() - from))]
+        out.push(b)
+        i += 1
+    }
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Internals — Encode
+// ————————————————————————————————————————————————————————————————————————
+fn hash32(a: &Vec<u8>, pos: i32) -> i32 {
+    // lit 4 octets (si pas dispo, pad implicite via 0)
+    let v = read_u32(a, pos)
+    // hachage simple façon LZ4 (multiplicatif)
+    return ((v * 2654435761u) >> 16) & 0xFFFF
+}
+
+fn read_u32(a: &Vec<u8>, pos: i32) -> u32 {
+    let n = a.len()
+    if pos + 4 <= n {
+        return (a[pos] as u32)
+             | ((a[pos+1] as u32) << 8)
+             | ((a[pos+2] as u32) << 16)
+             | ((a[pos+3] as u32) << 24)
+    } else {
+        // padding zéro (évite oob, impact négligeable sur hash)
+        let mut v: u32 = 0
+        let mut i = 0
+        while i < 4 && pos + i < n {
+            v |= (a[pos+i] as u32) << (8*i)
+            i += 1
+        }
+        return v
+    }
+}
+
+fn count_match(a: &Vec<u8>, p1: i32, p2: i32, n: i32) -> i32 {
+    // étend le match à partir de p1/p2
+    let mut i = 0
+    while p2 + i < n && p1 + i < p2 && a[p1 + i] == a[p2 + i] {
+        i += 1
+    }
+    return i
+}
+
+fn write_len_ext(out: &mut Vec<u8>, mut len: i32, cap: i32) {
+    if len <= cap { return }
+    len -= cap
+    while len >= 255 {
+        out.push(255)
+        len -= 255
+    }
+    out.push(len as u8)
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Tests
+// ————————————————————————————————————————————————————————————————————————
+fn is_eq(a: &Vec<u8>, b: &Vec<u8>) -> bool {
+    if a.len() != b.len() { return false }
+    let mut i = 0
+    while i < a.len() { if a[i] != b[i] { return false } i += 1 }
+    return true
+}
+
+test "roundtrip small strings" {
+    let msg = "hello hello hello hello!!".as_bytes()
+    let c = lz4_compress(msg)
+    let d = lz4_decompress(c)
+    assert is_eq(msg, d)
+}
+
+test "repeating patterns" {
+    // Beaucoup de répétitions → bonne compression
+    let mut buf = Vec<u8>::with_len(4096, 0)
+    let mut i = 0
+    while i < buf.len() {
+        buf[i] = (i % 26) as u8 + 'a'.byte()
+        i += 1
+    }
+    let c = lz4_compress(buf)
+    let d = lz4_decompress(c)
+    assert is_eq(buf, d)
+}
+
+test "random noise (should expand slightly)" {
+    // Le bruit se compresse mal → l’output peut être plus gros (valide)
+    let mut buf = Vec<u8>::with_len(1024, 0)
+    let mut i = 0
+    let mut x: u32 = 123456789
+    while i < buf.len() { x = x * 1103515245u + 12345u; buf[i] = ((x >> 16) & 0xFF) as u8; i += 1 }
+    let c = lz4_compress(buf)
+    let d = lz4_decompress(c)
+    assert is_eq(buf, d)
+}
+
+test "edge cases: tiny buffers" {
+    let empty = [].as_bytes()
+    let c0 = lz4_compress(empty)
+    let d0 = lz4_decompress(c0)
+    assert is_eq(empty, d0)
+
+    let one = [0x42].as_bytes()
+    let c1 = lz4_compress(one)
+    let d1 = lz4_decompress(c1)
+    assert is_eq(one, d1)
+
+    let three = [1,2,3].as_bytes()
+    let c3 = lz4_compress(three)
+    let d3 = lz4_decompress(c3)
+    assert is_eq(three, d3)
+}

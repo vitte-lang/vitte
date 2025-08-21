@@ -1,5 +1,369 @@
-//! taskpool — pool fixe
-struct TaskPool { __raw: __intrinsics::TaskPool }
-export fn new(size: i32) -> TaskPool { TaskPool{ __raw: __intrinsics::taskpool_new(size) } }
-export fn submit(mut p: TaskPool, f: fn()->()) { __intrinsics::taskpool_submit(p.__raw, f) }
-export fn shutdown(mut p: TaskPool) { __intrinsics::taskpool_shutdown(p.__raw) }
+// modules/concurrent/taskpool.vitte
+// Worker pool MPMC basé sur channels + registry de handlers nommés.
+// - taskpool_new(workers, queue_cap)
+// - register(&mut pool, name: &str, fn(&Vec<u8>) -> Vec<u8>)
+// - submit(&mut pool, name: &str, payload: &Vec<u8>) -> i64  // TaskId
+// - join(&mut pool, task_id: i64) -> Vec<u8>                 // bloque.
+// - try_take(&mut pool, task_id: i64) -> Option<Vec<u8>>     // non bloquant
+// - poll(&mut pool) -> i32                                   // draine la queue résultats vers le cache
+// - shutdown(&mut pool, graceful: bool)
+//
+// Hypothèses runtime :
+// - concurrent.thread::spawn(fn()) -> ThreadHandle
+// - concurrent.thread::join(handle)
+// - std.time::sleep_ms(ms)
+// - concurrent.channel::{chan_new, send, try_send, recv, try_recv, close}
+//
+// NOTE : L’API de channel n’est pas "split" (Sender/Receiver). On l’utilise en discipline stricte :
+//         - le pool exclusif "envoie" sur jobs, les workers exclusifs "reçoivent".
+//         - les workers exclusifs "envoient" sur results, le pool exclusif "reçoit".
+//       (pas d’accès concurrent au même sens ; le spin interne fait le reste.)
+
+module concurrent.taskpool
+
+use concurrent.channel
+use concurrent.thread
+use std.time
+use std.io
+
+// ————————————————————————————————————————————————————————————————————————
+// Types internes
+// ————————————————————————————————————————————————————————————————————————
+pub struct TaskPool {
+    jobs:        channel::Channel,   // JobMsg sérialisés
+    results:     channel::Channel,   // ResultMsg sérialisés
+    workers:     Vec<thread::ThreadHandle>,
+    next_id:     i64,
+    // registry (nom → handler)
+    reg_names:   Vec<String>,
+    reg_funcs:   Vec<fn(&Vec<u8>) -> Vec<u8>>,
+    // cache résultats (task_id → payload)
+    cache_ids:   Vec<i64>,
+    cache_vals:  Vec<Vec<u8>>,
+    // état
+    running:     bool,
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Sérialisation binaire ultra-simple (LE) pour Job/Result
+//  Job: [id:i64][name_len:u16][name bytes][payload_len:u32][payload bytes]
+//  Res: [id:i64][payload_len:u32][payload bytes]
+// ————————————————————————————————————————————————————————————————————————
+fn u16_le(x: i32) -> (u8,u8) { return ((x & 0xFF) as u8, ((x >> 8) & 0xFF) as u8) }
+fn u32_le(x: i32) -> (u8,u8,u8,u8) {
+    return ((x & 0xFF) as u8, ((x>>8)&0xFF) as u8, ((x>>16)&0xFF) as u8, ((x>>24)&0xFF) as u8)
+}
+fn push_i64_le(v: &mut Vec<u8>, x: i64) {
+    v.push((x & 0xFF) as u8); v.push(((x>>8)&0xFF) as u8); v.push(((x>>16)&0xFF) as u8); v.push(((x>>24)&0xFF) as u8)
+    v.push(((x>>32)&0xFF) as u8); v.push(((x>>40)&0xFF) as u8); v.push(((x>>48)&0xFF) as u8); v.push(((x>>56)&0xFF) as u8)
+}
+fn read_i64_le(b: &Vec<u8>, off: i32) -> i64 {
+    return  (b[off] as i64)
+          | ((b[off+1] as i64)<<8) | ((b[off+2] as i64)<<16) | ((b[off+3] as i64)<<24)
+          | ((b[off+4] as i64)<<32) | ((b[off+5] as i64)<<40) | ((b[off+6] as i64)<<48) | ((b[off+7] as i64)<<56)
+}
+fn encode_job(id: i64, name: &str, payload: &Vec<u8>) -> Vec<u8> {
+    let nb = name.as_bytes()
+    if nb.len() > 65535 { panic("taskpool: handler name too long") }
+    let mut out = Vec<u8>::new()
+    push_i64_le(&mut out, id)
+    let (l0,l1) = u16_le(nb.len())
+    out.push(l0); out.push(l1)
+    out.extend_from_slice(nb)
+    let (p0,p1,p2,p3) = u32_le(payload.len())
+    out.push(p0); out.push(p1); out.push(p2); out.push(p3)
+    out.extend_from_slice(payload)
+    return out
+}
+fn decode_job(b: &Vec<u8>) -> (i64, String, Vec<u8>) {
+    if b.len() < 8+2+4 { panic("taskpool: job truncated") }
+    let id = read_i64_le(b, 0)
+    let name_len = (b[8] as i32) | ((b[9] as i32)<<8)
+    let name_start = 10
+    let name_end = name_start + name_len
+    if name_end + 4 > b.len() { panic("taskpool: job name truncated") }
+    let name = String::from_utf8_lossy(&b[name_start:name_end])
+    let p0 = b[name_end] as i32
+    let p1 = b[name_end+1] as i32
+    let p2 = b[name_end+2] as i32
+    let p3 = b[name_end+3] as i32
+    let plen = p0 | (p1<<8) | (p2<<16) | (p3<<24)
+    let data_start = name_end + 4
+    let data_end = data_start + plen
+    if data_end > b.len() { panic("taskpool: job payload truncated") }
+    let payload = b[data_start:data_end].clone()
+    return (id, name, payload)
+}
+fn encode_res(id: i64, payload: &Vec<u8>) -> Vec<u8> {
+    let mut out = Vec<u8>::new()
+    push_i64_le(&mut out, id)
+    let (p0,p1,p2,p3) = u32_le(payload.len())
+    out.push(p0); out.push(p1); out.push(p2); out.push(p3)
+    out.extend_from_slice(payload)
+    return out
+}
+fn decode_res(b: &Vec<u8>) -> (i64, Vec<u8>) {
+    if b.len() < 8+4 { panic("taskpool: result truncated") }
+    let id = read_i64_le(b, 0)
+    let p0 = b[8] as i32; let p1 = b[9] as i32; let p2 = b[10] as i32; let p3 = b[11] as i32
+    let plen = p0 | (p1<<8) | (p2<<16) | (p3<<24)
+    if 12 + plen > b.len() { panic("taskpool: result payload truncated") }
+    return (id, b[12:12+plen].clone())
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Construction / teardown
+// ————————————————————————————————————————————————————————————————————————
+pub fn taskpool_new(worker_count: i32, queue_cap: i32) -> TaskPool {
+    if worker_count <= 0 { panic("taskpool: worker_count must be > 0") }
+    if queue_cap <= 0 { panic("taskpool: queue_cap must be > 0") }
+
+    let mut pool = TaskPool {
+        jobs:    channel::chan_new(queue_cap),
+        results: channel::chan_new(queue_cap),
+        workers: Vec<thread::ThreadHandle>::new(),
+        next_id: 1,
+        reg_names: Vec<String>::new(),
+        reg_funcs: Vec<fn(&Vec<u8>)->Vec<u8>>::new(),
+        cache_ids:  Vec<i64>::new(),
+        cache_vals: Vec<Vec<u8>>::new(),
+        running: true,
+    }
+
+    // Spin up workers
+    let mut i = 0
+    while i < worker_count {
+        let h = thread::spawn(move || {
+            worker_main()
+        })
+        pool.workers.push(h)
+        i += 1
+    }
+    return pool
+}
+
+// — Chaque worker appelle cette boucle globale (récupération via get_worker_mailboxes()).
+//   Pour simplifier, on expose des singletons vers les channels pool.jobs/results.
+static mut __TP_JOBS:  *mut channel::Channel = null()
+static mut __TP_RESULTS:*mut channel::Channel = null()
+static mut __TP_REGN:   *mut Vec<String> = null()
+static mut __TP_REGF:   *mut Vec<fn(&Vec<u8>)->Vec<u8>> = null()
+
+fn worker_main() {
+    // Récupère les pointeurs vers la "boîte aux lettres" globale (posées par set_mailboxes)
+    let jobs = unsafe { &mut *__TP_JOBS }
+    let results = unsafe { &mut *__TP_RESULTS }
+    let names = unsafe { &mut *__TP_REGN }
+    let funcs = unsafe { &mut *__TP_REGF }
+    loop {
+        // Bloque tant qu’il y a des jobs (ou que le pool ferme)
+        let msg_opt = channel::recv(jobs)
+        if msg_opt.is_none() {
+            // channel jobs fermé et vide → fin
+            break
+        }
+        let msg = msg_opt.unwrap()
+        let (id, name, payload) = decode_job(msg)
+
+        // lookup handler
+        let mut idx = -1
+        let mut i = 0
+        while i < names.len() {
+            if names[i] == name { idx = i; break }
+            i += 1
+        }
+        if idx == -1 {
+            // handler inconnu → renvoyer erreur textuelle (prop simple)
+            let err = ("handler not found: " + name).as_bytes()
+            let out = encode_res(id, err)
+            channel::send(results, out) // best effort ; si fermé, tant pis
+            continue
+        }
+        let f = funcs[idx]
+        let out_payload = f(&payload)
+        let out = encode_res(id, out_payload)
+        // Envoi résultat
+        channel::send(results, out)
+    }
+}
+
+// Enregistre la "boîte aux lettres" globale pour les workers.
+// ⚠️ modèle très simple (un seul pool actif à la fois). Suffisant pour la std baseline.
+fn set_mailboxes(pool: &mut TaskPool) {
+    unsafe {
+        __TP_JOBS   = &mut pool.jobs
+        __TP_RESULTS= &mut pool.results
+        __TP_REGN   = &mut pool.reg_names
+        __TP_REGF   = &mut pool.reg_funcs
+    }
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Registry
+// ————————————————————————————————————————————————————————————————————————
+pub fn register(pool: &mut TaskPool, name: &str, f: fn(&Vec<u8>)->Vec<u8>) {
+    if !pool.running { panic("taskpool: cannot register after shutdown") }
+    // refus de doublon
+    let mut i = 0
+    while i < pool.reg_names.len() {
+        if pool.reg_names[i] == name { panic("taskpool: handler already registered: " + name) }
+        i += 1
+    }
+    pool.reg_names.push(name.to_string())
+    pool.reg_funcs.push(f)
+    // mettre à jour les pointeurs pour les workers
+    set_mailboxes(pool)
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Soumission / collecte
+// ————————————————————————————————————————————————————————————————————————
+pub fn submit(pool: &mut TaskPool, name: &str, payload: &Vec<u8>) -> i64 {
+    if !pool.running { panic("taskpool: submit on stopped pool") }
+    let id = pool.next_id; pool.next_id += 1
+    let msg = encode_job(id, name, payload)
+    // Backpressure bloquante si queue pleine
+    let ok = channel::send(&mut pool.jobs, msg)
+    if !ok { panic("taskpool: jobs channel closed") }
+    return id
+}
+
+// Draine la queue résultats vers le cache.
+pub fn poll(pool: &mut TaskPool) -> i32 {
+    let mut drained = 0
+    loop {
+        let m = channel::try_recv(&mut pool.results)
+        if m.is_none() { break }
+        let (id, data) = decode_res(m.unwrap())
+        pool.cache_ids.push(id)
+        pool.cache_vals.push(data)
+        drained += 1
+    }
+    return drained
+}
+
+pub fn try_take(pool: &mut TaskPool, task_id: i64) -> Option<Vec<u8>> {
+    poll(pool)
+    // chercher dans le cache
+    let mut i = 0
+    while i < pool.cache_ids.len() {
+        if pool.cache_ids[i] == task_id {
+            let out = pool.cache_vals[i].clone()
+            // compacter (suppr l’entrée i)
+            pool.cache_ids.remove(i)
+            pool.cache_vals.remove(i)
+            return Some(out)
+        }
+        i += 1
+    }
+    return None
+}
+
+pub fn join(pool: &mut TaskPool, task_id: i64) -> Vec<u8> {
+    loop {
+        let got = try_take(pool, task_id)
+        if got.is_some() { return got.unwrap() }
+        // éviter busy spin
+        time::sleep_ms(0)
+    }
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Shutdown
+// ————————————————————————————————————————————————————————————————————————
+pub fn shutdown(pool: &mut TaskPool, graceful: bool) {
+    if !pool.running { return }
+    pool.running = false
+
+    if graceful {
+        // attendre que la file de jobs soit vide (best effort)
+        loop {
+            if channel::is_empty(&pool.jobs) { break }
+            time::sleep_ms(0)
+        }
+    }
+    // fermer la file des jobs → workers sortent de recv(None)
+    channel::close(&mut pool.jobs)
+
+    // rejoindre les workers
+    let mut i = 0
+    while i < pool.workers.len() {
+        thread::join(pool.workers[i])
+        i += 1
+    }
+    // draine tous les derniers résultats
+    poll(pool)
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Helpers optionnels : encoders utilitaires pour i64/String
+// ————————————————————————————————————————————————————————————————————————
+pub fn encode_i64(x: i64) -> Vec<u8> {
+    let mut b = Vec<u8>::with_len(8, 0)
+    b[0]=(x & 0xFF) as u8; b[1]=((x>>8)&0xFF) as u8; b[2]=((x>>16)&0xFF) as u8; b[3]=((x>>24)&0xFF) as u8
+    b[4]=((x>>32)&0xFF) as u8; b[5]=((x>>40)&0xFF) as u8; b[6]=((x>>48)&0xFF) as u8; b[7]=((x>>56)&0xFF) as u8
+    return b
+}
+pub fn decode_i64(b: &Vec<u8>) -> i64 {
+    if b.len()!=8 { panic("taskpool: not an i64 payload") }
+    return (b[0] as i64)
+        | ((b[1] as i64)<<8) | ((b[2] as i64)<<16) | ((b[3] as i64)<<24)
+        | ((b[4] as i64)<<32) | ((b[5] as i64)<<40) | ((b[6] as i64)<<48) | ((b[7] as i64)<<56)
+}
+pub fn encode_str(s: &str) -> Vec<u8> { return s.as_bytes() }
+pub fn decode_str(b: &Vec<u8>) -> String { return String::from_utf8_lossy(b) }
+
+// ————————————————————————————————————————————————————————————————————————
+// Tests (smoke) — simulant un runtime threads OK
+// ————————————————————————————————————————————————————————————————————————
+fn h_echo(p: &Vec<u8>) -> Vec<u8> { return p.clone() }
+fn h_square(p: &Vec<u8>) -> Vec<u8> {
+    let x = decode_i64(p)
+    let y = x * x
+    return encode_i64(y)
+}
+
+test "basic submit/join" {
+    let mut tp = taskpool_new(2, 64)
+    register(&mut tp, "echo", h_echo)
+    register(&mut tp, "square", h_square)
+    set_mailboxes(&mut tp) // expose les channels/registry aux workers
+
+    let id1 = submit(&mut tp, "echo", "hey".as_bytes())
+    let id2 = submit(&mut tp, "square", encode_i64(7))
+
+    let r1 = join(&mut tp, id1)
+    let r2 = join(&mut tp, id2)
+    assert decode_str(r1) == "hey"
+    assert decode_i64(r2) == 49
+
+    shutdown(&mut tp, true)
+}
+
+test "try_take + poll" {
+    let mut tp = taskpool_new(1, 8)
+    register(&mut tp, "square", h_square)
+    set_mailboxes(&mut tp)
+
+    let id = submit(&mut tp, "square", encode_i64(5))
+    // tentative non bloquante (peut être None si pas encore prêt)
+    let mut out = try_take(&mut tp, id)
+    if out.is_none() {
+        // draine puis re-tente
+        poll(&mut tp)
+        out = try_take(&mut tp, id)
+    }
+    assert out.is_some() && decode_i64(out.unwrap()) == 25
+    shutdown(&mut tp, true)
+}
+
+test "unknown handler returns error payload" {
+    let mut tp = taskpool_new(1, 4)
+    // pas de register — volontaire
+    set_mailboxes(&mut tp)
+    let id = submit(&mut tp, "nope", "x".as_bytes())
+    let r = join(&mut tp, id)
+    let s = decode_str(r)
+    assert s.starts_with("handler not found:")
+    shutdown(&mut tp, false)
+}

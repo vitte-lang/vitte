@@ -1,0 +1,113 @@
+// modules/crypto/hkdf.vitte
+// HKDF (RFC 5869) avec SHA-256.
+// API :
+//   - hkdf_extract(salt, ikm) -> prk(32B)
+//   - hkdf_expand(prk, info, length) -> okm[length]
+//   - hkdf_sha256(salt, ikm, info, length) -> okm[length]
+//   - hkdf_sha256_hex(salt, ikm, info, length) -> hex(String)
+//   - hkdf_expand_str(prk, info_str, length) -> okm[length]
+//
+// Rappels :
+//  * extract: PRK = HMAC(salt*, IKM), salt* = 0x00..0 (HashLen) si salt vide
+//  * expand:  T(0)=∅ ; T(i)=HMAC(PRK, T(i-1)||info||i) ; OKM = T(1)||…||T(N)[:L]
+//  * length ≤ 255*HashLen (spec)
+
+module crypto.hkdf
+use crypto.hmac as hm
+use crypto.hash as h
+
+const HASH_LEN: i32 = 32
+
+// ————————————————————————————————————————————————————————————————
+// EXTRACT
+// ————————————————————————————————————————————————————————————————
+pub fn hkdf_extract(salt: &Vec<u8>, ikm: &Vec<u8>) -> Vec<u8> {
+    let ss = if salt.len() == 0 { Vec<u8>::with_len(HASH_LEN as usize, 0) } else { salt.clone() }
+    return hm::hmac256(ss, ikm) // PRK (32B)
+}
+
+// ————————————————————————————————————————————————————————————————
+// EXPAND
+// ————————————————————————————————————————————————————————————————
+pub fn hkdf_expand(prk: &Vec<u8>, info: &Vec<u8>, length: i32) -> Vec<u8> {
+    if prk.len() != HASH_LEN as usize { panic("hkdf: prk length must be 32 (sha256)") }
+    if length < 0 || length > 255 * HASH_LEN { panic("hkdf: invalid length") }
+
+    let n_blocks = (length + HASH_LEN - 1) / HASH_LEN
+    let mut okm = Vec<u8>::with_len(length as usize, 0)
+    let mut t_prev = Vec<u8>::new()
+    let mut pos = 0
+    let mut i = 1
+    while i <= n_blocks {
+        let mut msg = Vec<u8>::new()
+        msg.extend_from_slice(t_prev)
+        msg.extend_from_slice(info)
+        msg.push(i as u8)
+        let t = hm::hmac256(prk, msg)
+
+        let take = if pos + HASH_LEN <= length { HASH_LEN } else { length - pos }
+        let mut k = 0
+        while k < take {
+            okm[pos + k] = t[k]
+            k += 1
+        }
+        pos += take
+        t_prev = t
+        i += 1
+    }
+    return okm
+}
+
+// ————————————————————————————————————————————————————————————————
+// Façades pratiques
+// ————————————————————————————————————————————————————————————————
+pub fn hkdf_sha256(salt: &Vec<u8>, ikm: &Vec<u8>, info: &Vec<u8>, length: i32) -> Vec<u8> {
+    let prk = hkdf_extract(salt, ikm)
+    return hkdf_expand(prk, info, length)
+}
+
+pub fn hkdf_sha256_hex(salt: &Vec<u8>, ikm: &Vec<u8>, info: &Vec<u8>, length: i32) -> String {
+    return h::to_hex_lower(hkdf_sha256(salt, ikm, info, length))
+}
+
+pub fn hkdf_expand_str(prk: &Vec<u8>, info_str: &str, length: i32) -> Vec<u8> {
+    return hkdf_expand(prk, info_str.as_bytes(), length)
+}
+
+// ————————————————————————————————————————————————————————————————
+// Tests
+// ————————————————————————————————————————————————————————————————
+test "roundtrip and lengths" {
+    let prk = hkdf_extract("salt".as_bytes(), "ikm".as_bytes())
+    assert prk.len() == 32
+    let okm = hkdf_expand(prk, "info".as_bytes(), 42)
+    assert okm.len() == 42
+}
+
+test "independence on info and length" {
+    let prk = hkdf_extract("salt".as_bytes(), "ikm".as_bytes())
+    let a = hkdf_expand(prk, "x".as_bytes(), 32)
+    let b = hkdf_expand(prk, "y".as_bytes(), 32)
+    assert a != b
+}
+
+// RFC 5869 — Test Case 1 (SHA-256)
+test "rfc5869 case1" {
+    // IKM = 0x0b repeated 22
+    let mut ikm = Vec<u8>::with_len(22, 0x0b)
+    // salt = 00..0c
+    let salt = [0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c].as_bytes()
+    // info = f0..f9
+    let info = [0xf0,0xf1,0xf2,0xf3,0xf4,0xf5,0xf6,0xf7,0xf8,0xf9].as_bytes()
+
+    let prk  = hkdf_extract(salt, ikm)
+    let okm  = hkdf_expand(prk, info, 42)
+    let prk_hex = h::to_hex_lower(prk)
+    let okm_hex = h::to_hex_lower(okm)
+
+    assert prk_hex ==
+      "077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5"
+    assert okm_hex ==
+      "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf\
+       34007208d5b887185865"
+}

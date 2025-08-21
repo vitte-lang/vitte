@@ -1,11 +1,197 @@
-//! channel — MPSC basique
-struct Sender<T> { __raw: __intrinsics::Chan }
-struct Receiver<T> { __raw: __intrinsics::Chan }
+// modules/concurrent/channel.vitte
+// Bounded MPMC channel (multi-producteurs / multi-consommateurs)
+// - send/recv bloquants (spin + backoff)
+// - try_send/try_recv non bloquants
+// - close() pour terminer proprement
+// NOTE: Vitte n'expose pas ici d'atomiques/condvars standards → on fait simple & portable.
+//       Pour des perfs ultimes, remplace le spin par des primitives du runtime quand dispo.
 
-export fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
-  let ch = __intrinsics::chan_new();
-  (Sender{__raw: ch}, Receiver{__raw: ch})
+module concurrent.channel
+use std.time
+use std.io
+
+// ————————————————————————————————————————————————————————————————————————
+// Paramétrage : on canalise des "blobs" d'octets (Vec<u8>).
+// Si tu veux un canal typé, crée un thin wrapper sérialisant tes structs.
+// ————————————————————————————————————————————————————————————————————————
+
+pub struct Channel {
+    buf:     Vec<Vec<u8>>,  // anneau circulaire
+    marks:   Vec<i32>,      // 0=vide, 1=plein (sémaphores pauvres par slot)
+    cap:     i32,
+    head:    i32,           // index consommateur (virtuel, croît sans borne)
+    tail:    i32,           // index producteur
+    // Stats & état
+    closed:  bool,
 }
 
-export fn send<T>(s: Sender<T>, v: T) { __intrinsics::chan_send(s.__raw, v) }
-export fn recv<T>(r: Receiver<T>) -> Option<T> { __intrinsics::chan_recv(r.__raw) }
+pub fn chan_new(capacity: i32) -> Channel {
+    if capacity <= 0 { panic("channel: capacity must be > 0") }
+    return Channel {
+        buf:   Vec<Vec<u8>>::with_len(capacity as usize, Vec<u8>::new()),
+        marks: Vec<i32>::with_len(capacity as usize, 0),
+        cap:   capacity,
+        head:  0,
+        tail:  0,
+        closed:false,
+    }
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// API
+// ————————————————————————————————————————————————————————————————————————
+pub fn send(ch: &mut Channel, msg: &Vec<u8>) -> bool {
+    // Bloquant (tant qu'il y a de la vie et que le canal n'est pas fermé)
+    // Retourne false si channel fermé avant insertion.
+    loop {
+        if ch.closed { return false }
+        if try_send(ch, msg) { return true }
+        backoff()
+    }
+}
+
+pub fn try_send(ch: &mut Channel, msg: &Vec<u8>) -> bool {
+    if ch.closed { return false }
+    if is_full(ch) { return false }
+    let idx = ch.tail
+    let slot = idx % ch.cap
+    if ch.marks[slot] != 0 {
+        // collision (autre producteur a pris le slot)
+        return false
+    }
+    // Écrire le message
+    ch.buf[slot] = msg.clone()
+    // Marquer plein avant d’avancer le tail (pour éviter lecteur trop pressé)
+    ch.marks[slot] = 1
+    ch.tail = idx + 1
+    return true
+}
+
+pub fn recv(ch: &mut Channel) -> Option<Vec<u8>> {
+    // Bloquant : retourne None si channel fermé ET vide
+    loop {
+        let out = try_recv(ch)
+        if out.is_some() { return out }
+        if ch.closed && is_empty(ch) { return None }
+        backoff()
+    }
+}
+
+pub fn try_recv(ch: &mut Channel) -> Option<Vec<u8>> {
+    if is_empty(ch) {
+        return None
+    }
+    let idx = ch.head
+    let slot = idx % ch.cap
+    if ch.marks[slot] == 0 {
+        // producteur pas encore commit → pas prêt
+        return None
+    }
+    let msg = ch.buf[slot].clone()
+    // vider le slot
+    ch.marks[slot] = 0
+    ch.buf[slot].clear()
+    ch.head = idx + 1
+    return Some(msg)
+}
+
+pub fn close(ch: &mut Channel) {
+    ch.closed = true
+}
+
+pub fn is_closed(ch: &Channel) -> bool { return ch.closed }
+pub fn len(ch: &Channel) -> i32 {
+    let h = ch.head
+    let t = ch.tail
+    let n = t - h
+    if n < 0 { return 0 } else { return n }
+}
+pub fn capacity(ch: &Channel) -> i32 { return ch.cap }
+pub fn is_empty(ch: &Channel) -> bool { return len(ch) == 0 }
+pub fn is_full(ch: &Channel)  -> bool { return len(ch) >= ch.cap }
+
+// ————————————————————————————————————————————————————————————————————————
+// Backoff soft — laisse souffler le CPU (et donner sa chance aux autres threads)
+// ————————————————————————————————————————————————————————————————————————
+fn backoff() {
+    // micro-sommeil progressif : 0 → 0 → 1 → 2 → 4 ms (best effort)
+    // Ici on fait simple : 0 ms (yield-like)
+    time::sleep_ms(0)
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Helpers : enveloppes de sérialisation simples
+// ————————————————————————————————————————————————————————————————————————
+// Pour t’éviter la tambouille, deux helpers prêts à l’emploi : i64 et String.
+
+pub fn send_i64(ch: &mut Channel, x: i64) -> bool {
+    let mut b = Vec<u8>::with_len(8, 0)
+    // little-endian
+    b[0]=(x & 0xFF) as u8; b[1]=((x>>8)&0xFF) as u8; b[2]=((x>>16)&0xFF) as u8; b[3]=((x>>24)&0xFF) as u8
+    b[4]=((x>>32)&0xFF) as u8; b[5]=((x>>40)&0xFF) as u8; b[6]=((x>>48)&0xFF) as u8; b[7]=((x>>56)&0xFF) as u8
+    return send(ch, b)
+}
+pub fn recv_i64(ch: &mut Channel) -> Option<i64> {
+    let m = recv(ch)
+    if m.is_none() { return None }
+    let b = m.unwrap()
+    if b.len() != 8 { panic("channel: not an i64 payload") }
+    let v = (b[0] as i64)
+          | ((b[1] as i64)<<8) | ((b[2] as i64)<<16) | ((b[3] as i64)<<24)
+          | ((b[4] as i64)<<32) | ((b[5] as i64)<<40) | ((b[6] as i64)<<48) | ((b[7] as i64)<<56)
+    return Some(v)
+}
+
+pub fn send_str(ch: &mut Channel, s: &str) -> bool {
+    return send(ch, s.as_bytes())
+}
+pub fn recv_str(ch: &mut Channel) -> Option<String> {
+    let m = recv(ch)
+    if m.is_none() { return None }
+    return Some(String::from_utf8_lossy(m.unwrap()))
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// Tests (mono-thread, puis pseudo-threads simulés)
+// ————————————————————————————————————————————————————————————————————————
+test "basic send/recv" {
+    let mut ch = chan_new(2)
+    assert is_empty(&ch)
+    assert send_str(&mut ch, "yo")
+    assert send_str(&mut ch, "world")
+    assert !try_send(&mut ch, "full".as_bytes())  // plein
+    let a = recv_str(&mut ch).unwrap()
+    let b = recv_str(&mut ch).unwrap()
+    assert a == "yo" && b == "world"
+    assert is_empty(&ch)
+}
+
+test "i64 helpers" {
+    let mut ch = chan_new(1)
+    assert send_i64(&mut ch, 42)
+    let v = recv_i64(&mut ch).unwrap()
+    assert v == 42
+}
+
+test "close semantics" {
+    let mut ch = chan_new(1)
+    assert send_str(&mut ch, "last")
+    close(&mut ch)
+    // on peut encore vider
+    let v = recv_str(&mut ch).unwrap()
+    assert v == "last"
+    // plus d’envoi
+    assert !send_str(&mut ch, "nope")
+    // et vide → None
+    let n = recv_str(&mut ch)
+    assert n.is_none()
+}
+
+test "try variants" {
+    let mut ch = chan_new(1)
+    assert try_send(&mut ch, "a".as_bytes())
+    assert !try_send(&mut ch, "b".as_bytes())
+    let x = try_recv(&mut ch).unwrap()
+    assert String::from_utf8_lossy(x) == "a"
+    assert try_recv(&mut ch).is_none()
+}

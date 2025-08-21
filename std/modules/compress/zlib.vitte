@@ -1,3 +1,112 @@
-//! zlib
-export fn compress(b: Bytes) -> Bytes { __intrinsics::zlib_compress(b) }
-export fn decompress(b: Bytes) -> Bytes { __intrinsics::zlib_decompress(b) }
+// std/modules/compress/zlib.vitte
+// Implémentation du format zlib (RFC1950) en Vitte.
+// Structure = CMF (1B) + FLG (1B) + [DICTID si preset dict] + DEFLATE + Adler32(4B)
+//
+// ⚠️ Nécessite un module "std.compress.deflate" fournissant
+//     deflate_compress(Vec<u8>) -> Vec<u8>
+//     deflate_decompress(Vec<u8>) -> Vec<u8>
+//
+// Adler32 implémenté inline ci-dessous.
+
+module std.compress.zlib
+use std.compress.deflate
+
+// ————————————————————————————————————————————————————————————————
+// Public API
+// ————————————————————————————————————————————————————————————————
+pub fn zlib_compress(raw: &Vec<u8>) -> Vec<u8> {
+    let mut out = Vec<u8>::new()
+
+    // 1) Header CMF+FLG
+    let cm: i32 = 8         // DEFLATE
+    let cinfo: i32 = 7      // 32K window
+    let cmf: u8 = ((cinfo << 4) | cm) as u8
+
+    let mut flg: i32 = 0
+    // bits 5..0: FCHECK (set to make (cmf*256+flg) % 31 == 0)
+    let mut val = (cmf as i32) << 8
+    flg = 31 - (val % 31)
+    if flg == 31 { flg = 0 }
+    let flg_byte: u8 = flg as u8
+
+    out.push(cmf)
+    out.push(flg_byte)
+
+    // 2) corps DEFLATE
+    let deflated = deflate::deflate_compress(raw)
+    out.extend_from_slice(deflated)
+
+    // 3) Adler32 (raw data)
+    let chk = adler32(raw)
+    out.push(((chk >> 24) & 0xFF) as u8)
+    out.push(((chk >> 16) & 0xFF) as u8)
+    out.push(((chk >> 8) & 0xFF) as u8)
+    out.push((chk & 0xFF) as u8)
+
+    return out
+}
+
+pub fn zlib_decompress(z: &Vec<u8>) -> Vec<u8> {
+    let n = z.len()
+    if n < 6 { panic("zlib: input too short") }
+
+    let cmf = z[0]
+    let flg = z[1]
+    let val = (cmf as i32) * 256 + (flg as i32)
+    if val % 31 != 0 { panic("zlib: bad header checksum") }
+    let cm = cmf & 0x0F
+    if cm != 8 { panic("zlib: unsupported CM") }
+
+    // pas de dictionnaire preset (FDICT=flg>>5&1) supporté ici
+    if (flg >> 5) & 1 == 1 { panic("zlib: preset dictionary not supported") }
+
+    // extrait deflate body sans adler32
+    let deflate_end = n - 4
+    let deflate_data = &z[2 : deflate_end]
+    let adler_expected: u32 =
+        ((z[n-4] as u32) << 24) |
+        ((z[n-3] as u32) << 16) |
+        ((z[n-2] as u32) << 8) |
+        (z[n-1] as u32)
+
+    let decompressed = deflate::deflate_decompress(deflate_data)
+    let adler_actual = adler32(decompressed)
+    if adler_actual != adler_expected {
+        panic("zlib: bad Adler32 checksum")
+    }
+
+    return decompressed
+}
+
+// ————————————————————————————————————————————————————————————————
+// Adler-32 (RFC1950, annexe A)
+// ————————————————————————————————————————————————————————————————
+pub fn adler32(data: &Vec<u8>) -> u32 {
+    let mut s1: u32 = 1
+    let mut s2: u32 = 0
+    let modn: u32 = 65521
+    let mut i = 0
+    while i < data.len() {
+        s1 = (s1 + (data[i] as u32)) % modn
+        s2 = (s2 + s1) % modn
+        i += 1
+    }
+    return (s2 << 16) | s1
+}
+
+// ————————————————————————————————————————————————————————————————
+// Tests basiques
+// ————————————————————————————————————————————————————————————————
+test "adler32 sanity" {
+    let v = "Wikipedia".as_bytes()
+    let chk = adler32(v)
+    // connu: Adler32("Wikipedia") = 0x11E60398
+    assert chk == 0x11E60398
+}
+
+test "roundtrip trivial" {
+    let msg = "hello world!".as_bytes()
+    let z = zlib_compress(msg)
+    let d = zlib_decompress(z)
+    assert d == msg
+}
