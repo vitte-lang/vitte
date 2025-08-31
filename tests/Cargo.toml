@@ -1,0 +1,78 @@
+[package]
+name         = "vitte-tests"
+version      = "0.1.0"
+edition      = "2021"
+publish      = false
+rust-version = "1.80.0"
+description  = "Crate d'intégration pour Vitte : helpers, tests lexer/parser, E2E optionnels."
+
+[lib]
+name = "vitte_tests"
+path = "src/lib.rs"
+
+# ────────────────────────────────────────────────────────────────────────────────
+# FEATURES
+#   - Par défaut : zéro dep “lourde”, uniquement vitte-lexer/parser.
+#   - Active au besoin : `snapshots`, `cli`, `ir`, `vm`, `runtime`, `tools`, `all`.
+# ────────────────────────────────────────────────────────────────────────────────
+[features]
+default   = []                                       # léger par défaut
+snapshots = ["dep:insta"]                            # assertions snapshot (insta)
+cli       = []                                       # runners CLI std::process (aucune dep)
+front     = ["dep:vitte-lexer", "dep:vitte-parser"]  # frontend (lexing/parsing)
+ir        = ["dep:vitte-ir"]
+vm        = ["dep:vitte-vm"]
+runtime   = ["dep:vitte-runtime", "dep:vitte-vitbc"]
+tools     = ["dep:vitte-tools"]
+all       = ["snapshots", "cli", "front", "ir", "vm", "runtime", "tools"]
+
+# ────────────────────────────────────────────────────────────────────────────────
+# DÉPENDANCES
+#  NOTE: pour que les features ci-dessus puissent référencer `dep:…`, ces deps
+#        sont dans [dependencies] (souvent `optional = true`).
+# ────────────────────────────────────────────────────────────────────────────────
+[dependencies]
+# Qualité de vie dans les tests
+pretty_assertions = "1.4"
+
+# Snapshots (optionnel)
+insta = { version = "1", features = ["yaml"], optional = true }
+
+# Utilitaires possibles pour tests avancés (optionnels)
+assert_cmd  = { version = "2", optional = true }                      # si tu veux basculer sur assert_cmd
+predicates  = { version = "3", optional = true }
+walkdir     = { version = "2.5", optional = true }
+zip         = { version = "0.6", default-features = false, features = ["deflate"], optional = true }
+tempfile    = { version = "3", optional = true }
+anyhow      = { version = "1", optional = true }
+
+# ── Crates Vitte (référencés via chemins du workspace)
+vitte-lexer    = { path = "../crates/vitte-lexer",   version = "0.1.0", optional = true }
+vitte-parser   = { path = "../crates/vitte-parser",  version = "0.1.0", optional = true }
+vitte-ast      = { path = "../crates/vitte-ast",     version = "0.1.0", optional = true }
+vitte-ir       = { path = "../crates/vitte-ir",      version = "0.1.0", optional = true }
+vitte-runtime  = { path = "../crates/vitte-runtime", version = "0.1.0", optional = true }
+vitte-vitbc    = { path = "../crates/vitte-vitbc",   version = "0.1.0", optional = true }
+vitte-vm       = { path = "../crates/vitte-vm",      version = "0.1.0", optional = true }
+vitte-tools    = { path = "../crates/vitte-tools",   version = "0.1.0", optional = true }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# LINTS de bon sens (sans être punitifs pour un crate de tests)
+# ────────────────────────────────────────────────────────────────────────────────
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+doc_markdown = "allow"
+
+# ────────────────────────────────────────────────────────────────────────────────
+# PROFILS (on garde les valeurs par défaut ; tu peux surcharger ici si besoin)
+# ────────────────────────────────────────────────────────────────────────────────
+#[profile.test]
+#opt-level = 0
+#debug = 1

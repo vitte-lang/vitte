@@ -2,14 +2,13 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/stdlib",
+  # Crates existants
   "crates/vitte-ast",
   "crates/vitte-cli",
   "crates/vitte-compiler",
   "crates/vitte-core",
   "crates/vitte-dap",
   "crates/vitte-debugger",
-  "crates/vitte-fuzz",
   "crates/vitte-ir",
   "crates/vitte-lexer",
   "crates/vitte-lsp",
@@ -19,10 +18,18 @@ members = [
   "crates/vitte-vitbc",
   "crates/vitte-vm",
   "crates/vitte-wasm",
+
+  # ➕ Nouveaux membres
+  "std",          # ta stdlib (crate à la racine)
+  "modules/*",    # sous-crates dans modules/
+  "tests",        # crate d'intégration cross-crates
+  "benchmarks",   # agrégateur Criterion
 ]
-# On évite de builder fuzz par défaut (builds & CI plus rapides)
+# On s'assure que docs/ n'est jamais pris comme crate
+exclude = ["docs"]
+
+# Évite de builder certains crates optionnels si tu veux : garde la liste utile au dev quotidien
 default-members = [
-  "crates/stdlib",
   "crates/vitte-ast",
   "crates/vitte-cli",
   "crates/vitte-compiler",
@@ -38,35 +45,95 @@ default-members = [
   "crates/vitte-vitbc",
   "crates/vitte-vm",
   "crates/vitte-wasm",
+
+  # compile la std par défaut
+  "std",
+
+
+  "modules/*",
+
+  # Le crate tests/ et benchmarks/ ne sont PAS en default-members pour garder des builds rapides.
 ]
 
 [workspace.package]
 edition      = "2021"
 version      = "0.1.0"
-license      = "MIT OR Apache-2.0 OR BSD-3-Clause"  # BSD inclus
+license      = "Apache-2.0"
 repository   = "https://github.com/vitte-lang/vitte"
 homepage     = "https://vitte-lang.github.io/vitte/"
 readme       = "README.md"
-rust-version = "1.76"
+rust-version = "1.80.0"
 
-# Dépendances communes (référençables via `workspace = true` dans chaque crate)
+# Lints communes (appliquées à tous les membres)
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+doc_markdown = "allow"
+
+# Dépendances partagées (référençables via `workspace = true`)
 [workspace.dependencies]
+# Base
 serde                 = { version = "1.0", features = ["derive"] }
+serde_json            = "1.0"
 thiserror             = "1.0"
 anyhow                = "1.0"
-log                   = "0.4"
+bitflags              = "2.9.3"
+smallvec              = "1.15.1"
+indexmap              = "2"
+petgraph              = "0.8.2"
+
+# CLI / DX
 clap                  = { version = "4.5", features = ["derive"] }
+clap_complete         = "4.5"
+tracing               = { version = "0.1", features = ["attributes", "log", "release_max_level_info"] }
+tracing-subscriber    = { version = "0.3", features = ["env-filter", "fmt", "ansi", "time"] }
+
+# Async / LSP / runtime
+tokio                 = { version = "1.40", features = ["rt-multi-thread", "macros", "io-std", "net", "sync", "fs"] }
+tower-lsp             = "0.20"
+notify                = "8.2.0"
+
+# Bytecode / I/O bas niveau
+byteorder             = "1"
+crc32fast             = "1"
+lz4_flex              = "0.11"
 zstd                  = { version = "0.13", default-features = false }
-pretty_assertions     = "1.4"
-proptest              = "1.5"
-env_logger            = "0.11"
-# WASM (si besoin côté vitte-wasm)
+memmap2               = "0.9"
+bumpalo               = "3"
+
+# Concurrence / perfs
+rayon                 = "1"
+crossbeam-channel     = "0.5"
+parking_lot           = "0.12"
+dashmap               = "6.1.0"
+
+# WASM
 wasm-bindgen          = "0.2"
 wasm-bindgen-futures  = "0.4"
 js-sys                = "0.3"
-web-sys               = { version = "0.3", features = ["Window","Response","Request","RequestInit","RequestMode","Headers","console"] }
+web-sys               = { version = "0.3", features = [
+  "Window","Response","Request","RequestInit","RequestMode","Headers","Console","Performance"
+] }
 
-# Profils de build (agressifs mais sûrs)
+# Outils dev/test
+pretty_assertions     = "1.4"
+proptest              = "1.5"
+insta                 = { version = "1", features = ["yaml"] }
+tempfile              = "3"
+
+# Utilitaires build (si tu utilises build.rs de complétions)
+dirs-next             = "2"
+
+# Expose aussi la stdlib en dépendance workspace (si le crate s’appelle vitte-stdlib)
+vitte-stdlib          = { path = "std", version = "0.1.0" }
+
+# Profils de build
 [profile.dev]
 opt-level = 0
 debug = 1

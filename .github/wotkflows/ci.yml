@@ -1,0 +1,208 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "**/*.png"
+      - "**/*.jpg"
+      - ".vscode/**"
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  # ───────────────────────── Lint & Security (Linux) ─────────────────────────
+  lint:
+    name: fmt + clippy + deny (ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain (stable + rustfmt/clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy (all-features)
+        run: cargo clippy --workspace --all-features
+
+      - name: Install cargo-deny
+        uses: taiki-e/cache-cargo-install-action@v1
+        with:
+          tool: cargo-deny
+
+      - name: cargo deny check
+        run: cargo deny check
+
+  # ───────────────────────── Build & Tests (tous les OS runners) ────────────
+  test:
+    name: build & test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [lint]
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest      # Linux (24.04 actuellement)
+          - ubuntu-22.04
+          - ubuntu-24.04
+          - macos-13           # Intel
+          - macos-latest       # Apple Silicon (14/15)
+          - windows-2019
+          - windows-latest     # Server 2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Show versions
+        run: |
+          rustc -Vv
+          cargo -V
+
+      - name: cargo build (workspace, default-members)
+        run: cargo build --workspace
+
+      - name: cargo test (workspace)
+        run: cargo test --workspace
+
+  # ───────────────────────── All-features compile check ─────────────────────
+  all_features:
+    name: cargo check --all-features (ubuntu)
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo check (all-features)
+        run: cargo check --workspace --all-features
+
+  # ───────────────────────── MSRV (compile sur 1.80.0) ──────────────────────
+  msrv:
+    name: MSRV 1.80.0 (ubuntu)
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain (1.80.0)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.80.0
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo check (workspace)
+        run: cargo check --workspace
+
+  # ───────────────────────── Docs build (sanity) ────────────────────────────
+  docs:
+    name: cargo doc (ubuntu)
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build docs
+        run: cargo doc --workspace --no-deps
+
+  # ───────────────────────── WASM targets ───────────────────────────────────
+  wasm:
+    name: wasm32 (unknown + WASI)
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain + targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown,wasm32-wasi
+      - uses: Swatinem/rust-cache@v2
+      - name: Build wasm32-unknown-unknown
+        run: cargo build -p vitte-wasm --target wasm32-unknown-unknown
+      - name: Build wasm32-wasi (si applicable)
+        run: cargo build --workspace --target wasm32-wasi || true
+
+  # ───────────────────────── Cross-build pour cibles populaires ─────────────
+  # (on “compile” un max de targets Linux/Windows-gnu sans exécuter les tests)
+  cross_build:
+    name: cross build (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    needs: [lint]
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          # Linux glibc & musl (Alpine)
+          - x86_64-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-gnu
+          - aarch64-unknown-linux-musl
+          - armv7-unknown-linux-gnueabihf
+          - i686-unknown-linux-gnu
+          # Windows GNU (cross) — utile pour livrer des .exe sans MSVC
+          - x86_64-pc-windows-gnu
+          # WebAssembly (par sécurité dans ce job aussi)
+          - wasm32-unknown-unknown
+          - wasm32-wasi
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable) + targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install host tools (musl, gnu cross)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            musl-tools gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf \
+            gcc-i686-linux-gnu mingw-w64
+
+      - name: Build (workspace)
+        env:
+          RUSTFLAGS: "-Dwarnings"
+        run: |
+          # On tente un build “best-effort” pour tout le workspace.
+          # Certains crates (zstd/lz4) peuvent nécessiter des toolchains C — déjà installés plus haut.
+          cargo build --workspace --target ${{ matrix.target }} || (
+            echo "::warning::Build failed for ${{ matrix.target }} (ok pour un cross best-effort)"; exit 0
+          )
+
+  # ───────────────────────── (Optionnel) Self-hosted non-GitHub OS ──────────
+  # Décommente si tu as des runners *self-hosted* (ex: FreeBSD, OpenBSD, ARM boards).
+  # freebsd:
+  #   name: build & test (FreeBSD self-hosted)
+  #   runs-on: [ self-hosted, freebsd ]
+  #   needs: [lint]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: rustc -Vv && cargo -V
+  #     - run: cargo build --workspace && cargo test --workspace
