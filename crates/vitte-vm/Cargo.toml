@@ -1,46 +1,70 @@
 [package]
 name = "vitte-vm"
 version = "0.1.0"
-description = "Machine virtuelle Vitte : exécution du bytecode (stack, frames, scheduler — MVP)."
-# Hérite des métadonnées du workspace
-edition.workspace       = true
-rust-version.workspace  = true
-license.workspace       = true
-repository.workspace    = true
-homepage.workspace      = true
-documentation.workspace = true
-keywords.workspace      = true
-categories.workspace    = true
+edition = "2021"
+
+description = "Machine virtuelle pour exécuter le bytecode VITBC (Vitte VM)"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/vitte-lang/vitte"
+homepage = "https://vitte-lang.github.io/vitte/"
+readme = "../../README.md"
+keywords = ["vm", "bytecode", "virtual-machine", "no_std", "vitte"]
+categories = ["compilers", "virtualization", "embedded"]
+
+# toolchain minimal conseillée (aligne ton CI)
+rust-version = "1.76"
 
 [lib]
+name = "vitte_vm"
 path = "src/lib.rs"
+crate-type = ["rlib"]
 
-# ───────────────────────────── Features
+# Binaire runner (optionnel), activé si feature `cli` + `std`
+[[bin]]
+name = "vitte-vm-run"
+path = "src/main.rs"
+required-features = ["cli", "std"]
+
 [features]
-# std activée par défaut ; désactive avec --no-default-features si besoin
-default = ["std"]
-std = []
+# On compile avec std par défaut
+default = ["std", "trace"]
+# Active les APIs std (fs, time, etc.). Propage vers vitte-vitbc.
+std = ["vitte-vitbc/std"]
+# Sérialisation optionnelle de l'état de la VM (snapshots, traces)
+serde = ["dep:serde"]
+# Relais de compression CODE via vitte-vitbc (zstd)
+zstd = ["vitte-vitbc/zstd"]
+# Journaux d'exécution (log crate). Inclus par défaut via "trace".
+trace = ["dep:log"]
+# Binaire CLI (runner) : clap + env_logger, nécessite std
+cli = ["std", "dep:clap", "dep:env_logger"]
 
-# Sérialisation optionnelle, relaie vers vitte-core
-serde = ["dep:serde", "vitte-core/serde"]
-
-# Mode async (scheduler/IO) via tokio — optionnel
-async = ["dep:tokio"]
-
-# Tracing optionnel
-tracing = ["dep:tracing"]
-
-# ───────────────────────────── Dépendances
 [dependencies]
-# Workspace deps
-anyhow   = { workspace = true }
-parking_lot = { workspace = true }
-serde    = { workspace = true, optional = true }
-tracing  = { workspace = true, optional = true }
-tokio    = { workspace = true, features = ["rt-multi-thread","macros","time"], optional = true }
+# Crates internes
+vitte-core  = { path = "../vitte-core",  version = "0.1.0" }
+# Attention : pour supporter no_std réellement, on coupe les défauts et on relaie la feature std ci-dessus
+vitte-vitbc = { path = "../vitte-vitbc", version = "0.1.0", default-features = false }
 
-# Crate interne indispensable
-vitte-core = { path = "../vitte-core" }
+# Externes
+log         = { version = "0.4", optional = true }
+serde       = { version = "1.0", features = ["derive"], optional = true }
+clap        = { version = "4.5", features = ["derive"], optional = true }
+env_logger  = { version = "0.11", optional = true }
 
-[package.metadata.docs.rs]
-all-features = true
+# (si tu veux des erreurs custom jolies)
+thiserror   = { version = "1.0", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+proptest = "1.5"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+doc_markdown = "allow"

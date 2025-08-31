@@ -1,0 +1,82 @@
+module std.i18n.plural
+use std.i18n.locale as loc
+
+pub enum Category { Zero, One, Two, Few, Many, Other }
+pub enum PluralType { Cardinal, Ordinal }
+
+pub fn cardinal(locale: &loc::Locale, n: f64) -> Category {
+    let lang = locale.language.as_str();
+    match lang {
+        "fr" => fr_cardinal(n),
+        "en" => en_cardinal(n),
+        "ru" => ru_cardinal(n),
+        "ar" => ar_cardinal(n),
+        "pl" => pl_cardinal(n),
+        _    => other_cardinal(n),
+    }
+}
+
+pub fn ordinal(locale: &loc::Locale, n: f64) -> Category {
+    let lang = locale.language.as_str();
+    match lang {
+        "en" => en_ordinal(n),
+        "fr" => other(),
+        _    => other(),
+    }
+}
+
+fn other() -> Category { Category::Other }
+
+fn en_cardinal(n: f64) -> Category {
+    if is_int(n) && n == 1.0 { Category::One } else { Category::Other }
+}
+fn en_ordinal(n: f64) -> Category {
+    if !is_int(n) { return Category::Other; }
+    let i = n as i64;
+    let mod10 = i % 10;
+    let mod100 = i % 100;
+    if mod10 == 1 && mod100 != 11 { Category::One }
+    else if mod10 == 2 && mod100 != 12 { Category::Two }
+    else if mod10 == 3 && mod100 != 13 { Category::Few }
+    else { Category::Other }
+}
+fn fr_cardinal(n: f64) -> Category {
+    if is_int(n) && (n == 0.0 || n == 1.0) { Category::One } else { Category::Other }
+}
+fn ru_cardinal(n: f64) -> Category {
+    if !is_int(n) { return Category::Other; }
+    let i = n as i64;
+    let m10 = i % 10;
+    let m100 = i % 100;
+    if m10 == 1 && m100 != 11 { Category::One }
+    else if (2 <= m10 && m10 <= 4) && !(12 <= m100 && m100 <= 14) { Category::Few }
+    else if m10 == 0 || (5 <= m10 && m10 <= 9) || (11 <= m100 && m100 <= 14) { Category::Many }
+    else { Category::Other }
+}
+fn ar_cardinal(n: f64) -> Category {
+    if !is_int(n) { return Category::Other; }
+    let i = n as i64;
+    if i == 0 { Category::Zero }
+    else if i == 1 { Category::One }
+    else if i == 2 { Category::Two }
+    else {
+        let m100 = i % 100;
+        if 3 <= m100 && m100 <= 10 { Category::Few }
+        else if 11 <= m100 && m100 <= 99 { Category::Many }
+        else { Category::Other }
+    }
+}
+fn pl_cardinal(n: f64) -> Category {
+    if !is_int(n) { return Category::Other; }
+    let i = n as i64;
+    let m10 = i % 10;
+    let m100 = i % 100;
+    if i == 1 { Category::One }
+    else if (2 <= m10 && m10 <= 4) && !(12 <= m100 && m100 <= 14) { Category::Few }
+    else if (i != 1) && ( (0 <= m10 && m10 <= 1) || (5 <= m10 && m10 <= 9) || (12 <= m100 && m100 <= 14) ) {
+        Category::Many
+    } else { Category::Other }
+}
+fn other_cardinal(_n: f64) -> Category { Category::Other }
+
+fn is_int(n: f64) -> bool { (n.floor() - n).abs() < 1e-9 }

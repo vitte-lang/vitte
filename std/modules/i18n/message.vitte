@@ -1,0 +1,211 @@
+module std.i18n.message
+use std.i18n.locale as loc
+use std.i18n.plural as pl
+use std.i18n.number as num
+use std.collections.map as map
+
+pub enum Value {
+    Str(String),
+    Num(f64),
+    Bool(bool),
+}
+
+pub fn format(locale: &loc::Locale, pattern: &str, args: &map::Map<String, Value>) -> String {
+    let tokens = parse(pattern);
+    render(locale, &tokens, args)
+}
+
+enum Tok {
+    Text(String),
+    Var(String),
+    Plural{var:String, arms: map::Map<String, Vec<Tok>>, offset:i32},
+    Select{var:String, arms: map::Map<String, Vec<Tok>>},
+    Number{var:String, style:String, min_frac:i32, max_frac:i32, currency:String},
+}
+
+fn parse(s: &str) -> Vec<Tok> {
+    let mut out = vec::new();
+    let mut i = 0;
+    let mut buf = "".to_string();
+    while i < s.len() {
+        let c = s.char_at(i);
+        if c == '{' {
+            if buf.len() > 0 { out.push(Tok::Text(buf.clone())); buf.clear(); }
+            let (content, step) = read_braced(s, i);
+            i += step;
+            out.push(parse_braced(content.as_str()));
+            continue;
+        } else {
+            buf.push(c);
+            i += 1;
+        }
+    }
+    if buf.len() > 0 { out.push(Tok::Text(buf)); }
+    out
+}
+
+fn read_braced(s: &str, start: usize) -> (String, usize) {
+    let mut depth = 0;
+    let mut j = start;
+    let mut out = "".to_string();
+    while j < s.len() {
+        let c = s.char_at(j);
+        if c == '{' { depth += 1; if depth > 1 { out.push(c); } }
+        else if c == '}' { depth -= 1; if depth == 0 { j += 1; break; } else { out.push(c); } }
+        else { if depth >= 1 { out.push(c); } }
+        j += 1;
+    }
+    (out, j - start)
+}
+
+fn parse_braced(inner: &str) -> Tok {
+    let parts = inner.split(',').map(|p| p.trim()).collect::<Vec<String>>();
+    if parts.len() == 1 {
+        return Tok::Var(parts[0].clone());
+    }
+    if parts.len() >= 2 && parts[1] == "plural" {
+        let var = parts[0].clone();
+        let mut arms = map::new::<String, Vec<Tok>>();
+        let mut offset = 0;
+        let rest = inner.substring(inner.index_of("plural").unwrap() + "plural".len()).trim();
+        let mut k = 0;
+        while k < rest.len() {
+            if rest.starts_with_at("offset:", k) {
+                k += "offset:".len();
+                let (num, step) = read_number(rest, k);
+                offset = num as i32;
+                k += step;
+                continue;
+            }
+            let (key, body, step) = read_key_block(rest, k);
+            if key.len() == 0 { break; }
+            arms.insert(key, parse(body.as_str()));
+            k += step;
+        }
+        return Tok::Plural{var, arms, offset};
+    }
+    if parts.len() >= 2 && parts[1] == "select" {
+        let var = parts[0].clone();
+        let mut arms = map::new::<String, Vec<Tok>>();
+        let after = inner.substring(inner.index_of("select").unwrap() + "select".len()).trim();
+        let mut k = 0;
+        while k < after.len() {
+            let (key, body, step) = read_key_block(after, k);
+            if key.len() == 0 { break; }
+            arms.insert(key, parse(body.as_str()));
+            k += step;
+        }
+        return Tok::Select{var, arms};
+    }
+    if parts.len() >= 2 && parts[1] == "number" {
+        let var = parts[0].clone();
+        let after = inner.substring(inner.index_of("number").unwrap() + "number".len()).trim();
+        let mut style = "decimal".to_string();
+        let mut min_frac = 0;
+        let mut max_frac = 2;
+        let mut currency = "".to_string();
+        for tok in after.split_whitespace() {
+            if tok.starts_with("currency:") { currency = tok.substring(9).to_string(); style = "currency".to_string(); }
+            else if tok.starts_with("minFrac:") { min_frac = tok.substring(8).parse_i32().unwrap_or(0); }
+            else if tok.starts_with("maxFrac:") { max_frac = tok.substring(8).parse_i32().unwrap_or(2); }
+            else if tok == "percent" { style = "percent".to_string(); }
+        }
+        return Tok::Number{var, style, min_frac, max_frac, currency};
+    }
+    Tok::Var(parts[0].clone())
+}
+
+fn read_number(s: &str, i: usize) -> (i64, usize) {
+    let mut j = i;
+    while j < s.len() && s.char_at(j).is_digit() { j += 1; }
+    (s.substring(i..j).parse_i64().unwrap_or(0), j - i)
+}
+fn read_key_block(s: &str, i: usize) -> (String, String, usize) {
+    let mut j = i;
+    while j < s.len() && s.char_at(j).is_alnum() { j += 1; }
+    let key = s.substring(i..j).to_string();
+    while j < s.len() && s.char_at(j).is_whitespace() { j+=1; }
+    if j >= s.len() || s.char_at(j) != '{' { return ("".to_string(), "".to_string(), 0); }
+    let (body, step) = super::message::read_braced(s, j);
+    (key, body, (j - i) + step)
+}
+
+fn render(locale: &loc::Locale, toks: &Vec<Tok>, args: &map::Map<String, Value>) -> String {
+    let mut out = "".to_string();
+    for t in toks {
+        match t {
+            Tok::Text(s) => out.push_str(s),
+            Tok::Var(name) => {
+                out.push_str(&value_to_string(locale, args.get_or(name, &Value::Str("".to_string()))));
+            }
+            Tok::Plural{var, arms, offset} => {
+                let n = arg_num(args, var);
+                let adj = n - (*offset as f64);
+                let cat = super::plural::cardinal(locale, adj);
+                let exact_key = format!("={}", n as i64);
+                let branch = if arms.contains_key(&exact_key) {
+                    arms.get(&exact_key)
+                } else {
+                    let key = match cat {
+                        pl::Category::Zero => "zero",
+                        pl::Category::One  => "one",
+                        pl::Category::Two  => "two",
+                        pl::Category::Few  => "few",
+                        pl::Category::Many => "many",
+                        pl::Category::Other=> "other",
+                    };
+                    if arms.contains_key(key) { arms.get(key) } else { arms.get("other") }
+                };
+                out.push_str(&render(locale, branch, &with_number_arg(args, var, adj)));
+            }
+            Tok::Select{var, arms} => {
+                let key = arg_str(args, var);
+                let branch = if arms.contains_key(&key) { arms.get(&key) } else { arms.get("other") };
+                out.push_str(&render(locale, branch, args));
+            }
+            Tok::Number{var, style, min_frac, max_frac, currency} => {
+                let n = arg_num(args, var);
+                let opts = num::NumberOptions {
+                    style: if style == "percent" { num::NumberStyle::Percent }
+                           else if style == "currency" { num::NumberStyle::Currency(currency.clone()) }
+                           else { num::NumberStyle::Decimal },
+                    min_fraction: *min_frac,
+                    max_fraction: *max_frac,
+                    grouping: true,
+                    use_native_digits: false,
+                };
+                out.push_str(&num::format(locale, n, &opts));
+            }
+        }
+    }
+    out
+}
+
+fn arg_num(args: &map::Map<String, Value>, name: &str) -> f64 {
+    match args.get_or(name, &Value::Num(0.0)) {
+        Value::Num(n) => *n,
+        Value::Str(s) => s.parse_f64().unwrap_or(0.0),
+        Value::Bool(b)=> if *b { 1.0 } else { 0.0 },
+    }
+}
+fn arg_str(args: &map::Map<String, Value>, name: &str) -> String {
+    match args.get_or(name, &Value::Str("".to_string())) {
+        Value::Str(s) => s.clone(),
+        Value::Num(n) => n.to_string(),
+        Value::Bool(b)=> if *b { "true".to_string() } else { "false".to_string() },
+    }
+}
+
+fn value_to_string(_locale: &loc::Locale, v: &Value) -> String {
+    match v {
+        Value::Str(s) => s.clone(),
+        Value::Num(n) => n.to_string(),
+        Value::Bool(b)=> if *b { "true".to_string() } else { "false".to_string() },
+    }
+}
+
+fn with_number_arg(args: &map::Map<String, Value>, name: &str, n: f64) -> map::Map<String, Value> {
+    let mut m = args.clone();
+    m.insert(name.to_string(), Value::Num(n));
+    m
+}

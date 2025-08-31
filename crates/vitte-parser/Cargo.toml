@@ -1,0 +1,37 @@
+[package]
+name = "vitte-parser"
+version = "0.1.0"
+edition = "2021"
+description = "Parser récursif/Pratt du langage Vitte → produit un AST vitte-ast"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/vitte-lang/vitte"
+homepage = "https://vitte-lang.github.io/vitte/"
+readme = "../../README.md"
+keywords = ["parser", "compiler", "ast", "no_std"]
+categories = ["compilers", "parsing"]
+
+[lib]
+name = "vitte_parser"
+path = "src/lib.rs"
+
+[features]
+# On compile avec std par défaut
+default = ["std"]
+# Permet de tourner en no_std
+std = []
+# Activer derive Serialize/Deserialize sur AST (utile pour tests ou outils)
+serde = ["dep:serde"]
+
+[dependencies]
+# AST cible
+vitte-ast = { path = "../vitte-ast", version = "0.1.0" }
+# Tokens du lexer
+vitte-lexer = { path = "../vitte-lexer", version = "0.1.0" }
+# Core utils (Span, SourceId, etc.)
+vitte-core = { path = "../vitte-core", version = "0.1.0" }
+
+# Optionnel : pour sérialiser l’AST
+serde = { version = "1.0", features = ["derive"], optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"

@@ -1,617 +1,761 @@
-//! vitte-compiler/src/lib.rs — Frontend minimal “prêt à rouler”
+// src/lib.rs
+//! Vitte Compiler - front/middle/back + émission VITBC
 //!
-//! Contenu dans 1 seul fichier pour accélérer :
-//!  - Diagnostics (erreurs structurées)
-//!  - Lexer (tokens + positions)
-//!  - AST (expressions / statements)
-//!  - Parser (descente récursive, précé­dences)
-//!  - Codegen → vitte-core::bytecode::Chunk (LoadConst/Add/Sub/.../Print/Return)
+//! - Entrée : `vitte_ast::Program`
+//! - Sortie : bytecode VITBC (en mémoire ou sur disque)
+//! - Diagnostics : erreurs/warnings collectés avec `Span`
+//! - Table des symboles + typage minimal
+//! - Passes (trait `Pass`) + Backend (trait `Emitter`)
 //!
-//! Langage MVP géré :
-//!   - Statements: `print(expr);` | `expr;` | `return;`
-//!   - Expressions: + - * / (gauche-associatif), parenthèses, nombres, chaînes, booléens, identifiants
+//! Features :
+//! - `std` (par défaut)
+//! - `serde` (pour sérialiser certaines structures internes si besoin)
+//! - `zstd` (compresser la section CODE avant écriture VITBC)
 //!
-//! API publique : compile_str / compile_file / compile_path
+//! API principale :
+//! ```ignore
+//! use vitte_compiler::{Compiler, CompilerOptions};
+//! use vitte_ast::Program;
 //!
-//! ⚠️ Ce n’est qu’un MVP : pas de variables locales, ni if/for, etc.
-//!    L’objectif est de valider la chaîne source → bytecode → VM/désassembleur.
+//! let mut c = Compiler::new(CompilerOptions::default());
+//! let prog: Program = /* ... venant du parser ... */;
+//! let bc = c.compile(&prog)?;
+//! #[cfg(feature="std")]
+//! bc.write_to_file("out.vitbc")?;
+//! ```
 
-use std::fs;
-use std::path::{Path, PathBuf};
+#![deny(missing_docs)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
-use anyhow::{anyhow, Context, Result};
-use thiserror::Error;
+// ───────────── alloc seulement en no_std ─────────────
+#[cfg(not(feature = "std"))]
+extern crate alloc;
 
-use vitte_core::bytecode::{chunk::ChunkFlags, Chunk, ConstPool, ConstValue, Op};
+// ───────────── Imports conditionnels std / no_std ─────────────
+#[cfg(feature = "std")]
+use std::{
+    boxed::Box,
+    collections::BTreeMap,
+    fs::File,
+    io::Write,
+    path::Path,
+    string::String,
+    vec::Vec,
+};
 
-/// --------- API PUBLIQUE ---------
+#[cfg(not(feature = "std"))]
+use alloc::{
+    boxed::Box,
+    collections::BTreeMap,
+    string::String,
+    vec::Vec,
+};
 
-/// Compile du code source (chaîne) en Chunk bytecode.
-pub fn compile_str(source: &str, main_file: Option<&str>) -> Result<Chunk> {
-    let mut diags = Diagnostics::default();
-    let mut lexer = Lexer::new(source, main_file.unwrap_or("<memory>"));
-    let tokens = lexer.lex_all(&mut diags);
-    bail_if_errors(&diags)?;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
-    let mut parser = Parser::new(tokens, lexer.file_name.clone());
-    let program = parser.parse_program(&mut diags);
-    bail_if_errors(&diags)?;
+use vitte_ast as ast;
 
-    let mut cg = Codegen::new(main_file);
-    let chunk = cg.emit(&program)?;
-    Ok(chunk)
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Options
+// ─────────────────────────────────────────────────────────────────────────────
 
-/// Compile un fichier `.vit` en Chunk.
-pub fn compile_file(path: impl AsRef<Path>) -> Result<Chunk> {
-    let path = path.as_ref();
-    let src = fs::read_to_string(path)
-        .with_context(|| format!("Impossible de lire {}", path.display()))?;
-    compile_str(&src, Some(path.to_string_lossy().as_ref()))
-}
-
-/// Compile à partir d’un chemin générique (pratique pour CLI).
-pub fn compile_path(path: &Path) -> Result<Chunk> {
-    compile_file(path)
-}
-
-/// --------- DIAGNOSTICS ---------
-
-#[derive(Debug, Default)]
-struct Diagnostics {
-    errors: Vec<Diag>,
-}
-
-#[derive(Debug)]
-struct Diag {
-    file: String,
-    line: usize,
-    col: usize,
-    msg: String,
-}
-
-fn bail_if_errors(diags: &Diagnostics) -> Result<()> {
-    if diags.errors.is_empty() {
-        return Ok(());
-    }
-    let mut s = String::new();
-    for e in &diags.errors {
-        use std::fmt::Write;
-        let _ = writeln!(&mut s, "{}:{}:{}: {}", e.file, e.line, e.col, e.msg);
-    }
-    Err(anyhow!("Erreurs de compilation:\n{s}"))
-}
-
-impl Diagnostics {
-    fn err(&mut self, file: &str, line: usize, col: usize, msg: impl Into<String>) {
-        self.errors.push(Diag {
-            file: file.to_string(),
-            line,
-            col,
-            msg: msg.into(),
-        });
-    }
-}
-
-/// --------- LEXER ---------
-
-#[derive(Debug, Clone, PartialEq)]
-enum TokKind {
-    // Mots-clés
-    KwPrint,
-    KwReturn,
-    KwTrue,
-    KwFalse,
-
-    // Littéraux
-    Number(f64),
-    String(String),
-    Ident(String),
-
-    // Symboles
-    Plus,
-    Minus,
-    Star,
-    Slash,
-    LParen,
-    RParen,
-    Semicolon,
-
-    // Fin
-    Eof,
-}
-
+/// Options du compilateur
 #[derive(Debug, Clone)]
-struct Token {
-    kind: TokKind,
-    line: usize,
-    col: usize,
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct CompilerOptions {
+    /// Activer des vérifications strictes (warnings→erreurs)
+    pub deny_warnings: bool,
+    /// Version de format VITBC à écrire
+    pub vitbc_version: u16,
+    /// Compresser la section CODE (nécessite feature `zstd`)
+    pub compress_code: bool,
+    /// Insérer des noms (debug) dans un mini-symtab embarqué
+    pub embed_names: bool,
 }
 
-struct Lexer<'a> {
-    src: &'a str,
-    file_name: String,
-    it: std::str::CharIndices<'a>,
-    peeked: Option<(usize, char)>,
-    line: usize,
-    col: usize,
-}
-
-impl<'a> Lexer<'a> {
-    fn new(src: &'a str, file_name: &str) -> Self {
+impl Default for CompilerOptions {
+    fn default() -> Self {
         Self {
-            src,
-            file_name: file_name.to_string(),
-            it: src.char_indices(),
-            peeked: None,
-            line: 1,
-            col: 1,
+            deny_warnings: false,
+            vitbc_version: 2,
+            compress_code: false,
+            embed_names: true,
         }
-    }
-
-    fn lex_all(&mut self, diags: &mut Diagnostics) -> Vec<Token> {
-        let mut out = Vec::new();
-        loop {
-            match self.next_token(diags) {
-                Ok(t) => {
-                    let eof = matches!(t.kind, TokKind::Eof);
-                    out.push(t);
-                    if eof { break; }
-                }
-                Err((line, col, msg)) => {
-                    diags.err(&self.file_name, line, col, msg);
-                    break;
-                }
-            }
-        }
-        out
-    }
-
-    fn next_token(&mut self, _diags: &mut Diagnostics) -> std::result::Result<Token, (usize, usize, String)> {
-        self.skip_ws_and_comments();
-        let (line, col) = (self.line, self.col);
-
-        let c = match self.bump() {
-            Some(c) => c,
-            None => {
-                return Ok(Token { kind: TokKind::Eof, line, col });
-            }
-        };
-
-        let kind = match c {
-            '(' => TokKind::LParen,
-            ')' => TokKind::RParen,
-            ';' => TokKind::Semicolon,
-            '+' => TokKind::Plus,
-            '-' => TokKind::Minus,
-            '*' => TokKind::Star,
-            '/' => TokKind::Slash,
-            '"' => {
-                let s = self.read_string()?;
-                TokKind::String(s)
-            }
-            ch if ch.is_ascii_digit() => {
-                let num = self.read_number(ch)?;
-                TokKind::Number(num)
-            }
-            ch if is_ident_start(ch) => {
-                let ident = self.read_ident(ch);
-                match ident.as_str() {
-                    "print" => TokKind::KwPrint,
-                    "return" => TokKind::KwReturn,
-                    "true" => TokKind::KwTrue,
-                    "false" => TokKind::KwFalse,
-                    _ => TokKind::Ident(ident),
-                }
-            }
-            _ => return Err((line, col, format!("Caractère inattendu: {c:?}"))),
-        };
-
-        Ok(Token { kind, line, col })
-    }
-
-    fn skip_ws_and_comments(&mut self) {
-        loop {
-            let p = self.peek();
-            match p {
-                Some((_, ch)) if ch.is_ascii_whitespace() => {
-                    self.bump();
-                    continue;
-                }
-                Some((i, '/')) => {
-                    // commentaire //…
-                    if let Some((_, '/')) = self.peek2() {
-                        // consommer jusqu'à fin de ligne
-                        self.bump(); // '/'
-                        self.bump(); // '/'
-                        while let Some((_, ch)) = self.peek() {
-                            if ch == '\n' { break; }
-                            self.bump();
-                        }
-                        continue;
-                    }
-                }
-                _ => break,
-            }
-        }
-    }
-
-    fn read_string(&mut self) -> std::result::Result<String, (usize, usize, String)> {
-        let (mut line, mut col) = (self.line, self.col);
-        let mut s = String::new();
-        loop {
-            match self.bump() {
-                Some('"') => break,
-                Some('\\') => {
-                    match self.bump() {
-                        Some('n') => s.push('\n'),
-                        Some('t') => s.push('\t'),
-                        Some('r') => s.push('\r'),
-                        Some('"') => s.push('"'),
-                        Some('\\') => s.push('\\'),
-                        Some(c) => {
-                            return Err((line, col, format!("Échappement inconnu: \\{c}")));
-                        }
-                        None => return Err((line, col, "Fin de fichier dans la chaîne".into())),
-                    }
-                }
-                Some(c) => s.push(c),
-                None => return Err((line, col, "Fin de fichier dans la chaîne".into())),
-            }
-            line = self.line;
-            col = self.col;
-        }
-        Ok(s)
-    }
-
-    fn read_number(&mut self, first: char) -> std::result::Result<f64, (usize, usize, String)> {
-        let mut buf = String::new();
-        buf.push(first);
-        while let Some((_, ch)) = self.peek() {
-            if ch.is_ascii_digit() || ch == '.' {
-                self.bump();
-                buf.push(ch);
-            } else {
-                break;
-            }
-        }
-        buf.parse::<f64>()
-            .map_err(|_| (self.line, self.col, format!("Nombre invalide: {buf}")))
-    }
-
-    fn read_ident(&mut self, first: char) -> String {
-        let mut s = String::new();
-        s.push(first);
-        while let Some((_, ch)) = self.peek() {
-            if is_ident_continue(ch) {
-                self.bump();
-                s.push(ch);
-            } else {
-                break;
-            }
-        }
-        s
-    }
-
-    fn bump(&mut self) -> Option<char> {
-        let (i, ch) = if let Some((i, ch)) = self.peeked.take().or_else(|| self.it.next()) {
-            (i, ch)
-        } else {
-            return None;
-        };
-
-        if ch == '\n' {
-            self.line += 1;
-            self.col = 1;
-        } else {
-            self.col += 1;
-        }
-        Some(ch)
-    }
-
-    fn peek(&mut self) -> Option<(usize, char)> {
-        if self.peeked.is_none() {
-            self.peeked = self.it.next();
-        }
-        self.peeked
-    }
-
-    fn peek2(&mut self) -> Option<(usize, char)> {
-        // Regarde 2 chars en avant de manière simple
-        let saved = self.peeked;
-        let next = self.it.clone().next();
-        self.peeked = saved;
-        next
     }
 }
 
-fn is_ident_start(c: char) -> bool {
-    c.is_ascii_alphabetic() || c == '_' 
-}
-fn is_ident_continue(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '_' 
+// ─────────────────────────────────────────────────────────────────────────────
+/* Diagnostics */
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Gravité d’un diagnostic
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Severity {
+    /// Info
+    Info,
+    /// Alerte
+    Warning,
+    /// Erreur bloquante
+    Error,
 }
 
-/// --------- AST ---------
+/// Un diagnostic (message, gravité, span optionnel)
+#[derive(Debug, Clone)]
+pub struct Diagnostic {
+    /// Gravité
+    pub severity: Severity,
+    /// Message humain
+    pub message: String,
+    /// Localisation
+    pub span: Option<ast::Span>,
+}
 
+impl Diagnostic {
+    /// Construit une erreur
+    pub fn error(msg: impl Into<String>, span: Option<ast::Span>) -> Self {
+        Self { severity: Severity::Error, message: msg.into(), span }
+    }
+    /// Construit un warning
+    pub fn warn(msg: impl Into<String>, span: Option<ast::Span>) -> Self {
+        Self { severity: Severity::Warning, message: msg.into(), span }
+    }
+}
+
+/// Erreur globale de compilation
 #[derive(Debug)]
-struct Program {
-    stmts: Vec<Stmt>,
+pub struct CompileError {
+    /// Diagnostics accumulés
+    pub diagnostics: Vec<Diagnostic>,
 }
 
+impl CompileError {
+    fn from_single(diag: Diagnostic) -> Self {
+        Self { diagnostics: vec![diag] }
+    }
+}
+
+type CompileResult<T> = core::result::Result<T, CompileError>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+/* Table des symboles + types */
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Identité d’un symbole
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SymId(u32);
+
+/// Informations sur un symbole
+#[derive(Debug, Clone)]
+pub struct Symbol {
+    /// Nom
+    pub name: String,
+    /// Type du symbole
+    pub ty: TypeId,
+    /// Portée (niveau de scope)
+    pub scope: u32,
+}
+
+/// Table des symboles avec pile de scopes
 #[derive(Debug)]
-enum Stmt {
-    Print(Expr),
-    Expr(Expr),
-    Return,
+pub struct SymTable {
+    scopes: Vec<BTreeMap<String, SymId>>,
+    data: Vec<Symbol>,
 }
 
-#[derive(Debug)]
-enum Expr {
-    Number(f64),
-    String(String),
-    Bool(bool),
-    Ident(String),
-    Unary { op: UOp, rhs: Box<Expr> },
-    Binary { op: BOp, lhs: Box<Expr>, rhs: Box<Expr> },
-    Group(Box<Expr>),
-}
-
-#[derive(Debug, Clone, Copy)]
-enum UOp { Neg }
-
-#[derive(Debug, Clone, Copy)]
-enum BOp { Add, Sub, Mul, Div }
-
-/// --------- PARSER ---------
-
-struct Parser {
-    tokens: Vec<Token>,
-    pos: usize,
-    file: String,
-}
-
-impl Parser {
-    fn new(tokens: Vec<Token>, file: String) -> Self {
-        Self { tokens, pos: 0, file }
+impl SymTable {
+    /// Nouvelle table
+    pub fn new() -> Self {
+        Self { scopes: vec![BTreeMap::new()], data: Vec::new() }
     }
-
-    fn parse_program(&mut self, diags: &mut Diagnostics) -> Program {
-        let mut stmts = Vec::new();
-        while !self.check(TokKind::Eof) {
-            match self.parse_stmt(diags) {
-                Some(s) => stmts.push(s),
-                None => {
-                    // erreur : on tente de resynchroniser au prochain ';'
-                    self.sync_to_semicolon();
-                    self.advance(); // évite boucle infinie
-                }
-            }
-        }
-        Program { stmts }
+    /// Entre dans un nouveau scope
+    pub fn push_scope(&mut self) {
+        self.scopes.push(BTreeMap::new());
     }
-
-    fn parse_stmt(&mut self, diags: &mut Diagnostics) -> Option<Stmt> {
-        if self.matches(&[TokKind::KwPrint]) {
-            let expr = self.parse_expr(diags)?;
-            self.consume_semicolon(diags)?;
-            return Some(Stmt::Print(expr));
-        }
-        if self.matches(&[TokKind::KwReturn]) {
-            self.consume_semicolon(diags)?;
-            return Some(Stmt::Return);
-        }
-        // par défaut: expression-statement
-        let expr = self.parse_expr(diags)?;
-        self.consume_semicolon(diags)?;
-        Some(Stmt::Expr(expr))
+    /// Quitte le scope courant
+    pub fn pop_scope(&mut self) {
+        self.scopes.pop();
     }
-
-    fn parse_expr(&mut self, diags: &mut Diagnostics) -> Option<Expr> {
-        self.parse_add(diags)
+    /// Déclare un symbole dans le scope courant
+    pub fn declare(&mut self, name: String, ty: TypeId, scope: u32) -> SymId {
+        let id = SymId(self.data.len() as u32);
+        self.data.push(Symbol { name: name.clone(), ty, scope });
+        self.scopes.last_mut().unwrap().insert(name, id);
+        id
     }
-
-    fn parse_add(&mut self, diags: &mut Diagnostics) -> Option<Expr> {
-        let mut expr = self.parse_mul(diags)?;
-        loop {
-            if self.matches(&[TokKind::Plus]) {
-                let rhs = self.parse_mul(diags)?;
-                expr = Expr::Binary { op: BOp::Add, lhs: Box::new(expr), rhs: Box::new(rhs) };
-            } else if self.matches(&[TokKind::Minus]) {
-                let rhs = self.parse_mul(diags)?;
-                expr = Expr::Binary { op: BOp::Sub, lhs: Box::new(expr), rhs: Box::new(rhs) };
-            } else {
-                break;
-            }
-        }
-        Some(expr)
-    }
-
-    fn parse_mul(&mut self, diags: &mut Diagnostics) -> Option<Expr> {
-        let mut expr = self.parse_unary(diags)?;
-        loop {
-            if self.matches(&[TokKind::Star]) {
-                let rhs = self.parse_unary(diags)?;
-                expr = Expr::Binary { op: BOp::Mul, lhs: Box::new(expr), rhs: Box::new(rhs) };
-            } else if self.matches(&[TokKind::Slash]) {
-                let rhs = self.parse_unary(diags)?;
-                expr = Expr::Binary { op: BOp::Div, lhs: Box::new(expr), rhs: Box::new(rhs) };
-            } else {
-                break;
-            }
-        }
-        Some(expr)
-    }
-
-    fn parse_unary(&mut self, diags: &mut Diagnostics) -> Option<Expr> {
-        if self.matches(&[TokKind::Minus]) {
-            let rhs = self.parse_unary(diags)?;
-            return Some(Expr::Unary { op: UOp::Neg, rhs: Box::new(rhs) });
-        }
-        self.parse_primary(diags)
-    }
-
-    fn parse_primary(&mut self, diags: &mut Diagnostics) -> Option<Expr> {
-        if let Some(tok) = self.advance() {
-            return match &tok.kind {
-                TokKind::Number(n) => Some(Expr::Number(*n)),
-                TokKind::String(s) => Some(Expr::String(s.clone())),
-                TokKind::KwTrue => Some(Expr::Bool(true)),
-                TokKind::KwFalse => Some(Expr::Bool(false)),
-                TokKind::Ident(s) => Some(Expr::Ident(s.clone())),
-                TokKind::LParen => {
-                    let e = self.parse_expr(diags)?;
-                    self.expect(TokKind::RParen, diags, tok.line, tok.col, "Parenthèse ')' attendue")?;
-                    Some(Expr::Group(Box::new(e)))
-                }
-                _ => {
-                    diags.err(&self.file, tok.line, tok.col, "Expression attendue");
-                    None
-                }
-            };
+    /// Recherche dans les scopes (de l’intérieur vers l’extérieur)
+    pub fn resolve(&self, name: &str) -> Option<SymId> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(id) = scope.get(name) { return Some(*id); }
         }
         None
     }
+    /// Infos
+    pub fn get(&self, id: SymId) -> &Symbol { &self.data[id.0 as usize] }
+}
 
-    fn matches(&mut self, kinds: &[TokKind]) -> bool {
-        for k in kinds {
-            if self.check(k.clone()) {
-                self.pos += 1;
-                return true;
-            }
-        }
-        false
-    }
+/// Identité d’un type interne
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TypeId {
+    /// i64
+    Int,
+    /// f64
+    Float,
+    /// bool
+    Bool,
+    /// string
+    Str,
+    /// void
+    Void,
+    /// type utilisateur
+    Custom(u32),
+}
 
-    fn check(&self, kind: TokKind) -> bool {
-        if let Some(t) = self.peek() {
-            std::mem::discriminant(&t.kind) == std::mem::discriminant(&kind)
-        } else {
-            false
-        }
-    }
-
-    fn advance(&mut self) -> Option<&Token> {
-        let t = self.peek()?;
-        self.pos += 1;
-        Some(t)
-    }
-
-    fn peek(&self) -> Option<&Token> {
-        self.tokens.get(self.pos)
-    }
-
-    fn expect(&mut self, want: TokKind, diags: &mut Diagnostics, line: usize, col: usize, msg: &str) -> Option<()> {
-        if self.check(want) {
-            self.pos += 1;
-            Some(())
-        } else {
-            diags.err(&self.file, line, col, msg);
-            None
-        }
-    }
-
-    fn consume_semicolon(&mut self, diags: &mut Diagnostics) -> Option<()> {
-        if self.check(TokKind::Semicolon) {
-            self.pos += 1;
-            Some(())
-        } else {
-            let (l, c) = self.peek().map(|t| (t.line, t.col)).unwrap_or((0, 0));
-            diags.err(&self.file, l, c, "Point-virgule ';' attendu");
-            None
-        }
-    }
-
-    fn sync_to_semicolon(&mut self) {
-        while let Some(t) = self.peek() {
-            if matches!(t.kind, TokKind::Semicolon | TokKind::Eof) {
-                break;
-            }
-            self.pos += 1;
+impl TypeId {
+    fn from_ast(t: &ast::Type) -> Self {
+        use ast::Type::*;
+        match t {
+            Int => TypeId::Int,
+            Float => TypeId::Float,
+            Bool => TypeId::Bool,
+            Str => TypeId::Str,
+            Void => TypeId::Void,
+            Custom(_) => TypeId::Custom(0),
         }
     }
 }
 
-/// --------- CODEGEN ---------
+// ─────────────────────────────────────────────────────────────────────────────
+/* Contexte & Passes */
+// ─────────────────────────────────────────────────────────────────────────────
 
-struct Codegen {
-    chunk: Chunk,
+/// Contexte mut du compilateur partagé entre passes
+pub struct Ctx<'a> {
+    /// Options
+    pub opts: &'a CompilerOptions,
+    /// Diagnostics accumulés
+    pub diags: &'a mut Vec<Diagnostic>,
+    /// Table des symboles
+    pub symtab: &'a mut SymTable,
+    /// Prochaine profondeur de scope (pour tagger Symbol.scope)
+    pub scope_depth: u32,
 }
 
-impl Codegen {
-    fn new(main_file: Option<&str>) -> Self {
-        let mut chunk = Chunk::new(ChunkFlags { stripped: false });
-        if let Some(f) = main_file {
-            chunk.debug.main_file = Some(f.to_string());
-        }
-        Self { chunk }
-    }
+impl<'a> Ctx<'a> {
+    /// Nouveau scope
+    pub fn enter_scope(&mut self) { self.scope_depth += 1; self.symtab.push_scope(); }
+    /// Quitte scope
+    pub fn leave_scope(&mut self) { self.symtab.pop_scope(); self.scope_depth -= 1; }
+}
 
-    fn emit(mut self, program: &Program) -> Result<Chunk> {
-        for stmt in &program.stmts {
-            self.emit_stmt(stmt)?;
-        }
-        // S’assurer qu’on termine proprement
-        self.chunk.ops.push(Op::Return);
-        Ok(self.chunk)
-    }
+/// Trait générique d’une passe de compilation
+pub trait Pass {
+    /// Exécuter la passe sur le programme
+    fn run(&mut self, ctx: &mut Ctx<'_>, program: &ast::Program) -> CompileResult<()>;
+}
 
-    fn emit_stmt(&mut self, s: &Stmt) -> Result<()> {
-        match s {
-            Stmt::Print(e) => {
-                self.emit_expr(e)?;
-                self.chunk.ops.push(Op::Print);
-            }
-            Stmt::Expr(e) => {
-                self.emit_expr(e)?;
-                self.chunk.ops.push(Op::Pop); // on ne garde pas la valeur
-            }
-            Stmt::Return => {
-                self.chunk.ops.push(Op::Return);
-            }
-        }
-        Ok(())
-    }
+// ─────────────────────────────────────────────────────────────────────────────
+/* Passe : Collecte des symboles top-level */
+// ─────────────────────────────────────────────────────────────────────────────
 
-    fn emit_expr(&mut self, e: &Expr) -> Result<()> {
-        match e {
-            Expr::Number(n) => {
-                let ix = self.chunk.add_const(ConstValue::F64(*n));
-                self.chunk.ops.push(Op::LoadConst(ix));
-            }
-            Expr::String(s) => {
-                let ix = self.chunk.add_const(ConstValue::Str(s.clone()));
-                self.chunk.ops.push(Op::LoadConst(ix));
-            }
-            Expr::Bool(b) => {
-                self.chunk
-                    .ops
-                    .push(if *b { Op::LoadTrue } else { Op::LoadFalse });
-            }
-            Expr::Ident(name) => {
-                // MVP: pas de variables -> on injecte le nom comme string pour visualisation
-                let ix = self.chunk.add_const(ConstValue::Str(format!("<ident:{}>", name)));
-                self.chunk.ops.push(Op::LoadConst(ix));
-            }
-            Expr::Unary { op: UOp::Neg, rhs } => {
-                self.emit_expr(rhs)?;
-                self.chunk.ops.push(Op::Neg);
-            }
-            Expr::Binary { op, lhs, rhs } => {
-                self.emit_expr(lhs)?;
-                self.emit_expr(rhs)?;
-                match op {
-                    BOp::Add => self.chunk.ops.push(Op::Add),
-                    BOp::Sub => self.chunk.ops.push(Op::Sub),
-                    BOp::Mul => self.chunk.ops.push(Op::Mul),
-                    BOp::Div => self.chunk.ops.push(Op::Div),
+struct CollectSymbols;
+
+impl Pass for CollectSymbols {
+    fn run(&mut self, ctx: &mut Ctx<'_>, program: &ast::Program) -> CompileResult<()> {
+        use ast::Item::*;
+        for item in &program.items {
+            match item {
+                Function(fun) => {
+                    let name = fun.name.clone();
+                    let ty = if let Some(rt) = &fun.return_type {
+                        TypeId::from_ast(rt)
+                    } else {
+                        TypeId::Void
+                    };
+                    ctx.symtab.declare(name, ty, ctx.scope_depth);
+                }
+                Const(cst) => {
+                    let name = cst.name.clone();
+                    let ty = cst.ty.as_ref().map(TypeId::from_ast).unwrap_or(TypeId::Int);
+                    ctx.symtab.declare(name, ty, ctx.scope_depth);
+                }
+                Struct(sd) => {
+                    let name = sd.name.clone();
+                    ctx.symtab.declare(name, TypeId::Custom(0), ctx.scope_depth);
+                }
+                Enum(ed) => {
+                    let name = ed.name.clone();
+                    ctx.symtab.declare(name, TypeId::Custom(0), ctx.scope_depth);
                 }
             }
-            Expr::Group(inner) => {
-                self.emit_expr(inner)?;
+        }
+        Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+/* Passe : Typage (très basique, à étendre) */
+// ─────────────────────────────────────────────────────────────────────────────
+
+struct TypeCheck;
+
+impl TypeCheck {
+    fn type_of_expr(&self, ctx: &mut Ctx<'_>, e: &ast::Expr) -> TypeId {
+        use ast::Expr::*;
+        match e {
+            ast::Expr::Literal(l) => match l {
+                ast::Literal::Int(_) => TypeId::Int,
+                ast::Literal::Float(_) => TypeId::Float,
+                ast::Literal::Bool(_) => TypeId::Bool,
+                ast::Literal::Str(_) => TypeId::Str,
+                ast::Literal::Null => TypeId::Void,
+            },
+            Ident(name) => ctx.symtab
+                .resolve(name)
+                .map(|id| ctx.symtab.get(id).ty)
+                .unwrap_or_else(|| {
+                    ctx.diags.push(Diagnostic::error(
+                        format!("Identifiant inconnu: `{name}`"), None));
+                    TypeId::Int
+                }),
+            Call { .. } => TypeId::Int, // simplification
+            Binary { left, op, right } => {
+                let lt = self.type_of_expr(ctx, left);
+                let rt = self.type_of_expr(ctx, right);
+                // très basique : exige même type pour arithmétique
+                match op {
+                    ast::BinaryOp::Add | ast::BinaryOp::Sub
+                    | ast::BinaryOp::Mul | ast::BinaryOp::Div | ast::BinaryOp::Mod => {
+                        if lt != rt {
+                            ctx.diags.push(Diagnostic::error(
+                                "Op binaire sur types incompatibles", None));
+                        }
+                        lt
+                    }
+                    ast::BinaryOp::Eq | ast::BinaryOp::Ne
+                    | ast::BinaryOp::Lt | ast::BinaryOp::Le
+                    | ast::BinaryOp::Gt | ast::BinaryOp::Ge
+                    | ast::BinaryOp::And | ast::BinaryOp::Or => TypeId::Bool,
+                }
+            }
+            Unary { op, expr } => {
+                let t = self.type_of_expr(ctx, expr);
+                match op {
+                    ast::UnaryOp::Neg => t,
+                    ast::UnaryOp::Not => TypeId::Bool,
+                }
+            }
+            Field { expr, .. } => {
+                let _t = self.type_of_expr(ctx, expr);
+                TypeId::Int
+            }
+        }
+    }
+
+    fn check_stmt(&self, ctx: &mut Ctx<'_>, s: &ast::Stmt) {
+        use ast::Stmt::*;
+        match s {
+            Let { name, ty, value, .. } => {
+                let inferred = value.as_ref().map(|e| self.type_of_expr(ctx, e));
+                let declared = ty.as_ref().map(TypeId::from_ast);
+                let final_ty = declared.or(inferred).unwrap_or(TypeId::Int);
+                ctx.symtab.declare(name.clone(), final_ty, ctx.scope_depth);
+            }
+            Expr(e) => { let _ = self.type_of_expr(ctx, e); }
+            Return(e, _) => { let _ = e.as_ref().map(|x| self.type_of_expr(ctx, x)); }
+            While { condition, body, .. } => {
+                let _ = self.type_of_expr(ctx, condition);
+                ctx.enter_scope();
+                for st in &body.stmts { self.check_stmt(ctx, st); }
+                ctx.leave_scope();
+            }
+            For { var, iter, body, .. } => {
+                let _ = self.type_of_expr(ctx, iter);
+                ctx.enter_scope();
+                ctx.symtab.declare(var.clone(), TypeId::Int, ctx.scope_depth);
+                for st in &body.stmts { self.check_stmt(ctx, st); }
+                ctx.leave_scope();
+            }
+            If { condition, then_block, else_block, .. } => {
+                let _ = self.type_of_expr(ctx, condition);
+                ctx.enter_scope();
+                for st in &then_block.stmts { self.check_stmt(ctx, st); }
+                ctx.leave_scope();
+                if let Some(eb) = else_block {
+                    ctx.enter_scope();
+                    for st in &eb.stmts { self.check_stmt(ctx, st); }
+                    ctx.leave_scope();
+                }
+            }
+        }
+    }
+}
+
+impl Pass for TypeCheck {
+    fn run(&mut self, ctx: &mut Ctx<'_>, program: &ast::Program) -> CompileResult<()> {
+        for item in &program.items {
+            if let ast::Item::Function(fun) = item {
+                ctx.enter_scope();
+                for p in &fun.params {
+                    let ty = TypeId::from_ast(&p.ty);
+                    ctx.symtab.declare(p.name.clone(), ty, ctx.scope_depth);
+                }
+                for st in &fun.body.stmts {
+                    self.check_stmt(ctx, st);
+                }
+                ctx.leave_scope();
             }
         }
         Ok(())
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+/* IR/Bytecode minimal & Émetteur VITBC */
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Quelques opcodes de base (démo)
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum Op {
+    /// NOP
+    Nop = 0x00,
+    /// Const i64 (suivi d’un i64 little-endian)
+    ConstI64 = 0x01,
+    /// Add i64
+    AddI64 = 0x02,
+    /// Return
+    Ret = 0x10,
+    /// Appel de fonction (suivi d’un u32: index)
+    Call = 0x20,
+}
+
+/// Builder de code
+#[derive(Default, Debug)]
+pub struct CodeBuf {
+    buf: Vec<u8>,
+}
+
+impl CodeBuf {
+    /// Écrit un opcode
+    pub fn op(&mut self, op: Op) { self.buf.push(op as u8); }
+    /// Écrit un i64 LE
+    pub fn i64(&mut self, x: i64) { self.buf.extend_from_slice(&x.to_le_bytes()); }
+    /// Écrit un u32 LE
+    pub fn u32(&mut self, x: u32) { self.buf.extend_from_slice(&x.to_le_bytes()); }
+    /// Accès bytes
+    pub fn as_slice(&self) -> &[u8] { &self.buf }
+    /// Taille
+    pub fn len(&self) -> usize { self.buf.len() }
+}
+
+/// Sections VITBC
+#[derive(Default, Debug)]
+pub struct Sections {
+    ints: Vec<i64>,
+    floats: Vec<f64>,
+    strings: Vec<String>,
+    data: Vec<u8>,
+    code: CodeBuf,
+    names: Vec<String>, // facultatif: noms des fonctions (debug)
+}
+
+/// Bytecode complet VITBC (en mémoire)
+#[derive(Debug)]
+pub struct Bytecode {
+    /// Version de format
+    pub version: u16,
+    /// Sections
+    pub sections: Sections,
+    /// CRC32 du payload (calculé à la fin)
+    pub crc32: u32,
+}
+
+impl Bytecode {
+    /// Sérialise en VITBC (optionnellement compresse CODE)
+    pub fn to_bytes(&self, compress_code: bool) -> Vec<u8> {
+        // Header: "VITBC\0" + version (u16 LE)
+        let mut out = Vec::new();
+        out.extend_from_slice(b"VITBC\0");
+        out.extend_from_slice(&self.version.to_le_bytes());
+
+        // Encode chaque section: [tag:4][len:u32][payload]
+        // Tags: "INTS","FLTS","STRS","DATA","CODE","NAME"
+        fn emit_u32(out: &mut Vec<u8>, x: u32) { out.extend_from_slice(&x.to_le_bytes()); }
+        fn emit_tag(out: &mut Vec<u8>, tag: &[u8; 4]) { out.extend_from_slice(tag); }
+
+        // INTS
+        {
+            let mut buf = Vec::new();
+            for v in &self.sections.ints { buf.extend_from_slice(&v.to_le_bytes()); }
+            emit_tag(&mut out, b"INTS");
+            emit_u32(&mut out, buf.len() as u32);
+            out.extend_from_slice(&buf);
+        }
+        // FLTS
+        {
+            let mut buf = Vec::new();
+            for v in &self.sections.floats { buf.extend_from_slice(&v.to_le_bytes()); }
+            emit_tag(&mut out, b"FLTS");
+            emit_u32(&mut out, buf.len() as u32);
+            out.extend_from_slice(&buf);
+        }
+        // STRS
+        {
+            let mut buf = Vec::new();
+            for s in &self.sections.strings {
+                let bytes = s.as_bytes();
+                let len = bytes.len() as u32;
+                buf.extend_from_slice(&len.to_le_bytes());
+                buf.extend_from_slice(bytes);
+            }
+            emit_tag(&mut out, b"STRS");
+            emit_u32(&mut out, buf.len() as u32);
+            out.extend_from_slice(&buf);
+        }
+        // DATA
+        {
+            emit_tag(&mut out, b"DATA");
+            emit_u32(&mut out, self.sections.data.len() as u32);
+            out.extend_from_slice(&self.sections.data);
+        }
+        // CODE (option: zstd)
+        {
+            let code_bytes = self.sections.code.as_slice();
+            let payload: Vec<u8>;
+            #[cfg(feature = "zstd")]
+            {
+                if compress_code {
+                    payload = zstd::bulk::compress(code_bytes, 3).unwrap_or_else(|_| code_bytes.to_vec());
+                } else {
+                    payload = code_bytes.to_vec();
+                }
+            }
+            #[cfg(not(feature = "zstd"))]
+            {
+                let _ = compress_code;
+                payload = code_bytes.to_vec();
+            }
+
+            emit_tag(&mut out, b"CODE");
+            emit_u32(&mut out, payload.len() as u32);
+            out.extend_from_slice(&payload);
+        }
+        // NAME (facultatif)
+        {
+            let mut buf = Vec::new();
+            for s in &self.sections.names {
+                let b = s.as_bytes();
+                let len = b.len() as u32;
+                buf.extend_from_slice(&len.to_le_bytes());
+                buf.extend_from_slice(b);
+            }
+            emit_tag(&mut out, b"NAME");
+            emit_u32(&mut out, buf.len() as u32);
+            out.extend_from_slice(&buf);
+        }
+
+        // CRC32 (sur tout après "VITBC\0")
+        let crc = crc32_ieee(&out[6..]);
+        // TAG "CRCC"
+        out.extend_from_slice(b"CRCC");
+        out.extend_from_slice(&crc.to_le_bytes());
+
+        out
+    }
+
+    /// Écrit dans un fichier (nécessite `std`)
+    #[cfg(feature = "std")]
+    pub fn write_to_file<P: AsRef<Path>>(&self, path: P) -> core::result::Result<(), std::io::Error> {
+        let bytes = self.to_bytes(false);
+        let mut f = File::create(path)?;
+        f.write_all(&bytes)?;
+        Ok(())
+    }
+}
+
+// CRC32 IEEE (sans table, 8 itérations/byte)
+fn crc32_ieee(data: &[u8]) -> u32 {
+    let mut crc: u32 = 0xFFFF_FFFF;
+    for &b in data {
+        let mut x = (crc ^ (b as u32)) & 0xFF;
+        for _ in 0..8 {
+            let mask = (x & 1).wrapping_neg() & 0xEDB8_8320;
+            x = (x >> 1) ^ mask;
+        }
+        crc = (crc >> 8) ^ x;
+    }
+    !crc
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+/* Backend : Emitter */
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Trait d’émission backend
+pub trait Emitter {
+    /// Émet le bytecode à partir d’un AST
+    fn emit(&mut self, program: &ast::Program) -> Bytecode;
+}
+
+/// Implémentation par défaut simple (démo)
+pub struct DefaultEmitter {
+    opts: CompilerOptions,
+}
+
+impl DefaultEmitter {
+    /// Nouveau
+    pub fn new(opts: CompilerOptions) -> Self {
+        Self { opts }
+    }
+
+    fn emit_expr(&self, code: &mut CodeBuf, e: &ast::Expr, sections: &mut Sections) {
+        use ast::Expr::*;
+        match e {
+            ast::Expr::Literal(l) => {
+                match l {
+                    ast::Literal::Int(i) => { code.op(Op::ConstI64); code.i64(*i); }
+                    ast::Literal::Float(f) => {
+                        // quick&dirty : stocke dans section floats (non utilisé par vm demo)
+                        sections.floats.push(*f);
+                        code.op(Op::Nop);
+                    }
+                    ast::Literal::Bool(b) => { code.op(Op::ConstI64); code.i64(if *b {1} else {0}); }
+                    ast::Literal::Str(s) => {
+                        sections.strings.push(s.clone());
+                        code.op(Op::Nop);
+                    }
+                    ast::Literal::Null => code.op(Op::Nop),
+                }
+            }
+            Ident(_name) => {
+                // démo: pas de load variable -> NOP
+                code.op(Op::Nop);
+            }
+            Call { func: _, args } => {
+                for a in args { self.emit_expr(code, a, sections); }
+                code.op(Op::Call); code.u32(0);
+            }
+            Binary { left, op, right } => {
+                self.emit_expr(code, left, sections);
+                self.emit_expr(code, right, sections);
+                match op {
+                    ast::BinaryOp::Add => code.op(Op::AddI64),
+                    _ => code.op(Op::Nop),
+                }
+            }
+            Unary { .. } => code.op(Op::Nop),
+            Field { .. } => code.op(Op::Nop),
+        }
+    }
+}
+
+impl Emitter for DefaultEmitter {
+    fn emit(&mut self, program: &ast::Program) -> Bytecode {
+        let mut sections = Sections::default();
+
+        // enregistrer noms (debug) si demandé
+        if self.opts.embed_names {
+            for it in &program.items {
+                if let ast::Item::Function(f) = it {
+                    sections.names.push(f.name.clone());
+                }
+            }
+        }
+
+        // émet un petit code par fonction (démo)
+        for it in &program.items {
+            if let ast::Item::Function(f) = it {
+                for s in &f.body.stmts {
+                    if let ast::Stmt::Expr(e) = s {
+                        self.emit_expr(&mut sections.code, e, &mut sections);
+                    }
+                }
+                sections.code.op(Op::Ret);
+            }
+        }
+
+        Bytecode { version: self.opts.vitbc_version, sections, crc32: 0 }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+/* Compiler façade */
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Le compilateur Vitte : orchestre passes + backend
+pub struct Compiler {
+    /// Options
+    pub options: CompilerOptions,
+    diags: Vec<Diagnostic>,
+    symtab: SymTable,
+}
+
+impl Compiler {
+    /// Crée un compilateur
+    pub fn new(options: CompilerOptions) -> Self {
+        Self { options, diags: Vec::new(), symtab: SymTable::new() }
+    }
+
+    /// Compile un programme AST → Bytecode VITBC
+    pub fn compile(&mut self, program: &ast::Program) -> CompileResult<Bytecode> {
+        // 1) Collecte symboles
+        {
+            let mut pass = CollectSymbols;
+            let mut ctx = Ctx {
+                opts: &self.options,
+                diags: &mut self.diags,
+                symtab: &mut self.symtab,
+                scope_depth: 0,
+            };
+            pass.run(&mut ctx, program)?;
+        }
+
+        // 2) Typage
+        {
+            let mut pass = TypeCheck;
+            let mut ctx = Ctx {
+                opts: &self.options,
+                diags: &mut self.diags,
+                symtab: &mut self.symtab,
+                scope_depth: 0,
+            };
+            pass.run(&mut ctx, program)?;
+        }
+
+        // Vérif diagnostics
+        let has_errors = self.diags.iter().any(|d| d.severity == Severity::Error);
+        let has_warnings = self.diags.iter().any(|d| d.severity == Severity::Warning);
+
+        if has_errors || (self.options.deny_warnings && has_warnings) {
+            return Err(CompileError { diagnostics: core::mem::take(&mut self.diags) });
+        }
+
+        // 3) Backend
+        let mut emitter = DefaultEmitter::new(self.options.clone());
+        let bc = emitter.emit(program);
+
+        // 4) Le CRC est ajouté par `to_bytes()`, donc RAS ici.
+        Ok(bc)
+    }
+
+    /// Récupère et vide les diagnostics accumulés
+    pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
+        core::mem::take(&mut self.diags)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests basiques (compile-time)
+// ─────────────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn crc32_smoke() {
+        let v = b"hello";
+        let c = crc32_ieee(v);
+        // Juste vérifier que ça renvoie un nombre stable
+        assert_eq!(c, crc32_ieee(v));
+    }
+}

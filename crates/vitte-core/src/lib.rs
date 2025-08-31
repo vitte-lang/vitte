@@ -1,276 +1,359 @@
-//! vitte-core — Cœur du langage Vitte
+//! vitte-core — primitives partagées (no_std-ready)
 //!
-//! Contient tout ce qu’il faut pour manipuler le bytecode Vitte, sans
-//! dépendre du compilateur ou de la VM complète.
+//! Fournit :
+//! - `SourceId`, `Pos`, `Span`, `Spanned<T>`
+//! - `Ident` + helper `ident()`
+//! - Constances VITBC (`MAGIC_VITBC`, `VITBC_VERSION`) + `SectionTag` (fourcc)
+//! - IO mémoire (little-endian) : `ByteWriter`, `ByteReader`
+//! - `crc32_ieee` (compact, sans table)
+//! - Erreurs `CoreError` + alias `CoreResult<T>`
 //!
-//! ## Modules
-//! - `bytecode`  : format `Chunk`, pool de constantes, opcodes `Op`.
-//! - `asm`       : assembleur texte → `Chunk` (MVP).
-//! - `disasm`    : désassembleur lisible (humain).
-//! - `loader`    : chargement / linkage multi-chunks.
-//! - `utils`     : briques internes (hash, pretty, etc.).
-//!
-//! ## Features
-//! - **std** *(par défaut)* : active la std (fs, io). Désactive pour no_std(+alloc).
-//! - **alloc-only** : build no_std avec `alloc` (sans fs). Mutuellement exclusif avec `std`.
-//! - **serde** : (dé)sérialisation via serde pour certains helpers/types.
+//! Features :
+//! - `std` (par défaut) : impl `std::error::Error` & tests
+//! - `serde` : derive (dé)sérialisation sur les structures utiles
 
-#![forbid(unsafe_code)]
-#![deny(rust_2018_idioms, unused_must_use)]
-#![cfg_attr(not(debug_assertions), warn(missing_docs))]
-#![cfg_attr(all(not(feature = "std"), feature = "alloc-only"), no_std)]
+#![deny(missing_docs)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
-/* ---------- Garde-fous de configuration ---------- */
-#[cfg(all(not(feature = "std"), not(feature = "alloc-only")))]
-compile_error!("Active la feature `std` ou `alloc-only` (no_std+alloc) pour vitte-core.");
+/* ─────────────────────────── Imports ─────────────────────────── */
 
-#[cfg(all(feature = "std", feature = "alloc-only"))]
-compile_error!("`std` et `alloc-only` sont mutuellement exclusifs.");
+use core::fmt;
 
-/* ---------- Imports dépendants de l'environnement ---------- */
-#[cfg(all(not(feature = "std"), feature = "alloc-only"))]
+#[cfg(feature = "std")]
+use std::{borrow::Cow, string::String, vec::Vec};
+
+#[cfg(not(feature = "std"))]
+use alloc::{borrow::Cow, string::String, vec::Vec};
+
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 
-#[cfg(all(not(feature = "std"), feature = "alloc-only"))]
-use alloc::{boxed::Box, string::String, vec::Vec};
-
-#[cfg(feature = "std")]
-use std::{string::String, vec::Vec};
-
-/* ---------- Modules publics ---------- */
-pub mod asm;
-pub mod disasm;
-pub mod loader;
-pub mod utils;
-pub mod bytecode;
-
-/* (⚠️ ancien bloc #[cfg(feature = "eval")] retiré) */
-
-/* ---------- Reexports (un seul bloc, pas de doublons) ---------- */
-pub use bytecode::chunk::{Chunk, ChunkFlags, ConstPool, ConstValue, LineTable};
-pub use bytecode::op::Op; // <- Op vient du sous-module `bytecode::op`
-
-/* ---------- Version ---------- */
-#[cfg(feature = "std")]
-/// Version du crate (lisible, via Cargo).
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-#[cfg(feature = "std")]
-/// Renvoie une jolie bannière de version (utile pour logs/outils).
-pub fn version() -> String {
-    format!("vitte-core {}", VERSION)
-}
-
-#[cfg(all(not(feature = "std"), feature = "alloc-only"))]
-/// En `no_std`, on ne peut pas lire `env!` de façon fiable côté binaire distribué.
-/// On expose une valeur neutre.
-pub const VERSION_NO_STD: &str = "vitte-core (no_std)";
-
-/* ---------- Erreurs & Résultat ---------- */
-#[cfg(feature = "std")]
-use thiserror::Error;
-
-#[cfg(feature = "std")]
-#[derive(Debug, Error)]
-pub enum Error {
-    /// I/O (quand `std` est activé)
-    #[error("io: {0}")]
-    Io(#[from] std::io::Error),
-
-    /// Erreurs de (dé)sérialisation bincode (bytecode)
-    #[error("bincode: {0}")]
-    Bincode(#[from] bincode::Error),
-
-    /// Format de chunk invalide ou attendu ≠ trouvé
-    #[error("chunk: {0}")]
-    Chunk(String),
-
-    /// Erreur générique
-    #[error("{0}")]
-    Msg(String),
-}
-
-#[cfg(all(not(feature = "std"), feature = "alloc-only"))]
-#[derive(Debug)]
-pub enum Error {
-    /// Erreur générique (no_std)
-    Msg(&'static str),
-}
-
-pub type Result<T, E = Error> = core::result::Result<T, E>;
-
-/* ---------- Prelude ---------- */
-pub mod prelude {
-    pub use crate::{
-        bytecode::{chunk, op}, // on expose les modules si besoin
-        helpers::*,
-        Chunk, ChunkFlags, ConstPool, ConstValue, Error, LineTable, Op, Result,
-    };
-    #[cfg(feature = "std")]
-    pub use crate::version;
-}
-
-/* ---------- Macros utilitaires ---------- */
-#[macro_export]
-macro_rules! vit_assert {
-    ($cond:expr, $($arg:tt)*) => {
-        if !$cond {
-            #[cfg(feature = "std")]
-            {
-                return Err($crate::Error::Msg(format!($($arg)*)));
-            }
-            #[cfg(all(not(feature="std"), feature="alloc-only"))]
-            {
-                return Err($crate::Error::Msg("assertion failed"));
-            }
-        }
-    };
-    ($cond:expr) => {
-        if !$cond {
-            #[cfg(feature = "std")]
-            { return Err($crate::Error::Msg("assertion failed".into())); }
-            #[cfg(all(not(feature="std"), feature="alloc-only"))]
-            { return Err($crate::Error::Msg("assertion failed")); }
-        }
-    };
-}
-
-/* ---------- Helpers “batteries-incluses” ---------- */
-pub mod helpers {
-    use super::*;
-    use bytecode::chunk::{CHUNK_MAGIC, CHUNK_VERSION};
-
-    /// Crée un `Chunk` vide “prêt à remplir”.
-    pub fn new_chunk(stripped: bool) -> Chunk { Chunk::new(ChunkFlags { stripped }) }
-
-    /// Ajoute des constantes (raccourcis).
-    pub fn k_str(c: &mut Chunk, s: &str) -> u32 { c.add_const(ConstValue::Str(s.into())) }
-    pub fn k_i64(c: &mut Chunk, i: i64) -> u32 { c.add_const(ConstValue::I64(i)) }
-    pub fn k_f64(c: &mut Chunk, x: f64) -> u32 { c.add_const(ConstValue::F64(x)) }
-    pub fn k_bool(c: &mut Chunk, b: bool) -> u32 { c.add_const(ConstValue::Bool(b)) }
-    pub fn k_null(c: &mut Chunk) -> u32 { c.add_const(ConstValue::Null) }
-
-    /// Vérifie quelques invariants d’un `Chunk`. Étends selon ton format.
-    pub fn validate_chunk(c: &Chunk) -> Result<()> {
-        if c.consts.len() > (u32::MAX as usize) {
-            #[cfg(feature = "std")] { return Err(Error::Chunk("trop de constantes".into())); }
-            #[cfg(all(not(feature="std"), feature="alloc-only"))] { return Err(Error::Msg("trop de constantes")); }
-        }
-        if let Some(main) = &c.debug.main_file {
-            if main.trim().is_empty() {
-                #[cfg(feature = "std")] { return Err(Error::Chunk("debug.main_file vide".into())); }
-                #[cfg(all(not(feature="std"), feature="alloc-only"))] { return Err(Error::Msg("debug.main_file vide")); }
-            }
-        }
-        Ok(())
-    }
-
-    /// Signature binaire attendue (vérif toolchain).
-    pub fn compiled_format_signature() -> (&'static [u8; 4], u16) {
-        (&CHUNK_MAGIC, CHUNK_VERSION)
-    }
-
-    // --- IO fichiers : seulement avec `std` ---
-    #[cfg(feature = "std")]
-    /// (std) Lire un `Chunk` depuis un fichier `.vitbc`.
-    pub fn read_chunk_from_file(path: impl AsRef<std::path::Path>) -> Result<Chunk> {
-        use std::fs;
-        let bytes = fs::read(path)?;
-        let c = Chunk::from_bytes(&bytes).map_err(|e| Error::Chunk(format!("{e}")))?;
-        validate_chunk(&c)?;
-        Ok(c)
-    }
-
-    #[cfg(feature = "std")]
-    /// (std) Écrire un `Chunk` dans un fichier `.vitbc`.
-    pub fn write_chunk_to_file(mut chunk: Chunk, path: impl AsRef<std::path::Path>) -> Result<()> {
-        use std::fs;
-        let bytes = chunk.to_bytes();
-        fs::write(path, bytes)?;
-        Ok(())
-    }
-
-    // --- IO générique: traits & impl par défaut ---
-    /// Abstraction storage pour tests/embarqués.
-    pub trait BytecodeIo {
-        /// Charge un `Chunk` depuis des bytes.
-        fn load(&self, bytes: &[u8]) -> Result<Chunk>;
-        /// Sauvegarde un `Chunk` vers des bytes.
-        fn save(&self, chunk: &mut Chunk) -> Result<Vec<u8>>;
-    }
-
-    /// Impl “native” basée sur le format interne de `Chunk`.
-    pub struct NativeBytecode;
-    impl BytecodeIo for NativeBytecode {
-        fn load(&self, bytes: &[u8]) -> Result<Chunk> {
-            Chunk::from_bytes(bytes).map_err(|e| {
-                #[cfg(feature = "std")] { Error::Chunk(format!("{e}")) }
-                #[cfg(all(not(feature="std"), feature="alloc-only"))] { Error::Msg("from_bytes failed") }
-            })
-        }
-        fn save(&self, chunk: &mut Chunk) -> Result<Vec<u8>> {
-            Ok(chunk.to_bytes())
-        }
-    }
-}
-
-/* ---------- Serde (optionnelle) ---------- */
 #[cfg(feature = "serde")]
-pub mod serde_support {
-    use super::*;
-    use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
-    /// Exemple d’export JSON “humain” d’un Chunk minimal (métadonnées + op count).
-    #[derive(Debug, Serialize, Deserialize)]
-    pub struct ChunkSummary {
-        pub ops: usize,
-        pub consts: usize,
-        pub stripped: bool,
-        pub main_file: Option<String>,
-    }
+/* ─────────────────────────── Résultat commun ─────────────────────────── */
 
-    impl From<&Chunk> for ChunkSummary {
-        fn from(c: &Chunk) -> Self {
-            Self {
-                ops: c.ops.len(),
-                consts: c.consts.len(),
-                stripped: c.flags().stripped,
-                main_file: c.debug.main_file.clone(),
-            }
+/// Alias résultat commun au core.
+pub type CoreResult<T> = core::result::Result<T, CoreError>;
+
+/* ─────────────────────────── Spans / Positions ─────────────────────────── */
+
+/// Identifiant de source (fichier, buffer, etc.).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct SourceId(pub u32);
+
+/// Position (offset byte) depuis le début de la source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Pos(pub u32);
+
+impl Pos {
+    /// Position nulle.
+    pub const ZERO: Self = Pos(0);
+    /// Addition saturée.
+    pub fn saturating_add(self, v: u32) -> Self { Pos(self.0.saturating_add(v)) }
+}
+
+/// Plage (demi-ouverte) `[start, end)` dans une source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Span {
+    /// Source d’où provient l’item.
+    pub source: SourceId,
+    /// Début inclus.
+    pub start: Pos,
+    /// Fin exclue.
+    pub end: Pos,
+}
+
+impl Span {
+    /// Crée un span.
+    pub const fn new(source: SourceId, start: Pos, end: Pos) -> Self { Self { source, start, end } }
+    /// Longueur en bytes.
+    pub fn len(&self) -> u32 { self.end.0.saturating_sub(self.start.0) }
+    /// Vrai si le span est vide.
+    pub fn is_empty(&self) -> bool { self.start.0 >= self.end.0 }
+}
+
+/// Wrapper utilitaire « valeur + span ».
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Spanned<T> {
+    /// La valeur.
+    pub value: T,
+    /// La localisation.
+    pub span: Span,
+}
+
+impl<T> Spanned<T> {
+    /// Construit un `Spanned<T>`.
+    pub fn new(value: T, span: Span) -> Self { Self { value, span } }
+    /// Applique une fonction à la valeur et conserve le span.
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Spanned<U> { Spanned { value: f(self.value), span: self.span } }
+}
+
+/* ─────────────────────────── Ident / Symbolique légère ─────────────────────────── */
+
+/// Identifiant simple (peut être interné plus tard).
+pub type Ident = String;
+
+/// Construit un identifiant.
+pub fn ident<S: Into<String>>(s: S) -> Ident { s.into() }
+
+/* ─────────────────────────── VITBC — Constances & Tags ─────────────────────────── */
+
+/// Magic d’un fichier VITBC : `b"VITBC\0"`.
+pub const MAGIC_VITBC: &[u8; 6] = b"VITBC\0";
+
+/// Version actuelle de VITBC pour Vitte.
+pub const VITBC_VERSION: u16 = 2;
+
+/// Tags de section (fourcc) — exactement 4 octets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u32)]
+pub enum SectionTag {
+    /// INTS : i64 array (LE)
+    INTS = u32::from_be_bytes(*b"INTS"),
+    /// FLTS : f64 array (LE)
+    FLTS = u32::from_be_bytes(*b"FLTS"),
+    /// STRS : [len:u32][bytes]*
+    STRS = u32::from_be_bytes(*b"STRS"),
+    /// DATA : blob libre
+    DATA = u32::from_be_bytes(*b"DATA"),
+    /// CODE : bytecode (optionnellement compressé)
+    CODE = u32::from_be_bytes(*b"CODE"),
+    /// NAME : symbol names (debug)
+    NAME = u32::from_be_bytes(*b"NAME"),
+    /// CRCC : CRC32 trailer (u32 LE)
+    CRCC = u32::from_be_bytes(*b"CRCC"),
+}
+
+impl SectionTag {
+    /// Renvoie le fourcc sous forme de 4 octets big-endian.
+    pub const fn to_be_bytes(self) -> [u8; 4] { (self as u32).to_be_bytes() }
+    /// Lit un tag depuis 4 octets big-endian.
+    pub const fn from_be_bytes(b: [u8; 4]) -> Option<Self> {
+        match u32::from_be_bytes(b) {
+            x if x == SectionTag::INTS as u32 => Some(SectionTag::INTS),
+            x if x == SectionTag::FLTS as u32 => Some(SectionTag::FLTS),
+            x if x == SectionTag::STRS as u32 => Some(SectionTag::STRS),
+            x if x == SectionTag::DATA as u32 => Some(SectionTag::DATA),
+            x if x == SectionTag::CODE as u32 => Some(SectionTag::CODE),
+            x if x == SectionTag::NAME as u32 => Some(SectionTag::NAME),
+            x if x == SectionTag::CRCC as u32 => Some(SectionTag::CRCC),
+            _ => None,
         }
     }
 }
 
-/* ---------- Tests ---------- */
+/* ─────────────────────────── CRC32 IEEE ─────────────────────────── */
+
+/// CRC32 (IEEE 802.3) — implémentation compacte sans table.
+pub fn crc32_ieee(data: &[u8]) -> u32 {
+    let mut crc: u32 = 0xFFFF_FFFF;
+    for &b in data {
+        let mut x = (crc ^ (b as u32)) & 0xFF;
+        // 8 itérations (bitwise) — polynôme 0xEDB88320
+        for _ in 0..8 {
+            let mask = (x & 1).wrapping_neg() & 0xEDB8_8320;
+            x = (x >> 1) ^ mask;
+        }
+        crc = (crc >> 8) ^ x;
+    }
+    !crc
+}
+
+/* ─────────────────────────── Byte Writer (LE) ─────────────────────────── */
+
+/// Buffer d’écriture (croît automatiquement).
+#[derive(Debug, Default, Clone)]
+pub struct ByteWriter {
+    buf: Vec<u8>,
+}
+
+impl ByteWriter {
+    /// Crée un writer vide.
+    pub fn new() -> Self { Self { buf: Vec::new() } }
+    /// Accès en lecture au contenu.
+    pub fn as_slice(&self) -> &[u8] { &self.buf }
+    /// Récupère le buffer (consomme).
+    pub fn into_vec(self) -> Vec<u8> { self.buf }
+    /// Ajoute des octets bruts.
+    pub fn write_bytes(&mut self, bytes: &[u8]) { self.buf.extend_from_slice(bytes); }
+    /// Écrit un tag (fourcc big-endian).
+    pub fn write_tag(&mut self, tag: SectionTag) { self.write_bytes(&tag.to_be_bytes()); }
+    /// Écrit un u16 little-endian.
+    pub fn write_u16_le(&mut self, v: u16) { self.buf.extend_from_slice(&v.to_le_bytes()); }
+    /// Écrit un u32 little-endian.
+    pub fn write_u32_le(&mut self, v: u32) { self.buf.extend_from_slice(&v.to_le_bytes()); }
+    /// Écrit un u64 little-endian.
+    pub fn write_u64_le(&mut self, v: u64) { self.buf.extend_from_slice(&v.to_le_bytes()); }
+    /// Écrit un i64 little-endian.
+    pub fn write_i64_le(&mut self, v: i64) { self.buf.extend_from_slice(&v.to_le_bytes()); }
+    /// Écrit un f64 little-endian.
+    pub fn write_f64_le(&mut self, v: f64) { self.buf.extend_from_slice(&v.to_le_bytes()); }
+}
+
+/* ─────────────────────────── Byte Reader (LE) ─────────────────────────── */
+
+/// Lecteur séquentiel sur un slice d’octets (helpers LE).
+#[derive(Debug, Clone)]
+pub struct ByteReader<'a> {
+    data: &'a [u8],
+    off: usize,
+}
+
+impl<'a> ByteReader<'a> {
+    /// Construit un lecteur.
+    pub fn new(data: &'a [u8]) -> Self { Self { data, off: 0 } }
+    /// Offset courant.
+    pub fn offset(&self) -> usize { self.off }
+    /// Taille restante.
+    pub fn remaining(&self) -> usize { self.data.len().saturating_sub(self.off) }
+
+    /// Lit `n` octets (ou erreur si EOF).
+    pub fn read_bytes(&mut self, n: usize) -> CoreResult<&'a [u8]> {
+        if self.remaining() < n {
+            return Err(CoreError::UnexpectedEof { needed: n as u64, at: self.off as u64 });
+        }
+        let start = self.off;
+        self.off += n;
+        Ok(&self.data[start..self.off])
+    }
+
+    /// Lit un tag (fourcc big-endian).
+    pub fn read_tag(&mut self) -> CoreResult<SectionTag> {
+        let b = self.read_bytes(4)?;
+        let arr = [b[0], b[1], b[2], b[3]];
+        SectionTag::from_be_bytes(arr).ok_or(CoreError::InvalidSectionTag { raw: u32::from_be_bytes(arr) })
+    }
+
+    /// Lit un u16 LE.
+    pub fn read_u16_le(&mut self) -> CoreResult<u16> {
+        let b = self.read_bytes(2)?;
+        Ok(u16::from_le_bytes([b[0], b[1]]))
+    }
+
+    /// Lit un u32 LE.
+    pub fn read_u32_le(&mut self) -> CoreResult<u32> {
+        let b = self.read_bytes(4)?;
+        Ok(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    }
+
+    /// Lit un u64 LE.
+    pub fn read_u64_le(&mut self) -> CoreResult<u64> {
+        let b = self.read_bytes(8)?;
+        Ok(u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]))
+    }
+
+    /// Lit un i64 LE.
+    pub fn read_i64_le(&mut self) -> CoreResult<i64> { Ok(self.read_u64_le()? as i64) }
+
+    /// Lit un f64 LE.
+    pub fn read_f64_le(&mut self) -> CoreResult<f64> {
+        let bits = self.read_u64_le()?;
+        Ok(f64::from_bits(bits))
+    }
+}
+
+/* ─────────────────────────── Erreurs ─────────────────────────── */
+
+/// Erreurs de bas niveau communes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum CoreError {
+    /// Magic VITBC invalide (attendu `b"VITBC\0"`).
+    InvalidMagic,
+    /// Tag de section inconnu.
+    InvalidSectionTag { /// Valeur brute du tag.
+        raw: u32
+    },
+    /// Fin de buffer inattendue.
+    UnexpectedEof { /// Nombre d’octets manquants.
+        needed: u64, /// Offset où l’erreur s’est produite.
+        at: u64
+    },
+    /// Longueur de section invalide (ex: dépasse le buffer).
+    InvalidLength { /// Nom de section (si connu).
+        section: Option<Cow<'static, str>>, /// Longueur fautive.
+        len: u64
+    },
+    /// UTF-8 invalide.
+    InvalidUtf8,
+    /// Données corrompues (CRC / format).
+    Corrupted(Cow<'static, str>),
+}
+
+impl CoreError {
+    /// Construit une erreur « corrompu ».
+    pub fn corrupted(msg: impl Into<Cow<'static, str>>) -> Self { CoreError::Corrupted(msg.into()) }
+}
+
+impl fmt::Display for CoreError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CoreError::InvalidMagic => write!(f, "invalid VITBC magic"),
+            CoreError::InvalidSectionTag { raw } => write!(f, "invalid section tag: 0x{raw:08X}"),
+            CoreError::UnexpectedEof { needed, at } => write!(f, "unexpected EOF: need {needed} bytes at {at}"),
+            CoreError::InvalidLength { section, len } => {
+                if let Some(s) = section { write!(f, "invalid length for {s}: {len}") }
+                else { write!(f, "invalid length: {len}") }
+            }
+            CoreError::InvalidUtf8 => write!(f, "invalid utf-8"),
+            CoreError::Corrupted(msg) => write!(f, "corrupted: {msg}"),
+        }
+    }
+}
+
+/// Implémente `std::error::Error` uniquement avec la feature `std`.
+#[cfg(feature = "std")]
+impl std::error::Error for CoreError {}
+
+/* ─────────────────────────── Prélude (reexports utiles) ─────────────────────────── */
+
+/// Prélude pratique pour importer les types/funcs clés du crate.
+pub mod prelude {
+    /// Réexports utiles pour une importation rapide.
+    pub use super::{
+        crc32_ieee, ByteReader, ByteWriter, CoreError, CoreResult, Ident, Pos, SectionTag, Span,
+        Spanned, SourceId, MAGIC_VITBC, VITBC_VERSION,
+    };
+}
+
+
+
+/* ─────────────────────────── Tests ─────────────────────────── */
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bytecode::chunk::ChunkFlags;
 
     #[test]
-    fn chunk_roundtrip_bytes() {
-        let mut c = helpers::new_chunk(false);
-        let k = helpers::k_str(&mut c, "yo");
-        c.ops.push(Op::LoadConst(k));
-        c.ops.push(Op::Print);
-        c.ops.push(Op::Return);
-
-        let mut bytes = c.to_bytes();
-        // on relit
-        let c2 = Chunk::from_bytes(&bytes).expect("roundtrip ok");
-        assert_eq!(c2.ops.len(), 3);
-
-        // corruption volontaire → doit échouer
-        bytes[bytes.len().saturating_sub(1)] ^= 0xFF;
-        let err = Chunk::from_bytes(&bytes).unwrap_err();
-        let s = format!("{err}");
-        assert!(s.to_lowercase().contains("hash"));
+    fn crc32_stable() {
+        assert_eq!(crc32_ieee(b"hello"), crc32_ieee(b"hello"));
     }
 
     #[test]
-    fn compiled_sig_exposed() {
-        let (_magic, _ver) = helpers::compiled_format_signature();
-        // just presence check
-        assert!(_ver > 0);
+    fn tags_roundtrip() {
+        let t = SectionTag::CODE;
+        assert_eq!(SectionTag::from_be_bytes(t.to_be_bytes()), Some(t));
+    }
+
+    #[test]
+    fn writer_reader_le() -> CoreResult<()> {
+        let mut w = ByteWriter::new();
+        w.write_u16_le(0xBEEF);
+        w.write_u32_le(0xDEAD_BEEF);
+        w.write_i64_le(-42);
+        w.write_f64_le(3.5);
+        w.write_tag(SectionTag::DATA);
+
+        let mut r = ByteReader::new(w.as_slice());
+        assert_eq!(r.read_u16_le()?, 0xBEEF);
+        assert_eq!(r.read_u32_le()?, 0xDEAD_BEEF);
+        assert_eq!(r.read_i64_le()?, -42);
+        assert_eq!(r.read_f64_le()?, 3.5);
+        assert_eq!(r.read_tag()?, SectionTag::DATA);
+        Ok(())
     }
 }

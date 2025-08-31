@@ -1,0 +1,68 @@
+[package]
+name = "vitte-wasm"
+version = "0.1.0"
+edition = "2021"
+
+description = "Bindings WebAssembly pour Vitte: chargement/inspection VITBC, glue JS via wasm-bindgen."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/vitte-lang/vitte"
+homepage = "https://vitte-lang.github.io/vitte/"
+readme = "../../README.md"
+keywords = ["wasm", "wasm-bindgen", "bytecode", "vitte"]
+categories = ["wasm", "compilers"]
+
+# Toolchain conseillée
+rust-version = "1.76"
+
+[lib]
+name = "vitte_wasm"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]       # <- nécessaire pour wasm-bindgen
+
+[features]
+# on reste std (WebAssembly std OK) + console logs par défaut
+default = ["std", "console"]
+std = ["vitte-vitbc/std"]
+# Active logs console (console_log + log)
+console = ["dep:console_error_panic_hook", "dep:console_log", "dep:log"]
+# Support des modules VITBC compressés
+zstd = ["vitte-vitbc/zstd"]
+# Si tu veux brancher l’exécution réelle via vitte-vm plus tard:
+vm = ["dep:vitte-vm"]
+
+[dependencies]
+# crates internes
+vitte-core  = { path = "../vitte-core",  version = "0.1.0" }
+vitte-vitbc = { path = "../vitte-vitbc", version = "0.1.0", default-features = false }
+
+# (optionnel) branchement VM quand prête
+vitte-vm    = { path = "../vitte-vm",    version = "0.1.0", optional = true, default-features = false }
+
+# wasm/JS glue
+wasm-bindgen          = "0.2"
+wasm-bindgen-futures  = "0.4"
+js-sys                = "0.3"
+web-sys               = { version = "0.3", features = [
+  "Window", "Response", "Request", "RequestInit", "RequestMode", "Headers", "console"
+]}
+
+# sérialisation vers/depuis JS propre
+serde               = { version = "1.0", features = ["derive"] }
+serde-wasm-bindgen  = "0.6"
+
+# logs & panic hook (feature console)
+log                        = { version = "0.4", optional = true }
+console_error_panic_hook   = { version = "0.1", optional = true }
+console_log                = { version = "1.0", optional = true }
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+doc_markdown = "allow"

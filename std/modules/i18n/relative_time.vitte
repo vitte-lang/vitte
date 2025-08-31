@@ -1,0 +1,40 @@
+module std.i18n.relative_time
+use std.i18n.locale as loc
+
+pub fn format(locale: &loc::Locale, delta_seconds: i64) -> String {
+    let abs = delta_seconds.abs();
+    let (value, unit) =
+        if abs < 45 { (abs, "second") }
+        else if abs < 2700 { (abs/60, "minute") }
+        else if abs < 64800 { (abs/3600, "hour") }
+        else if abs < 561600 { (abs/86400, "day") }
+        else if abs < 2419200 { (abs/604800, "week") }
+        else if abs < 29030400 { (abs/2592000, "month") }
+        else { (abs/31536000, "year") };
+
+    if locale.language == "fr" {
+        let unit_fr = match unit {
+            "second" => if value > 1 { "secondes" } else { "seconde" },
+            "minute" => if value > 1 { "minutes" } else { "minute" },
+            "hour"   => if value > 1 { "heures" } else { "heure" },
+            "day"    => if value > 1 { "jours" } else { "jour" },
+            "week"   => if value > 1 { "semaines" } else { "semaine" },
+            "month"  => if value > 1 { "mois" } else { "mois" },
+            _        => if value > 1 { "ans" } else { "an" },
+        };
+        if delta_seconds < 0 { format!("il y a {} {}", value, unit_fr) }
+        else { format!("dans {} {}", value, unit_fr) }
+    } else {
+        let unit_en = match unit {
+            "second" => if value == 1 { "second" } else { "seconds" },
+            "minute" => if value == 1 { "minute" } else { "minutes" },
+            "hour"   => if value == 1 { "hour" } else { "hours" },
+            "day"    => if value == 1 { "day" } else { "days" },
+            "week"   => if value == 1 { "week" } else { "weeks" },
+            "month"  => if value == 1 { "month" } else { "months" },
+            _        => if value == 1 { "year" } else { "years" },
+        };
+        if delta_seconds < 0 { format!("{} {} ago", value, unit_en) }
+        else { format!("in {} {}", value, unit_en) }
+    }
+}

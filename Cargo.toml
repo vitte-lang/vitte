@@ -1,27 +1,39 @@
-[package]
-name = "vitte-cli"
+[workspace]
+members = [
+    "crates/vitte-ast",
+    "crates/vitte-compiler",
+    "crates/vitte-cli"
+]
+resolver = "2"
+
+# Exclure certains dossiers si besoin (ex: docs, scripts)
+exclude = [
+    "target",
+    ".github"
+]
+
+[workspace.package]
+# Métadonnées globales
 version = "0.1.0"
 edition = "2021"
-description = "CLI lib for Vitte"
+authors = ["Vincent <ton_email@exemple.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/vitte-lang/vitte"
+homepage = "https://vitte-lang.github.io/vitte/"
+documentation = "https://docs.rs/vitte"
+readme = "README.md"
 
-[features]
-# On active le parsing TOML par défaut
-default = ["toml"]
+[workspace.dependencies]
+# Dépendances partagées entre crates
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+pretty_assertions = "1.4"
+thiserror = "2.0.16"
+zstd = "0.13"
 
-# Les features exposent proprement les deps optionnelles
-toml = ["dep:toml"]
-core = ["dep:vitte-core"]
-vm = ["dep:vitte-vm"]
-compiler = ["dep:vitte-compiler"]
-
-[dependencies]
-anyhow = "1"
-camino = "1"
-serde = { version = "1", features = ["derive"] }
-clap = { version = "4", features = ["derive"] }
-
-# Dépendances optionnelles (mappées aux features ci-dessus)
-toml = { version = "0.8", features = ["parse"], optional = true }
-vitte-core = { path = "../vitte-core", optional = true }
-vitte-vm = { path = "../vitte-vm", optional = true }
-vitte-compiler = { path = "../vitte-compiler", optional = true }
+[workspace.metadata.release]
+# Configuration pour cargo-release (si tu veux versionner proprement)
+tag-prefix = "v"
+sign-commits = true
+sign-tags = true
+push-remote = "origin"

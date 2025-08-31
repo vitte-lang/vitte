@@ -1,0 +1,115 @@
+module std.i18n.number
+use std.i18n.locale as loc
+
+pub enum NumberStyle {
+    Decimal,
+    Percent,
+    Currency(String),
+}
+
+pub struct NumberOptions {
+    pub style: NumberStyle,
+    pub min_fraction: i32,
+    pub max_fraction: i32,
+    pub grouping: bool,
+    pub use_native_digits: bool,
+}
+
+pub fn format(locale: &loc::Locale, value: f64, opt: &NumberOptions) -> String {
+    let mut v = value;
+    let mut suffix = "";
+    let mut currency = "";
+    match &opt.style {
+        NumberStyle::Decimal => {},
+        NumberStyle::Percent => { v = value * 100.0; suffix = "%"; },
+        NumberStyle::Currency(code) => { currency = code.as_str(); },
+    }
+    let s = format_fixed(v, opt.min_fraction, opt.max_fraction);
+    let (dec, grp, _space, curr_before, curr_sep, digits_map) = symbols(locale, opt.use_native_digits);
+    let s2 = apply_grouping(&s, dec, grp, opt.grouping);
+    let mut out = s2;
+    if currency.len() > 0 {
+        let c = currency_symbol(currency, locale);
+        if curr_before {
+            out = c + curr_sep + &out;
+        } else {
+            out = out + curr_sep + c;
+        }
+    }
+    if suffix.len() > 0 { out = out + suffix; }
+    if digits_map.len() > 0 { out = map_digits(&out, digits_map); }
+    out
+}
+
+fn format_fixed(v: f64, min_frac: i32, max_frac: i32) -> String {
+    let mut frac = max_frac;
+    if frac < 0 { frac = 0; }
+    let pow = 10f64.pow(frac as f64);
+    let r = (v * pow).round() / pow;
+    let mut s = r.to_string();
+    if s.contains('e') || s.contains('E') { s = format!("{:.1$}", r, frac as usize); }
+    if frac > 0 {
+        if !s.contains('.') { s.push_str("."); }
+        let exist = s.split('.').get(1).map(|t| t.len()).unwrap_or(0) as i32;
+        if exist < min_frac {
+            let missing = (min_frac - exist) as i32;
+            for _i in 0..missing { s.push_str("0"); }
+        }
+    }
+    s
+}
+
+fn apply_grouping(s: &String, dec: &str, grp: &str, grouping: bool) -> String {
+    let mut parts = s.split('.');
+    let mut intp = parts[0].to_string();
+    let fracp = if parts.len() > 1 { parts[1].to_string() } else { "".to_string() };
+    let mut sign = "";
+    if intp.starts_with('-') || intp.starts_with('+') {
+        sign = intp.substring(0,1);
+        intp = intp.substring(1).to_string();
+    }
+    if grouping {
+        let mut out = "".to_string();
+        let mut cnt = 0;
+        for ch in intp.chars_rev() {
+            if cnt > 0 && cnt % 3 == 0 { out.push_str(grp); }
+            out.push(ch);
+            cnt += 1;
+        }
+        intp = out.chars_rev().collect();
+    }
+    let mut res = sign.to_string() + &intp;
+    if fracp.len() > 0 { res = res + dec + &fracp; }
+    res
+}
+
+fn symbols(locale: &loc::Locale, native_digits: bool) -> (&'static str, &'static str, &'static str, bool, &'static str, &'static [(&'static str, &'static str)]) {
+    let lang = locale.language.as_str();
+    match lang {
+        "fr" => (",", " ", " ", true, " ", if native_digits { &[] } else { &[] }),
+        "ru" => (",", " ", " ", false, " ", &[]),
+        "ar" => ("٫", "٬", " ", true, " ", if native_digits { &[
+            ("0","٠"),("1","١"),("2","٢"),("3","٣"),("4","٤"),("5","٥"),("6","٦"),("7","٧"),("8","٨"),("9","٩"),
+        ] } else { &[] }),
+        _    => (".", ",", " ", false, " ", &[]),
+    }
+}
+
+fn currency_symbol(code: &str, _locale: &loc::Locale) -> String {
+    match code {
+        "EUR" => "€".to_string(),
+        "USD" => "$".to_string(),
+        "GBP" => "£".to_string(),
+        "RUB" => "₽".to_string(),
+        "JPY" => "¥".to_string(),
+        _ => code.to_string(),
+    }
+}
+
+fn map_digits(s: &String, mapping: &[(&str,&str)]) -> String {
+    let mut out = s.clone();
+    for (lat, nat) in mapping {
+        out = out.replace(lat, nat);
+    }
+    out
+}

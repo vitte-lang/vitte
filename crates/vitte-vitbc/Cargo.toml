@@ -1,0 +1,65 @@
+[package]
+name = "vitte-vitbc"
+version = "0.1.0"
+edition = "2021"
+
+description = "VITBC (Vitte ByteCode): lecture/écriture, CRC32, sections INTS/FLTS/STRS/DATA/CODE/NAME/CRCC."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/vitte-lang/vitte"
+homepage = "https://vitte-lang.github.io/vitte/"
+readme = "../../README.md"
+keywords = ["bytecode", "compiler", "format", "no_std", "vitte"]
+categories = ["compilers", "encoding"]
+
+# rustc minimal raisonnable (à ajuster selon ton CI/toolchain)
+rust-version = "1.76"
+
+[lib]
+name = "vitte_vitbc"
+path = "src/lib.rs"
+crate-type = ["rlib"]
+
+# Petit outil d’inspection (optionnel, std requis)
+[[bin]]
+name = "vitbc-inspect"
+path = "src/bin/inspect.rs"
+required-features = ["std"]
+
+[features]
+# std activée par défaut
+default = ["std"]
+std = []
+
+# Sérialisation optionnelle de `Module`
+serde = ["dep:serde"]
+
+# Compression/décompression de la section CODE via zstd
+zstd = ["dep:zstd"]
+
+[dependencies]
+# crate interne avec CRC32, ByteReader/Writer, SectionTag, etc.
+vitte-core = { path = "../vitte-core", version = "0.1.0" }
+
+# externes optionnels
+serde = { version = "1.0", features = ["derive"], optional = true }
+zstd  = { version = "0.13", optional = true, default-features = false }
+
+# utilitaires (optionnels — utilise-les seulement si ton code en dépend)
+anyhow    = { version = "1.0", optional = true }
+thiserror = { version = "2.0.16", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+proptest = "1.5"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+# exceptions tolérées
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+doc_markdown = "allow"

@@ -1,0 +1,18 @@
+module std.i18n.loader_json
+use std.i18n.locale as loc
+use std.i18n.catalog as cat
+use std.fs as fs
+use std.json as json
+use std.collections.map as map
+
+pub fn load_file(path: &str, locale_tag: &str) -> cat::Catalog {
+    let raw = fs::read_to_string(path).expect("i18n: cannot read file");
+    let v = json::parse_object(raw.as_str()).expect("i18n: invalid JSON");
+    let mut entries = map::new::<String, String>();
+    for (k, val) in v.iter() {
+        if val.is_string() {
+            entries.insert(k.clone(), val.as_string());
+        }
+    }
+    cat::Catalog { locale: loc::parse(locale_tag), entries }
+}

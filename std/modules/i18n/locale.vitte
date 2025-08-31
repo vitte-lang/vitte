@@ -1,3 +1,117 @@
-//! i18n/locale — formats locaux
-export fn format_number(n: f64, locale: String) -> String { __intrinsics::locale_format_number(n, locale) }
-export fn format_date(unix_ms: i64, locale: String) -> String { __intrinsics::locale_format_date(unix_ms, locale) }
+module std.i18n.locale
+use std.collections.map as map
+use std.collections.vec as vec
+use std.str as str
+
+pub struct Locale {
+    pub language: String,
+    pub script: Option<String>,
+    pub region: Option<String>,
+    pub variants: Vec<String>,
+}
+
+pub struct LocaleRange {
+    pub language: Option<String>,
+    pub script: Option<String>,
+    pub region: Option<String>,
+}
+
+pub fn parse(tag: &str) -> Locale {
+    let t = tag.trim();
+    if t.len() == 0 { return Locale { language: "und", script: None, region: None, variants: vec::new() }; }
+    let parts = t.split('-');
+    let mut lang = "und".to_string();
+    let mut script: Option<String> = None;
+    let mut region: Option<String> = None;
+    let mut variants = vec::new();
+
+    let mut i = 0;
+    for p in parts {
+        if i == 0 {
+            lang = p.to_lower();
+        } else if p.len() == 4 {
+            script = Some(capitalize(p));
+        } else if p.len() == 2 || p.len() == 3 {
+            region = Some(p.to_upper());
+        } else {
+            variants.push(p.to_upper());
+        }
+        i += 1;
+    }
+
+    Locale { language: lang, script, region, variants }
+}
+
+fn capitalize(s: &str) -> String {
+    if s.len() == 0 { return "".to_string(); }
+    let mut out = s.to_lower();
+    let first = out.char_at(0).to_upper();
+    out.replace_range(0, 1, first);
+    out
+}
+
+pub fn to_string(loc: &Locale) -> String {
+    let mut out = vec::new();
+    out.push(loc.language.clone());
+    if let Some(sc) = &loc.script { out.push(sc.clone()); }
+    if let Some(r)  = &loc.region { out.push(r.clone()); }
+    for v in &loc.variants { out.push(v.clone()); }
+    out.join("-")
+}
+
+pub fn matches(range: &LocaleRange, loc: &Locale) -> bool {
+    if let Some(l) = &range.language { if l != &loc.language { return false; } }
+    if let Some(s) = &range.script   { if Some(s.clone()) != loc.script { return false; } }
+    if let Some(r) = &range.region   { if Some(r.clone()) != loc.region { return false; } }
+    true
+}
+
+pub fn negotiate(accept: &str, supported: &Vec<Locale>) -> Locale {
+    let prefs = parse_accept_language(accept);
+    for (range, _q) in &prefs {
+        for s in supported {
+            if range_eq(range, s) { return s.clone(); }
+        }
+        if range.language.is_some() && range.script.is_none() && range.region.is_none() {
+            for s in supported {
+                if s.language == range.language.clone().unwrap() { return s.clone(); }
+            }
+        }
+    }
+    if supported.len() > 0 { return supported[0].clone(); }
+    parse("en")
+}
+
+fn range_eq(r: &LocaleRange, loc: &Locale) -> bool {
+    let rl = r.language.clone().unwrap_or("".to_string());
+    let rs = r.script.clone();
+    let rr = r.region.clone();
+    rl == loc.language && rs == loc.script && rr == loc.region
+}
+
+pub fn parse_accept_language(h: &str) -> Vec<(LocaleRange, f64)> {
+    let mut v = vec::new();
+    for part in h.split(',') {
+        let seg = part.trim();
+        if seg.len() == 0 { continue; }
+        let mut q = 1.0;
+        let semi = seg.split(';');
+        let tag = semi[0].trim();
+        if semi.len() > 1 {
+            for attr in &semi[1..] {
+                let a = attr.trim();
+                if a.starts_with("q=") {
+                    q = a.substring(2).parse_f64().unwrap_or(1.0);
+                }
+            }
+        }
+        let loc = parse(tag);
+        v.push((LocaleRange {
+            language: if loc.language == "und" { None } else { Some(loc.language) },
+            script: loc.script,
+            region: loc.region,
+        }, q));
+    }
+    v.sort_by(|a,b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
+    v
+}

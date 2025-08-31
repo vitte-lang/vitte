@@ -1,68 +1,51 @@
-###############################################################################
-# crates/vitte-compiler/Cargo.toml — Compilateur du langage Vitte
-#
-# - Génère le bytecode (Chunk) à partir du source (.vitte)
-# - S’appuie sur vitte-core (bytecode, asm/disasm, opcodes)
-# - Intègre vitte-runtime pour la vérification/interop
-# - Exportée comme une lib (peut être invoquée par vitte-cli ou d’autres outils)
-###############################################################################
-
 [package]
 name = "vitte-compiler"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.80"
+authors = ["Vincent <ton_email@exemple.com>"]
+description = "Compilateur du langage Vitte : passes (collecte, typage), table des symboles, diagnostics, et génération de bytecode VITBC."
 license = "MIT OR Apache-2.0"
-authors = ["Vincent <you@example.com>"]
-description = "Vitte compiler — front-end + générateur de bytecode"
-homepage = "https://example.com/vitte"
 repository = "https://github.com/vitte-lang/vitte"
+homepage = "https://vitte-lang.github.io/vitte/"
+documentation = "https://docs.rs/vitte-compiler"
+readme = "README.md"
+keywords = ["compiler", "language", "bytecode", "vitte"]
+categories = ["compilers", "no-std", "parser-implementations"]
+exclude = [".github/*", "examples/*", "tests/*"]
 
 [lib]
 name = "vitte_compiler"
 path = "src/lib.rs"
 
-###############################################################################
-# Dépendances internes
-###############################################################################
-[dependencies]
-vitte-core     = { path = "../vitte-core" }
-vitte-runtime  = { path = "../vitte-runtime" }
-
-###############################################################################
-# Dépendances externes (utilitaires)
-###############################################################################
-color-eyre     = "0.6"    # Gestion élégante des erreurs
-log            = "0.4"    # Logging unifié
-env_logger     = "0.11"   # Backend simple pour `log`
-serde          = { version = "1.0", features = ["derive"] }
-serde_json     = "1.0"
-thiserror      = "1.0"
-
-###############################################################################
-# Dev-deps (tests unitaires, fuzz, snapshots…)
-###############################################################################
-[dev-dependencies]
-insta = "1.38"          # snapshots testing (optionnel)
-proptest = "1.4"        # fuzz/property-based testing
-
-###############################################################################
-# Features (extensions compiler)
-###############################################################################
 [features]
+# std est activé par défaut
 default = ["std"]
-std     = []   # compilation avec std
-no_std  = []   # expérimental (compiler portable sans std)
 
-###############################################################################
-# Profil de build
-###############################################################################
-[profile.dev]
-opt-level = 1
-debug = true
+# Support std (I/O, write_to_file, etc.)
+std = []
 
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
+# Active la sérialisation interne (serde derive)
+serde = ["dep:serde"]
 
+# Compression de la section CODE via zstd
+zstd = ["dep:zstd"]
+
+# Full = tout
+full = ["std", "serde", "zstd"]
+
+[dependencies]
+# Dépendance vers ton AST
+vitte-ast = { path = "../vitte-ast", version = "0.1.0" }
+
+# Serde (optionnel)
+serde = { version = "1.0", features = ["derive"], optional = true }
+
+# Compression zstd (optionnelle, seulement si tu actives la feature zstd)
+zstd = { version = "0.13", optional = true }
+
+# Pour jolis messages d'erreur (facultatif mais pratique)
+thiserror = { version = "2.0.16", optional = true }
+
+[dev-dependencies]
+serde_json = "1.0"
+pretty_assertions = "1.4"

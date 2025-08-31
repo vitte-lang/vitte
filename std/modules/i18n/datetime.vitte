@@ -1,0 +1,137 @@
+module std.i18n.datetime
+use std.i18n.locale as loc
+
+pub enum DateStyle { Full, Long, Medium, Short, None }
+pub enum TimeStyle { Full, Long, Medium, Short, None }
+
+pub struct DateTimeOptions {
+    pub date: DateStyle,
+    pub time: TimeStyle,
+    pub pattern: Option<String>,
+}
+
+pub fn format(locale: &loc::Locale, timestamp_ms: i64, opt: &DateTimeOptions) -> String {
+    let dt = from_unix_ms(timestamp_ms);
+    if let Some(pat) = &opt.pattern {
+        return format_pattern(locale, &dt, pat.as_str());
+    }
+    let (date_pat, time_pat) = pick_patterns(locale, opt);
+    let d = if date_pat.len() > 0 { format_pattern(locale, &dt, date_pat) } else { "".to_string() };
+    let t = if time_pat.len() > 0 { format_pattern(locale, &dt, time_pat) } else { "".to_string() };
+    if d.len() > 0 && t.len() > 0 { d + " " + &t } else { d + &t }
+}
+
+struct DateParts { year:i32, month:u32, day:u32, hour:u32, min:u32, sec:u32, wday:u32 }
+fn from_unix_ms(ms: i64) -> DateParts {
+    let secs = ms / 1000;
+    let (y, m, d, hh, mm, ss, wd) = std::time::utc_from_unix(secs);
+    DateParts { year:y, month:m, day:d, hour:hh, min:mm, sec:ss, wday:wd }
+}
+
+fn pick_patterns(locale: &loc::Locale, opt: &DateTimeOptions) -> (String, String) {
+    let lang = locale.language.as_str();
+    let (date, time) = match lang {
+        "fr" => (fr_date(opt.date), fr_time(opt.time)),
+        "ru" => (ru_date(opt.date), ru_time(opt.time)),
+        "ar" => (ar_date(opt.date), ar_time(opt.time)),
+        _    => (en_date(opt.date), en_time(opt.time)),
+    };
+    (date, time)
+}
+
+fn en_date(s: DateStyle) -> String {
+    match s {
+        DateStyle::Full   => "EEEE, MMMM d, yyyy".to_string(),
+        DateStyle::Long   => "MMMM d, yyyy".to_string(),
+        DateStyle::Medium => "MMM d, yyyy".to_string(),
+        DateStyle::Short  => "MM/dd/yy".to_string(),
+        DateStyle::None   => "".to_string(),
+    }
+}
+fn en_time(s: TimeStyle) -> String {
+    match s {
+        TimeStyle::Full   => "HH:mm:ss z".to_string(),
+        TimeStyle::Long   => "HH:mm:ss".to_string(),
+        TimeStyle::Medium => "HH:mm".to_string(),
+        TimeStyle::Short  => "HH:mm".to_string(),
+        TimeStyle::None   => "".to_string(),
+    }
+}
+
+fn fr_date(s: DateStyle) -> String {
+    match s {
+        DateStyle::Full   => "EEEE d MMMM yyyy".to_string(),
+        DateStyle::Long   => "d MMMM yyyy".to_string(),
+        DateStyle::Medium => "d MMM yyyy".to_string(),
+        DateStyle::Short  => "dd/MM/yy".to_string(),
+        DateStyle::None   => "".to_string(),
+    }
+}
+fn fr_time(s: TimeStyle) -> String {
+    match s {
+        TimeStyle::Full|TimeStyle::Long|TimeStyle::Medium|TimeStyle::Short => "HH:mm".to_string(),
+        TimeStyle::None => "".to_string(),
+    }
+}
+
+fn ru_date(s: DateStyle) -> String {
+    match s {
+        DateStyle::Full   => "EEEE, d MMMM yyyy 'г.'".to_string(),
+        DateStyle::Long   => "d MMMM yyyy 'г.'".to_string(),
+        DateStyle::Medium => "d MMM yyyy 'г.'".to_string(),
+        DateStyle::Short  => "dd.MM.yy".to_string(),
+        DateStyle::None   => "".to_string(),
+    }
+}
+fn ru_time(s: TimeStyle) -> String {
+    match s {
+        TimeStyle::Full|TimeStyle::Long|TimeStyle::Medium|TimeStyle::Short => "HH:mm".to_string(),
+        TimeStyle::None => "".to_string(),
+    }
+}
+
+fn ar_date(s: DateStyle) -> String {
+    match s {
+        DateStyle::Full   => "EEEE، d MMMM yyyy".to_string(),
+        DateStyle::Long   => "d MMMM yyyy".to_string(),
+        DateStyle::Medium => "dd‏/MM‏/yyyy".to_string(),
+        DateStyle::Short  => "dd‏/MM‏/yy".to_string(),
+        DateStyle::None   => "".to_string(),
+    }
+}
+fn ar_time(s: TimeStyle) -> String {
+    match s {
+        TimeStyle::Full|TimeStyle::Long|TimeStyle::Medium|TimeStyle::Short => "HH:mm".to_string(),
+        TimeStyle::None => "".to_string(),
+    }
+}
+
+fn format_pattern(_locale: &loc::Locale, dt: &DateParts, pat: &str) -> String {
+    let month_names_en = ["", "January","February","March","April","May","June","July","August","September","October","November","December"];
+    let weekday_en     = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    let mut out = "".to_string();
+    let mut i = 0;
+    while i < pat.len() {
+        if pat.starts_with_at("yyyy", i) { out.push_str(&format!("{:04}", dt.year)); i+=4; continue; }
+        if pat.starts_with_at("yy", i)   { out.push_str(&format!("{:02}", dt.year % 100)); i+=2; continue; }
+        if pat.starts_with_at("MMMM", i) { out.push_str(month_names_en[dt.month as usize]); i+=4; continue; }
+        if pat.starts_with_at("MMM", i)  { out.push_str(&month_names_en[dt.month as usize][0..3]); i+=3; continue; }
+        if pat.starts_with_at("MM", i)   { out.push_str(&format!("{:02}", dt.month)); i+=2; continue; }
+        if pat.starts_with_at("M", i)    { out.push_str(&format!("{}", dt.month)); i+=1; continue; }
+        if pat.starts_with_at("dd", i)   { out.push_str(&format!("{:02}", dt.day)); i+=2; continue; }
+        if pat.starts_with_at("d", i)    { out.push_str(&format!("{}", dt.day)); i+=1; continue; }
+        if pat.starts_with_at("EEEE", i) { out.push_str(full_weekday(weekday_en[dt.wday as usize])); i+=4; continue; }
+        if pat.starts_with_at("EEE", i)  { out.push_str(weekday_en[dt.wday as usize]); i+=3; continue; }
+        if pat.starts_with_at("HH", i)   { out.push_str(&format!("{:02}", dt.hour)); i+=2; continue; }
+        if pat.starts_with_at("mm", i)   { out.push_str(&format!("{:02}", dt.min)); i+=2; continue; }
+        if pat.starts_with_at("ss", i)   { out.push_str(&format!("{:02}", dt.sec)); i+=2; continue; }
+        out.push(pat.char_at(i));
+        i += 1;
+    }
+    out
+}
+fn full_weekday(abbr: &str) -> &str {
+    match abbr {
+        "Mon" => "Monday", "Tue"=>"Tuesday", "Wed"=>"Wednesday", "Thu"=>"Thursday", "Fri"=>"Friday", "Sat"=>"Saturday", _=>"Sunday"
+    }
+}

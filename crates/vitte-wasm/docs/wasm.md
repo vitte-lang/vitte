@@ -1,1 +1,0 @@
-# Vitte Wasm Support\n\nCe document explique comment compiler vers WebAssembly.\n\n- `vitte-wasm` : compile en binaire .wasm\n- `vitte-web` : support navigateur\n- `vitte-wasi` : bindings WASI\n- `vitte-ffi-wasm` : FFI Wasm hôte
