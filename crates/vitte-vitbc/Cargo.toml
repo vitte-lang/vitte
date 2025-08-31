@@ -1,56 +1,95 @@
 [package]
-name = "vitte-vitbc"
-version = "0.1.0"
-edition = "2021"
-
-description = "VITBC (Vitte ByteCode): lecture/écriture, CRC32, sections INTS/FLTS/STRS/DATA/CODE/NAME/CRCC."
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/vitte-lang/vitte"
-homepage = "https://vitte-lang.github.io/vitte/"
-readme = "../../README.md"
-keywords = ["bytecode", "compiler", "format", "no_std", "vitte"]
-categories = ["compilers", "encoding"]
-
-# rustc minimal raisonnable (à ajuster selon ton CI/toolchain)
-rust-version = "1.76"
+name                   = "vitte-vitbc"
+description            = "Format VITBC (Vitte ByteCode) : spec, lecteur/écrivain, sections, CRC32, compression, validation."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+readme.workspace       = true
+keywords               = ["vitte", "vitbc", "bytecode", "serialization", "compiler"]
+categories             = ["encoding", "development-tools"]
 
 [lib]
 name = "vitte_vitbc"
 path = "src/lib.rs"
-crate-type = ["rlib"]
 
-# Petit outil d’inspection (optionnel, std requis)
+# (Option) utilitaire de validation/dump — n’active que si tu veux un binaire dédié
 [[bin]]
-name = "vitbc-inspect"
-path = "src/bin/inspect.rs"
-required-features = ["std"]
+name = "vitbc-dump"
+path = "src/bin/dump.rs"
+required-features = ["cli"]
 
 [features]
-# std activée par défaut
-default = ["std"]
-std = []
+# Par défaut : support std, sérialisation, lecture/écriture, CRC32, logs
+default       = ["std", "serde", "reader", "writer", "crc32", "tracing"]
 
-# Sérialisation optionnelle de `Module`
-serde = ["dep:serde"]
+# Environnements
+std           = []     # plein std
+alloc-only    = []     # no_std + alloc (désactive mmap/FS)
 
-# Compression/décompression de la section CODE via zstd
-zstd = ["dep:zstd"]
+# Sous-systèmes VITBC
+reader        = ["dep:byteorder"]
+writer        = ["dep:byteorder"]
+crc32         = ["dep:crc32fast"]
+compression   = ["dep:zstd", "dep:lz4_flex"]   # zstd/lz4 optionnels pour DATA/CODE
+mmap          = ["dep:memmap2"]                # chargement mémoire rapide .vitbc
+
+# Ergonomie
+serde         = ["dep:serde", "dep:serde_json"]
+errors        = ["dep:thiserror"]
+tracing       = ["dep:tracing", "dep:tracing-subscriber"]
+small         = ["dep:smallvec"]
+index         = ["dep:indexmap"]
+
+# CLI utilitaire
+cli           = ["serde", "dep:clap"]
+
+# (Tag spec) — active si tu veux verrouiller explicitement la version du conteneur
+spec-v2       = []     # VITBC FILE_VERSION = 2
 
 [dependencies]
-# crate interne avec CRC32, ByteReader/Writer, SectionTag, etc.
-vitte-core = { path = "../vitte-core", version = "0.1.0" }
+# Internes
+vitte-core    = { path = "../vitte-core", version = "0.1.0" }
 
-# externes optionnels
-serde = { version = "1.0", features = ["derive"], optional = true }
-zstd  = { version = "0.13", optional = true, default-features = false }
+# IO / encodage
+byteorder     = { version = "1",    optional = true }
+crc32fast     = { version = "1",    optional = true }
+zstd          = { version = "0.13", optional = true }
+lz4_flex      = { version = "0.11", optional = true }
+memmap2       = { version = "0.9",  optional = true }
 
-# utilitaires (optionnels — utilise-les seulement si ton code en dépend)
-anyhow    = { version = "1.0", optional = true }
-thiserror = { version = "2.0.16", optional = true }
+# Qualité de vie
+thiserror     = { workspace = true, optional = true }
+anyhow        = { version = "1" }
+smallvec      = { version = "1.15.1", optional = true }
+indexmap      = { version = "2",       optional = true }
+bitflags      = { version = "2.6" }
+
+# Tracing
+tracing             = { version = "0.1", optional = true, features = ["attributes", "log", "release_max_level_info"] }
+tracing-subscriber  = { version = "0.3", optional = true, features = ["env-filter", "fmt", "ansi", "time"] }
+
+# Sérialisation
+serde         = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+serde_json    = { workspace = true, optional = true }
+
+# CLI
+clap          = { version = "4.5", optional = true, features = ["derive"] }
 
 [dev-dependencies]
-pretty_assertions = "1.4"
-proptest = "1.5"
+pretty_assertions = { workspace = true }
+proptest          = { workspace = true }
+serde_json        = { workspace = true }
+insta             = { version = "1", features = ["yaml"] }
+tempfile          = { version = "3" }
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "serde", "reader", "writer", "compression"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
 
 [lints.rust]
 unsafe_code = "forbid"
@@ -59,7 +98,6 @@ unsafe_code = "forbid"
 all = "warn"
 pedantic = "warn"
 nursery = "warn"
-# exceptions tolérées
 module_name_repetitions = "allow"
 too_many_lines = "allow"
 doc_markdown = "allow"

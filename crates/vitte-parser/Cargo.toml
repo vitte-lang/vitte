@@ -1,37 +1,102 @@
 [package]
-name = "vitte-parser"
-version = "0.1.0"
-edition = "2021"
-description = "Parser récursif/Pratt du langage Vitte → produit un AST vitte-ast"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/vitte-lang/vitte"
-homepage = "https://vitte-lang.github.io/vitte/"
-readme = "../../README.md"
-keywords = ["parser", "compiler", "ast", "no_std"]
-categories = ["compilers", "parsing"]
+name                   = "vitte-parser"
+description            = "Analyseur syntaxique du langage Vitte : grammaire, AST, diagnostics et utilitaires."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+readme.workspace       = true
+keywords               = ["vitte", "parser", "ast", "compiler", "lsp"]
+categories             = ["compilers", "development-tools"]
 
 [lib]
 name = "vitte_parser"
 path = "src/lib.rs"
 
+# Petit binaire optionnel pour tester/cliquer la grammaire
+[[bin]]
+name = "vitte-parse"
+path = "src/bin/parse.rs"
+required-features = ["cli"]
+
 [features]
-# On compile avec std par défaut
-default = ["std"]
-# Permet de tourner en no_std
-std = []
-# Activer derive Serialize/Deserialize sur AST (utile pour tests ou outils)
-serde = ["dep:serde"]
+# Confort par défaut
+default     = ["std", "errors"]
+
+# Environnement standard
+std         = []
+
+# Mode embarqué : no_std(+alloc)
+alloc-only  = []
+
+# Sérialisation (pour dumps AST/IR en debug/CLI)
+serde       = ["dep:serde", "dep:serde_json"]
+
+# Erreurs jolies
+errors      = ["dep:thiserror"]
+
+# Traces de debug (RUST_LOG=…)
+tracing     = ["dep:tracing", "dep:tracing-subscriber"]
+
+# Optim mini-allocs
+small       = ["dep:smallvec"]
+
+# Arena/bump allocator (si tu veux parser à la vitesse de la lumière)
+arena       = ["dep:bumpalo"]
+
+# CLI de test (lecture fichier/STDIN, dump AST/JSON)
+cli         = ["serde", "dep:clap"]
+
+# Diagnostics jolis en TTY (ASCII/UTF-8)
+pretty-errors = ["dep:ariadne"]
 
 [dependencies]
-# AST cible
-vitte-ast = { path = "../vitte-ast", version = "0.1.0" }
-# Tokens du lexer
-vitte-lexer = { path = "../vitte-lexer", version = "0.1.0" }
-# Core utils (Span, SourceId, etc.)
-vitte-core = { path = "../vitte-core", version = "0.1.0" }
+# Internes (consomme vitte-lexer, produit vitte-ast)
+vitte-core   = { path = "../vitte-core",   version = "0.1.0" }
+vitte-lexer  = { path = "../vitte-lexer",  version = "0.1.0" }
+vitte-ast    = { path = "../vitte-ast",    version = "0.1.0" }
 
-# Optionnel : pour sérialiser l’AST
-serde = { version = "1.0", features = ["derive"], optional = true }
+# Qualité de vie
+thiserror    = { workspace = true, optional = true }
+anyhow       = { version = "1" }
+smallvec     = { version = "1.15.1", optional = true }
+bumpalo      = { version = "3",       optional = true }
+bitflags     = { version = "2.6" }
+
+# Tracing
+tracing             = { version = "0.1", optional = true, features = ["attributes", "log", "release_max_level_info"] }
+tracing-subscriber  = { version = "0.3", optional = true, features = ["env-filter", "fmt", "ansi", "time"] }
+
+# Sérialisation / JSON (pour dumps)
+serde       = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+serde_json  = { workspace = true, optional = true }
+
+# CLI / Diagnostics
+clap        = { version = "4.5", optional = true, features = ["derive"] }
+ariadne     = { version = "0.5.1", optional = true }
 
 [dev-dependencies]
-pretty_assertions = "1.4"
+pretty_assertions = { workspace = true }
+proptest          = { workspace = true }
+serde_json        = { workspace = true }
+insta             = { version = "1", features = ["yaml"] }
+tempfile          = { version = "3" }
+
+[package.metadata.docs.rs]
+all-features = false
+features = ["std", "errors", "serde"]
+no-default-features = false
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+doc_markdown = "allow"

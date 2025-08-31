@@ -1,70 +1,67 @@
-###############################################################################
-# crates/vitte-debugger/Cargo.toml — Débogueur Vitte
-#
-# Fournit :
-#  - API Debug Adapter Protocol (api.rs)
-#  - Gestion des breakpoints, hooks VM, scopes & variables
-#  - Contrôleur de stepping (step.rs)
-#  - État centralisé du débogueur (state.rs)
-#
-# Destiné à être utilisé par vitte-dap (adaptateur DAP) ou vitte-cli (--debug).
-###############################################################################
-
 [package]
-name = "vitte-debugger"
-version = "0.1.0"
-edition = "2021"
-rust-version = "1.80"
-license = "MIT OR Apache-2.0"
-authors = ["Vincent <you@example.com>"]
-description = "Vitte Debugger — API & contrôleur pour Debug Adapter Protocol"
-homepage = "https://example.com/vitte"
-repository = "https://github.com/vitte-lang/vitte"
+name                   = "vitte-debugger"
+description            = "Débogueur Vitte : API, points d'arrêt, évaluation, hooks, état et pas-à-pas."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+readme.workspace       = true
+keywords               = ["vitte", "debugger", "dap", "vm", "breakpoint"]
+categories             = ["development-tools", "debugging", "compilers"]
 
 [lib]
 name = "vitte_debugger"
 path = "src/lib.rs"
 
-###############################################################################
-# Dépendances internes
-###############################################################################
-[dependencies]
-vitte-core    = { path = "../vitte-core" }
-vitte-runtime = { path = "../vitte-runtime" }
-
-###############################################################################
-# Dépendances externes
-###############################################################################
-color-eyre    = "0.6"    # gestion élégante des erreurs
-thiserror     = "1.0"    # erreurs custom
-serde         = { version = "1.0", features = ["derive"] }
-serde_json    = "1.0"
-log           = "0.4"
-env_logger    = "0.11"
-
-###############################################################################
-# Dev-deps (tests, snapshots, fuzzing)
-###############################################################################
-[dev-dependencies]
-insta     = "1.38"
-proptest  = "1.4"
-
-###############################################################################
-# Features (si tu veux un mode no_std plus tard)
-###############################################################################
 [features]
-default = ["std"]
-std     = []
-no_std  = []
+# Confort par défaut : std + logs
+default = ["std", "trace"]
+std = []
 
-###############################################################################
-# Profils de build
-###############################################################################
-[profile.dev]
-opt-level = 1
-debug = true
+# Traces/logs (pour instrumentation du débogueur)
+trace = ["dep:log"]
 
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
+# Sérialisation (si tu veux snapshotter l'état du débogueur/VM)
+serde = ["dep:serde"]
+
+# Intégration runtime : contrôle de la machine virtuelle (facultatif)
+vm = ["dep:vitte-vm"]
+
+# Intégration protocole DAP (si tu veux parler au serveur DAP)
+dap = ["dep:vitte-dap", "serde"]  # le protocole parle JSON
+
+[dependencies]
+# internes
+vitte-core = { path = "../vitte-core", version = "0.1.0" }
+
+# VM optionnelle (pilotage/inspection)
+vitte-vm   = { path = "../vitte-vm",   version = "0.1.0", optional = true, default-features = false }
+
+# DAP optionnel (types/proto)
+vitte-dap  = { path = "../vitte-dap",  version = "0.1.0", optional = true }
+
+# externes
+log     = { workspace = true, optional = true }
+serde   = { workspace = true, optional = true }
+anyhow  = { workspace = true }
+thiserror = { workspace = true, optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+serde_json        = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+doc_markdown = "allow"

@@ -1,10 +1,70 @@
 [package]
-name = "vitte-cli"
-version = "0.1.0"
-edition = "2021"
-license = "MIT"
+name                   = "vitte-cli"
+description            = "CLI Vitte : compiler, exécuter, formater et inspecter des modules VITBC."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+readme.workspace       = true
+keywords               = ["vitte", "compiler", "bytecode", "cli"]
+categories             = ["command-line-utilities", "compilers"]
+
+[[bin]]
+name = "vitte"
+path = "src/main.rs"
+
+[features]
+# Par défaut : std + couleurs + traces
+default = ["std", "color", "trace"]
+std = []
+
+# Traces/logs (RUST_LOG=info …)
+trace = ["dep:log", "dep:env_logger"]
+
+# Couleurs terminal
+color = ["dep:owo-colors"]
+
+# Sérialisation (si le CLI émet du JSON)
+serde = ["dep:serde"]
+
+# Support de la compression CODE (relais vers crates internes)
+zstd = ["vitte-vitbc/zstd", "vitte-vm/zstd"]
+
+# Exécution via la VM (active les sous-commandes run/repl)
+vm = ["dep:vitte-vm"]
 
 [dependencies]
-vitte-compiler = { path = "../vitte-compiler" }
-vitte-vm = { path = "../vitte-vm" }
-anyhow = "1"
+# internes
+vitte-core     = { path = "../vitte-core",     version = "0.1.0" }
+vitte-ast      = { path = "../vitte-ast",      version = "0.1.0" }
+vitte-lexer    = { path = "../vitte-lexer",    version = "0.1.0" }
+vitte-parser   = { path = "../vitte-parser",   version = "0.1.0" }
+vitte-compiler = { path = "../vitte-compiler", version = "0.1.0" }
+# vitte-vitbc sans forcer std (pour contrôler zstd via features)
+vitte-vitbc    = { path = "../vitte-vitbc",    version = "0.1.0", default-features = false }
+# VM optionnelle
+vitte-vm       = { path = "../vitte-vm",       version = "0.1.0", optional = true, default-features = false }
+
+# externes (héritent des versions du workspace)
+clap        = { workspace = true, features = ["derive"] }
+serde       = { workspace = true, optional = true }
+anyhow      = { workspace = true }
+log         = { workspace = true, optional = true }
+env_logger  = { workspace = true, optional = true }
+owo-colors  = { version = "4", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+doc_markdown = "allow"

@@ -1,62 +1,86 @@
 [package]
-name = "vitte-vm"
-version = "0.1.0"
-edition = "2021"
-
-description = "Machine virtuelle pour exécuter le bytecode VITBC (Vitte VM)"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/vitte-lang/vitte"
-homepage = "https://vitte-lang.github.io/vitte/"
-readme = "../../README.md"
-keywords = ["vm", "bytecode", "virtual-machine", "no_std", "vitte"]
-categories = ["compilers", "virtualization", "embedded"]
-
-# toolchain minimal conseillée (aligne ton CI)
-rust-version = "1.76"
+name                   = "vitte-vm"
+description            = "VM Vitte (interpréteur pur) : exécution d'opcodes, piles/regs, appels, GC/Arena optionnels."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+readme.workspace       = true
+keywords               = ["vitte", "vm", "interpreter", "bytecode", "runtime"]
+categories             = ["compilers", "development-tools"]
 
 [lib]
 name = "vitte_vm"
 path = "src/lib.rs"
-crate-type = ["rlib"]
-
-# Binaire runner (optionnel), activé si feature `cli` + `std`
-[[bin]]
-name = "vitte-vm-run"
-path = "src/main.rs"
-required-features = ["cli", "std"]
 
 [features]
-# On compile avec std par défaut
-default = ["std", "trace"]
-# Active les APIs std (fs, time, etc.). Propage vers vitte-vitbc.
-std = ["vitte-vitbc/std"]
-# Sérialisation optionnelle de l'état de la VM (snapshots, traces)
-serde = ["dep:serde"]
-# Relais de compression CODE via vitte-vitbc (zstd)
-zstd = ["vitte-vitbc/zstd"]
-# Journaux d'exécution (log crate). Inclus par défaut via "trace".
-trace = ["dep:log"]
-# Binaire CLI (runner) : clap + env_logger, nécessite std
-cli = ["std", "dep:clap", "dep:env_logger"]
+# Par défaut : lib propre, traçable, ergonomique (mais sans I/O)
+default        = ["std", "errors", "tracing", "small"]
+
+# Environnements
+std            = []            # plein std
+alloc-only     = []            # no_std + alloc (désactive ce qui touche au FS)
+
+# Intégration bytecode (décodage VITBC coté VM si nécessaire)
+bytecode       = ["dep:vitte-vitbc"]
+
+# Sérialisation d'état (snapshots, dumps)
+serde          = ["dep:serde", "dep:serde_json"]
+
+# Observabilité / erreurs
+tracing        = ["dep:tracing"]
+errors         = ["dep:thiserror"]
+
+# Perfs / mémoire
+small          = ["dep:smallvec"]
+arena          = ["dep:bumpalo"]
+sync           = ["dep:parking_lot", "dep:dashmap"]
+parallel       = ["dep:rayon"]
+
+# (Futur) JIT (placeholder sans deps)
+jit            = []
 
 [dependencies]
-# Crates internes
-vitte-core  = { path = "../vitte-core",  version = "0.1.0" }
-# Attention : pour supporter no_std réellement, on coupe les défauts et on relaie la feature std ci-dessus
-vitte-vitbc = { path = "../vitte-vitbc", version = "0.1.0", default-features = false }
+# Internes
+vitte-core     = { path = "../vitte-core",  version = "0.1.0" }
+vitte-vitbc    = { path = "../vitte-vitbc", version = "0.1.0", optional = true }
 
-# Externes
-log         = { version = "0.4", optional = true }
-serde       = { version = "1.0", features = ["derive"], optional = true }
-clap        = { version = "4.5", features = ["derive"], optional = true }
-env_logger  = { version = "0.11", optional = true }
+# Ergonomie
+thiserror      = { workspace = true, optional = true }
+anyhow         = { version = "1" }
 
-# (si tu veux des erreurs custom jolies)
-thiserror   = { version = "1.0", optional = true }
+# Tracing (lib: pas de subscriber ici)
+tracing        = { version = "0.1", optional = true, features = ["attributes", "log", "release_max_level_info"] }
+
+# Perfs / structures
+smallvec       = { version = "1.15.1", optional = true }
+bumpalo        = { version = "3",       optional = true }
+parking_lot    = { version = "0.12",    optional = true }
+dashmap        = { version = "6.1.0",   optional = true }
+rayon          = { version = "1",       optional = true }
+
+# Sérialisation (snapshots)
+serde          = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+serde_json     = { workspace = true, optional = true }
+
+# Divers
+bitflags       = { version = "2.6" }
 
 [dev-dependencies]
-pretty_assertions = "1.4"
-proptest = "1.5"
+pretty_assertions = { workspace = true }
+proptest          = { workspace = true }
+serde_json        = { workspace = true }
+insta             = { version = "1", features = ["yaml"] }
+tempfile          = { version = "3" }
+criterion         = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "serde", "bytecode"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
 
 [lints.rust]
 unsafe_code = "forbid"

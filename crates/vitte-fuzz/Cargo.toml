@@ -1,28 +1,152 @@
 [package]
 name = "vitte-fuzz"
-version = "0.1.0"
-edition = "2021"
+# on garde la même édition/version que le workspace mais on évite toute publication
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
 publish = false
 
-[workspace]
-members = ["."]
+description = "Fuzzing suite pour Vitte (lexer, parser, loader, vm, etc.) — libFuzzer."
+repository.workspace = true
+homepage.workspace   = true
+readme.workspace     = true
 
 [package.metadata]
+# Indique à cargo-fuzz que ce crate est un paquet de fuzz
 cargo-fuzz = true
 
-[dependencies]
-# Ajoute ici des deps si tu relies directement à des crates Vitte (optionnel)
+[lib]
+# helpers partagés pour les fuzzers (optionnel mais pratique)
+path = "shims/lib.rs"
+name = "vitte_fuzz_shims"
 
-[dev-dependencies]
+[dependencies]
+# moteur libFuzzer
 libfuzzer-sys = "0.4"
 
+# génération d'entrées arbitraires
+arbitrary = { version = "1", features = ["derive"] }
+
+# utilitaires pratiques
+anyhow      = { workspace = true }
+serde       = { workspace = true, optional = true }
+serde_json  = { workspace = true, optional = true }
+
+# crates internes à fuzzer — ajuste au besoin par cible
+vitte-core     = { path = "../vitte-core",     version = "0.1.0" }
+vitte-ast      = { path = "../vitte-ast",      version = "0.1.0", optional = true }
+vitte-lexer    = { path = "../vitte-lexer",    version = "0.1.0", optional = true }
+vitte-parser   = { path = "../vitte-parser",   version = "0.1.0", optional = true }
+vitte-vitbc    = { path = "../vitte-vitbc",    version = "0.1.0", optional = true, default-features = false }
+vitte-runtime  = { path = "../vitte-runtime",  version = "0.1.0", optional = true }
+vitte-tools    = { path = "../vitte-tools",    version = "0.1.0", optional = true }
+vitte-vm       = { path = "../vitte-vm",       version = "0.1.0", optional = true, default-features = false }
+
+# Active la compression si tu veux fuzzer des blobs .vitbc compressés
+zstd = { workspace = true, optional = true }
+
 [features]
-# Active les shims si les APIs ne correspondent pas.
-shims = []
+# Exemple de bundles pratiques par cible (tu peux les ajuster/libérer)
+lexer   = ["vitte-lexer"]
+parser  = ["vitte-lexer", "vitte-parser", "vitte-ast", "serde", "serde_json"]
+loader  = ["vitte-vitbc"]
+vm      = ["vitte-vitbc", "vitte-vm"]
+tools   = ["vitte-tools"]
+runtime = ["vitte-runtime"]
+zstd    = ["dep:zstd", "vitte-vitbc/zstd", "vitte-vm/zstd"]
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+# ── Fuzz targets (un binaire par cible) ───────────────────────────────────────
+# NB: on n'ajoute PAS _do_not_run.rs
 
 [[bin]]
-name = "fuzz_dummy"
-path = "fuzz_targets/_do_not_run.rs"
+name = "asm"
+path = "fuzz_targets/asm.rs"
 test = false
+doc  = false
 bench = false
-doc = false
+required-features = ["tools"]
+
+[[bin]]
+name = "csv"
+path = "fuzz_targets/csv.rs"
+test = false
+doc  = false
+bench = false
+required-features = ["tools"]
+
+[[bin]]
+name = "disasm"
+path = "fuzz_targets/disasm.rs"
+test = false
+doc  = false
+bench = false
+required-features = ["tools"]
+
+[[bin]]
+name = "ini"
+path = "fuzz_targets/ini.rs"
+test = false
+doc  = false
+bench = false
+required-features = ["tools"]
+
+[[bin]]
+name = "loader"
+path = "fuzz_targets/loader.rs"
+test = false
+doc  = false
+bench = false
+required-features = ["loader"]
+
+[[bin]]
+name = "parser"
+path = "fuzz_targets/parser.rs"
+test = false
+doc  = false
+bench = false
+required-features = ["parser"]
+
+[[bin]]
+name = "pretty"
+path = "fuzz_targets/pretty.rs"
+test = false
+doc  = false
+bench = false
+required-features = ["parser"]
+
+[[bin]]
+name = "tokenizer"
+path = "fuzz_targets/tokenizer.rs"
+test = false
+doc  = false
+bench = false
+required-features = ["lexer"]
+
+[[bin]]
+name = "vm"
+path = "fuzz_targets/vm.rs"
+test = false
+doc  = false
+bench = false
+required-features = ["vm"]
+
+[[bin]]
+name = "wasm_emitter"
+path = "fuzz_targets/wasm_emitter.rs"
+test = false
+doc  = false
+bench = false
+# active les outils côté vitte-tools (si c'est ce que tu fuzz ici)
+required-features = ["tools"]
+
+# ── Profils de build adaptés au fuzz ─────────────────────────────────────────
+[profile.release]
+debug = 1          # backtraces utiles
+lto = false
+codegen-units = 1
+opt-level = 3
+panic = "abort"

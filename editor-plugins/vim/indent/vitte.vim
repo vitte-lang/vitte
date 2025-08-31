@@ -1,2 +1,0 @@
-setlocal autoindent
-setlocal smartindent

@@ -1,88 +1,71 @@
-[workspace]
-members = [
-    "crates/vitte-core",
-    "crates/vitte-ast",
-    "crates/vitte-compiler",
-    "crates/vitte-cli"
-]
-resolver = "2"
-
-[workspace.package]
-version = "0.1.0"
-edition = "2021"
-rust-version = "1.80"
-license = "MIT OR Apache-2.0"
-description = "Cœur du langage Vitte : bytecode, ASM/DISASM, loader, utilitaires."
-repository = "https://github.com/vitte-lang/vitte"
-homepage = "https://github.com/vitte-lang/vitte"
-authors = ["Vincent <you@example.com>"]
-categories = ["compilers", "parsing", "virtualization"]
-keywords = ["vitte", "bytecode", "vm", "compiler", "asm"]
+[package]
+name                   = "vitte-core"
+description            = "Cœur Vitte: tags/sections, ByteReader/Writer, CRC32, erreurs, utilitaires (no_std-friendly)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+readme.workspace       = true
+keywords               = ["vitte", "bytecode", "core", "crc32", "reader-writer"]
+categories             = ["compilers", "development-tools"]
 
 [lib]
 name = "vitte_core"
 path = "src/lib.rs"
-crate-type = ["rlib"]
 
-# ──────────────────────────────────────────────────────────────────────────────
-# FEATURES
-# Par défaut: "std" + "serde" ⇒ confort maximal.
-# "alloc-only" pour no_std(+alloc). "postcard" conseillée en no_std.
-# "zstd" active la compression/décompression dans le loader.
-# ──────────────────────────────────────────────────────────────────────────────
 [features]
-default = ["std", "serde"]
+# Confort par défaut : std + serde
+default    = ["std", "serde"]
 
-# Active l’écosystème std et les deps qui en ont besoin.
-std = [
-    "dep:thiserror",
-    "dep:bincode",
-    "serde/std",
-]
+# Environnement standard (I/O, thiserror, bincode). En no_std: --no-default-features
+std        = ["dep:thiserror", "dep:bincode", "serde/std"]
 
 # Mode embarqué : no_std(+alloc). N’active PAS "std".
 alloc-only = []
 
-# Sérialisation via serde (no_std-friendly quand std est OFF).
-serde = ["dep:serde"]
-
-# Sérialisation binaire no_std (plutôt avec alloc-only).
-postcard = ["dep:postcard"]
-
-# Compression zstd pour le loader (save/load).
-zstd = ["dep:zstd"]
-
-# ──────────────────────────────────────────────────────────────────────────────
-# DÉPENDANCES
-# ──────────────────────────────────────────────────────────────────────────────
-[dependencies]
-# Erreurs ergonomiques (std uniquement)
-thiserror = { version = "1", optional = true }
-
-# Sérialisation générique (derive). default-features = false pour no_std.
-serde = { version = "1", features = ["derive"], default-features = false, optional = true }
-
-# Sérialisation binaire std
-bincode = { version = "1.3", optional = true }
+# Sérialisation via serde (derive, sans std par défaut)
+serde      = ["dep:serde"]
 
 # Sérialisation binaire no_std
-postcard = { version = "1", default-features = false, optional = true }
+postcard   = ["dep:postcard"]
 
-# Compression optionnelle
-zstd = { version = "0.13", optional = true }
+# Compression optionnelle (si un consommateur veut compresser des blobs/sections)
+zstd       = ["dep:zstd"]
 
-# ──────────────────────────────────────────────────────────────────────────────
-# DEV-DEPS (tests/doc en environnement std)
-# ──────────────────────────────────────────────────────────────────────────────
+[dependencies]
+# erreurs jolies (std)
+thiserror = { workspace = true, optional = true }
+
+# sérialisation générique (derive), sans std par défaut
+serde     = { workspace = true, optional = true, default-features = false }
+
+# formats binaires
+bincode   = { workspace = true, optional = true }
+postcard  = { workspace = true, optional = true }
+
+# compression
+zstd      = { workspace = true, optional = true }
+
 [dev-dependencies]
-serde_json = "1"
-pretty_assertions = "1"
+serde_json        = { workspace = true }
+pretty_assertions = { workspace = true }
 
-# ──────────────────────────────────────────────────────────────────────────────
-# DOCS.RS : construire la doc en mode "std" par défaut
-# ──────────────────────────────────────────────────────────────────────────────
 [package.metadata.docs.rs]
+# Doc par défaut en mode std + serde
 all-features = false
 features = ["std", "serde"]
 no-default-features = false
 rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+doc_markdown = "allow"

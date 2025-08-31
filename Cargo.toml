@@ -1,39 +1,80 @@
+# vitte/Cargo.toml — racine du workspace
 [workspace]
-members = [
-    "crates/vitte-ast",
-    "crates/vitte-compiler",
-    "crates/vitte-cli"
-]
 resolver = "2"
-
-# Exclure certains dossiers si besoin (ex: docs, scripts)
-exclude = [
-    "target",
-    ".github"
+members = [
+  "crates/stdlib",
+  "crates/vitte-ast",
+  "crates/vitte-cli",
+  "crates/vitte-compiler",
+  "crates/vitte-core",
+  "crates/vitte-dap",
+  "crates/vitte-debugger",
+  "crates/vitte-fuzz",
+  "crates/vitte-ir",
+  "crates/vitte-lexer",
+  "crates/vitte-lsp",
+  "crates/vitte-parser",
+  "crates/vitte-runtime",
+  "crates/vitte-tools",
+  "crates/vitte-vitbc",
+  "crates/vitte-vm",
+  "crates/vitte-wasm",
+]
+# On évite de builder fuzz par défaut (builds & CI plus rapides)
+default-members = [
+  "crates/stdlib",
+  "crates/vitte-ast",
+  "crates/vitte-cli",
+  "crates/vitte-compiler",
+  "crates/vitte-core",
+  "crates/vitte-dap",
+  "crates/vitte-debugger",
+  "crates/vitte-ir",
+  "crates/vitte-lexer",
+  "crates/vitte-lsp",
+  "crates/vitte-parser",
+  "crates/vitte-runtime",
+  "crates/vitte-tools",
+  "crates/vitte-vitbc",
+  "crates/vitte-vm",
+  "crates/vitte-wasm",
 ]
 
 [workspace.package]
-# Métadonnées globales
-version = "0.1.0"
-edition = "2021"
-authors = ["Vincent <ton_email@exemple.com>"]
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/vitte-lang/vitte"
-homepage = "https://vitte-lang.github.io/vitte/"
-documentation = "https://docs.rs/vitte"
-readme = "README.md"
+edition      = "2021"
+version      = "0.1.0"
+license      = "MIT OR Apache-2.0 OR BSD-3-Clause"  # BSD inclus
+repository   = "https://github.com/vitte-lang/vitte"
+homepage     = "https://vitte-lang.github.io/vitte/"
+readme       = "README.md"
+rust-version = "1.76"
 
+# Dépendances communes (référençables via `workspace = true` dans chaque crate)
 [workspace.dependencies]
-# Dépendances partagées entre crates
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-pretty_assertions = "1.4"
-thiserror = "2.0.16"
-zstd = "0.13"
+serde                 = { version = "1.0", features = ["derive"] }
+thiserror             = "1.0"
+anyhow                = "1.0"
+log                   = "0.4"
+clap                  = { version = "4.5", features = ["derive"] }
+zstd                  = { version = "0.13", default-features = false }
+pretty_assertions     = "1.4"
+proptest              = "1.5"
+env_logger            = "0.11"
+# WASM (si besoin côté vitte-wasm)
+wasm-bindgen          = "0.2"
+wasm-bindgen-futures  = "0.4"
+js-sys                = "0.3"
+web-sys               = { version = "0.3", features = ["Window","Response","Request","RequestInit","RequestMode","Headers","console"] }
 
-[workspace.metadata.release]
-# Configuration pour cargo-release (si tu veux versionner proprement)
-tag-prefix = "v"
-sign-commits = true
-sign-tags = true
-push-remote = "origin"
+# Profils de build (agressifs mais sûrs)
+[profile.dev]
+opt-level = 0
+debug = 1
+incremental = true
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+debug = 0

@@ -1,94 +1,8 @@
 ﻿```
-├── .cargo
-│   ├── .gitignore
-│   ├── config.local.example
-│   ├── config.toml
-│   ├── config.toml.bak.1755515321
-│   ├── README.md
-├── .devcontainer
-│   ├── scripts
-│   │   ├── onAttach.sh
-│   │   ├── postCreate.sh
-│   │   ├── postStart.sh
-│   ├── templates
-│   │   ├── launch.code-workspace
-│   ├── codespaces-settings.json
-│   ├── devcontainer.json
-│   ├── Dockerfile
-│   ├── README.md
-├── assets
-│   ├── branding
-│   │   ├── brand-guidelines.md
-│   │   ├── LICENSE
-│   │   ├── palette.json
-│   ├── diagrams
-│   │   ├── drawio
-│   │   │   ├── compiler.drawio
-│   │   │   ├── vm.drawio
-│   │   ├── mermaid
-│   │   │   ├── compiler.mmd
-│   │   │   ├── README.md
-│   │   │   ├── vm.mmd
-│   │   ├── bytecode-format.svg
-│   │   ├── compiler-pipeline.svg
-│   │   ├── lsp-flow.svg
-│   │   ├── memory-model.svg
-│   │   ├── module-system.svg
-│   │   ├── runtime-lifecycle.svg
-│   │   ├── vm-architecture.svg
-│   │   ├── wasm-pipeline.svg
-│   ├── fonts
-│   │   ├── README.md
-│   ├── icons
-│   │   ├── book.svg
-│   │   ├── branch.svg
-│   │   ├── bug.svg
-│   │   ├── bytecode.svg
-│   │   ├── chip.svg
-│   │   ├── cloud.svg
-│   │   ├── compiler.svg
-│   │   ├── cpu.svg
-│   │   ├── cube.svg
-│   │   ├── docs.svg
-│   │   ├── globe.svg
-│   │   ├── lock.svg
-│   │   ├── memory.svg
-│   │   ├── merge.svg
-│   │   ├── package.svg
-│   │   ├── pause.svg
-│   │   ├── pen.svg
-│   │   ├── play.svg
-│   │   ├── plug.svg
-│   │   ├── rocket.svg
-│   │   ├── shield.svg
-│   │   ├── stack.svg
-│   │   ├── stop.svg
-│   │   ├── vm.svg
-│   │   ├── wand.svg
-│   ├── illustrations
-│   │   ├── backgrounds
-│   │   │   ├── pattern.svg
-│   │   ├── banners
-│   │   │   ├── social-card.svg
-│   │   ├── hero.svg
-│   ├── logo
-│   │   ├── browserconfig.xml
-│   │   ├── favicon.svg
-│   │   ├── site.webmanifest
-│   │   ├── vitte-logo-dark.svg
-│   │   ├── vitte-logo-light.svg
-│   │   ├── vitte-mark.svg
-│   │   ├── vitte-wordmark.svg
-│   ├── screenshots
-│   │   ├── ide-mock-dark.svg
-│   │   ├── ide-mock-light.svg
-│   ├── templates
-│   │   ├── badges
-│   │   │   ├── bench.svg
-│   │   │   ├── build.svg
-│   │   │   ├── tests.svg
-│   │   ├── slide-cover.svg
-│   ├── README.md
+├── .github
+│   ├── wotkflows
+│   │   ├── license-check.yml
+│   │   ├── ci.yml
 ├── benchmarks
 │   ├── baselines
 │   │   ├── macro
@@ -122,35 +36,17 @@
 │   │   ├── capture-env.sh
 │   │   ├── compare.py
 │   ├── README.md
-├── cli-todo
-│   ├── completions
-│   │   ├── _todo
-│   │   ├── todo.bash
-│   │   ├── todo.fish
-│   ├── data
-│   │   ├── todo.tsv
-│   ├── man
-│   │   ├── todo.1
-│   ├── scripts
-│   │   ├── todo
-│   ├── src
-│   │   ├── commands.vitte
-│   │   ├── parser.vitte
-│   │   ├── storage.vitte
-│   │   ├── ui.vitte
-│   ├── tests
-│   │   ├── smoke.vitte
-│   ├── README.md
 ├── crates
-│   ├── docs
-│   │   ├── debugging.md
 │   ├── stdlib
+│   │   ├── src
+│   │   │   ├── lib.rs
+│   │   ├── Cargo.toml
+│   ├── vitte-ast
 │   │   ├── src
 │   │   │   ├── lib.rs
 │   │   ├── Cargo.toml
 │   ├── vitte-cli
 │   │   ├── src
-│   │   │   ├── lib.rs
 │   │   │   ├── main.rs
 │   │   ├── Cargo.toml
 │   ├── vitte-compiler
@@ -159,42 +55,8 @@
 │   │   ├── Cargo.toml
 │   ├── vitte-core
 │   │   ├── src
-│   │   │   ├── bin
-│   │   │   │   ├── Cargo.toml
-│   │   │   │   ├── vitte-asm.rs
-│   │   │   │   ├── vitte-disasm.rs
-│   │   │   │   ├── vitte-link.rs
-│   │   │   ├── bytecode
-│   │   │   │   ├── chunk.rs
-│   │   │   │   ├── debuginfo.rs
-│   │   │   │   ├── format.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── op.rs
-│   │   │   ├── compiler
-│   │   │   │   ├── config.rs
-│   │   │   │   ├── driver.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── output.rs
-│   │   │   ├── runtime
-│   │   │   │   ├── eval.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── parser.rs
-│   │   │   │   ├── pretty.rs
-│   │   │   │   ├── tokenizer.rs
-│   │   │   ├── vitte-vm
-│   │   │   │   ├── asm.rs
-│   │   │   │   ├── interpreter.rs
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── stack.rs
-│   │   │   ├── Cargo.toml
-│   │   │   ├── disasm.rs
+│   │   │   ├── chunk.rs
 │   │   │   ├── lib.rs
-│   │   │   ├── loader.rs
-│   │   │   ├── prelude.rs
-│   │   │   ├── util.rs
-│   │   ├── tests
-│   │   │   ├── integration.rs
-│   │   │   ├── README.md
 │   │   ├── Cargo.toml
 │   ├── vitte-dap
 │   │   ├── src
@@ -212,6 +74,75 @@
 │   │   │   ├── state.rs
 │   │   │   ├── step.rs
 │   │   ├── Cargo.toml
+│   ├── vitte-fuzz
+│   │   ├── corpora
+│   │   │   ├── asm
+│   │   │   │   ├── sample.asm
+│   │   │   ├── csv
+│   │   │   │   ├── basic.csv
+│   │   │   ├── disasm
+│   │   │   │   ├── junk.bin
+│   │   │   ├── ini
+│   │   │   │   ├── basic.ini
+│   │   │   ├── loader
+│   │   │   │   ├── sample.vbc
+│   │   │   ├── parser
+│   │   │   │   ├── arith.vitte
+│   │   │   ├── pretty
+│   │   │   │   ├── strings.vitte
+│   │   │   ├── tokenizer
+│   │   │   │   ├── hello.vitte
+│   │   │   ├── vm
+│   │   │   │   ├── loop.vitte
+│   │   │   ├── wasm_emitter
+│   │   │   │   ├── print.vitte
+│   │   ├── dicts
+│   │   │   ├── vitte.dict
+│   │   ├── fuzz_targets
+│   │   │   ├── _do_not_run.rs
+│   │   │   ├── asm.rs
+│   │   │   ├── csv.rs
+│   │   │   ├── disasm.rs
+│   │   │   ├── ini.rs
+│   │   │   ├── loader.rs
+│   │   │   ├── parser.rs
+│   │   │   ├── pretty.rs
+│   │   │   ├── tokenizer.rs
+│   │   │   ├── vm.rs
+│   │   │   ├── wasm_emitter.rs
+│   │   ├── scripts
+│   │   │   ├── run-all.sh
+│   │   ├── shims
+│   │   │   ├── lib.rs
+│   │   ├── asm.options
+│   │   ├── Cargo.toml
+│   │   ├── csv.options
+│   │   ├── disasm.options
+│   │   ├── ini.options
+│   │   ├── loader.options
+│   │   ├── parser.options
+│   │   ├── pretty.options
+│   │   ├── README.md
+│   │   ├── tokenizer.options
+│   │   ├── vm.options
+│   │   ├── wasm_emitter.options
+│   ├── vitte-ir
+│   │   ├── src
+│   │   │   ├── lib.rs
+│   │   ├── Cargo.toml
+│   ├── vitte-lexer
+│   │   ├── src
+│   │   │   ├── lib.rs
+│   │   ├── Cargo.toml
+│   ├── vitte-lsp
+│   │   ├── src
+│   │   │   ├── lib.rs
+│   │   │   ├── main.rs
+│   │   ├── Cargo.toml
+│   ├── vitte-parser
+│   │   ├── src
+│   │   │   ├── lib.rs
+│   │   ├── Cargo.toml
 │   ├── vitte-runtime
 │   │   ├── src
 │   │   │   ├── lib.rs
@@ -226,45 +157,18 @@
 │   │   │   │   ├── vitte-repl.rs
 │   │   │   ├── lib.rs
 │   │   ├── Cargo.toml
+│   ├── vitte-vitbc
+│   │   ├── src
+│   │   │   ├── lib.rs
+│   │   ├── Cargo.toml
 │   ├── vitte-vm
 │   │   ├── src
-│   │   │   ├── bin
-│   │   │   │   ├── vitte-debug.rs
-│   │   │   │   ├── vitte-fmt.rs
-│   │   │   │   ├── vitte-repl.rs
-│   │   │   ├── debug.rs
-│   │   │   ├── interpreter.rs
 │   │   │   ├── lib.rs
-│   │   │   ├── stack.rs
 │   │   ├── Cargo.toml
 │   ├── vitte-wasm
-│   │   ├── crates
-│   │   │   ├── vitte-ffi-wasm
-│   │   │   │   ├── src
-│   │   │   │   │   ├── lib.rs
-│   │   │   ├── vitte-wasi
-│   │   │   │   ├── src
-│   │   │   │   │   ├── lib.rs
-│   │   │   ├── vitte-wasm
-│   │   │   │   ├── src
-│   │   │   │   │   ├── emitter.rs
-│   │   │   │   │   ├── leb128.rs
-│   │   │   │   │   ├── lib.rs
-│   │   │   │   │   ├── module.rs
-│   │   │   ├── vitte-web
-│   │   │   │   ├── src
-│   │   │   │   │   ├── lib.rs
-│   │   ├── docs
-│   │   │   ├── wasm.md
-│   │   ├── examples
-│   │   │   ├── wasm-add
-│   │   │   │   ├── main.vitte
-│   │   ├── tools
-│   │   │   ├── vitte-wasm
-│   │   │   │   ├── src
-│   │   │   │   │   ├── main.rs
-│   │   ├── web
-│   │   │   ├── index.html
+│   │   ├── src
+│   │   │   ├── lib.rs
+│   │   ├── Cargo.toml
 ├── desktop
 │   ├── assets
 │   │   ├── icons
@@ -292,6 +196,79 @@
 │   ├── qt_stub.cpp
 │   ├── README.md
 ├── docs
+│   ├── assets
+│   │   ├── branding
+│   │   │   ├── brand-guidelines.md
+│   │   │   ├── LICENSE
+│   │   │   ├── palette.json
+│   │   ├── fonts
+│   │   │   ├── README.md
+│   │   ├── icons
+│   │   │   ├── book.svg
+│   │   │   ├── branch.svg
+│   │   │   ├── bug.svg
+│   │   │   ├── bytecode.svg
+│   │   │   ├── chip.svg
+│   │   │   ├── cloud.svg
+│   │   │   ├── compiler.svg
+│   │   │   ├── cpu.svg
+│   │   │   ├── cube.svg
+│   │   │   ├── docs.svg
+│   │   │   ├── globe.svg
+│   │   │   ├── lock.svg
+│   │   │   ├── memory.svg
+│   │   │   ├── merge.svg
+│   │   │   ├── package.svg
+│   │   │   ├── pause.svg
+│   │   │   ├── pen.svg
+│   │   │   ├── play.svg
+│   │   │   ├── plug.svg
+│   │   │   ├── rocket.svg
+│   │   │   ├── shield.svg
+│   │   │   ├── stack.svg
+│   │   │   ├── stop.svg
+│   │   │   ├── vm.svg
+│   │   │   ├── wand.svg
+│   │   ├── illustrations
+│   │   │   ├── backgrounds
+│   │   │   │   ├── pattern.svg
+│   │   │   ├── banners
+│   │   │   │   ├── social-card.svg
+│   │   │   ├── hero.svg
+│   │   ├── logo
+│   │   │   ├── browserconfig.xml
+│   │   │   ├── favicon.svg
+│   │   │   ├── site.webmanifest
+│   │   │   ├── vitte-logo-dark.svg
+│   │   │   ├── vitte-logo-light.svg
+│   │   │   ├── vitte-mark.svg
+│   │   │   ├── vitte-wordmark.svg
+│   │   ├── screenshots
+│   │   │   ├── ide-mock-dark.svg
+│   │   │   ├── ide-mock-light.svg
+│   │   ├── templates
+│   │   │   ├── badges
+│   │   │   │   ├── bench.svg
+│   │   │   │   ├── build.svg
+│   │   │   │   ├── tests.svg
+│   │   │   ├── slide-cover.svg
+│   │   ├── README.md
+│   ├── diagrams
+│   │   ├── drawio
+│   │   │   ├── compiler.drawio
+│   │   │   ├── vm.drawio
+│   │   ├── mermaid
+│   │   │   ├── compiler.mmd
+│   │   │   ├── README.md
+│   │   │   ├── vm.mmd
+│   │   ├── bytecode-format.svg
+│   │   ├── compiler-pipeline.svg
+│   │   ├── lsp-flow.svg
+│   │   ├── memory-model.svg
+│   │   ├── module-system.svg
+│   │   ├── runtime-lifecycle.svg
+│   │   ├── vm-architecture.svg
+│   │   ├── wasm-pipeline.svg
 │   ├── arborescence.md
 │   ├── build-from-source.md
 │   ├── code-style.md
@@ -301,74 +278,38 @@
 │   ├── index.md
 │   ├── language-spec.md
 │   ├── stdlib.md
-├── editor-plugins
-│   ├── emacs
-│   │   ├── README.md
-│   │   ├── vitte-mode.el
-│   ├── vim
-│   │   ├── ftdetect
-│   │   │   ├── vitte.vim
-│   │   ├── ftplugin
-│   │   │   ├── vitte.vim
-│   │   ├── indent
-│   │   │   ├── vitte.vim
-│   │   ├── plugin
-│   │   │   ├── vitte.vim
-│   │   ├── syntax
-│   │   │   ├── vitte.vim
-│   │   ├── README.md
-│   ├── vscode
-│   │   ├── media
-│   │   │   ├── icon.svg
-│   │   ├── snippets
-│   │   │   ├── vitte.code-snippets
-│   │   ├── src
-│   │   │   ├── diag.ts
-│   │   │   ├── extension.ts
-│   │   │   ├── format.ts
-│   │   │   ├── utils.ts
-│   │   ├── syntaxes
-│   │   │   ├── vitte.tmLanguage.json
-│   │   ├── .vscodeignore
-│   │   ├── CHANGELOG.md
-│   │   ├── language-configuration.json
-│   │   ├── package.json
-│   │   ├── README.md
-│   │   ├── tasks.json
-│   │   ├── tsconfig.json
-│   ├── README.md
-├── embedded-blink
-│   ├── boards
-│   │   ├── esp32
-│   │   │   ├── CMakeLists.txt
-│   │   │   ├── main.c
-│   │   ├── posix
-│   │   │   ├── Makefile
-│   │   │   ├── runner.c
-│   │   ├── rp2040
-│   │   │   ├── CMakeLists.txt
-│   │   │   ├── vitte_ffi_rp2040.c
-│   │   ├── stm32f4
-│   │   │   ├── gpio.c
-│   │   │   ├── linker.ld
-│   │   │   ├── Makefile
-│   │   │   ├── start.S
-│   ├── docs
-│   │   ├── ffi-contract.md
-│   │   ├── ports.md
-│   ├── examples
-│   │   ├── pwm.vitte
-│   │   ├── sos.vitte
-│   ├── ffi
-│   │   ├── vitte_ffi.h
-│   ├── scripts
-│   │   ├── build-esp32.sh
-│   │   ├── build-posix.sh
-│   │   ├── build-rp2040.sh
-│   │   ├── build-stm32f4.sh
-│   ├── main.vitte
-│   ├── README.md
 ├── examples
+│   ├── embedded-blink
+│   │   ├── boards
+│   │   │   ├── esp32
+│   │   │   │   ├── CMakeLists.txt
+│   │   │   │   ├── main.c
+│   │   │   ├── posix
+│   │   │   │   ├── Makefile
+│   │   │   │   ├── runner.c
+│   │   │   ├── rp2040
+│   │   │   │   ├── CMakeLists.txt
+│   │   │   │   ├── vitte_ffi_rp2040.c
+│   │   │   ├── stm32f4
+│   │   │   │   ├── gpio.c
+│   │   │   │   ├── linker.ld
+│   │   │   │   ├── Makefile
+│   │   │   │   ├── start.S
+│   │   ├── docs
+│   │   │   ├── ffi-contract.md
+│   │   │   ├── ports.md
+│   │   ├── examples
+│   │   │   ├── pwm.vitte
+│   │   │   ├── sos.vitte
+│   │   ├── ffi
+│   │   │   ├── vitte_ffi.h
+│   │   ├── scripts
+│   │   │   ├── build-esp32.sh
+│   │   │   ├── build-posix.sh
+│   │   │   ├── build-rp2040.sh
+│   │   │   ├── build-stm32f4.sh
+│   │   ├── main.vitte
+│   │   ├── README.md
 │   ├── hello
 │   │   ├── src
 │   │   │   ├── main.vit
@@ -392,98 +333,6 @@
 │   │   ├── middleware.vitte
 │   │   ├── README.md
 │   ├── worker-jobs
-├── fuzz
-│   ├── corpora
-│   │   ├── asm
-│   │   │   ├── sample.asm
-│   │   ├── csv
-│   │   │   ├── basic.csv
-│   │   ├── disasm
-│   │   │   ├── junk.bin
-│   │   ├── ini
-│   │   │   ├── basic.ini
-│   │   ├── loader
-│   │   │   ├── sample.vbc
-│   │   ├── parser
-│   │   │   ├── arith.vitte
-│   │   ├── pretty
-│   │   │   ├── strings.vitte
-│   │   ├── tokenizer
-│   │   │   ├── hello.vitte
-│   │   ├── vm
-│   │   │   ├── loop.vitte
-│   │   ├── wasm_emitter
-│   │   │   ├── print.vitte
-│   ├── dicts
-│   │   ├── vitte.dict
-│   ├── fuzz_targets
-│   │   ├── _do_not_run.rs
-│   │   ├── asm.rs
-│   │   ├── csv.rs
-│   │   ├── disasm.rs
-│   │   ├── ini.rs
-│   │   ├── loader.rs
-│   │   ├── parser.rs
-│   │   ├── pretty.rs
-│   │   ├── tokenizer.rs
-│   │   ├── vm.rs
-│   │   ├── wasm_emitter.rs
-│   ├── scripts
-│   │   ├── run-all.sh
-│   ├── shims
-│   │   ├── lib.rs
-│   ├── asm.options
-│   ├── Cargo.toml
-│   ├── csv.options
-│   ├── disasm.options
-│   ├── ini.options
-│   ├── loader.options
-│   ├── parser.options
-│   ├── pretty.options
-│   ├── README.md
-│   ├── tokenizer.options
-│   ├── vm.options
-│   ├── wasm_emitter.options
-├── modules
-│   ├── cache.vitte
-│   ├── channel.vitte
-│   ├── checksum.vitte
-│   ├── cli.vitte
-│   ├── config.vitte
-│   ├── csv.vitte
-│   ├── eventbus.vitte
-│   ├── exports.vitte
-│   ├── feature_flags.vitte
-│   ├── fs_atomic.vitte
-│   ├── graph.vitte
-│   ├── http_client.vitte
-│   ├── idgen.vitte
-│   ├── ini.vitte
-│   ├── kvstore.vitte
-│   ├── log.vitte
-│   ├── main.vitte
-│   ├── mathx.vitte
-│   ├── metrics.vitte
-│   ├── migrate.vitte
-│   ├── pagination.vitte
-│   ├── plugin.vitte
-│   ├── pool.vitte
-│   ├── prioq.vitte
-│   ├── random.vitte
-│   ├── rate_limiter.vitte
-│   ├── README.md
-│   ├── result_ext.vitte
-│   ├── retry.vitte
-│   ├── rle.vitte
-│   ├── scheduler.vitte
-│   ├── stringx.vitte
-│   ├── supervisor.vitte
-│   ├── taskpool.vitte
-│   ├── tracing.vitte
-│   ├── util.vitte
-│   ├── uuid.vitte
-│   ├── validate.vitte
-│   ├── yaml_lite.vitte
 ├── rfcs
 │   ├── 0000-template.md
 │   ├── 0001-core-syntax-and-keywords.md
@@ -553,22 +402,17 @@
 │   ├── index.md
 │   ├── TEMPLATE.md
 ├── scripts
-│   ├── ci
-│   │   ├── run_dap.sh
-│   ├── build_all.sh
-│   ├── ci_check.sh
-│   ├── clean_all.sh
-│   ├── compress_bytecode.py
-│   ├── decompress_bytecode.py
+│   ├── utils
+│   ├── bench.sh
+│   ├── build.sh
+│   ├── ci.sh
+│   ├── dev-env.sh
+│   ├── doc.sh
 │   ├── fmt.sh
-│   ├── gen_bytecode.sh
-│   ├── gen_docs.sh
-│   ├── gen_licenses.sh
+│   ├── fuzz.sh
 │   ├── lint.sh
 │   ├── release.sh
-│   ├── release_package.sh
 │   ├── test.sh
-│   ├── test_all.sh
 ├── security
 │   ├── policy.md
 │   ├── threat-model.md
@@ -590,6 +434,7 @@
 │   │   │   ├── ansi.vitte
 │   │   │   ├── prompt.vitte
 │   │   ├── compress
+│   │   │   ├── deflate.vitte
 │   │   │   ├── lz4.vitte
 │   │   │   ├── zlib.vitte
 │   │   │   ├── zstd.vitte
@@ -614,7 +459,9 @@
 │   │   ├── crypto
 │   │   │   ├── base64.vitte
 │   │   │   ├── hash.vitte
+│   │   │   ├── hkdf.vitte
 │   │   │   ├── hmac.vitte
+│   │   │   ├── pbkdf2.vitte
 │   │   ├── db
 │   │   │   ├── cache_lmdb.vitte
 │   │   │   ├── kv.vitte
@@ -628,13 +475,29 @@
 │   │   │   ├── priority_queue.vitte
 │   │   │   ├── rope.vitte
 │   │   ├── ffi
-│   │   │   ├── c.vitte
+│   │   │   ├── c
+│   │   │   │   ├── ffi_c.vitte
+│   │   │   ├── cpp
+│   │   │   │   ├── ffi_cpp.vitte
+│   │   │   ├── tests
+│   │   │   │   ├── ffi_test.vitte
+│   │   │   ├── wasm
+│   │   │   ├── ffi.vitte
 │   │   ├── formats
 │   │   │   ├── csv.vitte
 │   │   │   ├── ini.vitte
 │   │   │   ├── json.vitte
 │   │   ├── i18n
+│   │   │   ├── catalog.vitte
+│   │   │   ├── datetime.vitte
+│   │   │   ├── i18n.vitte
+│   │   │   ├── loader_json.vitte
 │   │   │   ├── locale.vitte
+│   │   │   ├── message.vitte
+│   │   │   ├── number.vitte
+│   │   │   ├── plural.vitte
+│   │   │   ├── README.md
+│   │   │   ├── relative_time.vitte
 │   │   ├── image
 │   │   │   ├── jpeg.vitte
 │   │   │   ├── png.vitte
@@ -719,6 +582,10 @@
 │   │   ├── src
 │   │   │   ├── main.rs
 │   │   ├── Cargo.toml
+├── xtask
+│   ├── src
+│   │   ├── main.rs
+│   ├── Cargo.toml
 ├── .gitattributes
 ├── .gitignore
 ├── arborescence.md
@@ -736,6 +603,5 @@
 ├── README.md
 ├── rustfmt.toml
 ├── rust-toolchain.toml
-├── rustup-init.exe
 ├── tree.ps1
 ```

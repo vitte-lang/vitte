@@ -1,12 +1,75 @@
 [package]
-name = "vitte-ir"
-version = "0.1.0"
-edition = "2021"
+name                   = "vitte-ir"
+description            = "IR Vitte : nœuds, fonctions, CFG/DFG, passes et utilitaires (serde, graph, DOT export)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+readme.workspace       = true
+keywords               = ["vitte", "ir", "cfg", "dfg", "compiler"]
+categories             = ["compilers", "development-tools"]
+
+[lib]
+name = "vitte_ir"
+path = "src/lib.rs"
 
 [features]
-default = ["std"]
-std = []
-serde = ["dep:serde"]
+# Confort par défaut
+default     = ["std", "serde"]
+
+# Environnement standard
+std         = []
+
+# Mode embarqué : no_std(+alloc)
+alloc-only  = []
+
+# Sérialisation des structures IR
+serde       = ["dep:serde"]
+
+# Structures de graphes / index rapides
+graph       = ["dep:petgraph", "dep:indexmap"]
+
+# Export DOT (via petgraph::dot)
+dot         = ["graph"]
+
+# Optim: petites collections
+small       = ["dep:smallvec"]
+
+# Erreurs jolies (si tu exposes des erreurs de passes/validations)
+errors      = ["dep:thiserror"]
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"], optional = true }
+# internes (si l'IR référence des types de base)
+vitte-core  = { path = "../vitte-core", version = "0.1.0" }
+
+# externes
+serde       = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+thiserror   = { workspace = true, optional = true }
+indexmap    = { version = "2", optional = true }
+petgraph    = { version = "0.8.2", optional = true }
+smallvec    = { version = "1.13", optional = true }
+bitflags    = { version = "2.6" }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+proptest          = { workspace = true }
+serde_json        = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = false
+features = ["std", "serde", "graph", "dot", "small"]
+no-default-features = false
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+doc_markdown = "allow"
