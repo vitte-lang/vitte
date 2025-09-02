@@ -1,0 +1,50 @@
+name: Deploy RFCs to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]   # change si ta branche par défaut n'est pas "main"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Désactiver Jekyll pour servir les fichiers tels quels
+      - name: Disable Jekyll
+        run: echo > rfcs/.nojekyll
+
+      # S'assurer qu'il y a une home
+      - name: Ensure index.md exists
+        run: |
+          if [ ! -f rfcs/index.md ]; then
+            echo "# Vitte RFCs" > rfcs/index.md
+            echo "" >> rfcs/index.md
+            echo "Bienvenue dans les RFCs de Vitte." >> rfcs/index.md
+          fi
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact (rfcs folder)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: rfcs
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
