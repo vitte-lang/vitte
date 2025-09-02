@@ -1,0 +1,44 @@
+[package]
+name                   = "vitte-gfx2d"
+description            = "Canvas 2D minimaliste, portable et backend-agnostic pour Vitte (tessellation CPU → triangles)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+readme.workspace       = true
+keywords               = ["vitte", "2d", "graphics", "tessellation"]
+categories             = ["game-development", "graphics", "rendering"]
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+# Par défaut on s'appuie sur la std
+default = ["std"]
+std = []
+# Sérialisation optionnelle (propage vers vitte-cs2d)
+serde = ["dep:serde", "vitte-cs2d/serde"]
+# Precision double (relais vers le backend géométrie)
+f64 = ["vitte-cs2d/f64"]
+
+[dependencies]
+# Géométrie/lin alg interne
+vitte-cs2d = { path = "../vitte-cs2d", version = "0.1.0" }
+# Sérialisation (optionnelle, héritée du workspace)
+serde      = { workspace = true, optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+doc_markdown = "allow"

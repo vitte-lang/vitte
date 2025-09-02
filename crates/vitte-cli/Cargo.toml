@@ -1,70 +1,102 @@
-[package]
-name                   = "vitte-cli"
-description            = "CLI Vitte : compiler, exécuter, formater et inspecter des modules VITBC."
-version.workspace      = true
-edition.workspace      = true
-rust-version.workspace = true
-license.workspace      = true
-repository.workspace   = true
-homepage.workspace     = true
-readme.workspace       = true
-keywords               = ["vitte", "compiler", "bytecode", "cli"]
-categories             = ["command-line-utilities", "compilers"]
+# vitte/Cargo.toml — racine du workspace (robuste)
+[workspace]
+resolver = "2"
+members = [
+  # Tous les crates sous crates/ et modules/
+  "crates/*",
+  "modules/*",
+]
+# Facultatif : si docs/ contient des Cargo.toml, on les ignore
+exclude = ["docs"]
 
-[[bin]]
-name = "vitte"
-path = "src/main.rs"
+[workspace.package]
+edition      = "2021"
+version      = "0.1.0"
+license      = "Apache-2.0"
+repository   = "https://github.com/vitte-lang/vitte"
+homepage     = "https://vitte-lang.github.io/vitte/"
+readme       = "README.md"
+rust-version = "1.80.0"
 
-[features]
-# Par défaut : std + couleurs + traces
-default = ["std", "color", "trace"]
-std = []
-
-# Traces/logs (RUST_LOG=info …)
-trace = ["dep:log", "dep:env_logger"]
-
-# Couleurs terminal
-color = ["dep:owo-colors"]
-
-# Sérialisation (si le CLI émet du JSON)
-serde = ["dep:serde"]
-
-# Support de la compression CODE (relais vers crates internes)
-zstd = ["vitte-vitbc/zstd", "vitte-vm/zstd"]
-
-# Exécution via la VM (active les sous-commandes run/repl)
-vm = ["dep:vitte-vm"]
-
-[dependencies]
-# internes
-vitte-core     = { path = "../vitte-core",     version = "0.1.0" }
-vitte-ast      = { path = "../vitte-ast",      version = "0.1.0" }
-vitte-lexer    = { path = "../vitte-lexer",    version = "0.1.0" }
-vitte-parser   = { path = "../vitte-parser",   version = "0.1.0" }
-vitte-compiler = { path = "../vitte-compiler", version = "0.1.0" }
-# vitte-vitbc sans forcer std (pour contrôler zstd via features)
-vitte-vitbc    = { path = "../vitte-vitbc",    version = "0.1.0", default-features = false }
-# VM optionnelle
-vitte-vm       = { path = "../vitte-vm",       version = "0.1.0", optional = true, default-features = false }
-
-# externes (héritent des versions du workspace)
-clap        = { workspace = true, features = ["derive"] }
-serde       = { workspace = true, optional = true }
-anyhow      = { workspace = true }
-log         = { workspace = true, optional = true }
-env_logger  = { workspace = true, optional = true }
-owo-colors  = { version = "4", optional = true }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }
-
-[lints.rust]
+# Lints communes
+[workspace.lints.rust]
 unsafe_code = "forbid"
 
-[lints.clippy]
+[workspace.lints.clippy]
 all = "warn"
 pedantic = "warn"
 nursery = "warn"
 module_name_repetitions = "allow"
 too_many_lines = "allow"
 doc_markdown = "allow"
+
+# Dépendances partagées (référençables via `workspace = true`)
+[workspace.dependencies]
+# Base
+serde                 = { version = "1.0", features = ["derive"] }
+serde_json            = "1.0"
+thiserror             = "2.0.16"
+anyhow                = "1.0"
+bitflags              = "2"
+smallvec              = "1"
+indexmap              = "2"
+petgraph              = "0.8.2"
+log                   = "0.4"
+env_logger            = "0.11"
+
+# CLI / DX
+clap                  = { version = "4.5", features = ["derive"] }
+clap_complete         = "4.5"
+tracing               = { version = "0.1", features = ["attributes", "log", "release_max_level_info"] }
+tracing-subscriber    = { version = "0.3", features = ["env-filter", "fmt", "ansi", "time"] }
+log                   = "0.4"
+env_logger            = "0.11"
+
+# Async / LSP / runtime / LSP / runtime
+tokio                 = { version = "1.40", features = ["rt-multi-thread", "macros", "io-std", "net", "sync", "fs"] }
+tower-lsp             = "0.20"
+notify                = "8.2.0"
+
+# Bytecode / I/O bas niveau
+byteorder             = "1"
+crc32fast             = "1"
+lz4_flex              = "0.11"
+zstd                  = { version = "0.13", default-features = false }
+memmap2               = "0.9"
+bumpalo               = "3"
+
+# Concurrence / perfs
+rayon                 = "1"
+crossbeam-channel     = "0.5"
+parking_lot           = "0.12"
+dashmap               = "6.1.0"
+
+# WASM
+wasm-bindgen          = "0.2"
+wasm-bindgen-futures  = "0.4"
+js-sys                = "0.3"
+web-sys               = { version = "0.3", features = [
+  "Window","Response","Request","RequestInit","RequestMode","Headers","Console","Performance"
+] }
+
+# Outils dev/test
+pretty_assertions     = "1"
+proptest              = "1"
+insta                 = { version = "1", features = ["yaml"] }
+tempfile              = "3"
+
+# Utilitaires build
+dirs-next             = "2"
+
+# Profils de build
+[profile.dev]
+opt-level = 0
+debug = 1
+incremental = true
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+debug = 0

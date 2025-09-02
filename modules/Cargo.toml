@@ -1,0 +1,99 @@
+[package]
+name                   = "vitte-modules"
+description            = "Meta‑crate qui agrège et re‑expose les modules Vitte (opt, typer, resolver, hal, sys, mm, shed, fmt, gfx2d)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+readme.workspace       = true
+keywords               = ["vitte", "modules", "meta", "orchestration"]
+categories             = ["compilers", "development-tools", "no-std"]
+
+[lib]
+# (optionnel) tu peux créer un src/lib.rs qui re‑exporte les API par défaut
+path = "src/lib.rs"
+
+[features]
+# Par défaut on s'appuie sur la std partout
+default = ["std"]
+std = [
+  "vitte-hal/std",
+  "vitte-mm/std",
+  "vitte-opt/std",
+  "vitte-resolver/std",
+  "vitte-shed/std",
+  "vitte-sys/std",
+  "vitte-typer/std",
+  "vitte-fmt/std",
+  "vitte-gfx2d/std",
+]
+
+# Switch global pour tout compiler d'un coup
+full = [
+  "hal", "mm", "opt", "resolver", "shed", "sys", "typer", "fmt", "gfx2d",
+]
+
+# Sélecteurs module par module (activent la dépendance correspondante)
+hal      = ["dep:vitte-hal"]
+mm       = ["dep:vitte-mm"]
+opt      = ["dep:vitte-opt"]
+resolver = ["dep:vitte-resolver"]
+shed     = ["dep:vitte-shed"]
+sys      = ["dep:vitte-sys"]
+typer    = ["dep:vitte-typer"]
+fmt      = ["dep:vitte-fmt"]
+gfx2d    = ["dep:vitte-gfx2d"]
+
+# Mappages de features descendantes pratiques
+# vitte-hal
+hal-net       = ["vitte-hal/net"]
+hal-process   = ["vitte-hal/process"]
+hal-getrandom = ["vitte-hal/getrandom"]
+
+# vitte-sys
+sys-os     = ["vitte-sys/os"]
+sys-memmap = ["vitte-sys/memmap"]
+sys-dl     = ["vitte-sys/dl"]
+sys-guard  = ["vitte-sys/guard"]
+
+# vitte-shed
+dürées = [] # alias libre si tu veux ajouter un set d'options
+shed-watch = ["vitte-shed/watch"]
+shed-serde = ["vitte-shed/serde"]
+
+# Sérialisation globale (propage vers les crates qui la supportent)
+serde = [
+  "vitte-mm/serde",
+  "vitte-opt/serde",
+  "vitte-resolver/serde",
+  "vitte-typer/serde",
+  "vitte-shed/serde",
+]
+
+[dependencies]
+# Tous optionnels: on choisit au cas par cas via features
+vitte-hal      = { path = "./vitte-hal",      version = "0.1.0", default-features = false, optional = true }
+vitte-mm       = { path = "./vitte-mm",       version = "0.1.0", default-features = false, optional = true }
+vitte-opt      = { path = "./vitte-opt",      version = "0.1.0", default-features = false, optional = true }
+vitte-resolver = { path = "./vitte-resolver", version = "0.1.0", default-features = false, optional = true }
+vitte-shed     = { path = "./vitte-shed",     version = "0.1.0", default-features = false, optional = true }
+vitte-sys      = { path = "./vitte-sys",      version = "0.1.0", default-features = false, optional = true }
+vitte-typer    = { path = "./vitte-typer",    version = "0.1.0", default-features = false, optional = true }
+vitte-fmt      = { path = "./vitte-fmt",      version = "0.1.0", default-features = false, optional = true }
+vitte-gfx2d    = { path = "./vitte-gfx2d",    version = "0.1.0", default-features = false, optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+doc_markdown = "allow"
