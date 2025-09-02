@@ -1,41 +1,41 @@
-[package]
-name                   = "vitte-modules"
-description            = "Meta‑crate qui agrège et re‑expose les modules Vitte (opt, typer, resolver, hal, sys, mm, shed, fmt, gfx2d)."
-version.workspace      = true
-edition.workspace      = true
-rust-version.workspace = true
-license.workspace      = true
-repository.workspace   = true
-homepage.workspace     = true
-readme.workspace       = true
-keywords               = ["vitte", "modules", "meta", "orchestration"]
-categories             = ["compilers", "development-tools", "no-std"]
+﻿[package]
+name        = "vitte-modules"
+description = "Meta-crate qui agrège et re-expose les modules Vitte (opt, typer, resolver, hal, sys, mm, shed, fmt, gfx2d)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["vitte", "modules", "meta", "orchestration"]
+categories = ["compilers", "development-tools"]
 
 [lib]
-# (optionnel) tu peux créer un src/lib.rs qui re‑exporte les API par défaut
 path = "src/lib.rs"
 
 [features]
-# Par défaut on s'appuie sur la std partout
 default = ["std"]
+
+# Active la feature `std` de chaque sous-crate (et les lie comme dépendances)
 std = [
-  "vitte-hal/std",
-  "vitte-mm/std",
-  "vitte-opt/std",
-  "vitte-resolver/std",
-  "vitte-shed/std",
-  "vitte-sys/std",
-  "vitte-typer/std",
-  "vitte-fmt/std",
-  "vitte-gfx2d/std",
+  "dep:vitte-hal",      "vitte-hal/std",
+  "dep:vitte-mm",       "vitte-mm/std",
+  "dep:vitte-opt",      "vitte-opt/std",
+  "dep:vitte-resolver", "vitte-resolver/std",
+  "dep:vitte-shed",     "vitte-shed/std",
+  "dep:vitte-sys",      "vitte-sys/std",
+  "dep:vitte-typer",    "vitte-typer/std",
+  "dep:vitte-fmt",      "vitte-fmt/std",
+  "dep:vitte-gfx2d",    "vitte-gfx2d/std",
 ]
 
-# Switch global pour tout compiler d'un coup
-full = [
-  "hal", "mm", "opt", "resolver", "shed", "sys", "typer", "fmt", "gfx2d",
-]
+# Activer tout d'un coup (nécessite que tous les sous-crates existent)
+full = ["hal","mm","opt","resolver","shed","sys","typer","fmt","gfx2d","std"]
 
-# Sélecteurs module par module (activent la dépendance correspondante)
+# Sélecteurs fins (n'ajoutent QUE la dépendance correspondante)
 hal      = ["dep:vitte-hal"]
 mm       = ["dep:vitte-mm"]
 opt      = ["dep:vitte-opt"]
@@ -46,24 +46,8 @@ typer    = ["dep:vitte-typer"]
 fmt      = ["dep:vitte-fmt"]
 gfx2d    = ["dep:vitte-gfx2d"]
 
-# Mappages de features descendantes pratiques
-# vitte-hal
-hal-net       = ["vitte-hal/net"]
-hal-process   = ["vitte-hal/process"]
-hal-getrandom = ["vitte-hal/getrandom"]
-
-# vitte-sys
-sys-os     = ["vitte-sys/os"]
-sys-memmap = ["vitte-sys/memmap"]
-sys-dl     = ["vitte-sys/dl"]
-sys-guard  = ["vitte-sys/guard"]
-
-# vitte-shed
-dürées = [] # alias libre si tu veux ajouter un set d'options
+# Alias / propagation de features (adapte selon ce que tes sous-crates exposent)
 shed-watch = ["vitte-shed/watch"]
-shed-serde = ["vitte-shed/serde"]
-
-# Sérialisation globale (propage vers les crates qui la supportent)
 serde = [
   "vitte-mm/serde",
   "vitte-opt/serde",
@@ -73,7 +57,7 @@ serde = [
 ]
 
 [dependencies]
-# Tous optionnels: on choisit au cas par cas via features
+# Chemins relatifs AU DOSSIER modules/ (donc ./vitte-xxx)
 vitte-hal      = { path = "./vitte-hal",      version = "0.1.0", default-features = false, optional = true }
 vitte-mm       = { path = "./vitte-mm",       version = "0.1.0", default-features = false, optional = true }
 vitte-opt      = { path = "./vitte-opt",      version = "0.1.0", default-features = false, optional = true }
@@ -91,9 +75,9 @@ pretty_assertions = { workspace = true }
 unsafe_code = "forbid"
 
 [lints.clippy]
-all = "warn"
-pedantic = "warn"
-nursery = "warn"
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
 module_name_repetitions = "allow"
-too_many_lines = "allow"
-doc_markdown = "allow"
+too_many_lines          = "allow"
+doc_markdown            = "allow"

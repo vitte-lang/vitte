@@ -1,15 +1,17 @@
 [package]
-name                   = "vitte-runtime"
-description            = "Runtime/VM Vitte : chargeur VITBC, exécution, snapshots, FFI, timers, I/O optionnels."
-version.workspace      = true
-edition.workspace      = true
-rust-version.workspace = true
-license.workspace      = true
-repository.workspace   = true
-homepage.workspace     = true
-readme.workspace       = true
-keywords               = ["vitte", "vm", "bytecode", "runtime", "ffi"]
-categories             = ["compilers", "development-tools"]
+name        = "vitte-runtime"
+description = "Runtime/VM Vitte : chargeur VITBC, exécution, snapshots, FFI, timers, I/O optionnels."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["vitte", "vm", "bytecode", "runtime", "ffi"]
+categories = ["compilers", "development-tools"]
 
 [lib]
 name = "vitte_runtime"
@@ -28,94 +30,94 @@ required-features = ["repl"]
 
 [features]
 # Confort par défaut (safe et bavard quand il faut)
-default       = ["std", "errors", "serde", "bytecode", "tracing"]
+default = ["std", "errors", "serde", "bytecode", "tracing"]
 
 # Environnements
-std           = []                 # full std
-alloc-only    = []                 # no_std + alloc (désactive le FS, le REPL, etc.)
+std        = []   # full std
+alloc-only = []   # no_std + alloc (désactive le FS, le REPL, etc.)
 
 # Sérialisation (snapshots d'état, dumps de frames)
-serde         = ["dep:serde", "dep:serde_json"]
+serde = ["dep:serde", "dep:serde_json"]
 
 # Erreurs jolies
-errors        = ["dep:thiserror"]
+errors = ["dep:thiserror"]
 
 # Traces (profilage soft)
-tracing       = ["dep:tracing", "dep:tracing-subscriber"]
+tracing = ["dep:tracing", "dep:tracing-subscriber"]
 
 # VM/Bytecode utilitaires (lecture fichiers .vitbc, CRC…)
-bytecode      = ["dep:byteorder", "dep:crc32fast"]
+bytecode = ["dep:byteorder", "dep:crc32fast"]
 
 # Compression du bytecode (optionnelle)
-compression   = ["dep:zstd", "dep:lz4_flex"]
+compression = ["dep:zstd", "dep:lz4_flex"]
 
 # Mémoire & perfs
-small         = ["dep:smallvec"]
-arena         = ["dep:bumpalo"]
-parallel      = ["dep:rayon", "dep:crossbeam-channel"]
-sync          = ["dep:parking_lot", "dep:dashmap"]
+small    = ["dep:smallvec"]
+arena    = ["dep:bumpalo"]
+parallel = ["dep:rayon", "dep:crossbeam-channel"]
+sync     = ["dep:parking_lot", "dep:dashmap"]
 
 # Mappage mémoire fichiers (chargement rapide .vitbc)
-mmap          = ["dep:memmap2"]
+mmap = ["dep:memmap2"]
 
 # FFI dynamique (chargement de libs natives)
-ffi          = ["dep:libloading"]
+ffi  = ["dep:libloading"]
 
 # Temps / horloges (no_std-friendly via `instant`)
-time          = ["dep:instant"]
+time = ["dep:instant"]
 
 # CLI / REPL pour dev
-cli           = ["serde", "dep:clap"]
-repl          = ["cli", "dep:rustyline"]
+cli  = ["serde", "dep:clap"]
+repl = ["cli", "dep:rustyline"]
 
 # Intégrations internes éventuelles
-ir            = ["dep:vitte-ir"]   # si la VM sait introspecter l’IR (debug)
+ir = ["dep:vitte-ir"]   # si la VM sait introspecter l’IR (debug)
 
 # (Option future) JIT — placeholder pour plus tard (pas de deps par défaut)
-jit           = []
+jit = []
 
 [dependencies]
 # Internes
-vitte-core    = { path = "../vitte-core", version = "0.1.0" }
-vitte-ir      = { path = "../vitte-ir",   version = "0.1.0", optional = true }
+vitte-core = { path = "../vitte-core", version = "0.1.0" }
+vitte-ir   = { path = "../vitte-ir",   version = "0.1.0", optional = true }
 # stdlib éventuelle (si tu en as une) — garde-la commentée si non prête :
-# vitte-stdlib  = { path = "../stdlib",     version = "0.1.0", optional = true }
+# vitte-stdlib = { path = "../stdlib", version = "0.1.0", optional = true }
 
 # Qualité de vie / infra
-thiserror     = { workspace = true, optional = true }
-anyhow        = { version = "1" }
+thiserror = { workspace = true, optional = true }
+anyhow    = { version = "1" }
 
 # Tracing
-tracing             = { version = "0.1", optional = true, features = ["attributes", "log", "release_max_level_info"] }
-tracing-subscriber  = { version = "0.3", optional = true, features = ["env-filter", "fmt", "ansi", "time"] }
+tracing            = { version = "0.1", optional = true, features = ["attributes", "log", "release_max_level_info"] }
+tracing-subscriber = { version = "0.3", optional = true, features = ["env-filter", "fmt", "ansi", "time"] }
 
 # Bytecode & compression
-byteorder     = { version = "1",    optional = true }
-crc32fast     = { version = "1",    optional = true }
-zstd          = { version = "0.13", optional = true }
-lz4_flex      = { version = "0.11", optional = true }
+byteorder = { version = "1",    optional = true }
+crc32fast = { version = "1",    optional = true }
+zstd      = { version = "0.13", optional = true }
+lz4_flex  = { version = "0.11", optional = true }
 
 # Mémoire / perfs
-smallvec      = { version = "1.15.1", optional = true }
-bumpalo       = { version = "3",       optional = true }
-parking_lot   = { version = "0.12",    optional = true }
-dashmap       = { version = "6.1.0",   optional = true }
-rayon         = { version = "1",       optional = true }
-crossbeam-channel = { version = "0.5", optional = true }
-memmap2       = { version = "0.9",     optional = true }
-instant       = { version = "0.1",     optional = true }
+smallvec         = { version = "1.15.1", optional = true }
+bumpalo          = { version = "3",       optional = true }
+parking_lot      = { version = "0.12",    optional = true }
+dashmap          = { version = "6.1.0",   optional = true }
+rayon            = { version = "1",       optional = true }
+crossbeam-channel = { version = "0.5",    optional = true }
+memmap2          = { version = "0.9",     optional = true }
+instant          = { version = "0.1",     optional = true }
 
 # Sérialisation
-serde         = { workspace = true, optional = true, default-features = false, features = ["derive"] }
-serde_json    = { workspace = true, optional = true }
+serde      = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+serde_json = { workspace = true, optional = true }
 
 # CLI / REPL / FFI
-clap          = { version = "4.5", optional = true, features = ["derive"] }
-rustyline     = { version = "17.0.1",  optional = true }
-libloading    = { version = "0.8", optional = true }
+clap       = { version = "4.5",    optional = true, features = ["derive"] }
+rustyline  = { version = "17.0.1", optional = true }
+libloading = { version = "0.8",    optional = true }
 
 # Divers utiles
-bitflags      = { version = "2.6" }
+bitflags = { version = "2.6" }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
@@ -127,18 +129,18 @@ tempfile          = { version = "3" }
 criterion         = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
 
 [package.metadata.docs.rs]
-all-features       = false
-features           = ["std", "serde", "bytecode", "compression"]
+all-features        = false
+features            = ["std", "serde", "bytecode", "compression"]
 no-default-features = false
-rustdoc-args       = ["--cfg", "docsrs"]
+rustdoc-args        = ["--cfg", "docsrs"]
 
 [lints.rust]
 unsafe_code = "forbid"
 
 [lints.clippy]
-all = "warn"
-pedantic = "warn"
-nursery = "warn"
-module_name_repetitions = "allow"
-too_many_lines = "allow"
-doc_markdown = "allow"
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+too_many_lines           = "allow"
+doc_markdown             = "allow"

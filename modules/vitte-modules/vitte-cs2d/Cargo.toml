@@ -1,28 +1,57 @@
-[package]
-name = "vitte-cs2d"
+﻿[package]
+name        = "vitte-cs2d"
 description = "Utilitaires 2D compacts et solides pour Vitte : vecteurs, matrices, géométrie, collisions, spatial hash, pathfinding A*, RNG."
-version = "0.1.0"
-edition = "2021"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/vitte-lang/vitte"
-homepage   = "https://github.com/vitte-lang/vitte"
-readme     = "README.md"
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
 keywords   = ["vitte", "2d", "math", "geometry", "pathfinding", "game"]
 categories = ["game-development", "mathematics", "data-structures"]
 
 [lib]
-name = "vitte_cs2d"
-path = "src/lib.rs"
+name       = "vitte_cs2d"
+path       = "src/lib.rs"
 crate-type = ["rlib"]
 
 [features]
+# Par défaut on s'appuie sur la std (HashMap/HashSet, etc.)
 default = ["std"]
-std     = []        # active HashMap, HashSet
-f64     = []        # utilise f64 au lieu de f32
-serde   = ["dep:serde"]
+
+# Drapeau std homogène avec le reste du workspace
+std = []
+
+# Utiliser f64 au lieu de f32
+f64 = []
+
+# Sérialisation (types math/geom, options) via serde
+serde = ["dep:serde"]
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"], optional = true }
+# Hérite du workspace (déjà déclaré dans [workspace.dependencies])
+serde = { workspace = true, optional = true }
 
 [dev-dependencies]
-serde_json = "1.0"
+pretty_assertions = { workspace = true }
+serde_json        = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+too_many_lines          = "allow"
+doc_markdown            = "allow"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "serde"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]

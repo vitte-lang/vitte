@@ -1,83 +1,85 @@
 [package]
-name                   = "vitte-wasm"
-description            = "Bindings WebAssembly pour Vitte : exécution dans le navigateur/Node, chargement VITBC, API JS propre."
-version.workspace      = true
-edition.workspace      = true
-rust-version.workspace = true
-license.workspace      = true
-repository.workspace   = true
-homepage.workspace     = true
-readme.workspace       = true
-keywords               = ["vitte", "wasm", "web", "bytecode", "bindgen"]
-categories             = ["wasm", "api-bindings", "web-programming::wasm"]
+name        = "vitte-wasm"
+description = "Bindings WebAssembly pour Vitte : exécution dans le navigateur/Node, chargement VITBC, API JS propre."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["vitte", "wasm", "web", "bytecode", "bindgen"]
+categories = ["wasm", "api-bindings", "web-programming::wasm"]
 
 [lib]
-name = "vitte_wasm"
-path = "src/lib.rs"
+name       = "vitte_wasm"
+path       = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]   # cdylib pour wasm-bindgen, rlib pour tests/libs
 
 [features]
 # Par défaut : bindings JS, VM + VITBC, logs console, sérialisation.
-default        = ["std", "bindings", "vm", "vitbc", "serde", "tracing", "console"]
+default    = ["std", "bindings", "vm", "vitbc", "serde", "tracing", "console"]
 
 # Environnements
-std            = []
-alloc-only     = []   # si tu veux viser un profil no_std + alloc (rare côté wasm)
+std        = []
+alloc-only = []   # si tu veux viser un profil no_std + alloc (rare côté wasm)
 
 # Périmètre technique
-bindings       = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen", "dep:wasm-bindgen-futures"]
-js             = ["dep:js-sys", "dep:web-sys"]   # APIs JS (console/perf/etc.)
-console        = ["dep:console_error_panic_hook"] # stacktraces lisibles dans la console
-rng            = ["dep:getrandom"]               # RNG côté wasm (feature js activée)
+bindings   = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen", "dep:wasm-bindgen-futures"]
+js         = ["dep:js-sys", "dep:web-sys"]   # APIs JS (console/perf/etc.)
+console    = ["dep:console_error_panic_hook"] # stacktraces lisibles dans la console
+rng        = ["dep:getrandom"]               # RNG côté wasm (feature js activée)
 
 # Intégrations Vitte
-vm             = ["dep:vitte-vm"]                # VM “pure” légère
-runtime        = ["dep:vitte-runtime"]           # Runtime complet (I/O abstraites)
-vitbc          = ["dep:vitte-vitbc"]             # Chargement .vitbc côté wasm
+vm         = ["dep:vitte-vm"]                # VM “pure” légère
+runtime    = ["dep:vitte-runtime"]           # Runtime complet (I/O abstraites)
+vitbc      = ["dep:vitte-vitbc"]             # Chargement .vitbc côté wasm
 
 # Perfs / structures
-small          = ["dep:smallvec"]
+small      = ["dep:smallvec"]
 
 # Observabilité / sérialisation
-tracing        = ["dep:tracing"]                 # subscriber côté app JS
-serde          = ["dep:serde", "dep:serde_json"]
+tracing    = ["dep:tracing"]                 # subscriber côté app JS
+serde      = ["dep:serde", "dep:serde_json"]
 
 # Threads wasm (option avancée, nécessite config côté bundler/headers)
-threads        = ["js"]                          # active les types Atomics/SAB côté web-sys si besoin
+threads    = ["js"]                          # active les types Atomics/SAB côté web-sys si besoin
 
 [dependencies]
 # Internes
-vitte-core       = { path = "../vitte-core",   version = "0.1.0" }
-vitte-vm         = { path = "../vitte-vm",     version = "0.1.0", optional = true }
-vitte-runtime    = { path = "../vitte-runtime",version = "0.1.0", optional = true }
-vitte-vitbc      = { path = "../vitte-vitbc",  version = "0.1.0", optional = true }
+vitte-core    = { path = "../vitte-core",    version = "0.1.0" }
+vitte-vm      = { path = "../vitte-vm",      version = "0.1.0", optional = true }
+vitte-runtime = { path = "../vitte-runtime", version = "0.1.0", optional = true }
+vitte-vitbc   = { path = "../vitte-vitbc",   version = "0.1.0", optional = true }
 
 # Bindings / JS / Web
-wasm-bindgen           = { version = "0.2", optional = true }
-wasm-bindgen-futures   = { version = "0.4", optional = true }
-serde-wasm-bindgen     = { version = "0.6", optional = true }
-js-sys                 = { version = "0.3", optional = true }
-web-sys                = { version = "0.3", optional = true, features = [
+wasm-bindgen         = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+serde-wasm-bindgen   = { version = "0.6", optional = true }
+js-sys               = { version = "0.3", optional = true }
+web-sys              = { version = "0.3", optional = true, features = [
   # garde léger; ajoute d'autres APIs au besoin :
   "Console", "Performance", "Window"
 ]}
 
 # Qualité de vie
-thiserror        = { workspace = true, optional = true }
-anyhow           = { version = "1" }
-smallvec         = { version = "1.15.1", optional = true }
+thiserror = { workspace = true, optional = true }
+anyhow    = { version = "1" }
+smallvec  = { version = "1.15.1", optional = true }
 
 # Logs / sérialisation
-tracing          = { version = "0.1", optional = true, features = ["attributes", "log", "release_max_level_info"] }
-serde            = { workspace = true, optional = true, default-features = false, features = ["derive"] }
-serde_json       = { workspace = true, optional = true }
+tracing   = { version = "0.1", optional = true, features = ["attributes", "log", "release_max_level_info"] }
+serde     = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+serde_json= { workspace = true, optional = true }
 
 # Panic hook & RNG pour wasm
 console_error_panic_hook = { version = "0.1", optional = true }
-getrandom        = { version = "0.3.3", optional = true, features = ["js"] }
+getrandom = { version = "0.3.3", optional = true, features = ["js"] }
 
 # Divers utiles
-bitflags         = { version = "2.6" }
+bitflags  = { version = "2.6" }
 
 [dev-dependencies]
 wasm-bindgen-test = { version = "0.3" }
@@ -98,9 +100,9 @@ rustdoc-args        = ["--cfg", "docsrs"]
 unsafe_code = "forbid"
 
 [lints.clippy]
-all = "warn"
-pedantic = "warn"
-nursery = "warn"
-module_name_repetitions = "allow"
-too_many_lines = "allow"
-doc_markdown = "allow"
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+too_many_lines           = "allow"
+doc_markdown             = "allow"

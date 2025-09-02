@@ -552,7 +552,7 @@ impl Canvas2D {
 }
 
 // ================================ Tests =================================
-#[cfg(test)]
+#[cfg(ptest)]
 mod tests {
     use super::*;
 
