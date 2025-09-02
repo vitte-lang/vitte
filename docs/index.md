@@ -41,25 +41,6 @@ Si vous cherchez un point d’entrée : commencez par **[Getting Started](./GETT
 
 > Cette doc accompagne les crates : `vitte-lexer`, `vitte-parser`, `vitte-ast`, `vitte-ir`, `vitte-vitbc`, `vitte-vm`, `vitte-runtime`, `vitte-lsp`, `vitte-tools`, `vitte-wasm`, `vitte-stdlib`.
 
----
-
-## Conflits de numéros à résoudre
-
-Plusieurs fichiers partagent le même numéro (A/B). À renuméroter lors des prochaines PR :
-
-* **0020** : `governance-and-evolution` **&** `internationalization-and-localization`
-* **0021** : `garbage-collection-vs-manual-memory` **&** `internationalization-localization`
-* **0022** : `embedded-systems-programming` **&** `reflection-and-metaprogramming`
-* **0023** : `serialization-and-deserialization` **&** `webassembly-web-integration`
-* **0024** : `ai-ml-data-science` **&** `networking-and-io`
-* **0025** : `networking-distributed-systems` **&** `parallelism-and-simd`
-* **0026** : `mobile-cross-platform` **&** `webassembly-and-embedded-support`
-* **0027** : `game-development-graphics` **&** `versioning-and-semver-policy`
-* **0028** : `blockchain-smart-contracts` **&** `governance-and-rfc-process`
-* **0029** : `operating-system-development` **&** `standard-error-codes-and-diagnostics`
-* **0030** : `debugging-and-profiling-tools` **&** `quantum-computing-future`
-
-> Proposition : renuméroter les entrées « B » à partir de **0054** (prochain slot libre) en conservant l’ordre ci‑dessus.
 
 ---
 
