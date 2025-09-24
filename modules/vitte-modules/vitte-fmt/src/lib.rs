@@ -25,7 +25,7 @@ use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
 #[cfg(feature = "std")]
 use std::{
     fs,
-    io::{self, Read},
+    io::Read,
     path::Path,
 };
 
@@ -202,7 +202,6 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
                 }
             },
             'a'..='z' | 'A'..='Z' | '_' => {
-                let start = i;
                 i += 1;
                 while i < b.len() {
                     let ch = b[i] as char;
@@ -216,7 +215,6 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
                 // on n'a pas besoin de stocker la lexeme pour ce formatter basique
             },
             '0'..='9' => {
-                let start = i;
                 i += 1;
                 while i < b.len() {
                     let ch = b[i] as char;
@@ -227,8 +225,6 @@ pub fn lex(src: &str) -> Result<Vec<Tok>> {
                     }
                 }
                 out.push(Tok { kind: TokKind::Num });
-                let _ = &src[start..i];
-                let _ = _; // silencieux
             },
             '"' | '\'' => {
                 let quote = c;
@@ -563,13 +559,13 @@ pub fn format_file<P: AsRef<Path>>(path: P, opt: &FmtOptions) -> Result<String> 
 fn trim_trailing_spaces_per_line(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut line_has_ws = false;
-    let mut line_ws_start = 0usize;
+    let mut _line_ws_start = 0usize;
     for (i, ch) in s.char_indices() {
         match ch {
             ' ' | '\t' => {
                 if !line_has_ws {
                     line_has_ws = true;
-                    line_ws_start = i;
+                    _line_ws_start = i;
                 }
             },
             '\n' => {

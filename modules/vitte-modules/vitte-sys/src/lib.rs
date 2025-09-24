@@ -16,11 +16,11 @@
 extern crate alloc;
 
 #[cfg(not(feature = "std"))]
-use alloc::{boxed::Box, format, string::String, vec::Vec};
+use alloc::{format, string::String, vec::Vec};
 #[cfg(feature = "std")]
-use std::{boxed::Box, string::String, vec::Vec};
+use std::{string::String, vec::Vec};
 
-use core::{fmt, mem, ptr};
+use core::fmt;
 
 // ───────────────────────────── Erreur / Result ────────────────────────────
 
@@ -66,18 +66,7 @@ pub fn now_nanos() -> u128 {
 
 /// Taille de page la plus probable (4K fallback si inconnue).
 #[cfg(feature = "std")]
-pub fn page_size() -> usize {
-    #[cfg(unix)]
-    {
-        use std::sync::OnceLock;
-        static P: OnceLock<usize> = OnceLock::new();
-        *P.get_or_init(|| unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize }.max(4096))
-    }
-    #[cfg(windows)]
-    {
-        4096
-    } // interro robuste possible via VirtualQuery, gardé simple
-}
+pub fn page_size() -> usize { 4096 }
 #[cfg(not(feature = "std"))]
 pub fn page_size() -> usize {
     4096
@@ -98,11 +87,9 @@ pub struct Pages {
     #[cfg(feature = "os")]
     os: OsPages,
     #[cfg(not(feature = "os"))]
-    buf: Vec<u8>,
+    _buf: Vec<u8>,
 }
 
-unsafe impl Send for Pages {}
-unsafe impl Sync for Pages {}
 
 impl Pages {
     /// Réserve un espace *page-aligné*. Avec feature `os`, appelle l’OS.
@@ -115,12 +102,9 @@ impl Pages {
         }
         #[cfg(not(feature = "os"))]
         {
-            let mut buf = Vec::with_capacity(size);
-            unsafe {
-                buf.set_len(size);
-            }
+            let mut buf = vec![0u8; size];
             let ptr = buf.as_mut_ptr();
-            Ok(Self { ptr, size, buf })
+            Ok(Self { ptr, size, _buf: buf })
         }
     }
     pub fn as_ptr(&self) -> *mut u8 {
@@ -186,6 +170,7 @@ fn round_up(x: usize, a: usize) -> usize {
 #[cfg(feature = "os")]
 mod os_pages {
     use super::*;
+    use core::ptr;
     #[cfg(unix)]
     use libc;
     #[cfg(windows)]
@@ -350,7 +335,7 @@ pub struct FileMap {
     #[cfg(feature = "memmap")]
     map: memmap2::Mmap,
     #[cfg(all(feature = "std", not(feature = "memmap")))]
-    buf: Vec<u8>,
+    _buf: Vec<u8>,
 }
 impl FileMap {
     pub fn as_ptr(&self) -> *const u8 {
@@ -380,7 +365,7 @@ pub fn map_file_read(path: &str) -> Result<FileMap> {
     f.read_to_end(&mut buf).map_err(|e| SysError::Io(e.to_string()))?;
     let ptr = buf.as_ptr();
     let len = buf.len();
-    Ok(FileMap { ptr, len, buf })
+    Ok(FileMap { ptr, len, _buf: buf })
 }
 
 #[cfg(not(feature = "std"))]
@@ -422,7 +407,7 @@ pub fn yield_now() {}
 
 #[cfg(feature = "std")]
 pub fn set_current_thread_name(name: &str) {
-    let _ = std::thread::current().set_name(name.to_string());
+    let _ = name;
 }
 #[cfg(not(feature = "std"))]
 pub fn set_current_thread_name(_: &str) {}

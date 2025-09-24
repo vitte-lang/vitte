@@ -155,7 +155,7 @@ impl Module {
         }
 
         // CRC32 sur tout sauf magic/version
-        let bytes = w.into_bytes();
+        let bytes = w.into_vec();
         let crc = crc32_ieee(&bytes[6..]);
         let mut out = bytes;
         out.extend_from_slice(b"CRCC");
@@ -169,7 +169,7 @@ impl Module {
         let mut r = ByteReader::new(data);
         let magic = r.read_bytes(6)?;
         if magic != b"VITBC\0" {
-            return Err(CoreError::msg("invalid VITBC magic"));
+            return Err(CoreError::corrupted("invalid VITBC magic"));
         }
         let version = r.read_u16_le()?;
 
@@ -177,13 +177,13 @@ impl Module {
         m.version = version;
 
         // Sections
-        while !r.is_eof() {
+        while r.remaining() > 0 {
             let tag = r.read_tag()?;
             if tag == SectionTag::CRCC {
                 let expected = r.read_u32_le()?;
                 let crc = crc32_ieee(&data[6..data.len() - 8]); // 6=magic+ver, 8=CRCC+u32
                 if expected != crc {
-                    return Err(CoreError::msg("CRC32 mismatch"));
+                    return Err(CoreError::corrupted("CRC32 mismatch"));
                 }
                 m.crc32 = expected;
                 break;
@@ -193,24 +193,24 @@ impl Module {
             match tag {
                 SectionTag::INTS => {
                     let mut rr = ByteReader::new(payload);
-                    while !rr.is_eof() {
+                    while rr.remaining() > 0 {
                         m.ints.push(rr.read_i64_le()?);
                     }
                 }
                 SectionTag::FLTS => {
                     let mut rr = ByteReader::new(payload);
-                    while !rr.is_eof() {
+                    while rr.remaining() > 0 {
                         m.floats.push(rr.read_f64_le()?);
                     }
                 }
                 SectionTag::STRS => {
                     let mut rr = ByteReader::new(payload);
-                    while !rr.is_eof() {
+                    while rr.remaining() > 0 {
                         let l = rr.read_u32_le()? as usize;
                         let s = rr.read_bytes(l)?;
                         m.strings.push(
                             core::str::from_utf8(s)
-                                .map_err(|_| CoreError::msg("invalid UTF-8"))?
+                                .map_err(|_| CoreError::corrupted("invalid UTF-8"))?
                                 .to_string(),
                         );
                     }
@@ -232,12 +232,12 @@ impl Module {
                 }
                 SectionTag::NAME => {
                     let mut rr = ByteReader::new(payload);
-                    while !rr.is_eof() {
+                    while rr.remaining() > 0 {
                         let l = rr.read_u32_le()? as usize;
                         let s = rr.read_bytes(l)?;
                         m.names.push(
                             core::str::from_utf8(s)
-                                .map_err(|_| CoreError::msg("invalid UTF-8"))?
+                                .map_err(|_| CoreError::corrupted("invalid UTF-8"))?
                                 .to_string(),
                         );
                     }
@@ -255,17 +255,17 @@ impl Module {
     #[cfg(feature = "std")]
     pub fn write_file<P: AsRef<Path>>(&self, path: P) -> CoreResult<()> {
         let bytes = self.to_bytes(false)?;
-        fs::write(path, bytes)?;
-        Ok(())
+        fs::write(path, bytes).map_err(|e| CoreError::corrupted(format!("io write error: {e}")))
     }
 
     /// Lit un module depuis un fichier (nécessite std).
     #[cfg(feature = "std")]
     pub fn read_file<P: AsRef<Path>>(path: P) -> CoreResult<Self> {
         let mut buf = Vec::new();
-        fs::File::open(path)?.read_to_end(&mut buf)?;
+        let mut file = fs::File::open(path).map_err(|e| CoreError::corrupted(format!("io open error: {e}")))?;
+        file.read_to_end(&mut buf).map_err(|e| CoreError::corrupted(format!("io read error: {e}")))?;
         Self::from_bytes(&buf)
-    }
+}
 }
 
 /* ─────────────────────────── Tests ─────────────────────────── */

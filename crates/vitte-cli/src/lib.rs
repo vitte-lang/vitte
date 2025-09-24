@@ -24,9 +24,6 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 
 #[cfg(feature = "trace")]
-use log::{debug, error, info, warn};
-
-#[cfg(feature = "trace")]
 use env_logger;
 
 #[cfg(feature = "color")]
@@ -457,18 +454,22 @@ fn status_ok(tag: &str, msg: &str) {
     #[cfg(feature = "color")]
     {
         eprintln!("{} {}", tag.green().bold(), msg);
-        return;
     }
-    eprintln!("{} {}", tag, msg);
+    #[cfg(not(feature = "color"))]
+    {
+        eprintln!("{} {}", tag, msg);
+    }
 }
 
 fn status_info(tag: &str, msg: &str) {
     #[cfg(feature = "color")]
     {
         eprintln!("{} {}", tag.blue().bold(), msg);
-        return;
     }
-    eprintln!("{} {}", tag, msg);
+    #[cfg(not(feature = "color"))]
+    {
+        eprintln!("{} {}", tag, msg);
+    }
 }
 
 // ───────────────────────────── Tests ─────────────────────────────

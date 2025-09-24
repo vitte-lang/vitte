@@ -715,7 +715,7 @@ mod tests {
     #[test]
     fn raw_strings() {
         use TokenKind::*;
-        let v = toks(r#"r"ok" r#"multi " hash"# r##"## inside "##"##"#);
+        let v = toks(r###"r"ok" r#"multi " hash"# r##"## inside "##"##"###);
         assert_eq!(v[0], Str("ok".into()));
         assert_eq!(v[1], Str("multi \" hash".into()));
         assert_eq!(v[2], Str("## inside \"##".into()));

@@ -29,7 +29,6 @@ use std::{
 
 use core::{
     cmp::Ordering,
-    f32::consts::PI,
     fmt,
     hash::Hash,
     ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
@@ -491,13 +490,12 @@ pub mod collide {
         if t_enter > t_exit || t_exit < 0.0 || t_enter > 1.0 {
             return None;
         }
-        let mut n = Vec2::zero();
-        if txmin > tymin {
-            n = Vec2::new(if invx < 0.0 { 1.0 } else { -1.0 } as Scalar, 0.0 as Scalar);
+        let normal = if txmin > tymin {
+            Vec2::new(if invx < 0.0 { 1.0 } else { -1.0 } as Scalar, 0.0 as Scalar)
         } else {
-            n = Vec2::new(0.0 as Scalar, if invy < 0.0 { 1.0 } else { -1.0 } as Scalar);
-        }
-        Some(Hit { time: t_enter.max(0.0), normal: n, delta: vel * t_enter.max(0.0) })
+            Vec2::new(0.0 as Scalar, if invy < 0.0 { 1.0 } else { -1.0 } as Scalar)
+        };
+        Some(Hit { time: t_enter.max(0.0), normal, delta: vel * t_enter.max(0.0) })
     }
 }
 
@@ -648,7 +646,8 @@ pub mod path {
         }
         pub fn set_block(&mut self, x: i32, y: i32, walkable: bool) {
             if x >= 0 && y >= 0 && x < self.w && y < self.h {
-                self.cells[self.idx(x, y)] = walkable;
+                let idx = self.idx(x, y);
+                self.cells[idx] = walkable;
             }
         }
         #[inline]
@@ -783,6 +782,7 @@ pub mod prelude {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::f32::consts::PI;
 
     #[test]
     fn vec2_ops() {

@@ -13,8 +13,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
-use std::io::{BufRead, Read, Write};
-use std::{fmt, io};
+use std::io::{self, BufRead, Write};
+use std::fmt;
 
 /// Résultat interne simplifié.
 type DapResult<T> = Result<T, DapError>;
@@ -194,9 +194,9 @@ pub struct DapServer<B: Backend> {
     next_bp_id: i64,
     bp_ids: HashMap<(String, i64), i64>,
     /// variables handle allocator
-    next_var_ref: i64,
+    _next_var_ref: i64,
     /// map var_ref → children variables (mock cache si besoin)
-    var_store: BTreeMap<i64, Vec<Variable>>,
+    _var_store: BTreeMap<i64, Vec<Variable>>,
 }
 
 impl<B: Backend> DapServer<B> {
@@ -205,8 +205,8 @@ impl<B: Backend> DapServer<B> {
             backend,
             next_bp_id: 1,
             bp_ids: HashMap::new(),
-            next_var_ref: 1_000,
-            var_store: BTreeMap::new(),
+            _next_var_ref: 1_000,
+            _var_store: BTreeMap::new(),
         }
     }
 
@@ -461,7 +461,7 @@ impl<B: Backend> DapServer<B> {
 /* ─────────────────────────── Framing helpers ─────────────────────────── */
 
 /// Lit un message DAP (framing Content-Length) depuis un `BufRead`.
-fn read_dap_message<R: BufRead>(r: &mut R) -> DapResult<Option<Vec<u8>>> {
+fn read_dap_message<R: BufRead + io::Read>(r: &mut R) -> DapResult<Option<Vec<u8>>> {
     let mut header = String::new();
     let mut content_length: Option<usize> = None;
 

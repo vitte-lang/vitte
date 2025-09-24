@@ -81,10 +81,15 @@ pub enum Item {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Function {
+    /// Nom de la fonction.
     pub name: String,
+    /// Paramètres positionnels de la fonction.
     pub params: Vec<Param>,
+    /// Type de retour attendu (`None` → `void`).
     pub return_type: Option<Type>,
+    /// Corps de la fonction.
     pub body: Block,
+    /// Localisation de la déclaration.
     pub span: Option<Span>,
 }
 
@@ -92,8 +97,11 @@ pub struct Function {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Param {
+    /// Nom du paramètre.
     pub name: String,
+    /// Type attendu.
     pub ty: Type,
+    /// Localisation du paramètre.
     pub span: Option<Span>,
 }
 
@@ -101,9 +109,13 @@ pub struct Param {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ConstDecl {
+    /// Nom de la constante.
     pub name: String,
+    /// Type explicite (si fourni).
     pub ty: Option<Type>,
+    /// Valeur de la constante.
     pub value: Expr,
+    /// Localisation de la déclaration.
     pub span: Option<Span>,
 }
 
@@ -111,8 +123,11 @@ pub struct ConstDecl {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct StructDecl {
+    /// Nom de la structure.
     pub name: String,
+    /// Champs composant la structure.
     pub fields: Vec<Field>,
+    /// Localisation de la déclaration.
     pub span: Option<Span>,
 }
 
@@ -120,8 +135,11 @@ pub struct StructDecl {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct EnumDecl {
+    /// Nom de l'énumération.
     pub name: String,
+    /// Variantes déclarées.
     pub variants: Vec<EnumVariant>,
+    /// Localisation de la déclaration.
     pub span: Option<Span>,
 }
 
@@ -129,8 +147,11 @@ pub struct EnumDecl {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Field {
+    /// Nom du champ.
     pub name: String,
+    /// Type du champ.
     pub ty: Type,
+    /// Localisation du champ.
     pub span: Option<Span>,
 }
 
@@ -138,8 +159,11 @@ pub struct Field {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct EnumVariant {
+    /// Nom de la variante.
     pub name: String,
+    /// Types des éléments associés à la variante.
     pub fields: Vec<Type>,
+    /// Localisation de la variante.
     pub span: Option<Span>,
 }
 
@@ -147,7 +171,9 @@ pub struct EnumVariant {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Block {
+    /// Instructions contenues dans le bloc.
     pub stmts: Vec<Stmt>,
+    /// Localisation du bloc.
     pub span: Option<Span>,
 }
 
@@ -157,9 +183,13 @@ pub struct Block {
 pub enum Stmt {
     /// Déclaration de variable
     Let {
+        /// Nom de la variable.
         name: String,
+        /// Type annoté (si fourni).
         ty: Option<Type>,
+        /// Valeur initiale.
         value: Option<Expr>,
+        /// Localisation de la déclaration.
         span: Option<Span>,
     },
     /// Expression seule (souvent un appel)
@@ -168,22 +198,33 @@ pub enum Stmt {
     Return(Option<Expr>, Option<Span>),
     /// Boucle `while`
     While {
+        /// Condition évaluée à chaque itération.
         condition: Expr,
+        /// Corps de la boucle.
         body: Block,
+        /// Localisation de la boucle.
         span: Option<Span>,
     },
     /// Boucle `for`
     For {
+        /// Nom de la variable itérée.
         var: String,
+        /// Expression donnant l'itérable.
         iter: Expr,
+        /// Corps de la boucle.
         body: Block,
+        /// Localisation de la boucle.
         span: Option<Span>,
     },
     /// Conditionnelle `if ... else`
     If {
+        /// Expression conditionnelle.
         condition: Expr,
+        /// Bloc exécuté si la condition est vraie.
         then_block: Block,
+        /// Bloc optionnel exécuté sinon.
         else_block: Option<Block>,
+        /// Localisation de l'instruction.
         span: Option<Span>,
     },
 }
@@ -198,23 +239,32 @@ pub enum Expr {
     Ident(String),
     /// Appel de fonction
     Call {
+        /// Expression représentant la fonction appelée.
         func: Box<Expr>,
+        /// Arguments passés à l'appel.
         args: Vec<Expr>,
     },
     /// Opération binaire
     Binary {
+        /// Opérande gauche.
         left: Box<Expr>,
+        /// Opérateur appliqué.
         op: BinaryOp,
+        /// Opérande droite.
         right: Box<Expr>,
     },
     /// Opération unaire
     Unary {
+        /// Opérateur unaire appliqué.
         op: UnaryOp,
+        /// Expression ciblée par l'opérateur.
         expr: Box<Expr>,
     },
     /// Accès champ structure
     Field {
+        /// Expression support (struct ou tuple).
         expr: Box<Expr>,
+        /// Nom du champ accédé.
         field: String,
     },
 }
@@ -223,10 +273,15 @@ pub enum Expr {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Literal {
+    /// Entier signé 64 bits.
     Int(i64),
+    /// Nombre flottant 64 bits.
     Float(f64),
+    /// Booléen.
     Bool(bool),
+    /// Chaîne UTF-8.
     Str(String),
+    /// Valeur nulle (`null`).
     Null,
 }
 
@@ -234,27 +289,58 @@ pub enum Literal {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum BinaryOp {
-    Add, Sub, Mul, Div, Mod,
-    Eq, Ne, Lt, Le, Gt, Ge,
-    And, Or,
+    /// Addition.
+    Add,
+    /// Soustraction.
+    Sub,
+    /// Multiplication.
+    Mul,
+    /// Division.
+    Div,
+    /// Modulo.
+    Mod,
+    /// Égalité.
+    Eq,
+    /// Différence.
+    Ne,
+    /// Inférieur strict.
+    Lt,
+    /// Inférieur ou égal.
+    Le,
+    /// Supérieur strict.
+    Gt,
+    /// Supérieur ou égal.
+    Ge,
+    /// Conjonction logique.
+    And,
+    /// Disjonction logique.
+    Or,
 }
 
 /// Opérateurs unaires
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum UnaryOp {
-    Neg,   // -x
-    Not,   // !x
+    /// Négation arithmétique (`-x`).
+    Neg,
+    /// Négation logique (`!x`).
+    Not,
 }
 
 /// Types du langage Vitte
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Type {
+    /// Type entier signé.
     Int,
+    /// Type flottant.
     Float,
+    /// Type booléen.
     Bool,
+    /// Type chaîne.
     Str,
+    /// Absence de valeur (`void`).
     Void,
+    /// Type défini par l'utilisateur.
     Custom(String),
 }

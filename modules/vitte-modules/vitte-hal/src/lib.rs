@@ -488,7 +488,7 @@ mod fs {
     }
     impl MemFs {
         fn key(p: &str) -> String {
-            p.replace('\\', '/').to_owned()
+            p.replace('\\', "/")
         }
     }
     impl Fs for MemFs {
@@ -615,7 +615,6 @@ mod fs {
             Ok(v)
         }
         fn open(&self, path: &str, mode: FileMode) -> core::result::Result<Box<dyn File>, FsError> {
-            use std::io::{Read, Seek, SeekFrom, Write};
             let mut opts = std::fs::OpenOptions::new();
             opts.read(mode.read)
                 .write(mode.write)

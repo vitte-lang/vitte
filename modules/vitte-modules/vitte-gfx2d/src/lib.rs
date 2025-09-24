@@ -14,12 +14,12 @@
 extern crate alloc;
 
 #[cfg(not(feature = "std"))]
-use alloc::{format, string::String, vec, vec::Vec};
+use alloc::{format, vec, vec::Vec};
 #[cfg(feature = "std")]
-use std::{string::String, vec, vec::Vec};
+use std::{vec, vec::Vec};
 
-use core::{cmp::Ordering, f32::consts::PI, fmt};
-use vitte_cs2d::prelude::*;
+use core::f32::consts::PI;
+use vitte_cs2d::{prelude::*, s};
 
 // ================================ Couleur ================================
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -86,6 +86,12 @@ pub enum BlendMode {
     Alpha,
     Add,
     Multiply,
+}
+
+impl Default for BlendMode {
+    fn default() -> Self {
+        BlendMode::Alpha
+    }
 }
 
 // ================================ Paint =================================
@@ -212,8 +218,8 @@ impl Path {
 fn flatten_quad(p0: Vec2, c: Vec2, p1: Vec2, tol: Scalar, out: &mut Vec<Vec2>) {
     // subdivision récursive de De Casteljau jusqu'à platitude
     fn flat(p0: Vec2, c: Vec2, p1: Vec2, t: Scalar) -> bool {
-        let ab = (c - p0);
-        let bc = (p1 - c);
+        let ab = c - p0;
+        let bc = p1 - c;
         let d = (bc - ab).length();
         d <= t
     }
@@ -510,7 +516,7 @@ impl Canvas2D {
         if pts.len() < 2 {
             return;
         }
-        let mut poly: Vec<Vec2> =
+        let poly: Vec<Vec2> =
             pts.iter().map(|p| self.state.transform.transform_point(*p)).collect();
         tessellate_stroke(&poly, &self.state.stroke, &self.state.paint, &mut self.batch);
     }
@@ -552,7 +558,7 @@ impl Canvas2D {
 }
 
 // ================================ Tests =================================
-#[cfg(ptest)]
+#[cfg(test)]
 mod tests {
     use super::*;
 

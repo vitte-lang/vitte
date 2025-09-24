@@ -30,25 +30,19 @@ extern crate alloc;
 
 #[cfg(not(feature = "std"))]
 use alloc::{
-    borrow::ToOwned,
-    boxed::Box,
     string::{String, ToString},
     vec::Vec,
 };
 #[cfg(feature = "std")]
 use std::{
-    boxed::Box,
     string::{String, ToString},
     vec::Vec,
 };
 
 #[cfg(not(feature = "std"))]
-use alloc::collections::{BTreeMap as HashMap, BTreeSet as HashSet};
+use alloc::collections::BTreeMap as HashMap;
 #[cfg(feature = "std")]
-use std::collections::{HashMap, HashSet};
-
-use core::fmt;
-use core::ops::Deref;
+use std::collections::HashMap;
 
 // On réutilise l'interneur de vitte-mm si dispo
 pub use vitte_mm::{StrInterner, Symbol};
@@ -211,6 +205,7 @@ pub struct Resolver {
 
     // piles
     stack: Vec<ScopeId>,
+    module_stack: Vec<ModuleId>,
     current_module: ModuleId,
 
     // diagnostics
@@ -230,6 +225,7 @@ impl Resolver {
             scopes: Vec::new(),
             defs: Vec::new(),
             stack: Vec::new(),
+            module_stack: Vec::new(),
             current_module: ModuleId(0),
             diagnostics: Vec::new(),
             tables: Tables::default(),
@@ -237,12 +233,13 @@ impl Resolver {
         // module racine + scope racine
         let root = r.alloc_module();
         r.current_module = root;
-        let root_scope = r.push_scope(ScopeKind::Module, NodeId(0));
+        r.module_stack.push(root);
+        let _root_scope = r.push_scope(ScopeKind::Module, NodeId(0));
         // injecte le prélude dans le scope racine
         for (name, kind) in r.opts.prelude.clone() {
             let _ = r.define(name, kind, Visibility::Pub, NodeId(0));
         }
-        root_scope
+        r
     }
 
     // ----------------------- allocation IDs -----------------------
@@ -301,16 +298,27 @@ impl Resolver {
     pub fn open_module(&mut self, name: Symbol, node: NodeId) -> ModuleId {
         // Déclare le module courant dans le scope courant puis descend dans un nouveau module
         let def = self.define(name, DefKind::Module, Visibility::Pub, node);
+        let parent_module = self.current_module;
         let child = self.alloc_module();
+        self.module_stack.push(child);
         self.current_module = child;
         // Crée un scope module imbriqué
         let _mscope = self.push_scope(ScopeKind::Module, node);
-        // Exporte par nom
+        // Enregistre un espace d'exports pour le nouveau module
         self.tables.exports.entry(self.current_module).or_default();
-        def
+        self.tables
+            .exports
+            .entry(parent_module)
+            .or_default()
+            .insert(name, def);
+        child
     }
     pub fn close_module(&mut self, _m: ModuleId) {
         self.pop_scope(); /* remonte au scope parent */
+        self.module_stack.pop();
+        if let Some(prev) = self.module_stack.last().copied() {
+            self.current_module = prev;
+        }
     }
 
     // ----------------------- déclarations -------------------------
@@ -321,7 +329,7 @@ impl Resolver {
     fn define(&mut self, name: Symbol, kind: DefKind, vis: Visibility, node: NodeId) -> DefId {
         let scope = *self.stack.last().expect("scope stack vide");
         // collision ?
-        if let Some(existing) = self.scopes[scope.0 as usize].symbols.get(&name).copied() {
+        if let Some(_existing) = self.scopes[scope.0 as usize].symbols.get(&name).copied() {
             if !self.opts.allow_shadowing {
                 self.diagnostics.push(Diagnostic {
                     severity: Severity::Error,
@@ -400,7 +408,7 @@ impl Resolver {
             return Err(());
         }
         // point de départ : scope courant (ou racine si absolu)
-        let mut cur_scope = if path.is_absolute {
+        let cur_scope = if path.is_absolute {
             self.scopes.iter().find(|s| s.parent.is_none()).unwrap().id
         } else {
             *self.stack.last().unwrap()
@@ -450,7 +458,7 @@ impl Resolver {
         Ok(cur_def)
     }
 
-    fn lookup_in_scope_chain(&self, mut scope: ScopeId, name: Symbol) -> Option<DefId> {
+    fn lookup_in_scope_chain(&self, scope: ScopeId, name: Symbol) -> Option<DefId> {
         let mut cur = Some(scope);
         while let Some(sid) = cur {
             let sc = &self.scopes[sid.0 as usize];

@@ -30,18 +30,15 @@ extern crate alloc;
 #[cfg(not(feature = "std"))]
 use alloc::{
     collections::{BTreeMap as HashMap, BTreeSet as HashSet},
-    string::{String, ToString},
+    string::String,
     vec::Vec,
 };
 #[cfg(feature = "std")]
 use std::{
     collections::{HashMap, HashSet},
-    string::{String, ToString},
+    string::String,
     vec::Vec,
 };
-
-use core::fmt;
-
 // ======================================================================
 // IR Adaptor
 // ======================================================================
@@ -121,7 +118,9 @@ impl<P: Program> PassManager<P> {
             report.functions += 1;
             let mut ctx = Ctx::default();
             for p in self.passes.iter_mut() {
+                let name = p.name().to_string();
                 let r = p.run_on_function(prog, f, &mut ctx);
+                report.passes.push((name, r));
                 report.merge(&r);
                 // invalidations
                 if r.invalidate_cfg {
@@ -140,10 +139,15 @@ impl<P: Program> PassManager<P> {
 }
 
 /// Contexte partagé entre passes — héberge caches d'analyses.
-#[derive(Default)]
 pub struct Ctx<P: Program> {
     doms: HashMap<P::Func, Dominators<P::Block>>, // recalculé si invalidé
     live: HashMap<P::Func, Liveness<P::Block, P::Value>>, // recalculé si invalidé
+}
+
+impl<P: Program> Default for Ctx<P> {
+    fn default() -> Self {
+        Self { doms: HashMap::default(), live: HashMap::default() }
+    }
 }
 
 impl<P: Program> Ctx<P> {
@@ -201,11 +205,16 @@ pub trait Pass<P: Program> {
 }
 
 /// Rapport d'exécution d'un pipeline.
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct Report<P: Program> {
     pub functions: usize,
     pub passes: Vec<(String, PassResult)>,
     _phantom: core::marker::PhantomData<P>,
+}
+impl<P: Program> Default for Report<P> {
+    fn default() -> Self {
+        Self { functions: 0, passes: Vec::new(), _phantom: core::marker::PhantomData }
+    }
 }
 impl<P: Program> Report<P> {
     pub fn merge(&mut self, r: &PassResult) {
@@ -230,8 +239,6 @@ impl<P: Program> Report<P> {
 #[derive(Clone)]
 pub struct Dominators<B: Copy + Eq + core::hash::Hash> {
     pub idom: HashMap<B, B>,
-    index: HashMap<B, usize>,
-    rindex: Vec<B>,
 }
 
 impl<B: Copy + Eq + core::hash::Hash> core::fmt::Debug for Dominators<B> {
@@ -240,11 +247,14 @@ impl<B: Copy + Eq + core::hash::Hash> core::fmt::Debug for Dominators<B> {
     }
 }
 
-impl<P: Program> Dominators<P::Block> {
-    pub fn compute(prog: &P, f: P::Func) -> Self {
+impl<B: Copy + Eq + core::hash::Hash> Dominators<B> {
+    pub fn compute<P>(prog: &P, f: P::Func) -> Self
+    where
+        P: Program<Block = B>,
+    {
         let blocks = prog.blocks(f);
         let n = blocks.len();
-        let mut index = HashMap::default();
+        let mut index: HashMap<B, usize> = HashMap::default();
         for (i, &b) in blocks.iter().enumerate() {
             index.insert(b, i);
         }
@@ -285,14 +295,14 @@ impl<P: Program> Dominators<P::Block> {
         }
 
         // idom : idom(b) = unique d ∈ dom(b)\{b} qui ne domine pas strictement d'autres candidats
-        let mut idom: HashMap<P::Block, P::Block> = HashMap::default();
+        let mut idom: HashMap<B, B> = HashMap::default();
         for &b in &blocks {
             if b == entry {
                 continue;
             }
             let bi = index[&b];
             // candidats: tout d dans dom(b) sauf b
-            let mut best: Option<P::Block> = None;
+            let mut best: Option<B> = None;
             for d_i in dom[bi].iter_ones() {
                 if d_i == bi {
                     continue;
@@ -319,7 +329,7 @@ impl<P: Program> Dominators<P::Block> {
                 idom.insert(b, d);
             }
         }
-        Self { idom, index, rindex: blocks }
+        Self { idom }
     }
 
     /// Vrai si `a` domine `b` (réflexif).
@@ -354,11 +364,18 @@ where
     pub index_value: Vec<V>,
 }
 
-impl<P: Program> Liveness<P::Block, P::Value> {
-    pub fn compute(prog: &P, f: P::Func) -> Self {
+impl<B, V> Liveness<B, V>
+where
+    B: Copy + Eq + core::hash::Hash,
+    V: Copy + Eq + core::hash::Hash,
+{
+    pub fn compute<P>(prog: &P, f: P::Func) -> Self
+    where
+        P: Program<Block = B, Value = V>,
+    {
         let blocks = prog.blocks(f);
         // indexation des valeurs : union des USE/DEF de tous les blocs
-        let mut values: HashSet<P::Value> = HashSet::default();
+        let mut values: HashSet<V> = HashSet::default();
         for &b in &blocks {
             let (u, d) = prog.block_use_def(f, b);
             for v in u {
@@ -368,15 +385,15 @@ impl<P: Program> Liveness<P::Block, P::Value> {
                 values.insert(v);
             }
         }
-        let index_value: Vec<P::Value> = values.iter().copied().collect();
-        let mut value_index: HashMap<P::Value, usize> = HashMap::default();
+        let index_value: Vec<V> = values.iter().copied().collect();
+        let mut value_index: HashMap<V, usize> = HashMap::default();
         for (i, v) in index_value.iter().enumerate() {
             value_index.insert(*v, i);
         }
         let nvals = value_index.len();
 
-        let mut live_in: HashMap<P::Block, BitSet> = HashMap::default();
-        let mut live_out: HashMap<P::Block, BitSet> = HashMap::default();
+        let mut live_in: HashMap<B, BitSet> = HashMap::default();
+        let mut live_out: HashMap<B, BitSet> = HashMap::default();
         for &b in &blocks {
             live_in.insert(b, BitSet::new(nvals));
             live_out.insert(b, BitSet::new(nvals));

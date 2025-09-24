@@ -95,7 +95,7 @@ where
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Default)]
 pub struct Task {
     pub name: String,
     pub desc: String,
@@ -108,6 +108,20 @@ pub struct Task {
     #[allow(clippy::type_complexity)]
     #[cfg(feature = "std")]
     pub(crate) run: Option<Box<dyn TaskFn>>, // None => noop
+}
+
+impl core::fmt::Debug for Task {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Task")
+            .field("name", &self.name)
+            .field("desc", &self.desc)
+            .field("deps", &self.deps)
+            .field("inputs", &self.inputs)
+            .field("outputs", &self.outputs)
+            .field("cacheable", &self.cacheable)
+            .field("timeout", &self.timeout)
+            .finish()
+    }
 }
 
 impl Task {
@@ -179,7 +193,7 @@ impl Task {
 // ───────────────────────────── Shed (orchestrator) ────────────────────────
 
 pub struct Shed {
-    opts: Options,
+    _opts: Options,
     tasks: Vec<Task>,
     index: Vec<usize>,
     logs: RingLog,
@@ -188,13 +202,8 @@ pub struct Shed {
 
 impl Shed {
     pub fn new(opts: Options) -> Self {
-        Self {
-            opts,
-            tasks: Vec::new(),
-            index: Vec::new(),
-            logs: RingLog::new(Options::default().log_cap),
-            cache: Cache::default(),
-        }
+        let log_cap = opts.log_cap;
+        Self { _opts: opts, tasks: Vec::new(), index: Vec::new(), logs: RingLog::new(log_cap), cache: Cache::default() }
     }
 
     /// Ajoute / remplace une tâche (par nom).
@@ -213,12 +222,12 @@ impl Shed {
         let order = self.plan(target)?; // toposort
         let mut ctx = Ctx::new();
         for idx in order {
-            let t = &self.tasks[idx];
-            if self.should_run(t)? {
+            let name = self.tasks[idx].name.clone();
+            if self.should_run(idx)? {
                 self.exec_one(idx, &mut ctx)?;
                 self.cache.update_task(&self.tasks[idx])?;
             } else {
-                self.info(&format!("skip {} (up-to-date)", t.name));
+                self.info(&format!("skip {} (up-to-date)", name));
             }
         }
         Ok(())
@@ -232,8 +241,8 @@ impl Shed {
         let mut roots: Vec<String> = Vec::new();
         for idx in order.iter() {
             let t = &self.tasks[*idx];
-            roots.extend(t.inputs.clone());
-            roots.extend(t.outputs.clone());
+            roots.extend(t.inputs.iter().cloned());
+            roots.extend(t.outputs.iter().cloned());
         }
         let mut ctx = Ctx::new();
         self.info("watching… (Ctrl+C pour quitter)");
@@ -304,12 +313,18 @@ impl Shed {
     // ── exécution ──
     #[cfg(feature = "std")]
     fn exec_one(&mut self, idx: usize, ctx: &mut Ctx) -> Result<()> {
-        let t = self.tasks[idx].clone();
-        self.info(&format!("▶ {}", t.name));
-        if let Some(run) = t.run {
-            if let Some(d) = t.timeout {
-                with_timeout(d, || run.run(ctx))
-                    .unwrap_or_else(|| Err(ShedError::Action("timeout".into())))
+        let name = self.tasks[idx].name.clone();
+        let timeout = self.tasks[idx].timeout;
+        self.info(&format!("▶ {}", name));
+        if let Some(run) = self.tasks[idx].run.as_ref() {
+            if let Some(d) = timeout {
+                let start = std::time::Instant::now();
+                let res = run.run(ctx);
+                if start.elapsed() > d {
+                    Err(ShedError::Action("timeout".into()))
+                } else {
+                    res
+                }
             } else {
                 run.run(ctx)
             }
@@ -320,7 +335,8 @@ impl Shed {
 
     // ── incremental / cache ──
     #[cfg(feature = "std")]
-    fn should_run(&mut self, t: &Task) -> Result<bool> {
+    fn should_run(&mut self, idx: usize) -> Result<bool> {
+        let t = &self.tasks[idx];
         if !t.cacheable {
             return Ok(true);
         }
@@ -475,11 +491,7 @@ struct Fingerprint {
 
 #[cfg(feature = "std")]
 fn fingerprint_file(path: &str) -> Result<Fingerprint> {
-    use std::{
-        fs::File,
-        io::Read,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::{fs::File, io::Read, time::UNIX_EPOCH};
     let mut f = File::open(path).map_err(|e| ShedError::Io(e.to_string()))?;
     let meta = f.metadata().map_err(|e| ShedError::Io(e.to_string()))?;
     let mut buf = Vec::with_capacity(meta.len() as usize);
@@ -498,10 +510,7 @@ fn fingerprint_file(path: &str) -> Result<Fingerprint> {
 
 #[cfg(feature = "std")]
 fn expand_glob(pattern: &str) -> Result<Vec<String>> {
-    use std::{
-        fs,
-        path::{Path, PathBuf},
-    };
+    use std::{fs, path::PathBuf};
     let pat = normalize_slashes(pattern);
     let mut out = Vec::new();
     let cwd = PathBuf::from(".");
@@ -641,23 +650,6 @@ use alloc::collections::BTreeMap as Map;
 use std::collections::HashMap as Map;
 
 // ───────────────────────────── Timeout helper ─────────────────────────────
-
-#[cfg(feature = "std")]
-fn with_timeout<F>(d: Duration, mut f: F) -> Option<Result<()>>
-where
-    F: FnMut() -> Result<()> + Send + 'static,
-{
-    use std::sync::mpsc::{channel, Sender};
-    use std::thread;
-    let (tx, rx) = channel::<Result<()>>();
-    thread::spawn(move || {
-        let _ = tx.send(f());
-    });
-    match rx.recv_timeout(d) {
-        Ok(r) => Some(r),
-        Err(_) => None,
-    }
-}
 
 // ───────────────────────────── Tests ─────────────────────────────────────
 

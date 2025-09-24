@@ -36,16 +36,14 @@ extern crate alloc;
 use alloc::{
     boxed::Box,
     collections::{BTreeMap as HashMap, BTreeSet as HashSet},
-    format,
-    string::{String, ToString},
+    string::String,
     vec::Vec,
 };
 #[cfg(feature = "std")]
 use std::{
     boxed::Box,
     collections::{HashMap, HashSet},
-    format,
-    string::{String, ToString},
+    string::String,
     vec::Vec,
 };
 
@@ -124,7 +122,7 @@ impl Ty {
         Ty::Tuple(v)
     }
     pub fn record(mut fields: Vec<(Symbol, Ty)>) -> Self {
-        fields.sort_by_key(|(s, _)| s.0);
+        fields.sort_by_key(|(s, _)| s.as_u32());
         Ty::Record(fields)
     }
 }
@@ -165,7 +163,7 @@ impl fmt::Display for Ty {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}: {}", name.0, ty)?;
+                    write!(f, "{}: {}", name.as_u32(), ty)?;
                 }
                 write!(f, "}}")
             },
@@ -319,7 +317,7 @@ impl fmt::Display for TypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use TypeErrorKind::*;
         match &self.kind {
-            UnboundVar(s) => write!(f, "variable non liée: {}", s.0),
+            UnboundVar(s) => write!(f, "variable non liée: {}", s.as_u32()),
             Mismatch { expected, found } => {
                 write!(f, "type incompatible: attendu {}, trouvé {}", expected, found)
             },
@@ -413,8 +411,8 @@ impl Engine {
                 Ok(())
             },
             (Record(mut fa), Record(mut fb)) => {
-                fa.sort_by_key(|(s, _)| s.0);
-                fb.sort_by_key(|(s, _)| s.0);
+                fa.sort_by_key(|(s, _)| s.as_u32());
+                fb.sort_by_key(|(s, _)| s.as_u32());
                 if fa.len() != fb.len() {
                     return Err(TypeError {
                         node,

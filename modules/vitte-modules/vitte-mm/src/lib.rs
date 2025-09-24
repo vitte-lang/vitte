@@ -34,7 +34,7 @@ use alloc::{
     vec::Vec,
 };
 #[cfg(feature = "std")]
-use std::{boxed::Box, string::String, vec::Vec};
+use std::{string::String, vec::Vec};
 
 use core::{
     fmt,
@@ -283,6 +283,12 @@ impl Bytes {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Symbol(u32);
+impl Symbol {
+    /// Retourne l'indice interne associé à ce symbole.
+    pub const fn as_u32(self) -> u32 {
+        self.0
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct StrInterner {

@@ -9,7 +9,7 @@
 //!   let out = h.handle(&incoming_json)?; // Vec<Outbound> (responses + events)
 //!   for msg in out { send(msg); }
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -69,7 +69,6 @@ pub struct Variable {
 }
 
 /// État DAP côté adaptateur
-#[derive(Debug, Default)]
 pub struct Handler {
     engine: Box<dyn DebugEngine>,
     program: Option<String>,
@@ -77,6 +76,16 @@ pub struct Handler {
     breakpoints: HashMap<String, Vec<u32>>,
     /// compteur pour attribuer des variablesReference
     next_varref: i64,
+}
+
+impl fmt::Debug for Handler {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Handler")
+            .field("program", &self.program)
+            .field("breakpoints", &self.breakpoints)
+            .field("next_varref", &self.next_varref)
+            .finish()
+    }
 }
 
 impl Handler {

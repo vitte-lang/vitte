@@ -34,7 +34,6 @@ extern crate alloc;
 // ───────────── Imports conditionnels std / no_std ─────────────
 #[cfg(feature = "std")]
 use std::{
-    boxed::Box,
     collections::BTreeMap,
     fs::File,
     io::Write,
@@ -45,7 +44,6 @@ use std::{
 
 #[cfg(not(feature = "std"))]
 use alloc::{
-    boxed::Box,
     collections::BTreeMap,
     string::String,
     vec::Vec,
@@ -620,43 +618,49 @@ impl DefaultEmitter {
         Self { opts }
     }
 
-    fn emit_expr(&self, code: &mut CodeBuf, e: &ast::Expr, sections: &mut Sections) {
-        use ast::Expr::*;
+    fn emit_expr(&self, sections: &mut Sections, e: &ast::Expr) {
         match e {
-            ast::Expr::Literal(l) => {
-                match l {
-                    ast::Literal::Int(i) => { code.op(Op::ConstI64); code.i64(*i); }
-                    ast::Literal::Float(f) => {
-                        // quick&dirty : stocke dans section floats (non utilisé par vm demo)
-                        sections.floats.push(*f);
-                        code.op(Op::Nop);
-                    }
-                    ast::Literal::Bool(b) => { code.op(Op::ConstI64); code.i64(if *b {1} else {0}); }
-                    ast::Literal::Str(s) => {
-                        sections.strings.push(s.clone());
-                        code.op(Op::Nop);
-                    }
-                    ast::Literal::Null => code.op(Op::Nop),
+            ast::Expr::Literal(l) => match l {
+                ast::Literal::Int(i) => {
+                    let code = &mut sections.code;
+                    code.op(Op::ConstI64);
+                    code.i64(*i);
                 }
+                ast::Literal::Float(f) => {
+                    sections.floats.push(*f);
+                    sections.code.op(Op::Nop);
+                }
+                ast::Literal::Bool(b) => {
+                    let code = &mut sections.code;
+                    code.op(Op::ConstI64);
+                    code.i64(if *b { 1 } else { 0 });
+                }
+                ast::Literal::Str(s) => {
+                    sections.strings.push(s.clone());
+                    sections.code.op(Op::Nop);
+                }
+                ast::Literal::Null => sections.code.op(Op::Nop),
+            },
+            ast::Expr::Ident(_name) => sections.code.op(Op::Nop),
+            ast::Expr::Call { func: _, args } => {
+                for a in args {
+                    self.emit_expr(sections, a);
+                }
+                let code = &mut sections.code;
+                code.op(Op::Call);
+                code.u32(0);
             }
-            Ident(_name) => {
-                // démo: pas de load variable -> NOP
-                code.op(Op::Nop);
-            }
-            Call { func: _, args } => {
-                for a in args { self.emit_expr(code, a, sections); }
-                code.op(Op::Call); code.u32(0);
-            }
-            Binary { left, op, right } => {
-                self.emit_expr(code, left, sections);
-                self.emit_expr(code, right, sections);
+            ast::Expr::Binary { left, op, right } => {
+                self.emit_expr(sections, left);
+                self.emit_expr(sections, right);
+                let code = &mut sections.code;
                 match op {
                     ast::BinaryOp::Add => code.op(Op::AddI64),
                     _ => code.op(Op::Nop),
                 }
             }
-            Unary { .. } => code.op(Op::Nop),
-            Field { .. } => code.op(Op::Nop),
+            ast::Expr::Unary { .. } => sections.code.op(Op::Nop),
+            ast::Expr::Field { .. } => sections.code.op(Op::Nop),
         }
     }
 }
@@ -679,7 +683,7 @@ impl Emitter for DefaultEmitter {
             if let ast::Item::Function(f) = it {
                 for s in &f.body.stmts {
                     if let ast::Stmt::Expr(e) = s {
-                        self.emit_expr(&mut sections.code, e, &mut sections);
+                        self.emit_expr(&mut sections, e);
                     }
                 }
                 sections.code.op(Op::Ret);

@@ -28,7 +28,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![forbid(unsafe_code)]
 
-#[cfg(all(not(feature = "std"), feature = "alloc-only"))]
+#[cfg(any(feature = "std", feature = "alloc-only"))]
 extern crate alloc;
 
 pub mod prelude {
@@ -38,10 +38,11 @@ pub mod prelude {
         arena::{idx, Arena, IdMap},
         bytes::{ReadBytes, WriteBytes},
         ids::{Id, IdGen, RawId},
-        result::{bail, ensure, Error, VResult},
+        result::{Error, VResult},
         strutil::*,
         time::*,
     };
+    pub use crate::{bail, ensure};
 
     // Re-exports choisis (pratiques en interne)
     #[cfg(feature = "small")]
@@ -132,7 +133,7 @@ pub mod ids {
 
     impl<T> core::fmt::Debug for Id<T> {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            write!(f, "Id({})", self.to_u32())
+            write!(f, "Id({})", self.raw.to_u32())
         }
     }
 
@@ -201,9 +202,15 @@ pub mod arena {
     #[cfg(any(feature = "std", feature = "alloc-only"))]
     use alloc::vec::Vec;
 
-    #[derive(Clone, Default)]
+    #[derive(Clone)]
     pub struct Arena<T> {
         data: Vec<T>,
+    }
+
+    impl<T> Default for Arena<T> {
+        fn default() -> Self {
+            Self { data: Vec::new() }
+        }
     }
 
     impl<T> fmt::Debug for Arena<T>
@@ -270,24 +277,31 @@ pub mod arena {
     }
 
     /// Map d’`Id<T>` vers `U` compacte et rapide (vector-map).
-    #[derive(Clone, Default)]
+    #[derive(Clone)]
     pub struct IdMap<T, U> {
         data: Vec<Option<U>>,
         _tag: core::marker::PhantomData<fn() -> T>,
     }
 
+    impl<T, U> Default for IdMap<T, U> {
+        fn default() -> Self {
+            Self { data: Vec::new(), _tag: core::marker::PhantomData }
+        }
+    }
+
     impl<T, U> IdMap<T, U> {
         #[inline]
-        fn ensure_len(&mut self, id: Id<T>) {
-            let need = id.to_u32() as usize;
+        fn ensure_len(&mut self, slot: usize) {
+            let need = slot.saturating_add(1);
             if self.data.len() < need {
                 self.data.resize_with(need, || None);
             }
         }
         #[inline]
         pub fn insert(&mut self, id: Id<T>, val: U) -> Option<U> {
-            self.ensure_len(id);
-            core::mem::replace(&mut self.data[idx(id)], Some(val))
+            let slot = idx(id);
+            self.ensure_len(slot);
+            core::mem::replace(&mut self.data[slot], Some(val))
         }
         #[inline]
         pub fn get(&self, id: Id<T>) -> Option<&U> {
@@ -310,7 +324,7 @@ pub mod arena {
     }
 
     // Re-export utile
-    pub use crate::ids::{Id, RawId};
+    pub use crate::ids::RawId;
 }
 
 pub mod result {
@@ -455,7 +469,7 @@ pub mod bytes {
 pub mod strutil {
     //! Petites fonctions utiles pour `&str` / `String` (alloc si dispo).
     #[cfg(any(feature = "std", feature = "alloc-only"))]
-    use alloc::string::{String, ToString};
+    use alloc::string::String;
 
     /// Minuscule ASCII rapide (ne gère pas l’Unicode complet).
     #[inline]

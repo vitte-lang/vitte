@@ -22,7 +22,7 @@
 
 use std::fs;
 use std::io::{self, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
@@ -63,9 +63,9 @@ pub mod prelude {
         disasm_full, disasm_compact,
         strip_chunk, validate_chunk,
         LinkOptions, LinkManifest, link_chunks,
-        #[cfg(feature = "fmt-config")] FmtConfig,
-        #[cfg(feature = "fmt-config")] load_fmt_config,
     };
+    #[cfg(feature = "fmt-config")]
+    pub use crate::{FmtConfig, load_fmt_config};
 }
 
 /* ------------------------------------------------------------------------- */
