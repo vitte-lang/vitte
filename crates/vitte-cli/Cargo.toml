@@ -1,102 +1,40 @@
-# vitte/Cargo.toml — racine du workspace (robuste)
-[workspace]
-resolver = "2"
-members = [
-  # Tous les crates sous crates/ et modules/
-  "crates/*",
-  "modules/*",
-]
-# Facultatif : si docs/ contient des Cargo.toml, on les ignore
-exclude = ["docs"]
+[package]
+name        = "vitte-cli"
+description = "Interface en ligne de commande du langage Vitte."
 
-[workspace.package]
-edition      = "2021"
-version      = "0.1.0"
-license      = "Apache-2.0"
-repository   = "https://github.com/vitte-lang/vitte"
-homepage     = "https://vitte-lang.github.io/vitte/"
-readme       = "README.md"
-rust-version = "1.80.0"
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
 
-# Lints communes
-[workspace.lints.rust]
-unsafe_code = "forbid"
+keywords   = ["vitte", "cli", "compiler", "tooling"]
+categories = ["command-line-utilities", "development-tools"]
 
-[workspace.lints.clippy]
-all = "warn"
-pedantic = "warn"
-nursery = "warn"
-module_name_repetitions = "allow"
-too_many_lines = "allow"
-doc_markdown = "allow"
+default-run = "vitte"
 
-# Dépendances partagées (référençables via `workspace = true`)
-[workspace.dependencies]
-# Base
-serde                 = { version = "1.0", features = ["derive"] }
-serde_json            = "1.0"
-thiserror             = "2.0.16"
-anyhow                = "1.0"
-bitflags              = "2"
-smallvec              = "1"
-indexmap              = "2"
-petgraph              = "0.8.2"
-log                   = "0.4"
-env_logger            = "0.11"
+[lib]
+name = "vitte_cli"
+path = "src/lib.rs"
 
-# CLI / DX
-clap                  = { version = "4.5", features = ["derive"] }
-clap_complete         = "4.5"
-tracing               = { version = "0.1", features = ["attributes", "log", "release_max_level_info"] }
-tracing-subscriber    = { version = "0.3", features = ["env-filter", "fmt", "ansi", "time"] }
-#log                   = "0.4"
-#env_logger            = "0.11"
+[[bin]]
+name = "vitte"
+path = "src/main.rs"
 
-# Async / LSP / runtime / LSP / runtime
-tokio                 = { version = "1.40", features = ["rt-multi-thread", "macros", "io-std", "net", "sync", "fs"] }
-tower-lsp             = "0.20"
-notify                = "8.2.0"
+[features]
+default = ["trace", "color"]
+trace   = ["dep:log", "dep:env_logger"]
+color   = ["dep:owo-colors"]
+vm      = []
 
-# Bytecode / I/O bas niveau
-byteorder             = "1"
-crc32fast             = "1"
-lz4_flex              = "0.11"
-zstd                  = { version = "0.13", default-features = false }
-memmap2               = "0.9"
-bumpalo               = "3"
+[dependencies]
+anyhow      = { workspace = true }
+clap        = { workspace = true }
+log         = { workspace = true, optional = true }
+env_logger  = { workspace = true, optional = true }
+owo-colors  = { workspace = true, optional = true }
 
-# Concurrence / perfs
-rayon                 = "1"
-crossbeam-channel     = "0.5"
-parking_lot           = "0.12"
-dashmap               = "6.1.0"
-
-# WASM
-wasm-bindgen          = "0.2"
-wasm-bindgen-futures  = "0.4"
-js-sys                = "0.3"
-web-sys               = { version = "0.3", features = [
-  "Window","Response","Request","RequestInit","RequestMode","Headers","Console","Performance"
-] }
-
-# Outils dev/test
-pretty_assertions     = "1"
-proptest              = "1"
-insta                 = { version = "1", features = ["yaml"] }
-tempfile              = "3"
-
-# Utilitaires build
-dirs-next             = "2"
-
-# Profils de build
-[profile.dev]
-opt-level = 0
-debug = 1
-incremental = true
-
-[profile.release]
-opt-level = 3
-lto = "thin"
-codegen-units = 1
-strip = "symbols"
-debug = 0
+[dev-dependencies]
+pretty_assertions = { workspace = true }

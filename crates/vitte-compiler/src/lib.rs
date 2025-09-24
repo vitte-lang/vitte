@@ -168,13 +168,21 @@ impl SymTable {
     pub fn new() -> Self {
         Self { scopes: vec![BTreeMap::new()], data: Vec::new() }
     }
+    /// Réinitialise la table (garde le scope racine vide).
+    pub fn reset(&mut self) {
+        self.scopes.clear();
+        self.scopes.push(BTreeMap::new());
+        self.data.clear();
+    }
     /// Entre dans un nouveau scope
     pub fn push_scope(&mut self) {
         self.scopes.push(BTreeMap::new());
     }
     /// Quitte le scope courant
     pub fn pop_scope(&mut self) {
-        self.scopes.pop();
+        if self.scopes.len() > 1 {
+            self.scopes.pop();
+        }
     }
     /// Déclare un symbole dans le scope courant
     pub fn declare(&mut self, name: String, ty: TypeId, scope: u32) -> SymId {
@@ -245,7 +253,10 @@ impl<'a> Ctx<'a> {
     /// Nouveau scope
     pub fn enter_scope(&mut self) { self.scope_depth += 1; self.symtab.push_scope(); }
     /// Quitte scope
-    pub fn leave_scope(&mut self) { self.symtab.pop_scope(); self.scope_depth -= 1; }
+    pub fn leave_scope(&mut self) {
+        self.symtab.pop_scope();
+        self.scope_depth = self.scope_depth.saturating_sub(1);
+    }
 }
 
 /// Trait générique d’une passe de compilation
@@ -699,6 +710,9 @@ impl Compiler {
 
     /// Compile un programme AST → Bytecode VITBC
     pub fn compile(&mut self, program: &ast::Program) -> CompileResult<Bytecode> {
+        self.diags.clear();
+        self.symtab.reset();
+
         // 1) Collecte symboles
         {
             let mut pass = CollectSymbols;

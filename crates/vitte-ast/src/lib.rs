@@ -48,9 +48,8 @@ pub struct Span {
     pub offset: u32,
 }
 
-type NewFn = fn(line: u32, column: u32, offset: u32) -> Self;
-
 impl Span {
+    /// Construit un nouveau `Span` à partir d'une position (ligne, colonne, offset).
     pub fn new(line: u32, column: u32, offset: u32) -> Self {
         Self { line, column, offset }
     }

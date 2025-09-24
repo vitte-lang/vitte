@@ -1,6 +1,6 @@
-﻿[package]
-name        = "vitte-modules"
-description = "Meta-crate qui agrège et re-expose les modules Vitte (opt, typer, resolver, hal, sys, mm, shed, fmt, gfx2d)."
+[package]
+name        = "vitte-gfx2d"
+description = "Canevas 2D rapide et portable pour le runtime Vitte."
 
 version      = { workspace = true }
 edition      = { workspace = true }
@@ -10,84 +10,40 @@ repository   = { workspace = true }
 homepage     = { workspace = true }
 readme       = { workspace = true }
 
-keywords   = ["vitte", "modules", "meta", "orchestration"]
-categories = ["compilers", "development-tools"]
+keywords   = ["vitte", "graphics", "2d", "canvas"]
+categories = ["graphics", "game-development"]
 
 [lib]
+name = "vitte_gfx2d"
 path = "src/lib.rs"
+crate-type = ["rlib"]
 
 [features]
-# ✅ Par défaut, on n'active rien (évite les fails si tout n'existe pas encore)
-default = []
-
-# Active std partout (et lie les sous-crates correspondants)
-std = [
-  "dep:vitte-hal",      "vitte-hal/std",
-  "dep:vitte-mm",       "vitte-mm/std",
-  "dep:vitte-opt",      "vitte-opt/std",
-  "dep:vitte-resolver", "vitte-resolver/std",
-  "dep:vitte-shed",     "vitte-shed/std",
-  "dep:vitte-sys",      "vitte-sys/std",
-  "dep:vitte-typer",    "vitte-typer/std",
-  "dep:vitte-fmt",      "vitte-fmt/std",
-  # ↓ nouveaux
-  "dep:vitte-cs2d",     "vitte-cs2d/std",
-  "dep:vitte-gfx2d",    "vitte-gfx2d/std",
-]
-
-# Tout d'un coup (si tous existent)
-full = ["hal","mm","opt","resolver","shed","sys","typer","fmt","gfx2d","cs2d","std"]
-
-# Sélecteurs fins (ajoutent la dépendance correspondante)
-hal      = ["dep:vitte-hal"]
-mm       = ["dep:vitte-mm"]
-opt      = ["dep:vitte-opt"]
-resolver = ["dep:vitte-resolver"]
-shed     = ["dep:vitte-shed"]
-sys      = ["dep:vitte-sys"]
-typer    = ["dep:vitte-typer"]
-fmt      = ["dep:vitte-fmt"]
-gfx2d    = ["dep:vitte-gfx2d"]
-cs2d     = ["dep:vitte-cs2d"]
-
-# Propagation utile
-shed-watch = ["vitte-shed/watch"]
-
-# Sérialisation partout où dispo
-serde = [
-  "vitte-mm/serde",
-  "vitte-opt/serde",
-  "vitte-resolver/serde",
-  "vitte-typer/serde",
-  "vitte-shed/serde",
-  # ↓ nouveaux
-  "vitte-cs2d/serde",
-  "vitte-gfx2d/serde",
-]
-
-# Double précision (propage vers la géométrie)
-f64 = [
-  "vitte-cs2d/f64",
-  "vitte-gfx2d/f64",
-]
+default = ["std"]
+std     = ["vitte-cs2d/std"]
+serde   = ["dep:serde", "vitte-cs2d/serde"]
+f64     = ["vitte-cs2d/f64"]
 
 [dependencies]
-# Chemins relatifs AU DOSSIER modules/ pour les sous-crates modules/*
-vitte-hal      = { path = "./vitte-hal",      version = "0.1.0", default-features = false, optional = true }
-vitte-mm       = { path = "./vitte-mm",       version = "0.1.0", default-features = false, optional = true }
-vitte-opt      = { path = "./vitte-opt",      version = "0.1.0", default-features = false, optional = true }
-vitte-resolver = { path = "./vitte-resolver", version = "0.1.0", default-features = false, optional = true }
-vitte-shed     = { path = "./vitte-shed",     version = "0.1.0", default-features = false, optional = true }
-vitte-sys      = { path = "./vitte-sys",      version = "0.1.0", default-features = false, optional = true }
-vitte-typer    = { path = "./vitte-typer",    version = "0.1.0", default-features = false, optional = true }
-vitte-fmt      = { path = "./vitte-fmt",      version = "0.1.0", default-features = false, optional = true }
-
-# ⬇️ nouveaux (dans crates/) — attention au chemin ../../crates/
-vitte-cs2d     = { path = "../../crates/vitte-cs2d",  version = "0.1.0", default-features = false, optional = true }
-vitte-gfx2d    = { path = "../../crates/vitte-gfx2d", version = "0.1.0", default-features = false, optional = true }
+serde      = { workspace = true, optional = true }
+vitte-cs2d = { path = "../vitte-cs2d", version = "0.1.0", default-features = false }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
 
 [lints.rust]
 unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+too_many_lines          = "allow"
+doc_markdown            = "allow"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "serde", "f64"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
