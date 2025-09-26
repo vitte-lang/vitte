@@ -50,7 +50,7 @@ use std::{string::String, vec::Vec};
 use alloc::{string::String, vec::Vec};
 
 use vitte_ast as ast;
-use vitte_core::{Pos, SourceId, Span, Spanned};
+use vitte_core::{Pos, SourceId, Span};
 use vitte_lexer::{Keyword, Lexer, LexerOptions, Token, TokenKind};
 
 /* ─────────────────────────── Erreurs ─────────────────────────── */
@@ -92,6 +92,8 @@ pub struct Parser<'a> {
     lx: Lexer<'a>,
     /// Buffer 1-token d’anticipation.
     look: Option<Token<'a>>,
+    /// Dernier span consommé (utile pour composer des spans).
+    last_span: Option<Span>,
     /// Source id (propagé dans les spans composés).
     source: SourceId,
 }
@@ -106,7 +108,12 @@ impl<'a> Parser<'a> {
     pub fn with_options(src: &'a str, source: SourceId, opts: LexerOptions) -> Self {
         let mut lx = Lexer::with_options(src, source, opts);
         let look = next_tok(&mut lx).ok().flatten();
-        Self { lx, look, source }
+        Self {
+            lx,
+            look,
+            last_span: None,
+            source,
+        }
     }
 
     /// Parse un programme complet.
@@ -147,6 +154,7 @@ impl<'a> Parser<'a> {
                 params.push(ast::Param {
                     name: pname,
                     ty: pty,
+                    span: None,
                 });
                 if self.check(TokenKind::Comma) {
                     self.bump();
@@ -164,13 +172,13 @@ impl<'a> Parser<'a> {
         };
 
         let body = self.parse_block()?;
-        let span = span_join(k.span, body.span);
+        let fn_span = self.join_span_to_ast(k.span, self.prev_span());
         Ok(ast::Item::Function(ast::Function {
             name,
             params,
             return_type: ret_ty,
             body,
-            span,
+            span: fn_span,
         }))
     }
 
@@ -181,9 +189,9 @@ impl<'a> Parser<'a> {
         let ty = self.parse_type()?;
         self.expect(TokenKind::Eq)?;
         let expr = self.parse_expr()?;
-        self.expect(TokenKind::Semi)?;
-        let span = span_join(k.span, expr.span());
-        Ok(ast::Item::Const(ast::Const {
+        let semi = self.expect(TokenKind::Semi)?;
+        let span = self.join_span_to_ast(k.span, semi.span);
+        Ok(ast::Item::Const(ast::ConstDecl {
             name,
             ty: Some(ty),
             value: expr,
@@ -201,16 +209,17 @@ impl<'a> Parser<'a> {
             self.expect(TokenKind::Colon)?;
             let fty = self.parse_type()?;
             self.expect(TokenKind::Semi)?;
-            fields.push(ast::StructField {
+            fields.push(ast::Field {
                 name: fname,
                 ty: fty,
+                span: None,
             });
         }
         let rb = self.expect(TokenKind::RBrace)?;
-        Ok(ast::Item::Struct(ast::StructDef {
+        Ok(ast::Item::Struct(ast::StructDecl {
             name,
             fields,
-            span: span_join(k.span, rb.span),
+            span: self.join_span_to_ast(k.span, rb.span),
         }))
     }
 
@@ -221,12 +230,12 @@ impl<'a> Parser<'a> {
         let mut variants = Vec::new();
         while !self.check(TokenKind::RBrace) {
             let vname = self.expect_ident()?.to_string();
-            let mut params = Vec::new();
+            let mut fields = Vec::new();
             if self.check(TokenKind::LParen) {
                 self.bump();
                 if !self.check(TokenKind::RParen) {
                     loop {
-                        params.push(self.parse_type()?);
+                        fields.push(self.parse_type()?);
                         if self.check(TokenKind::Comma) {
                             self.bump();
                             continue;
@@ -242,14 +251,15 @@ impl<'a> Parser<'a> {
             }
             variants.push(ast::EnumVariant {
                 name: vname,
-                params,
+                fields,
+                span: None,
             });
         }
         let rb = self.expect(TokenKind::RBrace)?;
-        Ok(ast::Item::Enum(ast::EnumDef {
+        Ok(ast::Item::Enum(ast::EnumDecl {
             name,
             variants,
-            span: span_join(k.span, rb.span),
+            span: self.join_span_to_ast(k.span, rb.span),
         }))
     }
 
@@ -264,7 +274,7 @@ impl<'a> Parser<'a> {
         let rb = self.expect(TokenKind::RBrace)?;
         Ok(ast::Block {
             stmts,
-            span: span_join(lb.span, rb.span),
+            span: self.join_span_to_ast(lb.span, rb.span),
         })
     }
 
@@ -287,7 +297,7 @@ impl<'a> Parser<'a> {
                 name,
                 ty,
                 value,
-                span: span_join(k.span, semi.span),
+                span: self.join_span_to_ast(k.span, semi.span),
             });
         }
         if self.is_kw(Keyword::Return) {
@@ -298,7 +308,7 @@ impl<'a> Parser<'a> {
                 None
             };
             let semi = self.expect(TokenKind::Semi)?;
-            return Ok(ast::Stmt::Return(value, span_join(k.span, semi.span)));
+            return Ok(ast::Stmt::Return(value, self.join_span_to_ast(k.span, semi.span)));
         }
         if self.is_kw(Keyword::While) {
             let k = self.bump().unwrap();
@@ -309,7 +319,7 @@ impl<'a> Parser<'a> {
             return Ok(ast::Stmt::While {
                 condition: cond,
                 body,
-                span: span_join(k.span, body.span),
+                span: self.join_span_to_ast(k.span, self.prev_span()),
             });
         }
         if self.is_kw(Keyword::For) {
@@ -323,7 +333,7 @@ impl<'a> Parser<'a> {
                 var,
                 iter,
                 body,
-                span: span_join(k.span, body.span),
+                span: self.join_span_to_ast(k.span, self.prev_span()),
             });
         }
         if self.is_kw(Keyword::If) {
@@ -338,15 +348,11 @@ impl<'a> Parser<'a> {
             } else {
                 None
             };
-            let end_span = else_block
-                .as_ref()
-                .map(|b| b.span)
-                .unwrap_or(then_block.span);
             return Ok(ast::Stmt::If {
                 condition: cond,
                 then_block,
                 else_block,
-                span: span_join(k.span, end_span),
+                span: self.join_span_to_ast(k.span, self.prev_span()),
             });
         }
         // Expression statement
@@ -559,6 +565,9 @@ impl<'a> Parser<'a> {
     #[inline]
     fn bump(&mut self) -> Option<Token<'a>> {
         let cur = self.look.take();
+        if let Some(tok) = cur.as_ref() {
+            self.last_span = Some(tok.span);
+        }
         self.look = next_tok(&mut self.lx).ok().flatten();
         cur
     }
@@ -617,14 +626,24 @@ impl<'a> Parser<'a> {
 
     #[inline]
     fn prev_span(&self) -> Span {
-        // fallback doux si besoin ; ici on l’utilise après un expect/bump réussi.
-        // On n’a pas d’historique, donc on renvoie un span nul si indisponible.
-        // (Peu utilisé)
-        Span {
+        self.last_span.unwrap_or(Span {
             source: self.source,
             start: Pos(0),
             end: Pos(0),
+        })
+    }
+
+    fn join_span_to_ast(&self, start: Span, end: Span) -> Option<ast::Span> {
+        if start.source != end.source {
+            return None;
         }
+        let joined = span_join(start, end);
+        Some(self.ast_span(joined))
+    }
+
+    fn ast_span(&self, span: Span) -> ast::Span {
+        let (line, column) = self.lx.lines.line_col(span.start);
+        ast::Span::new(line, column, span.start.0)
     }
 }
 
@@ -715,6 +734,10 @@ fn token_eq(a: &TokenKind<'_>, b: &TokenKind<'_>) -> bool {
         (Kw(ka), Kw(kb)) => ka == kb,
         _ => false,
     }
+}
+
+fn err_here(tok: &Token<'_>, message: impl Into<String>) -> ParseError {
+    ParseError::new(tok.span, message)
 }
 
 fn span_join(a: Span, b: Span) -> Span {
