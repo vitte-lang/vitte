@@ -19,11 +19,6 @@ path = "src/lib.rs"
 
 # Binaries (activés par features)
 [[bin]]
-name = "vitte"
-path = "src/bin/vitte.rs"
-required-features = ["cli"]
-
-[[bin]]
 name = "vitte-fmt"
 path = "src/bin/fmt.rs"
 required-features = ["fmt-cli"]
@@ -53,9 +48,14 @@ name = "vitte-run"
 path = "src/bin/run.rs"
 required-features = ["run-cli"]
 
+[[bin]]
+name = "vitte-repl"
+path = "src/bin/vitte-repl.rs"
+required-features = ["repl-cli"]
+
 [features]
 # Confort par défaut : binaire "vitte" avec sous-commandes basiques
-default = ["std", "serde", "tracing", "cli"]
+default = ["std", "serde", "tracing", "cli", "colors"]
 
 # Environnements
 std        = []
@@ -72,8 +72,11 @@ parallel = ["dep:rayon"]
 notify   = ["dep:notify"]
 glob     = ["dep:ignore", "dep:walkdir", "dep:camino"]
 fmt-config = ["dep:camino"]
-colors = []
-dirs = []
+colors = ["dep:yansi"]
+dirs = ["dep:dirs"]
+eval = []
+vm = []
+repl-cli = ["cli", "dep:rustyline", "dirs"]
 
 # Sous-systèmes (activent deps internes)
 fmt   = ["dep:vitte-parser", "dep:vitte-ast"]
@@ -104,6 +107,10 @@ vitte-runtime = { path = "../vitte-runtime", version = "0.1.0", optional = true 
 # Ergonomie / infra
 thiserror = { workspace = true, optional = true }
 anyhow    = { version = "1" }
+yansi     = { version = "1", optional = true }
+color-eyre = { version = "0.6" }
+rustyline = { version = "17", optional = true }
+dirs      = { version = "5", optional = true }
 camino    = { version = "1.1", optional = true }
 clap      = { version = "4.5", optional = true, features = ["derive"] }
 tracing   = { version = "0.1", optional = true, features = ["attributes", "log", "release_max_level_info"] }

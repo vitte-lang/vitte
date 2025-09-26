@@ -128,9 +128,6 @@ pub struct CompileError {
 }
 
 impl CompileError {
-    fn from_single(diag: Diagnostic) -> Self {
-        Self { diagnostics: vec![diag] }
-    }
 }
 
 type CompileResult<T> = core::result::Result<T, CompileError>;

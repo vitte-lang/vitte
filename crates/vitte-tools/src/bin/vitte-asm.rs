@@ -118,7 +118,7 @@ fn run_one(src: &str, in_name: &Utf8Path, cli: &Cli) -> Result<()> {
     let t0 = Instant::now();
 
     // Assemble
-    let mut chunk = assemble_src(src, in_name.as_str(), cli.strip)?;
+    let chunk = assemble_src(src, in_name.as_str(), cli.strip)?;
 
     if cli.strict && chunk.ops.is_empty() {
         return Err(anyhow!("Chunk vide (aucune instruction) — échec dû à --strict"));

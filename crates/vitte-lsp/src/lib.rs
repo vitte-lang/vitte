@@ -64,12 +64,6 @@ impl Document {
         Self { uri, text, version, line_starts }
     }
 
-    fn update_full(&mut self, new_text: String, new_version: i32) {
-        self.text = new_text;
-        self.version = new_version;
-        self.line_starts = compute_line_starts(&self.text);
-    }
-
     fn apply_change(&mut self, change: &lsp::TextDocumentContentChangeEvent) {
         match (&change.range, &change.range_length) {
             (None, None) => {

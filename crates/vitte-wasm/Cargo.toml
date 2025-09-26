@@ -20,16 +20,16 @@ crate-type = ["cdylib", "rlib"]   # cdylib pour wasm-bindgen, rlib pour tests/li
 
 [features]
 # Par défaut : bindings JS, VM + VITBC, logs console, sérialisation.
-default    = ["std", "bindings", "vm", "vitbc", "serde", "tracing", "console"]
+default    = ["std", "bindings", "vm", "vitbc", "serde", "tracing", "console", "js"]
 
 # Environnements
 std        = []
 alloc-only = []   # si tu veux viser un profil no_std + alloc (rare côté wasm)
 
 # Périmètre technique
-bindings   = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen", "dep:wasm-bindgen-futures"]
+bindings   = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen", "dep:wasm-bindgen-futures", "js"]
 js         = ["dep:js-sys", "dep:web-sys"]   # APIs JS (console/perf/etc.)
-console    = ["dep:console_error_panic_hook"] # stacktraces lisibles dans la console
+console    = ["dep:console_error_panic_hook", "dep:console_log", "dep:log"] # stacktraces + logs console lisibles
 rng        = ["dep:getrandom"]               # RNG côté wasm (feature js activée)
 
 # Intégrations Vitte
@@ -61,7 +61,7 @@ serde-wasm-bindgen   = { version = "0.6", optional = true }
 js-sys               = { version = "0.3", optional = true }
 web-sys              = { version = "0.3", optional = true, features = [
   # garde léger; ajoute d'autres APIs au besoin :
-  "console", "Performance", "Window"
+  "console", "Performance", "Window", "Response"
 ]}
 
 # Qualité de vie
@@ -76,7 +76,9 @@ serde_json= { workspace = true, optional = true }
 
 # Panic hook & RNG pour wasm
 console_error_panic_hook = { version = "0.1", optional = true }
+console_log              = { version = "0.2", optional = true }
 getrandom = { version = "0.2", optional = true, features = ["js"] }
+log      = { version = "0.4", optional = true }
 
 # Divers utiles
 bitflags  = { version = "2.6" }

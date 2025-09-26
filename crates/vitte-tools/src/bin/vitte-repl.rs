@@ -1,3 +1,5 @@
+#![cfg(feature = "repl-cli")]
+
 // crates/vitte-tools/src/bin/vitte-repl.rs
 //! REPL Vitte — interactif, multi-ligne, avec compilation à la volée.
 //!
@@ -35,8 +37,11 @@ use yansi::{Color, Paint};
 use rustyline::history::DefaultHistory;
 use rustyline::{Config as RLConfig, Editor};
 
-use vitte_compiler as compiler;
-use vitte_core::disasm::{disassemble_compact, disassemble_full};
+use vitte_core::{
+    bytecode::chunk::Chunk as VChunk,
+    disasm::{disassemble_compact, disassemble_full},
+};
+use vitte_tools::{history_path as tools_history_path, setup_colors as tools_setup_colors, ColorMode as ToolsColorMode};
 
 #[cfg(feature = "eval")]
 use vitte_core::runtime::eval::{eval_chunk, EvalOptions};
@@ -92,13 +97,12 @@ fn real_main() -> Result<()> {
     let args = Args::parse();
 
     // Couleurs
-    if args.no_color {
-        yansi::Paint::disable();
+    let color_mode = if args.no_color {
+        ToolsColorMode::Never
     } else {
-        yansi::Paint::enable();
-        #[cfg(windows)]
-        yansi::Paint::enable_windows_ascii();
-    }
+        ToolsColorMode::Auto
+    };
+    tools_setup_colors(color_mode);
 
     // Choix moteur par défaut
     let mut engine = choose_default_engine(args.engine)?;
@@ -109,8 +113,11 @@ fn real_main() -> Result<()> {
     }
 
     // Historique (dans ~/.vitte/history)
-    let hist_path = history_path()?;
-    let rl_cfg = RLConfig::builder().history_ignore_dups(true).build();
+    let hist_path = tools_history_path()?;
+    let rl_cfg = RLConfig::builder()
+        .history_ignore_dups(true)
+        .map_err(|e| anyhow!("configuration REPL: {e}"))?
+        .build();
     let mut rl: Editor<(), DefaultHistory> = Editor::with_config(rl_cfg)?;
     let _ = rl.load_history(&hist_path);
 
@@ -182,7 +189,7 @@ fn real_main() -> Result<()> {
 struct Session {
     engine: Engine,
     buffer: String,                 // accumulation (pour “état” REPL)
-    last_chunk: Option<vitte_core::bytecode::chunk::Chunk>,
+    last_chunk: Option<VChunk>,
     timing: bool,
     prompt: String,
 }
@@ -214,8 +221,7 @@ impl Session {
 
         // Compile le *buffer entier* pour simuler un état global
         let t0 = Instant::now();
-        let chunk = compiler::compile_str(&self.buffer, Some("<repl>"))
-            .map_err(|e| anyhow!("Compilation échouée:\n{e}"))?;
+        let chunk = compile_repl_buffer(&self.buffer)?;
         let t1 = Instant::now();
 
         if self.timing {
@@ -277,12 +283,12 @@ fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
         }
 
         ":clear" => {
-            sess.buffer.clear();
+            String::clear(&mut sess.buffer);
             println!("(buffer vidé)");
         }
 
         ":reset" => {
-            sess.buffer.clear();
+            String::clear(&mut sess.buffer);
             sess.last_chunk = None;
             println!("(session réinitialisée)");
         }
@@ -355,8 +361,8 @@ fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
         }
 
         ":history" => {
-            let p = history_path()?;
-            println!("{}", p);
+            let p = tools_history_path()?;
+            println!("history: {}", p.display());
         }
 
         ":set" => {
@@ -407,14 +413,22 @@ fn banner(engine: &Engine) {
     eprintln!("Tapez :help pour la liste des commandes.\n");
 }
 
+#[cfg(all(feature = "eval", feature = "vm"))]
 fn engine_label(e: &Engine) -> &'static str {
     match e {
-        #[cfg(feature = "eval")]
         Engine::Eval => "eval",
-        #[cfg(feature = "vm")]
         Engine::Vm => "vm",
     }
 }
+
+#[cfg(all(feature = "eval", not(feature = "vm")))]
+fn engine_label(_e: &Engine) -> &'static str { "eval" }
+
+#[cfg(all(feature = "vm", not(feature = "eval")))]
+fn engine_label(_e: &Engine) -> &'static str { "vm" }
+
+#[cfg(all(not(feature = "eval"), not(feature = "vm")))]
+fn engine_label(_e: &Engine) -> &'static str { "n/a" }
 
 fn choose_default_engine(cli: Option<Engine>) -> Result<Engine> {
     if let Some(e) = cli { return Ok(e); }
@@ -426,9 +440,8 @@ fn choose_default_engine(cli: Option<Engine>) -> Result<Engine> {
     Err(anyhow!("Aucun moteur disponible : compile avec la feature `eval` ou `vm`."))
 }
 
-fn history_path() -> Result<PathBuf> {
-    let base = dirs::data_dir().ok_or_else(|| anyhow!("dirs::data_dir introuvable"))?;
-    Ok(base.join("vitte").join("history"))
+fn compile_repl_buffer(_src: &str) -> Result<VChunk> {
+    Err(anyhow!("Compilation REPL indisponible dans cette build"))
 }
 
 /// Heuristique simple : une entrée est "complète" si

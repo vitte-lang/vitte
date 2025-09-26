@@ -29,7 +29,7 @@ use serde::Serialize;
 use yansi::{Color, Paint};
 
 use vitte_core::bytecode::{
-    chunk::{Chunk as VChunk, ChunkFlags, DebugInfo},
+    chunk::{Chunk as VChunk, ChunkFlags},
     ConstValue, Op,
 };
 use vitte_core::disasm::disassemble_full;
@@ -392,7 +392,7 @@ fn write_text(path: &Utf8Path, s: &str) -> Result<()> {
 
 /* ------------------------------- Affichage ------------------------------- */
 
-fn print_summary(out: &VChunk, m: &JsonManifest) {
+fn print_summary(_out: &VChunk, m: &JsonManifest) {
     let before = m.total_consts_before as i64;
     let after = m.total_consts_after as i64;
     let saved = before - after;

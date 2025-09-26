@@ -158,9 +158,13 @@ pub fn setup_colors(mode: ColorMode) {
     #[cfg(feature = "colors")]
     {
         match mode {
-            ColorMode::Auto => { let _ = yansi::Paint::enable_windows_ascii(); }
-            ColorMode::Always => { yansi::Paint::enable(); let _ = yansi::Paint::enable_windows_ascii(); }
-            ColorMode::Never => yansi::Paint::disable(),
+            ColorMode::Auto => {
+                yansi::whenever(yansi::Condition::DEFAULT);
+            }
+            ColorMode::Always => {
+                yansi::enable();
+            }
+            ColorMode::Never => yansi::disable(),
         }
     }
     #[cfg(not(feature = "colors"))]

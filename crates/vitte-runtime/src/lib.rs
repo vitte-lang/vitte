@@ -25,7 +25,6 @@ use std::fmt;
 use std::io::{self, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::Result;
 use thiserror::Error;
 
 /* --------------------------- Types de valeur --------------------------- */
