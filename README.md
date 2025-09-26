@@ -103,7 +103,26 @@ Cibles élargies (Android, BSD, RISC-V, embedded) sont **expérimentales** et su
 ---
 
 ## ⬇ Installation
+# Homebrew Vitte Tap
 
+Official Homebrew Tap to install the [Vitte programming language](https://github.com/vitte-lang/vitte).
+
+---
+
+## Installation
+
+First, add the tap:
+
+```sh
+brew tap vitte-lang/vitte
+```
+
+---
+
+## Then install VITTE
+```sh
+brew install vitte
+```
 ### Depuis les sources (recommandé)
 
 ```bash
