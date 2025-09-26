@@ -57,7 +57,7 @@
 
 ## 🧭 État du projet
 
-- **MSRV** : Rust `1.80.0` (épinglé via `rust-toolchain.toml`).
+- **MSRV** : Rust `1.82.0` (épinglé via `rust-toolchain.toml`).
 - **Qualité** : lints stricts (`.clippy.toml`), `cargo deny`, tests & snapshots.
 - **Stabilité** : grammaire et IR évoluent encore ; l’ABI VITBC est **versionnée**.
 
@@ -109,7 +109,7 @@ Cibles élargies (Android, BSD, RISC-V, embedded) sont **expérimentales** et su
 ### Depuis les sources (recommandé)
 
 ```bash
-# Prérequis : Rust 1.80.0 (toolchain épinglée)
+# Prérequis : Rust 1.82.0 (toolchain épinglée)
 git clone https://github.com/vitte-lang/vitte.git
 cd vitte
 
@@ -286,7 +286,7 @@ do main() {
 
 - **Guides** : [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Qualité** : `cargo fmt` • `cargo clippy -D warnings` • `cargo test` • `cargo deny check`
-- **MSRV** : 1.80.0 • **unsafe** interdit par défaut.
+- **MSRV** : 1.82.0 • **unsafe** interdit par défaut.
 - **Sécurité** : signale toute vulnérabilité en privé (voir `SECURITY.md` si présent, sinon issue privée/mainteneurs).
 
 ---
