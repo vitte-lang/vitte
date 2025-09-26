@@ -32,9 +32,10 @@ use clap::{ArgGroup, Parser, ValueEnum};
 use serde::Serialize;
 use yansi::{Color, Paint};
 
-use vitte_core::bytecode::{chunk::Chunk as VChunk, Chunk as _, ConstValue, Op};
+use vitte_core::bytecode::{chunk::Chunk as VChunk, ConstValue, Op};
 use vitte_core::disasm::{disassemble_full, disassemble_compact};
 use vitte_core::helpers;
+use vitte_tools::{ColorMode as GlobalColorMode, setup_colors as global_setup_colors};
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum ColorMode { Auto, Always, Never }
@@ -113,7 +114,7 @@ fn main() {
 fn real_main() -> Result<()> {
     color_eyre::install().ok();
 
-    let mut cli = Cli::parse();
+    let cli = Cli::parse();
     setup_colors(cli.color);
 
     if cli.inputs.is_empty() {
@@ -253,12 +254,12 @@ fn default_json_filename(input: &Utf8Path) -> String {
 }
 
 fn setup_colors(mode: ColorMode) {
-    let choice = match mode {
-        ColorMode::Auto => yansi::Paint::enable_windows_ascii(),
-        ColorMode::Always => { yansi::Paint::enable(); true },
-        ColorMode::Never => { yansi::Paint::disable(); false },
+    let mapped = match mode {
+        ColorMode::Auto => GlobalColorMode::Auto,
+        ColorMode::Always => GlobalColorMode::Always,
+        ColorMode::Never => GlobalColorMode::Never,
     };
-    let _ = choice;
+    global_setup_colors(mapped);
 }
 
 fn print_summary(chunk: &VChunk, name: &Utf8Path) {
@@ -389,7 +390,7 @@ fn build_json<'a>(chunk: &'a VChunk, name: &'a Utf8Path) -> ChunkJson<'a> {
         }
         ops.push(OpJson {
             pc,
-            line,
+            line: Some(line),
             op: format!("{op:?}"),
             load_const_preview: preview,
         });

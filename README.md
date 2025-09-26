@@ -161,7 +161,7 @@ Compile & exécute :
 
 ## 🧰 CLI & outils
 
-Le binaire **`vitte`** regroupe les sous-commandes :
+Le binaire principal **`vitte`** regroupe les sous-commandes :
 
 ```text
 vitte
@@ -182,6 +182,19 @@ vitte pack examples/fib.vit -O2 -o build/fib.vitbc
 vitte dump build/fib.vitbc
 vitte graph build/fib.vitbc --dot out/cfg.dot
 vitte run build/fib.vitbc
+
+### Autres outils du monorepo
+
+Outre la commande unique `vitte`, le crate `vitte-tools` expose plusieurs binaires spécialisés :
+
+| Binaire        | Description rapide                               | Build |
+|----------------|---------------------------------------------------|-------|
+| `vitte-asm`    | Assembleur `.vit.s → .vitbc`                      | `cargo build -p vitte-tools --bin vitte-asm` |
+| `vitte-disasm` | Désassembleur `.vitbc → texte/JSON`               | `cargo build -p vitte-tools --bin vitte-disasm` |
+| `vitte-link`   | Linker multi-chunks (fusion, déduplication, strip)| `cargo build -p vitte-tools --bin vitte-link` |
+| `vitte-repl`*  | REPL expérimental (couleurs/historique inclus)    | `cargo build -p vitte-tools --bin vitte-repl --features repl-cli` |
+
+> `*` Le REPL est actuellement livré en mode **stub** : l’interface démarre et gère l’historique/couleurs, mais signale que la compilation à la volée n’est pas encore branchée. Utile pour tester l’intégration CLI/LSP sans bloquer le build.
 ```
 
 ---

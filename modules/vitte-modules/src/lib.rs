@@ -14,7 +14,7 @@
 //! - `ecs2d`, `gfx2d`         — gameplay & rendu 2D
 //! - `resolver`, `typer`      — frontend sémantique
 //! - `opt`, `fmt`             — passes IR, formateur
-//! - `hal`, `boot`, `mm`, `sched`, `sys` — noyau (kernel)
+//! - `hal`, `mm`, `shed`, `sys` — couches basses & orchestrateur d’outils
 //!
 //! Tu peux bien sûr en ajouter d’autres : **ajoute la réexport + l’entrée de
 //! registre** plus bas (c’est trivial).
@@ -70,17 +70,13 @@ pub use vitte_fmt as vfmt;
 #[cfg_attr(docsrs, doc(cfg(feature = "hal")))]
 pub use vitte_hal as hal;
 
-#[cfg(feature = "boot")]
-#[cfg_attr(docsrs, doc(cfg(feature = "boot")))]
-pub use vitte_boot as boot;
-
 #[cfg(feature = "mm")]
 #[cfg_attr(docsrs, doc(cfg(feature = "mm")))]
 pub use vitte_mm as mm;
 
-#[cfg(feature = "sched")]
-#[cfg_attr(docsrs, doc(cfg(feature = "sched")))]
-pub use vitte_sched as sched;
+#[cfg(feature = "shed")]
+#[cfg_attr(docsrs, doc(cfg(feature = "shed")))]
+pub use vitte_shed as shed;
 
 #[cfg(feature = "sys")]
 #[cfg_attr(docsrs, doc(cfg(feature = "sys")))]
@@ -115,6 +111,7 @@ pub fn modules() -> &'static [ModuleMeta] {
 const REGISTRY: [ModuleMeta; REG_LEN] = {
     // Compte le nombre d’entrées activées pour dimensionner l’array.
     const fn count() -> usize {
+        #[allow(unused_mut)]
         let mut n = 0usize;
         // 2D
         #[cfg(feature = "ecs2d")] { let _ = (); n += 1; }
@@ -126,18 +123,19 @@ const REGISTRY: [ModuleMeta; REG_LEN] = {
         #[cfg(feature = "fmt")]      { let _ = (); n += 1; }
         // Kernel
         #[cfg(feature = "hal")]   { let _ = (); n += 1; }
-        #[cfg(feature = "boot")]  { let _ = (); n += 1; }
         #[cfg(feature = "mm")]    { let _ = (); n += 1; }
-        #[cfg(feature = "sched")] { let _ = (); n += 1; }
+        #[cfg(feature = "shed")]  { let _ = (); n += 1; }
         #[cfg(feature = "sys")]   { let _ = (); n += 1; }
         n
     }
     const REG_LEN: usize = count();
+    #[allow(unused_mut)]
     let mut arr: [ModuleMeta; REG_LEN] = {
         // initialise avec des valeurs “zéro” lisibles (jamais renvoyées si REG_LEN == 0)
         const ZZ: ModuleMeta = ModuleMeta { name: "", description: "", tags: &[] };
         [ZZ; REG_LEN]
     };
+    #[allow(unused_mut, unused_assignments, unused_variables)]
     let mut i = 0usize;
 
     // 2D
@@ -152,9 +150,8 @@ const REGISTRY: [ModuleMeta; REG_LEN] = {
 
     // Kernel
     #[cfg(feature = "hal")]   { arr[i] = ModuleMeta { name: "hal", description: "HAL : timers, IRQ, MMIO abstraits (x86_64/aarch64).", tags: &["kernel","hal"] }; i += 1; }
-    #[cfg(feature = "boot")]  { arr[i] = ModuleMeta { name: "boot", description: "Boot & handoff : BootInfo → kernel_main().", tags: &["kernel","boot"] }; i += 1; }
     #[cfg(feature = "mm")]    { arr[i] = ModuleMeta { name: "mm", description: "Gestion mémoire (frames/pages, heap noyau).", tags: &["kernel","memory"] }; i += 1; }
-    #[cfg(feature = "sched")] { arr[i] = ModuleMeta { name: "sched", description: "Ordonnanceur noyau (threads, runqueue, tick).", tags: &["kernel","sched"] }; i += 1; }
+    #[cfg(feature = "shed")]  { arr[i] = ModuleMeta { name: "shed", description: "Orchestrateur de tâches (build/test/watch).", tags: &["tools","automation"] }; i += 1; }
     #[cfg(feature = "sys")]   { arr[i] = ModuleMeta { name: "sys", description: "ABI noyau : syscalls & traps de base.", tags: &["kernel","abi"] }; i += 1; }
 
     arr
@@ -162,6 +159,7 @@ const REGISTRY: [ModuleMeta; REG_LEN] = {
 
 const REG_LEN: usize = {
     // miroir de count() pour usage externe (const générique possible si besoin)
+    #[allow(unused_mut)]
     let mut n = 0usize;
     #[cfg(feature = "ecs2d")] { let _ = (); n += 1; }
     #[cfg(feature = "gfx2d")] { let _ = (); n += 1; }
@@ -170,9 +168,8 @@ const REG_LEN: usize = {
     #[cfg(feature = "opt")]      { let _ = (); n += 1; }
     #[cfg(feature = "fmt")]      { let _ = (); n += 1; }
     #[cfg(feature = "hal")]   { let _ = (); n += 1; }
-    #[cfg(feature = "boot")]  { let _ = (); n += 1; }
     #[cfg(feature = "mm")]    { let _ = (); n += 1; }
-    #[cfg(feature = "sched")] { let _ = (); n += 1; }
+    #[cfg(feature = "shed")]  { let _ = (); n += 1; }
     #[cfg(feature = "sys")]   { let _ = (); n += 1; }
     n
 };
@@ -214,8 +211,8 @@ pub mod prelude {
     #[cfg(feature = "mm")]
     pub use super::mm;
 
-    #[cfg(feature = "sched")]
-    pub use super::sched;
+    #[cfg(feature = "shed")]
+    pub use super::shed;
 
     #[cfg(feature = "sys")]
     pub use super::sys;
