@@ -1,25 +1,27 @@
 [package]
-name                   = "vitte-lexer"
-description            = "Lexer/tokenizer du langage Vitte : UTF-8, spans, nombres, chaînes, commentaires."
-version.workspace      = true
-edition.workspace      = true
-rust-version.workspace = true
-license.workspace      = true
-repository.workspace   = true
-homepage.workspace     = true
-readme.workspace       = true
-keywords               = ["vitte", "lexer", "tokenizer", "compiler"]
-categories             = ["compilers", "development-tools"]
+name        = "vitte-lexer"
+description = "Lexer/tokenizer du langage Vitte : UTF-8, spans, nombres, chaînes, commentaires."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["vitte", "lexer", "tokenizer", "compiler"]
+categories = ["compilers", "development-tools"]
 
 [lib]
 name = "vitte_lexer"
 path = "src/lib.rs"
 
 [features]
-# Confort par défaut
+# Par défaut on cible l'environnement standard.
 default = ["std"]
 
-# Environnement standard (E/S utilitaires, logs éventuels)
+# Drapeau std (aucune subdep forcée ici, c’est juste un tag homogène)
 std = []
 
 # Sérialisation des tokens/diagnostics
@@ -34,19 +36,20 @@ trace = ["dep:log"]
 # Impl accélérée (recherche de délimiteurs, whitespace…) via memchr
 fast = ["dep:memchr"]
 
-# Alternative d’implémentation via 'logos' (si tu veux un générateur)
+# Alternative via 'logos'
 logos = ["dep:logos"]
 
 [dependencies]
-# internes
+# Internes (chemins relatifs au dossier crates/)
 vitte-core = { path = "../vitte-core", version = "0.1.0" }
-# si certains tokens/Types viennent de l’AST (facultatif)
 vitte-ast  = { path = "../vitte-ast",  version = "0.1.0", optional = true }
 
-# externes
+# Externes (héritées du workspace)
 serde     = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 log       = { workspace = true, optional = true }
+
+# Externes spécifiques
 memchr    = { version = "2.7", optional = true }
 logos     = { version = "0.15.1", optional = true }
 
@@ -56,18 +59,18 @@ proptest          = { workspace = true }
 serde_json        = { workspace = true }
 
 [package.metadata.docs.rs]
-all-features = false
-features = ["std", "serde", "fast"]
+all-features        = false
+features            = ["std", "serde", "fast"]
 no-default-features = false
-rustdoc-args = ["--cfg", "docsrs"]
+rustdoc-args        = ["--cfg", "docsrs"]
 
 [lints.rust]
 unsafe_code = "forbid"
 
 [lints.clippy]
-all = "warn"
-pedantic = "warn"
-nursery = "warn"
-module_name_repetitions = "allow"
-too_many_lines = "allow"
-doc_markdown = "allow"
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+too_many_lines           = "allow"
+doc_markdown             = "allow"

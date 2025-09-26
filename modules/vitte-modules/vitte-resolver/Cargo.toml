@@ -1,0 +1,46 @@
+﻿[package]
+name        = "vitte-resolver"
+description = "Résolution de noms et tables de symboles pour Vitte (scopes, imports, prélude)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["vitte", "resolver", "symbols", "compiler"]
+categories = ["compilers", "data-structures", "no-std"]
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+# Par défaut on s'appuie sur la std (reste no_std via `alloc`)
+default = ["std"]
+std     = []
+
+# Export/diagnostics sérialisables
+serde   = ["dep:serde", "vitte-mm/serde"]
+
+[dependencies]
+# Symbol/Interner partagés
+vitte-mm = { path = "../vitte-mm", version = "0.1.0" }
+
+# Sérialisation optionnelle
+serde    = { workspace = true, optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+too_many_lines          = "allow"
+doc_markdown            = "allow"

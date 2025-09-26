@@ -1,64 +1,64 @@
-# clippy.toml — règles de bon goût (et de survie) pour tout le repo
+# .clippy.toml — règles de bon goût (et de survie) pour tout le repo
 
-# Version minimale supportée (aligne avec ta CI / rust-toolchain.toml)
+# ===== Version minimale supportée (aligne avec rust-toolchain.toml / CI) =====
 msrv = "1.80.0"
 
-# ——— Complexité & lisibilité ———
-# Baisse un peu les seuils pour attraper la dette avant qu’elle grossisse.
+# ===== Complexité & lisibilité =====
+# On serre un peu les vis pour freiner la dette technique.
 cognitive-complexity-threshold = 20      # défaut ≈ 25
 too-many-arguments-threshold   = 6       # défaut 7
 type-complexity-threshold      = 200     # défaut ≈ 250
-too-many-lines-threshold       = 200     # pour clippy::too_many_lines
-enum-variant-name-threshold    = 3       # préfixes d’enum trop verbeux
-large-enum-variant-threshold   = 160     # bytes avant warning sur variants trop lourds
+too-many-lines-threshold       = 200     # lignes avant warn sur too_many_lines
+enum-variant-name-threshold    = 3       # préfixe commun trop verbeux
+large-enum-variant-threshold   = 160     # bytes avant warn sur grosses variants
 
-# ——— Docs ———
-# Mots techniques acceptés par clippy::doc_markdown (pas de backticks requis)
+# ===== Docs =====
+# Mots techniques acceptés par clippy::doc_markdown (sans backticks)
 doc-valid-idents = [
   "API", "ASCII", "CPU", "GPU", "TLS", "SSL", "HTTP", "HTTPS",
   "IPv4", "IPv6", "TCP", "UDP", "URL", "URI", "UUID", "ID",
   "NaN", "Inf", "UTF-8", "UTF-16", "JSON", "XML", "HTML",
-  "WASM", "SIMD", "I/O", "CLI", "GUI", "FFI", "ABI",
+  "WASM", "WASI", "SIMD", "I/O", "CLI", "GUI", "FFI", "ABI",
   "ARM", "Cortex-M", "x86_64", "VTOR", "DMA", "ISR", "IRQ",
   "VGA", "PIT", "PIC", "GDT", "IDT",
+  "VM", "LSP", "IR", "CFG", "DFG", "VITBC", "JUCE", "OpenGL", "LLVM",
 ]
 
-# ——— Noms à bannir (par pitié) ———
-# clippy::disallowed_names
+# ===== Noms à bannir (clippy::disallowed_names) =====
 disallowed-names = [
   "foo", "bar", "baz", "qux", "quux",
   "tmp", "temp", "data", "value", "var",
 ]
 
-# ——— Interdits ciblés (types / méthodes / macros) ———
-# Ces blocs nourrissent les lints:
-#   - clippy::disallowed_types
-#   - clippy::disallowed_methods
-#   - clippy::disallowed_macros
-# Ajuste selon ta stack (openssl → rustls, etc.).
-
+# ===== Interdits ciblés =====
+# Alimente : disallowed_types / disallowed_methods / disallowed_macros
 [[disallowed-types]]
 path = "std::sync::Mutex"
-reason = "Préférer parking_lot::Mutex (perfs/poison)."
+reason = "Préférer parking_lot::Mutex (perfs, pas de poison)."
 
 [[disallowed-types]]
 path = "std::sync::RwLock"
-reason = "Souvent sur-utilisé; parking_lot::RwLock ou mieux : revoir l’archi."
+reason = "Souvent sur-utilisé ; préférer parking_lot::RwLock ou repenser l’archi."
 
 [[disallowed-methods]]
 path = "std::mem::uninitialized"
-reason = "UB land — utiliser MaybeUninit."
+reason = "UB-land : utiliser core::mem::MaybeUninit."
 
 [[disallowed-methods]]
 path = "std::process::Command::output"
-reason = "Préférer un wrapper (timeouts, logs, erreurs enrichies)."
+reason = "Wrappe avec timeouts, logs et erreurs enrichies (pas brut)."
 
 [[disallowed-macros]]
 path = "dbg!"
-reason = "OK en dev/test, pas en prod."
+reason = "OK en dev/test, mais pas en prod."
 
-# ——— Tests : soyons pragmatiques ———
-# Autoriser quelques raccourcis dans les tests uniquement.
+# (Optionnel) Si tu veux aussi encadrer l’IO directe :
+# [[disallowed-macros]]
+# path = "println!"
+# reason = "Utiliser tracing/log ; autorisé en tests via `allow-print-in-tests`."
+
+# ===== Tests : pragmatisme assumé =====
+# Ces flags relâchent certains lints dans #[cfg(test)], pas ailleurs.
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-dbg-in-tests    = true

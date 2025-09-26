@@ -1,0 +1,47 @@
+﻿[package]
+name        = "vitte-shed"
+description = "Orchestrateur de tâches pour Vitte : deps, toposort, cache, watch, globs."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["vitte", "tasks", "build", "watch", "orchestrator"]
+categories = ["command-line-utilities", "development-tools"]
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+# Par défaut on s'appuie sur la std (le crate reste no_std via `alloc`)
+default = ["std"]
+std     = []
+
+# Persistance du cache / sérialisation optionnelle
+auto-cache = ["serde"]
+serde      = ["dep:serde"]
+
+# Watch mode (nécessite std + notify)
+watch = ["std", "dep:notify"]
+
+[dependencies]
+serde  = { workspace = true, optional = true }
+notify = { workspace = true, optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+too_many_lines          = "allow"
+doc_markdown            = "allow"

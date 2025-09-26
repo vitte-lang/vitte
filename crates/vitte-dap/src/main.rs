@@ -12,7 +12,7 @@ mod handler;
 
 use std::io::{self, BufRead, Read, Write};
 use color_eyre::eyre::Result;
-use log::{info, debug, warn, error};
+use log::{info, debug, warn};
 
 use handler::{Handler, DebugEngine, Frame, Variable};
 

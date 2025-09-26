@@ -1,258 +1,166 @@
-# Vitte Language — Documentation Portal (index.md • **ultra-complet**)
+# Vitte RFCs — Index & Guide
 
-> **Vitte** : un langage moderne qui marie la clarté, la sûreté et la vitesse.  
-> **Édition** : 2025 • **Toolchain minimal** : ≥ 0.6.0 • **Statut** : stable + zones *preview/experimental* clairement balisées.
-
----
-
-## 🧭 Liens rapides
-
-- 📦 **Téléchargements** : binaires & source (voir *Build from Source* ci-dessous)  
-- 🚀 **Getting Started** → [`getting-started.md`](getting-started.md)  
-- 📜 **Language Spec** → [`language-spec.md`](language-spec.md)  
-- 🧰 **Standard Library** → [`stdlib.md`](stdlib.md)  
-- 🔗 **FFI / ABI C** → [`ffi.md`](ffi.md)  
-- 🔨 **Build from Source** → [`build-from-source.md`](build-from-source.md)  
-- 🤝 **Contribuer** → [`contributing.md`](contributing.md) • 🎯 **Style** → [`code-style.md`](code-style.md)  
-- 🗺️ **Arborescence canonique** → `../arborescence.md` • `docs/arborescence.md`  
-- 🧪 **Tests/Benchs** → `../scripts/test_all.sh` • `../scripts/gen_docs.sh`  
-- 🧷 **Sécurité** → `../security/` • 👩‍⚖️ **Licences** → `../LICENSE`
+> Une seule boussole : faire de Vitte un langage net, rapide, fiable. Le processus RFC est là pour cadrer les idées, pas pour les étouffer. ✨
 
 ---
 
-## 📚 Table des matières
+## Comment fonctionne le processus RFC
 
-1. [Pourquoi Vitte ?](#pourquoi-vitte)
-2. [Installation](#installation)
-   - [A. Binaire précompilé](#a-binaire-précompilé)
-   - [B. Via Rust/Cargo](#b-via-rustcargo)
-   - [C. Depuis le code source](#c-depuis-le-code-source)
-3. [Hello, Vitte ! (exemples)](#hello-vitte-exemples)
-4. [Structure d’un projet](#structure-dun-projet)
-5. [Cibles & Backends](#cibles--backends)
-6. [Outils du toolchain](#outils-du-toolchain)
-7. [Flux de dev : build, test, bench, docs](#flux-de-dev--build-test-bench-docs)
-8. [Versionnage, stabilité & éditions](#versionnage-stabilité--éditions)
-9. [FAQ & dépannage](#faq--dépannage)
-10. [Contribuer, gouvernance & code de conduite](#contribuer-gouvernance--code-de-conduite)
-11. [Feuille de route & RFC](#feuille-de-route--rfc)
-12. [Crédits & licences](#crédits--licences)
+1. **Ouvrir une proposition** : copiez `0000-template.md` → `NNNN-titre-kebab.md` (NNNN = numéro, 4 chiffres).
+2. **Rédiger** : remplissez les sections (motivation, design, alternatives, compat…).
+3. **Discuter** : PR GitHub, reviews techniques, itérations.
+4. **Statuts** :
+
+   * 🍼 *Draft* — en cours d’écriture.
+   * 🗳️ *Proposed* — prête pour review sérieuse.
+   * ✅ *Accepted* — plan d’implémentation OK.
+   * 🔧 *In Progress* — en cours d’implémentation.
+   * 🚢 *Stabilized* — livré et gelé.
+   * ❌ *Rejected* — fermé avec rationale.
+5. **Numérotation** : séquentielle. Évitez les collisions ; si ça arrive, renumérotez dans la PR.
+
+> **Astuce** (Windows / PowerShell) :
+>
+> ```powershell
+> gci rfcs -Filter "*.md" | % { $_.Name } | \
+>  ? { $_ -match '^\d{4}-' } | \
+>  % { $_.Substring(0,4) } | group | ? Count -gt 1
+> ```
+---
+# Vitte — Documentation
+
+Bienvenue dans la **documentation** du projet Vitte. Ici, on respecte les traditions des vieux maîtres du compilateur *et* on shippe à la vitesse Gen Z.
+Si vous cherchez un point d’entrée : commencez par **[Getting Started](./GETTING_STARTED.md)** puis l’**[Architecture](./ARCHITECTURE/overview.md)**.
+
+## Sommaire express
+- Onboarding : [Getting Started](./GETTING_STARTED.md), [Build](./BUILD.md)
+- Internes : [Architecture](./ARCHITECTURE/overview.md), [Pipeline du compilateur](./ARCHITECTURE/pipeline.md), [IR](./IR/ir.md), [VM](./VM/overview.md), [VITBC Spec](./VITBC/spec.md)
+- Outils : [CLI](./CLI/guide.md), [LSP](./LSP/guide.md), [Runtime](./RUNTIME/overview.md), [Stdlib](./STDLIB/guide.md)
+- Qualité : [Style](./STYLE.md), [Tests & QA](./TESTING_AND_QA.md), [Benchmarks](./BENCHMARKS.md), [CI](./CI.md), [Security](./SECURITY.md)
+- Gouvernance : [ADR](./ADR/000-template.md), [Workspace](./ADR/001-workspace-layout.md), [Release](./RELEASE.md), [Troubleshooting](./TROUBLESHOOTING.md)
+
+> Cette doc accompagne les crates : `vitte-lexer`, `vitte-parser`, `vitte-ast`, `vitte-ir`, `vitte-vitbc`, `vitte-vm`, `vitte-runtime`, `vitte-lsp`, `vitte-tools`, `vitte-wasm`, `vitte-stdlib`.
+
 
 ---
 
-## Pourquoi Vitte ?
+## Index global (par numéro)
 
-- **Sûreté** : API `Result/Option`, emprunts (`&` / `&mut`), panics réservés aux invariants.  
-- **Perfs natives** : VM bytecode **et** backends natifs (LLVM/JIT).  
-- **Interop claire** : FFI C sans magie, ABI documentée, buffers explicites.  
-- **Polyvalent** : desktop, serveurs, embarqué, WebAssembly, kernel.  
-- **Ergonomie** : `do`, `match`, `async` (preview), modules lisibles, outils intégrés.
+> Statut initial : 🍼 *Draft* partout, sauf mention contraire.
 
-👉 Détails dans [`language-spec.md`](language-spec.md) et la stdlib dans [`stdlib.md`](stdlib.md).
+|      # | Titre                               | Fichier                                         | Statut   |
+| -----: | ----------------------------------- | ----------------------------------------------- | -------- |
+|   0000 | **Template**                        | `0000-template.md`                              | –        |
+|   0001 | Core Syntax & Keywords              | `0001-core-syntax-and-keywords.md`              | 🍼 Draft |
+|   0002 | Module System                       | `0002-module-system.md`                         | 🍼 Draft |
+|   0003 | Memory Model & Ownership            | `0003-memory-model-and-ownership.md`            | 🍼 Draft |
+|   0004 | Error Handling                      | `0004-error-handling.md`                        | 🍼 Draft |
+|   0005 | FFI & Interoperability              | `0005-ffi-and-interoperability.md`              | 🍼 Draft |
+|   0006 | Async/Await & Concurrency           | `0006-async-await-concurrency.md`               | 🍼 Draft |
+|   0007 | Pattern Matching                    | `0007-pattern-matching.md`                      | 🍼 Draft |
+|   0008 | Macro System                        | `0008-macro-system.md`                          | 🍼 Draft |
+|   0009 | Standard Library Structure          | `0009-std-library-structure.md`                 | 🍼 Draft |
+|   0010 | Package Manager (vitpm)             | `0010-package-manager-vitpm.md`                 | 🍼 Draft |
+|   0011 | Compiler Architecture               | `0011-compiler-architecture.md`                 | 🍼 Draft |
+|   0012 | Bytecode & VM                       | `0012-bytecode-and-vm.md`                       | 🍼 Draft |
+|   0013 | Security Threat Model               | `0013-security-threat-model.md`                 | 🍼 Draft |
+|   0014 | Tooling Integration                 | `0014-tooling-integration.md`                   | 🍼 Draft |
+|   0015 | IDE & LSP Support                   | `0015-ide-and-lsp-support.md`                   | 🍼 Draft |
+|   0016 | Build System & CI                   | `0016-build-system-and-ci.md`                   | 🍼 Draft |
+|   0017 | Testing & Benchmarking              | `0017-testing-and-benchmarking.md`              | 🍼 Draft |
+|   0018 | Formatting Style & Lints            | `0018-formatting-style-and-lints.md`            | 🍼 Draft |
+|   0019 | Distribution & Installation         | `0019-distribution-and-installation.md`         | 🍼 Draft |
+| 0020 A | Governance & Evolution              | `0020-governance-and-evolution.md`              | 🍼 Draft |
+| 0020 B | Internationalization & Localization | `0020-internationalization-and-localization.md` | 🍼 Draft |
+| 0021 A | Garbage Collection vs Manual Memory | `0021-garbage-collection-vs-manual-memory.md`   | 🍼 Draft |
+| 0021 B | Internationalization / Localization | `0021-internationalization-localization.md`     | 🍼 Draft |
+| 0022 A | Embedded Systems Programming        | `0022-embedded-systems-programming.md`          | 🍼 Draft |
+| 0022 B | Reflection & Metaprogramming        | `0022-reflection-and-metaprogramming.md`        | 🍼 Draft |
+| 0023 A | Serialization & Deserialization     | `0023-serialization-and-deserialization.md`     | 🍼 Draft |
+| 0023 B | WebAssembly & Web Integration       | `0023-webassembly-web-integration.md`           | 🍼 Draft |
+| 0024 A | AI/ML & Data Science                | `0024-ai-ml-data-science.md`                    | 🍼 Draft |
+| 0024 B | Networking & I/O                    | `0024-networking-and-io.md`                     | 🍼 Draft |
+| 0025 A | Networking & Distributed Systems    | `0025-networking-distributed-systems.md`        | 🍼 Draft |
+| 0025 B | Parallelism & SIMD                  | `0025-parallelism-and-simd.md`                  | 🍼 Draft |
+| 0026 A | Mobile & Cross‑Platform             | `0026-mobile-cross-platform.md`                 | 🍼 Draft |
+| 0026 B | WebAssembly & Embedded Support      | `0026-webassembly-and-embedded-support.md`      | 🍼 Draft |
+| 0027 A | Game Development & Graphics         | `0027-game-development-graphics.md`             | 🍼 Draft |
+| 0027 B | Versioning & SemVer Policy          | `0027-versioning-and-semver-policy.md`          | 🍼 Draft |
+| 0028 A | Blockchain & Smart Contracts        | `0028-blockchain-smart-contracts.md`            | 🍼 Draft |
+| 0028 B | Governance & RFC Process            | `0028-governance-and-rfc-process.md`            | 🍼 Draft |
+| 0029 A | Operating System Development        | `0029-operating-system-development.md`          | 🍼 Draft |
+| 0029 B | Standard Error Codes & Diagnostics  | `0029-standard-error-codes-and-diagnostics.md`  | 🍼 Draft |
+| 0030 A | Debugging & Profiling Tools         | `0030-debugging-and-profiling-tools.md`         | 🍼 Draft |
+| 0030 B | Quantum Computing — Future          | `0030-quantum-computing-future.md`              | 🍼 Draft |
+|   0031 | Energy Efficiency & Green Computing | `0031-energy-efficiency-green-computing.md`     | 🍼 Draft |
+|   0032 | AI/ML Integration                   | `0032-ai-ml-integration.md`                     | 🍼 Draft |
+|   0033 | Augmented/Virtual Reality           | `0033-augmented-reality-virtual-reality.md`     | 🍼 Draft |
+|   0034 | Space Computing & Aerospace         | `0034-space-computing-aerospace.md`             | 🍼 Draft |
+|   0035 | Blockchain, Aerospace & Defense     | `0035-blockchain-aerospace-defense.md`          | 🍼 Draft |
+|   0036 | Cybersecurity Framework             | `0036-cybersecurity-framework.md`               | 🍼 Draft |
+|   0037 | Edge Computing & IoT Security       | `0037-edge-computing-iot-security.md`           | 🍼 Draft |
+|   0038 | Neural Interfaces / BCI             | `0038-neural-interfaces-bci.md`                 | 🍼 Draft |
+|   0039 | Genomics & Bioinformatics           | `0039-genomics-bioinformatics.md`               | 🍼 Draft |
+|   0040 | Quantum Communication               | `0040-quantum-communication.md`                 | 🍼 Draft |
+|   0041 | Green Computing                     | `0041-green-computing.md`                       | 🍼 Draft |
+|   0042 | Ethical AI                          | `0042-ethical-ai.md`                            | 🍼 Draft |
+|   0043 | Robotics & Autonomous Systems       | `0043-robotics-autonomous.md`                   | 🍼 Draft |
+|   0044 | Smart Cities                        | `0044-smart-cities.md`                          | 🍼 Draft |
+|   0045 | Space Colonization                  | `0045-space-colonization.md`                    | 🍼 Draft |
+|   0046 | Metaverse / VR                      | `0046-metaverse-vr.md`                          | 🍼 Draft |
+|   0047 | Blockchain dApps                    | `0047-blockchain-dapps.md`                      | 🍼 Draft |
+|   0048 | Neuromorphic Computing              | `0048-neuromorphic.md`                          | 🍼 Draft |
+|   0049 | Digital Democracy                   | `0049-digital-democracy.md`                     | 🍼 Draft |
+|   0050 | Posthuman Computing                 | `0050-posthuman-computing.md`                   | 🍼 Draft |
+|   0051 | Exascale Computing                  | `0051-exascale-computing.md`                    | 🍼 Draft |
+|   0052 | Synthetic Biology                   | `0052-synthetic-biology.md`                     | 🍼 Draft |
+|   0053 | Interstellar Networks               | `0053-interstellar-networks.md`                 | 🍼 Draft |
 
----
-
-## Installation
-
-### A. Binaire précompilé
-Téléchargez l’archive correspondant à votre OS/arch puis placez le binaire dans votre `PATH` :
-```bash
-# Exemple Linux x86_64
-tar -xzf vitte-linux-x86_64.tar.gz
-sudo mv vitte /usr/local/bin/
-vitte --version
-```
-
-### B. Via Rust/Cargo
-Le projet fournit des crates CLI (voir `crates/vitte-cli`) :
-```bash
-# Prérequis : Rust stable + LLVM (pour backend natif)
-rustup toolchain install stable
-cargo install --path ./crates/vitte-cli
-vitte --help
-```
-
-### C. Depuis le code source
-Guide complet : [`build-from-source.md`](build-from-source.md)  
-Raccourci :
-```bash
-# racine du repo
-./scripts/ci_check.sh      # lints + fmt + build rapide
-./scripts/build_all.sh     # build complet (VM + LLVM + tools)
-./scripts/test_all.sh      # exécution test suite
-```
-
----
-
-## Hello, Vitte ! (exemples)
-
-Fichier `examples/hello/src/main.vit` :
-```vitte
-do main() { print("Hello, Vitte!") }
-```
-
-Compiler et exécuter :
-```bash
-# avec vitc / vitte-cli (selon votre alias)
-vitc build examples/hello
-vitc run examples/hello
-```
-
-HTTP + retry (extrait doc stdlib) :
-```vitte
-use http_client; use retry; use string
-
-do fetch_with_retry(url: str) -> Result[String, str] {
-  let p = retry::exponential_backoff(max_retries: 4, base_ms: 80, jitter: true)
-  match retry::run(p, || http_client::get(url)) {
-    Ok(r)  => Ok(string::from_bytes(r.body)),
-    Err(e) => Err(to_string(e)),
-  }
-}
-```
-
----
-
-## Structure d’un projet
-
-- **Monorepo Vitte** : `crates/` (compiler, runtime, VM, stdlib, outils), `modules/` (kits additionnels), `examples/`, `docs/`.  
-- **Projet app** (mini) :
-```
-my-app/
-├── vitte.toml
-└── src/
-   └── main.vit
-```
-Modèle conseillé et variations → [`getting-started.md`](getting-started.md) + `docs/arborescence.md`.
+**Prochain numéro libre** : `0054`.
 
 ---
 
-## Cibles & Backends
+## Index thématique (pour se repérer vite)
 
-| Plateforme | VM (bytecode) | LLVM (native) | Cranelift (JIT) |
-|---:|:---:|:---:|:---:|
-| Linux x86_64 | ✅ | ✅ | ✅ |
-| macOS (Intel/Apple) | ✅ | ✅ | ✅ |
-| Windows x64 | ✅ | ✅ | ✅ |
-| BSD | ✅ | ✅ | ✅ |
-| WASM | ⚠️ partiel | n/a | n/a |
-| Embedded (ARM/RISC-V) | ✅ | ✅ | n/a |
+### Langage & Sémantique
 
-> WASM : `fs/process` indisponibles ; réseau restreint. Embarqué : sous-ensemble `no_std` (voir [`stdlib.md`](stdlib.md)).
+* 0001 Core Syntax • 0007 Pattern Matching • 0008 Macros • 0003 Memory Model • 0004 Errors
+* 0021A GC vs Manual • 0022B Reflection • 0012 Bytecode/VM • 0011 Compiler Architecture
 
----
+### Écosystème & Outils
 
-## Outils du toolchain
+* 0010 vitpm • 0014 Tooling • 0015 IDE/LSP • 0016 CI/Build • 0017 Tests/Bench • 0018 Formatting
+* 0030A Debug/Profiling • 0027B SemVer/Versioning
 
-| Outil | Rôle | Dossier |
-|---|---|---|
-| `vitc` | Compiler (frontend + backends) | `tools/vitc` |
-| `vitcc` | Variantes/expérimentations du compilo | `tools/vitcc` |
-| `vitpm` | Gestionnaire de paquets/projets | `tools/vitpm` |
-| `vitte-fmt` | Formateur de code | `tools/vitte-fmt` |
-| `vitte-bench` | Suite de benchmark | `tools/vitte-bench` |
-| `vitte-profile` | Profiler | `tools/vitte-profile` |
-| `vitte-doc` | Génération de docs | `tools/vitte-doc` |
-| `vitte-asm/disasm/link` | Outils bytecode/IR | `crates/vitte-tools` |
+### Modules/Interop & Plateformes
 
-> Astuce VS Code : config `tasks.json` pour binder `vitc build`, `vitte-fmt`, et `test`.
+* 0002 Modules • 0005 FFI • 0023A Serialization • 0023B WASM/Web • 0026A Mobile • 0026B WASM+Embedded
+* 0024B Net & I/O • 0025A Networking/Distributed • 0025B SIMD/Parallel
+
+### Gouvernance & Process
+
+* 0028B RFC Process • 0020A Governance • 0019 Distribution • 0027B Versioning
+
+### Horizons & Recherche
+
+* 0031 Green/Energy • 0041 Green • 0032 AI/ML Integration • 0024A AI/DS • 0042 Ethical AI
+* 0038 BCI • 0039 Genomics • 0040 Quantum Comm • 0030B Quantum Future • 0034/0045 Space
 
 ---
 
-## Flux de dev : build, test, bench, docs
+## Lien / Navigation
 
-```bash
-# Formatage + lints
-./scripts/fmt.sh
-./scripts/lint.sh
-
-# Build complet (tous crates + outils)
-./scripts/build_all.sh
-
-# Tests (unit + integration + vm + perf)
-./scripts/test_all.sh
-./scripts/ci_check.sh
-
-# Benchmarks
-./scripts/gen_bytecode.sh   # génère/rafraîchit les opcodes
-cargo bench -p vitte-bench  # (ou via ./tools/vitte-bench)
-
-# Docs (GitHub Pages / portail docs/)
-./scripts/gen_docs.sh
-```
+* Modèle : [`0000-template.md`](0000-template.md) • **À cloner** pour les nouvelles propositions.
+* Index lui‑même : `rfcs/index.md` (vous êtes ici).
+* Ancien modèle : `TEMPLATE.md` (legacy).
 
 ---
 
-## Versionnage, stabilité & éditions
+## Choses à faire (check‑list mainteneur)
 
-- **Niveaux** : `stable` (gel rétro-compat), `preview` (retours), `experimental` (peut casser).  
-- **Éditions** : ruptures regroupées (ex : 2025, 2026) → migration guidée.  
-- **SemVer** : `MAJOR.MINOR.PATCH` sur l’outillage et les crates publiques.
+* [ ] Renuméroter les doublons → 0054+.
+* [ ] Ajouter une *front‑matter* YAML standard (title, authors, status, created, updated) à chaque RFC.
+* [ ] Brancher l’index dans la doc du site.
+* [ ] CI : valider unicité des numéros + titres non vides.
 
-Voir le détail dans : [`language-spec.md`](language-spec.md) & [`contributing.md`](contributing.md).
-
----
-
-## FAQ & dépannage
-
-**Q. “`fs` ne marche pas en WASM ?”**  
-R. Normal. Utilisez l’API restreinte (fetch-like) ; privilégiez `http_client` + `string`.
-
-**Q. “Je veux des écritures fichiers crash-safe.”**  
-R. Utilisez `fs_atomic::write_*` (fallback Windows documenté).
-
-**Q. “Comment générer l’arborescence Markdown depuis VS Code ?”**  
-R. Minimal :  
-```bash
-# depuis la racine du repo
-git ls-tree -r --name-only HEAD | sed 's|^|- |' > docs/tree.md
-```
-Ou script Node/TS pour un rendu “fancy” avec tailles/ignores (voir `docs/arborescence.md` pour un snippet prêt-à-l’emploi).
-
-**Q. “Je veux packager des modules custom.”**  
-R. Voir `modules/README.md` + `tools/vitpm` (schéma de manifest, hooks `post-install`).
-
----
-
-## Contribuer, gouvernance & code de conduite
-
-- **PR flow** : issues → RFC (si langage/ABI) → PR petite et testée.  
-- **Commits** : conventionnels (`feat:`, `fix:`, `docs:`, `refactor:`, `perf:`…).  
-- **Tests obligatoires** : unitaires + intégration + perf si régression sensible.  
-- **Gouvernance** : `CODEOWNERS`, review 2 pairs pour crates critiques.  
-- **Sécurité** : signalements privés dans `../security/` (processus détaillé).  
-
-Guides : [`contributing.md`](contributing.md) • [`code-style.md`](code-style.md) • `rfcs/0000-template.md`.
-
----
-
-## Feuille de route & RFC
-
-- **Roadmap** (extraits) :
-  - Async/await “édition 2026” (stabilisation du runtime + I/O non bloquante).
-  - WASM “fetch-first” + FS virtuel.
-  - `uuid` v7 stable, `idgen` distribué.
-  - Améliorations FFI : callbacks, layout `extern(c)` struct stable.
-- **RFCs** : `rfcs/` (index + discussions). Proposez, benchmarquez, documentez.
-
----
-
-## Crédits & licences
-
-- **Auteurs & contributors** : voir l’historique Git & `CODEOWNERS`.  
-- **Licence** : MIT **ou** Apache-2.0 (cf. `../LICENSE`).  
-- **Marques** : “Vitte” est un projet open-source ; respectez les guidelines de nommage de forks/plugins.
-
----
-
-## Annexes utiles
-
-- **Exemples** : `examples/hello`, `examples/web-echo`, `examples/wasm-add`, `examples/kernel/*`, `examples/worker-jobs`.  
-- **Modules clés** : `modules/` (log, config, http_client, kvstore, scheduler, retry, rate_limiter, ...).  
-- **Outils avancés** : `tools/vitx`, `tools/vitxx` (expérimentations).  
-- **Docs internes** : `docs/stdlib.md`, `docs/language-spec.md`, `docs/ffi.md`, `docs/arborescence.md`.
-
----
-
-> _“Codez vite. Codez sûr. Codez Vitte.”_  
-> Pour tout le reste, plongez dans le code et laissez parler les benchmarks.
+> « Construisons lentement, proprement, et livrons vite. » — Le Mantra Vitte 💙

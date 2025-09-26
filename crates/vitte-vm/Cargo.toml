@@ -1,15 +1,17 @@
 [package]
-name                   = "vitte-vm"
-description            = "VM Vitte (interpréteur pur) : exécution d'opcodes, piles/regs, appels, GC/Arena optionnels."
-version.workspace      = true
-edition.workspace      = true
-rust-version.workspace = true
-license.workspace      = true
-repository.workspace   = true
-homepage.workspace     = true
-readme.workspace       = true
-keywords               = ["vitte", "vm", "interpreter", "bytecode", "runtime"]
-categories             = ["compilers", "development-tools"]
+name        = "vitte-vm"
+description = "VM Vitte (interpréteur pur) : exécution d'opcodes, piles/regs, appels, GC/Arena optionnels."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["vitte", "vm", "interpreter", "bytecode", "runtime"]
+categories = ["compilers", "development-tools"]
 
 [lib]
 name = "vitte_vm"
@@ -17,56 +19,56 @@ path = "src/lib.rs"
 
 [features]
 # Par défaut : lib propre, traçable, ergonomique (mais sans I/O)
-default        = ["std", "errors", "tracing", "small"]
+default    = ["std", "errors", "tracing", "small"]
 
 # Environnements
-std            = []            # plein std
-alloc-only     = []            # no_std + alloc (désactive ce qui touche au FS)
+std        = []   # plein std
+alloc-only = []   # no_std + alloc (désactive ce qui touche au FS)
 
 # Intégration bytecode (décodage VITBC coté VM si nécessaire)
-bytecode       = ["dep:vitte-vitbc"]
+bytecode   = ["dep:vitte-vitbc"]
 
 # Sérialisation d'état (snapshots, dumps)
-serde          = ["dep:serde", "dep:serde_json"]
+serde      = ["dep:serde", "dep:serde_json"]
 
 # Observabilité / erreurs
-tracing        = ["dep:tracing"]
-errors         = ["dep:thiserror"]
+tracing    = ["dep:tracing"]
+errors     = ["dep:thiserror"]
 
 # Perfs / mémoire
-small          = ["dep:smallvec"]
-arena          = ["dep:bumpalo"]
-sync           = ["dep:parking_lot", "dep:dashmap"]
-parallel       = ["dep:rayon"]
+small      = ["dep:smallvec"]
+arena      = ["dep:bumpalo"]
+sync       = ["dep:parking_lot", "dep:dashmap"]
+parallel   = ["dep:rayon"]
 
 # (Futur) JIT (placeholder sans deps)
-jit            = []
+jit        = []
 
 [dependencies]
 # Internes
-vitte-core     = { path = "../vitte-core",  version = "0.1.0" }
-vitte-vitbc    = { path = "../vitte-vitbc", version = "0.1.0", optional = true }
+vitte-core  = { path = "../vitte-core",  version = "0.1.0" }
+vitte-vitbc = { path = "../vitte-vitbc", version = "0.1.0", optional = true }
 
 # Ergonomie
-thiserror      = { workspace = true, optional = true }
-anyhow         = { version = "1" }
+thiserror   = { workspace = true, optional = true }
+anyhow      = { version = "1" }
 
 # Tracing (lib: pas de subscriber ici)
-tracing        = { version = "0.1", optional = true, features = ["attributes", "log", "release_max_level_info"] }
+tracing     = { version = "0.1", optional = true, features = ["attributes", "log", "release_max_level_info"] }
 
 # Perfs / structures
-smallvec       = { version = "1.15.1", optional = true }
-bumpalo        = { version = "3",       optional = true }
-parking_lot    = { version = "0.12",    optional = true }
-dashmap        = { version = "6.1.0",   optional = true }
-rayon          = { version = "1",       optional = true }
+smallvec    = { version = "1.15.1", optional = true }
+bumpalo     = { version = "3",       optional = true }
+parking_lot = { version = "0.12",    optional = true }
+dashmap     = { version = "6.1.0",   optional = true }
+rayon       = { version = "1",       optional = true }
 
 # Sérialisation (snapshots)
-serde          = { workspace = true, optional = true, default-features = false, features = ["derive"] }
-serde_json     = { workspace = true, optional = true }
+serde       = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+serde_json  = { workspace = true, optional = true }
 
 # Divers
-bitflags       = { version = "2.6" }
+bitflags    = { version = "2.6" }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
@@ -86,9 +88,9 @@ rustdoc-args        = ["--cfg", "docsrs"]
 unsafe_code = "forbid"
 
 [lints.clippy]
-all = "warn"
-pedantic = "warn"
-nursery = "warn"
-module_name_repetitions = "allow"
-too_many_lines = "allow"
-doc_markdown = "allow"
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+too_many_lines           = "allow"
+doc_markdown             = "allow"

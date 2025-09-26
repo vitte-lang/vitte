@@ -1,21 +1,43 @@
-# rust-toolchain.toml — Toolchain figé & composants stables
-# Objectif : builds reproductibles, DX solide, CI tranquille.
+# rust-toolchain.toml — Vitte workspace (MSRV alignée sur .clippy.toml)
 
 [toolchain]
-# Monte à 1.82.0 pour éviter les soucis MSRV (backtrace/home).
-channel = "1.82.0"
+# Épingle la version pour des builds reproductibles.
+channel = "1.80.0"
 
-# Minimal = cargo + rustc + std : rapide, prévisible
+# "minimal" = rustc + cargo + std (docs exclus) ; on ajoute ce qu’il faut via components.
 profile = "minimal"
 
-# Composants utiles et stables
+# Outils indispensables pour un repo sérieux.
 components = [
-  "rustfmt",             # formatage
-  "clippy",              # lints
-  "rust-src",            # sources std (no_std, RA, build-std, etc.)
-  "llvm-tools-preview",  # objdump/size/addr2line via cargo-binutils
+  "rustfmt",
+  "clippy",
+  "rust-src",            # pour RLS/rust-analyzer, build cross, bindgen, etc.
+  "llvm-tools-preview",  # pour cargo-bloat/cov, objdump/size…
+  "rust-analyzer"        # si indisponible sur ta plate-forme, supprime cette ligne
 ]
 
-# ⚠️ Ne liste PAS de targets ici : certaines ne sont pas dispo partout
-# et l’installation échoue en bloc. Installe-les “à la demande” (script/CI).
+# Cibles cross-compile prêtes à l’emploi (épure si besoin).
+targets = [
+  # Linux GNU / MUSL
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
+  "aarch64-unknown-linux-musl",
 
+  # macOS (Intel + Apple Silicon)
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+
+  # Windows MSVC (x64 + ARM64)
+  "x86_64-pc-windows-msvc",
+  "aarch64-pc-windows-msvc",
+
+  # Web / WASI
+  "wasm32-unknown-unknown",
+  "wasm32-wasi",
+
+  # RISC-V / ARM (serveurs low-power, SBC, rétrofits)
+  "riscv64gc-unknown-linux-gnu",
+  "arm-unknown-linux-gnueabihf",
+  "armv7-unknown-linux-gnueabihf"
+]

@@ -1,0 +1,68 @@
+[package]
+name                   = "vitte-benches"
+description            = "Benchmarks E2E & hotpath pour Vitte (CLI par défaut; mode lib via feature)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+readme.workspace       = true
+publish                = false
+
+# Lints locales (tu peux t’appuyer sur workspace.lints, mais je double ici)
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+doc_markdown = "allow"
+
+[features]
+# Par défaut, on bench via la CLI `vitte` (spawn de process).
+default = []
+
+# Active un pipeline "lib" (parse->IR->encode->run) en mémoire.
+# Nécessite que ces crates exposent des APIs stables; sinon laisse désactivé.
+bench-lib = ["dep:vitte-parser", "dep:vitte-ir", "dep:vitte-vitbc", "dep:vitte-runtime"]
+
+[dependencies]
+# Déps pour le mode "lib" — optionnelles pour ne rien tirer par défaut.
+vitte-parser  = { path = "../crates/vitte-parser",  version = "0.1.0", optional = true }
+vitte-ir      = { path = "../crates/vitte-ir",      version = "0.1.0", optional = true }
+vitte-vitbc   = { path = "../crates/vitte-vitbc",   version = "0.1.0", optional = true }
+vitte-runtime = { path = "../crates/vitte-runtime", version = "0.1.0", optional = true }
+
+[dev-dependencies]
+anyhow     = { workspace = true }
+tempfile   = { workspace = true }
+criterion  = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+# ─── Benches ─────────────────────────────────────────────────────────────────
+
+[[bench]]
+name    = "e2e_pipeline"
+path    = "benches/e2e_pipeline.rs"
+harness = false
+
+[[bench]]
+name    = "vm_hotpath"
+path    = "benches/vm_hotpath.rs"
+harness = false
+
+# ─── Profils (facultatif : harmonisés avec le workspace) ─────────────────────
+[profile.dev]
+opt-level = 0
+debug = 1
+incremental = true
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+debug = 0

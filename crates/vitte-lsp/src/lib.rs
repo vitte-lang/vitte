@@ -11,7 +11,7 @@
 
 #![deny(missing_docs)]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
@@ -62,12 +62,6 @@ impl Document {
     fn new(uri: lsp::Url, text: String, version: i32) -> Self {
         let line_starts = compute_line_starts(&text);
         Self { uri, text, version, line_starts }
-    }
-
-    fn update_full(&mut self, new_text: String, new_version: i32) {
-        self.text = new_text;
-        self.version = new_version;
-        self.line_starts = compute_line_starts(&self.text);
     }
 
     fn apply_change(&mut self, change: &lsp::TextDocumentContentChangeEvent) {
@@ -143,7 +137,7 @@ impl LanguageServer for Backend {
 
         let hover = Some(lsp::HoverProviderCapability::Simple(true));
 
-        let doc_symbols = Some(lsp::DocumentSymbolProviderCapability::Simple(true));
+        let doc_symbols = Some(lsp::OneOf::Left(true));
 
         let formatting = Some(lsp::OneOf::Left(true));
 
@@ -371,19 +365,19 @@ fn hover_contents(tok: &TokenKind<'_>) -> (String, String) {
 fn keyword_completions() -> Vec<lsp::CompletionItem> {
     use lsp::CompletionItemKind as K;
     let kws = [
-        ("fn", K::Keyword, "Déclare une fonction"),
-        ("let", K::Keyword, "Déclare une variable"),
-        ("const", K::Keyword, "Constante"),
-        ("return", K::Keyword, "Retourne une valeur"),
-        ("if", K::Keyword, "Condition"),
-        ("else", K::Keyword, "Alternative"),
-        ("while", K::Keyword, "Boucle while"),
-        ("for", K::Keyword, "Boucle for"),
-        ("struct", K::Struct, "Structure"),
-        ("enum", K::Enum, "Énumération"),
-        ("true", K::Value, "Booléen vrai"),
-        ("false", K::Value, "Booléen faux"),
-        ("null", K::Value, "Null"),
+        ("fn", K::KEYWORD, "Déclare une fonction"),
+        ("let", K::KEYWORD, "Déclare une variable"),
+        ("const", K::KEYWORD, "Constante"),
+        ("return", K::KEYWORD, "Retourne une valeur"),
+        ("if", K::KEYWORD, "Condition"),
+        ("else", K::KEYWORD, "Alternative"),
+        ("while", K::KEYWORD, "Boucle while"),
+        ("for", K::KEYWORD, "Boucle for"),
+        ("struct", K::STRUCT, "Structure"),
+        ("enum", K::ENUM, "Énumération"),
+        ("true", K::VALUE, "Booléen vrai"),
+        ("false", K::VALUE, "Booléen faux"),
+        ("null", K::VALUE, "Null"),
     ];
     kws.iter()
         .map(|(label, kind, detail)| lsp::CompletionItem {
@@ -420,9 +414,14 @@ fn extract_symbols(text: &str, line_starts: &[usize]) -> Vec<lsp::SymbolInformat
     let mut last_ident: Option<Token<'_>> = None;
 
     while let Ok(Some(tok)) = lx.next() {
-        match tok.value {
-            TokenKind::Kw(_) => last_kw = Some(tok),
-            TokenKind::Ident(_) => last_ident = Some(tok),
+        let kind = tok.value.clone();
+        if matches!(kind, TokenKind::Eof) {
+            break;
+        }
+
+        match kind {
+            TokenKind::Kw(_) => last_kw = Some(tok.clone()),
+            TokenKind::Ident(_) => last_ident = Some(tok.clone()),
             _ => {}
         }
 
@@ -441,6 +440,7 @@ fn extract_symbols(text: &str, line_starts: &[usize]) -> Vec<lsp::SymbolInformat
                     }
                 };
                 let range = span_to_range(text, line_starts, id_tok.span);
+                #[allow(deprecated)]
                 out.push(lsp::SymbolInformation {
                     name,
                     kind,
@@ -452,10 +452,6 @@ fn extract_symbols(text: &str, line_starts: &[usize]) -> Vec<lsp::SymbolInformat
                 last_kw = None;
                 last_ident = None;
             }
-        }
-
-        if matches!(tok.value, TokenKind::Eof) {
-            break;
         }
     }
 
@@ -521,7 +517,7 @@ fn byte_offset_to_position(text: &str, line_starts: &[usize], off: usize) -> lsp
         if line_starts[mid] <= off { lo = mid; } else { hi = mid; }
     }
     let line = lo;
-    let col_bytes = off - line_starts[line];
+    let _col_bytes = off - line_starts[line];
     let slice = &text[line_starts[line]..off];
 
     // convertir bytes -> utf16 units

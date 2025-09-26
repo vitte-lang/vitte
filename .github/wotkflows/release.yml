@@ -1,0 +1,188 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  dist:
+    name: Build & Package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            os_tag: linux
+            archive: tar.gz
+            sh: bash
+          - os: macos-latest
+            os_tag: macos
+            archive: tar.gz
+            sh: bash
+          - os: windows-latest
+            os_tag: windows
+            archive: zip
+            sh: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read tag/version
+        id: ver
+        shell: bash
+        run: |
+          ref="${GITHUB_REF_NAME}"
+          echo "tag=$ref" >> "$GITHUB_OUTPUT"
+          # version sans 'v' initial
+          echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Show toolchain
+        run: |
+          rustc -Vv
+          cargo -V
+
+      # ─────────────────────────────────────────────────────
+      # Build des bins vitte-tools (toutes les sous-commandes)
+      # ─────────────────────────────────────────────────────
+      - name: Build vitte-tools (all bins)
+        run: >
+          cargo build --release -p vitte-tools --bins --locked
+          --features "std serde tracing cli fmt-cli check-cli pack-cli dump-cli graph-cli run-cli"
+
+      # ─────────────────────────────────────────────────────
+      # Build des bins vitte-lsp (stdio + tcp)
+      # ─────────────────────────────────────────────────────
+      - name: Build vitte-lsp (stdio+tcp)
+        run: >
+          cargo build --release -p vitte-lsp --locked
+          --features "std serde tracing stdio tcp"
+
+      # ─────────────────────────────────────────────────────
+      # Staging + packaging multi-OS
+      # ─────────────────────────────────────────────────────
+      - name: Package artifacts (*nix)
+        if: ${{ matrix.sh == 'bash' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.ver.outputs.tag }}"
+          OS="${{ matrix.os_tag }}"
+          OUT="dist/vitte-${OS}-${TAG}"
+          mkdir -p "$OUT"
+
+          # Bins vitte-tools
+          cp target/release/vitte             "$OUT"/
+          cp target/release/vitte-fmt         "$OUT"/ || true
+          cp target/release/vitte-check       "$OUT"/ || true
+          cp target/release/vitte-pack        "$OUT"/ || true
+          cp target/release/vitte-dump        "$OUT"/ || true
+          cp target/release/vitte-graph       "$OUT"/ || true
+          cp target/release/vitte-run         "$OUT"/ || true
+
+          # Bins vitte-lsp
+          cp target/release/vitte-lsp         "$OUT"/ || true
+          cp target/release/vitte-lsp-tcp     "$OUT"/ || true
+
+          # Docs/licences (si présents)
+          for f in README.md LICENSE LICENSE-MIT LICENSE-APACHE CHANGELOG.md; do
+            [ -f "$f" ] && cp "$f" "$OUT"/ || true
+          done
+
+          # Archive + sha256
+          mkdir -p dist
+          tar -C dist -czf "dist/vitte-${OS}-${TAG}.tar.gz" "vitte-${OS}-${TAG}"
+          (cd dist && shasum -a 256 "vitte-${OS}-${TAG}.tar.gz" > "vitte-${OS}-${TAG}.tar.gz.sha256")
+
+      - name: Package artifacts (Windows)
+        if: ${{ matrix.sh == 'pwsh' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $TAG = "${{ steps.ver.outputs.tag }}"
+          $OS  = "${{ matrix.os_tag }}"
+          $OUT = "dist/vitte-$OS-$TAG"
+          New-Item -ItemType Directory -Force -Path $OUT | Out-Null
+
+          # Bins vitte-tools
+          Copy-Item target\release\vitte.exe            $OUT -ErrorAction SilentlyContinue
+          Copy-Item target\release\vitte-fmt.exe        $OUT -ErrorAction SilentlyContinue
+          Copy-Item target\release\vitte-check.exe      $OUT -ErrorAction SilentlyContinue
+          Copy-Item target\release\vitte-pack.exe       $OUT -ErrorAction SilentlyContinue
+          Copy-Item target\release\vitte-dump.exe       $OUT -ErrorAction SilentlyContinue
+          Copy-Item target\release\vitte-graph.exe      $OUT -ErrorAction SilentlyContinue
+          Copy-Item target\release\vitte-run.exe        $OUT -ErrorAction SilentlyContinue
+
+          # Bins vitte-lsp
+          Copy-Item target\release\vitte-lsp.exe        $OUT -ErrorAction SilentlyContinue
+          Copy-Item target\release\vitte-lsp-tcp.exe    $OUT -ErrorAction SilentlyContinue
+
+          # Docs/licences
+          foreach ($f in @("README.md","LICENSE","LICENSE-MIT","LICENSE-APACHE","CHANGELOG.md")) {
+            if (Test-Path $f) { Copy-Item $f $OUT }
+          }
+
+          # Archive + sha256
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path "$OUT\*" -DestinationPath "dist/vitte-$OS-$TAG.zip" -Force
+          $sha = (Get-FileHash -Algorithm SHA256 "dist/vitte-$OS-$TAG.zip").Hash.ToLower()
+          Set-Content -NoNewline -Path "dist/vitte-$OS-$TAG.zip.sha256" -Value "$sha  vitte-$OS-$TAG.zip"
+
+      - name: Upload artifacts (matrix)
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitte-${{ matrix.os_tag }}-${{ steps.ver.outputs.tag }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: [dist]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: _artifacts
+
+      - name: List artifacts
+        run: ls -R _artifacts
+
+      - name: Flatten artifacts to ./dist
+        run: |
+          mkdir -p dist
+          find _artifacts -type f -name '*.tar.gz' -exec cp {} dist/ \;
+          find _artifacts -type f -name '*.zip'    -exec cp {} dist/ \;
+          find _artifacts -type f -name '*.sha256' -exec cp {} dist/ \;
+          ls -l dist
+
+      - name: Create GitHub Release (notes auto)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256

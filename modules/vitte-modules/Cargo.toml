@@ -1,0 +1,86 @@
+﻿[package]
+name        = "vitte-modules"
+description = "Meta-crate qui agrège et re-expose les modules Vitte (opt, typer, resolver, hal, sys, mm, shed, fmt, gfx2d)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["vitte", "modules", "meta", "orchestration"]
+categories = ["compilers", "development-tools"]
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+
+# Active la feature `std` de chaque sous-crate (et les lie comme dépendances)
+std = [
+  "dep:vitte-hal",      "vitte-hal/std",
+  "dep:vitte-mm",       "vitte-mm/std",
+  "dep:vitte-opt",      "vitte-opt/std",
+  "dep:vitte-resolver", "vitte-resolver/std",
+  "dep:vitte-shed",     "vitte-shed/std",
+  "dep:vitte-sys",      "vitte-sys/std",
+  "dep:vitte-typer",    "vitte-typer/std",
+  "dep:vitte-fmt",      "vitte-fmt/std",
+  "dep:vitte-gfx2d",    "vitte-gfx2d/std",
+  "dep:vitte-ecs2d",    "vitte-ecs2d/std",
+]
+
+# Activer tout d'un coup (nécessite que tous les sous-crates existent)
+full = ["hal","mm","opt","resolver","shed","sys","typer","fmt","gfx2d","ecs2d","std"]
+
+# Sélecteurs fins (n'ajoutent QUE la dépendance correspondante)
+ecs2d   = ["dep:vitte-ecs2d"]
+hal      = ["dep:vitte-hal"]
+mm       = ["dep:vitte-mm"]
+opt      = ["dep:vitte-opt"]
+resolver = ["dep:vitte-resolver"]
+shed     = ["dep:vitte-shed"]
+sys      = ["dep:vitte-sys"]
+typer    = ["dep:vitte-typer"]
+fmt      = ["dep:vitte-fmt"]
+gfx2d    = ["dep:vitte-gfx2d"]
+
+# Alias / propagation de features (adapte selon ce que tes sous-crates exposent)
+shed-watch = ["vitte-shed/watch"]
+serde = [
+  "vitte-mm/serde",
+  "vitte-opt/serde",
+  "vitte-resolver/serde",
+  "vitte-typer/serde",
+  "vitte-shed/serde",
+]
+
+[dependencies]
+# Chemins relatifs AU DOSSIER modules/ (donc ./vitte-xxx)
+vitte-hal      = { path = "./vitte-hal",      version = "0.1.0", default-features = false, optional = true }
+vitte-mm       = { path = "./vitte-mm",       version = "0.1.0", default-features = false, optional = true }
+vitte-opt      = { path = "./vitte-opt",      version = "0.1.0", default-features = false, optional = true }
+vitte-resolver = { path = "./vitte-resolver", version = "0.1.0", default-features = false, optional = true }
+vitte-shed     = { path = "./vitte-sched",    version = "0.1.0", default-features = false, optional = true }
+vitte-sys      = { path = "./vitte-sys",      version = "0.1.0", default-features = false, optional = true }
+vitte-typer    = { path = "./vitte-typer",    version = "0.1.0", default-features = false, optional = true }
+vitte-fmt      = { path = "./vitte-fmt",      version = "0.1.0", default-features = false, optional = true }
+vitte-gfx2d    = { path = "./vitte-gfx2d",    version = "0.1.0", default-features = false, optional = true }
+vitte-ecs2d    = { path = "./vitte-cs2d",     version = "0.1.0", package = "vitte-cs2d", default-features = false, optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+too_many_lines          = "allow"
+doc_markdown            = "allow"

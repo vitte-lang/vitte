@@ -1,0 +1,52 @@
+﻿[package]
+name        = "vitte-hal"
+description = "HAL portable pour Vitte : clock, console, fs, entropy (+ net/process en features)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["vitte", "hal", "runtime", "no_std"]
+categories = ["os", "embedded", "api-bindings"]
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+# ✅ Par défaut on active std (implémentations StdFs/StdConsole/StdClock)
+default   = ["std"]
+
+# Active les implémentations std + map globale MemFs
+std       = ["dep:once_cell"]
+
+# Sous-systèmes optionnels
+net       = []
+process   = []
+
+# Source d'entropie système
+getrandom = ["dep:getrandom"]
+
+[dependencies]
+# Utilisé par MemFs (map globale) et OnceLock
+once_cell = { version = "1", optional = true }
+
+# Entropie système (optionnelle)
+getrandom = { version = "0.3.3", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+too_many_lines          = "allow"
+doc_markdown            = "allow"

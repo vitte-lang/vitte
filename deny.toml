@@ -1,151 +1,182 @@
-# deny.toml — configuration complète pour cargo-deny
-# Objectifs : sécurité (RustSec), hygiène des sources (registries/git),
-# cohérence des licences, contrôle des versions multiples & wildcards,
-# graph ciblé (targets utiles du repo).
+# deny.toml — configuration cargo-deny (Vitte)
+# Sécurité (RustSec), hygiène des sources, licences, bans, et graphe multiplateforme.
 
-# ———————————————————————————————————————————
-# Définition du graphe analysé (targets, features, exclusions)
-# ———————————————————————————————————————————
+# ─────────────────────────────────────────────────────────────
+# Graphe analysé (cibles, features, exclusions)
+# ─────────────────────────────────────────────────────────────
 [graph]
-# Cibles réellement visées par le dépôt (réduire le bruit)
+# Cibles majeures du marché (réduis si tu veux accélérer l’analyse)
 targets = [
-  "x86_64-unknown-linux-gnu",   # hôte/serveur
-  "x86_64-unknown-none",        # kernel bare-metal
-  "thumbv7em-none-eabi",        # embarqué Cortex-M4/M7
-  "wasm32-unknown-unknown",     # WebAssembly (no_std)
-  "wasm32-wasi",                # WebAssembly WASI
-]
-all-features = true             # équivaut à --all-features
-no-default-features = false
-# Exclure les dev-deps du graphe si besoin (décommente pour CI plus sèche)
-# exclude-dev = true
-# feature-depth contrôle la profondeur d’affichage des features dans les diagnostics
-feature-depth = 1
-# exclude = ["some-internal-crate@0.1.0"]  # exclut un paquet (et son sous-graphe)
+  # ---- Linux GNU/MUSL (desktop/serveurs/SBC) ----
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "i686-unknown-linux-gnu",
+  "riscv64gc-unknown-linux-gnu",
+  "powerpc64le-unknown-linux-gnu",
+  "s390x-unknown-linux-gnu",
+  "loongarch64-unknown-linux-gnu",
 
-# ———————————————————————————————————————————
-# RustSec / Advisories
-# ———————————————————————————————————————————
+  "x86_64-unknown-linux-musl",
+  "aarch64-unknown-linux-musl",
+  "arm-unknown-linux-gnueabihf",
+  "arm-unknown-linux-musleabihf",
+  "armv7-unknown-linux-gnueabihf",
+  "armv7-unknown-linux-musleabihf",
+
+  # ---- Android ----
+  "aarch64-linux-android",
+  "armv7-linux-androideabi",
+  "x86_64-linux-android",
+  "i686-linux-android",
+
+  # ---- Windows (MSVC & GNU) ----
+  "x86_64-pc-windows-msvc",
+  "aarch64-pc-windows-msvc",
+  "i686-pc-windows-msvc",
+  "x86_64-pc-windows-gnu",
+  "i686-pc-windows-gnu",
+
+  # ---- Apple macOS / iOS / tvOS / watchOS ----
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+  "aarch64-apple-ios",
+  "x86_64-apple-ios",         # simulateur Intel
+  "aarch64-apple-ios-sim",    # simulateur Apple Silicon
+  "aarch64-apple-tvos",
+  "aarch64-apple-tvos-sim",
+  "aarch64-apple-watchos",
+  "aarch64-apple-watchos-sim",
+
+  # ---- WebAssembly ----
+  "wasm32-unknown-unknown",
+  "wasm32-wasi",
+  "wasm32-wasip1",
+  "wasm32-unknown-emscripten",
+
+  # ---- BSD / Illumos / Haiku / Redox ----
+  "x86_64-unknown-freebsd",
+  "aarch64-unknown-freebsd",
+  "x86_64-unknown-openbsd",
+  "x86_64-unknown-netbsd",
+  "x86_64-unknown-dragonfly",
+  "x86_64-unknown-illumos",
+  "x86_64-unknown-haiku",
+  "x86_64-unknown-redox",
+
+  # ---- Fuchsia ----
+  "x86_64-unknown-fuchsia",
+  "aarch64-unknown-fuchsia",
+
+  # ---- Bare-metal / Embedded ----
+  "x86_64-unknown-none",
+  "thumbv6m-none-eabi",
+  "thumbv7m-none-eabi",
+  "thumbv7em-none-eabi",
+  "thumbv7em-none-eabihf",
+  "thumbv8m.base-none-eabi",
+  "thumbv8m.main-none-eabi",
+  "thumbv8m.main-none-eabihf",
+  "riscv32imac-unknown-none-elf",
+  "riscv64imac-unknown-none-elf",
+
+  # ---- CUDA (compute) ----
+  "nvptx64-nvidia-cuda"
+]
+all-features = true
+no-default-features = false
+# exclude-dev = true
+# exclude = ["some-internal-crate@0.1.0"]
+
+# Affichage (profondeur des features dans les diagnostics)
+[output]
+feature-depth = 1
+format = "human"
+quiet = false
+
+# ─────────────────────────────────────────────────────────────
+# RustSec / Avis de sécurité
+# ─────────────────────────────────────────────────────────────
 [advisories]
 db-urls = ["https://github.com/RustSec/advisory-db"]
-# Emplacement local du cache des DB (facilite CI hors-ligne)
 db-path = "$CARGO_HOME/advisory-dbs"
-# Utiliser le CLI git si authent nécessaire (sinon défaut: backend intégré)
-# git-fetch-with-cli = true
-# Échouer sur versions retirées de crates.io (strict en CI)
-yanked = "deny"      # "warn" par défaut ; "deny" en CI durcit la règle
-# Ignorer explicitement certains avis (à éviter, documenter la raison)
+vulnerability = "deny"
+unsound      = "deny"
+yanked       = "deny"
+unmaintained = "warn"
+notice       = "warn"
+severity-threshold = "low"
 ignore = [
-  # "RUSTSEC-20YY-XXXX",
   # { id = "RUSTSEC-20YY-XXXX", reason = "justification circonstanciée" },
-  # "yanked@0.1.1",
 ]
-# Limite d’obsolescence de la base si fetch désactivé (RFC3339 duration)
-maximum-db-staleness = "P90D"
-# Unmaintained : échoue seulement si cela touche une dep directe du workspace
-unmaintained = "workspace"
 
-# ———————————————————————————————————————————
+# ─────────────────────────────────────────────────────────────
 # Licences
-# ———————————————————————————————————————————
+# ─────────────────────────────────────────────────────────────
 [licenses]
-# Seuil de confiance pour l’inférence des licences depuis le texte
 confidence-threshold = 0.93
-# Tout ce qui n’est PAS autorisé ici est refusé.
 allow = [
-  "MIT",
-  "Apache-2.0",
-  "BSD-2-Clause",
-  "BSD-3-Clause",
-  "ISC",
-  "Zlib",
-  "Unicode-DFS-2016",
-  "BSL-1.0",
-  "MPL-2.0",
-  # Ajoute ici toute licence que tu acceptes
+  "MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib",
+  "Unicode-DFS-2016", "BSL-1.0", "MPL-2.0"
 ]
-# Avertir si on garde des licences autorisées mais non utilisées (nettoyage)
+copyleft = "deny"
 unused-allowed-license = "warn"
 
-# Dépendances privées (ex: crates de l’orga non publiées) : ignorer la vérif
 [licenses.private]
 ignore = true
-registries = ["sekrets", "internal-registry"]   # adapte si tu utilises un registry privé
+registries = ["sekrets", "internal-registry"]
 
-# Exceptions ciblées (un crate/une version avec licence spéciale mais acceptée)
 [[licenses.exceptions]]
-# Exemple : autoriser "CDLA-Permissive-2.0" pour un crate précis
-# remove si inutile
-crate = "webpki-roots"
+name = "webpki-roots"
 allow = ["CDLA-Permissive-2.0"]
 
-# Clarifications de licence pour crates multi-licences ou atypiques
-# (mets à jour la somme si tu la connais, sinon supprime le champ `hash`)
 [[licenses.clarify]]
 name = "ring"
 expression = "MIT AND ISC AND OpenSSL"
-license-files = [
-  { path = "LICENSE" }
-]
+license-files = [{ path = "LICENSE" }]
 
-# ———————————————————————————————————————————
+# ─────────────────────────────────────────────────────────────
 # Bans (versions multiples, wildcards, interdits/alternatives)
-# ———————————————————————————————————————————
+# ─────────────────────────────────────────────────────────────
 [bans]
-multiple-versions = "deny"  # refuser les doublons de versions dans le graphe
-wildcards = "deny"          # refuser les dépendances "*", "^0", etc.
-highlight = "all"           # diagnostics plus parlants
+multiple-versions = "deny"
+wildcards = "deny"
+highlight = "all"
 
-# Crates bannis ou à remplacer (raison + alternative conseillée)
 deny = [
-  { crate = "openssl",       use-instead = "rustls", reason = "réduire surface C/SSL natif" },
-  { crate = "openssl-sys",   use-instead = "rustls", reason = "préférer TLS pur Rust" },
-  { crate = "git2",          use-instead = "gix",    reason = "remplacer binding C par impl rust" },
-  # "libssh2-sys",
+  { name = "openssl",     reason = "Préférer TLS pur Rust (ex: rustls) pour réduire la surface C." },
+  { name = "openssl-sys", reason = "Même motif : lier du C alourdit maintenance/sécu." },
+  { name = "git2",        reason = "Favoriser un équivalent 100% Rust (ex: gix) quand possible." }
 ]
 
-# Tolérer explicitement certaines duplications (vieilles versions coincées)
 skip = [
-  # { crate = "getrandom@0.2.16", reason = "traînée par ring" },
+  # { name = "getrandom", version = "0.2.16", reason = "Traîné par ring ; en attendant l’alignement." },
 ]
 
-# Tolérer un sous-arbre entier (quand un “hub” change souvent et duplique)
 skip-tree = [
-  { crate = "windows-sys@0.52.0", reason = "fondation Windows, versions souvent multiples" },
-  { crate = "windows-sys@0.59.0", reason = "fondation Windows, versions souvent multiples" },
+  { name = "windows-sys", version = "0.52.0", reason = "Pivot Windows ; duplications fréquentes." },
+  { name = "windows-sys", version = "0.59.0", reason = "Pivot Windows ; duplications fréquentes." }
 ]
 
-# ———————————————————————————————————————————
+# ─────────────────────────────────────────────────────────────
 # Sources (registries & git)
-# ———————————————————————————————————————————
+# ─────────────────────────────────────────────────────────────
 [sources]
-unknown-registry = "deny"     # refuser un registry inconnu
-unknown-git = "deny"          # refuser une source git inconnue
-# Exiger un spec git suffisamment déterministe : "any" | "branch" | "tag" | "rev"
-required-git-spec = "tag"     # conseille "rev" pour pin commit exact en prod stricte
+unknown-registry = "deny"
+unknown-git      = "deny"
+required-git-spec = "tag"  # en prod stricte, passe à "rev"
 
-# Registries acceptés (crates.io explicite + éventuels registries privés)
 allow-registry = [
-  "https://github.com/rust-lang/crates.io-index",
-  # "sparse+https://index.crates.io/",    # si tu utilises le protocole sparse
-  # "https://sekretz.com/registry/index", # registry privé
+  "https://github.com/rust-lang/crates.io-index"
+  # "sparse+https://index.crates.io/",
+  # "https://sekretz.com/registry/index"
 ]
 
-# Repos git autorisés explicitement (URL exacte)
 allow-git = [
-  # "https://github.com/YourOrg/your-crate",
+  # "https://github.com/vitte-lang/vitte"
 ]
 
-# Domaines “privés” (autorise n’importe quel repo sous ce host/prefixe)
-private = [
-  # "https://git.intra.example.com/org",  # réseau interne
-]
-
-# Autoriser des organisations entières sur des forges publiques
+# Organisations autorisées sur forges publiques
 [sources.allow-org]
-github   = ["YourOrg", "your-gh-username"]
-gitlab   = []
+github    = ["vitte-lang", "roussov"]
+gitlab    = []
 bitbucket = []
-
-# Avertir si une source autorisée n’est finalement pas utilisée (nettoyage)
-unused-allowed-source = "warn"

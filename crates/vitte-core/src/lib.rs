@@ -31,6 +31,20 @@ extern crate alloc;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+/* ─────────────────────────── Modules publics ─────────────────────────── */
+
+/// Primitives de bytecode (chunk, assembleur, désassembleur, helpers).
+pub mod bytecode;
+
+/// Compatibilité : ré-exporte les helpers de validation historiques.
+pub use bytecode::helpers as helpers;
+/// Compatibilité : ré-exporte le désassembleur textuel.
+pub use bytecode::disasm as disasm;
+/// Compatibilité : ré-exporte l'assembleur minimal.
+pub use bytecode::asm as asm;
+/// Compatibilité : ré-exporte le runtime d'évaluation simplifié.
+pub use bytecode::runtime as runtime;
+
 /* ─────────────────────────── Résultat commun ─────────────────────────── */
 
 /// Alias résultat commun au core.

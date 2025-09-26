@@ -1,0 +1,55 @@
+﻿[package]
+name        = "vitte-sys"
+description = "Primitives système bas-niveau pour Vitte : pages virtuelles, memmap, dl, infos système."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["vitte", "system", "memory", "vm", "os"]
+categories = ["os", "no-std", "api-bindings"]
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+# Par défaut on s'appuie sur la std (fallback no_std possible)
+default = ["std"]
+std     = []
+
+# Backends OS pour mémoire virtuelle
+os     = ["std", "dep:libc", "dep:windows-sys"]
+
+# Mappage de fichiers via memmap2
+memmap = ["std", "dep:memmap2"]
+
+# Chargement dynamique de librairies
+dl     = ["std", "dep:libloading"]
+
+# Hooks de guard pages / crash (stubs, nécessite std)
+guard  = ["std"]
+
+[dependencies]
+bitflags    = { workspace = true }
+libc        = { version = "0.2", optional = true }
+windows-sys = { version = "0.59", optional = true, features = ["Win32_System_Memory"] }
+memmap2     = { version = "0.9", optional = true }
+libloading  = { version = "0.8", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+too_many_lines          = "allow"
+doc_markdown            = "allow"

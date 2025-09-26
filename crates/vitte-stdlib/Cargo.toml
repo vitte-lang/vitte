@@ -1,0 +1,64 @@
+[package]
+name        = "vitte-stdlib"
+description = "Stdlib Vitte (no_std-first) : IDs typés, Arena, erreurs, utilitaires (bytes/str/time)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["vitte", "stdlib", "no_std", "arena", "ids"]
+categories = ["data-structures", "algorithms", "no-std"]
+
+[lib]
+name = "vitte_stdlib"
+path = "src/lib.rs"
+
+[features]
+# Confort par défaut
+default = ["std"]
+
+# Environnements
+std        = []   # plein std
+alloc-only = []   # no_std + alloc
+
+# Intégrations optionnelles
+serde  = ["dep:serde"]
+small  = ["dep:smallvec"]
+index  = ["dep:indexmap"]
+errors = ["dep:thiserror"]
+
+[dependencies]
+# Base
+bitflags = { workspace = true }
+
+# Optionnels
+serde     = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+thiserror = { workspace = true, optional = true }
+smallvec  = { workspace = true, optional = true }
+indexmap  = { workspace = true, optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+proptest          = { workspace = true }
+serde_json        = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "serde", "small", "index", "errors"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+too_many_lines           = "allow"
+doc_markdown             = "allow"

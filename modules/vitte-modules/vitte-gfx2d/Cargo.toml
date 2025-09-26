@@ -1,0 +1,49 @@
+[package]
+name        = "vitte-gfx2d"
+description = "Canevas 2D rapide et portable pour le runtime Vitte."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["vitte", "graphics", "2d", "canvas"]
+categories = ["graphics", "game-development"]
+
+[lib]
+name = "vitte_gfx2d"
+path = "src/lib.rs"
+crate-type = ["rlib"]
+
+[features]
+default = ["std"]
+std     = ["vitte-cs2d/std"]
+serde   = ["dep:serde", "vitte-cs2d/serde"]
+f64     = ["vitte-cs2d/f64"]
+
+[dependencies]
+serde      = { workspace = true, optional = true }
+vitte-cs2d = { path = "../vitte-cs2d", version = "0.1.0", default-features = false }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+too_many_lines          = "allow"
+doc_markdown            = "allow"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "serde", "f64"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]

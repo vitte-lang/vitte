@@ -1,0 +1,45 @@
+﻿[package]
+name                   = "vitte-typer"
+description            = "InfÃ©rence et vÃ©rification de types (Hindleyâ€“Milner) pour Vitte : unification, schÃ©mas, diagnostics."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+readme.workspace       = true
+keywords               = ["vitte", "types", "inference", "hm", "compiler"]
+categories             = ["compilers", "no-std", "algorithms"]
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+# Par dÃ©faut on s'appuie sur la std (le crate reste no_std via `alloc`)
+default  = ["std"]
+std      = []
+# SÃ©rialisation optionnelle des structures (Ty, Scheme, Expr de dÃ©mo)
+serde    = ["dep:serde", "vitte-mm/serde"]
+# Utiliser `vitte-resolver::NodeId` pour les diagnostics
+resolver = ["dep:vitte-resolver"]
+
+[dependencies]
+# Symbol/Interner partagÃ©s
+vitte-mm       = { path = "../vitte-mm", version = "0.1.0" }
+# Optionnels
+serde          = { workspace = true, optional = true }
+vitte-resolver = { path = "../vitte-resolver", version = "0.1.0", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+doc_markdown = "allow"
