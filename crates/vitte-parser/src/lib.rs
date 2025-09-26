@@ -437,7 +437,7 @@ impl<'a> Parser<'a> {
         loop {
             if self.check(TokenKind::LParen) {
                 // appel
-                let lp = self.bump().unwrap();
+                let _lp = self.bump().unwrap();
                 let mut args = Vec::new();
                 if !self.check(TokenKind::RParen) {
                     loop {
@@ -760,7 +760,7 @@ trait WithSpan {
 }
 
 impl WithSpan for ast::Expr {
-    fn with_span(mut self, span: Span) -> Self {
+    fn with_span(mut self, _span: Span) -> Self {
         match &mut self {
             ast::Expr::Ident(_) => {}
             ast::Expr::Literal(_) => {}
