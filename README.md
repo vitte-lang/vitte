@@ -15,8 +15,6 @@
   <a href="https://github.com/vitte-lang/vitte/releases">
     <img alt="Release" src="https://img.shields.io/github/v/release/vitte-lang/vitte?style=flat-square">
   </a>
-  <img alt="Downloads" src="https://img.shields.io/github/downloads/vitte-lang/vitte/total?style=flat-square">
-  <img alt="Coverage" src="https://img.shields.io/codecov/c/github/vitte-lang/vitte?style=flat-square">
   <img alt="License" src="https://img.shields.io/github/license/vitte-lang/vitte?style=flat-square">
   <img alt="Top language" src="https://img.shields.io/github/languages/top/vitte-lang/vitte?style=flat-square">
 </p>
