@@ -1,0 +1,223 @@
+(* ========================================================================= *)
+(*  Vitte — Grammaire officielle .ebnf (référence initiale)                  *)
+(*  Dialecte inspiré de Rust-like, conforme aux exemples DSU/Graph.         *)
+(*  Notation : EBNF ISO 14977                                               *)
+(* ========================================================================= *)
+
+(* =============================== LEXIQUE ================================= *)
+
+letter           = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" |
+                   "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" |
+                   "U" | "V" | "W" | "X" | "Y" | "Z" |
+                   "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" |
+                   "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" |
+                   "u" | "v" | "w" | "x" | "y" | "z" | "_" ;
+digit            = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+hexdigit         = digit | "A" | "B" | "C" | "D" | "E" | "F" |
+                            "a" | "b" | "c" | "d" | "e" | "f" ;
+octdigit         = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" ;
+bindigit         = "0" | "1" ;
+
+(* identificateurs *)
+ident_head       = letter ;
+ident_tail       = { letter | digit } ;
+identifier       = ident_head , ident_tail ;
+
+(* mots-clés réservés *)
+keyword =
+    "module" | "import" | "pub" | "struct" | "enum" | "union" | "type" |
+    "fn" | "let" | "mut" | "const" | "static" | "as" | "where" |
+    "if" | "else" | "while" | "for" | "in" | "loop" | "match" |
+    "break" | "continue" | "return" | "true" | "false" | "nil" ;
+
+(* séparateurs et commentaires *)
+whitespace       = { " " | "\t" | "\r" | "\n" } ;
+line_comment     = "//" , { ? any char except line break ? } , ( "\n" | EOF ) ;
+block_comment    = "/*" , { block_comment | ? any char except "*/" ? } , "*/" ;
+sep              = { whitespace | line_comment | block_comment } ;
+
+(* littéraux numériques, avec séparateurs '_' autorisés *)
+int_dec          = digit , { digit | "_" } ;
+int_hex          = "0x" , hexdigit , { hexdigit | "_" } ;
+int_oct          = "0o" , octdigit , { octdigit | "_" } ;
+int_bin          = "0b" , bindigit , { bindigit | "_" } ;
+int_lit          = ( int_hex | int_oct | int_bin | int_dec ) , [ int_suffix ] ;
+
+int_suffix       = ":" , ( "i8" | "i16" | "i32" | "i64" | "isize"
+                         | "u8" | "u16" | "u32" | "u64" | "usize" ) ;
+
+float_core       = int_dec , [ "." , { digit | "_" } ] , [ exp_part ] |
+                   "." , digit , { digit | "_" } , [ exp_part ] ;
+exp_part         = ( "e" | "E" ) , [ "+" | "-" ] , digit , { digit | "_" } ;
+float_suffix     = ":" , ( "f32" | "f64" ) ;
+float_lit        = float_core , [ float_suffix ] ;
+
+(* littéraux booléens et nil *)
+bool_lit         = "true" | "false" ;
+nil_lit          = "nil" ;
+
+(* littéraux char et string, avec échappements standards *)
+escape_char      = "\\" , ( "'" | "\"" | "\\" | "n" | "r" | "t" | "0" | "x" , hexdigit , hexdigit
+                           | "u" , "{" , hexdigit , { hexdigit } , "}" ) ;
+char_inner       = ? any char except "'" and "\" and line breaks ? | escape_char ;
+char_lit         = "'" , char_inner , "'" ;
+
+str_inner        = { ? any char except "\"" and "\" not forming invalid escape ? | escape_char } ;
+string_lit       = "\"" , str_inner , "\"" ;
+
+literal          = int_lit | float_lit | bool_lit | nil_lit | char_lit | string_lit ;
+
+(* symboles *)
+sym_dot          = "." ;
+sym_comma        = "," ;
+sym_colon        = ":" ;
+sym_semi         = ";" ;
+sym_arrow        = "->" ;
+sym_fatarrow     = "=>" ;
+sym_assign       = "=" ;
+sym_op           = "+" | "-" | "*" | "/" | "%" | "!" |
+                   "==" | "!=" | "<" | "<=" | ">" | ">=" |
+                   "&&" | "||" | "&" | "|" | "^" | "~" |
+                   "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" |
+                   "<<" | ">>" | "<<=" | ">>=" ;
+sym_path         = "::" ;
+sym_range        = ".." | "..=" ;
+sym_qmark        = "?" ;
+
+lparen           = "(" ; rparen = ")" ;
+lbrace           = "{" ; rbrace = "}" ;
+lbrack           = "[" ; rbrack = "]" ;
+lt               = "<" ; gt = ">" ;
+
+(* =============================== SYNTAXE ================================= *)
+
+CompilationUnit  = sep , ModuleDecl , { TopItem } , sep , EOF ;
+
+(* ----- Modules & imports ----- *)
+ModuleDecl       = "module" , sep , ModulePath , sep , sym_semi , sep ;
+ModulePath       = identifier , { sym_path , identifier } ;
+
+TopItem          = sep , ( UseDecl | TypeItem | FnItem | ConstItem | StaticItem ) ;
+
+UseDecl          = "import" , sep , UseTree , sep , sym_semi , sep ;
+UseTree          = ModulePath , [ sym_path , "*" ] ;
+
+(* ----- Visibilité ----- *)
+Vis              = [ "pub" , sep ] ;
+
+(* ----- Types ----- *)
+TypeItem         = Vis , ( StructItem | EnumItem | UnionItem | TypeAlias ) ;
+
+TypeAlias        = "type" , sep , identifier , [ GenericParams ] ,
+                   sep , sym_assign , sep , Type , sep , sym_semi ;
+
+StructItem       = "struct" , sep , identifier , [ GenericParams ] ,
+                   sep , StructBody ;
+
+StructBody       = lbrace , sep , [ FieldList ] , rbrace ;
+FieldList        = Field , { sep , sym_comma , sep , Field } , [ sep , sym_comma , sep ] ;
+Field            = Vis , identifier , sep , sym_colon , sep , Type ;
+
+EnumItem         = "enum" , sep , identifier , [ GenericParams ] ,
+                   sep , lbrace , sep , [ EnumVariants ] , rbrace ;
+EnumVariants     = EnumVariant , { sep , sym_comma , sep , EnumVariant } ,
+                   [ sep , sym_comma , sep ] ;
+EnumVariant      = identifier , [ TupleTyList | StructBody ] ;
+TupleTyList      = lparen , sep , [ Type , { sep , sym_comma , sep , Type } ,
+                   [ sep , sym_comma , sep ] ] , rparen ;
+
+UnionItem        = "union" , sep , identifier , [ GenericParams ] ,
+                   sep , lbrace , sep , FieldList , rbrace ;
+
+GenericParams    = lt , sep , TypeParam , { sep , sym_comma , sep , TypeParam } ,
+                   [ sep , sym_comma , sep ] , gt ;
+TypeParam        = identifier , [ sep , ":" , sep , TypeBounds ] ;
+TypeBounds       = Type , { sep , "+" , sep , Type } ;
+
+(* ----- Fonctions ----- *)
+FnItem           = Vis , "fn" , sep , identifier , [ GenericParams ] ,
+                   sep , ParamList , [ sep , "->" , sep , Type ] ,
+                   [ WhereClause ] , sep , Block ;
+
+ParamList        = lparen , sep , [ Param , { sep , sym_comma , sep , Param } ,
+                   [ sep , sym_comma , sep ] ] , rparen ;
+Param            = [ "mut" , sep ] , identifier , sep , sym_colon , sep , Type ;
+
+WhereClause      = sep , "where" , sep , WherePred , { sep , sym_comma , sep , WherePred } ;
+WherePred        = Type , sep , ":" , sep , TypeBounds ;
+
+ConstItem        = Vis , "const" , sep , identifier , sep , sym_colon , sep , Type ,
+                   sep , sym_assign , sep , Expr , sep , sym_semi ;
+StaticItem       = Vis , "static" , sep , identifier , sep , sym_colon , sep , Type ,
+                   sep , sym_assign , sep , Expr , sep , sym_semi ;
+
+(* ----- Types (usage) ----- *)
+Type             = FunctionType
+                 | TupleType
+                 | ArrayType
+                 | SliceType
+                 | PtrType
+                 | RefType
+                 | PathType
+                 | PrimitiveType ;
+
+PrimitiveType    = "i8" | "i16" | "i32" | "i64" | "isize"
+                 | "u8" | "u16" | "u32" | "u64" | "usize"
+                 | "f32" | "f64"
+                 | "bool" | "char" | "str" | "void" ;
+
+PathType         = TypePath ;
+TypePath         = TypeSegment , { sym_path , TypeSegment } ;
+TypeSegment      = identifier , [ GenericArgs ] ;
+GenericArgs      = lt , sep , Type , { sep , sym_comma , sep , Type } ,
+                   [ sep , sym_comma , sep ] , gt ;
+
+TupleType        = lparen , sep , [ Type , { sep , sym_comma , sep , Type } ,
+                   [ sep , sym_comma , sep ] ] , rparen ;
+
+ArrayType        = lbrack , sep , Type , sep , sym_semi , sep , Expr , rbrack ;
+SliceType        = lbrack , sep , Type , rbrack ;
+
+PtrType          = "*" , sep , Type ;
+RefType          = "&" , sep , [ "mut" , sep ] , Type ;
+
+FunctionType     = "fn" , sep , lparen , sep ,
+                   [ Type , { sep , sym_comma , sep , Type } ,
+                     [ sep , sym_comma , sep ] ] , rparen ,
+                   [ sep , "->" , sep , Type ] ;
+
+(* ----- Blocs et instructions ----- *)
+Block            = lbrace , sep , { Stmt } , rbrace ;
+
+Stmt             = LocalLetStmt
+                 | ItemStmt
+                 | ExprStmt ;
+
+ItemStmt         = TypeItem | FnItem | ConstItem | StaticItem ;
+
+LocalLetStmt     = "let" , sep , [ "mut" , sep ] , Pattern ,
+                   [ sep , sym_colon , sep , Type ] ,
+                   [ sep , sym_assign , sep , Expr ] ,
+                   sep , sym_semi ;
+
+ExprStmt         = Expr , [ sep , sym_semi ] , sep ;
+
+Pattern          = identifier
+                 | "_" 
+                 | TuplePattern
+                 | StructPattern ;
+TuplePattern     = lparen , sep , [ Pattern , { sep , sym_comma , sep , Pattern } ,
+                   [ sep , sym_comma , sep ] ] , rparen ;
+StructPattern    = TypePath , lbrace , sep ,
+                   [ FieldPat , { sep , sym_comma , sep , FieldPat } ,
+                     [ sep , sym_comma , sep ] ] , rbrace ;
+FieldPat         = identifier , [ sep , ":" , sep , Pattern ] ;
+
+(* ----- Expressions (précédence de plus fort au plus faible) ----- *)
+
+Expr             = AssignExpr ;
+
+AssignExpr       = LogicOrExpr ,
+                   { sep ,
+                     ( sym_assign | "+=" | "-=" | "*=" | "/=" | "%=" |
+                       "&=" | "|=" | "^=" | "<<=" | ">>="
