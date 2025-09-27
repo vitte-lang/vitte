@@ -33,7 +33,7 @@ Bienvenue, artisan·e du compilateur. Ici on aime le code **net**, **prévisible
 ---
 
 ## Pré-requis
-- **Rust** : épinglé via `rust-toolchain.toml` → `1.80.0`.
+- **Rust** : épinglé via `rust-toolchain.toml` → `1.82.0`.
 - Composants : `rustfmt`, `clippy`, `rust-src`, `llvm-tools-preview`.
 - Optionnel : `wasm-pack` (pour `vitte-wasm`), `npm` (scripts de confort).
 

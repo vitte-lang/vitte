@@ -127,6 +127,13 @@ enum Command {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+
+    /// Lister les modules compilés depuis `vitte-modules`
+    Modules {
+        /// Sortie JSON (pretty-printed) au lieu du tableau texte
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 // ──────────────────────────── Entrée / Sortie ────────────────────────────
@@ -283,7 +290,10 @@ fn real_main() -> Result<()> {
 
     let hooks = make_hooks();
 
-    use cli::{Command as C, CompileTask, DisasmTask, FmtTask, InspectTask, ReplTask, RunTask};
+    use cli::{
+        Command as C, CompileTask, DisasmTask, FmtTask, InspectTask, ModulesFormat, ModulesTask,
+        ReplTask, RunTask,
+    };
 
     let command = match opt.cmd {
         Command::Compile { input, output, optimize, debug, auto_mkdir, overwrite, time, auto } => {
@@ -333,6 +343,10 @@ fn real_main() -> Result<()> {
                 /*for_compile=*/ false,
             );
             C::Disasm(DisasmTask { input: kind, output: out })
+        },
+        Command::Modules { json } => {
+            let format = if json { ModulesFormat::Json } else { ModulesFormat::Table };
+            C::Modules(ModulesTask { format })
         },
     };
 

@@ -46,6 +46,8 @@ pub enum Command {
     Inspect(InspectTask),
     /// Désassembler un bytecode.
     Disasm(DisasmTask),
+    /// Lister les modules compilés (selon les features du méta-crate).
+    Modules(ModulesTask),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -90,6 +92,23 @@ pub struct InspectTask {
 pub struct DisasmTask {
     pub input: InputKind,
     pub output: Output, // fichier ou stdout
+}
+
+#[derive(Clone, Debug)]
+pub enum ModulesFormat {
+    Table,
+    Json,
+}
+
+impl Default for ModulesFormat {
+    fn default() -> Self {
+        ModulesFormat::Table
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ModulesTask {
+    pub format: ModulesFormat,
 }
 
 /// Entrée texte (source) : fichier ou `-` (=stdin).
@@ -210,6 +229,10 @@ pub fn execute(cmd: Command, hooks: &Hooks) -> Result<i32> {
         },
         Command::Disasm(t) => {
             disasm_entry(t, hooks)?;
+            Ok(0)
+        },
+        Command::Modules(t) => {
+            modules_entry(t)?;
             Ok(0)
         },
     }
@@ -380,6 +403,52 @@ fn disasm_entry(task: DisasmTask, hooks: &Hooks) -> Result<()> {
     }
     status_ok("DISASM", "ok");
     Ok(())
+}
+
+fn modules_entry(task: ModulesTask) -> Result<()> {
+    #[cfg(not(feature = "modules"))]
+    {
+        let _ = task;
+        Err(anyhow!(
+            "Commande `modules` indisponible : recompile `vitte-cli` avec la feature `modules`."
+        ))
+    }
+
+    #[cfg(feature = "modules")]
+    {
+        use ModulesFormat::*;
+
+        let mods = vitte_modules::modules();
+        match task.format {
+            Table => {
+                if mods.is_empty() {
+                    println!("(aucun module activé — compile `vitte-modules` avec les features désirées)");
+                } else {
+                    for module in mods {
+                        println!("{:<12} {}", module.name, module.description);
+                        if !module.tags.is_empty() {
+                            println!("    tags: {}", module.tags.join(", "));
+                        }
+                    }
+                }
+                Ok(())
+            },
+            Json => {
+                let payload: Vec<_> = mods
+                    .iter()
+                    .map(|m| {
+                        serde_json::json!({
+                            "name": m.name,
+                            "description": m.description,
+                            "tags": m.tags,
+                        })
+                    })
+                    .collect();
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+                Ok(())
+            },
+        }
+    }
 }
 
 // ───────────────────────────── Utilitaires E/S ─────────────────────────────
