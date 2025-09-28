@@ -120,7 +120,12 @@ pub enum Error {
 
     /// Arite invalide (n args attendus).
     #[error("mauvaise arité: attendu {expected}, reçu {got}")]
-    Arity { expected: usize, got: usize },
+    Arity {
+        /// Nombre d'arguments attendus par la native.
+        expected: usize,
+        /// Nombre d'arguments effectivement fournis lors de l'appel.
+        got: usize,
+    },
 
     /// Type inattendu (message court).
     #[error("type invalide: {0}")]
@@ -220,6 +225,7 @@ impl Runtime {
 
     /// Accès lecture/écriture à l’environnement global.
     pub fn env(&self) -> &HashMap<String, Value> { &self.ctx.env }
+    /// Donne un accès mutable à l'environnement global partagé entre les natives.
     pub fn env_mut(&mut self) -> &mut HashMap<String, Value> { &mut self.ctx.env }
 
     /// Enregistre une fonction native sous `module` + `name`.

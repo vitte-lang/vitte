@@ -151,7 +151,15 @@ pub fn human_millis(d: Duration) -> String {
 
 /// Mode pour les couleurs.
 #[derive(Clone, Copy, Debug)]
-pub enum ColorMode { Auto, Always, Never }
+/// Contrôle l'application de couleurs ANSI dans les sorties CLI.
+pub enum ColorMode {
+    /// Active les couleurs seulement si la sortie supporte ANSI (auto-détection).
+    Auto,
+    /// Force l'activation des couleurs, même si le terminal semble ne pas les supporter.
+    Always,
+    /// Désactive complètement les couleurs ANSI.
+    Never,
+}
 
 /// Configure le mode couleur global pour yansi (si feature `colors` active).
 pub fn setup_colors(mode: ColorMode) {
@@ -226,33 +234,53 @@ pub struct LinkOptions {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct LinkManifest {
+    /// Version du format de chunk émis (hérité du chunk résultant).
     pub version: u16,
+    /// Indique si le chunk final est stripé (debug minimal).
     pub stripped: bool,
+    /// Liste des entrées ayant contribué au lien.
     pub inputs: Vec<LinkInput>,
+    /// Nombre total d'opcodes après fusion.
     pub total_ops: usize,
+    /// Nombre de constantes avant déduplication.
     pub total_consts_before: usize,
+    /// Nombre de constantes après déduplication.
     pub total_consts_after: usize,
+    /// Détails des remappings de constantes pour chaque entrée.
     pub const_maps: Vec<LinkConstMap>,
+    /// Offset PC assigné à chaque fichier source lors du lien.
     pub base_pcs: Vec<(String, u32)>,
+    /// Nombre de fichiers de debug fusionnés.
     pub merged_debug_files: usize,
+    /// Nombre de symboles de debug fusionnés.
     pub merged_debug_symbols: usize,
+    /// Symbole d'entrée retenu, si présent.
     pub entry: Option<String>,
+    /// Empreinte simple du chunk lié (utilisée pour logs/cache).
     pub hash: u64,
 }
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+/// Statistiques par chunk d'entrée utilisées pour enrichir le manifeste.
 pub struct LinkInput {
+    /// Nom lisible (chemin) du chunk initial.
     pub file: String,
+    /// Nombre d'opcodes présents dans le chunk source.
     pub ops: usize,
+    /// Nombre de constantes présentes dans le chunk source.
     pub consts: usize,
 }
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+/// Méta-données de remappage de constantes pour un chunk donné.
 pub struct LinkConstMap {
+    /// Chunk auquel la table de remappage s'applique.
     pub file: String,
+    /// Paires `(ancien_index, nouvel_index)` appliquées lors du lien.
     pub remap: Vec<(u32, u32)>,
+    /// Nombre de constantes réutilisées via la déduplication globale.
     pub dedup_hits: usize,
 }
 

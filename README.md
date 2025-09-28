@@ -15,8 +15,6 @@
   <a href="https://github.com/vitte-lang/vitte/releases">
     <img alt="Release" src="https://img.shields.io/github/v/release/vitte-lang/vitte?style=flat-square">
   </a>
-  <img alt="Downloads" src="https://img.shields.io/github/downloads/vitte-lang/vitte/total?style=flat-square">
-  <img alt="Coverage" src="https://img.shields.io/codecov/c/github/vitte-lang/vitte?style=flat-square">
   <img alt="License" src="https://img.shields.io/github/license/vitte-lang/vitte?style=flat-square">
   <img alt="Top language" src="https://img.shields.io/github/languages/top/vitte-lang/vitte?style=flat-square">
 </p>
@@ -57,7 +55,7 @@
 
 ## 🧭 État du projet
 
-- **MSRV** : Rust `1.80.0` (épinglé via `rust-toolchain.toml`).
+- **MSRV** : Rust `1.82.0` (épinglé via `rust-toolchain.toml`).
 - **Qualité** : lints stricts (`.clippy.toml`), `cargo deny`, tests & snapshots.
 - **Stabilité** : grammaire et IR évoluent encore ; l’ABI VITBC est **versionnée**.
 
@@ -105,11 +103,30 @@ Cibles élargies (Android, BSD, RISC-V, embedded) sont **expérimentales** et su
 ---
 
 ## ⬇ Installation
+# Homebrew Vitte Tap
 
+Official Homebrew Tap to install the [Vitte programming language](https://github.com/vitte-lang/vitte).
+
+---
+
+## Installation
+
+First, add the tap:
+
+```sh
+brew tap vitte-lang/vitte
+```
+
+---
+
+## Then install VITTE
+```sh
+brew install vitte
+```
 ### Depuis les sources (recommandé)
 
 ```bash
-# Prérequis : Rust 1.80.0 (toolchain épinglée)
+# Prérequis : Rust 1.82.0 (toolchain épinglée)
 git clone https://github.com/vitte-lang/vitte.git
 cd vitte
 
@@ -286,7 +303,7 @@ do main() {
 
 - **Guides** : [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Qualité** : `cargo fmt` • `cargo clippy -D warnings` • `cargo test` • `cargo deny check`
-- **MSRV** : 1.80.0 • **unsafe** interdit par défaut.
+- **MSRV** : 1.82.0 • **unsafe** interdit par défaut.
 - **Sécurité** : signale toute vulnérabilité en privé (voir `SECURITY.md` si présent, sinon issue privée/mainteneurs).
 
 ---

@@ -2,7 +2,7 @@
 
 ## Prérequis
 - **Rust** (toolchain épinglée dans `rust-toolchain.toml`)  
-  MSRV : **1.80.0**
+  MSRV : **1.82.0**
 - Composants Rust : `rustfmt`, `clippy`, `rust-src`, `llvm-tools-preview`
 - Optionnels : `wasm-pack`, `npm` (pour intégration WebAssembly et bindings JS)
 

@@ -92,6 +92,8 @@ pub struct Parser<'a> {
     lx: Lexer<'a>,
     /// Buffer 1-token d’anticipation.
     look: Option<Token<'a>>,
+    /// Dernier span consommé (utile pour composer des spans).
+    last_span: Option<Span>,
     /// Source id (propagé dans les spans composés).
     source: SourceId,
 }
@@ -106,7 +108,12 @@ impl<'a> Parser<'a> {
     pub fn with_options(src: &'a str, source: SourceId, opts: LexerOptions) -> Self {
         let mut lx = Lexer::with_options(src, source, opts);
         let look = next_tok(&mut lx).ok().flatten();
-        Self { lx, look, source }
+        Self {
+            lx,
+            look,
+            last_span: None,
+            source,
+        }
     }
 
     /// Parse un programme complet.
@@ -134,7 +141,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_fn_item(&mut self) -> PResult<ast::Item> {
-        let _kw_fn = self.expect_kw(Keyword::Fn)?;
+        let k = self.expect_kw(Keyword::Fn)?;
         let name = self.expect_ident()?.to_string();
         self.expect(TokenKind::LParen)?;
 
@@ -165,33 +172,35 @@ impl<'a> Parser<'a> {
         };
 
         let body = self.parse_block()?;
+        let fn_span = self.join_span_to_ast(k.span, self.prev_span());
         Ok(ast::Item::Function(ast::Function {
             name,
             params,
             return_type: ret_ty,
             body,
-            span: None,
+            span: fn_span,
         }))
     }
 
     fn parse_const_item(&mut self) -> PResult<ast::Item> {
-        let _kw_const = self.expect_kw(Keyword::Const)?;
+        let k = self.expect_kw(Keyword::Const)?;
         let name = self.expect_ident()?.to_string();
         self.expect(TokenKind::Colon)?;
         let ty = self.parse_type()?;
         self.expect(TokenKind::Eq)?;
         let expr = self.parse_expr()?;
-        self.expect(TokenKind::Semi)?;
+        let semi = self.expect(TokenKind::Semi)?;
+        let span = self.join_span_to_ast(k.span, semi.span);
         Ok(ast::Item::Const(ast::ConstDecl {
             name,
             ty: Some(ty),
             value: expr,
-            span: None,
+            span,
         }))
     }
 
     fn parse_struct_item(&mut self) -> PResult<ast::Item> {
-        let _kw_struct = self.expect_kw(Keyword::Struct)?;
+        let k = self.expect_kw(Keyword::Struct)?;
         let name = self.expect_ident()?.to_string();
         self.expect(TokenKind::LBrace)?;
         let mut fields = Vec::new();
@@ -206,16 +215,16 @@ impl<'a> Parser<'a> {
                 span: None,
             });
         }
-        let _rb = self.expect(TokenKind::RBrace)?;
+        let rb = self.expect(TokenKind::RBrace)?;
         Ok(ast::Item::Struct(ast::StructDecl {
             name,
             fields,
-            span: None,
+            span: self.join_span_to_ast(k.span, rb.span),
         }))
     }
 
     fn parse_enum_item(&mut self) -> PResult<ast::Item> {
-        let _kw_enum = self.expect_kw(Keyword::Enum)?;
+        let k = self.expect_kw(Keyword::Enum)?;
         let name = self.expect_ident()?.to_string();
         self.expect(TokenKind::LBrace)?;
         let mut variants = Vec::new();
@@ -246,32 +255,32 @@ impl<'a> Parser<'a> {
                 span: None,
             });
         }
-        let _rb = self.expect(TokenKind::RBrace)?;
+        let rb = self.expect(TokenKind::RBrace)?;
         Ok(ast::Item::Enum(ast::EnumDecl {
             name,
             variants,
-            span: None,
+            span: self.join_span_to_ast(k.span, rb.span),
         }))
     }
 
     /* ─────────── Blocs & Stmts ─────────── */
 
     fn parse_block(&mut self) -> PResult<ast::Block> {
-        let _lb = self.expect(TokenKind::LBrace)?;
+        let lb = self.expect(TokenKind::LBrace)?;
         let mut stmts = Vec::new();
         while !self.check(TokenKind::RBrace) {
             stmts.push(self.parse_stmt()?);
         }
-        let _rb = self.expect(TokenKind::RBrace)?;
+        let rb = self.expect(TokenKind::RBrace)?;
         Ok(ast::Block {
             stmts,
-            span: None,
+            span: self.join_span_to_ast(lb.span, rb.span),
         })
     }
 
     fn parse_stmt(&mut self) -> PResult<ast::Stmt> {
         if self.is_kw(Keyword::Let) {
-            self.bump();
+            let k = self.bump().unwrap();
             let name = self.expect_ident()?.to_string();
             let mut ty = None;
             if self.check(TokenKind::Colon) {
@@ -283,26 +292,26 @@ impl<'a> Parser<'a> {
                 self.bump();
                 value = Some(self.parse_expr()?);
             }
-            self.expect(TokenKind::Semi)?;
+            let semi = self.expect(TokenKind::Semi)?;
             return Ok(ast::Stmt::Let {
                 name,
                 ty,
                 value,
-                span: None,
+                span: self.join_span_to_ast(k.span, semi.span),
             });
         }
         if self.is_kw(Keyword::Return) {
-            self.bump();
+            let k = self.bump().unwrap();
             let value = if !self.check(TokenKind::Semi) {
                 Some(self.parse_expr()?)
             } else {
                 None
             };
-            self.expect(TokenKind::Semi)?;
-            return Ok(ast::Stmt::Return(value, None));
+            let semi = self.expect(TokenKind::Semi)?;
+            return Ok(ast::Stmt::Return(value, self.join_span_to_ast(k.span, semi.span)));
         }
         if self.is_kw(Keyword::While) {
-            self.bump();
+            let k = self.bump().unwrap();
             self.expect(TokenKind::LParen)?;
             let cond = self.parse_expr()?;
             self.expect(TokenKind::RParen)?;
@@ -310,25 +319,25 @@ impl<'a> Parser<'a> {
             return Ok(ast::Stmt::While {
                 condition: cond,
                 body,
-                span: None,
+                span: self.join_span_to_ast(k.span, self.prev_span()),
             });
         }
         if self.is_kw(Keyword::For) {
-            self.bump();
+            let k = self.bump().unwrap();
             let var = self.expect_ident()?.to_string();
             // on autorise 'in' comme ident simple ; pour propreté, ajoutons un mot-clé un jour.
-            let _ = self.expect_ident_text("in")?;
+            let _in_span = self.expect_ident_text("in")?;
             let iter = self.parse_expr()?;
             let body = self.parse_block()?;
             return Ok(ast::Stmt::For {
                 var,
                 iter,
                 body,
-                span: None,
+                span: self.join_span_to_ast(k.span, self.prev_span()),
             });
         }
         if self.is_kw(Keyword::If) {
-            self.bump();
+            let k = self.bump().unwrap();
             self.expect(TokenKind::LParen)?;
             let cond = self.parse_expr()?;
             self.expect(TokenKind::RParen)?;
@@ -343,13 +352,13 @@ impl<'a> Parser<'a> {
                 condition: cond,
                 then_block,
                 else_block,
-                span: None,
+                span: self.join_span_to_ast(k.span, self.prev_span()),
             });
         }
         // Expression statement
         let e = self.parse_expr()?;
-        self.expect(TokenKind::Semi)?;
-        Ok(ast::Stmt::Expr(e))
+        let semi = self.expect(TokenKind::Semi)?;
+        Ok(ast::Stmt::Expr(e).with_span(semi.span))
     }
 
     /* ─────────── Expressions (Pratt) ─────────── */
@@ -387,11 +396,13 @@ impl<'a> Parser<'a> {
             self.bump();
 
             let rhs = self.parse_prec(rbp)?;
+            let span = span_join(lhs.span(), rhs.span());
             lhs = ast::Expr::Binary {
                 left: Box::new(lhs),
                 op: op.into(),
                 right: Box::new(rhs),
-            };
+            }
+            .with_span(span);
         }
 
         Ok(lhs)
@@ -399,20 +410,24 @@ impl<'a> Parser<'a> {
 
     fn parse_unary(&mut self) -> PResult<ast::Expr> {
         if self.check(TokenKind::Minus) {
-            self.bump();
+            let op_tok = self.bump().unwrap();
             let e = self.parse_unary()?;
+            let span = span_join(op_tok.span, e.span());
             return Ok(ast::Expr::Unary {
                 op: ast::UnaryOp::Neg,
                 expr: Box::new(e),
-            });
+            }
+            .with_span(span));
         }
         if self.check(TokenKind::Bang) {
-            self.bump();
+            let op_tok = self.bump().unwrap();
             let e = self.parse_unary()?;
+            let span = span_join(op_tok.span, e.span());
             return Ok(ast::Expr::Unary {
                 op: ast::UnaryOp::Not,
                 expr: Box::new(e),
-            });
+            }
+            .with_span(span));
         }
         self.parse_postfix()
     }
@@ -422,7 +437,7 @@ impl<'a> Parser<'a> {
         loop {
             if self.check(TokenKind::LParen) {
                 // appel
-                self.bump();
+                let _lp = self.bump().unwrap();
                 let mut args = Vec::new();
                 if !self.check(TokenKind::RParen) {
                     loop {
@@ -434,20 +449,24 @@ impl<'a> Parser<'a> {
                         break;
                     }
                 }
-                self.expect(TokenKind::RParen)?;
+                let rp = self.expect(TokenKind::RParen)?;
+                let span = span_join(e.span(), rp.span);
                 e = ast::Expr::Call {
                     func: Box::new(e),
                     args,
-                };
+                }
+                .with_span(span);
                 continue;
             }
             if self.check(TokenKind::Dot) {
-                self.bump();
+                let _dot = self.bump().unwrap();
                 let field = self.expect_ident()?.to_string();
+                let span = span_join(e.span(), self.prev_span());
                 e = ast::Expr::Field {
                     expr: Box::new(e),
                     field,
-                };
+                }
+                .with_span(span);
                 continue;
             }
             break;
@@ -460,37 +479,37 @@ impl<'a> Parser<'a> {
         match &t.value {
             TokenKind::Ident(s) => {
                 self.bump();
-                Ok(ast::Expr::Ident((*s).to_string()))
+                Ok(ast::Expr::Ident((*s).to_string()).with_span(t.span))
             }
             TokenKind::Int(i) => {
                 self.bump();
-                Ok(ast::Expr::Literal(ast::Literal::Int(*i)))
+                Ok(ast::Expr::Literal(ast::Literal::Int(*i)).with_span(t.span))
             }
             TokenKind::Float(f) => {
                 self.bump();
-                Ok(ast::Expr::Literal(ast::Literal::Float(*f)))
+                Ok(ast::Expr::Literal(ast::Literal::Float(*f)).with_span(t.span))
             }
             TokenKind::Str(s) => {
                 self.bump();
-                Ok(ast::Expr::Literal(ast::Literal::Str(s.clone())))
+                Ok(ast::Expr::Literal(ast::Literal::Str(s.clone())).with_span(t.span))
             }
             TokenKind::Kw(Keyword::True) => {
                 self.bump();
-                Ok(ast::Expr::Literal(ast::Literal::Bool(true)))
+                Ok(ast::Expr::Literal(ast::Literal::Bool(true)).with_span(t.span))
             }
             TokenKind::Kw(Keyword::False) => {
                 self.bump();
-                Ok(ast::Expr::Literal(ast::Literal::Bool(false)))
+                Ok(ast::Expr::Literal(ast::Literal::Bool(false)).with_span(t.span))
             }
             TokenKind::Kw(Keyword::Null) => {
                 self.bump();
-                Ok(ast::Expr::Literal(ast::Literal::Null))
+                Ok(ast::Expr::Literal(ast::Literal::Null).with_span(t.span))
             }
             TokenKind::LParen => {
-                self.bump();
+                let lp = self.bump().unwrap();
                 let e = self.parse_expr()?;
-                self.expect(TokenKind::RParen)?;
-                Ok(e)
+                let rp = self.expect(TokenKind::RParen)?;
+                Ok(e.with_span(span_join(lp.span, rp.span)))
             }
             _ => Err(err_here(&t, "expression attendue")),
         }
@@ -546,6 +565,9 @@ impl<'a> Parser<'a> {
     #[inline]
     fn bump(&mut self) -> Option<Token<'a>> {
         let cur = self.look.take();
+        if let Some(tok) = cur.as_ref() {
+            self.last_span = Some(tok.span);
+        }
         self.look = next_tok(&mut self.lx).ok().flatten();
         cur
     }
@@ -602,6 +624,27 @@ impl<'a> Parser<'a> {
         Err(err_here(&t, format!("identifiant `{}` attendu", s)))
     }
 
+    #[inline]
+    fn prev_span(&self) -> Span {
+        self.last_span.unwrap_or(Span {
+            source: self.source,
+            start: Pos(0),
+            end: Pos(0),
+        })
+    }
+
+    fn join_span_to_ast(&self, start: Span, end: Span) -> Option<ast::Span> {
+        if start.source != end.source {
+            return None;
+        }
+        let joined = span_join(start, end);
+        Some(self.ast_span(joined))
+    }
+
+    fn ast_span(&self, span: Span) -> ast::Span {
+        let (line, column) = self.lx.lines.line_col(span.start);
+        ast::Span::new(line, column, span.start.0)
+    }
 }
 
 /* ─────────────────────────── Opérateurs & helpers ─────────────────────────── */
@@ -693,12 +736,63 @@ fn token_eq(a: &TokenKind<'_>, b: &TokenKind<'_>) -> bool {
     }
 }
 
+fn err_here(tok: &Token<'_>, message: impl Into<String>) -> ParseError {
+    ParseError::new(tok.span, message)
+}
+
+fn span_join(a: Span, b: Span) -> Span {
+    Span {
+        source: a.source,
+        start: a.start,
+        end: b.end,
+    }
+}
+
 fn next_tok<'a>(lx: &mut Lexer<'a>) -> Result<Option<Token<'a>>, vitte_lexer::LexError> {
     lx.next()
 }
 
-fn err_here(token: &Token<'_>, message: impl Into<String>) -> ParseError {
-    ParseError::new(token.span, message)
+/* ─────────────────────────── Trait util pour .with_span() ─────────────────────────── */
+
+trait WithSpan {
+    fn with_span(self, span: Span) -> Self;
+    fn span(&self) -> Span;
+}
+
+impl WithSpan for ast::Expr {
+    fn with_span(mut self, _span: Span) -> Self {
+        match &mut self {
+            ast::Expr::Ident(_) => {}
+            ast::Expr::Literal(_) => {}
+            ast::Expr::Call { .. } => {}
+            ast::Expr::Binary { .. } => {}
+            ast::Expr::Unary { .. } => {}
+            ast::Expr::Field { .. } => {}
+        }
+        // si ton ast::Expr a un champ span, adapte ici ; sinon on ignore (non destructif)
+        self
+    }
+    fn span(&self) -> Span {
+        // si ton ast::Expr stocke un span, renvoie-le ; sinon span nul
+        Span {
+            source: SourceId(0),
+            start: Pos(0),
+            end: Pos(0),
+        }
+    }
+}
+
+impl WithSpan for ast::Stmt {
+    fn with_span(self, _span: Span) -> Self {
+        self
+    }
+    fn span(&self) -> Span {
+        Span {
+            source: SourceId(0),
+            start: Pos(0),
+            end: Pos(0),
+        }
+    }
 }
 
 /* ─────────────────────────── Tests ─────────────────────────── */
