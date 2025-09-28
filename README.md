@@ -9,9 +9,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/vitte-lang/vitte/actions">
-    <img alt="Build" src="https://img.shields.io/github/actions/workflow/status/vitte-lang/vitte/ci.yml?branch=main&label=build&style=flat-square">
-  </a>
   <a href="https://github.com/vitte-lang/vitte/releases">
     <img alt="Release" src="https://img.shields.io/github/v/release/vitte-lang/vitte?style=flat-square">
   </a>
