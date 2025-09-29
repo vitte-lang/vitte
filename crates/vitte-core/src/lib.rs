@@ -36,14 +36,14 @@ use serde::{Deserialize, Serialize};
 /// Primitives de bytecode (chunk, assembleur, désassembleur, helpers).
 pub mod bytecode;
 
-/// Compatibilité : ré-exporte les helpers de validation historiques.
-pub use bytecode::helpers as helpers;
-/// Compatibilité : ré-exporte le désassembleur textuel.
-pub use bytecode::disasm as disasm;
 /// Compatibilité : ré-exporte l'assembleur minimal.
-pub use bytecode::asm as asm;
+pub use bytecode::asm;
+/// Compatibilité : ré-exporte le désassembleur textuel.
+pub use bytecode::disasm;
+/// Compatibilité : ré-exporte les helpers de validation historiques.
+pub use bytecode::helpers;
 /// Compatibilité : ré-exporte le runtime d'évaluation simplifié.
-pub use bytecode::runtime as runtime;
+pub use bytecode::runtime;
 
 /* ─────────────────────────── Résultat commun ─────────────────────────── */
 
@@ -66,7 +66,9 @@ impl Pos {
     /// Position nulle.
     pub const ZERO: Self = Pos(0);
     /// Addition saturée.
-    pub fn saturating_add(self, v: u32) -> Self { Pos(self.0.saturating_add(v)) }
+    pub fn saturating_add(self, v: u32) -> Self {
+        Pos(self.0.saturating_add(v))
+    }
 }
 
 /// Plage (demi-ouverte) `[start, end)` dans une source.
@@ -83,11 +85,17 @@ pub struct Span {
 
 impl Span {
     /// Crée un span.
-    pub const fn new(source: SourceId, start: Pos, end: Pos) -> Self { Self { source, start, end } }
+    pub const fn new(source: SourceId, start: Pos, end: Pos) -> Self {
+        Self { source, start, end }
+    }
     /// Longueur en bytes.
-    pub fn len(&self) -> u32 { self.end.0.saturating_sub(self.start.0) }
+    pub fn len(&self) -> u32 {
+        self.end.0.saturating_sub(self.start.0)
+    }
     /// Vrai si le span est vide.
-    pub fn is_empty(&self) -> bool { self.start.0 >= self.end.0 }
+    pub fn is_empty(&self) -> bool {
+        self.start.0 >= self.end.0
+    }
 }
 
 /// Wrapper utilitaire « valeur + span ».
@@ -102,9 +110,13 @@ pub struct Spanned<T> {
 
 impl<T> Spanned<T> {
     /// Construit un `Spanned<T>`.
-    pub fn new(value: T, span: Span) -> Self { Self { value, span } }
+    pub fn new(value: T, span: Span) -> Self {
+        Self { value, span }
+    }
     /// Applique une fonction à la valeur et conserve le span.
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Spanned<U> { Spanned { value: f(self.value), span: self.span } }
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Spanned<U> {
+        Spanned { value: f(self.value), span: self.span }
+    }
 }
 
 /* ─────────────────────────── Ident / Symbolique légère ─────────────────────────── */
@@ -113,7 +125,9 @@ impl<T> Spanned<T> {
 pub type Ident = String;
 
 /// Construit un identifiant.
-pub fn ident<S: Into<String>>(s: S) -> Ident { s.into() }
+pub fn ident<S: Into<String>>(s: S) -> Ident {
+    s.into()
+}
 
 /* ─────────────────────────── VITBC — Constances & Tags ─────────────────────────── */
 
@@ -145,7 +159,9 @@ pub enum SectionTag {
 
 impl SectionTag {
     /// Renvoie le fourcc sous forme de 4 octets big-endian.
-    pub const fn to_be_bytes(self) -> [u8; 4] { (self as u32).to_be_bytes() }
+    pub const fn to_be_bytes(self) -> [u8; 4] {
+        (self as u32).to_be_bytes()
+    }
     /// Lit un tag depuis 4 octets big-endian.
     pub const fn from_be_bytes(b: [u8; 4]) -> Option<Self> {
         match u32::from_be_bytes(b) {
@@ -188,25 +204,45 @@ pub struct ByteWriter {
 
 impl ByteWriter {
     /// Crée un writer vide.
-    pub fn new() -> Self { Self { buf: Vec::new() } }
+    pub fn new() -> Self {
+        Self { buf: Vec::new() }
+    }
     /// Accès en lecture au contenu.
-    pub fn as_slice(&self) -> &[u8] { &self.buf }
+    pub fn as_slice(&self) -> &[u8] {
+        &self.buf
+    }
     /// Récupère le buffer (consomme).
-    pub fn into_vec(self) -> Vec<u8> { self.buf }
+    pub fn into_vec(self) -> Vec<u8> {
+        self.buf
+    }
     /// Ajoute des octets bruts.
-    pub fn write_bytes(&mut self, bytes: &[u8]) { self.buf.extend_from_slice(bytes); }
+    pub fn write_bytes(&mut self, bytes: &[u8]) {
+        self.buf.extend_from_slice(bytes);
+    }
     /// Écrit un tag (fourcc big-endian).
-    pub fn write_tag(&mut self, tag: SectionTag) { self.write_bytes(&tag.to_be_bytes()); }
+    pub fn write_tag(&mut self, tag: SectionTag) {
+        self.write_bytes(&tag.to_be_bytes());
+    }
     /// Écrit un u16 little-endian.
-    pub fn write_u16_le(&mut self, v: u16) { self.buf.extend_from_slice(&v.to_le_bytes()); }
+    pub fn write_u16_le(&mut self, v: u16) {
+        self.buf.extend_from_slice(&v.to_le_bytes());
+    }
     /// Écrit un u32 little-endian.
-    pub fn write_u32_le(&mut self, v: u32) { self.buf.extend_from_slice(&v.to_le_bytes()); }
+    pub fn write_u32_le(&mut self, v: u32) {
+        self.buf.extend_from_slice(&v.to_le_bytes());
+    }
     /// Écrit un u64 little-endian.
-    pub fn write_u64_le(&mut self, v: u64) { self.buf.extend_from_slice(&v.to_le_bytes()); }
+    pub fn write_u64_le(&mut self, v: u64) {
+        self.buf.extend_from_slice(&v.to_le_bytes());
+    }
     /// Écrit un i64 little-endian.
-    pub fn write_i64_le(&mut self, v: i64) { self.buf.extend_from_slice(&v.to_le_bytes()); }
+    pub fn write_i64_le(&mut self, v: i64) {
+        self.buf.extend_from_slice(&v.to_le_bytes());
+    }
     /// Écrit un f64 little-endian.
-    pub fn write_f64_le(&mut self, v: f64) { self.buf.extend_from_slice(&v.to_le_bytes()); }
+    pub fn write_f64_le(&mut self, v: f64) {
+        self.buf.extend_from_slice(&v.to_le_bytes());
+    }
 }
 
 /* ─────────────────────────── Byte Reader (LE) ─────────────────────────── */
@@ -220,11 +256,17 @@ pub struct ByteReader<'a> {
 
 impl<'a> ByteReader<'a> {
     /// Construit un lecteur.
-    pub fn new(data: &'a [u8]) -> Self { Self { data, off: 0 } }
+    pub fn new(data: &'a [u8]) -> Self {
+        Self { data, off: 0 }
+    }
     /// Offset courant.
-    pub fn offset(&self) -> usize { self.off }
+    pub fn offset(&self) -> usize {
+        self.off
+    }
     /// Taille restante.
-    pub fn remaining(&self) -> usize { self.data.len().saturating_sub(self.off) }
+    pub fn remaining(&self) -> usize {
+        self.data.len().saturating_sub(self.off)
+    }
 
     /// Lit `n` octets (ou erreur si EOF).
     pub fn read_bytes(&mut self, n: usize) -> CoreResult<&'a [u8]> {
@@ -240,7 +282,8 @@ impl<'a> ByteReader<'a> {
     pub fn read_tag(&mut self) -> CoreResult<SectionTag> {
         let b = self.read_bytes(4)?;
         let arr = [b[0], b[1], b[2], b[3]];
-        SectionTag::from_be_bytes(arr).ok_or(CoreError::InvalidSectionTag { raw: u32::from_be_bytes(arr) })
+        SectionTag::from_be_bytes(arr)
+            .ok_or(CoreError::InvalidSectionTag { raw: u32::from_be_bytes(arr) })
     }
 
     /// Lit un u16 LE.
@@ -262,7 +305,9 @@ impl<'a> ByteReader<'a> {
     }
 
     /// Lit un i64 LE.
-    pub fn read_i64_le(&mut self) -> CoreResult<i64> { Ok(self.read_u64_le()? as i64) }
+    pub fn read_i64_le(&mut self) -> CoreResult<i64> {
+        Ok(self.read_u64_le()? as i64)
+    }
 
     /// Lit un f64 LE.
     pub fn read_f64_le(&mut self) -> CoreResult<f64> {
@@ -280,18 +325,23 @@ pub enum CoreError {
     /// Magic VITBC invalide (attendu `b"VITBC\0"`).
     InvalidMagic,
     /// Tag de section inconnu.
-    InvalidSectionTag { /// Valeur brute du tag.
-        raw: u32
+    InvalidSectionTag {
+        /// Valeur brute du tag.
+        raw: u32,
     },
     /// Fin de buffer inattendue.
-    UnexpectedEof { /// Nombre d’octets manquants.
-        needed: u64, /// Offset où l’erreur s’est produite.
-        at: u64
+    UnexpectedEof {
+        /// Nombre d’octets manquants.
+        needed: u64,
+        /// Offset où l’erreur s’est produite.
+        at: u64,
     },
     /// Longueur de section invalide (ex: dépasse le buffer).
-    InvalidLength { /// Nom de section (si connu).
-        section: Option<Cow<'static, str>>, /// Longueur fautive.
-        len: u64
+    InvalidLength {
+        /// Nom de section (si connu).
+        section: Option<Cow<'static, str>>,
+        /// Longueur fautive.
+        len: u64,
     },
     /// UTF-8 invalide.
     InvalidUtf8,
@@ -301,7 +351,9 @@ pub enum CoreError {
 
 impl CoreError {
     /// Construit une erreur « corrompu ».
-    pub fn corrupted(msg: impl Into<Cow<'static, str>>) -> Self { CoreError::Corrupted(msg.into()) }
+    pub fn corrupted(msg: impl Into<Cow<'static, str>>) -> Self {
+        CoreError::Corrupted(msg.into())
+    }
 }
 
 impl fmt::Display for CoreError {
@@ -309,11 +361,16 @@ impl fmt::Display for CoreError {
         match self {
             CoreError::InvalidMagic => write!(f, "invalid VITBC magic"),
             CoreError::InvalidSectionTag { raw } => write!(f, "invalid section tag: 0x{raw:08X}"),
-            CoreError::UnexpectedEof { needed, at } => write!(f, "unexpected EOF: need {needed} bytes at {at}"),
+            CoreError::UnexpectedEof { needed, at } => {
+                write!(f, "unexpected EOF: need {needed} bytes at {at}")
+            },
             CoreError::InvalidLength { section, len } => {
-                if let Some(s) = section { write!(f, "invalid length for {s}: {len}") }
-                else { write!(f, "invalid length: {len}") }
-            }
+                if let Some(s) = section {
+                    write!(f, "invalid length for {s}: {len}")
+                } else {
+                    write!(f, "invalid length: {len}")
+                }
+            },
             CoreError::InvalidUtf8 => write!(f, "invalid utf-8"),
             CoreError::Corrupted(msg) => write!(f, "corrupted: {msg}"),
         }
@@ -330,12 +387,10 @@ impl std::error::Error for CoreError {}
 pub mod prelude {
     /// Réexports utiles pour une importation rapide.
     pub use super::{
-        crc32_ieee, ByteReader, ByteWriter, CoreError, CoreResult, Ident, Pos, SectionTag, Span,
-        Spanned, SourceId, MAGIC_VITBC, VITBC_VERSION,
+        crc32_ieee, ByteReader, ByteWriter, CoreError, CoreResult, Ident, Pos, SectionTag,
+        SourceId, Span, Spanned, MAGIC_VITBC, VITBC_VERSION,
     };
 }
-
-
 
 /* ─────────────────────────── Tests ─────────────────────────── */
 #[cfg(test)]

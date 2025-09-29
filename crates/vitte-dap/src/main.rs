@@ -10,11 +10,11 @@
 
 mod handler;
 
-use std::io::{self, BufRead, Read, Write};
 use color_eyre::eyre::Result;
-use log::{info, debug, warn};
+use log::{debug, info, warn};
+use std::io::{self, BufRead, Read, Write};
 
-use handler::{Handler, DebugEngine, Frame, Variable};
+use handler::{DebugEngine, Frame, Handler, Variable};
 
 /// Moteur factice (stub) pour MVP.
 /// TODO : remplacer par un vrai pont vers la VM Vitte.

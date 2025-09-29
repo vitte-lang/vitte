@@ -66,7 +66,9 @@ pub fn now_nanos() -> u128 {
 
 /// Taille de page la plus probable (4K fallback si inconnue).
 #[cfg(feature = "std")]
-pub fn page_size() -> usize { 4096 }
+pub fn page_size() -> usize {
+    4096
+}
 #[cfg(not(feature = "std"))]
 pub fn page_size() -> usize {
     4096
@@ -89,7 +91,6 @@ pub struct Pages {
     #[cfg(not(feature = "os"))]
     _buf: Vec<u8>,
 }
-
 
 impl Pages {
     /// Réserve un espace *page-aligné*. Avec feature `os`, appelle l’OS.

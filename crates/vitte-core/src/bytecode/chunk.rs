@@ -11,7 +11,13 @@ use std::{string::String, vec::Vec};
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-use core::{fmt, hash::{Hash, Hasher}, mem, ops::Range, slice};
+use core::{
+    fmt,
+    hash::{Hash, Hasher},
+    mem,
+    ops::Range,
+    slice,
+};
 
 const MAGIC: &[u8; 4] = b"CHNK";
 const CHUNK_VERSION: u16 = 1;
@@ -82,7 +88,7 @@ impl Hash for ConstValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
         mem::discriminant(self).hash(state);
         match self {
-            ConstValue::Null => {}
+            ConstValue::Null => {},
             ConstValue::Bool(b) => b.hash(state),
             ConstValue::I64(v) => v.hash(state),
             ConstValue::F64(v) => v.to_bits().hash(state),
@@ -100,16 +106,24 @@ pub struct ConstPool {
 
 impl ConstPool {
     /// Create an empty pool.
-    pub fn new() -> Self { Self { values: Vec::new() } }
+    pub fn new() -> Self {
+        Self { values: Vec::new() }
+    }
 
     /// Number of stored constants.
-    pub fn len(&self) -> usize { self.values.len() }
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
 
     /// Whether the pool is empty.
-    pub fn is_empty(&self) -> bool { self.values.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
 
     /// Iterate as `(index, &ConstValue)`.
-    pub fn iter(&self) -> ConstIter<'_> { ConstIter { inner: self.values.iter().enumerate() } }
+    pub fn iter(&self) -> ConstIter<'_> {
+        ConstIter { inner: self.values.iter().enumerate() }
+    }
 
     /// Pushes a value and returns its index.
     pub fn add(&mut self, value: ConstValue) -> u32 {
@@ -119,10 +133,14 @@ impl ConstPool {
     }
 
     /// Lookup a constant by index.
-    pub fn get(&self, idx: u32) -> Option<&ConstValue> { self.values.get(idx as usize) }
+    pub fn get(&self, idx: u32) -> Option<&ConstValue> {
+        self.values.get(idx as usize)
+    }
 
     /// Remove all constants.
-    pub fn clear(&mut self) { self.values.clear(); }
+    pub fn clear(&mut self) {
+        self.values.clear();
+    }
 }
 
 /// Iterator returned by [`ConstPool::iter`].
@@ -142,7 +160,9 @@ impl<'a> IntoIterator for &'a ConstPool {
     type Item = (u32, &'a ConstValue);
     type IntoIter = ConstIter<'a>;
 
-    fn into_iter(self) -> Self::IntoIter { self.iter() }
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
 }
 
 /// Line table (pc → source line) with contiguous range iteration helpers.
@@ -153,18 +173,32 @@ pub struct LineTable {
 
 impl LineTable {
     /// Create an empty line table.
-    pub fn new() -> Self { Self { lines: Vec::new() } }
+    pub fn new() -> Self {
+        Self { lines: Vec::new() }
+    }
     /// Append a mapping for the given program counter.
-    pub fn push(&mut self, line: u32) { self.lines.push(line); }
+    pub fn push(&mut self, line: u32) {
+        self.lines.push(line);
+    }
     /// Number of stored line entries.
-    pub fn len(&self) -> usize { self.lines.len() }
+    pub fn len(&self) -> usize {
+        self.lines.len()
+    }
     /// Resolve the source line associated with a program counter.
-    pub fn line_for_pc(&self, pc: u32) -> u32 { self.lines.get(pc as usize).copied().unwrap_or_default() }
+    pub fn line_for_pc(&self, pc: u32) -> u32 {
+        self.lines.get(pc as usize).copied().unwrap_or_default()
+    }
     /// Iterate over contiguous ranges of the same line number.
-    pub fn iter_ranges(&self) -> LineRangeIter<'_> { LineRangeIter { lines: &self.lines, index: 0 } }
+    pub fn iter_ranges(&self) -> LineRangeIter<'_> {
+        LineRangeIter { lines: &self.lines, index: 0 }
+    }
     /// Remove all recorded mappings.
-    pub fn clear(&mut self) { self.lines.clear(); }
-    fn as_slice(&self) -> &[u32] { &self.lines }
+    pub fn clear(&mut self) {
+        self.lines.clear();
+    }
+    fn as_slice(&self) -> &[u32] {
+        &self.lines
+    }
 }
 
 /// Iterator yielding contiguous line ranges `(start..end, line)`.
@@ -219,10 +253,9 @@ impl fmt::Display for ChunkError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ChunkError::Format(msg) => write!(f, "format error: {msg}"),
-            ChunkError::HashMismatch { expected, found } => write!(
-                f,
-                "hash mismatch (crc32): expected=0x{expected:08X}, found=0x{found:08X}"
-            ),
+            ChunkError::HashMismatch { expected, found } => {
+                write!(f, "hash mismatch (crc32): expected=0x{expected:08X}, found=0x{found:08X}")
+            },
         }
     }
 }
@@ -246,7 +279,9 @@ pub struct Chunk {
 }
 
 impl Default for Chunk {
-    fn default() -> Self { Self::new(ChunkFlags::default()) }
+    fn default() -> Self {
+        Self::new(ChunkFlags::default())
+    }
 }
 
 impl Chunk {
@@ -263,19 +298,29 @@ impl Chunk {
     }
 
     /// Chunk format version (independent from VITBC).
-    pub fn version(&self) -> u16 { self.version }
+    pub fn version(&self) -> u16 {
+        self.version
+    }
 
     /// Override the stored version.
-    pub fn set_version(&mut self, version: u16) { self.version = version; }
+    pub fn set_version(&mut self, version: u16) {
+        self.version = version;
+    }
 
     /// Access to flags (immutable).
-    pub fn flags(&self) -> &ChunkFlags { &self.flags }
+    pub fn flags(&self) -> &ChunkFlags {
+        &self.flags
+    }
 
     /// Mutable access to flags.
-    pub fn flags_mut(&mut self) -> &mut ChunkFlags { &mut self.flags }
+    pub fn flags_mut(&mut self) -> &mut ChunkFlags {
+        &mut self.flags
+    }
 
     /// Append a constant and return its index.
-    pub fn add_const(&mut self, value: ConstValue) -> u32 { self.consts.add(value) }
+    pub fn add_const(&mut self, value: ConstValue) -> u32 {
+        self.consts.add(value)
+    }
 
     /// Push an opcode while recording its source line.
     pub fn push_op(&mut self, op: Op, line: u32) {
@@ -305,23 +350,23 @@ impl Chunk {
                 ConstValue::Str(s) => {
                     out.push(CONST_TAG_STR);
                     write_str(&mut out, s);
-                }
+                },
                 ConstValue::I64(v) => {
                     out.push(CONST_TAG_I64);
                     write_i64(&mut out, *v);
-                }
+                },
                 ConstValue::F64(v) => {
                     out.push(CONST_TAG_F64);
                     write_f64(&mut out, *v);
-                }
+                },
                 ConstValue::Bool(b) => {
                     out.push(CONST_TAG_BOOL);
                     out.push(if *b { 1 } else { 0 });
-                }
+                },
                 ConstValue::Bytes(bytes) => {
                     out.push(CONST_TAG_BYTES);
                     write_bytes(&mut out, bytes);
-                }
+                },
             }
         }
 
@@ -331,7 +376,7 @@ impl Chunk {
                 Op::LoadConst(ix) => {
                     out.push(OP_LOAD_CONST);
                     write_u32(&mut out, ix);
-                }
+                },
                 Op::Print => out.push(OP_PRINT),
                 Op::Return => out.push(OP_RETURN),
             }
@@ -346,7 +391,7 @@ impl Chunk {
             Some(main) => {
                 out.push(1);
                 write_str(&mut out, main);
-            }
+            },
             None => out.push(0),
         }
 
@@ -407,7 +452,7 @@ impl Chunk {
                         1 => true,
                         _ => return Err(ChunkError::Format("invalid bool")),
                     })
-                }
+                },
                 CONST_TAG_BYTES => ConstValue::Bytes(read_vec(payload, &mut off)?),
                 _ => return Err(ChunkError::Format("unknown const tag")),
             };
@@ -507,16 +552,14 @@ fn read_u32(data: &[u8], off: &mut usize) -> Result<u32, ChunkError> {
 fn read_i64(data: &[u8], off: &mut usize) -> Result<i64, ChunkError> {
     let bytes = read_exact(data, off, 8)?;
     Ok(i64::from_le_bytes([
-        bytes[0], bytes[1], bytes[2], bytes[3],
-        bytes[4], bytes[5], bytes[6], bytes[7],
+        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
     ]))
 }
 
 fn read_f64(data: &[u8], off: &mut usize) -> Result<f64, ChunkError> {
     let bytes = read_exact(data, off, 8)?;
     Ok(f64::from_bits(u64::from_le_bytes([
-        bytes[0], bytes[1], bytes[2], bytes[3],
-        bytes[4], bytes[5], bytes[6], bytes[7],
+        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
     ])))
 }
 

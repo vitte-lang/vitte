@@ -114,18 +114,58 @@ const REGISTRY: [ModuleMeta; REG_LEN] = {
         #[allow(unused_mut)]
         let mut n = 0usize;
         // 2D
-        #[cfg(feature = "ecs2d")] { let _ = (); n += 1; }
-        #[cfg(feature = "gfx2d")] { let _ = (); n += 1; }
+        #[cfg(feature = "ecs2d")]
+        {
+            let _ = ();
+            n += 1;
+        }
+        #[cfg(feature = "gfx2d")]
+        {
+            let _ = ();
+            n += 1;
+        }
         // Frontend
-        #[cfg(feature = "resolver")] { let _ = (); n += 1; }
-        #[cfg(feature = "typer")]    { let _ = (); n += 1; }
-        #[cfg(feature = "opt")]      { let _ = (); n += 1; }
-        #[cfg(feature = "fmt")]      { let _ = (); n += 1; }
+        #[cfg(feature = "resolver")]
+        {
+            let _ = ();
+            n += 1;
+        }
+        #[cfg(feature = "typer")]
+        {
+            let _ = ();
+            n += 1;
+        }
+        #[cfg(feature = "opt")]
+        {
+            let _ = ();
+            n += 1;
+        }
+        #[cfg(feature = "fmt")]
+        {
+            let _ = ();
+            n += 1;
+        }
         // Kernel
-        #[cfg(feature = "hal")]   { let _ = (); n += 1; }
-        #[cfg(feature = "mm")]    { let _ = (); n += 1; }
-        #[cfg(feature = "shed")]  { let _ = (); n += 1; }
-        #[cfg(feature = "sys")]   { let _ = (); n += 1; }
+        #[cfg(feature = "hal")]
+        {
+            let _ = ();
+            n += 1;
+        }
+        #[cfg(feature = "mm")]
+        {
+            let _ = ();
+            n += 1;
+        }
+        #[cfg(feature = "shed")]
+        {
+            let _ = ();
+            n += 1;
+        }
+        #[cfg(feature = "sys")]
+        {
+            let _ = ();
+            n += 1;
+        }
         n
     }
     const REG_LEN: usize = count();
@@ -139,20 +179,100 @@ const REGISTRY: [ModuleMeta; REG_LEN] = {
     let mut i = 0usize;
 
     // 2D
-    #[cfg(feature = "ecs2d")] { arr[i] = ModuleMeta { name: "ecs2d", description: "ECS 2D minimal (Transform, Velocity, Sprite, Camera).", tags: &["2d","ecs","game"] }; i += 1; }
-    #[cfg(feature = "gfx2d")] { arr[i] = ModuleMeta { name: "gfx2d", description: "Rendu 2D (batch sprites) backends wgpu/sdl2.", tags: &["2d","gfx","renderer"] }; i += 1; }
+    #[cfg(feature = "ecs2d")]
+    {
+        arr[i] = ModuleMeta {
+            name: "ecs2d",
+            description: "ECS 2D minimal (Transform, Velocity, Sprite, Camera).",
+            tags: &["2d", "ecs", "game"],
+        };
+        i += 1;
+    }
+    #[cfg(feature = "gfx2d")]
+    {
+        arr[i] = ModuleMeta {
+            name: "gfx2d",
+            description: "Rendu 2D (batch sprites) backends wgpu/sdl2.",
+            tags: &["2d", "gfx", "renderer"],
+        };
+        i += 1;
+    }
 
     // Frontend
-    #[cfg(feature = "resolver")] { arr[i] = ModuleMeta { name: "resolver", description: "Graphe de modules, imports, table des symboles.", tags: &["frontend","names"] }; i += 1; }
-    #[cfg(feature = "typer")]    { arr[i] = ModuleMeta { name: "typer", description: "Inférence & vérification des types (HM-friendly).", tags: &["frontend","types"] }; i += 1; }
-    #[cfg(feature = "opt")]      { arr[i] = ModuleMeta { name: "opt", description: "Passes IR (CFG/SSA, ConstFold, DCE, SimplifyCFG).", tags: &["ir","opt"] }; i += 1; }
-    #[cfg(feature = "fmt")]      { arr[i] = ModuleMeta { name: "fmt", description: "Formateur code source stable, idempotent.", tags: &["devx","style"] }; i += 1; }
+    #[cfg(feature = "resolver")]
+    {
+        arr[i] = ModuleMeta {
+            name: "resolver",
+            description: "Graphe de modules, imports, table des symboles.",
+            tags: &["frontend", "names"],
+        };
+        i += 1;
+    }
+    #[cfg(feature = "typer")]
+    {
+        arr[i] = ModuleMeta {
+            name: "typer",
+            description: "Inférence & vérification des types (HM-friendly).",
+            tags: &["frontend", "types"],
+        };
+        i += 1;
+    }
+    #[cfg(feature = "opt")]
+    {
+        arr[i] = ModuleMeta {
+            name: "opt",
+            description: "Passes IR (CFG/SSA, ConstFold, DCE, SimplifyCFG).",
+            tags: &["ir", "opt"],
+        };
+        i += 1;
+    }
+    #[cfg(feature = "fmt")]
+    {
+        arr[i] = ModuleMeta {
+            name: "fmt",
+            description: "Formateur code source stable, idempotent.",
+            tags: &["devx", "style"],
+        };
+        i += 1;
+    }
 
     // Kernel
-    #[cfg(feature = "hal")]   { arr[i] = ModuleMeta { name: "hal", description: "HAL : timers, IRQ, MMIO abstraits (x86_64/aarch64).", tags: &["kernel","hal"] }; i += 1; }
-    #[cfg(feature = "mm")]    { arr[i] = ModuleMeta { name: "mm", description: "Gestion mémoire (frames/pages, heap noyau).", tags: &["kernel","memory"] }; i += 1; }
-    #[cfg(feature = "shed")]  { arr[i] = ModuleMeta { name: "shed", description: "Orchestrateur de tâches (build/test/watch).", tags: &["tools","automation"] }; i += 1; }
-    #[cfg(feature = "sys")]   { arr[i] = ModuleMeta { name: "sys", description: "ABI noyau : syscalls & traps de base.", tags: &["kernel","abi"] }; i += 1; }
+    #[cfg(feature = "hal")]
+    {
+        arr[i] = ModuleMeta {
+            name: "hal",
+            description: "HAL : timers, IRQ, MMIO abstraits (x86_64/aarch64).",
+            tags: &["kernel", "hal"],
+        };
+        i += 1;
+    }
+    #[cfg(feature = "mm")]
+    {
+        arr[i] = ModuleMeta {
+            name: "mm",
+            description: "Gestion mémoire (frames/pages, heap noyau).",
+            tags: &["kernel", "memory"],
+        };
+        i += 1;
+    }
+    #[cfg(feature = "shed")]
+    {
+        arr[i] = ModuleMeta {
+            name: "shed",
+            description: "Orchestrateur de tâches (build/test/watch).",
+            tags: &["tools", "automation"],
+        };
+        i += 1;
+    }
+    #[cfg(feature = "sys")]
+    {
+        arr[i] = ModuleMeta {
+            name: "sys",
+            description: "ABI noyau : syscalls & traps de base.",
+            tags: &["kernel", "abi"],
+        };
+        i += 1;
+    }
 
     arr
 };
@@ -161,16 +281,56 @@ const REG_LEN: usize = {
     // miroir de count() pour usage externe (const générique possible si besoin)
     #[allow(unused_mut)]
     let mut n = 0usize;
-    #[cfg(feature = "ecs2d")] { let _ = (); n += 1; }
-    #[cfg(feature = "gfx2d")] { let _ = (); n += 1; }
-    #[cfg(feature = "resolver")] { let _ = (); n += 1; }
-    #[cfg(feature = "typer")]    { let _ = (); n += 1; }
-    #[cfg(feature = "opt")]      { let _ = (); n += 1; }
-    #[cfg(feature = "fmt")]      { let _ = (); n += 1; }
-    #[cfg(feature = "hal")]   { let _ = (); n += 1; }
-    #[cfg(feature = "mm")]    { let _ = (); n += 1; }
-    #[cfg(feature = "shed")]  { let _ = (); n += 1; }
-    #[cfg(feature = "sys")]   { let _ = (); n += 1; }
+    #[cfg(feature = "ecs2d")]
+    {
+        let _ = ();
+        n += 1;
+    }
+    #[cfg(feature = "gfx2d")]
+    {
+        let _ = ();
+        n += 1;
+    }
+    #[cfg(feature = "resolver")]
+    {
+        let _ = ();
+        n += 1;
+    }
+    #[cfg(feature = "typer")]
+    {
+        let _ = ();
+        n += 1;
+    }
+    #[cfg(feature = "opt")]
+    {
+        let _ = ();
+        n += 1;
+    }
+    #[cfg(feature = "fmt")]
+    {
+        let _ = ();
+        n += 1;
+    }
+    #[cfg(feature = "hal")]
+    {
+        let _ = ();
+        n += 1;
+    }
+    #[cfg(feature = "mm")]
+    {
+        let _ = ();
+        n += 1;
+    }
+    #[cfg(feature = "shed")]
+    {
+        let _ = ();
+        n += 1;
+    }
+    #[cfg(feature = "sys")]
+    {
+        let _ = ();
+        n += 1;
+    }
     n
 };
 
@@ -186,10 +346,13 @@ pub mod prelude {
 
     // 2D
     #[cfg(feature = "ecs2d")]
-    pub use super::ecs2d::{Runner as EcsRunner, World as EcsWorld, Transform2D, Velocity, Sprite, Camera2D, Time, Input};
+    pub use super::ecs2d::{
+        Camera2D, Input, Runner as EcsRunner, Sprite, Time, Transform2D, Velocity,
+        World as EcsWorld,
+    };
 
     #[cfg(feature = "gfx2d")]
-    pub use super::gfx2d::{DrawSprite, Cam2D, Renderer2D};
+    pub use super::gfx2d::{Cam2D, DrawSprite, Renderer2D};
 
     // Frontend
     #[cfg(feature = "resolver")]

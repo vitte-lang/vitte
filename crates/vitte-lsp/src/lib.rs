@@ -70,7 +70,7 @@ impl Document {
                 // full text
                 self.text = change.text.clone();
                 self.line_starts = compute_line_starts(&self.text);
-            }
+            },
             (Some(range), _) => {
                 // incremental
                 let (start_off, end_off) = (
@@ -81,8 +81,8 @@ impl Document {
                     self.text.replace_range(start_off..end_off, &change.text);
                     self.line_starts = compute_line_starts(&self.text);
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 }
@@ -113,10 +113,7 @@ impl Backend {
             return;
         }
         let diags = compute_diagnostics(&doc.text, &doc.line_starts);
-        let _ = self
-            .client
-            .publish_diagnostics(doc.uri.clone(), diags, Some(doc.version))
-            .await;
+        let _ = self.client.publish_diagnostics(doc.uri.clone(), diags, Some(doc.version)).await;
     }
 }
 
@@ -125,13 +122,12 @@ impl Backend {
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, _: lsp::InitializeParams) -> jsonrpc::Result<lsp::InitializeResult> {
-        let text_sync = lsp::TextDocumentSyncCapability::Kind(lsp::TextDocumentSyncKind::INCREMENTAL);
+        let text_sync =
+            lsp::TextDocumentSyncCapability::Kind(lsp::TextDocumentSyncKind::INCREMENTAL);
 
         let completion = Some(lsp::CompletionOptions {
             resolve_provider: Some(false),
-            trigger_characters: Some(vec![
-                ".".into(), ":".into(), ">".into(), "=".into(),
-            ]),
+            trigger_characters: Some(vec![".".into(), ":".into(), ">".into(), "=".into()]),
             ..Default::default()
         });
 
@@ -153,7 +149,10 @@ impl LanguageServer for Backend {
 
         Ok(lsp::InitializeResult {
             capabilities,
-            server_info: Some(lsp::ServerInfo { name: "vitte-lsp".into(), version: Some("0.1.0".into()) }),
+            server_info: Some(lsp::ServerInfo {
+                name: "vitte-lsp".into(),
+                version: Some("0.1.0".into()),
+            }),
         })
     }
 
@@ -216,7 +215,8 @@ impl LanguageServer for Backend {
         let off = position_to_offset(&doc.text, &doc.line_starts, pos);
 
         // Token sous curseur via un lexing simple
-        let (tok, span) = token_at_offset(&doc.text, off).unwrap_or((TokenKind::Eof, Span { source: SourceId(0), start: Pos(0), end: Pos(0) }));
+        let (tok, span) = token_at_offset(&doc.text, off)
+            .unwrap_or((TokenKind::Eof, Span { source: SourceId(0), start: Pos(0), end: Pos(0) }));
 
         let (title, body) = hover_contents(&tok);
 
@@ -233,7 +233,10 @@ impl LanguageServer for Backend {
         Ok(Some(hover))
     }
 
-    async fn completion(&self, params: lsp::CompletionParams) -> jsonrpc::Result<Option<lsp::CompletionResponse>> {
+    async fn completion(
+        &self,
+        params: lsp::CompletionParams,
+    ) -> jsonrpc::Result<Option<lsp::CompletionResponse>> {
         if !self.config.read().await.completions {
             return Ok(None);
         }
@@ -248,7 +251,11 @@ impl LanguageServer for Backend {
         // Petits snippets utiles
         if trigger.is_empty() {
             items.extend_from_slice(&[
-                snippet("fn", "fn ${1:name}(${2}) -> ${3:Void} {\n\t$0\n}", "Déclarer une fonction"),
+                snippet(
+                    "fn",
+                    "fn ${1:name}(${2}) -> ${3:Void} {\n\t$0\n}",
+                    "Déclarer une fonction",
+                ),
                 snippet("struct", "struct ${1:Name} {\n\t$0\n}", "Déclarer une struct"),
                 snippet("if", "if ${1:cond} {\n\t$0\n}", "if"),
                 snippet("while", "while ${1:cond} {\n\t$0\n}", "while"),
@@ -271,7 +278,10 @@ impl LanguageServer for Backend {
         Ok(Some(lsp::DocumentSymbolResponse::Flat(symbols)))
     }
 
-    async fn formatting(&self, params: lsp::DocumentFormattingParams) -> jsonrpc::Result<Option<Vec<lsp::TextEdit>>> {
+    async fn formatting(
+        &self,
+        params: lsp::DocumentFormattingParams,
+    ) -> jsonrpc::Result<Option<Vec<lsp::TextEdit>>> {
         let docs = self.docs.read().await;
         let doc = match docs.get(&params.text_document.uri) {
             Some(d) => d,
@@ -300,7 +310,7 @@ fn compute_diagnostics(text: &str, line_starts: &[usize]) -> Vec<lsp::Diagnostic
                 if matches!(tok.value, TokenKind::Eof) {
                     break;
                 }
-            }
+            },
             Ok(None) => break,
             Err(e) => {
                 // Convertit Span -> Range UTF-16
@@ -318,7 +328,7 @@ fn compute_diagnostics(text: &str, line_starts: &[usize]) -> Vec<lsp::Diagnostic
                 });
                 // Le lexer s'arrête à la première erreur. On publie cette erreur et sort.
                 break;
-            }
+            },
         }
     }
     diags
@@ -347,15 +357,34 @@ fn hover_contents(tok: &TokenKind<'_>) -> (String, String) {
         TokenKind::Float(f) => ("flottant".into(), format!("`{f}`: f64")),
         TokenKind::Str(s) => ("chaîne".into(), format!("\"{}\"", s.escape_default())),
         TokenKind::Char(c) => ("caractère".into(), format!("`{c}`")),
-        TokenKind::LParen | TokenKind::RParen
-        | TokenKind::LBrace | TokenKind::RBrace
-        | TokenKind::LBracket | TokenKind::RBracket
-        | TokenKind::Comma | TokenKind::Dot | TokenKind::Semi | TokenKind::Colon
-        | TokenKind::PathSep | TokenKind::Arrow | TokenKind::FatArrow
-        | TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash
-        | TokenKind::Percent | TokenKind::Eq | TokenKind::EqEq | TokenKind::Ne
-        | TokenKind::Lt | TokenKind::Le | TokenKind::Gt | TokenKind::Ge
-        | TokenKind::AndAnd | TokenKind::OrOr | TokenKind::Bang => ("symbole".into(), format!("{tok:?}")),
+        TokenKind::LParen
+        | TokenKind::RParen
+        | TokenKind::LBrace
+        | TokenKind::RBrace
+        | TokenKind::LBracket
+        | TokenKind::RBracket
+        | TokenKind::Comma
+        | TokenKind::Dot
+        | TokenKind::Semi
+        | TokenKind::Colon
+        | TokenKind::PathSep
+        | TokenKind::Arrow
+        | TokenKind::FatArrow
+        | TokenKind::Plus
+        | TokenKind::Minus
+        | TokenKind::Star
+        | TokenKind::Slash
+        | TokenKind::Percent
+        | TokenKind::Eq
+        | TokenKind::EqEq
+        | TokenKind::Ne
+        | TokenKind::Lt
+        | TokenKind::Le
+        | TokenKind::Gt
+        | TokenKind::Ge
+        | TokenKind::AndAnd
+        | TokenKind::OrOr
+        | TokenKind::Bang => ("symbole".into(), format!("{tok:?}")),
         TokenKind::Eof => ("fin de fichier".into(), "".into()),
     }
 }
@@ -422,22 +451,32 @@ fn extract_symbols(text: &str, line_starts: &[usize]) -> Vec<lsp::SymbolInformat
         match kind {
             TokenKind::Kw(_) => last_kw = Some(tok.clone()),
             TokenKind::Ident(_) => last_ident = Some(tok.clone()),
-            _ => {}
+            _ => {},
         }
 
         // Si on a kw + ident, on émet
         if let (Some(kw_tok), Some(id_tok)) = (&last_kw, &last_ident) {
             if let TokenKind::Kw(kw) = kw_tok.value {
                 let (name, kind) = match (kw, &id_tok.value) {
-                    (vitte_lexer::Keyword::Fn, TokenKind::Ident(n)) => (n.to_string(), lsp::SymbolKind::FUNCTION),
-                    (vitte_lexer::Keyword::Struct, TokenKind::Ident(n)) => (n.to_string(), lsp::SymbolKind::STRUCT),
-                    (vitte_lexer::Keyword::Enum, TokenKind::Ident(n)) => (n.to_string(), lsp::SymbolKind::ENUM),
-                    (vitte_lexer::Keyword::Let, TokenKind::Ident(n)) => (n.to_string(), lsp::SymbolKind::VARIABLE),
-                    (vitte_lexer::Keyword::Const, TokenKind::Ident(n)) => (n.to_string(), lsp::SymbolKind::CONSTANT),
+                    (vitte_lexer::Keyword::Fn, TokenKind::Ident(n)) => {
+                        (n.to_string(), lsp::SymbolKind::FUNCTION)
+                    },
+                    (vitte_lexer::Keyword::Struct, TokenKind::Ident(n)) => {
+                        (n.to_string(), lsp::SymbolKind::STRUCT)
+                    },
+                    (vitte_lexer::Keyword::Enum, TokenKind::Ident(n)) => {
+                        (n.to_string(), lsp::SymbolKind::ENUM)
+                    },
+                    (vitte_lexer::Keyword::Let, TokenKind::Ident(n)) => {
+                        (n.to_string(), lsp::SymbolKind::VARIABLE)
+                    },
+                    (vitte_lexer::Keyword::Const, TokenKind::Ident(n)) => {
+                        (n.to_string(), lsp::SymbolKind::CONSTANT)
+                    },
                     _ => {
                         last_ident = None;
                         continue;
-                    }
+                    },
                 };
                 let range = span_to_range(text, line_starts, id_tok.span);
                 #[allow(deprecated)]
@@ -446,7 +485,11 @@ fn extract_symbols(text: &str, line_starts: &[usize]) -> Vec<lsp::SymbolInformat
                     kind,
                     tags: None,
                     deprecated: None,
-                    location: lsp::Location { uri: lsp::Url::parse("file://dummy").unwrap_or_else(|_| lsp::Url::parse("file:///").unwrap()), range },
+                    location: lsp::Location {
+                        uri: lsp::Url::parse("file://dummy")
+                            .unwrap_or_else(|_| lsp::Url::parse("file:///").unwrap()),
+                        range,
+                    },
                     container_name: None,
                 });
                 last_kw = None;
@@ -500,7 +543,9 @@ fn position_to_offset(text: &str, line_starts: &[usize], pos: lsp::Position) -> 
     // character est en UTF-16 code units → convertir
     let mut u16_count = 0u32;
     for (byte_off, ch) in slice.char_indices() {
-        if u16_count == pos.character { return line_start + byte_off; }
+        if u16_count == pos.character {
+            return line_start + byte_off;
+        }
         u16_count += ch.len_utf16() as u32;
     }
     // Si on dépasse, retourne fin de ligne
@@ -514,7 +559,11 @@ fn byte_offset_to_position(text: &str, line_starts: &[usize], off: usize) -> lsp
     let mut hi = line_starts.len();
     while lo + 1 < hi {
         let mid = (lo + hi) / 2;
-        if line_starts[mid] <= off { lo = mid; } else { hi = mid; }
+        if line_starts[mid] <= off {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
     }
     let line = lo;
     let _col_bytes = off - line_starts[line];

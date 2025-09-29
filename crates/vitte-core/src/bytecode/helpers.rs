@@ -1,6 +1,9 @@
 //! Helper validations reused by tooling.
 
-use crate::{bytecode::chunk::{Chunk, Op}, CoreError, CoreResult};
+use crate::{
+    bytecode::chunk::{Chunk, Op},
+    CoreError, CoreResult,
+};
 
 #[cfg(not(feature = "std"))]
 use alloc::format;
@@ -27,9 +30,7 @@ pub fn validate_chunk(chunk: &Chunk) -> CoreResult<()> {
 
     for (name, pc) in &chunk.debug.symbols {
         if (*pc as usize) >= chunk.ops.len() {
-            return Err(CoreError::corrupted(format!(
-                "symbol `{name}` points to invalid pc {pc}"
-            )));
+            return Err(CoreError::corrupted(format!("symbol `{name}` points to invalid pc {pc}")));
         }
     }
 

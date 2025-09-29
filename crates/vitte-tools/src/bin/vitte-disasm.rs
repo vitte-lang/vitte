@@ -33,15 +33,23 @@ use serde::Serialize;
 use yansi::{Color, Paint};
 
 use vitte_core::bytecode::{chunk::Chunk as VChunk, ConstValue, Op};
-use vitte_core::disasm::{disassemble_full, disassemble_compact};
+use vitte_core::disasm::{disassemble_compact, disassemble_full};
 use vitte_core::helpers;
-use vitte_tools::{ColorMode as GlobalColorMode, setup_colors as global_setup_colors};
+use vitte_tools::{setup_colors as global_setup_colors, ColorMode as GlobalColorMode};
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
-enum ColorMode { Auto, Always, Never }
+enum ColorMode {
+    Auto,
+    Always,
+    Never,
+}
 
 #[derive(Parser, Debug)]
-#[command(name="vitte-disasm", version, about="Désassembleur Vitte (.vitbc -> texte/JSON)")]
+#[command(
+    name = "vitte-disasm",
+    version,
+    about = "Désassembleur Vitte (.vitbc -> texte/JSON)"
+)]
 #[command(group(
     ArgGroup::new("stdout_mode")
         .args(["disasm", "json", "summary"])
@@ -147,8 +155,7 @@ fn real_main() -> Result<()> {
 fn process_one(bytes: &[u8], name: &Utf8Path, cli: &Cli) -> Result<()> {
     let t0 = Instant::now();
     // Chargement (validation format/hash assurée par from_bytes)
-    let chunk = VChunk::from_bytes(bytes)
-        .with_context(|| format!("Chargement échoué: {name}"))?;
+    let chunk = VChunk::from_bytes(bytes).with_context(|| format!("Chargement échoué: {name}"))?;
     helpers::validate_chunk(&chunk)?;
 
     if cli.strict && chunk.ops.is_empty() {
@@ -163,18 +170,17 @@ fn process_one(bytes: &[u8], name: &Utf8Path, cli: &Cli) -> Result<()> {
     // Vue texte (désasm)
     if cli.disasm || cli.emit.is_some() || cli.out_dir.is_some() {
         let title = name.file_name().unwrap_or("chunk");
-        let txt = if cli.compact {
-            disassemble_compact(&chunk)
-        } else {
-            disassemble_full(&chunk, title)
-        };
+        let txt =
+            if cli.compact { disassemble_compact(&chunk) } else { disassemble_full(&chunk, title) };
 
         if let Some(file) = &cli.emit {
-            let out = Utf8PathBuf::from_path_buf(file.clone()).map_err(|_| anyhow!("Chemin `--emit` non UTF-8"))?;
+            let out = Utf8PathBuf::from_path_buf(file.clone())
+                .map_err(|_| anyhow!("Chemin `--emit` non UTF-8"))?;
             write_text(&out, &txt)?;
             eprintln!("📝 Disasm → {out}");
         } else if let Some(dir) = &cli.out_dir {
-            let dir = Utf8PathBuf::from_path_buf(dir.clone()).map_err(|_| anyhow!("Chemin `--out-dir` non UTF-8"))?;
+            let dir = Utf8PathBuf::from_path_buf(dir.clone())
+                .map_err(|_| anyhow!("Chemin `--out-dir` non UTF-8"))?;
             let file = default_disasm_filename(name, cli.compact);
             let out = dir.join(file);
             write_text(&out, &txt)?;
@@ -190,11 +196,13 @@ fn process_one(bytes: &[u8], name: &Utf8Path, cli: &Cli) -> Result<()> {
         let j = build_json(&chunk, name);
         let pretty = serde_json::to_string_pretty(&j)?;
         if let Some(file) = &cli.emit_json {
-            let out = Utf8PathBuf::from_path_buf(file.clone()).map_err(|_| anyhow!("Chemin `--emit-json` non UTF-8"))?;
+            let out = Utf8PathBuf::from_path_buf(file.clone())
+                .map_err(|_| anyhow!("Chemin `--emit-json` non UTF-8"))?;
             write_text(&out, &pretty)?;
             eprintln!("🧾 JSON → {out}");
         } else if let Some(dir) = &cli.emit_json_dir {
-            let dir = Utf8PathBuf::from_path_buf(dir.clone()).map_err(|_| anyhow!("Chemin `--emit-json-dir` non UTF-8"))?;
+            let dir = Utf8PathBuf::from_path_buf(dir.clone())
+                .map_err(|_| anyhow!("Chemin `--emit-json-dir` non UTF-8"))?;
             let file = default_json_filename(name);
             let out = dir.join(file);
             write_text(&out, &pretty)?;
@@ -226,14 +234,15 @@ fn read_input(arg: &str, stdin_name: &str) -> Result<(Vec<u8>, Utf8PathBuf)> {
         Ok((v, Utf8PathBuf::from(stdin_name)))
     } else {
         let p = Utf8PathBuf::from(arg);
-        let v = fs::read(&p)
-            .with_context(|| format!("Lecture échouée: {p}"))?;
+        let v = fs::read(&p).with_context(|| format!("Lecture échouée: {p}"))?;
         Ok((v, p))
     }
 }
 
 fn write_text(path: &Utf8Path, s: &str) -> Result<()> {
-    if let Some(parent) = path.parent() { fs::create_dir_all(parent)?; }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     let mut f = fs::File::create(path)?;
     f.write_all(s.as_bytes())?;
     Ok(())
@@ -275,7 +284,10 @@ fn print_summary(chunk: &VChunk, name: &Utf8Path) {
     eprintln!(
         "{} ops={}, consts={}, version={}, stripped={}, hash=0x{hash:016x}",
         "•".paint(Color::Blue),
-        ops, consts, version, stripped
+        ops,
+        consts,
+        version,
+        stripped
     );
 
     if let Some(main) = &chunk.debug.main_file {
@@ -305,9 +317,12 @@ fn show_const(v: &ConstValue) -> String {
         ConstValue::I64(i) => format!("{i}"),
         ConstValue::F64(x) => format!("{x}"),
         ConstValue::Str(s) => {
-            if s.len() <= 64 { format!("\"{s}\"") }
-            else { format!("\"{}…\"", &s[..64]) }
-        }
+            if s.len() <= 64 {
+                format!("\"{s}\"")
+            } else {
+                format!("\"{}…\"", &s[..64])
+            }
+        },
         ConstValue::Bytes(b) => format!("bytes[{}]", b.len()),
     }
 }
@@ -356,7 +371,9 @@ struct DebugJson<'a> {
 }
 
 fn build_json<'a>(chunk: &'a VChunk, name: &'a Utf8Path) -> ChunkJson<'a> {
-    let consts = chunk.consts.iter()
+    let consts = chunk
+        .consts
+        .iter()
         .map(|(i, v)| ConstJson {
             index: i,
             ty: match v {
@@ -374,7 +391,7 @@ fn build_json<'a>(chunk: &'a VChunk, name: &'a Utf8Path) -> ChunkJson<'a> {
                 ConstValue::F64(x) => serde_json::json!(x),
                 ConstValue::Str(s) => serde_json::json!(s),
                 ConstValue::Bytes(b) => serde_json::json!({ "len": b.len() }),
-            }
+            },
         })
         .collect::<Vec<_>>();
 
@@ -396,7 +413,9 @@ fn build_json<'a>(chunk: &'a VChunk, name: &'a Utf8Path) -> ChunkJson<'a> {
         });
     }
 
-    let line_runs = chunk.lines.iter_ranges()
+    let line_runs = chunk
+        .lines
+        .iter_ranges()
         .map(|(r, line)| LineRunJson { range_start: r.start, range_end: r.end, line })
         .collect::<Vec<_>>();
 
@@ -418,9 +437,13 @@ fn build_json<'a>(chunk: &'a VChunk, name: &'a Utf8Path) -> ChunkJson<'a> {
 
 fn human_millis(d: std::time::Duration) -> String {
     let ms = d.as_millis();
-    if ms < 1_000 { return format!("{ms} ms"); }
+    if ms < 1_000 {
+        return format!("{ms} ms");
+    }
     let s = ms as f64 / 1000.0;
-    if s < 60.0 { return format!("{s:.3} s"); }
+    if s < 60.0 {
+        return format!("{s:.3} s");
+    }
     let m = (s / 60.0).floor();
     let rest = s - m * 60.0;
     format!("{m:.0} min {rest:.1} s")

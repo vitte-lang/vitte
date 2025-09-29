@@ -54,7 +54,9 @@ pub fn assemble(source: &str) -> CoreResult<Chunk> {
         }
 
         if let Some(rest) = line.strip_prefix("LOAD ") {
-            let ix = rest.trim().parse::<u32>()
+            let ix = rest
+                .trim()
+                .parse::<u32>()
                 .map_err(|_| CoreError::corrupted(format!("LOAD attend un index: `{rest}`")))?;
             chunk.push_op(Op::LoadConst(ix), line_no);
             continue;
@@ -64,10 +66,8 @@ pub fn assemble(source: &str) -> CoreResult<Chunk> {
             "PRINT" => chunk.push_op(Op::Print, line_no),
             "RETURN" => chunk.push_op(Op::Return, line_no),
             other => {
-                return Err(CoreError::corrupted(format!(
-                    "instruction non supportée: `{other}`"
-                )));
-            }
+                return Err(CoreError::corrupted(format!("instruction non supportée: `{other}`")));
+            },
         }
     }
 

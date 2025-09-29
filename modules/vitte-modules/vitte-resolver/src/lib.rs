@@ -306,11 +306,7 @@ impl Resolver {
         let _mscope = self.push_scope(ScopeKind::Module, node);
         // Enregistre un espace d'exports pour le nouveau module
         self.tables.exports.entry(self.current_module).or_default();
-        self.tables
-            .exports
-            .entry(parent_module)
-            .or_default()
-            .insert(name, def);
+        self.tables.exports.entry(parent_module).or_default().insert(name, def);
         child
     }
     pub fn close_module(&mut self, _m: ModuleId) {

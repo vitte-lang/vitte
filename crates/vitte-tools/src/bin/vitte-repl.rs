@@ -1,5 +1,4 @@
 #![cfg(feature = "repl-cli")]
-
 // crates/vitte-tools/src/bin/vitte-repl.rs
 //! REPL Vitte — interactif, multi-ligne, avec compilation à la volée.
 //!
@@ -41,7 +40,10 @@ use vitte_core::{
     bytecode::chunk::Chunk as VChunk,
     disasm::{disassemble_compact, disassemble_full},
 };
-use vitte_tools::{history_path as tools_history_path, setup_colors as tools_setup_colors, ColorMode as ToolsColorMode};
+use vitte_tools::{
+    history_path as tools_history_path, setup_colors as tools_setup_colors,
+    ColorMode as ToolsColorMode,
+};
 
 #[cfg(feature = "eval")]
 use vitte_core::runtime::eval::{eval_chunk, EvalOptions};
@@ -58,7 +60,7 @@ enum Engine {
 }
 
 #[derive(Parser, Debug)]
-#[command(name="vitte-repl", version, about="REPL du langage Vitte")]
+#[command(name = "vitte-repl", version, about = "REPL du langage Vitte")]
 struct Args {
     /// Moteur d’exécution (eval=interpréteur léger, vm=VM complète)
     #[arg(long, value_enum)]
@@ -97,11 +99,7 @@ fn real_main() -> Result<()> {
     let args = Args::parse();
 
     // Couleurs
-    let color_mode = if args.no_color {
-        ToolsColorMode::Never
-    } else {
-        ToolsColorMode::Auto
-    };
+    let color_mode = if args.no_color { ToolsColorMode::Never } else { ToolsColorMode::Auto };
     tools_setup_colors(color_mode);
 
     // Choix moteur par défaut
@@ -141,11 +139,11 @@ fn real_main() -> Result<()> {
             Err(rustyline::error::ReadlineError::Interrupted) => {
                 eprintln!("{}", "(^C)".paint(Color::Yellow));
                 continue;
-            }
+            },
             Err(rustyline::error::ReadlineError::Eof) => {
                 eprintln!("{}", "(^D) bye".paint(Color::Cyan));
                 break;
-            }
+            },
             Err(e) => return Err(anyhow!("readline: {e}")),
         };
 
@@ -156,7 +154,9 @@ fn real_main() -> Result<()> {
 
         if trimmed.starts_with(':') {
             if let Some(done) = handle_meta(&mut session, trimmed)? {
-                if done == MetaResult::Quit { break; }
+                if done == MetaResult::Quit {
+                    break;
+                }
             }
             rl.add_history_entry(trimmed)?;
             continue;
@@ -166,7 +166,9 @@ fn real_main() -> Result<()> {
         let mut buf = line;
         while !looks_complete(&buf) {
             let more = rl.readline("... ")?;
-            if more.trim().is_empty() { break; }
+            if more.trim().is_empty() {
+                break;
+            }
             buf.push('\n');
             buf.push_str(&more);
         }
@@ -188,7 +190,7 @@ fn real_main() -> Result<()> {
 
 struct Session {
     engine: Engine,
-    buffer: String,                 // accumulation (pour “état” REPL)
+    buffer: String, // accumulation (pour “état” REPL)
     last_chunk: Option<VChunk>,
     timing: bool,
     prompt: String,
@@ -206,7 +208,8 @@ impl Session {
     }
 
     fn exec_file(&mut self, path: &PathBuf) -> Result<()> {
-        let p = Utf8PathBuf::from_path_buf(path.clone()).map_err(|_| anyhow!("Chemin non UTF-8"))?;
+        let p =
+            Utf8PathBuf::from_path_buf(path.clone()).map_err(|_| anyhow!("Chemin non UTF-8"))?;
         let src = fs::read_to_string(&p).with_context(|| format!("lecture {p}"))?;
         eprintln!("▶️  charge {p}");
         self.exec_snippet(&src)
@@ -254,13 +257,13 @@ impl Session {
                     io::stdout().flush().ok();
                 }
                 Ok(())
-            }
+            },
             #[cfg(feature = "vm")]
             Engine::Vm => {
                 let mut vm = Vm::new();
                 vm.run(chunk).context("exécution VM")?;
                 Ok(())
-            }
+            },
         }
     }
 }
@@ -268,11 +271,16 @@ impl Session {
 /* ------------------------------ Meta commandes ------------------------------ */
 
 #[derive(PartialEq, Eq)]
-enum MetaResult { Continue, Quit }
+enum MetaResult {
+    Continue,
+    Quit,
+}
 
 fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
-    if parts.is_empty() { return Ok(None); }
+    if parts.is_empty() {
+        return Ok(None);
+    }
     let head = parts[0];
 
     match head {
@@ -280,32 +288,41 @@ fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
 
         ":help" => {
             println!("{}", HELP_TEXT);
-        }
+        },
 
         ":clear" => {
             String::clear(&mut sess.buffer);
             println!("(buffer vidé)");
-        }
+        },
 
         ":reset" => {
             String::clear(&mut sess.buffer);
             sess.last_chunk = None;
             println!("(session réinitialisée)");
-        }
+        },
 
         ":load" => {
-            if parts.len() < 2 { return Err(anyhow!("usage: :load <fichier.vit>")); }
+            if parts.len() < 2 {
+                return Err(anyhow!("usage: :load <fichier.vit>"));
+            }
             let path = PathBuf::from(parts[1]);
             sess.exec_file(&path)?;
-        }
+        },
 
         ":save" => {
-            if parts.len() < 2 { return Err(anyhow!("usage: :save <fichier.vit>")); }
+            if parts.len() < 2 {
+                return Err(anyhow!("usage: :save <fichier.vit>"));
+            }
             let path = PathBuf::from(parts[1]);
-            fs::write(&path, sess.buffer.as_bytes())
-                .with_context(|| format!("écriture {}", Utf8PathBuf::from_path_buf(path.clone()).unwrap_or_else(|_| Utf8PathBuf::from("<out>"))))?;
+            fs::write(&path, sess.buffer.as_bytes()).with_context(|| {
+                format!(
+                    "écriture {}",
+                    Utf8PathBuf::from_path_buf(path.clone())
+                        .unwrap_or_else(|_| Utf8PathBuf::from("<out>"))
+                )
+            })?;
             println!("(buffer sauvegardé)");
-        }
+        },
 
         ":disasm" => {
             let compact = parts.get(1).map(|s| *s == "compact").unwrap_or(false);
@@ -316,7 +333,7 @@ fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
             } else {
                 println!("(pas de chunk encore – exécutez un snippet)");
             }
-        }
+        },
 
         ":bytes" => {
             if let Some(mut ch) = sess.last_chunk.clone() {
@@ -325,7 +342,7 @@ fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
             } else {
                 println!("(pas de chunk)");
             }
-        }
+        },
 
         ":engine" => {
             if parts.len() == 1 {
@@ -336,7 +353,7 @@ fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
                     #[cfg(feature = "eval")]
                     "eval" => Some(Engine::Eval),
                     #[cfg(feature = "vm")]
-                    "vm"   => Some(Engine::Vm),
+                    "vm" => Some(Engine::Vm),
                     _ => None,
                 };
                 if let Some(e) = new {
@@ -346,24 +363,30 @@ fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
                     println!("engine inconnu ou indisponible : {val}");
                 }
             }
-        }
+        },
 
         ":time" => {
             if parts.len() == 1 {
                 println!("time = {}", if sess.timing { "on" } else { "off" });
             } else {
                 match parts[1] {
-                    "on"  => { sess.timing = true;  println!("time -> on"); }
-                    "off" => { sess.timing = false; println!("time -> off"); }
+                    "on" => {
+                        sess.timing = true;
+                        println!("time -> on");
+                    },
+                    "off" => {
+                        sess.timing = false;
+                        println!("time -> off");
+                    },
                     _ => println!("usage: :time [on|off]"),
                 }
             }
-        }
+        },
 
         ":history" => {
             let p = tools_history_path()?;
             println!("history: {}", p.display());
-        }
+        },
 
         ":set" => {
             if parts.get(1) == Some(&"prompt") {
@@ -377,11 +400,11 @@ fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
             } else {
                 println!("usage: :set prompt <texte>");
             }
-        }
+        },
 
         _ => {
             println!("commande inconnue : {head}. Tapez :help");
-        }
+        },
     }
 
     Ok(Some(MetaResult::Continue))
@@ -422,20 +445,32 @@ fn engine_label(e: &Engine) -> &'static str {
 }
 
 #[cfg(all(feature = "eval", not(feature = "vm")))]
-fn engine_label(_e: &Engine) -> &'static str { "eval" }
+fn engine_label(_e: &Engine) -> &'static str {
+    "eval"
+}
 
 #[cfg(all(feature = "vm", not(feature = "eval")))]
-fn engine_label(_e: &Engine) -> &'static str { "vm" }
+fn engine_label(_e: &Engine) -> &'static str {
+    "vm"
+}
 
 #[cfg(all(not(feature = "eval"), not(feature = "vm")))]
-fn engine_label(_e: &Engine) -> &'static str { "n/a" }
+fn engine_label(_e: &Engine) -> &'static str {
+    "n/a"
+}
 
 fn choose_default_engine(cli: Option<Engine>) -> Result<Engine> {
-    if let Some(e) = cli { return Ok(e); }
+    if let Some(e) = cli {
+        return Ok(e);
+    }
     #[cfg(feature = "eval")]
-    { return Ok(Engine::Eval); }
-    #[cfg(all(not(feature="eval"), feature="vm"))]
-    { return Ok(Engine::Vm); }
+    {
+        return Ok(Engine::Eval);
+    }
+    #[cfg(all(not(feature = "eval"), feature = "vm"))]
+    {
+        return Ok(Engine::Vm);
+    }
     #[allow(unreachable_code)]
     Err(anyhow!("Aucun moteur disponible : compile avec la feature `eval` ou `vm`."))
 }
@@ -453,11 +488,14 @@ fn looks_complete(s: &str) -> bool {
     let mut esc = false;
     for ch in s.chars() {
         if in_str {
-            if esc { esc = false; continue; }
+            if esc {
+                esc = false;
+                continue;
+            }
             match ch {
                 '\\' => esc = true,
-                '"'  => in_str = false,
-                _ => {}
+                '"' => in_str = false,
+                _ => {},
             }
             continue;
         }
@@ -465,19 +503,25 @@ fn looks_complete(s: &str) -> bool {
             '"' => in_str = true,
             '(' => depth += 1,
             ')' => depth -= 1,
-            _ => {}
+            _ => {},
         }
     }
-    if in_str || depth != 0 { return false; }
+    if in_str || depth != 0 {
+        return false;
+    }
     let t = s.trim_end();
     t.ends_with(';') || t.ends_with('}')
 }
 
 fn human_millis(d: std::time::Duration) -> String {
     let ms = d.as_millis();
-    if ms < 1_000 { return format!("{ms} ms"); }
+    if ms < 1_000 {
+        return format!("{ms} ms");
+    }
     let s = ms as f64 / 1000.0;
-    if s < 60.0 { return format!("{s:.3} s"); }
+    if s < 60.0 {
+        return format!("{s:.3} s");
+    }
     let m = (s / 60.0).floor();
     let rest = s - m * 60.0;
     format!("{m:.0} min {rest:.1} s")

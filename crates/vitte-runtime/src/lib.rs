@@ -58,28 +58,71 @@ impl fmt::Debug for Value {
             Value::I64(i) => write!(f, "I64({i})"),
             Value::F64(x) => write!(f, "F64({x})"),
             Value::Str(s) => {
-                if s.len() > 64 { write!(f, "Str({}…)", &s[..64]) } else { write!(f, "Str({s})") }
-            }
+                if s.len() > 64 {
+                    write!(f, "Str({}…)", &s[..64])
+                } else {
+                    write!(f, "Str({s})")
+                }
+            },
             Value::Bytes(b) => write!(f, "Bytes(len={})", b.len()),
         }
     }
 }
 
 /* Conversions convivia-les */
-impl From<()> for Value { fn from(_: ()) -> Self { Value::Null } }
-impl From<bool> for Value { fn from(v: bool) -> Self { Value::Bool(v) } }
-impl From<i64> for Value { fn from(v: i64) -> Self { Value::I64(v) } }
-impl From<i32> for Value { fn from(v: i32) -> Self { Value::I64(v as i64) } }
-impl From<f64> for Value { fn from(v: f64) -> Self { Value::F64(v) } }
-impl From<f32> for Value { fn from(v: f32) -> Self { Value::F64(v as f64) } }
-impl From<String> for Value { fn from(v: String) -> Self { Value::Str(v) } }
-impl From<&str> for Value { fn from(v: &str) -> Self { Value::Str(v.to_owned()) } }
-impl From<Vec<u8>> for Value { fn from(v: Vec<u8>) -> Self { Value::Bytes(v) } }
+impl From<()> for Value {
+    fn from(_: ()) -> Self {
+        Value::Null
+    }
+}
+impl From<bool> for Value {
+    fn from(v: bool) -> Self {
+        Value::Bool(v)
+    }
+}
+impl From<i64> for Value {
+    fn from(v: i64) -> Self {
+        Value::I64(v)
+    }
+}
+impl From<i32> for Value {
+    fn from(v: i32) -> Self {
+        Value::I64(v as i64)
+    }
+}
+impl From<f64> for Value {
+    fn from(v: f64) -> Self {
+        Value::F64(v)
+    }
+}
+impl From<f32> for Value {
+    fn from(v: f32) -> Self {
+        Value::F64(v as f64)
+    }
+}
+impl From<String> for Value {
+    fn from(v: String) -> Self {
+        Value::Str(v)
+    }
+}
+impl From<&str> for Value {
+    fn from(v: &str) -> Self {
+        Value::Str(v.to_owned())
+    }
+}
+impl From<Vec<u8>> for Value {
+    fn from(v: Vec<u8>) -> Self {
+        Value::Bytes(v)
+    }
+}
 
 impl TryFrom<Value> for bool {
     type Error = Error;
     fn try_from(v: Value) -> std::result::Result<Self, Self::Error> {
-        match v { Value::Bool(b) => Ok(b), _ => Err(Error::Type("bool".into())) }
+        match v {
+            Value::Bool(b) => Ok(b),
+            _ => Err(Error::Type("bool".into())),
+        }
     }
 }
 impl TryFrom<Value> for i64 {
@@ -105,7 +148,10 @@ impl TryFrom<Value> for f64 {
 impl TryFrom<Value> for String {
     type Error = Error;
     fn try_from(v: Value) -> std::result::Result<Self, Self::Error> {
-        match v { Value::Str(s) => Ok(s), _ => Err(Error::Type("string".into())) }
+        match v {
+            Value::Str(s) => Ok(s),
+            _ => Err(Error::Type("string".into())),
+        }
     }
 }
 
@@ -172,7 +218,9 @@ pub struct RuntimeCtx {
 
 impl RuntimeCtx {
     /// Écrit un texte brut dans `stdout`.
-    pub fn write_str(&mut self, s: &str) -> io::Result<()> { self.stdout.write_all(s.as_bytes()) }
+    pub fn write_str(&mut self, s: &str) -> io::Result<()> {
+        self.stdout.write_all(s.as_bytes())
+    }
     /// Écrit une ligne terminée par `\n`.
     pub fn writeln_str(&mut self, s: &str) -> io::Result<()> {
         self.stdout.write_all(s.as_bytes())?;
@@ -189,7 +237,9 @@ pub struct Runtime {
 }
 
 impl Default for Runtime {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Runtime {
@@ -197,10 +247,7 @@ impl Runtime {
     pub fn new() -> Self {
         Self {
             registry: HashMap::new(),
-            ctx: RuntimeCtx {
-                stdout: Box::new(io::stdout()),
-                env: HashMap::new(),
-            },
+            ctx: RuntimeCtx { stdout: Box::new(io::stdout()), env: HashMap::new() },
         }
     }
 
@@ -209,10 +256,7 @@ impl Runtime {
         let cap = Captured::default();
         let rt = Self {
             registry: HashMap::new(),
-            ctx: RuntimeCtx {
-                stdout: Box::new(cap.clone()),
-                env: HashMap::new(),
-            },
+            ctx: RuntimeCtx { stdout: Box::new(cap.clone()), env: HashMap::new() },
         };
         (rt, cap)
     }
@@ -224,18 +268,16 @@ impl Runtime {
     }
 
     /// Accès lecture/écriture à l’environnement global.
-    pub fn env(&self) -> &HashMap<String, Value> { &self.ctx.env }
+    pub fn env(&self) -> &HashMap<String, Value> {
+        &self.ctx.env
+    }
     /// Donne un accès mutable à l'environnement global partagé entre les natives.
-    pub fn env_mut(&mut self) -> &mut HashMap<String, Value> { &mut self.ctx.env }
+    pub fn env_mut(&mut self) -> &mut HashMap<String, Value> {
+        &mut self.ctx.env
+    }
 
     /// Enregistre une fonction native sous `module` + `name`.
-    pub fn register_fn(
-        &mut self,
-        module: &str,
-        name: &str,
-        arity: Option<usize>,
-        func: NativeFn,
-    ) {
+    pub fn register_fn(&mut self, module: &str, name: &str, arity: Option<usize>, func: NativeFn) {
         let fq = format!("{module}.{name}");
         self.registry.insert(fq.clone(), NativeEntry { fqname: fq, arity, func });
     }
@@ -264,30 +306,37 @@ impl Runtime {
         let mut rt = Self::new();
 
         // io
-        rt.register_all("io", &[
-            ("print",   Some(1), native_io_print as NativeFn),
-            ("println", Some(1), native_io_println as NativeFn),
-            ("read",    Some(1), native_io_read_file as NativeFn),
-            ("write",   Some(2), native_io_write_file as NativeFn),
-        ]);
+        rt.register_all(
+            "io",
+            &[
+                ("print", Some(1), native_io_print as NativeFn),
+                ("println", Some(1), native_io_println as NativeFn),
+                ("read", Some(1), native_io_read_file as NativeFn),
+                ("write", Some(2), native_io_write_file as NativeFn),
+            ],
+        );
 
         // time
-        rt.register_all("time", &[
-            ("now_ms",  Some(0), native_time_now_ms as NativeFn),
-        ]);
+        rt.register_all("time", &[("now_ms", Some(0), native_time_now_ms as NativeFn)]);
 
         // math
-        rt.register_all("math", &[
-            ("abs",   Some(1), native_math_abs as NativeFn),
-            ("floor", Some(1), native_math_floor as NativeFn),
-            ("ceil",  Some(1), native_math_ceil as NativeFn),
-        ]);
+        rt.register_all(
+            "math",
+            &[
+                ("abs", Some(1), native_math_abs as NativeFn),
+                ("floor", Some(1), native_math_floor as NativeFn),
+                ("ceil", Some(1), native_math_ceil as NativeFn),
+            ],
+        );
 
         // os (environnement minimal)
-        rt.register_all("os", &[
-            ("getenv", Some(1), native_os_getenv as NativeFn),
-            ("setenv", Some(2), native_os_setenv as NativeFn),
-        ]);
+        rt.register_all(
+            "os",
+            &[
+                ("getenv", Some(1), native_os_getenv as NativeFn),
+                ("setenv", Some(2), native_os_setenv as NativeFn),
+            ],
+        );
 
         rt
     }
@@ -324,7 +373,8 @@ fn native_io_write_file(args: &[Value], _ctx: &mut RuntimeCtx) -> RResult<Value>
 }
 
 fn native_time_now_ms(_args: &[Value], _ctx: &mut RuntimeCtx) -> RResult<Value> {
-    let t = SystemTime::now().duration_since(UNIX_EPOCH)
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
         .map_err(|e| Error::Msg(format!("clock error: {e}")))?;
     Ok(Value::I64(t.as_millis() as i64))
 }
@@ -380,7 +430,10 @@ fn native_os_setenv(args: &[Value], _ctx: &mut RuntimeCtx) -> RResult<Value> {
 #[macro_export]
 macro_rules! vitte_native {
     ($name:ident |$args:ident, $ctx:ident| $body:block) => {
-        pub fn $name($args: &[ $crate::Value ], $ctx: &mut $crate::RuntimeCtx) -> $crate::RResult<$crate::Value> {
+        pub fn $name(
+            $args: &[$crate::Value],
+            $ctx: &mut $crate::RuntimeCtx,
+        ) -> $crate::RResult<$crate::Value> {
             $body
         }
     };
@@ -394,9 +447,13 @@ pub struct Captured(std::sync::Arc<std::sync::Mutex<String>>);
 
 impl Captured {
     /// Récupère le buffer (copie).
-    pub fn get(&self) -> String { self.0.lock().unwrap().clone() }
+    pub fn get(&self) -> String {
+        self.0.lock().unwrap().clone()
+    }
     /// Réinitialise le buffer.
-    pub fn clear(&self) { self.0.lock().unwrap().clear(); }
+    pub fn clear(&self) {
+        self.0.lock().unwrap().clear();
+    }
 }
 impl Write for Captured {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
@@ -404,7 +461,9 @@ impl Write for Captured {
         self.0.lock().unwrap().push_str(&s);
         Ok(buf.len())
     }
-    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 /* -------------------------------- Prelude -------------------------------- */
@@ -412,8 +471,7 @@ impl Write for Captured {
 /// Prelude pratique pour importer d’un coup.
 pub mod prelude {
     pub use crate::{
-        Runtime, RuntimeCtx, Value, NativeFn, NativeEntry, RResult, Error, Captured,
-        vitte_native,
+        vitte_native, Captured, Error, NativeEntry, NativeFn, RResult, Runtime, RuntimeCtx, Value,
     };
 }
 
@@ -436,7 +494,10 @@ mod tests {
 
         // time
         let v = rt.call("time.now_ms", &[]).unwrap();
-        match v { Value::I64(i) => assert!(i > 0), _ => panic!("now_ms doit renvoyer I64") }
+        match v {
+            Value::I64(i) => assert!(i > 0),
+            _ => panic!("now_ms doit renvoyer I64"),
+        }
 
         // math
         let v = rt.call("math.abs", &[Value::from(-42i64)]).unwrap();
@@ -445,10 +506,17 @@ mod tests {
 
     #[test]
     fn register_and_call_custom() {
-        vitte_native!(plus_one |args, _ctx| {
-            let x: i64 = args.get(0).cloned().ok_or_else(|| Error::Arity{expected:1, got:0})?.try_into()?;
-            Ok((x + 1).into())
-        });
+        vitte_native!(
+            plus_one | args,
+            _ctx | {
+                let x: i64 = args
+                    .get(0)
+                    .cloned()
+                    .ok_or_else(|| Error::Arity { expected: 1, got: 0 })?
+                    .try_into()?;
+                Ok((x + 1).into())
+            }
+        );
 
         let mut rt = Runtime::new();
         rt.register_fn("demo", "plus_one", Some(1), plus_one);
@@ -463,7 +531,10 @@ mod tests {
         rt.register_fn("t", "id", Some(1), |a, _| Ok(a[0].clone()));
 
         let err = rt.call("t.id", &[]).unwrap_err();
-        match err { Error::Arity{..} => {}, _ => panic!("devrait être Arity") }
+        match err {
+            Error::Arity { .. } => {},
+            _ => panic!("devrait être Arity"),
+        }
 
         let (mut rt, _) = Runtime::with_captured_stdout();
         rt.register_fn("io", "print", Some(1), native_io_print);

@@ -196,13 +196,13 @@ impl Module {
                     while rr.remaining() > 0 {
                         m.ints.push(rr.read_i64_le()?);
                     }
-                }
+                },
                 SectionTag::FLTS => {
                     let mut rr = ByteReader::new(payload);
                     while rr.remaining() > 0 {
                         m.floats.push(rr.read_f64_le()?);
                     }
-                }
+                },
                 SectionTag::STRS => {
                     let mut rr = ByteReader::new(payload);
                     while rr.remaining() > 0 {
@@ -214,7 +214,7 @@ impl Module {
                                 .to_string(),
                         );
                     }
-                }
+                },
                 SectionTag::DATA => m.data.extend_from_slice(payload),
                 SectionTag::CODE => {
                     #[cfg(feature = "zstd")]
@@ -229,7 +229,7 @@ impl Module {
                     {
                         m.code = payload.to_vec();
                     }
-                }
+                },
                 SectionTag::NAME => {
                     let mut rr = ByteReader::new(payload);
                     while rr.remaining() > 0 {
@@ -241,10 +241,10 @@ impl Module {
                                 .to_string(),
                         );
                     }
-                }
+                },
                 _ => {
                     // ignore inconnu
-                }
+                },
             }
         }
 
@@ -262,10 +262,12 @@ impl Module {
     #[cfg(feature = "std")]
     pub fn read_file<P: AsRef<Path>>(path: P) -> CoreResult<Self> {
         let mut buf = Vec::new();
-        let mut file = fs::File::open(path).map_err(|e| CoreError::corrupted(format!("io open error: {e}")))?;
-        file.read_to_end(&mut buf).map_err(|e| CoreError::corrupted(format!("io read error: {e}")))?;
+        let mut file = fs::File::open(path)
+            .map_err(|e| CoreError::corrupted(format!("io open error: {e}")))?;
+        file.read_to_end(&mut buf)
+            .map_err(|e| CoreError::corrupted(format!("io read error: {e}")))?;
         Self::from_bytes(&buf)
-}
+    }
 }
 
 /* ─────────────────────────── Tests ─────────────────────────── */

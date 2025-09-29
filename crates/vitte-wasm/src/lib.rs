@@ -230,11 +230,7 @@ async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
     let resp: web_sys::Response = resp_value.dyn_into()?;
 
     if !resp.ok() {
-        return Err(js_err(format!(
-            "HTTP {} {}",
-            resp.status(),
-            resp.status_text()
-        )));
+        return Err(js_err(format!("HTTP {} {}", resp.status(), resp.status_text())));
     }
 
     let ab_promise = resp

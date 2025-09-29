@@ -36,7 +36,11 @@ use vitte_core::disasm::disassemble_full;
 use vitte_core::helpers;
 
 #[derive(Parser, Debug)]
-#[command(name="vitte-link", version, about="Linker Vitte (fusion de .vitbc)")]
+#[command(
+    name = "vitte-link",
+    version,
+    about = "Linker Vitte (fusion de .vitbc)"
+)]
 struct Cli {
     /// Fichier(s) .vitbc à linker (ou '-' pour stdin, unique)
     inputs: Vec<String>,
@@ -103,7 +107,9 @@ fn real_main() -> Result<()> {
     let cli = Cli::parse();
 
     if cli.inputs.is_empty() {
-        return Err(anyhow!("Aucune entrée fournie. Exemple : vitte-link a.vitbc b.vitbc --out linked.vitbc"));
+        return Err(anyhow!(
+            "Aucune entrée fournie. Exemple : vitte-link a.vitbc b.vitbc --out linked.vitbc"
+        ));
     }
     let use_stdin = cli.inputs.len() == 1 && cli.inputs[0] == "-";
     if use_stdin && cli.out.is_none() && !cli.stdout {
@@ -117,18 +123,22 @@ fn real_main() -> Result<()> {
     let mut inputs = Vec::<(Utf8PathBuf, VChunk)>::new();
     if use_stdin {
         let (bytes, name) = read_input("-", &cli.stdin_name)?;
-        let c = VChunk::from_bytes(&bytes).with_context(|| format!("Chargement échoué : {name}"))?;
+        let c =
+            VChunk::from_bytes(&bytes).with_context(|| format!("Chargement échoué : {name}"))?;
         inputs.push((name, c));
     } else {
         for a in &cli.inputs {
             let (bytes, name) = read_input(a, &cli.stdin_name)?;
-            let c = VChunk::from_bytes(&bytes).with_context(|| format!("Chargement échoué : {name}"))?;
+            let c = VChunk::from_bytes(&bytes)
+                .with_context(|| format!("Chargement échoué : {name}"))?;
             inputs.push((name, c));
         }
     }
 
     if inputs.len() == 1 && !cli.stdout {
-        eprintln!("ℹ️  Une seule entrée — le linker fera surtout passerelle (dédup/strip éventuels).");
+        eprintln!(
+            "ℹ️  Une seule entrée — le linker fera surtout passerelle (dédup/strip éventuels)."
+        );
     }
 
     let t0 = Instant::now();
@@ -152,14 +162,16 @@ fn real_main() -> Result<()> {
     }
 
     if let Some(path) = &cli.emit_disasm {
-        let out = Utf8PathBuf::from_path_buf(path.clone()).map_err(|_| anyhow!("Chemin --emit-disasm non UTF-8"))?;
+        let out = Utf8PathBuf::from_path_buf(path.clone())
+            .map_err(|_| anyhow!("Chemin --emit-disasm non UTF-8"))?;
         let title = out.file_name().unwrap_or("linked");
         write_text(&out, &disassemble_full(&linked, title))?;
         eprintln!("📝 Disasm → {out}");
     }
 
     if let Some(path) = &cli.emit_json {
-        let out = Utf8PathBuf::from_path_buf(path.clone()).map_err(|_| anyhow!("Chemin --emit-json non UTF-8"))?;
+        let out = Utf8PathBuf::from_path_buf(path.clone())
+            .map_err(|_| anyhow!("Chemin --emit-json non UTF-8"))?;
         write_text(&out, &serde_json::to_string_pretty(&manifest)?)?;
         eprintln!("🧾 Manifest JSON → {out}");
     }
@@ -222,7 +234,10 @@ struct JsonManifest {
     hash: u64,
 }
 
-fn link_chunks(inputs: &[(Utf8PathBuf, VChunk)], opts: LinkOptions) -> Result<(VChunk, JsonManifest)> {
+fn link_chunks(
+    inputs: &[(Utf8PathBuf, VChunk)],
+    opts: LinkOptions,
+) -> Result<(VChunk, JsonManifest)> {
     // Chunk résultat
     let mut out = if opts.strip {
         VChunk::new(ChunkFlags { stripped: true })
@@ -275,9 +290,11 @@ fn link_chunks(inputs: &[(Utf8PathBuf, VChunk)], opts: LinkOptions) -> Result<(V
             let line = chunk.lines.line_for_pc(pc as u32);
             let new_op = match *op {
                 Op::LoadConst(ix) => {
-                    let new_ix = *local_map.get(&ix).ok_or_else(|| anyhow!("Const index {ix} introuvable lors du lien ({name})"))?;
+                    let new_ix = *local_map.get(&ix).ok_or_else(|| {
+                        anyhow!("Const index {ix} introuvable lors du lien ({name})")
+                    })?;
                     Op::LoadConst(new_ix)
-                }
+                },
                 // Pour tout le reste : copie inchangée (offsets relatifs restent valides)
                 other => other,
             };
@@ -315,7 +332,9 @@ fn link_chunks(inputs: &[(Utf8PathBuf, VChunk)], opts: LinkOptions) -> Result<(V
         if !opts.strip && opts.merge_debug {
             let ok = out.debug.symbols.iter().any(|(s, _)| s == entry);
             if !ok {
-                return Err(anyhow!("Symbole `--entry {entry}` introuvable dans les symboles fusionnés."));
+                return Err(anyhow!(
+                    "Symbole `--entry {entry}` introuvable dans les symboles fusionnés."
+                ));
             }
             // Encode une petite note en debug.files
             let note = format!("<entry:{}>", entry);
@@ -324,7 +343,10 @@ fn link_chunks(inputs: &[(Utf8PathBuf, VChunk)], opts: LinkOptions) -> Result<(V
             }
         } else {
             // pas de debug… on ne peut que l’annoncer
-            eprintln!("⚠️  --entry {} fourni mais debug non fusionné/strippé : validation limitée.", entry);
+            eprintln!(
+                "⚠️  --entry {} fourni mais debug non fusionné/strippé : validation limitée.",
+                entry
+            );
         }
     }
 
@@ -377,14 +399,18 @@ fn read_input(arg: &str, stdin_name: &str) -> Result<(Vec<u8>, Utf8PathBuf)> {
 }
 
 fn write_bytes(path: &Utf8Path, bytes: &[u8]) -> Result<()> {
-    if let Some(parent) = path.parent() { fs::create_dir_all(parent)?; }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     let mut f = fs::File::create(path)?;
     f.write_all(bytes)?;
     Ok(())
 }
 
 fn write_text(path: &Utf8Path, s: &str) -> Result<()> {
-    if let Some(parent) = path.parent() { fs::create_dir_all(parent)?; }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     let mut f = fs::File::create(path)?;
     f.write_all(s.as_bytes())?;
     Ok(())
@@ -405,7 +431,11 @@ fn print_summary(_out: &VChunk, m: &JsonManifest) {
     }
     eprintln!(
         "• ops: {}   consts: {} (avant: {}, gain: {} ~ {:.1}%)",
-        m.total_ops, m.total_consts_after, m.total_consts_before, saved.max(0), ratio
+        m.total_ops,
+        m.total_consts_after,
+        m.total_consts_before,
+        saved.max(0),
+        ratio
     );
     eprintln!("• version: {}   stripped: {}", m.version, m.stripped);
     eprintln!("• debug: files={}, symbols={}", m.merged_debug_files, m.merged_debug_symbols);
@@ -417,9 +447,13 @@ fn print_summary(_out: &VChunk, m: &JsonManifest) {
 
 fn human_millis(d: std::time::Duration) -> String {
     let ms = d.as_millis();
-    if ms < 1_000 { return format!("{ms} ms"); }
+    if ms < 1_000 {
+        return format!("{ms} ms");
+    }
     let s = ms as f64 / 1000.0;
-    if s < 60.0 { return format!("{s:.3} s"); }
+    if s < 60.0 {
+        return format!("{s:.3} s");
+    }
     let m = (s / 60.0).floor();
     let rest = s - m * 60.0;
     format!("{m:.0} min {rest:.1} s")

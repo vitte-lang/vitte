@@ -33,21 +33,10 @@ extern crate alloc;
 
 // ───────────── Imports conditionnels std / no_std ─────────────
 #[cfg(feature = "std")]
-use std::{
-    collections::BTreeMap,
-    fs::File,
-    io::Write,
-    path::Path,
-    string::String,
-    vec::Vec,
-};
+use std::{collections::BTreeMap, fs::File, io::Write, path::Path, string::String, vec::Vec};
 
 #[cfg(not(feature = "std"))]
-use alloc::{
-    collections::BTreeMap,
-    string::String,
-    vec::Vec,
-};
+use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -74,12 +63,7 @@ pub struct CompilerOptions {
 
 impl Default for CompilerOptions {
     fn default() -> Self {
-        Self {
-            deny_warnings: false,
-            vitbc_version: 2,
-            compress_code: false,
-            embed_names: true,
-        }
+        Self { deny_warnings: false, vitbc_version: 2, compress_code: false, embed_names: true }
     }
 }
 
@@ -127,8 +111,7 @@ pub struct CompileError {
     pub diagnostics: Vec<Diagnostic>,
 }
 
-impl CompileError {
-}
+impl CompileError {}
 
 type CompileResult<T> = core::result::Result<T, CompileError>;
 
@@ -189,12 +172,16 @@ impl SymTable {
     /// Recherche dans les scopes (de l’intérieur vers l’extérieur)
     pub fn resolve(&self, name: &str) -> Option<SymId> {
         for scope in self.scopes.iter().rev() {
-            if let Some(id) = scope.get(name) { return Some(*id); }
+            if let Some(id) = scope.get(name) {
+                return Some(*id);
+            }
         }
         None
     }
     /// Infos
-    pub fn get(&self, id: SymId) -> &Symbol { &self.data[id.0 as usize] }
+    pub fn get(&self, id: SymId) -> &Symbol {
+        &self.data[id.0 as usize]
+    }
 }
 
 /// Identité d’un type interne
@@ -246,7 +233,10 @@ pub struct Ctx<'a> {
 
 impl<'a> Ctx<'a> {
     /// Nouveau scope
-    pub fn enter_scope(&mut self) { self.scope_depth += 1; self.symtab.push_scope(); }
+    pub fn enter_scope(&mut self) {
+        self.scope_depth += 1;
+        self.symtab.push_scope();
+    }
     /// Quitte scope
     pub fn leave_scope(&mut self) {
         self.symtab.pop_scope();
@@ -279,20 +269,20 @@ impl Pass for CollectSymbols {
                         TypeId::Void
                     };
                     ctx.symtab.declare(name, ty, ctx.scope_depth);
-                }
+                },
                 Const(cst) => {
                     let name = cst.name.clone();
                     let ty = cst.ty.as_ref().map(TypeId::from_ast).unwrap_or(TypeId::Int);
                     ctx.symtab.declare(name, ty, ctx.scope_depth);
-                }
+                },
                 Struct(sd) => {
                     let name = sd.name.clone();
                     ctx.symtab.declare(name, TypeId::Custom(0), ctx.scope_depth);
-                }
+                },
                 Enum(ed) => {
                     let name = ed.name.clone();
                     ctx.symtab.declare(name, TypeId::Custom(0), ctx.scope_depth);
-                }
+                },
             }
         }
         Ok(())
@@ -316,45 +306,53 @@ impl TypeCheck {
                 ast::Literal::Str(_) => TypeId::Str,
                 ast::Literal::Null => TypeId::Void,
             },
-            Ident(name) => ctx.symtab
-                .resolve(name)
-                .map(|id| ctx.symtab.get(id).ty)
-                .unwrap_or_else(|| {
-                    ctx.diags.push(Diagnostic::error(
-                        format!("Identifiant inconnu: `{name}`"), None));
+            Ident(name) => {
+                ctx.symtab.resolve(name).map(|id| ctx.symtab.get(id).ty).unwrap_or_else(|| {
+                    ctx.diags
+                        .push(Diagnostic::error(format!("Identifiant inconnu: `{name}`"), None));
                     TypeId::Int
-                }),
+                })
+            },
             Call { .. } => TypeId::Int, // simplification
             Binary { left, op, right } => {
                 let lt = self.type_of_expr(ctx, left);
                 let rt = self.type_of_expr(ctx, right);
                 // très basique : exige même type pour arithmétique
                 match op {
-                    ast::BinaryOp::Add | ast::BinaryOp::Sub
-                    | ast::BinaryOp::Mul | ast::BinaryOp::Div | ast::BinaryOp::Mod => {
+                    ast::BinaryOp::Add
+                    | ast::BinaryOp::Sub
+                    | ast::BinaryOp::Mul
+                    | ast::BinaryOp::Div
+                    | ast::BinaryOp::Mod => {
                         if lt != rt {
                             ctx.diags.push(Diagnostic::error(
-                                "Op binaire sur types incompatibles", None));
+                                "Op binaire sur types incompatibles",
+                                None,
+                            ));
                         }
                         lt
-                    }
-                    ast::BinaryOp::Eq | ast::BinaryOp::Ne
-                    | ast::BinaryOp::Lt | ast::BinaryOp::Le
-                    | ast::BinaryOp::Gt | ast::BinaryOp::Ge
-                    | ast::BinaryOp::And | ast::BinaryOp::Or => TypeId::Bool,
+                    },
+                    ast::BinaryOp::Eq
+                    | ast::BinaryOp::Ne
+                    | ast::BinaryOp::Lt
+                    | ast::BinaryOp::Le
+                    | ast::BinaryOp::Gt
+                    | ast::BinaryOp::Ge
+                    | ast::BinaryOp::And
+                    | ast::BinaryOp::Or => TypeId::Bool,
                 }
-            }
+            },
             Unary { op, expr } => {
                 let t = self.type_of_expr(ctx, expr);
                 match op {
                     ast::UnaryOp::Neg => t,
                     ast::UnaryOp::Not => TypeId::Bool,
                 }
-            }
+            },
             Field { expr, .. } => {
                 let _t = self.type_of_expr(ctx, expr);
                 TypeId::Int
-            }
+            },
         }
     }
 
@@ -366,33 +364,45 @@ impl TypeCheck {
                 let declared = ty.as_ref().map(TypeId::from_ast);
                 let final_ty = declared.or(inferred).unwrap_or(TypeId::Int);
                 ctx.symtab.declare(name.clone(), final_ty, ctx.scope_depth);
-            }
-            Expr(e) => { let _ = self.type_of_expr(ctx, e); }
-            Return(e, _) => { let _ = e.as_ref().map(|x| self.type_of_expr(ctx, x)); }
+            },
+            Expr(e) => {
+                let _ = self.type_of_expr(ctx, e);
+            },
+            Return(e, _) => {
+                let _ = e.as_ref().map(|x| self.type_of_expr(ctx, x));
+            },
             While { condition, body, .. } => {
                 let _ = self.type_of_expr(ctx, condition);
                 ctx.enter_scope();
-                for st in &body.stmts { self.check_stmt(ctx, st); }
+                for st in &body.stmts {
+                    self.check_stmt(ctx, st);
+                }
                 ctx.leave_scope();
-            }
+            },
             For { var, iter, body, .. } => {
                 let _ = self.type_of_expr(ctx, iter);
                 ctx.enter_scope();
                 ctx.symtab.declare(var.clone(), TypeId::Int, ctx.scope_depth);
-                for st in &body.stmts { self.check_stmt(ctx, st); }
+                for st in &body.stmts {
+                    self.check_stmt(ctx, st);
+                }
                 ctx.leave_scope();
-            }
+            },
             If { condition, then_block, else_block, .. } => {
                 let _ = self.type_of_expr(ctx, condition);
                 ctx.enter_scope();
-                for st in &then_block.stmts { self.check_stmt(ctx, st); }
+                for st in &then_block.stmts {
+                    self.check_stmt(ctx, st);
+                }
                 ctx.leave_scope();
                 if let Some(eb) = else_block {
                     ctx.enter_scope();
-                    for st in &eb.stmts { self.check_stmt(ctx, st); }
+                    for st in &eb.stmts {
+                        self.check_stmt(ctx, st);
+                    }
                     ctx.leave_scope();
                 }
-            }
+            },
         }
     }
 }
@@ -444,15 +454,25 @@ pub struct CodeBuf {
 
 impl CodeBuf {
     /// Écrit un opcode
-    pub fn op(&mut self, op: Op) { self.buf.push(op as u8); }
+    pub fn op(&mut self, op: Op) {
+        self.buf.push(op as u8);
+    }
     /// Écrit un i64 LE
-    pub fn i64(&mut self, x: i64) { self.buf.extend_from_slice(&x.to_le_bytes()); }
+    pub fn i64(&mut self, x: i64) {
+        self.buf.extend_from_slice(&x.to_le_bytes());
+    }
     /// Écrit un u32 LE
-    pub fn u32(&mut self, x: u32) { self.buf.extend_from_slice(&x.to_le_bytes()); }
+    pub fn u32(&mut self, x: u32) {
+        self.buf.extend_from_slice(&x.to_le_bytes());
+    }
     /// Accès bytes
-    pub fn as_slice(&self) -> &[u8] { &self.buf }
+    pub fn as_slice(&self) -> &[u8] {
+        &self.buf
+    }
     /// Taille
-    pub fn len(&self) -> usize { self.buf.len() }
+    pub fn len(&self) -> usize {
+        self.buf.len()
+    }
 }
 
 /// Sections VITBC
@@ -487,13 +507,19 @@ impl Bytecode {
 
         // Encode chaque section: [tag:4][len:u32][payload]
         // Tags: "INTS","FLTS","STRS","DATA","CODE","NAME"
-        fn emit_u32(out: &mut Vec<u8>, x: u32) { out.extend_from_slice(&x.to_le_bytes()); }
-        fn emit_tag(out: &mut Vec<u8>, tag: &[u8; 4]) { out.extend_from_slice(tag); }
+        fn emit_u32(out: &mut Vec<u8>, x: u32) {
+            out.extend_from_slice(&x.to_le_bytes());
+        }
+        fn emit_tag(out: &mut Vec<u8>, tag: &[u8; 4]) {
+            out.extend_from_slice(tag);
+        }
 
         // INTS
         {
             let mut buf = Vec::new();
-            for v in &self.sections.ints { buf.extend_from_slice(&v.to_le_bytes()); }
+            for v in &self.sections.ints {
+                buf.extend_from_slice(&v.to_le_bytes());
+            }
             emit_tag(&mut out, b"INTS");
             emit_u32(&mut out, buf.len() as u32);
             out.extend_from_slice(&buf);
@@ -501,7 +527,9 @@ impl Bytecode {
         // FLTS
         {
             let mut buf = Vec::new();
-            for v in &self.sections.floats { buf.extend_from_slice(&v.to_le_bytes()); }
+            for v in &self.sections.floats {
+                buf.extend_from_slice(&v.to_le_bytes());
+            }
             emit_tag(&mut out, b"FLTS");
             emit_u32(&mut out, buf.len() as u32);
             out.extend_from_slice(&buf);
@@ -532,7 +560,8 @@ impl Bytecode {
             #[cfg(feature = "zstd")]
             {
                 if compress_code {
-                    payload = zstd::bulk::compress(code_bytes, 3).unwrap_or_else(|_| code_bytes.to_vec());
+                    payload =
+                        zstd::bulk::compress(code_bytes, 3).unwrap_or_else(|_| code_bytes.to_vec());
                 } else {
                     payload = code_bytes.to_vec();
                 }
@@ -572,7 +601,10 @@ impl Bytecode {
 
     /// Écrit dans un fichier (nécessite `std`)
     #[cfg(feature = "std")]
-    pub fn write_to_file<P: AsRef<Path>>(&self, path: P) -> core::result::Result<(), std::io::Error> {
+    pub fn write_to_file<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> core::result::Result<(), std::io::Error> {
         let bytes = self.to_bytes(false);
         let mut f = File::create(path)?;
         f.write_all(&bytes)?;
@@ -622,20 +654,20 @@ impl DefaultEmitter {
                     let code = &mut sections.code;
                     code.op(Op::ConstI64);
                     code.i64(*i);
-                }
+                },
                 ast::Literal::Float(f) => {
                     sections.floats.push(*f);
                     sections.code.op(Op::Nop);
-                }
+                },
                 ast::Literal::Bool(b) => {
                     let code = &mut sections.code;
                     code.op(Op::ConstI64);
                     code.i64(if *b { 1 } else { 0 });
-                }
+                },
                 ast::Literal::Str(s) => {
                     sections.strings.push(s.clone());
                     sections.code.op(Op::Nop);
-                }
+                },
                 ast::Literal::Null => sections.code.op(Op::Nop),
             },
             ast::Expr::Ident(_name) => sections.code.op(Op::Nop),
@@ -646,7 +678,7 @@ impl DefaultEmitter {
                 let code = &mut sections.code;
                 code.op(Op::Call);
                 code.u32(0);
-            }
+            },
             ast::Expr::Binary { left, op, right } => {
                 self.emit_expr(sections, left);
                 self.emit_expr(sections, right);
@@ -655,7 +687,7 @@ impl DefaultEmitter {
                     ast::BinaryOp::Add => code.op(Op::AddI64),
                     _ => code.op(Op::Nop),
                 }
-            }
+            },
             ast::Expr::Unary { .. } => sections.code.op(Op::Nop),
             ast::Expr::Field { .. } => sections.code.op(Op::Nop),
         }

@@ -6,7 +6,9 @@
 #![forbid(unsafe_code)]
 
 /// Returns `true` to indicate the stub debugger module is linked.
-pub fn is_available() -> bool { true }
+pub fn is_available() -> bool {
+    true
+}
 
 #[cfg(test)]
 mod tests {

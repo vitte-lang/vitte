@@ -203,7 +203,13 @@ pub struct Shed {
 impl Shed {
     pub fn new(opts: Options) -> Self {
         let log_cap = opts.log_cap;
-        Self { _opts: opts, tasks: Vec::new(), index: Vec::new(), logs: RingLog::new(log_cap), cache: Cache::default() }
+        Self {
+            _opts: opts,
+            tasks: Vec::new(),
+            index: Vec::new(),
+            logs: RingLog::new(log_cap),
+            cache: Cache::default(),
+        }
     }
 
     /// Ajoute / remplace une tâche (par nom).

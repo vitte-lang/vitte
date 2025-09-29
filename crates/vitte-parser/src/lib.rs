@@ -66,10 +66,7 @@ pub struct ParseError {
 
 impl ParseError {
     fn new(span: Span, message: impl Into<String>) -> Self {
-        Self {
-            span,
-            message: message.into(),
-        }
+        Self { span, message: message.into() }
     }
 }
 
@@ -108,12 +105,7 @@ impl<'a> Parser<'a> {
     pub fn with_options(src: &'a str, source: SourceId, opts: LexerOptions) -> Self {
         let mut lx = Lexer::with_options(src, source, opts);
         let look = next_tok(&mut lx).ok().flatten();
-        Self {
-            lx,
-            look,
-            last_span: None,
-            source,
-        }
+        Self { lx, look, last_span: None, source }
     }
 
     /// Parse un programme complet.
@@ -136,7 +128,7 @@ impl<'a> Parser<'a> {
             _ => {
                 let t = self.peek()?;
                 Err(err_here(&t, "attendu: `fn`, `const`, `struct` ou `enum`"))
-            }
+            },
         }
     }
 
@@ -151,11 +143,7 @@ impl<'a> Parser<'a> {
                 let pname = self.expect_ident()?.to_string();
                 self.expect(TokenKind::Colon)?;
                 let pty = self.parse_type()?;
-                params.push(ast::Param {
-                    name: pname,
-                    ty: pty,
-                    span: None,
-                });
+                params.push(ast::Param { name: pname, ty: pty, span: None });
                 if self.check(TokenKind::Comma) {
                     self.bump();
                     continue;
@@ -191,12 +179,7 @@ impl<'a> Parser<'a> {
         let expr = self.parse_expr()?;
         let semi = self.expect(TokenKind::Semi)?;
         let span = self.join_span_to_ast(k.span, semi.span);
-        Ok(ast::Item::Const(ast::ConstDecl {
-            name,
-            ty: Some(ty),
-            value: expr,
-            span,
-        }))
+        Ok(ast::Item::Const(ast::ConstDecl { name, ty: Some(ty), value: expr, span }))
     }
 
     fn parse_struct_item(&mut self) -> PResult<ast::Item> {
@@ -209,11 +192,7 @@ impl<'a> Parser<'a> {
             self.expect(TokenKind::Colon)?;
             let fty = self.parse_type()?;
             self.expect(TokenKind::Semi)?;
-            fields.push(ast::Field {
-                name: fname,
-                ty: fty,
-                span: None,
-            });
+            fields.push(ast::Field { name: fname, ty: fty, span: None });
         }
         let rb = self.expect(TokenKind::RBrace)?;
         Ok(ast::Item::Struct(ast::StructDecl {
@@ -249,11 +228,7 @@ impl<'a> Parser<'a> {
             if self.check(TokenKind::Comma) {
                 self.bump();
             }
-            variants.push(ast::EnumVariant {
-                name: vname,
-                fields,
-                span: None,
-            });
+            variants.push(ast::EnumVariant { name: vname, fields, span: None });
         }
         let rb = self.expect(TokenKind::RBrace)?;
         Ok(ast::Item::Enum(ast::EnumDecl {
@@ -272,10 +247,7 @@ impl<'a> Parser<'a> {
             stmts.push(self.parse_stmt()?);
         }
         let rb = self.expect(TokenKind::RBrace)?;
-        Ok(ast::Block {
-            stmts,
-            span: self.join_span_to_ast(lb.span, rb.span),
-        })
+        Ok(ast::Block { stmts, span: self.join_span_to_ast(lb.span, rb.span) })
     }
 
     fn parse_stmt(&mut self) -> PResult<ast::Stmt> {
@@ -302,11 +274,7 @@ impl<'a> Parser<'a> {
         }
         if self.is_kw(Keyword::Return) {
             let k = self.bump().unwrap();
-            let value = if !self.check(TokenKind::Semi) {
-                Some(self.parse_expr()?)
-            } else {
-                None
-            };
+            let value = if !self.check(TokenKind::Semi) { Some(self.parse_expr()?) } else { None };
             let semi = self.expect(TokenKind::Semi)?;
             return Ok(ast::Stmt::Return(value, self.join_span_to_ast(k.span, semi.span)));
         }
@@ -397,12 +365,8 @@ impl<'a> Parser<'a> {
 
             let rhs = self.parse_prec(rbp)?;
             let span = span_join(lhs.span(), rhs.span());
-            lhs = ast::Expr::Binary {
-                left: Box::new(lhs),
-                op: op.into(),
-                right: Box::new(rhs),
-            }
-            .with_span(span);
+            lhs = ast::Expr::Binary { left: Box::new(lhs), op: op.into(), right: Box::new(rhs) }
+                .with_span(span);
         }
 
         Ok(lhs)
@@ -413,21 +377,17 @@ impl<'a> Parser<'a> {
             let op_tok = self.bump().unwrap();
             let e = self.parse_unary()?;
             let span = span_join(op_tok.span, e.span());
-            return Ok(ast::Expr::Unary {
-                op: ast::UnaryOp::Neg,
-                expr: Box::new(e),
-            }
-            .with_span(span));
+            return Ok(
+                ast::Expr::Unary { op: ast::UnaryOp::Neg, expr: Box::new(e) }.with_span(span)
+            );
         }
         if self.check(TokenKind::Bang) {
             let op_tok = self.bump().unwrap();
             let e = self.parse_unary()?;
             let span = span_join(op_tok.span, e.span());
-            return Ok(ast::Expr::Unary {
-                op: ast::UnaryOp::Not,
-                expr: Box::new(e),
-            }
-            .with_span(span));
+            return Ok(
+                ast::Expr::Unary { op: ast::UnaryOp::Not, expr: Box::new(e) }.with_span(span)
+            );
         }
         self.parse_postfix()
     }
@@ -451,22 +411,14 @@ impl<'a> Parser<'a> {
                 }
                 let rp = self.expect(TokenKind::RParen)?;
                 let span = span_join(e.span(), rp.span);
-                e = ast::Expr::Call {
-                    func: Box::new(e),
-                    args,
-                }
-                .with_span(span);
+                e = ast::Expr::Call { func: Box::new(e), args }.with_span(span);
                 continue;
             }
             if self.check(TokenKind::Dot) {
                 let _dot = self.bump().unwrap();
                 let field = self.expect_ident()?.to_string();
                 let span = span_join(e.span(), self.prev_span());
-                e = ast::Expr::Field {
-                    expr: Box::new(e),
-                    field,
-                }
-                .with_span(span);
+                e = ast::Expr::Field { expr: Box::new(e), field }.with_span(span);
                 continue;
             }
             break;
@@ -480,37 +432,37 @@ impl<'a> Parser<'a> {
             TokenKind::Ident(s) => {
                 self.bump();
                 Ok(ast::Expr::Ident((*s).to_string()).with_span(t.span))
-            }
+            },
             TokenKind::Int(i) => {
                 self.bump();
                 Ok(ast::Expr::Literal(ast::Literal::Int(*i)).with_span(t.span))
-            }
+            },
             TokenKind::Float(f) => {
                 self.bump();
                 Ok(ast::Expr::Literal(ast::Literal::Float(*f)).with_span(t.span))
-            }
+            },
             TokenKind::Str(s) => {
                 self.bump();
                 Ok(ast::Expr::Literal(ast::Literal::Str(s.clone())).with_span(t.span))
-            }
+            },
             TokenKind::Kw(Keyword::True) => {
                 self.bump();
                 Ok(ast::Expr::Literal(ast::Literal::Bool(true)).with_span(t.span))
-            }
+            },
             TokenKind::Kw(Keyword::False) => {
                 self.bump();
                 Ok(ast::Expr::Literal(ast::Literal::Bool(false)).with_span(t.span))
-            }
+            },
             TokenKind::Kw(Keyword::Null) => {
                 self.bump();
                 Ok(ast::Expr::Literal(ast::Literal::Null).with_span(t.span))
-            }
+            },
             TokenKind::LParen => {
                 let lp = self.bump().unwrap();
                 let e = self.parse_expr()?;
                 let rp = self.expect(TokenKind::RParen)?;
                 Ok(e.with_span(span_join(lp.span, rp.span)))
-            }
+            },
             _ => Err(err_here(&t, "expression attendue")),
         }
     }
@@ -533,8 +485,8 @@ impl<'a> Parser<'a> {
                         "void" => ast::Type::Void,
                         other => ast::Type::Custom(other.to_string()),
                     });
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
         let t = self.peek()?;
@@ -551,14 +503,7 @@ impl<'a> Parser<'a> {
         let nt = next_tok(&mut self.lx).map_err(|e| ParseError::new(e.span, e.to_string()))?;
         self.look = nt.clone();
         Ok(nt.ok_or_else(|| {
-            ParseError::new(
-                Span {
-                    source: self.source,
-                    start: Pos(0),
-                    end: Pos(0),
-                },
-                "EOF",
-            )
+            ParseError::new(Span { source: self.source, start: Pos(0), end: Pos(0) }, "EOF")
         })?)
     }
 
@@ -626,11 +571,8 @@ impl<'a> Parser<'a> {
 
     #[inline]
     fn prev_span(&self) -> Span {
-        self.last_span.unwrap_or(Span {
-            source: self.source,
-            start: Pos(0),
-            end: Pos(0),
-        })
+        self.last_span
+            .unwrap_or(Span { source: self.source, start: Pos(0), end: Pos(0) })
     }
 
     fn join_span_to_ast(&self, start: Span, end: Span) -> Option<ast::Span> {
@@ -741,11 +683,7 @@ fn err_here(tok: &Token<'_>, message: impl Into<String>) -> ParseError {
 }
 
 fn span_join(a: Span, b: Span) -> Span {
-    Span {
-        source: a.source,
-        start: a.start,
-        end: b.end,
-    }
+    Span { source: a.source, start: a.start, end: b.end }
 }
 
 fn next_tok<'a>(lx: &mut Lexer<'a>) -> Result<Option<Token<'a>>, vitte_lexer::LexError> {
@@ -762,23 +700,19 @@ trait WithSpan {
 impl WithSpan for ast::Expr {
     fn with_span(mut self, _span: Span) -> Self {
         match &mut self {
-            ast::Expr::Ident(_) => {}
-            ast::Expr::Literal(_) => {}
-            ast::Expr::Call { .. } => {}
-            ast::Expr::Binary { .. } => {}
-            ast::Expr::Unary { .. } => {}
-            ast::Expr::Field { .. } => {}
+            ast::Expr::Ident(_) => {},
+            ast::Expr::Literal(_) => {},
+            ast::Expr::Call { .. } => {},
+            ast::Expr::Binary { .. } => {},
+            ast::Expr::Unary { .. } => {},
+            ast::Expr::Field { .. } => {},
         }
         // si ton ast::Expr a un champ span, adapte ici ; sinon on ignore (non destructif)
         self
     }
     fn span(&self) -> Span {
         // si ton ast::Expr stocke un span, renvoie-le ; sinon span nul
-        Span {
-            source: SourceId(0),
-            start: Pos(0),
-            end: Pos(0),
-        }
+        Span { source: SourceId(0), start: Pos(0), end: Pos(0) }
     }
 }
 
@@ -787,11 +721,7 @@ impl WithSpan for ast::Stmt {
         self
     }
     fn span(&self) -> Span {
-        Span {
-            source: SourceId(0),
-            start: Pos(0),
-            end: Pos(0),
-        }
+        Span { source: SourceId(0), start: Pos(0), end: Pos(0) }
     }
 }
 

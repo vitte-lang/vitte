@@ -13,8 +13,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
-use std::io::{self, BufRead, Write};
 use std::fmt;
+use std::io::{self, BufRead, Write};
 
 /// Résultat interne simplifié.
 type DapResult<T> = Result<T, DapError>;
@@ -222,22 +222,18 @@ impl<B: Backend> DapServer<B> {
             };
 
             match serde_json::from_slice::<InMsg>(&body) {
-                Ok(InMsg::Request {
-                    seq,
-                    command,
-                    arguments,
-                }) => {
+                Ok(InMsg::Request { seq, command, arguments }) => {
                     if let Err(e) = self.handle_request(seq, &command, arguments) {
                         self.send_error_response(seq, &command, &e.to_string())?;
                     }
-                }
+                },
                 Ok(InMsg::Other) => {
                     // ignore
-                }
+                },
                 Err(err) => {
                     // impossible à parser: renvoyer un error generic
                     self.send_error_response(0, "unknown", &format!("bad json: {err}"))?;
-                }
+                },
             }
         }
         Ok(())
@@ -257,28 +253,20 @@ impl<B: Backend> DapServer<B> {
                 self.send_ok_response(seq, command, Some(body))?;
                 // event "initialized"
                 self.send_event("initialized", None)?;
-            }
+            },
             "launch" => {
                 // { program, args?, cwd? }
-                let program = args
-                    .get("program")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string();
-                let cwd = args
-                    .get("cwd")
-                    .and_then(Value::as_str)
-                    .map(|s| s.to_string());
+                let program = args.get("program").and_then(Value::as_str).unwrap_or("").to_string();
+                let cwd = args.get("cwd").and_then(Value::as_str).map(|s| s.to_string());
                 let run_args = match args.get("args") {
-                    Some(Value::Array(a)) => a
-                        .iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect(),
+                    Some(Value::Array(a)) => {
+                        a.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()
+                    },
                     _ => Vec::new(),
                 };
                 self.backend.launch(program, run_args, cwd)?;
                 self.send_ok_response(seq, command, None)?;
-            }
+            },
             "setBreakpoints" => {
                 // { source:{path}, lines:[...] }
                 let src = args
@@ -309,14 +297,14 @@ impl<B: Backend> DapServer<B> {
                     }
                 }
                 self.send_ok_response(seq, command, Some(json!({ "breakpoints": bps })))?;
-            }
+            },
             "configurationDone" => {
                 self.send_ok_response(seq, command, None)?;
-            }
+            },
             "threads" => {
                 let ths = self.backend.threads()?;
                 self.send_ok_response(seq, command, Some(json!({ "threads": ths })))?;
-            }
+            },
             "stackTrace" => {
                 let tid = args.get("threadId").and_then(Value::as_i64).unwrap_or(1);
                 let start = args.get("startFrame").and_then(Value::as_i64).unwrap_or(0);
@@ -330,7 +318,7 @@ impl<B: Backend> DapServer<B> {
                         "totalFrames": frames.len() as i64
                     })),
                 )?;
-            }
+            },
             "scopes" => {
                 let frame_id = args
                     .get("frameId")
@@ -338,7 +326,7 @@ impl<B: Backend> DapServer<B> {
                     .ok_or(DapError::Protocol("scopes: missing frameId"))?;
                 let scopes = self.backend.scopes(frame_id)?;
                 self.send_ok_response(seq, command, Some(json!({ "scopes": scopes })))?;
-            }
+            },
             "variables" => {
                 let vr = args
                     .get("variablesReference")
@@ -346,7 +334,7 @@ impl<B: Backend> DapServer<B> {
                     .ok_or(DapError::Protocol("variables: missing variablesReference"))?;
                 let vars = self.backend.variables(vr)?;
                 self.send_ok_response(seq, command, Some(json!({ "variables": vars })))?;
-            }
+            },
             "continue" => {
                 let tid = args.get("threadId").and_then(Value::as_i64).unwrap_or(1);
                 let out = self.backend.r#continue(tid)?;
@@ -361,31 +349,21 @@ impl<B: Backend> DapServer<B> {
                     "continued",
                     Some(json!({ "threadId": out.thread_id.unwrap_or(tid) })),
                 )?;
-            }
+            },
             "next" | "stepOver" => {
                 let tid = args.get("threadId").and_then(Value::as_i64).unwrap_or(1);
                 self.backend.step_over(tid)?;
                 self.send_ok_response(seq, command, None)?;
-                self.send_event(
-                    "stopped",
-                    Some(json!({ "reason": "step", "threadId": tid })),
-                )?;
-            }
+                self.send_event("stopped", Some(json!({ "reason": "step", "threadId": tid })))?;
+            },
             "pause" => {
                 let tid = args.get("threadId").and_then(Value::as_i64).unwrap_or(1);
                 self.backend.pause(tid)?;
                 self.send_ok_response(seq, command, None)?;
-                self.send_event(
-                    "stopped",
-                    Some(json!({ "reason": "pause", "threadId": tid })),
-                )?;
-            }
+                self.send_event("stopped", Some(json!({ "reason": "pause", "threadId": tid })))?;
+            },
             "evaluate" => {
-                let expr = args
-                    .get("expression")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string();
+                let expr = args.get("expression").and_then(Value::as_str).unwrap_or("").to_string();
                 let frame_id = args.get("frameId").and_then(Value::as_i64);
                 let res = self.backend.evaluate(expr, frame_id)?;
                 self.send_ok_response(
@@ -396,20 +374,20 @@ impl<B: Backend> DapServer<B> {
                         "variablesReference": res.variables_reference
                     })),
                 )?;
-            }
+            },
             "disconnect" => {
                 self.backend.disconnect()?;
                 self.send_ok_response(seq, command, None)?;
                 self.send_event("terminated", None)?;
-            }
+            },
             // DAP ping/pong
             "cancel" | "runInTerminal" => {
                 self.send_ok_response(seq, command, None)?;
-            }
+            },
             other => {
                 // Répondre un "not supported" propre
                 self.send_error_response(seq, other, "not supported")?;
-            }
+            },
         }
         Ok(())
     }
@@ -420,14 +398,8 @@ impl<B: Backend> DapServer<B> {
         command: &str,
         body: Option<Value>,
     ) -> DapResult<()> {
-        let resp = Response {
-            ty: "response",
-            request_seq,
-            success: true,
-            command,
-            message: None,
-            body,
-        };
+        let resp =
+            Response { ty: "response", request_seq, success: true, command, message: None, body };
         write_dap_message(&resp)
     }
 
@@ -449,11 +421,7 @@ impl<B: Backend> DapServer<B> {
     }
 
     fn send_event(&mut self, event: &str, body: Option<Value>) -> DapResult<()> {
-        let evt = Event {
-            ty: "event",
-            event,
-            body,
-        };
+        let evt = Event { ty: "event", event, body };
         write_dap_message(&evt)
     }
 }
@@ -523,40 +491,20 @@ impl Default for DummyBackend {
         scopes.insert(
             1,
             vec![
-                Scope {
-                    name: "locals".into(),
-                    variables_reference: 1001,
-                    expensive: false,
-                },
-                Scope {
-                    name: "globals".into(),
-                    variables_reference: 1002,
-                    expensive: false,
-                },
+                Scope { name: "locals".into(), variables_reference: 1001, expensive: false },
+                Scope { name: "globals".into(), variables_reference: 1002, expensive: false },
             ],
         );
         vars.insert(
             1001,
             vec![
-                Variable {
-                    name: "x".into(),
-                    value: "42".into(),
-                    variables_reference: 0,
-                },
-                Variable {
-                    name: "msg".into(),
-                    value: "\"hello\"".into(),
-                    variables_reference: 0,
-                },
+                Variable { name: "x".into(), value: "42".into(), variables_reference: 0 },
+                Variable { name: "msg".into(), value: "\"hello\"".into(), variables_reference: 0 },
             ],
         );
         vars.insert(
             1002,
-            vec![Variable {
-                name: "PI".into(),
-                value: "3.14159".into(),
-                variables_reference: 0,
-            }],
+            vec![Variable { name: "PI".into(), value: "3.14159".into(), variables_reference: 0 }],
         );
 
         Self {
@@ -567,10 +515,7 @@ impl Default for DummyBackend {
                 name: "main".into(),
                 line: 1,
                 column: 1,
-                source: Some(Source {
-                    name: "main.vit".into(),
-                    path: "main.vit".into(),
-                }),
+                source: Some(Source { name: "main.vit".into(), path: "main.vit".into() }),
             }],
             scopes,
             vars,
@@ -586,19 +531,13 @@ impl Backend for DummyBackend {
         _cwd: Option<String>,
     ) -> DapResult<()> {
         // Dans une vraie impl: charger le bytecode, préparer la VM, etc.
-        self.frames[0].source = Some(Source {
-            name: program.clone(),
-            path: program,
-        });
+        self.frames[0].source = Some(Source { name: program.clone(), path: program });
         self.paused = true;
         Ok(())
     }
 
     fn threads(&self) -> DapResult<Vec<Thread>> {
-        Ok(vec![Thread {
-            id: self.thread_id,
-            name: "main".into(),
-        }])
+        Ok(vec![Thread { id: self.thread_id, name: "main".into() }])
     }
 
     fn r#continue(&mut self, thread_id: i64) -> DapResult<ContinueOutcome> {
@@ -608,10 +547,7 @@ impl Backend for DummyBackend {
         self.paused = false;
         // Ici on “termine” tout de suite fictivement
         self.paused = true;
-        Ok(ContinueOutcome {
-            all_threads_continued: true,
-            thread_id: Some(thread_id),
-        })
+        Ok(ContinueOutcome { all_threads_continued: true, thread_id: Some(thread_id) })
     }
 
     fn pause(&mut self, thread_id: i64) -> DapResult<()> {
@@ -646,19 +582,12 @@ impl Backend for DummyBackend {
     }
 
     fn variables(&self, variables_reference: i64) -> DapResult<Vec<Variable>> {
-        Ok(self
-            .vars
-            .get(&variables_reference)
-            .cloned()
-            .unwrap_or_default())
+        Ok(self.vars.get(&variables_reference).cloned().unwrap_or_default())
     }
 
     fn set_breakpoints(&mut self, file: String, lines: Vec<i64>) -> DapResult<Vec<Breakpoint>> {
         // Factice: tous vérifiés
-        let src = Source {
-            name: file.clone(),
-            path: file,
-        };
+        let src = Source { name: file.clone(), path: file };
         Ok(lines
             .into_iter()
             .map(|l| Breakpoint {
@@ -673,10 +602,7 @@ impl Backend for DummyBackend {
 
     fn evaluate(&self, expression: String, _frame_id: Option<i64>) -> DapResult<EvalResult> {
         // Factice: renvoie l’expression entre quotes
-        Ok(EvalResult {
-            result: format!("\"{expression}\""),
-            variables_reference: 0,
-        })
+        Ok(EvalResult { result: format!("\"{expression}\""), variables_reference: 0 })
     }
 
     fn disconnect(&mut self) -> DapResult<()> {

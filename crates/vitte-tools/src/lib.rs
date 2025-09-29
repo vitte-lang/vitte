@@ -51,21 +51,17 @@ pub fn version_banner(tool: &str) -> String {
 
 /// Prelude pratique pour les bins: re-exports compacts.
 pub mod prelude {
+    pub use crate::{
+        default_filename_with_ext, default_out_path, disasm_compact, disasm_full, human_millis,
+        link_chunks, read_bytes, read_stdin_to_bytes, read_stdin_to_string, read_text,
+        setup_colors, strip_chunk, to_utf8, validate_chunk, version_banner, write_bytes,
+        write_text, ColorMode, LinkManifest, LinkOptions,
+    };
+    #[cfg(feature = "fmt-config")]
+    pub use crate::{load_fmt_config, FmtConfig};
     pub use anyhow::{anyhow, Context, Result};
     pub use camino::{Utf8Path, Utf8PathBuf};
     pub use std::path::PathBuf;
-    pub use crate::{
-        version_banner, human_millis,
-        read_text, read_bytes, read_stdin_to_string, read_stdin_to_bytes,
-        write_text, write_bytes,
-        to_utf8, default_out_path, default_filename_with_ext,
-        ColorMode, setup_colors,
-        disasm_full, disasm_compact,
-        strip_chunk, validate_chunk,
-        LinkOptions, LinkManifest, link_chunks,
-    };
-    #[cfg(feature = "fmt-config")]
-    pub use crate::{FmtConfig, load_fmt_config};
 }
 
 /* ------------------------------------------------------------------------- */
@@ -98,7 +94,9 @@ pub fn read_stdin_to_bytes() -> Result<Vec<u8>> {
 
 /// Écrit un texte (UTF-8). Crée les dossiers au besoin.
 pub fn write_text(path: &Utf8Path, s: &str) -> Result<()> {
-    if let Some(parent) = path.parent() { fs::create_dir_all(parent)?; }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     let mut f = fs::File::create(path)?;
     f.write_all(s.as_bytes())?;
     Ok(())
@@ -106,7 +104,9 @@ pub fn write_text(path: &Utf8Path, s: &str) -> Result<()> {
 
 /// Écrit des bytes. Crée les dossiers au besoin.
 pub fn write_bytes(path: &Utf8Path, bytes: &[u8]) -> Result<()> {
-    if let Some(parent) = path.parent() { fs::create_dir_all(parent)?; }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     let mut f = fs::File::create(path)?;
     f.write_all(bytes)?;
     Ok(())
@@ -127,19 +127,29 @@ pub struct Timer {
 }
 impl Timer {
     /// Démarre un chrono.
-    pub fn start() -> Self { Self { start: Instant::now() } }
+    pub fn start() -> Self {
+        Self { start: Instant::now() }
+    }
     /// Durée écoulée.
-    pub fn elapsed(&self) -> Duration { self.start.elapsed() }
+    pub fn elapsed(&self) -> Duration {
+        self.start.elapsed()
+    }
     /// Format humain court.
-    pub fn pretty(&self) -> String { human_millis(self.elapsed()) }
+    pub fn pretty(&self) -> String {
+        human_millis(self.elapsed())
+    }
 }
 
 /// Format "humain" d'une durée.
 pub fn human_millis(d: Duration) -> String {
     let ms = d.as_millis();
-    if ms < 1_000 { return format!("{ms} ms"); }
+    if ms < 1_000 {
+        return format!("{ms} ms");
+    }
     let s = ms as f64 / 1000.0;
-    if s < 60.0 { return format!("{s:.3} s"); }
+    if s < 60.0 {
+        return format!("{s:.3} s");
+    }
     let m = (s / 60.0).floor();
     let rest = s - m * 60.0;
     format!("{m:.0} min {rest:.1} s")
@@ -168,15 +178,17 @@ pub fn setup_colors(mode: ColorMode) {
         match mode {
             ColorMode::Auto => {
                 yansi::whenever(yansi::Condition::DEFAULT);
-            }
+            },
             ColorMode::Always => {
                 yansi::enable();
-            }
+            },
             ColorMode::Never => yansi::disable(),
         }
     }
     #[cfg(not(feature = "colors"))]
-    { let _ = mode; }
+    {
+        let _ = mode;
+    }
 }
 
 /* ------------------------------------------------------------------------- */
@@ -285,7 +297,10 @@ pub struct LinkConstMap {
 }
 
 /// Link modularisé (recyclé par `vitte-link`).
-pub fn link_chunks(inputs: &[(Utf8PathBuf, VChunk)], opts: LinkOptions) -> Result<(VChunk, LinkManifest)> {
+pub fn link_chunks(
+    inputs: &[(Utf8PathBuf, VChunk)],
+    opts: LinkOptions,
+) -> Result<(VChunk, LinkManifest)> {
     let mut out = if opts.strip {
         VChunk::new(ChunkFlags { stripped: true })
     } else {
@@ -334,9 +349,11 @@ pub fn link_chunks(inputs: &[(Utf8PathBuf, VChunk)], opts: LinkOptions) -> Resul
             let line = chunk.lines.line_for_pc(pc as u32);
             let new_op = match *op {
                 Op::LoadConst(ix) => {
-                    let new_ix = *local_map.get(&ix).ok_or_else(|| anyhow!("Const index {ix} introuvable lors du lien ({name})"))?;
+                    let new_ix = *local_map.get(&ix).ok_or_else(|| {
+                        anyhow!("Const index {ix} introuvable lors du lien ({name})")
+                    })?;
                     Op::LoadConst(new_ix)
-                }
+                },
                 other => other,
             };
             out.push_op(new_op, line);
@@ -369,7 +386,9 @@ pub fn link_chunks(inputs: &[(Utf8PathBuf, VChunk)], opts: LinkOptions) -> Resul
         if !opts.strip && opts.merge_debug {
             let ok = out.debug.symbols.iter().any(|(s, _)| s == entry);
             if !ok {
-                return Err(anyhow!("symbole d’entrée `{entry}` introuvable dans les symboles fusionnés"));
+                return Err(anyhow!(
+                    "symbole d’entrée `{entry}` introuvable dans les symboles fusionnés"
+                ));
             }
             let note = format!("<entry:{entry}>");
             if !out.debug.files.contains(&note) {
@@ -428,15 +447,25 @@ pub struct FmtConfig {
     pub collapse_blank_lines: usize,
 }
 #[cfg(feature = "fmt-config")]
-fn d_max_width() -> usize { 100 }
+fn d_max_width() -> usize {
+    100
+}
 #[cfg(feature = "fmt-config")]
-fn d_indent_width() -> usize { 2 }
+fn d_indent_width() -> usize {
+    2
+}
 #[cfg(feature = "fmt-config")]
-fn d_newline() -> String { "lf".into() }
+fn d_newline() -> String {
+    "lf".into()
+}
 #[cfg(feature = "fmt-config")]
-fn d_true() -> bool { true }
+fn d_true() -> bool {
+    true
+}
 #[cfg(feature = "fmt-config")]
-fn d_collapse_blank() -> usize { 2 }
+fn d_collapse_blank() -> usize {
+    2
+}
 
 /// Charge `.vittefmt.toml` (recherche ascendante) ou renvoie `Default`.
 #[cfg(feature = "fmt-config")]
@@ -451,11 +480,14 @@ pub fn load_fmt_config(explicit: Option<&Path>) -> Result<FmtConfig> {
     loop {
         let cand = cur.join(".vittefmt.toml");
         if cand.exists() {
-            let s = fs::read_to_string(&cand).with_context(|| format!("lecture {}", cand.display()))?;
+            let s =
+                fs::read_to_string(&cand).with_context(|| format!("lecture {}", cand.display()))?;
             let cfg: FmtConfig = toml::from_str(&s).with_context(|| "TOML invalide")?;
             return Ok(cfg);
         }
-        if !cur.pop() { break; }
+        if !cur.pop() {
+            break;
+        }
     }
     Ok(FmtConfig {
         max_width: 100,

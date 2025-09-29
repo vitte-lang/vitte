@@ -29,7 +29,11 @@ use vitte_core::disasm::disassemble_full;
 use vitte_core::helpers;
 
 #[derive(Parser, Debug)]
-#[command(name="vitte-asm", version, about="Assembleur Vitte (.vit.s -> .vitbc)")]
+#[command(
+    name = "vitte-asm",
+    version,
+    about = "Assembleur Vitte (.vit.s -> .vitbc)"
+)]
 struct Cli {
     /// Fichier(s) source .vit.s (ou '-' pour stdin, unique)
     inputs: Vec<String>,
@@ -127,8 +131,8 @@ fn run_one(src: &str, in_name: &Utf8Path, cli: &Cli) -> Result<()> {
     // Vérification optionnelle
     if cli.verify {
         let bytes = chunk.to_bytes();
-        let re = VChunk::from_bytes(&bytes)
-            .map_err(|e| anyhow!("Round-trip bincode échoué: {e}"))?;
+        let re =
+            VChunk::from_bytes(&bytes).map_err(|e| anyhow!("Round-trip bincode échoué: {e}"))?;
         helpers::validate_chunk(&re)?;
     }
 
@@ -140,7 +144,11 @@ fn run_one(src: &str, in_name: &Utf8Path, cli: &Cli) -> Result<()> {
         }
         if let Some(path) = &cli.emit_disasm {
             write_text(path, &disassemble_full(&chunk, in_name.file_name().unwrap_or("chunk")))?;
-            eprintln!("📝 Disasm écrit → {}", Utf8PathBuf::from_path_buf(path.clone()).unwrap_or_else(|_| Utf8PathBuf::from("<invalid>")));
+            eprintln!(
+                "📝 Disasm écrit → {}",
+                Utf8PathBuf::from_path_buf(path.clone())
+                    .unwrap_or_else(|_| Utf8PathBuf::from("<invalid>"))
+            );
         }
         if cli.time {
             eprintln!("⏱️  {}", human_millis(t0.elapsed()));
@@ -156,7 +164,8 @@ fn run_one(src: &str, in_name: &Utf8Path, cli: &Cli) -> Result<()> {
         }
         Utf8PathBuf::from_path_buf(out.clone()).map_err(|_| anyhow!("Chemin out non-UTF8"))?
     } else if let Some(ref dir) = cli.out_dir {
-        let dir = Utf8PathBuf::from_path_buf(dir.clone()).map_err(|_| anyhow!("Chemin out-dir non-UTF8"))?;
+        let dir = Utf8PathBuf::from_path_buf(dir.clone())
+            .map_err(|_| anyhow!("Chemin out-dir non-UTF8"))?;
         let file = default_filename(in_name);
         dir.join(file)
     } else {
@@ -177,7 +186,11 @@ fn run_one(src: &str, in_name: &Utf8Path, cli: &Cli) -> Result<()> {
     // Disasm vers fichier
     if let Some(path) = &cli.emit_disasm {
         write_text(path, &disassemble_full(&chunk, out_path.file_name().unwrap_or("chunk")))?;
-        eprintln!("📝 Disasm écrit → {}", Utf8PathBuf::from_path_buf(path.clone()).unwrap_or_else(|_| Utf8PathBuf::from("<invalid>")));
+        eprintln!(
+            "📝 Disasm écrit → {}",
+            Utf8PathBuf::from_path_buf(path.clone())
+                .unwrap_or_else(|_| Utf8PathBuf::from("<invalid>"))
+        );
     }
 
     if cli.time {
@@ -230,8 +243,7 @@ fn read_source(input: &str, stdin_name: &str) -> Result<(String, Utf8PathBuf)> {
         Ok((s, Utf8PathBuf::from(stdin_name)))
     } else {
         let p = Utf8PathBuf::from(input);
-        let s = fs::read_to_string(&p)
-            .with_context(|| format!("Lecture échouée: {p}"))?;
+        let s = fs::read_to_string(&p).with_context(|| format!("Lecture échouée: {p}"))?;
         Ok((s, p))
     }
 }
@@ -268,14 +280,20 @@ trait InputsLen {
     fn inputs_len_is_many(&self) -> bool;
 }
 impl InputsLen for Cli {
-    fn inputs_len_is_many(&self) -> bool { self.inputs.len() > 1 }
+    fn inputs_len_is_many(&self) -> bool {
+        self.inputs.len() > 1
+    }
 }
 
 fn human_millis(d: std::time::Duration) -> String {
     let ms = d.as_millis();
-    if ms < 1_000 { return format!("{ms} ms"); }
+    if ms < 1_000 {
+        return format!("{ms} ms");
+    }
     let s = ms as f64 / 1000.0;
-    if s < 60.0 { return format!("{s:.3} s"); }
+    if s < 60.0 {
+        return format!("{s:.3} s");
+    }
     let m = (s / 60.0).floor();
     let rest = s - m * 60.0;
     format!("{m:.0} min {rest:.1} s")

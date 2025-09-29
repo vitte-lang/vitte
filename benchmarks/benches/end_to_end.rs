@@ -84,14 +84,14 @@ fn lib_pack_and_run(dir: &Path) -> Result<String> {
 
 #[derive(Debug, Clone)]
 struct CliCfg {
-    pack_cmd: String, // ex: "vitte-pack" ou "vitte"
-    run_cmd: String,  // ex: "vitte-run"  ou "vitte"
+    pack_cmd: String,      // ex: "vitte-pack" ou "vitte"
+    run_cmd: String,       // ex: "vitte-run"  ou "vitte"
     use_subcommands: bool, // true si on doit appeler `vitte pack` au lieu de `vitte-pack`
 }
 
 fn cli_cfg_from_env() -> CliCfg {
     let pack_cmd = std::env::var("E2E_PACK").unwrap_or_else(|_| "vitte-pack".to_string());
-    let run_cmd  = std::env::var("E2E_RUN").unwrap_or_else(|_| "vitte-run".to_string());
+    let run_cmd = std::env::var("E2E_RUN").unwrap_or_else(|_| "vitte-run".to_string());
     // Heuristique: si le nom est exactement "vitte", on passe par des sous-commandes.
     let use_sub = pack_cmd == "vitte" || run_cmd == "vitte";
     CliCfg { pack_cmd, run_cmd, use_subcommands: use_sub }
@@ -115,7 +115,8 @@ fn cli_pack_project(dir: &Path, cfg: &CliCfg) -> Result<Vec<u8>> {
             .args(["--output"])
             .arg(&out_path)
             .status()
-    }.with_context(|| "échec lancement pack CLI")?;
+    }
+    .with_context(|| "échec lancement pack CLI")?;
 
     if !status.success() {
         return Err(anyhow!("pack CLI a échoué (exit={status})"));
@@ -129,16 +130,11 @@ fn cli_run_bytecode(bytecode: &[u8], cfg: &CliCfg) -> Result<String> {
     fs::write(tmp.path(), bytecode).with_context(|| "écriture temp vitbc")?;
 
     let output = if cfg.use_subcommands {
-        Command::new(&cfg.run_cmd)
-            .args(["run", "--input"])
-            .arg(tmp.path())
-            .output()
+        Command::new(&cfg.run_cmd).args(["run", "--input"]).arg(tmp.path()).output()
     } else {
-        Command::new(&cfg.run_cmd)
-            .args(["--input"])
-            .arg(tmp.path())
-            .output()
-    }.with_context(|| "échec lancement run CLI")?;
+        Command::new(&cfg.run_cmd).args(["--input"]).arg(tmp.path()).output()
+    }
+    .with_context(|| "échec lancement run CLI")?;
 
     if !output.status.success() {
         return Err(anyhow!("run CLI a échoué (exit={})", output.status));
@@ -248,13 +244,15 @@ pub fn bench_e2e(c: &mut Criterion) {
     let projects = match list_projects(Path::new(&root), max_mb) {
         Ok(v) if !v.is_empty() => v,
         Ok(_) => {
-            eprintln!("[e2e] aucun projet .vit dans {root}/ (<= {max_mb} MiB). Ajoute p.ex. {root}/hello");
+            eprintln!(
+                "[e2e] aucun projet .vit dans {root}/ (<= {max_mb} MiB). Ajoute p.ex. {root}/hello"
+            );
             return;
-        }
+        },
         Err(e) => {
             eprintln!("[e2e] impossible de lister {root}: {e}");
             return;
-        }
+        },
     };
 
     let mut group = c.benchmark_group("e2e/pack+run");
@@ -298,7 +296,8 @@ pub fn bench_e2e(c: &mut Criterion) {
                 let bc = match backend {
                     Backend::Lib => lib_pack_project(black_box(dir)),
                     Backend::Cli => cli_pack_project(black_box(dir), clicfg.as_ref().unwrap()),
-                }.expect("pack failed");
+                }
+                .expect("pack failed");
 
                 // run
                 let out = match backend {
@@ -311,7 +310,8 @@ pub fn bench_e2e(c: &mut Criterion) {
                         assert!(
                             stdout.contains(exp),
                             "stdout ne contient pas l’extrait attendu.\nAttendu: {:?}\nReçu: {}",
-                            exp, stdout
+                            exp,
+                            stdout
                         );
                     }
                 }
@@ -327,15 +327,17 @@ pub fn bench_e2e(c: &mut Criterion) {
                     Backend::Cli => {
                         let bc = cli_pack_project(black_box(dir), clicfg.as_ref().unwrap())?;
                         cli_run_bytecode(black_box(&bc), clicfg.as_ref().unwrap())
-                    }
-                }.expect("pack+run failed");
+                    },
+                }
+                .expect("pack+run failed");
 
                 if validate {
                     if let Some(exp) = &expected {
                         assert!(
                             stdout.contains(exp),
                             "stdout ne contient pas l’extrait attendu.\nAttendu: {:?}\nReçu: {}",
-                            exp, stdout
+                            exp,
+                            stdout
                         );
                     }
                 }

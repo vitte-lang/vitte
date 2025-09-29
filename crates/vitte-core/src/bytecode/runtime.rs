@@ -39,14 +39,15 @@ pub mod eval {
                         .get(ix)
                         .ok_or_else(|| CoreError::corrupted(format!("const {ix} inexistant")))?;
                     stack.push(value.clone());
-                }
+                },
                 Op::Print => {
-                    let value = stack.pop().ok_or_else(|| CoreError::corrupted("stack underflow"))?;
+                    let value =
+                        stack.pop().ok_or_else(|| CoreError::corrupted("stack underflow"))?;
                     if !out.stdout.is_empty() {
                         out.stdout.push_str("\n");
                     }
                     out.stdout.push_str(&format_const(&value));
-                }
+                },
                 Op::Return => break,
             }
         }

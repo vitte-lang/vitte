@@ -23,11 +23,7 @@ extern crate alloc;
 #[cfg(not(feature = "std"))]
 use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
 #[cfg(feature = "std")]
-use std::{
-    fs,
-    io::Read,
-    path::Path,
-};
+use std::{fs, io::Read, path::Path};
 
 use core::fmt;
 

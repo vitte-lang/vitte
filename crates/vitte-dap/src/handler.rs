@@ -11,10 +11,10 @@
 
 use std::{collections::HashMap, fmt};
 
+use color_eyre::eyre::{eyre, Result};
+use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use color_eyre::eyre::{Result, eyre};
-use log::{debug, warn};
 
 /// Pont générique vers ta VM / runtime.
 /// Implémente ces méthodes dans ton moteur réel pour avoir un débogage fonctionnel.
@@ -109,20 +109,29 @@ impl Handler {
 
         match cmd {
             "initialize" => {
-                out.push(Outbound::response(seq, "initialize", json!({
-                    "supportsConfigurationDoneRequest": true,
-                    "supportsSetVariable": false,
-                    "supportsEvaluateForHovers": false,
-                    "supportsStepInTargetsRequest": false,
-                })));
-            }
+                out.push(Outbound::response(
+                    seq,
+                    "initialize",
+                    json!({
+                        "supportsConfigurationDoneRequest": true,
+                        "supportsSetVariable": false,
+                        "supportsEvaluateForHovers": false,
+                        "supportsStepInTargetsRequest": false,
+                    }),
+                ));
+            },
             "launch" => {
                 let args = &msg["arguments"];
-                let program = args.get("program").and_then(|v| v.as_str())
+                let program = args
+                    .get("program")
+                    .and_then(|v| v.as_str())
                     .ok_or_else(|| eyre!("launch: 'program' manquant"))?;
-                let argv: Vec<String> = args.get("args")
+                let argv: Vec<String> = args
+                    .get("args")
                     .and_then(|a| a.as_array())
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+                    .map(|arr| {
+                        arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()
+                    })
                     .unwrap_or_default();
 
                 self.engine.launch(program, &argv)?;
@@ -130,12 +139,10 @@ impl Handler {
 
                 out.push(Outbound::response(seq, "launch", json!({})));
                 out.push(Outbound::event("initialized", json!({})));
-            }
+            },
             "setBreakpoints" => {
-                let source_path = msg["arguments"]["source"]["path"]
-                    .as_str()
-                    .unwrap_or("unknown")
-                    .to_string();
+                let source_path =
+                    msg["arguments"]["source"]["path"].as_str().unwrap_or("unknown").to_string();
 
                 let lines: Vec<u32> = msg["arguments"]["breakpoints"]
                     .as_array()
@@ -147,26 +154,32 @@ impl Handler {
                 let armed = self.engine.set_breakpoints(&source_path, &lines)?;
                 self.breakpoints.insert(source_path.clone(), armed.clone());
 
-                let bps_json: Vec<Value> = armed
-                    .into_iter()
-                    .map(|l| json!({"verified": true, "line": l}))
-                    .collect();
+                let bps_json: Vec<Value> =
+                    armed.into_iter().map(|l| json!({"verified": true, "line": l})).collect();
 
-                out.push(Outbound::response(seq, "setBreakpoints", json!({ "breakpoints": bps_json })));
-            }
+                out.push(Outbound::response(
+                    seq,
+                    "setBreakpoints",
+                    json!({ "breakpoints": bps_json }),
+                ));
+            },
             "configurationDone" => {
                 out.push(Outbound::response(seq, "configurationDone", json!({})));
-            }
+            },
             "continue" => {
                 self.engine.r#continue()?;
-                out.push(Outbound::response(seq, "continue", json!({ "allThreadsContinued": true })));
+                out.push(Outbound::response(
+                    seq,
+                    "continue",
+                    json!({ "allThreadsContinued": true }),
+                ));
                 out.push(Outbound::event("continued", json!({ "threadId": 1 })));
-            }
+            },
             "next" => {
                 self.engine.step_over()?;
                 out.push(Outbound::response(seq, "next", json!({})));
                 out.push(Outbound::event("stopped", json!({ "reason": "step", "threadId": 1 })));
-            }
+            },
             "stackTrace" => {
                 let frames = self.engine.stack_trace()?;
                 let frames_json: Vec<Value> = frames
@@ -181,57 +194,76 @@ impl Handler {
                         })
                     })
                     .collect();
-                out.push(Outbound::response(seq, "stackTrace", json!({
-                    "stackFrames": frames_json,
-                    "totalFrames": frames_json.len()
-                })));
-            }
+                out.push(Outbound::response(
+                    seq,
+                    "stackTrace",
+                    json!({
+                        "stackFrames": frames_json,
+                        "totalFrames": frames_json.len()
+                    }),
+                ));
+            },
             "scopes" => {
                 // MVP : une seule portée "Locals" avec variablesReference=1
-                out.push(Outbound::response(seq, "scopes", json!({
-                    "scopes": [{
-                        "name": "Locals",
-                        "variablesReference": 1,
-                        "expensive": false
-                    }]
-                })));
-            }
+                out.push(Outbound::response(
+                    seq,
+                    "scopes",
+                    json!({
+                        "scopes": [{
+                            "name": "Locals",
+                            "variablesReference": 1,
+                            "expensive": false
+                        }]
+                    }),
+                ));
+            },
             "variables" => {
                 let vr = msg["arguments"]["variablesReference"].as_i64().unwrap_or(0);
                 let vars = self.engine.variables(vr)?;
-                let vars_json: Vec<Value> = vars.into_iter().map(|v| {
-                    json!({
-                        "name": v.name,
-                        "value": v.value,
-                        "type": v.r#type,
-                        "variablesReference": v.variables_reference
+                let vars_json: Vec<Value> = vars
+                    .into_iter()
+                    .map(|v| {
+                        json!({
+                            "name": v.name,
+                            "value": v.value,
+                            "type": v.r#type,
+                            "variablesReference": v.variables_reference
+                        })
                     })
-                }).collect();
+                    .collect();
 
                 out.push(Outbound::response(seq, "variables", json!({ "variables": vars_json })));
-            }
+            },
             "evaluate" => {
                 let expr = msg["arguments"]["expression"].as_str().unwrap_or("");
                 match self.engine.evaluate(expr)? {
-                    Some(val) => out.push(Outbound::response(seq, "evaluate", json!({
-                        "result": val,
-                        "variablesReference": 0
-                    }))),
-                    None => out.push(Outbound::response(seq, "evaluate", json!({
-                        "result": "<not available>",
-                        "variablesReference": 0
-                    }))),
+                    Some(val) => out.push(Outbound::response(
+                        seq,
+                        "evaluate",
+                        json!({
+                            "result": val,
+                            "variablesReference": 0
+                        }),
+                    )),
+                    None => out.push(Outbound::response(
+                        seq,
+                        "evaluate",
+                        json!({
+                            "result": "<not available>",
+                            "variablesReference": 0
+                        }),
+                    )),
                 }
-            }
+            },
             "disconnect" => {
                 self.engine.disconnect()?;
                 out.push(Outbound::response(seq, "disconnect", json!({})));
                 out.push(Outbound::event("terminated", json!({})));
-            }
+            },
             other => {
                 warn!("Commande non gérée: {other}");
                 out.push(Outbound::response(seq, other, json!({})));
-            }
+            },
         }
 
         Ok(out)
@@ -243,33 +275,17 @@ impl Handler {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Outbound {
     /// Réponse à une requête
-    Response {
-        request_seq: i64,
-        success: bool,
-        command: String,
-        body: Value,
-    },
+    Response { request_seq: i64, success: bool, command: String, body: Value },
     /// Événement spontané
-    Event {
-        event: String,
-        body: Value,
-    },
+    Event { event: String, body: Value },
 }
 
 impl Outbound {
     pub fn response(seq: i64, command: impl Into<String>, body: Value) -> Self {
-        Self::Response {
-            request_seq: seq,
-            success: true,
-            command: command.into(),
-            body,
-        }
+        Self::Response { request_seq: seq, success: true, command: command.into(), body }
     }
     pub fn event(event: impl Into<String>, body: Value) -> Self {
-        Self::Event {
-            event: event.into(),
-            body,
-        }
+        Self::Event { event: event.into(), body }
     }
 
     /// Sérialise en JSON (sans en-tête DAP).
@@ -293,27 +309,52 @@ mod tests {
     /// Moteur factice pour tests
     struct DummyEngine;
     impl DebugEngine for DummyEngine {
-        fn launch(&mut self, _program: &str, _args: &[String]) -> Result<()> { Ok(()) }
-        fn set_breakpoints(&mut self, _source: &str, lines: &[u32]) -> Result<Vec<u32>> { Ok(lines.to_vec()) }
-        fn r#continue(&mut self) -> Result<()> { Ok(()) }
-        fn step_over(&mut self) -> Result<()> { Ok(()) }
+        fn launch(&mut self, _program: &str, _args: &[String]) -> Result<()> {
+            Ok(())
+        }
+        fn set_breakpoints(&mut self, _source: &str, lines: &[u32]) -> Result<Vec<u32>> {
+            Ok(lines.to_vec())
+        }
+        fn r#continue(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn step_over(&mut self) -> Result<()> {
+            Ok(())
+        }
         fn stack_trace(&self) -> Result<Vec<Frame>> {
-            Ok(vec![Frame{ id:1, name:"main".into(), source_path:"/tmp/x.vitte".into(), line:1, column:1 }])
+            Ok(vec![Frame {
+                id: 1,
+                name: "main".into(),
+                source_path: "/tmp/x.vitte".into(),
+                line: 1,
+                column: 1,
+            }])
         }
         fn variables(&self, _variables_ref: i64) -> Result<Vec<Variable>> {
-            Ok(vec![Variable{ name:"x".into(), value:"42".into(), r#type:Some("i32".into()), variables_reference:0 }])
+            Ok(vec![Variable {
+                name: "x".into(),
+                value: "42".into(),
+                r#type: Some("i32".into()),
+                variables_reference: 0,
+            }])
         }
-        fn evaluate(&mut self, expr: &str) -> Result<Option<String>> { Ok(Some(format!("evaluated:{expr}"))) }
-        fn disconnect(&mut self) -> Result<()> { Ok(()) }
+        fn evaluate(&mut self, expr: &str) -> Result<Option<String>> {
+            Ok(Some(format!("evaluated:{expr}")))
+        }
+        fn disconnect(&mut self) -> Result<()> {
+            Ok(())
+        }
     }
 
     #[test]
     fn initialize_ok() {
         let mut h = Handler::new(Box::new(DummyEngine));
-        let msgs = h.handle(&json!({"seq":1,"type":"request","command":"initialize","arguments":{}})).unwrap();
+        let msgs = h
+            .handle(&json!({"seq":1,"type":"request","command":"initialize","arguments":{}}))
+            .unwrap();
         assert!(!msgs.is_empty());
         match &msgs[0] {
-            Outbound::Response{ request_seq, .. } => assert_eq!(*request_seq, 1),
+            Outbound::Response { request_seq, .. } => assert_eq!(*request_seq, 1),
             _ => panic!("expected response"),
         }
     }
@@ -331,7 +372,7 @@ mod tests {
             }
         });
         let msgs = h.handle(&req).unwrap();
-        assert!(matches!(msgs[0], Outbound::Response{..}));
+        assert!(matches!(msgs[0], Outbound::Response { .. }));
     }
 
     #[test]
