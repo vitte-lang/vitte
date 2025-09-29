@@ -1,0 +1,59 @@
+[package]
+name        = "vitte-logger"
+description = "Logger/tracing unifié pour le langage Vitte (basé sur tracing + tracing-subscriber)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-logger"
+
+keywords   = ["compiler", "language", "logging", "tracing", "vitte"]
+categories = ["development-tools::debugging", "command-line-utilities"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_logger"
+path = "src/lib.rs"
+
+[features]
+# std activée par défaut
+default = ["std"]
+std     = []
+
+# intégration env-filter activable
+env-filter = ["tracing-subscriber/env-filter"]
+
+# full = toutes les features
+full = ["std", "env-filter"]
+
+[dependencies]
+tracing             = { workspace = true }
+tracing-subscriber  = { workspace = true, features = ["fmt"] }
+
+# feature "env-filter"
+# activable pour contrôler le niveau via RUST_LOG
+# (hérite du workspace si défini)
+# ex: tracing-subscriber/env-filter
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"
