@@ -1,0 +1,69 @@
+[package]
+name        = "vitte-doc"
+description = "Génération de documentation pour Vitte (extraction, rendu, formats)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-doc"
+
+keywords   = ["compiler", "documentation", "vitte"]
+categories = ["compilers", "development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_doc"
+path = "src/lib.rs"
+
+[features]
+default = ["std", "markdown"]
+std     = []
+
+# rendu Markdown
+markdown = ["pulldown-cmark"]
+
+# rendu HTML
+html     = ["dep:ammonia"]
+
+# rendu JSON
+json     = ["dep:serde", "dep:serde_json"]
+
+# full
+full     = ["std", "markdown", "html", "json"]
+
+[dependencies]
+vitte-ast    = { path = "../vitte-ast" }
+vitte-parser = { path = "../vitte-parser" }
+
+pulldown-cmark = { version = "0.10", optional = true }
+ammonia        = { version = "4.0", optional = true }
+
+serde      = { workspace = true, features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+
+anyhow     = "1.0"
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tempfile          = "3.12"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"

@@ -1,0 +1,65 @@
+[package]
+name        = "vitte-packager"
+description = "Packaging et distribution des toolchains Vitte (archives, installeurs, métadonnées)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-packager"
+
+keywords   = ["compiler", "packaging", "distribution", "vitte"]
+categories = ["development-tools", "package-managers"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_packager"
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+std     = []
+
+# JSON metadata (manifestes)
+json = ["dep:serde", "dep:serde_json"]
+
+# Compression (tar/zip/gz)
+archive = ["dep:tar", "dep:flate2", "dep:zip"]
+
+# Tout activé
+full = ["std", "json", "archive"]
+
+[dependencies]
+anyhow = "1.0"
+thiserror = "1.0"
+
+serde      = { workspace = true, features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+
+tar    = { version = "0.4", optional = true }
+flate2 = { version = "1.0", optional = true }
+zip    = { version = "0.6", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tempfile          = "3.12"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"

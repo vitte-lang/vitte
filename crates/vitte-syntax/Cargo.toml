@@ -1,0 +1,67 @@
+[package]
+name        = "vitte-syntax"
+description = "Analyse syntaxique du langage Vitte (AST, parsing, grammaire officielle EBNF)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-syntax"
+
+keywords   = ["compiler", "syntax", "parser", "ast", "vitte"]
+categories = ["compilers", "development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_syntax"
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+std     = []
+
+# Export en JSON (AST sérialisable)
+json = ["dep:serde", "dep:serde_json"]
+
+# Support d’un grammar loader externe
+grammar = ["dep:pest"]
+
+# Tout activé
+full = ["std", "json", "grammar"]
+
+[dependencies]
+vitte-ast    = { path = "../vitte-ast" }
+vitte-errors = { path = "../vitte-errors" }
+
+anyhow    = "1.0"
+thiserror = "1.0"
+
+serde      = { workspace = true, features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+
+pest        = { version = "2.7", optional = true }
+pest_derive = { version = "2.7", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+insta             = "1.41"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code  = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+doc_markdown            = "allow"
+too_many_lines          = "allow"

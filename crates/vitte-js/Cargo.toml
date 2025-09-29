@@ -1,0 +1,81 @@
+[package]
+name        = "vitte-js"
+description = "Intégration JavaScript/TypeScript pour Vitte (WASM web + N-API Node)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-js"
+
+keywords   = ["compiler", "wasm", "napi", "javascript", "vitte"]
+categories = ["compilers", "development-tools", "wasm"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name       = "vitte_js"
+path       = "src/lib.rs"
+crate-type = ["rlib", "cdylib"] # cdylib pour N-API; pour WASM, cf. wasm32 + wasm-bindgen
+
+[features]
+default = ["std"]
+
+std   = []
+
+# Cible WebAssembly (navigateur / bundlers)
+wasm  = ["dep:wasm-bindgen", "dep:js-sys", "dep:web-sys"]
+
+# Cible Node.js via N-API
+napi  = ["dep:napi", "dep:napi-derive"]
+
+# Sérialisation JSON
+json  = ["dep:serde", "dep:serde_json"]
+
+# Tout activé
+full  = ["std", "wasm", "napi", "json"]
+
+[dependencies]
+vitte-ffi-sys = { path = "../vitte-ffi-sys" }
+vitte-errors  = { path = "../vitte-errors" }
+
+# WASM
+wasm-bindgen = { version = "0.2", optional = true }
+js-sys       = { version = "0.3", optional = true }
+web-sys      = { version = "0.3", optional = true, features = ["console"] }
+
+# N-API (Node.js)
+napi         = { version = "3", optional = true, default-features = false, features = ["napi4"] }
+napi-derive  = { version = "3", optional = true }
+
+# JSON
+serde      = { workspace = true, features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+
+anyhow = "1.0"
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs", "--cfg", "feature=\"wasm\"", "--cfg", "feature=\"napi\""]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"
+
+# Conseils de build:
+# - Web/WASM: `wasm-pack build --target bundler --features wasm`
+# - Node/N-API: `npm run build` avec napi-rs, ou `cargo build --features napi`

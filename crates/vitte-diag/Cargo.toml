@@ -1,0 +1,66 @@
+[package]
+name        = "vitte-diag"
+description = "Diagnostics et reporting pour Vitte (erreurs, avertissements, messages)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-diag"
+
+keywords   = ["compiler", "diagnostics", "errors", "vitte"]
+categories = ["compilers", "development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_diag"
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+std     = []
+
+# format JSON
+json = ["dep:serde", "dep:serde_json"]
+
+# format TOML
+toml = ["dep:serde", "dep:toml"]
+
+# rendu couleur via ANSI
+ansi = ["dep:ansi_term"]
+
+# full = tout activé
+full = ["std", "json", "toml", "ansi"]
+
+[dependencies]
+vitte-errors = { path = "../vitte-errors" }
+
+serde      = { workspace = true, features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+toml       = { version = "0.8", optional = true }
+ansi_term  = { version = "0.12", optional = true }
+
+ariadne = "0.5"
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"

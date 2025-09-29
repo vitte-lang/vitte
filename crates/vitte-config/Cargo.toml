@@ -1,0 +1,61 @@
+[package]
+name        = "vitte-config"
+description = "Gestion de la configuration pour Vitte (profils, options de compilation, toolchains)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-config"
+
+keywords   = ["compiler", "config", "profiles", "vitte"]
+categories = ["compilers", "development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_config"
+path = "src/lib.rs"
+
+[features]
+default = ["std", "toml"]
+std     = []
+
+# lecture/écriture fichiers TOML
+toml    = ["dep:toml", "dep:serde"]
+
+# support JSON
+json    = ["dep:serde_json", "dep:serde"]
+
+# tout activé
+full    = ["std", "toml", "json"]
+
+[dependencies]
+dirs       = "5.0"
+serde      = { workspace = true, features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+toml       = { version = "0.8", optional = true }
+anyhow     = "1.0"
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tempfile          = "3.12"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"

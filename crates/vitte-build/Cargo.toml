@@ -1,0 +1,63 @@
+[package]
+name        = "vitte-build"
+description = "Build orchestration for Vitte (compiler pipeline, artifacts, packaging)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-build"
+
+keywords   = ["compiler", "build", "pipeline", "vitte"]
+categories = ["compilers", "development-tools"]
+
+exclude = [".github/*", "scripts/*", "tests/*"]
+
+[lib]
+name = "vitte_build"
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+std     = []
+
+# Enable packaging of binaries
+package = []
+
+# Enable docs + metadata generation
+docs = []
+
+# full = all features
+full = ["std", "package", "docs"]
+
+[dependencies]
+vitte-ast      = { path = "../vitte-ast" }
+vitte-parser   = { path = "../vitte-parser" }
+vitte-compiler = { path = "../vitte-compiler" }
+vitte-vm       = { path = "../vitte-vm" }
+vitte-errors   = { path = "../vitte-errors" }
+
+serde      = { workspace = true, optional = true }
+serde_json = { version = "1.0", optional = true }
+toml       = { version = "0.8", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"

@@ -1,0 +1,74 @@
+[package]
+name        = "vitte-repl"
+description = "REPL interactif pour le langage Vitte (lecture, évaluation, impression)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-repl"
+
+keywords   = ["compiler", "repl", "interactive", "vitte"]
+categories = ["compilers", "development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[[bin]]
+name = "vitte-repl"
+path = "src/main.rs"
+
+[lib]
+name = "vitte_repl"
+path = "src/lib.rs"
+
+[features]
+default = ["std", "history", "colors"]
+std     = []
+
+# Historique et persistance (~/.vitte/repl_history)
+history = ["dirs"]
+
+# Couleurs et mise en forme de l’invite
+colors  = ["nu-ansi-term"]
+
+# Export des résultats en JSON (API programmatique)
+json    = ["dep:serde", "dep:serde_json"]
+
+# Tout activé
+full    = ["std", "history", "colors", "json"]
+
+[dependencies]
+vitte-compiler = { path = "../vitte-compiler" }
+vitte-errors   = { path = "../vitte-errors" }
+vitte-ir       = { path = "../vitte-ir" }
+
+anyhow        = "1.0"
+thiserror     = "1.0"
+rustyline     = "14.0"
+dirs          = { version = "5.0", optional = true }
+nu-ansi-term  = { version = "0.50", optional = true }
+
+serde      = { workspace = true, features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+doc_markdown            = "allow"
+too_many_lines          = "allow"

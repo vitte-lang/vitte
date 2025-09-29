@@ -1,0 +1,68 @@
+[package]
+name        = "vitte-trace"
+description = "Système de traçage et instrumentation pour Vitte (events, spans, profiling)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-trace"
+
+keywords   = ["compiler", "trace", "profiling", "instrumentation", "vitte"]
+categories = ["compilers", "development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_trace"
+path = "src/lib.rs"
+
+[features]
+default = ["std", "log"]
+
+# Mode standard
+std = []
+
+# Intégration logging
+log     = ["dep:tracing", "dep:tracing-subscriber"]
+json    = ["dep:serde", "dep:serde_json"]
+tokio   = ["dep:tokio"]
+
+# Tout activé
+full = ["std", "log", "json", "tokio"]
+
+[dependencies]
+anyhow    = "1.0"
+thiserror = "1.0"
+
+tracing             = { version = "0.1", optional = true }
+tracing-subscriber  = { version = "0.3", optional = true }
+tracing-futures     = { version = "0.2", optional = true }
+
+tokio = { version = "1.41", features = ["rt", "time"], optional = true }
+
+serde      = { workspace = true, features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+insta             = "1.41"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+doc_markdown            = "allow"
+too_many_lines          = "allow"

@@ -1,0 +1,63 @@
+[package]
+name        = "vitte-gc"
+description = "Ramasse-miettes pour Vitte (GC, gestion mémoire runtime, algorithmes mark-sweep, refcount, etc.)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-gc"
+
+keywords   = ["compiler", "runtime", "gc", "memory", "vitte"]
+categories = ["compilers", "development-tools", "memory-management"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_gc"
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+std     = []
+
+# Algorithmes disponibles
+mark-sweep = []
+refcount   = []
+generational = []
+
+# Statistiques mémoire
+stats = ["dep:serde"]
+
+# Tout activé
+full = ["std", "mark-sweep", "refcount", "generational", "stats"]
+
+[dependencies]
+vitte-errors = { path = "../vitte-errors" }
+
+serde = { workspace = true, features = ["derive"], optional = true }
+
+anyhow = "1.0"
+parking_lot = "0.12"
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"

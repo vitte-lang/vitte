@@ -1,0 +1,81 @@
+[package]
+name        = "vitte-updater"
+description = "Mise à jour de l’écosystème Vitte (vérification de versions, téléchargement, auto-update CLI)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-updater"
+
+keywords   = ["update", "self-update", "installer", "vitte"]
+categories = ["development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_updater"
+path = "src/lib.rs"
+
+[features]
+default = ["std", "http", "archive"]
+
+std     = []
+http    = ["dep:reqwest", "dep:serde", "dep:serde_json"]
+archive = ["dep:zip", "dep:tar", "dep:flate2", "dep:xz2"]
+sha     = ["dep:sha2", "dep:hex"]
+async   = ["dep:tokio"]           # client async possible
+progress= ["dep:indicatif"]
+
+# Tout activé
+full = ["std", "http", "archive", "sha", "async", "progress"]
+
+[dependencies]
+anyhow       = "1.0"
+thiserror    = "1.0"
+semver       = "1.0"
+directories  = "5.0"               # dossiers cache/config
+tempfile     = "3.12"
+
+# HTTP + JSON
+reqwest    = { version = "0.12", features = ["blocking", "json"], optional = true }
+serde      = { workspace = true, features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+
+# Archives
+zip    = { version = "0.6", optional = true }
+tar    = { version = "0.4", optional = true }
+flate2 = { version = "1.0", features = ["gzip"], optional = true }
+xz2    = { version = "0.1", optional = true }
+
+# Hash
+sha2 = { version = "0.10", optional = true }
+hex  = { version = "0.4", optional = true }
+
+# Async
+tokio = { version = "1.41", features = ["rt-multi-thread", "macros"], optional = true }
+
+# UI
+indicatif = { version = "0.17", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+doc_markdown            = "allow"
+too_many_lines          = "allow"

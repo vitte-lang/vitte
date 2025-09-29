@@ -1,0 +1,64 @@
+[package]
+name        = "vitte-docgen"
+description = "Outil de génération de documentation pour Vitte (CLI basé sur vitte-doc)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-docgen"
+
+keywords   = ["compiler", "documentation", "cli", "vitte"]
+categories = ["compilers", "development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[[bin]]
+name = "vitte-docgen"
+path = "src/main.rs"
+
+[dependencies]
+anyhow     = "1.0"
+clap       = { version = "4.5", features = ["derive"] }
+walkdir    = "2.5"
+
+vitte-doc  = { path = "../vitte-doc" }
+
+serde      = { workspace = true, optional = true, features = ["derive"] }
+serde_json = { version = "1.0", optional = true }
+toml       = { version = "0.8", optional = true }
+
+[features]
+default   = ["std", "markdown"]
+std       = []
+
+markdown  = ["vitte-doc/markdown"]
+html      = ["vitte-doc/html"]
+json      = ["vitte-doc/json"]
+
+full      = ["std", "markdown", "html", "json"]
+
+[dev-dependencies]
+assert_cmd         = "2.0"
+predicates         = "3.1"
+pretty_assertions  = { workspace = true }
+tempfile           = "3.12"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"

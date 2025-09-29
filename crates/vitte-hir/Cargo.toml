@@ -1,0 +1,57 @@
+[package]
+name        = "vitte-hir"
+description = "Représentation intermédiaire de haut niveau (HIR) pour Vitte, avant le typage complet et la descente en MIR/IR."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-hir"
+
+keywords   = ["compiler", "hir", "intermediate", "vitte"]
+categories = ["compilers", "development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_hir"
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+std     = []
+
+serde = ["dep:serde"]
+
+full = ["std", "serde"]
+
+[dependencies]
+vitte-ast    = { path = "../vitte-ast" }
+vitte-errors = { path = "../vitte-errors" }
+
+serde = { workspace = true, features = ["derive"], optional = true }
+
+anyhow = "1.0"
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+insta             = "1.41"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"

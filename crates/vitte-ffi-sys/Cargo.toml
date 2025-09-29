@@ -1,0 +1,54 @@
+[package]
+name        = "vitte-ffi-sys"
+description = "Bindings bas-niveau C FFI pour Vitte (interfaces brutes sans sécurité)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-ffi-sys"
+
+keywords   = ["ffi", "c-api", "bindings", "vitte"]
+categories = ["external-ffi-bindings", "compilers"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name       = "vitte_ffi_sys"
+path       = "src/lib.rs"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+default = ["std"]
+std     = []
+
+# Génération automatique des headers avec bindgen
+bindgen = ["dep:bindgen"]
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+bindgen = { version = "0.70", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"

@@ -1,0 +1,59 @@
+[package]
+name        = "vitte-threads"
+description = "Abstractions de threads et parallélisme pour Vitte (threadpool, canaux, tasks)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-threads"
+
+keywords   = ["compiler", "threads", "parallel", "vitte"]
+categories = ["compilers", "development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_threads"
+path = "src/lib.rs"
+
+[features]
+default = ["std", "pool"]
+
+std   = []
+pool  = ["dep:rayon"]
+async = ["dep:tokio"]
+
+# Tout activé
+full = ["std", "pool", "async"]
+
+[dependencies]
+anyhow    = "1.0"
+thiserror = "1.0"
+
+rayon = { version = "1.10", optional = true }
+tokio = { version = "1.41", features = ["rt-multi-thread", "macros"], optional = true }
+
+crossbeam-channel = "0.5"
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code  = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+doc_markdown            = "allow"
+too_many_lines          = "allow"

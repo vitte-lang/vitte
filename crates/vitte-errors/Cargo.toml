@@ -1,0 +1,60 @@
+[package]
+name        = "vitte-errors"
+description = "Types et gestion des erreurs pour Vitte (compilateur, VM, outils)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-errors"
+
+keywords   = ["compiler", "errors", "diagnostics", "vitte"]
+categories = ["compilers", "development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_errors"
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+std     = []
+
+# intégration avec serde
+serde = ["dep:serde"]
+
+# format JSON
+json  = ["serde", "dep:serde_json"]
+
+# full
+full  = ["std", "serde", "json"]
+
+[dependencies]
+thiserror   = "1.0"
+anyhow      = "1.0"
+
+serde      = { workspace = true, features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"

@@ -1,0 +1,65 @@
+[package]
+name        = "vitte-template"
+description = "Moteur de templates pour Vitte (génération de code, macros, docs)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-template"
+
+keywords   = ["compiler", "template", "macro", "generation", "vitte"]
+categories = ["compilers", "development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_template"
+path = "src/lib.rs"
+
+[features]
+default = ["std", "json"]
+
+# Activation standard
+std = []
+
+# Export JSON des modèles
+json = ["dep:serde", "dep:serde_json"]
+
+# Support d’un moteur basé sur handlebars
+handlebars = ["dep:handlebars"]
+
+# Tout activé
+full = ["std", "json", "handlebars"]
+
+[dependencies]
+anyhow    = "1.0"
+thiserror = "1.0"
+
+serde      = { workspace = true, features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+
+handlebars = { version = "5.1", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+insta             = "1.41"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+doc_markdown            = "allow"
+too_many_lines          = "allow"
