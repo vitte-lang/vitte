@@ -1,0 +1,59 @@
+[package]
+name        = "vitte-cov"
+description = "Coverage tooling for Vitte: run, merge, and report (LLVM/LCOV/html)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-cov"
+
+keywords   = ["coverage", "llvm-cov", "lcov", "report", "vitte"]
+categories = ["development-tools", "testing"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_cov"
+path = "src/lib.rs"
+
+[[bin]]
+name = "vitte-cov"
+path = "src/main.rs"
+
+[features]
+default    = ["std", "llvm"]
+std        = []
+llvm       = []        # use llvm-cov/llvm-profdata
+grcov      = []        # support grcov output parsing
+tarpaulin  = []        # import tarpaulin JSON (post-process only)
+html       = []        # generate HTML reports
+serde      = ["dep:serde", "dep:serde_json"]
+full       = ["std","llvm","grcov","tarpaulin","html","serde"]
+
+[dependencies]
+vitte-core      = { path = "../vitte-core", version = "0.1.0" }
+
+anyhow          = { version = "1", default-features = false, features = ["std"] }
+thiserror       = { version = "1", default-features = false }
+regex           = { version = "1", default-features = false, features = ["std"] }
+camino          = { version = "1", default-features = false }       # UTF-8 paths
+which           = { version = "6", default-features = false }       # find llvm-cov, etc.
+duct            = { version = "0.13", default-features = false }    # process runner
+
+# optional serialization/reporters
+serde           = { version = "1", features = ["derive"], optional = true }
+serde_json      = { version = "1", optional = true }
+
+# optional HTML rendering
+minijinja       = { version = "2", optional = true, default-features = false, features = ["builtins"] }
+
+# workspace interaction
+cargo_metadata  = { version = "0.18", default-features = false, features = ["builder"] }
+
+[dev-dependencies]
+tempfile        = "3"
+assert_fs       = "1"

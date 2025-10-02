@@ -1,0 +1,44 @@
+[package]
+name         = "vitte-fronted-llvm"
+description  = "LLVM-based lowering for the Vitte frontend (HIR → LLVM IR, optimization and code emission)."
+version       = { workspace = true }
+edition       = { workspace = true }
+rust-version  = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+homepage      = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-fronted-llvm"
+
+keywords   = ["llvm", "codegen", "compiler", "ir"]
+categories = ["compilers", "development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_fronted_llvm"
+path = "src/lib.rs"
+
+[features]
+default   = ["std", "inkwell"]
+std       = []
+inkwell   = ["dep:inkwell"]     # build with the inkwell safe LLVM bindings
+serde     = ["dep:serde", "dep:serde_json"]
+
+full      = ["std","inkwell","serde"]
+
+[dependencies]
+vitte-core     = { path = "../vitte-core", version = "0.1.0" }
+vitte-ast      = { path = "../vitte-ast", version = "0.1.0" }
+vitte-frontend = { path = "../vitte-frontend", version = "0.1.0" }
+
+thiserror      = { version = "1", default-features = false }
+
+# optional bindings / serialization
+inkwell   = { version = "0.4", optional = true, default-features = false } # relies on system LLVM
+serde     = { version = "1", optional = true, features = ["derive"] }
+serde_json= { version = "1", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1"

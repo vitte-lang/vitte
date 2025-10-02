@@ -1,0 +1,67 @@
+
+
+[package]
+name        = "vitte-semantic"
+description = "NLP sémantique pour Vitte : tokenisation, embeddings basiques, similarités (cosine), détection de langue."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-semantic"
+
+keywords   = ["nlp", "semantic", "embeddings", "similarity", "language-detection"]
+categories = ["text-processing", "algorithms", "development-tools"]
+
+[lib]
+name = "vitte_semantic"
+path = "src/lib.rs"
+
+[features]
+# Par défaut : std + serde + détection de langue
+default       = ["std", "serde", "lang"]
+std           = []
+serde         = ["dep:serde", "dep:serde_json"]
+# Tokenisation via HuggingFace tokenizers
+hf-tokenizers = ["dep:tokenizers"]
+# Vecteurs/embeddings simples sur ndarray
+nd            = ["dep:ndarray"]
+# Détection de langue
+lang          = ["dep:whatlang"]
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+
+# Sérialisation
+serde       = { version = "1", features = ["derive"], optional = true }
+serde_json  = { version = "1", optional = true }
+
+# Tokenizers (optionnel)
+tokenizers  = { version = "0.15", optional = true, default-features = false, features = ["onig"] }
+
+# Vecteurs/algèbre
+ndarray     = { version = "0.15", optional = true }
+num-traits  = "0.2"
+
+# Détection de langue (légère)
+whatlang    = { version = "0.16", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+serde_json = "1"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "serde", "lang", "nd"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"

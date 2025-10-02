@@ -1,0 +1,51 @@
+
+
+[package]
+name        = "vitte-java"
+description = "Interop Java/JVM pour Vitte : JNI sûr, chargement JVM embarquée, conversions types Rust<->Java."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-java"
+
+keywords   = ["java", "jni", "jvm", "android", "interop"]
+categories = ["api-bindings", "development-tools", "external-ffi-bindings"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_java"
+path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default      = ["std", "jni"]
+std          = []
+# Active les APIs haut niveau basées sur le crate `jni`
+jni          = ["dep:jni"]
+# Lancement d'une JVM embarquée (Oracle/OpenJDK) côté desktop/serveur
+jvm-embed    = []
+# Android NDK (désactive jvm-embed et suppose une JVM fournie par l'hôte)
+android      = []
+
+# Conversions helpers optionnelles
+serde        = ["dep:serde", "dep:serde_json"]
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+
+# JNI haut niveau (optionnel)
+jni = { version = "0.21", optional = true, default-features = false }
+
+# Optionnel: sérialisation de passerelles JSON
+serde      = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+
+[dev-dependencies]
+serial_test = "3"

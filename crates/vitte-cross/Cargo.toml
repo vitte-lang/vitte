@@ -1,0 +1,51 @@
+[package]
+name        = "vitte-cross"
+description = "Cross-compilation utilities for Vitte (toolchain detection, sysroot, target runners)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-cross"
+
+keywords   = ["cross", "compilation", "sysroot", "toolchain", "vitte"]
+categories = ["development-tools", "compilers"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_cross"
+path = "src/lib.rs"
+
+[[bin]]
+name = "vitte-cross"
+path = "src/main.rs"
+
+[features]
+default   = ["std", "detect"]
+std       = []
+detect    = ["dep:which"]           # detect compilers/linkers on PATH
+docker    = ["dep:duct"]            # run builds inside docker/qemu
+qemu      = ["dep:duct"]            # run built binaries under qemu
+serde     = ["dep:serde", "dep:serde_json"]
+full      = ["std","detect","docker","qemu","serde"]
+
+[dependencies]
+vitte-core  = { path = "../vitte-core", version = "0.1.0" }
+
+anyhow      = { version = "1", default-features = false, features = ["std"] }
+thiserror   = { version = "1", default-features = false }
+camino      = { version = "1", default-features = false }
+
+# optional
+which       = { version = "6", optional = true, default-features = false }
+duct        = { version = "0.13", optional = true, default-features = false }
+serde       = { version = "1", optional = true, features = ["derive"] }
+serde_json  = { version = "1", optional = true }
+
+[dev-dependencies]
+tempfile    = "3"
+assert_fs   = "1"

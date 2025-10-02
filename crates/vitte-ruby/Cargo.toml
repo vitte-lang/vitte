@@ -1,0 +1,61 @@
+
+
+[package]
+name        = "vitte-ruby"
+description = "Interop Ruby pour Vitte (rutie/magnus, FFI, extensions C)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-ruby"
+
+keywords   = ["ruby", "ffi", "extension", "rutie", "magnus"]
+categories = ["api-bindings", "development-tools", "external-ffi-bindings"]
+
+[lib]
+name = "vitte_ruby"
+path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default = ["std", "rutie"]
+std     = []
+# Backends Ruby
+rutie   = ["dep:rutie"]
+magnus  = ["dep:magnus"]
+
+# JSON
+serde   = ["dep:serde", "dep:serde_json"]
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+
+# rutie (wrapper Ruby) optionnel
+rutie   = { version = "0.9", optional = true }
+
+# magnus (alternative) optionnel
+magnus  = { version = "0.6", optional = true }
+
+# Sérialisation
+serde       = { version = "1", features = ["derive"], optional = true }
+serde_json  = { version = "1", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "rutie", "serde"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"

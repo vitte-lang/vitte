@@ -1,0 +1,64 @@
+[package]
+name        = "vitte-dotnet"
+description = "Interop .NET for Vitte (host .NET Core, call into managed, P/Invoke shims)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-dotnet"
+
+keywords   = ["dotnet", "clr", "netcore", "interop", "ffi"]
+categories = ["development-tools", "ffi"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_dotnet"
+path = "src/lib.rs"
+
+[features]
+default       = ["std", "hostfxr"]
+std           = []
+
+# Host .NET runtime (cross-platform via nethost/hostfxr)
+hostfxr       = ["dep:netcorehost"]
+
+# Windows-specific COM/WinRT interop (optional)
+win-com       = ["dep:windows"]
+
+# IPC bridge options
+serde         = ["dep:serde", "dep:serde_json"]
+tokio         = ["dep:tokio"]
+
+# All
+full          = ["std","hostfxr","win-com","serde","tokio"]
+
+[dependencies]
+vitte-core    = { path = "../vitte-core", version = "0.1.0" }
+
+# .NET hosting (nethost/hostfxr)
+netcorehost   = { version = "0.6", optional = true, default-features = false }
+
+# Windows bindings (COM/Win32) — gated
+windows       = { version = "0.58", optional = true, features = ["Win32_System_Com","Win32_System_WinRT","implement"] }
+
+# serialization / IPC
+serde         = { version = "1", optional = true, features = ["derive"] }
+serde_json    = { version = "1", optional = true }
+
+# async runtime (for IPC scaffolding)
+tokio         = { version = "1", optional = true, default-features = false, features = ["rt-multi-thread","macros","sync","io-util","process","time"] }
+
+# misc
+thiserror     = { version = "1", default-features = false }
+camino        = { version = "1", default-features = false }
+
+[build-dependencies]
+cc            = "1.0"
+
+[dev-dependencies]
+tempfile      = "3"

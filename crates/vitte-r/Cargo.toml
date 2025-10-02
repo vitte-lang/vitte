@@ -1,0 +1,54 @@
+[package]
+name        = "vitte-r"
+description = "Interop R pour Vitte (extendr, R embed FFI, conversions JSON)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-r"
+
+keywords   = ["R", "extendr", "ffi", "embed", "interop"]
+categories = ["api-bindings", "development-tools", "external-ffi-bindings"]
+
+[lib]
+name = "vitte_r"
+path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default   = ["std"]
+std       = []
+extendr   = ["dep:extendr-api"]
+r-embed   = []
+serde     = ["dep:serde", "dep:serde_json"]
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+
+# extendr API optionnelle
+extendr-api = { version = "0.5", optional = true }
+
+# JSON optionnel
+serde       = { version = "1", features = ["derive"], optional = true }
+serde_json  = { version = "1", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+serde_json = "1"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "extendr", "serde"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"

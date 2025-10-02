@@ -1,0 +1,53 @@
+[package]
+name        = "vitte-compress"
+description = "Unified compression/decompression for Vitte (deflate/zstd/lz4/brotli/xz)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-compress"
+
+keywords   = ["compression", "decompression", "zstd", "lz4", "brotli"]
+categories = ["compression", "data-structures"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_compress"
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+std     = []
+
+# backends (opt-in)
+deflate = ["dep:flate2"]          # gzip/deflate
+zstd    = ["dep:zstd"]            # zstd
+lz4     = ["dep:lz4_flex"]        # lz4 (fast)
+brotli  = ["dep:brotli"]          # brotli
+xz      = ["dep:xz2"]             # xz/lzma
+zopfli  = ["dep:zopfli"]          # better gzip encoder (slow)
+
+# I/O helpers
+io       = ["std"]                # Read/Write convenience
+async-io = ["io", "dep:tokio"]    # Async wrappers (tokio)
+
+full = ["std","io","deflate","zstd","lz4","brotli","xz","zopfli"]
+
+[dependencies]
+vitte-core = { path = "../vitte-core", version = "0.1.0" }
+
+# optional backends
+flate2   = { version = "1", optional = true, default-features = false, features = ["rust_backend"] }
+zstd     = { version = "0.13", optional = true, default-features = false }
+lz4_flex = { version = "0.11", optional = true, default-features = false }
+brotli   = { version = "3", optional = true, default-features = false }
+xz2      = { version = "0.1", optional = true, default-features = false }
+zopfli   = { version = "0.8", optional = true, default-features = false }
+
+# async
+tokio = { version = "1", optional = true, default-features = false, features = ["io-util"] }

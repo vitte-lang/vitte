@@ -1,0 +1,64 @@
+[package]
+name        = "vitte-help"
+description = "vitte-help — génération de messages d’aide et manuels pour les CLIs Vitte (usage, options, sous-commandes, exemples)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["cli", "help", "usage", "manual", "vitte"]
+categories = ["command-line-interface", "development-tools"]
+
+[lib]
+name = "vitte_help"
+path = "src/lib.rs"
+
+[features]
+default = ["std", "errors", "colors"]
+
+# Environnements
+std = []
+alloc-only = []
+
+# Sérialisation éventuelle des specs d’aide
+serde = ["dep:serde"]
+
+# Erreurs jolies
+errors = ["dep:thiserror"]
+
+# Couleurs ANSI dans l’aide
+colors = ["dep:vitte-ansi"]
+
+# Intégration directe avec les specs d’arguments
+args-spec = ["dep:vitte-args"]
+
+[dependencies]
+serde       = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+thiserror   = { workspace = true, optional = true }
+
+# internes
+vitte-ansi  = { path = "../vitte-ansi", version = "0.1.0", optional = true }
+vitte-args  = { path = "../vitte-args", version = "0.1.0", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "errors", "colors", "args-spec", "serde"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"

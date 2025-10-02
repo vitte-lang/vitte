@@ -1,0 +1,58 @@
+[package]
+name        = "vitte-spinner"
+description = "vitte-spinner — indicateurs de progression spinners pour CLIs Vitte (frames animées, texte, multi-spinners, couleurs ANSI)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["spinner", "cli", "progress", "ansi", "vitte"]
+categories = ["command-line-interface", "development-tools"]
+
+[lib]
+name = "vitte_spinner"
+path = "src/lib.rs"
+
+[features]
+default     = ["std", "ansi", "errors", "multi"]
+std         = []
+alloc-only  = []
+
+serde   = ["dep:serde"]
+errors  = ["dep:thiserror"]
+
+ansi    = ["dep:vitte-ansi"]
+multi   = ["dep:crossbeam-channel"]
+
+[dependencies]
+serde     = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+thiserror = { workspace = true, optional = true }
+
+# internes
+vitte-ansi = { path = "../vitte-ansi", version = "0.1.0", optional = true }
+
+# externes
+crossbeam-channel = { version = "0.5", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std","ansi","errors","multi","serde"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+doc_markdown            = "allow"
+too_many_lines          = "allow"

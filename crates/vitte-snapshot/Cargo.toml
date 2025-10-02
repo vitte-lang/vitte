@@ -1,0 +1,71 @@
+
+
+[package]
+name        = "vitte-snapshot"
+description = "Snapshots pour Vitte : capture d'état, sérialisation stable, diff, stockage fichiers."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-snapshot"
+
+keywords   = ["snapshot", "testing", "diff", "serde", "deterministic"]
+categories = ["development-tools", "testing", "encoding"]
+
+[lib]
+name = "vitte_snapshot"
+path = "src/lib.rs"
+
+[features]
+# Par défaut: std + sérialisation JSON + horodatage + hash
+default = ["std", "serde", "time", "hash"]
+std     = []
+serde   = ["dep:serde", "dep:serde_json"]
+time    = ["dep:time"]
+hash    = ["dep:sha2", "dep:base64"]
+# Diff textuel human-friendly
+text-diff = ["dep:similar"]
+# Compression optionnelle lors du stockage
+zstd    = ["dep:zstd"]
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+
+# Sérialisation
+serde       = { version = "1", features = ["derive"], optional = true }
+serde_json  = { version = "1", optional = true }
+
+# Horodatage
+time        = { version = "0.3", optional = true, features = ["formatting", "macros"] }
+
+# Hash/base64
+sha2        = { version = "0.10", optional = true }
+base64      = { version = "0.22", optional = true }
+
+# Diff textuel
+similar     = { version = "2.6", optional = true, default-features = false, features = ["text"] }
+
+# Compression
+zstd        = { version = "0.13", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+insta = { version = "1.39", features = ["json"] }
+serde_json = "1"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "serde", "time", "hash", "text-diff"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"

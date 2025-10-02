@@ -1,0 +1,64 @@
+[package]
+name         = "vitte-gui"
+description  = "GUI unifiée pour Vitte (egui + winit + wgpu, natif et Web)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+
+[lib]
+name = "vitte_gui"
+path = "src/lib.rs"
+
+[features]
+default = ["std", "egui", "native"]
+std     = []
+# Stack natif (desktop)
+native  = ["winit", "wgpu", "arboard", "eframe?/wgpu"]
+# Stack Web (WASM)
+web     = ["wasm-bindgen", "js-sys", "web-sys", "egui/serde"]
+# Couche UI (activée par défaut)
+egui    = ["dep:egui"]
+# Option: utiliser eframe (simplifie intégration winit/wgpu)
+eframe  = ["dep:eframe"]
+
+[dependencies]
+# UI
+egui = { version = "0.27", optional = true }
+eframe = { version = "0.27", optional = true }
+
+# Fenêtrage + GPU
+winit = { version = "0.30", optional = true }
+wgpu  = { version = "0.20", optional = true }
+
+# Presse-papiers (desktop)
+arboard = { version = "3.4", optional = true }
+
+# WASM bindings (web)
+wasm-bindgen = { version = "0.2", optional = true }
+js-sys  = { version = "0.3", optional = true }
+web-sys = { version = "0.3", optional = true, features = ["Window","Document","HtmlCanvasElement","console"] }
+
+# Utilitaires
+thiserror   = "1"
+parking_lot = "0.12"
+log         = "0.4"
+instant     = "0.1"
+serde       = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+env_logger = "0.11"
+pollster   = "0.3"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O3", "--strip-debug"]
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+opt-level = "s"
+panic = "abort"
+strip = "symbols"

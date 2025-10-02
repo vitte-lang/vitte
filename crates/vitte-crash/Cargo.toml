@@ -1,0 +1,52 @@
+[package]
+name        = "vitte-crah"
+description = "Crash handling & reporting for Vitte (panic hook, signals, minidump/backtrace, optional Sentry)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-crah"
+
+keywords   = ["crash", "panic", "backtrace", "minidump", "report"]
+categories = ["development-tools", "debugging"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_crah"
+path = "src/lib.rs"
+
+[features]
+default    = ["std", "panic-hook", "signals", "backtrace"]
+std        = []
+panic-hook = []                       # install a global panic hook
+signals    = ["dep:signal-hook"]      # trap POSIX signals
+backtrace  = ["dep:backtrace"]        # capture backtraces on crash
+minidump   = ["dep:minidump-writer"]  # write .dmp files (where supported)
+sentry     = ["dep:sentry"]           # report crashes to Sentry
+serde      = ["dep:serde", "dep:serde_json"]
+
+full = ["std","panic-hook","signals","backtrace","minidump","sentry","serde"]
+
+[dependencies]
+vitte-core       = { path = "../vitte-core", version = "0.1.0" }
+
+anyhow           = { version = "1", default-features = false, features = ["std"] }
+thiserror        = { version = "1", default-features = false }
+
+# optional integrations
+signal-hook      = { version = "0.3", optional = true, default-features = false, features = ["iterator"] }
+backtrace        = { version = "0.3", optional = true, default-features = true }
+minidump-writer  = { version = "0.8", optional = true, default-features = false }
+sentry           = { version = "0.34", optional = true, default-features = false, features = ["reqwest", "backtrace"] }
+
+# optional serialization
+serde            = { version = "1", optional = true, features = ["derive"] }
+serde_json       = { version = "1", optional = true }
+
+[dev-dependencies]
+tempfile         = "3"

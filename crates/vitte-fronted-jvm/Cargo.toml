@@ -1,0 +1,47 @@
+[package]
+name         = "vitte-frontend-jvm"
+description  = "JNI bindings for Vitte frontend (lexer/parser/AST) usable from Java/Kotlin on the JVM."
+version       = { workspace = true }
+edition       = { workspace = true }
+rust-version  = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+homepage      = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-frontend-jvm"
+
+keywords   = ["jni", "java", "kotlin", "frontend", "parser", "ast"]
+categories = ["ffi", "compilers", "development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_frontend_jvm"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]   # cdylib required for JNI (.so/.dylib/.dll)
+
+[features]
+default = ["std", "jni"]
+std     = []
+jni     = ["dep:jni"]
+serde   = ["dep:serde", "dep:serde_json"]
+
+full    = ["std","jni","serde"]
+
+[dependencies]
+vitte-core     = { path = "../vitte-core", version = "0.1.0" }
+vitte-lexer    = { path = "../vitte-lexer", version = "0.1.0" }
+vitte-parser   = { path = "../vitte-parser", version = "0.1.0" }
+vitte-ast      = { path = "../vitte-ast", version = "0.1.0" }
+vitte-frontend = { path = "../vitte-frontend", version = "0.1.0" }
+
+thiserror   = { version = "1", default-features = false }
+
+# optional
+jni         = { version = "0.21", optional = true }        # JNI interface
+serde       = { version = "1", optional = true, features = ["derive"] }
+serde_json  = { version = "1", optional = true }
+
+[dev-dependencies]
+anyhow      = "1"

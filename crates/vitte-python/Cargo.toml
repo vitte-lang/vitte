@@ -1,0 +1,61 @@
+
+
+[package]
+name        = "vitte-python"
+description = "Interop Python pour Vitte (PyO3, extensions CPython, FFI)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-python"
+
+keywords   = ["python", "pyo3", "ffi", "extension", "abi3"]
+categories = ["api-bindings", "development-tools", "external-ffi-bindings"]
+
+[lib]
+name = "vitte_python"
+path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
+
+[features]
+# Par défaut: std + PyO3 sans extension-module (utile côté embedding)
+default = ["std", "pyo3"]
+std     = []
+# Active l'intégration PyO3 (embedding ou bindings)
+pyo3    = ["dep:pyo3"]
+# Construit un module d'extension CPython (nécessaire pour import côté Python)
+ext-module = ["pyo3/extension-module"]
+# Cible ABI3 minimale (Python ≥ 3.9)
+abi3       = ["pyo3/abi3", "pyo3/abi3-py39"]
+# Sérialisation JSON optionnelle
+serde      = ["dep:serde", "dep:serde_json"]
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+# PyO3 (optionnel). `auto-initialize` pour usage simple côté embedding.
+pyo3      = { version = "0.21", optional = true, default-features = false, features = ["auto-initialize"] }
+# Optionnel: sérialisation
+serde       = { version = "1", features = ["derive"], optional = true }
+serde_json  = { version = "1", optional = true }
+
+[dev-dependencies]
+serial_test = "3"
+# Tests d'embedding Python côté Rust
+pyo3 = { version = "0.21", features = ["auto-initialize"] }
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "pyo3"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"

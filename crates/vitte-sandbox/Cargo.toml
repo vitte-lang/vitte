@@ -1,0 +1,72 @@
+
+
+[package]
+name        = "vitte-sandbox"
+description = "Sandbox d’exécution pour Vitte : hôtes WASM/WASI, exécution isolée, limites CPU/mémoire."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-sandbox"
+
+keywords   = ["wasm", "wasi", "sandbox", "isolation", "security"]
+categories = ["wasm", "development-tools", "os"]
+
+[lib]
+name = "vitte_sandbox"
+path = "src/lib.rs"
+
+[[bin]]
+name = "vitte-sandbox"
+path = "src/main.rs"
+
+[features]
+# Par défaut: std + hôte WASI basique
+default   = ["std", "wasmtime", "wasi"]
+std       = []
+# Moteur WASM
+dummy     = []
+wasmtime  = ["dep:wasmtime", "dep:wasmtime-wasi"]
+# Support WASI
+wasi      = []
+# JSON de config
+serde     = ["dep:serde", "dep:serde_json"]
+# Runtime async pour I/O sandbox
+rt-tokio  = ["dep:tokio"]
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+bytes     = "1"
+
+# WASM runtime
+wasmtime       = { version = "21", optional = true, default-features = false, features = ["cranelift", "cache"] }
+wasmtime-wasi  = { version = "21", optional = true }
+
+# JSON
+serde       = { version = "1", features = ["derive"], optional = true }
+serde_json  = { version = "1", optional = true }
+
+# Async runtime
+tokio       = { version = "1.39", optional = true, default-features = false, features = ["rt", "rt-multi-thread", "macros", "fs", "time", "sync"] }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+# Tests WASM/WASI (ex. modules de test)
+wat = "1.0"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "wasmtime", "wasi", "serde"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"

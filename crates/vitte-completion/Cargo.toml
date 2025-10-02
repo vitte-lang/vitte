@@ -1,0 +1,52 @@
+[package]
+name        = "vitte-completion"
+description = "vitte-completion — génération d’autocomplétions (bash, zsh, fish) pour les CLIs Vitte."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["cli", "completion", "bash", "zsh", "fish"]
+categories = ["command-line-interface", "development-tools"]
+
+[lib]
+name = "vitte_completion"
+path = "src/lib.rs"
+
+[features]
+default = ["std", "errors"]
+std = []
+alloc-only = []
+serde = ["dep:serde"]
+errors = ["dep:thiserror"]
+
+# Intégrations facultatives depuis les specs d’autres crates (ex: vitte-args)
+args-spec = ["dep:vitte-args"]
+
+[dependencies]
+serde       = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+thiserror   = { workspace = true, optional = true }
+vitte-args  = { path = "../vitte-args", version = "0.1.0", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "errors", "serde", "args-spec"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+doc_markdown            = "allow"
+too_many_lines          = "allow"

@@ -1,0 +1,41 @@
+[package]
+name        = "vitte-consteval"
+description = "Compile-time constant evaluation for Vitte (folding, pattern-match, intrinsics)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-consteval"
+
+keywords   = ["compiler", "const-eval", "optimization", "folding"]
+categories = ["compilers", "development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_consteval"
+path = "src/lib.rs"
+
+[features]
+default     = ["std", "fold"]
+std         = []
+fold        = []          # constant folding over Vitte IR/AST
+interpreter = []          # small interpreter for constexpr evaluation
+miri-like   = []          # extra UB checks in const-eval
+wasm-safe   = []          # avoid OS/time syscalls
+
+full = ["std","fold","interpreter","miri-like","wasm-safe"]
+
+[dependencies]
+vitte-core = { path = "../vitte-core", version = "0.1.0" }
+vitte-ast  = { path = "../vitte-ast",  version = "0.1.0" }
+vitte-ir   = { path = "../vitte-ir",   version = "0.1.0" }
+
+[dev-dependencies]
+# for doctests/fixtures when std is enabled
+serde       = { version = "1", features = ["derive"], optional = false }
+serde_json  = "1"

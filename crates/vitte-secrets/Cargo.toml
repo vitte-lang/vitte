@@ -1,0 +1,63 @@
+
+
+[package]
+name        = "vitte-secrets"
+description = "Gestion sécurisée de secrets pour Vitte : stockage mémoire protégée, fichiers chiffrés, intégration avec vaults."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-secrets"
+
+keywords   = ["secrets", "crypto", "vault", "security"]
+categories = ["cryptography", "config", "development-tools"]
+
+[lib]
+name = "vitte_secrets"
+path = "src/lib.rs"
+
+[features]
+default = ["std", "zeroize", "serde"]
+std     = []
+# Effacement mémoire
+zeroize = ["dep:zeroize"]
+# Sérialisation
+serde   = ["dep:serde", "dep:serde_json"]
+# Chiffrement AES-GCM
+aesgcm  = ["dep:aes-gcm", "dep:rand_core"]
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+
+# Effacement mémoire sécurisé
+zeroize   = { version = "1.8", optional = true }
+
+# Sérialisation
+serde       = { version = "1", features = ["derive"], optional = true }
+serde_json  = { version = "1", optional = true }
+
+# Crypto
+aes-gcm     = { version = "0.10", optional = true, features = ["aes"] }
+rand_core   = { version = "0.6", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+serde_json = "1"
+hex = "0.4"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "zeroize", "serde", "aesgcm"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"

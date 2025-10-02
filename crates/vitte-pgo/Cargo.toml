@@ -1,0 +1,49 @@
+[package]
+name        = "vitte-pgo"
+description = "Aides PGO pour Vitte : instrumentation, fusion de profils, rustflags, intégration CI."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-pgo"
+
+keywords   = ["pgo", "profile-guided-optimization", "llvm", "rustflags", "ci"]
+categories = ["development-tools", "build-dependencies"]
+
+[lib]
+name = "vitte_pgo"
+path = "src/lib.rs"
+
+[features]
+# Par défaut expose les helpers sans rien imposer
+default       = ["std"]
+std           = []
+# Active un cfg de build instrumenté (RUSTFLAGS -Cprofile-generate)
+instrument    = []
+# Active un cfg d'utilisation de profil (RUSTFLAGS -Cprofile-use)
+use-profile   = []
+# Permet d'indiquer un chemin personnalisé vers llvm-profdata/llvm-cov
+llvm-tools    = []
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"

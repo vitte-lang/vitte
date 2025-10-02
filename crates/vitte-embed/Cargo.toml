@@ -1,0 +1,42 @@
+[package]
+name        = "vitte-embed"
+description = "Embedding API for Vitte (embed Vitte runtime into host apps, control execution, exchange values)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-embed"
+
+keywords   = ["embed", "ffi", "runtime", "scripting"]
+categories = ["development-tools", "ffi"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_embed"
+path = "src/lib.rs"
+
+[features]
+default   = ["std"]
+std       = []
+ffi       = []  # expose C ABI symbols
+serde     = ["dep:serde", "dep:serde_json"]
+
+full      = ["std","ffi","serde"]
+
+[dependencies]
+vitte-core    = { path = "../vitte-core", version = "0.1.0" }
+vitte-runtime = { path = "../vitte-runtime", version = "0.1.0" }
+
+thiserror     = { version = "1", default-features = false }
+
+# optional
+serde         = { version = "1", optional = true, features = ["derive"] }
+serde_json    = { version = "1", optional = true }
+
+[dev-dependencies]
+tempfile      = "3"

@@ -1,0 +1,65 @@
+
+
+[package]
+name        = "vitte-prof"
+description = "Profilage pour Vitte : timers, compteurs, export pprof/flamegraph, intégration tracing."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-prof"
+
+keywords   = ["profiling", "pprof", "flamegraph", "tracing", "performance"]
+categories = ["development-tools::profiling", "performance", "debugging"]
+
+[lib]
+name = "vitte_prof"
+path = "src/lib.rs"
+
+[features]
+# Par défaut: std + intégration tracing
+default  = ["std", "tracing"]
+std      = []
+# Export au format pprof (protobuf) via crate `pprof`
+pprof    = ["dep:pprof"]
+# Génération de flamegraph via inferno (texte SVG/string)
+flame    = ["dep:inferno"]
+# Intégration avec tracing (spans -> profilage)
+tracing  = ["dep:tracing"]
+# Sérialisation JSON des stats
+serde    = ["dep:serde", "dep:serde_json"]
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+once_cell = "1.19"
+# Profilage par échantillonnage
+pprof     = { version = "0.13", optional = true, default-features = false, features = ["frames", "flamegraph"] }
+# Génération flamegraph à partir de stacks
+inferno   = { version = "0.11", optional = true }
+# Tracing
+tracing   = { version = "0.1", optional = true, default-features = false, features = ["std", "attributes"] }
+# JSON
+serde      = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false }
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+pretty_assertions = "1.4"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "tracing", "pprof", "flame", "serde"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"

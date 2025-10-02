@@ -1,0 +1,84 @@
+[package]
+name        = "vitte-term"
+description = "vitte-term — utilitaires terminal pour CLIs Vitte: TTY, taille, couleurs, curseur, écran alternatif, mode raw, événements clavier/souris."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["terminal", "tty", "ansi", "raw-mode", "cli"]
+categories = ["command-line-interface", "os::unix-apis", "os::windows-apis", "development-tools"]
+
+[lib]
+name = "vitte_term"
+path = "src/lib.rs"
+
+[features]
+default      = ["std", "errors", "ansi", "crossterm", "unicode", "detect"]
+std          = []
+alloc-only   = []
+
+# Ergonomie
+serde   = ["dep:serde"]
+errors  = ["dep:thiserror"]
+ansi    = ["dep:vitte-ansi"]
+
+# Détection terminal et capacités
+detect  = ["dep:atty", "dep:terminal_size"]
+
+# Calculs de largeur unicode et segmentation (pour positionnement/trim)
+unicode = ["dep:unicode-width", "dep:unicode-segmentation"]
+
+# Backends d’E/S terminal (choisir au moins un)
+crossterm = ["dep:crossterm"]               # par défaut, multiplateforme
+termion   = ["dep:termion"]                 # alternative Unix (désactive crossterm si souhaité)
+
+# Minuteur/chrono pour animations simples
+time = ["dep:instant"]
+
+[dependencies]
+# internes
+vitte-ansi = { path = "../vitte-ansi", version = "0.1.0", optional = true }
+
+# externes
+serde    = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+thiserror = { workspace = true, optional = true }
+
+# backends
+crossterm = { version = "0.28", optional = true, default-features = true, features = ["events"] }
+termion   = { version = "3",    optional = true }
+
+# détection et tailles
+atty           = { version = "0.2", optional = true }
+terminal_size  = { version = "0.3", optional = true }
+
+# unicode
+unicode-width         = { version = "0.1", optional = true }
+unicode-segmentation  = { version = "1.11", optional = true }
+
+# timing
+instant = { version = "0.1", optional = true, default-features = false, features = ["now"] }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+indoc             = "2"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std","errors","ansi","detect","unicode","crossterm","time"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+doc_markdown            = "allow"
+too_many_lines          = "allow"

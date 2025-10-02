@@ -1,0 +1,82 @@
+
+
+[package]
+name        = "vitte-stats"
+description = "Statistiques pour Vitte : compteurs, moyennes/variance en ligne, histogrammes, percentiles, sketches (t-digest)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-stats"
+
+keywords   = ["statistics", "histogram", "percentiles", "online", "metrics"]
+categories = ["science", "algorithms", "development-tools"]
+
+[lib]
+name = "vitte_stats"
+path = "src/lib.rs"
+
+[features]
+# Par défaut : std + sérialisation + histogrammes
+default   = ["std", "serde", "histogram"]
+std       = []
+# Sérialisation optionnelle
+serde     = ["dep:serde", "dep:serde_json"]
+# Histogrammes HDR
+histogram = ["dep:hdrhistogram"]
+# Sketch t-digest (percentiles approx)
+tdigest   = ["dep:tdigest"]
+# Regroupe les sketches
+sketches  = ["histogram", "tdigest"]
+# Timestamping optionnel
+time      = ["dep:time"]
+# Générateurs aléatoires (échantillons, tests)
+rand      = ["dep:rand"]
+# Intégration tracing
+tracing   = ["dep:tracing"]
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+parking_lot = "0.12"
+
+# Sérialisation
+serde       = { version = "1", features = ["derive"], optional = true }
+serde_json  = { version = "1", optional = true }
+
+# Histogrammes
+hdrhistogram = { version = "7", optional = true }
+
+# Sketch t-digest
+tdigest    = { version = "0.2", optional = true }
+
+# Temps
+time       = { version = "0.3", optional = true, features = ["formatting", "macros"] }
+
+# Aléatoire
+rand       = { version = "0.8", optional = true }
+
+# Tracing
+tracing    = { version = "0.1", optional = true, default-features = false, features = ["std", "attributes"] }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+approx = "0.5"
+rand = "0.8"
+serde_json = "1"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "serde", "histogram", "tdigest", "time"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"

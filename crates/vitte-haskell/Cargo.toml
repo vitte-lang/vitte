@@ -1,0 +1,35 @@
+[package]
+name         = "vitte-haskell"
+description  = "Interop Haskell pour Vitte (FFI stable via ABI C, stubs c2hs/hsc2hs)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+
+[lib]
+name       = "vitte_haskell"
+crate-type = ["cdylib", "rlib"]
+path       = "src/lib.rs"
+
+[features]
+default = ["std"]
+std     = []
+cbind   = ["dep:cbindgen"]
+
+[dependencies]
+libc      = "0.2"
+thiserror = "1"
+
+[build-dependencies]
+cbindgen = { version = "0.27", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[package.metadata.capi.header]
+# Si feature `cbind` active, `build.rs` peut générer include/vitte_haskell.h
+out-dir = "include"
+file    = "vitte_haskell.h"

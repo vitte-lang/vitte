@@ -1,0 +1,65 @@
+
+
+[package]
+name        = "vitte-repro"
+description = "Reproductibilité pour Vitte : empreintes build, capture d’environnement, métadonnées, hachage d’artefacts."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-repro"
+
+keywords   = ["reproducibility", "build", "hash", "metadata", "deterministic"]
+categories = ["development-tools", "build-dependencies"]
+
+[lib]
+name = "vitte_repro"
+path = "src/lib.rs"
+
+[features]
+# Par défaut: std + sérialisation + temps
+default = ["std", "serde", "time"]
+std     = []
+serde   = ["dep:serde", "dep:serde_json"]
+# Inclure horodatage/formatage
+time    = ["dep:time"]
+# Calcul d’empreintes SHA256/XXH3
+hash    = ["dep:sha2", "dep:xxhash-rust"]
+# Capture git (version, commit) si dispo
+git     = []
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+
+# Sérialisation
+serde       = { version = "1", features = ["derive"], optional = true }
+serde_json  = { version = "1", optional = true }
+
+# Horodatage
+time        = { version = "0.3", optional = true, features = ["formatting", "macros"] }
+
+# Hash
+sha2          = { version = "0.10", optional = true }
+xxhash-rust   = { version = "0.8", optional = true, features = ["xxh3"] }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+serde_json = "1"
+hex = "0.4"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "serde", "time", "hash"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"

@@ -1,0 +1,78 @@
+[package]
+name        = "vitte-encoding"
+description = "vitte-encoding — encodages texte génériques: ISO-8859-x, Windows-125x, KOI8, Mac, GBK/GB18030, Big5, Shift_JIS, EUC-JP/KR, UTF-8/16/32; transcodage, détection optionnelle."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["encoding", "charset", "codec", "transcode", "vitte"]
+categories = ["text-processing", "internationalization", "encoding"]
+
+[lib]
+name = "vitte_encoding"
+path = "src/lib.rs"
+
+[features]
+# Par défaut: support large, std, erreurs jolies. Désactive ou affine selon besoins.
+default = ["std", "errors", "utf", "iso_8859", "win125x", "koi8", "mac", "eastasia", "transcode"]
+
+# Environnements
+std = []
+alloc-only = []
+
+# Sérialisation (métadonnées, tables, résultats)
+serde = ["dep:serde"]
+
+# Erreurs jolies
+errors = ["dep:thiserror"]
+
+# Détection d’encodage (heuristique). Active chardetng si souhaité.
+detect = ["dep:chardetng"]
+
+# Familles d’encodages (active ce dont tu as besoin)
+utf       = []  # UTF-8/16LE/16BE/32LE/32BE (BOM aware)
+iso_8859  = []  # ISO-8859-1..16
+win125x   = []  # Windows-1250..1258
+koi8      = []  # KOI8-R/U
+mac       = []  # MacRoman, MacCyrillic
+eastasia  = []  # GBK/GB18030, Big5, Shift_JIS, EUC-JP, EUC-KR
+transcode = []  # API transcodage générique (Decode -> Encode)
+
+# Implémentation accélérée via encoding_rs (UTF-8/16 + East Asia) quand dispo
+encoding-rs = ["dep:encoding_rs"]
+
+[dependencies]
+# internes
+vitte-core = { path = "../vitte-core", version = "0.1.0" }
+
+# externes (toutes optionnelles)
+serde       = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+thiserror   = { workspace = true, optional = true }
+encoding_rs = { version = "0.8", optional = true }
+chardetng   = { version = "0.1", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+serde_json        = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features        = false
+# Doc par défaut centrée sur les familles principales. Ajoute/retire selon besoin.
+features            = ["std", "errors", "utf", "iso_8859", "win125x", "eastasia", "transcode"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"

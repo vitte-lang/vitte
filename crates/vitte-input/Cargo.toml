@@ -1,0 +1,42 @@
+[package]
+name         = "vitte-input"
+description  = "Abstraction des entrées (clavier, souris, gamepad, touch) pour Vitte."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+
+[lib]
+name = "vitte_input"
+path = "src/lib.rs"
+
+[features]
+default = ["std", "native"]
+std     = []
+native  = ["winit", "gilrs?/default"]
+web     = ["wasm-bindgen", "web-sys", "js-sys"]
+serde   = ["dep:serde"]
+
+[dependencies]
+thiserror = "1"
+log       = "0.4"
+
+# Desktop
+winit = { version = "0.30", optional = true }
+gilrs = { version = "0.10", optional = true }
+
+# Web
+wasm-bindgen = { version = "0.2", optional = true }
+js-sys  = { version = "0.3", optional = true }
+web-sys = { version = "0.3", optional = true, features = [
+  "Window","Document","Event","KeyboardEvent","MouseEvent","WheelEvent","Gamepad","GamepadEvent","GamepadButton"
+] }
+
+# Serialization (optional)
+serde = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+env_logger = "0.11"

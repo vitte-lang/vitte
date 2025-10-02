@@ -1,0 +1,55 @@
+
+
+[package]
+name        = "vitte-lto"
+description = "Helpers et conventions pour LTO/ThinLTO dans Vitte (flags, détection, intégration CI)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-lto"
+
+keywords   = ["lto", "thinlto", "linker", "build", "optimization"]
+categories = ["development-tools", "build-dependencies"]
+
+[lib]
+name = "vitte_lto"
+path = "src/lib.rs"
+
+# Ce crate expose des helpers. Les profils LTO se définissent au niveau du workspace root.
+# Ces features permettent d'aligner les outils/CI et d'ajouter des cfg!
+[features]
+# Par défaut activer ThinLTO côté outils
+default      = ["thin-lto"]
+# Active un cfg `feature=\"thin_lto\"` (cf. build.rs)
+thin-lto     = []
+# Active un cfg `feature=\"fat_lto\"`
+fat-lto      = []
+# Indique l'intention de panic=abort côté profils root
+panic-abort  = []
+# Indique l'intention d'unité de codegen unique (optimisation du lien)
+codegen-units-1 = []
+
+[dependencies]
+cfg-if  = "1.0"
+thiserror = "1.0"
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+
+# Notes: placez dans le Cargo.toml racine des sections [profile.*] correspondantes, par ex.
+# [profile.release]
+# lto = "thin"          # ou true pour fat LTO
+# codegen-units = 1
+# panic = "abort"
+# opt-level = 3
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"

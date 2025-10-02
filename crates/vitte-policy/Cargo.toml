@@ -1,0 +1,59 @@
+
+
+[package]
+name        = "vitte-policy"
+description = "Moteur de politiques pour Vitte : règles déclaratives, validation, évaluation, profils de sécurité."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-policy"
+
+keywords   = ["policy", "rules", "validation", "security", "compliance"]
+categories = ["config", "development-tools"]
+
+[lib]
+name = "vitte_policy"
+path = "src/lib.rs"
+
+[features]
+# Par défaut: std + sérialisation
+default = ["std", "serde"]
+std     = []
+serde   = ["dep:serde", "dep:serde_json"]
+# Schémas JSON pour valider les politiques
+jsonschema = ["dep:jsonschema"]
+# Expressions de règles via regex
+regex = ["dep:regex"]
+# Horodatages/temporisations
+time  = ["dep:time"]
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+serde       = { version = "1", features = ["derive"], optional = true }
+serde_json  = { version = "1", optional = true }
+jsonschema  = { version = "0.18", optional = true }
+regex       = { version = "1", optional = true }
+time        = { version = "0.3", optional = true, features = ["formatting", "macros"] }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+serde_json = "1"
+rand = "0.8"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "serde", "jsonschema"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"

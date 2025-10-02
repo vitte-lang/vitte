@@ -1,0 +1,62 @@
+[package]
+name        = "vitte-key"
+description = "vitte-key — gestion générique de clés (génération, parsing, encodage hex/base64/base58, PEM/DER, empreintes SHA-2/3)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["key", "crypto", "pem", "der", "fingerprint"]
+categories = ["cryptography", "data-structures", "development-tools"]
+
+[lib]
+name = "vitte_key"
+path = "src/lib.rs"
+
+[features]
+default    = ["std", "errors", "rand", "hash"]
+std        = []
+serde      = ["dep:serde"]
+errors     = ["dep:thiserror"]
+rand       = ["dep:rand"]
+hash       = ["dep:sha2", "dep:sha3"]
+base64     = ["dep:base64"]
+base58     = ["dep:bs58"]
+pem        = ["dep:pem"]
+der        = ["dep:der"]
+
+[dependencies]
+serde     = { version = "1", features = ["derive"], optional = true, default-features = false }
+thiserror = { version = "1", optional = true }
+rand      = { version = "0.8", optional = true }
+sha2      = { version = "0.10", optional = true }
+sha3      = { version = "0.10", optional = true }
+base64    = { version = "0.21", optional = true }
+bs58      = { version = "0.5", optional = true }
+pem       = { version = "3", optional = true }
+der       = { version = "0.7", optional = true }
+hex       = "0.4"
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "errors", "rand", "hash", "base64", "base58", "pem", "der"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+doc_markdown            = "allow"
+too_many_lines          = "allow"
+

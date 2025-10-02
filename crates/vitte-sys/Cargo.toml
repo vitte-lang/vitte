@@ -1,0 +1,75 @@
+[package]
+name        = "vitte-sys"
+description = "vitte-sys — primitives bas niveau : appels systèmes portables, infos OS, gestion process, signaux."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["vitte", "system", "os", "ffi", "low-level"]
+categories = ["os", "api-bindings", "development-tools"]
+
+[lib]
+name = "vitte_sys"
+path = "src/lib.rs"
+
+[features]
+# Confort par défaut
+default = ["std"]
+
+# Environnement standard
+std = []
+
+# Mode embarqué : no_std(+alloc)
+alloc-only = []
+
+# Sérialisation de certaines infos système
+serde = ["dep:serde"]
+
+# Erreurs jolies
+errors = ["dep:thiserror"]
+
+# Détection plateforme via sysinfo
+sysinfo = ["dep:sysinfo"]
+
+# Bindings libc (Unix)
+libc = ["dep:libc"]
+
+# Bindings winapi (Windows)
+winapi = ["dep:windows-sys"]
+
+[dependencies]
+# internes
+vitte-core = { path = "../vitte-core", version = "0.1.0" }
+
+# externes
+serde       = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+thiserror   = { workspace = true, optional = true }
+sysinfo     = { version = "0.30", optional = true }
+libc        = { version = "0.2", optional = true }
+windows-sys = { version = "0.59", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+proptest          = { workspace = true }
+serde_json        = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "serde", "errors", "sysinfo", "libc", "winapi"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+too_many_lines           = "allow"
+doc_markdown             = "allow"

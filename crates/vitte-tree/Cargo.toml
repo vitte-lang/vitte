@@ -1,0 +1,65 @@
+[package]
+name        = "vitte-tree"
+description = "vitte-tree — structures arborescentes et rendu en arbre pour CLIs Vitte (ASCII/UTF, indentation, collapsibles, export JSON/YAML)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["tree", "cli", "ascii", "utf", "vitte"]
+categories = ["command-line-interface", "data-structures", "development-tools"]
+
+[lib]
+name = "vitte_tree"
+path = "src/lib.rs"
+
+[features]
+default     = ["std", "serde", "ansi", "errors", "yaml"]
+std         = []
+alloc-only  = []
+
+serde   = ["dep:serde"]
+errors  = ["dep:thiserror"]
+ansi    = ["dep:vitte-ansi"]
+
+# Exports externes
+yaml    = ["dep:serde_yaml"]
+json    = ["dep:serde_json"]
+
+# Optionnel: coloration thématique
+style   = ["dep:vitte-style"]
+
+[dependencies]
+# internes
+vitte-ansi  = { path = "../vitte-ansi", version = "0.1.0", optional = true }
+vitte-style = { path = "../vitte-style", version = "0.1.0", optional = true }
+
+# externes
+serde       = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+serde_json  = { version = "1.0", optional = true }
+serde_yaml  = { version = "0.9", optional = true }
+thiserror   = { workspace = true, optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+indoc             = "2"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std","serde","ansi","errors","yaml","json","style"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+doc_markdown            = "allow"
+too_many_lines          = "allow"

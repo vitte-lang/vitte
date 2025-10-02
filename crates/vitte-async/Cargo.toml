@@ -1,0 +1,60 @@
+[package]
+name        = "vitte-async"
+description = "Primitives et façade async runtime-agnostic pour Vitte (futures, tasks, timers, chan)."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-async"
+
+keywords   = ["async", "futures", "runtime", "tokio", "async-std"]
+categories = ["asynchronous", "concurrency", "development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_async"
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+std     = []
+
+# Sélection du runtime (optionnels, exclusifs en pratique)
+rt-tokio      = ["dep:tokio", "tokio/rt", "tokio/macros", "tokio/time", "tokio/sync", "tokio/net"]
+rt-async-std  = ["dep:async-std", "async-std/attributes"]
+rt-smol       = ["dep:smol"]
+
+# Surcouches internes activables
+channels = []
+sync     = []
+time     = []
+io       = []
+net      = []
+
+# Tout activer
+full = ["std", "rt-tokio", "rt-async-std", "rt-smol", "channels", "sync", "time", "io", "net"]
+
+[dependencies]
+futures             = "0.3"
+pin-project-lite    = "0.2"
+thiserror           = "1.0"
+parking_lot         = "0.12"
+tracing             = { version = "0.1", optional = true }
+
+# Runtimes optionnels
+tokio      = { version = "1.39", optional = true, default-features = false, features = ["rt", "macros", "time", "sync", "net"] }
+async-std  = { version = "1.13", optional = true, default-features = true, features = ["attributes"] }
+smol       = { version = "2.0", optional = true }
+
+[dev-dependencies]
+futures          = "0.3"
+tokio            = { version = "1.39", features = ["rt-multi-thread", "macros", "time"] }
+async-std        = { version = "1.13", features = ["attributes"] }
+smol             = "2.0"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }

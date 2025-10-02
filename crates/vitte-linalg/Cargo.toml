@@ -1,0 +1,73 @@
+
+
+[package]
+name        = "vitte-linalg"
+description = "Algèbre linéaire pour Vitte : vecteurs/matrices, opérations BLAS‑like, décompositions (LU/QR/SVD) en Rust pur, option SIMD."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-linalg"
+
+keywords   = ["linear-algebra", "matrix", "vector", "blas", "linalg"]
+categories = ["science", "algorithms", "data-structures"]
+
+exclude = [".github/*", "examples/*", "tests/data/*"]
+
+[lib]
+name = "vitte_linalg"
+path = "src/lib.rs"
+
+[features]
+# Par défaut, dépend de std et active approx pour comparaisons flottantes.
+default = ["std", "approx"]
+# Support no_std : désactiver la feature `std` et éviter rayon/rand.
+std = []
+# Comparaisons flottantes tolérantes
+approx = ["dep:approx"]
+# Activation d'optimisations SIMD (utilise std::arch; pas de dépendance)
+simd = []
+# Sérialisation optionnelle
+serde = ["dep:serde", "dep:serde_json"]
+# Générateurs aléatoires (remplissage aléatoire, matrices tests)
+rand = ["dep:rand"]
+# Parallélisme optionnel
+rayon = ["dep:rayon"]
+
+[dependencies]
+num-traits = "0.2"
+# Comparaisons approx pour floats
+approx      = { version = "0.5", optional = true }
+# Sérialisation JSON optionnelle
+serde       = { version = "1", features = ["derive"], optional = true }
+serde_json  = { version = "1", optional = true }
+# Génération aléatoire
+rand        = { version = "0.8", optional = true }
+# Parallélisme
+rayon       = { version = "1.10", optional = true }
+# Conversions de blocs mémoire sûres
+bytemuck    = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+rand = "0.8"
+criterion = { version = "0.5", default-features = false }
+pretty_assertions = "1.4"
+serde_json = "1"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "approx"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all       = "warn"
+pedantic  = "warn"
+nursery   = "warn"

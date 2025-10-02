@@ -1,0 +1,97 @@
+[package]
+name        = "vitte-readline"
+description = "vitte-readline — saisie interactive pour CLIs Vitte: édition en ligne, historique, complétion, surbrillance, keymaps, multiligne."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["readline", "cli", "history", "completion", "vitte"]
+categories = ["command-line-interface", "text-editors", "development-tools"]
+
+[lib]
+name = "vitte_readline"
+path = "src/lib.rs"
+
+[features]
+default     = ["std", "errors", "history", "completion", "highlight", "rustyline", "ansi"]
+std         = []
+alloc-only  = []
+
+# Ergonomie
+serde   = ["dep:serde"]
+errors  = ["dep:thiserror"]
+ansi    = ["dep:vitte-ansi"]
+
+# Historique persistent (~/.vitte_history)
+history = ["dep:dirs", "dep:vitte-path"]
+
+# Complétion branchée sur vitte-completion (si présent)
+completion = ["dep:vitte-completion"]
+
+# Coloration/surbrillance
+highlight = ["dep:nu-ansi-term"]
+
+# Encodage d’E/S (si l’input peut être non-UTF8)
+encoding = ["dep:vitte-encoding"]
+
+# Backends (choisir au moins un)
+rustyline = ["dep:rustyline"]
+reedline  = ["dep:reedline"]
+
+# Clipboard optionnel pour yank/put
+clipboard = ["dep:arboard"]
+
+# Gestion Ctrl-C/Ctrl-D
+signals = ["dep:ctrlc"]
+
+[dependencies]
+# internes
+vitte-ansi        = { path = "../vitte-ansi", version = "0.1.0", optional = true }
+vitte-path        = { path = "../vitte-path", version = "0.1.0", optional = true }
+vitte-completion  = { path = "../vitte-completion", version = "0.1.0", optional = true }
+vitte-encoding    = { path = "../vitte-encoding", version = "0.1.0", optional = true }
+
+# externes
+serde       = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+thiserror   = { workspace = true, optional = true }
+
+rustyline   = { version = "14", optional = true, default-features = true, features = ["with-file-history"] }
+reedline    = { version = "0.33", optional = true } # alternative moderne
+
+dirs        = { version = "5", optional = true }
+nu-ansi-term= { version = "0.50", optional = true }
+arboard     = { version = "3", optional = true }
+ctrlc       = { version = "3", optional = true }
+
+# (facultatif) pour détection TTY / largeur terminal si besoin dans lib.rs
+atty        = { version = "0.2", optional = true }
+terminal_size = { version = "0.3", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tempfile          = "3"
+indoc             = "2"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = [
+  "std","errors","ansi","history","completion","highlight",
+  "encoding","rustyline","clipboard","signals"
+]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                     = "warn"
+pedantic                = "warn"
+nursery                 = "warn"
+module_name_repetitions = "allow"
+doc_markdown            = "allow"
+too_many_lines          = "allow"

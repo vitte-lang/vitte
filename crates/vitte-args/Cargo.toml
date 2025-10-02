@@ -1,0 +1,60 @@
+[package]
+name        = "vitte-args"
+description = "vitte-args — parseur d’arguments CLI complet (flags, options, positionnels, sous-commandes, help/version auto)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["cli", "args", "parser", "vitte"]
+categories = ["command-line-interface", "development-tools"]
+
+[lib]
+name = "vitte_args"
+path = "src/lib.rs"
+
+[features]
+# Activées par défaut
+default = ["std", "errors"]
+
+# Support std complet
+std = []
+
+# Mode embarqué no_std + alloc
+alloc-only = []
+
+# Sérialisation des specs/args/matches
+serde = ["dep:serde"]
+
+# Erreurs jolies
+errors = ["dep:thiserror"]
+
+[dependencies]
+# internes (facultatif si tu relies avec vitte-core)
+# vitte-core = { path = "../vitte-core", version = "0.1.0", optional = true }
+
+serde     = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+thiserror = { workspace = true, optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "serde", "errors"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"

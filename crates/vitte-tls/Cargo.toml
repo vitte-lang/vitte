@@ -1,0 +1,61 @@
+
+
+[package]
+name        = "vitte-tls"
+description = "TLS pour Vitte : clients/serveurs sécurisés, Rustls, native-tls, PKI, gestion certificats."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-tls"
+
+keywords   = ["tls", "ssl", "rustls", "native-tls", "security"]
+categories = ["network-programming", "cryptography"]
+
+[lib]
+name = "vitte_tls"
+path = "src/lib.rs"
+
+[features]
+# Par défaut : std + rustls
+default     = ["std", "rustls"]
+std         = []
+rustls      = ["dep:tokio-rustls", "dep:rustls-pemfile"]
+native-tls  = ["dep:native-tls", "dep:tokio-native-tls"]
+async-std   = ["dep:async-native-tls"]
+dangerous   = []
+
+[dependencies]
+thiserror       = "1.0"
+cfg-if          = "1.0"
+futures         = "0.3"
+tokio           = { version = "1.39", features = ["net", "rt", "time"], optional = true }
+tokio-rustls    = { version = "0.26", optional = true }
+rustls-pemfile  = { version = "2", optional = true }
+native-tls      = { version = "0.2", optional = true }
+tokio-native-tls= { version = "0.3", optional = true }
+async-native-tls= { version = "0.4", optional = true }
+
+# Certs
+webpki-roots    = "0.26"
+rustls          = { version = "0.23", optional = true, features = ["logging", "tls12"] }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+tokio = { version = "1.39", features = ["rt-multi-thread", "macros", "net", "time"] }
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "rustls", "native-tls"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"

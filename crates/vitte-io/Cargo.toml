@@ -1,0 +1,64 @@
+[package]
+name        = "vitte-io"
+description = "I/O Vitte : entrées/sorties basiques (stdin, stdout, stderr), lecture/écriture de fichiers et flux."
+
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["vitte", "io", "filesystem", "stdin", "stdout"]
+categories = ["filesystem", "os", "development-tools"]
+
+[lib]
+name = "vitte_io"
+path = "src/lib.rs"
+
+[features]
+# Confort par défaut
+default = ["std"]
+
+# Environnement standard
+std = []
+
+# Mode embarqué : no_std(+alloc)
+alloc-only = []
+
+# Sérialisation de structures liées à I/O (si besoin)
+serde = ["dep:serde"]
+
+# Erreurs jolies
+errors = ["dep:thiserror"]
+
+[dependencies]
+# internes (accès à types de base)
+vitte-core = { path = "../vitte-core", version = "0.1.0" }
+
+# externes
+serde     = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+thiserror = { workspace = true, optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+proptest          = { workspace = true }
+serde_json        = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "serde", "errors"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+too_many_lines           = "allow"
+doc_markdown             = "allow"

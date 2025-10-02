@@ -1,0 +1,45 @@
+
+
+[package]
+name        = "vitte-node"
+description = "Interop Node.js pour Vitte (N-API, bindings Rust <-> JS, modules natifs)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-node"
+
+keywords   = ["node", "napi", "javascript", "ffi", "interop"]
+categories = ["api-bindings", "development-tools"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_node"
+path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default = ["std"]
+std     = []
+napi    = ["dep:napi"]
+serde   = ["dep:serde", "dep:serde_json"]
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+
+# N-API
+napi        = { version = "2", optional = true, default-features = false, features = ["napi4"] }
+
+# Optionnel: sérialisation
+serde       = { version = "1", features = ["derive"], optional = true }
+serde_json  = { version = "1", optional = true }
+
+[dev-dependencies]
+serial_test = "3"
+pretty_assertions = "1.4"

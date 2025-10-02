@@ -1,0 +1,94 @@
+[package]
+name        = "vitte-prompt"
+description = "vitte-prompt — gestion de prompts: templates, variables, front-matter, loaders FS, includes/partials, rendu Markdown, cache."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["prompt", "template", "jinja", "markdown", "yaml"]
+categories = ["text-processing", "template-engine", "development-tools"]
+
+[lib]
+name = "vitte_prompt"
+path = "src/lib.rs"
+
+[features]
+default     = ["std", "errors", "serde", "yaml", "json", "toml", "jinja", "markdown", "regex", "cache", "fs"]
+std         = []
+alloc-only  = []
+
+# Core
+serde   = ["dep:serde"]
+errors  = ["dep:thiserror"]
+
+# Formats de front-matter / data
+yaml = ["dep:serde_yaml"]
+json = ["dep:serde_json"]
+toml = ["dep:toml"]
+
+# Moteurs de template (au choix)
+jinja      = ["dep:minijinja"]
+handlebars = ["dep:handlebars"]
+
+# Rendu Markdown optionnel
+markdown = ["dep:pulldown-cmark"]
+
+# Interpolation et post-traitements
+regex = ["dep:regex"]
+
+# Cache de prompts compilés
+cache = ["dep:lru"]
+
+# Accès FS et encodage
+fs       = ["dep:vitte-path"]
+encoding = ["dep:vitte-encoding"]
+
+[dependencies]
+serde       = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+thiserror   = { workspace = true, optional = true }
+
+# formats
+serde_yaml  = { version = "0.9", optional = true }
+serde_json  = { workspace = true, optional = true }
+toml        = { version = "0.8", optional = true }
+
+# moteurs
+minijinja   = { version = "2", optional = true, default-features = true, features = ["loader", "macros"] }
+handlebars  = { version = "5", optional = true }
+
+# rendu md
+pulldown-cmark = { version = "0.10", optional = true, default-features = false, features = ["simd"] }
+
+# tools
+regex       = { version = "1", optional = true }
+lru         = { version = "0.12", optional = true }
+
+# internes
+vitte-path      = { path = "../vitte-path", version = "0.1.0", optional = true }
+vitte-encoding  = { path = "../vitte-encoding", version = "0.1.0", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tempfile          = "3"
+indoc             = "2"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "errors", "serde", "yaml", "json", "toml", "jinja", "markdown", "regex", "cache", "fs", "encoding"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"

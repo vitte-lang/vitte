@@ -1,0 +1,69 @@
+
+
+[package]
+name        = "vitte-serde"
+description = "Utilitaires Serde pour Vitte : derive communs, adapters, formats (JSON, TOML, YAML, CBOR, bincode)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-serde"
+
+keywords   = ["serde", "serialization", "json", "yaml", "toml"]
+categories = ["encoding", "development-tools"]
+
+[lib]
+name = "vitte_serde"
+path = "src/lib.rs"
+
+[features]
+# Par défaut: std + JSON
+default = ["std", "json"]
+std     = []
+# Formats
+json    = ["dep:serde_json"]
+yaml    = ["dep:serde_yaml"]
+toml    = ["dep:toml"]
+cbor    = ["dep:serde_cbor"]
+bincode = ["dep:bincode"]
+rmp     = ["dep:rmp-serde"]
+# Adapters optionnels
+chrono  = ["dep:chrono"]
+uuid    = ["dep:uuid"]
+base64  = ["dep:base64"]
+bytes   = ["dep:bytes"]
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+serde       = { version = "1", features = ["derive"] }
+serde_json  = { version = "1", optional = true }
+serde_yaml  = { version = "0.9", optional = true }
+toml        = { version = "0.8", optional = true }
+serde_cbor  = { version = "0.11", optional = true }
+bincode     = { version = "1.3", optional = true }
+rmp-serde   = { version = "1.1", optional = true }
+chrono      = { version = "0.4", optional = true, features = ["serde"] }
+uuid        = { version = "1",   optional = true, features = ["serde"] }
+base64      = { version = "0.22", optional = true }
+bytes       = { version = "1",    optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+serde_json = "1"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "json", "yaml", "toml", "cbor", "bincode", "rmp", "chrono", "uuid"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"

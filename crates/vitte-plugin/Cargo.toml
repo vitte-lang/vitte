@@ -1,0 +1,43 @@
+
+
+[package]
+name        = "vitte-plugin"
+description = "Plugin Vitte de référence : export ABI (desc/init/shutdown), intégration avec vitte-loader."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+
+keywords   = ["plugin", "dynamic", "ffi", "abi"]
+categories = ["development-tools", "os::unix-apis", "os::windows-apis"]
+
+[lib]
+name = "vitte_plugin"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["std"]
+std     = []
+serde   = ["dep:serde", "dep:serde_json"]
+logs    = ["dep:vitte-logs"]
+
+[dependencies]
+thiserror   = "1.0"
+cfg-if      = "1.0"
+
+# Intégration avec le chargeur et la description de plugin
+vitte-loader = { path = "../vitte-loader" }
+
+# Logging optionnel unifié
+vitte-logs   = { path = "../vitte-logs", optional = true }
+
+# Sérialisation optionnelle
+serde      = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"

@@ -1,0 +1,49 @@
+# Cargo.toml
+[package]
+name         = "vitte-fronted-wasm"
+description  = "Frontend WebAssembly pour Vitte (interop navigateur via wasm-bindgen)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+
+[lib]
+name       = "vitte_fronted_wasm"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["panic-hook", "web"]
+panic-hook = ["console_error_panic_hook"]
+web = ["web-sys/Window", "web-sys/Document", "web-sys/Element", "web-sys/HtmlElement", "web-sys/console", "web-sys/Performance"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Requis côté WASM pour RNG/uuid/etc.
+getrandom = { version = "0.2", features = ["js"] }
+
+# Hook panics -> console (optionnel via feature)
+console_error_panic_hook = { version = "0.1", optional = true }
+
+# Logging simple vers console
+log = "0.4"
+wasm-logger = "0.2"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O3", "--strip-debug", "--enable-mutable-globals"]
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = "s"
+panic = "abort"
+strip = "symbols"

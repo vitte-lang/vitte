@@ -1,0 +1,55 @@
+[package]
+name        = "vitte-banner"
+description = "vitte-banner — rendu ASCII/Unicode de bannières pour CLI (logos, titres, art)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["cli", "banner", "ascii-art", "vitte"]
+categories = ["command-line-interface", "visualization"]
+
+[lib]
+name = "vitte_banner"
+path = "src/lib.rs"
+
+[features]
+default = ["std", "errors"]
+
+std = []
+alloc-only = []
+serde = ["dep:serde"]
+errors = ["dep:thiserror"]
+
+# Polices embarquées (si tu veux des FIGlet intégrés plus tard)
+fonts = []
+
+[dependencies]
+serde     = { workspace = true, optional = true, default-features = false, features = ["derive"] }
+thiserror = { workspace = true, optional = true }
+
+# Pour rendu unicode (largeurs, alignement)
+unicode-width = { version = "0.1", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "serde", "errors", "fonts"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+doc_markdown             = "allow"
+too_many_lines           = "allow"

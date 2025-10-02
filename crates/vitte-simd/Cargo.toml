@@ -1,0 +1,51 @@
+
+
+[package]
+name        = "vitte-simd"
+description = "Primitives SIMD pour Vitte : vecteurs, masques, opérations math optimisées (stdsimd, wide, faster)."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-simd"
+
+keywords   = ["simd", "vector", "math", "intrinsics", "optimization"]
+categories = ["algorithms", "data-structures", "performance"]
+
+[lib]
+name = "vitte_simd"
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+std     = []
+wide    = ["dep:wide"]
+faster  = ["dep:faster"]
+packed_simd = ["dep:packed_simd_2"]
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+
+wide          = { version = "0.7", optional = true }
+faster        = { version = "0.5", optional = true }
+packed_simd_2 = { version = "0.3", optional = true }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "wide", "faster", "packed_simd"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"

@@ -1,0 +1,59 @@
+[package]
+name        = "vitte-codegen-aarch64"
+description = "Backend de génération de code AArch64 pour Vitte (Cranelift/LLVM optionnel)"
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+readme        = "README.md"
+documentation = "https://docs.rs/vitte-codegen-aarch64"
+
+keywords   = ["vitte", "aarch64", "arm64", "codegen", "jit"]
+categories = ["compilers", "development-tools", "no-std"]
+
+exclude = [".github/*", "examples/*", "tests/*"]
+
+[lib]
+name = "vitte_codegen_aarch64"
+path = "src/lib.rs"
+crate-type = ["rlib"]
+
+[features]
+default        = ["std", "cranelift"]
+std            = []
+cranelift      = ["cranelift-codegen", "cranelift-frontend", "target-lexicon", "regalloc2"]
+llvm           = ["dep:inkwell"]        # alternative LLVM via Inkwell (expérimental)
+emit-obj       = []                     # autorise l’émission d’objets .o
+emit-asm       = []                     # autorise l’émission d’assemblage
+runtime-reloc  = []                     # code position-indépendant, relocations runtime
+
+[dependencies]
+anyhow        = "1"
+thiserror     = "1"
+bitflags      = "2"
+smallvec      = "1.13"
+
+# Cranelift (activé par la feature `cranelift`)
+cranelift-codegen  = { version = "0.111", optional = true }
+cranelift-frontend = { version = "0.111", optional = true }
+target-lexicon     = { version = "0.12", optional = true }
+regalloc2          = { version = "0.9",  optional = true }
+
+# LLVM via Inkwell (optionnel)
+inkwell       = { version = "0.4", optional = true, default-features = false, features = ["llvm16-0"] }
+
+[dev-dependencies]
+pretty_assertions = "1"
+
+# Optionnel: cfgs utiles pour builds ciblant arm64 hôte
+[target.aarch64-unknown-linux-gnu.dependencies]
+# ajoutez ici des dépendances spécifiques si besoin
+
+[target.aarch64-apple-darwin.dependencies]
+# idem pour macOS arm64
+
+[target.aarch64-pc-windows-msvc.dependencies]
+# idem pour Windows arm64

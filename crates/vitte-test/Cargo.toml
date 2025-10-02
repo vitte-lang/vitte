@@ -1,0 +1,68 @@
+
+
+[package]
+name        = "vitte-test"
+description = "Outils de tests pour Vitte : assertions, helpers async, tempdirs, snapshots, fuzz hooks."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = "README.md"
+documentation = "https://docs.rs/vitte-test"
+
+keywords   = ["test", "assert", "snapshot", "async", "temp"]
+categories = ["development-tools", "testing"]
+
+[lib]
+name = "vitte_test"
+path = "src/lib.rs"
+
+[features]
+# Par défaut: std + assertions enrichies + async tokio
+default   = ["std", "tokio", "snap"]
+std       = []
+# Intégration async
+tokio     = ["dep:tokio"]
+async-std = ["dep:async-std"]
+# Snapshots (insta)
+snap      = ["dep:insta", "dep:serde", "dep:serde_json"]
+# Tempdirs
+temp      = ["dep:tempfile"]
+# Fuzzing
+fuzz      = []
+
+[dependencies]
+thiserror = "1.0"
+cfg-if    = "1.0"
+
+# Async runtimes (optionnels)
+tokio     = { version = "1.39", optional = true, default-features = false, features = ["rt", "rt-multi-thread", "macros", "time"] }
+async-std = { version = "1.13", optional = true, features = ["attributes"] }
+
+# Snapshots
+insta       = { version = "1.39", optional = true, features = ["json"] }
+serde       = { version = "1", features = ["derive"], optional = true }
+serde_json  = { version = "1", optional = true }
+
+# Tempfiles
+tempfile  = { version = "3.10", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+serde_json = "1"
+insta = { version = "1.39", features = ["json"] }
+
+[package.metadata.docs.rs]
+all-features        = false
+features            = ["std", "tokio", "snap", "temp"]
+no-default-features = false
+rustdoc-args        = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all      = "warn"
+pedantic = "warn"
