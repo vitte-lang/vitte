@@ -16,7 +16,7 @@
 //! println!("{}", osc::hyperlink("https://vitte-lang.dev", "Site Vitte"));
 //! ```
 
-use core::fmt::{self, Write};
+use core::fmt;
 
 /// CSI / OSC / SGR bas niveau.
 pub mod esc {
@@ -42,7 +42,8 @@ pub mod esc {
         s.push_str(OSC);
         s.push_str(payload);
         // De préférence ST, sinon BEL pour compatibilité.
-        s.push_str(ST)
+        s.push_str(ST);
+        s
     }
 }
 
