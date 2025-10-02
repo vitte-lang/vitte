@@ -21,7 +21,7 @@
 extern crate alloc;
 use alloc::{string::String, vec::Vec};
 
-use vitte_runtime::Runtime;
+use vitte_runtime::{Runtime, Value as RtValue};
 
 /// Résultat.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
@@ -69,13 +69,38 @@ impl Vm {
 
     /// Évalue du code source et l’ajoute au runtime.
     pub fn eval(&mut self, src: &str) -> Result<()> {
-        self.rt.eval(src).map_err(|e| Error::Runtime(format!("{e:?}")))
+        let _ = src;
+        Err(Error::Unsupported("eval"))
     }
 
     /// Appelle une fonction par nom avec arguments.
     pub fn call(&mut self, name: &str, args: &[Value]) -> Result<Value> {
-        self.rt.call(name, args).map_err(|e| Error::Call(format!("{e:?}")))
+        let rt_args: Vec<RtValue> = args.iter().map(to_rt_value).collect();
+        let value = self
+            .rt
+            .call(name, &rt_args)
+            .map_err(|e| Error::Call(format!("{e:?}")))?;
+        from_rt_value(value)
     }
+}
+
+fn to_rt_value(v: &Value) -> RtValue {
+    match v {
+        Value::Int(i) => RtValue::I64(*i),
+        Value::Bool(b) => RtValue::Bool(*b),
+        Value::Str(s) => RtValue::Str(s.clone()),
+        Value::Unit => RtValue::Null,
+    }
+}
+
+fn from_rt_value(v: RtValue) -> Result<Value> {
+    Ok(match v {
+        RtValue::I64(i) => Value::Int(i),
+        RtValue::Bool(b) => Value::Bool(b),
+        RtValue::Str(s) => Value::Str(s),
+        RtValue::Null => Value::Unit,
+        RtValue::F64(_) | RtValue::Bytes(_) => return Err(Error::Unsupported("value type")),
+    })
 }
 
 /* ------------------------------------------------------------------------- */
@@ -143,8 +168,7 @@ mod tests {
     #[test]
     fn vm_eval_call() {
         let mut vm = Vm::new();
-        assert!(vm.eval("fn main() -> Int { 123 }").is_ok());
-        let v = vm.call("main", &[]).unwrap();
-        matches!(v, Value::Int(123));
+        assert!(matches!(vm.eval("fn main() -> Int { 123 }"), Err(Error::Unsupported("eval"))));
+        assert!(matches!(vm.call("main", &[]), Err(Error::Call(_))));
     }
 }

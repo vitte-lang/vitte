@@ -22,18 +22,14 @@
 #![deny(missing_docs)]
 
 extern crate alloc;
-use alloc::{string::String, vec::Vec};
+use alloc::string::String;
 
 #[cfg(feature="std")]
 use std::ffi::{CString, CStr};
 #[cfg(feature="std")]
 use std::os::raw::c_char;
 
-use vitte_core::Span;
-use vitte_lexer::Lexer;
-use vitte_parser::Parser;
-use vitte_ast::Ast;
-use vitte_frontend::{compile_to_ast, Error};
+use vitte_frontend::compile_to_ast;
 
 /// Résultat FFI : pointeur vers C string allouée par Rust.
 /// Libérer via `vitte_frontend_string_free`.

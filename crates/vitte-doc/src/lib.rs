@@ -18,8 +18,6 @@
     clippy::too_many_lines
 )]
 
-use anyhow::{Context, Result};
-
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -252,7 +250,8 @@ pub fn render_html(book: &DocBook) -> String {
 
 /// Sérialisation JSON. Requiert `--features json`.
 #[cfg(feature = "json")]
-pub fn render_json(book: &DocBook) -> Result<String> {
+pub fn render_json(book: &DocBook) -> anyhow::Result<String> {
+    use anyhow::Context;
     Ok(serde_json::to_string_pretty(book).context("json serialize")?)
 }
 

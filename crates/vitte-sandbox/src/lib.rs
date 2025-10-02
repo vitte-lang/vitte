@@ -1,90 +1,54 @@
+//! vitte-sandbox — minimal placeholder for WASM sandboxing.
+//!
+//! The original crate wrapped Wasmtime to execute WebAssembly modules with
+//! resource limits. For now we provide a lightweight shim so the workspace
+//! builds without pulling Wasmtime or requiring async runtimes. The API keeps a
+//! similar surface (`Sandbox`, `InstanceHandle`) but every operation simply
+//! reports that sandboxing is unavailable.
 
-
+#![cfg_attr(not(feature = "std"), no_std)]
 #![deny(missing_docs)]
-//! vitte-sandbox — exécution isolée de modules pour Vitte
-//!
-//! Fournit :
-//! - Hôte WASM (wasmtime).
-//! - Intégration WASI (fs, env).
-//! - Limites mémoire/CPU.
-//! - API simple pour charger/évaluer un module.
-//!
-//! Exemple :
-//! ```no_run
-//! use vitte_sandbox as sandbox;
-//! # #[tokio::main] async fn main() -> sandbox::Result<()> {
-//! let code = wat::parse_str("(module (func (export \"add\") (param i32 i32) (result i32) local.get 0 local.get 1 i32.add))")?;
-//! let sb = sandbox::Sandbox::new()?;
-//! let inst = sb.instantiate(&code).await?;
-//! let add = inst.get_func(\"add\").unwrap();
-//! let res = add.call(&[1i32.into(), 2i32.into()])?;
-//! assert_eq!(res[0].unwrap_i32(), 3);
-//! # Ok(()) }
-//! ```
 
+extern crate alloc;
+
+use alloc::string::String;
 use thiserror::Error;
 
-#[cfg(feature="wasmtime")]
-use wasmtime::{Engine, Store, Module, Instance, Config, Limits, Caller, Func};
-
-#[cfg(feature="wasmtime")]
-use wasmtime_wasi::{WasiCtxBuilder, WasiCtx};
-
-/// Erreurs de sandbox.
+/// Errors emitted by the sandbox stub.
 #[derive(Debug, Error)]
 pub enum SandboxError {
-    #[error("io: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("wasm: {0}")]
-    #[cfg(feature="wasmtime")]
-    Wasm(#[from] anyhow::Error),
-    #[error("autre: {0}")]
-    Other(String),
+    /// Feature is not enabled or implementation missing.
+    #[error("sandboxing unavailable: {0}")]
+    Unsupported(&'static str),
 }
 
-/// Résultat spécialisé.
-pub type Result<T> = std::result::Result<T, SandboxError>;
+/// Convenience result alias.
+pub type Result<T> = core::result::Result<T, SandboxError>;
 
-/// Sandbox principal.
-pub struct Sandbox {
-    #[cfg(feature="wasmtime")]
-    engine: Engine,
-}
+/// Placeholder sandbox type.
+#[derive(Debug, Default)]
+pub struct Sandbox;
 
 impl Sandbox {
-    /// Crée une sandbox avec limites par défaut.
-    #[cfg(feature="wasmtime")]
+    /// Creates a new sandbox instance (always returns [`SandboxError::Unsupported`]).
     pub fn new() -> Result<Self> {
-        let mut cfg = Config::new();
-        cfg.consume_fuel(true);
-        let engine = Engine::new(&cfg)?;
-        Ok(Self { engine })
+        Err(SandboxError::Unsupported("wasmtime feature disabled"))
     }
 
-    /// Instancie un module WASM brut.
-    #[cfg(feature="wasmtime")]
-    pub async fn instantiate(&self, bytes: &[u8]) -> Result<InstanceHandle> {
-        let module = Module::new(&self.engine, bytes)?;
-        let mut store = Store::new(&self.engine, WasiCtxBuilder::new().inherit_stdio().build());
-        store.add_fuel(10_000_000)?;
-        let imports = [];
-        let instance = Instance::new(&mut store, &module, &imports)?;
-        Ok(InstanceHandle { store, instance })
+    /// Attempts to instantiate a WebAssembly module (always unsupported).
+    pub async fn instantiate(&self, _bytes: &[u8]) -> Result<InstanceHandle> {
+        Err(SandboxError::Unsupported("wasmtime feature disabled"))
     }
 }
 
-/// Instance en cours d’exécution.
-#[cfg(feature="wasmtime")]
-pub struct InstanceHandle {
-    store: Store<WasiCtx>,
-    instance: Instance,
-}
+/// Placeholder handle for an instantiated module.
+#[derive(Debug, Default)]
+pub struct InstanceHandle;
 
-#[cfg(feature="wasmtime")]
 impl InstanceHandle {
-    /// Récupère une fonction exportée.
-    pub fn get_func(&self, name: &str) -> Option<Func> {
-        self.instance.get_func(&self.store, name)
+    /// Returns `None` because function lookup is not supported in the stub.
+    pub fn get_func(&self, _name: &str) -> Option<()> {
+        None
     }
 }
 
@@ -93,19 +57,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn error_fmt() {
-        let e = SandboxError::Other("bad".into());
-        assert!(format!("{e}").contains("bad"));
-    }
-
-    #[tokio::test]
-    #[cfg(feature="wasmtime")]
-    async fn wasm_add() {
-        let code = wat::parse_str("(module (func (export \"add\") (param i32 i32) (result i32) local.get 0 local.get 1 i32.add))").unwrap();
-        let sb = Sandbox::new().unwrap();
-        let inst = sb.instantiate(&code).await.unwrap();
-        let f = inst.get_func("add").unwrap();
-        let res = f.call(&[wasmtime::Val::I32(2), wasmtime::Val::I32(40)]).unwrap();
-        assert_eq!(res[0].unwrap_i32(), 42);
+    fn sandbox_stub() {
+        let err = Sandbox::new().unwrap_err();
+        matches!(err, SandboxError::Unsupported(_));
     }
 }

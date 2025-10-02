@@ -23,7 +23,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-use vitte_doc::{build_book_from_sources, render_markdown, DocBook};
+use vitte_doc::{build_book_from_sources, render_markdown};
 
 #[cfg(feature = "html")]
 use vitte_doc::render_html;

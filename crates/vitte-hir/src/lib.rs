@@ -24,6 +24,7 @@
 
 use anyhow::Result;
 use std::fmt;
+use std::fmt::Write as _;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -495,7 +496,7 @@ pub mod lower {
     use vitte_ast as ast;
 
     /// Exemple d’API d’abaissement. Impl incomplète volontairement.
-    pub fn module_from_ast(_m: &ast::Module) -> Result<HirModule> {
+    pub fn module_from_ast(_program: &ast::Program) -> Result<HirModule> {
         // Placeholder: construire un module vide avec le nom de l'AST si dispo.
         // Sans dépendre de la structure interne exacte d’`vitte-ast`.
         let mut m = HirModule::new("module");

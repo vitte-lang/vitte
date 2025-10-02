@@ -11,11 +11,10 @@
 //!
 //! Utilisé par le binaire `vitte-new`.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 use anyhow::{Result, Context};
 use fs_err as fs;
-use toml_edit::{Document, value};
+use toml_edit::{DocumentMut, value};
 
 /// Crée un nouveau crate dans le dossier `dir` avec nom `name`.
 pub fn create_crate(dir: &Path, name: &str) -> Result<PathBuf> {
@@ -25,7 +24,7 @@ pub fn create_crate(dir: &Path, name: &str) -> Result<PathBuf> {
     }
     fs::create_dir_all(crate_dir.join("src"))?;
     // Cargo.toml de base
-    let mut doc = Document::new();
+    let mut doc = DocumentMut::new();
     doc["package"]["name"] = value(name);
     doc["package"]["version"] = value("0.1.0");
     doc["package"]["edition"] = value("2021");
@@ -39,7 +38,7 @@ pub fn create_crate(dir: &Path, name: &str) -> Result<PathBuf> {
 /// Ajoute une dépendance dans Cargo.toml d’un crate existant.
 pub fn add_dependency(cargo_toml: &Path, dep: &str, version: &str) -> Result<()> {
     let s = fs::read_to_string(cargo_toml).with_context(|| format!("read {:?}", cargo_toml))?;
-    let mut doc = s.parse::<Document>()?;
+    let mut doc = s.parse::<DocumentMut>()?;
     doc["dependencies"][dep] = value(version);
     fs::write(cargo_toml, doc.to_string())?;
     Ok(())

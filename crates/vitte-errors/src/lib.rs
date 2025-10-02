@@ -47,6 +47,7 @@ pub enum ErrorKind {
 
 /// Type d’erreur principal.
 #[derive(Debug, Error)]
+#[error("{kind:?}: {message}")]
 pub struct Error {
     pub kind: ErrorKind,
     pub message: String,
@@ -64,17 +65,6 @@ impl Error {
     }
 }
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}: {}", self.kind, self.message)
-    }
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.source.as_ref().map(|e| e.as_ref() as _)
-    }
-}
 
 /// Alias standard.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -83,17 +73,6 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 impl From<anyhow::Error> for Error {
     fn from(e: anyhow::Error) -> Self {
         Self { kind: ErrorKind::Internal, message: e.to_string(), source: Some(e) }
-    }
-}
-
-/// Conversion vers `anyhow::Error`.
-impl From<Error> for anyhow::Error {
-    fn from(e: Error) -> Self {
-        if let Some(src) = e.source {
-            src.context(e.message)
-        } else {
-            anyhow::anyhow!(e.message)
-        }
     }
 }
 

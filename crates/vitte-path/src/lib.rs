@@ -298,9 +298,10 @@ pub fn read_link<P: AsRef<Path>>(p: P) -> Result<PathBuf> {
 /// Ne garantit pas 100% (réseaux, permissions).
 #[cfg(feature="std")]
 pub fn is_same_file<P: AsRef<Path>, Q: AsRef<Path>>(a: P, b: Q) -> bool {
-    let (ca, cb) = (fs::canonicalize(a), fs::canonicalize(b));
+    let (a_path, b_path) = (a.as_ref(), b.as_ref());
+    let (ca, cb) = (fs::canonicalize(a_path), fs::canonicalize(b_path));
     if let (Ok(pa), Ok(pb)) = (ca, cb) { if pa == pb { return true; } }
-    let (ma, mb) = (fs::metadata(a), fs::metadata(b));
+    let (ma, mb) = (fs::metadata(a_path), fs::metadata(b_path));
     if let (Ok(ma), Ok(mb)) = (ma, mb) {
         #[cfg(unix)]
         { use std::os::unix::fs::MetadataExt; return ma.ino()==mb.ino() && ma.dev()==mb.dev() && ma.len()==mb.len(); }
