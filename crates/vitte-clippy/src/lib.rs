@@ -30,13 +30,11 @@
 #![forbid(unsafe_code)]
 
 use anyhow::Result;
-use log::{debug, info, warn};
+use log::{debug, warn};
 use regex::Regex;
-use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use walkdir::WalkDir;
@@ -45,21 +43,21 @@ use walkdir::WalkDir;
 // Types de base
 // ===========================================================================
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Severity {
     Info,
     Warning,
     Error,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Span {
     pub file: PathBuf,
     pub line: usize,   // 1-based
     pub column: usize, // 1-based, best-effort
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fix {
     /// Remplacement de la plage [start_line..=end_line] par `replace`.
     pub start_line: usize,
@@ -67,16 +65,14 @@ pub struct Fix {
     pub replace: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub rule: String,
     pub message: String,
     pub help: Option<String>,
     pub severity: Severity,
     pub span: Span,
-    #[serde(default)]
     pub fixes: Vec<Fix>,
-    #[serde(default)]
     pub tags: Vec<String>,
 }
 
@@ -148,19 +144,15 @@ pub struct LintContext<'a> {
     pub suppress: Suppressions,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct LintConfig {
     /// Extensions scannées (sans point)
-    #[serde(default = "LintConfig::default_exts")]
     pub exts: Vec<String>,
     /// Désactivation globale par règle
-    #[serde(default)]
     pub allow: HashSet<String>,
     /// Forçage de sévérité par règle
-    #[serde(default)]
     pub severity_override: HashMap<String, Severity>,
     /// Longueur max des lignes si la règle est activée
-    #[serde(default = "LintConfig::default_max_len")]
     pub max_line_length: usize,
 }
 
@@ -176,6 +168,17 @@ impl LintConfig {
     }
     pub fn severity_for(&self, rule: &str, default: Severity) -> Severity {
         self.severity_override.get(rule).copied().unwrap_or(default)
+    }
+}
+
+impl Default for LintConfig {
+    fn default() -> Self {
+        Self {
+            exts: Self::default_exts(),
+            allow: HashSet::new(),
+            severity_override: HashMap::new(),
+            max_line_length: Self::default_max_len(),
+        }
     }
 }
 
@@ -270,7 +273,7 @@ impl Registry {
 // Exécution
 // ===========================================================================
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct FileDiagnostics {
     pub file: PathBuf,
     pub diagnostics: Vec<Diagnostic>,
@@ -334,7 +337,66 @@ pub fn run_path(reg: &Registry, cfg: &LintConfig, root: impl AsRef<Path>) -> Res
 }
 
 pub fn to_json(results: &[FileDiagnostics]) -> Result<String> {
-    Ok(serde_json::to_string_pretty(results)?)
+    fn esc(s: &str) -> String {
+        let mut out = String::with_capacity(s.len() + 2);
+        for ch in s.chars() {
+            match ch {
+                '"' => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                '\t' => out.push_str("\\t"),
+                c if c.is_control() => out.push_str(&format!("\\u{:04x}", c as u32)),
+                c => out.push(c),
+            }
+        }
+        out
+    }
+    let mut s = String::from("[\n");
+    for (i, fd) in results.iter().enumerate() {
+        if i > 0 { s.push_str(",\n"); }
+        s.push_str("  {\n");
+        s.push_str(&format!("    \"file\": \"{}\",\n", esc(&fd.file.to_string_lossy())));
+        s.push_str("    \"diagnostics\": [\n");
+        for (j, d) in fd.diagnostics.iter().enumerate() {
+            if j > 0 { s.push_str(",\n"); }
+            s.push_str("      {\n");
+            s.push_str(&format!("        \"rule\": \"{}\",\n", esc(&d.rule)));
+            s.push_str(&format!("        \"message\": \"{}\",\n", esc(&d.message)));
+            if let Some(h) = &d.help {
+                s.push_str(&format!("        \"help\": \"{}\",\n", esc(h)));
+            } else {
+                s.push_str("        \"help\": null,\n");
+            }
+            s.push_str(&format!("        \"severity\": \"{:?}\",\n", d.severity));
+            s.push_str("        \"span\": {\n");
+            s.push_str(&format!("          \"file\": \"{}\",\n", esc(&d.span.file.to_string_lossy())));
+            s.push_str(&format!("          \"line\": {},\n", d.span.line));
+            s.push_str(&format!("          \"column\": {}\n", d.span.column));
+            s.push_str("        },\n");
+            // fixes
+            s.push_str("        \"fixes\": [");
+            for (k, f) in d.fixes.iter().enumerate() {
+                if k > 0 { s.push_str(","); }
+                s.push_str(&format!(
+                    "{{\"start_line\": {}, \"end_line\": {}, \"replace\": \"{}\"}}",
+                    f.start_line, f.end_line, esc(&f.replace)
+                ));
+            }
+            s.push_str("],\n");
+            // tags
+            s.push_str("        \"tags\": [");
+            for (k, t) in d.tags.iter().enumerate() {
+                if k > 0 { s.push_str(","); }
+                s.push('"'); s.push_str(&esc(t)); s.push('"');
+            }
+            s.push_str("]\n");
+            s.push_str("      }");
+        }
+        s.push_str("\n    ]\n  }");
+    }
+    s.push_str("\n]\n");
+    Ok(s)
 }
 
 /// Applique les `Fix` sur disque, en sauvegardant un `.bak` si `backup` est vrai.
@@ -352,7 +414,7 @@ pub fn apply_fixes(results: &[FileDiagnostics], backup: bool) -> Result<usize> {
         if fixes_by_file.is_empty() {
             continue;
         }
-        let mut text = fs::read_to_string(&fd.file)?;
+        let text = fs::read_to_string(&fd.file)?;
         let lines: Vec<&str> = text.split_inclusive('\n').collect();
         let mut new = String::new();
         let mut i = 1usize;

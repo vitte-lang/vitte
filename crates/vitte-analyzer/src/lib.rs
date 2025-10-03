@@ -33,13 +33,12 @@ extern crate alloc;
 use core::fmt;
 
 #[cfg(feature = "std")]
-use std::{collections::HashMap, string::String, vec::Vec};
+use std::{collections::HashMap, string::String};
 
 #[cfg(not(feature = "std"))]
-use alloc::{collections::BTreeMap as HashMap, string::String, vec::Vec};
+use alloc::{collections::BTreeMap as HashMap, string::String};
 
 use vitte_ast as ast;
-use vitte_errors::VitteError;
 
 /* ─────────────────────────── Erreurs ─────────────────────────── */
 

@@ -20,9 +20,6 @@
 //! ```
 
 use std::path::Path;
-use std::sync::Arc;
-
-use thiserror::Error;
 
 /// Niveau d’optimisation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -85,23 +82,40 @@ impl Config {
 }
 
 /// Erreurs du backend.
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum BackendError {
-    #[error("fonctionnalité LLVM désactivée: recompilez avec `--features inkwell`")]
+    /// fonctionnalité LLVM désactivée (feature `inkwell` requise)
     FeatureDisabled,
-    #[error("initialisation LLVM: {0}")]
+    /// erreur d'initialisation LLVM
     Init(String),
-    #[error("construction module: {0}")]
+    /// erreur de construction de module/IR
     Build(String),
-    #[error("vérification module: {0}")]
+    /// échec de vérification LLVM
     Verify(String),
-    #[error("émission artefact: {0}")]
+    /// échec d'émission d'artefact
     Emit(String),
-    #[error("JIT: {0}")]
+    /// erreur du moteur JIT
     Jit(String),
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
+    /// erreur d'E/S
+    Io(std::io::Error),
 }
+
+impl core::fmt::Display for BackendError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            BackendError::FeatureDisabled => write!(f, "fonctionnalité LLVM désactivée: recompilez avec `--features inkwell`"),
+            BackendError::Init(e) => write!(f, "initialisation LLVM: {e}"),
+            BackendError::Build(e) => write!(f, "construction module: {e}"),
+            BackendError::Verify(e) => write!(f, "vérification module: {e}"),
+            BackendError::Emit(e) => write!(f, "émission artefact: {e}"),
+            BackendError::Jit(e) => write!(f, "JIT: {e}"),
+            BackendError::Io(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for BackendError {}
 
 pub type Result<T> = std::result::Result<T, BackendError>;
 
@@ -120,7 +134,7 @@ pub trait Backend {
     /// Ecrit l’artefact dans le fichier donné.
     fn emit_to_file<P: AsRef<Path>>(&mut self, kind: ArtifactKind, path: P) -> Result<()> {
         let bytes = self.emit(kind)?;
-        std::fs::write(path, bytes)?;
+        std::fs::write(path, bytes).map_err(BackendError::Io)?;
         Ok(())
     }
 
@@ -303,9 +317,6 @@ mod llvm_impl {
             }
         }
     }
-
-    // Réexport public quand la feature est active.
-    pub use LlvmBackend;
 }
 
 #[cfg(not(feature = "inkwell"))]
@@ -332,25 +343,25 @@ mod no_llvm_impl {
             Err(BackendError::FeatureDisabled)
         }
     }
-
-    pub use LlvmBackend;
 }
 
-// Surface publique: type concret exporté selon feature.
-pub use cfg_if::cfg_if;
-cfg_if! {
-    if #[cfg(feature = "inkwell")] {
-        pub use llvm_impl::LlvmBackend;
-    } else {
-        pub use no_llvm_impl::LlvmBackend;
-    }
-}
+#[cfg(feature = "inkwell")]
+pub use llvm_impl::LlvmBackend;
+#[cfg(not(feature = "inkwell"))]
+pub use no_llvm_impl::LlvmBackend;
 
 /// Helpers utilitaires communs.
 pub mod util {
     /// Définit un triple par défaut raisonnable si la cible n’est pas spécifiée.
     pub fn default_triple() -> String {
-        inkwell::targets::TargetMachine::get_default_triple().as_str().to_string()
+        #[cfg(feature = "inkwell")]
+        {
+            inkwell::targets::TargetMachine::get_default_triple().as_str().to_string()
+        }
+        #[cfg(not(feature = "inkwell"))]
+        {
+            String::from("unknown")
+        }
     }
 
     /// Retourne vrai si la feature `inkwell` est active.

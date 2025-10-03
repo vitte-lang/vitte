@@ -16,7 +16,6 @@ use std::{any::Any, any::TypeId, fmt, io, path::{Path, PathBuf}, sync::Arc, time
 
 use ahash::{AHashMap as HashMap, AHashSet as HashSet};
 use parking_lot::RwLock;
-use thiserror::Error;
 
 #[cfg(feature = "std")]
 use std::fs;
@@ -36,40 +35,53 @@ use bincode as _bincode;
 use serde::de::DeserializeOwned;
 
 /// Erreurs possibles du système d’actifs.
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum AssetError {
     /// Source introuvable pour le schéma requis.
-    #[error("no source for scheme '{0}'")]
     NoSource(String),
 
     /// Chemin introuvable dans la source.
-    #[error("not found: {0}")]
     NotFound(String),
 
     /// Erreur d’E/S sous-jacente.
-    #[error("io error: {0}")]
-    Io(#[from] io::Error),
+    Io(io::Error),
 
     /// Extension non supportée.
-    #[error("unsupported extension: {0}")]
     UnsupportedExt(String),
 
     /// Loader introuvable pour l’extension.
-    #[error("no loader registered for extension: {0}")]
     NoLoader(String),
 
     /// Échec de parse.
-    #[error("parse error: {0}")]
     Parse(String),
 
     /// Conflit de type en cache.
-    #[error("type mismatch in cache for key={key}, requested={requested:?}")]
     TypeMismatch {
         /// Clef affectée.
         key: AssetKey,
         /// Type demandé.
         requested: TypeId,
     },
+}
+
+impl core::fmt::Display for AssetError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            AssetError::NoSource(s) => write!(f, "no source for scheme '{s}'"),
+            AssetError::NotFound(p) => write!(f, "not found: {p}"),
+            AssetError::Io(e) => write!(f, "io error: {e}"),
+            AssetError::UnsupportedExt(ext) => write!(f, "unsupported extension: {ext}"),
+            AssetError::NoLoader(ext) => write!(f, "no loader registered for extension: {ext}"),
+            AssetError::Parse(msg) => write!(f, "parse error: {msg}"),
+            AssetError::TypeMismatch { key, requested } => write!(f, "type mismatch in cache for key={key}, requested={requested:?}"),
+        }
+    }
+}
+
+impl std::error::Error for AssetError {}
+
+impl From<io::Error> for AssetError {
+    fn from(e: io::Error) -> Self { AssetError::Io(e) }
 }
 
 /// Résultat spécialisé.
@@ -144,7 +156,10 @@ impl fmt::Display for AssetKey {
 }
 
 /// Source d’actifs. Responsable de la lecture et de la stat.
-pub trait Source: Send + Sync {
+pub trait Source: Send + Sync + Any {
+    /// Access to `Any` for downcasting trait objects.
+    fn as_any(&self) -> &dyn Any;
+
     /// Lecture intégrale en bytes.
     fn read(&self, path: &str) -> Result<Vec<u8>>;
 
@@ -202,6 +217,7 @@ impl Default for FileSource {
 }
 
 impl Source for FileSource {
+    fn as_any(&self) -> &dyn Any { self }
     fn read(&self, path: &str) -> Result<Vec<u8>> {
         let full = self.full(path);
         fs::read(&full).map_err(|e| match e.kind() {
@@ -248,6 +264,7 @@ impl MemorySource {
 }
 
 impl Source for MemorySource {
+    fn as_any(&self) -> &dyn Any { self }
     fn read(&self, path: &str) -> Result<Vec<u8>> {
         self.inner
             .read()
@@ -266,6 +283,7 @@ impl Source for MemorySource {
 }
 
 /// Enregistrement d’un loader pour une extension donnée.
+#[derive(Clone)]
 struct DynLoader {
     type_id: TypeId,
     fun: Arc<dyn Fn(&[u8]) -> Result<Arc<dyn Any + Send + Sync>> + Send + Sync>,
@@ -395,7 +413,7 @@ impl AssetManager {
         let key = AssetKey::parse(key);
         let map = &self.cache.read().map;
         let type_id = TypeId::of::<T>();
-        map.get(&(key, type_id)).and_then(|arc_any| arc_any.clone().downcast_arc::<T>().ok())
+        map.get(&(key, type_id)).and_then(|arc_any| arc_any.clone().downcast::<T>().ok())
     }
 
     /// Insère directement dans le cache.
@@ -417,7 +435,7 @@ impl AssetManager {
             .ok_or_else(|| AssetError::UnsupportedExt(key.to_string()))?;
 
         // cache hit
-        if let Some(cached) = self.get_cached::<T>(&key.to_string()) {
+        if let Some(cached) = self.get_cached::<T, _>(&key.to_string()) {
             return Ok(cached);
         }
 
@@ -440,7 +458,7 @@ impl AssetManager {
         // read + parse
         let bytes = src.read(key.path())?;
         let any = (dyn_loader.fun)(&bytes)?;
-        let arc_t: Arc<T> = any.downcast_arc::<T>().map_err(|_| AssetError::Parse("downcast".into()))?;
+        let arc_t: Arc<T> = any.downcast::<T>().map_err(|_| AssetError::Parse("downcast".into()))?;
 
         // store
         self.put_cached(&key.to_string(), arc_t.clone());
@@ -454,7 +472,7 @@ impl AssetManager {
         parse: F,
     ) -> Result<Arc<T>> {
         let s = key.as_ref();
-        if let Some(cached) = self.get_cached::<T>(s) {
+        if let Some(cached) = self.get_cached::<T, _>(s) {
             return Ok(cached);
         }
         let bytes = self.read_bytes(s)?;
@@ -572,19 +590,6 @@ pub fn memory_source(mgr: &AssetManager, scheme: &str) -> Option<MemorySource> {
         .and_then(|arc| arc.as_any().downcast_ref::<MemorySource>().cloned())
 }
 
-/// Extension: permettre downcast `Arc<dyn Source>` → concrete.
-trait ArcSourceAny {
-    fn as_any(self: Arc<Self>) -> Arc<dyn Any + Send + Sync>;
-}
-impl<T: Source + 'static> ArcSourceAny for T {
-    fn as_any(self: Arc<Self>) -> Arc<dyn Any + Send + Sync> { self }
-}
-trait SourceDynCast {
-    fn as_any(&self) -> &dyn Any;
-}
-impl dyn Source {
-    fn as_any(&self) -> &dyn Any { self }
-}
 
 /* ------------------------------------------- Tests ------------------------------------------- */
 #[cfg(test)]
@@ -683,23 +688,5 @@ mod tests {
             .unwrap();
         assert_eq!(*arc2, 60);
         assert_eq!(CALLS.load(Ordering::SeqCst), 1);
-    }
-}
-
-/* ----------------------------------- Extension helpers ----------------------------------- */
-
-/// Permet `downcast_arc` propre sur `Arc<dyn Any + Send + Sync>`.
-trait ArcAnyDowncastExt {
-    fn downcast_arc<T: Any + Send + Sync>(self: Arc<Self>) -> std::result::Result<Arc<T>, Arc<Self>>;
-}
-impl ArcAnyDowncastExt for dyn Any + Send + Sync {
-    fn downcast_arc<T: Any + Send + Sync>(self: Arc<Self>) -> std::result::Result<Arc<T>, Arc<Self>> {
-        if self.is::<T>() {
-            let ptr = Arc::into_raw(self) as *const T;
-            // SAFETY: type just checked above, pointer came from Arc allocation of T
-            Ok(unsafe { Arc::from_raw(ptr) })
-        } else {
-            Err(self)
-        }
     }
 }

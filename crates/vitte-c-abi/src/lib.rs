@@ -11,11 +11,10 @@
 
 #![forbid(unsafe_code)]
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(non_camel_case_types)] // ABI C: on garde les noms en MACRO_CASE/underscore
 
 use core::ffi::c_void;
 use core::ptr;
-#[cfg(feature = "std")]
-use std::ffi::CStr;
 use core::ffi::{c_char, c_int, c_uchar};
 
 /// Version ABI (binaire). Incrémentez `ABI_MAJOR` pour tout break.
@@ -133,19 +132,18 @@ extern "C" {
 
 /* ───────────────────────────── Helpers Rust ───────────────────────────── */
 
-impl vitte_c_string {
-    /// Retourne une `&str` si UTF-8 valide. Aucun free.
-    #[cfg(feature = "std")]
-    pub unsafe fn as_str<'a>(&self) -> Option<&'a str> {
-        if self.data.is_null() { return Some(""); }
-        let s = core::slice::from_raw_parts(self.data, self.len);
-        std::str::from_utf8(s).ok()
-    }
-}
 
 impl vitte_c_error {
     /// Code égal à zéro si non initialisé.
     pub fn is_set(&self) -> bool { self.code != 0 }
+}
+
+impl vitte_c_string {
+    /// Indique si le pointeur est nul (aucune donnée).
+    #[inline]
+    pub fn is_null(&self) -> bool {
+        self.data.is_null() || self.len == 0
+    }
 }
 
 /* ───────────────────────────── Tests d’ABI ───────────────────────────── */

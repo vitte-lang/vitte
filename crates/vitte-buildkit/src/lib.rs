@@ -13,7 +13,6 @@
 #![forbid(unsafe_code)]
 
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::OsStr;
 use std::fs::{self, File};
@@ -21,35 +20,67 @@ use std::hash::{Hash, Hasher};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use thiserror::Error;
 use walkdir::WalkDir;
 
 // ============================================================================
 // Erreurs
 // ============================================================================
 
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum BuildError {
-    #[error("I/O: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("TOML: {0}")]
-    TomlDe(#[from] toml::de::Error),
-    #[error("TOML: {0}")]
-    TomlSer(#[from] toml::ser::Error),
-    #[error("JSON: {0}")]
-    Json(#[from] serde_json::Error),
-    #[error("Commande échouée: {cmd} (code: {code:?})")]
+    /// I/O error
+    Io(std::io::Error),
+    /// TOML deserialize error
+    TomlDe(toml::de::Error),
+    /// TOML serialize error
+    TomlSer(toml::ser::Error),
+    /// JSON error
+    Json(serde_json::Error),
+    /// A command failed with an optional exit code
     CommandFailed { cmd: String, code: Option<i32> },
-    #[error("Tâche inconnue: {0}")]
+    /// Unknown task name
     UnknownTask(String),
-    #[error("Cycle détecté dans le graphe de tâches")]
+    /// Cycle detected in task graph
     CyclicGraph,
-    #[error("Aucune tâche à exécuter")]
+    /// No tasks to run
     NoTasks,
-    #[error("Conflit de tâche: {0}")]
+    /// A task with the same name already exists
     TaskConflict(String),
-    #[error("Interrompu par une erreur en amont")]
+    /// Aborted due to upstream error
     Aborted,
+}
+
+impl core::fmt::Display for BuildError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            BuildError::Io(e) => write!(f, "I/O: {e}"),
+            BuildError::TomlDe(e) => write!(f, "TOML: {e}"),
+            BuildError::TomlSer(e) => write!(f, "TOML: {e}"),
+            BuildError::Json(e) => write!(f, "JSON: {e}"),
+            BuildError::CommandFailed { cmd, code } => write!(f, "Commande échouée: {cmd} (code: {code:?})"),
+            BuildError::UnknownTask(s) => write!(f, "Tâche inconnue: {s}"),
+            BuildError::CyclicGraph => write!(f, "Cycle détecté dans le graphe de tâches"),
+            BuildError::NoTasks => write!(f, "Aucune tâche à exécuter"),
+            BuildError::TaskConflict(s) => write!(f, "Conflit de tâche: {s}"),
+            BuildError::Aborted => write!(f, "Interrompu par une erreur en amont"),
+        }
+    }
+}
+
+impl std::error::Error for BuildError {}
+
+// Convenience From impls to replace #[from]
+impl From<std::io::Error> for BuildError {
+    fn from(e: std::io::Error) -> Self { BuildError::Io(e) }
+}
+impl From<toml::de::Error> for BuildError {
+    fn from(e: toml::de::Error) -> Self { BuildError::TomlDe(e) }
+}
+impl From<toml::ser::Error> for BuildError {
+    fn from(e: toml::ser::Error) -> Self { BuildError::TomlSer(e) }
+}
+impl From<serde_json::Error> for BuildError {
+    fn from(e: serde_json::Error) -> Self { BuildError::Json(e) }
 }
 
 pub type Result<T> = std::result::Result<T, BuildError>;
@@ -90,14 +121,14 @@ impl BuildContext {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 struct TaskCacheEntry {
     hash: u64,
     outputs: Vec<PathBuf>,
     time: u64,
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone)]
 struct CacheDb {
     tasks: HashMap<String, TaskCacheEntry>,
 }
@@ -105,16 +136,44 @@ struct CacheDb {
 impl CacheDb {
     fn load(p: &Path) -> Self {
         if let Ok(s) = fs::read_to_string(p) {
-            serde_json::from_str(&s).unwrap_or_default()
-        } else {
-            Self::default()
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
+                let mut db = CacheDb { tasks: HashMap::new() };
+                if let Some(obj) = v.get("tasks").and_then(|t| t.as_object()) {
+                    for (k, vv) in obj {
+                        let hash = vv.get("hash").and_then(|x| x.as_u64()).unwrap_or(0);
+                        let time = vv.get("time").and_then(|x| x.as_u64()).unwrap_or(0);
+                        let outputs = vv.get("outputs")
+                            .and_then(|x| x.as_array())
+                            .map(|arr| {
+                                arr.iter().filter_map(|e| e.as_str().map(PathBuf::from)).collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default();
+                        db.tasks.insert(k.clone(), TaskCacheEntry { hash, outputs, time });
+                    }
+                }
+                return db;
+            }
         }
+        Self::default()
     }
     fn save(&self, p: &Path) -> Result<()> {
         if let Some(parent) = p.parent() {
             fs::create_dir_all(parent)?;
         }
-        let s = serde_json::to_string_pretty(self)?;
+        let mut tasks = serde_json::Map::new();
+        for (k, v) in &self.tasks {
+            let outs = serde_json::Value::Array(
+                v.outputs.iter().map(|o| serde_json::Value::String(o.to_string_lossy().into_owned())).collect()
+            );
+            let mut obj = serde_json::Map::new();
+            obj.insert("hash".into(), serde_json::Value::Number((v.hash as u64).into()));
+            obj.insert("time".into(), serde_json::Value::Number((v.time as u64).into()));
+            obj.insert("outputs".into(), outs);
+            tasks.insert(k.clone(), serde_json::Value::Object(obj));
+        }
+        let mut root = serde_json::Map::new();
+        root.insert("tasks".into(), serde_json::Value::Object(tasks));
+        let s = serde_json::Value::Object(root).to_string();
         fs::write(p, s)?;
         Ok(())
     }
@@ -179,19 +238,14 @@ pub trait Task: Send + Sync {
     fn is_cacheable(&self) -> bool { true }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct ShellTaskSpec {
     pub name: String,
-    #[serde(default)]
     pub deps: Vec<String>,
     pub cmd: String,
-    #[serde(default)]
     pub dir: Option<PathBuf>,
-    #[serde(default)]
     pub inputs: Vec<PathBuf>,
-    #[serde(default)]
     pub outputs: Vec<PathBuf>,
-    #[serde(default)]
     pub env: HashMap<String, String>,
 }
 
@@ -239,14 +293,12 @@ impl Task for ShellTask {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct CopyTaskSpec {
     pub name: String,
-    #[serde(default)]
     pub deps: Vec<String>,
     pub from: PathBuf,
     pub to: PathBuf,
-    #[serde(default)]
     pub recursive: bool,
 }
 
@@ -302,10 +354,9 @@ impl Task for CopyTask {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct MkdirTaskSpec {
     pub name: String,
-    #[serde(default)]
     pub deps: Vec<String>,
     pub dir: PathBuf,
 }
@@ -324,10 +375,9 @@ impl Task for MkdirTask {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct CleanTaskSpec {
     pub name: String,
-    #[serde(default)]
     pub deps: Vec<String>,
     pub path: PathBuf,
 }
@@ -347,13 +397,11 @@ impl Task for CleanTask {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct TouchTaskSpec {
     pub name: String,
-    #[serde(default)]
     pub deps: Vec<String>,
     pub file: PathBuf,
-    #[serde(default)]
     pub content: Option<String>,
 }
 pub struct TouchTask { spec: TouchTaskSpec }
@@ -373,10 +421,9 @@ impl Task for TouchTask {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct HashTaskSpec {
     pub name: String,
-    #[serde(default)]
     pub deps: Vec<String>,
     pub inputs: Vec<PathBuf>,
     pub out_file: PathBuf,
@@ -520,14 +567,17 @@ impl<'a> Executor<'a> {
     }
 
     fn topo_waves(&self, graph: &HashMap<String, Vec<String>>) -> Result<Vec<Vec<String>>> {
-        // Kahn "par vagues"
+        // Kahn: niveaux topologiques (dépendances d'abord)
+        // indegree(n) = nombre de dépendances restantes pour n
         let mut indeg: HashMap<&str, usize> = HashMap::new();
         for (n, deps) in graph {
-            indeg.entry(n.as_str()).or_default();
+            indeg.insert(n.as_str(), deps.len());
             for d in deps {
-                *indeg.entry(d.as_str()).or_default() += 1;
+                indeg.entry(d.as_str()).or_insert(0);
             }
         }
+
+        // file initiale: nœuds sans dépendance
         let mut q: VecDeque<&str> = indeg
             .iter()
             .filter_map(|(k, &deg)| if deg == 0 { Some(*k) } else { None })
@@ -539,18 +589,17 @@ impl<'a> Executor<'a> {
         while !q.is_empty() {
             let mut wave = vec![];
             let mut next: Vec<&str> = vec![];
-            for _ in 0..q.len() {
+            let count = q.len();
+            for _ in 0..count {
                 let n = q.pop_front().unwrap();
                 wave.push(n.to_string());
                 remaining -= 1;
-                // décrémente les indeg des voisins "reverse": pour chaque m, si n ∈ deps(m) => indeg(m)--
+                // pour chaque m tel que n ∈ deps(m), décrémente indeg(m)
                 for (m, deps) in graph {
                     if deps.iter().any(|d| d == n) {
-                        let entry = indeg.get_mut(m.as_str()).unwrap();
-                        *entry -= 1;
-                        if *entry == 0 {
-                            next.push(m);
-                        }
+                        let e = indeg.get_mut(m.as_str()).unwrap();
+                        *e -= 1;
+                        if *e == 0 { next.push(m); }
                     }
                 }
             }
@@ -558,9 +607,7 @@ impl<'a> Executor<'a> {
             q.extend(next);
         }
 
-        if remaining != 0 {
-            return Err(BuildError::CyclicGraph);
-        }
+        if remaining != 0 { return Err(BuildError::CyclicGraph); }
         Ok(waves)
     }
 
@@ -627,30 +674,20 @@ impl<'a> Executor<'a> {
 // Recettes TOML
 // ============================================================================
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "type")]
+#[derive(Debug, Clone)]
 pub enum RecipeTask {
-    #[serde(rename = "shell")]
     Shell(ShellTaskSpec),
-    #[serde(rename = "copy")]
     Copy(CopyTaskSpec),
-    #[serde(rename = "mkdir")]
     Mkdir(MkdirTaskSpec),
-    #[serde(rename = "clean")]
     Clean(CleanTaskSpec),
-    #[serde(rename = "touch")]
     Touch(TouchTaskSpec),
-    #[serde(rename = "hash")]
     Hash(HashTaskSpec),
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Recipe {
-    #[serde(default)]
     pub env: HashMap<String, String>,
-    #[serde(default)]
     pub out_dir: Option<PathBuf>,
-    #[serde(default)]
     pub targets: Vec<String>,
     pub tasks: Vec<RecipeTask>,
 }
@@ -658,8 +695,125 @@ pub struct Recipe {
 impl Recipe {
     pub fn load(path: &Path) -> Result<Self> {
         let s = fs::read_to_string(path)?;
-        let r: Recipe = toml::from_str(&s)?;
-        Ok(r)
+        let v: toml::Value = toml::from_str(&s)?;
+
+        // env
+        let mut env = HashMap::new();
+        if let Some(tbl) = v.get("env").and_then(|e| e.as_table()) {
+            for (k, vv) in tbl {
+                if let Some(s) = vv.as_str() {
+                    env.insert(k.clone(), s.to_string());
+                } else {
+                    env.insert(k.clone(), vv.to_string());
+                }
+            }
+        }
+        // out_dir
+        let out_dir = v.get("out_dir").and_then(|x| x.as_str()).map(PathBuf::from);
+        // targets
+        let targets = v
+            .get("targets")
+            .and_then(|x| x.as_array())
+            .map(|arr| arr.iter().filter_map(|e| e.as_str().map(|s| s.to_string())).collect())
+            .unwrap_or_else(|| Vec::new());
+
+        // tasks
+        let mut tasks: Vec<RecipeTask> = Vec::new();
+        if let Some(arr) = v.get("tasks").and_then(|x| x.as_array()) {
+            for t in arr {
+                let tbl = match t.as_table() { Some(t) => t, None => continue };
+                let typ = tbl.get("type").and_then(|x| x.as_str()).unwrap_or("");
+                match typ {
+                    "shell" => {
+                        let mut spec = ShellTaskSpec {
+                            name: String::new(),
+                            deps: vec![],
+                            cmd: String::new(),
+                            dir: None,
+                            inputs: vec![],
+                            outputs: vec![],
+                            env: HashMap::new(),
+                        };
+                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) { spec.name = s.to_string(); }
+                        if let Some(s) = tbl.get("cmd").and_then(|x| x.as_str()) { spec.cmd = s.to_string(); }
+                        if let Some(s) = tbl.get("dir").and_then(|x| x.as_str()) { spec.dir = Some(PathBuf::from(s)); }
+                        if let Some(vv) = tbl.get("deps").and_then(|x| x.as_array()) {
+                            spec.deps = vv.iter().filter_map(|e| e.as_str().map(|s| s.to_string())).collect();
+                        }
+                        if let Some(vv) = tbl.get("inputs").and_then(|x| x.as_array()) {
+                            spec.inputs = vv.iter().filter_map(|e| e.as_str().map(PathBuf::from)).collect();
+                        }
+                        if let Some(vv) = tbl.get("outputs").and_then(|x| x.as_array()) {
+                            spec.outputs = vv.iter().filter_map(|e| e.as_str().map(PathBuf::from)).collect();
+                        }
+                        if let Some(envtbl) = tbl.get("env").and_then(|x| x.as_table()) {
+                            for (k, vv) in envtbl {
+                                if let Some(s) = vv.as_str() {
+                                    spec.env.insert(k.clone(), s.to_string());
+                                } else {
+                                    spec.env.insert(k.clone(), vv.to_string());
+                                }
+                            }
+                        }
+                        tasks.push(RecipeTask::Shell(spec));
+                    }
+                    "copy" => {
+                        let mut spec = CopyTaskSpec { name: String::new(), deps: vec![], from: PathBuf::new(), to: PathBuf::new(), recursive: false };
+                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) { spec.name = s.to_string(); }
+                        if let Some(vv) = tbl.get("deps").and_then(|x| x.as_array()) {
+                            spec.deps = vv.iter().filter_map(|e| e.as_str().map(|s| s.to_string())).collect();
+                        }
+                        if let Some(s) = tbl.get("from").and_then(|x| x.as_str()) { spec.from = PathBuf::from(s); }
+                        if let Some(s) = tbl.get("to").and_then(|x| x.as_str()) { spec.to = PathBuf::from(s); }
+                        if let Some(b) = tbl.get("recursive").and_then(|x| x.as_bool()) { spec.recursive = b; }
+                        tasks.push(RecipeTask::Copy(spec));
+                    }
+                    "mkdir" => {
+                        let mut spec = MkdirTaskSpec { name: String::new(), deps: vec![], dir: PathBuf::new() };
+                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) { spec.name = s.to_string(); }
+                        if let Some(vv) = tbl.get("deps").and_then(|x| x.as_array()) {
+                            spec.deps = vv.iter().filter_map(|e| e.as_str().map(|s| s.to_string())).collect();
+                        }
+                        if let Some(s) = tbl.get("dir").and_then(|x| x.as_str()) { spec.dir = PathBuf::from(s); }
+                        tasks.push(RecipeTask::Mkdir(spec));
+                    }
+                    "clean" => {
+                        let mut spec = CleanTaskSpec { name: String::new(), deps: vec![], path: PathBuf::new() };
+                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) { spec.name = s.to_string(); }
+                        if let Some(vv) = tbl.get("deps").and_then(|x| x.as_array()) {
+                            spec.deps = vv.iter().filter_map(|e| e.as_str().map(|s| s.to_string())).collect();
+                        }
+                        if let Some(s) = tbl.get("path").and_then(|x| x.as_str()) { spec.path = PathBuf::from(s); }
+                        tasks.push(RecipeTask::Clean(spec));
+                    }
+                    "touch" => {
+                        let mut spec = TouchTaskSpec { name: String::new(), deps: vec![], file: PathBuf::new(), content: None };
+                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) { spec.name = s.to_string(); }
+                        if let Some(vv) = tbl.get("deps").and_then(|x| x.as_array()) {
+                            spec.deps = vv.iter().filter_map(|e| e.as_str().map(|s| s.to_string())).collect();
+                        }
+                        if let Some(s) = tbl.get("file").and_then(|x| x.as_str()) { spec.file = PathBuf::from(s); }
+                        if let Some(s) = tbl.get("content").and_then(|x| x.as_str()) { spec.content = Some(s.to_string()); }
+                        tasks.push(RecipeTask::Touch(spec));
+                    }
+                    "hash" => {
+                        let mut spec = HashTaskSpec { name: String::new(), deps: vec![], inputs: vec![], out_file: PathBuf::new() };
+                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) { spec.name = s.to_string(); }
+                        if let Some(vv) = tbl.get("deps").and_then(|x| x.as_array()) {
+                            spec.deps = vv.iter().filter_map(|e| e.as_str().map(|s| s.to_string())).collect();
+                        }
+                        if let Some(vv) = tbl.get("inputs").and_then(|x| x.as_array()) {
+                            spec.inputs = vv.iter().filter_map(|e| e.as_str().map(PathBuf::from)).collect();
+                        }
+                        if let Some(s) = tbl.get("out_file").and_then(|x| x.as_str()) { spec.out_file = PathBuf::from(s); }
+                        tasks.push(RecipeTask::Hash(spec));
+                    }
+                    _ => { /* inconnu: ignorer */ }
+                }
+            }
+        }
+
+        Ok(Recipe { env, out_dir, targets, tasks })
     }
 }
 

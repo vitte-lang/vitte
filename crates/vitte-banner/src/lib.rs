@@ -69,10 +69,25 @@ pub enum BannerError {
 #[derive(Debug, PartialEq, Eq)]
 pub enum BannerError { InvalidWidth, ContentWiderThanWidth }
 
+
 #[cfg(feature = "errors")]
 pub type Result<T> = core::result::Result<T, BannerError>;
 #[cfg(not(feature = "errors"))]
 pub type Result<T> = core::result::Result<T, &'static str>;
+
+#[inline]
+fn err<T>(e: BannerError) -> Result<T> {
+    #[cfg(feature = "errors")]
+    { Err(e) }
+    #[cfg(not(feature = "errors"))]
+    {
+        let msg: &'static str = match e {
+            BannerError::InvalidWidth => "invalid width (must be >= 1)",
+            BannerError::ContentWiderThanWidth => "content wider than width",
+        };
+        Err(msg)
+    }
+}
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -167,7 +182,6 @@ impl BannerSpec {
         // Lignes de glyphes
         for line in glyph_lines.iter_mut() {
             let mut row = String::new();
-            let line_w = display_width(line);
             // padding horizontal
             row.push_str(&repeat_char(self.fill, self.pad_h));
             // align interne du texte dans la zone utile

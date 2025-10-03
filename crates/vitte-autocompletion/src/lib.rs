@@ -22,29 +22,34 @@
 //! assert!(out.items.iter().any(|c| c.label == "hello"));
 //! ```
 
-mod types;
-mod trie;
-mod matcher;
-mod source;
-mod util;
 
+/// Réexporte l'algorithme et les utilitaires de classement/mise en évidence.
 pub use matcher::{
     dedup_in_place, highlight_indices, match_query, rank_in_place, FuzzyConfig, MatchAlgo,
 };
+/// Réexporte les sources de complétions (in-mémoire) et le trait `Source`.
 pub use source::{MemorySource, Source};
+/// Réexporte le trie immuable compact et son builder.
 pub use trie::{Trie, TrieBuilder};
+/// Réexporte les types de données publics de l'API d'autocomplétion.
 pub use types::{Completion, CompletionKind, CompletionList, CompletionMeta, Context};
 
-use smallvec::SmallVec;
-use thiserror::Error;
-
 /// Erreurs de l'engine.
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum AutoError {
     /// Aucune source enregistrée.
-    #[error("no source")]
     NoSource,
 }
+
+impl core::fmt::Display for AutoError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            AutoError::NoSource => write!(f, "no source"),
+        }
+    }
+}
+
+impl std::error::Error for AutoError {}
 
 /// Builder d'`Engine`.
 pub struct EngineBuilder {
@@ -76,11 +81,16 @@ impl EngineBuilder {
 }
 
 /// Engine d'autocomplétion. Agrège des `Source` et applique un algo de matching.
-#[derive(Default)]
 pub struct Engine {
     sources: Vec<Box<dyn Source + Send + Sync>>,
     algo: MatchAlgo,
     namespace_filtering: bool,
+}
+
+impl Default for Engine {
+    fn default() -> Self {
+        Engine { sources: Vec::new(), algo: MatchAlgo::Prefix, namespace_filtering: true }
+    }
 }
 
 impl Engine {
@@ -110,7 +120,7 @@ impl Engine {
         limit: usize,
     ) -> Result<CompletionList, AutoError> {
         if self.sources.is_empty() { return Err(AutoError::NoSource); }
-        let mut buf: SmallVec<[Completion; 128]> = SmallVec::new();
+        let mut buf: Vec<Completion> = Vec::with_capacity(128);
         for s in &self.sources {
             s.collect(query, context, &mut buf);
         }
@@ -120,7 +130,7 @@ impl Engine {
         matcher::rank_in_place(&mut buf, query, self.algo);
         matcher::dedup_in_place(&mut buf);
         if buf.len() > limit { buf.truncate(limit); }
-        Ok(CompletionList { items: buf.into_vec() })
+        Ok(CompletionList { items: buf })
     }
 }
 
@@ -170,10 +180,10 @@ mod util {
 // types.rs
 // ============================================================================
 mod types {
-    use serde::{Deserialize, Serialize};
 
     /// Type de complétion.
-    #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+    #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum CompletionKind {
         /// Symbole (ident, fonction…)
         Symbol,
@@ -194,7 +204,8 @@ mod types {
     }
 
     /// Métadonnées facultatives.
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+    #[derive(Debug, Clone, Default)]
     pub struct CompletionMeta {
         /// Détail court.
         pub detail: Option<String>,
@@ -203,7 +214,8 @@ mod types {
     }
 
     /// Entrée de complétion.
-    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+    #[derive(Debug, Clone)]
     pub struct Completion {
         /// Texte à insérer.
         pub insert: String,
@@ -238,7 +250,8 @@ mod types {
     }
 
     /// Contexte d'édition.
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+    #[derive(Debug, Clone, Default)]
     pub struct Context {
         /// Index du curseur.
         pub cursor: usize,
@@ -249,7 +262,8 @@ mod types {
     }
 
     /// Liste de complétions.
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+    #[derive(Debug, Clone, Default)]
     pub struct CompletionList {
         /// Éléments.
         pub items: Vec<Completion>,
@@ -263,21 +277,34 @@ mod trie {
     use std::collections::BTreeMap;
 
     /// Trie immuable compact pour recherche par préfixe.
-    #[derive(Default, Clone)]
+    #[derive(Clone)]
     pub struct Trie<T: Copy> {
         root: Node<T>,
     }
 
-    #[derive(Default, Clone)]
+    #[derive(Clone)]
     struct Node<T: Copy> {
         term: Option<T>,
         edges: BTreeMap<char, Node<T>>,
     }
 
+    impl<T: Copy> Default for Node<T> {
+        fn default() -> Self {
+            Self { term: None, edges: BTreeMap::new() }
+        }
+    }
+
     /// Builder de `Trie`.
-    #[derive(Default)]
     pub struct TrieBuilder<T: Copy> {
         root: Node<T>,
+    }
+
+    impl<T: Copy> Default for Trie<T> {
+        fn default() -> Self { Self { root: Node::default() } }
+    }
+
+    impl<T: Copy> Default for TrieBuilder<T> {
+        fn default() -> Self { Self { root: Node::default() } }
     }
 
     impl<T: Copy> TrieBuilder<T> {
@@ -403,7 +430,7 @@ mod matcher {
     #[inline]
     fn base_substring_score(label: &str, start: usize, qlen: usize) -> i32 {
         let mut sc = 800 - start as i32;
-        let mut prev = label[..start].chars().rev().next();
+        let prev = label[..start].chars().rev().next();
         let first = label[start..].chars().next().unwrap_or_default();
         if is_word_boundary(prev, first) || is_camel_boundary(prev, first) { sc += 10; }
         // bonus compacité

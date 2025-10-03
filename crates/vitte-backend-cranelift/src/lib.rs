@@ -14,7 +14,6 @@
 //! ```
 
 #![deny(missing_docs)]
-#![forbid(unsafe_code)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(not(feature = "std"))]
@@ -23,15 +22,32 @@ extern crate alloc;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 #[cfg(feature = "std")]
-use std::{string::String, vec::Vec};
+use std::string::String;
 
 #[cfg(not(feature = "std"))]
-use alloc::{string::String, vec::Vec};
+use alloc::string::String;
 
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{default_libcall_names, Linkage, Module};
-use vitte_errors::VitteError;
+
+/// Erreurs du JIT Cranelift minimal.
+#[derive(Debug)]
+pub enum JitError {
+    /// Erreur de construction/liaison ou de compilation.
+    Parse(String),
+}
+
+impl core::fmt::Display for JitError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            JitError::Parse(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for JitError {}
 
 /// JIT Cranelift minimal.
 pub struct Jit {
@@ -43,7 +59,7 @@ pub struct Jit {
 impl Jit {
     /// Nouveau JIT.
     pub fn new() -> Self {
-        let builder = JITBuilder::new(default_libcall_names());
+        let builder = JITBuilder::new(default_libcall_names()).expect("failed to init JITBuilder");
         let module = JITModule::new(builder);
         Self {
             module,
@@ -53,7 +69,7 @@ impl Jit {
     }
 
     /// Compile une fonction `(i64,i64) -> i64` qui effectue une addition.
-    pub fn compile_add_i64(&mut self) -> Result<*const u8, VitteError> {
+    pub fn compile_add_i64(&mut self) -> Result<*const u8, JitError> {
         let mut ctx = self.module.make_context();
 
         // Signature (i64, i64) -> i64
@@ -85,10 +101,10 @@ impl Jit {
         let id = self
             .module
             .declare_function(&name, Linkage::Export, &ctx.func.signature)
-            .map_err(|e| VitteError::Parse(e.to_string()))?;
+            .map_err(|e| JitError::Parse(e.to_string()))?;
         self.module
             .define_function(id, &mut ctx)
-            .map_err(|e| VitteError::Parse(e.to_string()))?;
+            .map_err(|e| JitError::Parse(e.to_string()))?;
 
         self.module.clear_context(&mut ctx);
         self.module.finalize_definitions().map_err(map_mod_err)?;
@@ -97,7 +113,7 @@ impl Jit {
     }
 
     /// Compile une fonction `() -> i64` qui retourne `imm`.
-    pub fn compile_const_i64(&mut self, imm: i64) -> Result<*const u8, VitteError> {
+    pub fn compile_const_i64(&mut self, imm: i64) -> Result<*const u8, JitError> {
         let mut ctx = self.module.make_context();
 
         // Signature () -> i64
@@ -121,10 +137,10 @@ impl Jit {
         let id = self
             .module
             .declare_function(&name, Linkage::Export, &ctx.func.signature)
-            .map_err(|e| VitteError::Parse(e.to_string()))?;
+            .map_err(|e| JitError::Parse(e.to_string()))?;
         self.module
             .define_function(id, &mut ctx)
-            .map_err(|e| VitteError::Parse(e.to_string()))?;
+            .map_err(|e| JitError::Parse(e.to_string()))?;
 
         self.module.clear_context(&mut ctx);
         self.module.finalize_definitions().map_err(map_mod_err)?;
@@ -134,40 +150,16 @@ impl Jit {
 
     fn unique_name(&self, base: &str) -> String {
         let n = self.name_ctr.fetch_add(1, Ordering::Relaxed);
-        let mut s = String::from(base);
-        s.push('_');
-        push_u(s, n)
+        format!("{}_{}", base, n)
     }
 }
 
 /* ─────────────────────────── Utils ─────────────────────────── */
 
-fn map_mod_err(e: cranelift_module::ModuleError) -> VitteError {
-    VitteError::Parse(e.to_string())
+fn map_mod_err(e: cranelift_module::ModuleError) -> JitError {
+    JitError::Parse(e.to_string())
 }
 
-// Petit util sans alloc additionnelle pour concaténer un entier.
-fn push_u(mut s: String, mut n: usize) -> String {
-    // collect digits reversed
-    let mut buf: [u8; 20] = [0; 20];
-    let mut i = 0;
-    if n == 0 {
-        buf[0] = b'0';
-        i = 1;
-    } else {
-        while n > 0 {
-            buf[i] = b'0' + (n % 10) as u8;
-            n /= 10;
-            i += 1;
-        }
-    }
-    // reverse into string
-    while i > 0 {
-        i -= 1;
-        s.push(buf[i] as char);
-    }
-    s
-}
 
 /* ─────────────────────────── Tests ─────────────────────────── */
 
