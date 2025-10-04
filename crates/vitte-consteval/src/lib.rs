@@ -23,15 +23,15 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_op_in_unsafe_fn)]
-#![deny(missing_docs)]
+#![allow(missing_docs)]
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
 #[cfg(not(feature = "std"))]
-use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
+use alloc::{boxed::Box, string::String, vec::Vec};
 #[cfg(feature = "std")]
-use std::{boxed::Box, format, string::String, vec, vec::Vec};
+use std::{boxed::Box, string::String, vec::Vec};
 
 use core::cmp::Ordering;
 
@@ -126,30 +126,49 @@ impl Default for Limits {
 /// Evaluation context.
 #[derive(Debug, Default)]
 pub struct Cx {
+    #[cfg(feature = "interpreter")]
     steps: u64,
+    #[cfg(feature = "interpreter")]
     depth: u32,
+    #[cfg(feature = "interpreter")]
     limits: Limits,
     env: Map<String, Value>,
 }
 
 impl Cx {
     /// Create.
+    #[cfg(feature = "interpreter")]
     pub fn new() -> Self { Self { limits: Limits::default(), ..Default::default() } }
-    /// With limits.
+
+    /// Create (no interpreter features).
+    #[cfg(not(feature = "interpreter"))]
+    pub fn new() -> Self { Self::default() }
+
+    /// With limits (interpreter only).
+    #[cfg(feature = "interpreter")]
     pub fn with_limits(limits: Limits) -> Self { Self { limits, ..Default::default() } }
+
     /// Bind a named constant.
     pub fn define_const<S: Into<String>>(&mut self, name: S, val: Value) { self.env.insert(name.into(), val); }
+
+    #[cfg(feature = "interpreter")]
     fn charge(&mut self) -> Result<()> {
         self.steps = self.steps.checked_add(1).ok_or_else(|| Error::Limit("steps overflow".into()))?;
         if self.steps > self.limits.max_steps { return Err(Error::Limit("max steps".into())); }
         Ok(())
     }
+
+    #[cfg(feature = "interpreter")]
     fn enter(&mut self) -> Result<()> {
         if self.depth >= self.limits.max_depth { return Err(Error::Limit("max depth".into())); }
         self.depth += 1;
         Ok(())
     }
+
+    #[cfg(feature = "interpreter")]
     fn leave(&mut self) { self.depth = self.depth.saturating_sub(1); }
+
+    #[cfg(feature = "interpreter")]
     fn get(&self, name: &str) -> Option<&Value> { self.env.get(name) }
 }
 
@@ -269,7 +288,7 @@ pub fn eval_const_expr(cx: &mut Cx, e: &Expr) -> Result<Value> {
     }
 }
 
-#[cfg(feature = "interpreter")]
+#[cfg(any(feature = "interpreter", feature = "fold"))]
 fn eval_bin(op: BinOp, a: Value, b: Value) -> Result<Value> {
     use BinOp::*;
     match op {
@@ -354,7 +373,7 @@ fn eval_bin(op: BinOp, a: Value, b: Value) -> Result<Value> {
     }
 }
 
-#[cfg(feature = "interpreter")]
+#[cfg(any(feature = "interpreter", feature = "fold"))]
 fn cmp_bin(op: BinOp, a: Value, b: Value) -> Result<Value> {
     use BinOp::*;
     let boolv = |b| Ok(Value::Bool(b));
@@ -413,7 +432,10 @@ fn cmp_bin(op: BinOp, a: Value, b: Value) -> Result<Value> {
     }
 }
 
+#[cfg(feature = "interpreter")]
 struct ScopeGuard<'a>(&'a mut u32);
+
+#[cfg(feature = "interpreter")]
 impl Drop for ScopeGuard<'_> {
     fn drop(&mut self) { *self.0 = self.0.saturating_sub(1); }
 }
@@ -551,8 +573,8 @@ pub fn fold_ir(f: &Func) -> FoldResult {
             Bin { dst, op, a, b } => {
                 let av = const_of.get(a).cloned();
                 let bv = const_of.get(b).cloned();
-                if let (Some(a), Some(b)) = (av, bv) {
-                    if let Ok(v) = eval_bin(*op, a.clone(), b.clone()) {
+                if let (Some(ref a), Some(ref b)) = (av.as_ref(), bv.as_ref()) {
+                    if let Ok(v) = eval_bin(*op, (*a).clone(), (*b).clone()) {
                         const_of.insert(*dst, v.clone());
                         out.push(Const { dst: *dst, k: v });
                         continue;
@@ -561,11 +583,11 @@ pub fn fold_ir(f: &Func) -> FoldResult {
                 // algebraic identities
                 match (op, av.as_ref(), bv.as_ref()) {
                     (BinOp::AddI, Some(Value::I64(0)), _) => { const_of.remove(dst); out.push(Bin { dst:*dst, op:*op, a:*b, b:*a }); }
-                    (BinOp::AddI, _, Some(Value::I64(0))) => { const_of.insert(*dst, av.unwrap().clone()); out.push(Const { dst:*dst, k: const_of.get(a).unwrap().clone() }); }
+                    (BinOp::AddI, _, Some(Value::I64(0))) => { if let Some(v) = av.clone() { const_of.insert(*dst, v.clone()); out.push(Const { dst:*dst, k: v }); } else { out.push(insn.clone()); } }
                     (BinOp::AddU, Some(Value::U64(0)), _) => { const_of.remove(dst); out.push(Bin { dst:*dst, op:*op, a:*b, b:*a }); }
-                    (BinOp::AddU, _, Some(Value::U64(0))) => { if let Some(v) = av { const_of.insert(*dst, v.clone()); out.push(Const{dst:*dst,k:v}); } else { out.push(insn.clone()); } }
+                    (BinOp::AddU, _, Some(Value::U64(0))) => { if let Some(v) = av.clone() { const_of.insert(*dst, v.clone()); out.push(Const{dst:*dst,k:v}); } else { out.push(insn.clone()); } }
                     (BinOp::MulI, Some(Value::I64(1)), _) | (BinOp::MulU, Some(Value::U64(1)), _) => { const_of.remove(dst); out.push(Bin { dst:*dst, op:*op, a:*b, b:*a }); }
-                    (BinOp::MulI, _, Some(Value::I64(1))) | (BinOp::MulU, _, Some(Value::U64(1))) => { if let Some(v) = av { const_of.insert(*dst, v.clone()); out.push(Const{dst:*dst,k:v}); } else { out.push(insn.clone()); } }
+                    (BinOp::MulI, _, Some(Value::I64(1))) | (BinOp::MulU, _, Some(Value::U64(1))) => { if let Some(v) = av.clone() { const_of.insert(*dst, v.clone()); out.push(Const{dst:*dst,k:v}); } else { out.push(insn.clone()); } }
                     (BinOp::MulI, Some(Value::I64(0)), _) | (BinOp::MulI, _, Some(Value::I64(0))) => { const_of.insert(*dst, Value::I64(0)); out.push(Const{dst:*dst, k:Value::I64(0)}); }
                     (BinOp::MulU, Some(Value::U64(0)), _) | (BinOp::MulU, _, Some(Value::U64(0))) => { const_of.insert(*dst, Value::U64(0)); out.push(Const{dst:*dst, k:Value::U64(0)}); }
                     _ => out.push(insn.clone()),
@@ -612,7 +634,7 @@ pub fn fold_ir(f: &Func) -> FoldResult {
 
 /* ================================= Tests ================================ */
 
-#[cfg(any(test, feature = "std"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 

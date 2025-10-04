@@ -27,7 +27,7 @@
 compile_error!("vitte-dotnet nécessite std");
 
 extern crate alloc;
-use alloc::{string::String, vec::Vec};
+use alloc::string::String;
 
 /// Résultat alias.
 pub type Result<T, E = Error> = core::result::Result<T, E>;

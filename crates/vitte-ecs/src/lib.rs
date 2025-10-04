@@ -38,6 +38,7 @@ impl<T: 'static + Send + Sync> Component for T {}
 
 /// Structure stockant des composants pour un type donné.
 struct ComponentStore {
+    #[allow(dead_code)]
     // type_id unique
     type_id: core::any::TypeId,
     // box dyn HashMap<EntityId, Box<dyn Any>>
@@ -47,7 +48,9 @@ struct ComponentStore {
 /// Trait interne pour stocker dynamiquement.
 trait AnyStore {
     fn remove(&mut self, id: EntityId);
+    #[allow(dead_code)]
     fn clear(&mut self);
+    #[allow(dead_code)]
     fn len(&self) -> usize;
     fn as_any(&self) -> &dyn core::any::Any;
     fn as_any_mut(&mut self) -> &mut dyn core::any::Any;
@@ -77,7 +80,7 @@ pub struct EntityBuilder<'w> {
 }
 impl<'w> EntityBuilder<'w> {
     /// Ajoute un composant à l’entité.
-    pub fn with<C: Component>(mut self, comp: C) -> Self {
+    pub fn with<C: Component>(self, comp: C) -> Self {
         self.world.insert(self.id, comp);
         self
     }

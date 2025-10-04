@@ -22,7 +22,7 @@
 extern crate alloc;
 
 pub mod arena {
-    use alloc::{vec::Vec, fmt, string::String};
+    use alloc::{vec::Vec, fmt};
     use core::{ops::{Index, IndexMut}, marker::PhantomData};
 
     /// Handle indexé type‐safe.
@@ -244,7 +244,7 @@ pub mod bitset {
         }
 
         pub fn ones(&self) -> impl Iterator<Item = usize> + '_ {
-            self.words.iter().enumerate().flat_map(|(wi, &mut w)| {
+            self.words.iter().enumerate().flat_map(|(wi, &w)| {
                 let mut bits = w;
                 core::iter::from_fn(move || {
                     if bits == 0 { return None; }
@@ -319,14 +319,13 @@ pub mod smap {
         }
 
         pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> { self.items.iter().map(|(k,v)| (k,v)) }
-        pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> { self.items.iter_mut().map(|(k,v)| (k,v)) }
+        pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> { self.items.iter_mut().map(|(k, v)| (&*k, v)) }
         pub fn into_vec(self) -> Vec<(K,V)> { self.items }
     }
 }
 
 pub mod igraph {
     use alloc::vec::Vec;
-    use core::cmp::Ordering;
     use crate::bitset::BitSet;
 
     /// Identifiant sommet.
@@ -411,7 +410,6 @@ pub mod igraph {
     /// Dijkstra générique avec poids `W: Copy + Ord + num_traits::Zero + Add<Output=W>`.
     pub mod dijkstra {
         use super::*;
-        use core::ops::Add;
 
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         pub struct Dist<W> { pub prev: Option<NodeId>, pub cost: W }
@@ -436,7 +434,7 @@ pub mod igraph {
                 if self.data.is_empty() { return None; }
                 let last = self.data.pop().unwrap();
                 if self.data.is_empty() { return Some(last); }
-                let mut out = core::mem::replace(&mut self.data[0], last);
+                let out = core::mem::replace(&mut self.data[0], last);
                 // descente
                 let mut i = 0;
                 loop {
@@ -451,6 +449,7 @@ pub mod igraph {
                 }
                 Some(out)
             }
+            #[cfg(test)]
             fn is_empty(&self) -> bool { self.data.is_empty() }
         }
 
@@ -492,11 +491,11 @@ pub mod igraph {
         }
 
         /// Reconstruit le chemin `src -> dst` en utilisant `prev`.
-        pub fn reconstruct_path<W>(info: &[Option<Dist<W>>], dst: NodeId) -> Option<alloc::vec::Vec<NodeId>> {
+        pub fn reconstruct_path<W: Copy>(info: &[Option<Dist<W>>], dst: NodeId) -> Option<alloc::vec::Vec<NodeId>> {
             let mut cur = dst;
             let mut out = alloc::vec::Vec::new();
             loop {
-                let Some(d) = info.get(cur as usize).and_then(|x| *x) else { return None; };
+                let Some(d) = info.get(cur as usize).and_then(|x| x.as_ref().copied()) else { return None; };
                 out.push(cur);
                 match d.prev {
                     None => break,
@@ -597,5 +596,11 @@ mod tests {
         // s -> n1 -> n2 -> t  : coût 1 + 1 + 1 = 3
         assert_eq!(path, vec![s, n1, n2, t]);
         assert_eq!(dist[t as usize].as_ref().unwrap().cost, 3);
+    }
+
+    #[test]
+    fn heap_empty() {
+        let h: igraph::dijkstra::BinHeap<i32, i32> = igraph::dijkstra::BinHeap::new();
+        assert!(h.is_empty());
     }
 }

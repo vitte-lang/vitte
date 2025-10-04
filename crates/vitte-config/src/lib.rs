@@ -35,12 +35,12 @@ use serde_json as _serde_json;
 #[cfg(feature = "toml")]
 use toml as _toml;
 
-#[cfg(feature = "serde")]
+#[cfg(any(feature = "json", feature = "toml"))]
 use serde::{Deserialize, Serialize};
 
 /// Niveau d’optimisation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
 pub enum OptLevel {
     O0,
     O1,
@@ -56,7 +56,7 @@ impl Default for OptLevel {
 
 /// Architecture cible.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
 pub enum Arch {
     X86_64,
     Aarch64,
@@ -69,7 +69,7 @@ impl Default for Arch {
 
 /// Backend codegen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
 pub enum Backend {
     Asm,
     Cranelift,
@@ -82,7 +82,7 @@ impl Default for Backend {
 
 /// Options de build.
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
 pub struct BuildProfile {
     pub opt: OptLevel,
     pub debug_info: bool,
@@ -104,7 +104,7 @@ impl BuildProfile {
 
 /// Toolchain et cible.
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
 pub struct Toolchain {
     pub backend: Backend,
     pub arch: Arch,
@@ -119,7 +119,7 @@ impl Default for Toolchain {
 
 /// Configuration racine.
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
 pub struct Config {
     /// Nom du profil par défaut.
     pub default_profile: String,

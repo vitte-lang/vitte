@@ -29,12 +29,9 @@
 #![deny(missing_docs)]
 
 #[cfg(not(feature = "std"))]
-extern crate alloc;
-
-#[cfg(not(feature = "std"))]
-use alloc::{string::String, vec::Vec};
+use alloc::string::String;
 #[cfg(feature = "std")]
-use std::{string::String, vec::Vec};
+use std::string::String;
 
 /// Résultat standard.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
@@ -66,9 +63,8 @@ pub mod ffi {
     #[cxx::bridge(namespace = "vitte")]
     mod bridge {
         // Types partagés
-        extern "C++" {
+        unsafe extern "C++" {
             include!("vitte_cpp.hpp"); // à fournir dans votre projet
-            type CxxString = cxx::CxxString;
 
             /// Version côté C++ (implémentation fournie par l’appli).
             fn cpp_version() -> String;
@@ -113,13 +109,13 @@ pub mod ffi {
     /* -------------------- Helpers Rust appelant le C++ -------------------- */
 
     /// Retourne la version côté C++ si liée.
-    pub fn version_cpp() -> String { bridge::cpp_version() }
+    pub fn version_cpp() -> String { self::bridge::cpp_version() }
 
     /// Démo: somme calculée côté C++.
-    pub fn sum_cpp(buf: &[u8]) -> u64 { bridge::cpp_sum(buf) }
+    pub fn sum_cpp(buf: &[u8]) -> u64 { self::bridge::cpp_sum(buf) }
 
     /// Démo: log côté C++.
-    pub fn log_cpp(msg: &str) { bridge::cpp_log(msg) }
+    pub fn log_cpp(msg: &str) { self::bridge::cpp_log(msg) }
 }
 
 /* ------------------------------------------------------------------------- */

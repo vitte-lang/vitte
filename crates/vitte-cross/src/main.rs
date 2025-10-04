@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! vitte-cross — outils de cross-compilation pour Vitte
 //!
 //! Objectifs:
@@ -18,16 +17,18 @@ use std::process::{self, Command};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Verbosity { Quiet, Normal, Verbose }
 
-impl Default for Verbosity {
-    fn default() -> Self { Verbosity::Normal }
-}
-
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 struct GlobalOpts {
     verbosity: Verbosity,
     target: Option<String>,
     jobs: Option<usize>,
     out_dir: Option<PathBuf>,
+}
+
+impl Default for GlobalOpts {
+    fn default() -> Self {
+        Self { verbosity: Verbosity::Normal, target: None, jobs: None, out_dir: None }
+    }
 }
 
 fn print_help() {
@@ -54,32 +55,41 @@ fn print_help() {
 fn print_version() { println!("vitte-cross {}", env!("CARGO_PKG_VERSION")); }
 
 fn parse_global_opts(args: &mut Vec<String>) -> GlobalOpts {
-    let mut opts = GlobalOpts { verbosity: Verbosity::Normal, ..Default::default() };
+    let mut opts = GlobalOpts::default();
     let mut i = 1; // après la commande
     while i < args.len() {
         match args[i].as_str() {
             "-q" | "--quiet"    => { opts.verbosity = Verbosity::Quiet; args.remove(i); },
             "-v" | "--verbose"  => { opts.verbosity = Verbosity::Verbose; args.remove(i); },
-            "-t" | "--target"   => { if i+1 < args.len() { let _ = args.remove(i); opts.target = Some(args.remove(i)); } },
-            "-j" | "--jobs"     => { if i+1 < args.len() { let _ = args.remove(i); opts.jobs = args.remove(i).parse().ok(); } },
-            "-o" | "--out-dir"  => { if i+1 < args.len() { let _ = args.remove(i); opts.out_dir = Some(PathBuf::from(args.remove(i))); } },
+            "-t" | "--target"   => { let v = take_val(args, i); opts.target = v; },
+            "-j" | "--jobs"     => { let v = take_val(args, i).and_then(|s| s.parse().ok()); opts.jobs = v; },
+            "-o" | "--out-dir"  => { let v = take_val(args, i).map(PathBuf::from); opts.out_dir = v; },
             _ => { i += 1; }
         }
     }
     opts
 }
 
-fn cmd_targets_list() -> io::Result<()> {
+fn take_val(args: &mut Vec<String>, i_flag: usize) -> Option<String> {
+    if i_flag + 1 >= args.len() { return None; }
+    let _flag = args.remove(i_flag); // supprime le flag
+    Some(args.remove(i_flag))        // la valeur prend la place
+}
+
+/* --------------------------- sous-commandes --------------------------- */
+
+fn cmd_targets_list(_opts: &GlobalOpts) -> io::Result<()> {
+    // Stub: dans une implémentation réelle, lire une config (~/.vitte/cross/targets)
     println!("cibles connues:\n  - x86_64-unknown-linux-gnu\n  - aarch64-apple-darwin\n  - x86_64-pc-windows-msvc");
     Ok(())
 }
 
-fn cmd_targets_add(triple: &str) -> io::Result<()> {
+fn cmd_targets_add(_opts: &GlobalOpts, triple: &str) -> io::Result<()> {
     println!("ajout de la cible: {triple}");
     Ok(())
 }
 
-fn cmd_targets_remove(triple: &str) -> io::Result<()> {
+fn cmd_targets_remove(_opts: &GlobalOpts, triple: &str) -> io::Result<()> {
     println!("suppression de la cible: {triple}");
     Ok(())
 }
@@ -92,12 +102,14 @@ fn cmd_build(opts: &GlobalOpts, release: bool) -> io::Result<()> {
     if let Some(j) = opts.jobs { cmd.arg("-j").arg(j.to_string()); }
     if let Some(dir) = &opts.out_dir { cmd.arg("--target-dir").arg(dir); }
     cmd.env("CARGO_BUILD_TARGET", target);
+    if opts.verbosity == Verbosity::Verbose { eprintln!("[run] {:?}", cmd); }
     run(&mut cmd)
 }
 
 fn cmd_pkg(opts: &GlobalOpts, fmt: &str) -> io::Result<()> {
     let target = opts.target.as_deref().unwrap_or(host_triple());
     println!("packaging format={fmt} target={target}");
+    // Stub: empaqueter le binaire depuis target/<triple>/<profile>/vitte
     Ok(())
 }
 
@@ -108,6 +120,8 @@ fn cmd_env(opts: &GlobalOpts) -> io::Result<()> {
     Ok(())
 }
 
+/* ----------------------------- utilitaires ---------------------------- */
+
 fn run(cmd: &mut Command) -> io::Result<()> {
     let status = cmd.status()?;
     if !status.success() {
@@ -117,6 +131,7 @@ fn run(cmd: &mut Command) -> io::Result<()> {
 }
 
 fn host_triple() -> &'static str {
+    // Approximation compile-time
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     { "x86_64-unknown-linux-gnu" }
     #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
@@ -137,11 +152,15 @@ fn host_triple() -> &'static str {
     { "unknown-unknown-unknown" }
 }
 
+/* --------------------------------- main -------------------------------- */
+
 fn main() {
     let mut args: Vec<String> = env::args().collect();
     if args.len() < 2 { print_help(); process::exit(1); }
 
-    let cmd: String = args.get(1).cloned().unwrap();
+    // Prendre la commande par valeur avant de modifier `args`
+    let cmd: String = args[1].clone();
+    // Consommer la commande puis parser les options globales restantes
     args.remove(1);
     let opts = parse_global_opts(&mut args);
 
@@ -151,14 +170,26 @@ fn main() {
         "targets" => {
             if args.len() < 2 { eprintln!("error: missing subcommand for `targets`"); print_help(); process::exit(1); }
             match args[1].as_str() {
-                "list" => cmd_targets_list(),
-                "add" => { if args.len() < 3 { eprintln!("error: missing <triple> for `targets add`"); process::exit(1); } cmd_targets_add(&args[2]) }
-                "remove" => { if args.len() < 3 { eprintln!("error: missing <triple> for `targets remove`"); process::exit(1); } cmd_targets_remove(&args[2]) }
+                "list" => cmd_targets_list(&opts),
+                "add" => {
+                    if args.len() < 3 { eprintln!("error: missing <triple> for `targets add`"); process::exit(1); }
+                    cmd_targets_add(&opts, &args[2])
+                }
+                "remove" => {
+                    if args.len() < 3 { eprintln!("error: missing <triple> for `targets remove`"); process::exit(1); }
+                    cmd_targets_remove(&opts, &args[2])
+                }
                 other => { eprintln!("error: unknown targets subcommand `{other}`"); process::exit(1); }
             }
         }
-        "build" => { let release = args.iter().any(|a| a == "--release"); cmd_build(&opts, release) }
-        "pkg" => { if args.len() < 2 { eprintln!("error: missing <fmt> for `pkg`"); process::exit(1); } cmd_pkg(&opts, &args[1]) }
+        "build" => {
+            let release = args.iter().any(|a| a == "--release");
+            cmd_build(&opts, release)
+        }
+        "pkg" => {
+            if args.len() < 2 { eprintln!("error: missing <fmt> for `pkg`"); process::exit(1); }
+            cmd_pkg(&opts, &args[1])
+        }
         "env" => cmd_env(&opts),
         other => { eprintln!("error: unknown command `{other}`"); print_help(); process::exit(1); }
     };

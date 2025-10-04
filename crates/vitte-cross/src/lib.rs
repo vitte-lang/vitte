@@ -1,8 +1,7 @@
-//! vitte-cross — toolchain discovery stub for cross compilation.
-//!
-//! The detailed implementation that searched for compilers/linkers per target
-//! is not available yet. This placeholder keeps the public surface (types such
-//! as [`Toolchain`] and [`Runner`]) while simply returning `Unsupported`.
+//! vitte-cross — primitives de cross-compilation pour Vitte
+// The detailed implementation that searched for compilers/linkers per target
+// is not available yet. This placeholder keeps the public surface (types such
+// as [`Toolchain`] and [`Runner`]) while simply returning `Unsupported`.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(missing_docs)]
@@ -10,27 +9,39 @@
 extern crate alloc;
 
 use alloc::{string::String, vec::Vec};
-use thiserror::Error;
 
 /// Result alias used across the crate.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 /// Errors returned by the stub.
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum Error {
     /// The requested operation is currently not implemented.
-    #[error("cross-compilation support unavailable: {0}")]
     Unsupported(&'static str),
 }
 
-/// Minimal description of a target triple.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-pub struct TargetTriple(pub String);
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Error::Unsupported(msg) => write!(f, "cross-compilation support unavailable: {msg}"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for Error {}
+
+/// Minimal target triple wrapper.
+#[derive(Debug, Clone, Default)]
+pub struct TargetTriple {
+    /// The canonical triple string (e.g., "x86_64-unknown-linux-gnu").
+    pub triple: String,
+}
 
 impl TargetTriple {
     /// Constructs a triple from any string-like type.
     pub fn new<S: Into<String>>(s: S) -> Self {
-        Self(s.into())
+        Self { triple: s.into() }
     }
 }
 

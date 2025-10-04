@@ -43,12 +43,12 @@ pub enum ReadEvent {
     Interrupted,
 }
 
-/// Readline configuration placeholder.
+/// Configuration for the readline engine.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadConfig {
-    /// Optional history path.
+    /// Optional path to the history file (string form to stay `no_std` friendly).
     pub history_path: Option<String>,
-    /// Maximum history entries.
+    /// Maximum number of entries in history.
     pub history_size: usize,
 }
 
@@ -61,7 +61,8 @@ impl Default for ReadConfig {
 /// Minimal readline engine placeholder.
 #[derive(Debug, Default)]
 pub struct Readline {
-    cfg: ReadConfig,
+    /// Stored configuration (unused in the stub).
+    _cfg: ReadConfig,
 }
 
 impl Readline {

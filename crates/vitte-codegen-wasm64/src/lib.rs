@@ -23,7 +23,8 @@ extern crate alloc;
 #[cfg(not(feature = "std"))]
 use alloc::{vec, vec::Vec, string::String};
 #[cfg(feature = "std")]
-use std::{vec, vec::Vec, string::String};
+use std::vec::Vec;
+use std::{vec, string::String};
 
 /// Result alias for backend.
 pub type Result<T, E = CodegenError> = core::result::Result<T, E>;
@@ -102,7 +103,9 @@ pub enum CtrlOp {
 pub enum Op {
     /// Const numeric
     NumConstI64(i64),
+    /// Const i32
     NumConstI32(i32),
+    /// Const f64
     NumConstF64(f64),
     /// Binary arithmetic
     NumBin(NumOp),
@@ -219,20 +222,35 @@ pub mod enc {
 /// Lowering from minimal IR.
 pub mod lower {
     use super::{Op, NumOp, MemOp, CtrlOp};
+    #[cfg(not(feature = "std"))]
+    use alloc::{vec, vec::Vec};
+    #[cfg(feature = "std")]
+    use std::vec::Vec;
 
     /// Minimal IR subset for wasm.
     #[derive(Debug, Clone, PartialEq)]
     pub enum Ir {
+        /// Push an i64 constant onto the stack.
         ConstI64(i64),
+        /// Pop two i64s and push their sum.
         AddI64,
-        StoreI64 { offset: u32 },
-        LoadI64 { offset: u32 },
+        /// Store i64 at memory[base+offset] (base is on stack).
+        StoreI64 {
+            /// Byte offset from the memory base.
+            offset: u32,
+        },
+        /// Load i64 from memory[base+offset] (base is on stack).
+        LoadI64 {
+            /// Byte offset from the memory base.
+            offset: u32,
+        },
+        /// Return from the current function.
         Ret,
     }
 
     /// Lower IR → wasm ops.
-    pub fn lower(ir: &[Ir]) -> super::Result<alloc::vec::Vec<Op>> {
-        let mut out = alloc::vec::Vec::new();
+    pub fn lower(ir: &[Ir]) -> super::Result<Vec<Op>> {
+        let mut out = Vec::new();
         for n in ir {
             match n {
                 Ir::ConstI64(v) => out.push(Op::NumConstI64(*v)),
@@ -252,17 +270,23 @@ pub mod lower {
 /// Module builder (very minimal).
 pub mod module {
     use super::{CodeBuf, Op, enc};
+    #[cfg(not(feature = "std"))]
+    use alloc::{vec, vec::Vec};
+    #[cfg(feature = "std")]
+    use std::vec::Vec;
 
     /// A function body.
     #[derive(Debug)]
     pub struct Func {
-        pub ops: alloc::vec::Vec<Op>,
+        /// Instruction stream for this function.
+        pub ops: Vec<Op>,
     }
 
     /// A module.
     #[derive(Debug, Default)]
     pub struct Module {
-        pub funcs: alloc::vec::Vec<Func>,
+        /// Functions contained in this module in declaration order.
+        pub funcs: Vec<Func>,
     }
 
     impl Module {
@@ -327,7 +351,7 @@ impl Codegen {
     }
 }
 
-#[cfg(any(test, feature = "std"))]
+#[cfg(test)]
 mod tests {
     use super::lower::{Ir};
     use super::Codegen;

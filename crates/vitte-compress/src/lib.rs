@@ -23,9 +23,9 @@
 extern crate alloc;
 
 #[cfg(not(feature = "std"))]
-use alloc::{string::String, vec, vec::Vec};
+use alloc::{string::String, vec::Vec};
 #[cfg(feature = "std")]
-use std::{string::String, vec, vec::Vec};
+use std::{string::String, vec::Vec};
 
 /// Crate-wide result type.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
@@ -376,6 +376,7 @@ pub use io_async::*;
 
 #[cfg(any(test, feature = "std"))]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]

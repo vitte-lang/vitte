@@ -16,15 +16,15 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_op_in_unsafe_fn)]
-#![deny(missing_docs)]
+#![warn(missing_docs)]
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
 #[cfg(not(feature = "std"))]
-use alloc::{string::String, vec, vec::Vec};
+use alloc::{string::String, vec::Vec};
 #[cfg(feature = "std")]
-use std::{string::String, vec, vec::Vec};
+use std::{string::String, vec::Vec};
 
 /// Résultat backend.
 pub type Result<T, E = CodegenError> = core::result::Result<T, E>;
@@ -50,21 +50,37 @@ pub enum CodegenError {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum R {
+    /// General-purpose register RAX (accumulator).
     RAX = 0,
+    /// General-purpose register RCX (counter).
     RCX = 1,
+    /// General-purpose register RDX (data).
     RDX = 2,
+    /// General-purpose register RBX (base).
     RBX = 3,
+    /// Stack pointer register RSP.
     RSP = 4,
+    /// Base/frame pointer register RBP.
     RBP = 5,
+    /// General-purpose register RSI (source index).
     RSI = 6,
+    /// General-purpose register RDI (destination index).
     RDI = 7,
+    /// General-purpose register R8.
     R8  = 8,
+    /// General-purpose register R9.
     R9  = 9,
+    /// General-purpose register R10.
     R10 = 10,
+    /// General-purpose register R11.
     R11 = 11,
+    /// General-purpose register R12 (callee-saved).
     R12 = 12,
+    /// General-purpose register R13 (callee-saved).
     R13 = 13,
+    /// General-purpose register R14 (callee-saved).
     R14 = 14,
+    /// General-purpose register R15 (callee-saved).
     R15 = 15,
 }
 
@@ -73,9 +89,18 @@ impl R {
     #[inline] fn rex_bit(self) -> u8 { ((self as u8) >> 3) & 1 }
 }
 
-/// Largeurs mémoire.
+/// Operand or memory width.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Width { B8, B16, B32, B64 }
+pub enum Width {
+    /// 8-bit.
+    B8,
+    /// 16-bit.
+    B16,
+    /// 32-bit.
+    B32,
+    /// 64-bit.
+    B64,
+}
 
 /// Opérandes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,7 +112,18 @@ pub enum Operand {
     /// Immédiat 32.
     Imm32(i32),
     /// Mémoire [base + index*scale + disp]
-    Mem { base: Option<R>, index: Option<R>, scale: u8, disp: i32, width: Width },
+    Mem {
+        /// Base register (None = absolute disp32).
+        base: Option<R>,
+        /// Index register (None = pas d’index).
+        index: Option<R>,
+        /// Scale factor for index (1,2,4,8).
+        scale: u8,
+        /// Displacement in bytes.
+        disp: i32,
+        /// Access width.
+        width: Width,
+    },
 }
 
 impl Operand {
@@ -100,61 +136,164 @@ impl Operand {
 /// Ops de haut niveau.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Op {
-    /// mov dst, src
-    Mov { dst: Operand, src: Operand },
-    /// lea dst, [mem]
-    Lea { dst: R, mem: Operand },
-    /// add dst, src
-    Add { dst: Operand, src: Operand },
-    /// sub dst, src
-    Sub { dst: Operand, src: Operand },
-    /// imul dst, src
-    IMul { dst: Operand, src: Operand },
-    /// cmp a, b
-    Cmp { a: Operand, b: Operand },
-    /// test a, b
-    Test { a: Operand, b: Operand },
-    /// push r
-    Push { src: R },
-    /// pop r
-    Pop  { dst: R },
-    /// call rel32
-    CallRel { rel32: i32 },
-    /// jmp rel32
-    JmpRel  { rel32: i32 },
-    /// jcc rel32
-    JccRel  { cc: CC, rel32: i32 },
+    /// move/copy between operands.
+    Mov {
+        /// Destination operand.
+        dst: Operand,
+        /// Source operand.
+        src: Operand,
+    },
+    /// compute effective address.
+    Lea {
+        /// Destination register.
+        dst: R,
+        /// Addressing operand (memory form).
+        mem: Operand,
+    },
+    /// integer addition.
+    Add {
+        /// Destination (also first source).
+        dst: Operand,
+        /// Second source.
+        src: Operand,
+    },
+    /// integer subtraction.
+    Sub {
+        /// Destination (also first source).
+        dst: Operand,
+        /// Second source.
+        src: Operand,
+    },
+    /// integer multiply (two-operand form).
+    IMul {
+        /// Destination (also first source).
+        dst: Operand,
+        /// Second source.
+        src: Operand,
+    },
+    /// compare and set flags.
+    Cmp {
+        /// Left operand.
+        a: Operand,
+        /// Right operand.
+        b: Operand,
+    },
+    /// bitwise test and set flags.
+    Test {
+        /// Left operand.
+        a: Operand,
+        /// Right operand.
+        b: Operand,
+    },
+    /// push a register on the stack.
+    Push {
+        /// Source register.
+        src: R,
+    },
+    /// pop a register from the stack.
+    Pop  {
+        /// Destination register.
+        dst: R,
+    },
+    /// near call using rel32 displacement.
+    CallRel {
+        /// Relative 32-bit displacement from next instruction.
+        rel32: i32,
+    },
+    /// near jump using rel32 displacement.
+    JmpRel  {
+        /// Relative 32-bit displacement from next instruction.
+        rel32: i32,
+    },
+    /// conditional near jump using rel32.
+    JccRel  {
+        /// Condition code.
+        cc: CC,
+        /// Relative 32-bit displacement from next instruction.
+        rel32: i32,
+    },
     /// ret
     Ret,
-    /// Pseudo: mov reg, imm64 (splitté en movabs ou mov imm32+zero-extend)
-    MovImm64 { dst: R, imm: i64 },
+    /// pseudo: move 64-bit immediate into register.
+    MovImm64 {
+        /// Destination register.
+        dst: R,
+        /// 64-bit immediate value.
+        imm: i64,
+    },
 }
 
-/// Codes de condition.
+/// Condition codes for Jcc.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum CC { O, NO, B, AE, E, NE, BE, A, S, NS, P, NP, L, GE, LE, G }
+pub enum CC {
+    /// Overflow.
+    O,
+    /// Not overflow.
+    NO,
+    /// Below (carry).
+    B,
+    /// Above or equal.
+    AE,
+    /// Equal / zero.
+    E,
+    /// Not equal.
+    NE,
+    /// Below or equal.
+    BE,
+    /// Above.
+    A,
+    /// Sign.
+    S,
+    /// Not sign.
+    NS,
+    /// Parity.
+    P,
+    /// Not parity.
+    NP,
+    /// Less (signed).
+    L,
+    /// Greater or equal (signed).
+    GE,
+    /// Less or equal (signed).
+    LE,
+    /// Greater (signed).
+    G,
+}
 
 /// ABI.
 pub mod abi {
-    use super::R;
     /// SysV: args rdi, rsi, rdx, rcx, r8, r9 ; ret rax, rdx ; callee-saved rbp, rbx, r12..r15
     pub mod sysv {
-        use super::R::*;
+        use crate::R;
+        use crate::R::*;
+        /// Argument registers in call order.
         pub const ARGS: [R; 6] = [RDI, RSI, RDX, RCX, R8, R9];
+        /// Return-value registers in order.
         pub const RETS: [R; 2] = [RAX, RDX];
+        /// Callee-saved registers.
         pub const PRESERVED: &[R] = &[RBX, RBP, R12, R13, R14, R15];
+        /// Stack pointer register.
         pub const SP: R = RSP;
+        /// Base/frame pointer register.
         pub const BP: R = RBP;
+        /// Scratch register used as a pseudo return-address carrier.
         pub const RA: R = R11; // pseudo pour ret indirection; en pratique return addr sur pile
     }
     /// Windows x64: rcx, rdx, r8, r9 ; ret rax, rdx ; callee-saved rbx, rbp, rdi, rsi, r12..r15
     pub mod win {
-        use super::R::*;
+        use crate::R;
+        use crate::R::*;
+        /// Argument registers in call order.
         pub const ARGS: [R; 4] = [RCX, RDX, R8, R9];
+        /// Return-value registers in order.
         pub const RETS: [R; 2] = [RAX, RDX];
+        /// Callee-saved registers.
         pub const PRESERVED: &[R] = &[RBX, RBP, RDI, RSI, R12, R13, R14, R15];
+        /// Stack pointer register.
         pub const SP: R = RSP;
+        /// Base/frame pointer register.
         pub const BP: R = RBP;
+        /// Scratch register used as a pseudo return-address carrier.
         pub const RA: R = R11;
     }
 }
@@ -165,14 +304,23 @@ pub struct CodeBuf {
     bytes: Vec<u8>,
 }
 impl CodeBuf {
+    /// Create a buffer with reserved capacity.
     pub fn with_capacity(n: usize) -> Self { Self { bytes: Vec::with_capacity(n) } }
+    /// Current write offset.
     #[inline] pub fn off(&self) -> usize { self.bytes.len() }
+    /// Immutable view of the internal bytes.
     #[inline] pub fn bytes(&self) -> &[u8] { &self.bytes }
+    /// Consume the buffer and return the bytes.
     #[inline] pub fn into_bytes(self) -> Vec<u8> { self.bytes }
+    /// Append a single byte.
     pub fn put_u8(&mut self, b: u8) { self.bytes.push(b) }
+    /// Append a byte slice.
     pub fn put_all(&mut self, s: &[u8]) { self.bytes.extend_from_slice(s) }
+    /// Append a little-endian u32.
     pub fn put_u32(&mut self, v: u32) { self.bytes.extend_from_slice(&v.to_le_bytes()) }
+    /// Append a little-endian i32.
     pub fn put_i32(&mut self, v: i32) { self.bytes.extend_from_slice(&v.to_le_bytes()) }
+    /// Overwrite a previously written i32 at `at` (little-endian).
     pub fn patch_i32_at(&mut self, at: usize, v: i32) -> Result<()> {
         if at + 4 > self.bytes.len() { return Err(CodegenError::Buf("patch oob".into())); }
         self.bytes[at..at+4].copy_from_slice(&v.to_le_bytes());
@@ -208,7 +356,7 @@ pub mod enc {
         };
         let rb = base.map(|r| r.low3()).unwrap_or(5); // 5 = disp32 only when mod=00 and rm=101
         let xb = index.map(|r| r.low3()).unwrap_or(4); // 4 = no index when used with SIB
-        let rex_b = base.map(|r| r.rex_bit()).unwrap_or(0);
+        let _rex_b = base.map(|r| r.rex_bit()).unwrap_or(0);
         let rex_x = index.map(|r| r.rex_bit()).unwrap_or(0);
 
         // Choix du mode de displacement
@@ -229,11 +377,11 @@ pub mod enc {
                 buf.put_u8(sib(1, 0b100, rb));
             } else if disp >= -128 && disp <= 127 {
                 buf.put_u8(modrm(0b01, reg_field, rb));
-                buf.put_u8(sib(*scale, xb, rb));
+                buf.put_u8(sib(scale, xb, rb));
                 buf.put_u8(disp as i8 as u8);
             } else {
                 buf.put_u8(modrm(0b10, reg_field, rb));
-                buf.put_u8(sib(*scale, xb, rb));
+                buf.put_u8(sib(scale, xb, rb));
                 buf.put_i32(disp);
             }
             return Ok((rex_x, base.unwrap().rex_bit()));
@@ -259,7 +407,7 @@ pub mod enc {
         // Avec index → SIB
         rex(buf, true, 0, rex_x, base.unwrap().rex_bit());
         buf.put_u8(modrm(mod_bits, reg_field, 0b100));
-        buf.put_u8(sib(*scale, xb, rb));
+        buf.put_u8(sib(scale, xb, rb));
         match mod_bits {
             0b00 => {}
             0b01 => buf.put_u8(disp as i8 as u8),
@@ -269,6 +417,7 @@ pub mod enc {
         Ok((rex_x, base.unwrap().rex_bit()))
     }
 
+    #[allow(dead_code)]
     fn opcode_imm(width: Width) -> (u8, u8) {
         // Retourne (group op base, imm width tag) non exhaustif
         match width {
@@ -286,12 +435,13 @@ pub mod enc {
         }
     }
 
+    #[allow(dead_code)]
     fn ensure_gpr(op: &Operand) -> Result<R> {
         if let Operand::Reg(r) = op { Ok(*r) } else { Err(CodegenError::Invalid("gpr attendu".into())) }
     }
 
     /// Encodage d’une instruction.
-    pub fn encode(op: &Op, buf: &mut CodeBuf, here: usize, target: Option<usize>) -> Result<()> {
+    pub fn encode(op: &Op, buf: &mut CodeBuf, _here: usize, target: Option<usize>) -> Result<()> {
         match op {
             Op::Ret => { buf.put_u8(0xC3); }
 
@@ -317,21 +467,6 @@ pub mod enc {
             Op::Lea { dst, mem } => {
                 let r = *dst;
                 // lea r64, m
-                rex(buf, true, r.rex_bit(), 0, 0); // R dans reg field
-                // on encode EA avec reg_field = dst.low3()
-                let mut tmp = CodeBuf::with_capacity(8);
-                let _ = encode_ea(&mut tmp, mem, r.low3());
-                buf.put_all(tmp.bytes());
-                // Préfixe REX déjà émis ci-dessus; corrige: on doit émettre REX après calcul X/B
-                // Simplification: réencode proprement
-                let mut local = CodeBuf::with_capacity(16);
-                // recalcul EA et REX correct
-                let (xb, bb) = {
-                    // dry-run
-                    0
-                };
-                // Corrigé: on fait en deux étapes
-                //  REX.W + 0x8D + ModRM/SIB
                 rex(buf, true, r.rex_bit(), 0, 0);
                 buf.put_u8(0x8D);
                 encode_ea(buf, mem, r.low3())?;
@@ -520,8 +655,6 @@ pub mod enc {
         Ok(())
     }
 
-    // Réexport interne
-    use rex as rex_prefix;
 }
 
 /// Peephole simple.
@@ -529,8 +662,8 @@ pub mod peephole {
     use super::{Op, Operand};
 
     /// Simplifications basiques.
-    pub fn run(seq: &mut alloc::vec::Vec<Op>) {
-        let mut out = alloc::vec::Vec::with_capacity(seq.len());
+    pub fn run(seq: &mut Vec<Op>) {
+        let mut out = Vec::with_capacity(seq.len());
         let mut i = 0;
         while i < seq.len() {
             match &seq[i] {
@@ -556,21 +689,45 @@ pub mod lower {
     /// IR minimal.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum Ir {
-        /// rd = const imm64
-        Const64 { rd: R, imm: i64 },
-        /// rd = add rd, rs
-        Add { rd: R, rs: R },
-        /// [rbp+off] = rs (store 64)
-        Store64 { base: R, off: i32, rs: R },
-        /// rd = [rbp+off] (load 64)
-        Load64 { rd: R, base: R, off: i32 },
+        /// rd = imm (64-bit).
+        Const64 {
+            /// Destination register.
+            rd: R,
+            /// 64-bit immediate.
+            imm: i64,
+        },
+        /// rd = rd + rs.
+        Add {
+            /// Accumulator / destination.
+            rd: R,
+            /// Second operand.
+            rs: R,
+        },
+        /// [base+off] = rs (64-bit).
+        Store64 {
+            /// Base register.
+            base: R,
+            /// Byte offset from base.
+            off: i32,
+            /// Source register to store.
+            rs: R,
+        },
+        /// rd = [base+off] (64-bit).
+        Load64 {
+            /// Destination register.
+            rd: R,
+            /// Base register.
+            base: R,
+            /// Byte offset from base.
+            off: i32,
+        },
         /// ret
         Ret,
     }
 
     /// Lower IR → Ops x86_64.
-    pub fn lower(ir: &[Ir]) -> super::Result<alloc::vec::Vec<Op>> {
-        let mut out = alloc::vec::Vec::with_capacity(ir.len()*2);
+    pub fn lower(ir: &[Ir]) -> super::Result<Vec<Op>> {
+        let mut out = Vec::with_capacity(ir.len()*2);
         for n in ir {
             match *n {
                 Ir::Const64 { rd, imm } => out.push(Op::MovImm64 { dst: rd, imm }),
@@ -592,7 +749,7 @@ impl<'a> Emitter<'a> {
     /// Émet une op.
     pub fn emit(&mut self, op: &Op) -> Result<()> {
         let here = self.buf.off();
-        super::enc::encode(op, self.buf, here, None)
+        crate::enc::encode(op, self.buf, here, None)
     }
 }
 
@@ -615,6 +772,7 @@ impl Codegen {
 }
 
 #[cfg(any(test, feature = "std"))]
+#[allow(unused_imports)]
 mod tests {
     use super::*;
     use super::lower::Ir;

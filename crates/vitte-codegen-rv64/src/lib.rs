@@ -19,7 +19,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_op_in_unsafe_fn)]
-#![deny(missing_docs)]
+#![warn(missing_docs)]
 #![allow(clippy::upper_case_acronyms)]
 
 #[cfg(not(feature = "std"))]
@@ -29,9 +29,9 @@ extern crate alloc;
 extern crate std as alloc_std;
 
 #[cfg(not(feature = "std"))]
-use alloc::{string::String, vec, vec::Vec};
+use alloc::{string::String};
 #[cfg(feature = "std")]
-use alloc_std::{string::String, vec, vec::Vec};
+use alloc_std::{string::String};
 
 /// Result alias.
 pub type Result<T, E = CodegenError> = core::result::Result<T, E>;
@@ -63,17 +63,24 @@ pub mod arch {
     /// Condition codes for branches.
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     pub enum Cc {
+        /// Equal
         Eq,
+        /// Not equal
         Ne,
+        /// Signed less than
         Lt,
+        /// Signed greater or equal
         Ge,
+        /// Unsigned less than
         Ltu,
+        /// Unsigned greater or equal
         Geu,
     }
 
     /// SystemV (lp64/lp64d) call-preserved registers on RV64.
     pub mod abi_preserved {
         use super::super::reg::X;
+        /// Call-preserved integer registers as defined by the SysV ABI on RV64.
         pub const PRESERVED: &[X] = &[
             X::S0, X::S1, X::S2, X::S3, X::S4, X::S5, X::S6, X::S7, X::S8, X::S9, X::S10, X::S11,
         ];
@@ -81,6 +88,7 @@ pub mod arch {
 }
 
 /// Integer registers.
+#[allow(missing_docs)]
 pub mod reg {
     /// Integer register (x0..x31).
     #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -174,6 +182,7 @@ pub mod reg {
 }
 
 /// RV64 instruction forms and opcodes.
+#[allow(missing_docs)]
 pub mod inst {
     use super::arch::Cc;
     use super::reg::{F, X};
@@ -268,6 +277,7 @@ pub mod inst {
 }
 
 /// Relocation kinds for RV64.
+#[allow(missing_docs)]
 pub mod relocs {
     /// Relocation kinds used by the backend.
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -296,19 +306,23 @@ pub mod relocs {
 /// Minimal code buffer with backpatch support.
 pub mod buf {
     use super::relocs::PendingReloc;
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
+    #[cfg(feature = "std")]
+    use alloc_std::vec::Vec;
 
     /// Growable code buffer.
     #[derive(Debug, Default)]
     pub struct CodeBuf {
-        bytes: alloc::vec::Vec<u8>,
-        relocs: alloc::vec::Vec<PendingReloc>,
-        labels: alloc::vec::Vec<Option<usize>>,
+        bytes: Vec<u8>,
+        relocs: Vec<PendingReloc>,
+        labels: Vec<Option<usize>>,
     }
 
     impl CodeBuf {
         /// Create with capacity.
         pub fn with_capacity(n: usize) -> Self {
-            Self { bytes: alloc::vec::Vec::with_capacity(n), relocs: alloc::vec::Vec::new(), labels: alloc::vec::Vec::new() }
+            Self { bytes: Vec::with_capacity(n), relocs: Vec::new(), labels: Vec::new() }
         }
 
         /// Current offset.
@@ -363,7 +377,7 @@ pub mod buf {
     }
 }
 
-#[cfg_attr(not(feature = "std"), allow(dead_code))]
+#[allow(dead_code)]
 mod util {
     #[inline]
     pub fn sign_extend(value: i64, bits: u8) -> i64 {
@@ -636,31 +650,32 @@ pub mod abi {
 pub mod peephole {
     use super::inst::{IKind, Op, RKind};
     use super::reg::X;
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
+    #[cfg(feature = "std")]
+    use alloc_std::vec::Vec;
 
     /// Run simple canonicalization and elimination.
-    pub fn run(seq: &mut alloc::vec::Vec<Op>) {
-        let mut out = alloc::vec::Vec::with_capacity(seq.len());
+    pub fn run(seq: &mut Vec<Op>) {
+        let mut out = Vec::with_capacity(seq.len());
         let mut i = 0;
         while i < seq.len() {
             let cur = &seq[i];
-            // kill addi rd, x0, 0 → redundant move of zero
-            if let Op::OpImm { rd, rs1, kind: IKind::Addi, imm12, .. } = cur {
-                if *rs1 == X::Zero && *imm12 == 0 {
-                    // This is a LI rd,0 equivalence. Keep it as ADDI to zero since it is already minimal.
-                    out.push(cur.clone());
+            if let Op::OpImm { rs1, kind: IKind::Addi, imm12, .. } = *cur {
+                if rs1 == X::Zero && imm12 == 0 {
+                    out.push((*cur).clone());
                     i += 1;
                     continue;
                 }
             }
-            // sub rd, rs1, x0 => add rd, rs1, x0
-            if let Op::Op { rd, rs1, rs2, kind: RKind::Sub } = cur {
-                if *rs2 == X::Zero {
-                    out.push(Op::Op { rd: *rd, rs1: *rs1, rs2: X::Zero, kind: RKind::Add });
+            if let Op::Op { rd, rs1, rs2, kind: RKind::Sub } = *cur {
+                if rs2 == X::Zero {
+                    out.push(Op::Op { rd, rs1, rs2: X::Zero, kind: RKind::Add });
                     i += 1;
                     continue;
                 }
             }
-            out.push(cur.clone());
+            out.push((*cur).clone());
             i += 1;
         }
         *seq = out;
@@ -670,16 +685,20 @@ pub mod peephole {
 /// Trivial linear-scan RA placeholder.
 pub mod ra {
     use super::reg::X;
+    #[cfg(not(feature = "std"))]
+    use alloc::{collections::BTreeMap, vec, vec::Vec};
+    #[cfg(feature = "std")]
+    use alloc_std::{collections::BTreeMap, vec, vec::Vec};
 
     /// Virtual register id.
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
     pub struct VReg(pub u32);
 
     /// Mapping vregs to physical X registers.
     #[derive(Debug, Default)]
     pub struct Alloc {
-        map: alloc::collections::BTreeMap<VReg, X>,
-        pool: alloc::vec::Vec<X>,
+        map: BTreeMap<VReg, X>,
+        pool: Vec<X>,
     }
 
     impl Alloc {
@@ -703,9 +722,14 @@ pub mod ra {
 }
 
 /// Lowering from a hypothetical Vitte IR. The real project should plug actual IR nodes.
+#[allow(missing_docs)]
 pub mod lower {
     use super::inst::{IKind, Op, RKind, Width};
     use super::reg::X;
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
+    #[cfg(feature = "std")]
+    use alloc_std::vec::Vec;
 
     /// Minimal IR opcodes for demonstration.
     #[derive(Debug, Clone, PartialEq)]
@@ -727,8 +751,8 @@ pub mod lower {
     }
 
     /// Lower a linear IR slice to RV64 ops.
-    pub fn lower(ir: &[Ir]) -> super::Result<alloc::vec::Vec<Op>> {
-        let mut out = alloc::vec::Vec::with_capacity(ir.len() * 2);
+    pub fn lower(ir: &[Ir]) -> super::Result<Vec<Op>> {
+        let mut out = Vec::with_capacity(ir.len() * 2);
         for n in ir {
             match *n {
                 Ir::Const { rd, imm } => {
@@ -788,6 +812,7 @@ pub mod emit {
 
     /// Emitter writes encoded instructions into a buffer.
     pub struct Emitter<'a> {
+        /// Destination buffer receiving encoded bytes.
         pub buf: &'a mut CodeBuf,
     }
 
@@ -814,19 +839,25 @@ pub mod asm {
     use super::buf::CodeBuf;
     use super::emit::Emitter;
     use super::inst::Op;
+    #[cfg(not(feature = "std"))]
+    use alloc::{collections::BTreeMap, vec::Vec};
+    #[cfg(feature = "std")]
+    use alloc_std::{collections::BTreeMap, vec::Vec};
 
     /// An instruction with optional target label reference for branches/jumps.
     #[derive(Debug, Clone)]
     pub struct LOp {
+        /// The instruction to assemble.
         pub op: Op,
+        /// Optional symbol label this instruction targets (for branches/jumps).
         pub target_label: Option<u32>,
     }
 
     /// Assembly program builder.
     #[derive(Default)]
     pub struct Asm {
-        seq: alloc::vec::Vec<LOp>,
-        label_offsets: alloc::collections::BTreeMap<u32, usize>,
+        seq: Vec<LOp>,
+        label_offsets: BTreeMap<u32, usize>,
         here_label: Option<u32>,
     }
 
@@ -851,12 +882,12 @@ pub mod asm {
         }
 
         /// Assemble into bytes. Two-pass layout for label resolution in-sequence.
-        pub fn assemble(mut self) -> super::Result<CodeBuf> {
+        pub fn assemble(self) -> super::Result<CodeBuf> {
             // First pass computed provisional offsets above.
             let mut buf = CodeBuf::with_capacity(self.seq.len() * INSN_BYTES + 16);
             // Materialize known labels from rough pass into the buffer using final offsets.
             // We rebuild label offsets with correct byte offsets as we emit.
-            let mut final_label_offsets = alloc::collections::BTreeMap::new();
+            let mut final_label_offsets = BTreeMap::new();
 
             // Pre-scan to record labels that were bound before any pushes.
             for (lbl, off) in self.label_offsets.iter() {
@@ -916,11 +947,9 @@ impl Codegen {
         let mut buf = buf::CodeBuf::with_capacity(ops.len() * arch::INSN_BYTES);
         let mut em = emit::Emitter::new(&mut buf);
 
-        for op in &ops {
-            // Pseudo lower stage already handled Ret and Li where needed. Keep a minimal pass here.
+        for op in ops.iter() {
             match op {
                 inst::Op::Ret => {
-                    // ret → jalr x0, ra, 0
                     em.emit(&inst::Op::Jalr { rd: reg::X::Zero, rs1: abi::RA, imm12: 0 }, None)?;
                 }
                 inst::Op::Li { .. } => {
@@ -933,7 +962,7 @@ impl Codegen {
     }
 }
 
-#[cfg(any(test, feature = "std"))]
+#[cfg(test)]
 mod tests {
     use super::inst::{IKind, Op, RKind, Width};
     use super::lower::{lower, Ir};

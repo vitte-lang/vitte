@@ -138,7 +138,7 @@ impl Emitter {
         }
     }
 
-    fn emit_one(&self, d: &Diagnostic, source: &str, filename: &str) {
+    fn emit_one(&self, d: &Diagnostic, _source: &str, filename: &str) {
         // Basique
         if !self.rich {
             if let Some(span) = d.span {
@@ -169,6 +169,7 @@ impl Emitter {
         // Ariadne riche
         #[cfg(feature = "ansi")]
         {
+            let source = _source;
             use ariadne::{Color, Label, Report as AReport, ReportKind, Source};
             let kind = match d.severity {
                 Severity::Error => ReportKind::Error,
