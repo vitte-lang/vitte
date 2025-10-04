@@ -24,18 +24,18 @@ extern crate alloc;
 use alloc::{string::String, vec::Vec, boxed::Box, format, borrow::ToOwned, collections::BTreeMap};
 
 #[cfg(feature="std")]
-use std::{string::String, vec::Vec, boxed::Box, collections::BTreeMap, path::{Path, PathBuf}, fs, io};
+use std::{string::String, boxed::Box, collections::BTreeMap, path::{Path, PathBuf}, fs};
 
-#[cfg(feature="serde")]
-use serde::{Serialize, Deserialize};
+
 #[cfg(feature="serde")]
 use serde_json::{Value as Json, Map as JsonMap};
 
-#[cfg(feature="errors")]
-use thiserror::Error;
+#[cfg(not(feature = "serde"))]
+type Json = ();
+
 
 #[cfg(feature="jinja")]
-use minijinja::{Environment, context, value::Value as JinjaValue, Source as JinjaSource};
+use minijinja::{Environment, value::Value as JinjaValue};
 
 #[cfg(feature="handlebars")]
 use handlebars::Handlebars;
@@ -47,10 +47,10 @@ use pulldown_cmark::{Options as MdOptions, Parser, html};
 use regex::Regex;
 
 #[cfg(feature="cache")]
-use lru::LruCache;
+use lru;
 
-#[cfg(feature="fs")]
-use vitte_path as vpath;
+
+use core::num::NonZeroUsize;
 
 #[cfg(feature="encoding")]
 use vitte_encoding as venc;
@@ -58,27 +58,66 @@ use vitte_encoding as venc;
 /* ================================ Erreurs ================================ */
 
 #[cfg(feature="errors")]
-#[derive(Debug, Error)]
+#[derive(Clone, Debug)]
 pub enum PromptError {
-    #[error("io error: {0}")]
     Io(String),
-    #[error("invalid encoding")]
     Encoding,
-    #[error("parse front-matter")]
     FrontMatter,
-    #[error("template: {0}")]
     Template(String),
-    #[error("engine feature not enabled")]
     EngineMissing,
 }
 #[cfg(not(feature="errors"))]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum PromptError { Io(String), Encoding, FrontMatter, Template(String), EngineMissing }
+
+impl core::fmt::Display for PromptError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            PromptError::Io(msg) => write!(f, "io error: {msg}"),
+            PromptError::Encoding => write!(f, "invalid encoding"),
+            PromptError::FrontMatter => write!(f, "parse front-matter"),
+            PromptError::Template(msg) => write!(f, "template: {msg}"),
+            PromptError::EngineMissing => write!(f, "engine feature not enabled"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for PromptError {}
+
+// --- Error conversions to Template(String)
+#[cfg(feature = "jinja")]
+impl From<minijinja::Error> for PromptError {
+    fn from(e: minijinja::Error) -> Self { PromptError::Template(e.to_string()) }
+}
+
+#[cfg(feature = "handlebars")]
+impl From<handlebars::TemplateError> for PromptError {
+    fn from(e: handlebars::TemplateError) -> Self { PromptError::Template(e.to_string()) }
+}
+
+#[cfg(feature = "handlebars")]
+impl From<handlebars::RenderError> for PromptError {
+    fn from(e: handlebars::RenderError) -> Self { PromptError::Template(e.to_string()) }
+}
+
+#[cfg(feature = "serde")]
+impl From<serde_json::Error> for PromptError {
+    fn from(e: serde_json::Error) -> Self { PromptError::Template(e.to_string()) }
+}
+
+#[cfg(feature = "toml")]
+impl From<toml::de::Error> for PromptError {
+    fn from(e: toml::de::Error) -> Self { PromptError::Template(e.to_string()) }
+}
+
+#[cfg(feature = "yaml")]
+impl From<serde_yaml::Error> for PromptError {
+    fn from(e: serde_yaml::Error) -> Self { PromptError::Template(e.to_string()) }
+}
 
 pub type Result<T> = core::result::Result<T, PromptError>;
 
-#[inline]
-fn io_err<T>(e: impl core::fmt::Display) -> Result<T> { Err(PromptError::Io(e.to_string())) }
 
 /* ================================ Types ================================ */
 
@@ -91,7 +130,6 @@ pub enum PromptSource {
 }
 
 /// Front-matter + corps.
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq)]
 pub struct PromptDoc {
     pub meta: Json,
@@ -123,7 +161,7 @@ impl Default for RenderOptions {
         Self {
             #[cfg(feature="jinja")] engine: Engine::Jinja,
             #[cfg(all(not(feature="jinja"), feature="handlebars"))] engine: Engine::Handlebars,
-            #[cfg(all(not(feature="jinja"), not(feature="handlebars")))] engine: { /* unreachable in use */ panic!("enable jinja or handlebars"); },
+            #[cfg(all(not(feature="jinja"), not(feature="handlebars")))] engine: { panic!("enable jinja or handlebars"); },
             root: None,
             defaults: json_obj(),
             render_markdown: false,
@@ -136,11 +174,15 @@ impl Default for RenderOptions {
 
 /* ================================ Contexte principal ================================ */
 
+#[cfg(feature = "cache")]
+type CacheStore = lru::LruCache<String, Compiled>;
+#[cfg(not(feature = "cache"))]
+type CacheStore = ();
+
 /// Gestionnaire de templates et cache.
 pub struct PromptEngine {
     opts: RenderOptions,
-    #[cfg(feature="cache")]
-    cache: LruCache<String, Compiled>,
+    cache: CacheStore,
     #[cfg(feature="jinja")]
     jinja: Option<Environment<'static>>,
     #[cfg(feature="handlebars")]
@@ -150,11 +192,21 @@ pub struct PromptEngine {
 impl PromptEngine {
     pub fn new(opts: RenderOptions) -> Result<Self> {
         let mut me = Self {
-            #[cfg(feature="cache")]
-            cache: if opts.cache_capacity>0 { LruCache::new(opts.cache_capacity.try_into().unwrap_or(64)) } else { LruCache::unbounded() },
-            #[cfg(not(feature="cache"))]
-            /* dummy */ cache: (),
+            cache: {
+                #[cfg(feature="cache")]
+                {
+                    if opts.cache_capacity > 0 {
+                        lru::LruCache::new(NonZeroUsize::new(opts.cache_capacity).unwrap_or(NonZeroUsize::new(64).unwrap()))
+                    } else {
+                        lru::LruCache::unbounded()
+                    }
+                }
+                #[cfg(not(feature="cache"))]
+                { () }
+            },
+            #[cfg(feature="jinja")]
             jinja: None,
+            #[cfg(feature="handlebars")]
             hbs: None,
             opts,
         };
@@ -166,14 +218,9 @@ impl PromptEngine {
         match self.opts.engine {
             #[cfg(feature="jinja")]
             Engine::Jinja => {
-                let mut env = Environment::new();
+                let env = Environment::new();
                 if let Some(root) = &self.opts.root {
-                    let mut src = JinjaSource::new();
-                    // lazy: pas de preload, on utilise add_template pour cache unitaire
-                    env.set_source(src);
-                    // custom loader via callback de fallback:
-                    // minijinja n’a pas de FS loader direct stable ici, on utilisera add_template_dynamic ci-dessous.
-                    let _ = root;
+                    let _ = root; // placeholder: custom loader can be wired here
                 }
                 self.jinja = Some(env);
                 Ok(())
@@ -208,7 +255,7 @@ impl PromptEngine {
             {
                 // essai BOM + heuristique via vitte-encoding
                 let det = venc::detect(&bytes).unwrap_or_else(|| venc::DetectResult{ encoding: venc::Encoding::Utf8, confidence: 10, had_bom: false });
-                let cow = venc::decode_lossy(&bytes, det.encoding); // suppose que vitte-encoding expose decode_lossy
+                let cow = venc::decode_lossy(&bytes, det.encoding);
                 cow.to_string()
             }
             #[cfg(not(feature="encoding"))]
@@ -261,22 +308,22 @@ impl PromptEngine {
     fn render_jinja(&mut self, name: &str, text: &str, vars: &Json) -> Result<String> {
         // cache clé = name
         let key = format!("jinja::{name}");
-        let compiled = {
-            #[cfg(feature="cache")]
-            {
-                if let Some(c) = self.cache.get(&key) { if let Compiled::Jinja(ref s) = c { Some(s.clone()) } else { None } }
-                else { None }
-            }
-            #[cfg(not(feature="cache"))]
-            { None }
+        #[cfg(feature="cache")]
+        let cached = {
+            // LRU contient juste le nom de template enregistré
+            if let Some(Compiled::Jinja(_)) = self.cache.get(&key) { true } else { false }
         };
+        #[cfg(not(feature="cache"))]
+        let cached = false;
 
-        if compiled.is_none() {
+        if !cached {
             let env = self.jinja.as_mut().ok_or(PromptError::EngineMissing)?;
-            // add or replace template
-            env.add_template(name, text).map_err(|e| PromptError::Template(e.to_string()))?;
+            // add or replace template; Environment<'static> requiert &'static str
+            let name_static: &'static str = Box::leak(name.to_string().into_boxed_str());
+            let text_static: &'static str = Box::leak(text.to_string().into_boxed_str());
+            env.add_template(name_static, text_static).map_err(|e| PromptError::Template(e.to_string()))?;
             #[cfg(feature="cache")]
-            { self.cache.put(key.clone(), Compiled::Jinja(name.to_string())); }
+            { self.cache.put(key.clone(), Compiled::Jinja(())); }
         }
 
         let env = self.jinja.as_ref().unwrap();
@@ -296,7 +343,6 @@ impl PromptEngine {
         if need_register {
             let hb = self.hbs.as_mut().ok_or(PromptError::EngineMissing)?;
             hb.register_template_string(name, text).map_err(|e| PromptError::Template(e.to_string()))?;
-            // Partials/includes si root connu: on laisse l’utilisateur pré-enregistrer si besoin.
             #[cfg(feature="cache")]
             { self.cache.put(key.clone(), Compiled::Hbs(name.to_string())); }
         }
@@ -310,7 +356,7 @@ impl PromptEngine {
 #[derive(Clone, Debug)]
 enum Compiled {
     #[cfg(feature="jinja")]
-    Jinja(String),     // template name
+    Jinja(()),         // template marker
     #[cfg(feature="handlebars")]
     Hbs(String),       // template name
 }
@@ -367,6 +413,9 @@ fn parse_front_matter(input: &str) -> Result<PromptDoc> {
 #[cfg(feature="serde")]
 fn json_obj() -> Json { Json::Object(JsonMap::new()) }
 
+#[cfg(not(feature="serde"))]
+fn json_obj() -> Json { () }
+
 #[cfg(feature="serde")]
 fn merge_vars(list: &[&Json]) -> Json {
     fn merge_into(dst: &mut JsonMap<String, Json>, src: &Json) {
@@ -389,6 +438,9 @@ fn merge_vars(list: &[&Json]) -> Json {
     for j in list { merge_into(&mut out, j); }
     Json::Object(out)
 }
+
+#[cfg(not(feature="serde"))]
+fn merge_vars(_list: &[&Json]) -> Json { () }
 
 #[cfg(feature="toml")]
 fn toml_to_json(v: toml::Value) -> Json {
@@ -418,7 +470,8 @@ fn markdown_to_html(md: &str) -> String {
     out
 }
 
-#[cfg(feature="jinja")]
+
+#[cfg(all(feature="jinja", feature="serde"))]
 fn to_jinja(j: &Json) -> JinjaValue {
     match j {
         Json::Null => JinjaValue::from(()),
@@ -432,12 +485,15 @@ fn to_jinja(j: &Json) -> JinjaValue {
         Json::String(s) => JinjaValue::from(s.as_str()),
         Json::Array(a) => JinjaValue::from_iter(a.iter().map(to_jinja)),
         Json::Object(o) => {
-            let mut m = minijinja::value::Object::new();
-            for (k, v) in o { m.set_attr(k, to_jinja(v)); }
-            JinjaValue::from_object(m)
+            let mut m: BTreeMap<String, JinjaValue> = BTreeMap::new();
+            for (k, v) in o { m.insert(k.clone(), to_jinja(v)); }
+            minijinja::value::Value::from(m)
         }
     }
 }
+
+#[cfg(all(feature="jinja", not(feature="serde")))]
+fn to_jinja(_j: &Json) -> JinjaValue { JinjaValue::from(()) }
 
 /* ================================ Tests ================================ */
 

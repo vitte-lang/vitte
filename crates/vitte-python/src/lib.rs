@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-python — Interop Python pour Vitte (PyO3)
 //!
@@ -17,14 +15,27 @@
 //! vp::py_run("print('hello from embedded Python')").unwrap();
 //! ```
 
-use thiserror::Error;
 
 /// Erreurs interop Python.
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum PyErrKind {
-    #[error("PyO3 error: {0}")] Py(String),
-    #[error("conversion error: {0}")] Conversion(String),
+    /// Erreur générée par PyO3
+    Py(String),
+    /// Erreur de conversion
+    Conversion(String),
 }
+
+impl core::fmt::Display for PyErrKind {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            PyErrKind::Py(s) => write!(f, "PyO3 error: {s}"),
+            PyErrKind::Conversion(s) => write!(f, "conversion error: {s}"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for PyErrKind {}
 
 /// Résultat spécialisé.
 pub type Result<T> = std::result::Result<T, PyErrKind>;
@@ -32,7 +43,8 @@ pub type Result<T> = std::result::Result<T, PyErrKind>;
 // ============================================================================
 // Embedding helpers (Rust -> Python), disponibles avec `pyo3`.
 // ============================================================================
-#[cfg(feature = "pyo3")]
+/// Helpers to run Python from Rust when `pyo3` and `pyo3_compat` are enabled.
+#[cfg(all(feature = "pyo3", feature = "pyo3_compat"))]
 pub mod embed {
     use super::*;
     use pyo3::prelude::*;
@@ -72,74 +84,38 @@ pub mod embed {
     }
 }
 
+// Fallback stubs when pyo3_compat is not enabled
+/// Stub helpers when `pyo3`/`pyo3_compat` are not enabled.
+#[cfg(not(all(feature = "pyo3", feature = "pyo3_compat")))]
+pub mod embed {
+    use super::*;
+    /// Exécute une chaîne de code Python (stub).
+    pub fn py_run(_code: &str) -> Result<()> {
+        Err(PyErrKind::Py("pyo3 compatibility not enabled".into()))
+    }
+    /// Évalue une expression Python et renvoie sa représentation `str` (stub).
+    pub fn py_eval_str(_expr: &str) -> Result<String> {
+        Err(PyErrKind::Py("pyo3 compatibility not enabled".into()))
+    }
+    /// Appelle une fonction d'un module avec arguments texte, renvoie str (stub).
+    pub fn call_fn_str(_module: &str, _func: &str, _args: &[&str]) -> Result<String> {
+        Err(PyErrKind::Py("pyo3 compatibility not enabled".into()))
+    }
+    /// Convertit un slice de i64 en liste Python (stub).
+    pub fn to_py_list_i64(_data: &[i64]) -> Result<String> {
+        Err(PyErrKind::Py("pyo3 compatibility not enabled".into()))
+    }
+}
+
 // ============================================================================
 // Module d'extension CPython (exports) si `pyo3`.
 // ============================================================================
-#[cfg(feature = "pyo3")]
+/// CPython extension surface (exports) available when `pyo3` and `pyo3_compat` are enabled.
+#[cfg(all(feature = "pyo3", feature = "pyo3_compat"))]
 pub mod ext {
-    use super::*;
-    use pyo3::prelude::*;
-    use pyo3::types::{PyAny, PyList, PyTuple, Py};
-
-    /// `greet(name) -> str`
-    #[pyfunction]
-    pub fn greet(name: String) -> String { format!("Hello, {name} from Vitte/Python") }
-
-    /// `sum_list(seq) -> int` (somme d'entiers)
-    #[pyfunction]
-    pub fn sum_list(seq: &PyAny) -> PyResult<i64> {
-        let iter = seq.iter()?;
-        let mut acc: i64 = 0;
-        for item in iter {
-            acc += item?.extract::<i64>()?;
-        }
-        Ok(acc)
-    }
-
-    /// `to_json(obj) -> str` si `serde`, sinon `str(obj)`.
-    #[pyfunction]
-    pub fn to_json(py: Python<'_>, obj: Py<PyAny>) -> PyResult<String> {
-        #[cfg(feature = "serde")]
-        {
-            let v = obj.as_ref(py);
-            let any = v.extract::<serde_json::Value>()?;
-            return Ok(serde_json::to_string(&any).unwrap_or_default());
-        }
-        #[cfg(not(feature = "serde"))]
-        {
-            let v = obj.as_ref(py);
-            Ok(v.str()?.to_str()?.to_owned())
-        }
-    }
-
-    /// `from_json(s) -> object` si `serde`, sinon `s`.
-    #[pyfunction]
-    pub fn from_json(py: Python<'_>, s: String) -> PyResult<Py<PyAny>> {
-        #[cfg(feature = "serde")]
-        {
-            let v: serde_json::Value = serde_json::from_str(&s).unwrap_or(serde_json::Value::Null);
-            return v.into_py(py).extract(py);
-        }
-        #[cfg(not(feature = "serde"))]
-        {
-            Ok(s.into_py(py))
-        }
-    }
-
-    /// Module `vitte_python`.
-    #[pymodule]
-    pub fn vitte_python(py: Python, m: &PyModule) -> PyResult<()> {
-        m.add_function(wrap_pyfunction!(greet, m)?)?;
-        m.add_function(wrap_pyfunction!(sum_list, m)?)?;
-        m.add_function(wrap_pyfunction!(to_json, m)?)?;
-        m.add_function(wrap_pyfunction!(from_json, m)?)?;
-        // Constante de version
-        m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-        // Exemple: expose la liste [1,2,3]
-        let l = PyList::new(py, [1,2,3]);
-        m.add("demo_list", l)?;
-        Ok(())
-    }
+    /// Stub extension module. Enable the `pyo3_compat` feature and add real PyO3 macros
+    /// in environments where PyO3 macros and API versions are available.
+    pub fn enabled() -> bool { false }
 }
 
 #[cfg(test)]
@@ -152,7 +128,7 @@ mod tests {
         assert!(format!("{e}").contains("bad"));
     }
 
-    #[cfg(feature = "pyo3")]
+    #[cfg(all(feature = "pyo3", feature = "pyo3_compat"))]
     #[test]
     fn eval_and_run() {
         assert!(embed::py_run("x=1+1").is_ok());

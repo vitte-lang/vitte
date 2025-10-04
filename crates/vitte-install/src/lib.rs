@@ -31,6 +31,14 @@ impl core::fmt::Display for Error {
 }
 
 #[cfg(feature = "std")]
+#[allow(dead_code)]
+fn main() {
+    // Binary stub: keep workspace building even when installer is not implemented.
+    eprintln!("installer unavailable: toolchain installation not implemented");
+    std::process::exit(1);
+}
+
+#[cfg(feature = "std")]
 impl std::error::Error for Error {}
 
 /// Minimal representation of a toolchain manifest.

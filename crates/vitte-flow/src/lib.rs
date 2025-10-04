@@ -1,16 +1,18 @@
-//! vitte-flow — analyses de flux de contrôle et de données pour Vitte
+//! vitte-flow — analyses de flux de contrôle et de données
 //!
-//! Fournit des passes IR pour :
-//! - Construire un graphe de flot de contrôle (CFG)
-//! - Analyser la portée et la vivacité des variables
-//! - Simplifier le code en éliminant le code mort
-//! - Exporter en DOT (option `dot`)
+//! Ce crate est autonome. Il définit un IR minimal interne
+//! pour construire un CFG et une analyse de vivacité.
+//!
+//! Types principaux exposés :
+//! - `Module`
+//! - `Function`
+//! - `BasicBlock`
+//! - `Instr`
 //!
 //! API principale :
-//! - [`ControlFlowGraph`] : graphe CFG
-//! - [`Liveness`] : analyse de vivacité
-//! - [`FlowAnalyzer`] : orchestrateur
-//! - Fonctions `build_cfg`, `analyze_liveness`
+//! - [`ControlFlowGraph`], [`build_cfg`]
+//! - [`Liveness`], [`analyze_liveness`]
+//! - [`FlowAnalyzer`]
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
@@ -21,8 +23,6 @@
 )]
 
 use anyhow::Result;
-use vitte_ir::{BasicBlock, Function, Module};
-use vitte_errors::Error;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,51 @@ use serde::{Deserialize, Serialize};
 use petgraph::dot::{Config, Dot};
 #[cfg(feature = "dot")]
 use petgraph::graph::Graph;
+
+/* ------------------------------ IR minimal ------------------------------ */
+
+/// Instruction très simple : destination optionnelle et opérandes textuelles.
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Instr {
+    pub dest: Option<String>,
+    pub operands: Vec<String>,
+}
+
+impl Instr {
+    pub fn assign<D: Into<String>, S: Into<String>>(dest: D, operands: Vec<S>) -> Self {
+        Self {
+            dest: Some(dest.into()),
+            operands: operands.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+/// Bloc de base : liste d'instructions et successeurs par indice.
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct BasicBlock {
+    pub instrs: Vec<Instr>,
+    pub successors: Vec<usize>,
+}
+
+/// Fonction IR minimale.
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Function {
+    pub name: String,
+    pub blocks: Vec<BasicBlock>,
+}
+
+/// Module IR minimal : liste de fonctions.
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Module {
+    pub name: String,
+    pub functions: Vec<Function>,
+}
+
+/* ------------------------------ Résultats ------------------------------- */
 
 /// Représente un graphe de flot de contrôle.
 #[derive(Debug, Clone)]
@@ -57,21 +102,23 @@ pub struct Liveness {
     pub live_out: Vec<Vec<String>>,
 }
 
+/* --------------------------------- API ---------------------------------- */
+
 /// Construit un CFG pour une fonction.
 pub fn build_cfg(func: &Function) -> Result<ControlFlowGraph> {
     #[cfg(feature = "dot")]
     {
         let mut g = Graph::<String, String>::new();
         let mut nodes = Vec::new();
-        for (i, bb) in func.blocks.iter().enumerate() {
+        for (i, _bb) in func.blocks.iter().enumerate() {
             let name = format!("B{}", i);
             let idx = g.add_node(name.clone());
-            nodes.push((bb, idx, name));
+            nodes.push((i, idx, name));
         }
-        for (i, (bb, idx, _)) in nodes.iter().enumerate() {
-            for succ in &bb.successors {
-                if let Some(&(_, tgt_idx, _)) = nodes.get(*succ) {
-                    g.add_edge(*idx, tgt_idx, String::new());
+        for (i, (_n, idx, _)) in nodes.iter().enumerate() {
+            for &succ in &func.blocks[i].successors {
+                if let Some((_, tgt_idx, _)) = nodes.iter().find(|(n, _, _)| *n == succ) {
+                    g.add_edge(*idx, *tgt_idx, String::new());
                 }
             }
         }
@@ -125,16 +172,52 @@ impl FlowAnalyzer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vitte_ir::{Instr, ModuleBuilder};
+
+    /// Petit builder de test pour rendre les scénarios lisibles.
+    struct ModuleBuilder {
+        m: Module,
+        cur: Option<usize>,
+    }
+
+    impl ModuleBuilder {
+        fn new(name: &str) -> Self {
+            Self { m: Module { name: name.into(), functions: Vec::new() }, cur: None }
+        }
+        fn start_function(&mut self, name: &str) {
+            self.m.functions.push(Function { name: name.into(), blocks: Vec::new() });
+            self.cur = Some(self.m.functions.len() - 1);
+        }
+        fn add_block(&mut self) -> usize {
+            let f = self.cur.expect("no current function");
+            self.m.functions[f].blocks.push(BasicBlock::default());
+            self.m.functions[f].blocks.len() - 1
+        }
+        fn set_block(&mut self, _b: usize) {
+            // no-op in this minimal builder
+        }
+        fn add_instr(&mut self, i: Instr) {
+            let f = self.cur.expect("no current function");
+            let last = self.m.functions[f].blocks.last_mut().expect("no block");
+            last.instrs.push(i);
+        }
+        fn add_edge(&mut self, from: usize, to: usize) {
+            let f = self.cur.expect("no current function");
+            self.m.functions[f].blocks[from].successors.push(to);
+        }
+        fn end_function(&mut self) { self.cur = None; }
+        fn finish(self) -> Module { self.m }
+    }
 
     #[test]
     fn cfg_and_liveness_smoke() {
         let mut builder = ModuleBuilder::new("test");
-        let f = builder.start_function("foo");
+        builder.start_function("foo");
         let b0 = builder.add_block();
+        let b1 = builder.add_block();
         builder.set_block(b0);
-        builder.add_instr(Instr::assign("x", vec!["1".into()]));
-        builder.add_instr(Instr::assign("y", vec!["x".into()]));
+        builder.add_instr(Instr::assign("x", vec!["1"]));
+        builder.add_instr(Instr::assign("y", vec!["x"]));
+        builder.add_edge(b0, b1);
         builder.end_function();
         let m = builder.finish();
 

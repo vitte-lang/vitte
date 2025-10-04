@@ -265,7 +265,7 @@ impl Table {
     /* ----------------- interne ----------------- */
 
     fn resolve_cols(&self) -> Vec<ColSpec> {
-        let mut n = self.cols.len();
+        let n = self.cols.len();
         let m = self.max_columns();
         if n < m { // complète specs manquantes
             let mut out = self.cols.clone();
@@ -328,7 +328,8 @@ impl Table {
                 for (ci, cell_lines) in row.iter().enumerate() {
                     let raw = cell_lines.get(li).map(|s| s.as_str()).unwrap_or("");
                     let text = self.render_cell_text(raw, ri, ci);
-                    let padded = Align::pad(cell_align(cols[ci], row, ci), widths[ci], &text_with_pad(text, self.style.pad));
+                    let align = cols[ci].align.unwrap_or(Align::Left);
+                    let padded = Align::pad(align, widths[ci], &text_with_pad(text, self.style.pad));
                     out.push_str(&padded);
                     out.push_str(self.style.border.v);
                     if self.style.inner_borders && ci+1 < row.len() {
@@ -350,7 +351,7 @@ impl Table {
         out
     }
 
-    fn render_cell_text(&self, raw: &str, row_i: usize, col_i: usize) -> String {
+    fn render_cell_text(&self, raw: &str, _row_i: usize, _col_i: usize) -> String {
         #[cfg(feature="style")]
         if self.style.themed {
             if let Some(st) = &self.styler {
@@ -380,11 +381,6 @@ fn fill_row(r: &Row, cols: usize) -> Vec<Cell> {
     v
 }
 
-fn cell_align(spec: ColSpec, row: &Vec<Cell>, idx: usize) -> Align {
-    row.get(idx).map(|c| {
-        c.style.align
-    }).unwrap_or(spec.align.unwrap_or(Align::Left))
-}
 
 fn text_with_pad(s: String, pad: usize) -> String {
     let mut out = String::new();
@@ -499,7 +495,7 @@ fn compute_col_widths(grid: &[Vec<Vec<String>>], cols: &[ColSpec]) -> Vec<usize>
         // Pour cohérence: ajoutons 2*pad ici, et Align::pad utilisera cette largeur totale.
     }
     // Ajoute 2*pad à chaque colonne
-    let pad = 1; // par défaut; corrigé au moment du dessin (mais on ne connait pas TableStyle ici)
+    // let pad = 1; // par défaut; corrigé au moment du dessin (mais on ne connait pas TableStyle ici)
     // Pour exactitude, nous laissons sans pad ici. La ligne horizontale se base sur widths -> doit inclure pads.
     // On gère ça autrement: `make_line` reçoit widths exacts. Ajustons à l’appelant.
     w

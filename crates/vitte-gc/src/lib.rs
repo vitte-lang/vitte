@@ -67,6 +67,7 @@ impl<T: Trace + fmt::Debug> fmt::Debug for Gc<T> {
 }
 
 /// Tas GC global.
+#[derive(Default)]
 pub struct GcHeap {
     objects: Mutex<HashSet<*const ()>>,
 }

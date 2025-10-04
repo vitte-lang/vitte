@@ -16,10 +16,8 @@
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
-use std::borrow::Cow;
 use std::ffi::OsStr;
-use std::fmt;
-use std::io::{Read, Write};
+use std::io::{Write, BufRead};
 use std::path::{Component, Path, PathBuf};
 use std::{fs, io};
 
@@ -365,11 +363,12 @@ pub fn safe_file_name<S: AsRef<str>>(name: S) -> String {
 }
 
 /// Joint segments de chemin en filtrant segments vides.
-pub fn join<S: AsRef<OsStr>>(base: &Path, segments: &[S]) -> PathBuf {
+pub fn join<S: AsRef<Path>>(base: &Path, segments: &[S]) -> PathBuf {
     let mut p = PathBuf::from(base);
     for s in segments {
-        if !s.as_ref().is_empty() {
-            p.push(s);
+        let seg = s.as_ref();
+        if !seg.as_os_str().is_empty() {
+            p.push(seg);
         }
     }
     p
@@ -500,7 +499,7 @@ pub fn file_stem<P: AsRef<Path>>(path: P) -> Option<String> {
 
 /// Crée un fichier vide s’il n’existe pas, sinon touche la mtime.
 pub fn touch<P: AsRef<Path>>(path: P) -> FsResult<()> {
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::SystemTime;
     if path.as_ref().exists() {
         let now = filetime::FileTime::from_system_time(SystemTime::now());
         filetime::set_file_times(path.as_ref(), now, now)?;

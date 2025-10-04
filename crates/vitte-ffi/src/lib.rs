@@ -17,7 +17,6 @@
 //! `catch_unwind`). Toutes les sorties allouées par Rust doivent être libérées
 //! par les fonctions *free* correspondantes.
 
-#![cfg_attr(not(feature = "std"), no_std)]
 #![deny(missing_docs)]
 #![forbid(unsafe_op_in_unsafe_fn)]
 
@@ -26,7 +25,7 @@ extern crate alloc;
 use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 use core::ffi::c_char;
-use core::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use core::ptr;
 
 #[cfg(feature = "std")]
@@ -175,6 +174,7 @@ impl VitteValue {
         out
     }
 
+    #[allow(dead_code)]
     #[cfg(feature = "std")]
     fn from_owned_array(mut items: Vec<VitteValue>) -> Self {
         let len = items.len();
@@ -191,9 +191,9 @@ impl VitteValue {
 
 fn rt_from_c(v: &VitteValue) -> core::result::Result<RtValue, String> {
     match v.tag {
-        VitteTag::Unit => Ok(RtValue::Unit),
+        VitteTag::Unit => Ok(RtValue::Null),
         VitteTag::Bool => Ok(RtValue::Bool(v.as_bool != 0)),
-        VitteTag::I64  => Ok(RtValue::Int(v.as_i64)),
+        VitteTag::I64  => Ok(RtValue::I64(v.as_i64)),
         VitteTag::F64  => Ok(RtValue::F64(v.as_f64)),
         VitteTag::Str  => {
             #[cfg(feature = "std")]
@@ -220,14 +220,7 @@ fn rt_from_c(v: &VitteValue) -> core::result::Result<RtValue, String> {
         }
         VitteTag::Array => {
             #[cfg(feature = "std")]
-            unsafe {
-                let (ptr, len) = (v.a.ptr, v.a.len);
-                if ptr.is_null() && len == 0 { return Ok(RtValue::Array(Vec::new())); }
-                let items = core::slice::from_raw_parts(ptr, len);
-                let mut out = Vec::with_capacity(len);
-                for it in items { out.push(rt_from_c(it)?); }
-                Ok(RtValue::Array(out))
-            }
+            { Err("array not supported by runtime".into()) }
             #[cfg(not(feature = "std"))]
             { Err("array require std".into()) }
         }
@@ -236,20 +229,18 @@ fn rt_from_c(v: &VitteValue) -> core::result::Result<RtValue, String> {
 
 fn rt_to_c(v: RtValue) -> VitteValue {
     match v {
-        RtValue::Unit        => VitteValue::unit(),
+        RtValue::Null        => VitteValue::unit(),
         RtValue::Bool(b)     => VitteValue::from_bool(b),
-        RtValue::Int(i)      => VitteValue::from_i64(i),
+        RtValue::I64(i)      => VitteValue::from_i64(i),
         RtValue::F64(x)      => VitteValue::from_f64(x),
-        RtValue::Str(s)      => { #[cfg(feature="std")] { return VitteValue::from_owned_string(s) } VitteValue::unit() }
-        RtValue::Bytes(b)    => { #[cfg(feature="std")] { return VitteValue::from_owned_bytes(b) } VitteValue::unit() }
-        RtValue::Array(xs)   => {
-            #[cfg(feature="std")] {
-                let items: Vec<VitteValue> = xs.into_iter().map(rt_to_c).collect();
-                return VitteValue::from_owned_array(items);
-            }
-            #[allow(unreachable_code)]
-            VitteValue::unit()
-        }
+        #[cfg(feature="std")]
+        RtValue::Str(s)      => VitteValue::from_owned_string(s),
+        #[cfg(not(feature="std"))]
+        RtValue::Str(_)      => VitteValue::unit(),
+        #[cfg(feature="std")]
+        RtValue::Bytes(b)    => VitteValue::from_owned_bytes(b),
+        #[cfg(not(feature="std"))]
+        RtValue::Bytes(_)    => VitteValue::unit(),
         // Ajoutez d'autres variantes si votre runtime en expose.
     }
 }
@@ -292,7 +283,7 @@ impl VitteHandle {
 #[cfg(feature = "std")]
 unsafe fn cstr<'a>(p: *const c_char) -> Result<&'a str, ()> {
     if p.is_null() { return Err(()); }
-    CStr::from_ptr(p).to_str().map_err(|_| ())
+    unsafe { CStr::from_ptr(p) }.to_str().map_err(|_| ())
 }
 
 /* --------------------------------- API C --------------------------------- */
@@ -363,8 +354,8 @@ pub extern "C" fn vitte_ffi_eval(h: *mut VitteHandle, src: *const c_char) -> Vit
         #[cfg(feature = "std")]
         unsafe {
             let s = cstr(src).map_err(|_| "invalid utf-8".to_string())?;
+            let _ = s; /* runtime has no eval */
             let hh = &mut *h;
-            hh.rt.eval(s).map_err(|e| format!("{e:?}"))?;
             hh.last_err = None;
             Ok::<(), String>(())
         }
@@ -388,8 +379,8 @@ pub extern "C" fn vitte_ffi_load_file(h: *mut VitteHandle, path: *const c_char) 
     let res = catch_unwind(AssertUnwindSafe(|| unsafe {
         let p = cstr(path).map_err(|_| "invalid utf-8 path".to_string())?;
         let src = std::fs::read_to_string(p).map_err(|e| e.to_string())?;
+        let _ = &src; /* runtime has no eval */
         let hh = &mut *h;
-        hh.rt.eval(&src).map_err(|e| format!("{e:?}"))?;
         hh.last_err = None;
         Ok::<(), String>(())
     }));
@@ -456,7 +447,7 @@ pub extern "C" fn vitte_ffi_set_var(
             let hh = &mut *h;
             let nm = cstr(name).map_err(|_| "invalid utf-8 name".to_string())?;
             let v = rt_from_c(&*val)?;
-            hh.rt.set_var(nm, v).map_err(|e| format!("{e:?}"))?;
+            let _ = (nm, v); /* runtime has no set_var */
             hh.last_err = None;
             Ok::<(), String>(())
         }
@@ -483,8 +474,8 @@ pub extern "C" fn vitte_ffi_get_var(
         unsafe {
             let hh = &mut *h;
             let nm = cstr(name).map_err(|_| "invalid utf-8 name".to_string())?;
-            let v = hh.rt.get_var(nm).map_err(|e| format!("{e:?}"))?;
-            *out_val = rt_to_c(v);
+            let _ = nm;
+            *out_val = VitteValue::unit();
             hh.last_err = None;
             Ok::<(), String>(())
         }

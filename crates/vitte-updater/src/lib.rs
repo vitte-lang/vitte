@@ -47,7 +47,8 @@ use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+
 
 #[cfg(feature = "progress")]
 use indicatif::{ProgressBar, ProgressStyle};
@@ -56,21 +57,19 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 /// Un asset binaire packagé pour une cible.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Deserialize))]
 pub struct Asset {
     pub target: String,
     pub url: String,
-    #[cfg_attr(feature = "serde", serde(default))]
     pub sha256: Option<String>,
 }
 
 /// Manifeste “latest”.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Deserialize))]
 pub struct Latest {
     pub name: String,
     pub version: String,
-    #[cfg_attr(feature = "serde", serde(default))]
     pub assets: Vec<Asset>,
 }
 
@@ -124,7 +123,7 @@ fn user_agent() -> String {
     format!("vitte-updater/{}", env!("CARGO_PKG_VERSION"))
 }
 
-#[cfg(feature = "http")]
+#[cfg(all(feature = "http", feature = "serde"))]
 pub fn fetch_latest_blocking(url: &str) -> Result<Latest> {
     let resp = reqwest::blocking::Client::new()
         .get(url)
@@ -135,7 +134,7 @@ pub fn fetch_latest_blocking(url: &str) -> Result<Latest> {
     Ok(latest)
 }
 
-#[cfg(all(feature = "http", feature = "async"))]
+#[cfg(all(feature = "http", feature = "async", feature = "serde"))]
 pub async fn fetch_latest_async(url: &str) -> Result<Latest> {
     let resp = reqwest::Client::new()
         .get(url)
@@ -149,27 +148,28 @@ pub async fn fetch_latest_async(url: &str) -> Result<Latest> {
 
 #[cfg(feature = "http")]
 pub fn download_to_blocking(url: &str, dst: impl AsRef<Path>) -> Result<()> {
-    let resp = reqwest::blocking::Client::new()
+    let mut resp = reqwest::blocking::Client::new()
         .get(url)
         .header(reqwest::header::USER_AGENT, user_agent())
         .send()?
         .error_for_status()?;
+    #[cfg(feature = "progress")]
     let total = resp.content_length();
     #[cfg(feature = "progress")]
     let pb = mk_pb(total, "Téléchargement");
     let mut file = File::create(&dst).with_context(|| format!("create {}", dst.as_ref().display()))?;
+    #[cfg(feature = "progress")]
     let mut downloaded: u64 = 0;
-    let mut stream = resp.bytes_stream();
-    // blocking: lire dans chunks via blocking response
-    let mut resp2 = reqwest::blocking::get(url)?.error_for_status()?;
     let mut buf = [0u8; 64 * 1024];
     loop {
-        let n = resp2.read(&mut buf)?;
+        let n = resp.read(&mut buf)?;
         if n == 0 { break; }
         file.write_all(&buf[..n])?;
-        downloaded += n as u64;
         #[cfg(feature = "progress")]
-        pb.set_position(downloaded);
+        {
+            downloaded += n as u64;
+            pb.set_position(downloaded);
+        }
     }
     #[cfg(feature = "progress")]
     pb.finish_and_clear();
@@ -194,13 +194,16 @@ pub async fn download_to_async(url: &str, dst: impl AsRef<Path>) -> Result<()> {
     let mut stream = resp.bytes_stream();
 
     use futures_util::StreamExt;
+    #[cfg(feature = "progress")]
     let mut downloaded = 0u64;
     while let Some(chunk) = stream.next().await {
         let bytes = chunk?;
         file.write_all(&bytes).await?;
-        downloaded += bytes.len() as u64;
         #[cfg(feature = "progress")]
-        pb.set_position(downloaded);
+        {
+            downloaded += bytes.len() as u64;
+            pb.set_position(downloaded);
+        }
     }
     file.flush().await?;
     #[cfg(feature = "progress")]
@@ -349,7 +352,7 @@ pub fn current_rust_target() -> String {
 /// - Vérifie le SHA si fourni.
 /// - Extrait puis remplace le binaire actuel.
 /// `binary_in_archive` est le chemin relatif du binaire dans l’archive.
-#[cfg(feature = "http")]
+#[cfg(all(feature = "http", feature = "serde"))]
 pub fn self_update_blocking(
     latest_url: &str,
     target: Option<&str>,
@@ -357,8 +360,8 @@ pub fn self_update_blocking(
     install_path: &Path,
 ) -> Result<Version> {
     let latest = fetch_latest_blocking(latest_url)?;
-    let target = target.unwrap_or_else(|| current_rust_target().as_str());
-    let asset = latest.pick_for(target).ok_or_else(|| anyhow::anyhow!("asset introuvable pour {target}"))?;
+    let target_buf = target.map(|s| s.to_string()).unwrap_or_else(current_rust_target);
+    let asset = latest.pick_for(&target_buf).ok_or_else(|| anyhow::anyhow!(format!("asset introuvable pour {}", &target_buf)))?;
 
     let cache = cache_root()?;
     let archive_path = cache.join(format!(
@@ -389,7 +392,7 @@ pub fn self_update_blocking(
 }
 
 /// Variante async.
-#[cfg(all(feature = "http", feature = "async"))]
+#[cfg(all(feature = "http", feature = "async", feature = "serde"))]
 pub async fn self_update_async(
     latest_url: &str,
     target: Option<&str>,
@@ -397,8 +400,8 @@ pub async fn self_update_async(
     install_path: &Path,
 ) -> Result<Version> {
     let latest = fetch_latest_async(latest_url).await?;
-    let target = target.unwrap_or_else(|| current_rust_target().as_str());
-    let asset = latest.pick_for(target).ok_or_else(|| anyhow::anyhow!("asset introuvable pour {target}"))?;
+    let target_buf = target.map(|s| s.to_string()).unwrap_or_else(current_rust_target);
+    let asset = latest.pick_for(&target_buf).ok_or_else(|| anyhow::anyhow!(format!("asset introuvable pour {}", &target_buf)))?;
 
     let cache = cache_root()?;
     let archive_path = cache.join(format!("{}-{}-download", latest.name, latest.version));

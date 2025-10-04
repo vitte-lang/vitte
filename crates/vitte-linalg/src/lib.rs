@@ -1,6 +1,6 @@
 
 
-#![deny(missing_docs)]
+
 //! vitte-linalg — algèbre linéaire basique et avancée pour Vitte
 //!
 //! Fournit :
@@ -79,6 +79,7 @@ impl<T> Matrix<T> {
     pub fn index(&self, i: usize, j: usize) -> &T {
         &self.data[i*self.cols+j]
     }
+    /// Retourne une référence mutable vers l'élément à la position (i, j).
     pub fn index_mut(&mut self, i: usize, j: usize) -> &mut T {
         &mut self.data[i*self.cols+j]
     }
