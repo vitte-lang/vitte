@@ -1,0 +1,36 @@
+name: main-protection
+enforcement: active
+bypass_actors:
+  - type: RepositoryRole
+    role: admin
+
+target: 
+  type: branch
+  patterns:
+    - main
+  include: true
+
+rules:
+  # --- Protection des branches critiques ---
+  restrict_deletions: true
+  require_linear_history: true
+  block_force_pushes: true
+
+  # --- Intégration continue obligatoire ---
+  require_status_checks_to_pass:
+    strict: true                # Exige que la branche soit à jour avant merge
+    checks:                     # Renseigne tes workflows ici
+      - build
+      - test
+      - lint
+
+  # --- Contrôle des Pull Requests ---
+  require_pull_request:
+    required_approvals: 1
+    dismiss_stale_reviews: true
+    require_code_owner_review: true
+    require_conversation_resolution: true
+    allowed_merge_methods:
+      - merge
+      - squash
+      - rebase
