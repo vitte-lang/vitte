@@ -22,8 +22,8 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::path::Path;
 use std::ptr;
-use std::sync::{Arc, Mutex};
 use std::sync::RwLock;
+use std::sync::{Arc, Mutex};
 use thiserror::Error;
 
 /// Opaque C user data passed back to callbacks.
@@ -103,11 +103,7 @@ pub struct VitteGoBuf {
 
 impl VitteGoBuf {
     fn from_vec(mut v: Vec<u8>) -> Self {
-        let buf = VitteGoBuf {
-            ptr: v.as_mut_ptr(),
-            len: v.len(),
-            cap: v.capacity(),
-        };
+        let buf = VitteGoBuf { ptr: v.as_mut_ptr(), len: v.len(), cap: v.capacity() };
         std::mem::forget(v);
         buf
     }
@@ -145,7 +141,9 @@ pub struct VitteGoCtx {
 
 #[inline]
 fn to_cstring(s: &str) -> Result<*mut c_char, VgError> {
-    CString::new(s).map(|c| c.into_raw()).map_err(|_| VgError::InvalidArg("string contains NUL"))
+    CString::new(s)
+        .map(|c| c.into_raw())
+        .map_err(|_| VgError::InvalidArg("string contains NUL"))
 }
 
 #[inline]
@@ -153,11 +151,7 @@ fn from_cstr<'a>(p: *const c_char) -> Result<&'a str, VgError> {
     if p.is_null() {
         return Err(VgError::InvalidArg("null cstring"));
     }
-    unsafe {
-        CStr::from_ptr(p)
-            .to_str()
-            .map_err(|_| VgError::InvalidArg("invalid utf-8"))
-    }
+    unsafe { CStr::from_ptr(p).to_str().map_err(|_| VgError::InvalidArg("invalid utf-8")) }
 }
 
 #[inline]
@@ -167,7 +161,7 @@ fn status_from<T>(res: Result<T, VgError>) -> VitteGoStatus {
         Err(e) => {
             set_last_error(e.to_string());
             VitteGoStatus::from_err(&e)
-        }
+        },
     }
 }
 
@@ -206,7 +200,9 @@ pub unsafe extern "C" fn vitte_go_buf_free(buf: *mut VitteGoBuf) {
     let b = unsafe { &mut *buf };
     if !b.ptr.is_null() && b.cap != 0 {
         // reconstruire Vec pour libération
-        unsafe { let _ = Vec::from_raw_parts(b.ptr, b.len, b.cap); }
+        unsafe {
+            let _ = Vec::from_raw_parts(b.ptr, b.len, b.cap);
+        }
     }
     b.ptr = ptr::null_mut();
     b.len = 0;
@@ -233,13 +229,18 @@ pub unsafe extern "C" fn vitte_go_shutdown(ctx: *mut VitteGoCtx) -> VitteGoStatu
         return VitteGoStatus::Ok;
     }
     // # Safety: ctx provient de Box::into_raw
-    unsafe { let _ = Box::from_raw(ctx); }
+    unsafe {
+        let _ = Box::from_raw(ctx);
+    }
     VitteGoStatus::Ok
 }
 
 /// Définit le niveau de log: 0=Error 1=Warn 2=Info 3=Debug 4=Trace.
 #[no_mangle]
-pub unsafe extern "C" fn vitte_go_set_log_level(ctx: *mut VitteGoCtx, level: c_int) -> VitteGoStatus {
+pub unsafe extern "C" fn vitte_go_set_log_level(
+    ctx: *mut VitteGoCtx,
+    level: c_int,
+) -> VitteGoStatus {
     if ctx.is_null() {
         set_last_error("null ctx".into());
         return VitteGoStatus::InvalidArg;
@@ -253,7 +254,7 @@ pub unsafe extern "C" fn vitte_go_set_log_level(ctx: *mut VitteGoCtx, level: c_i
         _ => {
             set_last_error("invalid level".into());
             return VitteGoStatus::InvalidArg;
-        }
+        },
     };
     let ctx = unsafe { &*ctx };
     if let Ok(mut st) = ctx.inner.lock() {
@@ -290,11 +291,11 @@ pub unsafe extern "C" fn vitte_go_eval_expr(
         Ok(cptr) => {
             unsafe { *out_str = cptr };
             VitteGoStatus::Ok
-        }
+        },
         Err(e) => {
             set_last_error(e.to_string());
             VitteGoStatus::from_err(&e)
-        }
+        },
     }
 }
 
@@ -328,11 +329,11 @@ pub unsafe extern "C" fn vitte_go_compile_file(
         Ok(buf) => {
             unsafe { *out_buf = buf };
             VitteGoStatus::Ok
-        }
+        },
         Err(e) => {
             set_last_error(e.to_string());
             VitteGoStatus::from_err(&e)
-        }
+        },
     }
 }
 
@@ -357,11 +358,11 @@ pub unsafe extern "C" fn vitte_go_read_text_file(
         Ok(c) => {
             unsafe { *out_str = c };
             VitteGoStatus::Ok
-        }
+        },
         Err(e) => {
             set_last_error(e.to_string());
             VitteGoStatus::from_err(&e)
-        }
+        },
     }
 }
 
@@ -389,12 +390,16 @@ pub unsafe extern "C" fn vitte_go_write_binary_file(
 
 /// Prototype de callback de log côté Go.
 /// level: 0..4 ; msg: C string nul-terminated ; user_data : opaq.
-pub type VitteGoLogCb = Option<extern "C" fn(level: c_uint, msg: *const c_char, user_data: *mut c_void)>;
+pub type VitteGoLogCb =
+    Option<extern "C" fn(level: c_uint, msg: *const c_char, user_data: *mut c_void)>;
 
 static LOG_CB: RwLock<(VitteGoLogCb, CUserData)> = RwLock::new((None, CUserData(ptr::null_mut())));
 
 #[no_mangle]
-pub extern "C" fn vitte_go_set_log_callback(cb: VitteGoLogCb, user_data: *mut c_void) -> VitteGoStatus {
+pub extern "C" fn vitte_go_set_log_callback(
+    cb: VitteGoLogCb,
+    user_data: *mut c_void,
+) -> VitteGoStatus {
     if let Ok(mut slot) = LOG_CB.write() {
         *slot = (cb, CUserData(user_data));
         VitteGoStatus::Ok
@@ -409,8 +414,16 @@ fn log_emit(level: LogLevel, msg: &str) {
     if let Ok(guard) = LOG_CB.read() {
         let (cb, ud) = *guard;
         if let Some(cb) = cb {
-            let lv = match level { LogLevel::Error=>0, LogLevel::Warn=>1, LogLevel::Info=>2, LogLevel::Debug=>3, LogLevel::Trace=>4 };
-            if let Ok(c) = CString::new(msg) { cb(lv, c.as_ptr(), ud.0); }
+            let lv = match level {
+                LogLevel::Error => 0,
+                LogLevel::Warn => 1,
+                LogLevel::Info => 2,
+                LogLevel::Debug => 3,
+                LogLevel::Trace => 4,
+            };
+            if let Ok(c) = CString::new(msg) {
+                cb(lv, c.as_ptr(), ud.0);
+            }
         }
     }
 }

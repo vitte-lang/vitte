@@ -39,7 +39,7 @@ impl fmt::Display for CacheError {
             CacheError::Io(m) => write!(f, "io error: {m}"),
             CacheError::TypeMismatch { requested, stored } => {
                 write!(f, "type mismatch: requested={requested}, stored={stored}")
-            }
+            },
         }
     }
 }
@@ -68,7 +68,12 @@ pub trait TypedCache {
     /// Récupère une valeur clonée si présente et non expirée.
     fn get_cloned<T: Clone + 'static>(&self, key: &str) -> Option<T>;
     /// Enregistre une valeur, avec TTL optionnel (None = jamais expiré).
-    fn set<T: 'static + Send + Sync>(&self, key: &str, value: T, ttl: Option<Duration>) -> Result<()>;
+    fn set<T: 'static + Send + Sync>(
+        &self,
+        key: &str,
+        value: T,
+        ttl: Option<Duration>,
+    ) -> Result<()>;
     /// Supprime une entrée.
     fn remove(&self, key: &str);
     /// Vide tout.
@@ -87,7 +92,9 @@ impl Default for MemoryCache {
 }
 
 impl MemoryCache {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     #[inline]
     fn is_expired(meta: &Meta) -> bool {
@@ -121,7 +128,12 @@ impl TypedCache for MemoryCache {
         None
     }
 
-    fn set<T: 'static + Send + Sync>(&self, key: &str, value: T, ttl: Option<Duration>) -> Result<()> {
+    fn set<T: 'static + Send + Sync>(
+        &self,
+        key: &str,
+        value: T,
+        ttl: Option<Duration>,
+    ) -> Result<()> {
         let mut guard = self.map.lock().map_err(|_| CacheError::Io("poisoned mutex"))?;
         let meta = Meta {
             #[cfg(feature = "std")]
@@ -148,7 +160,12 @@ impl TypedCache for MemoryCache {
 /// Calcule et met en cache un résultat clonable.
 /// - `key` : identifiant logique.
 /// - `ttl` : durée de validité (None = infini).
-pub fn memoize<T, F>(cache: &impl TypedCache, key: &str, ttl: Option<Duration>, compute: F) -> Result<T>
+pub fn memoize<T, F>(
+    cache: &impl TypedCache,
+    key: &str,
+    ttl: Option<Duration>,
+    compute: F,
+) -> Result<T>
 where
     T: Clone + 'static + Send + Sync,
     F: FnOnce() -> T,
@@ -169,14 +186,22 @@ pub struct DiskCache;
 
 #[cfg(feature = "disk")]
 impl DiskCache {
-    pub fn new(_dir: &str) -> Result<Self> { Ok(Self) }
-    pub fn purge_expired(&self) -> Result<()> { Ok(()) }
+    pub fn new(_dir: &str) -> Result<Self> {
+        Ok(Self)
+    }
+    pub fn purge_expired(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(not(feature = "disk"))]
 impl DiskCache {
-    pub fn new(_dir: &str) -> Result<Self> { Ok(Self) }
-    pub fn purge_expired(&self) -> Result<()> { Ok(()) }
+    pub fn new(_dir: &str) -> Result<Self> {
+        Ok(Self)
+    }
+    pub fn purge_expired(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 /* ────────────────────────────────── Tests ────────────────────────────────── */

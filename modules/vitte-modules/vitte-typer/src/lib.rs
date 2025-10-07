@@ -141,11 +141,7 @@ impl fmt::Display for Ty {
                     write!(f, "{}", a)?;
                 }
                 write!(f, " -> ")?;
-                if lb {
-                    write!(f, "({})", b)
-                } else {
-                    write!(f, "{}", b)
-                }
+                if lb { write!(f, "({})", b) } else { write!(f, "{}", b) }
             },
             Ty::Tuple(ts) => {
                 write!(f, "(")?;

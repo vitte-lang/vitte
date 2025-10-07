@@ -56,11 +56,7 @@ pub enum HttpError {
 
 fn preview(s: &str, max: usize) -> String {
     let s = s.replace('\n', "\\n");
-    if s.len() <= max {
-        s
-    } else {
-        format!("{}…(+{} chars)", &s[..max], s.len() - max)
-    }
+    if s.len() <= max { s } else { format!("{}…(+{} chars)", &s[..max], s.len() - max) }
 }
 
 #[cfg(feature = "client")]
@@ -208,18 +204,18 @@ mod client {
         }
     }
 
-    pub use reqwest::{header, Method};
     pub use HttpClient as Client;
+    pub use reqwest::{Method, header};
 }
 
 #[cfg(feature = "server")]
 mod server {
     use super::*;
     use hyper::{
-        body::{to_bytes, Body},
+        Method, Request, StatusCode,
+        body::{Body, to_bytes},
         header::HeaderValue,
         http::Response,
-        Method, Request, StatusCode,
     };
     use std::{convert::Infallible, net::SocketAddr, sync::Arc};
     use tokio::signal;
@@ -240,10 +236,7 @@ mod server {
             let s = serde_json::to_string(v)?;
             Ok(Self {
                 status,
-                headers: vec![(
-                    "content-type".into(),
-                    "application/json; charset=utf-8".into(),
-                )],
+                headers: vec![("content-type".into(), "application/json; charset=utf-8".into())],
                 body: s.into_bytes(),
             })
         }
@@ -257,11 +250,7 @@ mod server {
         }
         /// Réponse vide 204.
         pub fn empty() -> Self {
-            Self {
-                status: StatusCode::NO_CONTENT,
-                headers: vec![],
-                body: vec![],
-            }
+            Self { status: StatusCode::NO_CONTENT, headers: vec![], body: vec![] }
         }
     }
 
@@ -280,9 +269,7 @@ mod server {
     impl Router {
         /// Nouveau routeur.
         pub fn new() -> Self {
-            Self {
-                routes: Arc::new(Vec::new()),
-            }
+            Self { routes: Arc::new(Vec::new()) }
         }
         /// Ajoute un handler.
         pub fn route<F, Fut>(self, method: Method, path: &str, f: F) -> Self
@@ -293,9 +280,7 @@ mod server {
             let mut v = (*self.routes).clone();
             let h: Handler = Arc::new(move |req| Box::pin(f(req)));
             v.push((method, path.to_string(), h));
-            Self {
-                routes: Arc::new(v),
-            }
+            Self { routes: Arc::new(v) }
         }
         /// GET.
         pub fn get<F, Fut>(self, path: &str, f: F) -> Self
@@ -351,7 +336,7 @@ mod server {
                 Err(e) => {
                     let (code, msg) = map_error(&e);
                     to_hyper(HttpResponse::text(code, msg))
-                }
+                },
             },
             None => to_hyper(HttpResponse::text(StatusCode::NOT_FOUND, "not found")),
         }
@@ -363,7 +348,11 @@ mod server {
             let headers = b.headers_mut().unwrap();
             for (k, v) in resp.headers {
                 if let Ok(hv) = HeaderValue::from_str(&v) {
-                    headers.append(hyper::header::HeaderName::from_bytes(k.as_bytes()).unwrap_or(hyper::header::CONTENT_TYPE), hv);
+                    headers.append(
+                        hyper::header::HeaderName::from_bytes(k.as_bytes())
+                            .unwrap_or(hyper::header::CONTENT_TYPE),
+                        hv,
+                    );
                 }
             }
         }
@@ -377,9 +366,10 @@ mod server {
 
     fn map_error(e: &HttpError) -> (StatusCode, String) {
         match e {
-            HttpError::Status { status, body_preview } => {
-                (StatusCode::from_u16(*status).unwrap_or(StatusCode::BAD_GATEWAY), body_preview.clone())
-            }
+            HttpError::Status { status, body_preview } => (
+                StatusCode::from_u16(*status).unwrap_or(StatusCode::BAD_GATEWAY),
+                body_preview.clone(),
+            ),
             HttpError::Json(err) => (StatusCode::BAD_REQUEST, err.to_string()),
             HttpError::Invalid(msg) => (StatusCode::BAD_REQUEST, msg.to_string()),
             HttpError::Io(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()),
@@ -408,7 +398,6 @@ mod server {
         let v = serde_json::from_slice::<T>(&b)?;
         Ok((req, v))
     }
-
 }
 
 #[cfg(feature = "client")]
@@ -441,9 +430,8 @@ mod server_tests {
         let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
         let local = listener.local_addr().unwrap();
 
-        let router = Router::new().get("/", |_req| async {
-            Ok(HttpResponse::text(server::StatusCode::OK, "ok"))
-        });
+        let router = Router::new()
+            .get("/", |_req| async { Ok(HttpResponse::text(server::StatusCode::OK, "ok")) });
 
         let srv = task::spawn(async move {
             hyper::Server::from_tcp(listener)
@@ -453,7 +441,11 @@ mod server_tests {
                     async move {
                         Ok::<_, std::convert::Infallible>(hyper::service::service_fn(move |req| {
                             let r2 = r.clone();
-                            async move { Ok::<_, std::convert::Infallible>(server::handle_request(r2, req).await) }
+                            async move {
+                                Ok::<_, std::convert::Infallible>(
+                                    server::handle_request(r2, req).await,
+                                )
+                            }
                         }))
                     }
                 }))
@@ -466,7 +458,8 @@ mod server_tests {
         {
             let c = Client::new(&ClientOptions::default()).unwrap();
             let url = format!("http://{}", local);
-            let (code, _, body) = c.request_bytes(reqwest::Method::GET, &url, None, None).await.unwrap();
+            let (code, _, body) =
+                c.request_bytes(reqwest::Method::GET, &url, None, None).await.unwrap();
             assert_eq!(code, 200);
             assert_eq!(&body[..], b"ok");
         }

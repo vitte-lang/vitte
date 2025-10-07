@@ -34,7 +34,9 @@ pub enum FuzzStatus {
 }
 
 /// Lance un fuzzing "stub" qui ne fait que retourner [`FuzzStatus::Clean`].
-pub fn run_stub(_config: &FuzzConfig) -> FuzzStatus { FuzzStatus::Clean }
+pub fn run_stub(_config: &FuzzConfig) -> FuzzStatus {
+    FuzzStatus::Clean
+}
 
 #[cfg(test)]
 mod tests {

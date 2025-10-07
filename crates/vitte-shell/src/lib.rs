@@ -108,7 +108,9 @@ pub struct Pipeline {
 
 impl Pipeline {
     /// Creates a new empty pipeline.
-    pub fn new() -> Self { Self { cmds: Vec::new() } }
+    pub fn new() -> Self {
+        Self { cmds: Vec::new() }
+    }
 
     /// Adds a command stage.
     pub fn stage(mut self, cmd: Cmd) -> Self {
@@ -125,10 +127,7 @@ impl Pipeline {
 /// Splits a shell-like string into arguments using a very simple whitespace rule.
 /// This is only a placeholder and does not fully implement shell quoting.
 pub fn shlex_split(input: &str) -> Result<Vec<String>> {
-    let tokens = input
-        .split_whitespace()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>();
+    let tokens = input.split_whitespace().map(|s| s.to_string()).collect::<Vec<_>>();
     Ok(tokens)
 }
 

@@ -30,25 +30,25 @@
 #![forbid(unsafe_code)]
 
 #[cfg(all(not(feature = "std"), not(feature = "alloc-only")))]
-compile_error!("Enable feature `std` (default) or `alloc-only`.") ;
+compile_error!("Enable feature `std` (default) or `alloc-only`.");
 
 #[cfg(feature = "alloc-only")]
 extern crate alloc;
 
 #[cfg(feature = "alloc-only")]
-use alloc::{string::String, vec::Vec, format, borrow::ToOwned};
+use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
 
 #[cfg(feature = "std")]
-use std::{string::String, vec::Vec, fmt::Write as _, time::SystemTime};
+use std::{fmt::Write as _, string::String, time::SystemTime, vec::Vec};
 
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "errors")]
 use thiserror::Error;
 
 #[cfg(feature = "args-spec")]
-use vitte_args::{Spec as ArgSpec, ArgKind as ArgKindArgs};
+use vitte_args::{ArgKind as ArgKindArgs, Spec as ArgSpec};
 
 /// Élément d’option/flag pour section OPTIONS.
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -109,16 +109,16 @@ impl Section {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ManPage {
     // En-tête .TH
-    pub title: String,      // ex: "VITTE"
-    pub section: u8,        // 1..8
-    pub date: Option<String>,     // "2025-09-30"
-    pub source: Option<String>,   // "Vitte Project"
-    pub manual: Option<String>,   // "Vitte Manual"
-    pub version: Option<String>,  // "0.1.0"
+    pub title: String,           // ex: "VITTE"
+    pub section: u8,             // 1..8
+    pub date: Option<String>,    // "2025-09-30"
+    pub source: Option<String>,  // "Vitte Project"
+    pub manual: Option<String>,  // "Vitte Manual"
+    pub version: Option<String>, // "0.1.0"
 
     // NAME
-    pub name: Option<String>,        // "vitte - Outil XYZ"
-    pub name_cmd: Option<String>,    // "vitte" (si name absent on calcule)
+    pub name: Option<String>,          // "vitte - Outil XYZ"
+    pub name_cmd: Option<String>,      // "vitte" (si name absent on calcule)
     pub name_one_line: Option<String>, // "vitte - description courte"
 
     // Corps
@@ -171,30 +171,87 @@ impl ManPage {
 
     /* ---------- builder entête ---------- */
 
-    pub fn version(mut self, v: &str) -> Self { self.version = Some(v.to_owned()); self }
-    pub fn manual(mut self, m: &str) -> Self { self.manual = Some(m.to_owned()); self }
-    pub fn source(mut self, s: &str) -> Self { self.source = Some(s.to_owned()); self }
-    pub fn date(mut self, d: &str) -> Self { self.date = Some(d.to_owned()); self }
-    pub fn with_width(mut self, w: usize) -> Self { self.width = w.max(60); self }
+    pub fn version(mut self, v: &str) -> Self {
+        self.version = Some(v.to_owned());
+        self
+    }
+    pub fn manual(mut self, m: &str) -> Self {
+        self.manual = Some(m.to_owned());
+        self
+    }
+    pub fn source(mut self, s: &str) -> Self {
+        self.source = Some(s.to_owned());
+        self
+    }
+    pub fn date(mut self, d: &str) -> Self {
+        self.date = Some(d.to_owned());
+        self
+    }
+    pub fn with_width(mut self, w: usize) -> Self {
+        self.width = w.max(60);
+        self
+    }
 
     /// Section NAME. Si non fourni, sera composé à partir de `name_cmd` et `description`.
-    pub fn name_line(mut self, one_line: &str) -> Self { self.name_one_line = Some(one_line.to_owned()); self }
-    pub fn name_cmd(mut self, cmd: &str) -> Self { self.name_cmd = Some(cmd.to_owned()); self }
+    pub fn name_line(mut self, one_line: &str) -> Self {
+        self.name_one_line = Some(one_line.to_owned());
+        self
+    }
+    pub fn name_cmd(mut self, cmd: &str) -> Self {
+        self.name_cmd = Some(cmd.to_owned());
+        self
+    }
 
     /* ---------- builder contenu ---------- */
 
-    pub fn synopsis(mut self, syn: &str) -> Self { self.synopsis.push(syn.to_owned()); self }
-    pub fn description(mut self, txt: &str) -> Self { self.description.push(txt.to_owned()); self }
-    pub fn option(mut self, it: OptionItem) -> Self { self.options.push(it); self }
-    pub fn positional(mut self, it: ArgItem) -> Self { self.positionals.push(it); self }
-    pub fn sub(mut self, it: SubItem) -> Self { self.subcommands.push(it); self }
-    pub fn env_line(mut self, s: &str) -> Self { self.environment.push(s.to_owned()); self }
-    pub fn file_line(mut self, s: &str) -> Self { self.files.push(s.to_owned()); self }
-    pub fn example(mut self, s: &str) -> Self { self.examples.push(s.to_owned()); self }
-    pub fn exit_line(mut self, s: &str) -> Self { self.exit_status.push(s.to_owned()); self }
-    pub fn see_also(mut self, s: &str) -> Self { self.see_also.push(s.to_owned()); self }
-    pub fn author(mut self, s: &str) -> Self { self.authors.push(s.to_owned()); self }
-    pub fn section(mut self, s: Section) -> Self { self.extra_sections.push(s); self }
+    pub fn synopsis(mut self, syn: &str) -> Self {
+        self.synopsis.push(syn.to_owned());
+        self
+    }
+    pub fn description(mut self, txt: &str) -> Self {
+        self.description.push(txt.to_owned());
+        self
+    }
+    pub fn option(mut self, it: OptionItem) -> Self {
+        self.options.push(it);
+        self
+    }
+    pub fn positional(mut self, it: ArgItem) -> Self {
+        self.positionals.push(it);
+        self
+    }
+    pub fn sub(mut self, it: SubItem) -> Self {
+        self.subcommands.push(it);
+        self
+    }
+    pub fn env_line(mut self, s: &str) -> Self {
+        self.environment.push(s.to_owned());
+        self
+    }
+    pub fn file_line(mut self, s: &str) -> Self {
+        self.files.push(s.to_owned());
+        self
+    }
+    pub fn example(mut self, s: &str) -> Self {
+        self.examples.push(s.to_owned());
+        self
+    }
+    pub fn exit_line(mut self, s: &str) -> Self {
+        self.exit_status.push(s.to_owned());
+        self
+    }
+    pub fn see_also(mut self, s: &str) -> Self {
+        self.see_also.push(s.to_owned());
+        self
+    }
+    pub fn author(mut self, s: &str) -> Self {
+        self.authors.push(s.to_owned());
+        self
+    }
+    pub fn section(mut self, s: Section) -> Self {
+        self.extra_sections.push(s);
+        self
+    }
 
     /// Rendu troff (macro *man*). Retourne `String`.
     pub fn render(&self) -> String {
@@ -220,7 +277,8 @@ impl ManPage {
             troff_escape(&date),
             troff_escape(&source),
             troff_escape(&manual)
-        ).ok();
+        )
+        .ok();
 
         // NAME
         writeln!(&mut out, ".SH NAME").ok();
@@ -350,41 +408,55 @@ impl ManPage {
     /// Construit une page man minimale à partir d’un `vitte-args::Spec`.
     #[cfg(feature = "args-spec")]
     pub fn from_args_spec(spec: &ArgSpec, section: u8) -> Self {
-        let mut page = ManPage::new(&spec.bin, section)
-            .name_cmd(&spec.bin)
-            .synopsis(&spec.usage());
+        let mut page = ManPage::new(&spec.bin, section).name_cmd(&spec.bin).synopsis(&spec.usage());
 
-        if let Some(a) = &spec.about { page = page.description(a); }
+        if let Some(a) = &spec.about {
+            page = page.description(a);
+        }
 
         // Options/Args
         for a in &spec.args {
             match a.kind {
                 ArgKindArgs::Flag => {
                     let mut forms = String::new();
-                    if let Some(c) = a.short { push_form(&mut forms, &format!("-{}", c)); }
-                    if let Some(l) = &a.long { push_form(&mut forms, &format!("--{}", l)); }
-                    if forms.is_empty() { push_form(&mut forms, &format!("--{}", a.name)); }
+                    if let Some(c) = a.short {
+                        push_form(&mut forms, &format!("-{}", c));
+                    }
+                    if let Some(l) = &a.long {
+                        push_form(&mut forms, &format!("--{}", l));
+                    }
+                    if forms.is_empty() {
+                        push_form(&mut forms, &format!("--{}", a.name));
+                    }
                     let help = a.help.clone().unwrap_or_default();
                     page = page.option(OptionItem::new(forms, help));
-                }
+                },
                 ArgKindArgs::Opt => {
                     let vn = a.value_name.as_deref().unwrap_or("VAL");
                     let mut forms = String::new();
-                    if let Some(c) = a.short { push_form(&mut forms, &format!("-{} <{}>", c, vn)); }
-                    if let Some(l) = &a.long { push_form(&mut forms, &format!("--{} <{}>", l, vn)); }
-                    if forms.is_empty() { push_form(&mut forms, &format!("--{} <{}>", a.name, vn)); }
+                    if let Some(c) = a.short {
+                        push_form(&mut forms, &format!("-{} <{}>", c, vn));
+                    }
+                    if let Some(l) = &a.long {
+                        push_form(&mut forms, &format!("--{} <{}>", l, vn));
+                    }
+                    if forms.is_empty() {
+                        push_form(&mut forms, &format!("--{} <{}>", a.name, vn));
+                    }
                     let mut help = a.help.clone().unwrap_or_default();
                     if let Some(def) = &a.default {
-                        if !help.is_empty() { help.push(' '); }
+                        if !help.is_empty() {
+                            help.push(' ');
+                        }
                         help.push_str(&format!("[default: {}]", def));
                     }
                     page = page.option(OptionItem::new(forms, help));
-                }
+                },
                 ArgKindArgs::Pos => {
                     let nm = a.value_name.clone().unwrap_or_else(|| a.name.clone());
                     let help = a.help.clone().unwrap_or_default();
                     page = page.positional(ArgItem::new(nm, help));
-                }
+                },
             }
         }
 
@@ -407,24 +479,31 @@ pub enum ManError {
 }
 #[cfg(not(feature = "errors"))]
 #[derive(Debug, PartialEq, Eq)]
-pub enum ManError { InvalidSection }
+pub enum ManError {
+    InvalidSection,
+}
 
 pub type Result<T> = core::result::Result<T, ManError>;
 
 /* ================================ HELPERS ================================ */
 
 fn push_form(dst: &mut String, s: &str) {
-    if !dst.is_empty() { dst.push_str(", "); }
+    if !dst.is_empty() {
+        dst.push_str(", ");
+    }
     dst.push_str(s);
 }
 
 fn today_yyyy_mm_dd() -> String {
     #[cfg(feature = "std")]
     {
-        use std::time::{UNIX_EPOCH, Duration};
+        use std::time::{Duration, UNIX_EPOCH};
         // Très simple: on n’utilise pas chrono pour rester sans dépendances.
         // On renvoie une date ISO fictive si conversion échoue.
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::from_secs(0)).as_secs();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_secs();
         // Approximation: 86400s par jour depuis 1970.
         const DAY: u64 = 86_400;
         let days = now / DAY;
@@ -445,13 +524,20 @@ fn troff_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 8);
     let mut first = true;
     for line in s.split('\n') {
-        if first { first = false; } else { out.push('\n'); }
+        if first {
+            first = false;
+        } else {
+            out.push('\n');
+        }
         if line.starts_with('.') || line.starts_with('\'') {
             out.push('\\');
         }
         for ch in line.chars() {
             match ch {
-                '\\' => { out.push('\\'); out.push('\\'); }
+                '\\' => {
+                    out.push('\\');
+                    out.push('\\');
+                },
                 // Hyphen vs minus: laissons tel quel mais évitons -- en tête
                 _ => out.push(ch),
             }
@@ -464,7 +550,9 @@ fn troff_escape(s: &str) -> String {
 fn write_wrapped(out: &mut String, text: &str, width: usize, indent: usize) {
     let lines = wrap(text, width.saturating_sub(indent));
     for l in lines {
-        if indent > 0 { let _ = write!(out, "{}", " ".repeat(indent)); }
+        if indent > 0 {
+            let _ = write!(out, "{}", " ".repeat(indent));
+        }
         let _ = writeln!(out, "{}", troff_escape(&l));
     }
 }
@@ -477,7 +565,9 @@ fn bullet(out: &mut String, text: &str, width: usize) {
 
 /// Coupe sur espaces, césure naïve si mot > width.
 fn wrap(s: &str, width: usize) -> Vec<String> {
-    if s.is_empty() { return vec![]; }
+    if s.is_empty() {
+        return vec![];
+    }
     let w = width.max(20);
     let mut out = Vec::new();
     for raw in s.split('\n') {
@@ -505,7 +595,9 @@ fn wrap(s: &str, width: usize) -> Vec<String> {
                 }
             }
         }
-        if !line.is_empty() { out.push(line); }
+        if !line.is_empty() {
+            out.push(line);
+        }
     }
     out
 }
@@ -515,7 +607,9 @@ fn first_sentence(s: &str, n: usize) -> String {
     let cut = s.find('.').unwrap_or(s.len());
     let take = cut.min(n);
     let mut out = s[..take].trim().to_string();
-    if out.is_empty() { out.push_str("command"); }
+    if out.is_empty() {
+        out.push_str("command");
+    }
     out
 }
 

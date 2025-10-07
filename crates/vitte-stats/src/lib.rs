@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-stats — primitives statistiques pour Vitte
 //!
@@ -18,12 +16,12 @@
 //! assert_eq!(s.count(), 2);
 //! ```
 
-use thiserror::Error;
 use parking_lot::Mutex;
 use std::sync::Arc;
+use thiserror::Error;
 
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Erreurs statistiques
 #[derive(Debug, Error)]
@@ -40,7 +38,7 @@ pub enum StatsError {
 pub type Result<T> = std::result::Result<T, StatsError>;
 
 /// Compteurs / stats en ligne
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, Default)]
 pub struct OnlineStats {
     n: u64,
@@ -64,28 +62,46 @@ impl OnlineStats {
         self.mean += delta / self.n as f64;
         let delta2 = x - self.mean;
         self.m2 += delta * delta2;
-        if x < self.min { self.min = x; }
-        if x > self.max { self.max = x; }
+        if x < self.min {
+            self.min = x;
+        }
+        if x > self.max {
+            self.max = x;
+        }
         self.sum += x;
     }
 
     /// Nombre d'échantillons
-    pub fn count(&self) -> u64 { self.n }
+    pub fn count(&self) -> u64 {
+        self.n
+    }
     /// Moyenne
-    pub fn mean(&self) -> f64 { self.mean }
+    pub fn mean(&self) -> f64 {
+        self.mean
+    }
     /// Variance
     pub fn variance(&self) -> Result<f64> {
-        if self.n < 2 { return Err(StatsError::Empty); }
+        if self.n < 2 {
+            return Err(StatsError::Empty);
+        }
         Ok(self.m2 / (self.n - 1) as f64)
     }
     /// Ecart-type
-    pub fn stddev(&self) -> Result<f64> { Ok(self.variance()?.sqrt()) }
+    pub fn stddev(&self) -> Result<f64> {
+        Ok(self.variance()?.sqrt())
+    }
     /// Min
-    pub fn min(&self) -> f64 { self.min }
+    pub fn min(&self) -> f64 {
+        self.min
+    }
     /// Max
-    pub fn max(&self) -> f64 { self.max }
+    pub fn max(&self) -> f64 {
+        self.max
+    }
     /// Somme
-    pub fn sum(&self) -> f64 { self.sum }
+    pub fn sum(&self) -> f64 {
+        self.sum
+    }
 }
 
 /// Histogramme HDR optionnel
@@ -105,9 +121,13 @@ pub mod hist {
             Self { inner: Histogram::new_with_bounds(low, high, sig).unwrap() }
         }
         /// Ajoute une valeur
-        pub fn record(&mut self, v: u64) { let _ = self.inner.record(v); }
+        pub fn record(&mut self, v: u64) {
+            let _ = self.inner.record(v);
+        }
         /// Percentile
-        pub fn value_at(&self, q: f64) -> u64 { self.inner.value_at_quantile(q) }
+        pub fn value_at(&self, q: f64) -> u64 {
+            self.inner.value_at_quantile(q)
+        }
     }
 }
 
@@ -125,11 +145,17 @@ pub mod td {
 
     impl Digest {
         /// Crée un digest vide
-        pub fn new() -> Self { Self { inner: TDigest::new() } }
+        pub fn new() -> Self {
+            Self { inner: TDigest::new() }
+        }
         /// Ajoute une valeur
-        pub fn add(&mut self, v: f64) { self.inner = self.inner.merge(&TDigest::from(vec![v])); }
+        pub fn add(&mut self, v: f64) {
+            self.inner = self.inner.merge(&TDigest::from(vec![v]));
+        }
         /// Approx percentile
-        pub fn quantile(&self, q: f64) -> f64 { self.inner.quantile(q) }
+        pub fn quantile(&self, q: f64) -> f64 {
+            self.inner.quantile(q)
+        }
     }
 }
 
@@ -141,11 +167,17 @@ pub struct Counter {
 
 impl Counter {
     /// Nouveau compteur
-    pub fn new() -> Self { Self { inner: Arc::new(Mutex::new(0)) } }
+    pub fn new() -> Self {
+        Self { inner: Arc::new(Mutex::new(0)) }
+    }
     /// Incrémente
-    pub fn incr(&self) { *self.inner.lock() += 1; }
+    pub fn incr(&self) {
+        *self.inner.lock() += 1;
+    }
     /// Valeur courante
-    pub fn get(&self) -> u64 { *self.inner.lock() }
+    pub fn get(&self) -> u64 {
+        *self.inner.lock()
+    }
 }
 
 #[cfg(test)]
@@ -160,13 +192,14 @@ mod tests {
         assert_eq!(s.min(), 1.0);
         assert_eq!(s.max(), 3.0);
         assert_eq!(s.sum(), 4.0);
-        assert!((s.mean()-2.0).abs() < 1e-9);
+        assert!((s.mean() - 2.0).abs() < 1e-9);
     }
 
     #[test]
     fn counter_incr() {
         let c = Counter::new();
-        c.incr(); c.incr();
+        c.incr();
+        c.incr();
         assert_eq!(c.get(), 2);
     }
 }

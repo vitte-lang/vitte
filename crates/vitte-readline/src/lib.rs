@@ -91,13 +91,17 @@ impl Readline {
 /// Completion trait placeholder.
 pub trait Complete {
     /// Suggests completions for the given input at the specified cursor position.
-    fn complete(&self, _input: &str, _pos: usize) -> Vec<String> { Vec::new() }
+    fn complete(&self, _input: &str, _pos: usize) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// Highlight trait placeholder.
 pub trait Highlight {
     /// Returns a highlighted version of `input`.
-    fn highlight(&self, input: &str) -> String { input.to_string() }
+    fn highlight(&self, input: &str) -> String {
+        input.to_string()
+    }
 }
 
 #[cfg(test)]

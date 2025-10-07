@@ -29,9 +29,9 @@ extern crate alloc;
 extern crate std as alloc_std;
 
 #[cfg(not(feature = "std"))]
-use alloc::{string::String};
+use alloc::string::String;
 #[cfg(feature = "std")]
-use alloc_std::{string::String};
+use alloc_std::string::String;
 
 /// Result alias.
 pub type Result<T, E = CodegenError> = core::result::Result<T, E>;
@@ -82,7 +82,18 @@ pub mod arch {
         use super::super::reg::X;
         /// Call-preserved integer registers as defined by the SysV ABI on RV64.
         pub const PRESERVED: &[X] = &[
-            X::S0, X::S1, X::S2, X::S3, X::S4, X::S5, X::S6, X::S7, X::S8, X::S9, X::S10, X::S11,
+            X::S0,
+            X::S1,
+            X::S2,
+            X::S3,
+            X::S4,
+            X::S5,
+            X::S6,
+            X::S7,
+            X::S8,
+            X::S9,
+            X::S10,
+            X::S11,
         ];
     }
 }
@@ -398,7 +409,11 @@ pub mod enc {
     use super::reg::X;
 
     /// Encodes a single instruction into 4 bytes (LE).
-    pub fn encode(op: &Op, here: usize, target_off: Option<usize>) -> super::Result<[u8; INSN_BYTES]> {
+    pub fn encode(
+        op: &Op,
+        here: usize,
+        target_off: Option<usize>,
+    ) -> super::Result<[u8; INSN_BYTES]> {
         let word = match *op {
             // U-type
             Op::Lui { rd, imm20 } => u_type(0b0110111, rd, imm20)?,
@@ -409,7 +424,9 @@ pub mod enc {
 
             // I-type
             Op::Jalr { rd, rs1, imm12 } => i_type(0b1100111, rd, rs1, imm12, 0)?,
-            Op::OpImm { rd, rs1, kind, imm12, shamt6 } => encode_op_imm(rd, rs1, kind, imm12, shamt6)?,
+            Op::OpImm { rd, rs1, kind, imm12, shamt6 } => {
+                encode_op_imm(rd, rs1, kind, imm12, shamt6)?
+            },
 
             // B-type
             Op::Br { cc, rs1, rs2, rel } => b_type(cc, rs1, rs2, rel, here, target_off)?,
@@ -430,8 +447,10 @@ pub mod enc {
 
             // FP, pseudo handled in lowering; keep placeholders
             Op::FLoad { .. } | Op::FStore { .. } | Op::Li { .. } | Op::Ret => {
-                return Err(super::CodegenError::Unsupported("pseudo/FP must be lowered before encode".into()))
-            }
+                return Err(super::CodegenError::Unsupported(
+                    "pseudo/FP must be lowered before encode".into(),
+                ));
+            },
         };
         Ok(word.to_le_bytes())
     }
@@ -461,7 +480,7 @@ pub mod enc {
 
     fn s_type(op: u32, rs2: X, rs1: X, imm12: i16, funct3: u32) -> super::Result<u32> {
         let imm = imm12 as i32;
-        if !( -2048..=2047 ).contains(&imm) {
+        if !(-2048..=2047).contains(&imm) {
             return Err(super::CodegenError::Invalid("imm12 out of range".into()));
         }
         let imm_u = imm as u32;
@@ -475,7 +494,14 @@ pub mod enc {
             | op)
     }
 
-    fn b_type(cc: super::arch::Cc, rs1: X, rs2: X, rel: i32, here: usize, target: Option<usize>) -> super::Result<u32> {
+    fn b_type(
+        cc: super::arch::Cc,
+        rs1: X,
+        rs2: X,
+        rel: i32,
+        here: usize,
+        target: Option<usize>,
+    ) -> super::Result<u32> {
         let op = 0b1100011;
         let funct3 = match cc {
             super::arch::Cc::Eq => 0b000,
@@ -553,7 +579,13 @@ pub mod enc {
         s_type(0b0100011, rs2, rs1, imm12, funct3)
     }
 
-    fn encode_op_imm(rd: X, rs1: X, kind: IKind, imm12: i16, shamt6: Option<u8>) -> super::Result<u32> {
+    fn encode_op_imm(
+        rd: X,
+        rs1: X,
+        kind: IKind,
+        imm12: i16,
+        shamt6: Option<u8>,
+    ) -> super::Result<u32> {
         let (funct3, sh_op, funct6) = match kind {
             IKind::Addi => (0b000, false, 0),
             IKind::Slti => (0b010, false, 0),
@@ -714,7 +746,10 @@ pub mod ra {
             if let Some(x) = self.map.get(&v).copied() {
                 return Ok(x);
             }
-            let x = self.pool.pop().ok_or_else(|| super::CodegenError::RA("no registers available".into()))?;
+            let x = self
+                .pool
+                .pop()
+                .ok_or_else(|| super::CodegenError::RA("no registers available".into()))?;
             self.map.insert(v, x);
             Ok(x)
         }
@@ -761,22 +796,22 @@ pub mod lower {
                     let lo = (imm & 0xfff) as i16;
                     out.push(Op::Lui { rd, imm20: hi });
                     out.push(Op::OpImm { rd, rs1: rd, kind: IKind::Addi, imm12: lo, shamt6: None });
-                }
+                },
                 Ir::Add { rd, rs1, rs2 } => {
                     out.push(Op::Op { rd, rs1, rs2, kind: RKind::Add });
-                }
+                },
                 Ir::Addi { rd, rs1, imm12 } => {
                     out.push(Op::OpImm { rd, rs1, kind: IKind::Addi, imm12, shamt6: None });
-                }
+                },
                 Ir::Store { rs2, rs1, imm12, w } => {
                     out.push(Op::Store { rs2, rs1, imm12, w });
-                }
+                },
                 Ir::Load { rd, rs1, imm12, w } => {
                     out.push(Op::Load { rd, rs1, imm12, w });
-                }
+                },
                 Ir::J { rel } => {
                     out.push(Op::Jal { rd: X::Zero, rel });
-                }
+                },
                 Ir::Ret => out.push(Op::Ret),
             }
         }
@@ -903,9 +938,8 @@ pub mod asm {
                         em.buf.define_label(*lbl);
                     }
                 }
-                let target_off = lop
-                    .target_label
-                    .and_then(|l| final_label_offsets.get(&l).copied());
+                let target_off =
+                    lop.target_label.and_then(|l| final_label_offsets.get(&l).copied());
                 em.emit(&lop.op, target_off)?;
             }
             Ok(buf)
@@ -951,10 +985,10 @@ impl Codegen {
             match op {
                 inst::Op::Ret => {
                     em.emit(&inst::Op::Jalr { rd: reg::X::Zero, rs1: abi::RA, imm12: 0 }, None)?;
-                }
+                },
                 inst::Op::Li { .. } => {
                     return Err(CodegenError::Unsupported("Li must not reach encode".into()));
-                }
+                },
                 _ => em.emit(op, None)?,
             }
         }
@@ -965,9 +999,9 @@ impl Codegen {
 #[cfg(test)]
 mod tests {
     use super::inst::{IKind, Op, RKind, Width};
-    use super::lower::{lower, Ir};
+    use super::lower::{Ir, lower};
     use super::reg::X;
-    use super::{enc, Codegen};
+    use super::{Codegen, enc};
 
     #[test]
     fn encode_addi() {

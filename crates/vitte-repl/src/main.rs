@@ -30,11 +30,15 @@ impl Runtime {
 struct Evaluator;
 
 impl Evaluator {
-    fn new() -> Self { Self }
+    fn new() -> Self {
+        Self
+    }
 
     fn eval(&mut self, rt: &mut Runtime, src: &str) -> Result<String, String> {
         let out = src.trim().to_string();
-        if !out.is_empty() { rt.history.push(out.clone()); }
+        if !out.is_empty() {
+            rt.history.push(out.clone());
+        }
         Ok(out)
     }
 }
@@ -62,10 +66,14 @@ fn main() -> io::Result<()> {
         }
 
         let line = buffer.trim();
-        if line.is_empty() { continue; }
+        if line.is_empty() {
+            continue;
+        }
 
         if line.starts_with(':') {
-            if !handle_command(line, &mut rt)? { break; }
+            if !handle_command(line, &mut rt)? {
+                break;
+            }
             continue;
         }
 
@@ -91,7 +99,7 @@ fn handle_command(cmd: &str, rt: &mut Runtime) -> io::Result<bool> {
             println!(
                 "Commandes disponibles :\n  :help        — affiche cette aide\n  :quit        — quitte le REPL\n  :load <f>    — charge et ‘évalue’ chaque ligne du fichier\n  :save <f>    — sauvegarde l’historique de la session"
             );
-        }
+        },
         ":load" => {
             if let Some(path) = parts.get(1) {
                 match fs::read_to_string(path) {
@@ -100,7 +108,9 @@ fn handle_command(cmd: &str, rt: &mut Runtime) -> io::Result<bool> {
                         let mut eval = Evaluator::new();
                         for (i, line) in src.lines().enumerate() {
                             let line = line.trim();
-                            if line.is_empty() { continue; }
+                            if line.is_empty() {
+                                continue;
+                            }
                             match parse(line) {
                                 Ok(ast) => match eval.eval(rt, &ast) {
                                     Ok(val) => println!("[{}] => {}", i + 1, val),
@@ -109,13 +119,13 @@ fn handle_command(cmd: &str, rt: &mut Runtime) -> io::Result<bool> {
                                 Err(e) => eprintln!("[{}] Erreur de parsing : {}", i + 1, e),
                             }
                         }
-                    }
+                    },
                     Err(e) => eprintln!("Impossible de lire le fichier : {}", e),
                 }
             } else {
                 eprintln!("Usage : :load <fichier>");
             }
-        }
+        },
         ":save" => {
             if let Some(path) = parts.get(1) {
                 let p = PathBuf::from(path);
@@ -125,7 +135,7 @@ fn handle_command(cmd: &str, rt: &mut Runtime) -> io::Result<bool> {
             } else {
                 eprintln!("Usage : :save <fichier>");
             }
-        }
+        },
         _ => eprintln!("Commande inconnue : {}", cmd),
     }
     Ok(true)

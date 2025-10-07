@@ -111,11 +111,7 @@ pub struct VitteHsBuf {
 
 impl VitteHsBuf {
     fn from_vec(mut v: Vec<u8>) -> Self {
-        let out = Self {
-            ptr: v.as_mut_ptr(),
-            len: v.len(),
-            cap: v.capacity(),
-        };
+        let out = Self { ptr: v.as_mut_ptr(), len: v.len(), cap: v.capacity() };
         std::mem::forget(v);
         out
     }
@@ -162,7 +158,7 @@ fn log_emit(level: LogLevel, msg: &str) {
                 LogLevel::Trace => 4,
             };
             if let Ok(c) = CString::new(msg) {
-                cb(lv, c.as_ptr(), guard.1 .0);
+                cb(lv, c.as_ptr(), guard.1.0);
             }
         }
     }
@@ -189,7 +185,7 @@ fn status_from<T>(r: Result<T, HsError>) -> VitteHsStatus {
         Err(e) => {
             set_last_error(e.to_string());
             VitteHsStatus::from_err(&e)
-        }
+        },
     }
 }
 
@@ -212,7 +208,9 @@ pub extern "C" fn vitte_hs_last_error() -> *mut c_char {
 pub unsafe extern "C" fn vitte_hs_string_free(s: *mut c_char) {
     if !s.is_null() {
         // Safety: provient d'un CString::into_raw
-        unsafe { let _ = CString::from_raw(s); }
+        unsafe {
+            let _ = CString::from_raw(s);
+        }
     }
 }
 
@@ -225,7 +223,9 @@ pub unsafe extern "C" fn vitte_hs_buf_free(buf: *mut VitteHsBuf) {
     // Safety: structure renvoyée par from_vec
     let b = unsafe { &mut *buf };
     if !b.ptr.is_null() && b.cap != 0 {
-        unsafe { let _ = Vec::from_raw_parts(b.ptr, b.len, b.cap); }
+        unsafe {
+            let _ = Vec::from_raw_parts(b.ptr, b.len, b.cap);
+        }
     }
     b.ptr = ptr::null_mut();
     b.len = 0;
@@ -239,9 +239,7 @@ pub extern "C" fn vitte_hs_init(out_ctx: *mut *mut VitteHsCtx) -> VitteHsStatus 
         set_last_error("null out_ctx".into());
         return VitteHsStatus::InvalidArg;
     }
-    let ctx = VitteHsCtx {
-        inner: Arc::new(Mutex::new(EngineState::default())),
-    };
+    let ctx = VitteHsCtx { inner: Arc::new(Mutex::new(EngineState::default())) };
     let boxed = Box::new(ctx);
     unsafe { *out_ctx = Box::into_raw(boxed) };
     VitteHsStatus::Ok
@@ -254,13 +252,18 @@ pub unsafe extern "C" fn vitte_hs_shutdown(ctx: *mut VitteHsCtx) -> VitteHsStatu
         return VitteHsStatus::Ok;
     }
     // Safety: ctx provient de Box::into_raw
-    unsafe { let _ = Box::from_raw(ctx); }
+    unsafe {
+        let _ = Box::from_raw(ctx);
+    }
     VitteHsStatus::Ok
 }
 
 /// Définit le niveau de log: 0=Error..4=Trace.
 #[no_mangle]
-pub unsafe extern "C" fn vitte_hs_set_log_level(ctx: *mut VitteHsCtx, level: c_int) -> VitteHsStatus {
+pub unsafe extern "C" fn vitte_hs_set_log_level(
+    ctx: *mut VitteHsCtx,
+    level: c_int,
+) -> VitteHsStatus {
     if ctx.is_null() {
         set_last_error("null ctx".into());
         return VitteHsStatus::InvalidArg;
@@ -274,18 +277,18 @@ pub unsafe extern "C" fn vitte_hs_set_log_level(ctx: *mut VitteHsCtx, level: c_i
         _ => {
             set_last_error("invalid level".into());
             return VitteHsStatus::InvalidArg;
-        }
+        },
     };
     let ctx = unsafe { &*ctx };
     match ctx.inner.lock() {
         Ok(mut st) => {
             st.log_level = lvl;
             VitteHsStatus::Ok
-        }
+        },
         Err(_) => {
             set_last_error("mutex poisoned".into());
             VitteHsStatus::Err
-        }
+        },
     }
 }
 
@@ -325,11 +328,11 @@ pub unsafe extern "C" fn vitte_hs_eval_expr(
             unsafe { *out_str = cptr };
             log_emit(LogLevel::Info, "eval_expr ok");
             VitteHsStatus::Ok
-        }
+        },
         Err(e) => {
             set_last_error(e.to_string());
             VitteHsStatus::from_err(&e)
-        }
+        },
     }
 }
 
@@ -363,11 +366,11 @@ pub unsafe extern "C" fn vitte_hs_compile_file(
             unsafe { *out_buf = buf };
             log_emit(LogLevel::Debug, "compile_file ok");
             VitteHsStatus::Ok
-        }
+        },
         Err(e) => {
             set_last_error(e.to_string());
             VitteHsStatus::from_err(&e)
-        }
+        },
     }
 }
 
@@ -392,11 +395,11 @@ pub unsafe extern "C" fn vitte_hs_read_text_file(
         Ok(c) => {
             unsafe { *out_str = c };
             VitteHsStatus::Ok
-        }
+        },
         Err(e) => {
             set_last_error(e.to_string());
             VitteHsStatus::from_err(&e)
-        }
+        },
     }
 }
 
@@ -459,6 +462,9 @@ mod tests {
     #[test]
     fn status_map() {
         assert_eq!(VitteHsStatus::from_err(&HsError::InvalidArg("x")), VitteHsStatus::InvalidArg);
-        assert_eq!(VitteHsStatus::from_err(&HsError::NotFound("x".into())), VitteHsStatus::NotFound);
+        assert_eq!(
+            VitteHsStatus::from_err(&HsError::NotFound("x".into())),
+            VitteHsStatus::NotFound
+        );
     }
 }

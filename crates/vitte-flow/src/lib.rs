@@ -204,8 +204,12 @@ mod tests {
             let f = self.cur.expect("no current function");
             self.m.functions[f].blocks[from].successors.push(to);
         }
-        fn end_function(&mut self) { self.cur = None; }
-        fn finish(self) -> Module { self.m }
+        fn end_function(&mut self) {
+            self.cur = None;
+        }
+        fn finish(self) -> Module {
+            self.m
+        }
     }
 
     #[test]

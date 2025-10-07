@@ -12,13 +12,23 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::doc_markdown,
+    clippy::too_many_lines
+)]
 
 use anyhow::Result;
 
-pub struct Module { pub functions: Vec<Function> }
-pub struct Function { pub blocks: Vec<Block> }
-pub struct Block { pub instrs: Vec<Instr> }
+pub struct Module {
+    pub functions: Vec<Function>,
+}
+pub struct Function {
+    pub blocks: Vec<Block>,
+}
+pub struct Block {
+    pub instrs: Vec<Instr>,
+}
 
 #[derive(Clone, Debug)]
 pub enum Instr {
@@ -45,7 +55,9 @@ pub struct PassManager {
 }
 
 impl PassManager {
-    pub fn new() -> Self { Self { passes: Vec::new() } }
+    pub fn new() -> Self {
+        Self { passes: Vec::new() }
+    }
 
     pub fn with(mut self, p: impl Pass + Send + Sync + 'static) -> Self {
         self.passes.push(Box::new(p));
@@ -63,7 +75,9 @@ impl PassManager {
 /// Passe : élimination de code mort trivial.
 pub struct DeadCodeElim;
 impl Pass for DeadCodeElim {
-    fn name(&self) -> &'static str { "DeadCodeElim" }
+    fn name(&self) -> &'static str {
+        "DeadCodeElim"
+    }
     fn run(&self, m: &mut Module) -> Result<()> {
         for f in &mut m.functions {
             for bb in &mut f.blocks {
@@ -80,7 +94,9 @@ impl Pass for DeadCodeElim {
 /// Passe : constant folding naïf.
 pub struct ConstFold;
 impl Pass for ConstFold {
-    fn name(&self) -> &'static str { "ConstFold" }
+    fn name(&self) -> &'static str {
+        "ConstFold"
+    }
     fn run(&self, m: &mut Module) -> Result<()> {
         for f in &mut m.functions {
             for bb in &mut f.blocks {
@@ -107,7 +123,9 @@ impl Pass for ConstFold {
 /// Passe : inlining très simple (stub).
 pub struct Inline;
 impl Pass for Inline {
-    fn name(&self) -> &'static str { "Inline" }
+    fn name(&self) -> &'static str {
+        "Inline"
+    }
     fn run(&self, _m: &mut Module) -> Result<()> {
         // TODO: impl inlining
         Ok(())
@@ -116,11 +134,7 @@ impl Pass for Inline {
 
 /// Applique les passes par défaut.
 pub fn optimize_module(m: &mut Module) -> Result<()> {
-    PassManager::new()
-        .with(ConstFold)
-        .with(DeadCodeElim)
-        .with(Inline)
-        .run(m)
+    PassManager::new().with(ConstFold).with(DeadCodeElim).with(Inline).run(m)
 }
 
 // ============================== Tests =====================================

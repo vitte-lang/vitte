@@ -1,5 +1,3 @@
-
-
 //! vitte-new — Générateur de nouveaux projets Vitte
 //!
 //! Utilisation :
@@ -52,11 +50,11 @@ fn main() {
                 process::exit(1);
             }
             create_project(&args[2]);
-        }
+        },
         _ => {
             eprintln!("Commande inconnue : {}", args[1]);
             print_help();
             process::exit(1);
-        }
+        },
     }
 }

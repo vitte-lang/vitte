@@ -3,10 +3,10 @@
 //! Fournit la logique principale des sous-commandes `run`, `compile`, `repl`, `version`.
 //! Peut être intégrée dans des binaires externes comme `vitte-bin`.
 
-use std::path::{Path, PathBuf};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use log::info;
+use std::path::{Path, PathBuf};
 #[allow(unused_imports)]
 use which::which;
 
@@ -16,7 +16,11 @@ use which::which;
 
 /// Interface CLI du langage Vitte
 #[derive(Debug, Parser)]
-#[command(name = "vitte", version, about = "Vitte CLI — moteur et outils universels")]
+#[command(
+    name = "vitte",
+    version,
+    about = "Vitte CLI — moteur et outils universels"
+)]
 pub struct Cli {
     /// Niveau de verbosité (-v, -vv)
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
@@ -115,7 +119,13 @@ mod engine {
                 Some(p) => p.to_path_buf(),
                 None => match emit {
                     "obj" => input.with_extension("o"),
-                    "exe" => if cfg!(windows) { input.with_extension("exe") } else { input.with_extension("") },
+                    "exe" => {
+                        if cfg!(windows) {
+                            input.with_extension("exe")
+                        } else {
+                            input.with_extension("")
+                        }
+                    },
                     _ => input.with_extension("vtbc"),
                 },
             };
@@ -181,9 +191,9 @@ fn compile_file(input: &Path, out: Option<&PathBuf>, emit: &str) -> Result<()> {
     engine::compiler::compile_file(
         input,
         out.map(|p| p.as_path()),
-        2,      // opt level (stub)
-        None,   // target (stub)
-        None,   // threads (stub)
+        2,    // opt level (stub)
+        None, // target (stub)
+        None, // threads (stub)
         emit,
     )
 }
@@ -202,7 +212,9 @@ fn repl_loop() -> Result<()> {
             break;
         }
         let s = line.trim_end();
-        if s == ":quit" || s == ":exit" { break; }
+        if s == ":quit" || s == ":exit" {
+            break;
+        }
         match engine::vm::eval_line(s) {
             Ok(res) => println!("= {}", res),
             Err(e) => println!("! erreur: {e}"),
@@ -227,7 +239,9 @@ pub fn version_string() -> String {
 }
 
 /// Lance le REPL moteur (fallback intégré si le moteur n'est pas présent).
-pub fn engine_repl() -> Result<()> { repl_loop() }
+pub fn engine_repl() -> Result<()> {
+    repl_loop()
+}
 
 /// Détecte grossièrement si un fichier ressemble à du bytecode.
 /// Heuristique simple: extensions ".vtbc" ou ".bc".
@@ -239,7 +253,9 @@ pub fn is_bytecode(path: &Path) -> bool {
 }
 
 /// Exécute un fichier via le moteur ou via le fallback intégré.
-pub fn engine_run(input: &Path, args: &[String]) -> Result<()> { run_program(input, args) }
+pub fn engine_run(input: &Path, args: &[String]) -> Result<()> {
+    run_program(input, args)
+}
 
 /// Compile un fichier via le moteur ou via le fallback intégré.
 pub fn engine_compile(input: &Path, out: Option<&Path>, emit: &str) -> Result<()> {
@@ -248,4 +264,6 @@ pub fn engine_compile(input: &Path, out: Option<&Path>, emit: &str) -> Result<()
 }
 
 /// Calcule le chemin de sortie attendu lorsque `out` n'est pas fourni.
-pub fn resolve_output(input: &Path, emit: &str) -> PathBuf { input.with_extension(emit) }
+pub fn resolve_output(input: &Path, emit: &str) -> PathBuf {
+    input.with_extension(emit)
+}

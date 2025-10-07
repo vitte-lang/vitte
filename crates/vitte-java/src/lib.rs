@@ -53,9 +53,9 @@ pub struct JvmInfo {
 #[cfg(feature = "jni")]
 pub mod api {
     use super::*;
-    use jni::objects::{JString, JValue};
     use jni::JNIEnv;
     use jni::JavaVM;
+    use jni::objects::{JString, JValue};
 
     /// Contexte principal d'interop.
     pub struct JavaCtx {
@@ -94,7 +94,10 @@ pub mod api {
                 .map_err(|e| JavaError::Jni(e.to_string()))?
                 .l()
                 .map_err(|e| JavaError::Jni(e.to_string()))?;
-            let s: String = env.get_string(&JString::from(jstr)).map_err(|e| JavaError::Jni(e.to_string()))?.into();
+            let s: String = env
+                .get_string(&JString::from(jstr))
+                .map_err(|e| JavaError::Jni(e.to_string()))?
+                .into();
             Ok(s)
         }
     }

@@ -35,7 +35,7 @@ use alloc::{string::String, vec::Vec};
 use std::{string::String, vec::Vec};
 
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "errors")]
 use thiserror::Error;
@@ -47,15 +47,30 @@ use unicode_width::UnicodeWidthStr;
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Align { Left, Center, Right }
+pub enum Align {
+    Left,
+    Center,
+    Right,
+}
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Font { Simple, Block, Outline, Shadow }
+pub enum Font {
+    Simple,
+    Block,
+    Outline,
+    Shadow,
+}
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BorderStyle { None, Plain, Thick, Rounded, Double }
+pub enum BorderStyle {
+    None,
+    Plain,
+    Thick,
+    Rounded,
+    Double,
+}
 
 #[cfg(feature = "errors")]
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -67,8 +82,10 @@ pub enum BannerError {
 }
 #[cfg(not(feature = "errors"))]
 #[derive(Debug, PartialEq, Eq)]
-pub enum BannerError { InvalidWidth, ContentWiderThanWidth }
-
+pub enum BannerError {
+    InvalidWidth,
+    ContentWiderThanWidth,
+}
 
 #[cfg(feature = "errors")]
 pub type Result<T> = core::result::Result<T, BannerError>;
@@ -78,7 +95,9 @@ pub type Result<T> = core::result::Result<T, &'static str>;
 #[inline]
 fn err<T>(e: BannerError) -> Result<T> {
     #[cfg(feature = "errors")]
-    { Err(e) }
+    {
+        Err(e)
+    }
     #[cfg(not(feature = "errors"))]
     {
         let msg: &'static str = match e {
@@ -112,7 +131,7 @@ impl BannerSpec {
             text: text.into(),
             font: Font::Simple,
             align: Align::Left,
-            width: 0,             // 0 => auto
+            width: 0, // 0 => auto
             pad_v: 0,
             pad_h: 0,
             margin_v: 0,
@@ -123,15 +142,44 @@ impl BannerSpec {
             separator: false,
         }
     }
-    pub fn font(mut self, f: Font) -> Self { self.font = f; self }
-    pub fn align(mut self, a: Align) -> Self { self.align = a; self }
-    pub fn width(mut self, w: usize) -> Self { self.width = w; self }
-    pub fn padding(mut self, v: usize, h: usize) -> Self { self.pad_v = v; self.pad_h = h; self }
-    pub fn margin(mut self, v: usize, h: usize) -> Self { self.margin_v = v; self.margin_h = h; self }
-    pub fn fill(mut self, ch: char) -> Self { self.fill = ch; self }
-    pub fn border(mut self, b: BorderStyle) -> Self { self.border = b; self }
-    pub fn title<T: Into<String>>(mut self, t: T) -> Self { self.title = Some(t.into()); self }
-    pub fn separator(mut self, on: bool) -> Self { self.separator = on; self }
+    pub fn font(mut self, f: Font) -> Self {
+        self.font = f;
+        self
+    }
+    pub fn align(mut self, a: Align) -> Self {
+        self.align = a;
+        self
+    }
+    pub fn width(mut self, w: usize) -> Self {
+        self.width = w;
+        self
+    }
+    pub fn padding(mut self, v: usize, h: usize) -> Self {
+        self.pad_v = v;
+        self.pad_h = h;
+        self
+    }
+    pub fn margin(mut self, v: usize, h: usize) -> Self {
+        self.margin_v = v;
+        self.margin_h = h;
+        self
+    }
+    pub fn fill(mut self, ch: char) -> Self {
+        self.fill = ch;
+        self
+    }
+    pub fn border(mut self, b: BorderStyle) -> Self {
+        self.border = b;
+        self
+    }
+    pub fn title<T: Into<String>>(mut self, t: T) -> Self {
+        self.title = Some(t.into());
+        self
+    }
+    pub fn separator(mut self, on: bool) -> Self {
+        self.separator = on;
+        self
+    }
 
     /// Rend la bannière complète.
     pub fn render(&self) -> String {
@@ -141,28 +189,34 @@ impl BannerSpec {
     /// Rend avec gestion d’erreurs.
     pub fn render_result(&self) -> Result<String> {
         let mut glyph_lines = match self.font {
-            Font::Simple  => font_simple(&self.text),
-            Font::Block   => font_block(&self.text),
+            Font::Simple => font_simple(&self.text),
+            Font::Block => font_block(&self.text),
             Font::Outline => font_outline(&self.text),
-            Font::Shadow  => font_shadow(&self.text),
+            Font::Shadow => font_shadow(&self.text),
         };
 
         // Calcul largeur intérieure (hors marges et bordures)
         let mut content_width = glyph_lines.iter().map(|l| display_width(l)).max().unwrap_or(0);
-        if self.pad_h > 0 { content_width += self.pad_h * 2; }
+        if self.pad_h > 0 {
+            content_width += self.pad_h * 2;
+        }
 
         // Largeur extérieure demandée (si width=0 => auto)
         let border_w = border_side_width(self.border) * 2;
         let outer_width = if self.width == 0 {
             content_width + border_w
         } else {
-            if self.width < 1 { return err(BannerError::InvalidWidth); }
+            if self.width < 1 {
+                return err(BannerError::InvalidWidth);
+            }
             self.width
         };
 
         // Largeur intérieure réelle
         let inner_width = outer_width.saturating_sub(border_w);
-        if content_width > inner_width { return err(BannerError::ContentWiderThanWidth); }
+        if content_width > inner_width {
+            return err(BannerError::ContentWiderThanWidth);
+        }
 
         // Applique alignement + padding vertical/horizontal
         let mut content: Vec<String> = Vec::new();
@@ -177,7 +231,9 @@ impl BannerSpec {
         }
 
         // Padding vertical top
-        for _ in 0..self.pad_v { content.push(repeat_char(self.fill, inner_width)); }
+        for _ in 0..self.pad_v {
+            content.push(repeat_char(self.fill, inner_width));
+        }
 
         // Lignes de glyphes
         for line in glyph_lines.iter_mut() {
@@ -193,14 +249,18 @@ impl BannerSpec {
         }
 
         // Padding vertical bottom
-        for _ in 0..self.pad_v { content.push(repeat_char(self.fill, inner_width)); }
+        for _ in 0..self.pad_v {
+            content.push(repeat_char(self.fill, inner_width));
+        }
 
         // Ajoute bordures
         let boxed = add_border(&content, inner_width, self.border);
 
         // Ajoute marges autour
         let mut out = String::new();
-        for _ in 0..self.margin_v { out.push('\n'); }
+        for _ in 0..self.margin_v {
+            out.push('\n');
+        }
         let margin_side = repeat_char(' ', self.margin_h);
         for line in boxed {
             out.push_str(&margin_side);
@@ -208,7 +268,9 @@ impl BannerSpec {
             out.push_str(&margin_side);
             out.push('\n');
         }
-        for _ in 0..self.margin_v { out.push('\n'); }
+        for _ in 0..self.margin_v {
+            out.push('\n');
+        }
 
         Ok(out)
     }
@@ -300,19 +362,28 @@ fn block_glyph(ch: char) -> [&'static str; 5] {
         '8' => [" 888 ", "8   8", " 888 ", "8   8", " 888 "],
         '9' => [" 999 ", "9   9", " 9999", "    9", " 999 "],
         ' ' => ["     ", "     ", "     ", "     ", "     "],
-        _   => ["?????", "?????", "?????", "?????", "?????"],
+        _ => ["?????", "?????", "?????", "?????", "?????"],
     }
 }
 
 /* ============================== BORDURES ============================== */
 
-fn border_chars(style: BorderStyle) -> Option<(&'static str, &'static str, &'static str, &'static str, &'static str, &'static str)> {
+fn border_chars(
+    style: BorderStyle,
+) -> Option<(
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+)> {
     match style {
         BorderStyle::None => None,
         BorderStyle::Plain => Some(("+", "+", "+", "+", "-", "|")),
-        BorderStyle::Thick => Some(("┏","┓","┗","┛","━","┃")),
-        BorderStyle::Rounded => Some(("╭","╮","╰","╯","─","│")),
-        BorderStyle::Double => Some(("╔","╗","╚","╝","═","║")),
+        BorderStyle::Thick => Some(("┏", "┓", "┗", "┛", "━", "┃")),
+        BorderStyle::Rounded => Some(("╭", "╮", "╰", "╯", "─", "│")),
+        BorderStyle::Double => Some(("╔", "╗", "╚", "╝", "═", "║")),
     }
 }
 
@@ -321,13 +392,23 @@ fn border_side_width(style: BorderStyle) -> usize {
 }
 
 fn add_border(content: &[String], inner_width: usize, style: BorderStyle) -> Vec<String> {
-    if let Some((tl,tr,bl,br,h,v)) = border_chars(style) {
+    if let Some((tl, tr, bl, br, h, v)) = border_chars(style) {
         let mut out = Vec::with_capacity(content.len() + 2);
-        out.push(format!("{}{}{}", tl, repeat_char(h.chars().next().unwrap_or('-'), inner_width), tr));
+        out.push(format!(
+            "{}{}{}",
+            tl,
+            repeat_char(h.chars().next().unwrap_or('-'), inner_width),
+            tr
+        ));
         for line in content {
             out.push(format!("{}{}{}", v, pad_exact(line, inner_width), v));
         }
-        out.push(format!("{}{}{}", bl, repeat_char(h.chars().next().unwrap_or('-'), inner_width), br));
+        out.push(format!(
+            "{}{}{}",
+            bl,
+            repeat_char(h.chars().next().unwrap_or('-'), inner_width),
+            br
+        ));
         out
     } else {
         content.iter().map(|s| pad_exact(s, inner_width)).collect()
@@ -338,20 +419,28 @@ fn add_border(content: &[String], inner_width: usize, style: BorderStyle) -> Vec
 
 fn display_width(s: &str) -> usize {
     #[cfg(feature = "unicode-width")]
-    { UnicodeWidthStr::width(s) }
+    {
+        UnicodeWidthStr::width(s)
+    }
     #[cfg(not(feature = "unicode-width"))]
-    { s.len() }
+    {
+        s.len()
+    }
 }
 
 fn repeat_char(ch: char, n: usize) -> String {
     let mut s = String::new();
-    for _ in 0..n { s.push(ch); }
+    for _ in 0..n {
+        s.push(ch);
+    }
     s
 }
 
 fn pad_exact(s: &str, width: usize) -> String {
     let w = display_width(s);
-    if w >= width { crop_or_pad(s, width, ' ') } else {
+    if w >= width {
+        crop_or_pad(s, width, ' ')
+    } else {
         let mut out = String::with_capacity(width);
         out.push_str(s);
         out.push_str(&repeat_char(' ', width - w));
@@ -361,7 +450,9 @@ fn pad_exact(s: &str, width: usize) -> String {
 
 fn crop_or_pad(s: &str, width: usize, fill: char) -> String {
     let w = display_width(s);
-    if w == width { return s.to_string(); }
+    if w == width {
+        return s.to_string();
+    }
     if w < width {
         let mut out = String::with_capacity(width);
         out.push_str(s);
@@ -379,7 +470,9 @@ fn align_line(s: &str, width: usize, align: Align) -> String {
 
 fn align_line_exact(s: &str, width: usize, align: Align, fill: char) -> String {
     let w = display_width(s);
-    if w >= width { return crop_or_pad(s, width, fill); }
+    if w >= width {
+        return crop_or_pad(s, width, fill);
+    }
     let pad = width - w;
     match align {
         Align::Left => {
@@ -387,13 +480,13 @@ fn align_line_exact(s: &str, width: usize, align: Align, fill: char) -> String {
             out.push_str(s);
             out.push_str(&repeat_char(fill, pad));
             out
-        }
+        },
         Align::Right => {
             let mut out = String::with_capacity(width);
             out.push_str(&repeat_char(fill, pad));
             out.push_str(s);
             out
-        }
+        },
         Align::Center => {
             let left = pad / 2;
             let right = pad - left;
@@ -402,7 +495,7 @@ fn align_line_exact(s: &str, width: usize, align: Align, fill: char) -> String {
             out.push_str(s);
             out.push_str(&repeat_char(fill, right));
             out
-        }
+        },
     }
 }
 

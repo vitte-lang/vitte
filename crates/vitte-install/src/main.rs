@@ -66,7 +66,7 @@ fn cmd_install(version: Option<&str>) {
         Err(e) => {
             eprintln!("Erreur: impossible de créer le répertoire d’installation: {e}");
             process::exit(1);
-        }
+        },
     };
 
     let version = version.unwrap_or("latest");
@@ -120,7 +120,7 @@ fn main() {
         "install" => {
             let version = if args.len() >= 3 { Some(args[2].as_str()) } else { None };
             cmd_install(version);
-        }
+        },
         "update" => cmd_update(),
         "uninstall" => cmd_uninstall(),
         "doctor" => cmd_doctor(),
@@ -128,6 +128,6 @@ fn main() {
             eprintln!("Erreur: commande inconnue `{other}`");
             print_help();
             process::exit(1);
-        }
+        },
     }
 }

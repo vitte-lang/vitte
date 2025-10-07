@@ -78,7 +78,11 @@ pub struct Chapter {
 
 impl Chapter {
     /// Constructs a dummy chapter.
-    pub fn new(id: impl Into<String>, title: impl Into<String>, markdown: impl Into<String>) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        title: impl Into<String>,
+        markdown: impl Into<String>,
+    ) -> Self {
         Self { id: id.into(), title: title.into(), markdown: markdown.into() }
     }
 }

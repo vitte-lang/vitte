@@ -63,13 +63,27 @@ pub fn fuzz_enabled() -> bool {
 /// Affiche un résumé des sanitizers actifs.
 pub fn summary() -> String {
     let mut v = Vec::new();
-    if asan_enabled() { v.push("ASan"); }
-    if lsan_enabled() { v.push("LSan"); }
-    if tsan_enabled() { v.push("TSan"); }
-    if msan_enabled() { v.push("MSan"); }
-    if ubsan_enabled() { v.push("UBSan"); }
-    if hardened_enabled() { v.push("Hardened"); }
-    if fuzz_enabled() { v.push("Fuzz"); }
+    if asan_enabled() {
+        v.push("ASan");
+    }
+    if lsan_enabled() {
+        v.push("LSan");
+    }
+    if tsan_enabled() {
+        v.push("TSan");
+    }
+    if msan_enabled() {
+        v.push("MSan");
+    }
+    if ubsan_enabled() {
+        v.push("UBSan");
+    }
+    if hardened_enabled() {
+        v.push("Hardened");
+    }
+    if fuzz_enabled() {
+        v.push("Fuzz");
+    }
     if v.is_empty() { "none".into() } else { v.join("+") }
 }
 

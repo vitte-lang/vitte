@@ -108,11 +108,7 @@ impl Vec2 {
     #[inline]
     pub fn normalized(self) -> Self {
         let l = self.length();
-        if l > 0.0 as Scalar {
-            self / l
-        } else {
-            Self::zero()
-        }
+        if l > 0.0 as Scalar { self / l } else { Self::zero() }
     }
     #[inline]
     pub fn clamp_length(self, min: Scalar, max: Scalar) -> Self {
@@ -351,11 +347,7 @@ impl Rect {
         let y1 = self.y.max(b.y);
         let x2 = (self.x + self.w).min(b.x + b.w);
         let y2 = (self.y + self.h).min(b.y + b.h);
-        if x2 >= x1 && y2 >= y1 {
-            Some(Rect::new(x1, y1, x2 - x1, y2 - y1))
-        } else {
-            None
-        }
+        if x2 >= x1 && y2 >= y1 { Some(Rect::new(x1, y1, x2 - x1, y2 - y1)) } else { None }
     }
     #[inline]
     pub fn expanded(&self, by: Scalar) -> Rect {
@@ -460,11 +452,7 @@ pub mod collide {
         } // parallèles ou colinéaires
         let t = (qp.x * s.y - qp.y * s.x) / rxs;
         let u = qpxr / rxs;
-        if t >= 0.0 && t <= 1.0 && u >= 0.0 && u <= 1.0 {
-            Some((t, u))
-        } else {
-            None
-        }
+        if t >= 0.0 && t <= 1.0 && u >= 0.0 && u <= 1.0 { Some((t, u)) } else { None }
     }
 
     /// Balayage AABB contre AABB (Minkowski). Retourne le premier impact dans [0,1] si collision.
@@ -773,8 +761,8 @@ impl Transform2D {
 // ============================== Prelude ===============================
 pub mod prelude {
     pub use super::{
-        collide, path::Grid, spatial::SpatialHashGrid, Circle, Lcg, Line, Mat3, Rect, Scalar,
-        Segment, Transform2D, Vec2,
+        Circle, Lcg, Line, Mat3, Rect, Scalar, Segment, Transform2D, Vec2, collide, path::Grid,
+        spatial::SpatialHashGrid,
     };
 }
 

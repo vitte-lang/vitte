@@ -28,7 +28,7 @@
     clippy::too_many_lines
 )]
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -115,7 +115,9 @@ impl Registry {
     }
 
     /// Retourne un snapshot de l’index.
-    pub fn index(&self) -> &Index { &self.index }
+    pub fn index(&self) -> &Index {
+        &self.index
+    }
 
     /// Publie un artefact local dans le registre.
     ///
@@ -145,7 +147,13 @@ impl Registry {
     }
 
     /// Enregistre une référence distante sans copier d’artefact local.
-    pub fn publish_remote(&mut self, name: &str, version: &str, url: &str, checksum: Option<String>) {
+    pub fn publish_remote(
+        &mut self,
+        name: &str,
+        version: &str,
+        url: &str,
+        checksum: Option<String>,
+    ) {
         let rec = PackageRecord {
             id: PackageId::new(name, version),
             url: Some(url.to_string()),
@@ -184,7 +192,9 @@ impl Registry {
     }
 
     /// Chemin racine du registre.
-    pub fn root(&self) -> &Path { &self.root }
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
 }
 
 /// Résolution d’un artefact.

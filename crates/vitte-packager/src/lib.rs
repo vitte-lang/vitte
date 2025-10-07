@@ -21,9 +21,13 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::doc_markdown,
+    clippy::too_many_lines
+)]
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::path::Path;
 
 #[cfg(feature = "json")]
@@ -40,7 +44,11 @@ pub struct Manifest {
 
 #[cfg(feature = "json")]
 impl Manifest {
-    pub fn new(name: impl Into<String>, version: impl Into<String>, triple: impl Into<String>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        version: impl Into<String>,
+        triple: impl Into<String>,
+    ) -> Self {
         Self { name: name.into(), version: version.into(), triple: triple.into(), url: None }
     }
 
@@ -62,8 +70,8 @@ impl Manifest {
 
 #[cfg(feature = "archive")]
 pub fn create_tarball(src_dir: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<()> {
-    use flate2::write::GzEncoder;
     use flate2::Compression;
+    use flate2::write::GzEncoder;
     use tar::Builder;
 
     let tar_gz = std::fs::File::create(&dst)?;
@@ -75,8 +83,8 @@ pub fn create_tarball(src_dir: impl AsRef<Path>, dst: impl AsRef<Path>) -> Resul
 
 #[cfg(feature = "archive")]
 pub fn create_zip(src_dir: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<()> {
-    use zip::write::FileOptions;
     use std::io::Write;
+    use zip::write::FileOptions;
 
     let file = std::fs::File::create(&dst)?;
     let mut zip = zip::ZipWriter::new(file);

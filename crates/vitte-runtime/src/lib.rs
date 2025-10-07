@@ -471,7 +471,7 @@ impl Write for Captured {
 /// Prelude pratique pour importer d’un coup.
 pub mod prelude {
     pub use crate::{
-        vitte_native, Captured, Error, NativeEntry, NativeFn, RResult, Runtime, RuntimeCtx, Value,
+        Captured, Error, NativeEntry, NativeFn, RResult, Runtime, RuntimeCtx, Value, vitte_native,
     };
 }
 

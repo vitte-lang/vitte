@@ -56,7 +56,9 @@ pub struct Span {
 }
 
 impl Span {
-    pub fn new(start: usize, end: usize) -> Self { Self { start, end } }
+    pub fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
+    }
 }
 
 /// Diagnostic unique.
@@ -95,9 +97,15 @@ pub struct Report {
 }
 
 impl Report {
-    pub fn new() -> Self { Self { diagnostics: Vec::new() } }
-    pub fn push(&mut self, d: Diagnostic) { self.diagnostics.push(d); }
-    pub fn is_empty(&self) -> bool { self.diagnostics.is_empty() }
+    pub fn new() -> Self {
+        Self { diagnostics: Vec::new() }
+    }
+    pub fn push(&mut self, d: Diagnostic) {
+        self.diagnostics.push(d);
+    }
+    pub fn is_empty(&self) -> bool {
+        self.diagnostics.is_empty()
+    }
 
     pub fn errors(&self) -> impl Iterator<Item = &Diagnostic> {
         self.diagnostics.iter().filter(|d| d.severity == Severity::Error)
@@ -129,7 +137,9 @@ impl Default for Emitter {
 }
 
 impl Emitter {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Emet un rapport complet vers stderr.
     pub fn emit_report(&self, report: &Report, source: &str, filename: &str) {

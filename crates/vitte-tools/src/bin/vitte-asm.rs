@@ -20,7 +20,7 @@ use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::time::Instant;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::{ArgAction, Parser};
 

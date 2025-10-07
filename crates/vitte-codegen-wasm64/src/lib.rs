@@ -21,10 +21,10 @@
 extern crate alloc;
 
 #[cfg(not(feature = "std"))]
-use alloc::{vec, vec::Vec, string::String};
+use alloc::{string::String, vec, vec::Vec};
 #[cfg(feature = "std")]
 use std::vec::Vec;
-use std::{vec, string::String};
+use std::{string::String, vec};
 
 /// Result alias for backend.
 pub type Result<T, E = CodegenError> = core::result::Result<T, E>;
@@ -168,7 +168,7 @@ impl CodeBuf {
 
 /// Encoder.
 pub mod enc {
-    use super::{CodeBuf, NumOp, Op, MemOp, CtrlOp};
+    use super::{CodeBuf, CtrlOp, MemOp, NumOp, Op};
 
     /// Encode one op.
     pub fn encode(op: &Op, buf: &mut CodeBuf) -> super::Result<()> {
@@ -176,15 +176,15 @@ pub mod enc {
             Op::NumConstI64(v) => {
                 buf.put_u8(0x42); // i64.const
                 buf.put_leb128_i64(v);
-            }
+            },
             Op::NumConstI32(v) => {
                 buf.put_u8(0x41);
                 buf.put_leb128_i64(v as i64);
-            }
+            },
             Op::NumConstF64(f) => {
                 buf.put_u8(0x44);
                 buf.bytes.extend_from_slice(&f.to_le_bytes());
-            }
+            },
             Op::NumBin(opc) => {
                 let code = match opc {
                     NumOp::I32Add => 0x6a,
@@ -194,7 +194,7 @@ pub mod enc {
                     _ => return Err(super::CodegenError::Unsupported("binop".into())),
                 };
                 buf.put_u8(code);
-            }
+            },
             Op::Mem(mem, offset) => {
                 match mem {
                     MemOp::I64Load => buf.put_u8(0x29),
@@ -203,17 +203,15 @@ pub mod enc {
                 // align=3 for i64, reserved, then offset
                 buf.put_leb128_u32(3);
                 buf.put_leb128_u32(offset);
-            }
-            Op::Ctrl(c) => {
-                match c {
-                    CtrlOp::Return => buf.put_u8(0x0f),
-                    CtrlOp::End => buf.put_u8(0x0b),
-                    CtrlOp::Call(idx) => {
-                        buf.put_u8(0x10);
-                        buf.put_leb128_u32(idx);
-                    }
-                }
-            }
+            },
+            Op::Ctrl(c) => match c {
+                CtrlOp::Return => buf.put_u8(0x0f),
+                CtrlOp::End => buf.put_u8(0x0b),
+                CtrlOp::Call(idx) => {
+                    buf.put_u8(0x10);
+                    buf.put_leb128_u32(idx);
+                },
+            },
         }
         Ok(())
     }
@@ -221,7 +219,7 @@ pub mod enc {
 
 /// Lowering from minimal IR.
 pub mod lower {
-    use super::{Op, NumOp, MemOp, CtrlOp};
+    use super::{CtrlOp, MemOp, NumOp, Op};
     #[cfg(not(feature = "std"))]
     use alloc::{vec, vec::Vec};
     #[cfg(feature = "std")]
@@ -260,7 +258,7 @@ pub mod lower {
                 Ir::Ret => {
                     out.push(Op::Ctrl(CtrlOp::Return));
                     out.push(Op::Ctrl(CtrlOp::End));
-                }
+                },
             }
         }
         Ok(out)
@@ -353,8 +351,8 @@ impl Codegen {
 
 #[cfg(test)]
 mod tests {
-    use super::lower::{Ir};
     use super::Codegen;
+    use super::lower::Ir;
 
     #[test]
     fn compile_simple() {

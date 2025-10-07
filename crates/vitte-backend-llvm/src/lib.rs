@@ -65,19 +65,24 @@ impl Default for Config {
 
 impl Config {
     pub fn opt_level(mut self, lvl: OptimizationLevel) -> Self {
-        self.opt_level = lvl; self
+        self.opt_level = lvl;
+        self
     }
     pub fn target_triple<S: Into<String>>(mut self, triple: S) -> Self {
-        self.target_triple = Some(triple.into()); self
+        self.target_triple = Some(triple.into());
+        self
     }
     pub fn data_layout<S: Into<String>>(mut self, dl: S) -> Self {
-        self.data_layout = Some(dl.into()); self
+        self.data_layout = Some(dl.into());
+        self
     }
     pub fn reloc_pic(mut self, pic: bool) -> Self {
-        self.reloc_pic = pic; self
+        self.reloc_pic = pic;
+        self
     }
     pub fn verify(mut self, v: bool) -> Self {
-        self.verify = v; self
+        self.verify = v;
+        self
     }
 }
 
@@ -103,7 +108,9 @@ pub enum BackendError {
 impl core::fmt::Display for BackendError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            BackendError::FeatureDisabled => write!(f, "fonctionnalité LLVM désactivée: recompilez avec `--features inkwell`"),
+            BackendError::FeatureDisabled => {
+                write!(f, "fonctionnalité LLVM désactivée: recompilez avec `--features inkwell`")
+            },
             BackendError::Init(e) => write!(f, "initialisation LLVM: {e}"),
             BackendError::Build(e) => write!(f, "construction module: {e}"),
             BackendError::Verify(e) => write!(f, "vérification module: {e}"),
@@ -122,7 +129,9 @@ pub type Result<T> = std::result::Result<T, BackendError>;
 /// Trait backend minimal pour Vitte.
 pub trait Backend {
     /// Construit depuis une [`Config`].
-    fn new(cfg: Config) -> Result<Self> where Self: Sized;
+    fn new(cfg: Config) -> Result<Self>
+    where
+        Self: Sized;
 
     /// Ajoute/abaisse le module IR courant.  
     /// Pour démonstration, on expose un stub `create_demo_add_module`.
@@ -145,12 +154,14 @@ pub trait Backend {
 #[cfg(feature = "inkwell")]
 mod llvm_impl {
     use super::*;
+    use inkwell::OptimizationLevel as LlvmOpt;
     use inkwell::context::Context;
+    use inkwell::execution_engine::ExecutionEngine;
     use inkwell::module::Module;
     use inkwell::passes::{PassManager, PassManagerBuilder};
-    use inkwell::targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple};
-    use inkwell::OptimizationLevel as LlvmOpt;
-    use inkwell::execution_engine::ExecutionEngine;
+    use inkwell::targets::{
+        CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
+    };
     use inkwell::values::FunctionValue;
 
     /// Implémentation LLVM du backend.
@@ -183,7 +194,11 @@ mod llvm_impl {
             Ok(())
         }
 
-        fn build_pm(ctx: &Context, module: &Module, lvl: OptimizationLevel) -> (PassManager<FunctionValue>, PassManager<Module>) {
+        fn build_pm(
+            ctx: &Context,
+            module: &Module,
+            lvl: OptimizationLevel,
+        ) -> (PassManager<FunctionValue>, PassManager<Module>) {
             let fpm = PassManager::create(module);
             let mpm = PassManager::create(());
             let mut pmb = PassManagerBuilder::create();
@@ -195,7 +210,8 @@ mod llvm_impl {
         }
 
         fn target_machine(cfg: &Config) -> Result<TargetMachine> {
-            let triple = cfg.target_triple
+            let triple = cfg
+                .target_triple
                 .as_deref()
                 .map(TargetTriple::create)
                 .unwrap_or_else(|| TargetMachine::get_default_triple());
@@ -227,8 +243,11 @@ mod llvm_impl {
         }
 
         fn ensure_engine(&mut self) -> Result<()> {
-            if self.ee.is_some() { return Ok(()); }
-            let ee = self.module
+            if self.ee.is_some() {
+                return Ok(());
+            }
+            let ee = self
+                .module
                 .create_jit_execution_engine(Self::map_opt(self.cfg.opt_level))
                 .map_err(|e| BackendError::Jit(e.to_string()))?;
             self.ee = Some(ee);
@@ -245,8 +264,12 @@ mod llvm_impl {
             builder.position_at_end(entry);
             let a = f.get_nth_param(0).unwrap().into_int_value();
             let b = f.get_nth_param(1).unwrap().into_int_value();
-            let sum = builder.build_int_add(a, b, "sum").map_err(|e| BackendError::Build(e.to_string()))?;
-            builder.build_return(Some(&sum)).map_err(|e| BackendError::Build(e.to_string()))?;
+            let sum = builder
+                .build_int_add(a, b, "sum")
+                .map_err(|e| BackendError::Build(e.to_string()))?;
+            builder
+                .build_return(Some(&sum))
+                .map_err(|e| BackendError::Build(e.to_string()))?;
             Ok(f)
         }
     }
@@ -286,19 +309,20 @@ mod llvm_impl {
         fn emit(&mut self, kind: ArtifactKind) -> Result<Vec<u8>> {
             match kind {
                 ArtifactKind::Object => {
-                    let buf = self.tm
+                    let buf = self
+                        .tm
                         .write_to_memory_buffer(&self.module, FileType::Object)
                         .map_err(|e| BackendError::Emit(e.to_string()))?;
                     Ok(buf.as_slice().to_vec())
-                }
+                },
                 ArtifactKind::Bitcode => {
                     let mb = self.module.write_bitcode_to_memory();
                     Ok(mb.as_slice().to_vec())
-                }
+                },
                 ArtifactKind::LlvmIr => {
                     let s = self.module.print_to_string();
                     Ok(s.to_bytes().to_vec())
-                }
+                },
             }
         }
 
@@ -306,7 +330,8 @@ mod llvm_impl {
             self.ensure_engine()?;
             let ee = self.ee.as_ref().unwrap();
             unsafe {
-                let addr = ee.get_function_address(symbol)
+                let addr = ee
+                    .get_function_address(symbol)
                     .map_err(|e| BackendError::Jit(e.to_string()))?;
                 if addr == 0 {
                     return Err(BackendError::Jit(format!("symbole introuvable: {symbol}")));

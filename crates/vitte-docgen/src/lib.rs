@@ -68,7 +68,7 @@ pub fn run(opts: &DocGenOptions) -> Result<()> {
         "json" => render_json(&book)?,
         other => {
             anyhow::bail!("format non supporté: {}", other);
-        }
+        },
     };
 
     if let Some(out) = &opts.output {

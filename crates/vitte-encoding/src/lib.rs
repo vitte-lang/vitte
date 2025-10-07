@@ -1,5 +1,3 @@
-
-
 //! vitte-encoding — Universal text encoding/decoding abstraction
 //!
 //! Provides a unified API for handling various encodings (UTF-8/16/Latin-1/etc.)
@@ -12,7 +10,6 @@
 
 #[cfg(any(feature = "std", feature = "alloc-only"))]
 extern crate alloc;
-
 
 /// Supported encodings recognized by the Vitte runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

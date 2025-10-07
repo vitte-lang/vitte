@@ -326,11 +326,7 @@ impl Shed {
             if let Some(d) = timeout {
                 let start = std::time::Instant::now();
                 let res = run.run(ctx);
-                if start.elapsed() > d {
-                    Err(ShedError::Action("timeout".into()))
-                } else {
-                    res
-                }
+                if start.elapsed() > d { Err(ShedError::Action("timeout".into())) } else { res }
             } else {
                 run.run(ctx)
             }
@@ -445,11 +441,7 @@ impl RingLog {
         } else {
             let i = (self.head + self.len) % self.cap;
             self.buf[i] = s;
-            if self.len < self.cap {
-                self.len += 1
-            } else {
-                self.head = (self.head + 1) % self.cap
-            }
+            if self.len < self.cap { self.len += 1 } else { self.head = (self.head + 1) % self.cap }
         }
     }
     fn snapshot(&self) -> Vec<String> {

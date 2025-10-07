@@ -37,13 +37,13 @@ pub mod prelude {
     #[allow(unused_imports)]
     pub use crate::{
         arena::Arena,
+        bail,
         bytes::{ReadBytes, WriteBytes},
+        ensure,
         ids::{Id, IdGen, RawId},
         result::{Error, VResult},
         strutil::*,
         time::*,
-        bail,
-        ensure,
     };
 
     // Re-exports choisis (pratiques en interne)

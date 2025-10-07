@@ -164,9 +164,7 @@ impl Cluster {
 
 impl core::fmt::Debug for Cluster {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Cluster")
-            .field("targets", &self.nodes)
-            .finish()
+        f.debug_struct("Cluster").field("targets", &self.nodes).finish()
     }
 }
 

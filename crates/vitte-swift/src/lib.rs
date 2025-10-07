@@ -21,11 +21,14 @@ use std::os::raw::{c_char, c_int};
 #[derive(Debug, thiserror::Error)]
 pub enum SwiftError {
     /// Erreur de décodage UTF-8 lors de la conversion d'une chaîne C.
-    #[error("utf8: {0}")] Utf8(#[from] std::str::Utf8Error),
+    #[error("utf8: {0}")]
+    Utf8(#[from] std::str::Utf8Error),
     /// NUL trouvé lors de la construction d'une `CString`.
-    #[error("nul: {0}")] Nul(#[from] std::ffi::NulError),
+    #[error("nul: {0}")]
+    Nul(#[from] std::ffi::NulError),
     /// Autre erreur interop (message libre).
-    #[error("other: {0}")] Other(String),
+    #[error("other: {0}")]
+    Other(String),
 }
 
 /// Résultat spécialisé.
@@ -49,7 +52,9 @@ pub struct VitteSwiftBuf {
 #[cfg(not(feature = "ffi"))]
 impl VitteSwiftBuf {
     /// Vue slice non disponible sans la feature `ffi`.
-    pub fn as_slice<'a>(&self) -> &'a [u8] { &[] }
+    pub fn as_slice<'a>(&self) -> &'a [u8] {
+        &[]
+    }
 }
 
 #[cfg(feature = "ffi")]
@@ -63,7 +68,9 @@ impl VitteSwiftBuf {
 /// [FFI] Additionne deux entiers 32 bits.
 #[cfg(feature = "ffi")]
 #[no_mangle]
-pub extern "C" fn vitte_swift_sum(a: c_int, b: c_int) -> c_int { a.saturating_add(b) }
+pub extern "C" fn vitte_swift_sum(a: c_int, b: c_int) -> c_int {
+    a.saturating_add(b)
+}
 
 /// [FFI] Construit une salutation. Retourne une chaîne C (libérer via `vitte_swift_string_free`).
 #[cfg(feature = "ffi")]
@@ -74,7 +81,10 @@ pub extern "C" fn vitte_swift_greet(name: *const c_char) -> *mut c_char {
         return CString::new("Hello from Vitte/Rust").unwrap().into_raw();
     }
     let cname = unsafe { CStr::from_ptr(name) };
-    let n = match cname.to_str() { Ok(s) => s, Err(_) => "unknown" };
+    let n = match cname.to_str() {
+        Ok(s) => s,
+        Err(_) => "unknown",
+    };
     let s = format!("Hello, {n} from Vitte/Rust");
     CString::new(s).unwrap().into_raw()
 }
@@ -83,14 +93,20 @@ pub extern "C" fn vitte_swift_greet(name: *const c_char) -> *mut c_char {
 #[cfg(feature = "ffi")]
 #[no_mangle]
 pub extern "C" fn vitte_swift_string_free(s: *mut c_char) {
-    if s.is_null() { return; }
-    unsafe { let _ = CString::from_raw(s); }
+    if s.is_null() {
+        return;
+    }
+    unsafe {
+        let _ = CString::from_raw(s);
+    }
 }
 
 /// [FFI] Retourne la longueur d'un tampon `VitteSwiftBuf`.
 #[cfg(feature = "ffi")]
 #[no_mangle]
-pub extern "C" fn vitte_swift_buf_len(buf: VitteSwiftBuf) -> usize { buf.len }
+pub extern "C" fn vitte_swift_buf_len(buf: VitteSwiftBuf) -> usize {
+    buf.len
+}
 
 // ================================================================================================
 // swift-bridge (facultatif)
@@ -109,9 +125,13 @@ pub mod bridge {
     }
 
     /// Addition pour swift-bridge.
-    pub fn sb_sum(a: i32, b: i32) -> i32 { a.saturating_add(b) }
+    pub fn sb_sum(a: i32, b: i32) -> i32 {
+        a.saturating_add(b)
+    }
     /// Salutation pour swift-bridge.
-    pub fn sb_greet(name: String) -> String { format!("Hello, {name} from Vitte/Rust") }
+    pub fn sb_greet(name: String) -> String {
+        format!("Hello, {name} from Vitte/Rust")
+    }
 }
 
 // ================================================================================================

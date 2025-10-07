@@ -17,7 +17,6 @@
     clippy::too_many_lines
 )]
 
-
 #[cfg(feature = "json")]
 use serde::{Deserialize, Serialize};
 

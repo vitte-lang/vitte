@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-node — Interop Node.js pour Vitte (N-API)
 //!
@@ -45,24 +43,34 @@ pub mod napi_api {
     /// Sérialise une valeur JSON (string -> string) pour démonstration.
     #[napi]
     pub fn to_json(value: String) -> String {
-        #[cfg(feature="serde")]
-        { serde_json::to_string(&value).unwrap_or_default() }
-        #[cfg(not(feature="serde"))]
-        { value }
+        #[cfg(feature = "serde")]
+        {
+            serde_json::to_string(&value).unwrap_or_default()
+        }
+        #[cfg(not(feature = "serde"))]
+        {
+            value
+        }
     }
 
     /// Désérialise une chaîne JSON vers chaîne Rust.
     #[napi]
     pub fn from_json(json: String) -> String {
-        #[cfg(feature="serde")]
-        { serde_json::from_str::<String>(&json).unwrap_or_default() }
-        #[cfg(not(feature="serde"))]
-        { json }
+        #[cfg(feature = "serde")]
+        {
+            serde_json::from_str::<String>(&json).unwrap_or_default()
+        }
+        #[cfg(not(feature = "serde"))]
+        {
+            json
+        }
     }
 
     /// Addition simple pour tests.
     #[napi]
-    pub fn add(a: i32, b: i32) -> i32 { a + b }
+    pub fn add(a: i32, b: i32) -> i32 {
+        a + b
+    }
 }
 
 #[cfg(test)]

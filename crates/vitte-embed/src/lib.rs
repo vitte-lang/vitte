@@ -76,10 +76,7 @@ impl Vm {
     /// Appelle une fonction par nom avec arguments.
     pub fn call(&mut self, name: &str, args: &[Value]) -> Result<Value> {
         let rt_args: Vec<RtValue> = args.iter().map(to_rt_value).collect();
-        let value = self
-            .rt
-            .call(name, &rt_args)
-            .map_err(|e| Error::Call(format!("{e:?}")))?;
+        let value = self.rt.call(name, &rt_args).map_err(|e| Error::Call(format!("{e:?}")))?;
         from_rt_value(value)
     }
 }
@@ -126,7 +123,9 @@ pub mod ffi {
     #[no_mangle]
     pub extern "C" fn vitte_embed_free(vm: *mut VmHandle) {
         if !vm.is_null() {
-            unsafe { drop(Box::from_raw(vm)); }
+            unsafe {
+                drop(Box::from_raw(vm));
+            }
         }
     }
 
@@ -146,14 +145,23 @@ pub mod ffi {
 
     /// Appel simplifié de fonction sans args, renvoie int.
     #[no_mangle]
-    pub extern "C" fn vitte_embed_call_int(vm: *mut VmHandle, name: *const c_char, out: *mut i64) -> c_int {
+    pub extern "C" fn vitte_embed_call_int(
+        vm: *mut VmHandle,
+        name: *const c_char,
+        out: *mut i64,
+    ) -> c_int {
         if vm.is_null() || name.is_null() || out.is_null() {
             return -1;
         }
         let nm = unsafe { std::ffi::CStr::from_ptr(name).to_string_lossy().into_owned() };
         let handle = unsafe { &mut *vm };
         match handle.0.call(&nm, &[]) {
-            Ok(Value::Int(i)) => { unsafe { *out = i; }; 0 }
+            Ok(Value::Int(i)) => {
+                unsafe {
+                    *out = i;
+                };
+                0
+            },
             _ => -1,
         }
     }

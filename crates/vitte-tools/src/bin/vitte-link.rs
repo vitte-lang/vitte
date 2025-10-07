@@ -22,15 +22,15 @@ use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::time::Instant;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::{ArgAction, Parser};
 use serde::Serialize;
 use yansi::{Color, Paint};
 
 use vitte_core::bytecode::{
-    chunk::{Chunk as VChunk, ChunkFlags},
     ConstValue, Op,
+    chunk::{Chunk as VChunk, ChunkFlags},
 };
 use vitte_core::disasm::disassemble_full;
 use vitte_core::helpers;

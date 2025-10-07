@@ -38,7 +38,9 @@ pub struct Span {
 }
 
 impl Span {
-    pub fn new(start: u32, end: u32) -> Self { Self { start, end } }
+    pub fn new(start: u32, end: u32) -> Self {
+        Self { start, end }
+    }
 }
 
 /// Module HIR.
@@ -54,7 +56,9 @@ impl HirModule {
     pub fn new(name: impl Into<String>) -> Self {
         Self { name: name.into(), items: Vec::new(), span: None }
     }
-    pub fn push(&mut self, it: HirItem) { self.items.push(it); }
+    pub fn push(&mut self, it: HirItem) {
+        self.items.push(it);
+    }
 }
 
 /// Items de premier niveau.
@@ -88,9 +92,18 @@ impl HirFn {
             span: None,
         }
     }
-    pub fn param(mut self, p: HirParam) -> Self { self.params.push(p); self }
-    pub fn ret(mut self, t: HirTypeHint) -> Self { self.ret = Some(t); self }
-    pub fn body(mut self, b: HirBlock) -> Self { self.body = b; self }
+    pub fn param(mut self, p: HirParam) -> Self {
+        self.params.push(p);
+        self
+    }
+    pub fn ret(mut self, t: HirTypeHint) -> Self {
+        self.ret = Some(t);
+        self
+    }
+    pub fn body(mut self, b: HirBlock) -> Self {
+        self.body = b;
+        self
+    }
 }
 
 /// Paramètre de fonction.
@@ -106,7 +119,10 @@ impl HirParam {
     pub fn new(name: impl Into<String>) -> Self {
         Self { pat: HirPattern::Binding(name.into()), ty: None, span: None }
     }
-    pub fn ty(mut self, t: HirTypeHint) -> Self { self.ty = Some(t); self }
+    pub fn ty(mut self, t: HirTypeHint) -> Self {
+        self.ty = Some(t);
+        self
+    }
 }
 
 /// Struct.
@@ -173,27 +189,33 @@ impl fmt::Display for HirTypeHint {
             Self::Generic(n, args) => {
                 write!(f, "{n}<")?;
                 for (i, a) in args.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{a}")?;
                 }
                 write!(f, ">")
-            }
+            },
             Self::Array(t, n) => write!(f, "[{}; {}]", t, n),
             Self::Tuple(ts) => {
                 write!(f, "(")?;
                 for (i, t) in ts.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{t}")?;
                 }
                 write!(f, ")")
-            }
+            },
             Self::Unknown => write!(f, "_"),
         }
     }
 }
 
 impl From<&str> for HirTypeHint {
-    fn from(s: &str) -> Self { HirTypeHint::Named(s.to_string()) }
+    fn from(s: &str) -> Self {
+        HirTypeHint::Named(s.to_string())
+    }
 }
 
 /// Bloc `{ ... }`.
@@ -205,20 +227,19 @@ pub struct HirBlock {
 }
 
 impl HirBlock {
-    pub fn new() -> Self { Self { stmts: Vec::new(), span: None } }
-    pub fn push(&mut self, s: HirStmt) { self.stmts.push(s); }
+    pub fn new() -> Self {
+        Self { stmts: Vec::new(), span: None }
+    }
+    pub fn push(&mut self, s: HirStmt) {
+        self.stmts.push(s);
+    }
 }
 
 /// Instructions.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum HirStmt {
-    Let {
-        pat: HirPattern,
-        ty: Option<HirTypeHint>,
-        init: Option<HirExpr>,
-        span: Option<Span>,
-    },
+    Let { pat: HirPattern, ty: Option<HirTypeHint>, init: Option<HirExpr>, span: Option<Span> },
     Expr(HirExpr),
     Return(Option<HirExpr>, Option<Span>),
 }
@@ -244,30 +265,12 @@ pub enum HirExpr {
 
     Var(String, Option<Span>),
 
-    Unary {
-        op: HirUnOp,
-        expr: Box<HirExpr>,
-        span: Option<Span>,
-    },
-    Binary {
-        op: HirBinOp,
-        lhs: Box<HirExpr>,
-        rhs: Box<HirExpr>,
-        span: Option<Span>,
-    },
+    Unary { op: HirUnOp, expr: Box<HirExpr>, span: Option<Span> },
+    Binary { op: HirBinOp, lhs: Box<HirExpr>, rhs: Box<HirExpr>, span: Option<Span> },
 
-    Call {
-        callee: Box<HirExpr>,
-        args: Vec<HirExpr>,
-        span: Option<Span>,
-    },
+    Call { callee: Box<HirExpr>, args: Vec<HirExpr>, span: Option<Span> },
 
-    If {
-        cond: Box<HirExpr>,
-        then_blk: HirBlock,
-        else_blk: Option<HirBlock>,
-        span: Option<Span>,
-    },
+    If { cond: Box<HirExpr>, then_blk: HirBlock, else_blk: Option<HirBlock>, span: Option<Span> },
 
     Block(HirBlock),
 }
@@ -293,15 +296,28 @@ impl HirExpr {
 /// Unaires.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum HirUnOp { Neg, Not }
+pub enum HirUnOp {
+    Neg,
+    Not,
+}
 
 /// Binaires.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum HirBinOp {
-    Add, Sub, Mul, Div, Rem,
-    And, Or,
-    Eq, Ne, Lt, Le, Gt, Ge,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    And,
+    Or,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
     Assign,
 }
 
@@ -310,7 +326,9 @@ pub enum HirBinOp {
 /// Visiteur immuable.
 pub trait Visit {
     fn visit_module(&mut self, m: &HirModule) {
-        for it in &m.items { self.visit_item(it); }
+        for it in &m.items {
+            self.visit_item(it);
+        }
     }
     fn visit_item(&mut self, it: &HirItem) {
         match it {
@@ -321,38 +339,59 @@ pub trait Visit {
         }
     }
     fn visit_fn(&mut self, f: &HirFn) {
-        for p in &f.params { self.visit_param(p); }
+        for p in &f.params {
+            self.visit_param(p);
+        }
         self.visit_block(&f.body);
     }
     fn visit_param(&mut self, _p: &HirParam) {}
     fn visit_struct(&mut self, _s: &HirStruct) {}
     fn visit_enum(&mut self, _e: &HirEnum) {}
-    fn visit_const(&mut self, c: &HirConst) { self.visit_expr(&c.value); }
+    fn visit_const(&mut self, c: &HirConst) {
+        self.visit_expr(&c.value);
+    }
     fn visit_block(&mut self, b: &HirBlock) {
-        for s in &b.stmts { self.visit_stmt(s); }
+        for s in &b.stmts {
+            self.visit_stmt(s);
+        }
     }
     fn visit_stmt(&mut self, s: &HirStmt) {
         match s {
-            HirStmt::Let { init, .. } => if let Some(e) = init { self.visit_expr(e) },
+            HirStmt::Let { init, .. } => {
+                if let Some(e) = init {
+                    self.visit_expr(e)
+                }
+            },
             HirStmt::Expr(e) => self.visit_expr(e),
-            HirStmt::Return(e, _) => if let Some(e) = e { self.visit_expr(e) },
+            HirStmt::Return(e, _) => {
+                if let Some(e) = e {
+                    self.visit_expr(e)
+                }
+            },
         }
     }
     fn visit_expr(&mut self, e: &HirExpr) {
         match e {
             HirExpr::Unary { expr, .. } => self.visit_expr(expr),
-            HirExpr::Binary { lhs, rhs, .. } => { self.visit_expr(lhs); self.visit_expr(rhs); }
+            HirExpr::Binary { lhs, rhs, .. } => {
+                self.visit_expr(lhs);
+                self.visit_expr(rhs);
+            },
             HirExpr::Call { callee, args, .. } => {
                 self.visit_expr(callee);
-                for a in args { self.visit_expr(a); }
-            }
+                for a in args {
+                    self.visit_expr(a);
+                }
+            },
             HirExpr::If { cond, then_blk, else_blk, .. } => {
                 self.visit_expr(cond);
                 self.visit_block(then_blk);
-                if let Some(b) = else_blk { self.visit_block(b); }
-            }
+                if let Some(b) = else_blk {
+                    self.visit_block(b);
+                }
+            },
             HirExpr::Block(b) => self.visit_block(b),
-            _ => {}
+            _ => {},
         }
     }
 }
@@ -360,7 +399,9 @@ pub trait Visit {
 /// Visiteur mutable.
 pub trait VisitMut {
     fn visit_module_mut(&mut self, m: &mut HirModule) {
-        for it in &mut m.items { self.visit_item_mut(it); }
+        for it in &mut m.items {
+            self.visit_item_mut(it);
+        }
     }
     fn visit_item_mut(&mut self, it: &mut HirItem) {
         match it {
@@ -371,38 +412,59 @@ pub trait VisitMut {
         }
     }
     fn visit_fn_mut(&mut self, f: &mut HirFn) {
-        for p in &mut f.params { self.visit_param_mut(p); }
+        for p in &mut f.params {
+            self.visit_param_mut(p);
+        }
         self.visit_block_mut(&mut f.body);
     }
     fn visit_param_mut(&mut self, _p: &mut HirParam) {}
     fn visit_struct_mut(&mut self, _s: &mut HirStruct) {}
     fn visit_enum_mut(&mut self, _e: &mut HirEnum) {}
-    fn visit_const_mut(&mut self, c: &mut HirConst) { self.visit_expr_mut(&mut c.value); }
+    fn visit_const_mut(&mut self, c: &mut HirConst) {
+        self.visit_expr_mut(&mut c.value);
+    }
     fn visit_block_mut(&mut self, b: &mut HirBlock) {
-        for s in &mut b.stmts { self.visit_stmt_mut(s); }
+        for s in &mut b.stmts {
+            self.visit_stmt_mut(s);
+        }
     }
     fn visit_stmt_mut(&mut self, s: &mut HirStmt) {
         match s {
-            HirStmt::Let { init, .. } => if let Some(e) = init { self.visit_expr_mut(e) },
+            HirStmt::Let { init, .. } => {
+                if let Some(e) = init {
+                    self.visit_expr_mut(e)
+                }
+            },
             HirStmt::Expr(e) => self.visit_expr_mut(e),
-            HirStmt::Return(e, _) => if let Some(e) = e { self.visit_expr_mut(e) },
+            HirStmt::Return(e, _) => {
+                if let Some(e) = e {
+                    self.visit_expr_mut(e)
+                }
+            },
         }
     }
     fn visit_expr_mut(&mut self, e: &mut HirExpr) {
         match e {
             HirExpr::Unary { expr, .. } => self.visit_expr_mut(expr),
-            HirExpr::Binary { lhs, rhs, .. } => { self.visit_expr_mut(lhs); self.visit_expr_mut(rhs); }
+            HirExpr::Binary { lhs, rhs, .. } => {
+                self.visit_expr_mut(lhs);
+                self.visit_expr_mut(rhs);
+            },
             HirExpr::Call { callee, args, .. } => {
                 self.visit_expr_mut(callee);
-                for a in args { self.visit_expr_mut(a); }
-            }
+                for a in args {
+                    self.visit_expr_mut(a);
+                }
+            },
             HirExpr::If { cond, then_blk, else_blk, .. } => {
                 self.visit_expr_mut(cond);
                 self.visit_block_mut(then_blk);
-                if let Some(b) = else_blk { self.visit_block_mut(b); }
-            }
+                if let Some(b) = else_blk {
+                    self.visit_block_mut(b);
+                }
+            },
             HirExpr::Block(b) => self.visit_block_mut(b),
-            _ => {}
+            _ => {},
         }
     }
 }
@@ -418,27 +480,33 @@ pub fn to_pretty_string(module: &HirModule) -> String {
             HirItem::Fn(f) => {
                 write!(&mut s, "  fn {}(", f.name).ok();
                 for (i, p) in f.params.iter().enumerate() {
-                    if i > 0 { write!(&mut s, ", ").ok(); }
+                    if i > 0 {
+                        write!(&mut s, ", ").ok();
+                    }
                     match &p.pat {
                         HirPattern::Binding(n) => write!(&mut s, "{n}").ok(),
                         HirPattern::Tuple(_) => write!(&mut s, "_").ok(),
                         HirPattern::Wildcard => write!(&mut s, "_").ok(),
                     };
-                    if let Some(t) = &p.ty { write!(&mut s, ": {t}").ok(); }
+                    if let Some(t) = &p.ty {
+                        write!(&mut s, ": {t}").ok();
+                    }
                 }
                 write!(&mut s, ")").ok();
-                if let Some(t) = &f.ret { write!(&mut s, " -> {t}").ok(); }
+                if let Some(t) = &f.ret {
+                    write!(&mut s, " -> {t}").ok();
+                }
                 writeln!(&mut s, " {{ ... }}").ok();
-            }
+            },
             HirItem::Struct(st) => {
                 writeln!(&mut s, "  struct {} {{ ... }}", st.name).ok();
-            }
+            },
             HirItem::Enum(en) => {
                 writeln!(&mut s, "  enum {} {{ ... }}", en.name).ok();
-            }
+            },
             HirItem::Const(c) => {
                 writeln!(&mut s, "  const {} = <expr>;", c.name).ok();
-            }
+            },
         }
     }
     writeln!(&mut s, "}}").ok();
@@ -457,26 +525,45 @@ pub mod builder {
     }
 
     impl ModuleBuilder {
-        pub fn new(name: impl Into<String>) -> Self { Self { m: HirModule::new(name) } }
-        pub fn push(mut self, it: HirItem) -> Self { self.m.items.push(it); self }
-        pub fn finish(self) -> HirModule { self.m }
+        pub fn new(name: impl Into<String>) -> Self {
+            Self { m: HirModule::new(name) }
+        }
+        pub fn push(mut self, it: HirItem) -> Self {
+            self.m.items.push(it);
+            self
+        }
+        pub fn finish(self) -> HirModule {
+            self.m
+        }
     }
 
-    pub fn fn_(name: &str) -> HirFn { HirFn::new(name) }
+    pub fn fn_(name: &str) -> HirFn {
+        HirFn::new(name)
+    }
 
-    pub fn param(name: &str) -> HirParam { HirParam::new(name) }
+    pub fn param(name: &str) -> HirParam {
+        HirParam::new(name)
+    }
 
-    pub fn ty(name: &str) -> super::HirTypeHint { name.into() }
+    pub fn ty(name: &str) -> super::HirTypeHint {
+        name.into()
+    }
 
     pub fn let_(name: &str, init: Option<HirExpr>) -> HirStmt {
         HirStmt::Let { pat: HirPattern::Binding(name.into()), ty: None, init, span: None }
     }
 
-    pub fn ret(e: Option<HirExpr>) -> HirStmt { HirStmt::Return(e, None) }
+    pub fn ret(e: Option<HirExpr>) -> HirStmt {
+        HirStmt::Return(e, None)
+    }
 
-    pub fn var(name: &str) -> HirExpr { HirExpr::Var(name.into(), None) }
+    pub fn var(name: &str) -> HirExpr {
+        HirExpr::Var(name.into(), None)
+    }
 
-    pub fn lit_i(n: i64) -> HirExpr { HirExpr::LitInt(n, None) }
+    pub fn lit_i(n: i64) -> HirExpr {
+        HirExpr::LitInt(n, None)
+    }
 
     pub fn call(fun: &str, args: Vec<HirExpr>) -> HirExpr {
         HirExpr::Call { callee: Box::new(var(fun)), args, span: None }
@@ -518,14 +605,12 @@ mod tests {
             .param(param("x").ty(ty("i32")))
             .param(param("y").ty(ty("i32")))
             .ret(ty("i32"))
-            .body(block(vec![
-                HirStmt::Expr(HirExpr::Binary {
-                    op: HirBinOp::Add,
-                    lhs: Box::new(var("x")),
-                    rhs: Box::new(var("y")),
-                    span: None,
-                }),
-            ]));
+            .body(block(vec![HirStmt::Expr(HirExpr::Binary {
+                op: HirBinOp::Add,
+                lhs: Box::new(var("x")),
+                rhs: Box::new(var("y")),
+                span: None,
+            })]));
         let m = ModuleBuilder::new("math").push(HirItem::Fn(f)).finish();
         let pretty = to_pretty_string(&m);
         assert!(pretty.contains("fn add("));

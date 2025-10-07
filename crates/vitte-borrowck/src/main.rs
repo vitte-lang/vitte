@@ -53,10 +53,10 @@ fn main() {
     match cmd.as_str() {
         "help" | "-h" | "--help" => {
             print_help();
-        }
+        },
         "version" | "-V" | "--version" => {
             print_version();
-        }
+        },
         "check" => {
             if args.len() < 2 {
                 eprintln!("error: missing input file for `check`");
@@ -64,7 +64,7 @@ fn main() {
             }
             let file = &args[1];
             cmd_check(file);
-        }
+        },
         "lint" => {
             if args.len() < 2 {
                 eprintln!("error: missing input file for `lint`");
@@ -72,11 +72,11 @@ fn main() {
             }
             let file = &args[1];
             cmd_lint(file);
-        }
+        },
         other => {
             eprintln!("error: unknown command `{other}`");
             print_help();
             process::exit(1);
-        }
+        },
     }
 }

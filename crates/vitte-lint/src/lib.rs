@@ -52,7 +52,13 @@ pub struct Finding {
 }
 
 impl Finding {
-    fn new(rule: &str, message: impl Into<String>, line: usize, column: usize, severity: Severity) -> Self {
+    fn new(
+        rule: &str,
+        message: impl Into<String>,
+        line: usize,
+        column: usize,
+        severity: Severity,
+    ) -> Self {
         Self { rule: rule.to_string(), message: message.into(), line, column, severity }
     }
 }
@@ -65,8 +71,12 @@ pub struct Report {
 }
 
 impl Report {
-    pub fn push(&mut self, f: Finding) { self.findings.push(f); }
-    pub fn is_clean(&self) -> bool { self.findings.is_empty() }
+    pub fn push(&mut self, f: Finding) {
+        self.findings.push(f);
+    }
+    pub fn is_clean(&self) -> bool {
+        self.findings.is_empty()
+    }
     pub fn count_by_severity(&self, sev: Severity) -> usize {
         self.findings.iter().filter(|f| f.severity == sev).count()
     }
@@ -86,10 +96,18 @@ pub struct Context<'a> {
 
 impl<'a> Context<'a> {
     fn new(filename: &'a str, source: &'a str) -> Self {
-        Self { filename, lines: source.split_inclusive('\n').map(|l| l.trim_end_matches('\n')).collect(), report: Report::default() }
+        Self {
+            filename,
+            lines: source.split_inclusive('\n').map(|l| l.trim_end_matches('\n')).collect(),
+            report: Report::default(),
+        }
     }
-    pub fn emit(&mut self, f: Finding) { self.report.push(f); }
-    fn finish(self) -> Report { self.report }
+    pub fn emit(&mut self, f: Finding) {
+        self.report.push(f);
+    }
+    fn finish(self) -> Report {
+        self.report
+    }
 }
 
 /// Interface d’une règle.
@@ -116,7 +134,9 @@ impl Default for Linter {
 }
 
 impl Linter {
-    pub fn new() -> Self { Self { rules: Vec::new() } }
+    pub fn new() -> Self {
+        Self { rules: Vec::new() }
+    }
 
     pub fn with<R: Lint + Send + Sync + 'static>(mut self, rule: R) -> Self {
         self.rules.push(Box::new(rule));
@@ -145,10 +165,14 @@ pub struct LineLength {
     pub severity: Severity,
 }
 impl Default for LineLength {
-    fn default() -> Self { Self { max: 100, severity: Severity::Warning } }
+    fn default() -> Self {
+        Self { max: 100, severity: Severity::Warning }
+    }
 }
 impl Lint for LineLength {
-    fn name(&self) -> &'static str { "LineLength" }
+    fn name(&self) -> &'static str {
+        "LineLength"
+    }
     fn check(&self, ctx: &mut Context) {
         for i in 0..ctx.lines.len() {
             let len = ctx.lines[i].chars().count();
@@ -168,14 +192,22 @@ impl Lint for LineLength {
 /// Espaces en fin de ligne.
 pub struct TrailingWhitespace;
 impl Lint for TrailingWhitespace {
-    fn name(&self) -> &'static str { "TrailingWhitespace" }
+    fn name(&self) -> &'static str {
+        "TrailingWhitespace"
+    }
     fn check(&self, ctx: &mut Context) {
         for i in 0..ctx.lines.len() {
             let line = ctx.lines[i];
             let has_trail = line.ends_with(' ') || line.ends_with('\t');
             if has_trail {
                 let col = line.len();
-                ctx.emit(Finding::new(self.name(), "Espaces en fin de ligne", i + 1, col, Severity::Warning));
+                ctx.emit(Finding::new(
+                    self.name(),
+                    "Espaces en fin de ligne",
+                    i + 1,
+                    col,
+                    Severity::Warning,
+                ));
             }
         }
     }
@@ -184,11 +216,19 @@ impl Lint for TrailingWhitespace {
 /// Tabulations (préférez espaces).
 pub struct Tabs;
 impl Lint for Tabs {
-    fn name(&self) -> &'static str { "Tabs" }
+    fn name(&self) -> &'static str {
+        "Tabs"
+    }
     fn check(&self, ctx: &mut Context) {
         for i in 0..ctx.lines.len() {
             if let Some(pos) = ctx.lines[i].find('\t') {
-                ctx.emit(Finding::new(self.name(), "Tabulation trouvée (préférez espaces)", i + 1, pos + 1, Severity::Info));
+                ctx.emit(Finding::new(
+                    self.name(),
+                    "Tabulation trouvée (préférez espaces)",
+                    i + 1,
+                    pos + 1,
+                    Severity::Info,
+                ));
             }
         }
     }
@@ -199,18 +239,31 @@ pub struct TodoComment {
     pub patterns: &'static [&'static str],
 }
 impl Default for TodoComment {
-    fn default() -> Self { Self { patterns: &["TODO", "FIXME", "HACK", "UNDONE"] } }
+    fn default() -> Self {
+        Self { patterns: &["TODO", "FIXME", "HACK", "UNDONE"] }
+    }
 }
 impl Lint for TodoComment {
-    fn name(&self) -> &'static str { "TodoComment" }
+    fn name(&self) -> &'static str {
+        "TodoComment"
+    }
     fn check(&self, ctx: &mut Context) {
         for i in 0..ctx.lines.len() {
             let line = ctx.lines[i];
-            let is_comment = line.trim_start().starts_with("//") || (line.contains("/*") && line.contains("*/"));
-            if !is_comment { continue; }
+            let is_comment =
+                line.trim_start().starts_with("//") || (line.contains("/*") && line.contains("*/"));
+            if !is_comment {
+                continue;
+            }
             for &p in self.patterns {
                 if let Some(pos) = line.find(p) {
-                    ctx.emit(Finding::new(self.name(), format!("Marqueur '{}'", p), i + 1, pos + 1, Severity::Info));
+                    ctx.emit(Finding::new(
+                        self.name(),
+                        format!("Marqueur '{}'", p),
+                        i + 1,
+                        pos + 1,
+                        Severity::Info,
+                    ));
                 }
             }
         }
@@ -222,17 +275,27 @@ pub struct DoubleBlank {
     pub threshold: usize, // nombre de lignes vides consécutives tolérées
 }
 impl Default for DoubleBlank {
-    fn default() -> Self { Self { threshold: 1 } }
+    fn default() -> Self {
+        Self { threshold: 1 }
+    }
 }
 impl Lint for DoubleBlank {
-    fn name(&self) -> &'static str { "DoubleBlank" }
+    fn name(&self) -> &'static str {
+        "DoubleBlank"
+    }
     fn check(&self, ctx: &mut Context) {
         let mut run = 0usize;
         for i in 0..ctx.lines.len() {
             if ctx.lines[i].trim().is_empty() {
                 run += 1;
                 if run > self.threshold {
-                    ctx.emit(Finding::new(self.name(), "Plus d'une ligne vide consécutive", i + 1, 1, Severity::Info));
+                    ctx.emit(Finding::new(
+                        self.name(),
+                        "Plus d'une ligne vide consécutive",
+                        i + 1,
+                        1,
+                        Severity::Info,
+                    ));
                 }
             } else {
                 run = 0;
@@ -252,14 +315,24 @@ impl Default for NoDebugPrint {
     }
 }
 impl Lint for NoDebugPrint {
-    fn name(&self) -> &'static str { "NoDebugPrint" }
+    fn name(&self) -> &'static str {
+        "NoDebugPrint"
+    }
     fn check(&self, ctx: &mut Context) {
         for i in 0..ctx.lines.len() {
             let line = ctx.lines[i];
-            if line.trim_start().starts_with("//") { continue; }
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
             for &p in self.patterns {
                 if let Some(pos) = line.find(p) {
-                    ctx.emit(Finding::new(self.name(), "Appel de debug détecté", i + 1, pos + 1, Severity::Warning));
+                    ctx.emit(Finding::new(
+                        self.name(),
+                        "Appel de debug détecté",
+                        i + 1,
+                        pos + 1,
+                        Severity::Warning,
+                    ));
                 }
             }
         }

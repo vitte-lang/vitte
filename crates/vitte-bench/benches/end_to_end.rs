@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use vitte_bench::benches::end_to_end;
 
 fn run(c: &mut Criterion) {

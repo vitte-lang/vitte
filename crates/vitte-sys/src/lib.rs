@@ -31,7 +31,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus, Stdio},
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 #[cfg(feature = "errors")]
@@ -78,17 +78,17 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub type Result<T> = core::result::Result<T, &'static str>;
 
 /* =======================================================================
-   SECTION: TYPES DE DONNÉES
-   ======================================================================= */
+SECTION: TYPES DE DONNÉES
+======================================================================= */
 
 /// Informations système de base.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OsInfo {
-    pub family: String,     // "unix", "windows", "unknown"
-    pub os: String,         // "linux", "macos", "windows", ...
+    pub family: String, // "unix", "windows", "unknown"
+    pub os: String,     // "linux", "macos", "windows", ...
     pub version: Option<String>,
-    pub arch: String,       // "x86_64", "aarch64", ...
+    pub arch: String, // "x86_64", "aarch64", ...
     pub hostname: Option<String>,
 }
 
@@ -105,8 +105,8 @@ pub struct SysMetrics {
 }
 
 /* =======================================================================
-   SECTION: ALLOC-ONLY STUBS
-   ======================================================================= */
+SECTION: ALLOC-ONLY STUBS
+======================================================================= */
 
 #[cfg(feature = "alloc-only")]
 mod stubs {
@@ -114,9 +114,13 @@ mod stubs {
 
     pub fn unsupported<T>() -> Result<T> {
         #[cfg(feature = "errors")]
-        { Err(Error::Unsupported) }
+        {
+            Err(Error::Unsupported)
+        }
         #[cfg(not(feature = "errors"))]
-        { Err("unsupported") }
+        {
+            Err("unsupported")
+        }
     }
 
     pub fn os_info() -> Result<OsInfo> {
@@ -131,8 +135,8 @@ mod stubs {
 }
 
 /* =======================================================================
-   SECTION: UTILITAIRES D’ERREURS
-   ======================================================================= */
+SECTION: UTILITAIRES D’ERREURS
+======================================================================= */
 
 // Map std::io::Error -> type d'erreur du crate
 #[cfg(all(feature = "std", feature = "errors"))]
@@ -148,30 +152,52 @@ fn map_io() -> impl FnOnce(std::io::Error) -> &'static str {
 }
 
 /* =======================================================================
-   SECTION: OS INFO, HOSTNAME, ARCH
-   ======================================================================= */
+SECTION: OS INFO, HOSTNAME, ARCH
+======================================================================= */
 
 /// Renvoie une structure `OsInfo` multi-plateforme.
 #[cfg(feature = "std")]
 pub fn os_info() -> Result<OsInfo> {
-    let family = if cfg!(windows) { "windows" }
-    else if cfg!(unix) { "unix" }
-    else { "unknown" }.to_string();
+    let family = if cfg!(windows) {
+        "windows"
+    } else if cfg!(unix) {
+        "unix"
+    } else {
+        "unknown"
+    }
+    .to_string();
 
-    let os = if cfg!(target_os = "linux") { "linux" }
-    else if cfg!(target_os = "macos") { "macos" }
-    else if cfg!(target_os = "windows") { "windows" }
-    else if cfg!(target_os = "freebsd") { "freebsd" }
-    else if cfg!(target_os = "openbsd") { "openbsd" }
-    else if cfg!(target_os = "netbsd") { "netbsd" }
-    else { "unknown" }.to_string();
+    let os = if cfg!(target_os = "linux") {
+        "linux"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "freebsd") {
+        "freebsd"
+    } else if cfg!(target_os = "openbsd") {
+        "openbsd"
+    } else if cfg!(target_os = "netbsd") {
+        "netbsd"
+    } else {
+        "unknown"
+    }
+    .to_string();
 
-    let arch = if cfg!(target_arch = "x86_64") { "x86_64" }
-    else if cfg!(target_arch = "aarch64") { "aarch64" }
-    else if cfg!(target_arch = "x86") { "x86" }
-    else if cfg!(target_arch = "arm") { "arm" }
-    else if cfg!(target_arch = "riscv64") { "riscv64" }
-    else { "unknown" }.to_string();
+    let arch = if cfg!(target_arch = "x86_64") {
+        "x86_64"
+    } else if cfg!(target_arch = "aarch64") {
+        "aarch64"
+    } else if cfg!(target_arch = "x86") {
+        "x86"
+    } else if cfg!(target_arch = "arm") {
+        "arm"
+    } else if cfg!(target_arch = "riscv64") {
+        "riscv64"
+    } else {
+        "unknown"
+    }
+    .to_string();
 
     let hostname = hostname().ok();
 
@@ -209,7 +235,7 @@ pub fn hostname() -> Result<String> {
             // Windows via windows-sys
             #[cfg(all(feature = "winapi", windows))]
             {
-                use windows_sys::Win32::System::SystemInformation::{GetComputerNameW};
+                use windows_sys::Win32::System::SystemInformation::GetComputerNameW;
                 let mut buf = [0u16; 256];
                 let mut len = buf.len() as u32;
                 // SAFETY: FFI Windows
@@ -220,7 +246,7 @@ pub fn hostname() -> Result<String> {
                 }
             }
             return err_unsup();
-        }
+        },
     }
 }
 
@@ -229,14 +255,18 @@ fn hostname_fallback() -> Option<String> {
     // Essayons env var commune
     for k in ["HOSTNAME", "COMPUTERNAME"] {
         if let Ok(v) = env::var(k) {
-            if !v.is_empty() { return Some(v); }
+            if !v.is_empty() {
+                return Some(v);
+            }
         }
     }
     // Linux/Unix souvent /etc/hostname
     if cfg!(unix) {
         if let Ok(s) = std::fs::read_to_string("/etc/hostname") {
             let s = s.trim();
-            if !s.is_empty() { return Some(s.to_string()); }
+            if !s.is_empty() {
+                return Some(s.to_string());
+            }
         }
     }
     None
@@ -272,8 +302,8 @@ fn os_version() -> Option<String> {
 }
 
 /* =======================================================================
-   SECTION: ENVIRONNEMENT
-   ======================================================================= */
+SECTION: ENVIRONNEMENT
+======================================================================= */
 
 /// Récupère une variable d’environnement.
 #[cfg(feature = "std")]
@@ -318,8 +348,8 @@ fn map_env(_e: env::VarError) -> &'static str {
 }
 
 /* =======================================================================
-   SECTION: UTILISATEUR, CHEMINS, PROCESS INFO
-   ======================================================================= */
+SECTION: UTILISATEUR, CHEMINS, PROCESS INFO
+======================================================================= */
 
 /// Répertoire courant.
 #[cfg(feature = "std")]
@@ -343,15 +373,16 @@ pub fn temp_dir() -> PathBuf {
 #[cfg(feature = "std")]
 pub fn home_dir() -> Option<PathBuf> {
     // std n’a pas d’API directe cross-platform stable: on inspecte env
-    let candidates = if cfg!(windows) {
-        ["USERPROFILE", "HOMEDRIVE", "HOMEPATH"]
-    } else {
-        ["HOME", "" , ""]
-    };
+    let candidates =
+        if cfg!(windows) { ["USERPROFILE", "HOMEDRIVE", "HOMEPATH"] } else { ["HOME", "", ""] };
     for k in candidates {
-        if k.is_empty() { continue; }
+        if k.is_empty() {
+            continue;
+        }
         if let Ok(v) = env::var(k) {
-            if !v.is_empty() { return Some(PathBuf::from(v)); }
+            if !v.is_empty() {
+                return Some(PathBuf::from(v));
+            }
         }
     }
     None
@@ -370,8 +401,16 @@ pub fn shell() -> Option<PathBuf> {
 /// Nom d’utilisateur si dispo.
 #[cfg(feature = "std")]
 pub fn username() -> Option<String> {
-    if let Ok(u) = env::var("USER") { if !u.is_empty() { return Some(u); } }
-    if let Ok(u) = env::var("USERNAME") { if !u.is_empty() { return Some(u); } }
+    if let Ok(u) = env::var("USER") {
+        if !u.is_empty() {
+            return Some(u);
+        }
+    }
+    if let Ok(u) = env::var("USERNAME") {
+        if !u.is_empty() {
+            return Some(u);
+        }
+    }
     None
 }
 
@@ -382,8 +421,8 @@ pub fn current_pid() -> u32 {
 }
 
 /* =======================================================================
-   SECTION: HORLOGES
-   ======================================================================= */
+SECTION: HORLOGES
+======================================================================= */
 
 /// Temps UNIX epoch en secondes flottantes.
 #[cfg(feature = "std")]
@@ -400,8 +439,8 @@ pub fn monotonic_now() -> Instant {
 }
 
 /* =======================================================================
-   SECTION: PROCESSUS
-   ======================================================================= */
+SECTION: PROCESSUS
+======================================================================= */
 
 /// Exécute un programme et attend la fin. Retourne le statut.
 #[cfg(feature = "std")]
@@ -427,8 +466,8 @@ pub fn sleep_ms(ms: u64) {
 }
 
 /* =======================================================================
-   SECTION: SIGNAUX, KILL
-   ======================================================================= */
+SECTION: SIGNAUX, KILL
+======================================================================= */
 
 /// Tente de tuer un PID avec le signal approprié.
 /// - Unix (`libc`): SIGTERM par défaut
@@ -440,14 +479,19 @@ pub fn kill_process(pid: u32) -> Result<()> {
     {
         // SAFETY: appel FFI, signal 15 (SIGTERM)
         let r = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
-        if r == 0 { return Ok(()); }
-        else { return Err(map_io()(std::io::Error::from_raw_os_error(r))); }
+        if r == 0 {
+            return Ok(());
+        } else {
+            return Err(map_io()(std::io::Error::from_raw_os_error(r)));
+        }
     }
     // Windows
     #[cfg(all(feature = "winapi", windows))]
     {
-        use windows_sys::Win32::Foundation::{CloseHandle};
-        use windows_sys::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, PROCESS_TERMINATE, TerminateProcess,
+        };
 
         // SAFETY: FFI open/terminate
         let h = unsafe { OpenProcess(PROCESS_TERMINATE, 0, pid) };
@@ -459,7 +503,7 @@ pub fn kill_process(pid: u32) -> Result<()> {
         if ok != 0 { Ok(()) } else { Err(err_unsup()) }
     }
     // Fallback
-    #[cfg(not(any(all(feature="libc", unix), all(feature="winapi", windows))))]
+    #[cfg(not(any(all(feature = "libc", unix), all(feature = "winapi", windows))))]
     {
         let _ = pid;
         return err_unsup();
@@ -467,21 +511,21 @@ pub fn kill_process(pid: u32) -> Result<()> {
 }
 
 /* =======================================================================
-   SECTION: SYSINFO (CPU/MEM/DISKS)
-   ======================================================================= */
+SECTION: SYSINFO (CPU/MEM/DISKS)
+======================================================================= */
 
 /// Récupère des métriques système si `sysinfo` est activée.
 #[cfg(all(feature = "std", feature = "sysinfo"))]
 pub fn sys_metrics() -> Result<SysMetrics> {
-    use sysinfo::{System, SystemExt, CpuExt};
+    use sysinfo::{CpuExt, System, SystemExt};
 
     let mut sys = System::new_all();
     sys.refresh_all();
 
     let total_memory = sys.total_memory();
-    let used_memory  = sys.used_memory();
-    let total_swap   = sys.total_swap();
-    let used_swap    = sys.used_swap();
+    let used_memory = sys.used_memory();
+    let total_swap = sys.total_swap();
+    let used_swap = sys.used_swap();
 
     let cpus = sys.cpus().len();
     let avg_cpu_usage = if cpus == 0 {
@@ -491,19 +535,12 @@ pub fn sys_metrics() -> Result<SysMetrics> {
         s / cpus as f32
     };
 
-    Ok(SysMetrics {
-        total_memory,
-        used_memory,
-        total_swap,
-        used_swap,
-        cpus,
-        avg_cpu_usage,
-    })
+    Ok(SysMetrics { total_memory, used_memory, total_swap, used_swap, cpus, avg_cpu_usage })
 }
 
 /* =======================================================================
-   SECTION: WINDOWS / UNIX SPÉCIFIQUE (Wrappers)
-   ======================================================================= */
+SECTION: WINDOWS / UNIX SPÉCIFIQUE (Wrappers)
+======================================================================= */
 
 /// UID courant (Unix) si `libc`.
 #[cfg(all(feature = "std", feature = "libc", unix))]
@@ -526,7 +563,9 @@ pub fn unix_username() -> Option<String> {
     // SAFETY: FFI
     let uid = unsafe { libc::getuid() };
     let pwd = unsafe { libc::getpwuid(uid) };
-    if pwd.is_null() { return None; }
+    if pwd.is_null() {
+        return None;
+    }
     // SAFETY: pwd->pw_name est NUL-terminated
     let name = unsafe { CStr::from_ptr((*pwd).pw_name) }.to_str().ok()?.to_string();
     Some(name)
@@ -542,24 +581,30 @@ pub fn windows_username() -> Option<String> {
     let ok = unsafe { GetUserNameW(buf.as_mut_ptr(), &mut len) };
     if ok != 0 && len > 0 {
         Some(String::from_utf16_lossy(&buf[..(len - 1) as usize]))
-    } else { None }
+    } else {
+        None
+    }
 }
 
 /* =======================================================================
-   SECTION: HELPERS
-   ======================================================================= */
+SECTION: HELPERS
+======================================================================= */
 
 #[inline]
 fn err_unsup<T>() -> Result<T> {
     #[cfg(feature = "errors")]
-    { Err(Error::Unsupported) }
+    {
+        Err(Error::Unsupported)
+    }
     #[cfg(not(feature = "errors"))]
-    { Err("unsupported") }
+    {
+        Err("unsupported")
+    }
 }
 
 /* =======================================================================
-   SECTION: TESTS
-   ======================================================================= */
+SECTION: TESTS
+======================================================================= */
 
 #[cfg(all(test, feature = "std"))]
 mod tests {

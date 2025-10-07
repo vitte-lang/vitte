@@ -53,10 +53,10 @@ pub fn normalize_path(path: &str) -> PathBuf {
                 } else {
                     components.push(comp);
                 }
-            }
+            },
             std::path::Component::CurDir => {
                 // skip
-            }
+            },
             _ => components.push(comp),
         }
     }
@@ -202,10 +202,7 @@ pub fn remove(path: &Path) -> Result<()> {
 /// ```
 pub fn walk_dir(path: &Path) -> Result<Vec<PathBuf>> {
     if !path.exists() {
-        return Err(PathError::InvalidPath(format!(
-            "Path does not exist: {}",
-            path.display()
-        )));
+        return Err(PathError::InvalidPath(format!("Path does not exist: {}", path.display())));
     }
     let mut paths = Vec::new();
     for entry in WalkDir::new(path) {

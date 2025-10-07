@@ -30,24 +30,28 @@ compile_error!("Enable feature `std` (default) or `alloc-only`).");
 extern crate alloc;
 
 #[cfg(feature = "alloc-only")]
-use alloc::{string::String, vec::Vec, collections::BTreeMap as Map, format};
+use alloc::{collections::BTreeMap as Map, format, string::String, vec::Vec};
 
 #[cfg(feature = "std")]
-use std::{string::String, vec::Vec, collections::HashMap as Map, fmt::Write as _};
+use std::{collections::HashMap as Map, fmt::Write as _, string::String, vec::Vec};
 
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "errors")]
 use thiserror::Error;
 
 #[cfg(feature = "args-spec")]
-use vitte_args::{Spec as ArgsSpec, Arg as ArgsArg, ArgKind as ArgsArgKind};
+use vitte_args::{Arg as ArgsArg, ArgKind as ArgsArgKind, Spec as ArgsSpec};
 
 /// Shell cible.
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Shell { Bash, Zsh, Fish }
+pub enum Shell {
+    Bash,
+    Zsh,
+    Fish,
+}
 
 /// Erreurs.
 #[cfg(feature = "errors")]
@@ -58,7 +62,9 @@ pub enum CompletionError {
 }
 #[cfg(not(feature = "errors"))]
 #[derive(Debug, PartialEq, Eq)]
-pub enum CompletionError { Unsupported }
+pub enum CompletionError {
+    Unsupported,
+}
 
 #[cfg(feature = "errors")]
 pub type Result<T> = core::result::Result<T, CompletionError>;
@@ -79,7 +85,7 @@ pub enum ValueHint {
 /// Modèle d’option exportée pour completion.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OptSpec {
-    pub name: String,               // nom logique
+    pub name: String, // nom logique
     pub short: Option<char>,
     pub long: Option<String>,
     pub aliases: Vec<String>,
@@ -119,17 +125,21 @@ pub trait Completer: Send + Sync {
 }
 
 impl<F> Completer for F
-where F: Fn(&[&str], &str) -> Vec<String> + Send + Sync {
-    fn candidates(&self, words: &[&str], current: &str) -> Vec<String> { (self)(words, current) }
+where
+    F: Fn(&[&str], &str) -> Vec<String> + Send + Sync,
+{
+    fn candidates(&self, words: &[&str], current: &str) -> Vec<String> {
+        (self)(words, current)
+    }
 }
 
 /* ======================== GENERATOR PRINCIPAL ======================== */
 
 pub struct CompletionGenerator {
     spec: CmdSpec,
-    long_hints: Map<String, ValueHint>,   // override par nom long
-    short_hints: Map<char, ValueHint>,    // override par short
-    pos_hints: Map<String, ValueHint>,    // override par pos
+    long_hints: Map<String, ValueHint>, // override par nom long
+    short_hints: Map<char, ValueHint>,  // override par short
+    pos_hints: Map<String, ValueHint>,  // override par pos
     completer: Option<Box<dyn Completer>>,
 }
 
@@ -179,7 +189,7 @@ impl CompletionGenerator {
     pub fn generate(&self, sh: Shell) -> Result<String> {
         match sh {
             Shell::Bash => Ok(self.gen_bash()),
-            Shell::Zsh  => Ok(self.gen_zsh()),
+            Shell::Zsh => Ok(self.gen_zsh()),
             Shell::Fish => Ok(self.gen_fish()),
         }
     }
@@ -208,7 +218,10 @@ impl CompletionGenerator {
         let subs: Vec<&str> = cmd.subcommands.iter().map(|sc| sc.bin.as_str()).collect();
 
         pushln(out, &format!("    # {}", cmd.bin));
-        pushln(out, &format!("    case ${} in", format!("{}_{}", words_var, depth).to_uppercase()));
+        pushln(
+            out,
+            &format!("    case ${} in", format!("{}_{}", words_var, depth).to_uppercase()),
+        );
 
         // Par défaut: définir variables d’index
         // On prépare `idx=<depth>` et extrait le token courant.
@@ -225,8 +238,11 @@ impl CompletionGenerator {
         pushln(&mut body, "    local i");
         pushln(&mut body, &format!("    local -a __opts __subs __cands"));
         pushln(&mut body, &format!("    __opts=({})", opts.join(" ")));
-        if subs.is_empty() { pushln(&mut body, "    __subs=()"); }
-        else { pushln(&mut body, &format!("    __subs=({})", subs.join(" "))); }
+        if subs.is_empty() {
+            pushln(&mut body, "    __subs=()");
+        } else {
+            pushln(&mut body, &format!("    __subs=({})", subs.join(" ")));
+        }
         pushln(&mut body, "    # Détection option précédente nécessitant une valeur");
         // Table des longs→hint
         let mut kv = Vec::new();
@@ -244,15 +260,24 @@ impl CompletionGenerator {
         pushln(&mut body, "      local prev=${COMP_WORDS[COMP_CWORD-1]}");
         // Vérifie toutes les clés
         for (k, _) in &kv {
-            if k.is_empty() { continue; }
-            pushln(&mut body, &format!("      if [[ \"$prev\" == \"--{k}\" || \"$prev\" == \"{k}\" ]]; then need_val=\"{k}\"; fi"));
+            if k.is_empty() {
+                continue;
+            }
+            pushln(
+                &mut body,
+                &format!(
+                    "      if [[ \"$prev\" == \"--{k}\" || \"$prev\" == \"{k}\" ]]; then need_val=\"{k}\"; fi"
+                ),
+            );
         }
         pushln(&mut body, "    fi");
         // Si need_val, on complète valeur
         pushln(&mut body, "    if [[ -n \"$need_val\" ]]; then");
         pushln(&mut body, "      case \"$need_val\" in");
         for (k, hint) in &kv {
-            if k.is_empty() { continue; }
+            if k.is_empty() {
+                continue;
+            }
             pushln(&mut body, &format!("        \"--{k}\"|\"{k}\")"));
             self.bash_value_hint(&mut body, hint);
             pushln(&mut body, "        ;;");
@@ -290,14 +315,19 @@ impl CompletionGenerator {
         body
             // inject
             .split('\n')
-            .for_each(|ln| { pushln(out, ln); });
+            .for_each(|ln| {
+                pushln(out, ln);
+            });
 
         // Sous-commandes récursives: on ajoute un *case* sur le premier non-option
         if !cmd.subcommands.is_empty() {
             pushln(out, "    # Délégation vers sous-commandes");
             pushln(out, "    local sub=''");
             pushln(out, "    for ((i=1;i<COMP_CWORD;i++)); do");
-            pushln(out, "      if [[ ${COMP_WORDS[i]} != -* ]]; then sub=${COMP_WORDS[i]}; break; fi");
+            pushln(
+                out,
+                "      if [[ ${COMP_WORDS[i]} != -* ]]; then sub=${COMP_WORDS[i]}; break; fi",
+            );
             pushln(out, "    done");
             pushln(out, "    case \"$sub\" in");
             for sc in &cmd.subcommands {
@@ -318,39 +348,62 @@ impl CompletionGenerator {
         let opts = self.collect_bash_opts(cmd);
         let subs: Vec<&str> = cmd.subcommands.iter().map(|sc| sc.bin.as_str()).collect();
         pushln(&mut s, &format!("local -a __opts __subs __cands; __opts=({})", opts.join(" ")));
-        if subs.is_empty() { pushln(&mut s, "__subs=()"); }
-        else { pushln(&mut s, &format!("__subs=({})", subs.join(" "))); }
+        if subs.is_empty() {
+            pushln(&mut s, "__subs=()");
+        } else {
+            pushln(&mut s, &format!("__subs=({})", subs.join(" ")));
+        }
         // need_val
         let mut kv = Vec::new();
         for o in &cmd.options {
             if o.takes_value {
                 let hint = self.resolve_opt_hint(o);
                 kv.push((o.long.clone().unwrap_or_default(), hint.clone()));
-                if let Some(c) = o.short { kv.push((format!("-{}", c), hint)); }
+                if let Some(c) = o.short {
+                    kv.push((format!("-{}", c), hint));
+                }
             }
         }
         pushln(&mut s, "local need_val=''");
         pushln(&mut s, "if [[ ${#COMP_WORDS[@]} -ge 2 ]]; then");
         pushln(&mut s, "  local prev=${COMP_WORDS[COMP_CWORD-1]}");
         for (k, _) in &kv {
-            if k.is_empty() { continue; }
-            pushln(&mut s, &format!("  if [[ \"$prev\" == \"--{k}\" || \"$prev\" == \"{k}\" ]]; then need_val=\"{k}\"; fi"));
+            if k.is_empty() {
+                continue;
+            }
+            pushln(
+                &mut s,
+                &format!(
+                    "  if [[ \"$prev\" == \"--{k}\" || \"$prev\" == \"{k}\" ]]; then need_val=\"{k}\"; fi"
+                ),
+            );
         }
         pushln(&mut s, "fi");
         pushln(&mut s, "if [[ -n \"$need_val\" ]]; then");
         pushln(&mut s, "  case \"$need_val\" in");
         for (k, hint) in &kv {
-            if k.is_empty() { continue; }
+            if k.is_empty() {
+                continue;
+            }
             pushln(&mut s, &format!("    \"--{k}\"|\"{k}\")"));
             self.bash_value_hint(&mut s, hint);
             pushln(&mut s, "    ;;");
         }
         pushln(&mut s, "  esac; return 0; fi");
         pushln(&mut s, "local cur=${COMP_WORDS[COMP_CWORD]}");
-        pushln(&mut s, "if [[ \"$cur\" == -* ]]; then COMPREPLY=( $(compgen -W \"${__opts[*]}\" -- \"$cur\") ); return 0; fi");
+        pushln(
+            &mut s,
+            "if [[ \"$cur\" == -* ]]; then COMPREPLY=( $(compgen -W \"${__opts[*]}\" -- \"$cur\") ); return 0; fi",
+        );
         if !subs.is_empty() {
-            pushln(&mut s, "local first_pos=1; for ((i=1;i<COMP_CWORD;i++)); do local w=${COMP_WORDS[i]}; if [[ \"$w\" != -* ]]; then first_pos=0; fi; done");
-            pushln(&mut s, "if [[ $first_pos -eq 1 ]]; then COMPREPLY=( $(compgen -W \"${__subs[*]}\" -- \"$cur\") ); return 0; fi");
+            pushln(
+                &mut s,
+                "local first_pos=1; for ((i=1;i<COMP_CWORD;i++)); do local w=${COMP_WORDS[i]}; if [[ \"$w\" != -* ]]; then first_pos=0; fi; done",
+            );
+            pushln(
+                &mut s,
+                "if [[ $first_pos -eq 1 ]]; then COMPREPLY=( $(compgen -W \"${__subs[*]}\" -- \"$cur\") ); return 0; fi",
+            );
         }
         if let Some(pos) = cmd.positionals.first() {
             self.bash_value_hint(&mut s, &self.resolve_pos_hint(pos));
@@ -368,18 +421,29 @@ impl CompletionGenerator {
             ValueHint::Command => pushln(out, "      COMPREPLY=( $(compgen -c -- \"$cur\") );"),
             ValueHint::Choice(list) => {
                 let joined = shell_join(list);
-                pushln(out, &format!("      COMPREPLY=( $(compgen -W \"{}\" -- \"$cur\") );", joined));
-            }
+                pushln(
+                    out,
+                    &format!("      COMPREPLY=( $(compgen -W \"{}\" -- \"$cur\") );", joined),
+                );
+            },
         }
     }
 
     fn collect_bash_opts(&self, cmd: &CmdSpec) -> Vec<String> {
         let mut v = Vec::new();
         for o in &cmd.options {
-            if o.hidden { continue; }
-            if let Some(l) = &o.long { v.push(format!("--{}", l)); }
-            if let Some(c) = o.short { v.push(format!("-{}", c)); }
-            for al in &o.aliases { v.push(format!("--{}", al)); }
+            if o.hidden {
+                continue;
+            }
+            if let Some(l) = &o.long {
+                v.push(format!("--{}", l));
+            }
+            if let Some(c) = o.short {
+                v.push(format!("-{}", c));
+            }
+            for al in &o.aliases {
+                v.push(format!("--{}", al));
+            }
         }
         v
     }
@@ -398,7 +462,9 @@ impl CompletionGenerator {
         pushln(out, "_arguments -s \\");
         // Options
         for o in &cmd.options {
-            if o.hidden { continue; }
+            if o.hidden {
+                continue;
+            }
             let mut ent = String::new();
             if let Some(c) = o.short {
                 write!(&mut ent, "'-{}[{}]'", c, o.help.as_deref().unwrap_or("")).ok();
@@ -451,7 +517,8 @@ impl CompletionGenerator {
             pushln(out, "  ;;");
             pushln(out, "esac");
         }
-        let _ = name; let _ = depth;
+        let _ = name;
+        let _ = depth;
     }
 
     fn zsh_sub_fn(&self, sc: &CmdSpec) -> String {
@@ -459,7 +526,9 @@ impl CompletionGenerator {
         let mut s = String::new();
         pushln(&mut s, "_arguments -s \\");
         for o in &sc.options {
-            if o.hidden { continue; }
+            if o.hidden {
+                continue;
+            }
             let mut ent = String::new();
             if let Some(c) = o.short {
                 write!(&mut ent, "'-{}[{}]'", c, o.help.as_deref().unwrap_or("")).ok();
@@ -510,23 +579,33 @@ impl CompletionGenerator {
 
     fn fish_cmd(&self, out: &mut String, cmd: &CmdSpec, bin: String) {
         for o in &cmd.options {
-            if o.hidden { continue; }
+            if o.hidden {
+                continue;
+            }
             let mut line = format!("complete -c {}", bin);
-            if let Some(l) = &o.long { line.push_str(&format!(" -l {}", l)); }
-            if let Some(c) = o.short { line.push_str(&format!(" -s {}", c)); }
-            if let Some(h) = &o.help { line.push_str(&format!(" -d '{}'", fish_escape(h))); }
+            if let Some(l) = &o.long {
+                line.push_str(&format!(" -l {}", l));
+            }
+            if let Some(c) = o.short {
+                line.push_str(&format!(" -s {}", c));
+            }
+            if let Some(h) = &o.help {
+                line.push_str(&format!(" -d '{}'", fish_escape(h)));
+            }
             if o.takes_value {
                 line.push_str(" -r");
                 match self.resolve_opt_hint(o) {
                     ValueHint::Any => {},
                     ValueHint::File => line.push_str(" -a '(commandline -ct | path filter -f)'"),
-                    ValueHint::Directory => line.push_str(" -a '(commandline -ct | path filter -d)'"),
+                    ValueHint::Directory => {
+                        line.push_str(" -a '(commandline -ct | path filter -d)'")
+                    },
                     ValueHint::Command => line.push_str(" -a '(command -sq (commandline -ct))'"),
                     ValueHint::Choice(v) => {
                         line.push_str(" -a \"");
                         line.push_str(&v.join(" "));
                         line.push('"');
-                    }
+                    },
                 }
             }
             pushln(out, &line);
@@ -535,7 +614,7 @@ impl CompletionGenerator {
         if let Some(p) = cmd.positionals.first() {
             let mut line = format!("complete -c {} -f", bin);
             match self.resolve_pos_hint(p) {
-                ValueHint::Any => { /* rien */ }
+                ValueHint::Any => { /* rien */ },
                 ValueHint::File => line.push_str(" -a '(path filter -f)'"),
                 ValueHint::Directory => line.push_str(" -a '(path filter -d)'"),
                 ValueHint::Command => line.push_str(" -a '(command -sq (commandline -ct))'"),
@@ -543,16 +622,20 @@ impl CompletionGenerator {
                     line.push_str(" -a \"");
                     line.push_str(&v.join(" "));
                     line.push('"');
-                }
+                },
             }
-            if let Some(h) = &p.help { line.push_str(&format!(" -d '{}'", fish_escape(h))); }
+            if let Some(h) = &p.help {
+                line.push_str(&format!(" -d '{}'", fish_escape(h)));
+            }
             pushln(out, &line);
         }
         // Sous-commandes
         for sc in &cmd.subcommands {
             // règle: proposer la sous-commande quand aucun arg positionnel consommé
             let mut line = format!("complete -c {} -n '__fish_use_subcommand' -a {}", bin, sc.bin);
-            if let Some(h) = &sc.about { line.push_str(&format!(" -d '{}'", fish_escape(h))); }
+            if let Some(h) = &sc.about {
+                line.push_str(&format!(" -d '{}'", fish_escape(h)));
+            }
             pushln(out, &line);
             // et on génère ses propres complétions
             self.fish_cmd(out, sc, format!("{} {}", bin, sc.bin));
@@ -563,42 +646,63 @@ impl CompletionGenerator {
 
     fn resolve_opt_hint(&self, o: &OptSpec) -> ValueHint {
         if let Some(l) = &o.long {
-            if let Some(h) = self.long_hints.get(l) { return h.clone(); }
+            if let Some(h) = self.long_hints.get(l) {
+                return h.clone();
+            }
         }
         if let Some(c) = o.short {
-            if let Some(h) = self.short_hints.get(&c) { return h.clone(); }
+            if let Some(h) = self.short_hints.get(&c) {
+                return h.clone();
+            }
         }
         o.hint.clone()
     }
     fn resolve_pos_hint(&self, p: &PosSpec) -> ValueHint {
-        if let Some(h) = self.pos_hints.get(&p.name) { return h.clone(); }
+        if let Some(h) = self.pos_hints.get(&p.name) {
+            return h.clone();
+        }
         p.hint.clone()
     }
 }
 
 /* =============================== UTIL =============================== */
 
-fn pushln(s: &mut String, line: &str) { s.push_str(line); s.push('\n'); }
+fn pushln(s: &mut String, line: &str) {
+    s.push_str(line);
+    s.push('\n');
+}
 
 fn shell_join(items: &[String]) -> String {
     let mut out = String::new();
     for (i, it) in items.iter().enumerate() {
-        if i > 0 { out.push(' '); }
+        if i > 0 {
+            out.push(' ');
+        }
         out.push_str(&shell_escape(it));
     }
     out
 }
 
 fn shell_escape(s: &str) -> String {
-    if s.chars().all(|c| c.is_ascii_alphanumeric() || "-_./".contains(c)) { return s.into(); }
-    let mut r = String::new(); r.push('\'');
-    for ch in s.chars() {
-        if ch == '\'' { r.push_str("'\\''"); } else { r.push(ch); }
+    if s.chars().all(|c| c.is_ascii_alphanumeric() || "-_./".contains(c)) {
+        return s.into();
     }
-    r.push('\''); r
+    let mut r = String::new();
+    r.push('\'');
+    for ch in s.chars() {
+        if ch == '\'' {
+            r.push_str("'\\''");
+        } else {
+            r.push(ch);
+        }
+    }
+    r.push('\'');
+    r
 }
 
-fn fish_escape(s: &str) -> String { s.replace('\'', "\\'") }
+fn fish_escape(s: &str) -> String {
+    s.replace('\'', "\\'")
+}
 
 /* ============== CONVERSION DE vitte-args::Spec (facultative) ============== */
 
@@ -622,17 +726,23 @@ fn convert_from_args(spec: &ArgsSpec) -> CmdSpec {
                     hint: ValueHint::Any,
                     hidden: a.hidden,
                 });
-            }
+            },
             ArgsArgKind::Opt => {
                 let mut hint = ValueHint::Any;
                 if let Some(choices) = &a.choices {
-                    if !choices.is_empty() { hint = ValueHint::Choice(choices.clone()); }
+                    if !choices.is_empty() {
+                        hint = ValueHint::Choice(choices.clone());
+                    }
                 }
                 // heuristique sur value_name
                 if let Some(vn) = &a.value_name {
                     let low = vn.to_ascii_lowercase();
-                    if low.contains("file") { hint = ValueHint::File; }
-                    if low.contains("dir") || low.contains("path") { hint = ValueHint::Directory; }
+                    if low.contains("file") {
+                        hint = ValueHint::File;
+                    }
+                    if low.contains("dir") || low.contains("path") {
+                        hint = ValueHint::Directory;
+                    }
                 }
                 options.push(OptSpec {
                     name: a.name.clone(),
@@ -646,7 +756,7 @@ fn convert_from_args(spec: &ArgsSpec) -> CmdSpec {
                     hint,
                     hidden: a.hidden,
                 });
-            }
+            },
             ArgsArgKind::Pos => {
                 positionals.push(PosSpec {
                     name: a.name.clone(),
@@ -654,7 +764,7 @@ fn convert_from_args(spec: &ArgsSpec) -> CmdSpec {
                     variadic: matches!(a.arity, vitte_args::Arity::Many),
                     hint: ValueHint::Any,
                 });
-            }
+            },
         }
     }
 
@@ -681,10 +791,30 @@ mod tests {
             bin: "demo".into(),
             about: None,
             options: vec![
-                OptSpec{ name:"verbose".into(), short:Some('v'), long:Some("verbose".into()),
-                    aliases:vec![], help:Some("Verbose".into()), takes_value:false, repeatable:false, value_name:None, hint:ValueHint::Any, hidden:false },
-                OptSpec{ name:"out".into(), short:None, long:Some("out".into()),
-                    aliases:vec![], help:Some("Out file".into()), takes_value:true, repeatable:false, value_name:Some("FILE".into), hint:ValueHint::File, hidden:false },
+                OptSpec {
+                    name: "verbose".into(),
+                    short: Some('v'),
+                    long: Some("verbose".into()),
+                    aliases: vec![],
+                    help: Some("Verbose".into()),
+                    takes_value: false,
+                    repeatable: false,
+                    value_name: None,
+                    hint: ValueHint::Any,
+                    hidden: false,
+                },
+                OptSpec {
+                    name: "out".into(),
+                    short: None,
+                    long: Some("out".into()),
+                    aliases: vec![],
+                    help: Some("Out file".into()),
+                    takes_value: true,
+                    repeatable: false,
+                    value_name: Some("FILE".into),
+                    hint: ValueHint::File,
+                    hidden: false,
+                },
             ],
             positionals: vec![],
             subcommands: vec![],
@@ -699,9 +829,16 @@ mod tests {
     #[test]
     fn zsh_contains_arguments() {
         let spec = CmdSpec {
-            bin: "demo".into(), about: None, options: vec![], positionals: vec![
-                PosSpec { name:"input".into(), help:None, variadic:false, hint:ValueHint::File }
-            ], subcommands: vec![],
+            bin: "demo".into(),
+            about: None,
+            options: vec![],
+            positionals: vec![PosSpec {
+                name: "input".into(),
+                help: None,
+                variadic: false,
+                hint: ValueHint::File,
+            }],
+            subcommands: vec![],
         };
         let gen = CompletionGenerator::new(spec);
         let z = gen.generate(Shell::Zsh).unwrap();
@@ -710,8 +847,20 @@ mod tests {
 
     #[test]
     fn fish_subcommands() {
-        let sub = CmdSpec { bin:"build".into(), about:Some("Build".into()), options:vec![], positionals:vec![], subcommands:vec![] };
-        let spec = CmdSpec { bin:"demo".into(), about:None, options:vec![], positionals:vec![], subcommands:vec![sub] };
+        let sub = CmdSpec {
+            bin: "build".into(),
+            about: Some("Build".into()),
+            options: vec![],
+            positionals: vec![],
+            subcommands: vec![],
+        };
+        let spec = CmdSpec {
+            bin: "demo".into(),
+            about: None,
+            options: vec![],
+            positionals: vec![],
+            subcommands: vec![sub],
+        };
         let gen = CompletionGenerator::new(spec);
         let f = gen.generate(Shell::Fish).unwrap();
         assert!(f.contains("__fish_use_subcommand"));

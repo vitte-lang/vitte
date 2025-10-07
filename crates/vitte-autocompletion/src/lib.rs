@@ -22,10 +22,9 @@
 //! assert!(out.items.iter().any(|c| c.label == "hello"));
 //! ```
 
-
 /// Réexporte l'algorithme et les utilitaires de classement/mise en évidence.
 pub use matcher::{
-    dedup_in_place, highlight_indices, match_query, rank_in_place, FuzzyConfig, MatchAlgo,
+    FuzzyConfig, MatchAlgo, dedup_in_place, highlight_indices, match_query, rank_in_place,
 };
 /// Réexporte les sources de complétions (in-mémoire) et le trait `Source`.
 pub use source::{MemorySource, Source};
@@ -76,7 +75,11 @@ impl EngineBuilder {
     }
     /// Construit l'`Engine`.
     pub fn build(self) -> Engine {
-        Engine { sources: Vec::new(), algo: self.algo, namespace_filtering: self.namespace_filtering }
+        Engine {
+            sources: Vec::new(),
+            algo: self.algo,
+            namespace_filtering: self.namespace_filtering,
+        }
     }
 }
 
@@ -95,13 +98,19 @@ impl Default for Engine {
 
 impl Engine {
     /// Nouveau builder.
-    pub fn builder() -> EngineBuilder { EngineBuilder::default() }
+    pub fn builder() -> EngineBuilder {
+        EngineBuilder::default()
+    }
 
     /// Crée un engine avec `algo`.
-    pub fn new(algo: MatchAlgo) -> Self { EngineBuilder::default().algo(algo).build() }
+    pub fn new(algo: MatchAlgo) -> Self {
+        EngineBuilder::default().algo(algo).build()
+    }
 
     /// Change l'algo à la volée.
-    pub fn set_algo(&mut self, algo: MatchAlgo) { self.algo = algo; }
+    pub fn set_algo(&mut self, algo: MatchAlgo) {
+        self.algo = algo;
+    }
 
     /// Ajoute une source thread-safe.
     pub fn add_source<S: Source + Send + Sync + 'static>(&mut self, src: S) {
@@ -109,7 +118,9 @@ impl Engine {
     }
 
     /// Nombre de sources.
-    pub fn sources_len(&self) -> usize { self.sources.len() }
+    pub fn sources_len(&self) -> usize {
+        self.sources.len()
+    }
 
     /// Propose des complétions pour `query` dans `context`. Tronque à `limit`.
     /// Déduplique et trie de façon déterministe.
@@ -119,7 +130,9 @@ impl Engine {
         context: &Context,
         limit: usize,
     ) -> Result<CompletionList, AutoError> {
-        if self.sources.is_empty() { return Err(AutoError::NoSource); }
+        if self.sources.is_empty() {
+            return Err(AutoError::NoSource);
+        }
         let mut buf: Vec<Completion> = Vec::with_capacity(128);
         for s in &self.sources {
             s.collect(query, context, &mut buf);
@@ -129,7 +142,9 @@ impl Engine {
         }
         matcher::rank_in_place(&mut buf, query, self.algo);
         matcher::dedup_in_place(&mut buf);
-        if buf.len() > limit { buf.truncate(limit); }
+        if buf.len() > limit {
+            buf.truncate(limit);
+        }
         Ok(CompletionList { items: buf })
     }
 }
@@ -161,7 +176,9 @@ mod util {
     /// Filtrage léger par namespace côté client.
     /// - "path" garde Path, "command" garde Command, "keyword" garde Keyword, sinon aucun filtrage.
     pub fn light_namespace_filter(ctx: &Context, items: &mut Vec<Completion>) {
-        let Some(ns) = ctx.namespace.as_deref() else { return; };
+        let Some(ns) = ctx.namespace.as_deref() else {
+            return;
+        };
         let keep = |k: CompletionKind| -> bool {
             match ns {
                 "path" => matches!(k, CompletionKind::Path),
@@ -300,11 +317,15 @@ mod trie {
     }
 
     impl<T: Copy> Default for Trie<T> {
-        fn default() -> Self { Self { root: Node::default() } }
+        fn default() -> Self {
+            Self { root: Node::default() }
+        }
     }
 
     impl<T: Copy> Default for TrieBuilder<T> {
-        fn default() -> Self { Self { root: Node::default() } }
+        fn default() -> Self {
+            Self { root: Node::default() }
+        }
     }
 
     impl<T: Copy> TrieBuilder<T> {
@@ -318,7 +339,9 @@ mod trie {
         }
 
         /// Construit un `Trie` immuable.
-        pub fn build(self) -> Trie<T> { Trie { root: self.root } }
+        pub fn build(self) -> Trie<T> {
+            Trie { root: self.root }
+        }
     }
 
     impl<T: Copy> Trie<T> {
@@ -326,13 +349,17 @@ mod trie {
         pub fn iter_prefix<'a>(&'a self, p: &str) -> impl Iterator<Item = (String, &'a T)> + 'a {
             let mut node = &self.root;
             for ch in p.chars() {
-                if let Some(n) = node.edges.get(&ch) { node = n; } else {
+                if let Some(n) = node.edges.get(&ch) {
+                    node = n;
+                } else {
                     return Box::new(std::iter::empty()) as Box<dyn Iterator<Item = (String, &T)>>;
                 }
             }
             let mut acc: Vec<(String, &T)> = Vec::new();
             fn dfs<'a, T: Copy>(pref: &mut String, n: &'a Node<T>, out: &mut Vec<(String, &'a T)>) {
-                if let Some(ref v) = n.term { out.push((pref.clone(), v)); }
+                if let Some(ref v) = n.term {
+                    out.push((pref.clone(), v));
+                }
                 for (ch, child) in n.edges.iter() {
                     pref.push(*ch);
                     dfs(pref, child, out);
@@ -381,9 +408,12 @@ mod matcher {
 
     /// Tri en place selon le score décroissant, puis tiebreak: longueur croissante, ordre lexical.
     pub fn rank_in_place(items: &mut Vec<Completion>, query: &str, algo: MatchAlgo) {
-        for it in items.iter_mut() { it.score = score(&it.label, query, algo); }
+        for it in items.iter_mut() {
+            it.score = score(&it.label, query, algo);
+        }
         items.sort_by(|a, b| {
-            b.score.cmp(&a.score)
+            b.score
+                .cmp(&a.score)
                 .then_with(|| a.label.len().cmp(&b.label.len()))
                 .then_with(|| a.label.cmp(&b.label))
         });
@@ -397,18 +427,24 @@ mod matcher {
 
     /// Score brut avec bonus de frontières de mot et camelCase.
     pub fn score(label: &str, query: &str, algo: MatchAlgo) -> i32 {
-        if query.is_empty() { return 0; }
+        if query.is_empty() {
+            return 0;
+        }
         match algo {
             MatchAlgo::Prefix => {
                 if label.starts_with(query) {
                     base_prefix_score(label, query)
-                } else { -1 }
-            }
+                } else {
+                    -1
+                }
+            },
             MatchAlgo::Substring => {
                 if let Some(pos) = label.find(query) {
                     base_substring_score(label, pos, query.len())
-                } else { -1 }
-            }
+                } else {
+                    -1
+                }
+            },
             #[cfg(feature = "fuzzy")]
             MatchAlgo::Fuzzy(cfg) => fuzzy_score(label, query, cfg),
         }
@@ -420,9 +456,13 @@ mod matcher {
         // Bonus frontière/camel
         let mut prev = None;
         for (i, ch) in label.chars().enumerate().take(query.chars().count()) {
-            if is_word_boundary(prev, ch) || is_camel_boundary(prev, ch) { sc += 2; }
+            if is_word_boundary(prev, ch) || is_camel_boundary(prev, ch) {
+                sc += 2;
+            }
             prev = Some(ch);
-            if i > 16 { break; }
+            if i > 16 {
+                break;
+            }
         }
         sc
     }
@@ -432,7 +472,9 @@ mod matcher {
         let mut sc = 800 - start as i32;
         let prev = label[..start].chars().rev().next();
         let first = label[start..].chars().next().unwrap_or_default();
-        if is_word_boundary(prev, first) || is_camel_boundary(prev, first) { sc += 10; }
+        if is_word_boundary(prev, first) || is_camel_boundary(prev, first) {
+            sc += 10;
+        }
         // bonus compacité
         sc -= (label.len() - qlen) as i32 / 16;
         sc
@@ -442,16 +484,22 @@ mod matcher {
     /// Pour `Fuzzy`, renvoie une approximation monotone.
     pub fn highlight_indices(label: &str, query: &str, algo: MatchAlgo) -> SmallVec<[usize; 32]> {
         let mut out: SmallVec<[usize; 32]> = SmallVec::new();
-        if query.is_empty() { return out; }
+        if query.is_empty() {
+            return out;
+        }
         match algo {
             MatchAlgo::Prefix => {
-                for i in 0..query.len().min(label.len()) { out.push(i); }
-            }
+                for i in 0..query.len().min(label.len()) {
+                    out.push(i);
+                }
+            },
             MatchAlgo::Substring => {
                 if let Some(pos) = label.find(query) {
-                    for i in pos..pos + query.len() { out.push(i); }
+                    for i in pos..pos + query.len() {
+                        out.push(i);
+                    }
                 }
-            }
+            },
             #[cfg(feature = "fuzzy")]
             MatchAlgo::Fuzzy(_cfg) => {
                 // Greedy: avance dans label et marque chaque match case-insensitive.
@@ -465,7 +513,7 @@ mod matcher {
                         }
                     }
                 }
-            }
+            },
         }
         out
     }
@@ -479,16 +527,22 @@ mod matcher {
     ) -> SmallVec<[Completion; 32]> {
         let mut out: SmallVec<[Completion; 32]> = SmallVec::new();
         for s in candidates {
-            let mut c = crate::types::Completion::new(s.clone(), crate::types::CompletionKind::Other);
+            let mut c =
+                crate::types::Completion::new(s.clone(), crate::types::CompletionKind::Other);
             c.score = score(&c.label, query, algo);
-            if c.score >= 0 { out.push(c); }
+            if c.score >= 0 {
+                out.push(c);
+            }
         }
         out.sort_by(|a, b| {
-            b.score.cmp(&a.score)
+            b.score
+                .cmp(&a.score)
                 .then_with(|| a.label.len().cmp(&b.label.len()))
                 .then_with(|| a.label.cmp(&b.label))
         });
-        if out.len() > limit { out.truncate(limit); }
+        if out.len() > limit {
+            out.truncate(limit);
+        }
         out
     }
 
@@ -497,7 +551,9 @@ mod matcher {
         // Variante compacte Smith-Waterman adaptée type fzy. O(n*m) borné.
         let nl = label.len();
         let nq = query.len();
-        if nq == 0 || nl == 0 || nq > 128 || nl > 4096 { return -1; }
+        if nq == 0 || nl == 0 || nq > 128 || nl > 4096 {
+            return -1;
+        }
 
         let lchars: Vec<char> = label.chars().collect();
         let qchars: Vec<char> = query.chars().collect();
@@ -511,16 +567,22 @@ mod matcher {
                 let mut s = if lc.eq_ignore_ascii_case(&qc) { 10 } else { -5 };
                 // Bonus limites de mots/camel
                 let prevc = if i == 0 { None } else { Some(lchars[i - 1]) };
-                if super::util::is_word_boundary(prevc, lc) || super::util::is_camel_boundary(prevc, lc) {
+                if super::util::is_word_boundary(prevc, lc)
+                    || super::util::is_camel_boundary(prevc, lc)
+                {
                     s += cfg.bonus_boundary;
                 }
-                if j > 0 && i > 0 { s += cfg.bonus_consecutive; }
+                if j > 0 && i > 0 {
+                    s += cfg.bonus_consecutive;
+                }
                 let diag = prev[j] + s;
                 let up = prev[j + 1] + cfg.gap_penalty;
                 let left = cur[j] + cfg.gap_penalty;
                 let v = 0.max(diag).max(up).max(left);
                 cur[j + 1] = v;
-                if v > best { best = v; }
+                if v > best {
+                    best = v;
+                }
             }
             prev = cur;
         }
@@ -532,7 +594,10 @@ mod matcher {
 // source.rs
 // ============================================================================
 mod source {
-    use crate::{trie::Trie, types::{Completion, CompletionKind, Context}};
+    use crate::{
+        trie::Trie,
+        types::{Completion, CompletionKind, Context},
+    };
 
     /// Source de données de complétion.
     pub trait Source {

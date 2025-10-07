@@ -15,8 +15,8 @@
 //! println!("Diagnostics: {}", pgo::diagnostics());
 //! ```
 
-use thiserror::Error;
 use std::{env, path::Path};
+use thiserror::Error;
 
 /// Modes PGO possibles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,7 +70,8 @@ pub fn rustflags_use(dir: &str) -> String {
 /// Vérifie qu'un fichier `.profraw` existe dans un dossier donné.
 pub fn has_profraw(dir: &Path) -> bool {
     if let Ok(rd) = std::fs::read_dir(dir) {
-        rd.flatten().any(|e| e.path().extension().map(|x| x=="profraw").unwrap_or(false))
+        rd.flatten()
+            .any(|e| e.path().extension().map(|x| x == "profraw").unwrap_or(false))
     } else {
         false
     }
@@ -78,21 +79,21 @@ pub fn has_profraw(dir: &Path) -> bool {
 
 /// Affiche diagnostics pour CI.
 pub fn diagnostics() -> String {
-    format!(
-        "PGO mode: {:?}\nRUSTFLAGS={:?}",
-        PgoMode::detect(),
-        env::var("RUSTFLAGS").ok(),
-    )
+    format!("PGO mode: {:?}\nRUSTFLAGS={:?}", PgoMode::detect(), env::var("RUSTFLAGS").ok(),)
 }
 
 /// Vérifie que l’environnement PGO est cohérent.
 pub fn check_env() -> Result<(), PgoError> {
     if let Ok(val) = env::var("RUSTFLAGS") {
-        if val.contains("profile-generate") && PgoMode::detect()!=PgoMode::Instrument {
-            return Err(PgoError::Env("RUSTFLAGS demande profile-generate mais feature instrument non activée".into()));
+        if val.contains("profile-generate") && PgoMode::detect() != PgoMode::Instrument {
+            return Err(PgoError::Env(
+                "RUSTFLAGS demande profile-generate mais feature instrument non activée".into(),
+            ));
         }
-        if val.contains("profile-use") && PgoMode::detect()!=PgoMode::Use {
-            return Err(PgoError::Env("RUSTFLAGS demande profile-use mais feature use-profile non activée".into()));
+        if val.contains("profile-use") && PgoMode::detect() != PgoMode::Use {
+            return Err(PgoError::Env(
+                "RUSTFLAGS demande profile-use mais feature use-profile non activée".into(),
+            ));
         }
     }
     Ok(())
@@ -110,7 +111,7 @@ pub fn badge() -> String {
 }
 
 /// Si `llvm-tools` est activé, helpers pour lancer llvm-profdata/llvm-cov.
-#[cfg(feature="llvm-tools")]
+#[cfg(feature = "llvm-tools")]
 pub mod llvm {
     use super::*;
     use std::process::Command;
@@ -118,7 +119,9 @@ pub mod llvm {
     /// Fusionne plusieurs `.profraw` en un `.profdata`.
     pub fn merge_profraw(inputs: &[&str], output: &str) -> Result<(), PgoError> {
         let status = Command::new("llvm-profdata")
-            .arg("merge").arg("-o").arg(output)
+            .arg("merge")
+            .arg("-o")
+            .arg(output)
             .args(inputs)
             .status()
             .map_err(|e| PgoError::LlvmTool(e.to_string()))?;
@@ -131,7 +134,8 @@ pub mod llvm {
     /// Lance llvm-cov show.
     pub fn show_cov(binary: &str, profdata: &str) -> Result<(), PgoError> {
         let status = Command::new("llvm-cov")
-            .arg("show").arg(binary)
+            .arg("show")
+            .arg(binary)
             .arg(format!("-instr-profile={profdata}"))
             .status()
             .map_err(|e| PgoError::LlvmTool(e.to_string()))?;

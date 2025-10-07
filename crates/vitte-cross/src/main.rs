@@ -15,7 +15,11 @@ use std::path::PathBuf;
 use std::process::{self, Command};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Verbosity { Quiet, Normal, Verbose }
+enum Verbosity {
+    Quiet,
+    Normal,
+    Verbose,
+}
 
 #[derive(Clone, Debug)]
 struct GlobalOpts {
@@ -52,35 +56,58 @@ fn print_help() {
     );
 }
 
-fn print_version() { println!("vitte-cross {}", env!("CARGO_PKG_VERSION")); }
+fn print_version() {
+    println!("vitte-cross {}", env!("CARGO_PKG_VERSION"));
+}
 
 fn parse_global_opts(args: &mut Vec<String>) -> GlobalOpts {
     let mut opts = GlobalOpts::default();
     let mut i = 1; // après la commande
     while i < args.len() {
         match args[i].as_str() {
-            "-q" | "--quiet"    => { opts.verbosity = Verbosity::Quiet; args.remove(i); },
-            "-v" | "--verbose"  => { opts.verbosity = Verbosity::Verbose; args.remove(i); },
-            "-t" | "--target"   => { let v = take_val(args, i); opts.target = v; },
-            "-j" | "--jobs"     => { let v = take_val(args, i).and_then(|s| s.parse().ok()); opts.jobs = v; },
-            "-o" | "--out-dir"  => { let v = take_val(args, i).map(PathBuf::from); opts.out_dir = v; },
-            _ => { i += 1; }
+            "-q" | "--quiet" => {
+                opts.verbosity = Verbosity::Quiet;
+                args.remove(i);
+            },
+            "-v" | "--verbose" => {
+                opts.verbosity = Verbosity::Verbose;
+                args.remove(i);
+            },
+            "-t" | "--target" => {
+                let v = take_val(args, i);
+                opts.target = v;
+            },
+            "-j" | "--jobs" => {
+                let v = take_val(args, i).and_then(|s| s.parse().ok());
+                opts.jobs = v;
+            },
+            "-o" | "--out-dir" => {
+                let v = take_val(args, i).map(PathBuf::from);
+                opts.out_dir = v;
+            },
+            _ => {
+                i += 1;
+            },
         }
     }
     opts
 }
 
 fn take_val(args: &mut Vec<String>, i_flag: usize) -> Option<String> {
-    if i_flag + 1 >= args.len() { return None; }
+    if i_flag + 1 >= args.len() {
+        return None;
+    }
     let _flag = args.remove(i_flag); // supprime le flag
-    Some(args.remove(i_flag))        // la valeur prend la place
+    Some(args.remove(i_flag)) // la valeur prend la place
 }
 
 /* --------------------------- sous-commandes --------------------------- */
 
 fn cmd_targets_list(_opts: &GlobalOpts) -> io::Result<()> {
     // Stub: dans une implémentation réelle, lire une config (~/.vitte/cross/targets)
-    println!("cibles connues:\n  - x86_64-unknown-linux-gnu\n  - aarch64-apple-darwin\n  - x86_64-pc-windows-msvc");
+    println!(
+        "cibles connues:\n  - x86_64-unknown-linux-gnu\n  - aarch64-apple-darwin\n  - x86_64-pc-windows-msvc"
+    );
     Ok(())
 }
 
@@ -98,11 +125,19 @@ fn cmd_build(opts: &GlobalOpts, release: bool) -> io::Result<()> {
     let target = opts.target.as_deref().unwrap_or(host_triple());
     let mut cmd = Command::new("cargo");
     cmd.arg("build");
-    if release { cmd.arg("--release"); }
-    if let Some(j) = opts.jobs { cmd.arg("-j").arg(j.to_string()); }
-    if let Some(dir) = &opts.out_dir { cmd.arg("--target-dir").arg(dir); }
+    if release {
+        cmd.arg("--release");
+    }
+    if let Some(j) = opts.jobs {
+        cmd.arg("-j").arg(j.to_string());
+    }
+    if let Some(dir) = &opts.out_dir {
+        cmd.arg("--target-dir").arg(dir);
+    }
     cmd.env("CARGO_BUILD_TARGET", target);
-    if opts.verbosity == Verbosity::Verbose { eprintln!("[run] {:?}", cmd); }
+    if opts.verbosity == Verbosity::Verbose {
+        eprintln!("[run] {:?}", cmd);
+    }
     run(&mut cmd)
 }
 
@@ -133,15 +168,25 @@ fn run(cmd: &mut Command) -> io::Result<()> {
 fn host_triple() -> &'static str {
     // Approximation compile-time
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    { "x86_64-unknown-linux-gnu" }
+    {
+        "x86_64-unknown-linux-gnu"
+    }
     #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-    { "aarch64-unknown-linux-gnu" }
+    {
+        "aarch64-unknown-linux-gnu"
+    }
     #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    { "x86_64-apple-darwin" }
+    {
+        "x86_64-apple-darwin"
+    }
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    { "aarch64-apple-darwin" }
+    {
+        "aarch64-apple-darwin"
+    }
     #[cfg(all(target_os = "windows", target_env = "msvc", target_arch = "x86_64"))]
-    { "x86_64-pc-windows-msvc" }
+    {
+        "x86_64-pc-windows-msvc"
+    }
     #[cfg(not(any(
         all(target_os = "linux", target_arch = "x86_64"),
         all(target_os = "linux", target_arch = "aarch64"),
@@ -149,14 +194,19 @@ fn host_triple() -> &'static str {
         all(target_os = "macos", target_arch = "aarch64"),
         all(target_os = "windows", target_env = "msvc", target_arch = "x86_64"),
     )))]
-    { "unknown-unknown-unknown" }
+    {
+        "unknown-unknown-unknown"
+    }
 }
 
 /* --------------------------------- main -------------------------------- */
 
 fn main() {
     let mut args: Vec<String> = env::args().collect();
-    if args.len() < 2 { print_help(); process::exit(1); }
+    if args.len() < 2 {
+        print_help();
+        process::exit(1);
+    }
 
     // Prendre la commande par valeur avant de modifier `args`
     let cmd: String = args[1].clone();
@@ -165,33 +215,59 @@ fn main() {
     let opts = parse_global_opts(&mut args);
 
     let res = match cmd.as_str() {
-        "help" | "-h" | "--help" => { print_help(); Ok(()) }
-        "version" | "-V" | "--version" => { print_version(); Ok(()) }
+        "help" | "-h" | "--help" => {
+            print_help();
+            Ok(())
+        },
+        "version" | "-V" | "--version" => {
+            print_version();
+            Ok(())
+        },
         "targets" => {
-            if args.len() < 2 { eprintln!("error: missing subcommand for `targets`"); print_help(); process::exit(1); }
+            if args.len() < 2 {
+                eprintln!("error: missing subcommand for `targets`");
+                print_help();
+                process::exit(1);
+            }
             match args[1].as_str() {
                 "list" => cmd_targets_list(&opts),
                 "add" => {
-                    if args.len() < 3 { eprintln!("error: missing <triple> for `targets add`"); process::exit(1); }
+                    if args.len() < 3 {
+                        eprintln!("error: missing <triple> for `targets add`");
+                        process::exit(1);
+                    }
                     cmd_targets_add(&opts, &args[2])
-                }
+                },
                 "remove" => {
-                    if args.len() < 3 { eprintln!("error: missing <triple> for `targets remove`"); process::exit(1); }
+                    if args.len() < 3 {
+                        eprintln!("error: missing <triple> for `targets remove`");
+                        process::exit(1);
+                    }
                     cmd_targets_remove(&opts, &args[2])
-                }
-                other => { eprintln!("error: unknown targets subcommand `{other}`"); process::exit(1); }
+                },
+                other => {
+                    eprintln!("error: unknown targets subcommand `{other}`");
+                    process::exit(1);
+                },
             }
-        }
+        },
         "build" => {
             let release = args.iter().any(|a| a == "--release");
             cmd_build(&opts, release)
-        }
+        },
         "pkg" => {
-            if args.len() < 2 { eprintln!("error: missing <fmt> for `pkg`"); process::exit(1); }
+            if args.len() < 2 {
+                eprintln!("error: missing <fmt> for `pkg`");
+                process::exit(1);
+            }
             cmd_pkg(&opts, &args[1])
-        }
+        },
         "env" => cmd_env(&opts),
-        other => { eprintln!("error: unknown command `{other}`"); print_help(); process::exit(1); }
+        other => {
+            eprintln!("error: unknown command `{other}`");
+            print_help();
+            process::exit(1);
+        },
     };
 
     if let Err(e) = res {

@@ -93,13 +93,16 @@ pub fn saxpy(a: f32, x: &[f32], y: &[f32]) -> Result<Vec<f32>> {
     let mut i = 0;
     let av = set1(a);
     while i + lanes <= x.len() {
-        let xv = load(&x[i..i+lanes]);
-        let yv = load(&y[i..i+lanes]);
+        let xv = load(&x[i..i + lanes]);
+        let yv = load(&y[i..i + lanes]);
         let zv = fmadd(av, xv, yv);
-        store(zv, &mut out[i..i+lanes]);
+        store(zv, &mut out[i..i + lanes]);
         i += lanes;
     }
-    while i < x.len() { out[i] = a * x[i] + y[i]; i += 1; }
+    while i < x.len() {
+        out[i] = a * x[i] + y[i];
+        i += 1;
+    }
     Ok(out)
 }
 
@@ -110,12 +113,15 @@ pub fn dot(a: &[f32], b: &[f32]) -> Result<f32> {
     let lanes = LANES;
     let mut i = 0;
     while i + lanes <= a.len() {
-        let av = load(&a[i..i+lanes]);
-        let bv = load(&b[i..i+lanes]);
+        let av = load(&a[i..i + lanes]);
+        let bv = load(&b[i..i + lanes]);
         acc += hsum(mul(av, bv));
         i += lanes;
     }
-    while i < a.len() { acc += a[i] * b[i]; i += 1; }
+    while i < a.len() {
+        acc += a[i] * b[i];
+        i += 1;
+    }
     Ok(acc)
 }
 
@@ -125,21 +131,30 @@ pub fn sum(x: &[f32]) -> f32 {
     let lanes = LANES;
     let mut i = 0;
     while i + lanes <= x.len() {
-        let xv = load(&x[i..i+lanes]);
+        let xv = load(&x[i..i + lanes]);
         acc += hsum(xv);
         i += lanes;
     }
-    while i < x.len() { acc += x[i]; i += 1; }
+    while i < x.len() {
+        acc += x[i];
+        i += 1;
+    }
     acc
 }
 
 /// Applique ReLU en place.
 pub fn relu_inplace(x: &mut [f32]) {
-    for v in x { if *v < 0.0 { *v = 0.0; } }
+    for v in x {
+        if *v < 0.0 {
+            *v = 0.0;
+        }
+    }
 }
 
 /// Norme L2.
-pub fn l2_norm(x: &[f32]) -> f32 { sumsq(x).sqrt() }
+pub fn l2_norm(x: &[f32]) -> f32 {
+    sumsq(x).sqrt()
+}
 
 /// Somme des carrés.
 pub fn sumsq(x: &[f32]) -> f32 {
@@ -147,12 +162,15 @@ pub fn sumsq(x: &[f32]) -> f32 {
     let lanes = LANES;
     let mut i = 0;
     while i + lanes <= x.len() {
-        let xv = load(&x[i..i+lanes]);
+        let xv = load(&x[i..i + lanes]);
         let sq = mul(xv, xv);
         acc += hsum(sq);
         i += lanes;
     }
-    while i < x.len() { acc += x[i]*x[i]; i += 1; }
+    while i < x.len() {
+        acc += x[i] * x[i];
+        i += 1;
+    }
     acc
 }
 
@@ -161,7 +179,9 @@ pub fn sumsq(x: &[f32]) -> f32 {
 // ================================================================================================
 
 fn ensure_same_len(a: &[f32], b: &[f32]) -> Result<()> {
-    if a.len() != b.len() { return Err(SimdError::Dim(a.len(), b.len())); }
+    if a.len() != b.len() {
+        return Err(SimdError::Dim(a.len(), b.len()));
+    }
     Ok(())
 }
 
@@ -170,13 +190,16 @@ fn binary_op(a: &[f32], b: &[f32], f: fn(Vf, Vf) -> Vf) -> Vec<f32> {
     let lanes = LANES;
     let mut i = 0;
     while i + lanes <= a.len() {
-        let av = load(&a[i..i+lanes]);
-        let bv = load(&b[i..i+lanes]);
+        let av = load(&a[i..i + lanes]);
+        let bv = load(&b[i..i + lanes]);
         let zv = f(av, bv);
-        store(zv, &mut out[i..i+lanes]);
+        store(zv, &mut out[i..i + lanes]);
         i += lanes;
     }
-    while i < a.len() { out[i] = f32_bin(f, a[i], b[i]); i += 1; }
+    while i < a.len() {
+        out[i] = f32_bin(f, a[i], b[i]);
+        i += 1;
+    }
     out
 }
 
@@ -190,8 +213,10 @@ fn f32_bin(f: fn(Vf, Vf) -> Vf, x: f32, y: f32) -> f32 {
     }
     // Pour SIMD, réutilise le chemin vectoriel sur 1 lane en construisant un bloc
     let mut tmp_in = vec![0.0f32; LANES];
-    tmp_in[0] = x; let a = load(&tmp_in);
-    tmp_in[0] = y; let b = load(&tmp_in);
+    tmp_in[0] = x;
+    let a = load(&tmp_in);
+    tmp_in[0] = y;
+    let b = load(&tmp_in);
     let r = f(a, b);
     let mut tmp_out = vec![0.0f32; LANES];
     store(r, &mut tmp_out);
@@ -205,17 +230,19 @@ fn f32_bin(f: fn(Vf, Vf) -> Vf, x: f32, y: f32) -> f32 {
 mod tests {
     use super::*;
 
-    fn approx(a: f32, b: f32) -> bool { (a-b).abs() < 1e-5 }
+    fn approx(a: f32, b: f32) -> bool {
+        (a - b).abs() < 1e-5
+    }
 
     #[test]
     fn add_mul_dot_sum() {
-        let a = vec![1.0,2.0,3.0,4.0,5.0,6.0];
-        let b = vec![6.0,5.0,4.0,3.0,2.0,1.0];
-        let r = add_vec(&a,&b).unwrap();
-        assert_eq!(r, vec![7.0,7.0,7.0,7.0,7.0,7.0]);
-        let r2 = mul_vec(&a,&b).unwrap();
-        assert_eq!(r2, vec![6.0,10.0,12.0,12.0,10.0,6.0]);
-        let d = dot(&a,&b).unwrap();
+        let a = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let b = vec![6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
+        let r = add_vec(&a, &b).unwrap();
+        assert_eq!(r, vec![7.0, 7.0, 7.0, 7.0, 7.0, 7.0]);
+        let r2 = mul_vec(&a, &b).unwrap();
+        assert_eq!(r2, vec![6.0, 10.0, 12.0, 12.0, 10.0, 6.0]);
+        let d = dot(&a, &b).unwrap();
         assert!(approx(d, 56.0));
         let s = sum(&a);
         assert!(approx(s, 21.0));
@@ -223,25 +250,25 @@ mod tests {
 
     #[test]
     fn saxpy_ok() {
-        let x = vec![1.0,2.0,3.0,4.0];
-        let y = vec![1.0,1.0,1.0,1.0];
+        let x = vec![1.0, 2.0, 3.0, 4.0];
+        let y = vec![1.0, 1.0, 1.0, 1.0];
         let z = saxpy(2.0, &x, &y).unwrap();
-        assert_eq!(z, vec![3.0,5.0,7.0,9.0]);
+        assert_eq!(z, vec![3.0, 5.0, 7.0, 9.0]);
     }
 
     #[test]
     fn relu_and_norm() {
         let mut x = vec![-1.0, 0.5, -0.2, 3.0];
         relu_inplace(&mut x);
-        assert_eq!(x, vec![0.0,0.5,0.0,3.0]);
+        assert_eq!(x, vec![0.0, 0.5, 0.0, 3.0]);
         let n = l2_norm(&x);
-        assert!(approx(n, (0.5f32*0.5 + 9.0).sqrt() as f32));
+        assert!(approx(n, (0.5f32 * 0.5 + 9.0).sqrt() as f32));
     }
 
     #[test]
     fn dims_error() {
-        let a = vec![1.0,2.0,3.0];
-        let b = vec![1.0,2.0];
-        assert!(matches!(add_vec(&a,&b), Err(SimdError::Dim(3,2))));
+        let a = vec![1.0, 2.0, 3.0];
+        let b = vec![1.0, 2.0];
+        assert!(matches!(add_vec(&a, &b), Err(SimdError::Dim(3, 2))));
     }
 }

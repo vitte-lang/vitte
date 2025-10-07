@@ -138,55 +138,96 @@ pub struct Cx {
 impl Cx {
     /// Create.
     #[cfg(feature = "interpreter")]
-    pub fn new() -> Self { Self { limits: Limits::default(), ..Default::default() } }
+    pub fn new() -> Self {
+        Self { limits: Limits::default(), ..Default::default() }
+    }
 
     /// Create (no interpreter features).
     #[cfg(not(feature = "interpreter"))]
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// With limits (interpreter only).
     #[cfg(feature = "interpreter")]
-    pub fn with_limits(limits: Limits) -> Self { Self { limits, ..Default::default() } }
+    pub fn with_limits(limits: Limits) -> Self {
+        Self { limits, ..Default::default() }
+    }
 
     /// Bind a named constant.
-    pub fn define_const<S: Into<String>>(&mut self, name: S, val: Value) { self.env.insert(name.into(), val); }
+    pub fn define_const<S: Into<String>>(&mut self, name: S, val: Value) {
+        self.env.insert(name.into(), val);
+    }
 
     #[cfg(feature = "interpreter")]
     fn charge(&mut self) -> Result<()> {
-        self.steps = self.steps.checked_add(1).ok_or_else(|| Error::Limit("steps overflow".into()))?;
-        if self.steps > self.limits.max_steps { return Err(Error::Limit("max steps".into())); }
+        self.steps =
+            self.steps.checked_add(1).ok_or_else(|| Error::Limit("steps overflow".into()))?;
+        if self.steps > self.limits.max_steps {
+            return Err(Error::Limit("max steps".into()));
+        }
         Ok(())
     }
 
     #[cfg(feature = "interpreter")]
     fn enter(&mut self) -> Result<()> {
-        if self.depth >= self.limits.max_depth { return Err(Error::Limit("max depth".into())); }
+        if self.depth >= self.limits.max_depth {
+            return Err(Error::Limit("max depth".into()));
+        }
         self.depth += 1;
         Ok(())
     }
 
     #[cfg(feature = "interpreter")]
-    fn leave(&mut self) { self.depth = self.depth.saturating_sub(1); }
+    fn leave(&mut self) {
+        self.depth = self.depth.saturating_sub(1);
+    }
 
     #[cfg(feature = "interpreter")]
-    fn get(&self, name: &str) -> Option<&Value> { self.env.get(name) }
+    fn get(&self, name: &str) -> Option<&Value> {
+        self.env.get(name)
+    }
 }
 
 /* ============================ Interpreter AST ============================ */
 
 /// Unary operators.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum UnOp { Not, NegI, NegF }
+pub enum UnOp {
+    Not,
+    NegI,
+    NegF,
+}
 
 /// Binary operators.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BinOp {
-    AddI, SubI, MulI, DivI, RemI,
-    AddU, SubU, MulU, DivU, RemU,
-    AddF, SubF, MulF, DivF,
-    Shl, LShr, AShr,
-    And, Or, Xor,
-    CmpEq, CmpNe, CmpLt, CmpLe, CmpGt, CmpGe,
+    AddI,
+    SubI,
+    MulI,
+    DivI,
+    RemI,
+    AddU,
+    SubU,
+    MulU,
+    DivU,
+    RemU,
+    AddF,
+    SubF,
+    MulF,
+    DivF,
+    Shl,
+    LShr,
+    AShr,
+    And,
+    Or,
+    Xor,
+    CmpEq,
+    CmpNe,
+    CmpLt,
+    CmpLe,
+    CmpGt,
+    CmpGe,
 }
 
 /// Intrinsic identifiers.
@@ -195,9 +236,12 @@ pub enum Intrinsic {
     /// abs(x: i64)->i64
     AbsI64,
     /// min/max on i64
-    MinI64, MaxI64,
+    MinI64,
+    MaxI64,
     /// popcount/ctlz/cttz on u64
-    CtpopU64, CtlzU64, CttzU64,
+    CtpopU64,
+    CtlzU64,
+    CttzU64,
     /// float ops (enabled when available)
     #[cfg(feature = "std")]
     SqrtF64,
@@ -240,18 +284,25 @@ pub fn eval_const_expr(cx: &mut Cx, e: &Expr) -> Result<Value> {
     cx.charge()?;
     match e {
         Expr::Lit(v) => Ok(v.clone()),
-        Expr::Var(name) => cx.get(name).cloned().ok_or_else(|| Error::Invalid(format!("unknown const `{name}`"))),
+        Expr::Var(name) => cx
+            .get(name)
+            .cloned()
+            .ok_or_else(|| Error::Invalid(format!("unknown const `{name}`"))),
         Expr::Let { name, rhs, body } => {
             let v = eval_const_expr(cx, rhs)?;
             let old = cx.env.insert(name.clone(), v);
             let out = eval_const_expr(cx, body)?;
-            if let Some(prev) = old { cx.env.insert(name.clone(), prev); } else { cx.env.remove(name); }
+            if let Some(prev) = old {
+                cx.env.insert(name.clone(), prev);
+            } else {
+                cx.env.remove(name);
+            }
             Ok(out)
-        }
+        },
         Expr::If { cond, then_, else_ } => {
             let c = eval_const_expr(cx, cond)?.as_bool()?;
             if c { eval_const_expr(cx, then_) } else { eval_const_expr(cx, else_) }
-        }
+        },
         Expr::Un { op, arg } => {
             let v = eval_const_expr(cx, arg)?;
             match (op, v) {
@@ -260,30 +311,38 @@ pub fn eval_const_expr(cx: &mut Cx, e: &Expr) -> Result<Value> {
                 (UnOp::NegF, Value::F64(f)) => Ok(Value::F64(-f)),
                 _ => Err(Error::Invalid("unop type mismatch".into())),
             }
-        }
+        },
         Expr::Bin { op, l, r } => {
             let a = eval_const_expr(cx, l)?;
             let b = eval_const_expr(cx, r)?;
             eval_bin(*op, a, b)
-        }
+        },
         Expr::Tup(xs) => {
             let mut out = Vec::with_capacity(xs.len());
-            for x in xs { out.push(eval_const_expr(cx, x)?); }
+            for x in xs {
+                out.push(eval_const_expr(cx, x)?);
+            }
             Ok(Value::Tuple(out))
-        }
+        },
         Expr::Arr(xs) => {
             let mut out = Vec::with_capacity(xs.len());
-            for x in xs { out.push(eval_const_expr(cx, x)?); }
+            for x in xs {
+                out.push(eval_const_expr(cx, x)?);
+            }
             Ok(Value::Array(out))
-        }
+        },
         Expr::Index { base, idx } => {
             let b = eval_const_expr(cx, base)?;
             match b {
-                Value::Array(v) => v.get(*idx).cloned().ok_or_else(|| Error::Invalid("index oob".into())),
-                Value::Tuple(v) => v.get(*idx).cloned().ok_or_else(|| Error::Invalid("index oob".into())),
+                Value::Array(v) => {
+                    v.get(*idx).cloned().ok_or_else(|| Error::Invalid("index oob".into()))
+                },
+                Value::Tuple(v) => {
+                    v.get(*idx).cloned().ok_or_else(|| Error::Invalid("index oob".into()))
+                },
                 _ => Err(Error::Invalid("index on non-aggregate".into())),
             }
-        }
+        },
         Expr::Intrin { which, args } => eval_intrinsic(cx, *which, args),
     }
 }
@@ -292,83 +351,95 @@ pub fn eval_const_expr(cx: &mut Cx, e: &Expr) -> Result<Value> {
 fn eval_bin(op: BinOp, a: Value, b: Value) -> Result<Value> {
     use BinOp::*;
     match op {
-        AddI => Ok(Value::I64(a.as_i64()? .wrapping_add(b.as_i64()?))),
-        SubI => Ok(Value::I64(a.as_i64()? .wrapping_sub(b.as_i64()?))),
-        MulI => Ok(Value::I64(a.as_i64()? .wrapping_mul(b.as_i64()?))),
+        AddI => Ok(Value::I64(a.as_i64()?.wrapping_add(b.as_i64()?))),
+        SubI => Ok(Value::I64(a.as_i64()?.wrapping_sub(b.as_i64()?))),
+        MulI => Ok(Value::I64(a.as_i64()?.wrapping_mul(b.as_i64()?))),
         DivI => {
             let x = a.as_i64()?;
             let y = b.as_i64()?;
-            if y == 0 { return Err(Error::UB("i64 div by zero".into())); }
+            if y == 0 {
+                return Err(Error::UB("i64 div by zero".into()));
+            }
             #[cfg(feature = "miri-like")]
-            if x == i64::MIN && y == -1 { return Err(Error::UB("i64 overflow on div".into())); }
+            if x == i64::MIN && y == -1 {
+                return Err(Error::UB("i64 overflow on div".into()));
+            }
             Ok(Value::I64(x / y))
-        }
+        },
         RemI => {
             let y = b.as_i64()?;
-            if y == 0 { return Err(Error::UB("i64 rem by zero".into())); }
+            if y == 0 {
+                return Err(Error::UB("i64 rem by zero".into()));
+            }
             Ok(Value::I64(a.as_i64()? % y))
-        }
-        AddU => Ok(Value::U64(a.as_u64()? .wrapping_add(b.as_u64()?))),
-        SubU => Ok(Value::U64(a.as_u64()? .wrapping_sub(b.as_u64()?))),
-        MulU => Ok(Value::U64(a.as_u64()? .wrapping_mul(b.as_u64()?))),
+        },
+        AddU => Ok(Value::U64(a.as_u64()?.wrapping_add(b.as_u64()?))),
+        SubU => Ok(Value::U64(a.as_u64()?.wrapping_sub(b.as_u64()?))),
+        MulU => Ok(Value::U64(a.as_u64()?.wrapping_mul(b.as_u64()?))),
         DivU => {
             let y = b.as_u64()?;
-            if y == 0 { return Err(Error::UB("u64 div by zero".into())); }
+            if y == 0 {
+                return Err(Error::UB("u64 div by zero".into()));
+            }
             Ok(Value::U64(a.as_u64()? / y))
-        }
+        },
         RemU => {
             let y = b.as_u64()?;
-            if y == 0 { return Err(Error::UB("u64 rem by zero".into())); }
+            if y == 0 {
+                return Err(Error::UB("u64 rem by zero".into()));
+            }
             Ok(Value::U64(a.as_u64()? % y))
-        }
+        },
         AddF => Ok(Value::F64(a.as_f64()? + b.as_f64()?)),
         SubF => Ok(Value::F64(a.as_f64()? - b.as_f64()?)),
         MulF => Ok(Value::F64(a.as_f64()? * b.as_f64()?)),
         DivF => {
             let y = b.as_f64()?;
             #[cfg(feature = "miri-like")]
-            if y == 0.0 { return Err(Error::UB("f64 div by zero".into())); }
+            if y == 0.0 {
+                return Err(Error::UB("f64 div by zero".into()));
+            }
             Ok(Value::F64(a.as_f64()? / y))
-        }
+        },
         Shl => {
             let x = a.as_u64()?;
             let s = b.as_u64()?;
-            if s >= 64 { return Err(Error::UB("shift >= 64".into())); }
+            if s >= 64 {
+                return Err(Error::UB("shift >= 64".into()));
+            }
             Ok(Value::U64(x.wrapping_shl(s as u32)))
-        }
+        },
         LShr => {
             let x = a.as_u64()?;
             let s = b.as_u64()?;
-            if s >= 64 { return Err(Error::UB("shift >= 64".into())); }
+            if s >= 64 {
+                return Err(Error::UB("shift >= 64".into()));
+            }
             Ok(Value::U64(x.wrapping_shr(s as u32)))
-        }
+        },
         AShr => {
             let x = a.as_i64()?;
             let s = b.as_u64()?;
-            if s >= 64 { return Err(Error::UB("shift >= 64".into())); }
+            if s >= 64 {
+                return Err(Error::UB("shift >= 64".into()));
+            }
             Ok(Value::I64((x as i64) >> (s as u32)))
-        }
-        And => {
-            match (a, b) {
-                (Value::U64(x), Value::U64(y)) => Ok(Value::U64(x & y)),
-                (Value::Bool(x), Value::Bool(y)) => Ok(Value::Bool(x & y)),
-                _ => Err(Error::Invalid("and types".into())),
-            }
-        }
-        Or => {
-            match (a, b) {
-                (Value::U64(x), Value::U64(y)) => Ok(Value::U64(x | y)),
-                (Value::Bool(x), Value::Bool(y)) => Ok(Value::Bool(x | y)),
-                _ => Err(Error::Invalid("or types".into())),
-            }
-        }
-        Xor => {
-            match (a, b) {
-                (Value::U64(x), Value::U64(y)) => Ok(Value::U64(x ^ y)),
-                (Value::Bool(x), Value::Bool(y)) => Ok(Value::Bool(x ^ y)),
-                _ => Err(Error::Invalid("xor types".into())),
-            }
-        }
+        },
+        And => match (a, b) {
+            (Value::U64(x), Value::U64(y)) => Ok(Value::U64(x & y)),
+            (Value::Bool(x), Value::Bool(y)) => Ok(Value::Bool(x & y)),
+            _ => Err(Error::Invalid("and types".into())),
+        },
+        Or => match (a, b) {
+            (Value::U64(x), Value::U64(y)) => Ok(Value::U64(x | y)),
+            (Value::Bool(x), Value::Bool(y)) => Ok(Value::Bool(x | y)),
+            _ => Err(Error::Invalid("or types".into())),
+        },
+        Xor => match (a, b) {
+            (Value::U64(x), Value::U64(y)) => Ok(Value::U64(x ^ y)),
+            (Value::Bool(x), Value::Bool(y)) => Ok(Value::Bool(x ^ y)),
+            _ => Err(Error::Invalid("xor types".into())),
+        },
         CmpEq | CmpNe | CmpLt | CmpLe | CmpGt | CmpGe => cmp_bin(op, a, b),
     }
 }
@@ -389,7 +460,7 @@ fn cmp_bin(op: BinOp, a: Value, b: Value) -> Result<Value> {
                 CmpGe => ord != Ordering::Less,
                 _ => return Err(Error::Invalid("cmp op".into())),
             })
-        }
+        },
         (Value::U64(x), Value::U64(y)) => {
             let ord = x.cmp(&y);
             boolv(match op {
@@ -401,11 +472,15 @@ fn cmp_bin(op: BinOp, a: Value, b: Value) -> Result<Value> {
                 CmpGe => ord != Ordering::Less,
                 _ => return Err(Error::Invalid("cmp op".into())),
             })
-        }
+        },
         (Value::F64(x), Value::F64(y)) => {
             #[cfg(feature = "miri-like")]
-            if x.is_nan() || y.is_nan() { return Err(Error::UB("f64 cmp with NaN".into())); }
-            let ord = x.partial_cmp(&y).ok_or_else(|| Error::Invalid("f64 unordered compare".into()))?;
+            if x.is_nan() || y.is_nan() {
+                return Err(Error::UB("f64 cmp with NaN".into()));
+            }
+            let ord = x
+                .partial_cmp(&y)
+                .ok_or_else(|| Error::Invalid("f64 unordered compare".into()))?;
             boolv(match op {
                 CmpEq => ord == Ordering::Equal,
                 CmpNe => ord != Ordering::Equal,
@@ -415,7 +490,7 @@ fn cmp_bin(op: BinOp, a: Value, b: Value) -> Result<Value> {
                 CmpGe => ord != Ordering::Less,
                 _ => return Err(Error::Invalid("cmp op".into())),
             })
-        }
+        },
         (Value::Bool(x), Value::Bool(y)) => {
             let ord = (x as u8).cmp(&(y as u8));
             boolv(match op {
@@ -427,7 +502,7 @@ fn cmp_bin(op: BinOp, a: Value, b: Value) -> Result<Value> {
                 CmpGe => ord != Ordering::Less,
                 _ => return Err(Error::Invalid("cmp op".into())),
             })
-        }
+        },
         _ => Err(Error::Invalid("cmp type mismatch".into())),
     }
 }
@@ -437,7 +512,9 @@ struct ScopeGuard<'a>(&'a mut u32);
 
 #[cfg(feature = "interpreter")]
 impl Drop for ScopeGuard<'_> {
-    fn drop(&mut self) { *self.0 = self.0.saturating_sub(1); }
+    fn drop(&mut self) {
+        *self.0 = self.0.saturating_sub(1);
+    }
 }
 
 #[cfg(feature = "interpreter")]
@@ -448,46 +525,48 @@ fn eval_intrinsic(cx: &mut Cx, which: Intrinsic, args: &[Expr]) -> Result<Value>
         Intrinsic::AbsI64 => {
             let x = eval1(0)?.as_i64()?;
             Value::I64(x.wrapping_abs())
-        }
+        },
         Intrinsic::MinI64 => {
             let a = eval1(0)?.as_i64()?;
             let b = eval1(1)?.as_i64()?;
             Value::I64(core::cmp::min(a, b))
-        }
+        },
         Intrinsic::MaxI64 => {
             let a = eval1(0)?.as_i64()?;
             let b = eval1(1)?.as_i64()?;
             Value::I64(core::cmp::max(a, b))
-        }
+        },
         Intrinsic::CtpopU64 => {
             let x = eval1(0)?.as_u64()?;
             Value::U64(x.count_ones() as u64)
-        }
+        },
         Intrinsic::CtlzU64 => {
             let x = eval1(0)?.as_u64()?;
             Value::U64(x.leading_zeros() as u64)
-        }
+        },
         Intrinsic::CttzU64 => {
             let x = eval1(0)?.as_u64()?;
             Value::U64(x.trailing_zeros() as u64)
-        }
+        },
         #[cfg(feature = "std")]
         Intrinsic::SqrtF64 => {
             let x = eval1(0)?.as_f64()?;
             #[cfg(feature = "miri-like")]
-            if x < 0.0 { return Err(Error::UB("sqrt of negative".into())); }
+            if x < 0.0 {
+                return Err(Error::UB("sqrt of negative".into()));
+            }
             Value::F64(x.sqrt())
-        }
+        },
         #[cfg(feature = "std")]
         Intrinsic::SinF64 => {
             let x = eval1(0)?.as_f64()?;
             Value::F64(x.sin())
-        }
+        },
         #[cfg(feature = "std")]
         Intrinsic::CosF64 => {
             let x = eval1(0)?.as_f64()?;
             Value::F64(x.cos())
-        }
+        },
     })
 }
 
@@ -527,7 +606,9 @@ pub struct Func {
 #[cfg(feature = "fold")]
 impl Func {
     /// Allocate a new id (monotonic). Caller keeps the counter.
-    pub fn next_id(&self) -> V { V(self.body.len() as u32 + 1) }
+    pub fn next_id(&self) -> V {
+        V(self.body.len() as u32 + 1)
+    }
 }
 
 /// Folding result: mapping of constants and rewritten body.
@@ -552,7 +633,7 @@ pub fn fold_ir(f: &Func) -> FoldResult {
             Const { dst, k } => {
                 const_of.insert(*dst, k.clone());
                 out.push(insn.clone());
-            }
+            },
             Un { dst, op, a } => {
                 if let Some(va) = const_of.get(a).cloned() {
                     // interpret
@@ -569,7 +650,7 @@ pub fn fold_ir(f: &Func) -> FoldResult {
                     }
                 }
                 out.push(insn.clone());
-            }
+            },
             Bin { dst, op, a, b } => {
                 let av = const_of.get(a).cloned();
                 let bv = const_of.get(b).cloned();
@@ -582,17 +663,57 @@ pub fn fold_ir(f: &Func) -> FoldResult {
                 }
                 // algebraic identities
                 match (op, av.as_ref(), bv.as_ref()) {
-                    (BinOp::AddI, Some(Value::I64(0)), _) => { const_of.remove(dst); out.push(Bin { dst:*dst, op:*op, a:*b, b:*a }); }
-                    (BinOp::AddI, _, Some(Value::I64(0))) => { if let Some(v) = av.clone() { const_of.insert(*dst, v.clone()); out.push(Const { dst:*dst, k: v }); } else { out.push(insn.clone()); } }
-                    (BinOp::AddU, Some(Value::U64(0)), _) => { const_of.remove(dst); out.push(Bin { dst:*dst, op:*op, a:*b, b:*a }); }
-                    (BinOp::AddU, _, Some(Value::U64(0))) => { if let Some(v) = av.clone() { const_of.insert(*dst, v.clone()); out.push(Const{dst:*dst,k:v}); } else { out.push(insn.clone()); } }
-                    (BinOp::MulI, Some(Value::I64(1)), _) | (BinOp::MulU, Some(Value::U64(1)), _) => { const_of.remove(dst); out.push(Bin { dst:*dst, op:*op, a:*b, b:*a }); }
-                    (BinOp::MulI, _, Some(Value::I64(1))) | (BinOp::MulU, _, Some(Value::U64(1))) => { if let Some(v) = av.clone() { const_of.insert(*dst, v.clone()); out.push(Const{dst:*dst,k:v}); } else { out.push(insn.clone()); } }
-                    (BinOp::MulI, Some(Value::I64(0)), _) | (BinOp::MulI, _, Some(Value::I64(0))) => { const_of.insert(*dst, Value::I64(0)); out.push(Const{dst:*dst, k:Value::I64(0)}); }
-                    (BinOp::MulU, Some(Value::U64(0)), _) | (BinOp::MulU, _, Some(Value::U64(0))) => { const_of.insert(*dst, Value::U64(0)); out.push(Const{dst:*dst, k:Value::U64(0)}); }
+                    (BinOp::AddI, Some(Value::I64(0)), _) => {
+                        const_of.remove(dst);
+                        out.push(Bin { dst: *dst, op: *op, a: *b, b: *a });
+                    },
+                    (BinOp::AddI, _, Some(Value::I64(0))) => {
+                        if let Some(v) = av.clone() {
+                            const_of.insert(*dst, v.clone());
+                            out.push(Const { dst: *dst, k: v });
+                        } else {
+                            out.push(insn.clone());
+                        }
+                    },
+                    (BinOp::AddU, Some(Value::U64(0)), _) => {
+                        const_of.remove(dst);
+                        out.push(Bin { dst: *dst, op: *op, a: *b, b: *a });
+                    },
+                    (BinOp::AddU, _, Some(Value::U64(0))) => {
+                        if let Some(v) = av.clone() {
+                            const_of.insert(*dst, v.clone());
+                            out.push(Const { dst: *dst, k: v });
+                        } else {
+                            out.push(insn.clone());
+                        }
+                    },
+                    (BinOp::MulI, Some(Value::I64(1)), _)
+                    | (BinOp::MulU, Some(Value::U64(1)), _) => {
+                        const_of.remove(dst);
+                        out.push(Bin { dst: *dst, op: *op, a: *b, b: *a });
+                    },
+                    (BinOp::MulI, _, Some(Value::I64(1)))
+                    | (BinOp::MulU, _, Some(Value::U64(1))) => {
+                        if let Some(v) = av.clone() {
+                            const_of.insert(*dst, v.clone());
+                            out.push(Const { dst: *dst, k: v });
+                        } else {
+                            out.push(insn.clone());
+                        }
+                    },
+                    (BinOp::MulI, Some(Value::I64(0)), _)
+                    | (BinOp::MulI, _, Some(Value::I64(0))) => {
+                        const_of.insert(*dst, Value::I64(0));
+                        out.push(Const { dst: *dst, k: Value::I64(0) });
+                    },
+                    (BinOp::MulU, Some(Value::U64(0)), _)
+                    | (BinOp::MulU, _, Some(Value::U64(0))) => {
+                        const_of.insert(*dst, Value::U64(0));
+                        out.push(Const { dst: *dst, k: Value::U64(0) });
+                    },
                     _ => out.push(insn.clone()),
                 }
-            }
+            },
             Select { dst, c, t, f: e } => {
                 match const_of.get(c) {
                     Some(Value::Bool(true)) => {
@@ -604,7 +725,7 @@ pub fn fold_ir(f: &Func) -> FoldResult {
                             out.push(Keep(*t));
                             const_of.remove(dst);
                         }
-                    }
+                    },
                     Some(Value::Bool(false)) => {
                         if let Some(ev) = const_of.get(e).cloned() {
                             const_of.insert(*dst, ev.clone());
@@ -613,19 +734,22 @@ pub fn fold_ir(f: &Func) -> FoldResult {
                             out.push(Keep(*e));
                             const_of.remove(dst);
                         }
-                    }
+                    },
                     _ => {
                         out.push(insn.clone());
-                    }
+                    },
                 }
-            }
-            Keep(v) => { let _ = v; out.push(insn.clone()); }
+            },
+            Keep(v) => {
+                let _ = v;
+                out.push(insn.clone());
+            },
             Ret(v) => {
                 if let Some(k) = const_of.get(v).cloned() {
                     out.push(Const { dst: *v, k: k.clone() });
                 }
                 out.push(Ret(*v));
-            }
+            },
         }
     }
 
@@ -645,9 +769,19 @@ mod tests {
         cx.define_const("a", Value::I64(7));
         cx.define_const("b", Value::I64(2));
         let e = Expr::If {
-            cond: Box::new(Expr::Bin { op: BinOp::CmpGt, l: Box::new(Expr::Var("a".into())), r: Box::new(Expr::Var("b".into())) }),
-            then_: Box::new(Expr::Intrin { which: Intrinsic::MinI64, args: vec![Expr::Var("a".into()), Expr::Var("b".into())]}),
-            else_: Box::new(Expr::Intrin { which: Intrinsic::MaxI64, args: vec![Expr::Var("a".into()), Expr::Var("b".into())]}),
+            cond: Box::new(Expr::Bin {
+                op: BinOp::CmpGt,
+                l: Box::new(Expr::Var("a".into())),
+                r: Box::new(Expr::Var("b".into())),
+            }),
+            then_: Box::new(Expr::Intrin {
+                which: Intrinsic::MinI64,
+                args: vec![Expr::Var("a".into()), Expr::Var("b".into())],
+            }),
+            else_: Box::new(Expr::Intrin {
+                which: Intrinsic::MaxI64,
+                args: vec![Expr::Var("a".into()), Expr::Var("b".into())],
+            }),
         };
         let v = eval_const_expr(&mut cx, &e).unwrap();
         assert_eq!(v, Value::I64(2));
@@ -658,7 +792,10 @@ mod tests {
     fn fold_linear() {
         use BinOp::*;
         use Inst::*;
-        let v0 = V(0); let v1 = V(1); let v2 = V(2); let v3 = V(3);
+        let v0 = V(0);
+        let v1 = V(1);
+        let v2 = V(2);
+        let v3 = V(3);
         let f = Func {
             body: vec![
                 Const { dst: v0, k: Value::I64(40) },
@@ -669,7 +806,10 @@ mod tests {
         };
         let fr = fold_ir(&f);
         let last = fr.body.last().unwrap();
-        match last { Ret(v) => assert_eq!(*v, v2), _ => panic!("ret expected") }
+        match last {
+            Ret(v) => assert_eq!(*v, v2),
+            _ => panic!("ret expected"),
+        }
         // Ensure constant propagated
         assert_eq!(fr.const_of.get(&v2), Some(&Value::I64(42)));
     }
@@ -687,7 +827,11 @@ mod tests {
     #[test]
     fn guard_div_zero() {
         let mut cx = Cx::new();
-        let e = Expr::Bin { op: BinOp::DivI, l: Box::new(Expr::Lit(Value::I64(1))), r: Box::new(Expr::Lit(Value::I64(0))) };
+        let e = Expr::Bin {
+            op: BinOp::DivI,
+            l: Box::new(Expr::Lit(Value::I64(1))),
+            r: Box::new(Expr::Lit(Value::I64(0))),
+        };
         let err = eval_const_expr(&mut cx, &e).unwrap_err();
         matches!(err, Error::UB(_));
     }

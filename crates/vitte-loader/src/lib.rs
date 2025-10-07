@@ -1,7 +1,7 @@
 //! Simple dynamic loader wrapper for libloading.
 
-use std::path::Path;
 use libloading::{Library, Symbol};
+use std::path::Path;
 
 /// Errors that can occur while loading a library or resolving a symbol.
 #[derive(Debug)]
@@ -30,9 +30,7 @@ impl Loader {
     /// # Safety
     /// The caller must ensure the requested `T` matches the real symbol type.
     pub unsafe fn get<T>(&self, name: &str) -> Result<Symbol<'_, T>, LoaderError> {
-        self.lib
-            .get::<T>(name.as_bytes())
-            .map_err(LoaderError::Symbol)
+        self.lib.get::<T>(name.as_bytes()).map_err(LoaderError::Symbol)
     }
 
     /// Try to resolve several symbols at once. Returns on first error.
@@ -59,14 +57,14 @@ impl Loader {
                 Ok(sym) => {
                     ptr::write(out_ptr.add(i), sym);
                     written += 1;
-                }
+                },
                 Err(e) => {
                     // Manual drop of already written elements
                     for j in 0..written {
                         ptr::drop_in_place(out_ptr.add(j));
                     }
                     return Err(e);
-                }
+                },
             }
         }
 

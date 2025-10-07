@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-remote-cache — cache distant pour Vitte
 //!
@@ -23,16 +21,16 @@
 //! # Ok(()) }
 //! ```
 
-use thiserror::Error;
-use sha2::{Sha256, Digest};
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use bytes::Bytes;
+use sha2::{Digest, Sha256};
+use thiserror::Error;
 
 #[cfg(feature = "http")]
 use reqwest::Client;
 
 #[cfg(feature = "zstd")]
-use zstd::stream::{encode_all, decode_all};
+use zstd::stream::{decode_all, encode_all};
 
 /// Erreurs du cache distant.
 #[derive(Debug, Error)]
@@ -79,7 +77,9 @@ fn maybe_compress(data: &[u8]) -> Result<Vec<u8>> {
         return Ok(v);
     }
     #[cfg(not(feature = "zstd"))]
-    { Ok(data.to_vec()) }
+    {
+        Ok(data.to_vec())
+    }
 }
 
 /// Décompression optionnelle.
@@ -90,7 +90,9 @@ fn maybe_decompress(data: &[u8]) -> Result<Vec<u8>> {
         return Ok(v);
     }
     #[cfg(not(feature = "zstd"))]
-    { Ok(data.to_vec()) }
+    {
+        Ok(data.to_vec())
+    }
 }
 
 /// Backend de cache distant.
@@ -148,7 +150,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[cfg(feature="http")]
+    #[cfg(feature = "http")]
     async fn http_backend_put_get() {
         use httpmock::MockServer;
         let server = MockServer::start();

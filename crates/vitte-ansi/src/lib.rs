@@ -24,7 +24,7 @@ pub mod esc {
     pub const ESC: &str = "\x1b";
     pub const CSI: &str = "\x1b[";
     pub const OSC: &str = "\x1b]";
-    pub const ST:  &str = "\x1b\\";
+    pub const ST: &str = "\x1b\\";
     pub const BEL: &str = "\x07";
 
     /// Construit une séquence CSI: `CSI <args> <final>`.
@@ -53,8 +53,22 @@ extern crate alloc;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
 pub enum BasicColor {
-    Black, Red, Green, Yellow, Blue, Magenta, Cyan, White,
-    BrightBlack, BrightRed, BrightGreen, BrightYellow, BrightBlue, BrightMagenta, BrightCyan, BrightWhite,
+    Black,
+    Red,
+    Green,
+    Yellow,
+    Blue,
+    Magenta,
+    Cyan,
+    White,
+    BrightBlack,
+    BrightRed,
+    BrightGreen,
+    BrightYellow,
+    BrightBlue,
+    BrightMagenta,
+    BrightCyan,
+    BrightWhite,
 }
 
 /// Couleur générique.
@@ -66,9 +80,18 @@ pub enum Color {
 }
 
 impl Color {
-    #[inline] pub fn basic(c: BasicColor) -> Self { Self::Basic(c) }
-    #[inline] pub fn ansi256(n: u8) -> Self { Self::Ansi256(n) }
-    #[inline] pub fn rgb(r: u8, g: u8, b: u8) -> Self { Self::Rgb(r, g, b) }
+    #[inline]
+    pub fn basic(c: BasicColor) -> Self {
+        Self::Basic(c)
+    }
+    #[inline]
+    pub fn ansi256(n: u8) -> Self {
+        Self::Ansi256(n)
+    }
+    #[inline]
+    pub fn rgb(r: u8, g: u8, b: u8) -> Self {
+        Self::Rgb(r, g, b)
+    }
 }
 
 /// Style SGR complet.
@@ -87,61 +110,148 @@ pub struct Style {
 }
 
 impl Style {
-    #[inline] pub const fn new() -> Self { Self {
-        bold:false, dim:false, italic:false, underline:false, blink:false,
-        inverse:false, hidden:false, strike:false, fg:None, bg:None
-    }}
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            bold: false,
+            dim: false,
+            italic: false,
+            underline: false,
+            blink: false,
+            inverse: false,
+            hidden: false,
+            strike: false,
+            fg: None,
+            bg: None,
+        }
+    }
 
     // Flags
-    pub fn bold(mut self) -> Self { self.bold = true; self }
-    pub fn dim(mut self) -> Self { self.dim = true; self }
-    pub fn italic(mut self) -> Self { self.italic = true; self }
-    pub fn underline(mut self) -> Self { self.underline = true; self }
-    pub fn blink(mut self) -> Self { self.blink = true; self }
-    pub fn inverse(mut self) -> Self { self.inverse = true; self }
-    pub fn hidden(mut self) -> Self { self.hidden = true; self }
-    pub fn strike(mut self) -> Self { self.strike = true; self }
+    pub fn bold(mut self) -> Self {
+        self.bold = true;
+        self
+    }
+    pub fn dim(mut self) -> Self {
+        self.dim = true;
+        self
+    }
+    pub fn italic(mut self) -> Self {
+        self.italic = true;
+        self
+    }
+    pub fn underline(mut self) -> Self {
+        self.underline = true;
+        self
+    }
+    pub fn blink(mut self) -> Self {
+        self.blink = true;
+        self
+    }
+    pub fn inverse(mut self) -> Self {
+        self.inverse = true;
+        self
+    }
+    pub fn hidden(mut self) -> Self {
+        self.hidden = true;
+        self
+    }
+    pub fn strike(mut self) -> Self {
+        self.strike = true;
+        self
+    }
 
     // Couleurs
-    pub fn fg(mut self, c: Color) -> Self { self.fg = Some(c); self }
-    pub fn bg(mut self, c: Color) -> Self { self.bg = Some(c); self }
-    pub fn fgbasic(self, c: BasicColor) -> Self { self.fg(Color::basic(c)) }
-    pub fn fgn8(self, n: u8) -> Self { self.fg(Color::ansi256(n)) }
-    pub fn fgrgb(self, r:u8,g:u8,b:u8) -> Self { self.fg(Color::rgb(r,g,b)) }
-    pub fn bgbasic(self, c: BasicColor) -> Self { self.bg(Color::basic(c)) }
-    pub fn bgn8(self, n: u8) -> Self { self.bg(Color::ansi256(n)) }
-    pub fn bgrgb(self, r:u8,g:u8,b:u8) -> Self { self.bg(Color::rgb(r,g,b)) }
+    pub fn fg(mut self, c: Color) -> Self {
+        self.fg = Some(c);
+        self
+    }
+    pub fn bg(mut self, c: Color) -> Self {
+        self.bg = Some(c);
+        self
+    }
+    pub fn fgbasic(self, c: BasicColor) -> Self {
+        self.fg(Color::basic(c))
+    }
+    pub fn fgn8(self, n: u8) -> Self {
+        self.fg(Color::ansi256(n))
+    }
+    pub fn fgrgb(self, r: u8, g: u8, b: u8) -> Self {
+        self.fg(Color::rgb(r, g, b))
+    }
+    pub fn bgbasic(self, c: BasicColor) -> Self {
+        self.bg(Color::basic(c))
+    }
+    pub fn bgn8(self, n: u8) -> Self {
+        self.bg(Color::ansi256(n))
+    }
+    pub fn bgrgb(self, r: u8, g: u8, b: u8) -> Self {
+        self.bg(Color::rgb(r, g, b))
+    }
 
     /// Génère la séquence SGR d’activation.
     pub fn prefix(&self) -> alloc::string::String {
         use BasicColor::*;
         let mut params: alloc::vec::Vec<alloc::string::String> = alloc::vec::Vec::with_capacity(8);
-        if self.bold      { params.push("1".into()); }
-        if self.dim       { params.push("2".into()); }
-        if self.italic    { params.push("3".into()); }
-        if self.underline { params.push("4".into()); }
-        if self.blink     { params.push("5".into()); }
-        if self.inverse   { params.push("7".into()); }
-        if self.hidden    { params.push("8".into()); }
-        if self.strike    { params.push("9".into()); }
+        if self.bold {
+            params.push("1".into());
+        }
+        if self.dim {
+            params.push("2".into());
+        }
+        if self.italic {
+            params.push("3".into());
+        }
+        if self.underline {
+            params.push("4".into());
+        }
+        if self.blink {
+            params.push("5".into());
+        }
+        if self.inverse {
+            params.push("7".into());
+        }
+        if self.hidden {
+            params.push("8".into());
+        }
+        if self.strike {
+            params.push("9".into());
+        }
 
         if let Some(fg) = self.fg {
             match fg {
                 Color::Basic(c) => {
                     let code = match c {
-                        Black=>30, Red=>31, Green=>32, Yellow=>33, Blue=>34, Magenta=>35, Cyan=>36, White=>37,
-                        BrightBlack=>90, BrightRed=>91, BrightGreen=>92, BrightYellow=>93,
-                        BrightBlue=>94, BrightMagenta=>95, BrightCyan=>96, BrightWhite=>97
+                        Black => 30,
+                        Red => 31,
+                        Green => 32,
+                        Yellow => 33,
+                        Blue => 34,
+                        Magenta => 35,
+                        Cyan => 36,
+                        White => 37,
+                        BrightBlack => 90,
+                        BrightRed => 91,
+                        BrightGreen => 92,
+                        BrightYellow => 93,
+                        BrightBlue => 94,
+                        BrightMagenta => 95,
+                        BrightCyan => 96,
+                        BrightWhite => 97,
                     };
                     params.push(code.to_string());
-                }
+                },
                 Color::Ansi256(n) => {
-                    params.push("38".into()); params.push("5".into()); params.push(n.to_string());
-                }
-                Color::Rgb(r,g,b) => {
-                    params.push("38".into()); params.push("2".into());
-                    params.push(r.to_string()); params.push(g.to_string()); params.push(b.to_string());
-                }
+                    params.push("38".into());
+                    params.push("5".into());
+                    params.push(n.to_string());
+                },
+                Color::Rgb(r, g, b) => {
+                    params.push("38".into());
+                    params.push("2".into());
+                    params.push(r.to_string());
+                    params.push(g.to_string());
+                    params.push(b.to_string());
+                },
             }
         }
 
@@ -149,19 +259,37 @@ impl Style {
             match bg {
                 Color::Basic(c) => {
                     let base = match c {
-                        Black=>40, Red=>41, Green=>42, Yellow=>43, Blue=>44, Magenta=>45, Cyan=>46, White=>47,
-                        BrightBlack=>100, BrightRed=>101, BrightGreen=>102, BrightYellow=>103,
-                        BrightBlue=>104, BrightMagenta=>105, BrightCyan=>106, BrightWhite=>107
+                        Black => 40,
+                        Red => 41,
+                        Green => 42,
+                        Yellow => 43,
+                        Blue => 44,
+                        Magenta => 45,
+                        Cyan => 46,
+                        White => 47,
+                        BrightBlack => 100,
+                        BrightRed => 101,
+                        BrightGreen => 102,
+                        BrightYellow => 103,
+                        BrightBlue => 104,
+                        BrightMagenta => 105,
+                        BrightCyan => 106,
+                        BrightWhite => 107,
                     };
                     params.push(base.to_string());
-                }
+                },
                 Color::Ansi256(n) => {
-                    params.push("48".into()); params.push("5".into()); params.push(n.to_string());
-                }
-                Color::Rgb(r,g,b) => {
-                    params.push("48".into()); params.push("2".into());
-                    params.push(r.to_string()); params.push(g.to_string()); params.push(b.to_string());
-                }
+                    params.push("48".into());
+                    params.push("5".into());
+                    params.push(n.to_string());
+                },
+                Color::Rgb(r, g, b) => {
+                    params.push("48".into());
+                    params.push("2".into());
+                    params.push(r.to_string());
+                    params.push(g.to_string());
+                    params.push(b.to_string());
+                },
             }
         }
 
@@ -171,7 +299,9 @@ impl Style {
         let mut s = alloc::string::String::new();
         s.push_str(esc::CSI);
         for (i, p) in params.iter().enumerate() {
-            if i > 0 { s.push(';'); }
+            if i > 0 {
+                s.push(';');
+            }
             s.push_str(p);
         }
         s.push('m');
@@ -180,7 +310,9 @@ impl Style {
 
     /// Séquence de reset (SGR 0).
     #[inline]
-    pub fn suffix(&self) -> &'static str { "\x1b[0m" }
+    pub fn suffix(&self) -> &'static str {
+        "\x1b[0m"
+    }
 
     /// Applique le style à un texte.
     pub fn paint<'a>(&self, text: impl Into<alloc::borrow::Cow<'a, str>>) -> alloc::string::String {
@@ -195,63 +327,164 @@ impl Style {
 
 /// Raccourci direct.
 #[inline]
-pub fn paint<'a>(text: impl Into<alloc::borrow::Cow<'a, str>>, style: Style) -> alloc::string::String {
+pub fn paint<'a>(
+    text: impl Into<alloc::borrow::Cow<'a, str>>,
+    style: Style,
+) -> alloc::string::String {
     style.paint(text)
 }
 
 /// Préréglages de styles courants.
 pub mod styles {
-    use super::{Style, BasicColor, Color};
-    #[inline] pub fn reset() -> &'static str { "\x1b[0m" }
-    #[inline] pub fn bold() -> &'static str { "\x1b[1m" }
-    #[inline] pub fn dim() -> &'static str { "\x1b[2m" }
-    #[inline] pub fn italic() -> &'static str { "\x1b[3m" }
-    #[inline] pub fn underline() -> &'static str { "\x1b[4m" }
-    #[inline] pub fn blink() -> &'static str { "\x1b[5m" }
-    #[inline] pub fn inverse() -> &'static str { "\x1b[7m" }
-    #[inline] pub fn hidden() -> &'static str { "\x1b[8m" }
-    #[inline] pub fn strikethrough() -> &'static str { "\x1b[9m" }
+    use super::{BasicColor, Color, Style};
+    #[inline]
+    pub fn reset() -> &'static str {
+        "\x1b[0m"
+    }
+    #[inline]
+    pub fn bold() -> &'static str {
+        "\x1b[1m"
+    }
+    #[inline]
+    pub fn dim() -> &'static str {
+        "\x1b[2m"
+    }
+    #[inline]
+    pub fn italic() -> &'static str {
+        "\x1b[3m"
+    }
+    #[inline]
+    pub fn underline() -> &'static str {
+        "\x1b[4m"
+    }
+    #[inline]
+    pub fn blink() -> &'static str {
+        "\x1b[5m"
+    }
+    #[inline]
+    pub fn inverse() -> &'static str {
+        "\x1b[7m"
+    }
+    #[inline]
+    pub fn hidden() -> &'static str {
+        "\x1b[8m"
+    }
+    #[inline]
+    pub fn strikethrough() -> &'static str {
+        "\x1b[9m"
+    }
 
-    #[inline] pub fn fg(c: BasicColor) -> alloc::string::String { Style::new().fg(Color::Basic(c)).prefix() }
-    #[inline] pub fn bg(c: BasicColor) -> alloc::string::String { Style::new().bg(Color::Basic(c)).prefix() }
-    #[inline] pub fn fgn8(n:u8) -> alloc::string::String { Style::new().fgn8(n).prefix() }
-    #[inline] pub fn bgn8(n:u8) -> alloc::string::String { Style::new().bgn8(n).prefix() }
-    #[inline] pub fn fgrgb(r:u8,g:u8,b:u8)->alloc::string::String{ Style::new().fgrgb(r,g,b).prefix() }
-    #[inline] pub fn bgrgb(r:u8,g:u8,b:u8)->alloc::string::String{ Style::new().bgrgb(r,g,b).prefix() }
+    #[inline]
+    pub fn fg(c: BasicColor) -> alloc::string::String {
+        Style::new().fg(Color::Basic(c)).prefix()
+    }
+    #[inline]
+    pub fn bg(c: BasicColor) -> alloc::string::String {
+        Style::new().bg(Color::Basic(c)).prefix()
+    }
+    #[inline]
+    pub fn fgn8(n: u8) -> alloc::string::String {
+        Style::new().fgn8(n).prefix()
+    }
+    #[inline]
+    pub fn bgn8(n: u8) -> alloc::string::String {
+        Style::new().bgn8(n).prefix()
+    }
+    #[inline]
+    pub fn fgrgb(r: u8, g: u8, b: u8) -> alloc::string::String {
+        Style::new().fgrgb(r, g, b).prefix()
+    }
+    #[inline]
+    pub fn bgrgb(r: u8, g: u8, b: u8) -> alloc::string::String {
+        Style::new().bgrgb(r, g, b).prefix()
+    }
 }
 
 /// Contrôles curseur et effacements.
 pub mod cursor {
     use super::esc;
 
-    #[inline] pub fn up(n:u32)->alloc::string::String{ esc::csi(&n.to_string(),"A".chars().next().unwrap()) }
-    #[inline] pub fn down(n:u32)->alloc::string::String{ esc::csi(&n.to_string(),'B') }
-    #[inline] pub fn forward(n:u32)->alloc::string::String{ esc::csi(&n.to_string(),'C') }
-    #[inline] pub fn back(n:u32)->alloc::string::String{ esc::csi(&n.to_string(),'D') }
-    #[inline] pub fn next_line(n:u32)->alloc::string::String{ esc::csi(&n.to_string(),'E') }
-    #[inline] pub fn prev_line(n:u32)->alloc::string::String{ esc::csi(&n.to_string(),'F') }
-    #[inline] pub fn horiz_abs(col:u32)->alloc::string::String{ esc::csi(&col.to_string(),'G') }
-    #[inline] pub fn goto(row:u32,col:u32)->alloc::string::String{
-        let mut a = alloc::string::String::new(); use core::fmt::Write;
-        let _ = write!(&mut a, "{};{}", row, col);
-        esc::csi(&a,'H')
+    #[inline]
+    pub fn up(n: u32) -> alloc::string::String {
+        esc::csi(&n.to_string(), "A".chars().next().unwrap())
     }
-    #[inline] pub fn save()->&'static str{ "\x1b7" }       // DECSC
-    #[inline] pub fn restore()->&'static str{ "\x1b8" }    // DECRC
-    #[inline] pub fn show()->&'static str{ "\x1b[?25h" }
-    #[inline] pub fn hide()->&'static str{ "\x1b[?25l" }
+    #[inline]
+    pub fn down(n: u32) -> alloc::string::String {
+        esc::csi(&n.to_string(), 'B')
+    }
+    #[inline]
+    pub fn forward(n: u32) -> alloc::string::String {
+        esc::csi(&n.to_string(), 'C')
+    }
+    #[inline]
+    pub fn back(n: u32) -> alloc::string::String {
+        esc::csi(&n.to_string(), 'D')
+    }
+    #[inline]
+    pub fn next_line(n: u32) -> alloc::string::String {
+        esc::csi(&n.to_string(), 'E')
+    }
+    #[inline]
+    pub fn prev_line(n: u32) -> alloc::string::String {
+        esc::csi(&n.to_string(), 'F')
+    }
+    #[inline]
+    pub fn horiz_abs(col: u32) -> alloc::string::String {
+        esc::csi(&col.to_string(), 'G')
+    }
+    #[inline]
+    pub fn goto(row: u32, col: u32) -> alloc::string::String {
+        let mut a = alloc::string::String::new();
+        use core::fmt::Write;
+        let _ = write!(&mut a, "{};{}", row, col);
+        esc::csi(&a, 'H')
+    }
+    #[inline]
+    pub fn save() -> &'static str {
+        "\x1b7"
+    } // DECSC
+    #[inline]
+    pub fn restore() -> &'static str {
+        "\x1b8"
+    } // DECRC
+    #[inline]
+    pub fn show() -> &'static str {
+        "\x1b[?25h"
+    }
+    #[inline]
+    pub fn hide() -> &'static str {
+        "\x1b[?25l"
+    }
 }
 
 pub mod clear {
     use super::esc;
     /// 0 = du curseur à la fin, 1 = du début au curseur, 2 = écran entier, 3 = écran + scrollback.
-    #[inline] pub fn ed(mode:u8)->alloc::string::String{ esc::csi(&mode.to_string(),'J') }
+    #[inline]
+    pub fn ed(mode: u8) -> alloc::string::String {
+        esc::csi(&mode.to_string(), 'J')
+    }
     /// 0 = du curseur à fin de ligne, 1 = début→curseur, 2 = ligne entière.
-    #[inline] pub fn el(mode:u8)->alloc::string::String{ esc::csi(&mode.to_string(),'K') }
-    #[inline] pub fn screen()->alloc::string::String{ ed(2) }
-    #[inline] pub fn line()->alloc::string::String{ el(2) }
-    #[inline] pub fn scroll_up(n:u32)->alloc::string::String{ esc::csi(&n.to_string(),'S') }
-    #[inline] pub fn scroll_down(n:u32)->alloc::string::String{ esc::csi(&n.to_string(),'T') }
+    #[inline]
+    pub fn el(mode: u8) -> alloc::string::String {
+        esc::csi(&mode.to_string(), 'K')
+    }
+    #[inline]
+    pub fn screen() -> alloc::string::String {
+        ed(2)
+    }
+    #[inline]
+    pub fn line() -> alloc::string::String {
+        el(2)
+    }
+    #[inline]
+    pub fn scroll_up(n: u32) -> alloc::string::String {
+        esc::csi(&n.to_string(), 'S')
+    }
+    #[inline]
+    pub fn scroll_down(n: u32) -> alloc::string::String {
+        esc::csi(&n.to_string(), 'T')
+    }
 }
 
 /// OSC utilitaires (titre, hyperliens…).
@@ -297,7 +530,9 @@ pub mod detect {
 
     /// Truecolor/24-bit support.
     pub fn supports_truecolor() -> bool {
-        if no_color() { return false; }
+        if no_color() {
+            return false;
+        }
         let ok = std::env::var("COLORTERM").unwrap_or_default().to_lowercase();
         ok.contains("truecolor") || ok.contains("24bit")
     }
@@ -317,25 +552,31 @@ pub fn strip_ansi(input: &str) -> alloc::string::String {
                     chars.next();
                     // Consomme jusqu’à un byte final 0x40–0x7E
                     while let Some(c) = chars.next() {
-                        if ('@'..='~').contains(&c) { break; }
+                        if ('@'..='~').contains(&c) {
+                            break;
+                        }
                     }
-                }
+                },
                 Some(']') => {
                     // OSC: ESC ] ... BEL ou ST
                     chars.next();
                     // Consomme jusqu’à BEL (\x07) ou ST (ESC \)
                     let mut prev_esc = false;
                     while let Some(c) = chars.next() {
-                        if c == '\x07' { break; } // BEL
-                        if prev_esc && c == '\\' { break; } // ST
+                        if c == '\x07' {
+                            break;
+                        } // BEL
+                        if prev_esc && c == '\\' {
+                            break;
+                        } // ST
                         prev_esc = c == '\x1b';
                     }
-                }
+                },
                 Some(_) => {
                     // Autre séquence courte: ESC <char>, ESC 7/8, etc.
                     // On ignore le prochain char si présent.
                     let _ = chars.next();
-                }
+                },
                 None => break,
             }
         } else {
@@ -355,24 +596,72 @@ pub fn write_sgr(mut w: impl fmt::Write, style: &Style, text: &str) -> fmt::Resu
 
 /// Helpers de couleurs de base.
 pub mod basic {
-    use super::{BasicColor::*, Style, Color};
-    #[inline] pub fn black() -> Style { Style::new().fg(Color::basic(Black)) }
-    #[inline] pub fn red() -> Style { Style::new().fg(Color::basic(Red)) }
-    #[inline] pub fn green() -> Style { Style::new().fg(Color::basic(Green)) }
-    #[inline] pub fn yellow() -> Style { Style::new().fg(Color::basic(Yellow)) }
-    #[inline] pub fn blue() -> Style { Style::new().fg(Color::basic(Blue)) }
-    #[inline] pub fn magenta() -> Style { Style::new().fg(Color::basic(Magenta)) }
-    #[inline] pub fn cyan() -> Style { Style::new().fg(Color::basic(Cyan)) }
-    #[inline] pub fn white() -> Style { Style::new().fg(Color::basic(White)) }
+    use super::{BasicColor::*, Color, Style};
+    #[inline]
+    pub fn black() -> Style {
+        Style::new().fg(Color::basic(Black))
+    }
+    #[inline]
+    pub fn red() -> Style {
+        Style::new().fg(Color::basic(Red))
+    }
+    #[inline]
+    pub fn green() -> Style {
+        Style::new().fg(Color::basic(Green))
+    }
+    #[inline]
+    pub fn yellow() -> Style {
+        Style::new().fg(Color::basic(Yellow))
+    }
+    #[inline]
+    pub fn blue() -> Style {
+        Style::new().fg(Color::basic(Blue))
+    }
+    #[inline]
+    pub fn magenta() -> Style {
+        Style::new().fg(Color::basic(Magenta))
+    }
+    #[inline]
+    pub fn cyan() -> Style {
+        Style::new().fg(Color::basic(Cyan))
+    }
+    #[inline]
+    pub fn white() -> Style {
+        Style::new().fg(Color::basic(White))
+    }
 
-    #[inline] pub fn bright_black() -> Style { Style::new().fg(Color::basic(BrightBlack)) }
-    #[inline] pub fn bright_red() -> Style { Style::new().fg(Color::basic(BrightRed)) }
-    #[inline] pub fn bright_green() -> Style { Style::new().fg(Color::basic(BrightGreen)) }
-    #[inline] pub fn bright_yellow() -> Style { Style::new().fg(Color::basic(BrightYellow)) }
-    #[inline] pub fn bright_blue() -> Style { Style::new().fg(Color::basic(BrightBlue)) }
-    #[inline] pub fn bright_magenta() -> Style { Style::new().fg(Color::basic(BrightMagenta)) }
-    #[inline] pub fn bright_cyan() -> Style { Style::new().fg(Color::basic(BrightCyan)) }
-    #[inline] pub fn bright_white() -> Style { Style::new().fg(Color::basic(BrightWhite)) }
+    #[inline]
+    pub fn bright_black() -> Style {
+        Style::new().fg(Color::basic(BrightBlack))
+    }
+    #[inline]
+    pub fn bright_red() -> Style {
+        Style::new().fg(Color::basic(BrightRed))
+    }
+    #[inline]
+    pub fn bright_green() -> Style {
+        Style::new().fg(Color::basic(BrightGreen))
+    }
+    #[inline]
+    pub fn bright_yellow() -> Style {
+        Style::new().fg(Color::basic(BrightYellow))
+    }
+    #[inline]
+    pub fn bright_blue() -> Style {
+        Style::new().fg(Color::basic(BrightBlue))
+    }
+    #[inline]
+    pub fn bright_magenta() -> Style {
+        Style::new().fg(Color::basic(BrightMagenta))
+    }
+    #[inline]
+    pub fn bright_cyan() -> Style {
+        Style::new().fg(Color::basic(BrightCyan))
+    }
+    #[inline]
+    pub fn bright_white() -> Style {
+        Style::new().fg(Color::basic(BrightWhite))
+    }
 }
 
 /// API de composition: `paint!(style, "txt {} {}", a, b)`.
@@ -386,8 +675,8 @@ macro_rules! paintf {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::BasicColor::*;
+    use super::*;
 
     #[test]
     fn style_prefix_basic() {
@@ -396,13 +685,13 @@ mod tests {
         assert!(s.ends_with('m'));
         // ordre peut varier selon construction; vérifie présence
         assert!(s.contains("31")); // red
-        assert!(s.contains('1'));  // bold
-        assert!(s.contains('4'));  // underline
+        assert!(s.contains('1')); // bold
+        assert!(s.contains('4')); // underline
     }
 
     #[test]
     fn paint_and_strip() {
-        let styled = paint("X", Style::new().bold().fg(Color::rgb(1,2,3)));
+        let styled = paint("X", Style::new().bold().fg(Color::rgb(1, 2, 3)));
         assert!(styled.starts_with("\x1b["));
         assert!(styled.ends_with("\x1b[0m"));
         let plain = strip_ansi(&styled);
@@ -411,7 +700,7 @@ mod tests {
 
     #[test]
     fn cursor_codes() {
-        assert_eq!(cursor::goto(2,3), "\x1b[2;3H");
+        assert_eq!(cursor::goto(2, 3), "\x1b[2;3H");
         assert_eq!(cursor::up(5), "\x1b[5A");
         assert_eq!(cursor::hide(), "\x1b[?25l");
     }

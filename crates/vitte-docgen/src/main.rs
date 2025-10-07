@@ -1,5 +1,3 @@
-
-
 //! vitte-docgen — Documentation generator for Vitte projects
 //!
 //! Features:
@@ -19,13 +17,18 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use log::{info, warn};
 use std::fs;
-use std::path::PathBuf;
-use std::net::TcpListener;
 use std::io::Write;
+use std::net::TcpListener;
+use std::path::PathBuf;
 
 /// CLI for vitte-docgen.
 #[derive(Parser, Debug)]
-#[command(name = "vitte-docgen", version, about = "Vitte Documentation Generator", author = "Vitte Lang Project")]
+#[command(
+    name = "vitte-docgen",
+    version,
+    about = "Vitte Documentation Generator",
+    author = "Vitte Lang Project"
+)]
 struct Cli {
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -108,7 +111,10 @@ fn main() -> Result<()> {
 }
 
 fn cmd_build(args: &BuildArgs) -> Result<()> {
-    info!("Building documentation from {:?} to {:?} ({:?})", args.src, args.out, args.format);
+    info!(
+        "Building documentation from {:?} to {:?} ({:?})",
+        args.src, args.out, args.format
+    );
     fs::create_dir_all(&args.out).context("Failed to create output directory")?;
 
     let output_file = args.out.join(match args.format {
@@ -117,7 +123,9 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
     });
 
     let content = match args.format {
-        DocFormat::Html => "<html><body><h1>Vitte Docs</h1><p>Generated content...</p></body></html>".to_string(),
+        DocFormat::Html => {
+            "<html><body><h1>Vitte Docs</h1><p>Generated content...</p></body></html>".to_string()
+        },
         DocFormat::Markdown => "# Vitte Docs\n\nGenerated content...".to_string(),
     };
 
@@ -134,9 +142,10 @@ fn cmd_serve(args: &ServeArgs) -> Result<()> {
     for stream in listener.incoming() {
         match stream {
             Ok(mut s) => {
-                let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<h1>Vitte Docs Server</h1>";
+                let response =
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<h1>Vitte Docs Server</h1>";
                 s.write_all(response.as_bytes()).ok();
-            }
+            },
             Err(e) => warn!("Connection error: {}", e),
         }
     }

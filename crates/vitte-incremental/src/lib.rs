@@ -55,7 +55,9 @@ pub struct Engine;
 
 impl Engine {
     /// Creates a new engine.
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
     /// Adds a source file node (stub).
     pub fn add_source_file(&mut self, _path: &str) -> IncResult<NodeId> {

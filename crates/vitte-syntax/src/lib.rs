@@ -26,7 +26,7 @@
     clippy::match_same_arms
 )]
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::fmt;
 
 #[cfg(feature = "serde")]
@@ -77,9 +77,27 @@ impl fmt::Display for Error {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenKind {
     // punctuation
-    LParen, RParen, LBrace, RBrace, Comma, Colon, Semicolon, Arrow, Assign, Plus, Minus, Star, Slash,
+    LParen,
+    RParen,
+    LBrace,
+    RBrace,
+    Comma,
+    Colon,
+    Semicolon,
+    Arrow,
+    Assign,
+    Plus,
+    Minus,
+    Star,
+    Slash,
     // keywords
-    Fn, Let, If, Else, Return, True, False,
+    Fn,
+    Let,
+    If,
+    Else,
+    Return,
+    True,
+    False,
     // literals/idents
     Ident(String),
     Int(String),
@@ -104,13 +122,17 @@ impl<'a> Lexer<'a> {
         Self { src, bytes: src.as_bytes(), i: 0 }
     }
 
-    fn peek(&self) -> Option<u8> { self.bytes.get(self.i).copied() }
+    fn peek(&self) -> Option<u8> {
+        self.bytes.get(self.i).copied()
+    }
     fn bump(&mut self) -> Option<u8> {
         let b = self.peek()?;
         self.i += 1;
         Some(b)
     }
-    fn span_from(&self, start: usize) -> Span { Span::new(start, self.i) }
+    fn span_from(&self, start: usize) -> Span {
+        Span::new(start, self.i)
+    }
 
     fn eat_while<F: Fn(u8) -> bool>(&mut self, f: F) {
         while let Some(b) = self.peek() {
@@ -136,9 +158,13 @@ impl<'a> Lexer<'a> {
                 {
                     self.i += 1;
                 }
-                if self.i + 1 < self.bytes.len() { self.i += 2; }
+                if self.i + 1 < self.bytes.len() {
+                    self.i += 2;
+                }
             }
-            if self.i == before { break; }
+            if self.i == before {
+                break;
+            }
         }
     }
 
@@ -160,16 +186,26 @@ impl<'a> Lexer<'a> {
 
     fn number(&mut self, start: usize) -> Token {
         self.eat_while(|b| (b as char).is_ascii_digit());
-        Token { kind: TokenKind::Int(self.src[start..self.i].to_string()), span: self.span_from(start) }
+        Token {
+            kind: TokenKind::Int(self.src[start..self.i].to_string()),
+            span: self.span_from(start),
+        }
     }
 
     fn string(&mut self, start: usize) -> Token {
         // bump starting quote already consumed
         while let Some(b) = self.bump() {
-            if b == b'\"' { break; }
-            if b == b'\\' { self.bump(); } // skip escaped
+            if b == b'\"' {
+                break;
+            }
+            if b == b'\\' {
+                self.bump();
+            } // skip escaped
         }
-        Token { kind: TokenKind::Str(self.src[start..self.i].to_string()), span: self.span_from(start) }
+        Token {
+            kind: TokenKind::Str(self.src[start..self.i].to_string()),
+            span: self.span_from(start),
+        }
     }
 
     pub fn next_token(&mut self) -> Token {
@@ -188,8 +224,10 @@ impl<'a> Lexer<'a> {
                 if self.peek() == Some(b'>') {
                     self.bump();
                     Token { kind: TokenKind::Arrow, span: self.span_from(start) }
-                } else { tok(TokenKind::Assign, self, start) }
-            }
+                } else {
+                    tok(TokenKind::Assign, self, start)
+                }
+            },
             Some(b'+') => tok(TokenKind::Plus, self, start),
             Some(b'-') => tok(TokenKind::Minus, self, start),
             Some(b'*') => tok(TokenKind::Star, self, start),
@@ -207,14 +245,22 @@ impl<'a> Lexer<'a> {
             let t = self.next_token();
             let is_eof = matches!(t.kind, TokenKind::Eof);
             v.push(t);
-            if is_eof { break; }
+            if is_eof {
+                break;
+            }
         }
         v
     }
 }
-fn tok(kind: TokenKind, lx: &Lexer, start: usize) -> Token { Token { kind, span: lx.span_from(start) } }
-fn is_ident_start(b: u8) -> bool { (b as char).is_ascii_alphabetic() || b == b'_' }
-fn is_ident_continue(b: u8) -> bool { is_ident_start(b) || (b as char).is_ascii_digit() }
+fn tok(kind: TokenKind, lx: &Lexer, start: usize) -> Token {
+    Token { kind, span: lx.span_from(start) }
+}
+fn is_ident_start(b: u8) -> bool {
+    (b as char).is_ascii_alphabetic() || b == b'_'
+}
+fn is_ident_continue(b: u8) -> bool {
+    is_ident_start(b) || (b as char).is_ascii_digit()
+}
 
 /* ===================================== AST ====================================== */
 
@@ -315,11 +361,18 @@ impl Expr {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum BinOp { Add, Sub, Mul, Div }
+pub enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum UnOp { Neg }
+pub enum UnOp {
+    Neg,
+}
 
 /* ===================================== Parser =================================== */
 
@@ -338,8 +391,12 @@ impl<'a> Parser<'a> {
         Self { toks, i: 0, errors: Vec::new(), src_len: src.len(), _src: src }
     }
 
-    fn peek(&self) -> &Token { self.toks.get(self.i).unwrap() }
-    fn at(&self, k: &TokenKind) -> bool { &self.peek().kind == k }
+    fn peek(&self) -> &Token {
+        self.toks.get(self.i).unwrap()
+    }
+    fn at(&self, k: &TokenKind) -> bool {
+        &self.peek().kind == k
+    }
     fn bump(&mut self) -> &Token {
         let t = self.toks.get(self.i).unwrap();
         self.i += 1;
@@ -357,7 +414,9 @@ impl<'a> Parser<'a> {
         if self.peek().kind == k {
             self.bump();
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     pub fn parse_module(mut self) -> SyntaxModule {
@@ -369,11 +428,16 @@ impl<'a> Parser<'a> {
                 Err(e) => {
                     self.errors.push(e);
                     // sync: skip to next ';' or '}'
-                    while !matches!(self.peek().kind, TokenKind::Semicolon | TokenKind::RBrace | TokenKind::Eof) {
+                    while !matches!(
+                        self.peek().kind,
+                        TokenKind::Semicolon | TokenKind::RBrace | TokenKind::Eof
+                    ) {
                         self.bump();
                     }
-                    if matches!(self.peek().kind, TokenKind::Semicolon) { self.bump(); }
-                }
+                    if matches!(self.peek().kind, TokenKind::Semicolon) {
+                        self.bump();
+                    }
+                },
             }
         }
         SyntaxModule { items, span: Span::new(start, self.src_len), errors: self.errors }
@@ -384,11 +448,11 @@ impl<'a> Parser<'a> {
             TokenKind::Fn => {
                 let fn_item = self.parse_fn()?;
                 Ok(Item::Fn(fn_item))
-            }
+            },
             _ => {
                 let sp = self.peek().span;
                 return Err(Error::new("item inconnu, 'fn' attendu", sp));
-            }
+            },
         }
     }
 
@@ -399,7 +463,7 @@ impl<'a> Parser<'a> {
             _ => {
                 let sp = self.peek().span;
                 return Err(Error::new("nom de fonction attendu", sp));
-            }
+            },
         };
         self.expect(TokenKind::LParen, "(");
         let mut params = Vec::new();
@@ -415,7 +479,9 @@ impl<'a> Parser<'a> {
                     pty = Some(self.parse_type()?);
                 }
                 params.push(Param { name: pname, ty: pty, span: p_start });
-                if self.eat(TokenKind::Comma) { continue; }
+                if self.eat(TokenKind::Comma) {
+                    continue;
+                }
                 break;
             }
         }
@@ -436,18 +502,23 @@ impl<'a> Parser<'a> {
             TokenKind::Ident(s) => Ok(TypeExpr::Named(s, t.span)),
             TokenKind::LParen => {
                 if self.eat(TokenKind::RParen) {
-                    Ok(TypeExpr::Unit(Span::new(t.span.start as usize, self.peek().span.end as usize)))
+                    Ok(TypeExpr::Unit(Span::new(
+                        t.span.start as usize,
+                        self.peek().span.end as usize,
+                    )))
                 } else {
                     let mut ts = Vec::new();
                     loop {
                         ts.push(self.parse_type()?);
-                        if self.eat(TokenKind::Comma) { continue; }
+                        if self.eat(TokenKind::Comma) {
+                            continue;
+                        }
                         break;
                     }
                     let end = self.expect(TokenKind::RParen, ")");
                     Ok(TypeExpr::Tuple(ts, t.span.merge(end)))
                 }
-            }
+            },
             _ => Err(Error::new("type attendu", t.span)),
         }
     }
@@ -456,7 +527,10 @@ impl<'a> Parser<'a> {
         let l = self.expect(TokenKind::LBrace, "{");
         let mut stmts = Vec::new();
         while !matches!(self.peek().kind, TokenKind::RBrace | TokenKind::Eof) {
-            if self.at(&TokenKind::Semicolon) { self.bump(); continue; }
+            if self.at(&TokenKind::Semicolon) {
+                self.bump();
+                continue;
+            }
             stmts.push(self.parse_stmt()?);
             let _ = self.eat(TokenKind::Semicolon);
         }
@@ -481,7 +555,7 @@ impl<'a> Parser<'a> {
                     init = Some(self.parse_expr_bp(0)?);
                 }
                 Ok(Stmt::Let { name, ty, init, span: start })
-            }
+            },
             TokenKind::Return => {
                 let s = self.bump().span;
                 if matches!(self.peek().kind, TokenKind::Semicolon | TokenKind::RBrace) {
@@ -490,11 +564,11 @@ impl<'a> Parser<'a> {
                     let e = self.parse_expr_bp(0)?;
                     Ok(Stmt::Return(Some(e), s))
                 }
-            }
+            },
             _ => {
                 let e = self.parse_expr_bp(0)?;
                 Ok(Stmt::Expr(e))
-            }
+            },
         }
     }
 
@@ -508,26 +582,30 @@ impl<'a> Parser<'a> {
                 TokenKind::Minus => BinOp::Sub,
                 TokenKind::Star => BinOp::Mul,
                 TokenKind::Slash => BinOp::Div,
-            TokenKind::LParen => {
-                // call
-                let _ = self.bump().span;
-                let mut args = Vec::new();
-                if !self.at(&TokenKind::RParen) {
-                    loop {
-                        args.push(self.parse_expr_bp(0)?);
-                        if self.eat(TokenKind::Comma) { continue; }
-                        break;
+                TokenKind::LParen => {
+                    // call
+                    let _ = self.bump().span;
+                    let mut args = Vec::new();
+                    if !self.at(&TokenKind::RParen) {
+                        loop {
+                            args.push(self.parse_expr_bp(0)?);
+                            if self.eat(TokenKind::Comma) {
+                                continue;
+                            }
+                            break;
+                        }
                     }
-                }
-                let r = self.expect(TokenKind::RParen, ")");
-                let sp = lhs.span().merge(r);
-                lhs = Expr::Call { callee: Box::new(lhs), args, span: sp };
-                continue;
-            }
+                    let r = self.expect(TokenKind::RParen, ")");
+                    let sp = lhs.span().merge(r);
+                    lhs = Expr::Call { callee: Box::new(lhs), args, span: sp };
+                    continue;
+                },
                 _ => break,
             };
             let (lbp, rbp) = infix_binding_power(op);
-            if lbp < min_bp { break; }
+            if lbp < min_bp {
+                break;
+            }
             let _op_tok = self.bump();
             let rhs = self.parse_expr_bp(rbp)?;
             let span = lhs.span().merge(rhs.span());
@@ -543,7 +621,7 @@ impl<'a> Parser<'a> {
             TokenKind::Int(s) => {
                 let v: i64 = s.parse().unwrap_or(0);
                 Ok(Expr::Int(v, t.span))
-            }
+            },
             TokenKind::True => Ok(Expr::Bool(true, t.span)),
             TokenKind::False => Ok(Expr::Bool(false, t.span)),
             TokenKind::Str(s) => Ok(Expr::Str(s, t.span)),
@@ -552,7 +630,7 @@ impl<'a> Parser<'a> {
                 let e = self.parse_expr_bp(100)?; // haute précédence
                 let span = t.span.merge(e.span());
                 Ok(Expr::Unary { op: UnOp::Neg, expr: Box::new(e), span })
-            }
+            },
             TokenKind::LParen => {
                 if self.eat(TokenKind::RParen) {
                     Ok(Expr::Unit(t.span))
@@ -561,13 +639,13 @@ impl<'a> Parser<'a> {
                     let r = self.expect(TokenKind::RParen, ")");
                     Ok(with_span(e, t.span.merge(r)))
                 }
-            }
+            },
             TokenKind::If => self.parse_if(t.span),
             TokenKind::LBrace => {
                 // already consumed: back up one to reuse parse_block
                 self.i -= 1;
                 Ok(Expr::Block(self.parse_block()?))
-            }
+            },
             _ => Err(Error::new("expression attendue", t.span)),
         }
     }
@@ -585,7 +663,9 @@ impl<'a> Parser<'a> {
             } else {
                 Some(self.parse_block()?)
             }
-        } else { None };
+        } else {
+            None
+        };
         let span = kw_span.merge(then_blk.span);
         Ok(Expr::If { cond: Box::new(cond), then_blk, else_blk, span })
     }
@@ -593,11 +673,9 @@ impl<'a> Parser<'a> {
 
 fn with_span(mut e: Expr, sp: Span) -> Expr {
     match &mut e {
-        Expr::Unit(s)
-        | Expr::Int(_, s)
-        | Expr::Bool(_, s)
-        | Expr::Str(_, s)
-        | Expr::Var(_, s) => *s = sp,
+        Expr::Unit(s) | Expr::Int(_, s) | Expr::Bool(_, s) | Expr::Str(_, s) | Expr::Var(_, s) => {
+            *s = sp
+        },
         Expr::Call { span, .. }
         | Expr::Binary { span, .. }
         | Expr::Unary { span, .. }
@@ -646,7 +724,9 @@ pub mod pretty {
                     s.push_str(&f.name);
                     s.push('(');
                     for (i, p) in f.params.iter().enumerate() {
-                        if i > 0 { s.push_str(", "); }
+                        if i > 0 {
+                            s.push_str(", ");
+                        }
                         s.push_str(&p.name);
                         if let Some(t) = &p.ty {
                             s.push_str(": ");
@@ -659,7 +739,7 @@ pub mod pretty {
                         s.push_str(&ty_to_string(t));
                     }
                     s.push_str(" { ... }\n");
-                }
+                },
             }
         }
         s
@@ -672,7 +752,7 @@ pub mod pretty {
             TypeExpr::Tuple(ts, _) => {
                 let parts: Vec<_> = ts.iter().map(ty_to_string).collect();
                 format!("({})", parts.join(", "))
-            }
+            },
         }
     }
 }
@@ -701,7 +781,9 @@ pub mod lower {
                     let at = p.ty.as_ref().map(|t| ast_type(t));
                     af = af.param(ast::Param::new(&p.name, at));
                 }
-                if let Some(r) = &f.ret { af = af.ret(ast_type(r)); }
+                if let Some(r) = &f.ret {
+                    af = af.ret(ast_type(r));
+                }
                 // corps vide en attendant un vrai lower d’Expr→AST
                 let blk = ast::Block::new();
                 af = af.body(blk);
@@ -744,23 +826,27 @@ mod tests {
 
     #[test]
     fn parses_fn_and_exprs() {
-        let m = parse_module(r#"
+        let m = parse_module(
+            r#"
             fn add(x: i32, y: i32) -> i32 { x + y }
             fn main() { let z = add(1, 2); return z }
-        "#);
+        "#,
+        );
         assert!(m.errors.is_empty(), "{:?}", m.errors);
         assert_eq!(m.items.len(), 2);
         if let Item::Fn(f) = &m.items[0] {
             assert_eq!(f.name, "add");
             assert_eq!(f.params.len(), 2);
-        } else { panic!("fn attendu"); }
+        } else {
+            panic!("fn attendu");
+        }
     }
 
     #[test]
     fn parses_if_and_block_expr() {
         let e = parse_expr("if true { 1 } else { 2 }").unwrap();
         match e {
-            Expr::If { .. } => {}
+            Expr::If { .. } => {},
             _ => panic!("if attendu"),
         }
     }

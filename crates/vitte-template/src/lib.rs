@@ -72,22 +72,34 @@ impl Value {
 }
 
 impl From<&str> for Value {
-    fn from(s: &str) -> Self { Value::String(s.to_string()) }
+    fn from(s: &str) -> Self {
+        Value::String(s.to_string())
+    }
 }
 impl From<String> for Value {
-    fn from(s: String) -> Self { Value::String(s) }
+    fn from(s: String) -> Self {
+        Value::String(s)
+    }
 }
 impl From<bool> for Value {
-    fn from(b: bool) -> Self { Value::Bool(b) }
+    fn from(b: bool) -> Self {
+        Value::Bool(b)
+    }
 }
 impl From<f64> for Value {
-    fn from(n: f64) -> Self { Value::Number(n) }
+    fn from(n: f64) -> Self {
+        Value::Number(n)
+    }
 }
 impl From<i64> for Value {
-    fn from(n: i64) -> Self { Value::Number(n as f64) }
+    fn from(n: i64) -> Self {
+        Value::Number(n as f64)
+    }
 }
 impl From<usize> for Value {
-    fn from(n: usize) -> Self { Value::Number(n as f64) }
+    fn from(n: usize) -> Self {
+        Value::Number(n as f64)
+    }
 }
 impl<K: Into<String>, V: Into<Value>> From<HashMap<K, V>> for Value {
     fn from(mut m: HashMap<K, V>) -> Self {
@@ -112,7 +124,9 @@ pub struct Registry {
 }
 
 impl Registry {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn insert_template(&mut self, name: impl Into<String>, src: impl Into<String>) {
         self.templates.insert(name.into(), src.into());
@@ -128,7 +142,11 @@ impl Registry {
     }
 
     /// Importe tous les fichiers d’un dossier comme partiels, suffixe optionnel retiré.
-    pub fn import_partials_from_dir(&mut self, dir: impl AsRef<Path>, strip_ext: bool) -> Result<usize> {
+    pub fn import_partials_from_dir(
+        &mut self,
+        dir: impl AsRef<Path>,
+        strip_ext: bool,
+    ) -> Result<usize> {
         let dir = dir.as_ref();
         let mut count = 0usize;
         for entry in fs::read_dir(dir).with_context(|| format!("read_dir {}", dir.display()))? {
@@ -142,7 +160,8 @@ impl Registry {
             } else {
                 path.file_name().and_then(|s| s.to_str()).unwrap_or_default().to_string()
             };
-            let src = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+            let src =
+                fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
             self.insert_partial(name, src);
             count += 1;
         }
@@ -185,7 +204,8 @@ pub trait TemplateEngine {
 
     /// Rend un fichier texte.
     fn render_file(&self, path: impl AsRef<Path>, ctx: &Value) -> Result<String> {
-        let s = fs::read_to_string(&path).with_context(|| format!("read {}", path.as_ref().display()))?;
+        let s = fs::read_to_string(&path)
+            .with_context(|| format!("read {}", path.as_ref().display()))?;
         self.render_str(&s, ctx)
     }
 }
@@ -205,7 +225,9 @@ pub struct MiniEngine {
 }
 
 impl MiniEngine {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     fn lookup_path<'a>(&self, ctx: &'a Value, path: &str) -> Option<&'a Value> {
         let mut cur = ctx;
@@ -213,7 +235,7 @@ impl MiniEngine {
             match cur {
                 Value::Object(m) => {
                     cur = m.get(seg)?;
-                }
+                },
                 _ => return None,
             }
         }
@@ -238,7 +260,11 @@ impl MiniEngine {
                         let key = inside[4..].trim();
                         // trouver {{/if}}
                         if let Some((body, jump)) = find_section(src, i, "/if") {
-                            let cond = if key == "this" { ctx.truthy() } else { self.lookup_path(ctx, key).map(|v| v.truthy()).unwrap_or(false) };
+                            let cond = if key == "this" {
+                                ctx.truthy()
+                            } else {
+                                self.lookup_path(ctx, key).map(|v| v.truthy()).unwrap_or(false)
+                            };
                             if cond {
                                 out.push_str(&self.render_inner(body, ctx)?);
                             }
@@ -250,7 +276,10 @@ impl MiniEngine {
                     if inside.starts_with("#each ") {
                         let key = inside[7..].trim();
                         if let Some((body, jump)) = find_section(src, i, "/each") {
-                            if let Some(Value::Array(items)) = if key == "this" { Some(ctx) } else { self.lookup_path(ctx, key) }.cloned() {
+                            if let Some(Value::Array(items)) =
+                                if key == "this" { Some(ctx) } else { self.lookup_path(ctx, key) }
+                                    .cloned()
+                            {
                                 for it in items {
                                     // rendre avec this = it
                                     let child = merge_this(ctx, it);
@@ -276,18 +305,36 @@ impl MiniEngine {
                     if let Some(first) = parts.next() {
                         match first {
                             "upper" => {
-                                let key = parts.next().ok_or_else(|| anyhow::anyhow!("upper: argument manquant"))?;
-                                let v = val_to_string(if key == "this" { Some(ctx) } else { self.lookup_path(ctx, key) });
+                                let key = parts
+                                    .next()
+                                    .ok_or_else(|| anyhow::anyhow!("upper: argument manquant"))?;
+                                let v = val_to_string(if key == "this" {
+                                    Some(ctx)
+                                } else {
+                                    self.lookup_path(ctx, key)
+                                });
                                 out.push_str(&v.to_uppercase());
-                            }
+                            },
                             "lower" => {
-                                let key = parts.next().ok_or_else(|| anyhow::anyhow!("lower: argument manquant"))?;
-                                let v = val_to_string(if key == "this" { Some(ctx) } else { self.lookup_path(ctx, key) });
+                                let key = parts
+                                    .next()
+                                    .ok_or_else(|| anyhow::anyhow!("lower: argument manquant"))?;
+                                let v = val_to_string(if key == "this" {
+                                    Some(ctx)
+                                } else {
+                                    self.lookup_path(ctx, key)
+                                });
                                 out.push_str(&v.to_lowercase());
-                            }
+                            },
                             "len" => {
-                                let key = parts.next().ok_or_else(|| anyhow::anyhow!("len: argument manquant"))?;
-                                let n = match if key == "this" { Some(ctx) } else { self.lookup_path(ctx, key) } {
+                                let key = parts
+                                    .next()
+                                    .ok_or_else(|| anyhow::anyhow!("len: argument manquant"))?;
+                                let n = match if key == "this" {
+                                    Some(ctx)
+                                } else {
+                                    self.lookup_path(ctx, key)
+                                } {
                                     Some(Value::Array(a)) => a.len(),
                                     Some(Value::Object(o)) => o.len(),
                                     Some(Value::String(s)) => s.chars().count(),
@@ -295,20 +342,30 @@ impl MiniEngine {
                                     None => 0,
                                 };
                                 out.push_str(&n.to_string());
-                            }
+                            },
                             "json" => {
-                                let key = parts.next().ok_or_else(|| anyhow::anyhow!("json: argument manquant"))?;
+                                let key = parts
+                                    .next()
+                                    .ok_or_else(|| anyhow::anyhow!("json: argument manquant"))?;
                                 #[cfg(feature = "json")]
                                 {
-                                    let j = json_stringify(if key == "this" { Some(ctx) } else { self.lookup_path(ctx, key) });
+                                    let j = json_stringify(if key == "this" {
+                                        Some(ctx)
+                                    } else {
+                                        self.lookup_path(ctx, key)
+                                    });
                                     out.push_str(&j);
                                 }
                                 #[cfg(not(feature = "json"))]
                                 {
-                                    let v = val_to_string(if key == "this" { Some(ctx) } else { self.lookup_path(ctx, key) });
+                                    let v = val_to_string(if key == "this" {
+                                        Some(ctx)
+                                    } else {
+                                        self.lookup_path(ctx, key)
+                                    });
                                     out.push_str(&v);
                                 }
-                            }
+                            },
                             _ => {
                                 // variable simple
                                 let key = inside;
@@ -319,7 +376,7 @@ impl MiniEngine {
                                 } else {
                                     // inconnue → vide
                                 }
-                            }
+                            },
                         }
                     }
                 } else {
@@ -421,7 +478,9 @@ fn h_lower(
     _: &mut handlebars::RenderContext<'_, '_>,
     out: &mut dyn handlebars::Output,
 ) -> handlebars::HelperResult {
-    let p = h.param(0).ok_or(handlebars::RenderErrorReason::ParamNotFoundForIndex("lower", 0))?;
+    let p = h
+        .param(0)
+        .ok_or(handlebars::RenderErrorReason::ParamNotFoundForIndex("lower", 0))?;
     out.write(&p.value().as_str().unwrap_or("").to_lowercase())?;
     Ok(())
 }
@@ -434,7 +493,9 @@ fn h_len(
     _: &mut handlebars::RenderContext<'_, '_>,
     out: &mut dyn handlebars::Output,
 ) -> handlebars::HelperResult {
-    let p = h.param(0).ok_or(handlebars::RenderErrorReason::ParamNotFoundForIndex("len", 0))?;
+    let p = h
+        .param(0)
+        .ok_or(handlebars::RenderErrorReason::ParamNotFoundForIndex("len", 0))?;
     let n = match p.value() {
         v if v.is_string() => v.as_str().unwrap_or("").chars().count(),
         v if v.is_array() => v.as_array().map(|a| a.len()).unwrap_or(0),
@@ -454,7 +515,9 @@ fn h_json(
     _: &mut handlebars::RenderContext<'_, '_>,
     out: &mut dyn handlebars::Output,
 ) -> handlebars::HelperResult {
-    let p = h.param(0).ok_or(handlebars::RenderErrorReason::ParamNotFoundForIndex("json", 0))?;
+    let p = h
+        .param(0)
+        .ok_or(handlebars::RenderErrorReason::ParamNotFoundForIndex("json", 0))?;
     out.write(&serde_json::to_string(p.value()).unwrap_or_else(|_| "null".into()))?;
     Ok(())
 }
@@ -468,7 +531,9 @@ pub fn render_str(src: &str, ctx: &Value, reg: Option<&Registry>) -> Result<Stri
         // Par défaut on reste sur MiniEngine pour éviter d'imposer HB quand non demandé.
     }
     let mut eng = MiniEngine::new();
-    if let Some(r) = reg { eng.register_partials(r)?; }
+    if let Some(r) = reg {
+        eng.register_partials(r)?;
+    }
     eng.render_str(src, ctx)
 }
 
@@ -489,7 +554,9 @@ pub fn render_file(path: impl AsRef<Path>, ctx: &Value, reg: Option<&Registry>) 
 #[cfg(feature = "handlebars")]
 pub fn render_str_hb(src: &str, ctx: &Value, reg: Option<&Registry>) -> Result<String> {
     let mut hb = HbEngine::new();
-    if let Some(r) = reg { hb.register_partials(r)?; }
+    if let Some(r) = reg {
+        hb.register_partials(r)?;
+    }
     hb.render_str(src, ctx)
 }
 
@@ -497,7 +564,9 @@ pub fn render_str_hb(src: &str, ctx: &Value, reg: Option<&Registry>) -> Result<S
 
 fn find_delim(bytes: &[u8], mut i: usize, a: u8, b: u8) -> Option<usize> {
     while i + 1 < bytes.len() {
-        if bytes[i] == a && bytes[i + 1] == b { return Some(i); }
+        if bytes[i] == a && bytes[i + 1] == b {
+            return Some(i);
+        }
         i += 1;
     }
     None
@@ -518,8 +587,12 @@ fn val_to_string(v: Option<&Value>) -> String {
         Some(Value::Null) | None => "".into(),
         Some(Value::Bool(b)) => b.to_string(),
         Some(Value::Number(n)) => {
-            if (n.fract() - 0.0).abs() < f64::EPSILON { (*n as i64).to_string() } else { n.to_string() }
-        }
+            if (n.fract() - 0.0).abs() < f64::EPSILON {
+                (*n as i64).to_string()
+            } else {
+                n.to_string()
+            }
+        },
         Some(Value::String(s)) => s.clone(),
         Some(Value::Array(_)) | Some(Value::Object(_)) => "[object]".into(),
     }
@@ -539,14 +612,16 @@ fn to_json_opt(v: Option<&Value>) -> serde_json::Value {
         Some(Value::Bool(b)) => serde_json::Value::Bool(*b),
         Some(Value::Number(n)) => serde_json::json!(n),
         Some(Value::String(s)) => serde_json::Value::String(s.clone()),
-        Some(Value::Array(a)) => serde_json::Value::Array(a.iter().map(|x| to_json_opt(Some(x))).collect()),
+        Some(Value::Array(a)) => {
+            serde_json::Value::Array(a.iter().map(|x| to_json_opt(Some(x))).collect())
+        },
         Some(Value::Object(m)) => {
             let mut map = serde_json::Map::new();
             for (k, v) in m {
                 map.insert(k.clone(), to_json_opt(Some(v)));
             }
             serde_json::Value::Object(map)
-        }
+        },
     }
 }
 

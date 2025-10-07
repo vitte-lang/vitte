@@ -36,7 +36,7 @@ pub type Result<T> = std::result::Result<T, RubyError>;
 
 #[cfg(feature = "rutie")]
 mod rutie_backend {
-    use rutie::{Object, RString, Array};
+    use rutie::{Array, Object, RString};
     use rutie::{class, methods};
 
     class!(VitteRuby);
@@ -44,14 +44,15 @@ mod rutie_backend {
     methods!(
         VitteRuby,
         _itself,
-
         fn greet_rb(name: RString) -> RString {
             let n = name.unwrap_or_else(|_| RString::new_utf8("unknown"));
             RString::new_utf8(&format!("Hello, {} from Vitte/Ruby Rutie", n.to_str()))
-        }
-
+        },
         fn sum_array_rb(arr: Array) -> i64 {
-            arr.into_iter().filter_map(|v| v.try_convert_to::<rutie::Fixnum>().ok()).map(|f| f.to_i64()).sum()
+            arr.into_iter()
+                .filter_map(|v| v.try_convert_to::<rutie::Fixnum>().ok())
+                .map(|f| f.to_i64())
+                .sum()
         }
     );
 
@@ -70,7 +71,7 @@ mod rutie_backend {
 #[cfg(feature = "magnus")]
 mod magnus_backend {
     use super::*;
-    use magnus::{define_module, function, RString, Value, Error as MgError};
+    use magnus::{Error as MgError, RString, Value, define_module, function};
 
     fn greet(name: String) -> String {
         format!("Hello, {name} from Vitte/Ruby Magnus")

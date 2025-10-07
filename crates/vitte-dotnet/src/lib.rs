@@ -59,8 +59,8 @@ pub enum Error {
 #[cfg(feature = "hostfxr")]
 pub mod host {
     use super::*;
-    use netcorehost::{nethost, hostfxr};
     use camino::Utf8PathBuf;
+    use netcorehost::{hostfxr, nethost};
     use std::ptr;
 
     /// Configuration runtime .NET.
@@ -120,16 +120,24 @@ pub mod host {
     }
 
     impl From<i32> for DotnetValue {
-        fn from(v: i32) -> Self { DotnetValue::I32(v) }
+        fn from(v: i32) -> Self {
+            DotnetValue::I32(v)
+        }
     }
     impl From<i64> for DotnetValue {
-        fn from(v: i64) -> Self { DotnetValue::I64(v) }
+        fn from(v: i64) -> Self {
+            DotnetValue::I64(v)
+        }
     }
     impl From<String> for DotnetValue {
-        fn from(v: String) -> Self { DotnetValue::Str(v) }
+        fn from(v: String) -> Self {
+            DotnetValue::Str(v)
+        }
     }
     impl From<&str> for DotnetValue {
-        fn from(v: &str) -> Self { DotnetValue::Str(v.to_owned()) }
+        fn from(v: &str) -> Self {
+            DotnetValue::Str(v.to_owned())
+        }
     }
 }
 
@@ -144,7 +152,10 @@ pub mod win {
     use windows::Win32::System::WinRT::*;
     /// Initialise COM pour thread courant.
     pub fn init_com() -> Result<()> {
-        unsafe { CoInitializeEx(None, COINIT_MULTITHREADED).map_err(|e| Error::Host(format!("COM init: {e:?}")))?; }
+        unsafe {
+            CoInitializeEx(None, COINIT_MULTITHREADED)
+                .map_err(|e| Error::Host(format!("COM init: {e:?}")))?;
+        }
         Ok(())
     }
 }
@@ -156,7 +167,7 @@ pub mod win {
 #[cfg(feature = "serde")]
 pub mod ipc {
     use super::*;
-    use serde::{Serialize, Deserialize};
+    use serde::{Deserialize, Serialize};
 
     /// Message IPC.
     #[derive(Debug, Serialize, Deserialize)]

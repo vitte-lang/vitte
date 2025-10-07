@@ -17,11 +17,14 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum RError {
     /// Erreur renvoyée par l'intégration extendr (bindings R) avec un message détaillé.
-    #[error("extendr error: {0}")] Extendr(String),
+    #[error("extendr error: {0}")]
+    Extendr(String),
     /// Erreur bas niveau via FFI vers l'API C de R (par ex. initialisation/évaluation).
-    #[error("FFI error: {0}")] Ffi(String),
+    #[error("FFI error: {0}")]
+    Ffi(String),
     /// Problème de conversion (R <-> Rust ou JSON) avec description.
-    #[error("conversion error: {0}")] Conversion(String),
+    #[error("conversion error: {0}")]
+    Conversion(String),
 }
 
 /// Résultat spécialisé.
@@ -47,7 +50,10 @@ pub mod extendr_exports {
         #[cfg(feature = "serde")]
         {
             match extendr_api::serde::from_robj::<serde_json::Value>(&x) {
-                Ok(v) => extendr_api::serde::to_robj(&serde_json::to_string(&v).unwrap_or_default()).unwrap_or(R_NilValue),
+                Ok(v) => {
+                    extendr_api::serde::to_robj(&serde_json::to_string(&v).unwrap_or_default())
+                        .unwrap_or(R_NilValue)
+                },
                 Err(_) => R_NilValue,
             }
         }
@@ -73,7 +79,9 @@ pub mod extendr_exports {
 
     /// Somme d'un numeric vector.
     #[extendr]
-    pub fn r_sum(x: Doubles) -> f64 { x.iter().map(|v| v.unwrap_or(0.0)).sum() }
+    pub fn r_sum(x: Doubles) -> f64 {
+        x.iter().map(|v| v.unwrap_or(0.0)).sum()
+    }
 
     /// Enregistre le module côté R.
     extendr_module! {
@@ -108,7 +116,9 @@ pub mod embed {
 
     /// Opacité d'un SEXP (type central R). Ici, on le déclare comme pointeur opaque.
     #[repr(C)]
-    pub struct SEXPREC { _private: [u8; 0] }
+    pub struct SEXPREC {
+        _private: [u8; 0],
+    }
     /// Alias de pointeur.
     pub type SEXP = *mut SEXPREC;
 
@@ -117,12 +127,16 @@ pub mod embed {
         let args = vec![CString::new("R").unwrap(), CString::new("--quiet").unwrap()];
         let mut c_args: Vec<*mut c_char> = args.into_iter().map(|c| c.into_raw()).collect();
         let rc = unsafe { Rf_initEmbeddedR(c_args.len() as c_int, c_args.as_mut_ptr()) };
-        if rc != 0 { return Err(RError::Ffi(format!("Rf_initEmbeddedR rc={rc}"))); }
+        if rc != 0 {
+            return Err(RError::Ffi(format!("Rf_initEmbeddedR rc={rc}")));
+        }
         Ok(())
     }
 
     /// Arrête l'interpréteur.
-    pub fn end_r() { unsafe { Rf_endEmbeddedR(0) } }
+    pub fn end_r() {
+        unsafe { Rf_endEmbeddedR(0) }
+    }
 
     /// Évalue une expression R simple `print(<text>)` pour test.
     pub fn eval_print(text: &str) -> Result<()> {

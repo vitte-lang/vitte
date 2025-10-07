@@ -44,38 +44,38 @@ impl fmt::Display for Level {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Level::Error => write!(f, "ERROR"),
-            Level::Warn  => write!(f, "WARN"),
-            Level::Info  => write!(f, "INFO"),
+            Level::Warn => write!(f, "WARN"),
+            Level::Info => write!(f, "INFO"),
             Level::Debug => write!(f, "DEBUG"),
             Level::Trace => write!(f, "TRACE"),
-            Level::Off   => write!(f, "OFF"),
+            Level::Off => write!(f, "OFF"),
         }
     }
 }
 
 impl Level {
     /// Convertit en LevelFilter du crate log (si activé).
-    #[cfg(feature="log")]
+    #[cfg(feature = "log")]
     pub fn to_log(self) -> log::LevelFilter {
         match self {
             Level::Error => log::LevelFilter::Error,
-            Level::Warn  => log::LevelFilter::Warn,
-            Level::Info  => log::LevelFilter::Info,
+            Level::Warn => log::LevelFilter::Warn,
+            Level::Info => log::LevelFilter::Info,
             Level::Debug => log::LevelFilter::Debug,
             Level::Trace => log::LevelFilter::Trace,
-            Level::Off   => log::LevelFilter::Off,
+            Level::Off => log::LevelFilter::Off,
         }
     }
     /// Convertit en niveau tracing (si activé).
-    #[cfg(feature="tracing")]
+    #[cfg(feature = "tracing")]
     pub fn to_tracing(self) -> tracing::Level {
         match self {
             Level::Error => tracing::Level::ERROR,
-            Level::Warn  => tracing::Level::WARN,
-            Level::Info  => tracing::Level::INFO,
+            Level::Warn => tracing::Level::WARN,
+            Level::Info => tracing::Level::INFO,
             Level::Debug => tracing::Level::DEBUG,
             Level::Trace => tracing::Level::TRACE,
-            Level::Off   => tracing::Level::TRACE, // fallback, Off handled externally
+            Level::Off => tracing::Level::TRACE, // fallback, Off handled externally
         }
     }
 }
@@ -129,17 +129,16 @@ macro_rules! trace {
 
 /// Initialise selon le niveau souhaité.
 pub fn init(level: Level) {
-    #[cfg(feature="log")]
+    #[cfg(feature = "log")]
     {
         log::set_max_level(level.to_log());
     }
-    #[cfg(feature="tracing")]
+    #[cfg(feature = "tracing")]
     {
         use tracing_subscriber::prelude::*;
-        let fmt_layer = tracing_subscriber::fmt::layer().with_filter(tracing_subscriber::filter::LevelFilter::from_level(level.to_tracing()));
-        tracing_subscriber::registry()
-            .with(fmt_layer)
-            .init();
+        let fmt_layer = tracing_subscriber::fmt::layer()
+            .with_filter(tracing_subscriber::filter::LevelFilter::from_level(level.to_tracing()));
+        tracing_subscriber::registry().with(fmt_layer).init();
     }
     #[cfg(all(not(feature = "tracing"), not(feature = "log")))]
     {
@@ -148,18 +147,16 @@ pub fn init(level: Level) {
 }
 
 /// Initialisation simple pour backend choisi.
-#[cfg(feature="log")]
+#[cfg(feature = "log")]
 pub fn init_log() {
     log::set_max_level(Level::Info.to_log());
 }
 
-#[cfg(feature="tracing")]
+#[cfg(feature = "tracing")]
 pub fn init_tracing_default() {
     use tracing_subscriber::prelude::*;
     let fmt_layer = tracing_subscriber::fmt::layer();
-    tracing_subscriber::registry()
-        .with(fmt_layer)
-        .init();
+    tracing_subscriber::registry().with(fmt_layer).init();
 }
 
 #[cfg(test)]

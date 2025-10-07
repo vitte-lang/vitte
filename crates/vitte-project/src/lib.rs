@@ -27,9 +27,13 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::doc_markdown,
+    clippy::too_many_lines
+)]
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -44,7 +48,10 @@ pub const MANIFEST_JSON: &str = "vitte.json";
 /* ============================ Modèles =================================== */
 
 /// Section `[package]`.
-#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
+#[cfg_attr(
+    any(feature = "json", feature = "toml"),
+    derive(Serialize, Deserialize)
+)]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Package {
     pub name: String,
@@ -52,7 +59,10 @@ pub struct Package {
 }
 
 /// Dépendance simple (nom -> req semver arbitraire).
-#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
+#[cfg_attr(
+    any(feature = "json", feature = "toml"),
+    derive(Serialize, Deserialize)
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dependency {
     pub name: String,
@@ -65,7 +75,10 @@ impl Dependency {
 }
 
 /// Section `[workspace]`.
-#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
+#[cfg_attr(
+    any(feature = "json", feature = "toml"),
+    derive(Serialize, Deserialize)
+)]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Workspace {
     /// Chemins relatifs explicites vers les membres.
@@ -73,7 +86,10 @@ pub struct Workspace {
 }
 
 /// Manifeste complet.
-#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
+#[cfg_attr(
+    any(feature = "json", feature = "toml"),
+    derive(Serialize, Deserialize)
+)]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Manifest {
     pub package: Package,
@@ -148,10 +164,15 @@ fn load_manifest_toml_str(s: &str) -> Result<Manifest> {
     if let Some(Value::Table(deps)) = v.get("dependencies") {
         let map: HashMap<String, String> = deps
             .iter()
-            .map(|(k, v)| (k.clone(), match v {
-                Value::String(s) => s.clone(),
-                _ => "*".to_string(),
-            }))
+            .map(|(k, v)| {
+                (
+                    k.clone(),
+                    match v {
+                        Value::String(s) => s.clone(),
+                        _ => "*".to_string(),
+                    },
+                )
+            })
             .collect();
         m.dependencies = map;
     }
@@ -181,8 +202,12 @@ pub struct Project {
 }
 
 impl Project {
-    pub fn name(&self) -> &str { &self.manifest.package.name }
-    pub fn deps(&self) -> Vec<Dependency> { self.manifest.deps() }
+    pub fn name(&self) -> &str {
+        &self.manifest.package.name
+    }
+    pub fn deps(&self) -> Vec<Dependency> {
+        self.manifest.deps()
+    }
 }
 
 /// Résout les membres du workspace à partir de `root`.

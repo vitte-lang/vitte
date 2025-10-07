@@ -14,8 +14,8 @@
 #![allow(non_camel_case_types)] // ABI C: on garde les noms en MACRO_CASE/underscore
 
 use core::ffi::c_void;
-use core::ptr;
 use core::ffi::{c_char, c_int, c_uchar};
+use core::ptr;
 
 /// Version ABI (binaire). Incrémentez `ABI_MAJOR` pour tout break.
 pub const ABI_MAJOR: u16 = 1;
@@ -78,7 +78,8 @@ pub struct vitte_c_ctx {
 }
 
 /// Callback de log optionnel: `level` arbitraire (0=info,1=warn,2=err).
-pub type vitte_c_log_cb = Option<extern "C" fn(level: c_int, msg: *const c_char, user: *mut c_void)>;
+pub type vitte_c_log_cb =
+    Option<extern "C" fn(level: c_int, msg: *const c_char, user: *mut c_void)>;
 
 /// Valeurs utilitaires.
 pub const fn vitte_c_json_null() -> vitte_c_json {
@@ -96,11 +97,22 @@ extern "C" {
     pub fn vitte_c_ctx_new() -> *mut vitte_c_ctx;
     pub fn vitte_c_ctx_free(ctx: *mut vitte_c_ctx);
 
-    pub fn vitte_c_ctx_set_config(ctx: *mut vitte_c_ctx, strict: c_int, allow_comments: c_int) -> vitte_c_result;
-    pub fn vitte_c_ctx_set_log(ctx: *mut vitte_c_ctx, cb: vitte_c_log_cb, user: *mut c_void) -> vitte_c_result;
+    pub fn vitte_c_ctx_set_config(
+        ctx: *mut vitte_c_ctx,
+        strict: c_int,
+        allow_comments: c_int,
+    ) -> vitte_c_result;
+    pub fn vitte_c_ctx_set_log(
+        ctx: *mut vitte_c_ctx,
+        cb: vitte_c_log_cb,
+        user: *mut c_void,
+    ) -> vitte_c_result;
 
     pub fn vitte_c_ctx_version(ctx: *mut vitte_c_ctx, out: *mut vitte_c_string) -> vitte_c_result;
-    pub fn vitte_c_ctx_last_error(ctx: *mut vitte_c_ctx, out: *mut vitte_c_string) -> vitte_c_result;
+    pub fn vitte_c_ctx_last_error(
+        ctx: *mut vitte_c_ctx,
+        out: *mut vitte_c_string,
+    ) -> vitte_c_result;
 
     pub fn vitte_c_ctx_eval_text(
         ctx: *mut vitte_c_ctx,
@@ -132,10 +144,11 @@ extern "C" {
 
 /* ───────────────────────────── Helpers Rust ───────────────────────────── */
 
-
 impl vitte_c_error {
     /// Code égal à zéro si non initialisé.
-    pub fn is_set(&self) -> bool { self.code != 0 }
+    pub fn is_set(&self) -> bool {
+        self.code != 0
+    }
 }
 
 impl vitte_c_string {
@@ -157,12 +170,21 @@ mod tests {
         use core::mem::{align_of, size_of};
         // Hypothèses de portabilité C:
         assert_eq!(size_of::<vitte_c_result>(), size_of::<c_int>());
-        assert_eq!(size_of::<vitte_c_string>(), size_of::<*mut c_uchar>() * 1 + size_of::<usize>() * 2);
-        assert_eq!(size_of::<vitte_c_buffer>(), size_of::<*mut c_uchar>() * 1 + size_of::<usize>() * 2);
+        assert_eq!(
+            size_of::<vitte_c_string>(),
+            size_of::<*mut c_uchar>() * 1 + size_of::<usize>() * 2
+        );
+        assert_eq!(
+            size_of::<vitte_c_buffer>(),
+            size_of::<*mut c_uchar>() * 1 + size_of::<usize>() * 2
+        );
         assert!(align_of::<vitte_c_string>() >= align_of::<*mut c_uchar>());
         assert!(align_of::<vitte_c_buffer>() >= align_of::<*mut c_uchar>());
         assert_eq!(size_of::<vitte_c_error>(), size_of::<c_int>() + size_of::<vitte_c_string>());
         let _v: vitte_c_json = super::vitte_c_json_null();
-        assert_eq!(abi_version_u32(), ((ABI_MAJOR as u32) << 16) | ((ABI_MINOR as u32) << 8) | (ABI_PATCH as u32));
+        assert_eq!(
+            abi_version_u32(),
+            ((ABI_MAJOR as u32) << 16) | ((ABI_MINOR as u32) << 8) | (ABI_PATCH as u32)
+        );
     }
 }

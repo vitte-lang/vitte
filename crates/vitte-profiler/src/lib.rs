@@ -19,12 +19,16 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::doc_markdown,
+    clippy::too_many_lines
+)]
 
+use once_cell::sync::Lazy;
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use parking_lot::RwLock;
-use once_cell::sync::Lazy;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};

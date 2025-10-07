@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-snapshot — gestion de snapshots déterministes pour Vitte
 //!
@@ -31,12 +29,12 @@ use serde::Serialize;
 use time::OffsetDateTime;
 
 #[cfg(feature = "hash")]
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 #[cfg(feature = "hash")]
-use base64::engine::general_purpose::STANDARD as B64;
-#[cfg(feature = "hash")]
 use base64::Engine;
+#[cfg(feature = "hash")]
+use base64::engine::general_purpose::STANDARD as B64;
 
 #[cfg(feature = "text-diff")]
 use similar::TextDiff;
@@ -47,14 +45,14 @@ pub enum SnapshotError {
     /// Erreur d'entrée/sortie sous-jacente (lecture/écriture de fichier).
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
-    /// Erreur de sérialisation/désérialisation JSON via 
-    /// 
+    /// Erreur de sérialisation/désérialisation JSON via
+    ///
     /// Présente uniquement si la feature `serde` est activée.
     #[error("serde: {0}")]
     #[cfg(feature = "serde")]
     Serde(String),
     /// Erreur liée à la compression/décompression Zstandard (zstd).
-    /// 
+    ///
     /// Présente uniquement si la feature `zstd` est activée.
     #[error("compress: {0}")]
     #[cfg(feature = "zstd")]
@@ -86,10 +84,12 @@ impl Snapshot {
     /// Capture un snapshot sérialisé depuis une valeur
     #[cfg(feature = "serde")]
     pub fn capture<T: Serialize>(value: &T) -> Result<Self> {
-        let json = serde_json::to_string_pretty(value)
-            .map_err(|e| SnapshotError::Serde(e.to_string()))?;
+        let json =
+            serde_json::to_string_pretty(value).map_err(|e| SnapshotError::Serde(e.to_string()))?;
         #[cfg(feature = "time")]
-        let timestamp = OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339).unwrap();
+        let timestamp = OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
 
         #[cfg(feature = "hash")]
         let hash = {
@@ -109,7 +109,9 @@ impl Snapshot {
 
     /// Retourne JSON du snapshot
     #[cfg(feature = "serde")]
-    pub fn to_json(&self) -> Result<&str> { Ok(&self.json) }
+    pub fn to_json(&self) -> Result<&str> {
+        Ok(&self.json)
+    }
 
     /// Sauvegarde vers fichier (optionnellement compressé)
     pub fn save_to_file(&self, path: &std::path::Path) -> Result<()> {
@@ -118,7 +120,8 @@ impl Snapshot {
         let mut f = File::create(path)?;
         #[cfg(feature = "zstd")]
         {
-            let mut enc = zstd::Encoder::new(&mut f, 3).map_err(|e| SnapshotError::Zstd(e.to_string()))?;
+            let mut enc =
+                zstd::Encoder::new(&mut f, 3).map_err(|e| SnapshotError::Zstd(e.to_string()))?;
             #[cfg(feature = "serde")]
             enc.write_all(self.json.as_bytes())?;
             enc.finish().map_err(|e| SnapshotError::Zstd(e.to_string()))?;
@@ -135,9 +138,7 @@ impl Snapshot {
         use std::fs;
         let data = fs::read(path)?;
         #[cfg(feature = "zstd")]
-        let data = {
-            zstd::decode_all(&data[..]).map_err(|e| SnapshotError::Zstd(e.to_string()))?
-        };
+        let data = { zstd::decode_all(&data[..]).map_err(|e| SnapshotError::Zstd(e.to_string()))? };
         let json = String::from_utf8_lossy(&data).to_string();
         let value: serde_json::Value =
             serde_json::from_str(&json).map_err(|e| SnapshotError::Serde(e.to_string()))?;
@@ -159,7 +160,7 @@ mod tests {
     #[cfg(feature = "serde")]
     #[test]
     fn json_roundtrip() {
-        let v = vec![1,2,3];
+        let v = vec![1, 2, 3];
         let s = Snapshot::capture(&v).unwrap();
         assert!(s.to_json().unwrap().contains("1"));
     }

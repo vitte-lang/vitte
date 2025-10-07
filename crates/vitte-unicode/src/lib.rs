@@ -18,7 +18,7 @@
 use thiserror::Error;
 
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Erreurs Unicode
 #[derive(Debug, Error)]
@@ -94,9 +94,15 @@ pub fn words(s: &str) -> Vec<&str> {
 pub fn bidi_levels(s: &str) -> Vec<usize> {
     use unicode_bidi::{BidiInfo, Level};
     let info = BidiInfo::new(s, None);
-    info.paragraphs.iter().flat_map(|p| {
-        info.levels[p.range.clone()].iter().map(|l| l.number() as usize).collect::<Vec<_>>()
-    }).collect()
+    info.paragraphs
+        .iter()
+        .flat_map(|p| {
+            info.levels[p.range.clone()]
+                .iter()
+                .map(|l| l.number() as usize)
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 /// Largeur d’affichage (East Asian Width)
@@ -109,16 +115,28 @@ pub fn display_width(s: &str) -> usize {
 /// Retourne les catégories Unicode simples d'un caractère
 pub fn char_categories(c: char) -> Vec<&'static str> {
     let mut cats = Vec::new();
-    if c.is_alphabetic() { cats.push("Letter"); }
-    if c.is_numeric() { cats.push("Number"); }
-    if c.is_whitespace() { cats.push("Whitespace"); }
-    if c.is_control() { cats.push("Control"); }
-    if c.is_ascii_punctuation() { cats.push("Punctuation"); }
-    if c.is_ascii_graphic() && !c.is_alphanumeric() { cats.push("Symbol"); }
+    if c.is_alphabetic() {
+        cats.push("Letter");
+    }
+    if c.is_numeric() {
+        cats.push("Number");
+    }
+    if c.is_whitespace() {
+        cats.push("Whitespace");
+    }
+    if c.is_control() {
+        cats.push("Control");
+    }
+    if c.is_ascii_punctuation() {
+        cats.push("Punctuation");
+    }
+    if c.is_ascii_graphic() && !c.is_alphanumeric() {
+        cats.push("Symbol");
+    }
     cats
 }
 
-#[cfg(feature="normalization")]
+#[cfg(feature = "normalization")]
 /// Supprime les diacritiques (accents)
 pub fn strip_marks(s: &str) -> String {
     use unicode_normalization::UnicodeNormalization;
@@ -126,7 +144,7 @@ pub fn strip_marks(s: &str) -> String {
     s.nfd().filter(|c| !is_combining_mark(*c)).collect()
 }
 
-#[cfg(feature="bidi")]
+#[cfg(feature = "bidi")]
 /// Applique bidi et retourne texte réordonné
 pub fn reverse_bidi(s: &str) -> String {
     use unicode_bidi::BidiInfo;
@@ -134,21 +152,21 @@ pub fn reverse_bidi(s: &str) -> String {
     info.reorder_line(0, s)
 }
 
-#[cfg(feature="segmentation")]
+#[cfg(feature = "segmentation")]
 /// Compte graphemes
 pub fn grapheme_count(s: &str) -> usize {
     use unicode_segmentation::UnicodeSegmentation;
     s.graphemes(true).count()
 }
 
-#[cfg(feature="segmentation")]
+#[cfg(feature = "segmentation")]
 /// Compte mots
 pub fn word_count(s: &str) -> usize {
     use unicode_segmentation::UnicodeSegmentation;
     s.unicode_words().count()
 }
 
-#[cfg(feature="width")]
+#[cfg(feature = "width")]
 /// True si tous les caractères sont plein-chasse
 pub fn is_fullwidth(s: &str) -> bool {
     use unicode_width::UnicodeWidthChar;
@@ -160,13 +178,13 @@ mod tests {
     use super::*;
     #[test]
     fn test_nfkc() {
-        #[cfg(feature="normalization")]
+        #[cfg(feature = "normalization")]
         assert_eq!(normalize_nfkc("Å"), "Å");
     }
 
     #[test]
     fn test_graphemes() {
-        #[cfg(feature="segmentation")]
+        #[cfg(feature = "segmentation")]
         {
             let g = graphemes("a🇫🇷b");
             assert!(g.contains(&"🇫🇷"));
@@ -175,7 +193,7 @@ mod tests {
 
     #[test]
     fn test_width() {
-        #[cfg(feature="width")]
+        #[cfg(feature = "width")]
         assert_eq!(display_width("コン"), 4);
     }
 
@@ -183,7 +201,7 @@ mod tests {
     fn categories_and_counts() {
         let cats = char_categories('é');
         assert!(cats.contains(&"Letter"));
-        #[cfg(feature="segmentation")]
+        #[cfg(feature = "segmentation")]
         {
             assert_eq!(grapheme_count("a🇫🇷b"), 3);
             assert_eq!(word_count("salut le monde"), 3);
@@ -192,9 +210,9 @@ mod tests {
 
     #[test]
     fn strip_and_bidi() {
-        #[cfg(feature="normalization")]
+        #[cfg(feature = "normalization")]
         assert_eq!(strip_marks("é"), "e");
-        #[cfg(feature="bidi")]
+        #[cfg(feature = "bidi")]
         {
             let txt = "abc";
             let rev = reverse_bidi(txt);
@@ -204,7 +222,7 @@ mod tests {
 
     #[test]
     fn fullwidth() {
-        #[cfg(feature="width")]
+        #[cfg(feature = "width")]
         assert!(is_fullwidth("コン"));
     }
 }

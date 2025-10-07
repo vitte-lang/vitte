@@ -206,11 +206,11 @@ impl Suppressions {
                     match kind {
                         "allow" => {
                             allow.insert("all".into());
-                        }
+                        },
                         "deny" => {
                             deny.insert("all".into());
-                        }
-                        _ => {}
+                        },
+                        _ => {},
                     }
                 } else {
                     for r in list.split(',') {
@@ -279,7 +279,11 @@ pub struct FileDiagnostics {
     pub diagnostics: Vec<Diagnostic>,
 }
 
-pub fn run_path(reg: &Registry, cfg: &LintConfig, root: impl AsRef<Path>) -> Result<Vec<FileDiagnostics>> {
+pub fn run_path(
+    reg: &Registry,
+    cfg: &LintConfig,
+    root: impl AsRef<Path>,
+) -> Result<Vec<FileDiagnostics>> {
     let root = root.as_ref();
     let mut files = vec![];
     for e in WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
@@ -304,7 +308,7 @@ pub fn run_path(reg: &Registry, cfg: &LintConfig, root: impl AsRef<Path>) -> Res
                 Err(e) => {
                     debug!("skip {}: {e}", p.display());
                     return FileDiagnostics { file: p, diagnostics: vec![] };
-                }
+                },
             };
             let suppress = Suppressions::parse(&fc);
             let cx = LintContext { file: &fc, cfg, suppress };
@@ -354,12 +358,16 @@ pub fn to_json(results: &[FileDiagnostics]) -> Result<String> {
     }
     let mut s = String::from("[\n");
     for (i, fd) in results.iter().enumerate() {
-        if i > 0 { s.push_str(",\n"); }
+        if i > 0 {
+            s.push_str(",\n");
+        }
         s.push_str("  {\n");
         s.push_str(&format!("    \"file\": \"{}\",\n", esc(&fd.file.to_string_lossy())));
         s.push_str("    \"diagnostics\": [\n");
         for (j, d) in fd.diagnostics.iter().enumerate() {
-            if j > 0 { s.push_str(",\n"); }
+            if j > 0 {
+                s.push_str(",\n");
+            }
             s.push_str("      {\n");
             s.push_str(&format!("        \"rule\": \"{}\",\n", esc(&d.rule)));
             s.push_str(&format!("        \"message\": \"{}\",\n", esc(&d.message)));
@@ -370,25 +378,36 @@ pub fn to_json(results: &[FileDiagnostics]) -> Result<String> {
             }
             s.push_str(&format!("        \"severity\": \"{:?}\",\n", d.severity));
             s.push_str("        \"span\": {\n");
-            s.push_str(&format!("          \"file\": \"{}\",\n", esc(&d.span.file.to_string_lossy())));
+            s.push_str(&format!(
+                "          \"file\": \"{}\",\n",
+                esc(&d.span.file.to_string_lossy())
+            ));
             s.push_str(&format!("          \"line\": {},\n", d.span.line));
             s.push_str(&format!("          \"column\": {}\n", d.span.column));
             s.push_str("        },\n");
             // fixes
             s.push_str("        \"fixes\": [");
             for (k, f) in d.fixes.iter().enumerate() {
-                if k > 0 { s.push_str(","); }
+                if k > 0 {
+                    s.push_str(",");
+                }
                 s.push_str(&format!(
                     "{{\"start_line\": {}, \"end_line\": {}, \"replace\": \"{}\"}}",
-                    f.start_line, f.end_line, esc(&f.replace)
+                    f.start_line,
+                    f.end_line,
+                    esc(&f.replace)
                 ));
             }
             s.push_str("],\n");
             // tags
             s.push_str("        \"tags\": [");
             for (k, t) in d.tags.iter().enumerate() {
-                if k > 0 { s.push_str(","); }
-                s.push('"'); s.push_str(&esc(t)); s.push('"');
+                if k > 0 {
+                    s.push_str(",");
+                }
+                s.push('"');
+                s.push_str(&esc(t));
+                s.push('"');
             }
             s.push_str("]\n");
             s.push_str("      }");
@@ -489,73 +508,115 @@ pub mod builtin {
                             cx.cfg.severity_for(self.id(), self.default_severity()),
                             Span { file: cx.file.path.clone(), line: i, column: 1 },
                         )
-                        .help("Supprimez le TODO ou créez un ticket")
+                        .help("Supprimez le TODO ou créez un ticket"),
                     );
                 }
             }
             diags
         }
     }
-    pub fn no_todo() -> NoTodo { NoTodo::new() }
+    pub fn no_todo() -> NoTodo {
+        NoTodo::new()
+    }
 
     // ---------------- trailing-whitespace ----------------
     pub struct TrailingWhitespace;
     impl Rule for TrailingWhitespace {
-        fn id(&self) -> &'static str { "trailing-whitespace" }
-        fn description(&self) -> &'static str { "Espace(s) en fin de ligne" }
-        fn default_severity(&self) -> Severity { Severity::Info }
+        fn id(&self) -> &'static str {
+            "trailing-whitespace"
+        }
+        fn description(&self) -> &'static str {
+            "Espace(s) en fin de ligne"
+        }
+        fn default_severity(&self) -> Severity {
+            Severity::Info
+        }
         fn check(&self, cx: &LintContext) -> Vec<Diagnostic> {
             let mut out = vec![];
             for i in 1..=cx.file.num_lines() {
                 let line = cx.file.line_str(i);
                 if line.ends_with(' ') || line.ends_with('\t') {
                     out.push(
-                        Diagnostic::new(self.id(), "Espace en fin de ligne", self.default_severity(),
-                            Span { file: cx.file.path.clone(), line: i, column: line.len().max(1) })
-                            .with_fix(Fix { start_line: i, end_line: i, replace: line.trim_end().to_string() })
+                        Diagnostic::new(
+                            self.id(),
+                            "Espace en fin de ligne",
+                            self.default_severity(),
+                            Span { file: cx.file.path.clone(), line: i, column: line.len().max(1) },
+                        )
+                        .with_fix(Fix {
+                            start_line: i,
+                            end_line: i,
+                            replace: line.trim_end().to_string(),
+                        }),
                     );
                 }
             }
             out
         }
     }
-    pub fn trailing_whitespace() -> TrailingWhitespace { TrailingWhitespace }
+    pub fn trailing_whitespace() -> TrailingWhitespace {
+        TrailingWhitespace
+    }
 
     // ---------------- tabs-instead-spaces ----------------
     pub struct TabsInsteadSpaces;
     impl Rule for TabsInsteadSpaces {
-        fn id(&self) -> &'static str { "tabs-instead-spaces" }
-        fn description(&self) -> &'static str { "Tabulations trouvées, privilégier les espaces" }
-        fn default_severity(&self) -> Severity { Severity::Info }
+        fn id(&self) -> &'static str {
+            "tabs-instead-spaces"
+        }
+        fn description(&self) -> &'static str {
+            "Tabulations trouvées, privilégier les espaces"
+        }
+        fn default_severity(&self) -> Severity {
+            Severity::Info
+        }
         fn check(&self, cx: &LintContext) -> Vec<Diagnostic> {
             let mut out = vec![];
             for i in 1..=cx.file.num_lines() {
                 let line = cx.file.line_str(i);
                 if line.contains('\t') {
                     out.push(
-                        Diagnostic::new(self.id(), "Tabulation détectée", self.default_severity(),
-                            Span { file: cx.file.path.clone(), line: i, column: 1 })
-                            .help("Remplacez les tabs par 4 espaces")
-                            .with_fix(Fix { start_line: i, end_line: i, replace: line.replace('\t', "    ") })
+                        Diagnostic::new(
+                            self.id(),
+                            "Tabulation détectée",
+                            self.default_severity(),
+                            Span { file: cx.file.path.clone(), line: i, column: 1 },
+                        )
+                        .help("Remplacez les tabs par 4 espaces")
+                        .with_fix(Fix {
+                            start_line: i,
+                            end_line: i,
+                            replace: line.replace('\t', "    "),
+                        }),
                     );
                 }
             }
             out
         }
     }
-    pub fn tabs_instead_spaces() -> TabsInsteadSpaces { TabsInsteadSpaces }
+    pub fn tabs_instead_spaces() -> TabsInsteadSpaces {
+        TabsInsteadSpaces
+    }
 
     // ---------------- max-line-length ----------------
     pub struct MaxLineLength {
         max: usize,
     }
     impl MaxLineLength {
-        pub fn new(max: usize) -> Self { Self { max } }
+        pub fn new(max: usize) -> Self {
+            Self { max }
+        }
     }
     impl Rule for MaxLineLength {
-        fn id(&self) -> &'static str { "max-line-length" }
-        fn description(&self) -> &'static str { "Ligne dépassant la longueur maximale" }
-        fn default_severity(&self) -> Severity { Severity::Warning }
+        fn id(&self) -> &'static str {
+            "max-line-length"
+        }
+        fn description(&self) -> &'static str {
+            "Ligne dépassant la longueur maximale"
+        }
+        fn default_severity(&self) -> Severity {
+            Severity::Warning
+        }
         fn check(&self, cx: &LintContext) -> Vec<Diagnostic> {
             let mut out = vec![];
             let limit = cx.cfg.max_line_length.max(self.max);
@@ -563,17 +624,22 @@ pub mod builtin {
                 let line = cx.file.line_str(i);
                 if line.chars().count() > limit {
                     out.push(
-                        Diagnostic::new(self.id(), format!("{} > {}", line.chars().count(), limit),
+                        Diagnostic::new(
+                            self.id(),
+                            format!("{} > {}", line.chars().count(), limit),
                             cx.cfg.severity_for(self.id(), self.default_severity()),
-                            Span { file: cx.file.path.clone(), line: i, column: limit + 1 })
-                            .help("Coupez la ligne, extrayez une fonction ou réduisez le litéral")
+                            Span { file: cx.file.path.clone(), line: i, column: limit + 1 },
+                        )
+                        .help("Coupez la ligne, extrayez une fonction ou réduisez le litéral"),
                     );
                 }
             }
             out
         }
     }
-    pub fn max_line_length(max: usize) -> MaxLineLength { MaxLineLength::new(max) }
+    pub fn max_line_length(max: usize) -> MaxLineLength {
+        MaxLineLength::new(max)
+    }
 
     // ---------------- banned-regex ----------------
     pub struct BannedRegex {
@@ -588,23 +654,37 @@ pub mod builtin {
         }
     }
     impl Rule for BannedRegex {
-        fn id(&self) -> &'static str { self.id }
-        fn description(&self) -> &'static str { self.desc }
-        fn default_severity(&self) -> Severity { self.sev }
+        fn id(&self) -> &'static str {
+            self.id
+        }
+        fn description(&self) -> &'static str {
+            self.desc
+        }
+        fn default_severity(&self) -> Severity {
+            self.sev
+        }
         fn check(&self, cx: &LintContext) -> Vec<Diagnostic> {
             let mut out = vec![];
             for i in 1..=cx.file.num_lines() {
                 let line = cx.file.line_str(i);
                 if self.re.is_match(line) {
-                    out.push(Diagnostic::new(self.id(), self.desc, self.sev, Span {
-                        file: cx.file.path.clone(), line: i, column: 1
-                    }));
+                    out.push(Diagnostic::new(
+                        self.id(),
+                        self.desc,
+                        self.sev,
+                        Span { file: cx.file.path.clone(), line: i, column: 1 },
+                    ));
                 }
             }
             out
         }
     }
-    pub fn banned_regex(id: &'static str, desc: &'static str, pattern: &str, sev: Severity) -> BannedRegex {
+    pub fn banned_regex(
+        id: &'static str,
+        desc: &'static str,
+        pattern: &str,
+        sev: Severity,
+    ) -> BannedRegex {
         BannedRegex::new(id, desc, pattern, sev)
     }
 }

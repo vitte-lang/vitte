@@ -17,10 +17,14 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::doc_markdown,
+    clippy::too_many_lines
+)]
 
-use std::{collections::HashMap, sync::Arc, time::Instant};
 use parking_lot::RwLock;
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 #[cfg(feature = "json")]
 use serde::{Deserialize, Serialize};
@@ -36,9 +40,15 @@ pub struct Counter {
     value: RwLock<u64>,
 }
 impl Counter {
-    pub fn inc(&self) { *self.value.write() += 1; }
-    pub fn add(&self, v: u64) { *self.value.write() += v; }
-    pub fn get(&self) -> u64 { *self.value.read() }
+    pub fn inc(&self) {
+        *self.value.write() += 1;
+    }
+    pub fn add(&self, v: u64) {
+        *self.value.write() += v;
+    }
+    pub fn get(&self) -> u64 {
+        *self.value.read()
+    }
 }
 
 /// Jauge (valeur arbitraire).
@@ -48,9 +58,15 @@ pub struct Gauge {
     value: RwLock<i64>,
 }
 impl Gauge {
-    pub fn set(&self, v: i64) { *self.value.write() = v; }
-    pub fn add(&self, v: i64) { *self.value.write() += v; }
-    pub fn get(&self) -> i64 { *self.value.read() }
+    pub fn set(&self, v: i64) {
+        *self.value.write() = v;
+    }
+    pub fn add(&self, v: i64) {
+        *self.value.write() += v;
+    }
+    pub fn get(&self) -> i64 {
+        *self.value.read()
+    }
 }
 
 /// Histogramme (latences, tailles, etc.).
@@ -60,8 +76,12 @@ pub struct Histogram {
     samples: RwLock<Vec<u64>>,
 }
 impl Histogram {
-    pub fn observe(&self, v: u64) { self.samples.write().push(v); }
-    pub fn snapshot(&self) -> Vec<u64> { self.samples.read().clone() }
+    pub fn observe(&self, v: u64) {
+        self.samples.write().push(v);
+    }
+    pub fn snapshot(&self) -> Vec<u64> {
+        self.samples.read().clone()
+    }
 }
 
 /// Registre global de métriques.
@@ -73,33 +93,44 @@ pub struct MetricsRegistry {
 }
 
 impl MetricsRegistry {
-    pub fn global() -> &'static Self { &REGISTRY }
+    pub fn global() -> &'static Self {
+        &REGISTRY
+    }
 
     pub fn counter(name: &str) -> Arc<Counter> {
         let reg = Self::global();
         let mut map = reg.counters.write();
-        map.entry(name.to_string()).or_insert_with(|| Arc::new(Counter::default())).clone()
+        map.entry(name.to_string())
+            .or_insert_with(|| Arc::new(Counter::default()))
+            .clone()
     }
 
     pub fn gauge(name: &str) -> Arc<Gauge> {
         let reg = Self::global();
         let mut map = reg.gauges.write();
-        map.entry(name.to_string()).or_insert_with(|| Arc::new(Gauge::default())).clone()
+        map.entry(name.to_string())
+            .or_insert_with(|| Arc::new(Gauge::default()))
+            .clone()
     }
 
     pub fn histogram(name: &str) -> Arc<Histogram> {
         let reg = Self::global();
         let mut map = reg.histograms.write();
-        map.entry(name.to_string()).or_insert_with(|| Arc::new(Histogram::default())).clone()
+        map.entry(name.to_string())
+            .or_insert_with(|| Arc::new(Histogram::default()))
+            .clone()
     }
 
     #[cfg(feature = "json")]
     pub fn snapshot_json() -> String {
         let reg = Self::global();
         let mut data = HashMap::new();
-        let counters: HashMap<_, _> = reg.counters.read().iter().map(|(k, v)| (k.clone(), v.get())).collect();
-        let gauges: HashMap<_, _> = reg.gauges.read().iter().map(|(k, v)| (k.clone(), v.get())).collect();
-        let histograms: HashMap<_, _> = reg.histograms.read().iter().map(|(k, v)| (k.clone(), v.snapshot())).collect();
+        let counters: HashMap<_, _> =
+            reg.counters.read().iter().map(|(k, v)| (k.clone(), v.get())).collect();
+        let gauges: HashMap<_, _> =
+            reg.gauges.read().iter().map(|(k, v)| (k.clone(), v.get())).collect();
+        let histograms: HashMap<_, _> =
+            reg.histograms.read().iter().map(|(k, v)| (k.clone(), v.snapshot())).collect();
         data.insert("counters", counters);
         data.insert("gauges", gauges);
         data.insert("histograms", histograms);
@@ -186,7 +217,9 @@ mod tests {
     #[test]
     fn histograms_work() {
         let h = MetricsRegistry::histogram("latency");
-        time_block(&h, || { let _ = 2+2; });
+        time_block(&h, || {
+            let _ = 2 + 2;
+        });
         assert!(!h.snapshot().is_empty());
     }
 

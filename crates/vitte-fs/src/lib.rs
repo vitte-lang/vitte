@@ -17,7 +17,7 @@
 #![forbid(unsafe_code)]
 
 use std::ffi::OsStr;
-use std::io::{Write, BufRead};
+use std::io::{BufRead, Write};
 use std::path::{Component, Path, PathBuf};
 use std::{fs, io};
 
@@ -190,11 +190,11 @@ pub fn remove_any<P: AsRef<Path>>(path: P) -> FsResult<()> {
     match fs::symlink_metadata(path) {
         Ok(md) if md.is_dir() => {
             fs::remove_dir_all(path)?;
-        }
+        },
         Ok(_) => {
             fs::remove_file(path)?;
-        }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        },
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {},
         Err(e) => return Err(e.into()),
     }
     Ok(())
@@ -210,10 +210,7 @@ pub fn ensure_dir<P: AsRef<Path>>(dir: P) -> FsResult<()> {
 pub fn clean_dir<P: AsRef<Path>>(dir: P) -> FsResult<()> {
     let dir = dir.as_ref();
     if !dir.is_dir() {
-        return Err(FsError::InvalidPath(format!(
-            "not a directory: {}",
-            dir.display()
-        )));
+        return Err(FsError::InvalidPath(format!("not a directory: {}", dir.display())));
     }
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
@@ -228,9 +225,8 @@ pub fn stat<P: AsRef<Path>>(path: P) -> FsResult<FileInfo> {
     let path = path.as_ref();
     let md = fs::metadata(path).or_else(|_| fs::symlink_metadata(path))?;
     let mut info = FileInfo::from(md);
-    info.is_symlink = fs::symlink_metadata(path)
-        .map(|m| m.file_type().is_symlink())
-        .unwrap_or(false);
+    info.is_symlink =
+        fs::symlink_metadata(path).map(|m| m.file_type().is_symlink()).unwrap_or(false);
     info.abs_path = canonicalize(path).ok();
     Ok(info)
 }
@@ -240,16 +236,18 @@ pub fn list_dir<P: AsRef<Path>>(root: P, opts: &ListOptions) -> FsResult<Vec<Pat
     let mut out = Vec::new();
     let root = root.as_ref();
     if !root.is_dir() {
-        return Err(FsError::InvalidPath(format!(
-            "not a directory: {}",
-            root.display()
-        )));
+        return Err(FsError::InvalidPath(format!("not a directory: {}", root.display())));
     }
     walk_internal(root, opts, 0, &mut out)?;
     Ok(out)
 }
 
-fn walk_internal(dir: &Path, opts: &ListOptions, depth: usize, out: &mut Vec<PathBuf>) -> FsResult<()> {
+fn walk_internal(
+    dir: &Path,
+    opts: &ListOptions,
+    depth: usize,
+    out: &mut Vec<PathBuf>,
+) -> FsResult<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let p = entry.path();
@@ -312,17 +310,17 @@ pub fn normalize<P: AsRef<Path>>(path: P) -> PathBuf {
     let mut stack: Vec<Component> = Vec::new();
     for c in path.as_ref().components() {
         match c {
-            Component::CurDir => {}
+            Component::CurDir => {},
             Component::ParentDir => {
                 if let Some(last) = stack.last() {
                     match last {
-                        Component::RootDir | Component::Prefix(_) => {}
+                        Component::RootDir | Component::Prefix(_) => {},
                         _ => {
                             stack.pop();
-                        }
+                        },
                     }
                 }
-            }
+            },
             _ => stack.push(c),
         }
     }
@@ -346,7 +344,9 @@ pub fn canonicalize<P: AsRef<Path>>(path: P) -> FsResult<PathBuf> {
 /// Transforme en chemin absolu sans toucher au FS (autant que possible).
 pub fn absolutize<P: AsRef<Path>>(path: P) -> FsResult<PathBuf> {
     let p = path.as_ref();
-    let ab = p.absolutize().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+    let ab = p
+        .absolutize()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
     Ok(ab.into_owned())
 }
 
@@ -449,17 +449,12 @@ pub fn temp_dir() -> PathBuf {
 
 /// Construit un chemin frère temporaire unique de `path`.
 fn tmp_sibling(path: &Path, tag: &str) -> FsResult<PathBuf> {
-    use rand::{distributions::Alphanumeric, thread_rng, Rng};
+    use rand::{Rng, distributions::Alphanumeric, thread_rng};
     let parent = path.parent().ok_or_else(|| FsError::InvalidPath("no parent".into()))?;
     let stem = path.file_name().unwrap_or_else(|| OsStr::new("file"));
     let rand: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
-    let tmp = parent.join(format!(
-        "{}.{}.{}.{}",
-        stem.to_string_lossy(),
-        tag,
-        std::process::id(),
-        rand
-    ));
+    let tmp =
+        parent.join(format!("{}.{}.{}.{}", stem.to_string_lossy(), tag, std::process::id(), rand));
     Ok(tmp)
 }
 
@@ -468,9 +463,7 @@ fn tmp_sibling(path: &Path, tag: &str) -> FsResult<PathBuf> {
 pub fn read_lines<P: AsRef<Path>>(path: P) -> FsResult<impl Iterator<Item = FsResult<String>>> {
     let f = fs::File::open(path)?;
     let reader = io::BufReader::new(f);
-    Ok(reader
-        .lines()
-        .map(|r| r.map_err(FsError::from)))
+    Ok(reader.lines().map(|r| r.map_err(FsError::from)))
 }
 
 /// Détecte si un path a l’une des extensions fournies.
@@ -491,10 +484,7 @@ pub fn with_extension<P: AsRef<Path>>(path: P, ext: &str) -> PathBuf {
 
 /// Retourne nom de fichier sans extension.
 pub fn file_stem<P: AsRef<Path>>(path: P) -> Option<String> {
-    path.as_ref()
-        .file_stem()
-        .and_then(OsStr::to_str)
-        .map(|s| s.to_string())
+    path.as_ref().file_stem().and_then(OsStr::to_str).map(|s| s.to_string())
 }
 
 /// Crée un fichier vide s’il n’existe pas, sinon touche la mtime.
@@ -575,7 +565,7 @@ pub mod aio {
         match tokio::fs::symlink_metadata(path).await {
             Ok(md) if md.is_dir() => tokio::fs::remove_dir_all(path).await?,
             Ok(_) => tokio::fs::remove_file(path).await?,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {},
             Err(e) => return Err(e.into()),
         }
         Ok(())
@@ -615,7 +605,10 @@ mod tests {
 
     #[test]
     fn io_cycle() {
-        let dir = temp_dir().join(format!("vitte-fs-test-{}", SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()));
+        let dir = temp_dir().join(format!(
+            "vitte-fs-test-{}",
+            SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
+        ));
         ensure_dir(&dir).unwrap();
 
         let f = dir.join("x.txt");

@@ -37,7 +37,9 @@ pub enum Arity {
 }
 
 impl Default for Arity {
-    fn default() -> Self { Arity::One }
+    fn default() -> Self {
+        Arity::One
+    }
 }
 
 /// Argument specification used by the stub.
@@ -89,7 +91,12 @@ impl Default for Arg {
 impl Arg {
     /// Creates a flag argument.
     pub fn flag(name: impl Into<String>) -> Self {
-        Self { kind: ArgKind::Flag, name: name.into(), arity: Arity::ZeroOrOne, ..Self::default() }
+        Self {
+            kind: ArgKind::Flag,
+            name: name.into(),
+            arity: Arity::ZeroOrOne,
+            ..Self::default()
+        }
     }
 
     /// Creates an option argument.
@@ -103,21 +110,66 @@ impl Arg {
     }
 
     /// Builder helpers mirroring the original API.
-    pub fn short(mut self, c: char) -> Self { self.short = Some(c); self }
-    pub fn long(mut self, l: &str) -> Self { self.long = Some(l.to_string()); self }
-    pub fn help(mut self, h: &str) -> Self { self.help = Some(h.to_string()); self }
-    pub fn value_name(mut self, n: &str) -> Self { self.value_name = Some(n.to_string()); self }
-    pub fn required(mut self, r: bool) -> Self { self.required = r; self }
-    pub fn arity(mut self, a: Arity) -> Self { self.arity = a; self }
-    pub fn env(mut self, var: &str) -> Self { self.env = Some(var.to_string()); self }
-    pub fn with_default(mut self, v: &str) -> Self { self.default = Some(v.to_string()); self }
-    pub fn choices<I: IntoIterator<Item = String>>(mut self, vals: I) -> Self { self.choices = vals.into_iter().collect(); self }
-    pub fn repeatable(mut self, r: bool) -> Self { self.repeatable = r; self }
-    pub fn hidden(mut self, h: bool) -> Self { self.hidden = h; self }
-    pub fn deprecated(mut self, msg: &str) -> Self { self.deprecated = Some(msg.to_string()); self }
-    pub fn alias(mut self, a: &str) -> Self { self.aliases.push(a.to_string()); self }
-    pub fn requires(mut self, name: impl Into<String>) -> Self { self.requires.push(name.into()); self }
-    pub fn conflicts_with(mut self, name: impl Into<String>) -> Self { self.conflicts.push(name.into()); self }
+    pub fn short(mut self, c: char) -> Self {
+        self.short = Some(c);
+        self
+    }
+    pub fn long(mut self, l: &str) -> Self {
+        self.long = Some(l.to_string());
+        self
+    }
+    pub fn help(mut self, h: &str) -> Self {
+        self.help = Some(h.to_string());
+        self
+    }
+    pub fn value_name(mut self, n: &str) -> Self {
+        self.value_name = Some(n.to_string());
+        self
+    }
+    pub fn required(mut self, r: bool) -> Self {
+        self.required = r;
+        self
+    }
+    pub fn arity(mut self, a: Arity) -> Self {
+        self.arity = a;
+        self
+    }
+    pub fn env(mut self, var: &str) -> Self {
+        self.env = Some(var.to_string());
+        self
+    }
+    pub fn with_default(mut self, v: &str) -> Self {
+        self.default = Some(v.to_string());
+        self
+    }
+    pub fn choices<I: IntoIterator<Item = String>>(mut self, vals: I) -> Self {
+        self.choices = vals.into_iter().collect();
+        self
+    }
+    pub fn repeatable(mut self, r: bool) -> Self {
+        self.repeatable = r;
+        self
+    }
+    pub fn hidden(mut self, h: bool) -> Self {
+        self.hidden = h;
+        self
+    }
+    pub fn deprecated(mut self, msg: &str) -> Self {
+        self.deprecated = Some(msg.to_string());
+        self
+    }
+    pub fn alias(mut self, a: &str) -> Self {
+        self.aliases.push(a.to_string());
+        self
+    }
+    pub fn requires(mut self, name: impl Into<String>) -> Self {
+        self.requires.push(name.into());
+        self
+    }
+    pub fn conflicts_with(mut self, name: impl Into<String>) -> Self {
+        self.conflicts.push(name.into());
+        self
+    }
 }
 
 /// CLI specification.
@@ -139,18 +191,42 @@ impl Spec {
         Self { bin: bin.to_string(), auto_help: true, auto_version: true, ..Self::default() }
     }
 
-    pub fn about(mut self, text: &str) -> Self { self.about = Some(text.to_string()); self }
-    pub fn version(mut self, v: &str) -> Self { self.version = Some(v.to_string()); self }
-    pub fn footer(mut self, f: &str) -> Self { self.footer = Some(f.to_string()); self }
-    pub fn arg(mut self, arg: Arg) -> Self { self.args.push(arg); self }
-    pub fn subcommand(mut self, cmd: Spec) -> Self { self.subcommands.push(cmd); self }
-    pub fn auto_help(mut self, on: bool) -> Self { self.auto_help = on; self }
-    pub fn auto_version(mut self, on: bool) -> Self { self.auto_version = on; self }
+    pub fn about(mut self, text: &str) -> Self {
+        self.about = Some(text.to_string());
+        self
+    }
+    pub fn version(mut self, v: &str) -> Self {
+        self.version = Some(v.to_string());
+        self
+    }
+    pub fn footer(mut self, f: &str) -> Self {
+        self.footer = Some(f.to_string());
+        self
+    }
+    pub fn arg(mut self, arg: Arg) -> Self {
+        self.args.push(arg);
+        self
+    }
+    pub fn subcommand(mut self, cmd: Spec) -> Self {
+        self.subcommands.push(cmd);
+        self
+    }
+    pub fn auto_help(mut self, on: bool) -> Self {
+        self.auto_help = on;
+        self
+    }
+    pub fn auto_version(mut self, on: bool) -> Self {
+        self.auto_version = on;
+        self
+    }
 
     /// Generates a minimal usage string (without validation).
     pub fn usage(&self) -> String {
         let mut parts = vec![Cow::Borrowed("Usage:"), Cow::Owned(self.bin.clone())];
-        if self.auto_help || self.auto_version || self.args.iter().any(|a| !matches!(a.kind, ArgKind::Pos)) {
+        if self.auto_help
+            || self.auto_version
+            || self.args.iter().any(|a| !matches!(a.kind, ArgKind::Pos))
+        {
             parts.push(Cow::Borrowed("[OPTIONS]"));
         }
         if !self.subcommands.is_empty() {
@@ -210,7 +286,11 @@ impl Matches {
 
     /// Returns the last value for an option, if any.
     pub fn value(&self, name: &str) -> Option<Cow<'_, str>> {
-        self.options.iter().rev().find(|(n, _)| n == name).map(|(_, v)| Cow::Borrowed(v.as_str()))
+        self.options
+            .iter()
+            .rev()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| Cow::Borrowed(v.as_str()))
     }
 
     /// Returns all values for an option.

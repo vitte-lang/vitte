@@ -193,7 +193,14 @@ pub fn stringify(bytes: Uint8Array) -> Result<String, JsValue> {
     let m = Module::from_bytes(&v).map_err(core_err)?;
     let s = format!(
         "VITBC v{}\nINTS: {}\nFLTS: {}\nSTRS: {}\nDATA: {} bytes\nCODE: {} bytes\nNAMES: {}\nCRC32: 0x{:08X}",
-        m.version, m.ints.len(), m.floats.len(), m.strings.len(), m.data.len(), m.code.len(), m.names.len(), m.crc32
+        m.version,
+        m.ints.len(),
+        m.floats.len(),
+        m.strings.len(),
+        m.data.len(),
+        m.code.len(),
+        m.names.len(),
+        m.crc32
     );
     Ok(s)
 }

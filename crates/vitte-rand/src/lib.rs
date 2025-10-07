@@ -20,7 +20,9 @@ impl LcgRng {
     const INC: u64 = 1;
 
     /// Crée un RNG initialisé avec la seed donnée.
-    pub fn new(seed: u64) -> Self { Self { state: seed } }
+    pub fn new(seed: u64) -> Self {
+        Self { state: seed }
+    }
 
     /// Retourne le prochain entier 32 bits pseudo-aléatoire.
     pub fn next_u32(&mut self) -> u32 {

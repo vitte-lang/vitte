@@ -36,9 +36,7 @@ pub struct PluginState {
 impl PluginState {
     /// Creates a new plugin state.
     pub fn new() -> Self {
-        Self {
-            started_at: Instant::now(),
-        }
+        Self { started_at: Instant::now() }
     }
 }
 

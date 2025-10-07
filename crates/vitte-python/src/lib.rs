@@ -15,7 +15,6 @@
 //! vp::py_run("print('hello from embedded Python')").unwrap();
 //! ```
 
-
 /// Erreurs interop Python.
 #[derive(Debug)]
 pub enum PyErrKind {
@@ -48,20 +47,22 @@ pub type Result<T> = std::result::Result<T, PyErrKind>;
 pub mod embed {
     use super::*;
     use pyo3::prelude::*;
-    use pyo3::{types::{PyDict, PyList, PyString, PyTuple}};
+    use pyo3::types::{PyDict, PyList, PyString, PyTuple};
 
     /// Exécute une chaîne de code Python (sans résultat).
     pub fn py_run(code: &str) -> Result<()> {
-        Python::with_gil(|py| {
-            py.run(code, None, None).map_err(|e| PyErrKind::Py(e.to_string()))
-        })
+        Python::with_gil(|py| py.run(code, None, None).map_err(|e| PyErrKind::Py(e.to_string())))
     }
 
     /// Évalue une expression Python et renvoie sa représentation `str`.
     pub fn py_eval_str(expr: &str) -> Result<String> {
         Python::with_gil(|py| {
             let v = py.eval(expr, None, None).map_err(|e| PyErrKind::Py(e.to_string()))?;
-            Ok(v.str().map_err(|e| PyErrKind::Py(e.to_string()))?.to_str().map_err(|e| PyErrKind::Py(e.to_string()))?.to_owned())
+            Ok(v.str()
+                .map_err(|e| PyErrKind::Py(e.to_string()))?
+                .to_str()
+                .map_err(|e| PyErrKind::Py(e.to_string()))?
+                .to_owned())
         })
     }
 
@@ -70,8 +71,16 @@ pub mod embed {
         Python::with_gil(|py| {
             let m = py.import(module).map_err(|e| PyErrKind::Py(e.to_string()))?;
             let tuple = PyTuple::new(py, args.iter().map(|s| PyString::new(py, s)));
-            let out = m.getattr(func).and_then(|f| f.call1(tuple)).map_err(|e| PyErrKind::Py(e.to_string()))?;
-            Ok(out.str().map_err(|e| PyErrKind::Py(e.to_string()))?.to_str().map_err(|e| PyErrKind::Py(e.to_string()))?.to_owned())
+            let out = m
+                .getattr(func)
+                .and_then(|f| f.call1(tuple))
+                .map_err(|e| PyErrKind::Py(e.to_string()))?;
+            Ok(out
+                .str()
+                .map_err(|e| PyErrKind::Py(e.to_string()))?
+                .to_str()
+                .map_err(|e| PyErrKind::Py(e.to_string()))?
+                .to_owned())
         })
     }
 
@@ -79,7 +88,12 @@ pub mod embed {
     pub fn to_py_list_i64(data: &[i64]) -> Result<String> {
         Python::with_gil(|py| {
             let list = PyList::new(py, data);
-            Ok(list.repr().map_err(|e| PyErrKind::Py(e.to_string()))?.to_str().map_err(|e| PyErrKind::Py(e.to_string()))?.to_owned())
+            Ok(list
+                .repr()
+                .map_err(|e| PyErrKind::Py(e.to_string()))?
+                .to_str()
+                .map_err(|e| PyErrKind::Py(e.to_string()))?
+                .to_owned())
         })
     }
 }
@@ -115,7 +129,9 @@ pub mod embed {
 pub mod ext {
     /// Stub extension module. Enable the `pyo3_compat` feature and add real PyO3 macros
     /// in environments where PyO3 macros and API versions are available.
-    pub fn enabled() -> bool { false }
+    pub fn enabled() -> bool {
+        false
+    }
 }
 
 #[cfg(test)]

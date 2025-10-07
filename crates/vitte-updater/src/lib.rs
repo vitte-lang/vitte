@@ -38,7 +38,7 @@
     clippy::missing_errors_doc
 )]
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
 use semver::Version;
 use std::fs::{self, File};
@@ -48,7 +48,6 @@ use tempfile::NamedTempFile;
 
 #[cfg(feature = "serde")]
 use serde::Deserialize;
-
 
 #[cfg(feature = "progress")]
 use indicatif::{ProgressBar, ProgressStyle};
@@ -108,9 +107,11 @@ fn mk_pb(len: Option<u64>, msg: &str) -> ProgressBar {
         Some(l) => ProgressBar::new(l),
         None => ProgressBar::new_spinner(),
     };
-    let sty = ProgressStyle::with_template("{spinner:.green} {msg} [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
-        .unwrap()
-        .progress_chars("=> ");
+    let sty = ProgressStyle::with_template(
+        "{spinner:.green} {msg} [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})",
+    )
+    .unwrap()
+    .progress_chars("=> ");
     pb.set_style(sty);
     pb.set_message(msg.to_string());
     pb
@@ -157,13 +158,16 @@ pub fn download_to_blocking(url: &str, dst: impl AsRef<Path>) -> Result<()> {
     let total = resp.content_length();
     #[cfg(feature = "progress")]
     let pb = mk_pb(total, "Téléchargement");
-    let mut file = File::create(&dst).with_context(|| format!("create {}", dst.as_ref().display()))?;
+    let mut file =
+        File::create(&dst).with_context(|| format!("create {}", dst.as_ref().display()))?;
     #[cfg(feature = "progress")]
     let mut downloaded: u64 = 0;
     let mut buf = [0u8; 64 * 1024];
     loop {
         let n = resp.read(&mut buf)?;
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         file.write_all(&buf[..n])?;
         #[cfg(feature = "progress")]
         {
@@ -178,8 +182,8 @@ pub fn download_to_blocking(url: &str, dst: impl AsRef<Path>) -> Result<()> {
 
 #[cfg(all(feature = "http", feature = "async"))]
 pub async fn download_to_async(url: &str, dst: impl AsRef<Path>) -> Result<()> {
-    use tokio::io::AsyncWriteExt;
     use tokio::io::AsyncReadExt;
+    use tokio::io::AsyncWriteExt;
     let resp = reqwest::Client::new()
         .get(url)
         .header(reqwest::header::USER_AGENT, user_agent())
@@ -221,7 +225,9 @@ pub fn verify_sha256_file(path: impl AsRef<Path>, expected_hex: &str) -> Result<
     let mut buf = [0u8; 64 * 1024];
     loop {
         let n = f.read(&mut buf)?;
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         hasher.update(&buf[..n]);
     }
     let got = hasher.finalize();
@@ -261,7 +267,9 @@ fn extract_zip(p: &Path, dest: impl AsRef<Path>) -> Result<()> {
         if entry.is_dir() {
             fs::create_dir_all(&out)?;
         } else {
-            if let Some(parent) = out.parent() { fs::create_dir_all(parent)?; }
+            if let Some(parent) = out.parent() {
+                fs::create_dir_all(parent)?;
+            }
             let mut of = File::create(&out)?;
             std::io::copy(&mut entry, &mut of)?;
             #[cfg(unix)]
@@ -319,10 +327,8 @@ pub fn atomic_replace(current_bin: impl AsRef<Path>, new_bin_path: impl AsRef<Pa
     }
     #[cfg(target_os = "windows")]
     {
-        let bak = parent.join(format!(
-            ".{}.old",
-            cur.file_name().and_then(|s| s.to_str()).unwrap_or("bin")
-        ));
+        let bak = parent
+            .join(format!(".{}.old", cur.file_name().and_then(|s| s.to_str()).unwrap_or("bin")));
         let _ = fs::remove_file(&bak);
         let _ = fs::rename(cur, &bak);
     }
@@ -334,7 +340,9 @@ pub fn atomic_replace(current_bin: impl AsRef<Path>, new_bin_path: impl AsRef<Pa
 pub fn current_rust_target() -> String {
     // Fallback à env à la compilation, sinon heuristique OS.
     let env_target = option_env!("TARGET").map(|s| s.to_string());
-    if let Some(t) = env_target { return t; }
+    if let Some(t) = env_target {
+        return t;
+    }
     #[cfg(target_os = "linux")]
     return "x86_64-unknown-linux-gnu".into();
     #[cfg(target_os = "macos")]
@@ -361,13 +369,12 @@ pub fn self_update_blocking(
 ) -> Result<Version> {
     let latest = fetch_latest_blocking(latest_url)?;
     let target_buf = target.map(|s| s.to_string()).unwrap_or_else(current_rust_target);
-    let asset = latest.pick_for(&target_buf).ok_or_else(|| anyhow::anyhow!(format!("asset introuvable pour {}", &target_buf)))?;
+    let asset = latest
+        .pick_for(&target_buf)
+        .ok_or_else(|| anyhow::anyhow!(format!("asset introuvable pour {}", &target_buf)))?;
 
     let cache = cache_root()?;
-    let archive_path = cache.join(format!(
-        "{}-{}-download",
-        latest.name, latest.version
-    ));
+    let archive_path = cache.join(format!("{}-{}-download", latest.name, latest.version));
 
     download_to_blocking(&asset.url, &archive_path)?;
 
@@ -401,7 +408,9 @@ pub async fn self_update_async(
 ) -> Result<Version> {
     let latest = fetch_latest_async(latest_url).await?;
     let target_buf = target.map(|s| s.to_string()).unwrap_or_else(current_rust_target);
-    let asset = latest.pick_for(&target_buf).ok_or_else(|| anyhow::anyhow!(format!("asset introuvable pour {}", &target_buf)))?;
+    let asset = latest
+        .pick_for(&target_buf)
+        .ok_or_else(|| anyhow::anyhow!(format!("asset introuvable pour {}", &target_buf)))?;
 
     let cache = cache_root()?;
     let archive_path = cache.join(format!("{}-{}-download", latest.name, latest.version));

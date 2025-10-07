@@ -25,8 +25,8 @@ extern crate alloc;
 use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 use core::ffi::c_char;
-use std::panic::{catch_unwind, AssertUnwindSafe};
 use core::ptr;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 #[cfg(feature = "std")]
 use std::ffi::{CStr, CString};
@@ -63,11 +63,11 @@ pub enum VitteTag {
     /// Booléen.
     Bool = 1,
     /// Entier 64 bits.
-    I64  = 2,
+    I64 = 2,
     /// Float 64 bits.
-    F64  = 3,
+    F64 = 3,
     /// Chaîne UTF-8.
-    Str  = 4,
+    Str = 4,
     /// Octets arbitraires.
     Bytes = 5,
     /// Tableau de valeurs.
@@ -88,7 +88,9 @@ pub struct VitteString {
     pub owned: i32,
 }
 impl VitteString {
-    fn empty() -> Self { Self { ptr: ptr::null_mut(), len: 0, owned: 0 } }
+    fn empty() -> Self {
+        Self { ptr: ptr::null_mut(), len: 0, owned: 0 }
+    }
 }
 
 /// Tampon d’octets. Si `owned != 0`, libérer via `vitte_ffi_bytes_free`.
@@ -103,7 +105,9 @@ pub struct VitteBytes {
     pub owned: i32,
 }
 impl VitteBytes {
-    fn empty() -> Self { Self { ptr: ptr::null_mut(), len: 0, owned: 0 } }
+    fn empty() -> Self {
+        Self { ptr: ptr::null_mut(), len: 0, owned: 0 }
+    }
 }
 
 /// Tableau contigu de `VitteValue`. Si `owned != 0`, libérer via `vitte_ffi_value_free`
@@ -120,7 +124,9 @@ pub struct VitteArray {
     pub owned: i32,
 }
 impl VitteArray {
-    fn empty() -> Self { Self { ptr: ptr::null_mut(), len: 0, owned: 0 } }
+    fn empty() -> Self {
+        Self { ptr: ptr::null_mut(), len: 0, owned: 0 }
+    }
 }
 
 /// Valeur générique transmise via C.
@@ -145,11 +151,25 @@ pub struct VitteValue {
 
 impl VitteValue {
     fn unit() -> Self {
-        Self { tag: VitteTag::Unit, as_bool: 0, as_i64: 0, as_f64: 0.0, s: VitteString::empty(), b: VitteBytes::empty(), a: VitteArray::empty() }
+        Self {
+            tag: VitteTag::Unit,
+            as_bool: 0,
+            as_i64: 0,
+            as_f64: 0.0,
+            s: VitteString::empty(),
+            b: VitteBytes::empty(),
+            a: VitteArray::empty(),
+        }
     }
-    fn from_bool(x: bool) -> Self { Self { tag: VitteTag::Bool, as_bool: x as i32, ..Self::unit() } }
-    fn from_i64(x: i64) -> Self { Self { tag: VitteTag::I64, as_i64: x, ..Self::unit() } }
-    fn from_f64(x: f64) -> Self { Self { tag: VitteTag::F64, as_f64: x, ..Self::unit() } }
+    fn from_bool(x: bool) -> Self {
+        Self { tag: VitteTag::Bool, as_bool: x as i32, ..Self::unit() }
+    }
+    fn from_i64(x: i64) -> Self {
+        Self { tag: VitteTag::I64, as_i64: x, ..Self::unit() }
+    }
+    fn from_f64(x: f64) -> Self {
+        Self { tag: VitteTag::F64, as_f64: x, ..Self::unit() }
+    }
 
     #[cfg(feature = "std")]
     fn from_owned_string(s: String) -> Self {
@@ -193,54 +213,66 @@ fn rt_from_c(v: &VitteValue) -> core::result::Result<RtValue, String> {
     match v.tag {
         VitteTag::Unit => Ok(RtValue::Null),
         VitteTag::Bool => Ok(RtValue::Bool(v.as_bool != 0)),
-        VitteTag::I64  => Ok(RtValue::I64(v.as_i64)),
-        VitteTag::F64  => Ok(RtValue::F64(v.as_f64)),
-        VitteTag::Str  => {
+        VitteTag::I64 => Ok(RtValue::I64(v.as_i64)),
+        VitteTag::F64 => Ok(RtValue::F64(v.as_f64)),
+        VitteTag::Str => {
             #[cfg(feature = "std")]
             unsafe {
                 let (ptr, len) = (v.s.ptr, v.s.len);
-                if ptr.is_null() && len == 0 { return Ok(RtValue::Str(String::new())); }
+                if ptr.is_null() && len == 0 {
+                    return Ok(RtValue::Str(String::new()));
+                }
                 let slice = core::slice::from_raw_parts(ptr as *const u8, len);
                 let s = core::str::from_utf8(slice).map_err(|_| "invalid utf-8".to_string())?;
                 Ok(RtValue::Str(s.to_owned()))
             }
             #[cfg(not(feature = "std"))]
-            { Err("strings require std".into()) }
-        }
+            {
+                Err("strings require std".into())
+            }
+        },
         VitteTag::Bytes => {
             #[cfg(feature = "std")]
             unsafe {
                 let (ptr, len) = (v.b.ptr, v.b.len);
-                if ptr.is_null() { return Ok(RtValue::Bytes(Vec::new())); }
+                if ptr.is_null() {
+                    return Ok(RtValue::Bytes(Vec::new()));
+                }
                 let slice = core::slice::from_raw_parts(ptr, len);
                 Ok(RtValue::Bytes(slice.to_vec()))
             }
             #[cfg(not(feature = "std"))]
-            { Err("bytes require std".into()) }
-        }
+            {
+                Err("bytes require std".into())
+            }
+        },
         VitteTag::Array => {
             #[cfg(feature = "std")]
-            { Err("array not supported by runtime".into()) }
+            {
+                Err("array not supported by runtime".into())
+            }
             #[cfg(not(feature = "std"))]
-            { Err("array require std".into()) }
-        }
+            {
+                Err("array require std".into())
+            }
+        },
     }
 }
 
 fn rt_to_c(v: RtValue) -> VitteValue {
     match v {
-        RtValue::Null        => VitteValue::unit(),
-        RtValue::Bool(b)     => VitteValue::from_bool(b),
-        RtValue::I64(i)      => VitteValue::from_i64(i),
-        RtValue::F64(x)      => VitteValue::from_f64(x),
-        #[cfg(feature="std")]
-        RtValue::Str(s)      => VitteValue::from_owned_string(s),
-        #[cfg(not(feature="std"))]
-        RtValue::Str(_)      => VitteValue::unit(),
-        #[cfg(feature="std")]
-        RtValue::Bytes(b)    => VitteValue::from_owned_bytes(b),
-        #[cfg(not(feature="std"))]
-        RtValue::Bytes(_)    => VitteValue::unit(),
+        RtValue::Null => VitteValue::unit(),
+        RtValue::Bool(b) => VitteValue::from_bool(b),
+        RtValue::I64(i) => VitteValue::from_i64(i),
+        RtValue::F64(x) => VitteValue::from_f64(x),
+        #[cfg(feature = "std")]
+        RtValue::Str(s) => VitteValue::from_owned_string(s),
+        #[cfg(not(feature = "std"))]
+        RtValue::Str(_) => VitteValue::unit(),
+        #[cfg(feature = "std")]
+        RtValue::Bytes(b) => VitteValue::from_owned_bytes(b),
+        #[cfg(not(feature = "std"))]
+        RtValue::Bytes(_) => VitteValue::unit(),
         // Ajoutez d'autres variantes si votre runtime en expose.
     }
 }
@@ -273,16 +305,36 @@ impl VitteHandle {
 
 /* ------------------------------ Utilitaires ------------------------------ */
 
-#[inline] fn ok() -> VitteCode { VitteCode::Ok }
-#[inline] fn invalid() -> VitteCode { VitteCode::Invalid }
-#[inline] fn rt_err() -> VitteCode { VitteCode::Runtime }
-#[inline] fn call_err() -> VitteCode { VitteCode::Call }
-#[inline] fn io_err() -> VitteCode { VitteCode::Io }
-#[inline] fn panic_err() -> VitteCode { VitteCode::Panic }
+#[inline]
+fn ok() -> VitteCode {
+    VitteCode::Ok
+}
+#[inline]
+fn invalid() -> VitteCode {
+    VitteCode::Invalid
+}
+#[inline]
+fn rt_err() -> VitteCode {
+    VitteCode::Runtime
+}
+#[inline]
+fn call_err() -> VitteCode {
+    VitteCode::Call
+}
+#[inline]
+fn io_err() -> VitteCode {
+    VitteCode::Io
+}
+#[inline]
+fn panic_err() -> VitteCode {
+    VitteCode::Panic
+}
 
 #[cfg(feature = "std")]
 unsafe fn cstr<'a>(p: *const c_char) -> Result<&'a str, ()> {
-    if p.is_null() { return Err(()); }
+    if p.is_null() {
+        return Err(());
+    }
     unsafe { CStr::from_ptr(p) }.to_str().map_err(|_| ())
 }
 
@@ -296,14 +348,18 @@ pub extern "C" fn vitte_ffi_version() -> *const c_char {
         static mut VER: *const c_char = ptr::null();
         unsafe {
             if VER.is_null() {
-                let s = CString::new(concat!(env!("CARGO_PKG_NAME"), " ", env!("CARGO_PKG_VERSION"))).unwrap();
+                let s =
+                    CString::new(concat!(env!("CARGO_PKG_NAME"), " ", env!("CARGO_PKG_VERSION")))
+                        .unwrap();
                 VER = Box::leak(Box::new(s)).as_ptr();
             }
             VER
         }
     }
     #[cfg(not(feature = "std"))]
-    { ptr::null() }
+    {
+        ptr::null()
+    }
 }
 
 /// Crée un runtime Vitte et retourne un handle opaque.
@@ -315,7 +371,11 @@ pub extern "C" fn vitte_ffi_new() -> *mut VitteHandle {
 /// Détruit le handle.
 #[no_mangle]
 pub extern "C" fn vitte_ffi_free(h: *mut VitteHandle) {
-    if !h.is_null() { unsafe { drop(Box::from_raw(h)); } }
+    if !h.is_null() {
+        unsafe {
+            drop(Box::from_raw(h));
+        }
+    }
 }
 
 /// Dernière erreur sous forme de C string. Propriété : handle.
@@ -324,32 +384,45 @@ pub extern "C" fn vitte_ffi_free(h: *mut VitteHandle) {
 pub extern "C" fn vitte_ffi_last_error(h: *mut VitteHandle) -> *const c_char {
     #[cfg(feature = "std")]
     unsafe {
-        if h.is_null() { return ptr::null(); }
+        if h.is_null() {
+            return ptr::null();
+        }
         match (&*h).last_err.as_ref() {
             Some(c) => c.as_ptr(),
             None => ptr::null(),
         }
     }
     #[cfg(not(feature = "std"))]
-    { ptr::null() }
+    {
+        ptr::null()
+    }
 }
 
 /// Configure un timeout global en millisecondes (best-effort).
 #[no_mangle]
 pub extern "C" fn vitte_ffi_set_timeout_ms(h: *mut VitteHandle, ms: u64) -> VitteCode {
-    if h.is_null() { return invalid(); }
+    if h.is_null() {
+        return invalid();
+    }
     let res = catch_unwind(AssertUnwindSafe(|| {
-        unsafe { (*h).timeout_ms = ms; }
+        unsafe {
+            (*h).timeout_ms = ms;
+        }
         // Si votre runtime supporte un paramètre de deadline, appliquez-le ici.
         Ok::<(), ()>(())
     }));
-    match res { Ok(_) => ok(), Err(_) => panic_err() }
+    match res {
+        Ok(_) => ok(),
+        Err(_) => panic_err(),
+    }
 }
 
 /// Évalue du code source UTF-8.
 #[no_mangle]
 pub extern "C" fn vitte_ffi_eval(h: *mut VitteHandle, src: *const c_char) -> VitteCode {
-    if h.is_null() || src.is_null() { return invalid(); }
+    if h.is_null() || src.is_null() {
+        return invalid();
+    }
     let res = catch_unwind(AssertUnwindSafe(|| {
         #[cfg(feature = "std")]
         unsafe {
@@ -359,23 +432,41 @@ pub extern "C" fn vitte_ffi_eval(h: *mut VitteHandle, src: *const c_char) -> Vit
             hh.last_err = None;
             Ok::<(), String>(())
         }
-        #[cfg(not(feature="std"))]
-        { Err::<(), String>("std required".into()) }
+        #[cfg(not(feature = "std"))]
+        {
+            Err::<(), String>("std required".into())
+        }
     }));
     match res {
         Ok(Ok(())) => ok(),
-        Ok(Err(msg)) => { #[cfg(feature="std")] unsafe { (&mut *h).set_err(msg); } rt_err() }
-        Err(_) => { #[cfg(feature="std")] unsafe { (&mut *h).set_err("panic in eval".into()); } panic_err() }
+        Ok(Err(msg)) => {
+            #[cfg(feature = "std")]
+            unsafe {
+                (&mut *h).set_err(msg);
+            }
+            rt_err()
+        },
+        Err(_) => {
+            #[cfg(feature = "std")]
+            unsafe {
+                (&mut *h).set_err("panic in eval".into());
+            }
+            panic_err()
+        },
     }
 }
 
 /// Charge et évalue un fichier source (chemin UTF-8).
 #[no_mangle]
 pub extern "C" fn vitte_ffi_load_file(h: *mut VitteHandle, path: *const c_char) -> VitteCode {
-    if h.is_null() || path.is_null() { return invalid(); }
-    #[cfg(not(feature="std"))]
-    { return invalid(); }
-    #[cfg(feature="std")]
+    if h.is_null() || path.is_null() {
+        return invalid();
+    }
+    #[cfg(not(feature = "std"))]
+    {
+        return invalid();
+    }
+    #[cfg(feature = "std")]
     let res = catch_unwind(AssertUnwindSafe(|| unsafe {
         let p = cstr(path).map_err(|_| "invalid utf-8 path".to_string())?;
         let src = std::fs::read_to_string(p).map_err(|e| e.to_string())?;
@@ -384,11 +475,21 @@ pub extern "C" fn vitte_ffi_load_file(h: *mut VitteHandle, path: *const c_char) 
         hh.last_err = None;
         Ok::<(), String>(())
     }));
-    #[cfg(feature="std")]
+    #[cfg(feature = "std")]
     match res {
         Ok(Ok(())) => ok(),
-        Ok(Err(msg)) => { unsafe { (&mut *h).set_err(msg); } io_err() },
-        Err(_) => { unsafe { (&mut *h).set_err("panic in load_file".into()); } panic_err() }
+        Ok(Err(msg)) => {
+            unsafe {
+                (&mut *h).set_err(msg);
+            }
+            io_err()
+        },
+        Err(_) => {
+            unsafe {
+                (&mut *h).set_err("panic in load_file".into());
+            }
+            panic_err()
+        },
     }
 }
 
@@ -404,9 +505,11 @@ pub extern "C" fn vitte_ffi_call(
     args_len: usize,
     out_ret: *mut VitteValue,
 ) -> VitteCode {
-    if h.is_null() || func.is_null() || out_ret.is_null() { return invalid(); }
+    if h.is_null() || func.is_null() || out_ret.is_null() {
+        return invalid();
+    }
     let res = catch_unwind(AssertUnwindSafe(|| {
-        #[cfg(feature="std")]
+        #[cfg(feature = "std")]
         unsafe {
             let hh = &mut *h;
             let name = cstr(func).map_err(|_| "invalid utf-8 func".to_string())?;
@@ -416,20 +519,36 @@ pub extern "C" fn vitte_ffi_call(
                 core::slice::from_raw_parts(args_ptr, args_len)
             };
             let mut rt_args = Vec::with_capacity(args_slice.len());
-            for a in args_slice { rt_args.push(rt_from_c(a)?); }
+            for a in args_slice {
+                rt_args.push(rt_from_c(a)?);
+            }
             // Optionnel : appliquer le timeout au runtime si disponible.
             let rv = hh.rt.call(name, &rt_args).map_err(|e| format!("{e:?}"))?;
             *out_ret = rt_to_c(rv);
             hh.last_err = None;
             Ok::<(), String>(())
         }
-        #[cfg(not(feature="std"))]
-        { Err::<(), String>("std required".into()) }
+        #[cfg(not(feature = "std"))]
+        {
+            Err::<(), String>("std required".into())
+        }
     }));
     match res {
         Ok(Ok(())) => ok(),
-        Ok(Err(msg)) => { #[cfg(feature="std")] unsafe { (&mut *h).set_err(msg); } call_err() }
-        Err(_) => { #[cfg(feature="std")] unsafe { (&mut *h).set_err("panic in call".into()); } panic_err() }
+        Ok(Err(msg)) => {
+            #[cfg(feature = "std")]
+            unsafe {
+                (&mut *h).set_err(msg);
+            }
+            call_err()
+        },
+        Err(_) => {
+            #[cfg(feature = "std")]
+            unsafe {
+                (&mut *h).set_err("panic in call".into());
+            }
+            panic_err()
+        },
     }
 }
 
@@ -440,9 +559,11 @@ pub extern "C" fn vitte_ffi_set_var(
     name: *const c_char,
     val: *const VitteValue,
 ) -> VitteCode {
-    if h.is_null() || name.is_null() || val.is_null() { return invalid(); }
+    if h.is_null() || name.is_null() || val.is_null() {
+        return invalid();
+    }
     let res = catch_unwind(AssertUnwindSafe(|| {
-        #[cfg(feature="std")]
+        #[cfg(feature = "std")]
         unsafe {
             let hh = &mut *h;
             let nm = cstr(name).map_err(|_| "invalid utf-8 name".to_string())?;
@@ -451,13 +572,27 @@ pub extern "C" fn vitte_ffi_set_var(
             hh.last_err = None;
             Ok::<(), String>(())
         }
-        #[cfg(not(feature="std"))]
-        { Err::<(), String>("std required".into()) }
+        #[cfg(not(feature = "std"))]
+        {
+            Err::<(), String>("std required".into())
+        }
     }));
     match res {
         Ok(Ok(())) => ok(),
-        Ok(Err(msg)) => { #[cfg(feature="std")] unsafe { (&mut *h).set_err(msg); } rt_err() }
-        Err(_) => { #[cfg(feature="std")] unsafe { (&mut *h).set_err("panic in set_var".into()); } panic_err() }
+        Ok(Err(msg)) => {
+            #[cfg(feature = "std")]
+            unsafe {
+                (&mut *h).set_err(msg);
+            }
+            rt_err()
+        },
+        Err(_) => {
+            #[cfg(feature = "std")]
+            unsafe {
+                (&mut *h).set_err("panic in set_var".into());
+            }
+            panic_err()
+        },
     }
 }
 
@@ -468,9 +603,11 @@ pub extern "C" fn vitte_ffi_get_var(
     name: *const c_char,
     out_val: *mut VitteValue,
 ) -> VitteCode {
-    if h.is_null() || name.is_null() || out_val.is_null() { return invalid(); }
+    if h.is_null() || name.is_null() || out_val.is_null() {
+        return invalid();
+    }
     let res = catch_unwind(AssertUnwindSafe(|| {
-        #[cfg(feature="std")]
+        #[cfg(feature = "std")]
         unsafe {
             let hh = &mut *h;
             let nm = cstr(name).map_err(|_| "invalid utf-8 name".to_string())?;
@@ -479,13 +616,27 @@ pub extern "C" fn vitte_ffi_get_var(
             hh.last_err = None;
             Ok::<(), String>(())
         }
-        #[cfg(not(feature="std"))]
-        { Err::<(), String>("std required".into()) }
+        #[cfg(not(feature = "std"))]
+        {
+            Err::<(), String>("std required".into())
+        }
     }));
     match res {
         Ok(Ok(())) => ok(),
-        Ok(Err(msg)) => { #[cfg(feature="std")] unsafe { (&mut *h).set_err(msg); } rt_err() }
-        Err(_) => { #[cfg(feature="std")] unsafe { (&mut *h).set_err("panic in get_var".into()); } panic_err() }
+        Ok(Err(msg)) => {
+            #[cfg(feature = "std")]
+            unsafe {
+                (&mut *h).set_err(msg);
+            }
+            rt_err()
+        },
+        Err(_) => {
+            #[cfg(feature = "std")]
+            unsafe {
+                (&mut *h).set_err("panic in get_var".into());
+            }
+            panic_err()
+        },
     }
 }
 
@@ -494,7 +645,7 @@ pub extern "C" fn vitte_ffi_get_var(
 /// Libère une `VitteString` possédée.
 #[no_mangle]
 pub extern "C" fn vitte_ffi_string_free(s: VitteString) {
-    #[cfg(feature="std")]
+    #[cfg(feature = "std")]
     unsafe {
         if s.owned != 0 && !s.ptr.is_null() {
             let _ = CString::from_raw(s.ptr); // drop
@@ -505,7 +656,7 @@ pub extern "C" fn vitte_ffi_string_free(s: VitteString) {
 /// Libère un tampon d’octets possédé.
 #[no_mangle]
 pub extern "C" fn vitte_ffi_bytes_free(b: VitteBytes) {
-    #[cfg(feature="std")]
+    #[cfg(feature = "std")]
     unsafe {
         if b.owned != 0 && !b.ptr.is_null() {
             drop(Vec::from_raw_parts(b.ptr, b.len, b.len));
@@ -517,24 +668,26 @@ pub extern "C" fn vitte_ffi_bytes_free(b: VitteBytes) {
 #[no_mangle]
 pub extern "C" fn vitte_ffi_value_free(v: VitteValue) {
     match v.tag {
-        VitteTag::Str   => vitte_ffi_string_free(v.s),
+        VitteTag::Str => vitte_ffi_string_free(v.s),
         VitteTag::Bytes => vitte_ffi_bytes_free(v.b),
         VitteTag::Array => {
-            #[cfg(feature="std")]
+            #[cfg(feature = "std")]
             unsafe {
                 if v.a.owned != 0 && !v.a.ptr.is_null() {
                     let items = Vec::from_raw_parts(v.a.ptr, v.a.len, v.a.len);
-                    for it in items { vitte_ffi_value_free(it); }
+                    for it in items {
+                        vitte_ffi_value_free(it);
+                    }
                 }
             }
-        }
-        _ => {}
+        },
+        _ => {},
     }
 }
 
 /* ---------------------------------- Tests -------------------------------- */
 
-#[cfg(all(test, feature="std"))]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
 
@@ -546,7 +699,13 @@ mod tests {
 
         let args = [VitteValue::from_i64(40), VitteValue::from_i64(2)];
         let mut out = VitteValue::unit();
-        let rc = vitte_ffi_call(h, CString::new("add").unwrap().as_ptr(), args.as_ptr(), args.len(), &mut out);
+        let rc = vitte_ffi_call(
+            h,
+            CString::new("add").unwrap().as_ptr(),
+            args.as_ptr(),
+            args.len(),
+            &mut out,
+        );
         assert_eq!(rc, VitteCode::Ok);
         assert_eq!(out.tag, VitteTag::I64);
         assert_eq!(out.as_i64, 42);
@@ -567,9 +726,13 @@ mod tests {
         // Str
         let name = CString::new("vitte").unwrap();
         let arg_str = VitteValue {
-            tag: VitteTag::Str, as_bool:0, as_i64:0, as_f64:0.0,
+            tag: VitteTag::Str,
+            as_bool: 0,
+            as_i64: 0,
+            as_f64: 0.0,
             s: VitteString { ptr: name.as_ptr() as *mut c_char, len: 5, owned: 0 },
-            b: VitteBytes::empty(), a: VitteArray::empty()
+            b: VitteBytes::empty(),
+            a: VitteArray::empty(),
         };
         let mut out = VitteValue::unit();
         let rc = vitte_ffi_call(h, CString::new("greet").unwrap().as_ptr(), &arg_str, 1, &mut out);
@@ -582,29 +745,42 @@ mod tests {
         vitte_ffi_value_free(out);
 
         // Bytes roundtrip
-        let data = vec![1u8,2,3,4];
+        let data = vec![1u8, 2, 3, 4];
         let arg_bytes = VitteValue {
-            tag: VitteTag::Bytes, as_bool:0, as_i64:0, as_f64:0.0,
+            tag: VitteTag::Bytes,
+            as_bool: 0,
+            as_i64: 0,
+            as_f64: 0.0,
             s: VitteString::empty(),
             b: VitteBytes { ptr: data.as_ptr() as *mut u8, len: data.len(), owned: 0 },
-            a: VitteArray::empty()
+            a: VitteArray::empty(),
         };
         core::mem::forget(data); // emprunt non possédé
-        let rc = vitte_ffi_call(h, CString::new("echo_bytes").unwrap().as_ptr(), &arg_bytes, 1, &mut out);
+        let rc = vitte_ffi_call(
+            h,
+            CString::new("echo_bytes").unwrap().as_ptr(),
+            &arg_bytes,
+            1,
+            &mut out,
+        );
         assert_eq!(rc, VitteCode::Ok);
         assert_eq!(out.tag, VitteTag::Bytes);
         unsafe {
             let s = core::slice::from_raw_parts(out.b.ptr as *const u8, out.b.len);
-            assert_eq!(s, &[1,2,3,4]);
+            assert_eq!(s, &[1, 2, 3, 4]);
         }
         vitte_ffi_value_free(out);
 
         // Array[Int]
         let mut elems = vec![VitteValue::from_i64(10), VitteValue::from_i64(32)];
         let arr = VitteValue {
-            tag: VitteTag::Array, as_bool:0, as_i64:0, as_f64:0.0,
-            s: VitteString::empty(), b: VitteBytes::empty(),
-            a: VitteArray { ptr: elems.as_mut_ptr(), len: elems.len(), owned: 0 }
+            tag: VitteTag::Array,
+            as_bool: 0,
+            as_i64: 0,
+            as_f64: 0.0,
+            s: VitteString::empty(),
+            b: VitteBytes::empty(),
+            a: VitteArray { ptr: elems.as_mut_ptr(), len: elems.len(), owned: 0 },
         };
         core::mem::forget(elems);
         let rc = vitte_ffi_call(h, CString::new("sum").unwrap().as_ptr(), &arr, 1, &mut out);

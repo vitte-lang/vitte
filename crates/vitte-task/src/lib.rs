@@ -48,9 +48,13 @@ impl TaskHandle {
         Self { cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)) }
     }
     /// Annule la tâche
-    pub fn cancel(&self) { self.cancelled.store(true, std::sync::atomic::Ordering::SeqCst); }
+    pub fn cancel(&self) {
+        self.cancelled.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
     /// Vérifie si annulée
-    pub fn is_cancelled(&self) -> bool { self.cancelled.load(std::sync::atomic::Ordering::SeqCst) }
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(std::sync::atomic::Ordering::SeqCst)
+    }
 }
 
 /// Spawning runtime-agnostic
@@ -104,7 +108,8 @@ where
             }
             smol::Timer::after(Duration::from_millis(50)).await;
         }
-    }).detach();
+    })
+    .detach();
 
     handle
 }
@@ -112,17 +117,27 @@ where
 /// Sleep async runtime-agnostic
 pub async fn sleep(dur: Duration) {
     #[cfg(feature = "rt-tokio")]
-    { tokio::time::sleep(dur).await }
+    {
+        tokio::time::sleep(dur).await
+    }
 
     #[cfg(feature = "rt-async-std")]
-    { async_std::task::sleep(dur).await }
+    {
+        async_std::task::sleep(dur).await
+    }
 
     #[cfg(feature = "rt-smol")]
-    { smol::Timer::after(dur).await }
+    {
+        smol::Timer::after(dur).await
+    }
 }
 
 /// Retry une future avec délai fixe
-pub async fn retry<F, Fut, T, E>(mut f: F, retries: usize, delay: Duration) -> std::result::Result<T, E>
+pub async fn retry<F, Fut, T, E>(
+    mut f: F,
+    retries: usize,
+    delay: Duration,
+) -> std::result::Result<T, E>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = std::result::Result<T, E>>,
@@ -131,7 +146,10 @@ where
     for _ in 0..retries {
         match f().await {
             Ok(v) => return Ok(v),
-            Err(e) => { last = Some(e); sleep(delay).await; }
+            Err(e) => {
+                last = Some(e);
+                sleep(delay).await;
+            },
         }
     }
     Err(last.unwrap())
@@ -143,12 +161,15 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn retry_ok() {
         let mut n = 0;
-        let res: std::result::Result<i32, &str> = retry(|| {
-            n += 1;
-            async move {
-                if n < 3 { Err("no") } else { Ok(42) }
-            }
-        }, 5, Duration::from_millis(1)).await;
+        let res: std::result::Result<i32, &str> = retry(
+            || {
+                n += 1;
+                async move { if n < 3 { Err("no") } else { Ok(42) } }
+            },
+            5,
+            Duration::from_millis(1),
+        )
+        .await;
         assert_eq!(res.unwrap(), 42);
     }
 }
