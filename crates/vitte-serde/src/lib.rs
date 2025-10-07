@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-serde — utilitaires de (dé)sérialisation pour Vitte
 //!
@@ -18,8 +16,8 @@
 //! let s = Foo { a: 42 }.to_json_pretty().unwrap();
 //! ```
 
-use thiserror::Error;
 use serde::{Serialize, de::DeserializeOwned};
+use thiserror::Error;
 
 #[cfg(feature = "chrono")]
 pub use chrono;
@@ -163,10 +161,12 @@ pub mod base64_adapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::{Serialize, Deserialize};
+    use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize, Debug, PartialEq)]
-    struct Foo { a: i32 }
+    struct Foo {
+        a: i32,
+    }
 
     #[test]
     fn json_roundtrip() {

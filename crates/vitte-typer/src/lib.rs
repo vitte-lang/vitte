@@ -44,7 +44,9 @@ pub struct InferCtx;
 
 impl InferCtx {
     /// Creates a new inference context.
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 /// Runs type inference on a module (stub).

@@ -42,7 +42,9 @@ pub enum TargetArch {
 }
 
 impl Default for TargetArch {
-    fn default() -> Self { TargetArch::X86_64 }
+    fn default() -> Self {
+        TargetArch::X86_64
+    }
 }
 
 /// Assembly module placeholder.

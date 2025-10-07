@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-static — gestion d’actifs statiques pour Vitte
 //!
@@ -20,7 +18,7 @@
 use thiserror::Error;
 
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "mime")]
 use mime_guess::MimeGuess;
@@ -43,7 +41,7 @@ pub enum StaticError {
 pub type Result<T> = std::result::Result<T, StaticError>;
 
 /// Asset binaire en mémoire
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone)]
 pub struct Asset {
     /// Nom / chemin
@@ -108,7 +106,7 @@ pub async fn axum_handler<A: rust_embed::RustEmbed>(
                 );
             }
             Ok(resp)
-        }
+        },
         Err(_) => Err(axum::http::StatusCode::NOT_FOUND),
     }
 }
@@ -117,15 +115,22 @@ pub async fn axum_handler<A: rust_embed::RustEmbed>(
 /// Service Hyper qui sert un asset unique
 pub fn hyper_service<A: rust_embed::RustEmbed>(
     name: &'static str,
-) -> impl hyper::service::Service<hyper::Request<hyper::body::Incoming>, Response=hyper::Response<hyper::Body>, Error=std::convert::Infallible> + Clone {
-    use hyper::{Response, Body};
+) -> impl hyper::service::Service<
+    hyper::Request<hyper::body::Incoming>,
+    Response = hyper::Response<hyper::Body>,
+    Error = std::convert::Infallible,
+> + Clone {
+    use hyper::{Body, Response};
     let asset = get_embed::<A>(name).ok();
     tower::service_fn(move |_req| {
         let resp = if let Some(ref a) = asset {
             let mut r = Response::new(Body::from(a.data.clone()));
-            #[cfg(feature="mime")]
+            #[cfg(feature = "mime")]
             {
-                r.headers_mut().insert(hyper::header::CONTENT_TYPE, hyper::header::HeaderValue::from_str(&a.mime).unwrap());
+                r.headers_mut().insert(
+                    hyper::header::CONTENT_TYPE,
+                    hyper::header::HeaderValue::from_str(&a.mime).unwrap(),
+                );
             }
             r
         } else {

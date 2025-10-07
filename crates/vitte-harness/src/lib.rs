@@ -32,7 +32,9 @@ pub enum TestResult {
 }
 
 /// Stub qui exécute un test en retournant systématiquement `Passed`.
-pub fn run_stub(_config: &TestConfig) -> TestResult { TestResult::Passed }
+pub fn run_stub(_config: &TestConfig) -> TestResult {
+    TestResult::Passed
+}
 
 #[cfg(test)]
 mod tests {

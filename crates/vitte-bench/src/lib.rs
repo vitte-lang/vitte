@@ -21,19 +21,19 @@ pub mod benches {
     //!
     //! Each module defines a `criterion_benchmark` entrypoint.
 
-    pub mod lexer;
-    pub mod parser;
-    pub mod ir_passes;
-    pub mod vm_micro;
-    pub mod vm_hotpath;
     pub mod e2e_pipeline;
     pub mod end_to_end;
+    pub mod ir_passes;
+    pub mod lexer;
+    pub mod parser;
+    pub mod vm_hotpath;
+    pub mod vm_micro;
 }
 
 pub mod utils {
     //! Shared utilities used in benchmarks.
 
-    use rand::{rngs::StdRng, Rng, SeedableRng};
+    use rand::{Rng, SeedableRng, rngs::StdRng};
     use std::time::{Duration, Instant};
 
     /// Generate a random string of given length using alphanumeric chars.

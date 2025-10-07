@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-new — bibliothèque interne pour l’outil de scaffolding Vitte
 //!
@@ -11,9 +9,9 @@
 //!
 //! Utilisé par le binaire `vitte-new`.
 
-use std::path::{Path, PathBuf};
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use fs_err as fs;
+use std::path::{Path, PathBuf};
 use toml_edit::{DocumentMut, value};
 
 /// Crée un nouveau crate dans le dossier `dir` avec nom `name`.
@@ -47,9 +45,13 @@ pub fn add_dependency(cargo_toml: &Path, dep: &str, version: &str) -> Result<()>
 /// Crée un module source vide.
 pub fn create_module(crate_dir: &Path, module: &str) -> Result<PathBuf> {
     let src = crate_dir.join("src");
-    if !src.exists() { anyhow::bail!("src/ not found"); }
+    if !src.exists() {
+        anyhow::bail!("src/ not found");
+    }
     let path = src.join(format!("{module}.rs"));
-    if path.exists() { anyhow::bail!("module exists: {module}"); }
+    if path.exists() {
+        anyhow::bail!("module exists: {module}");
+    }
     fs::write(&path, format!("//! module {module}\n\n"))?;
     Ok(path)
 }

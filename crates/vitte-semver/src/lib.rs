@@ -15,8 +15,8 @@
 //! assert_eq!(vs::inc_patch(&v).to_string(), "1.2.4");
 //! ```
 
-use thiserror::Error;
 use semver::{Version, VersionReq};
+use thiserror::Error;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};

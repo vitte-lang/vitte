@@ -26,8 +26,12 @@ pub enum Target {
 }
 
 impl Target {
-    pub fn pointer_bits(self) -> u32 { 64 }
-    pub fn is_little_endian(self) -> bool { true }
+    pub fn pointer_bits(self) -> u32 {
+        64
+    }
+    pub fn is_little_endian(self) -> bool {
+        true
+    }
 }
 
 /// Options de génération.
@@ -93,7 +97,9 @@ pub struct Codegen {
     opts: CodegenOptions,
 }
 impl Codegen {
-    pub fn new(opts: CodegenOptions) -> Self { Self { opts } }
+    pub fn new(opts: CodegenOptions) -> Self {
+        Self { opts }
+    }
 
     /// Compile une fonction feuille “retimm64”.
     pub fn compile_ret_const(&self, spec: &FuncSpec<'_>) -> Result<CodeBlob, CodegenError> {
@@ -146,7 +152,9 @@ struct Encoder {
     asm_lines: Vec<String>,
 }
 impl Encoder {
-    fn new() -> Self { Self { bytes: Vec::with_capacity(6 * 4), words: 0, asm_lines: vec![] } }
+    fn new() -> Self {
+        Self { bytes: Vec::with_capacity(6 * 4), words: 0, asm_lines: vec![] }
+    }
 
     #[inline]
     fn push_u32(&mut self, w: u32, asm: &str) {
@@ -213,7 +221,11 @@ fn encode_movk_xd_imm16_hw(rd: u8, imm16: u16, shift: u32) -> u32 {
 // ──────────────────────────────────────────────────────────────────────────
 
 /// Génère une fonction feuille qui renvoie `value` en `x0` puis `ret`.
-pub fn compile_return_u64(name: &str, value: u64, opts: CodegenOptions) -> Result<CodeBlob, CodegenError> {
+pub fn compile_return_u64(
+    name: &str,
+    value: u64,
+    opts: CodegenOptions,
+) -> Result<CodeBlob, CodegenError> {
     Codegen::new(opts).compile_ret_const(&FuncSpec::new(name, value))
 }
 
@@ -221,7 +233,9 @@ pub fn compile_return_u64(name: &str, value: u64, opts: CodegenOptions) -> Resul
 pub fn hexdump32_le(code: &[u8]) -> String {
     let mut out = String::new();
     for (i, chunk) in code.chunks(4).enumerate() {
-        if i > 0 { out.push(' '); }
+        if i > 0 {
+            out.push(' ');
+        }
         let mut w = [0u8; 4];
         w[..chunk.len()].copy_from_slice(chunk);
         out.push_str(&format!("{:08x}", u32::from_le_bytes(w)));
@@ -239,7 +253,12 @@ mod tests {
 
     #[test]
     fn enc_zero() {
-        let blob = compile_return_u64("ret_zero", 0, CodegenOptions { emit_asm_string: true, ..Default::default() }).unwrap();
+        let blob = compile_return_u64(
+            "ret_zero",
+            0,
+            CodegenOptions { emit_asm_string: true, ..Default::default() },
+        )
+        .unwrap();
         // Doit contenir: movz x0,#0 ; ret
         let hex = hexdump32_le(&blob.text);
         // MOVZ x0,#0,lsl#0 = 0xD2800000 ; RET = 0xD65F03C0

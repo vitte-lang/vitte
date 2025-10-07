@@ -21,8 +21,8 @@
     clippy::too_many_lines
 )]
 
-use anyhow::{bail, Context, Result};
-use dirs::{config_dir};
+use anyhow::{Context, Result, bail};
+use dirs::config_dir;
 use std::{
     collections::HashMap,
     fs,
@@ -40,7 +40,10 @@ use serde::{Deserialize, Serialize};
 
 /// Niveau d’optimisation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
+#[cfg_attr(
+    any(feature = "json", feature = "toml"),
+    derive(Serialize, Deserialize)
+)]
 pub enum OptLevel {
     O0,
     O1,
@@ -51,12 +54,17 @@ pub enum OptLevel {
 }
 
 impl Default for OptLevel {
-    fn default() -> Self { Self::O0 }
+    fn default() -> Self {
+        Self::O0
+    }
 }
 
 /// Architecture cible.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
+#[cfg_attr(
+    any(feature = "json", feature = "toml"),
+    derive(Serialize, Deserialize)
+)]
 pub enum Arch {
     X86_64,
     Aarch64,
@@ -64,12 +72,17 @@ pub enum Arch {
 }
 
 impl Default for Arch {
-    fn default() -> Self { Self::X86_64 }
+    fn default() -> Self {
+        Self::X86_64
+    }
 }
 
 /// Backend codegen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
+#[cfg_attr(
+    any(feature = "json", feature = "toml"),
+    derive(Serialize, Deserialize)
+)]
 pub enum Backend {
     Asm,
     Cranelift,
@@ -77,12 +90,17 @@ pub enum Backend {
 }
 
 impl Default for Backend {
-    fn default() -> Self { Self::Cranelift }
+    fn default() -> Self {
+        Self::Cranelift
+    }
 }
 
 /// Options de build.
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
+#[cfg_attr(
+    any(feature = "json", feature = "toml"),
+    derive(Serialize, Deserialize)
+)]
 pub struct BuildProfile {
     pub opt: OptLevel,
     pub debug_info: bool,
@@ -104,7 +122,10 @@ impl BuildProfile {
 
 /// Toolchain et cible.
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
+#[cfg_attr(
+    any(feature = "json", feature = "toml"),
+    derive(Serialize, Deserialize)
+)]
 pub struct Toolchain {
     pub backend: Backend,
     pub arch: Arch,
@@ -119,7 +140,10 @@ impl Default for Toolchain {
 
 /// Configuration racine.
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
+#[cfg_attr(
+    any(feature = "json", feature = "toml"),
+    derive(Serialize, Deserialize)
+)]
 pub struct Config {
     /// Nom du profil par défaut.
     pub default_profile: String,
@@ -134,11 +158,7 @@ impl Default for Config {
         let mut profiles = HashMap::new();
         profiles.insert("debug".into(), BuildProfile::default());
         profiles.insert("release".into(), BuildProfile::release());
-        Self {
-            default_profile: "debug".into(),
-            profiles,
-            toolchain: Toolchain::default(),
-        }
+        Self { default_profile: "debug".into(), profiles, toolchain: Toolchain::default() }
     }
 }
 
@@ -183,7 +203,8 @@ impl Config {
         if let Some(user_cfg) = Self::load_first_existing(&Self::user_candidates())? {
             cfg = cfg.merge(user_cfg);
         }
-        if let Some(proj_cfg) = Self::load_first_existing(&Self::project_candidates(project_root))? {
+        if let Some(proj_cfg) = Self::load_first_existing(&Self::project_candidates(project_root))?
+        {
             cfg = cfg.merge(proj_cfg);
         }
         cfg.validate()?;
@@ -229,7 +250,7 @@ impl Config {
             _ => {
                 // fallback: tente TOML puis JSON
                 Self::from_toml(&data).or_else(|_| Self::from_json(&data))
-            }
+            },
         }
         .with_context(|| format!("parse {}", path.display()))
     }
@@ -244,7 +265,8 @@ impl Config {
         };
         if let Some(parent) = path.parent() {
             if !parent.exists() {
-                fs::create_dir_all(parent).with_context(|| format!("mkdir {}", parent.display()))?;
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("mkdir {}", parent.display()))?;
             }
         }
         fs::write(path, bytes).with_context(|| format!("write {}", path.display()))

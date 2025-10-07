@@ -27,8 +27,8 @@
 compile_error!("vitte-crash requires std for meaningful crash handling");
 
 use std::panic;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(unix)]
 use signal_hook::{consts::signal::*, iterator::Signals};

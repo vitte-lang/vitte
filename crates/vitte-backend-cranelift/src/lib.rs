@@ -29,7 +29,7 @@ use alloc::string::String;
 
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{default_libcall_names, Linkage, Module};
+use cranelift_module::{Linkage, Module, default_libcall_names};
 
 /// Erreurs du JIT Cranelift minimal.
 #[derive(Debug)]
@@ -61,11 +61,7 @@ impl Jit {
     pub fn new() -> Self {
         let builder = JITBuilder::new(default_libcall_names()).expect("failed to init JITBuilder");
         let module = JITModule::new(builder);
-        Self {
-            module,
-            fctx: FunctionBuilderContext::new(),
-            name_ctr: AtomicUsize::new(0),
-        }
+        Self { module, fctx: FunctionBuilderContext::new(), name_ctr: AtomicUsize::new(0) }
     }
 
     /// Compile une fonction `(i64,i64) -> i64` qui effectue une addition.
@@ -159,7 +155,6 @@ impl Jit {
 fn map_mod_err(e: cranelift_module::ModuleError) -> JitError {
     JitError::Parse(e.to_string())
 }
-
 
 /* ─────────────────────────── Tests ─────────────────────────── */
 

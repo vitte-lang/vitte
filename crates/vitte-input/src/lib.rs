@@ -60,44 +60,77 @@ pub enum MouseButton {
 pub enum KeyCode {
     // lettres
     /// Touche A.
-    A, /// Touche B.
-    B, /// Touche C.
-    C, /// Touche D.
-    D, /// Touche E.
-    E, /// Touche F.
-    F, /// Touche G.
-    G, /// Touche H.
-    H, /// Touche I.
-    I, /// Touche J.
-    J, /// Touche K.
-    K, /// Touche L.
-    L, /// Touche M.
+    A,
+    /// Touche B.
+    B,
+    /// Touche C.
+    C,
+    /// Touche D.
+    D,
+    /// Touche E.
+    E,
+    /// Touche F.
+    F,
+    /// Touche G.
+    G,
+    /// Touche H.
+    H,
+    /// Touche I.
+    I,
+    /// Touche J.
+    J,
+    /// Touche K.
+    K,
+    /// Touche L.
+    L,
+    /// Touche M.
     M,
     /// Touche N.
-    N, /// Touche O.
-    O, /// Touche P.
-    P, /// Touche Q.
-    Q, /// Touche R.
-    R, /// Touche S.
-    S, /// Touche T.
-    T, /// Touche U.
-    U, /// Touche V.
-    V, /// Touche W.
-    W, /// Touche X.
-    X, /// Touche Y.
-    Y, /// Touche Z.
+    N,
+    /// Touche O.
+    O,
+    /// Touche P.
+    P,
+    /// Touche Q.
+    Q,
+    /// Touche R.
+    R,
+    /// Touche S.
+    S,
+    /// Touche T.
+    T,
+    /// Touche U.
+    U,
+    /// Touche V.
+    V,
+    /// Touche W.
+    W,
+    /// Touche X.
+    X,
+    /// Touche Y.
+    Y,
+    /// Touche Z.
     Z,
     // chiffres rangée
     /// Chiffre 0 (rangée supérieure).
-    Digit0, /// Chiffre 1.
-    Digit1, /// Chiffre 2.
-    Digit2, /// Chiffre 3.
-    Digit3, /// Chiffre 4.
-    Digit4, /// Chiffre 5.
-    Digit5, /// Chiffre 6.
-    Digit6, /// Chiffre 7.
-    Digit7, /// Chiffre 8.
-    Digit8, /// Chiffre 9.
+    Digit0,
+    /// Chiffre 1.
+    Digit1,
+    /// Chiffre 2.
+    Digit2,
+    /// Chiffre 3.
+    Digit3,
+    /// Chiffre 4.
+    Digit4,
+    /// Chiffre 5.
+    Digit5,
+    /// Chiffre 6.
+    Digit6,
+    /// Chiffre 7.
+    Digit7,
+    /// Chiffre 8.
+    Digit8,
+    /// Chiffre 9.
     Digit9,
     // modifs
     /// Shift gauche.
@@ -151,17 +184,28 @@ pub enum KeyCode {
     PageDown,
     // fonction
     /// F1.
-    F1, /// F2.
-    F2, /// F3.
-    F3, /// F4.
-    F4, /// F5.
-    F5, /// F6.
-    F6, /// F7.
-    F7, /// F8.
-    F8, /// F9.
-    F9, /// F10.
-    F10, /// F11.
-    F11, /// F12.
+    F1,
+    /// F2.
+    F2,
+    /// F3.
+    F3,
+    /// F4.
+    F4,
+    /// F5.
+    F5,
+    /// F6.
+    F6,
+    /// F7.
+    F7,
+    /// F8.
+    F8,
+    /// F9.
+    F9,
+    /// F10.
+    F10,
+    /// F11.
+    F11,
+    /// F12.
     F12,
     // divers
     /// Signe moins `-`.
@@ -218,7 +262,7 @@ pub enum InputEvent {
         /// Horodatage en secondes.
         time: TimeSec,
         /// Indique un auto-repeat.
-        repeat: bool
+        repeat: bool,
     },
     /// Touche relâchée.
     KeyUp {
@@ -227,7 +271,7 @@ pub enum InputEvent {
         /// Modificateurs actifs au moment de l’événement.
         mods: Modifiers,
         /// Horodatage en secondes.
-        time: TimeSec
+        time: TimeSec,
     },
     /// Bouton souris pressé.
     MouseDown {
@@ -240,7 +284,7 @@ pub enum InputEvent {
         /// Modificateurs actifs.
         mods: Modifiers,
         /// Horodatage en secondes.
-        time: TimeSec
+        time: TimeSec,
     },
     /// Bouton souris relâché.
     MouseUp {
@@ -253,7 +297,7 @@ pub enum InputEvent {
         /// Modificateurs actifs.
         mods: Modifiers,
         /// Horodatage en secondes.
-        time: TimeSec
+        time: TimeSec,
     },
     /// Mouvement souris.
     MouseMove {
@@ -266,7 +310,7 @@ pub enum InputEvent {
         /// Delta Y depuis la dernière frame.
         dy: f32,
         /// Horodatage en secondes.
-        time: TimeSec
+        time: TimeSec,
     },
     /// Molette (lignes &gt; 0 = haut).
     Wheel {
@@ -275,7 +319,7 @@ pub enum InputEvent {
         /// Delta vertical.
         delta_y: f32,
         /// Horodatage en secondes.
-        time: TimeSec
+        time: TimeSec,
     },
     /// Connexion de gamepad.
     GamepadConnected {
@@ -284,14 +328,14 @@ pub enum InputEvent {
         /// Nom du périphérique.
         name: String,
         /// Horodatage en secondes.
-        time: TimeSec
+        time: TimeSec,
     },
     /// Déconnexion de gamepad.
     GamepadDisconnected {
         /// Identifiant logique du gamepad.
         id: GamepadId,
         /// Horodatage en secondes.
-        time: TimeSec
+        time: TimeSec,
     },
     /// Changement d’état d’un bouton de gamepad.
     GamepadButton {
@@ -304,7 +348,7 @@ pub enum InputEvent {
         /// Vrai si pressé.
         pressed: bool,
         /// Horodatage en secondes.
-        time: TimeSec
+        time: TimeSec,
     },
     /// Changement d’un axe analogique.
     GamepadAxis {
@@ -315,7 +359,7 @@ pub enum InputEvent {
         /// Valeur normalisée [-1, 1].
         value: f32,
         /// Horodatage en secondes.
-        time: TimeSec
+        time: TimeSec,
     },
     /// Tap tactile simple (web).
     TouchTap {
@@ -326,7 +370,7 @@ pub enum InputEvent {
         /// Position Y en pixels.
         y: f32,
         /// Horodatage en secondes.
-        time: TimeSec
+        time: TimeSec,
     },
 }
 
@@ -411,16 +455,22 @@ impl InputState {
     }
 
     /// Est-ce que `key` est enfoncée.
-    pub fn key_down(&self, key: KeyCode) -> bool { self.keys_down.contains(&key) }
+    pub fn key_down(&self, key: KeyCode) -> bool {
+        self.keys_down.contains(&key)
+    }
     /// `key` vient d’être pressée cette frame.
-    pub fn key_pressed(&self, key: KeyCode) -> bool { self.keys_pressed.contains(&key) }
+    pub fn key_pressed(&self, key: KeyCode) -> bool {
+        self.keys_pressed.contains(&key)
+    }
     /// `key` vient d’être relâchée cette frame.
-    pub fn key_released(&self, key: KeyCode) -> bool { self.keys_released.contains(&key) }
+    pub fn key_released(&self, key: KeyCode) -> bool {
+        self.keys_released.contains(&key)
+    }
     /// Bouton souris enfoncé.
     pub fn mouse_down(&self, button: MouseButton) -> bool {
         match button {
-            MouseButton::Left   => self.mouse.buttons[0],
-            MouseButton::Right  => self.mouse.buttons[1],
+            MouseButton::Left => self.mouse.buttons[0],
+            MouseButton::Right => self.mouse.buttons[1],
             MouseButton::Middle => self.mouse.buttons[2],
             MouseButton::Other(i) => self.mouse.buttons.get(i as usize).copied().unwrap_or(false),
         }
@@ -445,11 +495,7 @@ impl Default for InputManager {
 impl InputManager {
     /// Nouveau manager avec une fonction d’horloge.
     pub fn new<F: 'static + Fn() -> TimeSec + Send + Sync>(clock: F) -> Self {
-        Self {
-            queue: VecDeque::new(),
-            clock_fn: Box::new(clock),
-            state: InputState::default(),
-        }
+        Self { queue: VecDeque::new(), clock_fn: Box::new(clock), state: InputState::default() }
     }
 
     /// Ajoute un événement brut.
@@ -488,56 +534,56 @@ impl InputManager {
                 if repeat {
                     // rien de spécial: l’appli peut utiliser `keys_down`
                 }
-            }
+            },
             InputEvent::KeyUp { key, mods, .. } => {
                 self.state.keys_down.remove(&key);
                 self.state.keys_released.insert(key);
                 self.state.mods = mods;
-            }
+            },
             InputEvent::MouseDown { button, x, y, mods, .. } => {
                 self.state.mouse.x = x;
                 self.state.mouse.y = y;
                 self.set_mouse_button(button, true);
                 self.state.mods = mods;
-            }
+            },
             InputEvent::MouseUp { button, x, y, mods, .. } => {
                 self.state.mouse.x = x;
                 self.state.mouse.y = y;
                 self.set_mouse_button(button, false);
                 self.state.mods = mods;
-            }
+            },
             InputEvent::MouseMove { x, y, dx, dy, .. } => {
                 self.state.mouse.x = x;
                 self.state.mouse.y = y;
                 self.state.mouse.dx += dx;
                 self.state.mouse.dy += dy;
-            }
+            },
             InputEvent::Wheel { delta_x, delta_y, .. } => {
                 self.state.mouse.wheel_x += delta_x;
                 self.state.mouse.wheel_y += delta_y;
-            }
+            },
             InputEvent::GamepadConnected { id, name, .. } => {
                 self.state.gamepads.entry(id).or_default().connected = true;
                 self.state.gamepads.entry(id).or_default().name = name;
-            }
+            },
             InputEvent::GamepadDisconnected { id, .. } => {
                 if let Some(g) = self.state.gamepads.get_mut(&id) {
                     g.connected = false;
                 }
-            }
+            },
             InputEvent::GamepadButton { id, button, value, pressed, .. } => {
                 let g = self.state.gamepads.entry(id).or_default();
                 g.connected = true;
                 g.buttons.insert(button, if pressed { value.max(1.0) } else { 0.0 });
-            }
+            },
             InputEvent::GamepadAxis { id, axis, value, .. } => {
                 let g = self.state.gamepads.entry(id).or_default();
                 g.connected = true;
                 g.axes.insert(axis, value.clamp(-1.0, 1.0));
-            }
+            },
             InputEvent::TouchTap { .. } => {
                 // pas d’état persistant par défaut
-            }
+            },
         }
     }
 
@@ -554,7 +600,9 @@ impl InputManager {
     }
 
     /// Horodatage courant via clock.
-    pub fn now(&self) -> TimeSec { (self.clock_fn)() }
+    pub fn now(&self) -> TimeSec {
+        (self.clock_fn)()
+    }
 }
 
 // -------------------- Desktop (winit + gilrs) --------------------
@@ -569,29 +617,88 @@ pub mod native {
     pub fn map_keycode(k: &winit::keyboard::KeyCode) -> KeyCode {
         use winit::keyboard::KeyCode as W;
         match *k {
-            W::KeyA => KeyCode::A, W::KeyB => KeyCode::B, W::KeyC => KeyCode::C, W::KeyD => KeyCode::D,
-            W::KeyE => KeyCode::E, W::KeyF => KeyCode::F, W::KeyG => KeyCode::G, W::KeyH => KeyCode::H,
-            W::KeyI => KeyCode::I, W::KeyJ => KeyCode::J, W::KeyK => KeyCode::K, W::KeyL => KeyCode::L,
-            W::KeyM => KeyCode::M, W::KeyN => KeyCode::N, W::KeyO => KeyCode::O, W::KeyP => KeyCode::P,
-            W::KeyQ => KeyCode::Q, W::KeyR => KeyCode::R, W::KeyS => KeyCode::S, W::KeyT => KeyCode::T,
-            W::KeyU => KeyCode::U, W::KeyV => KeyCode::V, W::KeyW => KeyCode::W, W::KeyX => KeyCode::X,
-            W::KeyY => KeyCode::Y, W::KeyZ => KeyCode::Z,
-            W::Digit0 => KeyCode::Digit0, W::Digit1 => KeyCode::Digit1, W::Digit2 => KeyCode::Digit2,
-            W::Digit3 => KeyCode::Digit3, W::Digit4 => KeyCode::Digit4, W::Digit5 => KeyCode::Digit5,
-            W::Digit6 => KeyCode::Digit6, W::Digit7 => KeyCode::Digit7, W::Digit8 => KeyCode::Digit8, W::Digit9 => KeyCode::Digit9,
-            W::ShiftLeft => KeyCode::ShiftLeft, W::ShiftRight => KeyCode::ShiftRight,
-            W::ControlLeft => KeyCode::ControlLeft, W::ControlRight => KeyCode::ControlRight,
-            W::AltLeft => KeyCode::AltLeft, W::AltRight => KeyCode::AltRight,
-            W::SuperLeft => KeyCode::MetaLeft, W::SuperRight => KeyCode::MetaRight,
-            W::ArrowUp => KeyCode::ArrowUp, W::ArrowDown => KeyCode::ArrowDown, W::ArrowLeft => KeyCode::ArrowLeft, W::ArrowRight => KeyCode::ArrowRight,
-            W::Enter => KeyCode::Enter, W::Escape => KeyCode::Escape, W::Backspace => KeyCode::Backspace, W::Tab => KeyCode::Tab, W::Space => KeyCode::Space,
-            W::Insert => KeyCode::Insert, W::Delete => KeyCode::Delete, W::Home => KeyCode::Home, W::End => KeyCode::End,
-            W::PageUp => KeyCode::PageUp, W::PageDown => KeyCode::PageDown,
-            W::F1 => KeyCode::F1, W::F2 => KeyCode::F2, W::F3 => KeyCode::F3, W::F4 => KeyCode::F4, W::F5 => KeyCode::F5,
-            W::F6 => KeyCode::F6, W::F7 => KeyCode::F7, W::F8 => KeyCode::F8, W::F9 => KeyCode::F9, W::F10 => KeyCode::F10, W::F11 => KeyCode::F11, W::F12 => KeyCode::F12,
-            W::Minus => KeyCode::Minus, W::Equal => KeyCode::Equal, W::BracketLeft => KeyCode::BracketLeft, W::BracketRight => KeyCode::BracketRight,
-            W::Semicolon => KeyCode::Semicolon, W::Quote => KeyCode::Quote, W::Backquote => KeyCode::Backquote, W::Backslash => KeyCode::Backslash,
-            W::Comma => KeyCode::Comma, W::Period => KeyCode::Period, W::Slash => KeyCode::Slash,
+            W::KeyA => KeyCode::A,
+            W::KeyB => KeyCode::B,
+            W::KeyC => KeyCode::C,
+            W::KeyD => KeyCode::D,
+            W::KeyE => KeyCode::E,
+            W::KeyF => KeyCode::F,
+            W::KeyG => KeyCode::G,
+            W::KeyH => KeyCode::H,
+            W::KeyI => KeyCode::I,
+            W::KeyJ => KeyCode::J,
+            W::KeyK => KeyCode::K,
+            W::KeyL => KeyCode::L,
+            W::KeyM => KeyCode::M,
+            W::KeyN => KeyCode::N,
+            W::KeyO => KeyCode::O,
+            W::KeyP => KeyCode::P,
+            W::KeyQ => KeyCode::Q,
+            W::KeyR => KeyCode::R,
+            W::KeyS => KeyCode::S,
+            W::KeyT => KeyCode::T,
+            W::KeyU => KeyCode::U,
+            W::KeyV => KeyCode::V,
+            W::KeyW => KeyCode::W,
+            W::KeyX => KeyCode::X,
+            W::KeyY => KeyCode::Y,
+            W::KeyZ => KeyCode::Z,
+            W::Digit0 => KeyCode::Digit0,
+            W::Digit1 => KeyCode::Digit1,
+            W::Digit2 => KeyCode::Digit2,
+            W::Digit3 => KeyCode::Digit3,
+            W::Digit4 => KeyCode::Digit4,
+            W::Digit5 => KeyCode::Digit5,
+            W::Digit6 => KeyCode::Digit6,
+            W::Digit7 => KeyCode::Digit7,
+            W::Digit8 => KeyCode::Digit8,
+            W::Digit9 => KeyCode::Digit9,
+            W::ShiftLeft => KeyCode::ShiftLeft,
+            W::ShiftRight => KeyCode::ShiftRight,
+            W::ControlLeft => KeyCode::ControlLeft,
+            W::ControlRight => KeyCode::ControlRight,
+            W::AltLeft => KeyCode::AltLeft,
+            W::AltRight => KeyCode::AltRight,
+            W::SuperLeft => KeyCode::MetaLeft,
+            W::SuperRight => KeyCode::MetaRight,
+            W::ArrowUp => KeyCode::ArrowUp,
+            W::ArrowDown => KeyCode::ArrowDown,
+            W::ArrowLeft => KeyCode::ArrowLeft,
+            W::ArrowRight => KeyCode::ArrowRight,
+            W::Enter => KeyCode::Enter,
+            W::Escape => KeyCode::Escape,
+            W::Backspace => KeyCode::Backspace,
+            W::Tab => KeyCode::Tab,
+            W::Space => KeyCode::Space,
+            W::Insert => KeyCode::Insert,
+            W::Delete => KeyCode::Delete,
+            W::Home => KeyCode::Home,
+            W::End => KeyCode::End,
+            W::PageUp => KeyCode::PageUp,
+            W::PageDown => KeyCode::PageDown,
+            W::F1 => KeyCode::F1,
+            W::F2 => KeyCode::F2,
+            W::F3 => KeyCode::F3,
+            W::F4 => KeyCode::F4,
+            W::F5 => KeyCode::F5,
+            W::F6 => KeyCode::F6,
+            W::F7 => KeyCode::F7,
+            W::F8 => KeyCode::F8,
+            W::F9 => KeyCode::F9,
+            W::F10 => KeyCode::F10,
+            W::F11 => KeyCode::F11,
+            W::F12 => KeyCode::F12,
+            W::Minus => KeyCode::Minus,
+            W::Equal => KeyCode::Equal,
+            W::BracketLeft => KeyCode::BracketLeft,
+            W::BracketRight => KeyCode::BracketRight,
+            W::Semicolon => KeyCode::Semicolon,
+            W::Quote => KeyCode::Quote,
+            W::Backquote => KeyCode::Backquote,
+            W::Backslash => KeyCode::Backslash,
+            W::Comma => KeyCode::Comma,
+            W::Period => KeyCode::Period,
+            W::Slash => KeyCode::Slash,
             _ => KeyCode::Unknown((*k) as u32),
         }
     }
@@ -609,7 +716,9 @@ pub mod native {
 
     /// Push des événements clavier/souris dans le manager.
     pub fn handle_winit_event(mgr: &mut crate::InputManager, event: &winit::event::WindowEvent) {
-        use winit::event::{ElementState, MouseButton as WM, MouseScrollDelta, TouchPhase, WindowEvent};
+        use winit::event::{
+            ElementState, MouseButton as WM, MouseScrollDelta, TouchPhase, WindowEvent,
+        };
         let t = mgr.now();
 
         match event {
@@ -619,11 +728,15 @@ pub mod native {
                     let mods = Modifiers::default(); // ModifiersState arrives via separate events; default here.
                     let repeat = *is_synthetic || event.repeat;
                     match event.state {
-                        ElementState::Pressed => mgr.push(InputEvent::KeyDown { key, mods, time: t, repeat }),
-                        ElementState::Released => mgr.push(InputEvent::KeyUp { key, mods, time: t }),
+                        ElementState::Pressed => {
+                            mgr.push(InputEvent::KeyDown { key, mods, time: t, repeat })
+                        },
+                        ElementState::Released => {
+                            mgr.push(InputEvent::KeyUp { key, mods, time: t })
+                        },
                     }
                 }
-            }
+            },
             WindowEvent::MouseInput { state, button, .. } => {
                 let btn = match button {
                     WM::Left => MouseButton::Left,
@@ -636,30 +749,39 @@ pub mod native {
                 let mods = Modifiers::default();
                 let (x, y) = (mgr.state.mouse.x, mgr.state.mouse.y);
                 match state {
-                    ElementState::Pressed => mgr.push(InputEvent::MouseDown { button: btn, x, y, mods, time: t }),
-                    ElementState::Released => mgr.push(InputEvent::MouseUp { button: btn, x, y, mods, time: t }),
+                    ElementState::Pressed => {
+                        mgr.push(InputEvent::MouseDown { button: btn, x, y, mods, time: t })
+                    },
+                    ElementState::Released => {
+                        mgr.push(InputEvent::MouseUp { button: btn, x, y, mods, time: t })
+                    },
                 }
-            }
+            },
             WindowEvent::CursorMoved { position, .. } => {
                 let x = position.x as f32;
                 let y = position.y as f32;
                 let dx = x - mgr.state.mouse.x;
                 let dy = y - mgr.state.mouse.y;
                 mgr.push(InputEvent::MouseMove { x, y, dx, dy, time: t });
-            }
+            },
             WindowEvent::MouseWheel { delta, .. } => {
                 let (dx, dy) = match delta {
                     MouseScrollDelta::LineDelta(x, y) => (*x, *y),
                     MouseScrollDelta::PixelDelta(p) => (p.x as f32, p.y as f32),
                 };
                 mgr.push(InputEvent::Wheel { delta_x: dx, delta_y: dy, time: t });
-            }
+            },
             WindowEvent::Touch(touch) => {
                 if matches!(touch.phase, TouchPhase::Ended) {
-                    mgr.push(InputEvent::TouchTap { id: touch.id as i32, x: touch.location.x as f32, y: touch.location.y as f32, time: t });
+                    mgr.push(InputEvent::TouchTap {
+                        id: touch.id as i32,
+                        x: touch.location.x as f32,
+                        y: touch.location.y as f32,
+                        time: t,
+                    });
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
@@ -688,25 +810,46 @@ pub mod native {
             let g = gilrs_ref()?;
             let t = now_secs_std();
             while let Some(ev) = g.next_event() {
-                use gilrs::{EventType, Button, Axis};
+                use gilrs::{Axis, Button, EventType};
                 match ev.event {
                     EventType::Connected => {
                         let name = g.gamepad(ev.id).name().to_string();
-                        out.push(InputEvent::GamepadConnected { id: ev.id.0 as u32, name, time: t });
-                    }
+                        out.push(InputEvent::GamepadConnected {
+                            id: ev.id.0 as u32,
+                            name,
+                            time: t,
+                        });
+                    },
                     EventType::Disconnected => {
                         out.push(InputEvent::GamepadDisconnected { id: ev.id.0 as u32, time: t });
-                    }
+                    },
                     EventType::ButtonPressed(b, _) | EventType::ButtonChanged(b, 1.0, _) => {
-                        out.push(InputEvent::GamepadButton { id: ev.id.0 as u32, button: map_button(b), value: 1.0, pressed: true, time: t });
-                    }
+                        out.push(InputEvent::GamepadButton {
+                            id: ev.id.0 as u32,
+                            button: map_button(b),
+                            value: 1.0,
+                            pressed: true,
+                            time: t,
+                        });
+                    },
                     EventType::ButtonReleased(b, _) | EventType::ButtonChanged(b, 0.0, _) => {
-                        out.push(InputEvent::GamepadButton { id: ev.id.0 as u32, button: map_button(b), value: 0.0, pressed: false, time: t });
-                    }
+                        out.push(InputEvent::GamepadButton {
+                            id: ev.id.0 as u32,
+                            button: map_button(b),
+                            value: 0.0,
+                            pressed: false,
+                            time: t,
+                        });
+                    },
                     EventType::AxisChanged(a, v, _) => {
-                        out.push(InputEvent::GamepadAxis { id: ev.id.0 as u32, axis: map_axis(a), value: v as f32, time: t });
-                    }
-                    _ => {}
+                        out.push(InputEvent::GamepadAxis {
+                            id: ev.id.0 as u32,
+                            axis: map_axis(a),
+                            value: v as f32,
+                            time: t,
+                        });
+                    },
+                    _ => {},
                 }
             }
             Some(out)
@@ -721,12 +864,23 @@ pub mod native {
     fn map_button(b: gilrs::Button) -> u16 {
         use gilrs::Button::*;
         match b {
-            South => 0, East => 1, West => 2, North => 3,
-            LeftTrigger => 4, RightTrigger => 5,
-            LeftTrigger2 => 6, RightTrigger2 => 7,
-            Select => 8, Start => 9, Mode => 10,
-            LeftThumb => 11, RightThumb => 12,
-            DPadUp => 13, DPadDown => 14, DPadLeft => 15, DPadRight => 16,
+            South => 0,
+            East => 1,
+            West => 2,
+            North => 3,
+            LeftTrigger => 4,
+            RightTrigger => 5,
+            LeftTrigger2 => 6,
+            RightTrigger2 => 7,
+            Select => 8,
+            Start => 9,
+            Mode => 10,
+            LeftThumb => 11,
+            RightThumb => 12,
+            DPadUp => 13,
+            DPadDown => 14,
+            DPadLeft => 15,
+            DPadRight => 16,
             Other(i) => 100 + i as u16,
         }
     }
@@ -735,10 +889,14 @@ pub mod native {
     fn map_axis(a: gilrs::Axis) -> u16 {
         use gilrs::Axis::*;
         match a {
-            LeftStickX => 0, LeftStickY => 1,
-            RightStickX => 2, RightStickY => 3,
-            LeftZ => 4, RightZ => 5,
-            DPadX => 6, DPadY => 7,
+            LeftStickX => 0,
+            LeftStickY => 1,
+            RightStickX => 2,
+            RightStickY => 3,
+            LeftZ => 4,
+            RightZ => 5,
+            DPadX => 6,
+            DPadY => 7,
             Other(i) => 100 + i as u16,
         }
     }
@@ -749,9 +907,9 @@ pub mod native {
 #[cfg(feature = "web")]
 pub mod web {
     use super::*;
-    use wasm_bindgen::prelude::*;
     use wasm_bindgen::JsCast;
-    use web_sys::{window, KeyboardEvent, MouseEvent, WheelEvent};
+    use wasm_bindgen::prelude::*;
+    use web_sys::{KeyboardEvent, MouseEvent, WheelEvent, window};
 
     thread_local! {
         static Q: std::cell::RefCell<Vec<InputEvent>> = const { std::cell::RefCell::new(Vec::new()) };
@@ -775,7 +933,12 @@ pub mod web {
         {
             let keydown = Closure::<dyn FnMut(KeyboardEvent)>::new(move |e: KeyboardEvent| {
                 let key = map_key_str(&e.code());
-                let mods = Modifiers { shift: e.shift_key(), ctrl: e.ctrl_key(), alt: e.alt_key(), meta: e.meta_key() };
+                let mods = Modifiers {
+                    shift: e.shift_key(),
+                    ctrl: e.ctrl_key(),
+                    alt: e.alt_key(),
+                    meta: e.meta_key(),
+                };
                 let t = now_secs_js();
                 push(InputEvent::KeyDown { key, mods, time: t, repeat: e.repeat() });
             });
@@ -784,7 +947,12 @@ pub mod web {
 
             let keyup = Closure::<dyn FnMut(KeyboardEvent)>::new(move |e: KeyboardEvent| {
                 let key = map_key_str(&e.code());
-                let mods = Modifiers { shift: e.shift_key(), ctrl: e.ctrl_key(), alt: e.alt_key(), meta: e.meta_key() };
+                let mods = Modifiers {
+                    shift: e.shift_key(),
+                    ctrl: e.ctrl_key(),
+                    alt: e.alt_key(),
+                    meta: e.meta_key(),
+                };
                 let t = now_secs_js();
                 push(InputEvent::KeyUp { key, mods, time: t });
             });
@@ -796,8 +964,10 @@ pub mod web {
         {
             let mousemove = Closure::<dyn FnMut(MouseEvent)>::new(move |e: MouseEvent| {
                 let t = now_secs_js();
-                let x = e.client_x() as f32; let y = e.client_y() as f32;
-                let dx = e.movement_x() as f32; let dy = e.movement_y() as f32;
+                let x = e.client_x() as f32;
+                let y = e.client_y() as f32;
+                let dx = e.movement_x() as f32;
+                let dy = e.movement_y() as f32;
                 push(InputEvent::MouseMove { x, y, dx, dy, time: t });
             });
             win.add_event_listener_with_callback("mousemove", mousemove.as_ref().unchecked_ref())?;
@@ -805,9 +975,15 @@ pub mod web {
 
             let mousedown = Closure::<dyn FnMut(MouseEvent)>::new(move |e: MouseEvent| {
                 let t = now_secs_js();
-                let x = e.client_x() as f32; let y = e.client_y() as f32;
+                let x = e.client_x() as f32;
+                let y = e.client_y() as f32;
                 let btn = map_mouse_button(e.button());
-                let mods = Modifiers { shift: e.shift_key(), ctrl: e.ctrl_key(), alt: e.alt_key(), meta: e.meta_key() };
+                let mods = Modifiers {
+                    shift: e.shift_key(),
+                    ctrl: e.ctrl_key(),
+                    alt: e.alt_key(),
+                    meta: e.meta_key(),
+                };
                 push(InputEvent::MouseDown { button: btn, x, y, mods, time: t });
             });
             win.add_event_listener_with_callback("mousedown", mousedown.as_ref().unchecked_ref())?;
@@ -815,9 +991,15 @@ pub mod web {
 
             let mouseup = Closure::<dyn FnMut(MouseEvent)>::new(move |e: MouseEvent| {
                 let t = now_secs_js();
-                let x = e.client_x() as f32; let y = e.client_y() as f32;
+                let x = e.client_x() as f32;
+                let y = e.client_y() as f32;
                 let btn = map_mouse_button(e.button());
-                let mods = Modifiers { shift: e.shift_key(), ctrl: e.ctrl_key(), alt: e.alt_key(), meta: e.meta_key() };
+                let mods = Modifiers {
+                    shift: e.shift_key(),
+                    ctrl: e.ctrl_key(),
+                    alt: e.alt_key(),
+                    meta: e.meta_key(),
+                };
                 push(InputEvent::MouseUp { button: btn, x, y, mods, time: t });
             });
             win.add_event_listener_with_callback("mouseup", mouseup.as_ref().unchecked_ref())?;
@@ -825,7 +1007,11 @@ pub mod web {
 
             let wheel = Closure::<dyn FnMut(WheelEvent)>::new(move |e: WheelEvent| {
                 let t = now_secs_js();
-                push(InputEvent::Wheel { delta_x: e.delta_x() as f32, delta_y: e.delta_y() as f32, time: t });
+                push(InputEvent::Wheel {
+                    delta_x: e.delta_x() as f32,
+                    delta_y: e.delta_y() as f32,
+                    time: t,
+                });
             });
             win.add_event_listener_with_callback("wheel", wheel.as_ref().unchecked_ref())?;
             wheel.forget();
@@ -837,15 +1023,88 @@ pub mod web {
     fn map_key_str(code: &str) -> KeyCode {
         use KeyCode::*;
         match code {
-            "KeyA"=>A,"KeyB"=>B,"KeyC"=>C,"KeyD"=>D,"KeyE"=>E,"KeyF"=>F,"KeyG"=>G,"KeyH"=>H,"KeyI"=>I,"KeyJ"=>J,"KeyK"=>K,"KeyL"=>L,"KeyM"=>M,
-            "KeyN"=>N,"KeyO"=>O,"KeyP"=>P,"KeyQ"=>Q,"KeyR"=>R,"KeyS"=>S,"KeyT"=>T,"KeyU"=>U,"KeyV"=>V,"KeyW"=>W,"KeyX"=>X,"KeyY"=>Y,"KeyZ"=>Z,
-            "Digit0"=>Digit0,"Digit1"=>Digit1,"Digit2"=>Digit2,"Digit3"=>Digit3,"Digit4"=>Digit4,"Digit5"=>Digit5,"Digit6"=>Digit6,"Digit7"=>Digit7,"Digit8"=>Digit8,"Digit9"=>Digit9,
-            "ShiftLeft"=>ShiftLeft,"ShiftRight"=>ShiftRight,"ControlLeft"=>ControlLeft,"ControlRight"=>ControlRight,"AltLeft"=>AltLeft,"AltRight"=>AltRight,"MetaLeft"=>MetaLeft,"MetaRight"=>MetaRight,
-            "ArrowUp"=>ArrowUp,"ArrowDown"=>ArrowDown,"ArrowLeft"=>ArrowLeft,"ArrowRight"=>ArrowRight,
-            "Enter"=>Enter,"Escape"=>Escape,"Backspace"=>Backspace,"Tab"=>Tab,"Space"=>Space,
-            "Insert"=>Insert,"Delete"=>Delete,"Home"=>Home,"End"=>End,"PageUp"=>PageUp,"PageDown"=>PageDown,
-            "F1"=>F1,"F2"=>F2,"F3"=>F3,"F4"=>F4,"F5"=>F5,"F6"=>F6,"F7"=>F7,"F8"=>F8,"F9"=>F9,"F10"=>F10,"F11"=>F11,"F12"=>F12,
-            "Minus"=>Minus,"Equal"=>Equal,"BracketLeft"=>BracketLeft,"BracketRight"=>BracketRight,"Semicolon"=>Semicolon,"Quote"=>Quote,"Backquote"=>Backquote,"Backslash"=>Backslash,"Comma"=>Comma,"Period"=>Period,"Slash"=>Slash,
+            "KeyA" => A,
+            "KeyB" => B,
+            "KeyC" => C,
+            "KeyD" => D,
+            "KeyE" => E,
+            "KeyF" => F,
+            "KeyG" => G,
+            "KeyH" => H,
+            "KeyI" => I,
+            "KeyJ" => J,
+            "KeyK" => K,
+            "KeyL" => L,
+            "KeyM" => M,
+            "KeyN" => N,
+            "KeyO" => O,
+            "KeyP" => P,
+            "KeyQ" => Q,
+            "KeyR" => R,
+            "KeyS" => S,
+            "KeyT" => T,
+            "KeyU" => U,
+            "KeyV" => V,
+            "KeyW" => W,
+            "KeyX" => X,
+            "KeyY" => Y,
+            "KeyZ" => Z,
+            "Digit0" => Digit0,
+            "Digit1" => Digit1,
+            "Digit2" => Digit2,
+            "Digit3" => Digit3,
+            "Digit4" => Digit4,
+            "Digit5" => Digit5,
+            "Digit6" => Digit6,
+            "Digit7" => Digit7,
+            "Digit8" => Digit8,
+            "Digit9" => Digit9,
+            "ShiftLeft" => ShiftLeft,
+            "ShiftRight" => ShiftRight,
+            "ControlLeft" => ControlLeft,
+            "ControlRight" => ControlRight,
+            "AltLeft" => AltLeft,
+            "AltRight" => AltRight,
+            "MetaLeft" => MetaLeft,
+            "MetaRight" => MetaRight,
+            "ArrowUp" => ArrowUp,
+            "ArrowDown" => ArrowDown,
+            "ArrowLeft" => ArrowLeft,
+            "ArrowRight" => ArrowRight,
+            "Enter" => Enter,
+            "Escape" => Escape,
+            "Backspace" => Backspace,
+            "Tab" => Tab,
+            "Space" => Space,
+            "Insert" => Insert,
+            "Delete" => Delete,
+            "Home" => Home,
+            "End" => End,
+            "PageUp" => PageUp,
+            "PageDown" => PageDown,
+            "F1" => F1,
+            "F2" => F2,
+            "F3" => F3,
+            "F4" => F4,
+            "F5" => F5,
+            "F6" => F6,
+            "F7" => F7,
+            "F8" => F8,
+            "F9" => F9,
+            "F10" => F10,
+            "F11" => F11,
+            "F12" => F12,
+            "Minus" => Minus,
+            "Equal" => Equal,
+            "BracketLeft" => BracketLeft,
+            "BracketRight" => BracketRight,
+            "Semicolon" => Semicolon,
+            "Quote" => Quote,
+            "Backquote" => Backquote,
+            "Backslash" => Backslash,
+            "Comma" => Comma,
+            "Period" => Period,
+            "Slash" => Slash,
             _ => Unknown(0),
         }
     }
@@ -890,7 +1149,12 @@ mod tests {
     fn key_press_release_cycle() {
         let mut m = InputManager::default();
         let t = m.now();
-        m.push(InputEvent::KeyDown { key: KeyCode::A, mods: Modifiers::default(), time: t, repeat: false });
+        m.push(InputEvent::KeyDown {
+            key: KeyCode::A,
+            mods: Modifiers::default(),
+            time: t,
+            repeat: false,
+        });
         m.update();
         assert!(m.state.key_down(KeyCode::A));
         assert!(m.state.key_pressed(KeyCode::A));
@@ -926,7 +1190,13 @@ mod tests {
         let id = 1;
         m.push(InputEvent::GamepadConnected { id, name: "pad".into(), time: m.now() });
         m.push(InputEvent::GamepadAxis { id, axis: 0, value: 0.5, time: m.now() });
-        m.push(InputEvent::GamepadButton { id, button: 1, value: 1.0, pressed: true, time: m.now() });
+        m.push(InputEvent::GamepadButton {
+            id,
+            button: 1,
+            value: 1.0,
+            pressed: true,
+            time: m.now(),
+        });
         m.update();
         let g = m.state.gamepads.get(&id).unwrap();
         assert!(g.connected);

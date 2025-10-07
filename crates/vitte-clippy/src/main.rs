@@ -1,5 +1,3 @@
-
-
 //! vitte-clippy — lint runner for Vitte
 //!
 //! Stub binaire: non implémenté.

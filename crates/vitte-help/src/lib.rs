@@ -29,38 +29,50 @@
 #![forbid(unsafe_code)]
 
 #[cfg(all(not(feature = "std"), not(feature = "alloc-only")))]
-compile_error!("Enable feature `std` (default) or `alloc-only`.") ;
+compile_error!("Enable feature `std` (default) or `alloc-only`.");
 
 #[cfg(feature = "alloc-only")]
 extern crate alloc;
 
 #[cfg(feature = "alloc-only")]
-use alloc::{string::String, vec::Vec, borrow::ToOwned, format};
+use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
 #[cfg(feature = "std")]
-use std::{string::String, vec::Vec, env};
+use std::{env, string::String, vec::Vec};
 
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "errors")]
 use thiserror::Error;
 
-
 #[cfg(feature = "colors")]
 mod color {
-    #[inline] pub fn bold(s: &str) -> String { format!("\x1b[1m{}\x1b[0m", s) }
-    #[inline] pub fn bold_underline(s: &str) -> String { format!("\x1b[1;4m{}\x1b[0m", s) }
+    #[inline]
+    pub fn bold(s: &str) -> String {
+        format!("\x1b[1m{}\x1b[0m", s)
+    }
+    #[inline]
+    pub fn bold_underline(s: &str) -> String {
+        format!("\x1b[1;4m{}\x1b[0m", s)
+    }
 }
 
 #[cfg(feature = "args-spec")]
-use vitte_args::{Spec as ArgSpec, ArgKind as ArgKindArgs};
+use vitte_args::{ArgKind as ArgKindArgs, Spec as ArgSpec};
 
 /// Langue de l’affichage.
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Lang { En, Fr }
+pub enum Lang {
+    En,
+    Fr,
+}
 
-impl Default for Lang { fn default() -> Self { Lang::Fr } }
+impl Default for Lang {
+    fn default() -> Self {
+        Lang::Fr
+    }
+}
 
 #[cfg(feature = "errors")]
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -70,7 +82,9 @@ pub enum HelpError {
 }
 #[cfg(not(feature = "errors"))]
 #[derive(Debug, PartialEq, Eq)]
-pub enum HelpError { WidthTooSmall }
+pub enum HelpError {
+    WidthTooSmall,
+}
 
 #[cfg(feature = "errors")]
 pub type Result<T> = core::result::Result<T, HelpError>;
@@ -89,10 +103,20 @@ pub struct OptLine {
 }
 impl OptLine {
     pub fn new<I, S>(forms: I, help: S) -> Self
-    where I: IntoIterator<Item = S>, S: Into<String> + Clone {
-        Self { forms: forms.into_iter().map(|s| s.into()).collect(), help: help.clone().into(), hidden: false }
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String> + Clone,
+    {
+        Self {
+            forms: forms.into_iter().map(|s| s.into()).collect(),
+            help: help.clone().into(),
+            hidden: false,
+        }
     }
-    pub fn hidden(mut self, h: bool) -> Self { self.hidden = h; self }
+    pub fn hidden(mut self, h: bool) -> Self {
+        self.hidden = h;
+        self
+    }
 }
 
 /// Un argument positionnel.
@@ -101,7 +125,11 @@ pub struct PosLine {
     pub name: String,
     pub help: String,
 }
-impl PosLine { pub fn new(name: &str, help: &str) -> Self { Self { name: name.to_owned(), help: help.to_owned() } } }
+impl PosLine {
+    pub fn new(name: &str, help: &str) -> Self {
+        Self { name: name.to_owned(), help: help.to_owned() }
+    }
+}
 
 /// Une sous-commande visible dans l’aide.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -109,7 +137,11 @@ pub struct SubLine {
     pub name: String,
     pub about: String,
 }
-impl SubLine { pub fn new(name: &str, about: &str) -> Self { Self { name: name.to_owned(), about: about.to_owned() } } }
+impl SubLine {
+    pub fn new(name: &str, about: &str) -> Self {
+        Self { name: name.to_owned(), about: about.to_owned() }
+    }
+}
 
 /// Spécification d’aide complète.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -124,9 +156,9 @@ pub struct HelpSpec {
     pub examples: Vec<String>,
     pub notes: Vec<String>,
     pub lang: Lang,
-    pub width: usize,   // largeur totale; 0 → auto
-    pub gutter: usize,  // espaces entre colonnes
-    pub colors: bool,   // activer les couleurs si supportées
+    pub width: usize,  // largeur totale; 0 → auto
+    pub gutter: usize, // espaces entre colonnes
+    pub colors: bool,  // activer les couleurs si supportées
 }
 
 impl HelpSpec {
@@ -149,21 +181,58 @@ impl HelpSpec {
     }
 
     /* ---------- builder ---------- */
-    pub fn version(mut self, v: &str) -> Self { self.version = Some(v.to_owned()); self }
-    pub fn about(mut self, a: &str) -> Self { self.about = Some(a.to_owned()); self }
-    pub fn usage(mut self, u: &str) -> Self { self.usage = Some(u.to_owned()); self }
-    pub fn option<I, S>(mut self, forms: I, help: S) -> Self
-    where I: IntoIterator<Item = S>, S: Into<String> + Clone {
-        self.options.push(OptLine::new(forms, help)); self
+    pub fn version(mut self, v: &str) -> Self {
+        self.version = Some(v.to_owned());
+        self
     }
-    pub fn pos(mut self, name: &str, help: &str) -> Self { self.positionals.push(PosLine::new(name, help)); self }
-    pub fn sub(mut self, name: &str, about: &str) -> Self { self.subs.push(SubLine::new(name, about)); self }
-    pub fn example(mut self, ex: &str) -> Self { self.examples.push(ex.to_owned()); self }
-    pub fn note(mut self, n: &str) -> Self { self.notes.push(n.to_owned()); self }
-    pub fn lang(mut self, l: Lang) -> Self { self.lang = l; self }
-    pub fn with_width(mut self, w: usize) -> Self { self.width = w; self }
-    pub fn gutter(mut self, g: usize) -> Self { self.gutter = g.max(1); self }
-    pub fn colors(mut self, on: bool) -> Self { self.colors = on; self }
+    pub fn about(mut self, a: &str) -> Self {
+        self.about = Some(a.to_owned());
+        self
+    }
+    pub fn usage(mut self, u: &str) -> Self {
+        self.usage = Some(u.to_owned());
+        self
+    }
+    pub fn option<I, S>(mut self, forms: I, help: S) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String> + Clone,
+    {
+        self.options.push(OptLine::new(forms, help));
+        self
+    }
+    pub fn pos(mut self, name: &str, help: &str) -> Self {
+        self.positionals.push(PosLine::new(name, help));
+        self
+    }
+    pub fn sub(mut self, name: &str, about: &str) -> Self {
+        self.subs.push(SubLine::new(name, about));
+        self
+    }
+    pub fn example(mut self, ex: &str) -> Self {
+        self.examples.push(ex.to_owned());
+        self
+    }
+    pub fn note(mut self, n: &str) -> Self {
+        self.notes.push(n.to_owned());
+        self
+    }
+    pub fn lang(mut self, l: Lang) -> Self {
+        self.lang = l;
+        self
+    }
+    pub fn with_width(mut self, w: usize) -> Self {
+        self.width = w;
+        self
+    }
+    pub fn gutter(mut self, g: usize) -> Self {
+        self.gutter = g.max(1);
+        self
+    }
+    pub fn colors(mut self, on: bool) -> Self {
+        self.colors = on;
+        self
+    }
 
     /// Rend en String. `colorize=true` pour activer ANSI si `colors` est vrai.
     pub fn render(&self, colorize: bool) -> String {
@@ -195,9 +264,13 @@ impl HelpSpec {
         // Positionnels
         if !self.positionals.is_empty() {
             section_title(&mut out, self.lang, "ARGS", "Arguments", colorize);
-            render_table(&mut out,
-                         self.positionals.iter().map(|p| (p.name.as_str(), p.help.as_str())),
-                         width, self.gutter, colorize);
+            render_table(
+                &mut out,
+                self.positionals.iter().map(|p| (p.name.as_str(), p.help.as_str())),
+                width,
+                self.gutter,
+                colorize,
+            );
             out.push('\n');
         }
 
@@ -206,7 +279,10 @@ impl HelpSpec {
         if !opts_vis.is_empty() {
             section_title(&mut out, self.lang, "OPTIONS", "Options", colorize);
             // Prépare la forme jointe type "-v, --verbose"
-            let rows = opts_vis.iter().map(|o| (o.forms.join(", "), o.help.clone())).collect::<Vec<_>>();
+            let rows = opts_vis
+                .iter()
+                .map(|o| (o.forms.join(", "), o.help.clone()))
+                .collect::<Vec<_>>();
             render_table_owned(&mut out, rows, width, self.gutter, colorize);
             out.push('\n');
         }
@@ -214,9 +290,13 @@ impl HelpSpec {
         // Sous-commandes
         if !self.subs.is_empty() {
             section_title(&mut out, self.lang, "SUBCOMMANDS", "Sous-commandes", colorize);
-            render_table(&mut out,
-                         self.subs.iter().map(|s| (s.name.as_str(), s.about.as_str())),
-                         width, self.gutter, colorize);
+            render_table(
+                &mut out,
+                self.subs.iter().map(|s| (s.name.as_str(), s.about.as_str())),
+                width,
+                self.gutter,
+                colorize,
+            );
             out.push('\n');
         }
 
@@ -255,48 +335,69 @@ impl HelpSpec {
             match a.kind {
                 ArgKindArgs::Flag => {
                     let mut forms = Vec::new();
-                    if let Some(c) = a.short { forms.push(format!("-{}", c)); }
-                    if let Some(l) = &a.long { forms.push(format!("--{}", l)); }
-                    if forms.is_empty() { forms.push(format!("--{}", a.name)); }
+                    if let Some(c) = a.short {
+                        forms.push(format!("-{}", c));
+                    }
+                    if let Some(l) = &a.long {
+                        forms.push(format!("--{}", l));
+                    }
+                    if forms.is_empty() {
+                        forms.push(format!("--{}", a.name));
+                    }
                     h.options.push(OptLine {
                         forms,
                         help: a.help.clone().unwrap_or_default(),
                         hidden: false,
                     });
-                }
+                },
                 ArgKindArgs::Opt => {
                     let mut forms = Vec::new();
                     if let Some(c) = a.short {
-                        forms.push(format!("-{} <{}>", c, a.value_name.as_deref().unwrap_or("VAL")));
+                        forms.push(format!(
+                            "-{} <{}>",
+                            c,
+                            a.value_name.as_deref().unwrap_or("VAL")
+                        ));
                     } else if let Some(c) = a.short {
                         forms.push(format!("-{}", c));
                     }
                     if let Some(l) = &a.long {
-                        forms.push(format!("--{} <{}>", l, a.value_name.as_deref().unwrap_or("VAL")));
+                        forms.push(format!(
+                            "--{} <{}>",
+                            l,
+                            a.value_name.as_deref().unwrap_or("VAL")
+                        ));
                     } else if let Some(l) = &a.long {
                         forms.push(format!("--{}", l));
                     }
                     if forms.is_empty() {
-                        forms.push(format!("--{} <{}>", a.name, a.value_name.as_deref().unwrap_or("VAL")));
+                        forms.push(format!(
+                            "--{} <{}>",
+                            a.name,
+                            a.value_name.as_deref().unwrap_or("VAL")
+                        ));
                     }
                     let mut help = a.help.clone().unwrap_or_default();
                     if let Some(def) = &a.default {
-                        if !help.is_empty() { help.push(' '); }
+                        if !help.is_empty() {
+                            help.push(' ');
+                        }
                         help.push_str(&format!("[default: {}]", def));
                     }
                     h.options.push(OptLine { forms, help, hidden: false });
-                }
+                },
                 ArgKindArgs::Pos => {
                     h.positionals.push(PosLine {
                         name: a.value_name.clone().unwrap_or_else(|| a.name.clone()),
                         help: a.help.clone().unwrap_or_default(),
                     });
-                }
+                },
             }
         }
         // Subcommands
         for sc in &spec.subcommands {
-            h.subs.push(SubLine::new(&sc.bin, sc.about.clone().unwrap_or_default().as_str()));
+            h.subs
+                .push(SubLine::new(&sc.bin, sc.about.clone().unwrap_or_default().as_str()));
         }
         h
     }
@@ -318,15 +419,20 @@ fn header(out: &mut String, spec: &HelpSpec, colorize: bool) {
         }
         #[cfg(not(feature = "colors"))]
         {
-            out.push_str(&title); out.push('\n');
+            out.push_str(&title);
+            out.push('\n');
         }
     } else {
-        out.push_str(&title); out.push('\n');
+        out.push_str(&title);
+        out.push('\n');
     }
 }
 
 fn section_title(out: &mut String, lang: Lang, en: &str, fr: &str, colorize: bool) {
-    let label = match lang { Lang::En => en, Lang::Fr => fr };
+    let label = match lang {
+        Lang::En => en,
+        Lang::Fr => fr,
+    };
     if colorize {
         #[cfg(feature = "colors")]
         {
@@ -335,17 +441,21 @@ fn section_title(out: &mut String, lang: Lang, en: &str, fr: &str, colorize: boo
         }
         #[cfg(not(feature = "colors"))]
         {
-            out.push_str(label); out.push('\n');
+            out.push_str(label);
+            out.push('\n');
         }
     } else {
-        out.push_str(label); out.push('\n');
+        out.push_str(label);
+        out.push('\n');
     }
 }
 
 /// Table deux colonnes, avec wrap à droite.
 /// rows: (col1, col2)
 fn render_table<'a, I>(out: &mut String, rows: I, width: usize, gutter: usize, colorize: bool)
-where I: IntoIterator<Item = (&'a str, &'a str)> {
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>,
+{
     // calc col1 width = min(max form width, width/2), mais pas plus de 40% si étroit.
     let mut left_max = 0usize;
     let mut rows_vec: Vec<(String, String)> = Vec::new();
@@ -361,15 +471,23 @@ where I: IntoIterator<Item = (&'a str, &'a str)> {
         // col1 (éventuellement colorisée)
         let left = if colorize {
             #[cfg(feature = "colors")]
-            { crate::color::bold(&l) }
+            {
+                crate::color::bold(&l)
+            }
             #[cfg(not(feature = "colors"))]
-            { l.clone() }
-        } else { l.clone() };
+            {
+                l.clone()
+            }
+        } else {
+            l.clone()
+        };
 
         // imprime line1
         let left_pad = pad_exact(&left, left_width);
         let mut wrapped = wrap(r.as_str(), right_width);
-        if wrapped.is_empty() { wrapped.push(String::new()); }
+        if wrapped.is_empty() {
+            wrapped.push(String::new());
+        }
         out.push_str(&left_pad);
         out.push_str(&" ".repeat(gutter));
         out.push_str(&wrapped[0]);
@@ -385,8 +503,14 @@ where I: IntoIterator<Item = (&'a str, &'a str)> {
     }
 }
 
-fn render_table_owned(out: &mut String, rows: Vec<(String, String)>, width: usize, gutter: usize, colorize: bool) {
-    let it = rows.iter().map(|(l,r)| (l.as_str(), r.as_str()));
+fn render_table_owned(
+    out: &mut String,
+    rows: Vec<(String, String)>,
+    width: usize,
+    gutter: usize,
+    colorize: bool,
+) {
+    let it = rows.iter().map(|(l, r)| (l.as_str(), r.as_str()));
     render_table(out, it, width, gutter, colorize);
 }
 
@@ -394,8 +518,14 @@ fn bullet(out: &mut String, s: &str, width: usize, indent: usize) {
     let prefix = format!("{}- ", " ".repeat(indent));
     let rest_width = width.saturating_sub(prefix.len());
     let lines = wrap(s, rest_width);
-    if lines.is_empty() { out.push_str(&prefix); out.push('\n'); return; }
-    out.push_str(&prefix); out.push_str(&lines[0]); out.push('\n');
+    if lines.is_empty() {
+        out.push_str(&prefix);
+        out.push('\n');
+        return;
+    }
+    out.push_str(&prefix);
+    out.push_str(&lines[0]);
+    out.push('\n');
     for l in lines.into_iter().skip(1) {
         out.push_str(&" ".repeat(prefix.len()));
         out.push_str(&l);
@@ -416,14 +546,16 @@ fn wrap_lines(out: &mut String, s: &str, width: usize, indent: usize) {
 /* =============================== LAYOUT =============================== */
 
 fn effective_width(request: usize) -> Result<usize> {
-    let w = if request == 0 {
-        env_columns().unwrap_or(80)
-    } else {
-        request
-    };
+    let w = if request == 0 { env_columns().unwrap_or(80) } else { request };
     if w < 40 {
-        #[cfg(feature = "errors")] { return Err(HelpError::WidthTooSmall); }
-        #[cfg(not(feature = "errors"))] { return Err("width too small"); }
+        #[cfg(feature = "errors")]
+        {
+            return Err(HelpError::WidthTooSmall);
+        }
+        #[cfg(not(feature = "errors"))]
+        {
+            return Err("width too small");
+        }
     }
     Ok(w)
 }
@@ -431,18 +563,26 @@ fn effective_width(request: usize) -> Result<usize> {
 #[cfg(feature = "std")]
 fn env_columns() -> Option<usize> {
     if let Ok(c) = env::var("COLUMNS") {
-        if let Ok(n) = c.parse::<usize>() { return Some(n.max(40)); }
+        if let Ok(n) = c.parse::<usize>() {
+            return Some(n.max(40));
+        }
     }
     None
 }
 #[cfg(not(feature = "std"))]
-fn env_columns() -> Option<usize> { None }
+fn env_columns() -> Option<usize> {
+    None
+}
 
-fn display_width(s: &str) -> usize { s.chars().count() } // suffisant pour ASCII/CLI
+fn display_width(s: &str) -> usize {
+    s.chars().count()
+} // suffisant pour ASCII/CLI
 
 fn pad_exact(s: &str, width: usize) -> String {
     let w = display_width(s);
-    if w >= width { return s.to_owned(); }
+    if w >= width {
+        return s.to_owned();
+    }
     let mut out = String::with_capacity(width);
     out.push_str(s);
     out.push_str(&" ".repeat(width - w));
@@ -450,8 +590,12 @@ fn pad_exact(s: &str, width: usize) -> String {
 }
 
 fn wrap(s: &str, width: usize) -> Vec<String> {
-    if s.is_empty() { return vec![]; }
-    if width < 8 { return vec![s.to_owned()]; }
+    if s.is_empty() {
+        return vec![];
+    }
+    if width < 8 {
+        return vec![s.to_owned()];
+    }
     let mut out = Vec::new();
     let mut line = String::new();
     for word in s.split_whitespace() {
@@ -478,14 +622,18 @@ fn wrap(s: &str, width: usize) -> Vec<String> {
             }
         }
     }
-    if !line.is_empty() { out.push(line); }
+    if !line.is_empty() {
+        out.push(line);
+    }
     out
 }
 
 fn split_at_display(s: &str, width: usize) -> (&str, &str) {
     let mut count = 0usize;
     for (idx, _ch) in s.char_indices() {
-        if count == width { return (&s[..idx], &s[idx..]); }
+        if count == width {
+            return (&s[..idx], &s[idx..]);
+        }
         count += 1;
     }
     (s, "")
@@ -503,7 +651,7 @@ mod tests {
             .version("1.0")
             .about("demo tool")
             .usage("demo [OPTIONS] <FILE>")
-            .option(["-v","--verbose"], "Verbose mode")
+            .option(["-v", "--verbose"], "Verbose mode")
             .pos("FILE", "Input file")
             .sub("init", "Initialize")
             .example("demo -v file.txt")
@@ -527,9 +675,9 @@ mod tests {
 
     #[test]
     fn bullets_wrap() {
-        let h = HelpSpec::new("b")
-            .with_width(40)
-            .example("This example line is intentionally very long so it should wrap below the bullet.");
+        let h = HelpSpec::new("b").with_width(40).example(
+            "This example line is intentionally very long so it should wrap below the bullet.",
+        );
         let s = h.render(false);
         assert!(s.contains("- This example line"));
     }

@@ -136,7 +136,11 @@ pub fn is_update_mode() -> bool {
 /// Will auto-create or update if `is_update_mode()` is true.
 /// Returns `Outcome` when an update happens, or `Ok(())` on match.
 /// On mismatch without update, returns `GoldenError::Mismatch` with diff.
-pub fn compare_text<P: AsRef<Path>>(golden_path: P, actual_text: impl AsRef<str>, opts: &GoldenOptions) -> Result<()> {
+pub fn compare_text<P: AsRef<Path>>(
+    golden_path: P,
+    actual_text: impl AsRef<str>,
+    opts: &GoldenOptions,
+) -> Result<()> {
     let golden_path = resolve_test_path(golden_path);
     let actual = normalize_text(actual_text.as_ref(), opts);
 
@@ -208,7 +212,7 @@ pub fn compare_bytes<P: AsRef<Path>>(golden_path: P, actual: impl AsRef<[u8]>) -
 /// Normalizes both sides with sorted keys and pretty output to reduce noise.
 #[cfg(feature = "serde_json")]
 pub fn compare_json<P: AsRef<Path>, T: serde::Serialize>(golden_path: P, actual: &T) -> Result<()> {
-    use serde_json::{to_value, Value};
+    use serde_json::{Value, to_value};
 
     let golden_path = resolve_test_path(golden_path);
     let actual_val: Value = to_value(actual)?;
@@ -245,7 +249,10 @@ pub fn compare_json<P: AsRef<Path>, T: serde::Serialize>(golden_path: P, actual:
 
 /// Compare JSON using `serde_json::Value` input (feature `serde_json`).
 #[cfg(feature = "serde_json")]
-pub fn compare_json_value<P: AsRef<Path>>(golden_path: P, actual: &serde_json::Value) -> Result<()> {
+pub fn compare_json_value<P: AsRef<Path>>(
+    golden_path: P,
+    actual: &serde_json::Value,
+) -> Result<()> {
     compare_json(golden_path, actual)
 }
 
@@ -391,11 +398,7 @@ fn render_diff(expected: &str, actual: &str, unified: bool, golden_path: &Path) 
 
 fn hex_preview(expected: &[u8], actual: &[u8], bytes: usize) -> String {
     fn hex(first: &[u8]) -> String {
-        first
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<Vec<_>>()
-            .join(" ")
+        first.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ")
     }
     let e = &expected[..expected.len().min(bytes)];
     let a = &actual[..actual.len().min(bytes)];
@@ -441,7 +444,7 @@ fn normalize_json(v: &serde_json::Value) -> serde_json::Value {
                 nm.insert(k.clone(), normalize_json(&m[&k]));
             }
             Value::Object(nm)
-        }
+        },
         Value::Array(arr) => Value::Array(arr.iter().map(normalize_json).collect()),
         _ => v.clone(),
     }
@@ -464,10 +467,7 @@ mod tests {
     #[test]
     fn normalize_basic() {
         let opts = GoldenOptions::default();
-        assert_eq!(
-            normalize_text("a\r\nb\r\n", &opts),
-            "a\nb\n"
-        );
+        assert_eq!(normalize_text("a\r\nb\r\n", &opts), "a\nb\n");
         let mut opts2 = opts.clone();
         opts2.trim_trailing_ws = true;
         assert_eq!(normalize_text("x  \ny\t\n", &opts2), "x\ny\n");
@@ -508,7 +508,10 @@ mod tests {
         let g = dir.join("j.json");
         write_text_atomic(&g, "{\n  \"b\": 2,\n  \"a\": 1\n}\n").unwrap();
         #[derive(serde::Serialize)]
-        struct Obj { a: u8, b: u8 }
-        compare_json(&g, &Obj { a:1, b:2 }).unwrap();
+        struct Obj {
+            a: u8,
+            b: u8,
+        }
+        compare_json(&g, &Obj { a: 1, b: 2 }).unwrap();
     }
 }

@@ -79,9 +79,7 @@ pub struct Analyzer {
 impl Analyzer {
     /// Crée un nouvel analyseur.
     pub fn new() -> Self {
-        Self {
-            symbols: HashMap::new(),
-        }
+        Self { symbols: HashMap::new() }
     }
 
     /// Lance l’analyse complète d’un programme.
@@ -100,17 +98,17 @@ impl Analyzer {
                     self.declare(&p.name, Some(format!("{:?}", p.ty)))?;
                 }
                 self.check_block(&f.body)?;
-            }
+            },
             ast::Item::Const(c) => {
                 self.declare(&c.name, c.ty.as_ref().map(|t| format!("{:?}", t)))?;
                 // expr → vérification type à implémenter
-            }
+            },
             ast::Item::Struct(s) => {
                 self.declare(&s.name, Some("struct".into()))?;
-            }
+            },
             ast::Item::Enum(e) => {
                 self.declare(&e.name, Some("enum".into()))?;
-            }
+            },
         }
         Ok(())
     }
@@ -129,39 +127,31 @@ impl Analyzer {
                 if let Some(_e) = value {
                     // TODO: inférer et comparer type
                 }
-            }
-            ast::Stmt::Return(_e, ..) => {}
+            },
+            ast::Stmt::Return(_e, ..) => {},
             ast::Stmt::While { condition: _, body, .. } => {
                 self.check_block(body)?;
-            }
+            },
             ast::Stmt::For { var, iter: _, body, .. } => {
                 self.declare(var, None)?;
                 self.check_block(body)?;
-            }
+            },
             ast::Stmt::If { condition: _, then_block, else_block, .. } => {
                 self.check_block(then_block)?;
                 if let Some(b) = else_block {
                     self.check_block(b)?;
                 }
-            }
-            ast::Stmt::Expr(_e) => {}
+            },
+            ast::Stmt::Expr(_e) => {},
         }
         Ok(())
     }
 
     fn declare(&mut self, name: &str, ty: Option<String>) -> AResult<()> {
         if self.symbols.contains_key(name) {
-            return Err(AnalyzeError {
-                message: format!("Symbole déjà défini: {}", name),
-            });
+            return Err(AnalyzeError { message: format!("Symbole déjà défini: {}", name) });
         }
-        self.symbols.insert(
-            name.into(),
-            Symbol {
-                name: name.into(),
-                ty,
-            },
-        );
+        self.symbols.insert(name.into(), Symbol { name: name.into(), ty });
         Ok(())
     }
 }

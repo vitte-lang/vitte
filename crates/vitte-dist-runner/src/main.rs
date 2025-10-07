@@ -4,8 +4,8 @@
 //! with commands for running, building, testing, checking status, and cleaning up distributed jobs.
 //! Colored logging, robust error handling, and ergonomic argument parsing are included.
 
-use clap::{Parser, Subcommand, Args};
 use anyhow::Result;
+use clap::{Args, Parser, Subcommand};
 use std::process;
 use std::time::Duration;
 
@@ -16,7 +16,7 @@ use std::time::Duration;
     version,
     about = "Distribute and execute build/test jobs in parallel across machines",
     author,
-    propagate_version = true,
+    propagate_version = true
 )]
 struct Cli {
     /// Increase output verbosity (-v, -vv, -vvv)

@@ -26,8 +26,12 @@ pub fn start() {
 #[wasm_bindgen]
 pub fn greet(name: &str) -> String {
     #[derive(serde::Serialize)]
-    struct Msg<'a> { ok: bool, hello: &'a str }
-    serde_json::to_string(&Msg { ok: true, hello: name }).unwrap_or_else(|_| "{\"ok\":false}".into())
+    struct Msg<'a> {
+        ok: bool,
+        hello: &'a str,
+    }
+    serde_json::to_string(&Msg { ok: true, hello: name })
+        .unwrap_or_else(|_| "{\"ok\":false}".into())
 }
 
 /// Écrit `text` dans l'élément DOM avec l’`id` donné.

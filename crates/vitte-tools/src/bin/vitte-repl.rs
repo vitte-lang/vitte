@@ -28,7 +28,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::time::Instant;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use camino::Utf8PathBuf;
 use clap::{Parser, ValueEnum};
 use yansi::{Color, Paint};
@@ -41,12 +41,12 @@ use vitte_core::{
     disasm::{disassemble_compact, disassemble_full},
 };
 use vitte_tools::{
-    history_path as tools_history_path, setup_colors as tools_setup_colors,
-    ColorMode as ToolsColorMode,
+    ColorMode as ToolsColorMode, history_path as tools_history_path,
+    setup_colors as tools_setup_colors,
 };
 
 #[cfg(feature = "eval")]
-use vitte_core::runtime::eval::{eval_chunk, EvalOptions};
+use vitte_core::runtime::eval::{EvalOptions, eval_chunk};
 
 #[cfg(feature = "vm")]
 use vitte_vm::Vm;

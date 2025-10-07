@@ -12,7 +12,14 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-use std::{any::Any, any::TypeId, fmt, io, path::{Path, PathBuf}, sync::Arc, time::SystemTime};
+use std::{
+    any::Any,
+    any::TypeId,
+    fmt, io,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::SystemTime,
+};
 
 use ahash::{AHashMap as HashMap, AHashSet as HashSet};
 use parking_lot::RwLock;
@@ -20,18 +27,24 @@ use parking_lot::RwLock;
 #[cfg(feature = "std")]
 use std::fs;
 
-#[cfg(feature = "json")]
-use serde_json as _serde_json;
-#[cfg(feature = "toml")]
-use toml as _toml;
-#[cfg(feature = "yaml")]
-use serde_yaml as _serde_yaml;
-#[cfg(feature = "xml")]
-use quick_xml as _quick_xml;
 #[cfg(feature = "bin")]
 use bincode as _bincode;
+#[cfg(feature = "xml")]
+use quick_xml as _quick_xml;
+#[cfg(feature = "json")]
+use serde_json as _serde_json;
+#[cfg(feature = "yaml")]
+use serde_yaml as _serde_yaml;
+#[cfg(feature = "toml")]
+use toml as _toml;
 
-#[cfg(any(feature = "json", feature = "toml", feature = "yaml", feature = "xml", feature = "bin"))]
+#[cfg(any(
+    feature = "json",
+    feature = "toml",
+    feature = "yaml",
+    feature = "xml",
+    feature = "bin"
+))]
 use serde::de::DeserializeOwned;
 
 /// Erreurs possibles du système d’actifs.
@@ -73,7 +86,9 @@ impl core::fmt::Display for AssetError {
             AssetError::UnsupportedExt(ext) => write!(f, "unsupported extension: {ext}"),
             AssetError::NoLoader(ext) => write!(f, "no loader registered for extension: {ext}"),
             AssetError::Parse(msg) => write!(f, "parse error: {msg}"),
-            AssetError::TypeMismatch { key, requested } => write!(f, "type mismatch in cache for key={key}, requested={requested:?}"),
+            AssetError::TypeMismatch { key, requested } => {
+                write!(f, "type mismatch in cache for key={key}, requested={requested:?}")
+            },
         }
     }
 }
@@ -81,7 +96,9 @@ impl core::fmt::Display for AssetError {
 impl std::error::Error for AssetError {}
 
 impl From<io::Error> for AssetError {
-    fn from(e: io::Error) -> Self { AssetError::Io(e) }
+    fn from(e: io::Error) -> Self {
+        AssetError::Io(e)
+    }
 }
 
 /// Résultat spécialisé.
@@ -109,9 +126,13 @@ impl AssetKey {
     }
 
     /// Schéma (ex: `fs`, `mem`, `http` si impl externe).
-    pub fn scheme(&self) -> &str { &self.scheme }
+    pub fn scheme(&self) -> &str {
+        &self.scheme
+    }
     /// Chemin interne.
-    pub fn path(&self) -> &str { &self.path }
+    pub fn path(&self) -> &str {
+        &self.path
+    }
 
     /// Extension (sans point), en minuscule.
     pub fn ext(&self) -> Option<&str> {
@@ -202,11 +223,7 @@ impl FileSource {
 
     fn full(&self, path: &str) -> PathBuf {
         let p = Path::new(path);
-        if p.is_absolute() {
-            p.to_path_buf()
-        } else {
-            self.root.join(path)
-        }
+        if p.is_absolute() { p.to_path_buf() } else { self.root.join(path) }
     }
 }
 
@@ -217,7 +234,9 @@ impl Default for FileSource {
 }
 
 impl Source for FileSource {
-    fn as_any(&self) -> &dyn Any { self }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
     fn read(&self, path: &str) -> Result<Vec<u8>> {
         let full = self.full(path);
         fs::read(&full).map_err(|e| match e.kind() {
@@ -264,7 +283,9 @@ impl MemorySource {
 }
 
 impl Source for MemorySource {
-    fn as_any(&self) -> &dyn Any { self }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
     fn read(&self, path: &str) -> Result<Vec<u8>> {
         self.inner
             .read()
@@ -295,10 +316,7 @@ impl DynLoader {
             let t = loader.load(bytes)?;
             Ok(Arc::new(t))
         };
-        Self {
-            type_id: TypeId::of::<T>(),
-            fun: Arc::new(fun),
-        }
+        Self { type_id: TypeId::of::<T>(), fun: Arc::new(fun) }
     }
 }
 
@@ -409,11 +427,15 @@ impl AssetManager {
     }
 
     /// Obtient un actif depuis le cache si présent.
-    pub fn get_cached<T: Any + Send + Sync + 'static, S: AsRef<str>>(&self, key: S) -> Option<Arc<T>> {
+    pub fn get_cached<T: Any + Send + Sync + 'static, S: AsRef<str>>(
+        &self,
+        key: S,
+    ) -> Option<Arc<T>> {
         let key = AssetKey::parse(key);
         let map = &self.cache.read().map;
         let type_id = TypeId::of::<T>();
-        map.get(&(key, type_id)).and_then(|arc_any| arc_any.clone().downcast::<T>().ok())
+        map.get(&(key, type_id))
+            .and_then(|arc_any| arc_any.clone().downcast::<T>().ok())
     }
 
     /// Insère directement dans le cache.
@@ -422,17 +444,13 @@ impl AssetManager {
         let type_id = TypeId::of::<T>();
         let mut cache = self.cache.write();
         cache.by_key.insert(key.clone());
-        cache
-            .map
-            .insert((key, type_id), value as Arc<dyn Any + Send + Sync>);
+        cache.map.insert((key, type_id), value as Arc<dyn Any + Send + Sync>);
     }
 
     /// Charge un actif typé `T` à partir des bytes avec un `Loader<T>` enregistré pour l’extension.
     pub fn load<T: Any + Send + Sync + 'static, S: AsRef<str>>(&self, key: S) -> Result<Arc<T>> {
         let key = AssetKey::parse(key);
-        let ext = key
-            .ext_owned()
-            .ok_or_else(|| AssetError::UnsupportedExt(key.to_string()))?;
+        let ext = key.ext_owned().ok_or_else(|| AssetError::UnsupportedExt(key.to_string()))?;
 
         // cache hit
         if let Some(cached) = self.get_cached::<T, _>(&key.to_string()) {
@@ -458,7 +476,8 @@ impl AssetManager {
         // read + parse
         let bytes = src.read(key.path())?;
         let any = (dyn_loader.fun)(&bytes)?;
-        let arc_t: Arc<T> = any.downcast::<T>().map_err(|_| AssetError::Parse("downcast".into()))?;
+        let arc_t: Arc<T> =
+            any.downcast::<T>().map_err(|_| AssetError::Parse("downcast".into()))?;
 
         // store
         self.put_cached(&key.to_string(), arc_t.clone());
@@ -466,7 +485,11 @@ impl AssetManager {
     }
 
     /// Charge ou parse via fonction utilisateur, en ignorant les loaders enregistrés.
-    pub fn load_with<T: Any + Send + Sync + 'static, S: AsRef<str>, F: FnOnce(&[u8]) -> Result<T>>(
+    pub fn load_with<
+        T: Any + Send + Sync + 'static,
+        S: AsRef<str>,
+        F: FnOnce(&[u8]) -> Result<T>,
+    >(
         &self,
         key: S,
         parse: F,
@@ -518,7 +541,13 @@ pub fn register_builtin_basic(mgr: &AssetManager) {
 
 /* -------------------------- Loaders serde conditionnels par feature -------------------------- */
 
-#[cfg(any(feature = "json", feature = "toml", feature = "yaml", feature = "xml", feature = "bin"))]
+#[cfg(any(
+    feature = "json",
+    feature = "toml",
+    feature = "yaml",
+    feature = "xml",
+    feature = "bin"
+))]
 #[derive(Default)]
 struct SerdeLoader<T>(std::marker::PhantomData<T>);
 
@@ -556,7 +585,13 @@ impl<T: DeserializeOwned + Send + Sync + 'static> Loader<T> for SerdeLoader<T> {
 }
 
 /// Enregistre les loaders serde pour un type donné et une liste d’extensions.
-#[cfg(any(feature = "json", feature = "toml", feature = "yaml", feature = "xml", feature = "bin"))]
+#[cfg(any(
+    feature = "json",
+    feature = "toml",
+    feature = "yaml",
+    feature = "xml",
+    feature = "bin"
+))]
 pub fn register_serde_for<T: DeserializeOwned + Send + Sync + 'static>(mgr: &AssetManager) {
     #[cfg(feature = "json")]
     mgr.register_loader::<T, _>("json", Arc::new(SerdeLoader::<T>::default()));
@@ -589,7 +624,6 @@ pub fn memory_source(mgr: &AssetManager, scheme: &str) -> Option<MemorySource> {
     mgr.source(scheme)
         .and_then(|arc| arc.as_any().downcast_ref::<MemorySource>().cloned())
 }
-
 
 /* ------------------------------------------- Tests ------------------------------------------- */
 #[cfg(test)]
@@ -628,7 +662,10 @@ mod tests {
     #[test]
     fn json_typed() {
         #[derive(Debug, Clone, serde::Deserialize)]
-        struct Cfg { a: i32, b: String }
+        struct Cfg {
+            a: i32,
+            b: String,
+        }
 
         let mgr = bootstrap_default();
         register_serde_for::<Cfg>(&mgr);

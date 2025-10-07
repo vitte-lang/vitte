@@ -1,5 +1,3 @@
-
-
 //! vitte-gui — petite API stable pour l’UI de Vitte.
 //!
 //! Ce crate expose une surface minimale (sans dépendances externes)
@@ -27,17 +25,23 @@ pub struct GuiConfig {
 }
 
 impl Default for GuiConfig {
-    fn default() -> Self { Self { headless: false } }
+    fn default() -> Self {
+        Self { headless: false }
+    }
 }
 
 /// Initialise l’UI (stub sans effet pour l’instant).
 #[inline]
-pub fn init(_cfg: GuiConfig) -> Result<()> { Ok(()) }
+pub fn init(_cfg: GuiConfig) -> Result<()> {
+    Ok(())
+}
 
 /// Retourne la version du crate.
 #[cfg(feature = "std")]
 #[inline]
-pub fn version() -> &'static str { env!("CARGO_PKG_VERSION") }
+pub fn version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
 
 /// État d’application minimal.
 #[derive(Debug, Default)]
@@ -49,11 +53,15 @@ pub struct AppState {
 impl AppState {
     /// Avance d’une « frame ».
     #[inline]
-    pub fn tick(&mut self) { self.frames = self.frames.saturating_add(1); }
+    pub fn tick(&mut self) {
+        self.frames = self.frames.saturating_add(1);
+    }
 
     /// Lit le compteur de frames.
     #[inline]
-    pub fn frames(&self) -> u64 { self.frames }
+    pub fn frames(&self) -> u64 {
+        self.frames
+    }
 }
 
 #[cfg(test)]

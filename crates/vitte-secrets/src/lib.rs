@@ -27,18 +27,18 @@ use thiserror::Error;
 use zeroize::Zeroize;
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-#[cfg(feature = "serde")]
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[cfg(feature = "aesgcm")]
 use aes_gcm::{
-    aead::{Aead, KeyInit},
     Aes256Gcm, Key, Nonce,
+    aead::{Aead, KeyInit},
 };
 
 #[cfg(feature = "aesgcm")]
-use rand_core::{RngCore, OsRng};
+use rand_core::{OsRng, RngCore};
 
 /// Taille attendue pour la clé AES-256 (octets).
 #[cfg(feature = "aesgcm")]
@@ -78,11 +78,17 @@ pub struct Secret(Vec<u8>);
 
 impl Secret {
     /// Crée un secret depuis des octets.
-    pub fn new(bytes: Vec<u8>) -> Self { Self(bytes) }
+    pub fn new(bytes: Vec<u8>) -> Self {
+        Self(bytes)
+    }
     /// Crée un secret UTF‑8.
-    pub fn from_utf8(s: &str) -> Self { Self(s.as_bytes().to_vec()) }
+    pub fn from_utf8(s: &str) -> Self {
+        Self(s.as_bytes().to_vec())
+    }
     /// Accès en lecture au contenu.
-    pub fn expose(&self) -> &[u8] { &self.0 }
+    pub fn expose(&self) -> &[u8] {
+        &self.0
+    }
     /// Consomme et renvoie les octets (effacés si `zeroize`).
     pub fn into_bytes(mut self) -> Vec<u8> {
         #[cfg(feature = "zeroize")]
@@ -109,9 +115,7 @@ impl Serialize for Secret {
 impl<'de> Deserialize<'de> for Secret {
     fn deserialize<D: Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
         let s = String::deserialize(d)?;
-        let bytes = STANDARD
-            .decode(s)
-            .map_err(serde::de::Error::custom)?;
+        let bytes = STANDARD.decode(s).map_err(serde::de::Error::custom)?;
         Ok(Secret(bytes))
     }
 }
@@ -128,15 +132,25 @@ impl MemoryVault {
         self.map.insert(key.to_string(), value);
     }
     /// Récupère un secret (référence).
-    pub fn get(&self, key: &str) -> Option<&Secret> { self.map.get(key) }
+    pub fn get(&self, key: &str) -> Option<&Secret> {
+        self.map.get(key)
+    }
     /// Retire et retourne un secret.
-    pub fn take(&mut self, key: &str) -> Option<Secret> { self.map.remove(key) }
+    pub fn take(&mut self, key: &str) -> Option<Secret> {
+        self.map.remove(key)
+    }
     /// Vide le coffre.
-    pub fn clear(&mut self) { self.map.clear(); }
+    pub fn clear(&mut self) {
+        self.map.clear();
+    }
     /// Nombre d’entrées.
-    pub fn len(&self) -> usize { self.map.len() }
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
     /// Indique si vide.
-    pub fn is_empty(&self) -> bool { self.map.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
 }
 
 // ===================================== AES-256-GCM fichiers =====================================
@@ -144,15 +158,15 @@ impl MemoryVault {
 /// Chiffre `plaintext` et écrit dans `path`. Le fichier contient `nonce || ciphertext`.
 #[cfg(feature = "aesgcm")]
 pub fn encrypt_file_aes256gcm<P: AsRef<Path>>(path: P, key: &[u8], plaintext: &[u8]) -> Result<()> {
-    if key.len() != AES256_KEY_LEN { return Err(SecretError::BadKeyLen(AES256_KEY_LEN)); }
+    if key.len() != AES256_KEY_LEN {
+        return Err(SecretError::BadKeyLen(AES256_KEY_LEN));
+    }
     let key = Key::<Aes256Gcm>::from_slice(key);
     let mut nonce_bytes = [0u8; GCM_NONCE_LEN];
     OsRng.fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
     let cipher = Aes256Gcm::new(key);
-    let mut ct = cipher
-        .encrypt(nonce, plaintext)
-        .map_err(|_| SecretError::Decrypt)?;
+    let mut ct = cipher.encrypt(nonce, plaintext).map_err(|_| SecretError::Decrypt)?;
     // Préfixe nonce
     let mut out = nonce_bytes.to_vec();
     out.append(&mut ct);
@@ -163,16 +177,18 @@ pub fn encrypt_file_aes256gcm<P: AsRef<Path>>(path: P, key: &[u8], plaintext: &[
 /// Lit `path` et déchiffre avec AES-256-GCM. Attend `nonce || ciphertext`.
 #[cfg(feature = "aesgcm")]
 pub fn decrypt_file_aes256gcm<P: AsRef<Path>>(path: P, key: &[u8]) -> Result<Vec<u8>> {
-    if key.len() != AES256_KEY_LEN { return Err(SecretError::BadKeyLen(AES256_KEY_LEN)); }
+    if key.len() != AES256_KEY_LEN {
+        return Err(SecretError::BadKeyLen(AES256_KEY_LEN));
+    }
     let data = fs::read(path)?;
-    if data.len() < GCM_NONCE_LEN { return Err(SecretError::Decrypt); }
+    if data.len() < GCM_NONCE_LEN {
+        return Err(SecretError::Decrypt);
+    }
     let (nonce_bytes, ct) = data.split_at(GCM_NONCE_LEN);
     let key = Key::<Aes256Gcm>::from_slice(key);
     let nonce = Nonce::from_slice(nonce_bytes);
     let cipher = Aes256Gcm::new(key);
-    cipher
-        .decrypt(nonce, ct)
-        .map_err(|_| SecretError::Decrypt)
+    cipher.decrypt(nonce, ct).map_err(|_| SecretError::Decrypt)
 }
 
 #[cfg(test)]

@@ -13,11 +13,15 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::doc_markdown,
+    clippy::too_many_lines
+)]
 
 use anyhow::{Result, bail};
 use std::collections::HashMap;
-use vitte_hir::{HirExpr, HirBinOp};
+use vitte_hir::{HirBinOp, HirExpr};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -50,11 +54,7 @@ impl Match {
 /// Tente de faire matcher un motif sur une expression HIR.
 pub fn match_expr(pat: &Pattern, expr: &HirExpr) -> Result<Option<Match>> {
     let mut m = Match::default();
-    if match_expr_rec(pat, expr, &mut m)? {
-        Ok(Some(m))
-    } else {
-        Ok(None)
-    }
+    if match_expr_rec(pat, expr, &mut m)? { Ok(Some(m)) } else { Ok(None) }
 }
 
 fn match_expr_rec(pat: &Pattern, expr: &HirExpr, m: &mut Match) -> Result<bool> {
@@ -63,7 +63,7 @@ fn match_expr_rec(pat: &Pattern, expr: &HirExpr, m: &mut Match) -> Result<bool> 
         (Pattern::Var(name), HirExpr::Var(v, _)) => {
             m.bind(name, v);
             Ok(true)
-        }
+        },
         (Pattern::LitInt(n), HirExpr::LitInt(v, _)) => Ok(n == v),
         (Pattern::LitBool(b), HirExpr::LitBool(v, _)) => Ok(b == v),
         (Pattern::Tuple(pats), HirExpr::Block(b)) => {
@@ -80,7 +80,7 @@ fn match_expr_rec(pat: &Pattern, expr: &HirExpr, m: &mut Match) -> Result<bool> 
                 }
             }
             Ok(true)
-        }
+        },
         (Pattern::Op { op, args }, HirExpr::Binary { op: eop, lhs, rhs, .. }) => {
             if op != eop {
                 return Ok(false);
@@ -89,7 +89,7 @@ fn match_expr_rec(pat: &Pattern, expr: &HirExpr, m: &mut Match) -> Result<bool> 
                 bail!("binary op doit avoir 2 args");
             }
             Ok(match_expr_rec(&args[0], lhs, m)? && match_expr_rec(&args[1], rhs, m)?)
-        }
+        },
         _ => Ok(false),
     }
 }

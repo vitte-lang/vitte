@@ -1,8 +1,8 @@
 //! vitte-doc — documentation generator for Vitte language projects.
 
-use clap::{Arg, Command, ArgAction};
+use clap::{Arg, ArgAction, Command};
 use env_logger::Env;
-use log::{info, LevelFilter};
+use log::{LevelFilter, info};
 
 fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();

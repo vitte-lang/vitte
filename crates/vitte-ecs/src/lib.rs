@@ -66,11 +66,21 @@ impl<C: Component> Default for Store<C> {
     }
 }
 impl<C: Component> AnyStore for Store<C> {
-    fn remove(&mut self, id: EntityId) { self.map.remove(&id); }
-    fn clear(&mut self) { self.map.clear(); }
-    fn len(&self) -> usize { self.map.len() }
-    fn as_any(&self) -> &dyn core::any::Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn core::any::Any { self }
+    fn remove(&mut self, id: EntityId) {
+        self.map.remove(&id);
+    }
+    fn clear(&mut self) {
+        self.map.clear();
+    }
+    fn len(&self) -> usize {
+        self.map.len()
+    }
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn core::any::Any {
+        self
+    }
 }
 
 /// Entité builder.
@@ -85,7 +95,9 @@ impl<'w> EntityBuilder<'w> {
         self
     }
     /// Retourne l’ID.
-    pub fn id(self) -> EntityId { self.id }
+    pub fn id(self) -> EntityId {
+        self.id
+    }
 }
 
 /// Monde ECS.
@@ -128,7 +140,8 @@ impl World {
     /// Récupère un composant.
     pub fn get<C: Component>(&self, id: EntityId) -> Option<&C> {
         let tid = core::any::TypeId::of::<C>();
-        self.stores.get(&tid)
+        self.stores
+            .get(&tid)
             .and_then(|store| store.data.as_any().downcast_ref::<Store<C>>())
             .and_then(|s| s.map.get(&id))
     }
@@ -136,15 +149,17 @@ impl World {
     /// Récupère un composant mutable.
     pub fn get_mut<C: Component>(&mut self, id: EntityId) -> Option<&mut C> {
         let tid = core::any::TypeId::of::<C>();
-        self.stores.get_mut(&tid)
+        self.stores
+            .get_mut(&tid)
             .and_then(|store| store.data.as_any_mut().downcast_mut::<Store<C>>())
             .and_then(|s| s.map.get_mut(&id))
     }
 
     /// Itère sur tous les (id, comp) d’un type.
-    pub fn query<C: Component>(&self) -> impl Iterator<Item=(EntityId, &C)> {
+    pub fn query<C: Component>(&self) -> impl Iterator<Item = (EntityId, &C)> {
         let tid = core::any::TypeId::of::<C>();
-        self.stores.get(&tid)
+        self.stores
+            .get(&tid)
             .and_then(|s| s.data.as_any().downcast_ref::<Store<C>>())
             .map(|st| st.map.iter().map(|(id, c)| (*id, c)))
             .into_iter()
@@ -159,7 +174,9 @@ pub trait System {
 }
 
 impl<F: FnMut(&mut World)> System for F {
-    fn run(&mut self, world: &mut World) { (self)(world) }
+    fn run(&mut self, world: &mut World) {
+        (self)(world)
+    }
 }
 
 /// Ordonnanceur.
@@ -168,7 +185,9 @@ pub struct Scheduler {
 }
 impl Scheduler {
     /// Crée un scheduler.
-    pub fn new() -> Self { Self { systems: Vec::new() } }
+    pub fn new() -> Self {
+        Self { systems: Vec::new() }
+    }
     /// Ajoute un système.
     pub fn add<S: System + 'static>(mut self, s: S) -> Self {
         self.systems.push(Box::new(s));
@@ -183,7 +202,9 @@ impl Scheduler {
         }
         #[cfg(not(feature = "parallel"))]
         {
-            for s in &mut self.systems { s.run(world); }
+            for s in &mut self.systems {
+                s.run(world);
+            }
         }
     }
 }

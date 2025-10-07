@@ -30,7 +30,6 @@ impl fmt::Display for LlvmError {
     }
 }
 
-
 /// Résultat spécialisé du backend.
 pub type Result<T, E = LlvmError> = core::result::Result<T, E>;
 
@@ -39,7 +38,9 @@ pub struct LlvmBackend;
 
 impl LlvmBackend {
     /// Crée un backend.
-    pub fn new(_name: &str) -> Self { LlvmBackend }
+    pub fn new(_name: &str) -> Self {
+        LlvmBackend
+    }
     /// Abaissement d'AST — no-op ou erreur si attendu.
     pub fn lower_ast(&mut self, _ast: &Ast) -> Result<()> {
         Err(LlvmError::Unavailable)
@@ -51,7 +52,9 @@ impl LlvmBackend {
         Err(LlvmError::Unavailable)
     }
     /// Représentation textuelle — vide.
-    pub fn to_string(&self) -> String { String::new() }
+    pub fn to_string(&self) -> String {
+        String::new()
+    }
 }
 
 /* --------------------------------------------------------------------- */

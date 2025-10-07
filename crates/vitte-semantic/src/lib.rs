@@ -20,7 +20,6 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-
 #[cfg(feature = "lang")]
 use whatlang::detect;
 
@@ -52,10 +51,8 @@ pub fn tokenize(text: &str) -> Vec<String> {
     #[cfg(feature = "hf-tokenizers")]
     {
         use tokenizers::{
-            models::wordpiece::WordPiece,
-            normalizers::bert::BertNormalizer,
+            Tokenizer, models::wordpiece::WordPiece, normalizers::bert::BertNormalizer,
             pre_tokenizers::whitespace::Whitespace,
-            Tokenizer,
         };
         let wp = WordPiece::new(Default::default())
             .unk_token("[UNK]".into())
@@ -147,11 +144,7 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
         na += a[i] * a[i];
         nb += b[i] * b[i];
     }
-    if na == 0.0 || nb == 0.0 {
-        0.0
-    } else {
-        dot / (na.sqrt() * nb.sqrt())
-    }
+    if na == 0.0 || nb == 0.0 { 0.0 } else { dot / (na.sqrt() * nb.sqrt()) }
 }
 
 /// L2 norm helper.

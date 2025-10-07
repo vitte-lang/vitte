@@ -23,8 +23,8 @@
 )]
 
 use std::collections::HashMap;
-use std::time::Instant;
 use std::sync::OnceLock;
+use std::time::Instant;
 
 #[cfg(feature = "json")]
 use serde::{Deserialize, Serialize};
@@ -62,27 +62,32 @@ pub struct Tracer {
 
 impl Tracer {
     /// Accès global.
-    pub fn global() -> &'static Self { GLOBAL.get_or_init(|| Tracer::default()) }
+    pub fn global() -> &'static Self {
+        GLOBAL.get_or_init(|| Tracer::default())
+    }
 
     /// Crée un span guard. À la destruction, enregistre la durée.
     pub fn span<'a>(&'a self, name: impl Into<String>) -> SpanGuard<'a> {
-        SpanGuard {
-            tracer: self,
-            name: name.into(),
-            start: Instant::now(),
-            fields: HashMap::new(),
-        }
+        SpanGuard { tracer: self, name: name.into(), start: Instant::now(), fields: HashMap::new() }
     }
 
     /// Ajoute un champ clé/valeur à un span guard.
-    pub fn span_with<'a>(&'a self, name: impl Into<String>, fields: HashMap<String, String>) -> SpanGuard<'a> {
+    pub fn span_with<'a>(
+        &'a self,
+        name: impl Into<String>,
+        fields: HashMap<String, String>,
+    ) -> SpanGuard<'a> {
         let mut g = self.span(name);
         g.fields = fields;
         g
     }
 
     /// Enregistre un évènement.
-    pub fn event(&self, name: impl Into<String>, fields: impl IntoIterator<Item = (String, String)>) {
+    pub fn event(
+        &self,
+        name: impl Into<String>,
+        fields: impl IntoIterator<Item = (String, String)>,
+    ) {
         let name: String = name.into();
         let fields: HashMap<_, _> = fields.into_iter().collect();
         let ev = TraceEvent { name: name.clone(), ts_us: now_us(), fields: fields.clone() };
@@ -264,7 +269,9 @@ mod tests {
     fn json_export() {
         let g = Tracer::global();
         g.clear();
-        { let _s = g.span("x"); }
+        {
+            let _s = g.span("x");
+        }
         let s = g.to_json().unwrap();
         assert!(s.contains("spans"));
     }
@@ -272,9 +279,9 @@ mod tests {
     #[cfg(feature = "tokio")]
     #[test]
     fn time_async_runs() {
-        let out = tokio::runtime::Runtime::new().unwrap().block_on(async {
-            time_async("sleep", async { 1 + 2 }).await
-        });
+        let out = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async { time_async("sleep", async { 1 + 2 }).await });
         assert_eq!(out, 3);
     }
 }
@@ -286,9 +293,9 @@ mod tests {
 /// - `json`: sorties JSON si `true`, sinon format texte.
 /// Idempotent à l'échelle du process.
 pub fn init_tracing(level: &str, json: bool) -> anyhow::Result<()> {
-    use tracing_subscriber::fmt;
-    use tracing::Level;
     use std::str::FromStr;
+    use tracing::Level;
+    use tracing_subscriber::fmt;
 
     let lvl = Level::from_str(&level.to_ascii_lowercase()).unwrap_or(Level::INFO);
     let builder = fmt().with_max_level(lvl).with_target(false).with_timer(fmt::time::uptime());

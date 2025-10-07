@@ -3,8 +3,8 @@
 /// Minimal evaluator used by CLI helpers to support `--engine eval`.
 pub mod eval {
     use crate::{
-        bytecode::chunk::{Chunk, ConstValue, Op},
         CoreError, CoreResult,
+        bytecode::chunk::{Chunk, ConstValue, Op},
     };
 
     #[cfg(not(feature = "std"))]

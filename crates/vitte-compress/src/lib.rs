@@ -43,11 +43,15 @@ pub enum Error {
 
 impl From<&str> for Error {
     #[inline]
-    fn from(s: &str) -> Self { Error::Backend(s.into()) }
+    fn from(s: &str) -> Self {
+        Error::Backend(s.into())
+    }
 }
 impl From<String> for Error {
     #[inline]
-    fn from(s: String) -> Self { Error::Backend(s) }
+    fn from(s: String) -> Self {
+        Error::Backend(s)
+    }
 }
 
 /// Compression algorithm.
@@ -124,10 +128,18 @@ pub fn decompress(input: &[u8], algo: Algo) -> Result<Vec<u8>> {
 /// - brotli: no fixed magic for raw brotli stream (returns None)
 /// - zlib: 78 ?? (heuristic; may collide)
 pub fn sniff_algo(data: &[u8]) -> Option<Algo> {
-    if data.len() >= 2 && data[0] == 0x1F && data[1] == 0x8B { return Some(Algo::Deflate(DeflateFlavor::Gzip)); }
-    if data.len() >= 4 && data[..4] == [0x28, 0xB5, 0x2F, 0xFD] { return Some(Algo::Zstd); }
-    if data.len() >= 6 && data[..6] == [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00] { return Some(Algo::Xz); }
-    if data.len() >= 2 && data[0] == 0x78 { return Some(Algo::Deflate(DeflateFlavor::Zlib)); }
+    if data.len() >= 2 && data[0] == 0x1F && data[1] == 0x8B {
+        return Some(Algo::Deflate(DeflateFlavor::Gzip));
+    }
+    if data.len() >= 4 && data[..4] == [0x28, 0xB5, 0x2F, 0xFD] {
+        return Some(Algo::Zstd);
+    }
+    if data.len() >= 6 && data[..6] == [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00] {
+        return Some(Algo::Xz);
+    }
+    if data.len() >= 2 && data[0] == 0x78 {
+        return Some(Algo::Deflate(DeflateFlavor::Zlib));
+    }
     None
 }
 
@@ -135,8 +147,8 @@ pub fn sniff_algo(data: &[u8]) -> Option<Algo> {
 
 #[cfg(feature = "deflate")]
 fn compress_deflate(input: &[u8], flavor: DeflateFlavor, opt: Options) -> Result<Vec<u8>> {
-    use flate2::write::{DeflateEncoder, ZlibEncoder, GzEncoder};
     use flate2::Compression;
+    use flate2::write::{DeflateEncoder, GzEncoder, ZlibEncoder};
     let lvl = Compression::new(opt.level.max(0) as u32);
     match flavor {
         DeflateFlavor::Raw => {
@@ -146,17 +158,17 @@ fn compress_deflate(input: &[u8], flavor: DeflateFlavor, opt: Options) -> Result
             // no_std friendly write_all
             w.write_all(input).map_err(|e| Error::Backend(e.to_string()))?;
             w.finish().map_err(|e| Error::Backend(e.to_string()))
-        }
+        },
         DeflateFlavor::Zlib => {
             let mut w = ZlibEncoder::new(Vec::new(), lvl);
             w.write_all(input).map_err(|e| Error::Backend(e.to_string()))?;
             w.finish().map_err(|e| Error::Backend(e.to_string()))
-        }
+        },
         DeflateFlavor::Gzip => {
             let mut w = GzEncoder::new(Vec::new(), lvl);
             w.write_all(input).map_err(|e| Error::Backend(e.to_string()))?;
             w.finish().map_err(|e| Error::Backend(e.to_string()))
-        }
+        },
     }
 }
 
@@ -167,7 +179,7 @@ fn compress_deflate(_input: &[u8], _flavor: DeflateFlavor, _opt: Options) -> Res
 
 #[cfg(feature = "deflate")]
 fn decompress_deflate(input: &[u8], flavor: DeflateFlavor) -> Result<Vec<u8>> {
-    use flate2::read::{DeflateDecoder, ZlibDecoder, GzDecoder};
+    use flate2::read::{DeflateDecoder, GzDecoder, ZlibDecoder};
     use std::io::Read;
     match flavor {
         DeflateFlavor::Raw => {
@@ -175,19 +187,19 @@ fn decompress_deflate(input: &[u8], flavor: DeflateFlavor) -> Result<Vec<u8>> {
             let mut out = Vec::new();
             r.read_to_end(&mut out).map_err(|e| Error::InvalidData(e.to_string()))?;
             Ok(out)
-        }
+        },
         DeflateFlavor::Zlib => {
             let mut r = ZlibDecoder::new(input);
             let mut out = Vec::new();
             r.read_to_end(&mut out).map_err(|e| Error::InvalidData(e.to_string()))?;
             Ok(out)
-        }
+        },
         DeflateFlavor::Gzip => {
             let mut r = GzDecoder::new(input);
             let mut out = Vec::new();
             r.read_to_end(&mut out).map_err(|e| Error::InvalidData(e.to_string()))?;
             Ok(out)
-        }
+        },
     }
 }
 
@@ -203,14 +215,18 @@ fn compress_zstd(input: &[u8], opt: Options) -> Result<Vec<u8>> {
     zstd::encode_all(input, opt.level).map_err(|e| Error::Backend(e.to_string()))
 }
 #[cfg(not(feature = "zstd"))]
-fn compress_zstd(_input: &[u8], _opt: Options) -> Result<Vec<u8>> { Err(Error::Unsupported("zstd")) }
+fn compress_zstd(_input: &[u8], _opt: Options) -> Result<Vec<u8>> {
+    Err(Error::Unsupported("zstd"))
+}
 
 #[cfg(feature = "zstd")]
 fn decompress_zstd(input: &[u8]) -> Result<Vec<u8>> {
     zstd::decode_all(input).map_err(|e| Error::InvalidData(e.to_string()))
 }
 #[cfg(not(feature = "zstd"))]
-fn decompress_zstd(_input: &[u8]) -> Result<Vec<u8>> { Err(Error::Unsupported("zstd")) }
+fn decompress_zstd(_input: &[u8]) -> Result<Vec<u8>> {
+    Err(Error::Unsupported("zstd"))
+}
 
 /* ----------------------------- Backends: LZ4 ---------------------------- */
 
@@ -219,28 +235,39 @@ fn compress_lz4(input: &[u8]) -> Result<Vec<u8>> {
     Ok(lz4_flex::block::compress_prepend_size(input))
 }
 #[cfg(not(feature = "lz4"))]
-fn compress_lz4(_input: &[u8]) -> Result<Vec<u8>> { Err(Error::Unsupported("lz4")) }
+fn compress_lz4(_input: &[u8]) -> Result<Vec<u8>> {
+    Err(Error::Unsupported("lz4"))
+}
 
 #[cfg(feature = "lz4")]
 fn decompress_lz4(input: &[u8]) -> Result<Vec<u8>> {
     lz4_flex::block::decompress_size_prepended(input).map_err(|e| Error::InvalidData(e.to_string()))
 }
 #[cfg(not(feature = "lz4"))]
-fn decompress_lz4(_input: &[u8]) -> Result<Vec<u8>> { Err(Error::Unsupported("lz4")) }
+fn decompress_lz4(_input: &[u8]) -> Result<Vec<u8>> {
+    Err(Error::Unsupported("lz4"))
+}
 
 /* ---------------------------- Backends: Brotli -------------------------- */
 
 #[cfg(feature = "brotli")]
 fn compress_brotli(input: &[u8], opt: Options) -> Result<Vec<u8>> {
     let mut out = Vec::new();
-    let mut enc = brotli::CompressorWriter::new(&mut out, 4096, opt.level.clamp(0, 11) as u32, opt.brotli_window_bits.clamp(10, 24) as u32);
+    let mut enc = brotli::CompressorWriter::new(
+        &mut out,
+        4096,
+        opt.level.clamp(0, 11) as u32,
+        opt.brotli_window_bits.clamp(10, 24) as u32,
+    );
     use core::fmt::Write as _;
     enc.write_all(input).map_err(|e| Error::Backend(e.to_string()))?;
     enc.flush().map_err(|e| Error::Backend(e.to_string()))?;
     Ok(out)
 }
 #[cfg(not(feature = "brotli"))]
-fn compress_brotli(_input: &[u8], _opt: Options) -> Result<Vec<u8>> { Err(Error::Unsupported("brotli")) }
+fn compress_brotli(_input: &[u8], _opt: Options) -> Result<Vec<u8>> {
+    Err(Error::Unsupported("brotli"))
+}
 
 #[cfg(feature = "brotli")]
 fn decompress_brotli(input: &[u8]) -> Result<Vec<u8>> {
@@ -251,7 +278,9 @@ fn decompress_brotli(input: &[u8]) -> Result<Vec<u8>> {
     Ok(out)
 }
 #[cfg(not(feature = "brotli"))]
-fn decompress_brotli(_input: &[u8]) -> Result<Vec<u8>> { Err(Error::Unsupported("brotli")) }
+fn decompress_brotli(_input: &[u8]) -> Result<Vec<u8>> {
+    Err(Error::Unsupported("brotli"))
+}
 
 /* ------------------------------ Backends: XZ ---------------------------- */
 
@@ -267,7 +296,9 @@ fn compress_xz(input: &[u8], opt: Options) -> Result<Vec<u8>> {
     Ok(out)
 }
 #[cfg(not(feature = "xz"))]
-fn compress_xz(_input: &[u8], _opt: Options) -> Result<Vec<u8>> { Err(Error::Unsupported("xz")) }
+fn compress_xz(_input: &[u8], _opt: Options) -> Result<Vec<u8>> {
+    Err(Error::Unsupported("xz"))
+}
 
 #[cfg(feature = "xz")]
 fn decompress_xz(input: &[u8]) -> Result<Vec<u8>> {
@@ -278,7 +309,9 @@ fn decompress_xz(input: &[u8]) -> Result<Vec<u8>> {
     Ok(out)
 }
 #[cfg(not(feature = "xz"))]
-fn decompress_xz(_input: &[u8]) -> Result<Vec<u8>> { Err(Error::Unsupported("xz")) }
+fn decompress_xz(_input: &[u8]) -> Result<Vec<u8>> {
+    Err(Error::Unsupported("xz"))
+}
 
 /* ---------------------------- Backends: Zopfli -------------------------- */
 
@@ -288,16 +321,21 @@ fn compress_zopfli(input: &[u8], flavor: DeflateFlavor, _opt: Options) -> Result
     match flavor {
         DeflateFlavor::Raw => {
             let mut out = Vec::new();
-            zopfli::compress(&zopfli::Options::default(), &zopfli::Format::Deflate, input, &mut out)
-                .map_err(|e| Error::Backend(e.to_string()))?;
+            zopfli::compress(
+                &zopfli::Options::default(),
+                &zopfli::Format::Deflate,
+                input,
+                &mut out,
+            )
+            .map_err(|e| Error::Backend(e.to_string()))?;
             Ok(out)
-        }
+        },
         DeflateFlavor::Gzip => {
             let mut out = Vec::new();
             zopfli::compress(&zopfli::Options::default(), &zopfli::Format::Gzip, input, &mut out)
                 .map_err(|e| Error::Backend(e.to_string()))?;
             Ok(out)
-        }
+        },
         DeflateFlavor::Zlib => {
             #[cfg(feature = "deflate")]
             {
@@ -308,7 +346,7 @@ fn compress_zopfli(input: &[u8], flavor: DeflateFlavor, _opt: Options) -> Result
             {
                 return Err(Error::Unsupported("zopfli zlib (fallback needs deflate)"));
             }
-        }
+        },
     }
 }
 #[cfg(not(feature = "zopfli"))]
@@ -324,7 +362,12 @@ mod io_sync {
     use std::io::{Read, Write};
 
     /// Read all from `r`, compress, write all to `w`.
-    pub fn compress_to<R: Read, W: Write>(mut r: R, mut w: W, algo: Algo, opt: Options) -> Result<()> {
+    pub fn compress_to<R: Read, W: Write>(
+        mut r: R,
+        mut w: W,
+        algo: Algo,
+        opt: Options,
+    ) -> Result<()> {
         let mut buf = Vec::new();
         r.read_to_end(&mut buf).map_err(|e| Error::Backend(e.to_string()))?;
         let out = super::compress(&buf, algo, opt)?;
@@ -351,7 +394,10 @@ mod io_async {
 
     /// Read all from `r`, compress, write all to `w`. Not streaming.
     pub async fn compress_to_async<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
-        mut r: R, mut w: W, algo: Algo, opt: Options,
+        mut r: R,
+        mut w: W,
+        algo: Algo,
+        opt: Options,
     ) -> Result<()> {
         let mut buf = Vec::new();
         r.read_to_end(&mut buf).await.map_err(|e| Error::Backend(e.to_string()))?;
@@ -361,7 +407,9 @@ mod io_async {
 
     /// Read all, decompress, write all. Not streaming.
     pub async fn decompress_to_async<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
-        mut r: R, mut w: W, algo: Algo,
+        mut r: R,
+        mut w: W,
+        algo: Algo,
     ) -> Result<()> {
         let mut buf = Vec::new();
         r.read_to_end(&mut buf).await.map_err(|e| Error::Backend(e.to_string()))?;
@@ -392,7 +440,12 @@ mod tests {
     #[cfg(all(feature = "deflate"))]
     fn roundtrip_gzip() {
         let data = b"abcdefghabcdefghabcdefghabcdefghabcdefgh";
-        let c = compress(data, Algo::Deflate(DeflateFlavor::Gzip), Options { level: 6, ..Default::default() }).unwrap();
+        let c = compress(
+            data,
+            Algo::Deflate(DeflateFlavor::Gzip),
+            Options { level: 6, ..Default::default() },
+        )
+        .unwrap();
         assert!(matches!(sniff_algo(&c), Some(Algo::Deflate(DeflateFlavor::Gzip))));
         let d = decompress(&c, Algo::Deflate(DeflateFlavor::Gzip)).unwrap();
         assert_eq!(&d, data);
@@ -434,7 +487,11 @@ mod write_all_no_std {
     // flate2's writer path requires std::io::Write; this shim only compiles with std.
     // When no_std, deflate backend via writers is not compiled anyway.
     pub trait WriteAll {
-        fn write_all(&mut self, _b: &[u8]) -> fmt::Result { Ok(()) }
-        fn flush(&mut self) -> fmt::Result { Ok(()) }
+        fn write_all(&mut self, _b: &[u8]) -> fmt::Result {
+            Ok(())
+        }
+        fn flush(&mut self) -> fmt::Result {
+            Ok(())
+        }
     }
 }

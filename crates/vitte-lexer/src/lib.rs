@@ -875,11 +875,7 @@ mod tests {
         } else {
             panic!()
         }
-        if let Float(f) = v[7] {
-            assert!((f - 0.025).abs() < 1e-9)
-        } else {
-            panic!()
-        }
+        if let Float(f) = v[7] { assert!((f - 0.025).abs() < 1e-9) } else { panic!() }
     }
 
     #[test]

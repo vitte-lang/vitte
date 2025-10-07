@@ -72,42 +72,39 @@ pub fn print_version() {
 
 #[cfg(feature = "cli")]
 pub fn parse_global_opts(args: &mut Vec<String>) -> GlobalOpts {
-    let mut opts = GlobalOpts {
-        verbosity: Verbosity::Normal,
-        ..Default::default()
-    };
+    let mut opts = GlobalOpts { verbosity: Verbosity::Normal, ..Default::default() };
     let mut i = 1; // après la commande
     while i < args.len() {
         match args[i].as_str() {
             "-q" | "--quiet" => {
                 opts.verbosity = Verbosity::Quiet;
                 args.remove(i);
-            }
+            },
             "-v" | "--verbose" => {
                 opts.verbosity = Verbosity::Verbose;
                 args.remove(i);
-            }
+            },
             "-t" | "--target" => {
                 if i + 1 < args.len() {
                     let _ = args.remove(i);
                     opts.target = Some(args.remove(i));
                 }
-            }
+            },
             "-j" | "--jobs" => {
                 if i + 1 < args.len() {
                     let _ = args.remove(i);
                     opts.jobs = args.remove(i).parse().ok();
                 }
-            }
+            },
             "-o" | "--out-dir" => {
                 if i + 1 < args.len() {
                     let _ = args.remove(i);
                     opts.out_dir = Some(std::path::PathBuf::from(args.remove(i)));
                 }
-            }
+            },
             _ => {
                 i += 1;
-            }
+            },
         }
     }
     opts
@@ -171,10 +168,7 @@ pub fn cmd_env(opts: &GlobalOpts) -> io::Result<()> {
 pub fn run(cmd: &mut Command) -> io::Result<()> {
     let status = cmd.status()?;
     if !status.success() {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("commande échouée: {status}"),
-        ));
+        return Err(io::Error::new(io::ErrorKind::Other, format!("commande échouée: {status}")));
     }
     Ok(())
 }
@@ -229,11 +223,11 @@ pub fn main() {
         "help" | "-h" | "--help" => {
             print_help();
             Ok(())
-        }
+        },
         "version" | "-V" | "--version" => {
             print_version();
             Ok(())
-        }
+        },
         "targets" => {
             if args.len() < 2 {
                 eprintln!("error: missing subcommand for `targets`");
@@ -248,37 +242,37 @@ pub fn main() {
                         process::exit(1);
                     }
                     cmd_targets_add(&args[2])
-                }
+                },
                 "remove" => {
                     if args.len() < 3 {
                         eprintln!("error: missing <triple> for `targets remove`");
                         process::exit(1);
                     }
                     cmd_targets_remove(&args[2])
-                }
+                },
                 other => {
                     eprintln!("error: unknown targets subcommand `{other}`");
                     process::exit(1);
-                }
+                },
             }
-        }
+        },
         "build" => {
             let release = args.iter().any(|a| a == "--release");
             cmd_build(&opts, release)
-        }
+        },
         "pkg" => {
             if args.len() < 2 {
                 eprintln!("error: missing <fmt> for `pkg`");
                 process::exit(1);
             }
             cmd_pkg(&opts, &args[1])
-        }
+        },
         "env" => cmd_env(&opts),
         other => {
             eprintln!("error: unknown command `{other}`");
             print_help();
             process::exit(1);
-        }
+        },
     };
 
     if let Err(e) = res {

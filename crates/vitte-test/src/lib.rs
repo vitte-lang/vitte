@@ -46,7 +46,7 @@ macro_rules! assert_err {
     ($expr:expr) => {
         match $expr {
             Ok(v) => panic!("expected Err(..), got Ok({:?})", v),
-            Err(_) => {}
+            Err(_) => {},
         }
     };
 }
@@ -112,12 +112,17 @@ macro_rules! assert_eq_sorted {
 }
 
 /// Vérifie qu'un résultat Err correspond au prédicat donné
-pub fn assert_result_matches<T,E: std::fmt::Debug>(res: &std::result::Result<T,E>, pred: impl FnOnce(&E)->bool) {
+pub fn assert_result_matches<T, E: std::fmt::Debug>(
+    res: &std::result::Result<T, E>,
+    pred: impl FnOnce(&E) -> bool,
+) {
     match res {
         Ok(_) => panic!("expected Err(..), got Ok(..)"),
         Err(e) => {
-            if !pred(e) { panic!("error did not match predicate: {:?}", e); }
-        }
+            if !pred(e) {
+                panic!("error did not match predicate: {:?}", e);
+            }
+        },
     }
 }
 
@@ -131,21 +136,30 @@ pub fn capture_output<F: FnOnce()>(f: F) -> (String, String) {
     let _ = f();
     let _ = stdout_ref.lock().write_all(&stdout_buf);
     let _ = stderr_ref.lock().write_all(&stderr_buf);
-    (String::from_utf8_lossy(&stdout_buf).to_string(), String::from_utf8_lossy(&stderr_buf).to_string())
+    (
+        String::from_utf8_lossy(&stdout_buf).to_string(),
+        String::from_utf8_lossy(&stderr_buf).to_string(),
+    )
 }
 
 /// Timeout sur future
-pub async fn timeout<F,T>(dur: std::time::Duration, fut: F) -> std::result::Result<T, &'static str>
-where F: std::future::Future<Output=T> {
-    #[cfg(feature="tokio")] {
+pub async fn timeout<F, T>(dur: std::time::Duration, fut: F) -> std::result::Result<T, &'static str>
+where
+    F: std::future::Future<Output = T>,
+{
+    #[cfg(feature = "tokio")]
+    {
         match tokio::time::timeout(dur, fut).await {
-            Ok(v)=>Ok(v), Err(_)=>Err("timeout"),
+            Ok(v) => Ok(v),
+            Err(_) => Err("timeout"),
         }
     }
-    #[cfg(feature="async-std")] {
+    #[cfg(feature = "async-std")]
+    {
         use async_std::future::TimeoutError;
         match async_std::future::timeout(dur, fut).await {
-            Ok(v)=>Ok(v), Err(TimeoutError { .. })=>Err("timeout"),
+            Ok(v) => Ok(v),
+            Err(TimeoutError { .. }) => Err("timeout"),
         }
     }
 }
@@ -171,9 +185,9 @@ mod tests {
     #[test]
     fn contains_and_sorted() {
         assert_contains!("hello world", "world");
-        let a = vec![3,1,2];
-        let b = vec![1,2,3];
-        assert_eq_sorted!(a,b);
+        let a = vec![3, 1, 2];
+        let b = vec![1, 2, 3];
+        assert_eq_sorted!(a, b);
     }
 
     #[test]

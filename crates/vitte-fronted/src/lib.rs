@@ -32,10 +32,7 @@ pub struct FrontendUnit {
 impl FrontendUnit {
     /// Crée une nouvelle unité de compilation à partir d’un nom et du contenu source.
     pub fn new<N: Into<String>, S: Into<String>>(name: N, source: S) -> Self {
-        Self {
-            name: name.into(),
-            source: source.into(),
-        }
+        Self { name: name.into(), source: source.into() }
     }
 
     /// Vérifie la validité de l’unité (par ex. source non vide).
@@ -57,10 +54,7 @@ pub struct FrontendContext {
 
 impl Default for FrontendContext {
     fn default() -> Self {
-        Self {
-            target: "native".to_string(),
-            optimize: false,
-        }
+        Self { target: "native".to_string(), optimize: false }
     }
 }
 
@@ -98,10 +92,7 @@ impl Frontend {
     /// Analyse une unité et génère un IR symbolique de base.
     pub fn analyze(&self, unit: &FrontendUnit) -> Result<FrontendIR> {
         unit.validate()?;
-        Ok(FrontendIR {
-            unit_name: unit.name.clone(),
-            symbols: vec!["main".to_string()],
-        })
+        Ok(FrontendIR { unit_name: unit.name.clone(), symbols: vec!["main".to_string()] })
     }
 
     /// Prépare la compilation pour un backend spécifique (LLVM, WASM, etc.).

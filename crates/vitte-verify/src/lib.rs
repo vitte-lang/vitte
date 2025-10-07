@@ -11,18 +11,25 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use pkcs8::spki::SubjectPublicKeyInfoRef;
 #[cfg(feature = "signature")]
 use x509_cert::{
-    der::{Decode, Encode},
     Certificate,
+    der::{Decode, Encode},
 };
 
 #[derive(Debug)]
 pub enum VerifyError {
     Io(std::io::Error),
-    #[cfg(feature = "hash")] Hex(hex::FromHexError),
-    #[cfg(feature = "signature")] Ed25519(ed25519_dalek::SignatureError),
-    #[cfg(feature = "signature")] Pkcs8(pkcs8::Error),
-    #[cfg(feature = "signature")] X509(x509_cert::der::Error),
-    InvalidKeyLen { expected: usize, actual: usize },
+    #[cfg(feature = "hash")]
+    Hex(hex::FromHexError),
+    #[cfg(feature = "signature")]
+    Ed25519(ed25519_dalek::SignatureError),
+    #[cfg(feature = "signature")]
+    Pkcs8(pkcs8::Error),
+    #[cfg(feature = "signature")]
+    X509(x509_cert::der::Error),
+    InvalidKeyLen {
+        expected: usize,
+        actual: usize,
+    },
     BadSignature,
     UnsupportedKeyAlgorithm,
     Other(String),
@@ -38,23 +45,33 @@ impl core::fmt::Display for VerifyError {
 impl std::error::Error for VerifyError {}
 
 impl From<std::io::Error> for VerifyError {
-    fn from(e: std::io::Error) -> Self { Self::Io(e) }
+    fn from(e: std::io::Error) -> Self {
+        Self::Io(e)
+    }
 }
 #[cfg(feature = "hash")]
 impl From<hex::FromHexError> for VerifyError {
-    fn from(e: hex::FromHexError) -> Self { Self::Hex(e) }
+    fn from(e: hex::FromHexError) -> Self {
+        Self::Hex(e)
+    }
 }
 #[cfg(feature = "signature")]
 impl From<ed25519_dalek::SignatureError> for VerifyError {
-    fn from(e: ed25519_dalek::SignatureError) -> Self { Self::Ed25519(e) }
+    fn from(e: ed25519_dalek::SignatureError) -> Self {
+        Self::Ed25519(e)
+    }
 }
 #[cfg(feature = "signature")]
 impl From<pkcs8::Error> for VerifyError {
-    fn from(e: pkcs8::Error) -> Self { Self::Pkcs8(e) }
+    fn from(e: pkcs8::Error) -> Self {
+        Self::Pkcs8(e)
+    }
 }
 #[cfg(feature = "signature")]
 impl From<x509_cert::der::Error> for VerifyError {
-    fn from(e: x509_cert::der::Error) -> Self { Self::X509(e) }
+    fn from(e: x509_cert::der::Error) -> Self {
+        Self::X509(e)
+    }
 }
 
 pub type Result<T> = std::result::Result<T, VerifyError>;
@@ -62,16 +79,19 @@ pub type Result<T> = std::result::Result<T, VerifyError>;
 /* ------------------------------ Hash utils ------------------------------ */
 
 #[cfg(feature = "hash")]
-pub fn sha256_hex(d: &[u8]) -> String { hex::encode(Sha256::digest(d)) }
+pub fn sha256_hex(d: &[u8]) -> String {
+    hex::encode(Sha256::digest(d))
+}
 
 #[cfg(feature = "hash")]
-pub fn blake3_hex(d: &[u8]) -> String { blake3::hash(d).to_hex().to_string() }
+pub fn blake3_hex(d: &[u8]) -> String {
+    blake3::hash(d).to_hex().to_string()
+}
 
 #[cfg(feature = "hash")]
 pub fn equals_hex(d: &[u8], exp: &str) -> bool {
     let g = sha256_hex(d);
-    g.len() == exp.len()
-        && g.bytes().zip(exp.bytes()).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
+    g.len() == exp.len() && g.bytes().zip(exp.bytes()).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
 }
 
 /* ------------------------------ Signatures ------------------------------ */
@@ -147,5 +167,10 @@ mod tests {
 
     #[cfg(feature = "hash")]
     #[test]
-    fn h() { assert_eq!(sha256_hex(b""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"); }
+    fn h() {
+        assert_eq!(
+            sha256_hex(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
 }

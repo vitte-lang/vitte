@@ -5,7 +5,11 @@
 
 #![forbid(unsafe_code)]
 
-use std::{ffi::OsString, path::PathBuf, process::ExitCode};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 
 use anyhow::{Context, Result};
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
@@ -186,8 +190,15 @@ fn output_from_opt(
         return cli::Output::Auto;
     }
     match output {
+        Some(ref p) if p.as_os_str() == "-" => cli::Output::Stdout,
         Some(ref p) => cli::Output::Path(p.clone()),
-        None => cli::Output::Stdout,
+        None => {
+            if for_compile {
+                cli::Output::Auto
+            } else {
+                cli::Output::Stdout
+            }
+        },
     }
 }
 
@@ -198,34 +209,54 @@ fn make_hooks() -> cli::Hooks {
 
     // Compilation — À RACCORDER à ton compilateur réel
     // Exemple d'API attendue : fn compile_to_vitbc(src: &str, opt: bool, debug: bool) -> Result<Vec<u8>>
-    #[allow(unused_mut)]
-    let mut compile_hook: Option<cli::CompileFn> = None;
     #[cfg(feature = "vm")]
     {
-        // Si tu exposes une fonction depuis vitte-compiler, branche-la ici.
-        // use vitte_compiler as vc;
-        // compile_hook = Some(|src, opts| vc::compile_to_vitbc(src, opts.optimize, opts.emit_debug));
+        // Fallback: encode la source pour offrir `--auto-compile` avec la VM stub.
+        h.compile = Some(|src, _opts| {
+            let mut out = Vec::with_capacity(8 + src.len());
+            out.extend_from_slice(b"VBC0");
+            out.extend_from_slice(&(src.len() as u32).to_le_bytes());
+            out.extend_from_slice(src.as_bytes());
+            Ok(out)
+        });
     }
-    h.compile = compile_hook;
 
     // Exécution — À RACCORDER à ta VM
-    #[allow(unused_mut)]
-    let mut run_hook: Option<cli::RunFn> = None;
     #[cfg(feature = "vm")]
     {
-        // use vitte_vm as vvm;
-        // run_hook = Some(|bytecode, _opts| vvm::run_bytes(bytecode));
+        use vitte_vm::Vm;
+
+        h.run_bc = Some(|bytecode, _opts| {
+            // VM minimale : instancie et exécute le bytecode reçu.
+            // Tant que la VM ne gère pas args/opts, on les ignore.
+            let mut vm = Vm::new();
+            Ok(vm.run_bytecode(bytecode))
+        });
     }
-    h.run_bc = run_hook;
+
+    // Désassemblage — stub pour le format VBC0 synthétique
+    #[cfg(feature = "vm")]
+    {
+        h.disasm = Some(|bytes| {
+            if bytes.len() >= 8 && &bytes[..4] == b"VBC0" {
+                let len = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]) as usize;
+                let payload = bytes.get(8..).unwrap_or_default();
+                let snippet = String::from_utf8_lossy(&payload[..payload.len().min(len)]);
+                Ok(format!(
+                    "; Vitte stub bytecode\nmagic: VBC0\nlen: {} bytes\n--- source snippet ---\n{}",
+                    len, snippet
+                ))
+            } else {
+                Ok(format!("; Bytecode inconnu ({} octets)", bytes.len()))
+            }
+        });
+    }
 
     // REPL — À RACCORDER
     h.repl = None; // Some(|prompt| { /* ... */ Ok(0) });
 
     // Formatage — À RACCORDER (source -> String formatée)
     h.fmt = None; // Some(|source, check_only| Ok(if check_only { source.to_string() } else { format_code(source) }));
-
-    // Désassemblage — À RACCORDER (bytes -> texte)
-    h.disasm = None;
 
     // Inspection — À RACCORDER (bytes -> texte)
     h.inspect = None;
@@ -282,8 +313,48 @@ fn main() -> ExitCode {
     ExitCode::from(0)
 }
 
+fn infer_default_command(arg: &OsString) -> Option<OsString> {
+    let raw = arg.to_str()?;
+    if raw.starts_with('-') {
+        return None;
+    }
+
+    let path = Path::new(raw);
+    let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase());
+    let Some(ext) = ext else {
+        return None;
+    };
+    if matches!(ext.as_str(), "vitbc" | "vitb") {
+        return Some(OsString::from("run"));
+    }
+    if matches!(ext.as_str(), "vitte" | "vit" | "vt") {
+        return Some(OsString::from("compile"));
+    }
+    None
+}
+
+fn alias_for(arg: &OsString) -> Option<OsString> {
+    match arg.to_str()? {
+        "build" => Some(OsString::from("compile")),
+        "dsasm" => Some(OsString::from("disasm")),
+        _ => None,
+    }
+}
+
 fn real_main() -> Result<()> {
-    let opt = Opt::parse();
+    let mut argv: Vec<OsString> = std::env::args_os().collect();
+    if argv.len() == 2 {
+        if let Some(cmd) = infer_default_command(&argv[1]) {
+            argv.insert(1, cmd);
+        }
+    }
+    if argv.len() > 1 {
+        if let Some(alias) = alias_for(&argv[1]) {
+            argv[1] = alias;
+        }
+    }
+
+    let opt = Opt::parse_from(argv);
 
     init_color(opt.color);
     init_telemetry(opt.verbose, opt.quiet);

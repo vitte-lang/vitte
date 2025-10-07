@@ -15,59 +15,68 @@
 
 /* ============================== imports ============================== */
 
-#[cfg(all(not(feature="std"), not(feature="alloc-only")))]
-compile_error!("Enable `std` (default) or `alloc-only`.") ;
+#[cfg(all(not(feature = "std"), not(feature = "alloc-only")))]
+compile_error!("Enable `std` (default) or `alloc-only`.");
 
-#[cfg(feature="alloc-only")]
+#[cfg(feature = "alloc-only")]
 extern crate alloc;
 
-#[cfg(feature="alloc-only")]
-use alloc::{boxed::Box, string::String, vec, vec::Vec, format};
+#[cfg(feature = "alloc-only")]
+use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
 
-#[cfg(feature="std")]
-use std::{string::String, vec::Vec, fmt};
+#[cfg(feature = "std")]
+use std::{fmt, string::String, vec::Vec};
 
-#[cfg(feature="serde")]
-use serde::{Serialize, Deserialize};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
-#[cfg(feature="errors")]
+#[cfg(feature = "errors")]
 use thiserror::Error;
 
-#[cfg(feature="style")]
+#[cfg(feature = "style")]
 use vitte_style as vstyle;
 
 /* ============================== erreurs ============================== */
 
-#[cfg(feature="errors")]
+#[cfg(feature = "errors")]
 #[derive(Debug, Error)]
 pub enum TreeError {
     #[error("serialize: {0}")]
     Ser(String),
 }
-#[cfg(not(feature="errors"))]
+#[cfg(not(feature = "errors"))]
 #[derive(Debug)]
-pub enum TreeError { Ser(String) }
+pub enum TreeError {
+    Ser(String),
+}
 
 pub type Result<T> = core::result::Result<T, TreeError>;
 
 /* ============================== modèle ============================== */
 
 /// Rôle logique facultatif pour coloration.
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum RoleLike { Primary, Success, Warn, Error, Info, Muted }
+pub enum RoleLike {
+    Primary,
+    Success,
+    Warn,
+    Error,
+    Info,
+    Muted,
+}
 
 /// Métadonnées optionnelles.
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, Default)]
 pub struct Meta {
     pub role: Option<RoleLike>,
-    pub icon: Option<String>,       // ex: "📁"
-    pub collapsed: bool,            // si true, n’affiche pas les enfants
-    pub data: Option<String>,       // libre (chemin, id, etc.)
+    pub icon: Option<String>, // ex: "📁"
+    pub collapsed: bool,      // si true, n’affiche pas les enfants
+    pub data: Option<String>, // libre (chemin, id, etc.)
 }
 
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, Default)]
 pub struct Node {
     pub label: String,
@@ -79,46 +88,81 @@ impl Node {
     pub fn new<S: Into<String>>(label: S) -> Self {
         Self { label: label.into(), children: Vec::new(), meta: Meta::default() }
     }
-    pub fn with_meta(mut self, meta: Meta) -> Self { self.meta = meta; self }
-    pub fn with_role(mut self, r: RoleLike) -> Self { self.meta.role = Some(r); self }
-    pub fn with_icon(mut self, s: impl Into<String>) -> Self { self.meta.icon = Some(s.into()); self }
-    pub fn collapsed(mut self, on: bool) -> Self { self.meta.collapsed = on; self }
-    pub fn data(mut self, d: impl Into<String>) -> Self { self.meta.data = Some(d.into()); self }
-    pub fn push(mut self, child: Node) -> Self { self.children.push(child); self }
-    pub fn add(&mut self, child: Node) { self.children.push(child); }
-    pub fn leaf<S: Into<String>>(label: S) -> Self { Self::new(label) }
+    pub fn with_meta(mut self, meta: Meta) -> Self {
+        self.meta = meta;
+        self
+    }
+    pub fn with_role(mut self, r: RoleLike) -> Self {
+        self.meta.role = Some(r);
+        self
+    }
+    pub fn with_icon(mut self, s: impl Into<String>) -> Self {
+        self.meta.icon = Some(s.into());
+        self
+    }
+    pub fn collapsed(mut self, on: bool) -> Self {
+        self.meta.collapsed = on;
+        self
+    }
+    pub fn data(mut self, d: impl Into<String>) -> Self {
+        self.meta.data = Some(d.into());
+        self
+    }
+    pub fn push(mut self, child: Node) -> Self {
+        self.children.push(child);
+        self
+    }
+    pub fn add(&mut self, child: Node) {
+        self.children.push(child);
+    }
+    pub fn leaf<S: Into<String>>(label: S) -> Self {
+        Self::new(label)
+    }
 
     /// Parcours profondeur d’abord. `f(node, depth)`.
-    pub fn walk<F: FnMut(&Node, usize)>(&self, mut f: F) { walk_impl(self, 0, &mut f); }
+    pub fn walk<F: FnMut(&Node, usize)>(&self, mut f: F) {
+        walk_impl(self, 0, &mut f);
+    }
 
     /// Tri récursif des enfants par comparateur.
     pub fn sort_by<F: FnMut(&Node, &Node) -> core::cmp::Ordering>(&mut self, mut cmp: F) {
-        self.children.sort_by(|a,b| cmp(a,b));
-        for c in &mut self.children { c.sort_by(&mut cmp); }
+        self.children.sort_by(|a, b| cmp(a, b));
+        for c in &mut self.children {
+            c.sort_by(&mut cmp);
+        }
     }
 }
 
 fn walk_impl<F: FnMut(&Node, usize)>(n: &Node, d: usize, f: &mut F) {
     f(n, d);
-    for c in &n.children { walk_impl(c, d+1, f); }
+    for c in &n.children {
+        walk_impl(c, d + 1, f);
+    }
 }
 
 /* ============================== rendu ============================== */
 
 /// Jeu de caractères de branche.
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Charset { Ascii, Utf }
+pub enum Charset {
+    Ascii,
+    Utf,
+}
 
-impl Default for Charset { fn default() -> Self { Charset::Utf } }
+impl Default for Charset {
+    fn default() -> Self {
+        Charset::Utf
+    }
+}
 
 impl Charset {
     fn branch(&self, last: bool) -> &'static str {
         match (self, last) {
             (Charset::Utf, false) => "├── ",
-            (Charset::Utf, true)  => "└── ",
+            (Charset::Utf, true) => "└── ",
             (Charset::Ascii, false) => "|-- ",
-            (Charset::Ascii, true)  => "`-- ",
+            (Charset::Ascii, true) => "`-- ",
         }
     }
     fn pipe(&self) -> &'static str {
@@ -127,21 +171,23 @@ impl Charset {
             Charset::Ascii => "|   ",
         }
     }
-    fn space(&self) -> &'static str { "    " }
+    fn space(&self) -> &'static str {
+        "    "
+    }
 }
 
 /// Options de rendu.
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug)]
 pub struct RenderOptions {
     pub charset: Charset,
     pub show_root: bool,
-    pub max_depth: Option<usize>,    // depth relative à la racine (0 = racine)
-    pub clamp_width: Option<usize>,  // tronque le label
-    pub sort_children: bool,         // tri alpha simple si true
-    pub filter_empty: bool,          // masque nœuds sans label après trim
-    pub show_counts: bool,           // affiche " (n)" après label si enfants repliés
-    #[cfg(feature="style")]
+    pub max_depth: Option<usize>, // depth relative à la racine (0 = racine)
+    pub clamp_width: Option<usize>, // tronque le label
+    pub sort_children: bool,      // tri alpha simple si true
+    pub filter_empty: bool,       // masque nœuds sans label après trim
+    pub show_counts: bool,        // affiche " (n)" après label si enfants repliés
+    #[cfg(feature = "style")]
     pub styler: Option<vstyle::Style>,
 }
 
@@ -155,14 +201,19 @@ impl Default for RenderOptions {
             sort_children: false,
             filter_empty: false,
             show_counts: true,
-            #[cfg(feature="style")] styler: None,
+            #[cfg(feature = "style")]
+            styler: None,
         }
     }
 }
 
 impl RenderOptions {
-    pub fn utf() -> Self { Self::default() }
-    pub fn ascii() -> Self { Self { charset: Charset::Ascii, ..Self::default() } }
+    pub fn utf() -> Self {
+        Self::default()
+    }
+    pub fn ascii() -> Self {
+        Self { charset: Charset::Ascii, ..Self::default() }
+    }
 }
 
 /// Rendu en chaîne multi-lignes.
@@ -173,14 +224,22 @@ pub fn render(root: &Node, opts: RenderOptions) -> String {
         push_line(&mut out, "", &styled(&root.label, &root.meta, &opts));
     }
     let mut kids = root.children.clone();
-    if opts.sort_children { kids.sort_by(|a,b| a.label.cmp(&b.label)); }
+    if opts.sort_children {
+        kids.sort_by(|a, b| a.label.cmp(&b.label));
+    }
     render_children(&kids, &mut out, &mut path_last, 0, &opts);
     out
 }
 
-fn render_children(children: &[Node], out: &mut String, path_last: &mut Vec<bool>, depth: usize, opts: &RenderOptions) {
+fn render_children(
+    children: &[Node],
+    out: &mut String,
+    path_last: &mut Vec<bool>,
+    depth: usize,
+    opts: &RenderOptions,
+) {
     for (i, child) in children.iter().enumerate() {
-        let last = i+1 == children.len();
+        let last = i + 1 == children.len();
         let prefix = line_prefix(opts, path_last, last);
         let mut label = styled(&child.label, &child.meta, opts);
 
@@ -190,7 +249,8 @@ fn render_children(children: &[Node], out: &mut String, path_last: &mut Vec<bool
             }
         }
         let mut post = String::new();
-        let collapsed = child.meta.collapsed || opts.max_depth.map(|m| depth+1 >= m).unwrap_or(false);
+        let collapsed =
+            child.meta.collapsed || opts.max_depth.map(|m| depth + 1 >= m).unwrap_or(false);
         if collapsed && opts.show_counts && !child.children.is_empty() {
             post.push_str(&format!(" ({})", child.children.len()));
         }
@@ -202,9 +262,11 @@ fn render_children(children: &[Node], out: &mut String, path_last: &mut Vec<bool
 
         if !collapsed {
             let mut grand = child.children.clone();
-            if opts.sort_children { grand.sort_by(|a,b| a.label.cmp(&b.label)); }
+            if opts.sort_children {
+                grand.sort_by(|a, b| a.label.cmp(&b.label));
+            }
             path_last.push(last);
-            render_children(&grand, out, path_last, depth+1, opts);
+            render_children(&grand, out, path_last, depth + 1, opts);
             path_last.pop();
         }
     }
@@ -227,7 +289,7 @@ fn push_line(out: &mut String, prefix: &str, content: &str) {
 
 /* ============================== style helpers ============================== */
 
-#[cfg(feature="style")]
+#[cfg(feature = "style")]
 fn styled(text: &str, meta: &Meta, opts: &RenderOptions) -> String {
     match (&opts.styler, &meta.role) {
         (Some(st), Some(r)) => paint_role(st, r, text),
@@ -235,43 +297,51 @@ fn styled(text: &str, meta: &Meta, opts: &RenderOptions) -> String {
         _ => text.to_string(),
     }
 }
-#[cfg(not(feature="style"))]
-fn styled(text: &str, _meta: &Meta, _opts: &RenderOptions) -> String { text.to_string() }
+#[cfg(not(feature = "style"))]
+fn styled(text: &str, _meta: &Meta, _opts: &RenderOptions) -> String {
+    text.to_string()
+}
 
-#[cfg(feature="style")]
+#[cfg(feature = "style")]
 fn paint_role(st: &vstyle::Style, role: &RoleLike, s: &str) -> String {
     use vstyle::Role as R;
     match role {
         RoleLike::Primary => st.primary(s),
         RoleLike::Success => st.ok(s),
-        RoleLike::Warn    => st.warn(s),
-        RoleLike::Error   => st.err(s),
-        RoleLike::Info    => st.info(s),
-        RoleLike::Muted   => st.muted(s),
+        RoleLike::Warn => st.warn(s),
+        RoleLike::Error => st.err(s),
+        RoleLike::Info => st.info(s),
+        RoleLike::Muted => st.muted(s),
     }
 }
 
 /* ============================== width / truncate ============================== */
 
 fn display_width(s: &str) -> usize {
-    #[cfg(feature="ansi")]
+    #[cfg(feature = "ansi")]
     {
         // naïf: on retire séquences CSI si déjà stylé
         let re = regex_lite::Regex::new("\x1B\\[[0-9;]*[A-Za-z]").unwrap();
         let plain = re.replace_all(s, "");
         return plain.chars().count();
     }
-    #[cfg(not(feature="ansi"))]
-    { s.chars().count() }
+    #[cfg(not(feature = "ansi"))]
+    {
+        s.chars().count()
+    }
 }
 
 fn truncate(s: &str, w: usize) -> String {
-    if display_width(s) <= w { return s.to_string(); }
+    if display_width(s) <= w {
+        return s.to_string();
+    }
     let mut out = String::new();
     let mut count = 0usize;
     for ch in s.chars() {
         let cw = 1; // simplifié
-        if count + cw > w.saturating_sub(1) { break; }
+        if count + cw > w.saturating_sub(1) {
+            break;
+        }
         out.push(ch);
         count += cw;
     }
@@ -282,7 +352,7 @@ fn truncate(s: &str, w: usize) -> String {
 /* ============================== export ============================== */
 
 /// JSON (feature `json`).
-#[cfg(feature="json")]
+#[cfg(feature = "json")]
 pub fn to_json(root: &Node, pretty: bool) -> Result<String> {
     if pretty {
         serde_json::to_string_pretty(root).map_err(|e| TreeError::Ser(e.to_string()))
@@ -292,7 +362,7 @@ pub fn to_json(root: &Node, pretty: bool) -> Result<String> {
 }
 
 /// YAML (feature `yaml`).
-#[cfg(feature="yaml")]
+#[cfg(feature = "yaml")]
 pub fn to_yaml(root: &Node) -> Result<String> {
     serde_yaml::to_string(root).map_err(|e| TreeError::Ser(e.to_string()))
 }
@@ -314,11 +384,13 @@ mod tests {
 
     fn sample() -> Node {
         Node::new("root")
-            .push(Node::new("src").with_icon("📁")
-                .push(Node::leaf("main.rs"))
-                .push(Node::leaf("lib.rs"))
-                .push(Node::new("bin").collapsed(true)
-                    .push(Node::leaf("vitte"))))
+            .push(
+                Node::new("src")
+                    .with_icon("📁")
+                    .push(Node::leaf("main.rs"))
+                    .push(Node::leaf("lib.rs"))
+                    .push(Node::new("bin").collapsed(true).push(Node::leaf("vitte"))),
+            )
             .push(Node::new("Cargo.toml").with_role(RoleLike::Info))
     }
 
@@ -341,7 +413,7 @@ mod tests {
         assert!(s.contains("`--"));
     }
 
-    #[cfg(feature="json")]
+    #[cfg(feature = "json")]
     #[test]
     fn json_ok() {
         let t = sample();
@@ -352,13 +424,13 @@ mod tests {
 
 /* ============================== deps optionnelles minimales ============================== */
 
-#[cfg(feature="ansi")]
+#[cfg(feature = "ansi")]
 mod regex_lite {
     // mini façade interne, sans dépendance externe.
     pub use crate::internal_regex::Regex;
 }
 
-#[cfg(feature="ansi")]
+#[cfg(feature = "ansi")]
 mod internal_regex {
     use std::borrow::Cow;
 
@@ -367,7 +439,9 @@ mod internal_regex {
     pub struct Regex;
 
     impl Regex {
-        pub fn new(_pat: &str) -> Result<Self, ()> { Ok(Regex) }
+        pub fn new(_pat: &str) -> Result<Self, ()> {
+            Ok(Regex)
+        }
 
         pub fn replace_all<'a>(&self, s: &'a str, _replacement: &str) -> Cow<'a, str> {
             // Scan sur octets pour conserver l’UTF-8 sans l’endommager.

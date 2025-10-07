@@ -15,42 +15,44 @@
 
 /* ============================== imports ============================== */
 
-#[cfg(all(not(feature="std"), not(feature="alloc-only")))]
-compile_error!("Enable `std` (default) or `alloc-only`.") ;
+#[cfg(all(not(feature = "std"), not(feature = "alloc-only")))]
+compile_error!("Enable `std` (default) or `alloc-only`.");
 
-#[cfg(feature="alloc-only")]
+#[cfg(feature = "alloc-only")]
 extern crate alloc;
 
-#[cfg(feature="alloc-only")]
-use alloc::{string::String, vec::Vec, boxed::Box, format};
+#[cfg(feature = "alloc-only")]
+use alloc::{boxed::Box, format, string::String, vec::Vec};
 
-#[cfg(feature="std")]
-use std::{string::String, vec::Vec, fmt};
+#[cfg(feature = "std")]
+use std::{fmt, string::String, vec::Vec};
 
-#[cfg(feature="serde")]
-use serde::{Serialize, Deserialize};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
-#[cfg(feature="errors")]
+#[cfg(feature = "errors")]
 use thiserror::Error;
 
-#[cfg(feature="ansi")]
+#[cfg(feature = "ansi")]
 use vitte_ansi as ansi;
 
-#[cfg(feature="style")]
+#[cfg(feature = "style")]
 use vitte_style as vstyle;
 
-#[cfg(feature="wrap")]
-use textwrap::{wrap_algorithms::wrap_first_fit, Options as WrapOptions, WordSeparator, WordSplitter};
+#[cfg(feature = "wrap")]
+use textwrap::{
+    Options as WrapOptions, WordSeparator, WordSplitter, wrap_algorithms::wrap_first_fit,
+};
 
-#[cfg(feature="csv")]
+#[cfg(feature = "csv")]
 use csv as csv_crate;
 
-#[cfg(feature="widths")]
+#[cfg(feature = "widths")]
 use unicode_segmentation::UnicodeSegmentation;
 
 /* ============================== erreurs ============================== */
 
-#[cfg(feature="errors")]
+#[cfg(feature = "errors")]
 #[derive(Debug, Error)]
 pub enum TableError {
     #[error("csv error: {0}")]
@@ -58,81 +60,109 @@ pub enum TableError {
     #[error("invalid state: {0}")]
     Invalid(String),
 }
-#[cfg(not(feature="errors"))]
+#[cfg(not(feature = "errors"))]
 #[derive(Debug)]
-pub enum TableError { Csv(String), Invalid(String) }
+pub enum TableError {
+    Csv(String),
+    Invalid(String),
+}
 
 pub type Result<T> = core::result::Result<T, TableError>;
 
 /* ============================== types de base ============================== */
 
 /// Alignement horizontal.
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Align { Left, Center, Right }
+pub enum Align {
+    Left,
+    Center,
+    Right,
+}
 
 impl Align {
     fn pad(self, w: usize, s: &str) -> String {
         let lw = display_width(s);
-        if lw >= w { return s.to_string(); }
+        if lw >= w {
+            return s.to_string();
+        }
         let rem = w - lw;
         match self {
-            Align::Left   => format!("{s}{}", repeat(" ", rem)),
-            Align::Right  => format!("{}{s}", repeat(" ", rem)),
+            Align::Left => format!("{s}{}", repeat(" ", rem)),
+            Align::Right => format!("{}{s}", repeat(" ", rem)),
             Align::Center => {
                 let l = rem / 2;
                 let r = rem - l;
                 format!("{}{}{}", repeat(" ", l), s, repeat(" ", r))
-            }
+            },
         }
     }
 }
 
 /// Cellule.
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, Default)]
 pub struct Cell {
     pub text: String,
     pub style: CellStyle,
 }
 impl Cell {
-    pub fn new<S: Into<String>>(s: S) -> Self { Self { text: s.into(), style: CellStyle::default() } }
-    pub fn with_style(mut self, st: CellStyle) -> Self { self.style = st; self }
+    pub fn new<S: Into<String>>(s: S) -> Self {
+        Self { text: s.into(), style: CellStyle::default() }
+    }
+    pub fn with_style(mut self, st: CellStyle) -> Self {
+        self.style = st;
+        self
+    }
 }
 
 /// Style d’une cellule.
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug)]
 pub struct CellStyle {
     pub align: Align,
-    pub role: Option<RoleLike>,   // via vitte-style si présent
+    pub role: Option<RoleLike>, // via vitte-style si présent
     pub bold: bool,
     pub italic: bool,
 }
 impl Default for CellStyle {
-    fn default() -> Self { Self { align: Align::Left, role: None, bold: false, italic: false } }
+    fn default() -> Self {
+        Self { align: Align::Left, role: None, bold: false, italic: false }
+    }
 }
 
 /// Abstraction du rôle (pour éviter dépendance dure à vitte-style).
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RoleLike {
-    Primary, Success, Warn, Error, Info, Muted,
+    Primary,
+    Success,
+    Warn,
+    Error,
+    Info,
+    Muted,
 }
 
 /* ============================== table model ============================== */
 
 /// Ligne.
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, Default)]
-pub struct Row { pub cells: Vec<Cell> }
+pub struct Row {
+    pub cells: Vec<Cell>,
+}
 impl Row {
-    pub fn new() -> Self { Self { cells: Vec::new() } }
-    pub fn push(mut self, c: impl Into<Cell>) -> Self { self.cells.push(c.into()); self }
+    pub fn new() -> Self {
+        Self { cells: Vec::new() }
+    }
+    pub fn push(mut self, c: impl Into<Cell>) -> Self {
+        self.cells.push(c.into());
+        self
+    }
 }
 
 /// Spécifications de colonne.
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug)]
 pub struct ColSpec {
     pub width: Option<usize>, // largeur fixe. None = auto
@@ -141,35 +171,61 @@ pub struct ColSpec {
     pub align: Option<Align>, // défaut pour la colonne
 }
 impl Default for ColSpec {
-    fn default() -> Self { Self { width: None, min: 0, max: None, align: None } }
+    fn default() -> Self {
+        Self { width: None, min: 0, max: None, align: None }
+    }
 }
 
 /// Bordures.
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug)]
 pub struct Border {
-    pub tl: &'static str, pub tr: &'static str, pub bl: &'static str, pub br: &'static str,
-    pub h:  &'static str, pub v:  &'static str,
+    pub tl: &'static str,
+    pub tr: &'static str,
+    pub bl: &'static str,
+    pub br: &'static str,
+    pub h: &'static str,
+    pub v: &'static str,
     pub j_top: &'static str,   // jonction haut
     pub j_mid: &'static str,   // jonction séparateur
     pub j_bot: &'static str,   // jonction bas
     pub j_left: &'static str,  // jonction gauche
-    pub j_right:&'static str,  // jonction droite
+    pub j_right: &'static str, // jonction droite
     pub cross: &'static str,   // croix
 }
 impl Border {
-    pub const ASCII: Border = Border{
-        tl:"+", tr:"+", bl:"+", br:"+", h:"-", v:"|",
-        j_top:"+", j_mid:"+", j_bot:"+", j_left:"+", j_right:"+", cross:"+"
+    pub const ASCII: Border = Border {
+        tl: "+",
+        tr: "+",
+        bl: "+",
+        br: "+",
+        h: "-",
+        v: "|",
+        j_top: "+",
+        j_mid: "+",
+        j_bot: "+",
+        j_left: "+",
+        j_right: "+",
+        cross: "+",
     };
-    pub const UTF: Border = Border{
-        tl:"┌", tr:"┐", bl:"└", br:"┘", h:"─", v:"│",
-        j_top:"┬", j_mid:"┼", j_bot:"┴", j_left:"├", j_right:"┤", cross:"┼"
+    pub const UTF: Border = Border {
+        tl: "┌",
+        tr: "┐",
+        bl: "└",
+        br: "┘",
+        h: "─",
+        v: "│",
+        j_top: "┬",
+        j_mid: "┼",
+        j_bot: "┴",
+        j_left: "├",
+        j_right: "┤",
+        cross: "┼",
     };
 }
 
 /// Options de rendu.
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug)]
 pub struct TableStyle {
     pub border: Border,
@@ -191,24 +247,49 @@ impl Default for TableStyle {
 }
 
 /// Table.
-#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, Default)]
 pub struct Table {
     pub headers: Option<Row>,
     pub rows: Vec<Row>,
     pub cols: Vec<ColSpec>,
     pub style: TableStyle,
-    #[cfg(feature="style")] pub styler: Option<vstyle::Style>,
+    #[cfg(feature = "style")]
+    pub styler: Option<vstyle::Style>,
 }
 
 impl Table {
-    pub fn new() -> Self { Self { headers: None, rows: Vec::new(), cols: Vec::new(), style: TableStyle::default(), #[cfg(feature="style")] styler: None } }
-    pub fn headers(mut self, r: Row) -> Self { self.headers = Some(r); self }
-    pub fn push(mut self, r: Row) -> Self { self.rows.push(r); self }
-    pub fn col(mut self, spec: ColSpec) -> Self { self.cols.push(spec); self }
-    pub fn style(mut self, st: TableStyle) -> Self { self.style = st; self }
-    #[cfg(feature="style")]
-    pub fn with_styler(mut self, sty: vstyle::Style) -> Self { self.styler = Some(sty); self }
+    pub fn new() -> Self {
+        Self {
+            headers: None,
+            rows: Vec::new(),
+            cols: Vec::new(),
+            style: TableStyle::default(),
+            #[cfg(feature = "style")]
+            styler: None,
+        }
+    }
+    pub fn headers(mut self, r: Row) -> Self {
+        self.headers = Some(r);
+        self
+    }
+    pub fn push(mut self, r: Row) -> Self {
+        self.rows.push(r);
+        self
+    }
+    pub fn col(mut self, spec: ColSpec) -> Self {
+        self.cols.push(spec);
+        self
+    }
+    pub fn style(mut self, st: TableStyle) -> Self {
+        self.style = st;
+        self
+    }
+    #[cfg(feature = "style")]
+    pub fn with_styler(mut self, sty: vstyle::Style) -> Self {
+        self.styler = Some(sty);
+        self
+    }
 
     /// Rendu complet en `String`.
     pub fn render(&self) -> String {
@@ -229,7 +310,7 @@ impl Table {
     /* ----------------- CSV / TSV ----------------- */
 
     /// Lit CSV (delim = b',' ou b'\t') en table basique.
-    #[cfg(feature="csv")]
+    #[cfg(feature = "csv")]
     pub fn from_delim(bytes: &[u8], delim: u8, has_headers: bool) -> Result<Self> {
         let mut rdr = csv_crate::ReaderBuilder::new().delimiter(delim).from_reader(bytes);
         let mut t = Table::new();
@@ -247,7 +328,7 @@ impl Table {
     }
 
     /// Écrit CSV (delim = ',' ou '\t')
-    #[cfg(feature="csv")]
+    #[cfg(feature = "csv")]
     pub fn to_delim(&self, delim: u8) -> Result<Vec<u8>> {
         let mut wtr = csv_crate::WriterBuilder::new().delimiter(delim).from_writer(vec![]);
         if let Some(h) = &self.headers {
@@ -267,16 +348,21 @@ impl Table {
     fn resolve_cols(&self) -> Vec<ColSpec> {
         let n = self.cols.len();
         let m = self.max_columns();
-        if n < m { // complète specs manquantes
+        if n < m {
+            // complète specs manquantes
             let mut out = self.cols.clone();
             out.extend(core::iter::repeat(ColSpec::default()).take(m - n));
             out
-        } else { self.cols.clone() }
+        } else {
+            self.cols.clone()
+        }
     }
 
     fn max_columns(&self) -> usize {
         let mut m = self.headers.as_ref().map(|r| r.cells.len()).unwrap_or(0);
-        for r in &self.rows { m = m.max(r.cells.len()); }
+        for r in &self.rows {
+            m = m.max(r.cells.len());
+        }
         m
     }
 
@@ -313,12 +399,13 @@ impl Table {
         let mut out = String::new();
 
         // lignes horizontales
-        let line_top    = make_line(&self.style.border, &widths, LineKind::Top);
-        let line_mid    = make_line(&self.style.border, &widths, LineKind::Mid);
+        let line_top = make_line(&self.style.border, &widths, LineKind::Top);
+        let line_mid = make_line(&self.style.border, &widths, LineKind::Mid);
         let line_bottom = make_line(&self.style.border, &widths, LineKind::Bottom);
-        let line_row    = make_line(&self.style.border, &widths, LineKind::Row);
+        let line_row = make_line(&self.style.border, &widths, LineKind::Row);
 
-        out.push_str(&line_top); out.push('\n');
+        out.push_str(&line_top);
+        out.push('\n');
 
         for (ri, row) in grid.iter().enumerate() {
             // hauteur de la ligne = max des sous-lignes
@@ -329,10 +416,11 @@ impl Table {
                     let raw = cell_lines.get(li).map(|s| s.as_str()).unwrap_or("");
                     let text = self.render_cell_text(raw, ri, ci);
                     let align = cols[ci].align.unwrap_or(Align::Left);
-                    let padded = Align::pad(align, widths[ci], &text_with_pad(text, self.style.pad));
+                    let padded =
+                        Align::pad(align, widths[ci], &text_with_pad(text, self.style.pad));
                     out.push_str(&padded);
                     out.push_str(self.style.border.v);
-                    if self.style.inner_borders && ci+1 < row.len() {
+                    if self.style.inner_borders && ci + 1 < row.len() {
                         // déjà ajouté v, rien d'autre
                     }
                 }
@@ -340,10 +428,14 @@ impl Table {
             }
 
             // séparateurs
-            if ri+1 == 1 && self.headers.is_some() && self.style.header_separate {
-                out.push_str(&line_mid); out.push('\n');
-            } else if ri+1 < grid.len() {
-                if self.style.inner_borders { out.push_str(&line_row); out.push('\n'); }
+            if ri + 1 == 1 && self.headers.is_some() && self.style.header_separate {
+                out.push_str(&line_mid);
+                out.push('\n');
+            } else if ri + 1 < grid.len() {
+                if self.style.inner_borders {
+                    out.push_str(&line_row);
+                    out.push('\n');
+                }
             }
         }
 
@@ -352,14 +444,16 @@ impl Table {
     }
 
     fn render_cell_text(&self, raw: &str, _row_i: usize, _col_i: usize) -> String {
-        #[cfg(feature="style")]
+        #[cfg(feature = "style")]
         if self.style.themed {
             if let Some(st) = &self.styler {
                 let role = cell_role(self, row_i, col_i);
-                if let Some(r) = role { return paint_role(st, r, raw); }
+                if let Some(r) = role {
+                    return paint_role(st, r, raw);
+                }
             }
         }
-        #[cfg(feature="ansi")]
+        #[cfg(feature = "ansi")]
         {
             let mut s = raw.to_string();
             if row_i == 0 && self.headers.is_some() {
@@ -381,7 +475,6 @@ fn fill_row(r: &Row, cols: usize) -> Vec<Cell> {
     v
 }
 
-
 fn text_with_pad(s: String, pad: usize) -> String {
     let mut out = String::new();
     out.push_str(&repeat(" ", pad));
@@ -391,20 +484,27 @@ fn text_with_pad(s: String, pad: usize) -> String {
 }
 
 #[derive(Copy, Clone)]
-enum LineKind { Top, Mid, Bottom, Row }
+enum LineKind {
+    Top,
+    Mid,
+    Bottom,
+    Row,
+}
 
 fn make_line(b: &Border, widths: &[usize], kind: LineKind) -> String {
     let (l, j, r) = match kind {
-        LineKind::Top    => (b.tl, b.j_top, b.tr),
-        LineKind::Mid    => (b.j_left, b.j_mid, b.j_right),
+        LineKind::Top => (b.tl, b.j_top, b.tr),
+        LineKind::Mid => (b.j_left, b.j_mid, b.j_right),
         LineKind::Bottom => (b.bl, b.j_bot, b.br),
-        LineKind::Row    => (b.j_left, b.cross, b.j_right),
+        LineKind::Row => (b.j_left, b.cross, b.j_right),
     };
     let mut out = String::new();
     out.push_str(l);
     for (i, w) in widths.iter().enumerate() {
         out.push_str(&repeat(b.h, *w));
-        if i+1 < widths.len() { out.push_str(j); }
+        if i + 1 < widths.len() {
+            out.push_str(j);
+        }
     }
     out.push_str(r);
     out
@@ -413,35 +513,46 @@ fn make_line(b: &Border, widths: &[usize], kind: LineKind) -> String {
 /* ---------------- widths ---------------- */
 
 fn display_width(s: &str) -> usize {
-    #[cfg(feature="widths")]
+    #[cfg(feature = "widths")]
     {
         UnicodeSegmentation::graphemes(s, true).count()
     }
-    #[cfg(not(feature="widths"))]
-    { s.len() }
+    #[cfg(not(feature = "widths"))]
+    {
+        s.len()
+    }
 }
 
 fn eff_col_width(width: Option<usize>, min: usize, max: Option<usize>) -> usize {
     let base = width.unwrap_or(0);
-    let w = if base == 0 {  // auto, estimé au fil du calcul
+    let w = if base == 0 {
+        // auto, estimé au fil du calcul
         // valeur provisoire, recalée après mesure réelle
         max.unwrap_or(0).max(min)
-    } else { base.max(min) };
+    } else {
+        base.max(min)
+    };
     if let Some(mx) = max { w.min(mx.max(min)) } else { w }
 }
 
 fn wrap_cell(s: &str, width_hint: usize) -> Vec<String> {
-    if width_hint == 0 { return s.split('\n').map(|x| x.to_string()).collect(); }
-    #[cfg(feature="wrap")]
+    if width_hint == 0 {
+        return s.split('\n').map(|x| x.to_string()).collect();
+    }
+    #[cfg(feature = "wrap")]
     {
         let width = width_hint.max(1);
         // Options unicode-aware si widths + textwrap unicode-width activés
         let opts = WrapOptions::new(width)
             .word_separator(WordSeparator::UnicodeBreakProperties)
             .word_splitter(WordSplitter::HyphenSplitter);
-        wrap_first_fit(s, &opts).into_iter().map(|cow| cow.into_owned()).flat_map(|line| line.split('\n').map(|x| x.to_string()).collect::<Vec<_>>()).collect()
+        wrap_first_fit(s, &opts)
+            .into_iter()
+            .map(|cow| cow.into_owned())
+            .flat_map(|line| line.split('\n').map(|x| x.to_string()).collect::<Vec<_>>())
+            .collect()
     }
-    #[cfg(not(feature="wrap"))]
+    #[cfg(not(feature = "wrap"))]
     {
         // hard cut
         hard_cut_lines(s, width_hint)
@@ -449,7 +560,9 @@ fn wrap_cell(s: &str, width_hint: usize) -> Vec<String> {
 }
 
 fn hard_cut_lines(s: &str, w: usize) -> Vec<String> {
-    if w == 0 { return s.split('\n').map(|x| x.to_string()).collect(); }
+    if w == 0 {
+        return s.split('\n').map(|x| x.to_string()).collect();
+    }
     let mut out = Vec::new();
     for line in s.split('\n') {
         let mut buf = String::new();
@@ -460,10 +573,16 @@ fn hard_cut_lines(s: &str, w: usize) -> Vec<String> {
                 buf.clear();
             }
         }
-        if !buf.is_empty() { out.push(buf.clone()); }
-        if line.is_empty() { out.push(String::new()); }
+        if !buf.is_empty() {
+            out.push(buf.clone());
+        }
+        if line.is_empty() {
+            out.push(String::new());
+        }
     }
-    if out.is_empty() { out.push(String::new()); }
+    if out.is_empty() {
+        out.push(String::new());
+    }
     out
 }
 
@@ -485,7 +604,9 @@ fn compute_col_widths(grid: &[Vec<Vec<String>>], cols: &[ColSpec]) -> Vec<usize>
             w[i] = fixed.max(cols[i].min);
         } else {
             w[i] = w[i].max(cols[i].min);
-            if let Some(mx) = cols[i].max { w[i] = w[i].min(mx.max(cols[i].min)); }
+            if let Some(mx) = cols[i].max {
+                w[i] = w[i].min(mx.max(cols[i].min));
+            }
         }
         // + padding de part et d’autre géré dans `text_with_pad`, donc ajoute 2*pad ici?
         // Non: pad est ajouté dans le contenu, mais la ligne horizontale doit couvrir largeur réelle =>
@@ -526,7 +647,10 @@ fn draw_markdown(grid: &[Vec<Vec<String>>], cols: &[ColSpec], headers: &Option<R
         for (i, cell_lines) in row.iter().enumerate() {
             let s = cell_lines.get(0).map(|s| s.as_str()).unwrap_or("");
             let pad = Align::Left.pad(widths[i], s);
-            out.push(' '); out.push_str(&pad); out.push(' '); out.push('|');
+            out.push(' ');
+            out.push_str(&pad);
+            out.push(' ');
+            out.push('|');
         }
         out.push('\n');
         // separator
@@ -549,7 +673,10 @@ fn draw_markdown(grid: &[Vec<Vec<String>>], cols: &[ColSpec], headers: &Option<R
             for i in 0..row.len() {
                 let s = row[i].get(li).map(|s| s.as_str()).unwrap_or("");
                 let pad = Align::Left.pad(widths[i], s);
-                out.push(' '); out.push_str(&pad); out.push(' '); out.push('|');
+                out.push(' ');
+                out.push_str(&pad);
+                out.push(' ');
+                out.push('|');
             }
             out.push('\n');
         }
@@ -560,26 +687,32 @@ fn draw_markdown(grid: &[Vec<Vec<String>>], cols: &[ColSpec], headers: &Option<R
 
 /* ============================== styling (vitte-style) ============================== */
 
-#[cfg(feature="style")]
+#[cfg(feature = "style")]
 fn paint_role(st: &vstyle::Style, role: RoleLike, s: &str) -> String {
     use vstyle::Role as R;
     match role {
         RoleLike::Primary => st.primary(s),
         RoleLike::Success => st.ok(s),
-        RoleLike::Warn    => st.warn(s),
-        RoleLike::Error   => st.err(s),
-        RoleLike::Info    => st.info(s),
-        RoleLike::Muted   => st.muted(s),
+        RoleLike::Warn => st.warn(s),
+        RoleLike::Error => st.err(s),
+        RoleLike::Info => st.info(s),
+        RoleLike::Muted => st.muted(s),
     }
 }
 
-#[cfg(feature="style")]
+#[cfg(feature = "style")]
 fn cell_role(t: &Table, row_i: usize, col_i: usize) -> Option<RoleLike> {
     // headers → Primary
-    if row_i == 0 && t.headers.is_some() { return Some(RoleLike::Primary); }
+    if row_i == 0 && t.headers.is_some() {
+        return Some(RoleLike::Primary);
+    }
     // sinon, par cellule
     let r = if t.headers.is_some() { row_i } else { row_i };
-    let row = if row_i == 0 && t.headers.is_some() { t.headers.as_ref().unwrap() } else { &t.rows[r - t.headers.is_some() as usize] };
+    let row = if row_i == 0 && t.headers.is_some() {
+        t.headers.as_ref().unwrap()
+    } else {
+        &t.rows[r - t.headers.is_some() as usize]
+    };
     row.cells.get(col_i).and_then(|c| c.style.role.clone())
 }
 
@@ -587,7 +720,9 @@ fn cell_role(t: &Table, row_i: usize, col_i: usize) -> Option<RoleLike> {
 
 fn repeat<S: AsRef<str>>(s: S, n: usize) -> String {
     let mut out = String::with_capacity(s.as_ref().len() * n);
-    for _ in 0..n { out.push_str(s.as_ref()); }
+    for _ in 0..n {
+        out.push_str(s.as_ref());
+    }
     out
 }
 
@@ -608,7 +743,13 @@ mod tests {
     #[test]
     fn simple_table_ascii() {
         let t = Table::new()
-            .style(TableStyle { border: Border::ASCII, header_separate: true, inner_borders: true, pad: 1, themed: false })
+            .style(TableStyle {
+                border: Border::ASCII,
+                header_separate: true,
+                inner_borders: true,
+                pad: 1,
+                themed: false,
+            })
             .headers(Row::new().push(Cell::new("A")).push(Cell::new("B")))
             .push(Row::new().push(Cell::new("1")).push(Cell::new("x")))
             .push(Row::new().push(Cell::new("22")).push(Cell::new("yy")));

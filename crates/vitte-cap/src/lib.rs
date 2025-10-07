@@ -23,9 +23,8 @@ extern crate alloc;
 use bitflags::bitflags;
 use core::cmp::Ordering;
 
-
 #[cfg(feature = "no_std")]
-use alloc::{string::String, vec, vec::Vec, collections::BTreeMap};
+use alloc::{collections::BTreeMap, string::String, vec, vec::Vec};
 
 #[cfg(not(feature = "no_std"))]
 use std::{collections::BTreeMap, string::String, vec::Vec};
@@ -45,11 +44,7 @@ pub enum CapError {
     #[cfg_attr(feature = "std", error("capability manquante: {0:?}"))]
     Missing(Capability),
     #[cfg_attr(feature = "std", error("accès refusé: {cap:?} → {res:?} ({reason})"))]
-    Denied {
-        cap: Capability,
-        res: Resource,
-        reason: String,
-    },
+    Denied { cap: Capability, res: Resource, reason: String },
     #[cfg_attr(feature = "std", error("jeton expiré"))]
     TokenExpired,
     #[cfg_attr(feature = "std", error("politique vide: deny-all"))]
@@ -63,7 +58,7 @@ impl core::fmt::Display for CapError {
             CapError::Missing(c) => write!(f, "missing {:?}", c),
             CapError::Denied { cap, res, reason } => {
                 write!(f, "denied {:?} -> {:?}: {}", cap, res, reason)
-            }
+            },
             CapError::TokenExpired => write!(f, "token expired"),
             CapError::EmptyPolicy => write!(f, "empty policy"),
         }
@@ -165,10 +160,10 @@ impl Capability {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Resource {
-    FilePath(String),           // ex: "/var/data/x.txt"
+    FilePath(String),                            // ex: "/var/data/x.txt"
     NetHost { host: String, port: Option<u16> }, // "example.com", 443
-    EnvVar(String),             // "HOME"
-    Process(String),            // "convert"
+    EnvVar(String),                              // "HOME"
+    Process(String),                             // "convert"
     Custom { kind: String, id: String },
 }
 
@@ -212,14 +207,16 @@ impl ResourceSelector {
                 let host_ok = pat_match(&self.pat, host);
                 let port_ok = if let Some(expect) = self.meta.get("port") {
                     if let Ok(ep) = expect.parse::<u16>() { Some(ep) == *port } else { false }
-                } else { true };
+                } else {
+                    true
+                };
                 host_ok && port_ok
-            }
+            },
             (SelectorKind::Custom, Resource::Custom { kind, id }) => {
                 let k_ok = self.meta.get("kind").map(|k| k == kind).unwrap_or(true);
                 let id_ok = pat_match(&self.pat, id);
                 k_ok && id_ok
-            }
+            },
             _ => false,
         }
     }
@@ -247,7 +244,7 @@ fn pat_match(p: &Pattern, s: &str) -> bool {
             } else {
                 s == t
             }
-        }
+        },
     }
 }
 
@@ -295,12 +292,15 @@ impl Default for Policy {
 }
 
 impl Policy {
-    fn default_deny() -> bool { true }
+    fn default_deny() -> bool {
+        true
+    }
 
     /// Résout une décision.
     pub fn decide(&self, cap: Capability, res: &Resource) -> Decision {
         // On sélectionne les règles qui s’appliquent.
-        let mut hits: Vec<(&Rule, usize)> = self.rules
+        let mut hits: Vec<(&Rule, usize)> = self
+            .rules
             .iter()
             .filter(|r| r.applies(cap, res))
             .map(|r| (r, r.selector.specificity()))
@@ -317,20 +317,22 @@ impl Policy {
         // Trie par spécificité desc. En cas d’égalité: DENY > ALLOW.
         hits.sort_by(|(a, sa), (b, sb)| {
             match sb.cmp(sa) {
-                Ordering::Less => Ordering::Less,   // sa > sb → a avant
+                Ordering::Less => Ordering::Less, // sa > sb → a avant
                 Ordering::Greater => Ordering::Greater,
                 Ordering::Equal => match (a.effect, b.effect) {
                     (Effect::Deny, Effect::Allow) => Ordering::Less,
                     (Effect::Allow, Effect::Deny) => Ordering::Greater,
                     _ => Ordering::Equal,
-                }
+                },
             }
         });
 
         let (top, _) = hits[0];
         match top.effect {
             Effect::Allow => Decision::Allowed { matched: Some(top.clone()) },
-            Effect::Deny => Decision::Denied { reason: top.note.clone(), matched: Some(top.clone()) },
+            Effect::Deny => {
+                Decision::Denied { reason: top.note.clone(), matched: Some(top.clone()) }
+            },
         }
     }
 }
@@ -412,11 +414,13 @@ impl<A: AuditSink> Checker<A> {
     }
 
     pub fn with_time(mut self, now_epoch: u64) -> Self {
-        self.now_epoch = now_epoch; self
+        self.now_epoch = now_epoch;
+        self
     }
 
     pub fn with_token(mut self, tok: Token) -> Self {
-        self.token = Some(tok); self
+        self.token = Some(tok);
+        self
     }
 
     /// Vérifie et retourne Ok(()) si autorisé.
@@ -446,11 +450,11 @@ impl<A: AuditSink> Checker<A> {
             Decision::Allowed { matched } => {
                 self.audit.on_allow(cap, &res, matched.as_ref());
                 Ok(())
-            }
+            },
             Decision::Denied { reason, matched } => {
                 self.audit.on_deny(cap, &res, matched.as_ref(), &reason);
                 Err(CapError::Denied { cap, res, reason })
-            }
+            },
         }
     }
 }
@@ -461,21 +465,31 @@ impl<A: AuditSink> Checker<A> {
 
 pub mod prelude {
     pub use super::{
-        Caps, Capability, CapError, Checker, Decision, Effect, Grant, Pattern, Policy, Resource,
-        ResourceSelector, SelectorKind, Token, AuditSink, NoopAudit,
+        AuditSink, CapError, Capability, Caps, Checker, Decision, Effect, Grant, NoopAudit,
+        Pattern, Policy, Resource, ResourceSelector, SelectorKind, Token,
     };
 
     /// Raccourcis:
-    use super::{Pattern as P, ResourceSelector as S, SelectorKind as K, BTreeMap};
-    pub fn file_prefix(prefix: &str) -> S { S { kind: K::File, pat: P::Prefix(prefix.into()), meta: Default::default() } }
-    pub fn file_exact(path: &str) -> S { S { kind: K::File, pat: P::Exact(path.into()), meta: Default::default() } }
+    use super::{BTreeMap, Pattern as P, ResourceSelector as S, SelectorKind as K};
+    pub fn file_prefix(prefix: &str) -> S {
+        S { kind: K::File, pat: P::Prefix(prefix.into()), meta: Default::default() }
+    }
+    pub fn file_exact(path: &str) -> S {
+        S { kind: K::File, pat: P::Exact(path.into()), meta: Default::default() }
+    }
     pub fn host(host: &str, port: Option<u16>) -> S {
         let mut m: BTreeMap<String, String> = BTreeMap::new();
-        if let Some(p) = port { m.insert("port".into(), p.to_string()); }
+        if let Some(p) = port {
+            m.insert("port".into(), p.to_string());
+        }
         S { kind: K::NetHost, pat: P::Exact(host.into()), meta: m }
     }
-    pub fn env_glob(glob: &str) -> S { S { kind: K::Env, pat: P::Glob(glob.into()), meta: Default::default() } }
-    pub fn proc_name(name: &str) -> S { S { kind: K::Proc, pat: P::Exact(name.into()), meta: Default::default() } }
+    pub fn env_glob(glob: &str) -> S {
+        S { kind: K::Env, pat: P::Glob(glob.into()), meta: Default::default() }
+    }
+    pub fn proc_name(name: &str) -> S {
+        S { kind: K::Proc, pat: P::Exact(name.into()), meta: Default::default() }
+    }
     pub fn custom(kind: &str, id_pat: P) -> S {
         let mut m: BTreeMap<String, String> = BTreeMap::new();
         m.insert("kind".into(), kind.into());
@@ -540,10 +554,11 @@ mod tests {
     #[test]
     fn deny_write_in_prefix() {
         let chk = Checker { policy: policy_example(), token: None, audit: NoopAudit, now_epoch: 0 };
-        let err = chk.require(Capability::FsWrite, Resource::FilePath("/opt/data/file.txt".into()))
+        let err = chk
+            .require(Capability::FsWrite, Resource::FilePath("/opt/data/file.txt".into()))
             .unwrap_err();
         match err {
-            CapError::Denied { .. } => {}
+            CapError::Denied { .. } => {},
             _ => panic!("expected deny"),
         }
     }
@@ -551,10 +566,16 @@ mod tests {
     #[test]
     fn net_tls_ok_http_denied() {
         let chk = Checker { policy: policy_example(), token: None, audit: NoopAudit, now_epoch: 0 };
-        chk.require(Capability::NetConnect, Resource::NetHost{ host: "example.com".into(), port: Some(443) })
-            .unwrap();
+        chk.require(
+            Capability::NetConnect,
+            Resource::NetHost { host: "example.com".into(), port: Some(443) },
+        )
+        .unwrap();
         assert!(matches!(
-            chk.require(Capability::NetConnect, Resource::NetHost{ host: "example.com".into(), port: Some(80) }),
+            chk.require(
+                Capability::NetConnect,
+                Resource::NetHost { host: "example.com".into(), port: Some(80) }
+            ),
             Err(CapError::Denied { .. })
         ));
     }
@@ -583,7 +604,8 @@ mod tests {
         };
         let tok = Token { grants: vec![grant], meta: Default::default() };
         let chk = Checker { policy: pol, token: Some(tok), audit: NoopAudit, now_epoch: 2000 };
-        let err = chk.require(Capability::FsRead, Resource::FilePath("/secret.txt".into()))
+        let err = chk
+            .require(Capability::FsRead, Resource::FilePath("/secret.txt".into()))
             .unwrap_err();
         assert!(matches!(err, CapError::TokenExpired));
     }

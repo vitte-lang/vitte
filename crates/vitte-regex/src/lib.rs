@@ -9,8 +9,8 @@
 //!
 //! Objectif : exposer une API stable, sûre, et facilement testable.
 
-use thiserror::Error;
 use regex::Regex;
+use thiserror::Error;
 
 /// Erreurs liées au moteur regex.
 #[derive(Debug, Error)]
@@ -37,22 +37,14 @@ pub fn compile(pattern: &str) -> Result<Regex> {
 /// Recherche une occurrence et renvoie le match complet.
 pub fn find(text: &str, pattern: &str) -> Result<String> {
     let re = compile(pattern)?;
-    if let Some(m) = re.find(text) {
-        Ok(m.as_str().to_owned())
-    } else {
-        Err(RegexError::NoMatch)
-    }
+    if let Some(m) = re.find(text) { Ok(m.as_str().to_owned()) } else { Err(RegexError::NoMatch) }
 }
 
 /// Trouve toutes les occurrences et renvoie sous forme de vecteur.
 pub fn find_all(text: &str, pattern: &str) -> Result<Vec<String>> {
     let re = compile(pattern)?;
     let out: Vec<String> = re.find_iter(text).map(|m| m.as_str().to_owned()).collect();
-    if out.is_empty() {
-        Err(RegexError::NoMatch)
-    } else {
-        Ok(out)
-    }
+    if out.is_empty() { Err(RegexError::NoMatch) } else { Ok(out) }
 }
 
 /// Remplace la première occurrence.
@@ -90,7 +82,7 @@ mod tests {
     #[test]
     fn test_find_all() {
         let res = find_all("a1b22c333", r"\d+").unwrap();
-        assert_eq!(res, vec!["1","22","333"]);
+        assert_eq!(res, vec!["1", "22", "333"]);
     }
 
     #[test]

@@ -15,9 +15,13 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::doc_markdown,
+    clippy::too_many_lines
+)]
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 
@@ -90,7 +94,8 @@ impl Scheduler {
                 *indeg.get_mut(d).unwrap() += 1;
             }
         }
-        let mut q: Vec<TaskId> = indeg.iter().filter(|(_, &v)| v == 0).map(|(k, _)| (*k).clone()).collect();
+        let mut q: Vec<TaskId> =
+            indeg.iter().filter(|(_, &v)| v == 0).map(|(k, _)| (*k).clone()).collect();
         let mut order = Vec::new();
         let mut indeg_mut = indeg.clone();
 
@@ -158,7 +163,11 @@ impl Scheduler {
                     let r = (t.run)();
                     match r {
                         Ok(_) => TaskResult { id: t.id.clone(), success: true, error: None },
-                        Err(e) => TaskResult { id: t.id.clone(), success: false, error: Some(e.to_string()) },
+                        Err(e) => TaskResult {
+                            id: t.id.clone(),
+                            success: false,
+                            error: Some(e.to_string()),
+                        },
                     }
                 })
                 .collect();
@@ -183,7 +192,11 @@ impl Scheduler {
             let fut = tokio::task::spawn_blocking(move || (task.run)());
             match fut.await.unwrap() {
                 Ok(_) => out.push(TaskResult { id: id_clone, success: true, error: None }),
-                Err(e) => out.push(TaskResult { id: id_clone, success: false, error: Some(e.to_string()) }),
+                Err(e) => out.push(TaskResult {
+                    id: id_clone,
+                    success: false,
+                    error: Some(e.to_string()),
+                }),
             }
         }
         Ok(out)
@@ -197,11 +210,8 @@ impl Scheduler {
             id: &'a str,
             deps: &'a [TaskId],
         }
-        let plan: Vec<_> = self
-            .tasks
-            .values()
-            .map(|t| JsonTask { id: &t.id, deps: &t.deps })
-            .collect();
+        let plan: Vec<_> =
+            self.tasks.values().map(|t| JsonTask { id: &t.id, deps: &t.deps }).collect();
         Ok(serde_json::to_string_pretty(&plan)?)
     }
 }

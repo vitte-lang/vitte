@@ -38,7 +38,9 @@ impl fmt::Display for BuildError {
 
 impl StdError for BuildError {}
 impl From<std::io::Error> for BuildError {
-    fn from(e: std::io::Error) -> Self { Self::Io(e) }
+    fn from(e: std::io::Error) -> Self {
+        Self::Io(e)
+    }
 }
 
 // ========================= Submodules (stubs) =========================
@@ -48,7 +50,11 @@ pub mod config {
 
     /// Build profiles.
     #[derive(Debug, Clone, Copy, Default)]
-    pub enum Profile { #[default] Dev, Release }
+    pub enum Profile {
+        #[default]
+        Dev,
+        Release,
+    }
 
     /// Top-level build configuration.
     #[derive(Debug, Clone)]
@@ -57,7 +63,9 @@ pub mod config {
     }
 
     impl Default for BuildConfig {
-        fn default() -> Self { Self { profile: Profile::Dev } }
+        fn default() -> Self {
+            Self { profile: Profile::Dev }
+        }
     }
 }
 
@@ -67,7 +75,11 @@ pub mod artifacts {
 
     /// The kind of artifact produced by a stage.
     #[derive(Debug, Clone, Copy)]
-    pub enum ArtifactKind { Object, Bytecode, Executable }
+    pub enum ArtifactKind {
+        Object,
+        Bytecode,
+        Executable,
+    }
 
     /// A produced artifact on disk.
     #[derive(Debug, Clone)]
@@ -84,7 +96,9 @@ pub mod packaging {
 
     /// Package output format.
     #[derive(Debug, Clone, Copy)]
-    pub enum PackageFormat { Dir }
+    pub enum PackageFormat {
+        Dir,
+    }
 
     /// A packaged build result.
     #[derive(Debug, Clone)]
@@ -118,7 +132,13 @@ pub mod pipeline {
 
     /// A build stage placeholder.
     #[derive(Debug, Clone, Copy)]
-    pub enum Stage { Lex, Parse, Ir, Codegen, Vm }
+    pub enum Stage {
+        Lex,
+        Parse,
+        Ir,
+        Codegen,
+        Vm,
+    }
 
     /// Orchestrates the stages.
     #[derive(Debug, Clone)]
@@ -127,14 +147,20 @@ pub mod pipeline {
     }
 
     impl BuildPipeline {
-        pub fn new(cfg: &BuildConfig) -> Self { Self { _cfg: cfg.clone() } }
+        pub fn new(cfg: &BuildConfig) -> Self {
+            Self { _cfg: cfg.clone() }
+        }
 
         /// Run the full pipeline and return produced artifacts.
         pub fn run(&self, workspace: &Path) -> crate::Result<Vec<Artifact>> {
             let obj = workspace.join("target/stub.o");
-            if let Some(parent) = obj.parent() { fs::create_dir_all(parent)?; }
+            if let Some(parent) = obj.parent() {
+                fs::create_dir_all(parent)?;
+            }
             // Touch the file so consumers can rely on its existence.
-            if !obj.exists() { fs::write(&obj, b"stub")?; }
+            if !obj.exists() {
+                fs::write(&obj, b"stub")?;
+            }
             Ok(vec![Artifact { kind: ArtifactKind::Object, path: obj }])
         }
     }
@@ -175,7 +201,9 @@ impl BuildContext {
     /// Clean build artifacts in the workspace.
     pub fn clean(&self) -> Result<()> {
         let target = self.workspace.join("target");
-        if target.exists() { fs::remove_dir_all(&target)?; }
+        if target.exists() {
+            fs::remove_dir_all(&target)?;
+        }
         Ok(())
     }
 }

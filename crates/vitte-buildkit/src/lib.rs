@@ -57,7 +57,9 @@ impl core::fmt::Display for BuildError {
             BuildError::TomlDe(e) => write!(f, "TOML: {e}"),
             BuildError::TomlSer(e) => write!(f, "TOML: {e}"),
             BuildError::Json(e) => write!(f, "JSON: {e}"),
-            BuildError::CommandFailed { cmd, code } => write!(f, "Commande échouée: {cmd} (code: {code:?})"),
+            BuildError::CommandFailed { cmd, code } => {
+                write!(f, "Commande échouée: {cmd} (code: {code:?})")
+            },
             BuildError::UnknownTask(s) => write!(f, "Tâche inconnue: {s}"),
             BuildError::CyclicGraph => write!(f, "Cycle détecté dans le graphe de tâches"),
             BuildError::NoTasks => write!(f, "Aucune tâche à exécuter"),
@@ -71,16 +73,24 @@ impl std::error::Error for BuildError {}
 
 // Convenience From impls to replace #[from]
 impl From<std::io::Error> for BuildError {
-    fn from(e: std::io::Error) -> Self { BuildError::Io(e) }
+    fn from(e: std::io::Error) -> Self {
+        BuildError::Io(e)
+    }
 }
 impl From<toml::de::Error> for BuildError {
-    fn from(e: toml::de::Error) -> Self { BuildError::TomlDe(e) }
+    fn from(e: toml::de::Error) -> Self {
+        BuildError::TomlDe(e)
+    }
 }
 impl From<toml::ser::Error> for BuildError {
-    fn from(e: toml::ser::Error) -> Self { BuildError::TomlSer(e) }
+    fn from(e: toml::ser::Error) -> Self {
+        BuildError::TomlSer(e)
+    }
 }
 impl From<serde_json::Error> for BuildError {
-    fn from(e: serde_json::Error) -> Self { BuildError::Json(e) }
+    fn from(e: serde_json::Error) -> Self {
+        BuildError::Json(e)
+    }
 }
 
 pub type Result<T> = std::result::Result<T, BuildError>;
@@ -108,9 +118,7 @@ impl BuildContext {
             out_dir,
             cache_dir,
             env: std::env::vars().collect(),
-            parallel: std::thread::available_parallelism()
-                .map(|n| n.get())
-                .unwrap_or(4),
+            parallel: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
         }
     }
 
@@ -142,10 +150,13 @@ impl CacheDb {
                     for (k, vv) in obj {
                         let hash = vv.get("hash").and_then(|x| x.as_u64()).unwrap_or(0);
                         let time = vv.get("time").and_then(|x| x.as_u64()).unwrap_or(0);
-                        let outputs = vv.get("outputs")
+                        let outputs = vv
+                            .get("outputs")
                             .and_then(|x| x.as_array())
                             .map(|arr| {
-                                arr.iter().filter_map(|e| e.as_str().map(PathBuf::from)).collect::<Vec<_>>()
+                                arr.iter()
+                                    .filter_map(|e| e.as_str().map(PathBuf::from))
+                                    .collect::<Vec<_>>()
                             })
                             .unwrap_or_default();
                         db.tasks.insert(k.clone(), TaskCacheEntry { hash, outputs, time });
@@ -163,7 +174,10 @@ impl CacheDb {
         let mut tasks = serde_json::Map::new();
         for (k, v) in &self.tasks {
             let outs = serde_json::Value::Array(
-                v.outputs.iter().map(|o| serde_json::Value::String(o.to_string_lossy().into_owned())).collect()
+                v.outputs
+                    .iter()
+                    .map(|o| serde_json::Value::String(o.to_string_lossy().into_owned()))
+                    .collect(),
             );
             let mut obj = serde_json::Map::new();
             obj.insert("hash".into(), serde_json::Value::Number((v.hash as u64).into()));
@@ -181,10 +195,7 @@ impl CacheDb {
 
 fn now_unix_secs() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
 fn file_fingerprint(path: &Path, hasher: &mut impl Hasher) {
@@ -231,11 +242,19 @@ fn strings_fingerprint(ss: &[String]) -> u64 {
 pub trait Task: Send + Sync {
     fn name(&self) -> &str;
     fn deps(&self) -> &[String];
-    fn inputs(&self) -> Vec<PathBuf> { vec![] }
-    fn outputs(&self) -> Vec<PathBuf> { vec![] }
-    fn params_fingerprint(&self) -> u64 { 0 }
+    fn inputs(&self) -> Vec<PathBuf> {
+        vec![]
+    }
+    fn outputs(&self) -> Vec<PathBuf> {
+        vec![]
+    }
+    fn params_fingerprint(&self) -> u64 {
+        0
+    }
     fn run(&self, ctx: &BuildContext) -> Result<()>;
-    fn is_cacheable(&self) -> bool { true }
+    fn is_cacheable(&self) -> bool {
+        true
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -254,15 +273,27 @@ pub struct ShellTask {
 }
 
 impl ShellTask {
-    pub fn new(spec: ShellTaskSpec) -> Self { Self { spec } }
+    pub fn new(spec: ShellTaskSpec) -> Self {
+        Self { spec }
+    }
 }
 
 impl Task for ShellTask {
-    fn name(&self) -> &str { &self.spec.name }
-    fn deps(&self) -> &[String] { &self.spec.deps }
-    fn inputs(&self) -> Vec<PathBuf> { self.spec.inputs.clone() }
-    fn outputs(&self) -> Vec<PathBuf> { self.spec.outputs.clone() }
-    fn params_fingerprint(&self) -> u64 { strings_fingerprint(&[self.spec.cmd.clone()]) }
+    fn name(&self) -> &str {
+        &self.spec.name
+    }
+    fn deps(&self) -> &[String] {
+        &self.spec.deps
+    }
+    fn inputs(&self) -> Vec<PathBuf> {
+        self.spec.inputs.clone()
+    }
+    fn outputs(&self) -> Vec<PathBuf> {
+        self.spec.outputs.clone()
+    }
+    fn params_fingerprint(&self) -> u64 {
+        strings_fingerprint(&[self.spec.cmd.clone()])
+    }
     fn run(&self, ctx: &BuildContext) -> Result<()> {
         let mut cmd = if cfg!(target_os = "windows") {
             let mut c = Command::new("cmd");
@@ -278,8 +309,12 @@ impl Task for ShellTask {
         } else {
             cmd.current_dir(&ctx.root);
         }
-        for (k, v) in &ctx.env { cmd.env(k, v); }
-        for (k, v) in &self.spec.env { cmd.env(k, v); }
+        for (k, v) in &ctx.env {
+            cmd.env(k, v);
+        }
+        for (k, v) in &self.spec.env {
+            cmd.env(k, v);
+        }
 
         log::info!("$ {}", &self.spec.cmd);
         let status = cmd.status()?;
@@ -306,11 +341,17 @@ pub struct CopyTask {
     spec: CopyTaskSpec,
 }
 impl CopyTask {
-    pub fn new(spec: CopyTaskSpec) -> Self { Self { spec } }
+    pub fn new(spec: CopyTaskSpec) -> Self {
+        Self { spec }
+    }
 }
 impl Task for CopyTask {
-    fn name(&self) -> &str { &self.spec.name }
-    fn deps(&self) -> &[String] { &self.spec.deps }
+    fn name(&self) -> &str {
+        &self.spec.name
+    }
+    fn deps(&self) -> &[String] {
+        &self.spec.deps
+    }
     fn inputs(&self) -> Vec<PathBuf> {
         if self.spec.recursive {
             WalkDir::new(&self.spec.from)
@@ -323,7 +364,9 @@ impl Task for CopyTask {
             vec![self.spec.from.clone()]
         }
     }
-    fn outputs(&self) -> Vec<PathBuf> { vec![self.spec.to.clone()] }
+    fn outputs(&self) -> Vec<PathBuf> {
+        vec![self.spec.to.clone()]
+    }
     fn params_fingerprint(&self) -> u64 {
         strings_fingerprint(&[
             self.spec.from.to_string_lossy().into_owned(),
@@ -347,7 +390,9 @@ impl Task for CopyTask {
                 }
             }
         } else {
-            if let Some(parent) = to.parent() { fs::create_dir_all(parent)?; }
+            if let Some(parent) = to.parent() {
+                fs::create_dir_all(parent)?;
+            }
             fs::copy(from, to)?;
         }
         Ok(())
@@ -360,12 +405,24 @@ pub struct MkdirTaskSpec {
     pub deps: Vec<String>,
     pub dir: PathBuf,
 }
-pub struct MkdirTask { spec: MkdirTaskSpec }
-impl MkdirTask { pub fn new(spec: MkdirTaskSpec) -> Self { Self { spec } } }
+pub struct MkdirTask {
+    spec: MkdirTaskSpec,
+}
+impl MkdirTask {
+    pub fn new(spec: MkdirTaskSpec) -> Self {
+        Self { spec }
+    }
+}
 impl Task for MkdirTask {
-    fn name(&self) -> &str { &self.spec.name }
-    fn deps(&self) -> &[String] { &self.spec.deps }
-    fn outputs(&self) -> Vec<PathBuf> { vec![self.spec.dir.clone()] }
+    fn name(&self) -> &str {
+        &self.spec.name
+    }
+    fn deps(&self) -> &[String] {
+        &self.spec.deps
+    }
+    fn outputs(&self) -> Vec<PathBuf> {
+        vec![self.spec.dir.clone()]
+    }
     fn params_fingerprint(&self) -> u64 {
         strings_fingerprint(&[self.spec.dir.to_string_lossy().into_owned()])
     }
@@ -381,17 +438,34 @@ pub struct CleanTaskSpec {
     pub deps: Vec<String>,
     pub path: PathBuf,
 }
-pub struct CleanTask { spec: CleanTaskSpec }
-impl CleanTask { pub fn new(spec: CleanTaskSpec) -> Self { Self { spec } } }
+pub struct CleanTask {
+    spec: CleanTaskSpec,
+}
+impl CleanTask {
+    pub fn new(spec: CleanTaskSpec) -> Self {
+        Self { spec }
+    }
+}
 impl Task for CleanTask {
-    fn name(&self) -> &str { &self.spec.name }
-    fn deps(&self) -> &[String] { &self.spec.deps }
-    fn outputs(&self) -> Vec<PathBuf> { vec![] }
-    fn is_cacheable(&self) -> bool { false }
+    fn name(&self) -> &str {
+        &self.spec.name
+    }
+    fn deps(&self) -> &[String] {
+        &self.spec.deps
+    }
+    fn outputs(&self) -> Vec<PathBuf> {
+        vec![]
+    }
+    fn is_cacheable(&self) -> bool {
+        false
+    }
     fn run(&self, _ctx: &BuildContext) -> Result<()> {
         if self.spec.path.exists() {
-            if self.spec.path.is_dir() { fs::remove_dir_all(&self.spec.path)?; }
-            else { fs::remove_file(&self.spec.path)?; }
+            if self.spec.path.is_dir() {
+                fs::remove_dir_all(&self.spec.path)?;
+            } else {
+                fs::remove_file(&self.spec.path)?;
+            }
         }
         Ok(())
     }
@@ -404,19 +478,38 @@ pub struct TouchTaskSpec {
     pub file: PathBuf,
     pub content: Option<String>,
 }
-pub struct TouchTask { spec: TouchTaskSpec }
-impl TouchTask { pub fn new(spec: TouchTaskSpec) -> Self { Self { spec } } }
+pub struct TouchTask {
+    spec: TouchTaskSpec,
+}
+impl TouchTask {
+    pub fn new(spec: TouchTaskSpec) -> Self {
+        Self { spec }
+    }
+}
 impl Task for TouchTask {
-    fn name(&self) -> &str { &self.spec.name }
-    fn deps(&self) -> &[String] { &self.spec.deps }
-    fn outputs(&self) -> Vec<PathBuf> { vec![self.spec.file.clone()] }
+    fn name(&self) -> &str {
+        &self.spec.name
+    }
+    fn deps(&self) -> &[String] {
+        &self.spec.deps
+    }
+    fn outputs(&self) -> Vec<PathBuf> {
+        vec![self.spec.file.clone()]
+    }
     fn params_fingerprint(&self) -> u64 {
-        strings_fingerprint(&[self.spec.file.to_string_lossy().into_owned(), self.spec.content.clone().unwrap_or_default()])
+        strings_fingerprint(&[
+            self.spec.file.to_string_lossy().into_owned(),
+            self.spec.content.clone().unwrap_or_default(),
+        ])
     }
     fn run(&self, _ctx: &BuildContext) -> Result<()> {
-        if let Some(parent) = self.spec.file.parent() { fs::create_dir_all(parent)?; }
+        if let Some(parent) = self.spec.file.parent() {
+            fs::create_dir_all(parent)?;
+        }
         let mut f = File::create(&self.spec.file)?;
-        if let Some(s) = &self.spec.content { f.write_all(s.as_bytes())?; }
+        if let Some(s) = &self.spec.content {
+            f.write_all(s.as_bytes())?;
+        }
         Ok(())
     }
 }
@@ -428,17 +521,35 @@ pub struct HashTaskSpec {
     pub inputs: Vec<PathBuf>,
     pub out_file: PathBuf,
 }
-pub struct HashTask { spec: HashTaskSpec }
-impl HashTask { pub fn new(spec: HashTaskSpec) -> Self { Self { spec } } }
+pub struct HashTask {
+    spec: HashTaskSpec,
+}
+impl HashTask {
+    pub fn new(spec: HashTaskSpec) -> Self {
+        Self { spec }
+    }
+}
 impl Task for HashTask {
-    fn name(&self) -> &str { &self.spec.name }
-    fn deps(&self) -> &[String] { &self.spec.deps }
-    fn inputs(&self) -> Vec<PathBuf> { self.spec.inputs.clone() }
-    fn outputs(&self) -> Vec<PathBuf> { vec![self.spec.out_file.clone()] }
-    fn params_fingerprint(&self) -> u64 { 0 }
+    fn name(&self) -> &str {
+        &self.spec.name
+    }
+    fn deps(&self) -> &[String] {
+        &self.spec.deps
+    }
+    fn inputs(&self) -> Vec<PathBuf> {
+        self.spec.inputs.clone()
+    }
+    fn outputs(&self) -> Vec<PathBuf> {
+        vec![self.spec.out_file.clone()]
+    }
+    fn params_fingerprint(&self) -> u64 {
+        0
+    }
     fn run(&self, _ctx: &BuildContext) -> Result<()> {
         let h = paths_fingerprint(&self.spec.inputs);
-        if let Some(parent) = self.spec.out_file.parent() { fs::create_dir_all(parent)?; }
+        if let Some(parent) = self.spec.out_file.parent() {
+            fs::create_dir_all(parent)?;
+        }
         fs::write(&self.spec.out_file, format!("{h:016x}"))?;
         Ok(())
     }
@@ -453,7 +564,9 @@ pub struct TaskRegistry {
 }
 
 impl TaskRegistry {
-    pub fn new() -> Self { Self { tasks: HashMap::new() } }
+    pub fn new() -> Self {
+        Self { tasks: HashMap::new() }
+    }
 
     pub fn register<T: Task + 'static>(&mut self, task: T) -> Result<()> {
         let name = task.name().to_string();
@@ -464,7 +577,9 @@ impl TaskRegistry {
         Ok(())
     }
 
-    pub fn get(&self, name: &str) -> Option<&Box<dyn Task>> { self.tasks.get(name) }
+    pub fn get(&self, name: &str) -> Option<&Box<dyn Task>> {
+        self.tasks.get(name)
+    }
 
     pub fn all(&self) -> impl Iterator<Item = (&String, &Box<dyn Task>)> {
         self.tasks.iter()
@@ -482,9 +597,7 @@ pub struct Pipeline {
 
 impl Pipeline {
     pub fn all_tasks(reg: &TaskRegistry) -> Self {
-        Self {
-            targets: reg.tasks.keys().cloned().collect(),
-        }
+        Self { targets: reg.tasks.keys().cloned().collect() }
     }
     pub fn from_targets(targets: impl IntoIterator<Item = String>) -> Self {
         Self { targets: targets.into_iter().collect() }
@@ -505,7 +618,9 @@ impl<'a> Executor<'a> {
         Self { ctx, reg, cache_path, cache }
     }
 
-    fn persist_cache(&self) -> Result<()> { self.cache.save(&self.cache_path) }
+    fn persist_cache(&self) -> Result<()> {
+        self.cache.save(&self.cache_path)
+    }
 
     fn compute_task_hash(&self, task: &dyn Task) -> u64 {
         let mut inputs = task.inputs();
@@ -530,7 +645,7 @@ impl<'a> Executor<'a> {
             Some(entry) if entry.hash == want => {
                 // Vérifie existence de toutes les sorties
                 entry.outputs.iter().all(|o| o.exists())
-            }
+            },
             _ => false,
         }
     }
@@ -551,11 +666,10 @@ impl<'a> Executor<'a> {
         let mut seen: HashSet<String> = HashSet::new();
 
         while let Some(n) = stack.pop() {
-            if !seen.insert(n.clone()) { continue; }
-            let task = self
-                .reg
-                .get(&n)
-                .ok_or_else(|| BuildError::UnknownTask(n.clone()))?;
+            if !seen.insert(n.clone()) {
+                continue;
+            }
+            let task = self.reg.get(&n).ok_or_else(|| BuildError::UnknownTask(n.clone()))?;
             let deps = task.deps().to_vec();
             for d in &deps {
                 stack.push(d.clone());
@@ -599,7 +713,9 @@ impl<'a> Executor<'a> {
                     if deps.iter().any(|d| d == n) {
                         let e = indeg.get_mut(m.as_str()).unwrap();
                         *e -= 1;
-                        if *e == 0 { next.push(m); }
+                        if *e == 0 {
+                            next.push(m);
+                        }
                     }
                 }
             }
@@ -607,7 +723,9 @@ impl<'a> Executor<'a> {
             q.extend(next);
         }
 
-        if remaining != 0 { return Err(BuildError::CyclicGraph); }
+        if remaining != 0 {
+            return Err(BuildError::CyclicGraph);
+        }
         Ok(waves)
     }
 
@@ -721,7 +839,10 @@ impl Recipe {
         let mut tasks: Vec<RecipeTask> = Vec::new();
         if let Some(arr) = v.get("tasks").and_then(|x| x.as_array()) {
             for t in arr {
-                let tbl = match t.as_table() { Some(t) => t, None => continue };
+                let tbl = match t.as_table() {
+                    Some(t) => t,
+                    None => continue,
+                };
                 let typ = tbl.get("type").and_then(|x| x.as_str()).unwrap_or("");
                 match typ {
                     "shell" => {
@@ -734,17 +855,28 @@ impl Recipe {
                             outputs: vec![],
                             env: HashMap::new(),
                         };
-                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) { spec.name = s.to_string(); }
-                        if let Some(s) = tbl.get("cmd").and_then(|x| x.as_str()) { spec.cmd = s.to_string(); }
-                        if let Some(s) = tbl.get("dir").and_then(|x| x.as_str()) { spec.dir = Some(PathBuf::from(s)); }
+                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) {
+                            spec.name = s.to_string();
+                        }
+                        if let Some(s) = tbl.get("cmd").and_then(|x| x.as_str()) {
+                            spec.cmd = s.to_string();
+                        }
+                        if let Some(s) = tbl.get("dir").and_then(|x| x.as_str()) {
+                            spec.dir = Some(PathBuf::from(s));
+                        }
                         if let Some(vv) = tbl.get("deps").and_then(|x| x.as_array()) {
-                            spec.deps = vv.iter().filter_map(|e| e.as_str().map(|s| s.to_string())).collect();
+                            spec.deps = vv
+                                .iter()
+                                .filter_map(|e| e.as_str().map(|s| s.to_string()))
+                                .collect();
                         }
                         if let Some(vv) = tbl.get("inputs").and_then(|x| x.as_array()) {
-                            spec.inputs = vv.iter().filter_map(|e| e.as_str().map(PathBuf::from)).collect();
+                            spec.inputs =
+                                vv.iter().filter_map(|e| e.as_str().map(PathBuf::from)).collect();
                         }
                         if let Some(vv) = tbl.get("outputs").and_then(|x| x.as_array()) {
-                            spec.outputs = vv.iter().filter_map(|e| e.as_str().map(PathBuf::from)).collect();
+                            spec.outputs =
+                                vv.iter().filter_map(|e| e.as_str().map(PathBuf::from)).collect();
                         }
                         if let Some(envtbl) = tbl.get("env").and_then(|x| x.as_table()) {
                             for (k, vv) in envtbl {
@@ -756,59 +888,125 @@ impl Recipe {
                             }
                         }
                         tasks.push(RecipeTask::Shell(spec));
-                    }
+                    },
                     "copy" => {
-                        let mut spec = CopyTaskSpec { name: String::new(), deps: vec![], from: PathBuf::new(), to: PathBuf::new(), recursive: false };
-                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) { spec.name = s.to_string(); }
-                        if let Some(vv) = tbl.get("deps").and_then(|x| x.as_array()) {
-                            spec.deps = vv.iter().filter_map(|e| e.as_str().map(|s| s.to_string())).collect();
+                        let mut spec = CopyTaskSpec {
+                            name: String::new(),
+                            deps: vec![],
+                            from: PathBuf::new(),
+                            to: PathBuf::new(),
+                            recursive: false,
+                        };
+                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) {
+                            spec.name = s.to_string();
                         }
-                        if let Some(s) = tbl.get("from").and_then(|x| x.as_str()) { spec.from = PathBuf::from(s); }
-                        if let Some(s) = tbl.get("to").and_then(|x| x.as_str()) { spec.to = PathBuf::from(s); }
-                        if let Some(b) = tbl.get("recursive").and_then(|x| x.as_bool()) { spec.recursive = b; }
+                        if let Some(vv) = tbl.get("deps").and_then(|x| x.as_array()) {
+                            spec.deps = vv
+                                .iter()
+                                .filter_map(|e| e.as_str().map(|s| s.to_string()))
+                                .collect();
+                        }
+                        if let Some(s) = tbl.get("from").and_then(|x| x.as_str()) {
+                            spec.from = PathBuf::from(s);
+                        }
+                        if let Some(s) = tbl.get("to").and_then(|x| x.as_str()) {
+                            spec.to = PathBuf::from(s);
+                        }
+                        if let Some(b) = tbl.get("recursive").and_then(|x| x.as_bool()) {
+                            spec.recursive = b;
+                        }
                         tasks.push(RecipeTask::Copy(spec));
-                    }
+                    },
                     "mkdir" => {
-                        let mut spec = MkdirTaskSpec { name: String::new(), deps: vec![], dir: PathBuf::new() };
-                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) { spec.name = s.to_string(); }
-                        if let Some(vv) = tbl.get("deps").and_then(|x| x.as_array()) {
-                            spec.deps = vv.iter().filter_map(|e| e.as_str().map(|s| s.to_string())).collect();
+                        let mut spec = MkdirTaskSpec {
+                            name: String::new(),
+                            deps: vec![],
+                            dir: PathBuf::new(),
+                        };
+                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) {
+                            spec.name = s.to_string();
                         }
-                        if let Some(s) = tbl.get("dir").and_then(|x| x.as_str()) { spec.dir = PathBuf::from(s); }
+                        if let Some(vv) = tbl.get("deps").and_then(|x| x.as_array()) {
+                            spec.deps = vv
+                                .iter()
+                                .filter_map(|e| e.as_str().map(|s| s.to_string()))
+                                .collect();
+                        }
+                        if let Some(s) = tbl.get("dir").and_then(|x| x.as_str()) {
+                            spec.dir = PathBuf::from(s);
+                        }
                         tasks.push(RecipeTask::Mkdir(spec));
-                    }
+                    },
                     "clean" => {
-                        let mut spec = CleanTaskSpec { name: String::new(), deps: vec![], path: PathBuf::new() };
-                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) { spec.name = s.to_string(); }
-                        if let Some(vv) = tbl.get("deps").and_then(|x| x.as_array()) {
-                            spec.deps = vv.iter().filter_map(|e| e.as_str().map(|s| s.to_string())).collect();
+                        let mut spec = CleanTaskSpec {
+                            name: String::new(),
+                            deps: vec![],
+                            path: PathBuf::new(),
+                        };
+                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) {
+                            spec.name = s.to_string();
                         }
-                        if let Some(s) = tbl.get("path").and_then(|x| x.as_str()) { spec.path = PathBuf::from(s); }
+                        if let Some(vv) = tbl.get("deps").and_then(|x| x.as_array()) {
+                            spec.deps = vv
+                                .iter()
+                                .filter_map(|e| e.as_str().map(|s| s.to_string()))
+                                .collect();
+                        }
+                        if let Some(s) = tbl.get("path").and_then(|x| x.as_str()) {
+                            spec.path = PathBuf::from(s);
+                        }
                         tasks.push(RecipeTask::Clean(spec));
-                    }
+                    },
                     "touch" => {
-                        let mut spec = TouchTaskSpec { name: String::new(), deps: vec![], file: PathBuf::new(), content: None };
-                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) { spec.name = s.to_string(); }
-                        if let Some(vv) = tbl.get("deps").and_then(|x| x.as_array()) {
-                            spec.deps = vv.iter().filter_map(|e| e.as_str().map(|s| s.to_string())).collect();
+                        let mut spec = TouchTaskSpec {
+                            name: String::new(),
+                            deps: vec![],
+                            file: PathBuf::new(),
+                            content: None,
+                        };
+                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) {
+                            spec.name = s.to_string();
                         }
-                        if let Some(s) = tbl.get("file").and_then(|x| x.as_str()) { spec.file = PathBuf::from(s); }
-                        if let Some(s) = tbl.get("content").and_then(|x| x.as_str()) { spec.content = Some(s.to_string()); }
-                        tasks.push(RecipeTask::Touch(spec));
-                    }
-                    "hash" => {
-                        let mut spec = HashTaskSpec { name: String::new(), deps: vec![], inputs: vec![], out_file: PathBuf::new() };
-                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) { spec.name = s.to_string(); }
                         if let Some(vv) = tbl.get("deps").and_then(|x| x.as_array()) {
-                            spec.deps = vv.iter().filter_map(|e| e.as_str().map(|s| s.to_string())).collect();
+                            spec.deps = vv
+                                .iter()
+                                .filter_map(|e| e.as_str().map(|s| s.to_string()))
+                                .collect();
+                        }
+                        if let Some(s) = tbl.get("file").and_then(|x| x.as_str()) {
+                            spec.file = PathBuf::from(s);
+                        }
+                        if let Some(s) = tbl.get("content").and_then(|x| x.as_str()) {
+                            spec.content = Some(s.to_string());
+                        }
+                        tasks.push(RecipeTask::Touch(spec));
+                    },
+                    "hash" => {
+                        let mut spec = HashTaskSpec {
+                            name: String::new(),
+                            deps: vec![],
+                            inputs: vec![],
+                            out_file: PathBuf::new(),
+                        };
+                        if let Some(s) = tbl.get("name").and_then(|x| x.as_str()) {
+                            spec.name = s.to_string();
+                        }
+                        if let Some(vv) = tbl.get("deps").and_then(|x| x.as_array()) {
+                            spec.deps = vv
+                                .iter()
+                                .filter_map(|e| e.as_str().map(|s| s.to_string()))
+                                .collect();
                         }
                         if let Some(vv) = tbl.get("inputs").and_then(|x| x.as_array()) {
-                            spec.inputs = vv.iter().filter_map(|e| e.as_str().map(PathBuf::from)).collect();
+                            spec.inputs =
+                                vv.iter().filter_map(|e| e.as_str().map(PathBuf::from)).collect();
                         }
-                        if let Some(s) = tbl.get("out_file").and_then(|x| x.as_str()) { spec.out_file = PathBuf::from(s); }
+                        if let Some(s) = tbl.get("out_file").and_then(|x| x.as_str()) {
+                            spec.out_file = PathBuf::from(s);
+                        }
                         tasks.push(RecipeTask::Hash(spec));
-                    }
-                    _ => { /* inconnu: ignorer */ }
+                    },
+                    _ => { /* inconnu: ignorer */ },
                 }
             }
         }
@@ -817,7 +1015,10 @@ impl Recipe {
     }
 }
 
-pub fn registry_from_recipe(root: &Path, recipe: &Recipe) -> Result<(BuildContext, TaskRegistry, Pipeline)> {
+pub fn registry_from_recipe(
+    root: &Path,
+    recipe: &Recipe,
+) -> Result<(BuildContext, TaskRegistry, Pipeline)> {
     let mut ctx = BuildContext::new(root);
     if let Some(o) = &recipe.out_dir {
         ctx.out_dir = if o.is_absolute() { o.clone() } else { root.join(o) };
@@ -863,7 +1064,9 @@ pub fn glob_simple(root: &Path, pattern_ext: &str) -> Vec<PathBuf> {
 }
 
 pub fn write_text(path: &Path, s: &str) -> Result<()> {
-    if let Some(parent) = path.parent() { fs::create_dir_all(parent)?; }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     fs::write(path, s)?;
     Ok(())
 }
@@ -896,12 +1099,20 @@ mod tests {
 
         // Tâches: mkdir build/, touch a.txt, shell echo > b.txt, hash
         let mk = MkdirTaskSpec { name: "mk".into(), deps: vec![], dir: root.join("build") };
-        let t1 = TouchTaskSpec { name: "a", deps: vec!["mk".into()], file: root.join("build/a.txt"), content: Some("hello".into()) };
+        let t1 = TouchTaskSpec {
+            name: "a",
+            deps: vec!["mk".into()],
+            file: root.join("build/a.txt"),
+            content: Some("hello".into()),
+        };
         let s1 = ShellTaskSpec {
             name: "b".into(),
             deps: vec!["mk".into()],
             cmd: format!("echo 'world' > {}", root.join("build/b.txt").to_string_lossy()),
-            dir: None, inputs: vec![], outputs: vec![root.join("build/b.txt")], env: HashMap::new()
+            dir: None,
+            inputs: vec![],
+            outputs: vec![root.join("build/b.txt")],
+            env: HashMap::new(),
         };
         let h1 = HashTaskSpec {
             name: "h".into(),

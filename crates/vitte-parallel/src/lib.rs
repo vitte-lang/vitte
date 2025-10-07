@@ -7,10 +7,10 @@
 //! - File de tâches avec crossbeam si activé
 //! - Gestion des erreurs typées
 
-use thiserror::Error;
-use std::thread;
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use thiserror::Error;
 
 /// Erreurs de parallélisme.
 #[derive(Debug, Error)]
@@ -52,7 +52,10 @@ impl ThreadPool {
     }
 
     /// Exécute une tâche.
-    pub fn execute<F>(&self, f: F) where F: FnOnce() + Send + 'static {
+    pub fn execute<F>(&self, f: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
         if let Some(s) = &self.sender {
             let _ = s.send(Box::new(f));
         }
@@ -71,21 +74,23 @@ impl Drop for ThreadPool {
 }
 
 /// API parallèle basée sur Rayon si activé.
-#[cfg(feature="rayon")]
+#[cfg(feature = "rayon")]
 pub mod rayon_api {
     pub use rayon::prelude::*;
 }
 
 /// API de file de tâches basée sur crossbeam si activé.
-#[cfg(feature="crossbeam")]
+#[cfg(feature = "crossbeam")]
 pub mod task {
-    use crossbeam::channel;
     use super::*;
+    use crossbeam::channel;
 
     /// Spawns plusieurs tâches et collecte résultats.
     pub fn spawn_collect<T, F>(jobs: Vec<F>) -> Vec<T>
-    where F: FnOnce() -> T + Send + 'static,
-          T: Send + 'static {
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: Send + 'static,
+    {
         let (tx, rx) = channel::unbounded();
         for job in jobs {
             let tx = tx.clone();
@@ -116,10 +121,11 @@ mod tests {
         assert_eq!(*counter.lock().unwrap(), 10);
     }
 
-    #[cfg(feature="crossbeam")]
+    #[cfg(feature = "crossbeam")]
     #[test]
     fn spawn_collect_works() {
-        let jobs: Vec<Box<dyn FnOnce() -> i32 + Send>> = (0..5).map(|i| Box::new(move || i*2)).collect();
+        let jobs: Vec<Box<dyn FnOnce() -> i32 + Send>> =
+            (0..5).map(|i| Box::new(move || i * 2)).collect();
         let res = task::spawn_collect(jobs.into_iter().map(|f| f).collect::<Vec<_>>());
         assert_eq!(res.len(), 5);
     }

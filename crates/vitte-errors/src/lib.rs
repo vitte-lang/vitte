@@ -60,11 +60,14 @@ impl Error {
         Self { kind, message: msg.into(), source: None }
     }
 
-    pub fn with_source<E: Into<anyhow::Error>>(kind: ErrorKind, msg: impl Into<String>, src: E) -> Self {
+    pub fn with_source<E: Into<anyhow::Error>>(
+        kind: ErrorKind,
+        msg: impl Into<String>,
+        src: E,
+    ) -> Self {
         Self { kind, message: msg.into(), source: Some(src.into()) }
     }
 }
-
 
 /// Alias standard.
 pub type Result<T, E = Error> = std::result::Result<T, E>;

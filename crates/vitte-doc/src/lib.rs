@@ -22,7 +22,7 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "markdown")]
-use pulldown_cmark::{html, Options, Parser};
+use pulldown_cmark::{Options, Parser, html};
 
 #[cfg(feature = "html")]
 use ammonia::Builder as HtmlSanitizer;
@@ -56,8 +56,12 @@ pub struct DocBook {
 }
 
 impl DocBook {
-    pub fn new() -> Self { Self { modules: Vec::new() } }
-    pub fn push(&mut self, m: DocModule) { self.modules.push(m); }
+    pub fn new() -> Self {
+        Self { modules: Vec::new() }
+    }
+    pub fn push(&mut self, m: DocModule) {
+        self.modules.push(m);
+    }
 
     /// Génére un sommaire en Markdown.
     pub fn toc_markdown(&self) -> String {

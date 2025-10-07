@@ -17,15 +17,20 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum MatlabError {
     /// Le moteur Matlab (Engine) n'est pas disponible sur le système.
-    #[error("engine unavailable")] EngineUnavailable,
+    #[error("engine unavailable")]
+    EngineUnavailable,
     /// Erreur retournée par l'API Matlab Engine (message brut inclus).
-    #[error("engine error: {0}")] Engine(String),
+    #[error("engine error: {0}")]
+    Engine(String),
     /// Erreur liée à l'exécution d'un module MEX (message brut inclus).
-    #[error("mex error: {0}")] Mex(String),
+    #[error("mex error: {0}")]
+    Mex(String),
     /// Erreur de conversion entre types Rust et représentations Matlab.
-    #[error("conversion error: {0}")] Conversion(String),
+    #[error("conversion error: {0}")]
+    Conversion(String),
     /// Déréférencement de pointeur nul détecté côté FFI Matlab.
-    #[error("null pointer")] NullPtr,
+    #[error("null pointer")]
+    NullPtr,
 }
 
 /// Résultat spécialisé.
@@ -69,9 +74,14 @@ pub mod engine {
     impl EngineCtx {
         /// Ouvre un engine Matlab (Matlab doit être installé).
         pub fn open(cmd: Option<&str>) -> Result<Self> {
-            let c = match cmd { Some(s) => CString::new(s).map_err(|e| MatlabError::Engine(e.to_string()))?, None => CString::new("").unwrap() };
+            let c = match cmd {
+                Some(s) => CString::new(s).map_err(|e| MatlabError::Engine(e.to_string()))?,
+                None => CString::new("").unwrap(),
+            };
             let ep = unsafe { engOpen(c.as_ptr()) };
-            if ep.is_null() { return Err(MatlabError::EngineUnavailable); }
+            if ep.is_null() {
+                return Err(MatlabError::EngineUnavailable);
+            }
             Ok(Self { ep })
         }
 
@@ -79,7 +89,9 @@ pub mod engine {
         pub fn eval(&self, code: &str) -> Result<()> {
             let c = CString::new(code).map_err(|e| MatlabError::Engine(e.to_string()))?;
             let rc = unsafe { engEvalString(self.ep, c.as_ptr()) };
-            if rc != 0 { return Err(MatlabError::Engine(format!("eval rc={rc}"))); }
+            if rc != 0 {
+                return Err(MatlabError::Engine(format!("eval rc={rc}")));
+            }
             Ok(())
         }
 
@@ -87,12 +99,16 @@ pub mod engine {
         pub fn close(mut self) -> Result<()> {
             let rc = unsafe { engClose(self.ep) };
             self.ep = std::ptr::null_mut();
-            if rc != 0 { return Err(MatlabError::Engine(format!("close rc={rc}"))); }
+            if rc != 0 {
+                return Err(MatlabError::Engine(format!("close rc={rc}")));
+            }
             Ok(())
         }
 
         /// Accès brut au pointeur Engine.
-        pub fn as_ptr(&self) -> *mut Engine { self.ep }
+        pub fn as_ptr(&self) -> *mut Engine {
+            self.ep
+        }
     }
 
     impl Drop for EngineCtx {
@@ -118,7 +134,9 @@ pub mod mex {
 
     // Types minimaux (en vrai, mxArray et API sont bien plus vastes).
     #[repr(C)]
-    pub struct mxArray { _private: [u8; 0] }
+    pub struct mxArray {
+        _private: [u8; 0],
+    }
 
     extern "C" {
         fn mexErrMsgIdAndTxt(id: *const c_char, msg: *const c_char);
@@ -136,7 +154,9 @@ pub mod mex {
 
     /// Exemple de conversion rust -> message MEX.
     pub fn require_nargs(n: usize, required: usize) -> Result<()> {
-        if n != required { return Err(MatlabError::Mex(format!("expected {required} args, got {n}"))); }
+        if n != required {
+            return Err(MatlabError::Mex(format!("expected {required} args, got {n}")));
+        }
         Ok(())
     }
 
@@ -161,7 +181,9 @@ pub mod convert {
     use super::*;
 
     /// Encode un bool rust en entier Matlab (0/1).
-    pub fn bool_to_mat(b: bool) -> i32 { if b { 1 } else { 0 } }
+    pub fn bool_to_mat(b: bool) -> i32 {
+        if b { 1 } else { 0 }
+    }
 
     /// Conversion en chaîne C compatible API Matlab.
     pub fn to_cstring(s: &str) -> Result<std::ffi::CString> {
@@ -179,7 +201,7 @@ mod tests {
         assert!(format!("{e}").contains("bad"));
     }
 
-    #[cfg(feature="engine")]
+    #[cfg(feature = "engine")]
     #[test]
     fn engine_open_close_stub() {
         // Ce test valide seulement la présence des symboles et compile-time.

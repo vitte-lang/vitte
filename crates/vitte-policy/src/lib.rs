@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-policy — moteur de politiques et règles pour Vitte
 //!
@@ -41,7 +39,7 @@ pub enum PolicyError {
 pub type Result<T> = std::result::Result<T, PolicyError>;
 
 /// Représente une règle élémentaire.
-#[cfg_attr(feature="serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Rule {
     /// Identifiant unique de la règle.
@@ -53,7 +51,7 @@ pub struct Rule {
 }
 
 /// Une politique est un ensemble de règles.
-#[cfg_attr(feature="serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Policy {
     /// Nom de la politique.
@@ -85,21 +83,25 @@ fn eval_condition(cond: &str, doc: &serde_json::Value) -> Result<bool> {
     if let Some(v) = doc.get(cond) {
         return Ok(!v.is_null());
     }
-    #[cfg(feature="regex")]
+    #[cfg(feature = "regex")]
     {
         let re = regex::Regex::new(cond)?;
-        if re.is_match(&doc.to_string()) { return Ok(true); }
+        if re.is_match(&doc.to_string()) {
+            return Ok(true);
+        }
     }
     Ok(false)
 }
 
 /// Validation JSON via schéma (si activé).
-#[cfg(feature="jsonschema")]
+#[cfg(feature = "jsonschema")]
 pub mod validation {
     use super::*;
-    use jsonschema::{JSONSchema, Draft};
+    use jsonschema::{Draft, JSONSchema};
     pub fn validate(schema: &serde_json::Value, instance: &serde_json::Value) -> Result<()> {
-        let compiled = JSONSchema::options().with_draft(Draft::Draft7).compile(schema)
+        let compiled = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .compile(schema)
             .map_err(|e| PolicyError::Validation(format!("invalid schema: {e}")))?;
         let result = compiled.validate(instance);
         if let Err(errors) = result {
@@ -111,7 +113,7 @@ pub mod validation {
 }
 
 /// Règles temporelles si `time`.
-#[cfg(feature="time")]
+#[cfg(feature = "time")]
 pub mod temporal {
     use super::*;
     use time::OffsetDateTime;
@@ -131,28 +133,36 @@ mod tests {
 
     #[test]
     fn eval_field_condition() {
-        let pol = Policy { name: "t".into(), rules: vec![ Rule { id:"r1".into(), condition:"foo".into(), message:Some("hit".into()) } ]};
+        let pol = Policy {
+            name: "t".into(),
+            rules: vec![Rule {
+                id: "r1".into(),
+                condition: "foo".into(),
+                message: Some("hit".into()),
+            }],
+        };
         let doc = json!({"foo": 1});
         let res = pol.evaluate(&doc).unwrap();
         assert_eq!(res, vec!["hit"]);
     }
 
-    #[cfg(feature="regex")]
+    #[cfg(feature = "regex")]
     #[test]
     fn regex_cond() {
         let r = eval_condition("foo.*", &json!({"foo":123})).unwrap();
         assert!(r);
     }
 
-    #[cfg(feature="jsonschema")]
+    #[cfg(feature = "jsonschema")]
     #[test]
     fn validate_schema() {
-        let schema = json!({"type":"object","properties":{"x":{"type":"integer"}},"required":["x"]});
+        let schema =
+            json!({"type":"object","properties":{"x":{"type":"integer"}},"required":["x"]});
         let inst = json!({"x":5});
         assert!(validation::validate(&schema, &inst).is_ok());
     }
 
-    #[cfg(feature="time")]
+    #[cfg(feature = "time")]
     #[test]
     fn temporal_not_expired() {
         use time::OffsetDateTime;

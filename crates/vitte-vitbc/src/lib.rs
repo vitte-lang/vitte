@@ -41,7 +41,7 @@ use std::{string::String, vec::Vec};
 #[cfg(not(feature = "std"))]
 use alloc::{string::String, vec::Vec};
 
-use vitte_core::{crc32_ieee, ByteReader, ByteWriter, CoreError, CoreResult, SectionTag};
+use vitte_core::{ByteReader, ByteWriter, CoreError, CoreResult, SectionTag, crc32_ieee};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};

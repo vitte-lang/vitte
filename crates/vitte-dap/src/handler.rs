@@ -11,10 +11,10 @@
 
 use std::{collections::HashMap, fmt};
 
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::eyre::{Result, eyre};
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Pont générique vers ta VM / runtime.
 /// Implémente ces méthodes dans ton moteur réel pour avoir un débogage fonctionnel.

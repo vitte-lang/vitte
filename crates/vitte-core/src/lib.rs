@@ -387,8 +387,8 @@ impl std::error::Error for CoreError {}
 pub mod prelude {
     /// Réexports utiles pour une importation rapide.
     pub use super::{
-        crc32_ieee, ByteReader, ByteWriter, CoreError, CoreResult, Ident, Pos, SectionTag,
-        SourceId, Span, Spanned, MAGIC_VITBC, VITBC_VERSION,
+        ByteReader, ByteWriter, CoreError, CoreResult, Ident, MAGIC_VITBC, Pos, SectionTag,
+        SourceId, Span, Spanned, VITBC_VERSION, crc32_ieee,
     };
 }
 

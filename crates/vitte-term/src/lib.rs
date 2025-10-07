@@ -45,12 +45,16 @@ pub struct TermInfo {
 }
 
 impl Default for TermInfo {
-    fn default() -> Self { Self { is_tty_stdout: true, is_tty_stderr: true, cols: 80, rows: 24 } }
+    fn default() -> Self {
+        Self { is_tty_stdout: true, is_tty_stderr: true, cols: 80, rows: 24 }
+    }
 }
 
 impl TermInfo {
     /// Detects terminal capabilities (stubbed).
-    pub fn detect() -> Self { Self::default() }
+    pub fn detect() -> Self {
+        Self::default()
+    }
 }
 
 /// High-level terminal helper.
@@ -61,22 +65,34 @@ pub struct Term {
 
 impl Term {
     /// Creates a new terminal helper using detected information.
-    pub fn new() -> Self { Self { info: TermInfo::detect() } }
+    pub fn new() -> Self {
+        Self { info: TermInfo::detect() }
+    }
 
     /// Returns terminal information.
-    pub fn info(&self) -> TermInfo { self.info }
+    pub fn info(&self) -> TermInfo {
+        self.info
+    }
 
     /// Clears the screen (stubbed).
-    pub fn clear_screen(&self) -> Result<()> { Err(TermError::Unsupported("clear_screen not implemented")) }
+    pub fn clear_screen(&self) -> Result<()> {
+        Err(TermError::Unsupported("clear_screen not implemented"))
+    }
 
     /// Clears the current line (stubbed).
-    pub fn clear_line(&self) -> Result<()> { Err(TermError::Unsupported("clear_line not implemented")) }
+    pub fn clear_line(&self) -> Result<()> {
+        Err(TermError::Unsupported("clear_line not implemented"))
+    }
 
     /// Shows the cursor (stubbed).
-    pub fn show_cursor(&self) -> Result<()> { Err(TermError::Unsupported("show_cursor not implemented")) }
+    pub fn show_cursor(&self) -> Result<()> {
+        Err(TermError::Unsupported("show_cursor not implemented"))
+    }
 
     /// Hides the cursor (stubbed).
-    pub fn hide_cursor(&self) -> Result<()> { Err(TermError::Unsupported("hide_cursor not implemented")) }
+    pub fn hide_cursor(&self) -> Result<()> {
+        Err(TermError::Unsupported("hide_cursor not implemented"))
+    }
 }
 
 /// Simple text styling helper (placeholder).

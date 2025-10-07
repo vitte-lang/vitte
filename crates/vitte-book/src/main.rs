@@ -1,11 +1,9 @@
-
-
 /* ============================================================================
-   vitte-book — Command-line documentation viewer & generator for Vitte
-   ============================================================================
-   Provides access to book-like formatted docs (Markdown/HTML),
-   for local or online rendering.
-   ============================================================================ */
+vitte-book — Command-line documentation viewer & generator for Vitte
+============================================================================
+Provides access to book-like formatted docs (Markdown/HTML),
+for local or online rendering.
+============================================================================ */
 
 use std::env;
 use std::fs;
@@ -56,10 +54,10 @@ fn main() {
             if let Err(e) = build(&args[2], &args[3]) {
                 eprintln!("Error: {}", e);
             }
-        }
+        },
         _ => {
             eprintln!("Unknown command or invalid usage.\n");
             print_help();
-        }
+        },
     }
 }

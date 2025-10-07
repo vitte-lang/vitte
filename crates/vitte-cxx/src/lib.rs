@@ -92,30 +92,43 @@ pub mod ffi {
     /* ------------------- Implémentations Rust exportées ------------------- */
 
     /// Addition 64-bit.
-    pub fn rust_sum(a: u64, b: u64) -> u64 { a.wrapping_add(b) }
+    pub fn rust_sum(a: u64, b: u64) -> u64 {
+        a.wrapping_add(b)
+    }
 
     /// FNV-1a 64 (démo, non crypto).
     pub fn rust_fnv1a64(buf: &[u8]) -> u64 {
         const OFF: u64 = 0xcbf29ce484222325;
         const PRM: u64 = 0x100000001b3;
         let mut h = OFF;
-        for &b in buf { h ^= b as u64; h = h.wrapping_mul(PRM); }
+        for &b in buf {
+            h ^= b as u64;
+            h = h.wrapping_mul(PRM);
+        }
         h
     }
 
     /// Echo string → String.
-    pub fn rust_echo(s: &str) -> String { s.to_owned() }
+    pub fn rust_echo(s: &str) -> String {
+        s.to_owned()
+    }
 
     /* -------------------- Helpers Rust appelant le C++ -------------------- */
 
     /// Retourne la version côté C++ si liée.
-    pub fn version_cpp() -> String { self::bridge::cpp_version() }
+    pub fn version_cpp() -> String {
+        self::bridge::cpp_version()
+    }
 
     /// Démo: somme calculée côté C++.
-    pub fn sum_cpp(buf: &[u8]) -> u64 { self::bridge::cpp_sum(buf) }
+    pub fn sum_cpp(buf: &[u8]) -> u64 {
+        self::bridge::cpp_sum(buf)
+    }
 
     /// Démo: log côté C++.
-    pub fn log_cpp(msg: &str) { self::bridge::cpp_log(msg) }
+    pub fn log_cpp(msg: &str) {
+        self::bridge::cpp_log(msg)
+    }
 }
 
 /* ------------------------------------------------------------------------- */
@@ -126,23 +139,34 @@ pub mod ffi {
 pub mod ffi {
     use super::*;
     /// Stub: version C++ indisponible.
-    pub fn version_cpp() -> String { "<cxx disabled>".into() }
+    pub fn version_cpp() -> String {
+        "<cxx disabled>".into()
+    }
     /// Stub: somme C++ indisponible.
-    pub fn sum_cpp(_buf: &[u8]) -> u64 { 0 }
+    pub fn sum_cpp(_buf: &[u8]) -> u64 {
+        0
+    }
     /// Stub: log C++ indisponible.
     pub fn log_cpp(_msg: &str) {}
     /// Stub: Rust callable par C++ non exposé.
-    pub fn rust_sum(a: u64, b: u64) -> u64 { a.wrapping_add(b) }
+    pub fn rust_sum(a: u64, b: u64) -> u64 {
+        a.wrapping_add(b)
+    }
     /// Stub: FNV.
     pub fn rust_fnv1a64(buf: &[u8]) -> u64 {
         const OFF: u64 = 0xcbf29ce484222325;
         const PRM: u64 = 0x100000001b3;
         let mut h = OFF;
-        for &b in buf { h ^= b as u64; h = h.wrapping_mul(PRM); }
+        for &b in buf {
+            h ^= b as u64;
+            h = h.wrapping_mul(PRM);
+        }
         h
     }
     /// Stub: echo.
-    pub fn rust_echo(s: &str) -> String { s.into() }
+    pub fn rust_echo(s: &str) -> String {
+        s.into()
+    }
 }
 
 /* ------------------------------------------------------------------------- */

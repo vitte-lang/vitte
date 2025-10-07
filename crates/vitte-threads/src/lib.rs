@@ -48,8 +48,8 @@ pub fn join_all<T>(handles: Vec<thread::JoinHandle<T>>) -> Vec<std::thread::Resu
 }
 
 /* ======================================================================================
-   Canaux (crossbeam-channel)
-   ====================================================================================== */
+Canaux (crossbeam-channel)
+====================================================================================== */
 
 /// Canaux typés simplifiés.
 pub mod chan {
@@ -100,8 +100,8 @@ pub mod chan {
 }
 
 /* ======================================================================================
-   Parallélisme par pool (rayon)
-   ====================================================================================== */
+Parallélisme par pool (rayon)
+====================================================================================== */
 
 /// Primitives haut niveau basées sur **rayon** si `feature = "pool"`, sinon fallback séquentiel.
 ///
@@ -200,18 +200,18 @@ mod fallback_seq {
     }
 }
 
-#[cfg(feature = "pool")]
-pub use pool::{parallel_for, parallel_map, parallel_map_into};
 #[cfg(not(feature = "pool"))]
 pub use fallback_seq::{parallel_for, parallel_map, parallel_map_into};
+#[cfg(feature = "pool")]
+pub use pool::{parallel_for, parallel_map, parallel_map_into};
 
 /// Re-export optionnel du type `ThreadPool` si `pool` activée.
 #[cfg(feature = "pool")]
 pub use pool::ThreadPool;
 
 /* ======================================================================================
-   Async (Tokio)
-   ====================================================================================== */
+Async (Tokio)
+====================================================================================== */
 
 /// Aides pour lancer un runtime Tokio multi-thread très simplement.
 #[cfg(feature = "async")]
@@ -252,8 +252,8 @@ pub mod rt {
 }
 
 /* ======================================================================================
-   Utilitaires de haut niveau
-   ====================================================================================== */
+Utilitaires de haut niveau
+====================================================================================== */
 
 /// Transforme un slice en résultats via `parallel_map`.
 pub fn map_parallel<I: Sync, O: Send, F: Fn(&I) -> O + Sync>(input: &[I], f: F) -> Vec<O> {
@@ -266,8 +266,8 @@ pub fn for_parallel<F: Fn(usize) + Sync + Send>(len: usize, f: F) {
 }
 
 /* ======================================================================================
-   Tests
-   ====================================================================================== */
+Tests
+====================================================================================== */
 
 #[cfg(test)]
 mod tests {

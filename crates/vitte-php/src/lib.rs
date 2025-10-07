@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-php — Interop PHP pour Vitte
 //!
@@ -40,7 +38,9 @@ pub mod convert {
 
     /// Encode un bool Rust au format entier PHP (0/1).
     #[inline]
-    pub fn bool_to_php(b: bool) -> i64 { if b { 1 } else { 0 } }
+    pub fn bool_to_php(b: bool) -> i64 {
+        if b { 1 } else { 0 }
+    }
 
     /// Conversion en C string pour API Zend.
     #[inline]
@@ -68,9 +68,11 @@ pub struct ZendModuleEntry {
 macro_rules! export_php_extension {
     ($module_name:expr) => {
         #[no_mangle]
-        pub extern "C" fn php_minit() -> i32 { 0 } // MINIT success
+        pub extern "C" fn php_minit() -> i32 {
+            0
+        } // MINIT success
         #[no_mangle]
-        pub extern "C" fn php_minfo()  {}          // MINFO noop
+        pub extern "C" fn php_minfo() {} // MINFO noop
 
         /// Placeholder: PHP s'attend à un `zend_get_module` retournant un `*mut zend_module_entry`.
         /// Ici on renvoie null pour permettre la compilation côté Rust sans lier PHP.

@@ -21,7 +21,7 @@ use thiserror::Error;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "tracing")]
-use tracing::{self, span, Level};
+use tracing::{self, Level, span};
 
 /// Erreurs de profilage.
 #[derive(Debug, Error)]
@@ -65,7 +65,9 @@ impl TimerStat {
         self.samples += 1;
         let ns = d.as_nanos();
         self.total_ns += ns;
-        if ns > self.max_ns { self.max_ns = ns; }
+        if ns > self.max_ns {
+            self.max_ns = ns;
+        }
     }
 
     /// Durée moyenne en nanosecondes.
@@ -83,9 +85,13 @@ pub struct ProfData {
 }
 
 impl ProfData {
-    fn guard() -> MutexGuard<'static, ProfData> { PROF.get().unwrap().lock().unwrap() }
+    fn guard() -> MutexGuard<'static, ProfData> {
+        PROF.get().unwrap().lock().unwrap()
+    }
 
-    fn ensure() { PROF.get_or_init(|| Mutex::new(ProfData::default())); }
+    fn ensure() {
+        PROF.get_or_init(|| Mutex::new(ProfData::default()));
+    }
 
     /// Incrémente un compteur.
     pub fn incr(name: &str, v: u64) {
@@ -128,7 +134,9 @@ pub struct SpanTimer<'a> {
 
 impl<'a> SpanTimer<'a> {
     /// Démarre un timer nommé.
-    pub fn new(name: &'a str) -> Self { Self { name, start: Instant::now() } }
+    pub fn new(name: &'a str) -> Self {
+        Self { name, start: Instant::now() }
+    }
 }
 
 impl<'a> Drop for SpanTimer<'a> {
@@ -139,18 +147,23 @@ impl<'a> Drop for SpanTimer<'a> {
 
 /// Mesure l’exécution d’une fonction et retourne son résultat.
 pub fn time_fn<F, T>(name: &str, f: F) -> T
-where F: FnOnce() -> T {
+where
+    F: FnOnce() -> T,
+{
     let _t = SpanTimer::new(name);
     f()
 }
 
 /// Incrémente un compteur.
-pub fn incr(name: &str, v: u64) { ProfData::incr(name, v) }
+pub fn incr(name: &str, v: u64) {
+    ProfData::incr(name, v)
+}
 
 /// Export JSON des stats courantes.
 #[cfg(feature = "serde")]
 pub fn export_json() -> Result<String> {
-    serde_json::to_string_pretty(&ProfData::snapshot()).map_err(|e| ProfError::Export(e.to_string()))
+    serde_json::to_string_pretty(&ProfData::snapshot())
+        .map_err(|e| ProfError::Export(e.to_string()))
 }
 
 /// Écrit un flamegraph SVG à partir d’un profil échantillonné au runtime (si `pprof` + `flame`).

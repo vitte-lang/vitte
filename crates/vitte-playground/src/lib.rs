@@ -18,7 +18,11 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::doc_markdown,
+    clippy::too_many_lines
+)]
 
 use anyhow::Result;
 
@@ -48,7 +52,7 @@ pub mod server {
     //! Mode serveur HTTP basé sur actix-web.
 
     use super::*;
-    use actix_web::{post, web, App, HttpResponse, HttpServer, Responder};
+    use actix_web::{App, HttpResponse, HttpServer, Responder, post, web};
 
     #[cfg(feature = "json")]
     #[derive(Debug, Clone, Deserialize)]
@@ -66,10 +70,7 @@ pub mod server {
 
     /// Lance un serveur playground sur `addr`.
     pub async fn run_server(addr: &str) -> std::io::Result<()> {
-        HttpServer::new(|| App::new().service(exec))
-            .bind(addr)?
-            .run()
-            .await
+        HttpServer::new(|| App::new().service(exec)).bind(addr)?.run().await
     }
 }
 

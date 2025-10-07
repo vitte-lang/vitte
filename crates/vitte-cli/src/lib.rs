@@ -21,7 +21,7 @@ use std::{
     time::Instant,
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 
 #[cfg(feature = "trace")]
 use env_logger;
@@ -422,7 +422,9 @@ fn modules_entry(task: ModulesTask) -> Result<()> {
         match task.format {
             Table => {
                 if mods.is_empty() {
-                    println!("(aucun module activé — compile `vitte-modules` avec les features désirées)");
+                    println!(
+                        "(aucun module activé — compile `vitte-modules` avec les features désirées)"
+                    );
                 } else {
                     for module in mods {
                         println!("{:<12} {}", module.name, module.description);
@@ -556,11 +558,7 @@ mod tests {
     }
 
     fn fake_run(bc: &[u8], _opts: &RunOptions) -> Result<i32> {
-        if bc.len() >= 4 {
-            Ok(0)
-        } else {
-            Ok(1)
-        }
+        if bc.len() >= 4 { Ok(0) } else { Ok(1) }
     }
 
     fn fake_fmt(src: &str, _check: bool) -> Result<String> {

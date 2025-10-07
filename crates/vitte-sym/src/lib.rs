@@ -18,9 +18,9 @@
 //! ```
 
 use parking_lot::RwLock;
-use string_interner::{StringInterner, symbol::SymbolU32, backend::DefaultBackend};
-use string_interner::Symbol as InternerSymbol;
 use std::sync::Arc;
+use string_interner::Symbol as InternerSymbol;
+use string_interner::{StringInterner, backend::DefaultBackend, symbol::SymbolU32};
 
 /// Identifiant de symbole (u32)
 pub type SymId = SymbolU32;
@@ -59,13 +59,17 @@ impl SymbolTable {
 
     /// Résout un identifiant en chaîne
     pub fn resolve(&self, id: SymId) -> Result<String> {
-        self.inner.read().resolve(id)
+        self.inner
+            .read()
+            .resolve(id)
             .map(|s| s.to_string())
             .ok_or(SymError::NotFound(id))
     }
 
     /// Nombre de symboles stockés
-    pub fn len(&self) -> usize { self.inner.read().len() }
+    pub fn len(&self) -> usize {
+        self.inner.read().len()
+    }
 }
 
 /// Symbole sérialisable
@@ -74,7 +78,10 @@ pub struct Symbol(pub SymId);
 
 #[cfg(feature = "serde")]
 impl serde::Serialize for Symbol {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
         // Serialize as a compact u32 value
         serializer.serialize_u32(InternerSymbol::to_usize(self.0) as u32)
     }
@@ -82,7 +89,9 @@ impl serde::Serialize for Symbol {
 
 #[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for Symbol {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
         let v = <u32 as serde::Deserialize>::deserialize(deserializer)? as usize;
         InternerSymbol::try_from_usize(v)
             .map(Symbol)
@@ -92,9 +101,13 @@ impl<'de> serde::Deserialize<'de> for Symbol {
 
 impl Symbol {
     /// Crée un nouveau symbole
-    pub fn new(id: SymId) -> Self { Self(id) }
+    pub fn new(id: SymId) -> Self {
+        Self(id)
+    }
     /// Identifiant interne
-    pub fn id(&self) -> SymId { self.0 }
+    pub fn id(&self) -> SymId {
+        self.0
+    }
 }
 
 #[cfg(test)]

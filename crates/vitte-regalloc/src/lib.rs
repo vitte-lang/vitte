@@ -26,11 +26,12 @@
     clippy::too_many_lines
 )]
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
+#[cfg(feature = "graph")]
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 #[cfg(any(feature = "linear", feature = "graph"))]
 use std::collections::{BTreeMap, HashSet};
-#[cfg(feature = "graph")] use std::collections::BTreeSet;
 
 /// IR minimal local au crate pour éviter la dépendance directe à `vitte-ir`.
 #[derive(Debug, Clone, Default)]
@@ -117,19 +118,24 @@ impl RegAllocResult {
 }
 
 /// Alloue les registres pour tout le module. Renvoye un résultat par fonction.
-pub fn allocate_module(m: &Module, strat: RegAllocStrategy, phys: &[&str]) -> Result<Vec<RegAllocResult>> {
+pub fn allocate_module(
+    m: &Module,
+    strat: RegAllocStrategy,
+    phys: &[&str],
+) -> Result<Vec<RegAllocResult>> {
     if phys.is_empty() {
         bail!("aucun registre physique fourni");
     }
     let phys_vec = phys.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    m.functions
-        .iter()
-        .map(|f| allocate_function(f, strat, &phys_vec))
-        .collect()
+    m.functions.iter().map(|f| allocate_function(f, strat, &phys_vec)).collect()
 }
 
 /// Alloue les registres pour une fonction.
-pub fn allocate_function(_f: &Function, strat: RegAllocStrategy, _phys: &[PhysReg]) -> Result<RegAllocResult> {
+pub fn allocate_function(
+    _f: &Function,
+    strat: RegAllocStrategy,
+    _phys: &[PhysReg],
+) -> Result<RegAllocResult> {
     match strat {
         #[cfg(feature = "linear")]
         RegAllocStrategy::LinearScan => linear_scan(_f, _phys),
@@ -141,8 +147,8 @@ pub fn allocate_function(_f: &Function, strat: RegAllocStrategy, _phys: &[PhysRe
 }
 
 /* =========================================================================================
-   Collecte des vregs et intervalles de vie
-   ===================================================================================== */
+Collecte des vregs et intervalles de vie
+===================================================================================== */
 
 /// Représente un intervalle [start, end] inclus pour un vreg.
 #[cfg(any(feature = "linear", feature = "graph"))]
@@ -198,8 +204,8 @@ fn is_imm(s: &str) -> bool {
 }
 
 /* =========================================================================================
-   Linear Scan
-   ===================================================================================== */
+Linear Scan
+===================================================================================== */
 
 #[cfg(feature = "linear")]
 fn linear_scan(f: &Function, phys: &[PhysReg]) -> Result<RegAllocResult> {
@@ -233,11 +239,7 @@ fn linear_scan(f: &Function, phys: &[PhysReg]) -> Result<RegAllocResult> {
             active.push((v, cur, r));
         } else {
             // spill : choisir l’intervalle avec end le plus grand
-            if let Some((idx, _)) = active
-                .iter()
-                .enumerate()
-                .max_by_key(|(_, (_, lr, _))| lr.end)
-            {
+            if let Some((idx, _)) = active.iter().enumerate().max_by_key(|(_, (_, lr, _))| lr.end) {
                 let (victim_v, victim_lr, victim_reg) = active[idx].clone();
                 if victim_lr.end > cur.end {
                     // spill du victim, réutiliser son registre
@@ -266,8 +268,8 @@ fn linear_scan(f: &Function, phys: &[PhysReg]) -> Result<RegAllocResult> {
 }
 
 /* =========================================================================================
-   Graph Coloring
-   ===================================================================================== */
+Graph Coloring
+===================================================================================== */
 
 #[cfg(feature = "graph")]
 fn graph_coloring(f: &Function, phys: &[PhysReg]) -> Result<RegAllocResult> {
@@ -324,12 +326,12 @@ fn graph_coloring(f: &Function, phys: &[PhysReg]) -> Result<RegAllocResult> {
         match colors.get(&v).and_then(|o| *o) {
             Some(i) => {
                 res.mapping.insert(v, Assign::Reg(phys[i].clone()));
-            }
+            },
             None => {
                 res.mapping.insert(v, Assign::Spill(spill_slot));
                 spill_slot += 1;
                 res.spills += 1;
-            }
+            },
         }
     }
 
@@ -348,12 +350,16 @@ struct InterferenceGraph {
 }
 #[cfg(feature = "graph")]
 impl InterferenceGraph {
-    fn new() -> Self { Self { adj: HashMap::new() } }
+    fn new() -> Self {
+        Self { adj: HashMap::new() }
+    }
     fn add_node(&mut self, v: VirtReg) {
         self.adj.entry(v).or_default();
     }
     fn add_edge(&mut self, a: VirtReg, b: VirtReg) {
-        if a == b { return; }
+        if a == b {
+            return;
+        }
         self.adj.entry(a.clone()).or_default().insert(b.clone());
         self.adj.entry(b).or_default().insert(a);
     }
@@ -373,7 +379,9 @@ impl InterferenceGraph {
             // chercher noeud avec deg < K
             let mut picked: Option<VirtReg> = None;
             for (v, ns) in g.iter() {
-                if removed.contains(v) { continue; }
+                if removed.contains(v) {
+                    continue;
+                }
                 if ns.iter().filter(|n| !removed.contains(*n)).count() < k {
                     picked = Some(v.clone());
                     break;
@@ -405,11 +413,13 @@ impl InterferenceGraph {
 }
 
 /* =========================================================================================
-   Utilitaires
-   ===================================================================================== */
+Utilitaires
+===================================================================================== */
 
 #[cfg(any(feature = "linear", feature = "graph"))]
-fn unique_keep_order<I: IntoIterator<Item = T>, T: std::cmp::Eq + std::hash::Hash + Clone>(it: I) -> Vec<T> {
+fn unique_keep_order<I: IntoIterator<Item = T>, T: std::cmp::Eq + std::hash::Hash + Clone>(
+    it: I,
+) -> Vec<T> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     for x in it {
@@ -421,8 +431,8 @@ fn unique_keep_order<I: IntoIterator<Item = T>, T: std::cmp::Eq + std::hash::Has
 }
 
 /* =========================================================================================
-   Accès générique aux instructions locales
-   ===================================================================================== */
+Accès générique aux instructions locales
+===================================================================================== */
 
 #[cfg(any(feature = "linear", feature = "graph"))]
 trait InstrView {
@@ -449,13 +459,13 @@ impl InstrView for Instr {
 }
 
 /* =========================================================================================
-   Tests
-   ===================================================================================== */
+Tests
+===================================================================================== */
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::{Instr, Module, Function, BasicBlock};
+    use super::{BasicBlock, Function, Instr, Module};
 
     fn small_module() -> Module {
         // f:
@@ -468,8 +478,18 @@ mod tests {
         let mut b0 = BasicBlock { instrs: Vec::new() };
         b0.instrs.push(Instr::Assign { dest: "x".into(), operands: vec!["1".into()] });
         b0.instrs.push(Instr::Assign { dest: "y".into(), operands: vec!["2".into()] });
-        b0.instrs.push(Instr::Bin { op: "+".into(), lhs: "x".into(), rhs: "y".into(), dest: "z".into() });
-        b0.instrs.push(Instr::Bin { op: "+".into(), lhs: "z".into(), rhs: "y".into(), dest: "w".into() });
+        b0.instrs.push(Instr::Bin {
+            op: "+".into(),
+            lhs: "x".into(),
+            rhs: "y".into(),
+            dest: "z".into(),
+        });
+        b0.instrs.push(Instr::Bin {
+            op: "+".into(),
+            lhs: "z".into(),
+            rhs: "y".into(),
+            dest: "w".into(),
+        });
         f.blocks.push(b0);
         m.functions.push(f);
         m
@@ -479,7 +499,12 @@ mod tests {
     #[test]
     fn linear_scan_allocates() {
         let m = small_module();
-        let res = allocate_function(&m.functions[0], RegAllocStrategy::LinearScan, &["r0".into(), "r1".into()]).unwrap();
+        let res = allocate_function(
+            &m.functions[0],
+            RegAllocStrategy::LinearScan,
+            &["r0".into(), "r1".into()],
+        )
+        .unwrap();
         assert!(res.mapping.contains_key("x"));
         assert!(res.mapping.contains_key("y"));
         assert!(res.mapping.contains_key("z"));
@@ -491,7 +516,12 @@ mod tests {
     #[test]
     fn graph_coloring_allocates() {
         let m = small_module();
-        let res = allocate_function(&m.functions[0], RegAllocStrategy::GraphColoring, &["r0".into(), "r1".into(), "r2".into()]).unwrap();
+        let res = allocate_function(
+            &m.functions[0],
+            RegAllocStrategy::GraphColoring,
+            &["r0".into(), "r1".into(), "r2".into()],
+        )
+        .unwrap();
         assert!(res.mapping.values().any(|a| matches!(a, Assign::Reg(_))));
     }
 

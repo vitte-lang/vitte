@@ -168,10 +168,7 @@ mod tests {
 
     #[test]
     fn summary_math() {
-        let pairs = vec![
-            ("a".to_string(), (5, 10)),
-            ("b".to_string(), (3, 5)),
-        ];
+        let pairs = vec![("a".to_string(), (5, 10)), ("b".to_string(), (3, 5))];
         let summary = Summary::from_pairs(&pairs);
         assert_eq!(summary.files.len(), 2);
         assert_eq!(summary.total_lines, 15);

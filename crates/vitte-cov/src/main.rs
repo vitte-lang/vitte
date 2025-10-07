@@ -1,16 +1,14 @@
-
-
 /*!
  * vitte-cov — Code coverage analysis tool for Vitte Language
- * 
+ *
  * Provides command-line utilities to load, merge, and report coverage data.
  * Supports reading JSON/LCOV profiles and producing summaries or HTML reports.
- * 
+ *
  * Usage:
  *   vitte-cov analyze <path>
  *   vitte-cov merge <input1> <input2> [...]
  *   vitte-cov report <coverage.json>
- * 
+ *
  * Options:
  *   -h, --help      Show this help message
  *   -v, --version   Show version info
@@ -36,7 +34,7 @@ fn run() -> io::Result<()> {
             } else {
                 eprintln!("Usage: vitte-cov analyze <path>");
             }
-        }
+        },
         Some("merge") => {
             let inputs: Vec<String> = args.collect();
             if inputs.is_empty() {
@@ -44,20 +42,20 @@ fn run() -> io::Result<()> {
             } else {
                 merge(inputs)?;
             }
-        }
+        },
         Some("report") => {
             if let Some(path) = args.next() {
                 report(PathBuf::from(path))?;
             } else {
                 eprintln!("Usage: vitte-cov report <coverage.json>");
             }
-        }
+        },
         Some("-h") | Some("--help") => print_help(),
         Some("-v") | Some("--version") => print_version(),
         Some(unknown) => {
             eprintln!("Unknown command: {unknown}");
             print_help();
-        }
+        },
         None => print_help(),
     }
     Ok(())

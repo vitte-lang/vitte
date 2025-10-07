@@ -3,11 +3,11 @@
 
 #[cfg(feature = "rt-tokio")]
 pub use tokio::{
-    spawn,
-    time::{sleep, Duration, Instant, interval, timeout, yield_now},
-    task::JoinHandle,
     runtime::{Builder, Runtime},
-    sync::{mpsc, oneshot, Mutex, RwLock},
+    spawn,
+    sync::{Mutex, RwLock, mpsc, oneshot},
+    task::JoinHandle,
+    time::{Duration, Instant, interval, sleep, timeout, yield_now},
 };
 
 /// Cancellation token for cooperative task cancellation.

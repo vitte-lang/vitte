@@ -14,8 +14,8 @@
 //! - Lines beginning with `;` are ignored as comments.
 
 use crate::{
-    bytecode::chunk::{Chunk, ChunkFlags, ConstValue, Op},
     CoreError, CoreResult,
+    bytecode::chunk::{Chunk, ChunkFlags, ConstValue, Op},
 };
 
 #[cfg(not(feature = "std"))]

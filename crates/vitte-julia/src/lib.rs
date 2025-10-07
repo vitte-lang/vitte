@@ -130,11 +130,7 @@ pub mod runtime {
     pub fn eval_raw(expr: &str) -> Result<*mut std::os::raw::c_void> {
         let cexpr = CString::new(expr).map_err(|e| JuliaError::Interop(e.to_string()))?;
         let res = unsafe { jl_eval_string(cexpr.as_ptr()) };
-        if res.is_null() {
-            Err(JuliaError::Eval(expr.into()))
-        } else {
-            Ok(res)
-        }
+        if res.is_null() { Err(JuliaError::Eval(expr.into())) } else { Ok(res) }
     }
 
     /// Évalue une expression Julia et essaie de convertir en String (si possible).
