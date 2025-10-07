@@ -2,9 +2,8 @@
 
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = ["crates/*", "src", "modules/vitte-modules","crates/vitte-cli"]
 exclude = ["docs"]
-
 
 
 [workspace.package]
@@ -92,7 +91,7 @@ postcard              = { version = "1", default-features = false, features = ["
 
 # Stdlib exposée
 vitte-stdlib          = { path = "crates/vitte-stdlib", version = "0.1.0" }
-
+vitte-cli = { path = "../crates/vitte-cli" }
 [profile.dev]
 opt-level = 0
 debug = 1
@@ -105,27 +104,13 @@ codegen-units = 1
 strip = "symbols"
 debug = 0
 
+[workspace.metadata.vitte]
+modules = [
+  "modules/vitte-modules",
+  "crates/vitte-core",
+  "crates/vitte-stdlib",
+  "src"
+]
+description = "Vitte unified workspace with compiler, stdlib, modules, and main binary"
+maintainer = "Vincent Rousseau <roussov@vitte-lang.org>"
 
-
-[package]
-name = "vitte"
-version = "0.1.0"
-edition = "2021"
-autobins = false
-
-[[bin]]
-name = "vitte"
-path = "src/main.rs"
-
-[features]
-# Activez `engine` quand les crates internes existent
-engine = []
-
-[dependencies]
-anyhow = "1"
-clap = { version = "4", features = ["derive", "color"] }
-env_logger = "0.11"
-log = "0.4"
-
-[build-dependencies]
-dirs-next = { workspace = true }

@@ -1,0 +1,57 @@
+[package]
+name = "vitte-bin"
+version = "0.1.0"
+edition = "2021"
+authors = ["Vincent Rousseau <roussov@vitte-lang.org>"]
+description = "Vitte — Main executable entry point for the unified Vitte toolchain."
+license = "MIT"
+repository = "https://github.com/vitte-lang/vitte"
+keywords = ["vitte", "cli", "compiler", "toolchain"]
+categories = ["development-tools", "compilers"]
+readme = "../README.md"
+
+[lib]
+name = "vitte_bin"
+path = "lib.rs"
+
+[dependencies]
+# Dépendances internes
+vitte-core     = { path = "../crates/vitte-core" }
+vitte-stdlib   = { path = "../crates/vitte-stdlib" }
+vitte-modules  = { path = "../modules/vitte-modules", optional = true }
+
+# Dépendances externes
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive", "wrap_help"] }
+colored = "3.0.0"
+dirs = "6.0.0"
+log = "0.4"
+env_logger = "0.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.9.7"
+thiserror = "2.0.17"
+chrono = "0.4"
+regex = "1.11"
+
+vitte-compiler = { path = "../crates/vitte-compiler", optional = true }
+vitte-vm = { path = "../crates/vitte-vm", optional = true }
+vitte-fmt = { path = "../crates/vitte-fmt", optional = true }
+vitte-tools = { path = "../crates/vitte-tools", optional = true }
+vitte-cli = { path = "../crates/vitte-cli" }
+[features]
+default = ["cli"]
+cli = []
+gui = []
+server = []
+experimental = []
+engine = ["vitte-compiler", "vitte-vm", "vitte-fmt", "vitte-tools", "vitte-modules"]
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+tempfile = "3.10"
+
+[[bin]]
+name = "vitte-bin"
+path = "main.rs"

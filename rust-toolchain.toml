@@ -1,43 +1,58 @@
-# rust-toolchain.toml — Vitte workspace (MSRV alignée sur .clippy.toml)
+
+
+# rust-toolchain.toml — Vitte workspace (standardisé, stable)
 
 [toolchain]
-# Épingle la version pour des builds reproductibles.
-channel = "1.82.0"
+# Utilise la dernière toolchain stable installée sur le système.
+channel = "stable"
+profile = "default"
 
-# "minimal" = rustc + cargo + std (docs exclus) ; on ajoute ce qu’il faut via components.
-profile = "minimal"
-
-# Outils indispensables pour un repo sérieux.
+# Outils indispensables pour un repo de développement complet.
 components = [
   "rustfmt",
   "clippy",
-  "rust-src",            # pour RLS/rust-analyzer, build cross, bindgen, etc.
-  "llvm-tools-preview",  # pour cargo-bloat/cov, objdump/size…
-  "rust-analyzer"        # si indisponible sur ta plate-forme, supprime cette ligne
+  "rust-src",
+  "llvm-tools-preview",
+  "rust-analyzer"
 ]
 
-# Cibles cross-compile prêtes à l’emploi (épure si besoin).
+# Cibles cross-compile supportées.
 targets = [
-  # Linux GNU / MUSL
+  # Linux (glibc + musl + ARM/RISC-V)
   "x86_64-unknown-linux-gnu",
+  "i686-unknown-linux-gnu",
   "aarch64-unknown-linux-gnu",
+  "arm-unknown-linux-gnueabihf",
+  "armv7-unknown-linux-gnueabihf",
+  "riscv64gc-unknown-linux-gnu",
   "x86_64-unknown-linux-musl",
   "aarch64-unknown-linux-musl",
 
-  # macOS (Intel + Apple Silicon)
+  # Apple (macOS + iOS + iPadOS + tvOS)
   "x86_64-apple-darwin",
   "aarch64-apple-darwin",
+  "aarch64-apple-ios",
+  "aarch64-apple-ios-sim",
+  "x86_64-apple-ios",
 
-  # Windows MSVC (x64 + ARM64)
+  # Windows (MSVC + GNU + ARM)
   "x86_64-pc-windows-msvc",
+  "i686-pc-windows-msvc",
   "aarch64-pc-windows-msvc",
+  "x86_64-pc-windows-gnu",
+  "i686-pc-windows-gnu",
 
-  # Web / WASI
+  # BSD (NetBSD)
+  "x86_64-unknown-netbsd",
+  
+
+  # Raspberry Pi (ARMv6, ARMv7, ARM64)
+  "arm-unknown-linux-musleabihf",
+  "arm-unknown-linux-gnueabi",
+  "armv7-unknown-linux-gnueabihf",
+  "aarch64-unknown-linux-gnu",
+  "aarch64-unknown-linux-musl",
+
+  # WebAssembly
   "wasm32-unknown-unknown",
-  "wasm32-wasi",
-
-  # RISC-V / ARM (serveurs low-power, SBC, rétrofits)
-  "riscv64gc-unknown-linux-gnu",
-  "arm-unknown-linux-gnueabihf",
-  "armv7-unknown-linux-gnueabihf"
 ]
