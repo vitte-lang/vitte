@@ -1,90 +1,73 @@
+use anyhow::Result;
+use clap::{Parser, Subcommand, ArgAction, ColorChoice};
+use env_logger;
+use log::{debug, error};
 
-
-//! vitte-bin — library surface
-//!
-//! Ce crate expose une petite API stable pour d'autres crates/binaries du workspace.
-//! Il ne dépend d'aucun code du `main.rs` et reste optionnel.
-
-use std::borrow::Cow;
-
-/// Alias de résultat standard pour l'API publique
-pub type Result<T> = anyhow::Result<T>;
-
-/// Version du package (depuis Cargo)
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// Retourne une chaîne de version enrichie (commit/date si disponibles)
-pub fn version_string() -> String {
-    let commit = option_env!("GIT_COMMIT").unwrap_or("unknown");
-    let build_date = option_env!("VERGEN_BUILD_DATE").unwrap_or("unknown");
-    let rustc = option_env!("VERGEN_RUSTC_SEMVER").unwrap_or(env!("CARGO_PKG_VERSION"));
-    format!(
-        "vitte {}\ncommit: {commit}\nbuild: {build_date}\nrustc: {rustc}",
-        env!("CARGO_PKG_VERSION")
-    )
+#[derive(Debug, Parser)]
+#[command(
+    name = "vitte-bin",
+    version,
+    about = "Vitte CLI (binaire workspace)",
+    color = ColorChoice::Auto
+)]
+struct Cli {
+    /// Verbosité (-v, -vv, -vvv)
+    #[arg(short, long, global = true, action = ArgAction::Count)]
+    verbose: u8,
+    /// Mode silencieux
+    #[arg(short, long, global = true)]
+    quiet: bool,
+    /// Sous-commandes
+    #[command(subcommand)]
+    command: Command,
 }
 
-/// Nom du binaire principal généré par ce crate
-pub const BIN_NAME: &str = "vitte-bin";
-
-/// Détecte si un fichier est un bytecode `.vtbc` (case-insensitive).
-pub fn is_bytecode(path: impl AsRef<std::path::Path>) -> bool {
-    path.as_ref()
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.eq_ignore_ascii_case("vtbc"))
-        .unwrap_or(false)
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Exécute un fichier .vt, .vit, .vitte ou .vtbc
+    Run {
+        input: std::path::PathBuf,
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+    /// Compile un fichier source
+    Compile {
+        input: std::path::PathBuf,
+        #[arg(short, long)]
+        out: Option<std::path::PathBuf>,
+        #[arg(long, default_value = "bc")]
+        emit: String,
+    },
+    /// Démarre un REPL interactif
+    Repl,
+    /// Affiche la version détaillée
+    Version,
 }
 
-/// Résout le chemin de sortie en fonction de l'entrée et du type d'artefact.
-/// `emit` peut valoir "bc" | "obj" | "exe".
-pub fn resolve_output(input: &std::path::Path, emit: &str) -> std::path::PathBuf {
-    match emit {
-        "obj" => input.with_extension("o"),
-        "exe" => {
-            if cfg!(windows) { input.with_extension("exe") } else { input.with_extension("") }
-        }
-        _ => input.with_extension("vtbc"),
+fn init_logger(verbosity: u8, quiet: bool) {
+    let level = if quiet { "off" } else { match verbosity { 0 => "info", 1 => "debug", _ => "trace" } };
+    if std::env::var_os("RUST_LOG").is_none() { std::env::set_var("RUST_LOG", level); }
+    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(level))
+        .format_timestamp_millis()
+        .try_init();
+}
+
+fn main() {
+    let cli = Cli::parse();
+    init_logger(cli.verbose, cli.quiet);
+    if let Err(e) = real_main(cli) {
+        error!("{e:#}");
+        std::process::exit(1);
     }
 }
 
-/// Retourne un nom humain lisible pour une cible éventuelle.
-pub fn pretty_target(triple: Option<&str>) -> Cow<'_, str> {
-    triple.map(Cow::from).unwrap_or_else(|| Cow::from(std::env::consts::ARCH))
-}
-
-// ────────────────────────────────────────────────────────────────────
-// Réexport optionnel des crates moteur quand la feature `engine` est active
-// ────────────────────────────────────────────────────────────────────
-#[cfg(feature = "engine")]
-pub mod engine {
-    pub use vitte_compiler as compiler;
-    pub use vitte_fmt as fmt;
-    pub use vitte_tools as tools;
-    pub use vitte_vm as vm;
-    pub use vitte_modules as modules;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn version_not_empty() {
-        assert!(!VERSION.is_empty());
+fn real_main(cli: Cli) -> Result<()> {
+    debug!("args = {:?}", std::env::args().collect::<Vec<_>>());
+    match cli.command {
+        Command::Version => println!("{}", crate::version_string()),
+        Command::Run { input, args } => crate::engine_run(&input, &args)?,
+        Command::Compile { input, out, emit } => crate::engine_compile(&input, out.as_deref(), &emit)?,
+        Command::Repl => crate::engine_repl()?,
     }
-
-    #[test]
-    fn bytecode_detection() {
-        assert!(is_bytecode("a.vtbc"));
-        assert!(is_bytecode("A.VTBC"));
-        assert!(!is_bytecode("main.vt"));
-    }
-
-    #[test]
-    fn resolve_out() {
-        use std::path::Path;
-        let p = Path::new("main.vt");
-        assert!(resolve_output(p, "bc").to_string_lossy().contains(".vtbc"));
-    }
+    Ok(())
 }
