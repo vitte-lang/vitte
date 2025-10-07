@@ -45,8 +45,12 @@ use serde::{Serialize, Deserialize};
 #[cfg(feature = "errors")]
 use thiserror::Error;
 
+
 #[cfg(feature = "colors")]
-use vitte_ansi as ansi;
+mod color {
+    #[inline] pub fn bold(s: &str) -> String { format!("\x1b[1m{}\x1b[0m", s) }
+    #[inline] pub fn bold_underline(s: &str) -> String { format!("\x1b[1;4m{}\x1b[0m", s) }
+}
 
 #[cfg(feature = "args-spec")]
 use vitte_args::{Spec as ArgSpec, ArgKind as ArgKindArgs};
@@ -309,7 +313,7 @@ fn header(out: &mut String, spec: &HelpSpec, colorize: bool) {
     if colorize && spec.colors {
         #[cfg(feature = "colors")]
         {
-            out.push_str(&ansi::style(&title).bold().to_string());
+            out.push_str(&color::bold(&title));
             out.push('\n');
         }
         #[cfg(not(feature = "colors"))]
@@ -326,7 +330,7 @@ fn section_title(out: &mut String, lang: Lang, en: &str, fr: &str, colorize: boo
     if colorize {
         #[cfg(feature = "colors")]
         {
-            out.push_str(&ansi::style(label).bold().underline().to_string());
+            out.push_str(&color::bold_underline(label));
             out.push('\n');
         }
         #[cfg(not(feature = "colors"))]
@@ -357,7 +361,7 @@ where I: IntoIterator<Item = (&'a str, &'a str)> {
         // col1 (éventuellement colorisée)
         let left = if colorize {
             #[cfg(feature = "colors")]
-            { ansi::style(&l).bold().to_string() }
+            { crate::color::bold(&l) }
             #[cfg(not(feature = "colors"))]
             { l.clone() }
         } else { l.clone() };
@@ -480,7 +484,7 @@ fn wrap(s: &str, width: usize) -> Vec<String> {
 
 fn split_at_display(s: &str, width: usize) -> (&str, &str) {
     let mut count = 0usize;
-    for (idx, ch) in s.char_indices() {
+    for (idx, _ch) in s.char_indices() {
         if count == width { return (&s[..idx], &s[idx..]); }
         count += 1;
     }

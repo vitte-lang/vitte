@@ -22,7 +22,7 @@
 use std::{collections::HashMap, sync::Arc, time::Instant};
 use parking_lot::RwLock;
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "json")]
 use serde::{Deserialize, Serialize};
 
 lazy_static::lazy_static! {
@@ -31,7 +31,7 @@ lazy_static::lazy_static! {
 
 /// Compteur cumulatif.
 #[derive(Debug, Default)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 pub struct Counter {
     value: RwLock<u64>,
 }
@@ -43,7 +43,7 @@ impl Counter {
 
 /// Jauge (valeur arbitraire).
 #[derive(Debug, Default)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 pub struct Gauge {
     value: RwLock<i64>,
 }
@@ -55,7 +55,7 @@ impl Gauge {
 
 /// Histogramme (latences, tailles, etc.).
 #[derive(Debug, Default)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 pub struct Histogram {
     samples: RwLock<Vec<u64>>,
 }

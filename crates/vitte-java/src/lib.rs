@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-java — Interop Java/JVM pour Vitte.
 //!
@@ -20,14 +18,19 @@ use thiserror::Error;
 #[cfg(feature = "jni")]
 pub use jni;
 
+/// Erreurs d'interopération Java/JNI et gestion de JVM.
 #[derive(Debug, Error)]
 pub enum JavaError {
+    /// Erreur provenant de la couche JNI (message brut).
     #[error("JNI error: {0}")]
     Jni(String),
+    /// JVM absente ou non initialisée pour l'opération demandée.
     #[error("JVM not available")]
     JvmUnavailable,
+    /// Échec de conversion de type entre Rust et Java.
     #[error("Type conversion error: {0}")]
     Conversion(String),
+    /// Autre erreur générique (message descriptif).
     #[error("Other: {0}")]
     Other(String),
 }
@@ -50,8 +53,7 @@ pub struct JvmInfo {
 #[cfg(feature = "jni")]
 pub mod api {
     use super::*;
-    use jni::objects::{JClass, JObject, JString, JValue};
-    use jni::signature::JavaType;
+    use jni::objects::{JString, JValue};
     use jni::JNIEnv;
     use jni::JavaVM;
 
@@ -85,7 +87,7 @@ pub mod api {
             sig: &str,
             args: &[JValue],
         ) -> Result<String> {
-            let env = self.env()?;
+            let mut env = self.env()?;
             let cls = env.find_class(class).map_err(|e| JavaError::Jni(e.to_string()))?;
             let jstr = env
                 .call_static_method(cls, method, sig, args)

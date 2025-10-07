@@ -81,18 +81,19 @@ pub mod chan {
             return None;
         }
         loop {
+            // Try non-blocking first
             for (i, r) in rxs.iter().enumerate() {
                 if let Ok(v) = r.try_recv() {
                     return Some((i, v));
                 }
             }
-            // end condition: if all disconnected and empty
-            if rxs.iter().all(|r| r.is_empty() && r.is_disconnected()) {
-                return None;
-            }
-            // fallback to blocking on the first
-            if let Ok(v) = rxs[0].recv() {
-                return Some((0, v));
+            // If all are currently empty, block on the first. If it is disconnected,
+            // consider the whole set disconnected for this helper and return None.
+            if rxs.iter().all(|r| r.is_empty()) {
+                return match rxs[0].recv() {
+                    Ok(v) => Some((0, v)),
+                    Err(_) => None,
+                };
             }
         }
     }
@@ -156,7 +157,7 @@ pub mod pool {
     }
 
     // Re-export ergonomique du trait ParIter.
-    use rayon::prelude::{IntoParallelIterator, ParallelIterator, ParallelSlice};
+    use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
     /// Exécute `f(i)` pour `i in 0..len` en parallèle.
     pub fn parallel_for<F: Fn(usize) + Sync + Send>(len: usize, f: F) {

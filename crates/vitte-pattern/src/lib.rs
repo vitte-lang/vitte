@@ -17,8 +17,7 @@
 
 use anyhow::{Result, bail};
 use std::collections::HashMap;
-use vitte_hir::{HirExpr, HirPattern};
-use vitte_ir::Instr;
+use vitte_hir::{HirExpr, HirBinOp};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -32,7 +31,7 @@ pub enum Pattern {
     LitInt(i64),
     LitBool(bool),
     Tuple(Vec<Pattern>),
-    Op { op: String, args: Vec<Pattern> },
+    Op { op: HirBinOp, args: Vec<Pattern> },
 }
 
 /// Résultat de correspondance.
@@ -89,56 +88,7 @@ fn match_expr_rec(pat: &Pattern, expr: &HirExpr, m: &mut Match) -> Result<bool> 
             if args.len() != 2 {
                 bail!("binary op doit avoir 2 args");
             }
-            match_expr_rec(&args[0], lhs, m)? && match_expr_rec(&args[1], rhs, m)
-        }
-        _ => Ok(false),
-    }
-}
-
-/// Tente de faire matcher un motif sur une instruction IR.
-pub fn match_instr(pat: &Pattern, instr: &Instr) -> Result<Option<Match>> {
-    let mut m = Match::default();
-    if match_instr_rec(pat, instr, &mut m)? {
-        Ok(Some(m))
-    } else {
-        Ok(None)
-    }
-}
-
-fn match_instr_rec(pat: &Pattern, instr: &Instr, m: &mut Match) -> Result<bool> {
-    match (pat, instr) {
-        (Pattern::Wildcard, _) => Ok(true),
-        (Pattern::Var(name), Instr::Assign { dest, .. }) => {
-            m.bind(name, dest);
-            Ok(true)
-        }
-        (Pattern::LitInt(n), Instr::Assign { operands, .. }) if operands.len() == 1 => {
-            if let Ok(v) = operands[0].parse::<i64>() {
-                Ok(*n == v)
-            } else {
-                Ok(false)
-            }
-        }
-        (Pattern::Op { op, args }, Instr::Bin { op: iop, lhs, rhs, dest }) => {
-            if op != iop || args.len() != 3 {
-                return Ok(false);
-            }
-            // args[0] = lhs, args[1] = rhs, args[2] = dest (var)
-            let lhs_match = match &args[0] {
-                Pattern::Var(n) => { m.bind(n, lhs); true }
-                Pattern::LitInt(n) => lhs.parse::<i64>().map_or(false, |v| v == *n),
-                _ => true,
-            };
-            let rhs_match = match &args[1] {
-                Pattern::Var(n) => { m.bind(n, rhs); true }
-                Pattern::LitInt(n) => rhs.parse::<i64>().map_or(false, |v| v == *n),
-                _ => true,
-            };
-            let dest_match = match &args[2] {
-                Pattern::Var(n) => { m.bind(n, dest); true }
-                _ => true,
-            };
-            Ok(lhs_match && rhs_match && dest_match)
+            Ok(match_expr_rec(&args[0], lhs, m)? && match_expr_rec(&args[1], rhs, m)?)
         }
         _ => Ok(false),
     }
@@ -149,7 +99,7 @@ fn match_instr_rec(pat: &Pattern, instr: &Instr, m: &mut Match) -> Result<bool> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vitte_hir::{builder, HirExpr};
+    use vitte_hir::builder;
 
     #[test]
     fn match_var_expr() {
@@ -159,25 +109,5 @@ mod tests {
         assert!(r.is_some());
         let m = r.unwrap();
         assert_eq!(m.bindings.get("a").unwrap(), "x");
-    }
-
-    #[test]
-    fn match_int_instr() {
-        let instr = Instr::assign("x", vec!["42".into()]);
-        let pat = Pattern::LitInt(42);
-        let r = match_instr(&pat, &instr).unwrap();
-        assert!(r.is_some());
-    }
-
-    #[test]
-    fn match_bin_instr() {
-        let instr = Instr::Bin { op: "+".into(), lhs: "1".into(), rhs: "2".into(), dest: "z".into() };
-        let pat = Pattern::Op {
-            op: "+".into(),
-            args: vec![Pattern::LitInt(1), Pattern::LitInt(2), Pattern::Var("res".into())],
-        };
-        let r = match_instr(&pat, &instr).unwrap();
-        assert!(r.is_some());
-        assert_eq!(r.unwrap().bindings.get("res").unwrap(), "z");
     }
 }

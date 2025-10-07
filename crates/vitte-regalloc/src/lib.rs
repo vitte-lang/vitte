@@ -27,10 +27,42 @@
 )]
 
 use anyhow::{bail, Result};
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use vitte_ir::{Function, Module};
+use std::collections::HashMap;
+#[cfg(any(feature = "linear", feature = "graph"))]
+use std::collections::{BTreeMap, HashSet};
+#[cfg(feature = "graph")] use std::collections::BTreeSet;
 
-#[cfg(feature = "serde")]
+/// IR minimal local au crate pour éviter la dépendance directe à `vitte-ir`.
+#[derive(Debug, Clone, Default)]
+pub struct Module {
+    /// Fonctions du module.
+    pub functions: Vec<Function>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Function {
+    /// Blocs basiques ordonnés.
+    pub blocks: Vec<BasicBlock>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct BasicBlock {
+    /// Instructions du bloc.
+    pub instrs: Vec<Instr>,
+}
+
+/// Sous-ensemble d'instructions suffisant pour l'allocation de registres.
+#[derive(Debug, Clone)]
+pub enum Instr {
+    /// Affectation simple d'opérandes vers une destination.
+    Assign { dest: String, operands: Vec<String> },
+    /// Op binaire avec destination.
+    Bin { op: String, lhs: String, rhs: String, dest: String },
+    /// Autre instruction non-pertinente pour le calcul de vivacité.
+    Other,
+}
+
+#[cfg(feature = "json")]
 use serde::{Deserialize, Serialize};
 
 /// Registre physique abstrait.
@@ -44,7 +76,7 @@ pub type VirtReg = String;
 
 /// Stratégie d’allocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 pub enum RegAllocStrategy {
     #[cfg(feature = "linear")]
     LinearScan,
@@ -54,7 +86,7 @@ pub enum RegAllocStrategy {
 
 /// Issue d’allocation pour un vreg.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 pub enum Assign {
     Reg(PhysReg),
     Spill(SpillSlot),
@@ -62,7 +94,7 @@ pub enum Assign {
 
 /// Résultat d’allocation pour une fonction.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 pub struct RegAllocResult {
     /// virt → (reg | spill)
     pub mapping: HashMap<VirtReg, Assign>,
@@ -97,12 +129,12 @@ pub fn allocate_module(m: &Module, strat: RegAllocStrategy, phys: &[&str]) -> Re
 }
 
 /// Alloue les registres pour une fonction.
-pub fn allocate_function(f: &Function, strat: RegAllocStrategy, phys: &[PhysReg]) -> Result<RegAllocResult> {
+pub fn allocate_function(_f: &Function, strat: RegAllocStrategy, _phys: &[PhysReg]) -> Result<RegAllocResult> {
     match strat {
         #[cfg(feature = "linear")]
-        RegAllocStrategy::LinearScan => linear_scan(f, phys),
+        RegAllocStrategy::LinearScan => linear_scan(_f, _phys),
         #[cfg(feature = "graph")]
-        RegAllocStrategy::GraphColoring => graph_coloring(f, phys),
+        RegAllocStrategy::GraphColoring => graph_coloring(_f, _phys),
         #[allow(unreachable_patterns)]
         _ => bail!("stratégie non compilée via features"),
     }
@@ -113,6 +145,7 @@ pub fn allocate_function(f: &Function, strat: RegAllocStrategy, phys: &[PhysReg]
    ===================================================================================== */
 
 /// Représente un intervalle [start, end] inclus pour un vreg.
+#[cfg(any(feature = "linear", feature = "graph"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct LiveRange {
     start: usize,
@@ -121,6 +154,7 @@ struct LiveRange {
 
 /// Collecte toutes les déf/uses dans l’ordre d’exécution séquentiel
 /// et calcule un intervalle de vie approximatif par vreg.
+#[cfg(any(feature = "linear", feature = "graph"))]
 fn liveness_intervals(f: &Function) -> (BTreeMap<VirtReg, LiveRange>, Vec<VirtReg>) {
     let mut pos = 0usize;
     let mut first: HashMap<VirtReg, usize> = HashMap::new();
@@ -131,7 +165,7 @@ fn liveness_intervals(f: &Function) -> (BTreeMap<VirtReg, LiveRange>, Vec<VirtRe
         for inst in &bb.instrs {
             // operands are uses
             for op in inst.operands() {
-                if !is_imm(op) {
+                if !is_imm(&op) {
                     first.entry(op.clone()).or_insert(pos);
                     last.insert(op.clone(), pos);
                     order.push(op.clone());
@@ -139,7 +173,7 @@ fn liveness_intervals(f: &Function) -> (BTreeMap<VirtReg, LiveRange>, Vec<VirtRe
             }
             // dest is def
             if let Some(d) = inst.dest() {
-                if !is_imm(d) {
+                if !is_imm(&d) {
                     first.entry(d.clone()).or_insert(pos);
                     last.insert(d.clone(), pos);
                     order.push(d.clone());
@@ -157,6 +191,7 @@ fn liveness_intervals(f: &Function) -> (BTreeMap<VirtReg, LiveRange>, Vec<VirtRe
     (map, order)
 }
 
+#[cfg(any(feature = "linear", feature = "graph"))]
 fn is_imm(s: &str) -> bool {
     // imm si entier signé simple
     s.parse::<i64>().is_ok()
@@ -373,6 +408,7 @@ impl InterferenceGraph {
    Utilitaires
    ===================================================================================== */
 
+#[cfg(any(feature = "linear", feature = "graph"))]
 fn unique_keep_order<I: IntoIterator<Item = T>, T: std::cmp::Eq + std::hash::Hash + Clone>(it: I) -> Vec<T> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
@@ -385,26 +421,28 @@ fn unique_keep_order<I: IntoIterator<Item = T>, T: std::cmp::Eq + std::hash::Has
 }
 
 /* =========================================================================================
-   Extensions minimales sur vitte_ir::Instr pour accès générique
+   Accès générique aux instructions locales
    ===================================================================================== */
 
+#[cfg(any(feature = "linear", feature = "graph"))]
 trait InstrView {
     fn dest(&self) -> Option<&String>;
     fn operands(&self) -> Vec<String>;
 }
 
-impl InstrView for vitte_ir::Instr {
+#[cfg(any(feature = "linear", feature = "graph"))]
+impl InstrView for Instr {
     fn dest(&self) -> Option<&String> {
         match self {
-            vitte_ir::Instr::Assign { dest, .. } => Some(dest),
-            vitte_ir::Instr::Bin { dest, .. } => Some(dest),
+            Instr::Assign { dest, .. } => Some(dest),
+            Instr::Bin { dest, .. } => Some(dest),
             _ => None,
         }
     }
     fn operands(&self) -> Vec<String> {
         match self {
-            vitte_ir::Instr::Assign { operands, .. } => operands.clone(),
-            vitte_ir::Instr::Bin { lhs, rhs, .. } => vec![lhs.clone(), rhs.clone()],
+            Instr::Assign { operands, .. } => operands.clone(),
+            Instr::Bin { lhs, rhs, .. } => vec![lhs.clone(), rhs.clone()],
             _ => Vec::new(),
         }
     }
@@ -417,7 +455,7 @@ impl InstrView for vitte_ir::Instr {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vitte_ir::{Instr, ModuleBuilder};
+    use super::{Instr, Module, Function, BasicBlock};
 
     fn small_module() -> Module {
         // f:
@@ -425,14 +463,16 @@ mod tests {
         //   y = 2
         //   z = x + y
         //   w = z + y
-        let mut b = ModuleBuilder::new("t");
-        b.start_function("f");
-        b.add_instr(Instr::assign("x", vec!["1".into()]));
-        b.add_instr(Instr::assign("y", vec!["2".into()]));
-        b.add_instr(Instr::Bin { op: "+".into(), lhs: "x".into(), rhs: "y".into(), dest: "z".into() });
-        b.add_instr(Instr::Bin { op: "+".into(), lhs: "z".into(), rhs: "y".into(), dest: "w".into() });
-        b.end_function();
-        b.finish()
+        let mut m = Module { functions: Vec::new() };
+        let mut f = Function { blocks: Vec::new() };
+        let mut b0 = BasicBlock { instrs: Vec::new() };
+        b0.instrs.push(Instr::Assign { dest: "x".into(), operands: vec!["1".into()] });
+        b0.instrs.push(Instr::Assign { dest: "y".into(), operands: vec!["2".into()] });
+        b0.instrs.push(Instr::Bin { op: "+".into(), lhs: "x".into(), rhs: "y".into(), dest: "z".into() });
+        b0.instrs.push(Instr::Bin { op: "+".into(), lhs: "z".into(), rhs: "y".into(), dest: "w".into() });
+        f.blocks.push(b0);
+        m.functions.push(f);
+        m
     }
 
     #[cfg(feature = "linear")]
@@ -457,18 +497,20 @@ mod tests {
 
     #[test]
     fn module_api_multiple_functions() {
-        let mut b = ModuleBuilder::new("m");
-        b.start_function("a");
-        b.add_instr(Instr::assign("t0", vec!["0".into()]));
-        b.end_function();
-        let mut b = b;
-        b.start_function("b");
-        b.add_instr(Instr::assign("u0", vec!["1".into()]));
-        b.end_function();
-        let m = b.finish();
+        let mut m = Module { functions: Vec::new() };
 
-        // si aucune feature d'algo active, la stratégie échouera ; on teste seulement la garde des phys non vides
-        // Pour environnements avec au moins un algo :
+        let mut fa = Function { blocks: Vec::new() };
+        let mut ba = BasicBlock { instrs: Vec::new() };
+        ba.instrs.push(Instr::Assign { dest: "t0".into(), operands: vec!["0".into()] });
+        fa.blocks.push(ba);
+        m.functions.push(fa);
+
+        let mut fb = Function { blocks: Vec::new() };
+        let mut bb = BasicBlock { instrs: Vec::new() };
+        bb.instrs.push(Instr::Assign { dest: "u0".into(), operands: vec!["1".into()] });
+        fb.blocks.push(bb);
+        m.functions.push(fb);
+
         #[cfg(feature = "linear")]
         {
             let res = allocate_module(&m, RegAllocStrategy::LinearScan, &["r0", "r1"]).unwrap();

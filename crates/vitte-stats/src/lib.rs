@@ -28,8 +28,10 @@ use serde::{Serialize, Deserialize};
 /// Erreurs statistiques
 #[derive(Debug, Error)]
 pub enum StatsError {
+    /// Aucune donnée disponible
     #[error("empty data")]
     Empty,
+    /// Erreur générique (message libre)
     #[error("other: {0}")]
     Other(String),
 }
@@ -89,7 +91,6 @@ impl OnlineStats {
 /// Histogramme HDR optionnel
 #[cfg(feature = "histogram")]
 pub mod hist {
-    use super::*;
     use hdrhistogram::Histogram;
 
     /// Wrapper autour `hdrhistogram::Histogram`

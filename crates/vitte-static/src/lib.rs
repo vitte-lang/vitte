@@ -28,10 +28,13 @@ use mime_guess::MimeGuess;
 /// Erreurs liées aux assets
 #[derive(Debug, Error)]
 pub enum StaticError {
+    /// Asset introuvable — contient le chemin/nome recherché.
     #[error("asset not found: {0}")]
     NotFound(String),
+    /// Erreur d'entrée/sortie sous-jacente (lecture de fichier, etc.).
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+    /// Autre erreur liée aux assets (message libre).
     #[error("other: {0}")]
     Other(String),
 }

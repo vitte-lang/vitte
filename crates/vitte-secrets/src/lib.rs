@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-secrets — gestion sécurisée de secrets pour Vitte
 //!
@@ -19,16 +17,19 @@
 
 use std::collections::HashMap;
 use std::fmt;
-use std::fs;
-use std::path::Path;
+
+#[cfg(feature = "aesgcm")]
+use std::{fs, path::Path};
 
 use thiserror::Error;
 
 #[cfg(feature = "zeroize")]
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::Zeroize;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+#[cfg(feature = "serde")]
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 #[cfg(feature = "aesgcm")]
 use aes_gcm::{
@@ -49,17 +50,21 @@ pub const GCM_NONCE_LEN: usize = 12;
 /// Erreurs liées aux secrets.
 #[derive(Debug, Error)]
 pub enum SecretError {
+    /// Erreur d’entrée/sortie sous-jacente.
     #[error("I/O: {0}")]
     Io(#[from] std::io::Error),
 
+    /// Longueur de clé AES‑256 invalide (en octets).
     #[error("crypto: clé invalide (attendu {0} octets)")]
     BadKeyLen(usize),
 
+    /// Échec du déchiffrement AES‑GCM.
     #[error("crypto: déchiffrement échoué")]
     Decrypt,
 
-    #[error("serde: {0}")]
     #[cfg(feature = "serde")]
+    #[error("serde: {0}")]
+    /// Erreur de sérialisation/désérialisation (Base64/JSON).
     Serde(String),
 }
 
@@ -67,7 +72,7 @@ pub enum SecretError {
 pub type Result<T> = std::result::Result<T, SecretError>;
 
 /// Secret binaire protégé.
-#[cfg_attr(feature = "zeroize", derive(Zeroize, ZeroizeOnDrop))]
+#[cfg_attr(feature = "zeroize", derive(Zeroize))]
 #[derive(Clone, Eq, PartialEq)]
 pub struct Secret(Vec<u8>);
 
@@ -95,7 +100,7 @@ impl fmt::Debug for Secret {
 #[cfg(feature = "serde")]
 impl Serialize for Secret {
     fn serialize<S: Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
-        let b64 = base64::engine::general_purpose::STANDARD.encode(&self.0);
+        let b64 = STANDARD.encode(&self.0);
         s.serialize_str(&b64)
     }
 }
@@ -104,7 +109,7 @@ impl Serialize for Secret {
 impl<'de> Deserialize<'de> for Secret {
     fn deserialize<D: Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
         let s = String::deserialize(d)?;
-        let bytes = base64::engine::general_purpose::STANDARD
+        let bytes = STANDARD
             .decode(s)
             .map_err(serde::de::Error::custom)?;
         Ok(Secret(bytes))

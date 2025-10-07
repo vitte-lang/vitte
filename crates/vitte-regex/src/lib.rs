@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-regex — moteur regex pour Vitte
 //!
@@ -17,10 +15,13 @@ use regex::Regex;
 /// Erreurs liées au moteur regex.
 #[derive(Debug, Error)]
 pub enum RegexError {
+    /// Erreur de compilation du motif, encapsule `regex::Error`.
     #[error("compilation regex: {0}")]
     Compile(#[from] regex::Error),
+    /// Aucune correspondance n'a été trouvée dans le texte.
     #[error("aucune correspondance trouvée")]
     NoMatch,
+    /// Autre erreur, avec un message libre.
     #[error("autre: {0}")]
     Other(String),
 }

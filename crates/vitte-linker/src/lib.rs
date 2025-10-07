@@ -1,15 +1,13 @@
-//! vitte-linker — éditeur de liens pour Vitte
+//! Linter pour Vitte
 //!
 //! Objectifs :
-//! - Combiner plusieurs modules/objets en un seul binaire ou librairie
-//! - Résoudre les symboles importés/exportés
-//! - Produire un exécutable natif (via LLVM, option `llvm`) ou un binaire minimal
-//! - Optionnel : sérialisation JSON du graphe de dépendances
+//! - Vérifier la qualité du code Vitte
+//! - Détecter les erreurs courantes, mauvaises pratiques, et suggestions
 //!
 //! API :
-//! - [`Linker`] : orchestrateur
-//! - [`LinkInput`] : entrée (module, objet, lib)
-//! - [`LinkOutput`] : sortie (bytecode, binaire natif, lib dynamique)
+//! - [`LintContext`] : contexte d'analyse
+//! - [`Linter`] : trait pour les règles
+//! - Plusieurs règles prédéfinies
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
@@ -19,107 +17,232 @@
     clippy::too_many_lines
 )]
 
-use anyhow::{bail, Context, Result};
-use std::{collections::HashMap, fs, path::PathBuf};
-use vitte_ir::Module;
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "json")]
 use serde::{Deserialize, Serialize};
 
-/// Entrée pour le linker.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct LinkInput {
-    pub name: String,
-    pub module: Module,
-}
-
-/// Sortie après linkage.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct LinkOutput {
-    pub binary: Vec<u8>,
-    pub symbols: HashMap<String, usize>,
-}
-
-/// Résultats possibles.
+/// Niveau de sévérité d'un problème détecté.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LinkKind {
-    Executable,
-    StaticLib,
-    SharedLib,
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
+pub enum Severity {
+    Info,
+    Warning,
+    Error,
 }
 
-/// Éditeur de liens.
-pub struct Linker {
-    inputs: Vec<LinkInput>,
-    pub kind: LinkKind,
+/// Description d'un problème détecté.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
+pub struct Finding {
+    pub rule_name: &'static str,
+    pub message: String,
+    pub line: usize,
+    pub column: usize,
+    pub severity: Severity,
 }
 
-impl Linker {
-    pub fn new(kind: LinkKind) -> Self {
-        Self { inputs: Vec::new(), kind }
+impl Finding {
+    pub fn new(
+        rule_name: &'static str,
+        message: String,
+        line: usize,
+        column: usize,
+        severity: Severity,
+    ) -> Self {
+        Self { rule_name, message, line, column, severity }
+    }
+}
+
+/// Contexte d'analyse pour un fichier source.
+pub struct LintContext<'a> {
+    pub lines: Vec<&'a str>,
+    pub findings: Vec<Finding>,
+}
+
+impl<'a> LintContext<'a> {
+    pub fn new(source: &'a str) -> Self {
+        let lines = source.lines().collect();
+        Self { lines, findings: Vec::new() }
     }
 
-    pub fn add_input(&mut self, input: LinkInput) {
-        self.inputs.push(input);
+    pub fn emit(&mut self, finding: Finding) {
+        self.findings.push(finding);
     }
+}
 
-    /// Lie tous les modules ensemble.
-    pub fn link(&self) -> Result<LinkOutput> {
-        if self.inputs.is_empty() {
-            bail!("aucune entrée fournie au linker");
+/// Trait pour une règle de lint.
+pub trait Linter {
+    fn name(&self) -> &'static str;
+    fn max(&self) -> usize {
+        80
+    }
+    fn severity(&self) -> Severity {
+        Severity::Warning
+    }
+    fn check(&self, ctx: &mut LintContext);
+}
+
+/// Règle : lignes trop longues.
+pub struct LongLines {
+    pub max: usize,
+    pub severity: Severity,
+}
+
+impl Default for LongLines {
+    fn default() -> Self {
+        Self { max: 80, severity: Severity::Warning }
+    }
+}
+
+impl Linter for LongLines {
+    fn name(&self) -> &'static str {
+        "long_lines"
+    }
+    fn max(&self) -> usize {
+        self.max
+    }
+    fn severity(&self) -> Severity {
+        self.severity
+    }
+    fn check(&self, ctx: &mut LintContext) {
+        let lines: Vec<String> = ctx.lines.iter().map(|s| (*s).to_owned()).collect();
+        for (i, line) in lines.iter().enumerate() {
+            let len = line.chars().count();
+            if len > self.max {
+                ctx.emit(Finding::new(
+                    self.name(),
+                    format!("Ligne de {len} caractères (> {})", self.max),
+                    i + 1,
+                    self.max + 1,
+                    self.severity,
+                ));
+            }
         }
-        // Naïf: concatène le bytecode des modules IR
-        let mut binary = Vec::new();
-        let mut symbols = HashMap::new();
-        for (i, inp) in self.inputs.iter().enumerate() {
-            let bc = inp.module.encode()?;
-            binary.extend(bc);
-            symbols.insert(inp.name.clone(), i);
+    }
+}
+
+/// Règle : espaces en fin de ligne.
+pub struct TrailingSpaces;
+
+impl Linter for TrailingSpaces {
+    fn name(&self) -> &'static str {
+        "trailing_spaces"
+    }
+    fn check(&self, ctx: &mut LintContext) {
+        let lines: Vec<String> = ctx.lines.iter().map(|s| (*s).to_owned()).collect();
+        for (i, orig) in lines.iter().enumerate() {
+            let trimmed = orig.trim_end();
+            if trimmed.len() != orig.len() {
+                let col = trimmed.len() + 1;
+                ctx.emit(Finding::new(
+                    self.name(),
+                    "Espaces en fin de ligne".into(),
+                    i + 1,
+                    col,
+                    Severity::Warning,
+                ));
+            }
         }
-        Ok(LinkOutput { binary, symbols })
-    }
-
-    /// Écrit le binaire en sortie.
-    pub fn write_output(&self, out_path: &PathBuf) -> Result<()> {
-        let output = self.link()?;
-        fs::write(out_path, &output.binary)
-            .with_context(|| format!("écriture du binaire {}", out_path.display()))?;
-        Ok(())
     }
 }
 
-/// Helpers pour fabriquer des entrées de test.
-pub fn input_from_module(name: &str, m: Module) -> LinkInput {
-    LinkInput { name: name.to_string(), module: m }
+/// Règle : tabulations.
+pub struct Tabs;
+
+impl Linter for Tabs {
+    fn name(&self) -> &'static str {
+        "tabs"
+    }
+    fn check(&self, ctx: &mut LintContext) {
+        let lines: Vec<String> = ctx.lines.iter().map(|s| (*s).to_owned()).collect();
+        for (i, line) in lines.iter().enumerate() {
+            if let Some(pos) = line.find('\t') {
+                ctx.emit(Finding::new(
+                    self.name(),
+                    "Tabulation trouvée (préférez espaces)".into(),
+                    i + 1,
+                    pos + 1,
+                    Severity::Info,
+                ));
+            }
+        }
+    }
 }
 
-// ============================= Tests ======================================
+/// Règle : marqueurs TODO, FIXME, etc.
+pub struct Markers;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use vitte_ir::ModuleBuilder;
+impl Linter for Markers {
+    fn name(&self) -> &'static str {
+        "markers"
+    }
+    fn check(&self, ctx: &mut LintContext) {
+        let lines: Vec<String> = ctx.lines.iter().map(|s| (*s).to_owned()).collect();
+        let markers = ["TODO", "FIXME", "BUG", "XXX"];
+        for (i, line) in lines.iter().enumerate() {
+            for &p in &markers {
+                if let Some(pos) = line.find(p) {
+                    ctx.emit(Finding::new(
+                        self.name(),
+                        format!("Marqueur '{}'", p),
+                        i + 1,
+                        pos + 1,
+                        Severity::Info,
+                    ));
+                }
+            }
+        }
+    }
+}
 
-    #[test]
-    fn link_concat() {
-        let mut b = ModuleBuilder::new("a");
-        b.start_function("foo");
-        b.end_function();
-        let m1 = b.finish();
+/// Règle : lignes vides multiples.
+pub struct MultipleBlankLines;
 
-        let mut b2 = ModuleBuilder::new("b");
-        b2.start_function("bar");
-        b2.end_function();
-        let m2 = b2.finish();
+impl Linter for MultipleBlankLines {
+    fn name(&self) -> &'static str {
+        "multiple_blank_lines"
+    }
+    fn check(&self, ctx: &mut LintContext) {
+        let lines: Vec<String> = ctx.lines.iter().map(|s| (*s).to_owned()).collect();
+        let mut prev_blank = false;
+        for (i, line) in lines.iter().enumerate() {
+            let blank = line.trim().is_empty();
+            if blank && prev_blank {
+                ctx.emit(Finding::new(
+                    self.name(),
+                    "Plus d'une ligne vide consécutive".into(),
+                    i + 1,
+                    1,
+                    Severity::Info,
+                ));
+            }
+            prev_blank = blank;
+        }
+    }
+}
 
-        let mut linker = Linker::new(LinkKind::Executable);
-        linker.add_input(input_from_module("mod1", m1));
-        linker.add_input(input_from_module("mod2", m2));
+/// Règle : appels de debug (dbg!, println!).
+pub struct DebugCalls;
 
-        let out = linker.link().unwrap();
-        assert!(out.binary.len() > 0);
-        assert_eq!(out.symbols.len(), 2);
+impl Linter for DebugCalls {
+    fn name(&self) -> &'static str {
+        "debug_calls"
+    }
+    fn check(&self, ctx: &mut LintContext) {
+        let lines: Vec<String> = ctx.lines.iter().map(|s| (*s).to_owned()).collect();
+        let patterns = ["dbg!", "println!"];
+        for (i, line) in lines.iter().enumerate() {
+            for pat in &patterns {
+                if let Some(pos) = line.find(pat) {
+                    ctx.emit(Finding::new(
+                        self.name(),
+                        "Appel de debug détecté".into(),
+                        i + 1,
+                        pos + 1,
+                        Severity::Warning,
+                    ));
+                }
+            }
+        }
     }
 }

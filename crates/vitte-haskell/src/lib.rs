@@ -25,7 +25,16 @@ use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::path::Path;
 use std::ptr;
 use std::sync::{Arc, Mutex, RwLock};
-use thiserror::Error}
+use thiserror::Error;
+
+/// Opaque C user data passed back to callbacks.
+/// Safety: the embedder guarantees thread-safety of this pointer usage.
+#[repr(transparent)]
+#[derive(Copy, Clone)]
+struct CUserData(*mut c_void);
+// Allow sharing across threads for the global callback slot.
+unsafe impl Send for CUserData {}
+unsafe impl Sync for CUserData {}
 
 /// Codes de statut stables.
 #[repr(i32)]
@@ -60,14 +69,19 @@ impl VitteHsStatus {
 /// Erreurs internes.
 #[derive(Error, Debug)]
 pub enum HsError {
+    /// Argument d'API invalide (ex: pointeur nul, UTF-8 invalide).
     #[error("invalid arg: {0}")]
     InvalidArg(&'static str),
+    /// Ressource manquante (ex: fichier introuvable).
     #[error("not found: {0}")]
     NotFound(String),
+    /// Erreur d'entrée/sortie retournée par le système de fichiers.
     #[error("io: {0}")]
     Io(String),
+    /// Fonctionnalité non supportée sur cette plateforme ou build.
     #[error("unsupported: {0}")]
     Unsupported(&'static str),
+    /// Erreur générique interne.
     #[error("error: {0}")]
     Other(String),
 }
@@ -135,7 +149,7 @@ impl Default for LogLevel {
 
 type LogCb = Option<extern "C" fn(level: c_uint, msg: *const c_char, user_data: *mut c_void)>;
 
-static LOG_SINK: RwLock<(LogCb, *mut c_void)> = RwLock::new((None, ptr::null_mut()));
+static LOG_SINK: RwLock<(LogCb, CUserData)> = RwLock::new((None, CUserData(ptr::null_mut())));
 
 fn log_emit(level: LogLevel, msg: &str) {
     if let Ok(guard) = LOG_SINK.read() {
@@ -148,7 +162,7 @@ fn log_emit(level: LogLevel, msg: &str) {
                 LogLevel::Trace => 4,
             };
             if let Ok(c) = CString::new(msg) {
-                cb(lv, c.as_ptr(), guard.1);
+                cb(lv, c.as_ptr(), guard.1 .0);
             }
         }
     }
@@ -279,7 +293,7 @@ pub unsafe extern "C" fn vitte_hs_set_log_level(ctx: *mut VitteHsCtx, level: c_i
 #[no_mangle]
 pub extern "C" fn vitte_hs_set_log_callback(cb: LogCb, user_data: *mut c_void) -> VitteHsStatus {
     if let Ok(mut g) = LOG_SINK.write() {
-        *g = (cb, user_data);
+        *g = (cb, CUserData(user_data));
         VitteHsStatus::Ok
     } else {
         set_last_error("log sink lock failed".into());

@@ -128,7 +128,7 @@ fn install_panic_hook(cfg: Config) {
 
 #[cfg(unix)]
 fn install_signal_handler(cfg: Config) -> Result<(), Error> {
-    let signals = Signals::new([SIGSEGV, SIGILL, SIGBUS, SIGFPE, SIGABRT])
+    let mut signals = Signals::new([SIGSEGV, SIGILL, SIGBUS, SIGFPE, SIGABRT])
         .map_err(|e| Error::Install(e.to_string()))?;
     let cfg = Arc::new(cfg);
     std::thread::spawn(move || {

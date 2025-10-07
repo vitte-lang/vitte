@@ -23,8 +23,6 @@ extern crate alloc;
 use bitflags::bitflags;
 use core::cmp::Ordering;
 
-#[cfg(feature = "std")]
-use std as alloc_std;
 
 #[cfg(feature = "no_std")]
 use alloc::{string::String, vec, vec::Vec, collections::BTreeMap};
@@ -77,7 +75,7 @@ impl core::fmt::Display for CapError {
 // ---------------------------------------------------------------------------
 
 bitflags! {
-    #[derive(Serialize, Deserialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct Caps: u64 {
         const FS_READ       = 1 << 0;
         const FS_WRITE      = 1 << 1;
@@ -96,6 +94,25 @@ bitflags! {
         const CUSTOM_1      = 1 << 14;
         const CUSTOM_2      = 1 << 15;
         const ALL           = u64::MAX;
+    }
+}
+
+impl serde::Serialize for Caps {
+    fn serialize<S>(&self, serializer: S) -> core::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_u64(self.bits())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Caps {
+    fn deserialize<D>(deserializer: D) -> core::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let bits = u64::deserialize(deserializer)?;
+        Caps::from_bits(bits).ok_or_else(|| serde::de::Error::custom("invalid caps bits"))
     }
 }
 
@@ -449,18 +466,18 @@ pub mod prelude {
     };
 
     /// Raccourcis:
-    use super::{Pattern as P, ResourceSelector as S, SelectorKind as K};
+    use super::{Pattern as P, ResourceSelector as S, SelectorKind as K, BTreeMap};
     pub fn file_prefix(prefix: &str) -> S { S { kind: K::File, pat: P::Prefix(prefix.into()), meta: Default::default() } }
     pub fn file_exact(path: &str) -> S { S { kind: K::File, pat: P::Exact(path.into()), meta: Default::default() } }
     pub fn host(host: &str, port: Option<u16>) -> S {
-        let mut m = Default::default();
+        let mut m: BTreeMap<String, String> = BTreeMap::new();
         if let Some(p) = port { m.insert("port".into(), p.to_string()); }
         S { kind: K::NetHost, pat: P::Exact(host.into()), meta: m }
     }
     pub fn env_glob(glob: &str) -> S { S { kind: K::Env, pat: P::Glob(glob.into()), meta: Default::default() } }
     pub fn proc_name(name: &str) -> S { S { kind: K::Proc, pat: P::Exact(name.into()), meta: Default::default() } }
     pub fn custom(kind: &str, id_pat: P) -> S {
-        let mut m = Default::default();
+        let mut m: BTreeMap<String, String> = BTreeMap::new();
         m.insert("kind".into(), kind.into());
         S { kind: K::Custom, pat: id_pat, meta: m }
     }

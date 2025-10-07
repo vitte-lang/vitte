@@ -17,12 +17,16 @@ use thiserror::Error;
 /// Erreurs interop PHP.
 #[derive(Debug, Error)]
 pub enum PhpError {
+    /// Erreur issue d'un appel FFI (chaîne portée depuis la bibliothèque sous-jacente).
     #[error("FFI error: {0}")]
     Ffi(String),
+    /// Échec de conversion de types entre Rust et l'API PHP/Zend.
     #[error("conversion error: {0}")]
     Conversion(String),
+    /// Pointeur nul rencontré alors qu'une adresse valide était attendue.
     #[error("null pointer")]
     NullPtr,
+    /// Autre erreur non catégorisée, avec message associé.
     #[error("other: {0}")]
     Other(String),
 }

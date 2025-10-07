@@ -28,7 +28,6 @@ use alloc::{string::String, vec::Vec};
 #[cfg(feature = "std")]
 use std::{
     env,
-    ffi::OsString,
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus, Stdio},
     thread,
@@ -135,17 +134,17 @@ mod stubs {
    SECTION: UTILITAIRES D’ERREURS
    ======================================================================= */
 
-#[cfg(feature = "std")]
+// Map std::io::Error -> type d'erreur du crate
+#[cfg(all(feature = "std", feature = "errors"))]
 #[inline]
-fn map_io() -> impl FnOnce(std::io::Error) -> crate::Result::Err {
-    #[cfg(feature = "errors")]
-    {
-        |e| Error::from(e)
-    }
-    #[cfg(not(feature = "errors"))]
-    {
-        |_e| "io error"
-    }
+fn map_io() -> impl FnOnce(std::io::Error) -> Error {
+    |e| Error::from(e)
+}
+
+#[cfg(all(feature = "std", not(feature = "errors")))]
+#[inline]
+fn map_io() -> impl FnOnce(std::io::Error) -> &'static str {
+    |_e| "io error"
 }
 
 /* =======================================================================
@@ -220,7 +219,7 @@ pub fn hostname() -> Result<String> {
                     return Ok(s);
                 }
             }
-            Err(err_unsup())
+            return err_unsup();
         }
     }
 }
@@ -306,17 +305,16 @@ pub fn env_all() -> Vec<(String, String)> {
     env::vars().collect()
 }
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "errors"))]
 #[inline]
-fn map_env(e: env::VarError) -> crate::Result::Err {
-    #[cfg(feature = "errors")]
-    {
-        Error::from(e)
-    }
-    #[cfg(not(feature = "errors"))]
-    {
-        "env error"
-    }
+fn map_env(e: env::VarError) -> Error {
+    Error::from(e)
+}
+
+#[cfg(all(feature = "std", not(feature = "errors")))]
+#[inline]
+fn map_env(_e: env::VarError) -> &'static str {
+    "env error"
 }
 
 /* =======================================================================
@@ -464,7 +462,7 @@ pub fn kill_process(pid: u32) -> Result<()> {
     #[cfg(not(any(all(feature="libc", unix), all(feature="winapi", windows))))]
     {
         let _ = pid;
-        Err(err_unsup())
+        return err_unsup();
     }
 }
 

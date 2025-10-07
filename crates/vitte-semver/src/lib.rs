@@ -24,10 +24,13 @@ use serde::{Deserialize, Serialize};
 /// Erreurs SemVer.
 #[derive(Debug, Error)]
 pub enum SemverError {
+    /// Erreur lors du **parsing** d'une chaîne SemVer (message d'erreur inclus).
     #[error("parse error: {0}")]
     Parse(String),
+    /// Erreur lors de l'analyse d'une **contrainte** de version (message d'erreur inclus).
     #[error("requirement error: {0}")]
     Req(String),
+    /// Autre erreur liée aux opérations SemVer.
     #[error("other: {0}")]
     Other(String),
 }

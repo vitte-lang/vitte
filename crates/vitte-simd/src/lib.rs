@@ -15,6 +15,7 @@ use thiserror::Error;
 /// Erreurs SIMD.
 #[derive(Debug, Error)]
 pub enum SimdError {
+    /// Dimensions incompatibles entre deux entrées (longueurs `a` et `b`).
     #[error("dimensions incompatibles: {0} vs {1}")]
     Dim(usize, usize),
 }

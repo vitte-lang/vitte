@@ -22,7 +22,9 @@ use thiserror::Error;
 /// Erreurs liées aux chaînes
 #[derive(Debug, Error)]
 pub enum StrError {
+    /// Tentative d'accès à un index hors des limites de la chaîne.
     #[error("index hors limites")] OutOfBounds,
+    /// Opération de chaîne invalide ; le message précise la cause.
     #[error("opération invalide: {0}")] Invalid(String),
 }
 

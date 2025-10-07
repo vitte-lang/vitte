@@ -1,67 +1,25 @@
 [package]
-name        = "vitte-linker"
-description = "Éditeur de liens pour Vitte (assemblage d’objets, bibliothèques et génération de binaire final)."
+name = "vitte-linker"
+version = "0.1.0"
+edition = "2021"
 
-version      = { workspace = true }
-edition      = { workspace = true }
-rust-version = { workspace = true }
-license      = { workspace = true }
-repository   = { workspace = true }
-homepage     = { workspace = true }
-
-readme        = "README.md"
-documentation = "https://docs.rs/vitte-linker"
-
-keywords   = ["compiler", "linker", "binary", "vitte"]
-categories = ["compilers", "development-tools"]
-
-exclude = [".github/*", "examples/*", "tests/*"]
-
-[lib]
-name = "vitte_linker"
-path = "src/lib.rs"
+[dependencies]
+vitte-ir = { path = "../vitte-ir" }
+inkwell = { version = "0.4", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
 
 [features]
-default = ["std"]
+default = ["std", "json"]
 std     = []
 
 # Intégration avec LLVM
 llvm = ["dep:inkwell"]
 
 # Sérialisation JSON
-json = ["dep:serde", "dep:serde_json"]
+json  = ["dep:serde", "dep:serde_json"]
+# Alias pour compat' avec les attributs #[cfg(feature = "serde")] présents dans le code
+serde = ["json"]
 
 # Tout activé
 full = ["std", "llvm", "json"]
-
-[dependencies]
-vitte-ir     = { path = "../vitte-ir" }
-vitte-errors = { path = "../vitte-errors" }
-
-serde      = { workspace = true, features = ["derive"], optional = true }
-serde_json = { version = "1.0", optional = true }
-
-anyhow    = "1.0"
-thiserror = "1.0"
-
-# Optionnel: backend LLVM
-inkwell = { version = "0.4", optional = true }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }
-tempfile          = "3.12"
-
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
-
-[lints.rust]
-unsafe_code = "forbid"
-
-[lints.clippy]
-all                      = "warn"
-pedantic                 = "warn"
-nursery                  = "warn"
-module_name_repetitions  = "allow"
-doc_markdown             = "allow"
-too_many_lines           = "allow"

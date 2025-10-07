@@ -83,7 +83,7 @@ mod client {
         pub user_agent: Option<String>,
         /// Redirections max.
         pub redirects: usize,
-        /// Gzip/Brotli activés par défaut via features reqwest.
+        // Gzip/Brotli activés par défaut via features reqwest.
     }
     impl Default for ClientOptions {
         fn default() -> Self {
@@ -210,18 +210,16 @@ mod client {
 
     pub use reqwest::{header, Method};
     pub use HttpClient as Client;
-    pub use ClientOptions;
 }
 
 #[cfg(feature = "server")]
 mod server {
     use super::*;
     use hyper::{
-        body::to_bytes,
+        body::{to_bytes, Body},
         header::HeaderValue,
         http::Response,
-        service::Service,
-        Body, Method, Request, Server, StatusCode,
+        Method, Request, StatusCode,
     };
     use std::{convert::Infallible, net::SocketAddr, sync::Arc};
     use tokio::signal;
@@ -337,7 +335,7 @@ mod server {
             }
         });
 
-        let srv = Server::bind(&addr).serve(make);
+        let srv = hyper::Server::bind(&addr).serve(make);
         let graceful = srv.with_graceful_shutdown(async {
             let _ = signal::ctrl_c().await;
         });
@@ -396,7 +394,7 @@ mod server {
     /// Helpers d’extraction.
 
     /// Lit le corps entier en bytes.
-    pub async fn body_bytes(req: Request<Body>) -> HttpResult<(Request<Body>, bytes::Bytes)> {
+    pub async fn body_bytes(req: Request<Body>) -> HttpResult<(Request<Body>, hyper::body::Bytes)> {
         let (parts, body) = req.into_parts();
         let bytes = to_bytes(body).await?;
         Ok((Request::from_parts(parts, Body::empty()), bytes))
@@ -411,10 +409,6 @@ mod server {
         Ok((req, v))
     }
 
-    pub use hyper::{Body, Method, Request, StatusCode};
-    pub use Router;
-    pub use HttpResponse;
-    pub use serve;
 }
 
 #[cfg(feature = "client")]

@@ -18,8 +18,10 @@ use thiserror::Error;
 /// Erreurs de test
 #[derive(Debug, Error)]
 pub enum TestError {
+    /// Erreur: valeur inattendue.
     #[error("valeur inattendue: {0}")]
     Unexpected(String),
+    /// Erreur d'entrée/sortie (wrappée depuis std::io::Error).
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -122,8 +124,8 @@ pub fn assert_result_matches<T,E: std::fmt::Debug>(res: &std::result::Result<T,E
 /// Capture stdout/stderr lors de l'exécution d'une closure
 pub fn capture_output<F: FnOnce()>(f: F) -> (String, String) {
     use std::io::Write;
-    let mut stdout_buf = Vec::new();
-    let mut stderr_buf = Vec::new();
+    let stdout_buf = Vec::new();
+    let stderr_buf = Vec::new();
     let stdout_ref = std::io::stdout();
     let stderr_ref = std::io::stderr();
     let _ = f();

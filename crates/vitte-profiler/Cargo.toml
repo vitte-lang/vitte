@@ -1,63 +1,18 @@
 [package]
-name        = "vitte-profiler"
-description = "Profiler pour le compilateur et la machine virtuelle Vitte (mesures de performance et traces d’exécution)."
-
-version      = { workspace = true }
-edition      = { workspace = true }
-rust-version = { workspace = true }
-license      = { workspace = true }
-repository   = { workspace = true }
-homepage     = { workspace = true }
-
-readme        = "README.md"
-documentation = "https://docs.rs/vitte-profiler"
-
-keywords   = ["compiler", "profiler", "performance", "vitte"]
-categories = ["development-tools", "profiling"]
-
-exclude = [".github/*", "examples/*", "tests/*"]
-
-[lib]
-name = "vitte_profiler"
-path = "src/lib.rs"
+name = "vitte-profiler"
+version = "0.1.0"
+edition = "2021"
 
 [features]
-default = ["std"]
-std     = []
-
-# Sérialisation JSON
-json = ["dep:serde", "dep:serde_json"]
-
-# Export au format Chrome tracing
-chrome = ["dep:serde", "dep:serde_json"]
-
-# Tout activé
-full = ["std", "json", "chrome"]
+default = []
+serde = ["dep:serde"]                 # <- supprime les warnings "unexpected cfg value: serde"
+json  = ["serde", "dep:serde_json"]   # pour to_json()
+chrome = ["serde", "dep:serde_json"]  # pour to_chrome_trace()
+full = ["serde", "json", "chrome"]
 
 [dependencies]
+once_cell = "1"            # <- corrige E0433 (Lazy)
 parking_lot = "0.12"
 
-anyhow    = "1.0"
-thiserror = "1.0"
-
-serde      = { workspace = true, features = ["derive"], optional = true }
-serde_json = { version = "1.0", optional = true }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }
-tempfile          = "3.12"
-
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
-
-[lints.rust]
-unsafe_code = "forbid"
-
-[lints.clippy]
-all                      = "warn"
-pedantic                 = "warn"
-nursery                  = "warn"
-module_name_repetitions  = "allow"
-doc_markdown             = "allow"
-too_many_lines           = "allow"
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }

@@ -82,6 +82,7 @@ impl Level {
 
 /// Macros de log unifiées.
 #[macro_export]
+#[doc = "Écrit un message de niveau **error** via `tracing` ou `log` selon les features."]
 macro_rules! error {
     ($($arg:tt)*) => {{
         #[cfg(feature="tracing")] { tracing::error!($($arg)*); }
@@ -90,6 +91,7 @@ macro_rules! error {
     }};
 }
 #[macro_export]
+#[doc = "Écrit un message de niveau **warn** via `tracing` ou `log` selon les features."]
 macro_rules! warn {
     ($($arg:tt)*) => {{
         #[cfg(feature="tracing")] { tracing::warn!($($arg)*); }
@@ -98,6 +100,7 @@ macro_rules! warn {
     }};
 }
 #[macro_export]
+#[doc = "Écrit un message de niveau **info** via `tracing` ou `log` selon les features."]
 macro_rules! info {
     ($($arg:tt)*) => {{
         #[cfg(feature="tracing")] { tracing::info!($($arg)*); }
@@ -106,6 +109,7 @@ macro_rules! info {
     }};
 }
 #[macro_export]
+#[doc = "Écrit un message de niveau **debug** via `tracing` ou `log` selon les features."]
 macro_rules! debug {
     ($($arg:tt)*) => {{
         #[cfg(feature="tracing")] { tracing::debug!($($arg)*); }
@@ -114,6 +118,7 @@ macro_rules! debug {
     }};
 }
 #[macro_export]
+#[doc = "Écrit un message de niveau **trace** via `tracing` ou `log` selon les features."]
 macro_rules! trace {
     ($($arg:tt)*) => {{
         #[cfg(feature="tracing")] { tracing::trace!($($arg)*); }
@@ -135,6 +140,10 @@ pub fn init(level: Level) {
         tracing_subscriber::registry()
             .with(fmt_layer)
             .init();
+    }
+    #[cfg(all(not(feature = "tracing"), not(feature = "log")))]
+    {
+        let _ = level;
     }
 }
 

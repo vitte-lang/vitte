@@ -25,16 +25,13 @@ extern crate alloc;
 use alloc::{boxed::Box, string::String, vec, vec::Vec, format};
 
 #[cfg(feature="std")]
-use std::{boxed::Box, string::String, vec::Vec, fmt};
+use std::{string::String, vec::Vec, fmt};
 
 #[cfg(feature="serde")]
 use serde::{Serialize, Deserialize};
 
 #[cfg(feature="errors")]
 use thiserror::Error;
-
-#[cfg(feature="ansi")]
-use vitte_ansi as ansi;
 
 #[cfg(feature="style")]
 use vitte_style as vstyle;
@@ -169,7 +166,7 @@ impl RenderOptions {
 }
 
 /// Rendu en chaîne multi-lignes.
-pub fn render(root: &Node, mut opts: RenderOptions) -> String {
+pub fn render(root: &Node, opts: RenderOptions) -> String {
     let mut out = String::new();
     let mut path_last = Vec::<bool>::new(); // pile des "dernier enfant?"
     if opts.show_root {
@@ -357,13 +354,72 @@ mod tests {
 
 #[cfg(feature="ansi")]
 mod regex_lite {
-    // mini façade pour éviter une dépendance lourde; remplacez par `regex` si besoin.
+    // mini façade interne, sans dépendance externe.
     pub use crate::internal_regex::Regex;
 }
+
 #[cfg(feature="ansi")]
 mod internal_regex {
-    // très petit parseur d’escape CSI: on fait simple via regex standard si dispo,
-    // sinon on met une impl très naïve. Ici on se fie à `regex` si présent.
-    pub use regex::Regex;
-    // si `regex` n’est pas dans le workspace, ajoutez-le en optional selon vos besoins.
+    use std::borrow::Cow;
+
+    /// Fausse implémentation minimale suffisante pour `display_width`:
+    /// on ignore le motif donné et on retire simplement les séquences ANSI de type CSI (`\x1B[` ... lettre).
+    pub struct Regex;
+
+    impl Regex {
+        pub fn new(_pat: &str) -> Result<Self, ()> { Ok(Regex) }
+
+        pub fn replace_all<'a>(&self, s: &'a str, _replacement: &str) -> Cow<'a, str> {
+            // Scan sur octets pour conserver l’UTF-8 sans l’endommager.
+            let bytes = s.as_bytes();
+            let mut i = 0usize;
+            let mut last = 0usize;
+            let mut out: Option<String> = None;
+
+            while i < bytes.len() {
+                // Détecte ESC '['
+                if bytes[i] == 0x1B && i + 1 < bytes.len() && bytes[i + 1] == b'[' {
+                    // Alloue la sortie au premier besoin et pousse la portion claire.
+                    if out.is_none() {
+                        out = Some(String::with_capacity(s.len()));
+                    }
+                    if let Some(ref mut o) = out {
+                        // segment clair avant la séquence
+                        o.push_str(&s[last..i]);
+                    }
+                    // saute '\x1B['
+                    i += 2;
+                    // consomme jusqu’à un caractère ASCII alphabétique (fin des CSI)
+                    while i < bytes.len() {
+                        let b = bytes[i];
+                        i += 1;
+                        if (b as char).is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                    last = i;
+                } else {
+                    // Avance d’un caractère UTF-8 complet
+                    let ch_len = match bytes[i] {
+                        0x00..=0x7F => 1,
+                        0xC0..=0xDF => 2,
+                        0xE0..=0xEF => 3,
+                        _ => 4,
+                    };
+                    i += ch_len;
+                }
+            }
+
+            if let Some(mut o) = out {
+                // Reste final après la dernière séquence
+                if last <= s.len() {
+                    o.push_str(&s[last..]);
+                }
+                Cow::Owned(o)
+            } else {
+                // Pas de séquence trouvée: renvoie l’original
+                Cow::Borrowed(s)
+            }
+        }
+    }
 }

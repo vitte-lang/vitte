@@ -33,11 +33,11 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "json")]
 use serde::{Deserialize, Serialize};
 
 /// Identité d’un paquet.
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PackageId {
     pub name: String,
@@ -51,7 +51,7 @@ impl PackageId {
 }
 
 /// Entrée d’index pour un artefact.
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageRecord {
     pub id: PackageId,
@@ -70,7 +70,7 @@ impl PackageRecord {
 }
 
 /// Index complet : nom → liste de versions.
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Index {
     pub packages: HashMap<String, Vec<PackageRecord>>,
@@ -146,13 +146,13 @@ impl Registry {
 
     /// Enregistre une référence distante sans copier d’artefact local.
     pub fn publish_remote(&mut self, name: &str, version: &str, url: &str, checksum: Option<String>) {
-        let mut rec = PackageRecord {
+        let rec = PackageRecord {
             id: PackageId::new(name, version),
             url: Some(url.to_string()),
             local_path: None,
             checksum,
         };
-        self.index.add(rec.clone());
+        self.index.add(rec);
     }
 
     /// Résout un paquet (nom, contrainte optionnelle) vers un artefact.

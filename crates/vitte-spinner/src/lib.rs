@@ -31,7 +31,7 @@ use serde::{Serialize, Deserialize};
 use thiserror::Error;
 
 #[cfg(feature="ansi")]
-use vitte_ansi as ansi;
+use vitte_ansi::basic::{cyan, green, red};
 
 #[cfg(feature="multi")]
 use crossbeam_channel as xch;
@@ -236,21 +236,21 @@ impl Spinner {
     #[cfg(feature="std")]
     fn paint_frame(&self, f:&str)->String{
         if cfg!(feature="ansi") && self.style.colorize {
-            #[cfg(feature="ansi")] { return ansi::cyan(f).to_string(); }
+            #[cfg(feature="ansi")] { return cyan().paint(f).to_string(); }
         }
         f.to_string()
     }
     #[cfg(feature="std")]
     fn paint_ok(&self, s:&str)->String{
         if cfg!(feature="ansi") && self.style.colorize {
-            #[cfg(feature="ansi")] { return ansi::green(s).bold().to_string(); }
+            #[cfg(feature="ansi")] { return green().bold().paint(s).to_string(); }
         }
         s.to_string()
     }
     #[cfg(feature="std")]
     fn paint_err(&self, s:&str)->String{
         if cfg!(feature="ansi") && self.style.colorize {
-            #[cfg(feature="ansi")] { return ansi::red(s).bold().to_string(); }
+            #[cfg(feature="ansi")] { return red().bold().paint(s).to_string(); }
         }
         s.to_string()
     }
@@ -302,7 +302,7 @@ impl SpinnerHandle {
 pub fn scope_spinner<T, F: FnOnce() -> T>(text:&str, on_ok:&str, on_err:&str, f:F) -> T
 where T: core::fmt::Debug
 {
-    let mut sp = Spinner::new().text(text.to_string());
+    let sp = Spinner::new().text(text.to_string());
     let h = SpinnerHandle::start(sp);
     let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
     match res {
@@ -391,21 +391,21 @@ fn painter(rx: xch::Receiver<Msg>) {
 #[cfg(feature="multi")]
 fn paint_frame(st:&Style, f:&str)->String{
     if cfg!(feature="ansi") && st.colorize {
-        #[cfg(feature="ansi")] { return ansi::cyan(f).to_string(); }
+        #[cfg(feature="ansi")] { return cyan().paint(f).to_string(); }
     }
     f.to_string()
 }
 #[cfg(feature="multi")]
 fn paint_ok(st:&Style, s:&str)->String{
     if cfg!(feature="ansi") && st.colorize {
-        #[cfg(feature="ansi")] { return ansi::green(s).bold().to_string(); }
+        #[cfg(feature="ansi")] { return green().bold().paint(s).to_string(); }
     }
     s.to_string()
 }
 #[cfg(feature="multi")]
 fn paint_err(st:&Style, s:&str)->String{
     if cfg!(feature="ansi") && st.colorize {
-        #[cfg(feature="ansi")] { return ansi::red(s).bold().to_string(); }
+        #[cfg(feature="ansi")] { return red().bold().paint(s).to_string(); }
     }
     s.to_string()
 }

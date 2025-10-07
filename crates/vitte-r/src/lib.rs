@@ -16,8 +16,11 @@ use thiserror::Error;
 /// Erreurs interop R.
 #[derive(Debug, Error)]
 pub enum RError {
+    /// Erreur renvoyée par l'intégration extendr (bindings R) avec un message détaillé.
     #[error("extendr error: {0}")] Extendr(String),
+    /// Erreur bas niveau via FFI vers l'API C de R (par ex. initialisation/évaluation).
     #[error("FFI error: {0}")] Ffi(String),
+    /// Problème de conversion (R <-> Rust ou JSON) avec description.
     #[error("conversion error: {0}")] Conversion(String),
 }
 

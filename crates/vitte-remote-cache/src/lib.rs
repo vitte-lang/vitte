@@ -39,18 +39,24 @@ use zstd::stream::{encode_all, decode_all};
 pub enum CacheError {
     #[error("http error: {0}")]
     #[cfg(feature = "http")]
+    /// Erreur HTTP (activée avec la feature `http`).
     Http(#[from] reqwest::Error),
     #[error("io error: {0}")]
+    /// Erreur d'entrée/sortie du système de fichiers.
     Io(#[from] std::io::Error),
     #[error("redis error: {0}")]
     #[cfg(feature = "redis")]
+    /// Erreur Redis (activée avec la feature `redis`).
     Redis(#[from] redis::RedisError),
     #[error("aws error: {0}")]
     #[cfg(feature = "s3")]
+    /// Erreur du SDK AWS S3 (activée avec la feature `s3`).
     Aws(String),
     #[error("compression error: {0}")]
+    /// Erreur de compression ou décompression (zstd).
     Compression(String),
     #[error("other: {0}")]
+    /// Autre erreur générique.
     Other(String),
 }
 

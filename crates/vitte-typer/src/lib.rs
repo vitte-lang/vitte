@@ -9,7 +9,6 @@
 extern crate alloc;
 
 use alloc::string::String;
-use alloc::vec::Vec;
 
 /// Result alias for the type checker.
 pub type Result<T> = core::result::Result<T, TyperError>;

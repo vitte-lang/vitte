@@ -23,22 +23,21 @@
 )]
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Instant;
+use std::sync::OnceLock;
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "json")]
 use serde::{Deserialize, Serialize};
 
-use parking_lot::RwLock;
+use std::sync::RwLock;
 
-lazy_static::lazy_static! {
-    static ref GLOBAL: Tracer = Tracer::default();
-}
+static GLOBAL: OnceLock<Tracer> = OnceLock::new();
 
 /* --------------------------------- Modèle --------------------------------- */
 
 /// Un évènement ponctuel.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 pub struct TraceEvent {
     pub name: String,
     pub ts_us: u128,
@@ -47,7 +46,7 @@ pub struct TraceEvent {
 
 /// Un span mesuré.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 pub struct SpanRecord {
     pub name: String,
     pub dur_us: u128,
@@ -63,7 +62,7 @@ pub struct Tracer {
 
 impl Tracer {
     /// Accès global.
-    pub fn global() -> &'static Self { &GLOBAL }
+    pub fn global() -> &'static Self { GLOBAL.get_or_init(|| Tracer::default()) }
 
     /// Crée un span guard. À la destruction, enregistre la durée.
     pub fn span<'a>(&'a self, name: impl Into<String>) -> SpanGuard<'a> {
@@ -72,8 +71,6 @@ impl Tracer {
             name: name.into(),
             start: Instant::now(),
             fields: HashMap::new(),
-            #[cfg(feature = "log")]
-            _enter: enter_tracing_span(name.into()),
         }
     }
 
@@ -86,25 +83,26 @@ impl Tracer {
 
     /// Enregistre un évènement.
     pub fn event(&self, name: impl Into<String>, fields: impl IntoIterator<Item = (String, String)>) {
+        let name: String = name.into();
         let fields: HashMap<_, _> = fields.into_iter().collect();
-        let ev = TraceEvent { name: name.into(), ts_us: now_us(), fields: fields.clone() };
-        self.events.write().push(ev);
+        let ev = TraceEvent { name: name.clone(), ts_us: now_us(), fields: fields.clone() };
+        self.events.write().unwrap().push(ev);
         #[cfg(feature = "log")]
         {
             use tracing::Level;
-            tracing::event!(Level::INFO, event = "vitte", name = %name.into(), ?fields);
+            tracing::event!(Level::INFO, event = "vitte", name = %name, ?fields);
         }
     }
 
     /// Snapshot (copie) des données courantes.
     pub fn snapshot(&self) -> (Vec<TraceEvent>, Vec<SpanRecord>) {
-        (self.events.read().clone(), self.spans.read().clone())
+        (self.events.read().unwrap().clone(), self.spans.read().unwrap().clone())
     }
 
     /// Efface toutes les données.
     pub fn clear(&self) {
-        self.events.write().clear();
-        self.spans.write().clear();
+        self.events.write().unwrap().clear();
+        self.spans.write().unwrap().clear();
     }
 
     #[cfg(feature = "json")]
@@ -119,7 +117,7 @@ impl Tracer {
     }
 
     fn record_span(&self, rec: SpanRecord) {
-        self.spans.write().push(rec);
+        self.spans.write().unwrap().push(rec);
     }
 }
 
@@ -129,8 +127,6 @@ pub struct SpanGuard<'a> {
     name: String,
     start: Instant,
     fields: HashMap<String, String>,
-    #[cfg(feature = "log")]
-    _enter: Option<tracing::span::Entered<'static>>,
 }
 
 impl<'a> SpanGuard<'a> {
@@ -149,46 +145,7 @@ impl<'a> Drop for SpanGuard<'a> {
             dur_us: dur.as_micros(),
             fields: self.fields.clone(),
         });
-        #[cfg(feature = "log")]
-        {
-            // Sortie du span auto via drop de `_enter`
-        }
     }
-}
-
-/* ---------------------------- Intégration tracing --------------------------- */
-
-#[cfg(feature = "log")]
-fn enter_tracing_span(name: String) -> Option<tracing::span::Entered<'static>> {
-    use tracing::{info_span, Span};
-    let span: Span = info_span!("vitte", %name);
-    Some(span.enter())
-}
-
-#[cfg(not(feature = "log"))]
-fn enter_tracing_span(_name: String) -> Option<()> { None }
-
-/// Initialise un subscriber `tracing-subscriber`.
-///
-/// - `level`: "error" | "warn" | "info" | "debug" | "trace"
-/// - `json`: sorties JSON si `true`, sinon format texte.
-/// Idempotent à l'échelle du process.
-#[cfg(feature = "log")]
-pub fn init_tracing(level: &str, json: bool) -> anyhow::Result<()> {
-    use std::str::FromStr;
-    use tracing_subscriber::{fmt, EnvFilter};
-
-    let lvl = level.to_ascii_lowercase();
-    let filter = EnvFilter::from_default_env()
-        .add_directive(tracing::Level::from_str(&lvl).unwrap_or(tracing::Level::INFO).into());
-
-    let builder = fmt().with_env_filter(filter).with_target(false).with_timer(fmt::time::uptime());
-    if json {
-        builder.json().flatten_event(true).init();
-    } else {
-        builder.compact().init();
-    }
-    Ok(())
 }
 
 /* --------------------------------- Helpers -------------------------------- */
@@ -275,7 +232,7 @@ mod tests {
         {
             let _g = t.span("work");
         }
-        let (_, spans) = (t.events.read().clone(), t.spans.read().clone());
+        let (_, spans) = (t.events.read().unwrap().clone(), t.spans.read().unwrap().clone());
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].name, "work");
         assert!(spans[0].dur_us >= 0);
@@ -285,8 +242,8 @@ mod tests {
     fn event_records() {
         let t = Tracer::default();
         t.event("loaded", [("count".into(), "3".into())]);
-        assert_eq!(t.events.read().len(), 1);
-        assert_eq!(t.events.read()[0].name, "loaded");
+        assert_eq!(t.events.read().unwrap().len(), 1);
+        assert_eq!(t.events.read().unwrap()[0].name, "loaded");
     }
 
     #[test]
@@ -320,4 +277,33 @@ mod tests {
         });
         assert_eq!(out, 3);
     }
+}
+
+#[cfg(feature = "log")]
+/// Initialise un subscriber `tracing-subscriber`.
+///
+/// - `level`: "error" | "warn" | "info" | "debug" | "trace"
+/// - `json`: sorties JSON si `true`, sinon format texte.
+/// Idempotent à l'échelle du process.
+pub fn init_tracing(level: &str, json: bool) -> anyhow::Result<()> {
+    use tracing_subscriber::fmt;
+    use tracing::Level;
+    use std::str::FromStr;
+
+    let lvl = Level::from_str(&level.to_ascii_lowercase()).unwrap_or(Level::INFO);
+    let builder = fmt().with_max_level(lvl).with_target(false).with_timer(fmt::time::uptime());
+    #[cfg(feature = "json")]
+    {
+        if json {
+            builder.json().flatten_event(true).init();
+        } else {
+            builder.compact().init();
+        }
+    }
+    #[cfg(not(feature = "json"))]
+    {
+        let _ = json; // suppress unused warning
+        builder.compact().init();
+    }
+    Ok(())
 }

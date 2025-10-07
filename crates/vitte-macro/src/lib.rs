@@ -30,7 +30,7 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, AttributeArgs, ItemFn};
+use syn::{parse_macro_input, DeriveInput, ItemFn};
 
 /// Derive macro `Trace` pour GC.
 /// Implémente le trait `Trace` (défini dans vitte-gc).
@@ -58,8 +58,6 @@ pub fn vitte_fn(_args: TokenStream, input: TokenStream) -> TokenStream {
     let vis = item.vis.clone();
     let sig = item.sig.clone();
     let block = item.block.clone();
-
-    let name = &sig.ident;
     let gen = quote! {
         #vis #sig {
             // Hook potentiel: logging ou registration

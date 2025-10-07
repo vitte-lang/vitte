@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-parallel — primitives de parallélisme pour Vitte
 //!
@@ -17,8 +15,10 @@ use std::sync::mpsc;
 /// Erreurs de parallélisme.
 #[derive(Debug, Error)]
 pub enum ParallelError {
+    /// Erreur survenue lors du join d'un thread.
     #[error("join error: {0}")]
     Join(String),
+    /// Erreur liée aux canaux de communication.
     #[error("channel error")]
     Channel,
 }
@@ -29,7 +29,7 @@ pub type Result<T> = std::result::Result<T, ParallelError>;
 /// ThreadPool minimaliste.
 pub struct ThreadPool {
     workers: Vec<thread::JoinHandle<()>>,
-    sender: mpsc::Sender<Box<dyn FnOnce() + Send + 'static>>,
+    sender: Option<mpsc::Sender<Box<dyn FnOnce() + Send + 'static>>>,
 }
 
 impl ThreadPool {
@@ -48,18 +48,22 @@ impl ThreadPool {
             });
             workers.push(h);
         }
-        Self { workers, sender: tx }
+        Self { workers, sender: Some(tx) }
     }
 
     /// Exécute une tâche.
     pub fn execute<F>(&self, f: F) where F: FnOnce() + Send + 'static {
-        let _ = self.sender.send(Box::new(f));
+        if let Some(s) = &self.sender {
+            let _ = s.send(Box::new(f));
+        }
     }
 }
 
 impl Drop for ThreadPool {
     fn drop(&mut self) {
-        drop(&self.sender);
+        if let Some(s) = self.sender.take() {
+            drop(s);
+        }
         for h in self.workers.drain(..) {
             let _ = h.join();
         }

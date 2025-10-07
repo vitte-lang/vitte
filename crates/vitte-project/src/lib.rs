@@ -190,7 +190,7 @@ impl Project {
 pub fn resolve_workspace(root: impl AsRef<Path>) -> Result<Vec<Project>> {
     let root = root.as_ref();
     let top = load_manifest_at_root(root)?;
-    let members = top.workspace.map(|w| w.members).unwrap_or_default();
+    let members = top.workspace.as_ref().map(|w| w.members.clone()).unwrap_or_default();
 
     // Si pas de workspace: renvoyer le projet seul.
     if members.is_empty() {

@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-ruby — interop Rust/Ruby pour Vitte
 //!
@@ -25,8 +23,10 @@ use thiserror::Error;
 /// Erreurs interop Ruby.
 #[derive(Debug, Error)]
 pub enum RubyError {
+    /// Erreur lors de la conversion de types Ruby ↔ Rust.
     #[error("conversion error: {0}")]
     Conversion(String),
+    /// Erreur d'exécution côté runtime Ruby.
     #[error("runtime error: {0}")]
     Runtime(String),
 }
@@ -36,8 +36,8 @@ pub type Result<T> = std::result::Result<T, RubyError>;
 
 #[cfg(feature = "rutie")]
 mod rutie_backend {
-    use super::*;
-    use rutie::{Class, Object, RString, VM, Array};
+    use rutie::{Object, RString, Array};
+    use rutie::{class, methods};
 
     class!(VitteRuby);
 
@@ -55,9 +55,11 @@ mod rutie_backend {
         }
     );
 
+    #[cfg(feature = "ruby-init")]
     #[allow(non_snake_case)]
     #[no_mangle]
     pub extern "C" fn Init_vitte_ruby() {
+        use rutie::Class;
         Class::new("VitteRuby", None).define(|itself| {
             itself.def_self("greet", greet_rb);
             itself.def_self("sum_array", sum_array_rb);

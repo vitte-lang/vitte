@@ -33,11 +33,16 @@ use xxhash_rust::xxh3::xxh3_128;
 /// Erreurs liées à la reproductibilité.
 #[derive(Debug, Error)]
 pub enum ReproError {
+    /// Erreur d'entrée/sortie lors de la lecture ou de l'écriture de fichiers/flux.
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
-    #[error("json: {0}")]
+
+    /// Erreur de (dé)sérialisation JSON (disponible avec la feature `serde`).
     #[cfg(feature="serde")]
+    #[error("json: {0}")]
     Json(#[from] serde_json::Error),
+
+    /// Erreur générique pour les cas non couverts.
     #[error("autre: {0}")]
     Other(String),
 }
@@ -67,7 +72,9 @@ pub struct BuildMeta {
 impl BuildMeta {
     /// Capture l’état actuel de l’environnement.
     pub fn capture() -> Self {
-        let host = hostname::get().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let host = std::env::var("HOSTNAME")
+            .or_else(|_| std::env::var("COMPUTERNAME"))
+            .unwrap_or_else(|_| "unknown".to_string());
         let os = std::env::consts::OS.to_string();
         let arch = std::env::consts::ARCH.to_string();
         let env: Vec<(String,String)> = std::env::vars().collect();

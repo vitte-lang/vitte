@@ -34,18 +34,25 @@ pub use bytes;
 /// Erreurs de sérialisation
 pub enum SerdeError {
     #[error("JSON: {0}")]
+    /// Erreur lors de la sérialisation ou désérialisation JSON.
     Json(String),
     #[error("YAML: {0}")]
+    /// Erreur lors de la sérialisation ou désérialisation YAML.
     Yaml(String),
     #[error("TOML: {0}")]
+    /// Erreur lors de la sérialisation ou désérialisation TOML.
     Toml(String),
     #[error("CBOR: {0}")]
+    /// Erreur lors de la sérialisation ou désérialisation CBOR.
     Cbor(String),
     #[error("Bincode: {0}")]
+    /// Erreur lors de la sérialisation ou désérialisation Bincode.
     Bincode(String),
     #[error("RMP: {0}")]
+    /// Erreur lors de la sérialisation ou désérialisation MessagePack (rmp-serde).
     Rmp(String),
     #[error("Other: {0}")]
+    /// Erreur de sérialisation/désérialisation d'un autre format.
     Other(String),
 }
 

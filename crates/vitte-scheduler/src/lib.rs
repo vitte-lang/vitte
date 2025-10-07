@@ -17,11 +17,11 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
 #![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "json")]
 use serde::{Deserialize, Serialize};
 
 /// Identifiant de tâche.
@@ -47,7 +47,7 @@ impl Task {
 
 /// Résultat d’exécution.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 pub struct TaskResult {
     pub id: TaskId,
     pub success: bool,

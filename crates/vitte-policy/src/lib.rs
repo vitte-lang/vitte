@@ -21,6 +21,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum PolicyError {
     #[error("JSON error: {0}")]
+    /// Erreur lors de la sérialisation ou désérialisation JSON.
     Json(#[from] serde_json::Error),
 
     #[error("Regex error: {0}")]
@@ -28,9 +29,11 @@ pub enum PolicyError {
     Regex(#[from] regex::Error),
 
     #[error("Validation failed: {0}")]
+    /// Échec de validation d'une règle ou d'une politique (détails dans la chaîne).
     Validation(String),
 
     #[error("Other: {0}")]
+    /// Erreur générique non catégorisée.
     Other(String),
 }
 

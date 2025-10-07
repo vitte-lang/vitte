@@ -26,7 +26,7 @@
     clippy::match_same_arms
 )]
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use std::fmt;
 
 #[cfg(feature = "serde")]
@@ -259,7 +259,7 @@ pub enum TypeExpr {
 }
 
 impl TypeExpr {
-    fn span(&self) -> Span {
+    pub fn span(&self) -> Span {
         match self {
             TypeExpr::Named(_, s) | TypeExpr::Tuple(_, s) | TypeExpr::Unit(s) => *s,
         }
@@ -379,7 +379,7 @@ impl<'a> Parser<'a> {
         SyntaxModule { items, span: Span::new(start, self.src_len), errors: self.errors }
     }
 
-    fn parse_item(&mut self) -> Result<Item> {
+    fn parse_item(&mut self) -> std::result::Result<Item, Error> {
         match self.peek().kind {
             TokenKind::Fn => {
                 let fn_item = self.parse_fn()?;
@@ -387,18 +387,18 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 let sp = self.peek().span;
-                bail!(Error::new("item inconnu, 'fn' attendu", sp).to_string())
+                return Err(Error::new("item inconnu, 'fn' attendu", sp));
             }
         }
     }
 
-    fn parse_fn(&mut self) -> Result<FnItem> {
+    fn parse_fn(&mut self) -> std::result::Result<FnItem, Error> {
         let start = self.expect(TokenKind::Fn, "début de fonction");
         let name = match &self.bump().kind {
             TokenKind::Ident(s) => s.clone(),
             _ => {
                 let sp = self.peek().span;
-                return Err(anyhow::anyhow!(Error::new("nom de fonction attendu", sp).to_string()));
+                return Err(Error::new("nom de fonction attendu", sp));
             }
         };
         self.expect(TokenKind::LParen, "(");
@@ -408,7 +408,7 @@ impl<'a> Parser<'a> {
                 let p_start = self.peek().span;
                 let pname = match &self.bump().kind {
                     TokenKind::Ident(s) => s.clone(),
-                    _ => return Err(anyhow::anyhow!(Error::new("nom de paramètre attendu", p_start).to_string())),
+                    _ => return Err(Error::new("nom de paramètre attendu", p_start)),
                 };
                 let mut pty = None;
                 if self.eat(TokenKind::Colon) {
@@ -429,7 +429,7 @@ impl<'a> Parser<'a> {
         Ok(FnItem { name, params, ret, body, span })
     }
 
-    fn parse_type(&mut self) -> Result<TypeExpr> {
+    fn parse_type(&mut self) -> std::result::Result<TypeExpr, Error> {
         // Named | () | (T, U, ...)
         let t = self.bump().clone();
         match t.kind {
@@ -448,11 +448,11 @@ impl<'a> Parser<'a> {
                     Ok(TypeExpr::Tuple(ts, t.span.merge(end)))
                 }
             }
-            _ => Err(anyhow::anyhow!(Error::new("type attendu", t.span).to_string())),
+            _ => Err(Error::new("type attendu", t.span)),
         }
     }
 
-    fn parse_block(&mut self) -> Result<Block> {
+    fn parse_block(&mut self) -> std::result::Result<Block, Error> {
         let l = self.expect(TokenKind::LBrace, "{");
         let mut stmts = Vec::new();
         while !matches!(self.peek().kind, TokenKind::RBrace | TokenKind::Eof) {
@@ -464,13 +464,13 @@ impl<'a> Parser<'a> {
         Ok(Block { stmts, span: l.merge(r) })
     }
 
-    fn parse_stmt(&mut self) -> Result<Stmt> {
+    fn parse_stmt(&mut self) -> std::result::Result<Stmt, Error> {
         match self.peek().kind {
             TokenKind::Let => {
                 let start = self.bump().span;
                 let name = match &self.bump().kind {
                     TokenKind::Ident(s) => s.clone(),
-                    _ => return Err(anyhow::anyhow!("ident attendu après `let`")),
+                    _ => return Err(Error::new("ident attendu après `let`", self.peek().span)),
                 };
                 let mut ty = None;
                 if self.eat(TokenKind::Colon) {
@@ -499,7 +499,7 @@ impl<'a> Parser<'a> {
     }
 
     // Pratt parser
-    fn parse_expr_bp(&mut self, min_bp: u8) -> Result<Expr> {
+    fn parse_expr_bp(&mut self, min_bp: u8) -> std::result::Result<Expr, Error> {
         let mut lhs = self.parse_prefix()?;
 
         loop {
@@ -508,22 +508,22 @@ impl<'a> Parser<'a> {
                 TokenKind::Minus => BinOp::Sub,
                 TokenKind::Star => BinOp::Mul,
                 TokenKind::Slash => BinOp::Div,
-                TokenKind::LParen => {
-                    // call
-                    let l = self.bump().span;
-                    let mut args = Vec::new();
-                    if !self.at(&TokenKind::RParen) {
-                        loop {
-                            args.push(self.parse_expr_bp(0)?);
-                            if self.eat(TokenKind::Comma) { continue; }
-                            break;
-                        }
+            TokenKind::LParen => {
+                // call
+                let _ = self.bump().span;
+                let mut args = Vec::new();
+                if !self.at(&TokenKind::RParen) {
+                    loop {
+                        args.push(self.parse_expr_bp(0)?);
+                        if self.eat(TokenKind::Comma) { continue; }
+                        break;
                     }
-                    let r = self.expect(TokenKind::RParen, ")");
-                    let sp = lhs.span().merge(r);
-                    lhs = Expr::Call { callee: Box::new(lhs), args, span: sp };
-                    continue;
                 }
+                let r = self.expect(TokenKind::RParen, ")");
+                let sp = lhs.span().merge(r);
+                lhs = Expr::Call { callee: Box::new(lhs), args, span: sp };
+                continue;
+            }
                 _ => break,
             };
             let (lbp, rbp) = infix_binding_power(op);
@@ -537,7 +537,7 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    fn parse_prefix(&mut self) -> Result<Expr> {
+    fn parse_prefix(&mut self) -> std::result::Result<Expr, Error> {
         let t = self.bump().clone();
         match t.kind {
             TokenKind::Int(s) => {
@@ -568,11 +568,11 @@ impl<'a> Parser<'a> {
                 self.i -= 1;
                 Ok(Expr::Block(self.parse_block()?))
             }
-            _ => Err(anyhow::anyhow!(Error::new("expression attendue", t.span).to_string())),
+            _ => Err(Error::new("expression attendue", t.span)),
         }
     }
 
-    fn parse_if(&mut self, kw_span: Span) -> Result<Expr> {
+    fn parse_if(&mut self, kw_span: Span) -> std::result::Result<Expr, Error> {
         let cond = self.parse_expr_bp(0)?;
         let then_blk = self.parse_block()?;
         let else_blk = if self.eat(TokenKind::Else) {
@@ -624,7 +624,7 @@ pub fn parse_module(src: &str) -> SyntaxModule {
 /// Parse une expression isolée.
 pub fn parse_expr(src: &str) -> Result<Expr> {
     let mut p = Parser::new(src);
-    let e = p.parse_expr_bp(0)?;
+    let e = p.parse_expr_bp(0).map_err(|e| anyhow::anyhow!(e.to_string()))?;
     if !matches!(p.peek().kind, TokenKind::Eof | TokenKind::Semicolon) {
         let sp = p.peek().span;
         p.errors.push(Error::new("tokens restants après expression", sp));
@@ -680,6 +680,7 @@ pub mod pretty {
 /* =========================== Abaissement optionnel =========================== */
 
 /// Intégration optionnelle avec `vitte-ast`. Adaptez les types si l'API réelle diffère.
+#[cfg(feature = "ast")]
 pub mod lower {
     use super::*;
     use vitte_ast as ast;
@@ -716,6 +717,15 @@ pub mod lower {
             TypeExpr::Unit(_) => ast::Type::unit(),
             TypeExpr::Tuple(ts, _) => ast::Type::tuple(ts.iter().map(ast_type).collect()),
         }
+    }
+}
+
+#[cfg(not(feature = "ast"))]
+pub mod lower {
+    use super::*;
+    /// Non-disponible sans la feature `ast`.
+    pub fn to_vitte_ast(_sm: &SyntaxModule) -> anyhow::Result<()> {
+        anyhow::bail!("abaissement vers `vitte-ast` désactivé (feature `ast`)");
     }
 }
 

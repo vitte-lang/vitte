@@ -228,7 +228,13 @@ impl ManPage {
             n.clone()
         } else {
             // Compose "cmd - desc courte"
-            let cmd = self.name_cmd.as_deref().unwrap_or(&self.title.to_lowercase());
+            let cmd_owned: String;
+            let cmd: &str = if let Some(c) = self.name_cmd.as_deref() {
+                c
+            } else {
+                cmd_owned = self.title.to_lowercase();
+                &cmd_owned
+            };
             let desc = self.description.get(0).map(|s| s.as_str()).unwrap_or("");
             let short = first_sentence(desc, 60);
             format!("{} - {}", cmd, short)

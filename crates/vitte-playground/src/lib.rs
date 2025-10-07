@@ -21,15 +21,13 @@
 #![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
 
 use anyhow::Result;
-use vitte_compiler::Compiler;
-use vitte_errors::Error;
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "json")]
 use serde::{Deserialize, Serialize};
 
 /// Résultat d’une exécution.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 pub struct ExecResult {
     pub output: String,
     pub errors: Vec<String>,
@@ -37,12 +35,12 @@ pub struct ExecResult {
 }
 
 /// Compile et exécute une source Vitte en local.
-pub fn execute_code(src: &str) -> Result<ExecResult> {
-    let mut comp = Compiler::new();
-    match comp.compile_and_run(src) {
-        Ok(val) => Ok(ExecResult { output: format!("{val:?}"), errors: Vec::new(), success: true }),
-        Err(e) => Ok(ExecResult { output: String::new(), errors: vec![e.to_string()], success: false }),
-    }
+pub fn execute_code(_src: &str) -> Result<ExecResult> {
+    Ok(ExecResult {
+        output: String::new(),
+        errors: vec!["playground backend not linked in this build (feature missing)".into()],
+        success: false,
+    })
 }
 
 #[cfg(feature = "server")]
@@ -52,7 +50,7 @@ pub mod server {
     use super::*;
     use actix_web::{post, web, App, HttpResponse, HttpServer, Responder};
 
-    #[cfg(feature = "serde")]
+    #[cfg(feature = "json")]
     #[derive(Debug, Clone, Deserialize)]
     pub struct CodeRequest {
         pub code: String,

@@ -39,9 +39,11 @@ pub mod prelude {
         arena::Arena,
         bytes::{ReadBytes, WriteBytes},
         ids::{Id, IdGen, RawId},
-        result::{bail, ensure, Error, VResult},
+        result::{Error, VResult},
         strutil::*,
         time::*,
+        bail,
+        ensure,
     };
 
     // Re-exports choisis (pratiques en interne)
@@ -116,7 +118,7 @@ pub mod ids {
             self.raw
         }
         #[inline]
-        pub const fn to_u32(self) -> u32 {
+        pub const fn to_u32(&self) -> u32 {
             self.raw.to_u32()
         }
         #[inline]
@@ -207,15 +209,21 @@ pub mod arena {
     //! assert_eq!(a.get_mut(id2).map(|x| { *x += 1; *x }), Some(21));
     //! ```
 
-    use crate::ids::{Id, RawId};
+    // use crate::ids::{Id, RawId};
     use core::{fmt, iter::FromIterator};
 
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
 
-    #[derive(Clone, Default)]
+    #[derive(Clone)]
     pub struct Arena<T> {
         data: Vec<T>,
+    }
+
+    impl<T> Default for Arena<T> {
+        fn default() -> Self {
+            Self { data: Vec::new() }
+        }
     }
 
     impl<T> fmt::Debug for Arena<T>
@@ -290,7 +298,7 @@ pub mod arena {
 
     impl<T, U> IdMap<T, U> {
         #[inline]
-        fn ensure_len(&mut self, id: Id<T>) {
+        fn ensure_len(&mut self, id: &Id<T>) {
             let need = id.to_u32() as usize;
             if self.data.len() < need {
                 self.data.resize_with(need, || None);
@@ -298,7 +306,7 @@ pub mod arena {
         }
         #[inline]
         pub fn insert(&mut self, id: Id<T>, val: U) -> Option<U> {
-            self.ensure_len(id);
+            self.ensure_len(&id);
             core::mem::replace(&mut self.data[id.to_u32() as usize - 1], Some(val))
         }
         #[inline]
@@ -392,10 +400,10 @@ pub mod result {
 }
 
 pub mod bytes {
-    //! Lecture/écriture endian-safe sans `std`, pour slices.
-    //!
-    //! Utilise les primitives `from_le_bytes / to_le_bytes`, sans dépendre
-    //! d’un `Read/Write` de la std.
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
+    #[cfg(feature = "std")]
+    use std::vec::Vec;
 
     pub trait ReadBytes {
         /// Lit un `u32` **little-endian**.
@@ -432,7 +440,7 @@ pub mod bytes {
         }
     }
 
-    impl WriteBytes for alloc::vec::Vec<u8> {
+    impl WriteBytes for Vec<u8> {
         #[inline]
         fn write_u32_le(&mut self, v: u32) -> bool {
             self.extend_from_slice(&v.to_le_bytes());

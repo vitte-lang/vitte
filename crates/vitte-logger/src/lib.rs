@@ -28,14 +28,21 @@
 
 /* ─────────────────────────── Imports ─────────────────────────── */
 
-use core::sync::OnceLock;
+#[cfg(feature = "std")]
+use std::sync::OnceLock;
+#[cfg(not(feature = "std"))]
+use core::sync::atomic::{AtomicBool, Ordering};
 
 pub use tracing::{debug, error, info, trace, warn, Level};
 pub use tracing::{event, instrument, span};
 
 /* ─────────────────────────── État global ─────────────────────── */
 
+#[cfg(feature = "std")]
 static STARTED: OnceLock<()> = OnceLock::new();
+
+#[cfg(not(feature = "std"))]
+static STARTED_NO_STD: AtomicBool = AtomicBool::new(false);
 
 /* ─────────────────────────── API publique ────────────────────── */
 
@@ -50,7 +57,7 @@ pub fn init() {
     // En no_std: no-op idempotent.
     #[cfg(not(feature = "std"))]
     {
-        let _ = STARTED.set(());
+        STARTED_NO_STD.store(true, Ordering::Relaxed);
         return;
     }
 
@@ -125,8 +132,14 @@ pub fn init_with(spec: &str) {
 }
 
 /// Retourne vrai si un subscriber global a été installé par ce crate.
+#[cfg(feature = "std")]
 pub fn is_initialized() -> bool {
     STARTED.get().is_some()
+}
+
+#[cfg(not(feature = "std"))]
+pub fn is_initialized() -> bool {
+    STARTED_NO_STD.load(Ordering::Relaxed)
 }
 
 /* ─────────────────────────── Internes ────────────────────────── */

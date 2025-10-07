@@ -22,16 +22,14 @@
 #![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
+use once_cell::sync::Lazy;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-lazy_static::lazy_static! {
-    static ref GLOBAL: Profiler = Profiler::default();
-}
+static GLOBAL: Lazy<Profiler> = Lazy::new(Profiler::default);
 
 /// Un évènement de profilage.
 #[derive(Debug, Clone)]

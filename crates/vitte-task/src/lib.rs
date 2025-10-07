@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-task — gestion de tâches pour Vitte
 //!
@@ -19,15 +17,20 @@ use futures::Future;
 use std::time::Duration;
 use thiserror::Error;
 
-#[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
-
 /// Erreurs liées aux tâches
 #[derive(Debug, Error)]
 pub enum TaskError {
-    #[error("cancelled")] Cancelled,
-    #[error("join error: {0}")] Join(String),
-    #[error("other: {0}")] Other(String),
+    /// La tâche a été annulée via `TaskHandle::cancel`.
+    #[error("cancelled")]
+    Cancelled,
+
+    /// Erreur lors de l'attente/agrégation du résultat d'une tâche (join).
+    #[error("join error: {0}")]
+    Join(String),
+
+    /// Autre erreur liée aux tâches.
+    #[error("other: {0}")]
+    Other(String),
 }
 
 /// Résultat spécialisé
@@ -60,32 +63,47 @@ where
 
     #[cfg(feature = "rt-tokio")]
     tokio::spawn(async move {
-        futures::pin_mut!(fut);
-        futures::future::select(fut, async {
-            while !cancel_flag.load(std::sync::atomic::Ordering::SeqCst) {
-                tokio::time::sleep(Duration::from_millis(50)).await;
+        use futures::FutureExt;
+        let mut fut = Box::pin(fut);
+        loop {
+            if cancel_flag.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
             }
-        }).await;
+            if fut.as_mut().now_or_never().is_some() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
     });
 
     #[cfg(feature = "rt-async-std")]
     async_std::task::spawn(async move {
-        futures::pin_mut!(fut);
-        futures::future::select(fut, async {
-            while !cancel_flag.load(std::sync::atomic::Ordering::SeqCst) {
-                async_std::task::sleep(Duration::from_millis(50)).await;
+        use futures::FutureExt;
+        let mut fut = Box::pin(fut);
+        loop {
+            if cancel_flag.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
             }
-        }).await;
+            if fut.as_mut().now_or_never().is_some() {
+                break;
+            }
+            async_std::task::sleep(Duration::from_millis(50)).await;
+        }
     });
 
     #[cfg(feature = "rt-smol")]
     smol::spawn(async move {
-        futures::pin_mut!(fut);
-        futures::future::select(fut, async {
-            while !cancel_flag.load(std::sync::atomic::Ordering::SeqCst) {
-                smol::Timer::after(Duration::from_millis(50)).await;
+        use futures::FutureExt;
+        let mut fut = Box::pin(fut);
+        loop {
+            if cancel_flag.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
             }
-        }).await;
+            if fut.as_mut().now_or_never().is_some() {
+                break;
+            }
+            smol::Timer::after(Duration::from_millis(50)).await;
+        }
     }).detach();
 
     handle

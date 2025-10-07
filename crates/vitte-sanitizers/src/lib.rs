@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-sanitizers — helpers pour AddressSanitizer, LeakSanitizer, ThreadSanitizer, MemorySanitizer, UBSan
 //!
@@ -19,7 +17,8 @@ use thiserror::Error;
 /// Erreurs liées aux sanitizers.
 #[derive(Debug, Error)]
 pub enum SanError {
-    #[error("autre: {0}")]
+    /// Erreur générique transportant un message.
+    #[error("{0}")]
     Other(String),
 }
 

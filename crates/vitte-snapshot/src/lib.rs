@@ -25,7 +25,7 @@
 use thiserror::Error;
 
 #[cfg(feature = "serde")]
-use serde::{Serialize, de::DeserializeOwned};
+use serde::Serialize;
 
 #[cfg(feature = "time")]
 use time::OffsetDateTime;
@@ -35,6 +35,8 @@ use sha2::{Sha256, Digest};
 
 #[cfg(feature = "hash")]
 use base64::engine::general_purpose::STANDARD as B64;
+#[cfg(feature = "hash")]
+use base64::Engine;
 
 #[cfg(feature = "text-diff")]
 use similar::TextDiff;
@@ -42,14 +44,22 @@ use similar::TextDiff;
 /// Erreurs snapshot
 #[derive(Debug, Error)]
 pub enum SnapshotError {
+    /// Erreur d'entrée/sortie sous-jacente (lecture/écriture de fichier).
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+    /// Erreur de sérialisation/désérialisation JSON via 
+    /// 
+    /// Présente uniquement si la feature `serde` est activée.
     #[error("serde: {0}")]
     #[cfg(feature = "serde")]
     Serde(String),
+    /// Erreur liée à la compression/décompression Zstandard (zstd).
+    /// 
+    /// Présente uniquement si la feature `zstd` est activée.
     #[error("compress: {0}")]
     #[cfg(feature = "zstd")]
     Zstd(String),
+    /// Catégorie fourre-tout pour les erreurs non classées.
     #[error("other: {0}")]
     Other(String),
 }

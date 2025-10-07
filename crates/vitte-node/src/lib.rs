@@ -17,8 +17,13 @@ use thiserror::Error;
 /// Erreurs Node interop.
 #[derive(Debug, Error)]
 pub enum NodeError {
-    #[error("interop error: {0}")] Interop(String),
-    #[error("conversion error: {0}")] Conversion(String),
+    /// Erreur d'interopérabilité avec N-API/Node.js (par ex. appel de fonction natif échoué, statut N-API invalide).
+    #[error("interop error: {0}")]
+    Interop(String),
+
+    /// Erreur de conversion de données (JSON, chaînes, types primitifs) entre Rust et l'environnement Node.
+    #[error("conversion error: {0}")]
+    Conversion(String),
 }
 
 /// Résultat spécialisé.

@@ -23,8 +23,10 @@ use serde::{Serialize, Deserialize};
 /// Erreurs Unicode
 #[derive(Debug, Error)]
 pub enum UnicodeError {
+    /// Entrée invalide (données non conformes, séquence UTF-8 incomplète, etc.).
     #[error("invalid input: {0}")]
     Invalid(String),
+    /// Erreur générique non classée.
     #[error("other: {0}")]
     Other(String),
 }
@@ -63,7 +65,6 @@ pub fn normalize_nfkd(s: &str) -> String {
 /// Casefold simple
 #[cfg(feature = "normalization")]
 pub fn casefold(s: &str) -> String {
-    use unicode_normalization::UnicodeNormalization;
     s.chars().flat_map(|c| c.to_lowercase()).collect()
 }
 
@@ -121,7 +122,8 @@ pub fn char_categories(c: char) -> Vec<&'static str> {
 /// Supprime les diacritiques (accents)
 pub fn strip_marks(s: &str) -> String {
     use unicode_normalization::UnicodeNormalization;
-    s.nfd().filter(|c| unicode_normalization::is_combining_mark(*c) == false).collect()
+    use unicode_normalization::char::is_combining_mark;
+    s.nfd().filter(|c| !is_combining_mark(*c)).collect()
 }
 
 #[cfg(feature="bidi")]

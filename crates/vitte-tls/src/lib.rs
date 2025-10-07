@@ -30,13 +30,17 @@ impl From<std::io::Error> for TlsError { fn from(e:std::io::Error)->Self{Self::I
 pub type Result<T>=std::result::Result<T,TlsError>;
 
 pub struct TlsConnector {
-    #[cfg(feature="rustls")] rustls: Option<rustls::ClientConfig>,
-    #[cfg(feature="native-tls")] native: Option<native_tls::TlsConnector>,
+    #[cfg(feature="rustls")]
+    #[allow(dead_code)]
+    rustls: Option<rustls::ClientConfig>,
+    #[cfg(feature="native-tls")]
+    #[allow(dead_code)]
+    native: Option<native_tls::TlsConnector>,
 }
 impl TlsConnector {
     #[cfg(feature="rustls")]
     pub fn rustls_client()->Result<Self>{
-        let mut root = rustls::RootCertStore::empty();
+        let root = rustls::RootCertStore::empty();
         #[cfg(feature = "rustls-native-certs")]
         {
             let certs: Vec<CertificateDer<'static>> = rustls_native_certs::load_native_certs()
@@ -65,12 +69,12 @@ pub fn load_cert_pem(data:&[u8])->Result<Vec<CertificateDer<'static>>>{
     rustls_pemfile::certs(&mut rd).collect::<std::result::Result<_,_>>().map_err(|_|TlsError::Other("invalid pem".into()))
 }
 #[cfg(feature="rustls")]
-pub fn load_key_pem(data:&[u8])->Result<PrivateKeyDer<'static>>{
+pub fn load_key_pem<'a>(data: &'a [u8]) -> Result<PrivateKeyDer<'a>> {
     use std::io::BufReader;
     let mut rd=BufReader::new(data);
     let mut keys=rustls_pemfile::pkcs8_private_keys(&mut rd).collect::<std::result::Result<Vec<_>,_>>().map_err(|_|TlsError::Other("invalid key".into()))?;
     let pk = keys.pop().ok_or_else(|| TlsError::Other("no key".into()))?;
-    Ok(PrivateKeyDer::from(pk.into_owned()))
+    Ok(PrivateKeyDer::from(pk))
 }
 
 #[cfg(test)]

@@ -1,5 +1,3 @@
-
-
 #![deny(missing_docs)]
 //! vitte-matlab — Interop Matlab pour Vitte
 //!
@@ -18,10 +16,15 @@ use thiserror::Error;
 /// Erreurs d'interop Matlab.
 #[derive(Debug, Error)]
 pub enum MatlabError {
+    /// Le moteur Matlab (Engine) n'est pas disponible sur le système.
     #[error("engine unavailable")] EngineUnavailable,
+    /// Erreur retournée par l'API Matlab Engine (message brut inclus).
     #[error("engine error: {0}")] Engine(String),
+    /// Erreur liée à l'exécution d'un module MEX (message brut inclus).
     #[error("mex error: {0}")] Mex(String),
+    /// Erreur de conversion entre types Rust et représentations Matlab.
     #[error("conversion error: {0}")] Conversion(String),
+    /// Déréférencement de pointeur nul détecté côté FFI Matlab.
     #[error("null pointer")] NullPtr,
 }
 

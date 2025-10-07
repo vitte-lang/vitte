@@ -43,12 +43,16 @@ impl PgoMode {
 /// Erreurs possibles liées à PGO.
 #[derive(Debug, Error)]
 pub enum PgoError {
+    /// Fichier de profil `.profraw`/`.profdata` introuvable ou chemin invalide.
     #[error("profil introuvable: {0}")]
     ProfileNotFound(String),
+    /// Incohérence des variables d'environnement liées au PGO (ex: RUSTFLAGS).
     #[error("environnement invalide: {0}")]
     Env(String),
+    /// Outils LLVM requis absents ou non exécutables (llvm-profdata/llvm-cov).
     #[error("outil llvm absent: {0}")]
     LlvmTool(String),
+    /// Échec d'exécution d'une commande externe liée au PGO.
     #[error("commande échouée: {0}")]
     Command(String),
 }

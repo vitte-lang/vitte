@@ -44,9 +44,13 @@ pub type TimeSec = f64;
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum MouseButton {
+    /// Clic gauche.
     Left,
+    /// Clic droit.
     Right,
+    /// Clic milieu (molette).
     Middle,
+    /// Autre bouton, indexé par numéro (ex: latéraux).
     Other(u16),
 }
 
@@ -55,23 +59,135 @@ pub enum MouseButton {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum KeyCode {
     // lettres
-    A, B, C, D, E, F, G, H, I, J, K, L, M,
-    N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
+    /// Touche A.
+    A, /// Touche B.
+    B, /// Touche C.
+    C, /// Touche D.
+    D, /// Touche E.
+    E, /// Touche F.
+    F, /// Touche G.
+    G, /// Touche H.
+    H, /// Touche I.
+    I, /// Touche J.
+    J, /// Touche K.
+    K, /// Touche L.
+    L, /// Touche M.
+    M,
+    /// Touche N.
+    N, /// Touche O.
+    O, /// Touche P.
+    P, /// Touche Q.
+    Q, /// Touche R.
+    R, /// Touche S.
+    S, /// Touche T.
+    T, /// Touche U.
+    U, /// Touche V.
+    V, /// Touche W.
+    W, /// Touche X.
+    X, /// Touche Y.
+    Y, /// Touche Z.
+    Z,
     // chiffres rangée
-    Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9,
+    /// Chiffre 0 (rangée supérieure).
+    Digit0, /// Chiffre 1.
+    Digit1, /// Chiffre 2.
+    Digit2, /// Chiffre 3.
+    Digit3, /// Chiffre 4.
+    Digit4, /// Chiffre 5.
+    Digit5, /// Chiffre 6.
+    Digit6, /// Chiffre 7.
+    Digit7, /// Chiffre 8.
+    Digit8, /// Chiffre 9.
+    Digit9,
     // modifs
-    ShiftLeft, ShiftRight, ControlLeft, ControlRight, AltLeft, AltRight, MetaLeft, MetaRight,
+    /// Shift gauche.
+    ShiftLeft,
+    /// Shift droit.
+    ShiftRight,
+    /// Ctrl gauche.
+    ControlLeft,
+    /// Ctrl droit.
+    ControlRight,
+    /// Alt gauche.
+    AltLeft,
+    /// Alt droit.
+    AltRight,
+    /// Meta/Command gauche.
+    MetaLeft,
+    /// Meta/Command droit.
+    MetaRight,
     // flèches
-    ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
+    /// Flèche haut.
+    ArrowUp,
+    /// Flèche bas.
+    ArrowDown,
+    /// Flèche gauche.
+    ArrowLeft,
+    /// Flèche droite.
+    ArrowRight,
     // édition
-    Enter, Escape, Backspace, Tab, Space,
+    /// Entrée.
+    Enter,
+    /// Échap.
+    Escape,
+    /// Retour arrière.
+    Backspace,
+    /// Tabulation.
+    Tab,
+    /// Espace.
+    Space,
     // pavé
-    Insert, Delete, Home, End, PageUp, PageDown,
+    /// Insert.
+    Insert,
+    /// Suppr.
+    Delete,
+    /// Origine (Home).
+    Home,
+    /// Fin (End).
+    End,
+    /// Page précédente (PageUp).
+    PageUp,
+    /// Page suivante (PageDown).
+    PageDown,
     // fonction
-    F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
+    /// F1.
+    F1, /// F2.
+    F2, /// F3.
+    F3, /// F4.
+    F4, /// F5.
+    F5, /// F6.
+    F6, /// F7.
+    F7, /// F8.
+    F8, /// F9.
+    F9, /// F10.
+    F10, /// F11.
+    F11, /// F12.
+    F12,
     // divers
-    Minus, Equal, BracketLeft, BracketRight, Semicolon, Quote, Backquote, Backslash, Comma, Period, Slash,
+    /// Signe moins `-`.
+    Minus,
+    /// Signe égal `=`.
+    Equal,
+    /// Crochet ouvrant `[`.
+    BracketLeft,
+    /// Crochet fermant `]`.
+    BracketRight,
+    /// Point-virgule `;`.
+    Semicolon,
+    /// Apostrophe `'`.
+    Quote,
+    /// Accent grave `` ` ``.
+    Backquote,
+    /// Antislash `\`.
+    Backslash,
+    /// Virgule `,`.
+    Comma,
+    /// Point `.`.
+    Period,
+    /// Slash `/`.
+    Slash,
     // fallback
+    /// Code inconnu avec valeur brute.
     Unknown(u32),
 }
 
@@ -94,27 +210,124 @@ pub struct Modifiers {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputEvent {
     /// Touche pressée.
-    KeyDown { key: KeyCode, mods: Modifiers, time: TimeSec, repeat: bool },
+    KeyDown {
+        /// Code de la touche.
+        key: KeyCode,
+        /// Modificateurs actifs au moment de l’événement.
+        mods: Modifiers,
+        /// Horodatage en secondes.
+        time: TimeSec,
+        /// Indique un auto-repeat.
+        repeat: bool
+    },
     /// Touche relâchée.
-    KeyUp   { key: KeyCode, mods: Modifiers, time: TimeSec },
+    KeyUp {
+        /// Code de la touche.
+        key: KeyCode,
+        /// Modificateurs actifs au moment de l’événement.
+        mods: Modifiers,
+        /// Horodatage en secondes.
+        time: TimeSec
+    },
     /// Bouton souris pressé.
-    MouseDown { button: MouseButton, x: f32, y: f32, mods: Modifiers, time: TimeSec },
+    MouseDown {
+        /// Bouton concerné.
+        button: MouseButton,
+        /// Position X en pixels.
+        x: f32,
+        /// Position Y en pixels.
+        y: f32,
+        /// Modificateurs actifs.
+        mods: Modifiers,
+        /// Horodatage en secondes.
+        time: TimeSec
+    },
     /// Bouton souris relâché.
-    MouseUp   { button: MouseButton, x: f32, y: f32, mods: Modifiers, time: TimeSec },
+    MouseUp {
+        /// Bouton concerné.
+        button: MouseButton,
+        /// Position X en pixels.
+        x: f32,
+        /// Position Y en pixels.
+        y: f32,
+        /// Modificateurs actifs.
+        mods: Modifiers,
+        /// Horodatage en secondes.
+        time: TimeSec
+    },
     /// Mouvement souris.
-    MouseMove { x: f32, y: f32, dx: f32, dy: f32, time: TimeSec },
-    /// Molette (lignes > 0 = haut).
-    Wheel { delta_x: f32, delta_y: f32, time: TimeSec },
+    MouseMove {
+        /// Position X en pixels.
+        x: f32,
+        /// Position Y en pixels.
+        y: f32,
+        /// Delta X depuis la dernière frame.
+        dx: f32,
+        /// Delta Y depuis la dernière frame.
+        dy: f32,
+        /// Horodatage en secondes.
+        time: TimeSec
+    },
+    /// Molette (lignes &gt; 0 = haut).
+    Wheel {
+        /// Delta horizontal.
+        delta_x: f32,
+        /// Delta vertical.
+        delta_y: f32,
+        /// Horodatage en secondes.
+        time: TimeSec
+    },
     /// Connexion de gamepad.
-    GamepadConnected { id: GamepadId, name: String, time: TimeSec },
+    GamepadConnected {
+        /// Identifiant logique du gamepad.
+        id: GamepadId,
+        /// Nom du périphérique.
+        name: String,
+        /// Horodatage en secondes.
+        time: TimeSec
+    },
     /// Déconnexion de gamepad.
-    GamepadDisconnected { id: GamepadId, time: TimeSec },
-    /// Bouton gamepad.
-    GamepadButton { id: GamepadId, button: u16, value: f32, pressed: bool, time: TimeSec },
-    /// Axe gamepad.
-    GamepadAxis { id: GamepadId, axis: u16, value: f32, time: TimeSec },
+    GamepadDisconnected {
+        /// Identifiant logique du gamepad.
+        id: GamepadId,
+        /// Horodatage en secondes.
+        time: TimeSec
+    },
+    /// Changement d’état d’un bouton de gamepad.
+    GamepadButton {
+        /// Identifiant logique du gamepad.
+        id: GamepadId,
+        /// Index du bouton.
+        button: u16,
+        /// Valeur analogique (0..1).
+        value: f32,
+        /// Vrai si pressé.
+        pressed: bool,
+        /// Horodatage en secondes.
+        time: TimeSec
+    },
+    /// Changement d’un axe analogique.
+    GamepadAxis {
+        /// Identifiant logique du gamepad.
+        id: GamepadId,
+        /// Index de l’axe.
+        axis: u16,
+        /// Valeur normalisée [-1, 1].
+        value: f32,
+        /// Horodatage en secondes.
+        time: TimeSec
+    },
     /// Tap tactile simple (web).
-    TouchTap { id: i32, x: f32, y: f32, time: TimeSec },
+    TouchTap {
+        /// Identifiant de contact.
+        id: i32,
+        /// Position X en pixels.
+        x: f32,
+        /// Position Y en pixels.
+        y: f32,
+        /// Horodatage en secondes.
+        time: TimeSec
+    },
 }
 
 /// Instantané de l’état souris.
@@ -347,6 +560,7 @@ impl InputManager {
 // -------------------- Desktop (winit + gilrs) --------------------
 
 #[cfg(feature = "native")]
+/// Intégration native pour desktop (winit + gilrs).
 pub mod native {
     use super::*;
 
@@ -368,7 +582,7 @@ pub mod native {
             W::ShiftLeft => KeyCode::ShiftLeft, W::ShiftRight => KeyCode::ShiftRight,
             W::ControlLeft => KeyCode::ControlLeft, W::ControlRight => KeyCode::ControlRight,
             W::AltLeft => KeyCode::AltLeft, W::AltRight => KeyCode::AltRight,
-            W::MetaLeft => KeyCode::MetaLeft, W::MetaRight => KeyCode::MetaRight,
+            W::SuperLeft => KeyCode::MetaLeft, W::SuperRight => KeyCode::MetaRight,
             W::ArrowUp => KeyCode::ArrowUp, W::ArrowDown => KeyCode::ArrowDown, W::ArrowLeft => KeyCode::ArrowLeft, W::ArrowRight => KeyCode::ArrowRight,
             W::Enter => KeyCode::Enter, W::Escape => KeyCode::Escape, W::Backspace => KeyCode::Backspace, W::Tab => KeyCode::Tab, W::Space => KeyCode::Space,
             W::Insert => KeyCode::Insert, W::Delete => KeyCode::Delete, W::Home => KeyCode::Home, W::End => KeyCode::End,
@@ -400,10 +614,9 @@ pub mod native {
 
         match event {
             WindowEvent::KeyboardInput { event, is_synthetic, .. } => {
-                if let Some(code) = event.logical_key.clone().to_keycode() {
-                    // winit 0.30: KeyEvent → physical/logical. On mappe physical_key si dispo.
+                if let winit::keyboard::PhysicalKey::Code(code) = event.physical_key {
                     let key = map_keycode(&code);
-                    let mods = map_mods(&event.modifiers);
+                    let mods = Modifiers::default(); // ModifiersState arrives via separate events; default here.
                     let repeat = *is_synthetic || event.repeat;
                     match event.state {
                         ElementState::Pressed => mgr.push(InputEvent::KeyDown { key, mods, time: t, repeat }),
@@ -416,6 +629,8 @@ pub mod native {
                     WM::Left => MouseButton::Left,
                     WM::Right => MouseButton::Right,
                     WM::Middle => MouseButton::Middle,
+                    WM::Back => MouseButton::Other(4),
+                    WM::Forward => MouseButton::Other(5),
                     WM::Other(x) => MouseButton::Other(*x as u16),
                 };
                 let mods = Modifiers::default();
@@ -433,11 +648,10 @@ pub mod native {
                 mgr.push(InputEvent::MouseMove { x, y, dx, dy, time: t });
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                let (mut dx, mut dy) = (0.0, 0.0);
-                match delta {
-                    MouseScrollDelta::LineDelta(x, y) => { dx = *x; dy = *y; }
-                    MouseScrollDelta::PixelDelta(p) => { dx = p.x as f32; dy = p.y as f32; }
-                }
+                let (dx, dy) = match delta {
+                    MouseScrollDelta::LineDelta(x, y) => (*x, *y),
+                    MouseScrollDelta::PixelDelta(p) => (p.x as f32, p.y as f32),
+                };
                 mgr.push(InputEvent::Wheel { delta_x: dx, delta_y: dy, time: t });
             }
             WindowEvent::Touch(touch) => {

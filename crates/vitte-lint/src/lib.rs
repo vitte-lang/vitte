@@ -28,14 +28,12 @@
     clippy::too_many_lines
 )]
 
-use anyhow::Result;
-
-#[cfg(feature = "serde")]
+#[cfg(feature = "json")]
 use serde::{Deserialize, Serialize};
 
 /// Sévérité d’un constat.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 pub enum Severity {
     Error,
     Warning,
@@ -44,7 +42,7 @@ pub enum Severity {
 
 /// Un constat unique émis par une règle.
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 pub struct Finding {
     pub rule: String,
     pub message: String,
@@ -61,7 +59,7 @@ impl Finding {
 
 /// Rapport de lint.
 #[derive(Clone, Debug, Default, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 pub struct Report {
     pub findings: Vec<Finding>,
 }
@@ -152,8 +150,8 @@ impl Default for LineLength {
 impl Lint for LineLength {
     fn name(&self) -> &'static str { "LineLength" }
     fn check(&self, ctx: &mut Context) {
-        for (i, line) in ctx.lines.iter().enumerate() {
-            let len = line.chars().count();
+        for i in 0..ctx.lines.len() {
+            let len = ctx.lines[i].chars().count();
             if len > self.max {
                 ctx.emit(Finding::new(
                     self.name(),
@@ -172,9 +170,11 @@ pub struct TrailingWhitespace;
 impl Lint for TrailingWhitespace {
     fn name(&self) -> &'static str { "TrailingWhitespace" }
     fn check(&self, ctx: &mut Context) {
-        for (i, orig) in ctx.lines.iter().enumerate() {
-            if orig.ends_with(' ') || orig.ends_with('\t') {
-                let col = orig.len();
+        for i in 0..ctx.lines.len() {
+            let line = ctx.lines[i];
+            let has_trail = line.ends_with(' ') || line.ends_with('\t');
+            if has_trail {
+                let col = line.len();
                 ctx.emit(Finding::new(self.name(), "Espaces en fin de ligne", i + 1, col, Severity::Warning));
             }
         }
@@ -186,8 +186,8 @@ pub struct Tabs;
 impl Lint for Tabs {
     fn name(&self) -> &'static str { "Tabs" }
     fn check(&self, ctx: &mut Context) {
-        for (i, line) in ctx.lines.iter().enumerate() {
-            if let Some(pos) = line.find('\t') {
+        for i in 0..ctx.lines.len() {
+            if let Some(pos) = ctx.lines[i].find('\t') {
                 ctx.emit(Finding::new(self.name(), "Tabulation trouvée (préférez espaces)", i + 1, pos + 1, Severity::Info));
             }
         }
@@ -204,8 +204,8 @@ impl Default for TodoComment {
 impl Lint for TodoComment {
     fn name(&self) -> &'static str { "TodoComment" }
     fn check(&self, ctx: &mut Context) {
-        for (i, line) in ctx.lines.iter().enumerate() {
-            // Heuristique: considérer // ... ou /* ... */ sur une seule ligne
+        for i in 0..ctx.lines.len() {
+            let line = ctx.lines[i];
             let is_comment = line.trim_start().starts_with("//") || (line.contains("/*") && line.contains("*/"));
             if !is_comment { continue; }
             for &p in self.patterns {
@@ -228,8 +228,8 @@ impl Lint for DoubleBlank {
     fn name(&self) -> &'static str { "DoubleBlank" }
     fn check(&self, ctx: &mut Context) {
         let mut run = 0usize;
-        for (i, line) in ctx.lines.iter().enumerate() {
-            if line.trim().is_empty() {
+        for i in 0..ctx.lines.len() {
+            if ctx.lines[i].trim().is_empty() {
                 run += 1;
                 if run > self.threshold {
                     ctx.emit(Finding::new(self.name(), "Plus d'une ligne vide consécutive", i + 1, 1, Severity::Info));
@@ -254,8 +254,8 @@ impl Default for NoDebugPrint {
 impl Lint for NoDebugPrint {
     fn name(&self) -> &'static str { "NoDebugPrint" }
     fn check(&self, ctx: &mut Context) {
-        for (i, line) in ctx.lines.iter().enumerate() {
-            // ignorer si la ligne est clairement un commentaire
+        for i in 0..ctx.lines.len() {
+            let line = ctx.lines[i];
             if line.trim_start().starts_with("//") { continue; }
             for &p in self.patterns {
                 if let Some(pos) = line.find(p) {

@@ -28,9 +28,8 @@
 #![deny(missing_docs)]
 
 use std::env;
-use std::fmt;
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use similar::{ChangeTag, TextDiff};
@@ -318,19 +317,17 @@ fn tmp_sibling(path: &Path) -> PathBuf {
 
 // --------------------- Normalization and diff ---------------------
 
-fn normalize_text(mut s: &str, opts: &GoldenOptions) -> String {
-    let mut owned: String;
+fn normalize_text(s: &str, opts: &GoldenOptions) -> String {
+    let mut text = s.to_owned();
     if opts.normalize_line_endings {
-        owned = s.replace("\r\n", "\n").replace('\r', "\n");
-        s = &owned;
+        text = text.replace("\r\n", "\n").replace('\r', "\n");
     }
     if opts.trim_text {
-        owned = s.trim().to_owned();
-        s = &owned;
+        text = text.trim().to_owned();
     }
     if opts.trim_trailing_ws {
-        let mut out = String::with_capacity(s.len());
-        for line in s.split_inclusive('\n') {
+        let mut out = String::with_capacity(text.len());
+        for line in text.split_inclusive('\n') {
             if let Some(stripped) = line.strip_suffix('\n') {
                 out.push_str(stripped.trim_end());
                 out.push('\n');
@@ -338,15 +335,12 @@ fn normalize_text(mut s: &str, opts: &GoldenOptions) -> String {
                 out.push_str(line.trim_end());
             }
         }
-        owned = out;
-        s = &owned;
+        text = out;
     }
-    if opts.ensure_trailing_newline && !s.is_empty() && !s.ends_with('\n') {
-        let mut out = s.to_owned();
-        out.push('\n');
-        return out;
+    if opts.ensure_trailing_newline && !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
     }
-    s.to_owned()
+    text
 }
 
 fn render_diff(expected: &str, actual: &str, unified: bool, golden_path: &Path) -> String {

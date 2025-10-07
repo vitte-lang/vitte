@@ -33,8 +33,9 @@ use serde::{Serialize, Deserialize};
 #[cfg(feature="errors")]
 use thiserror::Error;
 
+
 #[cfg(feature="ansi")]
-use vitte_ansi as ansi;
+use vitte_ansi::basic::{green, yellow, cyan};
 
 #[cfg(feature="multi")]
 use crossbeam_channel as xch;
@@ -266,7 +267,7 @@ impl ProgressBar {
         if cfg!(feature="ansi") && self.style.use_color {
             #[cfg(feature="ansi")]
             {
-                let col = if st.percent>=100.0 { ansi::green("") } else if st.percent>=66.0 { ansi::yellow("") } else { ansi::cyan("") };
+                let col = if st.percent>=100.0 { green() } else if st.percent>=66.0 { yellow() } else { cyan() };
                 return format!("{}{}{}", col.prefix(), s, col.suffix());
             }
         }
@@ -325,13 +326,13 @@ impl Spinner {
 #[cfg(feature="multi")]
 pub struct MultiProgress { tx: xch::Sender<Msg>, join: Option<std::thread::JoinHandle<()>>, }
 #[cfg(feature="multi")]
-enum Msg { New(u64, ProgressStyle, String, String, String, xch::Sender<u64>), Inc(String,u64), Pos(String,u64), Msgs(String,String,String), Finish(String,Option<String>), Quit }
+enum Msg { New(u64, ProgressStyle, String, xch::Sender<u64>), Inc(String,u64), Pos(String,u64), Msgs(String,String,String), Finish(String,Option<String>), Quit }
 
 #[cfg(feature="multi")]
 impl MultiProgress {
     pub fn new()->Self{ let (tx,rx)=xch::bounded::<Msg>(1024); let join=std::thread::spawn(move|| painter(rx)); Self{tx,join:Some(join)} }
     pub fn add(&self, id:impl Into<String>, len:u64, style:ProgressStyle)->MpBar{
-        let (btx,brx)=xch::bounded::<u64>(1); let id=id.into(); let _=self.tx.send(Msg::New(len,style,id.clone(),String::new(),String::new(),btx)); let _=brx.recv_timeout(std::time::Duration::from_millis(50)); MpBar{id, tx:self.tx.clone()}
+        let (btx,brx)=xch::bounded::<u64>(1); let id=id.into(); let _=self.tx.send(Msg::New(len,style,id.clone(),btx)); let _=brx.recv_timeout(std::time::Duration::from_millis(50)); MpBar{id, tx:self.tx.clone()}
     }
     pub fn join(mut self){ let _=self.tx.send(Msg::Quit); if let Some(j)=self.join.take(){ let _=j.join(); } }
 }
@@ -354,7 +355,7 @@ fn painter(rx: xch::Receiver<Msg>){
     loop{
         while let Ok(msg)=rx.try_recv(){
             match msg {
-                Msg::New(len,style,id,_,_,ack)=>{ states.insert(id.clone(),(len,0,style,String::new(),String::new(),Instant::now())); order.push(id); let _=ack.send(0); }
+                Msg::New(len,style,id,ack)=>{ states.insert(id.clone(),(len,0,style,String::new(),String::new(),Instant::now())); order.push(id); let _=ack.send(0); }
                 Msg::Inc(id,d)=>if let Some(s)=states.get_mut(&id){ s.1=s.1.saturating_add(d); }
                 Msg::Pos(id,p)=>if let Some(s)=states.get_mut(&id){ s.1=p; }
                 Msg::Msgs(id,m,suf)=>if let Some(st)=states.get_mut(&id){ st.3=m; st.4=suf; }
@@ -422,10 +423,12 @@ pub mod indicatif_adapter {
         pub fn new(len:u64)->Self{ Self{ inner:IBar::new(len), style:ProgressStyle::classic() } }
         pub fn with_style(mut self, s:ProgressStyle)->Self{
             let tpl=s.template.replace("{bar}","{bar:=>bar_width}");
+            let frames: Vec<String> = s.tick_chars.iter().map(|c| c.to_string()).collect();
+            let frame_refs: Vec<&str> = frames.iter().map(|t| t.as_str()).collect();
             let ist=IStyle::default_bar()
                 .template(&tpl).unwrap()
                 .progress_chars(&format!("{}{}{}",s.bar_chars.0,s.bar_chars.1,s.bar_chars.2))
-                .tick_strings(&s.tick_chars.iter().map(|c| c.to_string()).collect::<Vec<_>>());
+                .tick_strings(&frame_refs);
             self.inner.set_style(ist); self.style=s; self
         }
         pub fn set_message(&self, m:&str){ self.inner.set_message(m.to_string()); }

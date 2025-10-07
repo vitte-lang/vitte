@@ -22,16 +22,22 @@
 
 use thiserror::Error;
 
+/// Erreurs liées à l'Interop Julia et au runtime.
 #[derive(Debug, Error)]
 pub enum JuliaError {
+    /// La runtime Julia n'est pas disponible ou non initialisée.
     #[error("Julia runtime not available")]
     RuntimeUnavailable,
+    /// Échec d'appel JNI/FFI ou interaction runtime (message brut).
     #[error("Interop error: {0}")]
     Interop(String),
+    /// Échec de conversion de types Rust ⇄ Julia.
     #[error("Conversion error: {0}")]
     Conversion(String),
+    /// Erreur lors de l'évaluation d'une expression Julia.
     #[error("Evaluation error: {0}")]
     Eval(String),
+    /// Un pointeur nul a été renvoyé par l'API Julia.
     #[error("Null pointer received from Julia")]
     NullPointer,
 }

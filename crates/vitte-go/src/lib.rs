@@ -17,14 +17,24 @@
 //! Build header auto: activez la feature "cbind" et ajoutez un build.rs cbindgen.
 
 #![deny(unsafe_op_in_unsafe_fn)]
-#![forbid(unsafe_code)] // FFI impose `unsafe extern "C"` signatures mais code interne safe
 
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::path::Path;
 use std::ptr;
 use std::sync::{Arc, Mutex};
+use std::sync::RwLock;
 use thiserror::Error;
+
+/// Opaque C user data passed back to callbacks.
+/// Safety: the embedder guarantees thread-safety of this pointer usage.
+#[repr(transparent)]
+#[derive(Copy, Clone)]
+
+struct CUserData(*mut c_void);
+// We must allow sharing across threads for the global callback slot.
+unsafe impl Send for CUserData {}
+unsafe impl Sync for CUserData {}
 
 // ---------- Statuts ----------
 
@@ -381,19 +391,27 @@ pub unsafe extern "C" fn vitte_go_write_binary_file(
 /// level: 0..4 ; msg: C string nul-terminated ; user_data : opaq.
 pub type VitteGoLogCb = Option<extern "C" fn(level: c_uint, msg: *const c_char, user_data: *mut c_void)>;
 
-static LOG_CB: parking_lot::RwLock<(VitteGoLogCb, *mut c_void)> = parking_lot::RwLock::new((None, ptr::null_mut()));
+static LOG_CB: RwLock<(VitteGoLogCb, CUserData)> = RwLock::new((None, CUserData(ptr::null_mut())));
 
 #[no_mangle]
 pub extern "C" fn vitte_go_set_log_callback(cb: VitteGoLogCb, user_data: *mut c_void) -> VitteGoStatus {
-    *LOG_CB.write() = (cb, user_data);
-    VitteGoStatus::Ok
+    if let Ok(mut slot) = LOG_CB.write() {
+        *slot = (cb, CUserData(user_data));
+        VitteGoStatus::Ok
+    } else {
+        set_last_error("log RwLock poisoned".into());
+        VitteGoStatus::Err
+    }
 }
 
+#[allow(dead_code)]
 fn log_emit(level: LogLevel, msg: &str) {
-    let (cb, ud) = *LOG_CB.read();
-    if let Some(cb) = cb {
-        let lv = match level { LogLevel::Error=>0, LogLevel::Warn=>1, LogLevel::Info=>2, LogLevel::Debug=>3, LogLevel::Trace=>4 };
-        if let Ok(c) = CString::new(msg) { cb(lv, c.as_ptr(), ud); }
+    if let Ok(guard) = LOG_CB.read() {
+        let (cb, ud) = *guard;
+        if let Some(cb) = cb {
+            let lv = match level { LogLevel::Error=>0, LogLevel::Warn=>1, LogLevel::Info=>2, LogLevel::Debug=>3, LogLevel::Trace=>4 };
+            if let Ok(c) = CString::new(msg) { cb(lv, c.as_ptr(), ud.0); }
+        }
     }
 }
 

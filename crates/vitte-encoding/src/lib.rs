@@ -1,3 +1,5 @@
+
+
 //! vitte-encoding — Universal text encoding/decoding abstraction
 //!
 //! Provides a unified API for handling various encodings (UTF-8/16/Latin-1/etc.)
@@ -8,13 +10,9 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-// If we are in no_std but still want heap types, enable `alloc` when either
-// `std` is on or the crate is built with the explicit `alloc-only` feature.
 #[cfg(any(feature = "std", feature = "alloc-only"))]
 extern crate alloc;
 
-#[cfg(any(feature = "std", feature = "alloc-only"))]
-use alloc::{string::String, vec::Vec};
 
 /// Supported encodings recognized by the Vitte runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,7 +22,6 @@ pub enum Encoding {
     Utf16BE,
     Latin1,
     Ascii,
-    // Optional/legacy families controlled by fine-grained features
     #[cfg(feature = "iso_8859")]
     Iso8859(u8),
     #[cfg(feature = "win125x")]
@@ -123,9 +120,9 @@ impl Encoding {
         }
     }
 
-    /// Guess encoding by name label.
+    /// Guess encoding by label (case-insensitive).
     pub fn from_label(label: &str) -> Option<Self> {
-        match label.to_lowercase().as_str() {
+        match label.to_ascii_lowercase().as_str() {
             "utf-8" => Some(Encoding::Utf8),
             "utf-16le" => Some(Encoding::Utf16LE),
             "utf-16be" => Some(Encoding::Utf16BE),
@@ -136,43 +133,25 @@ impl Encoding {
     }
 }
 
-#[cfg(any(feature = "std", feature = "alloc-only"))]
-impl Encoding {
-    /// Decode a buffer to UTF-8 `String`.
-    pub fn decode(&self, input: &[u8]) -> Result<String, &'static str> {
-        match self {
-            Encoding::Utf8 => core::str::from_utf8(input)
-                .map(|s| s.to_string())
-                .map_err(|_| "invalid UTF-8"),
-            Encoding::Latin1 => Ok(input.iter().map(|&b| b as char).collect()),
-            Encoding::Ascii => {
-                if input.iter().any(|&b| b > 0x7F) {
-                    Err("invalid ASCII")
-                } else {
-                    Ok(input.iter().map(|&b| b as char).collect())
-                }
-            }
-            Encoding::Utf16LE => {
-                if input.len() % 2 != 0 {
-                    return Err("odd byte count in UTF-16LE");
-                }
-                let utf16: Vec<u16> = input
-                    .chunks_exact(2)
-                    .map(|c| u16::from_le_bytes([c[0], c[1]]))
-                    .collect();
-                String::from_utf16(&utf16).map_err(|_| "invalid UTF-16LE")
-            }
-            Encoding::Utf16BE => {
-                if input.len() % 2 != 0 {
-                    return Err("odd byte count in UTF-16BE");
-                }
-                let utf16: Vec<u16> = input
-                    .chunks_exact(2)
-                    .map(|c| u16::from_be_bytes([c[0], c[1]]))
-                    .collect();
-                String::from_utf16(&utf16).map_err(|_| "invalid UTF-16BE")
-            }
-            _ => Err("unsupported encoding"),
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_labels() {
+        assert_eq!(Encoding::Utf8.label(), "utf-8");
+        assert_eq!(Encoding::Utf16BE.label(), "utf-16be");
+    }
+
+    #[test]
+    fn test_from_bom() {
+        assert_eq!(Encoding::from_bom(&[0xEF, 0xBB, 0xBF]), Some((Encoding::Utf8, 3)));
+    }
+
+    #[test]
+    fn test_from_label() {
+        assert_eq!(Encoding::from_label("utf-8"), Some(Encoding::Utf8));
+        assert_eq!(Encoding::from_label("UTF-16LE"), Some(Encoding::Utf16LE));
+        assert_eq!(Encoding::from_label("unknown"), None);
     }
 }

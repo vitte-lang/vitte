@@ -23,7 +23,7 @@ use core::fmt;
 use thiserror::Error;
 
 /// Erreurs.
-#[cfg_attr(feature = "errors", derive(Error, Debug))]
+#[cfg_attr(feature = "errors", derive(Error))]
 #[derive(Debug)]
 pub enum KeyError {
     /// Encodage invalide.
@@ -40,7 +40,12 @@ pub enum KeyError {
     Hash,
     /// Taille incorrecte.
     #[cfg_attr(feature = "errors", error("invalid length: expected {expected}, got {got}"))]
-    InvalidLength { expected: usize, got: usize },
+    InvalidLength {
+        /// Taille attendue en octets.
+        expected: usize,
+        /// Taille observée en octets.
+        got: usize,
+    },
 }
 
 /// Résultat spécialisé.

@@ -26,8 +26,10 @@ use tracing::{self, span, Level};
 /// Erreurs de profilage.
 #[derive(Debug, Error)]
 pub enum ProfError {
+    /// Error returned when exporting profiling data (e.g., JSON or flamegraph).
     #[error("export error: {0}")]
     Export(String),
+    /// Error coming from the `pprof` profiler integration.
     #[error("pprof error: {0}")]
     #[cfg(feature = "pprof")]
     Pprof(String),
@@ -74,7 +76,7 @@ impl TimerStat {
 
 /// Données de profilage globales.
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ProfData {
     counters: HashMap<String, CounterStat>,
     timers: HashMap<String, TimerStat>,
@@ -105,7 +107,7 @@ impl ProfData {
     pub fn snapshot() -> Self {
         Self::ensure();
         let g = Self::guard();
-        g.clone()
+        (*g).clone()
     }
 
     /// Réinitialise toutes les stats.

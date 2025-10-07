@@ -29,9 +29,9 @@
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "json")]
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "handlebars")]
@@ -41,7 +41,7 @@ use handlebars::Handlebars;
 
 /// Valeur de contexte minimale compréhensible par le mini-moteur.
 /// Pour `handlebars`, toute valeur `serde_json::Value` est acceptée.
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Null,
@@ -102,7 +102,7 @@ impl<K: Into<String>, V: Into<Value>> From<HashMap<K, V>> for Value {
 /* ================================ Registre =================================== */
 
 /// Enregistrement d’un template nommé et de ses partiels.
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "json", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Registry {
     /// Templates nommés
