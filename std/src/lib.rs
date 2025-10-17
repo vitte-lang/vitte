@@ -35,7 +35,7 @@ pub mod prelude {
     //! Prélu : importe les types/symboles utiles “partout”.
     #[allow(unused_imports)]
     pub use crate::{
-        arena::{idx, Arena, IdMap},
+        arena::{Arena, IdMap, idx},
         bytes::{ReadBytes, WriteBytes},
         ids::{Id, IdGen, RawId},
         result::{Error, VResult},

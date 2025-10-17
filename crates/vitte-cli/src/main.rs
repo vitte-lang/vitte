@@ -15,6 +15,10 @@ use anyhow::{Context, Result};
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 
 use vitte_cli as cli; // notre lib interne (src/lib.rs)
+use cli::inspect::InspectOptions;
+
+#[cfg(feature = "fmt")]
+use vitte_fmt::{FormatterOptions, format_source};
 
 // ──────────────────────────── CLI (clap) ────────────────────────────
 
@@ -121,6 +125,60 @@ enum Command {
         /// Résumé compact
         #[arg(long)]
         summary: bool,
+        /// Table des symboles uniquement
+        #[arg(long)]
+        symbols: bool,
+        /// Constantes globales
+        #[arg(long = "consts")]
+        consts_only: bool,
+        /// Dump hexadécimal
+        #[arg(long)]
+        hexdump: bool,
+        /// Sortie JSON
+        #[arg(long)]
+        json: bool,
+        /// Informations cible
+        #[arg(long = "target")]
+        target_info: bool,
+        /// Informations d'en-tête
+        #[arg(long)]
+        header: bool,
+        /// Liste des sections
+        #[arg(long)]
+        sections: bool,
+        /// Chaînes ASCII embarquées
+        #[arg(long)]
+        strings: bool,
+        /// Fonctions importées
+        #[arg(long)]
+        imports: bool,
+        /// Fonctions exportées
+        #[arg(long)]
+        exports: bool,
+        /// Désassemblage textuel
+        #[arg(long)]
+        disasm: bool,
+        /// Informations de debug
+        #[arg(long)]
+        debug: bool,
+        /// Métadonnées additionnelles
+        #[arg(long)]
+        meta: bool,
+        /// Vérification d'intégrité
+        #[arg(long)]
+        verify: bool,
+        /// Taille par section
+        #[arg(long)]
+        size: bool,
+        /// Dépendances embarquées
+        #[arg(long)]
+        deps: bool,
+        /// Point d'entrée
+        #[arg(long)]
+        entry: bool,
+        /// Active toutes les sections
+        #[arg(long = "dump-all")]
+        dump_all: bool,
     },
 
     /// Désassembler un bytecode vers du texte
@@ -252,14 +310,17 @@ fn make_hooks() -> cli::Hooks {
         });
     }
 
-    // REPL — À RACCORDER
-    h.repl = None; // Some(|prompt| { /* ... */ Ok(0) });
+    // REPL — fallback intégré pour dialoguer avec l’utilisateur
+    h.repl = Some(cli::repl::fallback);
 
-    // Formatage — À RACCORDER (source -> String formatée)
-    h.fmt = None; // Some(|source, check_only| Ok(if check_only { source.to_string() } else { format_code(source) }));
+    // Formatage — fallback via vitte-fmt si disponible
+    #[cfg(feature = "fmt")]
+    {
+        h.fmt = Some(fmt_hook);
+    }
 
-    // Inspection — À RACCORDER (bytes -> texte)
-    h.inspect = None;
+    // Inspection — fallback simple sur le format VBC0 synthétique
+    h.inspect = Some(inspect_hook);
 
     h
 }
@@ -395,13 +456,56 @@ fn real_main() -> Result<()> {
             );
             C::Fmt(FmtTask { input, output: out, check })
         },
-        Command::Inspect { input, summary } => {
+        Command::Inspect {
+            input,
+            summary,
+            symbols,
+            consts_only,
+            hexdump,
+            json,
+            target_info,
+            header,
+            sections,
+            strings,
+            imports,
+            exports,
+            disasm,
+            debug,
+            meta,
+            verify,
+            size,
+            deps,
+            entry,
+            dump_all,
+        } => {
             let kind = match input {
                 Some(p) if p.as_os_str() == "-" => cli::InputKind::BytecodePath(p),
                 Some(p) => cli::InputKind::BytecodePath(p),
                 None => cli::InputKind::BytecodePath(PathBuf::from("-")),
             };
-            C::Inspect(InspectTask { input: kind, summary })
+            let mut options = InspectOptions {
+                summary,
+                header,
+                symbols,
+                sections,
+                consts: consts_only,
+                strings,
+                imports,
+                exports,
+                hexdump,
+                disasm,
+                json,
+                target: target_info,
+                debug,
+                meta,
+                verify,
+                size,
+                deps,
+                entry,
+                dump_all,
+            };
+            options.ensure_defaults();
+            C::Inspect(InspectTask { input: kind, options })
         },
         Command::Disasm { input, output } => {
             let kind = match input {
@@ -426,4 +530,15 @@ fn real_main() -> Result<()> {
         std::process::exit(code);
     }
     Ok(())
+}
+
+#[cfg(feature = "fmt")]
+fn fmt_hook(source: &str, _check_only: bool) -> anyhow::Result<String> {
+    let options = FormatterOptions::default();
+    let output = format_source(source, options);
+    Ok(output.code)
+}
+
+fn inspect_hook(bytes: &[u8], opts: &InspectOptions) -> anyhow::Result<String> {
+    Ok(cli::inspect::render(bytes, opts))
 }
