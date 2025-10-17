@@ -1,17 +1,22 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::{ArgAction, ColorChoice, Parser, Subcommand, ValueHint};
 use env_logger;
 use log::{debug, error, info};
 use owo_colors::OwoColorize;
 use serde::Deserialize;
-use vitte_cli::{inspect::{InspectOptions, render as render_inspection}, registry};
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use vitte_cli::{
+    inspect::{InspectOptions, render as render_inspection},
+    registry,
+};
 
 #[cfg(feature = "fmt")]
 use vitte_fmt::{FormatterOptions, format_source};
+
+mod repl;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -172,11 +177,7 @@ pub fn run_cli() -> Result<()> {
 fn real_main(cli: Cli) -> Result<()> {
     debug!("args = {:?}", std::env::args().collect::<Vec<_>>());
     let command = cli.command;
-    let config = if matches!(command, Command::Version) {
-        None
-    } else {
-        check_project_config()?
-    };
+    let config = if matches!(command, Command::Version) { None } else { check_project_config()? };
 
     match command {
         Command::Version => println!("{}", crate::version_string()),
@@ -232,7 +233,9 @@ fn real_main(cli: Cli) -> Result<()> {
             options.ensure_defaults();
             crate::command_inspect(input.as_ref(), options)?
         },
-        Command::Deps { action } => handle_deps(action.unwrap_or(DepsAction::List), config.as_ref())?,
+        Command::Deps { action } => {
+            handle_deps(action.unwrap_or(DepsAction::List), config.as_ref())?
+        },
     }
     Ok(())
 }
@@ -363,30 +366,30 @@ fn collect_fmt_targets(inputs: &[PathBuf]) -> Result<Vec<PathBuf>> {
         let meta = match fs::metadata(&path) {
             Ok(m) => m,
             Err(err) => {
-            print_diagnostic(
-                Diagnostic::warning(
-                    "FMT001",
-                    format!("Impossible de lire les métadonnées de {}", path.display()),
-                )
-                .with_help(err.to_string()),
-            );
+                print_diagnostic(
+                    Diagnostic::warning(
+                        "FMT001",
+                        format!("Impossible de lire les métadonnées de {}", path.display()),
+                    )
+                    .with_help(err.to_string()),
+                );
                 continue;
-            }
+            },
         };
 
         if meta.is_dir() {
             let entries = match fs::read_dir(&path) {
                 Ok(e) => e,
                 Err(err) => {
-                print_diagnostic(
-                    Diagnostic::warning(
-                        "FMT002",
-                        format!("Lecture du dossier {} impossible", path.display()),
-                    )
-                    .with_help(err.to_string()),
-                );
+                    print_diagnostic(
+                        Diagnostic::warning(
+                            "FMT002",
+                            format!("Lecture du dossier {} impossible", path.display()),
+                        )
+                        .with_help(err.to_string()),
+                    );
                     continue;
-                }
+                },
             };
 
             for entry in entries {
@@ -398,7 +401,7 @@ fn collect_fmt_targets(inputs: &[PathBuf]) -> Result<Vec<PathBuf>> {
                                 .with_help(err.to_string()),
                         );
                         continue;
-                    }
+                    },
                 };
                 let child = entry.path();
                 let ftype = match entry.file_type() {
@@ -412,7 +415,7 @@ fn collect_fmt_targets(inputs: &[PathBuf]) -> Result<Vec<PathBuf>> {
                             .with_help(err.to_string()),
                         );
                         continue;
-                    }
+                    },
                 };
                 if ftype.is_dir() {
                     if let Some(name) = child.file_name().and_then(|s| s.to_str()) {
@@ -528,7 +531,7 @@ fn handle_deps(action: DepsAction, cfg: Option<&VitteConfig>) -> Result<()> {
                         MessageColor::Help,
                     );
                     return Ok(());
-                }
+                },
             };
 
             let mut matched = 0usize;
@@ -592,8 +595,8 @@ fn check_project_config() -> Result<Option<VitteConfig>> {
         return Ok(None);
     }
 
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("Lecture de {}", path.display()))?;
+    let content =
+        fs::read_to_string(path).with_context(|| format!("Lecture de {}", path.display()))?;
 
     let cfg: VitteConfig = match toml::from_str(&content) {
         Ok(cfg) => cfg,
@@ -607,7 +610,7 @@ fn check_project_config() -> Result<Option<VitteConfig>> {
                 .with_help("Vérifie la syntaxe TOML de vitte.toml."),
             )?;
             unreachable!()
-        }
+        },
     };
 
     validate_config(&cfg)?;
@@ -653,24 +656,29 @@ fn validate_config(cfg: &VitteConfig) -> Result<()> {
         if let Some(targets) = &build.targets {
             if targets.is_empty() {
                 emit_and_bail(
-                    Diagnostic::error("CFG011", "`[build].targets` doit contenir au moins une cible")
-                        .with_help("Liste les triples (ex: \"x86_64-pc-windows-msvc\")."),
+                    Diagnostic::error(
+                        "CFG011",
+                        "`[build].targets` doit contenir au moins une cible",
+                    )
+                    .with_help("Liste les triples (ex: \"x86_64-pc-windows-msvc\")."),
                 )?;
             }
             for target in targets {
                 if target.trim().is_empty() {
-                    emit_and_bail(
-                        Diagnostic::error("CFG012", "`[build].targets` contient une entrée vide"),
-                    )?;
+                    emit_and_bail(Diagnostic::error(
+                        "CFG012",
+                        "`[build].targets` contient une entrée vide",
+                    ))?;
                 }
             }
         }
 
         if let Some(features) = &build.features {
             if features.iter().any(|f| f.trim().is_empty()) {
-                emit_and_bail(
-                    Diagnostic::error("CFG013", "`[build].features` contient une entrée vide"),
-                )?;
+                emit_and_bail(Diagnostic::error(
+                    "CFG013",
+                    "`[build].features` contient une entrée vide",
+                ))?;
             }
         }
     }
@@ -715,12 +723,24 @@ struct Diagnostic {
 
 impl Diagnostic {
     fn error(code: &'static str, message: impl Into<String>) -> Self {
-        Self { severity: Severity::Error, code, message: message.into(), notes: Vec::new(), help: None }
+        Self {
+            severity: Severity::Error,
+            code,
+            message: message.into(),
+            notes: Vec::new(),
+            help: None,
+        }
     }
 
     #[allow(dead_code)]
     fn warning(code: &'static str, message: impl Into<String>) -> Self {
-        Self { severity: Severity::Warning, code, message: message.into(), notes: Vec::new(), help: None }
+        Self {
+            severity: Severity::Warning,
+            code,
+            message: message.into(),
+            notes: Vec::new(),
+            help: None,
+        }
     }
 
     fn with_note(mut self, note: impl Into<String>) -> Self {
@@ -830,26 +850,7 @@ fn compile_file(input: &Path, out: Option<&PathBuf>, emit: &str) -> Result<()> {
 }
 
 fn repl_loop() -> Result<()> {
-    info!("💬 REPL démarré");
-    let mut line = String::new();
-    let mut stdout = io::stdout();
-    loop {
-        print!("vitte> ");
-        stdout.flush().ok();
-        line.clear();
-        if io::stdin().read_line(&mut line)? == 0 {
-            break;
-        }
-        let s = line.trim_end();
-        if matches!(s, ":quit" | ":exit") {
-            break;
-        }
-        match engine::vm::eval_line(s) {
-            Ok(res) => println!("= {}", res),
-            Err(e) => println!("! erreur: {e}"),
-        }
-    }
-    Ok(())
+    repl::start()
 }
 
 pub fn is_bytecode(path: &Path) -> bool {

@@ -1,0 +1,484 @@
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+line_comment = _{ "//" ~ (!"\n" ~ ANY)* ~ ("\n" | EOI) }
+block_comment = _{ "/*" ~ block_comment_inner ~ "*/" }
+block_comment_inner = { (block_comment | (!"*/" ~ ANY))* }
+
+COMMENT = _{ line_comment | block_comment }
+spacing = _{ (WHITESPACE | COMMENT)* }
+spacing1 = _{ (WHITESPACE | COMMENT)+ }
+
+compilation_unit = { SOI ~ spacing ~ module_decl ~ (spacing ~ top_item)* ~ spacing ~ EOI }
+
+module_decl = { "module" ~ spacing ~ module_path ~ spacing ~ ";" }
+module_path = { identifier ~ (spacing ~ "::" ~ spacing ~ identifier)* }
+
+top_item = { use_decl | type_item | fn_item | const_item | static_item }
+
+use_decl = { "import" ~ spacing1 ~ use_tree ~ spacing ~ ";" }
+use_tree = { module_path ~ (spacing ~ "::" ~ spacing ~ "*")? }
+
+vis = { ("pub" ~ spacing1)? }
+
+type_item = { vis ~ (struct_item | enum_item | union_item | type_alias) }
+
+type_alias = {
+    "type" ~ spacing1 ~ identifier ~ generic_params? ~ spacing ~ "=" ~ spacing ~ type_expr ~ spacing ~ ";"
+}
+
+struct_item = { "struct" ~ spacing1 ~ identifier ~ generic_params? ~ spacing ~ struct_body }
+struct_body = { "{" ~ spacing ~ field_list? ~ spacing ~ "}" }
+field_list = { field ~ (spacing ~ "," ~ spacing ~ field)* ~ (spacing ~ ",")? }
+field = { vis ~ identifier ~ spacing ~ ":" ~ spacing ~ type_expr }
+
+enum_item = {
+    "enum" ~ spacing1 ~ identifier ~ generic_params? ~ spacing ~ "{" ~ spacing ~ enum_variants? ~ spacing ~ "}"
+}
+enum_variants = { enum_variant ~ (spacing ~ "," ~ spacing ~ enum_variant)* ~ (spacing ~ ",")? }
+enum_variant = { identifier ~ (spacing ~ tuple_ty_list | spacing ~ struct_body)? }
+tuple_ty_list = {
+    "(" ~ spacing ~ (type_expr ~ (spacing ~ "," ~ spacing ~ type_expr)* ~ (spacing ~ ",")?)? ~ spacing ~ ")"
+}
+
+union_item = {
+    "union" ~ spacing1 ~ identifier ~ generic_params? ~ spacing ~ "{" ~ spacing ~ field_list? ~ spacing ~ "}"
+}
+
+generic_params = {
+    "<" ~ spacing ~ type_param ~ (spacing ~ "," ~ spacing ~ type_param)* ~ (spacing ~ ",")? ~ spacing ~ ">"
+}
+type_param = { identifier ~ (spacing ~ ":" ~ spacing ~ type_bounds)? }
+type_bounds = { type_expr ~ (spacing ~ "+" ~ spacing ~ type_expr)* }
+
+fn_item = {
+    vis
+    ~ "fn"
+    ~ spacing1
+    ~ identifier
+    ~ generic_params?
+    ~ spacing
+    ~ param_list
+    ~ (spacing ~ "->" ~ spacing ~ type_expr)?
+    ~ where_clause?
+    ~ spacing
+    ~ block
+}
+param_list = {
+    "("
+    ~ spacing
+    ~ (param ~ (spacing ~ "," ~ spacing ~ param)* ~ (spacing ~ ",")?)?
+    ~ spacing
+    ~ ")"
+}
+param = { ("mut" ~ spacing1)? ~ identifier ~ spacing ~ ":" ~ spacing ~ type_expr }
+
+where_clause = { spacing ~ "where" ~ spacing1 ~ where_pred ~ (spacing ~ "," ~ spacing ~ where_pred)* }
+where_pred = { type_expr ~ spacing ~ ":" ~ spacing ~ type_bounds }
+
+const_item = {
+    vis
+    ~ "const"
+    ~ spacing1
+    ~ identifier
+    ~ spacing
+    ~ ":"
+    ~ spacing
+    ~ type_expr
+    ~ spacing
+    ~ "="
+    ~ spacing
+    ~ expr
+    ~ spacing
+    ~ ";"
+}
+
+static_item = {
+    vis
+    ~ "static"
+    ~ spacing1
+    ~ identifier
+    ~ spacing
+    ~ ":"
+    ~ spacing
+    ~ type_expr
+    ~ spacing
+    ~ "="
+    ~ spacing
+    ~ expr
+    ~ spacing
+    ~ ";"
+}
+
+type_expr = _{
+    function_type
+    | tuple_type
+    | array_type
+    | slice_type
+    | pointer_type
+    | reference_type
+    | path_type
+    | primitive_type
+}
+
+primitive_type = {
+    "i8" | "i16" | "i32" | "i64" | "isize"
+    | "u8" | "u16" | "u32" | "u64" | "usize"
+    | "f32" | "f64"
+    | "bool" | "char" | "str" | "void"
+}
+
+path_type = { type_path }
+type_path = { type_segment ~ (spacing ~ "::" ~ spacing ~ type_segment)* }
+type_segment = { identifier ~ generic_args? }
+generic_args = {
+    "<" ~ spacing ~ type_expr ~ (spacing ~ "," ~ spacing ~ type_expr)* ~ (spacing ~ ",")? ~ spacing ~ ">"
+}
+
+tuple_type = {
+    "("
+    ~ spacing
+    ~ (type_expr ~ (spacing ~ "," ~ spacing ~ type_expr)* ~ (spacing ~ ",")?)?
+    ~ spacing
+    ~ ")"
+}
+
+array_type = {
+    "["
+    ~ spacing
+    ~ type_expr
+    ~ spacing
+    ~ ";"
+    ~ spacing
+    ~ expr
+    ~ spacing
+    ~ "]"
+}
+
+slice_type = { "[" ~ spacing ~ type_expr ~ spacing ~ "]" }
+
+pointer_type = { "*" ~ spacing ~ type_expr }
+reference_type = { "&" ~ spacing ~ ("mut" ~ spacing1)? ~ type_expr }
+
+function_type = {
+    "fn"
+    ~ spacing
+    ~ "("
+    ~ spacing
+    ~ (type_expr ~ (spacing ~ "," ~ spacing ~ type_expr)* ~ (spacing ~ ",")?)?
+    ~ spacing
+    ~ ")"
+    ~ (spacing ~ "->" ~ spacing ~ type_expr)?
+}
+
+block = { "{" ~ spacing ~ stmt* ~ spacing ~ "}" }
+
+stmt = _{ local_let_stmt | item_stmt | expr_stmt | empty_stmt }
+
+item_stmt = { type_item | fn_item | const_item | static_item }
+
+local_let_stmt = {
+    "let"
+    ~ spacing1
+    ~ ("mut" ~ spacing1)?
+    ~ pattern
+    ~ (spacing ~ ":" ~ spacing ~ type_expr)?
+    ~ (spacing ~ "=" ~ spacing ~ expr)?
+    ~ spacing
+    ~ ";"
+}
+
+expr_stmt = { expr ~ (spacing ~ ";")? }
+empty_stmt = { ";" }
+
+pattern = _{
+    "_"
+    | literal_pattern
+    | identifier_pattern
+    | tuple_pattern
+    | struct_pattern
+    | tuple_struct_pattern
+    | ref_pattern
+    | path_pattern
+}
+
+literal_pattern = { literal }
+identifier_pattern = { ("mut" ~ spacing1)? ~ identifier }
+ref_pattern = { "&" ~ spacing ~ ("mut" ~ spacing1)? ~ pattern }
+tuple_pattern = {
+    "("
+    ~ spacing
+    ~ (pattern ~ (spacing ~ "," ~ spacing ~ pattern)* ~ (spacing ~ ",")?)?
+    ~ spacing
+    ~ ")"
+}
+struct_pattern = {
+    expr_path
+    ~ spacing
+    ~ "{"
+    ~ spacing
+    ~ struct_pattern_fields?
+    ~ spacing
+    ~ "}"
+}
+struct_pattern_fields = {
+    field_pat ~ (spacing ~ "," ~ spacing ~ field_pat)* ~ (spacing ~ ",")? ~ (spacing ~ struct_pattern_rest)?
+    | struct_pattern_rest
+}
+struct_pattern_rest = { ".." }
+tuple_struct_pattern = { expr_path ~ spacing ~ tuple_pattern }
+path_pattern = { expr_path }
+field_pat = { identifier ~ (spacing ~ ":" ~ spacing ~ pattern)? }
+
+expr = { assign_expr }
+
+assign_expr = {
+    logic_or_expr ~ (spacing ~ assign_op ~ spacing ~ assign_expr)?
+}
+assign_op = {
+    "=" | "+=" | "-=" | "*=" | "/=" | "%="
+    | "&=" | "|=" | "^=" | "<<=" | ">>="
+}
+
+logic_or_expr = {
+    logic_and_expr ~ (spacing ~ "||" ~ spacing ~ logic_and_expr)*
+}
+logic_and_expr = {
+    bit_or_expr ~ (spacing ~ "&&" ~ spacing ~ bit_or_expr)*
+}
+bit_or_expr = {
+    bit_xor_expr ~ (spacing ~ "|" ~ spacing ~ bit_xor_expr)*
+}
+bit_xor_expr = {
+    bit_and_expr ~ (spacing ~ "^" ~ spacing ~ bit_and_expr)*
+}
+bit_and_expr = {
+    equality_expr ~ (spacing ~ "&" ~ spacing ~ equality_expr)*
+}
+equality_expr = {
+    relational_expr ~ (spacing ~ ("==" | "!=") ~ spacing ~ relational_expr)*
+}
+relational_expr = {
+    shift_expr ~ (spacing ~ ("<" | "<=" | ">" | ">=") ~ spacing ~ shift_expr)*
+}
+shift_expr = {
+    additive_expr ~ (spacing ~ ("<<" | ">>") ~ spacing ~ additive_expr)*
+}
+additive_expr = {
+    multiplicative_expr ~ (spacing ~ ("+" | "-") ~ spacing ~ multiplicative_expr)*
+}
+multiplicative_expr = {
+    cast_expr ~ (spacing ~ ("*" | "/" | "%") ~ spacing ~ cast_expr)*
+}
+cast_expr = {
+    unary_expr ~ (spacing ~ "as" ~ spacing ~ type_expr)*
+}
+
+unary_expr = _{
+    postfix_expr
+    | ("!" | "-" | "~") ~ spacing ~ unary_expr
+    | "*" ~ spacing ~ unary_expr
+    | "&" ~ spacing ~ ("mut" ~ spacing1)? ~ unary_expr
+}
+
+postfix_expr = {
+    primary_expr ~ (spacing ~ postfix_suffix)*
+}
+postfix_suffix = {
+    "?"
+    | call_suffix
+    | index_suffix
+    | field_suffix
+}
+call_suffix = {
+    "("
+    ~ spacing
+    ~ (arg_list)?
+    ~ spacing
+    ~ ")"
+}
+arg_list = {
+    expr ~ (spacing ~ "," ~ spacing ~ expr)* ~ (spacing ~ ",")?
+}
+index_suffix = { "[" ~ spacing ~ expr ~ spacing ~ "]" }
+field_suffix = { "." ~ spacing ~ identifier ~ generic_args? }
+
+primary_expr = _{
+    literal
+    | expr_path
+    | tuple_expr
+    | array_expr
+    | struct_expr
+    | block
+    | if_expr
+    | match_expr
+    | loop_expr
+    | while_expr
+    | for_expr
+    | break_expr
+    | continue_expr
+    | return_expr
+    | closure_expr
+}
+
+expr_path = { ("::" ~ spacing)? ~ type_segment ~ (spacing ~ "::" ~ spacing ~ type_segment)* }
+
+tuple_expr = {
+    "("
+    ~ spacing
+    ~ (expr ~ (spacing ~ "," ~ spacing ~ expr)* ~ (spacing ~ ",")?)?
+    ~ spacing
+    ~ ")"
+}
+
+array_expr = {
+    "["
+    ~ spacing
+    ~ (array_repeat | array_list)?
+    ~ spacing
+    ~ "]"
+}
+array_repeat = { expr ~ spacing ~ ";" ~ spacing ~ expr }
+array_list = { expr ~ (spacing ~ "," ~ spacing ~ expr)* ~ (spacing ~ ",")? }
+
+struct_expr = {
+    expr_path ~ spacing ~ struct_expr_body
+}
+struct_expr_body = {
+    "{"
+    ~ spacing
+    ~ struct_expr_members?
+    ~ spacing
+    ~ "}"
+}
+struct_expr_members = {
+    struct_expr_field ~ (spacing ~ "," ~ spacing ~ struct_expr_field)* ~ (spacing ~ ",")? ~ (spacing ~ struct_expr_rest)?
+    | struct_expr_rest
+}
+struct_expr_field = { identifier ~ (spacing ~ ":" ~ spacing ~ expr)? }
+struct_expr_rest = { ".." ~ spacing ~ expr }
+
+if_expr = {
+    "if"
+    ~ spacing1
+    ~ if_cond
+    ~ spacing
+    ~ block
+    ~ (spacing ~ "else" ~ spacing ~ else_branch)?
+}
+if_cond = { ("let" ~ spacing1 ~ pattern ~ spacing ~ "=" ~ spacing ~ expr) | expr }
+else_branch = { if_expr | block }
+
+match_expr = {
+    "match"
+    ~ spacing1
+    ~ expr
+    ~ spacing
+    ~ "{"
+    ~ spacing
+    ~ match_arms?
+    ~ spacing
+    ~ "}"
+}
+match_arms = { match_arm ~ (spacing ~ "," ~ spacing ~ match_arm)* ~ (spacing ~ ",")? }
+match_arm = {
+    pattern_choice
+    ~ (spacing ~ "if" ~ spacing ~ expr)?
+    ~ spacing
+    ~ "=>"
+    ~ spacing
+    ~ match_body
+}
+pattern_choice = { pattern ~ (spacing ~ "|" ~ spacing ~ pattern)* }
+match_body = { block | expr }
+
+loop_expr = { "loop" ~ spacing ~ block }
+while_expr = {
+    "while"
+    ~ spacing1
+    ~ while_cond
+    ~ spacing
+    ~ block
+}
+while_cond = { ("let" ~ spacing1 ~ pattern ~ spacing ~ "=" ~ spacing ~ expr) | expr }
+
+for_expr = {
+    "for"
+    ~ spacing1
+    ~ pattern
+    ~ spacing
+    ~ "in"
+    ~ spacing
+    ~ expr
+    ~ spacing
+    ~ block
+}
+
+break_expr = { "break" ~ (spacing1 ~ expr)? }
+continue_expr = { "continue" }
+return_expr = { "return" ~ (spacing1 ~ expr)? }
+
+closure_expr = {
+    ("async" ~ spacing1)?
+    ~ ("move" ~ spacing1)?
+    ~ "|"
+    ~ spacing
+    ~ closure_params?
+    ~ spacing
+    ~ "|"
+    ~ (spacing ~ "->" ~ spacing ~ type_expr)?
+    ~ spacing
+    ~ closure_body
+}
+closure_params = {
+    closure_param ~ (spacing ~ "," ~ spacing ~ closure_param)* ~ (spacing ~ ",")?
+}
+closure_param = {
+    ("mut" ~ spacing1)?
+    ~ pattern
+    ~ (spacing ~ ":" ~ spacing ~ type_expr)?
+}
+closure_body = { block | expr }
+
+literal = _{ bool_lit | nil_lit | int_lit | float_lit | char_lit | string_lit }
+bool_lit = { "true" | "false" }
+nil_lit = { "nil" }
+
+int_lit = _{ (int_hex | int_oct | int_bin | int_dec) ~ int_suffix? }
+int_dec = @{ digit ~ (digit | "_")* }
+int_hex = @{ "0x" ~ hexdigit ~ (hexdigit | "_")* }
+int_oct = @{ "0o" ~ octdigit ~ (octdigit | "_")* }
+int_bin = @{ "0b" ~ bindigit ~ (bindigit | "_")* }
+int_suffix = { ":" ~ ( "i8" | "i16" | "i32" | "i64" | "isize" | "u8" | "u16" | "u32" | "u64" | "usize" ) }
+
+float_lit = _{ float_core ~ float_suffix? }
+float_core = _{
+    int_dec ~ ("." ~ (digit | "_")*)? ~ exp_part?
+    | "." ~ digit ~ (digit | "_")* ~ exp_part?
+}
+exp_part = { ("e" | "E") ~ ("+" | "-")? ~ digit ~ (digit | "_")* }
+float_suffix = { ":" ~ ("f32" | "f64") }
+
+char_lit = @{ "'" ~ char_inner ~ "'" }
+char_inner = { escape_char | !( "'" | "\\" | "\n" | "\r") ~ ANY }
+
+string_lit = @{ "\"" ~ string_inner* ~ "\"" }
+string_inner = { escape_char | !( "\"" | "\\" | "\n" | "\r") ~ ANY }
+
+escape_char = @{
+    "\\"
+    ~ (
+        ("'" | "\"" | "\\" | "n" | "r" | "t" | "0")
+        | ("x" ~ hexdigit ~ hexdigit)
+        | ("u" ~ "{" ~ hexdigit+ ~ "}")
+    )
+}
+
+identifier = @{ ident_head ~ ident_tail* }
+ident_head = _{ ASCII_ALPHA | "_" }
+ident_tail = _{ ASCII_ALPHA | "_" | digit }
+
+ASCII_ALPHA = _{ 'a'..'z' | 'A'..'Z' }
+digit = _{ '0'..'9' }
+hexdigit = _{ digit | 'a'..'f' | 'A'..'F' }
+octdigit = _{ '0'..'7' }
+bindigit = _{ '0'..'1' }
