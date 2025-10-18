@@ -11,11 +11,11 @@ use std::{
     process::ExitCode,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 
-use vitte_cli as cli; // notre lib interne (src/lib.rs)
 use cli::inspect::InspectOptions;
+use vitte_cli as cli; // notre lib interne (src/lib.rs)
 
 #[cfg(feature = "fmt")]
 use vitte_fmt::{FormatterOptions, format_source};
@@ -415,6 +415,8 @@ fn real_main() -> Result<()> {
         }
     }
 
+    validate_cli_syntax(&argv)?;
+
     let opt = Opt::parse_from(argv);
 
     init_color(opt.color);
@@ -450,7 +452,20 @@ fn real_main() -> Result<()> {
         },
         Command::Repl { prompt } => C::Repl(ReplTask { prompt }),
         Command::Fmt { input, output, in_place, check } => {
+            if in_place && output.is_some() {
+                bail!(
+                    "les options `--in-place` et `--output` ne peuvent pas être utilisées ensemble"
+                );
+            }
+            if in_place && check {
+                bail!("`--in-place` est incompatible avec `--check`");
+            }
+
             let input = input_from_opt(&input);
+            if in_place && matches!(input, cli::Input::Stdin) {
+                bail!("`--in-place` nécessite un fichier en entrée (pas stdin)");
+            }
+
             let out = output_from_opt(
                 &output, in_place, /*auto=*/ false, /*for_compile=*/ false,
             );
@@ -541,4 +556,240 @@ fn fmt_hook(source: &str, _check_only: bool) -> anyhow::Result<String> {
 
 fn inspect_hook(bytes: &[u8], opts: &InspectOptions) -> anyhow::Result<String> {
     Ok(cli::inspect::render(bytes, opts))
+}
+
+fn validate_cli_syntax(argv: &[OsString]) -> Result<()> {
+    let mut idx = 1; // skip binary name
+    if argv.len() <= 1 {
+        return Ok(());
+    }
+
+    consume_global_options(argv, &mut idx)?;
+
+    if idx >= argv.len() {
+        return Ok(());
+    }
+
+    let command = argv[idx].to_str().unwrap_or_default().to_string();
+    idx += 1;
+
+    let tail = &argv[idx..];
+    match command.as_str() {
+        "compile" => validate_compile_args(tail),
+        "run" => validate_run_args(tail),
+        _ => Ok(()),
+    }
+}
+
+fn consume_global_options(argv: &[OsString], idx: &mut usize) -> Result<()> {
+    while *idx < argv.len() {
+        let Some(current) = argv[*idx].to_str() else { break };
+        match current {
+            "-v" | "-vv" | "-vvv" | "--verbose" | "-q" | "--quiet" => {
+                *idx += 1;
+            },
+            s if s.starts_with("--color=") => {
+                let value = &s["--color=".len()..];
+                validate_color_value_str(value)?;
+                *idx += 1;
+            },
+            "--color" => {
+                *idx += 1;
+                if *idx >= argv.len() {
+                    anyhow::bail!(
+                        "l'option `--color` requiert une valeur (`auto`, `always` ou `never`)"
+                    );
+                }
+                validate_color_value_os(&argv[*idx])?;
+                *idx += 1;
+            },
+            _ => break,
+        }
+    }
+    Ok(())
+}
+
+fn validate_compile_args(args: &[OsString]) -> Result<()> {
+    let mut idx = 0;
+    let mut seen_option = false;
+
+    if idx < args.len() && !is_compile_option_token(&args[idx]) {
+        if !is_path_token(&args[idx]) {
+            let token = args[idx].to_string_lossy();
+            anyhow::bail!("argument `{token}` non reconnu pour `vitte compile`");
+        }
+        idx += 1; // consume source operand
+    }
+
+    while idx < args.len() {
+        if try_consume_compile_option(args, &mut idx, &mut seen_option)? {
+            continue;
+        }
+        let token = args[idx].to_string_lossy();
+        if is_global_option_token(&args[idx]) {
+            anyhow::bail!("l'option `{token}` doit être placée avant la commande `compile`");
+        }
+        if seen_option && is_path_token(&args[idx]) {
+            anyhow::bail!(
+                "la source `{token}` doit être fournie avant les options de `vitte compile`"
+            );
+        }
+        anyhow::bail!("argument `{token}` non reconnu pour `vitte compile`");
+    }
+    Ok(())
+}
+
+fn validate_run_args(args: &[OsString]) -> Result<()> {
+    let mut idx = 0;
+    let mut seen_option = false;
+
+    if idx < args.len() && !is_run_option_token(&args[idx]) && args[idx].to_str() != Some("--") {
+        if !is_path_token(&args[idx]) {
+            let token = args[idx].to_string_lossy();
+            anyhow::bail!("argument `{token}` non reconnu pour `vitte run`");
+        }
+        idx += 1; // consume program operand
+    }
+
+    while idx < args.len() {
+        if let Some("--") = args[idx].to_str() {
+            idx += 1;
+            if idx >= args.len() {
+                anyhow::bail!("`vitte run --` doit être suivi d'au moins un argument de programme");
+            }
+            // Remaining tokens are program arguments; always accepted
+            return Ok(());
+        }
+
+        if try_consume_run_option(args, &mut idx, &mut seen_option)? {
+            continue;
+        }
+
+        let token = args[idx].to_string_lossy();
+        if is_global_option_token(&args[idx]) {
+            anyhow::bail!("l'option `{token}` doit être placée avant la commande `run`");
+        }
+        if seen_option && is_path_token(&args[idx]) {
+            anyhow::bail!(
+                "le programme `{token}` doit être fourni avant les options de `vitte run`"
+            );
+        }
+        anyhow::bail!("argument `{token}` non reconnu pour `vitte run`");
+    }
+    Ok(())
+}
+
+fn try_consume_compile_option(
+    args: &[OsString],
+    idx: &mut usize,
+    seen_option: &mut bool,
+) -> Result<bool> {
+    if *idx >= args.len() {
+        return Ok(false);
+    }
+    let Some(current) = args[*idx].to_str() else {
+        return Ok(false);
+    };
+    let flag_consumed = match current {
+        "-O" | "--optimize" | "--debug" | "--mkdir" | "--overwrite" | "--time" | "--auto" => {
+            *idx += 1;
+            true
+        },
+        "-o" | "--output" => {
+            *idx += 1;
+            if *idx >= args.len() {
+                anyhow::bail!("l'option `{current}` requiert une valeur");
+            }
+            *idx += 1;
+            true
+        },
+        _ if current.starts_with("--output=") => {
+            if current.len() == "--output=".len() {
+                anyhow::bail!("l'option `--output` requiert une valeur");
+            }
+            *idx += 1;
+            true
+        },
+        _ => false,
+    };
+    if flag_consumed {
+        *seen_option = true;
+    }
+    Ok(flag_consumed)
+}
+
+fn try_consume_run_option(
+    args: &[OsString],
+    idx: &mut usize,
+    seen_option: &mut bool,
+) -> Result<bool> {
+    if *idx >= args.len() {
+        return Ok(false);
+    }
+    let Some(current) = args[*idx].to_str() else {
+        return Ok(false);
+    };
+    let flag_consumed = matches!(current, "-O" | "--optimize" | "--auto-compile" | "--time");
+    if flag_consumed {
+        *idx += 1;
+        *seen_option = true;
+    }
+    Ok(flag_consumed)
+}
+
+fn is_compile_option_token(arg: &OsString) -> bool {
+    if let Some(s) = arg.to_str() {
+        matches!(
+            s,
+            "-O" | "--optimize"
+                | "--debug"
+                | "--mkdir"
+                | "--overwrite"
+                | "--time"
+                | "--auto"
+                | "-o"
+                | "--output"
+        ) || s.starts_with("--output=")
+    } else {
+        false
+    }
+}
+
+fn is_run_option_token(arg: &OsString) -> bool {
+    if let Some(s) = arg.to_str() {
+        matches!(s, "-O" | "--optimize" | "--auto-compile" | "--time")
+    } else {
+        false
+    }
+}
+
+fn is_global_option_token(arg: &OsString) -> bool {
+    if let Some(s) = arg.to_str() {
+        matches!(s, "-v" | "-vv" | "-vvv" | "--verbose" | "-q" | "--quiet" | "--color")
+            || s.starts_with("--color=")
+    } else {
+        false
+    }
+}
+
+fn is_path_token(arg: &OsString) -> bool {
+    if arg.to_str() == Some("-") {
+        return true;
+    }
+    !arg.to_string_lossy().starts_with("--") && !arg.to_string_lossy().starts_with("-")
+}
+
+fn validate_color_value_os(value: &OsString) -> Result<()> {
+    match value.to_str() {
+        Some(v) => validate_color_value_str(v),
+        None => anyhow::bail!("valeur `--color` invalide (non UTF-8)"),
+    }
+}
+
+fn validate_color_value_str(value: &str) -> Result<()> {
+    if matches!(value, "auto" | "always" | "never") {
+        Ok(())
+    } else {
+        anyhow::bail!("valeur `--color` invalide `{value}` (attendu: auto, always ou never)")
+    }
 }
