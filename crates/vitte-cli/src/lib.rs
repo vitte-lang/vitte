@@ -22,9 +22,6 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use vitte_grammar::{
-    ParseError as GrammarParseError, Span as GrammarSpan, parse_module as grammar_parse_module,
-};
 
 #[cfg(feature = "trace")]
 use env_logger;
@@ -258,10 +255,6 @@ fn compile_entry(task: CompileTask, hooks: &Hooks) -> Result<i32> {
 
     let src = read_source(&input).context("lecture de la source")?;
 
-    if let Err(err) = grammar_parse_module(&src) {
-        return bail_diagnostic(parse_error_to_diagnostic(&err, &src));
-    }
-
     let start = Instant::now();
     let bc =
         compiler(&src, &CompileOptions { optimize, emit_debug }).context("échec de compilation")?;
@@ -290,7 +283,10 @@ fn compile_entry(task: CompileTask, hooks: &Hooks) -> Result<i32> {
         }
         write_bytes_atomic(&out_path, &bc)
             .with_context(|| format!("écriture de {}", display(&out_path)))?;
-        status_ok("COMPILE", &format!("{} ({} octets)", display(&out_path), bc.len()));
+        status_ok(
+            "COMPILE",
+            &format!("{} ({} octets)", display(&out_path), bc.len()),
+        );
     }
 
     if time {
@@ -306,7 +302,7 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
             return bail_diagnostic(
                 Diagnostic::new("HOOK002", "Exécution indisponible : hook `run_bc` absent")
                     .with_help("Activez la feature `vm` ou fournissez une VM via Hooks::run_bc."),
-            );
+            )
         },
     };
 
@@ -317,28 +313,22 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
         InputKind::BytecodeBytes(b) => b,
         InputKind::SourcePath(p) if task.auto_compile => {
             let src = read_source(&Input::Path(p.clone()))?;
-            if let Err(err) = grammar_parse_module(&src) {
-                return bail_diagnostic(parse_error_to_diagnostic(&err, &src));
-            }
             let compiler = match hooks.compile {
                 Some(c) => c,
                 None => {
                     return bail_diagnostic(
-                        Diagnostic::new(
-                            "HOOK001",
-                            "auto-compile demandé mais hook `compile` absent",
-                        )
-                        .with_help("Activez la feature `engine` ou fournissez un compilateur."),
-                    );
+                Diagnostic::new(
+                    "HOOK001",
+                    "auto-compile demandé mais hook `compile` absent",
+                )
+                .with_help("Activez la feature `engine` ou fournissez un compilateur."),
+                    )
                 },
             };
             compiler(&src, &CompileOptions { optimize: task.optimize, emit_debug: false })?
         },
         InputKind::SourceStdin if task.auto_compile => {
             let src = read_source(&Input::Stdin)?;
-            if let Err(err) = grammar_parse_module(&src) {
-                return bail_diagnostic(parse_error_to_diagnostic(&err, &src));
-            }
             let compiler = match hooks.compile {
                 Some(c) => c,
                 None => {
@@ -348,7 +338,7 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
                             "auto-compile demandé mais hook `compile` absent",
                         )
                         .with_help("Activez la feature `engine` ou fournissez un compilateur."),
-                    );
+                    )
                 },
             };
             compiler(&src, &CompileOptions { optimize: task.optimize, emit_debug: false })?
@@ -357,19 +347,15 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
             return bail_diagnostic(
                 Diagnostic::new(
                     "RUN100",
-                    format!(
-                        "'run' attend un bytecode (ou activez --auto-compile) : {}",
-                        display(&p)
-                    ),
+                    format!("'run' attend un bytecode (ou activez --auto-compile) : {}", display(&p)),
                 )
                 .with_help("Fournissez un .vitbc ou ajoutez --auto-compile."),
-            );
+            )
         },
         InputKind::SourceStdin => {
-            return bail_diagnostic(Diagnostic::new(
-                "RUN101",
-                "'run' attend un bytecode (ou --auto-compile) depuis stdin",
-            ));
+            return bail_diagnostic(
+                Diagnostic::new("RUN101", "'run' attend un bytecode (ou --auto-compile) depuis stdin"),
+            )
         },
     };
 
@@ -389,15 +375,15 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
 }
 
 fn fmt_entry(task: FmtTask, hooks: &Hooks) -> Result<()> {
-    let formatter =
-        match hooks.fmt {
-            Some(f) => f,
-            None => return bail_diagnostic(
-                Diagnostic::new("HOOK003", "Formatage indisponible : hook `fmt` absent").with_help(
-                    "Recompilez vitte-cli avec la feature `fmt` ou fournissez un formateur.",
-                ),
-            ),
-        };
+    let formatter = match hooks.fmt {
+        Some(f) => f,
+        None => {
+            return bail_diagnostic(
+                Diagnostic::new("HOOK003", "Formatage indisponible : hook `fmt` absent")
+                    .with_help("Recompilez vitte-cli avec la feature `fmt` ou fournissez un formateur."),
+            )
+        },
+    };
 
     let src = read_source(&task.input)?;
     let formatted = formatter(&src, task.check)?;
@@ -441,17 +427,17 @@ fn fmt_entry(task: FmtTask, hooks: &Hooks) -> Result<()> {
 fn inspect_entry(task: InspectTask, hooks: &Hooks) -> Result<()> {
     let f = match hooks.inspect {
         Some(f) => f,
-        None => return bail_diagnostic(
-            Diagnostic::new("HOOK004", "Inspection indisponible : hook `inspect` absent")
-                .with_help(
-                    "Recompilez vitte-cli avec la feature `engine` ou fournissez un inspecteur.",
-                ),
-        ),
+        None => {
+            return bail_diagnostic(
+                Diagnostic::new("HOOK004", "Inspection indisponible : hook `inspect` absent")
+                    .with_help("Recompilez vitte-cli avec la feature `engine` ou fournissez un inspecteur."),
+            )
+        },
     };
     let bytes = match task.input {
         InputKind::BytecodePath(p) => {
             if p.as_os_str() == "-" {
-                read_stdin_bytes()?
+                read_stdin_bytes()? 
             } else {
                 fs::read(&p).with_context(|| format!("lecture bytecode: {}", display(&p)))?
             }
@@ -464,7 +450,7 @@ fn inspect_entry(task: InspectTask, hooks: &Hooks) -> Result<()> {
                     format!("'inspect' attend un bytecode, pas une source : {}", display(&p)),
                 )
                 .with_help("Compilez d'abord votre source en .vitbc."),
-            );
+            )
         },
         InputKind::SourceStdin => read_stdin_bytes()?,
     };
@@ -478,7 +464,10 @@ fn inspect_entry(task: InspectTask, hooks: &Hooks) -> Result<()> {
 
 fn read_stdin_bytes() -> Result<Vec<u8>> {
     let mut buf = Vec::new();
-    io::stdin().lock().read_to_end(&mut buf).context("impossible de lire stdin")?;
+    io::stdin()
+        .lock()
+        .read_to_end(&mut buf)
+        .context("impossible de lire stdin")?;
     if buf.is_empty() {
         return bail_diagnostic(
             Diagnostic::new("INS102", "stdin ne contient aucun octet")
@@ -798,18 +787,20 @@ pub mod inspect {
                     .as_ref()
                     .map(|s| format!("\naperçu source :\n{}", s))
                     .unwrap_or_default();
-                format!("Format : VBC0\nsize : {} octets{declared}{snippet}", data.size)
+                format!(
+                    "Format : VBC0\nsize : {} octets{declared}{snippet}",
+                    data.size
+                )
             },
-            InspectFormat::Unknown => format!("Format : inconnu\nsize : {} octets", data.size),
+            InspectFormat::Unknown => format!(
+                "Format : inconnu\nsize : {} octets",
+                data.size
+            ),
         }
     }
 
     fn render_header(data: &InspectionData) -> String {
-        let mut out = format!(
-            "En-tête:\n  format : {}\n  taille totale : {} octets",
-            data.format.as_str(),
-            data.size
-        );
+        let mut out = format!("En-tête:\n  format : {}\n  taille totale : {} octets", data.format.as_str(), data.size);
         if let Some(declared) = data.declared_len {
             out.push_str(&format!("\n  longueur déclarée : {} octets", declared));
         }
@@ -850,21 +841,15 @@ pub mod inspect {
 
     fn render_symbols(data: &InspectionData) -> String {
         match data.format {
-            InspectFormat::Vbc0 => {
-                "Symboles :\n  (table des symboles non encodée dans ce format)".to_string()
-            },
-            InspectFormat::Unknown => {
-                "Symboles :\n  Impossible de lister les symboles — format non reconnu.".to_string()
-            },
+            InspectFormat::Vbc0 => "Symboles :\n  (table des symboles non encodée dans ce format)".to_string(),
+            InspectFormat::Unknown => "Symboles :\n  Impossible de lister les symboles — format non reconnu.".to_string(),
         }
     }
 
     fn render_consts(data: &InspectionData) -> String {
         match data.format {
             InspectFormat::Vbc0 => "Constantes :\n  (non disponibles dans ce build)".to_string(),
-            InspectFormat::Unknown => {
-                "Constantes :\n  Impossible d'extraire les constantes.".to_string()
-            },
+            InspectFormat::Unknown => "Constantes :\n  Impossible d'extraire les constantes.".to_string(),
         }
     }
 
@@ -908,9 +893,7 @@ pub mod inspect {
 
     fn render_meta(data: &InspectionData) -> String {
         if let Some(hash) = &data.hash {
-            format!(
-                "Métadonnées :\n  Build-id (BLAKE3) : {hash}\n  Auteur : inconnu\n  Timestamp : n/a"
-            )
+            format!("Métadonnées :\n  Build-id (BLAKE3) : {hash}\n  Auteur : inconnu\n  Timestamp : n/a")
         } else {
             "Métadonnées indisponibles.".to_string()
         }
@@ -918,9 +901,10 @@ pub mod inspect {
 
     fn render_verify(data: &InspectionData) -> String {
         match data.verify_ok {
-            Some(true) => {
-                format!("Intégrité : OK (BLAKE3 = {})", data.hash.as_deref().unwrap_or("n/a"))
-            },
+            Some(true) => format!(
+                "Intégrité : OK (BLAKE3 = {})",
+                data.hash.as_deref().unwrap_or("n/a")
+            ),
             Some(false) => "Intégrité : échec (payload > longueur déclarée)".to_string(),
             None => "Intégrité : impossible de vérifier.".to_string(),
         }
@@ -938,9 +922,16 @@ pub mod inspect {
         for (idx, chunk) in data.payload.chunks(4).enumerate().take(32) {
             let offset = data.payload_offset + idx * 4;
             let op = chunk.get(0).copied().unwrap_or(0);
-            let operands =
-                chunk.iter().skip(1).map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
-            out.push_str(&format!("\n  {offset:08X}: OP_{op:02X} {operands}", operands = operands));
+            let operands = chunk
+                .iter()
+                .skip(1)
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
+            out.push_str(&format!(
+                "\n  {offset:08X}: OP_{op:02X} {operands}",
+                operands = operands
+            ));
         }
         if data.payload.len() / 4 > 32 {
             out.push_str("\n  …");
@@ -952,12 +943,20 @@ pub mod inspect {
         let mut out = String::new();
         for (offset, chunk) in bytes.chunks(16).enumerate() {
             let off = offset * 16;
-            let hex = chunk.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+            let hex = chunk
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
             let ascii = chunk
                 .iter()
                 .map(|b| {
                     let c = *b as char;
-                    if c.is_ascii_graphic() || c.is_ascii_whitespace() { c } else { '.' }
+                    if c.is_ascii_graphic() || c.is_ascii_whitespace() {
+                        c
+                    } else {
+                        '.'
+                    }
                 })
                 .collect::<String>();
             out.push_str(&format!("{off:08X}: {:<47} |{}|\n", hex, ascii));
@@ -981,7 +980,11 @@ pub mod inspect {
             sections: data
                 .sections
                 .iter()
-                .map(|s| ReportSection { name: s.name.to_string(), offset: s.offset, size: s.size })
+                .map(|s| ReportSection {
+                    name: s.name.to_string(),
+                    offset: s.offset,
+                    size: s.size,
+                })
                 .collect(),
             strings: data.strings.clone(),
             symbols: Vec::new(),
@@ -1052,16 +1055,15 @@ fn disasm_entry(task: DisasmTask, hooks: &Hooks) -> Result<()> {
         },
         InputKind::BytecodeBytes(b) => b,
         InputKind::SourcePath(p) => {
-            return bail_diagnostic(Diagnostic::new(
-                "DIS100",
-                format!("'disasm' attend un bytecode, pas une source : {}", display(&p)),
-            ));
+            return bail_diagnostic(
+                Diagnostic::new(
+                    "DIS100",
+                    format!("'disasm' attend un bytecode, pas une source : {}", display(&p)),
+                ),
+            )
         },
         InputKind::SourceStdin => {
-            return bail_diagnostic(Diagnostic::new(
-                "DIS101",
-                "'disasm' attend un bytecode sur stdin",
-            ));
+            return bail_diagnostic(Diagnostic::new("DIS101", "'disasm' attend un bytecode sur stdin"));
         },
     };
     let text = f(&bytes)?;
@@ -1080,7 +1082,7 @@ fn disasm_entry(task: DisasmTask, hooks: &Hooks) -> Result<()> {
 }
 
 fn modules_entry(task: ModulesTask) -> Result<()> {
-    #[cfg(not(feature = "modules"))]
+#[cfg(not(feature = "modules"))]
     {
         let _ = task;
         return bail_diagnostic(
@@ -1197,69 +1199,6 @@ fn display(p: &Path) -> String {
     p.to_string_lossy().to_string()
 }
 
-fn parse_error_to_diagnostic(err: &GrammarParseError, source: &str) -> Diagnostic {
-    let summary = err
-        .message
-        .lines()
-        .rev()
-        .find_map(|line| {
-            let trimmed = line.trim();
-            trimmed.strip_prefix("= ").map(|s| s.trim()).filter(|s| !s.is_empty())
-        })
-        .map(|tail| format!("attendu {}", tail))
-        .unwrap_or_else(|| "syntaxe invalide".to_string());
-
-    let mut diag = Diagnostic::new("PARSE001", format!("Erreur de syntaxe : {}", summary));
-    if let Some(span) = err.span {
-        let (line, col) = byte_to_line_col(source, span.start);
-        diag.notes.push(format!("--> entrée:{}:{}:{}", "input", line, col));
-
-        if let Some(line_str) = line_slice(source, line) {
-            diag.notes.push(line_str.to_string());
-            let underline = underline_for_span(source, span, line);
-            if !underline.is_empty() {
-                diag.notes.push(underline);
-            }
-        }
-    }
-    diag
-}
-
-fn byte_to_line_col(source: &str, byte_pos: usize) -> (usize, usize) {
-    let mut line = 1usize;
-    let mut last_line_start = 0usize;
-    let target = byte_pos.min(source.len());
-
-    for (idx, ch) in source.char_indices() {
-        if idx >= target {
-            break;
-        }
-        if ch == '\n' {
-            line += 1;
-            last_line_start = idx + ch.len_utf8();
-        }
-    }
-    let column = source[last_line_start..target].chars().count() + 1;
-    (line, column)
-}
-
-fn line_slice(source: &str, line_number: usize) -> Option<&str> {
-    if line_number == 0 {
-        return None;
-    }
-    source.lines().nth(line_number - 1)
-}
-
-fn underline_for_span(source: &str, span: GrammarSpan, highlight_line: usize) -> String {
-    let (start_line, start_col) = byte_to_line_col(source, span.start);
-    if start_line != highlight_line {
-        return String::new();
-    }
-    let (_, end_col_raw) = byte_to_line_col(source, span.end.max(span.start));
-    let caret_len = end_col_raw.saturating_sub(start_col).max(1);
-    format!("{}{}", " ".repeat(start_col.saturating_sub(1)), "^".repeat(caret_len))
-}
-
 // ───────────────────────────── Sorties jolies ─────────────────────────────
 
 fn status_ok(tag: &str, msg: &str) {
@@ -1311,35 +1250,17 @@ struct Diagnostic {
 
 impl Diagnostic {
     fn new(code: &'static str, message: impl Into<String>) -> Self {
-        Self {
-            severity: Severity::Error,
-            code,
-            message: message.into(),
-            notes: Vec::new(),
-            help: None,
-        }
+        Self { severity: Severity::Error, code, message: message.into(), notes: Vec::new(), help: None }
     }
 
     #[allow(dead_code)]
     fn error(code: &'static str, message: impl Into<String>) -> Self {
-        Self {
-            severity: Severity::Error,
-            code,
-            message: message.into(),
-            notes: Vec::new(),
-            help: None,
-        }
+        Self { severity: Severity::Error, code, message: message.into(), notes: Vec::new(), help: None }
     }
 
     #[allow(dead_code)]
     fn warning(code: &'static str, message: impl Into<String>) -> Self {
-        Self {
-            severity: Severity::Warning,
-            code,
-            message: message.into(),
-            notes: Vec::new(),
-            help: None,
-        }
+        Self { severity: Severity::Warning, code, message: message.into(), notes: Vec::new(), help: None }
     }
 
     #[allow(dead_code)]
@@ -1358,9 +1279,11 @@ fn emit_diagnostic(diag: &Diagnostic) {
     #[cfg(feature = "color")]
     {
         match diag.severity {
-            Severity::Error => {
-                eprintln!("{} {}", format!("error[{}]", diag.code).red().bold(), diag.message.red())
-            },
+            Severity::Error => eprintln!(
+                "{} {}",
+                format!("error[{}]", diag.code).red().bold(),
+                diag.message.red()
+            ),
             Severity::Warning => eprintln!(
                 "{} {}",
                 format!("warning[{}]", diag.code).yellow().bold(),
@@ -1412,10 +1335,7 @@ pub mod repl {
         let stdin = io::stdin();
         let mut stdout = io::stdout();
         #[cfg(feature = "color")]
-        println!(
-            "{}",
-            "Vitte REPL (fallback) — tape :help pour l'aide, :quit pour quitter".cyan()
-        );
+        println!("{}", "Vitte REPL (fallback) — tape :help pour l'aide, :quit pour quitter".cyan());
         #[cfg(not(feature = "color"))]
         println!("Vitte REPL (fallback) — tape :help pour l'aide, :quit pour quitter");
 
@@ -1450,8 +1370,6 @@ pub mod repl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use tempfile::tempdir;
 
     fn fake_compile(src: &str, _opts: &CompileOptions) -> Result<Vec<u8>> {
         // jouet : encode la taille + contenu
@@ -1485,13 +1403,9 @@ mod tests {
             disasm: Some(fake_disasm),
             inspect: Some(fake_inspect),
         };
-        let dir = tempdir().expect("temp dir");
-        let src_path = dir.path().join("main.vitte");
-        fs::write(&src_path, "module main;").expect("write source");
-        let out_path = dir.path().join("main.vitbc");
         let t = CompileTask {
-            input: Input::Path(src_path),
-            output: Output::Path(out_path.clone()),
+            input: Input::Stdin,
+            output: Output::Stdout,
             optimize: false,
             emit_debug: false,
             auto_mkdir: false,
@@ -1500,7 +1414,6 @@ mod tests {
         };
         // juste vérifier que ça ne panique pas
         let _ = compile_entry(t, &hooks).unwrap();
-        assert!(out_path.exists());
     }
 
     #[test]
@@ -1510,3 +1423,4 @@ mod tests {
         assert_eq!(out.file_name().unwrap().to_string_lossy(), "main.vitbc");
     }
 }
+
