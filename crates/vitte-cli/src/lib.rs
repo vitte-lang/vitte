@@ -1423,3 +1423,4 @@ mod tests {
         assert_eq!(out.file_name().unwrap().to_string_lossy(), "main.vitbc");
     }
 }
+

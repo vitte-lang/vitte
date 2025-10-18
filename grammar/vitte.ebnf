@@ -88,6 +88,8 @@ lparen           = "(" ; rparen = ")" ;
 lbrace           = "{" ; rbrace = "}" ;
 lbrack           = "[" ; rbrack = "]" ;
 lt               = "<" ; gt = ">" ;
+CliPathToken     = ? chemin CLI (UTF-8 sans espaces) ? ;
+CliValueToken    = ? argument CLI (UTF-8 sans espaces) ? ;
 
 (* =============================== SYNTAXE ================================= *)
 
@@ -191,7 +193,8 @@ Block            = lbrace , sep , { Stmt } , rbrace ;
 
 Stmt             = LocalLetStmt
                  | ItemStmt
-                 | ExprStmt ;
+                 | ExprStmt
+                 | EmptyStmt ;
 
 ItemStmt         = TypeItem | FnItem | ConstItem | StaticItem ;
 
@@ -201,23 +204,255 @@ LocalLetStmt     = "let" , sep , [ "mut" , sep ] , Pattern ,
                    sep , sym_semi ;
 
 ExprStmt         = Expr , [ sep , sym_semi ] , sep ;
+EmptyStmt        = sym_semi , sep ;
 
-Pattern          = identifier
-                 | "_" 
+Pattern          = "_" 
+                 | LiteralPattern
+                 | IdentifierPattern
                  | TuplePattern
-                 | StructPattern ;
+                 | StructPattern
+                 | TupleStructPattern
+                 | RefPattern
+                 | PathPattern ;
+LiteralPattern   = literal ;
+IdentifierPattern= [ "mut" , sep ] , identifier ;
+RefPattern       = "&" , sep , [ "mut" , sep ] , Pattern ;
 TuplePattern     = lparen , sep , [ Pattern , { sep , sym_comma , sep , Pattern } ,
                    [ sep , sym_comma , sep ] ] , rparen ;
-StructPattern    = TypePath , lbrace , sep ,
-                   [ FieldPat , { sep , sym_comma , sep , FieldPat } ,
-                     [ sep , sym_comma , sep ] ] , rbrace ;
+StructPattern    = ExprPath , lbrace , sep ,
+                   [ StructPatternFields ] , rbrace ;
+StructPatternFields
+                 = FieldPat , { sep , sym_comma , sep , FieldPat } ,
+                   [ sep , sym_comma , sep ] ,
+                   [ sep , StructPatternRest ]
+                 | StructPatternRest ;
+StructPatternRest= ".." ;
+TupleStructPattern = ExprPath , TuplePattern ;
+PathPattern      = ExprPath ;
 FieldPat         = identifier , [ sep , ":" , sep , Pattern ] ;
 
 (* ----- Expressions (précédence de plus fort au plus faible) ----- *)
 
 Expr             = AssignExpr ;
 
-AssignExpr       = LogicOrExpr ,
+AssignExpr       = RangeExpr ,
                    { sep ,
-                     ( sym_assign | "+=" | "-=" | "*=" | "/=" | "%=" |
-                       "&=" | "|=" | "^=" | "<<=" | ">>="
+                     AssignOp ,
+                     sep ,
+                     AssignExpr } ;
+AssignOp         = sym_assign | "+=" | "-=" | "*=" | "/=" | "%=" |
+                   "&=" | "|=" | "^=" | "<<=" | ">>=" ;
+
+RangeExpr        = LogicOrExpr
+                 | RangeBounds ;
+RangeBounds      = [ LogicOrExpr , sep ] , sym_range , [ sep , LogicOrExpr ] ;
+
+LogicOrExpr      = LogicAndExpr ,
+                   { sep , "||" , sep , LogicAndExpr } ;
+LogicAndExpr     = BitOrExpr ,
+                   { sep , "&&" , sep , BitOrExpr } ;
+BitOrExpr        = BitXorExpr ,
+                   { sep , "|" , sep , BitXorExpr } ;
+BitXorExpr       = BitAndExpr ,
+                   { sep , "^" , sep , BitAndExpr } ;
+BitAndExpr       = EqualityExpr ,
+                   { sep , "&" , sep , EqualityExpr } ;
+EqualityExpr     = RelExpr ,
+                   { sep , ( "==" | "!=" ) , sep , RelExpr } ;
+RelExpr          = ShiftExpr ,
+                   { sep , ( "<" | "<=" | ">" | ">=" ) , sep , ShiftExpr } ;
+ShiftExpr        = AddExpr ,
+                   { sep , ( "<<" | ">>" ) , sep , AddExpr } ;
+AddExpr          = MulExpr ,
+                   { sep , ( "+" | "-" ) , sep , MulExpr } ;
+MulExpr          = CastExpr ,
+                   { sep , ( "*" | "/" | "%" ) , sep , CastExpr } ;
+CastExpr         = UnaryExpr ,
+                   { sep , "as" , sep , Type } ;
+
+UnaryExpr        = PostfixExpr
+                 | ( "!" | "-" | "~" ) , sep , UnaryExpr
+                 | "*" , sep , UnaryExpr
+                 | "&" , sep , [ "mut" , sep ] , UnaryExpr ;
+
+PostfixExpr      = PrimaryExpr ,
+                   { PostfixSuffix } ;
+PostfixSuffix    = sep , sym_qmark
+                 | sep , CallSuffix
+                 | sep , IndexSuffix
+                 | sep , FieldSuffix ;
+CallSuffix       = lparen , sep , [ ArgList ] , rparen ;
+ArgList          = Expr , { sep , sym_comma , sep , Expr } ,
+                   [ sep , sym_comma , sep ] ;
+IndexSuffix      = lbrack , sep , Expr , sep , rbrack ;
+FieldSuffix      = sym_dot , sep , identifier , [ GenericArgs ] ;
+
+PrimaryExpr      = literal
+                 | ExprPath
+                 | TupleExpr
+                 | ArrayExpr
+                 | StructExpr
+                 | Block
+                 | IfExpr
+                 | MatchExpr
+                 | LoopExpr
+                 | WhileExpr
+                 | ForExpr
+                 | BreakExpr
+                 | ContinueExpr
+                 | ReturnExpr
+                 | ClosureExpr ;
+
+ExprPath         = [ sym_path , sep ] , TypeSegment ,
+                   { sep , sym_path , sep , TypeSegment } ;
+
+TupleExpr        = lparen , sep ,
+                   [ Expr , { sep , sym_comma , sep , Expr } ,
+                     [ sep , sym_comma , sep ] ] ,
+                   rparen ;
+
+ArrayExpr        = lbrack , sep , [ ArrayElements ] , rbrack ;
+ArrayElements    = ArrayRepeat | ArrayList ;
+ArrayRepeat      = Expr , sep , sym_semi , sep , Expr ;
+ArrayList        = Expr , { sep , sym_comma , sep , Expr } ,
+                   [ sep , sym_comma , sep ] ;
+
+StructExpr       = ExprPath , StructExprBody ;
+StructExprBody   = lbrace , sep , [ StructExprMembers ] , rbrace ;
+StructExprMembers= StructExprField , { sep , sym_comma , sep , StructExprField } ,
+                   [ sep , sym_comma , sep ] ,
+                   [ sep , StructExprRest ]
+                 | StructExprRest ;
+StructExprField  = identifier , [ sep , sym_colon , sep , Expr ] ;
+StructExprRest   = ".." , sep , Expr ;
+
+IfExpr           = "if" , sep , IfCond , sep , Block ,
+                   [ sep , "else" , sep , ElseBranch ] ;
+IfCond           = "let" , sep , Pattern , sep , sym_assign , sep , Expr
+                 | Expr ;
+ElseBranch       = IfExpr | Block ;
+
+MatchExpr        = "match" , sep , Expr , sep ,
+                   lbrace , sep , [ MatchArms ] , rbrace ;
+MatchArms        = MatchArm , { sep , sym_comma , sep , MatchArm } ,
+                   [ sep , sym_comma , sep ] ;
+MatchArm         = PatternChoice , [ sep , "if" , sep , Expr ] ,
+                   sep , sym_fatarrow , sep , MatchBody ;
+PatternChoice    = Pattern , { sep , "|" , sep , Pattern } ;
+MatchBody        = Block | Expr ;
+
+LoopExpr         = "loop" , sep , Block ;
+WhileExpr        = "while" , sep , WhileCond , sep , Block ;
+WhileCond        = "let" , sep , Pattern , sep , sym_assign , sep , Expr
+                 | Expr ;
+ForExpr          = "for" , sep , Pattern , sep , "in" , sep , Expr , sep , Block ;
+
+BreakExpr        = "break" , [ sep , Expr ] ;
+ContinueExpr     = "continue" ;
+ReturnExpr       = "return" , [ sep , Expr ] ;
+
+ClosureExpr      = [ "async" , sep ] , [ "move" , sep ] ,
+                   "|" , sep , [ ClosureParams ] , "|" ,
+                   [ sep , "->" , sep , Type ] ,
+                   sep , ClosureBody ;
+ClosureParams    = ClosureParam , { sep , sym_comma , sep , ClosureParam } ,
+                   [ sep , sym_comma , sep ] ;
+ClosureParam     = [ "mut" , sep ] , Pattern ,
+                   [ sep , sym_colon , sep , Type ] ;
+ClosureBody      = Block | Expr ;
+
+(* =============================== CLI ==================================== *)
+
+CliLine          = sep , { GlobalOption , sep } , CliCommand , sep , EOF ;
+
+GlobalOption     = VerboseOption
+                 | QuietOption
+                 | ColorOption ;
+
+VerboseOption    = "-v" | "-vv" | "-vvv" | "--verbose" ;
+QuietOption      = "-q" | "--quiet" ;
+ColorOption      = "--color" , [ ColorAssign ] ;
+ColorAssign      = ( sep | "=" ) , ColorValue ;
+ColorValue       = "auto" | "always" | "never" ;
+
+CliCommand       = CompileCommand
+                 | RunCommand
+                 | FmtCommand
+                 | InspectCommand
+                 | DisasmCommand
+                 | ModulesCommand ;
+
+CompileCommand   = "compile" ,
+                   [ sep , SourceOperand ] ,
+                   { sep , CompileOption } ;
+SourceOperand    = PathArgument ;
+CompileOption    = OutputOption
+                 | OptimizeOption
+                 | DebugOption
+                 | AutoMkdirOption
+                 | OverwriteOption
+                 | TimeOption
+                 | AutoOutOption ;
+OutputOption     = ( "-o" | "--output" ) ,
+                   ( sep , PathArgument | "=" , PathArgument ) ;
+OptimizeOption   = "-O" | "--optimize" ;
+DebugOption      = "--debug" ;
+AutoMkdirOption  = "--mkdir" ;
+OverwriteOption  = "--overwrite" ;
+TimeOption       = "--time" ;
+AutoOutOption    = "--auto" ;
+
+RunCommand       = "run" ,
+                   [ sep , ProgramOperand ] ,
+                   { sep , RunOption } ,
+                   [ sep , "--" , RunArguments ] ;
+ProgramOperand   = PathArgument ;
+RunOption        = AutoCompileOption
+                 | OptimizeOption
+                 | TimeOption ;
+AutoCompileOption= "--auto-compile" ;
+RunArguments     = ValueArgument , { sep , ValueArgument } ;
+
+FmtCommand       = "fmt" ,
+                   [ sep , SourceOperand ] ,
+                   { sep , FmtOption } ;
+FmtOption        = OutputOption
+                 | InPlaceOption
+                 | CheckOption ;
+InPlaceOption    = "--in-place" ;
+CheckOption      = "--check" ;
+
+InspectCommand   = "inspect" ,
+                   [ sep , PathArgument ] ,
+                   { sep , InspectOption } ;
+InspectOption    = "--summary"
+                 | "--symbols"
+                 | "--consts"
+                 | "--hexdump"
+                 | "--json"
+                 | "--target"
+                 | "--header"
+                 | "--sections"
+                 | "--strings"
+                 | "--imports"
+                 | "--exports"
+                 | "--disasm"
+                 | "--debug"
+                 | "--meta"
+                 | "--verify"
+                 | "--size"
+                 | "--deps"
+                 | "--entry"
+                 | "--dump-all" ;
+
+DisasmCommand    = "disasm" ,
+                   [ sep , PathArgument ] ,
+                   { sep , DisasmOption } ;
+DisasmOption     = OutputOption ;
+
+ModulesCommand   = "modules" ,
+                   { sep , ModulesOption } ;
+ModulesOption    = "--json" ;
+
+PathArgument     = "-" | CliPathToken ;
+ValueArgument    = CliValueToken ;
