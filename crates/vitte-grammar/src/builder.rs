@@ -1,7 +1,7 @@
 use crate::ast::{self, Ast, Ident, Span as AstSpan};
 use crate::{ParseError, Rule, VitteParser};
-use pest::iterators::Pair;
 use pest::Parser;
+use pest::iterators::Pair;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DiagnosticSeverity {
@@ -23,8 +23,8 @@ pub struct LoweringOutcome {
 }
 
 pub fn parse_and_lower(source: &str) -> Result<LoweringOutcome, ParseError> {
-    let mut pairs = VitteParser::parse(Rule::compilation_unit, source)
-        .map_err(ParseError::from_pest)?;
+    let mut pairs =
+        VitteParser::parse(Rule::compilation_unit, source).map_err(ParseError::from_pest)?;
     let root_pair = pairs.next().expect("compilation_unit pair");
 
     let mut lowerer = Lowerer::new();
@@ -76,10 +76,8 @@ impl Lowerer {
         for inner in pair.clone().into_inner() {
             match inner.as_rule() {
                 Rule::module_path => {
-                    let idents: Vec<Pair<'_, Rule>> = inner
-                        .into_inner()
-                        .filter(|p| p.as_rule() == Rule::identifier)
-                        .collect();
+                    let idents: Vec<Pair<'_, Rule>> =
+                        inner.into_inner().filter(|p| p.as_rule() == Rule::identifier).collect();
                     if let Some(first) = idents.first() {
                         module_name = Some(Self::ident_from_pair((*first).clone()));
                     } else {
@@ -134,7 +132,8 @@ impl Lowerer {
         message: impl Into<String>,
         span: Option<AstSpan>,
     ) {
-        self.diagnostics.push(LoweringDiagnostic { severity, message: message.into(), span });
+        self.diagnostics
+            .push(LoweringDiagnostic { severity, message: message.into(), span });
     }
 
     fn alloc_span(&mut self, span: pest::Span<'_>) -> ast::SpanId {
@@ -168,9 +167,11 @@ mod tests {
     #[test]
     fn warns_on_nested_module_path() {
         let outcome = parse_and_lower("module foo::bar;").expect("parse lower");
-        assert!(outcome
-            .diagnostics
-            .iter()
-            .any(|diag| matches!(diag.severity, DiagnosticSeverity::Warning)));
+        assert!(
+            outcome
+                .diagnostics
+                .iter()
+                .any(|diag| matches!(diag.severity, DiagnosticSeverity::Warning))
+        );
     }
 }

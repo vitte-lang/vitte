@@ -14,8 +14,8 @@ use std::{
 use anyhow::{Context, Result};
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 
-use vitte_cli as cli; // notre lib interne (src/lib.rs)
 use cli::inspect::InspectOptions;
+use vitte_cli as cli; // notre lib interne (src/lib.rs)
 
 #[cfg(feature = "fmt")]
 use vitte_fmt::{FormatterOptions, format_source};
@@ -116,6 +116,9 @@ enum Command {
         /// Mode vérification uniquement (retourne erreur si diff)
         #[arg(long = "check")]
         check: bool,
+        /// Afficher le diff des changements (stdout)
+        #[arg(long = "diff")]
+        diff: bool,
     },
 
     /// Inspecter un artefact VITBC
@@ -449,12 +452,12 @@ fn real_main() -> Result<()> {
             C::Run(RunTask { program, args, auto_compile, optimize, time })
         },
         Command::Repl { prompt } => C::Repl(ReplTask { prompt }),
-        Command::Fmt { input, output, in_place, check } => {
+        Command::Fmt { input, output, in_place, check, diff } => {
             let input = input_from_opt(&input);
             let out = output_from_opt(
                 &output, in_place, /*auto=*/ false, /*for_compile=*/ false,
             );
-            C::Fmt(FmtTask { input, output: out, check })
+            C::Fmt(FmtTask { input, output: out, check, diff })
         },
         Command::Inspect {
             input,

@@ -48,21 +48,23 @@ En mode couleur, `vitte` ajuste automatiquement `CLICOLOR_FORCE` / `NO_COLOR` (`
 ```
 vitte compile [OPTIONS] [SOURCE]
 ```
-- **Entrées acceptées** : fichier `.vitte`/`.vit`/`.vt`, ou `-` (stdin). L’absence d’argument lit depuis `stdin` (`crates/vitte-cli/src.lib.rs:256`).
+- **Entrées acceptées** : fichier `.vitte`/`.vit`/`.vt`, ou `-` (stdin). L’absence d’argument lit depuis `stdin` (`crates/vitte-cli/src/lib.rs:256`).
 - **Options détaillées** :
-  - `-o`, `--output <FICHIER>` ⇒ sortie explicite (`-` ⇒ `stdout`). Sans option, `default_bytecode_path` renomme la source (`crates/vitte-cli/src.lib.rs:263-268`, `:1191-1195`).
+  - `-o`, `--output <FICHIER>` ⇒ sortie explicite (`-` ⇒ `stdout`). Sans option, `default_bytecode_path` renomme la source (`crates/vitte-cli/src/lib.rs:263-268`, `:1191-1195`).
   - `--auto` ⇒ force la stratégie « même nom + .vitbc », y compris si `--output` est présent.
-  - `-O`, `--optimize` ⇒ active `CompileOptions { optimize: true }` (`crates/vitte-cli/src.lib.rs:260`).
+  - `-O`, `--optimize` ⇒ active `CompileOptions { optimize: true }` (`crates/vitte-cli/src/lib.rs:260`).
   - `--debug` ⇒ renseigne `emit_debug` (selon le hook).
-  - `--mkdir` / `--overwrite` ⇒ contrôle création et écrasement (`crates/vitte-cli/src.lib.rs:276-283`).
-  - `--time` ⇒ affiche `TIME compile: … ms` (`crates/vitte-cli/src.lib.rs:292-294`).
+  - `--mkdir` / `--overwrite` ⇒ contrôle création et écrasement (`crates/vitte-cli/src/lib.rs:276-283`).
+  - `--time` ⇒ affiche `TIME compile: … ms` (`crates/vitte-cli/src/lib.rs:292-294`).
+
+- **Analyse préalable** : le fichier est intégralement lexé puis parsé (`vitte-lexer`, `vitte-parser`). En cas d'erreur, les diagnostics `LEX100` / `PARSE100` sont émis avant la compilation.
 
 **Sorties**
-- `stdout` (`-o -`) avec flush explicite (`crates/vitte-cli/src.lib.rs:271-274`).
-- Fichier `.vitbc` écrit de façon atomique (`write_bytes_atomic`, `crates/vitte-cli/src.lib.rs:284`, `:492-517`).
-- `out.vitbc` lorsque la source provient de `stdin` avec `--auto` (`crates/vitte-cli/src.lib.rs:264-266`).
+- `stdout` (`-o -`) avec flush explicite (`crates/vitte-cli/src/lib.rs:271-274`).
+- Fichier `.vitbc` écrit de façon atomique (`write_bytes_atomic`, `crates/vitte-cli/src/lib.rs:284`, `:492-517`).
+- `out.vitbc` lorsque la source provient de `stdin` avec `--auto` (`crates/vitte-cli/src/lib.rs:264-266`).
 
-Résultat standard : `COMPILE <chemin> (<taille> octets)` (`crates/vitte-cli/src.lib.rs:286`).
+Résultat standard : `COMPILE <chemin> (<taille> octets)` (`crates/vitte-cli/src/lib.rs:286`).
 
 **Remarque hook** : sans hook `compile`, diagnostic `HOOK001`.
 
@@ -70,40 +72,54 @@ Résultat standard : `COMPILE <chemin> (<taille> octets)` (`crates/vitte-cli/src
 - `--auto` n’a d’effet que pour `compile` ; sans lui, `stdin` ⇒ `stdout`.
 - `--mkdir`/`--overwrite` sécurisent la manipulation des fichiers.
 - Les écritures atomiques évitent les fichiers partiels.
-- Diagnostics fréquents : `HOOK001`, conflit d’écriture sans `--overwrite`.
+- Diagnostics fréquents : `HOOK001`, `LEX100`, `PARSE100`, conflit d’écriture sans `--overwrite`.
 
 ### run
 ```
 vitte run [OPTIONS] [PROGRAM] [-- <ARGS>...]
 ```
-- **Entrées acceptées** : bytecode `.vitbc` (chemin) ou source lorsque `--auto-compile` est activé (`crates/vitte-cli/src.lib.rs:309-346`). `-` signifie « fichier nommé - » côté bytecode ; stdin n’est supporté qu’en mode auto-compile.
+- **Entrées acceptées** : bytecode `.vitbc` (chemin) ou source lorsque `--auto-compile` est activé (`crates/vitte-cli/src/lib.rs:309-346`). `-` signifie « fichier nommé - » côté bytecode ; stdin n’est supporté qu’en mode auto-compile.
 - **Options détaillées** :
   - `--auto-compile` ⇒ compile la source en mémoire avant exécution (`Hooks::compile`).
-  - `-O`, `--optimize` ⇒ passe `optimize=true` au compilateur auto (`crates/vitte-cli/src.lib.rs:328`).
-  - `--time` ⇒ mesure l’exécution et affiche `TIME run: … ms` (`crates/vitte-cli/src.lib.rs:366-368`).
-  - `--` séparateur ⇒ tout ce qui suit est transféré dans `RunOptions::args` (`crates/vitte-cli/src.lib.rs:344`, `:191`).
-- **Sorties** : `RUN exit=<code>` (succès) ou `RUN exit=N` (warning) (`crates/vitte-cli/src.lib.rs:369-372`). Le code de retour du programme est propagé (`Ok(code)`).
+  - `-O`, `--optimize` ⇒ passe `optimize=true` au compilateur auto (`crates/vitte-cli/src/lib.rs:328`).
+  - `--time` ⇒ mesure l’exécution et affiche `TIME run: … ms` (`crates/vitte-cli/src/lib.rs:366-368`).
+  - `--` séparateur ⇒ tout ce qui suit est transféré dans `RunOptions::args` (`crates/vitte-cli/src/lib.rs:344`, `:191`).
+- **Sorties** : `RUN exit=<code>` (succès) ou `RUN exit=N` (warning) (`crates/vitte-cli/src/lib.rs:369-372`). Le code de retour du programme est propagé (`Ok(code)`).
 - **Flux d’exécution** :
   1. Lecture du bytecode ou compilation à la volée (`compiler(&src, …)`).
   2. Invocation du hook `run_bc` (VM) via `Hooks::run_bc`.
-  3. Affichage optionnel du temps et normalisation du code de sortie (`crates/vitte-cli/src.lib.rs:362-373`).
+  3. Affichage optionnel du temps et normalisation du code de sortie (`crates/vitte-cli/src/lib.rs:362-373`).
 - **Diagnostics & limitations** :
-  - `HOOK002` si la VM n’est pas fournie (`crates/vitte-cli/src.lib.rs:303`).
-  - `HOOK001` si `--auto-compile` est demandé sans hook de compilation (`crates/vitte-cli/src.lib.rs:320-344`).
-  - `RUN100` / `RUN101` lorsque l’entrée n’est pas un bytecode et que `--auto-compile` manque (`crates/vitte-cli/src.lib.rs:348-357`).
+  - `HOOK002` si la VM n’est pas fournie (`crates/vitte-cli/src/lib.rs:303`).
+  - `HOOK001` si `--auto-compile` est demandé sans hook de compilation (`crates/vitte-cli/src/lib.rs:320-344`).
+  - `RUN100` / `RUN101` lorsque l’entrée n’est pas un bytecode et que `--auto-compile` manque (`crates/vitte-cli/src/lib.rs:348-357`).
   - Pas de lecture directe de bytecode via stdin pour l’instant (design volontaire).
 ### repl
 ```
 vitte repl [--prompt <TEXTE>]
 ```
-- **Comportement par défaut** : `cli::repl::fallback` ouvre une boucle ligne par ligne avec historique en mémoire et commandes `:help` / `:quit` (`crates/vitte-cli/src.lib.rs:1334-1366`).
+- **Éditeur interactif** : basé sur `rustyline` (édition, historique, navigation) avec bannière d’accueil (`crates/vitte-cli/src/lib.rs:1350-1468`).
 - **Option** :
-  - `--prompt <TEXTE>` ⇒ personnalise l’invite (défaut `vitte> `).
-- **Sortie** : le code de retour correspond à la valeur renvoyée par le hook (`Result<i32>`). Par défaut, `0` si l’utilisateur quitte proprement.
+  - `--prompt <TEXTE>` ⇒ invite personnalisée (un espace final est ajouté automatiquement).
+- **Commandes intégrées** (Tab ⇆ auto-complétion) :
+  - `:help` — affiche l’aide complète.
+  - `:quit` / `:exit` / `:q` — quitte la session.
+  - `:history [n]` — affiche l’historique (optionnellement limité).
+  - `:clear-history` — efface l’historique courant.
+  - `:multi [on|off|toggle]` — active/désactive le mode multi-ligne (buffer).
+  - `:show` / `:buffer` — affiche le contenu du buffer avec numéros de ligne.
+  - `:clear` — vide le buffer.
+  - `:run` / `:flush` — affiche puis vide le buffer (entrée unique dans l’historique).
+  - `:save <fichier>` / `:load <fichier>` — sauvegarde ou charge le buffer (active automatiquement le mode multi-ligne).
+  - `:pop` — retire la dernière ligne du buffer.
+  - `:prompt <texte|reset>` — modifie l’invite ou la réinitialise.
+  - `:status` — affiche l’état (mode, taille du buffer, invite).
+- **Comportement** : en mode simple, chaque ligne est échoée (`→ …`) et ajoutée à l’historique ; en mode multi-ligne les entrées alimentent le buffer jusqu’à `:run`.
+- **Fallback** : si `rustyline` n’est pas disponible, un mode basique stdin/stdout est utilisé (`crates/vitte-cli/src/lib.rs:1376-1407`).
 - **Hooks personnalisés** :
-  - `Hooks::repl` peut être remplacé pour brancher un REPL avancé (complétion, scripting, etc.).
-  - Signature attendue : `fn(&str) -> Result<i32>` (`crates/vitte-cli/src.lib.rs:174-175`).
-- **Limitations** : le fallback ne connaît pas le langage, il se contente d’afficher l’entrée (mode “echo”).
+  - `Hooks::repl` peut être remplacé pour injecter un REPL du langage (interpréteur, évaluation pas-à-pas, etc.).
+  - Signature attendue : `fn(&str) -> Result<i32>` (`crates/vitte-cli/src/lib.rs:175`).
+- **Limites actuelles** : la mise en œuvre fournie n’exécute pas encore de code Vitte ; elle prépare l’intégration d’un interpréteur natif.
 ### fmt
 ```
 vitte fmt [OPTIONS] [SOURCE]
@@ -113,14 +129,16 @@ vitte fmt [OPTIONS] [SOURCE]
   - `-o`, `--output <FICHIER>` ⇒ destination explicite (`-` ⇒ `stdout`).
   - `--in-place` ⇒ réécrit la source (impossible avec stdin).
   - `--check` ⇒ ne modifie pas les fichiers, échec si diff.
+  - `--diff` ⇒ affiche le diff entre l'entrée et la version formatée.
 - **Pipeline** :
   1. Lecture du contenu (`read_source`).
-  2. Invocation du hook `fmt` (`FormatFn`), qui renvoie le texte formaté (`crates/vitte-cli/src.lib.rs:377-389`).
-  3. Écriture (stdout, fichier, in-place) via `write_text_atomic` (`crates/vitte-cli/src.lib.rs:392-404`).
-  4. Message `FMT …` et code de sortie éventuel (`crates/vitte-cli/src.lib.rs:409-422`).
+  2. Invocation du hook `fmt` (`FormatFn`), qui renvoie le texte formaté (`crates/vitte-cli/src/lib.rs:377-389`).
+  3. Écriture (stdout, fichier, in-place) via `write_text_atomic` (`crates/vitte-cli/src/lib.rs:392-404`).
+  4. Message `FMT …` et code de sortie éventuel (`crates/vitte-cli/src/lib.rs:409-422`).
 - **Sorties** :
   - `FMT écrit -> chemin` lorsque le fichier est réécrit.
   - `FMT check OK (…)` en mode `--check`.
+  - Diff coloré (`--diff`) lorsque des changements sont détectés.
   - `Err(formatting diff)` si un diff est détecté et qu’on est en `--check`.
 - **Diagnostics & cas particuliers** :
   - `HOOK003` si le formateur n’est pas disponible.
@@ -132,20 +150,20 @@ vitte fmt [OPTIONS] [SOURCE]
 ```
 vitte inspect [OPTIONS] [BYTECODE]
 ```
-- **Entrées acceptées** : fichier `.vitbc`, `-` (stdin) ou flux pipe. `read_stdin_bytes` impose au moins un octet (`INS102`, `crates/vitte-cli/src.lib.rs:465-477`).
+- **Entrées acceptées** : fichier `.vitbc`, `-` (stdin) ou flux pipe. `read_stdin_bytes` impose au moins un octet (`INS102`, `crates/vitte-cli/src/lib.rs:465-477`).
 - **Sections activables** (toutes cumulables) :
   - `--summary`, `--header`, `--sections`, `--size` → méta-informations générales.
   - `--symbols`, `--consts`, `--imports`, `--exports`, `--deps`, `--entry` → aspects symboliques (stub dans la version actuelle).
   - `--strings`, `--hexdump`, `--disasm` → analyse du payload.
   - `--target`, `--meta`, `--debug`, `--verify` → informations additionnelles (BLAKE3, debug, intégrité).
   - `--dump-all` → active tous les drapeaux ci-dessus (`InspectOptions::ensure_defaults`).
-  - `--json` → sérialise via `InspectionReport` (`serde_json::to_string_pretty`, `crates/vitte-cli/src.lib.rs:980-1000`).
+  - `--json` → sérialise via `InspectionReport` (`serde_json::to_string_pretty`, `crates/vitte-cli/src/lib.rs:980-1000`).
 - **Sorties** :
   - Texte multi-sections (ordre déterminé par les options).
   - JSON structuré avec clés `format`, `size`, `sections`, `strings`, etc.
 - **Fonctionnement interne** :
   1. Lecture du bytecode (`fs::read` ou stdin).
-  2. Analyse via `inspect::analyze` (format VBC0 vs inconnu) (`crates/vitte-cli/src.lib.rs:708-748`).
+  2. Analyse via `inspect::analyze` (format VBC0 vs inconnu) (`crates/vitte-cli/src/lib.rs:708-748`).
   3. Rendu texte (`render_summary`, `render_sections`, …) ou JSON (`render_json`).
 - **Diagnostics & limites** :
   - `HOOK004` si aucun inspecteur n’est branché.
@@ -163,14 +181,14 @@ vitte disasm [OPTIONS] [BYTECODE]
 - **Options** :
   - `-o`, `--output <FICHIER>` ⇒ redirige le texte généré (`stdout` par défaut).
 - **Sorties** :
-  - Pseudo-désassemblage VBC0 en colonnes : offset, opcode (`OP_XX`), opérandes hex (`crates/vitte-cli/src.lib.rs:1070-1078`).
+  - Pseudo-désassemblage VBC0 en colonnes : offset, opcode (`OP_XX`), opérandes hex (`crates/vitte-cli/src/lib.rs:1070-1078`).
   - Message `DISASM ok` sur `stderr`.
 - **Diagnostics & limites** :
   - `HOOK005` si aucun hook `disasm` n’est disponible.
   - `DIS100` / `DIS101` pour les entrées invalides (source ou stdin).
   - `Output::Auto`/`InPlace` non pris en charge.
 - **Personnalisation** : `Hooks::disasm` peut être relié à un véritable désassembleur (ex : génération d’assembleur humainement lisible, mapping symbolique).
-- **Tuyauterie** : le désassembleur lit entièrement le fichier en mémoire via `fs::read` avant traitement (`crates/vitte-cli/src.lib.rs:1053`).
+- **Tuyauterie** : le désassembleur lit entièrement le fichier en mémoire via `fs::read` avant traitement (`crates/vitte-cli/src/lib.rs:1053`).
 
 ### modules
 ```
@@ -216,9 +234,18 @@ En cas d’échec critique (`anyhow`), le message détaillé est affiché sur `s
 | `HOOK004` | `inspect` | Activer `engine`/`vm` ou brancher un inspecteur | `crates/vitte-cli/src/lib.rs:432` |
 | `HOOK005` | `disasm` | Activer la feature `vm`/`disasm` | `crates/vitte-cli/src/lib.rs:1047` |
 | `HOOK006` | `modules` | Recompiler avec `--features modules` | `crates/vitte-cli/src/lib.rs:1089` |
+| `LEX100` | `compile` | Corriger l'erreur lexicale signalée | `crates/vitte-cli/src/lib.rs:428-448` |
+| `PARSE100` | `compile` | Corriger l'erreur de syntaxe (parser) | `crates/vitte-cli/src/lib.rs:450-469` |
+| `COMPILE100` | `compile` | Le hook de compilation a échoué | `crates/vitte-cli/src/lib.rs:260-268` |
+| `COMPILE101` | `run --auto-compile` | Échec de la compilation automatique | `crates/vitte-cli/src/lib.rs:323-373` |
 | `RUN100` / `RUN101` | `run` | Fournir un bytecode ou `--auto-compile` | `crates/vitte-cli/src/lib.rs:348-357` |
+| `RUN200` | `run` | Erreur renvoyée par la VM | `crates/vitte-cli/src/lib.rs:400-410` |
+| `FMT200` | `fmt` | Erreur renvoyée par le formateur | `crates/vitte-cli/src/lib.rs:482-489` |
+| `FMT201` | `fmt --check` | Formatage requis (diff détecté) | `crates/vitte-cli/src/lib.rs:497-505` |
 | `INS100` / `INS102` | `inspect` | Fournir un bytecode non vide | `crates/vitte-cli/src/lib.rs:448`, `:473` |
+| `INS200` | `inspect` | Erreur renvoyée par l'inspecteur | `crates/vitte-cli/src/lib.rs:457-469` |
 | `DIS100` / `DIS101` | `disasm` | Fournir un bytecode fichier | `crates/vitte-cli/src/lib.rs:1060-1066` |
+| `DIS200` | `disasm` | Erreur renvoyée par le désassembleur | `crates/vitte-cli/src/lib.rs:1070-1080` |
 
 Chaque diagnostic est formaté via `emit_diagnostic`, avec couleurs si la feature `color` est active (`crates/vitte-cli/src/lib.rs:1280-1312`).
 

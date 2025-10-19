@@ -3,8 +3,8 @@
 pub mod ast;
 mod builder;
 
-use pest::error::InputLocation;
 use pest::Parser;
+use pest::error::InputLocation;
 use pest_derive::Parser;
 use thiserror::Error;
 
@@ -53,7 +53,7 @@ pub fn parse_module(source: &str) -> Result<()> {
         .map_err(ParseError::from_pest)
 }
 
-pub use builder::{parse_and_lower, DiagnosticSeverity, LoweringDiagnostic, LoweringOutcome};
+pub use builder::{DiagnosticSeverity, LoweringDiagnostic, LoweringOutcome, parse_and_lower};
 
 #[cfg(test)]
 mod tests {

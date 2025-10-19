@@ -13,6 +13,7 @@
 #![deny(unused_must_use)]
 #![forbid(unsafe_code)]
 
+use similar::{ChangeTag, TextDiff};
 use std::{
     fs,
     fs::File,
@@ -22,6 +23,10 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
+use vitte_core::SourceId;
+use vitte_lexer::{Lexer, LineMap, TokenKind};
+use vitte_parser::Parser;
+
 
 #[cfg(feature = "trace")]
 use env_logger;
@@ -77,9 +82,10 @@ pub struct ReplTask {
 
 #[derive(Clone, Debug, Default)]
 pub struct FmtTask {
-    pub input: Input,
-    pub output: Output, // si Output::InPlace => réécrit le fichier
-    pub check: bool,    // mode --check (retourne erreur si diff)
+    pub input: Input,               // chemin source ou stdin
+    pub output: Output,             // si Output::InPlace => réécrit le fichier
+    pub check: bool,                // mode --check (retourne erreur si diff)
+    pub diff: bool,                 // affiche un diff (--diff)
 }
 
 #[derive(Clone, Debug, Default)]
@@ -248,16 +254,27 @@ fn compile_entry(task: CompileTask, hooks: &Hooks) -> Result<i32> {
                     "HOOK001",
                     "Compilation indisponible : hook `compile` absent",
                 )
+                .with_note("Activez la feature `vm` (`cargo run -p vitte-cli --features vm`) ou fournissez votre propre compilateur via Hooks::compile.")
                 .with_help("Recompilez vitte-cli avec la feature `engine` ou fournissez un compilateur dans Hooks::compile."),
             )
         },
     };
 
     let src = read_source(&input).context("lecture de la source")?;
+    perform_frontend_checks(&src, &input)?;
 
     let start = Instant::now();
-    let bc =
-        compiler(&src, &CompileOptions { optimize, emit_debug }).context("échec de compilation")?;
+    let compile_opts = CompileOptions { optimize, emit_debug };
+    let bc = match compiler(&src, &compile_opts) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return bail_diagnostic(
+                Diagnostic::new("COMPILE100", "Le hook de compilation a retourné une erreur.")
+                    .with_note(format!("détail: {err}"))
+                    .with_help("Activez les logs (RUST_LOG=debug) ou recompilez avec `--features vm` pour utiliser le compilateur de référence."),
+            );
+        },
+    };
     let elapsed = start.elapsed();
 
     let out_path = match (&output, &input) {
@@ -283,10 +300,7 @@ fn compile_entry(task: CompileTask, hooks: &Hooks) -> Result<i32> {
         }
         write_bytes_atomic(&out_path, &bc)
             .with_context(|| format!("écriture de {}", display(&out_path)))?;
-        status_ok(
-            "COMPILE",
-            &format!("{} ({} octets)", display(&out_path), bc.len()),
-        );
+        status_ok("COMPILE", &format!("{} ({} octets)", display(&out_path), bc.len()));
     }
 
     if time {
@@ -301,8 +315,9 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
         None => {
             return bail_diagnostic(
                 Diagnostic::new("HOOK002", "Exécution indisponible : hook `run_bc` absent")
+                    .with_note("Activez la feature `vm` (`cargo run -p vitte-cli --features vm`) ou fournissez une implémentation de VM via Hooks::run_bc.")
                     .with_help("Activez la feature `vm` ou fournissez une VM via Hooks::run_bc."),
-            )
+            );
         },
     };
 
@@ -313,22 +328,7 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
         InputKind::BytecodeBytes(b) => b,
         InputKind::SourcePath(p) if task.auto_compile => {
             let src = read_source(&Input::Path(p.clone()))?;
-            let compiler = match hooks.compile {
-                Some(c) => c,
-                None => {
-                    return bail_diagnostic(
-                Diagnostic::new(
-                    "HOOK001",
-                    "auto-compile demandé mais hook `compile` absent",
-                )
-                .with_help("Activez la feature `engine` ou fournissez un compilateur."),
-                    )
-                },
-            };
-            compiler(&src, &CompileOptions { optimize: task.optimize, emit_debug: false })?
-        },
-        InputKind::SourceStdin if task.auto_compile => {
-            let src = read_source(&Input::Stdin)?;
+            perform_frontend_checks(&src, &Input::Path(p.clone()))?;
             let compiler = match hooks.compile {
                 Some(c) => c,
                 None => {
@@ -337,30 +337,88 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
                             "HOOK001",
                             "auto-compile demandé mais hook `compile` absent",
                         )
+                        .with_note("Activez la feature `vm` (`cargo run -p vitte-cli --features vm`) ou fournissez `Hooks::compile`.")
                         .with_help("Activez la feature `engine` ou fournissez un compilateur."),
-                    )
+                    );
                 },
             };
-            compiler(&src, &CompileOptions { optimize: task.optimize, emit_debug: false })?
+            let compile_opts = CompileOptions { optimize: task.optimize, emit_debug: false };
+            match compiler(&src, &compile_opts) {
+                Ok(bytes) => bytes,
+                Err(err) => {
+                    return bail_diagnostic(
+                        Diagnostic::new("COMPILE101", "La compilation automatique a échoué.")
+                            .with_note(format!("détail: {err}"))
+                            .with_help("Passez un bytecode `.vitbc` déjà compilé ou activez les logs (RUST_LOG=debug)."),
+                    );
+                },
+            }
+        },
+        InputKind::SourceStdin if task.auto_compile => {
+            let src = read_source(&Input::Stdin)?;
+            perform_frontend_checks(&src, &Input::Stdin)?;
+            let compiler = match hooks.compile {
+                Some(c) => c,
+                None => {
+                    return bail_diagnostic(
+                        Diagnostic::new(
+                            "HOOK001",
+                            "auto-compile demandé mais hook `compile` absent",
+                        )
+                        .with_note("Activez la feature `vm` (`cargo run -p vitte-cli --features vm`) ou fournissez `Hooks::compile`.")
+                        .with_help("Activez la feature `engine` ou fournissez un compilateur."),
+                    );
+                },
+            };
+            let compile_opts = CompileOptions { optimize: task.optimize, emit_debug: false };
+            match compiler(&src, &compile_opts) {
+                Ok(bytes) => bytes,
+                Err(err) => {
+                    return bail_diagnostic(
+                        Diagnostic::new("COMPILE101", "La compilation automatique a échoué.")
+                            .with_note(format!("détail: {err}"))
+                            .with_help("Passez un bytecode `.vitbc` déjà compilé ou activez les logs (RUST_LOG=debug)."),
+                    );
+                },
+            }
         },
         InputKind::SourcePath(p) => {
             return bail_diagnostic(
                 Diagnostic::new(
                     "RUN100",
-                    format!("'run' attend un bytecode (ou activez --auto-compile) : {}", display(&p)),
+                    format!(
+                        "'run' attend un bytecode (ou activez --auto-compile) : {}",
+                        display(&p)
+                    ),
                 )
+                .with_note("Astuce : utilisez `vitte run --auto-compile <source>` ou fournissez un bytecode `.vitbc`.")
                 .with_help("Fournissez un .vitbc ou ajoutez --auto-compile."),
-            )
+            );
         },
         InputKind::SourceStdin => {
             return bail_diagnostic(
-                Diagnostic::new("RUN101", "'run' attend un bytecode (ou --auto-compile) depuis stdin"),
-            )
+                Diagnostic::new(
+                    "RUN101",
+                    "'run' attend un bytecode (ou --auto-compile) depuis stdin",
+                )
+                .with_note(
+                    "Redirigez un bytecode (`cat programme.vitbc | vitte run -`) ou utilisez --auto-compile pour compiler une source.",
+                ),
+            );
         },
     };
 
     let start = Instant::now();
-    let code = runner(&bytes, &RunOptions { args: task.args, optimize: task.optimize })?;
+    let code = match runner(&bytes, &RunOptions { args: task.args, optimize: task.optimize }) {
+        Ok(code) => code,
+        Err(err) => {
+            return bail_diagnostic(
+                Diagnostic::new("RUN200", "La machine virtuelle a signalé une erreur.")
+                    .with_note(format!("détail: {err}"))
+                    .with_help("Vérifiez votre bytecode ou activez les journaux (`RUST_LOG=debug`)."),
+            );
+        },
+    };
     let elapsed = start.elapsed();
 
     if task.time {
@@ -374,19 +432,158 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
     Ok(code)
 }
 
+fn perform_frontend_checks(src: &str, input: &Input) -> Result<()> {
+    let label = input_label(input);
+    let source = SourceId(0);
+
+    let mut lexer = Lexer::new(src, source);
+    let lines = lexer.lines.clone();
+    loop {
+        match lexer.next() {
+            Ok(Some(tok)) => {
+                if matches!(tok.value, TokenKind::Eof) {
+                    break;
+                }
+            },
+            Ok(None) => break,
+            Err(err) => {
+                let ((l1, c1), (l2, c2)) = lines.span_lines(err.span);
+                return bail_diagnostic(
+                    Diagnostic::new("LEX100", format!("Erreur lexicale: {err}"))
+                        .with_note(format!("{label}:L{}C{}-L{}C{}", l1, c1, l2, c2))
+                        .with_help("Corrigez le lexème identifié avant de relancer la compilation."),
+                );
+            },
+        }
+    }
+
+    if is_simple_module_declaration(src) {
+        return Ok(());
+    }
+
+    let mut parser = Parser::new(src, source);
+    if let Err(err) = parser.parse_program() {
+        let span = err.span;
+        let msg = err.message;
+        let lines = LineMap::new(src);
+        let ((l1, c1), (l2, c2)) = lines.span_lines(span);
+        return bail_diagnostic(
+            Diagnostic::new("PARSE100", format!("Erreur de syntaxe: {msg}"))
+                .with_note(format!("{label}:L{}C{}-L{}C{}", l1, c1, l2, c2))
+                .with_help("Corrigez la structure du code avant compilation."),
+        );
+    }
+
+    Ok(())
+}
+
+fn is_simple_module_declaration(src: &str) -> bool {
+    let trimmed = src.trim();
+    if !trimmed.starts_with("module") {
+        return false;
+    }
+    let mut rest = trimmed.trim_start_matches("module").trim_start();
+    if rest.is_empty() {
+        return false;
+    }
+    let ident_len = rest
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+        .count();
+    if ident_len == 0 {
+        return false;
+    }
+    rest = rest[ident_len..].trim_start();
+    rest == ";" || rest.starts_with('{')
+}
+
+fn input_label(input: &Input) -> String {
+    match input {
+        Input::Path(p) => display(p),
+        Input::Stdin => "stdin".to_string(),
+    }
+}
+
+fn print_text_diff(title: &str, before: &str, after: &str) {
+    let diff = TextDiff::from_lines(before, after);
+    eprintln!("--- {} (avant)", title);
+    eprintln!("+++ {} (après)", title);
+    for change in diff.iter_all_changes() {
+        let mut text = change.to_string();
+        if text.ends_with('\n') {
+            text.pop();
+            if text.ends_with('\r') {
+                text.pop();
+            }
+        }
+        match change.tag() {
+            ChangeTag::Delete => {
+                #[cfg(feature = "color")]
+                eprintln!("{}", format!("-{}", text).red());
+                #[cfg(not(feature = "color"))]
+                eprintln!("-{}", text);
+            },
+            ChangeTag::Insert => {
+                #[cfg(feature = "color")]
+                eprintln!("{}", format!("+{}", text).green());
+                #[cfg(not(feature = "color"))]
+                eprintln!("+{}", text);
+            },
+            ChangeTag::Equal => {
+                #[cfg(feature = "color")]
+                eprintln!(" {}", text.dimmed());
+                #[cfg(not(feature = "color"))]
+                eprintln!(" {}", text);
+            },
+        }
+    }
+}
+
 fn fmt_entry(task: FmtTask, hooks: &Hooks) -> Result<()> {
     let formatter = match hooks.fmt {
         Some(f) => f,
         None => {
             return bail_diagnostic(
                 Diagnostic::new("HOOK003", "Formatage indisponible : hook `fmt` absent")
+                    .with_note("Activez la feature `fmt` (`cargo run -p vitte-cli --features fmt`) ou fournissez `Hooks::fmt`.")
                     .with_help("Recompilez vitte-cli avec la feature `fmt` ou fournissez un formateur."),
-            )
+            );
         },
     };
 
     let src = read_source(&task.input)?;
-    let formatted = formatter(&src, task.check)?;
+    let formatted = match formatter(&src, task.check) {
+        Ok(out) => out,
+        Err(err) => {
+            return bail_diagnostic(
+                Diagnostic::new("FMT200", "Le formateur a retourné une erreur.")
+                    .with_note(format!("détail: {err}"))
+                    .with_help("Activez les journaux (RUST_LOG=debug) ou inspectez le fichier pour repérer les constructions non supportées."),
+            );
+        },
+    };
+
+    let label = input_label(&task.input);
+    let changed = src != formatted;
+
+    if task.check {
+        if task.diff && changed {
+            print_text_diff(&label, &src, &formatted);
+        }
+        if changed {
+            return bail_diagnostic(
+                Diagnostic::new("FMT201", "Le fichier n'est pas formaté.")
+                    .with_note(format!("fichier : {label}"))
+                    .with_help("Exécutez `vitte fmt --in-place <fichier>` ou retirez --check pour appliquer le formatage."),
+            );
+        }
+        status_ok("FMT", &format!("check OK ({label})"));
+        return Ok(());
+    }
+
+    if task.diff && changed {
+        print_text_diff(&label, &src, &formatted);
+    }
 
     match task.output {
         Output::Stdout => {
@@ -402,10 +599,6 @@ fn fmt_entry(task: FmtTask, hooks: &Hooks) -> Result<()> {
         Output::Auto => anyhow::bail!("Output::Auto n'est pas valide pour fmt"),
     }
 
-    if task.check && src != formatted {
-        anyhow::bail!("formatting diff: fichier non conforme (mode --check)");
-    }
-
     let tag_msg = match task.output {
         Output::Stdout => "stdout".to_string(),
         Output::Path(ref p) => display(p),
@@ -416,28 +609,25 @@ fn fmt_entry(task: FmtTask, hooks: &Hooks) -> Result<()> {
         Output::Auto => "auto".to_string(),
     };
 
-    if task.check {
-        status_ok("FMT", &format!("check OK ({tag_msg})"));
-    } else {
-        status_ok("FMT", &format!("écrit -> {tag_msg}"));
-    }
+    status_ok("FMT", &format!("écrit -> {tag_msg}"));
     Ok(())
 }
 
 fn inspect_entry(task: InspectTask, hooks: &Hooks) -> Result<()> {
     let f = match hooks.inspect {
         Some(f) => f,
-        None => {
-            return bail_diagnostic(
-                Diagnostic::new("HOOK004", "Inspection indisponible : hook `inspect` absent")
-                    .with_help("Recompilez vitte-cli avec la feature `engine` ou fournissez un inspecteur."),
-            )
-        },
+        None => return bail_diagnostic(
+            Diagnostic::new("HOOK004", "Inspection indisponible : hook `inspect` absent")
+                .with_note("Activez la feature `engine`/`vm` ou renseignez `Hooks::inspect` pour analyser vos bytecodes.")
+                .with_help(
+                    "Recompilez vitte-cli avec la feature `engine` ou fournissez un inspecteur.",
+                ),
+        ),
     };
     let bytes = match task.input {
         InputKind::BytecodePath(p) => {
             if p.as_os_str() == "-" {
-                read_stdin_bytes()? 
+                read_stdin_bytes()?
             } else {
                 fs::read(&p).with_context(|| format!("lecture bytecode: {}", display(&p)))?
             }
@@ -449,13 +639,23 @@ fn inspect_entry(task: InspectTask, hooks: &Hooks) -> Result<()> {
                     "INS100",
                     format!("'inspect' attend un bytecode, pas une source : {}", display(&p)),
                 )
+                .with_note("Utilisez `vitte compile <fichier>` pour générer un `.vitbc` avant inspection.")
                 .with_help("Compilez d'abord votre source en .vitbc."),
-            )
+            );
         },
         InputKind::SourceStdin => read_stdin_bytes()?,
     };
     let options = task.options.clone();
-    let text = f(&bytes, &options)?;
+    let text = match f(&bytes, &options) {
+        Ok(out) => out,
+        Err(err) => {
+            return bail_diagnostic(
+                Diagnostic::new("INS200", "L'inspecteur a signalé une erreur.")
+                    .with_note(format!("détail: {err}"))
+                    .with_help("Activez les journaux (RUST_LOG=debug) pour diagnostiquer le contenu du bytecode."),
+            );
+        },
+    };
     let mut w = BufWriter::new(io::stdout().lock());
     w.write_all(text.as_bytes())?;
     w.flush()?;
@@ -464,13 +664,11 @@ fn inspect_entry(task: InspectTask, hooks: &Hooks) -> Result<()> {
 
 fn read_stdin_bytes() -> Result<Vec<u8>> {
     let mut buf = Vec::new();
-    io::stdin()
-        .lock()
-        .read_to_end(&mut buf)
-        .context("impossible de lire stdin")?;
+    io::stdin().lock().read_to_end(&mut buf).context("impossible de lire stdin")?;
     if buf.is_empty() {
         return bail_diagnostic(
             Diagnostic::new("INS102", "stdin ne contient aucun octet")
+                .with_note("Exemple : `cat out.vitbc | vitte inspect -`")
                 .with_help("Redirigez un bytecode .vitbc vers l'entrée standard."),
         );
     }
@@ -787,20 +985,18 @@ pub mod inspect {
                     .as_ref()
                     .map(|s| format!("\naperçu source :\n{}", s))
                     .unwrap_or_default();
-                format!(
-                    "Format : VBC0\nsize : {} octets{declared}{snippet}",
-                    data.size
-                )
+                format!("Format : VBC0\nsize : {} octets{declared}{snippet}", data.size)
             },
-            InspectFormat::Unknown => format!(
-                "Format : inconnu\nsize : {} octets",
-                data.size
-            ),
+            InspectFormat::Unknown => format!("Format : inconnu\nsize : {} octets", data.size),
         }
     }
 
     fn render_header(data: &InspectionData) -> String {
-        let mut out = format!("En-tête:\n  format : {}\n  taille totale : {} octets", data.format.as_str(), data.size);
+        let mut out = format!(
+            "En-tête:\n  format : {}\n  taille totale : {} octets",
+            data.format.as_str(),
+            data.size
+        );
         if let Some(declared) = data.declared_len {
             out.push_str(&format!("\n  longueur déclarée : {} octets", declared));
         }
@@ -841,15 +1037,21 @@ pub mod inspect {
 
     fn render_symbols(data: &InspectionData) -> String {
         match data.format {
-            InspectFormat::Vbc0 => "Symboles :\n  (table des symboles non encodée dans ce format)".to_string(),
-            InspectFormat::Unknown => "Symboles :\n  Impossible de lister les symboles — format non reconnu.".to_string(),
+            InspectFormat::Vbc0 => {
+                "Symboles :\n  (table des symboles non encodée dans ce format)".to_string()
+            },
+            InspectFormat::Unknown => {
+                "Symboles :\n  Impossible de lister les symboles — format non reconnu.".to_string()
+            },
         }
     }
 
     fn render_consts(data: &InspectionData) -> String {
         match data.format {
             InspectFormat::Vbc0 => "Constantes :\n  (non disponibles dans ce build)".to_string(),
-            InspectFormat::Unknown => "Constantes :\n  Impossible d'extraire les constantes.".to_string(),
+            InspectFormat::Unknown => {
+                "Constantes :\n  Impossible d'extraire les constantes.".to_string()
+            },
         }
     }
 
@@ -893,7 +1095,9 @@ pub mod inspect {
 
     fn render_meta(data: &InspectionData) -> String {
         if let Some(hash) = &data.hash {
-            format!("Métadonnées :\n  Build-id (BLAKE3) : {hash}\n  Auteur : inconnu\n  Timestamp : n/a")
+            format!(
+                "Métadonnées :\n  Build-id (BLAKE3) : {hash}\n  Auteur : inconnu\n  Timestamp : n/a"
+            )
         } else {
             "Métadonnées indisponibles.".to_string()
         }
@@ -901,10 +1105,9 @@ pub mod inspect {
 
     fn render_verify(data: &InspectionData) -> String {
         match data.verify_ok {
-            Some(true) => format!(
-                "Intégrité : OK (BLAKE3 = {})",
-                data.hash.as_deref().unwrap_or("n/a")
-            ),
+            Some(true) => {
+                format!("Intégrité : OK (BLAKE3 = {})", data.hash.as_deref().unwrap_or("n/a"))
+            },
             Some(false) => "Intégrité : échec (payload > longueur déclarée)".to_string(),
             None => "Intégrité : impossible de vérifier.".to_string(),
         }
@@ -922,16 +1125,9 @@ pub mod inspect {
         for (idx, chunk) in data.payload.chunks(4).enumerate().take(32) {
             let offset = data.payload_offset + idx * 4;
             let op = chunk.get(0).copied().unwrap_or(0);
-            let operands = chunk
-                .iter()
-                .skip(1)
-                .map(|b| format!("{:02X}", b))
-                .collect::<Vec<_>>()
-                .join(" ");
-            out.push_str(&format!(
-                "\n  {offset:08X}: OP_{op:02X} {operands}",
-                operands = operands
-            ));
+            let operands =
+                chunk.iter().skip(1).map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+            out.push_str(&format!("\n  {offset:08X}: OP_{op:02X} {operands}", operands = operands));
         }
         if data.payload.len() / 4 > 32 {
             out.push_str("\n  …");
@@ -943,20 +1139,12 @@ pub mod inspect {
         let mut out = String::new();
         for (offset, chunk) in bytes.chunks(16).enumerate() {
             let off = offset * 16;
-            let hex = chunk
-                .iter()
-                .map(|b| format!("{:02X}", b))
-                .collect::<Vec<_>>()
-                .join(" ");
+            let hex = chunk.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
             let ascii = chunk
                 .iter()
                 .map(|b| {
                     let c = *b as char;
-                    if c.is_ascii_graphic() || c.is_ascii_whitespace() {
-                        c
-                    } else {
-                        '.'
-                    }
+                    if c.is_ascii_graphic() || c.is_ascii_whitespace() { c } else { '.' }
                 })
                 .collect::<String>();
             out.push_str(&format!("{off:08X}: {:<47} |{}|\n", hex, ascii));
@@ -980,11 +1168,7 @@ pub mod inspect {
             sections: data
                 .sections
                 .iter()
-                .map(|s| ReportSection {
-                    name: s.name.to_string(),
-                    offset: s.offset,
-                    size: s.size,
-                })
+                .map(|s| ReportSection { name: s.name.to_string(), offset: s.offset, size: s.size })
                 .collect(),
             strings: data.strings.clone(),
             symbols: Vec::new(),
@@ -1045,6 +1229,7 @@ fn disasm_entry(task: DisasmTask, hooks: &Hooks) -> Result<()> {
         None => {
             return bail_diagnostic(
                 Diagnostic::new("HOOK005", "Désassemblage indisponible : hook `disasm` absent")
+                    .with_note("Activez la feature `vm` ou implémentez Hooks::disasm pour produire un rendu lisible.")
                     .with_help("Recompilez vitte-cli avec la feature `disasm/modules` ou fournissez un désassembleur."),
             )
         },
@@ -1056,17 +1241,27 @@ fn disasm_entry(task: DisasmTask, hooks: &Hooks) -> Result<()> {
         InputKind::BytecodeBytes(b) => b,
         InputKind::SourcePath(p) => {
             return bail_diagnostic(
-                Diagnostic::new(
-                    "DIS100",
-                    format!("'disasm' attend un bytecode, pas une source : {}", display(&p)),
-                ),
-            )
+                Diagnostic::new("DIS100", format!("'disasm' attend un bytecode, pas une source : {}", display(&p)))
+                    .with_note("Compilez votre fichier (`vitte compile <src>`), puis désassemblez le `.vitbc`."),
+            );
         },
         InputKind::SourceStdin => {
-            return bail_diagnostic(Diagnostic::new("DIS101", "'disasm' attend un bytecode sur stdin"));
+            return bail_diagnostic(
+                Diagnostic::new("DIS101", "'disasm' attend un bytecode sur stdin")
+                    .with_note("Redirigez un bytecode (`cat app.vitbc | vitte disasm -`)."),
+            );
         },
     };
-    let text = f(&bytes)?;
+    let text = match f(&bytes) {
+        Ok(out) => out,
+        Err(err) => {
+            return bail_diagnostic(
+                Diagnostic::new("DIS200", "Le désassembleur a signalé une erreur.")
+                    .with_note(format!("détail: {err}"))
+                    .with_help("Assurez-vous que le bytecode provient de `vitte compile` ou activez les journaux détaillés."),
+            );
+        },
+    };
     match task.output {
         Output::Stdout => {
             let mut w = BufWriter::new(io::stdout().lock());
@@ -1082,7 +1277,7 @@ fn disasm_entry(task: DisasmTask, hooks: &Hooks) -> Result<()> {
 }
 
 fn modules_entry(task: ModulesTask) -> Result<()> {
-#[cfg(not(feature = "modules"))]
+    #[cfg(not(feature = "modules"))]
     {
         let _ = task;
         return bail_diagnostic(
@@ -1090,6 +1285,7 @@ fn modules_entry(task: ModulesTask) -> Result<()> {
                 "HOOK006",
                 "Commande `modules` indisponible (feature `modules` désactivée)",
             )
+            .with_note("Activez la feature `modules` (`cargo run -p vitte-cli --features modules`) pour inclure la liste intégrée.")
             .with_help("Recompilez vitte-cli avec `--features modules`."),
         );
     }
@@ -1250,17 +1446,35 @@ struct Diagnostic {
 
 impl Diagnostic {
     fn new(code: &'static str, message: impl Into<String>) -> Self {
-        Self { severity: Severity::Error, code, message: message.into(), notes: Vec::new(), help: None }
+        Self {
+            severity: Severity::Error,
+            code,
+            message: message.into(),
+            notes: Vec::new(),
+            help: None,
+        }
     }
 
     #[allow(dead_code)]
     fn error(code: &'static str, message: impl Into<String>) -> Self {
-        Self { severity: Severity::Error, code, message: message.into(), notes: Vec::new(), help: None }
+        Self {
+            severity: Severity::Error,
+            code,
+            message: message.into(),
+            notes: Vec::new(),
+            help: None,
+        }
     }
 
     #[allow(dead_code)]
     fn warning(code: &'static str, message: impl Into<String>) -> Self {
-        Self { severity: Severity::Warning, code, message: message.into(), notes: Vec::new(), help: None }
+        Self {
+            severity: Severity::Warning,
+            code,
+            message: message.into(),
+            notes: Vec::new(),
+            help: None,
+        }
     }
 
     #[allow(dead_code)]
@@ -1279,11 +1493,9 @@ fn emit_diagnostic(diag: &Diagnostic) {
     #[cfg(feature = "color")]
     {
         match diag.severity {
-            Severity::Error => eprintln!(
-                "{} {}",
-                format!("error[{}]", diag.code).red().bold(),
-                diag.message.red()
-            ),
+            Severity::Error => {
+                eprintln!("{} {}", format!("error[{}]", diag.code).red().bold(), diag.message.red())
+            },
             Severity::Warning => eprintln!(
                 "{} {}",
                 format!("warning[{}]", diag.code).yellow().bold(),
@@ -1325,19 +1537,76 @@ fn print_diagnostic(diag: Diagnostic) {
 }
 
 pub mod repl {
-    use anyhow::Result;
-    use std::io::{self, Write};
+    use anyhow::{anyhow, Context, Result};
+    use rustyline::{
+        completion::{Completer, Pair},
+        config::Configurer,
+        highlight::Highlighter,
+        hint::{HistoryHinter, Hinter},
+        validate::{ValidationContext, ValidationResult, Validator},
+        Context as LineContext, Editor, Helper, error::ReadlineError, history::{FileHistory, History},
+    };
+    use std::{
+        borrow::Cow,
+        fs,
+        io::{self, Write},
+        path::Path,
+    };
 
     #[cfg(feature = "color")]
     use owo_colors::OwoColorize;
 
     pub fn fallback(prompt: &str) -> Result<i32> {
+        match advanced_repl(prompt) {
+            Ok(code) => Ok(code),
+            Err(err) => {
+                eprintln!("[repl] initialisation interactive échouée: {err}");
+                eprintln!("[repl] retour au mode basique (stdin)");
+                basic_stdio(prompt)
+            },
+        }
+    }
+
+    fn advanced_repl(prompt: &str) -> Result<i32> {
+        let mut rl = Editor::<ReplHelper, FileHistory>::new()
+            .context("initialisation de l'éditeur interactif")?;
+        rl.set_auto_add_history(false);
+        if let Err(err) = rl.set_history_ignore_dups(true) {
+            eprintln!("[repl] impossible d'activer history_ignore_dups: {err}");
+        }
+        rl.set_history_ignore_space(true);
+        rl.set_helper(Some(ReplHelper::default()));
+        let mut session = ReplSession::new(prompt);
+        session.print_banner();
+
+        loop {
+            let prompt = session.prompt_for_next_line();
+            match rl.readline(&prompt) {
+                Ok(line) => match session.handle_line(line, &mut rl)? {
+                    FlowControl::Continue => continue,
+                    FlowControl::Exit => break,
+                },
+                Err(ReadlineError::Interrupted) => {
+                    session.on_interrupt();
+                    continue;
+                },
+                Err(ReadlineError::Eof) => {
+                    session.on_eof();
+                    break;
+                },
+                Err(err) => return Err(err.into()),
+            }
+        }
+        Ok(0)
+    }
+
+    fn basic_stdio(prompt: &str) -> Result<i32> {
         let stdin = io::stdin();
         let mut stdout = io::stdout();
         #[cfg(feature = "color")]
-        println!("{}", "Vitte REPL (fallback) — tape :help pour l'aide, :quit pour quitter".cyan());
+        println!("{}", "Vitte REPL (mode basique) — :help pour l'aide, :quit pour quitter".cyan());
         #[cfg(not(feature = "color"))]
-        println!("Vitte REPL (fallback) — tape :help pour l'aide, :quit pour quitter");
+        println!("Vitte REPL (mode basique) — :help pour l'aide, :quit pour quitter");
 
         let mut line = String::new();
         loop {
@@ -1345,23 +1614,414 @@ pub mod repl {
             stdout.flush()?;
             line.clear();
             if stdin.read_line(&mut line)? == 0 {
+                println!("(EOF) sortie du REPL");
                 break;
             }
-            let input = line.trim();
-            match input {
-                "" => continue,
-                ":quit" | ":q" | "exit" => break,
-                ":help" => {
-                    println!(
-                        "Commandes disponibles :\n  :help  — cette aide\n  :quit  — quitter\n  Toute autre entrée est simplement renvoyée (mode echo)."
-                    );
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if trimmed.starts_with(':') {
+                match trimmed {
+                    ":quit" | ":q" | ":exit" | "exit" => break,
+                    ":help" | ":h" => ReplSession::print_help(),
+                    _ => println!("Commande inconnue ({trimmed}) — tape :help"),
+                }
+                continue;
+            }
+            println!("→ {}", trimmed);
+        }
+        Ok(0)
+    }
+
+    enum FlowControl {
+        Continue,
+        Exit,
+    }
+
+    type ReplEditor = Editor<ReplHelper, FileHistory>;
+
+    #[derive(Copy, Clone)]
+    struct CommandInfo {
+        name: &'static str,
+        adds_space: bool,
+    }
+
+    const REPL_COMMANDS: &[CommandInfo] = &[
+        CommandInfo { name: "help", adds_space: false },
+        CommandInfo { name: "h", adds_space: false },
+        CommandInfo { name: "quit", adds_space: false },
+        CommandInfo { name: "exit", adds_space: false },
+        CommandInfo { name: "q", adds_space: false },
+        CommandInfo { name: "history", adds_space: true },
+        CommandInfo { name: "clear-history", adds_space: false },
+        CommandInfo { name: "multi", adds_space: true },
+        CommandInfo { name: "show", adds_space: false },
+        CommandInfo { name: "buffer", adds_space: false },
+        CommandInfo { name: "clear", adds_space: false },
+        CommandInfo { name: "run", adds_space: false },
+        CommandInfo { name: "flush", adds_space: false },
+        CommandInfo { name: "save", adds_space: true },
+        CommandInfo { name: "load", adds_space: true },
+        CommandInfo { name: "pop", adds_space: false },
+        CommandInfo { name: "prompt", adds_space: true },
+        CommandInfo { name: "status", adds_space: false },
+    ];
+
+    #[derive(Default)]
+    struct ReplHelper {
+        hinter: HistoryHinter,
+    }
+
+    impl Helper for ReplHelper {}
+
+    impl Hinter for ReplHelper {
+        type Hint = String;
+
+        fn hint(&self, line: &str, pos: usize, ctx: &LineContext<'_>) -> Option<String> {
+            self.hinter.hint(line, pos, ctx)
+        }
+    }
+
+    impl Highlighter for ReplHelper {
+        fn highlight_prompt<'b, 's: 'b, 'p: 'b>(
+            &'s self,
+            prompt: &'p str,
+            _: bool,
+        ) -> Cow<'p, str> {
+            Cow::Borrowed(prompt)
+        }
+    }
+
+    impl Completer for ReplHelper {
+        type Candidate = Pair;
+
+        fn complete(
+            &self,
+            line: &str,
+            pos: usize,
+            _ctx: &LineContext<'_>,
+        ) -> Result<(usize, Vec<Pair>), ReadlineError> {
+            let slice = &line[..pos];
+            let Some(colon_idx) = slice.rfind(':') else {
+                return Ok((pos, Vec::new()));
+            };
+            if colon_idx > 0 {
+                if let Some(prev) = slice[..colon_idx].chars().last() {
+                    if !prev.is_whitespace() {
+                        return Ok((pos, Vec::new()));
+                    }
+                }
+            }
+            let token = &slice[colon_idx + 1..];
+            if token.chars().any(|c| c.is_whitespace()) {
+                return Ok((pos, Vec::new()));
+            }
+            let token_lower = token.to_ascii_lowercase();
+            let mut pairs = Vec::new();
+            for info in REPL_COMMANDS {
+                if info.name.starts_with(&token_lower) {
+                    let mut replacement = format!(":{}", info.name);
+                    if info.adds_space {
+                        replacement.push(' ');
+                    }
+                    let display = format!(":{}", info.name);
+                    pairs.push(Pair { display, replacement });
+                }
+            }
+            if pairs.is_empty() {
+                return Ok((pos, pairs));
+            }
+            let start = colon_idx;
+            Ok((start, pairs))
+        }
+    }
+
+    impl Validator for ReplHelper {
+        fn validate(
+            &self,
+            _: &mut ValidationContext<'_>,
+        ) -> Result<ValidationResult, ReadlineError> {
+            Ok(ValidationResult::Valid(None))
+        }
+    }
+
+    struct ReplSession {
+        base_prompt: String,
+        prompt_override: Option<String>,
+        multiline: bool,
+        buffer: Vec<String>,
+    }
+
+    impl ReplSession {
+        fn new(prompt: &str) -> Self {
+            Self {
+                base_prompt: ensure_trailing_space(prompt),
+                prompt_override: None,
+                multiline: false,
+                buffer: Vec::new(),
+            }
+        }
+
+        fn prompt_for_next_line(&self) -> String {
+            let base = self.prompt_override.as_deref().unwrap_or(&self.base_prompt);
+            if self.multiline {
+                format!("{}{}| ", base, self.buffer.len() + 1)
+            } else {
+                base.to_string()
+            }
+        }
+
+        fn handle_line(&mut self, line: String, rl: &mut ReplEditor) -> Result<FlowControl> {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                if self.multiline {
+                    self.buffer.push(String::new());
+                }
+                return Ok(FlowControl::Continue);
+            }
+
+            if trimmed.starts_with(':') {
+                return self.handle_command(trimmed, rl);
+            }
+
+            if self.multiline {
+                self.buffer.push(line);
+                println!("(buffer {})", self.buffer.len());
+            } else {
+                self.echo_single(trimmed);
+                if let Err(err) = rl.add_history_entry(trimmed) {
+                    eprintln!("[repl] historique indisponible: {err}");
+                }
+            }
+            Ok(FlowControl::Continue)
+        }
+
+        fn handle_command(&mut self, raw: &str, rl: &mut ReplEditor) -> Result<FlowControl> {
+            let command = raw.trim_start_matches(':').trim();
+            if command.is_empty() {
+                Self::print_help();
+                return Ok(FlowControl::Continue);
+            }
+
+            let mut parts = command.splitn(2, char::is_whitespace);
+            let cmd = parts.next().unwrap_or("").to_ascii_lowercase();
+            let arg = parts.next().map(str::trim).filter(|s| !s.is_empty());
+
+            match cmd.as_str() {
+                "help" | "h" => Self::print_help(),
+                "quit" | "exit" | "q" => return Ok(FlowControl::Exit),
+                "history" => self.print_history(rl, arg)?,
+                "clear-history" => {
+                    if let Err(err) = rl.history_mut().clear() {
+                        eprintln!("[repl] impossible d'effacer l'historique: {err}");
+                    } else {
+                        println!("(historique effacé)");
+                    }
                 },
-                other => {
-                    println!("→ {}", other);
+                "multi" => self.toggle_multiline(arg),
+                "show" | "buffer" => self.show_buffer(),
+                "clear" => {
+                    self.buffer.clear();
+                    println!("(buffer vidé)");
+                },
+                "run" | "flush" => self.flush_buffer(rl),
+                "save" => {
+                    let path = arg.ok_or_else(|| anyhow!("utilisation : :save <fichier>"))?;
+                    self.save_buffer(path)?;
+                },
+                "load" => {
+                    let path = arg.ok_or_else(|| anyhow!("utilisation : :load <fichier>"))?;
+                    self.load_buffer(path)?;
+                },
+                "pop" => {
+                    if let Some(line) = self.buffer.pop() {
+                        println!("(retiré) {}", line);
+                    } else {
+                        println!("(buffer vide)");
+                    }
+                },
+                "prompt" => self.update_prompt(arg),
+                "status" => self.print_status(),
+                _ => println!("Commande inconnue : {raw} — tape :help"),
+            }
+            Ok(FlowControl::Continue)
+        }
+
+        fn print_banner(&self) {
+            #[cfg(feature = "color")]
+            println!(
+                "{}",
+                "Vitte REPL — commandes : :help, :multi, :run, :save, :load, :history, :quit"
+                    .cyan()
+            );
+            #[cfg(not(feature = "color"))]
+            println!("Vitte REPL — commandes : :help, :multi, :run, :save, :load, :history, :quit");
+        }
+
+        fn print_help() {
+            #[cfg(feature = "color")]
+            let header = "Commandes REPL".bold();
+            #[cfg(not(feature = "color"))]
+            let header = "Commandes REPL".to_string();
+            println!(
+                "{header}\n  :help            — afficher cette aide\n  :quit / :exit    — quitter le REPL\n  :history [n]     — afficher l'historique (optionnellement limité)\n  :clear-history   — vider l'historique\n  :multi [on|off]  — basculer le mode multi-ligne\n  :show            — afficher le buffer courant\n  :clear           — vider le buffer\n  :run             — valider le buffer (affiche et vide)\n  :save <file>     — enregistrer le buffer dans un fichier\n  :load <file>     — charger un fichier dans le buffer (active multi-ligne)\n  :pop             — retirer la dernière ligne du buffer\n  :prompt <txt>    — définir une invite personnalisée (:prompt reset pour revenir par défaut)\n  :status          — afficher l'état actuel"
+            );
+        }
+
+        fn print_history(&self, rl: &ReplEditor, arg: Option<&str>) -> Result<()> {
+            let history = rl.history();
+            if history.is_empty() {
+                println!("(historique vide)");
+                return Ok(());
+            }
+            let limit = arg.and_then(|s| s.parse::<usize>().ok());
+            let len = history.len();
+            let start = limit.map(|n| len.saturating_sub(n)).unwrap_or(0);
+            for (idx, entry) in history.iter().enumerate().skip(start) {
+                println!("{:>4} {}", idx + 1, entry);
+            }
+            Ok(())
+        }
+
+        fn toggle_multiline(&mut self, arg: Option<&str>) {
+            let target = arg.map(|s| s.to_ascii_lowercase());
+            let desired = match target.as_deref() {
+                Some("on") | Some("true") => Some(true),
+                Some("off") | Some("false") => Some(false),
+                Some("toggle") | None => None,
+                Some(other) => {
+                    println!(
+                        "Valeur inconnue pour :multi — utilisez on/off/toggle (reçu: {other})"
+                    );
+                    return;
+                },
+            };
+            if let Some(value) = desired {
+                if value {
+                    self.enable_multiline();
+                } else {
+                    self.disable_multiline();
+                }
+            } else if self.multiline {
+                self.disable_multiline();
+            } else {
+                self.enable_multiline();
+            }
+        }
+
+        fn enable_multiline(&mut self) {
+            if !self.multiline {
+                self.multiline = true;
+                println!("(mode multi-ligne activé — terminer avec :run)");
+            } else {
+                println!("(mode multi-ligne déjà actif)");
+            }
+        }
+
+        fn disable_multiline(&mut self) {
+            if self.multiline {
+                self.multiline = false;
+                self.buffer.clear();
+                println!("(mode multi-ligne désactivé, buffer vidé)");
+            } else {
+                println!("(mode multi-ligne déjà inactif)");
+            }
+        }
+
+        fn show_buffer(&self) {
+            if self.buffer.is_empty() {
+                println!("(buffer vide)");
+                return;
+            }
+            for (idx, line) in self.buffer.iter().enumerate() {
+                println!("{:>4} {}", idx + 1, line);
+            }
+        }
+
+        fn flush_buffer(&mut self, rl: &mut ReplEditor) {
+            if self.buffer.is_empty() {
+                println!("(buffer vide)");
+                return;
+            }
+            let block = self.buffer.join("\n");
+            println!("→ {}", block);
+            if let Err(err) = rl.add_history_entry(block.as_str()) {
+                eprintln!("[repl] historique indisponible: {err}");
+            }
+            self.buffer.clear();
+        }
+
+        fn save_buffer(&self, path: &str) -> Result<()> {
+            if self.buffer.is_empty() {
+                println!("(buffer vide — rien à sauvegarder)");
+                return Ok(());
+            }
+            let content = self.buffer.join("\n");
+            fs::write(Path::new(path), content).with_context(|| format!("écriture de {path}"))?;
+            println!("(buffer enregistré dans {path})");
+            Ok(())
+        }
+
+        fn load_buffer(&mut self, path: &str) -> Result<()> {
+            let data = fs::read_to_string(Path::new(path))
+                .with_context(|| format!("lecture de {path}"))?;
+            self.buffer = data.lines().map(|s| s.to_string()).collect();
+            self.multiline = true;
+            println!("(buffer chargé depuis {path}, {} lignes)", self.buffer.len());
+            Ok(())
+        }
+
+        fn update_prompt(&mut self, arg: Option<&str>) {
+            match arg {
+                None => println!(
+                    "Invite actuelle : {}",
+                    self.prompt_override.as_deref().unwrap_or(&self.base_prompt).trim_end()
+                ),
+                Some(value) if value.eq_ignore_ascii_case("reset") => {
+                    self.prompt_override = None;
+                    println!("(invite réinitialisée)");
+                },
+                Some(value) => {
+                    let mut prompt = value.to_string();
+                    if !prompt.ends_with(' ') {
+                        prompt.push(' ');
+                    }
+                    self.prompt_override = Some(prompt);
+                    println!("(nouvelle invite enregistrée)");
                 },
             }
         }
-        Ok(0)
+
+        fn print_status(&self) {
+            println!(
+                "Statut : multi-ligne={}, buffer={} lignes, invite=\"{}\"",
+                if self.multiline { "on" } else { "off" },
+                self.buffer.len(),
+                self.prompt_override.as_deref().unwrap_or(&self.base_prompt).trim_end()
+            );
+        }
+
+        fn echo_single(&self, line: &str) {
+            println!("→ {}", line.trim_end());
+        }
+
+        fn on_interrupt(&mut self) {
+            if self.multiline && !self.buffer.is_empty() {
+                self.buffer.clear();
+                println!("(Ctrl-C) buffer multi-ligne vidé");
+            } else {
+                println!("(Ctrl-C) ligne ignorée");
+            }
+        }
+
+        fn on_eof(&self) {
+            println!("(EOF) sortie du REPL");
+        }
+    }
+
+    fn ensure_trailing_space(input: &str) -> String {
+        if input.ends_with(' ') { input.to_string() } else { format!("{input} ") }
     }
 }
 
@@ -1423,4 +2083,3 @@ mod tests {
         assert_eq!(out.file_name().unwrap().to_string_lossy(), "main.vitbc");
     }
 }
-
