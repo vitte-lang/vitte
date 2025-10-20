@@ -8,66 +8,21 @@
 //!   $ cargo run -p vitte-dap --bin vitte-dap
 //!   (puis taper des requêtes DAP JSON encodées avec Content-Length)
 
+mod engine;
 mod handler;
 
 use color_eyre::eyre::Result;
-use log::{debug, info, warn};
+use engine::DebuggerEngine;
+use log::{debug, warn};
 use std::io::{self, BufRead, Read, Write};
 
-use handler::{DebugEngine, Frame, Handler, Variable};
-
-/// Moteur factice (stub) pour MVP.
-/// TODO : remplacer par un vrai pont vers la VM Vitte.
-struct DummyEngine;
-
-impl DebugEngine for DummyEngine {
-    fn launch(&mut self, program: &str, _args: &[String]) -> Result<()> {
-        info!("DummyEngine.launch program={}", program);
-        Ok(())
-    }
-    fn set_breakpoints(&mut self, source: &str, lines: &[u32]) -> Result<Vec<u32>> {
-        info!("DummyEngine.set_breakpoints {} {:?}", source, lines);
-        Ok(lines.to_vec())
-    }
-    fn r#continue(&mut self) -> Result<()> {
-        info!("DummyEngine.continue");
-        Ok(())
-    }
-    fn step_over(&mut self) -> Result<()> {
-        info!("DummyEngine.step_over");
-        Ok(())
-    }
-    fn stack_trace(&self) -> Result<Vec<Frame>> {
-        Ok(vec![Frame {
-            id: 1,
-            name: "main".into(),
-            source_path: "dummy.vitte".into(),
-            line: 1,
-            column: 1,
-        }])
-    }
-    fn variables(&self, _variables_ref: i64) -> Result<Vec<Variable>> {
-        Ok(vec![Variable {
-            name: "x".into(),
-            value: "42".into(),
-            r#type: Some("i32".into()),
-            variables_reference: 0,
-        }])
-    }
-    fn evaluate(&mut self, expr: &str) -> Result<Option<String>> {
-        Ok(Some(format!("evaluated:{expr}")))
-    }
-    fn disconnect(&mut self) -> Result<()> {
-        info!("DummyEngine.disconnect");
-        Ok(())
-    }
-}
+use handler::Handler;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
     env_logger::init();
 
-    let mut handler = Handler::new(Box::new(DummyEngine));
+    let mut handler = Handler::new(Box::new(DebuggerEngine::new()));
 
     let stdin = io::stdin();
     let mut handle = stdin.lock();

@@ -7,21 +7,21 @@
 //!
 //! Thread-safety : non-Send par défaut (stockage simple). Enrobez dans Arc<Mutex<_>> côté appelant si besoin.
 
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::collections::HashMap;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-pub type FileKey = String;     // chemin canonique (string)
-pub type BreakpointId = u64;   // identifiant interne
+pub type FileKey = String; // chemin canonique (string)
+pub type BreakpointId = u64; // identifiant interne
 pub type FuncName = String;
 pub type ThreadId = i64;
 
 /// Type de point d'arrêt
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BreakpointKind {
-    Line,       // fichier + ligne
-    Function,   // nom de fonction
+    Line,     // fichier + ligne
+    Function, // nom de fonction
 }
 
 /// Requête (côté DAP/UI)
@@ -108,12 +108,7 @@ pub struct BreakpointManager<M: LineMapper = NoMapper> {
 
 impl<M: LineMapper> BreakpointManager<M> {
     pub fn with_mapper(mapper: M) -> Self {
-        Self {
-            next_id: 1,
-            files: HashMap::new(),
-            funcs: HashMap::new(),
-            mapper,
-        }
+        Self { next_id: 1, files: HashMap::new(), funcs: HashMap::new(), mapper }
     }
 
     /// Canonicalise un chemin en clé stable.
@@ -164,7 +159,11 @@ impl<M: LineMapper> BreakpointManager<M> {
     }
 
     /// Ajoute un breakpoint de fonction.
-    pub fn add_function_breakpoint(&mut self, func: impl Into<FuncName>, req: &BreakpointRequest) -> BreakpointResolved {
+    pub fn add_function_breakpoint(
+        &mut self,
+        func: impl Into<FuncName>,
+        req: &BreakpointRequest,
+    ) -> BreakpointResolved {
         let fname = func.into();
         let bp = BreakpointResolved {
             id: self.alloc_id(),
@@ -268,7 +267,12 @@ impl<M: LineMapper> BreakpointManager<M> {
     }
 
     /// À appeler lorsqu’on entre dans une fonction ; renvoie une action éventuelle.
-    pub fn hit_function<F>(&mut self, func: &str, thread: Option<ThreadId>, mut eval_cond: F) -> BreakAction
+    pub fn hit_function<F>(
+        &mut self,
+        func: &str,
+        thread: Option<ThreadId>,
+        mut eval_cond: F,
+    ) -> BreakAction
     where
         F: FnMut(&str) -> bool,
     {
@@ -398,7 +402,7 @@ mod tests {
         let reqs = vec![BreakpointRequest {
             source_path: Some("a.vitte".into()),
             line: Some(3),
-            hit_count: Some(2),               // skip 2 hits
+            hit_count: Some(2), // skip 2 hits
             condition: Some("x>0".into()),
             log_message: Some("here".into()), // logpoint → pas d’arrêt
             ..Default::default()

@@ -192,8 +192,9 @@ Pas de PoC public avant correctif et CVE éventuel. On répond vite et bien.
 ---
 
 ## Code of Conduct
-Nous suivons le **Contributor Covenant (v2.1)**.
-Bienveillance, respect, et zéro tolérance pour les comportements toxiques.
+Nous suivons le [Contributor Covenant (v2.1)](CODE_OF_CONDUCT.md).
+Merci de signaler tout comportement inacceptable ; bienveillance et respect
+restent la norme absolue.
 
 ---
 

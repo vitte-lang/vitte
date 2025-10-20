@@ -14,6 +14,9 @@
 //! - [`bytes`] : lecture/écriture endian-safe sans `Read/Write` std.
 //! - [`strutil`] : helpers `&str`/`String` (`to_lower_ascii`, `to_snake_case`).
 //! - [`time`] : trait `InstantLike` (impl pour `std::time::Instant`).
+//! - [`fs`] *(feature `fs`)* : facettes I/O fichiers atomiques & utilitaires répertoires.
+//! - [`net`] *(feature `net`)* : façade réseau (TCP/HTTP/WS/TLS) prête pour tokio.
+//! - [`async_runtime`] *(feature `async`)* : primitives async runtime-agnostic (`tokio`, `async-std`, `smol`).
 //!
 //! # Exemple
 //! ```
@@ -54,6 +57,39 @@ pub mod prelude {
     pub use indexmap::{IndexMap, IndexSet};
 
     pub use bitflags::bitflags;
+
+    #[cfg(feature = "fs")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "fs")))]
+    pub use crate::fs;
+
+    #[cfg(feature = "net")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "net")))]
+    pub use crate::net;
+
+    #[cfg(feature = "async")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
+    pub use crate::async_runtime;
+}
+
+#[cfg(feature = "fs")]
+#[cfg_attr(docsrs, doc(cfg(feature = "fs")))]
+pub mod fs {
+    //! Facettes système de fichiers de haut niveau.
+    pub use vitte_fs::*;
+}
+
+#[cfg(feature = "net")]
+#[cfg_attr(docsrs, doc(cfg(feature = "net")))]
+pub mod net {
+    //! Façade réseau unifiée (TCP/HTTP/WS/TLS) reposant sur `vitte-net`.
+    pub use vitte_net::*;
+}
+
+#[cfg(feature = "async")]
+#[cfg_attr(docsrs, doc(cfg(feature = "async")))]
+pub mod async_runtime {
+    //! Runtime async agnostique (re-export de `vitte-async`).
+    pub use vitte_async::*;
 }
 
 pub mod ids {

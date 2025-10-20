@@ -1,0 +1,45 @@
+[package]
+name        = "vitte-backends"
+description = "Façade unifiée pour les backends LLVM et Cranelift de Vitte."
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+readme       = { workspace = true }
+
+keywords   = ["vitte", "backend", "llvm", "cranelift", "jit"]
+categories = ["compilers", "development-tools"]
+
+[lib]
+name = "vitte_backends"
+path = "src/lib.rs"
+
+[features]
+default   = ["llvm", "cranelift"]
+llvm      = ["dep:vitte-backend-llvm"]
+cranelift = ["dep:vitte-backend-cranelift"]
+
+[dependencies]
+thiserror = { workspace = true }
+
+vitte-backend-llvm       = { path = "../vitte-backend-llvm",       version = "0.1.0", optional = true }
+vitte-backend-cranelift  = { path = "../vitte-backend-cranelift",  version = "0.1.0", optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all                      = "warn"
+pedantic                 = "warn"
+nursery                  = "warn"
+module_name_repetitions  = "allow"
+too_many_lines           = "allow"
+doc_markdown             = "allow"

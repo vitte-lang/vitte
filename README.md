@@ -26,20 +26,42 @@
 
 ## 📖 Sommaire
 
-1. [Présentation](#-présentation)
-2. [Pourquoi Vitte ?](#-pourquoi-vitte-)
-3. [État du projet](#-état-du-projet)
-4. [Architecture](#-architecture)
-5. [Compatibilité & cibles](#-compatibilité--cibles)
-6. [Installation](#-installation)
-7. [Quickstart](#-quickstart)
-8. [CLI & outils](#-cli--outils)
-9. [Éditeur & LSP](#-éditeur--lsp)
-10. [Exemples](#-exemples)
-11. [Crates du monorepo](#-crates-du-monorepo)
-12. [Roadmap](#-roadmap)
-13. [Contribuer](#-contribuer)
-14. [Licence](#-licence)
+1. [Aperçu rapide](#-aperçu-rapide)
+2. [Liens rapides](#-liens-rapides)
+3. [Présentation](#-présentation)
+4. [Pourquoi Vitte ?](#-pourquoi-vitte-)
+5. [État du projet](#-état-du-projet)
+6. [Architecture](#-architecture)
+7. [Compatibilité & cibles](#-compatibilité--cibles)
+8. [Installation](#-installation)
+9. [Quickstart](#-quickstart)
+10. [Développement](#-développement)
+11. [CLI & outils](#-cli--outils)
+12. [Éditeur & LSP](#-éditeur--lsp)
+13. [Exemples](#-exemples)
+14. [Crates du monorepo](#-crates-du-monorepo)
+15. [Roadmap](#-roadmap)
+16. [Contribuer](#-contribuer)
+17. [Code de conduite](#-code-de-conduite)
+18. [Licence](#-licence)
+
+---
+
+## 🔎 Aperçu rapide
+
+- **Statut** : alpha industrielle ; ABI VITBC versionnée, backends LLVM/Cranelift stabilisés et pipeline de release verrouillée.
+- **Toolchain** : Rust 1.82.0 épinglée, pipeline stricte (`fmt`, `clippy`, `test`, `deny`).
+- **Debug & DX** : Debugger natif + DAP intégré au LSP, diagnostics temps réel et tooling reproductible.
+- **Plateformes** : Linux x86_64/aarch64, macOS Intel/Apple Silicon, Windows x64/ARM64, WebAssembly (WASI + std partielle) ; Android, BSD, RISC-V et embedded suivis à titre expérimental.
+- **Stdlib** : Couverture élargie (réseau, fichiers, async) en plus des modules historiques core/IO/temps.
+
+## 🔗 Liens rapides
+
+- [Architecture générale](ARCHITECTURE.md)
+- [Guide contributeurs](CONTRIBUTING.md)
+- [Roadmap détaillée](#-roadmap)
+- [Politique de sécurité](security/policy.md)
+- [Code de conduite](CODE_OF_CONDUCT.md)
 
 ---
 
@@ -53,6 +75,13 @@
 - **Perfs** : exécution native (LLVM), JIT (Cranelift) ou VM bytecode (VITBC).
 - **Interop** : C/C++/Rust/Zig via FFI, et WebAssembly.
 - **DX** : LSP complet (diagnostics, complétion, go-to), CLI outillée.
+
+## ❓ Pourquoi Vitte ?
+
+- **Systèmes & applicatif** : un seul langage pour écrire des runtimes, des services, des outils CLI et des modules embarqués.
+- **Écosystème unifié** : monorepo orchestrant compilateur, VM, CLI, LSP et stdlib afin de préserver la cohérence des APIs et des outils.
+- **Performance maîtrisée** : représentation IR soignée, optimisations backend paramétrables, bytecode VITBC pour la distribution rapide.
+- **Expérience développeur** : diagnostics riches, conventions strictes, tooling reproductible et documenté pour éviter les surprises.
 
 ---
 
@@ -98,62 +127,45 @@
 
 ## 🖥 Compatibilité & cibles
 
-Support de dev quotidien : **Linux x86_64/ARM64**, **macOS (Intel/Apple Silicon)**, **Windows x64/ARM64**, **WASM**.
+Support de dev quotidien : **Linux x86_64/ARM64**, **macOS (Intel/Apple Silicon)**, **Windows x64/ARM64**, **WASM** (cible `wasm32-wasi` avec std partielle prête à l’emploi).
 Cibles élargies (Android, BSD, RISC-V, embedded) sont **expérimentales** et suivies via `deny.toml`.
 
 - OS/arch suivies : voir `rust-toolchain.toml` (`targets`) et `deny.toml` (`[graph].targets`).
 
 ---
 
-## ⬇ Installation
-# Homebrew Vitte Tap
+## ⬇️ Installation
 
-Official Homebrew Tap to install the [Vitte programming language](https://github.com/vitte-lang/vitte).
+### Homebrew (macOS & Linux)
 
----
-
-## Installation
-
-First, add the tap:
-
-```sh
+```bash
 brew tap vitte-lang/vitte
-```
-
----
-
-## Then install VITTE
-```sh
 brew install vitte
 ```
+
 ### Depuis les sources (recommandé)
 
 ```bash
-# Prérequis : Rust 1.82.0 (toolchain épinglée)
 git clone https://github.com/vitte-lang/vitte.git
 cd vitte
 
-# Build complet (workspace)
+# Build workspace complet
 cargo build --workspace --all-features
 
-# Outils CLI (binaire "vitte")
+# Outils CLI (binaire "vitte" avec les features CLI)
 cargo build -p vitte-tools --features cli --release
 ./target/release/vitte --help
 ```
 
-### Auto-complétions (bash/zsh/fish/pwsh/elvish/nu)
+> Prérequis : Rust `1.82.0` (toolchain épinglée), composants `rustfmt`, `clippy`, `rust-src`, `llvm-tools-preview`.
 
-Après build, un message s’affiche. Installation automatique :
+### Auto-complétions (bash/zsh/fish/pwsh/elvish/nu)
 
 ```bash
 ./target/release/vitte completions --install
 ```
 
-Manuelle (ex.) :
-
-```bash
-./target/release/vitte completions --shell zsh --dir "$XDG_DATA_HOME/zsh/site-functions"
-```
+> Installation manuelle possible via `./target/release/vitte completions --shell <shell> --dir <chemin>`.
 
 ---
 
@@ -236,7 +248,7 @@ Outre la commande unique `vitte`, le crate `vitte-tools` expose plusieurs binair
 ## 🧑‍💻 Éditeur & LSP
 
 - **LSP** : `vitte-lsp` (VS Code, Neovim, etc.).
-  Build : `cargo build -p vitte-lsp --features stdio --release` → binaire `vitte-lsp`.
+  Build : `cargo build -p vitte-lsp --features stdio --release` → binaire `vitte-lsp`. Supporte les profils `stdio`/`tcp` et expose un **Debug Adapter Protocol (DAP)** pour piloter le debugger intégré.
 
 - **VS Code** : extension TextMate incluse (`editors/vscode-vitte/`).
   Installe via “Install from VSIX…” ou dev :
@@ -296,7 +308,7 @@ do main() {
 | `vitte-tools`    | Suite CLI : `vitte` (fmt/check/pack/dump/graph/run).    |
 | `vitte-lsp`      | Serveur LSP (stdio/tcp).                                |
 | `vitte-wasm`     | Bindings WebAssembly (expérimental).                    |
-| `stdlib`         | Bibliothèque standard (pré-lude, I/O, temps…).          |
+| `stdlib`         | Bibliothèque standard (pré-lude, I/O, net, fs, async).   |
 | `modules/*`      | Modules additionnels (optionnels).                      |
 | `tests`          | Tests d’intégration E2E cross-crates.                   |
 
@@ -309,10 +321,10 @@ do main() {
 - [x] VM & runtime (fuel, invariants)
 - [x] CLI `vitte` (fmt/check/pack/dump/graph/run)
 - [x] LSP initial (diagnostics, hover, completion)
-- [ ] Backends LLVM/Cranelift stabilisés
-- [ ] Debugger + DAP
-- [ ] WASM complet (WASI + std partielle)
-- [ ] Stdlib étendue (net/fs/async)
+- [x] Backends LLVM/Cranelift stabilisés
+- [x] Debugger + DAP
+- [x] WASM complet (WASI + std partielle)
+- [x] Stdlib étendue (net/fs/async)
 
 ---
 
@@ -321,7 +333,15 @@ do main() {
 - **Guides** : [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Qualité** : `cargo fmt` • `cargo clippy -D warnings` • `cargo test` • `cargo deny check`
 - **MSRV** : 1.82.0 • **unsafe** interdit par défaut.
-- **Sécurité** : signale toute vulnérabilité en privé (voir `SECURITY.md` si présent, sinon issue privée/mainteneurs).
+- **Sécurité** : signale toute vulnérabilité en privé (voir [security/policy.md](security/policy.md) pour la procédure).
+
+---
+
+## 🛡️ Code de conduite
+
+Nous appliquons le [Contributor Covenant v2.1](CODE_OF_CONDUCT.md). Toute question ou signalement peut être adressé
+en privé à [roussov@vitte-lang.org](mailto:roussov@vitte-lang.org). Le respect mutuel est indispensable pour conserver
+un espace de collaboration bienveillant et productif.
 
 ---
 

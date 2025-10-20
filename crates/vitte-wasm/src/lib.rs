@@ -71,6 +71,13 @@ impl From<&Module> for InspectReport {
     }
 }
 
+/// Rapport d'exécution renvoyé par [`run_bytes`] / [`run_url`].
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct RunReport {
+    /// Code de sortie retourné par la VM (0 = succès).
+    pub exit_code: i32,
+}
+
 /* ─────────────────────────── JS utils ─────────────────────────── */
 
 fn js_err(msg: impl fmt::Display) -> JsValue {
@@ -205,27 +212,37 @@ pub fn stringify(bytes: Uint8Array) -> Result<String, JsValue> {
     Ok(s)
 }
 
-/// Exécute un module depuis un buffer — **stub** tant que la feature `vm` n'est pas active.
+/// Exécute un module VITBC depuis un buffer.
 #[wasm_bindgen]
-pub fn run_bytes(_bytes: Uint8Array) -> Result<JsValue, JsValue> {
+pub fn run_bytes(bytes: Uint8Array) -> Result<JsValue, JsValue> {
+    let vec = bytes.to_vec();
     #[cfg(feature = "vm")]
     {
-        // TODO: brancher vitte-vm ici quand l'API est stabilisée.
-        // let code = _bytes.to_vec();
-        // let rep = vitte_vm::run(&code).map_err(|e| js_err(e))?;
-        // return serde_wasm_bindgen::to_value(&rep).map_err(js_err);
+        let mut vm = vitte_vm::Vm::new();
+        let exit_code = vm.run_bytecode(&vec);
+        let rep = RunReport { exit_code };
+        return serde_wasm_bindgen::to_value(&rep).map_err(js_err);
     }
-    Err(js_err("vitte-wasm: feature `vm` non activée"))
+    #[cfg(not(feature = "vm"))]
+    {
+        let _ = vec;
+        Err(js_err("vitte-wasm: feature `vm` non activée"))
+    }
 }
 
-/// `fetch(url)` puis `run_bytes` — **stub** idem.
+/// `fetch(url)` puis [`run_bytes`].
 #[wasm_bindgen]
-pub async fn run_url(_url: String) -> Result<JsValue, JsValue> {
+pub async fn run_url(url: String) -> Result<JsValue, JsValue> {
     #[cfg(feature = "vm")]
     {
-        // TODO: idem ci-dessus
+        let bytes = fetch_bytes(&url).await?;
+        let array = Uint8Array::from(bytes.as_slice());
+        return run_bytes(array);
     }
-    Err(js_err("vitte-wasm: feature `vm` non activée"))
+    #[cfg(not(feature = "vm"))]
+    {
+        Err(js_err("vitte-wasm: feature `vm` non activée"))
+    }
 }
 
 /* ─────────────────────────── Fetch helper ─────────────────────────── */

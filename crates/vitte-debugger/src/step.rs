@@ -7,7 +7,7 @@
 //!   // À chaque instruction exécutée (avant/après):
 //!   if sc.should_stop(&ctx, current_stack_depth) {
 //!       // Pauser et rafraîchir l'état; puis :
-—      sc.finish(tid); // ou sc.deactivate(tid);
+//!       sc.finish(tid); // ou sc.deactivate(tid);
 //!   }
 //!
 //! Hypothèses :
@@ -30,9 +30,9 @@ use crate::state::StepMode;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StepPlan {
     pub mode: StepMode,
-    pub start_depth: usize,          // profondeur de pile au départ (frames.len())
-    pub start_path: Option<String>,  // chemin logique
-    pub start_line: Option<u32>,     // ligne logique
+    pub start_depth: usize, // profondeur de pile au départ (frames.len())
+    pub start_path: Option<String>, // chemin logique
+    pub start_line: Option<u32>, // ligne logique
 }
 
 impl StepPlan {
@@ -41,12 +41,7 @@ impl StepPlan {
             .first()
             .map(|f| (Some(f.source_path.clone()), Some(f.line)))
             .unwrap_or((None, None));
-        Self {
-            mode,
-            start_depth: frames_at_start.len(),
-            start_path: path,
-            start_line: line,
-        }
+        Self { mode, start_depth: frames_at_start.len(), start_path: path, start_line: line }
     }
 }
 
@@ -68,7 +63,9 @@ impl StepController {
     }
 
     /// Alias sémantique.
-    pub fn deactivate(&mut self, tid: ThreadId) { self.finish(tid); }
+    pub fn deactivate(&mut self, tid: ThreadId) {
+        self.finish(tid);
+    }
 
     /// Le step est-il actif pour `tid` ?
     pub fn is_active(&self, tid: ThreadId) -> bool {
@@ -80,7 +77,9 @@ impl StepController {
     /// `ctx` : contexte exécution *logique* (path/line mappés).
     /// `current_stack_depth` : profondeur de pile actuelle (frames.len()).
     pub fn should_stop(&self, ctx: &ExecContext, current_stack_depth: usize) -> bool {
-        let Some(plan) = self.by_thread.get(&ctx.thread_id) else { return false; };
+        let Some(plan) = self.by_thread.get(&ctx.thread_id) else {
+            return false;
+        };
 
         // Localisation courante
         let cur_path = ctx.source_path.as_deref();
@@ -101,7 +100,7 @@ impl StepController {
             StepMode::Into => {
                 // S’arrête dès que l’on *quitte* la ligne de départ (ou le fichier).
                 moved_line
-            }
+            },
             StepMode::Over => {
                 // On autorise des appels internes *sans* stopper (profondeur > start).
                 // On s’arrête quand :
@@ -113,16 +112,16 @@ impl StepController {
                     // Toujours dans un appel : continue.
                     false
                 }
-            }
+            },
             StepMode::Out => {
                 // On veut sortir de la fonction courante : s’arrêter dès que
                 // la profondeur devient < start_depth (retour).
                 current_stack_depth < plan.start_depth
-            }
+            },
             StepMode::Continue => {
                 // Pas un vrai step plan, par sécurité on ne stoppe jamais ici.
                 false
-            }
+            },
         }
     }
 }
@@ -135,17 +134,27 @@ mod tests {
     use crate::hook::ExecContext;
 
     fn frame(path: &str, line: u32) -> Frame {
-        Frame { id: 1, thread_id: 1, name: "main".into(), source_path: path.into(), line, column: 1 }
+        Frame {
+            id: 1,
+            thread_id: 1,
+            name: "main".into(),
+            source_path: path.into(),
+            line,
+            column: 1,
+        }
     }
     fn ctx(thread: ThreadId, path: &str, line: u32, depth: usize) -> (ExecContext, usize) {
-        (ExecContext {
-            thread_id: thread,
-            frame_id: Some(1),
-            pc: 0,
-            function: Some("main".into()),
-            source_path: Some(path.into()),
-            line: Some(line),
-        }, depth)
+        (
+            ExecContext {
+                thread_id: thread,
+                frame_id: Some(1),
+                pc: 0,
+                function: Some("main".into()),
+                source_path: Some(path.into()),
+                line: Some(line),
+            },
+            depth,
+        )
     }
 
     #[test]

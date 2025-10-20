@@ -14,13 +14,11 @@
 //! Important : l’état ici est *miroir* côté adaptateur. La source de vérité
 //! reste ta VM. Nettoie/rafraîchis cet état à chaque stop pour éviter le stale.
 
-use std::collections::HashMap;
-use std::time::{Duration, SystemTime};
-
-use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::time::SystemTime;
 
-use crate::api::{Frame, Variable, VarRef, ThreadId, FrameId, Scope};
+use crate::api::{Frame, Scope, ThreadId, VarRef, Variable};
 
 /// État d’un thread (côté adaptateur)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,6 +26,12 @@ pub enum ThreadState {
     Running,
     Paused,
     Exited(i32),
+}
+
+impl Default for ThreadState {
+    fn default() -> Self {
+        ThreadState::Running
+    }
 }
 
 /// Raison d’arrêt (dernière pause observée)
@@ -83,10 +87,7 @@ pub struct ThreadInfo {
 
 impl ThreadInfo {
     fn new(id: ThreadId) -> Self {
-        Self {
-            id,
-            ..Default::default()
-        }
+        Self { id, ..Default::default() }
     }
 
     pub fn current_frame(&self) -> Option<&Frame> {
@@ -122,11 +123,8 @@ impl ThreadInfo {
     pub fn install_scope(&mut self, scope: Scope, vars: Vec<Variable>) {
         let vr = scope.variables_reference;
         self.var_tables.insert(vr, vars.clone());
-        self.scopes.push(InstalledScope {
-            scope,
-            vars,
-            installed_at: SystemTime::now(),
-        });
+        self.scopes
+            .push(InstalledScope { scope, vars, installed_at: SystemTime::now() });
     }
 
     pub fn vars_for(&self, varref: VarRef) -> Option<&[Variable]> {
@@ -182,7 +180,7 @@ impl DebugState {
         self.threads.get_mut(&tid)
     }
 
-    pub fn list_threads(&self) -> impl Iterator<Item=(&ThreadId, &ThreadInfo)> {
+    pub fn list_threads(&self) -> impl Iterator<Item = (&ThreadId, &ThreadInfo)> {
         self.threads.iter()
     }
 
@@ -280,8 +278,12 @@ impl DebugState {
 
     /* ----------------------------- Watches -------------------------------- */
 
-    pub fn set_watches(&mut self, list: Vec<String>) { self.watches = list; }
-    pub fn watches(&self) -> &[String] { &self.watches }
+    pub fn set_watches(&mut self, list: Vec<String>) {
+        self.watches = list;
+    }
+    pub fn watches(&self) -> &[String] {
+        &self.watches
+    }
 
     /* ----------------------------- Utilitaires ---------------------------- */
 
@@ -301,7 +303,14 @@ mod tests {
     use crate::api::{Frame, Scope, Variable};
 
     fn dummy_frame(id: i64, line: u32) -> Frame {
-        Frame { id, thread_id: 1, name: "main".into(), source_path: "x.vitte".into(), line, column: 1 }
+        Frame {
+            id,
+            thread_id: 1,
+            name: "main".into(),
+            source_path: "x.vitte".into(),
+            line,
+            column: 1,
+        }
     }
     fn var(name: &str, val: &str) -> Variable {
         Variable { name: name.into(), value: val.into(), r#type: None, variables_reference: 0 }
@@ -313,7 +322,7 @@ mod tests {
         let tid = 1;
         let vr = st.alloc_varref();
         assert!(vr >= 2);
-        st.put_var_table(tid, vr, vec![var("x","42")]);
+        st.put_var_table(tid, vr, vec![var("x", "42")]);
         let got = st.vars_for(tid, vr).unwrap();
         assert_eq!(got[0].name, "x");
     }
@@ -335,7 +344,7 @@ mod tests {
         let tid = 1;
         let vr = st.alloc_varref();
         let sc = Scope { name: "Locals".into(), variables_reference: vr, expensive: false };
-        st.install_scope(tid, sc, vec![var("a","1"), var("b","2")]);
+        st.install_scope(tid, sc, vec![var("a", "1"), var("b", "2")]);
         let vs = st.vars_for(tid, vr).unwrap();
         assert_eq!(vs.len(), 2);
     }

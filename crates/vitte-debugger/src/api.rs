@@ -23,8 +23,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use color_eyre::eyre::{eyre, Result};
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use color_eyre::eyre::{Result, eyre};
+use crossbeam_channel::{Receiver, Sender, unbounded};
 use serde::{Deserialize, Serialize};
 
 pub type ThreadId = i64;
@@ -92,25 +92,50 @@ pub enum DebugEvent {
     Output { category: String, text: String },
 }
 
+/// Raison d'arrêt / d'avancement après une opération d'exécution.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum StopReason {
+    /// Aucun arrêt spécifique (continue à tourner).
+    None,
+    /// Arrêt sur breakpoint (thread/source/ligne)
+    Breakpoint { thread_id: ThreadId, source_path: String, line: u32 },
+    /// Fin d'un pas (step over/in/out)
+    Step { thread_id: ThreadId },
+    /// Programme terminé (code de sortie)
+    Terminated { exit_code: i32 },
+}
+
+impl StopReason {
+    pub fn is_none(&self) -> bool {
+        matches!(self, StopReason::None)
+    }
+}
+
 /// Contrat minimal pour qu’une VM Vitte soit débogable.
 pub trait VitteVm: Send {
     /// Charger/préparer un programme (sans l’exécuter).
     fn launch(&mut self, program: &str, args: &[String]) -> Result<()>;
 
     /// Continuer l’exécution (thread principal si non pertinent).
-    fn continue_all(&mut self) -> Result<()>;
+    fn continue_all(&mut self) -> Result<StopReason>;
 
     /// Pause (si supportée).
-    fn pause(&mut self) -> Result<()> { Err(eyre!("pause() non supporté")) }
+    fn pause(&mut self) -> Result<()> {
+        Err(eyre!("pause() non supporté"))
+    }
 
     /// Step over.
-    fn step_over(&mut self) -> Result<()>;
+    fn step_over(&mut self) -> Result<StopReason>;
 
     /// Step into (optionnel).
-    fn step_in(&mut self) -> Result<()> { Err(eyre!("step_in() non supporté")) }
+    fn step_in(&mut self) -> Result<StopReason> {
+        Err(eyre!("step_in() non supporté"))
+    }
 
     /// Step out (optionnel).
-    fn step_out(&mut self) -> Result<()> { Err(eyre!("step_out() non supporté")) }
+    fn step_out(&mut self) -> Result<StopReason> {
+        Err(eyre!("step_out() non supporté"))
+    }
 
     /// Définir/mettre à jour les breakpoints d’un fichier. Retourne l’état armé.
     fn set_breakpoints(&mut self, source_path: &str, lines: &[u32]) -> Result<Vec<Breakpoint>>;
@@ -125,7 +150,9 @@ pub trait VitteVm: Send {
     fn variables(&self, var_ref: VarRef) -> Result<Vec<Variable>>;
 
     /// Évaluer une expression dans le contexte courant (optionnel).
-    fn evaluate(&mut self, _expr: &str) -> Result<Option<String>> { Ok(None) }
+    fn evaluate(&mut self, _expr: &str) -> Result<Option<String>> {
+        Ok(None)
+    }
 
     /// Stop/cleanup propre.
     fn disconnect(&mut self) -> Result<()>;
@@ -136,8 +163,6 @@ pub trait VitteVm: Send {
 struct State {
     program: Option<String>,
     breakpoints: HashMap<String, Vec<Breakpoint>>, // key = path canonique
-    /// Compteur pour fabriquer des variables_reference uniques (≥ 1)
-    next_varref: VarRef,
 }
 
 /// Façade thread-safe.
@@ -155,7 +180,7 @@ impl Debugger {
         let (tx, rx) = unbounded();
         let dbg = Self {
             vm: Arc::new(Mutex::new(vm)),
-            state: Arc::new(Mutex::new(State { program: None, breakpoints: HashMap::new(), next_varref: 2 })),
+            state: Arc::new(Mutex::new(State { program: None, breakpoints: HashMap::new() })),
             events_tx: tx,
         };
         (dbg, rx)
@@ -171,7 +196,11 @@ impl Debugger {
     }
 
     /// Met en place des breakpoints pour un fichier. Retourne la réalité armée.
-    pub fn set_breakpoints<P: AsRef<Path>>(&self, source_path: P, lines: &[u32]) -> Result<Vec<Breakpoint>> {
+    pub fn set_breakpoints<P: AsRef<Path>>(
+        &self,
+        source_path: P,
+        lines: &[u32],
+    ) -> Result<Vec<Breakpoint>> {
         let sp = source_path.as_ref().to_string_lossy().to_string();
         let armed = self.vm.lock().unwrap().set_breakpoints(&sp, lines)?;
         self.state.lock().unwrap().breakpoints.insert(sp.clone(), armed.clone());
@@ -179,10 +208,11 @@ impl Debugger {
     }
 
     /// Continue l’exécution (tous threads si applicable).
-    pub fn continue_all(&self) -> Result<()> {
-        self.vm.lock().unwrap().continue_all()?;
+    pub fn continue_all(&self) -> Result<StopReason> {
+        let reason = self.vm.lock().unwrap().continue_all()?;
         self.push(DebugEvent::Continued { thread_id: None });
-        Ok(())
+        self.emit_reason(&reason);
+        Ok(reason)
     }
 
     /// Pause (si supportée).
@@ -192,22 +222,22 @@ impl Debugger {
         Ok(())
     }
 
-    pub fn step_over(&self) -> Result<()> {
-        self.vm.lock().unwrap().step_over()?;
-        self.push(DebugEvent::StoppedStep { thread_id: 1 });
-        Ok(())
+    pub fn step_over(&self) -> Result<StopReason> {
+        let reason = self.vm.lock().unwrap().step_over()?;
+        self.emit_reason(&reason);
+        Ok(reason)
     }
 
-    pub fn step_in(&self) -> Result<()> {
-        self.vm.lock().unwrap().step_in()?;
-        self.push(DebugEvent::StoppedStep { thread_id: 1 });
-        Ok(())
+    pub fn step_in(&self) -> Result<StopReason> {
+        let reason = self.vm.lock().unwrap().step_in()?;
+        self.emit_reason(&reason);
+        Ok(reason)
     }
 
-    pub fn step_out(&self) -> Result<()> {
-        self.vm.lock().unwrap().step_out()?;
-        self.push(DebugEvent::StoppedStep { thread_id: 1 });
-        Ok(())
+    pub fn step_out(&self) -> Result<StopReason> {
+        let reason = self.vm.lock().unwrap().step_out()?;
+        self.emit_reason(&reason);
+        Ok(reason)
     }
 
     pub fn stack_trace(&self, thread: Option<ThreadId>) -> Result<Vec<Frame>> {
@@ -235,7 +265,9 @@ impl Debugger {
 
     /// Helper pour émettre un log/output user-facing.
     pub fn emit_output(&self, category: impl Into<String>, text: impl Into<String>) {
-        let _ = self.events_tx.send(DebugEvent::Output { category: category.into(), text: text.into() });
+        let _ = self
+            .events_tx
+            .send(DebugEvent::Output { category: category.into(), text: text.into() });
     }
 
     /// Helper pour signaler un arrêt sur breakpoint (à appeler depuis la VM/adaptateur).
@@ -248,7 +280,12 @@ impl Debugger {
     }
 
     /// Helper pour signaler une exception VM.
-    pub fn emit_exception(&self, message: impl Into<String>, source_path: Option<String>, line: Option<u32>) {
+    pub fn emit_exception(
+        &self,
+        message: impl Into<String>,
+        source_path: Option<String>,
+        line: Option<u32>,
+    ) {
         let _ = self.events_tx.send(DebugEvent::Exception {
             message: message.into(),
             source_path,
@@ -259,11 +296,26 @@ impl Debugger {
     fn push(&self, ev: DebugEvent) {
         let _ = self.events_tx.send(ev);
     }
+
+    fn emit_reason(&self, reason: &StopReason) {
+        match reason {
+            StopReason::None => {},
+            StopReason::Breakpoint { thread_id, source_path, line } => {
+                self.emit_breakpoint_hit(source_path.clone(), *line, *thread_id);
+            },
+            StopReason::Step { thread_id } => {
+                self.push(DebugEvent::StoppedStep { thread_id: *thread_id });
+            },
+            StopReason::Terminated { exit_code } => {
+                self.push(DebugEvent::Terminated { exit_code: *exit_code });
+            },
+        }
+    }
 }
 
 /* -------------------------------------------------------------
-   Implémentation de démonstration : DummyVm (facultatif, tests)
-   ------------------------------------------------------------- */
+Implémentation de démonstration : DummyVm (facultatif, tests)
+------------------------------------------------------------- */
 
 #[cfg(test)]
 mod tests {
@@ -271,23 +323,47 @@ mod tests {
     use std::cell::RefCell;
 
     struct DummyVm {
+        pc: u32,
         loaded: bool,
         lines: Vec<u32>,
         frames: Vec<Frame>,
         vars: HashMap<VarRef, Vec<Variable>>,
+        stop_on_next: RefCell<Option<StopReason>>,
     }
 
     impl DummyVm {
         fn new() -> Self {
             let mut vars = HashMap::new();
-            vars.insert(1, vec![
-                Variable { name: "x".into(), value: "42".into(), r#type: Some("i32".into()), variables_reference: 0 }
-            ]);
+            vars.insert(
+                1,
+                vec![Variable {
+                    name: "x".into(),
+                    value: "42".into(),
+                    r#type: Some("i32".into()),
+                    variables_reference: 0,
+                }],
+            );
             Self {
+                pc: 1,
                 loaded: false,
                 lines: vec![],
-                frames: vec![Frame { id: 10, thread_id: 1, name: "main".into(), source_path: "dummy.vitte".into(), line: 1, column: 1 }],
+                frames: vec![Frame {
+                    id: 10,
+                    thread_id: 1,
+                    name: "main".into(),
+                    source_path: "dummy.vitte".into(),
+                    line: 1,
+                    column: 1,
+                }],
                 vars,
+                stop_on_next: RefCell::new(None),
+            }
+        }
+
+        fn advance(&mut self) {
+            self.pc += 1;
+            if let Some(frame) = self.frames.get_mut(0) {
+                frame.line = self.pc;
             }
         }
     }
@@ -297,19 +373,39 @@ mod tests {
             self.loaded = true;
             Ok(())
         }
-        fn continue_all(&mut self) -> Result<()> {
-            if !self.loaded { return Err(eyre!("not launched")); }
-            Ok(())
+        fn continue_all(&mut self) -> Result<StopReason> {
+            if !self.loaded {
+                return Err(eyre!("not launched"));
+            }
+            if let Some(reason) = self.stop_on_next.borrow_mut().take() {
+                return Ok(reason);
+            }
+            if let Some(&line) = self.lines.first() {
+                self.frames[0].line = line;
+                Ok(StopReason::Breakpoint { thread_id: 1, source_path: "dummy.vitte".into(), line })
+            } else {
+                Ok(StopReason::Terminated { exit_code: 0 })
+            }
         }
-        fn step_over(&mut self) -> Result<()> { Ok(()) }
-        fn set_breakpoints(&mut self, _source_path: &str, lines: &[u32]) -> Result<Vec<Breakpoint>> {
+        fn step_over(&mut self) -> Result<StopReason> {
+            self.advance();
+            Ok(StopReason::Step { thread_id: 1 })
+        }
+        fn set_breakpoints(
+            &mut self,
+            _source_path: &str,
+            lines: &[u32],
+        ) -> Result<Vec<Breakpoint>> {
             self.lines = lines.to_vec();
-            Ok(lines.iter().map(|l| Breakpoint {
-                source_path: "dummy.vitte".into(),
-                requested_line: *l,
-                verified: true,
-                actual_line: *l,
-            }).collect())
+            Ok(lines
+                .iter()
+                .map(|l| Breakpoint {
+                    source_path: "dummy.vitte".into(),
+                    requested_line: *l,
+                    verified: true,
+                    actual_line: *l,
+                })
+                .collect())
         }
         fn stack_trace(&self, _thread_id: Option<ThreadId>) -> Result<Vec<Frame>> {
             Ok(self.frames.clone())
@@ -320,7 +416,9 @@ mod tests {
         fn variables(&self, var_ref: VarRef) -> Result<Vec<Variable>> {
             Ok(self.vars.get(&var_ref).cloned().unwrap_or_default())
         }
-        fn disconnect(&mut self) -> Result<()> { Ok(()) }
+        fn disconnect(&mut self) -> Result<()> {
+            Ok(())
+        }
     }
 
     #[test]
@@ -331,7 +429,10 @@ mod tests {
 
         let armed = dbg.set_breakpoints("dummy.vitte", &[3, 7])?;
         assert_eq!(armed.len(), 2);
-        dbg.continue_all()?;
+        let reason = dbg.continue_all()?;
+        assert!(matches!(reason, StopReason::Breakpoint { line: 3, .. }));
+        assert!(matches!(rx.recv().unwrap(), DebugEvent::Continued { .. }));
+        assert!(matches!(rx.recv().unwrap(), DebugEvent::StoppedBreakpoint { line: 3, .. }));
 
         let frames = dbg.stack_trace(None)?;
         assert_eq!(frames.len(), 1);
@@ -342,11 +443,12 @@ mod tests {
         let vars = dbg.variables(1)?;
         assert_eq!(vars[0].value, "42");
 
-        dbg.step_over()?;
-        assert!(matches!(rx.recv().unwrap(), DebugEvent::StoppedStep{..}));
+        let step_reason = dbg.step_over()?;
+        assert!(matches!(step_reason, StopReason::Step { .. }));
+        assert!(matches!(rx.recv().unwrap(), DebugEvent::StoppedStep { .. }));
 
         dbg.disconnect()?;
-        assert!(matches!(rx.recv().unwrap(), DebugEvent::Terminated{..}));
+        assert!(matches!(rx.recv().unwrap(), DebugEvent::Terminated { .. }));
         Ok(())
     }
 }

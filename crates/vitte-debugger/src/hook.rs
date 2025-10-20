@@ -19,11 +19,10 @@
 
 use std::sync::Arc;
 
-use color_eyre::eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};
 
-use crate::eval::EvalEnv;
 use crate::breakpoint::LineMapper;
+use crate::eval::EvalEnv;
 
 /* ------------------------------ Types utiles ------------------------------ */
 
@@ -36,10 +35,10 @@ pub type Pc = u64;
 pub struct ExecContext {
     pub thread_id: ThreadId,
     pub frame_id: Option<FrameId>,
-    pub pc: Pc,                       // program counter / offset bytecode
-    pub function: Option<String>,     // nom logique si dispo
-    pub source_path: Option<String>,  // chemin “logique” (après mapping si souhaité)
-    pub line: Option<u32>,            // ligne “logique” (idem)
+    pub pc: Pc,                      // program counter / offset bytecode
+    pub function: Option<String>,    // nom logique si dispo
+    pub source_path: Option<String>, // chemin “logique” (après mapping si souhaité)
+    pub line: Option<u32>,           // ligne “logique” (idem)
 }
 
 /// Décision proposée par un hook avant l’exécution d’une instruction.
@@ -54,7 +53,9 @@ pub enum StopDecision {
 }
 
 impl Default for StopDecision {
-    fn default() -> Self { StopDecision::None }
+    fn default() -> Self {
+        StopDecision::None
+    }
 }
 
 /// Événements observables par les hooks.
@@ -116,13 +117,17 @@ pub trait RuntimeObserver: Send + Sync {
 /// Implémentations no-op pratiques.
 pub struct NoSourceMapper;
 impl LineMapper for NoSourceMapper {
-    fn map_line(&self, _file: &String, requested_line: u32) -> (u32, bool) { (requested_line, false) }
+    fn map_line(&self, _file: &String, requested_line: u32) -> (u32, bool) {
+        (requested_line, false)
+    }
 }
 impl SourceMapper for NoSourceMapper {}
 
 pub struct NoEval;
 impl EvalProvider for NoEval {
-    fn env_for(&self, _thread: ThreadId, _frame: Option<FrameId>) -> Option<Arc<dyn EvalEnv>> { None }
+    fn env_for(&self, _thread: ThreadId, _frame: Option<FrameId>) -> Option<Arc<dyn EvalEnv>> {
+        None
+    }
 }
 
 pub struct NoDecider;
@@ -140,22 +145,34 @@ impl RuntimeObserver for NoObserver {}
 /// Il peut agréger plusieurs implémentations pour chaque catégorie.
 #[derive(Default)]
 pub struct HookRegistry {
-    mappers:     Vec<Arc<dyn SourceMapper>>,
-    evals:       Vec<Arc<dyn EvalProvider>>,
-    deciders:    Vec<Arc<dyn ExecutionDecider>>,
-    printers:    Vec<Arc<dyn PrettyPrinter>>,
-    observers:   Vec<Arc<dyn RuntimeObserver>>,
+    mappers: Vec<Arc<dyn SourceMapper>>,
+    evals: Vec<Arc<dyn EvalProvider>>,
+    deciders: Vec<Arc<dyn ExecutionDecider>>,
+    printers: Vec<Arc<dyn PrettyPrinter>>,
+    observers: Vec<Arc<dyn RuntimeObserver>>,
 }
 
 impl HookRegistry {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /* -- enregistrement -- */
-    pub fn add_mapper(&mut self, h: Arc<dyn SourceMapper>) { self.mappers.push(h); }
-    pub fn add_eval_provider(&mut self, h: Arc<dyn EvalProvider>) { self.evals.push(h); }
-    pub fn add_decider(&mut self, h: Arc<dyn ExecutionDecider>) { self.deciders.push(h); }
-    pub fn add_printer(&mut self, h: Arc<dyn PrettyPrinter>) { self.printers.push(h); }
-    pub fn add_observer(&mut self, h: Arc<dyn RuntimeObserver>) { self.observers.push(h); }
+    pub fn add_mapper(&mut self, h: Arc<dyn SourceMapper>) {
+        self.mappers.push(h);
+    }
+    pub fn add_eval_provider(&mut self, h: Arc<dyn EvalProvider>) {
+        self.evals.push(h);
+    }
+    pub fn add_decider(&mut self, h: Arc<dyn ExecutionDecider>) {
+        self.deciders.push(h);
+    }
+    pub fn add_printer(&mut self, h: Arc<dyn PrettyPrinter>) {
+        self.printers.push(h);
+    }
+    pub fn add_observer(&mut self, h: Arc<dyn RuntimeObserver>) {
+        self.observers.push(h);
+    }
 
     /* -- mapping chemin/ligne -- */
 
@@ -267,16 +284,20 @@ impl DefaultVmHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
     use crate::breakpoint::LineMapper;
     use crate::eval::{EvalEnv, Value};
+    use std::sync::Mutex;
 
     struct PlusTenMapper;
     impl LineMapper for PlusTenMapper {
-        fn map_line(&self, _file: &String, requested_line: u32) -> (u32, bool) { (requested_line + 10, true) }
+        fn map_line(&self, _file: &String, requested_line: u32) -> (u32, bool) {
+            (requested_line + 10, true)
+        }
     }
     impl SourceMapper for PlusTenMapper {
-        fn map_path(&self, raw: &str) -> String { format!("MAPPED::{raw}") }
+        fn map_path(&self, raw: &str) -> String {
+            format!("MAPPED::{raw}")
+        }
     }
 
     struct SimpleEnv;
@@ -292,7 +313,10 @@ mod tests {
         }
     }
 
-    struct StepEveryN { n: u32, counter: Mutex<u32> }
+    struct StepEveryN {
+        n: u32,
+        counter: Mutex<u32>,
+    }
     impl ExecutionDecider for StepEveryN {
         fn before_instruction(&self, _ctx: &ExecContext, _r: &HookRegistry) -> StopDecision {
             let mut c = self.counter.lock().unwrap();
@@ -306,9 +330,13 @@ mod tests {
         let mut reg = HookRegistry::new();
         reg.add_mapper(Arc::new(PlusTenMapper));
         reg.add_eval_provider(Arc::new(SimpleEvalProvider));
-        reg.add_decider(Arc::new(StepEveryN{ n: 3, counter: Mutex::new(0) }));
+        reg.add_decider(Arc::new(StepEveryN { n: 3, counter: Mutex::new(0) }));
 
-        let (p, l, mapped) = (reg.map_path("a.vitte"), reg.map_line("a.vitte", 5).0, reg.map_line("a.vitte", 5).1);
+        let (p, l, mapped) = (
+            reg.map_path("a.vitte"),
+            reg.map_line("a.vitte", 5).0,
+            reg.map_line("a.vitte", 5).1,
+        );
         assert!(p.starts_with("MAPPED::"));
         assert_eq!(l, 15);
         assert!(mapped);
@@ -351,7 +379,7 @@ mod tests {
         reg.add_observer(obs.clone());
 
         assert_eq!(reg.pretty("u32", &1234u32.to_le_bytes()).unwrap(), format!("0x{:08x}", 1234));
-        reg.emit(RuntimeEvent::Output{ category:"log".into(), text:"hello".into() });
+        reg.emit(RuntimeEvent::Output { category: "log".into(), text: "hello".into() });
         assert_eq!(*obs.0.lock().unwrap(), 1);
     }
 }

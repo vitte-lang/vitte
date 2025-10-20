@@ -13,60 +13,10 @@ use std::{collections::HashMap, fmt};
 
 use color_eyre::eyre::{Result, eyre};
 use log::{debug, warn};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::{Value, json};
 
-/// Pont générique vers ta VM / runtime.
-/// Implémente ces méthodes dans ton moteur réel pour avoir un débogage fonctionnel.
-pub trait DebugEngine: Send {
-    /// Charge et prépare un programme.
-    fn launch(&mut self, program: &str, args: &[String]) -> Result<()>;
-
-    /// Pose des breakpoints sur une source. Retourne la liste réellement armée.
-    fn set_breakpoints(&mut self, source: &str, lines: &[u32]) -> Result<Vec<u32>>;
-
-    /// Continue l’exécution du thread principal (id 1 pour MVP).
-    fn r#continue(&mut self) -> Result<()>;
-
-    /// Pas à pas (step over).
-    fn step_over(&mut self) -> Result<()>;
-
-    /// Retourne la pile d’appels courante (thread 1).
-    fn stack_trace(&self) -> Result<Vec<Frame>>;
-
-    /// Retourne les variables d’une portée donnée.
-    fn variables(&self, variables_ref: i64) -> Result<Vec<Variable>>;
-
-    /// Optionnel : évaluation d’une expression dans le contexte courant.
-    fn evaluate(&mut self, _expr: &str) -> Result<Option<String>> {
-        Ok(None)
-    }
-
-    /// Arrête proprement (libère ressources).
-    fn disconnect(&mut self) -> Result<()>;
-}
-
-/// Un cadre de pile (stack frame) minimal.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Frame {
-    pub id: i64,
-    pub name: String,
-    pub source_path: String,
-    pub line: u32,
-    pub column: u32,
-}
-
-/// Variable DAP minimaliste.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Variable {
-    pub name: String,
-    pub value: String,
-    #[serde(default)]
-    pub r#type: Option<String>,
-    /// Si > 0, référence vers un objet “expandable”
-    #[serde(default)]
-    pub variables_reference: i64,
-}
+use crate::engine::{DebugEngine, EngineEvent, StackFrame, VariableEntry};
 
 /// État DAP côté adaptateur
 pub struct Handler {
@@ -138,7 +88,6 @@ impl Handler {
                 self.program = Some(program.to_string());
 
                 out.push(Outbound::response(seq, "launch", json!({})));
-                out.push(Outbound::event("initialized", json!({})));
             },
             "setBreakpoints" => {
                 let source_path =
@@ -173,12 +122,10 @@ impl Handler {
                     "continue",
                     json!({ "allThreadsContinued": true }),
                 ));
-                out.push(Outbound::event("continued", json!({ "threadId": 1 })));
             },
             "next" => {
                 self.engine.step_over()?;
                 out.push(Outbound::response(seq, "next", json!({})));
-                out.push(Outbound::event("stopped", json!({ "reason": "step", "threadId": 1 })));
             },
             "stackTrace" => {
                 let frames = self.engine.stack_trace()?;
@@ -258,7 +205,6 @@ impl Handler {
             "disconnect" => {
                 self.engine.disconnect()?;
                 out.push(Outbound::response(seq, "disconnect", json!({})));
-                out.push(Outbound::event("terminated", json!({})));
             },
             other => {
                 warn!("Commande non gérée: {other}");
@@ -266,7 +212,14 @@ impl Handler {
             },
         }
 
+        self.push_engine_events(&mut out)?;
         Ok(out)
+    }
+
+    fn push_engine_events(&mut self, out: &mut Vec<Outbound>) -> Result<()> {
+        let events = self.engine.drain_events()?;
+        out.extend(events.into_iter().map(Outbound::from));
+        Ok(())
     }
 }
 
@@ -301,6 +254,60 @@ impl Outbound {
     }
 }
 
+impl From<EngineEvent> for Outbound {
+    fn from(ev: EngineEvent) -> Self {
+        match ev {
+            EngineEvent::Initialized => Outbound::event("initialized", json!({})),
+            EngineEvent::Continued { thread_id } => Outbound::event(
+                "continued",
+                match thread_id {
+                    Some(tid) => json!({ "threadId": tid }),
+                    None => json!({}),
+                },
+            ),
+            EngineEvent::StoppedBreakpoint { thread_id, source_path, line } => Outbound::event(
+                "stopped",
+                json!({
+                    "reason": "breakpoint",
+                    "threadId": thread_id,
+                    "source": { "path": source_path },
+                    "line": line
+                }),
+            ),
+            EngineEvent::StoppedStep { thread_id } => Outbound::event(
+                "stopped",
+                json!({
+                    "reason": "step",
+                    "threadId": thread_id
+                }),
+            ),
+            EngineEvent::Exception { message, source_path, line } => {
+                let mut body = serde_json::Map::new();
+                body.insert("reason".into(), Value::String("exception".into()));
+                body.insert("description".into(), Value::String(message));
+                body.insert("threadId".into(), Value::Number(1.into()));
+                if let Some(path) = source_path {
+                    body.insert("source".into(), json!({ "path": path }));
+                }
+                if let Some(l) = line {
+                    body.insert("line".into(), Value::Number(l.into()));
+                }
+                Outbound::event("stopped", Value::Object(body))
+            },
+            EngineEvent::Output { category, text } => Outbound::event(
+                "output",
+                json!({
+                    "category": category,
+                    "output": text
+                }),
+            ),
+            EngineEvent::Terminated { exit_code } => {
+                Outbound::event("terminated", json!({ "exitCode": exit_code }))
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,8 +328,8 @@ mod tests {
         fn step_over(&mut self) -> Result<()> {
             Ok(())
         }
-        fn stack_trace(&self) -> Result<Vec<Frame>> {
-            Ok(vec![Frame {
+        fn stack_trace(&self) -> Result<Vec<StackFrame>> {
+            Ok(vec![StackFrame {
                 id: 1,
                 name: "main".into(),
                 source_path: "/tmp/x.vitte".into(),
@@ -330,8 +337,8 @@ mod tests {
                 column: 1,
             }])
         }
-        fn variables(&self, _variables_ref: i64) -> Result<Vec<Variable>> {
-            Ok(vec![Variable {
+        fn variables(&self, _variables_ref: i64) -> Result<Vec<VariableEntry>> {
+            Ok(vec![VariableEntry {
                 name: "x".into(),
                 value: "42".into(),
                 r#type: Some("i32".into()),
@@ -343,6 +350,9 @@ mod tests {
         }
         fn disconnect(&mut self) -> Result<()> {
             Ok(())
+        }
+        fn drain_events(&mut self) -> Result<Vec<EngineEvent>> {
+            Ok(Vec::new())
         }
     }
 
