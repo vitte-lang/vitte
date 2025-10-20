@@ -24,6 +24,7 @@ Options:
       --benches            Include benchmarks (they run with `test` harness).
       --no-fail-fast       Continue after the first failure.
       --use-nextest        Prefer `cargo nextest run` when available.
+      --junit PATH         Emit JUnit XML (requires --use-nextest).
       --ignored            Run tests marked with `#[ignore]`.
       --nocapture          Show test stdout/stderr (maps to test harness flag).
       --filter PATTERN     Pass a substring filter to the test harness.
@@ -65,6 +66,7 @@ INCLUDE_EXAMPLES=0
 INCLUDE_BENCHES=0
 NO_FAIL_FAST=0
 USE_NEXTEST=0
+JUNIT_PATH=""
 QUIET=0
 VERBOSE=0
 EXTRA_CARGO_ARGS=()
@@ -139,6 +141,11 @@ while [[ $# -gt 0 ]]; do
       USE_NEXTEST=1
       shift
       ;;
+    --junit)
+      [[ $# -lt 2 ]] && { warn "Option $1 requiert un argument."; usage; exit 1; }
+      JUNIT_PATH="$2"
+      shift 2
+      ;;
     --ignored)
       HARNESS_ARGS+=("--ignored")
       shift
@@ -181,12 +188,24 @@ CMD=("cargo")
 if (( USE_NEXTEST )); then
   if command -v cargo-nextest >/dev/null 2>&1; then
     CMD+=("nextest" "run")
+    if [[ -n "$JUNIT_PATH" ]]; then
+      mkdir -p "$(dirname "$JUNIT_PATH")"
+    fi
+    if [[ -n "$JUNIT_PATH" ]]; then
+      CMD+=("--junit" "$JUNIT_PATH")
+    fi
   else
     warn "'--use-nextest' demandé mais cargo-nextest est introuvable — fallback sur 'cargo test'."
     CMD+=("test")
+    if [[ -n "$JUNIT_PATH" ]]; then
+      warn "JUnit demandé mais indisponible sans cargo-nextest." 
+    fi
   fi
 else
   CMD+=("test")
+  if [[ -n "$JUNIT_PATH" ]]; then
+    warn "Option --junit ignorée (repose sur cargo-nextest)."
+  fi
 fi
 
 if (( RELEASE )); then

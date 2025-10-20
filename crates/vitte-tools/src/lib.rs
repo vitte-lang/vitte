@@ -23,6 +23,8 @@
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
+#[cfg(feature = "fmt-config")]
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};

@@ -12,6 +12,12 @@
   <a href="https://github.com/vitte-lang/vitte/releases">
     <img alt="Release" src="https://img.shields.io/github/v/release/vitte-lang/vitte?style=flat-square">
   </a>
+  <a href="https://github.com/vitte-lang/vitte/actions/workflows/ci.yml">
+    <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/vitte-lang/vitte/ci.yml?branch=main&style=flat-square">
+  </a>
+  <a href="https://github.com/vitte-lang/vitte/actions/workflows/coverage.yml">
+    <img alt="Coverage" src="https://img.shields.io/github/actions/workflow/status/vitte-lang/vitte/coverage.yml?branch=main&label=coverage&style=flat-square">
+  </a>
   <img alt="License" src="https://img.shields.io/github/license/vitte-lang/vitte?style=flat-square">
   <img alt="Top language" src="https://img.shields.io/github/languages/top/vitte-lang/vitte?style=flat-square">
 </p>
@@ -170,6 +176,20 @@ Compile & exécute :
 ```
 
 > Tu as aussi `vitte fmt`, `vitte check`, `vitte dump`, `vitte graph` (voir plus bas).
+
+---
+
+## 🛠️ Développement
+
+- `make bootstrap` vérifie l’environnement (utilise `INSTALL=1` pour installer les composants/targets manquants listés dans `rust-toolchain.toml`).
+- `make build` / `make build-release` exécutent un build strict (warnings → erreurs, analyse pré-build `scripts/check`).
+- `make check`, `make lint`, `make pipeline`, `make test`… fournissent des équivalents aux pipelines CI.
+- Consulte `docs/development.md` pour les variables utiles (`VITTE_STRICT_WARNINGS`, `VITTE_BUILD_SKIP_ANALYSIS`, options `*_OPTS`) et l’inventaire des outils recommandés (`cargo-deny`, `cargo-nextest`, `wasm-pack`, `just`).
+- `scripts/pro/ci-report.sh` agrège lint + tests + arch-lint avec journaux détaillés (utilisable en CI locale ou distante).
+
+Pour l’architecture (couches, frontières, dépendances autorisées), voir `ARCHITECTURE.md` et `docs/ARCHITECTURE/overview.md`.
+
+Toutes les commandes `cargo` utilisent `-Dwarnings` par défaut via `.cargo/config.toml` pour garantir que la dette technique reste sous contrôle, à la manière des toolchains professionnelles C/C++/C#.
 
 ---
 

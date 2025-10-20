@@ -129,10 +129,26 @@ done
 if (( RUN_FMT )); then
   if (( FMT_FIX )); then
     log "cargo fmt --all"
-    cargo fmt --all
+    if ! cargo fmt --all; then
+      if command -v rustup >/dev/null 2>&1 && rustup toolchain list | grep -q "nightly"; then
+        warn "rustfmt stable a échoué; tentative avec nightly"
+        cargo +nightly fmt --all || exit 1
+      else
+        warn "rustfmt a échoué et nightly introuvable. Installe-le via 'rustup toolchain install nightly' ou 'INSTALL=1 make bootstrap'."
+        exit 1
+      fi
+    fi
   else
     log "cargo fmt --all -- --check"
-    cargo fmt --all -- --check
+    if ! cargo fmt --all -- --check; then
+      if command -v rustup >/dev/null 2>&1 && rustup toolchain list | grep -q "nightly"; then
+        warn "rustfmt stable a échoué; tentative avec nightly"
+        cargo +nightly fmt --all -- --check || exit 1
+      else
+        warn "rustfmt a échoué et nightly introuvable. Installe-le via 'rustup toolchain install nightly' ou 'INSTALL=1 make bootstrap'."
+        exit 1
+      fi
+    fi
   fi
 else
   log "rustfmt skipped (--no-fmt)"

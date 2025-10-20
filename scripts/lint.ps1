@@ -38,10 +38,42 @@ try {
 
     if (-not $NoFmt) {
         if ($Fix) {
-            Invoke-Cargo @('fmt', '--all')
+            try {
+                Invoke-Cargo @('fmt', '--all')
+            }
+            catch {
+                $hasRustup = (Get-Command rustup -ErrorAction SilentlyContinue)
+                if ($hasRustup -and ((rustup toolchain list) -join "\n") -match 'nightly') {
+                    Write-Warning 'rustfmt stable a échoué; tentative avec nightly'
+                    & cargo +nightly fmt --all
+                    if ($LASTEXITCODE -ne 0) { throw }
+                }
+                else {
+                    Write-Warning "rustfmt a échoué et nightly introuvable. Installe: rustup toolchain install nightly"
+                    throw
+                }
+            }
         }
         else {
-            Invoke-Cargo @('fmt', '--all', '--', '--check')
+            $ok = $true
+            try {
+                Invoke-Cargo @('fmt', '--all', '--', '--check')
+            }
+            catch {
+                $ok = $false
+            }
+            if (-not $ok) {
+                $hasRustup = (Get-Command rustup -ErrorAction SilentlyContinue)
+                if ($hasRustup -and ((rustup toolchain list) -join "\n") -match 'nightly') {
+                    Write-Warning 'rustfmt stable a échoué; tentative avec nightly'
+                    & cargo +nightly fmt --all -- --check
+                    if ($LASTEXITCODE -ne 0) { throw }
+                }
+                else {
+                    Write-Warning "rustfmt a échoué et nightly introuvable. Installe: rustup toolchain install nightly"
+                    throw
+                }
+            }
         }
     }
     else {

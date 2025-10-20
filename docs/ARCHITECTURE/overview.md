@@ -85,3 +85,14 @@ flowchart TD
     E --> F[.vitbc Bytecode]
     F --> G[Virtual Machine]
     G --> H[Execution Results]
+
+```
+
+---
+
+## Gouvernance & Enforcement
+- `deny.toml` interdit les wildcards et versions multiples (surveiller les dépendances).
+- `scripts/pro/graph-deps.sh` génère un graphe pour auditer les relations entre crates.
+- `scripts/pro/arch-lint.py` fait respecter automatiquement les couches (frontend → IR → backend → runtime). Le script est exécuté par la CI et via `make arch` / `scripts/check`.
+- `clippy.toml` centralise les lints (complexité, imports, noms interdits) avec `msrv = 1.82`.
+- Les scripts `bootstrap.*` installent `nightly` + `rustfmt` pour valider la configuration de formatage stricte.

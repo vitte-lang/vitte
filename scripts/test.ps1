@@ -10,6 +10,7 @@ param(
     [switch]$NoDefaultFeatures,
     [switch]$NoFailFast,
     [switch]$UseNextest,
+    [string]$Junit,
     [switch]$Doc,
     [switch]$NoDoc,
     [switch]$Bins,
@@ -40,13 +41,25 @@ try {
         }
         else {
             Write-Warning "cargo-nextest introuvable — fallback sur 'cargo test'."
+            if ($Junit) {
+                Write-Warning "--Junit ignoré (nécessite cargo-nextest)."
+            }
         }
+    }
+    elseif ($Junit) {
+        Write-Warning "--Junit ignoré (repose sur cargo-nextest)."
     }
 
     $args = New-Object System.Collections.Generic.List[string]
     if ($useNextest) {
         $args.Add('nextest')
         $args.Add('run')
+        if ($Junit) {
+            $dir = Split-Path -Parent $Junit
+            if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+            $args.Add('--junit')
+            $args.Add($Junit)
+        }
     }
     else {
         $args.Add('test')

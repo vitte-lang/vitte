@@ -19,6 +19,8 @@ Options:
                            Disable default features.
       --locked             Use Cargo.lock without touching the index.
       --frozen             Like --locked + forbid Cargo.lock modification.
+      --analysis-only      Run the strict analysis preflight and exit.
+      --skip-analysis      Skip the strict analysis preflight (also set VITTE_BUILD_SKIP_ANALYSIS=1).
       --check-only         Dry-run via 'cargo check' instead of 'cargo build'.
       --quiet              Reduce cargo output noise.
   -v, --verbose            Increase cargo verbosity (repeatable).
@@ -45,8 +47,33 @@ cd "$ROOT"
 
 ensure_cargo
 
+append_unique_flag() {
+  local var_name="$1"
+  local flag="$2"
+  local current="${!var_name-}"
+  if [[ -n "$current" ]]; then
+    case " $current " in
+      *" $flag "*) return ;;
+      *) export "$var_name"="$current $flag" ;;
+    esac
+  else
+    export "$var_name"="$flag"
+  fi
+}
+
 PACKAGES=()
 USE_WORKSPACE=1
+RUN_ANALYSIS=1
+ANALYSIS_ONLY=0
+SKIP_ANALYSIS_REASON=""
+if [[ -n "${VITTE_BUILD_SKIP_ANALYSIS:-}" ]]; then
+  case "${VITTE_BUILD_SKIP_ANALYSIS,,}" in
+    1|true|yes|on)
+      RUN_ANALYSIS=0
+      SKIP_ANALYSIS_REASON="VITTE_BUILD_SKIP_ANALYSIS"
+      ;;
+  esac
+fi
 RELEASE=0
 PROFILE=""
 TARGET=""
@@ -60,6 +87,14 @@ QUIET=0
 VERBOSE=0
 CLEAN_FIRST=0
 FORWARD=()
+STRICT_WARNINGS=1
+if [[ -n "${VITTE_STRICT_WARNINGS:-}" ]]; then
+  case "${VITTE_STRICT_WARNINGS,,}" in
+    0|false|no|off)
+      STRICT_WARNINGS=0
+      ;;
+  esac
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -109,6 +144,17 @@ while [[ $# -gt 0 ]]; do
       FROZEN=1
       shift
       ;;
+    --analysis-only)
+      RUN_ANALYSIS=1
+      ANALYSIS_ONLY=1
+      SKIP_ANALYSIS_REASON=""
+      shift
+      ;;
+    --skip-analysis)
+      RUN_ANALYSIS=0
+      SKIP_ANALYSIS_REASON="--skip-analysis"
+      shift
+      ;;
     --check-only)
       CHECK_ONLY=1
       shift
@@ -145,6 +191,33 @@ done
 if (( CLEAN_FIRST )); then
   log "Nettoyage préalable (cargo clean)"
   cargo clean
+fi
+
+if (( STRICT_WARNINGS )); then
+  append_unique_flag RUSTFLAGS "-Dwarnings"
+  append_unique_flag RUSTDOCFLAGS "-Dwarnings"
+  export VITTE_STRICT_WARNINGS_EMITTED=1
+  log "Mode strict activé (warnings → erreurs)."
+else
+  if [[ -n "${VITTE_STRICT_WARNINGS_EMITTED:-}" ]]; then
+    unset VITTE_STRICT_WARNINGS_EMITTED
+  fi
+  warn "Mode strict désactivé (VITTE_STRICT_WARNINGS)."
+fi
+
+if (( RUN_ANALYSIS )); then
+  log "Analyse stricte préalable (scripts/check.sh)"
+  ./scripts/check.sh
+  if (( ANALYSIS_ONLY )); then
+    log "Analyse stricte terminée — build non lancé (--analysis-only)."
+    exit 0
+  fi
+else
+  if [[ -n "$SKIP_ANALYSIS_REASON" ]]; then
+    warn "Analyse stricte sautée ($SKIP_ANALYSIS_REASON)."
+  else
+    warn "Analyse stricte sautée."
+  fi
 fi
 
 CMD=("cargo")

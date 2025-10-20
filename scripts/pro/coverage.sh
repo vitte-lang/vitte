@@ -19,5 +19,5 @@ echo "▶ cargo tarpaulin --workspace --out Html"
 OUTPUT_DIR="$ROOT/coverage"
 mkdir -p "$OUTPUT_DIR"
 
-cargo tarpaulin --workspace --all-features --out Html --output-dir "$OUTPUT_DIR"
+cargo tarpaulin --workspace --all-features --out Html --output-dir "$OUTPUT_DIR" "$@"
 echo "✅ Rapport HTML : $OUTPUT_DIR/index.html"
