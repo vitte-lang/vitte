@@ -190,11 +190,11 @@ pub fn remove_any<P: AsRef<Path>>(path: P) -> FsResult<()> {
     match fs::symlink_metadata(path) {
         Ok(md) if md.is_dir() => {
             fs::remove_dir_all(path)?;
-        },
+        }
         Ok(_) => {
             fs::remove_file(path)?;
-        },
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {},
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
         Err(e) => return Err(e.into()),
     }
     Ok(())
@@ -310,17 +310,17 @@ pub fn normalize<P: AsRef<Path>>(path: P) -> PathBuf {
     let mut stack: Vec<Component> = Vec::new();
     for c in path.as_ref().components() {
         match c {
-            Component::CurDir => {},
+            Component::CurDir => {}
             Component::ParentDir => {
                 if let Some(last) = stack.last() {
                     match last {
-                        Component::RootDir | Component::Prefix(_) => {},
+                        Component::RootDir | Component::Prefix(_) => {}
                         _ => {
                             stack.pop();
-                        },
+                        }
                     }
                 }
-            },
+            }
             _ => stack.push(c),
         }
     }
@@ -344,9 +344,7 @@ pub fn canonicalize<P: AsRef<Path>>(path: P) -> FsResult<PathBuf> {
 /// Transforme en chemin absolu sans toucher au FS (autant que possible).
 pub fn absolutize<P: AsRef<Path>>(path: P) -> FsResult<PathBuf> {
     let p = path.as_ref();
-    let ab = p
-        .absolutize()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+    let ab = p.absolutize().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
     Ok(ab.into_owned())
 }
 
@@ -430,11 +428,7 @@ pub fn read_link<P: AsRef<Path>>(path: P) -> FsResult<PathBuf> {
 
 /// Détecte si un chemin semble "caché" (dotfile sur Unix, attribut "hidden" ignoré).
 pub fn is_hidden<P: AsRef<Path>>(path: P) -> bool {
-    path.as_ref()
-        .file_name()
-        .and_then(OsStr::to_str)
-        .map(|s| s.starts_with('.'))
-        .unwrap_or(false)
+    path.as_ref().file_name().and_then(OsStr::to_str).map(|s| s.starts_with('.')).unwrap_or(false)
 }
 
 /// Retourne le dossier home de l’utilisateur.
@@ -449,7 +443,7 @@ pub fn temp_dir() -> PathBuf {
 
 /// Construit un chemin frère temporaire unique de `path`.
 fn tmp_sibling(path: &Path, tag: &str) -> FsResult<PathBuf> {
-    use rand::{Rng, distributions::Alphanumeric, thread_rng};
+    use rand::{distributions::Alphanumeric, thread_rng, Rng};
     let parent = path.parent().ok_or_else(|| FsError::InvalidPath("no parent".into()))?;
     let stem = path.file_name().unwrap_or_else(|| OsStr::new("file"));
     let rand: String = thread_rng().sample_iter(&Alphanumeric).take(8).map(char::from).collect();
@@ -565,7 +559,7 @@ pub mod aio {
         match tokio::fs::symlink_metadata(path).await {
             Ok(md) if md.is_dir() => tokio::fs::remove_dir_all(path).await?,
             Ok(_) => tokio::fs::remove_file(path).await?,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {},
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => return Err(e.into()),
         }
         Ok(())

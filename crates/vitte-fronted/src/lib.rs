@@ -14,13 +14,9 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(
-    clippy::module_name_repetitions,
-    clippy::too_many_lines,
-    clippy::missing_errors_doc
-)]
+#![allow(clippy::module_name_repetitions, clippy::too_many_lines, clippy::missing_errors_doc)]
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 
 /// Représente une unité de compilation (fichier source Vitte ou script).
 #[derive(Debug, Clone)]
@@ -98,10 +94,7 @@ impl Frontend {
     /// Prépare la compilation pour un backend spécifique (LLVM, WASM, etc.).
     pub fn prepare(&self, ctx: &FrontendContext, ir: &FrontendIR) -> Result<String> {
         let mode = if ctx.optimize { "optimized" } else { "debug" };
-        Ok(format!(
-            "Preparing `{}` for target `{}` in {} mode",
-            ir.unit_name, ctx.target, mode
-        ))
+        Ok(format!("Preparing `{}` for target `{}` in {} mode", ir.unit_name, ctx.target, mode))
     }
 }
 

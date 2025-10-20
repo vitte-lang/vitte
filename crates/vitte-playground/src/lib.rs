@@ -18,11 +18,7 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(
-    clippy::module_name_repetitions,
-    clippy::doc_markdown,
-    clippy::too_many_lines
-)]
+#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
 
 use anyhow::Result;
 
@@ -52,7 +48,7 @@ pub mod server {
     //! Mode serveur HTTP basé sur actix-web.
 
     use super::*;
-    use actix_web::{App, HttpResponse, HttpServer, Responder, post, web};
+    use actix_web::{post, web, App, HttpResponse, HttpServer, Responder};
 
     #[cfg(feature = "json")]
     #[derive(Debug, Clone, Deserialize)]

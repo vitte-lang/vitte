@@ -68,26 +68,26 @@ fn parse_global_opts(args: &mut Vec<String>) -> GlobalOpts {
             "-q" | "--quiet" => {
                 opts.verbosity = Verbosity::Quiet;
                 args.remove(i);
-            },
+            }
             "-v" | "--verbose" => {
                 opts.verbosity = Verbosity::Verbose;
                 args.remove(i);
-            },
+            }
             "-t" | "--target" => {
                 let v = take_val(args, i);
                 opts.target = v;
-            },
+            }
             "-j" | "--jobs" => {
                 let v = take_val(args, i).and_then(|s| s.parse().ok());
                 opts.jobs = v;
-            },
+            }
             "-o" | "--out-dir" => {
                 let v = take_val(args, i).map(PathBuf::from);
                 opts.out_dir = v;
-            },
+            }
             _ => {
                 i += 1;
-            },
+            }
         }
     }
     opts
@@ -218,11 +218,11 @@ fn main() {
         "help" | "-h" | "--help" => {
             print_help();
             Ok(())
-        },
+        }
         "version" | "-V" | "--version" => {
             print_version();
             Ok(())
-        },
+        }
         "targets" => {
             if args.len() < 2 {
                 eprintln!("error: missing subcommand for `targets`");
@@ -237,37 +237,37 @@ fn main() {
                         process::exit(1);
                     }
                     cmd_targets_add(&opts, &args[2])
-                },
+                }
                 "remove" => {
                     if args.len() < 3 {
                         eprintln!("error: missing <triple> for `targets remove`");
                         process::exit(1);
                     }
                     cmd_targets_remove(&opts, &args[2])
-                },
+                }
                 other => {
                     eprintln!("error: unknown targets subcommand `{other}`");
                     process::exit(1);
-                },
+                }
             }
-        },
+        }
         "build" => {
             let release = args.iter().any(|a| a == "--release");
             cmd_build(&opts, release)
-        },
+        }
         "pkg" => {
             if args.len() < 2 {
                 eprintln!("error: missing <fmt> for `pkg`");
                 process::exit(1);
             }
             cmd_pkg(&opts, &args[1])
-        },
+        }
         "env" => cmd_env(&opts),
         other => {
             eprintln!("error: unknown command `{other}`");
             print_help();
             process::exit(1);
-        },
+        }
     };
 
     if let Err(e) = res {

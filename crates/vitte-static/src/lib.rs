@@ -106,7 +106,7 @@ pub async fn axum_handler<A: rust_embed::RustEmbed>(
                 );
             }
             Ok(resp)
-        },
+        }
         Err(_) => Err(axum::http::StatusCode::NOT_FOUND),
     }
 }

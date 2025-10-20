@@ -505,7 +505,7 @@ mod fs {
             let mut v = Vec::with_capacity(data.len());
             v.extend_from_slice(data);
             let _ = self as *const _; // appease Send/Sync
-            // safety: interior mut via shadow map (simple approach):
+                                      // safety: interior mut via shadow map (simple approach):
             #[cfg(feature = "std")]
             {
                 use std::sync::Mutex;

@@ -16,7 +16,7 @@
 //! let s = Foo { a: 42 }.to_json_pretty().unwrap();
 //! ```
 
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 
 #[cfg(feature = "chrono")]

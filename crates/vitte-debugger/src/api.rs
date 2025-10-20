@@ -23,8 +23,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use color_eyre::eyre::{Result, eyre};
-use crossbeam_channel::{Receiver, Sender, unbounded};
+use color_eyre::eyre::{eyre, Result};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use serde::{Deserialize, Serialize};
 
 pub type ThreadId = i64;
@@ -299,16 +299,16 @@ impl Debugger {
 
     fn emit_reason(&self, reason: &StopReason) {
         match reason {
-            StopReason::None => {},
+            StopReason::None => {}
             StopReason::Breakpoint { thread_id, source_path, line } => {
                 self.emit_breakpoint_hit(source_path.clone(), *line, *thread_id);
-            },
+            }
             StopReason::Step { thread_id } => {
                 self.push(DebugEvent::StoppedStep { thread_id: *thread_id });
-            },
+            }
             StopReason::Terminated { exit_code } => {
                 self.push(DebugEvent::Terminated { exit_code: *exit_code });
-            },
+            }
         }
     }
 }

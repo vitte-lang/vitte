@@ -1,7 +1,7 @@
 use crate::ast::{self, Ast, Ident, Span as AstSpan};
 use crate::{ParseError, Rule, VitteParser};
-use pest::Parser;
 use pest::iterators::Pair;
+use pest::Parser;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DiagnosticSeverity {
@@ -52,7 +52,7 @@ impl Lowerer {
             match inner.as_rule() {
                 Rule::module_decl => self.lower_module_decl(inner),
                 Rule::top_item => self.unsupported(inner, "items de haut niveau"),
-                Rule::spacing | Rule::sep => {},
+                Rule::spacing | Rule::sep => {}
                 other => self.unexpected(other, inner),
             }
         }
@@ -94,8 +94,8 @@ impl Lowerer {
                             Some(Self::to_ast_span(extra.as_span())),
                         );
                     }
-                },
-                Rule::spacing => {},
+                }
+                Rule::spacing => {}
                 other => self.unexpected(other, inner),
             }
         }
@@ -132,8 +132,7 @@ impl Lowerer {
         message: impl Into<String>,
         span: Option<AstSpan>,
     ) {
-        self.diagnostics
-            .push(LoweringDiagnostic { severity, message: message.into(), span });
+        self.diagnostics.push(LoweringDiagnostic { severity, message: message.into(), span });
     }
 
     fn alloc_span(&mut self, span: pest::Span<'_>) -> ast::SpanId {
@@ -167,11 +166,9 @@ mod tests {
     #[test]
     fn warns_on_nested_module_path() {
         let outcome = parse_and_lower("module foo::bar;").expect("parse lower");
-        assert!(
-            outcome
-                .diagnostics
-                .iter()
-                .any(|diag| matches!(diag.severity, DiagnosticSeverity::Warning))
-        );
+        assert!(outcome
+            .diagnostics
+            .iter()
+            .any(|diag| matches!(diag.severity, DiagnosticSeverity::Warning)));
     }
 }

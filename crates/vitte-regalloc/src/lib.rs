@@ -20,13 +20,9 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(
-    clippy::module_name_repetitions,
-    clippy::doc_markdown,
-    clippy::too_many_lines
-)]
+#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 #[cfg(feature = "graph")]
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -326,12 +322,12 @@ fn graph_coloring(f: &Function, phys: &[PhysReg]) -> Result<RegAllocResult> {
         match colors.get(&v).and_then(|o| *o) {
             Some(i) => {
                 res.mapping.insert(v, Assign::Reg(phys[i].clone()));
-            },
+            }
             None => {
                 res.mapping.insert(v, Assign::Spill(spill_slot));
                 spill_slot += 1;
                 res.spills += 1;
-            },
+            }
         }
     }
 

@@ -46,7 +46,7 @@ macro_rules! assert_err {
     ($expr:expr) => {
         match $expr {
             Ok(v) => panic!("expected Err(..), got Ok({:?})", v),
-            Err(_) => {},
+            Err(_) => {}
         }
     };
 }
@@ -122,7 +122,7 @@ pub fn assert_result_matches<T, E: std::fmt::Debug>(
             if !pred(e) {
                 panic!("error did not match predicate: {:?}", e);
             }
-        },
+        }
     }
 }
 

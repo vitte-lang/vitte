@@ -88,7 +88,7 @@ impl core::fmt::Display for AssetError {
             AssetError::Parse(msg) => write!(f, "parse error: {msg}"),
             AssetError::TypeMismatch { key, requested } => {
                 write!(f, "type mismatch in cache for key={key}, requested={requested:?}")
-            },
+            }
         }
     }
 }
@@ -150,19 +150,13 @@ impl AssetKey {
 
     /// Extension allouée sûre.
     pub fn ext_owned(&self) -> Option<String> {
-        Path::new(&self.path)
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_ascii_lowercase())
+        Path::new(&self.path).extension().and_then(|s| s.to_str()).map(|s| s.to_ascii_lowercase())
     }
 }
 
 impl fmt::Debug for AssetKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AssetKey")
-            .field("scheme", &self.scheme)
-            .field("path", &self.path)
-            .finish()
+        f.debug_struct("AssetKey").field("scheme", &self.scheme).field("path", &self.path).finish()
     }
 }
 
@@ -223,7 +217,11 @@ impl FileSource {
 
     fn full(&self, path: &str) -> PathBuf {
         let p = Path::new(path);
-        if p.is_absolute() { p.to_path_buf() } else { self.root.join(path) }
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            self.root.join(path)
+        }
     }
 }
 
@@ -287,11 +285,7 @@ impl Source for MemorySource {
         self
     }
     fn read(&self, path: &str) -> Result<Vec<u8>> {
-        self.inner
-            .read()
-            .get(path)
-            .cloned()
-            .ok_or_else(|| AssetError::NotFound(path.to_string()))
+        self.inner.read().get(path).cloned().ok_or_else(|| AssetError::NotFound(path.to_string()))
     }
 
     fn exists(&self, path: &str) -> Result<bool> {
@@ -434,8 +428,7 @@ impl AssetManager {
         let key = AssetKey::parse(key);
         let map = &self.cache.read().map;
         let type_id = TypeId::of::<T>();
-        map.get(&(key, type_id))
-            .and_then(|arc_any| arc_any.clone().downcast::<T>().ok())
+        map.get(&(key, type_id)).and_then(|arc_any| arc_any.clone().downcast::<T>().ok())
     }
 
     /// Insère directement dans le cache.
@@ -541,13 +534,7 @@ pub fn register_builtin_basic(mgr: &AssetManager) {
 
 /* -------------------------- Loaders serde conditionnels par feature -------------------------- */
 
-#[cfg(any(
-    feature = "json",
-    feature = "toml",
-    feature = "yaml",
-    feature = "xml",
-    feature = "bin"
-))]
+#[cfg(any(feature = "json", feature = "toml", feature = "yaml", feature = "xml", feature = "bin"))]
 #[derive(Default)]
 struct SerdeLoader<T>(std::marker::PhantomData<T>);
 
@@ -585,13 +572,7 @@ impl<T: DeserializeOwned + Send + Sync + 'static> Loader<T> for SerdeLoader<T> {
 }
 
 /// Enregistre les loaders serde pour un type donné et une liste d’extensions.
-#[cfg(any(
-    feature = "json",
-    feature = "toml",
-    feature = "yaml",
-    feature = "xml",
-    feature = "bin"
-))]
+#[cfg(any(feature = "json", feature = "toml", feature = "yaml", feature = "xml", feature = "bin"))]
 pub fn register_serde_for<T: DeserializeOwned + Send + Sync + 'static>(mgr: &AssetManager) {
     #[cfg(feature = "json")]
     mgr.register_loader::<T, _>("json", Arc::new(SerdeLoader::<T>::default()));
@@ -621,8 +602,7 @@ pub fn bootstrap_default() -> AssetManager {
 
 /// Obtenir une `MemorySource` déjà enregistrée sur `scheme`.
 pub fn memory_source(mgr: &AssetManager, scheme: &str) -> Option<MemorySource> {
-    mgr.source(scheme)
-        .and_then(|arc| arc.as_any().downcast_ref::<MemorySource>().cloned())
+    mgr.source(scheme).and_then(|arc| arc.as_any().downcast_ref::<MemorySource>().cloned())
 }
 
 /* ------------------------------------------- Tests ------------------------------------------- */

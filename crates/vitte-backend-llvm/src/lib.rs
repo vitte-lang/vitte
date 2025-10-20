@@ -110,7 +110,7 @@ impl core::fmt::Display for BackendError {
         match self {
             BackendError::FeatureDisabled => {
                 write!(f, "fonctionnalité LLVM désactivée: recompilez avec `--features inkwell`")
-            },
+            }
             BackendError::Init(e) => write!(f, "initialisation LLVM: {e}"),
             BackendError::Build(e) => write!(f, "construction module: {e}"),
             BackendError::Verify(e) => write!(f, "vérification module: {e}"),
@@ -154,7 +154,6 @@ pub trait Backend {
 #[cfg(feature = "inkwell")]
 mod llvm_impl {
     use super::*;
-    use inkwell::OptimizationLevel as LlvmOpt;
     use inkwell::context::Context;
     use inkwell::execution_engine::ExecutionEngine;
     use inkwell::module::Module;
@@ -163,6 +162,7 @@ mod llvm_impl {
         CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
     };
     use inkwell::values::FunctionValue;
+    use inkwell::OptimizationLevel as LlvmOpt;
 
     /// Implémentation LLVM du backend.
     pub struct LlvmBackend {
@@ -186,7 +186,11 @@ mod llvm_impl {
         }
 
         fn map_reloc(pic: bool) -> RelocMode {
-            if pic { RelocMode::PIC } else { RelocMode::Static }
+            if pic {
+                RelocMode::PIC
+            } else {
+                RelocMode::Static
+            }
         }
 
         fn init_llvm() -> Result<()> {
@@ -267,9 +271,7 @@ mod llvm_impl {
             let sum = builder
                 .build_int_add(a, b, "sum")
                 .map_err(|e| BackendError::Build(e.to_string()))?;
-            builder
-                .build_return(Some(&sum))
-                .map_err(|e| BackendError::Build(e.to_string()))?;
+            builder.build_return(Some(&sum)).map_err(|e| BackendError::Build(e.to_string()))?;
             Ok(f)
         }
     }
@@ -314,15 +316,15 @@ mod llvm_impl {
                         .write_to_memory_buffer(&self.module, FileType::Object)
                         .map_err(|e| BackendError::Emit(e.to_string()))?;
                     Ok(buf.as_slice().to_vec())
-                },
+                }
                 ArtifactKind::Bitcode => {
                     let mb = self.module.write_bitcode_to_memory();
                     Ok(mb.as_slice().to_vec())
-                },
+                }
                 ArtifactKind::LlvmIr => {
                     let s = self.module.print_to_string();
                     Ok(s.to_bytes().to_vec())
-                },
+                }
             }
         }
 

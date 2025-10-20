@@ -21,7 +21,7 @@
 //! # Ok(()) }
 //! ```
 
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use bytes::Bytes;
 use sha2::{Digest, Sha256};
 use thiserror::Error;

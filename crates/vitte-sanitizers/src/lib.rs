@@ -84,7 +84,11 @@ pub fn summary() -> String {
     if fuzz_enabled() {
         v.push("Fuzz");
     }
-    if v.is_empty() { "none".into() } else { v.join("+") }
+    if v.is_empty() {
+        "none".into()
+    } else {
+        v.join("+")
+    }
 }
 
 /// Retourne les RUSTFLAGS recommandés pour activer un sanitizer donné.

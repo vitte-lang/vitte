@@ -11,8 +11,8 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use pkcs8::spki::SubjectPublicKeyInfoRef;
 #[cfg(feature = "signature")]
 use x509_cert::{
-    Certificate,
     der::{Decode, Encode},
+    Certificate,
 };
 
 #[derive(Debug)]
@@ -104,12 +104,10 @@ pub fn verify_ed25519_raw(pk: &[u8], msg: &[u8], sg: &[u8]) -> Result<()> {
     if sg.len() != 64 {
         return Err(VerifyError::InvalidKeyLen { expected: 64, actual: sg.len() });
     }
-    let pk_arr: [u8; 32] = pk
-        .try_into()
-        .map_err(|_| VerifyError::InvalidKeyLen { expected: 32, actual: pk.len() })?;
-    let sg_arr: [u8; 64] = sg
-        .try_into()
-        .map_err(|_| VerifyError::InvalidKeyLen { expected: 64, actual: sg.len() })?;
+    let pk_arr: [u8; 32] =
+        pk.try_into().map_err(|_| VerifyError::InvalidKeyLen { expected: 32, actual: pk.len() })?;
+    let sg_arr: [u8; 64] =
+        sg.try_into().map_err(|_| VerifyError::InvalidKeyLen { expected: 64, actual: sg.len() })?;
 
     let key = VerifyingKey::from_bytes(&pk_arr)?;
     let sig = Signature::from_bytes(&sg_arr);

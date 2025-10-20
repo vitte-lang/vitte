@@ -74,9 +74,8 @@ impl TlsConnector {
         {
             // Fallback: empty store; callers may inject roots separately.
         }
-        let cfg = rustls::ClientConfig::builder()
-            .with_root_certificates(root)
-            .with_no_client_auth();
+        let cfg =
+            rustls::ClientConfig::builder().with_root_certificates(root).with_no_client_auth();
         Ok(Self {
             rustls: Some(cfg),
             #[cfg(feature = "native-tls")]

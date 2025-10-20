@@ -11,14 +11,14 @@ use std::{
     process::ExitCode,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 
 use cli::inspect::InspectOptions;
 use vitte_cli as cli; // notre lib interne (src/lib.rs)
 
 #[cfg(feature = "fmt")]
-use vitte_fmt::{FormatterOptions, format_source};
+use vitte_fmt::{format_source, FormatterOptions};
 
 // ──────────────────────────── CLI (clap) ────────────────────────────
 
@@ -219,7 +219,7 @@ fn input_kind_from_opt(p: &Option<PathBuf>, auto_compile: bool) -> cli::InputKin
             } else {
                 cli::InputKind::BytecodePath(path.clone())
             }
-        },
+        }
         Some(ref path) => {
             // heuristique simple : .vitbc = bytecode, sinon source
             if path.extension().and_then(|e| e.to_str()) == Some("vitbc") || !auto_compile {
@@ -227,14 +227,14 @@ fn input_kind_from_opt(p: &Option<PathBuf>, auto_compile: bool) -> cli::InputKin
             } else {
                 cli::InputKind::SourcePath(path.clone())
             }
-        },
+        }
         None => {
             if auto_compile {
                 cli::InputKind::SourceStdin
             } else {
                 cli::InputKind::BytecodePath(PathBuf::from("-"))
             }
-        },
+        }
     }
 }
 
@@ -259,7 +259,7 @@ fn output_from_opt(
             } else {
                 cli::Output::Stdout
             }
-        },
+        }
     }
 }
 
@@ -291,7 +291,7 @@ fn make_hooks() -> cli::Hooks {
             // VM minimale : instancie et exécute le bytecode reçu.
             // Tant que la VM ne gère pas args/opts, on les ignore.
             let mut vm = Vm::new();
-            Ok(vm.run_bytecode(bytecode))
+            vm.run_bytecode(bytecode).map_err(|err| anyhow!(err.to_string()))
         });
     }
 
@@ -355,15 +355,15 @@ fn init_color(choice: ColorChoice) {
     // Rien à faire côté code : `owo-colors` détecte tout seul TTY.
     // Tu peux forcer avec des env vars si tu veux : NO_COLOR / FORCE_COLOR etc.
     match choice {
-        ColorChoice::Auto => { /* par défaut */ },
+        ColorChoice::Auto => { /* par défaut */ }
         ColorChoice::Always => {
             std::env::set_var("CLICOLOR_FORCE", "1");
             std::env::remove_var("NO_COLOR");
-        },
+        }
         ColorChoice::Never => {
             std::env::set_var("NO_COLOR", "1");
             std::env::remove_var("CLICOLOR_FORCE");
-        },
+        }
     }
 }
 
@@ -445,12 +445,12 @@ fn real_main() -> Result<()> {
                 overwrite,
                 time,
             })
-        },
+        }
         Command::Run { program, args, auto_compile, optimize, time } => {
             let program = input_kind_from_opt(&program, auto_compile);
             let args = args.into_iter().map(|s| s.to_string_lossy().to_string()).collect();
             C::Run(RunTask { program, args, auto_compile, optimize, time })
-        },
+        }
         Command::Repl { prompt } => C::Repl(ReplTask { prompt }),
         Command::Fmt { input, output, in_place, check, diff } => {
             let input = input_from_opt(&input);
@@ -458,7 +458,7 @@ fn real_main() -> Result<()> {
                 &output, in_place, /*auto=*/ false, /*for_compile=*/ false,
             );
             C::Fmt(FmtTask { input, output: out, check, diff })
-        },
+        }
         Command::Inspect {
             input,
             summary,
@@ -509,7 +509,7 @@ fn real_main() -> Result<()> {
             };
             options.ensure_defaults();
             C::Inspect(InspectTask { input: kind, options })
-        },
+        }
         Command::Disasm { input, output } => {
             let kind = match input {
                 Some(p) if p.as_os_str() == "-" => cli::InputKind::BytecodePath(p),
@@ -521,11 +521,11 @@ fn real_main() -> Result<()> {
                 /*for_compile=*/ false,
             );
             C::Disasm(DisasmTask { input: kind, output: out })
-        },
+        }
         Command::Modules { json } => {
             let format = if json { ModulesFormat::Json } else { ModulesFormat::Table };
             C::Modules(ModulesTask { format })
-        },
+        }
     };
 
     let code = cli::execute(command, &hooks).context("échec d'exécution de la commande")?;

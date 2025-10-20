@@ -36,8 +36,8 @@ pub type Result<T> = std::result::Result<T, RubyError>;
 
 #[cfg(feature = "rutie")]
 mod rutie_backend {
-    use rutie::{Array, Object, RString};
     use rutie::{class, methods};
+    use rutie::{Array, Object, RString};
 
     class!(VitteRuby);
 
@@ -71,7 +71,7 @@ mod rutie_backend {
 #[cfg(feature = "magnus")]
 mod magnus_backend {
     use super::*;
-    use magnus::{Error as MgError, RString, Value, define_module, function};
+    use magnus::{define_module, function, Error as MgError, RString, Value};
 
     fn greet(name: String) -> String {
         format!("Hello, {name} from Vitte/Ruby Magnus")

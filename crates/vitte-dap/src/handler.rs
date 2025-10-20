@@ -11,10 +11,10 @@
 
 use std::{collections::HashMap, fmt};
 
-use color_eyre::eyre::{Result, eyre};
+use color_eyre::eyre::{eyre, Result};
 use log::{debug, warn};
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::engine::{DebugEngine, EngineEvent, StackFrame, VariableEntry};
 
@@ -69,7 +69,7 @@ impl Handler {
                         "supportsStepInTargetsRequest": false,
                     }),
                 ));
-            },
+            }
             "launch" => {
                 let args = &msg["arguments"];
                 let program = args
@@ -88,7 +88,7 @@ impl Handler {
                 self.program = Some(program.to_string());
 
                 out.push(Outbound::response(seq, "launch", json!({})));
-            },
+            }
             "setBreakpoints" => {
                 let source_path =
                     msg["arguments"]["source"]["path"].as_str().unwrap_or("unknown").to_string();
@@ -111,10 +111,10 @@ impl Handler {
                     "setBreakpoints",
                     json!({ "breakpoints": bps_json }),
                 ));
-            },
+            }
             "configurationDone" => {
                 out.push(Outbound::response(seq, "configurationDone", json!({})));
-            },
+            }
             "continue" => {
                 self.engine.r#continue()?;
                 out.push(Outbound::response(
@@ -122,11 +122,11 @@ impl Handler {
                     "continue",
                     json!({ "allThreadsContinued": true }),
                 ));
-            },
+            }
             "next" => {
                 self.engine.step_over()?;
                 out.push(Outbound::response(seq, "next", json!({})));
-            },
+            }
             "stackTrace" => {
                 let frames = self.engine.stack_trace()?;
                 let frames_json: Vec<Value> = frames
@@ -149,7 +149,7 @@ impl Handler {
                         "totalFrames": frames_json.len()
                     }),
                 ));
-            },
+            }
             "scopes" => {
                 // MVP : une seule portée "Locals" avec variablesReference=1
                 out.push(Outbound::response(
@@ -163,7 +163,7 @@ impl Handler {
                         }]
                     }),
                 ));
-            },
+            }
             "variables" => {
                 let vr = msg["arguments"]["variablesReference"].as_i64().unwrap_or(0);
                 let vars = self.engine.variables(vr)?;
@@ -180,7 +180,7 @@ impl Handler {
                     .collect();
 
                 out.push(Outbound::response(seq, "variables", json!({ "variables": vars_json })));
-            },
+            }
             "evaluate" => {
                 let expr = msg["arguments"]["expression"].as_str().unwrap_or("");
                 match self.engine.evaluate(expr)? {
@@ -201,15 +201,15 @@ impl Handler {
                         }),
                     )),
                 }
-            },
+            }
             "disconnect" => {
                 self.engine.disconnect()?;
                 out.push(Outbound::response(seq, "disconnect", json!({})));
-            },
+            }
             other => {
                 warn!("Commande non gérée: {other}");
                 out.push(Outbound::response(seq, other, json!({})));
-            },
+            }
         }
 
         self.push_engine_events(&mut out)?;
@@ -293,7 +293,7 @@ impl From<EngineEvent> for Outbound {
                     body.insert("line".into(), Value::Number(l.into()));
                 }
                 Outbound::event("stopped", Value::Object(body))
-            },
+            }
             EngineEvent::Output { category, text } => Outbound::event(
                 "output",
                 json!({
@@ -303,7 +303,7 @@ impl From<EngineEvent> for Outbound {
             ),
             EngineEvent::Terminated { exit_code } => {
                 Outbound::event("terminated", json!({ "exitCode": exit_code }))
-            },
+            }
         }
     }
 }

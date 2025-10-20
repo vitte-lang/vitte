@@ -1,4 +1,4 @@
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use vitte_bench::benches::e2e_pipeline;
 
 fn run(c: &mut Criterion) {

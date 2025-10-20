@@ -12,17 +12,13 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(
-    clippy::module_name_repetitions,
-    clippy::doc_markdown,
-    clippy::too_many_lines
-)]
+#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "markdown")]
-use pulldown_cmark::{Options, Parser, html};
+use pulldown_cmark::{html, Options, Parser};
 
 #[cfg(feature = "html")]
 use ammonia::Builder as HtmlSanitizer;
@@ -203,7 +199,11 @@ fn take_ident(s: &str) -> Option<&str> {
             break;
         }
     }
-    if end == 0 { None } else { Some(&s[..end]) }
+    if end == 0 {
+        None
+    } else {
+        Some(&s[..end])
+    }
 }
 
 /// Rendu Markdown à partir d’un [`DocBook`].

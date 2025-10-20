@@ -56,7 +56,11 @@ pub enum HttpError {
 
 fn preview(s: &str, max: usize) -> String {
     let s = s.replace('\n', "\\n");
-    if s.len() <= max { s } else { format!("{}…(+{} chars)", &s[..max], s.len() - max) }
+    if s.len() <= max {
+        s
+    } else {
+        format!("{}…(+{} chars)", &s[..max], s.len() - max)
+    }
 }
 
 #[cfg(feature = "client")]
@@ -204,18 +208,18 @@ mod client {
         }
     }
 
+    pub use reqwest::{header, Method};
     pub use HttpClient as Client;
-    pub use reqwest::{Method, header};
 }
 
 #[cfg(feature = "server")]
 mod server {
     use super::*;
     use hyper::{
-        Method, Request, StatusCode,
-        body::{Body, to_bytes},
+        body::{to_bytes, Body},
         header::HeaderValue,
         http::Response,
+        Method, Request, StatusCode,
     };
     use std::{convert::Infallible, net::SocketAddr, sync::Arc};
     use tokio::signal;
@@ -301,10 +305,7 @@ mod server {
 
         fn find(&self, m: &Method, p: &str) -> Option<Handler> {
             // égalité exacte. Pour patterns, remplacer ici.
-            self.routes
-                .iter()
-                .find(|(mm, pp, _)| mm == m && pp == p)
-                .map(|(_, _, h)| h.clone())
+            self.routes.iter().find(|(mm, pp, _)| mm == m && pp == p).map(|(_, _, h)| h.clone())
         }
     }
 
@@ -336,7 +337,7 @@ mod server {
                 Err(e) => {
                     let (code, msg) = map_error(&e);
                     to_hyper(HttpResponse::text(code, msg))
-                },
+                }
             },
             None => to_hyper(HttpResponse::text(StatusCode::NOT_FOUND, "not found")),
         }

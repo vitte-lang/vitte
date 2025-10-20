@@ -11,7 +11,7 @@
 //! Intégration runtime: implémentez le trait [`Backend`] pour brancher votre VM.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::io::{self, BufRead, Write};
@@ -226,14 +226,14 @@ impl<B: Backend> DapServer<B> {
                     if let Err(e) = self.handle_request(seq, &command, arguments) {
                         self.send_error_response(seq, &command, &e.to_string())?;
                     }
-                },
+                }
                 Ok(InMsg::Other) => {
                     // ignore
-                },
+                }
                 Err(err) => {
                     // impossible à parser: renvoyer un error generic
                     self.send_error_response(0, "unknown", &format!("bad json: {err}"))?;
-                },
+                }
             }
         }
         Ok(())
@@ -253,7 +253,7 @@ impl<B: Backend> DapServer<B> {
                 self.send_ok_response(seq, command, Some(body))?;
                 // event "initialized"
                 self.send_event("initialized", None)?;
-            },
+            }
             "launch" => {
                 // { program, args?, cwd? }
                 let program = args.get("program").and_then(Value::as_str).unwrap_or("").to_string();
@@ -261,12 +261,12 @@ impl<B: Backend> DapServer<B> {
                 let run_args = match args.get("args") {
                     Some(Value::Array(a)) => {
                         a.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()
-                    },
+                    }
                     _ => Vec::new(),
                 };
                 self.backend.launch(program, run_args, cwd)?;
                 self.send_ok_response(seq, command, None)?;
-            },
+            }
             "setBreakpoints" => {
                 // { source:{path}, lines:[...] }
                 let src = args
@@ -297,14 +297,14 @@ impl<B: Backend> DapServer<B> {
                     }
                 }
                 self.send_ok_response(seq, command, Some(json!({ "breakpoints": bps })))?;
-            },
+            }
             "configurationDone" => {
                 self.send_ok_response(seq, command, None)?;
-            },
+            }
             "threads" => {
                 let ths = self.backend.threads()?;
                 self.send_ok_response(seq, command, Some(json!({ "threads": ths })))?;
-            },
+            }
             "stackTrace" => {
                 let tid = args.get("threadId").and_then(Value::as_i64).unwrap_or(1);
                 let start = args.get("startFrame").and_then(Value::as_i64).unwrap_or(0);
@@ -318,7 +318,7 @@ impl<B: Backend> DapServer<B> {
                         "totalFrames": frames.len() as i64
                     })),
                 )?;
-            },
+            }
             "scopes" => {
                 let frame_id = args
                     .get("frameId")
@@ -326,7 +326,7 @@ impl<B: Backend> DapServer<B> {
                     .ok_or(DapError::Protocol("scopes: missing frameId"))?;
                 let scopes = self.backend.scopes(frame_id)?;
                 self.send_ok_response(seq, command, Some(json!({ "scopes": scopes })))?;
-            },
+            }
             "variables" => {
                 let vr = args
                     .get("variablesReference")
@@ -334,7 +334,7 @@ impl<B: Backend> DapServer<B> {
                     .ok_or(DapError::Protocol("variables: missing variablesReference"))?;
                 let vars = self.backend.variables(vr)?;
                 self.send_ok_response(seq, command, Some(json!({ "variables": vars })))?;
-            },
+            }
             "continue" => {
                 let tid = args.get("threadId").and_then(Value::as_i64).unwrap_or(1);
                 let out = self.backend.r#continue(tid)?;
@@ -349,19 +349,19 @@ impl<B: Backend> DapServer<B> {
                     "continued",
                     Some(json!({ "threadId": out.thread_id.unwrap_or(tid) })),
                 )?;
-            },
+            }
             "next" | "stepOver" => {
                 let tid = args.get("threadId").and_then(Value::as_i64).unwrap_or(1);
                 self.backend.step_over(tid)?;
                 self.send_ok_response(seq, command, None)?;
                 self.send_event("stopped", Some(json!({ "reason": "step", "threadId": tid })))?;
-            },
+            }
             "pause" => {
                 let tid = args.get("threadId").and_then(Value::as_i64).unwrap_or(1);
                 self.backend.pause(tid)?;
                 self.send_ok_response(seq, command, None)?;
                 self.send_event("stopped", Some(json!({ "reason": "pause", "threadId": tid })))?;
-            },
+            }
             "evaluate" => {
                 let expr = args.get("expression").and_then(Value::as_str).unwrap_or("").to_string();
                 let frame_id = args.get("frameId").and_then(Value::as_i64);
@@ -374,20 +374,20 @@ impl<B: Backend> DapServer<B> {
                         "variablesReference": res.variables_reference
                     })),
                 )?;
-            },
+            }
             "disconnect" => {
                 self.backend.disconnect()?;
                 self.send_ok_response(seq, command, None)?;
                 self.send_event("terminated", None)?;
-            },
+            }
             // DAP ping/pong
             "cancel" | "runInTerminal" => {
                 self.send_ok_response(seq, command, None)?;
-            },
+            }
             other => {
                 // Répondre un "not supported" propre
                 self.send_error_response(seq, other, "not supported")?;
-            },
+            }
         }
         Ok(())
     }

@@ -363,14 +363,14 @@ impl fmt::Display for CoreError {
             CoreError::InvalidSectionTag { raw } => write!(f, "invalid section tag: 0x{raw:08X}"),
             CoreError::UnexpectedEof { needed, at } => {
                 write!(f, "unexpected EOF: need {needed} bytes at {at}")
-            },
+            }
             CoreError::InvalidLength { section, len } => {
                 if let Some(s) = section {
                     write!(f, "invalid length for {s}: {len}")
                 } else {
                     write!(f, "invalid length: {len}")
                 }
-            },
+            }
             CoreError::InvalidUtf8 => write!(f, "invalid utf-8"),
             CoreError::Corrupted(msg) => write!(f, "corrupted: {msg}"),
         }
@@ -387,8 +387,8 @@ impl std::error::Error for CoreError {}
 pub mod prelude {
     /// Réexports utiles pour une importation rapide.
     pub use super::{
-        ByteReader, ByteWriter, CoreError, CoreResult, Ident, MAGIC_VITBC, Pos, SectionTag,
-        SourceId, Span, Spanned, VITBC_VERSION, crc32_ieee,
+        crc32_ieee, ByteReader, ByteWriter, CoreError, CoreResult, Ident, Pos, SectionTag,
+        SourceId, Span, Spanned, MAGIC_VITBC, VITBC_VERSION,
     };
 }
 

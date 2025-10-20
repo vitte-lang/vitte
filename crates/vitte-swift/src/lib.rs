@@ -61,7 +61,11 @@ impl VitteSwiftBuf {
 impl VitteSwiftBuf {
     /// Vue slice à partir d'un tampon brut (FFI). **Non safe**: dépend d'un pointeur valide.
     pub unsafe fn as_slice<'a>(&self) -> &'a [u8] {
-        if self.data.is_null() { &[] } else { std::slice::from_raw_parts(self.data, self.len) }
+        if self.data.is_null() {
+            &[]
+        } else {
+            std::slice::from_raw_parts(self.data, self.len)
+        }
     }
 }
 

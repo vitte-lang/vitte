@@ -20,7 +20,7 @@ use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::time::Instant;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::{ArgAction, Parser};
 
@@ -29,11 +29,7 @@ use vitte_core::disasm::disassemble_full;
 use vitte_core::helpers;
 
 #[derive(Parser, Debug)]
-#[command(
-    name = "vitte-asm",
-    version,
-    about = "Assembleur Vitte (.vit.s -> .vitbc)"
-)]
+#[command(name = "vitte-asm", version, about = "Assembleur Vitte (.vit.s -> .vitbc)")]
 struct Cli {
     /// Fichier(s) source .vit.s (ou '-' pour stdin, unique)
     inputs: Vec<String>,

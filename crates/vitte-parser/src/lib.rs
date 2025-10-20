@@ -128,7 +128,7 @@ impl<'a> Parser<'a> {
             _ => {
                 let t = self.peek()?;
                 Err(err_here(&t, "attendu: `fn`, `const`, `struct` ou `enum`"))
-            },
+            }
         }
     }
 
@@ -432,37 +432,37 @@ impl<'a> Parser<'a> {
             TokenKind::Ident(s) => {
                 self.bump();
                 Ok(ast::Expr::Ident((*s).to_string()).with_span(t.span))
-            },
+            }
             TokenKind::Int(i) => {
                 self.bump();
                 Ok(ast::Expr::Literal(ast::Literal::Int(*i)).with_span(t.span))
-            },
+            }
             TokenKind::Float(f) => {
                 self.bump();
                 Ok(ast::Expr::Literal(ast::Literal::Float(*f)).with_span(t.span))
-            },
+            }
             TokenKind::Str(s) => {
                 self.bump();
                 Ok(ast::Expr::Literal(ast::Literal::Str(s.clone())).with_span(t.span))
-            },
+            }
             TokenKind::Kw(Keyword::True) => {
                 self.bump();
                 Ok(ast::Expr::Literal(ast::Literal::Bool(true)).with_span(t.span))
-            },
+            }
             TokenKind::Kw(Keyword::False) => {
                 self.bump();
                 Ok(ast::Expr::Literal(ast::Literal::Bool(false)).with_span(t.span))
-            },
+            }
             TokenKind::Kw(Keyword::Null) => {
                 self.bump();
                 Ok(ast::Expr::Literal(ast::Literal::Null).with_span(t.span))
-            },
+            }
             TokenKind::LParen => {
                 let lp = self.bump().unwrap();
                 let e = self.parse_expr()?;
                 let rp = self.expect(TokenKind::RParen)?;
                 Ok(e.with_span(span_join(lp.span, rp.span)))
-            },
+            }
             _ => Err(err_here(&t, "expression attendue")),
         }
     }
@@ -485,8 +485,8 @@ impl<'a> Parser<'a> {
                         "void" => ast::Type::Void,
                         other => ast::Type::Custom(other.to_string()),
                     });
-                },
-                _ => {},
+                }
+                _ => {}
             }
         }
         let t = self.peek()?;
@@ -571,8 +571,7 @@ impl<'a> Parser<'a> {
 
     #[inline]
     fn prev_span(&self) -> Span {
-        self.last_span
-            .unwrap_or(Span { source: self.source, start: Pos(0), end: Pos(0) })
+        self.last_span.unwrap_or(Span { source: self.source, start: Pos(0), end: Pos(0) })
     }
 
     fn join_span_to_ast(&self, start: Span, end: Span) -> Option<ast::Span> {
@@ -700,12 +699,12 @@ trait WithSpan {
 impl WithSpan for ast::Expr {
     fn with_span(mut self, _span: Span) -> Self {
         match &mut self {
-            ast::Expr::Ident(_) => {},
-            ast::Expr::Literal(_) => {},
-            ast::Expr::Call { .. } => {},
-            ast::Expr::Binary { .. } => {},
-            ast::Expr::Unary { .. } => {},
-            ast::Expr::Field { .. } => {},
+            ast::Expr::Ident(_) => {}
+            ast::Expr::Literal(_) => {}
+            ast::Expr::Call { .. } => {}
+            ast::Expr::Binary { .. } => {}
+            ast::Expr::Unary { .. } => {}
+            ast::Expr::Field { .. } => {}
         }
         // si ton ast::Expr a un champ span, adapte ici ; sinon on ignore (non destructif)
         self

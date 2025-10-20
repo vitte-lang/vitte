@@ -53,13 +53,17 @@ pub mod extendr_exports {
                 Ok(v) => {
                     extendr_api::serde::to_robj(&serde_json::to_string(&v).unwrap_or_default())
                         .unwrap_or(R_NilValue)
-                },
+                }
                 Err(_) => R_NilValue,
             }
         }
         #[cfg(not(feature = "serde"))]
         {
-            if let Ok(s) = x.as_str() { s.into() } else { R_NilValue }
+            if let Ok(s) = x.as_str() {
+                s.into()
+            } else {
+                R_NilValue
+            }
         }
     }
 

@@ -219,7 +219,8 @@ pub fn run_bytes(bytes: Uint8Array) -> Result<JsValue, JsValue> {
     #[cfg(feature = "vm")]
     {
         let mut vm = vitte_vm::Vm::new();
-        let exit_code = vm.run_bytecode(&vec);
+        let exit_code =
+            vm.run_bytecode(&vec).map_err(|err| js_err(format!("vm execution failed: {err}")))?;
         let rep = RunReport { exit_code };
         return serde_wasm_bindgen::to_value(&rep).map_err(js_err);
     }
@@ -257,9 +258,8 @@ async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
         return Err(js_err(format!("HTTP {} {}", resp.status(), resp.status_text())));
     }
 
-    let ab_promise = resp
-        .array_buffer()
-        .map_err(|e| js_err(format!("arrayBuffer() failed: {:?}", e)))?;
+    let ab_promise =
+        resp.array_buffer().map_err(|e| js_err(format!("arrayBuffer() failed: {:?}", e)))?;
     let ab_value = JsFuture::from(ab_promise).await?;
     let ab: js_sys::ArrayBuffer = ab_value.dyn_into()?;
 

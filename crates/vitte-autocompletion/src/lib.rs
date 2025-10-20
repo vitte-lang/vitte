@@ -24,7 +24,7 @@
 
 /// Réexporte l'algorithme et les utilitaires de classement/mise en évidence.
 pub use matcher::{
-    FuzzyConfig, MatchAlgo, dedup_in_place, highlight_indices, match_query, rank_in_place,
+    dedup_in_place, highlight_indices, match_query, rank_in_place, FuzzyConfig, MatchAlgo,
 };
 /// Réexporte les sources de complétions (in-mémoire) et le trait `Source`.
 pub use source::{MemorySource, Source};
@@ -437,14 +437,14 @@ mod matcher {
                 } else {
                     -1
                 }
-            },
+            }
             MatchAlgo::Substring => {
                 if let Some(pos) = label.find(query) {
                     base_substring_score(label, pos, query.len())
                 } else {
                     -1
                 }
-            },
+            }
             #[cfg(feature = "fuzzy")]
             MatchAlgo::Fuzzy(cfg) => fuzzy_score(label, query, cfg),
         }
@@ -492,14 +492,14 @@ mod matcher {
                 for i in 0..query.len().min(label.len()) {
                     out.push(i);
                 }
-            },
+            }
             MatchAlgo::Substring => {
                 if let Some(pos) = label.find(query) {
                     for i in pos..pos + query.len() {
                         out.push(i);
                     }
                 }
-            },
+            }
             #[cfg(feature = "fuzzy")]
             MatchAlgo::Fuzzy(_cfg) => {
                 // Greedy: avance dans label et marque chaque match case-insensitive.
@@ -513,7 +513,7 @@ mod matcher {
                         }
                     }
                 }
-            },
+            }
         }
         out
     }

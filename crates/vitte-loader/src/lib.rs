@@ -57,14 +57,14 @@ impl Loader {
                 Ok(sym) => {
                     ptr::write(out_ptr.add(i), sym);
                     written += 1;
-                },
+                }
                 Err(e) => {
                     // Manual drop of already written elements
                     for j in 0..written {
                         ptr::drop_in_place(out_ptr.add(j));
                     }
                     return Err(e);
-                },
+                }
             }
         }
 

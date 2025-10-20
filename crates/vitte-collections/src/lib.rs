@@ -217,10 +217,7 @@ pub mod slab {
         }
 
         pub fn iter(&self) -> impl Iterator<Item = (u32, &T)> {
-            self.data
-                .iter()
-                .enumerate()
-                .filter_map(|(i, v)| v.as_ref().map(|r| (i as u32, r)))
+            self.data.iter().enumerate().filter_map(|(i, v)| v.as_ref().map(|r| (i as u32, r)))
         }
     }
 }

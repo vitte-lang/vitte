@@ -141,8 +141,12 @@ impl fmt::Display for Ty {
                     write!(f, "{}", a)?;
                 }
                 write!(f, " -> ")?;
-                if lb { write!(f, "({})", b) } else { write!(f, "{}", b) }
-            },
+                if lb {
+                    write!(f, "({})", b)
+                } else {
+                    write!(f, "{}", b)
+                }
+            }
             Ty::Tuple(ts) => {
                 write!(f, "(")?;
                 for (i, t) in ts.iter().enumerate() {
@@ -152,7 +156,7 @@ impl fmt::Display for Ty {
                     write!(f, "{}", t)?;
                 }
                 write!(f, ")")
-            },
+            }
             Ty::Record(fs) => {
                 write!(f, "{{")?;
                 for (i, (name, ty)) in fs.iter().enumerate() {
@@ -162,7 +166,7 @@ impl fmt::Display for Ty {
                     write!(f, "{}: {}", name.as_u32(), ty)?;
                 }
                 write!(f, "}}")
-            },
+            }
         }
     }
 }
@@ -246,22 +250,22 @@ fn ftv_ty(t: &Ty, out: &mut HashSet<Tv>) {
     match t {
         Ty::Var(v) => {
             out.insert(*v);
-        },
-        Ty::Prim(_) => {},
+        }
+        Ty::Prim(_) => {}
         Ty::Fun(a, b) => {
             ftv_ty(a, out);
             ftv_ty(b, out);
-        },
+        }
         Ty::Tuple(v) => {
             for t in v {
                 ftv_ty(t, out);
             }
-        },
+        }
         Ty::Record(fs) => {
             for (_n, t) in fs {
                 ftv_ty(t, out);
             }
-        },
+        }
     }
 }
 fn ftv_scheme(s: &Scheme, out: &mut HashSet<Tv>) {
@@ -316,7 +320,7 @@ impl fmt::Display for TypeError {
             UnboundVar(s) => write!(f, "variable non liée: {}", s.as_u32()),
             Mismatch { expected, found } => {
                 write!(f, "type incompatible: attendu {}, trouvé {}", expected, found)
-            },
+            }
             OccursCheck { var, in_ty } => write!(f, "occurs-check: t{} dans {}", var.idx(), in_ty),
         }
     }
@@ -385,12 +389,12 @@ impl Engine {
                 }
                 self.subst.extend(v, t);
                 Ok(())
-            },
+            }
             (Prim(pa), Prim(pb)) if pa == pb => Ok(()),
             (Fun(a1, b1), Fun(a2, b2)) => {
                 self.unify(&a1, &a2, node)?;
                 self.unify(&b1, &b2, node)
-            },
+            }
             (Tuple(x), Tuple(y)) => {
                 if x.len() != y.len() {
                     return Err(TypeError {
@@ -405,7 +409,7 @@ impl Engine {
                     self.unify(t1, t2, node)?;
                 }
                 Ok(())
-            },
+            }
             (Record(mut fa), Record(mut fb)) => {
                 fa.sort_by_key(|(s, _)| s.as_u32());
                 fb.sort_by_key(|(s, _)| s.as_u32());
@@ -431,10 +435,10 @@ impl Engine {
                     self.unify(ta, tb, node)?;
                 }
                 Ok(())
-            },
+            }
             (ta, tb) => {
                 Err(TypeError { node, kind: TypeErrorKind::Mismatch { expected: ta, found: tb } })
-            },
+            }
         }
     }
 
@@ -447,7 +451,7 @@ impl Engine {
                     .get(*x)
                     .ok_or(TypeError { node: *node, kind: TypeErrorKind::UnboundVar(*x) })?;
                 Ok(self.instantiate(sc))
-            },
+            }
             Expr::Lit(l, _) => Ok(match l {
                 Lit::Unit => Ty::Prim(Prim::Unit),
                 Lit::Bool(_) => Ty::Prim(Prim::Bool),
@@ -467,19 +471,19 @@ impl Engine {
                     env.0.remove(x);
                 }
                 Ok(Ty::fun(arg, tb))
-            },
+            }
             Expr::App(fx, ex, node) => {
                 let tf = self.infer_expr(env, fx)?;
                 let tx = self.infer_expr(env, ex)?;
                 let tv = Ty::Var(self.fresh_tv());
                 self.unify(&tf, &Ty::fun(tx.clone(), tv.clone()), *node)?;
                 Ok(tv.apply(&self.subst))
-            },
+            }
             Expr::Ann(e1, t_ann, node) => {
                 let t1 = self.infer_expr(env, e1)?;
                 self.unify(&t1, t_ann, *node)?;
                 Ok(t_ann.clone().apply(&self.subst))
-            },
+            }
             Expr::Let { rec, binds, body, node: _ } => {
                 // 1) si rec, pré-binde chaque nom à un type frais monomorphe
                 let mut placeholders: Vec<(Symbol, Scheme)> = Vec::new();
@@ -512,7 +516,7 @@ impl Engine {
                     }
                 }
                 Ok(t_body)
-            },
+            }
         }
     }
 }
@@ -621,7 +625,7 @@ mod tests {
         let t = Ty::fun(v.clone(), Ty::Prim(Prim::Int));
         let err = eng.unify(&v, &t, NodeId(0)).unwrap_err();
         match err.kind {
-            TypeErrorKind::OccursCheck { .. } => {},
+            TypeErrorKind::OccursCheck { .. } => {}
             _ => panic!("expected occurs-check"),
         }
     }

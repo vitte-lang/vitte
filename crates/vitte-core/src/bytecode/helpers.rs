@@ -1,8 +1,8 @@
 //! Helper validations reused by tooling.
 
 use crate::{
-    CoreError, CoreResult,
     bytecode::chunk::{Chunk, Op},
+    CoreError, CoreResult,
 };
 
 #[cfg(not(feature = "std"))]

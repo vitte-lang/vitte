@@ -218,10 +218,7 @@ impl CompletionGenerator {
         let subs: Vec<&str> = cmd.subcommands.iter().map(|sc| sc.bin.as_str()).collect();
 
         pushln(out, &format!("    # {}", cmd.bin));
-        pushln(
-            out,
-            &format!("    case ${} in", format!("{}_{}", words_var, depth).to_uppercase()),
-        );
+        pushln(out, &format!("    case ${} in", format!("{}_{}", words_var, depth).to_uppercase()));
 
         // Par défaut: définir variables d’index
         // On prépare `idx=<depth>` et extrait le token courant.
@@ -425,7 +422,7 @@ impl CompletionGenerator {
                     out,
                     &format!("      COMPREPLY=( $(compgen -W \"{}\" -- \"$cur\") );", joined),
                 );
-            },
+            }
         }
     }
 
@@ -595,17 +592,17 @@ impl CompletionGenerator {
             if o.takes_value {
                 line.push_str(" -r");
                 match self.resolve_opt_hint(o) {
-                    ValueHint::Any => {},
+                    ValueHint::Any => {}
                     ValueHint::File => line.push_str(" -a '(commandline -ct | path filter -f)'"),
                     ValueHint::Directory => {
                         line.push_str(" -a '(commandline -ct | path filter -d)'")
-                    },
+                    }
                     ValueHint::Command => line.push_str(" -a '(command -sq (commandline -ct))'"),
                     ValueHint::Choice(v) => {
                         line.push_str(" -a \"");
                         line.push_str(&v.join(" "));
                         line.push('"');
-                    },
+                    }
                 }
             }
             pushln(out, &line);
@@ -614,7 +611,7 @@ impl CompletionGenerator {
         if let Some(p) = cmd.positionals.first() {
             let mut line = format!("complete -c {} -f", bin);
             match self.resolve_pos_hint(p) {
-                ValueHint::Any => { /* rien */ },
+                ValueHint::Any => { /* rien */ }
                 ValueHint::File => line.push_str(" -a '(path filter -f)'"),
                 ValueHint::Directory => line.push_str(" -a '(path filter -d)'"),
                 ValueHint::Command => line.push_str(" -a '(command -sq (commandline -ct))'"),
@@ -622,7 +619,7 @@ impl CompletionGenerator {
                     line.push_str(" -a \"");
                     line.push_str(&v.join(" "));
                     line.push('"');
-                },
+                }
             }
             if let Some(h) = &p.help {
                 line.push_str(&format!(" -d '{}'", fish_escape(h)));
@@ -726,7 +723,7 @@ fn convert_from_args(spec: &ArgsSpec) -> CmdSpec {
                     hint: ValueHint::Any,
                     hidden: a.hidden,
                 });
-            },
+            }
             ArgsArgKind::Opt => {
                 let mut hint = ValueHint::Any;
                 if let Some(choices) = &a.choices {
@@ -756,7 +753,7 @@ fn convert_from_args(spec: &ArgsSpec) -> CmdSpec {
                     hint,
                     hidden: a.hidden,
                 });
-            },
+            }
             ArgsArgKind::Pos => {
                 positionals.push(PosSpec {
                     name: a.name.clone(),
@@ -764,19 +761,13 @@ fn convert_from_args(spec: &ArgsSpec) -> CmdSpec {
                     variadic: matches!(a.arity, vitte_args::Arity::Many),
                     hint: ValueHint::Any,
                 });
-            },
+            }
         }
     }
 
     let subcommands = spec.subcommands.iter().map(convert_from_args).collect();
 
-    CmdSpec {
-        bin: spec.bin.clone(),
-        about: spec.about.clone(),
-        options,
-        positionals,
-        subcommands,
-    }
+    CmdSpec { bin: spec.bin.clone(), about: spec.about.clone(), options, positionals, subcommands }
 }
 
 /* ================================= TESTS ================================ */

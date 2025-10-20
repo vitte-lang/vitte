@@ -370,14 +370,7 @@ fn block_glyph(ch: char) -> [&'static str; 5] {
 
 fn border_chars(
     style: BorderStyle,
-) -> Option<(
-    &'static str,
-    &'static str,
-    &'static str,
-    &'static str,
-    &'static str,
-    &'static str,
-)> {
+) -> Option<(&'static str, &'static str, &'static str, &'static str, &'static str, &'static str)> {
     match style {
         BorderStyle::None => None,
         BorderStyle::Plain => Some(("+", "+", "+", "+", "-", "|")),
@@ -388,7 +381,11 @@ fn border_chars(
 }
 
 fn border_side_width(style: BorderStyle) -> usize {
-    if matches!(style, BorderStyle::None) { 0 } else { 1 }
+    if matches!(style, BorderStyle::None) {
+        0
+    } else {
+        1
+    }
 }
 
 fn add_border(content: &[String], inner_width: usize, style: BorderStyle) -> Vec<String> {
@@ -480,13 +477,13 @@ fn align_line_exact(s: &str, width: usize, align: Align, fill: char) -> String {
             out.push_str(s);
             out.push_str(&repeat_char(fill, pad));
             out
-        },
+        }
         Align::Right => {
             let mut out = String::with_capacity(width);
             out.push_str(&repeat_char(fill, pad));
             out.push_str(s);
             out
-        },
+        }
         Align::Center => {
             let left = pad / 2;
             let right = pad - left;
@@ -495,7 +492,7 @@ fn align_line_exact(s: &str, width: usize, align: Align, fill: char) -> String {
             out.push_str(s);
             out.push_str(&repeat_char(fill, right));
             out
-        },
+        }
     }
 }
 
@@ -529,11 +526,8 @@ mod tests {
 
     #[test]
     fn outline_right_margin() {
-        let spec = BannerSpec::new("Hi")
-            .font(Font::Outline)
-            .align(Align::Right)
-            .width(20)
-            .margin(1, 2);
+        let spec =
+            BannerSpec::new("Hi").font(Font::Outline).align(Align::Right).width(20).margin(1, 2);
         let out = spec.render();
         assert!(out.contains("+--+"));
         assert!(out.lines().next().unwrap().starts_with("  "));

@@ -15,13 +15,9 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(
-    clippy::module_name_repetitions,
-    clippy::doc_markdown,
-    clippy::too_many_lines
-)]
+#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use dirs::config_dir;
 use std::{
     collections::HashMap,
@@ -40,10 +36,7 @@ use serde::{Deserialize, Serialize};
 
 /// Niveau d’optimisation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(
-    any(feature = "json", feature = "toml"),
-    derive(Serialize, Deserialize)
-)]
+#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
 pub enum OptLevel {
     O0,
     O1,
@@ -61,10 +54,7 @@ impl Default for OptLevel {
 
 /// Architecture cible.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(
-    any(feature = "json", feature = "toml"),
-    derive(Serialize, Deserialize)
-)]
+#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
 pub enum Arch {
     X86_64,
     Aarch64,
@@ -79,10 +69,7 @@ impl Default for Arch {
 
 /// Backend codegen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(
-    any(feature = "json", feature = "toml"),
-    derive(Serialize, Deserialize)
-)]
+#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
 pub enum Backend {
     Asm,
     Cranelift,
@@ -97,10 +84,7 @@ impl Default for Backend {
 
 /// Options de build.
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(
-    any(feature = "json", feature = "toml"),
-    derive(Serialize, Deserialize)
-)]
+#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
 pub struct BuildProfile {
     pub opt: OptLevel,
     pub debug_info: bool,
@@ -122,10 +106,7 @@ impl BuildProfile {
 
 /// Toolchain et cible.
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(
-    any(feature = "json", feature = "toml"),
-    derive(Serialize, Deserialize)
-)]
+#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
 pub struct Toolchain {
     pub backend: Backend,
     pub arch: Arch,
@@ -140,10 +121,7 @@ impl Default for Toolchain {
 
 /// Configuration racine.
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(
-    any(feature = "json", feature = "toml"),
-    derive(Serialize, Deserialize)
-)]
+#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
 pub struct Config {
     /// Nom du profil par défaut.
     pub default_profile: String,
@@ -250,7 +228,7 @@ impl Config {
             _ => {
                 // fallback: tente TOML puis JSON
                 Self::from_toml(&data).or_else(|_| Self::from_json(&data))
-            },
+            }
         }
         .with_context(|| format!("parse {}", path.display()))
     }

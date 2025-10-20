@@ -149,7 +149,7 @@ where
             Err(e) => {
                 last = Some(e);
                 sleep(delay).await;
-            },
+            }
         }
     }
     Err(last.unwrap())
@@ -164,7 +164,13 @@ mod tests {
         let res: std::result::Result<i32, &str> = retry(
             || {
                 n += 1;
-                async move { if n < 3 { Err("no") } else { Ok(42) } }
+                async move {
+                    if n < 3 {
+                        Err("no")
+                    } else {
+                        Ok(42)
+                    }
+                }
             },
             5,
             Duration::from_millis(1),

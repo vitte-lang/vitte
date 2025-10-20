@@ -5,9 +5,9 @@
 pub use tokio::{
     runtime::{Builder, Runtime},
     spawn,
-    sync::{Mutex, RwLock, mpsc, oneshot},
+    sync::{mpsc, oneshot, Mutex, RwLock},
     task::JoinHandle,
-    time::{Duration, Instant, interval, sleep, timeout, yield_now},
+    time::{interval, sleep, timeout, yield_now, Duration, Instant},
 };
 
 /// Cancellation token for cooperative task cancellation.

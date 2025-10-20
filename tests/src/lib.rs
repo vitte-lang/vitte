@@ -67,10 +67,7 @@ pub fn repo_root() -> PathBuf {
         }
     }
     // Fallback : parent immédiat du crate de tests
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap_or(Path::new("."))
-        .to_path_buf()
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap_or(Path::new(".")).to_path_buf()
 }
 
 /// Racine des fixtures: `<repo>/tests/fixtures`
@@ -131,11 +128,7 @@ pub fn list_files_with_ext(root: &Path, ext: &str) -> Vec<PathBuf> {
 
 /// Nettoie un chemin pour afficher/identifier (portable).
 pub fn sanitize_id(path: &Path) -> String {
-    path.to_string_lossy()
-        .replace('\\', "/")
-        .replace("../", "")
-        .replace("./", "")
-        .replace(':', "_")
+    path.to_string_lossy().replace('\\', "/").replace("../", "").replace("./", "").replace(':', "_")
 }
 
 /// `assert_contains!` : vérifie qu’une chaîne en contient une autre.

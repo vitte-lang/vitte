@@ -84,7 +84,7 @@ impl BackendDriver {
                 {
                     Err(BackendDriverError::Unavailable(BackendKind::Cranelift))
                 }
-            },
+            }
         }
     }
 
@@ -103,7 +103,7 @@ impl BackendDriver {
                 {
                     unreachable!("guarded by ensure_demo_module")
                 }
-            },
+            }
             BackendKind::Cranelift => Err(BackendDriverError::Unsupported(BackendKind::Cranelift)),
         }
     }
@@ -127,7 +127,7 @@ impl BackendDriver {
                 {
                     unreachable!("guarded by ensure_demo_module")
                 }
-            },
+            }
             BackendKind::Cranelift => {
                 #[cfg(feature = "cranelift")]
                 {
@@ -139,7 +139,7 @@ impl BackendDriver {
                 {
                     Err(BackendDriverError::Unavailable(BackendKind::Cranelift))
                 }
-            },
+            }
         }
     }
 
@@ -205,13 +205,13 @@ mod tests {
                 assert!(!obj.is_empty());
                 let sum = d.jit_add_i64(20, 22).expect("jit add");
                 assert_eq!(sum, 42);
-            },
+            }
             Err(BackendDriverError::Unavailable(BackendKind::Llvm)) => {
                 // LLVM backend entièrement désactivé : acceptable.
-            },
+            }
             Err(BackendDriverError::Llvm(vitte_backend_llvm::BackendError::FeatureDisabled)) => {
                 // Build sans support LLVM (feature `inkwell` absente).
-            },
+            }
             Err(e) => panic!("unexpected error: {e:?}"),
         }
     }
@@ -223,10 +223,10 @@ mod tests {
             Ok(mut d) => {
                 let sum = d.jit_add_i64(5, 37).expect("jit add");
                 assert_eq!(sum, 42);
-            },
+            }
             Err(BackendDriverError::Unavailable(BackendKind::Cranelift)) => {
                 // Feature non présente.
-            },
+            }
             Err(e) => panic!("unexpected error: {e:?}"),
         }
     }

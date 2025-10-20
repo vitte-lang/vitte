@@ -430,7 +430,7 @@ impl ManPage {
                     }
                     let help = a.help.clone().unwrap_or_default();
                     page = page.option(OptionItem::new(forms, help));
-                },
+                }
                 ArgKindArgs::Opt => {
                     let vn = a.value_name.as_deref().unwrap_or("VAL");
                     let mut forms = String::new();
@@ -451,12 +451,12 @@ impl ManPage {
                         help.push_str(&format!("[default: {}]", def));
                     }
                     page = page.option(OptionItem::new(forms, help));
-                },
+                }
                 ArgKindArgs::Pos => {
                     let nm = a.value_name.clone().unwrap_or_else(|| a.name.clone());
                     let help = a.help.clone().unwrap_or_default();
                     page = page.positional(ArgItem::new(nm, help));
-                },
+                }
             }
         }
 
@@ -537,7 +537,7 @@ fn troff_escape(s: &str) -> String {
                 '\\' => {
                     out.push('\\');
                     out.push('\\');
-                },
+                }
                 // Hyphen vs minus: laissons tel quel mais évitons -- en tête
                 _ => out.push(ch),
             }

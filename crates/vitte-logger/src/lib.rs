@@ -33,7 +33,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 #[cfg(feature = "std")]
 use std::sync::OnceLock;
 
-pub use tracing::{Level, debug, error, info, trace, warn};
+pub use tracing::{debug, error, info, trace, warn, Level};
 pub use tracing::{event, instrument, span};
 
 /* ─────────────────────────── État global ─────────────────────── */
@@ -69,7 +69,7 @@ pub fn init() {
 
         #[cfg(feature = "env-filter")]
         {
-            use tracing_subscriber::{EnvFilter, Registry, fmt, layer::SubscriberExt};
+            use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Registry};
 
             let filter =
                 EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
@@ -114,7 +114,7 @@ pub fn init_with(spec: &str) {
     if STARTED.get().is_some() {
         return;
     }
-    use tracing_subscriber::{EnvFilter, Registry, fmt, layer::SubscriberExt};
+    use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Registry};
 
     let filter = EnvFilter::try_new(spec).unwrap_or_else(|_| EnvFilter::new("info"));
 

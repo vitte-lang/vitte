@@ -39,7 +39,7 @@ impl fmt::Display for CacheError {
             CacheError::Io(m) => write!(f, "io error: {m}"),
             CacheError::TypeMismatch { requested, stored } => {
                 write!(f, "type mismatch: requested={requested}, stored={stored}")
-            },
+            }
         }
     }
 }

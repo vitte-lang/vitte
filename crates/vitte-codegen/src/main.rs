@@ -46,11 +46,11 @@ fn parse_global_opts(args: &mut Vec<String>) -> GlobalOpts {
             "-q" | "--quiet" => {
                 opts.verbosity = Verbosity::Quiet;
                 args.remove(i);
-            },
+            }
             "-v" | "--verbose" => {
                 opts.verbosity = Verbosity::Verbose;
                 args.remove(i);
-            },
+            }
             _ => i += 1,
         }
     }
@@ -90,7 +90,11 @@ fn run(cmd: &mut Command) -> io::Result<()> {
 
 fn host_triple() -> &'static str {
     if cfg!(target_os = "macos") {
-        if cfg!(target_arch = "aarch64") { "aarch64-apple-darwin" } else { "x86_64-apple-darwin" }
+        if cfg!(target_arch = "aarch64") {
+            "aarch64-apple-darwin"
+        } else {
+            "x86_64-apple-darwin"
+        }
     } else if cfg!(target_os = "linux") {
         "x86_64-unknown-linux-gnu"
     } else {
@@ -113,28 +117,28 @@ fn main() {
         "help" | "-h" | "--help" => {
             print_help();
             Ok(())
-        },
+        }
         "version" | "-V" | "--version" => {
             print_version();
             Ok(())
-        },
+        }
         "targets" => cmd_targets_list(),
         "build" => cmd_build(&opts, args.contains(&"--release".into())),
         "pkg" => {
             let fmt = args.get(0).map(|s| s.as_str()).unwrap_or("tar");
             cmd_pkg(&opts, fmt)
-        },
+        }
         "env" => cmd_env(&opts),
         "run-test" => {
             let mut cmd = Command::new("echo");
             cmd.arg("test run");
             run(&mut cmd)
-        },
+        }
         _ => {
             eprintln!("Unknown command: {cmd}");
             print_help();
             Err(io::Error::new(io::ErrorKind::InvalidInput, "unknown command"))
-        },
+        }
     };
 
     if let Err(e) = res {

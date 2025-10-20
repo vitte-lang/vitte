@@ -123,8 +123,7 @@ impl ThreadInfo {
     pub fn install_scope(&mut self, scope: Scope, vars: Vec<Variable>) {
         let vr = scope.variables_reference;
         self.var_tables.insert(vr, vars.clone());
-        self.scopes
-            .push(InstalledScope { scope, vars, installed_at: SystemTime::now() });
+        self.scopes.push(InstalledScope { scope, vars, installed_at: SystemTime::now() });
     }
 
     pub fn vars_for(&self, varref: VarRef) -> Option<&[Variable]> {

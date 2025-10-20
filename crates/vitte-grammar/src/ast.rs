@@ -122,9 +122,7 @@ impl Ast {
         let mut storage = AstStorage::new();
         let root_span = storage.spans.alloc(Span::dummy());
         let root_module =
-            storage
-                .modules
-                .alloc(ModuleData { name: None, items: Vec::new(), span: root_span });
+            storage.modules.alloc(ModuleData { name: None, items: Vec::new(), span: root_span });
         Self { storage, root: root_module }
     }
 

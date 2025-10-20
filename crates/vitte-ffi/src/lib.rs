@@ -26,7 +26,7 @@ use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 use core::ffi::c_char;
 use core::ptr;
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 #[cfg(feature = "std")]
 use std::ffi::{CStr, CString};
@@ -230,7 +230,7 @@ fn rt_from_c(v: &VitteValue) -> core::result::Result<RtValue, String> {
             {
                 Err("strings require std".into())
             }
-        },
+        }
         VitteTag::Bytes => {
             #[cfg(feature = "std")]
             unsafe {
@@ -245,7 +245,7 @@ fn rt_from_c(v: &VitteValue) -> core::result::Result<RtValue, String> {
             {
                 Err("bytes require std".into())
             }
-        },
+        }
         VitteTag::Array => {
             #[cfg(feature = "std")]
             {
@@ -255,7 +255,7 @@ fn rt_from_c(v: &VitteValue) -> core::result::Result<RtValue, String> {
             {
                 Err("array require std".into())
             }
-        },
+        }
     }
 }
 
@@ -445,14 +445,14 @@ pub extern "C" fn vitte_ffi_eval(h: *mut VitteHandle, src: *const c_char) -> Vit
                 (&mut *h).set_err(msg);
             }
             rt_err()
-        },
+        }
         Err(_) => {
             #[cfg(feature = "std")]
             unsafe {
                 (&mut *h).set_err("panic in eval".into());
             }
             panic_err()
-        },
+        }
     }
 }
 
@@ -483,13 +483,13 @@ pub extern "C" fn vitte_ffi_load_file(h: *mut VitteHandle, path: *const c_char) 
                 (&mut *h).set_err(msg);
             }
             io_err()
-        },
+        }
         Err(_) => {
             unsafe {
                 (&mut *h).set_err("panic in load_file".into());
             }
             panic_err()
-        },
+        }
     }
 }
 
@@ -541,14 +541,14 @@ pub extern "C" fn vitte_ffi_call(
                 (&mut *h).set_err(msg);
             }
             call_err()
-        },
+        }
         Err(_) => {
             #[cfg(feature = "std")]
             unsafe {
                 (&mut *h).set_err("panic in call".into());
             }
             panic_err()
-        },
+        }
     }
 }
 
@@ -585,14 +585,14 @@ pub extern "C" fn vitte_ffi_set_var(
                 (&mut *h).set_err(msg);
             }
             rt_err()
-        },
+        }
         Err(_) => {
             #[cfg(feature = "std")]
             unsafe {
                 (&mut *h).set_err("panic in set_var".into());
             }
             panic_err()
-        },
+        }
     }
 }
 
@@ -629,14 +629,14 @@ pub extern "C" fn vitte_ffi_get_var(
                 (&mut *h).set_err(msg);
             }
             rt_err()
-        },
+        }
         Err(_) => {
             #[cfg(feature = "std")]
             unsafe {
                 (&mut *h).set_err("panic in get_var".into());
             }
             panic_err()
-        },
+        }
     }
 }
 
@@ -680,8 +680,8 @@ pub extern "C" fn vitte_ffi_value_free(v: VitteValue) {
                     }
                 }
             }
-        },
-        _ => {},
+        }
+        _ => {}
     }
 }
 

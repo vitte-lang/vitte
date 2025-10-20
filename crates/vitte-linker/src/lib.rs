@@ -11,11 +11,7 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(
-    clippy::module_name_repetitions,
-    clippy::doc_markdown,
-    clippy::too_many_lines
-)]
+#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
 
 #[cfg(feature = "json")]
 use serde::{Deserialize, Serialize};

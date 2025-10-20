@@ -12,11 +12,7 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(
-    clippy::module_name_repetitions,
-    clippy::doc_markdown,
-    clippy::too_many_lines
-)]
+#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
 
 use anyhow::{Context, Result};
 use std::fs;
@@ -68,7 +64,7 @@ pub fn run(opts: &DocGenOptions) -> Result<()> {
         "json" => render_json(&book)?,
         other => {
             anyhow::bail!("format non supporté: {}", other);
-        },
+        }
     };
 
     if let Some(out) = &opts.output {

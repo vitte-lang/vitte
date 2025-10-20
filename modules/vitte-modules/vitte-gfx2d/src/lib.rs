@@ -181,7 +181,7 @@ impl Path {
                     pen = p;
                     have_pen = true;
                     pts.push(p);
-                },
+                }
                 PathCmd::LineTo(p) => {
                     if !have_pen {
                         pen = p;
@@ -190,7 +190,7 @@ impl Path {
                         pts.push(p);
                         pen = p;
                     }
-                },
+                }
                 PathCmd::QuadTo(c, p) => {
                     if !have_pen {
                         pen = c;
@@ -198,7 +198,7 @@ impl Path {
                     }
                     flatten_quad(pen, c, p, tol, &mut pts);
                     pen = p;
-                },
+                }
                 PathCmd::CubicTo(c1, c2, p) => {
                     if !have_pen {
                         pen = c1;
@@ -206,8 +206,8 @@ impl Path {
                     }
                     flatten_cubic(pen, c1, c2, p, tol, &mut pts);
                     pen = p;
-                },
-                PathCmd::Close => { /* la fermeture est gérée par l'appelant */ },
+                }
+                PathCmd::Close => { /* la fermeture est gérée par l'appelant */ }
             }
         }
         pts
@@ -292,8 +292,7 @@ pub fn tessellate_stroke(
         out.vertices.push(Vertex::new(b, color));
         out.vertices.push(Vertex::new(c, color));
         out.vertices.push(Vertex::new(d, color));
-        out.indices
-            .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+        out.indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
     };
 
     // offset à gauche/droite par normale
@@ -327,9 +326,9 @@ pub fn tessellate_stroke(
             let g = poly[poly.len() - 1] - n1 * w;
             let h = poly[poly.len() - 1] + n1 * w;
             add_quad(g, h, e, f);
-        },
-        LineCap::Round => { /* TODO: arcs — version minimale omise pour rester léger */ },
-        LineCap::Butt => {},
+        }
+        LineCap::Round => { /* TODO: arcs — version minimale omise pour rester léger */ }
+        LineCap::Butt => {}
     }
 }
 

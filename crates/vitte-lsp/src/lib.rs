@@ -25,9 +25,7 @@ use vitte_lexer::{Lexer, LexerOptions, Token, TokenKind};
 /// Démarre le serveur LSP Vitte sur STDIN/STDOUT (à utiliser depuis un binaire).
 pub async fn start_stdio() -> anyhow::Result<()> {
     let (service, socket) = LspService::new(|client| Backend::new(client));
-    Server::new(tokio::io::stdin(), tokio::io::stdout(), socket)
-        .serve(service)
-        .await;
+    Server::new(tokio::io::stdin(), tokio::io::stdout(), socket).serve(service).await;
     Ok(())
 }
 
@@ -70,7 +68,7 @@ impl Document {
                 // full text
                 self.text = change.text.clone();
                 self.line_starts = compute_line_starts(&self.text);
-            },
+            }
             (Some(range), _) => {
                 // incremental
                 let (start_off, end_off) = (
@@ -81,8 +79,8 @@ impl Document {
                     self.text.replace_range(start_off..end_off, &change.text);
                     self.line_starts = compute_line_starts(&self.text);
                 }
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 }
@@ -106,10 +104,8 @@ impl Backend {
     async fn publish_diagnostics(&self, doc: &Document) {
         if !self.config.read().await.diagnostics {
             // vider si désactivé
-            let _ = self
-                .client
-                .publish_diagnostics(doc.uri.clone(), vec![], Some(doc.version))
-                .await;
+            let _ =
+                self.client.publish_diagnostics(doc.uri.clone(), vec![], Some(doc.version)).await;
             return;
         }
         let diags = compute_diagnostics(&doc.text, &doc.line_starts);
@@ -194,10 +190,8 @@ impl LanguageServer for Backend {
 
     async fn did_close(&self, params: lsp::DidCloseTextDocumentParams) {
         // Efface diagnostics
-        let _ = self
-            .client
-            .publish_diagnostics(params.text_document.uri.clone(), vec![], None)
-            .await;
+        let _ =
+            self.client.publish_diagnostics(params.text_document.uri.clone(), vec![], None).await;
         self.docs.write().await.remove(&params.text_document.uri);
     }
 
@@ -240,11 +234,8 @@ impl LanguageServer for Backend {
         if !self.config.read().await.completions {
             return Ok(None);
         }
-        let trigger = params
-            .context
-            .as_ref()
-            .and_then(|c| c.trigger_character.clone())
-            .unwrap_or_default();
+        let trigger =
+            params.context.as_ref().and_then(|c| c.trigger_character.clone()).unwrap_or_default();
 
         let mut items = keyword_completions();
 
@@ -310,7 +301,7 @@ fn compute_diagnostics(text: &str, line_starts: &[usize]) -> Vec<lsp::Diagnostic
                 if matches!(tok.value, TokenKind::Eof) {
                     break;
                 }
-            },
+            }
             Ok(None) => break,
             Err(e) => {
                 // Convertit Span -> Range UTF-16
@@ -328,7 +319,7 @@ fn compute_diagnostics(text: &str, line_starts: &[usize]) -> Vec<lsp::Diagnostic
                 });
                 // Le lexer s'arrête à la première erreur. On publie cette erreur et sort.
                 break;
-            },
+            }
         }
     }
     diags
@@ -451,7 +442,7 @@ fn extract_symbols(text: &str, line_starts: &[usize]) -> Vec<lsp::SymbolInformat
         match kind {
             TokenKind::Kw(_) => last_kw = Some(tok.clone()),
             TokenKind::Ident(_) => last_ident = Some(tok.clone()),
-            _ => {},
+            _ => {}
         }
 
         // Si on a kw + ident, on émet
@@ -460,23 +451,23 @@ fn extract_symbols(text: &str, line_starts: &[usize]) -> Vec<lsp::SymbolInformat
                 let (name, kind) = match (kw, &id_tok.value) {
                     (vitte_lexer::Keyword::Fn, TokenKind::Ident(n)) => {
                         (n.to_string(), lsp::SymbolKind::FUNCTION)
-                    },
+                    }
                     (vitte_lexer::Keyword::Struct, TokenKind::Ident(n)) => {
                         (n.to_string(), lsp::SymbolKind::STRUCT)
-                    },
+                    }
                     (vitte_lexer::Keyword::Enum, TokenKind::Ident(n)) => {
                         (n.to_string(), lsp::SymbolKind::ENUM)
-                    },
+                    }
                     (vitte_lexer::Keyword::Let, TokenKind::Ident(n)) => {
                         (n.to_string(), lsp::SymbolKind::VARIABLE)
-                    },
+                    }
                     (vitte_lexer::Keyword::Const, TokenKind::Ident(n)) => {
                         (n.to_string(), lsp::SymbolKind::CONSTANT)
-                    },
+                    }
                     _ => {
                         last_ident = None;
                         continue;
-                    },
+                    }
                 };
                 let range = span_to_range(text, line_starts, id_tok.span);
                 #[allow(deprecated)]

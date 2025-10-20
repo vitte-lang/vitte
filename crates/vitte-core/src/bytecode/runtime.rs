@@ -3,8 +3,8 @@
 /// Minimal evaluator used by CLI helpers to support `--engine eval`.
 pub mod eval {
     use crate::{
-        CoreError, CoreResult,
         bytecode::chunk::{Chunk, ConstValue, Op},
+        CoreError, CoreResult,
     };
 
     #[cfg(not(feature = "std"))]
@@ -39,7 +39,7 @@ pub mod eval {
                         .get(ix)
                         .ok_or_else(|| CoreError::corrupted(format!("const {ix} inexistant")))?;
                     stack.push(value.clone());
-                },
+                }
                 Op::Print => {
                     let value =
                         stack.pop().ok_or_else(|| CoreError::corrupted("stack underflow"))?;
@@ -47,7 +47,7 @@ pub mod eval {
                         out.stdout.push_str("\n");
                     }
                     out.stdout.push_str(&format_const(&value));
-                },
+                }
                 Op::Return => break,
             }
         }

@@ -251,8 +251,7 @@ impl Resolver {
     ) -> ScopeId {
         let id = ScopeId(self.next_scope);
         self.next_scope += 1;
-        self.scopes
-            .push(Scope { id, kind, parent, module, symbols: HashMap::default() });
+        self.scopes.push(Scope { id, kind, parent, module, symbols: HashMap::default() });
         id
     }
     fn alloc_def(
@@ -421,7 +420,7 @@ impl Resolver {
                     node,
                 });
                 return Err(());
-            },
+            }
         };
         for &seg in it {
             // navigue seulement à travers modules / types qui portent un espace de noms
@@ -440,7 +439,7 @@ impl Resolver {
                         });
                         return Err(());
                     }
-                },
+                }
                 _ => {
                     self.diagnostics.push(Diagnostic {
                         severity: Severity::Error,
@@ -448,7 +447,7 @@ impl Resolver {
                         node,
                     });
                     return Err(());
-                },
+                }
             }
         }
         Ok(cur_def)

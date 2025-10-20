@@ -70,8 +70,7 @@ pub fn rustflags_use(dir: &str) -> String {
 /// Vérifie qu'un fichier `.profraw` existe dans un dossier donné.
 pub fn has_profraw(dir: &Path) -> bool {
     if let Ok(rd) = std::fs::read_dir(dir) {
-        rd.flatten()
-            .any(|e| e.path().extension().map(|x| x == "profraw").unwrap_or(false))
+        rd.flatten().any(|e| e.path().extension().map(|x| x == "profraw").unwrap_or(false))
     } else {
         false
     }

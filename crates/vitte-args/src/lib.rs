@@ -91,12 +91,7 @@ impl Default for Arg {
 impl Arg {
     /// Creates a flag argument.
     pub fn flag(name: impl Into<String>) -> Self {
-        Self {
-            kind: ArgKind::Flag,
-            name: name.into(),
-            arity: Arity::ZeroOrOne,
-            ..Self::default()
-        }
+        Self { kind: ArgKind::Flag, name: name.into(), arity: Arity::ZeroOrOne, ..Self::default() }
     }
 
     /// Creates an option argument.
@@ -286,20 +281,12 @@ impl Matches {
 
     /// Returns the last value for an option, if any.
     pub fn value(&self, name: &str) -> Option<Cow<'_, str>> {
-        self.options
-            .iter()
-            .rev()
-            .find(|(n, _)| n == name)
-            .map(|(_, v)| Cow::Borrowed(v.as_str()))
+        self.options.iter().rev().find(|(n, _)| n == name).map(|(_, v)| Cow::Borrowed(v.as_str()))
     }
 
     /// Returns all values for an option.
     pub fn values(&self, name: &str) -> Vec<&str> {
-        self.options
-            .iter()
-            .filter(|(n, _)| n == name)
-            .map(|(_, v)| v.as_str())
-            .collect()
+        self.options.iter().filter(|(n, _)| n == name).map(|(_, v)| v.as_str()).collect()
     }
 }
 

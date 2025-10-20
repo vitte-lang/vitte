@@ -59,7 +59,7 @@ impl core::fmt::Display for BuildError {
             BuildError::Json(e) => write!(f, "JSON: {e}"),
             BuildError::CommandFailed { cmd, code } => {
                 write!(f, "Commande échouée: {cmd} (code: {code:?})")
-            },
+            }
             BuildError::UnknownTask(s) => write!(f, "Tâche inconnue: {s}"),
             BuildError::CyclicGraph => write!(f, "Cycle détecté dans le graphe de tâches"),
             BuildError::NoTasks => write!(f, "Aucune tâche à exécuter"),
@@ -645,7 +645,7 @@ impl<'a> Executor<'a> {
             Some(entry) if entry.hash == want => {
                 // Vérifie existence de toutes les sorties
                 entry.outputs.iter().all(|o| o.exists())
-            },
+            }
             _ => false,
         }
     }
@@ -692,10 +692,8 @@ impl<'a> Executor<'a> {
         }
 
         // file initiale: nœuds sans dépendance
-        let mut q: VecDeque<&str> = indeg
-            .iter()
-            .filter_map(|(k, &deg)| if deg == 0 { Some(*k) } else { None })
-            .collect();
+        let mut q: VecDeque<&str> =
+            indeg.iter().filter_map(|(k, &deg)| if deg == 0 { Some(*k) } else { None }).collect();
 
         let mut waves: Vec<Vec<String>> = vec![];
         let mut remaining = indeg.len();
@@ -888,7 +886,7 @@ impl Recipe {
                             }
                         }
                         tasks.push(RecipeTask::Shell(spec));
-                    },
+                    }
                     "copy" => {
                         let mut spec = CopyTaskSpec {
                             name: String::new(),
@@ -916,7 +914,7 @@ impl Recipe {
                             spec.recursive = b;
                         }
                         tasks.push(RecipeTask::Copy(spec));
-                    },
+                    }
                     "mkdir" => {
                         let mut spec = MkdirTaskSpec {
                             name: String::new(),
@@ -936,7 +934,7 @@ impl Recipe {
                             spec.dir = PathBuf::from(s);
                         }
                         tasks.push(RecipeTask::Mkdir(spec));
-                    },
+                    }
                     "clean" => {
                         let mut spec = CleanTaskSpec {
                             name: String::new(),
@@ -956,7 +954,7 @@ impl Recipe {
                             spec.path = PathBuf::from(s);
                         }
                         tasks.push(RecipeTask::Clean(spec));
-                    },
+                    }
                     "touch" => {
                         let mut spec = TouchTaskSpec {
                             name: String::new(),
@@ -980,7 +978,7 @@ impl Recipe {
                             spec.content = Some(s.to_string());
                         }
                         tasks.push(RecipeTask::Touch(spec));
-                    },
+                    }
                     "hash" => {
                         let mut spec = HashTaskSpec {
                             name: String::new(),
@@ -1005,8 +1003,8 @@ impl Recipe {
                             spec.out_file = PathBuf::from(s);
                         }
                         tasks.push(RecipeTask::Hash(spec));
-                    },
-                    _ => { /* inconnu: ignorer */ },
+                    }
+                    _ => { /* inconnu: ignorer */ }
                 }
             }
         }

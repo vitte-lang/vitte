@@ -12,7 +12,7 @@
 use anyhow::{Context, Result};
 use fs_err as fs;
 use std::path::{Path, PathBuf};
-use toml_edit::{DocumentMut, value};
+use toml_edit::{value, DocumentMut};
 
 /// Crée un nouveau crate dans le dossier `dir` avec nom `name`.
 pub fn create_crate(dir: &Path, name: &str) -> Result<PathBuf> {

@@ -14,8 +14,8 @@
 //! - Lines beginning with `;` are ignored as comments.
 
 use crate::{
-    CoreError, CoreResult,
     bytecode::chunk::{Chunk, ChunkFlags, ConstValue, Op},
+    CoreError, CoreResult,
 };
 
 #[cfg(not(feature = "std"))]
@@ -67,7 +67,7 @@ pub fn assemble(source: &str) -> CoreResult<Chunk> {
             "RETURN" => chunk.push_op(Op::Return, line_no),
             other => {
                 return Err(CoreError::corrupted(format!("instruction non supportée: `{other}`")));
-            },
+            }
         }
     }
 

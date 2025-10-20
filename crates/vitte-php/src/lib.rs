@@ -39,7 +39,11 @@ pub mod convert {
     /// Encode un bool Rust au format entier PHP (0/1).
     #[inline]
     pub fn bool_to_php(b: bool) -> i64 {
-        if b { 1 } else { 0 }
+        if b {
+            1
+        } else {
+            0
+        }
     }
 
     /// Conversion en C string pour API Zend.

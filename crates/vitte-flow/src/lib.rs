@@ -16,11 +16,7 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(
-    clippy::module_name_repetitions,
-    clippy::doc_markdown,
-    clippy::too_many_lines
-)]
+#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
 
 use anyhow::Result;
 
@@ -44,10 +40,7 @@ pub struct Instr {
 
 impl Instr {
     pub fn assign<D: Into<String>, S: Into<String>>(dest: D, operands: Vec<S>) -> Self {
-        Self {
-            dest: Some(dest.into()),
-            operands: operands.into_iter().map(Into::into).collect(),
-        }
+        Self { dest: Some(dest.into()), operands: operands.into_iter().map(Into::into).collect() }
     }
 }
 

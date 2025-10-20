@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::{ArgAction, ColorChoice, Parser, Subcommand, ValueHint};
 use env_logger;
 use log::{debug, error, info};
@@ -9,12 +9,12 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use vitte_cli::{
-    inspect::{InspectOptions, render as render_inspection},
+    inspect::{render as render_inspection, InspectOptions},
     registry,
 };
 
 #[cfg(feature = "fmt")]
-use vitte_fmt::{FormatterOptions, format_source};
+use vitte_fmt::{format_source, FormatterOptions};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -182,7 +182,7 @@ fn real_main(cli: Cli) -> Result<()> {
         Command::Run { input, args } => crate::engine_run(&input, &args)?,
         Command::Compile { input, out, emit } => {
             crate::engine_compile(&input, out.as_deref(), &emit)?
-        },
+        }
         Command::Repl => crate::engine_repl()?,
         Command::Fmt { paths, check } => crate::command_fmt(&paths, check)?,
         Command::Inspect {
@@ -230,10 +230,10 @@ fn real_main(cli: Cli) -> Result<()> {
             };
             options.ensure_defaults();
             crate::command_inspect(input.as_ref(), options)?
-        },
+        }
         Command::Deps { action } => {
             handle_deps(action.unwrap_or(DepsAction::List), config.as_ref())?
-        },
+        }
     }
     Ok(())
 }
@@ -270,7 +270,7 @@ pub fn resolve_output(input: &Path, emit: &str) -> PathBuf {
             } else {
                 input.with_extension("")
             }
-        },
+        }
         _ => input.with_extension("vtbc"),
     }
 }
@@ -372,7 +372,7 @@ fn collect_fmt_targets(inputs: &[PathBuf]) -> Result<Vec<PathBuf>> {
                     .with_help(err.to_string()),
                 );
                 continue;
-            },
+            }
         };
 
         if meta.is_dir() {
@@ -387,7 +387,7 @@ fn collect_fmt_targets(inputs: &[PathBuf]) -> Result<Vec<PathBuf>> {
                         .with_help(err.to_string()),
                     );
                     continue;
-                },
+                }
             };
 
             for entry in entries {
@@ -399,7 +399,7 @@ fn collect_fmt_targets(inputs: &[PathBuf]) -> Result<Vec<PathBuf>> {
                                 .with_help(err.to_string()),
                         );
                         continue;
-                    },
+                    }
                 };
                 let child = entry.path();
                 let ftype = match entry.file_type() {
@@ -413,7 +413,7 @@ fn collect_fmt_targets(inputs: &[PathBuf]) -> Result<Vec<PathBuf>> {
                             .with_help(err.to_string()),
                         );
                         continue;
-                    },
+                    }
                 };
                 if ftype.is_dir() {
                     if let Some(name) = child.file_name().and_then(|s| s.to_str()) {
@@ -454,13 +454,13 @@ pub fn command_inspect(path: Option<&PathBuf>, mut options: InspectOptions) -> R
     match path {
         Some(p) if p.as_os_str() != "-" => {
             bytes = fs::read(p).with_context(|| format!("Impossible de lire {}", p.display()))?;
-        },
+        }
         Some(_) | None => {
             io::stdin()
                 .lock()
                 .read_to_end(&mut bytes)
                 .context("Impossible de lire le flux stdin")?;
-        },
+        }
     }
 
     if bytes.is_empty() {
@@ -514,7 +514,7 @@ fn handle_deps(action: DepsAction, cfg: Option<&VitteConfig>) -> Result<()> {
                     print_line(&line, MessageColor::Green);
                 }
             }
-        },
+        }
         DepsAction::Sync => {
             print_line("Synchronisation des modules Vitte…", MessageColor::Blue);
             let registry_modules = match registry::load_local_index(Path::new(".")) {
@@ -529,7 +529,7 @@ fn handle_deps(action: DepsAction, cfg: Option<&VitteConfig>) -> Result<()> {
                         MessageColor::Help,
                     );
                     return Ok(());
-                },
+                }
             };
 
             let mut matched = 0usize;
@@ -581,7 +581,7 @@ fn handle_deps(action: DepsAction, cfg: Option<&VitteConfig>) -> Result<()> {
                     MessageColor::Yellow,
                 );
             }
-        },
+        }
     }
 
     Ok(())
@@ -608,7 +608,7 @@ fn check_project_config() -> Result<Option<VitteConfig>> {
                 .with_help("Vérifie la syntaxe TOML de vitte.toml."),
             )?;
             unreachable!()
-        },
+        }
     };
 
     validate_config(&cfg)?;
@@ -927,7 +927,7 @@ mod engine {
                         } else {
                             input.with_extension("")
                         }
-                    },
+                    }
                     _ => input.with_extension("vtbc"),
                 },
             };

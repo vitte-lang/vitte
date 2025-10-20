@@ -190,12 +190,7 @@ fn compile_invalid_source_reports_parse_error() {
 
     let mut cmd = base_cmd();
     cmd.current_dir(dir.path());
-    cmd.args([
-        "compile",
-        src_path.file_name().unwrap().to_str().unwrap(),
-        "--output",
-        "out.vitbc",
-    ]);
+    cmd.args(["compile", src_path.file_name().unwrap().to_str().unwrap(), "--output", "out.vitbc"]);
 
     let (status, stdout, stderr) = capture_output(cmd).expect("run command");
     snapshot("compile_invalid_source_parse_error", status, &stdout, &stderr);

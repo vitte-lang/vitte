@@ -53,10 +53,10 @@ pub fn normalize_path(path: &str) -> PathBuf {
                 } else {
                     components.push(comp);
                 }
-            },
+            }
             std::path::Component::CurDir => {
                 // skip
-            },
+            }
             _ => components.push(comp),
         }
     }

@@ -534,56 +534,56 @@ impl InputManager {
                 if repeat {
                     // rien de spécial: l’appli peut utiliser `keys_down`
                 }
-            },
+            }
             InputEvent::KeyUp { key, mods, .. } => {
                 self.state.keys_down.remove(&key);
                 self.state.keys_released.insert(key);
                 self.state.mods = mods;
-            },
+            }
             InputEvent::MouseDown { button, x, y, mods, .. } => {
                 self.state.mouse.x = x;
                 self.state.mouse.y = y;
                 self.set_mouse_button(button, true);
                 self.state.mods = mods;
-            },
+            }
             InputEvent::MouseUp { button, x, y, mods, .. } => {
                 self.state.mouse.x = x;
                 self.state.mouse.y = y;
                 self.set_mouse_button(button, false);
                 self.state.mods = mods;
-            },
+            }
             InputEvent::MouseMove { x, y, dx, dy, .. } => {
                 self.state.mouse.x = x;
                 self.state.mouse.y = y;
                 self.state.mouse.dx += dx;
                 self.state.mouse.dy += dy;
-            },
+            }
             InputEvent::Wheel { delta_x, delta_y, .. } => {
                 self.state.mouse.wheel_x += delta_x;
                 self.state.mouse.wheel_y += delta_y;
-            },
+            }
             InputEvent::GamepadConnected { id, name, .. } => {
                 self.state.gamepads.entry(id).or_default().connected = true;
                 self.state.gamepads.entry(id).or_default().name = name;
-            },
+            }
             InputEvent::GamepadDisconnected { id, .. } => {
                 if let Some(g) = self.state.gamepads.get_mut(&id) {
                     g.connected = false;
                 }
-            },
+            }
             InputEvent::GamepadButton { id, button, value, pressed, .. } => {
                 let g = self.state.gamepads.entry(id).or_default();
                 g.connected = true;
                 g.buttons.insert(button, if pressed { value.max(1.0) } else { 0.0 });
-            },
+            }
             InputEvent::GamepadAxis { id, axis, value, .. } => {
                 let g = self.state.gamepads.entry(id).or_default();
                 g.connected = true;
                 g.axes.insert(axis, value.clamp(-1.0, 1.0));
-            },
+            }
             InputEvent::TouchTap { .. } => {
                 // pas d’état persistant par défaut
-            },
+            }
         }
     }
 
@@ -730,13 +730,13 @@ pub mod native {
                     match event.state {
                         ElementState::Pressed => {
                             mgr.push(InputEvent::KeyDown { key, mods, time: t, repeat })
-                        },
+                        }
                         ElementState::Released => {
                             mgr.push(InputEvent::KeyUp { key, mods, time: t })
-                        },
+                        }
                     }
                 }
-            },
+            }
             WindowEvent::MouseInput { state, button, .. } => {
                 let btn = match button {
                     WM::Left => MouseButton::Left,
@@ -751,26 +751,26 @@ pub mod native {
                 match state {
                     ElementState::Pressed => {
                         mgr.push(InputEvent::MouseDown { button: btn, x, y, mods, time: t })
-                    },
+                    }
                     ElementState::Released => {
                         mgr.push(InputEvent::MouseUp { button: btn, x, y, mods, time: t })
-                    },
+                    }
                 }
-            },
+            }
             WindowEvent::CursorMoved { position, .. } => {
                 let x = position.x as f32;
                 let y = position.y as f32;
                 let dx = x - mgr.state.mouse.x;
                 let dy = y - mgr.state.mouse.y;
                 mgr.push(InputEvent::MouseMove { x, y, dx, dy, time: t });
-            },
+            }
             WindowEvent::MouseWheel { delta, .. } => {
                 let (dx, dy) = match delta {
                     MouseScrollDelta::LineDelta(x, y) => (*x, *y),
                     MouseScrollDelta::PixelDelta(p) => (p.x as f32, p.y as f32),
                 };
                 mgr.push(InputEvent::Wheel { delta_x: dx, delta_y: dy, time: t });
-            },
+            }
             WindowEvent::Touch(touch) => {
                 if matches!(touch.phase, TouchPhase::Ended) {
                     mgr.push(InputEvent::TouchTap {
@@ -780,8 +780,8 @@ pub mod native {
                         time: t,
                     });
                 }
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 
@@ -819,10 +819,10 @@ pub mod native {
                             name,
                             time: t,
                         });
-                    },
+                    }
                     EventType::Disconnected => {
                         out.push(InputEvent::GamepadDisconnected { id: ev.id.0 as u32, time: t });
-                    },
+                    }
                     EventType::ButtonPressed(b, _) | EventType::ButtonChanged(b, 1.0, _) => {
                         out.push(InputEvent::GamepadButton {
                             id: ev.id.0 as u32,
@@ -831,7 +831,7 @@ pub mod native {
                             pressed: true,
                             time: t,
                         });
-                    },
+                    }
                     EventType::ButtonReleased(b, _) | EventType::ButtonChanged(b, 0.0, _) => {
                         out.push(InputEvent::GamepadButton {
                             id: ev.id.0 as u32,
@@ -840,7 +840,7 @@ pub mod native {
                             pressed: false,
                             time: t,
                         });
-                    },
+                    }
                     EventType::AxisChanged(a, v, _) => {
                         out.push(InputEvent::GamepadAxis {
                             id: ev.id.0 as u32,
@@ -848,8 +848,8 @@ pub mod native {
                             value: v as f32,
                             time: t,
                         });
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 }
             }
             Some(out)
@@ -907,9 +907,9 @@ pub mod native {
 #[cfg(feature = "web")]
 pub mod web {
     use super::*;
-    use wasm_bindgen::JsCast;
     use wasm_bindgen::prelude::*;
-    use web_sys::{KeyboardEvent, MouseEvent, WheelEvent, window};
+    use wasm_bindgen::JsCast;
+    use web_sys::{window, KeyboardEvent, MouseEvent, WheelEvent};
 
     thread_local! {
         static Q: std::cell::RefCell<Vec<InputEvent>> = const { std::cell::RefCell::new(Vec::new()) };
@@ -1133,10 +1133,7 @@ fn now_secs_std() -> TimeSec {
 #[inline]
 fn now_secs_js() -> TimeSec {
     // performance.now() en ms
-    web_sys::window()
-        .and_then(|w| w.performance())
-        .map(|p| p.now() as f64 / 1000.0)
-        .unwrap_or(0.0)
+    web_sys::window().and_then(|w| w.performance()).map(|p| p.now() as f64 / 1000.0).unwrap_or(0.0)
 }
 
 // -------------------- Tests --------------------

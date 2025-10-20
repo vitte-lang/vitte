@@ -111,10 +111,7 @@ pub mod dns {
     use super::*;
     use std::net::ToSocketAddrs;
     pub fn resolve(host: &str, port: u16) -> Result<Vec<std::net::SocketAddr>> {
-        Ok((host, port)
-            .to_socket_addrs()
-            .map_err(|e| NetError::Dns(e.to_string()))?
-            .collect())
+        Ok((host, port).to_socket_addrs().map_err(|e| NetError::Dns(e.to_string()))?.collect())
     }
 }
 

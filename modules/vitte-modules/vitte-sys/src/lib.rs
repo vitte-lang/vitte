@@ -381,9 +381,7 @@ pub struct DynLib(libloading::Library);
 #[cfg(all(feature = "std", feature = "dl"))]
 impl DynLib {
     pub unsafe fn open(path: &str) -> Result<Self> {
-        libloading::Library::new(path)
-            .map(DynLib)
-            .map_err(|e| SysError::Io(e.to_string()))
+        libloading::Library::new(path).map(DynLib).map_err(|e| SysError::Io(e.to_string()))
     }
     pub unsafe fn symbol<T>(&self, name: &[u8]) -> Result<libloading::Symbol<'_, T>> {
         self.0.get(name).map_err(|e| SysError::Io(e.to_string()))

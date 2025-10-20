@@ -10,11 +10,7 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(
-    clippy::module_name_repetitions,
-    clippy::doc_markdown,
-    clippy::too_many_lines
-)]
+#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
 
 pub mod benches {
     //! Individual benchmark modules.
@@ -33,15 +29,13 @@ pub mod benches {
 pub mod utils {
     //! Shared utilities used in benchmarks.
 
-    use rand::{Rng, SeedableRng, rngs::StdRng};
+    use rand::{rngs::StdRng, Rng, SeedableRng};
     use std::time::{Duration, Instant};
 
     /// Generate a random string of given length using alphanumeric chars.
     pub fn random_string(len: usize) -> String {
         let mut rng = StdRng::from_entropy();
-        (0..len)
-            .map(|_| rng.sample(rand::distributions::Alphanumeric) as char)
-            .collect()
+        (0..len).map(|_| rng.sample(rand::distributions::Alphanumeric) as char).collect()
     }
 
     /// Repeat a string `n` times to form a larger input.

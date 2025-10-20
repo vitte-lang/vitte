@@ -41,9 +41,8 @@ pub fn set_text_by_id(id: &str, text: &str) -> Result<(), JsValue> {
     {
         let window = web_sys::window().ok_or_else(|| js_sys::Error::new("no window"))?;
         let doc = window.document().ok_or_else(|| js_sys::Error::new("no document"))?;
-        let el = doc
-            .get_element_by_id(id)
-            .ok_or_else(|| js_sys::Error::new("element not found"))?;
+        let el =
+            doc.get_element_by_id(id).ok_or_else(|| js_sys::Error::new("element not found"))?;
         el.set_text_content(Some(text));
         Ok(())
     }

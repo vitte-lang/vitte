@@ -357,7 +357,7 @@ impl CodeBuf {
 
 /// Encodage x86_64 (subset).
 pub mod enc {
-    use super::{CC, CodeBuf, CodegenError, Op, Operand, R, Result, Width};
+    use super::{CodeBuf, CodegenError, Op, Operand, Result, Width, CC, R};
 
     /// Émet un préfixe REX si nécessaire.
     fn rex(buf: &mut CodeBuf, w: bool, r: u8, x: u8, b: u8) {
@@ -450,10 +450,10 @@ pub mod enc {
             rex(buf, true, 0, 0, base.unwrap().rex_bit());
             buf.put_u8(modrm(mod_bits, reg_field, rb));
             match mod_bits {
-                0b00 => {},
+                0b00 => {}
                 0b01 => buf.put_u8(disp as i8 as u8),
                 0b10 => buf.put_i32(disp),
-                _ => {},
+                _ => {}
             }
             return Ok((0, base.unwrap().rex_bit()));
         }
@@ -463,10 +463,10 @@ pub mod enc {
         buf.put_u8(modrm(mod_bits, reg_field, 0b100));
         buf.put_u8(sib(scale, xb, rb));
         match mod_bits {
-            0b00 => {},
+            0b00 => {}
             0b01 => buf.put_u8(disp as i8 as u8),
             0b10 => buf.put_i32(disp),
-            _ => {},
+            _ => {}
         }
         Ok((rex_x, base.unwrap().rex_bit()))
     }
@@ -485,7 +485,7 @@ pub mod enc {
     fn prefix_width(buf: &mut CodeBuf, w: Width) {
         match w {
             Width::B16 => buf.put_u8(0x66),
-            _ => {},
+            _ => {}
         }
     }
 
@@ -503,26 +503,26 @@ pub mod enc {
         match op {
             Op::Ret => {
                 buf.put_u8(0xC3);
-            },
+            }
 
             Op::Push { src } => {
                 let r = *src;
                 rex(buf, false, 0, 0, r.rex_bit());
                 buf.put_u8(0x50 + r.low3());
-            },
+            }
 
             Op::Pop { dst } => {
                 let r = *dst;
                 rex(buf, false, 0, 0, r.rex_bit());
                 buf.put_u8(0x58 + r.low3());
-            },
+            }
 
             Op::MovImm64 { dst, imm } => {
                 let r = *dst;
                 rex(buf, true, 0, 0, r.rex_bit());
                 buf.put_u8(0xB8 + r.low3());
                 buf.put_all(&imm.to_le_bytes());
-            },
+            }
 
             Op::Lea { dst, mem } => {
                 let r = *dst;
@@ -530,7 +530,7 @@ pub mod enc {
                 rex(buf, true, r.rex_bit(), 0, 0);
                 buf.put_u8(0x8D);
                 encode_ea(buf, mem, r.low3())?;
-            },
+            }
 
             Op::Mov { dst, src } => {
                 // Cas registres
@@ -540,34 +540,34 @@ pub mod enc {
                         rex(buf, true, rs.rex_bit(), 0, rd.rex_bit());
                         buf.put_u8(0x89);
                         buf.put_u8(modrm(0b11, rs.low3(), rd.low3()));
-                    },
+                    }
                     (Operand::Reg(rd), Operand::Imm32(imm)) => {
                         // mov r64, imm32 sign-extend: 0xC7 /0 imm32 ou 0xB8+rd imm32 (sign-extend en mode 64 pour MOV r64, imm32? Non, MOV r64, imm32 zero-extend.
                         rex(buf, true, 0, 0, rd.rex_bit());
                         buf.put_u8(0xC7);
                         buf.put_u8(modrm(0b11, 0, rd.low3()));
                         buf.put_i32(*imm);
-                    },
+                    }
                     (Operand::Reg(rd), Operand::Imm8(imm)) => {
                         rex(buf, true, 0, 0, rd.rex_bit());
                         buf.put_u8(0xC6);
                         buf.put_u8(modrm(0b11, 0, rd.low3()));
                         buf.put_u8(*imm as u8);
-                    },
+                    }
                     (Operand::Reg(rd), Operand::Mem { .. }) => {
                         // mov r64, r/m64 : 0x8B
                         let r = *rd;
                         rex(buf, true, r.rex_bit(), 0, 0);
                         buf.put_u8(0x8B);
                         encode_ea(buf, src, r.low3())?;
-                    },
+                    }
                     (Operand::Mem { .. }, Operand::Reg(rs)) => {
                         // mov r/m64, r64 : 0x89
                         let r = *rs;
                         rex(buf, true, r.rex_bit(), 0, 0);
                         buf.put_u8(0x89);
                         encode_ea(buf, dst, r.low3())?;
-                    },
+                    }
                     (Operand::Mem { .. }, Operand::Imm32(imm)) => {
                         // mov r/m32, imm32 : 0xC7 /0 ; pour 64 on reste 32 et zero-extend via store 32? Non. En 64-bit, C7 écrit 32/64 selon modrm type; pour r/m64 il faut REX.W
                         prefix_width(buf, Width::B64);
@@ -575,10 +575,10 @@ pub mod enc {
                         buf.put_u8(0xC7);
                         encode_ea(buf, dst, 0)?;
                         buf.put_i32(*imm);
-                    },
+                    }
                     _ => return Err(CodegenError::Unsupported("mov forme non gérée".into())),
                 }
-            },
+            }
 
             Op::Add { dst, src } => group1_arith(buf, 0, dst, src)?,
             Op::Sub { dst, src } => group1_arith(buf, 5, dst, src)?,
@@ -589,15 +589,15 @@ pub mod enc {
                         rex(buf, true, rd.rex_bit(), 0, rs.rex_bit());
                         buf.put_all(&[0x0F, 0xAF]);
                         buf.put_u8(modrm(0b11, rd.low3(), rs.low3()));
-                    },
+                    }
                     (Operand::Reg(rd), Operand::Mem { .. }) => {
                         rex(buf, true, rd.rex_bit(), 0, 0);
                         buf.put_all(&[0x0F, 0xAF]);
                         encode_ea(buf, src, rd.low3())?;
-                    },
+                    }
                     _ => return Err(CodegenError::Invalid("imul forme".into())),
                 }
-            },
+            }
 
             Op::Cmp { a, b } => group1_arith(buf, 7, a, b)?,
             Op::Test { a, b } => {
@@ -607,32 +607,32 @@ pub mod enc {
                         rex(buf, true, rb.rex_bit(), 0, ra.rex_bit());
                         buf.put_u8(0x85);
                         buf.put_u8(modrm(0b11, rb.low3(), ra.low3()));
-                    },
+                    }
                     (Operand::Mem { .. }, Operand::Reg(rb)) => {
                         rex(buf, true, rb.rex_bit(), 0, 0);
                         buf.put_u8(0x85);
                         encode_ea(buf, a, rb.low3())?;
-                    },
+                    }
                     (Operand::Reg(ra), Operand::Imm32(imm)) => {
                         // test r/m64, imm32 : F7 /0
                         rex(buf, true, 0, 0, ra.rex_bit());
                         buf.put_u8(0xF7);
                         buf.put_u8(modrm(0b11, 0, ra.low3()));
                         buf.put_i32(*imm);
-                    },
+                    }
                     _ => return Err(CodegenError::Invalid("test forme".into())),
                 }
-            },
+            }
 
             Op::CallRel { rel32 } => {
                 buf.put_u8(0xE8);
                 buf.put_i32(*rel32);
-            },
+            }
 
             Op::JmpRel { rel32 } => {
                 buf.put_u8(0xE9);
                 buf.put_i32(*rel32);
-            },
+            }
 
             Op::JccRel { cc, rel32 } => {
                 let cc8 = match cc {
@@ -655,7 +655,7 @@ pub mod enc {
                 };
                 buf.put_all(&[0x0F, 0x80 | cc8]);
                 buf.put_i32(*rel32);
-            },
+            }
         }
 
         // Correction des rel32 avec cible fournie
@@ -669,8 +669,8 @@ pub mod enc {
                     let next = buf.off();
                     let rel = (t as isize - next as isize) as i32;
                     buf.patch_i32_at(at, rel)?;
-                },
-                _ => {},
+                }
+                _ => {}
             }
         }
 
@@ -691,7 +691,7 @@ pub mod enc {
                 super::enc::rex(buf, true, rs.rex_bit(), 0, rd.rex_bit());
                 buf.put_u8(opcode);
                 buf.put_u8(modrm(0b11, rs.low3(), rd.low3()));
-            },
+            }
             (Operand::Mem { .. }, Operand::Reg(rs)) => {
                 let opcode = match subop {
                     0 => 0x01,
@@ -702,33 +702,33 @@ pub mod enc {
                 super::enc::rex(buf, true, rs.rex_bit(), 0, 0);
                 buf.put_u8(opcode);
                 encode_ea(buf, dst, rs.low3())?;
-            },
+            }
             (Operand::Reg(rd), Operand::Imm32(imm)) => {
                 // group1: 0x81 /subop imm32
                 super::enc::rex(buf, true, 0, 0, rd.rex_bit());
                 buf.put_u8(0x81);
                 buf.put_u8(modrm(0b11, subop & 7, rd.low3()));
                 buf.put_i32(*imm);
-            },
+            }
             (Operand::Reg(rd), Operand::Imm8(imm)) => {
                 // 0x83 /subop imm8
                 super::enc::rex(buf, true, 0, 0, rd.rex_bit());
                 buf.put_u8(0x83);
                 buf.put_u8(modrm(0b11, subop & 7, rd.low3()));
                 buf.put_u8(*imm as u8);
-            },
+            }
             (Operand::Mem { .. }, Operand::Imm32(imm)) => {
                 super::enc::rex(buf, true, 0, 0, 0);
                 buf.put_u8(0x81);
                 encode_ea(buf, dst, subop & 7)?;
                 buf.put_i32(*imm);
-            },
+            }
             (Operand::Mem { .. }, Operand::Imm8(imm)) => {
                 super::enc::rex(buf, true, 0, 0, 0);
                 buf.put_u8(0x83);
                 encode_ea(buf, dst, subop & 7)?;
                 buf.put_u8(*imm as u8);
-            },
+            }
             _ => return Err(CodegenError::Invalid("arith forme".into())),
         }
         Ok(())
@@ -750,8 +750,8 @@ pub mod peephole {
                     out.pop();
                     i += 1;
                     continue;
-                },
-                _ => {},
+                }
+                _ => {}
             }
             out.push(seq[i].clone());
             i += 1;
@@ -762,7 +762,7 @@ pub mod peephole {
 
 /// IR démo.
 pub mod lower {
-    use super::{Op, Operand, R, Width};
+    use super::{Op, Operand, Width, R};
 
     /// IR minimal.
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -811,7 +811,7 @@ pub mod lower {
                 Ir::Const64 { rd, imm } => out.push(Op::MovImm64 { dst: rd, imm }),
                 Ir::Add { rd, rs } => {
                     out.push(Op::Add { dst: Operand::Reg(rd), src: Operand::Reg(rs) })
-                },
+                }
                 Ir::Store64 { base, off, rs } => out.push(Op::Mov {
                     dst: Operand::mem(base, off, Width::B64),
                     src: Operand::Reg(rs),

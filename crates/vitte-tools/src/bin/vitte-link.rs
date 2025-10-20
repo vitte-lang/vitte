@@ -22,25 +22,21 @@ use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::time::Instant;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::{ArgAction, Parser};
 use serde::Serialize;
 use yansi::{Color, Paint};
 
 use vitte_core::bytecode::{
-    ConstValue, Op,
     chunk::{Chunk as VChunk, ChunkFlags},
+    ConstValue, Op,
 };
 use vitte_core::disasm::disassemble_full;
 use vitte_core::helpers;
 
 #[derive(Parser, Debug)]
-#[command(
-    name = "vitte-link",
-    version,
-    about = "Linker Vitte (fusion de .vitbc)"
-)]
+#[command(name = "vitte-link", version, about = "Linker Vitte (fusion de .vitbc)")]
 struct Cli {
     /// Fichier(s) .vitbc à linker (ou '-' pour stdin, unique)
     inputs: Vec<String>,
@@ -294,7 +290,7 @@ fn link_chunks(
                         anyhow!("Const index {ix} introuvable lors du lien ({name})")
                     })?;
                     Op::LoadConst(new_ix)
-                },
+                }
                 // Pour tout le reste : copie inchangée (offsets relatifs restent valides)
                 other => other,
             };

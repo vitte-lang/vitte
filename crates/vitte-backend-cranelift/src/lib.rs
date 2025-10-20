@@ -29,7 +29,7 @@ use alloc::string::String;
 
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{Linkage, Module, default_libcall_names};
+use cranelift_module::{default_libcall_names, Linkage, Module};
 
 /// Erreurs du JIT Cranelift minimal.
 #[derive(Debug)]
@@ -98,9 +98,7 @@ impl Jit {
             .module
             .declare_function(&name, Linkage::Export, &ctx.func.signature)
             .map_err(|e| JitError::Parse(e.to_string()))?;
-        self.module
-            .define_function(id, &mut ctx)
-            .map_err(|e| JitError::Parse(e.to_string()))?;
+        self.module.define_function(id, &mut ctx).map_err(|e| JitError::Parse(e.to_string()))?;
 
         self.module.clear_context(&mut ctx);
         self.module.finalize_definitions().map_err(map_mod_err)?;
@@ -134,9 +132,7 @@ impl Jit {
             .module
             .declare_function(&name, Linkage::Export, &ctx.func.signature)
             .map_err(|e| JitError::Parse(e.to_string()))?;
-        self.module
-            .define_function(id, &mut ctx)
-            .map_err(|e| JitError::Parse(e.to_string()))?;
+        self.module.define_function(id, &mut ctx).map_err(|e| JitError::Parse(e.to_string()))?;
 
         self.module.clear_context(&mut ctx);
         self.module.finalize_definitions().map_err(map_mod_err)?;

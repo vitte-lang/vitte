@@ -17,11 +17,7 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(
-    clippy::module_name_repetitions,
-    clippy::doc_markdown,
-    clippy::too_many_lines
-)]
+#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
 
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc, time::Instant};
@@ -100,25 +96,19 @@ impl MetricsRegistry {
     pub fn counter(name: &str) -> Arc<Counter> {
         let reg = Self::global();
         let mut map = reg.counters.write();
-        map.entry(name.to_string())
-            .or_insert_with(|| Arc::new(Counter::default()))
-            .clone()
+        map.entry(name.to_string()).or_insert_with(|| Arc::new(Counter::default())).clone()
     }
 
     pub fn gauge(name: &str) -> Arc<Gauge> {
         let reg = Self::global();
         let mut map = reg.gauges.write();
-        map.entry(name.to_string())
-            .or_insert_with(|| Arc::new(Gauge::default()))
-            .clone()
+        map.entry(name.to_string()).or_insert_with(|| Arc::new(Gauge::default())).clone()
     }
 
     pub fn histogram(name: &str) -> Arc<Histogram> {
         let reg = Self::global();
         let mut map = reg.histograms.write();
-        map.entry(name.to_string())
-            .or_insert_with(|| Arc::new(Histogram::default()))
-            .clone()
+        map.entry(name.to_string()).or_insert_with(|| Arc::new(Histogram::default())).clone()
     }
 
     #[cfg(feature = "json")]

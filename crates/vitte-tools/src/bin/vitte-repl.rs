@@ -28,7 +28,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::time::Instant;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use camino::Utf8PathBuf;
 use clap::{Parser, ValueEnum};
 use yansi::{Color, Paint};
@@ -41,12 +41,12 @@ use vitte_core::{
     disasm::{disassemble_compact, disassemble_full},
 };
 use vitte_tools::{
-    ColorMode as ToolsColorMode, history_path as tools_history_path,
-    setup_colors as tools_setup_colors,
+    history_path as tools_history_path, setup_colors as tools_setup_colors,
+    ColorMode as ToolsColorMode,
 };
 
 #[cfg(feature = "eval")]
-use vitte_core::runtime::eval::{EvalOptions, eval_chunk};
+use vitte_core::runtime::eval::{eval_chunk, EvalOptions};
 
 #[cfg(feature = "vm")]
 use vitte_vm::Vm;
@@ -139,11 +139,11 @@ fn real_main() -> Result<()> {
             Err(rustyline::error::ReadlineError::Interrupted) => {
                 eprintln!("{}", "(^C)".paint(Color::Yellow));
                 continue;
-            },
+            }
             Err(rustyline::error::ReadlineError::Eof) => {
                 eprintln!("{}", "(^D) bye".paint(Color::Cyan));
                 break;
-            },
+            }
             Err(e) => return Err(anyhow!("readline: {e}")),
         };
 
@@ -257,13 +257,13 @@ impl Session {
                     io::stdout().flush().ok();
                 }
                 Ok(())
-            },
+            }
             #[cfg(feature = "vm")]
             Engine::Vm => {
                 let mut vm = Vm::new();
                 vm.run(chunk).context("exécution VM")?;
                 Ok(())
-            },
+            }
         }
     }
 }
@@ -288,18 +288,18 @@ fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
 
         ":help" => {
             println!("{}", HELP_TEXT);
-        },
+        }
 
         ":clear" => {
             String::clear(&mut sess.buffer);
             println!("(buffer vidé)");
-        },
+        }
 
         ":reset" => {
             String::clear(&mut sess.buffer);
             sess.last_chunk = None;
             println!("(session réinitialisée)");
-        },
+        }
 
         ":load" => {
             if parts.len() < 2 {
@@ -307,7 +307,7 @@ fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
             }
             let path = PathBuf::from(parts[1]);
             sess.exec_file(&path)?;
-        },
+        }
 
         ":save" => {
             if parts.len() < 2 {
@@ -322,7 +322,7 @@ fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
                 )
             })?;
             println!("(buffer sauvegardé)");
-        },
+        }
 
         ":disasm" => {
             let compact = parts.get(1).map(|s| *s == "compact").unwrap_or(false);
@@ -333,7 +333,7 @@ fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
             } else {
                 println!("(pas de chunk encore – exécutez un snippet)");
             }
-        },
+        }
 
         ":bytes" => {
             if let Some(mut ch) = sess.last_chunk.clone() {
@@ -342,7 +342,7 @@ fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
             } else {
                 println!("(pas de chunk)");
             }
-        },
+        }
 
         ":engine" => {
             if parts.len() == 1 {
@@ -363,7 +363,7 @@ fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
                     println!("engine inconnu ou indisponible : {val}");
                 }
             }
-        },
+        }
 
         ":time" => {
             if parts.len() == 1 {
@@ -373,20 +373,20 @@ fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
                     "on" => {
                         sess.timing = true;
                         println!("time -> on");
-                    },
+                    }
                     "off" => {
                         sess.timing = false;
                         println!("time -> off");
-                    },
+                    }
                     _ => println!("usage: :time [on|off]"),
                 }
             }
-        },
+        }
 
         ":history" => {
             let p = tools_history_path()?;
             println!("history: {}", p.display());
-        },
+        }
 
         ":set" => {
             if parts.get(1) == Some(&"prompt") {
@@ -400,11 +400,11 @@ fn handle_meta(sess: &mut Session, cmd: &str) -> Result<Option<MetaResult>> {
             } else {
                 println!("usage: :set prompt <texte>");
             }
-        },
+        }
 
         _ => {
             println!("commande inconnue : {head}. Tapez :help");
-        },
+        }
     }
 
     Ok(Some(MetaResult::Continue))
@@ -495,7 +495,7 @@ fn looks_complete(s: &str) -> bool {
             match ch {
                 '\\' => esc = true,
                 '"' => in_str = false,
-                _ => {},
+                _ => {}
             }
             continue;
         }
@@ -503,7 +503,7 @@ fn looks_complete(s: &str) -> bool {
             '"' => in_str = true,
             '(' => depth += 1,
             ')' => depth -= 1,
-            _ => {},
+            _ => {}
         }
     }
     if in_str || depth != 0 {

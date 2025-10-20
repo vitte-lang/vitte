@@ -279,10 +279,8 @@ impl HelpSpec {
         if !opts_vis.is_empty() {
             section_title(&mut out, self.lang, "OPTIONS", "Options", colorize);
             // Prépare la forme jointe type "-v, --verbose"
-            let rows = opts_vis
-                .iter()
-                .map(|o| (o.forms.join(", "), o.help.clone()))
-                .collect::<Vec<_>>();
+            let rows =
+                opts_vis.iter().map(|o| (o.forms.join(", "), o.help.clone())).collect::<Vec<_>>();
             render_table_owned(&mut out, rows, width, self.gutter, colorize);
             out.push('\n');
         }
@@ -349,7 +347,7 @@ impl HelpSpec {
                         help: a.help.clone().unwrap_or_default(),
                         hidden: false,
                     });
-                },
+                }
                 ArgKindArgs::Opt => {
                     let mut forms = Vec::new();
                     if let Some(c) = a.short {
@@ -385,19 +383,18 @@ impl HelpSpec {
                         help.push_str(&format!("[default: {}]", def));
                     }
                     h.options.push(OptLine { forms, help, hidden: false });
-                },
+                }
                 ArgKindArgs::Pos => {
                     h.positionals.push(PosLine {
                         name: a.value_name.clone().unwrap_or_else(|| a.name.clone()),
                         help: a.help.clone().unwrap_or_default(),
                     });
-                },
+                }
             }
         }
         // Subcommands
         for sc in &spec.subcommands {
-            h.subs
-                .push(SubLine::new(&sc.bin, sc.about.clone().unwrap_or_default().as_str()));
+            h.subs.push(SubLine::new(&sc.bin, sc.about.clone().unwrap_or_default().as_str()));
         }
         h
     }

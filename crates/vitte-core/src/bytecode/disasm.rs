@@ -50,10 +50,10 @@ pub fn disassemble_full(chunk: &Chunk, title: &str) -> String {
         match preview {
             Some(p) => {
                 let _ = writeln!(out, "{:04} | {:4} | {:?} ;; {p}", pc, line, op);
-            },
+            }
             None => {
                 let _ = writeln!(out, "{:04} | {:4} | {:?}", pc, line, op);
-            },
+            }
         }
     }
 
@@ -71,10 +71,10 @@ pub fn disassemble_compact(chunk: &Chunk) -> String {
         match preview {
             Some(p) => {
                 let _ = writeln!(out, "{:04}: {:?} ;; {p}", pc, op);
-            },
+            }
             None => {
                 let _ = writeln!(out, "{:04}: {:?}", pc, op);
-            },
+            }
         }
     }
     out
@@ -92,7 +92,7 @@ fn show_const(value: &ConstValue) -> String {
             } else {
                 format!("\"{}…\"", &s[..64])
             }
-        },
+        }
         ConstValue::Bytes(bytes) => format!("bytes[{}]", bytes.len()),
     }
 }

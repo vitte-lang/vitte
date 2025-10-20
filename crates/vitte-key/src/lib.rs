@@ -39,10 +39,7 @@ pub enum KeyError {
     #[cfg_attr(feature = "errors", error("hashing error"))]
     Hash,
     /// Taille incorrecte.
-    #[cfg_attr(
-        feature = "errors",
-        error("invalid length: expected {expected}, got {got}")
-    )]
+    #[cfg_attr(feature = "errors", error("invalid length: expected {expected}, got {got}"))]
     InvalidLength {
         /// Taille attendue en octets.
         expected: usize,
@@ -142,13 +139,13 @@ pub fn fingerprint(data: &[u8], algo: Fingerprint) -> Vec<u8> {
             let mut h = Sha256::new();
             h.update(data);
             h.finalize().to_vec()
-        },
+        }
         Fingerprint::Sha3_256 => {
             use sha3::{Digest, Sha3_256};
             let mut h = Sha3_256::new();
             h.update(data);
             h.finalize().to_vec()
-        },
+        }
     }
 }
 
@@ -193,13 +190,13 @@ pub fn decode(s: &str, enc: Encoding) -> Result<Vec<u8>> {
             {
                 hex_decode_nostd(s)
             }
-        },
+        }
         #[cfg(feature = "base64")]
         Encoding::Base64 => base64::decode(s).map_err(|e| KeyError::InvalidEncoding(e.to_string())),
         #[cfg(feature = "base58")]
         Encoding::Base58 => {
             bs58::decode(s).into_vec().map_err(|e| KeyError::InvalidEncoding(e.to_string()))
-        },
+        }
         #[allow(unreachable_patterns)]
         _ => Err(KeyError::UnsupportedFormat(enc.to_string())),
     }

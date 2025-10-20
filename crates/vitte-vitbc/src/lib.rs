@@ -41,7 +41,7 @@ use std::{string::String, vec::Vec};
 #[cfg(not(feature = "std"))]
 use alloc::{string::String, vec::Vec};
 
-use vitte_core::{ByteReader, ByteWriter, CoreError, CoreResult, SectionTag, crc32_ieee};
+use vitte_core::{crc32_ieee, ByteReader, ByteWriter, CoreError, CoreResult, SectionTag};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -196,13 +196,13 @@ impl Module {
                     while rr.remaining() > 0 {
                         m.ints.push(rr.read_i64_le()?);
                     }
-                },
+                }
                 SectionTag::FLTS => {
                     let mut rr = ByteReader::new(payload);
                     while rr.remaining() > 0 {
                         m.floats.push(rr.read_f64_le()?);
                     }
-                },
+                }
                 SectionTag::STRS => {
                     let mut rr = ByteReader::new(payload);
                     while rr.remaining() > 0 {
@@ -214,7 +214,7 @@ impl Module {
                                 .to_string(),
                         );
                     }
-                },
+                }
                 SectionTag::DATA => m.data.extend_from_slice(payload),
                 SectionTag::CODE => {
                     #[cfg(feature = "zstd")]
@@ -229,7 +229,7 @@ impl Module {
                     {
                         m.code = payload.to_vec();
                     }
-                },
+                }
                 SectionTag::NAME => {
                     let mut rr = ByteReader::new(payload);
                     while rr.remaining() > 0 {
@@ -241,10 +241,10 @@ impl Module {
                                 .to_string(),
                         );
                     }
-                },
+                }
                 _ => {
                     // ignore inconnu
-                },
+                }
             }
         }
 

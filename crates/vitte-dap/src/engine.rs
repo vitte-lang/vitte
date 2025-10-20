@@ -79,20 +79,20 @@ impl DebuggerEngine {
                 DebugEvent::Initialized => EngineEvent::Initialized,
                 DebugEvent::Continued { thread_id } => {
                     EngineEvent::Continued { thread_id: thread_id.map(|t| t as i64) }
-                },
+                }
                 DebugEvent::StoppedBreakpoint { thread_id, source_path, line } => {
                     EngineEvent::StoppedBreakpoint {
                         thread_id: thread_id as i64,
                         source_path,
                         line,
                     }
-                },
+                }
                 DebugEvent::StoppedStep { thread_id } => {
                     EngineEvent::StoppedStep { thread_id: thread_id as i64 }
-                },
+                }
                 DebugEvent::Exception { message, source_path, line } => {
                     EngineEvent::Exception { message, source_path, line }
-                },
+                }
                 DebugEvent::Terminated { exit_code } => EngineEvent::Terminated { exit_code },
                 DebugEvent::Output { category, text } => EngineEvent::Output { category, text },
             })
@@ -185,7 +185,11 @@ impl ScriptState {
     }
 
     fn current_line(&self) -> u32 {
-        if self.lines.is_empty() { 0 } else { (self.pc.min(self.lines.len() - 1) + 1) as u32 }
+        if self.lines.is_empty() {
+            0
+        } else {
+            (self.pc.min(self.lines.len() - 1) + 1) as u32
+        }
     }
 
     fn program_path(&self) -> String {
@@ -193,10 +197,7 @@ impl ScriptState {
     }
 
     fn current_source_line(&self) -> String {
-        self.lines
-            .get(self.pc)
-            .cloned()
-            .unwrap_or_else(|| String::from("// <end of script>"))
+        self.lines.get(self.pc).cloned().unwrap_or_else(|| String::from("// <end of script>"))
     }
 }
 
@@ -234,10 +235,7 @@ impl VitteVm for ScriptVm {
         state.program = Some(path.to_string_lossy().to_string());
 
         let content = fs::read_to_string(path).unwrap_or_else(|_| {
-            (1..=12)
-                .map(|i| format!("print(\"demo line {i}\")"))
-                .collect::<Vec<_>>()
-                .join("\n")
+            (1..=12).map(|i| format!("print(\"demo line {i}\")")).collect::<Vec<_>>().join("\n")
         });
         state.lines = content.lines().map(|l| l.to_string()).collect();
         if state.lines.is_empty() {
@@ -413,11 +411,9 @@ mod tests {
         engine.r#continue()?;
         events = engine.drain_events()?;
         assert!(events.iter().any(|ev| matches!(ev, EngineEvent::Continued { .. })));
-        assert!(
-            events
-                .iter()
-                .any(|ev| matches!(ev, EngineEvent::StoppedBreakpoint { line: 2, .. }))
-        );
+        assert!(events
+            .iter()
+            .any(|ev| matches!(ev, EngineEvent::StoppedBreakpoint { line: 2, .. })));
 
         engine.step_over()?;
         events = engine.drain_events()?;

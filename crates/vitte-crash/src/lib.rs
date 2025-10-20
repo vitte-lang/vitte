@@ -27,8 +27,8 @@
 compile_error!("vitte-crash requires std for meaningful crash handling");
 
 use std::panic;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 #[cfg(unix)]
 use signal_hook::{consts::signal::*, iterator::Signals};
@@ -69,11 +69,7 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Self {
-            dump_dir: std::env::temp_dir().join("vitte-dumps"),
-            backtrace: true,
-            sentry: false,
-        }
+        Self { dump_dir: std::env::temp_dir().join("vitte-dumps"), backtrace: true, sentry: false }
     }
 }
 

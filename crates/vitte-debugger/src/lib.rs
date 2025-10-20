@@ -25,7 +25,7 @@ pub use breakpoint::{
     BreakpointId, BreakpointKind, BreakpointManager, BreakpointRequest, BreakpointResolved,
     FileKey, FuncName, LineMapper, NoMapper,
 };
-pub use eval::{EvalEnv, Number, Value, format_log_message};
+pub use eval::{format_log_message, EvalEnv, Number, Value};
 pub use hook::{
     DefaultVmHook, EvalProvider, ExecContext, ExecutionDecider, HookRegistry, NoDecider, NoEval,
     NoObserver, NoPretty, NoSourceMapper, PrettyPrinter, RuntimeEvent, RuntimeObserver,
@@ -44,7 +44,7 @@ pub mod prelude {
         BreakpointId, BreakpointKind, BreakpointManager, BreakpointRequest, BreakpointResolved,
         FileKey, FuncName, LineMapper, NoMapper,
     };
-    pub use crate::eval::{EvalEnv, Number, Value, format_log_message};
+    pub use crate::eval::{format_log_message, EvalEnv, Number, Value};
     pub use crate::hook::{
         DefaultVmHook, EvalProvider, ExecContext, ExecutionDecider, HookRegistry, NoDecider,
         NoEval, NoObserver, NoPretty, NoSourceMapper, PrettyPrinter, RuntimeEvent, RuntimeObserver,

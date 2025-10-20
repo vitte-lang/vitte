@@ -2,7 +2,7 @@
 
 use clap::{Arg, ArgAction, Command};
 use env_logger::Env;
-use log::{LevelFilter, info};
+use log::{info, LevelFilter};
 
 fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();

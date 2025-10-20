@@ -158,7 +158,7 @@ fn log_emit(level: LogLevel, msg: &str) {
                 LogLevel::Trace => 4,
             };
             if let Ok(c) = CString::new(msg) {
-                cb(lv, c.as_ptr(), guard.1.0);
+                cb(lv, c.as_ptr(), guard.1 .0);
             }
         }
     }
@@ -166,9 +166,7 @@ fn log_emit(level: LogLevel, msg: &str) {
 
 #[inline]
 fn to_cstring(s: &str) -> Result<*mut c_char, HsError> {
-    CString::new(s)
-        .map(|c| c.into_raw())
-        .map_err(|_| HsError::InvalidArg("string contains NUL"))
+    CString::new(s).map(|c| c.into_raw()).map_err(|_| HsError::InvalidArg("string contains NUL"))
 }
 
 #[inline]
@@ -185,7 +183,7 @@ fn status_from<T>(r: Result<T, HsError>) -> VitteHsStatus {
         Err(e) => {
             set_last_error(e.to_string());
             VitteHsStatus::from_err(&e)
-        },
+        }
     }
 }
 
@@ -277,18 +275,18 @@ pub unsafe extern "C" fn vitte_hs_set_log_level(
         _ => {
             set_last_error("invalid level".into());
             return VitteHsStatus::InvalidArg;
-        },
+        }
     };
     let ctx = unsafe { &*ctx };
     match ctx.inner.lock() {
         Ok(mut st) => {
             st.log_level = lvl;
             VitteHsStatus::Ok
-        },
+        }
         Err(_) => {
             set_last_error("mutex poisoned".into());
             VitteHsStatus::Err
-        },
+        }
     }
 }
 
@@ -328,11 +326,11 @@ pub unsafe extern "C" fn vitte_hs_eval_expr(
             unsafe { *out_str = cptr };
             log_emit(LogLevel::Info, "eval_expr ok");
             VitteHsStatus::Ok
-        },
+        }
         Err(e) => {
             set_last_error(e.to_string());
             VitteHsStatus::from_err(&e)
-        },
+        }
     }
 }
 
@@ -366,11 +364,11 @@ pub unsafe extern "C" fn vitte_hs_compile_file(
             unsafe { *out_buf = buf };
             log_emit(LogLevel::Debug, "compile_file ok");
             VitteHsStatus::Ok
-        },
+        }
         Err(e) => {
             set_last_error(e.to_string());
             VitteHsStatus::from_err(&e)
-        },
+        }
     }
 }
 
@@ -395,11 +393,11 @@ pub unsafe extern "C" fn vitte_hs_read_text_file(
         Ok(c) => {
             unsafe { *out_str = c };
             VitteHsStatus::Ok
-        },
+        }
         Err(e) => {
             set_last_error(e.to_string());
             VitteHsStatus::from_err(&e)
-        },
+        }
     }
 }
 

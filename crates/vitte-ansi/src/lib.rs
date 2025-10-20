@@ -239,19 +239,19 @@ impl Style {
                         BrightWhite => 97,
                     };
                     params.push(code.to_string());
-                },
+                }
                 Color::Ansi256(n) => {
                     params.push("38".into());
                     params.push("5".into());
                     params.push(n.to_string());
-                },
+                }
                 Color::Rgb(r, g, b) => {
                     params.push("38".into());
                     params.push("2".into());
                     params.push(r.to_string());
                     params.push(g.to_string());
                     params.push(b.to_string());
-                },
+                }
             }
         }
 
@@ -277,19 +277,19 @@ impl Style {
                         BrightWhite => 107,
                     };
                     params.push(base.to_string());
-                },
+                }
                 Color::Ansi256(n) => {
                     params.push("48".into());
                     params.push("5".into());
                     params.push(n.to_string());
-                },
+                }
                 Color::Rgb(r, g, b) => {
                     params.push("48".into());
                     params.push("2".into());
                     params.push(r.to_string());
                     params.push(g.to_string());
                     params.push(b.to_string());
-                },
+                }
             }
         }
 
@@ -556,7 +556,7 @@ pub fn strip_ansi(input: &str) -> alloc::string::String {
                             break;
                         }
                     }
-                },
+                }
                 Some(']') => {
                     // OSC: ESC ] ... BEL ou ST
                     chars.next();
@@ -571,12 +571,12 @@ pub fn strip_ansi(input: &str) -> alloc::string::String {
                         } // ST
                         prev_esc = c == '\x1b';
                     }
-                },
+                }
                 Some(_) => {
                     // Autre séquence courte: ESC <char>, ESC 7/8, etc.
                     // On ignore le prochain char si présent.
                     let _ = chars.next();
-                },
+                }
                 None => break,
             }
         } else {

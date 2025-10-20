@@ -235,7 +235,7 @@ impl MiniEngine {
             match cur {
                 Value::Object(m) => {
                     cur = m.get(seg)?;
-                },
+                }
                 _ => return None,
             }
         }
@@ -314,7 +314,7 @@ impl MiniEngine {
                                     self.lookup_path(ctx, key)
                                 });
                                 out.push_str(&v.to_uppercase());
-                            },
+                            }
                             "lower" => {
                                 let key = parts
                                     .next()
@@ -325,7 +325,7 @@ impl MiniEngine {
                                     self.lookup_path(ctx, key)
                                 });
                                 out.push_str(&v.to_lowercase());
-                            },
+                            }
                             "len" => {
                                 let key = parts
                                     .next()
@@ -342,7 +342,7 @@ impl MiniEngine {
                                     None => 0,
                                 };
                                 out.push_str(&n.to_string());
-                            },
+                            }
                             "json" => {
                                 let key = parts
                                     .next()
@@ -365,7 +365,7 @@ impl MiniEngine {
                                     });
                                     out.push_str(&v);
                                 }
-                            },
+                            }
                             _ => {
                                 // variable simple
                                 let key = inside;
@@ -376,7 +376,7 @@ impl MiniEngine {
                                 } else {
                                     // inconnue → vide
                                 }
-                            },
+                            }
                         }
                     }
                 } else {
@@ -463,9 +463,7 @@ fn h_upper(
     _: &mut handlebars::RenderContext<'_, '_>,
     out: &mut dyn handlebars::Output,
 ) -> handlebars::HelperResult {
-    let p = h
-        .param(0)
-        .ok_or(handlebars::RenderErrorReason::ParamNotFoundForIndex("upper", 0))?;
+    let p = h.param(0).ok_or(handlebars::RenderErrorReason::ParamNotFoundForIndex("upper", 0))?;
     out.write(&p.value().as_str().unwrap_or("").to_uppercase())?;
     Ok(())
 }
@@ -478,9 +476,7 @@ fn h_lower(
     _: &mut handlebars::RenderContext<'_, '_>,
     out: &mut dyn handlebars::Output,
 ) -> handlebars::HelperResult {
-    let p = h
-        .param(0)
-        .ok_or(handlebars::RenderErrorReason::ParamNotFoundForIndex("lower", 0))?;
+    let p = h.param(0).ok_or(handlebars::RenderErrorReason::ParamNotFoundForIndex("lower", 0))?;
     out.write(&p.value().as_str().unwrap_or("").to_lowercase())?;
     Ok(())
 }
@@ -493,9 +489,7 @@ fn h_len(
     _: &mut handlebars::RenderContext<'_, '_>,
     out: &mut dyn handlebars::Output,
 ) -> handlebars::HelperResult {
-    let p = h
-        .param(0)
-        .ok_or(handlebars::RenderErrorReason::ParamNotFoundForIndex("len", 0))?;
+    let p = h.param(0).ok_or(handlebars::RenderErrorReason::ParamNotFoundForIndex("len", 0))?;
     let n = match p.value() {
         v if v.is_string() => v.as_str().unwrap_or("").chars().count(),
         v if v.is_array() => v.as_array().map(|a| a.len()).unwrap_or(0),
@@ -515,9 +509,7 @@ fn h_json(
     _: &mut handlebars::RenderContext<'_, '_>,
     out: &mut dyn handlebars::Output,
 ) -> handlebars::HelperResult {
-    let p = h
-        .param(0)
-        .ok_or(handlebars::RenderErrorReason::ParamNotFoundForIndex("json", 0))?;
+    let p = h.param(0).ok_or(handlebars::RenderErrorReason::ParamNotFoundForIndex("json", 0))?;
     out.write(&serde_json::to_string(p.value()).unwrap_or_else(|_| "null".into()))?;
     Ok(())
 }
@@ -592,7 +584,7 @@ fn val_to_string(v: Option<&Value>) -> String {
             } else {
                 n.to_string()
             }
-        },
+        }
         Some(Value::String(s)) => s.clone(),
         Some(Value::Array(_)) | Some(Value::Object(_)) => "[object]".into(),
     }
@@ -614,14 +606,14 @@ fn to_json_opt(v: Option<&Value>) -> serde_json::Value {
         Some(Value::String(s)) => serde_json::Value::String(s.clone()),
         Some(Value::Array(a)) => {
             serde_json::Value::Array(a.iter().map(|x| to_json_opt(Some(x))).collect())
-        },
+        }
         Some(Value::Object(m)) => {
             let mut map = serde_json::Map::new();
             for (k, v) in m {
                 map.insert(k.clone(), to_json_opt(Some(v)));
             }
             serde_json::Value::Object(map)
-        },
+        }
     }
 }
 

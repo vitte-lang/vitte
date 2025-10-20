@@ -50,13 +50,7 @@ pub fn parse_req(s: &str) -> Result<VersionReq> {
 
 /// Incrémente la version majeure.
 pub fn inc_major(v: &Version) -> Version {
-    Version {
-        major: v.major + 1,
-        minor: 0,
-        patch: 0,
-        pre: v.pre.clone(),
-        build: v.build.clone(),
-    }
+    Version { major: v.major + 1, minor: 0, patch: 0, pre: v.pre.clone(), build: v.build.clone() }
 }
 
 /// Incrémente la version mineure.

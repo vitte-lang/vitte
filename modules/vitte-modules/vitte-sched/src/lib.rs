@@ -264,7 +264,7 @@ impl Shed {
             match rx.recv() {
                 Ok(_) => {
                     let _ = self.run(target);
-                },
+                }
                 Err(e) => return Err(ShedError::Io(e.to_string())),
             }
         }
@@ -326,7 +326,11 @@ impl Shed {
             if let Some(d) = timeout {
                 let start = std::time::Instant::now();
                 let res = run.run(ctx);
-                if start.elapsed() > d { Err(ShedError::Action("timeout".into())) } else { res }
+                if start.elapsed() > d {
+                    Err(ShedError::Action("timeout".into()))
+                } else {
+                    res
+                }
             } else {
                 run.run(ctx)
             }
@@ -441,7 +445,11 @@ impl RingLog {
         } else {
             let i = (self.head + self.len) % self.cap;
             self.buf[i] = s;
-            if self.len < self.cap { self.len += 1 } else { self.head = (self.head + 1) % self.cap }
+            if self.len < self.cap {
+                self.len += 1
+            } else {
+                self.head = (self.head + 1) % self.cap
+            }
         }
     }
     fn snapshot(&self) -> Vec<String> {
@@ -588,21 +596,21 @@ fn glob_match(pat: &str, name: &str) -> bool {
                     j += 1;
                 }
                 false
-            },
+            }
             b'?' => {
                 if n.is_empty() {
                     false
                 } else {
                     m(&p[1..], &n[1..])
                 }
-            },
+            }
             c => {
                 if n.first().copied() == Some(c) {
                     m(&p[1..], &n[1..])
                 } else {
                     false
                 }
-            },
+            }
         }
     }
     m(pat.as_bytes(), name.as_bytes())

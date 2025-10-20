@@ -27,14 +27,14 @@ use thiserror::Error;
 use zeroize::Zeroize;
 
 #[cfg(feature = "serde")]
-use base64::{Engine as _, engine::general_purpose::STANDARD};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[cfg(feature = "aesgcm")]
 use aes_gcm::{
-    Aes256Gcm, Key, Nonce,
     aead::{Aead, KeyInit},
+    Aes256Gcm, Key, Nonce,
 };
 
 #[cfg(feature = "aesgcm")]

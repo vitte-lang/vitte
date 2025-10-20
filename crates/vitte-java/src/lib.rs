@@ -53,9 +53,9 @@ pub struct JvmInfo {
 #[cfg(feature = "jni")]
 pub mod api {
     use super::*;
+    use jni::objects::{JString, JValue};
     use jni::JNIEnv;
     use jni::JavaVM;
-    use jni::objects::{JString, JValue};
 
     /// Contexte principal d'interop.
     pub struct JavaCtx {

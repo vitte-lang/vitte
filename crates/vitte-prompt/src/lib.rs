@@ -39,13 +39,13 @@ use serde_json::{Map as JsonMap, Value as Json};
 type Json = ();
 
 #[cfg(feature = "jinja")]
-use minijinja::{Environment, value::Value as JinjaValue};
+use minijinja::{value::Value as JinjaValue, Environment};
 
 #[cfg(feature = "handlebars")]
 use handlebars::Handlebars;
 
 #[cfg(feature = "markdown")]
-use pulldown_cmark::{Options as MdOptions, Parser, html};
+use pulldown_cmark::{html, Options as MdOptions, Parser};
 
 #[cfg(feature = "regex")]
 use regex::Regex;
@@ -266,7 +266,7 @@ impl PromptEngine {
                 }
                 self.jinja = Some(env);
                 Ok(())
-            },
+            }
             #[cfg(feature = "handlebars")]
             Engine::Handlebars => {
                 let mut hb = Handlebars::new();
@@ -274,7 +274,7 @@ impl PromptEngine {
                 hb.register_escape_fn(handlebars::no_escape);
                 self.hbs = Some(hb);
                 Ok(())
-            },
+            }
             #[allow(unreachable_patterns)]
             _ => Err(PromptError::EngineMissing),
         }
@@ -367,7 +367,11 @@ impl PromptEngine {
         #[cfg(feature = "cache")]
         let cached = {
             // LRU contient juste le nom de template enregistré
-            if let Some(Compiled::Jinja(_)) = self.cache.get(&key) { true } else { false }
+            if let Some(Compiled::Jinja(_)) = self.cache.get(&key) {
+                true
+            } else {
+                false
+            }
         };
         #[cfg(not(feature = "cache"))]
         let cached = false;
@@ -503,10 +507,10 @@ fn merge_vars(list: &[&Json]) -> Json {
                             d.insert(kk.clone(), vv.clone());
                         }
                         dst.insert(k.clone(), Json::Object(d));
-                    },
+                    }
                     _ => {
                         dst.insert(k.clone(), v.clone());
-                    },
+                    }
                 }
             }
         }
@@ -538,7 +542,7 @@ fn toml_to_json(v: toml::Value) -> Json {
                 m.insert(k, toml_to_json(v));
             }
             Json::Object(m)
-        },
+        }
     }
 }
 
@@ -568,7 +572,7 @@ fn to_jinja(j: &Json) -> JinjaValue {
             } else {
                 JinjaValue::from(0)
             }
-        },
+        }
         Json::String(s) => JinjaValue::from(s.as_str()),
         Json::Array(a) => JinjaValue::from_iter(a.iter().map(to_jinja)),
         Json::Object(o) => {
@@ -577,7 +581,7 @@ fn to_jinja(j: &Json) -> JinjaValue {
                 m.insert(k.clone(), to_jinja(v));
             }
             minijinja::value::Value::from(m)
-        },
+        }
     }
 }
 

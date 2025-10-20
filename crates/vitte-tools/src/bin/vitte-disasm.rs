@@ -26,16 +26,16 @@ use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::time::Instant;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::{ArgGroup, Parser, ValueEnum};
 use serde::Serialize;
 use yansi::{Color, Paint};
 
-use vitte_core::bytecode::{ConstValue, Op, chunk::Chunk as VChunk};
+use vitte_core::bytecode::{chunk::Chunk as VChunk, ConstValue, Op};
 use vitte_core::disasm::{disassemble_compact, disassemble_full};
 use vitte_core::helpers;
-use vitte_tools::{ColorMode as GlobalColorMode, setup_colors as global_setup_colors};
+use vitte_tools::{setup_colors as global_setup_colors, ColorMode as GlobalColorMode};
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum ColorMode {
@@ -45,11 +45,7 @@ enum ColorMode {
 }
 
 #[derive(Parser, Debug)]
-#[command(
-    name = "vitte-disasm",
-    version,
-    about = "Désassembleur Vitte (.vitbc -> texte/JSON)"
-)]
+#[command(name = "vitte-disasm", version, about = "Désassembleur Vitte (.vitbc -> texte/JSON)")]
 #[command(group(
     ArgGroup::new("stdout_mode")
         .args(["disasm", "json", "summary"])
@@ -254,7 +250,11 @@ fn write_text(path: &Utf8Path, s: &str) -> Result<()> {
 
 fn default_disasm_filename(input: &Utf8Path, compact: bool) -> String {
     let stem = input.file_stem().unwrap_or("chunk");
-    if compact { format!("{stem}.compact.disasm.txt") } else { format!("{stem}.disasm.txt") }
+    if compact {
+        format!("{stem}.compact.disasm.txt")
+    } else {
+        format!("{stem}.disasm.txt")
+    }
 }
 
 fn default_json_filename(input: &Utf8Path) -> String {
@@ -322,7 +322,7 @@ fn show_const(v: &ConstValue) -> String {
             } else {
                 format!("\"{}…\"", &s[..64])
             }
-        },
+        }
         ConstValue::Bytes(b) => format!("bytes[{}]", b.len()),
     }
 }

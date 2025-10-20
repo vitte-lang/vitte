@@ -27,13 +27,9 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(
-    clippy::module_name_repetitions,
-    clippy::doc_markdown,
-    clippy::too_many_lines
-)]
+#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -48,10 +44,7 @@ pub const MANIFEST_JSON: &str = "vitte.json";
 /* ============================ Modèles =================================== */
 
 /// Section `[package]`.
-#[cfg_attr(
-    any(feature = "json", feature = "toml"),
-    derive(Serialize, Deserialize)
-)]
+#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Package {
     pub name: String,
@@ -59,10 +52,7 @@ pub struct Package {
 }
 
 /// Dépendance simple (nom -> req semver arbitraire).
-#[cfg_attr(
-    any(feature = "json", feature = "toml"),
-    derive(Serialize, Deserialize)
-)]
+#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dependency {
     pub name: String,
@@ -75,10 +65,7 @@ impl Dependency {
 }
 
 /// Section `[workspace]`.
-#[cfg_attr(
-    any(feature = "json", feature = "toml"),
-    derive(Serialize, Deserialize)
-)]
+#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Workspace {
     /// Chemins relatifs explicites vers les membres.
@@ -86,10 +73,7 @@ pub struct Workspace {
 }
 
 /// Manifeste complet.
-#[cfg_attr(
-    any(feature = "json", feature = "toml"),
-    derive(Serialize, Deserialize)
-)]
+#[cfg_attr(any(feature = "json", feature = "toml"), derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Manifest {
     pub package: Package,

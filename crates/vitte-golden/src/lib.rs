@@ -201,18 +201,14 @@ pub fn compare_bytes<P: AsRef<Path>>(golden_path: P, actual: impl AsRef<[u8]>) -
 
     // Produce a small preview diff in hex for first bytes
     let preview = hex_preview(&expected, &actual, 64);
-    Err(GoldenError::Mismatch(format!(
-        "binary mismatch: {}\n{}",
-        golden_path.display(),
-        preview
-    )))
+    Err(GoldenError::Mismatch(format!("binary mismatch: {}\n{}", golden_path.display(), preview)))
 }
 
 /// Compare JSON values using stable pretty formatting (feature `serde_json`).
 /// Normalizes both sides with sorted keys and pretty output to reduce noise.
 #[cfg(feature = "serde_json")]
 pub fn compare_json<P: AsRef<Path>, T: serde::Serialize>(golden_path: P, actual: &T) -> Result<()> {
-    use serde_json::{Value, to_value};
+    use serde_json::{to_value, Value};
 
     let golden_path = resolve_test_path(golden_path);
     let actual_val: Value = to_value(actual)?;
@@ -311,10 +307,8 @@ fn tmp_sibling(path: &Path) -> PathBuf {
     use std::time::{SystemTime, UNIX_EPOCH};
     let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let stem = path.file_name().unwrap_or_default().to_string_lossy();
-    let mut tmp = path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join(format!("{}.{}.tmp", stem, ts));
+    let mut tmp =
+        path.parent().unwrap_or_else(|| Path::new(".")).join(format!("{}.{}.tmp", stem, ts));
     // if collision, add random suffix
     if tmp.exists() {
         tmp = tmp.with_extension(format!("tmp.{}", ts ^ 0x9e3779b97f4a7c15));
@@ -444,7 +438,7 @@ fn normalize_json(v: &serde_json::Value) -> serde_json::Value {
                 nm.insert(k.clone(), normalize_json(&m[&k]));
             }
             Value::Object(nm)
-        },
+        }
         Value::Array(arr) => Value::Array(arr.iter().map(normalize_json).collect()),
         _ => v.clone(),
     }

@@ -97,10 +97,7 @@ pub fn bidi_levels(s: &str) -> Vec<usize> {
     info.paragraphs
         .iter()
         .flat_map(|p| {
-            info.levels[p.range.clone()]
-                .iter()
-                .map(|l| l.number() as usize)
-                .collect::<Vec<_>>()
+            info.levels[p.range.clone()].iter().map(|l| l.number() as usize).collect::<Vec<_>>()
         })
         .collect()
 }
@@ -139,8 +136,8 @@ pub fn char_categories(c: char) -> Vec<&'static str> {
 #[cfg(feature = "normalization")]
 /// Supprime les diacritiques (accents)
 pub fn strip_marks(s: &str) -> String {
-    use unicode_normalization::UnicodeNormalization;
     use unicode_normalization::char::is_combining_mark;
+    use unicode_normalization::UnicodeNormalization;
     s.nfd().filter(|c| !is_combining_mark(*c)).collect()
 }
 

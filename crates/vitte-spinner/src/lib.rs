@@ -27,8 +27,8 @@ use std::{
     io::{self, Write},
     string::String,
     sync::{
-        Arc,
         atomic::{AtomicBool, Ordering},
+        Arc,
     },
     thread,
     time::{Duration, Instant},
@@ -450,11 +450,11 @@ where
         Ok(v) => {
             h.succeed(on_ok);
             v
-        },
+        }
         Err(_) => {
             h.fail(on_err);
             std::panic::resume_unwind(Box::new("scope_spinner panic"));
-        },
+        }
     }
 }
 
@@ -516,30 +516,30 @@ fn painter(rx: xch::Receiver<Msg>) {
                 Msg::New(id, st, txt) => {
                     order.push(id.clone());
                     state.insert(id, (st, 0, txt));
-                },
+                }
                 Msg::Text(id, txt) => {
                     if let Some(s) = state.get_mut(&id) {
                         s.2 = txt;
                     }
-                },
-                Msg::Tick => {},
+                }
+                Msg::Tick => {}
                 Msg::Succeed(id, msg) => {
                     if let Some((st, _, _)) = state.remove(&id) {
                         println!("\r\x1B[2K{} {}", paint_ok(&st, &st.succeed_symbol), msg);
                         order.retain(|x| x != &id);
                     }
-                },
+                }
                 Msg::Fail(id, msg) => {
                     if let Some((st, _, _)) = state.remove(&id) {
                         println!("\r\x1B[2K{} {}", paint_err(&st, &st.fail_symbol), msg);
                         order.retain(|x| x != &id);
                     }
-                },
+                }
                 Msg::Quit => {
                     let _ = write!(io::stdout(), "\x1B[?25h");
                     let _ = io::stdout().flush();
                     return;
-                },
+                }
             }
         }
         if last.elapsed() >= Duration::from_millis(80) {
@@ -600,19 +600,13 @@ pub mod preset {
         vec!["|", "/", "-", "\\"].into_iter().map(str::to_string).collect()
     }
     pub fn arrow() -> Vec<String> {
-        vec!["→", "↘", "↓", "↙", "←", "↖", "↑", "↗"]
-            .into_iter()
-            .map(str::to_string)
-            .collect()
+        vec!["→", "↘", "↓", "↙", "←", "↖", "↑", "↗"].into_iter().map(str::to_string).collect()
     }
     pub fn bounce() -> Vec<String> {
         vec!["▖", "▘", "▝", "▗"].into_iter().map(str::to_string).collect()
     }
     pub fn dotline() -> Vec<String> {
-        vec![".  ", ".. ", "...", " ..", "  .", "   "]
-            .into_iter()
-            .map(str::to_string)
-            .collect()
+        vec![".  ", ".. ", "...", " ..", "  .", "   "].into_iter().map(str::to_string).collect()
     }
     pub fn triangle() -> Vec<String> {
         vec!["▲", "▶", "▼", "◀"].into_iter().map(str::to_string).collect()

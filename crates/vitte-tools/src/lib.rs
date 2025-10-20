@@ -22,19 +22,19 @@
 
 use std::fs;
 use std::io::{self, Read, Write};
-use std::path::PathBuf;
 #[cfg(feature = "fmt-config")]
 use std::path::Path;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 
 pub use vitte_core::helpers::validate_chunk;
 pub use vitte_core::{
     bytecode::{
-        ConstValue, Op,
         chunk::{Chunk as VChunk, ChunkFlags, DebugInfo},
+        ConstValue, Op,
     },
     disasm::{disassemble_compact as core_disasm_compact, disassemble_full as core_disasm_full},
 };
@@ -54,14 +54,14 @@ pub fn version_banner(tool: &str) -> String {
 /// Prelude pratique pour les bins: re-exports compacts.
 pub mod prelude {
     pub use crate::{
-        ColorMode, LinkManifest, LinkOptions, default_filename_with_ext, default_out_path,
-        disasm_compact, disasm_full, human_millis, link_chunks, read_bytes, read_stdin_to_bytes,
-        read_stdin_to_string, read_text, setup_colors, strip_chunk, to_utf8, validate_chunk,
-        version_banner, write_bytes, write_text,
+        default_filename_with_ext, default_out_path, disasm_compact, disasm_full, human_millis,
+        link_chunks, read_bytes, read_stdin_to_bytes, read_stdin_to_string, read_text,
+        setup_colors, strip_chunk, to_utf8, validate_chunk, version_banner, write_bytes,
+        write_text, ColorMode, LinkManifest, LinkOptions,
     };
     #[cfg(feature = "fmt-config")]
-    pub use crate::{FmtConfig, load_fmt_config};
-    pub use anyhow::{Context, Result, anyhow};
+    pub use crate::{load_fmt_config, FmtConfig};
+    pub use anyhow::{anyhow, Context, Result};
     pub use camino::{Utf8Path, Utf8PathBuf};
     pub use std::path::PathBuf;
 }
@@ -180,10 +180,10 @@ pub fn setup_colors(mode: ColorMode) {
         match mode {
             ColorMode::Auto => {
                 yansi::whenever(yansi::Condition::DEFAULT);
-            },
+            }
             ColorMode::Always => {
                 yansi::enable();
-            },
+            }
             ColorMode::Never => yansi::disable(),
         }
     }
@@ -355,7 +355,7 @@ pub fn link_chunks(
                         anyhow!("Const index {ix} introuvable lors du lien ({name})")
                     })?;
                     Op::LoadConst(new_ix)
-                },
+                }
                 other => other,
             };
             out.push_op(new_op, line);

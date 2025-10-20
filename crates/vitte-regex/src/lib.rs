@@ -37,14 +37,22 @@ pub fn compile(pattern: &str) -> Result<Regex> {
 /// Recherche une occurrence et renvoie le match complet.
 pub fn find(text: &str, pattern: &str) -> Result<String> {
     let re = compile(pattern)?;
-    if let Some(m) = re.find(text) { Ok(m.as_str().to_owned()) } else { Err(RegexError::NoMatch) }
+    if let Some(m) = re.find(text) {
+        Ok(m.as_str().to_owned())
+    } else {
+        Err(RegexError::NoMatch)
+    }
 }
 
 /// Trouve toutes les occurrences et renvoie sous forme de vecteur.
 pub fn find_all(text: &str, pattern: &str) -> Result<Vec<String>> {
     let re = compile(pattern)?;
     let out: Vec<String> = re.find_iter(text).map(|m| m.as_str().to_owned()).collect();
-    if out.is_empty() { Err(RegexError::NoMatch) } else { Ok(out) }
+    if out.is_empty() {
+        Err(RegexError::NoMatch)
+    } else {
+        Ok(out)
+    }
 }
 
 /// Remplace la première occurrence.

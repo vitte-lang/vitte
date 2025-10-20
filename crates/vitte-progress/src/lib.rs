@@ -421,10 +421,8 @@ impl ProgressBar {
         let width = self.effective_width();
         let bar = self.render_bar(width);
         let eta = st.eta.map(fmt_hms).map(|s| format!("ETA {}", s)).unwrap_or_default();
-        let rate = st
-            .rate
-            .map(|r| format!("{}/s", fmt_units(r, self.style.unit)))
-            .unwrap_or_default();
+        let rate =
+            st.rate.map(|r| format!("{}/s", fmt_units(r, self.style.unit))).unwrap_or_default();
         let mut s = self.style.template.clone();
         replace_all(&mut s, "{prefix}", &st.prefix);
         replace_all(&mut s, "{suffix}", &st.suffix);
@@ -617,23 +615,23 @@ fn painter(rx: xch::Receiver<Msg>) {
                     );
                     order.push(id);
                     let _ = ack.send(0);
-                },
+                }
                 Msg::Inc(id, d) => {
                     if let Some(s) = states.get_mut(&id) {
                         s.1 = s.1.saturating_add(d);
                     }
-                },
+                }
                 Msg::Pos(id, p) => {
                     if let Some(s) = states.get_mut(&id) {
                         s.1 = p;
                     }
-                },
+                }
                 Msg::Msgs(id, m, suf) => {
                     if let Some(st) = states.get_mut(&id) {
                         st.3 = m;
                         st.4 = suf;
                     }
-                },
+                }
                 Msg::Finish(id, msg) => {
                     if let Some(_) = states.remove(&id) {
                         if let Some(m) = msg {
@@ -641,11 +639,11 @@ fn painter(rx: xch::Receiver<Msg>) {
                         }
                         order.retain(|x| x != &id);
                     }
-                },
+                }
                 Msg::Quit => {
                     redraw_all(&states, &order);
                     return;
-                },
+                }
             }
         }
         if last.elapsed() >= Duration::from_millis(80) {
@@ -783,7 +781,11 @@ fn fmt_hms(d: Duration) -> String {
     let h = s / 3600;
     let m = (s % 3600) / 60;
     let s = s % 60;
-    if h > 0 { format!("{:02}:{:02}:{:02}", h, m, s) } else { format!("{:02}:{:02}", m, s) }
+    if h > 0 {
+        format!("{:02}:{:02}:{:02}", h, m, s)
+    } else {
+        format!("{:02}:{:02}", m, s)
+    }
 }
 
 #[cfg(feature = "std")]
@@ -798,7 +800,7 @@ fn fmt_units(v: f64, unit: UnitKind) -> String {
                 i += 1;
             }
             format!("{:.1}{}", x, u[i])
-        },
+        }
         UnitKind::BytesSI => {
             let u = ["B", "kB", "MB", "GB", "TB"];
             let mut x = v;
@@ -808,7 +810,7 @@ fn fmt_units(v: f64, unit: UnitKind) -> String {
                 i += 1;
             }
             format!("{:.1} {}", x, u[i])
-        },
+        }
         UnitKind::BytesBin => {
             let u = ["B", "KiB", "MiB", "GiB", "TiB"];
             let mut x = v;
@@ -818,7 +820,7 @@ fn fmt_units(v: f64, unit: UnitKind) -> String {
                 i += 1;
             }
             format!("{:.1} {}", x, u[i])
-        },
+        }
     }
 }
 

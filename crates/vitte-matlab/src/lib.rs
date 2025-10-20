@@ -182,7 +182,11 @@ pub mod convert {
 
     /// Encode un bool rust en entier Matlab (0/1).
     pub fn bool_to_mat(b: bool) -> i32 {
-        if b { 1 } else { 0 }
+        if b {
+            1
+        } else {
+            0
+        }
     }
 
     /// Conversion en chaîne C compatible API Matlab.

@@ -147,8 +147,8 @@ pub fn sniff_algo(data: &[u8]) -> Option<Algo> {
 
 #[cfg(feature = "deflate")]
 fn compress_deflate(input: &[u8], flavor: DeflateFlavor, opt: Options) -> Result<Vec<u8>> {
-    use flate2::Compression;
     use flate2::write::{DeflateEncoder, GzEncoder, ZlibEncoder};
+    use flate2::Compression;
     let lvl = Compression::new(opt.level.max(0) as u32);
     match flavor {
         DeflateFlavor::Raw => {
@@ -158,17 +158,17 @@ fn compress_deflate(input: &[u8], flavor: DeflateFlavor, opt: Options) -> Result
             // no_std friendly write_all
             w.write_all(input).map_err(|e| Error::Backend(e.to_string()))?;
             w.finish().map_err(|e| Error::Backend(e.to_string()))
-        },
+        }
         DeflateFlavor::Zlib => {
             let mut w = ZlibEncoder::new(Vec::new(), lvl);
             w.write_all(input).map_err(|e| Error::Backend(e.to_string()))?;
             w.finish().map_err(|e| Error::Backend(e.to_string()))
-        },
+        }
         DeflateFlavor::Gzip => {
             let mut w = GzEncoder::new(Vec::new(), lvl);
             w.write_all(input).map_err(|e| Error::Backend(e.to_string()))?;
             w.finish().map_err(|e| Error::Backend(e.to_string()))
-        },
+        }
     }
 }
 
@@ -187,19 +187,19 @@ fn decompress_deflate(input: &[u8], flavor: DeflateFlavor) -> Result<Vec<u8>> {
             let mut out = Vec::new();
             r.read_to_end(&mut out).map_err(|e| Error::InvalidData(e.to_string()))?;
             Ok(out)
-        },
+        }
         DeflateFlavor::Zlib => {
             let mut r = ZlibDecoder::new(input);
             let mut out = Vec::new();
             r.read_to_end(&mut out).map_err(|e| Error::InvalidData(e.to_string()))?;
             Ok(out)
-        },
+        }
         DeflateFlavor::Gzip => {
             let mut r = GzDecoder::new(input);
             let mut out = Vec::new();
             r.read_to_end(&mut out).map_err(|e| Error::InvalidData(e.to_string()))?;
             Ok(out)
-        },
+        }
     }
 }
 
@@ -329,13 +329,13 @@ fn compress_zopfli(input: &[u8], flavor: DeflateFlavor, _opt: Options) -> Result
             )
             .map_err(|e| Error::Backend(e.to_string()))?;
             Ok(out)
-        },
+        }
         DeflateFlavor::Gzip => {
             let mut out = Vec::new();
             zopfli::compress(&zopfli::Options::default(), &zopfli::Format::Gzip, input, &mut out)
                 .map_err(|e| Error::Backend(e.to_string()))?;
             Ok(out)
-        },
+        }
         DeflateFlavor::Zlib => {
             #[cfg(feature = "deflate")]
             {
@@ -346,7 +346,7 @@ fn compress_zopfli(input: &[u8], flavor: DeflateFlavor, _opt: Options) -> Result
             {
                 return Err(Error::Unsupported("zopfli zlib (fallback needs deflate)"));
             }
-        },
+        }
     }
 }
 #[cfg(not(feature = "zopfli"))]

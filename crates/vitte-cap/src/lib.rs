@@ -58,7 +58,7 @@ impl core::fmt::Display for CapError {
             CapError::Missing(c) => write!(f, "missing {:?}", c),
             CapError::Denied { cap, res, reason } => {
                 write!(f, "denied {:?} -> {:?}: {}", cap, res, reason)
-            },
+            }
             CapError::TokenExpired => write!(f, "token expired"),
             CapError::EmptyPolicy => write!(f, "empty policy"),
         }
@@ -206,17 +206,21 @@ impl ResourceSelector {
             (SelectorKind::NetHost, Resource::NetHost { host, port }) => {
                 let host_ok = pat_match(&self.pat, host);
                 let port_ok = if let Some(expect) = self.meta.get("port") {
-                    if let Ok(ep) = expect.parse::<u16>() { Some(ep) == *port } else { false }
+                    if let Ok(ep) = expect.parse::<u16>() {
+                        Some(ep) == *port
+                    } else {
+                        false
+                    }
                 } else {
                     true
                 };
                 host_ok && port_ok
-            },
+            }
             (SelectorKind::Custom, Resource::Custom { kind, id }) => {
                 let k_ok = self.meta.get("kind").map(|k| k == kind).unwrap_or(true);
                 let id_ok = pat_match(&self.pat, id);
                 k_ok && id_ok
-            },
+            }
             _ => false,
         }
     }
@@ -244,7 +248,7 @@ fn pat_match(p: &Pattern, s: &str) -> bool {
             } else {
                 s == t
             }
-        },
+        }
     }
 }
 
@@ -332,7 +336,7 @@ impl Policy {
             Effect::Allow => Decision::Allowed { matched: Some(top.clone()) },
             Effect::Deny => {
                 Decision::Denied { reason: top.note.clone(), matched: Some(top.clone()) }
-            },
+            }
         }
     }
 }
@@ -450,11 +454,11 @@ impl<A: AuditSink> Checker<A> {
             Decision::Allowed { matched } => {
                 self.audit.on_allow(cap, &res, matched.as_ref());
                 Ok(())
-            },
+            }
             Decision::Denied { reason, matched } => {
                 self.audit.on_deny(cap, &res, matched.as_ref(), &reason);
                 Err(CapError::Denied { cap, res, reason })
-            },
+            }
         }
     }
 }
@@ -547,8 +551,7 @@ mod tests {
     #[test]
     fn allow_read_in_prefix() {
         let chk = Checker { policy: policy_example(), token: None, audit: NoopAudit, now_epoch: 0 };
-        chk.require(Capability::FsRead, Resource::FilePath("/opt/data/file.txt".into()))
-            .unwrap();
+        chk.require(Capability::FsRead, Resource::FilePath("/opt/data/file.txt".into())).unwrap();
     }
 
     #[test]
@@ -558,7 +561,7 @@ mod tests {
             .require(Capability::FsWrite, Resource::FilePath("/opt/data/file.txt".into()))
             .unwrap_err();
         match err {
-            CapError::Denied { .. } => {},
+            CapError::Denied { .. } => {}
             _ => panic!("expected deny"),
         }
     }
@@ -590,8 +593,7 @@ mod tests {
         };
         let tok = Token { grants: vec![grant], meta: Default::default() };
         let chk = Checker { policy: pol, token: Some(tok), audit: NoopAudit, now_epoch: 999 };
-        chk.require(Capability::FsRead, Resource::FilePath("/secret.txt".into()))
-            .unwrap();
+        chk.require(Capability::FsRead, Resource::FilePath("/secret.txt".into())).unwrap();
     }
 
     #[test]
@@ -604,9 +606,8 @@ mod tests {
         };
         let tok = Token { grants: vec![grant], meta: Default::default() };
         let chk = Checker { policy: pol, token: Some(tok), audit: NoopAudit, now_epoch: 2000 };
-        let err = chk
-            .require(Capability::FsRead, Resource::FilePath("/secret.txt".into()))
-            .unwrap_err();
+        let err =
+            chk.require(Capability::FsRead, Resource::FilePath("/secret.txt".into())).unwrap_err();
         assert!(matches!(err, CapError::TokenExpired));
     }
 

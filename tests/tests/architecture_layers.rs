@@ -20,7 +20,8 @@ fn frontend_parses_basic_program() {
     let mut parser = Parser::new(src, SourceId(0));
     let program = parser.parse_program().expect("parser should succeed");
     assert!(!program.items.is_empty(), "program should contain at least one item");
-    matches!(program.items[0], Item::Function(_)).then_some(())
+    matches!(program.items[0], Item::Function(_))
+        .then_some(())
         .expect("first item should be a function");
 }
 

@@ -99,7 +99,7 @@ fn handle_command(cmd: &str, rt: &mut Runtime) -> io::Result<bool> {
             println!(
                 "Commandes disponibles :\n  :help        — affiche cette aide\n  :quit        — quitte le REPL\n  :load <f>    — charge et ‘évalue’ chaque ligne du fichier\n  :save <f>    — sauvegarde l’historique de la session"
             );
-        },
+        }
         ":load" => {
             if let Some(path) = parts.get(1) {
                 match fs::read_to_string(path) {
@@ -119,13 +119,13 @@ fn handle_command(cmd: &str, rt: &mut Runtime) -> io::Result<bool> {
                                 Err(e) => eprintln!("[{}] Erreur de parsing : {}", i + 1, e),
                             }
                         }
-                    },
+                    }
                     Err(e) => eprintln!("Impossible de lire le fichier : {}", e),
                 }
             } else {
                 eprintln!("Usage : :load <fichier>");
             }
-        },
+        }
         ":save" => {
             if let Some(path) = parts.get(1) {
                 let p = PathBuf::from(path);
@@ -135,7 +135,7 @@ fn handle_command(cmd: &str, rt: &mut Runtime) -> io::Result<bool> {
             } else {
                 eprintln!("Usage : :save <fichier>");
             }
-        },
+        }
         _ => eprintln!("Commande inconnue : {}", cmd),
     }
     Ok(true)

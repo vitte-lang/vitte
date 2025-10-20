@@ -3,8 +3,8 @@
 pub mod ast;
 mod builder;
 
-use pest::Parser;
 use pest::error::InputLocation;
+use pest::Parser;
 use pest_derive::Parser;
 use thiserror::Error;
 
@@ -48,12 +48,10 @@ pub type Result<T> = std::result::Result<T, ParseError>;
 
 /// Parse un module Vitte complet. Renvoie une erreur si le code ne respecte pas la grammaire.
 pub fn parse_module(source: &str) -> Result<()> {
-    VitteParser::parse(Rule::compilation_unit, source)
-        .map(|_| ())
-        .map_err(ParseError::from_pest)
+    VitteParser::parse(Rule::compilation_unit, source).map(|_| ()).map_err(ParseError::from_pest)
 }
 
-pub use builder::{DiagnosticSeverity, LoweringDiagnostic, LoweringOutcome, parse_and_lower};
+pub use builder::{parse_and_lower, DiagnosticSeverity, LoweringDiagnostic, LoweringOutcome};
 
 #[cfg(test)]
 mod tests {

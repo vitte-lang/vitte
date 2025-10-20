@@ -20,17 +20,13 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(
-    clippy::module_name_repetitions,
-    clippy::doc_markdown,
-    clippy::too_many_lines
-)]
+#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
 
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, ItemFn, parse_macro_input};
+use syn::{parse_macro_input, DeriveInput, ItemFn};
 
 /// Derive macro `Trace` pour GC.
 /// Implémente le trait `Trace` (défini dans vitte-gc).

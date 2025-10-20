@@ -34,7 +34,7 @@ fn run() -> io::Result<()> {
             } else {
                 eprintln!("Usage: vitte-cov analyze <path>");
             }
-        },
+        }
         Some("merge") => {
             let inputs: Vec<String> = args.collect();
             if inputs.is_empty() {
@@ -42,20 +42,20 @@ fn run() -> io::Result<()> {
             } else {
                 merge(inputs)?;
             }
-        },
+        }
         Some("report") => {
             if let Some(path) = args.next() {
                 report(PathBuf::from(path))?;
             } else {
                 eprintln!("Usage: vitte-cov report <coverage.json>");
             }
-        },
+        }
         Some("-h") | Some("--help") => print_help(),
         Some("-v") | Some("--version") => print_version(),
         Some(unknown) => {
             eprintln!("Unknown command: {unknown}");
             print_help();
-        },
+        }
         None => print_help(),
     }
     Ok(())

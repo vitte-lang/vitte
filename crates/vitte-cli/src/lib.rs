@@ -22,11 +22,10 @@ use std::{
     time::Instant,
 };
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use vitte_core::SourceId;
 use vitte_lexer::{Lexer, LineMap, TokenKind};
 use vitte_parser::Parser;
-
 
 #[cfg(feature = "trace")]
 use env_logger;
@@ -82,10 +81,10 @@ pub struct ReplTask {
 
 #[derive(Clone, Debug, Default)]
 pub struct FmtTask {
-    pub input: Input,               // chemin source ou stdin
-    pub output: Output,             // si Output::InPlace => réécrit le fichier
-    pub check: bool,                // mode --check (retourne erreur si diff)
-    pub diff: bool,                 // affiche un diff (--diff)
+    pub input: Input,   // chemin source ou stdin
+    pub output: Output, // si Output::InPlace => réécrit le fichier
+    pub check: bool,    // mode --check (retourne erreur si diff)
+    pub diff: bool,     // affiche un diff (--diff)
 }
 
 #[derive(Clone, Debug, Default)]
@@ -218,29 +217,29 @@ pub fn execute(cmd: Command, hooks: &Hooks) -> Result<i32> {
         Command::Compile(t) => {
             let code = compile_entry(t, hooks)?;
             Ok(code)
-        },
+        }
         Command::Run(t) => run_entry(t, hooks),
         Command::Repl(t) => {
             let f = hooks.repl.ok_or_else(|| anyhow!("REPL non disponible (hook manquant)"))?;
             let exit = f(&t.prompt)?;
             Ok(exit)
-        },
+        }
         Command::Fmt(t) => {
             fmt_entry(t, hooks)?;
             Ok(0)
-        },
+        }
         Command::Inspect(t) => {
             inspect_entry(t, hooks)?;
             Ok(0)
-        },
+        }
         Command::Disasm(t) => {
             disasm_entry(t, hooks)?;
             Ok(0)
-        },
+        }
         Command::Modules(t) => {
             modules_entry(t)?;
             Ok(0)
-        },
+        }
     }
 }
 
@@ -273,7 +272,7 @@ fn compile_entry(task: CompileTask, hooks: &Hooks) -> Result<i32> {
                     .with_note(format!("détail: {err}"))
                     .with_help("Activez les logs (RUST_LOG=debug) ou recompilez avec `--features vm` pour utiliser le compilateur de référence."),
             );
-        },
+        }
     };
     let elapsed = start.elapsed();
 
@@ -318,13 +317,13 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
                     .with_note("Activez la feature `vm` (`cargo run -p vitte-cli --features vm`) ou fournissez une implémentation de VM via Hooks::run_bc.")
                     .with_help("Activez la feature `vm` ou fournissez une VM via Hooks::run_bc."),
             );
-        },
+        }
     };
 
     let bytes = match task.program {
         InputKind::BytecodePath(p) => {
             fs::read(&p).with_context(|| format!("lecture bytecode: {}", display(&p)))?
-        },
+        }
         InputKind::BytecodeBytes(b) => b,
         InputKind::SourcePath(p) if task.auto_compile => {
             let src = read_source(&Input::Path(p.clone()))?;
@@ -340,7 +339,7 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
                         .with_note("Activez la feature `vm` (`cargo run -p vitte-cli --features vm`) ou fournissez `Hooks::compile`.")
                         .with_help("Activez la feature `engine` ou fournissez un compilateur."),
                     );
-                },
+                }
             };
             let compile_opts = CompileOptions { optimize: task.optimize, emit_debug: false };
             match compiler(&src, &compile_opts) {
@@ -351,9 +350,9 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
                             .with_note(format!("détail: {err}"))
                             .with_help("Passez un bytecode `.vitbc` déjà compilé ou activez les logs (RUST_LOG=debug)."),
                     );
-                },
+                }
             }
-        },
+        }
         InputKind::SourceStdin if task.auto_compile => {
             let src = read_source(&Input::Stdin)?;
             perform_frontend_checks(&src, &Input::Stdin)?;
@@ -368,7 +367,7 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
                         .with_note("Activez la feature `vm` (`cargo run -p vitte-cli --features vm`) ou fournissez `Hooks::compile`.")
                         .with_help("Activez la feature `engine` ou fournissez un compilateur."),
                     );
-                },
+                }
             };
             let compile_opts = CompileOptions { optimize: task.optimize, emit_debug: false };
             match compiler(&src, &compile_opts) {
@@ -379,9 +378,9 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
                             .with_note(format!("détail: {err}"))
                             .with_help("Passez un bytecode `.vitbc` déjà compilé ou activez les logs (RUST_LOG=debug)."),
                     );
-                },
+                }
             }
-        },
+        }
         InputKind::SourcePath(p) => {
             return bail_diagnostic(
                 Diagnostic::new(
@@ -394,7 +393,7 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
                 .with_note("Astuce : utilisez `vitte run --auto-compile <source>` ou fournissez un bytecode `.vitbc`.")
                 .with_help("Fournissez un .vitbc ou ajoutez --auto-compile."),
             );
-        },
+        }
         InputKind::SourceStdin => {
             return bail_diagnostic(
                 Diagnostic::new(
@@ -405,7 +404,7 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
                     "Redirigez un bytecode (`cat programme.vitbc | vitte run -`) ou utilisez --auto-compile pour compiler une source.",
                 ),
             );
-        },
+        }
     };
 
     let start = Instant::now();
@@ -415,9 +414,11 @@ fn run_entry(task: RunTask, hooks: &Hooks) -> Result<i32> {
             return bail_diagnostic(
                 Diagnostic::new("RUN200", "La machine virtuelle a signalé une erreur.")
                     .with_note(format!("détail: {err}"))
-                    .with_help("Vérifiez votre bytecode ou activez les journaux (`RUST_LOG=debug`)."),
+                    .with_help(
+                        "Vérifiez votre bytecode ou activez les journaux (`RUST_LOG=debug`).",
+                    ),
             );
-        },
+        }
     };
     let elapsed = start.elapsed();
 
@@ -444,16 +445,18 @@ fn perform_frontend_checks(src: &str, input: &Input) -> Result<()> {
                 if matches!(tok.value, TokenKind::Eof) {
                     break;
                 }
-            },
+            }
             Ok(None) => break,
             Err(err) => {
                 let ((l1, c1), (l2, c2)) = lines.span_lines(err.span);
                 return bail_diagnostic(
                     Diagnostic::new("LEX100", format!("Erreur lexicale: {err}"))
                         .with_note(format!("{label}:L{}C{}-L{}C{}", l1, c1, l2, c2))
-                        .with_help("Corrigez le lexème identifié avant de relancer la compilation."),
+                        .with_help(
+                            "Corrigez le lexème identifié avant de relancer la compilation.",
+                        ),
                 );
-            },
+            }
         }
     }
 
@@ -486,10 +489,8 @@ fn is_simple_module_declaration(src: &str) -> bool {
     if rest.is_empty() {
         return false;
     }
-    let ident_len = rest
-        .chars()
-        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
-        .count();
+    let ident_len =
+        rest.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-').count();
     if ident_len == 0 {
         return false;
     }
@@ -522,19 +523,19 @@ fn print_text_diff(title: &str, before: &str, after: &str) {
                 eprintln!("{}", format!("-{}", text).red());
                 #[cfg(not(feature = "color"))]
                 eprintln!("-{}", text);
-            },
+            }
             ChangeTag::Insert => {
                 #[cfg(feature = "color")]
                 eprintln!("{}", format!("+{}", text).green());
                 #[cfg(not(feature = "color"))]
                 eprintln!("+{}", text);
-            },
+            }
             ChangeTag::Equal => {
                 #[cfg(feature = "color")]
                 eprintln!(" {}", text.dimmed());
                 #[cfg(not(feature = "color"))]
                 eprintln!(" {}", text);
-            },
+            }
         }
     }
 }
@@ -548,7 +549,7 @@ fn fmt_entry(task: FmtTask, hooks: &Hooks) -> Result<()> {
                     .with_note("Activez la feature `fmt` (`cargo run -p vitte-cli --features fmt`) ou fournissez `Hooks::fmt`.")
                     .with_help("Recompilez vitte-cli avec la feature `fmt` ou fournissez un formateur."),
             );
-        },
+        }
     };
 
     let src = read_source(&task.input)?;
@@ -560,7 +561,7 @@ fn fmt_entry(task: FmtTask, hooks: &Hooks) -> Result<()> {
                     .with_note(format!("détail: {err}"))
                     .with_help("Activez les journaux (RUST_LOG=debug) ou inspectez le fichier pour repérer les constructions non supportées."),
             );
-        },
+        }
     };
 
     let label = input_label(&task.input);
@@ -590,7 +591,7 @@ fn fmt_entry(task: FmtTask, hooks: &Hooks) -> Result<()> {
             let mut w = BufWriter::new(io::stdout().lock());
             w.write_all(formatted.as_bytes())?;
             w.flush()?;
-        },
+        }
         Output::InPlace => match task.input {
             Input::Path(ref p) => write_text_atomic(p, &formatted)?,
             Input::Stdin => anyhow::bail!("--in-place nécessite un fichier d'entrée"),
@@ -631,7 +632,7 @@ fn inspect_entry(task: InspectTask, hooks: &Hooks) -> Result<()> {
             } else {
                 fs::read(&p).with_context(|| format!("lecture bytecode: {}", display(&p)))?
             }
-        },
+        }
         InputKind::BytecodeBytes(b) => b,
         InputKind::SourcePath(p) => {
             return bail_diagnostic(
@@ -639,10 +640,12 @@ fn inspect_entry(task: InspectTask, hooks: &Hooks) -> Result<()> {
                     "INS100",
                     format!("'inspect' attend un bytecode, pas une source : {}", display(&p)),
                 )
-                .with_note("Utilisez `vitte compile <fichier>` pour générer un `.vitbc` avant inspection.")
+                .with_note(
+                    "Utilisez `vitte compile <fichier>` pour générer un `.vitbc` avant inspection.",
+                )
                 .with_help("Compilez d'abord votre source en .vitbc."),
             );
-        },
+        }
         InputKind::SourceStdin => read_stdin_bytes()?,
     };
     let options = task.options.clone();
@@ -654,7 +657,7 @@ fn inspect_entry(task: InspectTask, hooks: &Hooks) -> Result<()> {
                     .with_note(format!("détail: {err}"))
                     .with_help("Activez les journaux (RUST_LOG=debug) pour diagnostiquer le contenu du bytecode."),
             );
-        },
+        }
     };
     let mut w = BufWriter::new(io::stdout().lock());
     w.write_all(text.as_bytes())?;
@@ -986,7 +989,7 @@ pub mod inspect {
                     .map(|s| format!("\naperçu source :\n{}", s))
                     .unwrap_or_default();
                 format!("Format : VBC0\nsize : {} octets{declared}{snippet}", data.size)
-            },
+            }
             InspectFormat::Unknown => format!("Format : inconnu\nsize : {} octets", data.size),
         }
     }
@@ -1039,10 +1042,10 @@ pub mod inspect {
         match data.format {
             InspectFormat::Vbc0 => {
                 "Symboles :\n  (table des symboles non encodée dans ce format)".to_string()
-            },
+            }
             InspectFormat::Unknown => {
                 "Symboles :\n  Impossible de lister les symboles — format non reconnu.".to_string()
-            },
+            }
         }
     }
 
@@ -1051,7 +1054,7 @@ pub mod inspect {
             InspectFormat::Vbc0 => "Constantes :\n  (non disponibles dans ce build)".to_string(),
             InspectFormat::Unknown => {
                 "Constantes :\n  Impossible d'extraire les constantes.".to_string()
-            },
+            }
         }
     }
 
@@ -1107,7 +1110,7 @@ pub mod inspect {
         match data.verify_ok {
             Some(true) => {
                 format!("Intégrité : OK (BLAKE3 = {})", data.hash.as_deref().unwrap_or("n/a"))
-            },
+            }
             Some(false) => "Intégrité : échec (payload > longueur déclarée)".to_string(),
             None => "Intégrité : impossible de vérifier.".to_string(),
         }
@@ -1144,7 +1147,11 @@ pub mod inspect {
                 .iter()
                 .map(|b| {
                     let c = *b as char;
-                    if c.is_ascii_graphic() || c.is_ascii_whitespace() { c } else { '.' }
+                    if c.is_ascii_graphic() || c.is_ascii_whitespace() {
+                        c
+                    } else {
+                        '.'
+                    }
                 })
                 .collect::<String>();
             out.push_str(&format!("{off:08X}: {:<47} |{}|\n", hex, ascii));
@@ -1237,20 +1244,20 @@ fn disasm_entry(task: DisasmTask, hooks: &Hooks) -> Result<()> {
     let bytes = match task.input {
         InputKind::BytecodePath(p) => {
             fs::read(&p).with_context(|| format!("lecture bytecode: {}", display(&p)))?
-        },
+        }
         InputKind::BytecodeBytes(b) => b,
         InputKind::SourcePath(p) => {
             return bail_diagnostic(
                 Diagnostic::new("DIS100", format!("'disasm' attend un bytecode, pas une source : {}", display(&p)))
                     .with_note("Compilez votre fichier (`vitte compile <src>`), puis désassemblez le `.vitbc`."),
             );
-        },
+        }
         InputKind::SourceStdin => {
             return bail_diagnostic(
                 Diagnostic::new("DIS101", "'disasm' attend un bytecode sur stdin")
                     .with_note("Redirigez un bytecode (`cat app.vitbc | vitte disasm -`)."),
             );
-        },
+        }
     };
     let text = match f(&bytes) {
         Ok(out) => out,
@@ -1260,14 +1267,14 @@ fn disasm_entry(task: DisasmTask, hooks: &Hooks) -> Result<()> {
                     .with_note(format!("détail: {err}"))
                     .with_help("Assurez-vous que le bytecode provient de `vitte compile` ou activez les journaux détaillés."),
             );
-        },
+        }
     };
     match task.output {
         Output::Stdout => {
             let mut w = BufWriter::new(io::stdout().lock());
             w.write_all(text.as_bytes())?;
             w.flush()?;
-        },
+        }
         Output::Path(ref p) => write_text_atomic(p, &text)?,
         Output::InPlace => anyhow::bail!("Output::InPlace n'a pas de sens pour disasm"),
         Output::Auto => anyhow::bail!("Output::Auto n'est pas valide pour disasm"),
@@ -1310,7 +1317,7 @@ fn modules_entry(task: ModulesTask) -> Result<()> {
                     }
                 }
                 Ok(())
-            },
+            }
             Json => {
                 let payload: Vec<_> = mods
                     .iter()
@@ -1324,7 +1331,7 @@ fn modules_entry(task: ModulesTask) -> Result<()> {
                     .collect();
                 println!("{}", serde_json::to_string_pretty(&payload)?);
                 Ok(())
-            },
+            }
         }
     }
 }
@@ -1337,21 +1344,20 @@ fn read_source(input: &Input) -> Result<String> {
             let mut s = String::new();
             io::stdin().read_to_string(&mut s)?;
             Ok(s)
-        },
+        }
         Input::Path(p) => {
             let f = File::open(&p).with_context(|| format!("ouverture: {}", display(p)))?;
             let mut r = BufReader::new(f);
             let mut s = String::new();
             r.read_to_string(&mut s)?;
             Ok(s)
-        },
+        }
     }
 }
 
 fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| anyhow!("chemin de sortie sans parent: {}", display(path)))?;
+    let parent =
+        path.parent().ok_or_else(|| anyhow!("chemin de sortie sans parent: {}", display(path)))?;
     let tmp = unique_tmp_path(parent, path.file_name().unwrap_or_default());
     {
         let mut w = BufWriter::new(File::create(&tmp)?);
@@ -1495,7 +1501,7 @@ fn emit_diagnostic(diag: &Diagnostic) {
         match diag.severity {
             Severity::Error => {
                 eprintln!("{} {}", format!("error[{}]", diag.code).red().bold(), diag.message.red())
-            },
+            }
             Severity::Warning => eprintln!(
                 "{} {}",
                 format!("warning[{}]", diag.code).yellow().bold(),
@@ -1541,10 +1547,12 @@ pub mod repl {
     use rustyline::{
         completion::{Completer, Pair},
         config::Configurer,
+        error::ReadlineError,
         highlight::Highlighter,
-        hint::{HistoryHinter, Hinter},
+        hint::{Hinter, HistoryHinter},
+        history::{FileHistory, History},
         validate::{ValidationContext, ValidationResult, Validator},
-        Context as LineContext, Editor, Helper, error::ReadlineError, history::{FileHistory, History},
+        Context as LineContext, Editor, Helper,
     };
     use std::{
         borrow::Cow,
@@ -1563,7 +1571,7 @@ pub mod repl {
                 eprintln!("[repl] initialisation interactive échouée: {err}");
                 eprintln!("[repl] retour au mode basique (stdin)");
                 basic_stdio(prompt)
-            },
+            }
         }
     }
 
@@ -1589,11 +1597,11 @@ pub mod repl {
                 Err(ReadlineError::Interrupted) => {
                     session.on_interrupt();
                     continue;
-                },
+                }
                 Err(ReadlineError::Eof) => {
                     session.on_eof();
                     break;
-                },
+                }
                 Err(err) => return Err(err.into()),
             }
         }
@@ -1818,29 +1826,29 @@ pub mod repl {
                     } else {
                         println!("(historique effacé)");
                     }
-                },
+                }
                 "multi" => self.toggle_multiline(arg),
                 "show" | "buffer" => self.show_buffer(),
                 "clear" => {
                     self.buffer.clear();
                     println!("(buffer vidé)");
-                },
+                }
                 "run" | "flush" => self.flush_buffer(rl),
                 "save" => {
                     let path = arg.ok_or_else(|| anyhow!("utilisation : :save <fichier>"))?;
                     self.save_buffer(path)?;
-                },
+                }
                 "load" => {
                     let path = arg.ok_or_else(|| anyhow!("utilisation : :load <fichier>"))?;
                     self.load_buffer(path)?;
-                },
+                }
                 "pop" => {
                     if let Some(line) = self.buffer.pop() {
                         println!("(retiré) {}", line);
                     } else {
                         println!("(buffer vide)");
                     }
-                },
+                }
                 "prompt" => self.update_prompt(arg),
                 "status" => self.print_status(),
                 _ => println!("Commande inconnue : {raw} — tape :help"),
@@ -1895,7 +1903,7 @@ pub mod repl {
                         "Valeur inconnue pour :multi — utilisez on/off/toggle (reçu: {other})"
                     );
                     return;
-                },
+                }
             };
             if let Some(value) = desired {
                 if value {
@@ -1981,7 +1989,7 @@ pub mod repl {
                 Some(value) if value.eq_ignore_ascii_case("reset") => {
                     self.prompt_override = None;
                     println!("(invite réinitialisée)");
-                },
+                }
                 Some(value) => {
                     let mut prompt = value.to_string();
                     if !prompt.ends_with(' ') {
@@ -1989,7 +1997,7 @@ pub mod repl {
                     }
                     self.prompt_override = Some(prompt);
                     println!("(nouvelle invite enregistrée)");
-                },
+                }
             }
         }
 
@@ -2021,7 +2029,11 @@ pub mod repl {
     }
 
     fn ensure_trailing_space(input: &str) -> String {
-        if input.ends_with(' ') { input.to_string() } else { format!("{input} ") }
+        if input.ends_with(' ') {
+            input.to_string()
+        } else {
+            format!("{input} ")
+        }
     }
 }
 
@@ -2040,7 +2052,11 @@ mod tests {
     }
 
     fn fake_run(bc: &[u8], _opts: &RunOptions) -> Result<i32> {
-        if bc.len() >= 4 { Ok(0) } else { Ok(1) }
+        if bc.len() >= 4 {
+            Ok(0)
+        } else {
+            Ok(1)
+        }
     }
 
     fn fake_fmt(src: &str, _check: bool) -> Result<String> {

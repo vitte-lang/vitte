@@ -100,7 +100,7 @@ impl StepController {
             StepMode::Into => {
                 // S’arrête dès que l’on *quitte* la ligne de départ (ou le fichier).
                 moved_line
-            },
+            }
             StepMode::Over => {
                 // On autorise des appels internes *sans* stopper (profondeur > start).
                 // On s’arrête quand :
@@ -112,16 +112,16 @@ impl StepController {
                     // Toujours dans un appel : continue.
                     false
                 }
-            },
+            }
             StepMode::Out => {
                 // On veut sortir de la fonction courante : s’arrêter dès que
                 // la profondeur devient < start_depth (retour).
                 current_stack_depth < plan.start_depth
-            },
+            }
             StepMode::Continue => {
                 // Pas un vrai step plan, par sécurité on ne stoppe jamais ici.
                 false
-            },
+            }
         }
     }
 }

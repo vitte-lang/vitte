@@ -70,8 +70,5 @@ fn main() -> Result<()> {
 
 /// Parse un en-tête "Content-Length: N" → Some(N)
 fn parse_content_length(header: &str) -> Option<usize> {
-    header
-        .trim()
-        .strip_prefix("Content-Length:")
-        .and_then(|v| v.trim().parse::<usize>().ok())
+    header.trim().strip_prefix("Content-Length:").and_then(|v| v.trim().parse::<usize>().ok())
 }

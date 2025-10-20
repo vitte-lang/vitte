@@ -20,7 +20,7 @@
 use parking_lot::RwLock;
 use std::sync::Arc;
 use string_interner::Symbol as InternerSymbol;
-use string_interner::{StringInterner, backend::DefaultBackend, symbol::SymbolU32};
+use string_interner::{backend::DefaultBackend, symbol::SymbolU32, StringInterner};
 
 /// Identifiant de symbole (u32)
 pub type SymId = SymbolU32;
@@ -59,11 +59,7 @@ impl SymbolTable {
 
     /// Résout un identifiant en chaîne
     pub fn resolve(&self, id: SymId) -> Result<String> {
-        self.inner
-            .read()
-            .resolve(id)
-            .map(|s| s.to_string())
-            .ok_or(SymError::NotFound(id))
+        self.inner.read().resolve(id).map(|s| s.to_string()).ok_or(SymError::NotFound(id))
     }
 
     /// Nombre de symboles stockés

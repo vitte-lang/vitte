@@ -16,11 +16,7 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(
-    clippy::module_name_repetitions,
-    clippy::doc_markdown,
-    clippy::too_many_lines
-)]
+#![allow(clippy::module_name_repetitions, clippy::doc_markdown, clippy::too_many_lines)]
 
 use anyhow::Result;
 use std::fmt;
@@ -195,7 +191,7 @@ impl fmt::Display for HirTypeHint {
                     write!(f, "{a}")?;
                 }
                 write!(f, ">")
-            },
+            }
             Self::Array(t, n) => write!(f, "[{}; {}]", t, n),
             Self::Tuple(ts) => {
                 write!(f, "(")?;
@@ -206,7 +202,7 @@ impl fmt::Display for HirTypeHint {
                     write!(f, "{t}")?;
                 }
                 write!(f, ")")
-            },
+            }
             Self::Unknown => write!(f, "_"),
         }
     }
@@ -361,13 +357,13 @@ pub trait Visit {
                 if let Some(e) = init {
                     self.visit_expr(e)
                 }
-            },
+            }
             HirStmt::Expr(e) => self.visit_expr(e),
             HirStmt::Return(e, _) => {
                 if let Some(e) = e {
                     self.visit_expr(e)
                 }
-            },
+            }
         }
     }
     fn visit_expr(&mut self, e: &HirExpr) {
@@ -376,22 +372,22 @@ pub trait Visit {
             HirExpr::Binary { lhs, rhs, .. } => {
                 self.visit_expr(lhs);
                 self.visit_expr(rhs);
-            },
+            }
             HirExpr::Call { callee, args, .. } => {
                 self.visit_expr(callee);
                 for a in args {
                     self.visit_expr(a);
                 }
-            },
+            }
             HirExpr::If { cond, then_blk, else_blk, .. } => {
                 self.visit_expr(cond);
                 self.visit_block(then_blk);
                 if let Some(b) = else_blk {
                     self.visit_block(b);
                 }
-            },
+            }
             HirExpr::Block(b) => self.visit_block(b),
-            _ => {},
+            _ => {}
         }
     }
 }
@@ -434,13 +430,13 @@ pub trait VisitMut {
                 if let Some(e) = init {
                     self.visit_expr_mut(e)
                 }
-            },
+            }
             HirStmt::Expr(e) => self.visit_expr_mut(e),
             HirStmt::Return(e, _) => {
                 if let Some(e) = e {
                     self.visit_expr_mut(e)
                 }
-            },
+            }
         }
     }
     fn visit_expr_mut(&mut self, e: &mut HirExpr) {
@@ -449,22 +445,22 @@ pub trait VisitMut {
             HirExpr::Binary { lhs, rhs, .. } => {
                 self.visit_expr_mut(lhs);
                 self.visit_expr_mut(rhs);
-            },
+            }
             HirExpr::Call { callee, args, .. } => {
                 self.visit_expr_mut(callee);
                 for a in args {
                     self.visit_expr_mut(a);
                 }
-            },
+            }
             HirExpr::If { cond, then_blk, else_blk, .. } => {
                 self.visit_expr_mut(cond);
                 self.visit_block_mut(then_blk);
                 if let Some(b) = else_blk {
                     self.visit_block_mut(b);
                 }
-            },
+            }
             HirExpr::Block(b) => self.visit_block_mut(b),
-            _ => {},
+            _ => {}
         }
     }
 }
@@ -497,16 +493,16 @@ pub fn to_pretty_string(module: &HirModule) -> String {
                     write!(&mut s, " -> {t}").ok();
                 }
                 writeln!(&mut s, " {{ ... }}").ok();
-            },
+            }
             HirItem::Struct(st) => {
                 writeln!(&mut s, "  struct {} {{ ... }}", st.name).ok();
-            },
+            }
             HirItem::Enum(en) => {
                 writeln!(&mut s, "  enum {} {{ ... }}", en.name).ok();
-            },
+            }
             HirItem::Const(c) => {
                 writeln!(&mut s, "  const {} = <expr>;", c.name).ok();
-            },
+            }
         }
     }
     writeln!(&mut s, "}}").ok();

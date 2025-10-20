@@ -208,7 +208,6 @@ ensure_optional_tool() {
     if (( critical )); then
       CRITICAL_MISSING=1
     fi
-    return 1
   fi
   return 0
 }

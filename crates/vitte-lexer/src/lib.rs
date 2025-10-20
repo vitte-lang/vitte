@@ -303,7 +303,7 @@ impl<'a> Lexer<'a> {
                     Some(kw) => TokenKind::Kw(kw),
                     None => TokenKind::Ident(s),
                 }
-            },
+            }
             ch if ch.is_ascii_digit() => self.lex_number(start, c)?,
             '"' => TokenKind::Str(self.lex_string(start)?),
             'r' if self.opts.raw_strings && self.peek_char() == Some('"')
@@ -311,7 +311,7 @@ impl<'a> Lexer<'a> {
             {
                 // 'r' déjà consommé ; on tente raw string
                 self.lex_raw_string(start)?
-            },
+            }
             '\'' => TokenKind::Char(self.lex_char(start)?),
 
             ':' => {
@@ -320,14 +320,14 @@ impl<'a> Lexer<'a> {
                 } else {
                     TokenKind::Colon
                 }
-            },
+            }
             '-' => {
                 if self.eat('>') {
                     TokenKind::Arrow
                 } else {
                     TokenKind::Minus
                 }
-            },
+            }
             '=' => {
                 if self.eat('>') {
                     TokenKind::FatArrow
@@ -336,42 +336,42 @@ impl<'a> Lexer<'a> {
                 } else {
                     TokenKind::Eq
                 }
-            },
+            }
             '&' => {
                 if self.eat('&') {
                     TokenKind::AndAnd
                 } else {
                     return Err(self.err_here(LexErrorKind::UnexpectedChar('&')));
                 }
-            },
+            }
             '|' => {
                 if self.eat('|') {
                     TokenKind::OrOr
                 } else {
                     return Err(self.err_here(LexErrorKind::UnexpectedChar('|')));
                 }
-            },
+            }
             '!' => {
                 if self.eat('=') {
                     TokenKind::Ne
                 } else {
                     TokenKind::Bang
                 }
-            },
+            }
             '<' => {
                 if self.eat('=') {
                     TokenKind::Le
                 } else {
                     TokenKind::Lt
                 }
-            },
+            }
             '>' => {
                 if self.eat('=') {
                     TokenKind::Ge
                 } else {
                     TokenKind::Gt
                 }
-            },
+            }
 
             '+' => TokenKind::Plus,
             '*' => TokenKind::Star,
@@ -404,7 +404,7 @@ impl<'a> Lexer<'a> {
                     if is_eof {
                         break;
                     }
-                },
+                }
                 None => break,
             }
         }
@@ -545,11 +545,11 @@ impl<'a> Lexer<'a> {
                                 | hex_val(h2)
                                     .ok_or_else(|| self.err_here(LexErrorKind::InvalidEscape))?;
                             out.push(v as char);
-                        },
+                        }
                         'u' => out.push(self.read_unicode_escape()?),
                         _ => return Err(self.err_here(LexErrorKind::InvalidEscape)),
                     }
-                },
+                }
                 other => out.push(other),
             }
         }
@@ -635,11 +635,11 @@ impl<'a> Lexer<'a> {
                             | hex_val(h2)
                                 .ok_or_else(|| self.err_here(LexErrorKind::InvalidEscape))?;
                         v as char
-                    },
+                    }
                     'u' => self.read_unicode_escape()?,
                     _ => return Err(self.err_here(LexErrorKind::InvalidCharLiteral)),
                 }
-            },
+            }
             c => c,
         };
         if !self.eat('\'') {
@@ -875,7 +875,11 @@ mod tests {
         } else {
             panic!()
         }
-        if let Float(f) = v[7] { assert!((f - 0.025).abs() < 1e-9) } else { panic!() }
+        if let Float(f) = v[7] {
+            assert!((f - 0.025).abs() < 1e-9)
+        } else {
+            panic!()
+        }
     }
 
     #[test]

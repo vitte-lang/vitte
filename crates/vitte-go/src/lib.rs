@@ -141,9 +141,7 @@ pub struct VitteGoCtx {
 
 #[inline]
 fn to_cstring(s: &str) -> Result<*mut c_char, VgError> {
-    CString::new(s)
-        .map(|c| c.into_raw())
-        .map_err(|_| VgError::InvalidArg("string contains NUL"))
+    CString::new(s).map(|c| c.into_raw()).map_err(|_| VgError::InvalidArg("string contains NUL"))
 }
 
 #[inline]
@@ -161,7 +159,7 @@ fn status_from<T>(res: Result<T, VgError>) -> VitteGoStatus {
         Err(e) => {
             set_last_error(e.to_string());
             VitteGoStatus::from_err(&e)
-        },
+        }
     }
 }
 
@@ -254,7 +252,7 @@ pub unsafe extern "C" fn vitte_go_set_log_level(
         _ => {
             set_last_error("invalid level".into());
             return VitteGoStatus::InvalidArg;
-        },
+        }
     };
     let ctx = unsafe { &*ctx };
     if let Ok(mut st) = ctx.inner.lock() {
@@ -291,11 +289,11 @@ pub unsafe extern "C" fn vitte_go_eval_expr(
         Ok(cptr) => {
             unsafe { *out_str = cptr };
             VitteGoStatus::Ok
-        },
+        }
         Err(e) => {
             set_last_error(e.to_string());
             VitteGoStatus::from_err(&e)
-        },
+        }
     }
 }
 
@@ -329,11 +327,11 @@ pub unsafe extern "C" fn vitte_go_compile_file(
         Ok(buf) => {
             unsafe { *out_buf = buf };
             VitteGoStatus::Ok
-        },
+        }
         Err(e) => {
             set_last_error(e.to_string());
             VitteGoStatus::from_err(&e)
-        },
+        }
     }
 }
 
@@ -358,11 +356,11 @@ pub unsafe extern "C" fn vitte_go_read_text_file(
         Ok(c) => {
             unsafe { *out_str = c };
             VitteGoStatus::Ok
-        },
+        }
         Err(e) => {
             set_last_error(e.to_string());
             VitteGoStatus::from_err(&e)
-        },
+        }
     }
 }
 

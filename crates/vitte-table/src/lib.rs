@@ -41,7 +41,7 @@ use vitte_style as vstyle;
 
 #[cfg(feature = "wrap")]
 use textwrap::{
-    Options as WrapOptions, WordSeparator, WordSplitter, wrap_algorithms::wrap_first_fit,
+    wrap_algorithms::wrap_first_fit, Options as WrapOptions, WordSeparator, WordSplitter,
 };
 
 #[cfg(feature = "csv")]
@@ -94,7 +94,7 @@ impl Align {
                 let l = rem / 2;
                 let r = rem - l;
                 format!("{}{}{}", repeat(" ", l), s, repeat(" ", r))
-            },
+            }
         }
     }
 }
@@ -532,7 +532,11 @@ fn eff_col_width(width: Option<usize>, min: usize, max: Option<usize>) -> usize 
     } else {
         base.max(min)
     };
-    if let Some(mx) = max { w.min(mx.max(min)) } else { w }
+    if let Some(mx) = max {
+        w.min(mx.max(min))
+    } else {
+        w
+    }
 }
 
 fn wrap_cell(s: &str, width_hint: usize) -> Vec<String> {

@@ -81,20 +81,8 @@ pub mod arch {
     pub mod abi_preserved {
         use super::super::reg::X;
         /// Call-preserved integer registers as defined by the SysV ABI on RV64.
-        pub const PRESERVED: &[X] = &[
-            X::S0,
-            X::S1,
-            X::S2,
-            X::S3,
-            X::S4,
-            X::S5,
-            X::S6,
-            X::S7,
-            X::S8,
-            X::S9,
-            X::S10,
-            X::S11,
-        ];
+        pub const PRESERVED: &[X] =
+            &[X::S0, X::S1, X::S2, X::S3, X::S4, X::S5, X::S6, X::S7, X::S8, X::S9, X::S10, X::S11];
     }
 }
 
@@ -426,7 +414,7 @@ pub mod enc {
             Op::Jalr { rd, rs1, imm12 } => i_type(0b1100111, rd, rs1, imm12, 0)?,
             Op::OpImm { rd, rs1, kind, imm12, shamt6 } => {
                 encode_op_imm(rd, rs1, kind, imm12, shamt6)?
-            },
+            }
 
             // B-type
             Op::Br { cc, rs1, rs2, rel } => b_type(cc, rs1, rs2, rel, here, target_off)?,
@@ -450,7 +438,7 @@ pub mod enc {
                 return Err(super::CodegenError::Unsupported(
                     "pseudo/FP must be lowered before encode".into(),
                 ));
-            },
+            }
         };
         Ok(word.to_le_bytes())
     }
@@ -796,22 +784,22 @@ pub mod lower {
                     let lo = (imm & 0xfff) as i16;
                     out.push(Op::Lui { rd, imm20: hi });
                     out.push(Op::OpImm { rd, rs1: rd, kind: IKind::Addi, imm12: lo, shamt6: None });
-                },
+                }
                 Ir::Add { rd, rs1, rs2 } => {
                     out.push(Op::Op { rd, rs1, rs2, kind: RKind::Add });
-                },
+                }
                 Ir::Addi { rd, rs1, imm12 } => {
                     out.push(Op::OpImm { rd, rs1, kind: IKind::Addi, imm12, shamt6: None });
-                },
+                }
                 Ir::Store { rs2, rs1, imm12, w } => {
                     out.push(Op::Store { rs2, rs1, imm12, w });
-                },
+                }
                 Ir::Load { rd, rs1, imm12, w } => {
                     out.push(Op::Load { rd, rs1, imm12, w });
-                },
+                }
                 Ir::J { rel } => {
                     out.push(Op::Jal { rd: X::Zero, rel });
-                },
+                }
                 Ir::Ret => out.push(Op::Ret),
             }
         }
@@ -985,10 +973,10 @@ impl Codegen {
             match op {
                 inst::Op::Ret => {
                     em.emit(&inst::Op::Jalr { rd: reg::X::Zero, rs1: abi::RA, imm12: 0 }, None)?;
-                },
+                }
                 inst::Op::Li { .. } => {
                     return Err(CodegenError::Unsupported("Li must not reach encode".into()));
-                },
+                }
                 _ => em.emit(op, None)?,
             }
         }
@@ -999,9 +987,9 @@ impl Codegen {
 #[cfg(test)]
 mod tests {
     use super::inst::{IKind, Op, RKind, Width};
-    use super::lower::{Ir, lower};
+    use super::lower::{lower, Ir};
     use super::reg::X;
-    use super::{Codegen, enc};
+    use super::{enc, Codegen};
 
     #[test]
     fn encode_addi() {

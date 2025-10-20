@@ -32,9 +32,9 @@ use time::OffsetDateTime;
 use sha2::{Digest, Sha256};
 
 #[cfg(feature = "hash")]
-use base64::Engine;
-#[cfg(feature = "hash")]
 use base64::engine::general_purpose::STANDARD as B64;
+#[cfg(feature = "hash")]
+use base64::Engine;
 
 #[cfg(feature = "text-diff")]
 use similar::TextDiff;

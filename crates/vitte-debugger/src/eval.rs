@@ -32,7 +32,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use color_eyre::eyre::{Result, eyre};
+use color_eyre::eyre::{eyre, Result};
 use serde::{Deserialize, Serialize};
 
 /* ----------------------------- Valeurs & Env ------------------------------ */
@@ -94,8 +94,12 @@ impl fmt::Display for Value {
             Value::Int(i) => write!(f, "{}", i),
             Value::Float(x) => {
                 // joli rendu sans superflus
-                if x.fract() == 0.0 { write!(f, "{:.0}", x) } else { write!(f, "{}", x) }
-            },
+                if x.fract() == 0.0 {
+                    write!(f, "{:.0}", x)
+                } else {
+                    write!(f, "{}", x)
+                }
+            }
             Value::Str(s) => write!(f, "{}", s),
             Value::Array(v) => {
                 write!(f, "[")?;
@@ -106,7 +110,7 @@ impl fmt::Display for Value {
                     write!(f, "{}", el)?;
                 }
                 write!(f, "]")
-            },
+            }
             Value::Map(m) => {
                 write!(f, "{{")?;
                 let mut it = m.iter().peekable();
@@ -117,7 +121,7 @@ impl fmt::Display for Value {
                     }
                 }
                 write!(f, "}}")
-            },
+            }
         }
     }
 }
@@ -282,7 +286,11 @@ impl<'a> Lexer<'a> {
         self.s[self.i]
     }
     fn peek2(&self) -> Option<u8> {
-        if self.i + 1 < self.s.len() { Some(self.s[self.i + 1]) } else { None }
+        if self.i + 1 < self.s.len() {
+            Some(self.s[self.i + 1])
+        } else {
+            None
+        }
     }
     fn lex_number(&mut self) -> Result<Tok> {
         let start = self.i;
@@ -330,7 +338,7 @@ impl<'a> Lexer<'a> {
                         b'0' => out.push('\0'),
                         other => return Err(eyre!("échappement invalide: \\{}", other as char)),
                     }
-                },
+                }
                 _ => out.push(c as char),
             }
         }
@@ -416,12 +424,12 @@ impl<'a> Parser<'a> {
                     self.bump()?;
                     let r = self.parse_comparison()?;
                     e = Expr::Binary(Box::new(e), BinOp::Eq, Box::new(r));
-                },
+                }
                 Tok::NotEq => {
                     self.bump()?;
                     let r = self.parse_comparison()?;
                     e = Expr::Binary(Box::new(e), BinOp::Ne, Box::new(r));
-                },
+                }
                 _ => break,
             }
         }
@@ -435,22 +443,22 @@ impl<'a> Parser<'a> {
                     self.bump()?;
                     let r = self.parse_term()?;
                     e = Expr::Binary(Box::new(e), BinOp::Lt, Box::new(r));
-                },
+                }
                 Tok::Le => {
                     self.bump()?;
                     let r = self.parse_term()?;
                     e = Expr::Binary(Box::new(e), BinOp::Le, Box::new(r));
-                },
+                }
                 Tok::Gt => {
                     self.bump()?;
                     let r = self.parse_term()?;
                     e = Expr::Binary(Box::new(e), BinOp::Gt, Box::new(r));
-                },
+                }
                 Tok::Ge => {
                     self.bump()?;
                     let r = self.parse_term()?;
                     e = Expr::Binary(Box::new(e), BinOp::Ge, Box::new(r));
-                },
+                }
                 _ => break,
             }
         }
@@ -464,12 +472,12 @@ impl<'a> Parser<'a> {
                     self.bump()?;
                     let r = self.parse_factor()?;
                     e = Expr::Binary(Box::new(e), BinOp::Add, Box::new(r));
-                },
+                }
                 Tok::Minus => {
                     self.bump()?;
                     let r = self.parse_factor()?;
                     e = Expr::Binary(Box::new(e), BinOp::Sub, Box::new(r));
-                },
+                }
                 _ => break,
             }
         }
@@ -483,17 +491,17 @@ impl<'a> Parser<'a> {
                     self.bump()?;
                     let r = self.parse_unary()?;
                     e = Expr::Binary(Box::new(e), BinOp::Mul, Box::new(r));
-                },
+                }
                 Tok::Slash => {
                     self.bump()?;
                     let r = self.parse_unary()?;
                     e = Expr::Binary(Box::new(e), BinOp::Div, Box::new(r));
-                },
+                }
                 Tok::Percent => {
                     self.bump()?;
                     let r = self.parse_unary()?;
                     e = Expr::Binary(Box::new(e), BinOp::Rem, Box::new(r));
-                },
+                }
                 _ => break,
             }
         }
@@ -504,15 +512,15 @@ impl<'a> Parser<'a> {
             Tok::Bang => {
                 self.bump()?;
                 Ok(Expr::Unary(UnOp::Not, Box::new(self.parse_unary()?)))
-            },
+            }
             Tok::Plus => {
                 self.bump()?;
                 Ok(Expr::Unary(UnOp::Plus, Box::new(self.parse_unary()?)))
-            },
+            }
             Tok::Minus => {
                 self.bump()?;
                 Ok(Expr::Unary(UnOp::Neg, Box::new(self.parse_unary()?)))
-            },
+            }
             _ => self.parse_call(),
         }
     }
@@ -535,7 +543,7 @@ impl<'a> Parser<'a> {
                     }
                     self.expect(&Tok::RParen)?;
                     e = Expr::Call(Box::new(e), args);
-                },
+                }
                 Tok::Dot => {
                     self.bump()?;
                     let ident = match &self.look {
@@ -543,17 +551,17 @@ impl<'a> Parser<'a> {
                             let s2 = s.clone();
                             self.bump()?;
                             s2
-                        },
+                        }
                         _ => return Err(eyre!("attendu ident après '.'")),
                     };
                     e = Expr::Get(Box::new(e), ident);
-                },
+                }
                 Tok::LBracket => {
                     self.bump()?;
                     let idx = self.parse_expr()?;
                     self.expect(&Tok::RBracket)?;
                     e = Expr::Index(Box::new(e), Box::new(idx));
-                },
+                }
                 _ => break,
             }
         }
@@ -564,37 +572,37 @@ impl<'a> Parser<'a> {
             Tok::True => {
                 self.bump()?;
                 Expr::Literal(Value::Bool(true))
-            },
+            }
             Tok::False => {
                 self.bump()?;
                 Expr::Literal(Value::Bool(false))
-            },
+            }
             Tok::Null => {
                 self.bump()?;
                 Expr::Literal(Value::Null)
-            },
+            }
             Tok::Int(i) => {
                 self.bump()?;
                 Expr::Literal(Value::Int(i))
-            },
+            }
             Tok::Float(x) => {
                 self.bump()?;
                 Expr::Literal(Value::Float(x))
-            },
+            }
             Tok::Str(s) => {
                 self.bump()?;
                 Expr::Literal(Value::Str(s))
-            },
+            }
             Tok::Ident(name) => {
                 self.bump()?;
                 Expr::Var(name)
-            },
+            }
             Tok::LParen => {
                 self.bump()?;
                 let e = self.parse_expr()?;
                 self.expect(&Tok::RParen)?;
                 e
-            },
+            }
             other => return Err(eyre!("token inattendu: {:?}", other)),
         };
         Ok(e)
@@ -668,7 +676,7 @@ fn eval(ast: &Expr, env: &dyn EvalEnv) -> Result<Value> {
                     Number::Float(f) => Ok(Value::Float(f)),
                 },
             }
-        },
+        }
         Binary(a, op, b) => {
             match op {
                 BinOp::And => {
@@ -678,7 +686,7 @@ fn eval(ast: &Expr, env: &dyn EvalEnv) -> Result<Value> {
                     }
                     let vb = eval(b, env)?;
                     return Ok(Value::Bool(vb.truthy()));
-                },
+                }
                 BinOp::Or => {
                     let va = eval(a, env)?;
                     if va.truthy() {
@@ -686,8 +694,8 @@ fn eval(ast: &Expr, env: &dyn EvalEnv) -> Result<Value> {
                     }
                     let vb = eval(b, env)?;
                     return Ok(Value::Bool(vb.truthy()));
-                },
-                _ => { /* suite dessous */ },
+                }
+                _ => { /* suite dessous */ }
             }
             let va = eval(a, env)?;
             let vb = eval(b, env)?;
@@ -735,7 +743,7 @@ fn eval(ast: &Expr, env: &dyn EvalEnv) -> Result<Value> {
                 BinOp::Ge => Ok(Value::Bool(cmp_value(&va, &vb, |o| !o.is_lt())?)),
                 BinOp::And | BinOp::Or => unreachable!(),
             }
-        },
+        }
         Call(callee, args) => {
             // callee doit être un ident (fonction globale) pour ce MVP
             match callee.as_ref() {
@@ -745,21 +753,21 @@ fn eval(ast: &Expr, env: &dyn EvalEnv) -> Result<Value> {
                         vals.push(eval(a, env)?);
                     }
                     env.call(name, &vals)
-                },
+                }
                 _ => Err(eyre!("appel sur non-fonction (seul `fn(...)` supporté ici)")),
             }
-        },
+        }
         Get(base, field) => {
             let b = eval(base, env)?;
             env.get_field(&b, field)
                 .ok_or_else(|| eyre!("champ introuvable: {}.{}", display_value_type(&b), field))
-        },
+        }
         Index(base, idx) => {
             let b = eval(base, env)?;
             let i = eval(idx, env)?;
             env.index(&b, &i)
                 .ok_or_else(|| eyre!("indexation invalide: {}[{}]", display_value_type(&b), i))
-        },
+        }
     }
 }
 
@@ -782,11 +790,9 @@ fn num_bin(
         (Value::Str(a), Value::Str(b)) => sop(a, b),
         (Value::Str(a), b) => sop(a, b.to_string()),
         (a, Value::Str(b)) => sop(a.to_string(), b),
-        (a, b) => Err(eyre!(
-            "opération numérique invalide entre {} et {}",
-            a.type_name(),
-            b.type_name()
-        )),
+        (a, b) => {
+            Err(eyre!("opération numérique invalide entre {} et {}", a.type_name(), b.type_name()))
+        }
     }
 }
 
@@ -814,10 +820,10 @@ where
         (Float(x), Float(y)) => x.partial_cmp(y).ok_or_else(|| eyre!("NaN incomparable"))?,
         (Int(x), Float(y)) => {
             (*x as f64).partial_cmp(y).ok_or_else(|| eyre!("NaN incomparable"))?
-        },
+        }
         (Float(x), Int(y)) => {
             x.partial_cmp(&(*y as f64)).ok_or_else(|| eyre!("NaN incomparable"))?
-        },
+        }
         (Str(x), Str(y)) => x.cmp(y),
         _ => {
             return Err(eyre!(
@@ -825,7 +831,7 @@ where
                 a.type_name(),
                 b.type_name()
             ));
-        },
+        }
     };
     Ok(pred(ord))
 }
@@ -898,7 +904,7 @@ mod tests {
                     } else {
                         Err(eyre!("len() attend 1 arg"))
                     }
-                },
+                }
                 _ => Err(eyre!("fonction inconnue: {func}")),
             }
         }

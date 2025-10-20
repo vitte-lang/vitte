@@ -269,20 +269,20 @@ impl Pass for CollectSymbols {
                         TypeId::Void
                     };
                     ctx.symtab.declare(name, ty, ctx.scope_depth);
-                },
+                }
                 Const(cst) => {
                     let name = cst.name.clone();
                     let ty = cst.ty.as_ref().map(TypeId::from_ast).unwrap_or(TypeId::Int);
                     ctx.symtab.declare(name, ty, ctx.scope_depth);
-                },
+                }
                 Struct(sd) => {
                     let name = sd.name.clone();
                     ctx.symtab.declare(name, TypeId::Custom(0), ctx.scope_depth);
-                },
+                }
                 Enum(ed) => {
                     let name = ed.name.clone();
                     ctx.symtab.declare(name, TypeId::Custom(0), ctx.scope_depth);
-                },
+                }
             }
         }
         Ok(())
@@ -312,7 +312,7 @@ impl TypeCheck {
                         .push(Diagnostic::error(format!("Identifiant inconnu: `{name}`"), None));
                     TypeId::Int
                 })
-            },
+            }
             Call { .. } => TypeId::Int, // simplification
             Binary { left, op, right } => {
                 let lt = self.type_of_expr(ctx, left);
@@ -331,7 +331,7 @@ impl TypeCheck {
                             ));
                         }
                         lt
-                    },
+                    }
                     ast::BinaryOp::Eq
                     | ast::BinaryOp::Ne
                     | ast::BinaryOp::Lt
@@ -341,18 +341,18 @@ impl TypeCheck {
                     | ast::BinaryOp::And
                     | ast::BinaryOp::Or => TypeId::Bool,
                 }
-            },
+            }
             Unary { op, expr } => {
                 let t = self.type_of_expr(ctx, expr);
                 match op {
                     ast::UnaryOp::Neg => t,
                     ast::UnaryOp::Not => TypeId::Bool,
                 }
-            },
+            }
             Field { expr, .. } => {
                 let _t = self.type_of_expr(ctx, expr);
                 TypeId::Int
-            },
+            }
         }
     }
 
@@ -364,13 +364,13 @@ impl TypeCheck {
                 let declared = ty.as_ref().map(TypeId::from_ast);
                 let final_ty = declared.or(inferred).unwrap_or(TypeId::Int);
                 ctx.symtab.declare(name.clone(), final_ty, ctx.scope_depth);
-            },
+            }
             Expr(e) => {
                 let _ = self.type_of_expr(ctx, e);
-            },
+            }
             Return(e, _) => {
                 let _ = e.as_ref().map(|x| self.type_of_expr(ctx, x));
-            },
+            }
             While { condition, body, .. } => {
                 let _ = self.type_of_expr(ctx, condition);
                 ctx.enter_scope();
@@ -378,7 +378,7 @@ impl TypeCheck {
                     self.check_stmt(ctx, st);
                 }
                 ctx.leave_scope();
-            },
+            }
             For { var, iter, body, .. } => {
                 let _ = self.type_of_expr(ctx, iter);
                 ctx.enter_scope();
@@ -387,7 +387,7 @@ impl TypeCheck {
                     self.check_stmt(ctx, st);
                 }
                 ctx.leave_scope();
-            },
+            }
             If { condition, then_block, else_block, .. } => {
                 let _ = self.type_of_expr(ctx, condition);
                 ctx.enter_scope();
@@ -402,7 +402,7 @@ impl TypeCheck {
                     }
                     ctx.leave_scope();
                 }
-            },
+            }
         }
     }
 }
@@ -654,20 +654,20 @@ impl DefaultEmitter {
                     let code = &mut sections.code;
                     code.op(Op::ConstI64);
                     code.i64(*i);
-                },
+                }
                 ast::Literal::Float(f) => {
                     sections.floats.push(*f);
                     sections.code.op(Op::Nop);
-                },
+                }
                 ast::Literal::Bool(b) => {
                     let code = &mut sections.code;
                     code.op(Op::ConstI64);
                     code.i64(if *b { 1 } else { 0 });
-                },
+                }
                 ast::Literal::Str(s) => {
                     sections.strings.push(s.clone());
                     sections.code.op(Op::Nop);
-                },
+                }
                 ast::Literal::Null => sections.code.op(Op::Nop),
             },
             ast::Expr::Ident(_name) => sections.code.op(Op::Nop),
@@ -678,7 +678,7 @@ impl DefaultEmitter {
                 let code = &mut sections.code;
                 code.op(Op::Call);
                 code.u32(0);
-            },
+            }
             ast::Expr::Binary { left, op, right } => {
                 self.emit_expr(sections, left);
                 self.emit_expr(sections, right);
@@ -687,7 +687,7 @@ impl DefaultEmitter {
                     ast::BinaryOp::Add => code.op(Op::AddI64),
                     _ => code.op(Op::Nop),
                 }
-            },
+            }
             ast::Expr::Unary { .. } => sections.code.op(Op::Nop),
             ast::Expr::Field { .. } => sections.code.op(Op::Nop),
         }

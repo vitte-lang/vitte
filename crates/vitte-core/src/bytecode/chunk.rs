@@ -88,7 +88,7 @@ impl Hash for ConstValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
         mem::discriminant(self).hash(state);
         match self {
-            ConstValue::Null => {},
+            ConstValue::Null => {}
             ConstValue::Bool(b) => b.hash(state),
             ConstValue::I64(v) => v.hash(state),
             ConstValue::F64(v) => v.to_bits().hash(state),
@@ -255,7 +255,7 @@ impl fmt::Display for ChunkError {
             ChunkError::Format(msg) => write!(f, "format error: {msg}"),
             ChunkError::HashMismatch { expected, found } => {
                 write!(f, "hash mismatch (crc32): expected=0x{expected:08X}, found=0x{found:08X}")
-            },
+            }
         }
     }
 }
@@ -350,23 +350,23 @@ impl Chunk {
                 ConstValue::Str(s) => {
                     out.push(CONST_TAG_STR);
                     write_str(&mut out, s);
-                },
+                }
                 ConstValue::I64(v) => {
                     out.push(CONST_TAG_I64);
                     write_i64(&mut out, *v);
-                },
+                }
                 ConstValue::F64(v) => {
                     out.push(CONST_TAG_F64);
                     write_f64(&mut out, *v);
-                },
+                }
                 ConstValue::Bool(b) => {
                     out.push(CONST_TAG_BOOL);
                     out.push(if *b { 1 } else { 0 });
-                },
+                }
                 ConstValue::Bytes(bytes) => {
                     out.push(CONST_TAG_BYTES);
                     write_bytes(&mut out, bytes);
-                },
+                }
             }
         }
 
@@ -376,7 +376,7 @@ impl Chunk {
                 Op::LoadConst(ix) => {
                     out.push(OP_LOAD_CONST);
                     write_u32(&mut out, ix);
-                },
+                }
                 Op::Print => out.push(OP_PRINT),
                 Op::Return => out.push(OP_RETURN),
             }
@@ -391,7 +391,7 @@ impl Chunk {
             Some(main) => {
                 out.push(1);
                 write_str(&mut out, main);
-            },
+            }
             None => out.push(0),
         }
 
@@ -452,7 +452,7 @@ impl Chunk {
                         1 => true,
                         _ => return Err(ChunkError::Format("invalid bool")),
                     })
-                },
+                }
                 CONST_TAG_BYTES => ConstValue::Bytes(read_vec(payload, &mut off)?),
                 _ => return Err(ChunkError::Format("unknown const tag")),
             };

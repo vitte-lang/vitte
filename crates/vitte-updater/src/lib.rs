@@ -38,7 +38,7 @@
     clippy::missing_errors_doc
 )]
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use directories::ProjectDirs;
 use semver::Version;
 use std::fs::{self, File};

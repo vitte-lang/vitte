@@ -63,7 +63,7 @@ impl fmt::Debug for Value {
                 } else {
                     write!(f, "Str({s})")
                 }
-            },
+            }
             Value::Bytes(b) => write!(f, "Bytes(len={})", b.len()),
         }
     }
@@ -471,7 +471,7 @@ impl Write for Captured {
 /// Prelude pratique pour importer d’un coup.
 pub mod prelude {
     pub use crate::{
-        Captured, Error, NativeEntry, NativeFn, RResult, Runtime, RuntimeCtx, Value, vitte_native,
+        vitte_native, Captured, Error, NativeEntry, NativeFn, RResult, Runtime, RuntimeCtx, Value,
     };
 }
 
@@ -532,7 +532,7 @@ mod tests {
 
         let err = rt.call("t.id", &[]).unwrap_err();
         match err {
-            Error::Arity { .. } => {},
+            Error::Arity { .. } => {}
             _ => panic!("devrait être Arity"),
         }
 

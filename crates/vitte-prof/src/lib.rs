@@ -21,7 +21,7 @@ use thiserror::Error;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "tracing")]
-use tracing::{self, Level, span};
+use tracing::{self, span, Level};
 
 /// Erreurs de profilage.
 #[derive(Debug, Error)]
@@ -72,7 +72,11 @@ impl TimerStat {
 
     /// Durée moyenne en nanosecondes.
     pub fn mean_ns(&self) -> Option<u128> {
-        if self.samples == 0 { None } else { Some(self.total_ns / (self.samples as u128)) }
+        if self.samples == 0 {
+            None
+        } else {
+            Some(self.total_ns / (self.samples as u128))
+        }
     }
 }
 

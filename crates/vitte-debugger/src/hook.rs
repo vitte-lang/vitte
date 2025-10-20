@@ -303,7 +303,11 @@ mod tests {
     struct SimpleEnv;
     impl EvalEnv for SimpleEnv {
         fn get_var(&self, name: &str) -> Option<Value> {
-            if name == "x" { Some(Value::Int(42)) } else { None }
+            if name == "x" {
+                Some(Value::Int(42))
+            } else {
+                None
+            }
         }
     }
     struct SimpleEvalProvider;
@@ -321,7 +325,11 @@ mod tests {
         fn before_instruction(&self, _ctx: &ExecContext, _r: &HookRegistry) -> StopDecision {
             let mut c = self.counter.lock().unwrap();
             *c += 1;
-            if *c % self.n == 0 { StopDecision::Stop } else { StopDecision::None }
+            if *c % self.n == 0 {
+                StopDecision::Stop
+            } else {
+                StopDecision::None
+            }
         }
     }
 
@@ -332,11 +340,8 @@ mod tests {
         reg.add_eval_provider(Arc::new(SimpleEvalProvider));
         reg.add_decider(Arc::new(StepEveryN { n: 3, counter: Mutex::new(0) }));
 
-        let (p, l, mapped) = (
-            reg.map_path("a.vitte"),
-            reg.map_line("a.vitte", 5).0,
-            reg.map_line("a.vitte", 5).1,
-        );
+        let (p, l, mapped) =
+            (reg.map_path("a.vitte"), reg.map_line("a.vitte", 5).0, reg.map_line("a.vitte", 5).1);
         assert!(p.starts_with("MAPPED::"));
         assert_eq!(l, 15);
         assert!(mapped);

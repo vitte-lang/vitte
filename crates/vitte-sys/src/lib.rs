@@ -246,7 +246,7 @@ pub fn hostname() -> Result<String> {
                 }
             }
             return err_unsup();
-        },
+        }
     }
 }
 
@@ -490,7 +490,7 @@ pub fn kill_process(pid: u32) -> Result<()> {
     {
         use windows_sys::Win32::Foundation::CloseHandle;
         use windows_sys::Win32::System::Threading::{
-            OpenProcess, PROCESS_TERMINATE, TerminateProcess,
+            OpenProcess, TerminateProcess, PROCESS_TERMINATE,
         };
 
         // SAFETY: FFI open/terminate
@@ -500,7 +500,11 @@ pub fn kill_process(pid: u32) -> Result<()> {
         }
         let ok = unsafe { TerminateProcess(h, 1) };
         unsafe { CloseHandle(h) };
-        if ok != 0 { Ok(()) } else { Err(err_unsup()) }
+        if ok != 0 {
+            Ok(())
+        } else {
+            Err(err_unsup())
+        }
     }
     // Fallback
     #[cfg(not(any(all(feature = "libc", unix), all(feature = "winapi", windows))))]

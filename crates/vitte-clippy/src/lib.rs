@@ -206,11 +206,11 @@ impl Suppressions {
                     match kind {
                         "allow" => {
                             allow.insert("all".into());
-                        },
+                        }
                         "deny" => {
                             deny.insert("all".into());
-                        },
-                        _ => {},
+                        }
+                        _ => {}
                     }
                 } else {
                     for r in list.split(',') {
@@ -308,7 +308,7 @@ pub fn run_path(
                 Err(e) => {
                     debug!("skip {}: {e}", p.display());
                     return FileDiagnostics { file: p, diagnostics: vec![] };
-                },
+                }
             };
             let suppress = Suppressions::parse(&fc);
             let cx = LintContext { file: &fc, cfg, suppress };

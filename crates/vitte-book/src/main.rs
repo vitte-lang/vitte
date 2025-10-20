@@ -54,10 +54,10 @@ fn main() {
             if let Err(e) = build(&args[2], &args[3]) {
                 eprintln!("Error: {}", e);
             }
-        },
+        }
         _ => {
             eprintln!("Unknown command or invalid usage.\n");
             print_help();
-        },
+        }
     }
 }
