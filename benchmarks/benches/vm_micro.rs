@@ -44,11 +44,7 @@ fn env_u64(k: &str, d: u64) -> u64 {
     std::env::var(k).ok().and_then(|s| s.parse().ok()).unwrap_or(d)
 }
 fn env_bool(k: &str, d: bool) -> bool {
-    std::env::var(k)
-        .ok()
-        .and_then(|s| s.parse::<u8>().ok())
-        .map(|v| v != 0)
-        .unwrap_or(d)
+    std::env::var(k).ok().and_then(|s| s.parse::<u8>().ok()).map(|v| v != 0).unwrap_or(d)
 }
 fn env_string(k: &str, d: &str) -> String {
     std::env::var(k).unwrap_or_else(|_| d.to_string())
@@ -281,11 +277,7 @@ fn list_files_with_ext(root: &Path, ext: &str, max_mb: usize) -> Vec<PathBuf> {
     out
 }
 fn sanitize_id(p: &Path) -> String {
-    p.to_string_lossy()
-        .replace('\\', "/")
-        .replace("../", "")
-        .replace("./", "")
-        .replace(':', "_")
+    p.to_string_lossy().replace('\\', "/").replace("../", "").replace("./", "").replace(':', "_")
 }
 fn read_expected(dir: &Path) -> Option<String> {
     fs::read_to_string(dir.join("expected.txt")).ok().map(|s| s.trim().to_string())
@@ -385,7 +377,7 @@ pub fn bench_vm_synthetic(c: &mut Criterion) {
                         Backend::Lib => vm_run_bc(black_box(&bc), &entry),
                         Backend::Cli => {
                             cli_run_bc(black_box(&bc), &entry, clicfg.as_ref().unwrap())
-                        },
+                        }
                     }
                     .expect("vm run failed");
                     criterion::black_box(out.stdout.len());

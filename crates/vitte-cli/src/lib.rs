@@ -21,6 +21,7 @@ use std::{
     path::{Path, PathBuf},
     time::Instant,
 };
+use tempfile::NamedTempFile;
 
 use anyhow::{anyhow, Context, Result};
 use vitte_core::SourceId;
@@ -114,6 +115,7 @@ impl Default for ModulesFormat {
 #[derive(Clone, Debug, Default)]
 pub struct ModulesTask {
     pub format: ModulesFormat,
+    pub trace_registry: bool,
 }
 
 /// Entrée texte (source) : fichier ou `-` (=stdin).
@@ -1193,9 +1195,14 @@ pub mod inspect {
 }
 
 pub mod registry {
-    use anyhow::{Context, Result};
+    use anyhow::{anyhow, Context, Result};
     use serde::Deserialize;
-    use std::{fs, path::Path};
+    use std::{
+        fs::File,
+        io::BufReader,
+        path::{Path, PathBuf},
+        time::{Duration, Instant},
+    };
 
     #[derive(Debug, Deserialize, Clone)]
     pub struct Module {
@@ -1216,13 +1223,54 @@ pub mod registry {
         modules: Vec<Module>,
     }
 
+    pub struct LoadedIndex {
+        pub modules: Vec<Module>,
+        pub source_path: PathBuf,
+        pub compressed: bool,
+        pub file_size: u64,
+        pub decode_duration: Duration,
+    }
+
+    pub fn load_local_index_with_trace(root: &Path) -> Result<LoadedIndex> {
+        let json_path = root.join("registry/modules/index.json");
+        let zst_path = root.join("registry/modules/index.json.zst");
+        let (source_path, compressed) = if json_path.exists() {
+            (json_path, false)
+        } else if zst_path.exists() {
+            (zst_path, true)
+        } else {
+            return Err(anyhow!(
+                "registre introuvable (recherché {} et {})",
+                json_path.display(),
+                zst_path.display()
+            ));
+        };
+        let file = File::open(&source_path)
+            .with_context(|| format!("lecture registre {}", source_path.display()))?;
+        let file_size = file
+            .metadata()
+            .map(|m| m.len())
+            .with_context(|| format!("metadata registre {}", source_path.display()))?;
+        let start = Instant::now();
+        let modules = if compressed {
+            let decoder = zstd::stream::read::Decoder::new(file)
+                .with_context(|| format!("décompression registre {}", source_path.display()))?;
+            let reader = BufReader::new(decoder);
+            let index: Index = serde_json::from_reader(reader)
+                .with_context(|| format!("parse registre {}", source_path.display()))?;
+            index.modules
+        } else {
+            let reader = BufReader::new(file);
+            let index: Index = serde_json::from_reader(reader)
+                .with_context(|| format!("parse registre {}", source_path.display()))?;
+            index.modules
+        };
+        let decode_duration = start.elapsed();
+        Ok(LoadedIndex { modules, source_path, compressed, file_size, decode_duration })
+    }
+
     pub fn load_local_index(root: &Path) -> Result<Vec<Module>> {
-        let path = root.join("registry/modules/index.json");
-        let data = fs::read_to_string(&path)
-            .with_context(|| format!("lecture registre {}", path.display()))?;
-        let index: Index = serde_json::from_str(&data)
-            .with_context(|| format!("parse registre {}", path.display()))?;
-        Ok(index.modules)
+        load_local_index_with_trace(root).map(|info| info.modules)
     }
 
     pub fn find<'a>(modules: &'a [Module], name: &str) -> Option<&'a Module> {
@@ -1284,6 +1332,28 @@ fn disasm_entry(task: DisasmTask, hooks: &Hooks) -> Result<()> {
 }
 
 fn modules_entry(task: ModulesTask) -> Result<()> {
+    if task.trace_registry {
+        match registry::load_local_index_with_trace(std::path::Path::new(".")) {
+            Ok(info) => {
+                let mode = if info.compressed { "json.zst" } else { "json" };
+                let millis = info.decode_duration.as_millis();
+                status_info(
+                    "REGISTRY",
+                    &format!(
+                        "{} ({mode}, {} modules, size={} bytes, load={} ms)",
+                        info.source_path.display(),
+                        info.modules.len(),
+                        info.file_size,
+                        millis
+                    ),
+                );
+            }
+            Err(err) => {
+                status_warn("REGISTRY", &format!("impossible de charger le registre: {err}"));
+            }
+        }
+    }
+
     #[cfg(not(feature = "modules"))]
     {
         let _ = task;
@@ -1358,36 +1428,38 @@ fn read_source(input: &Input) -> Result<String> {
 fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     let parent =
         path.parent().ok_or_else(|| anyhow!("chemin de sortie sans parent: {}", display(path)))?;
-    let tmp = unique_tmp_path(parent, path.file_name().unwrap_or_default());
+    let mut tmp = NamedTempFile::new_in(parent)?;
     {
-        let mut w = BufWriter::new(File::create(&tmp)?);
-        w.write_all(bytes)?;
-        w.flush()?;
+        let file = tmp.as_file_mut();
+        file.write_all(bytes)?;
+        file.flush()?;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mode = fs::metadata(path).map(|m| m.permissions().mode()).unwrap_or(0o644);
+        let perms = fs::Permissions::from_mode(mode);
+        fs::set_permissions(tmp.path(), perms)?;
     }
     if path.exists() {
         // Windows : Rename sur cible existante peut échouer
         let _ = fs::remove_file(path);
     }
-    fs::rename(&tmp, path).or_else(|_| {
-        // fallback : copie puis suppr tmp
-        fs::copy(&tmp, path).map(|_| ()).and_then(|_| fs::remove_file(&tmp).map(|_| ()))
-    })?;
-    Ok(())
+    match tmp.persist(path) {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            let tmp_file = err.file;
+            let tmp_path = tmp_file.path().to_path_buf();
+            fs::copy(&tmp_path, path)?;
+            drop(tmp_file);
+            Ok(())
+        }
+    }
 }
 
 fn write_text_atomic(path: &Path, text: &str) -> Result<()> {
     write_bytes_atomic(path, text.as_bytes())
-}
-
-fn unique_tmp_path(dir: &Path, base: &std::ffi::OsStr) -> PathBuf {
-    let mut i = 0u32;
-    loop {
-        let candidate = dir.join(format!("{}.tmp{}", base.to_string_lossy(), i));
-        if !candidate.exists() {
-            return candidate;
-        }
-        i = i.wrapping_add(1);
-    }
 }
 
 fn default_bytecode_path(src: &Path) -> PathBuf {
@@ -1544,6 +1616,7 @@ fn print_diagnostic(diag: Diagnostic) {
 
 pub mod repl {
     use anyhow::{anyhow, Context, Result};
+    use dirs_next::config_dir;
     use rustyline::{
         completion::{Completer, Pair},
         config::Configurer,
@@ -1558,11 +1631,13 @@ pub mod repl {
         borrow::Cow,
         fs,
         io::{self, Write},
-        path::Path,
+        path::{Path, PathBuf},
     };
 
     #[cfg(feature = "color")]
     use owo_colors::OwoColorize;
+
+    const HISTORY_FILE_NAME: &str = "repl_history";
 
     pub fn fallback(prompt: &str) -> Result<i32> {
         match advanced_repl(prompt) {
@@ -1584,7 +1659,20 @@ pub mod repl {
         }
         rl.set_history_ignore_space(true);
         rl.set_helper(Some(ReplHelper::default()));
-        let mut session = ReplSession::new(prompt);
+
+        let history_path = history_file_path();
+        if let Some(path) = history_path.as_ref() {
+            if path.exists() {
+                if let Err(err) = rl.load_history(path) {
+                    eprintln!(
+                        "[repl] impossible de charger l'historique ({}): {err}",
+                        path.display()
+                    );
+                }
+            }
+        }
+
+        let mut session = ReplSession::new(prompt, history_path.clone());
         session.print_banner();
 
         loop {
@@ -1603,6 +1691,32 @@ pub mod repl {
                     break;
                 }
                 Err(err) => return Err(err.into()),
+            }
+        }
+        if let Some(path) = history_path {
+            if let Some(parent) = path.parent() {
+                if let Err(err) = fs::create_dir_all(parent) {
+                    eprintln!(
+                        "[repl] impossible de créer le dossier d'historique ({}): {err}",
+                        parent.display()
+                    );
+                    return Ok(0);
+                }
+            }
+            if !path.exists() {
+                if let Err(err) = fs::File::create(&path) {
+                    eprintln!(
+                        "[repl] impossible de créer le fichier d'historique ({}): {err}",
+                        path.display()
+                    );
+                    return Ok(0);
+                }
+            }
+            if let Err(err) = rl.append_history(&path) {
+                eprintln!(
+                    "[repl] impossible de sauvegarder l'historique ({}): {err}",
+                    path.display()
+                );
             }
         }
         Ok(0)
@@ -1759,15 +1873,17 @@ pub mod repl {
         prompt_override: Option<String>,
         multiline: bool,
         buffer: Vec<String>,
+        history_path: Option<PathBuf>,
     }
 
     impl ReplSession {
-        fn new(prompt: &str) -> Self {
+        fn new(prompt: &str, history_path: Option<PathBuf>) -> Self {
             Self {
                 base_prompt: ensure_trailing_space(prompt),
                 prompt_override: None,
                 multiline: false,
                 buffer: Vec::new(),
+                history_path,
             }
         }
 
@@ -1820,13 +1936,24 @@ pub mod repl {
                 "help" | "h" => Self::print_help(),
                 "quit" | "exit" | "q" => return Ok(FlowControl::Exit),
                 "history" => self.print_history(rl, arg)?,
-                "clear-history" => {
-                    if let Err(err) = rl.history_mut().clear() {
-                        eprintln!("[repl] impossible d'effacer l'historique: {err}");
-                    } else {
+                "clear-history" => match rl.history_mut().clear() {
+                    Ok(_) => {
+                        if let Some(path) = &self.history_path {
+                            if let Err(err) = fs::remove_file(path) {
+                                if err.kind() != io::ErrorKind::NotFound {
+                                    eprintln!(
+                                        "[repl] impossible de supprimer l'historique ({}): {err}",
+                                        path.display()
+                                    );
+                                }
+                            }
+                        }
                         println!("(historique effacé)");
                     }
-                }
+                    Err(err) => {
+                        eprintln!("[repl] impossible d'effacer l'historique: {err}");
+                    }
+                },
                 "multi" => self.toggle_multiline(arg),
                 "show" | "buffer" => self.show_buffer(),
                 "clear" => {
@@ -2035,6 +2162,92 @@ pub mod repl {
             format!("{input} ")
         }
     }
+
+    fn history_file_path() -> Option<PathBuf> {
+        let mut base = config_dir()?;
+        base.push("vitte");
+        if let Err(err) = fs::create_dir_all(&base) {
+            eprintln!(
+                "[repl] impossible de créer le dossier d'historique ({}): {err}",
+                base.display()
+            );
+            return None;
+        }
+        base.push(HISTORY_FILE_NAME);
+        Some(base)
+    }
+}
+
+#[cfg(feature = "engine")]
+pub fn compile_source_to_bytes(source: &str, opts: &CompileOptions) -> Result<Vec<u8>> {
+    use vitte_compiler::{Compiler, CompilerOptions, Severity};
+    use vitte_core::SourceId;
+    use vitte_parser::Parser;
+
+    let mut parser = Parser::new(source, SourceId(0));
+    let program = parser.parse_program().map_err(|err| anyhow!("Erreur de parsing: {err}"))?;
+
+    let mut compiler = Compiler::new(CompilerOptions {
+        deny_warnings: false,
+        vitbc_version: 2,
+        compress_code: opts.optimize,
+        embed_names: opts.emit_debug,
+    });
+
+    let bytecode = match compiler.compile(&program) {
+        Ok(bc) => bc,
+        Err(err) => return Err(format_compile_error(err)),
+    };
+
+    for diag in compiler.take_diagnostics() {
+        if diag.severity == Severity::Warning {
+            eprintln!("warning: {}", diag.message);
+        }
+    }
+
+    Ok(bytecode.to_bytes(compiler.options.compress_code))
+}
+
+#[cfg(feature = "engine")]
+fn format_compile_error(err: vitte_compiler::CompileError) -> anyhow::Error {
+    use vitte_compiler::Severity;
+
+    let mut msg = String::from("échec de compilation:\n");
+    if err.diagnostics.is_empty() {
+        msg.push_str("  (aucun diagnostic)");
+        return anyhow!(msg);
+    }
+    for diag in err.diagnostics {
+        let level = match diag.severity {
+            Severity::Error => "error",
+            Severity::Warning => "warn",
+            Severity::Info => "info",
+        };
+        let span = diag
+            .span
+            .map(|sp| format!("@{}:{} ({})", sp.line, sp.column, sp.offset))
+            .unwrap_or_else(|| "@?".into());
+        msg.push_str(&format!("  {level} {span} {}\n", diag.message));
+    }
+    anyhow!(msg)
+}
+
+#[cfg(feature = "engine")]
+pub fn run_bytecode(bytes: &[u8], _opts: &RunOptions) -> Result<i32> {
+    use vitte_vm::Vm;
+
+    let mut vm = Vm::new();
+    vm.run_bytecode(bytes).map_err(|err| anyhow!(err.to_string()))
+}
+
+#[cfg(feature = "engine")]
+pub fn disassemble_bytecode(bytes: &[u8]) -> Result<String> {
+    let mut options = inspect::InspectOptions::default();
+    options.header = true;
+    options.sections = true;
+    options.disasm = true;
+    options.ensure_defaults();
+    Ok(inspect::render(bytes, &options))
 }
 
 // ───────────────────────────── Tests ─────────────────────────────
@@ -2097,5 +2310,23 @@ mod tests {
         let p = PathBuf::from("src/main.vt");
         let out = super::default_bytecode_path(&p);
         assert_eq!(out.file_name().unwrap().to_string_lossy(), "main.vitbc");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_preserves_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("script.sh");
+        std::fs::write(&path, b"#!/bin/sh\necho old\n").unwrap();
+        let mut perms = std::fs::metadata(&path).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&path, perms).unwrap();
+
+        super::write_bytes_atomic(&path, b"#!/bin/sh\necho new\n").unwrap();
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o755);
     }
 }

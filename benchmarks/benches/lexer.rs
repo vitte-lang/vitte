@@ -40,11 +40,7 @@ fn env_u64(key: &str, default: u64) -> u64 {
     std::env::var(key).ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(default)
 }
 fn env_bool(key: &str, default: bool) -> bool {
-    std::env::var(key)
-        .ok()
-        .and_then(|s| s.parse::<u8>().ok())
-        .map(|v| v != 0)
-        .unwrap_or(default)
+    std::env::var(key).ok().and_then(|s| s.parse::<u8>().ok()).map(|v| v != 0).unwrap_or(default)
 }
 
 static PRINT_ENV_ONCE: Once = Once::new();

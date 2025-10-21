@@ -194,11 +194,7 @@ fn walk<F: FnMut(&Path)>(dir: &Path, f: &mut F) -> io::Result<()> {
 }
 
 fn sanitize_id(path: &Path) -> String {
-    path.to_string_lossy()
-        .replace('\\', "/")
-        .replace("../", "")
-        .replace("./", "")
-        .replace(':', "_")
+    path.to_string_lossy().replace('\\', "/").replace("../", "").replace("./", "").replace(':', "_")
 }
 
 struct TempPath {
@@ -248,11 +244,11 @@ pub fn bench_e2e(c: &mut Criterion) {
                 "[e2e] aucun projet .vit dans {root}/ (<= {max_mb} MiB). Ajoute p.ex. {root}/hello"
             );
             return;
-        },
+        }
         Err(e) => {
             eprintln!("[e2e] impossible de lister {root}: {e}");
             return;
-        },
+        }
     };
 
     let mut group = c.benchmark_group("e2e/pack+run");
@@ -327,7 +323,7 @@ pub fn bench_e2e(c: &mut Criterion) {
                     Backend::Cli => {
                         let bc = cli_pack_project(black_box(dir), clicfg.as_ref().unwrap())?;
                         cli_run_bytecode(black_box(&bc), clicfg.as_ref().unwrap())
-                    },
+                    }
                 }
                 .expect("pack+run failed");
 

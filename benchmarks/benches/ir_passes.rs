@@ -47,11 +47,7 @@ fn env_u64(key: &str, default: u64) -> u64 {
     std::env::var(key).ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(default)
 }
 fn env_bool(key: &str, default: bool) -> bool {
-    std::env::var(key)
-        .ok()
-        .and_then(|s| s.parse::<u8>().ok())
-        .map(|v| v != 0)
-        .unwrap_or(default)
+    std::env::var(key).ok().and_then(|s| s.parse::<u8>().ok()).map(|v| v != 0).unwrap_or(default)
 }
 fn env_list(key: &str, default_csv: &str) -> Vec<String> {
     std::env::var(key)
@@ -289,11 +285,7 @@ fn walk<F: FnMut(&Path)>(dir: &Path, f: &mut F) -> std::io::Result<()> {
     Ok(())
 }
 fn sanitize_id(path: &Path) -> String {
-    path.to_string_lossy()
-        .replace('\\', "/")
-        .replace("../", "")
-        .replace("./", "")
-        .replace(':', "_")
+    path.to_string_lossy().replace('\\', "/").replace("../", "").replace("./", "").replace(':', "_")
 }
 
 fn read_whole_project(root: &Path) -> String {

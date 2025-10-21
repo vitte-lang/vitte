@@ -11,7 +11,7 @@ use std::{
     process::ExitCode,
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 
 use cli::inspect::InspectOptions;
@@ -198,6 +198,9 @@ enum Command {
         /// Sortie JSON (pretty-printed) au lieu du tableau texte
         #[arg(long)]
         json: bool,
+        /// Trace le registre local (chemin, taille, timing)
+        #[arg(long = "trace-registry")]
+        trace_registry: bool,
     },
 }
 
@@ -268,49 +271,11 @@ fn output_from_opt(
 fn make_hooks() -> cli::Hooks {
     let mut h = cli::Hooks::default();
 
-    // Compilation — À RACCORDER à ton compilateur réel
-    // Exemple d'API attendue : fn compile_to_vitbc(src: &str, opt: bool, debug: bool) -> Result<Vec<u8>>
-    #[cfg(feature = "vm")]
+    #[cfg(feature = "engine")]
     {
-        // Fallback: encode la source pour offrir `--auto-compile` avec la VM stub.
-        h.compile = Some(|src, _opts| {
-            let mut out = Vec::with_capacity(8 + src.len());
-            out.extend_from_slice(b"VBC0");
-            out.extend_from_slice(&(src.len() as u32).to_le_bytes());
-            out.extend_from_slice(src.as_bytes());
-            Ok(out)
-        });
-    }
-
-    // Exécution — À RACCORDER à ta VM
-    #[cfg(feature = "vm")]
-    {
-        use vitte_vm::Vm;
-
-        h.run_bc = Some(|bytecode, _opts| {
-            // VM minimale : instancie et exécute le bytecode reçu.
-            // Tant que la VM ne gère pas args/opts, on les ignore.
-            let mut vm = Vm::new();
-            vm.run_bytecode(bytecode).map_err(|err| anyhow!(err.to_string()))
-        });
-    }
-
-    // Désassemblage — stub pour le format VBC0 synthétique
-    #[cfg(feature = "vm")]
-    {
-        h.disasm = Some(|bytes| {
-            if bytes.len() >= 8 && &bytes[..4] == b"VBC0" {
-                let len = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]) as usize;
-                let payload = bytes.get(8..).unwrap_or_default();
-                let snippet = String::from_utf8_lossy(&payload[..payload.len().min(len)]);
-                Ok(format!(
-                    "; Vitte stub bytecode\nmagic: VBC0\nlen: {} bytes\n--- source snippet ---\n{}",
-                    len, snippet
-                ))
-            } else {
-                Ok(format!("; Bytecode inconnu ({} octets)", bytes.len()))
-            }
-        });
+        h.compile = Some(|src, opts| cli::compile_source_to_bytes(src, opts));
+        h.run_bc = Some(|bytecode, opts| cli::run_bytecode(bytecode, opts));
+        h.disasm = Some(|bytes| cli::disassemble_bytecode(bytes));
     }
 
     // REPL — fallback intégré pour dialoguer avec l’utilisateur
@@ -522,9 +487,9 @@ fn real_main() -> Result<()> {
             );
             C::Disasm(DisasmTask { input: kind, output: out })
         }
-        Command::Modules { json } => {
+        Command::Modules { json, trace_registry } => {
             let format = if json { ModulesFormat::Json } else { ModulesFormat::Table };
-            C::Modules(ModulesTask { format })
+            C::Modules(ModulesTask { format, trace_registry })
         }
     };
 

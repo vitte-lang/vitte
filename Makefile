@@ -11,8 +11,9 @@ BENCH_OPTS ?=
 WASM_OPTS ?=
 ARCH_OPTS ?=
 COVERAGE_OPTS ?=
+MODULES_OPTS ?=
 
-.PHONY: help bootstrap build build-release build-analysis check lint fmt fmt-check test doc pipeline bench wasm arch coverage clean ci
+.PHONY: help bootstrap build build-release build-analysis check lint fmt fmt-check test doc pipeline bench wasm arch coverage modules-trace clean ci
 
 help:
 	@echo "Available targets (set VARIABLE_OPTS=\"--flag\" to pass extra options):"
@@ -31,6 +32,7 @@ help:
 	@printf "  %-18s %s\n" "wasm" "Build the wasm target helper."
 	@printf "  %-18s %s\n" "arch" "Architecture lint (layered dependencies)."
 	@printf "  %-18s %s\n" "coverage" "Generate coverage report via scripts/pro/coverage.sh."
+	@printf "  %-18s %s\n" "modules-trace" "Run CLI modules listing with --trace-registry (MODULES_OPTS to pass extras)."
 	@printf "  %-18s %s\n" "clean" "cargo clean."
 	@printf "  %-18s %s\n" "ci" "Alias for pipeline target."
 
@@ -89,6 +91,9 @@ arch:
 
 coverage:
 	@set -euo pipefail; ./scripts/pro/coverage.sh $(COVERAGE_OPTS)
+
+modules-trace:
+	@set -euo pipefail; cargo run -p vitte-cli -- modules --trace-registry $(MODULES_OPTS)
 
 clean:
 	@set -euo pipefail; cargo clean

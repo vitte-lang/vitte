@@ -32,11 +32,7 @@ fn env_u64(key: &str, default: u64) -> u64 {
     std::env::var(key).ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(default)
 }
 fn env_bool(key: &str, default: bool) -> bool {
-    std::env::var(key)
-        .ok()
-        .and_then(|s| s.parse::<u8>().ok())
-        .map(|v| v != 0)
-        .unwrap_or(default)
+    std::env::var(key).ok().and_then(|s| s.parse::<u8>().ok()).map(|v| v != 0).unwrap_or(default)
 }
 
 fn print_env_once() {
@@ -94,7 +90,7 @@ fn parse_ok(src: &str) -> bool {
             // Fallback : appelle une API fictive (à changer chez toi)
             let _ = black_box(vitte_parser::parse(src));
             true
-        },
+        }
     }
 }
 

@@ -117,7 +117,7 @@ fn version_flag_prints_version() {
 fn compile_command_writes_bytecode() {
     let dir = tempdir().expect("tempdir");
     let src_path = dir.path().join("main.vitte");
-    fs::write(&src_path, "module main;").expect("write source");
+    fs::write(&src_path, "fn main() { return; }").expect("write source");
     let out_path = dir.path().join("main.vitbc");
 
     let mut cmd = base_cmd();

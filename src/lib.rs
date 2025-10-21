@@ -874,28 +874,48 @@ pub fn is_bytecode(path: &Path) -> bool {
     matches!(path.extension().and_then(|e| e.to_str()), Some("vtbc") | Some("bc"))
 }
 
-mod engine {
-    use anyhow::{Context, Result};
+#[cfg(feature = "engine")]
+pub mod engine {
+    use anyhow::{bail, Context, Result};
     use log::{debug, info};
     use std::fs;
     use std::path::{Path, PathBuf};
+    use vitte_cli::{self, CompileOptions as CliCompileOptions, RunOptions as CliRunOptions};
 
     pub mod vm {
         use super::*;
 
         pub fn run_bc(input: &Path, args: &[String]) -> Result<()> {
             info!("[engine/vm] run_bc: {} {:?}", input.display(), args);
-            println!("[engine] exécution bytecode: {} {:?}", input.display(), args);
+            let bytes = fs::read(input)
+                .with_context(|| format!("impossible de lire {}", input.display()))?;
+            let exit = vitte_cli::run_bytecode(
+                &bytes,
+                &CliRunOptions { args: args.to_vec(), optimize: false },
+            )?;
+            if exit != 0 {
+                bail!("exécution terminée avec le code {}", exit);
+            }
             Ok(())
         }
 
         pub fn run_source(input: &Path, args: &[String]) -> Result<()> {
             info!("[engine/vm] run_source: {} {:?}", input.display(), args);
-            let code = fs::read_to_string(input)
+            let source = fs::read_to_string(input)
                 .with_context(|| format!("impossible de lire {}", input.display()))?;
-            debug!("[engine] source size = {} bytes", code.len());
-            if let Some(line) = code.lines().next() {
-                println!("[engine] → {}", line);
+            debug!("[engine] source size = {} bytes", source.len());
+
+            let bytes = vitte_cli::compile_source_to_bytes(
+                &source,
+                &CliCompileOptions { optimize: true, emit_debug: false },
+            )?;
+
+            let exit = vitte_cli::run_bytecode(
+                &bytes,
+                &CliRunOptions { args: args.to_vec(), optimize: true },
+            )?;
+            if exit != 0 {
+                bail!("exécution terminée avec le code {}", exit);
             }
             Ok(())
         }
@@ -911,31 +931,79 @@ mod engine {
         pub fn compile_file(
             input: &Path,
             out: Option<&Path>,
-            _opt_level: u8,
+            opt_level: u8,
             _target: Option<&str>,
             _threads: Option<u32>,
             emit: &str,
         ) -> Result<()> {
             info!("[engine/compiler] compile: {} (emit={})", input.display(), emit);
-            let out_path: PathBuf = match out {
-                Some(p) => p.to_path_buf(),
-                None => match emit {
-                    "obj" => input.with_extension("o"),
-                    "exe" => {
-                        if cfg!(windows) {
-                            input.with_extension("exe")
-                        } else {
-                            input.with_extension("")
-                        }
-                    }
-                    _ => input.with_extension("vtbc"),
-                },
-            };
 
-            fs::copy(input, &out_path)
-                .with_context(|| format!("impossible d’écrire {}", out_path.display()))?;
+            if !matches!(emit, "bc" | "vitbc") {
+                bail!("format d'émission '{emit}' non supporté (bc uniquement pour l'instant)");
+            }
+
+            let out_path: PathBuf =
+                out.map(PathBuf::from).unwrap_or_else(|| super::super::resolve_output(input, emit));
+
+            if let Some(parent) = out_path.parent() {
+                if !parent.exists() {
+                    fs::create_dir_all(parent)
+                        .with_context(|| format!("impossible de créer {}", parent.display()))?;
+                }
+            }
+
+            let source = fs::read_to_string(input)
+                .with_context(|| format!("impossible de lire {}", input.display()))?;
+
+            let bytes = vitte_cli::compile_source_to_bytes(
+                &source,
+                &CliCompileOptions { optimize: opt_level > 0, emit_debug: false },
+            )?;
+
+            fs::write(&out_path, &bytes)
+                .with_context(|| format!("impossible d'écrire {}", out_path.display()))?;
             println!("[engine] → {}", out_path.display());
             Ok(())
+        }
+    }
+}
+
+#[cfg(not(feature = "engine"))]
+pub mod engine {
+    use anyhow::{bail, Result};
+    use std::path::Path;
+
+    pub mod vm {
+        use super::*;
+
+        pub fn run_bc(_input: &Path, _args: &[String]) -> Result<()> {
+            bail!("VM indisponible : recompilez avec `--features engine`");
+        }
+
+        pub fn run_source(_input: &Path, _args: &[String]) -> Result<()> {
+            bail!("Compilation+VM indisponibles : recompilez avec `--features engine`");
+        }
+
+        pub fn eval_line(s: &str) -> Result<String> {
+            Ok(s.trim().to_string())
+        }
+    }
+
+    pub mod compiler {
+        use super::*;
+
+        pub fn compile_file(
+            input: &Path,
+            _out: Option<&Path>,
+            _opt_level: u8,
+            _target: Option<&str>,
+            _threads: Option<u32>,
+            _emit: &str,
+        ) -> Result<()> {
+            bail!(
+                "Compilation indisponible pour {} : recompilez avec `--features engine`",
+                input.display()
+            );
         }
     }
 }
