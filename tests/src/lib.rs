@@ -16,7 +16,7 @@
 
 use std::{
     env,
-    ffi::{OsStr, OsString},
+    ffi::OsStr,
     fs,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -237,6 +237,7 @@ pub mod cli {
     //! cli = []
     //! ```
     use super::*;
+    use std::ffi::OsString;
     use std::process::{Command, Output};
 
     /// Quel outil lancer.

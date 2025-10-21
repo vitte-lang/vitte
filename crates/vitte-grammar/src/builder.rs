@@ -16,10 +16,18 @@ pub struct LoweringDiagnostic {
     pub span: Option<AstSpan>,
 }
 
-#[derive(Debug)]
 pub struct LoweringOutcome {
     pub ast: Ast,
     pub diagnostics: Vec<LoweringDiagnostic>,
+}
+
+impl std::fmt::Debug for LoweringOutcome {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LoweringOutcome")
+            .field("ast", &"<Ast>") // avoid requiring Ast: Debug
+            .field("diagnostics", &self.diagnostics)
+            .finish()
+    }
 }
 
 pub fn parse_and_lower(source: &str) -> Result<LoweringOutcome, ParseError> {

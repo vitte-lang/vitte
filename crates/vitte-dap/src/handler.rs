@@ -16,7 +16,7 @@ use log::{debug, warn};
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use crate::engine::{DebugEngine, EngineEvent, StackFrame, VariableEntry};
+use crate::engine::{DebugEngine, EngineEvent};
 
 /// État DAP côté adaptateur
 pub struct Handler {
@@ -311,6 +311,7 @@ impl From<EngineEvent> for Outbound {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::{StackFrame, VariableEntry};
     use serde_json::json;
 
     /// Moteur factice pour tests
