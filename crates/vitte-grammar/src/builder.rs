@@ -52,7 +52,7 @@ impl Lowerer {
             match inner.as_rule() {
                 Rule::module_decl => self.lower_module_decl(inner),
                 Rule::top_item => self.unsupported(inner, "items de haut niveau"),
-                Rule::spacing | Rule::sep => {}
+                Rule::spacing => {}
                 other => self.unexpected(other, inner),
             }
         }
@@ -76,8 +76,11 @@ impl Lowerer {
         for inner in pair.clone().into_inner() {
             match inner.as_rule() {
                 Rule::module_path => {
-                    let idents: Vec<Pair<'_, Rule>> =
-                        inner.into_inner().filter(|p| p.as_rule() == Rule::identifier).collect();
+                    let idents: Vec<Pair<'_, Rule>> = inner
+                        .clone()
+                        .into_inner()
+                        .filter(|p| p.as_rule() == Rule::identifier)
+                        .collect();
                     if let Some(first) = idents.first() {
                         module_name = Some(Self::ident_from_pair((*first).clone()));
                     } else {

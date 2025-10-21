@@ -60,30 +60,37 @@ impl Ident {
     }
 }
 
+#[derive(Debug)]
 pub struct ModuleArena<T> {
     storage: Vec<T>,
 }
 
+#[derive(Debug)]
 pub struct ItemArena<T> {
     storage: Vec<T>,
 }
 
+#[derive(Debug)]
 pub struct ExprArena<T> {
     storage: Vec<T>,
 }
 
+#[derive(Debug)]
 pub struct PatternArena<T> {
     storage: Vec<T>,
 }
 
+#[derive(Debug)]
 pub struct TypeArena<T> {
     storage: Vec<T>,
 }
 
+#[derive(Debug)]
 pub struct BlockArena<T> {
     storage: Vec<T>,
 }
 
+#[derive(Debug)]
 pub struct SpanArena {
     spans: Vec<Span>,
 }
