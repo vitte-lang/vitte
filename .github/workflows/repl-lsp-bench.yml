@@ -1,0 +1,63 @@
+name: REPL LSP Bench
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build vitte-repl bench utilities
+        run: |
+          cargo build -p vitte-repl --bins --release
+
+      - name: Try to start vitte-lsp (mock) if available
+        id: start_lsp
+        run: |
+          set -e
+          if cargo metadata --no-deps -q | grep -q 'vitte-lsp'; then
+            echo "Starting vitte-lsp mock on :9337"
+            (cargo run -q -p vitte-lsp -- --mock --repl-port 9337 &) \
+              || echo "vitte-lsp failed to start; will rely on external endpoint if provided"
+            echo "VITTE_LSP_ENDPOINT=ws://127.0.0.1:9337/repl" >> $GITHUB_ENV
+            sleep 2
+          else
+            echo "vitte-lsp crate not found. If a server is available, set VITTE_LSP_ENDPOINT as env." 
+          fi
+
+      - name: Run REPL↔LSP bench
+        env:
+          VITTE_LSP_ENDPOINT: ${{ env.VITTE_LSP_ENDPOINT }}
+        run: |
+          chmod +x scripts/bench-repl-lsp.sh
+          # Use release binaries for timing stability
+          ./scripts/bench-repl-lsp.sh --iterations 30 --warmup 10 --out metrics.json
+
+      - name: Upload metrics artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitte-repl-lsp-metrics
+          path: metrics.json
+

@@ -14,10 +14,10 @@ extern crate alloc;
 
 use core::fmt;
 
-#[cfg(feature = "std")]
-use std::{boxed::Box, format, string::String, vec::Vec};
 #[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, format, string::String, vec::Vec};
+#[cfg(feature = "std")]
+use std::{boxed::Box, format, string::String, vec::Vec};
 
 use vitte_ast as ast;
 use vitte_hygiene::HygieneProvider;
@@ -123,9 +123,7 @@ pub struct DeriveRegistry {
 
 impl fmt::Debug for DeriveRegistry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DeriveRegistry")
-            .field("registered", &self.handlers.len())
-            .finish()
+        f.debug_struct("DeriveRegistry").field("registered", &self.handlers.len()).finish()
     }
 }
 
@@ -158,12 +156,7 @@ impl DeriveRegistry {
     }
 
     /// Applique un derive enregistré sur un item.
-    pub fn apply<H>(
-        &self,
-        name: &str,
-        item: &ast::Item,
-        hygiene: &H,
-    ) -> Option<DeriveOutcome>
+    pub fn apply<H>(&self, name: &str, item: &ast::Item, hygiene: &H) -> Option<DeriveOutcome>
     where
         H: HygieneProvider,
     {
@@ -174,10 +167,7 @@ impl DeriveRegistry {
         };
 
         let ctx = DeriveContext::new(target, hygiene);
-        self.handlers
-            .iter()
-            .find(|(n, _)| n == name)
-            .map(|(_, handler)| handler(ctx))
+        self.handlers.iter().find(|(n, _)| n == name).map(|(_, handler)| handler(ctx))
     }
 }
 

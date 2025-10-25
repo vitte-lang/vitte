@@ -3,7 +3,10 @@
 use crate::buffer::SessionBuffer;
 use crate::document::{CellOutcome, SessionDocument};
 use crate::history::{HistoryConfig, HistoryManager};
-use crate::lsp_client::{discover_sessions, CellDigest, LspClient, LspClientError};
+use crate::lsp_client::{
+    discover_sessions, CellDigest, CompletionItem, CompletionParams, DefinitionLocation,
+    ExecuteParams, ExecuteResponse, HoverResult, LspClient, LspClientError,
+};
 use crate::viz::ValueViz;
 use std::io::{self, Write};
 use thiserror::Error;
@@ -37,10 +40,7 @@ pub struct ReplOptions {
 
 impl Default for ReplOptions {
     fn default() -> Self {
-        Self {
-            show_cell_numbers: false,
-            history: HistoryConfig::default(),
-        }
+        Self { show_cell_numbers: false, history: HistoryConfig::default() }
     }
 }
 
@@ -69,11 +69,10 @@ pub struct Repl {
 impl Repl {
     /// Crée un nouveau REPL.
     pub fn new(opts: ReplOptions) -> Self {
-        let history = HistoryManager::from_config(&opts.history)
-            .unwrap_or_else(|err| {
-                eprintln!("vitte-repl: unable to load history: {err}");
-                None
-            });
+        let history = HistoryManager::from_config(&opts.history).unwrap_or_else(|err| {
+            eprintln!("vitte-repl: unable to load history: {err}");
+            None
+        });
         Self {
             opts,
             buffer: SessionBuffer::default(),
@@ -93,9 +92,8 @@ impl Repl {
             stdout.flush().map_err(|e| ReplError::Generic(e.to_string()))?;
 
             let mut line = String::new();
-            let bytes = stdin
-                .read_line(&mut line)
-                .map_err(|e| ReplError::Generic(e.to_string()))?;
+            let bytes =
+                stdin.read_line(&mut line).map_err(|e| ReplError::Generic(e.to_string()))?;
             if bytes == 0 {
                 break;
             }
@@ -104,8 +102,7 @@ impl Repl {
                 EvalResult::Pending => {}
                 EvalResult::Output(out) => {
                     if !out.is_empty() {
-                        writeln!(stdout, "{out}")
-                            .map_err(|e| ReplError::Generic(e.to_string()))?;
+                        writeln!(stdout, "{out}").map_err(|e| ReplError::Generic(e.to_string()))?;
                     }
                 }
                 EvalResult::NoChange => {
@@ -121,7 +118,7 @@ impl Repl {
     pub fn eval(&mut self, line: &str) -> Result<EvalResult> {
         if self.buffer.is_empty() {
             let trimmed = line.trim();
-            if trimmed.starts_with(':') {
+            if Self::is_control_command(trimmed) {
                 return self.eval_command(trimmed);
             }
         }
@@ -133,15 +130,34 @@ impl Repl {
             self.cell_counter += 1;
             let chunk_clone = chunk.clone();
             match self.doc.submit(chunk) {
-                CellOutcome::Evaluated { output } => {
+                CellOutcome::Evaluated { index, output } => {
                     if let Some(history) = self.history.as_mut() {
                         history
                             .record(&chunk_clone)
                             .map_err(|e| ReplError::History(e.to_string()))?;
                     }
-                    Ok(EvalResult::Output(output))
+                    let mut display = output;
+                    if let Some(client) = self.lsp.as_mut() {
+                        let prev_exports = self.doc.exports_before(index);
+                        let params = ExecuteParams {
+                            cell_id: format!("cell-{index}"),
+                            version: self.doc.cell_version(index),
+                            source: chunk_clone,
+                            prev_exports,
+                        };
+                        match client.execute_cell(params) {
+                            Ok(exec) => {
+                                self.doc.update_exports(index, exec.exports.clone());
+                                augment_display_with_execute(&mut display, exec);
+                            }
+                            Err(err) => {
+                                append_line(&mut display, format!("[LSP error] {err}"));
+                            }
+                        }
+                    }
+                    Ok(EvalResult::Output(display))
                 }
-                CellOutcome::NoChange => Ok(EvalResult::NoChange),
+                CellOutcome::NoChange { .. } => Ok(EvalResult::NoChange),
             }
         } else {
             Ok(EvalResult::Pending)
@@ -181,9 +197,7 @@ impl Repl {
                 Err(err) => Err(ReplError::Generic(format!("invalid viz json: {err}"))),
             })
         } else if trimmed == ":viz-help" {
-            Some(Ok(EvalResult::Output(
-                "Usage:\n  :viz-json <json>\n  :viz-ascii <json>".into(),
-            )))
+            Some(Ok(EvalResult::Output("Usage:\n  :viz-json <json>\n  :viz-ascii <json>".into())))
         } else {
             None
         }
@@ -200,10 +214,8 @@ impl Repl {
                 Ok(EvalResult::Output(msg))
             }
             ":lsp-sync" => {
-                let client = self
-                    .lsp
-                    .as_mut()
-                    .ok_or_else(|| ReplError::Lsp("not connected".into()))?;
+                let client =
+                    self.lsp.as_mut().ok_or_else(|| ReplError::Lsp("not connected".into()))?;
                 let digests: Vec<CellDigest> = self.doc.digests();
                 match client.sync_state(&digests) {
                     Ok(resp) => Ok(EvalResult::Output(format!(
@@ -237,11 +249,84 @@ impl Repl {
                 self.lsp = Some(client);
                 Ok(EvalResult::Output(format!("LSP connected: {summary}")))
             }
+            other if other.starts_with(":lsp-complete") => {
+                let prefix = other[":lsp-complete".len()..].trim();
+                let client = self
+                    .lsp
+                    .as_mut()
+                    .ok_or_else(|| ReplError::Lsp("not connected".into()))?;
+                let last = self.doc.len().checked_sub(1).ok_or_else(|| ReplError::Lsp("no cells evaluated".into()))?;
+                let items: Vec<CompletionItem> = client
+                    .completion(CompletionParams {
+                        cell_id: format!("cell-{last}"),
+                        line: 0,
+                        character: prefix.len() as u32,
+                        prefix: prefix.to_string(),
+                    })
+                    .map_err(|e| ReplError::Lsp(e.to_string()))?;
+                let text = if items.is_empty() {
+                    "<no completions>".into()
+                } else {
+                    items
+                        .into_iter()
+                        .map(|item| format!("- {}", item.label))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                };
+                Ok(EvalResult::Output(text))
+            }
+            other if other.starts_with(":lsp-hover") => {
+                let symbol = other[":lsp-hover".len()..].trim();
+                let client = self
+                    .lsp
+                    .as_mut()
+                    .ok_or_else(|| ReplError::Lsp("not connected".into()))?;
+                let last = self.doc.len().checked_sub(1).ok_or_else(|| ReplError::Lsp("no cells evaluated".into()))?;
+                let hover: Option<HoverResult> = client
+                    .hover(&format!("cell-{last}"), symbol)
+                    .map_err(|e| ReplError::Lsp(e.to_string()))?;
+                Ok(EvalResult::Output(match hover {
+                    Some(hr) => hr.contents,
+                    None => "<no hover>".into(),
+                }))
+            }
+            other if other.starts_with(":lsp-goto") => {
+                let symbol = other[":lsp-goto".len()..].trim();
+                let client = self
+                    .lsp
+                    .as_mut()
+                    .ok_or_else(|| ReplError::Lsp("not connected".into()))?;
+                let last = self.doc.len().checked_sub(1).ok_or_else(|| ReplError::Lsp("no cells evaluated".into()))?;
+                let locations: Vec<DefinitionLocation> = client
+                    .definition(&format!("cell-{last}"), symbol)
+                    .map_err(|e| ReplError::Lsp(e.to_string()))?;
+                let text = if locations.is_empty() {
+                    "<no definition>".into()
+                } else {
+                    locations
+                        .into_iter()
+                        .map(|loc| format!("{}", loc.uri))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                };
+                Ok(EvalResult::Output(text))
+            }
             ":help" => Ok(EvalResult::Output(
-                "Commands: :lsp-connect [endpoint], :lsp-status, :lsp-sync, :lsp-disconnect".into(),
+                "Commands: :lsp-connect [endpoint], :lsp-status, :lsp-sync, :lsp-disconnect, :lsp-complete <prefix>, :lsp-hover <symbol>, :lsp-goto <symbol>".into(),
             )),
             other => Ok(EvalResult::Output(format!("unknown command: {other}"))),
         }
+    }
+}
+
+impl Repl {
+    fn is_control_command(cmd: &str) -> bool {
+        cmd == ":help"
+            || cmd.starts_with(":lsp-connect")
+            || cmd.starts_with(":lsp-complete")
+            || cmd.starts_with(":lsp-hover")
+            || cmd.starts_with(":lsp-goto")
+            || matches!(cmd, ":lsp-status" | ":lsp-sync" | ":lsp-disconnect")
     }
 }
 
@@ -250,12 +335,41 @@ fn connect_default_session() -> std::result::Result<LspClient, LspClientError> {
         Ok(client) => Ok(client),
         Err(LspClientError::NoSession) => {
             let sessions = discover_sessions()?;
-            let info = sessions
-                .into_iter()
-                .find(|s| s.primary)
-                .ok_or(LspClientError::NoSession)?;
+            let info = sessions.into_iter().find(|s| s.primary).ok_or(LspClientError::NoSession)?;
             LspClient::connect(info)
         }
         Err(err) => Err(err),
+    }
+}
+
+fn augment_display_with_execute(display: &mut String, exec: ExecuteResponse) {
+    if let Some(result) = exec.result {
+        if !result.is_empty() {
+            append_line(display, result);
+        }
+    }
+    if !exec.diagnostics.is_empty() {
+        let diagnostics = exec
+            .diagnostics
+            .into_iter()
+            .map(|d| match d.severity {
+                Some(sev) => format!("[{sev}] {}", d.message),
+                None => format!("[diag] {}", d.message),
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        append_line(display, diagnostics);
+    }
+}
+
+fn append_line(buffer: &mut String, line: String) {
+    if line.is_empty() {
+        return;
+    }
+    if buffer.is_empty() {
+        *buffer = line;
+    } else {
+        buffer.push('\n');
+        buffer.push_str(&line);
     }
 }

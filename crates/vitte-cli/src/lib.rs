@@ -28,6 +28,1103 @@ use vitte_core::SourceId;
 use vitte_lexer::{Lexer, LineMap, TokenKind};
 use vitte_parser::Parser;
 
+pub mod context {
+    use anyhow::{Context, Result};
+    use serde::Deserialize;
+    use std::{
+        collections::BTreeMap,
+        fs,
+        path::{Path, PathBuf},
+    };
+    use toml::Value;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Profile {
+        Dev,
+        Release,
+    }
+
+    impl Profile {
+        pub fn as_str(&self) -> &'static str {
+            match self {
+                Profile::Dev => "dev",
+                Profile::Release => "release",
+            }
+        }
+    }
+
+    impl Default for Profile {
+        fn default() -> Self {
+            Profile::Dev
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ProfileConfig {
+        pub profile: Profile,
+        pub optimize: bool,
+        pub emit_debug: bool,
+        pub diagnostics: bool,
+        pub cache: bool,
+    }
+
+    impl ProfileConfig {
+        pub fn defaults(profile: Profile) -> Self {
+            match profile {
+                Profile::Dev => Self {
+                    profile,
+                    optimize: false,
+                    emit_debug: true,
+                    diagnostics: true,
+                    cache: false,
+                },
+                Profile::Release => Self {
+                    profile,
+                    optimize: true,
+                    emit_debug: false,
+                    diagnostics: false,
+                    cache: true,
+                },
+            }
+        }
+
+        pub fn apply_overrides(&mut self, overrides: &ProfileOverrides) {
+            if let Some(optimize) = overrides.optimize {
+                self.optimize = optimize;
+            }
+            if let Some(emit_debug) = overrides.emit_debug {
+                self.emit_debug = emit_debug;
+            }
+            if let Some(diagnostics) = overrides.diagnostics {
+                self.diagnostics = diagnostics;
+            }
+            if let Some(cache) = overrides.cache {
+                self.cache = cache;
+            }
+        }
+    }
+
+    impl Default for ProfileConfig {
+        fn default() -> Self {
+            Self::defaults(Profile::Dev)
+        }
+    }
+
+    #[derive(Debug, Clone, Default, Deserialize)]
+    pub struct ProfileOverrides {
+        #[serde(default)]
+        pub optimize: Option<bool>,
+        #[serde(default)]
+        pub emit_debug: Option<bool>,
+        #[serde(default)]
+        pub diagnostics: Option<bool>,
+        #[serde(default)]
+        pub cache: Option<bool>,
+    }
+
+    #[derive(Debug, Default, Deserialize)]
+    struct RawProfileConfig {
+        #[serde(default)]
+        profiles: ProfilesSection,
+        #[serde(flatten)]
+        _rest: BTreeMap<String, Value>,
+    }
+
+    #[derive(Debug, Default, Deserialize)]
+    struct ProfilesSection {
+        #[serde(default)]
+        dev: Option<ProfileOverrides>,
+        #[serde(default)]
+        release: Option<ProfileOverrides>,
+        #[serde(flatten)]
+        _custom: BTreeMap<String, Value>,
+    }
+
+    fn config_path(root: Option<&Path>) -> PathBuf {
+        match root {
+            Some(dir) => dir.join("vitte.toml"),
+            None => PathBuf::from("vitte.toml"),
+        }
+    }
+
+    fn read_overrides(profile: Profile, root: Option<&Path>) -> Result<Option<ProfileOverrides>> {
+        let path = config_path(root);
+        let contents = match fs::read_to_string(&path) {
+            Ok(data) => data,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(err).with_context(|| format!("lecture de {}", path.display())),
+        };
+        let raw: RawProfileConfig =
+            toml::from_str(&contents).with_context(|| format!("parse de {}", path.display()))?;
+        let overrides = match profile {
+            Profile::Dev => raw.profiles.dev,
+            Profile::Release => raw.profiles.release,
+        };
+        Ok(overrides)
+    }
+
+    pub fn load_profile_config(profile: Profile, root: Option<&Path>) -> Result<ProfileConfig> {
+        let mut config = ProfileConfig::defaults(profile);
+        if let Some(overrides) = read_overrides(profile, root)? {
+            config.apply_overrides(&overrides);
+        }
+        Ok(config)
+    }
+}
+
+#[cfg(feature = "server")]
+pub mod server {
+    use super::{context, execute, Command, CompileTask, Hooks, Input, InputKind, Output, RunTask};
+    use anyhow::{anyhow, Context, Result};
+    use serde::{Deserialize, Serialize};
+    use serde_json::{json, Value};
+    use std::{
+        net::SocketAddr,
+        path::{Path, PathBuf},
+        sync::Arc,
+    };
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::{tcp::OwnedWriteHalf, TcpListener, TcpStream};
+
+    pub struct ServerOptions {
+        pub addr: SocketAddr,
+        pub auth_token: Option<String>,
+        pub workspace_root: Option<PathBuf>,
+        pub default_profile: context::ProfileConfig,
+    }
+
+    pub async fn run(options: ServerOptions, hooks: Hooks) -> Result<()> {
+        let state = Arc::new(ServerState {
+            hooks,
+            auth_token: options.auth_token,
+            workspace_root: options.workspace_root,
+            default_profile: options.default_profile,
+        });
+
+        let listener = TcpListener::bind(options.addr)
+            .await
+            .with_context(|| format!("impossible d'écouter sur {}", options.addr))?;
+
+        loop {
+            let (stream, addr) = listener.accept().await?;
+            let state = Arc::clone(&state);
+            tokio::spawn(async move {
+                if let Err(err) = handle_client(state, stream).await {
+                    eprintln!("[rpc] connexion {} fermée: {:#}", addr, err);
+                }
+            });
+        }
+    }
+
+    struct ServerState {
+        hooks: Hooks,
+        auth_token: Option<String>,
+        workspace_root: Option<PathBuf>,
+        default_profile: context::ProfileConfig,
+    }
+
+    #[derive(Deserialize)]
+    struct RpcRequest {
+        jsonrpc: String,
+        method: String,
+        #[serde(default)]
+        params: Value,
+        #[serde(default)]
+        id: Option<Value>,
+    }
+
+    #[derive(Serialize)]
+    struct RpcResponse {
+        jsonrpc: &'static str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        result: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<RpcError>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<Value>,
+    }
+
+    #[derive(Serialize)]
+    struct RpcError {
+        code: i32,
+        message: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        data: Option<Value>,
+    }
+
+    async fn handle_client(state: Arc<ServerState>, stream: TcpStream) -> Result<()> {
+        let (read_half, mut write_half) = stream.into_split();
+        let mut reader = BufReader::new(read_half);
+        let mut line = String::new();
+        let mut authenticated = state.auth_token.is_none();
+
+        send_notification(
+            &mut write_half,
+            "server/ready",
+            json!({ "authenticated": authenticated }),
+        )
+        .await?;
+
+        loop {
+            line.clear();
+            let read = reader.read_line(&mut line).await?;
+            if read == 0 {
+                break;
+            }
+            let payload = line.trim();
+            if payload.is_empty() {
+                continue;
+            }
+
+            let request: RpcRequest = match serde_json::from_str(payload) {
+                Ok(req) => req,
+                Err(err) => {
+                    send_error(&mut write_half, None, -32700, format!("JSON invalide: {err}"))
+                        .await?;
+                    continue;
+                }
+            };
+
+            if request.jsonrpc != "2.0" {
+                send_error(
+                    &mut write_half,
+                    request.id.clone(),
+                    -32600,
+                    "version JSON-RPC invalide".into(),
+                )
+                .await?;
+                continue;
+            }
+
+            if request.method == "auth" {
+                if state.auth_token.is_none() {
+                    send_error(&mut write_half, request.id.clone(), -32000, "auth inutile".into())
+                        .await?;
+                    continue;
+                }
+                match request.params.get("token").and_then(Value::as_str) {
+                    Some(token) if Some(token) == state.auth_token.as_deref() => {
+                        authenticated = true;
+                        send_response(&mut write_half, request.id.clone(), json!({ "ok": true }))
+                            .await?;
+                    }
+                    _ => {
+                        send_error(
+                            &mut write_half,
+                            request.id.clone(),
+                            -32000,
+                            "token invalide".into(),
+                        )
+                        .await?;
+                    }
+                }
+                continue;
+            }
+
+            if !authenticated {
+                send_error(&mut write_half, request.id.clone(), -32001, "auth requise".into())
+                    .await?;
+                continue;
+            }
+
+            let result = match request.method.as_str() {
+                "ping" => Ok(json!({ "pong": true })),
+                "compile" => {
+                    let params: CompileParams = deserialize_params(&request.params)?;
+                    handle_compile(&state, &mut write_half, params).await
+                }
+                "run" => {
+                    let params: RunParams = deserialize_params(&request.params)?;
+                    handle_run(&state, &mut write_half, params).await
+                }
+                "fmt" => {
+                    let params: FmtParams = deserialize_params(&request.params)?;
+                    handle_fmt(&state, params).await
+                }
+                "shutdown" => {
+                    send_response(&mut write_half, request.id.clone(), json!({ "ok": true }))
+                        .await?;
+                    break;
+                }
+                other => Err(anyhow!("méthode inconnue: {other}")),
+            };
+
+            if let Some(id) = request.id {
+                match result {
+                    Ok(value) => send_response(&mut write_half, Some(id), value).await?,
+                    Err(err) => {
+                        send_error(&mut write_half, Some(id), -32002, err.to_string()).await?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn handle_compile(
+        state: &ServerState,
+        writer: &mut OwnedWriteHalf,
+        params: CompileParams,
+    ) -> Result<Value> {
+        let input_path = resolve_path(state.workspace_root.as_deref(), &params.input)?;
+        let input_repr = input_path.display().to_string();
+        let output_path = params
+            .output
+            .as_ref()
+            .map(|p| resolve_path(state.workspace_root.as_deref(), p))
+            .transpose()?;
+
+        let mut profile_cfg = resolve_profile(state, params.profile.as_deref())?;
+        let optimize = params.optimize.unwrap_or(profile_cfg.optimize);
+        let emit_debug = params.emit_debug.unwrap_or(profile_cfg.emit_debug);
+        profile_cfg.optimize = optimize;
+        profile_cfg.emit_debug = emit_debug;
+
+        let task = CompileTask {
+            input: Input::Path(input_path.clone()),
+            output: match output_path {
+                Some(path) => Output::Path(path),
+                None => Output::Auto,
+            },
+            optimize,
+            emit_debug,
+            auto_mkdir: params.auto_mkdir.unwrap_or(false),
+            overwrite: params.overwrite.unwrap_or(false),
+            time: params.time.unwrap_or(false),
+            profile: profile_cfg.clone(),
+        };
+
+        send_notification(
+            writer,
+            "build/progress",
+            json!({ "command": "compile", "stage": "started", "path": input_repr }),
+        )
+        .await?;
+
+        let exit_code = execute_command(Command::Compile(task), state.hooks.clone()).await?;
+
+        send_notification(
+            writer,
+            "build/progress",
+            json!({ "command": "compile", "stage": "finished", "exit_code": exit_code }),
+        )
+        .await?;
+
+        Ok(json!({ "exit_code": exit_code }))
+    }
+
+    async fn handle_run(
+        state: &ServerState,
+        writer: &mut OwnedWriteHalf,
+        params: RunParams,
+    ) -> Result<Value> {
+        let program_path = resolve_path(state.workspace_root.as_deref(), &params.program)?;
+        let program_repr = program_path.display().to_string();
+        let input_kind = if params.auto_compile.unwrap_or(false) {
+            InputKind::SourcePath(program_path.clone())
+        } else {
+            InputKind::BytecodePath(program_path.clone())
+        };
+
+        let mut profile_cfg = resolve_profile(state, params.profile.as_deref())?;
+        let optimize = params.optimize.unwrap_or(profile_cfg.optimize);
+        profile_cfg.optimize = optimize;
+
+        let task = RunTask {
+            program: input_kind,
+            args: params.args.unwrap_or_default(),
+            auto_compile: params.auto_compile.unwrap_or(false),
+            optimize,
+            time: params.time.unwrap_or(false),
+            profile: profile_cfg.clone(),
+        };
+
+        send_notification(
+            writer,
+            "build/progress",
+            json!({ "command": "run", "stage": "started", "program": program_repr }),
+        )
+        .await?;
+
+        let exit_code = execute_command(Command::Run(task), state.hooks.clone()).await?;
+
+        send_notification(
+            writer,
+            "build/progress",
+            json!({ "command": "run", "stage": "finished", "exit_code": exit_code }),
+        )
+        .await?;
+
+        Ok(json!({ "exit_code": exit_code }))
+    }
+
+    async fn handle_fmt(state: &ServerState, params: FmtParams) -> Result<Value> {
+        let input_path = resolve_path(state.workspace_root.as_deref(), &params.input)?;
+        let hooks = state.hooks.clone();
+        let content = tokio::fs::read_to_string(&input_path)
+            .await
+            .with_context(|| format!("lecture de {}", input_path.display()))?;
+
+        let formatted = tokio::task::spawn_blocking(move || {
+            let fmt_fn = hooks.fmt.ok_or_else(|| {
+                anyhow!("hook de formatage indisponible — activez la feature `fmt`")
+            })?;
+            fmt_fn(&content, false)
+        })
+        .await??;
+
+        Ok(json!({ "formatted": formatted }))
+    }
+
+    async fn execute_command(cmd: Command, hooks: Hooks) -> Result<i32> {
+        let result = tokio::task::spawn_blocking(move || execute(cmd, &hooks))
+            .await
+            .context("commande server bloquée")?;
+        result
+    }
+
+    fn resolve_path(root: Option<&Path>, raw: &str) -> Result<PathBuf> {
+        let path = PathBuf::from(raw);
+        if path.is_absolute() || root.is_none() {
+            Ok(path)
+        } else {
+            Ok(root.unwrap().join(path))
+        }
+    }
+
+    fn resolve_profile(
+        state: &ServerState,
+        profile: Option<&str>,
+    ) -> Result<context::ProfileConfig> {
+        if let Some(name) = profile {
+            let profile = match name {
+                "dev" => context::Profile::Dev,
+                "release" => context::Profile::Release,
+                other => return Err(anyhow!(format!("profil inconnu: {other}"))),
+            };
+            context::load_profile_config(profile, state.workspace_root.as_deref())
+        } else {
+            Ok(state.default_profile.clone())
+        }
+    }
+
+    async fn send_response(
+        writer: &mut OwnedWriteHalf,
+        id: Option<Value>,
+        result: Value,
+    ) -> Result<()> {
+        let resp = RpcResponse { jsonrpc: "2.0", result: Some(result), error: None, id };
+        let payload = serde_json::to_vec(&resp)?;
+        writer.write_all(&payload).await?;
+        writer.write_all(b"\n").await?;
+        writer.flush().await?;
+        Ok(())
+    }
+
+    async fn send_error(
+        writer: &mut OwnedWriteHalf,
+        id: Option<Value>,
+        code: i32,
+        message: String,
+    ) -> Result<()> {
+        let resp = RpcResponse {
+            jsonrpc: "2.0",
+            result: None,
+            error: Some(RpcError { code, message, data: None }),
+            id,
+        };
+        let payload = serde_json::to_vec(&resp)?;
+        writer.write_all(&payload).await?;
+        writer.write_all(b"\n").await?;
+        writer.flush().await?;
+        Ok(())
+    }
+
+    async fn send_notification(
+        writer: &mut OwnedWriteHalf,
+        method: &str,
+        params: Value,
+    ) -> Result<()> {
+        let notif = json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+        });
+        let payload = serde_json::to_vec(&notif)?;
+        writer.write_all(&payload).await?;
+        writer.write_all(b"\n").await?;
+        writer.flush().await?;
+        Ok(())
+    }
+
+    fn deserialize_params<T: for<'de> Deserialize<'de>>(value: &Value) -> Result<T> {
+        serde_json::from_value(value.clone()).map_err(|err| anyhow!(err))
+    }
+
+    #[derive(Deserialize)]
+    struct CompileParams {
+        input: String,
+        #[serde(default)]
+        output: Option<String>,
+        #[serde(default)]
+        optimize: Option<bool>,
+        #[serde(default)]
+        emit_debug: Option<bool>,
+        #[serde(default)]
+        profile: Option<String>,
+        #[serde(default)]
+        auto_mkdir: Option<bool>,
+        #[serde(default)]
+        overwrite: Option<bool>,
+        #[serde(default)]
+        time: Option<bool>,
+    }
+
+    #[derive(Deserialize)]
+    struct RunParams {
+        program: String,
+        #[serde(default)]
+        args: Option<Vec<String>>,
+        #[serde(default)]
+        auto_compile: Option<bool>,
+        #[serde(default)]
+        optimize: Option<bool>,
+        #[serde(default)]
+        profile: Option<String>,
+        #[serde(default)]
+        time: Option<bool>,
+    }
+
+    #[derive(Deserialize)]
+    struct FmtParams {
+        input: String,
+    }
+}
+
+pub mod i18n {
+    use std::collections::HashMap;
+    use std::sync::{OnceLock, RwLock};
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Lang {
+        En,
+        Fr,
+    }
+
+    impl Lang {
+        pub fn from_code(code: &str) -> Option<Self> {
+            match code.to_ascii_lowercase().as_str() {
+                "en" | "en-us" | "en_gb" => Some(Lang::En),
+                "fr" | "fr-fr" | "fr_ca" => Some(Lang::Fr),
+                _ => None,
+            }
+        }
+
+        pub fn code(self) -> &'static str {
+            match self {
+                Lang::En => "en",
+                Lang::Fr => "fr",
+            }
+        }
+    }
+
+    fn lang_lock() -> &'static RwLock<Lang> {
+        static LANG: OnceLock<RwLock<Lang>> = OnceLock::new();
+        LANG.get_or_init(|| RwLock::new(Lang::En))
+    }
+
+    pub fn init(lang: Lang) {
+        if let Ok(mut guard) = lang_lock().write() {
+            *guard = lang;
+        }
+    }
+
+    pub fn current_lang() -> Lang {
+        *lang_lock().read().expect("lang lock poisoned")
+    }
+
+    fn parse_catalog(input: &str) -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        for line in input.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some(idx) = line.find('=') {
+                let key = line[..idx].trim();
+                let value = line[idx + 1..].trim();
+                map.insert(key.to_string(), value.to_string());
+            }
+        }
+        map
+    }
+
+    fn catalog(lang: Lang) -> &'static HashMap<String, String> {
+        match lang {
+            Lang::En => static_catalog_en(),
+            Lang::Fr => static_catalog_fr(),
+        }
+    }
+
+    fn static_catalog_en() -> &'static HashMap<String, String> {
+        static EN: OnceLock<HashMap<String, String>> = OnceLock::new();
+        EN.get_or_init(|| parse_catalog(include_str!("i18n/en.ftl")))
+    }
+
+    fn static_catalog_fr() -> &'static HashMap<String, String> {
+        static FR: OnceLock<HashMap<String, String>> = OnceLock::new();
+        FR.get_or_init(|| parse_catalog(include_str!("i18n/fr.ftl")))
+    }
+
+    fn lookup<'a>(lang: Lang, key: &str) -> Option<&'a str> {
+        catalog(lang).get(key).map(|s| s.as_str())
+    }
+
+    fn render(template: &str, args: &[(&str, &str)]) -> String {
+        let mut out = template.to_string();
+        for (key, value) in args {
+            let placeholder = format!("{{{key}}}");
+            out = out.replace(&placeholder, value);
+        }
+        out
+    }
+
+    fn translate(lang: Lang, key: &str, args: &[(&str, &str)]) -> String {
+        if let Some(text) = lookup(lang, key) {
+            return render(text, args);
+        }
+        if let Some(text) = lookup(Lang::En, key) {
+            return render(text, args);
+        }
+        render(key, args)
+    }
+
+    pub fn tr(key: &str, args: &[(&str, &str)]) -> String {
+        translate(current_lang(), key, args)
+    }
+
+    pub fn plural(base_key: &str, count: usize, extra: &[(&str, &str)]) -> String {
+        let lang = current_lang();
+        let key = match count {
+            0 => format!("{base_key}.zero"),
+            1 => format!("{base_key}.one"),
+            _ => format!("{base_key}.other"),
+        };
+        let count_str = count.to_string();
+        let mut vars: Vec<(&str, &str)> = Vec::with_capacity(extra.len() + 1);
+        vars.push(("count", &count_str));
+        for (k, v) in extra {
+            vars.push((k, v));
+        }
+        translate(lang, &key, &vars)
+    }
+}
+
+pub mod doctor {
+    use super::i18n;
+    use anyhow::{Context, Result};
+    use semver::Version;
+    use serde::Serialize;
+    use std::fs::{self, OpenOptions};
+    use std::io::{self, Write};
+    use std::path::Path;
+    use std::process::Command as ProcessCommand;
+
+    const MIN_RUSTC_VERSION: &str = "1.70.0";
+
+    #[derive(Debug, Clone, Serialize)]
+    pub struct DoctorReport {
+        pub workspace_root: String,
+        pub summary: DoctorSummary,
+        pub checks: Vec<CheckResult>,
+        pub suggestions: Vec<String>,
+    }
+
+    impl DoctorReport {
+        pub fn has_errors(&self) -> bool {
+            self.summary.errors > 0
+        }
+    }
+
+    #[derive(Debug, Clone, Serialize)]
+    pub struct DoctorSummary {
+        pub errors: usize,
+        pub warnings: usize,
+    }
+
+    #[derive(Debug, Clone, Serialize)]
+    pub struct CheckResult {
+        pub name: String,
+        pub status: CheckStatus,
+        pub details: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub recommendation: Option<String>,
+    }
+
+    impl CheckResult {
+        fn ok(name: impl Into<String>, details: impl Into<String>) -> Self {
+            Self {
+                name: name.into(),
+                status: CheckStatus::Ok,
+                details: details.into(),
+                recommendation: None,
+            }
+        }
+
+        fn warn(
+            name: impl Into<String>,
+            details: impl Into<String>,
+            recommendation: impl Into<String>,
+        ) -> Self {
+            Self {
+                name: name.into(),
+                status: CheckStatus::Warn,
+                details: details.into(),
+                recommendation: Some(recommendation.into()),
+            }
+        }
+
+        fn error(
+            name: impl Into<String>,
+            details: impl Into<String>,
+            recommendation: impl Into<String>,
+        ) -> Self {
+            Self {
+                name: name.into(),
+                status: CheckStatus::Error,
+                details: details.into(),
+                recommendation: Some(recommendation.into()),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+    #[serde(rename_all = "lowercase")]
+    pub enum CheckStatus {
+        Ok,
+        Warn,
+        Error,
+    }
+
+    impl std::fmt::Display for CheckStatus {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                CheckStatus::Ok => write!(f, "OK"),
+                CheckStatus::Warn => write!(f, "WARN"),
+                CheckStatus::Error => write!(f, "ERR"),
+            }
+        }
+    }
+
+    pub fn run(root: &Path) -> DoctorReport {
+        let mut checks = Vec::new();
+        let mut suggestions = Vec::new();
+
+        let rustc = check_rustc();
+        if let Some(rec) = rustc.recommendation.clone() {
+            if rustc.status != CheckStatus::Ok {
+                suggestions.push(rec.clone());
+            }
+        }
+        checks.push(rustc);
+
+        let cargo = check_cargo();
+        if let Some(rec) = cargo.recommendation.clone() {
+            if cargo.status != CheckStatus::Ok {
+                suggestions.push(rec.clone());
+            }
+        }
+        checks.push(cargo);
+
+        let cache = check_cache_dir(root);
+        if let Some(rec) = cache.recommendation.clone() {
+            if cache.status != CheckStatus::Ok {
+                suggestions.push(rec.clone());
+            }
+        }
+        checks.push(cache);
+
+        let modules = check_modules_dir(root);
+        if let Some(rec) = modules.recommendation.clone() {
+            if modules.status != CheckStatus::Ok {
+                suggestions.push(rec.clone());
+            }
+        }
+        checks.push(modules);
+
+        let errors = checks.iter().filter(|c| matches!(c.status, CheckStatus::Error)).count();
+        let warnings = checks.iter().filter(|c| matches!(c.status, CheckStatus::Warn)).count();
+
+        DoctorReport {
+            workspace_root: root.display().to_string(),
+            summary: DoctorSummary { errors, warnings },
+            checks,
+            suggestions,
+        }
+    }
+
+    fn check_rustc() -> CheckResult {
+        let name = i18n::tr("doctor.check.rustc.name", &[]);
+        let output = match ProcessCommand::new("rustc").arg("--version").output() {
+            Ok(out) => out,
+            Err(err) => {
+                let err_text = err.to_string();
+                let details = i18n::tr(
+                    "doctor.check.rustc.not_found",
+                    [("error", err_text.as_str())].as_ref(),
+                );
+                let recommendation = i18n::tr("doctor.check.rustc.recommend.install", &[]);
+                return CheckResult::error(name, details, recommendation);
+            }
+        };
+
+        if !output.status.success() {
+            let code = output.status.code().map(|c| c.to_string()).unwrap_or_else(|| "?".into());
+            return CheckResult::error(
+                name,
+                i18n::tr("doctor.check.rustc.exec_failed", [("code", code.as_str())].as_ref()),
+                i18n::tr("doctor.check.rustc.recommend.verify", &[]),
+            );
+        }
+
+        let version_line = String::from_utf8_lossy(&output.stdout);
+        let detected = version_line.trim().to_string();
+        let detected_version = detected.split_whitespace().nth(1).unwrap_or_default().to_string();
+
+        match Version::parse(&detected_version) {
+            Ok(parsed) => {
+                let min = Version::parse(MIN_RUSTC_VERSION).expect("valid min version");
+                if parsed < min {
+                    CheckResult::warn(
+                        name,
+                        i18n::tr(
+                            "doctor.check.rustc.outdated",
+                            [
+                                ("version", detected_version.as_str()),
+                                ("minimum", MIN_RUSTC_VERSION),
+                            ]
+                            .as_ref(),
+                        ),
+                        i18n::tr("doctor.check.rustc.recommend.update", &[]),
+                    )
+                } else {
+                    CheckResult::ok(
+                        name,
+                        i18n::tr(
+                            "doctor.check.rustc.ok",
+                            [("version", detected_version.as_str())].as_ref(),
+                        ),
+                    )
+                }
+            }
+            Err(_) => CheckResult::warn(
+                name,
+                i18n::tr(
+                    "doctor.check.rustc.parse_error",
+                    [("output", detected.as_str())].as_ref(),
+                ),
+                i18n::tr("doctor.check.rustc.recommend.verify", &[]),
+            ),
+        }
+    }
+
+    fn check_cargo() -> CheckResult {
+        let name = i18n::tr("doctor.check.cargo.name", &[]);
+        match ProcessCommand::new("cargo").arg("--version").output() {
+            Ok(out) if out.status.success() => {
+                let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                CheckResult::ok(
+                    name,
+                    i18n::tr("doctor.check.cargo.ok", [("version", version.as_str())].as_ref()),
+                )
+            }
+            Ok(out) => CheckResult::error(
+                name,
+                {
+                    let code_str =
+                        out.status.code().map(|c| c.to_string()).unwrap_or_else(|| "?".into());
+                    i18n::tr(
+                        "doctor.check.cargo.exec_failed",
+                        [("code", code_str.as_str())].as_ref(),
+                    )
+                },
+                i18n::tr("doctor.check.cargo.recommend.verify", &[]),
+            ),
+            Err(err) => CheckResult::error(
+                name,
+                {
+                    let err_text = err.to_string();
+                    i18n::tr(
+                        "doctor.check.cargo.not_found",
+                        [("error", err_text.as_str())].as_ref(),
+                    )
+                },
+                i18n::tr("doctor.check.cargo.recommend.install", &[]),
+            ),
+        }
+    }
+
+    fn check_cache_dir(root: &Path) -> CheckResult {
+        let name = i18n::tr("doctor.check.cache.name", &[]);
+        let target_dir = root.join("target");
+        if !target_dir.exists() {
+            let path_text = target_dir.display().to_string();
+            return CheckResult::warn(
+                name,
+                i18n::tr("doctor.check.cache.missing", [("path", path_text.as_str())].as_ref()),
+                i18n::tr("doctor.check.cache.recommend.build", &[]),
+            );
+        }
+
+        let probe = target_dir.join(".doctor_probe");
+        match OpenOptions::new().create(true).write(true).truncate(true).open(&probe) {
+            Ok(mut file) => {
+                let path_text = target_dir.display().to_string();
+                if let Err(err) = file.write_all(b"ok") {
+                    let _ = fs::remove_file(&probe);
+                    let err_text = err.to_string();
+                    return CheckResult::warn(
+                        name,
+                        i18n::tr(
+                            "doctor.check.cache.write_fail",
+                            [("path", path_text.as_str()), ("error", err_text.as_str())].as_ref(),
+                        ),
+                        i18n::tr("doctor.check.cache.recommend.perms", &[]),
+                    );
+                }
+                let _ = fs::remove_file(&probe);
+                CheckResult::ok(
+                    name,
+                    i18n::tr("doctor.check.cache.ok", [("path", path_text.as_str())].as_ref()),
+                )
+            }
+            Err(err) => CheckResult::warn(
+                name,
+                {
+                    let path_text = target_dir.display().to_string();
+                    let err_text = err.to_string();
+                    i18n::tr(
+                        "doctor.check.cache.open_fail",
+                        [("path", path_text.as_str()), ("error", err_text.as_str())].as_ref(),
+                    )
+                },
+                i18n::tr("doctor.check.cache.recommend.perms", &[]),
+            ),
+        }
+    }
+
+    fn check_modules_dir(root: &Path) -> CheckResult {
+        let name = i18n::tr("doctor.check.modules.name", &[]);
+        let modules_dir = root.join("modules").join("vitte-modules");
+        if modules_dir.exists() {
+            let path_text = modules_dir.display().to_string();
+            CheckResult::ok(
+                name,
+                i18n::tr("doctor.check.modules.ok", [("path", path_text.as_str())].as_ref()),
+            )
+        } else {
+            let path_text = modules_dir.display().to_string();
+            CheckResult::warn(
+                name,
+                i18n::tr("doctor.check.modules.missing", [("path", path_text.as_str())].as_ref()),
+                i18n::tr("doctor.check.modules.recommend.init", &[]),
+            )
+        }
+    }
+
+    pub fn print_report(report: &DoctorReport) {
+        let errors_label = i18n::plural("doctor.count.errors", report.summary.errors, &[]);
+        let warnings_label = i18n::plural("doctor.count.warnings", report.summary.warnings, &[]);
+        let header = i18n::tr(
+            "doctor.report.header",
+            &[
+                ("workspace", report.workspace_root.as_str()),
+                ("errors_label", errors_label.as_str()),
+                ("warnings_label", warnings_label.as_str()),
+            ],
+        );
+        println!("{}", header);
+        for check in &report.checks {
+            let status_tag = match check.status {
+                CheckStatus::Ok => i18n::tr("doctor.status.ok", &[]),
+                CheckStatus::Warn => i18n::tr("doctor.status.warn", &[]),
+                CheckStatus::Error => i18n::tr("doctor.status.error", &[]),
+            };
+            println!("  {} {}", status_tag, check.name);
+            println!("        {}", check.details);
+            if let Some(rec) = &check.recommendation {
+                println!(
+                    "        {}",
+                    i18n::tr("doctor.suggestion.inline", [("text", rec.as_str())].as_ref())
+                );
+            }
+        }
+        if !report.suggestions.is_empty() {
+            println!("\n{}", i18n::tr("doctor.suggestions.title", &[]));
+            for (idx, suggestion) in report.suggestions.iter().enumerate() {
+                let idx_str = (idx + 1).to_string();
+                println!(
+                    "  {}",
+                    i18n::tr(
+                        "doctor.suggestions.item",
+                        [("index", idx_str.as_str()), ("text", suggestion.as_str())].as_ref()
+                    )
+                );
+            }
+        }
+    }
+
+    pub fn purge_cache(root: &Path) -> Result<()> {
+        let target = root.join("target");
+        if !target.exists() {
+            return Ok(());
+        }
+        fs::remove_dir_all(&target)
+            .with_context(|| format!("suppression de {}", target.display()))?;
+        Ok(())
+    }
+
+    pub fn ask_confirmation(prompt: &str) -> Result<bool> {
+        let suffix = match i18n::current_lang() {
+            i18n::Lang::Fr => " [o/N] ",
+            i18n::Lang::En => " [y/N] ",
+        };
+        print!("{}{suffix}", prompt);
+        io::stdout().flush()?;
+        let mut line = String::new();
+        io::stdin().read_line(&mut line)?;
+        let response = line.trim().to_ascii_lowercase();
+        let positive = matches!(response.as_str(), "y" | "yes" | "o" | "oui");
+        Ok(positive)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use tempfile::tempdir;
+
+        #[test]
+        fn run_report_on_empty_workspace() {
+            let dir = tempdir().unwrap();
+            let report = run(dir.path());
+            assert_eq!(report.workspace_root, dir.path().display().to_string());
+            assert!(report.summary.errors == 0 || report.summary.errors == 1);
+            assert!(!report.checks.is_empty());
+        }
+
+        #[test]
+        fn purge_cache_removes_folder() {
+            let dir = tempdir().unwrap();
+            let target = dir.path().join("target");
+            fs::create_dir_all(&target).unwrap();
+            fs::write(target.join("dummy"), b"data").unwrap();
+            purge_cache(dir.path()).unwrap();
+            assert!(!target.exists());
+        }
+    }
+}
+
 #[cfg(feature = "trace")]
 use env_logger;
 
@@ -53,6 +1150,8 @@ pub enum Command {
     Disasm(DisasmTask),
     /// Lister les modules compilés (selon les features du méta-crate).
     Modules(ModulesTask),
+    /// Diagnostiquer l'environnement CLI.
+    Doctor(DoctorTask),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -64,6 +1163,7 @@ pub struct CompileTask {
     pub auto_mkdir: bool, // crée les dossiers parents si besoin
     pub overwrite: bool,  // autorise l'écrasement
     pub time: bool,       // afficher le timing
+    pub profile: context::ProfileConfig,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -73,6 +1173,7 @@ pub struct RunTask {
     pub auto_compile: bool, // si program = Source(path/stdin), compiler d'abord
     pub optimize: bool,
     pub time: bool,
+    pub profile: context::ProfileConfig,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -116,6 +1217,13 @@ impl Default for ModulesFormat {
 pub struct ModulesTask {
     pub format: ModulesFormat,
     pub trace_registry: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct DoctorTask {
+    pub output_json: bool,
+    pub fix_cache: bool,
+    pub assume_yes: bool,
 }
 
 /// Entrée texte (source) : fichier ou `-` (=stdin).
@@ -242,11 +1350,21 @@ pub fn execute(cmd: Command, hooks: &Hooks) -> Result<i32> {
             modules_entry(t)?;
             Ok(0)
         }
+        Command::Doctor(t) => doctor_entry(t),
     }
 }
 
 fn compile_entry(task: CompileTask, hooks: &Hooks) -> Result<i32> {
-    let CompileTask { input, output, optimize, emit_debug, auto_mkdir, overwrite, time } = task;
+    let CompileTask {
+        input,
+        output,
+        optimize,
+        emit_debug,
+        auto_mkdir,
+        overwrite,
+        time,
+        profile: profile_cfg,
+    } = task;
     let compiler = match hooks.compile {
         Some(c) => c,
         None => {
@@ -262,7 +1380,9 @@ fn compile_entry(task: CompileTask, hooks: &Hooks) -> Result<i32> {
     };
 
     let src = read_source(&input).context("lecture de la source")?;
-    perform_frontend_checks(&src, &input)?;
+    if profile_cfg.diagnostics {
+        perform_frontend_checks(&src, &input)?;
+    }
 
     let start = Instant::now();
     let compile_opts = CompileOptions { optimize, emit_debug };
@@ -1406,6 +2526,50 @@ fn modules_entry(task: ModulesTask) -> Result<()> {
     }
 }
 
+fn doctor_entry(task: DoctorTask) -> Result<i32> {
+    let root = std::env::current_dir().context("détection du workspace")?;
+    let report = doctor::run(&root);
+
+    if task.output_json {
+        let json = serde_json::to_string_pretty(&report)?;
+        println!("{}", json);
+    } else {
+        doctor::print_report(&report);
+    }
+
+    if task.fix_cache {
+        let target_dir = root.join("target");
+        if target_dir.exists() {
+            let proceed = if task.assume_yes {
+                true
+            } else {
+                let prompt = i18n::tr(
+                    "doctor.prompt.purge_cache",
+                    [("path", target_dir.display().to_string().as_str())].as_ref(),
+                );
+                doctor::ask_confirmation(&prompt)?
+            };
+            if proceed {
+                doctor::purge_cache(&root)?;
+                println!("{}", i18n::tr("doctor.action.cache_purged", &[]));
+            } else {
+                println!("{}", i18n::tr("doctor.action.cache_kept", &[]));
+            }
+        } else {
+            println!("{}", i18n::tr("doctor.action.cache_missing", &[]));
+        }
+    }
+
+    let exit_code = if report.summary.errors > 0 {
+        2
+    } else if report.summary.warnings > 0 {
+        1
+    } else {
+        0
+    };
+    Ok(exit_code)
+}
+
 // ───────────────────────────── Utilitaires E/S ─────────────────────────────
 
 fn read_source(input: &Input) -> Result<String> {
@@ -1632,12 +2796,19 @@ pub mod repl {
         fs,
         io::{self, Write},
         path::{Path, PathBuf},
+        sync::{Arc, Mutex},
     };
 
     #[cfg(feature = "color")]
     use owo_colors::OwoColorize;
 
     const HISTORY_FILE_NAME: &str = "repl_history";
+
+    // Analyse et parsing pour autocomplétion
+    use vitte_analyzer::{AnalysisInput, Analyzer};
+    use vitte_ast as ast;
+    use vitte_core::SourceId;
+    use vitte_parser::Parser;
 
     pub fn fallback(prompt: &str) -> Result<i32> {
         match advanced_repl(prompt) {
@@ -1658,7 +2829,12 @@ pub mod repl {
             eprintln!("[repl] impossible d'activer history_ignore_dups: {err}");
         }
         rl.set_history_ignore_space(true);
-        rl.set_helper(Some(ReplHelper::default()));
+        let shared = SharedAnalysis::new();
+        rl.set_helper(Some(ReplHelper {
+            hinter: HistoryHinter {},
+            shared: Some(shared.clone()),
+            snippets: DEFAULT_SNIPPETS,
+        }));
 
         let history_path = history_file_path();
         if let Some(path) = history_path.as_ref() {
@@ -1672,7 +2848,7 @@ pub mod repl {
             }
         }
 
-        let mut session = ReplSession::new(prompt, history_path.clone());
+        let mut session = ReplSession::new(prompt, history_path.clone(), shared);
         session.print_banner();
 
         loop {
@@ -1793,6 +2969,8 @@ pub mod repl {
     #[derive(Default)]
     struct ReplHelper {
         hinter: HistoryHinter,
+        shared: Option<SharedAnalysis>,
+        snippets: &'static [&'static str],
     }
 
     impl Helper for ReplHelper {}
@@ -1825,37 +3003,52 @@ pub mod repl {
             _ctx: &LineContext<'_>,
         ) -> Result<(usize, Vec<Pair>), ReadlineError> {
             let slice = &line[..pos];
-            let Some(colon_idx) = slice.rfind(':') else {
-                return Ok((pos, Vec::new()));
-            };
-            if colon_idx > 0 {
-                if let Some(prev) = slice[..colon_idx].chars().last() {
-                    if !prev.is_whitespace() {
-                        return Ok((pos, Vec::new()));
+
+            // 1) Complétion des commandes :...
+            if let Some(colon_idx) = slice.rfind(':') {
+                if colon_idx == 0 || slice[..colon_idx].ends_with(char::is_whitespace) {
+                    let token = &slice[colon_idx + 1..];
+                    if !token.chars().any(|c| c.is_whitespace()) {
+                        let token_lower = token.to_ascii_lowercase();
+                        let mut pairs = Vec::new();
+                        for info in REPL_COMMANDS {
+                            if info.name.starts_with(&token_lower) {
+                                let mut replacement = format!(":{}", info.name);
+                                if info.adds_space {
+                                    replacement.push(' ');
+                                }
+                                let display = format!(":{}", info.name);
+                                pairs.push(Pair { display, replacement });
+                            }
+                        }
+                        return Ok((colon_idx, pairs));
                     }
                 }
             }
-            let token = &slice[colon_idx + 1..];
-            if token.chars().any(|c| c.is_whitespace()) {
+
+            // 2) Complétion symbolique/snippets
+            let start_idx = slice
+                .rfind(|c: char| !(c.is_alphanumeric() || c == '_'))
+                .map(|i| i + 1)
+                .unwrap_or(0);
+            let prefix = &slice[start_idx..];
+            if prefix.is_empty() {
                 return Ok((pos, Vec::new()));
             }
-            let token_lower = token.to_ascii_lowercase();
             let mut pairs = Vec::new();
-            for info in REPL_COMMANDS {
-                if info.name.starts_with(&token_lower) {
-                    let mut replacement = format!(":{}", info.name);
-                    if info.adds_space {
-                        replacement.push(' ');
+            if let Some(shared) = &self.shared {
+                for s in shared.symbols() {
+                    if s.starts_with(prefix) {
+                        pairs.push(Pair { display: s.clone(), replacement: s });
                     }
-                    let display = format!(":{}", info.name);
-                    pairs.push(Pair { display, replacement });
                 }
             }
-            if pairs.is_empty() {
-                return Ok((pos, pairs));
+            for &snip in self.snippets.iter() {
+                if snip.starts_with(prefix) {
+                    pairs.push(Pair { display: snip.to_string(), replacement: snip.to_string() });
+                }
             }
-            let start = colon_idx;
-            Ok((start, pairs))
+            Ok((start_idx, pairs))
         }
     }
 
@@ -1874,16 +3067,20 @@ pub mod repl {
         multiline: bool,
         buffer: Vec<String>,
         history_path: Option<PathBuf>,
+        analysis: SharedAnalysis,
+        accepted_source: String,
     }
 
     impl ReplSession {
-        fn new(prompt: &str, history_path: Option<PathBuf>) -> Self {
+        fn new(prompt: &str, history_path: Option<PathBuf>, analysis: SharedAnalysis) -> Self {
             Self {
                 base_prompt: ensure_trailing_space(prompt),
                 prompt_override: None,
                 multiline: false,
                 buffer: Vec::new(),
                 history_path,
+                analysis,
+                accepted_source: String::new(),
             }
         }
 
@@ -1897,7 +3094,7 @@ pub mod repl {
         }
 
         fn handle_line(&mut self, line: String, rl: &mut ReplEditor) -> Result<FlowControl> {
-            let trimmed = line.trim();
+            let trimmed = line.trim_end();
             if trimmed.is_empty() {
                 if self.multiline {
                     self.buffer.push(String::new());
@@ -1910,12 +3107,30 @@ pub mod repl {
             }
 
             if self.multiline {
-                self.buffer.push(line);
+                self.buffer.push(trimmed.to_string());
                 println!("(buffer {})", self.buffer.len());
             } else {
-                self.echo_single(trimmed);
-                if let Err(err) = rl.add_history_entry(trimmed) {
-                    eprintln!("[repl] historique indisponible: {err}");
+                // Mode simple: tenter un item complet
+                match parse_program_from_text(trimmed) {
+                    Ok(_) => {
+                        if let Err(err) = self.analysis.append_and_analyze(trimmed) {
+                            eprintln!("[repl] analyse échouée: {err}");
+                        } else {
+                            self.accepted_source.push_str(trimmed);
+                            self.accepted_source.push('\n');
+                            self.echo_single(trimmed);
+                            if let Err(err) = rl.add_history_entry(trimmed) {
+                                eprintln!("[repl] historique indisponible: {err}");
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        println!(
+                            "(entrée incomplète — passage en mode multi-ligne; terminez avec :run)"
+                        );
+                        self.multiline = true;
+                        self.buffer.push(trimmed.to_string());
+                    }
                 }
             }
             Ok(FlowControl::Continue)
@@ -2080,11 +3295,26 @@ pub mod repl {
                 return;
             }
             let block = self.buffer.join("\n");
-            println!("→ {}", block);
-            if let Err(err) = rl.add_history_entry(block.as_str()) {
-                eprintln!("[repl] historique indisponible: {err}");
+            match parse_program_from_text(&block) {
+                Ok(_) => {
+                    if let Err(err) = self.analysis.append_and_analyze(&block) {
+                        eprintln!("[repl] analyse échouée: {err}");
+                    } else {
+                        println!("→ {}", block);
+                        self.accepted_source.push_str(&block);
+                        self.accepted_source.push('\n');
+                        if let Err(err) = rl.add_history_entry(block.as_str()) {
+                            eprintln!("[repl] historique indisponible: {err}");
+                        }
+                        self.buffer.clear();
+                        self.multiline = false;
+                    }
+                }
+                Err(err) => {
+                    println!("(erreur de parsing) {err}");
+                    println!("(modifiez/complétez puis :run, ou :clear pour annuler)");
+                }
             }
-            self.buffer.clear();
         }
 
         fn save_buffer(&self, path: &str) -> Result<()> {
@@ -2162,6 +3392,63 @@ pub mod repl {
             format!("{input} ")
         }
     }
+
+    // ───────────────────────────── Analyse partagée pour complétions ─────────────────────────────
+    #[derive(Clone)]
+    struct SharedAnalysis(Arc<Mutex<AnalysisEngine>>);
+
+    impl SharedAnalysis {
+        fn new() -> Self {
+            #[allow(unused_mut)]
+            let mut analyzer = Analyzer::new();
+            // Analyse incrémentale si activée côté CLI
+            #[cfg(feature = "analyzer-incremental")]
+            {
+                analyzer.enable_incremental();
+            }
+            Self(Arc::new(Mutex::new(AnalysisEngine {
+                analyzer,
+                source: String::new(),
+                symbols: Vec::new(),
+            })))
+        }
+
+        fn append_and_analyze(&self, new_block: &str) -> Result<()> {
+            let mut guard = self.0.lock().expect("analysis lock");
+            if !guard.source.is_empty() {
+                guard.source.push_str("\n");
+            }
+            guard.source.push_str(new_block);
+            let program = parse_program_from_text(&guard.source)?;
+            let _report = guard.analyzer.analyze_with(AnalysisInput::new(&program))?;
+            let mut syms = guard.analyzer.symbol_names();
+            syms.sort();
+            guard.symbols = syms;
+            Ok(())
+        }
+
+        fn symbols(&self) -> Vec<String> {
+            self.0.lock().expect("analysis lock").symbols.clone()
+        }
+    }
+
+    struct AnalysisEngine {
+        analyzer: Analyzer,
+        source: String,
+        symbols: Vec<String>,
+    }
+
+    fn parse_program_from_text(src: &str) -> Result<ast::Program> {
+        let mut parser = Parser::new(src, SourceId(0));
+        parser.parse_program().map_err(|e| anyhow!(e.to_string()))
+    }
+
+    const DEFAULT_SNIPPETS: &[&str] = &[
+        "fn name() -> void { }",
+        "const NAME: i64 = 0;",
+        "struct Name { field: i64; }",
+        "enum Name { Variant, }",
+    ];
 
     fn history_file_path() -> Option<PathBuf> {
         let mut base = config_dir()?;
@@ -2300,6 +3587,7 @@ mod tests {
             auto_mkdir: false,
             overwrite: true,
             time: false,
+            profile: context::ProfileConfig::default(),
         };
         // juste vérifier que ça ne panique pas
         let _ = compile_entry(t, &hooks).unwrap();

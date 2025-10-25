@@ -2,6 +2,7 @@
 //!
 //! Fournit :
 //! - `SourceId`, `Pos`, `Span`, `Spanned<T>`
+//! - `Symbol` + helper global `symbol::intern`
 //! - `Ident` + helper `ident()`
 //! - Constances VITBC (`MAGIC_VITBC`, `VITBC_VERSION`) + `SectionTag` (fourcc)
 //! - IO mémoire (little-endian) : `ByteWriter`, `ByteReader`
@@ -44,6 +45,11 @@ pub use bytecode::disasm;
 pub use bytecode::helpers;
 /// Compatibilité : ré-exporte le runtime d'évaluation simplifié.
 pub use bytecode::runtime;
+
+/// Symboles globaux thread-safe.
+pub mod symbol;
+/// Identifiant interné léger.
+pub use symbol::Symbol;
 
 /* ─────────────────────────── Résultat commun ─────────────────────────── */
 
@@ -387,8 +393,8 @@ impl std::error::Error for CoreError {}
 pub mod prelude {
     /// Réexports utiles pour une importation rapide.
     pub use super::{
-        crc32_ieee, ByteReader, ByteWriter, CoreError, CoreResult, Ident, Pos, SectionTag,
-        SourceId, Span, Spanned, MAGIC_VITBC, VITBC_VERSION,
+        crc32_ieee, symbol, ByteReader, ByteWriter, CoreError, CoreResult, Ident, Pos, SectionTag,
+        SourceId, Span, Spanned, Symbol, MAGIC_VITBC, VITBC_VERSION,
     };
 }
 

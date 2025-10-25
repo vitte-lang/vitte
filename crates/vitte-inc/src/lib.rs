@@ -47,11 +47,7 @@ pub struct NodeMeta {
 
 impl NodeMeta {
     pub fn new(id: impl Into<String>) -> Self {
-        Self {
-            id: id.into(),
-            fingerprint: None,
-            last_built: None,
-        }
+        Self { id: id.into(), fingerprint: None, last_built: None }
     }
 }
 
@@ -73,10 +69,7 @@ impl IncSnapshot {
         self.reverse_deps.clear();
         for (k, set) in &self.deps {
             for dep in set {
-                self.reverse_deps
-                    .entry(dep.clone())
-                    .or_insert_with(HashSet::new)
-                    .insert(k.clone());
+                self.reverse_deps.entry(dep.clone()).or_insert_with(HashSet::new).insert(k.clone());
             }
         }
     }
@@ -84,9 +77,7 @@ impl IncSnapshot {
     /// ensure node exists in snapshot
     pub fn ensure_node(&mut self, id: impl Into<String>) -> &mut NodeMeta {
         let id = id.into();
-        self.nodes
-            .entry(id.clone())
-            .or_insert_with(|| NodeMeta::new(id))
+        self.nodes.entry(id.clone()).or_insert_with(|| NodeMeta::new(id))
     }
 }
 
@@ -98,9 +89,7 @@ pub struct IncManager {
 impl IncManager {
     /// Crée un manager vide.
     pub fn new() -> Self {
-        Self {
-            snapshot: IncSnapshot::default(),
-        }
+        Self { snapshot: IncSnapshot::default() }
     }
 
     /// Charge un snapshot depuis des bytes (bincode).
@@ -263,10 +252,7 @@ impl IncManager {
 
 /// helper : timestamp seconds
 fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -307,6 +293,9 @@ mod tests {
         let order = m.topo_order(&targets).expect("topo");
         // order must be a -> b -> c (or any valid topo)
         assert_eq!(order.len(), 3);
-        assert!(order.iter().position(|x| x == "a").unwrap() < order.iter().position(|x| x == "b").unwrap());
+        assert!(
+            order.iter().position(|x| x == "a").unwrap()
+                < order.iter().position(|x| x == "b").unwrap()
+        );
     }
 }

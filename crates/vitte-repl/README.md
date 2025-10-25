@@ -114,9 +114,9 @@ cargo test -p vitte-repl
   - Commandes `:viz-json` / `:viz-ascii` dans le REPL fournissant un rendu ASCII et export JSON.  
   - Tests de snapshot ASCII garantissant la stabilité des rendus principaux.  
 - [ ] Mode connecté à `vitte-lsp`.  
-  - Exposer une API socket/JSON-RPC pour partager diagnostics, complétions et navigation depuis le REPL.  
-  - Rechercher la session LSP active et resynchroniser les symboles/état de projet.  
-  - Tester l’expérience bout-à-bout avec `vitte-lsp` (complétion, goto definition) dans un environnement intégré.  
+  - [x] Rechercher la session LSP active et resynchroniser les symboles/état de projet (`:lsp-connect`, `:lsp-status`, `:lsp-sync`).  
+  - [x] Exposer une API socket/JSON-RPC pour partager diagnostics, complétions (`:lsp-complete`), hover (`:lsp-hover`) et navigation (`:lsp-goto`) depuis le REPL.  
+  - [ ] Tester l’expérience bout-à-bout avec `vitte-lsp` (complétion, goto definition) dans un environnement intégré.  
 - [ ] Profilage des évaluations en direct.  
   - Ajouter des hooks de mesure (temps, allocations, compteurs) côté `vitte-runtime`.  
   - Afficher les métriques sous forme de timeline/tableau et permettre l’export (CSV/JSON).  

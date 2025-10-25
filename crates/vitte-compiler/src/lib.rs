@@ -36,7 +36,7 @@ extern crate alloc;
 use std::{collections::BTreeMap, fs::File, io::Write, path::Path, string::String, vec::Vec};
 
 #[cfg(not(feature = "std"))]
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use alloc::{borrow::ToOwned, collections::BTreeMap, format, string::String, vec, vec::Vec};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -447,7 +447,7 @@ pub enum Op {
 }
 
 /// Builder de code
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct CodeBuf {
     buf: Vec<u8>,
 }
@@ -473,6 +473,18 @@ impl CodeBuf {
     pub fn len(&self) -> usize {
         self.buf.len()
     }
+    /// Construit un buffer à partir d'un `Vec<u8>`.
+    pub fn from_vec(buf: Vec<u8>) -> Self {
+        Self { buf }
+    }
+    /// Consomme le buffer et renvoie les octets.
+    pub fn into_vec(self) -> Vec<u8> {
+        self.buf
+    }
+    /// Ajoute un autre buffer de code.
+    pub fn extend_from_code(&mut self, other: &CodeBuf) {
+        self.buf.extend_from_slice(other.as_slice());
+    }
 }
 
 /// Sections VITBC
@@ -484,6 +496,307 @@ pub struct Sections {
     data: Vec<u8>,
     code: CodeBuf,
     names: Vec<String>, // facultatif: noms des fonctions (debug)
+}
+
+/// Contribution d'une fonction (permet l'incrémental/parallèle).
+#[derive(Clone, Default, Debug)]
+struct FunctionSections {
+    ints: Vec<i64>,
+    floats: Vec<f64>,
+    strings: Vec<String>,
+    code: CodeBuf,
+}
+
+impl FunctionSections {
+    fn merge_into(&self, target: &mut Sections) {
+        target.ints.extend_from_slice(&self.ints);
+        target.floats.extend_from_slice(&self.floats);
+        target.strings.extend(self.strings.iter().cloned());
+        target.code.extend_from_code(&self.code);
+    }
+}
+
+impl Sections {
+    fn push_function(&mut self, func: &FunctionSections) {
+        func.merge_into(self);
+    }
+}
+
+const CACHE_EPOCH: u16 = 1;
+
+#[derive(Default)]
+struct IncrementalCache {
+    functions: BTreeMap<String, FunctionArtifact>,
+}
+
+impl IncrementalCache {
+    fn get(&self, name: &str) -> Option<&FunctionArtifact> {
+        self.functions.get(name)
+    }
+
+    fn update(&mut self, name: &str, artifact: FunctionArtifact) {
+        self.functions.insert(name.to_owned(), artifact);
+    }
+}
+
+#[derive(Clone)]
+struct FunctionArtifact {
+    epoch: u16,
+    fingerprint: u64,
+    sections: FunctionSections,
+}
+
+impl FunctionArtifact {
+    fn is_valid(&self, fingerprint: u64) -> bool {
+        self.epoch == CACHE_EPOCH && self.fingerprint == fingerprint
+    }
+
+    fn sections(&self) -> FunctionSections {
+        self.sections.clone()
+    }
+
+    fn new(fingerprint: u64, sections: FunctionSections) -> Self {
+        Self { epoch: CACHE_EPOCH, fingerprint, sections }
+    }
+}
+
+struct Fingerprinter {
+    state: u64,
+}
+
+impl Fingerprinter {
+    fn new() -> Self {
+        Self { state: 0xcbf2_9ce4_8422_2325 }
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        const PRIME: u64 = 0x0000_0100_0000_01B3;
+        for &b in bytes {
+            self.state ^= b as u64;
+            self.state = self.state.wrapping_mul(PRIME);
+        }
+    }
+
+    fn write_u8(&mut self, v: u8) {
+        self.write(&[v]);
+    }
+
+    fn write_u32(&mut self, v: u32) {
+        self.write(&v.to_le_bytes());
+    }
+
+    fn write_u64(&mut self, v: u64) {
+        self.write(&v.to_le_bytes());
+    }
+
+    fn write_i64(&mut self, v: i64) {
+        self.write_u64(v as u64);
+    }
+
+    fn write_bool(&mut self, v: bool) {
+        self.write_u8(v as u8);
+    }
+
+    fn write_str(&mut self, s: &str) {
+        self.write(s.as_bytes());
+        self.write_u8(0xFF);
+    }
+
+    fn finish(self) -> u64 {
+        self.state
+    }
+}
+
+fn fingerprint_function(function: &ast::Function) -> u64 {
+    let mut fp = Fingerprinter::new();
+    fp.write_str(&function.name);
+    match &function.return_type {
+        Some(ty) => {
+            fp.write_u8(1);
+            fingerprint_type(&mut fp, ty);
+        }
+        None => fp.write_u8(0),
+    }
+    fp.write_u32(function.params.len() as u32);
+    for param in &function.params {
+        fp.write_str(&param.name);
+        fingerprint_type(&mut fp, &param.ty);
+    }
+    fingerprint_block(&mut fp, &function.body);
+    fp.finish()
+}
+
+fn fingerprint_type(fp: &mut Fingerprinter, ty: &ast::Type) {
+    use ast::Type::*;
+    match ty {
+        Int => fp.write_u8(0),
+        Float => fp.write_u8(1),
+        Bool => fp.write_u8(2),
+        Str => fp.write_u8(3),
+        Void => fp.write_u8(4),
+        Custom(name) => {
+            fp.write_u8(5);
+            fp.write_str(name);
+        }
+    }
+}
+
+fn fingerprint_block(fp: &mut Fingerprinter, block: &ast::Block) {
+    fp.write_u8(0xB1);
+    fp.write_u32(block.stmts.len() as u32);
+    for stmt in &block.stmts {
+        fingerprint_stmt(fp, stmt);
+    }
+}
+
+fn fingerprint_stmt(fp: &mut Fingerprinter, stmt: &ast::Stmt) {
+    use ast::Stmt::*;
+    match stmt {
+        Let { name, ty, value, .. } => {
+            fp.write_u8(0);
+            fp.write_str(name);
+            match ty {
+                Some(t) => {
+                    fp.write_u8(1);
+                    fingerprint_type(fp, t);
+                }
+                None => fp.write_u8(0),
+            }
+            match value {
+                Some(expr) => {
+                    fp.write_u8(1);
+                    fingerprint_expr(fp, expr);
+                }
+                None => fp.write_u8(0),
+            }
+        }
+        Expr(expr) => {
+            fp.write_u8(1);
+            fingerprint_expr(fp, expr);
+        }
+        Return(expr, _) => {
+            fp.write_u8(2);
+            match expr {
+                Some(e) => {
+                    fp.write_u8(1);
+                    fingerprint_expr(fp, e);
+                }
+                None => fp.write_u8(0),
+            }
+        }
+        While { condition, body, .. } => {
+            fp.write_u8(3);
+            fingerprint_expr(fp, condition);
+            fingerprint_block(fp, body);
+        }
+        For { var, iter, body, .. } => {
+            fp.write_u8(4);
+            fp.write_str(var);
+            fingerprint_expr(fp, iter);
+            fingerprint_block(fp, body);
+        }
+        If { condition, then_block, else_block, .. } => {
+            fp.write_u8(5);
+            fingerprint_expr(fp, condition);
+            fingerprint_block(fp, then_block);
+            match else_block {
+                Some(block) => {
+                    fp.write_u8(1);
+                    fingerprint_block(fp, block);
+                }
+                None => fp.write_u8(0),
+            }
+        }
+    }
+}
+
+fn fingerprint_expr(fp: &mut Fingerprinter, expr: &ast::Expr) {
+    use ast::Expr::*;
+    match expr {
+        Literal(lit) => {
+            fp.write_u8(0x10);
+            fingerprint_literal(fp, lit);
+        }
+        Ident(name) => {
+            fp.write_u8(0x11);
+            fp.write_str(name);
+        }
+        Call { func, args } => {
+            fp.write_u8(0x12);
+            fingerprint_expr(fp, func);
+            fp.write_u32(args.len() as u32);
+            for arg in args {
+                fingerprint_expr(fp, arg);
+            }
+        }
+        Binary { left, op, right } => {
+            fp.write_u8(0x13);
+            fingerprint_expr(fp, left);
+            fp.write_u8(binary_tag(*op));
+            fingerprint_expr(fp, right);
+        }
+        Unary { op, expr } => {
+            fp.write_u8(0x14);
+            fp.write_u8(unary_tag(*op));
+            fingerprint_expr(fp, expr);
+        }
+        Field { expr, field } => {
+            fp.write_u8(0x15);
+            fingerprint_expr(fp, expr);
+            fp.write_str(field);
+        }
+    }
+}
+
+fn fingerprint_literal(fp: &mut Fingerprinter, lit: &ast::Literal) {
+    use ast::Literal::*;
+    match lit {
+        Int(v) => {
+            fp.write_u8(0);
+            fp.write_i64(*v);
+        }
+        Float(v) => {
+            fp.write_u8(1);
+            fp.write_u64(v.to_bits());
+        }
+        Bool(v) => {
+            fp.write_u8(2);
+            fp.write_bool(*v);
+        }
+        Str(s) => {
+            fp.write_u8(3);
+            fp.write_str(s);
+        }
+        Null => {
+            fp.write_u8(4);
+        }
+    }
+}
+
+fn binary_tag(op: ast::BinaryOp) -> u8 {
+    use ast::BinaryOp::*;
+    match op {
+        Add => 0,
+        Sub => 1,
+        Mul => 2,
+        Div => 3,
+        Mod => 4,
+        Eq => 5,
+        Ne => 6,
+        Lt => 7,
+        Le => 8,
+        Gt => 9,
+        Ge => 10,
+        And => 11,
+        Or => 12,
+    }
+}
+
+fn unary_tag(op: ast::UnaryOp) -> u8 {
+    match op {
+        ast::UnaryOp::Neg => 0,
+        ast::UnaryOp::Not => 1,
+    }
 }
 
 /// Bytecode complet VITBC (en mémoire)
@@ -647,7 +960,7 @@ impl DefaultEmitter {
         Self { opts }
     }
 
-    fn emit_expr(&self, sections: &mut Sections, e: &ast::Expr) {
+    fn emit_expr(&self, sections: &mut FunctionSections, e: &ast::Expr) {
         match e {
             ast::Expr::Literal(l) => match l {
                 ast::Literal::Int(i) => {
@@ -710,16 +1023,25 @@ impl Emitter for DefaultEmitter {
         // émet un petit code par fonction (démo)
         for it in &program.items {
             if let ast::Item::Function(f) = it {
-                for s in &f.body.stmts {
-                    if let ast::Stmt::Expr(e) = s {
-                        self.emit_expr(&mut sections, e);
-                    }
-                }
-                sections.code.op(Op::Ret);
+                let func_sections = self.emit_function(f);
+                sections.push_function(&func_sections);
             }
         }
 
         Bytecode { version: self.opts.vitbc_version, sections, crc32: 0 }
+    }
+}
+
+impl DefaultEmitter {
+    fn emit_function(&self, function: &ast::Function) -> FunctionSections {
+        let mut sections = FunctionSections::default();
+        for stmt in &function.body.stmts {
+            if let ast::Stmt::Expr(expr) = stmt {
+                self.emit_expr(&mut sections, expr);
+            }
+        }
+        sections.code.op(Op::Ret);
+        sections
     }
 }
 
@@ -733,12 +1055,18 @@ pub struct Compiler {
     pub options: CompilerOptions,
     diags: Vec<Diagnostic>,
     symtab: SymTable,
+    cache: IncrementalCache,
 }
 
 impl Compiler {
     /// Crée un compilateur
     pub fn new(options: CompilerOptions) -> Self {
-        Self { options, diags: Vec::new(), symtab: SymTable::new() }
+        Self {
+            options,
+            diags: Vec::new(),
+            symtab: SymTable::new(),
+            cache: IncrementalCache::default(),
+        }
     }
 
     /// Compile un programme AST → Bytecode VITBC
@@ -778,12 +1106,93 @@ impl Compiler {
             return Err(CompileError { diagnostics: core::mem::take(&mut self.diags) });
         }
 
-        // 3) Backend
-        let mut emitter = DefaultEmitter::new(self.options.clone());
-        let bc = emitter.emit(program);
+        // 3) Backend incrémental + parallélisé
+        let mut sections = Sections::default();
+
+        if self.options.embed_names {
+            for item in &program.items {
+                if let ast::Item::Function(fun) = item {
+                    sections.names.push(fun.name.clone());
+                }
+            }
+        }
+
+        let functions: Vec<&ast::Function> = program
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                ast::Item::Function(fun) => Some(fun),
+                _ => None,
+            })
+            .collect();
+
+        let mut per_function: Vec<Option<FunctionSections>> = vec![None; functions.len()];
+        let mut build_queue: Vec<(usize, &ast::Function, u64)> = Vec::new();
+
+        for (idx, function) in functions.iter().enumerate() {
+            let fp = fingerprint_function(function);
+            if let Some(artifact) = self.cache.get(&function.name) {
+                if artifact.is_valid(fp) {
+                    per_function[idx] = Some(artifact.sections());
+                    continue;
+                }
+            }
+            build_queue.push((idx, *function, fp));
+        }
+
+        #[cfg(feature = "std")]
+        let built: Vec<(usize, FunctionArtifact)> = {
+            use rayon::prelude::*;
+            let opts = self.options.clone();
+            build_queue
+                .into_par_iter()
+                .map(|(idx, function, fp)| {
+                    let emitter = DefaultEmitter::new(opts.clone());
+                    let sections = emitter.emit_function(function);
+                    (idx, FunctionArtifact::new(fp, sections))
+                })
+                .collect()
+        };
+
+        #[cfg(not(feature = "std"))]
+        let built: Vec<(usize, FunctionArtifact)> = {
+            let opts = self.options.clone();
+            let mut out = Vec::with_capacity(build_queue.len());
+            for (idx, function, fp) in build_queue {
+                let emitter = DefaultEmitter::new(opts.clone());
+                let sections = emitter.emit_function(function);
+                out.push((idx, FunctionArtifact::new(fp, sections)));
+            }
+            out
+        };
+
+        for (idx, artifact) in built {
+            per_function[idx] = Some(artifact.sections());
+            if let Some(fun) = functions.get(idx) {
+                self.cache.update(&fun.name, artifact);
+            }
+        }
+
+        for (idx, function) in functions.iter().enumerate() {
+            if per_function[idx].is_none() {
+                if let Some(artifact) = self.cache.get(&function.name) {
+                    per_function[idx] = Some(artifact.sections());
+                }
+            }
+        }
+
+        for maybe in per_function {
+            if let Some(func_sections) = maybe {
+                sections.push_function(&func_sections);
+            }
+        }
+
+        self.cache.functions.retain(|name, _| functions.iter().any(|f| f.name == *name));
+
+        let bytecode = Bytecode { version: self.options.vitbc_version, sections, crc32: 0 };
 
         // 4) Le CRC est ajouté par `to_bytes()`, donc RAS ici.
-        Ok(bc)
+        Ok(bytecode)
     }
 
     /// Récupère et vide les diagnostics accumulés

@@ -32,10 +32,14 @@ pub enum Type {
 
 impl Type {
     #[inline]
-    pub fn var(v: TVar) -> Self { Type::Var(v) }
+    pub fn var(v: TVar) -> Self {
+        Type::Var(v)
+    }
 
     #[inline]
-    pub fn ctor(name: &'static str) -> Self { Type::Ctor(name) }
+    pub fn ctor(name: &'static str) -> Self {
+        Type::Ctor(name)
+    }
 
     /// Type fonction: (args...) -> ret
     pub fn fun<I: IntoIterator<Item = Type>>(args: I, ret: Type) -> Self {
@@ -67,14 +71,18 @@ impl fmt::Debug for Type {
                 if let Some((a, r)) = self.as_fun() {
                     write!(f, "(")?;
                     for (i, t) in a.iter().enumerate() {
-                        if i > 0 { write!(f, ", ")?; }
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
                         write!(f, "{:?}", t)?;
                     }
                     write!(f, ") -> {:?}", r)
                 } else {
                     write!(f, "{:?}(", head)?;
                     for (i, t) in args.iter().enumerate() {
-                        if i > 0 { write!(f, ", ")?; }
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
                         write!(f, "{:?}", t)?;
                     }
                     write!(f, ")")
@@ -91,7 +99,9 @@ pub struct Subst {
 }
 
 impl Subst {
-    pub fn empty() -> Self { Self { map: HashMap::new() } }
+    pub fn empty() -> Self {
+        Self { map: HashMap::new() }
+    }
 
     pub fn insert(&mut self, v: TVar, t: Type) {
         // normaliser pour éviter v := v
@@ -100,7 +110,9 @@ impl Subst {
         }
     }
 
-    pub fn get(&self, v: TVar) -> Option<&Type> { self.map.get(&v) }
+    pub fn get(&self, v: TVar) -> Option<&Type> {
+        self.map.get(&v)
+    }
 
     /// Applique la substitution récursivement.
     pub fn apply(&self, t: &Type) -> Type {
@@ -150,7 +162,9 @@ impl Subst {
         self.map = map;
     }
 
-    pub fn is_empty(&self) -> bool { self.map.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
 }
 
 /// Erreurs d’unification.
@@ -173,8 +187,14 @@ pub struct Unifier {
 }
 
 impl Unifier {
-    pub fn with_start(start: TVar) -> Self { Self { next: start } }
-    pub fn fresh(&mut self) -> TVar { let v = self.next; self.next += 1; v }
+    pub fn with_start(start: TVar) -> Self {
+        Self { next: start }
+    }
+    pub fn fresh(&mut self) -> TVar {
+        let v = self.next;
+        self.next += 1;
+        v
+    }
 
     /// Unifie `a` et `b`, retourne la substitution la plus générale.
     pub fn unify(&mut self, a: &Type, b: &Type) -> Result<Subst, UnifyError> {
@@ -195,7 +215,9 @@ impl Unifier {
                     (Type::Ctor(c1), Type::Ctor(c2)) if c1 == c2 => {
                         if xs1.len() != xs2.len() {
                             return Err(UnifyError::ArityMismatch {
-                                ctor: c1, left: xs1.len(), right: xs2.len()
+                                ctor: c1,
+                                left: xs1.len(),
+                                right: xs2.len(),
                             });
                         }
                         let mut s_acc = s;
@@ -204,10 +226,15 @@ impl Unifier {
                         }
                         Ok(s_acc)
                     }
-                    _ => Err(UnifyError::CtorMismatch { left: Type::App(h1, xs1), right: Type::App(h2, xs2) }),
+                    _ => Err(UnifyError::CtorMismatch {
+                        left: Type::App(h1, xs1),
+                        right: Type::App(h2, xs2),
+                    }),
                 }
             }
-            (l @ Type::Ctor(_), r @ Type::Ctor(_)) => Err(UnifyError::CtorMismatch { left: l, right: r }),
+            (l @ Type::Ctor(_), r @ Type::Ctor(_)) => {
+                Err(UnifyError::CtorMismatch { left: l, right: r })
+            }
             (l, r) => Err(UnifyError::CtorMismatch { left: l, right: r }),
         }
     }
@@ -216,7 +243,9 @@ impl Unifier {
 /// Liaisons var := type avec occurs-check.
 fn bind_var(v: TVar, t: Type, mut s: Subst) -> Result<Subst, UnifyError> {
     if let Type::Var(v2) = t {
-        if v == v2 { return Ok(s); }
+        if v == v2 {
+            return Ok(s);
+        }
     }
     if occurs(v, &t, &s) {
         return Err(UnifyError::Occurs { var: v, ty: t });
@@ -238,9 +267,15 @@ fn occurs(v: TVar, t: &Type, s: &Subst) -> bool {
 mod tests {
     use super::*;
 
-    fn v(n: u32) -> Type { Type::var(n) }
-    fn i32_() -> Type { Type::ctor("i32") }
-    fn bool_() -> Type { Type::ctor("bool") }
+    fn v(n: u32) -> Type {
+        Type::var(n)
+    }
+    fn i32_() -> Type {
+        Type::ctor("i32")
+    }
+    fn bool_() -> Type {
+        Type::ctor("bool")
+    }
 
     #[test]
     fn unify_var_with_ctor() {

@@ -12,10 +12,10 @@ extern crate alloc;
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
-#[cfg(feature = "std")]
-use std::{collections::BTreeMap, format, string::String};
 #[cfg(not(feature = "std"))]
 use alloc::{collections::BTreeMap, format, string::String};
+#[cfg(feature = "std")]
+use std::{collections::BTreeMap, format, string::String};
 
 use vitte_ast::Span;
 

@@ -42,10 +42,7 @@ impl HistoryManager {
             return Ok(None);
         }
 
-        let path = cfg
-            .path
-            .clone()
-            .unwrap_or_else(default_history_path);
+        let path = cfg.path.clone().unwrap_or_else(default_history_path);
         let key = cfg.encryption_key.clone();
 
         let entries = if path.exists() {
@@ -90,12 +87,9 @@ fn default_history_path() -> PathBuf {
     if let Some(home) = std::env::var_os("VITTE_HOME") {
         Path::new(&home).join("repl_history.json")
     } else if let Some(home) = std::env::var_os("HOME") {
-        Path::new(&home)
-            .join(".vitte")
-            .join("repl_history.json")
+        Path::new(&home).join(".vitte").join("repl_history.json")
     } else {
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-            .join("repl_history.json")
+        std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join("repl_history.json")
     }
 }
 

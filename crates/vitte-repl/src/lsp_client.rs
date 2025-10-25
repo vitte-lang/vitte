@@ -1,7 +1,7 @@
 //! Client léger pour `vitte-lsp` (mode JSON-RPC/WebSocket) utilisé par le REPL.
 
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -18,7 +18,7 @@ type WsStream = WebSocket<MaybeTlsStream<std::net::TcpStream>>;
 #[derive(Debug, Error)]
 pub enum LspClientError {
     /// Aucun socket connu.
-    #[error("no LSP session available")] 
+    #[error("no LSP session available")]
     NoSession,
     /// Erreur d'E/S ou de fichier.
     #[error("io error: {0}")]
@@ -70,9 +70,68 @@ pub struct ExportSymbol {
 /// Empreinte de cellule.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CellDigest {
+    /// Identifiant logique de la cellule côté REPL.
     #[serde(rename = "cellId")]
     pub cell_id: String,
+    /// Hash hexadécimal représentant le contenu de la cellule.
     pub hash: String,
+}
+
+/// Diagnostic minimal renvoyé par `repl/execute`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Diagnostic {
+    /// Message humain.
+    pub message: String,
+    /// Sévérité éventuelle ("error", "warning", ...).
+    pub severity: Option<String>,
+}
+
+/// Paramètres d'exécution d'une cellule.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecuteParams {
+    pub cell_id: String,
+    pub version: u32,
+    pub source: String,
+    #[serde(rename = "prevExports")]
+    pub prev_exports: Vec<ExportSymbol>,
+}
+
+/// Réponse d'une exécution de cellule.
+#[derive(Debug, Clone)]
+pub struct ExecuteResponse {
+    pub diagnostics: Vec<Diagnostic>,
+    pub result: Option<String>,
+    pub exports: Vec<ExportSymbol>,
+}
+
+/// Paramètres pour une requête de complétion.
+#[derive(Debug, Clone)]
+pub struct CompletionParams {
+    pub cell_id: String,
+    pub line: u32,
+    pub character: u32,
+    pub prefix: String,
+}
+
+/// Élément de complétion minimal.
+#[derive(Debug, Clone)]
+pub struct CompletionItem {
+    pub label: String,
+}
+
+/// Résultat de hover simplifié.
+#[derive(Debug, Clone)]
+pub struct HoverResult {
+    pub contents: String,
+}
+
+/// Localisation de définition.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DefinitionLocation {
+    pub uri: String,
+    #[serde(default)]
+    pub range: Option<Value>,
 }
 
 /// Client WebSocket connecté.
@@ -106,7 +165,8 @@ impl LspClient {
             .clone()
             .into_client_request()
             .map_err(|e| LspClientError::Network(e.to_string()))?;
-        let (socket, _response) = connect(request).map_err(|e| LspClientError::Network(e.to_string()))?;
+        let (socket, _response) =
+            connect(request).map_err(|e| LspClientError::Network(e.to_string()))?;
 
         let mut client = Self { session, socket, request_id: 0 };
         client.perform_handshake()?;
@@ -117,7 +177,8 @@ impl LspClient {
     pub fn connect_endpoint(url: Url, workspace: Option<PathBuf>) -> Result<Self, LspClientError> {
         let info = SessionInfo {
             session_id: "external".into(),
-            workspace_root: workspace.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))),
+            workspace_root: workspace
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))),
             endpoint: url,
             primary: true,
         };
@@ -129,43 +190,138 @@ impl LspClient {
         &self.session.session_id
     }
 
+    /// Exécute une cellule via `repl/execute`.
+    pub fn execute_cell(
+        &mut self,
+        params: ExecuteParams,
+    ) -> Result<ExecuteResponse, LspClientError> {
+        let response = self.send_request_value(
+            "repl/execute",
+            json!({
+                "sessionId": self.session.session_id,
+                "cellId": params.cell_id,
+                "version": params.version,
+                "source": params.source,
+                "prevExports": params.prev_exports,
+                "timestamp": current_timestamp(),
+            }),
+        )?;
+
+        let diagnostics = parse_diagnostics(response.get("diagnostics"));
+        let exports = response
+            .get("exports")
+            .map(|v| serde_json::from_value::<Vec<ExportSymbol>>(v.clone()).unwrap_or_default())
+            .unwrap_or_default();
+        let result = response.get("result").and_then(|value| match value {
+            Value::Null => None,
+            Value::String(s) => Some(s.clone()),
+            other => Some(other.to_string()),
+        });
+
+        Ok(ExecuteResponse { diagnostics, result, exports })
+    }
+
+    /// Complétions pour une position donnée.
+    pub fn completion(
+        &mut self,
+        params: CompletionParams,
+    ) -> Result<Vec<CompletionItem>, LspClientError> {
+        let response = self.send_request_value(
+            "repl/completion",
+            json!({
+                "sessionId": self.session.session_id,
+                "cellId": params.cell_id,
+                "position": { "line": params.line, "character": params.character },
+                "prefix": params.prefix,
+            }),
+        )?;
+
+        let array = match response {
+            Value::Array(arr) => arr,
+            Value::Object(ref obj) => {
+                obj.get("items").and_then(|v| v.as_array()).cloned().unwrap_or_default()
+            }
+            _ => Vec::new(),
+        };
+
+        let items = array
+            .iter()
+            .map(|item| CompletionItem {
+                label: item.get("label").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+            })
+            .collect();
+        Ok(items)
+    }
+
+    /// Hover sur un symbole.
+    pub fn hover(
+        &mut self,
+        cell_id: &str,
+        symbol: &str,
+    ) -> Result<Option<HoverResult>, LspClientError> {
+        let response = self.send_request_value(
+            "repl/hover",
+            json!({
+                "sessionId": self.session.session_id,
+                "cellId": cell_id,
+                "symbol": symbol,
+            }),
+        )?;
+
+        if response.is_null() {
+            return Ok(None);
+        }
+
+        let contents = response
+            .get("contents")
+            .map(render_value_to_string)
+            .unwrap_or_else(|| response.to_string());
+        Ok(Some(HoverResult { contents }))
+    }
+
+    /// Localisations de définition pour un symbole.
+    pub fn definition(
+        &mut self,
+        cell_id: &str,
+        symbol: &str,
+    ) -> Result<Vec<DefinitionLocation>, LspClientError> {
+        let response = self.send_request_value(
+            "repl/definition",
+            json!({
+                "sessionId": self.session.session_id,
+                "cellId": cell_id,
+                "symbol": symbol,
+            }),
+        )?;
+
+        let locations = match response {
+            Value::Array(arr) => {
+                serde_json::from_value::<Vec<DefinitionLocation>>(Value::Array(arr))
+                    .unwrap_or_default()
+            }
+            Value::Object(_) => serde_json::from_value::<DefinitionLocation>(response)
+                .map(|loc| vec![loc])
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        };
+        Ok(locations)
+    }
+
     /// Résumé textuel de l'état du client.
     pub fn status_line(&self) -> String {
-        format!(
-            "session {} @ {}",
-            self.session.session_id,
-            self.session.endpoint
-        )
+        format!("session {} @ {}", self.session.session_id, self.session.endpoint)
     }
 
     /// Synchronise l'état en envoyant `repl/syncState`.
     pub fn sync_state(&mut self, known: &[CellDigest]) -> Result<SyncResponse, LspClientError> {
-        let id = self.next_request_id();
-        let payload = json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "method": "repl/syncState",
-            "params": {
+        let value = self.send_request_value(
+            "repl/syncState",
+            json!({
                 "sessionId": self.session.session_id,
                 "knownCells": known,
-            }
-        });
-        self.socket
-            .send(Message::Text(payload.to_string()))
-            .map_err(|e| LspClientError::Network(e.to_string()))?;
-
-        let response = self.read_text_message()?;
-        let value: serde_json::Value = serde_json::from_str(&response)?;
-        if value.get("id").and_then(|v| v.as_i64()) != Some(id) {
-            return Err(LspClientError::InvalidResponse(response));
-        }
-        if let Some(result) = value.get("result") {
-            Ok(serde_json::from_value(result.clone())?)
-        } else if let Some(error) = value.get("error") {
-            Err(LspClientError::InvalidResponse(error.to_string()))
-        } else {
-            Err(LspClientError::InvalidResponse(response))
-        }
+            }),
+        )?;
+        Ok(serde_json::from_value(value)?)
     }
 
     /// Ferme la connexion proprement.
@@ -174,12 +330,9 @@ impl LspClient {
     }
 
     fn perform_handshake(&mut self) -> Result<(), LspClientError> {
-        let id = self.next_request_id();
-        let payload = json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "method": "repl/attach",
-            "params": {
+        let response = self.send_request_value(
+            "repl/attach",
+            json!({
                 "clientName": "vitte-repl",
                 "clientVersion": env!("CARGO_PKG_VERSION"),
                 "workspaceRoot": self.session.workspace_root.to_string_lossy(),
@@ -190,35 +343,22 @@ impl LspClient {
                     "hover": true,
                     "navigation": true,
                 }
-            }
-        });
-        self.socket
-            .send(Message::Text(payload.to_string()))
-            .map_err(|e| LspClientError::Network(e.to_string()))?;
-
-        let response = self.read_text_message()?;
-        let value: serde_json::Value = serde_json::from_str(&response)?;
-        if value.get("id").and_then(|v| v.as_i64()) != Some(id) {
-            return Err(LspClientError::InvalidResponse(response));
-        }
-        if value.get("result").is_some() {
+            }),
+        )?;
+        if response.is_object() {
             Ok(())
-        } else if let Some(error) = value.get("error") {
-            Err(LspClientError::InvalidResponse(error.to_string()))
         } else {
-            Err(LspClientError::InvalidResponse(response))
+            Err(LspClientError::InvalidResponse(response.to_string()))
         }
     }
 
     fn read_text_message(&mut self) -> Result<String, LspClientError> {
-        let msg = self
-            .socket
-            .read()
-            .map_err(|e| LspClientError::Network(e.to_string()))?;
+        let msg = self.socket.read().map_err(|e| LspClientError::Network(e.to_string()))?;
         match msg {
             Message::Text(text) => Ok(text),
-            Message::Binary(bytes) => String::from_utf8(bytes)
-                .map_err(|e| LspClientError::InvalidResponse(e.to_string())),
+            Message::Binary(bytes) => {
+                String::from_utf8(bytes).map_err(|e| LspClientError::InvalidResponse(e.to_string()))
+            }
             Message::Ping(p) => {
                 let _ = self.socket.send(Message::Pong(p));
                 self.read_text_message()
@@ -233,6 +373,77 @@ impl LspClient {
         self.request_id += 1;
         self.request_id
     }
+
+    fn send_request_value(&mut self, method: &str, params: Value) -> Result<Value, LspClientError> {
+        let id = self.next_request_id();
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params,
+        });
+        self.socket
+            .send(Message::Text(payload.to_string()))
+            .map_err(|e| LspClientError::Network(e.to_string()))?;
+
+        let response = self.read_text_message()?;
+        let value: Value = serde_json::from_str(&response)?;
+        if value.get("id").and_then(|v| v.as_i64()) != Some(id) {
+            return Err(LspClientError::InvalidResponse(response));
+        }
+        if let Some(result) = value.get("result") {
+            Ok(result.clone())
+        } else if let Some(error) = value.get("error") {
+            Err(LspClientError::InvalidResponse(error.to_string()))
+        } else {
+            Err(LspClientError::InvalidResponse(response))
+        }
+    }
+}
+
+fn parse_diagnostics(value: Option<&Value>) -> Vec<Diagnostic> {
+    value
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .map(|item| Diagnostic {
+                    message: item
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| item.to_string()),
+                    severity: item.get("severity").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn render_value_to_string(value: &Value) -> String {
+    match value {
+        Value::Null => "null".into(),
+        Value::Bool(b) => b.to_string(),
+        Value::Number(n) => n.to_string(),
+        Value::String(s) => s.clone(),
+        Value::Array(arr) => arr.iter().map(render_value_to_string).collect::<Vec<_>>().join("\n"),
+        Value::Object(obj) => {
+            if let Some(kind) = obj.get("kind").and_then(|v| v.as_str()) {
+                if kind.eq_ignore_ascii_case("markdown") {
+                    return obj
+                        .get("value")
+                        .map(render_value_to_string)
+                        .unwrap_or_else(|| value.to_string());
+                }
+            }
+            value.to_string()
+        }
+    }
+}
+
+fn current_timestamp() -> String {
+    let now = std::time::SystemTime::now();
+    let since_epoch = now.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    format!("{}.{:03}s", since_epoch.as_secs(), since_epoch.subsec_millis())
 }
 
 /// Recherche des sessions actives via fichier/variables d'environnement.
@@ -298,6 +509,7 @@ mod tests {
     fn discover_sessions_missing_file() {
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("VITTE_HOME", dir.path());
+        std::env::remove_var("VITTE_LSP_ENDPOINT");
         let sessions = discover_sessions().unwrap();
         assert!(sessions.is_empty());
         std::env::remove_var("VITTE_HOME");
@@ -308,6 +520,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("lsp-sessions.json");
         std::env::set_var("VITTE_HOME", dir.path());
+        std::env::remove_var("VITTE_LSP_ENDPOINT");
         let payload = r#"[
           {
             "sessionId": "sess-1",
@@ -318,6 +531,8 @@ mod tests {
         ]"#;
         let mut file = fs::File::create(&path).unwrap();
         file.write_all(payload.as_bytes()).unwrap();
+        drop(file);
+        assert!(path.exists());
 
         let sessions = discover_sessions().unwrap();
         assert_eq!(sessions.len(), 1);

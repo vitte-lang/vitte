@@ -7,10 +7,10 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-#[cfg(feature = "std")]
-use std::{collections::BTreeMap, collections::BTreeSet, fmt, format, string::String, vec::Vec};
 #[cfg(not(feature = "std"))]
 use alloc::{collections::BTreeMap, collections::BTreeSet, fmt, format, string::String, vec::Vec};
+#[cfg(feature = "std")]
+use std::{collections::BTreeMap, collections::BTreeSet, fmt, format, string::String, vec::Vec};
 
 /// Graphe de dépendances directionnel : `A -> B` signifie "A dépend de B".
 #[derive(Default, Clone)]
@@ -54,10 +54,7 @@ impl DependencyGraph {
 
     /// Retourne les dépendances directes d'un nœud.
     pub fn dependencies(&self, node: &str) -> Vec<String> {
-        self.edges
-            .get(node)
-            .map(|deps| deps.iter().cloned().collect())
-            .unwrap_or_default()
+        self.edges.get(node).map(|deps| deps.iter().cloned().collect()).unwrap_or_default()
     }
 
     /// Itérateur immuable sur les arêtes.

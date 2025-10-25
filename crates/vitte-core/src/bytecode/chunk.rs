@@ -1,5 +1,3 @@
-#![cfg_attr(not(feature = "std"), no_std)]
-
 //! Core bytecode structures plus a compact binary roundtrip implementation.
 
 use crate::crc32_ieee;

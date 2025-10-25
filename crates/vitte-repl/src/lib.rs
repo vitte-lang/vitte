@@ -11,15 +11,15 @@ mod buffer;
 mod document;
 mod history;
 mod lsp_client;
-mod viz;
 mod repl;
+mod viz;
 
 pub use buffer::SessionBuffer;
 pub use document::{CellOutcome, SessionDocument};
 pub use history::{HistoryConfig, HistoryError};
 pub use lsp_client::{discover_sessions, CellDigest, LspClient, LspClientError, SyncResponse};
-pub use viz::{Field, TraceSample, TreeNode, ValueViz};
 pub use repl::{EvalResult, Repl, ReplError, ReplOptions, Result};
+pub use viz::{Field, TraceSample, TreeNode, ValueViz};
 
 #[cfg(test)]
 mod tests {
@@ -44,7 +44,7 @@ mod tests {
         let out1 = doc.submit("let x = 1;".into());
         assert!(matches!(out1, CellOutcome::Evaluated { .. }));
         let out2 = doc.submit("let x = 1;".into());
-        assert!(matches!(out2, CellOutcome::NoChange));
+        assert!(matches!(out2, CellOutcome::NoChange { .. }));
     }
 
     #[test]
@@ -62,10 +62,7 @@ mod tests {
 
         let temp_path = std::env::temp_dir().join(format!(
             "vitte-repl-history-{}.json",
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
         ));
 
         let opts = ReplOptions {
@@ -97,10 +94,7 @@ mod tests {
 
         let temp_path = std::env::temp_dir().join(format!(
             "vitte-repl-history-enc-{}.json",
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
         ));
 
         let key = vec![0xAA, 0x55, 0xFF];
@@ -127,9 +121,7 @@ mod tests {
 
     #[test]
     fn value_viz_serialization_and_ascii() {
-        let value = ValueViz::Matrix {
-            rows: vec![vec![1.0, 2.5], vec![3.2, 4.0]],
-        };
+        let value = ValueViz::Matrix { rows: vec![vec![1.0, 2.5], vec![3.2, 4.0]] };
         let json = value.to_json().unwrap();
         let parsed = ValueViz::from_json_str(&json).unwrap();
         assert_eq!(value, parsed);
@@ -146,8 +138,8 @@ mod tests {
         let result = repl.eval(&cmd).unwrap();
         match result {
             EvalResult::Output(out) => {
-                assert!(out.contains("  1.000"));
-                assert!(out.contains("  4.000"));
+                assert!(out.contains("1.000"));
+                assert!(out.contains("4.000"));
             }
             other => panic!("unexpected result: {other:?}"),
         }

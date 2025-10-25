@@ -5,6 +5,8 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "server")]
+use std::net::SocketAddr;
 use std::{
     ffi::OsString,
     path::{Path, PathBuf},
@@ -37,6 +39,14 @@ struct Opt {
     #[arg(long = "color", value_enum, default_value_t = ColorChoice::Auto)]
     color: ColorChoice,
 
+    /// Profil d'environnement (dev ou release)
+    #[arg(long = "profile", value_enum, default_value_t = ProfileChoice::Dev, global = true)]
+    profile: ProfileChoice,
+
+    /// Langue pour les messages utilisateur
+    #[arg(long = "lang", value_enum, global = true)]
+    lang: Option<LangChoice>,
+
     /// Sous-commandes
     #[command(subcommand)]
     cmd: Command,
@@ -47,6 +57,27 @@ enum ColorChoice {
     Auto,
     Always,
     Never,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum ProfileChoice {
+    Dev,
+    Release,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum LangChoice {
+    En,
+    Fr,
+}
+
+impl From<LangChoice> for cli::i18n::Lang {
+    fn from(value: LangChoice) -> Self {
+        match value {
+            LangChoice::En => cli::i18n::Lang::En,
+            LangChoice::Fr => cli::i18n::Lang::Fr,
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -96,11 +127,38 @@ enum Command {
         time: bool,
     },
 
+    /// Lancer le serveur JSON-RPC
+    #[cfg(feature = "server")]
+    Server {
+        /// Adresse d’écoute (ex: 127.0.0.1:7411)
+        #[arg(long = "listen", default_value = "127.0.0.1:7411")]
+        addr: String,
+        /// Jeton d’authentification à fournir via `auth`
+        #[arg(long = "token")]
+        token: Option<String>,
+        /// Racine du workspace (défaut: répertoire courant)
+        #[arg(long = "root")]
+        root: Option<PathBuf>,
+    },
+
     /// Lancer un REPL (si fourni par les hooks)
     Repl {
         /// Prompt du REPL
         #[arg(long, default_value = "vitte> ")]
         prompt: String,
+    },
+
+    /// Diagnostiquer l'environnement (toolchain, cache, modules)
+    Doctor {
+        /// Afficher le rapport au format JSON
+        #[arg(long = "json")]
+        json: bool,
+        /// Proposer une purge du cache `target`
+        #[arg(long = "fix-cache")]
+        fix_cache: bool,
+        /// Ne pas demander de confirmation pour les actions correctives
+        #[arg(long = "yes")]
+        yes: bool,
     },
 
     /// Formater une source (lecture fichier ou stdin)
@@ -385,14 +443,28 @@ fn real_main() -> Result<()> {
 
     let opt = Opt::parse_from(argv);
 
+    let env_lang =
+        std::env::var("VITTE_LANG").ok().and_then(|value| cli::i18n::Lang::from_code(&value));
+    let cli_lang = opt.lang.map(|choice| cli::i18n::Lang::from(choice));
+    let selected_lang = cli_lang.or(env_lang).unwrap_or(cli::i18n::Lang::En);
+    cli::i18n::init(selected_lang);
+
     init_color(opt.color);
     init_telemetry(opt.verbose, opt.quiet);
+
+    let profile = match opt.profile {
+        ProfileChoice::Dev => cli::context::Profile::Dev,
+        ProfileChoice::Release => cli::context::Profile::Release,
+    };
+    let cwd = std::env::current_dir().ok();
+    let profile_config = cli::context::load_profile_config(profile, cwd.as_deref())
+        .with_context(|| format!("chargement du profil {}", profile.as_str()))?;
 
     let hooks = make_hooks();
 
     use cli::{
-        Command as C, CompileTask, DisasmTask, FmtTask, InspectTask, ModulesFormat, ModulesTask,
-        ReplTask, RunTask,
+        Command as C, CompileTask, DisasmTask, DoctorTask, FmtTask, InspectTask, ModulesFormat,
+        ModulesTask, ReplTask, RunTask,
     };
 
     let command = match opt.cmd {
@@ -401,20 +473,54 @@ fn real_main() -> Result<()> {
             let out = output_from_opt(
                 &output, /*in_place=*/ false, auto, /*for_compile=*/ true,
             );
+            let profile_cfg = profile_config.clone();
+            let final_optimize = optimize || profile_cfg.optimize;
+            let final_debug = debug || profile_cfg.emit_debug;
             C::Compile(CompileTask {
                 input,
                 output: out,
-                optimize,
-                emit_debug: debug,
+                optimize: final_optimize,
+                emit_debug: final_debug,
                 auto_mkdir,
                 overwrite,
                 time,
+                profile: profile_cfg,
             })
         }
         Command::Run { program, args, auto_compile, optimize, time } => {
             let program = input_kind_from_opt(&program, auto_compile);
             let args = args.into_iter().map(|s| s.to_string_lossy().to_string()).collect();
-            C::Run(RunTask { program, args, auto_compile, optimize, time })
+            let profile_cfg = profile_config.clone();
+            let final_optimize = optimize || profile_cfg.optimize;
+            C::Run(RunTask {
+                program,
+                args,
+                auto_compile,
+                optimize: final_optimize,
+                time,
+                profile: profile_cfg,
+            })
+        }
+        #[cfg(feature = "server")]
+        Command::Server { addr, token, root } => {
+            let addr: SocketAddr =
+                addr.parse().with_context(|| format!("adresse d'écoute invalide: {addr}"))?;
+            let server_hooks = hooks.clone();
+            let server_profile = profile_config.clone();
+            let workspace_root = root.or_else(|| cwd.clone());
+            let options = cli::server::ServerOptions {
+                addr,
+                auth_token: token,
+                workspace_root,
+                default_profile: server_profile,
+            };
+            let runtime =
+                tokio::runtime::Runtime::new().context("initialisation runtime server")?;
+            runtime.block_on(cli::server::run(options, server_hooks))?;
+            return Ok(());
+        }
+        Command::Doctor { json, fix_cache, yes } => {
+            C::Doctor(DoctorTask { output_json: json, fix_cache, assume_yes: yes })
         }
         Command::Repl { prompt } => C::Repl(ReplTask { prompt }),
         Command::Fmt { input, output, in_place, check, diff } => {

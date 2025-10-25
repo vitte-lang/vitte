@@ -16,10 +16,10 @@ extern crate alloc;
 
 use core::fmt;
 
-#[cfg(feature = "std")]
-use std::{collections::HashMap, string::String, sync::Arc, vec::Vec};
 #[cfg(not(feature = "std"))]
 use alloc::{collections::BTreeMap as HashMap, string::String, sync::Arc, vec::Vec};
+#[cfg(feature = "std")]
+use std::{collections::HashMap, string::String, sync::Arc, vec::Vec};
 
 use vitte_ast as ast;
 use vitte_derive::DeriveRegistry;
@@ -220,8 +220,7 @@ impl Analyzer {
         let expanded_program = expansion.program.clone();
 
         for item in &expanded_program.items {
-            self.dep_graph
-                .add_node(item_name(item).unwrap_or("<anon>").to_string());
+            self.dep_graph.add_node(item_name(item).unwrap_or("<anon>").to_string());
             self.check_item(item)?;
         }
 
@@ -252,6 +251,13 @@ impl Analyzer {
     /// Exporte le graphe courant au format DOT.
     pub fn dependency_graph_dot(&self) -> String {
         self.dep_graph.to_dot()
+    }
+
+    /// Retourne la liste des noms de symboles connus de la dernière analyse.
+    /// Utile pour l'autocomplétion dans des outils externes (REPL/IDE).
+    #[cfg(feature = "std")]
+    pub fn symbol_names(&self) -> Vec<String> {
+        self.symbols.keys().cloned().collect()
     }
 
     fn check_item(&mut self, item: &ast::Item) -> AResult<()> {
@@ -456,12 +462,16 @@ impl TraitSolver {
 
     fn observe_item(&mut self, item: &ast::Item) {
         match item {
-            ast::Item::Struct(s) => {
-                self.register_exact_impl("Resolved", &ast::Type::Custom(s.name.clone()), Some(s.name.clone()))
-            }
-            ast::Item::Enum(e) => {
-                self.register_exact_impl("Resolved", &ast::Type::Custom(e.name.clone()), Some(e.name.clone()))
-            }
+            ast::Item::Struct(s) => self.register_exact_impl(
+                "Resolved",
+                &ast::Type::Custom(s.name.clone()),
+                Some(s.name.clone()),
+            ),
+            ast::Item::Enum(e) => self.register_exact_impl(
+                "Resolved",
+                &ast::Type::Custom(e.name.clone()),
+                Some(e.name.clone()),
+            ),
             _ => {}
         }
     }
@@ -489,16 +499,20 @@ impl TraitSolver {
     fn register_impl_rule(&mut self, trait_name: &str, rule: ImplRule, canonical_display: String) {
         let entry = self.impls.entry(trait_name.to_string()).or_default();
         // Vérifier conflits/cohérence
-        if let Some(conflict) = entry.iter().find(|existing| {
-            match (&existing.pattern, &rule.pattern) {
+        if let Some(conflict) =
+            entry.iter().find(|existing| match (&existing.pattern, &rule.pattern) {
                 (ImplPattern::Exact(a), ImplPattern::Exact(b)) => a == b,
                 (ImplPattern::Blanket(a), ImplPattern::Exact(b))
                 | (ImplPattern::Exact(b), ImplPattern::Blanket(a)) => wildcard_matches(a, b),
-                (ImplPattern::Blanket(a), ImplPattern::Blanket(b)) => wildcard_matches(a, b) || wildcard_matches(b, a),
-            }
-        }) {
+                (ImplPattern::Blanket(a), ImplPattern::Blanket(b)) => {
+                    wildcard_matches(a, b) || wildcard_matches(b, a)
+                }
+            })
+        {
             let reason = match (&conflict.pattern, &rule.pattern) {
-                (ImplPattern::Exact(_), ImplPattern::Exact(_)) => "duplicate impl for same type".to_string(),
+                (ImplPattern::Exact(_), ImplPattern::Exact(_)) => {
+                    "duplicate impl for same type".to_string()
+                }
                 _ => "blanket impl overlaps with existing rule".to_string(),
             };
             self.resolutions.push(TraitResolution {
@@ -574,10 +588,8 @@ fn canonicalize_custom(raw: &str) -> String {
         if compact.ends_with('>') {
             let base = compact[..start].to_ascii_lowercase();
             let inner = &compact[start + 1..compact.len() - 1];
-            let params = split_generics(inner)
-                .into_iter()
-                .map(canonicalize_type_string)
-                .collect::<Vec<_>>();
+            let params =
+                split_generics(inner).into_iter().map(canonicalize_type_string).collect::<Vec<_>>();
             format!("{base}<{}>", params.join(","))
         } else {
             compact.to_ascii_lowercase()
@@ -717,16 +729,15 @@ mod tests {
             })],
         };
         let report = az
-            .analyze_with(AnalysisInput::new(&program).with_macros(vec![MacroInvocation::derive(
-                "Point",
-                "Debug",
-            )]))
+            .analyze_with(
+                AnalysisInput::new(&program)
+                    .with_macros(vec![MacroInvocation::derive("Point", "Debug")]),
+            )
             .expect("analysis succeeds");
         assert!(report.expansion.program.items.len() > program.items.len());
-        assert!(report
-            .trait_resolutions
-            .iter()
-            .any(|res| res.trait_name == "Resolved" && matches!(res.status, TraitStatus::Satisfied)));
+        assert!(report.trait_resolutions.iter().any(
+            |res| res.trait_name == "Resolved" && matches!(res.status, TraitStatus::Satisfied)
+        ));
     }
 
     #[test]
@@ -741,7 +752,11 @@ mod tests {
                 }),
                 Item::Function(Function {
                     name: "make".into(),
-                    params: vec![ast::Param { name: "x".into(), ty: Type::Custom("Foo".into()), span: None }],
+                    params: vec![ast::Param {
+                        name: "x".into(),
+                        ty: Type::Custom("Foo".into()),
+                        span: None,
+                    }],
                     return_type: Some(Type::Custom("Foo".into())),
                     body: Block {
                         stmts: vec![Stmt::Return(Some(Expr::Ident("Foo".into())), None)],
@@ -751,9 +766,7 @@ mod tests {
                 }),
             ],
         };
-        let report = az
-            .analyze_with(AnalysisInput::new(&program))
-            .expect("analysis succeeds");
+        let report = az.analyze_with(AnalysisInput::new(&program)).expect("analysis succeeds");
         let deps = report.dependency_graph.dependencies("make");
         assert!(deps.contains(&"Foo".into()));
         assert!(report.dependency_dot.contains("digraph"));
@@ -763,15 +776,14 @@ mod tests {
     fn trait_solver_matches_blanket_impl() {
         let mut solver = TraitSolver::new();
         solver.register_blanket_impl("Display", "Option<*>", Some("blanket".into()));
-        solver.require(
-            "Display",
-            Type::Custom("Option<Int>".into()),
-            Some("usage".into()),
-        );
+        solver.require("Display", Type::Custom("Option<Int>".into()), Some("usage".into()));
         let resolutions = solver.take_resolutions();
-        assert!(resolutions
-            .iter()
-            .any(|res| res.trait_name == "Display" && matches!(res.status, TraitStatus::Satisfied)));
+        assert!(
+            resolutions
+                .iter()
+                .any(|res| res.trait_name == "Display"
+                    && matches!(res.status, TraitStatus::Satisfied))
+        );
     }
 
     #[test]
@@ -780,7 +792,10 @@ mod tests {
         solver.register_exact_impl("Resolved", &Type::Custom("Foo".into()), Some("impl1".into()));
         solver.register_exact_impl("Resolved", &Type::Custom("Foo".into()), Some("impl2".into()));
         let resolutions = solver.take_resolutions();
-        assert!(resolutions.iter().any(|res| matches!(res.status, TraitStatus::Conflict { .. })), "expected conflict");
+        assert!(
+            resolutions.iter().any(|res| matches!(res.status, TraitStatus::Conflict { .. })),
+            "expected conflict"
+        );
     }
 
     #[cfg(feature = "incremental")]
@@ -797,7 +812,11 @@ mod tests {
                 }),
                 Item::Function(Function {
                     name: "make".into(),
-                    params: vec![ast::Param { name: "x".into(), ty: Type::Custom("Foo".into()), span: None }],
+                    params: vec![ast::Param {
+                        name: "x".into(),
+                        ty: Type::Custom("Foo".into()),
+                        span: None,
+                    }],
                     return_type: Some(Type::Custom("Foo".into())),
                     body: Block { stmts: vec![], span: None },
                     span: None,
@@ -816,20 +835,19 @@ mod tests {
         let program = Program {
             items: vec![Item::Function(Function {
                 name: "main".into(),
-                params: vec![ast::Param { name: "x".into(), ty: Type::Custom("Unknown".into()), span: None }],
+                params: vec![ast::Param {
+                    name: "x".into(),
+                    ty: Type::Custom("Unknown".into()),
+                    span: None,
+                }],
                 return_type: None,
                 body: Block { stmts: vec![], span: None },
                 span: None,
             })],
         };
-        let report = az
-            .analyze_with(AnalysisInput::new(&program))
-            .expect("analysis ok");
-        assert!(report
-            .trait_resolutions
-            .iter()
-            .any(|res| res.trait_name == "Resolved"
-                && res.target == Type::Custom("Unknown".into())
-                && matches!(res.status, TraitStatus::Unsatisfied)));
+        let report = az.analyze_with(AnalysisInput::new(&program)).expect("analysis ok");
+        assert!(report.trait_resolutions.iter().any(|res| res.trait_name == "Resolved"
+            && res.target == Type::Custom("Unknown".into())
+            && matches!(res.status, TraitStatus::Unsatisfied)));
     }
 }

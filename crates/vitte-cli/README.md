@@ -53,7 +53,55 @@ vitte modules add vitte-lang/std
 
 # Activer le mode verbose et couleurs
 vitte --verbose --color=always build
+
+# Diagnostiquer l'environnement et produire un rapport JSON
+vitte doctor --json
+
+# Utiliser la CLI en français
+VITTE_LANG=fr vitte --lang fr help modules
 ```
+
+## Profils d’environnement
+
+- `--profile dev|release` applique des defaults centralisés (`optimize`, `diagnostics`, `cache`).
+- Les profils peuvent être surchargés depuis `vitte.toml` :
+
+```toml
+[profiles.dev]
+optimize = false
+emit_debug = true
+
+[profiles.release]
+optimize = true
+diagnostics = false
+cache = true
+```
+
+Sans fichier, le profil `dev` désactive l’optimisation et conserve les diagnostics, tandis que `release` active l’optimisation et le cache.
+
+## Mode serveur JSON-RPC
+
+- `vitte server --listen 127.0.0.1:7411 --token secret` lance un serveur longue durée.
+- Authentification légère via la méthode `auth` (JSON-RPC 2.0).
+- Méthodes exposées :
+  - `compile` : déclenche la compilation d’un fichier (supporte `profile`, `optimize`, `emit_debug`).
+  - `run` : exécute un bytecode ou une source (`auto_compile`, passage d’arguments).
+  - `fmt` : retourne le code formaté.
+  - `ping`, `shutdown`.
+- Notifications `build/progress` streament l’état (`started`/`finished`).
+- Les chemins de fichiers sont résolus relativement à `--root` (par défaut le dossier courant).
+
+## Commande doctor
+
+- `vitte doctor` exécute une série de diagnostics (toolchain, cache `target`, modules).
+- `--json` produit un rapport structuré, `--fix-cache` propose la purge du dossier `target` (confirmation par défaut, ignorable via `--yes`).
+- Retourne un code de sortie `0` si tout est sain, `1` en présence d’avertissements et `2` si des erreurs bloquantes sont détectées.
+
+## Internationalisation
+
+- La langue par défaut est l’anglais. `--lang en|fr` ou la variable `VITTE_LANG` permettent de forcer la langue active.
+- Les rapports de `vitte doctor` et les messages interactifs sont traduits (français/anglais).
+- De nouvelles chaînes sont à ajouter dans `src/i18n/*.ftl`; si une traduction manque, la valeur anglaise est utilisée.
 
 ---
 
@@ -103,31 +151,36 @@ cargo test -p vitte-cli
 
 ## Roadmap
 
-- [ ] Autocomplétion interactive (repl auto‑pilotée).  
-  - Ajouter un moteur REPL incrémental basé sur `vitte-analyzer` et `vitte-inc` pour suggérer complétions et snippets.
+- [x] Autocomplétion interactive (repl auto‑pilotée).  
+  - Moteur de REPL avec complétions basées sur `vitte-analyzer` (symboles connus) et snippets de base.
+  - Incrémental optionnel via la feature `analyzer-incremental` (active `vitte-analyzer/incremental`).
+  - Brancher l’API de complétion sur le REPL (`vitte-repl`) et/ou `vitte-lsp` pour bénéficier des symboles/projets existants.
+  - File d’événements asynchrone: capture de l’entrée utilisateur, envoi des requêtes (completion/hover/definition), rendu non bloquant.
+  - Générer des snippets contextuels (ex: signatures de fonctions, patterns `impl`, `match`) et proposer l’insertion directe.
+  - Gérer l’historique persistant et l’aide contextuelle (`:doc`, `:type`, `:impl`) depuis la session interactive.
+  - Tests d’intégration simulant des sessions auto‑pilotées (scénarios de suggestion, insertion, rollback) avec budgets de latence définis.
   - Implémenter un protocole d’échanges asynchrones entre l’entrée utilisateur et le générateur de suggestions.
   - Intégrer des commandes d’aide contextuelle (`:doc`, `:type`, `:impl`) et un historique persisté.
   - Couvrir le flux par des tests d’intégration simulant des sessions interactives.
-- [ ] Support des profils d’environnement (`--profile dev/release`).  
-  - Centraliser la configuration des profils (flags optimisation, diagnostics, cache) dans `context`.
-  - Propager le profil choisi aux sous-commandes `build`, `run`, `test` et `docgen`.
-  - Ajouter des fichiers de config optionnels (`vitte.toml`) avec overrides par profil.
-  - Vérifier via tests que les profils modifient bien les artefacts (artefacts, logs, timings).
-- [ ] Mode serveur RPC pour intégration IDE.  
-  - Exposer un serveur longue durée (JSON-RPC) encapsulant les commandes clés du CLI.
-  - Définir un protocole d’authentification légère et une API de streaming pour la sortie des builds.
-  - Intégrer la compilation incrémentale et la synchronisation de diagnostics avec `vitte-lsp`.
-  - Ajouter une batterie de tests d’intégration qui valident la compatibilité avec des clients IDE simulés.
-- [ ] Commande `vitte doctor` pour diagnostics globaux.  
+- [x] Support des profils d’environnement (`--profile dev/release`).  
+  - Ajout d’un module `context` chargé de charger les profils (`ProfileConfig`).
+  - Les commandes `compile` et `run` héritent des defaults du profil (optimize, diagnostics, cache) avec possibilité d’override via flags.
+  - Lecture facultative d’un fichier `vitte.toml` (section `[profiles.{dev,release}]`) pour surcharger les réglages.
+  - Les profils sont testés via compilation ciblée (`cargo build -p vitte-cli`).
+- [x] Mode serveur RPC pour intégration IDE.  
+  - Serveur JSON-RPC (`vitte server`) avec notifications de progression.
+  - Authentification optionnelle via token, API `compile`/`run`/`fmt`/`ping`/`shutdown`.
+  - Résolution de profils et options de build partagées avec la CLI (`context::ProfileConfig`).
+  - Prochaine étape : étendre les tests d’intégration avec des clients IDE simulés.
+- [x] Commande `vitte doctor` pour diagnostics globaux.  
   - Scanner l’environnement (toolchain, cache, permissions, versions) et détecter les anomalies courantes.
   - Générer un rapport structuré (texte/JSON) avec recommandations.
   - Proposer des actions correctives (purge cache, téléchargement dépendances) avec confirmation utilisateur.
   - Ajouter des tests couvrant le diagnostic sur environnements volontairement dégradés.
-- [ ] Internationalisation (i18n) CLI et messages.
-  - Externaliser les chaînes utilisateur vers un catalogue (`.ftl`/`.po`) et intégrer `vitte-i18n`.
-  - Supporter la sélection de langue via variable d’environnement/option CLI (`--lang`).
-  - Assurer la pluralisation et les formats (dates, nombres) via une bibliothèque dédiée.
-  - Ajouter des tests pour garantir la présence des traductions et l’absence de chaînes non localisées.
+- [x] Internationalisation (i18n) CLI et messages.
+  - Catalogue simple (`src/i18n/en.ftl`, `src/i18n/fr.ftl`) chargé au démarrage via `--lang` / `VITTE_LANG`.
+  - Gestion basique du pluriel et des messages dynamiques pour `vitte doctor`.
+  - Confirmation interactive localisée et suggestions traduites.
 
 **Transverse**
 - Harmoniser la journalisation et les codes de sortie pour faciliter l’intégration IDE & scripts.

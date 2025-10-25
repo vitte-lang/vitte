@@ -4,7 +4,7 @@
 //! - Diagnostics: basés sur le lexer (`vitte-lexer`)
 //! - Hover: info sur le token sous le curseur
 //! - Completion: mots-clés + snippets usuels
-//! - Document symbols: extraction naïve (fn/struct/enum/let/const)
+//! - Document symbols: extraction via AST (fn)
 //! - Formatting: trailing spaces trim + newline final
 //!
 //! Pour lancer en binaire, créez un `src/main.rs` qui appelle `start_stdio().await`.
@@ -21,6 +21,7 @@ use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 use vitte_core::{Pos, SourceId, Span};
 use vitte_lexer::{Lexer, LexerOptions, Token, TokenKind};
+use vitte_syntax::{IncrementalParser, Item, ParseDelta, SyntaxModule, TextEdit};
 
 /// Démarre le serveur LSP Vitte sur STDIN/STDOUT (à utiliser depuis un binaire).
 pub async fn start_stdio() -> anyhow::Result<()> {
@@ -50,38 +51,52 @@ impl Default for Config {
 #[derive(Debug, Clone)]
 struct Document {
     uri: lsp::Url,
-    text: String,
     version: i32,
-    /// Offsets de début de lignes (en bytes).
+    parser: IncrementalParser,
     line_starts: Vec<usize>,
+    last_delta: ParseDelta,
 }
 
 impl Document {
     fn new(uri: lsp::Url, text: String, version: i32) -> Self {
-        let line_starts = compute_line_starts(&text);
-        Self { uri, text, version, line_starts }
+        let parser = IncrementalParser::new(text);
+        let line_starts = compute_line_starts(parser.source());
+        let has_errors = !parser.module().errors.is_empty();
+        let last_delta =
+            ParseDelta { full_reparse: true, errors_changed: has_errors, ..ParseDelta::default() };
+        Self { uri, version, parser, line_starts, last_delta }
     }
 
-    fn apply_change(&mut self, change: &lsp::TextDocumentContentChangeEvent) {
-        match (&change.range, &change.range_length) {
+    fn text(&self) -> &str {
+        self.parser.source()
+    }
+
+    fn module(&self) -> &SyntaxModule {
+        self.parser.module()
+    }
+
+    fn apply_change(&mut self, change: &lsp::TextDocumentContentChangeEvent) -> ParseDelta {
+        let delta = match (&change.range, &change.range_length) {
             (None, None) => {
-                // full text
-                self.text = change.text.clone();
-                self.line_starts = compute_line_starts(&self.text);
+                self.parser = IncrementalParser::new(change.text.clone());
+                ParseDelta { full_reparse: true, errors_changed: true, ..ParseDelta::default() }
             }
             (Some(range), _) => {
-                // incremental
-                let (start_off, end_off) = (
-                    position_to_offset(&self.text, &self.line_starts, range.start),
-                    position_to_offset(&self.text, &self.line_starts, range.end),
-                );
-                if start_off <= end_off && end_off <= self.text.len() {
-                    self.text.replace_range(start_off..end_off, &change.text);
-                    self.line_starts = compute_line_starts(&self.text);
+                let start_off = position_to_offset(self.text(), &self.line_starts, range.start);
+                let end_off = position_to_offset(self.text(), &self.line_starts, range.end);
+                if start_off <= end_off && end_off <= self.text().len() {
+                    let edit =
+                        TextEdit { range: start_off..end_off, replacement: change.text.clone() };
+                    self.parser.apply_edit(edit)
+                } else {
+                    ParseDelta::default()
                 }
             }
-            _ => {}
-        }
+            _ => ParseDelta::default(),
+        };
+        self.line_starts = compute_line_starts(self.text());
+        self.last_delta = delta.clone();
+        delta
     }
 }
 
@@ -101,14 +116,17 @@ impl Backend {
         }
     }
 
-    async fn publish_diagnostics(&self, doc: &Document) {
+    async fn publish_diagnostics(&self, doc: &Document, force: bool) {
         if !self.config.read().await.diagnostics {
             // vider si désactivé
             let _ =
                 self.client.publish_diagnostics(doc.uri.clone(), vec![], Some(doc.version)).await;
             return;
         }
-        let diags = compute_diagnostics(&doc.text, &doc.line_starts);
+        if !force && !doc.last_delta.errors_changed {
+            return;
+        }
+        let diags = compute_document_diagnostics(doc);
         let _ = self.client.publish_diagnostics(doc.uri.clone(), diags, Some(doc.version)).await;
     }
 }
@@ -165,26 +183,38 @@ impl LanguageServer for Backend {
         let doc = Document::new(td.uri.clone(), td.text, td.version);
         self.docs.write().await.insert(td.uri.clone(), doc);
         if let Some(doc) = self.docs.read().await.get(&td.uri).cloned() {
-            self.publish_diagnostics(&doc).await;
+            self.publish_diagnostics(&doc, true).await;
         }
     }
 
     async fn did_change(&self, params: lsp::DidChangeTextDocumentParams) {
         let mut docs = self.docs.write().await;
         if let Some(doc) = docs.get_mut(&params.text_document.uri) {
+            let mut delta = ParseDelta::default();
             for change in &params.content_changes {
-                doc.apply_change(change);
+                delta = doc.apply_change(change);
             }
             doc.version = params.text_document.version;
             let doc_clone = doc.clone();
             drop(docs);
-            self.publish_diagnostics(&doc_clone).await;
+            if delta.errors_changed {
+                self.publish_diagnostics(&doc_clone, false).await;
+            }
+            if has_symbol_delta(&delta) {
+                let _ = self
+                    .client
+                    .log_message(
+                        lsp::MessageType::INFO,
+                        format_changed_functions(&params.text_document.uri, &delta),
+                    )
+                    .await;
+            }
         }
     }
 
     async fn did_save(&self, params: lsp::DidSaveTextDocumentParams) {
         if let Some(doc) = self.docs.read().await.get(&params.text_document.uri).cloned() {
-            self.publish_diagnostics(&doc).await;
+            self.publish_diagnostics(&doc, true).await;
         }
     }
 
@@ -206,16 +236,17 @@ impl LanguageServer for Backend {
         };
 
         let pos = params.text_document_position_params.position;
-        let off = position_to_offset(&doc.text, &doc.line_starts, pos);
+        let text = doc.text();
+        let off = position_to_offset(text, &doc.line_starts, pos);
 
         // Token sous curseur via un lexing simple
-        let (tok, span) = token_at_offset(&doc.text, off)
+        let (tok, span) = token_at_offset(text, off)
             .unwrap_or((TokenKind::Eof, Span { source: SourceId(0), start: Pos(0), end: Pos(0) }));
 
         let (title, body) = hover_contents(&tok);
 
-        let start = byte_offset_to_position(&doc.text, &doc.line_starts, span.start.0 as usize);
-        let end = byte_offset_to_position(&doc.text, &doc.line_starts, span.end.0 as usize);
+        let start = byte_offset_to_position(text, &doc.line_starts, span.start.0 as usize);
+        let end = byte_offset_to_position(text, &doc.line_starts, span.end.0 as usize);
 
         let hover = lsp::Hover {
             contents: lsp::HoverContents::Markup(lsp::MarkupContent {
@@ -265,7 +296,7 @@ impl LanguageServer for Backend {
             Some(d) => d,
             None => return Ok(None),
         };
-        let symbols = extract_symbols(&doc.text, &doc.line_starts);
+        let symbols = extract_symbols(doc.module(), doc.text(), &doc.line_starts, &doc.uri);
         Ok(Some(lsp::DocumentSymbolResponse::Flat(symbols)))
     }
 
@@ -278,21 +309,54 @@ impl LanguageServer for Backend {
             Some(d) => d,
             None => return Ok(None),
         };
-        let formatted = format_document(&doc.text);
-        if formatted == doc.text {
+        let text = doc.text();
+        let formatted = format_document(text);
+        if formatted == text {
             return Ok(Some(vec![]));
         }
         let full_range = lsp::Range {
             start: lsp::Position::new(0, 0),
-            end: byte_offset_to_position(&doc.text, &doc.line_starts, doc.text.len()),
+            end: byte_offset_to_position(text, &doc.line_starts, text.len()),
         };
         Ok(Some(vec![lsp::TextEdit { range: full_range, new_text: formatted }]))
     }
 }
 
-/* ─────────────────────────── Diagnostics via lexer ─────────────────────────── */
+/* ─────────────────────────── Diagnostics ─────────────────────────── */
 
-fn compute_diagnostics(text: &str, line_starts: &[usize]) -> Vec<lsp::Diagnostic> {
+fn compute_document_diagnostics(doc: &Document) -> Vec<lsp::Diagnostic> {
+    let text = doc.text();
+    let mut diags = compute_parser_diagnostics(doc.module(), text, &doc.line_starts);
+    diags.extend(compute_lexer_diagnostics(text, &doc.line_starts));
+    diags
+}
+
+fn compute_parser_diagnostics(
+    module: &SyntaxModule,
+    text: &str,
+    line_starts: &[usize],
+) -> Vec<lsp::Diagnostic> {
+    module
+        .errors
+        .iter()
+        .map(|err| {
+            let range = syntax_span_to_range(text, line_starts, err.span);
+            lsp::Diagnostic {
+                range,
+                severity: Some(lsp::DiagnosticSeverity::ERROR),
+                code: None,
+                code_description: None,
+                source: Some("vitte-parser".into()),
+                message: err.message.clone(),
+                related_information: None,
+                tags: None,
+                data: None,
+            }
+        })
+        .collect()
+}
+
+fn compute_lexer_diagnostics(text: &str, line_starts: &[usize]) -> Vec<lsp::Diagnostic> {
     let mut diags = Vec::new();
     let mut lx = Lexer::with_options(text, SourceId(0), LexerOptions::default());
     loop {
@@ -422,79 +486,66 @@ fn snippet(label: &str, body: &str, detail: &str) -> lsp::CompletionItem {
 
 /* ─────────────────────────── Symbols ─────────────────────────── */
 
-fn extract_symbols(text: &str, line_starts: &[usize]) -> Vec<lsp::SymbolInformation> {
-    // Extraction naïve: on re-lexe et on guette les motifs:
-    //   Kw(Fn) Ident(name)
-    //   Kw(Struct) Ident(name)
-    //   Kw(Enum) Ident(name)
-    //   Kw(Let|Const) Ident(name)
+fn extract_symbols(
+    module: &SyntaxModule,
+    text: &str,
+    line_starts: &[usize],
+    uri: &lsp::Url,
+) -> Vec<lsp::SymbolInformation> {
     let mut out = Vec::new();
-    let mut lx = Lexer::new(text, SourceId(0));
-    let mut last_kw: Option<Token<'_>> = None;
-    let mut last_ident: Option<Token<'_>> = None;
-
-    while let Ok(Some(tok)) = lx.next() {
-        let kind = tok.value.clone();
-        if matches!(kind, TokenKind::Eof) {
-            break;
-        }
-
-        match kind {
-            TokenKind::Kw(_) => last_kw = Some(tok.clone()),
-            TokenKind::Ident(_) => last_ident = Some(tok.clone()),
-            _ => {}
-        }
-
-        // Si on a kw + ident, on émet
-        if let (Some(kw_tok), Some(id_tok)) = (&last_kw, &last_ident) {
-            if let TokenKind::Kw(kw) = kw_tok.value {
-                let (name, kind) = match (kw, &id_tok.value) {
-                    (vitte_lexer::Keyword::Fn, TokenKind::Ident(n)) => {
-                        (n.to_string(), lsp::SymbolKind::FUNCTION)
-                    }
-                    (vitte_lexer::Keyword::Struct, TokenKind::Ident(n)) => {
-                        (n.to_string(), lsp::SymbolKind::STRUCT)
-                    }
-                    (vitte_lexer::Keyword::Enum, TokenKind::Ident(n)) => {
-                        (n.to_string(), lsp::SymbolKind::ENUM)
-                    }
-                    (vitte_lexer::Keyword::Let, TokenKind::Ident(n)) => {
-                        (n.to_string(), lsp::SymbolKind::VARIABLE)
-                    }
-                    (vitte_lexer::Keyword::Const, TokenKind::Ident(n)) => {
-                        (n.to_string(), lsp::SymbolKind::CONSTANT)
-                    }
-                    _ => {
-                        last_ident = None;
-                        continue;
-                    }
-                };
-                let range = span_to_range(text, line_starts, id_tok.span);
+    for item in &module.items {
+        match item {
+            Item::Fn(f) => {
+                let range = syntax_span_to_range(text, line_starts, f.span);
                 #[allow(deprecated)]
                 out.push(lsp::SymbolInformation {
-                    name,
-                    kind,
+                    name: f.name.clone(),
+                    kind: lsp::SymbolKind::FUNCTION,
                     tags: None,
                     deprecated: None,
-                    location: lsp::Location {
-                        uri: lsp::Url::parse("file://dummy")
-                            .unwrap_or_else(|_| lsp::Url::parse("file:///").unwrap()),
-                        range,
-                    },
+                    location: lsp::Location { uri: uri.clone(), range },
                     container_name: None,
                 });
-                last_kw = None;
-                last_ident = None;
             }
         }
     }
 
-    // Remplace l'URL dummy par rien; LSP accepte un Location avec l'URI réelle
-    for si in &mut out {
-        si.location.uri = lsp::Url::parse("file:///").unwrap();
+    out
+}
+
+fn has_symbol_delta(delta: &ParseDelta) -> bool {
+    !(delta.changed_functions.is_empty()
+        && delta.inserted_functions.is_empty()
+        && delta.removed_functions.is_empty())
+}
+
+fn format_changed_functions(uri: &lsp::Url, delta: &ParseDelta) -> String {
+    fn summarize(label: &str, items: &[String]) -> Option<String> {
+        if items.is_empty() {
+            return None;
+        }
+        let preview_len = items.len().min(3);
+        let mut preview = items.iter().take(preview_len).cloned().collect::<Vec<_>>().join(", ");
+        if items.len() > preview_len {
+            let remaining = items.len() - preview_len;
+            preview.push_str(&format!(" (+{} more)", remaining));
+        }
+        Some(format!("{}{}", label, preview))
     }
 
-    out
+    let mut parts = Vec::new();
+    if let Some(s) = summarize("~", &delta.changed_functions) {
+        parts.push(s);
+    }
+    if let Some(s) = summarize("+", &delta.inserted_functions) {
+        parts.push(s);
+    }
+    if let Some(s) = summarize("-", &delta.removed_functions) {
+        parts.push(s);
+    }
+    let summary =
+        if parts.is_empty() { "(no symbol delta)".to_string() } else { parts.join(" | ") };
+    format!("{} → {}", uri, summary)
 }
 
 /* ─────────────────────────── Formatting ─────────────────────────── */
@@ -569,5 +620,11 @@ fn byte_offset_to_position(text: &str, line_starts: &[usize], off: usize) -> lsp
 fn span_to_range(text: &str, line_starts: &[usize], sp: Span) -> lsp::Range {
     let start = byte_offset_to_position(text, line_starts, sp.start.0 as usize);
     let end = byte_offset_to_position(text, line_starts, sp.end.0 as usize);
+    lsp::Range { start, end }
+}
+
+fn syntax_span_to_range(text: &str, line_starts: &[usize], sp: vitte_syntax::Span) -> lsp::Range {
+    let start = byte_offset_to_position(text, line_starts, sp.start as usize);
+    let end = byte_offset_to_position(text, line_starts, sp.end as usize);
     lsp::Range { start, end }
 }

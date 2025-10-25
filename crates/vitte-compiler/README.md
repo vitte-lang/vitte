@@ -13,6 +13,7 @@ Cœur **du compilateur Vitte**.
 - Supporter les modes de compilation : **AOT**, **JIT**, **interprété**.  
 - Architecture en passes claires et indépendantes.  
 - Optimisations SSA et gestion avancée des dépendances.  
+- Compilation incrémentale avec codegen parallèle par fonction.  
 - Intégration directe avec `vitte-build`, `vitte-analyzer`, `vitte-cache` et `vitte-cap`.  
 - API stable pour les outils externes (`vitte-lsp`, `vitte-docgen`, `vitte-clippy`).
 
@@ -112,8 +113,8 @@ cargo test -p vitte-compiler
 
 ## Roadmap
 
-- [ ] Compilation incrémentale et parallélisée.  
-- [ ] Mode interactif REPL intégré.  
+- [x] Compilation incrémentale et parallélisée.  
+- [x] Mode interactif REPL intégré.  
 - [ ] Profilage des passes et visualisation graphique.  
 - [ ] Support des modules externes signés.  
 - [ ] Intégration LLVM complète et JIT multi-arch.

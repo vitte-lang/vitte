@@ -71,8 +71,7 @@ impl ValueViz {
     /// Rend un affichage ASCII.
     pub fn render_ascii(&self) -> String {
         let mut out = String::new();
-        self.render_ascii_inner(&mut out, 0)
-            .expect("writing to string");
+        self.render_ascii_inner(&mut out, 0).expect("writing to string");
         out
     }
 

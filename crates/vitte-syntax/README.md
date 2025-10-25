@@ -108,13 +108,47 @@ cargo test -p vitte-syntax
 
 ---
 
+## Parsing incrémental
+
+`vitte-syntax` expose un moteur d’édition incrémental via `IncrementalParser`. Il met à jour
+le module courant après chaque `TextEdit` et retourne un `ParseDelta` décrivant les fonctions
+ajoutées, modifiées ou supprimées, ainsi que l’évolution éventuelle des diagnostics.
+
+```rust
+use vitte_syntax::{IncrementalParser, TextEdit};
+
+let mut parser = IncrementalParser::new("fn add(a: int, b: int) -> int { a + b }\n");
+let delta = parser.apply_edit(TextEdit {
+    range: 32..33,
+    replacement: "-".into(),
+});
+assert_eq!(delta.changed_functions, vec!["add"]);
+```
+
+---
+
+## Mode tolérant
+
+Le parseur capture désormais les erreurs d’incomplétude (`Severity::Incomplete`) et conserve
+la liste des tokens attendus pour guider l’IDE. Les blocs ou parenthèses non terminés ne font
+plus échouer l’analyse : les diagnostics sont signalés mais l’AST reste exploitable.
+
+---
+
+## Attributs & annotations
+
+Pour inspection interactive, utilisez `tree::to_sexpr` qui produit une S-expression
+compatible avec `tree-sitter parse` à partir d’un `SyntaxModule`.
+
+---
+
 ## Roadmap
 
-- [ ] Parsing incrémental pour IDE et LSP.  
-- [ ] Amélioration du mode tolérant pour code incomplet.  
-- [ ] Support des annotations et attributs AST.  
-- [ ] Intégration de `tree-sitter` pour inspection interactive.  
-- [ ] Export du parse tree pour `vitte-studio`.
+- [x] Parsing incrémental pour IDE et LSP.  
+- [x] Amélioration du mode tolérant pour code incomplet.  
+- [x] Support des annotations et attributs AST.  
+- [x] Intégration de `tree-sitter` pour inspection interactive.  
+- [x] Export du parse tree pour `vitte-studio`.
 
 ---
 

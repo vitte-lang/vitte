@@ -88,9 +88,6 @@ impl SessionBuffer {
         if trimmed.is_empty() {
             return true;
         }
-        matches!(
-            trimmed.chars().last(),
-            Some(';' | '}' | ')' | ']' | '"' | '\'')
-        )
+        matches!(trimmed.chars().last(), Some(';' | '}' | ')' | ']' | '"' | '\''))
     }
 }

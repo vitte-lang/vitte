@@ -15,13 +15,19 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+#[cfg(not(feature = "std"))]
+use alloc::borrow::Cow;
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use core::fmt;
-#[cfg(feature = "std")] use std::borrow::Cow;
-#[cfg(not(feature = "std"))] use alloc::borrow::Cow;
-#[cfg(feature = "std")] use std::string::String;
-#[cfg(not(feature = "std"))] use alloc::string::String;
-#[cfg(feature = "std")] use std::vec::Vec;
-#[cfg(not(feature = "std"))] use alloc::vec::Vec;
+#[cfg(feature = "std")]
+use std::borrow::Cow;
+#[cfg(feature = "std")]
+use std::string::String;
+#[cfg(feature = "std")]
+use std::vec::Vec;
 
 /// Re-export volontaire pour signatures de résolution.
 pub use semver::{Version, VersionReq};
@@ -40,13 +46,17 @@ pub struct PackageId {
     pub version: Version,
 }
 
-impl PackageId { 
+impl PackageId {
     /// Construction utilitaire.
-    pub fn new<N: Into<String>>(name: N, version: Version) -> Self { Self { name: name.into(), version } }
+    pub fn new<N: Into<String>>(name: N, version: Version) -> Self {
+        Self { name: name.into(), version }
+    }
 }
 
 impl fmt::Display for PackageId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{}@{}", self.name, self.version) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}@{}", self.name, self.version)
+    }
 }
 
 /// Dépendance déclarée.
@@ -78,9 +88,11 @@ pub struct Manifest {
     pub dependencies: Vec<Dependency>,
 }
 
-impl Manifest { 
+impl Manifest {
     /// Construction utilitaire.
-    pub fn new(id: PackageId, dependencies: Vec<Dependency>) -> Self { Self { id, dependencies } }
+    pub fn new(id: PackageId, dependencies: Vec<Dependency>) -> Self {
+        Self { id, dependencies }
+    }
 }
 
 // ------------------------------ Erreurs -------------------------------------
@@ -100,7 +112,11 @@ pub enum VitteError {
     Other(Cow<'static, str>),
 }
 
-impl fmt::Display for VitteError { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{:?}", self) } }
+impl fmt::Display for VitteError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
 #[cfg(feature = "std")]
 impl std::error::Error for VitteError {}
 
@@ -124,9 +140,12 @@ pub struct Digest(pub [u8; 32]);
 
 impl Digest {
     /// Hex minuscule.
-    pub fn to_hex(&self) -> String { 
+    pub fn to_hex(&self) -> String {
         let mut s = String::with_capacity(64);
-        for b in &self.0 { use core::fmt::Write as _; let _ = write!(&mut s, "{:02x}", b); }
+        for b in &self.0 {
+            use core::fmt::Write as _;
+            let _ = write!(&mut s, "{:02x}", b);
+        }
         s
     }
 }
@@ -158,13 +177,21 @@ pub trait Fs {
 }
 
 /// Horloge simple.
-pub trait Clock { fn now_unix_ms(&self) -> u128; }
+pub trait Clock {
+    fn now_unix_ms(&self) -> u128;
+}
 
 // ------------------------------ Journalisation ------------------------------
 
 /// Niveaux de log.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub enum Level { Trace, Debug, Info, Warn, Error }
+pub enum Level {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
 
 /// Journalisation minimaliste, sans macros pour rester agnostique.
 pub trait Logger {

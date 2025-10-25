@@ -12,10 +12,10 @@ extern crate alloc;
 
 use core::fmt;
 
-#[cfg(feature = "std")]
-use std::{format, string::String, sync::Arc, vec::Vec};
 #[cfg(not(feature = "std"))]
 use alloc::{format, string::String, sync::Arc, vec::Vec};
+#[cfg(feature = "std")]
+use std::{format, string::String, sync::Arc, vec::Vec};
 
 use vitte_ast as ast;
 use vitte_derive::{DeriveOutcome, DeriveRegistry};
@@ -88,9 +88,7 @@ pub struct Expander {
 
 impl fmt::Debug for Expander {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Expander")
-            .field("registered_derives", &self.derives_len())
-            .finish()
+        f.debug_struct("Expander").field("registered_derives", &self.derives_len()).finish()
     }
 }
 
@@ -110,7 +108,11 @@ impl Expander {
     }
 
     /// Applique les invocations fournies à `program`.
-    pub fn expand(&self, program: &ast::Program, invocations: &[MacroInvocation]) -> ExpansionResult {
+    pub fn expand(
+        &self,
+        program: &ast::Program,
+        invocations: &[MacroInvocation],
+    ) -> ExpansionResult {
         if invocations.is_empty() {
             return ExpansionResult::empty(program.clone());
         }
@@ -122,20 +124,27 @@ impl Expander {
 
         for invocation in invocations {
             match &invocation.kind {
-                MacroKind::Derive(name) => match self.apply_derive(name, &invocation.target, &mut items, &mut tracker) {
-                    Ok(Some(outcome)) => {
-                        diagnostics.extend(outcome.diagnostics.into_iter().map(|d| ExpansionDiagnostic {
-                            message: d.message,
-                            span: d.span,
-                        }));
-                        applied.push(invocation.clone());
+                MacroKind::Derive(name) => {
+                    match self.apply_derive(name, &invocation.target, &mut items, &mut tracker) {
+                        Ok(Some(outcome)) => {
+                            diagnostics.extend(
+                                outcome.diagnostics.into_iter().map(|d| ExpansionDiagnostic {
+                                    message: d.message,
+                                    span: d.span,
+                                }),
+                            );
+                            applied.push(invocation.clone());
+                        }
+                        Ok(None) => diagnostics.push(ExpansionDiagnostic {
+                            message: format!(
+                                "derive `{}` non trouvé pour `{}`",
+                                name, invocation.target
+                            ),
+                            span: None,
+                        }),
+                        Err(diag) => diagnostics.push(diag),
                     }
-                    Ok(None) => diagnostics.push(ExpansionDiagnostic {
-                        message: format!("derive `{}` non trouvé pour `{}`", name, invocation.target),
-                        span: None,
-                    }),
-                    Err(diag) => diagnostics.push(diag),
-                },
+                }
                 MacroKind::Custom(name) => diagnostics.push(ExpansionDiagnostic {
                     message: format!("macro personnalisée `{}` non supportée", name),
                     span: None,
@@ -143,7 +152,12 @@ impl Expander {
             }
         }
 
-        ExpansionResult { program: ast::Program { items }, diagnostics, applied, span_tracker: tracker }
+        ExpansionResult {
+            program: ast::Program { items },
+            diagnostics,
+            applied,
+            span_tracker: tracker,
+        }
     }
 
     fn apply_derive(
@@ -158,7 +172,9 @@ impl Expander {
             Some(i) => i,
             None => {
                 return Err(ExpansionDiagnostic {
-                    message: format!("cible `{target_name}` introuvable pour derive `{derive_name}`"),
+                    message: format!(
+                        "cible `{target_name}` introuvable pour derive `{derive_name}`"
+                    ),
                     span: None,
                 })
             }
@@ -216,6 +232,10 @@ mod tests {
         let expander = Expander::new(Arc::new(DeriveRegistry::with_defaults()));
         let result = expander.expand(&program, &[MacroInvocation::derive("Point", "Debug")]);
         assert!(result.applied.len() == 1);
-        assert!(result.program.items.iter().any(|it| matches!(it, ast::Item::Function(func) if func.name.contains("debug"))));
+        assert!(result
+            .program
+            .items
+            .iter()
+            .any(|it| matches!(it, ast::Item::Function(func) if func.name.contains("debug"))));
     }
 }

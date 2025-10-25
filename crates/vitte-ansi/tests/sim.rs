@@ -1,14 +1,21 @@
 // vitte-ansi/tests/sim.rs
 
-use vitte_ansi::render::{Renderer, SimTerm, VirtualTerm, VEvent};
-use vitte_ansi::sgr::{SgrSeq, Style, FontFamily, WidthMode};
+use vitte_ansi::render::{Renderer, SimTerm, VEvent, VirtualTerm};
+use vitte_ansi::sgr::{FontFamily, SgrSeq, Style, WidthMode};
 
 #[test]
 fn sim_is_deterministic_and_balanced() {
     let mut r = SimTerm::new();
     r.styled(
         "hi",
-        Style { bold: true, italic: false, underline: true, inverse: false, font: FontFamily::Default, width: WidthMode::Normal }
+        Style {
+            bold: true,
+            italic: false,
+            underline: true,
+            inverse: false,
+            font: FontFamily::Default,
+            width: WidthMode::Normal,
+        },
     );
     let snap = r.snapshot();
 
@@ -37,7 +44,12 @@ fn virtual_term_logs_all_events_in_order() {
 #[test]
 fn sgr_to_ansi_degrades_without_doublewidth_or_fonts() {
     // Sans support étendu: pas de ESC #3/#4/#6 ni SGR 10..19
-    let s = Style { bold: true, font: FontFamily::Alt(2), width: WidthMode::DoubleWidth, ..Default::default() };
+    let s = Style {
+        bold: true,
+        font: FontFamily::Alt(2),
+        width: WidthMode::DoubleWidth,
+        ..Default::default()
+    };
     let esc = SgrSeq::Set(s).to_ansi(false, false);
     assert!(esc.contains("\x1b["), "SGR de base attendu");
     assert!(!esc.contains("\x1b#3"));
@@ -49,7 +61,12 @@ fn sgr_to_ansi_degrades_without_doublewidth_or_fonts() {
 
 #[test]
 fn sgr_to_ansi_emits_doublewidth_and_font_when_supported() {
-    let s = Style { bold: false, font: FontFamily::Alt(2), width: WidthMode::DoubleWidth, ..Default::default() };
+    let s = Style {
+        bold: false,
+        font: FontFamily::Alt(2),
+        width: WidthMode::DoubleWidth,
+        ..Default::default()
+    };
     let esc = SgrSeq::Set(s).to_ansi(true, true);
     // Double largeur: ESC # 6
     assert!(esc.contains("\x1b#6"));
@@ -59,8 +76,10 @@ fn sgr_to_ansi_emits_doublewidth_and_font_when_supported() {
 
 #[test]
 fn width_top_bottom_sequences_when_supported() {
-    let top = SgrSeq::Set(Style { width: WidthMode::DoubleHeightTop, ..Default::default() }).to_ansi(true, false);
-    let bot = SgrSeq::Set(Style { width: WidthMode::DoubleHeightBottom, ..Default::default() }).to_ansi(true, false);
+    let top = SgrSeq::Set(Style { width: WidthMode::DoubleHeightTop, ..Default::default() })
+        .to_ansi(true, false);
+    let bot = SgrSeq::Set(Style { width: WidthMode::DoubleHeightBottom, ..Default::default() })
+        .to_ansi(true, false);
     assert!(top.contains("\x1b#3"));
     assert!(bot.contains("\x1b#4"));
 }

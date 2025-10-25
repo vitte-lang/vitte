@@ -24,11 +24,13 @@ doc_markdown = "allow"
 
 [features]
 # Par défaut, on bench via la CLI `vitte` (spawn de process).
-default = []
+default = ["legacy-benches", "syntax-incremental"]
 
 # Active un pipeline "lib" (parse->IR->encode->run) en mémoire.
 # Nécessite que ces crates exposent des APIs stables; sinon laisse désactivé.
 bench-lib = ["dep:vitte-parser", "dep:vitte-ir", "dep:vitte-vitbc", "dep:vitte-runtime"]
+legacy-benches = []
+syntax-incremental = []
 
 [dependencies]
 # Déps pour le mode "lib" — optionnelles pour ne rien tirer par défaut.
@@ -39,9 +41,10 @@ vitte-runtime = { path = "../crates/vitte-runtime", version = "0.1.0", optional 
 vitte-bin     = { path = "../src", version = "0.1.0" }
 
 [dev-dependencies]
-anyhow     = { workspace = true }
-tempfile   = { workspace = true }
-criterion  = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+anyhow       = { workspace = true }
+tempfile     = { workspace = true }
+criterion    = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+vitte-syntax = { path = "../crates/vitte-syntax", version = "0.1.0" }
 
 # ─── Benches ─────────────────────────────────────────────────────────────────
 
@@ -49,13 +52,22 @@ criterion  = { version = "0.5", default-features = false, features = ["cargo_ben
 name    = "e2e_pipeline"
 path    = "benches/e2e_pipeline.rs"
 harness = false
+required-features = ["legacy-benches"]
 
 [[bench]]
 name    = "vm_hotpath"
 path    = "benches/vm_hotpath.rs"
 harness = false
+required-features = ["legacy-benches"]
 
 [[bench]]
 name    = "run_source"
 path    = "benches/run_source.rs"
 harness = false
+required-features = ["legacy-benches"]
+
+[[bench]]
+name    = "incremental_parser"
+path    = "benches/incremental_parser.rs"
+harness = false
+required-features = ["syntax-incremental"]

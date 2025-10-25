@@ -8,7 +8,10 @@ use std::{
 use anyhow::{anyhow, Result};
 use criterion::{black_box, BenchmarkId, Criterion, Throughput};
 use tempfile::NamedTempFile;
-use vitte_cli::{Command, CompileOptions, Hooks, InputKind, RunOptions, RunTask};
+use vitte_cli::{
+    context::{Profile, ProfileConfig},
+    Command, CompileOptions, Hooks, InputKind, RunOptions, RunTask,
+};
 use vitte_compiler::{Compiler, CompilerOptions, Severity};
 use vitte_core::SourceId;
 use vitte_lexer::{Lexer, LexerOptions};
@@ -102,6 +105,7 @@ fn run_cli_pipeline(path: &Path, hooks: &Hooks) -> Result<i32> {
         auto_compile: true,
         optimize: false,
         time: false,
+        profile: ProfileConfig::defaults(Profile::Dev),
     });
     vitte_cli::execute(cmd, hooks)
 }
