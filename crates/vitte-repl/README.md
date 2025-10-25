@@ -102,10 +102,37 @@ cargo test -p vitte-repl
 ## Roadmap
 
 - [ ] Support multi-ligne complet (déclarations, blocs).  
-- [ ] Historique partagé entre sessions.  
-- [ ] Visualisation graphique des valeurs.  
+  - Étendre le parseur interactif pour regrouper les entrées via indentation/terminaison explicite et détecter les blocs incomplets.  
+  - Ajouter un buffer de compilation incremental (`vitte-analyzer` + `vitte-compiler`) capable de réévaluer uniquement les sections modifiées.  
+  - Couvrir les cas limites (structures imbriquées, fonctions, tests) par des tests de sessions reproduisibles.  
+- [x] Historique partagé entre sessions.  
+  - Backend persistant basé sur un fichier JSON (`~/.vitte/repl_history.json`) avec chiffrement XOR optionnel.  
+  - Chargement automatique à l’ouverture et enregistrement après chaque cellule évaluée.  
+  - Suite de tests garantissant la persistance et le format reproductible.  
+- [x] Visualisation graphique des valeurs.  
+  - Représentation `ValueViz` sérialisable (JSON) couvrant matrices, arbres, traces.  
+  - Commandes `:viz-json` / `:viz-ascii` dans le REPL fournissant un rendu ASCII et export JSON.  
+  - Tests de snapshot ASCII garantissant la stabilité des rendus principaux.  
 - [ ] Mode connecté à `vitte-lsp`.  
-- [ ] Profilage des évaluations en direct.
+  - Exposer une API socket/JSON-RPC pour partager diagnostics, complétions et navigation depuis le REPL.  
+  - Rechercher la session LSP active et resynchroniser les symboles/état de projet.  
+  - Tester l’expérience bout-à-bout avec `vitte-lsp` (complétion, goto definition) dans un environnement intégré.  
+- [ ] Profilage des évaluations en direct.  
+  - Ajouter des hooks de mesure (temps, allocations, compteurs) côté `vitte-runtime`.  
+  - Afficher les métriques sous forme de timeline/tableau et permettre l’export (CSV/JSON).  
+  - Couvrir les régressions via benchmarks automatisés et assertions de budgets.
+
+---
+
+## Priorités produit
+
+1. **Support multi-ligne** — indispensable pour une adoption avancée du REPL et la parité avec l’éditeur.
+2. **Historique partagé** — améliore la continuité de travail entre sessions CLI/Studio.
+3. **Profilage en direct** — clé pour le retour de performance immédiat.
+4. **Mode connecté LSP** — nécessite stabilisation des APIs côté `vitte-lsp`.
+5. **Visualisation graphique** — livraison progressive via feature flag `viz`.
+
+Pour le suivi, créer cinq épics alignés sur les axes ci-dessus, chacun déclinant les sous-tâches listées (moteurs multi-ligne, backend historique, instrumentation runtime, bridge LSP, viewer graphique). Ces épics serviront de base à la planification produit/ingénierie.
 
 ---
 

@@ -1,6 +1,6 @@
 [package]
-name        = "vitte-ansi"
-description = "Utilitaires ANSI pour Vitte (couleurs, styles, séquences d’échappement)."
+name        = "vitte-derive"
+description = "Crate de derives et macros d’assistance pour l’écosystème Vitte."
 
 version      = { workspace = true }
 edition      = { workspace = true }
@@ -10,35 +10,31 @@ repository   = { workspace = true }
 homepage     = { workspace = true }
 
 readme        = "README.md"
-documentation = "https://docs.rs/vitte-ansi"
+documentation = "https://docs.rs/vitte-derive"
 
-keywords   = ["ansi", "terminal", "colors", "cli", "vitte"]
-categories = ["command-line-utilities", "development-tools"]
+keywords   = ["derive", "macro", "vitte"]
+categories = ["development-tools::build-utilities"]
 
 exclude = [".github/*", "examples/*", "tests/*"]
 
 [lib]
-name = "vitte_ansi"
+name = "vitte_derive"
 path = "src/lib.rs"
 crate-type = ["rlib"]
 
+doctest = false
+
 [features]
-default   = ["std"]
-std       = []
-simulate  = []        # backend de simulation pour tests
-no_color  = []        # force un mode sans couleurs
-full      = ["std", "simulate"]
+default = ["std"]
+std = []
+proc-macro = []
 
 [dependencies]
-
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_System_Console","Win32_Foundation"] }
+vitte-ast     = { path = "../vitte-ast" }
+vitte-hygiene = { path = "../vitte-hygiene" }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
-
-[package.metadata.docs.rs]
-all-features = true
 
 [lints.rust]
 unsafe_code = "forbid"

@@ -107,9 +107,40 @@ cargo test -p vitte-args
 ## Roadmap
 
 - [ ] Mode interactif de complétion intelligente (CLI dynamique).
+  - Étendre `parser` pour exposer un moteur incrémental capable de suggérer arguments et sous-commandes à chaque frappe.
+  - Brancher l’API sur `vitte-cli` afin de piloter un REPL interactif (tab completion, hints inline).
+  - Ajouter une couche de détection de capacités (`vitte-ansi`) pour désactiver proprement en TTY non compatibles.
+  - Couvrir l’expérience via tests d’intégration simulant des sessions interactives.
 - [ ] Génération automatique de pages man (`man vitte`).
+  - Introduire un backend `help::man` qui exporte le graphe de commandes vers un format manpage (roff).
+  - Intégrer la génération au pipeline de release (`build.rs`/CI) et fournir un `vitte help --man`.
+  - Ajouter des tests de snapshot sur les sections (NAME, SYNOPSIS, OPTIONS) pour prévenir les régressions.
 - [ ] Support multi-langue pour les messages CLI.
+  - Externaliser toutes les chaînes utilisateur vers un catalogue (ex: Fluent) et ajouter une couche de localisation.
+  - Détecter la locale via env (`LANG`, `LC_MESSAGES`) avec possibilité d’override `--lang`.
+  - Garantir que chaque entrée dispose d’une traduction et ajouter des tests de complétude du catalogue.
 - [ ] Intégration avec `vitte-lsp` pour suggestions contextuelles.
+  - Exposer un protocole léger (JSON-RPC ou pipe) fournissant la liste des sous-commandes/arguments disponibles.
+  - Synchroniser les descriptions et types d’arguments avec l’IDE pour auto-complétion contextuelle.
+  - Mettre en place des tests d’intégration LSP simulant requêtes `completion` et `hover`.
+
+---
+
+## Priorités produit & suivi
+
+1. **Complétion interactive** — impact direct UX, dépendances prêtes (`vitte-ansi`, parser).
+2. **Génération de manpages** — nécessite packaging/distribution.
+3. **Localisation (i18n)** — exigence marchés.
+4. **Pont LSP** — dépend des APIs CLI stabilisées.
+
+Épics recommandés pour le suivi :
+
+- *Complétion interactive* : moteur incrémental, REPL interactif, détection TTY/capacités, tests interactifs headless.
+- *Manpages* : générateur roff, intégration build/CI, snapshots NAME/SYNOPSIS/OPTIONS.
+- *Localisation* : extraction des chaînes, catalogue (Fluent/PO), détection locale/env, tests de complétude.
+- *LSP bridge* : API JSON-RPC/pipe, synchronisation métadonnées CLI↔IDE, tests `completion`/`hover`.
+
+Ces épics reprennent les sous-tâches détaillées dans la roadmap et cadrent la planification produit/ingénierie.
 
 ---
 

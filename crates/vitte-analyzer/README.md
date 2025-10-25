@@ -137,10 +137,23 @@ cargo test -p vitte-analyzer
 
 ## Roadmap
 
-- [ ] Support des macros et dérivations personnalisées.
-- [ ] Résolution avancée des traits et impl blocs.
-- [ ] Analyse incrémentale pour IDE.
-- [ ] Visualisation du graphe des dépendances.
+- [x] Support des macros et dérivations personnalisées.
+  - `vitte-expander` orchestre désormais l’expansion des derives avec hygiène (`vitte-hygiene`) et registre partagé (`vitte-derive`).
+  - Conservation basique des spans via `SpanTracker` et propagation des diagnostics dans les rapports d’analyse.
+  - Tests d’intégration valident les derives par défaut (`Debug`, `Display`) et les snapshots générés.
+- [x] Résolution avancée des traits et impl blocs.
+  - Canonicalisation des types (y compris signatures génériques simplifiées) et prise en charge des impls blanket avec détection d’overlap.
+  - Résolutions enrichies (statut, origine, conflits) et tests ciblés garantissant la cohérence des impls.
+- [x] Analyse incrémentale pour IDE.
+  - Gestion des empreintes par item, recalcul des dépendances et propagation `dirty` via `vitte-inc`.
+  - Export des snapshots et API `dependency_graph_dot()` pour exploitation par `vitte-lsp`.
+- [x] Visualisation du graphe des dépendances.
+  - Export DOT prêt à l’emploi (`AnalysisReport::dependency_dot`, `Analyzer::dependency_graph_dot`).
+  - Tests validant la génération et intégration future côté CLI/IDE.
+
+**Transverse**
+- Mettre en place une suite d’intégration reliant expander → traits → resolver pour sécuriser les évolutions.
+- Ajouter des indicateurs de performance et une journalisation ajustable pour diagnostiquer les analyses incrémentales et le solveur de traits.
 
 ---
 
