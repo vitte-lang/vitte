@@ -1,0 +1,26 @@
+module compiler::backend::llvm_backend::builder;
+
+pub mod llvm_context;
+pub mod llvm_module;
+pub mod llvm_emit_module;
+pub mod llvm_emit_function;
+pub mod llvm_emit_instr;
+
+use crate::compiler::backend::llvm_backend::opts::options::LlvmBackendOptions;
+use crate::compiler::codegen::driver::session::CodegenSession;
+
+/// Contexte de construction pour la génération LLVM.
+pub struct LlvmBuildCtx<'s> {
+    pub session: &'s mut CodegenSession<'s>,
+    pub options: LlvmBackendOptions,
+    pub module: llvm_module::LlvmModule,
+}
+
+impl<'s> LlvmBuildCtx<'s> {
+    pub fn new(session: &'s mut CodegenSession<'s>, options: LlvmBackendOptions) -> LlvmBuildCtx<'s> {
+        let triple_str = session.triple.to_string();
+        let ctx = llvm_context::LlvmContext::new();
+        let module = llvm_module::LlvmModule::new(&ctx, "vitte_module", &triple_str);
+        LlvmBuildCtx { session, options, module }
+    }
+}

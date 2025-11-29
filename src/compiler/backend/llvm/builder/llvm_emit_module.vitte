@@ -1,0 +1,19 @@
+module compiler::backend::llvm_backend::builder::llvm_emit_module;
+
+use crate::compiler::backend::llvm_backend::builder::{LlvmBuildCtx, llvm_module};
+use crate::compiler::backend::llvm_backend::builder::llvm_emit_function;
+use crate::compiler::ir::IrModule;
+
+/// Construit un LlvmModule à partir d'un IrModule.
+pub fn emit_module<'s>(
+    ctx: &mut LlvmBuildCtx<'s>,
+    ir: &IrModule,
+) -> llvm_module::LlvmModule {
+    // Pour l'instant, on remplit ctx.module in-place.
+    for fid in ir.functions() {
+        let func_ir = ir.function(fid);
+        let llfn = llvm_emit_function::emit_function(ctx, ir, func_ir.name.clone());
+        ctx.module.add_function(llfn);
+    }
+    ctx.module.clone()
+}

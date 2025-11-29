@@ -1,0 +1,40 @@
+module compiler::backend::vbc_backend::decoder::decode;
+
+use crate::compiler::backend::vbc_backend::decoder::model::{VbcModule, VbcFunction};
+use crate::compiler::backend::vbc_backend::format::opcodes::VbcOp;
+
+/// Décodage minimal d'un flux VBC.
+/// Ici on ignore l'en-tête et on lit juste les opcodes.
+pub fn decode_module(bytes: &[u8]) -> Option<VbcModule> {
+    if bytes.len() < 8 {
+        return None;
+    }
+    // Skip header (magic + version + flags) => 8 bytes.
+    let mut i = 8;
+    let mut vmod = VbcModule::empty();
+    let mut f = VbcFunction {
+        name: "main".to_string(),
+        code: Vec::new(),
+    };
+    while i < bytes.len() {
+        let op = match bytes[i] {
+            0x00 => VbcOp::Nop,
+            0x01 => VbcOp::IConst,
+            0x02 => VbcOp::IAdd,
+            0x03 => VbcOp::ISub,
+            0x04 => VbcOp::IMul,
+            0x05 => VbcOp::IDiv,
+            0xFF => VbcOp::Ret,
+            _ => VbcOp::Nop,
+        };
+        f.code.push(op);
+        i += 1;
+        if matches!(op, VbcOp::IConst) {
+            // skip immediate
+            if i + 4 > bytes.len() { break; }
+            i += 4;
+        }
+    }
+    vmod.functions.push(f);
+    Some(vmod)
+}

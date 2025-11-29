@@ -1,0 +1,331 @@
+
+module tools.vobjdump;
+
+// ===== vobjdump — inspecteur multi-format (VBC | ELF | Mach-O | PE) =====
+// Couvre:
+//  - VBC v1: header, strtab, fntab, code size; liste des fonctions
+//  - ELF64 little-endian: e_ident, sections de base; symboles si .symtab simple
+//  - Mach-O 32/64 little-endian: header, ncmds, sizeofcmds
+//  - PE/COFF: DOS stub, file header, number of sections
+//  - Hexdump sélectif avec --hexdump[=start:end]
+//  - Sortie texte par défaut, option --json pour un résumé JSON minimal
+
+// ===== Externs hôte =====
+fn println(s: str) extern;
+fn print(s: str) extern;
+fn eprintln(s: str) extern;
+
+fn fs_exists(p: str) -> bool extern;
+fn fs_read_all(p: str) -> []u8 extern;
+
+fn argv_count() -> i32 extern;
+fn argv_get(i: i32) -> str extern;
+
+fn str_eq(a: str, b: str) -> bool extern;
+fn str_starts_with(a: str, p: str) -> bool extern;
+fn str_len(a: str) -> u64 extern;
+fn str_slice(a: str, start: u64, end: u64) -> str extern;
+fn make_str_from(p:*u8, n:u64) -> str extern;
+
+fn parse_u64(s: str, out:&mut u64) -> bool extern;
+
+// Minimal JSON build helpers
+fn json_kv_str(k: str, v: str) -> str extern;
+fn json_kv_u64(k: str, v: u64) -> str extern;
+fn json_obj(fields: []str) -> str extern;
+fn list_str_new() -> []str extern;
+fn list_str_push(xs: []str, x: str) -> []str extern;
+
+// ===== Options =====
+struct Opts {
+  path: str,
+  show_headers: bool,
+  show_sections: bool,
+  show_symbols: bool,
+  show_code: bool,
+  hexdump: bool,
+  hex_from: u64,
+  hex_to: u64,
+  json: bool,
+  summary: bool,
+}
+
+fn defaults() -> Opts {
+  Opts{ path:"", show_headers:true, show_sections:false, show_symbols:false, show_code:false,
+        hexdump:false, hex_from:0, hex_to:0, json:false, summary:false }
+}
+
+fn parse_args() -> Opts {
+  let mut o = defaults()
+  let n = argv_count()
+  let mut i = 1
+  while i < n {
+    let a = argv_get(i)
+    if str_starts_with(a, "-") {
+      if str_eq(a, "--headers") { o.show_headers = true }
+      else if str_eq(a, "--sections") { o.show_sections = true }
+      else if str_eq(a, "--symbols") { o.show_symbols = true }
+      else if str_eq(a, "--code") { o.show_code = true }
+      else if str_starts_with(a, "--hexdump") {
+        o.hexdump = true
+        // --hexdump=from:to  (to facultatif)
+        if str_len(a) > 9 {
+          let spec = str_slice(a, 10, str_len(a))
+          let mut from:u64=0; let mut to:u64=0
+          if parse_range(spec, &mut from, &mut to) { o.hex_from = from; o.hex_to = to }
+        }
+      }
+      else if str_eq(a, "--json") { o.json = true }
+      else if str_eq(a, "--summary") { o.summary = true }
+      else if str_eq(a, "-h") || str_eq(a, "--help") { usage(); exit_ok() }
+      i += 1; continue
+    } else {
+      o.path = a; i += 1; continue
+    }
+  }
+  o
+}
+
+fn usage() {
+  println("vobjdump <fichier> [--headers] [--sections] [--symbols] [--code] [--hexdump[=from:to]] [--json] [--summary]")
+}
+
+fn exit_ok() -> i32 { 0 }
+fn exit_err() -> i32 { 1 }
+
+// ===== Utilitaires bytes =====
+fn load_u16le(p:*u8) -> u16 { ( *(p+0) as u16 ) | ( ((*(p+1)) as u16) << 8 ) }
+fn load_u32le(p:*u8) -> u32 { (load_u16le(p) as u32) | ((load_u16le(p+2) as u32) << 16) }
+fn load_u64le(p:*u8) -> u64 { (load_u32le(p) as u64) | ((load_u32le(p+4) as u64) << 32) }
+
+fn min(a:u64,b:u64)->u64 { if a<b { a } else { b } }
+
+// ===== Détection de format =====
+enum Fmt { Unknown, VBC, ELF, MACHO, PE }
+
+fn detect(bytes: []u8) -> Fmt {
+  if bytes.len >= 4 {
+    let p = bytes.ptr
+    // VBC1
+    if *(p+0)=='V' as u8 && *(p+1)=='B' as u8 && *(p+2)=='C' as u8 && *(p+3)=='1' as u8 { return Fmt::VBC }
+    // ELF
+    if *(p+0)==0x7F && *(p+1)=='E' as u8 && *(p+2)=='L' as u8 && *(p+3)=='F' as u8 { return Fmt::ELF }
+    // MZ
+    if *(p+0)=='M' as u8 && *(p+1)=='Z' as u8 { return Fmt::PE }
+    // Mach-O 32/64 little or big (we just check 0xFEEDFACE/0xFEEDFACF/CEFAEDFE/CFFAEDFE)
+    let m = load_u32le(p)
+    if m == 0xFEEDFACEu32 || m == 0xFEEDFACFu32 { return Fmt::MACHO }
+  }
+  Fmt::Unknown
+}
+
+// ===== VBC v1 =====
+struct VbcHdr { off_str:u32, off_fn:u32, off_code:u32, nfunc:u32 }
+struct VbcFn  { name_off:u32, code_off:u32, code_len:u32, nparams:u16, nlocals:u16 }
+
+fn vbc_header(bytes: []u8) -> VbcHdr {
+  let p = bytes.ptr
+  VbcHdr{ off_str: load_u32le(p+4), off_fn: load_u32le(p+8), off_code: load_u32le(p+12), nfunc: load_u32le(p+16) }
+}
+
+fn zstr_at(bytes: []u8, off:u32) -> str {
+  let base = bytes.ptr + (off as u64)
+  let mut n = 0u64
+  loop { let c = *(base+n); if c==0 { break } n += 1 }
+  make_str_from(base, n)
+}
+
+fn vbc_fn(bytes: []u8, i:u32, h:VbcHdr) -> VbcFn {
+  let p = bytes.ptr + (h.off_fn as u64) + (i as u64)*16u64
+  VbcFn{ name_off: load_u32le(p+0), code_off: load_u32le(p+4), code_len: load_u32le(p+8), nparams: load_u16le(p+12), nlocals: load_u16le(p+14) }
+}
+
+fn dump_vbc(bytes: []u8, o: Opts) {
+  let h = vbc_header(bytes)
+  if o.summary || o.show_headers {
+    println("Format: VBC v1")
+    print("nfuncs: "); println(u64_to_string(h.nfunc as u64))
+    print("off_strtab: "); println(u64_to_string(h.off_str as u64))
+    print("off_fntab: "); println(u64_to_string(h.off_fn as u64))
+    print("off_code: "); println(u64_to_string(h.off_code as u64))
+  }
+  if o.show_sections { println("Sections: [strtab, fntab, code]") }
+  if o.show_symbols || o.show_code {
+    println("Fonctions:")
+    for i in 0..h.nfunc {
+      let f = vbc_fn(bytes, i, h)
+      let name = zstr_at(make_slice(bytes.ptr + (h.off_str as u64), bytes.len - (h.off_str as u64)), f.name_off)
+      print("  "); print(name); print("  params:"); print(u64_to_string(f.nparams as u64)); print(" locals:"); print(u64_to_string(f.nlocals as u64)); print(" code_off:"); print(u64_to_string(f.code_off as u64)); print(" len:"); println(u64_to_string(f.code_len as u64))
+    }
+  }
+  if o.hexdump { do_hexdump(bytes, o.hex_from, o.hex_to) }
+  if o.json {
+    let mut fields = list_str_new()
+    fields = list_str_push(fields, json_kv_str("format", "VBC1"))
+    fields = list_str_push(fields, json_kv_u64("nfuncs", h.nfunc as u64))
+    println(json_obj(fields))
+  }
+}
+
+// ===== ELF64 (reloc/exe) — lecture en-tête + sections =====
+fn dump_elf(bytes: []u8, o: Opts) {
+  let p = bytes.ptr
+  let ei_class = *(p+4)
+  let ei_data = *(p+5)
+  let e_type = load_u16le(p+16)
+  let e_machine = load_u16le(p+18)
+  let e_entry = load_u64le(p+24)
+  let e_shoff = load_u64le(p+40)
+  let e_flags = load_u32le(p+48)
+  let e_ehsize = load_u16le(p+52)
+  let e_shentsize = load_u16le(p+58)
+  let e_shnum = load_u16le(p+60)
+  let e_shstrndx = load_u16le(p+62)
+
+  if o.summary || o.show_headers {
+    println("Format: ELF")
+    print("class: "); println(if ei_class==2 { "ELF64" } else { "ELF32" })
+    print("endian: "); println(if ei_data==1 { "LE" } else { "BE" })
+    print("type: "); println(u64_to_string(e_type as u64))
+    print("machine: "); println(u64_to_string(e_machine as u64))
+    print("entry: "); println(u64_to_string(e_entry))
+    print("shoff: "); println(u64_to_string(e_shoff))
+    print("shnum: "); println(u64_to_string(e_shnum as u64))
+    print("shstrndx: "); println(u64_to_string(e_shstrndx as u64))
+  }
+
+  if o.show_sections && e_shoff > 0 && e_shnum > 0 {
+    // lire .shstrtab
+    let shstr_hdr = p + e_shoff + (e_shstrndx as u64) * (e_shentsize as u64)
+    let shstr_off = load_u64le(shstr_hdr+24)
+    let shstr_sz  = load_u64le(shstr_hdr+32)
+    let shstr = make_slice(p + shstr_off, shstr_sz)
+
+    println("Sections:")
+    let mut i:u16 = 0
+    while i < e_shnum {
+      let sh = p + e_shoff + (i as u64) * (e_shentsize as u64)
+      let name_off = load_u32le(sh+0)
+      let shtype   = load_u32le(sh+4)
+      let flags    = load_u64le(sh+8)
+      let off      = load_u64le(sh+24)
+      let sz       = load_u64le(sh+32)
+      let name     = zstr_at(shstr, name_off)
+      print("  "); print(name); print("  type:"); print(u64_to_string(shtype as u64)); print(" off:"); print(u64_to_string(off)); print(" sz:"); println(u64_to_string(sz))
+      i += 1
+    }
+  }
+
+  if o.hexdump { do_hexdump(bytes, o.hex_from, o.hex_to) }
+}
+
+// ===== Mach-O (entête) =====
+fn dump_macho(bytes: []u8, o: Opts) {
+  let p = bytes.ptr
+  let magic = load_u32le(p)
+  let cputype = load_u32le(p+4)
+  let cpusub  = load_u32le(p+8)
+  let filetype= load_u32le(p+12)
+  let ncmds   = load_u32le(p+16)
+  let sizeofc = load_u32le(p+20)
+  if o.summary || o.show_headers {
+    println("Format: Mach-O")
+    print("magic: "); println(u64_to_string(magic as u64))
+    print("cputype: "); println(u64_to_string(cputype as u64))
+    print("filetype: "); println(u64_to_string(filetype as u64))
+    print("ncmds: "); println(u64_to_string(ncmds as u64))
+    print("sizeofcmds: "); println(u64_to_string(sizeofc as u64))
+  }
+  if o.hexdump { do_hexdump(bytes, o.hex_from, o.hex_to) }
+}
+
+// ===== PE/COFF (header) =====
+fn dump_pe(bytes: []u8, o: Opts) {
+  let p = bytes.ptr
+  // DOS header e_lfanew at 0x3C
+  let e_lfanew = load_u32le(p+0x3C)
+  let sig = load_u32le(p + (e_lfanew as u64))
+  let mach = load_u16le(p + (e_lfanew as u64) + 4)
+  let nsecs = load_u16le(p + (e_lfanew as u64) + 6)
+  if o.summary || o.show_headers {
+    println("Format: PE/COFF")
+    print("signature: "); println(u64_to_string(sig as u64))
+    print("machine: "); println(u64_to_string(mach as u64))
+    print("sections: "); println(u64_to_string(nsecs as u64))
+  }
+  if o.hexdump { do_hexdump(bytes, o.hex_from, o.hex_to) }
+}
+
+// ===== Hexdump =====
+fn do_hexdump(bytes: []u8, from:u64, to:u64) {
+  let start = if from==0 { 0 } else { min(from, bytes.len) }
+  let end = if to==0 { bytes.len } else { min(to, bytes.len) }
+  let mut off = start
+  while off < end {
+    // ligne: off: 16 octets hex + ascii
+    print(hex32(off)); print(": ")
+    let mut i:u64 = 0
+    while i < 16 && off+i < end {
+      let b = *(bytes.ptr + off + i)
+      print(hex8(b)); print(" ")
+      i += 1
+    }
+    // padding
+    while i < 16 { print("   "); i += 1 }
+    print(" |")
+    i = 0
+    while i < 16 && off+i < end {
+      let b = *(bytes.ptr + off + i)
+      let ch = if b>=32 && b<127 { b } else { '.' as u8 }
+      print(char1(ch));
+      i += 1
+    }
+    println("|")
+    off += 16
+  }
+}
+
+fn hex8(b:u8) -> str extern;
+fn hex32(v:u64) -> str extern;
+fn char1(b:u8) -> str extern;
+fn u64_to_string(v:u64) -> str extern;
+
+// ===== Entrée =====
+pub fn main(argc:i32, argv:**u8) -> i32 {
+  let o = parse_args()
+  if str_len(o.path) == 0 { usage(); return exit_err() }
+  if !fs_exists(o.path) { eprintln("fichier introuvable"); return exit_err() }
+  let bytes = fs_read_all(o.path)
+  if bytes.len == 0 { eprintln("fichier vide"); return exit_err() }
+
+  let fmt = detect(bytes)
+  match fmt {
+    Fmt::VBC => { dump_vbc(bytes, o); return exit_ok() }
+    Fmt::ELF => { dump_elf(bytes, o); return exit_ok() }
+    Fmt::MACHO => { dump_macho(bytes, o); return exit_ok() }
+    Fmt::PE => { dump_pe(bytes, o); return exit_ok() }
+    _ => { eprintln("format inconnu ou non supporté"); return exit_err() }
+  }
+}
+
+// ===== Parsing helpers =====
+fn parse_range(s:str, out_from:&mut u64, out_to:&mut u64) -> bool {
+  // format: number[:number]
+  let n = str_len(s)
+  let mut i:u64 = 0
+  let mut colon:u64 = n
+  while i < n { if char_at(s, i) == ':' as u8 { colon = i; break } ; i += 1 }
+  if colon == n {
+    let mut v:u64=0; if !parse_u64(s, &mut v) { return false } ; *out_from = v; *out_to = 0; return true
+  } else {
+    let a = str_slice(s, 0, colon)
+    let b = str_slice(s, colon+1, n)
+    let mut f:u64=0; let mut t:u64=0
+    if str_len(a) > 0 { if !parse_u64(a, &mut f) { return false } }
+    if str_len(b) > 0 { if !parse_u64(b, &mut t) { return false } }
+    *out_from = f; *out_to = t; return true
+  }
+}
+
+fn char_at(s:str, i:u64) -> u8 extern;
+fn make_slice(p:*u8, n:u64) -> []u8 extern;

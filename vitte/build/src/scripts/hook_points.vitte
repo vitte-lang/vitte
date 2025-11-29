@@ -1,0 +1,386 @@
+
+
+module build.scripts.hook_points;
+
+//
+// build::scripts::hook_points
+//
+// Point d'entrée unique pour définir et exécuter les "hooks" du système
+// de build Vitte.
+//
+// Objectifs :
+//   - Déclarer les différents points d'accroche (before/after X, on_error, etc.).
+//   - Décrire les hooks sous forme de données (HookConfig) indépendantes de
+//     l'implémentation concrète (script shell, binaire, module Vitte...).
+//   - Fournir un registre de hooks (HookRegistry) résolu par la CLI et/ou
+//     les scripts Muffin/manifest.
+//   - Proposer un API d'exécution abstraite (run_hooks_for_point) que la CLI
+//     peut surcharger pour réellement lancer les commandes.
+//
+// Ce module ne lance PAS les process lui-même : il se contente de modéliser et
+// filtrer les hooks. L'exécution concrète est déléguée au runner de la CLI.
+//
+
+// -----------------------------------------------------------------------------
+// Phases / points d'accroche
+// -----------------------------------------------------------------------------
+
+pub enum BuildStage {
+    Configure,
+    ResolveDeps,
+    Generate,
+    Compile,
+    Link,
+    Test,
+    Bench,
+    Doc,
+    Package,
+    Install,
+    Clean,
+    // Stage personnalisé (nom libre) pour des pipelines avancés.
+    Custom(String),
+}
+
+/// Position du hook par rapport à une phase donnée.
+pub enum HookTiming {
+    Before,
+    After,
+}
+
+/// Point logique auquel un hook peut se rattacher.
+pub enum HookPoint {
+    Stage {
+        stage: BuildStage,
+        timing: HookTiming,
+    },
+    // Hook exécuté en cas d'erreur (panic, exit code != 0...).
+    OnError,
+    // Hook exécuté systématiquement en fin de build, succès ou non.
+    AlwaysEnd,
+}
+
+// -----------------------------------------------------------------------------
+// Description d'un hook
+// -----------------------------------------------------------------------------
+
+/// Mode d'exécution d'un hook.
+pub enum HookKind {
+    // Script externe (sh, bash, zsh, cmd, powershell, etc.).
+    Script,
+    // Exécutable (binaire) dans PATH ou chemin absolu.
+    Tool,
+    // Module Vitte appelé via une fonction bien connue (ex: my.mod::hook_main).
+    VitteModule,
+}
+
+/// Politique de tolérance en cas d'échec.
+pub enum FailurePolicy {
+    // Échec du hook = échec du build.
+    FailBuild,
+    // Échec du hook consigné en warning, mais build continue.
+    WarnAndContinue,
+    // Ignorer complètement l'échec.
+    Ignore,
+}
+
+/// Configuration d'un hook individuel.
+pub struct HookConfig {
+    // Identifiant logique unique (utilisable dans les logs / diagnostics).
+    pub id: String,
+    // Point d'accroche.
+    pub point: HookPoint,
+    // Type de hook (script externe, tool, module vitte).
+    pub kind: HookKind,
+    // Commande principale (script, binaire ou path module::fn pour VitteModule).
+    pub command: String,
+    // Arguments passés tels quels à la commande.
+    pub args: Vec<String>,
+    // Répertoire de travail (si None, utiliser project_root).
+    pub workdir: Option<String>,
+    // Variables d'environnement supplémentaires (clé, valeur).
+    pub env: Vec<(String, String)>,
+    // Profils autorisés ("debug", "release", etc.). Vide = tous.
+    pub only_profiles: Vec<String>,
+    // Cibles autorisées ("x86_64-linux", etc.). Vide = toutes.
+    pub only_targets: Vec<String>,
+    // Nom de pipeline / commande build si on veut restreindre encore.
+    pub only_commands: Vec<String>,
+    // Timeout millisecondes (0 = pas de timeout).
+    pub timeout_ms: u64,
+    // Politique en cas d'échec de la commande.
+    pub failure_policy: FailurePolicy,
+    // Ne pas exécuter en CI (CI=1), utile pour hooks interactifs.
+    pub skip_in_ci: bool,
+}
+
+// -----------------------------------------------------------------------------
+// Contexte d'exécution d'un hook
+// -----------------------------------------------------------------------------
+
+pub struct HookContext {
+    // Racine du projet (dossier où vitte.toml / muffin principal se trouve).
+    pub project_root: String,
+    // Profil actuellement construit.
+    pub profile: String,
+    // Cible actuelle.
+    pub target: String,
+    // Nom de la commande CLI ("build", "check", "test", ...).
+    pub command_name: String,
+    // Stage en cours, pour les hooks Stage.
+    pub stage: Option<BuildStage>,
+    // Indique si le build tourne dans un environnement CI.
+    pub is_ci: bool,
+}
+
+// -----------------------------------------------------------------------------
+// Résultat d'exécution d'un hook
+// -----------------------------------------------------------------------------
+
+pub enum HookExitKind {
+    Success,
+    Skipped,
+    Failed,
+}
+
+pub struct HookResult {
+    pub id: String,
+    pub point: HookPoint,
+    pub exit_kind: HookExitKind,
+    // Code retour brut du process (si applicable).
+    pub exit_code: Option<i32>,
+    // Message humain (logs, raison de skip, erreur).
+    pub message: String,
+}
+
+// -----------------------------------------------------------------------------
+// Registre de hooks
+// -----------------------------------------------------------------------------
+
+pub struct HookRegistry {
+    hooks: Vec<HookConfig>,
+}
+
+impl HookRegistry {
+    pub fn new() -> HookRegistry {
+        HookRegistry { hooks: Vec::new() }
+    }
+
+    pub fn with_hooks(hooks: Vec<HookConfig>) -> HookRegistry {
+        HookRegistry { hooks }
+    }
+
+    /// Ajout simple d'un hook.
+    pub fn add(&mut self, hook: HookConfig) {
+        self.hooks.push(hook);
+    }
+
+    /// Retourne une vue immuable de tous les hooks.
+    pub fn all(&self) -> &Vec<HookConfig> {
+        &self.hooks
+    }
+
+    /// Sélectionne les hooks applicables à un point donné, filtrés par
+    /// profil/target/commande et environnement (CI ou non).
+    pub fn select_for(&self, ctx: &HookContext, point: &HookPoint) -> Vec<&HookConfig> {
+        let mut out: Vec<&HookConfig> = Vec::new();
+        for h in &self.hooks {
+            if !hook_matches_point(&h.point, point) {
+                continue;
+            }
+            if !hook_matches_ctx(h, ctx) {
+                continue;
+            }
+            out.push(h);
+        }
+        out
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Matching / filtration
+// -----------------------------------------------------------------------------
+
+fn hook_matches_point(a: &HookPoint, b: &HookPoint) -> bool {
+    match (a, b) {
+        (HookPoint::OnError, HookPoint::OnError) => true,
+        (HookPoint::AlwaysEnd, HookPoint::AlwaysEnd) => true,
+        (
+            HookPoint::Stage { stage: s1, timing: t1 },
+            HookPoint::Stage { stage: s2, timing: t2 },
+        ) => build_stage_eq(s1, s2) && hook_timing_eq(t1, t2),
+        _ => false,
+    }
+}
+
+fn build_stage_eq(a: &BuildStage, b: &BuildStage) -> bool {
+    match (a, b) {
+        (BuildStage::Configure,   BuildStage::Configure)   => true,
+        (BuildStage::ResolveDeps, BuildStage::ResolveDeps) => true,
+        (BuildStage::Generate,    BuildStage::Generate)    => true,
+        (BuildStage::Compile,     BuildStage::Compile)     => true,
+        (BuildStage::Link,        BuildStage::Link)        => true,
+        (BuildStage::Test,        BuildStage::Test)        => true,
+        (BuildStage::Bench,       BuildStage::Bench)       => true,
+        (BuildStage::Doc,         BuildStage::Doc)         => true,
+        (BuildStage::Package,     BuildStage::Package)     => true,
+        (BuildStage::Install,     BuildStage::Install)     => true,
+        (BuildStage::Clean,       BuildStage::Clean)       => true,
+        (BuildStage::Custom(a_name), BuildStage::Custom(b_name)) => a_name == b_name,
+        _ => false,
+    }
+}
+
+fn hook_timing_eq(a: &HookTiming, b: &HookTiming) -> bool {
+    match (a, b) {
+        (HookTiming::Before, HookTiming::Before) => true,
+        (HookTiming::After,  HookTiming::After)  => true,
+        _ => false,
+    }
+}
+
+fn hook_matches_ctx(h: &HookConfig, ctx: &HookContext) -> bool {
+    if h.skip_in_ci && ctx.is_ci {
+        return false;
+    }
+
+    if !h.only_profiles.is_empty() && !vec_contains_str(&h.only_profiles, &ctx.profile) {
+        return false;
+    }
+
+    if !h.only_targets.is_empty() && !vec_contains_str(&h.only_targets, &ctx.target) {
+        return false;
+    }
+
+    if !h.only_commands.is_empty() && !vec_contains_str(&h.only_commands, &ctx.command_name) {
+        return false;
+    }
+
+    true
+}
+
+fn vec_contains_str(haystack: &Vec<String>, needle: &String) -> bool {
+    for s in haystack {
+        if s == needle {
+            return true;
+        }
+    }
+    false
+}
+
+// -----------------------------------------------------------------------------
+// API d'exécution abstraite
+// -----------------------------------------------------------------------------
+
+/// Signature d'un exécuteur de hook : la CLI fournit sa propre implémentation
+/// (lancement de process, logs, capture stdout/stderr, etc.).
+pub type HookExecutor = fn(ctx: &HookContext, hook: &HookConfig) -> HookResult;
+
+/// Exécute tous les hooks applicables à un point donné, dans l'ordre dans
+/// lequel ils ont été ajoutés au registre.
+///
+/// L'exécuteur concret est injecté (inversion de contrôle) pour séparer la
+/// description (ce module) de la mécanique d'exécution réelle.
+pub fn run_hooks_for_point(
+    registry: &HookRegistry,
+    ctx: &HookContext,
+    point: &HookPoint,
+    exec: HookExecutor,
+) -> Vec<HookResult> {
+    let hooks = registry.select_for(ctx, point);
+    let mut results: Vec<HookResult> = Vec::new();
+
+    for h in hooks {
+        let result = exec(ctx, h);
+        results.push(result);
+    }
+
+    results
+}
+
+// -----------------------------------------------------------------------------
+// Helpers pour créer rapidement des hooks usuels
+// -----------------------------------------------------------------------------
+
+pub fn hook_stage_script(
+    id: String,
+    stage: BuildStage,
+    timing: HookTiming,
+    command: String,
+    args: Vec<String>,
+) -> HookConfig {
+    HookConfig {
+        id,
+        point: HookPoint::Stage { stage, timing },
+        kind: HookKind::Script,
+        command,
+        args,
+        workdir: None,
+        env: Vec::new(),
+        only_profiles: Vec::new(),
+        only_targets: Vec::new(),
+        only_commands: Vec::new(),
+        timeout_ms: 0,
+        failure_policy: FailurePolicy::FailBuild,
+        skip_in_ci: false,
+    }
+}
+
+pub fn hook_stage_tool(
+    id: String,
+    stage: BuildStage,
+    timing: HookTiming,
+    tool: String,
+    args: Vec<String>,
+) -> HookConfig {
+    HookConfig {
+        id,
+        point: HookPoint::Stage { stage, timing },
+        kind: HookKind::Tool,
+        command: tool,
+        args,
+        workdir: None,
+        env: Vec::new(),
+        only_profiles: Vec::new(),
+        only_targets: Vec::new(),
+        only_commands: Vec::new(),
+        timeout_ms: 0,
+        failure_policy: FailurePolicy::FailBuild,
+        skip_in_ci: false,
+    }
+}
+
+pub fn hook_on_error_script(id: String, command: String, args: Vec<String>) -> HookConfig {
+    HookConfig {
+        id,
+        point: HookPoint::OnError,
+        kind: HookKind::Script,
+        command,
+        args,
+        workdir: None,
+        env: Vec::new(),
+        only_profiles: Vec::new(),
+        only_targets: Vec::new(),
+        only_commands: Vec::new(),
+        timeout_ms: 0,
+        failure_policy: FailurePolicy::WarnAndContinue,
+        skip_in_ci: false,
+    }
+}
+
+pub fn hook_always_end_script(id: String, command: String, args: Vec<String>) -> HookConfig {
+    HookConfig {
+        id,
+        point: HookPoint::AlwaysEnd,
+        kind: HookKind::Script,
+        command,
+        args,
+        workdir: None,
+        env: Vec::new(),
+        only_profiles: Vec::new(),
+        only_targets: Vec::new(),
+        only_commands: Vec::new(),
+        timeout_ms: 0,
+        failure_policy: FailurePolicy::Ignore,
+        skip_in_ci: false,
+    }
+}

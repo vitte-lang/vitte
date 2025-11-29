@@ -1,0 +1,59 @@
+module compiler::backend::llvm_backend;
+
+pub mod builder;
+pub mod ir_lower;
+pub mod opts;
+pub mod emitter;
+pub mod tests;
+
+use crate::compiler::backend::traits::backend_trait::Backend;
+use crate::compiler::codegen::driver::artifacts::CodegenArtifacts;
+use crate::compiler::codegen::driver::artifacts::Artifact;
+use crate::compiler::codegen::driver::artifacts::ArtifactKind;
+use crate::compiler::codegen::options::emit_mode::EmitKind;
+use crate::compiler::codegen::driver::session::CodegenSession;
+use crate::compiler::ir::IrModule;
+
+/// Backend LLVM “high level” : produit du LLVM IR texte pour commencer.
+pub struct LlvmBackend<'s> {
+    pub session: &'s mut CodegenSession<'s>,
+    pub opts: opts::LlvmBackendOptions,
+}
+
+impl<'s> LlvmBackend<'s> {
+    pub fn new(session: &'s mut CodegenSession<'s>, opts: opts::LlvmBackendOptions) -> LlvmBackend<'s> {
+        LlvmBackend { session, opts }
+    }
+
+    pub fn emit_ir(&mut self, module: &IrModule) -> String {
+        let mut ctx = builder::LlvmBuildCtx::new(self.session, self.opts.clone());
+        let llvm_mod = builder::llvm_emit_module::emit_module(&mut ctx, module);
+        emitter::text_ir_dump::dump_module(&llvm_mod)
+    }
+
+    pub fn emit_ir_artifacts(&mut self, module: &IrModule) -> CodegenArtifacts {
+        let ir = self.emit_ir(module);
+        let mut artifacts = CodegenArtifacts::new(EmitKind::LLVMIR, self.session.options.output.clone());
+        artifacts.files.push(Artifact {
+            name: "module.ll".to_string(),
+            kind: ArtifactKind::Text,
+            data: ir.as_bytes().to_vec(),
+        });
+        artifacts
+    }
+}
+
+impl<'s> Backend for LlvmBackend<'s> {
+    fn name(&self) -> &str {
+        "llvm"
+    }
+
+    fn supports_target(&self, triple: &crate::compiler::codegen::target::triple::TargetTriple) -> bool {
+        let _ = triple;
+        true // placeholder: LLVM gère beaucoup de cibles
+    }
+
+    fn emit_module(&mut self, module: &IrModule) -> Result<CodegenArtifacts, String> {
+        Ok(self.emit_ir_artifacts(module))
+    }
+}

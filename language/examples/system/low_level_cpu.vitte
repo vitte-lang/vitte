@@ -1,0 +1,37 @@
+module examples.system.low_level:
+    import runtime.sys as sys
+
+struct InterruptFrame:
+    u64 rip
+    u64 cs
+    u64 flags
+    u64 rsp
+    u64 ss
+
+typedef u8* volatile BytePtr
+
+static fn write_control(ptr: BytePtr, value: u16):
+    *(ptr) = (value & 0xFF)
+    *(ptr + 1) = (value >> 8)
+
+extern fn isr_common(frame: *InterruptFrame):
+    asm "push rax"
+    asm "mov rax, [rsp + 0x10]"
+    asm "mov cr3, rax" {
+        # block form allows additional Vitte statements
+        probe isr_enter(frame.rip)
+    }
+    write_control((BytePtr)4276092928, 4608)
+    asm "pop rax"
+
+inline fn set_bit(ptr: BytePtr, bit: u8):
+    let mask = (u8)(1 << bit)
+    *(ptr) |= mask
+
+program low_level_demo:
+    let table = alignof(InterruptFrame)
+    let base = (BytePtr)4276092928
+    const control_value = 4608
+    write_control(base, control_value)
+    set_bit(base, 4)
+    asm "hlt"

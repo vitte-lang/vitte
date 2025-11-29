@@ -1,0 +1,18 @@
+program sensor_pipeline:
+    channel inbox = []
+
+    task collector:
+        spawn read_sensor(inbox)
+
+    task analyzer:
+        await consume(inbox)
+
+task read_sensor(queue):
+    parallel:
+        spawn collect_temp(queue)
+        spawn collect_pressure(queue)
+
+task consume(queue):
+    race:
+        spawn analyze_temp(queue)
+        spawn analyze_pressure(queue)

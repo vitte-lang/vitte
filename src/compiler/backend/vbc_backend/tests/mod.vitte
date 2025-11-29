@@ -1,0 +1,27 @@
+module compiler::backend::vbc_backend::tests;
+
+use crate::compiler::backend::vbc_backend;
+use crate::compiler::backend::vbc_backend::opts::options::VbcBackendOptions;
+use crate::compiler::codegen::driver::session::CodegenSession;
+use crate::compiler::codegen::options::codegen_options::CodegenOptions;
+use crate::compiler::codegen::options::emit_mode::EmitKind;
+use crate::diagnostics::DiagSink;
+use crate::compiler::ir::IrModule;
+
+fn build_dummy_ir() -> IrModule {
+    IrModule::new_for_tests()
+}
+
+#[test]
+fn emit_vbc_and_disasm() {
+    let mut diag = DiagSink::new();
+    let ir = build_dummy_ir();
+    let mut opts = CodegenOptions::default_c17();
+    opts.emit = EmitKind::Bytecode;
+    let mut session = CodegenSession::new(opts, &mut diag);
+    let backend_opts = VbcBackendOptions::default();
+    let mut backend = vbc_backend::VbcBackend::new(&mut session, backend_opts);
+    let artifacts = backend.emit_module(&ir).unwrap();
+    assert!(artifacts.files.iter().any(|a| a.name.ends_with(".vbc")));
+    assert!(artifacts.files.iter().any(|a| a.name.ends_with(".vbc.txt")));
+}

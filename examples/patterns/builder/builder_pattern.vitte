@@ -1,0 +1,50 @@
+// examples/patterns/builder/builder_pattern.vitte
+struct Person {
+    name: str,
+    age: i32,
+    email: Option<str>,
+}
+
+struct PersonBuilder {
+    name: str,
+    age: i32,
+    email: Option<str>,
+}
+
+impl PersonBuilder {
+    fn new(name: str) -> PersonBuilder {
+        PersonBuilder {
+            name: name,
+            age: 0,
+            email: None,
+        }
+    }
+    
+    fn age(mut self, age: i32) -> PersonBuilder {
+        self.age = age;
+        self
+    }
+    
+    fn email(mut self, email: str) -> PersonBuilder {
+        self.email = Some(email);
+        self
+    }
+    
+    fn build(self) -> Person {
+        Person {
+            name: self.name,
+            age: self.age,
+            email: self.email,
+        }
+    }
+}
+
+fn main() {
+    let person = PersonBuilder::new("Alice")
+        .age(30)
+        .email("alice@example.com")
+        .build();
+    
+    println("Name: {}", person.name);
+    println("Age: {}", person.age);
+}

@@ -1,0 +1,17 @@
+module compiler::backend::llvm_backend::emitter::text_ir_dump;
+
+use crate::compiler::backend::llvm_backend::builder::llvm_module::LlvmModule;
+
+/// Dump LLVMModule sous forme de texte .ll minimal.
+pub fn dump_module(module: &LlvmModule) -> String {
+    let mut buf = String::new();
+    buf.push_str(&format!("; ModuleID = \"{}\"\n", module.name));
+    buf.push_str(&format!("target triple = \"{}\"\n\n", module.triple));
+    for f in &module.functions {
+        buf.push_str(&f.body);
+        if !f.body.ends_with("\n") {
+            buf.push('\n');
+        }
+    }
+    buf
+}

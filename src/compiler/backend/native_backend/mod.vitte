@@ -1,0 +1,89 @@
+module compiler::backend::native_backend;
+
+pub mod opts;
+pub mod obj;
+pub mod asm;
+pub mod linker;
+pub mod platform;
+pub mod builder;
+pub mod tests;
+
+use crate::compiler::backend::traits::backend_trait::Backend;
+use crate::compiler::codegen::driver::artifacts::{CodegenArtifacts, Artifact, ArtifactKind};
+use crate::compiler::codegen::options::emit_mode::EmitKind;
+use crate::compiler::codegen::driver::session::CodegenSession;
+use crate::compiler::codegen::driver::artifacts;
+use crate::compiler::codegen::options::output_mode::OutputMode;
+use crate::compiler::ir::IrModule;
+
+/// Backend natif: produit objet et/ou assembleur lisible, potentiellement
+/// chainé ensuite vers un linker système ou interne.
+pub struct NativeBackend<'s> {
+    pub session: &'s mut CodegenSession<'s>,
+    pub opts: opts::options::NativeBackendOptions,
+}
+
+impl<'s> NativeBackend<'s> {
+    pub fn new(session: &'s mut CodegenSession<'s>, opts: opts::options::NativeBackendOptions) -> NativeBackend<'s> {
+        NativeBackend { session, opts }
+    }
+
+    fn emit_asm_only(&mut self, module: &IrModule) -> CodegenArtifacts {
+        let asm_text = builder::lower_to_asm::emit_asm(self.session, &self.opts, module);
+        let mut artifacts = CodegenArtifacts::new(EmitKind::Asm, self.session.options.output.clone());
+        artifacts.files.push(Artifact {
+            name: "module.s".to_string(),
+            kind: ArtifactKind::Text,
+            data: asm_text.as_bytes().to_vec(),
+        });
+        artifacts
+    }
+
+    fn emit_object_only(&mut self, module: &IrModule) -> CodegenArtifacts {
+        let obj_bytes = builder::lower_to_obj::emit_object(self.session, &self.opts, module);
+        let mut artifacts = CodegenArtifacts::new(EmitKind::Object, self.session.options.output.clone());
+        artifacts.files.push(Artifact {
+            name: "module.o".to_string(),
+            kind: ArtifactKind::Binary,
+            data: obj_bytes,
+        });
+        artifacts
+    }
+
+    fn emit_asm_and_object(&mut self, module: &IrModule) -> CodegenArtifacts {
+        let asm_text = builder::lower_to_asm::emit_asm(self.session, &self.opts, module);
+        let obj_bytes = builder::lower_to_obj::emit_object(self.session, &self.opts, module);
+        let mut artifacts = CodegenArtifacts::new(EmitKind::Object, self.session.options.output.clone());
+        artifacts.files.push(Artifact {
+            name: "module.s".to_string(),
+            kind: ArtifactKind::Text,
+            data: asm_text.as_bytes().to_vec(),
+        });
+        artifacts.files.push(Artifact {
+            name: "module.o".to_string(),
+            kind: ArtifactKind::Binary,
+            data: obj_bytes,
+        });
+        artifacts
+    }
+}
+
+impl<'s> Backend for NativeBackend<'s> {
+    fn name(&self) -> &str {
+        "native"
+    }
+
+    fn supports_target(&self, triple: &crate::compiler::codegen::target::triple::TargetTriple) -> bool {
+        let _ = triple;
+        // Placeholder: à spécialiser par OS/arch si besoin.
+        true
+    }
+
+    fn emit_module(&mut self, module: &IrModule) -> Result<CodegenArtifacts, String> {
+        match self.session.options.emit {
+            EmitKind::Asm => Ok(self.emit_asm_only(module)),
+            EmitKind::Object => Ok(self.emit_object_only(module)),
+            _ => Ok(self.emit_asm_and_object(module)),
+        }
+    }
+}

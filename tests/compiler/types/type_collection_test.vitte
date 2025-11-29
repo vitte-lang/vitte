@@ -1,0 +1,60 @@
+module tests.compiler.types.type_collection_test:
+    import compiler.ast as ast
+    import compiler.types as types
+
+    scenario expect(cond, message):
+        if not cond:
+            panic message
+
+    program type_collection_suite:
+        scenario main(args):
+            run_collection_test()
+            run_resolution_test()
+
+    scenario run_collection_test():
+        let module_body = ast.block([
+            ast.struct_decl("Packet", [
+                ast.type_field("id", ast.type_expr("u32", null, null, null), null),
+                ast.type_field("payload", ast.type_expr("str", null, null, null), null)
+            ]),
+            ast.enum_decl("State", [
+                ast.enum_entry("Init", null),
+                ast.enum_entry("Done", null)
+            ])
+        ])
+        let program = ast.program([
+            ast.module_decl("net.telemetry", null, module_body),
+            ast.typedef_decl(ast.type_expr("u32", null, null, null), "word_t"),
+            ast.function_decl(
+                "checksum",
+                [
+                    ast.parameter("pkt", ast.type_expr("net.telemetry.Packet", null, null, null))
+                ],
+                ast.type_expr("u32", null, null, null),
+                ast.block([]),
+                null,
+                false
+            )
+        ])
+
+        let ctx = types.analyze(program)
+        expect(ctx.errors.len == 0, "Aucune erreur attendue, trouvé: " + ctx.errors.len)
+        expect(ctx.structs["net::telemetry::Packet"] != null, "Struct Packet collectée")
+        expect(ctx.enums["net::telemetry::State"] != null, "Enum State collectée")
+        expect(ctx.typedefs["word_t"] != null, "Typedef collectée")
+        expect(ctx.functions["checksum"] != null, "Fonction collectée")
+
+    scenario run_resolution_test():
+        let program = ast.program([
+            ast.struct_decl("Node", [
+                ast.type_field("next", ast.type_expr("Node", ["const"], ["*"], null), null),
+                ast.type_field("value", ast.type_expr("u32", null, null, null), null)
+            ])
+        ])
+        let ctx = types.analyze(program)
+        expect(ctx.errors.len == 0, "Pas d'erreur attendue")
+        let resolved = types.resolve_type(ctx, ast.type_expr("Node", null, null, null))
+        expect(resolved.exists, "Type Node doit être résolu")
+        expect(resolved.kind == "struct", "Type Node doit être struct")
+        let builtin = types.resolve_type(ctx, ast.type_expr("bool", null, null, null))
+        expect(builtin.kind == "builtin", "bool est un builtin")
