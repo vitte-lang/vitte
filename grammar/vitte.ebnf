@@ -1,859 +1,387 @@
-(* ========================================================================= *)
-(*  VITTE – Grammaire officielle unifiée (nouvelle syntaxe)                  *)
-(*  - Architecture multi-fichier : workspace / package / data / source       *)
-(*  - Langage source : Vitte à blocs "end"                                   *)
-(*  - Littéraux riches et CLI issus de l'ancienne grammaire                  *)
-(* ========================================================================= *)
-
-(* ------------------------------------------------------------------------- *)
-(* 1. Lexique global                                                         *)
-(* ------------------------------------------------------------------------- *)
-
-letter          = "A".."Z" | "a".."z" | "_" ;
-digit           = "0".."9" ;
-
-hexdigit        = digit | "A".."F" | "a".."f" ;
-octdigit        = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" ;
-bindigit        = "0" | "1" ;
-
-identifier      = letter, { letter | digit } ;
-
-(* Le lexer classera un identifier comme Keyword s’il appartient à la liste
-   ci-dessous, sinon il produira le token IDENT.
-
-   Rappel des groupes principaux (pour maintenir la synchro doc ↔ code) :
-     - Workspace/Package/Data : workspace, root, mode, package, kind, unit, expose,
-       dataset, file, format, column.
-     - Muffin (.muf) : muffin, profile, script, run, version, out, mode.
-     - Software (.vitte) : software, entry, init, main, shutdown.
-     - Kernel (.vitte) : kernel, arch, target, opt, boot, irq, syscall.
-     - Commandes top-level : command.
-     - Algorithmie documentaire : algo, decision, goal, domain, owner, critical,
-       sla, tech_owner.
-     - Langage cœur : pub, shape, choice, alias, flow, task, start, stop, step,
-       func, return, call, const, let, var, if, elif, else, while, loop, for, in,
-       break, match, case, fail, spawn, channel, gate, true, false, None,
-       and, or, not, end.
-*)
-
-Keyword =
-      "workspace" | "root" | "mode"
-    | "package" | "kind" | "unit" | "expose"
-    | "dataset" | "file" | "format" | "column"
-    | "sheet" | "use" | "as" | "bind"
-    | "muffin" | "profile" | "script" | "run"
-    | "version" | "out"
-    | "software" | "entry" | "init" | "main" | "shutdown"
-    | "kernel" | "arch" | "target" | "opt" | "boot" | "irq" | "syscall"
-    | "command"
-    | "goal" | "domain" | "owner" | "critical" | "sla" | "tech_owner"
-    | "pub"
-    | "shape" | "choice" | "alias"
-    | "flow" | "task" | "start" | "stop" | "step"
-    | "algo" | "decision"
-    | "func" | "return" | "call"
-    | "const" | "let" | "var"
-    | "if" | "elif" | "else" | "while" | "loop" | "for" | "in" | "break"
-    | "match" | "case" | "fail"
-    | "spawn" | "channel" | "gate"
-    | "true" | "false" | "None"
-    | "and" | "or" | "not"
-    | "end"
-    ;
-
-ident           = identifier ;
-
-(* --- Littéraux numériques (hérités de l’ancienne grammaire) --- *)
-
-int_dec         = digit, { digit | "_" } ;
-int_hex         = "0x", hexdigit, { hexdigit | "_" } ;
-int_oct         = "0o", octdigit, { octdigit | "_" } ;
-int_bin         = "0b", bindigit, { bindigit | "_" } ;
-
-int_suffix      = ":",
-                  ( "i8" | "i16" | "i32" | "i64" | "isize"
-                  | "u8" | "u16" | "u32" | "u64" | "usize" ) ;
-
-IntegerLit      = ( int_hex | int_oct | int_bin | int_dec ), [ int_suffix ] ;
-
-float_core      =
-      int_dec, [ ".", { digit | "_" } ], [ exp_part ]
-    | ".", digit, { digit | "_" }, [ exp_part ] ;
-
-exp_part        = ( "e" | "E" ), [ "+" | "-" ], digit, { digit | "_" } ;
-
-float_suffix    = ":", ( "f32" | "f64" ) ;
-
-FloatLit        = float_core, [ float_suffix ] ;
-
-BoolLit         = "true" | "false" ;
-
-(* --- Char / string avec échappements (hérités) --- *)
-
-escape_char     =
-      "\\",
-      ( "'" | "\"" | "\\"
-      | "n" | "r" | "t" | "0"
-      | "x", hexdigit, hexdigit
-      | "u", "{", hexdigit, { hexdigit }, "}" ) ;
-
-char_inner      =
-      ? any char except "'" and "\" and line breaks ?
-    | escape_char ;
+(* =============================================================================
+   Grammaire Vitte – syntaxe nouvelle simple inspirée de Python/Ruby
+
+   L'objectif est de proposer une syntaxe lisible, accessible dès le lycée, avec :
+   * une indentation significative ou des blocs entre accolades,
+   * une collection de mots-clés maîtrisée (lexique décrit ci-dessous),
+   * des fichiers Muffin (.muf) comme unités de compilation décrivant modules,
+   * des commandes spécifiques du langage pour structurer logiciels, programmes, kernels,
+     services et outils système.
+ ============================================================================= *)
+
+(* ----------------------------------------------------------------------------- *)
+(* Lexique, identifiants et mots-clés réservés                                    *)
+(* ----------------------------------------------------------------------------- *)
+reserved_keyword
+               = "module" | "import" | "export" | "muffin"
+               | "program" | "software" | "kernel" | "service" | "driver" | "utility"
+               | "scenario" | "capsule" | "bridge" | "device"
+               | "blueprint" | "realm" | "tool" | "command" | "route" | "pipeline"
+               | "build" | "stage" | "artifact" | "profile"
+               | "use" | "requires" | "package" | "link" | "depends" | "feature" | "option"
+               | "struct" | "union" | "enum" | "typedef" | "inline" | "fn"
+               | "extern" | "static" | "restrict" | "sizeof" | "alignof"
+               | "let" | "const"
+               | "if" | "elif" | "else" | "while" | "for" | "repeat" | "match"
+               | "and" | "or" | "not"
+               | "true" | "false" | "null" ;
+
+(* Les identifiants ne peuvent pas commencer par un mot-clé réservé. *)
+
+(* Notes sémantiques :
+   - Les blocs sont valides soit via indentation, soit via accolades explicites.
+   - Les constructeurs de haut niveau doivent produire un module exportable.
+   - Exemple minimal :
+        module demo.app {
+            import std.io
+            program hello:
+                scenario main(args):
+                    println("bonjour Vitte")
+        }
+   - Chaque exemple de ce fichier doit être transformé en test parser (TODO: scripts/tests/parser/*.vitte). *)
+
+(* ----------------------------------------------------------------------------- *)
+program        = { top_level_declaration } ;
+
+top_level_declaration
+               = module_declaration
+               | import_declaration
+               | export_declaration
+               | muffin_manifest
+               | command_definition
+               | build_declaration
+               | type_declaration
+               | function_declaration
+               | advanced_declaration
+               | statement ;
+
+(* ----------------------------------------------------------------------------- *)
+(* Déclarations de module / import/export                                           *)
+(* ----------------------------------------------------------------------------- *)
+module_declaration
+               = "module" module_name [ "as" alias ] block ;
+
+module_name    = identifier { "." identifier } ;
+alias          = identifier ;
+
+import_declaration
+               = "import" module_name [ "as" alias ] [ import_clause ] newline ;
+
+import_clause  = "from" module_source ;
+module_source  = identifier [ "." identifier ] ;
+
+export_declaration
+               = "export" [ "all" ] [ export_clause ] newline ;
+
+export_clause  = "from" module_source | "only" "(" identifier { "," identifier } ")" ;
+
+(* ----------------------------------------------------------------------------- *)
+(* Manifestes Muffin (.muf)                                                        *)
+(* ----------------------------------------------------------------------------- *)
+muffin_manifest
+               = "muffin" file_path module_properties ;
+
+file_path      = string_literal ;
+module_properties
+               = "{" { module_property } "}" ;
+module_property
+               = property_name ":" property_value newline ;
+property_name  = identifier ;
+property_value = literal | identifier | list_literal ;
+list_literal   = "[" [ literal { "," literal } ] "]" ;
+
+(* Chaque fichier Muffin (.muf) est une unité de compilation décrivant un module,
+   ses dépendances, sa version et ses entrées publiques que les outils de build
+   consomment comme un manifeste Python-style.
+   TODO: préciser la sémantique des options (ex: dépendances optionnelles, profils ciblés). *)
+
+(* ----------------------------------------------------------------------------- *)
+(* Commandes spécifiques Vitte                                                    *)
+(* ----------------------------------------------------------------------------- *)
+command_definition
+               = command_keyword command_name block ;
 
-CharLit         = "'", char_inner, "'" ;
+command_keyword
+               = "program" | "software" | "kernel" | "service" | "driver" | "utility" ;
 
-str_inner       =
-    { ? any char except "\"" and "\" not forming invalid escape ?
-    | escape_char } ;
+command_name   = identifier ;
 
-StringLit       = "\"", str_inner, "\"" ;
+(* ----------------------------------------------------------------------------- *)
+(* Déclarations type/fonction                                      *)
+(* ----------------------------------------------------------------------------- *)
+type_declaration
+               = struct_declaration
+               | union_declaration
+               | enum_declaration
+               | typedef_declaration ;
 
-(* --- None / littéral composite --- *)
+struct_declaration
+               = "struct" identifier composite_body ;
 
-NoneLit         = "None" ;
+union_declaration
+               = "union" identifier composite_body ;
 
-Literal         =
-      IntegerLit
-    | FloatLit
-    | BoolLit
-    | NoneLit
-    | CharLit
-    | StringLit ;
+enum_declaration
+               = "enum" identifier enum_body ;
+
+typedef_declaration
+               = "typedef" type_expression identifier newline ;
 
-(* --- Espaces & commentaires --- *)
+composite_body = ":" newline INDENT { field_declaration } DEDENT
+               | "{" newline? { field_declaration } "}" newline? ;
+
+field_declaration
+               = type_expression identifier [ ":" expression ] newline ;
+
+enum_body      = ":" newline INDENT { enum_entry newline } DEDENT
+               | "{" newline? { enum_entry newline } "}" newline? ;
+
+enum_entry     = identifier [ "=" expression ] ;
 
-Whitespace      = " " | "\t" | "\r" | "\n" ;
-CommentLine     = "#", { ? tout caractère sauf fin de ligne ? } ;
+function_declaration
+               = [ storage_specifier ] [ "inline" ] "fn" identifier
+                 "(" parameter_list ")" [ "->" type_expression ] block ;
 
-(* Le lexer ignore Whitespace et CommentLine. Le caractère '@' est un token
-   séparé pour les attributs. *)
+storage_specifier
+               = "extern" | "static" ;
 
-(* --- Tokens CLI (hérités) ---
-   Voir docs/CLI/guide.md (section "Syntaxe CLI héritée") pour la grammaire complète
-   des chemins/arguments si besoin de modifier ces tokens. *)
+parameter_list = [ parameter { "," parameter } ] ;
+parameter      = type_expression identifier ;
 
-CliPathToken    = ? chemin CLI (UTF-8 sans espaces) ? ;
-CliValueToken   = ? argument CLI (UTF-8 sans espaces) ? ;
+type_expression
+               = [ type_qualifier { type_qualifier } ]
+                 identifier { "." identifier }
+                 { pointer_modifier | array_modifier }
+                 [ function_pointer_suffix ] ;
 
+type_qualifier = "const" | "volatile" | "restrict" ;
 
-(* ========================================================================= *)
-(* 2. Types de fichier                                                       *)
-(* ========================================================================= *)
+pointer_modifier
+               = "*" | "&" ;
 
-(* En pratique, déterminé par l’extension :
-   - Vitte.workspace → WorkspaceFile
-   - Vitte.pkg       → PackageFile
-   - *.vdata         → DataFile
-   - *.vitte / *.vit → SourceFile
-   - *.muf           → MuffinFile
-   - ligne CLI       → CliLine
-*)
+array_modifier = "[" [ expression ] "]" ;
+
+function_pointer_suffix
+               = "(" parameter_list ")" ;
+
+(* ----------------------------------------------------------------------------- *)
+(* Construction / compilation                                                    *)
+(* ----------------------------------------------------------------------------- *)
+build_declaration
+               = "build" identifier build_block ;
 
-File            =
-      WorkspaceFile
-    | PackageFile
-    | DataFile
-    | SourceFile
-    | MuffinFile
-    | CliLine ;
+build_block    = ":" newline INDENT { build_statement } DEDENT
+               | "{" newline? { build_statement } "}" newline? ;
 
-(* ========================================================================= *)
-(* 3. Workspace : Vitte.workspace                                            *)
-(* ========================================================================= *)
+build_statement
+               = stage_declaration
+               | artifact_declaration
+               | profile_declaration
+               | build_dependency
+               | build_option_statement
+               | statement ;
 
-WorkspaceName   = StringLit ;   (* ex: "vitte-lang"                         *)
-PackageName     = StringLit ;   (* ex: "core.math"                          *)
-DatasetName     = StringLit ;   (* ex: "customers"                          *)
-MuffinName      = StringLit ;   (* ex: "release"                            *)
+stage_declaration
+               = "stage" identifier block ;
 
-WorkspaceFile   =
-    "workspace", WorkspaceName, WorkspaceBody, "end" ;
+artifact_declaration
+               = "artifact" identifier artifact_body ;
 
-WorkspaceBody   =
-    { WorkspaceSetting } ;
+artifact_body  = "from" identifier [ artifact_options ] newline ;
+artifact_options
+               = "{" { artifact_option } "}" ;
+artifact_option
+               = option_key ":" option_value newline ;
+option_key     = identifier ;
+option_value   = literal | identifier | list_literal ;
+
+profile_declaration
+               = "profile" identifier block ;
+
+build_dependency
+               = "depends" "(" identifier { "," identifier } ")" newline ;
+
+build_option_statement
+               = "option" identifier "=" expression newline
+               | "target" "=" expression newline ;
+
+(* ----------------------------------------------------------------------------- *)
+(* Déclarations avancées et nouveaux points d’entrée                              *)
+(* ----------------------------------------------------------------------------- *)
+advanced_declaration
+               = advanced_keyword identifier [ "(" identifier { "," identifier } ")" ] block ;
+
+advanced_keyword
+               = "scenario" | "capsule" | "bridge" | "device" | "blueprint"
+               | "realm" | "tool" | "command" | "route" | "pipeline" ;
+
+(* ----------------------------------------------------------------------------- *)
+(* Blocs et instructions                                                         *)
+(* ----------------------------------------------------------------------------- *)
+statement      = assignment
+               | expression_statement
+               | control_flow
+               | declaration
+               | compile_directive ;
+
+assignment     = assignable assignment_operator expression newline ;
+assignable     = expression ;
+assignment_operator
+               = "=" | "+=" | "-=" | "*=" | "/=" | "&=" | "|=" | "^=" | "<<=" | ">>=" ;
+expression_statement
+               = expression newline ;
 
-WorkspaceSetting =
-      "root",   StringLit
-    | "mode",   StringLit        (* "safe" | "fast" | "debug" *)
-    | "package", StringLit ;     (* nom logique, ex: "core.math" *)
-
-
-(* ========================================================================= *)
-(* 4. Package : Vitte.pkg                                                    *)
-(* ========================================================================= *)
-
-PackageFile     =
-    "package", PackageName, PackageBody, "end" ;
-
-PackageBody     =
-    { PackageSetting } ;
-
-PackageSetting  =
-      "kind",   StringLit        (* "library" | "binary" | "test" | ... *)
-    | "unit",   StringLit        (* chemin vers un .vitte *)
-    | "expose", StringLit ;      (* module public *)
-
-
-(* ========================================================================= *)
-(* 4bis. Muffin : *.muf                                                      *)
-
-(* MuffinFile décrit les profils de build et scripts. Le compilateur fera:   *)
-(*   - la résolution vers WorkspaceFile / PackageFile                         *)
-(*   - la résolution des entry vers SoftwareDecl / KernelDecl dans les       *)
-(*     SourceFile ciblés.                                                     *)
-(* Les scripts "run" peuvent également piloter des outils générant de la      *)
-(* documentation d’algorithmie (algo/flow) à partir des SourceFile.          *)
-(* ========================================================================= *)
-
-MuffinFile      =
-    "muffin", MuffinName, MuffinBody, "end" ;
-
-MuffinBody      =
-    { MuffinItem } ;
-
-MuffinItem      =
-      MuffinSetting
-    | MuffinProfile
-    | MuffinScript ;
-
-MuffinSetting   =
-      "workspace", StringLit        (* chemin vers un fichier Vitte.workspace *)
-    | "package",   StringLit        (* package par défaut (Vitte.pkg)       *)
-    | "version",   StringLit        (* version du projet, style semver      *)
-    | "out",       StringLit        (* répertoire de sortie par défaut      *)
-    | "mode",      StringLit ;      (* "debug" | "release" | "test"         *)
-
-MuffinProfile   =
-    "profile", ident, MuffinProfileBody, "end" ;
-
-MuffinProfileBody =
-    { MuffinProfileSetting } ;
-
-MuffinProfileSetting =
-      "mode",   ModeValue          (* "debug" | "release" | "test"          *)
-    | "opt",    OptLevel           (* 0..3: 0=none, 1=basic, 2=aggr, 3=max  *)
-    | "target", StringLit          (* triple: "x86_64-unknown-linux-gnu"    *)
-    | "out",    StringLit ;        (* répertoire de sortie spécifique       *)
-
-MuffinScript    =
-    "script", ident, MuffinScriptBody, "end" ;
-
-MuffinScriptBody =
-    { MuffinScriptLine } ;
-
-MuffinScriptLine =
-      "use", "profile", ident      (* associer un profil de build           *)
-    | "run", StringLit ;           (* ligne de commande shell à exécuter    *)
-
-
-(* ========================================================================= *)
-(* 5. Data : *.vdata                                                         *)
-(* ========================================================================= *)
-
-DataFile        =
-    DatasetDecl ;
-
-DatasetDecl     =
-    "dataset", DatasetName, DatasetBody, "end" ;
-
-DatasetBody     =
-    { DatasetSetting } ;
-
-DataFormat      =
-      "csv"
-    | "jsonl"
-    | "parquet"
-    | StringLit ;               (* fallback extensible: "custom:xxx"      *)
-
-DatasetSetting  =
-      "file",   StringLit
-    | "format", DataFormat       (* "csv", "jsonl", ...                    *)
-    | "column", ident, ":", TypeRef ;
-
-
-(* ========================================================================= *)
-(* 6. Source : *.vitte / *.vit                                               *)
-(* ========================================================================= *)
-
-SourceFile      =
-    [ SheetDecl ],
-    { TopLevelDecl } ;
-
-SheetDecl       =
-    "sheet", ModulePath ;
-
-ModulePath      =
-    ident, { ".", ident } ;       (* chemin logique de module / sheet      *)
-
-TopLevelDecl    =
-    { Attribute }, PlainTopLevelDecl ;
-
-Attribute       =
-    "@", ident, [ "(", AttrArgs, ")" ] ;
-
-AttrArgs        =
-    Expr, { ",", Expr } ;
-
-(* Sur les déclarations top-level (algo, software, kernel, flow, task, func), *)
-(* les attributs peuvent servir à la gouvernance et aux outils:               *)
-(*   @owner_team("payments")    → équipe responsable                          *)
-(*   @compliance("sox")         → domaine de conformité                       *)
-(*   @risk_level("high")        → criticité globale de l’élément              *)
-(*   @trace("name")             → instrumentation/tracing                     *)
-(*   @feature("flag")           → activation conditionnelle (feature flag)    *)
-(* La grammaire reste neutre, cette sémantique est définie par les outils.    *)
-
-PlainTopLevelDecl =
-      UseDecl
-    | PubOpt SharedDecl
-    | PubOpt SoftwareDecl
-    | PubOpt KernelDecl
-    | PubOpt AlgoDecl
-    | PubOpt BindDecl ;
-
-SharedDecl      =
-      ConstDecl
-    | ShapeDecl
-    | ChoiceDecl
-    | AliasDecl
-    | FlowDecl
-    | TaskDecl
-    | FuncDecl
-    | CommandDecl ;
-
-PubOpt          = [ "pub" ] ;
-
-(* ------------------------------------------------------------------------- *)
-(* 6.1 Imports, bind                                                         *)
-(* ------------------------------------------------------------------------- *)
-
-UseDecl         =
-    "use", ModulePath, [ "as", ident ] ;
-
-BindDecl        =
-    "bind", "dataset", StringLit, "as", ident ;
-
-
-(* ========================================================================= *)
-(* 7. Types et génériques                                                    *)
-(* ========================================================================= *)
-
-TypeRef         =
-      SimpleType
-    | GenericType ;
-
-SimpleType      =
-    ident ;
-
-GenericType     =
-    ident, "[", TypeRef, { ",", TypeRef }, "]" ;
-
-TypeParams      =
-    "[", ident, { ",", ident }, "]" ;
-
-ModeValue       =
-      "debug"
-    | "release"
-    | "test" ;
-
-(* Note: les types algébriques usuels Option[T] / Result[T,E] sont décrits    *)
-(* comme n’importe quel type générique via 'shape'/'choice' et GenericType.   *)
-(* La grammaire ne prévoit pas de sucre syntaxique dédié pour ces types.      *)
-
-
-(* ========================================================================= *)
-(* 8. Déclarations de données                                                *)
-(* ========================================================================= *)
-
-ShapeDecl       =
-    "shape", ident, [ TypeParams ], ShapeBody, "end" ;
-
-ShapeBody       =
-    { FieldDecl } ;
-
-FieldDecl       =
-    ident, ":", TypeRef ;
-
-ChoiceDecl      =
-    "choice", ident, [ TypeParams ], ChoiceBody, "end" ;
-
-ChoiceBody      =
-    { VariantDecl } ;
-
-VariantDecl     =
-    ident, [ "(", VariantFieldList, ")" ] ;
-
-VariantFieldList=
-    VariantField, { ",", VariantField } ;
-
-VariantField    =
-      ident, ":", TypeRef
-    | TypeRef ;
-
-AliasDecl       =
-    "alias", ident, [ TypeParams ], "=", TypeRef ;
-
-ConstDecl       =
-    "const", ident, [ ":", TypeRef ], "=", Expr ;
-
-
-(* ========================================================================= *)
-(* 9. Fonctions                                                              *)
-(* ========================================================================= *)
-
-FuncDecl        =
-    "func", ident, [ TypeParams ], "(", [ ParamList ], ")",
-    [ "->", TypeRef ],
-    Block, "end" ;
-
-ParamList       =
-    Param, { ",", Param } ;
-
-Param           =
-    ident, ":", TypeRef ;
-
-
-(* ========================================================================= *)
-(* 9bis. Commandes top-level (command)                                       *)
-(* ========================================================================= *)
-
-CommandDecl     =
-    "command", ident, "(", [ ParamList ], ")", Block, "end" ;
-
-
-(* ========================================================================= *)
-(* 9ter. Logiciels (software)                                                *)
-
-(* Convention: les modes standards sont "debug", "release" et "test".         *)
-(* ========================================================================= *)
-
-SoftwareDecl    =
-    "software", ident, [ SoftwareConfig ], SoftwareBody, "end" ;
-
-SoftwareConfig  =
-    "[", SoftwareOption, { ",", SoftwareOption }, "]" ;
-
-SoftwareOption  =
-      "entry",   "=", ModulePath, ".", ident   (* ex: sheet.module.main      *)
-    | "version", "=", StringLit               (* semver: "1.2.0"             *)
-    | "mode",    "=", ModeValue ;             (* "debug" | "release" | "test" *)
-
-SoftwareBody    =
-    { SoftwareSection | SoftwareItem } ;
-
-SoftwareSection =
-      "init",     Block      (* code de démarrage de l’application        *)
-    | "main",     Block      (* logique principale / boucle principale    *)
-    | "shutdown", Block ;    (* nettoyage et fermeture propre             *)
-
-SoftwareItem    =
-    SharedDecl ;
-
-(* ========================================================================= *)
-(* 9quater. Noyaux (kernel)                                                  *)
-(* ========================================================================= *)
-
-OptLevel        = IntegerLit ;    (* niveau d’optimisation 0..3, validé en aval *)
-IrqNumber       = IntegerLit ;    (* numéro d’IRQ logique                       *)
-SyscallName     = ident ;         (* identifiant symbolique de syscall         *)
-
-KernelDecl      =
-    "kernel", ident, [ KernelConfig ], KernelBody, "end" ;
-
-KernelConfig    =
-    "[", KernelOption, { ",", KernelOption }, "]" ;
-
-KernelOption    =
-      "arch",   "=", StringLit       (* ex: "x86_64", "aarch64"            *)
-    | "target", "=", StringLit       (* triple: "x86_64-unknown-linux-gnu" *)
-    | "mode",   "=", ModeValue       (* "debug" | "release" | "test"       *)
-    | "opt",    "=", OptLevel ;      (* 0..3, cohérent avec Muffin         *)
-
-KernelBody      =
-    { KernelSection | KernelItem } ;
-
-KernelSection   =
-      "boot",    Block
-    | "irq",     IrqNumber, Block
-    | "syscall", SyscallName, "(", [ ParamList ], ")", Block ;
-
-KernelItem      =
-    SharedDecl ;
-
-
-(* ========================================================================= *)
-(* 9quinquies. Algorithmie (algo)                                            *)
-(* ========================================================================= *)
-
-AlgoDecl        =
-    "algo", ident, [ AlgoConfig ], AlgoBody, "end" ;
-
-AlgoConfig      =
-    "[", AlgoOption, { ",", AlgoOption }, "]" ;
-
-AlgoOption      =
-      "goal",     "=", StringLit   (* objectif métier, lisible PO          *)
-    | "domain",   "=", StringLit   (* ex: "billing", "auth", "support"     *)
-    | "owner",    "=", StringLit   (* équipe / rôle responsable            *)
-    | "critical", "=", StringLit   (* criticité: "low"|"medium"|"high"|... *)
-    | "sla",      "=", StringLit   (* ex: "p95<200ms", "manual-only", ...  *)
-    | "version",  "=", StringLit   (* version logique de l’algo            *)
-    | "tech_owner","=", StringLit ;(* équipe / squad technique             *)
-
-(* Les StringLit utilisés dans AlgoOption.goal/domain/owner/... et dans les   *)
-(* "step ident : StringLit" des algo sont interprétés comme des descriptions  *)
-(* métier. Ils peuvent être extraits pour générer de la documentation ou des *)
-(* modèles de process (diagrammes, BPMN, etc.).                               *)
-
-AlgoBody        =
-    { { Attribute }, AlgoSection } ;
-
-AlgoSection     =
-      AlgoStep
-    | AlgoDecision
-    | AlgoLoop
-    | AlgoCall ;
-
-AlgoStep        =
-    "step", ident, ":", StringLit, Block ;
-
-AlgoDecisionBody =
-    IfStmt ;                     (* v1: if/elif/else/end uniquement        *)
-
-AlgoLoopBody     =
-    LoopStmt ;                   (* v1: loop/end uniquement                *)
-
-AlgoDecision    =
-    "decision", ident, ":", StringLit,
-    AlgoDecisionBody ;
-
-AlgoLoop        =
-    "loop", ident, ":", StringLit,
-    AlgoLoopBody ;
-
-AlgoCall        =
-    "call", ident, ":", StringLit, CallExpr, ";" ;
-
-
-(* ========================================================================= *)
-(* 10. Flux et tâches                                                        *)
-(* ========================================================================= *)
-
-FlowDecl        =
-    "flow", ident, FlowBody, "end" ;
-
-FlowBody        =
-    { ( { Attribute }, FlowSection ) | Statement } ;
-
-FlowSection     =
-      "start", Block
-    | "stop",  Block
-    | "step", ident, [ ":", StringLit ], Block ;
-
-(* De même, le StringLit optionnel dans "step ident : StringLit" d’un flow    *)
-(* sert de description métier pour la génération de docs / diagrammes.        *)
-
-TaskDecl        =
-    "task", ident, Block, "end" ;
-
-
-(* ========================================================================= *)
-(* 11. Blocs et instructions                                                 *)
-(* ========================================================================= *)
-
-Block           =
-    { Statement } ;
-
-Statement       =
-      VarDecl
-    | ConstDecl
-    | AssignStmt
-    | IfStmt
-    | WhileStmt
-    | LoopStmt
-    | ForStmt
-    | MatchStmt
-    | SpawnStmt
-    | ChannelDecl
-    | GateStmt
-    | FailStmt
-    | BreakStmt
-    | ReturnStmt
-    | CallStmt
-    | ExprStmt ;
-
-VarDecl         =
-      "let", ident, [ ":", TypeRef ], [ "=", Expr ]
-    | "var", ident, [ ":", TypeRef ], [ "=", Expr ] ;
-
-AssignStmt      =
-    Target, "=", Expr ;
-
-Target          =
-      ident
-    | Primary, Selector ;
-
-Selector        =
-      ".", ident
-    | "[", Expr, "]" ;
-
-IfStmt          =
-    "if", Expr, Block,
-    { "elif", Expr, Block },
-    [ "else", Block ],
-    "end" ;
-
-WhileStmt       =
-    "while", Expr, Block, "end" ;
-
-LoopStmt        =
-    "loop", Block, "end" ;
-
-ForStmt         =
-    "for", ident, "in", Expr, Block, "end" ;
-
-MatchStmt       =
-    "match", Expr, { MatchCase }, "end" ;
-
-MatchCase       =
-    "case", Pattern, Block ;
-
-NumberLit       =
-      IntegerLit
-    | FloatLit ;
-
-Pattern         =
-      "_"                                   (* wildcard *)
-    | ident                                 (* variable ou constructeur simple *)
-    | ident, "(", PatternList, ")"         (* constructeur avec arguments      *)
-    | NumberLit
-    | StringLit
-    | BoolLit
-    | NoneLit ;
-
-PatternList     =
-    Pattern, { ",", Pattern } ;
-
-SpawnStmt       =
-    "spawn", CallExpr ;
-
-ChannelDecl     =
-    "channel", ident, ":", TypeRef ;
-
-GateStmt        =
-    "gate", ident ;
-
-FailStmt        =
-    "fail", Expr ;
-
-BreakStmt       =
-    "break" ;
-
-ReturnStmt      =
-    "return", [ Expr ] ;
-
-CallStmt        =
-    "call", CallExpr ;
-
-ExprStmt        =
-    Expr ;
-
-
-(* ========================================================================= *)
-(* 12. Expressions                                                           *)
-(* ========================================================================= *)
-
-Expr            =
-    OrExpr ;
-
-OrExpr          =
-    AndExpr, { "or", AndExpr } ;
-
-AndExpr         =
-    CmpExpr, { "and", CmpExpr } ;
-
-CmpExpr         =
-    AddExpr, { CmpOp, AddExpr } ;
-
-CmpOp           =
-      "=="
-    | "!="
-    | "<"
-    | "<="
-    | ">"
-    | ">=" ;
-
-AddExpr         =
-    MulExpr, { AddOp, MulExpr } ;
-
-AddOp           =
-      "+"
-    | "-" ;
-
-MulExpr         =
-    UnaryExpr, { MulOp, UnaryExpr } ;
-
-MulOp           =
-      "*"
-    | "/"
-    | "%" ;
-
-UnaryExpr       =
-      ("+" | "-" | "not"), UnaryExpr
-    | Primary ;
-
-Primary         =
-      IntegerLit
-    | FloatLit
-    | BoolLit
-    | StringLit
-    | NoneLit
-    | "(", Expr, ")"
-    | ListLiteral
-    | MapLiteral
-    | CallExpr
-    | NameRef ;
-
-ListLiteral     =
-    "[", [ Expr, { ",", Expr } ], "]" ;
-
-MapLiteral      =
-    "{", [ MapEntry, { ",", MapEntry } ], "}" ;
-
-MapEntry        =
-    Expr, ":", Expr ;
-
-CallExpr        =
-    NameRef, "(", [ ArgList ], ")" ;
-
-ArgList         =
-    Expr, { ",", Expr } ;
-
-NameRef         =
-    ident, { ".", ident } ;       (* référence à une valeur/type/const     *)
-
-
-(* ========================================================================= *)
-(* 13. CLI (hérité, réutilisé tel quel)                                      *)
-(* ========================================================================= *)
-
-CliLine          = { GlobalOption }, CliCommand ;
-
-GlobalOption     = VerboseOption
-                 | QuietOption
-                 | ColorOption ;
-
-(* Les GlobalOption sont acceptées devant toutes les commandes.                *)
-(* Ce schéma permet de partager -v/-q/--color entre les outils (compile/run/  *)
-(* fmt/inspect/disasm/modules). De nouvelles options globales doivent être    *)
-(* ajoutées ici pour rester cohérentes.                                       *)
-
-VerboseOption    = "-v" | "-vv" | "-vvv" | "--verbose" ;
-QuietOption      = "-q" | "--quiet" ;
-ColorOption      = "--color", [ ColorAssign ] ;
-ColorAssign      = ( "=" | "" ), ColorValue ;
-ColorValue       = "auto" | "always" | "never" ;
-
-CliCommand       = CompileCommand
-                 | RunCommand
-                 | FmtCommand
-                 | InspectCommand
-                 | DisasmCommand
-                 | ModulesCommand ;
-
-(* CliCommand regroupe les sous-commandes officielles de l’outil CLI Vitte.   *)
-(* Toute nouvelle commande (ex: "borrowck", "lsp", "bench") doit s’ajouter    *)
-(* ici pour que la grammaire reste la source de vérité.                       *)
-
-CompileCommand   = "compile",
-                   [ SourceOperand ],
-                   { CompileOption } ;
-
-SourceOperand    = PathArgument ;
-
-CompileOption    = OutputOption
-                 | OptimizeOption
-                 | DebugOption
-                 | AutoMkdirOption
-                 | OverwriteOption
-                 | TimeOption
-                 | AutoOutOption ;
-
-OutputOption     = ( "-o" | "--output" ),
-                   ( PathArgument | "=" , PathArgument ) ;
-
-OptimizeOption   = "-O" | "--optimize" ;
-DebugOption      = "--debug" ;
-AutoMkdirOption  = "--mkdir" ;
-OverwriteOption  = "--overwrite" ;
-TimeOption       = "--time" ;
-AutoOutOption    = "--auto" ;
-
-RunCommand       = "run",
-                   [ ProgramOperand ],
-                   { RunOption },
-                   [ "--", RunArguments ] ;
-
-ProgramOperand   = PathArgument ;
-
-RunOption        = AutoCompileOption
-                 | OptimizeOption
-                 | TimeOption ;
-
-AutoCompileOption= "--auto-compile" ;
-
-RunArguments     = ValueArgument, { ValueArgument } ;
-
-FmtCommand       = "fmt",
-                   [ SourceOperand ],
-                   { FmtOption } ;
-
-FmtOption        = OutputOption
-                 | InPlaceOption
-                 | CheckOption ;
-
-InPlaceOption    = "--in-place" ;
-CheckOption      = "--check" ;
-
-InspectCommand   = "inspect",
-                   [ PathArgument ],
-                   { InspectOption } ;
-
-InspectOption    = "--summary"
-                 | "--symbols"
-                 | "--consts"
-                 | "--hexdump"
-                 | "--json"
-                 | "--target"
-                 | "--header"
-                 | "--sections"
-                 | "--strings"
-                 | "--imports"
-                 | "--exports"
-                 | "--disasm"
-                 | "--debug"
-                 | "--meta"
-                 | "--verify"
-                 | "--size"
-                 | "--deps"
-                 | "--entry"
-                 | "--dump-all" ;
-
-DisasmCommand    = "disasm",
-                   [ PathArgument ],
-                   { DisasmOption } ;
-
-DisasmOption     = OutputOption ;
-
-ModulesCommand   = "modules",
-                   { ModulesOption } ;
-
-ModulesOption    = "--json" ;
-
-PathArgument     = "-" | CliPathToken ;
-ValueArgument    = CliValueToken ;
-
-(* ========================================================================= *)
-(*  Fin de la grammaire Vitte unifiée                                        *)
-(* ========================================================================= *)
+declaration    = "let" target "=" expression newline
+               | "const" target "=" expression newline ;
+
+control_flow   = if_statement | loop_statement | match_statement ;
+
+if_statement   = "if" expression block [ "elif" expression block ] [ "else" block ] ;
+
+loop_statement = "while" expression block
+               | "for" identifier "in" expression block
+               | "repeat" expression block ;
+
+match_statement
+               = "match" expression block ;
+
+block          = ":" newline INDENT { statement } DEDENT
+               | "{" newline? { statement } "}" newline? ;
+
+(* Une instruction simple (assignment/expression) est évidente ; les constructions
+   composées (contrôle, boucles, blocs commandes/narratifs) sont définies
+   plus bas pour rester lisibles. *)
+
+(* ----------------------------------------------------------------------------- *)
+(* Directives de compilation / packaging                                         *)
+(* ----------------------------------------------------------------------------- *)
+compile_directive
+               = use_directive
+               | requires_directive
+               | package_directive
+               | link_directive
+               | feature_directive ;
+
+use_directive  = "use" identifier [ "as" alias ] newline ;
+
+requires_directive
+               = "requires" "(" identifier { "," identifier } ")" newline ;
+
+package_directive
+               = "package" identifier [ package_options ] newline ;
+
+package_options= "{" { artifact_option } "}" ;
+
+link_directive = "link" identifier newline ;
+
+feature_directive
+               = "feature" identifier [ "enable" expression ] newline ;
+
+(* Les directives d'inclusion de code asm, la gestion système bas niveau,
+   la concurrence avancée, l'instrumentation et les extensions UI sont
+   volontairement exclues du noyau pour garder un EBNF concis. *)
+
+(* ----------------------------------------------------------------------------- *)
+(* Expressions                                                                   *)
+(* ----------------------------------------------------------------------------- *)
+expression     = literal
+               | target
+               | call_expression
+               | binary_expression
+               | unary_expression
+               | cast_expression
+               | sizeof_expression
+               | alignof_expression
+               | parenthesized_expression
+               | list_expression
+               | map_expression ;
+
+binary_expression
+               = expression binary_operator expression ;
+binary_operator
+               = "+" | "-" | "*" | "/" | "%" | "==" | "!=" | "<" | "<=" | ">" | ">="
+               | "and" | "or" | "&" | "|" | "^" | "<<" | ">>" ;
+(* TODO precedence: confirmer que "and"/"or" suivent la même associativité que "&" "|" ;
+   documenter ordre complet pour le parser. *)
+
+unary_expression
+               = unary_operator expression ;
+unary_operator  = "-" | "not" | "&" | "*" | "~" ;
+
+cast_expression
+               = "(" type_expression ")" expression ;
+
+sizeof_expression
+               = "sizeof" "(" type_expression ")" ;
+
+alignof_expression
+               = "alignof" "(" type_expression ")" ;
+
+call_expression= target "(" [ argument_list ] ")" ;
+argument_list  = expression { "," expression } ;
+
+parenthesized_expression
+               = "(" expression ")" ;
+
+list_expression
+               = "[" [ expression { "," expression } ] "]" ;
+
+map_expression = "{" [ map_entry { "," map_entry } ] "}" ;
+map_entry      = expression ":" expression ;
+
+target         = identifier { target_suffix } ;
+target_suffix  = "." identifier
+               | "[" expression "]"
+               | "->" identifier ;
+
+(* ----------------------------------------------------------------------------- *)
+(* Littéraux et identifiants                                                      *)
+(* ----------------------------------------------------------------------------- *)
+literal        = number | string_literal | boolean_literal | "null" ;
+
+number         = integer | float ;
+integer        = digit { digit } ;
+float          = digit { digit } "." digit { digit } ;
+
+string_literal = "\"" string_characters "\"" ;
+string_characters
+               = { character } ;
+
+boolean_literal
+               = "true" | "false" ;
+
+identifier     = letter { letter | digit | "_" } ;
+
+letter         = ? ASCII letter ? ;
+digit          = ? ASCII digit ? ;
+character      = ? printable except quote/backslash ? ;
+
+(* ----------------------------------------------------------------------------- *)
+(* Sauts, indentations, commentaires                                              *)
+(* ----------------------------------------------------------------------------- *)
+newline        = ? platform-dependent newline ? ;
+INDENT         = ? indentation token produced by lexer ? ;
+DEDENT         = ? dedentation token produced by lexer ? ;
+comment        = "#" { ? any until newline ? } newline ;
+
+(* ----------------------------------------------------------------------------- *)
+(* Notes pour l’implémentation                                                     *)
+(* ----------------------------------------------------------------------------- *)
+(* 1. L’analyseur lexical génère les tokens NEWLINE, INDENT, DEDENT en se basant *)
+(*    sur l’indentation significative.                                          *)
+(* 2. Les blocs peuvent être entourés d’accolades pour faciliter les générateurs *)
+(*    ou l’édition assistée, mais la préférence reste à la lisibilité verticale. *)
+(* 3. Les fichiers .muf décrivent les dépendances, les versions et les entrées   *)
+(*    publiques des modules pour l’outil de build. Exemple :                     *)
+(*                                                                            *)
+(*      muffin "std/io.muf" {                                                *)
+(*          version: "0.1"                                                    *)
+(*          entry: io.read                                                     *)
+(*          depends: ["std/core"]                                           *)
+(*      }                                                                     *)
+(*                                                                            *)
+(* 4. Les commandes spécifiques définissent des points d’entrée clairs :       *)
+(*      program app_name:                                                       *)
+(*          ...                                                               *)
+(*    Les moteurs de build peuvent associer chaque commande à un exécutable,   *)
+(*    à un kernel ou à un module système.                                      *)
