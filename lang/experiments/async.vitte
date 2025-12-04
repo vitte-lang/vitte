@@ -1,0 +1,300 @@
+
+
+module vitte.experiments.async
+
+import std.collections as coll
+import vitte.compiler.spans as spans
+import vitte.compiler.names as names
+import vitte.compiler.types as types
+
+# ============================================================================
+# Vitte experiments – Modèle et exemples autour de async / await
+#
+# Objectifs de ce fichier :
+#   - Proposer un modèle déclaratif pour représenter les primitives async
+#     dans le compilateur et les outils :
+#       * futures, tâches asynchrones, wakers,
+#       * exécuteurs et file d évènements,
+#       * liens avec les spans et les types.
+#   - Fournir des exemples ultra complets en "phrase syntaxe" :
+#       * fonction async simple,
+#       * composition de futures,
+#       * petit scenario de démonstration.
+#
+# Convention :
+#   - Ce fichier est purement "data model" plus exemples commentés :
+#       * aucune fonction exécutable réelle au niveau du runtime,
+#       * pas de logique d exécution dans ce module.
+#   - Syntaxe officielle Vitte :
+#       * blocs terminés par ".end",
+#       * aucune accolade dans le code ni dans les exemples.
+# ============================================================================
+
+# ============================================================================
+# Identifiants et métadonnées
+# ============================================================================
+
+# Identifiant logique d une future.
+type FutureId = u32
+
+# Identifiant logique d une tâche asynchrone.
+type AsyncTaskId = u32
+
+# Identifiant logique d un exécuteur.
+type ExecutorId = u32
+
+# Identifiant logique d un handle de waker.
+type WakerId = u32
+
+# Identifiant logique d un graphe de futures.
+type FutureGraphId = u32
+
+# ============================================================================
+# Genre de futures et tâches
+# ============================================================================
+
+# Genre de future :
+#   - UserFuture      : future définie par l utilisateur,
+#   - RuntimeFuture   : future interne au runtime,
+#   - IoFuture        : future liée a des opérations d entrée sortie,
+#   - TimerFuture     : future liée au temps,
+#   - JoinFuture      : future qui joint plusieurs futures.
+enum FutureKind
+    variant UserFuture
+    variant RuntimeFuture
+    variant IoFuture
+    variant TimerFuture
+    variant JoinFuture
+.end
+
+# Etat d une future lors du poll.
+#   - Pending : la future n est pas encore prête,
+#   - Ready   : la future est prête et le résultat est disponible.
+enum FuturePollState
+    variant Pending
+    variant Ready
+.end
+
+# Etat logique d une tâche asynchrone :
+#   - Scheduled : en attente dans la file de l exécuteur,
+#   - Running   : en cours de poll,
+#   - Completed : terminée avec succès,
+#   - Cancelled : annulée,
+#   - Failed    : terminée avec erreur.
+enum AsyncTaskState
+    variant Scheduled
+    variant Running
+    variant Completed
+    variant Cancelled
+    variant Failed
+.end
+
+# Priorité de tâche dans un exécuteur.
+enum AsyncTaskPriority
+    variant Low
+    variant Normal
+    variant High
+.end
+
+# ============================================================================
+# Description des futures
+# ============================================================================
+
+# Représentation logique d une future dans le compilateur.
+struct FutureDef
+    # Identifiant logique de la future.
+    field id: FutureId
+
+    # Genre de future.
+    field kind: FutureKind
+
+    # Type de sortie de la future.
+    field output_type: types.TypeId
+
+    # Span de la définition de la future (fn async, closure async, etc.).
+    field span: spans.SpanId
+
+    # Nom symbolique optionnel pour les outils.
+    field debug_name: names.SymbolId
+.end
+
+# Relation poll entre une future et une tâche.
+# Ce modèle ne décrit pas l implémentation, seulement la forme logique.
+struct FuturePollEdge
+    # Tâche qui poll cette future.
+    field task_id: AsyncTaskId
+
+    # Future pollee.
+    field future_id: FutureId
+
+    # Dernier état obtenu lors du poll.
+    field last_state: FuturePollState
+
+    # Span de l expression await correspondante.
+    field span: spans.SpanId
+.end
+
+# Graphe logique de futures pour un exécuteur donné.
+struct FutureGraph
+    field id: FutureGraphId
+
+    # Futures connues dans ce graphe.
+    field futures: coll.List<FutureDef>
+
+    # Relations de poll.
+    field polls: coll.List<FuturePollEdge>
+.end
+
+# ============================================================================
+# Description des tâches asynchrones
+# ============================================================================
+
+# Tâche asynchrone vue par le compilateur et les outils.
+struct AsyncTask
+    # Identifiant logique de la tâche.
+    field id: AsyncTaskId
+
+    # Future principale associée a cette tâche.
+    field root_future: FutureId
+
+    # Etat courant de la tâche.
+    field state: AsyncTaskState
+
+    # Priorité logique.
+    field priority: AsyncTaskPriority
+
+    # Span de la création de la tâche (par exemple spawn).
+    field span: spans.SpanId
+
+    # Nom symbolique pour les outils.
+    field debug_name: names.SymbolId
+.end
+
+# Ensemble de tâches gérées par un exécuteur.
+struct AsyncTaskTable
+    field tasks: coll.List<AsyncTask>
+.end
+
+# ============================================================================
+# Wakers et exécuteurs
+# ============================================================================
+
+# Genre de signal de réveil d une tâche.
+#   - Immediate        : réveil immédiat depuis un autre thread ou une I O,
+#   - Timer            : réveil suite a un délai,
+#   - ExternalEvent    : réveil suite a un evenement externe générique,
+#   - Manual           : réveil explicite depuis le code utilisateur.
+enum WakeKind
+    variant Immediate
+    variant Timer
+    variant ExternalEvent
+    variant Manual
+.end
+
+# Handle de réveil logique pour une tâche.
+struct WakerHandle
+    # Identifiant du waker.
+    field id: WakerId
+
+    # Tâche associée a ce waker.
+    field task_id: AsyncTaskId
+
+    # Genre de réveil.
+    field kind: WakeKind
+
+    # Span de la création du waker dans la source.
+    field span: spans.SpanId
+.end
+
+# Exécuteur asynchrone logique.
+struct Executor
+    # Identifiant logique de l exécuteur.
+    field id: ExecutorId
+
+    # Nom symbolique, par exemple "main executor".
+    field name: names.SymbolId
+
+    # Tâches connues de cet exécuteur.
+    field tasks: AsyncTaskTable
+
+    # Handles de waker appartenant a cet exécuteur.
+    field wakers: coll.List<WakerHandle>
+
+    # Graphe de futures géré par cet exécuteur.
+    field future_graph: FutureGraph
+
+    # Span de la déclaration ou de la configuration de l exécuteur.
+    field span: spans.SpanId
+.end
+
+# Vue agrégée pour les outils, LSP, debugger, analyse.
+struct AsyncRuntimeSnapshot
+    field executors: coll.List<Executor>
+.end
+
+# ============================================================================
+# Exemples d utilisation en "phrase syntaxe"
+# ============================================================================
+#
+# Les exemples ci dessous ne sont pas exécutés par ce module, mais servent :
+#   - de documentation,
+#   - de tests de parsing,
+#   - de base pour la démonstration dans les outils.
+#
+# Tous les blocs se terminent par ".end".
+#
+# --------------------------------------------------------------------------
+# Exemple 1 : fonction async simple et await
+# --------------------------------------------------------------------------
+#
+#   fn async fetch_data url
+#       # simul d un appel asynchrone externe
+#       say "fetching data..."
+#       ret "data"
+#   .end
+#
+#   fn async process
+#       set url = "https colon slash slash example dot com"
+#       set data = await fetch_data url
+#       say "got data"
+#       say data
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 2 : spawn de tâche async
+# --------------------------------------------------------------------------
+#
+#   fn async task_body n
+#       say "task start"
+#       loop i from 0 to n step 1
+#           say i
+#       .end
+#       say "task end"
+#   .end
+#
+#   fn spawn_demo
+#       # pseudo primitive spawn async
+#       set handle = spawn_async task_body 5
+#       say "spawn_demo done"
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 3 : scenario de démonstration async
+# --------------------------------------------------------------------------
+#
+#   scn async_demo
+#       say "Async demo"
+#
+#       set h1 = spawn_async process
+#       set h2 = spawn_async task_body 3
+#
+#       # pseudo attente de toutes les tâches
+#       # await_all h1 h2
+#   .end
+#
+# Ces exemples montrent :
+#   - la syntaxe conceptuelle fn async plus await,
+#   - l association entre futures, tâches et exécuteurs,
+#   - un scenario async_demo qui illustre un flux de contrôle asynchrone.
+#
+.end

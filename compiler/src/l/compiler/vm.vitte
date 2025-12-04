@@ -1,0 +1,1739 @@
+module vitte.compiler.vm
+
+import std.collections as coll
+import vitte.compiler.span as span
+
+# =============================================================================
+# Vitte VM – Noyau logique de machine virtuelle (ultra complet, sans I/O)
+# =============================================================================
+#
+# Objectifs :
+#   - Modéliser une machine virtuelle Vitte simple, orientée registre :
+#       * valeurs typées (int, float, bool, string, null, addr),
+#       * chunks de bytecode (instructions + constantes),
+#       * frames d’appel, pile de frames, registres,
+#       * état global de la VM (globals, chunks, frames).
+#   - Fournir un moteur d’exécution purement fonctionnel :
+#       * exécution pas-à-pas (`vm_step`),
+#       * exécution bornée (`vm_run_n_steps`),
+#       * gestion des erreurs VM (sauts invalides, opcode inconnu, etc.).
+#   - AUCUN I/O (pas de fichier, pas de console, pas de log).
+#
+# Ce module ne dépend que de `span` et des collections. Il peut être utilisé
+# aussi bien par le runtime, que par un debugger ou un outil d’analyse.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Identifiants de base
+# -----------------------------------------------------------------------------
+
+typedef u32 VmChunkId
+typedef u32 VmInstrIndex        # index dans le code d’un chunk
+typedef u32 VmConstIndex        # index dans la table de constantes
+typedef u32 VmFrameId
+typedef u32 VmGlobalIndex
+typedef u32 VmRegIndex
+
+# -----------------------------------------------------------------------------
+# Valeurs de la VM
+# -----------------------------------------------------------------------------
+
+pub enum VmValueKind:
+    VmValueKindNull
+    VmValueKindBool
+    VmValueKindInt
+    VmValueKindFloat
+    VmValueKindString
+    VmValueKindAddr          # adresse virtuelle (chunk/instruction/etc.)
+.end
+
+pub struct VmAddr:
+    let chunk: VmChunkId
+    let ip: VmInstrIndex
+.end
+
+pub struct VmValue:
+    let kind: VmValueKind
+
+    let bool_value: Bool
+    let int_value: i64
+    let float_value: f64
+    let string_value: String
+    let addr_value: VmAddr
+.end
+
+# Helpers de création de valeurs
+
+pub fn vm_value_null() -> VmValue:
+    let addr = VmAddr(
+        chunk = 0u32,
+        ip = 0u32
+    )
+    let v = VmValue(
+        kind = VmValueKind::VmValueKindNull,
+        bool_value = false,
+        int_value = 0i64,
+        float_value = 0.0f64,
+        string_value = "",
+        addr_value = addr
+    )
+    return v
+.end
+
+pub fn vm_value_bool(Bool b) -> VmValue:
+    let addr = VmAddr(
+        chunk = 0u32,
+        ip = 0u32
+    )
+    let v = VmValue(
+        kind = VmValueKind::VmValueKindBool,
+        bool_value = b,
+        int_value = 0i64,
+        float_value = 0.0f64,
+        string_value = "",
+        addr_value = addr
+    )
+    return v
+.end
+
+pub fn vm_value_int(i64 x) -> VmValue:
+    let addr = VmAddr(
+        chunk = 0u32,
+        ip = 0u32
+    )
+    let v = VmValue(
+        kind = VmValueKind::VmValueKindInt,
+        bool_value = false,
+        int_value = x,
+        float_value = 0.0f64,
+        string_value = "",
+        addr_value = addr
+    )
+    return v
+.end
+
+pub fn vm_value_float(f64 x) -> VmValue:
+    let addr = VmAddr(
+        chunk = 0u32,
+        ip = 0u32
+    )
+    let v = VmValue(
+        kind = VmValueKind::VmValueKindFloat,
+        bool_value = false,
+        int_value = 0i64,
+        float_value = x,
+        string_value = "",
+        addr_value = addr
+    )
+    return v
+.end
+
+pub fn vm_value_string(String s) -> VmValue:
+    let addr = VmAddr(
+        chunk = 0u32,
+        ip = 0u32
+    )
+    let v = VmValue(
+        kind = VmValueKind::VmValueKindString,
+        bool_value = false,
+        int_value = 0i64,
+        float_value = 0.0f64,
+        string_value = s,
+        addr_value = addr
+    )
+    return v
+.end
+
+pub fn vm_value_addr(VmAddr a) -> VmValue:
+    let v = VmValue(
+        kind = VmValueKind::VmValueKindAddr,
+        bool_value = false,
+        int_value = 0i64,
+        float_value = 0.0f64,
+        string_value = "",
+        addr_value = a
+    )
+    return v
+.end
+
+# -----------------------------------------------------------------------------
+# Opérations arithmétiques/logiques sur VmValue
+# -----------------------------------------------------------------------------
+
+pub enum VmNumericKind:
+    VmNumericKindInt
+    VmNumericKindFloat
+.end
+
+pub enum VmBinOp:
+    VmBinOpAdd
+    VmBinOpSub
+    VmBinOpMul
+    VmBinOpDiv
+    VmBinOpEq
+    VmBinOpNe
+    VmBinOpLt
+    VmBinOpLe
+    VmBinOpGt
+    VmBinOpGe
+    VmBinOpAnd
+    VmBinOpOr
+.end
+
+pub enum VmUnOp:
+    VmUnOpNeg
+    VmUnOpNot
+.end
+
+fn vm_value_is_truthy(VmValue v) -> Bool:
+    if v.kind == VmValueKind::VmValueKindNull:
+        return false
+    .end
+    if v.kind == VmValueKind::VmValueKindBool:
+        return v.bool_value
+    .end
+    if v.kind == VmValueKind::VmValueKindInt:
+        return v.int_value != 0i64
+    .end
+    if v.kind == VmValueKind::VmValueKindFloat:
+        return v.float_value != 0.0f64
+    .end
+    if v.kind == VmValueKind::VmValueKindString:
+        return v.string_value != ""
+    .end
+    # Addr : toujours truthy
+    if v.kind == VmValueKind::VmValueKindAddr:
+        return true
+    .end
+    return false
+.end
+
+fn vm_value_try_coerce_numeric(VmValue v) -> (Bool, VmNumericKind, i64, f64):
+    if v.kind == VmValueKind::VmValueKindInt:
+        let out = (true, VmNumericKind::VmNumericKindInt, v.int_value, 0.0f64)
+        return out
+    .end
+    if v.kind == VmValueKind::VmValueKindFloat:
+        let out = (true, VmNumericKind::VmNumericKindFloat, 0i64, v.float_value)
+        return out
+    .end
+    let out2 = (false, VmNumericKind::VmNumericKindInt, 0i64, 0.0f64)
+    return out2
+.end
+
+fn vm_value_binop_numeric_int(
+    VmBinOp op,
+    i64 a,
+    i64 b
+) -> VmValue:
+    if op == VmBinOp::VmBinOpAdd:
+        return vm_value_int(a + b)
+    .end
+    if op == VmBinOp::VmBinOpSub:
+        return vm_value_int(a - b)
+    .end
+    if op == VmBinOp::VmBinOpMul:
+        return vm_value_int(a * b)
+    .end
+    if op == VmBinOp::VmBinOpDiv:
+        # Division entière naïve (0 => 0, pour éviter l’exception VM ici)
+        if b == 0i64:
+            return vm_value_int(0i64)
+        .end
+        return vm_value_int(a / b)
+    .end
+    if op == VmBinOp::VmBinOpEq:
+        return vm_value_bool(a == b)
+    .end
+    if op == VmBinOp::VmBinOpNe:
+        return vm_value_bool(a != b)
+    .end
+    if op == VmBinOp::VmBinOpLt:
+        return vm_value_bool(a < b)
+    .end
+    if op == VmBinOp::VmBinOpLe:
+        return vm_value_bool(a <= b)
+    .end
+    if op == VmBinOp::VmBinOpGt:
+        return vm_value_bool(a > b)
+    .end
+    if op == VmBinOp::VmBinOpGe:
+        return vm_value_bool(a >= b)
+    .end
+    return vm_value_null()
+.end
+
+fn vm_value_binop_numeric_float(
+    VmBinOp op,
+    f64 a,
+    f64 b
+) -> VmValue:
+    if op == VmBinOp::VmBinOpAdd:
+        return vm_value_float(a + b)
+    .end
+    if op == VmBinOp::VmBinOpSub:
+        return vm_value_float(a - b)
+    .end
+    if op == VmBinOp::VmBinOpMul:
+        return vm_value_float(a * b)
+    .end
+    if op == VmBinOp::VmBinOpDiv:
+        if b == 0.0f64:
+            return vm_value_float(0.0f64)
+        .end
+        return vm_value_float(a / b)
+    .end
+    if op == VmBinOp::VmBinOpEq:
+        return vm_value_bool(a == b)
+    .end
+    if op == VmBinOp::VmBinOpNe:
+        return vm_value_bool(a != b)
+    .end
+    if op == VmBinOp::VmBinOpLt:
+        return vm_value_bool(a < b)
+    .end
+    if op == VmBinOp::VmBinOpLe:
+        return vm_value_bool(a <= b)
+    .end
+    if op == VmBinOp::VmBinOpGt:
+        return vm_value_bool(a > b)
+    .end
+    if op == VmBinOp::VmBinOpGe:
+        return vm_value_bool(a >= b)
+    .end
+    return vm_value_null()
+.end
+
+fn vm_value_binop(
+    VmBinOp op,
+    VmValue lhs,
+    VmValue rhs
+) -> VmValue:
+    # Bool && / ||
+    if op == VmBinOp::VmBinOpAnd:
+        let res = vm_value_is_truthy(lhs) and vm_value_is_truthy(rhs)
+        return vm_value_bool(res)
+    .end
+    if op == VmBinOp::VmBinOpOr:
+        let res2 = vm_value_is_truthy(lhs) or vm_value_is_truthy(rhs)
+        return vm_value_bool(res2)
+    .end
+
+    let (ok_l, kind_l, i_l, f_l) = vm_value_try_coerce_numeric(lhs)
+    let (ok_r, kind_r, i_r, f_r) = vm_value_try_coerce_numeric(rhs)
+
+    if not ok_l or not ok_r:
+        return vm_value_null()
+    .end
+
+    if kind_l == VmNumericKind::VmNumericKindFloat or
+       kind_r == VmNumericKind::VmNumericKindFloat:
+        let a = if kind_l == VmNumericKind::VmNumericKindFloat then f_l else (i_l as f64)
+        let b = if kind_r == VmNumericKind::VmNumericKindFloat then f_r else (i_r as f64)
+        return vm_value_binop_numeric_float(op, a, b)
+    .end
+
+    return vm_value_binop_numeric_int(op, i_l, i_r)
+.end
+
+fn vm_value_unop(
+    VmUnOp op,
+    VmValue v
+) -> VmValue:
+    if op == VmUnOp::VmUnOpNot:
+        let b = not vm_value_is_truthy(v)
+        return vm_value_bool(b)
+    .end
+    if op == VmUnOp::VmUnOpNeg:
+        let (ok, kind, i_val, f_val) = vm_value_try_coerce_numeric(v)
+        if not ok:
+            return vm_value_null()
+        .end
+        if kind == VmNumericKind::VmNumericKindInt:
+            return vm_value_int(-i_val)
+        .end
+        if kind == VmNumericKind::VmNumericKindFloat:
+            return vm_value_float(-f_val)
+        .end
+        return vm_value_null()
+    .end
+    return vm_value_null()
+.end
+
+# -----------------------------------------------------------------------------
+# Instructions / bytecode
+# -----------------------------------------------------------------------------
+
+pub enum VmOpcode:
+    VmOpcodeNop
+
+    # Constantes / registres
+    VmOpcodeConst       # r[a] = const[b]
+    VmOpcodeMove        # r[a] = r[b]
+
+    # Arithmétiques/logiques binaires
+    VmOpcodeAdd         # r[a] = r[b] + r[c]
+    VmOpcodeSub
+    VmOpcodeMul
+    VmOpcodeDiv
+    VmOpcodeEq
+    VmOpcodeNe
+    VmOpcodeLt
+    VmOpcodeLe
+    VmOpcodeGt
+    VmOpcodeGe
+    VmOpcodeAnd
+    VmOpcodeOr
+
+    # Unaires
+    VmOpcodeNeg         # r[a] = -r[b]
+    VmOpcodeNot         # r[a] = !r[b]
+
+    # Contrôle
+    VmOpcodeJump        # ip += imm
+    VmOpcodeJumpIfFalse # if !truthy(r[a]) then ip += imm
+
+    # Appels
+    VmOpcodeCall        # call chunk_id=b, écrire retour dans r[a], args [a+1..a+n]
+    VmOpcodeRet         # return r[a]
+
+    # Globals
+    VmOpcodeLoadGlobal  # r[a] = globals[b]
+    VmOpcodeStoreGlobal # globals[a] = r[b]
+
+    # Fin
+    VmOpcodeHalt
+.end
+
+pub struct VmInstr:
+    let opcode: VmOpcode
+    let a: VmRegIndex
+    let b: VmRegIndex
+    let c: VmRegIndex
+    let imm: i32
+    let span: span.Span
+.end
+
+pub struct VmChunk:
+    let id: VmChunkId
+    let name: String
+    let code: Vec<VmInstr>
+    let consts: Vec<VmValue>
+
+    let num_regs: u32
+    let num_params: u32
+    let num_locals: u32
+.end
+
+# -----------------------------------------------------------------------------
+# Pile d’appels / frames
+# -----------------------------------------------------------------------------
+
+pub enum VmStatus:
+    VmStatusRunning
+    VmStatusHalted
+    VmStatusError
+.end
+
+pub enum VmErrorKind:
+    VmErrorKindInvalidChunk
+    VmErrorKindInvalidInstrIndex
+    VmErrorKindInvalidReg
+    VmErrorKindInvalidConstIndex
+    VmErrorKindInvalidGlobalIndex
+    VmErrorKindInvalidCall
+    VmErrorKindUnknownOpcode
+.end
+
+pub struct VmError:
+    let kind: VmErrorKind
+    let message: String
+    let span: span.Span
+    let chunk_id: VmChunkId
+    let ip: VmInstrIndex
+.end
+
+pub struct VmFrame:
+    let id: VmFrameId
+    let chunk_id: VmChunkId
+    let ip: VmInstrIndex
+    let regs: Vec<VmValue>
+    let caller_frame: coll.Option<VmFrameId>
+    let caller_ret_reg: coll.Option<VmRegIndex>
+.end
+
+pub struct VmState:
+    let chunks: Vec<VmChunk>
+    let globals: Vec<VmValue>
+    let frames: Vec<VmFrame>
+    let current_frame: coll.Option<VmFrameId>
+    let status: VmStatus
+    let last_error: coll.Option<VmError>
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers de création de VM
+# -----------------------------------------------------------------------------
+
+pub fn vm_state_new() -> VmState:
+    let chunks: Vec<VmChunk> = Vec<VmChunk>::new()
+    let globals: Vec<VmValue> = Vec<VmValue>::new()
+    let frames: Vec<VmFrame> = Vec<VmFrame>::new()
+    let none_frame = coll.option_none<VmFrameId>()
+    let none_err = coll.option_none<VmError>()
+
+    let vm = VmState(
+        chunks = chunks,
+        globals = globals,
+        frames = frames,
+        current_frame = none_frame,
+        status = VmStatus::VmStatusHalted,
+        last_error = none_err
+    )
+    return vm
+.end
+
+fn vm_next_chunk_id(VmState vm) -> VmChunkId:
+    let n = vm.chunks.len()
+    return n as u32
+.end
+
+fn vm_next_frame_id(VmState vm) -> VmFrameId:
+    let n = vm.frames.len()
+    return n as u32
+.end
+
+pub fn vm_add_chunk(
+    VmState vm,
+    String name,
+    Vec<VmInstr> code,
+    Vec<VmValue> consts,
+    u32 num_regs,
+    u32 num_params,
+    u32 num_locals
+) -> (VmState, VmChunkId):
+    let chunks = vm.chunks
+    let globals = vm.globals
+    let frames = vm.frames
+    let cur = vm.current_frame
+    let status = vm.status
+    let last_err = vm.last_error
+
+    let cid = vm_next_chunk_id(vm)
+
+    let ch = VmChunk(
+        id = cid,
+        name = name,
+        code = code,
+        consts = consts,
+        num_regs = num_regs,
+        num_params = num_params,
+        num_locals = num_locals
+    )
+    chunks.push(ch)
+
+    let vm2 = VmState(
+        chunks = chunks,
+        globals = globals,
+        frames = frames,
+        current_frame = cur,
+        status = status,
+        last_error = last_err
+    )
+    let out = (vm2, cid)
+    return out
+.end
+
+pub fn vm_set_global_count(
+    VmState vm,
+    u32 count
+) -> VmState:
+    let chunks = vm.chunks
+    let frames = vm.frames
+    let cur = vm.current_frame
+    let status = vm.status
+    let last_err = vm.last_error
+
+    let globals: Vec<VmValue> = Vec<VmValue>::new()
+    let i = 0u32
+    while i < count:
+        globals.push(vm_value_null())
+        let i = i + 1u32
+    .end
+
+    let vm2 = VmState(
+        chunks = chunks,
+        globals = globals,
+        frames = frames,
+        current_frame = cur,
+        status = status,
+        last_error = last_err
+    )
+    return vm2
+.end
+
+fn vm_chunk_get(
+    VmState vm,
+    VmChunkId cid
+) -> coll.Option<VmChunk>:
+    let chunks = vm.chunks
+    let n = chunks.len()
+    let idx = cid as usize
+    if idx >= n:
+        let none_ch = coll.option_none<VmChunk>()
+        return none_ch
+    .end
+    let ch = chunks[idx]
+    let some_ch = coll.option_some<VmChunk>(ch)
+    return some_ch
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers d’accès registres / globals
+# -----------------------------------------------------------------------------
+
+fn vm_frame_reg_get(
+    VmFrame frame,
+    VmRegIndex r
+) -> coll.Option<VmValue>:
+    let regs = frame.regs
+    let n = regs.len()
+    let idx = r as usize
+    if idx >= n:
+        let none_v = coll.option_none<VmValue>()
+        return none_v
+    .end
+    let v = regs[idx]
+    let some_v = coll.option_some<VmValue>(v)
+    return some_v
+.end
+
+fn vm_frame_reg_set(
+    VmFrame frame,
+    VmRegIndex r,
+    VmValue v
+) -> coll.Option<VmFrame>:
+    let regs = frame.regs
+    let n = regs.len()
+    let idx = r as usize
+    if idx >= n:
+        let none_frame = coll.option_none<VmFrame>()
+        return none_frame
+    .end
+
+    regs[idx] = v
+
+    let new_frame = VmFrame(
+        id = frame.id,
+        chunk_id = frame.chunk_id,
+        ip = frame.ip,
+        regs = regs,
+        caller_frame = frame.caller_frame,
+        caller_ret_reg = frame.caller_ret_reg
+    )
+    let some_frame = coll.option_some<VmFrame>(new_frame)
+    return some_frame
+.end
+
+fn vm_globals_get(
+    VmState vm,
+    VmGlobalIndex g
+) -> coll.Option<VmValue>:
+    let gl = vm.globals
+    let n = gl.len()
+    let idx = g as usize
+    if idx >= n:
+        let none_v = coll.option_none<VmValue>()
+        return none_v
+    .end
+    let v = gl[idx]
+    let some_v = coll.option_some<VmValue>(v)
+    return some_v
+.end
+
+fn vm_globals_set(
+    VmState vm,
+    VmGlobalIndex g,
+    VmValue v
+) -> coll.Option<VmState>:
+    let chunks = vm.chunks
+    let frames = vm.frames
+    let cur = vm.current_frame
+    let status = vm.status
+    let last_err = vm.last_error
+
+    let gl = vm.globals
+    let n = gl.len()
+    let idx = g as usize
+    if idx >= n:
+        let none_vm = coll.option_none<VmState>()
+        return none_vm
+    .end
+
+    gl[idx] = v
+
+    let vm2 = VmState(
+        chunks = chunks,
+        globals = gl,
+        frames = frames,
+        current_frame = cur,
+        status = status,
+        last_error = last_err
+    )
+    let some_vm = coll.option_some<VmState>(vm2)
+    return some_vm
+.end
+
+# -----------------------------------------------------------------------------
+# Création / gestion de frames
+# -----------------------------------------------------------------------------
+
+fn vm_frame_new_for_chunk(
+    VmState vm,
+    VmChunkId cid,
+    coll.Option<VmFrameId> caller_frame,
+    coll.Option<VmRegIndex> caller_ret_reg
+) -> coll.Option<VmFrame>:
+    let opt_chunk = vm_chunk_get(vm, cid)
+    if coll.option_is_none<VmChunk>(opt_chunk):
+        let none = coll.option_none<VmFrame>()
+        return none
+    .end
+
+    let ch = coll.option_unwrap_unsafe<VmChunk>(opt_chunk)
+    let regs: Vec<VmValue> = Vec<VmValue>::new()
+
+    let total = ch.num_regs
+    let i = 0u32
+    while i < total:
+        regs.push(vm_value_null())
+        let i = i + 1u32
+    .end
+
+    let fid = vm_next_frame_id(vm)
+
+    let frame = VmFrame(
+        id = fid,
+        chunk_id = cid,
+        ip = 0u32,
+        regs = regs,
+        caller_frame = caller_frame,
+        caller_ret_reg = caller_ret_reg
+    )
+    let some_frame = coll.option_some<VmFrame>(frame)
+    return some_frame
+.end
+
+fn vm_push_frame(
+    VmState vm,
+    VmFrame new_frame
+) -> VmState:
+    let chunks = vm.chunks
+    let globals = vm.globals
+    let frames = vm.frames
+    let status = vm.status
+    let last_err = vm.last_error
+
+    let cur_opt = vm.current_frame
+    let new_cur = coll.option_some<VmFrameId>(new_frame.id)
+
+    frames.push(new_frame)
+
+    let vm2 = VmState(
+        chunks = chunks,
+        globals = globals,
+        frames = frames,
+        current_frame = new_cur,
+        status = status,
+        last_error = last_err
+    )
+    return vm2
+.end
+
+fn vm_pop_frame(
+    VmState vm
+) -> VmState:
+    let chunks = vm.chunks
+    let globals = vm.globals
+    let frames = vm.frames
+    let status = vm.status
+    let last_err = vm.last_error
+
+    let cur_opt = vm.current_frame
+    if coll.option_is_none<VmFrameId>(cur_opt):
+        let vm2 = VmState(
+            chunks = chunks,
+            globals = globals,
+            frames = frames,
+            current_frame = cur_opt,
+            status = status,
+            last_error = last_err
+        )
+        return vm2
+    .end
+
+    let cur_id = coll.option_unwrap_unsafe<VmFrameId>(cur_opt)
+    let n = frames.len()
+    if n == 0usize:
+        let new_cur = coll.option_none<VmFrameId>()
+        let vm3 = VmState(
+            chunks = chunks,
+            globals = globals,
+            frames = frames,
+            current_frame = new_cur,
+            status = status,
+            last_error = last_err
+        )
+        return vm3
+    .end
+
+    # On retire simplement le dernier frame (stack LIFO).
+    # Hypothèse : id == index, ce qui est cohérent avec l’allocation.
+    let last_idx = n - 1usize
+    # Aucun remove explicite ici (modèle logique); on pourrait ignorer la
+    # cohérence vectorielle stricte pour le moment.
+
+    let new_cur2 = coll.option_none<VmFrameId>()
+
+    let vm4 = VmState(
+        chunks = chunks,
+        globals = globals,
+        frames = frames,
+        current_frame = new_cur2,
+        status = status,
+        last_error = last_err
+    )
+    return vm4
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers d’erreurs VM
+# -----------------------------------------------------------------------------
+
+fn vm_error(
+    VmErrorKind kind,
+    String message,
+    VmChunkId cid,
+    VmInstrIndex ip,
+    span.Span sp
+) -> VmError:
+    let err = VmError(
+        kind = kind,
+        message = message,
+        span = sp,
+        chunk_id = cid,
+        ip = ip
+    )
+    return err
+.end
+
+fn vm_set_error(
+    VmState vm,
+    VmError err
+) -> VmState:
+    let chunks = vm.chunks
+    let globals = vm.globals
+    let frames = vm.frames
+    let cur = vm.current_frame
+
+    let some_err = coll.option_some<VmError>(err)
+    let vm2 = VmState(
+        chunks = chunks,
+        globals = globals,
+        frames = frames,
+        current_frame = cur,
+        status = VmStatus::VmStatusError,
+        last_error = some_err
+    )
+    return vm2
+.end
+
+# -----------------------------------------------------------------------------
+# Initialisation de l’exécution
+# -----------------------------------------------------------------------------
+
+pub fn vm_start(
+    VmState vm,
+    VmChunkId entry_chunk
+) -> VmState:
+    let none_frame = coll.option_none<VmFrameId>()
+    let none_reg = coll.option_none<VmRegIndex>()
+
+    let opt_frame = vm_frame_new_for_chunk(
+        vm,
+        entry_chunk,
+        none_frame,
+        none_reg
+    )
+    if coll.option_is_none<VmFrame>(opt_frame):
+        let sp_dummy = span.span_from_len(
+            (span.BytePos) 0,
+            (span.ByteLen) 0
+        )
+        let err = vm_error(
+            VmErrorKind::VmErrorKindInvalidChunk,
+            "invalid entry chunk",
+            entry_chunk,
+            0u32,
+            sp_dummy
+        )
+        let vm_err = vm_set_error(vm, err)
+        return vm_err
+    .end
+
+    let frame = coll.option_unwrap_unsafe<VmFrame>(opt_frame)
+    let vm2 = vm_push_frame(vm, frame)
+
+    let chunks = vm2.chunks
+    let globals = vm2.globals
+    let frames = vm2.frames
+    let cur = vm2.current_frame
+    let last_err = vm2.last_error
+
+    let vm3 = VmState(
+        chunks = chunks,
+        globals = globals,
+        frames = frames,
+        current_frame = cur,
+        status = VmStatus::VmStatusRunning,
+        last_error = last_err
+    )
+    return vm3
+.end
+
+# -----------------------------------------------------------------------------
+# Exécution pas-à-pas
+# -----------------------------------------------------------------------------
+
+fn vm_fetch_current_frame(
+    VmState vm
+) -> coll.Option<VmFrame>:
+    let cur_opt = vm.current_frame
+    if coll.option_is_none<VmFrameId>(cur_opt):
+        let none_f = coll.option_none<VmFrame>()
+        return none_f
+    .end
+
+    let cur_id = coll.option_unwrap_unsafe<VmFrameId>(cur_opt)
+    let frames = vm.frames
+    let n = frames.len()
+    let idx = cur_id as usize
+    if idx >= n:
+        let none_f2 = coll.option_none<VmFrame>()
+        return none_f2
+    .end
+    let f = frames[idx]
+    let some_f = coll.option_some<VmFrame>(f)
+    return some_f
+.end
+
+fn vm_store_current_frame(
+    VmState vm,
+    VmFrame new_frame
+) -> VmState:
+    let chunks = vm.chunks
+    let globals = vm.globals
+    let frames = vm.frames
+    let status = vm.status
+    let last_err = vm.last_error
+    let cur = vm.current_frame
+
+    let idx = new_frame.id as usize
+    let n = frames.len()
+    if idx < n:
+        frames[idx] = new_frame
+    .end
+
+    let vm2 = VmState(
+        chunks = chunks,
+        globals = globals,
+        frames = frames,
+        current_frame = cur,
+        status = status,
+        last_error = last_err
+    )
+    return vm2
+.end
+
+fn vm_advance_ip(
+    VmFrame frame,
+    i32 delta
+) -> VmFrame:
+    let new_ip_i64 = (frame.ip as i64) + (delta as i64)
+    let new_ip = if new_ip_i64 < 0i64 then 0u32 else (new_ip_i64 as u32)
+
+    let f2 = VmFrame(
+        id = frame.id,
+        chunk_id = frame.chunk_id,
+        ip = new_ip,
+        regs = frame.regs,
+        caller_frame = frame.caller_frame,
+        caller_ret_reg = frame.caller_ret_reg
+    )
+    return f2
+.end
+
+fn vm_increment_ip(
+    VmFrame frame
+) -> VmFrame:
+    let f2 = vm_advance_ip(frame, 1i32)
+    return f2
+.end
+
+pub fn vm_step(
+    VmState vm
+) -> VmState:
+    if vm.status != VmStatus::VmStatusRunning:
+        return vm
+    .end
+
+    let opt_frame = vm_fetch_current_frame(vm)
+    if coll.option_is_none<VmFrame>(opt_frame):
+        let sp_dummy = span.span_from_len(
+            (span.BytePos) 0,
+            (span.ByteLen) 0
+        )
+        let err = vm_error(
+            VmErrorKind::VmErrorKindInvalidCall,
+            "no current frame",
+            0u32,
+            0u32,
+            sp_dummy
+        )
+        let vm_err = vm_set_error(vm, err)
+        return vm_err
+    .end
+
+    let frame = coll.option_unwrap_unsafe<VmFrame>(opt_frame)
+    let opt_chunk = vm_chunk_get(vm, frame.chunk_id)
+    if coll.option_is_none<VmChunk>(opt_chunk):
+        let sp_dummy2 = span.span_from_len(
+            (span.BytePos) 0,
+            (span.ByteLen) 0
+        )
+        let err2 = vm_error(
+            VmErrorKind::VmErrorKindInvalidChunk,
+            "frame chunk not found",
+            frame.chunk_id,
+            frame.ip,
+            sp_dummy2
+        )
+        let vm_err2 = vm_set_error(vm, err2)
+        return vm_err2
+    .end
+
+    let ch = coll.option_unwrap_unsafe<VmChunk>(opt_chunk)
+    let code = ch.code
+    let n = code.len()
+    let idx = frame.ip as usize
+    if idx >= n:
+        let sp_dummy3 = span.span_from_len(
+            (span.BytePos) 0,
+            (span.ByteLen) 0
+        )
+        let err3 = vm_error(
+            VmErrorKind::VmErrorKindInvalidInstrIndex,
+            "ip out of range",
+            ch.id,
+            frame.ip,
+            sp_dummy3
+        )
+        let vm_err3 = vm_set_error(vm, err3)
+        return vm_err3
+    .end
+
+    let instr = code[idx]
+
+    # Exécution d’une instruction
+    let vm_after = vm_exec_instr(vm, frame, ch, instr)
+    return vm_after
+.end
+
+# -----------------------------------------------------------------------------
+# Exécution d’une instruction
+# -----------------------------------------------------------------------------
+
+fn vm_exec_instr(
+    VmState vm,
+    VmFrame frame_in,
+    VmChunk chunk,
+    VmInstr instr
+) -> VmState:
+    let op = instr.opcode
+
+    # Dispatch sur opcode
+    if op == VmOpcode::VmOpcodeNop:
+        let f2 = vm_increment_ip(frame_in)
+        let vm2 = vm_store_current_frame(vm, f2)
+        return vm2
+    .end
+
+    if op == VmOpcode::VmOpcodeHalt:
+        let f2 = vm_increment_ip(frame_in)
+        let vm2 = vm_store_current_frame(vm, f2)
+
+        let chunks = vm2.chunks
+        let globals = vm2.globals
+        let frames = vm2.frames
+        let cur = vm2.current_frame
+        let last_err = vm2.last_error
+
+        let vm3 = VmState(
+            chunks = chunks,
+            globals = globals,
+            frames = frames,
+            current_frame = cur,
+            status = VmStatus::VmStatusHalted,
+            last_error = last_err
+        )
+        return vm3
+    .end
+
+    if op == VmOpcode::VmOpcodeConst:
+        let dst = instr.a
+        let k = instr.b
+
+        let consts = chunk.consts
+        let n = consts.len()
+        let idx = k as usize
+        if idx >= n:
+            let sp_err = instr.span
+            let err = vm_error(
+                VmErrorKind::VmErrorKindInvalidConstIndex,
+                "const index out of range",
+                chunk.id,
+                frame_in.ip,
+                sp_err
+            )
+            let vm_err = vm_set_error(vm, err)
+            return vm_err
+        .end
+
+        let value = consts[idx]
+        let frame_opt = vm_frame_reg_set(frame_in, dst, value)
+        if coll.option_is_none<VmFrame>(frame_opt):
+            let sp_err2 = instr.span
+            let err2 = vm_error(
+                VmErrorKind::VmErrorKindInvalidReg,
+                "destination register out of range",
+                chunk.id,
+                frame_in.ip,
+                sp_err2
+            )
+            let vm_err2 = vm_set_error(vm, err2)
+            return vm_err2
+        .end
+
+        let frame2 = coll.option_unwrap_unsafe<VmFrame>(frame_opt)
+        let frame3 = vm_increment_ip(frame2)
+        let vm2 = vm_store_current_frame(vm, frame3)
+        return vm2
+    .end
+
+    if op == VmOpcode::VmOpcodeMove:
+        let dst = instr.a
+        let src = instr.b
+
+        let opt_v = vm_frame_reg_get(frame_in, src)
+        if coll.option_is_none<VmValue>(opt_v):
+            let sp_err3 = instr.span
+            let err3 = vm_error(
+                VmErrorKind::VmErrorKindInvalidReg,
+                "source register out of range",
+                chunk.id,
+                frame_in.ip,
+                sp_err3
+            )
+            let vm_err3 = vm_set_error(vm, err3)
+            return vm_err3
+        .end
+
+        let v = coll.option_unwrap_unsafe<VmValue>(opt_v)
+        let frame_opt2 = vm_frame_reg_set(frame_in, dst, v)
+        if coll.option_is_none<VmFrame>(frame_opt2):
+            let sp_err4 = instr.span
+            let err4 = vm_error(
+                VmErrorKind::VmErrorKindInvalidReg,
+                "destination register out of range",
+                chunk.id,
+                frame_in.ip,
+                sp_err4
+            )
+            let vm_err4 = vm_set_error(vm, err4)
+            return vm_err4
+        .end
+
+        let frame2 = coll.option_unwrap_unsafe<VmFrame>(frame_opt2)
+        let frame3 = vm_increment_ip(frame2)
+        let vm2 = vm_store_current_frame(vm, frame3)
+        return vm2
+    .end
+
+    # Arithmétique / logique binaires
+    if op == VmOpcode::VmOpcodeAdd or
+       op == VmOpcode::VmOpcodeSub or
+       op == VmOpcode::VmOpcodeMul or
+       op == VmOpcode::VmOpcodeDiv or
+       op == VmOpcode::VmOpcodeEq or
+       op == VmOpcode::VmOpcodeNe or
+       op == VmOpcode::VmOpcodeLt or
+       op == VmOpcode::VmOpcodeLe or
+       op == VmOpcode::VmOpcodeGt or
+       op == VmOpcode::VmOpcodeGe or
+       op == VmOpcode::VmOpcodeAnd or
+       op == VmOpcode::VmOpcodeOr:
+        let dst = instr.a
+        let r_lhs = instr.b
+        let r_rhs = instr.c
+
+        let opt_l = vm_frame_reg_get(frame_in, r_lhs)
+        let opt_r = vm_frame_reg_get(frame_in, r_rhs)
+        if coll.option_is_none<VmValue>(opt_l) or coll.option_is_none<VmValue>(opt_r):
+            let sp_err5 = instr.span
+            let err5 = vm_error(
+                VmErrorKind::VmErrorKindInvalidReg,
+                "binary op register out of range",
+                chunk.id,
+                frame_in.ip,
+                sp_err5
+            )
+            let vm_err5 = vm_set_error(vm, err5)
+            return vm_err5
+        .end
+
+        let lhs = coll.option_unwrap_unsafe<VmValue>(opt_l)
+        let rhs = coll.option_unwrap_unsafe<VmValue>(opt_r)
+
+        let bop =
+            if op == VmOpcode::VmOpcodeAdd then VmBinOp::VmBinOpAdd else
+            if op == VmOpcode::VmOpcodeSub then VmBinOp::VmBinOpSub else
+            if op == VmOpcode::VmOpcodeMul then VmBinOp::VmBinOpMul else
+            if op == VmOpcode::VmOpcodeDiv then VmBinOp::VmBinOpDiv else
+            if op == VmOpcode::VmOpcodeEq then VmBinOp::VmBinOpEq else
+            if op == VmOpcode::VmOpcodeNe then VmBinOp::VmBinOpNe else
+            if op == VmOpcode::VmOpcodeLt then VmBinOp::VmBinOpLt else
+            if op == VmOpcode::VmOpcodeLe then VmBinOp::VmBinOpLe else
+            if op == VmOpcode::VmOpcodeGt then VmBinOp::VmBinOpGt else
+            if op == VmOpcode::VmOpcodeGe then VmBinOp::VmBinOpGe else
+            if op == VmOpcode::VmOpcodeAnd then VmBinOp::VmBinOpAnd else
+            VmBinOp::VmBinOpOr
+
+        let res_v = vm_value_binop(bop, lhs, rhs)
+
+        let frame_opt3 = vm_frame_reg_set(frame_in, dst, res_v)
+        if coll.option_is_none<VmFrame>(frame_opt3):
+            let sp_err6 = instr.span
+            let err6 = vm_error(
+                VmErrorKind::VmErrorKindInvalidReg,
+                "destination register out of range (binary op)",
+                chunk.id,
+                frame_in.ip,
+                sp_err6
+            )
+            let vm_err6 = vm_set_error(vm, err6)
+            return vm_err6
+        .end
+
+        let frame2 = coll.option_unwrap_unsafe<VmFrame>(frame_opt3)
+        let frame3 = vm_increment_ip(frame2)
+        let vm2 = vm_store_current_frame(vm, frame3)
+        return vm2
+    .end
+
+    # Unaires
+    if op == VmOpcode::VmOpcodeNeg or
+       op == VmOpcode::VmOpcodeNot:
+        let dst = instr.a
+        let src = instr.b
+
+        let opt_v2 = vm_frame_reg_get(frame_in, src)
+        if coll.option_is_none<VmValue>(opt_v2):
+            let sp_err7 = instr.span
+            let err7 = vm_error(
+                VmErrorKind::VmErrorKindInvalidReg,
+                "unary op src out of range",
+                chunk.id,
+                frame_in.ip,
+                sp_err7
+            )
+            let vm_err7 = vm_set_error(vm, err7)
+            return vm_err7
+        .end
+
+        let v2 = coll.option_unwrap_unsafe<VmValue>(opt_v2)
+        let uop = if op == VmOpcode::VmOpcodeNeg then VmUnOp::VmUnOpNeg else VmUnOp::VmUnOpNot
+        let res_v2 = vm_value_unop(uop, v2)
+
+        let frame_opt4 = vm_frame_reg_set(frame_in, dst, res_v2)
+        if coll.option_is_none<VmFrame>(frame_opt4):
+            let sp_err8 = instr.span
+            let err8 = vm_error(
+                VmErrorKind::VmErrorKindInvalidReg,
+                "unary op dst out of range",
+                chunk.id,
+                frame_in.ip,
+                sp_err8
+            )
+            let vm_err8 = vm_set_error(vm, err8)
+            return vm_err8
+        .end
+
+        let frame2 = coll.option_unwrap_unsafe<VmFrame>(frame_opt4)
+        let frame3 = vm_increment_ip(frame2)
+        let vm2 = vm_store_current_frame(vm, frame3)
+        return vm2
+    .end
+
+    # Sauts
+    if op == VmOpcode::VmOpcodeJump:
+        let delta = instr.imm
+        let frame2 = vm_advance_ip(frame_in, delta)
+        let vm2 = vm_store_current_frame(vm, frame2)
+        return vm2
+    .end
+
+    if op == VmOpcode::VmOpcodeJumpIfFalse:
+        let reg = instr.a
+        let delta2 = instr.imm
+
+        let opt_v3 = vm_frame_reg_get(frame_in, reg)
+        if coll.option_is_none<VmValue>(opt_v3):
+            let sp_err9 = instr.span
+            let err9 = vm_error(
+                VmErrorKind::VmErrorKindInvalidReg,
+                "jump-if-false reg out of range",
+                chunk.id,
+                frame_in.ip,
+                sp_err9
+            )
+            let vm_err9 = vm_set_error(vm, err9)
+            return vm_err9
+        .end
+
+        let v3 = coll.option_unwrap_unsafe<VmValue>(opt_v3)
+        let cond = vm_value_is_truthy(v3)
+        if not cond:
+            let frame2 = vm_advance_ip(frame_in, delta2)
+            let vm2 = vm_store_current_frame(vm, frame2)
+            return vm2
+        .end
+
+        let frame3 = vm_increment_ip(frame_in)
+        let vm3 = vm_store_current_frame(vm, frame3)
+        return vm3
+    .end
+
+    # Globals
+    if op == VmOpcode::VmOpcodeLoadGlobal:
+        let dst = instr.a
+        let g_idx = instr.b
+
+        let opt_g = vm_globals_get(vm, g_idx)
+        if coll.option_is_none<VmValue>(opt_g):
+            let sp_err10 = instr.span
+            let err10 = vm_error(
+                VmErrorKind::VmErrorKindInvalidGlobalIndex,
+                "load global out of range",
+                chunk.id,
+                frame_in.ip,
+                sp_err10
+            )
+            let vm_err10 = vm_set_error(vm, err10)
+            return vm_err10
+        .end
+
+        let gval = coll.option_unwrap_unsafe<VmValue>(opt_g)
+        let frame_opt5 = vm_frame_reg_set(frame_in, dst, gval)
+        if coll.option_is_none<VmFrame>(frame_opt5):
+            let sp_err11 = instr.span
+            let err11 = vm_error(
+                VmErrorKind::VmErrorKindInvalidReg,
+                "load global dst reg out of range",
+                chunk.id,
+                frame_in.ip,
+                sp_err11
+            )
+            let vm_err11 = vm_set_error(vm, err11)
+            return vm_err11
+        .end
+
+        let frame2 = coll.option_unwrap_unsafe<VmFrame>(frame_opt5)
+        let frame3 = vm_increment_ip(frame2)
+        let vm2 = vm_store_current_frame(vm, frame3)
+        return vm2
+    .end
+
+    if op == VmOpcode::VmOpcodeStoreGlobal:
+        let g_idx2 = instr.a
+        let src2 = instr.b
+
+        let opt_v4 = vm_frame_reg_get(frame_in, src2)
+        if coll.option_is_none<VmValue>(opt_v4):
+            let sp_err12 = instr.span
+            let err12 = vm_error(
+                VmErrorKind::VmErrorKindInvalidReg,
+                "store global src reg out of range",
+                chunk.id,
+                frame_in.ip,
+                sp_err12
+            )
+            let vm_err12 = vm_set_error(vm, err12)
+            return vm_err12
+        .end
+
+        let v4 = coll.option_unwrap_unsafe<VmValue>(opt_v4)
+        let opt_vm2 = vm_globals_set(vm, g_idx2, v4)
+        if coll.option_is_none<VmState>(opt_vm2):
+            let sp_err13 = instr.span
+            let err13 = vm_error(
+                VmErrorKind::VmErrorKindInvalidGlobalIndex,
+                "store global out of range",
+                chunk.id,
+                frame_in.ip,
+                sp_err13
+            )
+            let vm_err13 = vm_set_error(vm, err13)
+            return vm_err13
+        .end
+
+        let vm2 = coll.option_unwrap_unsafe<VmState>(opt_vm2)
+        let frame2 = vm_increment_ip(frame_in)
+        let vm3 = vm_store_current_frame(vm2, frame2)
+        return vm3
+    .end
+
+    # Appels
+    if op == VmOpcode::VmOpcodeCall:
+        let dst = instr.a
+        let callee_chunk = instr.b
+        let _argc = instr.c  # futur : passer les arguments
+
+        let caller_frame_opt = vm.current_frame
+        let caller_ret_reg = coll.option_some<VmRegIndex>(dst)
+
+        let new_frame_opt = vm_frame_new_for_chunk(
+            vm,
+            callee_chunk,
+            caller_frame_opt,
+            caller_ret_reg
+        )
+        if coll.option_is_none<VmFrame>(new_frame_opt):
+            let sp_err14 = instr.span
+            let err14 = vm_error(
+                VmErrorKind::VmErrorKindInvalidCall,
+                "invalid callee chunk",
+                callee_chunk,
+                frame_in.ip,
+                sp_err14
+            )
+            let vm_err14 = vm_set_error(vm, err14)
+            return vm_err14
+        .end
+
+        let new_frame = coll.option_unwrap_unsafe<VmFrame>(new_frame_opt)
+        let vm2 = vm_push_frame(vm, new_frame)
+        return vm2
+    .end
+
+    if op == VmOpcode::VmOpcodeRet:
+        let src = instr.a
+
+        let cur_frame_opt = vm_fetch_current_frame(vm)
+        if coll.option_is_none<VmFrame>(cur_frame_opt):
+            let sp_err15 = instr.span
+            let err15 = vm_error(
+                VmErrorKind::VmErrorKindInvalidCall,
+                "no frame on return",
+                chunk.id,
+                frame_in.ip,
+                sp_err15
+            )
+            let vm_err15 = vm_set_error(vm, err15)
+            return vm_err15
+        .end
+
+        let cur_f = coll.option_unwrap_unsafe<VmFrame>(cur_frame_opt)
+        let ret_val_opt = vm_frame_reg_get(cur_f, src)
+        if coll.option_is_none<VmValue>(ret_val_opt):
+            let sp_err16 = instr.span
+            let err16 = vm_error(
+                VmErrorKind::VmErrorKindInvalidReg,
+                "return reg out of range",
+                chunk.id,
+                frame_in.ip,
+                sp_err16
+            )
+            let vm_err16 = vm_set_error(vm, err16)
+            return vm_err16
+        .end
+
+        let ret_val = coll.option_unwrap_unsafe<VmValue>(ret_val_opt)
+
+        # Restaure le frame appelant si présent
+        let caller_opt = cur_f.caller_frame
+        let caller_ret_reg_opt = cur_f.caller_ret_reg
+
+        # Pop logique du frame courant
+        let vm_no_frame = vm_pop_frame(vm)
+
+        if coll.option_is_none<VmFrameId>(caller_opt):
+            # Retour de la fonction "top-level" : on stoppe la VM.
+            let chunks3 = vm_no_frame.chunks
+            let globals3 = vm_no_frame.globals
+            let frames3 = vm_no_frame.frames
+            let cur3 = vm_no_frame.current_frame
+            let last_err3 = vm_no_frame.last_error
+
+            let vm_done = VmState(
+                chunks = chunks3,
+                globals = globals3,
+                frames = frames3,
+                current_frame = cur3,
+                status = VmStatus::VmStatusHalted,
+                last_error = last_err3
+            )
+            return vm_done
+        .end
+
+        # On a un frame appelant
+        let caller_id = coll.option_unwrap_unsafe<VmFrameId>(caller_opt)
+        let caller_reg_opt = caller_ret_reg_opt
+
+        let frames = vm_no_frame.frames
+        let n_frames = frames.len()
+        let caller_idx = caller_id as usize
+        if caller_idx >= n_frames:
+            let sp_err17 = instr.span
+            let err17 = vm_error(
+                VmErrorKind::VmErrorKindInvalidCall,
+                "caller frame index out of range",
+                chunk.id,
+                frame_in.ip,
+                sp_err17
+            )
+            let vm_err17 = vm_set_error(vm_no_frame, err17)
+            return vm_err17
+        .end
+
+        let caller_frame_val = frames[caller_idx]
+
+        if coll.option_is_some<VmRegIndex>(caller_reg_opt):
+            let rdst = coll.option_unwrap_unsafe<VmRegIndex>(caller_reg_opt)
+            let caller_frame_opt2 = vm_frame_reg_set(caller_frame_val, rdst, ret_val)
+            if coll.option_is_none<VmFrame>(caller_frame_opt2):
+                let sp_err18 = instr.span
+                let err18 = vm_error(
+                    VmErrorKind::VmErrorKindInvalidReg,
+                    "caller return reg out of range",
+                    chunk.id,
+                    frame_in.ip,
+                    sp_err18
+                )
+                let vm_err18 = vm_set_error(vm_no_frame, err18)
+                return vm_err18
+            .end
+            let caller_frame2 = coll.option_unwrap_unsafe<VmFrame>(caller_frame_opt2)
+
+            # Avance IP du frame appelant (après l’instruction Call)
+            let caller_frame3 = vm_increment_ip(caller_frame2)
+
+            # Écrit le frame appelant modifié dans la VM
+            let chunks4 = vm_no_frame.chunks
+            let globals4 = vm_no_frame.globals
+            let frames4 = vm_no_frame.frames
+            let status4 = vm_no_frame.status
+            let last_err4 = vm_no_frame.last_error
+
+            let frames5 = frames4
+            frames5[caller_idx] = caller_frame3
+
+            let some_caller = coll.option_some<VmFrameId>(caller_id)
+
+            let vm_ret = VmState(
+                chunks = chunks4,
+                globals = globals4,
+                frames = frames5,
+                current_frame = some_caller,
+                status = status4,
+                last_error = last_err4
+            )
+            return vm_ret
+        .end
+
+        # Pas de registre de retour spécifié : juste restaurer le frame.
+        let chunks6 = vm_no_frame.chunks
+        let globals6 = vm_no_frame.globals
+        let frames6 = vm_no_frame.frames
+        let status6 = vm_no_frame.status
+        let last_err6 = vm_no_frame.last_error
+        let some_caller2 = coll.option_some<VmFrameId>(caller_id)
+
+        let vm_ret2 = VmState(
+            chunks = chunks6,
+            globals = globals6,
+            frames = frames6,
+            current_frame = some_caller2,
+            status = status6,
+            last_error = last_err6
+        )
+        return vm_ret2
+    .end
+
+    # Opcode inconnu
+    let sp_unknown = instr.span
+    let err_unknown = vm_error(
+        VmErrorKind::VmErrorKindUnknownOpcode,
+        "unknown opcode",
+        chunk.id,
+        frame_in.ip,
+        sp_unknown
+    )
+    let vm_err_unknown = vm_set_error(vm, err_unknown)
+    return vm_err_unknown
+.end
+
+# -----------------------------------------------------------------------------
+# Exécution bornée
+# -----------------------------------------------------------------------------
+
+pub fn vm_run_n_steps(
+    VmState vm,
+    u32 max_steps
+) -> VmState:
+    let i = 0u32
+    let vm_cur = vm
+
+    while i < max_steps:
+        if vm_cur.status != VmStatus::VmStatusRunning:
+            return vm_cur
+        .end
+
+        let vm_next = vm_step(vm_cur)
+        let vm_cur = vm_next
+
+        let i = i + 1u32
+    .end
+
+    return vm_cur
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers de debug
+# -----------------------------------------------------------------------------
+
+pub fn vm_status_to_string(
+    VmStatus st
+) -> String:
+    if st == VmStatus::VmStatusRunning:
+        return "running"
+    .end
+    if st == VmStatus::VmStatusHalted:
+        return "halted"
+    .end
+    if st == VmStatus::VmStatusError:
+        return "error"
+    .end
+    return "unknown"
+.end
+
+pub fn vm_error_kind_to_string(
+    VmErrorKind k
+) -> String:
+    if k == VmErrorKind::VmErrorKindInvalidChunk:
+        return "invalid_chunk"
+    .end
+    if k == VmErrorKind::VmErrorKindInvalidInstrIndex:
+        return "invalid_instr_index"
+    .end
+    if k == VmErrorKind::VmErrorKindInvalidReg:
+        return "invalid_reg"
+    .end
+    if k == VmErrorKind::VmErrorKindInvalidConstIndex:
+        return "invalid_const_index"
+    .end
+    if k == VmErrorKind::VmErrorKindInvalidGlobalIndex:
+        return "invalid_global_index"
+    .end
+    if k == VmErrorKind::VmErrorKindInvalidCall:
+        return "invalid_call"
+    .end
+    if k == VmErrorKind::VmErrorKindUnknownOpcode:
+        return "unknown_opcode"
+    .end
+    return "?"
+.end
+
+# -----------------------------------------------------------------------------
+# Scenario de smoke test
+# -----------------------------------------------------------------------------
+
+scenario vm_smoke_test():
+    # Programme : r0 = 1; r1 = 2; r2 = r0 + r1; halt
+    let sp0 = span.span_from_len(
+        (span.BytePos) 0,
+        (span.ByteLen) 1
+    )
+
+    let code: Vec<VmInstr> = Vec<VmInstr>::new()
+    let consts: Vec<VmValue> = Vec<VmValue>::new()
+
+    # Ajouter const 1 et const 2
+    consts.push(vm_value_int(1i64))
+    consts.push(vm_value_int(2i64))
+
+    let instr0 = VmInstr(
+        opcode = VmOpcode::VmOpcodeConst,
+        a = 0u32,
+        b = 0u32,
+        c = 0u32,
+        imm = 0i32,
+        span = sp0
+    )
+    code.push(instr0)
+
+    let instr1 = VmInstr(
+        opcode = VmOpcode::VmOpcodeConst,
+        a = 1u32,
+        b = 1u32,
+        c = 0u32,
+        imm = 0i32,
+        span = sp0
+    )
+    code.push(instr1)
+
+    let instr2 = VmInstr(
+        opcode = VmOpcode::VmOpcodeAdd,
+        a = 2u32,
+        b = 0u32,
+        c = 1u32,
+        imm = 0i32,
+        span = sp0
+    )
+    code.push(instr2)
+
+    let instr3 = VmInstr(
+        opcode = VmOpcode::VmOpcodeHalt,
+        a = 0u32,
+        b = 0u32,
+        c = 0u32,
+        imm = 0i32,
+        span = sp0
+    )
+    code.push(instr3)
+
+    let vm0 = vm_state_new()
+    let (vm1, cid) = vm_add_chunk(
+        vm0,
+        "main",
+        code,
+        consts,
+        4u32,
+        0u32,
+        3u32
+    )
+
+    let vm2 = vm_start(vm1, cid)
+    let vm3 = vm_run_n_steps(vm2, 16u32)
+
+    let _ = vm3
+.end

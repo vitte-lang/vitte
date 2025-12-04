@@ -1,0 +1,366 @@
+
+module scripts.ci.lint
+
+# ============================================================================
+# Vitte – Modèle logique de configuration CI / Lint
+#
+# Objectifs :
+#   - Fournir une représentation déclarative, backend-agnostique, de tout ce
+#     qui concerne le lint dans le projet vitte-core :
+#       * règles et catégories,
+#       * fichiers et projets,
+#       * exécution d’outils externes (clippy, fmt, eslint, etc.) au niveau
+#         logique,
+#       * rapports détaillés et résumé CI.
+#   - Servir de contrat entre :
+#       * les scripts CI (GitHub Actions, etc.),
+#       * les outils de lint écrits en Vitte ou dans d’autres langages,
+#       * les UIs (CLI, TUI, web) qui consomment les rapports.
+#   - Ne contenir que des structures de données (aucune fonction ni I/O).
+#
+# Conventions :
+#   - Même style que vitte.compiler.ast / lrt.ffi / lvm.* :
+#       * `pub struct/enum` + ":" et blocs terminés par `.end` ;
+#       * enums "tag-only" ;
+#       * IDs forts basés sur des indices u32.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Indices et identifiants
+# ----------------------------------------------------------------------------
+
+pub typedef u32 LintRuleIndex
+pub typedef u32 LintProjectIndex
+pub typedef u32 LintFileIndex
+pub typedef u32 LintRunIndex
+pub typedef u32 LintToolIndex
+
+pub struct LintRuleId:
+    let raw: LintRuleIndex
+.end
+
+pub struct LintProjectId:
+    let raw: LintProjectIndex
+.end
+
+pub struct LintFileId:
+    let raw: LintFileIndex
+.end
+
+pub struct LintRunId:
+    let raw: LintRunIndex
+.end
+
+pub struct LintToolId:
+    let raw: LintToolIndex
+.end
+
+# ----------------------------------------------------------------------------
+# Positions, sévérités et catégories
+# ----------------------------------------------------------------------------
+
+# Position dans un fichier (1-based).
+pub struct LintPosition:
+    let line: u32
+    let column: u32
+.end
+
+# Plage dans un fichier (de start inclus à end inclus).
+pub struct LintSpan:
+    let file: LintFileId
+    let start: LintPosition
+    let end: LintPosition
+.end
+
+# Niveau de sévérité d’une violation.
+pub enum LintSeverity:
+    SeverityInfo
+    SeverityWarning
+    SeverityError
+.end
+
+# Catégorie logique de règle (pour regrouper / filtrer).
+pub enum LintCategory:
+    CatStyle             # style (naming, formatting, etc.)
+    CatCorrectness       # erreurs potentielles, comportement surprenant
+    CatPerformance       # performance et allocations inutiles
+    CatComplexity        # trop complexe, duplication, etc.
+    CatSecurity          # vulnérabilités possibles
+    CatDocumentation     # docs manquantes ou incorrectes
+    CatConfig            # problèmes dans fichiers de config / manifests
+.end
+
+# Source d’une règle (origine).
+pub enum LintSource:
+    SourceInternal       # règles internes Vitte / vitte-core
+    SourceRustClippy     # Clippy (Rust)
+    SourceRustFmt        # rustfmt
+    SourceLexFmt         # formatage grammaires/lexers
+    SourceJsTs           # ESLint / TypeScript
+    SourceShell          # ShellCheck, etc.
+    SourceOther          # autre outil externe
+.end
+
+# ----------------------------------------------------------------------------
+# Règles et configuration
+# ----------------------------------------------------------------------------
+
+# État d’activation d’une règle.
+pub enum LintRuleState:
+    RuleEnabled
+    RuleWarningOnly      # remontée en warning même si outil la marque error
+    RuleDisabled
+.end
+
+# Configuration d’une règle de lint.
+pub struct LintRuleConfig:
+    let id: LintRuleId
+    let code: String             # ID court : ex "VITTE001", "CLIPPY:unwrap_used"
+    let name: String             # nom humain
+    let description: String
+    let category: LintCategory
+    let default_severity: LintSeverity
+    let source: LintSource
+    let state: LintRuleState
+.end
+
+# Table de toutes les règles connues pour un profil de lint donné.
+pub struct LintRuleTable:
+    let rules: Vec<LintRuleConfig>
+.end
+
+# ----------------------------------------------------------------------------
+# Projets, fichiers et patterns d’inclusion/exclusion
+# ----------------------------------------------------------------------------
+
+# Type de projet / sous-module.
+pub enum LintProjectKind:
+    ProjectRustCrate
+    ProjectVitteRuntime
+    ProjectVitteCompiler
+    ProjectGrammars
+    ProjectScripts
+    ProjectJsTs
+    ProjectDocs
+    ProjectOther
+.end
+
+# Projet logique (ex: crate Rust runtime, parser, etc.).
+pub struct LintProject:
+    let id: LintProjectId
+    let kind: LintProjectKind
+    let name: String
+    let root_path: String        # chemin racine relatif au repo
+.end
+
+# Statut d’un fichier vis-à-vis du lint.
+pub enum LintFileStatus:
+    FileIncluded
+    FileExcluded
+    FileGenerated
+    FileIgnoredByTool        # ignoré par règle/tool externe (ex: .gitignore)
+.end
+
+# Fichier logique soumis au lint.
+pub struct LintFile:
+    let id: LintFileId
+    let project: LintProjectId
+    let path: String           # chemin relatif au repo
+    let status: LintFileStatus
+.end
+
+# Patterns d’inclusion/exclusion (globs au niveau logique).
+pub struct LintPathPattern:
+    let pattern: String        # ex: "runtime/src/**/*.rs"
+    let is_exclude: Bool
+    let description: Option<String>
+.end
+
+pub struct LintPathConfig:
+    let patterns: Vec<LintPathPattern>
+.end
+
+# ----------------------------------------------------------------------------
+# Outils externes de lint
+# ----------------------------------------------------------------------------
+
+# Genre d’outil externe.
+pub enum LintToolKind:
+    ToolRustClippy
+    ToolRustFmt
+    ToolVitteFmt
+    ToolLexFmt
+    ToolJsTsLint
+    ToolShellLint
+    ToolCustom
+.end
+
+# Stratégie de sévérité quand un outil retourne un code exit != 0.
+pub enum LintToolFailurePolicy:
+    FailAsError          # considérer comme erreur CI
+    FailAsWarning        # garder la CI verte mais remonter comme warning
+    IgnoreFailure        # ignorer les échecs de tool (logging seulement)
+.end
+
+# Configuration d’un outil externe pour un profil donné.
+pub struct LintToolConfig:
+    let id: LintToolId
+    let kind: LintToolKind
+    let name: String              # ex: "cargo clippy"
+    let command: String           # ex: "cargo"
+    let args: Vec<String>         # ex: ["clippy", "--workspace", "--all-targets"]
+    let working_dir: String       # ex: "."
+    let env: Vec<String>          # ex: ["RUSTFLAGS=...", "CI=1"]
+    let failure_policy: LintToolFailurePolicy
+.end
+
+# Table des outils externes.
+pub struct LintToolTable:
+    let tools: Vec<LintToolConfig>
+.end
+
+# ----------------------------------------------------------------------------
+# Violations, diagnostics et rapports par fichier
+# ----------------------------------------------------------------------------
+
+# Violation unique d’une règle.
+pub struct LintViolation:
+    let rule: LintRuleId
+    let severity: LintSeverity
+    let span: LintSpan
+    let message: String
+    let suggestion: Option<String>    # quick fix / conseil
+    let help_link: Option<String>     # URL vers docs ou guide interne
+.end
+
+# Rapport pour un fichier donné.
+pub struct LintFileReport:
+    let file: LintFileId
+    let violations: Vec<LintViolation>
+    let error_count: u32
+    let warning_count: u32
+    let info_count: u32
+.end
+
+# ----------------------------------------------------------------------------
+# Rapports projet / workspace
+# ----------------------------------------------------------------------------
+
+# Rapport agrégé pour un projet.
+pub struct LintProjectReport:
+    let project: LintProjectId
+    let files: Vec<LintFileReport>
+    let error_count: u32
+    let warning_count: u32
+    let info_count: u32
+.end
+
+# Résumé global pour le repo ou pour une exécution.
+pub struct LintSummary:
+    let error_count: u32
+    let warning_count: u32
+    let info_count: u32
+    let files_with_issues: u32
+    let rules_triggered: Vec<LintRuleId>
+.end
+
+# ----------------------------------------------------------------------------
+# Logs d’exécution des outils
+# ----------------------------------------------------------------------------
+
+# Ligne de log produite par un outil.
+pub struct LintCommandLogLine:
+    let line_number: u32
+    let text: String
+    let is_stderr: Bool
+.end
+
+# Statut d’une commande d’outil.
+pub enum LintCommandStatusKind:
+    CommandSuccess
+    CommandFailureExitCode
+    CommandFailureTimeout
+    CommandFailureInternal
+.end
+
+pub struct LintCommandStatus:
+    let kind: LintCommandStatusKind
+    let exit_code: Option<i32>
+    let message: Option<String>
+.end
+
+# Rapport d’exécution d’un outil externe.
+pub struct LintCommandReport:
+    let tool: LintToolId
+    let project: Option<LintProjectId>
+    let status: LintCommandStatus
+    let duration_millis: u64
+    let logs: Vec<LintCommandLogLine>
+.end
+
+# ----------------------------------------------------------------------------
+# Profils CI / Lint
+# ----------------------------------------------------------------------------
+
+# Niveau de strictesse CI global.
+pub enum LintCiStrictness:
+    StrictnessRelaxed      # tolérant, warnings acceptés
+    StrictnessDefault      # politique standard
+    StrictnessStrict       # warnings considérés comme erreurs CI
+.end
+
+# Profil CI Lint complet.
+pub struct LintCiProfile:
+    let name: String
+    let strictness: LintCiStrictness
+    let rule_table: LintRuleTable
+    let tool_table: LintToolTable
+    let path_config: LintPathConfig
+.end
+
+# ----------------------------------------------------------------------------
+# Exécution d’un run de lint
+# ----------------------------------------------------------------------------
+
+# Statut global d’un run de lint.
+pub enum LintRunStatusKind:
+    LintRunOk               # aucun error blocking (en fonction du profile)
+    LintRunWarnings         # seulement des warnings
+    LintRunFailed           # erreurs bloquantes
+    LintRunToolFailed       # échec d’un outil externe
+.end
+
+pub struct LintRunStatus:
+    let kind: LintRunStatusKind
+    let message: Option<String>
+.end
+
+# Exécution complète d’un run de lint (workspace).
+pub struct LintRun:
+    let id: LintRunId
+    let profile: LintCiProfile
+    let projects: Vec<LintProject>
+    let files: Vec<LintFile>
+    let project_reports: Vec<LintProjectReport>
+    let tool_reports: Vec<LintCommandReport>
+    let summary: LintSummary
+    let status: LintRunStatus
+.end
+
+# ----------------------------------------------------------------------------
+# Nœuds génériques pour tooling CI
+# ----------------------------------------------------------------------------
+
+pub enum LintNodeKind:
+    NodeRule
+    NodeProject
+    NodeFile
+    NodeViolation
+    NodeProjectReport
+    NodeRun
+.end
+
+pub struct LintNode:
+    let id: LintRunIndex
+    let kind: LintNodeKind
+.end

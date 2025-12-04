@@ -1,0 +1,1058 @@
+
+
+module vitte.compiler.lexer
+
+import vitte.compiler.ast as ast
+import vitte.compiler.diagnostics as diag
+
+# ============================================================================
+# Vitte compiler – Lexer ultra complet
+#
+# Objectifs :
+#   - transformer une source texte en une séquence de tokens Vitte ;
+#   - gérer :
+#       * indentation significative (INDENT / DEDENT),
+#       * newlines, commentaires, espaces,
+#       * mots-clés réservés, identifiants,
+#       * entiers + flottants,
+#       * chaînes de caractères avec échappements simples,
+#       * opérateurs et ponctuation (==, !=, <=, >=, ->, |>, etc.) ;
+#   - reporter les erreurs lexicales vers DiagnosticsSink.
+#
+# Remarques :
+#   - Cette implémentation est volontairement "ultra complète" côté structure.
+#   - Certains détails (UTF-8 complexe, tous les échappements) sont marqués
+#     comme TODO et peuvent être raffinés plus tard.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Options & résultat
+# ----------------------------------------------------------------------------
+
+pub struct LexOptions:
+    let tab_width: u32          # largeur logique d'une tabulation
+    let emit_indent_tokens: Bool
+    let emit_newline_tokens: Bool
+.end
+
+pub fn lex_default_options() -> LexOptions:
+    let opts = LexOptions(
+        tab_width = 4u32,
+        emit_indent_tokens = true,
+        emit_newline_tokens = true
+    )
+    return opts
+.end
+
+pub struct Token:
+    let kind: TokenKind
+    let lexeme: String
+    let span: ast.Span
+.end
+
+pub struct LexResult:
+    let tokens: Vec<Token>
+    let diagnostics: diag.DiagnosticsSink
+.end
+
+# ----------------------------------------------------------------------------
+# Kinds de tokens
+# ----------------------------------------------------------------------------
+
+pub enum TokenKind:
+    # Contrôle flux de lexing
+    TkEof
+    TkNewline
+    TkIndent
+    TkDedent
+
+    # Identifiants & littéraux
+    TkIdentifier
+    TkNumber
+    TkString
+
+    # Mots-clés réservés (noyau Vitte)
+    TkKwModule
+    TkKwImport
+    TkKwExport
+    TkKwMuffin
+
+    TkKwProgram
+    TkKwService
+    TkKwKernel
+    TkKwDriver
+    TkKwTool
+    TkKwScenario
+    TkKwPipeline
+
+    TkKwStruct
+    TkKwUnion
+    TkKwEnum
+    TkKwTypedef
+    TkKwInline
+    TkKwFn
+
+    TkKwExtern
+    TkKwStatic
+    TkKwSizeof
+    TkKwAlignof
+
+    TkKwLet
+    TkKwConst
+
+    TkKwIf
+    TkKwElif
+    TkKwElse
+    TkKwWhile
+    TkKwFor
+    TkKwIn
+    TkKwMatch
+
+    TkKwBreak
+    TkKwContinue
+    TkKwReturn
+
+    TkKwAnd
+    TkKwOr
+    TkKwNot
+
+    TkKwTrue
+    TkKwFalse
+    TkKwNull
+
+    TkKwAs
+    TkKwAll
+
+    TkKwVolatile
+    TkKwRestrict
+    TkKwPub
+    TkKwTrait
+    TkKwImpl
+    TkKwWhere
+
+    # Ponctuation
+    TkLParen      # (
+    TkRParen      # )
+    TkLBracket    # [
+    TkRBracket    # ]
+    TkLBrace      # {
+    TkRBrace      # }
+    TkComma       # ,
+    TkDot         # .
+    TkColon       # :
+    TkSemicolon   # ; (rare, optionnel)
+
+    # Opérateurs & symboles
+    TkArrow       # ->
+    TkFatArrow    # =>
+    TkAssign      # =
+    TkPlus        # +
+    TkMinus       # -
+    TkStar        # *
+    TkSlash       # /
+    TkPercent     # %
+
+    TkEqEq        # ==
+    TkBangEq      # !=
+    TkLt          # <
+    TkLe          # <=
+    TkGt          # >
+    TkGe          # >=
+
+    TkAmp         # &
+    TkPipe        # |
+    TkCaret       # ^
+    TkShl         # <<
+    TkShr         # >>
+
+    TkPlusEq      # +=
+    TkMinusEq     # -=
+    TkStarEq      # *=
+    TkSlashEq     # /=
+    TkAmpEq       # &=
+    TkPipeEq      # |=
+    TkCaretEq     # ^=
+    TkShlEq       # <<=
+    TkShrEq       # >>=
+
+    TkPipeGt      # |>
+.end
+
+# ----------------------------------------------------------------------------
+# État interne du lexer
+# ----------------------------------------------------------------------------
+
+pub struct LexerState:
+    let opts: LexOptions
+    let file_name: String
+    let text: String
+    let index: usize
+    let length: usize
+    let line: u32
+    let column: u32
+    let at_line_start: Bool
+    let indent_stack: Vec<u32>
+    let pending: Vec<Token>         # file LIFO de tokens pré-générés (INDENT/DEDENT)
+.end
+
+fn lexer_state_new(LexOptions opts, String file_name, String text) -> LexerState:
+    let len = text.len()
+
+    let indent_stack = Vec<u32>::new()
+    indent_stack.push(0u32)
+
+    let pending = Vec<Token>::new()
+
+    let st = LexerState(
+        opts = opts,
+        file_name = file_name,
+        text = text,
+        index = 0usize,
+        length = len,
+        line = 1u32,
+        column = 1u32,
+        at_line_start = true,
+        indent_stack = indent_stack,
+        pending = pending
+    )
+    return st
+.end
+
+fn lexer_is_eof(LexerState st) -> Bool:
+    return st.index >= st.length
+.end
+
+fn lexer_peek_char(LexerState st) -> String:
+    if lexer_is_eof(st):
+        return ""
+    .end
+    # Dans une impl simple on suppose un accès indexé par char.
+    let c = st.text.char_at(st.index)
+    return c
+.end
+
+fn lexer_peek_next_char(LexerState st) -> String:
+    let idx = st.index + 1usize
+    if idx >= st.length:
+        return ""
+    .end
+    let c = st.text.char_at(idx)
+    return c
+.end
+
+fn lexer_advance(LexerState st) -> LexerState:
+    if lexer_is_eof(st):
+        return st
+    .end
+
+    let c = st.text.char_at(st.index)
+    let new_index = st.index + 1usize
+    let new_line = st.line
+    let new_col = st.column
+
+    if c == "\n":
+        let st2 = LexerState(
+            opts = st.opts,
+            file_name = st.file_name,
+            text = st.text,
+            index = new_index,
+            length = st.length,
+            line = st.line + 1u32,
+            column = 1u32,
+            at_line_start = true,
+            indent_stack = st.indent_stack,
+            pending = st.pending
+        )
+        return st2
+    .end
+
+    let st3 = LexerState(
+        opts = st.opts,
+        file_name = st.file_name,
+        text = st.text,
+        index = new_index,
+        length = st.length,
+        line = new_line,
+        column = new_col + 1u32,
+        at_line_start = false,
+        indent_stack = st.indent_stack,
+        pending = st.pending
+    )
+    return st3
+.end
+
+fn make_span(LexerState st, u32 start_line, u32 start_col) -> ast.Span:
+    let sp = ast.Span(
+        file = st.file_name,
+        start_line = start_line,
+        start_col = start_col,
+        end_line = st.line,
+        end_col = st.column
+    )
+    return sp
+.end
+
+# ----------------------------------------------------------------------------
+# Helpers caractères
+# ----------------------------------------------------------------------------
+
+fn is_whitespace(String c) -> Bool:
+    if c == " " or c == "\t":
+        return true
+    .end
+    return false
+.end
+
+fn is_newline(String c) -> Bool:
+    if c == "\n" or c == "\r":
+        return true
+    .end
+    return false
+.end
+
+fn is_digit(String c) -> Bool:
+    return c >= "0" and c <= "9"
+.end
+
+fn is_alpha(String c) -> Bool:
+    return (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or c == "_"
+.end
+
+fn is_alnum(String c) -> Bool:
+    if is_alpha(c):
+        return true
+    .end
+    if is_digit(c):
+        return true
+    .end
+    return false
+.end
+
+# ----------------------------------------------------------------------------
+# API principale
+# ----------------------------------------------------------------------------
+
+pub fn lex_source(String file_name, String text, diag.DiagnosticsSink sink) -> LexResult:
+    let opts = lex_default_options()
+    let result = lex_source_with_options(opts, file_name, text, sink)
+    return result
+.end
+
+pub fn lex_source_with_options(LexOptions opts, String file_name, String text, diag.DiagnosticsSink sink) -> LexResult:
+    let st0 = lexer_state_new(opts, file_name, text)
+    let toks = Vec<Token>::new()
+
+    let pair = lex_all_tokens(st0, sink, toks)
+    let final_state = pair.0
+    let final_sink = pair.1
+    let final_tokens = pair.2
+
+    let res = LexResult(
+        tokens = final_tokens,
+        diagnostics = final_sink
+    )
+    return res
+.end
+
+fn lex_all_tokens(LexerState st, diag.DiagnosticsSink sink, Vec<Token> acc) -> (LexerState, diag.DiagnosticsSink, Vec<Token>):
+    let current_state = st
+    let current_sink = sink
+    let current_tokens = acc
+
+    let out = lex_all_tokens_loop(current_state, current_sink, current_tokens)
+    return out
+.end
+
+fn lex_all_tokens_loop(LexerState st, diag.DiagnosticsSink sink, Vec<Token> acc) -> (LexerState, diag.DiagnosticsSink, Vec<Token>):
+    let current_state = st
+    let current_sink = sink
+    let current_tokens = acc
+
+    let pair = lexer_next_token(current_state, current_sink)
+    let st1 = pair.0
+    let sink1 = pair.1
+    let tok = pair.2
+
+    let tokens2 = current_tokens
+    tokens2.push(tok)
+
+    if tok.kind == TokenKind::TkEof:
+        return (st1, sink1, tokens2)
+    .end
+
+    let out = lex_all_tokens_loop(st1, sink1, tokens2)
+    return out
+.end
+
+# ----------------------------------------------------------------------------
+# Gestion indentation & commentaires
+# ----------------------------------------------------------------------------
+
+fn lexer_emit_pending(LexerState st) -> (LexerState, Option<Token>):
+    let pending = st.pending
+    let len = pending.len()
+    if len == 0usize:
+        let none_tok: Option<Token> = Option<Token>::None()
+        return (st, none_tok)
+    .end
+
+    let last_index = len - 1usize
+    let tok = pending[last_index]
+    pending.pop()
+
+    let st2 = LexerState(
+        opts = st.opts,
+        file_name = st.file_name,
+        text = st.text,
+        index = st.index,
+        length = st.length,
+        line = st.line,
+        column = st.column,
+        at_line_start = st.at_line_start,
+        indent_stack = st.indent_stack,
+        pending = pending
+    )
+
+    let some_tok: Option<Token> = Option<Token>::Some(tok)
+    return (st2, some_tok)
+.end
+
+fn lexer_handle_indent_if_needed(LexerState st) -> LexerState:
+    if not st.at_line_start:
+        return st
+    .end
+
+    let i = st.index
+    let col = 0u32
+    let text = st.text
+    let len = st.length
+
+    while i < len:
+        let c = text.char_at(i)
+        if c == " ":
+            col = col + 1u32
+            i = i + 1usize
+        .end
+        if c == "\t":
+            col = col + st.opts.tab_width
+            i = i + 1usize
+        .end
+        if c == "#":
+            # Ligne de commentaire complète : ignorer indentation.
+            return st
+        .end
+        if is_newline(c):
+            # Ligne vide : rien à faire.
+            return st
+        .end
+        if not is_whitespace(c):
+            break
+        .end
+    .end
+
+    # Si on est à la fin du fichier, pas d'indentation supplémentaire.
+    if i >= len:
+        return st
+    .end
+
+    let stack = st.indent_stack
+    let last = stack[stack.len() - 1usize]
+
+    if col == last:
+        return st
+    .end
+
+    # On ne modifie pas index ici, on laisse lexer_next_token avancer.
+    # On ne produit que les tokens INDENT/DEDENT dans pending.
+
+    if col > last:
+        stack.push(col)
+
+        let sp = ast.Span(
+            file = st.file_name,
+            start_line = st.line,
+            start_col = 1u32,
+            end_line = st.line,
+            end_col = col
+        )
+        let tok = Token(
+            kind = TokenKind::TkIndent,
+            lexeme = "<INDENT>",
+            span = sp
+        )
+        st.pending.push(tok)
+    .end
+
+    if col < last:
+        # Générer un ou plusieurs DEDENT.
+        while stack.len() > 0usize and col < stack[stack.len() - 1usize]:
+            stack.pop()
+            let sp2 = ast.Span(
+                file = st.file_name,
+                start_line = st.line,
+                start_col = 1u32,
+                end_line = st.line,
+                end_col = col
+            )
+            let tok2 = Token(
+                kind = TokenKind::TkDedent,
+                lexeme = "<DEDENT>",
+                span = sp2
+            )
+            st.pending.push(tok2)
+        .end
+    .end
+
+    let st2 = LexerState(
+        opts = st.opts,
+        file_name = st.file_name,
+        text = st.text,
+        index = st.index,
+        length = st.length,
+        line = st.line,
+        column = st.column,
+        at_line_start = st.at_line_start,
+        indent_stack = stack,
+        pending = st.pending
+    )
+    return st2
+.end
+
+# ----------------------------------------------------------------------------
+# Lexing d'un token
+# ----------------------------------------------------------------------------
+
+fn lexer_next_token(LexerState st, diag.DiagnosticsSink sink) -> (LexerState, diag.DiagnosticsSink, Token):
+    # 1) S'il y a des tokens en attente (INDENT/DEDENT), on les renvoie d'abord.
+    let pair_pending = lexer_emit_pending(st)
+    let st_pending = pair_pending.0
+    let maybe_tok = pair_pending.1
+
+    if maybe_tok.is_some():
+        let tok = maybe_tok.unwrap()
+        return (st_pending, sink, tok)
+    .end
+
+    # 2) Gestion indentation au début de ligne.
+    let st2 = lexer_handle_indent_if_needed(st_pending)
+
+    let c = lexer_peek_char(st2)
+    if c == "":
+        # Fin de fichier : vider la pile d'indentation.
+        let st3 = st2
+        let stack = st3.indent_stack
+        if stack.len() > 1usize:
+            stack.pop()
+            let sp = ast.Span(
+                file = st3.file_name,
+                start_line = st3.line,
+                start_col = st3.column,
+                end_line = st3.line,
+                end_col = st3.column
+            )
+            let tok = Token(kind = TokenKind::TkDedent, lexeme = "<DEDENT>", span = sp)
+            st3.pending.push(tok)
+            let pair2 = lexer_emit_pending(st3)
+            let st4 = pair2.0
+            let t2 = pair2.1.unwrap()
+            return (st4, sink, t2)
+        .end
+
+        let sp_eof = ast.Span(
+            file = st3.file_name,
+            start_line = st3.line,
+            start_col = st3.column,
+            end_line = st3.line,
+            end_col = st3.column
+        )
+        let eof_tok = Token(
+            kind = TokenKind::TkEof,
+            lexeme = "",
+            span = sp_eof
+        )
+        return (st3, sink, eof_tok)
+    .end
+
+    # 3) Sauter les espaces (hors indentation) et commentaires inline.
+    let pair_ws = lexer_skip_spaces_and_comments(st2)
+    let st_ws = pair_ws.0
+    let sink_ws = pair_ws.1
+
+    let c2 = lexer_peek_char(st_ws)
+    if c2 == "":
+        # Même logique EOF que ci-dessus.
+        let st3b = st_ws
+        let stack2 = st3b.indent_stack
+        if stack2.len() > 1usize:
+            stack2.pop()
+            let spb = ast.Span(
+                file = st3b.file_name,
+                start_line = st3b.line,
+                start_col = st3b.column,
+                end_line = st3b.line,
+                end_col = st3b.column
+            )
+            let tokb = Token(kind = TokenKind::TkDedent, lexeme = "<DEDENT>", span = spb)
+            st3b.pending.push(tokb)
+            let pairb = lexer_emit_pending(st3b)
+            let st4b = pairb.0
+            let t2b = pairb.1.unwrap()
+            return (st4b, sink_ws, t2b)
+        .end
+
+        let sp_eof2 = ast.Span(
+            file = st3b.file_name,
+            start_line = st3b.line,
+            start_col = st3b.column,
+            end_line = st3b.line,
+            end_col = st3b.column
+        )
+        let eof_tok2 = Token(kind = TokenKind::TkEof, lexeme = "", span = sp_eof2)
+        return (st3b, sink_ws, eof_tok2)
+    .end
+
+    # 4) Newline explicite
+    if is_newline(c2):
+        let start_line = st_ws.line
+        let start_col = st_ws.column
+        let st3 = lexer_advance(st_ws)
+
+        if not st_ws.opts.emit_newline_tokens:
+            # On ne renvoie pas de token, on relance.
+            return lexer_next_token(st3, sink_ws)
+        .end
+
+        let sp_nl = ast.Span(
+            file = st_ws.file_name,
+            start_line = start_line,
+            start_col = start_col,
+            end_line = st3.line,
+            end_col = st3.column
+        )
+        let tok_nl = Token(
+            kind = TokenKind::TkNewline,
+            lexeme = "\n",
+            span = sp_nl
+        )
+        return (st3, sink_ws, tok_nl)
+    .end
+
+    # 5) Identifiants & mots-clés
+    if is_alpha(c2):
+        let pair_id = lex_identifier_or_keyword(st_ws)
+        let st_id = pair_id.0
+        let tok_id = pair_id.1
+        return (st_id, sink_ws, tok_id)
+    .end
+
+    # 6) Nombres
+    if is_digit(c2):
+        let pair_num = lex_number(st_ws)
+        let st_num = pair_num.0
+        let tok_num = pair_num.1
+        return (st_num, sink_ws, tok_num)
+    .end
+
+    # 7) Chaînes
+    if c2 == "\"":
+        let pair_str = lex_string(st_ws, sink_ws)
+        let st_str = pair_str.0
+        let sink_str = pair_str.1
+        let tok_str = pair_str.2
+        return (st_str, sink_str, tok_str)
+    .end
+
+    # 8) Opérateurs et ponctuation
+    let pair_sym = lex_symbol_or_operator(st_ws)
+    let st_sym = pair_sym.0
+    let tok_sym = pair_sym.1
+    return (st_sym, sink_ws, tok_sym)
+.end
+
+fn lexer_skip_spaces_and_comments(LexerState st, diag.DiagnosticsSink sink) -> (LexerState, diag.DiagnosticsSink):
+    let current = st
+    let ds = sink
+
+    while true:
+        let c = lexer_peek_char(current)
+        if c == "":
+            return (current, ds)
+        .end
+
+        if c == "#":
+            # Commentaire jusqu'à la fin de ligne.
+            let st2 = lexer_skip_comment_to_eol(current)
+            let current2 = st2
+            let x = 0u32   # no-op pour forcer la boucle
+        .end
+
+        if c != "#" and not is_whitespace(c):
+            return (current, ds)
+        .end
+
+        if is_whitespace(c) and not is_newline(c):
+            let st3 = lexer_advance(current)
+            let current3 = st3
+            let tmp = 0u32
+        .end
+
+        # Newline géré hors de cette fonction.
+        if is_newline(c):
+            return (current, ds)
+        .end
+    .end
+
+    return (current, ds)
+.end
+
+fn lexer_skip_comment_to_eol(LexerState st) -> LexerState:
+    let current = st
+    while true:
+        let c = lexer_peek_char(current)
+        if c == "" or is_newline(c):
+            return current
+        .end
+        let st2 = lexer_advance(current)
+        let current2 = st2
+    .end
+    return current
+.end
+
+# ----------------------------------------------------------------------------
+# Identifiants et mots-clés
+# ----------------------------------------------------------------------------
+
+fn lex_identifier_or_keyword(LexerState st) -> (LexerState, Token):
+    let start_line = st.line
+    let start_col = st.column
+    let current = st
+    let buf = ""
+
+    while true:
+        let c = lexer_peek_char(current)
+        if c == "" or not is_alnum(c):
+            break
+        .end
+        buf = buf + c
+        let st2 = lexer_advance(current)
+        let current2 = st2
+    .end
+
+    let kind = classify_keyword(buf)
+
+    let sp = ast.Span(
+        file = st.file_name,
+        start_line = start_line,
+        start_col = start_col,
+        end_line = current.line,
+        end_col = current.column
+    )
+    let tok = Token(kind = kind, lexeme = buf, span = sp)
+    return (current, tok)
+.end
+
+fn classify_keyword(String ident) -> TokenKind:
+    if ident == "module":
+        return TokenKind::TkKwModule
+    .end
+    if ident == "import":
+        return TokenKind::TkKwImport
+    .end
+    if ident == "export":
+        return TokenKind::TkKwExport
+    .end
+    if ident == "muffin":
+        return TokenKind::TkKwMuffin
+    .end
+
+    if ident == "program": return TokenKind::TkKwProgram .end
+    if ident == "service": return TokenKind::TkKwService .end
+    if ident == "kernel": return TokenKind::TkKwKernel .end
+    if ident == "driver":  return TokenKind::TkKwDriver  .end
+    if ident == "tool":    return TokenKind::TkKwTool    .end
+    if ident == "scenario":return TokenKind::TkKwScenario .end
+    if ident == "pipeline":return TokenKind::TkKwPipeline .end
+
+    if ident == "struct":  return TokenKind::TkKwStruct  .end
+    if ident == "union":   return TokenKind::TkKwUnion   .end
+    if ident == "enum":    return TokenKind::TkKwEnum    .end
+    if ident == "typedef": return TokenKind::TkKwTypedef .end
+    if ident == "inline":  return TokenKind::TkKwInline  .end
+    if ident == "fn":      return TokenKind::TkKwFn      .end
+
+    if ident == "extern":  return TokenKind::TkKwExtern  .end
+    if ident == "static":  return TokenKind::TkKwStatic  .end
+    if ident == "sizeof":  return TokenKind::TkKwSizeof  .end
+    if ident == "alignof": return TokenKind::TkKwAlignof .end
+
+    if ident == "let":     return TokenKind::TkKwLet     .end
+    if ident == "const":   return TokenKind::TkKwConst   .end
+
+    if ident == "if":      return TokenKind::TkKwIf      .end
+    if ident == "elif":    return TokenKind::TkKwElif    .end
+    if ident == "else":    return TokenKind::TkKwElse    .end
+    if ident == "while":   return TokenKind::TkKwWhile   .end
+    if ident == "for":     return TokenKind::TkKwFor     .end
+    if ident == "in":      return TokenKind::TkKwIn      .end
+    if ident == "match":   return TokenKind::TkKwMatch   .end
+
+    if ident == "break":   return TokenKind::TkKwBreak   .end
+    if ident == "continue":return TokenKind::TkKwContinue .end
+    if ident == "return":  return TokenKind::TkKwReturn  .end
+
+    if ident == "and":     return TokenKind::TkKwAnd     .end
+    if ident == "or":      return TokenKind::TkKwOr      .end
+    if ident == "not":     return TokenKind::TkKwNot     .end
+
+    if ident == "true":    return TokenKind::TkKwTrue    .end
+    if ident == "false":   return TokenKind::TkKwFalse   .end
+    if ident == "null":    return TokenKind::TkKwNull    .end
+
+    if ident == "as":      return TokenKind::TkKwAs      .end
+    if ident == "all":     return TokenKind::TkKwAll     .end
+
+    if ident == "volatile":return TokenKind::TkKwVolatile .end
+    if ident == "restrict":return TokenKind::TkKwRestrict .end
+    if ident == "pub":     return TokenKind::TkKwPub     .end
+    if ident == "trait":   return TokenKind::TkKwTrait   .end
+    if ident == "impl":    return TokenKind::TkKwImpl    .end
+    if ident == "where":   return TokenKind::TkKwWhere   .end
+
+    return TokenKind::TkIdentifier
+.end
+
+# ----------------------------------------------------------------------------
+# Nombres
+# ----------------------------------------------------------------------------
+
+fn lex_number(LexerState st) -> (LexerState, Token):
+    let start_line = st.line
+    let start_col = st.column
+    let current = st
+    let buf = ""
+    let seen_dot = false
+
+    while true:
+        let c = lexer_peek_char(current)
+        if c == "":
+            break
+        .end
+        if c == "." and not seen_dot:
+            seen_dot = true
+            buf = buf + c
+            let st2 = lexer_advance(current)
+            let current2 = st2
+        .end
+        if not is_digit(c):
+            break
+        .end
+        buf = buf + c
+        let st3 = lexer_advance(current)
+        let current3 = st3
+    .end
+
+    let sp = ast.Span(
+        file = st.file_name,
+        start_line = start_line,
+        start_col = start_col,
+        end_line = current.line,
+        end_col = current.column
+    )
+    let tok = Token(kind = TokenKind::TkNumber, lexeme = buf, span = sp)
+    return (current, tok)
+.end
+
+# ----------------------------------------------------------------------------
+# Chaînes
+# ----------------------------------------------------------------------------
+
+fn lex_string(LexerState st, diag.DiagnosticsSink sink) -> (LexerState, diag.DiagnosticsSink, Token):
+    let start_line = st.line
+    let start_col = st.column
+    let current = st
+
+    # consommer la quote initiale
+    let st1 = lexer_advance(current)
+    let buf = ""
+    let cur = st1
+    let ds = sink
+
+    while true:
+        let c = lexer_peek_char(cur)
+        if c == "":
+            # chaîne non terminée
+            let sp_err = ast.Span(
+                file = st.file_name,
+                start_line = start_line,
+                start_col = start_col,
+                end_line = cur.line,
+                end_col = cur.column
+            )
+            let err = diag.make_lexer_error("unterminated string literal", sp_err)
+            ds.push(err)
+            let sp_tok = sp_err
+            let tok_err = Token(kind = TokenKind::TkString, lexeme = buf, span = sp_tok)
+            return (cur, ds, tok_err)
+        .end
+
+        if c == "\"":
+            # fin de chaîne
+            let cur2 = lexer_advance(cur)
+            let sp_ok = ast.Span(
+                file = st.file_name,
+                start_line = start_line,
+                start_col = start_col,
+                end_line = cur2.line,
+                end_col = cur2.column
+            )
+            let tok_ok = Token(kind = TokenKind::TkString, lexeme = buf, span = sp_ok)
+            return (cur2, ds, tok_ok)
+        .end
+
+        if c == "\\":
+            # séquence d'échappement minimale
+            let cur2 = lexer_advance(cur)
+            let c2 = lexer_peek_char(cur2)
+            if c2 == "":
+                let sp_err2 = ast.Span(
+                    file = st.file_name,
+                    start_line = start_line,
+                    start_col = start_col,
+                    end_line = cur2.line,
+                    end_col = cur2.column
+                )
+                let err2 = diag.make_lexer_error("unterminated escape sequence", sp_err2)
+                ds.push(err2)
+                let tok_err2 = Token(kind = TokenKind::TkString, lexeme = buf, span = sp_err2)
+                return (cur2, ds, tok_err2)
+            .end
+
+            # TODO : décoder \n, \t, \\" etc. Pour l'instant on ajoute tel quel.
+            buf = buf + c2
+            let cur3 = lexer_advance(cur2)
+            let cur4 = cur3
+        .end
+
+        if c != "" and c != "\\" and c != "\"":
+            buf = buf + c
+            let cur5 = lexer_advance(cur)
+            let cur6 = cur5
+        .end
+    .end
+
+    let sp_fallback = ast.Span(
+        file = st.file_name,
+        start_line = start_line,
+        start_col = start_col,
+        end_line = cur.line,
+        end_col = cur.column
+    )
+    let tok_fb = Token(kind = TokenKind::TkString, lexeme = buf, span = sp_fallback)
+    return (cur, ds, tok_fb)
+.end
+
+# ----------------------------------------------------------------------------
+# Opérateurs et ponctuation
+# ----------------------------------------------------------------------------
+
+fn lex_symbol_or_operator(LexerState st) -> (LexerState, Token):
+    let start_line = st.line
+    let start_col = st.column
+    let c = lexer_peek_char(st)
+    let n = lexer_peek_next_char(st)
+
+    # Deux caractères possibles d'abord.
+    if c == "=" and n == "=":
+        let st2 = lexer_advance(lexer_advance(st))
+        let sp = ast.Span(file = st.file_name, start_line = start_line, start_col = start_col, end_line = st2.line, end_col = st2.column)
+        let tok = Token(kind = TokenKind::TkEqEq, lexeme = "==", span = sp)
+        return (st2, tok)
+    .end
+
+    if c == "!" and n == "=":
+        let st3 = lexer_advance(lexer_advance(st))
+        let sp2 = ast.Span(file = st.file_name, start_line = start_line, start_col = start_col, end_line = st3.line, end_col = st3.column)
+        let tok2 = Token(kind = TokenKind::TkBangEq, lexeme = "!=", span = sp2)
+        return (st3, tok2)
+    .end
+
+    if c == "<" and n == "=":
+        let st4 = lexer_advance(lexer_advance(st))
+        let sp3 = ast.Span(file = st.file_name, start_line = start_line, start_col = start_col, end_line = st4.line, end_col = st4.column)
+        let tok3 = Token(kind = TokenKind::TkLe, lexeme = "<=", span = sp3)
+        return (st4, tok3)
+    .end
+
+    if c == ">" and n == "=":
+        let st5 = lexer_advance(lexer_advance(st))
+        let sp4 = ast.Span(file = st.file_name, start_line = start_line, start_col = start_col, end_line = st5.line, end_col = st5.column)
+        let tok4 = Token(kind = TokenKind::TkGe, lexeme = ">=", span = sp4)
+        return (st5, tok4)
+    .end
+
+    if c == "-" and n == ">":
+        let st6 = lexer_advance(lexer_advance(st))
+        let sp5 = ast.Span(file = st.file_name, start_line = start_line, start_col = start_col, end_line = st6.line, end_col = st6.column)
+        let tok5 = Token(kind = TokenKind::TkArrow, lexeme = "->", span = sp5)
+        return (st6, tok5)
+    .end
+
+    if c == "=" and n == ">":
+        let st7 = lexer_advance(lexer_advance(st))
+        let sp6 = ast.Span(file = st.file_name, start_line = start_line, start_col = start_col, end_line = st7.line, end_col = st7.column)
+        let tok6 = Token(kind = TokenKind::TkFatArrow, lexeme = "=>", span = sp6)
+        return (st7, tok6)
+    .end
+
+    if c == "|" and n == ">":
+        let st8 = lexer_advance(lexer_advance(st))
+        let sp7 = ast.Span(file = st.file_name, start_line = start_line, start_col = start_col, end_line = st8.line, end_col = st8.column)
+        let tok7 = Token(kind = TokenKind::TkPipeGt, lexeme = "|>", span = sp7)
+        return (st8, tok7)
+    .end
+
+    # Simple caractère
+    let st1 = lexer_advance(st)
+    let sp_single = ast.Span(
+        file = st.file_name,
+        start_line = start_line,
+        start_col = start_col,
+        end_line = st1.line,
+        end_col = st1.column
+    )
+
+    if c == "(":  return (st1, Token(kind = TokenKind::TkLParen,    lexeme = c, span = sp_single)) .end
+    if c == ")":  return (st1, Token(kind = TokenKind::TkRParen,    lexeme = c, span = sp_single)) .end
+    if c == "[":  return (st1, Token(kind = TokenKind::TkLBracket,  lexeme = c, span = sp_single)) .end
+    if c == "]":  return (st1, Token(kind = TokenKind::TkRBracket,  lexeme = c, span = sp_single)) .end
+    if c == "{":  return (st1, Token(kind = TokenKind::TkLBrace,    lexeme = c, span = sp_single)) .end
+    if c == "}":  return (st1, Token(kind = TokenKind::TkRBrace,    lexeme = c, span = sp_single)) .end
+    if c == ",":  return (st1, Token(kind = TokenKind::TkComma,     lexeme = c, span = sp_single)) .end
+    if c == ".":  return (st1, Token(kind = TokenKind::TkDot,       lexeme = c, span = sp_single)) .end
+    if c == ":":  return (st1, Token(kind = TokenKind::TkColon,     lexeme = c, span = sp_single)) .end
+    if c == ";":  return (st1, Token(kind = TokenKind::TkSemicolon, lexeme = c, span = sp_single)) .end
+    if c == "=":  return (st1, Token(kind = TokenKind::TkAssign,    lexeme = c, span = sp_single)) .end
+    if c == "+":  return (st1, Token(kind = TokenKind::TkPlus,      lexeme = c, span = sp_single)) .end
+    if c == "-":  return (st1, Token(kind = TokenKind::TkMinus,     lexeme = c, span = sp_single)) .end
+    if c == "*":  return (st1, Token(kind = TokenKind::TkStar,      lexeme = c, span = sp_single)) .end
+    if c == "/":  return (st1, Token(kind = TokenKind::TkSlash,     lexeme = c, span = sp_single)) .end
+    if c == "%":  return (st1, Token(kind = TokenKind::TkPercent,   lexeme = c, span = sp_single)) .end
+    if c == "<":  return (st1, Token(kind = TokenKind::TkLt,        lexeme = c, span = sp_single)) .end
+    if c == ">":  return (st1, Token(kind = TokenKind::TkGt,        lexeme = c, span = sp_single)) .end
+    if c == "&":  return (st1, Token(kind = TokenKind::TkAmp,       lexeme = c, span = sp_single)) .end
+    if c == "|":  return (st1, Token(kind = TokenKind::TkPipe,      lexeme = c, span = sp_single)) .end
+    if c == "^":  return (st1, Token(kind = TokenKind::TkCaret,     lexeme = c, span = sp_single)) .end
+
+    # Caractère inconnu : on laisse au parser / diagnostics s'en charger.
+    let tok_unk = Token(kind = TokenKind::TkIdentifier, lexeme = c, span = sp_single)
+    return (st1, tok_unk)
+.end
+
+# ----------------------------------------------------------------------------
+# Notes :
+#   - Ce lexer est structuré pour être compatible avec ta grammaire Vitte
+#     actuelle (indentation + ".end" + ensemble de mots-clés).
+#   - Il reste volontairement extensible : tu peux affiner la gestion des
+#     échappements, des nombres (hex, bin, suffixes), et des opérateurs
+#     composés sans changer l'API lex_source/lex_source_with_options.
+# ----------------------------------------------------------------------------

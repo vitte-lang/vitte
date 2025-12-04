@@ -1,0 +1,396 @@
+
+
+module l.tools.repl
+
+import l.tools.lpkg
+import l.tools.pkg
+import lvm.vm
+import lvm.value
+import lvm.debug
+
+# ============================================================================
+# Vitte tools – Modèle logique de REPL (Read–Eval–Print Loop)
+#
+# Objectifs :
+#   - Modéliser, au niveau purement déclaratif, l’état et les interactions d’un
+#     REPL Vitte :
+#       * configuration et options,
+#       * sessions et buffers,
+#       * commandes utilisateur et entrées de code,
+#       * historique, complétion, inspection, résultats d’évaluation,
+#       * intégration avec la VM LVM (valeurs, debug, bytecode).
+#   - Servir de contrat entre :
+#       * le moteur REPL (interpréteur interactif),
+#       * les backends (VM, compilateur, outils pkg/lpkg),
+#       * les UIs (CLI, TUI, IDE, web) qui souhaitent se brancher en mode REPL.
+#   - Ne contenir que des structures de données (aucune fonction ni I/O).
+#
+# Conventions :
+#   - Même style que vitte.compiler.ast / lrt.ffi / lvm.* / l.tools.* :
+#       * `pub struct/enum` + ":" et blocs terminés par `.end` ;
+#       * enums "tag-only" ;
+#       * IDs forts basés sur des indices u32.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Indices et identifiants
+# ----------------------------------------------------------------------------
+
+pub typedef u32 ReplSessionIndex
+pub typedef u32 ReplInputIndex
+pub typedef u32 ReplEvalIndex
+pub typedef u32 ReplHistoryIndex
+pub typedef u32 ReplCompletionIndex
+pub typedef u32 ReplSnippetIndex
+pub typedef u32 ReplNodeIndex
+
+pub struct ReplSessionId:
+    let raw: ReplSessionIndex
+.end
+
+pub struct ReplInputId:
+    let raw: ReplInputIndex
+.end
+
+pub struct ReplEvalId:
+    let raw: ReplEvalIndex
+.end
+
+pub struct ReplHistoryId:
+    let raw: ReplHistoryIndex
+.end
+
+pub struct ReplCompletionId:
+    let raw: ReplCompletionIndex
+.end
+
+pub struct ReplSnippetId:
+    let raw: ReplSnippetIndex
+.end
+
+# ----------------------------------------------------------------------------
+# Configuration et options REPL
+# ----------------------------------------------------------------------------
+
+# Mode principal du REPL (profil d’usage).
+pub enum ReplMode:
+    ReplModeDefault        # REPL généraliste
+    ReplModeScript         # scripts multi-lignes
+    ReplModeDebug          # focalisé debug/VM
+    ReplModeEvalOnly       # REPL sans état global durable
+.end
+
+# Niveau de verbosité pour les messages système.
+pub enum ReplVerbosity:
+    ReplQuiet
+    ReplNormal
+    ReplVerbose
+.end
+
+# Options de formatage des valeurs.
+pub struct ReplPrintOptions:
+    let max_items: u32               # nb max d’éléments affichés (list/map)
+    let max_depth: u32               # profondeur max d’affichage récursif
+    let show_types: Bool             # afficher les types runtime
+    let pretty_json: Bool            # formatage style JSON pour map/list
+    let color_output: Bool           # true => codes ANSI couleur
+.end
+
+# Options de complétion.
+pub struct ReplCompletionOptions:
+    let enable_completion: Bool
+    let max_suggestions: u32
+    let show_types_in_completion: Bool
+    let fuzzy_match: Bool
+.end
+
+# Options d’historique.
+pub struct ReplHistoryOptions:
+    let max_entries: u32
+    let persist_to_disk: Bool
+    let history_file: Option<String>   # chemin vers fichier d’historique
+.end
+
+# Options de compilation/évaluation.
+pub struct ReplEvalOptions:
+    let auto_semi_insert: Bool         # insertion automatique de ';' ou équivalent
+    let treat_warnings_as_errors: Bool
+    let allow_unsafe: Bool
+.end
+
+# Configuration complète d’une session REPL.
+pub struct ReplConfig:
+    let mode: ReplMode
+    let verbosity: ReplVerbosity
+    let prompt_main: String          # ex: "vitte> "
+    let prompt_cont: String          # ex: " ...> "
+    let print_options: ReplPrintOptions
+    let completion_options: ReplCompletionOptions
+    let history_options: ReplHistoryOptions
+    let eval_options: ReplEvalOptions
+.end
+
+# ----------------------------------------------------------------------------
+# États d’entrée et buffer
+# ----------------------------------------------------------------------------
+
+# Type d’entrée utilisateur.
+pub enum ReplInputKind:
+    InputCommand      # commande REPL (ex: :quit, :help)
+    InputExpression   # expression Vitte
+    InputBlock        # bloc de code multi-lignes
+    InputRawText      # texte brut non reconnu
+.end
+
+# Statut de complétude du buffer courant.
+pub enum ReplBufferState:
+    BufferEmpty
+    BufferIncomplete
+    BufferComplete
+    BufferError
+.end
+
+# Buffer courant du REPL.
+pub struct ReplBuffer:
+    let text: String
+    let state: ReplBufferState
+    let input_kind: ReplInputKind
+.end
+
+# ----------------------------------------------------------------------------
+# Commandes REPL
+# ----------------------------------------------------------------------------
+
+# Commandes REPL de haut niveau (préfixées par ex. par ':' dans la CLI).
+pub enum ReplCommandKind:
+    CmdHelp
+    CmdQuit
+    CmdClear
+    CmdHistory
+    CmdReload
+    CmdLoadFile
+    CmdSaveSession
+    CmdShowConfig
+    CmdSetOption
+    CmdResetVm
+    CmdEnvInfo
+    CmdTypeOf
+    CmdInspectValue
+    CmdDumpAst
+    CmdDumpBytecode
+    CmdDisassemble
+    CmdDebugStep
+    CmdDebugContinue
+    CmdDebugBreak
+.end
+
+# Options pour la commande :load ou :reload.
+pub struct ReplCommandLoadFile:
+    let path: String
+    let as_module: Bool
+.end
+
+# Options pour la commande :save-session.
+pub struct ReplCommandSaveSession:
+    let path: String
+    let include_history: Bool
+    let include_snippets: Bool
+.end
+
+# Options pour la commande :set.
+pub struct ReplCommandSetOption:
+    let key: String
+    let value: String
+.end
+
+# Commande concrète.
+pub struct ReplCommand:
+    let kind: ReplCommandKind
+    let raw_text: String
+    let args: Vec<String>
+    let load_file: Option<ReplCommandLoadFile>
+    let save_session: Option<ReplCommandSaveSession>
+    let set_option: Option<ReplCommandSetOption>
+.end
+
+# ----------------------------------------------------------------------------
+# Entrées, historique et snippets
+# ----------------------------------------------------------------------------
+
+# Une entrée saisie par l’utilisateur (ligne ou bloc).
+pub struct ReplInput:
+    let id: ReplInputId
+    let session: ReplSessionId
+    let text: String
+    let kind: ReplInputKind
+    let timestamp_millis: u64
+.end
+
+# Entrée d’historique (lien vers input + éventuel résultat principal).
+pub struct ReplHistoryEntry:
+    let id: ReplHistoryId
+    let input: ReplInputId
+    let primary_eval: Option<ReplEvalId>
+.end
+
+# Historique complet d’une session.
+pub struct ReplHistory:
+    let entries: Vec<ReplHistoryEntry>
+.end
+
+# Snippet nommé enregistré depuis le REPL.
+pub struct ReplSnippet:
+    let id: ReplSnippetId
+    let name: String
+    let code: String
+    let description: Option<String>
+.end
+
+# Table des snippets.
+pub struct ReplSnippetTable:
+    let snippets: Vec<ReplSnippet>
+.end
+
+# ----------------------------------------------------------------------------
+# Résultats d’évaluation
+# ----------------------------------------------------------------------------
+
+# Statut d’une évaluation unique.
+pub enum ReplEvalStatusKind:
+    EvalSuccess
+    EvalSuccessWithWarnings
+    EvalCompileError
+    EvalRuntimeError
+    EvalCancelled
+.end
+
+# Résumé de compilation (diagnostics).
+pub struct ReplCompileSummary:
+    let diagnostics: LpkgDiagnosticSet   # réutilisation du modèle de diag lpkg
+    let had_errors: Bool
+    let had_warnings: Bool
+.end
+
+# Résumé d’exécution dans la VM.
+pub struct ReplRuntimeSummary:
+    let vm: LvmVmLogicalId
+    let debug_session: Option<LvmDebugSessionId>
+.end
+
+# Résultat d’évaluation pour une entrée.
+pub struct ReplEvalResult:
+    let id: ReplEvalId
+    let input: ReplInputId
+    let status: ReplEvalStatusKind
+    let compile_summary: Option<ReplCompileSummary>
+    let runtime_summary: Option<ReplRuntimeSummary>
+    let value: Option<LvmValueId>           # dernière valeur produite
+    let printed_output: Vec<String>         # lignes affichées
+    let started_millis: u64
+    let finished_millis: u64
+.end
+
+# ----------------------------------------------------------------------------
+# Complétion, inspection et aide contextuelle
+# ----------------------------------------------------------------------------
+
+# Type de complétion.
+pub enum ReplCompletionKind:
+    CompletionIdentifier
+    CompletionKeyword
+    CompletionModule
+    CompletionValue
+    CompletionSnippet
+.end
+
+# Une seule suggestion de complétion.
+pub struct ReplCompletionItem:
+    let id: ReplCompletionId
+    let kind: ReplCompletionKind
+    let label: String               # texte affiché
+    let insert_text: String         # texte à insérer
+    let detail: Option<String>      # court commentaire
+    let documentation: Option<String>
+.end
+
+# Résultat de complétion.
+pub struct ReplCompletionResult:
+    let input: ReplInputId
+    let cursor_offset: u32
+    let items: Vec<ReplCompletionItem>
+.end
+
+# Résultat d’inspection de valeur.
+pub struct ReplInspectResult:
+    let value: LvmValueId
+    let type_name: Option<String>
+    let summary: String
+    let details: Vec<String>
+.end
+
+# Résultat d’une requête :type of.
+pub struct ReplTypeOfResult:
+    let input: ReplInputId
+    let type_name: String
+    let runtime_type_id: Option<LvmRuntimeTypeId>
+.end
+
+# ----------------------------------------------------------------------------
+# Statut de session et intégration VM
+# ----------------------------------------------------------------------------
+
+# État courant de la session REPL par rapport à la VM.
+pub enum ReplSessionStateKind:
+    SessionNew
+    SessionReady
+    SessionRunning
+    SessionPaused
+    SessionShuttingDown
+    SessionClosed
+.end
+
+# Binding logique entre session REPL et VM.
+pub struct ReplVmBinding:
+    let vm: LvmVmLogicalId
+    let main_context: LvmVmContext
+.end
+
+# État runtime d’une session REPL.
+pub struct ReplSessionState:
+    let kind: ReplSessionStateKind
+    let last_error_message: Option<String>
+.end
+
+# Session REPL complète.
+pub struct ReplSession:
+    let id: ReplSessionId
+    let config: ReplConfig
+    let env: PkgEnvId
+    let pkg_workspace: LpkgWorkspace
+
+    let vm_binding: Option<ReplVmBinding>
+    let history: ReplHistory
+    let snippets: ReplSnippetTable
+
+    let last_input: Option<ReplInputId>
+    let last_eval: Option<ReplEvalId>
+
+    let state: ReplSessionState
+.end
+
+# ----------------------------------------------------------------------------
+# Nœuds génériques REPL pour tooling
+# ----------------------------------------------------------------------------
+
+pub enum ReplNodeKind:
+    NodeSession
+    NodeInput
+    NodeEval
+    NodeHistoryEntry
+    NodeSnippet
+.end
+
+pub struct ReplNode:
+    let id: ReplNodeIndex
+    let kind: ReplNodeKind
+.end

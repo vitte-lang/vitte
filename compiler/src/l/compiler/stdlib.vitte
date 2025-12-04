@@ -1,0 +1,735 @@
+
+
+module vitte.compiler.stdlib
+
+import std.collections as coll
+
+# =============================================================================
+# Vitte compiler – Stdlib catalog (maximal, logique, sans I/O)
+# =============================================================================
+#
+# Rôle de ce module :
+#   - Décrire la "vue logique" de la bibliothèque standard Vitte pour
+#     le front-end / HIR / analyse sémantique.
+#   - Fournir des structures immuables simples à sérialiser (JSON / Muffin).
+#   - Ne faire aucune hypothèse sur le backend ni le runtime (aucun I/O).
+#
+# Ce module ne connaît que :
+#   - les types builtin "connus" du langage (Bool, Int, String, ...),
+#   - quelques fonctions builtin (print, assert, ...),
+#   - la structure des modules std (core, collections, io, ...),
+#   - ce qui appartient implicitement au "prelude".
+#
+# L'objectif n'est pas d'épuiser toutes les fonctions de la std réelle, mais
+# de donner un modèle suffisamment riche pour l'analyse et l'auto-complétion.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Kinds de types builtin
+# -----------------------------------------------------------------------------
+
+pub enum BuiltinTypeKind:
+    BuiltinTypeBool
+    BuiltinTypeI8
+    BuiltinTypeI16
+    BuiltinTypeI32
+    BuiltinTypeI64
+    BuiltinTypeU8
+    BuiltinTypeU16
+    BuiltinTypeU32
+    BuiltinTypeU64
+    BuiltinTypeIsize
+    BuiltinTypeUsize
+    BuiltinTypeF32
+    BuiltinTypeF64
+    BuiltinTypeChar
+    BuiltinTypeString
+    BuiltinTypeUnit       # type vide / void
+    BuiltinTypeNever      # type qui ne retourne jamais
+    BuiltinTypeAny        # top-type (super-type universel logique)
+.end
+
+pub struct BuiltinType:
+    let id: u32
+    let name: String         # nom visible dans le code ("Bool", "i32", ...)
+    let kind: BuiltinTypeKind
+    let module_path: String  # module logique, ex: "std/core"
+.end
+
+# -----------------------------------------------------------------------------
+# Kinds de fonctions builtin
+# -----------------------------------------------------------------------------
+
+pub enum BuiltinFnKind:
+    BuiltinFnPrint
+    BuiltinFnEprint
+    BuiltinFnAssert
+    BuiltinFnPanic
+    BuiltinFnLen
+    BuiltinFnRange
+    BuiltinFnClone
+    BuiltinFnDrop
+    BuiltinFnInto
+    BuiltinFnFrom
+    BuiltinFnEq
+    BuiltinFnNe
+    BuiltinFnHash
+    BuiltinFnOrdCompare
+.end
+
+pub struct BuiltinFn:
+    let id: u32
+    let name: String            # nom simple ("print", "len", ...)
+    let module_path: String     # ex: "std/core/io"
+    let kind: BuiltinFnKind
+    let arity_min: u8
+    let arity_max: u8           # arité max, ou arité exacte si min==max
+    let is_variadic: bool
+.end
+
+# -----------------------------------------------------------------------------
+# Modules std + Prelude
+# -----------------------------------------------------------------------------
+
+pub struct StdModule:
+    let id: u32
+    let path: String          # ex: "std/core", "std/collections"
+    let is_prelude: bool      # true => import implicite dans tous les modules
+.end
+
+pub enum PreludeItemKind:
+    PreludeItemType
+    PreludeItemFunction
+    PreludeItemMacro
+.end
+
+pub struct PreludeItem:
+    let module_id: u32
+    let symbol_name: String   # nom du type/fn/macro dans le module
+    let kind: PreludeItemKind
+.end
+
+# -----------------------------------------------------------------------------
+# Catalogue global de stdlib
+# -----------------------------------------------------------------------------
+
+pub struct StdlibCatalog:
+    let modules: Vec<StdModule>
+    let builtin_types: Vec<BuiltinType>
+    let builtin_fns: Vec<BuiltinFn>
+    let prelude: Vec<PreludeItem>
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers internes : next_id
+# -----------------------------------------------------------------------------
+
+fn next_module_id(mods: Vec<StdModule>) -> u32:
+    let n = mods.len()
+    return (u32) n
+.end
+
+fn next_type_id(types: Vec<BuiltinType>) -> u32:
+    let n = types.len()
+    return (u32) n
+.end
+
+fn next_fn_id(fns: Vec<BuiltinFn>) -> u32:
+    let n = fns.len()
+    return (u32) n
+.end
+
+# -----------------------------------------------------------------------------
+# Ajout de modules std
+# -----------------------------------------------------------------------------
+
+pub fn stdlib_add_module(
+    catalog: StdlibCatalog,
+    path: String,
+    is_prelude: bool
+) -> (StdlibCatalog, u32):
+    let modules = catalog.modules
+    let builtin_types = catalog.builtin_types
+    let builtin_fns = catalog.builtin_fns
+    let prelude = catalog.prelude
+
+    let new_id = next_module_id(modules)
+
+    let m = StdModule {
+        id: new_id,
+        path: path,
+        is_prelude: is_prelude
+    }
+
+    modules.push(m)
+
+    let cat2 = StdlibCatalog {
+        modules: modules,
+        builtin_types: builtin_types,
+        builtin_fns: builtin_fns,
+        prelude: prelude
+    }
+
+    let out = (cat2, new_id)
+    return out
+.end
+
+pub fn stdlib_find_module_id(
+    catalog: StdlibCatalog,
+    path: String
+) -> coll.Option<u32>:
+    let modules = catalog.modules
+    let n = modules.len()
+    let i = (usize) 0
+
+    while i < n:
+        let m = modules[i]
+        if m.path == path:
+            let some_id = coll.option_some<u32>(m.id)
+            return some_id
+        .end
+        let i = i + (usize) 1
+    .end
+
+    let none_id = coll.option_none<u32>()
+    return none_id
+.end
+
+# -----------------------------------------------------------------------------
+# Ajout de types builtin
+# -----------------------------------------------------------------------------
+
+pub fn stdlib_add_builtin_type(
+    catalog: StdlibCatalog,
+    name: String,
+    kind: BuiltinTypeKind,
+    module_path: String
+) -> (StdlibCatalog, u32):
+    let modules = catalog.modules
+    let builtin_types = catalog.builtin_types
+    let builtin_fns = catalog.builtin_fns
+    let prelude = catalog.prelude
+
+    let new_id = next_type_id(builtin_types)
+
+    let t = BuiltinType {
+        id: new_id,
+        name: name,
+        kind: kind,
+        module_path: module_path
+    }
+
+    builtin_types.push(t)
+
+    let cat2 = StdlibCatalog {
+        modules: modules,
+        builtin_types: builtin_types,
+        builtin_fns: builtin_fns,
+        prelude: prelude
+    }
+
+    let out = (cat2, new_id)
+    return out
+.end
+
+pub fn stdlib_lookup_type_id_by_name(
+    catalog: StdlibCatalog,
+    name: String
+) -> coll.Option<u32>:
+    let types = catalog.builtin_types
+    let n = types.len()
+    let i = (usize) 0
+
+    while i < n:
+        let t = types[i]
+        if t.name == name:
+            let some_id = coll.option_some<u32>(t.id)
+            return some_id
+        .end
+        let i = i + (usize) 1
+    .end
+
+    let none_id = coll.option_none<u32>()
+    return none_id
+.end
+
+pub fn stdlib_is_builtin_type_name(
+    catalog: StdlibCatalog,
+    name: String
+) -> bool:
+    let opt_id = stdlib_lookup_type_id_by_name(catalog, name)
+    let is_some = coll.option_is_some<u32>(opt_id)
+    return is_some
+.end
+
+pub fn stdlib_get_builtin_type(
+    catalog: StdlibCatalog,
+    type_id: u32
+) -> BuiltinType:
+    let types = catalog.builtin_types
+    let idx = (usize) type_id
+    let t = types[idx]
+    return t
+.end
+
+# -----------------------------------------------------------------------------
+# Ajout de fonctions builtin
+# -----------------------------------------------------------------------------
+
+pub fn stdlib_add_builtin_fn(
+    catalog: StdlibCatalog,
+    name: String,
+    module_path: String,
+    kind: BuiltinFnKind,
+    arity_min: u8,
+    arity_max: u8,
+    is_variadic: bool
+) -> (StdlibCatalog, u32):
+    let modules = catalog.modules
+    let builtin_types = catalog.builtin_types
+    let builtin_fns = catalog.builtin_fns
+    let prelude = catalog.prelude
+
+    let new_id = next_fn_id(builtin_fns)
+
+    let f = BuiltinFn {
+        id: new_id,
+        name: name,
+        module_path: module_path,
+        kind: kind,
+        arity_min: arity_min,
+        arity_max: arity_max,
+        is_variadic: is_variadic
+    }
+
+    builtin_fns.push(f)
+
+    let cat2 = StdlibCatalog {
+        modules: modules,
+        builtin_types: builtin_types,
+        builtin_fns: builtin_fns,
+        prelude: prelude
+    }
+
+    let out = (cat2, new_id)
+    return out
+.end
+
+pub fn stdlib_lookup_fn_id_by_name(
+    catalog: StdlibCatalog,
+    module_path: String,
+    name: String
+) -> coll.Option<u32>:
+    let fns = catalog.builtin_fns
+    let n = fns.len()
+    let i = (usize) 0
+
+    while i < n:
+        let f = fns[i]
+        if f.name == name and f.module_path == module_path:
+            let some_id = coll.option_some<u32>(f.id)
+            return some_id
+        .end
+        let i = i + (usize) 1
+    .end
+
+    let none_id = coll.option_none<u32>()
+    return none_id
+.end
+
+pub fn stdlib_get_builtin_fn(
+    catalog: StdlibCatalog,
+    fn_id: u32
+) -> BuiltinFn:
+    let fns = catalog.builtin_fns
+    let idx = (usize) fn_id
+    let f = fns[idx]
+    return f
+.end
+
+# -----------------------------------------------------------------------------
+# Gestion du Prelude
+# -----------------------------------------------------------------------------
+
+pub fn stdlib_add_prelude_item(
+    catalog: StdlibCatalog,
+    module_id: u32,
+    symbol_name: String,
+    kind: PreludeItemKind
+) -> StdlibCatalog:
+    let modules = catalog.modules
+    let builtin_types = catalog.builtin_types
+    let builtin_fns = catalog.builtin_fns
+    let prelude = catalog.prelude
+
+    let item = PreludeItem {
+        module_id: module_id,
+        symbol_name: symbol_name,
+        kind: kind
+    }
+
+    prelude.push(item)
+
+    let cat2 = StdlibCatalog {
+        modules: modules,
+        builtin_types: builtin_types,
+        builtin_fns: builtin_fns,
+        prelude: prelude
+    }
+    return cat2
+.end
+
+# Retourne tous les éléments du prelude pour un module donné.
+# (Ex: pour un futur filtrage contextuel.)
+pub fn stdlib_prelude_items_for_module(
+    catalog: StdlibCatalog,
+    module_id: u32
+) -> Vec<PreludeItem>:
+    let all_items = catalog.prelude
+    let n = all_items.len()
+    let i = (usize) 0
+    let out = Vec<PreludeItem>::new()
+
+    while i < n:
+        let it = all_items[i]
+        if it.module_id == module_id:
+            out.push(it)
+        .end
+        let i = i + (usize) 1
+    .end
+
+    return out
+.end
+
+# -----------------------------------------------------------------------------
+# Construction d'un catalogue minimal standard
+# -----------------------------------------------------------------------------
+
+fn stdlib_seed_core_modules_empty() -> StdlibCatalog:
+    let modules = Vec<StdModule>::new()
+    let builtin_types = Vec<BuiltinType>::new()
+    let builtin_fns = Vec<BuiltinFn>::new()
+    let prelude = Vec<PreludeItem>::new()
+
+    let cat = StdlibCatalog {
+        modules: modules,
+        builtin_types: builtin_types,
+        builtin_fns: builtin_fns,
+        prelude: prelude
+    }
+    return cat
+.end
+
+# Crée un catalogue avec les modules de base, mais sans types/fonctions.
+fn stdlib_seed_core_modules() -> StdlibCatalog:
+    let cat0 = stdlib_seed_core_modules_empty()
+
+    let (cat1, _core_id) = stdlib_add_module(cat0, "std/core", true)
+    let (cat2, _coll_id) = stdlib_add_module(cat1, "std/collections", false)
+    let (cat3, _io_id)   = stdlib_add_module(cat2, "std/io", false)
+    let (cat4, _fs_id)   = stdlib_add_module(cat3, "std/fs", false)
+
+    return cat4
+.end
+
+# Initialise tous les types builtin connus.
+fn stdlib_seed_builtin_types(cat_in: StdlibCatalog) -> StdlibCatalog:
+    let cat0 = cat_in
+
+    # Tous les types builtin sont considérés comme appartenant à std/core.
+    let core_path = "std/core"
+
+    let (cat1, _t_bool) = stdlib_add_builtin_type(
+        cat0,
+        "Bool",
+        BuiltinTypeKind::BuiltinTypeBool,
+        core_path
+    )
+
+    let (cat2, _t_i8) = stdlib_add_builtin_type(cat1, "i8", BuiltinTypeKind::BuiltinTypeI8, core_path)
+    let (cat3, _t_i16) = stdlib_add_builtin_type(cat2, "i16", BuiltinTypeKind::BuiltinTypeI16, core_path)
+    let (cat4, _t_i32) = stdlib_add_builtin_type(cat3, "i32", BuiltinTypeKind::BuiltinTypeI32, core_path)
+    let (cat5, _t_i64) = stdlib_add_builtin_type(cat4, "i64", BuiltinTypeKind::BuiltinTypeI64, core_path)
+
+    let (cat6, _t_u8) = stdlib_add_builtin_type(cat5, "u8", BuiltinTypeKind::BuiltinTypeU8, core_path)
+    let (cat7, _t_u16) = stdlib_add_builtin_type(cat6, "u16", BuiltinTypeKind::BuiltinTypeU16, core_path)
+    let (cat8, _t_u32) = stdlib_add_builtin_type(cat7, "u32", BuiltinTypeKind::BuiltinTypeU32, core_path)
+    let (cat9, _t_u64) = stdlib_add_builtin_type(cat8, "u64", BuiltinTypeKind::BuiltinTypeU64, core_path)
+
+    let (cat10, _t_isize) = stdlib_add_builtin_type(cat9, "isize", BuiltinTypeKind::BuiltinTypeIsize, core_path)
+    let (cat11, _t_usize) = stdlib_add_builtin_type(cat10, "usize", BuiltinTypeKind::BuiltinTypeUsize, core_path)
+
+    let (cat12, _t_f32) = stdlib_add_builtin_type(cat11, "f32", BuiltinTypeKind::BuiltinTypeF32, core_path)
+    let (cat13, _t_f64) = stdlib_add_builtin_type(cat12, "f64", BuiltinTypeKind::BuiltinTypeF64, core_path)
+
+    let (cat14, _t_char) = stdlib_add_builtin_type(cat13, "Char", BuiltinTypeKind::BuiltinTypeChar, core_path)
+    let (cat15, _t_string) = stdlib_add_builtin_type(cat14, "String", BuiltinTypeKind::BuiltinTypeString, core_path)
+
+    let (cat16, _t_unit) = stdlib_add_builtin_type(cat15, "Unit", BuiltinTypeKind::BuiltinTypeUnit, core_path)
+    let (cat17, _t_never) = stdlib_add_builtin_type(cat16, "Never", BuiltinTypeKind::BuiltinTypeNever, core_path)
+    let (cat18, _t_any) = stdlib_add_builtin_type(cat17, "Any", BuiltinTypeKind::BuiltinTypeAny, core_path)
+
+    return cat18
+.end
+
+# Initialise quelques fonctions builtin typiques.
+fn stdlib_seed_builtin_fns(cat_in: StdlibCatalog) -> StdlibCatalog:
+    let cat0 = cat_in
+    let core_io_path = "std/core/io"
+
+    let (cat1, _f_print) = stdlib_add_builtin_fn(
+        cat0,
+        "print",
+        core_io_path,
+        BuiltinFnKind::BuiltinFnPrint,
+        (u8) 1,
+        (u8) 255,
+        true
+    )
+
+    let (cat2, _f_eprint) = stdlib_add_builtin_fn(
+        cat1,
+        "eprint",
+        core_io_path,
+        BuiltinFnKind::BuiltinFnEprint,
+        (u8) 1,
+        (u8) 255,
+        true
+    )
+
+    let (cat3, _f_assert) = stdlib_add_builtin_fn(
+        cat2,
+        "assert",
+        "std/core",
+        BuiltinFnKind::BuiltinFnAssert,
+        (u8) 1,
+        (u8) 2,
+        false
+    )
+
+    let (cat4, _f_panic) = stdlib_add_builtin_fn(
+        cat3,
+        "panic",
+        "std/core",
+        BuiltinFnKind::BuiltinFnPanic,
+        (u8) 1,
+        (u8) 1,
+        false
+    )
+
+    let (cat5, _f_len) = stdlib_add_builtin_fn(
+        cat4,
+        "len",
+        "std/core",
+        BuiltinFnKind::BuiltinFnLen,
+        (u8) 1,
+        (u8) 1,
+        false
+    )
+
+    let (cat6, _f_range) = stdlib_add_builtin_fn(
+        cat5,
+        "range",
+        "std/core",
+        BuiltinFnKind::BuiltinFnRange,
+        (u8) 1,
+        (u8) 3,
+        false
+    )
+
+    # Fonctions génériques de traits logiques.
+    let (cat7, _f_clone) = stdlib_add_builtin_fn(
+        cat6,
+        "clone",
+        "std/core/traits",
+        BuiltinFnKind::BuiltinFnClone,
+        (u8) 1,
+        (u8) 1,
+        false
+    )
+
+    let (cat8, _f_drop) = stdlib_add_builtin_fn(
+        cat7,
+        "drop",
+        "std/core/traits",
+        BuiltinFnKind::BuiltinFnDrop,
+        (u8) 1,
+        (u8) 1,
+        false
+    )
+
+    let (cat9, _f_into) = stdlib_add_builtin_fn(
+        cat8,
+        "into",
+        "std/core/traits",
+        BuiltinFnKind::BuiltinFnInto,
+        (u8) 1,
+        (u8) 1,
+        false
+    )
+
+    let (cat10, _f_from) = stdlib_add_builtin_fn(
+        cat9,
+        "from",
+        "std/core/traits",
+        BuiltinFnKind::BuiltinFnFrom,
+        (u8) 1,
+        (u8) 1,
+        false
+    )
+
+    let (cat11, _f_eq) = stdlib_add_builtin_fn(
+        cat10,
+        "eq",
+        "std/core/traits",
+        BuiltinFnKind::BuiltinFnEq,
+        (u8) 2,
+        (u8) 2,
+        false
+    )
+
+    let (cat12, _f_ne) = stdlib_add_builtin_fn(
+        cat11,
+        "ne",
+        "std/core/traits",
+        BuiltinFnKind::BuiltinFnNe,
+        (u8) 2,
+        (u8) 2,
+        false
+    )
+
+    let (cat13, _f_hash) = stdlib_add_builtin_fn(
+        cat12,
+        "hash",
+        "std/core/traits",
+        BuiltinFnKind::BuiltinFnHash,
+        (u8) 1,
+        (u8) 1,
+        false
+    )
+
+    let (cat14, _f_cmp) = stdlib_add_builtin_fn(
+        cat13,
+        "cmp",
+        "std/core/traits",
+        BuiltinFnKind::BuiltinFnOrdCompare,
+        (u8) 2,
+        (u8) 2,
+        false
+    )
+
+    return cat14
+.end
+
+# -----------------------------------------------------------------------------
+# Prelude par défaut
+# -----------------------------------------------------------------------------
+
+fn stdlib_seed_prelude(cat_in: StdlibCatalog) -> StdlibCatalog:
+    let cat0 = cat_in
+
+    let core_mod_opt = stdlib_find_module_id(cat0, "std/core")
+    if coll.option_is_none<u32>(core_mod_opt):
+        return cat0
+    .end
+
+    let core_mod_id = coll.option_unwrap_unsafe<u32>(core_mod_opt)
+
+    # Types dans le prelude : Bool, String, Unit, Never, Any, et les ints de base.
+    let t_bool_opt = stdlib_lookup_type_id_by_name(cat0, "Bool")
+    let t_string_opt = stdlib_lookup_type_id_by_name(cat0, "String")
+    let t_unit_opt = stdlib_lookup_type_id_by_name(cat0, "Unit")
+    let t_never_opt = stdlib_lookup_type_id_by_name(cat0, "Never")
+    let t_any_opt = stdlib_lookup_type_id_by_name(cat0, "Any")
+
+    let t_i32_opt = stdlib_lookup_type_id_by_name(cat0, "i32")
+    let t_i64_opt = stdlib_lookup_type_id_by_name(cat0, "i64")
+    let t_u32_opt = stdlib_lookup_type_id_by_name(cat0, "u32")
+    let t_u64_opt = stdlib_lookup_type_id_by_name(cat0, "u64")
+
+    let mut_cat = cat0
+
+    if coll.option_is_some<u32>(t_bool_opt):
+        mut_cat = stdlib_add_prelude_item(mut_cat, core_mod_id, "Bool", PreludeItemKind::PreludeItemType)
+    .end
+    if coll.option_is_some<u32>(t_string_opt):
+        mut_cat = stdlib_add_prelude_item(mut_cat, core_mod_id, "String", PreludeItemKind::PreludeItemType)
+    .end
+    if coll.option_is_some<u32>(t_unit_opt):
+        mut_cat = stdlib_add_prelude_item(mut_cat, core_mod_id, "Unit", PreludeItemKind::PreludeItemType)
+    .end
+    if coll.option_is_some<u32>(t_never_opt):
+        mut_cat = stdlib_add_prelude_item(mut_cat, core_mod_id, "Never", PreludeItemKind::PreludeItemType)
+    .end
+    if coll.option_is_some<u32>(t_any_opt):
+        mut_cat = stdlib_add_prelude_item(mut_cat, core_mod_id, "Any", PreludeItemKind::PreludeItemType)
+    .end
+
+    if coll.option_is_some<u32>(t_i32_opt):
+        mut_cat = stdlib_add_prelude_item(mut_cat, core_mod_id, "i32", PreludeItemKind::PreludeItemType)
+    .end
+    if coll.option_is_some<u32>(t_i64_opt):
+        mut_cat = stdlib_add_prelude_item(mut_cat, core_mod_id, "i64", PreludeItemKind::PreludeItemType)
+    .end
+    if coll.option_is_some<u32>(t_u32_opt):
+        mut_cat = stdlib_add_prelude_item(mut_cat, core_mod_id, "u32", PreludeItemKind::PreludeItemType)
+    .end
+    if coll.option_is_some<u32>(t_u64_opt):
+        mut_cat = stdlib_add_prelude_item(mut_cat, core_mod_id, "u64", PreludeItemKind::PreludeItemType)
+    .end
+
+    # Fonctions du prelude (print, assert, len) vues comme importées implicitement.
+    let f_print_opt = stdlib_lookup_fn_id_by_name(mut_cat, "std/core/io", "print")
+    let f_assert_opt = stdlib_lookup_fn_id_by_name(mut_cat, "std/core", "assert")
+    let f_len_opt = stdlib_lookup_fn_id_by_name(mut_cat, "std/core", "len")
+
+    if coll.option_is_some<u32>(f_print_opt):
+        mut_cat = stdlib_add_prelude_item(mut_cat, core_mod_id, "print", PreludeItemKind::PreludeItemFunction)
+    .end
+    if coll.option_is_some<u32>(f_assert_opt):
+        mut_cat = stdlib_add_prelude_item(mut_cat, core_mod_id, "assert", PreludeItemKind::PreludeItemFunction)
+    .end
+    if coll.option_is_some<u32>(f_len_opt):
+        mut_cat = stdlib_add_prelude_item(mut_cat, core_mod_id, "len", PreludeItemKind::PreludeItemFunction)
+    .end
+
+    return mut_cat
+.end
+
+# -----------------------------------------------------------------------------
+# Construction d'un StdlibCatalog complet par défaut
+# -----------------------------------------------------------------------------
+
+pub fn stdlib_catalog_new_default() -> StdlibCatalog:
+    let cat0 = stdlib_seed_core_modules()
+    let cat1 = stdlib_seed_builtin_types(cat0)
+    let cat2 = stdlib_seed_builtin_fns(cat1)
+    let cat3 = stdlib_seed_prelude(cat2)
+    return cat3
+.end
+
+# -----------------------------------------------------------------------------
+# Scénario interne de smoke-test
+# -----------------------------------------------------------------------------
+
+scenario stdlib_smoke_test():
+    let cat = stdlib_catalog_new_default()
+
+    let _mod_core = stdlib_find_module_id(cat, "std/core")
+    let _has_bool = stdlib_is_builtin_type_name(cat, "Bool")
+    let _has_string = stdlib_is_builtin_type_name(cat, "String")
+
+    let opt_print = stdlib_lookup_fn_id_by_name(cat, "std/core/io", "print")
+    if coll.option_is_some<u32>(opt_print):
+        let fn_id = coll.option_unwrap_unsafe<u32>(opt_print)
+        let fn_info = stdlib_get_builtin_fn(cat, fn_id)
+        let _name = fn_info.name
+        let _arity = fn_info.arity_min
+    .end
+
+    let core_mod_opt = stdlib_find_module_id(cat, "std/core")
+    if coll.option_is_some<u32>(core_mod_opt):
+        let core_mod_id = coll.option_unwrap_unsafe<u32>(core_mod_opt)
+        let _items = stdlib_prelude_items_for_module(cat, core_mod_id)
+    .end
+.end

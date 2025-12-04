@@ -1,0 +1,689 @@
+module lvm.gc
+
+import lvm.bytecode
+import lvm.builtins
+
+# ============================================================================
+# Vitte LVM – Modèle logique de ramasse-miettes (GC)
+#
+# Objectifs :
+#   - Fournir une représentation structurée, déclarative et backend-agnostique
+#     du comportement et de l’état du ramasse-miettes (GC) de la LVM.
+#   - Modéliser :
+#       * configuration et profils de tuning,
+#       * heap, régions, générations, objets et couleurs,
+#       * racines, barrières d’écriture et triggers,
+#       * statistiques, cycles, phases et événements de GC,
+#       * instrumentation pour outils (LSP, profiler, visualiseur GC).
+#   - Ne contenir que des structures de données (aucune fonction ni I/O).
+#
+# Conventions :
+#   - Même style que vitte.compiler.ast / lrt.ffi / lvm.builtins / lvm.bytecode :
+#       * `pub struct/enum` + ":" et blocs terminés par `.end` ;
+#       * enums "tag-only" ;
+#       * IDs forts (`GcHeapId`, `GcObjectId`, ...) basés sur des indices u32.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Indices et identifiants GC
+# ----------------------------------------------------------------------------
+
+pub typedef u32 GcIndex
+
+pub struct GcHeapId:
+    let raw: GcIndex
+.end
+
+pub struct GcRegionId:
+    let raw: GcIndex
+.end
+
+pub struct GcGenerationId:
+    let raw: GcIndex
+.end
+
+pub struct GcObjectId:
+    let raw: GcIndex
+.end
+
+pub struct GcRootId:
+    let raw: GcIndex
+.end
+
+pub struct GcBarrierId:
+    let raw: GcIndex
+.end
+
+pub struct GcCycleId:
+    let raw: GcIndex
+.end
+
+pub struct GcPhaseId:
+    let raw: GcIndex
+.end
+
+pub struct GcEventId:
+    let raw: GcIndex
+.end
+
+pub struct GcProfileId:
+    let raw: GcIndex
+.end
+
+# ----------------------------------------------------------------------------
+# Modes, stratégies et profils de GC
+# ----------------------------------------------------------------------------
+
+# Mode global de collecte.
+pub enum GcMode:
+    GcStopTheWorld          # stop-the-world complet
+    GcIncremental           # incrémental (slices)
+    GcConcurrent            # concurrent (threads séparés)
+.end
+
+# Stratégie générationnelle.
+pub enum GcGenerationalMode:
+    GcNoGenerational        # heap monolithique
+    GcTwoGenerations        # jeune + vieux
+    GcMultiGenerations      # plusieurs générations (0..N)
+.end
+
+# Stratégie de compaction.
+pub enum GcCompactionMode:
+    GcNoCompaction          # pas de compaction
+    GcFullCompaction        # compaction complète sur certains cycles
+    GcSelectiveCompaction   # compaction partielle / régions choisies
+.end
+
+# Politique de scheduling / déclenchement.
+pub enum GcSchedulePolicy:
+    GcOnDemand              # uniquement sur demande explicite
+    GcByAllocation          # déclenché par volume d’allocations
+    GcByTime                # déclenché périodiquement (timer)
+    GcHybrid                # combinaison allocation + temps
+.end
+
+# Type de trigger pour un cycle.
+pub enum GcTriggerKind:
+    TriggerManual           # demande utilisateur / API
+    TriggerThreshold        # seuil d’allocation dépassé
+    TriggerIdle             # période d’inactivité
+    TriggerMemoryPressure   # pression mémoire externe
+    TriggerStartup          # au démarrage
+    TriggerShutdown         # à l’arrêt
+.end
+
+# Seuils de déclenchement (configurable).
+pub struct GcThresholdConfig:
+    let heap_target_bytes: u64           # taille de heap cible avant GC
+    let young_target_bytes: u64          # seuil pour jeune génération
+    let old_target_bytes: u64            # seuil pour vieux
+    let growth_factor_percent: u32       # croissance autorisée (%)
+.end
+
+# Paramètres de tuning d’un profil GC.
+pub struct GcTuningProfile:
+    let id: GcProfileId
+    let name: String
+    let mode: GcMode
+    let generational_mode: GcGenerationalMode
+    let compaction_mode: GcCompactionMode
+    let schedule_policy: GcSchedulePolicy
+    let thresholds: GcThresholdConfig
+    let max_pause_millis: u32            # budget de pause ciblé
+    let incremental_slice_millis: u32    # budget de time-slice pour incrémental
+    let concurrent_worker_count: u32     # nb de workers (concurrent)
+.end
+
+# Mode de stress GC (testing / diagnostics).
+pub enum GcStressMode:
+    GcStressOff             # comportement normal
+    GcStressLight           # GC plus fréquent (tests)
+    GcStressAggressive      # GC extrêmement fréquent (stress-test)
+.end
+
+# Configuration globale du GC pour une VM.
+pub struct GcConfig:
+    let profile: GcProfileId             # profil actif
+    let enable_debug_checks: Bool
+    let enable_write_barriers: Bool
+    let enable_alloc_tracing: Bool
+    let enable_object_finalizers: Bool
+
+    let heap_soft_limit_bytes: u64       # limite "douce" de heap avant ajustement
+    let heap_hard_limit_bytes: u64       # limite "dure" de heap (erreur au-delà)
+
+    let allow_explicit_gc: Bool          # autoriser les appels explicites (API)
+    let stress_mode: GcStressMode        # mode de stress GC (pour tests)
+.end
+
+# ----------------------------------------------------------------------------
+# Couleurs, générations, régions et heap
+# ----------------------------------------------------------------------------
+
+# Couleur d’un objet (algos de marquage).
+pub enum GcColor:
+    GcWhite                # non marqué / collectable
+    GcGrey                 # marqué, en attente de scan
+    GcBlack                # marqué + scan complet
+    GcPinned               # non déplaçable (fixé)
+.end
+
+# Genre de région de heap.
+pub enum GcRegionKind:
+    RegionYoung
+    RegionOld
+    RegionLarge
+    RegionImmortal
+.end
+
+# Statut d’une région.
+pub enum GcRegionState:
+    RegionActive
+    RegionSweeping
+    RegionRetired
+.end
+
+# Région de heap.
+pub struct GcRegion:
+    let id: GcRegionId
+    let kind: GcRegionKind
+    let generation: GcGenerationId
+    let state: GcRegionState
+    let base_address: usize
+    let size_bytes: u64
+    let used_bytes: u64
+    let live_bytes_last_cycle: u64
+.end
+
+# Génération logique (jeune, vieux, etc.).
+pub struct GcGeneration:
+    let id: GcGenerationId
+    let name: String
+    let min_age: u32                 # nombre de cycles minimum avant promotion
+    let regions: Vec<GcRegionId>
+.end
+
+# Heap complet de la VM.
+pub struct GcHeap:
+    let id: GcHeapId
+    let generations: Vec<GcGenerationId>
+    let regions: Vec<GcRegion>
+    let total_size_bytes: u64
+    let total_used_bytes: u64
+.end
+
+# ----------------------------------------------------------------------------
+# Objets GC et en-têtes
+# ----------------------------------------------------------------------------
+
+# Genre d’objet supporté par la LVM GC (vue logique).
+pub enum GcObjectKind:
+    ObjValue            # valeur générique LVM
+    ObjString           # chaîne
+    ObjList             # liste/array dyn.
+    ObjMap              # map/dictionnaire
+    ObjClosure          # fermeture / fonction capturant environnement
+    ObjFunctionProto    # prototype de fonction (bytecode)
+    ObjUserData         # bloc opaque utilisateur
+    ObjInternal         # structures internes runtime
+.end
+
+# Flags d’objet (bitfield logique).
+pub struct GcObjectFlags:
+    let is_finalizable: Bool       # a un finalizer
+    let is_weak_ref_target: Bool   # est cible d’un weak-ref
+    let is_pinned: Bool            # ne peut pas être déplacé
+.end
+
+# En-tête logique d’un objet.
+pub struct GcObjectHeader:
+    let id: GcObjectId
+    let heap: GcHeapId
+    let region: GcRegionId
+    let generation: GcGenerationId
+    let kind: GcObjectKind
+    let color: GcColor
+    let size_bytes: u64
+    let flags: GcObjectFlags
+    let type_name: Option<String>  # nom de type logique (pour debug)
+.end
+
+# Objet GC logique : en-tête + lien vers valeur LVM (optionnel).
+pub struct GcObject:
+    let header: GcObjectHeader
+    let vm_value: Option<LvmValueId>     # handle vers la valeur LVM associée
+    let bytecode_function: Option<LvmFunctionId>
+.end
+
+# ----------------------------------------------------------------------------
+# Racines (roots) et jeux de racines
+# ----------------------------------------------------------------------------
+
+# Origine d’une racine du point de vue LVM.
+pub enum GcRootKind:
+    RootVmStack                 # valeur sur la pile d’une VM
+    RootGlobal                  # global LVM
+    RootBuiltin                 # builtin retenu
+    RootNativeHandle            # handle natif / FFI
+    RootStatic                  # structure statique du runtime
+    RootDebugger                # racine retenue par un outil de debug
+.end
+
+# Descripteur d’une racine.
+pub struct GcRoot:
+    let id: GcRootId
+    let kind: GcRootKind
+    let vm: Option<LvmVmId>
+    let function: Option<LvmFunctionId>
+    let value: Option<LvmValueId>
+    let description: Option<String>
+.end
+
+# Ensemble de racines actif pour une VM lors d’un cycle.
+pub struct GcRootSet:
+    let heap: GcHeapId
+    let roots: Vec<GcRootId>
+.end
+
+# ----------------------------------------------------------------------------
+# Barrières d’écriture et cartes de bits
+# ----------------------------------------------------------------------------
+
+# Type de barrière d’écriture utilisée.
+pub enum GcBarrierKind:
+    BarrierCardMark           # card marking (bitmap)
+    BarrierRememberedSet      # ensemble mémorisé
+    BarrierSnapshotAtBegin    # snapshot-at-the-beginning (SATB)
+    BarrierIncrementalUpdate  # incremental-update
+.end
+
+# Taille d’une carte (card table) logique.
+pub struct GcCardTableConfig:
+    let card_size_bytes: u32          # taille d’une carte
+    let cards_per_region: u32        # nb de cartes par région
+.end
+
+# Entrée de région dans une card table.
+pub struct GcCardTableRegion:
+    let region: GcRegionId
+    let dirty_cards_count: u32
+.end
+
+# Table de cartes (card table) pour suivi des écritures.
+pub struct GcCardTable:
+    let config: GcCardTableConfig
+    let regions: Vec<GcCardTableRegion>
+.end
+
+# Barrière d’écriture logique.
+pub struct GcBarrier:
+    let id: GcBarrierId
+    let kind: GcBarrierKind
+    let heap: GcHeapId
+    let vm: Option<LvmVmId>
+    let card_table: Option<GcCardTable>
+    let enabled: Bool
+.end
+
+# ----------------------------------------------------------------------------
+# Phases, cycles et statistiques de GC
+# ----------------------------------------------------------------------------
+
+# Phases d’un cycle de GC (vue logique).
+pub enum GcPhaseKind:
+    PhaseIdle
+    PhaseMark
+    PhaseSweep
+    PhaseCompact
+    PhaseFinalize
+.end
+
+# Résumé temporel d’une phase.
+pub struct GcPhaseStats:
+    let phase: GcPhaseKind
+    let start_time_millis: u64
+    let end_time_millis: u64
+    let objects_marked: u64
+    let objects_swept: u64
+    let bytes_freed: u64
+.end
+
+# Type de cycle (jeune/vieux/mixte).
+pub enum GcCycleKind:
+    CycleYoungOnly
+    CycleFull
+.end
+
+# Statistiques d’un cycle unique.
+pub struct GcCycleStats:
+    let id: GcCycleId
+    let heap: GcHeapId
+    let kind: GcCycleKind
+    let trigger: GcTriggerKind
+    let start_time_millis: u64
+    let end_time_millis: u64
+    let heap_size_before_bytes: u64
+    let heap_size_after_bytes: u64
+    let live_bytes_before: u64
+    let live_bytes_after: u64
+    let young_live_bytes_after: u64
+    let old_live_bytes_after: u64
+    let phases: Vec<GcPhaseStats>
+.end
+
+# Statistiques cumulées par génération.
+pub struct GcGenerationStats:
+    let generation: GcGenerationId
+    let total_allocated_bytes: u64
+    let total_freed_bytes: u64
+    let live_bytes: u64
+    let promoted_bytes: u64
+    let collected_bytes: u64
+    let cycle_count: u64
+.end
+
+# Statistiques globales cumulées pour une VM.
+pub struct GcStats:
+    let heap: GcHeapId
+
+    let total_allocated_bytes: u64
+    let total_freed_bytes: u64
+    let total_cycles: u64
+    let total_full_cycles: u64
+    let total_young_cycles: u64
+
+    let total_pause_time_millis: u64
+    let average_pause_time_millis: u64
+    let max_pause_time_millis: u64
+
+    let peak_heap_size_bytes: u64
+    let current_fragmentation_percent: u32
+
+    let generation_stats: Vec<GcGenerationStats>
+
+    let last_cycle: Option<GcCycleStats>
+    let last_full_cycle_id: Option<GcCycleId>
+    let last_young_cycle_id: Option<GcCycleId>
+.end
+
+# ----------------------------------------------------------------------------
+# Événements de GC (pour trace / profiler)
+# ----------------------------------------------------------------------------
+
+# Genre d’événement pour le GC.
+pub enum GcEventKind:
+    GcEventCycleStart
+    GcEventCycleEnd
+    GcEventPhaseStart
+    GcEventPhaseEnd
+    GcEventAlloc
+    GcEventPromote
+    GcEventFree
+    GcEventHeapResize
+    GcEventWarning
+    GcEventError
+.end
+
+# Détail contextuel d’un événement GC.
+pub struct GcEventContext:
+    let heap: GcHeapId
+    let cycle: Option<GcCycleId>
+    let phase: Option<GcPhaseKind>
+    let vm: Option<LvmVmId>
+    let function: Option<LvmFunctionId>
+    let object: Option<GcObjectId>
+    let region: Option<GcRegionId>
+    let generation: Option<GcGenerationId>
+    let root: Option<GcRootId>
+    let barrier: Option<GcBarrierId>
+.end
+
+# Sévérité logique d un événement GC.
+pub enum GcEventSeverity:
+    GcInfo
+    GcWarning
+    GcError
+.end
+
+# Charge utile (payload) d’un événement GC.
+pub struct GcEventPayload:
+    let message: Option<String>
+    let bytes_before: Option<u64>
+    let bytes_after: Option<u64>
+    let alloc_size: Option<u64>
+.end
+
+# Événement unique de GC.
+pub struct GcEvent:
+    let id: GcEventId
+    let kind: GcEventKind
+    let severity: GcEventSeverity
+    let timestamp_millis: u64
+    let context: GcEventContext
+    let payload: GcEventPayload
+.end
+
+# Buffer ordonné d’événements GC.
+pub struct GcEventBuffer:
+    let events: Vec<GcEvent>
+.end
+
+# ----------------------------------------------------------------------------
+# Profils, états et nœuds génériques
+# ----------------------------------------------------------------------------
+
+# Profil GC complet (tuning + statistiques observées).
+pub struct GcProfile:
+    let id: GcProfileId
+    let name: String
+    let config: GcConfig
+    let tuning: GcTuningProfile
+    let last_stats: Option<GcStats>
+.end
+
+# État logique du GC pour une VM.
+pub enum GcStateKind:
+    GcStateIdle
+    GcStateRunning
+    GcStatePaused
+.end
+
+pub struct GcState:
+    let heap: GcHeapId
+    let current_cycle: Option<GcCycleId>
+    let current_phase: Option<GcPhaseKind>
+    let state: GcStateKind
+    let pending_barrier: Option<GcBarrierId>
+.end
+
+# Snapshot runtime global pour le GC d une VM.
+pub struct GcRuntimeSnapshot:
+    let heap: GcHeap
+    let root_set: GcRootSet
+    let barrier: Option<GcBarrier>
+    let config: GcConfig
+    let profiles: Vec<GcProfile>
+    let active_profile: Option<GcProfileId>
+    let stats: GcStats
+    let recent_cycles: Vec<GcCycleStats>
+    let events: GcEventBuffer
+    let state: GcState
+.end
+
+# Nœuds génériques GC pour tooling (indexation / graphes).
+pub enum GcNodeKind:
+    NodeHeap
+    NodeRegion
+    NodeGeneration
+    NodeObject
+    NodeRoot
+    NodeBarrier
+    NodeCycle
+    NodeProfile
+.end
+
+
+pub struct GcNode:
+    let id: GcIndex
+    let kind: GcNodeKind
+.end
+
+# ----------------------------------------------------------------------------
+# Classes d'allocations, weak-refs, finalizers et graphes d'objets
+# ----------------------------------------------------------------------------
+
+# Identifiants supplémentaires pour les entités avancées.
+pub struct GcAllocClassId:
+    let raw: GcIndex
+.end
+
+pub struct GcObjectLayoutId:
+    let raw: GcIndex
+.end
+
+pub struct GcWeakRefId:
+    let raw: GcIndex
+.end
+
+pub struct GcFinalizerId:
+    let raw: GcIndex
+.end
+
+# Classe logique d'allocation (profil de taille / comportement).
+pub enum GcAllocKind:
+    AllocYoung          # objets alloués en jeune génération
+    AllocOld            # objets directement en vieux
+    AllocLarge          # gros blocs (région dédiée)
+    AllocPinned         # non déplaçables
+    AllocImmortal       # objets "immortels" (jamais collectés)
+.end
+
+pub struct GcAllocClass:
+    let id: GcAllocClassId
+    let name: String
+    let kind: GcAllocKind
+    let typical_size_bytes: u64            # taille moyenne attendue
+    let alignment_bytes: u32               # alignement logique
+    let is_movable: Bool                   # peut être déplacé lors de compaction
+    let has_default_finalizer: Bool        # a un finalizer par défaut
+    let description: Option<String>
+.end
+
+# Description logique du layout d'un objet (vue introspection).
+pub struct GcObjectLayoutField:
+    let index: u32
+    let name: String
+    let is_pointer: Bool                   # champ contenant une référence GC
+    let is_weak_pointer: Bool              # champ weak-ref
+    let offset_bytes: u32                  # offset logique
+    let size_bytes: u32
+.end
+
+pub struct GcObjectLayout:
+    let id: GcObjectLayoutId
+    let type_name: String
+    let alloc_class: Option<GcAllocClassId>
+    let fields: Vec<GcObjectLayoutField>
+    let estimated_size_bytes: u64
+.end
+
+# Weak references logiques (côté GC).
+pub enum GcWeakRefState:
+    WeakRefAlive      # cible encore vivante
+    WeakRefCleared    # cible collectée, référence vidée
+.end
+
+pub struct GcWeakRef:
+    let id: GcWeakRefId
+    let heap: GcHeapId
+    let target: GcObjectId
+    let state: GcWeakRefState
+    let last_cycle_seen_alive: Option<GcCycleId>
+.end
+
+# Finalizers (callbacks d'objets) vus par le GC.
+pub enum GcFinalizerKind:
+    FinalizerVmFunction      # fonction LVM
+    FinalizerNativeCallback  # callback natif (FFI)
+.end
+
+pub struct GcFinalizer:
+    let id: GcFinalizerId
+    let heap: GcHeapId
+    let kind: GcFinalizerKind
+    let function: Option<LvmFunctionId>   # si FinalizerVmFunction
+    let user_data: Option<LvmValueId>     # données utilisateur éventuelles
+    let pending_count: u64                # nombre d'objets en file de finalisation
+.end
+
+# Entrées de remembered set (générationnel).
+pub struct GcRememberedSetEntry:
+    let source_object: GcObjectId         # objet dans une génération plus vieille
+    let target_object: GcObjectId         # objet dans une génération plus jeune
+    let source_generation: GcGenerationId
+    let target_generation: GcGenerationId
+.end
+
+pub struct GcRememberedSet:
+    let heap: GcHeapId
+    let entries: Vec<GcRememberedSetEntry>
+.end
+
+# Graphe d'objets (vue statique pour visualiseur).
+pub enum GcObjectEdgeKind:
+    EdgeStrong
+    EdgeWeak
+    EdgeInternal
+.end
+
+pub struct GcObjectEdge:
+    let from: GcObjectId
+    let to: GcObjectId
+    let kind: GcObjectEdgeKind
+.end
+
+pub struct GcObjectGraph:
+    let heap: GcHeapId
+    let objects: Vec<GcObjectId>
+    let edges: Vec<GcObjectEdge>
+.end
+
+# ----------------------------------------------------------------------------
+# Timeline et topologie de heap (profiling / visualisation)
+# ----------------------------------------------------------------------------
+
+# Échantillon temporel pour l'évolution de la heap.
+pub struct GcTimelineSample:
+    let timestamp_millis: u64
+    let heap_used_bytes: u64
+    let young_used_bytes: u64
+    let old_used_bytes: u64
+    let last_pause_time_millis: u64
+    let last_cycle_id: Option<GcCycleId>
+.end
+
+pub struct GcTimeline:
+    let heap: GcHeapId
+    let samples: Vec<GcTimelineSample>
+.end
+
+# Topologie de heap (graphes entre régions / générations).
+pub enum GcTopologyEdgeKind:
+    TopologyRegionToRegion
+    TopologyGenerationToGeneration
+    TopologyRegionToGeneration
+.end
+
+pub struct GcTopologyEdge:
+    let kind: GcTopologyEdgeKind
+    let from_region: Option<GcRegionId>
+    let to_region: Option<GcRegionId>
+    let from_generation: Option<GcGenerationId>
+    let to_generation: Option<GcGenerationId>
+.end
+
+pub struct GcHeapTopology:
+    let heap: GcHeapId
+    let edges: Vec<GcTopologyEdge>
+.end

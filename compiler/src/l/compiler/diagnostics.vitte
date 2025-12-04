@@ -1,0 +1,516 @@
+
+
+module vitte.compiler.diagnostics
+
+import vitte.compiler.ast as ast
+
+# ============================================================================
+# Vitte compiler – Infrastructure de diagnostics ultra complète
+#
+# Objectifs :
+#   - fournir un modèle commun de diagnostic pour toutes les phases :
+#       * lexing, parsing, typage, codegen, etc. ;
+#   - proposer un "sink" central :
+#       * accumulation des diagnostics,
+#       * interrogation (has_errors),
+#       * récupération structurée (take_*),
+#       * compatible avec le backend LVM (CodegenError).
+#   - rester fidèle à la grammaire Vitte (blocs ":" + ".end").
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Sévérité, phase, codes de diagnostic
+# ----------------------------------------------------------------------------
+
+pub enum DiagnosticSeverity:
+    Note
+    Warning
+    Error
+.end
+
+pub enum DiagnosticStage:
+    StageLexer
+    StageParser
+    StageSemantic
+    StageCodegen
+    StageOther
+.end
+
+pub struct DiagnosticCode:
+    let domain: String      # ex: "LEX", "PARSE", "TYP", "CG"
+    let number: u32         # ex: 1, 2, 1001...
+.end
+
+fn DiagnosticCode.to_string(DiagnosticCode self) -> String:
+    # Format: DOMAIN<number>, p.ex. "PARSE1001"
+    let s = self.domain
+    let n = "<n>"           # TODO : encoder number en texte
+    let out = s + n
+    return out
+.end
+
+# ----------------------------------------------------------------------------
+# Message de diagnostic générique
+# ----------------------------------------------------------------------------
+
+pub struct DiagnosticMessage:
+    let text: String
+    let code: Option<DiagnosticCode>
+.end
+
+fn DiagnosticMessage.simple(String text) -> DiagnosticMessage:
+    let none_code: Option<DiagnosticCode> = Option<DiagnosticCode>::None()
+    let m = DiagnosticMessage(
+        text = text,
+        code = none_code
+    )
+    return m
+.end
+
+# ----------------------------------------------------------------------------
+# Diagnostic principal
+# ----------------------------------------------------------------------------
+
+pub struct RelatedSpan:
+    let span: ast.Span
+    let label: String
+.end
+
+pub struct Diagnostic:
+    let stage: DiagnosticStage
+    let severity: DiagnosticSeverity
+    let message: DiagnosticMessage
+    let primary_span: ast.Span
+    let related: Vec<RelatedSpan>
+    let notes: Vec<String>
+.end
+
+fn Diagnostic.new(
+    DiagnosticStage stage,
+    DiagnosticSeverity severity,
+    DiagnosticMessage message,
+    ast.Span primary_span
+) -> Diagnostic:
+    let rel = Vec<RelatedSpan>::new()
+    let notes = Vec<String>::new()
+    let d = Diagnostic(
+        stage = stage,
+        severity = severity,
+        message = message,
+        primary_span = primary_span,
+        related = rel,
+        notes = notes
+    )
+    return d
+.end
+
+# ----------------------------------------------------------------------------
+# Erreurs de codegen spécifiques (backend LVM et autres)
+# ----------------------------------------------------------------------------
+
+pub enum CodegenErrorKind:
+    UnsupportedFeature
+    InternalError
+    TypeMismatch
+    UnknownSymbol
+.end
+
+pub struct CodegenError:
+    let kind: CodegenErrorKind
+    let message: String
+    let span: ast.Span
+.end
+
+fn CodegenError.to_diagnostic(CodegenError self) -> Diagnostic:
+    let msg = DiagnosticMessage.simple(self.message)
+    let d = Diagnostic.new(
+        DiagnosticStage::StageCodegen,
+        DiagnosticSeverity::Error,
+        msg,
+        self.span
+    )
+    return d
+.end
+
+# ----------------------------------------------------------------------------
+# Résultats agrégés (codegen, passes, etc.)
+# ----------------------------------------------------------------------------
+
+pub struct CodegenResultSummary:
+    let had_errors: Bool
+    let error_count: u32
+.end
+
+# ----------------------------------------------------------------------------
+# DiagnosticsSink – accumulateur central
+# ----------------------------------------------------------------------------
+
+pub struct DiagnosticsSink:
+    let diagnostics: Vec<Diagnostic>
+    let codegen_errors: Vec<CodegenError>
+.end
+
+pub fn diagnostics_sink_new() -> DiagnosticsSink:
+    let diags = Vec<Diagnostic>::new()
+    let cg = Vec<CodegenError>::new()
+    let sink = DiagnosticsSink(
+        diagnostics = diags,
+        codegen_errors = cg
+    )
+    return sink
+.end
+
+impl DiagnosticsSink:
+    # ------------------------------------------------------------------------
+    # API générique sur Diagnostic
+    # ------------------------------------------------------------------------
+
+    fn push(self: DiagnosticsSink, Diagnostic diag):
+        # Ajoute un diagnostic générique dans la liste.
+        self.diagnostics.push(diag)
+    .end
+
+    fn push_note(self: DiagnosticsSink, String text, ast.Span span):
+        let msg = DiagnosticMessage.simple(text)
+        let d = Diagnostic.new(
+            DiagnosticStage::StageOther,
+            DiagnosticSeverity::Note,
+            msg,
+            span
+        )
+        self.diagnostics.push(d)
+    .end
+
+    fn push_warning(self: DiagnosticsSink, String text, ast.Span span):
+        let msg = DiagnosticMessage.simple(text)
+        let d = Diagnostic.new(
+            DiagnosticStage::StageOther,
+            DiagnosticSeverity::Warning,
+            msg,
+            span
+        )
+        self.diagnostics.push(d)
+    .end
+
+    fn push_error(self: DiagnosticsSink, String text, ast.Span span):
+        let msg = DiagnosticMessage.simple(text)
+        let d = Diagnostic.new(
+            DiagnosticStage::StageOther,
+            DiagnosticSeverity::Error,
+            msg,
+            span
+        )
+        self.diagnostics.push(d)
+    .end
+
+    fn all(self: DiagnosticsSink) -> Vec<Diagnostic>:
+        return self.diagnostics
+    .end
+
+    fn error_count(self: DiagnosticsSink) -> u32:
+        let diags = self.diagnostics
+        let len = diags.len()
+        let mut count = 0u32
+
+        let mut i = 0usize
+        while i < len:
+            let d = diags[i]
+            if d.severity == DiagnosticSeverity::Error:
+                count = count + 1u32
+            .end
+            i = i + 1usize
+        .end
+
+        return count
+    .end
+
+    fn has_errors(self: DiagnosticsSink) -> Bool:
+        let count = self.error_count()
+        return count > 0u32
+    .end
+
+    # ------------------------------------------------------------------------
+    # API spécifique codegen (pour backend LVM, etc.)
+    # ------------------------------------------------------------------------
+
+    fn push_codegen_error(self: DiagnosticsSink, CodegenError error):
+        self.codegen_errors.push(error)
+
+        # On ajoute aussi la version générique dans diagnostics.
+        let d = CodegenError.to_diagnostic(error)
+        self.diagnostics.push(d)
+    .end
+
+    fn codegen_error_count(self: DiagnosticsSink) -> u32:
+        let cg = self.codegen_errors
+        let len = cg.len()
+        return len as u32
+    .end
+
+    fn take_codegen_errors(self: DiagnosticsSink) -> Vec<CodegenError>:
+        # Renvoie les erreurs de codegen et vide la liste interne.
+        let out = self.codegen_errors
+        let empty = Vec<CodegenError>::new()
+        self.codegen_errors = empty
+        return out
+    .end
+
+    fn codegen_summary(self: DiagnosticsSink) -> CodegenResultSummary:
+        let count = self.codegen_error_count()
+        let had_errors = count > 0u32
+        let summary = CodegenResultSummary(
+            had_errors = had_errors,
+            error_count = count
+        )
+        return summary
+    .end
+.end
+
+# ----------------------------------------------------------------------------
+# Helpers de création de diagnostics par phase
+# ----------------------------------------------------------------------------
+
+pub fn make_lexer_error(String text, ast.Span span) -> Diagnostic:
+    let msg = DiagnosticMessage.simple(text)
+    let d = Diagnostic.new(
+        DiagnosticStage::StageLexer,
+        DiagnosticSeverity::Error,
+        msg,
+        span
+    )
+    return d
+.end
+
+pub fn make_parser_error(String text, ast.Span span) -> Diagnostic:
+    let msg = DiagnosticMessage.simple(text)
+    let d = Diagnostic.new(
+        DiagnosticStage::StageParser,
+        DiagnosticSeverity::Error,
+        msg,
+        span
+    )
+    return d
+.end
+
+pub fn make_semantic_error(String text, ast.Span span) -> Diagnostic:
+    let msg = DiagnosticMessage.simple(text)
+    let d = Diagnostic.new(
+        DiagnosticStage::StageSemantic,
+        DiagnosticSeverity::Error,
+        msg,
+        span
+    )
+    return d
+.end
+
+pub fn make_codegen_error(CodegenErrorKind kind, String text, ast.Span span) -> CodegenError:
+    let err = CodegenError(
+        kind = kind,
+        message = text,
+        span = span
+    )
+    return err
+.end
+
+# ----------------------------------------------------------------------------
+# Helpers supplémentaires : spans, conversions, rendu texte
+# ----------------------------------------------------------------------------
+
+pub fn make_dummy_span() -> ast.Span:
+    let sp = ast.Span(
+        file = "<unknown>",
+        start_line = 0u32,
+        start_col = 0u32,
+        end_line = 0u32,
+        end_col = 0u32
+    )
+    return sp
+.end
+
+pub fn diagnostics_as_vec(DiagnosticsSink sink) -> Vec<Diagnostic>:
+    return sink.diagnostics
+.end
+
+pub fn diagnostic_severity_to_string(DiagnosticSeverity s) -> String:
+    if s == DiagnosticSeverity::Note:
+        return "note"
+    .end
+    if s == DiagnosticSeverity::Warning:
+        return "warning"
+    .end
+    if s == DiagnosticSeverity::Error:
+        return "error"
+    .end
+    return "unknown"
+.end
+
+pub fn span_location_string(ast.Span span) -> String:
+    let s = span.file
+    let s = s + ":"
+    let s = s + span.start_line.to_string()
+    let s = s + ":"
+    let s = s + span.start_col.to_string()
+    return s
+.end
+
+fn repeat_char(String ch, u32 count) -> String:
+    let out = ""
+    let i = 0u32
+
+    while i < count:
+        let out = out + ch
+        let i = i + 1u32
+    .end
+
+    return out
+.end
+
+fn diagnostic_message_to_string(DiagnosticMessage msg) -> String:
+    let txt = msg.text
+    let code_opt = msg.code
+
+    if code_opt.is_some():
+        let code = code_opt.unwrap()
+        let code_str = code.to_string()
+        let out = code_str + ": " + txt
+        return out
+    .end
+
+    return txt
+.end
+
+pub fn diagnostic_header(Diagnostic d) -> String:
+    let loc = span_location_string(d.primary_span)
+    let sev = diagnostic_severity_to_string(d.severity)
+    let msg = diagnostic_message_to_string(d.message)
+
+    let s = loc + ": "
+    let s = s + sev
+    let s = s + ": "
+    let s = s + msg
+    return s
+.end
+
+pub fn render_span_snippet(ast.Span span, String source_text) -> String:
+    let lines = source_text.split("\n")
+    let total = lines.len()
+    let idx_u32 = if span.start_line == 0u32:
+        0u32
+    else:
+        span.start_line - 1u32
+    .end
+    let idx = idx_u32 as usize
+
+    if idx >= total:
+        return ""
+    .end
+
+    let line_text = lines[idx]
+    let line_len = (u32) line_text.len()
+    let start_col = if span.start_col == 0u32:
+        0u32
+    else:
+        span.start_col - 1u32
+    .end
+    let start = if start_col > line_len:
+        line_len
+    else:
+        start_col
+    .end
+
+    let raw_len = if span.end_line == span.start_line and span.end_col > span.start_col:
+        span.end_col - span.start_col
+    else:
+        1u32
+    .end
+    let carets_len = if raw_len == 0u32:
+        1u32
+    else:
+        raw_len
+    .end
+
+    let spaces = repeat_char(" ", start)
+    let carets = repeat_char("^", carets_len)
+
+    let snippet_line = "    " + line_text
+    let underline_line = "    " + spaces + carets
+
+    let out = snippet_line + "\n" + underline_line
+    return out
+.end
+
+pub fn render_diagnostic_with_source(Diagnostic d, String source_text) -> String:
+    let head = diagnostic_header(d)
+    let snippet = render_span_snippet(d.primary_span, source_text)
+
+    let out = if snippet == "":
+        head
+    else:
+        head + "\n" + snippet
+    .end
+
+    let notes = d.notes
+    let i = 0usize
+    let n = notes.len()
+    let acc = out
+
+    while i < n:
+        let note = notes[i]
+        let acc = acc + "\n" + "note: " + note
+        let i = i + 1usize
+    .end
+
+    return acc
+.end
+
+pub fn diagnostics_render_with_source(DiagnosticsSink sink, String source_text) -> String:
+    let diags = diagnostics_as_vec(sink)
+    let n = diags.len()
+    let i = 0usize
+    let out = ""
+
+    while i < n:
+        let d = diags[i]
+        let rendered = render_diagnostic_with_source(d, source_text)
+        let out = if out == "":
+            rendered
+        else:
+            out + "\n\n" + rendered
+        .end
+        let i = i + 1usize
+    .end
+
+    return out
+.end
+
+pub fn diagnostics_render_headers(DiagnosticsSink sink) -> String:
+    let diags = diagnostics_as_vec(sink)
+    let n = diags.len()
+    let i = 0usize
+    let out = ""
+
+    while i < n:
+        let d = diags[i]
+        let rendered = diagnostic_header(d)
+        let out = if out == "":
+            rendered
+        else:
+            out + "\n" + rendered
+        .end
+        let i = i + 1usize
+    .end
+
+    return out
+.end
+
+# ----------------------------------------------------------------------------
+# Notes :
+#   - Ce module ne dépend que de ast.Span et reste agnostique de la structure
+#     détaillée de l'AST ; toutes les fonctions `lookup_*` restent côté ast.*.
+#   - Le backend LVM peut utiliser :
+#       * DiagnosticsSink,
+#       * CodegenErrorKind / CodegenError,
+#       * make_codegen_error, push_codegen_error, has_errors, take_codegen_errors.
+#   - Les autres phases (lexer, parser, typer) peuvent utiliser make_*_error
+#     et l'API générique sur Diagnostic / DiagnosticsSink.
+# ----------------------------------------------------------------------------

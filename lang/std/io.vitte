@@ -1,0 +1,652 @@
+module std.io
+
+import std.collections as coll
+import std.core as core
+
+# ============================================================================
+# Vitte std – Modèle déclaratif pour l I/O (fichiers, streams, chemins) – max++
+#
+# Objectifs de ce module :
+#   - Décrire un modèle de données canonique pour :
+#       * chemins et métadonnées de fichiers,
+#       * accès aux fichiers et répertoires,
+#       * streams logiques (stdin, stdout, stderr, fichiers, pipes, mémoire),
+#       * erreurs d I/O, résultats et opérations,
+#       * requêtes I/O (synchrone et asynchrone),
+#       * locks de fichiers, synchronisation,
+#       * vues "runtime" pour les outils (LSP, debugger, inspector),
+#       * environnement I/O (répertoires, encodage par défaut).
+#   - Ne contenir que des structures de données, sans logique exécutable.
+#   - S appuyer sur std.core pour les types de base, le temps, les erreurs.
+#
+# Contraintes de syntaxe Vitte :
+#   - blocs terminés par ".end",
+#   - aucune accolade dans le code ni dans les commentaires.
+# ============================================================================
+
+# ============================================================================
+# Identifiants logiques
+# ============================================================================
+
+type IoHandleId = u64
+type IoStreamId = u64
+type IoFileId = u64
+type IoDirEntryId = u64
+type IoRequestId = u64
+type IoSessionId = u64
+
+# ============================================================================
+# Chemins et systèmes de fichiers
+# ============================================================================
+
+# Style logique de chemin.
+enum IoPathStyle
+    variant PathUnix
+    variant PathWindows
+    variant PathUrl
+    variant PathOther
+.end
+
+# Genre de composant de chemin.
+enum IoPathComponentKind
+    variant PathRoot
+    variant PathCurDir
+    variant PathParentDir
+    variant PathNormal
+.end
+
+# Composant logique de chemin.
+struct IoPathComponent
+    # Genre de composant root, point, double point, ou segment normal.
+    field kind: IoPathComponentKind
+
+    # Longueur du nom segment de chemin en unités de code.
+    field name_len: core.Len
+.end
+
+# Chemin logique.
+struct IoPath
+    # Style de chemin Unix, Windows, etc.
+    field style: IoPathStyle
+
+    # Indique si le chemin est absolu.
+    field is_absolute: core.Bool
+
+    # Composants du chemin.
+    field components: coll.List<IoPathComponent>
+.end
+
+# Type logique de fichier.
+enum IoFileType
+    variant FileRegular
+    variant FileDirectory
+    variant FileSymlink
+    variant FileBlockDevice
+    variant FileCharDevice
+    variant FileFifo
+    variant FileSocket
+    variant FileUnknown
+.end
+
+# Permission simple de fichier.
+enum IoPermission
+    variant PermRead
+    variant PermWrite
+    variant PermExecute
+.end
+
+# Métadonnées de permissions.
+struct IoPermissions
+    # Indique si la lecture est autorisée.
+    field can_read: core.Bool
+
+    # Indique si l écriture est autorisée.
+    field can_write: core.Bool
+
+    # Indique si l exécution est autorisée.
+    field can_execute: core.Bool
+
+    # Indicateur générique readonly.
+    field is_readonly: core.Bool
+.end
+
+# Attributs logiques d un fichier.
+enum IoFileAttribute
+    variant FileHidden
+    variant FileTemporary
+    variant FileSparse
+    variant FileCompressed
+    variant FileEncrypted
+    variant FileImmutable
+    variant FileOther
+.end
+
+# Métadonnées d un fichier ou d un répertoire.
+struct IoFileMetadata
+    # Identifiant logique du fichier.
+    field id: IoFileId
+
+    # Type logique.
+    field file_type: IoFileType
+
+    # Taille en octets, 0 pour un répertoire.
+    field size_bytes: core.Size
+
+    # Permissions logiques.
+    field permissions: IoPermissions
+
+    # Attributs supplémentaires.
+    field attributes: coll.List<IoFileAttribute>
+
+    # Timestamps logiques.
+    field created: core.Option<core.DateTime>
+    field modified: core.Option<core.DateTime>
+    field accessed: core.Option<core.DateTime>
+.end
+
+# Entrée de répertoire.
+struct IoDirEntry
+    field id: IoDirEntryId
+
+    # Chemin complet de l entrée.
+    field path: IoPath
+
+    # Métadonnées associées.
+    field metadata: IoFileMetadata
+.end
+
+# Snapshot logique d un répertoire listé.
+struct IoDirectorySnapshot
+    # Chemin du répertoire.
+    field path: IoPath
+
+    # Entrées directes.
+    field entries: coll.List<IoDirEntry>
+.end
+
+# ============================================================================
+# Erreurs I/O et résultats
+# ============================================================================
+
+# Genre d erreur I/O.
+enum IoErrorKind
+    variant IoUnexpectedEof
+    variant IoInvalidData
+    variant IoInvalidInput
+    variant IoNotFound
+    variant IoPermissionDenied
+    variant IoAlreadyExists
+    variant IoTimedOut
+    variant IoWriteZero
+    variant IoInterrupted
+    variant IoWouldBlock
+    variant IoOutOfSpace
+    variant IoBrokenPipe
+    variant IoOther
+.end
+
+# Erreur d I/O logique.
+struct IoError
+    # Genre spécifique d erreur I/O.
+    field kind: IoErrorKind
+
+    # Code d erreur générique std.core.
+    field code: core.ErrorCode
+
+    # Code OS brut optionnel.
+    field os_code: core.Option<u32>
+
+    # Message résume snapshot de chaîne.
+    field message: core.StringSnapshot
+.end
+
+# Alias de résultat pour I/O.
+type IoResult<T> = core.Result<T, IoError>
+
+# ============================================================================
+# Streams, texte et buffering
+# ============================================================================
+
+# Genre de stream I/O.
+enum IoStreamKind
+    variant StreamStdin
+    variant StreamStdout
+    variant StreamStderr
+    variant StreamFile
+    variant StreamPipe
+    variant StreamSocket
+    variant StreamMemory
+    variant StreamCustom
+.end
+
+# Mode d accès logique pour un stream.
+enum IoAccessMode
+    variant AccessRead
+    variant AccessWrite
+    variant AccessReadWrite
+    variant AccessAppend
+.end
+
+# Mode de buffering.
+enum IoBufferingMode
+    variant BufferUnbuffered
+    variant BufferLine
+    variant BufferBlock
+.end
+
+# Mode de flush.
+enum IoFlushMode
+    variant FlushAuto
+    variant FlushManual
+.end
+
+# Positionnement dans un stream pour seek.
+enum IoSeekFrom
+    variant SeekFromStart
+    variant SeekFromCurrent
+    variant SeekFromEnd
+.end
+
+# Convention de fin de ligne pour les flux texte.
+enum IoTextNewline
+    variant NewlineLf
+    variant NewlineCrLf
+    variant NewlineCr
+    variant NewlineMixed
+.end
+
+# Paramètres texte pour un stream.
+struct IoTextSettings
+    # Encodage logique du texte.
+    field encoding: core.StringEncoding
+
+    # Convention de fin de ligne.
+    field newline: IoTextNewline
+
+    # Indique si un BOM est attendu ou présent.
+    field has_bom: core.Bool
+.end
+
+# Snapshot de buffer logique.
+struct IoBufferSnapshot
+    # Capacité en octets.
+    field capacity: core.Size
+
+    # Longueur actuellement utilisée.
+    field length: core.Size
+
+    # Indique si le buffer est vide.
+    field is_empty: core.Bool
+
+    # Indique si le buffer est plein.
+    field is_full: core.Bool
+.end
+
+# Stream logique métadonnées.
+struct IoStream
+    # Identifiant logique du stream.
+    field id: IoStreamId
+
+    # Genre de stream.
+    field kind: IoStreamKind
+
+    # Handle bas niveau logique.
+    field handle: IoHandleId
+
+    # Indique si le stream est ouvert.
+    field is_open: core.Bool
+
+    # Capacités du stream.
+    field can_read: core.Bool
+    field can_write: core.Bool
+    field can_seek: core.Bool
+
+    # Mode d accès et options de buffering.
+    field access_mode: IoAccessMode
+    field buffering: IoBufferingMode
+    field flush_mode: IoFlushMode
+
+    # Position courante optionnelle.
+    field position: core.Option<core.Size>
+
+    # Chemin associé éventuel.
+    field path: core.Option<IoPath>
+
+    # Paramètres texte optionnels.
+    field text_settings: core.Option<IoTextSettings>
+
+    # Nom logique longueur du nom pour les outils.
+    field name_len: core.Len
+.end
+
+# Snapshot logique d une opération de lecture.
+struct IoReadSnapshot
+    # Stream cible.
+    field stream: IoStreamId
+
+    # Nombre d octets demandés.
+    field bytes_requested: core.Size
+
+    # Nombre d octets effectivement lus.
+    field bytes_read: core.Size
+
+    # Indique si EOF a été atteint.
+    field eof: core.Bool
+
+    # Erreur éventuelle.
+    field error: core.Option<IoError>
+.end
+
+# Snapshot logique d une opération d écriture.
+struct IoWriteSnapshot
+    # Stream cible.
+    field stream: IoStreamId
+
+    # Nombre d octets demandés.
+    field bytes_requested: core.Size
+
+    # Nombre d octets effectivement écrits.
+    field bytes_written: core.Size
+
+    # Indique si le stream a été fermé pendant l écriture.
+    field closed_during_write: core.Bool
+
+    # Erreur éventuelle.
+    field error: core.Option<IoError>
+.end
+
+# Snapshot d une opération de flush.
+struct IoFlushSnapshot
+    field stream: IoStreamId
+    field error: core.Option<IoError>
+.end
+
+# Snapshot d une opération de seek.
+struct IoSeekSnapshot
+    # Stream cible.
+    field stream: IoStreamId
+
+    # Origine du seek.
+    field from: IoSeekFrom
+
+    # Déplacement demandé positif ou négatif.
+    field offset: core.Offset
+
+    # Position résultante si succès.
+    field new_position: core.Option<core.Size>
+
+    # Erreur éventuelle.
+    field error: core.Option<IoError>
+.end
+
+# ============================================================================
+# Ouverture, fermeture, locks et options
+# ============================================================================
+
+# Options d ouverture de fichier.
+enum IoOpenFlag
+    variant OpenCreate
+    variant OpenCreateNew
+    variant OpenTruncate
+    variant OpenAppend
+    variant OpenExclusive
+    variant OpenTemporary
+.end
+
+# Ensemble logique d options d ouverture.
+struct IoOpenOptions
+    # Mode d accès.
+    field access: IoAccessMode
+
+    # Drapeaux d ouverture.
+    field flags: coll.List<IoOpenFlag>
+
+    # Permissions par défaut éventuelles.
+    field default_permissions: core.Option<IoPermissions>
+.end
+
+# Snapshot d une ouverture de fichier.
+struct IoOpenSnapshot
+    # Stream obtenu.
+    field stream: core.Option<IoStreamId>
+
+    # Chemin demandé.
+    field path: IoPath
+
+    # Options utilisées.
+    field options: IoOpenOptions
+
+    # Erreur éventuelle.
+    field error: core.Option<IoError>
+.end
+
+# Snapshot d une fermeture de stream.
+struct IoCloseSnapshot
+    # Stream fermé.
+    field stream: IoStreamId
+
+    # Erreur éventuelle.
+    field error: core.Option<IoError>
+.end
+
+# Genre logique de lock de fichier.
+enum IoFileLockKind
+    variant FileLockShared
+    variant FileLockExclusive
+    variant FileLockUnlock
+.end
+
+# Snapshot d une opération de lock.
+struct IoFileLockSnapshot
+    # Fichier concerné.
+    field file: IoFileId
+
+    # Genre de lock.
+    field kind: IoFileLockKind
+
+    # Indique si le lock a été acquis ou relâché avec succès.
+    field success: core.Bool
+
+    # Erreur éventuelle.
+    field error: core.Option<IoError>
+.end
+
+# ============================================================================
+# Requêtes I/O et statut
+# ============================================================================
+
+# Genre d opération I/O haut niveau.
+enum IoOperationKind
+    variant IoOpOpen
+    variant IoOpClose
+    variant IoOpRead
+    variant IoOpWrite
+    variant IoOpFlush
+    variant IoOpSeek
+    variant IoOpSync
+    variant IoOpListDir
+    variant IoOpMetadata
+    variant IoOpCreateDir
+    variant IoOpRemoveFile
+    variant IoOpRemoveDir
+    variant IoOpRename
+    variant IoOpCopy
+    variant IoOpLock
+    variant IoOpOther
+.end
+
+# Statut d une opération I/O.
+enum IoOperationStatus
+    variant IoStatusPending
+    variant IoStatusRunning
+    variant IoStatusOk
+    variant IoStatusError
+    variant IoStatusCancelled
+    variant IoStatusTimeout
+.end
+
+# Snapshot d une synchronisation sur un stream ou fichier.
+struct IoSyncSnapshot
+    # Stream ou fichier lié.
+    field stream: core.Option<IoStreamId>
+    field file: core.Option<IoFileId>
+
+    # Erreur éventuelle.
+    field error: core.Option<IoError>
+.end
+
+# Snapshot d une opération de listage de répertoire.
+struct IoListDirSnapshot
+    field path: IoPath
+    field result: core.Option<IoDirectorySnapshot>
+    field error: core.Option<IoError>
+.end
+
+# Snapshot d une récupération de métadonnées.
+struct IoMetadataSnapshot
+    field path: IoPath
+    field metadata: core.Option<IoFileMetadata>
+    field error: core.Option<IoError>
+.end
+
+# Snapshot d une création de répertoire.
+struct IoCreateDirSnapshot
+    field path: IoPath
+    field created: core.Bool
+    field error: core.Option<IoError>
+.end
+
+# Snapshot d une suppression de fichier.
+struct IoRemoveFileSnapshot
+    field path: IoPath
+    field removed: core.Bool
+    field error: core.Option<IoError>
+.end
+
+# Snapshot d une suppression de répertoire.
+struct IoRemoveDirSnapshot
+    field path: IoPath
+    field removed: core.Bool
+    field error: core.Option<IoError>
+.end
+
+# Snapshot d un renommage.
+struct IoRenameSnapshot
+    field from_path: IoPath
+    field to_path: IoPath
+    field error: core.Option<IoError>
+.end
+
+# Snapshot d une copie.
+struct IoCopySnapshot
+    field from_path: IoPath
+    field to_path: IoPath
+
+    # Octets copiés si succès.
+    field bytes_copied: core.Size
+
+    # Erreur éventuelle.
+    field error: core.Option<IoError>
+.end
+
+# Requête I/O logique synchrone ou asynchrone.
+struct IoRequest
+    field id: IoRequestId
+
+    # Genre d opération.
+    field kind: IoOperationKind
+
+    # Stream associé éventuel.
+    field stream: core.Option<IoStreamId>
+
+    # Fichier associé éventuel.
+    field file: core.Option<IoFileId>
+
+    # Statut courant.
+    field status: IoOperationStatus
+
+    # Timestamp de début.
+    field started_at: core.TimeSnapshot
+
+    # Timestamp de fin éventuel.
+    field completed_at: core.Option<core.TimeSnapshot>
+
+    # Snapshots spécifiques selon l opération.
+    field open_snapshot: core.Option<IoOpenSnapshot>
+    field close_snapshot: core.Option<IoCloseSnapshot>
+    field read_snapshot: core.Option<IoReadSnapshot>
+    field write_snapshot: core.Option<IoWriteSnapshot>
+    field flush_snapshot: core.Option<IoFlushSnapshot>
+    field seek_snapshot: core.Option<IoSeekSnapshot>
+    field sync_snapshot: core.Option<IoSyncSnapshot>
+    field listdir_snapshot: core.Option<IoListDirSnapshot>
+    field metadata_snapshot: core.Option<IoMetadataSnapshot>
+    field create_dir_snapshot: core.Option<IoCreateDirSnapshot>
+    field remove_file_snapshot: core.Option<IoRemoveFileSnapshot>
+    field remove_dir_snapshot: core.Option<IoRemoveDirSnapshot>
+    field rename_snapshot: core.Option<IoRenameSnapshot>
+    field copy_snapshot: core.Option<IoCopySnapshot>
+    field lock_snapshot: core.Option<IoFileLockSnapshot>
+
+    # Erreur globale éventuelle.
+    field error: core.Option<IoError>
+.end
+
+# ============================================================================
+# Environnement I/O
+# ============================================================================
+
+# Snapshot de l environnement I/O d un processus.
+struct IoEnvironmentSnapshot
+    # Répertoire courant.
+    field current_dir: core.Option<IoPath>
+
+    # Répertoire temporaire.
+    field temp_dir: core.Option<IoPath>
+
+    # Répertoires de recherche PATH.
+    field search_paths: coll.List<IoPath>
+
+    # Encodage par défaut pour les chemins.
+    field path_encoding: core.StringEncoding
+.end
+
+# ============================================================================
+# Vues agrégées pour les outils et runtime
+# ============================================================================
+
+# Ensemble de streams standards.
+struct IoStdStreams
+    field stdin: IoStreamId
+    field stdout: IoStreamId
+    field stderr: IoStreamId
+.end
+
+# Snapshot runtime global pour l I/O.
+struct IoRuntimeSnapshot
+    # Identifiant logique de session I/O.
+    field session: IoSessionId
+
+    # Environnement I/O.
+    field env: IoEnvironmentSnapshot
+
+    # Streams ouverts connus.
+    field streams: coll.List<IoStream>
+
+    # Streams standards.
+    field std_streams: IoStdStreams
+
+    # Dernières erreurs I/O connues.
+    field recent_errors: coll.List<IoError>
+
+    # Dernières opérations de lecture, écriture, flush, seek.
+    field last_reads: coll.List<IoReadSnapshot>
+    field last_writes: coll.List<IoWriteSnapshot>
+    field last_flushes: coll.List<IoFlushSnapshot>
+    field last_seeks: coll.List<IoSeekSnapshot>
+
+    # Requêtes I/O en cours ou récentes.
+    field requests: coll.List<IoRequest>
+.end
+
+.end

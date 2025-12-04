@@ -1,0 +1,507 @@
+
+
+module l.tools.runner
+
+import l.tools.lpkg
+import l.tools.pkg
+import scripts.ci.lint
+
+# ============================================================================
+# Vitte tools – Modèle logique de runner / orchestrateur (jobs, tasks, steps)
+#
+# Objectifs :
+#   - Modéliser, au niveau purement déclaratif, un système de "runner" utilisé
+#     par vitte-core :
+#       * sessions, jobs, tasks, steps et commandes,
+#       * environnement d’exécution et variables,
+#       * artefacts, logs et métriques,
+#       * intégration avec lpkg/pkg et le modèle CI/lint.
+#   - Servir de contrat commun entre :
+#       * les backends d’exécution (processus locaux, conteneurs, remote),
+#       * les outils CI (scripts, GitHub Actions, etc.),
+#       * les UIs (CLI, TUI, web, IDE) qui visualisent l’état des jobs.
+#   - Ne contenir que des structures de données (aucune fonction ni I/O).
+#
+# Conventions :
+#   - Même style que vitte.compiler.ast / lrt.ffi / lvm.* / l.tools.* :
+#       * `pub struct/enum` + ":" et blocs terminés par `.end` ;
+#       * enums "tag-only" ;
+#       * IDs forts basés sur des indices u32.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Indices et identifiants
+# ----------------------------------------------------------------------------
+
+pub typedef u32 RunnerSessionIndex
+pub typedef u32 RunnerJobIndex
+pub typedef u32 RunnerTaskIndex
+pub typedef u32 RunnerStepIndex
+pub typedef u32 RunnerCommandIndex
+pub typedef u32 RunnerEnvIndex
+pub typedef u32 RunnerArtifactIndex
+pub typedef u32 RunnerLogIndex
+pub typedef u32 RunnerMetricIndex
+pub typedef u32 RunnerNodeIndex
+
+pub struct RunnerSessionId:
+    let raw: RunnerSessionIndex
+.end
+
+pub struct RunnerJobId:
+    let raw: RunnerJobIndex
+.end
+
+pub struct RunnerTaskId:
+    let raw: RunnerTaskIndex
+.end
+
+pub struct RunnerStepId:
+    let raw: RunnerStepIndex
+.end
+
+pub struct RunnerCommandId:
+    let raw: RunnerCommandIndex
+.end
+
+pub struct RunnerEnvId:
+    let raw: RunnerEnvIndex
+.end
+
+pub struct RunnerArtifactId:
+    let raw: RunnerArtifactIndex
+.end
+
+pub struct RunnerLogId:
+    let raw: RunnerLogIndex
+.end
+
+pub struct RunnerMetricId:
+    let raw: RunnerMetricIndex
+.end
+
+# ----------------------------------------------------------------------------
+# Plateforme, environnement et variables
+# ----------------------------------------------------------------------------
+
+# Plateforme cible.
+pub enum RunnerPlatformKind:
+    PlatformLinux
+    PlatformMacos
+    PlatformWindows
+    PlatformOther
+.end
+
+# Architecture CPU.
+pub enum RunnerArchKind:
+    ArchX86_64
+    ArchAarch64
+    ArchArmv7
+    ArchI686
+    ArchOther
+.end
+
+# Type de shell utilisé pour les commandes.
+pub enum RunnerShellKind:
+    ShellSh
+    ShellBash
+    ShellZsh
+    ShellPowerShell
+    ShellCmdExe
+    ShellCustom
+.end
+
+# Variable d’environnement.
+pub struct RunnerEnvVar:
+    let key: String
+    let value: String
+.end
+
+# Environnement logique (machine / conteneur / sandbox).
+pub struct RunnerEnvironment:
+    let id: RunnerEnvId
+    let name: String
+    let platform: RunnerPlatformKind
+    let arch: RunnerArchKind
+    let shell: RunnerShellKind
+
+    let workspace_root: String        # racine du repo
+    let temp_dir: String              # répertoire temporaire
+    let cache_dir: String             # répertoire de cache du runner
+    let log_dir: String               # répertoire racine des logs
+
+    let env_vars: Vec<RunnerEnvVar>
+    let path_entries: Vec<String>
+
+    let ci_mode: Bool                 # true => contexte CI
+.end
+
+# ----------------------------------------------------------------------------
+# Jobs de haut niveau
+# ----------------------------------------------------------------------------
+
+# Type de job (profil d’exécution).
+pub enum RunnerJobKind:
+    JobBuild
+    JobTest
+    JobLint
+    JobFormat
+    JobBench
+    JobDocs
+    JobRelease
+    JobCustom
+.end
+
+# Priorité logique du job.
+pub enum RunnerJobPriority:
+    JobPriorityLow
+    JobPriorityNormal
+    JobPriorityHigh
+.end
+
+# Mode de trigger d’un job.
+pub enum RunnerJobTriggerKind:
+    TriggerManual
+    TriggerGitPush
+    TriggerGitPullRequest
+    TriggerSchedule
+    TriggerDependency
+    TriggerOther
+.end
+
+# Statut global d’un job.
+pub enum RunnerJobStatusKind:
+    JobPending
+    JobQueued
+    JobRunning
+    JobSucceeded
+    JobFailed
+    JobCancelled
+    JobSkipped
+.end
+
+# Métadonnées de déclenchement (git/CI).
+pub struct RunnerJobTriggerInfo:
+    let kind: RunnerJobTriggerKind
+    let branch: Option<String>
+    let commit: Option<String>
+    let pull_request_id: Option<String>
+    let tag: Option<String>
+    let ci_build_id: Option<String>
+.end
+
+# Résumé de tâches d’un job.
+pub struct RunnerJobTaskSummary:
+    let total_tasks: u32
+    let succeeded_tasks: u32
+    let failed_tasks: u32
+    let cancelled_tasks: u32
+    let skipped_tasks: u32
+.end
+
+# Job logique.
+pub struct RunnerJob:
+    let id: RunnerJobId
+    let session: RunnerSessionId
+    let name: String
+    let kind: RunnerJobKind
+    let priority: RunnerJobPriority
+    let env: RunnerEnvId
+
+    let trigger: RunnerJobTriggerInfo
+
+    # Liens optionnels vers d’autres modèles du projet.
+    let lpkg_resolution: Option<LpkgResolutionId>
+    let lint_run: Option<LintRunId>
+    let pkg_operation: Option<PkgOperationId>
+
+    let created_at_millis: u64
+    let started_at_millis: Option<u64>
+    let finished_at_millis: Option<u64>
+
+    let status: RunnerJobStatusKind
+    let task_summary: RunnerJobTaskSummary
+.end
+
+# ----------------------------------------------------------------------------
+# Tâches (tasks) et dépendances
+# ----------------------------------------------------------------------------
+
+# Type de tâche.
+pub enum RunnerTaskKind:
+    TaskCommandPipeline      # suite de commandes
+    TaskLint                 # lint (lié à scripts.ci.lint)
+    TaskPkg                  # opération pkg/lpkg
+    TaskCustom               # logique custom
+.end
+
+# Statut d’une tâche.
+pub enum RunnerTaskStatusKind:
+    TaskPending
+    TaskRunning
+    TaskSucceeded
+    TaskFailed
+    TaskCancelled
+    TaskSkipped
+.end
+
+# Politique en cas d’échec.
+pub enum RunnerTaskFailurePolicy:
+    TaskFailJob          # échec => stop du job
+    TaskContinue         # échec => job continue (warning)
+    TaskMarkSkipped      # tâches dépendantes marquées skipped
+.end
+
+# Tâche logique dans un job.
+pub struct RunnerTask:
+    let id: RunnerTaskId
+    let job: RunnerJobId
+    let name: String
+    let kind: RunnerTaskKind
+    let description: Option<String>
+
+    let dependencies: Vec<RunnerTaskId>   # tasks qui doivent réussir avant
+    let failure_policy: RunnerTaskFailurePolicy
+    let max_retries: u32
+    let retry_delay_millis: u64
+
+    # Liens optionnels vers d’autres modèles.
+    let lint_run: Option<LintRunId>
+    let pkg_operation: Option<PkgOperationId>
+
+    let created_at_millis: u64
+    let started_at_millis: Option<u64>
+    let finished_at_millis: Option<u64>
+
+    let status: RunnerTaskStatusKind
+.end
+
+# ----------------------------------------------------------------------------
+# Commandes et steps
+# ----------------------------------------------------------------------------
+
+# Type de commande (pour information UI).
+pub enum RunnerCommandKind:
+    CommandProcess      # exécution d’un binaire
+    CommandShellLine    # ligne shell
+    CommandScriptFile   # script sur disque
+.end
+
+# Spécification d’une commande.
+pub struct RunnerCommandSpec:
+    let id: RunnerCommandId
+    let kind: RunnerCommandKind
+    let program: String
+    let args: Vec<String>
+    let working_dir: String
+    let env: Vec<RunnerEnvVar>
+    let timeout_millis: Option<u64>
+.end
+
+# Type de step dans le pipeline.
+pub enum RunnerStepKind:
+    StepRunCommand
+    StepUploadArtifact
+    StepDownloadArtifact
+    StepGenerateReport
+    StepCustom
+.end
+
+# Statut d’un step.
+pub enum RunnerStepStatusKind:
+    StepPending
+    StepRunning
+    StepSucceeded
+    StepFailed
+    StepCancelled
+    StepSkipped
+.end
+
+# Résumé de logs pour un step.
+pub struct RunnerStepLogSummary:
+    let stdout_lines: u32
+    let stderr_lines: u32
+    let log_size_bytes: u64
+    let truncated: Bool
+.end
+
+# Erreur d’exécution pour un step.
+pub struct RunnerStepError:
+    let message: String
+    let exit_code: Option<i32>
+    let diagnostics: LpkgDiagnosticSet
+.end
+
+# Step concret d’exécution.
+pub struct RunnerStep:
+    let id: RunnerStepId
+    let task: RunnerTaskId
+    let index_in_task: u32
+
+    let kind: RunnerStepKind
+    let command: Option<RunnerCommandSpec>
+
+    let status: RunnerStepStatusKind
+    let started_at_millis: Option<u64>
+    let finished_at_millis: Option<u64>
+
+    let log_file: Option<String>
+    let log_summary: Option<RunnerStepLogSummary>
+    let error: Option<RunnerStepError>
+.end
+
+# Pipeline de steps pour une tâche.
+pub struct RunnerTaskPipeline:
+    let task: RunnerTaskId
+    let steps: Vec<RunnerStepId>
+.end
+
+# ----------------------------------------------------------------------------
+# Artefacts
+# ----------------------------------------------------------------------------
+
+# Type d’artefact produit.
+pub enum RunnerArtifactKind:
+    ArtifactFile
+    ArtifactDirectory
+    ArtifactArchive
+    ArtifactReport
+    ArtifactCoverage
+    ArtifactJUnitXml
+    ArtifactJson
+    ArtifactSnapshot
+.end
+
+# Artefact logique.
+pub struct RunnerArtifact:
+    let id: RunnerArtifactId
+    let job: RunnerJobId
+    let task: Option<RunnerTaskId>
+    let step: Option<RunnerStepId>
+
+    let kind: RunnerArtifactKind
+    let path: String
+    let content_type: Option<String>
+    let size_bytes: Option<u64>
+
+    let created_at_millis: u64
+    let labels: Vec<String>         # tags libres (ex: "coverage", "html")
+.end
+
+# Collection d’artefacts pour un job.
+pub struct RunnerArtifactSet:
+    let job: RunnerJobId
+    let artifacts: Vec<RunnerArtifactId>
+.end
+
+# ----------------------------------------------------------------------------
+# Logs et métriques
+# ----------------------------------------------------------------------------
+
+# Niveau de log.
+pub enum RunnerLogLevel:
+    LogDebug
+    LogInfo
+    LogWarning
+    LogError
+.end
+
+# Entrée de log structurée.
+pub struct RunnerLogEntry:
+    let id: RunnerLogId
+    let level: RunnerLogLevel
+    let message: String
+    let job: Option<RunnerJobId>
+    let task: Option<RunnerTaskId>
+    let step: Option<RunnerStepId>
+    let timestamp_millis: u64
+.end
+
+# Flux de logs pour une session.
+pub struct RunnerLogStream:
+    let entries: Vec<RunnerLogEntry>
+.end
+
+# Type de métrique.
+pub enum RunnerMetricKind:
+    MetricCounter
+    MetricGauge
+    MetricDurationMillis
+    MetricBytes
+.end
+
+# Échantillon de métrique.
+pub struct RunnerMetricSample:
+    let metric: RunnerMetricId
+    let kind: RunnerMetricKind
+    let name: String
+    let value: f64
+    let timestamp_millis: u64
+.end
+
+# Série de métriques pour un job.
+pub struct RunnerMetricSeries:
+    let job: RunnerJobId
+    let samples: Vec<RunnerMetricSample>
+.end
+
+# Résumé métriques d’un job.
+pub struct RunnerJobMetricsSummary:
+    let total_steps: u32
+    let succeeded_steps: u32
+    let failed_steps: u32
+    let total_duration_millis: u64
+.end
+
+# ----------------------------------------------------------------------------
+# Sessions et résumé global
+# ----------------------------------------------------------------------------
+
+# Statut d’une session runner.
+pub enum RunnerSessionStatusKind:
+    SessionActive
+    SessionDraining
+    SessionCompleted
+    SessionFailed
+.end
+
+# Session runner complète.
+pub struct RunnerSession:
+    let id: RunnerSessionId
+    let default_env: RunnerEnvId
+    let jobs: Vec<RunnerJobId>
+
+    let created_at_millis: u64
+    let last_updated_millis: u64
+    let status: RunnerSessionStatusKind
+.end
+
+# Résumé global d’un job pour UI.
+pub struct RunnerJobSummary:
+    let job: RunnerJobId
+    let name: String
+    let kind: RunnerJobKind
+    let status: RunnerJobStatusKind
+    let created_at_millis: u64
+    let started_at_millis: Option<u64>
+    let finished_at_millis: Option<u64>
+    let metrics: RunnerJobMetricsSummary
+.end
+
+# ----------------------------------------------------------------------------
+# Nœuds génériques runner pour tooling
+# ----------------------------------------------------------------------------
+
+pub enum RunnerNodeKind:
+    NodeSession
+    NodeJob
+    NodeTask
+    NodeStep
+    NodeArtifact
+    NodeMetric
+.end
+
+pub struct RunnerNode:
+    let id: RunnerNodeIndex
+    let kind: RunnerNodeKind
+.end

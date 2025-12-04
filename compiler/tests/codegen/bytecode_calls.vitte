@@ -1,0 +1,108 @@
+mod tests.codegen/bytecode_calls
+
+# ============================================================================
+# Vitte codegen test – function calls / call graph / simple control flow
+# Syntaxe : Vitte Phrase ("lex") – mod / fn / scn / prog / set / ret / when / do
+# ============================================================================
+
+fn add a:i32 b:i32 -> i32
+    set r = a + b
+    ret r
+.end
+
+fn sub a:i32 b:i32 -> i32
+    set r = a - b
+    ret r
+.end
+
+fn mul a:i32 b:i32 -> i32
+    set r = a * b
+    ret r
+.end
+
+fn id_i32 x:i32 -> i32
+    ret x
+.end
+
+fn id_bool b:Bool -> Bool
+    ret b
+.end
+
+fn square x:i32 -> i32
+    set r = mul(x, x)
+    ret r
+.end
+
+fn sum3 a:i32 b:i32 c:i32 -> i32
+    set ab = add(a, b)
+    set abc = add(ab, c)
+    ret abc
+.end
+
+fn nested_calls x:i32 -> i32
+    # nested: sum3(x, square(x), add(1, 2))
+    set tmp1 = square(x)
+    set tmp2 = add(1, 2)
+    set res = sum3(x, tmp1, tmp2)
+    ret res
+.end
+
+fn choose_add_or_mul flag:Bool a:i32 b:i32 -> i32
+    when flag
+        ret add(a, b)
+    else
+        ret mul(a, b)
+    .end
+.end
+
+fn zero_arity -> i32
+    ret 42
+.end
+
+# ----------------------------------------------------------------------------
+# Scénario de démonstration – utilisé par les tests de bytecode
+# ----------------------------------------------------------------------------
+
+scn calls_demo
+    set one = 1
+    set two = 2
+    set three = 3
+
+    # appels simples
+    set s = add(one, two)
+    set d = sub(three, one)
+    set m = mul(two, three)
+
+    # appels identités
+    set s_id = id_i32(s)
+    set b_id = id_bool(true)
+
+    # appel imbriqué
+    set sq = square(three)
+    set nested = nested_calls(three)
+
+    # appels conditionnels
+    set c1 = choose_add_or_mul(true, s, m)
+    set c2 = choose_add_or_mul(false, sq, nested)
+
+    # appel zéro argument
+    set z = zero_arity()
+
+    # combiner pour éviter le code mort
+    set total = s_id + d + m + sq + nested + c1 + c2 + z
+    set flag = b_id and (total > 0)
+
+    when flag
+        set _ok = total
+    .end
+
+    ret
+.end
+
+# ----------------------------------------------------------------------------
+# Point d’entrée logique pour les tests de codegen VM
+# ----------------------------------------------------------------------------
+
+prog tests.codegen/bytecode_calls.main
+    do calls_demo
+.end

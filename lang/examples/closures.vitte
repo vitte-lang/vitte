@@ -1,0 +1,298 @@
+
+
+module vitte.examples.closures
+
+import std.collections as coll
+import vitte.compiler.spans as spans
+import vitte.compiler.names as names
+import vitte.compiler.types as types
+
+# ============================================================================
+# Vitte examples – Modèle et exemples de closures
+#
+# Objectifs de ce fichier :
+#   - Illustrer, de façon déclarative, comment le compilateur peut représenter
+#     les closures Vitte :
+#       * identifiants de closures et environnements de capture,
+#       * genres de closures (Fn, FnMut, FnOnce),
+#       * captures par valeur et par référence,
+#       * signature des closures (paramètres, retour),
+#       * lien entre une closure et son point de définition dans la source,
+#       * exemples d’utilisation côté "phrase syntaxe".
+#   - Servir d’exemple ultra complet pour :
+#       * les tests de grammaire,
+#       * les outils (LSP, debugger) qui veulent introspecter les closures,
+#       * la documentation de référence du langage Vitte.
+#
+# Convention :
+#   - Ce fichier reste purement "data model" et "exemples commentés" :
+#       * aucune fonction exécutable,
+#       * aucune I O,
+#       * pas de logique d’exécution.
+#   - Tous les blocs utilisent la syntaxe officielle :
+#       * terminaison par ".end",
+#       * aucune accolade dans le code.
+# ============================================================================
+
+# ============================================================================
+# Identifiants de base
+# ============================================================================
+
+# Identifiant logique d’une closure dans le compilateur.
+type ClosureId = u32
+
+# Identifiant de l’environnement de capture d’une closure.
+type ClosureEnvId = u32
+
+# Identifiant d’une capture individuelle dans l’environnement.
+type ClosureCaptureId = u32
+
+# Identifiant d’un paramètre de closure.
+type ClosureParamId = u32
+
+# Identifiant d’un site d’appel de closure (pour le debugger, l’analyse).
+type ClosureCallSiteId = u32
+
+# ============================================================================
+# Genre de closure (Fn, FnMut, FnOnce)
+# ============================================================================
+
+# Genre logique de la closure, inspiré des traits Fn, FnMut, FnOnce.
+#
+#   - Fn      : appel multiple, environnement non muté.
+#   - FnMut   : appel multiple, environnement mutable.
+#   - FnOnce  : appel unique autorisé, capture par déplacement.
+enum ClosureKind
+    variant Fn
+    variant FnMut
+    variant FnOnce
+.end
+
+# Origine d’une closure :
+#   - Inline : closure définie directement dans le code source utilisateur,
+#   - Desugared : closure issue d’un sucre syntaxique (par exemple un for each),
+#   - Synthetic : closure générée par le compilateur ou les outils.
+enum ClosureOrigin
+    variant Inline
+    variant Desugared
+    variant Synthetic
+.end
+
+# ============================================================================
+# Captures de closure
+# ============================================================================
+
+# Mode de capture :
+#   - ByValue  : la valeur est copiée ou déplacée dans l’environnement,
+#   - ByRef    : la closure garde une référence partagée sur la valeur,
+#   - ByMutRef : la closure garde une référence mutable.
+enum ClosureCaptureMode
+    variant ByValue
+    variant ByRef
+    variant ByMutRef
+.end
+
+# Genre de l’entité capturée :
+#   - LocalVar    : variable locale classique,
+#   - Param       : paramètre de fonction,
+#   - Upvar       : variable capturée depuis une fonction englobante,
+#   - ThisLike    : analogue éventuel d’un "self" implicite.
+enum ClosureCaptureKind
+    variant LocalVar
+    variant Param
+    variant Upvar
+    variant ThisLike
+.end
+
+# Capture individuelle dans l’environnement d’une closure.
+struct ClosureCapture
+    # Identifiant logique de cette capture.
+    field id: ClosureCaptureId
+
+    # Nom symbolique de l’entité capturée.
+    field name: names.SymbolId
+
+    # Type de l’entité capturée.
+    field value_type: types.TypeId
+
+    # Genre de l’entité capturée (variable locale, paramètre, etc.).
+    field kind: ClosureCaptureKind
+
+    # Mode de capture (valeur, référence, référence mutable).
+    field mode: ClosureCaptureMode
+
+    # Span de la mention capturée dans la source.
+    field span: spans.SpanId
+.end
+
+# Environnement de capture complet pour une closure donnée.
+struct ClosureEnv
+    # Identifiant logique de cet environnement.
+    field id: ClosureEnvId
+
+    # Liste des captures dans l’ordre logique d’analyse.
+    field captures: coll.List<ClosureCapture>
+
+    # Span de la définition d’environnement (par exemple la closure entière).
+    field span: spans.SpanId
+.end
+
+# ============================================================================
+# Signature des closures
+# ============================================================================
+
+# Paramètre formel d’une closure.
+struct ClosureParam
+    field id: ClosureParamId
+
+    # Nom symbolique du paramètre.
+    field name: names.SymbolId
+
+    # Type du paramètre.
+    field param_type: types.TypeId
+
+    # Span du paramètre dans la définition de la closure.
+    field span: spans.SpanId
+.end
+
+# Signature logique d’une closure.
+struct ClosureSignature
+    # Paramètres formels.
+    field params: coll.List<ClosureParam>
+
+    # Type de retour.
+    field return_type: types.TypeId
+
+    # Span global de la signature (paramètres et flèche de retour).
+    field span: spans.SpanId
+.end
+
+# ============================================================================
+# Description de closure pour le compilateur
+# ============================================================================
+
+# Modèle logique complet d’une closure définie dans le programme.
+struct ClosureDef
+    # Identifiant logique de la closure.
+    field id: ClosureId
+
+    # Genre de la closure (Fn, FnMut, FnOnce).
+    field kind: ClosureKind
+
+    # Origine (inline, désucrée, synthétique).
+    field origin: ClosureOrigin
+
+    # Signature paramètre plus retour.
+    field signature: ClosureSignature
+
+    # Environnement de capture associé.
+    field env_id: ClosureEnvId
+
+    # Span de la définition de la closure (depuis le début jusqu’à son corps).
+    field span: spans.SpanId
+
+    # Nom symbolique optionnel (pour les closures nommées dans certains styles,
+    # ou pour la génération de noms lisibles dans les outils).
+    field debug_name: names.SymbolId
+.end
+
+# Table centrale des closures vues dans un module ou un crate.
+struct ClosureTable
+    field defs: coll.List<ClosureDef>
+    field envs: coll.List<ClosureEnv>
+.end
+
+# ============================================================================
+# Sites d’appel et traçage de closures
+# ============================================================================
+
+# Description d’un site d’appel de closure, utile pour :
+#   - debugger,
+#   - analyse de performance,
+#   - visualisation graphique des appels.
+struct ClosureCallSite
+    field id: ClosureCallSiteId
+
+    # Closure appelée.
+    field closure_id: ClosureId
+
+    # Span du site d’appel dans la source.
+    field span: spans.SpanId
+
+    # Nombre approximatif ou estimé d’appels (inférence ou profilage).
+    field estimated_calls: u64
+.end
+
+# Journal des appels de closures (modèle logique).
+struct ClosureCallGraph
+    field call_sites: coll.List<ClosureCallSite>
+.end
+
+# Vue agrégée pour les outils (LSP, debugger, visualisation).
+struct ClosureModelSnapshot
+    field closure_table: ClosureTable
+    field call_graph: ClosureCallGraph
+.end
+
+# ============================================================================
+# Exemples d’utilisation en "phrase syntaxe"
+# ============================================================================
+#
+# Ces exemples sont purement illustratifs et peuvent servir de base aux tests
+# de parsing ou à la documentation. Ils ne sont pas exécutés par ce module.
+#
+# Exemple 1 : closure simple qui capture une variable locale.
+#
+#   fn demo_simple
+#       set base = 10
+#       set add = |x| base + x
+#       say "demo_simple:"
+#       say add(5)
+#   .end
+#
+# Exemple 2 : closure mutante qui capture une variable mutable.
+#
+#   fn demo_mut
+#       set counter = 0
+#       set inc = |step|
+#           set counter = counter + step
+#           ret counter
+#       .end
+#
+#       say "demo_mut:"
+#       say inc(1)
+#       say inc(2)
+#   .end
+#
+# Exemple 3 : closure utilisée comme paramètre de fonction.
+#
+#   fn apply_once f x
+#       # Appelle la closure une seule fois et renvoie le résultat.
+#       ret f(x)
+#   .end
+#
+#   fn demo_param
+#       set double = |v| v * 2
+#       set result = apply_once double 21
+#       say "demo_param:"
+#       say result
+#   .end
+#
+# Exemple 4 : pipeline simple avec plusieurs closures imbriquées.
+#
+#   fn demo_pipeline
+#       set add1 = |v| v + 1
+#       set sq = |v| v * v
+#       set x = 3
+#       set y = sq(add1(x))
+#       say "demo_pipeline:"
+#       say y
+#   .end
+#
+# Ces exemples montrent :
+#   - capture de variables locales dans des closures,
+#   - closures mutantes via une variable mutable externe,
+#   - passage de closures en paramètre,
+#   - composition simple de closures dans des expressions.
+
+.end

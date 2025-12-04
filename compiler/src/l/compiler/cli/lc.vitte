@@ -1,0 +1,239 @@
+module vitte.compiler.cli.lc
+
+import vitte.compiler.cli.lc_common as lc_common
+import vitte.compiler.cli.lc_build as lc_build
+import vitte.runtime.env as env
+
+# ============================================================================
+# lc – frontend principal du compilateur Vitte
+#
+# Rôle :
+#   - point d’entrée global : binaire `lc` ;
+#   - dispatch vers les sous-commandes (`build`, `check`, `clean`, ...) ;
+#   - fournit une aide générique et une version de haut niveau ;
+#   - se comporte comme alias de `lc-build` lorsqu’aucune commande n’est donnée.
+#
+# Syntaxe conforme à la grammaire Vitte :
+#   - blocs avec ":" + indentation + ".end"
+#   - pas d’accolades pour les blocs de contrôle.
+# ============================================================================
+const LC_EXIT_OK = 0
+const LC_EXIT_FAIL = 1
+const LC_EXIT_USAGE = 2
+
+const LC_NAME = "lc"
+const LC_VERSION = "0.1.0"
+
+# Mode strict: si vrai, une commande inconnue provoque une erreur explicite
+# plutôt qu'un simple alias vers lc-build.
+const LC_STRICT_UNKNOWN_CMD = false
+
+# ----------------------------------------------------------------------------
+# Parsing simple des arguments de `lc`
+# ----------------------------------------------------------------------------
+pub struct LcParsedArgs:
+    let cmd: String
+    let global_flags: String[]
+    let args: String[]
+.end
+
+# ----------------------------------------------------------------------------
+# Options globales (verbosité, couleur, dry-run)
+# ----------------------------------------------------------------------------
+pub enum LcVerbosity:
+    VerboseQuiet
+    VerboseNormal
+    VerboseDebug
+.end
+
+pub enum LcColorMode:
+    ColorAuto
+    ColorAlways
+    ColorNever
+.end
+
+pub struct LcGlobalOptions:
+    let verbosity: LcVerbosity
+    let color_mode: LcColorMode
+    let dry_run: Bool
+.end
+
+fn lc_default_global_options() -> LcGlobalOptions:
+    return LcGlobalOptions(
+        verbosity = VerboseNormal,
+        color_mode = ColorAuto,
+        dry_run = false,
+    )
+.end
+
+fn lc_infer_global_options(String[] global_flags) -> LcGlobalOptions:
+    # Implémentation minimaliste: on reconnaît quelques flags classiques.
+    let opts = lc_default_global_options()
+
+    let i = 0
+    while i < global_flags.len():
+        let flag = global_flags[i]
+
+        if (flag == "-q") or (flag == "--quiet"):
+            opts.verbosity = VerboseQuiet
+        .end
+
+        if (flag == "-v") or (flag == "--verbose"):
+            opts.verbosity = VerboseDebug
+        .end
+
+        if (flag == "--color") or (flag == "--color=always"):
+            opts.color_mode = ColorAlways
+        .end
+
+        if (flag == "--no-color") or (flag == "--color=never"):
+            opts.color_mode = ColorNever
+        .end
+
+        if flag == "--dry-run":
+            opts.dry_run = true
+        .end
+
+        i = i + 1
+    .end
+
+    return opts
+.end
+
+fn lc_parse_command(String[] argv) -> LcParsedArgs:
+    if argv.len() == 0:
+        return LcParsedArgs(cmd = "", global_flags = [], args = [])
+    .end
+
+    let globals: String[] = []
+    let i = 0
+
+    # Collecte des flags globaux en tête (tokens commençant par "-").
+    while i < argv.len():
+        let item = argv[i]
+
+        if item == "--":
+            # Fin des flags globaux, commande éventuelle après "--".
+            i = i + 1
+            break
+        .end
+
+        if (item.len() > 0) and (item[0] == '-'):
+            globals = lc_common.push(globals, item)
+            i = i + 1
+            continue
+        .end
+
+        # Première non-option = commande.
+        break
+    .end
+
+    # A ce stade, i pointe sur la commande (ou sur la fin du tableau).
+    if i >= argv.len():
+        return LcParsedArgs(cmd = "", global_flags = globals, args = [])
+    .end
+
+    let cmd = argv[i]
+    let args = lc_common.slice(argv, i + 1, argv.len())
+    return LcParsedArgs(cmd = cmd, global_flags = globals, args = args)
+.end
+
+# ----------------------------------------------------------------------------
+# Fonction principale : interprétation des arguments de `lc`
+# ----------------------------------------------------------------------------
+fn lc_main(String[] argv) -> Int:
+    # Cas simple : aucun argument -> alias direct vers lc-build.
+    if argv.len() == 0:
+        return lc_build.lc_build_main(argv)
+    .end
+
+    let parsed = lc_parse_command(argv)
+    let globals = parsed.global_flags
+    let global_opts = lc_infer_global_options(globals)
+    let cmd = parsed.cmd
+    let args = parsed.args
+
+    # Commande globale "help" (équivalent à --help sans sous-commande dédiée).
+    if cmd == "help":
+        lc_print_help()
+        return LC_EXIT_OK
+    .end
+
+    # Aliases globaux d'aide / version.
+    if (cmd == "--help") or (cmd == "-h"):
+        lc_print_help()
+        return LC_EXIT_OK
+    .end
+
+    if (cmd == "--version") or (cmd == "-V"):
+        lc_print_version()
+        return LC_EXIT_OK
+    .end
+
+    # Sous-commandes connues. On délègue à lc-build qui gère build/check/clean.
+    if (cmd == "build") or (cmd == "check") or (cmd == "clean"):
+        # On passe tous les arguments après le nom de commande à lc-build.
+        let sub_argv = args
+        return lc_build.lc_build_main(sub_argv)
+    .end
+
+    # Mode strict : commande inconnue => erreur d'usage explicite.
+    if LC_STRICT_UNKNOWN_CMD:
+        lc_common.print_error(LC_NAME + ": unknown command '" + cmd + "'")
+        lc_common.print_error("Run '" + LC_NAME + " --help' for usage.")
+        return LC_EXIT_USAGE
+    .end
+
+    # Mode alias par défaut :
+    #   - `lc` est utilisé comme alias pour `lc-build`
+    #   - le premier argument (non reconnu comme commande globale) est laissé tel quel
+    #     pour être interprété côté lc-build (manifest, flags...).
+    return lc_build.lc_build_main(argv)
+.end
+
+# ----------------------------------------------------------------------------
+# Aide et version globales
+# ----------------------------------------------------------------------------
+fn lc_print_help():
+    lc_common.print_line(LC_NAME + " - Vitte language compiler (multi-command frontend)")
+    lc_common.print_line("")
+    lc_common.print_line("Usage:")
+    lc_common.print_line("  " + LC_NAME + " [command] [options] [args]")
+    lc_common.print_line("")
+    lc_common.print_line("Commands:")
+    lc_common.print_line("  build      Build project(s) described by a Muffin manifest")
+    lc_common.print_line("  check      Type-check project(s) without producing outputs")
+    lc_common.print_line("  clean      Remove build artifacts")
+    lc_common.print_line("")
+    lc_common.print_line("Global aliases:")
+    lc_common.print_line("  " + LC_NAME + " --help        Show this global help")
+    lc_common.print_line("  " + LC_NAME + " --version     Show global compiler version")
+    lc_common.print_line("")
+    lc_common.print_line("Global options (parsed before the command):")
+    lc_common.print_line("  -q, --quiet        Reduce output (quiet)")
+    lc_common.print_line("  -v, --verbose      Increase output (debug/verbose)")
+    lc_common.print_line("  --color            Force colored output (if supported)")
+    lc_common.print_line("  --no-color         Disable colored output")
+    lc_common.print_line("  --dry-run          Do not perform any write on disk")
+    lc_common.print_line("")
+    lc_common.print_line("Most commands are implemented by the lc-build frontend.")
+    lc_common.print_line("For detailed build options, run:")
+    lc_common.print_line("  " + LC_NAME + " build --help")
+    lc_common.print_line("")
+    lc_common.print_line("See also:")
+    lc_common.print_line("  lc-build          Low-level build frontend")
+    lc_common.print_line("  vitte             Vitte language runner / REPL (if installed)")
+.end
+
+fn lc_print_version():
+    lc_common.print_line(LC_NAME + " (Vitte compiler) version " + LC_VERSION)
+.end
+
+# ----------------------------------------------------------------------------
+# Point d'entrée Vitte
+# ----------------------------------------------------------------------------
+program vitte.compiler.cli.lc:
+    let argv = env.args()
+    let code = lc_main(argv)
+    env.exit(code)
+.end

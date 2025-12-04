@@ -1,0 +1,606 @@
+module std.string
+
+import std.collections as coll
+import std.core as core
+
+# ============================================================================
+# Vitte std – Modèle déclaratif pour les chaînes de caractères – ultra complet
+#
+# Objectifs de ce module :
+#   - Décrire un modèle de données canonique pour :
+#       * identifiants logiques de chaînes, motifs, matches, tokens,
+#       * vues et slices de chaînes,
+#       * encodage, normalisation, métadonnées de texte,
+#       * stockage logique des chaînes owned, slices, rope,
+#       * résultats de recherche, de remplacement, de split,
+#       * tokenisation, lignes, mots et graphemes,
+#       * snapshots d opérations sur les chaînes,
+#       * snapshot runtime global pour les outils et l inspection.
+#   - Ne contenir que des structures de données, sans logique exécutable.
+#   - S appuyer sur std.core pour les types numériques, erreurs, snapshots.
+#
+# Contraintes de syntaxe Vitte :
+#   - blocs terminés par ".end",
+#   - aucune accolade dans le code ni dans les commentaires.
+# ============================================================================
+
+# ============================================================================
+# Identifiants logiques et alias de base
+# ============================================================================
+
+type StringId = u64
+type RopeId = u64
+type PatternId = u64
+type MatchId = u64
+type TokenId = u64
+type LineId = u64
+
+# Index et longueurs logiques pour les chaînes.
+type StringIndex = core.Len
+type StringLen = core.Len
+type StringByteLen = core.Size
+
+# Alias vers les types string de std.core.
+type CoreStringSnapshot = core.StringSnapshot
+type StringEncoding = core.StringEncoding
+
+# ============================================================================
+# Encodage, normalisation et métadonnées
+# ============================================================================
+
+# Classe logique d encodage de texte.
+enum StringEncodingClass
+    variant EncodingUtf8
+    variant EncodingUtf16
+    variant EncodingUtf32
+    variant EncodingLatin1
+    variant EncodingAscii
+    variant EncodingOther
+.end
+
+# Normalisation Unicode logique.
+enum StringNormalizationForm
+    variant NormNone
+    variant NormNfc
+    variant NormNfd
+    variant NormNfkc
+    variant NormNfkd
+.end
+
+# Genre de limite de texte utilisée pour découpage.
+enum StringBoundaryKind
+    variant BoundaryCodePoint
+    variant BoundaryGrapheme
+    variant BoundaryWord
+    variant BoundaryLine
+    variant BoundarySentence
+.end
+
+# Casse logique pour comparaisons et recherches.
+enum StringCaseMode
+    variant CaseSensitive
+    variant CaseInsensitive
+    variant CaseFolded
+.end
+
+# Métadonnées fondamentales d une chaîne.
+struct StringMetadata
+    # Encodage de la chaîne.
+    field encoding: StringEncoding
+
+    # Classe logique d encodage.
+    field encoding_class: StringEncodingClass
+
+    # Longueur en unités de code points.
+    field length_chars: StringLen
+
+    # Longueur en octets.
+    field length_bytes: StringByteLen
+
+    # Indique si la chaîne est vide.
+    field is_empty: core.Bool
+
+    # Indique si la chaîne est purement ASCII.
+    field is_ascii: core.Bool
+
+    # Indique si la chaîne ne contient pas de zero binaire.
+    field has_no_nul: core.Bool
+
+    # Indique si la chaîne est normalisée.
+    field is_normalized: core.Bool
+
+    # Forme de normalisation, si applicable.
+    field normalization_form: StringNormalizationForm
+.end
+
+# Métadonnées avancées pour l analyse de texte.
+struct StringTextAnalysis
+    # Nombre de lignes logiques.
+    field line_count: core.Size
+
+    # Nombre de mots estimé.
+    field word_count: core.Size
+
+    # Nombre de graphemes estimé.
+    field grapheme_count: core.Size
+
+    # Indique si la chaîne semble être du texte lisible.
+    field is_likely_text: core.Bool
+
+    # Indique si la chaîne semble contenir du code source.
+    field is_likely_code: core.Bool
+.end
+
+# ============================================================================
+# Stockage logique des chaînes
+# ============================================================================
+
+# Classe de stockage d une chaîne.
+enum StringStorageClass
+    variant StorageInlineSmall
+    variant StorageHeap
+    variant StorageStatic
+    variant StorageExternal
+    variant StorageRope
+.end
+
+# Origine logique d une chaîne.
+enum StringOrigin
+    variant OriginUserInput
+    variant OriginFile
+    variant OriginNetwork
+    variant OriginGenerated
+    variant OriginOther
+.end
+
+# Représentation logique d un buffer de bytes de texte.
+struct StringBytes
+    # Bytes logiques de la chaîne.
+    field bytes: coll.List<u8>
+
+    # Longueur effective utilisée.
+    field length: StringByteLen
+.end
+
+# Chaîne possédée owned string.
+struct OwnedString
+    # Identifiant logique.
+    field id: StringId
+
+    # Métadonnées basiques.
+    field meta: StringMetadata
+
+    # Classe de stockage.
+    field storage: StringStorageClass
+
+    # Origine logique.
+    field origin: StringOrigin
+
+    # Vue core snapshot de la chaîne.
+    field core_snapshot: CoreStringSnapshot
+
+    # Buffer de bytes logique, si accessible.
+    field buffer: core.Option<StringBytes>
+.end
+
+# ============================================================================
+# Vues, slices et segments
+# ============================================================================
+
+# Genre de vue de chaîne.
+enum StringViewKind
+    variant ViewSlice
+    variant ViewSubString
+    variant ViewLine
+    variant ViewWord
+    variant ViewToken
+    variant ViewCustom
+.end
+
+# Orientation de la vue pour certains algorithmes.
+enum StringViewDirection
+    variant ViewForward
+    variant ViewBackward
+.end
+
+# Slice basée sur des index byte offset inclus exclus.
+struct ByteSlice
+    field start: StringByteLen
+    field end: StringByteLen
+.end
+
+# Slice basée sur des index de caractères.
+struct CharSlice
+    field start: StringIndex
+    field end: StringIndex
+.end
+
+# Vue logique d une chaîne sous forme de slice.
+struct StringView
+    # Identifiant de la chaîne sous jacente.
+    field string_id: StringId
+
+    # Genre de vue.
+    field kind: StringViewKind
+
+    # Direction logique de la vue.
+    field direction: StringViewDirection
+
+    # Slice en bytes.
+    field byte_range: ByteSlice
+
+    # Slice en caractères.
+    field char_range: CharSlice
+
+    # Indique si la vue couvre la totalité de la chaîne.
+    field is_full: core.Bool
+.end
+
+# Segment logique dans un texte plus grand.
+struct StringSegment
+    # Vue sous jacente.
+    field view: StringView
+
+    # Indique si ce segment est une partie signifiante ex mot, token.
+    field is_semantic: core.Bool
+.end
+
+# ============================================================================
+# Rope et structures de texte volumineux
+# ============================================================================
+
+# Genre de noeud dans une rope.
+enum RopeNodeKind
+    variant RopeLeaf
+    variant RopeInternal
+.end
+
+# Position logique dans une rope.
+struct RopePosition
+    field rope_id: RopeId
+    field byte_offset: StringByteLen
+    field char_offset: StringIndex
+    field line: core.Size
+    field column: core.Size
+.end
+
+# Noeud logique de rope.
+struct RopeNodeSnapshot
+    # Longueurs logiques de ce noeud.
+    field byte_len: StringByteLen
+    field char_len: StringLen
+
+    # Identifiant potentiel de la chaîne feuille.
+    field string_id: core.Option<StringId>
+
+    # Genre de noeud.
+    field kind: RopeNodeKind
+.end
+
+# Rope logique représentant un texte potentiellement volumineux.
+struct RopeSnapshot
+    # Identifiant logique de la rope.
+    field id: RopeId
+
+    # Encodage global de la rope.
+    field encoding: StringEncoding
+
+    # Longueur totale.
+    field total_bytes: StringByteLen
+    field total_chars: StringLen
+
+    # Nombre de noeuds.
+    field node_count: core.Size
+
+    # Indique si la rope est équilibrée.
+    field is_balanced: core.Bool
+.end
+
+# ============================================================================
+# Motifs, recherche et matches
+# ============================================================================
+
+# Genre de motif de recherche.
+enum StringPatternKind
+    variant PatternLiteral
+    variant PatternSubstring
+    variant PatternPrefix
+    variant PatternSuffix
+    variant PatternWildcard
+    variant PatternRegex
+    variant PatternOther
+.end
+
+# Options de recherche.
+struct StringSearchOptions
+    # Casse logique.
+    field case_mode: StringCaseMode
+
+    # Indique si la recherche se fait sur graphemes plutôt que sur code points.
+    field use_graphemes: core.Bool
+
+    # Indique si la recherche peut chevaucher les matches.
+    field allow_overlaps: core.Bool
+.end
+
+# Motif logique.
+struct StringPattern
+    field id: PatternId
+
+    # Genre de motif.
+    field kind: StringPatternKind
+
+    # Encodage attendu.
+    field encoding: StringEncoding
+
+    # Vue sur la chaîne qui définit ce motif.
+    field view: StringView
+.end
+
+# Genre de match.
+enum StringMatchKind
+    variant MatchExact
+    variant MatchPrefix
+    variant MatchSuffix
+    variant MatchSubstring
+    variant MatchRegex
+    variant MatchOther
+.end
+
+# Match logique d un motif dans une chaîne.
+struct StringMatch
+    field id: MatchId
+
+    # Motif associé.
+    field pattern_id: PatternId
+
+    # Chaîne cible.
+    field string_id: StringId
+
+    # Genre de match.
+    field kind: StringMatchKind
+
+    # Vue correspondant au match.
+    field view: StringView
+
+    # Index logique du match dans la séquence de résultats.
+    field ordinal: core.Size
+.end
+
+# Résultat de recherche simple.
+struct StringSearchSnapshot
+    # Options utilisées.
+    field options: StringSearchOptions
+
+    # Motif.
+    field pattern: StringPattern
+
+    # Chaîne cible.
+    field target_id: StringId
+
+    # Matches trouvés.
+    field matches: coll.List<StringMatch>
+.end
+
+# ============================================================================
+# Remplacement, split et lignes
+# ============================================================================
+
+# Genre de remplacement.
+enum StringReplaceKind
+    variant ReplaceAll
+    variant ReplaceFirst
+    variant ReplaceLast
+.end
+
+# Snapshot de remplacement.
+struct StringReplaceSnapshot
+    # Recherche originale.
+    field search: StringSearchSnapshot
+
+    # Chaîne de remplacement, vue logique.
+    field replacement_view: StringView
+
+    # Nombre de remplacements effectués.
+    field replaced_count: core.Size
+.end
+
+# Genre de séparateur pour split.
+enum StringSplitSeparatorKind
+    variant SplitOnChar
+    variant SplitOnSubstring
+    variant SplitOnPattern
+    variant SplitOnWhitespace
+    variant SplitOnLineBreaks
+.end
+
+# Paramètres de split.
+struct StringSplitOptions
+    field separator_kind: StringSplitSeparatorKind
+
+    # Limite maximale de segments, zero signifie illimité.
+    field max_splits: core.Size
+
+    # Indique si les segments vides sont conservés.
+    field keep_empty: core.Bool
+.end
+
+# Résultat de split.
+struct StringSplitSnapshot
+    field string_id: StringId
+    field options: StringSplitOptions
+
+    # Segments obtenus.
+    field segments: coll.List<StringSegment>
+.end
+
+# Ligne logique dans un texte.
+struct StringLineSnapshot
+    field id: LineId
+
+    # Chaîne sous jacente.
+    field string_id: StringId
+
+    # Index logique de la ligne.
+    field line_index: core.Size
+
+    # Vue de la ligne.
+    field view: StringView
+
+    # Indique si la ligne se termine par un retour de ligne.
+    field has_line_break: core.Bool
+.end
+
+# Ensemble de lignes.
+struct StringLinesSnapshot
+    field string_id: StringId
+    field lines: coll.List<StringLineSnapshot>
+.end
+
+# ============================================================================
+# Tokens, mots et graphemes
+# ============================================================================
+
+# Genre de token.
+enum StringTokenKind
+    variant TokenWord
+    variant TokenNumber
+    variant TokenPunctuation
+    variant TokenWhitespace
+    variant TokenSymbol
+    variant TokenOther
+.end
+
+# Token logique.
+struct StringTokenSnapshot
+    field id: TokenId
+
+    # Chaîne sous jacente.
+    field string_id: StringId
+
+    # Genre de token.
+    field kind: StringTokenKind
+
+    # Vue du token.
+    field view: StringView
+.end
+
+# Snapshot de tokenisation.
+struct StringTokenizerSnapshot
+    # Chaîne cible.
+    field string_id: StringId
+
+    # Tokens extraits.
+    field tokens: coll.List<StringTokenSnapshot>
+.end
+
+# ============================================================================
+# Opérations sur les chaînes
+# ============================================================================
+
+# Genre d opération sur les chaînes.
+enum StringOperationKind
+    variant StrOpSearch
+    variant StrOpReplace
+    variant StrOpSplit
+    variant StrOpTokenize
+    variant StrOpNormalize
+    variant StrOpJoin
+    variant StrOpTrim
+    variant StrOpOther
+.end
+
+# Statut d une opération sur les chaînes.
+enum StringOperationStatus
+    variant StrStatusPending
+    variant StrStatusRunning
+    variant StrStatusOk
+    variant StrStatusError
+    variant StrStatusCancelled
+    variant StrStatusTimeout
+.end
+
+# Erreur logique liée à une opération de chaîne.
+enum StringErrorKind
+    variant StrErrorInvalidEncoding
+    variant StrErrorInvalidIndex
+    variant StrErrorBoundaryViolation
+    variant StrErrorPatternError
+    variant StrErrorNormalizationError
+    variant StrErrorOther
+.end
+
+# Erreur détaillée sur les chaînes.
+struct StringError
+    field kind: StringErrorKind
+
+    # Code d erreur générique.
+    field code: core.ErrorCode
+
+    # Message logique d erreur, snapshot de chaîne.
+    field message: core.StringSnapshot
+.end
+
+# Résultat spécialisé chaînes.
+type StringResult<T> = core.Result<T, StringError>
+
+# Requête d opération sur les chaînes.
+struct StringOperationRequest
+    # Identifiant logique derivé des opérations de plus haut niveau, optionnel.
+    field related_request: core.Option<IoRequestId>
+
+    # Genre d opération.
+    field kind: StringOperationKind
+
+    # Chaîne principale concernée.
+    field string_id: StringId
+
+    # Paramètres de recherche éventuels.
+    field pattern: core.Option<StringPattern>
+    field search_options: core.Option<StringSearchOptions>
+
+    # Paramètres de split éventuels.
+    field split_options: core.Option<StringSplitOptions>
+
+    # Paramètres de remplacement éventuels.
+    field replace_kind: core.Option<StringReplaceKind>
+.end
+
+# Snapshot d une opération effectuée.
+struct StringOperationSnapshot
+    # Requête d origine.
+    field request: StringOperationRequest
+
+    # Statut courant.
+    field status: StringOperationStatus
+
+    # Erreur éventuelle.
+    field error: core.Option<StringError>
+
+    # Résultats potentiels.
+    field search: core.Option<StringSearchSnapshot>
+    field replace: core.Option<StringReplaceSnapshot>
+    field split: core.Option<StringSplitSnapshot>
+    field tokens: core.Option<StringTokenizerSnapshot>
+    field lines: core.Option<StringLinesSnapshot>
+.end
+
+# ============================================================================
+# Vue runtime globale des chaînes
+# ============================================================================
+
+struct StringRuntimeSnapshot
+    # Chaînes possédées connues.
+    field strings: coll.List<OwnedString>
+
+    # Ropes logiques connues.
+    field ropes: coll.List<RopeSnapshot>
+
+    # Motifs connus.
+    field patterns: coll.List<StringPattern>
+
+    # Dernières opérations effectuées.
+    field operations: coll.List<StringOperationSnapshot>
+.end
+
+.end

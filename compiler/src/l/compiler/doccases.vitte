@@ -1,0 +1,447 @@
+module vitte.compiler.doccases
+
+import vitte.compiler.config as config
+import vitte.compiler.backends as backends
+
+# ============================================================================
+# Vitte compiler – DocCases (exemples de code documentés, ultra complets)
+#
+# Objectifs :
+#   - Fournir un catalogue structuré d'exemples de code Vitte utilisables
+#     pour la documentation, les tests de parsing, les playgrounds, etc.
+#   - Couvrir :
+#       * syntaxe noyau (modules, types, fn, control-flow),
+#       * syntaxe Phrase (mod/use/type/fn/scn/prog),
+#       * async / pipeline / backend / config,
+#       * manifestes Muffin minimalistes.
+#   - API purement déclarative : ce module ne dépend que de String, Vec, Bool
+#     et de quelques types du compilateur (config, backends).
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Métadonnées des cas de documentation
+# ----------------------------------------------------------------------------
+
+pub enum DocCaseCategory:
+    DocSyntaxCore
+    DocSyntaxPhrase
+    DocTypes
+    DocControlFlow
+    DocModules
+    DocAsync
+    DocBackends
+    DocConfig
+    DocPipeline
+    DocMuffin
+    DocMisc
+.end
+
+pub enum DocCaseComplexity:
+    DocBasic
+    DocIntermediate
+    DocAdvanced
+.end
+
+pub struct DocCase:
+    let id: String
+    let title: String
+    let category: DocCaseCategory
+    let complexity: DocCaseComplexity
+
+    let description: String
+    let code_language: String   # "vitte" ou "muffin" ou "phrase"
+
+    let code_lines: Vec<String> # code source, ligne par ligne
+    let expected_notes: String  # texte libre (résultat attendu, remarques)
+.end
+
+fn mk_case(
+    String id,
+    String title,
+    DocCaseCategory category,
+    DocCaseComplexity complexity,
+    String description,
+    String code_language,
+    Vec<String> code_lines,
+    String expected_notes
+) -> DocCase:
+    let c = DocCase(
+        id = id,
+        title = title,
+        category = category,
+        complexity = complexity,
+        description = description,
+        code_language = code_language,
+        code_lines = code_lines,
+        expected_notes = expected_notes
+    )
+    return c
+.end
+
+# ----------------------------------------------------------------------------
+# Helpers internes
+# ----------------------------------------------------------------------------
+
+fn vec_push_line(Vec<String> v, String s) -> Vec<String>:
+    v.push(s)
+    return v
+.end
+
+fn append_cases(Vec<DocCase> dst, Vec<DocCase> src) -> Vec<DocCase>:
+    let out = dst
+    let n = src.len()
+    let i = 0usize
+
+    while i < n:
+        let c = src[i]
+        out.push(c)
+        i = i + 1usize
+    .end
+
+    return out
+.end
+
+# ----------------------------------------------------------------------------
+# Cas : syntaxe noyau (modules, types, fonctions, contrôle de flux)
+# ----------------------------------------------------------------------------
+
+fn doccases_core_syntax() -> Vec<DocCase>:
+    let cases = Vec<DocCase>::new()
+
+    # --- Case 1 : fonction minimale ---------------------------------------
+    let lines1 = Vec<String>::new()
+    let lines1 = vec_push_line(lines1, "module doc.core.hello")
+    let lines1 = vec_push_line(lines1, "pub fn main() -> i32:")
+    let lines1 = vec_push_line(lines1, "    let x = 1 + 2")
+    let lines1 = vec_push_line(lines1, "    return x")
+    let lines1 = vec_push_line(lines1, ".end")
+
+    let c1 = mk_case(
+        "core_hello_fn",
+        "Fonction principale minimale",
+        DocCaseCategory::DocSyntaxCore,
+        DocCaseComplexity::DocBasic,
+        "Montre un module simple avec une fonction pub main qui retourne un entier.",
+        "vitte",
+        lines1,
+        "Utilisable comme exemple de base pour l'intro du langage."
+    )
+
+    cases.push(c1)
+
+    # --- Case 2 : struct + scénario ---------------------------------------
+    let lines2 = Vec<String>::new()
+    let lines2 = vec_push_line(lines2, "module doc.core.point")
+    let lines2 = vec_push_line(lines2, "pub struct Point:")
+    let lines2 = vec_push_line(lines2, "    let x: f64")
+    let lines2 = vec_push_line(lines2, "    let y: f64")
+    let lines2 = vec_push_line(lines2, ".end")
+    let lines2 = vec_push_line(lines2, "")
+    let lines2 = vec_push_line(lines2, "pub fn length(Point p) -> f64:")
+    let lines2 = vec_push_line(lines2, "    let d2 = p.x * p.x + p.y * p.y")
+    let lines2 = vec_push_line(lines2, "    return d2")
+    let lines2 = vec_push_line(lines2, ".end")
+    let lines2 = vec_push_line(lines2, "")
+    let lines2 = vec_push_line(lines2, "pub scenario demo():")
+    let lines2 = vec_push_line(lines2, "    let p = Point(x = 3.0, y = 4.0)")
+    let lines2 = vec_push_line(lines2, "    let d2 = length(p)")
+    let lines2 = vec_push_line(lines2, "    # d2 == 25.0")
+    let lines2 = vec_push_line(lines2, ".end")
+
+    let c2 = mk_case(
+        "core_point_struct",
+        "Struct Point + scénario demo",
+        DocCaseCategory::DocTypes,
+        DocCaseComplexity::DocBasic,
+        "Montre la déclaration d'un type struct, une fonction associée et un scénario.",
+        "vitte",
+        lines2,
+        "Permet de montrer les blocs \":\" / \".end\" et l'initialisation nommée."
+    )
+
+    cases.push(c2)
+
+    # --- Case 3 : contrôle de flux ----------------------------------------
+    let lines3 = Vec<String>::new()
+    let lines3 = vec_push_line(lines3, "module doc.core.control")
+    let lines3 = vec_push_line(lines3, "pub fn classify(i32 x) -> String:")
+    let lines3 = vec_push_line(lines3, "    if x < 0:")
+    let lines3 = vec_push_line(lines3, "        return \"negatif\"")
+    let lines3 = vec_push_line(lines3, "    .end")
+    let lines3 = vec_push_line(lines3, "    if x == 0:")
+    let lines3 = vec_push_line(lines3, "        return \"zero\"")
+    let lines3 = vec_push_line(lines3, "    .end")
+    let lines3 = vec_push_line(lines3, "    return \"positif\"")
+    let lines3 = vec_push_line(lines3, ".end")
+
+    let c3 = mk_case(
+        "core_control_if",
+        "If/return simple",
+        DocCaseCategory::DocControlFlow,
+        DocCaseComplexity::DocBasic,
+        "Illustration de if/return successifs pour classifier un entier.",
+        "vitte",
+        lines3,
+        "Peut servir d'exemple pour la section contrôle de flux."
+    )
+
+    cases.push(c3)
+
+    return cases
+.end
+
+# ----------------------------------------------------------------------------
+# Cas : syntaxe Phrase (mod/use/type/fn/scn/prog)
+# ----------------------------------------------------------------------------
+
+fn doccases_phrase_syntax() -> Vec<DocCase>:
+    let cases = Vec<DocCase>::new()
+
+    # --- Case 4 : module + type + fn --------------------------------------
+    let lines1 = Vec<String>::new()
+    let lines1 = vec_push_line(lines1, "mod core.math")
+    let lines1 = vec_push_line(lines1, "use std.print")
+    let lines1 = vec_push_line(lines1, "")
+    let lines1 = vec_push_line(lines1, "type Point")
+    let lines1 = vec_push_line(lines1, "    field x : Float")
+    let lines1 = vec_push_line(lines1, "    field y : Float")
+    let lines1 = vec_push_line(lines1, ".end")
+    let lines1 = vec_push_line(lines1, "")
+    let lines1 = vec_push_line(lines1, "fn length p:Point -> Float")
+    let lines1 = vec_push_line(lines1, "    set d = p.x * p.x + p.y * p.y")
+    let lines1 = vec_push_line(lines1, "    ret d")
+    let lines1 = vec_push_line(lines1, ".end")
+
+    let c1 = mk_case(
+        "phrase_point_length",
+        "Syntaxe Phrase : type + fn",
+        DocCaseCategory::DocSyntaxPhrase,
+        DocCaseComplexity::DocBasic,
+        "Exemple de bloc type/fn en syntaxe Phrase (mod/use/type/fn).",
+        "phrase",
+        lines1,
+        "Montre la syntaxe surface désucrée ensuite vers le noyau Vitte."
+    )
+
+    cases.push(c1)
+
+    # --- Case 5 : when/else/loop -----------------------------------------
+    let lines2 = Vec<String>::new()
+    let lines2 = vec_push_line(lines2, "scn demo_loop")
+    let lines2 = vec_push_line(lines2, "    set i = 0")
+    let lines2 = vec_push_line(lines2, "    loop i from 0 to 3")
+    let lines2 = vec_push_line(lines2, "        say \"i = {i}\"")
+    let lines2 = vec_push_line(lines2, "    .end")
+    let lines2 = vec_push_line(lines2, "")
+    let lines2 = vec_push_line(lines2, "    when i == 3")
+    let lines2 = vec_push_line(lines2, "        say \"done\"")
+    let lines2 = vec_push_line(lines2, "    else")
+    let lines2 = vec_push_line(lines2, "        say \"not done\"")
+    let lines2 = vec_push_line(lines2, "    .end")
+    let lines2 = vec_push_line(lines2, ".end")
+
+    let c2 = mk_case(
+        "phrase_when_loop",
+        "Syntaxe Phrase : when + loop",
+        DocCaseCategory::DocSyntaxPhrase,
+        DocCaseComplexity::DocIntermediate,
+        "Combinaison de loop et when/else en syntaxe Phrase pour les exemples de flow.",
+        "phrase",
+        lines2,
+        "Utile pour documenter les blocs .end sans accolades."
+    )
+
+    cases.push(c2)
+
+    return cases
+.end
+
+# ----------------------------------------------------------------------------
+# Cas : async / pipeline / backend / config
+# ----------------------------------------------------------------------------
+
+fn doccases_async_backend_config() -> Vec<DocCase>:
+    let cases = Vec<DocCase>::new()
+
+    # --- Case 6 : configuration compilateur + backend C -------------------
+    let lines1 = Vec<String>::new()
+    let lines1 = vec_push_line(lines1, "module doc.config.basic")
+    let lines1 = vec_push_line(lines1, "import vitte.compiler.config as config")
+    let lines1 = vec_push_line(lines1, "import vitte.compiler.backends as backends")
+    let lines1 = vec_push_line(lines1, "")
+    let lines1 = vec_push_line(lines1, "pub fn make_config_for_c(String out_name) -> config.CompilerConfig:")
+    let lines1 = vec_push_line(lines1, "    let base = config.compiler_config_default()")
+    let lines1 = vec_push_line(lines1, "    let back_opts = backends.backend_default_options()")
+    let lines1 = vec_push_line(lines1, "    let back_cfg = config.BackendConfig(")
+    let lines1 = vec_push_line(lines1, "        backend_kind = backends.BackendKind::BackendC,")
+    let lines1 = vec_push_line(lines1, "        backend_options = back_opts")
+    let lines1 = vec_push_line(lines1, "    )")
+    let lines1 = vec_push_line(lines1, "    let cfg1 = config.compiler_config_with_backend(base, back_cfg)")
+    let lines1 = vec_push_line(lines1, "    let cfg2 = config.compiler_config_with_output_name(cfg1, out_name)")
+    let lines1 = vec_push_line(lines1, "    return cfg2")
+    let lines1 = vec_push_line(lines1, ".end")
+
+    let c1 = mk_case(
+        "config_backend_c",
+        "Configurer un backend C",
+        DocCaseCategory::DocConfig,
+        DocCaseComplexity::DocIntermediate,
+        "Illustration de l'utilisation de CompilerConfig et BackendConfig pour cibler le backend C.",
+        "vitte",
+        lines1,
+        "Peut être utilisé dans la doc CLI / config comme exemple réaliste."
+    )
+
+    cases.push(c1)
+
+    # --- Case 7 : pipeline async simplifiée (pseudo) ----------------------
+    let lines2 = Vec<String>::new()
+    let lines2 = vec_push_line(lines2, "module doc.async.pipeline")
+    let lines2 = vec_push_line(lines2, "import vitte.compiler.async as async")
+    let lines2 = vec_push_line(lines2, "")
+    let lines2 = vec_push_line(lines2, "pub fn spawn_parse_job(async.AsyncQueue<String> q, String file) -> async.AsyncQueue<String>:")
+    let lines2 = vec_push_line(lines2, "    let pair = async.async_spawn<String>(q, \"parse-job\"")
+    let lines2 = vec_push_line(lines2, "    let q2 = pair.0")
+    let lines2 = vec_push_line(lines2, "    let task = pair.1")
+    let lines2 = vec_push_line(lines2, "    # Dans une vraie implémentation, le runtime remplirait la tâche.")
+    let lines2 = vec_push_line(lines2, "    return q2")
+    let lines2 = vec_push_line(lines2, ".end")
+
+    let c2 = mk_case(
+        "async_spawn_parse_job",
+        "AsyncQueue : spawn de job de parsing",
+        DocCaseCategory::DocAsync,
+        DocCaseComplexity::DocIntermediate,
+        "Exemple minimaliste de création d'une tâche asynchrone dans la file du compilateur.",
+        "vitte",
+        lines2,
+        "Utile pour documenter le module async en contexte compilateur."
+    )
+
+    cases.push(c2)
+
+    return cases
+.end
+
+# ----------------------------------------------------------------------------
+# Cas : manifestes Muffin minimalistes
+# ----------------------------------------------------------------------------
+
+fn doccases_muffin() -> Vec<DocCase>:
+    let cases = Vec<DocCase>::new()
+
+    # --- Case 8 : manifeste minimal --------------------------------------
+    let lines1 = Vec<String>::new()
+    let lines1 = vec_push_line(lines1, "muffin \"core/math.muf\"")
+    let lines1 = vec_push_line(lines1, "    name: \"vitte-core-math\"")
+    let lines1 = vec_push_line(lines1, "    version: \"0.1.0\"")
+    let lines1 = vec_push_line(lines1, "    edition: \"2025\"")
+    let lines1 = vec_push_line(lines1, "    deps: [\"std/algo/graph\" , \"std/cli/ansi\"]")
+    let lines1 = vec_push_line(lines1, ".end")
+
+    let c1 = mk_case(
+        "muffin_basic",
+        "Manifeste Muffin minimal",
+        DocCaseCategory::DocMuffin,
+        DocCaseComplexity::DocBasic,
+        "Montre un manifeste Muffin minimal avec nom, version, edition, deps.",
+        "muffin",
+        lines1,
+        "Peut être utilisé dans la doc de build / packaging."
+    )
+
+    cases.push(c1)
+
+    return cases
+.end
+
+# ----------------------------------------------------------------------------
+# Agrégation / filtrage des DocCases
+# ----------------------------------------------------------------------------
+
+pub fn doccases_all() -> Vec<DocCase>:
+    let cases = Vec<DocCase>::new()
+
+    let core = doccases_core_syntax()
+    let cases = append_cases(cases, core)
+
+    let phr = doccases_phrase_syntax()
+    let cases = append_cases(cases, phr)
+
+    let abc = doccases_async_backend_config()
+    let cases = append_cases(cases, abc)
+
+    let muf = doccases_muffin()
+    let cases = append_cases(cases, muf)
+
+    return cases
+.end
+
+pub fn doccases_filter_by_category(
+    Vec<DocCase> all,
+    DocCaseCategory cat
+) -> Vec<DocCase>:
+    let out = Vec<DocCase>::new()
+    let n = all.len()
+    let i = 0usize
+
+    while i < n:
+        let c = all[i]
+        if c.category == cat:
+            out.push(c)
+        .end
+        i = i + 1usize
+    .end
+
+    return out
+.end
+
+pub fn doccases_filter_by_complexity(
+    Vec<DocCase> all,
+    DocCaseComplexity level
+) -> Vec<DocCase>:
+    let out = Vec<DocCase>::new()
+    let n = all.len()
+    let i = 0usize
+
+    while i < n:
+        let c = all[i]
+        if c.complexity == level:
+            out.push(c)
+        .end
+        i = i + 1usize
+    .end
+
+    return out
+.end
+
+pub fn doccases_find_by_id(
+    Vec<DocCase> all,
+    String id
+) -> Option<DocCase>:
+    let n = all.len()
+    let i = 0usize
+
+    while i < n:
+        let c = all[i]
+        if c.id == id:
+            let some_c: Option<DocCase> = Option<DocCase>::Some(c)
+            return some_c
+        .end
+        i = i + 1usize
+    .end
+
+    let none_c: Option<DocCase> = Option<DocCase>::None()
+    return none_c
+.end
+
+# ----------------------------------------------------------------------------
+# Notes
+# ----------------------------------------------------------------------------
+# - Ce module sert à centraliser les cas d'exemple qui peuvent être utilisés
+#   à la fois dans la documentation, dans des tests (doctests) ou dans un
+#   éventuel site de présentation du langage Vitte.
+# - Les cas sont volontairement courts et lisibles; rien n'empêche d'ajouter
+#   d'autres fonctions mk_* ou doccases_* pour couvrir des aspects plus
+#   avancés (borrowck, IR, collections, etc.) sans casser l'API.
+# ----------------------------------------------------------------------------

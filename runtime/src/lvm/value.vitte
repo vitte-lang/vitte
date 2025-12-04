@@ -1,0 +1,276 @@
+module lvm.value
+
+# ============================================================================
+# Vitte LVM – Modèle logique des valeurs à l’exécution
+#
+# Objectifs :
+#   - Fournir une représentation structurée, déclarative et backend-agnostique
+#     des valeurs manipulées par la machine virtuelle Vitte (LVM).
+#   - Modéliser :
+#       * les genres de valeurs (scalaires, agrégats, fonctions, closures,
+#         builtins, valeurs natives, unit/none, erreurs),
+#       * la table de types runtime (LvmRuntimeType),
+#       * les conteneurs (list/map) en termes de handles de valeurs,
+#       * l’origine et les métadonnées utiles pour debug/profilage.
+#   - Ne contenir que des structures de données (aucune fonction ni I/O).
+#
+# Conventions :
+#   - Même style que vitte.compiler.ast / lrt.ffi / lvm.builtins / lvm.bytecode :
+#       * `pub struct/enum` + ":" et blocs terminés par `.end` ;
+#       * enums "tag-only" ;
+#       * IDs forts (`LvmValueId`, `LvmRuntimeTypeId`, ...) basés sur u32.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Indices et identifiants de valeur / type
+# ----------------------------------------------------------------------------
+
+pub typedef u32 LvmValueIndex
+
+# Identifiant logique d’une valeur stockée dans le runtime.
+pub struct LvmValueId:
+    let raw: LvmValueIndex
+.end
+
+pub typedef u32 LvmRuntimeTypeIndex
+
+# Identifiant d’un type runtime (int, float, list<str>, map<key,val>, ...).
+pub struct LvmRuntimeTypeId:
+    let raw: LvmRuntimeTypeIndex
+.end
+
+# ----------------------------------------------------------------------------
+# Genres de valeurs et flags
+# ----------------------------------------------------------------------------
+
+# Genre principal de valeur, vu par la LVM.
+pub enum LvmValueKind:
+    ValueInt
+    ValueFloat
+    ValueBool
+    ValueString
+    ValueBytes
+    ValueList
+    ValueMap
+    ValueFunction
+    ValueClosure
+    ValueBuiltin
+    ValueNative
+    ValueUnit          # équivalent de "none"/"()"
+    ValueError         # encapsulation d’un message d’erreur
+.end
+
+# Flags runtime d’une valeur.
+pub struct LvmValueFlags:
+    let is_frozen: Bool            # true => immutable / frozen
+    let is_interned: Bool          # true => partagé (interning, pooling)
+    let is_temporary: Bool         # true => valeur intermédiaire / scratch
+    let is_error: Bool             # true => la valeur représente une erreur
+.end
+
+# ----------------------------------------------------------------------------
+# Table des types runtime
+# ----------------------------------------------------------------------------
+
+# Genre de type runtime.
+pub enum LvmRuntimeTypeKind:
+    RuntimeInt
+    RuntimeFloat
+    RuntimeBool
+    RuntimeString
+    RuntimeBytes
+    RuntimeList
+    RuntimeMap
+    RuntimeFunction
+    RuntimeClosure
+    RuntimeBuiltin
+    RuntimeNative
+    RuntimeUnit
+    RuntimeAny
+.end
+
+# Type runtime (utilisé pour introspection, debug, et vérifications éventuelles).
+pub struct LvmRuntimeType:
+    let id: LvmRuntimeTypeId
+    let kind: LvmRuntimeTypeKind
+    let name: String                      # nom logique : "int", "str", "List<int>", ...
+    let element_type: Option<LvmRuntimeTypeId>   # pour list / array
+    let key_type: Option<LvmRuntimeTypeId>       # pour map
+    let value_type: Option<LvmRuntimeTypeId>     # pour map
+.end
+
+pub struct LvmRuntimeTypeTable:
+    let types: Vec<LvmRuntimeType>
+.end
+
+# ----------------------------------------------------------------------------
+# Valeurs scalaires
+# ----------------------------------------------------------------------------
+
+# Distinction interne pour les numériques.
+pub enum LvmNumericKind:
+    NumericInt
+    NumericFloat
+.end
+
+# Valeur numérique (int ou float).
+pub struct LvmNumericValue:
+    let kind: LvmNumericKind
+    let int_value: i64          # utilisé si kind = NumericInt
+    let float_value: f64        # utilisé si kind = NumericFloat
+.end
+
+# Valeur booléenne.
+pub struct LvmBoolValue:
+    let value: Bool
+.end
+
+# Valeur chaîne UTF‑8.
+pub struct LvmStringValue:
+    let text: String
+.end
+
+# Valeur binaire brute.
+pub struct LvmBytesValue:
+    let bytes: Vec<u8>
+.end
+
+# Valeur "unit"/"none" (structure vide).
+pub struct LvmUnitValue:
+    let marker: Bool            # dummy (toujours true, par exemple)
+.end
+
+# Valeur erreur.
+pub struct LvmErrorValue:
+    let message: String
+    let cause: Option<LvmValueId>   # valeur associée (ex: exception d’origine)
+.end
+
+# ----------------------------------------------------------------------------
+# Conteneurs : listes et maps
+# ----------------------------------------------------------------------------
+
+# Liste runtime (stocke des handles vers d’autres valeurs).
+pub struct LvmListValue:
+    let elements: Vec<LvmValueId>
+    let is_frozen: Bool
+.end
+
+# Entrée de map (clé/valeur).
+pub struct LvmMapEntry:
+    let key: LvmValueId
+    let value: LvmValueId
+.end
+
+# Map runtime.
+pub struct LvmMapValue:
+    let entries: Vec<LvmMapEntry>
+    let is_frozen: Bool
+.end
+
+# ----------------------------------------------------------------------------
+# Valeurs "callable" : fonctions, closures, builtins, natifs
+# ----------------------------------------------------------------------------
+
+# Valeur "fonction bytecode" (référence sur un LvmFunctionId).
+pub struct LvmFunctionValue:
+    let function: LvmFunctionId
+.end
+
+# Valeur "closure" (fonction + environnement capturé).
+pub struct LvmClosureValue:
+    let function: LvmFunctionId
+    let captured: Vec<LvmValueId>          # environnement capturé
+.end
+
+# Valeur builtin (référence sur un builtin LVM).
+pub struct LvmBuiltinValue:
+    let builtin: LvmBuiltinId
+.end
+
+# Valeur native (handle vers une fonction/objet natif, typiquement FFI).
+pub struct LvmNativeValue:
+    let address: usize                     # adresse ou handle natif opaque
+    let name: Option<String>               # nom logique pour debug
+.end
+
+# ----------------------------------------------------------------------------
+# Origine des valeurs (source-level provenance)
+# ----------------------------------------------------------------------------
+
+# Type d’origine d’une valeur.
+pub enum LvmValueOriginKind:
+    OriginLiteral        # littéral dans le code source
+    OriginComputed       # résultat d’une expression évaluée
+    OriginBuiltin        # produit par un builtin
+    OriginNative         # produit par du code FFI/natif
+    OriginVmInternal     # produit en interne par la VM
+.end
+
+# Métadonnées d’origine.
+pub struct LvmValueOrigin:
+    let kind: LvmValueOriginKind
+    let source_file: Option<String>
+    let source_line: Option<u32>
+    let source_column: Option<u32>
+    let note: Option<String>              # commentaire/annotation libre
+.end
+
+# ----------------------------------------------------------------------------
+# Valeur runtime complète
+# ----------------------------------------------------------------------------
+
+# Représentation logique d’une valeur LVM.
+pub struct LvmValue:
+    let id: LvmValueId
+    let kind: LvmValueKind
+    let runtime_type: Option<LvmRuntimeTypeId>
+    let flags: LvmValueFlags
+
+    # Payloads spécialisés (un seul pertinent selon kind).
+    let numeric: Option<LvmNumericValue>
+    let bool_value: Option<LvmBoolValue>
+    let string_value: Option<LvmStringValue>
+    let bytes_value: Option<LvmBytesValue>
+    let list_value: Option<LvmListValue>
+    let map_value: Option<LvmMapValue>
+    let function_value: Option<LvmFunctionValue>
+    let closure_value: Option<LvmClosureValue>
+    let builtin_value: Option<LvmBuiltinValue>
+    let native_value: Option<LvmNativeValue>
+    let unit_value: Option<LvmUnitValue>
+    let error_value: Option<LvmErrorValue>
+
+    # Métadonnées d’origine.
+    let origin: Option<LvmValueOrigin>
+.end
+
+# ----------------------------------------------------------------------------
+# Table de valeurs et vues pour tooling
+# ----------------------------------------------------------------------------
+
+# Table logique de valeurs gérée par le runtime (vue "snapshot").
+pub struct LvmValueTable:
+    let values: Vec<LvmValue>
+.end
+
+# Vue résumée d’une valeur (pour outils, logs, UI).
+pub struct LvmValueSummary:
+    let id: LvmValueId
+    let kind: LvmValueKind
+    let runtime_type_name: Option<String>
+    let is_error: Bool
+    let display: String              # représentation formatée courte
+.end
+
+# Nœud générique pour tooling (indexation/graphes).
+pub enum LvmValueNodeKind:
+    NodeValue
+    NodeRuntimeType
+    NodeValueTable
+.end
+
+pub struct LvmValueNode:
+    let id: LvmValueIndex
+    let kind: LvmValueNodeKind
+.end

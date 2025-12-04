@@ -1,0 +1,298 @@
+
+
+module vitte.examples.factorial
+
+import std.collections as coll
+import vitte.compiler.spans as spans
+import vitte.compiler.names as names
+import vitte.compiler.types as types
+
+# ============================================================================
+# Vitte examples – Modèle et exemples autour de la factorielle
+#
+# Objectifs de ce fichier :
+#   - Proposer un modèle déclaratif pour représenter des calculs de factorielle
+#     dans le compilateur et les outils :
+#       * identifiants d’entrées et de résultats,
+#       * description du type de la fonction factorielle,
+#       * traces d’exécution (itérative et récursive),
+#       * métadonnées utiles pour debugger et visualiser les calculs.
+#   - Fournir des exemples ultra complets en "phrase syntaxe" :
+#       * factorielle récursive,
+#       * factorielle itérative,
+#       * factorielle récursive terminale,
+#       * comparaison des approches via un mini scénario.
+#
+# Convention :
+#   - Ce fichier est purement "data model" + exemples commentés :
+#       * aucune fonction exécutable réelle,
+#       * pas de logique d’exécution dans ce module.
+#   - Syntaxe officielle Vitte :
+#       * blocs terminés par ".end",
+#       * aucune accolade dans le code ni dans les exemples.
+# ============================================================================
+
+# ============================================================================
+# Identifiants et métadonnées
+# ============================================================================
+
+# Identifiant logique d’une requête de factorielle.
+type FactorialRequestId = u32
+
+# Identifiant logique d’un résultat de factorielle.
+type FactorialResultId = u32
+
+# Identifiant logique d’une trace de factorielle.
+type FactorialTraceId = u32
+
+# Identifiant logique d’une étape individuelle dans une trace.
+type FactorialStepId = u32
+
+# Identifiant logique d’un scénario de démonstration.
+type FactorialScenarioId = u32
+
+# ============================================================================
+# Genre de calcul de factorielle
+# ============================================================================
+
+# Genre d’algorithme utilisé pour calculer la factorielle :
+#   - Recursive       : définition récursive directe,
+#   - Iterative       : boucle itérative,
+#   - TailRecursive   : récursivité terminale (optimisable en boucle),
+#   - Builtin         : implémentation intrinsèque ou bibliothèque.
+enum FactorialAlgoKind
+    variant Recursive
+    variant Iterative
+    variant TailRecursive
+    variant Builtin
+.end
+
+# Statut d’un calcul de factorielle :
+#   - Ok        : calcul réussi,
+#   - Overflow  : dépassement de capacité,
+#   - Invalid   : argument invalide (par exemple n negatif),
+#   - Aborted   : calcul interrompu.
+enum FactorialStatus
+    variant Ok
+    variant Overflow
+    variant Invalid
+    variant Aborted
+.end
+
+# ============================================================================
+# Modèle du type factorielle dans le compilateur
+# ============================================================================
+
+# Description logique du type de la fonction factorielle pour un type entier
+# donné (par exemple Int32, Int64, BigInt).
+struct FactorialType
+    # Type d’entrée (entier non signé ou signé selon la convention).
+    field input_type: types.TypeId
+
+    # Type de sortie (généralement le même que input_type, mais pas toujours
+    # si la factorielle est calculée dans un type plus grand).
+    field output_type: types.TypeId
+
+    # Indique si l’argument est supposé non negatif.
+    field non_negative_only: bool
+
+    # Span de la déclaration ou de la définition de la fonction factorielle
+    # dans le code source.
+    field span: spans.SpanId
+.end
+
+# ============================================================================
+# Représentation des requêtes et résultats
+# ============================================================================
+
+# Requête logique de calcul de factorielle.
+struct FactorialRequest
+    # Identifiant logique de la requête.
+    field id: FactorialRequestId
+
+    # Type de la fonction factorielle utilisée.
+    field factorial_type: FactorialType
+
+    # Span de l’expression source correspondant à l’appel.
+    field span: spans.SpanId
+.end
+
+# Résultat logique d’un calcul de factorielle.
+struct FactorialResult
+    # Identifiant logique du résultat.
+    field id: FactorialResultId
+
+    # Requête associée.
+    field request_id: FactorialRequestId
+
+    # Type de calcul utilisé (récursif, itératif, etc.).
+    field algo_kind: FactorialAlgoKind
+
+    # Statut final du calcul (Ok, Overflow, etc.).
+    field status: FactorialStatus
+
+    # Span de l’expression qui consomme le résultat (si pertinent).
+    field span: spans.SpanId
+.end
+
+# ============================================================================
+# Traces d’exécution de factorielle
+# ============================================================================
+
+# Nature d’une étape de calcul :
+#   - Call      : appel récursif fact(k),
+#   - Return    : retour d’un appel récursif,
+#   - Multiply  : multiplication intermédiaire (k * accu),
+#   - Init      : initialisation de l’accumulateur,
+#   - Done      : fin du calcul.
+enum FactorialStepKind
+    variant Call
+    variant Return
+    variant Multiply
+    variant Init
+    variant Done
+.end
+
+# Étape individuelle dans une trace de factorielle.
+struct FactorialStep
+    # Identifiant logique de l’étape.
+    field id: FactorialStepId
+
+    # Type d’étape.
+    field kind: FactorialStepKind
+
+    # Valeur courante n (argument restant).
+    field n_value: i64
+
+    # Valeur courante de l’accumulateur (pour les versions itératives et
+    # récursives terminales).
+    field acc_value: i64
+
+    # Span de l’instruction ou de l’expression associée à cette étape.
+    field span: spans.SpanId
+.end
+
+# Trace complète d’un calcul de factorielle.
+struct FactorialTrace
+    # Identifiant logique de la trace.
+    field id: FactorialTraceId
+
+    # Requête associée.
+    field request_id: FactorialRequestId
+
+    # Liste ordonnée des étapes.
+    field steps: coll.List<FactorialStep>
+
+    # Span global couvrant la fonction ou le bloc responsable du calcul.
+    field span: spans.SpanId
+.end
+
+# ============================================================================
+# Vue aggregée pour les outils
+# ============================================================================
+
+# Vue consolidée de tout ce qui concerne factorial dans un module ou un crate.
+struct FactorialModelSnapshot
+    field requests: coll.List<FactorialRequest>
+    field results: coll.List<FactorialResult>
+    field traces: coll.List<FactorialTrace>
+.end
+
+# ============================================================================
+# Exemples d’utilisation en "phrase syntaxe"
+# ============================================================================
+#
+# Les exemples ci dessous ne sont pas exécutés par ce module, mais servent :
+#   - de documentation,
+#   - de tests de parsing,
+#   - de base pour la démonstration dans les outils.
+#
+# Tous les blocs se terminent par ".end".
+#
+# --------------------------------------------------------------------------
+# Exemple 1 : factorielle récursive simple
+# --------------------------------------------------------------------------
+#
+#   fn fact_recursive n
+#       when n < 0
+#           say "erreur: n negatif"
+#           ret 0
+#       else when n == 0
+#           ret 1
+#       else
+#           ret n * fact_recursive n - 1
+#       .end
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 2 : factorielle itérative
+# --------------------------------------------------------------------------
+#
+#   fn fact_iterative n
+#       when n < 0
+#           say "erreur: n negatif"
+#           ret 0
+#       .end
+#
+#       set acc = 1
+#       set i = 1
+#
+#       loop i from 1 to n step 1
+#           set acc = acc * i
+#       .end
+#
+#       ret acc
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 3 : factorielle récursive terminale
+# --------------------------------------------------------------------------
+#
+#   fn fact_tail_inner n acc
+#       when n <= 1
+#           ret acc
+#       else
+#           ret fact_tail_inner n - 1 acc * n
+#       .end
+#   .end
+#
+#   fn fact_tail n
+#       when n < 0
+#           say "erreur: n negatif"
+#           ret 0
+#       else
+#           ret fact_tail_inner n 1
+#       .end
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 4 : scenario de comparaison
+# --------------------------------------------------------------------------
+#
+#   scn factorial_demo
+#       say "Factorielle demo"
+#       set n = 5
+#
+#       set r1 = fact_recursive n
+#       set r2 = fact_iterative n
+#       set r3 = fact_tail n
+#
+#       say "fact_recursive:"
+#       say r1
+#
+#       say "fact_iterative:"
+#       say r2
+#
+#       say "fact_tail:"
+#       say r3
+#   .end
+#
+# Ces exemples montrent :
+#   - plusieurs styles d’implémentation de factorielle,
+#   - l’usage de when pour les cas de base et erreurs,
+#   - l’usage de loop pour une version purement itérative,
+#   - la récursivité terminale optimisable par le compilateur,
+#   - l’utilisation d’un scenario pour orchestrer un mini benchmark dans
+#     la documentation et les tests de parsing.
+#
+.end

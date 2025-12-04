@@ -1,0 +1,411 @@
+module vitte.compiler.collections
+
+# ============================================================================
+# Vitte compiler – Collections utilitaires (ultra complet, noyau générique)
+#
+# Objectifs :
+#   - Fournir des helpers génériques autour des collections de base
+#     disponibles dans Vitte (Vec, Option, Bool, String, etc.).
+#   - Proposer des structures de données légères :
+#       * SmallMap<K, V> (map de petite taille linéaire),
+#       * SmallSet<T> (set basé sur SmallMap<T, Bool>).
+#   - API purement fonctionnelle : pas de mutation implicite de l'état global.
+#
+# Hypothèses :
+#   - Les types génériques Vec<T> et Option<T> sont fournis par le runtime ou
+#     la stdlib de Vitte, avec les méthodes :
+#       * Vec<T>::new(), v.len(), v.is_empty(), v.push(x)
+#       * Option<T>::Some(x), Option<T>::None(), opt.is_some(), opt.unwrap()
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Helpers génériques sur Option
+# ----------------------------------------------------------------------------
+
+pub fn option_is_some<T>(Option<T> opt) -> Bool:
+    return opt.is_some()
+.end
+
+pub fn option_is_none<T>(Option<T> opt) -> Bool:
+    return not opt.is_some()
+.end
+
+pub fn option_unwrap_or<T>(Option<T> opt, T default_value) -> T:
+    if opt.is_some():
+        return opt.unwrap()
+    .end
+    return default_value
+.end
+
+pub fn option_or<T>(Option<T> opt, Option<T> fallback) -> Option<T>:
+    if opt.is_some():
+        return opt
+    .end
+    return fallback
+.end
+
+pub fn option_flatten<T>(Option<Option<T>> opt) -> Option<T>:
+    if opt.is_some():
+        let inner = opt.unwrap()
+        if inner.is_some():
+            let v = inner.unwrap()
+            let some_v: Option<T> = Option<T>::Some(v)
+            return some_v
+        .end
+        let none_v: Option<T> = Option<T>::None()
+        return none_v
+    .end
+
+    let none_v2: Option<T> = Option<T>::None()
+    return none_v2
+.end
+
+# ----------------------------------------------------------------------------
+# Helpers génériques sur Vec
+# ----------------------------------------------------------------------------
+
+pub fn vec_is_empty<T>(Vec<T> v) -> Bool:
+    return v.is_empty()
+.end
+
+pub fn vec_len<T>(Vec<T> v) -> usize:
+    let n = v.len()
+    return n
+.end
+
+pub fn vec_first<T>(Vec<T> v) -> Option<T>:
+    if v.is_empty():
+        let none_v: Option<T> = Option<T>::None()
+        return none_v
+    .end
+
+    let x = v[0usize]
+    let some_x: Option<T> = Option<T>::Some(x)
+    return some_x
+.end
+
+pub fn vec_last<T>(Vec<T> v) -> Option<T>:
+    let n = v.len()
+    if n == 0usize:
+        let none_v: Option<T> = Option<T>::None()
+        return none_v
+    .end
+
+    let idx = n - 1usize
+    let x = v[idx]
+    let some_x: Option<T> = Option<T>::Some(x)
+    return some_x
+.end
+
+pub fn vec_find_index<T>(Vec<T> v, T value) -> Option<usize>:
+    let i = 0usize
+    let n = v.len()
+
+    while i < n:
+        let x = v[i]
+        if x == value:
+            let some_i: Option<usize> = Option<usize>::Some(i)
+            return some_i
+        .end
+        i = i + 1usize
+    .end
+
+    let none_i: Option<usize> = Option<usize>::None()
+    return none_i
+.end
+
+pub fn vec_contains<T>(Vec<T> v, T value) -> Bool:
+    let idx = vec_find_index<T>(v, value)
+    return idx.is_some()
+.end
+
+pub fn vec_get<T>(Vec<T> v, usize index) -> Option<T>:
+    let n = v.len()
+    if index >= n:
+        let none_v: Option<T> = Option<T>::None()
+        return none_v
+    .end
+
+    let x = v[index]
+    let some_v: Option<T> = Option<T>::Some(x)
+    return some_v
+.end
+
+pub fn vec_push<T>(Vec<T> v, T value) -> Vec<T>:
+    let v2 = v
+    v2.push(value)
+    return v2
+.end
+
+# ----------------------------------------------------------------------------
+# SmallMap<K, V> – map linéaire pour petites tailles
+# ----------------------------------------------------------------------------
+
+pub struct SmallMapEntry<K, V>:
+    let key: K
+    let value: V
+.end
+
+pub struct SmallMap<K, V>:
+    let entries: Vec<SmallMapEntry<K, V>>
+.end
+
+pub fn small_map_new<K, V>() -> SmallMap<K, V>:
+    let v = Vec<SmallMapEntry<K, V>>::new()
+    let m = SmallMap<K, V>(entries = v)
+    return m
+.end
+
+fn small_map_find_index<K, V>(SmallMap<K, V> map, K key) -> Option<usize>:
+    let entries = map.entries
+    let n = entries.len()
+    let i = 0usize
+
+    while i < n:
+        let e = entries[i]
+        if e.key == key:
+            let some_i: Option<usize> = Option<usize>::Some(i)
+            return some_i
+        .end
+        i = i + 1usize
+    .end
+
+    let none_i: Option<usize> = Option<usize>::None()
+    return none_i
+.end
+
+pub fn small_map_is_empty<K, V>(SmallMap<K, V> map) -> Bool:
+    let n = map.entries.len()
+    return n == 0usize
+.end
+
+pub fn small_map_len<K, V>(SmallMap<K, V> map) -> usize:
+    let n = map.entries.len()
+    return n
+.end
+
+pub fn small_map_contains_key<K, V>(SmallMap<K, V> map, K key) -> Bool:
+    let idx = small_map_find_index<K, V>(map, key)
+    return idx.is_some()
+.end
+
+pub fn small_map_get<K, V>(SmallMap<K, V> map, K key) -> Option<V>:
+    let idx_opt = small_map_find_index<K, V>(map, key)
+    if idx_opt.is_some():
+        let idx = idx_opt.unwrap()
+        let e = map.entries[idx]
+        let some_v: Option<V> = Option<V>::Some(e.value)
+        return some_v
+    .end
+
+    let none_v: Option<V> = Option<V>::None()
+    return none_v
+.end
+
+pub fn small_map_get_or_default<K, V>(SmallMap<K, V> map, K key, V default_value) -> V:
+    let maybe_v = small_map_get<K, V>(map, key)
+    if maybe_v.is_some():
+        return maybe_v.unwrap()
+    .end
+    return default_value
+.end
+
+pub fn small_map_insert<K, V>(SmallMap<K, V> map, K key, V value) -> SmallMap<K, V>:
+    let entries = map.entries
+    let n = entries.len()
+    let i = 0usize
+
+    while i < n:
+        let e = entries[i]
+        if e.key == key:
+            let new_entry = SmallMapEntry<K, V>(key = key, value = value)
+            entries[i] = new_entry
+            let new_map = SmallMap<K, V>(entries = entries)
+            return new_map
+        .end
+        i = i + 1usize
+    .end
+
+    let entry = SmallMapEntry<K, V>(key = key, value = value)
+    entries.push(entry)
+    let new_map2 = SmallMap<K, V>(entries = entries)
+    return new_map2
+.end
+
+pub fn small_map_remove<K, V>(SmallMap<K, V> map, K key) -> SmallMap<K, V>:
+    let old_entries = map.entries
+    let new_entries = Vec<SmallMapEntry<K, V>>::new()
+
+    let n = old_entries.len()
+    let i = 0usize
+
+    while i < n:
+        let e = old_entries[i]
+        if e.key != key:
+            new_entries.push(e)
+        .end
+        i = i + 1usize
+    .end
+
+    let new_map = SmallMap<K, V>(entries = new_entries)
+    return new_map
+.end
+
+fn small_map_entries<K, V>(SmallMap<K, V> map) -> Vec<SmallMapEntry<K, V>>:
+    return map.entries
+.end
+
+pub fn small_map_keys<K, V>(SmallMap<K, V> map) -> Vec<K>:
+    let result = Vec<K>::new()
+    let entries = small_map_entries<K, V>(map)
+    let n = entries.len()
+    let i = 0usize
+
+    while i < n:
+        let e = entries[i]
+        result.push(e.key)
+        i = i + 1usize
+    .end
+
+    return result
+.end
+
+pub fn small_map_values<K, V>(SmallMap<K, V> map) -> Vec<V>:
+    let result = Vec<V>::new()
+    let entries = small_map_entries<K, V>(map)
+    let n = entries.len()
+    let i = 0usize
+
+    while i < n:
+        let e = entries[i]
+        result.push(e.value)
+        i = i + 1usize
+    .end
+
+    return result
+.end
+
+pub fn small_map_merge<K, V>(SmallMap<K, V> a, SmallMap<K, V> b) -> SmallMap<K, V>:
+    let result = a
+    let entries_b = small_map_entries<K, V>(b)
+    let n = entries_b.len()
+    let i = 0usize
+
+    while i < n:
+        let e = entries_b[i]
+        result = small_map_insert<K, V>(result, e.key, e.value)
+        i = i + 1usize
+    .end
+
+    return result
+.end
+
+# ----------------------------------------------------------------------------
+# SmallSet<T> – set basé sur SmallMap<T, Bool>
+# ----------------------------------------------------------------------------
+
+pub struct SmallSet<T>:
+    let map: SmallMap<T, Bool>
+.end
+
+pub fn small_set_new<T>() -> SmallSet<T>:
+    let m = small_map_new<T, Bool>()
+    let s = SmallSet<T>(map = m)
+    return s
+.end
+
+pub fn small_set_is_empty<T>(SmallSet<T> set) -> Bool:
+    return small_map_is_empty<T, Bool>(set.map)
+.end
+
+pub fn small_set_len<T>(SmallSet<T> set) -> usize:
+    return small_map_len<T, Bool>(set.map)
+.end
+
+pub fn small_set_contains<T>(SmallSet<T> set, T value) -> Bool:
+    return small_map_contains_key<T, Bool>(set.map, value)
+.end
+
+pub fn small_set_insert<T>(SmallSet<T> set, T value) -> SmallSet<T>:
+    let m = set.map
+    let m2 = small_map_insert<T, Bool>(m, value, true)
+    let s2 = SmallSet<T>(map = m2)
+    return s2
+.end
+
+pub fn small_set_remove<T>(SmallSet<T> set, T value) -> SmallSet<T>:
+    let m = set.map
+    let m2 = small_map_remove<T, Bool>(m, value)
+    let s2 = SmallSet<T>(map = m2)
+    return s2
+.end
+
+pub fn small_set_union<T>(SmallSet<T> a, SmallSet<T> b) -> SmallSet<T>:
+    let result = a
+    let entries_b = small_map_entries<T, Bool>(b.map)
+    let n = entries_b.len()
+    let i = 0usize
+
+    while i < n:
+        let e = entries_b[i]
+        if e.value:
+            result = small_set_insert<T>(result, e.key)
+        .end
+        i = i + 1usize
+    .end
+
+    return result
+.end
+
+pub fn small_set_intersection<T>(SmallSet<T> a, SmallSet<T> b) -> SmallSet<T>:
+    let result = small_set_new<T>()
+    let entries_a = small_map_entries<T, Bool>(a.map)
+    let n = entries_a.len()
+    let i = 0usize
+
+    while i < n:
+        let e = entries_a[i]
+        if e.value:
+            if small_set_contains<T>(b, e.key):
+                let r2 = small_set_insert<T>(result, e.key)
+                result = r2
+            .end
+        .end
+        i = i + 1usize
+    .end
+
+    return result
+.end
+
+pub fn small_set_difference<T>(SmallSet<T> a, SmallSet<T> b) -> SmallSet<T>:
+    let result = small_set_new<T>()
+    let entries_a = small_map_entries<T, Bool>(a.map)
+    let n = entries_a.len()
+    let i = 0usize
+
+    while i < n:
+        let e = entries_a[i]
+        if e.value:
+            if not small_set_contains<T>(b, e.key):
+                let r2 = small_set_insert<T>(result, e.key)
+                result = r2
+            .end
+        .end
+        i = i + 1usize
+    .end
+
+    return result
+.end
+
+# ----------------------------------------------------------------------------
+# Notes
+# ----------------------------------------------------------------------------
+# - SmallMap et SmallSet sont adaptés aux tailles modestes (tables internes
+#   du compilateur, interning léger, etc.). Pour des jeux de données massifs,
+#   des structures plus sophistiquées (hash map, B-tree) pourront être ajoutées
+#   dans d'autres modules.
+# - L'approche fonctionnelle (retour d'une nouvelle instance à chaque insert /
+#   remove) reste cohérente avec le style adopté dans les autres modules Vitte.
+# - Les génériques K, V, T supposent que l'opérateur == est défini sur les
+#   types correspondants.
+# ----------------------------------------------------------------------------

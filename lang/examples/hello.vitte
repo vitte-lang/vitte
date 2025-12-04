@@ -1,0 +1,115 @@
+print("Hello from L");
+
+module vitte.examples.hello
+
+import vitte.compiler.spans as spans
+import vitte.compiler.names as names
+
+# ============================================================================
+# Vitte examples – Modèle et exemples "Hello"
+#
+# Objectifs de ce fichier :
+#   - Proposer un micro modèle déclaratif pour les "programmes de démarrage"
+#     (Hello world, messages simples) dans le compilateur et les outils :
+#       * identifiants logiques,
+#       * métadonnées de programmes "hello".
+#   - Fournir des exemples ultra simples mais propres en "phrase syntaxe" :
+#       * fonction hello simple,
+#       * scenario de démonstration,
+#       * variantes de messages.
+#
+# Convention :
+#   - Ce fichier est "data model" + exemples commentés :
+#       * aucune fonction exécutable réelle,
+#       * pas de logique d’exécution dans ce module.
+#   - Syntaxe officielle Vitte :
+#       * blocs terminés par ".end",
+#       * aucune accolade dans le code ni dans les exemples.
+# ============================================================================
+
+# ============================================================================
+# Identifiants et métadonnées pour Hello
+# ============================================================================
+
+# Identifiant logique d’un "programme hello".
+type HelloProgramId = u32
+
+# Identifiant logique d’un message hello.
+type HelloMessageId = u32
+
+# Description minimale d’un "programme hello".
+struct HelloProgram
+    # Identifiant logique.
+    field id: HelloProgramId
+
+    # Nom symbolique (par exemple "hello_world", "hello_user").
+    field name: names.SymbolId
+
+    # Span de la définition principale (fn ou scn).
+    field span: spans.SpanId
+.end
+
+# Description minimale d’un message hello.
+struct HelloMessage
+    # Identifiant logique.
+    field id: HelloMessageId
+
+    # Texte du message (référencé via la table des symboles).
+    field text: names.SymbolId
+
+    # Span de l’emplacement où le message est défini ou utilisé.
+    field span: spans.SpanId
+.end
+
+# Vue agrégée pour les outils.
+struct HelloModelSnapshot
+    field programs: List<HelloProgram>
+    field messages: List<HelloMessage>
+.end
+
+# ============================================================================
+# Exemples d’utilisation en "phrase syntaxe"
+# ============================================================================
+#
+# Les exemples ci dessous servent :
+#   - de plus petit test de parsing complet,
+#   - de point d’entrée pour la doc,
+#   - de référence pour un "Hello world" en Vitte.
+#
+# Tous les blocs se terminent par ".end".
+#
+# --------------------------------------------------------------------------
+# Exemple 1 : fonction hello simple
+# --------------------------------------------------------------------------
+#
+#   fn hello
+#       say "Hello, world!"
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 2 : fonction hello personnalisée
+# --------------------------------------------------------------------------
+#
+#   fn hello_name name
+#       say "Hello,"
+#       say name
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 3 : scenario de démonstration
+# --------------------------------------------------------------------------
+#
+#   scn hello_demo
+#       say "Hello from Vitte"
+#
+#       set user = "Vitte user"
+#       say "Hello,"
+#       say user
+#   .end
+#
+# Ces exemples fournissent une base minimale mais cohérente :
+#   - syntaxe fn / scn,
+#   - utilisation de say et set,
+#   - style officiel Vitte pour les blocs (.end).
+#
+.end

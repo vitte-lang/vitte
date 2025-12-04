@@ -1,0 +1,1149 @@
+
+module vitte.compiler.types
+
+import std.collections as coll
+import vitte.compiler.span as span
+import vitte.compiler.symbols as sym
+import vitte.compiler.stdlib as stdlib
+
+# =============================================================================
+# Vitte compiler – Core logical types (maximal, logique, sans I/O)
+# =============================================================================
+#
+# Objectifs :
+#   - Fournir une représentation logique des types "résolus" (HIR) :
+#       * types de base (builtin/named),
+#       * types composites (tuple, fn, liste, map, pointeur, référence, tableau),
+#       * types spéciaux (unit, never, unknown/error).
+#   - Fournir un catalogue de types builtin avec méta-information :
+#       * classification numérique (entier signé / non signé, flottant),
+#       * tailles/alignment approximatifs (optionnels, dépendants de la cible),
+#       * helpers de détection (is_numeric, is_bool, etc.).
+#   - Servir de pont entre :
+#       * les noms de type vus dans le code (String),
+#       * la stdlib (`StdlibCatalog`) et l’inférence (`type_infer`),
+#       * les diagnostics / IDE (affichage lisible des types).
+#
+# Remarques :
+#   - Ce module ne fait AUCUN I/O (pas de disque, pas de logs).
+#   - Il ne fait pas d’unification ni de contraintes ; c’est le rôle de
+#     `vitte.compiler.type_infer`. Ici on stocke et on classe les types.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Identifiants & enums de base
+# -----------------------------------------------------------------------------
+
+typedef u32 ResTypeId
+typedef u32 BuiltinTypeId
+
+pub enum NumericKind:
+    NumericKindNone
+    NumericKindSignedInt
+    NumericKindUnsignedInt
+    NumericKindFloat
+.end
+
+pub enum IntWidth:
+    IntWidthUnknown
+    IntWidth8
+    IntWidth16
+    IntWidth32
+    IntWidth64
+    IntWidth128
+    IntWidthSize      # dépend de la plateforme (isize/usize)
+.end
+
+pub enum FloatWidth:
+    FloatWidthUnknown
+    FloatWidth32
+    FloatWidth64
+    FloatWidth128
+.end
+
+pub enum ResolvedTypeKind:
+    ResolvedTypeBuiltin          # Bool, i32, String, ...
+    ResolvedTypeNamed            # type/struct/enum utilisateur
+    ResolvedTypeTuple            # (T1, T2, ...)
+    ResolvedTypeFunction         # (T1, ..., Tn) -> R
+    ResolvedTypeList             # [T]
+    ResolvedTypeMap              # {K: V}
+    ResolvedTypePointer          # *T
+    ResolvedTypeReference        # &T / &const T
+    ResolvedTypeArray            # [T; N]
+    ResolvedTypeUnit             # ()
+    ResolvedTypeNever            # !
+    ResolvedTypeUnknown          # inconnu / placeholder
+    ResolvedTypeError            # erreur de typage
+.end
+
+# -----------------------------------------------------------------------------
+# Infos numériques / builtin
+# -----------------------------------------------------------------------------
+
+pub struct BuiltinNumericInfo:
+    let numeric_kind: NumericKind
+    let int_width: IntWidth
+    let float_width: FloatWidth
+    let is_signed: Bool
+.end
+
+pub struct BuiltinTypeInfo:
+    let id: BuiltinTypeId
+    let name: String
+    let family: ResolvedTypeKind          # généralement ResolvedTypeBuiltin
+    let numeric: BuiltinNumericInfo
+    let size_bytes: coll.Option<u32>      # None = inconnu/dépend de la cible
+    let align_bytes: coll.Option<u32>     # None = inconnu/dépend de la cible
+    let is_bool_like: Bool
+    let is_char_like: Bool
+    let is_string_like: Bool
+.end
+
+pub struct BuiltinTypeCatalog:
+    let types: Vec<BuiltinTypeInfo>
+.end
+
+# -----------------------------------------------------------------------------
+# Types résolus (HIR)
+# -----------------------------------------------------------------------------
+
+pub struct ResolvedType:
+    let id: ResTypeId
+    let kind: ResolvedTypeKind
+    let name: String              # représentation textuelle (debug/affichage)
+    let span: span.Span
+
+    # Pour les types nommés (struct/enum/type alias).
+    let symbol: coll.Option<sym.SymbolId>
+
+    # Pour les formes génériques (Foo<T, U>, Map<K, V>, etc.).
+    let generic_args: Vec<ResTypeId>
+
+    # Pour les types "unaires" (liste, pointeur, référence, tableau).
+    let element: coll.Option<ResTypeId>
+
+    # Clé/valeur pour map/dict.
+    let key: coll.Option<ResTypeId>
+    let value: coll.Option<ResTypeId>
+
+    # Tuple (T1, ..., Tn).
+    let tuple_elems: Vec<ResTypeId>
+
+    # Fonction (T1, ..., Tn) -> R.
+    let fn_params: Vec<ResTypeId>
+    let fn_result: coll.Option<ResTypeId>
+.end
+
+pub struct ResolvedTypeTable:
+    let types: Vec<ResolvedType>
+.end
+
+# -----------------------------------------------------------------------------
+# Base unifiée : TypesDb (builtin + resolved)
+# -----------------------------------------------------------------------------
+
+pub struct TypesDb:
+    let builtin: BuiltinTypeCatalog
+    let resolved: ResolvedTypeTable
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers Option<u32>
+# -----------------------------------------------------------------------------
+
+fn types_some_u32(u32 v) -> coll.Option<u32>:
+    let o = coll.option_some<u32>(v)
+    return o
+.end
+
+fn types_none_u32() -> coll.Option<u32>:
+    let o = coll.option_none<u32>()
+    return o
+.end
+
+# -----------------------------------------------------------------------------
+# Construction du catalogue builtin
+# -----------------------------------------------------------------------------
+
+fn types_builtin_numeric_info(
+    NumericKind nk,
+    IntWidth iw,
+    FloatWidth fw,
+    Bool is_signed
+) -> BuiltinNumericInfo:
+    let info = BuiltinNumericInfo(
+        numeric_kind = nk,
+        int_width = iw,
+        float_width = fw,
+        is_signed = is_signed
+    )
+    return info
+.end
+
+fn types_builtin_info(
+    BuiltinTypeId id,
+    String name,
+    ResolvedTypeKind family,
+    BuiltinNumericInfo num,
+    coll.Option<u32> size_bytes,
+    coll.Option<u32> align_bytes,
+    Bool is_bool_like,
+    Bool is_char_like,
+    Bool is_string_like
+) -> BuiltinTypeInfo:
+    let info = BuiltinTypeInfo(
+        id = id,
+        name = name,
+        family = family,
+        numeric = num,
+        size_bytes = size_bytes,
+        align_bytes = align_bytes,
+        is_bool_like = is_bool_like,
+        is_char_like = is_char_like,
+        is_string_like = is_string_like
+    )
+    return info
+.end
+
+fn types_builtin_catalog_new_empty() -> BuiltinTypeCatalog:
+    let v: Vec<BuiltinTypeInfo> = Vec<BuiltinTypeInfo>::new()
+    let cat = BuiltinTypeCatalog(
+        types = v
+    )
+    return cat
+.end
+
+fn types_builtin_catalog_push(
+    BuiltinTypeCatalog cat,
+    BuiltinTypeInfo info
+) -> BuiltinTypeCatalog:
+    let v = cat.types
+    v.push(info)
+    let cat2 = BuiltinTypeCatalog(
+        types = v
+    )
+    return cat2
+.end
+
+pub fn types_builtin_catalog_new_default() -> BuiltinTypeCatalog:
+    let cat0 = types_builtin_catalog_new_empty()
+
+    # Bool
+    let num_none = types_builtin_numeric_info(
+        NumericKind::NumericKindNone,
+        IntWidth::IntWidthUnknown,
+        FloatWidth::FloatWidthUnknown,
+        false
+    )
+    let info_bool = types_builtin_info(
+        0u32,
+        "Bool",
+        ResolvedTypeKind::ResolvedTypeBuiltin,
+        num_none,
+        types_some_u32(1u32),
+        types_some_u32(1u32),
+        true,
+        false,
+        false
+    )
+    let cat1 = types_builtin_catalog_push(cat0, info_bool)
+
+    # Char (caractère unicode)
+    let info_char = types_builtin_info(
+        1u32,
+        "Char",
+        ResolvedTypeKind::ResolvedTypeBuiltin,
+        num_none,
+        types_some_u32(4u32),
+        types_some_u32(4u32),
+        false,
+        true,
+        false
+    )
+    let cat2 = types_builtin_catalog_push(cat1, info_char)
+
+    # String (chaîne gérée par la runtime) – taille inconnue
+    let info_string = types_builtin_info(
+        2u32,
+        "String",
+        ResolvedTypeKind::ResolvedTypeBuiltin,
+        num_none,
+        types_none_u32(),
+        types_none_u32(),
+        false,
+        false,
+        true
+    )
+    let cat3 = types_builtin_catalog_push(cat2, info_string)
+
+    # Str (&str / slice) – taille dépendante de l’impl
+    let info_str = types_builtin_info(
+        3u32,
+        "Str",
+        ResolvedTypeKind::ResolvedTypeBuiltin,
+        num_none,
+        types_none_u32(),
+        types_none_u32(),
+        false,
+        false,
+        true
+    )
+    let cat4 = types_builtin_catalog_push(cat3, info_str)
+
+    # Unit () – taille 0
+    let info_unit = types_builtin_info(
+        4u32,
+        "()",
+        ResolvedTypeKind::ResolvedTypeUnit,
+        num_none,
+        types_some_u32(0u32),
+        types_some_u32(1u32),
+        false,
+        false,
+        false
+    )
+    let cat5 = types_builtin_catalog_push(cat4, info_unit)
+
+    # Never ! – taille 0 (non habité)
+    let info_never = types_builtin_info(
+        5u32,
+        "!",
+        ResolvedTypeKind::ResolvedTypeNever,
+        num_none,
+        types_some_u32(0u32),
+        types_some_u32(1u32),
+        false,
+        false,
+        false
+    )
+    let cat6 = types_builtin_catalog_push(cat5, info_never)
+
+    # Entiers signés ----------------------------------------------------------
+    let num_i8 = types_builtin_numeric_info(
+        NumericKind::NumericKindSignedInt,
+        IntWidth::IntWidth8,
+        FloatWidth::FloatWidthUnknown,
+        true
+    )
+    let info_i8 = types_builtin_info(
+        6u32,
+        "i8",
+        ResolvedTypeKind::ResolvedTypeBuiltin,
+        num_i8,
+        types_some_u32(1u32),
+        types_some_u32(1u32),
+        false,
+        false,
+        false
+    )
+    let cat7 = types_builtin_catalog_push(cat6, info_i8)
+
+    let num_i16 = types_builtin_numeric_info(
+        NumericKind::NumericKindSignedInt,
+        IntWidth::IntWidth16,
+        FloatWidth::FloatWidthUnknown,
+        true
+    )
+    let info_i16 = types_builtin_info(
+        7u32,
+        "i16",
+        ResolvedTypeKind::ResolvedTypeBuiltin,
+        num_i16,
+        types_some_u32(2u32),
+        types_some_u32(2u32),
+        false,
+        false,
+        false
+    )
+    let cat8 = types_builtin_catalog_push(cat7, info_i16)
+
+    let num_i32 = types_builtin_numeric_info(
+        NumericKind::NumericKindSignedInt,
+        IntWidth::IntWidth32,
+        FloatWidth::FloatWidthUnknown,
+        true
+    )
+    let info_i32 = types_builtin_info(
+        8u32,
+        "i32",
+        ResolvedTypeKind::ResolvedTypeBuiltin,
+        num_i32,
+        types_some_u32(4u32),
+        types_some_u32(4u32),
+        false,
+        false,
+        false
+    )
+    let cat9 = types_builtin_catalog_push(cat8, info_i32)
+
+    let num_i64 = types_builtin_numeric_info(
+        NumericKind::NumericKindSignedInt,
+        IntWidth::IntWidth64,
+        FloatWidth::FloatWidthUnknown,
+        true
+    )
+    let info_i64 = types_builtin_info(
+        9u32,
+        "i64",
+        ResolvedTypeKind::ResolvedTypeBuiltin,
+        num_i64,
+        types_some_u32(8u32),
+        types_some_u32(8u32),
+        false,
+        false,
+        false
+    )
+    let cat10 = types_builtin_catalog_push(cat9, info_i64)
+
+    let num_isize = types_builtin_numeric_info(
+        NumericKind::NumericKindSignedInt,
+        IntWidth::IntWidthSize,
+        FloatWidth::FloatWidthUnknown,
+        true
+    )
+    let info_isize = types_builtin_info(
+        10u32,
+        "isize",
+        ResolvedTypeKind::ResolvedTypeBuiltin,
+        num_isize,
+        types_none_u32(),   # dépend de la plateforme
+        types_none_u32(),
+        false,
+        false,
+        false
+    )
+    let cat11 = types_builtin_catalog_push(cat10, info_isize)
+
+    # Entiers non signés ------------------------------------------------------
+    let num_u8 = types_builtin_numeric_info(
+        NumericKind::NumericKindUnsignedInt,
+        IntWidth::IntWidth8,
+        FloatWidth::FloatWidthUnknown,
+        false
+    )
+    let info_u8 = types_builtin_info(
+        11u32,
+        "u8",
+        ResolvedTypeKind::ResolvedTypeBuiltin,
+        num_u8,
+        types_some_u32(1u32),
+        types_some_u32(1u32),
+        false,
+        false,
+        false
+    )
+    let cat12 = types_builtin_catalog_push(cat11, info_u8)
+
+    let num_u16 = types_builtin_numeric_info(
+        NumericKind::NumericKindUnsignedInt,
+        IntWidth::IntWidth16,
+        FloatWidth::FloatWidthUnknown,
+        false
+    )
+    let info_u16 = types_builtin_info(
+        12u32,
+        "u16",
+        ResolvedTypeKind::ResolvedTypeBuiltin,
+        num_u16,
+        types_some_u32(2u32),
+        types_some_u32(2u32),
+        false,
+        false,
+        false
+    )
+    let cat13 = types_builtin_catalog_push(cat12, info_u16)
+
+    let num_u32 = types_builtin_numeric_info(
+        NumericKind::NumericKindUnsignedInt,
+        IntWidth::IntWidth32,
+        FloatWidth::FloatWidthUnknown,
+        false
+    )
+    let info_u32 = types_builtin_info(
+        13u32,
+        "u32",
+        ResolvedTypeKind::ResolvedTypeBuiltin,
+        num_u32,
+        types_some_u32(4u32),
+        types_some_u32(4u32),
+        false,
+        false,
+        false
+    )
+    let cat14 = types_builtin_catalog_push(cat13, info_u32)
+
+    let num_u64 = types_builtin_numeric_info(
+        NumericKind::NumericKindUnsignedInt,
+        IntWidth::IntWidth64,
+        FloatWidth::FloatWidthUnknown,
+        false
+    )
+    let info_u64 = types_builtin_info(
+        14u32,
+        "u64",
+        ResolvedTypeKind::ResolvedTypeBuiltin,
+        num_u64,
+        types_some_u32(8u32),
+        types_some_u32(8u32),
+        false,
+        false,
+        false
+    )
+    let cat15 = types_builtin_catalog_push(cat14, info_u64)
+
+    let num_usize = types_builtin_numeric_info(
+        NumericKind::NumericKindUnsignedInt,
+        IntWidth::IntWidthSize,
+        FloatWidth::FloatWidthUnknown,
+        false
+    )
+    let info_usize = types_builtin_info(
+        15u32,
+        "usize",
+        ResolvedTypeKind::ResolvedTypeBuiltin,
+        num_usize,
+        types_none_u32(),
+        types_none_u32(),
+        false,
+        false,
+        false
+    )
+    let cat16 = types_builtin_catalog_push(cat15, info_usize)
+
+    # Flottants ---------------------------------------------------------------
+    let num_f32 = types_builtin_numeric_info(
+        NumericKind::NumericKindFloat,
+        IntWidth::IntWidthUnknown,
+        FloatWidth::FloatWidth32,
+        true
+    )
+    let info_f32 = types_builtin_info(
+        16u32,
+        "f32",
+        ResolvedTypeKind::ResolvedTypeBuiltin,
+        num_f32,
+        types_some_u32(4u32),
+        types_some_u32(4u32),
+        false,
+        false,
+        false
+    )
+    let cat17 = types_builtin_catalog_push(cat16, info_f32)
+
+    let num_f64 = types_builtin_numeric_info(
+        NumericKind::NumericKindFloat,
+        IntWidth::IntWidthUnknown,
+        FloatWidth::FloatWidth64,
+        true
+    )
+    let info_f64 = types_builtin_info(
+        17u32,
+        "f64",
+        ResolvedTypeKind::ResolvedTypeBuiltin,
+        num_f64,
+        types_some_u32(8u32),
+        types_some_u32(8u32),
+        false,
+        false,
+        false
+    )
+    let cat18 = types_builtin_catalog_push(cat17, info_f64)
+
+    # Catalogue final
+    return cat18
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers sur le catalogue builtin
+# -----------------------------------------------------------------------------
+
+pub fn types_builtin_count(cat: BuiltinTypeCatalog) -> u32:
+    let n = cat.types.len()
+    return n as u32
+.end
+
+pub fn types_builtin_get(
+    BuiltinTypeCatalog cat,
+    BuiltinTypeId id
+) -> BuiltinTypeInfo:
+    let v = cat.types
+    let idx = id as usize
+    let info = v[idx]
+    return info
+.end
+
+pub fn types_builtin_index_of(
+    BuiltinTypeCatalog cat,
+    String name
+) -> coll.Option<BuiltinTypeId>:
+    let v = cat.types
+    let n = v.len()
+    let i = 0usize
+
+    while i < n:
+        let info = v[i]
+        if info.name == name:
+            let id_u32 = i as u32
+            let some_id = coll.option_some<u32>(id_u32)
+            return some_id
+        .end
+        let i = i + 1usize
+    .end
+
+    let none_id = coll.option_none<u32>()
+    return none_id
+.end
+
+pub fn types_is_builtin_name(
+    BuiltinTypeCatalog cat,
+    String name
+) -> Bool:
+    let idx_opt = types_builtin_index_of(cat, name)
+    return coll.option_is_some<u32>(idx_opt)
+.end
+
+pub fn types_builtin_is_numeric(
+    BuiltinTypeInfo info
+) -> Bool:
+    let k = info.numeric.numeric_kind
+    if k == NumericKind::NumericKindSignedInt:
+        return true
+    .end
+    if k == NumericKind::NumericKindUnsignedInt:
+        return true
+    .end
+    if k == NumericKind::NumericKindFloat:
+        return true
+    .end
+    return false
+.end
+
+pub fn types_is_numeric_name(
+    BuiltinTypeCatalog cat,
+    String name
+) -> Bool:
+    let idx_opt = types_builtin_index_of(cat, name)
+    if coll.option_is_none<u32>(idx_opt):
+        return false
+    .end
+    let idx = coll.option_unwrap_unsafe<u32>(idx_opt)
+    let info = types_builtin_get(cat, idx)
+    let b = types_builtin_is_numeric(info)
+    return b
+.end
+
+pub fn types_is_bool_name(
+    BuiltinTypeCatalog cat,
+    String name
+) -> Bool:
+    let idx_opt = types_builtin_index_of(cat, name)
+    if coll.option_is_none<u32>(idx_opt):
+        return false
+    .end
+    let idx = coll.option_unwrap_unsafe<u32>(idx_opt)
+    let info = types_builtin_get(cat, idx)
+    return info.is_bool_like
+.end
+
+pub fn types_is_string_like_name(
+    BuiltinTypeCatalog cat,
+    String name
+) -> Bool:
+    let idx_opt = types_builtin_index_of(cat, name)
+    if coll.option_is_none<u32>(idx_opt):
+        return false
+    .end
+    let idx = coll.option_unwrap_unsafe<u32>(idx_opt)
+    let info = types_builtin_get(cat, idx)
+    return info.is_string_like
+.end
+
+# -----------------------------------------------------------------------------
+# Table des types résolus
+# -----------------------------------------------------------------------------
+
+pub fn types_resolved_table_new() -> ResolvedTypeTable:
+    let v: Vec<ResolvedType> = Vec<ResolvedType>::new()
+    let tab = ResolvedTypeTable(
+        types = v
+    )
+    return tab
+.end
+
+fn types_next_resolved_id(
+    ResolvedTypeTable tab
+) -> ResTypeId:
+    let n = tab.types.len()
+    let id = n as u32
+    return id
+.end
+
+fn types_resolved_table_push(
+    ResolvedTypeTable tab,
+    ResolvedType ty
+) -> ResolvedTypeTable:
+    let v = tab.types
+    v.push(ty)
+    let tab2 = ResolvedTypeTable(
+        types = v
+    )
+    return tab2
+.end
+
+pub fn types_resolved_add_builtin(
+    ResolvedTypeTable tab,
+    String name,
+    span.Span sp
+) -> (ResolvedTypeTable, ResTypeId):
+    let new_id = types_next_resolved_id(tab)
+
+    let none_sym = coll.option_none<sym.SymbolId>()
+    let none_elem = coll.option_none<ResTypeId>()
+    let none_key = coll.option_none<ResTypeId>()
+    let none_val = coll.option_none<ResTypeId>()
+    let none_res = coll.option_none<ResTypeId>()
+
+    let generic_args: Vec<ResTypeId> = Vec<ResTypeId>::new()
+    let tuple_elems: Vec<ResTypeId> = Vec<ResTypeId>::new()
+    let fn_params: Vec<ResTypeId> = Vec<ResTypeId>::new()
+
+    let ty = ResolvedType(
+        id = new_id,
+        kind = ResolvedTypeKind::ResolvedTypeBuiltin,
+        name = name,
+        span = sp,
+        symbol = none_sym,
+        generic_args = generic_args,
+        element = none_elem,
+        key = none_key,
+        value = none_val,
+        tuple_elems = tuple_elems,
+        fn_params = fn_params,
+        fn_result = none_res
+    )
+
+    let tab2 = types_resolved_table_push(tab, ty)
+    let out = (tab2, new_id)
+    return out
+.end
+
+pub fn types_resolved_add_named(
+    ResolvedTypeTable tab,
+    String name,
+    span.Span sp,
+    coll.Option<sym.SymbolId> sym_opt,
+    Vec<ResTypeId> generic_args
+) -> (ResolvedTypeTable, ResTypeId):
+    let new_id = types_next_resolved_id(tab)
+
+    let none_elem = coll.option_none<ResTypeId>()
+    let none_key = coll.option_none<ResTypeId>()
+    let none_val = coll.option_none<ResTypeId>()
+    let none_res = coll.option_none<ResTypeId>()
+
+    let tuple_elems: Vec<ResTypeId> = Vec<ResTypeId>::new()
+    let fn_params: Vec<ResTypeId> = Vec<ResTypeId>::new()
+
+    let ty = ResolvedType(
+        id = new_id,
+        kind = ResolvedTypeKind::ResolvedTypeNamed,
+        name = name,
+        span = sp,
+        symbol = sym_opt,
+        generic_args = generic_args,
+        element = none_elem,
+        key = none_key,
+        value = none_val,
+        tuple_elems = tuple_elems,
+        fn_params = fn_params,
+        fn_result = none_res
+    )
+
+    let tab2 = types_resolved_table_push(tab, ty)
+    let out = (tab2, new_id)
+    return out
+.end
+
+pub fn types_resolved_add_tuple(
+    ResolvedTypeTable tab,
+    Vec<ResTypeId> elems,
+    span.Span sp
+) -> (ResolvedTypeTable, ResTypeId):
+    let new_id = types_next_resolved_id(tab)
+
+    let none_sym = coll.option_none<sym.SymbolId>()
+    let none_elem = coll.option_none<ResTypeId>()
+    let none_key = coll.option_none<ResTypeId>()
+    let none_val = coll.option_none<ResTypeId>()
+    let none_res = coll.option_none<ResTypeId>()
+
+    let generic_args: Vec<ResTypeId> = Vec<ResTypeId>::new()
+    let fn_params: Vec<ResTypeId> = Vec<ResTypeId>::new()
+
+    let ty = ResolvedType(
+        id = new_id,
+        kind = ResolvedTypeKind::ResolvedTypeTuple,
+        name = "()",
+        span = sp,
+        symbol = none_sym,
+        generic_args = generic_args,
+        element = none_elem,
+        key = none_key,
+        value = none_val,
+        tuple_elems = elems,
+        fn_params = fn_params,
+        fn_result = none_res
+    )
+
+    let tab2 = types_resolved_table_push(tab, ty)
+    let out = (tab2, new_id)
+    return out
+.end
+
+pub fn types_resolved_add_function(
+    ResolvedTypeTable tab,
+    Vec<ResTypeId> params,
+    coll.Option<ResTypeId> result,
+    span.Span sp
+) -> (ResolvedTypeTable, ResTypeId):
+    let new_id = types_next_resolved_id(tab)
+
+    let none_sym = coll.option_none<sym.SymbolId>()
+    let none_elem = coll.option_none<ResTypeId>()
+    let none_key = coll.option_none<ResTypeId>()
+    let none_val = coll.option_none<ResTypeId>()
+
+    let generic_args: Vec<ResTypeId> = Vec<ResTypeId>::new()
+    let tuple_elems: Vec<ResTypeId> = Vec<ResTypeId>::new()
+
+    let ty = ResolvedType(
+        id = new_id,
+        kind = ResolvedTypeKind::ResolvedTypeFunction,
+        name = "fn",
+        span = sp,
+        symbol = none_sym,
+        generic_args = generic_args,
+        element = none_elem,
+        key = none_key,
+        value = none_val,
+        tuple_elems = tuple_elems,
+        fn_params = params,
+        fn_result = result
+    )
+
+    let tab2 = types_resolved_table_push(tab, ty)
+    let out = (tab2, new_id)
+    return out
+.end
+
+pub fn types_resolved_add_unary(
+    ResolvedTypeTable tab,
+    ResolvedTypeKind kind,
+    ResTypeId element,
+    span.Span sp
+) -> (ResolvedTypeTable, ResTypeId):
+    let new_id = types_next_resolved_id(tab)
+
+    let none_sym = coll.option_none<sym.SymbolId>()
+    let some_elem = coll.option_some<ResTypeId>(element)
+    let none_key = coll.option_none<ResTypeId>()
+    let none_val = coll.option_none<ResTypeId>()
+    let none_res = coll.option_none<ResTypeId>()
+
+    let generic_args: Vec<ResTypeId> = Vec<ResTypeId>::new()
+    let tuple_elems: Vec<ResTypeId> = Vec<ResTypeId>::new()
+    let fn_params: Vec<ResTypeId> = Vec<ResTypeId>::new()
+
+    let name = match kind:
+        ResolvedTypeKind::ResolvedTypeList -> "List"
+        ResolvedTypeKind::ResolvedTypePointer -> "Ptr"
+        ResolvedTypeKind::ResolvedTypeReference -> "Ref"
+        ResolvedTypeKind::ResolvedTypeArray -> "Array"
+        _ -> "T"
+    .end
+
+    let ty = ResolvedType(
+        id = new_id,
+        kind = kind,
+        name = name,
+        span = sp,
+        symbol = none_sym,
+        generic_args = generic_args,
+        element = some_elem,
+        key = none_key,
+        value = none_val,
+        tuple_elems = tuple_elems,
+        fn_params = fn_params,
+        fn_result = none_res
+    )
+
+    let tab2 = types_resolved_table_push(tab, ty)
+    let out = (tab2, new_id)
+    return out
+.end
+
+pub fn types_resolved_get(
+    ResolvedTypeTable tab,
+    ResTypeId id
+) -> ResolvedType:
+    let v = tab.types
+    let idx = id as usize
+    let ty = v[idx]
+    return ty
+.end
+
+# -----------------------------------------------------------------------------
+# TypesDb (builtin + resolved)
+# -----------------------------------------------------------------------------
+
+pub fn types_db_new_default() -> TypesDb:
+    let builtin = types_builtin_catalog_new_default()
+    let resolved = types_resolved_table_new()
+    let db = TypesDb(
+        builtin = builtin,
+        resolved = resolved
+    )
+    return db
+.end
+
+pub fn types_db_is_builtin_type(
+    TypesDb db,
+    String name
+) -> Bool:
+    let cat = db.builtin
+    let b = types_is_builtin_name(cat, name)
+    return b
+.end
+
+pub fn types_db_is_numeric_type(
+    TypesDb db,
+    String name
+) -> Bool:
+    let cat = db.builtin
+    let b = types_is_numeric_name(cat, name)
+    return b
+.end
+
+pub fn types_db_is_bool_type(
+    TypesDb db,
+    String name
+) -> Bool:
+    let cat = db.builtin
+    let b = types_is_bool_name(cat, name)
+    return b
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers de debug
+# -----------------------------------------------------------------------------
+
+pub fn types_numeric_kind_to_string(
+    NumericKind k
+) -> String:
+    if k == NumericKind::NumericKindNone:
+        return "none"
+    .end
+    if k == NumericKind::NumericKindSignedInt:
+        return "signed_int"
+    .end
+    if k == NumericKind::NumericKindUnsignedInt:
+        return "unsigned_int"
+    .end
+    if k == NumericKind::NumericKindFloat:
+        return "float"
+    .end
+    return "unknown"
+.end
+
+pub fn types_resolved_kind_to_string(
+    ResolvedTypeKind k
+) -> String:
+    if k == ResolvedTypeKind::ResolvedTypeBuiltin:
+        return "builtin"
+    .end
+    if k == ResolvedTypeKind::ResolvedTypeNamed:
+        return "named"
+    .end
+    if k == ResolvedTypeKind::ResolvedTypeTuple:
+        return "tuple"
+    .end
+    if k == ResolvedTypeKind::ResolvedTypeFunction:
+        return "fn"
+    .end
+    if k == ResolvedTypeKind::ResolvedTypeList:
+        return "list"
+    .end
+    if k == ResolvedTypeKind::ResolvedTypeMap:
+        return "map"
+    .end
+    if k == ResolvedTypeKind::ResolvedTypePointer:
+        return "ptr"
+    .end
+    if k == ResolvedTypeKind::ResolvedTypeReference:
+        return "ref"
+    .end
+    if k == ResolvedTypeKind::ResolvedTypeArray:
+        return "array"
+    .end
+    if k == ResolvedTypeKind::ResolvedTypeUnit:
+        return "unit"
+    .end
+    if k == ResolvedTypeKind::ResolvedTypeNever:
+        return "never"
+    .end
+    if k == ResolvedTypeKind::ResolvedTypeUnknown:
+        return "unknown"
+    .end
+    if k == ResolvedTypeKind::ResolvedTypeError:
+        return "error"
+    .end
+    return "?"
+.end
+
+pub fn types_pretty_print_resolved(
+    ResolvedTypeTable tab,
+    ResTypeId id
+) -> String:
+    let ty = types_resolved_get(tab, id)
+    let k = ty.kind
+
+    if k == ResolvedTypeKind::ResolvedTypeBuiltin or
+       k == ResolvedTypeKind::ResolvedTypeNamed or
+       k == ResolvedTypeKind::ResolvedTypeUnit or
+       k == ResolvedTypeKind::ResolvedTypeNever:
+        return ty.name
+    .end
+
+    if k == ResolvedTypeKind::ResolvedTypeList or
+       k == ResolvedTypeKind::ResolvedTypePointer or
+       k == ResolvedTypeKind::ResolvedTypeReference or
+       k == ResolvedTypeKind::ResolvedTypeArray:
+        let elem_opt = ty.element
+        if coll.option_is_none<ResTypeId>(elem_opt):
+            return ty.name
+        .end
+        let elem_id = coll.option_unwrap_unsafe<ResTypeId>(elem_opt)
+        let inner = types_pretty_print_resolved(tab, elem_id)
+        if k == ResolvedTypeKind::ResolvedTypeList:
+            return "[" + inner + "]"
+        .end
+        if k == ResolvedTypeKind::ResolvedTypePointer:
+            return "*" + inner
+        .end
+        if k == ResolvedTypeKind::ResolvedTypeReference:
+            return "&" + inner
+        .end
+        if k == ResolvedTypeKind::ResolvedTypeArray:
+            return "[" + inner + "; _]"
+        .end
+        return inner
+    .end
+
+    if k == ResolvedTypeKind::ResolvedTypeTuple:
+        let elems = ty.tuple_elems
+        let n = elems.len()
+        if n == 0usize:
+            return "()"
+        .end
+        let i = 0usize
+        let out = "("
+        while i < n:
+            let eid = elems[i]
+            let part = types_pretty_print_resolved(tab, eid)
+            if i == 0usize:
+                let out = out + part
+            else:
+                let out = out + ", " + part
+            .end
+            let i = i + 1usize
+        .end
+        let out = out + ")"
+        return out
+    .end
+
+    if k == ResolvedTypeKind::ResolvedTypeFunction:
+        let params = ty.fn_params
+        let res_opt = ty.fn_result
+        let n = params.len()
+        let i = 0usize
+        let out = "fn("
+        while i < n:
+            let pid = params[i]
+            let part = types_pretty_print_resolved(tab, pid)
+            if i == 0usize:
+                let out = out + part
+            else:
+                let out = out + ", " + part
+            .end
+            let i = i + 1usize
+        .end
+        let out = out + ")"
+        if coll.option_is_some<ResTypeId>(res_opt):
+            let rid = coll.option_unwrap_unsafe<ResTypeId>(res_opt)
+            let rtxt = types_pretty_print_resolved(tab, rid)
+            let out = out + " -> " + rtxt
+            return out
+        .end
+        return out
+    .end
+
+    # Unknown / error : retour du nom brut
+    return ty.name
+.end
+
+# -----------------------------------------------------------------------------
+# Scenario de smoke test
+# -----------------------------------------------------------------------------
+
+scenario types_smoke_test():
+    let db = types_db_new_default()
+    let cat = db.builtin
+
+    let cnt = types_builtin_count(cat)
+    let is_i32_builtin = types_is_builtin_name(cat, "i32")
+    let is_foo_builtin = types_is_builtin_name(cat, "Foo")
+    let is_i32_numeric = types_is_numeric_name(cat, "i32")
+    let is_bool_bool = types_is_bool_name(cat, "Bool")
+
+    # Test ResolvedTypeTable
+    let tab0 = db.resolved
+
+    let sp = span.span_from_len(
+        (span.BytePos) 0,
+        (span.ByteLen) 1
+    )
+
+    let (tab1, t_i32) = types_resolved_add_builtin(
+        tab0,
+        "i32",
+        sp
+    )
+
+    let (tab2, t_list_i32) = types_resolved_add_unary(
+        tab1,
+        ResolvedTypeKind::ResolvedTypeList,
+        t_i32,
+        sp
+    )
+
+    let (tab3, t_fn) = types_resolved_add_function(
+        tab2,
+        [t_i32],
+        coll.option_some<ResTypeId>(t_i32),
+        sp
+    )
+
+    let s_i32 = types_pretty_print_resolved(tab3, t_i32)
+    let s_list = types_pretty_print_resolved(tab3, t_list_i32)
+    let s_fn = types_pretty_print_resolved(tab3, t_fn)
+
+    let _ = cnt
+    let _ = is_i32_builtin
+    let _ = is_foo_builtin
+    let _ = is_i32_numeric
+    let _ = is_bool_bool
+    let _ = s_i32
+    let _ = s_list
+    let _ = s_fn
+.end

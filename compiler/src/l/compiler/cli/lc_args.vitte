@@ -1,0 +1,230 @@
+module vitte.compiler.cli.lc_args
+
+import vitte.compiler.pipeline as pipe
+import vitte.compiler.fs as fs
+import vitte.compiler.diagnostics as diag
+import vitte.runtime.env as env
+
+# ============================================================================
+# lc-args — CLI minimal pour compiler ou vérifier un fichier source Vitte
+#
+# Rôle :
+#   - parser des arguments simples : <source> et --check ;
+#   - charger le fichier source ;
+#   - lancer la pipeline front-end ;
+#   - afficher des diagnostics enrichis (position + extrait).
+#
+# Notes :
+#   - Le mode --check s'arrête après le parse et ne tente pas d'émettre du
+#     bytecode, ce qui le rend adapté à l'édition rapide.
+# ============================================================================
+
+const EXIT_OK = 0
+const EXIT_FAIL = 1
+const EXIT_USAGE = 2
+
+pub struct LcArgsOptions:
+    let source_path: String
+    let check_only: Bool
+.end
+
+# ----------------------------------------------------------------------------
+# Helpers d'affichage
+# ----------------------------------------------------------------------------
+
+fn lc_args_print_usage():
+    println("lc-args - compile or run a single Vitte source file")
+    println("Usage:")
+    println("  lc-args [--check] <source>")
+    println("")
+    println("Options:")
+    println("  --check       Parse/type-check only, no bytecode emission")
+    println("  --help, -h    Show this help")
+    println("  --version     Show version information")
+.end
+
+fn lc_args_print_version():
+    println("lc-args (Vitte compiler) 0.1.0")
+.end
+
+fn lc_args_print_extra_arg(String arg):
+    println("warning: ignoring extra argument '" + arg + "'")
+.end
+
+fn starts_with_dash(String s) -> Bool:
+    if s.len() == 0usize:
+        return false
+    .end
+    let first = s.char_at(0usize)
+    return first == "-"
+.end
+
+# ----------------------------------------------------------------------------
+# Parsing des arguments
+# ----------------------------------------------------------------------------
+
+fn lc_args_parse(String[] argv) -> (Option<LcArgsOptions>, Int):
+    let source = ""
+    let check_only = false
+
+    let i = 0usize
+    while i < argv.len():
+        let arg = argv[i]
+
+        if (arg == "--help") or (arg == "-h"):
+            lc_args_print_usage()
+            let none_opts: Option<LcArgsOptions> = Option<LcArgsOptions>::None()
+            let out_help = (none_opts, EXIT_OK)
+            return out_help
+        .end
+
+        if (arg == "--version") or (arg == "-V"):
+            lc_args_print_version()
+            let none_ver: Option<LcArgsOptions> = Option<LcArgsOptions>::None()
+            let out_ver = (none_ver, EXIT_OK)
+            return out_ver
+        .end
+
+        if arg == "--check":
+            let check_only = true
+            let i = i + 1usize
+            continue
+        .end
+
+        if starts_with_dash(arg):
+            lc_args_print_extra_arg(arg)
+            let i = i + 1usize
+            continue
+        .end
+
+        if source == "":
+            let source = arg
+        .end
+        let i = i + 1usize
+    .end
+
+    if source == "":
+        println("error: missing <source> argument")
+        lc_args_print_usage()
+        let none_src: Option<LcArgsOptions> = Option<LcArgsOptions>::None()
+        let out_err = (none_src, EXIT_USAGE)
+        return out_err
+    .end
+
+    let opts = LcArgsOptions(
+        source_path = source,
+        check_only = check_only
+    )
+    let some_opts: Option<LcArgsOptions> = Option<LcArgsOptions>::Some(opts)
+    let out_ok = (some_opts, EXIT_OK)
+    return out_ok
+.end
+
+# ----------------------------------------------------------------------------
+# Lecture du fichier source
+# ----------------------------------------------------------------------------
+
+fn lc_args_read_source(String path) -> (Bool, String):
+    let p = fs.fs_path_from_string(path)
+    let res = fs.fs_read_to_string(p)
+
+    if res.ok:
+        let ok = true
+        let out_ok = (ok, res.data)
+        return out_ok
+    .end
+
+    let err_opt = res.error
+    if err_opt.is_some():
+        let err = err_opt.unwrap()
+        let msg = fs.fs_error_message(err)
+        println("error: unable to read '" + path + "': " + msg)
+    else:
+        println("error: unable to read '" + path + "'")
+    .end
+
+    let out = (false, "")
+    return out
+.end
+
+# ----------------------------------------------------------------------------
+# Exécution de la pipeline
+# ----------------------------------------------------------------------------
+
+fn lc_args_run(LcArgsOptions opts, String source) -> (diag.DiagnosticsSink, Bool):
+    let sink = diag.diagnostics_sink_new()
+    let popts = pipe.pipeline_default_options()
+
+    if opts.check_only:
+        popts.stop_after = pipe.PipelinePhase::PhaseParse
+        popts.collect_hir = false
+        popts.collect_ir = false
+        popts.collect_link = false
+        popts.collect_llvm_ir = false
+    .end
+
+    let res = pipe.pipeline_frontend(opts.source_path, source, popts, sink)
+    let sink_out = res.diagnostics
+    let ok = res.ok and not sink_out.has_errors()
+    let out = (sink_out, ok)
+    return out
+.end
+
+# ----------------------------------------------------------------------------
+# Fonction principale
+# ----------------------------------------------------------------------------
+
+fn lc_args_main(String[] argv) -> Int:
+    let parsed = lc_args_parse(argv)
+    let opts_opt = parsed.0
+    let exit_code = parsed.1
+
+    if opts_opt.is_none():
+        return exit_code
+    .end
+
+    let opts = opts_opt.unwrap()
+    let read_res = lc_args_read_source(opts.source_path)
+    let ok_read = read_res.0
+    let source = read_res.1
+
+    if not ok_read:
+        return EXIT_FAIL
+    .end
+
+    let run_res = lc_args_run(opts, source)
+    let sink = run_res.0
+    let ok_pipeline = run_res.1
+
+    let diag_text = diag.diagnostics_render_with_source(sink, source)
+    if diag_text != "":
+        println(diag_text)
+    .end
+
+    if sink.has_errors():
+        return EXIT_FAIL
+    .end
+
+    if opts.check_only:
+        println("checked " + opts.source_path + " (no bytecode emitted)")
+    else:
+        println("compiled " + opts.source_path + " (bytecode emission not implemented yet)")
+    .end
+
+    if not ok_pipeline:
+        println("error: compilation pipeline did not complete successfully")
+        return EXIT_FAIL
+    .end
+
+    return EXIT_OK
+.end
+
+# ----------------------------------------------------------------------------
+# Point d'entrée Vitte
+# ----------------------------------------------------------------------------
+
+program vitte.compiler.cli.lc_args:
+    let argv = env.args()
+    let code = lc_args_main(argv)
+    env.exit(code)
+.end

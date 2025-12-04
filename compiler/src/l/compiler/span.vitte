@@ -1,0 +1,407 @@
+
+
+module vitte.compiler.span
+
+# ============================================================================
+# Vitte compiler – span & position utilities (maximal, sans I/O)
+#
+# - Positions et longueurs en octets dans le buffer source.
+# - Spans demi-ouverts [start, end) avec invariants simples.
+# - Types de localisation (ligne / colonne / fichier).
+# - Aucune dépendance I/O ou OS.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Aliases bas niveau
+# ----------------------------------------------------------------------------
+
+typedef usize BytePos
+typedef usize ByteLen
+
+typedef usize LineIndex      # 1-based
+typedef usize ColumnIndex    # 1-based
+
+# ----------------------------------------------------------------------------
+# Types de base
+# ----------------------------------------------------------------------------
+
+# Position ligne/colonne (1-based).
+pub struct LineCol:
+    let line: LineIndex
+    let column: ColumnIndex
+.end
+
+# Half-open byte span [start, end) dans un buffer source.
+# Invariant logique : start <= end (garanti par les constructeurs de ce module).
+pub struct Span:
+    let start: BytePos
+    let end: BytePos
+.end
+
+# Identifiant logique de fichier source (interne au front-end).
+pub struct FileId:
+    let raw: u32
+.end
+
+# Localisation source enrichie : fichier + span + ligne/colonne.
+pub struct SourceLocation:
+    let file: FileId
+    let span: Span
+    let line: LineIndex
+    let column: ColumnIndex
+.end
+
+# ----------------------------------------------------------------------------
+# Constructeurs et helpers simples
+# ----------------------------------------------------------------------------
+
+# Crée un FileId à partir d’un entier brut.
+pub inline fn file_id_new(raw: u32) -> FileId:
+    let id = FileId { raw: raw }
+    return id
+.end
+
+# Extrait la valeur brute d’un FileId.
+pub inline fn file_id_raw(id: FileId) -> u32:
+    return id.raw
+.end
+
+# Crée une structure LineCol.
+pub inline fn line_col_new(line: LineIndex, column: ColumnIndex) -> LineCol:
+    let lc = LineCol {
+        line: line,
+        column: column
+    }
+    return lc
+.end
+
+# ----------------------------------------------------------------------------
+# Constructeurs & requêtes de Span
+# ----------------------------------------------------------------------------
+
+# Normalise un couple (start, end) en garantissant start <= end.
+pub inline fn span_new(start: BytePos, end: BytePos) -> Span:
+    let s = start
+    let e = end
+
+    if s <= e:
+        let sp = Span { start: s, end: e }
+        return sp
+    .end
+
+    # Si les bornes sont inversées, on swap pour respecter l’invariant.
+    let sp2 = Span { start: e, end: s }
+    return sp2
+.end
+
+# Span vide à une position donnée : [pos, pos).
+pub inline fn span_empty_at(pos: BytePos) -> Span:
+    let sp = Span {
+        start: pos,
+        end: pos
+    }
+    return sp
+.end
+
+# Span couvrant exactement un octet : [pos, pos + 1).
+pub inline fn span_single_byte(pos: BytePos) -> Span:
+    let next = pos + 1
+    let sp = Span {
+        start: pos,
+        end: next
+    }
+    return sp
+.end
+
+# Span couvrant [start, start + len). Ne normalise pas len (assume len >= 0).
+pub inline fn span_from_len(start: BytePos, len: ByteLen) -> Span:
+    let end = start + len
+    let sp = span_new(start, end)
+    return sp
+.end
+
+# Teste si un span est vide (start == end).
+pub inline fn span_is_empty(span: Span) -> bool:
+    return span.start == span.end
+.end
+
+# Longueur en octets d’un span (end - start).
+pub inline fn span_len(span: Span) -> ByteLen:
+    let len_raw = span.end - span.start
+    let len = (ByteLen) len_raw
+    return len
+.end
+
+# Renvoie la position de début.
+pub inline fn span_start(span: Span) -> BytePos:
+    return span.start
+.end
+
+# Renvoie la position de fin.
+pub inline fn span_end(span: Span) -> BytePos:
+    return span.end
+.end
+
+# ----------------------------------------------------------------------------
+# Relations sur les positions
+# ----------------------------------------------------------------------------
+
+pub inline fn byte_pos_min(a: BytePos, b: BytePos) -> BytePos:
+    if a <= b:
+        return a
+    .end
+    return b
+.end
+
+pub inline fn byte_pos_max(a: BytePos, b: BytePos) -> BytePos:
+    if a >= b:
+        return a
+    .end
+    return b
+.end
+
+# ----------------------------------------------------------------------------
+# Relations entre spans
+# ----------------------------------------------------------------------------
+
+# Teste si un Span contient une position (start <= pos < end).
+pub fn span_contains_pos(span: Span, pos: BytePos) -> bool:
+    if pos < span.start:
+        return false
+    .end
+    if pos >= span.end:
+        return false
+    .end
+    return true
+.end
+
+# Teste si un Span contient un autre Span (outer couvre entièrement inner).
+pub fn span_contains_span(outer: Span, inner: Span) -> bool:
+    if inner.start < outer.start:
+        return false
+    .end
+    if inner.end > outer.end:
+        return false
+    .end
+    return true
+.end
+
+# Teste si deux spans se recoupent strictement (intersection non vide).
+pub fn span_intersects(a: Span, b: Span) -> bool:
+    # Intersection non vide ssi max(start) &lt; min(end).
+    let start_max = byte_pos_max(a.start, b.start)
+    let end_min = byte_pos_min(a.end, b.end)
+    if start_max < end_min:
+        return true
+    .end
+    return false
+.end
+
+# Span minimal couvrant a et b (union au sens "hull").
+pub fn span_union(a: Span, b: Span) -> Span:
+    if span_is_empty(a):
+        return b
+    .end
+    if span_is_empty(b):
+        return a
+    .end
+
+    let s = byte_pos_min(a.start, b.start)
+    let e = byte_pos_max(a.end, b.end)
+    let sp = Span {
+        start: s,
+        end: e
+    }
+    return sp
+.end
+
+# Intersection de a et b. Si disjoints, renvoie un span vide à start = end = max(start).
+pub fn span_intersection(a: Span, b: Span) -> Span:
+    let s = byte_pos_max(a.start, b.start)
+    let e = byte_pos_min(a.end, b.end)
+
+    if s >= e:
+        # spans disjoints =&gt; intersection vide à s
+        let empty = span_empty_at(s)
+        return empty
+    .end
+
+    let sp = Span {
+        start: s,
+        end: e
+    }
+    return sp
+.end
+
+# Teste si deux spans sont adjacents (a.end == b.start ou b.end == a.start).
+pub fn span_are_adjacent(a: Span, b: Span) -> bool:
+    if a.end == b.start:
+        return true
+    .end
+    if b.end == a.start:
+        return true
+    .end
+    return false
+.end
+
+# Renvoie le "hull" si les spans se recoupent ou sont adjacents, sinon false.
+# Cette fonction est utile pour fusionner des diagnostics contigus.
+# API en 2 temps : on renvoie un bool + un span out.
+pub fn span_try_merge(a: Span, b: Span, out_merged: &Span) -> bool:
+    let intersects = span_intersects(a, b)
+    let adjacent = span_are_adjacent(a, b)
+
+    if not (intersects or adjacent):
+        return false
+    .end
+
+    let merged = span_union(a, b)
+    *out_merged = merged
+    return true
+.end
+
+# Compare deux spans lexicographiquement par start, puis par end.
+# Retourne -1 si a &lt; b, 0 si égal, 1 si a &gt; b.
+pub fn span_cmp(a: Span, b: Span) -> i32:
+    if a.start < b.start:
+        return -1
+    .end
+    if a.start > b.start:
+        return 1
+    .end
+
+    # start égal -&gt; on compare end.
+    if a.end < b.end:
+        return -1
+    .end
+    if a.end > b.end:
+        return 1
+    .end
+
+    return 0
+.end
+
+# ----------------------------------------------------------------------------
+# Utilitaires de diagnostics (API de façade)
+# ----------------------------------------------------------------------------
+
+# Crée un SourceLocation complet si on connaît déjà la ligne/colonne.
+pub fn source_location_new(
+    file: FileId,
+    span: Span,
+    line: LineIndex,
+    column: ColumnIndex
+) -> SourceLocation:
+    let loc = SourceLocation {
+        file: file,
+        span: span,
+        line: line,
+        column: column
+    }
+    return loc
+.end
+
+# API abstraite : dans le front-end réel, cette fonction utilisera une table
+# de lignes (par ex. un tableau des offsets de début de ligne) pour projeter
+# span.start sur (line, column). Ici, on fournit une implémentation minimale
+# qui fixe (line, column) à (1, 1) pour garder le module pur et indépendant.
+pub fn make_source_location(file: FileId, span: Span) -> SourceLocation:
+    let line = (LineIndex) 1
+    let column = (ColumnIndex) 1
+    let loc = SourceLocation {
+        file: file,
+        span: span,
+        line: line,
+        column: column
+    }
+    return loc
+.end
+
+# ----------------------------------------------------------------------------
+# Helpers de debug : formats textuels simples
+# ----------------------------------------------------------------------------
+
+# Formattage simple de Span en "{start,end}".
+pub fn span_to_debug_string(span: Span) -> String:
+    # Implémentation naïve ; on suppose l’existence de conversions vers String.
+    # Dans un vrai front-end, cela passerait par un formatter centralisé.
+    let s_start = to_string_usize(span.start)
+    let s_end = to_string_usize(span.end)
+
+    let out = "{"
+    let out = out + s_start
+    let out = out + ","
+    let out = out + s_end
+    let out = out + "}"
+
+    return out
+.end
+
+# Stub minimal de conversion (à adapter selon ton std).
+# Ici on passe par un cast vers u64 puis vers String.
+fn to_string_usize(v: usize) -> String:
+    let v64 = (u64) v
+    let s = to_string_u64(v64)
+    return s
+.end
+
+# Stub minimal de to_string_u64 (placeholder, à remplacer par ton std réel).
+fn to_string_u64(v: u64) -> String:
+    # TODO: remplacer par l’implémentation réelle du standard.
+    # Pour l’instant, on renvoie une pseudo-représentation fixe
+    # afin de garder le module purement déclaratif.
+    let s = "&lt;u64&gt;"
+    let _ = v
+    return s
+.end
+
+# ----------------------------------------------------------------------------
+# Scénario interne de smoke-test
+# ----------------------------------------------------------------------------
+
+scenario span_smoke_test():
+    # Ce scénario sert de point d’entrée manuel pour jouer avec les helpers.
+
+    let p0 = (BytePos) 0
+    let p1 = (BytePos) 10
+    let p2 = (BytePos) 15
+
+    let s_empty = span_empty_at(p0)
+    let s_full  = span_new(p0, p1)
+    let s_tail  = span_new(p1, p2)
+
+    let _is_empty = span_is_empty(s_empty)
+    let _len_full = span_len(s_full)
+
+    let _contains_start = span_contains_pos(s_full, p0)
+    let _contains_mid   = span_contains_pos(s_full, (BytePos) 5)
+    let _contains_end   = span_contains_pos(s_full, p1)
+
+    let _contains_span1 = span_contains_span(s_full, span_from_len((BytePos) 2, (ByteLen) 3))
+    let _contains_span2 = span_contains_span(s_full, span_from_len((BytePos) 9, (ByteLen) 5))
+
+    let _intersects_1 = span_intersects(s_full, s_tail)
+    let _intersects_2 = span_intersects(s_empty, s_full)
+
+    let union_full_tail  = span_union(s_full, s_tail)
+    let inter_full_tail  = span_intersection(s_full, s_tail)
+    let inter_empty_full = span_intersection(s_empty, s_full)
+
+    let merged = span_empty_at(p0)
+    let can_merge_1 = span_try_merge(s_full, s_tail, &merged)
+    let can_merge_2 = span_try_merge(s_full, inter_empty_full, &merged)
+
+    let cmp_1 = span_cmp(s_full, s_tail)
+    let cmp_2 = span_cmp(s_full, s_full)
+
+    let fake_file = file_id_new(0)
+    let loc_full  = make_source_location(fake_file, s_full)
+
+    let _dbg_s_full = span_to_debug_string(s_full)
+    let _dbg_union  = span_to_debug_string(union_full_tail)
+    let _dbg_inter  = span_to_debug_string(inter_full_tail)
+
+    # Variables "_*" sont ignorées ; le but est juste de forcer les chemins.
+    let _loc_line = loc_full.line
+    let _loc_col  = loc_full.column
+.end

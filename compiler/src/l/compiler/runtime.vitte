@@ -1,0 +1,528 @@
+
+
+module vitte.compiler.runtime
+
+import vitte.compiler.language as lang
+import vitte.compiler.path as path
+
+# ============================================================================
+# Vitte compiler – Runtime description core (maximal, déclaratif, sans I/O)
+#
+# Objectifs :
+#   - Décrire, côté compilateur, la "vue logique" du runtime Vitte :
+#       * backend (native, bytecode, jit, interprété, wasm, ...),
+#       * cible (triple, layout mémoire, ABI, appel),
+#       * profil d’exécution (debug/release/tests),
+#       * artefacts produits (fichiers exécutables, libs, objets intermédiaires).
+#   - Rester totalement indépendant de l’implémentation concrète (VM, code natif,
+#     etc.), afin que ce module soit valable pour toutes les toolchains Vitte.
+#   - Ne pas faire d’I/O ni d’appels système : uniquement des structures
+#     de données manipulées par la pipeline du compilateur.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Backend / cible / layout
+# ----------------------------------------------------------------------------
+
+pub enum RuntimeBackendKind:
+    RuntimeBackendKindNative      # code natif / binaire direct
+    RuntimeBackendKindBytecode    # bytecode Vitte / VM
+    RuntimeBackendKindJit         # compilation juste-à-temps
+    RuntimeBackendKindInterpreter # interprétation directe (debug, REPL)
+    RuntimeBackendKindWasm        # WebAssembly ou similaire
+.end
+
+pub enum RuntimeEndianness:
+    RuntimeEndiannessLittle
+    RuntimeEndiannessBig
+.end
+
+pub struct RuntimeTargetTriple:
+    let arch: String     # ex: "x86_64", "aarch64", "riscv64"
+    let vendor: String   # ex: "unknown", "apple"
+    let system: String   # ex: "linux", "macos", "none"
+    let abi: String      # ex: "vitte", "vitte-elf", "vitte-macho"
+.end
+
+pub struct RuntimeLayout:
+    let pointer_size: u32       # en octets
+    let pointer_align: u32      # en octets
+    let size_isize: u32         # taille de isize/usize
+    let endianness: RuntimeEndianness
+    let align_default: u32      # alignement minimal par défaut
+.end
+
+pub fn runtime_target_triple_default() -> RuntimeTargetTriple:
+    # Fallback générique, à spécialiser via la configuration de la toolchain.
+    let t = RuntimeTargetTriple(
+        arch = "unknown",
+        vendor = "unknown",
+        system = "unknown",
+        abi = "vitte"
+    )
+    return t
+.end
+
+pub fn runtime_layout_default(RuntimeTargetTriple triple) -> RuntimeLayout:
+    # Heuristique simple : si arch contient "64" => 64 bits, sinon 32 bits.
+    let arch = triple.arch
+    let is_64 = if arch.contains("64"):
+        true
+    else:
+        false
+    .end
+
+    let ptr_sz = if is_64:
+        8u32
+    else:
+        4u32
+    .end
+
+    let lay = RuntimeLayout(
+        pointer_size = ptr_sz,
+        pointer_align = ptr_sz,
+        size_isize = ptr_sz,
+        endianness = RuntimeEndianness::RuntimeEndiannessLittle,
+        align_default = ptr_sz
+    )
+    return lay
+.end
+
+# ----------------------------------------------------------------------------
+# Profil d’exécution et options runtime
+# ----------------------------------------------------------------------------
+
+pub struct RuntimeSanitizers:
+    let address: Bool
+    let undefined_behavior: Bool
+    let thread: Bool
+.end
+
+pub fn runtime_sanitizers_none() -> RuntimeSanitizers:
+    let s = RuntimeSanitizers(
+        address = false,
+        undefined_behavior = false,
+        thread = false
+    )
+    return s
+.end
+
+pub enum RuntimeOptimizationGoal:
+    RuntimeOptimizationGoalSpeed
+    RuntimeOptimizationGoalSize
+    RuntimeOptimizationGoalDebuggability
+.end
+
+pub struct RuntimeFeatureFlags:
+    let enable_asserts: Bool
+    let enable_logging: Bool
+    let enable_tracing: Bool
+    let allow_unsafe: Bool
+.end
+
+pub fn runtime_features_default() -> RuntimeFeatureFlags:
+    let f = RuntimeFeatureFlags(
+        enable_asserts = true,
+        enable_logging = true,
+        enable_tracing = false,
+        allow_unsafe = false
+    )
+    return f
+.end
+
+pub enum RuntimeProfileKind:
+    RuntimeProfileKindDebug
+    RuntimeProfileKindRelease
+    RuntimeProfileKindTest
+    RuntimeProfileKindCustom
+.end
+
+pub struct RuntimeProfile:
+    let name: String
+    let kind: RuntimeProfileKind
+    let optimization: lang.OptimizationLevel
+    let optimization_goal: RuntimeOptimizationGoal
+    let debug_info: Bool
+    let sanitizers: RuntimeSanitizers
+    let features: RuntimeFeatureFlags
+.end
+
+pub fn runtime_profile_new(
+    String name,
+    RuntimeProfileKind kind,
+    lang.OptimizationLevel opt,
+    RuntimeOptimizationGoal goal,
+    Bool debug_info,
+    RuntimeSanitizers sanitizers,
+    RuntimeFeatureFlags features
+) -> RuntimeProfile:
+    let p = RuntimeProfile(
+        name = name,
+        kind = kind,
+        optimization = opt,
+        optimization_goal = goal,
+        debug_info = debug_info,
+        sanitizers = sanitizers,
+        features = features
+    )
+    return p
+.end
+
+pub fn runtime_profile_debug() -> RuntimeProfile:
+    let s = runtime_sanitizers_none()
+    let f = runtime_features_default()
+    let p = runtime_profile_new(
+        "debug",
+        RuntimeProfileKind::RuntimeProfileKindDebug,
+        lang.OptimizationLevel::OptimizationLevelDebug,
+        RuntimeOptimizationGoal::RuntimeOptimizationGoalDebuggability,
+        true,
+        s,
+        f
+    )
+    return p
+.end
+
+pub fn runtime_profile_release() -> RuntimeProfile:
+    let s = runtime_sanitizers_none()
+    let f = runtime_features_default()
+    let p = runtime_profile_new(
+        "release",
+        RuntimeProfileKind::RuntimeProfileKindRelease,
+        lang.OptimizationLevel::OptimizationLevelRelease,
+        RuntimeOptimizationGoal::RuntimeOptimizationGoalSpeed,
+        false,
+        s,
+        f
+    )
+    return p
+.end
+
+pub fn runtime_profile_test() -> RuntimeProfile:
+    let s = runtime_sanitizers_none()
+    let f = runtime_features_default()
+    let p = runtime_profile_new(
+        "test",
+        RuntimeProfileKind::RuntimeProfileKindTest,
+        lang.OptimizationLevel::OptimizationLevelDebug,
+        RuntimeOptimizationGoal::RuntimeOptimizationGoalDebuggability,
+        true,
+        s,
+        f
+    )
+    return p
+.end
+
+pub fn runtime_profile_from_kind(RuntimeProfileKind kind) -> RuntimeProfile:
+    if kind == RuntimeProfileKind::RuntimeProfileKindDebug:
+        return runtime_profile_debug()
+    .end
+    if kind == RuntimeProfileKind::RuntimeProfileKindRelease:
+        return runtime_profile_release()
+    .end
+    if kind == RuntimeProfileKind::RuntimeProfileKindTest:
+        return runtime_profile_test()
+    .end
+
+    let s = runtime_sanitizers_none()
+    let f = runtime_features_default()
+    let p = runtime_profile_new(
+        "custom",
+        RuntimeProfileKind::RuntimeProfileKindCustom,
+        lang.OptimizationLevel::OptimizationLevelNone,
+        RuntimeOptimizationGoal::RuntimeOptimizationGoalDebuggability,
+        true,
+        s,
+        f
+    )
+    return p
+.end
+
+# ----------------------------------------------------------------------------
+# ABI / convention d’appel / entrée
+# ----------------------------------------------------------------------------
+
+pub enum RuntimeAbiKind:
+    RuntimeAbiKindVitte
+    RuntimeAbiKindExternal
+.end
+
+pub struct RuntimeCallConv:
+    let name: String           # ex: "vitte", "system", "fast"
+    let abi_kind: RuntimeAbiKind
+.end
+
+pub fn runtime_callconv_vitte() -> RuntimeCallConv:
+    let c = RuntimeCallConv(
+        name = "vitte",
+        abi_kind = RuntimeAbiKind::RuntimeAbiKindVitte
+    )
+    return c
+.end
+
+pub fn runtime_callconv_external() -> RuntimeCallConv:
+    let c = RuntimeCallConv(
+        name = "external",
+        abi_kind = RuntimeAbiKind::RuntimeAbiKindExternal
+    )
+    return c
+.end
+
+pub struct RuntimeEntryPoint:
+    let module_name: String
+    let function_name: String
+    let callconv: RuntimeCallConv
+    let is_async: Bool
+    let argc_style: String         # ex: "argv", "none", "custom"
+.end
+
+pub fn runtime_entry_point_main(String module_name) -> RuntimeEntryPoint:
+    let cc = runtime_callconv_vitte()
+    let e = RuntimeEntryPoint(
+        module_name = module_name,
+        function_name = "main",
+        callconv = cc,
+        is_async = false,
+        argc_style = "argv"
+    )
+    return e
+.end
+
+# ----------------------------------------------------------------------------
+# Artefacts produits par la compilation
+# ----------------------------------------------------------------------------
+
+pub enum RuntimeArtifactKind:
+    RuntimeArtifactKindExecutable
+    RuntimeArtifactKindSharedLibrary
+    RuntimeArtifactKindStaticLibrary
+    RuntimeArtifactKindObject
+    RuntimeArtifactKindBytecode
+.end
+
+pub struct RuntimeArtifact:
+    let kind: RuntimeArtifactKind
+    let path: String
+    let target: RuntimeTargetTriple
+    let profile_name: String
+.end
+
+pub fn runtime_artifact_new(
+    RuntimeArtifactKind kind,
+    String path_str,
+    RuntimeTargetTriple target,
+    String profile_name
+) -> RuntimeArtifact:
+    let norm = path.path_to_display(path_str)
+    let a = RuntimeArtifact(
+        kind = kind,
+        path = norm,
+        target = target,
+        profile_name = profile_name
+    )
+    return a
+.end
+
+# ----------------------------------------------------------------------------
+# Configuration runtime globale pour un build
+# ----------------------------------------------------------------------------
+
+pub struct RuntimeConfig:
+    let backend: RuntimeBackendKind
+    let target: RuntimeTargetTriple
+    let layout: RuntimeLayout
+    let profile: RuntimeProfile
+    let entry_point: RuntimeEntryPoint
+.end
+
+pub fn runtime_config_default(lang.LanguageConfig cfg) -> RuntimeConfig:
+    let backend = RuntimeBackendKind::RuntimeBackendKindNative
+    let triple = runtime_target_triple_default()
+    let layout = runtime_layout_default(triple)
+    let profile = runtime_profile_debug()
+    let entry = runtime_entry_point_main(cfg.root_module)
+
+    let rc = RuntimeConfig(
+        backend = backend,
+        target = triple,
+        layout = layout,
+        profile = profile,
+        entry_point = entry
+    )
+    return rc
+.end
+
+pub fn runtime_config_with_backend(RuntimeConfig cfg, RuntimeBackendKind bk) -> RuntimeConfig:
+    let c2 = RuntimeConfig(
+        backend = bk,
+        target = cfg.target,
+        layout = cfg.layout,
+        profile = cfg.profile,
+        entry_point = cfg.entry_point
+    )
+    return c2
+.end
+
+pub fn runtime_config_with_profile(RuntimeConfig cfg, RuntimeProfile profile) -> RuntimeConfig:
+    let c2 = RuntimeConfig(
+        backend = cfg.backend,
+        target = cfg.target,
+        layout = cfg.layout,
+        profile = profile,
+        entry_point = cfg.entry_point
+    )
+    return c2
+.end
+
+pub fn runtime_config_with_entry(RuntimeConfig cfg, RuntimeEntryPoint entry) -> RuntimeConfig:
+    let c2 = RuntimeConfig(
+        backend = cfg.backend,
+        target = cfg.target,
+        layout = cfg.layout,
+        profile = cfg.profile,
+        entry_point = entry
+    )
+    return c2
+.end
+
+# ----------------------------------------------------------------------------
+# Plan d’exécution logique
+# ----------------------------------------------------------------------------
+
+pub enum RuntimeExecutionKind:
+    RuntimeExecutionKindCommandLine
+    RuntimeExecutionKindLibraryCall
+.end
+
+pub struct RuntimeEnvVar:
+    let key: String
+    let value: String
+.end
+
+pub struct RuntimeExecutionRequest:
+    let artifact: RuntimeArtifact
+    let kind: RuntimeExecutionKind
+    let args: Vec<String>
+    let env: Vec<RuntimeEnvVar>
+    let working_dir: String
+.end
+
+pub struct RuntimeExecutionStatus:
+    let exit_code: i32
+    let signaled: Bool
+    let signal_name: String   # vide si non applicable
+.end
+
+pub struct RuntimeExecutionResult:
+    let request: RuntimeExecutionRequest
+    let status: RuntimeExecutionStatus
+.end
+
+pub fn runtime_env_var_new(String key, String value) -> RuntimeEnvVar:
+    let v = RuntimeEnvVar(
+        key = key,
+        value = value
+    )
+    return v
+.end
+
+pub fn runtime_execution_request_new(
+    RuntimeArtifact artifact,
+    RuntimeExecutionKind kind
+) -> RuntimeExecutionRequest:
+    let args: Vec<String> = Vec<String>::new()
+    let env: Vec<RuntimeEnvVar> = Vec<RuntimeEnvVar>::new()
+    let req = RuntimeExecutionRequest(
+        artifact = artifact,
+        kind = kind,
+        args = args,
+        env = env,
+        working_dir = "."
+    )
+    return req
+.end
+
+pub fn runtime_execution_status_success() -> RuntimeExecutionStatus:
+    let st = RuntimeExecutionStatus(
+        exit_code = 0i32,
+        signaled = false,
+        signal_name = ""
+    )
+    return st
+.end
+
+pub fn runtime_execution_status_failure(i32 code) -> RuntimeExecutionStatus:
+    let st = RuntimeExecutionStatus(
+        exit_code = code,
+        signaled = false,
+        signal_name = ""
+    )
+    return st
+.end
+
+pub fn runtime_execution_result_new(
+    RuntimeExecutionRequest req,
+    RuntimeExecutionStatus st
+) -> RuntimeExecutionResult:
+    let r = RuntimeExecutionResult(
+        request = req,
+        status = st
+    )
+    return r
+.end
+
+# ----------------------------------------------------------------------------
+# Affichage / helpers string
+# ----------------------------------------------------------------------------
+
+pub fn runtime_target_triple_to_string(RuntimeTargetTriple t) -> String:
+    let s = t.arch + "-"
+    let s = s + t.vendor + "-"
+    let s = s + t.system + "-"
+    let s = s + t.abi
+    return s
+.end
+
+pub fn runtime_profile_to_display(RuntimeProfile p) -> String:
+    let s = p.name + " ("
+    let s = s + "opt="
+    let s = s + lang.optimization_level_to_string(p.optimization)
+    let s = s + ", debug="
+    let s = s + if p.debug_info: "on" else: "off" .end
+    let s = s + ")"
+    return s
+.end
+
+pub fn runtime_backend_to_string(RuntimeBackendKind b) -> String:
+    if b == RuntimeBackendKind::RuntimeBackendKindNative:
+        return "native"
+    .end
+    if b == RuntimeBackendKind::RuntimeBackendKindBytecode:
+        return "bytecode"
+    .end
+    if b == RuntimeBackendKind::RuntimeBackendKindJit:
+        return "jit"
+    .end
+    if b == RuntimeBackendKind::RuntimeBackendKindInterpreter:
+        return "interp"
+    .end
+    if b == RuntimeBackendKind::RuntimeBackendKindWasm:
+        return "wasm"
+    .end
+    return "unknown"
+.end
+
+# ----------------------------------------------------------------------------
+# Notes
+# ----------------------------------------------------------------------------
+# - Ce module ne sait ni comment exécuter un programme, ni comment lancer
+#   un processus : il fournit uniquement les structures logiques qui décrivent
+#   le runtime côté compilateur.
+# - Les toolchains Vitte peuvent mapper :
+#       * RuntimeBackendKind / RuntimeTargetTriple / RuntimeLayout
+#       * RuntimeProfile / RuntimeConfig / RuntimeArtifact
+#   vers leurs propres implémentations (VM, code natif, etc.).
+# - La pipeline de compilation peut utiliser RuntimeConfig pour choisir les
+#   passes à appliquer, calculer les options back-end, et construire les
+#   commandes d’exécution dans des couches supérieures (CLI, IDE, LSP).
+# ============================================================================

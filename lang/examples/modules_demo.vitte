@@ -1,0 +1,398 @@
+
+
+module vitte.examples.modules_demo
+
+import std.collections as coll
+import vitte.compiler.spans as spans
+import vitte.compiler.names as names
+import vitte.compiler.types as types
+
+# ============================================================================
+# Vitte examples – Modèle et exemples autour des modules
+#
+# Objectifs de ce fichier :
+#   - Proposer un modèle déclaratif pour représenter les modules Vitte dans
+#     le compilateur et les outils :
+#       * identifiants de modules et d’items,
+#       * imports, exports, reexports,
+#       * graphe de dépendances entre modules.
+#   - Fournir des exemples ultra complets en "phrase syntaxe" :
+#       * déclarations mod,
+#       * use / import de modules et d’items,
+#       * reexports,
+#       * petit programme de démonstration.
+#
+# Convention :
+#   - Ce fichier est purement "data model" + exemples commentés :
+#       * aucune fonction exécutable réelle au niveau du runtime,
+#       * pas de logique d’exécution dans ce module.
+#   - Syntaxe officielle Vitte :
+#       * blocs terminés par ".end",
+#       * aucune accolade dans le code ni dans les exemples.
+# ============================================================================
+
+# ============================================================================
+# Identifiants et métadonnées
+# ============================================================================
+
+# Identifiant logique d’un module.
+type ModuleId = u32
+
+# Identifiant logique d’un import.
+type ImportId = u32
+
+# Identifiant logique d’un export.
+type ExportId = u32
+
+# Identifiant logique d’un item déclaré dans un module.
+type ModuleItemId = u32
+
+# Identifiant logique d’un graphe de modules.
+type ModuleGraphId = u32
+
+# Genre de module :
+#   - Library   : module de bibliothèque,
+#   - Binary    : module principal d’un programme,
+#   - Test      : module de tests,
+#   - Tool      : utilitaire interne,
+#   - Core      : partie du noyau Vitte,
+#   - External  : module provenant d’un autre crate.
+enum ModuleKind
+    variant Library
+    variant Binary
+    variant Test
+    variant Tool
+    variant Core
+    variant External
+.end
+
+# Visibilité logique d’un module.
+enum ModuleVisibility
+    variant Private
+    variant Crate
+    variant Public
+.end
+
+# Référence logique à un module.
+struct ModuleRef
+    # Identifiant logique du module.
+    field id: ModuleId
+
+    # Chemin de module (core.math.geometry, par exemple).
+    field path: names.ModulePathId
+
+    # Nom court du module.
+    field name: names.SymbolId
+
+    # Span de la déclaration ou de la référence principale.
+    field span: spans.SpanId
+.end
+
+# ============================================================================
+# Items de module
+# ============================================================================
+
+# Genre d’item à l’intérieur d’un module :
+#   - Type       : type struct, enum, union,
+#   - Function   : fonction ou méthode,
+#   - Const      : constante,
+#   - Static     : donnée statique,
+#   - Scenario   : scenario (scn),
+#   - Submodule  : sous module déclaré via mod,
+#   - Macro      : macro déclarative ou procédurale,
+#   - Alias      : alias de type ou d’item.
+enum ModuleItemKind
+    variant Type
+    variant Function
+    variant Const
+    variant Static
+    variant Scenario
+    variant Submodule
+    variant Macro
+    variant Alias
+.end
+
+# Item déclaré dans un module.
+struct ModuleItem
+    # Identifiant logique de l’item.
+    field id: ModuleItemId
+
+    # Module propriétaire.
+    field module_id: ModuleId
+
+    # Genre d’item.
+    field kind: ModuleItemKind
+
+    # Nom symbolique.
+    field name: names.SymbolId
+
+    # Span de la déclaration de l’item.
+    field span: spans.SpanId
+.end
+
+# ============================================================================
+# Imports et exports
+# ============================================================================
+
+# Genre d’import :
+#   - Module   : import d’un module entier,
+#   - Item     : import d’un item précis,
+#   - Glob     : import global (tous les items),
+#   - Alias    : import avec renommage,
+#   - ReExport : import servant à un reexport.
+enum ImportKind
+    variant Module
+    variant Item
+    variant Glob
+    variant Alias
+    variant ReExport
+.end
+
+# Statut de résolution d’un import.
+enum ImportStatus
+    variant Pending
+    variant Resolved
+    variant Failed
+.end
+
+# Déclaration d’import dans un module.
+struct ImportDecl
+    # Identifiant logique de l’import.
+    field id: ImportId
+
+    # Module dans lequel apparaît cet import.
+    field module_id: ModuleId
+
+    # Genre d’import.
+    field kind: ImportKind
+
+    # Chemin source (module ou item qualifié).
+    field source_path: names.ModulePathId
+
+    # Nom local (pour les alias), ou symbole nul si non aliasé.
+    field local_name: names.SymbolId
+
+    # Module résolu cible (si applicable).
+    field target_module: ModuleId
+
+    # Statut de résolution.
+    field status: ImportStatus
+
+    # Span de la déclaration use/import.
+    field span: spans.SpanId
+.end
+
+# Genre d’export :
+#   - Item     : export d’un item précis,
+#   - Glob     : export global d’un module,
+#   - ReExport : reexport d’un item importé.
+enum ExportKind
+    variant Item
+    variant Glob
+    variant ReExport
+.end
+
+# Déclaration d’export dans un module.
+struct ExportDecl
+    # Identifiant logique de l’export.
+    field id: ExportId
+
+    # Module propriétaire de l’export.
+    field module_id: ModuleId
+
+    # Genre d’export.
+    field kind: ExportKind
+
+    # Chemin source de ce qui est exporté.
+    field source_path: names.ModulePathId
+
+    # Nom exporté (peut correspondre à un alias).
+    field exported_name: names.SymbolId
+
+    # Span de la déclaration d’export.
+    field span: spans.SpanId
+.end
+
+# ============================================================================
+# Définition de module et table centrale
+# ============================================================================
+
+# Définition complète d’un module Vitte.
+struct ModuleDef
+    # Identifiant logique du module.
+    field id: ModuleId
+
+    # Chemin de module complet.
+    field path: names.ModulePathId
+
+    # Nom court du module.
+    field name: names.SymbolId
+
+    # Genre de module.
+    field kind: ModuleKind
+
+    # Visibilité.
+    field visibility: ModuleVisibility
+
+    # Indique s’il s’agit du module racine d’un crate.
+    field is_root: bool
+
+    # Items déclarés dans ce module.
+    field items: coll.List<ModuleItemId>
+
+    # Imports vus dans ce module.
+    field imports: coll.List<ImportId>
+
+    # Exports vus dans ce module.
+    field exports: coll.List<ExportId>
+
+    # Span de la définition de module (bloc mod complet).
+    field span: spans.SpanId
+.end
+
+# Table centrale de modules pour un crate.
+struct ModuleTable
+    field modules: coll.List<ModuleDef>
+    field items: coll.List<ModuleItem>
+    field imports: coll.List<ImportDecl>
+    field exports: coll.List<ExportDecl>
+.end
+
+# ============================================================================
+# Graphe de modules
+# ============================================================================
+
+# Genre d’arête dans le graphe de modules :
+#   - Dependency : module A dépend de B,
+#   - ReExport   : module A reexporte des éléments de B.
+enum ModuleGraphEdgeKind
+    variant Dependency
+    variant ReExport
+.end
+
+# Arête de graphe de modules.
+struct ModuleGraphEdge
+    # Source de l’arête (module dépendant).
+    field from: ModuleId
+
+    # Cible de l’arête (module requis).
+    field to: ModuleId
+
+    # Genre d’arête.
+    field kind: ModuleGraphEdgeKind
+
+    # Span approximatif lié à cette relation (par exemple l’instruction use).
+    field span: spans.SpanId
+.end
+
+# Graphe de modules pour un ensemble de definitions.
+struct ModuleGraph
+    field id: ModuleGraphId
+
+    # Modules présents dans ce graphe.
+    field modules: coll.List<ModuleId>
+
+    # Arêtes de dépendances.
+    field edges: coll.List<ModuleGraphEdge>
+.end
+
+# Vue agrégée pour les outils (LSP, doc, analyse).
+struct ModulesModelSnapshot
+    field table: ModuleTable
+    field graphs: coll.List<ModuleGraph>
+.end
+
+# ============================================================================
+# Exemples d’utilisation en "phrase syntaxe"
+# ============================================================================
+#
+# Les exemples ci dessous servent :
+#   - de documentation,
+#   - de tests de parsing,
+#   - de base pour la démonstration dans les outils.
+#
+# Tous les blocs se terminent par ".end".
+#
+# --------------------------------------------------------------------------
+# Exemple 1 : module de base avec type et fonction
+# --------------------------------------------------------------------------
+#
+#   mod core.math
+#
+#       type Point
+#           field x Int
+#           field y Int
+#       .end
+#
+#       fn length p
+#           # longueur euclidienne conceptuelle
+#           ret 0
+#       .end
+#
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 2 : module qui importe depuis core.math
+# --------------------------------------------------------------------------
+#
+#   mod core.math.geometry
+#
+#       use core.math.Point
+#       use core.math.length
+#
+#       fn distance_from_origin p
+#           ret length p
+#       .end
+#
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 3 : reexport et alias de module
+# --------------------------------------------------------------------------
+#
+#   mod core.math.prelude
+#
+#       # Reexport direct d’items
+#       use core.math.Point
+#       use core.math.length
+#
+#       # Alias de module pour un chemin plus court
+#       use core.math as math
+#
+#       # Scenario qui utilise les reexports
+#       scn prelude_demo
+#           set p = Point  # construction conceptuelle
+#           say "Prelude demo"
+#       .end
+#
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 4 : petit programme utilisant les modules
+# --------------------------------------------------------------------------
+#
+#   prog core.math/demo.main
+#
+#       use core.math.prelude
+#       use core.math.geometry
+#
+#       fn main
+#           say "Modules demo"
+#
+#           # Les détails de construction de Point sont simplifiés ici.
+#           set p = Point
+#           set d = distance_from_origin p
+#
+#           say "distance:"
+#           say d
+#       .end
+#
+#   .end
+#
+# Ces exemples montrent :
+#   - la déclaration de modules via mod,
+#   - l’import d’items via use,
+#   - la construction d’un petit prélu de fonctions,
+#   - un programme prog qui assemble le tout.
+#
+.end

@@ -1,0 +1,561 @@
+module vitte.compiler.project
+
+import vitte.compiler.collections as coll
+import vitte.compiler.diagnostics as diag
+import vitte.compiler.language as lang
+import vitte.compiler.path as path
+
+# ============================================================================
+# Vitte compiler – Project / Manifest core (maximal, déclaratif, sans I/O)
+#
+# Objectifs :
+#   - Décrire un modèle de projet pour Vitte :
+#       * profils de build (debug / release / test / custom),
+#       * cibles (binaires, libs, tests...),
+#       * unités sources (fichiers, modules),
+#       * manifestes de projet pour orchestrer la compilation.
+#   - Rester purement en mémoire, sans accès FS ni pipeline directe.
+#   - Servir de base commune au CLI, LSP, IDEs, outils d’analyse.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Profils de build
+# ----------------------------------------------------------------------------
+
+pub enum BuildProfileKind:
+    BuildProfileKindDebug
+    BuildProfileKindRelease
+    BuildProfileKindDev
+    BuildProfileKindTest
+    BuildProfileKindCustom
+.end
+
+pub struct BuildProfile:
+    let name: String
+    let kind: BuildProfileKind
+    let optimization: lang.OptimizationLevel
+    let debug_info: Bool
+    let incremental: Bool
+    let warnings_as_errors: Bool
+    let lto: Bool
+    let extra_flags: Vec<String>
+.end
+
+pub fn build_profile_new(
+    String name,
+    BuildProfileKind kind,
+    lang.OptimizationLevel optimization,
+    Bool debug_info,
+    Bool incremental,
+    Bool warnings_as_errors,
+    Bool lto
+) -> BuildProfile:
+    let flags: Vec<String> = Vec<String>::new()
+    let p = BuildProfile(
+        name = name,
+        kind = kind,
+        optimization = optimization,
+        debug_info = debug_info,
+        incremental = incremental,
+        warnings_as_errors = warnings_as_errors,
+        lto = lto,
+        extra_flags = flags
+    )
+    return p
+.end
+
+pub fn build_profile_debug() -> BuildProfile:
+    let p = build_profile_new(
+        "debug",
+        BuildProfileKind::BuildProfileKindDebug,
+        lang.OptimizationLevel::OptimizationLevelDebug,
+        true,
+        true,
+        false,
+        false
+    )
+    return p
+.end
+
+pub fn build_profile_release() -> BuildProfile:
+    let p = build_profile_new(
+        "release",
+        BuildProfileKind::BuildProfileKindRelease,
+        lang.OptimizationLevel::OptimizationLevelRelease,
+        false,
+        false,
+        true,
+        true
+    )
+    return p
+.end
+
+pub fn build_profile_test() -> BuildProfile:
+    let p = build_profile_new(
+        "test",
+        BuildProfileKind::BuildProfileKindTest,
+        lang.OptimizationLevel::OptimizationLevelDebug,
+        true,
+        true,
+        false,
+        false
+    )
+    return p
+.end
+
+pub fn build_profile_from_kind(BuildProfileKind kind) -> BuildProfile:
+    if kind == BuildProfileKind::BuildProfileKindDebug:
+        return build_profile_debug()
+    .end
+    if kind == BuildProfileKind::BuildProfileKindRelease:
+        return build_profile_release()
+    .end
+    if kind == BuildProfileKind::BuildProfileKindTest:
+        return build_profile_test()
+    .end
+
+    let p = build_profile_new(
+        "custom",
+        kind,
+        lang.OptimizationLevel::OptimizationLevelNone,
+        true,
+        false,
+        false,
+        false
+    )
+    return p
+.end
+
+pub fn build_profile_add_flag(BuildProfile profile, String flag) -> BuildProfile:
+    let flags = profile.extra_flags
+    flags.push(flag)
+    let p2 = BuildProfile(
+        name = profile.name,
+        kind = profile.kind,
+        optimization = profile.optimization,
+        debug_info = profile.debug_info,
+        incremental = profile.incremental,
+        warnings_as_errors = profile.warnings_as_errors,
+        lto = profile.lto,
+        extra_flags = flags
+    )
+    return p2
+.end
+
+# ----------------------------------------------------------------------------
+# Genre de projet et cibles
+# ----------------------------------------------------------------------------
+
+pub enum ProjectKind:
+    ProjectKindSingleFile
+    ProjectKindPackage
+    ProjectKindWorkspace
+.end
+
+pub enum ProjectTargetKind:
+    ProjectTargetKindBinary
+    ProjectTargetKindLibrary
+    ProjectTargetKindTest
+    ProjectTargetKindBench
+    ProjectTargetKindExample
+.end
+
+pub struct ProjectTarget:
+    let name: String
+    let kind: ProjectTargetKind
+    let main_module: String       # nom logique du module d'entrée
+    let root_path: String         # répertoire racine du projet
+    let output_dir: String
+    let output_name: String
+    let profile_name: String      # nom symbolique du profil (ex: "debug")
+    let enabled: Bool
+.end
+
+pub fn project_target_new(
+    String name,
+    ProjectTargetKind kind,
+    String main_module,
+    String root_path,
+    String output_dir,
+    String output_name,
+    String profile_name
+) -> ProjectTarget:
+    let t = ProjectTarget(
+        name = name,
+        kind = kind,
+        main_module = main_module,
+        root_path = root_path,
+        output_dir = output_dir,
+        output_name = output_name,
+        profile_name = profile_name,
+        enabled = true
+    )
+    return t
+.end
+
+pub fn project_target_default_binary(String root_dir, String main_module) -> ProjectTarget:
+    let out_dir = "build"
+    let base_name = if main_module != "":
+        main_module
+    else:
+        "main"
+    .end
+
+    let target = project_target_new(
+        "default",
+        ProjectTargetKind::ProjectTargetKindBinary,
+        main_module,
+        root_dir,
+        out_dir,
+        base_name,
+        "debug"
+    )
+    return target
+.end
+
+# ----------------------------------------------------------------------------
+# Unités sources
+# ----------------------------------------------------------------------------
+
+pub struct ProjectSourceUnit:
+    let path: String
+    let module_name: String
+    let is_test: Bool
+    let is_entry: Bool
+.end
+
+fn project_guess_module_name_from_path(String file_path) -> String:
+    let mod_name = path.path_to_module_name(file_path)
+    if mod_name != "":
+        return mod_name
+    .end
+
+    # Fallback: utiliser le stem du fichier.
+    let stem = path.path_stem(file_path)
+    if stem != "":
+        return stem
+    .end
+
+    return file_path
+.end
+
+pub fn project_source_unit_new(
+    String file_path,
+    Bool is_test,
+    Bool is_entry
+) -> ProjectSourceUnit:
+    let module_name = project_guess_module_name_from_path(file_path)
+    let u = ProjectSourceUnit(
+        path = file_path,
+        module_name = module_name,
+        is_test = is_test,
+        is_entry = is_entry
+    )
+    return u
+.end
+
+# ----------------------------------------------------------------------------
+# Manifest de projet
+# ----------------------------------------------------------------------------
+
+pub struct ProjectManifest:
+    let root_dir: String
+    let kind: ProjectKind
+    let language_config: lang.LanguageConfig
+    let sources: Vec<ProjectSourceUnit>
+    let targets: Vec<ProjectTarget>
+    let profiles: Vec<BuildProfile>
+.end
+
+pub fn project_manifest_new(String root_dir, lang.LanguageConfig cfg) -> ProjectManifest:
+    let sources: Vec<ProjectSourceUnit> = Vec<ProjectSourceUnit>::new()
+    let targets: Vec<ProjectTarget> = Vec<ProjectTarget>::new()
+    let profiles: Vec<BuildProfile> = Vec<BuildProfile>::new()
+
+    let debug = build_profile_debug()
+    profiles.push(debug)
+    let release = build_profile_release()
+    profiles.push(release)
+
+    let m = ProjectManifest(
+        root_dir = root_dir,
+        kind = ProjectKind::ProjectKindSingleFile,
+        language_config = cfg,
+        sources = sources,
+        targets = targets,
+        profiles = profiles
+    )
+    return m
+.end
+
+pub fn project_manifest_add_source(
+    ProjectManifest manifest,
+    String file_path,
+    Bool is_test,
+    Bool is_entry
+) -> ProjectManifest:
+    let src = project_source_unit_new(file_path, is_test, is_entry)
+    let sources = manifest.sources
+    sources.push(src)
+
+    let m2 = ProjectManifest(
+        root_dir = manifest.root_dir,
+        kind = manifest.kind,
+        language_config = manifest.language_config,
+        sources = sources,
+        targets = manifest.targets,
+        profiles = manifest.profiles
+    )
+    return m2
+.end
+
+pub fn project_manifest_add_target(
+    ProjectManifest manifest,
+    ProjectTarget target
+) -> ProjectManifest:
+    let targets = manifest.targets
+    targets.push(target)
+
+    let m2 = ProjectManifest(
+        root_dir = manifest.root_dir,
+        kind = manifest.kind,
+        language_config = manifest.language_config,
+        sources = manifest.sources,
+        targets = targets,
+        profiles = manifest.profiles
+    )
+    return m2
+.end
+
+pub fn project_manifest_add_profile(
+    ProjectManifest manifest,
+    BuildProfile profile
+) -> ProjectManifest:
+    let profiles = manifest.profiles
+    profiles.push(profile)
+
+    let m2 = ProjectManifest(
+        root_dir = manifest.root_dir,
+        kind = manifest.kind,
+        language_config = manifest.language_config,
+        sources = manifest.sources,
+        targets = manifest.targets,
+        profiles = profiles
+    )
+    return m2
+.end
+
+pub fn project_manifest_find_profile(
+    ProjectManifest manifest,
+    String name
+) -> Option<BuildProfile>:
+    let v = manifest.profiles
+    let n = v.len()
+    let i = 0usize
+
+    while i < n:
+        let p = v[i]
+        if p.name == name:
+            let some = Option<BuildProfile>::Some(p)
+            return some
+        .end
+        let i = i + 1usize
+    .end
+
+    let none = Option<BuildProfile>::None()
+    return none
+.end
+
+pub fn project_manifest_find_target(
+    ProjectManifest manifest,
+    String name
+) -> Option<ProjectTarget>:
+    let v = manifest.targets
+    let n = v.len()
+    let i = 0usize
+
+    while i < n:
+        let t = v[i]
+        if t.name == name:
+            let some = Option<ProjectTarget>::Some(t)
+            return some
+        .end
+        let i = i + 1usize
+    .end
+
+    let none = Option<ProjectTarget>::None()
+    return none
+.end
+
+pub fn project_manifest_default_for_single_file(
+    String file_path,
+    lang.LanguageConfig cfg
+) -> ProjectManifest:
+    let root_dir = path.path_dirname(file_path)
+    let manifest = project_manifest_new(root_dir, cfg)
+
+    let manifest = project_manifest_add_source(manifest, file_path, false, true)
+
+    let module_name = project_guess_module_name_from_path(file_path)
+    let target = project_target_default_binary(root_dir, module_name)
+    let manifest = project_manifest_add_target(manifest, target)
+
+    return manifest
+.end
+
+# ----------------------------------------------------------------------------
+# Projet résolu et plan de build
+# ----------------------------------------------------------------------------
+
+pub struct Project:
+    let manifest: ProjectManifest
+    let active_profile: String
+    let active_target: String
+.end
+
+pub fn project_new(ProjectManifest manifest) -> Project:
+    let profile_name = "debug"
+    let target_name = if manifest.targets.len() > 0usize:
+        manifest.targets[0usize].name
+    else:
+        "default"
+    .end
+
+    let p = Project(
+        manifest = manifest,
+        active_profile = profile_name,
+        active_target = target_name
+    )
+    return p
+.end
+
+pub fn project_set_active_profile(Project project, String profile_name) -> Project:
+    let p2 = Project(
+        manifest = project.manifest,
+        active_profile = profile_name,
+        active_target = project.active_target
+    )
+    return p2
+.end
+
+pub fn project_set_active_target(Project project, String target_name) -> Project:
+    let p2 = Project(
+        manifest = project.manifest,
+        active_profile = project.active_profile,
+        active_target = target_name
+    )
+    return p2
+.end
+
+pub struct ProjectBuildUnit:
+    let id: u32
+    let source: ProjectSourceUnit
+    let target_name: String
+.end
+
+pub struct ProjectBuildPlan:
+    let project_root: String
+    let profile: BuildProfile
+    let target: ProjectTarget
+    let units: Vec<ProjectBuildUnit>
+.end
+
+pub fn project_build_plan_for(
+    Project project
+) -> (Option<ProjectBuildPlan>, diag.DiagnosticsSink):
+    let sink = diag.diagnostics_new()
+
+    let manifest = project.manifest
+
+    let profile_opt = project_manifest_find_profile(manifest, project.active_profile)
+    if profile_opt.is_none():
+        let span = diag.span_unknown()
+        let msg = "unknown build profile: " + project.active_profile
+        let d = diag.diagnostic_error("EProjectProfile", msg, span)
+        let sink2 = diag.diagnostics_push(sink, d)
+        let none_plan: Option<ProjectBuildPlan> = Option<ProjectBuildPlan>::None()
+        let out_err = (none_plan, sink2)
+        return out_err
+    .end
+
+    let target_opt = project_manifest_find_target(manifest, project.active_target)
+    if target_opt.is_none():
+        let span_t = diag.span_unknown()
+        let msg_t = "unknown project target: " + project.active_target
+        let d_t = diag.diagnostic_error("EProjectTarget", msg_t, span_t)
+        let sink3 = diag.diagnostics_push(sink, d_t)
+        let none_plan2: Option<ProjectBuildPlan> = Option<ProjectBuildPlan>::None()
+        let out_err2 = (none_plan2, sink3)
+        return out_err2
+    .end
+
+    let profile = profile_opt.unwrap()
+    let target = target_opt.unwrap()
+
+    # Construction des unités de build : pour l'instant, toutes les sources
+    # sont associées à la cible active, en gardant leur ordre.
+    let units: Vec<ProjectBuildUnit> = Vec<ProjectBuildUnit>::new()
+    let srcs = manifest.sources
+    let n = srcs.len()
+    let i = 0usize
+    let units_acc = units
+
+    while i < n:
+        let src = srcs[i]
+        let u = ProjectBuildUnit(
+            id = i as u32,
+            source = src,
+            target_name = target.name
+        )
+        units_acc.push(u)
+        let i = i + 1usize
+    .end
+
+    let plan = ProjectBuildPlan(
+        project_root = manifest.root_dir,
+        profile = profile,
+        target = target,
+        units = units_acc
+    )
+
+    let some_plan: Option<ProjectBuildPlan> = Option<ProjectBuildPlan>::Some(plan)
+    let out_ok = (some_plan, sink)
+    return out_ok
+.end
+
+# ----------------------------------------------------------------------------
+# Affichage / helpers divers (purement logiques)
+# ----------------------------------------------------------------------------
+
+pub fn build_profile_to_display(BuildProfile p) -> String:
+    let s = p.name + " ("
+    let s = s + "opt="
+    let s = s + lang.optimization_level_to_string(p.optimization)
+    let s = s + ", debug="
+    let s = s + if p.debug_info: "on" else: "off" .end
+    let s = s + ", lto="
+    let s = s + if p.lto: "on" else: "off" .end
+    let s = s + ")"
+    return s
+.end
+
+pub fn project_target_to_display(ProjectTarget t) -> String:
+    let kind_str = if t.kind == ProjectTargetKind::ProjectTargetKindBinary:
+        "bin"
+    else:
+        "other"
+    .end
+
+    let s = t.name + " [" + kind_str + "] main=" + t.main_module + " profile=" + t.profile_name
+    return s
+.end
+
+# ----------------------------------------------------------------------------
+# Notes
+# ----------------------------------------------------------------------------
+# - Ce module ne s'occupe ni de charger un manifeste depuis le disque, ni de
+#   lancer la pipeline de compilation : il décrit uniquement la structure
+#   logique d'un projet Vitte et la façon de calculer un plan de build.
+# - Le CLI, le LSP ou d'autres outils peuvent sérialiser ProjectManifest /
+#   Project / ProjectBuildPlan dans leurs formats propres (JSON, TOML, Muffin).
+# ============================================================================

@@ -1,0 +1,516 @@
+module vitte.compiler.graph
+
+import vitte.compiler.collections as coll
+
+# ============================================================================
+# Vitte compiler – Graph module (maximal utilitaire)
+#
+# Objectifs :
+#   - Fournir une abstraction générique de graphe orienté, légère mais riche,
+#     utilisable par le compilateur (graphes de dépendances, CFG, SSA, etc.).
+#   - Proposer :
+#       * un modèle de données générique (GraphNode<TNode>, GraphEdge<TEdge>,
+#         Graph<TNode, TEdge>),
+#       * des utilitaires d’ajout de nœuds/arcs,
+#       * des fonctions de traversée (BFS, DFS),
+#       * un tri topologique avec détection de cycle.
+#   - Ne dépendre que de Vec/Option/bool/usize, donc intégrable partout.
+#
+# Design :
+#   - Graphe orienté, adjacency list par nœud : adj[node_id] = Vec<EdgeId>.
+#   - NodeId et EdgeId sont des alias de usize, pour s’indexer directement
+#     dans les Vec.
+#   - Toutes les fonctions sont pures : elles retournent un nouveau Graph
+#     plutôt que de muter en place (compatible avec un compilateur fonctionnel).
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Types de base
+# ----------------------------------------------------------------------------
+
+pub typedef usize NodeId
+pub typedef usize EdgeId
+
+pub struct GraphNode<TNode>:
+    let id: NodeId
+    let data: TNode
+.end
+
+pub struct GraphEdge<TEdge>:
+    let id: EdgeId
+    let from: NodeId
+    let to: NodeId
+    let data: TEdge
+.end
+
+pub struct Graph<TNode, TEdge>:
+    let node_count: usize
+    let edge_count: usize
+    let nodes: Vec<GraphNode<TNode>>
+    let edges: Vec<GraphEdge<TEdge>>
+    let adj: Vec<Vec<EdgeId>>
+.end
+
+# Résultat de tri topologique.
+pub struct TopoResult:
+    let order: Vec<NodeId>
+    let is_dag: Bool
+.end
+
+# Visite DFS : marquage classique blanc/gris/noir.
+pub enum VisitMark:
+    VisitWhite
+    VisitGray
+    VisitBlack
+.end
+
+# ----------------------------------------------------------------------------
+# Constructeurs
+# ----------------------------------------------------------------------------
+
+pub fn graph_new<TNode, TEdge>() -> Graph<TNode, TEdge>:
+    let nodes: Vec<GraphNode<TNode>> = Vec<GraphNode<TNode>>::new()
+    let edges: Vec<GraphEdge<TEdge>> = Vec<GraphEdge<TEdge>>::new()
+    let adj: Vec<Vec<EdgeId>> = Vec<Vec<EdgeId>>::new()
+
+    let g = Graph<TNode, TEdge>(
+        node_count = 0usize,
+        edge_count = 0usize,
+        nodes = nodes,
+        edges = edges,
+        adj = adj
+    )
+    return g
+.end
+
+pub fn graph_is_empty<TNode, TEdge>(Graph<TNode, TEdge> g) -> Bool:
+    return g.node_count == 0usize
+.end
+
+pub fn graph_node_count<TNode, TEdge>(Graph<TNode, TEdge> g) -> usize:
+    return g.node_count
+.end
+
+pub fn graph_edge_count<TNode, TEdge>(Graph<TNode, TEdge> g) -> usize:
+    return g.edge_count
+.end
+
+# ----------------------------------------------------------------------------
+# Ajout de nœuds et d'arêtes
+# ----------------------------------------------------------------------------
+
+pub fn graph_add_node<TNode, TEdge>(Graph<TNode, TEdge> g, TNode data) -> (Graph<TNode, TEdge>, NodeId):
+    let nodes = g.nodes
+    let adj = g.adj
+
+    let new_id = g.node_count
+    let node = GraphNode<TNode>(
+        id = new_id,
+        data = data
+    )
+    nodes.push(node)
+
+    let empty_edges: Vec<EdgeId> = Vec<EdgeId>::new()
+    adj.push(empty_edges)
+
+    let g2 = Graph<TNode, TEdge>(
+        node_count = g.node_count + 1usize,
+        edge_count = g.edge_count,
+        nodes = nodes,
+        edges = g.edges,
+        adj = adj
+    )
+
+    let out = (g2, new_id)
+    return out
+.end
+
+pub fn graph_add_edge<TNode, TEdge>(Graph<TNode, TEdge> g, NodeId from, NodeId to, TEdge data) -> (Graph<TNode, TEdge>, EdgeId):
+    let nodes = g.nodes
+    let edges = g.edges
+    let adj = g.adj
+
+    let new_eid = g.edge_count
+    let edge = GraphEdge<TEdge>(
+        id = new_eid,
+        from = from,
+        to = to,
+        data = data
+    )
+    edges.push(edge)
+
+    # On duplique adj pour respecter un style fonctionnel, même si
+    # en pratique un compilateur pourra optimiser les copies.
+    let adj2 = adj
+    let outgoing = adj2[from]
+    outgoing.push(new_eid)
+    adj2[from] = outgoing
+
+    let g2 = Graph<TNode, TEdge>(
+        node_count = g.node_count,
+        edge_count = g.edge_count + 1usize,
+        nodes = nodes,
+        edges = edges,
+        adj = adj2
+    )
+
+    let out = (g2, new_eid)
+    return out
+.end
+
+# ----------------------------------------------------------------------------
+# Accès lecture
+# ----------------------------------------------------------------------------
+
+pub fn graph_get_node<TNode, TEdge>(Graph<TNode, TEdge> g, NodeId id) -> GraphNode<TNode>:
+    let n = g.nodes[id]
+    return n
+.end
+
+pub fn graph_get_edge<TNode, TEdge>(Graph<TNode, TEdge> g, EdgeId id) -> GraphEdge<TEdge>:
+    let e = g.edges[id]
+    return e
+.end
+
+pub fn graph_neighbors<TNode, TEdge>(Graph<TNode, TEdge> g, NodeId id) -> Vec<NodeId>:
+    let out = Vec<NodeId>::new()
+    let out = graph_neighbors_into(g, id, out)
+    return out
+.end
+
+fn graph_neighbors_into<TNode, TEdge>(Graph<TNode, TEdge> g, NodeId id, Vec<NodeId> out) -> Vec<NodeId>:
+    let edges_ids = g.adj[id]
+    let n = edges_ids.len()
+    let i = 0usize
+    let acc = out
+
+    while i < n:
+        let eid = edges_ids[i]
+        let e = g.edges[eid]
+        acc.push(e.to)
+        i = i + 1usize
+    .end
+
+    return acc
+.end
+
+pub fn graph_out_degree<TNode, TEdge>(Graph<TNode, TEdge> g, NodeId id) -> usize:
+    let edges_ids = g.adj[id]
+    return edges_ids.len()
+.end
+
+pub fn graph_in_degree<TNode, TEdge>(Graph<TNode, TEdge> g, NodeId id) -> usize:
+    let n = g.node_count
+    let count = 0usize
+    let i = 0usize
+
+    while i < n:
+        let edges_ids = g.adj[i]
+        let m = edges_ids.len()
+        let j = 0usize
+        while j < m:
+            let eid = edges_ids[j]
+            let e = g.edges[eid]
+            if e.to == id:
+                count = count + 1usize
+            .end
+            j = j + 1usize
+        .end
+        i = i + 1usize
+    .end
+
+    return count
+.end
+
+# ----------------------------------------------------------------------------
+# BFS (Breadth-First Search)
+# ----------------------------------------------------------------------------
+
+pub fn graph_bfs<TNode, TEdge>(Graph<TNode, TEdge> g, NodeId start) -> Vec<NodeId>:
+    let n = g.node_count
+    let visited: Vec<Bool> = Vec<Bool>::new()
+    let i = 0usize
+
+    # visited initialisé à false
+    while i < n:
+        visited.push(false)
+        i = i + 1usize
+    .end
+
+    let order: Vec<NodeId> = Vec<NodeId>::new()
+    let queue: Vec<NodeId> = Vec<NodeId>::new()
+    let head = 0usize
+
+    queue.push(start)
+
+    while head < queue.len():
+        let v = queue[head]
+
+        if visited[v]:
+            head = head + 1usize
+            continue
+        .end
+
+        visited[v] = true
+        order.push(v)
+
+        let neighs = g.adj[v]
+        let m = neighs.len()
+        let j = 0usize
+        while j < m:
+            let eid = neighs[j]
+            let e = g.edges[eid]
+            let to = e.to
+            if not visited[to]:
+                queue.push(to)
+            .end
+            j = j + 1usize
+        .end
+
+        head = head + 1usize
+    .end
+
+    return order
+.end
+
+# ----------------------------------------------------------------------------
+# DFS (Depth-First Search) – préordre
+# ----------------------------------------------------------------------------
+
+pub fn graph_dfs_preorder<TNode, TEdge>(Graph<TNode, TEdge> g, NodeId start) -> Vec<NodeId>:
+    let n = g.node_count
+    let visited: Vec<Bool> = Vec<Bool>::new()
+    let i = 0usize
+
+    while i < n:
+        visited.push(false)
+        i = i + 1usize
+    .end
+
+    let order: Vec<NodeId> = Vec<NodeId>::new()
+    graph_dfs_visit(g, start, visited, order)
+    return order
+.end
+
+fn graph_dfs_visit<TNode, TEdge>(
+    Graph<TNode, TEdge> g,
+    NodeId v,
+    Vec<Bool> visited,
+    Vec<NodeId> order
+) -> (Vec<Bool>, Vec<NodeId>):
+    if visited[v]:
+        let out = (visited, order)
+        return out
+    .end
+
+    visited[v] = true
+    order.push(v)
+
+    let neighs = g.adj[v]
+    let m = neighs.len()
+    let j = 0usize
+
+    while j < m:
+        let eid = neighs[j]
+        let e = g.edges[eid]
+        let to = e.to
+        let pair = graph_dfs_visit(g, to, visited, order)
+        let visited2 = pair.0
+        let order2 = pair.1
+        let visited = visited2
+        let order = order2
+        j = j + 1usize
+    .end
+
+    let out = (visited, order)
+    return out
+.end
+
+# ----------------------------------------------------------------------------
+# Tri topologique + détection de cycle
+# ----------------------------------------------------------------------------
+
+pub fn graph_topological_sort<TNode, TEdge>(Graph<TNode, TEdge> g) -> TopoResult:
+    let n = g.node_count
+    let marks: Vec<VisitMark> = Vec<VisitMark>::new()
+    let i = 0usize
+
+    # initialisation : tout en blanc
+    while i < n:
+        marks.push(VisitMark::VisitWhite)
+        i = i + 1usize
+    .end
+
+    let order: Vec<NodeId> = Vec<NodeId>::new()
+    let has_cycle = false
+
+    let v = 0usize
+    while v < n:
+        let m_v = marks[v]
+        if m_v == VisitMark::VisitWhite:
+            let triple = topo_dfs_visit(g, v, marks, order, has_cycle)
+            let marks2 = triple.0
+            let order2 = triple.1
+            let has_cycle2 = triple.2
+
+            let marks = marks2
+            let order = order2
+            let has_cycle = has_cycle2
+
+            if has_cycle:
+                # En cas de cycle, on peut sortir tôt, mais on garde l'ordre partiel.
+                v = n
+            .end
+        .end
+
+        v = v + 1usize
+    .end
+
+    # Si pas de cycle, on renverse l'ordre pour obtenir un tri topologique.
+    let final_order =
+        if has_cycle:
+            order
+        else:
+            reverse_nodes(order)
+        .end
+
+    let res = TopoResult(
+        order = final_order,
+        is_dag = not has_cycle
+    )
+    return res
+.end
+
+fn topo_dfs_visit<TNode, TEdge>(
+    Graph<TNode, TEdge> g,
+    NodeId v,
+    Vec<VisitMark> marks,
+    Vec<NodeId> order,
+    Bool has_cycle
+) -> (Vec<VisitMark>, Vec<NodeId>, Bool):
+    let mark_v = marks[v]
+    if mark_v == VisitMark::VisitGray:
+        # Cycle détecté
+        let out_cycle = (marks, order, true)
+        return out_cycle
+    .end
+
+    if mark_v == VisitMark::VisitBlack:
+        let out_done = (marks, order, has_cycle)
+        return out_done
+    .end
+
+    marks[v] = VisitMark::VisitGray
+
+    let neighs = g.adj[v]
+    let m = neighs.len()
+    let j = 0usize
+    let local_has_cycle = has_cycle
+    let marks_local = marks
+    let order_local = order
+
+    while j < m:
+        let eid = neighs[j]
+        let e = g.edges[eid]
+        let to = e.to
+
+        let triple = topo_dfs_visit(g, to, marks_local, order_local, local_has_cycle)
+        let marks2 = triple.0
+        let order2 = triple.1
+        let has_cycle2 = triple.2
+
+        let marks_local = marks2
+        let order_local = order2
+        let local_has_cycle = has_cycle2
+
+        if local_has_cycle:
+            let out_cycle = (marks_local, order_local, true)
+            return out_cycle
+        .end
+
+        j = j + 1usize
+    .end
+
+    marks_local[v] = VisitMark::VisitBlack
+    order_local.push(v)
+
+    let out = (marks_local, order_local, local_has_cycle)
+    return out
+.end
+
+fn reverse_nodes(Vec<NodeId> input) -> Vec<NodeId>:
+    let out: Vec<NodeId> = Vec<NodeId>::new()
+    let n = input.len()
+    if n == 0usize:
+        return out
+    .end
+
+    let idx = n
+    while idx > 0usize:
+        let i = idx - 1usize
+        let v = input[i]
+        out.push(v)
+        idx = idx - 1usize
+    .end
+
+    return out
+.end
+
+# ----------------------------------------------------------------------------
+# Helpers de construction pour graphes simples (sans payload)
+# ----------------------------------------------------------------------------
+
+pub fn graph_from_edges_unweighted(usize node_count, Vec<(NodeId, NodeId)> edges) -> Graph<(), ()>:
+    let g = graph_new<(), ()>()
+    let g = graph_ensure_nodes(g, node_count)
+
+    let m = edges.len()
+    let i = 0usize
+    let g_acc = g
+
+    while i < m:
+        let pair = edges[i]
+        let from = pair.0
+        let to = pair.1
+
+        let triple = graph_add_edge(g_acc, from, to, ())
+        let g2 = triple.0
+        let g_acc = g2
+
+        i = i + 1usize
+    .end
+
+    return g_acc
+.end
+
+fn graph_ensure_nodes<TNode, TEdge>(Graph<TNode, TEdge> g, usize node_count) -> Graph<TNode, TEdge>:
+    let g_acc = g
+
+    while g_acc.node_count < node_count:
+        let pair = graph_add_node(g_acc, default_node_payload<TNode>())
+        let g2 = pair.0
+        let g_acc = g2
+    .end
+
+    return g_acc
+.end
+
+fn default_node_payload<TNode>() -> TNode:
+    # Stub : pour l’instant, on suppose que TNode est () dans les usages
+    # où default_node_payload est appelé. Cette fonction existe pour garder
+    # la signature générique compilable.
+    let unit: TNode = ()
+    return unit
+.end
+
+# ----------------------------------------------------------------------------
+# Notes
+# ----------------------------------------------------------------------------
+# - Ce module est volontairement maximal pour couvrir les besoins classiques
+#   d’un compilateur : dépendances de modules, ordonnancement de passes,
+#   graphes de contrôle et de données simples.
+# - Rien n’impose d’utiliser toutes les fonctions; les couches supérieures
+#   peuvent s’en tenir à graph_new / graph_add_node / graph_add_edge / BFS / topo.
+# - Si la sémantique de generics évolue dans Vitte, Graph<TNode, TEdge> pourra
+#   être enrichi (poids, attributs, sous-graphes) sans casser l’API de base.
+# ----------------------------------------------------------------------------

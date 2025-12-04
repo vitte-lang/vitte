@@ -1,0 +1,516 @@
+
+
+module vitte.experiments.traits
+
+import std.collections as coll
+import vitte.compiler.spans as spans
+import vitte.compiler.names as names
+import vitte.compiler.types as types
+
+# ============================================================================
+# Vitte experiments – Modèle et exemples autour des traits
+#
+# Objectifs de ce fichier :
+#   - Proposer un modèle déclaratif pour représenter le système de traits
+#     de Vitte dans le compilateur et les outils :
+#       * définitions de traits, items de traits,
+#       * impls (inherent, trait impl, blanket, auto),
+#       * contraintes (where), obligations et résolveur de traits,
+#       * projections de types associés.
+#   - Fournir des exemples ultra complets en "phrase syntaxe" :
+#       * déclaration de traits,
+#       * impls pour des types concrets,
+#       * utilisation de traits dans des fonctions et scenarios.
+#
+# Convention :
+#   - Ce fichier est purement "data model" + exemples commentés :
+#       * aucune fonction exécutable réelle,
+#       * pas de logique d exécution dans ce module.
+#   - Syntaxe officielle Vitte :
+#       * blocs terminés par ".end",
+#       * aucune accolade dans le code ni dans les exemples.
+# ============================================================================
+
+# ============================================================================
+# Identifiants de base
+# ============================================================================
+
+# Identifiant logique d un trait.
+type TraitId = u32
+
+# Identifiant logique d un item de trait.
+type TraitItemId = u32
+
+# Identifiant logique d une méthode de trait.
+type TraitMethodId = u32
+
+# Identifiant logique d un type associé de trait.
+type TraitAssocTypeId = u32
+
+# Identifiant logique d une constante associée de trait.
+type TraitAssocConstId = u32
+
+# Identifiant logique d une impl (trait impl ou inherent impl).
+type TraitImplId = u32
+
+# Identifiant logique d un item dans une impl.
+type TraitImplItemId = u32
+
+# Identifiant logique d une référence à un trait (Self: Trait<Args...>).
+type TraitRefId = u32
+
+# Identifiant logique d une clause where.
+type WhereClauseId = u32
+
+# Identifiant logique d une obligation de trait.
+type TraitObligationId = u32
+
+# Identifiant logique d une projection de type associé.
+type TraitProjectionId = u32
+
+# Identifiant logique d un snapshot du résolveur de traits.
+type TraitSolverSnapshotId = u32
+
+# ============================================================================
+# Genre de traits, items, impls
+# ============================================================================
+
+# Genre de trait :
+#   - Normal  : trait classique,
+#   - Auto    : trait automatique (marqueurs propagés),
+#   - Marker  : trait "tag" sans API,
+#   - Builtin : trait intrinsèque au compilateur.
+enum TraitKind
+    variant Normal
+    variant Auto
+    variant Marker
+    variant Builtin
+.end
+
+# Visibilité logique d un trait.
+enum TraitVisibility
+    variant Private
+    variant Module
+    variant Crate
+    variant Public
+.end
+
+# Genre d item dans un trait :
+#   - Method     : méthode de trait,
+#   - AssocType  : type associé,
+#   - AssocConst : constante associée.
+enum TraitItemKind
+    variant Method
+    variant AssocType
+    variant AssocConst
+.end
+
+# Genre d impl :
+#   - Inherent    : impl directement sur un type, sans trait,
+#   - TraitImpl   : impl d un trait pour un type,
+#   - BlanketImpl : impl générique couvrant une famille de types,
+#   - AutoImpl    : impl générée automatiquement (par exemple pour les traits auto).
+enum TraitImplKind
+    variant Inherent
+    variant TraitImpl
+    variant BlanketImpl
+    variant AutoImpl
+.end
+
+# Polarité d une impl :
+#   - Positive    : impl "normale" (T impl Trait),
+#   - Negative    : impl négative (T ne peut pas impl Trait),
+#   - Reservation : placeholder pour une impl future (résolution incrémentale).
+enum ImplPolarity
+    variant Positive
+    variant Negative
+    variant Reservation
+.end
+
+# Genre de "Self" dans un trait ou une impl :
+#   - Concrete       : type concret (Int, String, etc.),
+#   - GenericParam   : paramètre générique (T, U, ...),
+#   - Projection     : type projeté (AssocType sur un trait).
+enum SelfTypeKind
+    variant Concrete
+    variant GenericParam
+    variant Projection
+.end
+
+# ============================================================================
+# Définition de trait et items
+# ============================================================================
+
+# Signature logique d une méthode de trait (vue simplifiée).
+#
+# On réutilise le système de types général via types.TypeId : une méthode de
+# trait est modélisée comme un type de fonction abstrait, mais on garde
+# quelques métadonnées séparées pour les outils.
+struct TraitMethodSig
+    # Type de fonction globale (paramètres + retour).
+    field fn_type: types.TypeId
+
+    # Span de la signature de la méthode dans la source.
+    field span: spans.SpanId
+
+    # Nom symbolique (pour de l outillage, aide à la doc).
+    field name: names.SymbolId
+.end
+
+# Description logique d un type associé dans un trait.
+struct TraitAssocType
+    # Identifiant logique.
+    field id: TraitAssocTypeId
+
+    # Nom du type associé.
+    field name: names.SymbolId
+
+    # Type par défaut, ou type nul si pas de défaut.
+    field default_type: types.TypeId
+
+    # Span de la déclaration.
+    field span: spans.SpanId
+.end
+
+# Description logique d une constante associée dans un trait.
+struct TraitAssocConst
+    # Identifiant logique.
+    field id: TraitAssocConstId
+
+    # Nom de la constante associée.
+    field name: names.SymbolId
+
+    # Type de la constante.
+    field const_type: types.TypeId
+
+    # Span de la déclaration.
+    field span: spans.SpanId
+.end
+
+# Item de trait unifié.
+struct TraitItem
+    # Identifiant de l item.
+    field id: TraitItemId
+
+    # Trait auquel cet item appartient.
+    field trait_id: TraitId
+
+    # Genre d item.
+    field kind: TraitItemKind
+
+    # Nom symbolique de l item.
+    field name: names.SymbolId
+
+    # Méthode associée, si kind = Method.
+    field method_id: TraitMethodId
+
+    # Type associé, si kind = AssocType.
+    field assoc_type_id: TraitAssocTypeId
+
+    # Constante associée, si kind = AssocConst.
+    field assoc_const_id: TraitAssocConstId
+
+    # Span de la déclaration de l item.
+    field span: spans.SpanId
+.end
+
+# Définition logique d un trait.
+struct TraitDef
+    # Identifiant du trait.
+    field id: TraitId
+
+    # Nom du trait.
+    field name: names.SymbolId
+
+    # Chemin de module (core.traits.Display, etc.).
+    field module_path: names.ModulePathId
+
+    # Genre et visibilité.
+    field kind: TraitKind
+    field visibility: TraitVisibility
+
+    # Items déclarés dans ce trait.
+    field items: coll.List<TraitItemId>
+
+    # Span de la déclaration complète (de trait jusqu a ".end").
+    field span: spans.SpanId
+.end
+
+# Table centrale des traits.
+struct TraitTable
+    field traits: coll.List<TraitDef>
+    field items: coll.List<TraitItem>
+    field methods: coll.List<TraitMethodSig>
+    field assoc_types: coll.List<TraitAssocType>
+    field assoc_consts: coll.List<TraitAssocConst>
+.end
+
+# ============================================================================
+# Implémentations de traits
+# ============================================================================
+
+# Clause where simplifiée : Self: Trait<Args...> ou relation similaire.
+struct WhereClause
+    # Identifiant logique.
+    field id: WhereClauseId
+
+    # Trait référencé, si applicable.
+    field trait_ref: TraitRefId
+
+    # Span de la clause where complète.
+    field span: spans.SpanId
+.end
+
+# Référence à un trait appliqué à un Self et des paramètres.
+struct TraitRef
+    # Identifiant logique.
+    field id: TraitRefId
+
+    # Trait ciblé.
+    field trait_id: TraitId
+
+    # Type Self auquel le trait est appliqué.
+    field self_type: types.TypeId
+
+    # Autres paramètres de type appliqués au trait.
+    field type_args: coll.List<types.TypeId>
+
+    # Span de la référence.
+    field span: spans.SpanId
+.end
+
+# Item dans une impl de trait ou une impl inherent.
+struct TraitImplItem
+    # Identifiant logique.
+    field id: TraitImplItemId
+
+    # Impl propriétaire.
+    field impl_id: TraitImplId
+
+    # Nom de l item implémenté (méthode ou associé).
+    field name: names.SymbolId
+
+    # Span de la définition de l item dans l impl.
+    field span: spans.SpanId
+.end
+
+# Implémentation de trait (ou impl inherent) pour un type donné.
+struct TraitImpl
+    # Identifiant logique.
+    field id: TraitImplId
+
+    # Genre d impl (inherent, trait impl, blanket, auto).
+    field kind: TraitImplKind
+
+    # Polarité (positive, négative, reservation).
+    field polarity: ImplPolarity
+
+    # Trait ciblé, ou trait nul pour les impl inherent.
+    field trait_id: TraitId
+
+    # Type Self concerné.
+    field self_type: types.TypeId
+
+    # Clauses where associées à cette impl.
+    field where_clauses: coll.List<WhereClauseId>
+
+    # Items définis dans l impl (méthodes, associés).
+    field items: coll.List<TraitImplItemId>
+
+    # Span de la déclaration complète.
+    field span: spans.SpanId
+.end
+
+# Table des impls.
+struct TraitImplTable
+    field impls: coll.List<TraitImpl>
+    field impl_items: coll.List<TraitImplItem>
+    field where_clauses: coll.List<WhereClause>
+.end
+
+# ============================================================================
+# Obligations de traits et résolveur
+# ============================================================================
+
+# Genre d obligation de trait :
+#   - Impl       : "Self: Trait<Args...>",
+#   - Projection : normalisation d un type associé,
+#   - WellFormed : vérification de bonne formation,
+#   - TypeOutlives : relation de durées de vie / ownership conceptuelle.
+enum TraitObligationKind
+    variant Impl
+    variant Projection
+    variant WellFormed
+    variant TypeOutlives
+.end
+
+# Obligation logique à satisfaire.
+struct TraitObligation
+    # Identifiant logique.
+    field id: TraitObligationId
+
+    # Genre d obligation.
+    field kind: TraitObligationKind
+
+    # Référence de trait associée, si applicable.
+    field trait_ref: TraitRefId
+
+    # Span de l expression ou de la clause qui génère l obligation.
+    field span: spans.SpanId
+.end
+
+# Projection de type associé (Self as Trait<Args>).AssocType -> Ty.
+struct TraitProjection
+    # Identifiant logique.
+    field id: TraitProjectionId
+
+    # Référence de trait.
+    field trait_ref: TraitRefId
+
+    # Type associé ciblé.
+    field assoc_type: TraitAssocTypeId
+
+    # Type normalisé, si connu.
+    field normalized_type: types.TypeId
+
+    # Span de la projection dans la source.
+    field span: spans.SpanId
+.end
+
+# Résultat du résolveur de traits pour un ensemble d obligations.
+enum TraitSolverStatus
+    variant Pending
+    variant Proven
+    variant Ambiguous
+    variant Error
+.end
+
+# Snapshot du résolveur de traits (pour debugging et outils).
+struct TraitSolverSnapshot
+    # Identifiant logique.
+    field id: TraitSolverSnapshotId
+
+    # Obligations considérées.
+    field obligations: coll.List<TraitObligationId>
+
+    # Projections résolues.
+    field projections: coll.List<TraitProjectionId>
+
+    # Statut global.
+    field status: TraitSolverStatus
+.end
+
+# Vue agrégée pour le système de traits.
+struct TraitSystemSnapshot
+    field trait_table: TraitTable
+    field impl_table: TraitImplTable
+    field obligations: coll.List<TraitObligation>
+    field projections: coll.List<TraitProjection>
+    field solver_snapshots: coll.List<TraitSolverSnapshot>
+.end
+
+# ============================================================================
+# Exemples d utilisation en "phrase syntaxe"
+# ============================================================================
+#
+# Les exemples ci dessous ne sont pas exécutés par ce module, mais servent :
+#   - de documentation,
+#   - de tests de parsing,
+#   - de base pour la démonstration dans les outils.
+#
+# Tous les blocs se terminent par ".end".
+#
+# --------------------------------------------------------------------------
+# Exemple 1 : trait simple Display et impl pour Int
+# --------------------------------------------------------------------------
+#
+#   trait Display
+#       fn show self
+#   .end
+#
+#   impl Display for Int
+#       fn show self
+#           say self
+#       .end
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 2 : trait avec type associé
+# --------------------------------------------------------------------------
+#
+#   trait Iterator
+#       type Item
+#
+#       fn next self
+#           # renvoie Option Item
+#           ret None
+#       .end
+#   .end
+#
+#   type Counter
+#       field current Int
+#       field max Int
+#   .end
+#
+#   impl Iterator for Counter
+#       type Item = Int
+#
+#       fn next self
+#           when self.current >= self.max
+#               ret None
+#           else
+#               set value = self.current
+#               set self.current = self.current + 1
+#               ret Some value
+#           .end
+#       .end
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 3 : trait générique et impl blanket
+# --------------------------------------------------------------------------
+#
+#   trait Equals<T>
+#       fn equals self other T
+#           ret false
+#       .end
+#   .end
+#
+#   impl<T> Equals<T> for T
+#       fn equals self other T
+#           # pseudo opérateur de comparaison
+#           ret self == other
+#       .end
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 4 : utilisation de traits dans une fonction et un scenario
+# --------------------------------------------------------------------------
+#
+#   fn print_all items
+#       # On suppose que items est une collection de valeurs qui impl Display.
+#       loop i from 0 to len items step 1
+#           say items[i].show()
+#       .end
+#   .end
+#
+#   scn traits_demo
+#       say "Traits demo"
+#
+#       set x = 3
+#       # x impl Display, on peut donc appeler show
+#       x.show()
+#
+#       # Counter impl Iterator avec Item = Int
+#       set c = Counter  # construction conceptuelle
+#       set next_value = c.next()
+#       say next_value
+#   .end
+#
+# Ces exemples montrent :
+#   - la déclaration de traits et d impls,
+#   - l usage de types associés,
+#   - la notion d impl générique blanket,
+#   - l intégration des traits dans les fonctions et scenarios.
+#
+.end

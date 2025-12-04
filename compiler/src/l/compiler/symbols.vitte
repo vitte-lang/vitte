@@ -1,0 +1,461 @@
+
+
+module vitte.compiler.symbols
+
+import std.collections as coll
+import vitte.compiler.span as span
+import vitte.compiler.scope as sc
+
+# =============================================================================
+# Vitte compiler – Symbols catalog (maximal, logique, sans I/O)
+# =============================================================================
+#
+# Rôle de ce module :
+#   - Représenter les symboles "résolus" vus par le front-end / HIR,
+#     en complément de la structure de scopes (`vitte.compiler.scope`).
+#   - Fournir une table de symboles immuable (pattern fonctionnel),
+#     avec identifiants stables et recherches linéaires simples.
+#   - Associer des spans à des symboles (utile pour les diagnostics, l'IDE).
+#
+# Invariants / choix :
+#   - `SymbolId` et `ScopeId` sont des indices dans les vecteurs correspondants.
+#   - Aucune I/O, pas de dépendance backend / runtime.
+#   - Ce module ne fait pas de typage complet : `type_hint` reste textuel.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Identifiants logiques
+# -----------------------------------------------------------------------------
+
+typedef u32 SymbolId
+
+typedef u32 ScopeId
+
+typedef u32 ModuleId
+
+typedef u32 TypeId
+
+typedef u32 FunctionId
+
+# -----------------------------------------------------------------------------
+# Origine et statut de résolution des symboles
+# -----------------------------------------------------------------------------
+
+pub enum SymbolOrigin:
+    SymbolOriginUserCode      # symboles définis dans le code utilisateur
+    SymbolOriginStdlib        # symboles venant de la std Vitte
+    SymbolOriginBuiltin       # symboles intrinsèques au compilateur
+.end
+
+pub enum SymbolResolutionStatus:
+    SymbolResolutionResolved      # résolu sans ambiguïté
+    SymbolResolutionUnresolved    # non résolu (nom introuvable)
+    SymbolResolutionAmbiguous     # plusieurs candidats possibles
+    SymbolResolutionError         # autre erreur de résolution
+.end
+
+# -----------------------------------------------------------------------------
+# Représentation d'un symbole "résolu" côté front-end
+# -----------------------------------------------------------------------------
+
+pub struct ResolvedSymbol:
+    let id: SymbolId
+    let name: String
+    let scope_id: ScopeId          # scope de définition (référence dans ScopeTree)
+    let kind: sc.SymbolKind        # genre de symbole (var, const, type, fn, ...)
+    let origin: SymbolOrigin
+    let status: SymbolResolutionStatus
+    let is_exported: bool          # true si visible en dehors du module
+    let span: span.Span            # span de la définition principale
+    let type_hint: String          # représentation textuelle du type (optionnelle)
+.end
+
+# -----------------------------------------------------------------------------
+# Table de symboles
+# -----------------------------------------------------------------------------
+
+pub struct SymbolTable:
+    let symbols: Vec<ResolvedSymbol>
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers internes : next_id
+# -----------------------------------------------------------------------------
+
+fn symbol_table_next_id(table: SymbolTable) -> SymbolId:
+    let n = table.symbols.len()
+    let id = (SymbolId) n
+    return id
+.end
+
+# -----------------------------------------------------------------------------
+# Construction / accès de la SymbolTable
+# -----------------------------------------------------------------------------
+
+pub fn symbol_table_new() -> SymbolTable:
+    let syms = Vec<ResolvedSymbol>::new()
+    let table = SymbolTable { symbols: syms }
+    return table
+.end
+
+pub fn symbol_table_symbol_count(table: SymbolTable) -> u32:
+    let n = table.symbols.len()
+    return (u32) n
+.end
+
+pub fn symbol_table_get(table: SymbolTable, id: SymbolId) -> ResolvedSymbol:
+    let idx = (usize) id
+    let s = table.symbols[idx]
+    return s
+.end
+
+# Ajout d'un symbole entièrement décrit.
+
+pub fn symbol_table_add(
+    table: SymbolTable,
+    name: String,
+    scope_id: ScopeId,
+    kind: sc.SymbolKind,
+    origin: SymbolOrigin,
+    status: SymbolResolutionStatus,
+    is_exported: bool,
+    definition_span: span.Span,
+    type_hint: String
+) -> (SymbolTable, SymbolId):
+    let symbols = table.symbols
+
+    let new_id = symbol_table_next_id(table)
+
+    let sym = ResolvedSymbol {
+        id: new_id,
+        name: name,
+        scope_id: scope_id,
+        kind: kind,
+        origin: origin,
+        status: status,
+        is_exported: is_exported,
+        span: definition_span,
+        type_hint: type_hint
+    }
+
+    symbols.push(sym)
+
+    let table2 = SymbolTable { symbols: symbols }
+    let out = (table2, new_id)
+    return out
+.end
+
+# Ajouts spécialisés pratiques (sucre).
+
+pub fn symbol_table_add_resolved_user(
+    table: SymbolTable,
+    name: String,
+    scope_id: ScopeId,
+    kind: sc.SymbolKind,
+    is_exported: bool,
+    definition_span: span.Span,
+    type_hint: String
+) -> (SymbolTable, SymbolId):
+    let (table2, id) = symbol_table_add(
+        table,
+        name,
+        scope_id,
+        kind,
+        SymbolOrigin::SymbolOriginUserCode,
+        SymbolResolutionStatus::SymbolResolutionResolved,
+        is_exported,
+        definition_span,
+        type_hint
+    )
+    return (table2, id)
+.end
+
+pub fn symbol_table_add_unresolved(
+    table: SymbolTable,
+    name: String,
+    scope_id: ScopeId,
+    kind: sc.SymbolKind,
+    reference_span: span.Span
+) -> (SymbolTable, SymbolId):
+    let empty_type = ""
+    let (table2, id) = symbol_table_add(
+        table,
+        name,
+        scope_id,
+        kind,
+        SymbolOrigin::SymbolOriginUserCode,
+        SymbolResolutionStatus::SymbolResolutionUnresolved,
+        false,
+        reference_span,
+        empty_type
+    )
+    return (table2, id)
+.end
+
+# -----------------------------------------------------------------------------
+# Recherches par nom et par scope
+# -----------------------------------------------------------------------------
+
+# Recherche linéaire d'un symbole par nom dans un scope donné.
+
+pub fn symbol_table_find_in_scope(
+    table: SymbolTable,
+    scope_id: ScopeId,
+    name: String
+) -> coll.Option<SymbolId>:
+    let syms = table.symbols
+    let n = syms.len()
+    let i = (usize) 0
+
+    while i < n:
+        let s = syms[i]
+        if s.scope_id == scope_id and s.name == name:
+            let some_id = coll.option_some<SymbolId>(s.id)
+            return some_id
+        .end
+        let i = i + (usize) 1
+    .end
+
+    let none_id = coll.option_none<SymbolId>()
+    return none_id
+.end
+
+# Retourne tous les symboles d'un scope donné (pour debug / IDE).
+
+pub fn symbol_table_symbols_in_scope(
+    table: SymbolTable,
+    scope_id: ScopeId
+) -> Vec<SymbolId>:
+    let syms = table.symbols
+    let n = syms.len()
+    let i = (usize) 0
+    let out = Vec<SymbolId>::new()
+
+    while i < n:
+        let s = syms[i]
+        if s.scope_id == scope_id:
+            out.push(s.id)
+        .end
+        let i = i + (usize) 1
+    .end
+
+    return out
+.end
+
+# Recherche "globale" par nom, tous scopes confondus.
+# Utile pour des outils d'IDE, mais pas pour la résolution lexicale stricte
+# (qui reste de la responsabilité de `vitte.compiler.scope`).
+
+pub fn symbol_table_find_all_by_name(
+    table: SymbolTable,
+    name: String
+) -> Vec<SymbolId>:
+    let syms = table.symbols
+    let n = syms.len()
+    let i = (usize) 0
+    let out = Vec<SymbolId>::new()
+
+    while i < n:
+        let s = syms[i]
+        if s.name == name:
+            out.push(s.id)
+        .end
+        let i = i + (usize) 1
+    .end
+
+    return out
+.end
+
+# -----------------------------------------------------------------------------
+# Association Span <-> SymbolId
+# -----------------------------------------------------------------------------
+
+pub struct SpanSymbolLink:
+    let span: span.Span
+    let symbol_id: SymbolId
+.end
+
+pub struct SpanSymbolMap:
+    let links: Vec<SpanSymbolLink>
+.end
+
+pub fn span_symbol_map_new() -> SpanSymbolMap:
+    let v = Vec<SpanSymbolLink>::new()
+    let m = SpanSymbolMap { links: v }
+    return m
+.end
+
+pub fn span_symbol_map_add(
+    map: SpanSymbolMap,
+    region: span.Span,
+    symbol_id: SymbolId
+) -> SpanSymbolMap:
+    let links = map.links
+
+    let link = SpanSymbolLink {
+        span: region,
+        symbol_id: symbol_id
+    }
+
+    links.push(link)
+
+    let map2 = SpanSymbolMap { links: links }
+    return map2
+.end
+
+# Retourne le premier symbole dont le span contient la position donnée.
+
+pub fn span_symbol_map_find_first_containing_pos(
+    map: SpanSymbolMap,
+    pos: span.BytePos
+) -> coll.Option<SymbolId>:
+    let links = map.links
+    let n = links.len()
+    let i = (usize) 0
+
+    while i < n:
+        let l = links[i]
+        let sp = l.span
+        let contains = span.span_contains_pos(sp, pos)
+        if contains:
+            let some_id = coll.option_some<SymbolId>(l.symbol_id)
+            return some_id
+        .end
+        let i = i + (usize) 1
+    .end
+
+    let none_id = coll.option_none<SymbolId>()
+    return none_id
+.end
+
+# Retourne tous les symboles dont le span intersecte un span donné.
+
+pub fn span_symbol_map_find_intersecting(
+    map: SpanSymbolMap,
+    region: span.Span
+) -> Vec<SymbolId>:
+    let links = map.links
+    let n = links.len()
+    let i = (usize) 0
+    let out = Vec<SymbolId>::new()
+
+    while i < n:
+        let l = links[i]
+        let sp = l.span
+        let intersects = span.span_intersects(sp, region)
+        if intersects:
+            out.push(l.symbol_id)
+        .end
+        let i = i + (usize) 1
+    .end
+
+    return out
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers de debug
+# -----------------------------------------------------------------------------
+
+# Retourne true si le symbole est considéré comme "effectivement" résolu.
+
+pub fn symbol_is_effectively_resolved(sym: ResolvedSymbol) -> bool:
+    if sym.status == SymbolResolutionStatus::SymbolResolutionResolved:
+        return true
+    .end
+    return false
+.end
+
+# Filtre les symboles résolus dans une table.
+
+pub fn symbol_table_resolved_symbols(table: SymbolTable) -> Vec<SymbolId>:
+    let syms = table.symbols
+    let n = syms.len()
+    let i = (usize) 0
+    let out = Vec<SymbolId>::new()
+
+    while i < n:
+        let s = syms[i]
+        let ok = symbol_is_effectively_resolved(s)
+        if ok:
+            out.push(s.id)
+        .end
+        let i = i + (usize) 1
+    .end
+
+    return out
+.end
+
+# -----------------------------------------------------------------------------
+# Scénario interne de smoke-test
+# -----------------------------------------------------------------------------
+
+scenario symbols_smoke_test():
+    # Table vide
+    let table0 = symbol_table_new()
+
+    # Faux scope ids pour le test
+    let scope_root = (ScopeId) 0
+    let scope_fn   = (ScopeId) 1
+
+    let sp_def_x = span.span_from_len((span.BytePos) 0, (span.ByteLen) 3)
+    let sp_def_y = span.span_from_len((span.BytePos) 10, (span.ByteLen) 3)
+
+    let (table1, id_x) = symbol_table_add_resolved_user(
+        table0,
+        "x",
+        scope_fn,
+        sc.SymbolKind::SymbolKindVariable,
+        false,
+        sp_def_x,
+        "i32"
+    )
+
+    let (table2, id_y) = symbol_table_add_resolved_user(
+        table1,
+        "y",
+        scope_fn,
+        sc.SymbolKind::SymbolKindVariable,
+        false,
+        sp_def_y,
+        "i32"
+    )
+
+    let sp_ref_z = span.span_single_byte((span.BytePos) 20)
+    let (table3, _id_z_unresolved) = symbol_table_add_unresolved(
+        table2,
+        "z",
+        scope_fn,
+        sc.SymbolKind::SymbolKindVariable,
+        sp_ref_z
+    )
+
+    let _count = symbol_table_symbol_count(table3)
+
+    let opt_x_in_fn = symbol_table_find_in_scope(table3, scope_fn, "x")
+    let _found_x = coll.option_is_some<SymbolId>(opt_x_in_fn)
+
+    let all_named_x = symbol_table_find_all_by_name(table3, "x")
+
+    let scope_fn_syms = symbol_table_symbols_in_scope(table3, scope_fn)
+
+    # Span -> symbol map
+    let map0 = span_symbol_map_new()
+    let map1 = span_symbol_map_add(map0, sp_def_x, id_x)
+    let map2 = span_symbol_map_add(map1, sp_def_y, id_y)
+
+    let pos_check = (span.BytePos) 1
+    let opt_sym_at_pos = span_symbol_map_find_first_containing_pos(map2, pos_check)
+    let _has_sym_at_pos = coll.option_is_some<SymbolId>(opt_sym_at_pos)
+
+    let region = span.span_from_len((span.BytePos) 0, (span.ByteLen) 15)
+    let intersecting = span_symbol_map_find_intersecting(map2, region)
+
+    let resolved_only = symbol_table_resolved_symbols(table3)
+
+    # Variables préfixées par _* pour éviter les warnings inutilisés.
+    let _ = scope_root
+    let _ = all_named_x
+    let _ = scope_fn_syms
+    let _ = intersecting
+    let _ = resolved_only
+.end

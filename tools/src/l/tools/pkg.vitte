@@ -1,0 +1,382 @@
+module l.tools.pkg
+
+# ============================================================================
+# Vitte tools – Modèle logique d’opérations de paquet (pkg, niveau L)
+#
+# Objectifs :
+#   - Modéliser, au niveau logique, tout ce qui concerne les opérations de
+#     paquets gérées via les outils "pkg" (au-dessus de lpkg) :
+#       * environnement d’exécution et cibles (host/target),
+#       * opérations de haut niveau (install, update, remove, audit, etc.),
+#       * plans d’actions (résolution déjà fournie par l.tools.lpkg),
+#       * étapes d’installation / build / test / hook,
+#       * résultats, progressions et rapports pour la CLI, la CI et les UIs.
+#   - S’appuyer sur le modèle lpkg (résolution) sans dupliquer la logique
+#     semver, sources, manifests et graphes.
+#   - Ne contenir que des structures de données (aucune fonction ni I/O).
+#
+# Conventions :
+#   - Même style que vitte.compiler.ast / lrt.ffi / lvm.* / scripts.ci.lint /
+#     l.tools.lpkg :
+#       * `pub struct/enum` + ":" et blocs terminés par `.end` ;
+#       * enums "tag-only" ;
+#       * IDs forts basés sur des indices u32.
+# ============================================================================
+
+import l.tools.lpkg
+
+# ----------------------------------------------------------------------------
+# Indices et identifiants pkg
+# ----------------------------------------------------------------------------
+
+pub typedef u32 PkgOpIndex
+pub typedef u32 PkgStepIndex
+pub typedef u32 PkgPlanIndex
+pub typedef u32 PkgEnvIndex
+pub typedef u32 PkgReportIndex
+
+pub struct PkgOperationId:
+    let raw: PkgOpIndex
+.end
+
+pub struct PkgStepId:
+    let raw: PkgStepIndex
+.end
+
+pub struct PkgPlanId:
+    let raw: PkgPlanIndex
+.end
+
+pub struct PkgEnvId:
+    let raw: PkgEnvIndex
+.end
+
+pub struct PkgReportId:
+    let raw: PkgReportIndex
+.end
+
+# ----------------------------------------------------------------------------
+# Environnement d’exécution et cibles
+# ----------------------------------------------------------------------------
+
+# Triple de compilation/cible (host/target).
+pub struct PkgTargetTriple:
+    let arch: String           # ex: "x86_64", "aarch64"
+    let vendor: String         # ex: "apple", "pc"
+    let os: String             # ex: "darwin", "linux", "windows"
+    let env: Option<String>    # ex: "gnu", "msvc", "musl"
+.end
+
+# Environnement logique pour une opération pkg.
+pub struct PkgEnvironment:
+    let id: PkgEnvId
+    let host: PkgTargetTriple
+    let target: PkgTargetTriple
+    let workspace_root: String          # chemin racine du workspace
+    let cache_dir: String               # répertoire de cache lpkg/pkg
+    let bin_dir: String                 # répertoire d’installation des binaires
+    let lib_dir: String                 # répertoire d’installation des libs
+
+    let config_profile: LpkgProfileKind # profil debug/release/custom demandé
+    let config_file: Option<String>     # fichier de config pkg (ex: pkg.toml)
+    let log_dir: String                 # répertoire de logs (steps/operations)
+    let ci_mode: Bool                   # true => exécuté dans un contexte CI
+.end
+
+# ----------------------------------------------------------------------------
+# Opérations de haut niveau
+# ----------------------------------------------------------------------------
+
+# Type d’opération demandée par l’utilisateur.
+pub enum PkgOperationKind:
+    PkgInstall           # installer un ou plusieurs paquets
+    PkgUpdate            # mettre à jour des paquets
+    PkgRemove            # désinstaller
+    PkgUpgradeWorkspace  # mettre à jour le workspace entier selon lockfile
+    PkgAudit             # audit de sécurité / licences
+    PkgInfo              # afficher des infos sur un paquet
+    PkgList              # lister ce qui est installé
+.end
+
+# Spécification utilisateur d’une cible (coordonnées + contrainte de version).
+pub struct PkgTargetSpec:
+    let coords: LpkgPackageCoords
+    let req: Option<LpkgVersionReq>
+.end
+
+# Options spécifiques à une opération.
+pub struct PkgInstallOptions:
+    let targets: Vec<PkgTargetSpec>
+    let include_dev_deps: Bool
+    let include_build_deps: Bool
+    let respect_lockfile: Bool          # true => ne résout pas hors lock
+    let allow_yanked: Bool              # peut utiliser des versions yanked
+.end
+
+pub struct PkgUpdateOptions:
+    let targets: Vec<PkgTargetSpec>     # vide => tous
+    let respect_lockfile: Bool
+    let allow_breaking_changes: Bool    # true => maj majeures possibles
+.end
+
+pub struct PkgRemoveOptions:
+    let targets: Vec<PkgTargetSpec>
+    let purge_cache: Bool
+.end
+
+pub struct PkgAuditOptions:
+    let targets: Vec<PkgTargetSpec>     # vide => tout le workspace
+    let fail_on_high_severity: Bool
+.end
+
+pub struct PkgInfoOptions:
+    let target: PkgTargetSpec
+    let show_dependencies: Bool
+    let show_features: Bool
+    let show_reverse_dependencies: Bool
+.end
+
+pub struct PkgListOptions:
+    let filter_scope: Option<LpkgScopeName>
+    let filter_kind: Option<LpkgProfileKind>
+.end
+
+# Paramètres d’une opération.
+pub struct PkgOperationParams:
+    let install: Option<PkgInstallOptions>
+    let update: Option<PkgUpdateOptions>
+    let remove: Option<PkgRemoveOptions>
+    let audit: Option<PkgAuditOptions>
+    let info: Option<PkgInfoOptions>
+    let list: Option<PkgListOptions>
+.end
+
+# Flags génériques pour l’opération (comportement CLI).
+pub struct PkgOperationFlags:
+    let dry_run: Bool              # true => plan/pipeline sans appliquer
+    let verbose: Bool              # true => logs détaillés
+    let quiet: Bool                # true => réduire la verbosité CLI
+    let force_reinstall: Bool      # true => réinstaller même si déjà présent
+    let no_cache: Bool             # true => ignorer les caches binaires
+.end
+
+# Opération pkg complète.
+pub struct PkgOperation:
+    let id: PkgOperationId
+    let kind: PkgOperationKind
+    let env: PkgEnvId
+    let workspace: LpkgWorkspace
+    let resolution: Option<LpkgResolution>      # résolution lpkg associée
+    let params: PkgOperationParams
+    let flags: PkgOperationFlags
+
+    let requested_at_millis: u64               # horodatage de la demande
+    let started_at_millis: Option<u64>         # début d’exécution
+    let finished_at_millis: Option<u64>        # fin d’exécution
+.end
+
+# ----------------------------------------------------------------------------
+# Plans d’actions
+# ----------------------------------------------------------------------------
+
+# Type d’action au niveau paquet/version.
+pub enum PkgActionKind:
+    ActionInstallVersion       # installer une version précise
+    ActionUpdateVersion        # mettre à jour une version existante
+    ActionRemoveVersion        # désinstaller une version installée
+    ActionBuildOnly            # build sans installation
+    ActionTestOnly             # exécuter les tests
+    ActionAuditOnly            # audit sans changer l’état
+.end
+
+# Cible concrète pour une action.
+pub struct PkgActionTarget:
+    let node: LpkgNodeId                    # nœud dans le graphe de résolution
+    let lock_entry: Option<LpkgLockEntry>   # entrée de lock existante
+.end
+
+# Action logique de haut niveau.
+pub struct PkgAction:
+    let kind: PkgActionKind
+    let target: PkgActionTarget
+    let profile: LpkgProfileKind
+    let reason: String                      # texte (ex: "user-requested", "dependency")
+.end
+
+# Plan global d’actions pour une opération.
+pub struct PkgPlan:
+    let id: PkgPlanId
+    let operation: PkgOperationId
+    let actions: Vec<PkgAction>
+.end
+
+# Résumé des actions (utile pour affichage CLI).
+pub struct PkgPlanSummary:
+    let total_actions: u32
+    let install_count: u32
+    let update_count: u32
+    let remove_count: u32
+    let build_only_count: u32
+    let test_only_count: u32
+    let audit_only_count: u32
+.end
+
+# ----------------------------------------------------------------------------
+# Étapes d’exécution (steps) et pipeline
+# ----------------------------------------------------------------------------
+
+# Type d’étape dans le pipeline d’exécution.
+pub enum PkgStepKind:
+    StepFetchSource        # récupération sources (registry/git/path/archive)
+    StepUnpackArchive      # extraction d’archive
+    StepResolveManifest    # parsing + validation manifest
+    StepPrepareBuildDir    # préparation du répertoire de build
+    StepPreBuildHook       # hook pré-build (scripts)
+    StepBuild              # compilation / build
+    StepTest               # execution des tests
+    StepInstallFiles       # copie vers bin/lib/include/etc.
+    StepPostInstallHook    # hook post-install (scripts)
+    StepUpdateLockfile     # mise à jour du lockfile
+    StepAudit              # audit de sécurité/licence
+    StepCleanup            # nettoyage caches temporaires
+.end
+
+# Statut d’une étape.
+pub enum PkgStepStatusKind:
+    StepPending
+    StepRunning
+    StepSucceeded
+    StepFailed
+    StepSkipped
+.end
+
+# Résumé de logs pour une étape (pour UI / CI).
+pub struct PkgStepLogSummary:
+    let stdout_lines: u32
+    let stderr_lines: u32
+    let log_size_bytes: u64
+.end
+
+# Résumé d’erreur/diagnostic pour une étape.
+pub struct PkgStepError:
+    let message: String
+    let diagnostics: LpkgDiagnosticSet
+.end
+
+# Étape concrète associée à une action.
+pub struct PkgStep:
+    let id: PkgStepId
+    let plan: PkgPlanId
+    let action_index: u32               # index dans PkgPlan.actions
+    let kind: PkgStepKind
+    let status: PkgStepStatusKind
+    let started_millis: Option<u64>
+    let finished_millis: Option<u64>
+    let log_path: Option<String>        # chemin vers logs détaillés
+    let log_summary: Option<PkgStepLogSummary>
+    let error: Option<PkgStepError>
+.end
+
+# Pipeline complet pour un plan.
+pub struct PkgPipeline:
+    let plan: PkgPlanId
+    let steps: Vec<PkgStep>
+.end
+
+# ----------------------------------------------------------------------------
+# Résultats, audits, rapports et résumé
+# ----------------------------------------------------------------------------
+
+# Statut global d’une opération pkg.
+pub enum PkgOperationStatusKind:
+    PkgSuccess
+    PkgSuccessWithWarnings
+    PkgFailureUserError        # erreur d’entrées utilisateur (paramètres)
+    PkgFailureResolutionError  # échec de résolution lpkg
+    PkgFailureExecutionError   # erreur pendant l’exécution d’un step
+.end
+
+# Résumé de progression pour une opération.
+pub struct PkgOperationProgress:
+    let total_steps: u32
+    let completed_steps: u32
+    let failed_steps: u32
+.end
+
+# Résumé par action.
+pub struct PkgActionResult:
+    let action: PkgAction
+    let steps: Vec<PkgStepId>
+    let succeeded: Bool
+    let warning_count: u32
+    let error_count: u32
+.end
+
+# ----------------------------------------------------------------------------
+# Audit : findings dédiés (sécurité / licences / vulnérabilités)
+# ----------------------------------------------------------------------------
+
+pub enum PkgAuditFindingSeverity:
+    AuditLow
+    AuditMedium
+    AuditHigh
+    AuditCritical
+.end
+
+pub enum PkgAuditFindingKind:
+    AuditSecurityVulnerability
+    AuditLicenseIssue
+    AuditOutdatedDependency
+    AuditPolicyViolation
+.end
+
+pub struct PkgAuditFinding:
+    let severity: PkgAuditFindingSeverity
+    let kind: PkgAuditFindingKind
+    let package_node: LpkgNodeId
+    let description: String
+    let reference: Option<String>          # lien CVE / page licence / doc
+.end
+
+pub struct PkgAuditReport:
+    let findings: Vec<PkgAuditFinding>
+    let high_or_critical_count: u32
+    let total_findings: u32
+.end
+
+# ----------------------------------------------------------------------------
+# Rapport complet d’opération
+# ----------------------------------------------------------------------------
+
+# Rapport complet pour une opération.
+pub struct PkgReport:
+    let id: PkgReportId
+    let operation: PkgOperationId
+    let plan: PkgPlanId
+    let plan_summary: PkgPlanSummary
+    let pipeline: PkgPipeline
+    let actions: Vec<PkgActionResult>
+
+    let diagnostics: LpkgDiagnosticSet      # diagnostics globaux / agrégés
+    let audit_report: Option<PkgAuditReport>
+
+    let status: PkgOperationStatusKind
+    let progress: PkgOperationProgress
+    let duration_millis: u64
+.end
+
+# ----------------------------------------------------------------------------
+# Nœuds génériques pkg pour tooling
+# ----------------------------------------------------------------------------
+
+pub enum PkgNodeKind:
+    NodeOperation
+    NodePlan
+    NodeStep
+    NodeReport
+.end
+
+pub struct PkgNode:
+    let id: PkgOpIndex
+    let kind: PkgNodeKind
+.end

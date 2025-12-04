@@ -1,0 +1,429 @@
+
+
+module vitte.examples.functions
+
+import std.collections as coll
+import vitte.compiler.spans as spans
+import vitte.compiler.names as names
+import vitte.compiler.types as types
+
+# ============================================================================
+# Vitte examples – Modèle et exemples autour des fonctions
+#
+# Objectifs de ce fichier :
+#   - Proposer un modèle déclaratif pour représenter les fonctions dans
+#     le compilateur et les outils :
+#       * identifiants de fonctions, paramètres, appels,
+#       * signatures (paramètres, retour),
+#       * pureté, visibilité, ABI, inline,
+#       * surcharges et instanciations.
+#   - Fournir des exemples ultra complets en "phrase syntaxe" :
+#       * fonctions simples,
+#       * fonctions avec Option et Result,
+#       * fonctions d’ordre supérieur,
+#       * petit scenario de démonstration.
+#
+# Convention :
+#   - Ce fichier est purement "data model" + exemples commentés :
+#       * aucune fonction exécutable réelle au niveau du runtime,
+#       * pas de logique d’exécution dans ce module.
+#   - Syntaxe officielle Vitte :
+#       * blocs terminés par ".end",
+#       * aucune accolade dans le code ni dans les exemples.
+# ============================================================================
+
+# ============================================================================
+# Identifiants et métadonnées
+# ============================================================================
+
+# Identifiant logique d’une fonction.
+type FunctionId = u32
+
+# Identifiant logique d’un paramètre de fonction.
+type FunctionParamId = u32
+
+# Identifiant logique d’un type de fonction.
+type FunctionTypeId = u32
+
+# Identifiant logique d’un appel de fonction.
+type FunctionCallId = u32
+
+# Identifiant d’un ensemble de surcharges logiques (groupe de fonctions).
+type OverloadSetId = u32
+
+# Identifiant logique d’un paramètre générique.
+type GenericParamId = u32
+
+# Identifiant logique d’une instanciation générique.
+type GenericInstanceId = u32
+
+# ============================================================================
+# Genre, visibilité, pureté, ABI
+# ============================================================================
+
+# Genre de fonction :
+#   - Free       : fonction libre de module,
+#   - Method     : méthode associée à un type,
+#   - Associated : fonction associée (statique),
+#   - Intrinsic  : fonction intrinsèque fournie par le runtime ou la plateforme.
+enum FunctionKind
+    variant Free
+    variant Method
+    variant Associated
+    variant Intrinsic
+.end
+
+# Visibilité logique d’une fonction.
+enum FunctionVisibility
+    variant Private
+    variant Module
+    variant Crate
+    variant Public
+.end
+
+# Pureté logique d’une fonction :
+#   - Pure       : sans effets observables (pour le compilateur),
+#   - Impure     : avec effets (I O, mutation globale, etc.),
+#   - Unsafe     : nécessite un contexte particulier (FFI bas niveau, etc.).
+enum FunctionPurity
+    variant Pure
+    variant Impure
+    variant Unsafe
+.end
+
+# ABI logique (convention d’appel).
+enum FunctionAbi
+    variant Vitte
+    variant C
+    variant System
+    variant Intrinsic
+.end
+
+# Indication d’inline pour l’optimisation.
+enum InlineHint
+    variant Auto
+    variant Always
+    variant Never
+.end
+
+# ============================================================================
+# Paramètres et types de fonctions
+# ============================================================================
+
+# Genre de paramètre :
+#   - Normal       : paramètre classique,
+#   - SelfByValue  : "self" par valeur,
+#   - SelfByRef    : "self" par référence partagée,
+#   - SelfByMutRef : "self" par référence mutable.
+enum ParamKind
+    variant Normal
+    variant SelfByValue
+    variant SelfByRef
+    variant SelfByMutRef
+.end
+
+# Mutabilité logique d’un paramètre.
+enum ParamMutability
+    variant Immutable
+    variant Mutable
+.end
+
+# Paramètre formel de fonction.
+struct FunctionParam
+    # Identifiant logique du paramètre.
+    field id: FunctionParamId
+
+    # Nom symbolique.
+    field name: names.SymbolId
+
+    # Type du paramètre.
+    field param_type: types.TypeId
+
+    # Genre du paramètre (self ou normal).
+    field kind: ParamKind
+
+    # Mutabilité.
+    field mutability: ParamMutability
+
+    # Span de la déclaration du paramètre.
+    field span: spans.SpanId
+.end
+
+# Paramètre générique pour une fonction.
+struct GenericParam
+    field id: GenericParamId
+
+    # Nom du paramètre générique.
+    field name: names.SymbolId
+
+    # Type de contrainte ou borne supérieure (si la grammaire le prend en charge).
+    field bound_type: types.TypeId
+
+    # Span de la déclaration générique.
+    field span: spans.SpanId
+.end
+
+# Instanciation générique d’une fonction.
+struct GenericInstance
+    field id: GenericInstanceId
+
+    # Fonction générique d’origine.
+    field function_id: FunctionId
+
+    # Types appliqués aux paramètres génériques dans l’ordre.
+    field type_args: coll.List<types.TypeId>
+
+    # Span du site d’instanciation dans la source.
+    field span: spans.SpanId
+.end
+
+# Type logique d’une fonction :
+#   - liste de types de paramètres,
+#   - type de retour.
+struct FunctionType
+    field id: FunctionTypeId
+
+    # Types de paramètres dans l’ordre.
+    field param_types: coll.List<types.TypeId>
+
+    # Type de retour.
+    field return_type: types.TypeId
+
+    # Span de la signature dans la source.
+    field span: spans.SpanId
+.end
+
+# Signature logique d’une fonction.
+struct FunctionSignature
+    # Paramètres formels détaillés.
+    field params: coll.List<FunctionParam>
+
+    # Type de retour.
+    field return_type: types.TypeId
+
+    # Paramètres génériques éventuels.
+    field generic_params: coll.List<GenericParam>
+
+    # Span global de la signature (nom, paramètres, flèche de retour).
+    field span: spans.SpanId
+.end
+
+# ============================================================================
+# Définitions de fonctions et surcharges
+# ============================================================================
+
+# Définition complète d’une fonction.
+struct FunctionDef
+    # Identifiant logique.
+    field id: FunctionId
+
+    # Nom symbolique de la fonction.
+    field name: names.SymbolId
+
+    # Chemin de module (pour retrouver l’emplacement).
+    field module_path: names.ModulePathId
+
+    # Genre de fonction.
+    field kind: FunctionKind
+
+    # Visibilité.
+    field visibility: FunctionVisibility
+
+    # Pureté logique.
+    field purity: FunctionPurity
+
+    # ABI.
+    field abi: FunctionAbi
+
+    # Indice éventuel d’inline.
+    field inline_hint: InlineHint
+
+    # Signature détaillée.
+    field signature: FunctionSignature
+
+    # Type logique de la fonction.
+    field fn_type: FunctionType
+
+    # Span de la définition complète (de fn jusqu’à ".end").
+    field span: spans.SpanId
+.end
+
+# Ensemble de surcharges partageant le même nom logique.
+struct OverloadSet
+    field id: OverloadSetId
+
+    # Nom commun (par exemple "print").
+    field name: names.SymbolId
+
+    # Liste des fonctions qui appartiennent à ce groupe de surcharges.
+    field functions: coll.List<FunctionId>
+.end
+
+# Table centrale des fonctions d’un module ou d’un crate.
+struct FunctionTable
+    field functions: coll.List<FunctionDef>
+    field overloads: coll.List<OverloadSet>
+    field generic_instances: coll.List<GenericInstance>
+.end
+
+# ============================================================================
+# Appels de fonctions
+# ============================================================================
+
+# Mode d’appel logique :
+#   - Direct      : appel direct à une fonction connue,
+#   - Virtual     : appel via dispatch dynamique,
+#   - Interface   : appel via une interface ou trait,
+#   - ClosureCall : appel d’une closure.
+enum CallConvKind
+    variant Direct
+    variant Virtual
+    variant Interface
+    variant ClosureCall
+.end
+
+# Appel de fonction dans le code source.
+struct FunctionCall
+    # Identifiant logique de l’appel.
+    field id: FunctionCallId
+
+    # Fonction résolue (après résolution des surcharges).
+    field function_id: FunctionId
+
+    # Mode d’appel.
+    field call_conv: CallConvKind
+
+    # Span de l’appel dans le code source.
+    field span: spans.SpanId
+.end
+
+# Graphe logique des appels de fonctions (vue simplifiée).
+struct FunctionCallGraph
+    # Appels individuels.
+    field calls: coll.List<FunctionCall>
+.end
+
+# ============================================================================
+# Vue agrégée pour les outils
+# ============================================================================
+
+# Vue consolidée de tout ce qui concerne les fonctions dans un module ou crate.
+struct FunctionsModelSnapshot
+    field fn_table: FunctionTable
+    field call_graph: FunctionCallGraph
+.end
+
+# ============================================================================
+# Exemples d’utilisation en "phrase syntaxe"
+# ============================================================================
+#
+# Les exemples ci dessous ne sont pas exécutés par ce module, mais servent :
+#   - de documentation,
+#   - de tests de parsing,
+#   - de base pour la démonstration dans les outils.
+#
+# Tous les blocs se terminent par ".end".
+#
+# --------------------------------------------------------------------------
+# Exemple 1 : fonction simple d’addition
+# --------------------------------------------------------------------------
+#
+#   fn add a b
+#       ret a + b
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 2 : fonction qui utilise Option
+# --------------------------------------------------------------------------
+#
+#   fn safe_div a b
+#       when b == 0
+#           ret None
+#       else
+#           ret Some a / b
+#       .end
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 3 : fonction qui renvoie un Result
+# --------------------------------------------------------------------------
+#
+#   fn parse_int text
+#       # Ici, on suppose l’existence d’un type Result<Int, String>
+#       # et d’une fonction parse_primitive_int interne.
+#       when text == ""
+#           ret Err "empty"
+#       else
+#           # pseudo appel à une fonction interne :
+#           # ret parse_primitive_int text
+#           ret Ok 0
+#       .end
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 4 : fonction d’ordre supérieur (prend une fonction en paramètre)
+# --------------------------------------------------------------------------
+#
+#   fn apply_to_pair f x y
+#       # Appelle f avec deux arguments et renvoie le résultat.
+#       ret f x y
+#   .end
+#
+#   fn demo_apply
+#       fn add_local a b
+#           ret a + b
+#       .end
+#
+#       set r = apply_to_pair add_local 2 3
+#       say r
+#   .end
+#
+# --------------------------------------------------------------------------
+# Exemple 5 : petite bibliothèque de fonctions et scenario de démo
+# --------------------------------------------------------------------------
+#
+#   fn square x
+#       ret x * x
+#   .end
+#
+#   fn sum3 a b c
+#       ret a + b + c
+#   .end
+#
+#   fn mean3 a b c
+#       set s = sum3 a b c
+#       ret s / 3
+#   .end
+#
+#   scn functions_demo
+#       say "Functions demo"
+#
+#       set x = 4
+#       set y = 0
+#
+#       set s = add x x
+#       say "add:"
+#       say s
+#
+#       set q1 = safe_div x 2
+#       set q2 = safe_div x y
+#
+#       say "safe_div x 2:"
+#       say q1
+#
+#       say "safe_div x 0:"
+#       say q2
+#
+#       set m = mean3 3 6 9
+#       say "mean3:"
+#       say m
+#   .end
+#
+# Ces exemples montrent :
+#   - des fonctions simples avec plusieurs paramètres,
+#   - l’usage de Option et Result comme types de retour,
+#   - des fonctions d’ordre supérieur prenant une fonction en paramètre,
+#   - la composition de fonctions (sum3, mean3),
+#   - un scenario centralisant les appels pour illustrer l’API.
+#
+.end

@@ -1,0 +1,666 @@
+module vitte.compiler.tokens
+
+import std.collections as coll
+import vitte.compiler.span as span
+
+# =============================================================================
+# Vitte compiler – Token & lexer model (maximal, logique, sans I/O)
+# =============================================================================
+#
+# Objectifs :
+#   - Définir la représentation logique des tokens produits par le lexer.
+#   - Modéliser les erreurs lexicales (LexError) et un résultat de lexing
+#     (LexResult) exploitable par le front-end / IDE / outils.
+#   - Fournir des helpers pour interroger/filtrer la séquence de tokens :
+#       * trivia (espaces, commentaires),
+#       * INDENT/DEDENT/NEWLINE,
+#       * recherche par position (BytePos).
+#   - Ne contenir aucune logique d'I/O ni d'accès disque.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Identifiants
+# -----------------------------------------------------------------------------
+
+typedef u32 TokenId
+typedef u32 LexErrorId
+
+# -----------------------------------------------------------------------------
+# Kinds lexicaux
+# -----------------------------------------------------------------------------
+
+# Mots-clés supportés, cohérents avec la grammaire Vitte (noyau + Phrase).
+pub enum KeywordKind:
+    # Noyau Vitte
+    KeywordModule
+    KeywordImport
+    KeywordExport
+    KeywordMuffin
+
+    KeywordProgram
+    KeywordService
+    KeywordKernel
+    KeywordDriver
+    KeywordTool
+    KeywordScenario
+    KeywordPipeline
+
+    KeywordStruct
+    KeywordUnion
+    KeywordEnum
+    KeywordTypedef
+    KeywordInline
+    KeywordFn
+
+    KeywordExtern
+    KeywordStatic
+    KeywordSizeof
+    KeywordAlignof
+
+    KeywordLet
+    KeywordConst
+
+    KeywordIf
+    KeywordElif
+    KeywordElse
+    KeywordWhile
+    KeywordFor
+    KeywordIn
+    KeywordMatch
+
+    KeywordBreak
+    KeywordContinue
+    KeywordReturn
+
+    KeywordAnd
+    KeywordOr
+    KeywordNot
+
+    KeywordTrue
+    KeywordFalse
+    KeywordNull
+
+    KeywordAs
+    KeywordAll
+
+    KeywordVolatile
+    KeywordRestrict
+
+    KeywordPub
+
+    KeywordTrait
+    KeywordImpl
+    KeywordWhere
+
+    # Syntaxe Phrase
+    KeywordMod
+    KeywordUse
+    KeywordType
+    KeywordField
+    KeywordScn
+    KeywordProg
+    KeywordSet
+    KeywordSay
+    KeywordDo
+    KeywordWhen
+    KeywordLoop
+    KeywordFrom
+    KeywordTo
+    KeywordStep
+    KeywordRet
+.end
+
+# Littéraux élémentaires.
+pub enum LiteralTokenKind:
+    LiteralInt
+    LiteralFloat
+    LiteralString
+    LiteralBool
+    LiteralNull
+.end
+
+# Ponctuation (non-ambigüe).
+pub enum PunctKind:
+    PunctLParen      # (
+    PunctRParen      # )
+    PunctLBracket    # [
+    PunctRBracket    # ]
+    PunctLBrace      # {
+    PunctRBrace      # }
+    PunctColon       # :
+    PunctSemicolon   # ;
+    PunctComma       # ,
+    PunctDot         # .
+    PunctArrow       # ->
+    PunctFatArrow    # =>
+    PunctDotDot      # ..
+    PunctDotDotEq    # ..=
+    PunctAssign      # =
+.end
+
+# Opérateurs (incluant les opérateurs de composition / assign).
+pub enum OperatorKind:
+    OpPlus           # +
+    OpMinus          # -
+    OpStar           # *
+    OpSlash          # /
+    OpPercent        # %
+
+    OpBitAnd         # &
+    OpBitOr          # |
+    OpBitXor         # ^
+    OpBitNot         # ~
+    OpShl            # <<
+    OpShr            # >>
+
+    OpEq             # ==
+    OpNe             # !=
+    OpLt             # <
+    OpLe             # <=
+    OpGt             # >
+    OpGe             # >=
+
+    OpBoolAnd        # and
+    OpBoolOr         # or
+
+    OpPipeForward    # |>
+
+    OpAssign         # =
+    OpAddAssign      # +=
+    OpSubAssign      # -=
+    OpMulAssign      # *=
+    OpDivAssign      # /=
+    OpAndAssign      # &=
+    OpOrAssign       # |=
+    OpXorAssign      # ^=
+    OpShlAssign      # <<=
+    OpShrAssign      # >>=
+.end
+
+# Type général d'un token.
+pub enum TokenKind:
+    TokenIdentifier
+    TokenKeyword
+    TokenLiteral
+    TokenPunct
+    TokenOperator
+
+    TokenNewline     # NEWLINE structurale
+    TokenIndent      # INDENT (Python-like)
+    TokenDedent      # DEDENT (Python-like)
+
+    TokenComment     # commentaire ligne (ou bloc si supporté)
+    TokenWhitespace  # espaces / tabulations significatifs
+
+    TokenEndOfFile
+    TokenError       # token de repli en cas d'erreur
+.end
+
+# Catégorie d'espace/commentaire.
+pub enum TriviaKind:
+    TriviaWhitespace
+    TriviaComment
+.end
+
+# Représentation d'un token complet.
+pub struct Token:
+    let id: TokenId
+    let kind: TokenKind
+    let keyword: coll.Option<KeywordKind>
+    let literal_kind: coll.Option<LiteralTokenKind>
+    let punct: coll.Option<PunctKind>
+    let op: coll.Option<OperatorKind>
+    let trivia_kind: coll.Option<TriviaKind>
+    let text: String           # lexème brut
+    let span: span.Span
+.end
+
+# Flux de tokens produit par le lexer.
+pub struct TokenStream:
+    let file: span.FileId
+    let tokens: Vec<Token>
+.end
+
+# -----------------------------------------------------------------------------
+# Erreurs lexicales
+# -----------------------------------------------------------------------------
+
+pub enum LexErrorKind:
+    LexErrorUnexpectedChar
+    LexErrorUnterminatedString
+    LexErrorInvalidNumber
+    LexErrorInvalidEscape
+    LexErrorIndentationError
+    LexErrorMixedTabsSpaces
+    LexErrorUnknownToken
+    LexErrorOther
+.end
+
+pub struct LexError:
+    let id: LexErrorId
+    let kind: LexErrorKind
+    let message: String
+    let note: String
+    let span: span.Span
+.end
+
+pub struct LexResult:
+    let stream: TokenStream
+    let errors: Vec<LexError>
+    let has_fatal_error: bool
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers Token / trivia
+# -----------------------------------------------------------------------------
+
+pub fn token_is_identifier(t: Token) -> bool:
+    return t.kind == TokenKind::TokenIdentifier
+.end
+
+pub fn token_is_keyword(t: Token) -> bool:
+    return t.kind == TokenKind::TokenKeyword
+.end
+
+pub fn token_is_literal(t: Token) -> bool:
+    return t.kind == TokenKind::TokenLiteral
+.end
+
+pub fn token_is_trivia(t: Token) -> bool:
+    if t.kind == TokenKind::TokenWhitespace:
+        return true
+    .end
+    if t.kind == TokenKind::TokenComment:
+        return true
+    .end
+    return false
+.end
+
+pub fn token_is_newline(t: Token) -> bool:
+    return t.kind == TokenKind::TokenNewline
+.end
+
+pub fn token_is_indent(t: Token) -> bool:
+    return t.kind == TokenKind::TokenIndent
+.end
+
+pub fn token_is_dedent(t: Token) -> bool:
+    return t.kind == TokenKind::TokenDedent
+.end
+
+pub fn token_is_eof(t: Token) -> bool:
+    return t.kind == TokenKind::TokenEndOfFile
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers TokenStream
+# -----------------------------------------------------------------------------
+
+pub fn token_stream_new(file: span.FileId) -> TokenStream:
+    let v = Vec<Token>::new()
+    let ts = TokenStream {
+        file: file,
+        tokens: v
+    }
+    return ts
+.end
+
+pub fn token_stream_len(stream: TokenStream) -> usize:
+    let n = stream.tokens.len()
+    return n
+.end
+
+pub fn token_stream_is_empty(stream: TokenStream) -> bool:
+    return token_stream_len(stream) == (usize) 0
+.end
+
+pub fn token_stream_push(stream: TokenStream, tok: Token) -> TokenStream:
+    let v = stream.tokens
+    v.push(tok)
+    let ts2 = TokenStream {
+        file: stream.file,
+        tokens: v
+    }
+    return ts2
+.end
+
+pub fn token_stream_get(stream: TokenStream, index: usize) -> Token:
+    let v = stream.tokens
+    let t = v[index]
+    return t
+.end
+
+pub fn token_stream_last(stream: TokenStream) -> coll.Option<Token>:
+    let v = stream.tokens
+    let n = v.len()
+    if n == (usize) 0:
+        let none_tok = coll.option_none<Token>()
+        return none_tok
+    .end
+
+    let last_idx = n - (usize) 1
+    let t = v[last_idx]
+    let some_tok = coll.option_some<Token>(t)
+    return some_tok
+.end
+
+# Recherche linéaire : premier token dont le span contient la position.
+pub fn token_stream_find_token_at_pos(
+    stream: TokenStream,
+    pos: span.BytePos
+) -> coll.Option<TokenId>:
+    let v = stream.tokens
+    let n = v.len()
+    let i = (usize) 0
+
+    while i < n:
+        let t = v[i]
+        if span.span_contains_pos(t.span, pos):
+            let some_id = coll.option_some<TokenId>(t.id)
+            return some_id
+        .end
+        let i = i + (usize) 1
+    .end
+
+    let none_id = coll.option_none<TokenId>()
+    return none_id
+.end
+
+# Renvoie l'index du token (dans le Vec) correspondant à un TokenId, supposé
+# être l'index logique (TokenId == index). On laisse la liberté à l'implémentation
+# de divergence, mais dans la première version on garde cette hypothèse simple.
+pub fn token_stream_index_of_id(
+    stream: TokenStream,
+    id: TokenId
+) -> coll.Option<usize>:
+    let v = stream.tokens
+    let n = v.len()
+    let idx = (usize) id
+    if idx < n:
+        let some_idx = coll.option_some<usize>(idx)
+        return some_idx
+    .end
+    let none_idx = coll.option_none<usize>()
+    return none_idx
+.end
+
+# Renvoie le premier token non trivia à partir d'un index de départ (inclus).
+pub fn token_stream_next_non_trivia_from(
+    stream: TokenStream,
+    start_index: usize
+) -> coll.Option<TokenId>:
+    let v = stream.tokens
+    let n = v.len()
+    let i = start_index
+
+    while i < n:
+        let t = v[i]
+        if not token_is_trivia(t):
+            let some_id = coll.option_some<TokenId>(t.id)
+            return some_id
+        .end
+        let i = i + (usize) 1
+    .end
+
+    let none_id = coll.option_none<TokenId>()
+    return none_id
+.end
+
+# Renvoie le token précédent non trivia avant un index donné (exclu).
+pub fn token_stream_prev_non_trivia_before(
+    stream: TokenStream,
+    index: usize
+) -> coll.Option<TokenId>:
+    if index == (usize) 0:
+        let none_id = coll.option_none<TokenId>()
+        return none_id
+    .end
+
+    let v = stream.tokens
+    let i0 = index - (usize) 1
+    let i = i0
+
+    while true:
+        let t = v[i]
+        if not token_is_trivia(t):
+            let some_id = coll.option_some<TokenId>(t.id)
+            return some_id
+        .end
+
+        if i == (usize) 0:
+            let none2 = coll.option_none<TokenId>()
+            return none2
+        .end
+
+        let i = i - (usize) 1
+    .end
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers LexError / LexResult
+# -----------------------------------------------------------------------------
+
+fn lex_result_next_error_id(result: LexResult) -> LexErrorId:
+    let n = result.errors.len()
+    return (LexErrorId) n
+.end
+
+pub fn lex_error_new(
+    kind: LexErrorKind,
+    message: String,
+    note: String,
+    region: span.Span
+) -> LexError:
+    let err = LexError {
+        id: (LexErrorId) 0,
+        kind: kind,
+        message: message,
+        note: note,
+        span: region
+    }
+    return err
+.end
+
+pub fn lex_result_new(file: span.FileId) -> LexResult:
+    let ts = token_stream_new(file)
+    let errs = Vec<LexError>::new()
+    let lr = LexResult {
+        stream: ts,
+        errors: errs,
+        has_fatal_error: false
+    }
+    return lr
+.end
+
+pub fn lex_result_add_token(
+    result: LexResult,
+    token: Token
+) -> LexResult:
+    let ts = result.stream
+    let ts2 = token_stream_push(ts, token)
+
+    let errs = result.errors
+    let lr2 = LexResult {
+        stream: ts2,
+        errors: errs,
+        has_fatal_error: result.has_fatal_error
+    }
+    return lr2
+.end
+
+pub fn lex_result_add_error(
+    result: LexResult,
+    kind: LexErrorKind,
+    message: String,
+    note: String,
+    region: span.Span,
+    is_fatal: bool
+) -> LexResult:
+    let ts = result.stream
+    let errs = result.errors
+
+    let new_id = lex_result_next_error_id(result)
+
+    let err = LexError {
+        id: new_id,
+        kind: kind,
+        message: message,
+        note: note,
+        span: region
+    }
+
+    errs.push(err)
+
+    let lr2 = LexResult {
+        stream: ts,
+        errors: errs,
+        has_fatal_error: result.has_fatal_error or is_fatal
+    }
+    return lr2
+.end
+
+pub fn lex_result_error_count(result: LexResult) -> u32:
+    let n = result.errors.len()
+    return (u32) n
+.end
+
+pub fn lex_result_has_errors(result: LexResult) -> bool:
+    return lex_result_error_count(result) > (u32) 0
+.end
+
+pub fn lex_result_has_fatal_error(result: LexResult) -> bool:
+    return result.has_fatal_error
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers de debug
+# -----------------------------------------------------------------------------
+
+# Teste si un token est un token de fin de fichier ou d'erreur.
+pub fn token_is_terminal_error_or_eof(t: Token) -> bool:
+    if t.kind == TokenKind::TokenEndOfFile:
+        return true
+    .end
+    if t.kind == TokenKind::TokenError:
+        return true
+    .end
+    return false
+.end
+
+# Retourne une vue textuelle simple d'un token (kind + texte).
+# Implémentation minimale (à enrichir si besoin).
+pub fn token_debug_summary(t: Token) -> String:
+    let prefix = ""
+    if token_is_identifier(t):
+        let prefix = "ident:"
+    .end
+    if token_is_keyword(t):
+        let prefix = "kw:"
+    .end
+    if token_is_literal(t):
+        let prefix = "lit:"
+    .end
+    if t.kind == TokenKind::TokenOperator:
+        let prefix = "op:"
+    .end
+    if t.kind == TokenKind::TokenPunct:
+        let prefix = "punct:"
+    .end
+    if token_is_trivia(t):
+        let prefix = "trivia:"
+    .end
+    if t.kind == TokenKind::TokenEndOfFile:
+        let prefix = "eof:"
+    .end
+    if t.kind == TokenKind::TokenError:
+        let prefix = "err:"
+    .end
+
+    let out = prefix + t.text
+    return out
+.end
+
+# -----------------------------------------------------------------------------
+# Scénario interne de smoke-test
+# -----------------------------------------------------------------------------
+
+scenario tokens_smoke_test():
+    let file = span.file_id_new(0)
+
+    let res0 = lex_result_new(file)
+
+    # Création de tokens simples "module vitte.core"
+    let sp_kw = span.span_from_len((span.BytePos) 0, (span.ByteLen) 6)
+    let tok_kw = Token {
+        id: (TokenId) 0,
+        kind: TokenKind::TokenKeyword,
+        keyword: coll.option_some<KeywordKind>(KeywordKind::KeywordModule),
+        literal_kind: coll.option_none<LiteralTokenKind>(),
+        punct: coll.option_none<PunctKind>(),
+        op: coll.option_none<OperatorKind>(),
+        trivia_kind: coll.option_none<TriviaKind>(),
+        text: "module",
+        span: sp_kw
+    }
+
+    let sp_id = span.span_from_len((span.BytePos) 7, (span.ByteLen) 10)
+    let tok_id = Token {
+        id: (TokenId) 1,
+        kind: TokenKind::TokenIdentifier,
+        keyword: coll.option_none<KeywordKind>(),
+        literal_kind: coll.option_none<LiteralTokenKind>(),
+        punct: coll.option_none<PunctKind>(),
+        op: coll.option_none<OperatorKind>(),
+        trivia_kind: coll.option_none<TriviaKind>(),
+        text: "vitte.core",
+        span: sp_id
+    }
+
+    let res1 = lex_result_add_token(res0, tok_kw)
+    let res2 = lex_result_add_token(res1, tok_id)
+
+    let eof_span = span.span_empty_at((span.BytePos) 17)
+    let tok_eof = Token {
+        id: (TokenId) 2,
+        kind: TokenKind::TokenEndOfFile,
+        keyword: coll.option_none<KeywordKind>(),
+        literal_kind: coll.option_none<LiteralTokenKind>(),
+        punct: coll.option_none<PunctKind>(),
+        op: coll.option_none<OperatorKind>(),
+        trivia_kind: coll.option_none<TriviaKind>(),
+        text: "",
+        span: eof_span
+    }
+
+    let res3 = lex_result_add_token(res2, tok_eof)
+
+    let stream = res3.stream
+    let _len = token_stream_len(stream)
+    let _is_empty = token_stream_is_empty(stream)
+
+    let _first_non_trivia = token_stream_next_non_trivia_from(stream, (usize) 0)
+    let _last_token = token_stream_last(stream)
+    let pos = (span.BytePos) 1
+    let _tok_at_pos = token_stream_find_token_at_pos(stream, pos)
+
+    let err_span = span.span_single_byte((span.BytePos) 100)
+    let res4 = lex_result_add_error(
+        res3,
+        LexErrorKind::LexErrorUnexpectedChar,
+        "unexpected character",
+        "",
+        err_span,
+        true
+    )
+
+    let _has_errors = lex_result_has_errors(res4)
+    let _has_fatal = lex_result_has_fatal_error(res4)
+
+    let _ = _len
+    let _ = _is_empty
+    let _ = _first_non_trivia
+    let _ = _last_token
+    let _ = _tok_at_pos
+    let _ = _has_errors
+    let _ = _has_fatal
+.end

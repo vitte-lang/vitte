@@ -1,0 +1,1616 @@
+module vitte.compiler.type_infer
+
+import std.collections as coll
+import vitte.compiler.span as span
+import vitte.compiler.syntax as syn
+import vitte.compiler.symbols as sym
+import vitte.compiler.stdlib as stdlib
+import vitte.compiler.traits as trt
+
+# =============================================================================
+# Vitte compiler – Type inference core (maximal, logique, sans I/O)
+# =============================================================================
+#
+# Objectifs :
+#   - Représenter les types inférés (HM-like) pour Vitte :
+#       * types monomorphes (fonction, tuple, liste, map, pointeur, etc.),
+#       * variables de type, schémas de types (quantification).
+#   - Modéliser les contraintes de typage :
+#       * égalité (T == U),
+#       * conversion implicite (T -> U),
+#       * implémentation de trait (T: Trait<...>).
+#   - Fournir un noyau de résolution :
+#       * substitution / unification de base,
+#       * résolution séquentielle de contraintes,
+#       * collecte d’erreurs de typage.
+#   - Ne faire aucun I/O : aucune lecture/écriture de fichiers ou logs.
+#
+# Ce module ne parcourt PAS directement le SyntaxTree ; il fournit uniquement
+# une API logique que les passes d’inférence peuvent utiliser.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Identifiants de types, schémas, contraintes, erreurs
+# -----------------------------------------------------------------------------
+
+typedef u32 TypeId
+typedef u32 TypeVarId
+typedef u32 TypeConstraintId
+typedef u32 TypeSchemeId
+typedef u32 InferErrorId
+
+# -----------------------------------------------------------------------------
+# Kinds de types et de contraintes
+# -----------------------------------------------------------------------------
+
+pub enum TypeKind:
+    TypeKindBuiltin       # "i32", "Bool", etc.
+    TypeKindNamed         # type déclaré (struct/enum/alias)
+    TypeKindTypeVar       # variable de type (α, β, ...)
+    TypeKindFunction      # (T1, ..., Tn) -> R
+    TypeKindTuple         # (T1, ..., Tn)
+    TypeKindList          # [T]
+    TypeKindMap           # {K: V}
+    TypeKindPointer       # *T
+    TypeKindReference     # &T / &const T
+    TypeKindArray         # [T; N]
+    TypeKindUnknown       # type inconnu (placeholder)
+    TypeKindError         # type d’erreur (propagation d’erreurs)
+.end
+
+pub enum TypeConstraintKind:
+    TypeConstraintEquals          # T == U
+    TypeConstraintImplicitConvert # T -> U (conversion implicite)
+    TypeConstraintImplementsTrait # T: Trait<Args...>
+.end
+
+pub enum InferErrorKind:
+    InferErrorUnificationFail
+    InferErrorOccursCheck
+    InferErrorKindMismatch
+    InferErrorTraitNotImplemented
+    InferErrorOther
+.end
+
+# -----------------------------------------------------------------------------
+# Variables de type et substitution
+# -----------------------------------------------------------------------------
+
+pub struct TypeVar:
+    let id: TypeVarId
+    let name: String
+    let rank: u32
+    let is_rigid: bool
+    let span: span.Span
+.end
+
+pub struct TypeBuiltin:
+    let name: String
+.end
+
+pub struct TypeNamed:
+    let name: String
+.end
+
+pub struct TypeFunction:
+    let params: Vec<TypeId>
+    let result: TypeId
+.end
+
+pub struct TypeTuple:
+    let elements: Vec<TypeId>
+.end
+
+pub struct TypeList:
+    let element: TypeId
+.end
+
+pub struct TypeMap:
+    let key: TypeId
+    let value: TypeId
+.end
+
+pub struct TypePointer:
+    let pointee: TypeId
+.end
+
+pub struct TypeReference:
+    let referent: TypeId
+    let is_const: bool
+.end
+
+pub struct TypeArray:
+    let element: TypeId
+    let length: coll.Option<u64>
+.end
+
+# Type monomorphe complet (un seul enum + payloads).
+pub struct Type:
+    let id: TypeId
+    let kind: TypeKind
+    let span: span.Span
+
+    let builtin: TypeBuiltin
+    let named: TypeNamed
+    let var_id: coll.Option<TypeVarId>
+    let fn_type: TypeFunction
+    let tuple_: TypeTuple
+    let list: TypeList
+    let map: TypeMap
+    let pointer: TypePointer
+    let reference: TypeReference
+    let array: TypeArray
+.end
+
+# Substitution α ↦ τ
+pub struct TypeSubstEntry:
+    let var: TypeVarId
+    let ty: TypeId
+.end
+
+pub struct TypeSubst:
+    let entries: Vec<TypeSubstEntry>
+.end
+
+# -----------------------------------------------------------------------------
+# Contraintes et erreurs
+# -----------------------------------------------------------------------------
+
+pub struct TypeConstraint:
+    let id: TypeConstraintId
+    let kind: TypeConstraintKind
+    let left: TypeId
+    let right: TypeId
+
+    # Pour les contraintes de traits :
+    let trait_id: coll.Option<trt.TraitId>
+    let trait_args: Vec<TypeId>
+
+    let span: span.Span
+.end
+
+pub struct TypeScheme:
+    let id: TypeSchemeId
+    let quantifiers: Vec<TypeVarId>
+    let body: TypeId
+    let span: span.Span
+    let symbol: coll.Option<sym.SymbolId>
+.end
+
+pub struct TypeEnvEntry:
+    let symbol: sym.SymbolId
+    let scheme: TypeSchemeId
+.end
+
+pub struct InferError:
+    let id: InferErrorId
+    let kind: InferErrorKind
+    let message: String
+    let primary_span: span.Span
+    let related_spans: Vec<span.Span>
+    let left_type: coll.Option<TypeId>
+    let right_type: coll.Option<TypeId>
+    let constraint_id: coll.Option<TypeConstraintId>
+.end
+
+# -----------------------------------------------------------------------------
+# Contexte global d’inférence
+# -----------------------------------------------------------------------------
+
+pub struct InferContext:
+    let types: Vec<Type>
+    let vars: Vec<TypeVar>
+    let subst: TypeSubst
+    let constraints: Vec<TypeConstraint>
+    let schemes: Vec<TypeScheme>
+    let env: Vec<TypeEnvEntry>
+    let errors: Vec<InferError>
+
+    let stdlib: stdlib.StdlibCatalog
+    let traits: trt.TraitCatalog
+
+    let next_rank: u32
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers internes : next_id
+# -----------------------------------------------------------------------------
+
+fn infer_next_type_id(ctx: InferContext) -> TypeId:
+    let n = ctx.types.len()
+    return (TypeId) n
+.end
+
+fn infer_next_type_var_id(ctx: InferContext) -> TypeVarId:
+    let n = ctx.vars.len()
+    return (TypeVarId) n
+.end
+
+fn infer_next_constraint_id(ctx: InferContext) -> TypeConstraintId:
+    let n = ctx.constraints.len()
+    return (TypeConstraintId) n
+.end
+
+fn infer_next_scheme_id(ctx: InferContext) -> TypeSchemeId:
+    let n = ctx.schemes.len()
+    return (TypeSchemeId) n
+.end
+
+fn infer_next_error_id(ctx: InferContext) -> InferErrorId:
+    let n = ctx.errors.len()
+    return (InferErrorId) n
+.end
+
+# -----------------------------------------------------------------------------
+# Construction de base du contexte
+# -----------------------------------------------------------------------------
+
+pub fn infer_context_new(
+    stdlib_catalog: stdlib.StdlibCatalog,
+    trait_catalog: trt.TraitCatalog
+) -> InferContext:
+    let types = Vec<Type>::new()
+    let vars = Vec<TypeVar>::new()
+    let entries = Vec<TypeSubstEntry>::new()
+    let subst = TypeSubst {
+        entries: entries
+    }
+    let constraints = Vec<TypeConstraint>::new()
+    let schemes = Vec<TypeScheme>::new()
+    let env = Vec<TypeEnvEntry>::new()
+    let errors = Vec<InferError>::new()
+
+    let ctx = InferContext {
+        types: types,
+        vars: vars,
+        subst: subst,
+        constraints: constraints,
+        schemes: schemes,
+        env: env,
+        errors: errors,
+        stdlib: stdlib_catalog,
+        traits: trait_catalog,
+        next_rank: (u32) 0
+    }
+    return ctx
+.end
+
+pub fn infer_context_new_default() -> InferContext:
+    let stdcat = stdlib.stdlib_catalog_new_default()
+    let traits = trt.trait_catalog_new()
+    let ctx = infer_context_new(stdcat, traits)
+    return ctx
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers internes : valeurs par défaut
+# -----------------------------------------------------------------------------
+
+fn infer_default_builtin() -> TypeBuiltin:
+    let b = TypeBuiltin {
+        name: ""
+    }
+    return b
+.end
+
+fn infer_default_named() -> TypeNamed:
+    let n = TypeNamed {
+        name: ""
+    }
+    return n
+.end
+
+fn infer_default_fn_type() -> TypeFunction:
+    let params = Vec<TypeId>::new()
+    let f = TypeFunction {
+        params: params,
+        result: (TypeId) 0
+    }
+    return f
+.end
+
+fn infer_default_tuple() -> TypeTuple:
+    let elems = Vec<TypeId>::new()
+    let t = TypeTuple {
+        elements: elems
+    }
+    return t
+.end
+
+fn infer_default_list() -> TypeList:
+    let l = TypeList {
+        element: (TypeId) 0
+    }
+    return l
+.end
+
+fn infer_default_map() -> TypeMap:
+    let m = TypeMap {
+        key: (TypeId) 0,
+        value: (TypeId) 0
+    }
+    return m
+.end
+
+fn infer_default_pointer() -> TypePointer:
+    let p = TypePointer {
+        pointee: (TypeId) 0
+    }
+    return p
+.end
+
+fn infer_default_reference() -> TypeReference:
+    let r = TypeReference {
+        referent: (TypeId) 0,
+        is_const: false
+    }
+    return r
+.end
+
+fn infer_default_array() -> TypeArray:
+    let len_opt = coll.option_none<u64>()
+    let a = TypeArray {
+        element: (TypeId) 0,
+        length: len_opt
+    }
+    return a
+.end
+
+# -----------------------------------------------------------------------------
+# Construction de types de base
+# -----------------------------------------------------------------------------
+
+pub fn infer_add_type_builtin(
+    ctx: InferContext,
+    name: String,
+    sp: span.Span
+) -> (InferContext, TypeId):
+    let types = ctx.types
+    let vars = ctx.vars
+    let subst = ctx.subst
+    let constraints = ctx.constraints
+    let schemes = ctx.schemes
+    let env = ctx.env
+    let errors = ctx.errors
+
+    let id = infer_next_type_id(ctx)
+
+    let builtin = TypeBuiltin {
+        name: name
+    }
+
+    let t = Type {
+        id: id,
+        kind: TypeKind::TypeKindBuiltin,
+        span: sp,
+        builtin: builtin,
+        named: infer_default_named(),
+        var_id: coll.option_none<TypeVarId>(),
+        fn_type: infer_default_fn_type(),
+        tuple_: infer_default_tuple(),
+        list: infer_default_list(),
+        map: infer_default_map(),
+        pointer: infer_default_pointer(),
+        reference: infer_default_reference(),
+        array: infer_default_array()
+    }
+
+    types.push(t)
+
+    let ctx2 = InferContext {
+        types: types,
+        vars: vars,
+        subst: subst,
+        constraints: constraints,
+        schemes: schemes,
+        env: env,
+        errors: errors,
+        stdlib: ctx.stdlib,
+        traits: ctx.traits,
+        next_rank: ctx.next_rank
+    }
+
+    let out = (ctx2, id)
+    return out
+.end
+
+pub fn infer_add_type_named(
+    ctx: InferContext,
+    name: String,
+    sp: span.Span
+) -> (InferContext, TypeId):
+    let types = ctx.types
+    let vars = ctx.vars
+    let subst = ctx.subst
+    let constraints = ctx.constraints
+    let schemes = ctx.schemes
+    let env = ctx.env
+    let errors = ctx.errors
+
+    let id = infer_next_type_id(ctx)
+
+    let named = TypeNamed {
+        name: name
+    }
+
+    let t = Type {
+        id: id,
+        kind: TypeKind::TypeKindNamed,
+        span: sp,
+        builtin: infer_default_builtin(),
+        named: named,
+        var_id: coll.option_none<TypeVarId>(),
+        fn_type: infer_default_fn_type(),
+        tuple_: infer_default_tuple(),
+        list: infer_default_list(),
+        map: infer_default_map(),
+        pointer: infer_default_pointer(),
+        reference: infer_default_reference(),
+        array: infer_default_array()
+    }
+
+    types.push(t)
+
+    let ctx2 = InferContext {
+        types: types,
+        vars: vars,
+        subst: subst,
+        constraints: constraints,
+        schemes: schemes,
+        env: env,
+        errors: errors,
+        stdlib: ctx.stdlib,
+        traits: ctx.traits,
+        next_rank: ctx.next_rank
+    }
+
+    let out = (ctx2, id)
+    return out
+.end
+
+pub fn infer_add_type_var(
+    ctx: InferContext,
+    name: String,
+    is_rigid: bool,
+    sp: span.Span
+) -> (InferContext, TypeVarId, TypeId):
+    let types = ctx.types
+    let vars = ctx.vars
+    let subst = ctx.subst
+    let constraints = ctx.constraints
+    let schemes = ctx.schemes
+    let env = ctx.env
+    let errors = ctx.errors
+
+    let var_id = infer_next_type_var_id(ctx)
+    let rank = ctx.next_rank
+
+    let v = TypeVar {
+        id: var_id,
+        name: name,
+        rank: rank,
+        is_rigid: is_rigid,
+        span: sp
+    }
+    vars.push(v)
+
+    let type_id = infer_next_type_id(ctx)
+
+    let some_var = coll.option_some<TypeVarId>(var_id)
+    let t = Type {
+        id: type_id,
+        kind: TypeKind::TypeKindTypeVar,
+        span: sp,
+        builtin: infer_default_builtin(),
+        named: infer_default_named(),
+        var_id: some_var,
+        fn_type: infer_default_fn_type(),
+        tuple_: infer_default_tuple(),
+        list: infer_default_list(),
+        map: infer_default_map(),
+        pointer: infer_default_pointer(),
+        reference: infer_default_reference(),
+        array: infer_default_array()
+    }
+
+    types.push(t)
+
+    let ctx2 = InferContext {
+        types: types,
+        vars: vars,
+        subst: subst,
+        constraints: constraints,
+        schemes: schemes,
+        env: env,
+        errors: errors,
+        stdlib: ctx.stdlib,
+        traits: ctx.traits,
+        next_rank: rank
+    }
+
+    let out = (ctx2, var_id, type_id)
+    return out
+.end
+
+pub fn infer_add_type_function(
+    ctx: InferContext,
+    params: Vec<TypeId>,
+    result: TypeId,
+    sp: span.Span
+) -> (InferContext, TypeId):
+    let types = ctx.types
+    let vars = ctx.vars
+    let subst = ctx.subst
+    let constraints = ctx.constraints
+    let schemes = ctx.schemes
+    let env = ctx.env
+    let errors = ctx.errors
+
+    let id = infer_next_type_id(ctx)
+
+    let fn_payload = TypeFunction {
+        params: params,
+        result: result
+    }
+
+    let t = Type {
+        id: id,
+        kind: TypeKind::TypeKindFunction,
+        span: sp,
+        builtin: infer_default_builtin(),
+        named: infer_default_named(),
+        var_id: coll.option_none<TypeVarId>(),
+        fn_type: fn_payload,
+        tuple_: infer_default_tuple(),
+        list: infer_default_list(),
+        map: infer_default_map(),
+        pointer: infer_default_pointer(),
+        reference: infer_default_reference(),
+        array: infer_default_array()
+    }
+
+    types.push(t)
+
+    let ctx2 = InferContext {
+        types: types,
+        vars: vars,
+        subst: subst,
+        constraints: constraints,
+        schemes: schemes,
+        env: env,
+        errors: errors,
+        stdlib: ctx.stdlib,
+        traits: ctx.traits,
+        next_rank: ctx.next_rank
+    }
+
+    let out = (ctx2, id)
+    return out
+.end
+
+pub fn infer_add_type_tuple(
+    ctx: InferContext,
+    elements: Vec<TypeId>,
+    sp: span.Span
+) -> (InferContext, TypeId):
+    let types = ctx.types
+    let vars = ctx.vars
+    let subst = ctx.subst
+    let constraints = ctx.constraints
+    let schemes = ctx.schemes
+    let env = ctx.env
+    let errors = ctx.errors
+
+    let id = infer_next_type_id(ctx)
+
+    let tuple_payload = TypeTuple {
+        elements: elements
+    }
+
+    let t = Type {
+        id: id,
+        kind: TypeKind::TypeKindTuple,
+        span: sp,
+        builtin: infer_default_builtin(),
+        named: infer_default_named(),
+        var_id: coll.option_none<TypeVarId>(),
+        fn_type: infer_default_fn_type(),
+        tuple_: tuple_payload,
+        list: infer_default_list(),
+        map: infer_default_map(),
+        pointer: infer_default_pointer(),
+        reference: infer_default_reference(),
+        array: infer_default_array()
+    }
+
+    types.push(t)
+
+    let ctx2 = InferContext {
+        types: types,
+        vars: vars,
+        subst: subst,
+        constraints: constraints,
+        schemes: schemes,
+        env: env,
+        errors: errors,
+        stdlib: ctx.stdlib,
+        traits: ctx.traits,
+        next_rank: ctx.next_rank
+    }
+
+    let out = (ctx2, id)
+    return out
+.end
+
+pub fn infer_add_type_list(
+    ctx: InferContext,
+    element: TypeId,
+    sp: span.Span
+) -> (InferContext, TypeId):
+    let types = ctx.types
+    let vars = ctx.vars
+    let subst = ctx.subst
+    let constraints = ctx.constraints
+    let schemes = ctx.schemes
+    let env = ctx.env
+    let errors = ctx.errors
+
+    let id = infer_next_type_id(ctx)
+
+    let list_payload = TypeList {
+        element: element
+    }
+
+    let t = Type {
+        id: id,
+        kind: TypeKind::TypeKindList,
+        span: sp,
+        builtin: infer_default_builtin(),
+        named: infer_default_named(),
+        var_id: coll.option_none<TypeVarId>(),
+        fn_type: infer_default_fn_type(),
+        tuple_: infer_default_tuple(),
+        list: list_payload,
+        map: infer_default_map(),
+        pointer: infer_default_pointer(),
+        reference: infer_default_reference(),
+        array: infer_default_array()
+    }
+
+    types.push(t)
+
+    let ctx2 = InferContext {
+        types: types,
+        vars: vars,
+        subst: subst,
+        constraints: constraints,
+        schemes: schemes,
+        env: env,
+        errors: errors,
+        stdlib: ctx.stdlib,
+        traits: ctx.traits,
+        next_rank: ctx.next_rank
+    }
+
+    let out = (ctx2, id)
+    return out
+.end
+
+# -----------------------------------------------------------------------------
+# Substitution : helpers
+# -----------------------------------------------------------------------------
+
+fn infer_subst_find(
+    subst: TypeSubst,
+    var_id: TypeVarId
+) -> coll.Option<TypeId>:
+    let entries = subst.entries
+    let n = entries.len()
+    let i = (usize) 0
+
+    while i < n:
+        let e = entries[i]
+        if e.var == var_id:
+            let some_ty = coll.option_some<TypeId>(e.ty)
+            return some_ty
+        .end
+        let i = i + (usize) 1
+    .end
+
+    let none_ty = coll.option_none<TypeId>()
+    return none_ty
+.end
+
+fn infer_subst_add(
+    subst: TypeSubst,
+    var_id: TypeVarId,
+    ty: TypeId
+) -> TypeSubst:
+    let entries = subst.entries
+    let e = TypeSubstEntry {
+        var: var_id,
+        ty: ty
+    }
+    entries.push(e)
+    let subst2 = TypeSubst {
+        entries: entries
+    }
+    return subst2
+.end
+
+# Prend en compte la substitution pour un TypeId (suivi des variables de type).
+fn infer_repr_type(
+    ctx: InferContext,
+    ty_id: TypeId
+) -> TypeId:
+    # On applique la substitution uniquement pour les variables de type.
+    let types = ctx.types
+    let idx = (usize) ty_id
+    let t = types[idx]
+
+    if t.kind != TypeKind::TypeKindTypeVar:
+        return ty_id
+    .end
+
+    let opt_vid = t.var_id
+    if coll.option_is_none<TypeVarId>(opt_vid):
+        return ty_id
+    .end
+
+    let vid = coll.option_unwrap_unsafe<TypeVarId>(opt_vid)
+    let opt_subst = infer_subst_find(ctx.subst, vid)
+    if coll.option_is_none<TypeId>(opt_subst):
+        return ty_id
+    .end
+
+    let ty2 = coll.option_unwrap_unsafe<TypeId>(opt_subst)
+    # Pas de compression, on laisse la substitution telle quelle.
+    return ty2
+.end
+
+# -----------------------------------------------------------------------------
+# Occurs-check (éviter α = List<α>, etc.)
+# -----------------------------------------------------------------------------
+
+fn infer_type_contains_var(
+    ctx: InferContext,
+    ty_id: TypeId,
+    var_id: TypeVarId
+) -> bool:
+    let rep_id = infer_repr_type(ctx, ty_id)
+    let types = ctx.types
+    let idx = (usize) rep_id
+    let t = types[idx]
+
+    if t.kind == TypeKind::TypeKindTypeVar:
+        let opt_vid = t.var_id
+        if coll.option_is_some<TypeVarId>(opt_vid):
+            let vid = coll.option_unwrap_unsafe<TypeVarId>(opt_vid)
+            return vid == var_id
+        .end
+        return false
+    .end
+
+    if t.kind == TypeKind::TypeKindFunction:
+        let p = t.fn_type
+        let ps = p.params
+        let n = ps.len()
+        let i = (usize) 0
+        while i < n:
+            let pid = ps[i]
+            if infer_type_contains_var(ctx, pid, var_id):
+                return true
+            .end
+            let i = i + (usize) 1
+        .end
+        if infer_type_contains_var(ctx, p.result, var_id):
+            return true
+        .end
+        return false
+    .end
+
+    if t.kind == TypeKind::TypeKindTuple:
+        let elems = t.tuple_.elements
+        let n2 = elems.len()
+        let i2 = (usize) 0
+        while i2 < n2:
+            let eid = elems[i2]
+            if infer_type_contains_var(ctx, eid, var_id):
+                return true
+            .end
+            let i2 = i2 + (usize) 1
+        .end
+        return false
+    .end
+
+    if t.kind == TypeKind::TypeKindList:
+        let el = t.list.element
+        return infer_type_contains_var(ctx, el, var_id)
+    .end
+
+    if t.kind == TypeKind::TypeKindMap:
+        let m = t.map
+        if infer_type_contains_var(ctx, m.key, var_id):
+            return true
+        .end
+        if infer_type_contains_var(ctx, m.value, var_id):
+            return true
+        .end
+        return false
+    .end
+
+    if t.kind == TypeKind::TypeKindPointer:
+        let po = t.pointer.pointee
+        return infer_type_contains_var(ctx, po, var_id)
+    .end
+
+    if t.kind == TypeKind::TypeKindReference:
+        let re = t.reference.referent
+        return infer_type_contains_var(ctx, re, var_id)
+    .end
+
+    if t.kind == TypeKind::TypeKindArray:
+        let ar = t.array.element
+        return infer_type_contains_var(ctx, ar, var_id)
+    .end
+
+    return false
+.end
+
+# -----------------------------------------------------------------------------
+# Gestion des erreurs
+# -----------------------------------------------------------------------------
+
+fn infer_add_error(
+    ctx: InferContext,
+    kind: InferErrorKind,
+    message: String,
+    primary_span: span.Span,
+    left: coll.Option<TypeId>,
+    right: coll.Option<TypeId>,
+    constraint_id: coll.Option<TypeConstraintId>
+) -> InferContext:
+    let types = ctx.types
+    let vars = ctx.vars
+    let subst = ctx.subst
+    let constraints = ctx.constraints
+    let schemes = ctx.schemes
+    let env = ctx.env
+    let errors = ctx.errors
+
+    let related = Vec<span.Span>::new()
+    let err_id = infer_next_error_id(ctx)
+
+    let err = InferError {
+        id: err_id,
+        kind: kind,
+        message: message,
+        primary_span: primary_span,
+        related_spans: related,
+        left_type: left,
+        right_type: right,
+        constraint_id: constraint_id
+    }
+
+    errors.push(err)
+
+    let ctx2 = InferContext {
+        types: types,
+        vars: vars,
+        subst: subst,
+        constraints: constraints,
+        schemes: schemes,
+        env: env,
+        errors: errors,
+        stdlib: ctx.stdlib,
+        traits: ctx.traits,
+        next_rank: ctx.next_rank
+    }
+    return ctx2
+.end
+
+pub fn infer_has_errors(ctx: InferContext) -> bool:
+    let n = ctx.errors.len()
+    return n > (usize) 0
+.end
+
+# -----------------------------------------------------------------------------
+# Ajout de contraintes
+# -----------------------------------------------------------------------------
+
+pub fn infer_add_constraint(
+    ctx: InferContext,
+    kind: TypeConstraintKind,
+    left: TypeId,
+    right: TypeId,
+    trait_id_opt: coll.Option<trt.TraitId>,
+    trait_args: Vec<TypeId>,
+    sp: span.Span
+) -> (InferContext, TypeConstraintId):
+    let types = ctx.types
+    let vars = ctx.vars
+    let subst = ctx.subst
+    let constraints = ctx.constraints
+    let schemes = ctx.schemes
+    let env = ctx.env
+    let errors = ctx.errors
+
+    let cid = infer_next_constraint_id(ctx)
+
+    let c = TypeConstraint {
+        id: cid,
+        kind: kind,
+        left: left,
+        right: right,
+        trait_id: trait_id_opt,
+        trait_args: trait_args,
+        span: sp
+    }
+
+    constraints.push(c)
+
+    let ctx2 = InferContext {
+        types: types,
+        vars: vars,
+        subst: subst,
+        constraints: constraints,
+        schemes: schemes,
+        env: env,
+        errors: errors,
+        stdlib: ctx.stdlib,
+        traits: ctx.traits,
+        next_rank: ctx.next_rank
+    }
+
+    let out = (ctx2, cid)
+    return out
+.end
+
+pub fn infer_add_equality_constraint(
+    ctx: InferContext,
+    left: TypeId,
+    right: TypeId,
+    sp: span.Span
+) -> (InferContext, TypeConstraintId):
+    let trait_none = coll.option_none<trt.TraitId>()
+    let args = Vec<TypeId>::new()
+    let (ctx2, cid) = infer_add_constraint(
+        ctx,
+        TypeConstraintKind::TypeConstraintEquals,
+        left,
+        right,
+        trait_none,
+        args,
+        sp
+    )
+    return (ctx2, cid)
+.end
+
+# -----------------------------------------------------------------------------
+# Unification
+# -----------------------------------------------------------------------------
+
+fn infer_unify_var(
+    ctx: InferContext,
+    var_id: TypeVarId,
+    ty_id: TypeId,
+    sp: span.Span
+) -> (InferContext, bool):
+    # Vérifier si une substitution existe déjà.
+    let current = infer_subst_find(ctx.subst, var_id)
+    if coll.option_is_some<TypeId>(current):
+        let ty2 = coll.option_unwrap_unsafe<TypeId>(current)
+        let (ctx2, ok2) = infer_unify_types(ctx, ty2, ty_id, sp)
+        return (ctx2, ok2)
+    .end
+
+    # Occurs-check
+    let occurs = infer_type_contains_var(ctx, ty_id, var_id)
+    if occurs:
+        let msg = "occurs check failed"
+        let none_ty = coll.option_none<TypeId>()
+        let none_cid = coll.option_none<TypeConstraintId>()
+        let ctx_err = infer_add_error(
+            ctx,
+            InferErrorKind::InferErrorOccursCheck,
+            msg,
+            sp,
+            none_ty,
+            none_ty,
+            none_cid
+        )
+        return (ctx_err, false)
+    .end
+
+    # Ajout de la substitution var_id ↦ ty_id
+    let types = ctx.types
+    let vars = ctx.vars
+    let constraints = ctx.constraints
+    let schemes = ctx.schemes
+    let env = ctx.env
+    let errors = ctx.errors
+
+    let subst2 = infer_subst_add(ctx.subst, var_id, ty_id)
+
+    let ctx2 = InferContext {
+        types: types,
+        vars: vars,
+        subst: subst2,
+        constraints: constraints,
+        schemes: schemes,
+        env: env,
+        errors: errors,
+        stdlib: ctx.stdlib,
+        traits: ctx.traits,
+        next_rank: ctx.next_rank
+    }
+    return (ctx2, true)
+.end
+
+fn infer_unify_functions(
+    ctx: InferContext,
+    a: Type,
+    b: Type,
+    sp: span.Span
+) -> (InferContext, bool):
+    let fa = a.fn_type
+    let fb = b.fn_type
+
+    let pa = fa.params
+    let pb = fb.params
+
+    let na = pa.len()
+    let nb = pb.len()
+    if na != nb:
+        let msg = "function arity mismatch"
+        let opt_a = coll.option_some<TypeId>(a.id)
+        let opt_b = coll.option_some<TypeId>(b.id)
+        let none_cid = coll.option_none<TypeConstraintId>()
+        let ctx_err = infer_add_error(
+            ctx,
+            InferErrorKind::InferErrorKindMismatch,
+            msg,
+            sp,
+            opt_a,
+            opt_b,
+            none_cid
+        )
+        return (ctx_err, false)
+    .end
+
+    let i = (usize) 0
+    let ctx_cur = ctx
+
+    while i < na:
+        let ta = pa[i]
+        let tb = pb[i]
+        let (ctx_next, okp) = infer_unify_types(ctx_cur, ta, tb, sp)
+        let ctx_cur = ctx_next
+        if not okp:
+            return (ctx_cur, false)
+        .end
+        let i = i + (usize) 1
+    .end
+
+    let (ctx_res, ok_res) = infer_unify_types(ctx_cur, fa.result, fb.result, sp)
+    return (ctx_res, ok_res)
+.end
+
+fn infer_unify_structural(
+    ctx: InferContext,
+    a: Type,
+    b: Type,
+    sp: span.Span
+) -> (InferContext, bool):
+    if a.kind == TypeKind::TypeKindBuiltin and b.kind == TypeKind::TypeKindBuiltin:
+        let na = a.builtin.name
+        let nb = b.builtin.name
+        if na == nb:
+            return (ctx, true)
+        .end
+        let msg = "builtin type mismatch"
+        let opt_a = coll.option_some<TypeId>(a.id)
+        let opt_b = coll.option_some<TypeId>(b.id)
+        let none_cid = coll.option_none<TypeConstraintId>()
+        let ctx_err = infer_add_error(
+            ctx,
+            InferErrorKind::InferErrorKindMismatch,
+            msg,
+            sp,
+            opt_a,
+            opt_b,
+            none_cid
+        )
+        return (ctx_err, false)
+    .end
+
+    if a.kind == TypeKind::TypeKindNamed and b.kind == TypeKind::TypeKindNamed:
+        let na2 = a.named.name
+        let nb2 = b.named.name
+        if na2 == nb2:
+            return (ctx, true)
+        .end
+        let msg2 = "named type mismatch"
+        let opt_a2 = coll.option_some<TypeId>(a.id)
+        let opt_b2 = coll.option_some<TypeId>(b.id)
+        let none_cid2 = coll.option_none<TypeConstraintId>()
+        let ctx_err2 = infer_add_error(
+            ctx,
+            InferErrorKind::InferErrorKindMismatch,
+            msg2,
+            sp,
+            opt_a2,
+            opt_b2,
+            none_cid2
+        )
+        return (ctx_err2, false)
+    .end
+
+    if a.kind == TypeKind::TypeKindFunction and b.kind == TypeKind::TypeKindFunction:
+        let (ctx2, ok2) = infer_unify_functions(ctx, a, b, sp)
+        return (ctx2, ok2)
+    .end
+
+    if a.kind == TypeKind::TypeKindTuple and b.kind == TypeKind::TypeKindTuple:
+        let ea = a.tuple_.elements
+        let eb = b.tuple_.elements
+        let na3 = ea.len()
+        let nb3 = eb.len()
+        if na3 != nb3:
+            let msg3 = "tuple length mismatch"
+            let opt_a3 = coll.option_some<TypeId>(a.id)
+            let opt_b3 = coll.option_some<TypeId>(b.id)
+            let none_cid3 = coll.option_none<TypeConstraintId>()
+            let ctx_err3 = infer_add_error(
+                ctx,
+                InferErrorKind::InferErrorKindMismatch,
+                msg3,
+                sp,
+                opt_a3,
+                opt_b3,
+                none_cid3
+            )
+            return (ctx_err3, false)
+        .end
+
+        let i3 = (usize) 0
+        let ctx_cur = ctx
+        while i3 < na3:
+            let ta = ea[i3]
+            let tb = eb[i3]
+            let (ctx_next, okp2) = infer_unify_types(ctx_cur, ta, tb, sp)
+            let ctx_cur = ctx_next
+            if not okp2:
+                return (ctx_cur, false)
+            .end
+            let i3 = i3 + (usize) 1
+        .end
+        return (ctx_cur, true)
+    .end
+
+    if a.kind == TypeKind::TypeKindList and b.kind == TypeKind::TypeKindList:
+        let (ctx3, ok3) = infer_unify_types(ctx, a.list.element, b.list.element, sp)
+        return (ctx3, ok3)
+    .end
+
+    if a.kind == TypeKind::TypeKindMap and b.kind == TypeKind::TypeKindMap:
+        let ctx1 = ctx
+        let (ctx2, ok_k) = infer_unify_types(ctx1, a.map.key, b.map.key, sp)
+        if not ok_k:
+            return (ctx2, false)
+        .end
+        let (ctx3, ok_v) = infer_unify_types(ctx2, a.map.value, b.map.value, sp)
+        return (ctx3, ok_v)
+    .end
+
+    if a.kind == TypeKind::TypeKindPointer and b.kind == TypeKind::TypeKindPointer:
+        let (ctx4, ok4) = infer_unify_types(ctx, a.pointer.pointee, b.pointer.pointee, sp)
+        return (ctx4, ok4)
+    .end
+
+    if a.kind == TypeKind::TypeKindReference and b.kind == TypeKind::TypeKindReference:
+        if a.reference.is_const != b.reference.is_const:
+            let msg4 = "reference constness mismatch"
+            let opt_a4 = coll.option_some<TypeId>(a.id)
+            let opt_b4 = coll.option_some<TypeId>(b.id)
+            let none_cid4 = coll.option_none<TypeConstraintId>()
+            let ctx_err4 = infer_add_error(
+                ctx,
+                InferErrorKind::InferErrorKindMismatch,
+                msg4,
+                sp,
+                opt_a4,
+                opt_b4,
+                none_cid4
+            )
+            return (ctx_err4, false)
+        .end
+        let (ctx5, ok5) = infer_unify_types(ctx, a.reference.referent, b.reference.referent, sp)
+        return (ctx5, ok5)
+    .end
+
+    if a.kind == TypeKind::TypeKindArray and b.kind == TypeKind::TypeKindArray:
+        let (ctx6, ok6) = infer_unify_types(ctx, a.array.element, b.array.element, sp)
+        return (ctx6, ok6)
+    .end
+
+    # Types inconnus / erreur : on autorise la unification triviale.
+    if a.kind == TypeKind::TypeKindUnknown or b.kind == TypeKind::TypeKindUnknown:
+        return (ctx, true)
+    .end
+    if a.kind == TypeKind::TypeKindError or b.kind == TypeKind::TypeKindError:
+        return (ctx, true)
+    .end
+
+    # Cas par défaut: mismatch.
+    let msg5 = "type mismatch"
+    let opt_a5 = coll.option_some<TypeId>(a.id)
+    let opt_b5 = coll.option_some<TypeId>(b.id)
+    let none_cid5 = coll.option_none<TypeConstraintId>()
+    let ctx_err5 = infer_add_error(
+        ctx,
+        InferErrorKind::InferErrorUnificationFail,
+        msg5,
+        sp,
+        opt_a5,
+        opt_b5,
+        none_cid5
+    )
+    return (ctx_err5, false)
+.end
+
+pub fn infer_unify_types(
+    ctx: InferContext,
+    left: TypeId,
+    right: TypeId,
+    sp: span.Span
+) -> (InferContext, bool):
+    let a_rep = infer_repr_type(ctx, left)
+    let b_rep = infer_repr_type(ctx, right)
+
+    if a_rep == b_rep:
+        return (ctx, true)
+    .end
+
+    let types = ctx.types
+    let a = types[(usize) a_rep]
+    let b = types[(usize) b_rep]
+
+    # Variables de type
+    if a.kind == TypeKind::TypeKindTypeVar:
+        let opt_vid = a.var_id
+        if coll.option_is_some<TypeVarId>(opt_vid):
+            let vid = coll.option_unwrap_unsafe<TypeVarId>(opt_vid)
+            let (ctx2, ok2) = infer_unify_var(ctx, vid, b_rep, sp)
+            return (ctx2, ok2)
+        .end
+    .end
+
+    if b.kind == TypeKind::TypeKindTypeVar:
+        let opt_vid2 = b.var_id
+        if coll.option_is_some<TypeVarId>(opt_vid2):
+            let vid2 = coll.option_unwrap_unsafe<TypeVarId>(opt_vid2)
+            let (ctx3, ok3) = infer_unify_var(ctx, vid2, a_rep, sp)
+            return (ctx3, ok3)
+        .end
+    .end
+
+    # Unification structurelle
+    let (ctx4, ok4) = infer_unify_structural(ctx, a, b, sp)
+    return (ctx4, ok4)
+.end
+
+# -----------------------------------------------------------------------------
+# Résolution des contraintes
+# -----------------------------------------------------------------------------
+
+fn infer_resolve_trait_constraint(
+    ctx: InferContext,
+    c: TypeConstraint
+) -> InferContext:
+    # Résolution très simplifiée : on ne fait que vérifier l’existence
+    # d’un impl pour (type_name, trait).
+    let opt_tid = c.trait_id
+    if coll.option_is_none<trt.TraitId>(opt_tid):
+        return ctx
+    .end
+
+    let tid = coll.option_unwrap_unsafe<trt.TraitId>(opt_tid)
+
+    let rep_ty = infer_repr_type(ctx, c.left)
+    let types = ctx.types
+    let t = types[(usize) rep_ty]
+
+    # On cherche un nom de type textuel simple.
+    let mut_type_name = ""
+    if t.kind == TypeKind::TypeKindBuiltin:
+        mut_type_name = t.builtin.name
+    .end
+    if t.kind == TypeKind::TypeKindNamed:
+        mut_type_name = t.named.name
+    .end
+
+    if mut_type_name == "":
+        # On ne sait pas résoudre pour l’instant.
+        return ctx
+    .end
+
+    # On interroge le catalogue de traits.
+    let cat = ctx.traits
+    let impl_opt = trt.trait_catalog_find_impl_for_type_and_trait(
+        cat,
+        mut_type_name,
+        tid
+    )
+
+    if coll.option_is_some<trt.ImplId>(impl_opt):
+        # Impl trouvé, contrainte satisfaite.
+        return ctx
+    .end
+
+    # Sinon, erreur.
+    let msg = "trait not implemented for type"
+    let opt_left = coll.option_some<TypeId>(rep_ty)
+    let opt_right = coll.option_none<TypeId>()
+    let opt_cid = coll.option_some<TypeConstraintId>(c.id)
+    let ctx_err = infer_add_error(
+        ctx,
+        InferErrorKind::InferErrorTraitNotImplemented,
+        msg,
+        c.span,
+        opt_left,
+        opt_right,
+        opt_cid
+    )
+    return ctx_err
+.end
+
+pub fn infer_solve_constraints(ctx: InferContext) -> InferContext:
+    let constraints = ctx.constraints
+    let n = constraints.len()
+    let i = (usize) 0
+    let ctx_cur = ctx
+
+    while i < n:
+        let c = constraints[i]
+        if c.kind == TypeConstraintKind::TypeConstraintEquals or
+           c.kind == TypeConstraintKind::TypeConstraintImplicitConvert:
+            let (ctx_next, _ok) = infer_unify_types(ctx_cur, c.left, c.right, c.span)
+            let ctx_cur = ctx_next
+        .end
+
+        if c.kind == TypeConstraintKind::TypeConstraintImplementsTrait:
+            let ctx_next2 = infer_resolve_trait_constraint(ctx_cur, c)
+            let ctx_cur = ctx_next2
+        .end
+
+        let i = i + (usize) 1
+    .end
+
+    return ctx_cur
+.end
+
+# -----------------------------------------------------------------------------
+# Environnement & schémas (API minimale)
+# -----------------------------------------------------------------------------
+
+pub fn infer_add_scheme(
+    ctx: InferContext,
+    quantifiers: Vec<TypeVarId>,
+    body: TypeId,
+    sp: span.Span,
+    symbol_opt: coll.Option<sym.SymbolId>
+) -> (InferContext, TypeSchemeId):
+    let types = ctx.types
+    let vars = ctx.vars
+    let subst = ctx.subst
+    let constraints = ctx.constraints
+    let schemes = ctx.schemes
+    let env = ctx.env
+    let errors = ctx.errors
+
+    let sid = infer_next_scheme_id(ctx)
+
+    let scheme = TypeScheme {
+        id: sid,
+        quantifiers: quantifiers,
+        body: body,
+        span: sp,
+        symbol: symbol_opt
+    }
+
+    schemes.push(scheme)
+
+    let ctx2 = InferContext {
+        types: types,
+        vars: vars,
+        subst: subst,
+        constraints: constraints,
+        schemes: schemes,
+        env: env,
+        errors: errors,
+        stdlib: ctx.stdlib,
+        traits: ctx.traits,
+        next_rank: ctx.next_rank
+    }
+
+    let out = (ctx2, sid)
+    return out
+.end
+
+pub fn infer_env_bind_symbol(
+    ctx: InferContext,
+    symbol: sym.SymbolId,
+    scheme: TypeSchemeId
+) -> InferContext:
+    let types = ctx.types
+    let vars = ctx.vars
+    let subst = ctx.subst
+    let constraints = ctx.constraints
+    let schemes = ctx.schemes
+    let env = ctx.env
+    let errors = ctx.errors
+
+    let entry = TypeEnvEntry {
+        symbol: symbol,
+        scheme: scheme
+    }
+    env.push(entry)
+
+    let ctx2 = InferContext {
+        types: types,
+        vars: vars,
+        subst: subst,
+        constraints: constraints,
+        schemes: schemes,
+        env: env,
+        errors: errors,
+        stdlib: ctx.stdlib,
+        traits: ctx.traits,
+        next_rank: ctx.next_rank
+    }
+    return ctx2
+.end
+
+pub fn infer_env_lookup_symbol(
+    ctx: InferContext,
+    symbol: sym.SymbolId
+) -> coll.Option<TypeSchemeId>:
+    let env = ctx.env
+    let n = env.len()
+    let i = (usize) 0
+
+    while i < n:
+        let e = env[i]
+        if e.symbol == symbol:
+            let some_id = coll.option_some<TypeSchemeId>(e.scheme)
+            return some_id
+        .end
+        let i = i + (usize) 1
+    .end
+
+    let none_id = coll.option_none<TypeSchemeId>()
+    return none_id
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers de debug
+# -----------------------------------------------------------------------------
+
+pub fn infer_type_kind_to_string(kind: TypeKind) -> String:
+    if kind == TypeKind::TypeKindBuiltin:
+        return "builtin"
+    .end
+    if kind == TypeKind::TypeKindNamed:
+        return "named"
+    .end
+    if kind == TypeKind::TypeKindTypeVar:
+        return "type_var"
+    .end
+    if kind == TypeKind::TypeKindFunction:
+        return "fn"
+    .end
+    if kind == TypeKind::TypeKindTuple:
+        return "tuple"
+    .end
+    if kind == TypeKind::TypeKindList:
+        return "list"
+    .end
+    if kind == TypeKind::TypeKindMap:
+        return "map"
+    .end
+    if kind == TypeKind::TypeKindPointer:
+        return "pointer"
+    .end
+    if kind == TypeKind::TypeKindReference:
+        return "ref"
+    .end
+    if kind == TypeKind::TypeKindArray:
+        return "array"
+    .end
+    if kind == TypeKind::TypeKindUnknown:
+        return "unknown"
+    .end
+    if kind == TypeKind::TypeKindError:
+        return "error"
+    .end
+    return "?"
+.end
+
+pub fn infer_error_kind_to_string(kind: InferErrorKind) -> String:
+    if kind == InferErrorKind::InferErrorUnificationFail:
+        return "unification_fail"
+    .end
+    if kind == InferErrorKind::InferErrorOccursCheck:
+        return "occurs_check"
+    .end
+    if kind == InferErrorKind::InferErrorKindMismatch:
+        return "kind_mismatch"
+    .end
+    if kind == InferErrorKind::InferErrorTraitNotImplemented:
+        return "trait_not_implemented"
+    .end
+    if kind == InferErrorKind::InferErrorOther:
+        return "other"
+    .end
+    return "?"
+.end
+
+# -----------------------------------------------------------------------------
+# Scénario interne de smoke-test
+# -----------------------------------------------------------------------------
+
+scenario type_infer_smoke_test():
+    let ctx0 = infer_context_new_default()
+
+    # Types de base: i32, Bool
+    let sp_i32 = span.span_from_len((span.BytePos) 0, (span.ByteLen) 3)
+    let (ctx1, ty_i32) = infer_add_type_builtin(ctx0, "i32", sp_i32)
+
+    let sp_bool = span.span_from_len((span.BytePos) 4, (span.ByteLen) 4)
+    let (ctx2, ty_bool) = infer_add_type_builtin(ctx1, "Bool", sp_bool)
+
+    # Variable de type α
+    let sp_alpha = span.span_from_len((span.BytePos) 8, (span.ByteLen) 1)
+    let (ctx3, var_alpha, ty_alpha) = infer_add_type_var(ctx2, "A", false, sp_alpha)
+
+    # Contrainte α == i32
+    let sp_c1 = span.span_from_len((span.BytePos) 10, (span.ByteLen) 5)
+    let (ctx4, _cid1) = infer_add_equality_constraint(ctx3, ty_alpha, ty_i32, sp_c1)
+
+    # Contrainte Bool == i32 (devrait produire une erreur)
+    let sp_c2 = span.span_from_len((span.BytePos) 20, (span.ByteLen) 5)
+    let (ctx5, _cid2) = infer_add_equality_constraint(ctx4, ty_bool, ty_i32, sp_c2)
+
+    # Résolution
+    let ctx6 = infer_solve_constraints(ctx5)
+
+    let has_err = infer_has_errors(ctx6)
+
+    # Utilisation basique d’un trait: Eq pour i32, si présent dans le catalogue.
+    let cat = ctx6.traits
+    let tree_dummy = syn.syntax_tree_new()
+    let name_eq = "Eq"
+
+    let opt_tid = trt.trait_catalog_find_trait_by_name(cat, name_eq)
+    if coll.option_is_some<trt.TraitId>(opt_tid):
+        let tid = coll.option_unwrap_unsafe<trt.TraitId>(opt_tid)
+        let sp_tc = span.span_from_len((span.BytePos) 30, (span.ByteLen) 2)
+        let args_tc = Vec<TypeId>::new()
+        let trait_some = coll.option_some<trt.TraitId>(tid)
+        let (ctx7, _cid3) = infer_add_constraint(
+            ctx6,
+            TypeConstraintKind::TypeConstraintImplementsTrait,
+            ty_i32,
+            ty_i32,
+            trait_some,
+            args_tc,
+            sp_tc
+        )
+        let _ctx8 = infer_solve_constraints(ctx7)
+    .end
+
+    let _ = var_alpha
+    let _ = has_err
+    let _ = tree_dummy
+.end

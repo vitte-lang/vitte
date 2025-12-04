@@ -1,0 +1,861 @@
+
+
+module vitte.compiler.traits
+
+import std.collections as coll
+import vitte.compiler.span as span
+import vitte.compiler.syntax as syn
+import vitte.compiler.symbols as sym
+
+# =============================================================================
+# Vitte compiler – Traits & impl catalog (maximal, logique, sans I/O)
+# =============================================================================
+#
+# Objectifs :
+#   - Représenter la couche logique des traits et impl pour le front-end :
+#       * traits (nom, chemin, items),
+#       * items de trait (méthodes, types associés, constantes associées),
+#       * impl (impl Trait for Type / impl Type),
+#       * mapping vers les symboles/Items du HIR.
+#   - Servir de base à :
+#       * la résolution de traits (type + trait -> impl),
+#       * la navigation IDE (aller à la définition du trait, de l’impl, des items),
+#       * la sérialisation (JSON / Muffin / autres).
+#   - Ne faire aucun I/O, aucun accès disque, aucun logging.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Identifiants logiques
+# -----------------------------------------------------------------------------
+
+typedef u32 TraitId
+typedef u32 TraitItemId
+typedef u32 ImplId
+typedef u32 ImplMemberId
+
+# -----------------------------------------------------------------------------
+# Kinds / méta
+# -----------------------------------------------------------------------------
+
+pub enum TraitItemKind:
+    TraitItemMethod        # fn foo(...)
+    TraitItemAssocType     # type Foo
+    TraitItemAssocConst    # const FOO: T
+.end
+
+pub enum ImplKind:
+    ImplKindTraitForType   # impl Trait for Type
+    ImplKindInherent       # impl Type
+.end
+
+# -----------------------------------------------------------------------------
+# Items de traits
+# -----------------------------------------------------------------------------
+
+pub struct TraitItem:
+    let id: TraitItemId
+    let trait_id: TraitId
+    let name: String
+    let kind: TraitItemKind
+    let span: span.Span
+    let signature_text: String         # représentation textuelle (fn, type, const)
+    let hir_item_id: syn.ItemId        # ItemId de la déclaration (si connue, sinon 0)
+.end
+
+# -----------------------------------------------------------------------------
+# Déclaration de trait
+# -----------------------------------------------------------------------------
+
+pub struct TraitDecl:
+    let id: TraitId
+    let name: String
+    let path: syn.PathId               # chemin logique (ex: std.core.traits.Eq)
+    let items: Vec<TraitItemId>        # méthodes / assoc types / const associées
+    let attributes: Vec<syn.AttributeId>
+    let span: span.Span
+.end
+
+# -----------------------------------------------------------------------------
+# Membres d’impl
+# -----------------------------------------------------------------------------
+
+pub struct ImplMember:
+    let id: ImplMemberId
+    let impl_id: ImplId
+    let name: String                   # nom du membre (méthode / const / type)
+    let trait_item_id: coll.Option<TraitItemId>  # item de trait correspondant (si trait impl)
+    let fn_item_id: coll.Option<syn.ItemId>      # ItemId de la fn implémentée
+    let symbol_id: coll.Option<sym.SymbolId>     # SymbolId résolu (fn / const)
+    let span: span.Span
+.end
+
+# -----------------------------------------------------------------------------
+# Déclaration d’impl
+# -----------------------------------------------------------------------------
+
+pub struct ImplDecl:
+    let id: ImplId
+    let kind: ImplKind
+    let trait_id: coll.Option<TraitId>     # None => impl inhérent
+    let for_type_name: String              # représentation textuelle (ex: "i32", "Vec<T>")
+    let for_type_span: span.Span
+    let attributes: Vec<syn.AttributeId>
+    let members: Vec<ImplMemberId>
+    let span: span.Span
+.end
+
+# -----------------------------------------------------------------------------
+# Catalogue global des traits / impls
+# -----------------------------------------------------------------------------
+
+pub struct TraitCatalog:
+    let traits: Vec<TraitDecl>
+    let trait_items: Vec<TraitItem>
+    let impls: Vec<ImplDecl>
+    let impl_members: Vec<ImplMember>
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers internes : next_id
+# -----------------------------------------------------------------------------
+
+fn traits_next_trait_id(cat: TraitCatalog) -> TraitId:
+    let n = cat.traits.len()
+    return (TraitId) n
+.end
+
+fn traits_next_trait_item_id(cat: TraitCatalog) -> TraitItemId:
+    let n = cat.trait_items.len()
+    return (TraitItemId) n
+.end
+
+fn traits_next_impl_id(cat: TraitCatalog) -> ImplId:
+    let n = cat.impls.len()
+    return (ImplId) n
+.end
+
+fn traits_next_impl_member_id(cat: TraitCatalog) -> ImplMemberId:
+    let n = cat.impl_members.len()
+    return (ImplMemberId) n
+.end
+
+# -----------------------------------------------------------------------------
+# Construction de base
+# -----------------------------------------------------------------------------
+
+pub fn trait_catalog_new() -> TraitCatalog:
+    let traits = Vec<TraitDecl>::new()
+    let trait_items = Vec<TraitItem>::new()
+    let impls = Vec<ImplDecl>::new()
+    let impl_members = Vec<ImplMember>::new()
+
+    let cat = TraitCatalog {
+        traits: traits,
+        trait_items: trait_items,
+        impls: impls,
+        impl_members: impl_members
+    }
+    return cat
+.end
+
+# -----------------------------------------------------------------------------
+# Ajout de traits et items de trait
+# -----------------------------------------------------------------------------
+
+pub fn trait_catalog_add_trait(
+    cat: TraitCatalog,
+    name: String,
+    path: syn.PathId,
+    span_value: span.Span,
+    attributes: Vec<syn.AttributeId>
+) -> (TraitCatalog, TraitId):
+    let traits = cat.traits
+    let trait_items = cat.trait_items
+    let impls = cat.impls
+    let impl_members = cat.impl_members
+
+    let new_id = traits_next_trait_id(cat)
+
+    let decl = TraitDecl {
+        id: new_id,
+        name: name,
+        path: path,
+        items: Vec<TraitItemId>::new(),
+        attributes: attributes,
+        span: span_value
+    }
+
+    traits.push(decl)
+
+    let cat2 = TraitCatalog {
+        traits: traits,
+        trait_items: trait_items,
+        impls: impls,
+        impl_members: impl_members
+    }
+
+    let out = (cat2, new_id)
+    return out
+.end
+
+pub fn trait_catalog_add_trait_item(
+    cat: TraitCatalog,
+    trait_id: TraitId,
+    name: String,
+    kind: TraitItemKind,
+    signature_text: String,
+    span_value: span.Span,
+    hir_item_id: syn.ItemId
+) -> (TraitCatalog, TraitItemId):
+    let traits = cat.traits
+    let trait_items = cat.trait_items
+    let impls = cat.impls
+    let impl_members = cat.impl_members
+
+    let new_id = traits_next_trait_item_id(cat)
+
+    let item = TraitItem {
+        id: new_id,
+        trait_id: trait_id,
+        name: name,
+        kind: kind,
+        span: span_value,
+        signature_text: signature_text,
+        hir_item_id: hir_item_id
+    }
+
+    trait_items.push(item)
+
+    # Ajouter l’item dans la liste du trait correspondant
+    let traits2 = Vec<TraitDecl>::new()
+    let n = traits.len()
+    let i = (usize) 0
+
+    while i < n:
+        let t = traits[i]
+        if t.id == trait_id:
+            let items_vec = t.items
+            items_vec.push(new_id)
+            let t2 = TraitDecl {
+                id: t.id,
+                name: t.name,
+                path: t.path,
+                items: items_vec,
+                attributes: t.attributes,
+                span: t.span
+            }
+            traits2.push(t2)
+        else:
+            traits2.push(t)
+        .end
+        let i = i + (usize) 1
+    .end
+
+    let cat2 = TraitCatalog {
+        traits: traits2,
+        trait_items: trait_items,
+        impls: impls,
+        impl_members: impl_members
+    }
+
+    let out = (cat2, new_id)
+    return out
+.end
+
+# Sucre pour chaque type d’item de trait
+
+pub fn trait_catalog_add_trait_method(
+    cat: TraitCatalog,
+    trait_id: TraitId,
+    name: String,
+    signature_text: String,
+    span_value: span.Span,
+    hir_item_id: syn.ItemId
+) -> (TraitCatalog, TraitItemId):
+    let (cat2, id) = trait_catalog_add_trait_item(
+        cat,
+        trait_id,
+        name,
+        TraitItemKind::TraitItemMethod,
+        signature_text,
+        span_value,
+        hir_item_id
+    )
+    return (cat2, id)
+.end
+
+pub fn trait_catalog_add_trait_assoc_type(
+    cat: TraitCatalog,
+    trait_id: TraitId,
+    name: String,
+    signature_text: String,
+    span_value: span.Span,
+    hir_item_id: syn.ItemId
+) -> (TraitCatalog, TraitItemId):
+    let (cat2, id) = trait_catalog_add_trait_item(
+        cat,
+        trait_id,
+        name,
+        TraitItemKind::TraitItemAssocType,
+        signature_text,
+        span_value,
+        hir_item_id
+    )
+    return (cat2, id)
+.end
+
+pub fn trait_catalog_add_trait_assoc_const(
+    cat: TraitCatalog,
+    trait_id: TraitId,
+    name: String,
+    signature_text: String,
+    span_value: span.Span,
+    hir_item_id: syn.ItemId
+) -> (TraitCatalog, TraitItemId):
+    let (cat2, id) = trait_catalog_add_trait_item(
+        cat,
+        trait_id,
+        name,
+        TraitItemKind::TraitItemAssocConst,
+        signature_text,
+        span_value,
+        hir_item_id
+    )
+    return (cat2, id)
+.end
+
+# -----------------------------------------------------------------------------
+# Ajout d’impl
+# -----------------------------------------------------------------------------
+
+pub fn trait_catalog_add_impl(
+    cat: TraitCatalog,
+    kind: ImplKind,
+    trait_id_opt: coll.Option<TraitId>,
+    for_type_name: String,
+    for_type_span: span.Span,
+    span_value: span.Span,
+    attributes: Vec<syn.AttributeId>
+) -> (TraitCatalog, ImplId):
+    let traits = cat.traits
+    let trait_items = cat.trait_items
+    let impls = cat.impls
+    let impl_members = cat.impl_members
+
+    let new_id = traits_next_impl_id(cat)
+
+    let impl_decl = ImplDecl {
+        id: new_id,
+        kind: kind,
+        trait_id: trait_id_opt,
+        for_type_name: for_type_name,
+        for_type_span: for_type_span,
+        attributes: attributes,
+        members: Vec<ImplMemberId>::new(),
+        span: span_value
+    }
+
+    impls.push(impl_decl)
+
+    let cat2 = TraitCatalog {
+        traits: traits,
+        trait_items: trait_items,
+        impls: impls,
+        impl_members: impl_members
+    }
+
+    let out = (cat2, new_id)
+    return out
+.end
+
+pub fn trait_catalog_add_trait_impl(
+    cat: TraitCatalog,
+    trait_id: TraitId,
+    for_type_name: String,
+    for_type_span: span.Span,
+    span_value: span.Span,
+    attributes: Vec<syn.AttributeId>
+) -> (TraitCatalog, ImplId):
+    let trait_opt = coll.option_some<TraitId>(trait_id)
+    let (cat2, id) = trait_catalog_add_impl(
+        cat,
+        ImplKind::ImplKindTraitForType,
+        trait_opt,
+        for_type_name,
+        for_type_span,
+        span_value,
+        attributes
+    )
+    return (cat2, id)
+.end
+
+pub fn trait_catalog_add_inherent_impl(
+    cat: TraitCatalog,
+    for_type_name: String,
+    for_type_span: span.Span,
+    span_value: span.Span,
+    attributes: Vec<syn.AttributeId>
+) -> (TraitCatalog, ImplId):
+    let trait_none = coll.option_none<TraitId>()
+    let (cat2, id) = trait_catalog_add_impl(
+        cat,
+        ImplKind::ImplKindInherent,
+        trait_none,
+        for_type_name,
+        for_type_span,
+        span_value,
+        attributes
+    )
+    return (cat2, id)
+.end
+
+# -----------------------------------------------------------------------------
+# Ajout de membres d’impl
+# -----------------------------------------------------------------------------
+
+pub fn trait_catalog_add_impl_member(
+    cat: TraitCatalog,
+    impl_id: ImplId,
+    name: String,
+    trait_item_id_opt: coll.Option<TraitItemId>,
+    fn_item_id_opt: coll.Option<syn.ItemId>,
+    symbol_id_opt: coll.Option<sym.SymbolId>,
+    span_value: span.Span
+) -> (TraitCatalog, ImplMemberId):
+    let traits = cat.traits
+    let trait_items = cat.trait_items
+    let impls = cat.impls
+    let impl_members = cat.impl_members
+
+    let new_id = traits_next_impl_member_id(cat)
+
+    let member = ImplMember {
+        id: new_id,
+        impl_id: impl_id,
+        name: name,
+        trait_item_id: trait_item_id_opt,
+        fn_item_id: fn_item_id_opt,
+        symbol_id: symbol_id_opt,
+        span: span_value
+    }
+
+    impl_members.push(member)
+
+    # Ajout du membre dans l’impl
+    let impls2 = Vec<ImplDecl>::new()
+    let n = impls.len()
+    let i = (usize) 0
+
+    while i < n:
+        let d = impls[i]
+        if d.id == impl_id:
+            let mems = d.members
+            mems.push(new_id)
+            let d2 = ImplDecl {
+                id: d.id,
+                kind: d.kind,
+                trait_id: d.trait_id,
+                for_type_name: d.for_type_name,
+                for_type_span: d.for_type_span,
+                attributes: d.attributes,
+                members: mems,
+                span: d.span
+            }
+            impls2.push(d2)
+        else:
+            impls2.push(d)
+        .end
+        let i = i + (usize) 1
+    .end
+
+    let cat2 = TraitCatalog {
+        traits: traits,
+        trait_items: trait_items,
+        impls: impls2,
+        impl_members: impl_members
+    }
+
+    let out = (cat2, new_id)
+    return out
+.end
+
+# Sucre pour membres classiques (méthodes)
+
+pub fn trait_catalog_add_impl_method(
+    cat: TraitCatalog,
+    impl_id: ImplId,
+    name: String,
+    trait_item_id_opt: coll.Option<TraitItemId>,
+    fn_item_id_opt: coll.Option<syn.ItemId>,
+    symbol_id_opt: coll.Option<sym.SymbolId>,
+    span_value: span.Span
+) -> (TraitCatalog, ImplMemberId):
+    let (cat2, id) = trait_catalog_add_impl_member(
+        cat,
+        impl_id,
+        name,
+        trait_item_id_opt,
+        fn_item_id_opt,
+        symbol_id_opt,
+        span_value
+    )
+    return (cat2, id)
+.end
+
+# -----------------------------------------------------------------------------
+# Accès / lookups
+# -----------------------------------------------------------------------------
+
+pub fn trait_catalog_trait_count(cat: TraitCatalog) -> u32:
+    let n = cat.traits.len()
+    return (u32) n
+.end
+
+pub fn trait_catalog_impl_count(cat: TraitCatalog) -> u32:
+    let n = cat.impls.len()
+    return (u32) n
+.end
+
+pub fn trait_catalog_get_trait(cat: TraitCatalog, id: TraitId) -> TraitDecl:
+    let idx = (usize) id
+    let v = cat.traits
+    let t = v[idx]
+    return t
+.end
+
+pub fn trait_catalog_get_impl(cat: TraitCatalog, id: ImplId) -> ImplDecl:
+    let idx = (usize) id
+    let v = cat.impls
+    let d = v[idx]
+    return d
+.end
+
+pub fn trait_catalog_get_trait_item(cat: TraitCatalog, id: TraitItemId) -> TraitItem:
+    let idx = (usize) id
+    let v = cat.trait_items
+    let it = v[idx]
+    return it
+.end
+
+pub fn trait_catalog_get_impl_member(cat: TraitCatalog, id: ImplMemberId) -> ImplMember:
+    let idx = (usize) id
+    let v = cat.impl_members
+    let m = v[idx]
+    return m
+.end
+
+# Recherche d’un trait par son nom simple (non qualifié).
+pub fn trait_catalog_find_trait_by_name(
+    cat: TraitCatalog,
+    name: String
+) -> coll.Option<TraitId>:
+    let v = cat.traits
+    let n = v.len()
+    let i = (usize) 0
+
+    while i < n:
+        let t = v[i]
+        if t.name == name:
+            let some_id = coll.option_some<TraitId>(t.id)
+            return some_id
+        .end
+        let i = i + (usize) 1
+    .end
+
+    let none_id = coll.option_none<TraitId>()
+    return none_id
+.end
+
+# Recherche d’un trait par PathId + SyntaxTree (comparaison par id direct).
+pub fn trait_catalog_find_trait_by_path_id(
+    cat: TraitCatalog,
+    path_id: syn.PathId
+) -> coll.Option<TraitId>:
+    let v = cat.traits
+    let n = v.len()
+    let i = (usize) 0
+
+    while i < n:
+        let t = v[i]
+        if t.path == path_id:
+            let some_id = coll.option_some<TraitId>(t.id)
+            return some_id
+        .end
+        let i = i + (usize) 1
+    .end
+
+    let none_id = coll.option_none<TraitId>()
+    return none_id
+.end
+
+# Liste des impls pour un trait donné.
+pub fn trait_catalog_impls_for_trait(
+    cat: TraitCatalog,
+    trait_id: TraitId
+) -> Vec<ImplId>:
+    let v = cat.impls
+    let n = v.len()
+    let i = (usize) 0
+    let out = Vec<ImplId>::new()
+
+    while i < n:
+        let d = v[i]
+        if d.kind == ImplKind::ImplKindTraitForType:
+            let opt_tid = d.trait_id
+            if coll.option_is_some<TraitId>(opt_tid):
+                let tid = coll.option_unwrap_unsafe<TraitId>(opt_tid)
+                if tid == trait_id:
+                    out.push(d.id)
+                .end
+            .end
+        .end
+        let i = i + (usize) 1
+    .end
+
+    return out
+.end
+
+# Liste des impls pour un type (par nom textuel exact).
+pub fn trait_catalog_impls_for_type_name(
+    cat: TraitCatalog,
+    type_name: String
+) -> Vec<ImplId>:
+    let v = cat.impls
+    let n = v.len()
+    let i = (usize) 0
+    let out = Vec<ImplId>::new()
+
+    while i < n:
+        let d = v[i]
+        if d.for_type_name == type_name:
+            out.push(d.id)
+        .end
+        let i = i + (usize) 1
+    .end
+
+    return out
+.end
+
+# Impl unique pour un couple (type_name, trait_id), s’il existe.
+pub fn trait_catalog_find_impl_for_type_and_trait(
+    cat: TraitCatalog,
+    type_name: String,
+    trait_id: TraitId
+) -> coll.Option<ImplId>:
+    let v = cat.impls
+    let n = v.len()
+    let i = (usize) 0
+
+    while i < n:
+        let d = v[i]
+        if d.kind == ImplKind::ImplKindTraitForType and d.for_type_name == type_name:
+            let opt_tid = d.trait_id
+            if coll.option_is_some<TraitId>(opt_tid):
+                let tid = coll.option_unwrap_unsafe<TraitId>(opt_tid)
+                if tid == trait_id:
+                    let some_id = coll.option_some<ImplId>(d.id)
+                    return some_id
+                .end
+            .end
+        .end
+        let i = i + (usize) 1
+    .end
+
+    let none_id = coll.option_none<ImplId>()
+    return none_id
+.end
+
+# Liste des traits implémentés pour un type donné (par son nom textuel).
+pub fn trait_catalog_traits_for_type_name(
+    cat: TraitCatalog,
+    type_name: String
+) -> Vec<TraitId>:
+    let v = cat.impls
+    let n = v.len()
+    let i = (usize) 0
+    let out = Vec<TraitId>::new()
+
+    while i < n:
+        let d = v[i]
+        if d.kind == ImplKind::ImplKindTraitForType and d.for_type_name == type_name:
+            let opt_tid = d.trait_id
+            if coll.option_is_some<TraitId>(opt_tid):
+                let tid = coll.option_unwrap_unsafe<TraitId>(opt_tid)
+                out.push(tid)
+            .end
+        .end
+        let i = i + (usize) 1
+    .end
+
+    return out
+.end
+
+# Liste des membres impl pour un ImplId donné.
+pub fn trait_catalog_members_for_impl(
+    cat: TraitCatalog,
+    impl_id: ImplId
+) -> Vec<ImplMemberId>:
+    let v = cat.impls
+    let n = v.len()
+    let i = (usize) 0
+
+    while i < n:
+        let d = v[i]
+        if d.id == impl_id:
+            return d.members
+        .end
+        let i = i + (usize) 1
+    .end
+
+    let empty = Vec<ImplMemberId>::new()
+    return empty
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers de debug
+# -----------------------------------------------------------------------------
+
+pub fn trait_item_kind_to_string(kind: TraitItemKind) -> String:
+    if kind == TraitItemKind::TraitItemMethod:
+        return "method"
+    .end
+    if kind == TraitItemKind::TraitItemAssocType:
+        return "assoc_type"
+    .end
+    if kind == TraitItemKind::TraitItemAssocConst:
+        return "assoc_const"
+    .end
+    return "unknown"
+.end
+
+pub fn impl_kind_to_string(kind: ImplKind) -> String:
+    if kind == ImplKind::ImplKindTraitForType:
+        return "trait_for_type"
+    .end
+    if kind == ImplKind::ImplKindInherent:
+        return "inherent"
+    .end
+    return "unknown"
+.end
+
+# Retourne un nom qualifié simple pour un trait, en se basant sur le PathId
+# et un SyntaxTree (optionnel) pour la reconstruction du chemin textuel.
+pub fn trait_decl_qualified_name(
+    cat: TraitCatalog,
+    tree: syn.SyntaxTree,
+    trait_id: TraitId
+) -> String:
+    let t = trait_catalog_get_trait(cat, trait_id)
+    let paths = tree.paths
+    let idx = (usize) t.path
+    let p = paths[idx]
+    let segs = p.segments
+    let n = segs.len()
+    let i = (usize) 0
+
+    let out = ""
+
+    while i < n:
+        let seg = segs[i]
+        if out == "":
+            out = seg.name
+        else:
+            out = out + "::" + seg.name
+        .end
+        let i = i + (usize) 1
+    .end
+
+    return out
+.end
+
+# -----------------------------------------------------------------------------
+# Scénario interne de smoke-test
+# -----------------------------------------------------------------------------
+
+scenario traits_smoke_test():
+    # Construction d’un catalogue vide.
+    let cat0 = trait_catalog_new()
+
+    # Faux SyntaxTree minimal pour recevoir un PathId (Eq).
+    let tree0 = syn.syntax_tree_new()
+
+    let segs = Vec<syn.PathSegment>::new()
+    let sp_path = span.span_from_len((span.BytePos) 0, (span.ByteLen) 2)
+
+    let seg_core = syn.PathSegment { name: "core", generic_args: Vec<syn.TypeExprId>::new() }
+    let seg_traits = syn.PathSegment { name: "traits", generic_args: Vec<syn.TypeExprId>::new() }
+    let seg_eq = syn.PathSegment { name: "Eq", generic_args: Vec<syn.TypeExprId>::new() }
+
+    segs.push(seg_core)
+    segs.push(seg_traits)
+    segs.push(seg_eq)
+
+    let (tree1, path_eq) = syn.syntax_tree_add_path(tree0, segs, sp_path)
+
+    # Ajout du trait Eq.
+    let attrs_empty = Vec<syn.AttributeId>::new()
+    let sp_trait = span.span_from_len((span.BytePos) 0, (span.ByteLen) 10)
+    let (cat1, trait_eq) = trait_catalog_add_trait(
+        cat0,
+        "Eq",
+        path_eq,
+        sp_trait,
+        attrs_empty
+    )
+
+    # Ajout de la méthode eq(&self, &Self) -> Bool sous forme textuelle.
+    let sp_method = span.span_from_len((span.BytePos) 11, (span.ByteLen) 20)
+    let sig_text = "fn eq(self: &Self, other: &Self) -> Bool"
+    let dummy_item_id = (syn.ItemId) 0
+
+    let (cat2, trait_item_eq) = trait_catalog_add_trait_method(
+        cat1,
+        trait_eq,
+        "eq",
+        sig_text,
+        sp_method,
+        dummy_item_id
+    )
+
+    # Ajout d’un impl pour i32.
+    let sp_type = span.span_from_len((span.BytePos) 32, (span.ByteLen) 3)
+    let sp_impl = span.span_from_len((span.BytePos) 30, (span.ByteLen) 50)
+
+    let attrs_impl = Vec<syn.AttributeId>::new()
+    let (cat3, impl_i32_eq) = trait_catalog_add_trait_impl(
+        cat2,
+        trait_eq,
+        "i32",
+        sp_type,
+        sp_impl,
+        attrs_impl
+    )
+
+    # Ajout d’une méthode d’impl eq pour i32.
+    let sp_impl_method = span.span_from_len((span.BytePos) 40, (span.ByteLen) 20)
+    let opt_trait_item_eq = coll.option_some<TraitItemId>(trait_item_eq)
+    let opt_fn_item = coll.option_none<syn.ItemId>()
+    let opt_sym = coll.option_none<sym.SymbolId>()
+
+    let (cat4, _impl_member_id) = trait_catalog_add_impl_method(
+        cat3,
+        impl_i32_eq,
+        "eq",
+        opt_trait_item_eq,
+        opt_fn_item,
+        opt_sym,
+        sp_impl_method
+    )
+
+    # Lookups : vérifier la cohérence.
+    let traits_for_i32 = trait_catalog_traits_for_type_name(cat4, "i32")
+    let impls_eq = trait_catalog_impls_for_trait(cat4, trait_eq)
+
+    let opt_impl = trait_catalog_find_impl_for_type_and_trait(cat4, "i32", trait_eq)
+    let has_impl = coll.option_is_some<ImplId>(opt_impl)
+
+    let _ = tree1
+    let _ = traits_for_i32
+    let _ = impls_eq
+    let _ = has_impl
+.end

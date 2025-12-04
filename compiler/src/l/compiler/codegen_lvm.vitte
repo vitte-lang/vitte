@@ -1,0 +1,536 @@
+
+
+module vitte.compiler.codegen_lvm
+
+import vitte.compiler.ast as ast
+import vitte.compiler.ast_visitors as visitors
+import vitte.compiler.diagnostics as diag
+
+# ============================================================================
+# Vitte compiler – backend de génération LVM (Vitte-Light VM)
+#
+# Objectifs :
+#   - convertir un ModuleAst Vitte en module LVM (IR / bytecode de la VM) ;
+#   - fournir des structures IR claires et indépendantes de l'AST ;
+#   - offrir une API de haut niveau :
+#       * compile_module_to_lvm(ModuleAst) -> LvmModule
+#       * compile_function_to_lvm(FunctionDecl) -> LvmFunction
+#   - séparer :
+#       * la représentation IR (LvmModule, LvmFunction, LvmBlock, LvmInstr),
+#       * le contexte de génération (CodegenContext),
+#       * les helpers de mapping (symboles, constantes, labels).
+#
+# Hypothèses :
+#   - LVM est une VM typée simple avec registres et blocs basiques ;
+#   - ce fichier définit un IR intermédiaire "LvmIR", désucré ensuite
+#     vers du bytecode binaire par un autre module (codegen_lvm_emit, par ex.).
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Types de base LVM
+# ----------------------------------------------------------------------------
+
+pub struct LvmModuleId:
+    let raw: u32
+.end
+
+pub struct LvmFuncId:
+    let raw: u32
+.end
+
+pub struct LvmBlockId:
+    let raw: u32
+.end
+
+pub struct LvmReg:
+    let index: u32
+.end
+
+pub struct LvmGlobalId:
+    let raw: u32
+.end
+
+pub enum LvmValueType:
+    I32
+    I64
+    F32
+    F64
+    Bool
+    Ptr
+    Unit
+.end
+
+pub enum LvmCallingConv:
+    Default
+.end
+
+# ----------------------------------------------------------------------------
+# Operandes et instructions LVM
+# ----------------------------------------------------------------------------
+
+pub enum LvmOperandKind:
+    Reg
+    ImmInt
+    ImmFloat
+    Global
+    BlockLabel
+.end
+
+pub struct LvmOperand:
+    let kind: LvmOperandKind
+    let reg: Option<LvmReg>
+    let imm_int: Option<i64>
+    let imm_float: Option<f64>
+    let global: Option<LvmGlobalId>
+    let block: Option<LvmBlockId>
+.end
+
+pub enum LvmBinOp:
+    Add
+    Sub
+    Mul
+    Div
+    Mod
+    And
+    Or
+    Xor
+    Shl
+    Shr
+.end
+
+pub enum LvmCmpOp:
+    Eq
+    Ne
+    Lt
+    Le
+    Gt
+    Ge
+.end
+
+pub enum LvmInstrKind:
+    Nop
+    Comment
+    Mov
+    BinOp
+    Cmp
+    Load
+    Store
+    Call
+    Ret
+    Br
+    CondBr
+    Phi
+.end
+
+pub struct LvmInstr:
+    let kind: LvmInstrKind
+    let ty: LvmValueType
+    let dst: Option<LvmReg>
+    let op: Option<LvmBinOp>
+    let cmp_op: Option<LvmCmpOp>
+    let lhs: Option<LvmOperand>
+    let rhs: Option<LvmOperand>
+    let args: Vec<LvmOperand>
+    let comment: String
+.end
+
+pub struct LvmBlock:
+    let id: LvmBlockId
+    let name: String
+    let instrs: Vec<LvmInstr>
+.end
+
+pub struct LvmParam:
+    let ty: LvmValueType
+    let name: String
+.end
+
+pub struct LvmFunction:
+    let id: LvmFuncId
+    let name: String
+    let params: Vec<LvmParam>
+    let ret_type: LvmValueType
+    let calling_conv: LvmCallingConv
+    let blocks: Vec<LvmBlock>
+    let entry_block: LvmBlockId
+.end
+
+pub struct LvmGlobal:
+    let id: LvmGlobalId
+    let name: String
+    let ty: LvmValueType
+    let initializer: Option<LvmOperand]
+.end
+
+pub struct LvmModule:
+    let id: LvmModuleId
+    let name: String
+    let globals: Vec<LvmGlobal>
+    let functions: Vec<LvmFunction>
+.end
+
+# ----------------------------------------------------------------------------
+# Options de génération et diagnostics
+# ----------------------------------------------------------------------------
+
+pub struct CodegenOptions:
+    let optimize: Bool
+    let emit_debug_info: Bool
+    let target_triple: String
+.end
+
+fn CodegenOptions.default() -> CodegenOptions:
+    let opts = CodegenOptions(
+        optimize = false,
+        emit_debug_info = true,
+        target_triple = "lvm-generic-unknown"
+    )
+    return opts
+.end
+
+pub enum CodegenErrorKind:
+    UnsupportedFeature
+    InternalError
+    TypeMismatch
+    UnknownSymbol
+.end
+
+pub struct CodegenError:
+    let kind: CodegenErrorKind
+    let message: String
+    let span: ast.Span
+.end
+
+pub struct CodegenResult:
+    let module: Option<LvmModule>
+    let errors: Vec<CodegenError>
+.end
+
+# ----------------------------------------------------------------------------
+# Contexte de génération LVM
+# ----------------------------------------------------------------------------
+
+pub struct FuncEnv:
+    let func_id: LvmFuncId
+    let blocks: Vec<LvmBlock>
+    let current_block: Option<LvmBlockId>
+    let reg_counter: u32
+.end
+
+fn FuncEnv.new(LvmFuncId func_id) -> FuncEnv:
+    let blocks = Vec<LvmBlock>::new()
+    let none_block: Option<LvmBlockId> = Option<LvmBlockId>::None()
+    let env = FuncEnv(
+        func_id = func_id,
+        blocks = blocks,
+        current_block = none_block,
+        reg_counter = 0u32
+    )
+    return env
+.end
+
+fn FuncEnv.fresh_reg(FuncEnv self) -> (FuncEnv, LvmReg):
+    let next_index = self.reg_counter + 1u32
+    let reg = LvmReg(index = next_index)
+    let updated = FuncEnv(
+        func_id = self.func_id,
+        blocks = self.blocks,
+        current_block = self.current_block,
+        reg_counter = next_index
+    )
+    return (updated, reg)
+.end
+
+fn FuncEnv.append_block(FuncEnv self, String name) -> (FuncEnv, LvmBlockId):
+    let blocks = self.blocks
+    let next_id = LvmBlockId(raw = blocks.len() as u32)
+    let instrs = Vec<LvmInstr>::new()
+    let block = LvmBlock(
+        id = next_id,
+        name = name,
+        instrs = instrs
+    )
+    blocks.push(block)
+
+    let some_block: Option<LvmBlockId> = Option<LvmBlockId>::Some(next_id)
+    let updated = FuncEnv(
+        func_id = self.func_id,
+        blocks = blocks,
+        current_block = some_block,
+        reg_counter = self.reg_counter
+    )
+    return (updated, next_id)
+.end
+
+fn FuncEnv.append_instr(FuncEnv self, LvmInstr instr) -> FuncEnv:
+    let blocks = self.blocks
+    let maybe_current = self.current_block
+
+    let has_block = maybe_current.is_some()
+    if not has_block:
+        # Sans bloc courant, on ignore l'instruction (erreur logique).
+        return self
+    .end
+
+    let current_id = maybe_current.unwrap()
+
+    # On cherche le bloc par id et on pousse l'instruction.
+    let len = blocks.len()
+    let mut i = 0usize
+    while i < len:
+        let block = blocks[i]
+        if block.id.raw == current_id.raw:
+            block.instrs.push(instr)
+            blocks[i] = block
+            break
+        .end
+        i = i + 1usize
+    .end
+
+    let updated = FuncEnv(
+        func_id = self.func_id,
+        blocks = blocks,
+        current_block = maybe_current,
+        reg_counter = self.reg_counter
+    )
+    return updated
+.end
+
+pub struct CodegenContext:
+    let opts: CodegenOptions
+    let diagnostics: diag.DiagnosticsSink
+    let module_ast: ast.ModuleAst
+    let lvm_module: LvmModule
+.end
+
+fn CodegenContext.new(CodegenOptions opts, diag.DiagnosticsSink sink, ast.ModuleAst module_ast) -> CodegenContext:
+    let empty_globals = Vec<LvmGlobal>::new()
+    let empty_functions = Vec<LvmFunction>::new()
+    let module_id = LvmModuleId(raw = 0u32)
+    let lvm = LvmModule(
+        id = module_id,
+        name = module_ast.name.name,
+        globals = empty_globals,
+        functions = empty_functions
+    )
+    let ctx = CodegenContext(
+        opts = opts,
+        diagnostics = sink,
+        module_ast = module_ast,
+        lvm_module = lvm
+    )
+    return ctx
+.end
+
+fn CodegenContext.report_error(CodegenContext self, CodegenErrorKind kind, String message, ast.Span span) -> CodegenContext:
+    let error = CodegenError(
+        kind = kind,
+        message = message,
+        span = span
+    )
+    self.diagnostics.push_codegen_error(error)
+    return self
+.end
+
+# ----------------------------------------------------------------------------
+# API publique de génération LVM
+# ----------------------------------------------------------------------------
+
+pub fn compile_module_to_lvm(CodegenOptions opts, diag.DiagnosticsSink sink, ast.ModuleAst module_ast) -> CodegenResult:
+    let ctx0 = CodegenContext.new(opts, sink, module_ast)
+    let ctx1 = generate_module_lvm(ctx0)
+
+    let has_errors = ctx1.diagnostics.has_errors()
+    if has_errors:
+        let none_module: Option<LvmModule> = Option<LvmModule>::None()
+        let errors = ctx1.diagnostics.take_codegen_errors()
+        let res = CodegenResult(
+            module = none_module,
+            errors = errors
+        )
+        return res
+    .end
+
+    let some_module: Option<LvmModule> = Option<LvmModule>::Some(ctx1.lvm_module)
+    let empty_errors = Vec<CodegenError>::new()
+    let res_ok = CodegenResult(
+        module = some_module,
+        errors = empty_errors
+    )
+    return res_ok
+.end
+
+fn generate_module_lvm(CodegenContext ctx) -> CodegenContext:
+    let items = ctx.module_ast.items
+    let count = items.len()
+    let mut i = 0usize
+    let mut current_ctx = ctx
+
+    while i < count:
+        let item_id = items[i]
+        current_ctx = generate_item_lvm(current_ctx, item_id)
+        i = i + 1usize
+    .end
+
+    return current_ctx
+.end
+
+fn generate_item_lvm(CodegenContext ctx, ast.AstNodeId item_id) -> CodegenContext:
+    # Pour l'instant, on ne gère que les fonctions ; le reste est ignoré.
+    let node = ast.lookup_node(ctx.module_ast, item_id)
+    if node.kind == ast.AstNodeKind::NodeFunctionDecl:
+        let func_decl = ast.lookup_function(ctx.module_ast, node.payload)
+        let updated = generate_function_lvm(ctx, func_decl)
+        return updated
+    .end
+
+    # TODO : gérer structs, enums, globales, traits/impl, manifestes Muffin, etc.
+    return ctx
+.end
+
+fn generate_function_lvm(CodegenContext ctx, ast.FunctionDecl fdecl) -> CodegenContext:
+    let func_index = ctx.lvm_module.functions.len() as u32
+    let func_id = LvmFuncId(raw = func_index)
+
+    let params = build_lvm_params_from_ast(fdecl)
+    let ret_ty = map_type_to_lvm(fdecl.return_type)
+
+    let env0 = FuncEnv.new(func_id)
+    let pair = FuncEnv.append_block(env0, "entry")
+    let env1 = pair.0
+    let entry_block = pair.1
+
+    let env2 = generate_block_from_ast(env1, fdecl.body)
+
+    let func = LvmFunction(
+        id = func_id,
+        name = fdecl.name.name,
+        params = params,
+        ret_type = ret_ty,
+        calling_conv = LvmCallingConv::Default,
+        blocks = env2.blocks,
+        entry_block = entry_block
+    )
+
+    let functions = ctx.lvm_module.functions
+    functions.push(func)
+
+    let updated_module = LvmModule(
+        id = ctx.lvm_module.id,
+        name = ctx.lvm_module.name,
+        globals = ctx.lvm_module.globals,
+        functions = functions
+    )
+
+    let updated_ctx = CodegenContext(
+        opts = ctx.opts,
+        diagnostics = ctx.diagnostics,
+        module_ast = ctx.module_ast,
+        lvm_module = updated_module
+    )
+    return updated_ctx
+.end
+
+# ----------------------------------------------------------------------------
+# Helpers de mapping : types, params, blocs, expressions
+# ----------------------------------------------------------------------------
+
+fn build_lvm_params_from_ast(ast.FunctionDecl fdecl) -> Vec<LvmParam>:
+    let params = Vec<LvmParam>::new()
+    let ast_params = fdecl.params.params
+    let len = ast_params.len()
+    let mut i = 0usize
+
+    while i < len:
+        let p = ast_params[i]
+        let ty = map_type_to_lvm(Some(p.ty))
+        let param = LvmParam(
+            ty = ty,
+            name = p.name.name
+        )
+        params.push(param)
+        i = i + 1usize
+    .end
+
+    return params
+.end
+
+fn map_type_to_lvm(Option<ast.TypeExprId> maybe_ty) -> LvmValueType:
+    let has_type = maybe_ty.is_some()
+    if not has_type:
+        return LvmValueType::Unit
+    .end
+
+    let ty_id = maybe_ty.unwrap()
+    # TODO : implémenter le mapping réel en consultant ast.ModuleAst / TypeExpr.
+    # Pour l'instant, on renvoie Unit par défaut.
+    return LvmValueType::Unit
+.end
+
+fn generate_block_from_ast(FuncEnv env, ast.BlockId block_id) -> FuncEnv:
+    # TODO : parcourir les statements du block AST et générer les instructions LVM.
+    let block = ast.lookup_block(block_id)
+    let stmts = block.statements
+    let len = stmts.len()
+    let mut i = 0usize
+    let mut current_env = env
+
+    while i < len:
+        let stmt_id = stmts[i]
+        current_env = generate_stmt_from_ast(current_env, stmt_id)
+        i = i + 1usize
+    .end
+
+    return current_env
+.end
+
+fn generate_stmt_from_ast(FuncEnv env, ast.AstNodeId stmt_id) -> FuncEnv:
+    let stmt = ast.lookup_stmt(stmt_id)
+    # TODO : dispatch selon stmt.kind et produire des LvmInstr.
+    # Pour l’instant, on insère un NOP commenté.
+    let instr = LvmInstr(
+        kind = LvmInstrKind::Comment,
+        ty = LvmValueType::Unit,
+        dst = Option<LvmReg>::None(),
+        op = Option<LvmBinOp>::None(),
+        cmp_op = Option<LvmCmpOp>::None(),
+        lhs = Option<LvmOperand>::None(),
+        rhs = Option<LvmOperand>::None(),
+        args = Vec<LvmOperand>::new(),
+        comment = "unimplemented stmt codegen"
+    )
+    let updated_env = FuncEnv.append_instr(env, instr)
+    return updated_env
+.end
+
+fn generate_expr_to_reg(FuncEnv env, ast.ExprId expr_id) -> (FuncEnv, LvmReg):
+    # TODO : générer les instructions LVM pour calculer l'expression dans un registre.
+    let pair = FuncEnv.fresh_reg(env)
+    let env2 = pair.0
+    let reg = pair.1
+
+    let instr = LvmInstr(
+        kind = LvmInstrKind::Nop,
+        ty = LvmValueType::Unit,
+        dst = Option<LvmReg>::Some(reg),
+        op = Option<LvmBinOp>::None(),
+        cmp_op = Option<LvmCmpOp>::None(),
+        lhs = Option<LvmOperand>::None(),
+        rhs = Option<LvmOperand>::None(),
+        args = Vec<LvmOperand>::new(),
+        comment = "unimplemented expr codegen"
+    )
+    let env3 = FuncEnv.append_instr(env2, instr)
+    return (env3, reg)
+.end
+
+# ----------------------------------------------------------------------------
+# Notes :
+#   - De nombreuses fonctions ici sont des stubs (TODO), mais la structure
+#     d'ensemble est prête pour accueillir un codegen réel.
+#   - Le parseur et les autres modules ast.* pourront fournir les helpers :
+#       * ast.lookup_node
+#       * ast.lookup_function
+#       * ast.lookup_block
+#       * ast.lookup_stmt
+# ----------------------------------------------------------------------------

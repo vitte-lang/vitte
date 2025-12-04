@@ -1,0 +1,369 @@
+
+module lvm.debug
+
+# ============================================================================
+# Vitte LVM – Modèle logique de debug, trace et désassemblage
+#
+# Objectifs :
+#   - Fournir une représentation déclarative des informations de debug
+#     associées à la machine virtuelle Vitte (LVM) :
+#       * désassemblage de bytecode,
+#       * trace d’exécution (events),
+#       * stack dumps et frames d’appel,
+#       * breakpoints et configuration de session de debug.
+#   - Ne définir que des structures de données, sans fonctions ni I/O.
+#   - Servir de contrat pour :
+#       * les outils de debug (CLI, UI, LSP),
+#       * les backends d’exécution (interp/JIT) capables de renseigner ces
+#         structures,
+#       * les tests et enregistrements/replays.
+#
+# Conventions :
+#   - Même style que vitte.compiler.ast / lrt.ffi / lvm.builtins / lvm.bytecode :
+#       * `pub struct/enum` + ":" et blocs terminés par `.end` ;
+#       * enums "tag-only" ;
+#       * IDs forts (`LvmTraceEventId`, `LvmDebugSessionId`, ...) basés sur
+#         des indices u32 ;
+#       * références vers d’autres modules via leurs IDs (LvmFunctionId,
+#         LvmInstrId, LvmBuiltinId, LvmVmId, ...).
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Indices et identifiants de debug
+# ----------------------------------------------------------------------------
+
+pub typedef u32 LvmDebugIndex
+
+pub struct LvmDebugSessionId:
+    let raw: LvmDebugIndex
+.end
+
+pub struct LvmTraceEventId:
+    let raw: LvmDebugIndex
+.end
+
+pub struct LvmStackFrameId:
+    let raw: LvmDebugIndex
+.end
+
+pub struct LvmStackSnapshotId:
+    let raw: LvmDebugIndex
+.end
+
+pub struct LvmBreakpointId:
+    let raw: LvmDebugIndex
+.end
+
+pub struct LvmWatchId:
+    let raw: LvmDebugIndex
+.end
+
+# ----------------------------------------------------------------------------
+# Niveaux de log / sévérité
+# ----------------------------------------------------------------------------
+
+pub enum LvmDebugSeverity:
+    DebugTrace     # bruit détaillé, step-by-step
+    Info           # informations générales
+    Warning        # situations suspectes mais non bloquantes
+    Error          # erreurs d’exécution ou de debug
+.end
+
+# ----------------------------------------------------------------------------
+# Désassemblage : représentation textuelle du bytecode
+# ----------------------------------------------------------------------------
+
+# Genre d’opérande dans une ligne de désassemblage.
+pub enum LvmDisasmOperandKind:
+    DisasmReg          # registre
+    DisasmConst        # constante
+    DisasmIntImm       # entier immédiat
+    DisasmLabel        # label de bloc
+    DisasmFunction     # fonction
+    DisasmBuiltin      # builtin
+    DisasmText         # texte brut (fallback)
+.end
+
+# Opérande désassemblé (avec lien optionnel vers la structure sous-jacente).
+pub struct LvmDisasmOperand:
+    let kind: LvmDisasmOperandKind
+    let text: String                      # représentation human-readable
+    let register: Option<LvmRegisterId>
+    let const_id: Option<LvmConstId>
+    let function: Option<LvmFunctionId>
+    let builtin: Option<LvmBuiltinId>
+    let target_block: Option<LvmBlockId>
+.end
+
+# Instruction désassemblée.
+pub struct LvmDisasmInstr:
+    let instr: LvmInstrId                 # lien vers l’instruction bytecode
+    let offset: u32                       # offset dans le flux d’instructions
+    let text: String                      # représentation formatée complète
+    let operands: Vec<LvmDisasmOperand>
+.end
+
+# Bloc désassemblé.
+pub struct LvmDisasmBlock:
+    let block: LvmBlockId
+    let label: String                     # nom du bloc (label) pour debug
+    let instructions: Vec<LvmDisasmInstr>
+.end
+
+# Fonction désassemblée.
+pub struct LvmDisasmFunction:
+    let function: LvmFunctionId
+    let name: Option<String>
+    let blocks: Vec<LvmDisasmBlock>
+.end
+
+# Module de bytecode désassemblé.
+pub struct LvmDisasmModule:
+    let module_name: Option<String>
+    let functions: Vec<LvmDisasmFunction>
+.end
+
+# ----------------------------------------------------------------------------
+# Stack frames et stack dumps
+# ----------------------------------------------------------------------------
+
+# Genre de frame sur la pile LVM.
+pub enum LvmStackFrameKind:
+    FrameUserFunction      # fonction utilisateur bytecode
+    FrameBuiltin           # builtin LVM
+    FrameNative            # appel natif/FFI
+    FrameInternal          # frame interne au runtime
+.end
+
+# Slot sur la pile (stack slot) pour un stack dump.
+pub enum LvmStackSlotKind:
+    SlotValue              # valeur ordinaire (LvmValue)
+    SlotReturnAddress      # adresse de retour (bloc + instr)
+    SlotSavedRegister      # registre sauvegardé
+    SlotInternal           # metadata interne runtime
+.end
+
+pub struct LvmStackSlot:
+    let index: u32                         # index dans la pile (0 = base)
+    let kind: LvmStackSlotKind
+    let value: Option<LvmValueId>         # pour SlotValue si inspectable
+    let function: Option<LvmFunctionId>   # pour SlotReturnAddress / Internal
+    let block: Option<LvmBlockId>
+    let instr: Option<LvmInstrId>
+    let register: Option<LvmRegisterId>   # pour SlotSavedRegister
+.end
+
+# Frame d’appel LVM logique.
+pub struct LvmStackFrame:
+    let id: LvmStackFrameId
+    let kind: LvmStackFrameKind
+    let vm: LvmVmId                        # VM concernée
+    let function: Option<LvmFunctionId>    # pour FrameUserFunction
+    let builtin: Option<LvmBuiltinId>      # pour FrameBuiltin
+    let return_function: Option<LvmFunctionId>
+    let return_block: Option<LvmBlockId>
+    let return_instr: Option<LvmInstrId>
+    let stack_start: u32                   # première position de slot
+    let stack_end: u32                     # position après le dernier slot
+    let locals: Vec<LvmLocalId>            # locaux visibles dans cette frame
+    let upvalues: Vec<LvmUpvalueId>        # upvalues capturés
+.end
+
+# Snapshot de pile complet (stack dump).
+pub struct LvmStackSnapshot:
+    let id: LvmStackSnapshotId
+    let vm: LvmVmId
+    let frames: Vec<LvmStackFrameId>       # frames dans l’ordre (top dernier)
+    let slots: Vec<LvmStackSlot>           # contenu de la pile entière
+    let description: Option<String>        # texte pour logs (facultatif)
+.end
+
+# ----------------------------------------------------------------------------
+# Événements de trace (execution trace)
+# ----------------------------------------------------------------------------
+
+# Type d’événement de trace.
+pub enum LvmTraceEventKind:
+    TraceVmStart
+    TraceVmStop
+
+    TraceInstrBefore        # avant exécution d’une instruction
+    TraceInstrAfter         # après exécution d’une instruction
+
+    TraceCallEnter          # entrée dans une fonction bytecode
+    TraceCallExit           # sortie d’une fonction bytecode
+
+    TraceBuiltinEnter       # entrée dans un builtin
+    TraceBuiltinExit        # sortie d’un builtin
+
+    TraceStackSnapshot      # stack dump ponctuel
+
+    TraceBreakpointHit      # breakpoint atteint
+    TraceWatchTriggered     # watchpoint déclenché
+
+    TraceError              # erreur/exception dans la VM
+    TraceCustomMessage      # message arbitraire
+.end
+
+# Origine d’un événement de trace.
+pub struct LvmTraceOrigin:
+    let vm: LvmVmId
+    let function: Option<LvmFunctionId>
+    let block: Option<LvmBlockId>
+    let instr: Option<LvmInstrId>
+    let builtin: Option<LvmBuiltinId>
+.end
+
+# Détail optionnel d’une erreur de trace.
+pub struct LvmTraceErrorInfo:
+    let message: String
+    let severity: LvmDebugSeverity
+.end
+
+# Payload facultatif d’un événement de trace.
+pub struct LvmTracePayload:
+    let stack_snapshot: Option<LvmStackSnapshotId>
+    let breakpoint: Option<LvmBreakpointId>
+    let watch: Option<LvmWatchId>
+    let text: Option<String>
+    let error: Option<LvmTraceErrorInfo>
+.end
+
+# Événement de trace complet.
+pub struct LvmTraceEvent:
+    let id: LvmTraceEventId
+    let kind: LvmTraceEventKind
+    let origin: LvmTraceOrigin
+    let payload: LvmTracePayload
+    let timestamp_millis: u64               # horodatage logique ou réel
+.end
+
+# Flux de trace (liste d’événements ordonnés).
+pub struct LvmTraceBuffer:
+    let events: Vec<LvmTraceEvent>
+.end
+
+# ----------------------------------------------------------------------------
+# Breakpoints, watchpoints et configuration de debug
+# ----------------------------------------------------------------------------
+
+# Localisation d’un breakpoint.
+pub enum LvmBreakpointLocationKind:
+    BpInstr              # pointe vers une instruction précise
+    BpFunctionEntry      # entrée de fonction
+    BpFunctionExit       # sortie de fonction
+    BpBuiltinKind        # pour un builtin donné
+.end
+
+pub struct LvmBreakpointLocation:
+    let kind: LvmBreakpointLocationKind
+    let function: Option<LvmFunctionId>
+    let block: Option<LvmBlockId>
+    let instr: Option<LvmInstrId>
+    let builtin: Option<LvmBuiltinId>
+.end
+
+# Mode de condition d’un breakpoint.
+pub enum LvmBreakpointConditionKind:
+    BpCondNone           # toujours actif
+    BpCondHitCount       # se déclenche après N hits
+    BpCondExpression     # expression bool (côté langage) évaluée dans la VM
+.end
+
+pub struct LvmBreakpointCondition:
+    let kind: LvmBreakpointConditionKind
+    let hit_threshold: Option<u64>
+    let expression: Option<String>         # représentation textuelle
+.end
+
+# Breakpoint logique.
+pub struct LvmBreakpoint:
+    let id: LvmBreakpointId
+    let enabled: Bool
+    let location: LvmBreakpointLocation
+    let condition: LvmBreakpointCondition
+    let current_hit_count: u64
+    let log_message: Option<String>       # message loggé lors du hit
+    let capture_stack: Bool               # true => déclencher snapshot de pile
+.end
+
+# Watchpoint (sur une valeur, variable, adresse, etc.).
+pub enum LvmWatchKind:
+    WatchGlobal
+    WatchLocal
+    WatchRegister
+    WatchMemoryAddress
+.end
+
+pub struct LvmWatchTarget:
+    let kind: LvmWatchKind
+    let global: Option<LvmGlobalId>
+    let local: Option<LvmLocalId>
+    let register: Option<LvmRegisterId>
+    let address: Option<usize>
+.end
+
+pub struct LvmWatch:
+    let id: LvmWatchId
+    let enabled: Bool
+    let target: LvmWatchTarget
+    let expression: Option<String>        # expression d’accès/condition
+.end
+
+# Table des breakpoints et watchpoints d’une session.
+pub struct LvmBreakpointTable:
+    let breakpoints: Vec<LvmBreakpoint>
+.end
+
+pub struct LvmWatchTable:
+    let watches: Vec<LvmWatch>
+.end
+
+# Mode de debug global.
+pub enum LvmDebugMode:
+    DebugDisabled
+    DebugTraceOnly
+    DebugBreakpoints
+    DebugInteractive
+.end
+
+# Configuration d’une session de debug.
+pub struct LvmDebugSessionConfig:
+    let mode: LvmDebugMode
+    let record_trace: Bool
+    let max_trace_events: u64
+    let capture_stack_on_error: Bool
+    let capture_stack_on_breakpoint: Bool
+.end
+
+# Session de debug logique pour une VM.
+pub struct LvmDebugSession:
+    let id: LvmDebugSessionId
+    let vm: LvmVmId
+    let config: LvmDebugSessionConfig
+    let breakpoints: LvmBreakpointTable
+    let watches: LvmWatchTable
+    let trace_buffer: Option<LvmTraceBuffer>
+.end
+
+# ----------------------------------------------------------------------------
+# Nœuds génériques pour tooling
+# ----------------------------------------------------------------------------
+
+pub enum LvmDebugNodeKind:
+    NodeDisasmModule
+    NodeDisasmFunction
+    NodeDisasmBlock
+    NodeDisasmInstr
+    NodeStackSnapshot
+    NodeStackFrame
+    NodeTraceEvent
+    NodeBreakpoint
+    NodeWatch
+    NodeDebugSession
+.end
+
+pub struct LvmDebugNode:
+    let id: LvmDebugIndex
+    let kind: LvmDebugNodeKind
+.end

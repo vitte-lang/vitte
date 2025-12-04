@@ -1,0 +1,423 @@
+module vitte.compiler.codegen_text
+
+import vitte.compiler.ast as ast
+
+# ============================================================================
+# Vitte compiler – Génération de texte lisible à partir de l'AST
+#
+# Objectifs :
+#   - fournir une représentation texte stable d'un ModuleAst ;
+#   - être utilisable pour :
+#       * debug (dump d'AST),
+#       * tests (snapshot tests),
+#       * outils externes (LSP, diff, logs);
+#   - rester fidèle à la grammaire Vitte tout en étant tolérant :
+#       * on ne tente pas de reconstruire exactement le source,
+#       * on produit une vue structurée et lisible.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Options de génération
+# ----------------------------------------------------------------------------
+
+pub struct TextCodegenOptions:
+    let show_spans: Bool        # afficher les Span (fichier:ligne:col) si dispo
+    let show_ids: Bool          # afficher les AstNodeId / ExprId si dispo
+    let indent_width: u32       # taille de l'indentation (en espaces)
+    let show_attributes: Bool   # afficher les attributs @foo(...)
+    let show_types: Bool        # afficher les types des paramètres / retours
+.end
+
+pub fn text_codegen_default_options() -> TextCodegenOptions:
+    let opts = TextCodegenOptions(
+        show_spans = false,
+        show_ids = false,
+        indent_width = 4u32,
+        show_attributes = true,
+        show_types = true
+    )
+    return opts
+.end
+
+# Variante pratique : génération avec options par défaut.
+pub fn module_to_text_default(ast.ModuleAst module) -> String:
+    let opts = text_codegen_default_options()
+    return module_to_text(module, opts)
+.end
+
+# ----------------------------------------------------------------------------
+# Buffer texte minimal
+# ----------------------------------------------------------------------------
+
+pub struct TextBuffer:
+    let pieces: Vec<String>
+.end
+
+pub fn text_buffer_new() -> TextBuffer:
+    let pieces = Vec<String>::new()
+    let buf = TextBuffer(pieces = pieces)
+    return buf
+.end
+
+fn text_buffer_push(TextBuffer buf, String s) -> TextBuffer:
+    let pieces = buf.pieces
+    pieces.push(s)
+    let out = TextBuffer(pieces = pieces)
+    return out
+.end
+
+fn text_buffer_push_line(TextBuffer buf, String s) -> TextBuffer:
+    let line = s + "\n"
+    return text_buffer_push(buf, line)
+.end
+
+fn text_buffer_to_string(TextBuffer buf) -> String:
+    let pieces = buf.pieces
+    let result = ""
+    let len = pieces.len()
+    let i = 0usize
+    while i < len:
+        result = result + pieces[i]
+        i = i + 1usize
+    .end
+    return result
+.end
+
+# ----------------------------------------------------------------------------
+# Helpers de formatage (indentation, visibilité, etc.)
+# ----------------------------------------------------------------------------
+
+fn make_indent(u32 depth, TextCodegenOptions opts) -> String:
+    let width = opts.indent_width
+    let total = depth * width
+    let s = ""
+    let i = 0u32
+    while i < total:
+        s = s + " "
+        i = i + 1u32
+    .end
+    return s
+.end
+
+fn format_visibility(ast.Visibility vis) -> String:
+    if vis == ast.Visibility::Public:
+        return "pub "
+    .end
+    return ""
+.end
+
+fn format_function_kind(ast.FunctionKind kind) -> String:
+    if kind == ast.FunctionKind::Regular:
+        return "fn"
+    .end
+    if kind == ast.FunctionKind::Scenario:
+        return "scenario"
+    .end
+    if kind == ast.FunctionKind::EntryProgram:
+        return "program"
+    .end
+    if kind == ast.FunctionKind::EntryService:
+        return "service"
+    .end
+    if kind == ast.FunctionKind::EntryKernel:
+        return "kernel"
+    .end
+    if kind == ast.FunctionKind::EntryDriver:
+        return "driver"
+    .end
+    if kind == ast.FunctionKind::EntryTool:
+        return "tool"
+    .end
+    if kind == ast.FunctionKind::EntryScenario:
+        return "scenario"
+    .end
+    if kind == ast.FunctionKind::EntryPipeline:
+        return "pipeline"
+    .end
+    return "fn"
+.end
+
+fn format_identifier(ast.Identifier ident) -> String:
+    return ident.name
+.end
+
+fn format_span(ast.Span span) -> String:
+    # Format simple : file:start_line:start_col-end_line:end_col
+    let s1 = span.file
+    let s2 = s1 + ":"
+    let s3 = s2 + "<span>"   # TODO : encoder proprement les nombres
+    return s3
+.end
+
+fn format_ast_id(ast.AstNodeId id) -> String:
+    # Pour l'instant, on renvoie un placeholder stable.
+    # Plus tard, on pourra formatter l'identifiant de manière plus riche.
+    let s = "<id>"
+    return s
+.end
+
+fn make_meta_suffix(TextCodegenOptions opts, String id_str, String span_str) -> String:
+    let s = ""
+
+    if opts.show_ids and (id_str != ""):
+        s = s + "  #id=" + id_str
+    .end
+
+    if opts.show_spans and (span_str != ""):
+        s = s + "  @" + span_str
+    .end
+
+    return s
+.end
+
+fn format_param_list(ast.ParameterList params, TextCodegenOptions opts) -> String:
+    let ps = params.params
+    let len = ps.len()
+    let i = 0usize
+    let out = ""
+
+    while i < len:
+        let p = ps[i]
+        if i > 0usize:
+            out = out + ", "
+        .end
+
+        if opts.show_types:
+            # TODO : mapper p.ty vers texte (TypeExprId -> String).
+            out = out + p.name.name
+            out = out + ":"
+            out = out + "<type>"
+        .end
+        if not opts.show_types:
+            out = out + p.name.name
+        .end
+
+        i = i + 1usize
+    .end
+
+    return out
+.end
+
+# ----------------------------------------------------------------------------
+# API principale
+# ----------------------------------------------------------------------------
+
+pub fn module_to_text(ast.ModuleAst module, TextCodegenOptions opts) -> String:
+    let buf0 = text_buffer_new()
+
+    # En-tête module, incluant éventuellement ID / span.
+    let base = "module " + module.name.name
+    let id_str = format_ast_id(module.id)
+    let span_str = format_span(module.span)
+    let header = base + make_meta_suffix(opts, id_str, span_str)
+    let buf1 = text_buffer_push_line(buf0, header)
+
+    # Items du module.
+    let buf2 = print_module_items(buf1, module, opts, 0u32)
+
+    let text = text_buffer_to_string(buf2)
+    return text
+.end
+
+# ----------------------------------------------------------------------------
+# Impression des items de module
+# ----------------------------------------------------------------------------
+
+fn print_module_items(TextBuffer buf, ast.ModuleAst module, TextCodegenOptions opts, u32 depth) -> TextBuffer:
+    let items = module.items
+    let len = items.len()
+    let i = 0usize
+    let current = buf
+
+    while i < len:
+        let item_id = items[i]
+        let next_buf = print_module_item(current, module, opts, item_id, depth + 1u32)
+        current = next_buf
+        i = i + 1usize
+    .end
+
+    return current
+.end
+
+fn print_module_item(TextBuffer buf, ast.ModuleAst module, TextCodegenOptions opts, ast.AstNodeId item_id, u32 depth) -> TextBuffer:
+    let node = ast.lookup_node(module, item_id)
+
+    if node.kind == ast.AstNodeKind::NodeModuleDecl:
+        let decl = ast.lookup_module_decl(module, node.payload)
+        return print_module_decl(buf, decl, opts, depth)
+    .end
+
+    if node.kind == ast.AstNodeKind::NodeImportDecl:
+        let decl = ast.lookup_import_decl(module, node.payload)
+        return print_import_decl(buf, decl, opts, depth)
+    .end
+
+    if node.kind == ast.AstNodeKind::NodeExportDecl:
+        let decl = ast.lookup_export_decl(module, node.payload)
+        return print_export_decl(buf, decl, opts, depth)
+    .end
+
+    if node.kind == ast.AstNodeKind::NodeStructDecl:
+        let decl = ast.lookup_struct_decl(module, node.payload)
+        return print_struct_decl(buf, decl, opts, depth)
+    .end
+
+    if node.kind == ast.AstNodeKind::NodeEnumDecl:
+        let decl = ast.lookup_enum_decl(module, node.payload)
+        return print_enum_decl(buf, decl, opts, depth)
+    .end
+
+    if node.kind == ast.AstNodeKind::NodeFunctionDecl:
+        let decl = ast.lookup_function(module, node.payload)
+        return print_function_decl(buf, decl, opts, depth)
+    .end
+
+    # TODO : NodeTraitDecl, NodeImplDecl, NodeMuffinManifest, etc.
+    let indent = make_indent(depth, opts)
+    let line = indent + "# <unhandled module item>"
+    let out = text_buffer_push_line(buf, line)
+    return out
+.end
+
+# ----------------------------------------------------------------------------
+# Détails : module / import / export
+# ----------------------------------------------------------------------------
+
+fn print_module_decl(TextBuffer buf, ast.ModuleDecl decl, TextCodegenOptions opts, u32 depth) -> TextBuffer:
+    let indent = make_indent(depth, opts)
+    let base = indent + "module " + decl.name.name
+
+    let id_str = format_ast_id(decl.id)
+    let span_str = format_span(decl.span)
+    let suffix = make_meta_suffix(opts, id_str, span_str)
+
+    let line = base + suffix
+    let out = text_buffer_push_line(buf, line)
+    return out
+.end
+
+fn print_import_decl(TextBuffer buf, ast.ImportDecl decl, TextCodegenOptions opts, u32 depth) -> TextBuffer:
+    let indent = make_indent(depth, opts)
+
+    let path = decl.module_path
+    let len = path.len()
+    let i = 0usize
+    let path_str = ""
+
+    while i < len:
+        let seg = path[i]
+        if i > 0usize:
+            path_str = path_str + "."
+        .end
+        path_str = path_str + seg.name
+        i = i + 1usize
+    .end
+
+    let base = indent + "import " + path_str
+
+    let id_str = format_ast_id(decl.id)
+    let span_str = format_span(decl.span)
+    let suffix = make_meta_suffix(opts, id_str, span_str)
+
+    let line = base + suffix
+    let out = text_buffer_push_line(buf, line)
+    return out
+.end
+
+fn print_export_decl(TextBuffer buf, ast.ExportDecl decl, TextCodegenOptions opts, u32 depth) -> TextBuffer:
+    let indent = make_indent(depth, opts)
+
+    # Version simplifiée : on n'affiche que "export ..." symbolique.
+    let base = indent + "export <...>"
+
+    let id_str = format_ast_id(decl.id)
+    let span_str = format_span(decl.span)
+    let suffix = make_meta_suffix(opts, id_str, span_str)
+
+    let line = base + suffix
+    let out = text_buffer_push_line(buf, line)
+    return out
+.end
+
+# ----------------------------------------------------------------------------
+# Détails : types (struct / enum)
+# ----------------------------------------------------------------------------
+
+fn print_struct_decl(TextBuffer buf, ast.StructDecl decl, TextCodegenOptions opts, u32 depth) -> TextBuffer:
+    let indent = make_indent(depth, opts)
+    let vis = format_visibility(decl.visibility)
+    let base = indent + vis + "struct " + decl.name.name
+
+    let id_str = format_ast_id(decl.id)
+    let span_str = format_span(decl.span)
+    let suffix = make_meta_suffix(opts, id_str, span_str)
+
+    let header = base + suffix
+    let buf1 = text_buffer_push_line(buf, header)
+
+    let fields = decl.fields
+    let len = fields.len()
+    let i = 0usize
+    let current = buf1
+
+    while i < len:
+        let field = fields[i]
+        let field_indent = make_indent(depth + 1u32, opts)
+        let line = field_indent + "field " + field.name.name + " : <type>"
+        let next_buf = text_buffer_push_line(current, line)
+        current = next_buf
+        i = i + 1usize
+    .end
+
+    return current
+.end
+
+fn print_enum_decl(TextBuffer buf, ast.EnumDecl decl, TextCodegenOptions opts, u32 depth) -> TextBuffer:
+    let indent = make_indent(depth, opts)
+    let vis = format_visibility(decl.visibility)
+    let base = indent + vis + "enum " + decl.name.name
+
+    let id_str = format_ast_id(decl.id)
+    let span_str = format_span(decl.span)
+    let suffix = make_meta_suffix(opts, id_str, span_str)
+
+    let header = base + suffix
+    let buf1 = text_buffer_push_line(buf, header)
+
+    let variants = decl.variants
+    let len = variants.len()
+    let i = 0usize
+    let current = buf1
+
+    while i < len:
+        let v = variants[i]
+        let v_indent = make_indent(depth + 1u32, opts)
+        let line = v_indent + v.name.name
+        let next_buf = text_buffer_push_line(current, line)
+        current = next_buf
+        i = i + 1usize
+    .end
+
+    return current
+.end
+
+# ----------------------------------------------------------------------------
+# Détails : fonctions
+# ----------------------------------------------------------------------------
+
+fn print_function_decl(TextBuffer buf, ast.FunctionDecl decl, TextCodegenOptions opts, u32 depth) -> TextBuffer:
+    let indent = make_indent(depth, opts)
+    let vis = format_visibility(decl.visibility)
+    let kind_kw = format_function_kind(decl.kind)
+    let params_str = format_param_list(decl.params, opts)
+
+    let sig = indent + vis + kind_kw + " " + decl.name.name + "(" + params_str + ")"
+
+    let id_str = format_ast_id(decl.id)
+    let span_str = format_span(decl.span)
+    let suffix = make_meta_suffix(opts, id_str, span_str)
+
+    let line = sig + suffix
+    let out = text_buffer_push_line(buf, line)
+    return out
+.end

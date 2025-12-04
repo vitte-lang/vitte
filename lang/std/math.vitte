@@ -1,0 +1,589 @@
+module std.math
+
+import std.collections as coll
+import std.core as core
+
+# ============================================================================
+# Vitte std – Modèle déclaratif pour les mathématiques – ultra complet max
+#
+# Objectifs de ce module :
+#   - Décrire un modèle de données canonique pour :
+#       * signes, parité, arrondis, overflow,
+#       * rationnels, entiers arbitraires, complexes,
+#       * vecteurs, matrices, géométrie de base,
+#       * polynômes et distributions statistiques,
+#       * séries, histogrammes, échantillons aléatoires,
+#       * snapshots de statistiques scalaires et bivariées,
+#       * vue d ensemble d une "session math" pour les outils.
+#   - Ne contenir que des structures de données, sans logique exécutable.
+#   - S appuyer sur std.core (types numériques, snapshots, registry).
+#
+# Contraintes de syntaxe Vitte :
+#   - blocs terminés par ".end",
+#   - aucune accolade dans le code ni dans les commentaires.
+# ============================================================================
+
+# ============================================================================
+# Identifiants logiques
+# ============================================================================
+
+type MathSessionId = u64
+type MathObjectId = u64
+type MathSeriesId = u64
+type MathRandomSourceId = u64
+
+# ============================================================================
+# Signes, parité, arrondis, overflow
+# ============================================================================
+
+# Signe mathématique d un scalaire.
+enum MathSign
+    variant Negative
+    variant Zero
+    variant Positive
+.end
+
+# Parité d un entier.
+enum MathParity
+    variant Even
+    variant Odd
+    variant ParityUnknown
+.end
+
+# Mode d arrondi logique.
+enum MathRoundingMode
+    # Vers l infini négatif.
+    variant RoundDown
+
+    # Vers l infini positif.
+    variant RoundUp
+
+    # Vers zéro.
+    variant RoundTowardZero
+
+    # Éloignement de zéro.
+    variant RoundAwayFromZero
+
+    # Vers le plus proche, pair.
+    variant RoundToNearestEven
+
+    # Vers le plus proche, impair.
+    variant RoundToNearestOdd
+.end
+
+# Comportement d overflow logique.
+enum MathOverflowBehavior
+    variant OverflowWrap
+    variant OverflowSaturate
+    variant OverflowError
+    variant OverflowIgnore
+.end
+
+# Unité pour les angles.
+enum MathAngleUnit
+    variant AngleRadians
+    variant AngleDegrees
+    variant AngleTurns
+.end
+
+# ============================================================================
+# Entiers arbitraires et rationnels
+# ============================================================================
+
+# Mot de base pour les entiers arbitraires.
+type BigIntWord = u64
+
+# Signe d un entier arbitraire.
+enum BigIntSign
+    variant BigIntNegative
+    variant BigIntZero
+    variant BigIntPositive
+.end
+
+# Entier non signé arbitraire.
+struct BigUInt
+    # Mots représentant la magnitude, en little-endian logique.
+    field words: coll.List<BigIntWord>
+
+    # Largeur logique en bits.
+    field bit_width: core.BitWidth
+.end
+
+# Entier signé arbitraire.
+struct BigInt
+    field sign: BigIntSign
+    field magnitude: BigUInt
+.end
+
+# Nombre rationnel basé sur des entiers machine.
+struct Rational
+    # Numérateur.
+    field numerator: core.IntValue
+
+    # Dénominateur non nul.
+    field denominator: core.IntValue
+
+    # Indique si la fraction est normalisée gcd et signe.
+    field is_normalized: core.Bool
+.end
+
+# Approximation rationnelle d un flottant.
+struct RationalApproximation
+    field value: Rational
+
+    # Dénominateur maximal autorisé.
+    field max_denominator: core.UIntRepr
+.end
+
+# ============================================================================
+# Complexes et nombres sur le plan
+# ============================================================================
+
+# Représentation d un complexe.
+enum ComplexRepresentation
+    variant ComplexCartesian
+    variant ComplexPolar
+.end
+
+# Complexe simple en f32.
+struct Complex32
+    field re: f32
+    field im: f32
+.end
+
+# Complexe simple en f64.
+struct Complex64
+    field re: f64
+    field im: f64
+.end
+
+# Représentation polaire en double précision.
+struct ComplexPolar64
+    field radius: f64
+    field angle: f64
+    field angle_unit: MathAngleUnit
+.end
+
+# Snapshot d un complexe, toutes représentations confondues.
+struct ComplexSnapshot
+    field representation: ComplexRepresentation
+
+    # Représentation cartésienne simple.
+    field cart32: Complex32
+    field cart64: Complex64
+
+    # Représentation polaire possible.
+    field polar64: ComplexPolar64
+.end
+
+# ============================================================================
+# Vecteurs et matrices
+# ============================================================================
+
+# Vecteurs 2D, 3D, 4D en f32.
+struct Vec2f32
+    field x: f32
+    field y: f32
+.end
+
+struct Vec3f32
+    field x: f32
+    field y: f32
+    field z: f32
+.end
+
+struct Vec4f32
+    field x: f32
+    field y: f32
+    field z: f32
+    field w: f32
+.end
+
+# Vecteurs 2D, 3D, 4D en f64.
+struct Vec2f64
+    field x: f64
+    field y: f64
+.end
+
+struct Vec3f64
+    field x: f64
+    field y: f64
+    field z: f64
+.end
+
+struct Vec4f64
+    field x: f64
+    field y: f64
+    field z: f64
+    field w: f64
+.end
+
+# Snapshot générique pour un vecteur de dimension arbitraire.
+struct VectorSnapshot
+    # Dimension du vecteur.
+    field dimension: core.Len
+
+    # Indique si le vecteur est normalisé.
+    field is_normalized: core.Bool
+
+    # Norme euclidienne éventuellement pré-calculée.
+    field length: f64
+
+    # Type des composantes.
+    field component_type: core.CoreTypeInfo
+.end
+
+# Dimensions d une matrice.
+struct MatrixDimension
+    field rows: core.Len
+    field cols: core.Len
+.end
+
+# Matrices carrées classiques en f32.
+struct Mat2x2f32
+    field m00: f32
+    field m01: f32
+    field m10: f32
+    field m11: f32
+.end
+
+struct Mat3x3f32
+    field m00: f32
+    field m01: f32
+    field m02: f32
+    field m10: f32
+    field m11: f32
+    field m12: f32
+    field m20: f32
+    field m21: f32
+    field m22: f32
+.end
+
+struct Mat4x4f32
+    field m00: f32
+    field m01: f32
+    field m02: f32
+    field m03: f32
+    field m10: f32
+    field m11: f32
+    field m12: f32
+    field m13: f32
+    field m20: f32
+    field m21: f32
+    field m22: f32
+    field m23: f32
+    field m30: f32
+    field m31: f32
+    field m32: f32
+    field m33: f32
+.end
+
+# Matrices carrées classiques en f64.
+struct Mat2x2f64
+    field m00: f64
+    field m01: f64
+    field m10: f64
+    field m11: f64
+.end
+
+struct Mat3x3f64
+    field m00: f64
+    field m01: f64
+    field m02: f64
+    field m10: f64
+    field m11: f64
+    field m12: f64
+    field m20: f64
+    field m21: f64
+    field m22: f64
+.end
+
+struct Mat4x4f64
+    field m00: f64
+    field m01: f64
+    field m02: f64
+    field m03: f64
+    field m10: f64
+    field m11: f64
+    field m12: f64
+    field m13: f64
+    field m20: f64
+    field m21: f64
+    field m22: f64
+    field m23: f64
+    field m30: f64
+    field m31: f64
+    field m32: f64
+    field m33: f64
+.end
+
+# Snapshot générique pour une matrice.
+struct MatrixSnapshot
+    field dimension: MatrixDimension
+
+    # Indique si la matrice est carrée.
+    field is_square: core.Bool
+
+    # Type des composantes.
+    field component_type: core.CoreTypeInfo
+.end
+
+# ============================================================================
+# Géométrie de base
+# ============================================================================
+
+struct Point2D
+    field x: f64
+    field y: f64
+.end
+
+struct Point3D
+    field x: f64
+    field y: f64
+    field z: f64
+.end
+
+struct Size2D
+    field width: f64
+    field height: f64
+.end
+
+struct Rect2D
+    field origin: Point2D
+    field size: Size2D
+.end
+
+struct Circle2D
+    field center: Point2D
+    field radius: f64
+.end
+
+struct Sphere3D
+    field center: Point3D
+    field radius: f64
+.end
+
+# ============================================================================
+# Polynômes et distributions
+# ============================================================================
+
+# Monôme d un polynôme P(x) = somme coeff * x^exponent.
+struct PolynomialTerm
+    field exponent: u32
+    field coefficient: core.FloatValue
+.end
+
+# Polynôme en une variable.
+struct Polynomial
+    field degree: u32
+    field terms: coll.List<PolynomialTerm>
+.end
+
+# Genre de distribution statistique.
+enum DistributionKind
+    variant DistributionUniform
+    variant DistributionNormal
+    variant DistributionExponential
+    variant DistributionBernoulli
+    variant DistributionBinomial
+    variant DistributionPoisson
+    variant DistributionOther
+.end
+
+# Paramètres logiques d une distribution.
+struct DistributionParameters
+    field kind: DistributionKind
+
+    # Paramètres génériques, interprétés selon kind.
+    field param1: core.FloatValue
+    field param2: core.FloatValue
+.end
+
+# Snapshot d une distribution.
+struct DistributionSnapshot
+    field params: DistributionParameters
+
+    # Statistiques théoriques ou estimées.
+    field theoretical_mean: core.Option<core.FloatValue>
+    field theoretical_variance: core.Option<core.FloatValue>
+.end
+
+# ============================================================================
+# Statistiques scalaires, bivariées et histogrammes
+# ============================================================================
+
+# Statistiques sur un ensemble de scalaires.
+struct MathScalarStats
+    # Nombre total d échantillons.
+    field count: core.Size
+
+    # Min et max observés.
+    field min: core.NumericValue
+    field max: core.NumericValue
+
+    # Moyenne, variance, écart-type.
+    field mean: core.FloatValue
+    field variance: core.FloatValue
+    field standard_deviation: core.FloatValue
+.end
+
+# Statistiques bivariées sur deux séries X et Y.
+struct MathBivariateStats
+    # Nombre total d échantillons appariés.
+    field count: core.Size
+
+    # Moyennes.
+    field mean_x: core.FloatValue
+    field mean_y: core.FloatValue
+
+    # Covariance Cov(X, Y).
+    field covariance: core.FloatValue
+
+    # Corrélation rho(X, Y).
+    field correlation: core.FloatValue
+.end
+
+# Bin d histogramme.
+struct MathHistogramBin
+    field lower: core.NumericValue
+    field upper: core.NumericValue
+    field count: core.Size
+.end
+
+# Snapshot d histogramme.
+struct MathHistogramSnapshot
+    # Nombre total d échantillons.
+    field total_count: core.Size
+
+    # Bins ordonnés.
+    field bins: coll.List<MathHistogramBin>
+.end
+
+# ============================================================================
+# Séries, aléatoire et échantillons
+# ============================================================================
+
+# Série scalaire éventuellement indexée dans le temps.
+struct MathTimeSeriesSnapshot
+    field id: MathSeriesId
+
+    # Longueur de la série.
+    field length: core.Size
+
+    # Indique si la série a des timestamps associés.
+    field has_time: core.Bool
+
+    # Statistiques globales.
+    field stats: MathScalarStats
+.end
+
+# Source d aléatoire.
+enum MathRandomSourceKind
+    variant RandomSourceSystem
+    variant RandomSourceDeterministic
+    variant RandomSourceHardware
+    variant RandomSourceOther
+.end
+
+# Snapshot de source aléatoire.
+struct MathRandomSourceSnapshot
+    field id: MathRandomSourceId
+
+    # Genre de source.
+    field kind: MathRandomSourceKind
+
+    # Indique si un seed est présent.
+    field seed_present: core.Bool
+
+    # Seed éventuel, en représentation entière brute.
+    field seed_value: core.Option<core.UIntRepr>
+.end
+
+# Snapshot d un ensemble d échantillons tirés d une distribution.
+struct MathRandomSampleSetSnapshot
+    # Distribution théorique.
+    field distribution: DistributionSnapshot
+
+    # Nombre d échantillons.
+    field sample_count: core.Size
+
+    # Statistiques observées.
+    field stats: MathScalarStats
+.end
+
+# ============================================================================
+# Vue unifiée des valeurs mathématiques
+# ============================================================================
+
+# Genre de valeur mathématique pour les snapshots.
+enum MathValueKind
+    variant MathValueScalar
+    variant MathValueBigInt
+    variant MathValueRational
+    variant MathValueComplex
+    variant MathValueVector
+    variant MathValueMatrix
+    variant MathValuePolynomial
+    variant MathValueDistribution
+    variant MathValueGeometry
+    variant MathValueSeries
+    variant MathValueHistogram
+    variant MathValueRandomSamples
+    variant MathValueOther
+.end
+
+# Vue unifiée d un objet mathématique.
+struct MathValueSnapshot
+    field id: MathObjectId
+
+    # Genre logique de l objet.
+    field kind: MathValueKind
+
+    # Type Vitte sous-jacent.
+    field type_info: core.CoreTypeInfo
+.end
+
+# ============================================================================
+# Snapshot global d une session math
+# ============================================================================
+
+struct MathSessionSnapshot
+    field id: MathSessionId
+
+    # Valeurs scalaires numériques.
+    field scalars: coll.List<core.NumericValue>
+
+    # Entiers arbitraires.
+    field bigints: coll.List<BigInt>
+
+    # Rationnels.
+    field rationals: coll.List<Rational>
+
+    # Complexes.
+    field complex_values: coll.List<ComplexSnapshot>
+
+    # Vecteurs et matrices.
+    field vectors: coll.List<VectorSnapshot>
+    field matrices: coll.List<MatrixSnapshot>
+
+    # Polynômes et distributions.
+    field polynomials: coll.List<Polynomial>
+    field distributions: coll.List<DistributionSnapshot>
+
+    # Séries temporelles et histogrammes.
+    field series: coll.List<MathTimeSeriesSnapshot>
+    field histograms: coll.List<MathHistogramSnapshot>
+
+    # Sources aléatoires et échantillons.
+    field random_sources: coll.List<MathRandomSourceSnapshot>
+    field random_sample_sets: coll.List<MathRandomSampleSetSnapshot>
+
+    # Statistiques calculées.
+    field scalar_stats: coll.List<MathScalarStats>
+    field bivariate_stats: coll.List<MathBivariateStats>
+
+    # Vue unifiée des objets mathématiques.
+    field values: coll.List<MathValueSnapshot>
+.end
+
+.end
