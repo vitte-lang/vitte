@@ -158,73 +158,90 @@ check_basic_host_tools() {
 # ----------------------------------------------------------------------------
 
 validate_ebnf_file() {
-    # Best-effort validation for the EBNF file:
+    # Pure-shell, best-effort validation for the EBNF file:
     #   - ensure the file is not empty,
     #   - require at least one "::=" production,
     #   - check balanced (), [], {} delimiters.
     local ebnf_path="$1"
-    local status="skipped"
-    local message="python3-not-found"
+    local status="failed"
+    local message=""
 
-    if ! command -v python3 >/dev/null 2>&1; then
+    if [[ ! -f "${ebnf_path}" ]]; then
+        message="file-not-found:${ebnf_path}"
         printf '%s|%s\n' "${status}" "${message}"
         return 0
     fi
 
-    local output
-    if output="$(python3 - "$ebnf_path" <<'PY' 2>&1)"; then
-import sys
-from pathlib import Path
-import re
-
-path = Path(sys.argv[1])
-if not path.exists():
-    sys.stderr.write(f"file-not-found:{path}")
-    sys.exit(1)
-
-text = path.read_text(encoding="utf-8")
-if not text.strip():
-    sys.stderr.write("empty-file")
-    sys.exit(1)
-
-rules = [line for line in text.splitlines() if "::=" in line]
-if not rules:
-    sys.stderr.write("no-productions-found")
-    sys.exit(1)
-
-pairs = {"(": ")", "[": "]", "{": "}"}
-opening = set(pairs.keys())
-closing = set(pairs.values())
-stack = []
-
-for idx, ch in enumerate(text):
-    if ch in opening:
-        stack.append((ch, idx))
-    elif ch in closing:
-        if not stack:
-            sys.stderr.write(f"unbalanced-closing:{ch}@{idx}")
-            sys.exit(1)
-        last, pos = stack.pop()
-        if pairs[last] != ch:
-            sys.stderr.write(f"mismatched-delimiter:{last}->{ch}@{idx}")
-            sys.exit(1)
-
-if stack:
-    last, pos = stack.pop()
-    sys.stderr.write(f"unclosed-delimiter:{last}@{pos}")
-    sys.exit(1)
-
-sample = "; ".join(re.sub(r"\\s+", " ", r.strip()) for r in rules[:8])
-sys.stdout.write(f"ok:productions={len(rules)};sample={sample}")
-PY
-    then
-        status="ok"
-        message="${output}"
-    else
-        status="failed"
-        message="${output}"
+    if [[ ! -s "${ebnf_path}" ]] || ! grep -q '[^[:space:]]' "${ebnf_path}"; then
+        message="empty-file"
+        printf '%s|%s\n' "${status}" "${message}"
+        return 0
     fi
 
+    local productions
+    productions=$(grep -c "::=" "${ebnf_path}" || true)
+    if [[ "${productions}" -eq 0 ]]; then
+        message="no-productions-found"
+        printf '%s|%s\n' "${status}" "${message}"
+        return 0
+    fi
+
+    # Validate delimiters with awk to avoid external deps.
+    local delimiter_check
+    local delimiter_status=0
+    delimiter_check="$(
+        awk '
+        BEGIN {
+            pairs["("]=")"; pairs["["]="]"; pairs["{"]="}";
+            opening="([{";
+            closing=")]}";
+            top=0; offset=0;
+        }
+        {
+            line=$0
+            for (i = 1; i <= length(line); i++) {
+                ch = substr(line, i, 1)
+                idx = offset + i - 1
+                if (index(opening, ch)) {
+                    top++
+                    stack[top]=ch
+                    pos[top]=idx
+                } else if (index(closing, ch)) {
+                    if (top == 0) {
+                        printf("unbalanced-closing:%s@%d", ch, idx)
+                        exit 1
+                    }
+                    last=stack[top]
+                    p=pos[top]
+                    top--
+                    if (pairs[last] != ch) {
+                        printf("mismatched-delimiter:%s->%s@%d", last, ch, idx)
+                        exit 1
+                    }
+                }
+            }
+            offset += length(line) + 1
+        }
+        END {
+            if (top > 0) {
+                printf("unclosed-delimiter:%s@%d", stack[top], pos[top])
+                exit 1
+            }
+        }
+        ' "${ebnf_path}" 2>&1
+    )" || delimiter_status=$?
+
+    if [[ "${delimiter_status}" -ne 0 || -n "${delimiter_check}" ]]; then
+        message="${delimiter_check:-delimiter-check-failed}"
+        printf '%s|%s\n' "${status}" "${message}"
+        return 0
+    fi
+
+    local sample
+    sample=$(grep "::=" "${ebnf_path}" | head -n 8 | sed 's/[[:space:]]\+/ /g; s/^ *//; s/ *$//' | paste -sd "; " -)
+
+    status="ok"
+    message="ok:productions=${productions};sample=${sample}"
     printf '%s|%s\n' "${status}" "${message}"
 }
 

@@ -75,6 +75,33 @@ struct DiagGroup
     codes: coll.Vec<DiagCode>
 .end
 
+struct DiagCodeSample
+    # Instance illustrative de ce code (utile pour docs/tests)
+    code: DiagCode
+    title: String                 # ex: "Token inattendu"
+    sample_message: String        # message principal attendu
+    sample_labels: coll.Vec<DiagLabel>
+    sample_notes: coll.Vec<DiagNote>
+    sample_fixes: coll.Vec<DiagFixSuggestion>
+    sample_snippet: String        # extrait de source minimal déclenchant le code
+.end
+
+struct DiagCodeTable
+    # Table de référence des codes supportés par le front
+    codes: coll.Vec<DiagCode>
+    groups: coll.Vec<DiagGroup>
+
+    # Échantillons prêts à être présentés dans la doc/IDE/tests
+    samples: coll.Vec<DiagCodeSample>
+
+    # Indexation rapide pour tooling
+    code_index_by_value: coll.HashMap<String, u32>
+    group_index_by_id: coll.HashMap<String, u32>
+
+    notes: String
+    extra: coll.HashMap<String, String>
+.end
+
 # ---------------------------------------------------------------------------
 # Labels et notes attachés à un diagnostic
 # ---------------------------------------------------------------------------

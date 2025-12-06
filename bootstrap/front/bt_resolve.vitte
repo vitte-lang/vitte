@@ -105,6 +105,47 @@ enum ResScopeKind
 .end
 
 # ---------------------------------------------------------------------------
+# Invariants de portée (module vs bloc)
+# ---------------------------------------------------------------------------
+
+struct ResScopeRule
+    scope_kind: ResScopeKind
+
+    # Déclarations autorisées dans ce scope
+    allowed_namespaces: coll.Vec<ResNamespace>
+    allowed_symbol_kinds: coll.Vec<ResSymbolKind>
+    allow_imports: bool                   # use / import uniquement au module
+    allow_type_items: bool                # struct / enum / alias / union
+    allow_value_items: bool               # fn / const / static / program / services
+    allow_module_items: bool              # module et sous-modules
+    allow_locals: bool                    # let / let mut / params
+    allow_labels: bool
+
+    # Résolution et shadowing
+    lookup_chain: coll.Vec<ResScopeKind>  # ordre de remontée (bloc -> fn -> module -> root)
+    shadowing_allowed: bool               # bindings locaux peuvent masquer un identifiant parent
+    stops_at_module_boundary: bool        # un bloc ne fuit pas son module pour les locals
+
+    notes: String
+    extra: coll.HashMap<String, String>
+.end
+
+struct ResScopeRules
+    # Règle standard pour un scope de module (fichier)
+    module_scope: ResScopeRule
+
+    # Règle standard pour un scope de bloc (fn body / block / loop / if / match arm)
+    block_scope: ResScopeRule
+
+    # Options communes héritées par la résolution
+    implicit_prelude_visible_in_modules: bool
+    blocks_inherit_imports_from_module: bool
+
+    notes: String
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
 # Scopes
 # ---------------------------------------------------------------------------
 
@@ -397,6 +438,9 @@ struct ResFile
     # Scopes et symboles connus pour ce fichier
     scopes: coll.Vec<ResScope>
     symbols: coll.Vec<ResSymbol>
+
+    # Règles de portée appliquées (module vs bloc)
+    scope_rules: ResScopeRules
 
     # Imports
     imports: coll.Vec<ResImport>

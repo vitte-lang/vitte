@@ -1,0 +1,109 @@
+name: release-artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compute version and platform
+        id: meta
+        run: |
+          set -euo pipefail
+          VERSION=$(awk -F '"' '/^version/ {print $2; exit}' vitte.project.muf)
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "os=$(uname -s | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+          echo "arch=$(uname -m)" >> "$GITHUB_OUTPUT"
+
+      - name: Build stage1 + stage2 placeholder
+        run: ./scripts/self_host_stage1.sh
+
+      - name: Build release artifact
+        env:
+          VITTE_VERSION: ${{ steps.meta.outputs.version }}
+        run: ./scripts/dist.sh
+
+      - name: Capture SHA256
+        id: sha
+        run: |
+          set -euo pipefail
+          TARBALL="dist/vittec-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.os }}-${{ steps.meta.outputs.arch }}.tar.gz"
+          [[ -f "${TARBALL}" ]] || { echo "tarball missing: ${TARBALL}" >&2; exit 1; }
+          SHA=$(shasum -a 256 "${TARBALL}" | awk '{print $1}')
+          echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload tarball artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vittec-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.os }}-${{ steps.meta.outputs.arch }}
+          path: |
+            ${{ steps.sha.outputs.tarball }}
+            ${{ steps.sha.outputs.tarball }}.sha256
+
+      - name: Update Homebrew tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          OS: ${{ steps.meta.outputs.os }}
+          ARCH: ${{ steps.meta.outputs.arch }}
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          TAP_REPO="https://github.com/vitte-lang/homebrew-vitte.git"
+          TAP_DIR="${GITHUB_WORKSPACE}/homebrew-vitte"
+
+          if [[ -z "${TAP_TOKEN:-}" ]]; then
+            echo "HOMEBREW_TAP_TOKEN secret is required to push to ${TAP_REPO}" >&2
+            exit 1
+          fi
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          git clone "https://${TAP_TOKEN}@github.com/vitte-lang/homebrew-vitte.git" "${TAP_DIR}"
+          mkdir -p "${TAP_DIR}/Formula"
+
+          cat > "${TAP_DIR}/Formula/vittec.rb" <<EOF
+class Vittec < Formula
+  desc "Vitte compiler placeholder (lexer/parser/AST/diag)"
+  homepage "https://github.com/vitte-lang/vitte-core"
+  url "https://github.com/vitte-lang/vitte-core/releases/download/v${VERSION}/vittec-${VERSION}-${OS}-${ARCH}.tar.gz"
+  sha256 "${SHA}"
+  version "${VERSION}"
+  license "MIT"
+
+  def install
+    bin.install "vittec"
+    pkgshare.install "README.md" if File.exist?("README.md")
+    pkgshare.install "LICENSE" if File.exist?("LICENSE")
+  end
+
+  test do
+    (testpath/"hello.vitte").write("main() {}")
+    output = shell_output("\#{bin}/vittec \#{testpath}/hello.vitte")
+    assert_match "[stage1]", output
+  end
+end
+EOF
+
+          cd "${TAP_DIR}"
+          git add Formula/vittec.rb
+          if git diff --cached --quiet; then
+            echo "No tap changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Update vittec to v${VERSION} (${OS}/${ARCH})"
+          git push origin HEAD

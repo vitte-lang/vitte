@@ -2,6 +2,7 @@ module vitte.bootstrap.front.bt_front_tolerant
 
 import std.collections as coll
 import vitte.bootstrap.front.bt_ast as ast
+import vitte.bootstrap.front.bt_span as span
 
 # ============================================================================
 # Front tolérant – lexer + parser + validation symboles (impl Vitte)
@@ -32,6 +33,7 @@ struct TfDiag
     stage: String              # "lexer", "parser", "symbols"
     message: String
     span: ast.AstSpan
+    span_id: span.BfSpanId
 .end
 
 # ---------------------------------------------------------------------------
@@ -105,6 +107,7 @@ struct TfToken
     kind: TfTokenKind
     text: String
     span: ast.AstSpan
+    span_id: span.BfSpanId
 .end
 
 struct TfLexerState
@@ -214,14 +217,15 @@ fn tf_lex(source: String, filename: String) -> TfLexerResult
             severity=TfDiagSeverityError,
             stage="lexer",
             message="caractère inattendu '" + ch + "'",
-            span=span
+            span=span,
+            span_id=tf_placeholder_span_id()
         ))
         tf_advance(&mut state, 1)
     .end
 
     # EOF
     let eof_span = tf_span_from(&state, state.index, state.index)
-    state.tokens.push(TfToken(kind=TfTokEof, text="", span=eof_span))
+    state.tokens.push(TfToken(kind=TfTokEof, text="", span=eof_span, span_id=tf_placeholder_span_id()))
 
     return TfLexerResult(tokens=state.tokens, diagnostics=state.diagnostics)
 .end
@@ -353,10 +357,11 @@ fn tf_lex_string(state: &mut TfLexerState) -> TfToken
             severity=TfDiagSeverityError,
             stage="lexer",
             message="string non terminée",
-            span=span
+            span=span,
+            span_id=tf_placeholder_span_id()
         ))
     .end
-    return TfToken(kind=TfTokString, text=text, span=span)
+    return TfToken(kind=TfTokString, text=text, span=span, span_id=tf_placeholder_span_id())
 .end
 
 fn tf_emit_simple(state: &mut TfLexerState, kind: TfTokenKind, text: String, len: u32)
@@ -368,7 +373,7 @@ fn tf_make_token(state: &TfLexerState, kind: TfTokenKind, text: String, len: u32
     let start = state.index
     let end = start + len
     let span = tf_span_from(state, start, end)
-    return TfToken(kind=kind, text=text, span=span)
+    return TfToken(kind=kind, text=text, span=span, span_id=tf_placeholder_span_id())
 .end
 
 fn tf_span_from(state: &TfLexerState, start: u32, end: u32) -> ast.AstSpan
@@ -398,6 +403,12 @@ fn tf_span_from(state: &TfLexerState, start: u32, end: u32) -> ast.AstSpan
         end_line=end_line,
         end_col=end_col
     )
+.end
+
+fn tf_placeholder_span_id() -> span.BfSpanId
+    # Le front tolérant ne construit pas de table de spans dédiée ;
+    # on fournit un id neutre pour garder le chaînage de localisation.
+    return span.BfSpanId(raw=0)
 .end
 
 fn tf_advance(state: &mut TfLexerState, n: u32)
@@ -436,54 +447,63 @@ fn tf_is_digit(ch: String) -> bool
 struct TfPath
     segments: coll.Vec<String>
     span: ast.AstSpan
+    span_id: span.BfSpanId
 .end
 
 struct TfImportDecl
     path: TfPath
     alias: String
     span: ast.AstSpan
+    span_id: span.BfSpanId
 .end
 
 struct TfField
     name: String
     type_ref: TfPath
     span: ast.AstSpan
+    span_id: span.BfSpanId
 .end
 
 struct TfStructDecl
     name: String
     fields: coll.Vec<TfField>
     span: ast.AstSpan
+    span_id: span.BfSpanId
 .end
 
 struct TfUnionDecl
     name: String
     fields: coll.Vec<TfField>
     span: ast.AstSpan
+    span_id: span.BfSpanId
 .end
 
 struct TfEnumVariant
     name: String
     payload: coll.Vec<TfField>
     span: ast.AstSpan
+    span_id: span.BfSpanId
 .end
 
 struct TfEnumDecl
     name: String
     variants: coll.Vec<TfEnumVariant>
     span: ast.AstSpan
+    span_id: span.BfSpanId
 .end
 
 struct TfTypeAliasDecl
     name: String
     target: TfPath
     span: ast.AstSpan
+    span_id: span.BfSpanId
 .end
 
 struct TfFnParam
     name: String
     type_ref: TfPath
     span: ast.AstSpan
+    span_id: span.BfSpanId
 .end
 
 struct TfFnDecl
@@ -492,6 +512,7 @@ struct TfFnDecl
     return_type: TfPath
     body_span: ast.AstSpan
     span: ast.AstSpan
+    span_id: span.BfSpanId
 .end
 
 struct TfModule
@@ -502,6 +523,8 @@ struct TfModule
     unions: coll.Vec<TfUnionDecl>
     type_aliases: coll.Vec<TfTypeAliasDecl>
     functions: coll.Vec<TfFnDecl>
+    span: ast.AstSpan
+    span_id: span.BfSpanId
 .end
 
 struct TfParserState
@@ -518,13 +541,15 @@ struct TfParserResult
 fn tf_parse(tokens: coll.Vec<TfToken>) -> TfParserResult
     let mut state = TfParserState(tokens=tokens, index=0, diagnostics=coll.Vec<TfDiag>())
     let mut module = TfModule(
-        name=TfPath(segments=coll.Vec<String>(), span=tf_empty_span()),
+        name=TfPath(segments=coll.Vec<String>(), span=tf_empty_span(), span_id=tf_placeholder_span_id()),
         imports=coll.Vec<TfImportDecl>(),
         structs=coll.Vec<TfStructDecl>(),
         enums=coll.Vec<TfEnumDecl>(),
         unions=coll.Vec<TfUnionDecl>(),
         type_aliases=coll.Vec<TfTypeAliasDecl>(),
-        functions=coll.Vec<TfFnDecl>()
+        functions=coll.Vec<TfFnDecl>(),
+        span=tf_empty_span(),
+        span_id=tf_placeholder_span_id()
     )
 
     while not tf_check(&state, TfTokEof)
@@ -629,7 +654,8 @@ fn tf_unexpected(state: &mut TfParserState, msg: String)
         severity=TfDiagSeverityError,
         stage="parser",
         message=msg + ", trouvé " + tf_token_name(tok.kind),
-        span=tok.span
+        span=tok.span,
+        span_id=tf_placeholder_span_id()
     ))
 .end
 
@@ -668,7 +694,7 @@ fn tf_parse_module_name(state: &mut TfParserState) -> TfPath
         segments.push(ident.text)
         last_span = ident.span
     .end
-    return TfPath(segments=segments, span=tf_span_merge(first.span, last_span))
+    return TfPath(segments=segments, span=tf_span_merge(first.span, last_span), span_id=tf_placeholder_span_id())
 .end
 
 fn tf_parse_path(state: &mut TfParserState) -> TfPath
@@ -681,7 +707,7 @@ fn tf_parse_path(state: &mut TfParserState) -> TfPath
         segments.push(ident.text)
         last = ident.span
     .end
-    return TfPath(segments=segments, span=tf_span_merge(head.span, last))
+    return TfPath(segments=segments, span=tf_span_merge(head.span, last), span_id=tf_placeholder_span_id())
 .end
 
 fn tf_parse_import(state: &mut TfParserState) -> TfImportDecl
@@ -693,7 +719,7 @@ fn tf_parse_import(state: &mut TfParserState) -> TfImportDecl
         let alias_tok = tf_consume(state, TfTokIdent, "alias attendu après 'as'")
         alias = alias_tok.text
     .end
-    return TfImportDecl(path=path, alias=alias, span=path.span)
+    return TfImportDecl(path=path, alias=alias, span=path.span, span_id=tf_placeholder_span_id())
 .end
 
 fn tf_parse_field(state: &mut TfParserState) -> TfField
@@ -704,7 +730,7 @@ fn tf_parse_field(state: &mut TfParserState) -> TfField
     tf_skip_trivia(state)
     let ty = tf_parse_path(state)
     tf_match(state, TfTokComma) # optionnel
-    return TfField(name=name_tok.text, type_ref=ty, span=tf_span_merge(name_tok.span, ty.span))
+    return TfField(name=name_tok.text, type_ref=ty, span=tf_span_merge(name_tok.span, ty.span), span_id=tf_placeholder_span_id())
 .end
 
 fn tf_parse_struct(state: &mut TfParserState) -> TfStructDecl
@@ -719,7 +745,7 @@ fn tf_parse_struct(state: &mut TfParserState) -> TfStructDecl
         tf_skip_trivia(state)
     .end
     let end_tok = tf_consume(state, TfTokDotEnd, "'.end' attendu pour clore struct")
-    return TfStructDecl(name=name_tok.text, fields=fields, span=tf_span_merge(name_tok.span, end_tok.span))
+    return TfStructDecl(name=name_tok.text, fields=fields, span=tf_span_merge(name_tok.span, end_tok.span), span_id=tf_placeholder_span_id())
 .end
 
 fn tf_parse_union(state: &mut TfParserState) -> TfUnionDecl
@@ -734,7 +760,7 @@ fn tf_parse_union(state: &mut TfParserState) -> TfUnionDecl
         tf_skip_trivia(state)
     .end
     let end_tok = tf_consume(state, TfTokDotEnd, "'.end' attendu pour clore union")
-    return TfUnionDecl(name=name_tok.text, fields=fields, span=tf_span_merge(name_tok.span, end_tok.span))
+    return TfUnionDecl(name=name_tok.text, fields=fields, span=tf_span_merge(name_tok.span, end_tok.span), span_id=tf_placeholder_span_id())
 .end
 
 fn tf_parse_enum(state: &mut TfParserState) -> TfEnumDecl
@@ -749,7 +775,7 @@ fn tf_parse_enum(state: &mut TfParserState) -> TfEnumDecl
         tf_skip_trivia(state)
     .end
     let end_tok = tf_consume(state, TfTokDotEnd, "'.end' attendu pour clore enum")
-    return TfEnumDecl(name=name_tok.text, variants=variants, span=tf_span_merge(name_tok.span, end_tok.span))
+    return TfEnumDecl(name=name_tok.text, variants=variants, span=tf_span_merge(name_tok.span, end_tok.span), span_id=tf_placeholder_span_id())
 .end
 
 fn tf_parse_enum_variant(state: &mut TfParserState) -> TfEnumVariant
@@ -770,7 +796,7 @@ fn tf_parse_enum_variant(state: &mut TfParserState) -> TfEnumVariant
         tf_consume(state, TfTokRParen, "')' attendu pour fermer le payload")
     .end
     tf_match(state, TfTokComma)
-    return TfEnumVariant(name=name_tok.text, payload=payload, span=name_tok.span)
+    return TfEnumVariant(name=name_tok.text, payload=payload, span=name_tok.span, span_id=tf_placeholder_span_id())
 .end
 
 fn tf_parse_alias(state: &mut TfParserState) -> TfTypeAliasDecl
@@ -780,7 +806,7 @@ fn tf_parse_alias(state: &mut TfParserState) -> TfTypeAliasDecl
     tf_skip_trivia(state)
     let target = tf_parse_path(state)
     let span = tf_span_merge(name_tok.span, target.span)
-    return TfTypeAliasDecl(name=name_tok.text, target=target, span=span)
+    return TfTypeAliasDecl(name=name_tok.text, target=target, span=span, span_id=tf_placeholder_span_id())
 .end
 
 fn tf_parse_param(state: &mut TfParserState) -> TfFnParam
@@ -793,7 +819,7 @@ fn tf_parse_param(state: &mut TfParserState) -> TfFnParam
     tf_skip_trivia(state)
     let ty = tf_parse_path(state)
     tf_match(state, TfTokComma)
-    return TfFnParam(name=name_tok.text, type_ref=ty, span=tf_span_merge(name_tok.span, ty.span))
+    return TfFnParam(name=name_tok.text, type_ref=ty, span=tf_span_merge(name_tok.span, ty.span), span_id=tf_placeholder_span_id())
 .end
 
 fn tf_parse_fn(state: &mut TfParserState) -> TfFnDecl
@@ -812,7 +838,7 @@ fn tf_parse_fn(state: &mut TfParserState) -> TfFnDecl
     tf_consume(state, TfTokRParen, "')' attendu pour clore la liste de paramètres")
 
     tf_skip_trivia(state)
-    let ret = TfPath(segments=coll.Vec<String>(), span=name_tok.span)
+    let ret = TfPath(segments=coll.Vec<String>(), span=name_tok.span, span_id=tf_placeholder_span_id())
     if tf_match(state, TfTokArrow)
         tf_skip_trivia(state)
         ret = tf_parse_path(state)
@@ -841,12 +867,19 @@ fn tf_parse_fn(state: &mut TfParserState) -> TfFnDecl
         if tf_vec_contains(block_starters, tf_current(state).kind)
             depth = depth + 1
         .end
-        tf_advance_tok(state)
+    tf_advance_tok(state)
     .end
     let end_tok = tf_consume(state, TfTokDotEnd, "'.end' attendu pour clore la fonction")
     let fn_span = tf_span_merge(name_tok.span, end_tok.span)
     let body_span = tf_span_merge(body_start, end_tok.span)
-    return TfFnDecl(name=name_tok.text, params=params, return_type=ret, body_span=body_span, span=fn_span)
+    return TfFnDecl(
+        name=name_tok.text,
+        params=params,
+        return_type=ret,
+        body_span=body_span,
+        span=fn_span,
+        span_id=tf_placeholder_span_id()
+    )
 .end
 
 fn tf_token_name(kind: TfTokenKind) -> String
@@ -895,7 +928,8 @@ fn tf_validate_symbols(module: TfModule) -> coll.Vec<TfDiag>
             severity=TfDiagSeverityWarning,
             stage="symbols",
             message="déclaration de module absente",
-            span=tf_empty_span()
+            span=tf_empty_span(),
+            span_id=tf_placeholder_span_id()
         ))
     .end
 
@@ -908,7 +942,8 @@ fn tf_validate_symbols(module: TfModule) -> coll.Vec<TfDiag>
                 severity=TfDiagSeverityError,
                 stage="symbols",
                 message="import dupliqué '" + key + "'",
-                span=imp.span
+                span=imp.span,
+                span_id=tf_placeholder_span_id()
             ))
         else
             seen_imports[key] = true
@@ -944,7 +979,8 @@ fn tf_validate_symbols(module: TfModule) -> coll.Vec<TfDiag>
                 severity=TfDiagSeverityError,
                 stage="symbols",
                 message="symbole '" + name + "' déjà défini (avant: " + registry[name] + ")",
-                span=sp
+                span=sp,
+                span_id=tf_placeholder_span_id()
             ))
         else
             registry[name] = kind
@@ -959,7 +995,8 @@ fn tf_validate_symbols(module: TfModule) -> coll.Vec<TfDiag>
                     severity=TfDiagSeverityError,
                     stage="symbols",
                     message="champ '" + field.name + "' dans struct " + s.name + " sans type",
-                    span=field.span
+                    span=field.span,
+                    span_id=tf_placeholder_span_id()
                 ))
             .end
         .end
@@ -972,7 +1009,8 @@ fn tf_validate_symbols(module: TfModule) -> coll.Vec<TfDiag>
                     severity=TfDiagSeverityError,
                     stage="symbols",
                     message="champ '" + field.name + "' dans union " + u.name + " sans type",
-                    span=field.span
+                    span=field.span,
+                    span_id=tf_placeholder_span_id()
                 ))
             .end
         .end
@@ -986,7 +1024,8 @@ fn tf_validate_symbols(module: TfModule) -> coll.Vec<TfDiag>
                         severity=TfDiagSeverityError,
                         stage="symbols",
                         message="champ '" + field.name + "' dans variant " + e.name + "::" + v.name + " sans type",
-                        span=field.span
+                        span=field.span,
+                        span_id=tf_placeholder_span_id()
                     ))
                 .end
             .end
@@ -1001,7 +1040,8 @@ fn tf_validate_symbols(module: TfModule) -> coll.Vec<TfDiag>
                     severity=TfDiagSeverityError,
                     stage="symbols",
                     message="paramètre dupliqué '" + p.name + "' dans " + f.name,
-                    span=p.span
+                    span=p.span,
+                    span_id=tf_placeholder_span_id()
                 ))
             else
                 seen_params[p.name] = true
@@ -1012,7 +1052,8 @@ fn tf_validate_symbols(module: TfModule) -> coll.Vec<TfDiag>
                     severity=TfDiagSeverityError,
                     stage="symbols",
                     message="paramètre '" + p.name + "' de " + f.name + " sans type",
-                    span=p.span
+                    span=p.span,
+                    span_id=tf_placeholder_span_id()
                 ))
             .end
         .end
@@ -1022,7 +1063,8 @@ fn tf_validate_symbols(module: TfModule) -> coll.Vec<TfDiag>
                 severity=TfDiagSeverityWarning,
                 stage="symbols",
                 message="type de retour manquant pour " + f.name,
-                span=f.span
+                span=f.span,
+                span_id=tf_placeholder_span_id()
             ))
         .end
     .end

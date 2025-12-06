@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 #
-# Build hook for vittec-stage1 (partial compiler: lex/parse + AST + diag)
+# Build hook for vittec-stage1 (Python implementation with type rules)
 
 set -euo pipefail
 
 this_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VITTE_WORKSPACE_ROOT="$(cd "${this_dir}/../.." && pwd)"
 TARGET_ROOT="${VITTE_WORKSPACE_ROOT}/target"
+
 STAGE1_ROOT="${TARGET_ROOT}/bootstrap/stage1"
 LOG_DIR="${STAGE1_ROOT}/logs"
-
-VITTEC_STAGE1_BIN="${STAGE1_ROOT}/vittec-stage1"
+LOG_FILE="${LOG_DIR}/stage1.build.log"
 STATUS_FILE="${STAGE1_ROOT}/status.txt"
+STAGE1_BIN="${STAGE1_ROOT}/vittec-stage1"
 MAIN_SYMLINK="${TARGET_ROOT}/debug/vittec"
+
+STAGE1_SRC="${VITTE_WORKSPACE_ROOT}/bootstrap/stage1/vittec_stage1.py"
 
 log() {
     printf '[vitte][stage1-hook][INFO] %s\n' "$*"
@@ -27,12 +30,6 @@ die() {
     exit 1
 }
 
-require_python() {
-    if ! command -v python3 >/dev/null 2>&1; then
-        die "python3 is required to generate the stage1 placeholder compiler."
-    fi
-}
-
 maybe_source_env_local() {
     local env_file="${VITTE_WORKSPACE_ROOT}/scripts/env_local.sh"
     if [[ -f "${env_file}" ]]; then
@@ -41,97 +38,25 @@ maybe_source_env_local() {
     fi
 }
 
+require_python() {
+    if ! command -v python3 >/dev/null 2>&1; then
+        die "python3 is required to build vittec-stage1."
+    fi
+}
+
+prepare_dirs() {
+    mkdir -p "${STAGE1_ROOT}" "${LOG_DIR}"
+}
+
+verify_source() {
+    [[ -f "${STAGE1_SRC}" ]] || die "Stage1 source not found at ${STAGE1_SRC}"
+    python3 -m py_compile "${STAGE1_SRC}" >>"${LOG_FILE}" 2>&1 || die "py_compile failed for ${STAGE1_SRC}"
+}
+
 write_stage1_binary() {
-    cat > "${VITTEC_STAGE1_BIN}" <<'PY'
-#!/usr/bin/env python3
-"""
-vittec-stage1 – partial compiler placeholder (lexer/parser/AST/diag)
-
-This stub performs a minimal lexical pass, builds a simplistic AST-like
-structure, and emits diagnostics for missing files or empty inputs.
-"""
-import argparse
-import json
-import re
-import sys
-from pathlib import Path
-
-
-def lex_source(text: str):
-    tokens = []
-    for lineno, line in enumerate(text.splitlines(), start=1):
-        for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_-]*|\\S", line):
-            tokens.append(
-                {
-                    "value": match.group(0),
-                    "line": lineno,
-                    "column": match.start() + 1,
-                }
-            )
-    return tokens
-
-
-def build_ast(tokens):
-    ast = []
-    current_line = None
-    line_items = []
-    for tok in tokens:
-        if current_line != tok["line"]:
-            if line_items:
-                ast.append({"line": current_line, "tokens": line_items})
-            current_line = tok["line"]
-            line_items = []
-        line_items.append(tok["value"])
-    if line_items:
-        ast.append({"line": current_line, "tokens": line_items})
-    return ast
-
-
-def main():
-    parser = argparse.ArgumentParser(description="vittec-stage1 partial compiler")
-    parser.add_argument("input", nargs="?", help="Path to Muffin/Vitte source")
-    parser.add_argument(
-        "--dump-json",
-        action="store_true",
-        help="Dump the pseudo AST as JSON (debug helper).",
-    )
-    args = parser.parse_args()
-
-    if not args.input:
-        sys.stderr.write("diag:error:missing-input-path\\n")
-        return 1
-
-    path = Path(args.input)
-    if not path.exists():
-        sys.stderr.write(f"diag:error:file-not-found:{path}\\n")
-        return 1
-
-    text = path.read_text(encoding="utf-8", errors="ignore")
-    if not text.strip():
-        sys.stderr.write(f"diag:error:empty-source:{path}\\n")
-        return 1
-
-    tokens = lex_source(text)
-    ast = build_ast(tokens)
-
-    sys.stdout.write(f"[stage1] lexed-tokens={len(tokens)} lines={len(ast)}\\n")
-    if args.dump_json:
-        sys.stdout.write(json.dumps({"ast": ast}, indent=2))
-        sys.stdout.write("\\n")
-    else:
-        summary = "; ".join(
-            f"L{node['line']}:{'/'.join(node['tokens'][:4])}"
-            for node in ast[:6]
-        )
-        sys.stdout.write(f"[stage1] ast-preview={summary}\\n")
-
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
-PY
-    chmod +x "${VITTEC_STAGE1_BIN}"
+    cp "${STAGE1_SRC}" "${STAGE1_BIN}"
+    chmod +x "${STAGE1_BIN}"
+    log "Copied Python stage1 compiler to ${STAGE1_BIN}"
 }
 
 update_status_file() {
@@ -139,9 +64,10 @@ update_status_file() {
         echo "# Vitte bootstrap – stage1 build status"
         echo "workspace_root=${VITTE_WORKSPACE_ROOT}"
         echo "timestamp=$(date '+%Y-%m-%dT%H:%M:%S%z' 2>/dev/null || echo 'unknown')"
-        echo "status=ok-partial"
-        echo "binary=${VITTEC_STAGE1_BIN}"
-        echo "notes=partial-compiler-lex-parse-ast-diag"
+        echo "status=ok-python-stage1"
+        echo "binary=${STAGE1_BIN}"
+        echo "source=${STAGE1_SRC}"
+        echo "log=${LOG_FILE}"
     } > "${STATUS_FILE}"
 }
 
@@ -151,22 +77,21 @@ link_stage1_as_main() {
         log "Replacing existing vittec link at ${MAIN_SYMLINK}"
         rm -f "${MAIN_SYMLINK}"
     fi
-    ln -s "${VITTEC_STAGE1_BIN}" "${MAIN_SYMLINK}"
+    ln -s "${STAGE1_BIN}" "${MAIN_SYMLINK}"
     log "Linked stage1 compiler to ${MAIN_SYMLINK}"
 }
 
 main() {
-    log "Building vittec-stage1 (partial compiler)…"
+    log "Building vittec-stage1 (Python frontend/type checker)…"
     maybe_source_env_local
     require_python
-
-    mkdir -p "${STAGE1_ROOT}" "${LOG_DIR}"
-
+    prepare_dirs
+    verify_source
     write_stage1_binary
     update_status_file
     link_stage1_as_main
-
-    log "vittec-stage1 ready at ${VITTEC_STAGE1_BIN}"
+    log "vittec-stage1 ready at ${STAGE1_BIN}"
+    log "Build log stored in ${LOG_FILE}"
 }
 
 main "$@"

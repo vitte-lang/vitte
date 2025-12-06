@@ -2,6 +2,7 @@ module vitte.bootstrap.front.bt_lexer
 
 import std.collections as coll
 import vitte.bootstrap.front.bt_ast as ast
+import vitte.bootstrap.front.bt_span as span
 
 # ============================================================================
 # Vitte bootstrap front-end – Modèle logique du lexer (maximal, sans I/O)
@@ -40,6 +41,7 @@ enum LexEncoding
 struct LexSourceFile
     path: String                     # chemin logique (ou interne) du fichier
     display_name: String             # nom affichable (optionnel)
+    bf_file_id: span.BfFileId        # id logique dans la table de spans
     encoding: LexEncoding
     newline_style: LexNewlineStyle
 
@@ -73,6 +75,7 @@ enum LexTriviaKind
 struct LexTrivia
     kind: LexTriviaKind
     span: ast.AstSpan
+    span_id: span.BfSpanId           # lien vers le span table front-end
     text: String                     # texte brut tel que lu (optionnel)
 .end
 
@@ -254,6 +257,7 @@ struct LexToken
     # Texte tel que lu (non normalisé)
     lexeme: String
     span: ast.AstSpan
+    span_id: span.BfSpanId           # id dans la BfSpanTable associé à ce token
 
     # Trivia associés
     leading_trivia: coll.Vec<LexTrivia>
@@ -346,9 +350,11 @@ struct LexError
 
     message: String                 # message principal
     span: ast.AstSpan               # zone fautive principale
+    span_id: span.BfSpanId          # id de span source (pour table globale)
 
     # Pointeurs supplémentaires potentiels (zones liées)
     related_spans: coll.Vec<ast.AstSpan>
+    related_span_ids: coll.Vec<span.BfSpanId>
 
     # Données structurées pour tooling/tests
     code: String                    # code stable éventuel, ex: "LEX0001"
@@ -410,6 +416,7 @@ struct LexTokenStream
     file: LexSourceFile
     config: LexConfig
 
+    span_table: span.BfSpanTable     # table des spans produits pendant le lexing
     tokens: coll.Vec<LexToken>
     errors: coll.Vec<LexError>
 

@@ -4,6 +4,7 @@ import std.collections as coll
 import vitte.bootstrap.front.bt_ast as ast
 import vitte.bootstrap.front.bt_lexer as lex
 import vitte.bootstrap.front.bt_diagnostics as diag
+import vitte.bootstrap.front.bt_span as span
 
 # ============================================================================
 # Vitte bootstrap front-end – Modèle logique du parser (maximal, sans I/O)
@@ -217,6 +218,7 @@ struct PsNode
     id: PsNodeId
     kind: PsNodeKind
     span: ast.AstSpan
+    span_id: span.BfSpanId
 
     # Nom logique pour les NonTerminalNode/ListNode
     symbol_name: String              # ex: "expr", "item_list"
@@ -262,6 +264,7 @@ struct PsTraceEvent
     token: lex.LexTokenId           # token concerné (si applicable)
     nonterminal_id: String          # non-terminal impliqué
     production_id: PsProductionId   # règle appliquée (pour Reduce, etc.)
+    span_id: span.BfSpanId          # span observé lors de l’événement (si dispo)
 
     message: String                 # description textuelle
 .end
@@ -314,6 +317,7 @@ struct PsParseError
 
     # Position principale
     span: ast.AstSpan
+    span_id: span.BfSpanId
 
     # Token(s) en cause
     found_token: lex.LexTokenId       # identifiant du token trouvé
@@ -324,6 +328,7 @@ struct PsParseError
 
     # Informations structurées additionnelles
     details: coll.HashMap<String, String>
+    related_span_ids: coll.Vec<span.BfSpanId>
 
     # Lien éventuel vers un diagnostic front-end dérivé
     diag_id: diag.DiagId
@@ -359,6 +364,7 @@ struct BtParserUnit
     # Entrée : source déjà lexée
     source_file: lex.LexSourceFile
     token_stream: lex.LexTokenStream
+    span_table: span.BfSpanTable       # table consolidée des spans (lexer + parser)
 
     # Configuration utilisée pour le parser
     config: PsParserConfig

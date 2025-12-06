@@ -242,6 +242,28 @@ struct SyConstraint
 .end
 
 # ---------------------------------------------------------------------------
+# Invariants de portée (module vs bloc)
+# ---------------------------------------------------------------------------
+
+struct SyScopeRules
+    # Règles héritées de la résolution (module = items, bloc = locals uniquement)
+    resolve_rules: res.ResScopeRules
+
+    # Scopes concrets concernés par l’unité courante
+    module_scope: res.ResScopeId                   # scope module du fichier
+    block_scopes: coll.Vec<res.ResScopeId>         # blocs/branches/fn body
+    fn_scope: res.ResScopeId                       # scope englobant les params/return (raw=0 si absent)
+
+    # Contraintes spécifiques côté typage
+    blocks_cannot_declare_types: bool              # aucune struct/enum/alias dans un bloc
+    modules_own_type_resolution: bool              # les types se résolvent toujours dans le module courant
+    locals_shadow_only_within_block: bool          # un local masque uniquement dans son bloc/descendants
+
+    notes: String
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
 # Instances de symboles (vue typée de ResSymbol)
 # ---------------------------------------------------------------------------
 
@@ -369,6 +391,7 @@ struct BtSymbolUnit
 
     # Référence au résultat de résolution
     resolve_file: res.ResFileId
+    scope_rules: SyScopeRules
 
     # Tables de types, régions, contraintes
     types: coll.Vec<SyType>

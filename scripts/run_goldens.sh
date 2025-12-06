@@ -25,6 +25,7 @@ fi
 cases=(
     "tests/data/mini_project/muffin.muf|tests/goldens/mini_project_manifest.golden"
     "tests/data/mini_project/src/app/main.vitte|tests/goldens/mini_project_main.golden"
+    "tests/data/resolver/scope_rules.vitte|tests/goldens/resolver_scope_rules.golden"
 )
 
 status=0
@@ -42,9 +43,8 @@ for entry in "${cases[@]}"; do
 
     tmp_out="$(mktemp "${TMPDIR:-/tmp}/vittec-golden-XXXXXX")"
     if ! "${vittec_bin}" "${input_path}" >"${tmp_out}" 2>&1; then
-        log_error "Execution échec sur ${rel_input} (voir ${tmp_out})"
-        status=1
-        continue
+        # Les entrées peuvent volontairement déclencher des diagnostics; on compare tout de même la sortie.
+        log_error "Execution échec sur ${rel_input} (voir ${tmp_out}, statut ignoré pour la comparaison)"
     fi
 
     if ! diff -u "${golden_path}" "${tmp_out}"; then
