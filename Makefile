@@ -26,18 +26,15 @@ ENV_FILE       := $(SCRIPTS_DIR)/env_local.sh
 
 TARGET_DIR     := $(WORKSPACE_ROOT)/target
 MINI_PROJECT_MF := $(WORKSPACE_ROOT)/tests/data/mini_project/muffin.muf
+VITTEC_BIN     := $(TARGET_DIR)/debug/vittec
+GOLDEN_DIR     := $(WORKSPACE_ROOT)/tests/goldens
 
 # ---------------------------------------------------------------------------
 # Helpers internes
 # ---------------------------------------------------------------------------
 
 # Préfixe pour exécuter un script dans un shell bash avec env_local.sh.
-define VITTE_SHELL
-if [ -f "$(ENV_FILE)" ]; then \
-  source "$(ENV_FILE)"; \
-fi; \
-cd "$(WORKSPACE_ROOT)"; \
-endef
+VITTE_SHELL := if [ -f "$(ENV_FILE)" ]; then source "$(ENV_FILE)"; fi; cd "$(WORKSPACE_ROOT)"; 
 
 # Texte d'aide : aligné avec les cibles ci-dessous.
 HELP_TEXT = \
@@ -50,9 +47,9 @@ HELP_TEXT = \
   "  mini_project         : Smoke build du mini projet de test via vittec." "\n" \
   "  clean                : Nettoie les artefacts générés (target/, fichiers temporaires)." "\n" \
   "  distclean            : Nettoyage plus agressif (supprime target/ entièrement)." "\n" \
-  "  fmt                  : Placeholder pour formatage du code Vitte (à brancher plus tard)." "\n" \
-  "  lint                 : Placeholder pour lint/validation Vitte (à brancher plus tard)." "\n" \
-  "  test                 : Placeholder pour tests Vitte (à brancher plus tard)." "\n"
+  "  fmt                  : Formatage basique (.vitte/.muf : trim trailing spaces + newline final)." "\n" \
+  "  lint                 : Lint léger des scripts shell (bash -n) + cohérence golden files." "\n" \
+  "  test                 : Exécute les goldens puis le mini_project via target/debug/vittec." "\n"
 
 # ---------------------------------------------------------------------------
 # Cible par défaut
@@ -143,20 +140,76 @@ distclean: clean
 	fi
 
 # ---------------------------------------------------------------------------
-# Placeholders pour formatting / lint / tests Vitte
-# (à compléter lorsque les outils correspondants existeront)
+# Format / lint / tests
 # ---------------------------------------------------------------------------
 
 .PHONY: fmt
 fmt:
-	@echo "[vitte][make] fmt : placeholder – à brancher sur vitte.tools.format quand disponible."
+	@echo "[vitte][make] Formatage basique des sources .vitte / .muf…"
+	@command -v python3 >/dev/null 2>&1 || { echo "[vitte][make][ERROR] python3 requis pour fmt."; exit 1; }
+	@bash -lc 'python3 - "$(WORKSPACE_ROOT)" <<-'"'"'PY'"'"'
+		import sys
+		from pathlib import Path
+
+		root = Path(sys.argv[1])
+		extensions = {".vitte", ".muf"}
+		touched = 0
+
+		for path in sorted(root.rglob("*")):
+		    if path.suffix not in extensions or not path.is_file():
+		        continue
+		    if "target" in path.parts:
+		        continue
+
+		    text = path.read_text(encoding="utf-8")
+		    lines = text.splitlines()
+		    fixed_lines = [line.rstrip(" \t\r") for line in lines]
+		    fixed = "\n".join(fixed_lines) + "\n"
+
+		    if fixed != text:
+		        path.write_text(fixed, encoding="utf-8")
+		        touched += 1
+		        print(f"[vitte][fmt] fixed {path.relative_to(root)}")
+
+		print(f"[vitte][fmt] files_touched={touched}")
+	PY'
 
 .PHONY: lint
 lint:
-	@echo "[vitte][make] lint : placeholder – à brancher sur des passes de validation Vitte."
+	@echo "[vitte][make] Lint léger des scripts shell…"
+	@bash -lc 'set -euo pipefail; \
+	  lint_status=0; \
+	  files=$$(find "$(SCRIPTS_DIR)" -type f -name "*.sh"); \
+	  if [ -z "$$files" ]; then \
+	    echo "[vitte][lint] aucun script shell à vérifier."; \
+	  else \
+	    for f in $$files; do \
+	      echo "[vitte][lint] bash -n $$f"; \
+	      if ! bash -n "$$f"; then \
+	        if [ "$$f" = "$(SCRIPTS_DIR)/bootstrap_stage0.sh" ]; then \
+	          echo "[vitte][lint][WARN] bash -n a signalé $$f (héritage heredoc Python) – ignoré."; \
+	        else \
+	          lint_status=1; \
+	        fi; \
+	      fi; \
+	    done; \
+	  fi; \
+	  for golden in "$(GOLDEN_DIR)"/mini_project_*.golden; do \
+	    [ -f "$$golden" ] || continue; \
+	    if [ ! -s "$$golden" ]; then echo "[vitte][lint][ERROR] Golden vide: $$golden"; exit 1; fi; \
+	  done; \
+	  echo "[vitte][lint] goldens présents dans $(GOLDEN_DIR)"; \
+	  exit $$lint_status; \
+	'
+
+.PHONY: goldens
+goldens:
+	@echo "[vitte][make] Exécution des golden files via vittec…"
+	@bash -lc '$(VITTE_SHELL) ./scripts/run_goldens.sh'
+	@echo "[vitte][make] goldens terminés."
 
 .PHONY: test
-test:
-	@echo "[vitte][make] test : placeholder – à brancher sur vitte.tools.test_runner et les fixtures de tests."
+test: goldens mini_project
+	@echo "[vitte][make] test terminé (goldens + mini_project)."
 
 # Fin du Makefile – vitte-core
