@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 #
 # ============================================================================
 # Vitte workspace – clean script
@@ -18,14 +18,14 @@
 #   - Can be run multiple times without side effects.
 # ============================================================================
 
-set -euo pipefail
+set -eu
 
 # ----------------------------------------------------------------------------
 # Resolve workspace root
 # ----------------------------------------------------------------------------
 
-this_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VITTE_WORKSPACE_ROOT="$(cd "${this_dir}/.." && pwd)"
+this_dir=$(cd "$(dirname "$0")" && pwd)
+VITTE_WORKSPACE_ROOT=$(cd "${this_dir}/.." && pwd)
 
 export VITTE_WORKSPACE_ROOT
 
@@ -57,11 +57,11 @@ die() {
 # ----------------------------------------------------------------------------
 
 ensure_workspace_root() {
-    if [[ ! -f "${VITTE_WORKSPACE_ROOT}/muffin.muf" ]]; then
+    if [ ! -f "${VITTE_WORKSPACE_ROOT}/muffin.muf" ]; then
         die "muffin.muf not found at workspace root (${VITTE_WORKSPACE_ROOT}); aborting clean."
     fi
 
-    if [[ ! -d "${VITTE_WORKSPACE_ROOT}/scripts" ]]; then
+    if [ ! -d "${VITTE_WORKSPACE_ROOT}/scripts" ]; then
         die "scripts/ directory not found at workspace root; aborting clean."
     fi
 
@@ -73,7 +73,7 @@ ensure_workspace_root() {
 # ----------------------------------------------------------------------------
 
 clean_target_dir() {
-    if [[ -d "${TARGET_DIR}" ]]; then
+    if [ -d "${TARGET_DIR}" ]; then
         log_info "Cleaning target directory: ${TARGET_DIR}"
 
         # We remove contents but keep the directory itself present,
@@ -93,28 +93,21 @@ clean_misc_temp() {
     log_info "Cleaning miscellaneous temporary files (if any)…"
 
     # Extend this block as needed when more temporary patterns appear.
-    local patterns=(
-        "*.tmp"
-        "*.swp"
-        "*~"
-        ".DS_Store"
-    )
+    patterns='*.tmp *.swp *~ .DS_Store'
 
     # We only scan a limited set of directories to avoid surprises.
-    local roots=(
-        "${VITTE_WORKSPACE_ROOT}/src"
-        "${VITTE_WORKSPACE_ROOT}/tests"
-        "${VITTE_WORKSPACE_ROOT}/bootstrap"
-    )
+    roots="${VITTE_WORKSPACE_ROOT}/src ${VITTE_WORKSPACE_ROOT}/tests ${VITTE_WORKSPACE_ROOT}/bootstrap"
 
-    for root in "${roots[@]}"; do
-        if [[ -d "${root}" ]]; then
-            for pattern in "${patterns[@]}"; do
-                # shellcheck disable=SC2044
-                for f in $(find "${root}" -name "${pattern}" -type f 2>/dev/null || true); do
-                    log_info "Removing temp file: ${f}"
-                    rm -f -- "${f}"
-                done
+    for root in $roots; do
+        if [ -d "${root}" ]; then
+            for pattern in $patterns; do
+                find "${root}" -name "${pattern}" -type f 2>/dev/null \
+                    | while IFS= read -r f; do
+                        if [ -n "${f}" ]; then
+                            log_info "Removing temp file: ${f}"
+                            rm -f -- "${f}"
+                        fi
+                    done
             done
         fi
     done
@@ -137,7 +130,7 @@ print_summary() {
 # ----------------------------------------------------------------------------
 
 main() {
-    log_info "Starting Vitte workspace clean…"
+    log_info "Starting Vitte workspace clean (POSIX sh)…"
     ensure_workspace_root
     clean_target_dir
     clean_misc_temp

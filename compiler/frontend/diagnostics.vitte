@@ -1,0 +1,190 @@
+module vitte.compiler.frontend.diagnostics
+
+import vitte.compiler.frontend.span as sp
+
+# ============================================================================
+# Vitte compiler – Diagnostics frontend
+#
+# Rôle :
+#   - Représenter les diagnostics du compilateur (erreurs, warnings, notes),
+#   - Collecter les diagnostics dans un "sink" partagé,
+#   - Fournir une impression uniforme sur stdout/stderr :
+#
+#       diag:<severity>:<code>:<file>:L<line>C<col>: <message>
+#
+#   - Ne dépendre d’aucun backend ni du système de fichiers.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Types de base
+# ---------------------------------------------------------------------------
+
+enum Severity
+    Error
+    Warning
+    Note
+.end
+
+struct Diagnostic
+    severity: Severity
+    code: string
+    message: string
+    span: sp.FileSpan
+.end
+
+struct DiagSink
+    diags: Diagnostic[]
+.end
+
+# ---------------------------------------------------------------------------
+# Construction du sink
+# ---------------------------------------------------------------------------
+
+fn diag_sink_new() -> DiagSink:
+    let sink: DiagSink =
+        DiagSink(
+            diags = [],
+        )
+    .end
+    return sink
+.end
+
+# ---------------------------------------------------------------------------
+# Helpers internes
+# ---------------------------------------------------------------------------
+
+fn severity_as_str(sev: Severity) -> string:
+    if sev == Severity::Error:
+        return "error"
+    .end
+    if sev == Severity::Warning:
+        return "warning"
+    .end
+    return "note"
+.end
+
+# ---------------------------------------------------------------------------
+# Ajout de diagnostics
+# ---------------------------------------------------------------------------
+
+fn diag_add(
+    sink: &mut DiagSink,
+    severity: Severity,
+    code: string,
+    file_path: string,
+    line: i32,
+    column: i32,
+    message: string,
+) -> ():
+    let pos: sp.SpanPos =
+        sp.SpanPos(
+            line = line,
+            column = column,
+        )
+    .end
+
+    let s: sp.Span =
+        sp.Span(
+            start = pos,
+            end = pos,
+        )
+    .end
+
+    let fs: sp.FileSpan =
+        sp.FileSpan(
+            file_path = file_path,
+            span = s,
+        )
+    .end
+
+    let d: Diagnostic =
+        Diagnostic(
+            severity = severity,
+            code = code,
+            message = message,
+            span = fs,
+        )
+    .end
+
+    push(sink.diags, d)
+    ret ()
+.end
+
+fn diag_error(
+    sink: &mut DiagSink,
+    code: string,
+    file_path: string,
+    line: i32,
+    column: i32,
+    message: string,
+) -> ():
+    diag_add(sink, Severity::Error, code, file_path, line, column, message)
+    ret ()
+.end
+
+fn diag_warning(
+    sink: &mut DiagSink,
+    code: string,
+    file_path: string,
+    line: i32,
+    column: i32,
+    message: string,
+) -> ():
+    diag_add(sink, Severity::Warning, code, file_path, line, column, message)
+    ret ()
+.end
+
+fn diag_note(
+    sink: &mut DiagSink,
+    code: string,
+    file_path: string,
+    line: i32,
+    column: i32,
+    message: string,
+) -> ():
+    diag_add(sink, Severity::Note, code, file_path, line, column, message)
+    ret ()
+.end
+
+# ---------------------------------------------------------------------------
+# Inspection / impression
+# ---------------------------------------------------------------------------
+
+fn diag_has_errors(sink: &DiagSink) -> bool:
+    let mut i: i32 = 0
+    let n: i32 = len(sink.diags)
+
+    while i < n:
+        let d: Diagnostic = sink.diags[i]
+        if d.severity == Severity::Error:
+            return true
+        .end
+        i = i + 1
+    .end
+
+    return false
+.end
+
+fn diag_print(d: &Diagnostic) -> ():
+    let sev_str: string = severity_as_str(d.severity)
+    let file_path: string = d.span.file_path
+    let line: i32 = d.span.span.start.line
+    let col: i32 = d.span.span.start.column
+
+    # Format standard :
+    #   diag:<severity>:<code>:<file>:L<line>C<col>: <message>
+    say "diag:" sev_str ":" d.code ":" file_path ":L" line "C" col ": " d.message
+    ret ()
+.end
+
+fn diag_print_all(sink: &DiagSink) -> ():
+    let mut i: i32 = 0
+    let n: i32 = len(sink.diags)
+
+    while i < n:
+        diag_print(&sink.diags[i])
+        i = i + 1
+    .end
+
+    ret ()
+.end

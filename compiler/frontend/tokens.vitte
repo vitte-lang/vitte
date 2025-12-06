@@ -1,10 +1,10 @@
-module vitte.bootstrap.front.bt_tokens
+module vitte.compiler.frontend.tokens
 
 import std.collections as coll
-import vitte.bootstrap.front.bt_lexer as lex
+import vitte.compiler.frontend.lexer as lex
 
 # ============================================================================
-# Vitte bootstrap front-end – Modèle logique des tokens & tables lexicales
+# Vitte compiler front-end – Modèle logique des tokens & tables lexicales
 # (maximal, déclaratif, sans I/O)
 #
 # Objectifs :
@@ -14,8 +14,8 @@ import vitte.bootstrap.front.bt_lexer as lex
 #       * métadonnées sur les opérateurs et délimiteurs,
 #       * tables et index de tokens pour tooling, IDE, docs, tests.
 #   - Servir de contrat entre :
-#       * le lexer (`bt_lexer`),
-#       * le parser (`bt_parser`),
+#       * le lexer (`lexer`),
+#       * le parser,
 #       * les outils (dump tokens, surlignage, auto-complétion),
 #       * les passes d’analyse statique (lints, stats).
 #   - Ne contenir :
@@ -106,14 +106,14 @@ struct TkTokenClassInfo
     can_be_contextual: bool       # true si mot-clé contextuel possible
 
     # Représentation textuelle typique
-    display_name: String          # ex: "identifier", "integer literal", "+"
-    sample_lexeme: String         # ex: "foo", "42", "if"
-    description: String
+    display_name: string          # ex: "identifier", "integer literal", "+"
+    sample_lexeme: string         # ex: "foo", "42", "if"
+    description: string
 
     # Tags libres pour tooling (ex: "binary-op", "comparison", "statement-start")
-    tags: coll.Vec<String>
+    tags: coll.Vec<string>
 
-    extra: coll.HashMap<String, String>
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -137,7 +137,7 @@ struct TkKeywordInfo
     keyword: lex.LexKeyword
 
     # Texte canonique dans le langage (ex: "module")
-    canonical_text: String
+    canonical_text: string
 
     # Groupe / famille de ce mot-clé
     group: TkKeywordGroup
@@ -148,12 +148,12 @@ struct TkKeywordInfo
     is_future_reserved: bool     # actuellement non utilisé mais réservé
 
     # Contextes d’utilisation
-    allowed_contexts: coll.Vec<String>    # ex: ["item", "expr", "type", "pattern"]
+    allowed_contexts: coll.Vec<string>    # ex: ["item", "expr", "type", "pattern"]
 
-    description: String
-    tags: coll.Vec<String>
+    description: string
+    tags: coll.Vec<string>
 
-    extra: coll.HashMap<String, String>
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -163,20 +163,20 @@ struct TkKeywordInfo
 struct TkOperatorInfo
     token_kind: lex.LexTokenKind
 
-    textual_repr: String             # ex: "+", "&&", "=="
+    textual_repr: string             # ex: "+", "&&", "=="
     category: TkOperatorCategory
     fixity: TkFixity
     precedence: u8
     assoc: TkAssoc
 
     # Utilisation typique (ex: "binary", "unary-prefix", "unary-postfix")
-    usage: String
+    usage: string
 
     # Description lisible
-    description: String
+    description: string
 
-    tags: coll.Vec<String>
-    extra: coll.HashMap<String, String>
+    tags: coll.Vec<string>
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -196,14 +196,14 @@ struct TkDelimiterInfo
     close_kind: lex.LexTokenKind
 
     kind: TkDelimiterKind
-    name: String                     # ex: "parentheses", "brackets"
+    name: string                     # ex: "parentheses", "brackets"
     can_nest: bool
 
     # Exemple de forme complète
-    sample: String                   # ex: "( ... )"
+    sample: string                   # ex: "( ... )"
 
-    tags: coll.Vec<String>
-    extra: coll.HashMap<String, String>
+    tags: coll.Vec<string>
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -224,13 +224,13 @@ struct TkTokenTables
     delimiter_infos: coll.Vec<TkDelimiterInfo>
 
     # Indexation rapide (clé = nom symbolique du kind/keyword)
-    token_class_index_by_kind_name: coll.HashMap<String, u32>
-    keyword_info_index_by_text: coll.HashMap<String, u32>
-    operator_info_index_by_repr: coll.HashMap<String, u32>
-    delimiter_index_by_open_repr: coll.HashMap<String, u32>
-    delimiter_index_by_close_repr: coll.HashMap<String, u32>
+    token_class_index_by_kind_name: coll.HashMap<string, u32>
+    keyword_info_index_by_text: coll.HashMap<string, u32>
+    operator_info_index_by_repr: coll.HashMap<string, u32>
+    delimiter_index_by_open_repr: coll.HashMap<string, u32>
+    delimiter_index_by_close_repr: coll.HashMap<string, u32>
 
-    extra: coll.HashMap<String, String>
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -251,18 +251,18 @@ struct TkTokenFileSummary
     count_indentation: u32
 
     # Comptage agrégé par catégorie (clé = nom de catégorie)
-    count_by_category: coll.HashMap<String, u32>
+    count_by_category: coll.HashMap<string, u32>
 
     # Comptage par mot-clé texte canonique
-    count_by_keyword_text: coll.HashMap<String, u32>
+    count_by_keyword_text: coll.HashMap<string, u32>
 
     # Indicateur d’erreurs lexicales/problèmes graves sur ce flux
     has_lex_errors: bool
 .end
 
 struct TkTokenFileInfo
-    file_path: String
-    display_name: String
+    file_path: string
+    display_name: string
 
     # Snapshot du flux de tokens produit par le lexer pour ce fichier
     token_stream: lex.LexTokenStream
@@ -271,7 +271,7 @@ struct TkTokenFileInfo
     summary: TkTokenFileSummary
 
     # Données additionnelles (ex: profil d’édition, tags, etc.)
-    extra: coll.HashMap<String, String>
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -293,12 +293,12 @@ struct TkTokenGlobalSummary
     total_indentation: u32
 
     # Comptage agrégé par catégorie
-    count_by_category: coll.HashMap<String, u32>
+    count_by_category: coll.HashMap<string, u32>
 
     # Comptage agrégé par mot-clé texte canonique
-    count_by_keyword_text: coll.HashMap<String, u32>
+    count_by_keyword_text: coll.HashMap<string, u32>
 
-    extra: coll.HashMap<String, String>
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -316,5 +316,5 @@ struct BtTokenModel
     global_summary: TkTokenGlobalSummary
 
     # Données libres pour tooling/CI/IDE/docs
-    extra: coll.HashMap<String, String>
+    extra: coll.HashMap<string, string>
 .end

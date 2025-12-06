@@ -1,12 +1,12 @@
-module vitte.bootstrap.front.bt_symbol
+module vitte.compiler.frontend.symbol
 
 import std.collections as coll
-import vitte.bootstrap.front.bt_ast as ast
-import vitte.bootstrap.front.bt_resolve as res
-import vitte.bootstrap.front.bt_diagnostics as diag
+import vitte.compiler.frontend.ast as ast
+import vitte.compiler.frontend.resolve as res
+import vitte.compiler.frontend.diagnostics as diag
 
 # ============================================================================
-# Vitte bootstrap front-end – Modèle logique des symboles & types
+# Vitte compiler front-end – Modèle logique des symboles & types
 # (maximal, déclaratif, sans I/O)
 #
 # Objectifs :
@@ -110,7 +110,7 @@ enum SyPointerKind
 # ---------------------------------------------------------------------------
 
 struct SyFnParamType
-    name: String                  # nom logique (peut être vide)
+    name: string                  # nom logique (peut être vide)
     ty: SyTypeId
     mutability: SyMutability
     is_self: bool                 # true pour self / &self / &mut self
@@ -121,7 +121,7 @@ struct SyFnSignature
     return_type: SyTypeId
     is_async: bool
     is_unsafe: bool
-    calling_convention: String    # ex: "vitte", "C"
+    calling_convention: string    # ex: "vitte", "C"
 .end
 
 # ---------------------------------------------------------------------------
@@ -161,7 +161,7 @@ struct SyType
     fn_sig: SyFnSignature
 
     # Pour GenericParam / AssociatedType
-    generic_param_name: String
+    generic_param_name: string
     generic_param_index: u32          # index dans la liste de params
     generic_param_owner: res.ResSymbolId   # symbole propriétaire (fn, type, etc.)
 
@@ -169,8 +169,8 @@ struct SyType
     error_diag: diag.DiagId
 
     # Données additionnelles
-    tags: coll.Vec<String>
-    extra: coll.HashMap<String, String>
+    tags: coll.Vec<string>
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -190,7 +190,7 @@ struct SyRegion
     kind: SyRegionKind
 
     # Nom logique (pour paramètres de région explicites, si supportés)
-    name: String
+    name: string
 
     # AST / span d’origine
     ast_id: ast.AstNodeId
@@ -199,8 +199,8 @@ struct SyRegion
     # Région "parent" dans une hiérarchie simplifiée
     parent: SyRegionId
 
-    notes: String
-    extra: coll.HashMap<String, String>
+    notes: string
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -237,8 +237,8 @@ struct SyConstraint
     # Diagnostic éventuel lié à cette contrainte
     diag_id: diag.DiagId
 
-    notes: String
-    extra: coll.HashMap<String, String>
+    notes: string
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -259,8 +259,8 @@ struct SyScopeRules
     modules_own_type_resolution: bool              # les types se résolvent toujours dans le module courant
     locals_shadow_only_within_block: bool          # un local masque uniquement dans son bloc/descendants
 
-    notes: String
-    extra: coll.HashMap<String, String>
+    notes: string
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -290,7 +290,7 @@ struct SySymbolInstance
     fn_sig: SyFnSignature
 
     # Contexte générique instancié (mapping nom -> SyTypeId)
-    generic_args: coll.HashMap<String, SyTypeId>
+    generic_args: coll.HashMap<string, SyTypeId>
 
     # Région locale dominante (pour locals / params)
     region: SyRegionId
@@ -303,8 +303,8 @@ struct SySymbolInstance
     diagnostics: coll.Vec<diag.DiagId>
 
     # Données additionnelles
-    tags: coll.Vec<String>
-    extra: coll.HashMap<String, String>
+    tags: coll.Vec<string>
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -341,8 +341,8 @@ struct SyTypeBinding
     # Diagnostics associés à ce binding
     diagnostics: coll.Vec<diag.DiagId>
 
-    notes: String
-    extra: coll.HashMap<String, String>
+    notes: string
+    extra: coll.HashMap<string, string>
 .end
 
 struct SyBindingIndex
@@ -352,8 +352,8 @@ struct SyBindingIndex
     # symbol_instance_id.raw -> indices de bindings
     binding_indices_by_symbol_instance: coll.HashMap<u32, coll.Vec<u32>>
 
-    notes: String
-    extra: coll.HashMap<String, String>
+    notes: string
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -379,11 +379,11 @@ struct SyTypingSummary
 # ---------------------------------------------------------------------------
 
 struct BtSymbolUnitMetadata
-    file_path: String
-    module_name: String
-    edition: String              # ex: "2025"
-    profile: String              # ex: "core-bootstrap"
-    notes: String
+    file_path: string
+    module_name: string
+    edition: string              # ex: "2025"
+    profile: string              # ex: "core-bootstrap"
+    notes: string
 .end
 
 struct BtSymbolUnit
@@ -412,7 +412,7 @@ struct BtSymbolUnit
     diagnostics: diag.BtDiagnostics
 
     # Données annexes
-    extra: coll.HashMap<String, String>
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -437,16 +437,16 @@ struct BtSymbolBundleSummary
 
 struct BtSymbolIndex
     # Index global pour navigation typée
-    unit_index_by_file_path: coll.HashMap<String, u32>
+    unit_index_by_file_path: coll.HashMap<string, u32>
 
     # ast_id.raw -> (unit index, binding index)
-    binding_index_by_ast_id: coll.HashMap<u32, String>
+    binding_index_by_ast_id: coll.HashMap<u32, string>
 
     # Résolution inverse : type id -> occurrences (symbol instances)
     symbol_instance_ids_by_type: coll.HashMap<u32, coll.Vec<u32>>
 
-    notes: String
-    extra: coll.HashMap<String, String>
+    notes: string
+    extra: coll.HashMap<string, string>
 .end
 
 struct BtSymbolBundle
@@ -454,5 +454,5 @@ struct BtSymbolBundle
     summary: BtSymbolBundleSummary
     index: BtSymbolIndex
 
-    extra: coll.HashMap<String, String>
+    extra: coll.HashMap<string, string>
 .end

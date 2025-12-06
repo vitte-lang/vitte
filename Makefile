@@ -43,6 +43,7 @@ HELP_TEXT = \
   "  env                  : Affiche l'environnement Vitte local (env_local.sh)." "\n" \
   "  bootstrap-stage0     : Lance le stage0 (host layer) du bootstrap Vitte." "\n" \
   "  bootstrap-stage1     : Lance les stages 1+2 (self-host compiler)." "\n" \
+  "  release              : Construit le compilateur self-host (alias bootstrap-stage1)." "\n" \
   "  bootstrap-all        : Enchaîne stage0 puis stage1+2." "\n" \
   "  mini_project         : Smoke build du mini projet de test via vittec." "\n" \
   "  clean                : Nettoie les artefacts générés (target/, fichiers temporaires)." "\n" \
@@ -211,5 +212,9 @@ goldens:
 .PHONY: test
 test: goldens mini_project
 	@echo "[vitte][make] test terminé (goldens + mini_project)."
+
+.PHONY: release
+release: bootstrap-stage1
+	@echo "[vitte][make] release terminé (compiler self-host)."
 
 # Fin du Makefile – vitte-core

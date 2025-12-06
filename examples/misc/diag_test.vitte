@@ -1,0 +1,33 @@
+module examples.diag_test
+
+import vitte.compiler.frontend.diagnostics as diag
+
+fn main(args: string[]) -> i32:
+    let mut sink: diag.DiagSink = diag.diag_sink_new()
+
+    diag.diag_error(
+        &mut sink,
+        "E0001",
+        "source.vitte",
+        4,
+        1,
+        "failed to parse expression",
+    )
+
+    diag.diag_warning(
+        &mut sink,
+        "W0001",
+        "source.vitte",
+        2,
+        5,
+        "unused variable",
+    )
+
+    diag.diag_print_all(&sink)
+
+    if diag.diag_has_errors(&sink):
+        return 1
+    .end
+
+    return 0
+.end

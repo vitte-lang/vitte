@@ -1,0 +1,54 @@
+#!/bin/sh
+#
+# steelc – lanceur universel du compilateur Vitte
+# 100 % POSIX sh.
+#
+# Rôle:
+#   - Résoudre le workspace Vitte.
+#   - Trouver le binaire compilateur (vittec).
+#   - Forwarder tous les arguments.
+
+set -eu
+
+# ------------------------------------------------------------
+# Résolution du workspace root
+# ------------------------------------------------------------
+
+# Si VITTE_WORKSPACE_ROOT est défini dans l'environnement, on le respecte.
+if [ "${VITTE_WORKSPACE_ROOT-}" != "" ]; then
+    VITTE_ROOT="${VITTE_WORKSPACE_ROOT}"
+else
+    # Sinon on suppose que ce script est dans <root>/scripts/steelc
+    this_dir=$(cd "$(dirname "$0")" && pwd)
+    VITTE_ROOT=$(cd "${this_dir}/.." && pwd)
+fi
+
+# ------------------------------------------------------------
+# Sélection du binaire compilateur
+# ------------------------------------------------------------
+
+# Chemin "confort" : symlink créé par build_vittec_stage1.sh
+PREF_BIN="${VITTE_ROOT}/target/debug/vittec"
+
+# Fallback : binaire stage1 direct
+STAGE1_BIN="${VITTE_ROOT}/target/bootstrap/stage1/vittec-stage1"
+
+if [ -x "${PREF_BIN}" ]; then
+    COMPILER="${PREF_BIN}"
+elif [ -x "${STAGE1_BIN}" ]; then
+    COMPILER="${STAGE1_BIN}"
+else
+    printf '[steelc][ERROR] no compiler binary found.\n' >&2
+    printf '  Tried:\n' >&2
+    printf '    %s\n' "${PREF_BIN}" >&2
+    printf '    %s\n' "${STAGE1_BIN}" >&2
+    printf '\n[steelc][HINT] From the workspace root, run:\n' >&2
+    printf '  ./scripts/hooks/build_vittec_stage1.sh\n' >&2
+    exit 1
+fi
+
+# ------------------------------------------------------------
+# Exécution
+# ------------------------------------------------------------
+
+exec "${COMPILER}" "$@"

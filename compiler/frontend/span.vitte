@@ -1,9 +1,9 @@
-module vitte.bootstrap.front.bt_span
+module vitte.compiler.frontend.span
 
 import std.collections as coll
 
 # ============================================================================
-# Vitte bootstrap front-end – Modèle logique des fichiers & spans source
+# Vitte compiler front-end – Modèle logique des fichiers & spans source
 # (maximal, déclaratif, sans I/O)
 #
 # Objectifs :
@@ -13,10 +13,10 @@ import std.collections as coll
 #       * spans (intervalle dans un fichier),
 #       * collections/index de spans pour tooling.
 #   - Servir de base commune pour :
-#       * le lexer (bt_lexer),
-#       * le parser/CST/AST (bt_parser, bt_ast),
-#       * les diagnostics (bt_diagnostics),
-#       * les passes de résolution (bt_resolve).
+#       * le lexer (lexer),
+#       * le parser/CST/AST (parser, ast),
+#       * les diagnostics (diagnostics),
+#       * les passes de résolution (resolve).
 #   - Ne contenir :
 #       * aucune fonction,
 #       * aucune I/O ni accès au système de fichiers,
@@ -99,7 +99,7 @@ struct BfFileSpan
     is_multiline: bool
 
     # Tags libres pour tooling (ex: "token", "expr", "type", "diag.primary")
-    tags: coll.Vec<String>
+    tags: coll.Vec<string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -110,12 +110,12 @@ struct BfSourceFileMetadata
     id: BfFileId
 
     # Informations d’identification
-    path: String                 # chemin logique / absolu / virtuel
-    display_name: String         # ce qui est affiché à l’utilisateur
+    path: string                 # chemin logique / absolu / virtuel
+    display_name: string         # ce qui est affiché à l’utilisateur
 
     # Édition / profil / rôle
-    edition: String              # ex: "2025"
-    profile: String              # ex: "core-bootstrap"
+    edition: string              # ex: "2025"
+    profile: string              # ex: "core-bootstrap"
     role: BfFileRole
 
     # Encodage et newlines
@@ -131,10 +131,10 @@ struct BfSourceFileMetadata
     line_start_offsets: coll.Vec<u32>
 
     # Hash du contenu ou identifiant stable (blake3, sha256, etc.)
-    content_hash: String
+    content_hash: string
 
     # Données libres
-    extra: coll.HashMap<String, String>
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -159,8 +159,8 @@ struct BfLogicalSpan
     related_spans: coll.Vec<BfFileSpan>
 
     # Informations textuelles supplémentaires
-    description: String
-    extra: coll.HashMap<String, String>
+    description: string
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -172,11 +172,11 @@ struct BfFileTable
     files: coll.Vec<BfSourceFileMetadata>
 
     # Index : path logique -> BfFileId.raw
-    file_id_by_path: coll.HashMap<String, u32>
+    file_id_by_path: coll.HashMap<string, u32>
 
     # Notes libres
-    notes: String
-    extra: coll.HashMap<String, String>
+    notes: string
+    extra: coll.HashMap<string, string>
 .end
 
 struct BfSpanTable
@@ -190,11 +190,11 @@ struct BfSpanTable
     spans_by_file_id: coll.HashMap<u32, coll.Vec<BfSpanId>>
 
     # Index optionnel par tags (ex: "token", "expr", "diag.primary")
-    span_ids_by_tag: coll.HashMap<String, coll.Vec<BfSpanId>>
+    span_ids_by_tag: coll.HashMap<string, coll.Vec<BfSpanId>>
 
     # Notes libres
-    notes: String
-    extra: coll.HashMap<String, String>
+    notes: string
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -210,7 +210,7 @@ enum BfSnippetKind
 
 struct BfSnippetHighlight
     span_id: BfSpanId             # span mis en évidence
-    label: String                 # texte affichable (ex: "here", "previous declaration")
+    label: string                 # texte affichable (ex: "here", "previous declaration")
     is_primary: bool
 .end
 
@@ -228,9 +228,9 @@ struct BfSnippet
 
     # Représentation textuelle préformatée (optionnelle)
     # Remplie par des passes externes (formatage, diag).
-    preformatted: String
+    preformatted: string
 
-    extra: coll.HashMap<String, String>
+    extra: coll.HashMap<string, string>
 .end
 
 struct BfSnippetBundle
@@ -239,8 +239,8 @@ struct BfSnippetBundle
     # Index optionnel : span_id.raw -> indices de snippets
     snippet_indices_by_span: coll.HashMap<u32, coll.Vec<u32>>
 
-    notes: String
-    extra: coll.HashMap<String, String>
+    notes: string
+    extra: coll.HashMap<string, string>
 .end
 
 # ---------------------------------------------------------------------------
@@ -253,5 +253,5 @@ struct BtSpanBundle
     snippets: BfSnippetBundle
 
     # Données globales libres (tags, versionning, etc.)
-    extra: coll.HashMap<String, String>
+    extra: coll.HashMap<string, string>
 .end
