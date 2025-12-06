@@ -1,0 +1,58 @@
+module vitte.runtime.gc
+
+import std.collections as coll
+
+# ============================================================================
+# GC mark/sweep linéaire – modèle
+# ============================================================================
+
+enum GcTag
+    GcString
+    GcArray
+    GcStruct
+    GcBytes
+.end
+
+struct GcHeader
+    tag: GcTag
+    size_bytes: i64
+    marked: bool
+.end
+
+struct GcObject
+    header: GcHeader
+    payload: coll.Vec[u8]     # opaque du point de vue GC
+.end
+
+struct GcHeap
+    base: i64
+    limit: i64
+    hp: i64
+    freelist: coll.Vec[i64]   # offsets libres (pas de compactage MVP)
+    objects: coll.Vec[GcObject]
+.end
+
+struct GcStats
+    collections: u64
+    bytes_allocated: u64
+    bytes_live: u64
+.end
+
+struct GcState
+    heap: GcHeap
+    stats: GcStats
+.end
+
+struct GcRoot
+    addr: i64
+.end
+
+fn gc_alloc(gc: GcState, tag: GcTag, size_bytes: i64) -> i64
+    # Alloue via bump-pointer, déclenche collect si besoin (non implémenté ici).
+    return 0
+.end
+
+fn gc_collect(gc: GcState, roots: coll.Vec[GcRoot]) -> GcStats
+    # Parcours des racines, mark sur les objets atteignables, sweep linéaire.
+    return gc.stats
+.end

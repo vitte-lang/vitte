@@ -10,10 +10,11 @@ Ce document donne une vue d’ensemble du dépôt **`vitte-core`**, c’est‑à
 Il complète les autres documents de référence :
 
 - `README.md` : présentation générale et usage pratique (Makefile, VS Code, etc.) ;
-- `docs/architecture-bootstrap.md` : architecture du bootstrap Vitte ;
-- `docs/compiler-architecture.md` : architecture du compilateur Vitte ;
-- `docs/design-decisions.md` : décisions de design de haut niveau ;
-- `docs/language-spec.md` : spécification du noyau du langage Vitte (édition 2025).
+- `docs/architecture-bootstrap.md` : architecture du bootstrap Vitte ;
+- `docs/compiler-architecture.md` : architecture du compilateur Vitte ;
+- `docs/design-decisions.md` : décisions de design de haut niveau ;
+- `docs/language-spec.md` : spécification du noyau du langage Vitte (édition 2025).
+- `docs/runtime-vm.md` : modèle runtime/VM (boucle bytecode, heap, GC, std minimale).
 
 ---
 

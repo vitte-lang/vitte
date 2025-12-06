@@ -1,0 +1,125 @@
+module vitte.runtime.bytecode
+
+import std.collections as coll
+import vitte.compiler.diagnostics as diag
+
+# ============================================================================
+# Runtime bytecode loader – modèle logique
+# ============================================================================
+
+# Représente un chunk bytecode conforme à docs/bytecode-spec.md.
+struct LvmFileHeader
+    magic: u32
+    version_major: u16
+    version_minor: u16
+    flags: u32
+    reserved0: u32
+    reserved1: u32
+    section_count: u32
+.end
+
+enum LvmSectionKind
+    SectionReserved
+    SectionConstPool
+    SectionFunctionTable
+    SectionCode
+    SectionDebug
+.end
+
+struct LvmSectionEntry
+    kind: LvmSectionKind
+    flags: u16
+    offset: u32
+    length: u32
+.end
+
+# Constantes typées (tag + payload).
+enum LvmConstTag
+    ConstNil
+    ConstBool
+    ConstI64
+    ConstF64
+    ConstString
+    ConstFunction
+    ConstBytes
+    ConstReserved
+.end
+
+union LvmConstPayload
+    bool_value: bool
+    i64_value: i64
+    f64_value: f64
+    string_value: String
+    func_index: u32
+    bytes_value: coll.Vec[u8]
+.end
+
+struct LvmConst
+    tag: LvmConstTag
+    payload: LvmConstPayload
+.end
+
+struct LvmConstPool
+    consts: coll.Vec[LvmConst]
+.end
+
+# Fonctions déclarées dans la table.
+struct LvmFunctionEntry
+    name_const: u32
+    code_offset: u32
+    code_size: u32
+    param_count: u16
+    local_count: u16
+    max_stack: u16
+    flags: u16
+.end
+
+struct LvmFunctionTable
+    entries: coll.Vec[LvmFunctionEntry]
+.end
+
+# Opcodes runtime (doivent rester alignés avec la génération compiler).
+enum LvmOpcode
+    OpConst
+    OpAdd
+    OpSub
+    OpMul
+    OpDiv
+    OpMod
+    OpNeg
+    OpCmpEq
+    OpCmpNe
+    OpCmpLt
+    OpCmpLe
+    OpCmpGt
+    OpCmpGe
+    OpLoadLocal
+    OpStoreLocal
+    OpLoadField
+    OpStoreField
+    OpAllocHeap
+    OpJmp
+    OpJmpIf
+    OpCall
+    OpCallIndirect
+    OpRet
+.end
+
+struct LvmInstruction
+    opcode: LvmOpcode
+    operands: coll.Vec[i32]   # indexes / immediates, dépend de l’opcode
+.end
+
+struct LvmChunk
+    header: LvmFileHeader
+    sections: coll.Vec[LvmSectionEntry]
+    const_pool: LvmConstPool
+    functions: LvmFunctionTable
+    code: coll.Vec[u8]        # flux binaire brut, décodé en LvmInstruction au chargement
+.end
+
+# Diagnostic de chargement (invalide -> fatal pour vitte-run).
+struct LvmLoadError
+    message: String
+    span: diag.SpanId
+.end

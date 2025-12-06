@@ -1,0 +1,188 @@
+module vitte.compiler.cli.subcommands
+
+import vitte.compiler.cli.args as args
+import std.collections as coll
+import std.fs.std_fs as fs
+import vitte.runtime.bytecode as bc
+import vitte.runtime.cli.run as rt_run
+import vitte.runtime.std_hooks as hooks
+
+struct BuildResult
+    success: bool
+    output_path: String
+.end
+
+struct RunResult
+    exit_code: i32
+.end
+
+struct TestResult
+    success: bool
+    report_path: String
+.end
+
+fn encode_demo_code() -> coll.Vec[u8]
+    # Encodage bytecode MVP (voir vm_decode_at_pc) :
+    #  - OpConst const#0
+    #  - OpRet
+    let code = coll.Vec[u8]()
+
+    # OpConst (opcode 0), 1 opérande = 0 (const pool index).
+    code.push(0)
+    code.push(1)
+    code.push(0)
+    code.push(0)
+    code.push(0)
+    code.push(0)
+
+    # OpRet (opcode 6), 0 opérande.
+    code.push(6)
+    code.push(0)
+
+    return code
+.end
+
+fn build_demo_chunk() -> bc.LvmChunk
+    let consts = coll.Vec[bc.LvmConst]()
+    consts.push(bc.LvmConst { tag = bc.LvmConstTag::ConstString, payload = bc.LvmConstPayload { string_value = "hi" } })
+
+    let header = bc.LvmFileHeader {
+        magic = 0,
+        version_major = 0,
+        version_minor = 1,
+        flags = 0,
+        reserved0 = 0,
+        reserved1 = 0,
+        section_count = 3
+    }
+
+    let sections = coll.Vec[bc.LvmSectionEntry]()
+    sections.push(bc.LvmSectionEntry { kind = bc.LvmSectionKind::SectionConstPool, flags = 0, offset = 0, length = 0 })
+    sections.push(bc.LvmSectionEntry { kind = bc.LvmSectionKind::SectionFunctionTable, flags = 0, offset = 0, length = 0 })
+    sections.push(bc.LvmSectionEntry { kind = bc.LvmSectionKind::SectionCode, flags = 0, offset = 0, length = 0 })
+
+    let const_pool = bc.LvmConstPool { consts = consts }
+
+    let code_bytes = encode_demo_code()
+    let functions = coll.Vec[bc.LvmFunctionEntry]()
+    functions.push(bc.LvmFunctionEntry {
+        name_const = 0,
+        code_offset = 0,
+        code_size = code_bytes.len(),
+        param_count = 0,
+        local_count = 0,
+        max_stack = 4,
+        flags = 1    # export main
+    })
+
+    let function_table = bc.LvmFunctionTable { entries = functions }
+
+    return bc.LvmChunk { header = header, sections = sections, const_pool = const_pool, functions = function_table, code = code_bytes }
+.end
+
+fn write_demo_chunk(chunk: bc.LvmChunk, path: String) -> bool
+    # Flux simplifié : on sérialise uniquement la section code et quelques métadonnées lisibles.
+    let file = "magic=" + chunk.header.magic.to_string() + "\n" +
+               "version=" + chunk.header.version_minor.to_string() + "\n" +
+               "const0=" + chunk.const_pool.consts[0].payload.string_value + "\n" +
+               "code="
+
+    let mut idx: i32 = 0
+    while idx < chunk.code.len()
+        file = file + chunk.code[idx].to_string()
+        if idx + 1 < chunk.code.len()
+            file = file + ","
+        .end
+        idx = idx + 1
+    .end
+    file = file + "\n"
+
+    fs.write_all(path, file.as_bytes())
+    return true
+.end
+
+fn cmd_build(opts: args.CliOptions) -> BuildResult
+    let chunk = build_demo_chunk()
+    let out_path = "target/core/bytecode/demo.vbc"
+
+    # Assure l’existence du dossier cible.
+    fs.create_dir_all("target/core/bytecode")
+    write_demo_chunk(chunk, out_path)
+
+    return BuildResult { success = true, output_path = out_path }
+.end
+
+fn cmd_run(opts: args.CliOptions) -> RunResult
+    let build = cmd_build(opts)
+
+    let std_hooks = make_host_std_hooks()
+    let ctx = rt_run.make_run_context(build.output_path, std_hooks)
+    if ctx.load_error != ""
+        return RunResult { exit_code = 1 }
+    .end
+
+    let exit_code = rt_run.run_chunk(ctx)
+    return RunResult { exit_code = exit_code }
+.end
+
+fn cmd_fmt(opts: args.CliOptions) -> bool
+    # Placeholder formatteur.
+    return true
+.end
+
+fn cmd_test(opts: args.CliOptions) -> TestResult
+    # Placeholder smoke test mini_project.
+    return TestResult { success = true, report_path = "target/core/tests/report.txt" }
+.end
+
+fn host_make_string(bytes: coll.Vec[u8]) -> hooks.RtString
+    return hooks.RtString { len = bytes.len(), data_ptr = 0, bytes = bytes }
+.end
+
+fn host_concat_string(lhs: hooks.RtString, rhs: hooks.RtString) -> hooks.RtString
+    let mut merged = coll.Vec[u8]()
+    let mut i: i32 = 0
+    while i < lhs.bytes.len()
+        merged.push(lhs.bytes[i])
+        i = i + 1
+    .end
+    let mut j: i32 = 0
+    while j < rhs.bytes.len()
+        merged.push(rhs.bytes[j])
+        j = j + 1
+    .end
+    return hooks.RtString { len = merged.len(), data_ptr = 0, bytes = merged }
+.end
+
+fn host_array_push(arr: hooks.RtArray, value: any) -> hooks.RtArray
+    return arr
+.end
+
+fn host_array_get(arr: hooks.RtArray, index: i64) -> any
+    return index
+.end
+
+fn host_print(rt: hooks.RtString) -> ()
+    fs.write_all("/dev/stdout", rt.bytes)
+.end
+
+fn host_println(rt: hooks.RtString) -> ()
+    fs.write_all("/dev/stdout", rt.bytes)
+    fs.write_all("/dev/stdout", "\n".as_bytes())
+.end
+
+fn host_read_line() -> hooks.RtString
+    return hooks.RtString { len = 0, data_ptr = 0, bytes = coll.Vec[u8]() }
+.end
+
+fn make_host_std_hooks() -> hooks.StdHooks
+    return hooks.StdHooks {
+        make_string = host_make_string,
+        concat_string = host_concat_string,
+        array_push = host_array_push,
+        array_get = host_array_get,
+        print = host_print,
+        println = host_println,
+        read_line = host_read_line
+    }
+.end

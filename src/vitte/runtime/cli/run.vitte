@@ -1,0 +1,192 @@
+module vitte.runtime.cli.run
+
+import vitte.runtime.bytecode as bc
+import vitte.runtime.vm as vm
+import vitte.runtime.std_hooks as hooks
+import std.collections as coll
+import std.fs.std_fs as fs
+
+# ============================================================================
+# CLI vitte-run – modèle logique
+# ============================================================================
+
+struct RunOptions
+    manifest_path: String
+    entry_override: String
+.end
+
+struct RunContext
+    chunk: bc.LvmChunk
+    vm_state: vm.VmState
+    std: hooks.StdHooks
+    load_error: String
+.end
+
+fn parse_args(args: Vec[String]) -> RunOptions
+    # Placeholder de parsing CLI.
+    return RunOptions { manifest_path = "", entry_override = "" }
+.end
+
+fn make_run_context(bytecode_path: String, std: hooks.StdHooks) -> RunContext
+    let load = load_demo_chunk(bytecode_path)
+    let state = vm.VmState {
+        chunk = load.chunk,
+        frames = coll.Vec[vm.VmFrame](),
+        value_stack = coll.Vec[vm.VmValue](),
+        heap = vm.VmHeapRegion { base = 0, limit = 0, hp = 0 }
+    }
+    return RunContext { chunk = load.chunk, vm_state = state, std = std, load_error = load.error }
+.end
+
+fn run_chunk(ctx: RunContext) -> i32
+    if ctx.load_error != ""
+        # Erreur de chargement : reporter via stderr / code de retour non nul.
+        fs.write_all("/dev/stderr", ("load error: " + ctx.load_error + "\n").as_bytes())
+        return 1
+    .end
+
+    let result = vm.vm_run(ctx.vm_state)
+    if result.trap != ""
+        return 1
+    .end
+    let rendered = render_value(ctx.vm_state, result.last_value)
+    let rt_str = ctx.std.make_string(rendered.as_bytes())
+    ctx.std.println(rt_str)
+    return 0
+.end
+
+fn render_value(state: vm.VmState, value: vm.VmValue) -> String
+    if value.tag == vm.VmValueTag::VmStringRef
+        let const_index = value.payload.heap_ptr as i32
+        return state.chunk.const_pool.consts[const_index].payload.string_value
+    .end
+    if value.tag == vm.VmValueTag::VmI64
+        return value.payload.i64_value.to_string()
+    .end
+    if value.tag == vm.VmValueTag::VmBool
+        return value.payload.bool_value.to_string()
+    .end
+    return "<nil>"
+.end
+
+struct LoadResult
+    chunk: bc.LvmChunk
+    error: String
+.end
+
+fn validate_code_bytes(code_bytes: coll.Vec[u8]) -> String
+    let mut pc: i32 = 0
+    while pc < code_bytes.len()
+        if pc + 2 > code_bytes.len()
+            return "truncated instruction header at byte " + pc.to_string()
+        .end
+        let opcode = code_bytes[pc]
+        let operand_count = code_bytes[pc + 1]
+
+        # Vérifie que l’opcode est connu et que le nombre d’opérandes correspond au modèle simplifié.
+        let expected = -1
+        if opcode == 0       # OpConst
+            expected = 1
+        .end
+        if opcode == 1 or opcode == 2 or opcode == 3 or opcode == 6
+            expected = 0
+        .end
+        if opcode == 4 or opcode == 5
+            expected = 1
+        .end
+        if expected == -1
+            return "unknown opcode byte " + opcode.to_string() + " at byte " + pc.to_string()
+        .end
+        if operand_count as i32 != expected
+            return "opcode " + opcode.to_string() + " expects " + expected.to_string() + " operands, found " + operand_count.to_string()
+        .end
+
+        let inst_size = 2 + operand_count as i32 * 4
+        if pc + inst_size > code_bytes.len()
+            return "instruction at byte " + pc.to_string() + " truncated (needs " + inst_size.to_string() + " bytes)"
+        .end
+        pc = pc + inst_size
+    .end
+
+    if pc != code_bytes.len()
+        return "code stream has trailing bytes"
+    .end
+
+    return ""
+.end
+
+fn load_demo_chunk(path: String) -> LoadResult
+    # On tolère un flux texte simplifié (write_demo_chunk) : lignes clé=valeur, code séparé par des virgules.
+    let content = fs.read_to_string(path)
+    if content == ""
+        return LoadResult { chunk = empty_chunk(), error = "bytecode file empty" }
+    .end
+
+    let lines = content.split("\n")
+
+    let mut const_value = ""
+    let mut code_bytes = coll.Vec[u8]()
+
+    let mut idx = 0
+    while idx < lines.len()
+        let line = lines[idx]
+        if line.starts_with("const0=")
+            const_value = line.strip_prefix("const0=")
+        .end
+        if line.starts_with("code=")
+            let payload = line.strip_prefix("code=")
+            if payload == ""
+                return LoadResult { chunk = empty_chunk(), error = "code section empty" }
+            .end
+            let parts = payload.split(",")
+            let mut j = 0
+            while j < parts.len()
+                if parts[j] == ""
+                    j = j + 1
+                    continue
+                .end
+                code_bytes.push(parts[j].to_int() as u8)
+                j = j + 1
+            .end
+        .end
+        idx = idx + 1
+    .end
+
+    if const_value == ""
+        return LoadResult { chunk = empty_chunk(), error = "missing const0 entry" }
+    .end
+    if code_bytes.len() == 0
+        return LoadResult { chunk = empty_chunk(), error = "missing code bytes" }
+    .end
+
+    let validation_error = validate_code_bytes(code_bytes)
+    if validation_error != ""
+        return LoadResult { chunk = empty_chunk(), error = validation_error }
+    .end
+
+    let consts = coll.Vec[bc.LvmConst]()
+    consts.push(bc.LvmConst { tag = bc.LvmConstTag::ConstString, payload = bc.LvmConstPayload { string_value = const_value } })
+
+    let const_pool = bc.LvmConstPool { consts = consts }
+    let header = bc.LvmFileHeader { magic = 0, version_major = 0, version_minor = 1, flags = 0, reserved0 = 0, reserved1 = 0, section_count = 3 }
+    let sections = coll.Vec[bc.LvmSectionEntry]()
+    sections.push(bc.LvmSectionEntry { kind = bc.LvmSectionKind::SectionConstPool, flags = 0, offset = 0, length = 0 })
+    sections.push(bc.LvmSectionEntry { kind = bc.LvmSectionKind::SectionFunctionTable, flags = 0, offset = 0, length = 0 })
+    sections.push(bc.LvmSectionEntry { kind = bc.LvmSectionKind::SectionCode, flags = 0, offset = 0, length = 0 })
+
+    let functions = coll.Vec[bc.LvmFunctionEntry]()
+    functions.push(bc.LvmFunctionEntry { name_const = 0, code_offset = 0, code_size = code_bytes.len(), param_count = 0, local_count = 0, max_stack = 4, flags = 1 })
+    let function_table = bc.LvmFunctionTable { entries = functions }
+
+    let chunk = bc.LvmChunk { header = header, sections = sections, const_pool = const_pool, functions = function_table, code = code_bytes }
+    return LoadResult { chunk = chunk, error = "" }
+.end
+
+fn empty_chunk() -> bc.LvmChunk
+    let consts = coll.Vec[bc.LvmConst]()
+    let const_pool = bc.LvmConstPool { consts = consts }
+    let header = bc.LvmFileHeader { magic = 0, version_major = 0, version_minor = 0, flags = 0, reserved0 = 0, reserved1 = 0, section_count = 0 }
+    let sections = coll.Vec[bc.LvmSectionEntry]()
+    let functions = coll.Vec[bc.LvmFunctionEntry]()
+    return bc.LvmChunk { header = header, sections = sections, const_pool = const_pool, functions = bc.LvmFunctionTable { entries = functions }, code = coll.Vec[u8]() }
+.end

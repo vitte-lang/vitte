@@ -1,0 +1,35 @@
+module vitte.runtime.std_hooks
+
+import std.collections as coll
+
+# ============================================================================
+# Hooks runtime ↔ std minimale (string, array, io)
+# ============================================================================
+
+struct RtString
+    len: i64
+    data_ptr: i64    # pointeur heap
+    bytes: coll.Vec[u8]
+.end
+
+struct RtArray
+    len: i64
+    cap: i64
+    data_ptr: i64    # pointeur heap
+.end
+
+struct RtIoHandles
+    stdout_fd: i32
+    stderr_fd: i32
+    stdin_fd: i32
+.end
+
+struct StdHooks
+    make_string: fn(coll.Vec[u8]) -> RtString
+    concat_string: fn(RtString, RtString) -> RtString
+    array_push: fn(RtArray, any) -> RtArray
+    array_get: fn(RtArray, i64) -> any
+    print: fn(RtString) -> ()
+    println: fn(RtString) -> ()
+    read_line: fn() -> RtString
+.end

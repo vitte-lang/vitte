@@ -320,6 +320,27 @@ L’IR logique (modélisée dans `vitte.compiler.ir`) est la représentation jus
 - modèle linéaire ou en blocs, selon les choix d’implémentation ;
 - suffisamment expressive pour être sérialisée (format texte) et transformée (lowerings supplémentaires).
 
+### 6.4. IR unique SSA léger (strates middle/back)
+
+Objectif « 100 % Vitte full » : converger vers **une IR unique** pour le middle/back, en forme **SSA léger** :
+
+- blocs de base + terminators structurés (`br`, `br_if`, `return`) ; pas de `goto` arbitraire ;
+- identifiants de valeurs uniques (SSA) avec une seule définition, `phi` limité aux jonctions structurées ;
+- types portés sur chaque valeur après résolution (primitives, structs/enums/alias selon `docs/type-system.md`) ;
+- side effects explicites via instructions dédiées (`call`, `store_field`, `alloc_heap`), pas d’effets cachés dans des expressions.
+
+Pipeline minimal :
+
+1. **Résolution des types de base** : annotation des nœuds MIR avec les types résolus (primitives, nominaux, alias transparents) en s’appuyant sur `vitte.compiler.types`.
+2. **Structuration du contrôle** : conversion des `if`/`while`/`match` en CFG structuré (blocs, terminators). Les `match` sont abaissés en cascades de tests + blocs de payload.
+3. **SSA léger** : réécriture en SSA (références uniques, `phi` aux jonctions) sans chercher des optimisations globales (pas de rename agressif ni de DCE avancé).
+4. **Pré-lowering bytecode** : normalisation des opérations (arith, comparaisons, accès champ, load/store local) pour que chaque instruction IR ait un équivalent direct ou quasi-direct dans la VM.
+
+Deliverables associés :
+
+- dump texte IR unique (utilisé par `vitte-ir-dump`) ;
+- API `vitte.compiler.ir` pour itérer sur les blocs/instructions et insérer des passes ultérieures (fold, DCE léger) sans rompre la SSA.
+
 ---
 
 ## 7. Passes d’analyse et d’optimisation
@@ -398,6 +419,26 @@ Exemples de formats :
 - prépare un bundle cohérent pour le runtime ;
 - génère un output unique (fichier de bytecode ou bundle structuré) destiné à être consommé par `vitte-run`.
 
+### 8.4. VM bytecode minimal (arith, contrôle, call, alloc)
+
+Pour le MVP, la VM expose un bytecode **compact et linéaire**, calé sur l’IR SSA léger :
+
+- **Modèle registre/stack hybride** : chaque instruction consomme des registres logiques numérotés (issus de la SSA) et peut pousser/pop sur la stack VM pour les appels.
+- **Constantes et accès** : `const` (pool), `load_local`, `store_local`, `load_field`, `store_field`, `load_global`.
+- **Arith/comparaisons** (types primitifs alignés sur `docs/type-system.md`) : `add`, `sub`, `mul`, `div`, `mod`, `neg`, `cmp_eq`, `cmp_ne`, `cmp_lt`, `cmp_le`, `cmp_gt`, `cmp_ge`.
+- **Contrôle** : terminators `jmp`, `jmp_if`, `ret`; les structures haut niveau (`if`, `while`, `match`) sont déjà abaissées en CFG structuré, donc seuls ces terminators sont nécessaires.
+- **Appels** : `call` (fonction connue), `call_indirect` (facultatif), passage d’arguments via registres/stack, retour via registre cible.
+- **Allocation et gestion mémoire** : `alloc_heap` (struct/array/closure minimal), `alloc_stack` (frames locales), `move`/`copy` explicites selon la sémantique choisie (pas de GC implicite caché).
+
+Lowering IR → bytecode (pipeline minimal) :
+
+1. **Mapping SSA → registres** : chaque valeur SSA obtient un registre stable (pas de register allocation complexe au MVP).
+2. **Émission séquentielle** : blocs IR linéarisés, terminators traduits en `jmp`/`jmp_if` avec résolutions d’offsets.
+3. **Tables auxiliaires** : pool de constantes, table des fonctions (ids, signatures), table des types runtime.
+4. **Format sérialisé** : header + tables + instructions, consommés par `vitte.runtime.bytecode` et exécutés par `vitte.runtime.vm`.
+
+Cette spec reste minimale : pas d’optimisations (peu ou pas de DCE), pas de GC avancé, pas de JIT. L’accent est mis sur la **prédictibilité** des instructions et l’alignement strict avec l’IR SSA léger.
+
 ---
 
 ## 9. Intégration avec le runtime/VM et la std
@@ -437,17 +478,26 @@ Modules principaux : `vitte.compiler.cli.*`, et côté back `vitte.compiler.bac
 
 Le binaire logique `vittec` est modélisé par :
 
-- `vitte.compiler.cli.main` ;
+- `vitte.compiler.cli.main` ;
 - `vitte.compiler.cli.args` ;
 - `vitte.compiler.cli.subcommands` ;
 - `vitte.compiler.cli.diagnostics`.
 
 Responsabilités :
 
-- lecture des arguments ligne de commande ;
-- sélection du mode d’opération (`build`, `check`, `emit-ir`, `emit-bytecode`, etc.) ;
-- pilotage des différentes phases du compilateur ;
+- lecture des arguments ligne de commande ;
+- sélection du mode d’opération (`build`, `check`, `emit-ir`, `emit-bytecode`, etc.) ;
+- pilotage des différentes phases du compilateur ;
 - gestion de la sortie diagnostics (format CLI/LSP-friendly).
+
+Sous-commandes MVP alignées avec les manifests Muffin (`vitte.project.muf`) :
+
+- `vittec build <manifest.muf>` : charge un manifest Muffin (projet utilisateur ou `vitte.project.muf`), résout la std `src/std/mod.muf`, produit un bundle bytecode dans `target/core/bytecode/` (profil `dev`) avec métadonnées runtime (entrypoint, version bytecode).
+- `vittec run <manifest.muf>` : fait un `build` dans un dir temporaire puis invoque `vitte-run` sur le bundle déclaré, en injectant la std minimale. Sert d’entrée unique pour les exemples/tests smoke.
+- `vittec fmt <paths…>` : placeholder (retourne 0, message informatif), sera branché sur `vitte.tools.format`.
+- `vittec test` : smoke tests, compile `tests/data/mini_project` et exécute via `vitte-run`, écrit un rapport logique dans `target/core/tests/report.txt`.
+
+Les artefacts écrits par ces commandes sont décrits dans les manifests (profil `dev` par défaut) et réutilisés par les scripts de bootstrap (`bootstrap/mod.muf`, `bootstrap/cli/mod.muf`).
 
 ### 10.2. Outils spécialisés
 

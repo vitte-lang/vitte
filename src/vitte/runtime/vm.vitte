@@ -1,0 +1,257 @@
+module vitte.runtime.vm
+
+import std.collections as coll
+import vitte.runtime.bytecode as bc
+
+# ============================================================================
+# VM Vitte – boucle d’exécution bytecode
+# ============================================================================
+
+enum VmValueTag
+    VmNil
+    VmBool
+    VmI64
+    VmF64
+    VmStringRef
+    VmArrayRef
+    VmStructRef
+.end
+
+union VmValuePayload
+    bool_value: bool
+    i64_value: i64
+    f64_value: f64
+    heap_ptr: i64          # offset linéaire dans la heap
+.end
+
+struct VmValue
+    tag: VmValueTag
+    payload: VmValuePayload
+.end
+
+struct VmFrame
+    func_index: i32
+    pc: i32
+    locals: coll.Vec[VmValue]
+    stack_base: i32
+.end
+
+struct VmHeapRegion
+    base: i64
+    limit: i64
+    hp: i64
+.end
+
+struct VmState
+    chunk: bc.LvmChunk
+    frames: coll.Vec[VmFrame]
+    value_stack: coll.Vec[VmValue]
+    heap: VmHeapRegion
+.end
+
+# ----------------------------------------------------------------------------
+# Dispatch – specs
+# ----------------------------------------------------------------------------
+
+# apply_op : interprète une instruction décodée et met à jour l’état VM.
+struct VmDispatchResult
+    halted: bool
+    trap: String
+    last_value: VmValue
+.end
+
+struct VmDecodedInst
+    inst: bc.LvmInstruction
+    byte_size: i32
+.end
+
+fn vm_value_from_const(const_index: i32, constant: bc.LvmConst) -> VmValue
+    if constant.tag == bc.LvmConstTag::ConstNil
+        return VmValue { tag = VmValueTag::VmNil, payload = VmValuePayload { i64_value = 0 } }
+    .end
+    if constant.tag == bc.LvmConstTag::ConstBool
+        return VmValue { tag = VmValueTag::VmBool, payload = VmValuePayload { bool_value = constant.payload.bool_value } }
+    .end
+    if constant.tag == bc.LvmConstTag::ConstI64
+        return VmValue { tag = VmValueTag::VmI64, payload = VmValuePayload { i64_value = constant.payload.i64_value } }
+    .end
+    if constant.tag == bc.LvmConstTag::ConstF64
+        return VmValue { tag = VmValueTag::VmF64, payload = VmValuePayload { f64_value = constant.payload.f64_value } }
+    .end
+    if constant.tag == bc.LvmConstTag::ConstString
+        # On encode un pointeur logique vers la constante (index dans le pool).
+        return VmValue { tag = VmValueTag::VmStringRef, payload = VmValuePayload { heap_ptr = const_index as i64 } }
+    .end
+    return VmValue { tag = VmValueTag::VmNil, payload = VmValuePayload { i64_value = 0 } }
+.end
+
+fn vm_decode_at_pc(chunk: bc.LvmChunk, pc: i32) -> VmDecodedInst
+    # Encodage MVP : [opcode:u8][argc:u8][operands:argc * i32 little-endian].
+    let opcode_byte = chunk.code[pc]
+    let operand_count = chunk.code[pc + 1]
+
+    let operands = coll.Vec[i32]()
+    let mut idx: i32 = 0
+    while idx < operand_count as i32
+        let base = pc + 2 + idx * 4
+        let b0 = chunk.code[base]
+        let b1 = chunk.code[base + 1]
+        let b2 = chunk.code[base + 2]
+        let b3 = chunk.code[base + 3]
+        let value = (b0 as i32) | (b1 as i32) << 8 | (b2 as i32) << 16 | (b3 as i32) << 24
+        operands.push(value)
+        idx = idx + 1
+    .end
+
+    let mut opcode = bc.LvmOpcode::OpConst
+    if opcode_byte == 1
+        opcode = bc.LvmOpcode::OpAdd
+    .end
+    if opcode_byte == 2
+        opcode = bc.LvmOpcode::OpSub
+    .end
+    if opcode_byte == 3
+        opcode = bc.LvmOpcode::OpCmpEq
+    .end
+    if opcode_byte == 4
+        opcode = bc.LvmOpcode::OpJmp
+    .end
+    if opcode_byte == 5
+        opcode = bc.LvmOpcode::OpJmpIf
+    .end
+    if opcode_byte == 6
+        opcode = bc.LvmOpcode::OpRet
+    .end
+
+    let inst = bc.LvmInstruction { opcode = opcode, operands = operands }
+    let size = 2 + operand_count as i32 * 4
+    return VmDecodedInst { inst = inst, byte_size = size }
+.end
+
+fn vm_equals(lhs: VmValue, rhs: VmValue) -> bool
+    if lhs.tag != rhs.tag
+        return false
+    .end
+    if lhs.tag == VmValueTag::VmBool
+        return lhs.payload.bool_value == rhs.payload.bool_value
+    .end
+    if lhs.tag == VmValueTag::VmI64
+        return lhs.payload.i64_value == rhs.payload.i64_value
+    .end
+    if lhs.tag == VmValueTag::VmF64
+        return lhs.payload.f64_value == rhs.payload.f64_value
+    .end
+    if lhs.tag == VmValueTag::VmStringRef
+        return lhs.payload.heap_ptr == rhs.payload.heap_ptr
+    .end
+    return false
+.end
+
+fn vm_step(state: VmState, inst: bc.LvmInstruction, inst_size: i32) -> VmDispatchResult
+    if state.frames.len() == 0
+        return VmDispatchResult { halted = true, trap = "no frame", last_value = VmValue { tag = VmValueTag::VmNil, payload = VmValuePayload { i64_value = 0 } } }
+    .end
+
+    let frame_index = state.frames.len() - 1
+    let mut frame = state.frames[frame_index]
+
+    if inst.opcode == bc.LvmOpcode::OpConst
+        let const_index = inst.operands[0]
+        let constant = state.chunk.const_pool.consts[const_index]
+        let value = vm_value_from_const(const_index, constant)
+        state.value_stack.push(value)
+        frame.pc = frame.pc + inst_size
+        state.frames[frame_index] = frame
+        return VmDispatchResult { halted = false, trap = "", last_value = value }
+    .end
+
+    if inst.opcode == bc.LvmOpcode::OpAdd
+        let rhs = state.value_stack.pop()
+        let lhs = state.value_stack.pop()
+        let sum = lhs.payload.i64_value + rhs.payload.i64_value
+        let value = VmValue { tag = VmValueTag::VmI64, payload = VmValuePayload { i64_value = sum } }
+        state.value_stack.push(value)
+        frame.pc = frame.pc + inst_size
+        state.frames[frame_index] = frame
+        return VmDispatchResult { halted = false, trap = "", last_value = value }
+    .end
+
+    if inst.opcode == bc.LvmOpcode::OpSub
+        let rhs = state.value_stack.pop()
+        let lhs = state.value_stack.pop()
+        let diff = lhs.payload.i64_value - rhs.payload.i64_value
+        let value = VmValue { tag = VmValueTag::VmI64, payload = VmValuePayload { i64_value = diff } }
+        state.value_stack.push(value)
+        frame.pc = frame.pc + inst_size
+        state.frames[frame_index] = frame
+        return VmDispatchResult { halted = false, trap = "", last_value = value }
+    .end
+
+    if inst.opcode == bc.LvmOpcode::OpCmpEq
+        let rhs = state.value_stack.pop()
+        let lhs = state.value_stack.pop()
+        let equals = vm_equals(lhs, rhs)
+        let value = VmValue { tag = VmValueTag::VmBool, payload = VmValuePayload { bool_value = equals } }
+        state.value_stack.push(value)
+        frame.pc = frame.pc + inst_size
+        state.frames[frame_index] = frame
+        return VmDispatchResult { halted = false, trap = "", last_value = value }
+    .end
+
+    if inst.opcode == bc.LvmOpcode::OpJmp
+        frame.pc = frame.pc + inst_size + inst.operands[0]
+        state.frames[frame_index] = frame
+        return VmDispatchResult { halted = false, trap = "", last_value = VmValue { tag = VmValueTag::VmNil, payload = VmValuePayload { i64_value = 0 } } }
+    .end
+
+    if inst.opcode == bc.LvmOpcode::OpJmpIf
+        let cond = state.value_stack.pop()
+        if cond.tag != VmValueTag::VmBool
+            return VmDispatchResult { halted = true, trap = "jmp_if expects bool", last_value = cond }
+        .end
+        if cond.payload.bool_value
+            frame.pc = frame.pc + inst_size + inst.operands[0]
+        else
+            frame.pc = frame.pc + inst_size
+        .end
+        state.frames[frame_index] = frame
+        return VmDispatchResult { halted = false, trap = "", last_value = cond }
+    .end
+
+    if inst.opcode == bc.LvmOpcode::OpRet
+        let value = state.value_stack.pop()
+        state.frames.pop()
+        return VmDispatchResult { halted = true, trap = "", last_value = value }
+    .end
+
+    return VmDispatchResult { halted = false, trap = "unimplemented opcode", last_value = VmValue { tag = VmValueTag::VmNil, payload = VmValuePayload { i64_value = 0 } } }
+.end
+
+# Boucle principale (fetch/decode/execute).
+fn vm_run(state: VmState) -> VmDispatchResult
+    # Concept : while !halted { decode pc → inst; res = vm_step; update pc/frame; }
+    if state.frames.len() == 0
+        let entry = state.chunk.functions.entries[0]
+        let mut locals = coll.Vec[VmValue]()
+        let mut i: i32 = 0
+        while i < entry.param_count + entry.local_count
+            locals.push(VmValue { tag = VmValueTag::VmNil, payload = VmValuePayload { i64_value = 0 } })
+            i = i + 1
+        .end
+        let frame = VmFrame { func_index = 0, pc = entry.code_offset, locals = locals, stack_base = 0 }
+        state.frames.push(frame)
+    .end
+
+    let mut last = VmDispatchResult { halted = false, trap = "", last_value = VmValue { tag = VmValueTag::VmNil, payload = VmValuePayload { i64_value = 0 } } }
+    while true
+        let frame_index = state.frames.len() - 1
+        let frame = state.frames[frame_index]
+        let decoded = vm_decode_at_pc(state.chunk, frame.pc)
+        last = vm_step(state, decoded.inst, decoded.byte_size)
+        if last.halted or last.trap != ""
+            return last
+        .end
+    .end
+
+    return last
+.end

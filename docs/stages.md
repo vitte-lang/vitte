@@ -193,6 +193,17 @@ Artefacts conceptuels :
 - std minimal compilé ;
 - outils partiels.
 
+### 3.5. Strate middle : IR unique SSA léger + passes minimales + bytecode VM simple
+
+- **IR unique SSA léger** : blocs + terminators structurés (`br`, `br_if`, `return`), valeurs SSA typées (primitives, structs/enums/alias transparents), `phi` uniquement sur les jonctions structurées, effets explicites (`call`, `store_field`, `alloc_heap`).
+- **Passes minimales middle** :
+  1. Résolution des types de base sur MIR/HIR (alignée sur `docs/type-system.md`).
+  2. Structuration du contrôle (`if`/`while`/`match` → CFG structuré).
+  3. SSA léger (renommage + `phi` restreints) sans optimisations agressives.
+  4. Pré-lowering bytecode : normalisation des ops arith/comparaison, accès champ, load/store pour correspondre 1:1 au bytecode.
+- **Bytecode VM simple (MVP)** : instructions linéaires consommées par la VM (arith/comparaisons `add/sub/mul/div/mod/neg`, `cmp_eq/ne/lt/le/gt/ge`; contrôle `jmp`, `jmp_if`, `ret`; appels `call`, `call_indirect` optionnel; mémoire `alloc_heap`, `alloc_stack`, `load_local`, `store_local`, `load_field`, `store_field`, `move/copy`) + tables associées (constantes, fonctions/signatures, types runtime).
+- **Artefacts stage1/2** : dumps IR SSA (`vitte-ir-dump`), listings bytecode (`vitte-bytecode-emit`), reports CFG/link pour debug et tests.
+
 ---
 
 ## 4. Stage2 – vittec-stage2 / Self-host

@@ -176,6 +176,19 @@ Manifest : `bootstrap/middle/mod.muf`
 Rôle :
 
 - Représenter le cœur du compilateur (front/middle/back intégrés), le runtime et certains outils core, pour les stages 1 et 2.
+- **IR unique SSA léger (middle/back)** : blocs + terminators structurés (`br`, `br_if`, `return`), valeurs SSA typées (primitifs, structs/enums/alias) et `phi` uniquement sur les jonctions structurées. Les effets (alloc, store, call) sont explicites.
+- **Passes minimales middle** :
+  1. résolution des types de base sur MIR/HIR (alignée sur `docs/type-system.md`) ;
+  2. structuration du contrôle (`if`/`while`/`match` → CFG structuré) ;
+  3. SSA léger (renommage, `phi` restreints) sans optimisations agressives ;
+  4. pré‑lowering vers bytecode (normalisation des ops arith/comparaison, accès champs, load/store).
+- **Bytecode VM simple (MVP)** : jeu d’instructions linéaire consommé par `vitte.runtime.vm` :
+  - arith/comparaisons : `add/sub/mul/div/mod/neg`, `cmp_eq/ne/lt/le/gt/ge` ;
+  - contrôle : `jmp`, `jmp_if`, `ret` (structures haut niveau déjà abaissées) ;
+  - appels : `call`, `call_indirect` (optionnel), passage registres/stack, retour via registre cible ;
+  - mémoire : `alloc_heap`, `alloc_stack`, `load_local`, `store_local`, `load_field`, `store_field`, `move/copy`.
+  - tables associées : pool de constantes, table des fonctions/signatures, table des types runtime.
+- **Artefacts de debug** : dumps IR SSA (`vitte-ir-dump`), listings bytecode annotés (`vitte-bytecode-emit`), reports de link/CFG pour stage1/2.
 
 Éléments principaux (vue logique) :
 
