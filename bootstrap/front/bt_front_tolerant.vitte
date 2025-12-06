@@ -1,0 +1,1045 @@
+module vitte.bootstrap.front.bt_front_tolerant
+
+import std.collections as coll
+import vitte.bootstrap.front.bt_ast as ast
+
+# ============================================================================
+# Front tolérant – lexer + parser + validation symboles (impl Vitte)
+#
+# Objectifs :
+#   - Offrir une implémentation légère et tolérante (erreur-recovery) pour
+#     lexing/parsing des sources Vitte pendant le bootstrap.
+#   - Construire un AST annoté (spans) couvrant modules/imports/struct/enum/
+#     union/type alias/fn signatures (corps tolérés/ignorés).
+#   - Fournir un validateur de symboles simple : imports dupliqués, defs
+#     multiples, signatures incomplètes.
+#   - Cette implémentation reste pure Vitte (pas de Python) et vise un usage
+#     tooling/CLI durant la phase front du bootstrap.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Diagnostics légers
+# ---------------------------------------------------------------------------
+
+enum TfDiagSeverity
+    TfDiagSeverityInfo
+    TfDiagSeverityWarning
+    TfDiagSeverityError
+.end
+
+struct TfDiag
+    severity: TfDiagSeverity
+    stage: String              # "lexer", "parser", "symbols"
+    message: String
+    span: ast.AstSpan
+.end
+
+# ---------------------------------------------------------------------------
+# Tokens et lexer tolérant
+# ---------------------------------------------------------------------------
+
+enum TfTokenKind
+    TfTokIdent
+    TfTokInt
+    TfTokFloat
+    TfTokString
+    TfTokNewline
+    TfTokDotEnd
+
+    # Mots-clés
+    TfTokKwModule
+    TfTokKwImport
+    TfTokKwExport
+    TfTokKwStruct
+    TfTokKwUnion
+    TfTokKwEnum
+    TfTokKwType
+    TfTokKwFn
+    TfTokKwAs
+    TfTokKwAll
+    TfTokKwReturn
+    TfTokKwLet
+    TfTokKwConst
+    TfTokKwMut
+    TfTokKwIf
+    TfTokKwElif
+    TfTokKwElse
+    TfTokKwWhile
+    TfTokKwFor
+    TfTokKwIn
+    TfTokKwMatch
+    TfTokKwTrue
+    TfTokKwFalse
+
+    # Ponctuation / opérateurs utilisés par le parser tolérant
+    TfTokLParen
+    TfTokRParen
+    TfTokLBrace
+    TfTokRBrace
+    TfTokLBracket
+    TfTokRBracket
+    TfTokComma
+    TfTokColon
+    TfTokSemicolon
+    TfTokDot
+    TfTokArrow
+    TfTokFatArrow
+    TfTokEqual
+    TfTokPlus
+    TfTokMinus
+    TfTokStar
+    TfTokSlash
+    TfTokPercent
+    TfTokLt
+    TfTokGt
+    TfTokLte
+    TfTokGte
+    TfTokEqEq
+    TfTokNotEq
+
+    TfTokUnknown
+    TfTokEof
+.end
+
+struct TfToken
+    kind: TfTokenKind
+    text: String
+    span: ast.AstSpan
+.end
+
+struct TfLexerState
+    source: String
+    filename: String
+    index: u32
+    line: u32
+    col: u32
+
+    tokens: coll.Vec<TfToken>
+    diagnostics: coll.Vec<TfDiag>
+.end
+
+struct TfLexerResult
+    tokens: coll.Vec<TfToken>
+    diagnostics: coll.Vec<TfDiag>
+.end
+
+fn tf_lex(source: String, filename: String) -> TfLexerResult
+    let mut state = TfLexerState(
+        source=source,
+        filename=filename,
+        index=0,
+        line=1,
+        col=1,
+        tokens=coll.Vec<TfToken>(),
+        diagnostics=coll.Vec<TfDiag>()
+    )
+
+    let keywords = coll.HashMap<String, TfTokenKind>()
+    keywords["module"] = TfTokKwModule
+    keywords["import"] = TfTokKwImport
+    keywords["export"] = TfTokKwExport
+    keywords["struct"] = TfTokKwStruct
+    keywords["union"] = TfTokKwUnion
+    keywords["enum"] = TfTokKwEnum
+    keywords["type"] = TfTokKwType
+    keywords["fn"] = TfTokKwFn
+    keywords["as"] = TfTokKwAs
+    keywords["all"] = TfTokKwAll
+    keywords["return"] = TfTokKwReturn
+    keywords["let"] = TfTokKwLet
+    keywords["const"] = TfTokKwConst
+    keywords["mut"] = TfTokKwMut
+    keywords["if"] = TfTokKwIf
+    keywords["elif"] = TfTokKwElif
+    keywords["else"] = TfTokKwElse
+    keywords["while"] = TfTokKwWhile
+    keywords["for"] = TfTokKwFor
+    keywords["in"] = TfTokKwIn
+    keywords["match"] = TfTokKwMatch
+    keywords["true"] = TfTokKwTrue
+    keywords["false"] = TfTokKwFalse
+
+    # Boucle principale : avance caractère par caractère, tolérante.
+    while state.index < source.len()
+        let ch = source.char_at(state.index)
+
+        if ch == " " or ch == "\t"
+            tf_advance(&mut state, 1)
+            continue
+        .end
+
+        if ch == "\n"
+            tf_emit_simple(&mut state, TfTokNewline, "\n", 1)
+            tf_advance_newline(&mut state)
+            continue
+        .end
+
+        if ch == "#"
+            # Commentaire jusqu'à fin de ligne (ignoré, mais conservé en diagnostic trivia si besoin)
+            let start = state.index
+            tf_skip_until_newline(&mut state)
+            let span = tf_span_from(&state, start, state.index)
+            # Pas de token émis pour les commentaires dans cette impl.
+            continue
+        .end
+
+        let complex = tf_match_complex(&mut state)
+        if complex.kind != TfTokUnknown
+            state.tokens.push(complex)
+            continue
+        .end
+
+        if tf_is_ident_start(ch)
+            state.tokens.push(tf_lex_ident_or_keyword(&mut state, keywords))
+            continue
+        .end
+
+        if tf_is_digit(ch)
+            state.tokens.push(tf_lex_number(&mut state))
+            continue
+        .end
+
+        if ch == "\""
+            state.tokens.push(tf_lex_string(&mut state))
+            continue
+        .end
+
+        if tf_match_single_symbol(&mut state, ch)
+            continue
+        .end
+
+        # Token inconnu : on signale mais on avance.
+        let span = tf_span_from(&state, state.index, state.index + 1)
+        state.diagnostics.push(TfDiag(
+            severity=TfDiagSeverityError,
+            stage="lexer",
+            message="caractère inattendu '" + ch + "'",
+            span=span
+        ))
+        tf_advance(&mut state, 1)
+    .end
+
+    # EOF
+    let eof_span = tf_span_from(&state, state.index, state.index)
+    state.tokens.push(TfToken(kind=TfTokEof, text="", span=eof_span))
+
+    return TfLexerResult(tokens=state.tokens, diagnostics=state.diagnostics)
+.end
+
+fn tf_match_complex(state: &mut TfLexerState) -> TfToken
+    # Détecte .end, flèches, comparateurs composés.
+    let pairs = coll.Vec<(String, TfTokenKind)>()
+    pairs.push((".end", TfTokDotEnd))
+    pairs.push(("->", TfTokArrow))
+    pairs.push(("=>", TfTokFatArrow))
+    pairs.push(("==", TfTokEqEq))
+    pairs.push(("!=", TfTokNotEq))
+    pairs.push(("<=", TfTokLte))
+    pairs.push((">=", TfTokGte))
+
+    for entry in pairs
+        let text = entry.0
+        let kind = entry.1
+        if state.source.starts_with(text, state.index)
+            let tok = tf_make_token(state, kind, text, text.len())
+            tf_advance(&mut state, text.len())
+            return tok
+        .end
+    .end
+
+    return tf_make_token(state, TfTokUnknown, "", 0)
+.end
+
+fn tf_match_single_symbol(state: &mut TfLexerState, ch: String) -> bool
+    let mapping = coll.HashMap<String, TfTokenKind>()
+    mapping["("] = TfTokLParen
+    mapping[")"] = TfTokRParen
+    mapping["["] = TfTokLBracket
+    mapping["]"] = TfTokRBracket
+    mapping["{"] = TfTokLBrace
+    mapping["}"] = TfTokRBrace
+    mapping[","] = TfTokComma
+    mapping[":"] = TfTokColon
+    mapping[";"] = TfTokSemicolon
+    mapping["."] = TfTokDot
+    mapping["+"] = TfTokPlus
+    mapping["-"] = TfTokMinus
+    mapping["*"] = TfTokStar
+    mapping["/"] = TfTokSlash
+    mapping["%"] = TfTokPercent
+    mapping["<"] = TfTokLt
+    mapping[">"] = TfTokGt
+    mapping["="] = TfTokEqual
+
+    if mapping.contains_key(ch)
+        tf_emit_simple(state, mapping[ch], ch, 1)
+        tf_advance(state, 1)
+        return true
+    .end
+    return false
+.end
+
+fn tf_lex_ident_or_keyword(state: &mut TfLexerState, keywords: coll.HashMap<String, TfTokenKind>) -> TfToken
+    let start = state.index
+    tf_advance(state, 1)
+    while state.index < state.source.len()
+        let c = state.source.char_at(state.index)
+        if tf_is_ident_continue(c)
+            tf_advance(state, 1)
+        else
+            break
+        .end
+    .end
+    let text = state.source.slice(start, state.index)
+    let kind = TfTokIdent
+    if keywords.contains_key(text)
+        kind = keywords[text]
+    .end
+    return tf_make_token(state, kind, text, text.len())
+.end
+
+fn tf_lex_number(state: &mut TfLexerState) -> TfToken
+    let start = state.index
+    let mut has_dot = false
+    tf_advance(state, 1)
+    while state.index < state.source.len()
+        let c = state.source.char_at(state.index)
+        if c == "." and not has_dot
+            has_dot = true
+            tf_advance(state, 1)
+        elif tf_is_digit(c)
+            tf_advance(state, 1)
+        else
+            break
+        .end
+    .end
+    let text = state.source.slice(start, state.index)
+    let kind = TfTokFloat
+    if not has_dot
+        kind = TfTokInt
+    .end
+    return tf_make_token(state, kind, text, text.len())
+.end
+
+fn tf_lex_string(state: &mut TfLexerState) -> TfToken
+    let start = state.index
+    tf_advance(state, 1) # consume opening quote
+    let mut escaped = false
+    while state.index < state.source.len()
+        let c = state.source.char_at(state.index)
+        if escaped
+            escaped = false
+            tf_advance(state, 1)
+            continue
+        .end
+        if c == "\\"
+            escaped = true
+            tf_advance(state, 1)
+            continue
+        .end
+        if c == "\""
+            tf_advance(state, 1)
+            break
+        .end
+        if c == "\n"
+            break
+        .end
+        tf_advance(state, 1)
+    .end
+    let text = state.source.slice(start, state.index)
+    let span = tf_span_from(state, start, state.index)
+    if not text.ends_with("\"")
+        state.diagnostics.push(TfDiag(
+            severity=TfDiagSeverityError,
+            stage="lexer",
+            message="string non terminée",
+            span=span
+        ))
+    .end
+    return TfToken(kind=TfTokString, text=text, span=span)
+.end
+
+fn tf_emit_simple(state: &mut TfLexerState, kind: TfTokenKind, text: String, len: u32)
+    let tok = tf_make_token(state, kind, text, len)
+    state.tokens.push(tok)
+.end
+
+fn tf_make_token(state: &TfLexerState, kind: TfTokenKind, text: String, len: u32) -> TfToken
+    let start = state.index
+    let end = start + len
+    let span = tf_span_from(state, start, end)
+    return TfToken(kind=kind, text=text, span=span)
+.end
+
+fn tf_span_from(state: &TfLexerState, start: u32, end: u32) -> ast.AstSpan
+    # Calcul naïf (compte lignes/colonnes à la volée).
+    let prefix = state.source.slice(0, start)
+    let start_line = prefix.count("\n") + 1
+    let last_nl = prefix.rfind("\n")
+    let start_col = start + 1
+    if last_nl >= 0
+        start_col = start - last_nl
+    .end
+
+    let prefix_end = state.source.slice(0, end)
+    let end_line = prefix_end.count("\n") + 1
+    let last_nl_end = prefix_end.rfind("\n")
+    let end_col = end + 1
+    if last_nl_end >= 0
+        end_col = end - last_nl_end
+    .end
+
+    return ast.AstSpan(
+        file=state.filename,
+        start_offset=start,
+        end_offset=end,
+        start_line=start_line,
+        start_col=start_col,
+        end_line=end_line,
+        end_col=end_col
+    )
+.end
+
+fn tf_advance(state: &mut TfLexerState, n: u32)
+    state.index = state.index + n
+    state.col = state.col + n
+.end
+
+fn tf_advance_newline(state: &mut TfLexerState)
+    state.index = state.index + 1
+    state.line = state.line + 1
+    state.col = 1
+.end
+
+fn tf_skip_until_newline(state: &mut TfLexerState)
+    while state.index < state.source.len() and state.source.char_at(state.index) != "\n"
+        tf_advance(state, 1)
+    .end
+.end
+
+fn tf_is_ident_start(ch: String) -> bool
+    return ch.is_alpha() or ch == "_"
+.end
+
+fn tf_is_ident_continue(ch: String) -> bool
+    return tf_is_ident_start(ch) or ch.is_digit()
+.end
+
+fn tf_is_digit(ch: String) -> bool
+    return ch.is_digit()
+.end
+
+# ---------------------------------------------------------------------------
+# AST minimal + parser tolérant
+# ---------------------------------------------------------------------------
+
+struct TfPath
+    segments: coll.Vec<String>
+    span: ast.AstSpan
+.end
+
+struct TfImportDecl
+    path: TfPath
+    alias: String
+    span: ast.AstSpan
+.end
+
+struct TfField
+    name: String
+    type_ref: TfPath
+    span: ast.AstSpan
+.end
+
+struct TfStructDecl
+    name: String
+    fields: coll.Vec<TfField>
+    span: ast.AstSpan
+.end
+
+struct TfUnionDecl
+    name: String
+    fields: coll.Vec<TfField>
+    span: ast.AstSpan
+.end
+
+struct TfEnumVariant
+    name: String
+    payload: coll.Vec<TfField>
+    span: ast.AstSpan
+.end
+
+struct TfEnumDecl
+    name: String
+    variants: coll.Vec<TfEnumVariant>
+    span: ast.AstSpan
+.end
+
+struct TfTypeAliasDecl
+    name: String
+    target: TfPath
+    span: ast.AstSpan
+.end
+
+struct TfFnParam
+    name: String
+    type_ref: TfPath
+    span: ast.AstSpan
+.end
+
+struct TfFnDecl
+    name: String
+    params: coll.Vec<TfFnParam>
+    return_type: TfPath
+    body_span: ast.AstSpan
+    span: ast.AstSpan
+.end
+
+struct TfModule
+    name: TfPath
+    imports: coll.Vec<TfImportDecl>
+    structs: coll.Vec<TfStructDecl>
+    enums: coll.Vec<TfEnumDecl>
+    unions: coll.Vec<TfUnionDecl>
+    type_aliases: coll.Vec<TfTypeAliasDecl>
+    functions: coll.Vec<TfFnDecl>
+.end
+
+struct TfParserState
+    tokens: coll.Vec<TfToken>
+    index: u32
+    diagnostics: coll.Vec<TfDiag>
+.end
+
+struct TfParserResult
+    module: TfModule
+    diagnostics: coll.Vec<TfDiag>
+.end
+
+fn tf_parse(tokens: coll.Vec<TfToken>) -> TfParserResult
+    let mut state = TfParserState(tokens=tokens, index=0, diagnostics=coll.Vec<TfDiag>())
+    let mut module = TfModule(
+        name=TfPath(segments=coll.Vec<String>(), span=tf_empty_span()),
+        imports=coll.Vec<TfImportDecl>(),
+        structs=coll.Vec<TfStructDecl>(),
+        enums=coll.Vec<TfEnumDecl>(),
+        unions=coll.Vec<TfUnionDecl>(),
+        type_aliases=coll.Vec<TfTypeAliasDecl>(),
+        functions=coll.Vec<TfFnDecl>()
+    )
+
+    while not tf_check(&state, TfTokEof)
+        tf_skip_trivia(&mut state)
+        if tf_match(&mut state, TfTokKwModule)
+            module.name = tf_parse_module_name(&mut state)
+            continue
+        .end
+        if tf_match(&mut state, TfTokKwImport)
+            let imp = tf_parse_import(&mut state)
+            if imp.span.start_offset != imp.span.end_offset
+                module.imports.push(imp)
+            .end
+            continue
+        .end
+        if tf_match(&mut state, TfTokKwStruct)
+            module.structs.push(tf_parse_struct(&mut state))
+            continue
+        .end
+        if tf_match(&mut state, TfTokKwEnum)
+            module.enums.push(tf_parse_enum(&mut state))
+            continue
+        .end
+        if tf_match(&mut state, TfTokKwUnion)
+            module.unions.push(tf_parse_union(&mut state))
+            continue
+        .end
+        if tf_match(&mut state, TfTokKwType)
+            module.type_aliases.push(tf_parse_alias(&mut state))
+            continue
+        .end
+        if tf_match(&mut state, TfTokKwFn)
+            module.functions.push(tf_parse_fn(&mut state))
+            continue
+        .end
+
+        tf_unexpected(&mut state, "déclaration attendue au niveau module")
+        tf_recover(&mut state)
+    .end
+
+    return TfParserResult(module=module, diagnostics=state.diagnostics)
+.end
+
+fn tf_current(state: &TfParserState) -> TfToken
+    return state.tokens[state.index]
+.end
+
+fn tf_advance_tok(state: &mut TfParserState) -> TfToken
+    let tok = tf_current(state)
+    if tok.kind != TfTokEof
+        state.index = state.index + 1
+    .end
+    return tok
+.end
+
+fn tf_check(state: &TfParserState, kind: TfTokenKind) -> bool
+    return tf_current(state).kind == kind
+.end
+
+fn tf_match(state: &mut TfParserState, kind: TfTokenKind) -> bool
+    if tf_check(state, kind)
+        tf_advance_tok(state)
+        return true
+    .end
+    return false
+.end
+
+fn tf_consume(state: &mut TfParserState, kind: TfTokenKind, msg: String) -> TfToken
+    if tf_check(state, kind)
+        return tf_advance_tok(state)
+    .end
+    tf_unexpected(state, msg)
+    return tf_current(state)
+.end
+
+fn tf_skip_trivia(state: &mut TfParserState)
+    while tf_check(state, TfTokNewline)
+        tf_advance_tok(state)
+    .end
+.end
+
+fn tf_span_merge(a: ast.AstSpan, b: ast.AstSpan) -> ast.AstSpan
+    # Fusion naïve (assume même fichier).
+    return ast.AstSpan(
+        file=a.file,
+        start_offset=a.start_offset,
+        end_offset=b.end_offset,
+        start_line=a.start_line,
+        start_col=a.start_col,
+        end_line=b.end_line,
+        end_col=b.end_col
+    )
+.end
+
+fn tf_empty_span() -> ast.AstSpan
+    return ast.AstSpan(file="", start_offset=0, end_offset=0, start_line=1, start_col=1, end_line=1, end_col=1)
+.end
+
+fn tf_unexpected(state: &mut TfParserState, msg: String)
+    let tok = tf_current(state)
+    state.diagnostics.push(TfDiag(
+        severity=TfDiagSeverityError,
+        stage="parser",
+        message=msg + ", trouvé " + tf_token_name(tok.kind),
+        span=tok.span
+    ))
+.end
+
+fn tf_recover(state: &mut TfParserState)
+    let sync = coll.Vec<TfTokenKind>()
+    sync.push(TfTokKwModule)
+    sync.push(TfTokKwImport)
+    sync.push(TfTokKwStruct)
+    sync.push(TfTokKwEnum)
+    sync.push(TfTokKwUnion)
+    sync.push(TfTokKwType)
+    sync.push(TfTokKwFn)
+    sync.push(TfTokDotEnd)
+    sync.push(TfTokEof)
+
+    if tf_check(state, TfTokEof)
+        return
+    .end
+    # Avance au moins un token pour éviter boucle infinie.
+    tf_advance_tok(state)
+    while not tf_check(state, TfTokEof)
+        if sync.contains(tf_current(state).kind)
+            break
+        .end
+        tf_advance_tok(state)
+    .end
+.end
+
+fn tf_parse_module_name(state: &mut TfParserState) -> TfPath
+    let first = tf_consume(state, TfTokIdent, "nom de module attendu")
+    let mut segments = coll.Vec<String>()
+    segments.push(first.text)
+    let mut last_span = first.span
+    while tf_match(state, TfTokDot)
+        let ident = tf_consume(state, TfTokIdent, "segment de module attendu après '.'")
+        segments.push(ident.text)
+        last_span = ident.span
+    .end
+    return TfPath(segments=segments, span=tf_span_merge(first.span, last_span))
+.end
+
+fn tf_parse_path(state: &mut TfParserState) -> TfPath
+    let head = tf_consume(state, TfTokIdent, "identifiant attendu")
+    let mut segments = coll.Vec<String>()
+    segments.push(head.text)
+    let mut last = head.span
+    while tf_match(state, TfTokDot)
+        let ident = tf_consume(state, TfTokIdent, "segment attendu après '.'")
+        segments.push(ident.text)
+        last = ident.span
+    .end
+    return TfPath(segments=segments, span=tf_span_merge(head.span, last))
+.end
+
+fn tf_parse_import(state: &mut TfParserState) -> TfImportDecl
+    tf_skip_trivia(state)
+    let path = tf_parse_path(state)
+    tf_skip_trivia(state)
+    let alias = ""
+    if tf_match(state, TfTokKwAs)
+        let alias_tok = tf_consume(state, TfTokIdent, "alias attendu après 'as'")
+        alias = alias_tok.text
+    .end
+    return TfImportDecl(path=path, alias=alias, span=path.span)
+.end
+
+fn tf_parse_field(state: &mut TfParserState) -> TfField
+    tf_skip_trivia(state)
+    let name_tok = tf_consume(state, TfTokIdent, "nom de champ attendu")
+    tf_skip_trivia(state)
+    tf_consume(state, TfTokColon, "':' attendu après le nom de champ")
+    tf_skip_trivia(state)
+    let ty = tf_parse_path(state)
+    tf_match(state, TfTokComma) # optionnel
+    return TfField(name=name_tok.text, type_ref=ty, span=tf_span_merge(name_tok.span, ty.span))
+.end
+
+fn tf_parse_struct(state: &mut TfParserState) -> TfStructDecl
+    let name_tok = tf_consume(state, TfTokIdent, "nom de struct attendu")
+    let mut fields = coll.Vec<TfField>()
+    while not tf_check(state, TfTokEof) and not tf_check(state, TfTokDotEnd)
+        tf_skip_trivia(state)
+        if tf_check(state, TfTokDotEnd)
+            break
+        .end
+        fields.push(tf_parse_field(state))
+        tf_skip_trivia(state)
+    .end
+    let end_tok = tf_consume(state, TfTokDotEnd, "'.end' attendu pour clore struct")
+    return TfStructDecl(name=name_tok.text, fields=fields, span=tf_span_merge(name_tok.span, end_tok.span))
+.end
+
+fn tf_parse_union(state: &mut TfParserState) -> TfUnionDecl
+    let name_tok = tf_consume(state, TfTokIdent, "nom de union attendu")
+    let mut fields = coll.Vec<TfField>()
+    while not tf_check(state, TfTokEof) and not tf_check(state, TfTokDotEnd)
+        tf_skip_trivia(state)
+        if tf_check(state, TfTokDotEnd)
+            break
+        .end
+        fields.push(tf_parse_field(state))
+        tf_skip_trivia(state)
+    .end
+    let end_tok = tf_consume(state, TfTokDotEnd, "'.end' attendu pour clore union")
+    return TfUnionDecl(name=name_tok.text, fields=fields, span=tf_span_merge(name_tok.span, end_tok.span))
+.end
+
+fn tf_parse_enum(state: &mut TfParserState) -> TfEnumDecl
+    let name_tok = tf_consume(state, TfTokIdent, "nom d'enum attendu")
+    let mut variants = coll.Vec<TfEnumVariant>()
+    while not tf_check(state, TfTokEof) and not tf_check(state, TfTokDotEnd)
+        tf_skip_trivia(state)
+        if tf_check(state, TfTokDotEnd)
+            break
+        .end
+        variants.push(tf_parse_enum_variant(state))
+        tf_skip_trivia(state)
+    .end
+    let end_tok = tf_consume(state, TfTokDotEnd, "'.end' attendu pour clore enum")
+    return TfEnumDecl(name=name_tok.text, variants=variants, span=tf_span_merge(name_tok.span, end_tok.span))
+.end
+
+fn tf_parse_enum_variant(state: &mut TfParserState) -> TfEnumVariant
+    let name_tok = tf_consume(state, TfTokIdent, "nom de variant attendu")
+    let mut payload = coll.Vec<TfField>()
+    if tf_match(state, TfTokLParen)
+        while not tf_check(state, TfTokRParen) and not tf_check(state, TfTokEof)
+            tf_skip_trivia(state)
+            payload.push(tf_parse_field(state))
+            tf_skip_trivia(state)
+            if tf_match(state, TfTokComma)
+                continue
+            .end
+            if tf_check(state, TfTokRParen)
+                break
+            .end
+        .end
+        tf_consume(state, TfTokRParen, "')' attendu pour fermer le payload")
+    .end
+    tf_match(state, TfTokComma)
+    return TfEnumVariant(name=name_tok.text, payload=payload, span=name_tok.span)
+.end
+
+fn tf_parse_alias(state: &mut TfParserState) -> TfTypeAliasDecl
+    let name_tok = tf_consume(state, TfTokIdent, "nom d'alias attendu")
+    tf_skip_trivia(state)
+    tf_consume(state, TfTokEqual, "'=' attendu après alias")
+    tf_skip_trivia(state)
+    let target = tf_parse_path(state)
+    let span = tf_span_merge(name_tok.span, target.span)
+    return TfTypeAliasDecl(name=name_tok.text, target=target, span=span)
+.end
+
+fn tf_parse_param(state: &mut TfParserState) -> TfFnParam
+    if tf_match(state, TfTokKwMut)
+        tf_skip_trivia(state)
+    .end
+    let name_tok = tf_consume(state, TfTokIdent, "nom de paramètre attendu")
+    tf_skip_trivia(state)
+    tf_consume(state, TfTokColon, "':' attendu après paramètre")
+    tf_skip_trivia(state)
+    let ty = tf_parse_path(state)
+    tf_match(state, TfTokComma)
+    return TfFnParam(name=name_tok.text, type_ref=ty, span=tf_span_merge(name_tok.span, ty.span))
+.end
+
+fn tf_parse_fn(state: &mut TfParserState) -> TfFnDecl
+    let name_tok = tf_consume(state, TfTokIdent, "nom de fonction attendu")
+    tf_skip_trivia(state)
+    tf_consume(state, TfTokLParen, "'(' attendu après nom de fonction")
+    let mut params = coll.Vec<TfFnParam>()
+    while not tf_check(state, TfTokRParen) and not tf_check(state, TfTokEof)
+        tf_skip_trivia(state)
+        if tf_check(state, TfTokRParen)
+            break
+        .end
+        params.push(tf_parse_param(state))
+        tf_skip_trivia(state)
+    .end
+    tf_consume(state, TfTokRParen, "')' attendu pour clore la liste de paramètres")
+
+    tf_skip_trivia(state)
+    let ret = TfPath(segments=coll.Vec<String>(), span=name_tok.span)
+    if tf_match(state, TfTokArrow)
+        tf_skip_trivia(state)
+        ret = tf_parse_path(state)
+    .end
+
+    let body_start = tf_current(state).span
+    # Parcours tolérant : avance jusqu'à .end en comptant les blocs imbriqués.
+    let mut depth = 0
+    let mut block_starters = coll.Vec<TfTokenKind>()
+    block_starters.push(TfTokKwIf)
+    block_starters.push(TfTokKwElif)
+    block_starters.push(TfTokKwElse)
+    block_starters.push(TfTokKwWhile)
+    block_starters.push(TfTokKwFor)
+    block_starters.push(TfTokKwMatch)
+
+    while not tf_check(state, TfTokEof)
+        if tf_check(state, TfTokDotEnd)
+            if depth == 0
+                break
+            .end
+            depth = depth - 1
+            tf_advance_tok(state)
+            continue
+        .end
+        if tf_vec_contains(block_starters, tf_current(state).kind)
+            depth = depth + 1
+        .end
+        tf_advance_tok(state)
+    .end
+    let end_tok = tf_consume(state, TfTokDotEnd, "'.end' attendu pour clore la fonction")
+    let fn_span = tf_span_merge(name_tok.span, end_tok.span)
+    let body_span = tf_span_merge(body_start, end_tok.span)
+    return TfFnDecl(name=name_tok.text, params=params, return_type=ret, body_span=body_span, span=fn_span)
+.end
+
+fn tf_token_name(kind: TfTokenKind) -> String
+    # Nom simple pour les diagnostics (mapping réduit).
+    if kind == TfTokIdent
+        return "IDENT"
+    .end
+    if kind == TfTokInt
+        return "INT"
+    .end
+    if kind == TfTokFloat
+        return "FLOAT"
+    .end
+    if kind == TfTokString
+        return "STRING"
+    .end
+    if kind == TfTokDotEnd
+        return ".end"
+    .end
+    if kind == TfTokEof
+        return "EOF"
+    .end
+    return "token"
+.end
+
+fn tf_vec_contains(list: coll.Vec<TfTokenKind>, kind: TfTokenKind) -> bool
+    let mut i = 0
+    while i < list.len()
+        if list[i] == kind
+            return true
+        .end
+        i = i + 1
+    .end
+    return false
+.end
+
+# ---------------------------------------------------------------------------
+# Validation de symboles (simple)
+# ---------------------------------------------------------------------------
+
+fn tf_validate_symbols(module: TfModule) -> coll.Vec<TfDiag>
+    let mut diags = coll.Vec<TfDiag>()
+
+    if module.name.segments.len() == 0
+        diags.push(TfDiag(
+            severity=TfDiagSeverityWarning,
+            stage="symbols",
+            message="déclaration de module absente",
+            span=tf_empty_span()
+        ))
+    .end
+
+    # Imports dupliqués
+    let seen_imports = coll.HashMap<String, bool>()
+    for imp in module.imports
+        let key = tf_join_path(imp.path)
+        if seen_imports.contains_key(key)
+            diags.push(TfDiag(
+                severity=TfDiagSeverityError,
+                stage="symbols",
+                message="import dupliqué '" + key + "'",
+                span=imp.span
+            ))
+        else
+            seen_imports[key] = true
+        .end
+    .end
+
+    # Définitions dupliquées
+    let registry = coll.HashMap<String, String>()
+    let defs = coll.Vec<(String, String, ast.AstSpan)>()
+
+    for s in module.structs
+        defs.push((s.name, "struct", s.span))
+    .end
+    for u in module.unions
+        defs.push((u.name, "union", u.span))
+    .end
+    for e in module.enums
+        defs.push((e.name, "enum", e.span))
+    .end
+    for a in module.type_aliases
+        defs.push((a.name, "type", a.span))
+    .end
+    for f in module.functions
+        defs.push((f.name, "fn", f.span))
+    .end
+
+    for entry in defs
+        let name = entry.0
+        let kind = entry.1
+        let sp = entry.2
+        if registry.contains_key(name)
+            diags.push(TfDiag(
+                severity=TfDiagSeverityError,
+                stage="symbols",
+                message="symbole '" + name + "' déjà défini (avant: " + registry[name] + ")",
+                span=sp
+            ))
+        else
+            registry[name] = kind
+        .end
+    .end
+
+    # Signatures incomplètes
+    for s in module.structs
+        for field in s.fields
+            if field.type_ref.segments.len() == 0
+                diags.push(TfDiag(
+                    severity=TfDiagSeverityError,
+                    stage="symbols",
+                    message="champ '" + field.name + "' dans struct " + s.name + " sans type",
+                    span=field.span
+                ))
+            .end
+        .end
+    .end
+
+    for u in module.unions
+        for field in u.fields
+            if field.type_ref.segments.len() == 0
+                diags.push(TfDiag(
+                    severity=TfDiagSeverityError,
+                    stage="symbols",
+                    message="champ '" + field.name + "' dans union " + u.name + " sans type",
+                    span=field.span
+                ))
+            .end
+        .end
+    .end
+
+    for e in module.enums
+        for v in e.variants
+            for field in v.payload
+                if field.type_ref.segments.len() == 0
+                    diags.push(TfDiag(
+                        severity=TfDiagSeverityError,
+                        stage="symbols",
+                        message="champ '" + field.name + "' dans variant " + e.name + "::" + v.name + " sans type",
+                        span=field.span
+                    ))
+                .end
+            .end
+        .end
+    .end
+
+    for f in module.functions
+        let seen_params = coll.HashMap<String, bool>()
+        for p in f.params
+            if seen_params.contains_key(p.name)
+                diags.push(TfDiag(
+                    severity=TfDiagSeverityError,
+                    stage="symbols",
+                    message="paramètre dupliqué '" + p.name + "' dans " + f.name,
+                    span=p.span
+                ))
+            else
+                seen_params[p.name] = true
+            .end
+
+            if p.type_ref.segments.len() == 0
+                diags.push(TfDiag(
+                    severity=TfDiagSeverityError,
+                    stage="symbols",
+                    message="paramètre '" + p.name + "' de " + f.name + " sans type",
+                    span=p.span
+                ))
+            .end
+        .end
+
+        if f.return_type.segments.len() == 0
+            diags.push(TfDiag(
+                severity=TfDiagSeverityWarning,
+                stage="symbols",
+                message="type de retour manquant pour " + f.name,
+                span=f.span
+            ))
+        .end
+    .end
+
+    return diags
+.end
+
+fn tf_join_path(path: TfPath) -> String
+    # Joins segments with '.' (pas d'alloc optimisée).
+    let mut out = ""
+    let mut i = 0
+    while i < path.segments.len()
+        if i > 0
+            out = out + "."
+        .end
+        out = out + path.segments[i]
+        i = i + 1
+    .end
+    return out
+.end

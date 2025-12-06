@@ -1,0 +1,374 @@
+module vitte.bootstrap.cli.bt_cmd_clean
+
+import std.collections as coll
+import vitte.compiler.diagnostics as diag
+import vitte.compiler.ir as ir
+import vitte.bootstrap.back.driver_c as cdrv
+import vitte.bootstrap.back.emit_files as emit
+import vitte.bootstrap.back.layout as bt_layout
+import vitte.bootstrap.cli.bt_args as bt_args
+import vitte.bootstrap.cli.bt_cli as bt_cli
+
+# ============================================================================
+# Vitte bootstrap - Commande `clean` (bt_cmd_clean)
+# Modèle logique ultra complet pour les opérations de nettoyage du bootstrap :
+#   - description des zones à nettoyer (build, cache, temporaires, dist, logs),
+#   - niveaux/profondeurs (minimal, normal, deep, distclean),
+#   - cibles de nettoyage (targets, profils, scénarios, chemins),
+#   - graphe de tâches de clean et résultats agrégés.
+#
+# Objectifs
+#   - Aucun parsing, aucune I/O : seulement des structures, enums et unions.
+#   - Servir de contrat entre :
+#       * le parseur CLI (bt_args) et le driver CLI (bt_cli),
+#       * les backends (driver_c, emit_files, layout),
+#       * les outils de tooling (Vitte Studio, scripts, CI).
+#   - Respect de la syntaxe Vitte : pas d’accolades, blocs terminés par `.end`.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Identifiants & noms
+# ----------------------------------------------------------------------------
+
+type BtCleanTargetId    = i32
+type BtCleanPolicyId    = i32
+type BtCleanTaskId      = i32
+type BtCleanGraphId     = i32
+type BtCleanSessionId   = i32
+type BtCleanDiagId      = i32
+type BtCleanPathSetId   = i32
+
+struct BtCleanName
+    id: i32
+    text: String
+    origin_span: diag.SpanId
+.end
+
+# ----------------------------------------------------------------------------
+# Zones / domaines de nettoyage
+# ----------------------------------------------------------------------------
+
+enum BtCleanAreaKind
+    | BuildOutput        # target/, objets, libs, binaires
+    | Cache              # caches de build, ccache, etc.
+    | Temp               # temporaires, workdirs intermédiaires
+    | Dist               # artefacts de distribution (archives)
+    | Logs               # logs de build, diagnostics persistés
+    | Layout             # répertoires layout générés
+    | IrDumps            # dumps IR générés
+    | VmDumps            # dumps VM/bytecode
+    | CustomArea
+.end
+
+enum BtCleanDepth
+    | Minimal            # nettoyer juste ce qui est obviously safe
+    | Normal             # nettoyage standard de la cible
+    | Deep               # nettoyage plus agressif (inclut caches)
+    | DistClean          # nettoyage complet comme pour release
+.end
+
+enum BtCleanSafetyLevel
+    | AlwaysSafe         # aucun risque de perdre des données non générées
+    | ConfirmRecommended # potentiellement destructif mais raisonnable
+    | Dangerous          # risque élevé (ne jamais lancer sans confirmation)
+.end
+
+# ----------------------------------------------------------------------------
+# Sets de chemins, slots layout et artefacts
+# ----------------------------------------------------------------------------
+
+struct BtCleanPathSet
+    id: BtCleanPathSetId
+    name: BtCleanName
+
+    # Chemins logiques (relatifs au workspace ou build root)
+    rel_paths: coll.Vec[String]
+
+    # Slots layout associés (pour dériver des répertoires)
+    layout_slots: coll.Vec[bt_layout.BtLayoutSlotId]
+
+    # Artefacts C / emit liés à ce set
+    c_jobs: coll.Vec[cdrv.BtCJobId]
+    emit_jobs: coll.Vec[emit.BtEmitJobId]
+
+    description: String
+.end
+
+# ----------------------------------------------------------------------------
+# Cibles de nettoyage
+# ----------------------------------------------------------------------------
+
+enum BtCleanTargetKind
+    | CleanByArea         # ex: build, cache, logs…
+    | CleanByPathSet      # set de chemins préconfiguré
+    | CleanByLayoutProfile
+    | CleanByCJob         # nettoyer les outputs d’un job C
+    | CleanByEmitJob      # nettoyer les outputs d’un job d’émission
+    | CleanWorkspace      # clean global du workspace
+    | CleanCustomTarget
+.end
+
+struct BtCleanTarget
+    id: BtCleanTargetId
+    name: BtCleanName
+    kind: BtCleanTargetKind
+
+    area: BtCleanAreaKind
+
+    # Liens optionnels vers contextes/sets
+    path_set: BtCleanPathSetId
+    has_path_set: bool
+
+    layout_profile: bt_layout.BtLayoutProfileId
+    has_layout_profile: bool
+
+    c_job: cdrv.BtCJobId
+    has_c_job: bool
+
+    emit_job: emit.BtEmitJobId
+    has_emit_job: bool
+
+    is_default_for_area: bool
+
+    description: String
+.end
+
+# ----------------------------------------------------------------------------
+# Politique de clean (stratégie, profondeur, rétention)
+# ----------------------------------------------------------------------------
+
+enum BtCleanStrategyKind
+    | DeletePaths          # suppression physique (rm -rf logique)
+    | DropCaches           # suppression caches uniquement
+    | RemoveBuildOutputs   # objets/libs/bins mais pas caches
+    | RemoveDistArtifacts  # paquets de distribution, archives
+    | RemoveLogs           # logs de build
+    | MarkOnly             # marquage logique, pas de suppression
+    | CustomStrategy
+.end
+
+struct BtCleanRetentionRules
+    # Nombre de jours à conserver certains artefacts (<=0 : aucun filtre)
+    keep_days: i32
+
+    # Patterns à conserver (ex: "*.log", "*.txt")
+    keep_globs: coll.Vec[String]
+
+    # Patterns à exclure explicitement
+    exclude_globs: coll.Vec[String]
+.end
+
+struct BtCleanPolicy
+    id: BtCleanPolicyId
+    name: BtCleanName
+
+    strategy: BtCleanStrategyKind
+    depth: BtCleanDepth
+    safety: BtCleanSafetyLevel
+
+    # Zones concernées par cette politique
+    areas: coll.Vec[BtCleanAreaKind]
+
+    # Règles de rétention / protection
+    retention: BtCleanRetentionRules
+
+    # Indicateurs
+    is_default: bool
+    is_distclean_policy: bool
+
+    description: String
+.end
+
+# ----------------------------------------------------------------------------
+# Tâches de clean & graphe de dépendances
+# ----------------------------------------------------------------------------
+
+enum BtCleanTaskKind
+    | CleanPathsForTarget
+    | CleanCachesForTarget
+    | CleanLogsForTarget
+    | CleanDistForTarget
+    | CleanWorkspaceGlobal
+    | CustomTask
+.end
+
+enum BtCleanTaskEdgeKind
+    | DependsOn
+    | SoftDependsOn
+.end
+
+struct BtCleanTask
+    id: BtCleanTaskId
+    name: BtCleanName
+    kind: BtCleanTaskKind
+
+    target: BtCleanTargetId
+    policy: BtCleanPolicyId
+
+    # PathSet concret utilisé pour cette tâche
+    path_set: BtCleanPathSetId
+    has_path_set: bool
+
+    # Résumé textuel de ce que fait la tâche
+    summary: String
+.end
+
+struct BtCleanTaskEdge
+    id: BtCleanTaskId
+    kind: BtCleanTaskEdgeKind
+
+    from: BtCleanTaskId
+    to: BtCleanTaskId
+
+    reason: String
+.end
+
+struct BtCleanTaskGraph
+    id: BtCleanGraphId
+    name: BtCleanName
+
+    tasks: coll.Vec[BtCleanTask]
+    edges: coll.Vec[BtCleanTaskEdge]
+.end
+
+# ----------------------------------------------------------------------------
+# Mapping CLI → Clean
+# ----------------------------------------------------------------------------
+
+enum BtCleanCliSelectorKind
+    | ByArea
+    | ByTargetName
+    | ByDepth
+    | ByWorkspace
+    | ByPath
+    | ByCustomTag
+.end
+
+struct BtCleanCliSelector
+    kind: BtCleanCliSelectorKind
+    option_use: bt_args.BtCliOptionUseId
+
+    # valeur brute saisie (ex: "build", "cache", "dist", "deep")
+    raw_value: String
+.end
+
+struct BtCleanCliResolution
+    # Commande CLI brute et résolue
+    cli_call: bt_args.BtCliCommandCall
+
+    selectors: coll.Vec[BtCleanCliSelector]
+
+    # Cibles sélectionnées
+    selected_targets: coll.Vec[BtCleanTargetId]
+
+    # Profondeur effective
+    selected_depth: BtCleanDepth
+
+    # Indicateurs de clean global
+    wants_workspace_clean: bool
+    wants_distclean: bool
+.end
+
+# ----------------------------------------------------------------------------
+# Diagnostics spécifiques à la commande `clean`
+# ----------------------------------------------------------------------------
+
+enum BtCleanDiagKind
+    | UnknownArea
+    | UnknownTarget
+    | UnknownDepth
+    | ConflictingSelectors
+    | NoTargetsSelected
+    | NothingToClean
+    | DangerousCleanRequested
+    | InternalCleanMappingError
+.end
+
+struct BtCleanDiag
+    id: BtCleanDiagId
+    kind: BtCleanDiagKind
+    message: String
+    primary_span: diag.SpanId
+    related_options: coll.Vec[bt_args.BtCliOptionUseId]
+.end
+
+struct BtCleanSummary
+    total_targets: i32
+    total_policies: i32
+    total_tasks: i32
+
+    tasks_planned: i32
+    tasks_executed: i32
+    tasks_succeeded: i32
+    tasks_failed: i32
+    tasks_skipped: i32
+.end
+
+# ----------------------------------------------------------------------------
+# Configuration globale de la commande `clean`
+# ----------------------------------------------------------------------------
+
+struct BtCleanCommandConfig
+    # Zones supportées
+    areas: coll.Vec[BtCleanAreaKind]
+
+    # Sets de chemins préconfigurés
+    path_sets: coll.Vec[BtCleanPathSet]
+
+    # Cibles de nettoyage
+    targets: coll.Vec[BtCleanTarget]
+
+    # Politiques de clean
+    policies: coll.Vec[BtCleanPolicy]
+
+    # Graphe de tâches "canonique" (avant filtrage par CLI)
+    base_graph: BtCleanTaskGraph
+
+    # Commandes CLI associées à `clean`
+    clean_commands: coll.Vec[bt_args.BtCliCommandSpecId]
+
+    # Options CLI spécifiques (ex: --all, --distclean, --clean-area)
+    option_clean_area: bt_args.BtCliOptionSpecId
+    has_option_clean_area: bool
+
+    option_clean_depth: bt_args.BtCliOptionSpecId
+    has_option_clean_depth: bool
+
+    option_clean_workspace: bt_args.BtCliOptionSpecId
+    has_option_clean_workspace: bool
+.end
+
+# ----------------------------------------------------------------------------
+# Session de clean pour une invocation `clean`
+# ----------------------------------------------------------------------------
+
+struct BtCleanSession
+    id: BtCleanSessionId
+    name: BtCleanName
+
+    # Contexte CLI général
+    cli_session: bt_args.BtCliSession
+
+    # Exécution CLI globale (driver)
+    cli_run: bt_cli.BtCliRunSession
+
+    # Contextes backends
+    c_driver: cdrv.BtCDriverContext
+    emit_session: emit.BtEmitSession
+    layout_ctx: bt_layout.BtLayoutContext
+
+    # Config de commande `clean`
+    config: BtCleanCommandConfig
+
+    # Résolution CLI → clean pour cette invocation
+    cli_resolution: BtCleanCliResolution
+
+    # Graphe de tâches instancié après filtrage par CLI
+    task_graph: BtCleanTaskGraph
+
+    # Diagnostics propres à la commande `clean`
+    diagnostics: coll.Vec[BtCleanDiag]
+
+    # Synthèse de résultat
+    summary: BtCleanSummary
+.end

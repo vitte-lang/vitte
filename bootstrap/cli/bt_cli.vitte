@@ -1,0 +1,433 @@
+module vitte.bootstrap.cli.bt_cli
+
+import std.collections as coll
+import vitte.compiler.diagnostics as diag
+import vitte.compiler.ir as ir
+import vitte.bootstrap.back.driver_c as cdrv
+import vitte.bootstrap.back.emit_files as emit
+import vitte.bootstrap.back.layout as bt_layout
+import vitte.bootstrap.cli.bt_args as bt_args
+
+# ============================================================================
+# Vitte bootstrap - CLI driver (bt_cli)
+# Modèle logique maximal du "cerveau" CLI stage0 :
+#   - binding entre la session CLI (BtCliSession) et les backends,
+#   - description déclarative des actions, pipelines, phases et résultats,
+#   - orchestration logique des builds C / layouts / dumps / clean.
+#
+# Objectifs
+#   - Ne contenir aucune I/O système ni parsing d’arguments (fait ailleurs).
+#   - Fournir au runtime/runner :
+#       * un graphe d’actions à exécuter (pipelines),
+#       * un suivi d’exécution (phases, timeline),
+#       * un modèle de résultats/exit codes.
+#   - Respecter la syntaxe Vitte : pas d’accolades, blocs fermés avec `.end`.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Identifiants génériques pour le driver CLI
+# ----------------------------------------------------------------------------
+
+type BtCliActionId          = i32
+type BtCliPipelineId        = i32
+type BtCliConditionId       = i32
+type BtCliResultId          = i32
+type BtCliContextId         = i32
+type BtCliPhaseId           = i32
+type BtCliActionExecId      = i32
+type BtCliTimelineEventId   = i32
+
+struct BtCliDriverName
+    id: i32
+    text: String
+    origin_span: diag.SpanId
+.end
+
+# ----------------------------------------------------------------------------
+# Contexte d’exécution logique du CLI
+# ----------------------------------------------------------------------------
+
+enum BtCliRunMode
+    | Normal
+    | DryRun
+    | Explain
+    | DumpPlanOnly
+.end
+
+struct BtCliExitCode
+    value: i32
+    reason: String
+.end
+
+struct BtCliDriverContext
+    id: BtCliContextId
+    name: BtCliDriverName
+
+    # Session CLI déjà parsée (bt_args)
+    cli_session: bt_args.BtCliSession
+
+    # Contexte backend C (planification de jobs)
+    c_driver: cdrv.BtCDriverContext
+
+    # Contexte d’émission de fichiers
+    emit_session: emit.BtEmitSession
+
+    # Contexte layout global
+    layout_ctx: bt_layout.BtLayoutContext
+
+    run_mode: BtCliRunMode
+
+    # Code de sortie prévu si toutes les étapes se déroulent bien
+    success_exit: BtCliExitCode
+.end
+
+# ----------------------------------------------------------------------------
+# Conditions logiques utilisées dans les pipelines
+# ----------------------------------------------------------------------------
+
+enum BtCliConditionKind
+    | CheckHasRootCommand
+    | CheckWantsHelp
+    | CheckWantsVersion
+    | CheckHasDiagnosticsErrors
+    | CheckHasDiagnosticsWarnings
+
+    | CheckCommandIsBuild
+    | CheckCommandIsClean
+    | CheckCommandIsTest
+    | CheckCommandIsBench
+    | CheckCommandIsLayoutInspect
+    | CheckCommandIsLayoutPrintTree
+    | CheckCommandIsDumpIr
+    | CheckCommandIsDumpVm
+    | CheckCommandIsHelp
+    | CheckCommandIsVersion
+
+    | CheckBackendCSelected
+    | CheckBackendVmSelected
+    | CheckBackendMixedSelected
+
+    | CheckDryRunMode
+    | CheckExplainMode
+    | CheckDumpPlanMode
+
+    | CheckEmitPlanAvailable
+    | CheckCJobPlanned
+    | CheckCJobSucceeded
+    | CheckEmitJobSucceeded
+
+    | CustomCondition
+.end
+
+struct BtCliCondition
+    id: BtCliConditionId
+    kind: BtCliConditionKind
+    name: BtCliDriverName
+
+    # Paramètres libres, interprétés par le runtime
+    param_string: String
+    param_i64: i64
+.end
+
+# ----------------------------------------------------------------------------
+# Actions élémentaires pour le runner CLI
+# ----------------------------------------------------------------------------
+
+enum BtCliActionKind
+    | NoOp
+
+    # Résolution CLI / profils
+    | ResolveCommandAndProfiles
+    | ResolveBackendSelection
+    | ResolveLayoutProfile
+    | ResolveTargetModule
+
+    # Planification
+    | PlanCBuildJob
+    | PlanEmitSession
+    | ComputeLayoutBindings
+
+    # Exécution
+    | RunCBuildJob
+    | RunEmitSession
+
+    # Diagnostics / sortie texte
+    | CollectDiagnostics
+    | PrintDiagnosticsSummary
+    | PrintHelp
+    | PrintVersion
+    | PrintLayoutTree
+
+    # Dumps
+    | DumpIrForModule
+    | DumpVmForModule
+
+    # Maintenance
+    | CleanBuildArtifacts
+
+    | CustomAction
+.end
+
+struct BtCliAction
+    id: BtCliActionId
+    kind: BtCliActionKind
+    name: BtCliDriverName
+
+    # Liens optionnels vers des éléments cibles
+    target_command: bt_args.BtCliCommandSpecId
+    has_target_command: bool
+
+    target_profile: bt_args.BtCliProfileId
+    has_target_profile: bool
+
+    target_c_job: cdrv.BtCJobId
+    has_target_c_job: bool
+
+    target_emit_job: emit.BtEmitJobId
+    has_target_emit_job: bool
+
+    target_ir_module: ir.ModuleId
+    has_target_ir_module: bool
+
+    target_layout_profile: bt_layout.BtLayoutProfileId
+    has_target_layout_profile: bool
+
+    # Paramètres libres pour extension future
+    param_string: String
+    param_i64: i64
+.end
+
+# ----------------------------------------------------------------------------
+# Pipelines & transitions
+# ----------------------------------------------------------------------------
+
+enum BtCliTransitionKind
+    | OnSuccess
+    | OnFailure
+    | OnConditionTrue
+    | OnConditionFalse
+.end
+
+struct BtCliTransition
+    kind: BtCliTransitionKind
+
+    from_action: BtCliActionId
+    to_action: BtCliActionId
+
+    condition: BtCliConditionId
+    has_condition: bool
+.end
+
+struct BtCliPipeline
+    id: BtCliPipelineId
+    name: BtCliDriverName
+
+    # Action "racine" de ce pipeline
+    entry_action: BtCliActionId
+
+    # Liste déclarative des actions et transitions
+    actions: coll.Vec[BtCliAction]
+    transitions: coll.Vec[BtCliTransition]
+.end
+
+# ----------------------------------------------------------------------------
+# Binding commandes ↔ pipelines
+# ----------------------------------------------------------------------------
+
+struct BtCliCommandPipelineBinding
+    command_spec: bt_args.BtCliCommandSpecId
+    pipeline: BtCliPipelineId
+
+    # Profil CLI privilégié (niveau UX)
+    cli_profile: bt_args.BtCliProfileId
+    has_cli_profile: bool
+
+    # Indicateurs de comportement
+    is_default_for_root: bool
+    is_experimental: bool
+.end
+
+# ----------------------------------------------------------------------------
+# Phases d’exécution de haut niveau
+# ----------------------------------------------------------------------------
+
+enum BtCliRunPhaseKind
+    | Init
+    | ResolveCli
+    | PlanBackends
+    | ExecuteBackends
+    | EmitFiles
+    | Finalize
+    | HelpOrVersion
+    | DiagnosticsOnly
+    | CustomPhase
+.end
+
+struct BtCliRunPhase
+    id: BtCliPhaseId
+    kind: BtCliRunPhaseKind
+    name: BtCliDriverName
+
+    # Ensemble d’actions associées à cette phase
+    actions: coll.Vec[BtCliActionId]
+
+    # Timing (ms depuis le début du programme hôte)
+    start_time_millis: i64
+    end_time_millis: i64
+.end
+
+# ----------------------------------------------------------------------------
+# Exécution des actions et timeline
+# ----------------------------------------------------------------------------
+
+enum BtCliActionStatus
+    | Pending
+    | Running
+    | Succeeded
+    | Failed
+    | Skipped
+.end
+
+struct BtCliActionExecution
+    id: BtCliActionExecId
+    action_id: BtCliActionId
+    status: BtCliActionStatus
+
+    # Index d’ordre dans l’exécution globale
+    order_index: i32
+
+    # Timing
+    start_time_millis: i64
+    end_time_millis: i64
+
+    # Diagnostics générés pendant cette action
+    diags: coll.Vec[bt_args.BtCliDiag]
+.end
+
+enum BtCliTimelineEventKind
+    | ActionStarted
+    | ActionFinished
+    | PipelineSelected
+    | CommandResolved
+    | BackendJobPlanned
+    | BackendJobFinished
+    | EmitSessionPlanned
+    | EmitSessionFinished
+    | LayoutComputed
+    | ResultComputed
+    | Message
+.end
+
+struct BtCliTimelineEvent
+    id: BtCliTimelineEventId
+    kind: BtCliTimelineEventKind
+
+    timestamp_millis: i64
+    message: String
+
+    related_action: BtCliActionId
+    has_related_action: bool
+
+    related_phase: BtCliPhaseId
+    has_related_phase: bool
+
+    related_c_job: cdrv.BtCJobId
+    has_related_c_job: bool
+
+    related_emit_job: emit.BtEmitJobId
+    has_related_emit_job: bool
+.end
+
+# ----------------------------------------------------------------------------
+# Résultats logiques du driver
+# ----------------------------------------------------------------------------
+
+enum BtCliResultKind
+    | Success
+    | SuccessWithWarnings
+    | FailureCliUsage
+    | FailureBackend
+    | FailureEmit
+    | FailureLayout
+    | FailureInternal
+.end
+
+struct BtCliResultStats
+    total_actions: i32
+    actions_succeeded: i32
+    actions_failed: i32
+    actions_skipped: i32
+
+    had_warnings: bool
+.end
+
+struct BtCliResult
+    id: BtCliResultId
+    kind: BtCliResultKind
+
+    exit_code: BtCliExitCode
+    primary_diag: diag.SpanId
+
+    # Diagnostics CLI générés au niveau driver
+    extra_diags: coll.Vec[bt_args.BtCliDiag]
+
+    # Job C et job d’émission éventuellement concernés
+    related_c_job: cdrv.BtCJobId
+    has_related_c_job: bool
+
+    related_emit_job: emit.BtEmitJobId
+    has_related_emit_job: bool
+
+    stats: BtCliResultStats
+.end
+
+# ----------------------------------------------------------------------------
+# Configuration globale du driver CLI
+# ----------------------------------------------------------------------------
+
+struct BtCliDriverConfig
+    # Pipelines disponibles pour les différentes commandes
+    pipelines: coll.Vec[BtCliPipeline]
+    command_bindings: coll.Vec[BtCliCommandPipelineBinding]
+
+    # Conditions globales réutilisables
+    conditions: coll.Vec[BtCliCondition]
+
+    # Résultats "canoniques" proposés par le driver
+    results: coll.Vec[BtCliResult]
+
+    # Codes de sortie "par défaut"
+    default_success_exit: BtCliExitCode
+    default_usage_error_exit: BtCliExitCode
+    default_internal_error_exit: BtCliExitCode
+.end
+
+# ----------------------------------------------------------------------------
+# Session d’exécution d’un run CLI complet
+# ----------------------------------------------------------------------------
+
+struct BtCliRunSession
+    driver_ctx: BtCliDriverContext
+    driver_config: BtCliDriverConfig
+
+    # Commande effective sélectionnée
+    selected_command: bt_args.BtCliCommandCall
+
+    # Pipeline choisi pour ce run
+    selected_pipeline: BtCliPipelineId
+
+    # Phases de haut niveau
+    phases: coll.Vec[BtCliRunPhase]
+
+    # Exécution détaillée des actions
+    action_execs: coll.Vec[BtCliActionExecution]
+
+    # Timeline fine d’événements
+    timeline: coll.Vec[BtCliTimelineEvent]
+
+    # Dernière action exécutée (pour debug / reprise)
+    last_action: BtCliActionId
+
+    # Résultat final (à interpréter par le programme hôte)
+    final_result: BtCliResult
+.end

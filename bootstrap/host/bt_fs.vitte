@@ -1,0 +1,442 @@
+
+
+module vitte.bootstrap.host.bt_fs
+
+import std.collections as coll
+import vitte.bootstrap.host.bt_env as env
+import vitte.bootstrap.front.bt_span as span
+
+# ============================================================================
+# Vitte bootstrap host – Modèle logique du système de fichiers hôte
+# (maximal, déclaratif, sans I/O)
+#
+# Objectifs :
+#   - Décrire de manière purement déclarative :
+#       * les chemins (paths) logiques/physiques,
+#       * les fichiers, répertoires, symlinks, volumes,
+#       * les mounts (local, réseau, virtuels),
+#       * les permissions, propriétaires et capacités,
+#       * les snapshots d’arborescence utiles au bootstrap,
+#       * les vues "workspace" (liées à BtHostEnvironment).
+#   - Servir de contrat entre :
+#       * les scripts et outils de bootstrap,
+#       * les couches de build / CI / IDE,
+#       * la toolchain Vitte (localisation des sources, artefacts, caches).
+#   - Ne contenir :
+#       * aucune fonction,
+#       * aucune logique d’accès disque,
+#       * aucune I/O ni formatage.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Identifiants internes
+# ---------------------------------------------------------------------------
+
+struct FsNodeId
+    raw: u32
+.end
+
+struct FsVolumeId
+    raw: u32
+.end
+
+struct FsMountId
+    raw: u32
+.end
+
+struct FsSnapshotId
+    raw: u32
+.end
+
+struct FsWorkspaceViewId
+    raw: u32
+.end
+
+# ---------------------------------------------------------------------------
+# Chemins & segments
+# ---------------------------------------------------------------------------
+
+enum FsPathKind
+    FsPathAbsolute
+    FsPathRelative
+    FsPathHomeRelative     # ex: "~/src"
+    FsPathWorkspaceRelative # ex: "src/compiler" à partir d’un workspace
+    FsPathVirtual          # chemin logique/virtuel (non mappé 1:1 au FS)
+.end
+
+enum FsPathSeparatorStyle
+    FsSepUnix     # "/"
+    FsSepWindows  # "\\"
+    FsSepMixed
+.end
+
+struct FsPathSegment
+    raw: String            # texte brut du segment
+    is_dot: bool           # "."
+    is_dot_dot: bool       # ".."
+    is_hidden: bool        # commence par "."
+.end
+
+struct FsPath
+    kind: FsPathKind
+    separator_style: FsPathSeparatorStyle
+
+    # Représentation brute comme l’OS (ou logique pour virtual)
+    raw: String
+
+    # Segments normalisés
+    segments: coll.Vec<FsPathSegment>
+
+    # Indique si le chemin a été "normalisé" (résolution de ., .., etc.)
+    is_normalized: bool
+
+    # Workspace logique associé (optionnel)
+    workspace_root: String
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Types de noeuds (fichiers, répertoires, etc.)
+# ---------------------------------------------------------------------------
+
+enum FsNodeKind
+    FsFileRegular
+    FsDirectory
+    FsSymlink
+    FsSocket
+    FsFifo
+    FsBlockDevice
+    FsCharDevice
+    FsOther
+.end
+
+struct FsTimestamp
+    # Timestamps en format ISO 8601 (ou vide si inconnu)
+    created_at: String
+    modified_at: String
+    accessed_at: String
+.end
+
+struct FsOwner
+    user_name: String
+    group_name: String
+    user_id: u32
+    group_id: u32
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct FsPermissions
+    # Mode POSIX-like simplifié
+    user_read: bool
+    user_write: bool
+    user_exec: bool
+
+    group_read: bool
+    group_write: bool
+    group_exec: bool
+
+    other_read: bool
+    other_write: bool
+    other_exec: bool
+
+    # Flag pour systèmes non POSIX (ACL, etc.)
+    uses_acl: bool
+
+    # Représentation texte (ex: "rwxr-xr-x", "0644")
+    mode_text: String
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Statistiques des noeuds
+# ---------------------------------------------------------------------------
+
+struct FsFileStat
+    node_id: FsNodeId
+
+    # Type du noeud
+    kind: FsNodeKind
+
+    # Taille et blocs
+    size_bytes: u64
+    allocated_bytes: u64
+    block_size: u64
+
+    # Inode / numéro de noeud (si applicable)
+    inode: u64
+
+    # Propriétaire et permissions
+    owner: FsOwner
+    permissions: FsPermissions
+
+    # Timestamps
+    timestamps: FsTimestamp
+
+    # Volume/mount
+    volume_id: FsVolumeId
+    mount_id: FsMountId
+
+    # Données libres
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Nodes (fichiers, répertoires, symlinks)
+# ---------------------------------------------------------------------------
+
+struct FsNode
+    id: FsNodeId
+    kind: FsNodeKind
+
+    # Chemin complet
+    path: FsPath
+    # Nom de base (basename)
+    name: String
+
+    # Lien vers le parent (FsNodeId.raw = 0 si root de volume ou inconnu)
+    parent: FsNodeId
+
+    # Symlink target (texte brut) si kind == FsSymlink
+    symlink_target: String
+
+    # Informations statistiques
+    stat: FsFileStat
+
+    # Tags libres (ex: "source", "target", "cache", "tool")
+    tags: coll.Vec<String>
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Volumes et points de montage
+# ---------------------------------------------------------------------------
+
+enum FsVolumeKind
+    FsVolumeLocalDisk
+    FsVolumeNetwork
+    FsVolumeRemovable
+    FsVolumeVirtual
+    FsVolumeTmpfs
+    FsVolumeOther
+.end
+
+struct FsVolume
+    id: FsVolumeId
+    name: String                # ex: "Macintosh HD", "rootfs"
+    kind: FsVolumeKind
+
+    # Point de montage principal
+    mount_path: FsPath
+
+    # File system (ex: "apfs", "ext4", "ntfs")
+    fs_type: String
+
+    # Capacités (tailles)
+    total_bytes: u64
+    free_bytes: u64
+    available_bytes: u64
+
+    # Tags
+    tags: coll.Vec<String>
+
+    extra: coll.HashMap<String, String>
+.end
+
+enum FsMountKind
+    FsMountHostLocal
+    FsMountNetwork
+    FsMountVirtual
+    FsMountOverlay
+    FsMountOther
+.end
+
+struct FsMount
+    id: FsMountId
+    kind: FsMountKind
+
+    # Volume associé
+    volume_id: FsVolumeId
+
+    # Point de montage
+    mount_point: FsPath
+
+    # Source (device, share, etc.)
+    source: String                  # ex: "/dev/disk1s1", "//server/share"
+
+    # Options de montage (ro/rw, noexec, etc.)
+    options: coll.Vec<String>
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Capacités d’accès / politiques
+# ---------------------------------------------------------------------------
+
+enum FsAccessKind
+    FsAccessRead
+    FsAccessWrite
+    FsAccessExecute
+    FsAccessList
+    FsAccessCreate
+    FsAccessDelete
+    FsAccessSymlink
+    FsAccessOther
+.end
+
+struct FsAccessRule
+    # Règle d’accès simplifiée (utilisée par les outils de bootstrap)
+    id: String
+
+    # Pattern de chemin (glob/logique/textuel)
+    path_pattern: String            # ex: "src/**", "target/**"
+
+    # Capacité autorisée ou interdite
+    allowed_access: coll.Vec<FsAccessKind>
+    denied_access: coll.Vec<FsAccessKind>
+
+    # Tags (ex: "readonly-src", "readwrite-target")
+    tags: coll.Vec<String>
+
+    notes: String
+    extra: coll.HashMap<String, String>
+.end
+
+struct FsAccessPolicy
+    name: String                    # ex: "bootstrap-default", "ci-strict"
+    description: String
+
+    # Règles d’accès appliquées (ordre important)
+    rules: coll.Vec<FsAccessRule>
+
+    # Mode strict : deny par défaut si aucune règle ne matche
+    deny_by_default: bool
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Listings / snapshots d’arborescence
+# ---------------------------------------------------------------------------
+
+struct FsDirectoryEntry
+    node_id: FsNodeId
+    name: String
+    kind: FsNodeKind
+
+    # True si entrée spéciale "." ou ".."
+    is_special: bool
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct FsDirectoryListing
+    directory_id: FsNodeId
+    path: FsPath
+
+    entries: coll.Vec<FsDirectoryEntry>
+
+    # Indicateur de troncature (listing partiel)
+    truncated: bool
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct FsSnapshotMetadata
+    id: FsSnapshotId
+    created_at: String            # ISO 8601
+    description: String
+
+    # Profil / contexte d’environnement
+    env_profile_name: String
+    toolchain_profile_id: String
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct FsSnapshot
+    meta: FsSnapshotMetadata
+
+    # Volumes et mounts observés
+    volumes: coll.Vec<FsVolume>
+    mounts: coll.Vec<FsMount>
+
+    # Nodes connus dans ce snapshot (subset du FS)
+    nodes: coll.Vec<FsNode>
+
+    # Listings pré-calculés (optionnels)
+    listings: coll.Vec<FsDirectoryListing>
+
+    # Politique d’accès active pour ce snapshot
+    access_policy: FsAccessPolicy
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Vues "workspace" (liées à BtHostEnvironment / BtWorkspace)
+# ---------------------------------------------------------------------------
+
+enum FsWorkspaceViewKind
+    FsWorkspaceBootstrap
+    FsWorkspaceLangStd
+    FsWorkspaceCompiler
+    FsWorkspaceExamples
+    FsWorkspaceOther
+.end
+
+struct FsWorkspaceRoot
+    # Root logique d’un workspace, en relation avec BtWorkspaceMetadata
+    workspace_id: env.BtEnvWorkspaceId
+    root_path: FsPath
+
+    # Node racine correspondant (si résolu)
+    root_node: FsNodeId
+
+    tags: coll.Vec<String>
+    extra: coll.HashMap<String, String>
+.end
+
+struct FsWorkspaceView
+    id: FsWorkspaceViewId
+    kind: FsWorkspaceViewKind
+
+    name: String                    # ex: "bootstrap workspace view"
+    description: String
+
+    # Root(s) de workspace
+    roots: coll.Vec<FsWorkspaceRoot>
+
+    # Paths importants (source, target, cache, scripts)
+    src_paths: coll.Vec<FsPath>
+    target_paths: coll.Vec<FsPath>
+    cache_paths: coll.Vec<FsPath>
+    scripts_paths: coll.Vec<FsPath>
+
+    # Politique d’accès par défaut pour cette vue
+    default_access_policy: FsAccessPolicy
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Modèle racine : système de fichiers hôte pour le bootstrap
+# ---------------------------------------------------------------------------
+
+struct BtFileSystemModel
+    # Snapshots disponibles (ex: avant/après un build, CI, etc.)
+    snapshots: coll.Vec<FsSnapshot>
+
+    # Vues workspace
+    workspace_views: coll.Vec<FsWorkspaceView>
+
+    # Politique globale par défaut
+    global_access_policy: FsAccessPolicy
+
+    # Données globales supplémentaires
+    extra: coll.HashMap<String, String>
+.end

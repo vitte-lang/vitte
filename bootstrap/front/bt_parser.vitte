@@ -1,0 +1,416 @@
+module vitte.bootstrap.front.bt_parser
+
+import std.collections as coll
+import vitte.bootstrap.front.bt_ast as ast
+import vitte.bootstrap.front.bt_lexer as lex
+import vitte.bootstrap.front.bt_diagnostics as diag
+
+# ============================================================================
+# Vitte bootstrap front-end – Modèle logique du parser (maximal, sans I/O)
+#
+# Objectifs :
+#   - Décrire les structures de données purement déclaratives pour :
+#       * la grammaire (non-terminaux, productions, précédence),
+#       * la configuration du parser (LL/LR, recovery, limites),
+#       * le résultat de parsing (CST, mapping vers l’AST, diagnostics),
+#       * les erreurs de parsing et la récupération d’erreurs.
+#   - Servir de contrat entre :
+#       * l’implémentation du parser,
+#       * les passes mid-end (résolution, typage),
+#       * les outils (dump de CST, visualisation, IDE, tests).
+#   - Ne contenir aucune logique de parsing, ni d’I/O, ni de formatage.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Symboles, non-terminaux, associativité, précédence
+# ---------------------------------------------------------------------------
+
+enum PsAssoc
+    Left
+    Right
+    NonAssoc
+.end
+
+struct PsPrecedenceLevel
+    level: u8                         # 0 = plus faible, n grand = plus fort
+    operators: coll.Vec<lex.LexTokenKind>  # opérateurs concernés
+    assoc: PsAssoc
+    notes: String
+.end
+
+enum PsSymbolKind
+    Terminal
+    NonTerminal
+    Epsilon
+    EndOfInput
+.end
+
+struct PsSymbol
+    kind: PsSymbolKind
+    name: String                      # ident symbolique, ex: "expr", "IDENT"
+    token_kind: lex.LexTokenKind      # pour Terminal
+    nonterminal_id: String            # pour NonTerminal (id logique)
+    notes: String
+.end
+
+struct PsNonTerminal
+    id: String                        # ex: "module", "item", "expr"
+    display_name: String              # nom lisible
+    description: String
+    is_start: bool                    # true si non-terminal de départ
+    precedence_hint: u8               # niveau de précédence éventuel
+    notes: String
+.end
+
+struct PsProductionId
+    raw: u32
+.end
+
+struct PsProduction
+    id: PsProductionId
+    lhs: String                       # id du non-terminal LHS
+    rhs: coll.Vec<PsSymbol>          # liste des symboles RHS
+    precedence_level: u8             # niveau utilisé pour cette règle, 0 = par défaut
+    assoc: PsAssoc
+    # Texte libre pour décrire le rôle de la règle (documentation)
+    description: String
+    # Hint textuel d’action (sans code) pour tooling (ex: "build AstExpr::Binary")
+    action_hint: String
+    notes: String
+.end
+
+struct PsGrammarMetadata
+    id: String                        # ex: "vitte-core-bootstrap"
+    edition: String                   # ex: "2025"
+    version: String                   # ex: "0.1.0"
+    description: String
+    created_at: String                # ISO 8601
+    updated_at: String
+    tags: coll.Vec<String>
+.end
+
+struct PsGrammar
+    metadata: PsGrammarMetadata
+    start_symbol: String              # id du non-terminal racine
+    nonterminals: coll.Vec<PsNonTerminal>
+    productions: coll.Vec<PsProduction>
+    precedence_levels: coll.Vec<PsPrecedenceLevel>
+
+    # Indexation et profils de récupération d’erreur
+    grammar_index: PsGrammarIndex
+    recovery_profiles: coll.Vec<PsRecoveryProfile>
+.end
+
+# ---------------------------------------------------------------------------
+# Indexation de la grammaire et profils de récupération d’erreur
+# ---------------------------------------------------------------------------
+
+struct PsGrammarIndex
+    # Indexation facultative pour accélérer la résolution dans le parser
+    nonterminal_index_by_id: coll.HashMap<String, u32>
+    productions_by_lhs: coll.HashMap<String, coll.Vec<PsProductionId>>
+    precedence_by_token: coll.HashMap<lex.LexTokenKind, u8>
+
+    notes: String
+.end
+
+enum PsRecoveryKind
+    SkipUntil          # ignorer jusqu’à un token de synchronisation
+    InsertToken        # insérer virtuellement un token
+    DeleteToken        # supprimer un token inattendu
+    ReplaceToken       # remplacer le token trouvé par un autre
+    CustomRecovery
+.end
+
+struct PsRecoveryRule
+    id: String                     # identifiant logique de la règle
+    nonterminal_id: String         # non-terminal / contexte ciblé (ex: "expr", "item")
+    kind: PsRecoveryKind
+
+    # Tokens de synchronisation (pour SkipUntil)
+    sync_tokens: coll.Vec<lex.LexTokenKind>
+
+    # Détails pour Insert/Delete/Replace (facultatif selon kind)
+    insert_token: lex.LexTokenKind
+    delete_token: lex.LexTokenKind
+    replace_from: lex.LexTokenKind
+    replace_to: lex.LexTokenKind
+
+    max_skip: u32                  # limite de tokens à sauter (0 = illimité)
+
+    message: String                # description lisible de la stratégie
+    notes: String
+.end
+
+struct PsRecoveryProfile
+    id: String                     # ex: "lenient", "strict", "ci"
+    description: String
+
+    rules: coll.Vec<PsRecoveryRule>
+.end
+
+# ---------------------------------------------------------------------------
+# Configuration du parser et options générales
+# ---------------------------------------------------------------------------
+
+enum PsParserAlgorithm
+    RecursiveDescent
+    Pratt
+    Ll
+    Lr
+    Lalr
+    Glr
+    Custom
+.end
+
+enum PsErrorRecoveryStrategy
+    PanicMode
+    PhraseLevel
+    GlobalBacktracking
+    NoRecovery
+    CustomRecovery
+.end
+
+struct PsParserConfig
+    algorithm: PsParserAlgorithm
+    error_recovery: PsErrorRecoveryStrategy
+
+    # Profondeurs / limites
+    max_recursion_depth: u32         # 0 = illimité (mais à utiliser avec prudence)
+    max_tokens: u32                  # 0 = illimité, sinon limite sur le flux de parsing
+    max_errors: u32                  # max d’erreurs avant arrêt
+
+    # Comportement sur les erreurs
+    treat_warnings_as_errors: bool
+    allow_incomplete_ast: bool       # true si un AST partiel est acceptable
+    enable_cst_build: bool           # true pour construire le CST détaillé
+    enable_ast_build: bool           # true pour construire l’AST (BtAst)
+
+    # Flags d’expérimentation
+    enable_pratt_for_expr: bool
+    enable_inline_error_nodes: bool  # nœuds d’erreur inline dans CET/AST
+
+    # Profils / configuration avancée
+    recovery_profile_id: String      # id logique d’un PsRecoveryProfile
+    enable_trace: bool               # true pour collecter un trace de parsing détaillé
+
+    # Données additionnelles/options spécifiques
+    options: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# CST (Concrete Syntax Tree)
+# ---------------------------------------------------------------------------
+
+struct PsNodeId
+    raw: u32
+.end
+
+enum PsNodeKind
+    TokenNode          # feuille : un token lexical
+    NonTerminalNode    # nœud syntaxique nommé (expr, item, etc.)
+    ListNode           # liste homogène (ex: items, paramètres)
+    ErrorNode          # placeholder pour une région fautive
+.end
+
+struct PsNode
+    id: PsNodeId
+    kind: PsNodeKind
+    span: ast.AstSpan
+
+    # Nom logique pour les NonTerminalNode/ListNode
+    symbol_name: String              # ex: "expr", "item_list"
+
+    # Références vers les enfants
+    children: coll.Vec<PsNodeId>
+
+    # Si c’est un TokenNode, lien vers le token
+    token: lex.LexTokenId
+
+    # Référence éventuelle vers un nœud AST construit à partir de ce nœud CST
+    ast_node: ast.AstNodeId
+
+    is_synthetic: bool               # true si ajouté par le parser (non présent textuellement)
+    notes: String
+.end
+
+struct PsTree
+    root: PsNodeId
+    nodes: coll.Vec<PsNode>
+.end
+
+# ---------------------------------------------------------------------------
+# Traces de parsing et statistiques
+# ---------------------------------------------------------------------------
+
+enum PsTraceEventKind
+    EnterRule
+    ExitRule
+    Shift
+    Reduce
+    Accept
+    ErrorEvent
+    CustomEvent
+.end
+
+struct PsTraceEvent
+    kind: PsTraceEventKind
+    timestamp_ns: u64               # horodatage approximatif, si disponible
+
+    # Contexte structural
+    node: PsNodeId                  # nœud CST concerné (si applicable)
+    token: lex.LexTokenId           # token concerné (si applicable)
+    nonterminal_id: String          # non-terminal impliqué
+    production_id: PsProductionId   # règle appliquée (pour Reduce, etc.)
+
+    message: String                 # description textuelle
+.end
+
+struct PsParseTrace
+    enabled: bool
+    events: coll.Vec<PsTraceEvent>
+.end
+
+struct PsParserStats
+    total_tokens: u32
+    tokens_consumed: u32
+    tokens_lookahead: u32
+
+    total_nonterminal_nodes: u32
+    total_list_nodes: u32
+    total_error_nodes: u32
+
+    max_recursion_depth_observed: u32
+
+    total_parse_time_ms: u64
+    cst_build_time_ms: u64
+    ast_build_time_ms: u64
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Erreurs de parsing
+# ---------------------------------------------------------------------------
+
+enum PsParseErrorKind
+    UnexpectedToken           # token inattendu
+    MissingToken              # token manquant
+    UnexpectedEndOfInput
+    InvalidSyntax
+    AmbiguousParse
+    RecursionLimitExceeded
+    TokenLimitExceeded
+    CustomParseError
+.end
+
+struct PsParseErrorId
+    raw: u32
+.end
+
+struct PsParseError
+    id: PsParseErrorId
+    kind: PsParseErrorKind
+
+    # Position principale
+    span: ast.AstSpan
+
+    # Token(s) en cause
+    found_token: lex.LexTokenId       # identifiant du token trouvé
+    expected_tokens: coll.Vec<lex.LexTokenKind>
+
+    # Message textuel (non formaté)
+    message: String
+
+    # Informations structurées additionnelles
+    details: coll.HashMap<String, String>
+
+    # Lien éventuel vers un diagnostic front-end dérivé
+    diag_id: diag.DiagId
+
+    # Flags de sévérité/use interne (le mapping final vers DiagSeverity
+    # se fait via les politiques de diagnostics).
+    is_recoverable: bool
+    is_fatal: bool
+.end
+
+struct PsParseErrorSummary
+    count_total: u32
+    count_recoverable: u32
+    count_fatal: u32
+    has_fatal: bool
+.end
+
+# ---------------------------------------------------------------------------
+# Résultat de parsing pour une unité de compilation
+# ---------------------------------------------------------------------------
+
+struct BtParserUnitMetadata
+    file_path: String                 # chemin logique du fichier
+    module_name: String               # nom logique du module
+    profile: String                   # profil/édition éventuel, ex: "core-2025"
+    notes: String
+.end
+
+struct BtParserUnit
+    # Métadonnées de l’unité
+    meta: BtParserUnitMetadata
+
+    # Entrée : source déjà lexée
+    source_file: lex.LexSourceFile
+    token_stream: lex.LexTokenStream
+
+    # Configuration utilisée pour le parser
+    config: PsParserConfig
+    grammar: PsGrammar
+
+    # Résultats structurés
+    cst: PsTree
+    ast: ast.BtAst
+
+    # Erreurs et diagnostics (front-end)
+    parse_errors: coll.Vec<PsParseError>
+    parse_error_summary: PsParseErrorSummary
+
+    diagnostics: diag.BtDiagnostics
+
+    # Indique si l’AST est complet, partiel ou inexploitable
+    is_ast_complete: bool
+    is_ast_partial: bool
+    is_ast_unusable: bool
+
+    # Statistiques et trace de parsing
+    stats: PsParserStats
+    trace: PsParseTrace
+
+    # Données additionnelles pour tooling/tests
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Résultat global pour un ensemble d’unités (bundle)
+# ---------------------------------------------------------------------------
+
+struct BtParserBundleSummary
+    units_total: u32
+    units_with_errors: u32
+    units_with_fatal_errors: u32
+
+    total_parse_errors: u32
+    total_fatal_errors: u32
+
+    # Indication globale d’échec/succès (pour runner/CI)
+    has_errors: bool
+    has_fatal_errors: bool
+.end
+
+struct BtParserBundle
+    units: coll.Vec<BtParserUnit>
+    summary: BtParserBundleSummary
+
+    # Map optionnelle file_path -> index dans units
+    unit_index_by_path: coll.HashMap<String, u32>
+
+    # Détails supplémentaires (clé/valeur) pour tooling
+    extra: coll.HashMap<String, String>
+.end

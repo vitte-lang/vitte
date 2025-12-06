@@ -1,0 +1,426 @@
+
+
+module vitte.bootstrap.cli.bt_colors
+
+import std.collections as coll
+import vitte.compiler.diagnostics as diag
+import vitte.bootstrap.cli.bt_args as bt_args
+
+# ============================================================================
+# Vitte bootstrap - CLI colors & themes (bt_colors)
+# Modèle logique ultra complet pour la configuration des couleurs CLI :
+#   - description des styles (fg/bg, attributs),
+#   - palettes et rôles (error, warning, info, prompt, path, etc.),
+#   - thèmes (clair, sombre, high-contrast),
+#   - profils de terminal (16/256/truecolor),
+#   - mapping vers les profils CLI (bt_args).
+#
+# Objectifs
+#   - Aucun parsing, aucune I/O, aucun accès terminal : uniquement des données.
+#   - Servir de contrat entre :
+#       * le parseur / driver CLI (bt_args, bt_cli),
+#       * les frontends interactifs (Vitte Studio, TUI),
+#       * les outils d’inspection ou de configuration.
+#   - Respect de la syntaxe Vitte : pas d’accolades, blocs terminés par `.end`.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Identifiants & noms
+# ----------------------------------------------------------------------------
+
+type BtColorThemeId            = i32
+type BtColorStyleId            = i32
+type BtColorRoleId             = i32
+type BtColorPaletteId          = i32
+type BtColorTerminalProfileId  = i32
+type BtColorProfileId          = i32
+type BtColorRoleMappingId      = i32
+type BtColorDiagMappingId      = i32
+
+struct BtColorName
+    id: i32
+    text: String
+    origin_span: diag.SpanId
+.end
+
+# ----------------------------------------------------------------------------
+# Support de couleurs & modèles de couleur
+# ----------------------------------------------------------------------------
+
+enum BtColorSupportLevel
+    | NoColor        # sortie brute, aucune séquence ANSI
+    | Basic16        # palette ANSI 16 couleurs
+    | Ansi256        # palette 256 couleurs
+    | Truecolor      # RGB 24 bits
+.end
+
+enum BtColorModel
+    | Default        # couleur par défaut du terminal
+    | Basic          # index 0..15
+    | Ansi256        # index 0..255
+    | Rgb            # RGB explicite
+.end
+
+struct BtColorBasic
+    index: i32       # 0..15
+.end
+
+struct BtColorAnsi256
+    index: i32       # 0..255
+.end
+
+struct BtColorRgb
+    r: u8
+    g: u8
+    b: u8
+.end
+
+union BtColorValuePayload
+    basic: BtColorBasic
+    ansi256: BtColorAnsi256
+    rgb: BtColorRgb
+.end
+
+struct BtColorValue
+    model: BtColorModel
+
+    # Si model == Default, le payload peut être ignoré
+    payload: BtColorValuePayload
+
+    # Indique si on doit hériter de la couleur actuelle au lieu d’appliquer
+    inherit: bool
+.end
+
+# ----------------------------------------------------------------------------
+# Attributs de style
+# ----------------------------------------------------------------------------
+
+struct BtColorAttributes
+    bold: bool
+    dim: bool
+    italic: bool
+    underline: bool
+    blink: bool
+    inverse: bool
+    hidden: bool
+    strikethrough: bool
+.end
+
+struct BtColorStyle
+    id: BtColorStyleId
+    name: BtColorName
+
+    has_fg: bool
+    fg: BtColorValue
+
+    has_bg: bool
+    bg: BtColorValue
+
+    attrs: BtColorAttributes
+
+    description: String
+.end
+
+# ----------------------------------------------------------------------------
+# Rôles & usages
+# ----------------------------------------------------------------------------
+
+enum BtColorRoleKind
+    | PrimaryText
+    | SecondaryText
+    | DimText
+    | Accent
+    | AccentStrong
+
+    | Prompt
+    | PromptSymbol
+    | Command
+    | Argument
+    | Path
+    | Url
+    | Number
+
+    | Header
+    | SubHeader
+    | SectionTitle
+    | Banner
+
+    | TableHeader
+    | TableBorder
+    | TableRowOdd
+    | TableRowEven
+
+    | DiagError
+    | DiagWarning
+    | DiagInfo
+    | DiagNote
+    | DiagHelp
+    | DiagDebug
+    | DiagTrace
+
+    | Success
+    | Warning
+    | Error
+    | Hint
+
+    | StatusOk
+    | StatusPending
+    | StatusFailed
+    | StatusSkipped
+
+    | CodeBlock
+    | CodeKeyword
+    | CodeType
+    | CodeString
+    | CodeNumber
+    | CodeComment
+
+    | CustomRole
+.end
+
+enum BtColorUsageContext
+    | UsageGeneral
+    | UsageDiagnostics
+    | UsagePrompt
+    | UsageListing
+    | UsageTable
+    | UsageCode
+    | UsageStatusLine
+    | UsageBanner
+    | UsageCustom
+.end
+
+struct BtColorRole
+    id: BtColorRoleId
+    name: BtColorName
+    kind: BtColorRoleKind
+
+    # Contextes d’utilisation typiques
+    usages: coll.Vec[BtColorUsageContext]
+
+    description: String
+.end
+
+struct BtColorRoleMapping
+    id: BtColorRoleMappingId
+    role: BtColorRoleId
+
+    # Styles principaux / de repli
+    primary_style: BtColorStyleId
+    secondary_style: BtColorStyleId
+    has_secondary_style: bool
+
+    fallback_style: BtColorStyleId
+    has_fallback_style: bool
+.end
+
+# ----------------------------------------------------------------------------
+# Palettes & thèmes
+# ----------------------------------------------------------------------------
+
+enum BtColorThemeKind
+    | ThemeDark
+    | ThemeLight
+    | ThemeHighContrast
+    | ThemeMonochrome
+    | ThemeCustom
+.end
+
+struct BtColorPaletteEntry
+    key: String          # ex: "blue", "accent", "error"
+    style: BtColorStyleId
+.end
+
+struct BtColorPalette
+    id: BtColorPaletteId
+    name: BtColorName
+
+    entries: coll.Vec[BtColorPaletteEntry]
+
+    description: String
+.end
+
+struct BtColorTheme
+    id: BtColorThemeId
+    name: BtColorName
+    kind: BtColorThemeKind
+
+    palette: BtColorPaletteId
+
+    # Mappings rôle → style dans ce thème
+    roles: coll.Vec[BtColorRoleMappingId]
+
+    # Indicateurs de sélection
+    is_default_for_dark: bool
+    is_default_for_light: bool
+    is_high_contrast: bool
+
+    description: String
+.end
+
+# ----------------------------------------------------------------------------
+# Mapping diagnostics ↔ couleurs
+# ----------------------------------------------------------------------------
+
+enum BtColorDiagSeverityKind
+    | DiagError
+    | DiagWarning
+    | DiagInfo
+    | DiagNote
+    | DiagHelp
+    | DiagDebug
+    | DiagTrace
+.end
+
+struct BtColorDiagMapping
+    id: BtColorDiagMappingId
+
+    severity: BtColorDiagSeverityKind
+
+    # Rôle et style préférés pour ce niveau
+    role: BtColorRoleId
+    style: BtColorStyleId
+.end
+
+# ----------------------------------------------------------------------------
+# Profils de terminal
+# ----------------------------------------------------------------------------
+
+struct BtColorTerminalProfile
+    id: BtColorTerminalProfileId
+    name: BtColorName
+
+    support_level: BtColorSupportLevel
+    max_colors: i32
+
+    supports_truecolor: bool
+    prefers_dark_background: bool
+
+    # Indique si ce profil est un choix par défaut
+    is_default: bool
+
+    description: String
+.end
+
+# ----------------------------------------------------------------------------
+# Profils de couleurs liés au CLI
+# ----------------------------------------------------------------------------
+
+enum BtColorProfileKind
+    | ColorProfileDefault
+    | ColorProfileDark
+    | ColorProfileLight
+    | ColorProfileHighContrast
+    | ColorProfileMonochrome
+    | ColorProfileCustom
+.end
+
+struct BtColorProfile
+    id: BtColorProfileId
+    name: BtColorName
+    kind: BtColorProfileKind
+
+    # Lien optionnel vers un profil CLI de haut niveau
+    cli_profile: bt_args.BtCliProfileId
+    has_cli_profile: bool
+
+    # Thème principal
+    theme: BtColorThemeId
+
+    # Thème de repli (ex: monochrome)
+    fallback_theme: BtColorThemeId
+    has_fallback_theme: bool
+
+    # Profils de terminal compatibles/preferés
+    terminal_profiles: coll.Vec[BtColorTerminalProfileId]
+
+    is_default: bool
+
+    description: String
+.end
+
+# ----------------------------------------------------------------------------
+# Mapping fin entre CLI et rôles de couleurs
+# ----------------------------------------------------------------------------
+
+struct BtColorCliBinding
+    # Commande CLI concernée
+    command_spec: bt_args.BtCliCommandSpecId
+    has_command_spec: bool
+
+    # Option CLI éventuelle
+    option_spec: bt_args.BtCliOptionSpecId
+    has_option_spec: bool
+
+    # Style / rôle à utiliser pour l’affichage
+    role: BtColorRoleId
+    style: BtColorStyleId
+.end
+
+# ----------------------------------------------------------------------------
+# Configuration globale des couleurs
+# ----------------------------------------------------------------------------
+
+struct BtColorConfig
+    # Styles de base
+    styles: coll.Vec[BtColorStyle]
+
+    # Rôles abstraits
+    roles: coll.Vec[BtColorRole]
+
+    # Palettes
+    palettes: coll.Vec[BtColorPalette]
+
+    # Thèmes
+    themes: coll.Vec[BtColorTheme]
+
+    # Mappings de rôles pour chaque thème
+    role_mappings: coll.Vec[BtColorRoleMapping]
+
+    # Mappings de diagnostics
+    diag_mappings: coll.Vec[BtColorDiagMapping]
+
+    # Profils de terminal
+    terminal_profiles: coll.Vec[BtColorTerminalProfile]
+
+    # Profils "utilisateur" ou "CLI"
+    color_profiles: coll.Vec[BtColorProfile]
+
+    # Anchors entre CLI (commandes/options) et rôles
+    cli_bindings: coll.Vec[BtColorCliBinding]
+.end
+
+# ----------------------------------------------------------------------------
+# Session de couleurs pour une exécution CLI
+# ----------------------------------------------------------------------------
+
+struct BtColorRuntimeHints
+    # Activation/désactivation globale de la couleur
+    enable_color: bool
+    force_monochrome: bool
+
+    # Préférences de qualité
+    prefer_truecolor: bool
+    prefer_ansi256: bool
+
+    # Mode "no TTY" (ex: redirection vers fichier)
+    assume_no_tty: bool
+.end
+
+struct BtColorSession
+    # Configuration globale (catalogue)
+    config: BtColorConfig
+
+    # Hints runtime observés/dérivés (capacité terminal, flags CLI)
+    runtime: BtColorRuntimeHints
+
+    # Profil et thème effectivement sélectionnés
+    active_profile: BtColorProfileId
+    has_active_profile: bool
+
+    active_theme: BtColorThemeId
+    has_active_theme: bool
+
+    detected_terminal_profile: BtColorTerminalProfileId
+    has_detected_terminal_profile: bool
+.end

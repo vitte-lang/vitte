@@ -1,0 +1,389 @@
+
+module std.collections.std_vec
+
+import std.collections as coll
+
+# ============================================================================
+# std.collections.std_vec – Modèle logique des vecteurs dynamiques
+# (maximal, déclaratif, sans I/O)
+#
+# Objectifs :
+#   - Décrire une famille de vecteurs/growable arrays génériques :
+#       * StdVec<T> (vecteur dynamique standard),
+#       * SmallVec<T> (optimisé pour petits n, avec inline buffer),
+#       * Slice/Trait-like views (StdSlice<T>, StdSliceMut<T>),
+#       * itérateurs (avant, arrière, par chunks),
+#       * configuration interne, stats, métadonnées.
+#   - Servir de contrat de données entre :
+#       * le compilateur / typechecker,
+#       * le runtime / VM (impl concrètes d’allocation/réallocation),
+#       * les outils (debugger, profiler, visualiseurs).
+#   - Ne contenir :
+#       * aucune fonction,
+#       * aucune logique d’algorithme ou d’allocation,
+#       * aucune I/O ni formatage.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Identifiants / genres de vecteur
+# ---------------------------------------------------------------------------
+
+struct StdVecId
+    raw: u64
+.end
+
+enum StdVecKind
+    StdVecKindVec
+    StdVecKindSmallVec
+    StdVecKindInlineOnly
+    StdVecKindOther
+.end
+
+enum StdVecBackendKind
+    StdVecBackendRuntimeBuiltin     # impl fournie par le runtime/VM
+    StdVecBackendNativeHost         # impl native (C/Rust) via FFI
+    StdVecBackendPureVitte          # impl pure Vitte
+    StdVecBackendExperimental
+    StdVecBackendOther
+.end
+
+# ---------------------------------------------------------------------------
+# Stratégie de capacité / croissance
+# ---------------------------------------------------------------------------
+
+enum StdVecGrowthStrategy
+    StdVecGrowthDouble              # capacity *= 2
+    StdVecGrowthFactor              # capacity *= factor
+    StdVecGrowthGeometric           # croissance géométrique
+    StdVecGrowthFixed               # pas de croissance auto
+    StdVecGrowthOther
+.end
+
+struct StdVecCapacityHint
+    # Capacité initiale suggérée
+    initial_capacity: u64
+
+    # Stratégie de croissance
+    growth_strategy: StdVecGrowthStrategy
+
+    # Facteur de croissance custom si StdVecGrowthFactor/Geometric
+    growth_factor_numerator: u32
+    growth_factor_denominator: u32
+
+    # Autoriser shrink_to_fit
+    allow_shrink: bool
+
+    # Capacité max suggérée (0 = illimitée)
+    max_capacity: u64
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Statistiques / métadonnées de vecteurs
+# ---------------------------------------------------------------------------
+
+struct StdVecStats
+    # Taille logique (len)
+    len: u64
+
+    # Capacité allouée
+    capacity: u64
+
+    # Nombre de reallocations
+    realloc_count: u64
+
+    # Nombre d’expansions (croissances de capacité)
+    grow_count: u64
+
+    # Nombre de rétrécissements
+    shrink_count: u64
+
+    # Approximations (profiling)
+    average_growth_factor: f64
+    max_observed_capacity: u64
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Métadonnées communes à tous les vecteurs
+# ---------------------------------------------------------------------------
+
+struct StdVecMeta
+    id: StdVecId
+
+    kind: StdVecKind
+    backend_kind: StdVecBackendKind
+
+    # Nom logique / debug (ex: "ast_nodes", "tokens", "instrs")
+    logical_name: String
+    debug_label: String
+
+    # Configuration de capacité
+    capacity_hint: StdVecCapacityHint
+
+    # Statistiques agrégées
+    stats: StdVecStats
+
+    # Flags de comportement
+    is_thread_safe: bool
+    is_shared: bool
+    is_read_only: bool
+
+    # Tags libres (profiling, logging, etc.)
+    tags: coll.Vec<String>
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Représentation StdVec<T> – vecteur dynamique standard
+# ---------------------------------------------------------------------------
+
+struct StdVecCore<T>
+    # Pointeur logique vers la mémoire des éléments
+    # (représentation abstraite, backend-specific dans le runtime)
+    data_ptr_repr: u64
+
+    # Taille logique
+    len: u64
+
+    # Capacité allouée
+    capacity: u64
+
+    # Alignement de T (en bytes)
+    align_of_t: u32
+
+    # Taille de T (en bytes)
+    size_of_t: u32
+
+    # Stratégie de capacité
+    capacity_hint: StdVecCapacityHint
+
+    # Stats internes
+    stats: StdVecStats
+
+    # Buffer logique pour débogage / introspection (optionnel)
+    debug_snapshot: coll.Vec<T>
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdVec<T>
+    meta: StdVecMeta
+    core: StdVecCore<T>
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# SmallVec<T> – vecteur avec buffer inline
+# ---------------------------------------------------------------------------
+
+struct StdSmallVecInlineMeta
+    # Capacité inline (nombre d’éléments pouvant résider sur la pile)
+    inline_capacity: u32
+
+    # True si la structure est actuellement en mode inline
+    is_inline: bool
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdSmallVecCore<T>
+    # Métadonnées inline
+    inline_meta: StdSmallVecInlineMeta
+
+    # Buffer inline logique (taille = inline_capacity max)
+    inline_buffer: coll.Vec<T>
+
+    # Buffer heap (si déborde le inline)
+    heap_buffer: coll.Vec<T>
+
+    # Taille logique
+    len: u64
+
+    # Capacité totale (inline + heap)
+    capacity: u64
+
+    # Stratégie de capacité
+    capacity_hint: StdVecCapacityHint
+
+    # Stats internes
+    stats: StdVecStats
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdSmallVec<T>
+    meta: StdVecMeta
+    core: StdSmallVecCore<T>
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Slices (vues immuables / mutables)
+# ---------------------------------------------------------------------------
+
+struct StdSliceMeta
+    # Longueur de la slice
+    len: u64
+
+    # Taille/alignment de T (copiés depuis le vecteur source)
+    size_of_t: u32
+    align_of_t: u32
+
+    # Référence logique vers un vecteur (ou autre propriétaire)
+    owner_vec_id: StdVecId
+
+    # Nom logique pour debug
+    debug_label: String
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdSliceCore<T>
+    # Pointeur logique vers la mémoire des éléments
+    data_ptr_repr: u64
+
+    # Offset (en nombre d’éléments) par rapport au début du propriétaire
+    offset: u64
+
+    # Longueur (en éléments)
+    len: u64
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdSlice<T>
+    meta: StdSliceMeta
+    core: StdSliceCore<T>
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdSliceMut<T>
+    meta: StdSliceMeta
+    core: StdSliceCore<T>
+
+    # Indicateur logique de mutabilité exclusive
+    has_unique_access: bool
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Itérateurs sur vecteurs / slices
+# ---------------------------------------------------------------------------
+
+enum StdVecIterKind
+    StdVecIterForward
+    StdVecIterBackward
+    StdVecIterChunks
+    StdVecIterChunksMut
+    StdVecIterOther
+.end
+
+struct StdVecIterState
+    # Indice courant dans [0, len)
+    index: u64
+
+    # Nombre d’éléments restants
+    remaining: u64
+
+    # Taille de chunk (si itérateur par chunks)
+    chunk_size: u64
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdVecIter<T>
+    kind: StdVecIterKind
+
+    # Référence logique vers le vecteur/slice
+    owner_vec_id: StdVecId
+
+    # Snapshot de longueur pour cet itérateur
+    len_snapshot: u64
+
+    # Core d’itération
+    state: StdVecIterState
+
+    # Buffer de debug optionnel (ex: dernier élément vu)
+    debug_last_item: coll.Vec<T>
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdSliceIter<T>
+    kind: StdVecIterKind
+
+    # Référence vers la slice
+    slice_meta: StdSliceMeta
+
+    state: StdVecIterState
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Vecteur inline-only (pile / buffers fixes)
+# ---------------------------------------------------------------------------
+
+struct StdInlineVecCore<T>
+    # Buffer unique, uniquement inline (pas de heap)
+    inline_buffer: coll.Vec<T>
+
+    # Capacité max (fixe)
+    capacity: u64
+
+    # Taille logique
+    len: u64
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdInlineVec<T>
+    meta: StdVecMeta
+    core: StdInlineVecCore<T>
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Entrées de registre / modèle global
+# ---------------------------------------------------------------------------
+
+struct StdVecRegistryEntry
+    id: StdVecId
+
+    kind: StdVecKind
+    backend_kind: StdVecBackendKind
+
+    logical_name: String
+
+    # Statistiques instantanées
+    stats: StdVecStats
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdVecRegistry
+    # Liste des vecteurs connus/trackés
+    vecs: coll.Vec<StdVecRegistryEntry>
+
+    # Index par logical_name
+    vec_id_by_name: coll.HashMap<String, StdVecId>
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdVecModel
+    # Registry global des vecteurs (pour introspection/debug)
+    registry: StdVecRegistry
+
+    # Données libres (extensibilité future)
+    extra: coll.HashMap<String, String]
+.end

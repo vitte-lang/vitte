@@ -1,0 +1,631 @@
+module vitte.bootstrap.host.bt_io
+
+import std.collections as coll
+import vitte.bootstrap.host.bt_env as env
+import vitte.bootstrap.host.bt_fs as fs
+import vitte.bootstrap.front.bt_span as span
+
+# ============================================================================
+# Vitte bootstrap host – Modèle logique des I/O & exécutions de commandes
+# (maximal, déclaratif, sans I/O)
+#
+# Objectifs :
+#   - Modéliser de manière purement déclarative :
+#       * les commandes (shell, outils, scripts) et leurs paramètres,
+#       * les sessions d’exécution (locales, CI, batch),
+#       * les flux d’E/S (stdin, stdout, stderr, fichiers, logs),
+#       * les tâches et pipelines de build/tests,
+#       * les journaux d’exécution (logs structurés),
+#       * les politiques de retry / timeouts.
+#   - Servir de contrat entre :
+#       * les scripts/bootstrap (shell, CI),
+#       * les outils Vitte (vittec, bt-runner, etc.),
+#       * la toolchain et l’IDE (visualisation d’exécutions, logs).
+#   - Ne contenir :
+#       * aucune fonction,
+#       * aucune logique d’exécution,
+#       * aucune I/O ni formatage.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Identifiants internes
+# ---------------------------------------------------------------------------
+
+struct IoCommandId
+    raw: u32
+.end
+
+struct IoTaskId
+    raw: u32
+.end
+
+struct IoSessionId
+    raw: u32
+.end
+
+struct IoStreamId
+    raw: u32
+.end
+
+struct IoLogId
+    raw: u32
+.end
+
+struct IoPipelineId
+    raw: u32
+.end
+
+struct IoStepId
+    raw: u32
+.end
+
+struct IoRunId
+    raw: u32
+.end
+
+# ---------------------------------------------------------------------------
+# Genres de commandes, streams, exits
+# ---------------------------------------------------------------------------
+
+enum IoCommandKind
+    IoShellCommand          # exécution via shell ("/bin/sh -c ...")
+    IoToolInvocation        # outil connu de la toolchain
+    IoScriptFile            # script disque (sh, bash, python, etc.)
+    IoBuiltin               # action "builtin" de l’orchestrateur
+    IoPipelineCommand       # commande générée pour une étape de pipeline
+    IoOtherCommand
+.end
+
+enum IoArgumentKind
+    IoArgRaw                # argument brut
+    IoArgPath               # argument représentant un chemin
+    IoArgEnvExpansion       # contient des expansions d’environnement
+    IoArgGlob               # pattern glob
+    IoArgPlaceholder        # placeholder à remplir (ex: "${OUT_DIR}")
+    IoArgOther
+.end
+
+enum IoStreamKind
+    IoStreamStdin
+    IoStreamStdout
+    IoStreamStderr
+    IoStreamFile
+    IoStreamVirtual
+    IoStreamLog
+    IoStreamOther
+.end
+
+enum IoEncoding
+    IoEncodingUtf8
+    IoEncodingBinary
+    IoEncodingOther
+.end
+
+enum IoExitKind
+    IoExitSuccess
+    IoExitError
+    IoExitSignal
+    IoExitTimeout
+    IoExitCanceled
+    IoExitUnknown
+.end
+
+enum IoLogLevel
+    IoLogTrace
+    IoLogDebug
+    IoLogInfo
+    IoLogWarn
+    IoLogError
+    IoLogFatal
+.end
+
+enum IoTaskStatus
+    IoTaskPending
+    IoTaskRunning
+    IoTaskSucceeded
+    IoTaskFailed
+    IoTaskCanceled
+    IoTaskSkipped
+.end
+
+enum IoPipelineStatus
+    IoPipelinePending
+    IoPipelineRunning
+    IoPipelineSucceeded
+    IoPipelineFailed
+    IoPipelineCanceled
+    IoPipelinePartialSuccess
+.end
+
+enum IoSessionKind
+    IoSessionInteractive
+    IoSessionBatch
+    IoSessionCiJob
+    IoSessionDaemon
+    IoSessionOther
+.end
+
+enum IoRetryStrategyKind
+    IoRetryNone
+    IoRetryFixedDelay
+    IoRetryExponentialBackoff
+    IoRetryCustom
+.end
+
+enum IoWorkingDirKind
+    IoWdCurrentProcess
+    IoWdWorkspaceRoot
+    IoWdCustomPath
+    IoWdToolchainRoot
+    IoWdTempDir
+    IoWdOther
+.end
+
+# ---------------------------------------------------------------------------
+# Arguments, environnement, répertoires de travail
+# ---------------------------------------------------------------------------
+
+struct IoArgument
+    kind: IoArgumentKind
+
+    raw_text: String                # texte tel qu’écrit dans la spec
+    evaluated_text: String          # forme "résolue" après expansions, si connue
+    is_quoted: bool                 # true si entouré de quotes dans la commande
+
+    # Chemin associé, si applicable (pour IoArgPath / IoArgGlob)
+    related_path: fs.FsPath
+
+    # Tags libres (ex: "source", "output", "flag", "profile")
+    tags: coll.Vec<String>
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IoEnvOverride
+    name: String
+    value: String
+
+    # true si l’on part de l’ENV hôte puis override, false si environnment "réduit"
+    inherit_system: bool
+
+    is_secret: bool             # true pour tokens, mots de passe
+    description: String
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IoWorkingDirectory
+    kind: IoWorkingDirKind
+
+    # Pour IoWdCustomPath, IoWdWorkspaceRoot, etc.
+    path: fs.FsPath
+
+    # Workspace logique associé (optionnel)
+    workspace_id: env.BtEnvWorkspaceId
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Spécification d’une commande
+# ---------------------------------------------------------------------------
+
+struct IoCommandSpec
+    id: IoCommandId
+    kind: IoCommandKind
+
+    logical_name: String            # nom logique (ex: "compile-core", "run-tests")
+    description: String
+
+    # Programme à exécuter
+    executable: String              # ex: "vittec", "sh", "bash"
+    arguments: coll.Vec<IoArgument>
+
+    # Environnement
+    env_overrides: coll.Vec<IoEnvOverride>
+
+    # Répertoire de travail
+    working_dir: IoWorkingDirectory
+
+    # Streams associés
+    stdin_stream: IoStreamId
+    stdout_stream: IoStreamId
+    stderr_stream: IoStreamId
+
+    # Contraintes
+    timeout_ms: u64                 # 0 = pas de timeout
+    allow_failure: bool             # true si un exit != 0 est acceptable
+    expected_exit_codes: coll.Vec<i32>
+
+    # Lien vers l’outillage / toolchain
+    preferred_tool_id: env.BtEnvToolId
+    toolchain_component_id: String
+
+    # Tags libres (ex: "build", "test", "lint", "bootstrap-stage0")
+    tags: coll.Vec<String>
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Streams et captures
+# ---------------------------------------------------------------------------
+
+struct IoStreamConfig
+    id: IoStreamId
+    kind: IoStreamKind
+
+    # Nom logique (ex: "compile-stdout", "ci-log")
+    logical_name: String
+
+    encoding: IoEncoding
+    line_buffered: bool
+    capture_enabled: bool
+    max_capture_bytes: u64          # 0 = illimité
+
+    # Redirection vers un fichier (si applicable)
+    target_path: fs.FsPath
+    append_to_file: bool
+
+    # Span de référence (ex: pour associer à un snippet de config)
+    span_id: span.BfSpanId
+
+    tags: coll.Vec<String>
+    extra: coll.HashMap<String, String>
+.end
+
+struct IoCapturedChunk
+    stream_id: IoStreamId
+
+    # Position dans le flux
+    offset_bytes: u64
+    length_bytes: u64
+
+    # Texte décodé (UTF-8) si applicable
+    text: String
+
+    # Span logique dans les fichiers de sortie (optionnel)
+    span_id: span.BfSpanId
+
+    # Timestamp approx (ns)
+    timestamp_ns: u64
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IoCapturedStream
+    stream_id: IoStreamId
+
+    chunks: coll.Vec<IoCapturedChunk>
+
+    total_bytes: u64
+    total_lines: u64
+
+    truncated: bool                 # true si capture tronquée (max_capture_bytes dépassé)
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Statut d’exit et exécution d’une commande
+# ---------------------------------------------------------------------------
+
+struct IoExitStatus
+    kind: IoExitKind
+
+    exit_code: i32                  # code de retour si applicable
+    signal: i32                     # signal si terminé par un signal, 0 sinon
+
+    # True si l’exécution a dépassé le timeout
+    timed_out: bool
+
+    # Messages d’erreur / informations
+    message: String
+    raw_status_text: String
+
+    # Timestamps / durées
+    started_at: String             # ISO 8601
+    finished_at: String            # ISO 8601
+    duration_ms: u64
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IoCommandRun
+    run_id: IoRunId
+    spec_id: IoCommandId
+
+    # Session d’exécution
+    session_id: IoSessionId
+
+    # Commande effective (après expansions et résolutions)
+    effective_executable: String
+    effective_arguments: coll.Vec<String>
+
+    # Répertoire de travail effectif
+    effective_working_dir: fs.FsPath
+
+    # ENV effectif (clé/valeur) pour cette exécution
+    effective_env: coll.HashMap<String, String>
+
+    # Streams capturés
+    streams: coll.Vec<IoCapturedStream>
+
+    # Statut final
+    exit_status: IoExitStatus
+
+    # Liens vers logs
+    primary_log_id: IoLogId
+    related_log_ids: coll.Vec<IoLogId>
+
+    # Tags et notes
+    tags: coll.Vec<String>
+    notes: String
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Journaux d’exécution (logs structurés)
+# ---------------------------------------------------------------------------
+
+struct IoLogField
+    key: String
+    value: String
+.end
+
+struct IoLogEntry
+    id: IoLogId
+
+    # Horodatage et niveau
+    timestamp_ns: u64
+    level: IoLogLevel
+
+    # Message principal
+    message: String
+
+    # Contexte structuré
+    fields: coll.Vec<IoLogField>
+
+    # Références croisées
+    session_id: IoSessionId
+    pipeline_id: IoPipelineId
+    task_id: IoTaskId
+    command_run_id: IoRunId
+    stream_id: IoStreamId
+
+    # Span logique (source ou log)
+    span_id: span.BfSpanId
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IoRunLog
+    entries: coll.Vec<IoLogEntry>
+
+    # Indexation facultative : timestamp → index, etc.
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Retry / politiques de répétition
+# ---------------------------------------------------------------------------
+
+struct IoRetryPolicy
+    strategy: IoRetryStrategyKind
+
+    max_attempts: u32          # 1 = pas de retry, >1 = plusieurs tentatives
+    initial_delay_ms: u64
+    max_delay_ms: u64
+    jitter_ms: u64
+
+    # Texte décrivant cette politique
+    description: String
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Tâches et steps de pipeline
+# ---------------------------------------------------------------------------
+
+struct IoTaskSpec
+    id: IoTaskId
+
+    name: String                # ex: "build-core", "run-tests-unit"
+    description: String
+
+    # Commande principale associée
+    command_spec_id: IoCommandId
+
+    # Politique de retry
+    retry_policy: IoRetryPolicy
+
+    # Conditions d’exécution (ex: "on: push", "if: branch == main")
+    conditions: coll.Vec<String>
+
+    # Profil d’environnement suggéré
+    preferred_env_profile: env.BtEnvProfileId
+
+    # Tags libres
+    tags: coll.Vec<String>
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IoTaskRun
+    run_id: IoRunId
+    task_id: IoTaskId
+
+    # Tentative (1..N)
+    attempt_index: u32
+
+    status: IoTaskStatus
+
+    # Commande sous-jacente
+    command_run: IoCommandRun
+
+    # Logs associés
+    log: IoRunLog
+
+    started_at: String
+    finished_at: String
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IoPipelineStep
+    id: IoStepId
+
+    name: String
+    description: String
+
+    # Tâche associée
+    task_id: IoTaskId
+
+    # Steps dont dépend celui-ci
+    dependencies: coll.Vec<IoStepId>
+
+    allow_parallel: bool
+    continue_on_failure: bool
+
+    condition: String           # ex: "always", "on-success", "on-failure"
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IoPipelineSpec
+    id: IoPipelineId
+
+    name: String
+    description: String
+
+    # Steps du pipeline
+    steps: coll.Vec<IoPipelineStep>
+
+    # Profil / workspace cibles
+    env_profile: env.BtEnvProfileId
+    workspace_id: env.BtEnvWorkspaceId
+
+    tags: coll.Vec<String>
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Exécution de pipelines
+# ---------------------------------------------------------------------------
+
+struct IoPipelineRunSummary
+    tasks_total: u32
+    tasks_succeeded: u32
+    tasks_failed: u32
+    tasks_canceled: u32
+    tasks_skipped: u32
+
+    status: IoPipelineStatus
+    has_errors: bool
+
+    started_at: String
+    finished_at: String
+    duration_ms: u64
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IoPipelineRun
+    run_id: IoRunId
+    pipeline_id: IoPipelineId
+
+    # Session d’exécution
+    session_id: IoSessionId
+
+    status: IoPipelineStatus
+
+    # Tâches exécutées dans ce pipeline
+    task_runs: coll.Vec<IoTaskRun>
+
+    summary: IoPipelineRunSummary
+
+    # Logs globaux du pipeline
+    log: IoRunLog
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Sessions I/O
+# ---------------------------------------------------------------------------
+
+struct IoSessionSummary
+    commands_total: u32
+    commands_succeeded: u32
+    commands_failed: u32
+    commands_canceled: u32
+
+    pipelines_total: u32
+    pipelines_succeeded: u32
+    pipelines_failed: u32
+    pipelines_canceled: u32
+
+    has_errors: bool
+
+    started_at: String
+    finished_at: String
+    duration_ms: u64
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IoSession
+    id: IoSessionId
+    kind: IoSessionKind
+
+    name: String                    # ex: "local-dev-session", "ci-linux-job-42"
+    description: String
+
+    # Vue workspace / environnement
+    env_profile: env.BtEnvProfileId
+    workspace_view_id: fs.FsWorkspaceViewId
+
+    # Snapshot logique de l’environnement hôte
+    host_env_snapshot_id: String    # id logique vers un BtHostEnvironment sérialisé
+
+    # Pipelines et commandes exécutés dans cette session
+    pipeline_runs: coll.Vec<IoPipelineRun>
+    command_runs: coll.Vec<IoCommandRun>
+
+    summary: IoSessionSummary
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Index et modèle racine I/O
+# ---------------------------------------------------------------------------
+
+struct IoIndex
+    # Index par nom
+    command_index_by_name: coll.HashMap<String, u32>
+    task_index_by_name: coll.HashMap<String, u32>
+    pipeline_index_by_name: coll.HashMap<String, u32>
+    session_index_by_name: coll.HashMap<String, u32>
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct BtIoModel
+    # Spécifications de base
+    commands: coll.Vec<IoCommandSpec>
+    tasks: coll.Vec<IoTaskSpec>
+    pipelines: coll.Vec<IoPipelineSpec>
+    streams: coll.Vec<IoStreamConfig>
+
+    # Exécutions observées
+    sessions: coll.Vec<IoSession>
+
+    # Index global
+    index: IoIndex
+
+    # Données globales libres
+    extra: coll.HashMap<String, String>
+.end

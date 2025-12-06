@@ -1,0 +1,196 @@
+
+
+{
+  // ==========================================================================
+  // VS Code – Tasks configuration for vitte-core
+  //
+  // Scope:
+  //   - Bootstrap scripts (stage0, stage1+stage2, clean, env),
+  //   - High-level build tasks for the Vitte toolchain (vittec, vitte-run),
+  //   - A smoke build for the mini_project test,
+  //   - Generic "custom Vitte command" runner.
+  //
+  // Notes:
+  //   - All commands are shell-based and assume a Unix-like environment.
+  //   - Paths and script names are aligned with the vitte-core workspace
+  //     layout you defined (scripts/bootstrap_stage0.sh, etc.).
+  //   - Tasks with labels:
+  //         "build vittec (debug)"
+  //         "build vittec (release)"
+  //         "build vitte-run (debug)"
+  //         "build mini_project (debug)"
+  //     are designed to match the `preLaunchTask` entries in `.vscode/launch.json`.
+  //     You can adjust the exact commands later without changing the labels.
+  // ==========================================================================
+  "version": "2.0.0",
+  "tasks": [
+    // ------------------------------------------------------------------------
+    // 0) Environment helper – source env_local.sh then print key vars
+    // ------------------------------------------------------------------------
+    {
+      "label": "env: show Vitte environment",
+      "type": "shell",
+      "command": "zsh",
+      "args": [
+        "-lc",
+        "source ./scripts/env_local.sh 2>/dev/null || true; echo \"VITTE_WORKSPACE_ROOT=$VITTE_WORKSPACE_ROOT\"; echo \"VITTE_BOOTSTRAP_ROOT=$VITTE_BOOTSTRAP_ROOT\""
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+
+    // ------------------------------------------------------------------------
+    // 1) Bootstrap primitive tasks (stage0, stage1+stage2, clean)
+    // ------------------------------------------------------------------------
+    {
+      "label": "bootstrap: stage0 (host tools)",
+      "type": "shell",
+      "command": "zsh",
+      "args": [
+        "-lc",
+        "./scripts/bootstrap_stage0.sh"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "bootstrap: stage1+stage2 (self-host compiler)",
+      "type": "shell",
+      "command": "zsh",
+      "args": [
+        "-lc",
+        "./scripts/self_host_stage1.sh"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "dependsOn": [
+        "bootstrap: stage0 (host tools)"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "bootstrap: clean",
+      "type": "shell",
+      "command": "zsh",
+      "args": [
+        "-lc",
+        "./scripts/clean.sh"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+
+    // ------------------------------------------------------------------------
+    // 2) High-level build tasks used by launch.json
+    //
+    //    These tasks are intentionally simple: they depend on bootstrap
+    //    and then optionally perform extra steps. You can replace the
+    //    `echo` placeholders by real commands once your compiler/runtime
+    //    binaries (`vittec`, `vitte-run`) are in place.
+    // ------------------------------------------------------------------------
+    {
+      "label": "build vittec (debug)",
+      "type": "shell",
+      "command": "zsh",
+      "args": [
+        "-lc",
+        "echo '[vitte] build vittec (debug): bootstrap stage1+stage2 already ensures the compiler is built in debug mode. Adjust this command when you wire your real build.'"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "dependsOn": [
+        "bootstrap: stage1+stage2 (self-host compiler)"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "build vittec (release)",
+      "type": "shell",
+      "command": "zsh",
+      "args": [
+        "-lc",
+        "echo '[vitte] build vittec (release): customize to run your release build pipeline (e.g. with extra flags or a dedicated script)."
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "build vitte-run (debug)",
+      "type": "shell",
+      "command": "zsh",
+      "args": [
+        "-lc",
+        "if [ -x \"${PWD}/target/debug/vitte-run\" ]; then echo '[vitte] vitte-run (debug) binary already present in target/debug.'; else echo '[vitte] TODO: build vitte-run (debug) – adjust this task to your runtime build.'; fi"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+
+    // ------------------------------------------------------------------------
+    // 3) Mini project – smoke build via vittec
+    // ------------------------------------------------------------------------
+    {
+      "label": "build mini_project (debug)",
+      "type": "shell",
+      "command": "zsh",
+      "args": [
+        "-lc",
+        "if [ ! -x \"${PWD}/target/debug/vittec\" ]; then echo '[vitte] vittec (debug) missing – running bootstrap: stage1+stage2 first...' && ./scripts/self_host_stage1.sh; fi; ./target/debug/vittec tests/data/mini_project/muffin.muf || echo '[vitte] Adjust this command once vittec CLI is ready.'"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "dependsOn": [
+        "bootstrap: stage0 (host tools)"
+      ],
+      "problemMatcher": []
+    },
+
+    // ------------------------------------------------------------------------
+    // 4) Generic "custom Vitte command" convenience task
+    // ------------------------------------------------------------------------
+    {
+      "label": "vitte: custom command",
+      "type": "shell",
+      "command": "zsh",
+      "args": [
+        "-lc",
+        "${input:vitteCustomCommand}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "vitteCustomCommand",
+      "type": "promptString",
+      "description": "Enter a Vitte-related command to run (e.g. ./target/debug/vittec file.vitte).",
+      "default": "./target/debug/vittec --help"
+    }
+  ]
+}

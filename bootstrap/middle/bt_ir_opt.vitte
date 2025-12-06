@@ -1,0 +1,498 @@
+module vitte.bootstrap.middle.bt_ir_opt
+
+import vitte.bootstrap.middle.bt_ir_builder as ir
+import vitte.bootstrap.front.bt_ast as ast
+import vitte.bootstrap.front.bt_diagnostics as diag
+
+# ============================================================================
+# Vitte compiler – IR Optimizer (MidIR)
+#
+# Objectifs :
+#   - définir une infrastructure d'optimisation pour l'IR intermédiaire
+#     défini dans vitte.compiler.ir_builder :
+#       * const folding
+#       * dead code elimination (DCE)
+#       * peephole simplifications
+#       * simplification minimale de CFG (bloc vide, branche triviale)
+#   - fournir une API stable :
+#       * optimize_ir_module(...)
+#       * passes séparées et statistiques détaillées.
+#
+# Remarques :
+#   - Le code ci-dessous structure les passes et les boucles de fixpoint.
+#   - De nombreux points sont marqués TODO : la mise en œuvre peut être
+#     raffinée progressivement sans casser l'API.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Options & statistiques de passes
+# ----------------------------------------------------------------------------
+
+pub struct IrOptOptions:
+    let enable_const_folding: Bool
+    let enable_dce: Bool
+    let enable_peephole: Bool
+    let enable_simplify_cfg: Bool
+    let max_iterations: u32
+.end
+
+pub fn ir_opt_default_options() -> IrOptOptions:
+    let opts = IrOptOptions(
+        enable_const_folding = true,
+        enable_dce = true,
+        enable_peephole = true,
+        enable_simplify_cfg = true,
+        max_iterations = 8u32
+    )
+    return opts
+.end
+
+pub struct IrOptPassStats:
+    let const_folding_applied: u32
+    let dce_removed_instrs: u32
+    let peephole_applied: u32
+    let cfg_simplified_blocks: u32
+.end
+
+fn ir_opt_pass_stats_zero() -> IrOptPassStats:
+    let s = IrOptPassStats(
+        const_folding_applied = 0u32,
+        dce_removed_instrs = 0u32,
+        peephole_applied = 0u32,
+        cfg_simplified_blocks = 0u32
+    )
+    return s
+.end
+
+pub struct IrOptStats:
+    let iterations: u32
+    let per_iteration: Vec<IrOptPassStats>
+.end
+
+fn ir_opt_stats_new() -> IrOptStats:
+    let vec = Vec<IrOptPassStats>::new()
+    let s = IrOptStats(
+        iterations = 0u32,
+        per_iteration = vec
+    )
+    return s
+.end
+
+# ----------------------------------------------------------------------------
+# Contexte d’optimisation
+# ----------------------------------------------------------------------------
+
+pub struct IrOptContext:
+    let opts: IrOptOptions
+    let diagnostics: diag.DiagnosticsSink
+    let module: ir.IrModule
+    let changed: Bool
+    let stats: IrOptStats
+.end
+
+fn IrOptContext.new(IrOptOptions opts, diag.DiagnosticsSink sink, ir.IrModule module) -> IrOptContext:
+    let stats = ir_opt_stats_new()
+    let ctx = IrOptContext(
+        opts = opts,
+        diagnostics = sink,
+        module = module,
+        changed = false,
+        stats = stats
+    )
+    return ctx
+.end
+
+fn IrOptContext.mark_changed(IrOptContext ctx) -> IrOptContext:
+    let updated = IrOptContext(
+        opts = ctx.opts,
+        diagnostics = ctx.diagnostics,
+        module = ctx.module,
+        changed = true,
+        stats = ctx.stats
+    )
+    return updated
+.end
+
+fn IrOptContext.with_module(IrOptContext ctx, ir.IrModule module) -> IrOptContext:
+    let updated = IrOptContext(
+        opts = ctx.opts,
+        diagnostics = ctx.diagnostics,
+        module = module,
+        changed = ctx.changed,
+        stats = ctx.stats
+    )
+    return updated
+.end
+
+fn IrOptContext.record_iteration_stats(IrOptContext ctx, IrOptPassStats iter_stats) -> IrOptContext:
+    let stats = ctx.stats
+    let list = stats.per_iteration
+
+    list.push(iter_stats)
+
+    let next_iter = stats.iterations + 1u32
+    let updated_stats = IrOptStats(
+        iterations = next_iter,
+        per_iteration = list
+    )
+
+    let updated = IrOptContext(
+        opts = ctx.opts,
+        diagnostics = ctx.diagnostics,
+        module = ctx.module,
+        changed = ctx.changed,
+        stats = updated_stats
+    )
+    return updated
+.end
+
+fn IrOptContext.report_note(IrOptContext ctx, String text) -> IrOptContext:
+    # Diagnostic générique sans Span précis (Span synthétique requis).
+    let fake_span = ast.Span(
+        file = "<ir-opt>",
+        start_line = 0u32,
+        start_col = 0u32,
+        end_line = 0u32,
+        end_col = 0u32
+    )
+    ctx.diagnostics.push_note(text, fake_span)
+    return ctx
+.end
+
+# ----------------------------------------------------------------------------
+# Résultat d’optimisation
+# ----------------------------------------------------------------------------
+
+pub struct IrOptResult:
+    let module: ir.IrModule
+    let diagnostics: diag.DiagnosticsSink
+    let stats: IrOptStats
+.end
+
+# ----------------------------------------------------------------------------
+# API principale
+# ----------------------------------------------------------------------------
+
+pub fn optimize_ir_module(IrOptOptions opts, diag.DiagnosticsSink sink, ir.IrModule module) -> IrOptResult:
+    let ctx0 = IrOptContext.new(opts, sink, module)
+    let ctx1 = run_fixed_point_optimizations(ctx0)
+
+    let result = IrOptResult(
+        module = ctx1.module,
+        diagnostics = ctx1.diagnostics,
+        stats = ctx1.stats
+    )
+    return result
+.end
+
+fn run_fixed_point_optimizations(IrOptContext ctx) -> IrOptContext:
+    let max_iter = ctx.opts.max_iterations
+    let iter = 0u32
+    let current = ctx
+
+    let out = run_fixed_point_loop(current, iter, max_iter)
+    return out
+.end
+
+fn run_fixed_point_loop(IrOptContext ctx, u32 iter, u32 max_iter) -> IrOptContext:
+    if iter >= max_iter:
+        return ctx
+    .end
+
+    # Réinitialiser le flag changed avant l’itération.
+    let reset_ctx = IrOptContext(
+        opts = ctx.opts,
+        diagnostics = ctx.diagnostics,
+        module = ctx.module,
+        changed = false,
+        stats = ctx.stats
+    )
+
+    let pair = run_single_optimization_round(reset_ctx)
+    let round_ctx = pair.0
+    let round_stats = pair.1
+
+    let merged_ctx = IrOptContext.record_iteration_stats(round_ctx, round_stats)
+
+    if not merged_ctx.changed:
+        # Point fixe atteint.
+        return merged_ctx
+    .end
+
+    let next_iter = iter + 1u32
+    let out = run_fixed_point_loop(merged_ctx, next_iter, max_iter)
+    return out
+.end
+
+fn run_single_optimization_round(IrOptContext ctx) -> (IrOptContext, IrOptPassStats):
+    let stats = ir_opt_pass_stats_zero()
+    let pair1 = run_pass_const_folding(ctx, stats)
+    let ctx1 = pair1.0
+    let stats1 = pair1.1
+
+    let pair2 = run_pass_peephole(ctx1, stats1)
+    let ctx2 = pair2.0
+    let stats2 = pair2.1
+
+    let pair3 = run_pass_dce(ctx2, stats2)
+    let ctx3 = pair3.0
+    let stats3 = pair3.1
+
+    let pair4 = run_pass_simplify_cfg(ctx3, stats3)
+    let ctx4 = pair4.0
+    let stats4 = pair4.1
+
+    return (ctx4, stats4)
+.end
+
+# ----------------------------------------------------------------------------
+# Passes par module / fonction
+# ----------------------------------------------------------------------------
+
+fn run_pass_const_folding(IrOptContext ctx, IrOptPassStats stats_in) -> (IrOptContext, IrOptPassStats):
+    if not ctx.opts.enable_const_folding:
+        return (ctx, stats_in)
+    .end
+
+    let pair = map_functions_with_stats(ctx, stats_in, const_folding_on_function)
+    return pair
+.end
+
+fn run_pass_dce(IrOptContext ctx, IrOptPassStats stats_in) -> (IrOptContext, IrOptPassStats):
+    if not ctx.opts.enable_dce:
+        return (ctx, stats_in)
+    .end
+
+    let pair = map_functions_with_stats(ctx, stats_in, dce_on_function)
+    return pair
+.end
+
+fn run_pass_peephole(IrOptContext ctx, IrOptPassStats stats_in) -> (IrOptContext, IrOptPassStats):
+    if not ctx.opts.enable_peephole:
+        return (ctx, stats_in)
+    .end
+
+    let pair = map_functions_with_stats(ctx, stats_in, peephole_on_function)
+    return pair
+.end
+
+fn run_pass_simplify_cfg(IrOptContext ctx, IrOptPassStats stats_in) -> (IrOptContext, IrOptPassStats):
+    if not ctx.opts.enable_simplify_cfg:
+        return (ctx, stats_in)
+    .end
+
+    let pair = map_functions_with_stats(ctx, stats_in, simplify_cfg_on_function)
+    return pair
+.end
+
+# ----------------------------------------------------------------------------
+# Infrastructure : appliquer une fonction (IrFunction -> IrFunction, stats)
+# sur toutes les fonctions du module IR.
+# ----------------------------------------------------------------------------
+
+fn map_functions_with_stats(
+    IrOptContext ctx,
+    IrOptPassStats stats_in,
+    fn(IrOptContext, ir.IrFunction, IrOptPassStats) -> (IrOptContext, ir.IrFunction, IrOptPassStats) fn_pass
+) -> (IrOptContext, IrOptPassStats):
+    let funcs = ctx.module.functions
+    let len = funcs.len()
+    let i = 0usize
+
+    let new_funcs = Vec<ir.IrFunction>::new()
+    let current_ctx = ctx
+    let current_stats = stats_in
+
+    let pair = map_functions_loop(current_ctx, current_stats, new_funcs, funcs, len, i, fn_pass)
+    let ctx_out = pair.0
+    let stats_out = pair.1
+    let final_funcs = pair.2
+
+    let new_module = ir.IrModule(
+        id = ctx_out.module.id,
+        name = ctx_out.module.name,
+        functions = final_funcs
+    )
+
+    let updated_ctx = IrOptContext.with_module(ctx_out, new_module)
+    return (updated_ctx, stats_out)
+.end
+
+fn map_functions_loop(
+    IrOptContext ctx,
+    IrOptPassStats stats_in,
+    Vec<ir.IrFunction> acc,
+    Vec<ir.IrFunction> funcs,
+    usize len,
+    usize start,
+    fn(IrOptContext, ir.IrFunction, IrOptPassStats) -> (IrOptContext, ir.IrFunction, IrOptPassStats) fn_pass
+) -> (IrOptContext, IrOptPassStats, Vec<ir.IrFunction>):
+    let i = start
+    let current_ctx = ctx
+    let current_stats = stats_in
+    let out_funcs = acc
+
+    while i < len:
+        let f = funcs[i]
+        let pair = fn_pass(current_ctx, f, current_stats)
+        let ctx2 = pair.0
+        let f2 = pair.1
+        let stats2 = pair.2
+
+        out_funcs.push(f2)
+
+        current_ctx = ctx2
+        current_stats = stats2
+        i = i + 1usize
+    .end
+
+    return (current_ctx, current_stats, out_funcs)
+.end
+
+# ----------------------------------------------------------------------------
+# Passes concrètes (par fonction)
+# ----------------------------------------------------------------------------
+
+fn const_folding_on_function(IrOptContext ctx, ir.IrFunction func, IrOptPassStats stats_in) -> (IrOptContext, ir.IrFunction, IrOptPassStats):
+    let blocks = func.blocks
+    let len = blocks.len()
+    let i = 0usize
+
+    let new_blocks = Vec<ir.IrBlock>::new()
+    let changed_any = false
+    let current_stats = stats_in
+
+    while i < len:
+        let blk = blocks[i]
+        let pair = const_folding_on_block(blk, current_stats)
+        let blk2 = pair.0
+        let stats2 = pair.1
+
+        if blk2.instrs.len() != blk.instrs.len():
+            # par simplicité, si une taille change on marque une modif
+            changed_any = true
+        .end
+
+        new_blocks.push(blk2)
+        current_stats = stats2
+        i = i + 1usize
+    .end
+
+    let f2 = ir.IrFunction(
+        id = func.id,
+        name = func.name,
+        params = func.params,
+        ret_type = func.ret_type,
+        blocks = new_blocks,
+        entry_block = func.entry_block
+    )
+
+    let next_ctx =
+        if changed_any:
+            IrOptContext.mark_changed(ctx)
+        else:
+            ctx
+        .end
+
+    return (next_ctx, f2, current_stats)
+.end
+
+fn dce_on_function(IrOptContext ctx, ir.IrFunction func, IrOptPassStats stats_in) -> (IrOptContext, ir.IrFunction, IrOptPassStats):
+    # TODO : implémentation réelle de DCE basée sur l’analyse d’usage des valeurs.
+    let out_func = func
+    let out_stats = stats_in
+    let out_ctx = ctx
+    return (out_ctx, out_func, out_stats)
+.end
+
+fn peephole_on_function(IrOptContext ctx, ir.IrFunction func, IrOptPassStats stats_in) -> (IrOptContext, ir.IrFunction, IrOptPassStats):
+    # TODO : implémentation réelle de peephole (ex: NOP chain, mov x,x, etc.).
+    let out_func = func
+    let out_stats = stats_in
+    let out_ctx = ctx
+    return (out_ctx, out_func, out_stats)
+.end
+
+fn simplify_cfg_on_function(IrOptContext ctx, ir.IrFunction func, IrOptPassStats stats_in) -> (IrOptContext, ir.IrFunction, IrOptPassStats):
+    # TODO : simplification de CFG (blocs vides, branches triviales, etc.).
+    let out_func = func
+    let out_stats = stats_in
+    let out_ctx = ctx
+    return (out_ctx, out_func, out_stats)
+.end
+
+# ----------------------------------------------------------------------------
+# Const folding par bloc (structure + quelques cas simples)
+# ----------------------------------------------------------------------------
+
+fn const_folding_on_block(ir.IrBlock block, IrOptPassStats stats_in) -> (ir.IrBlock, IrOptPassStats):
+    let instrs = block.instrs
+    let len = instrs.len()
+    let i = 0usize
+
+    let new_instrs = Vec<ir.IrInstr>::new()
+    let stats_out = stats_in
+
+    while i < len:
+        let inst = instrs[i]
+        let folded = try_fold_instruction(inst)
+
+        let is_folded =
+            folded.id == inst.id and
+            folded.kind == inst.kind
+        .end
+
+        if not is_folded:
+            let s = IrOptPassStats(
+                const_folding_applied = stats_out.const_folding_applied + 1u32,
+                dce_removed_instrs = stats_out.dce_removed_instrs,
+                peephole_applied = stats_out.peephole_applied,
+                cfg_simplified_blocks = stats_out.cfg_simplified_blocks
+            )
+            stats_out = s
+        .end
+
+        new_instrs.push(folded)
+        i = i + 1usize
+    .end
+
+    let blk2 = ir.IrBlock(
+        id = block.id,
+        name = block.name,
+        instrs = new_instrs
+    )
+    return (blk2, stats_out)
+.end
+
+fn try_fold_instruction(ir.IrInstr inst) -> ir.IrInstr:
+    # On ne traite que quelques motifs de base (ex: IrBinary sur constantes).
+
+    if inst.kind != ir.IrInstrKind::IrBinary:
+        return inst
+    .end
+
+    let ops = inst.operands
+    if ops.len() != 2usize:
+        return inst
+    .end
+
+    # TODO : dans un vrai IR, il faudrait consulter la table des valeurs pour
+    #        récupérer les définitions des opérandes. Ici on suppose que
+    #        l’instruction encode déjà suffisamment d’info ou on laisse un stub.
+
+    # Pour l’instant, on ne modifie rien (stub sécurisé).
+    return inst
+.end
+
+# ----------------------------------------------------------------------------
+# Notes :
+#   - La plupart des passes sont structurées mais encore "squelettiques".
+#   - Tu peux enrichir :
+#       * const_folding_on_block et try_fold_instruction,
+#       * dce_on_function (analyse d’usage),
+#       * peephole_on_function,
+#       * simplify_cfg_on_function.
+#   - L’API optimize_ir_module(...) et les structures de stats resteront stables,
+#     ce qui permet d’ajouter progressivement des optimisations sans casser
+#     les appels existants.
+# ----------------------------------------------------------------------------

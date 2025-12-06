@@ -1,0 +1,320 @@
+module vitte.bootstrap.front.bt_tokens
+
+import std.collections as coll
+import vitte.bootstrap.front.bt_lexer as lex
+
+# ============================================================================
+# Vitte bootstrap front-end – Modèle logique des tokens & tables lexicales
+# (maximal, déclaratif, sans I/O)
+#
+# Objectifs :
+#   - Centraliser une vue "normalisée" du système de tokens Vitte :
+#       * classification des tokens (catégorie, littéral, opérateur…),
+#       * métadonnées sur les mots-clés,
+#       * métadonnées sur les opérateurs et délimiteurs,
+#       * tables et index de tokens pour tooling, IDE, docs, tests.
+#   - Servir de contrat entre :
+#       * le lexer (`bt_lexer`),
+#       * le parser (`bt_parser`),
+#       * les outils (dump tokens, surlignage, auto-complétion),
+#       * les passes d’analyse statique (lints, stats).
+#   - Ne contenir :
+#       * aucune fonction,
+#       * aucune logique de lexing/parsing,
+#       * aucune I/O ni formatage.
+#
+# Remarque :
+#   - Ce module réutilise les enums `lex.LexTokenKind` et `lex.LexKeyword` et
+#     les enrichit avec des métadonnées structurées.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Catégories de tokens, littéraux et opérateurs
+# ---------------------------------------------------------------------------
+
+enum TkTokenCategory
+    TkIdentifier          # identifiants
+    TkKeyword             # mots-clés
+    TkLiteral             # littéraux
+    TkOperator            # opérateurs (arith, logique, etc.)
+    TkPunctuation         # ponctuation (virgules, points, etc.)
+    TkDelimiter           # délimiteurs (parenthèses, crochets, accolades)
+    TkStructural          # structure de fichier (DotEnd, etc.)
+    TkIndentation         # Indent / Dedent / NewlineToken logiques
+    TkComment             # commentaires (via trivia liés)
+    TkWhitespace          # espaces / tabs (via trivia liés)
+    TkDirective           # directives (canal spécifique)
+    TkEof                 # fin de fichier
+    TkOther
+.end
+
+enum TkLiteralCategory
+    TkLitInt
+    TkLitFloat
+    TkLitString
+    TkLitChar
+    TkLitBool
+    TkLitNull
+    TkLitOther
+.end
+
+enum TkOperatorCategory
+    TkOpArithmetic
+    TkOpLogical
+    TkOpComparison
+    TkOpAssignment
+    TkOpBitwise
+    TkOpShift
+    TkOpOther
+.end
+
+enum TkFixity
+    TkPrefix
+    TkInfix
+    TkPostfix
+    TkSurround
+    TkNoFixity
+.end
+
+enum TkAssoc
+    TkLeft
+    TkRight
+    TkNonAssoc
+.end
+
+# ---------------------------------------------------------------------------
+# Métadonnées par token kind
+# ---------------------------------------------------------------------------
+
+struct TkTokenClassInfo
+    # Kind lexical brut
+    token_kind: lex.LexTokenKind
+
+    # Classification générale
+    category: TkTokenCategory
+    literal_category: TkLiteralCategory
+    operator_category: TkOperatorCategory
+
+    # Opérateurs
+    fixity: TkFixity
+    precedence: u8
+    assoc: TkAssoc
+    is_associative: bool
+
+    # Mots-clés / identifiants
+    is_keyword_token: bool         # true si utilisé comme "Keyword"
+    can_be_contextual: bool       # true si mot-clé contextuel possible
+
+    # Représentation textuelle typique
+    display_name: String          # ex: "identifier", "integer literal", "+"
+    sample_lexeme: String         # ex: "foo", "42", "if"
+    description: String
+
+    # Tags libres pour tooling (ex: "binary-op", "comparison", "statement-start")
+    tags: coll.Vec<String>
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Métadonnées de mots-clés
+# ---------------------------------------------------------------------------
+
+enum TkKeywordGroup
+    KwgModule          # module, import, export
+    KwgUnit            # program, service, kernel, driver, tool, scenario, pipeline
+    KwgType            # struct, enum, union, type alias, etc.
+    KwgFn              # fn, inline, extern, async, unsafe
+    KwgVarConst        # let, const, static, mut
+    KwgControl         # if, else, while, for, loop, match, return, break, continue, in, as
+    KwgVisibility      # pub
+    KwgValues          # true, false, null
+    KwgPhraseDsl       # say, do, when, set
+    KwgOther
+.end
+
+struct TkKeywordInfo
+    keyword: lex.LexKeyword
+
+    # Texte canonique dans le langage (ex: "module")
+    canonical_text: String
+
+    # Groupe / famille de ce mot-clé
+    group: TkKeywordGroup
+
+    # Mots-clés réservés / contextuels
+    is_reserved: bool            # toujours mot-clé
+    is_contextual: bool          # mot-clé contextuel selon le contexte
+    is_future_reserved: bool     # actuellement non utilisé mais réservé
+
+    # Contextes d’utilisation
+    allowed_contexts: coll.Vec<String>    # ex: ["item", "expr", "type", "pattern"]
+
+    description: String
+    tags: coll.Vec<String>
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Métadonnées d’opérateurs
+# ---------------------------------------------------------------------------
+
+struct TkOperatorInfo
+    token_kind: lex.LexTokenKind
+
+    textual_repr: String             # ex: "+", "&&", "=="
+    category: TkOperatorCategory
+    fixity: TkFixity
+    precedence: u8
+    assoc: TkAssoc
+
+    # Utilisation typique (ex: "binary", "unary-prefix", "unary-postfix")
+    usage: String
+
+    # Description lisible
+    description: String
+
+    tags: coll.Vec<String>
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Métadonnées de délimiteurs
+# ---------------------------------------------------------------------------
+
+enum TkDelimiterKind
+    TkDelimParens     # (...)
+    TkDelimBrackets   # [...]
+    TkDelimBraces     # {...}
+    TkDelimAngle      # <...> (si utilisé)
+    TkDelimOther
+.end
+
+struct TkDelimiterInfo
+    open_kind: lex.LexTokenKind
+    close_kind: lex.LexTokenKind
+
+    kind: TkDelimiterKind
+    name: String                     # ex: "parentheses", "brackets"
+    can_nest: bool
+
+    # Exemple de forme complète
+    sample: String                   # ex: "( ... )"
+
+    tags: coll.Vec<String>
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Tables globales de tokens (métadonnées statiques)
+# ---------------------------------------------------------------------------
+
+struct TkTokenTables
+    # Métadonnées par token kind
+    token_classes: coll.Vec<TkTokenClassInfo>
+
+    # Métadonnées par mot-clé
+    keyword_infos: coll.Vec<TkKeywordInfo>
+
+    # Métadonnées d’opérateurs
+    operator_infos: coll.Vec<TkOperatorInfo>
+
+    # Métadonnées de délimiteurs
+    delimiter_infos: coll.Vec<TkDelimiterInfo>
+
+    # Indexation rapide (clé = nom symbolique du kind/keyword)
+    token_class_index_by_kind_name: coll.HashMap<String, u32>
+    keyword_info_index_by_text: coll.HashMap<String, u32>
+    operator_info_index_by_repr: coll.HashMap<String, u32>
+    delimiter_index_by_open_repr: coll.HashMap<String, u32>
+    delimiter_index_by_close_repr: coll.HashMap<String, u32>
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Statistiques de tokens pour un fichier
+# ---------------------------------------------------------------------------
+
+struct TkTokenFileSummary
+    total_tokens: u32
+    total_trivia: u32
+
+    count_identifiers: u32
+    count_keywords: u32
+    count_literals: u32
+    count_operators: u32
+    count_punctuation: u32
+    count_delimiters: u32
+    count_structural: u32
+    count_indentation: u32
+
+    # Comptage agrégé par catégorie (clé = nom de catégorie)
+    count_by_category: coll.HashMap<String, u32>
+
+    # Comptage par mot-clé texte canonique
+    count_by_keyword_text: coll.HashMap<String, u32>
+
+    # Indicateur d’erreurs lexicales/problèmes graves sur ce flux
+    has_lex_errors: bool
+.end
+
+struct TkTokenFileInfo
+    file_path: String
+    display_name: String
+
+    # Snapshot du flux de tokens produit par le lexer pour ce fichier
+    token_stream: lex.LexTokenStream
+
+    # Résumé/statistiques
+    summary: TkTokenFileSummary
+
+    # Données additionnelles (ex: profil d’édition, tags, etc.)
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Statistiques globales pour un ensemble de fichiers
+# ---------------------------------------------------------------------------
+
+struct TkTokenGlobalSummary
+    total_files: u32
+    total_tokens: u32
+    total_trivia: u32
+
+    total_identifiers: u32
+    total_keywords: u32
+    total_literals: u32
+    total_operators: u32
+    total_punctuation: u32
+    total_delimiters: u32
+    total_structural: u32
+    total_indentation: u32
+
+    # Comptage agrégé par catégorie
+    count_by_category: coll.HashMap<String, u32>
+
+    # Comptage agrégé par mot-clé texte canonique
+    count_by_keyword_text: coll.HashMap<String, u32>
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Modèle racine : tokens + tables + stats
+# ---------------------------------------------------------------------------
+
+struct BtTokenModel
+    # Tables globales de métadonnées (token/keyword/opérateurs/délimiteurs)
+    tables: TkTokenTables
+
+    # Fichiers analysés et leurs flux de tokens
+    files: coll.Vec<TkTokenFileInfo>
+
+    # Statistiques globales
+    global_summary: TkTokenGlobalSummary
+
+    # Données libres pour tooling/CI/IDE/docs
+    extra: coll.HashMap<String, String>
+.end

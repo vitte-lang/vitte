@@ -1,5 +1,5 @@
 // =============================================================================
-// Vitte core grammar (Pest) — without Muffin manifests
+// Vitte core grammar (Pest) — Vitte MVP 2025 (sans manifests Muffin)
 // =============================================================================
 
 // Whitespace & comments -------------------------------------------------------
@@ -26,17 +26,15 @@ keyword = _{
     | "import"
     | "export"
     | "program" | "service" | "kernel" | "driver" | "tool" | "scenario" | "pipeline"
-    | "struct" | "union" | "enum" | "typedef" | "inline" | "fn"
-    | "extern" | "static" | "sizeof" | "alignof"
-    | "let" | "const"
+    | "struct" | "union" | "enum" | "type" | "fn"
+    | "let" | "const" | "mut"
     | "if" | "elif" | "else" | "while" | "for" | "in" | "match"
     | "break" | "continue" | "return"
     | "and" | "or" | "not"
-    | "true" | "false" | "null"
+    | "true" | "false"
     | "as" | "all"
-    | "volatile" | "restrict"
     // Phrase syntax keywords
-    | "mod" | "use" | "type" | "field" | "scn" | "prog"
+    | "mod" | "use" | "field" | "scn" | "prog"
     | "set" | "say" | "do" | "ret"
     | "when" | "loop" | "from" | "to" | "step"
 }
@@ -113,7 +111,7 @@ type_declaration = _{
       struct_declaration
     | union_declaration
     | enum_declaration
-    | typedef_declaration
+    | type_alias_declaration
 }
 
 struct_declaration = {
@@ -129,7 +127,7 @@ type_body = {
 }
 
 field_declaration = {
-    "let" ~ WS1 ~ identifier ~ WS* ~ ":" ~ WS* ~ type_expression
+    identifier ~ WS* ~ ":" ~ WS* ~ type_expression
         ~ (WS* ~ "=" ~ WS* ~ expression)?
 }
 
@@ -142,11 +140,19 @@ enum_body = {
 }
 
 enum_entry = {
-    identifier ~ (WS* ~ "=" ~ WS* ~ expression)? ~ WS*
+    identifier ~ (WS* ~ "(" ~ WS* ~ enum_payload? ~ WS* ~ ")")? ~ WS*
 }
 
-typedef_declaration = {
-    "typedef" ~ WS1 ~ type_expression ~ WS1 ~ identifier
+enum_payload = {
+    enum_payload_field ~ (WS* ~ "," ~ WS* ~ enum_payload_field)*
+}
+
+enum_payload_field = {
+    identifier ~ WS* ~ ":" ~ WS* ~ type_expression
+}
+
+type_alias_declaration = {
+    "type" ~ WS1 ~ identifier ~ WS* ~ "=" ~ WS* ~ type_expression
 }
 
 // Scenarios & functions -------------------------------------------------------
@@ -156,36 +162,26 @@ scenario_declaration = {
 }
 
 function_declaration = {
-    storage_specifier? ~ WS* ~ "inline"? ~ WS* ~ "fn" ~ WS1 ~ identifier
+    "fn" ~ WS1 ~ identifier
         ~ WS* ~ "(" ~ WS* ~ parameter_list? ~ WS* ~ ")"
         ~ (WS* ~ "->" ~ WS* ~ type_expression)?
         ~ WS* ~ block
 }
 
-storage_specifier = { "extern" | "static" }
-
 parameter_list = { parameter ~ (WS* ~ "," ~ WS* ~ parameter)* }
 
-parameter = { type_expression ~ WS1 ~ identifier }
+parameter = { identifier ~ WS* ~ ":" ~ WS* ~ type_expression }
 
 // Type expressions ------------------------------------------------------------
 
 type_expression = {
-    type_qualifier* ~ type_name ~ (pointer_modifier_or_array)* ~ function_pointer_suffix?
+    type_name ~ (WS* ~ type_argument_list)?
 }
-
-type_qualifier = { "const" | "volatile" | "restrict" }
 
 type_name = { identifier ~ (WS* ~ "." ~ WS* ~ identifier)* }
 
-pointer_modifier_or_array = { pointer_modifier | array_modifier }
-
-pointer_modifier = { "*" | "&" }
-
-array_modifier = { "[" ~ WS* ~ expression? ~ WS* ~ "]" }
-
-function_pointer_suffix = {
-    "(" ~ WS* ~ parameter_list? ~ WS* ~ ")"
+type_argument_list = {
+    "[" ~ WS* ~ type_expression ~ (WS* ~ "," ~ WS* ~ type_expression)* ~ WS* ~ "]"
 }
 
 // Entry points ----------------------------------------------------------------
@@ -218,19 +214,20 @@ statement = _{
 // Declarations & assignment ---------------------------------------------------
 
 declaration = _{
-      "let"   ~ WS1 ~ identifier ~ WS* ~ "=" ~ WS* ~ expression
-    | "const" ~ WS1 ~ identifier ~ WS* ~ "=" ~ WS* ~ expression
+      "let" ~ WS1 ~ "mut"? ~ WS1? ~ identifier ~ (WS* ~ ":" ~ WS* ~ type_expression)?
+            ~ WS* ~ "=" ~ WS* ~ expression
+    | "const" ~ WS1 ~ identifier ~ (WS* ~ ":" ~ WS* ~ type_expression)?
+            ~ WS* ~ "=" ~ WS* ~ expression
 }
 
 assignment = {
     assignable ~ WS* ~ assignment_operator ~ WS* ~ expression
 }
 
-assignable = { target }
+assignable = { postfix_expression }
 
 assignment_operator = {
       "="  | "+=" | "-=" | "*=" | "/="
-    | "&=" | "|=" | "^=" | "<<=" | ">>="
 }
 
 expression_statement = { expression }
@@ -269,17 +266,23 @@ match_arm = {
 pattern = _{
       "_"
     | literal
+    | variant_pattern
     | identifier
     | pattern_tuple
-    | pattern_list
 }
+
+variant_pattern = {
+    variant_path ~ (WS* ~ "(" ~ WS* ~ pattern_payload? ~ WS* ~ ")")?
+}
+
+pattern_payload = {
+    pattern ~ (WS* ~ "," ~ WS* ~ pattern)*
+}
+
+variant_path = { type_expression ~ WS* ~ "::" ~ WS* ~ identifier }
 
 pattern_tuple = {
     "(" ~ WS* ~ pattern ~ (WS* ~ "," ~ WS* ~ pattern)* ~ WS* ~ ")"
-}
-
-pattern_list = {
-    "[" ~ WS* ~ pattern? ~ (WS* ~ "," ~ WS* ~ pattern)* ~ WS* ~ "]"
 }
 
 // Jumps & return --------------------------------------------------------------
@@ -301,7 +304,7 @@ unary_expression = {
     unary_operator* ~ postfix_expression
 }
 
-unary_operator = { "-" | "not" | "&" | "*" | "~" }
+unary_operator = { "-" | "not" }
 
 postfix_expression = {
     primary_expression ~ postfix_op*
@@ -310,19 +313,27 @@ postfix_expression = {
 postfix_op = _{
       WS* ~ "."  ~ WS* ~ identifier
     | WS* ~ "["  ~ WS* ~ expression ~ WS* ~ "]"
-    | WS* ~ "->" ~ WS* ~ identifier
     | WS* ~ "("  ~ WS* ~ argument_list? ~ WS* ~ ")"
 }
 
 primary_expression = _{
       literal
-    | "null"
-    | sizeof_expression
-    | alignof_expression
-    | map_expression
-    | list_expression
+    | struct_literal
+    | enum_constructor
     | "(" ~ WS* ~ expression ~ WS* ~ ")"
     | identifier
+}
+
+struct_literal = {
+    type_expression ~ WS* ~ "{" ~ WS* ~ struct_literal_field ~ (WS* ~ "," ~ WS* ~ struct_literal_field)* ~ WS* ~ "}"
+}
+
+struct_literal_field = {
+    identifier ~ WS* ~ "=" ~ WS* ~ expression
+}
+
+enum_constructor = {
+    variant_path ~ (WS* ~ "(" ~ WS* ~ argument_list? ~ WS* ~ ")")?
 }
 
 argument_list = {
@@ -333,28 +344,6 @@ binary_operator = {
       "+" | "-" | "*" | "/" | "%"
     | "==" | "!=" | "<" | "<=" | ">" | ">="
     | "and" | "or"
-    | "&" | "|" | "^" | "<<" | ">>"
-    | "|>"      // pipeline operator
-}
-
-sizeof_expression = {
-    "sizeof" ~ WS* ~ "(" ~ WS* ~ type_expression ~ WS* ~ ")"
-}
-
-alignof_expression = {
-    "alignof" ~ WS* ~ "(" ~ WS* ~ type_expression ~ WS* ~ ")"
-}
-
-list_expression = {
-    "[" ~ WS* ~ expression? ~ (WS* ~ "," ~ WS* ~ expression)* ~ WS* ~ "]"
-}
-
-map_expression = {
-    "[" ~ WS* ~ map_entry? ~ (WS* ~ "," ~ WS* ~ map_entry)* ~ WS* ~ "]"
-}
-
-map_entry = {
-    expression ~ WS* ~ ":" ~ WS* ~ expression
 }
 
 // =============================================================================

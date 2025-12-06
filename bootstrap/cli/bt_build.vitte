@@ -1,0 +1,247 @@
+module vitte.compiler.cli.lc_build
+
+import vitte.compiler.cli.lc_common as lc_common
+import vitte.compiler.build.engine as engine
+import vitte.compiler.build.muffin as build_muffin
+import vitte.runtime.env as env
+
+# ============================================================================
+# lc-build — frontend de build du compilateur Vitte
+#
+# Rôle :
+#   - point d'entrée pour la sous-commande "lc-build" ;
+#   - parse les arguments de ligne de commande ;
+#   - configure le profil, le manifest, le parallélisme, etc. ;
+#   - délègue l'exécution au moteur de build.
+#
+# Syntaxe conforme à la grammaire Vitte :
+#   - blocs avec ":" + indentation + ".end"
+#   - pas d'accolades pour le contrôle de flux ou les types.
+# ============================================================================
+const EXIT_OK = 0
+const EXIT_FAIL = 1
+const EXIT_USAGE = 2
+
+const DEFAULT_MANIFEST = "build.muf"
+const DEFAULT_PROFILE  = "debug"    # ou "release"
+const DEFAULT_TARGET   = "host"
+const DEFAULT_EMIT     = "bin"      # ast, ir, asm, bin
+const DEFAULT_OUT_DIR  = "./build/out"
+
+const CMD_BUILD = "build"
+const CMD_CHECK = "check"
+const CMD_CLEAN = "clean"
+
+# ----------------------------------------------------------------------------
+# Fonction principale : lc_build_main
+# ----------------------------------------------------------------------------
+
+fn lc_build_main(String[] argv) -> Int:
+    # Valeurs par défaut.
+    let manifest_path = DEFAULT_MANIFEST
+    let profile = DEFAULT_PROFILE
+    let subcommand = CMD_BUILD
+    let jobs = 0
+    let verbose = false
+    let dry_run = false
+    let watch = false
+    let timings = false
+    let color_mode = "auto"
+    let target = DEFAULT_TARGET
+    let out_dir = DEFAULT_OUT_DIR
+    let emit = DEFAULT_EMIT
+    let seen_manifest = false
+
+    # Parcours des arguments.
+    for raw in argv:
+        if (raw == "--help") or (raw == "-h"):
+            print_help()
+            return EXIT_OK
+        .end
+
+        if (raw == "--version") or (raw == "-V"):
+            print_version()
+            return EXIT_OK
+        .end
+
+        if raw == "--release":
+            profile = "release"
+            continue
+        .end
+
+        if lc_common.starts_with(raw, "--profile="):
+            profile = lc_common.after_prefix(raw, "--profile=")
+            continue
+        .end
+
+        if raw == "--debug":
+            profile = "debug"
+            continue
+        .end
+
+        if lc_common.starts_with(raw, "--target="):
+            target = lc_common.after_prefix(raw, "--target=")
+            continue
+        .end
+
+        if raw == "--dry-run":
+            dry_run = true
+            continue
+        .end
+
+        if raw == "--watch":
+            watch = true
+            continue
+        .end
+
+        if raw == "--timings":
+            timings = true
+            continue
+        .end
+
+        if (raw == "--verbose") or (raw == "-v"):
+            verbose = true
+            continue
+        .end
+
+        if lc_common.starts_with(raw, "--color="):
+            color_mode = lc_common.after_prefix(raw, "--color=")
+            continue
+        .end
+
+        if raw == "--color":
+            color_mode = "always"
+            continue
+        .end
+
+        if raw == "--no-color":
+            color_mode = "never"
+            continue
+        .end
+
+        if lc_common.starts_with(raw, "--out-dir="):
+            out_dir = lc_common.after_prefix(raw, "--out-dir=")
+            continue
+        .end
+
+        if lc_common.starts_with(raw, "--emit="):
+            emit = lc_common.after_prefix(raw, "--emit=")
+            continue
+        .end
+
+        if lc_common.starts_with(raw, "--manifest="):
+            manifest_path = lc_common.after_prefix(raw, "--manifest=")
+            seen_manifest = true
+            continue
+        .end
+
+        if lc_common.starts_with(raw, "--jobs=") or lc_common.starts_with(raw, "-j="):
+            let value = lc_common.after_last_char(raw, "=")
+            jobs = lc_common.parse_int(value, 0)
+            continue
+        .end
+
+        if (raw == CMD_BUILD) or (raw == CMD_CHECK) or (raw == CMD_CLEAN):
+            # Dernière sous-commande rencontrée gagne.
+            subcommand = raw
+            continue
+        .end
+
+        # Premier argument inconnu : manifest implicite,
+        # les suivants : avertissement.
+        if not seen_manifest:
+            manifest_path = raw
+            seen_manifest = true
+        .end
+        if seen_manifest and (manifest_path != raw):
+            lc_common.print_warning("ignoring unknown argument:")
+            lc_common.print_warning(raw)
+        .end
+    .end
+
+    if watch:
+        lc_common.print_line("watch: re-run on changes (stub, no file watcher available)")
+    .end
+
+    # Chargement du manifest Muffin.
+    let manifest = build_muffin.load_manifest(manifest_path)
+
+    # Dispatch vers le moteur de build.
+    if subcommand == CMD_CLEAN:
+        let ok = engine.run_clean(manifest, profile, jobs, verbose, dry_run)
+        if not ok:
+            return EXIT_FAIL
+        .end
+        return EXIT_OK
+    .end
+
+    if subcommand == CMD_CHECK:
+        let ok = engine.run_check(manifest, profile, jobs, verbose)
+        if not ok:
+            return EXIT_FAIL
+        .end
+        return EXIT_OK
+    .end
+
+    # Par défaut : build.
+    let ok = engine.run_build(manifest, profile, jobs, verbose, dry_run)
+    if not ok:
+        return EXIT_FAIL
+    .end
+
+    if verbose or timings:
+        lc_common.print_line("timings (stub): parse=0ms typecheck=0ms codegen=0ms")
+    .end
+
+    if verbose:
+        lc_common.print_line("profile=" + profile + ", target=" + target + ", emit=" + emit + ", out-dir=" + out_dir + ", color=" + color_mode)
+    .end
+    return EXIT_OK
+.end
+
+# ----------------------------------------------------------------------------
+# Aide & version
+# ----------------------------------------------------------------------------
+
+fn print_help():
+    lc_common.print_line("lc-build - Vitte language compiler build frontend")
+    lc_common.print_line("")
+    lc_common.print_line("Usage:")
+    lc_common.print_line("  lc-build [subcommand] [options] [path/to/manifest.muf]")
+    lc_common.print_line("")
+    lc_common.print_line("Subcommands:")
+    lc_common.print_line("  build      Compile sources and produce outputs")
+    lc_common.print_line("  check      Type-check only, no outputs")
+    lc_common.print_line("  clean      Remove build artifacts")
+    lc_common.print_line("")
+    lc_common.print_line("Options:")
+    lc_common.print_line("  --manifest=<file>   Path to .muf manifest (default: build.muf)")
+    lc_common.print_line("  --debug             Build in debug mode (default)")
+    lc_common.print_line("  --release           Build in release mode")
+    lc_common.print_line("  --profile=<p>       Explicit profile (debug/release)")
+    lc_common.print_line("  --target=<triple>   Compilation target (default: host)")
+    lc_common.print_line("  --emit=<list>       Artifacts: ast,ir,asm,bin (comma-separated)")
+    lc_common.print_line("  --out-dir=<dir>     Output directory (default: ./build/out)")
+    lc_common.print_line("  --jobs=<n>, -j=<n>      Number of parallel jobs")
+    lc_common.print_line("  --dry-run           Print planned actions without executing")
+    lc_common.print_line("  --watch             Re-run the build when inputs change (stub)")
+    lc_common.print_line("  --timings           Print phase timings (if available)")
+    lc_common.print_line("  --color=auto|always|never  Colored diagnostics")
+    lc_common.print_line("  --verbose, -v       More logs")
+    lc_common.print_line("  --help, -h          Show this help")
+    lc_common.print_line("  --version, -V       Show version")
+.end
+
+fn print_version():
+    lc_common.print_line("lc-build (Vitte compiler) 0.1.0")
+.end
+
+# ----------------------------------------------------------------------------
+# Point d'entrée Vitte
+# ----------------------------------------------------------------------------
+
+program vitte.compiler.cli.lc_build:
+    let argv = env.args()
+    let code = lc_build_main(argv)
+    env.exit(code)
+.end

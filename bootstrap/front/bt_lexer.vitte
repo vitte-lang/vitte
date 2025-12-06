@@ -1,0 +1,432 @@
+module vitte.bootstrap.front.bt_lexer
+
+import std.collections as coll
+import vitte.bootstrap.front.bt_ast as ast
+
+# ============================================================================
+# Vitte bootstrap front-end – Modèle logique du lexer (maximal, sans I/O)
+#
+# Objectifs :
+#   - Décrire la représentation purement déclarative :
+#       * des fichiers source (texte, lignes),
+#       * des tokens, trivia et canaux,
+#       * des erreurs de lexing,
+#       * des configurations/options de lexing,
+#       * des flux de tokens produits par le lexer.
+#   - Servir de contrat entre :
+#       * l’implémentation du lexer,
+#       * les passes suivantes (parser, pré-analyse),
+#       * les outils (dump de tokens, IDE, tests).
+#   - Ne contenir aucune logique de lexing, ni d’I/O, ni de formatage.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Fichiers source et positions
+# ---------------------------------------------------------------------------
+
+enum LexNewlineStyle
+    CrLf        # "\r\n"
+    Lf          # "\n"
+    Cr          # "\r"
+    Mixed       # mélange détecté
+.end
+
+enum LexEncoding
+    Utf8
+    Ascii
+    Other
+.end
+
+struct LexSourceFile
+    path: String                     # chemin logique (ou interne) du fichier
+    display_name: String             # nom affichable (optionnel)
+    encoding: LexEncoding
+    newline_style: LexNewlineStyle
+
+    # Taille et contenu abstrait
+    byte_length: u32                 # taille en bytes
+    char_length: u32                 # taille logique en "chars" Unicode
+
+    # Offsets de début de ligne (0-based), de longueur line_count
+    line_start_offsets: coll.Vec<u32>
+
+    # Informations additionnelles libres
+    hash: String                     # hash du contenu (sha256/blake3, etc.) ou vide
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Trivia (espaces, commentaires, etc.)
+# ---------------------------------------------------------------------------
+
+enum LexTriviaKind
+    Whitespace          # espaces, tabs (hors newlines)
+    Newline             # saut(s) de ligne
+    LineComment         # commentaire ligne
+    BlockComment        # commentaire bloc
+    DocLineComment      # commentaire doc ligne
+    DocBlockComment     # commentaire doc bloc
+    Shebang             # ligne de shebang en tête de fichier
+    Unknown
+.end
+
+struct LexTrivia
+    kind: LexTriviaKind
+    span: ast.AstSpan
+    text: String                     # texte brut tel que lu (optionnel)
+.end
+
+# ---------------------------------------------------------------------------
+# Tokens : genres, canaux, mots-clés
+# ---------------------------------------------------------------------------
+
+enum LexChannel
+    Default             # tokens visibles pour le parser
+    Hidden              # trivia attachés, directives masquées, etc.
+    Doc                 # canal documentaire éventuel
+    Directive           # directives de préprocessing, si supporté
+.end
+
+enum LexNumericBase
+    Decimal
+    Hex
+    Octal
+    Binary
+    UnknownBase
+.end
+
+enum LexStringStyle
+    Normal              # "..."
+    Raw                 # r"..." (ou équivalent Vitte)
+    Multiline           # """..."""
+    Interpolated        # "... ${expr} ..."
+.end
+
+enum LexTokenKind
+    # Identifiants et mots-clés
+    Identifier
+    Keyword
+
+    # Littéraux
+    IntLiteral
+    FloatLiteral
+    StringLiteral
+    CharLiteral
+    BoolLiteral
+    NullLiteral
+
+    # Spécifique au contrôle d’indentation (si applicable)
+    NewlineToken        # token logique de fin de ligne
+    Indent              # indentation augmentée
+    Dedent              # indentation réduite
+
+    # Punctuation / symboles
+    LParen              # (
+    RParen              # )
+    LBracket            # [
+    RBracket            # ]
+    LBrace              # {  (rare si syntaxe .end, mais possible pour certains contextes)
+    RBrace              # }
+    Comma               # ,
+    Dot                 # .
+    Colon               # :
+    Semicolon           # ;
+    Arrow               # ->
+    FatArrow            # =>
+    Pipe                # |
+    Ampersand           # &
+    Question            # ?
+    At                  # @
+    Hash                # #
+    Dollar              # $
+
+    # Opérateurs
+    Plus                # +
+    Minus               # -
+    Star                # *
+    Slash               # /
+    Percent             # %
+    Caret               # ^
+    Bang                # !
+    Tilde               # ~
+    Equal               # =
+    Less                # <
+    Greater             # >
+    PlusEqual           # +=
+    MinusEqual          # -=
+    StarEqual           # *=
+    SlashEqual          # /=
+    PercentEqual        # %=
+    AndAnd              # &&
+    OrOr                # ||
+    EqualEqual          # ==
+    BangEqual           # !=
+    LessEqual           # <=
+    GreaterEqual        # >=
+    ShiftLeft           # <<
+    ShiftRight          # >>
+    ShiftLeftEqual      # <<=
+    ShiftRightEqual     # >>=
+    AmpersandEqual      # &=
+    PipeEqual           # |=
+    CaretEqual          # ^=
+
+    # Délimiteurs spécifiques Vitte (ex: ".end")
+    DotEnd              # token pour le ".end" logique
+
+    # Divers
+    UnknownToken
+    Eof
+.end
+
+enum LexKeyword
+    # Modules / imports / exports
+    KwModule
+    KwImport
+    KwExport
+
+    # Unités de haut niveau
+    KwProgram
+    KwService
+    KwKernel
+    KwDriver
+    KwTool
+    KwScenario
+    KwPipeline
+
+    # Types / déclarations
+    KwStruct
+    KwUnion
+    KwEnum
+    KwTypeAlias       # typedef / type alias
+    KwInline
+    KwFn
+    KwConst
+    KwStatic
+    KwLet
+
+    # Contrôle de flux
+    KwIf
+    KwElse
+    KwWhile
+    KwFor
+    KwLoop
+    KwMatch
+    KwReturn
+    KwBreak
+    KwContinue
+    KwIn
+    KwAs
+
+    # Modificateurs / autres
+    KwPub
+    KwMut
+    KwAsync
+    KwAwait
+    KwUnsafe
+    KwExtern
+    KwWhere
+
+    # Valeurs spéciales
+    KwTrue
+    KwFalse
+    KwNull
+
+    # Phrase / DSL éventuelles (extensible)
+    KwSay
+    KwDo
+    KwWhen
+    KwSet
+
+    # Réservé pour extensions futures
+    KwReserved
+.end
+
+struct LexTokenId
+    raw: u32                         # identifiant interne dans le flux de tokens
+.end
+
+struct LexToken
+    id: LexTokenId
+    kind: LexTokenKind
+    channel: LexChannel
+
+    # Texte tel que lu (non normalisé)
+    lexeme: String
+    span: ast.AstSpan
+
+    # Trivia associés
+    leading_trivia: coll.Vec<LexTrivia>
+    trailing_trivia: coll.Vec<LexTrivia>
+
+    # Informations de position rapide
+    line: u32                       # ligne 1-based
+    column: u32                     # colonne 1-based
+
+    # Informations spécialisées (selon le kind) ------------------------------
+    is_keyword: bool                # true si `kind == Keyword`
+    keyword: LexKeyword             # valeur si is_keyword == true (sinon valeur par défaut)
+
+    # Littéraux numériques
+    numeric_base: LexNumericBase
+    numeric_suffix: String          # suffixe typé éventuel, ex: "u32", "f64"
+
+    # Représentations normalisées (facultatives, pour tooling/tests)
+    int_text: String                # forme canonique d’un entier
+    float_text: String              # forme canonique d’un flottant
+    string_content: String          # contenu d’une string (sans guillemets)
+    char_content: String            # contenu d’un char (sans quotes)
+    string_style: LexStringStyle
+
+    # Interpolation / templates éventuels
+    interpolation_id: u32           # id logique d’un groupe d’interpolation, 0 si non applicable
+
+    # Données libres supplémentaires
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Modes de lexing et état
+# ---------------------------------------------------------------------------
+
+enum LexModeKind
+    Normal
+    InString
+    InStringInterpolation
+    InTemplate
+    InAttribute
+    InCommentBlock
+    Custom
+.end
+
+struct LexMode
+    kind: LexModeKind
+    name: String                    # nom lisible ou identifiant du mode
+    depth: u32                      # profondeur (pour commentaires imbriqués, etc.)
+.end
+
+struct LexStateSnapshot
+    # Snapshot d’état pour debug ou tooling
+    file: LexSourceFile
+    offset: u32                     # offset courant en bytes
+    line: u32
+    column: u32
+
+    modes: coll.Vec<LexMode>        # pile de modes
+    pending_indent_level: u32       # indentation logique courante
+.end
+
+# ---------------------------------------------------------------------------
+# Erreurs de lexing
+# ---------------------------------------------------------------------------
+
+enum LexErrorKind
+    UnexpectedChar
+    InvalidNumberLiteral
+    UnterminatedString
+    UnterminatedChar
+    InvalidEscape
+    NestedBlockCommentTooDeep
+    UnterminatedBlockComment
+    IndentationError
+    InvalidToken
+    EncodingError
+    ShebangError
+    InternalError
+    CustomError
+.end
+
+struct LexErrorId
+    raw: u32
+.end
+
+struct LexError
+    id: LexErrorId
+    kind: LexErrorKind
+
+    message: String                 # message principal
+    span: ast.AstSpan               # zone fautive principale
+
+    # Pointeurs supplémentaires potentiels (zones liées)
+    related_spans: coll.Vec<ast.AstSpan>
+
+    # Données structurées pour tooling/tests
+    code: String                    # code stable éventuel, ex: "LEX0001"
+    details: coll.HashMap<String, String>
+
+    # Informations contextuelles rapides
+    line: u32
+    column: u32
+.end
+
+struct LexErrorSummary
+    count_total: u32
+    count_warning_like: u32         # si certaines erreurs sont déclassées en warnings
+    count_error_like: u32
+    has_fatal: bool
+.end
+
+# ---------------------------------------------------------------------------
+# Configuration du lexer
+# ---------------------------------------------------------------------------
+
+struct LexConfig
+    # Comportement général
+    allow_tabs: bool                # true si les tabs sont acceptés dans l’indentation
+    treat_tabs_as_error: bool       # true si un tab dans l’indent génère une erreur
+    keep_whitespace_tokens: bool    # true si on matérialise des tokens Whitespace
+    keep_newline_tokens: bool       # true si on garde explicitement NewlineToken
+
+    # Commentaires / doc
+    keep_line_comments: bool
+    keep_block_comments: bool
+    keep_doc_comments: bool
+
+    # Shebang
+    allow_shebang: bool
+    shebang_mandatory_first_line: bool
+
+    # Indentation
+    use_indentation_sensitivity: bool
+    indent_width_spaces: u32        # largeur logique d’une indentation (0 = auto)
+
+    # Chaînes / interpolation
+    enable_string_interpolation: bool
+    max_interpolation_depth: u32
+
+    # Sécurité / robustesse
+    max_token_count: u32            # 0 = illimité
+    max_error_count: u32            # 0 = illimité
+
+    # Données additionnelles/options spécifiques
+    options: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Flux de tokens produit par le lexer
+# ---------------------------------------------------------------------------
+
+struct LexTokenStream
+    file: LexSourceFile
+    config: LexConfig
+
+    tokens: coll.Vec<LexToken>
+    errors: coll.Vec<LexError>
+
+    # Informations agrégées
+    error_summary: LexErrorSummary
+    had_truncation: bool            # true si le flux a été tronqué (max_token_count)
+.end
+
+struct LexBundle
+    # Ensemble de flux de tokens, typiquement pour un workspace / projet
+    streams: coll.Vec<LexTokenStream>
+
+    # Stats globales
+    total_tokens: u32
+    total_errors: u32
+    total_files: u32
+
+    # Détails supplémentaires (clé/valeur) pour tooling
+    extra: coll.HashMap<String, String>
+.end

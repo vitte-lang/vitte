@@ -1,0 +1,88 @@
+# Vitte MVP 2025 – EBNF (noyau, sans manifests Muffin)
+
+```
+program        ::= "module" module_name {top_level} ;
+module_name    ::= IDENT {"." IDENT} ;
+
+top_level      ::= import_decl
+                 | export_decl
+                 | type_decl
+                 | fn_decl
+                 | scenario_decl
+                 | entry_decl
+                 | declaration ;
+
+import_decl    ::= "import" module_name ["as" IDENT] ;
+export_decl    ::= "export" "all" ["from" module_name]
+                 | "export" export_list ["from" module_name] ;
+export_list    ::= IDENT {"," IDENT} ;
+
+type_decl      ::= struct_decl | union_decl | enum_decl | type_alias ;
+struct_decl    ::= "struct" IDENT NEWLINE? {field_decl} ".end" ;
+union_decl     ::= "union" IDENT NEWLINE? {field_decl} ".end" ;
+field_decl     ::= IDENT ":" type_expr ["=" expression] ;
+
+enum_decl      ::= "enum" IDENT NEWLINE? {enum_entry} ".end" ;
+enum_entry     ::= IDENT ["(" enum_payload ")"] ;
+enum_payload   ::= enum_field {"," enum_field} ;
+enum_field     ::= IDENT ":" type_expr ;
+
+type_alias     ::= "type" IDENT "=" type_expr ;
+
+fn_decl        ::= "fn" IDENT "(" [param_list] ")" ["->" type_expr] block ;
+param_list     ::= parameter {"," parameter} ;
+parameter      ::= IDENT ":" type_expr ;
+
+type_expr      ::= type_name ["[" type_expr {"," type_expr} "]"] ;
+type_name      ::= IDENT {"." IDENT} ;
+
+block          ::= NEWLINE? {statement} ".end" ;
+statement      ::= declaration
+                 | assignment
+                 | control_flow
+                 | jump
+                 | return_stmt
+                 | expression ;
+
+declaration    ::= "let" ["mut"] IDENT [":" type_expr] "=" expression
+                 | "const" IDENT [":" type_expr] "=" expression ;
+assignment     ::= assignable assign_op expression ;
+assign_op      ::= "=" | "+=" | "-=" | "*=" | "/=" ;
+assignable     ::= postfix_expr ;
+
+control_flow   ::= if_stmt | while_stmt | for_stmt | match_stmt ;
+if_stmt        ::= "if" expression block {"elif" expression block} ["else" block] ;
+while_stmt     ::= "while" expression block ;
+for_stmt       ::= "for" IDENT "in" expression block ;
+
+match_stmt     ::= "match" expression match_block ;
+match_block    ::= NEWLINE? {match_arm} ".end" ;
+match_arm      ::= pattern "=>" block ;
+pattern        ::= "_" | literal | variant_pattern | IDENT | "(" pattern {"," pattern} ")" ;
+variant_pattern::= variant_path ["(" pattern {"," pattern} ")"] ;
+variant_path   ::= type_expr "::" IDENT ;
+
+return_stmt    ::= "return" [expression] ;
+jump           ::= "break" | "continue" ;
+
+expression     ::= unary_expr {binary_op unary_expr} ;
+unary_expr     ::= {unary_op} postfix_expr ;
+unary_op       ::= "-" | "not" ;
+binary_op      ::= "+" | "-" | "*" | "/" | "%" | "==" | "!=" | "<" | "<=" | ">" | ">=" | "and" | "or" ;
+
+postfix_expr   ::= primary_expr {postfix_op} ;
+postfix_op     ::= "." IDENT | "[" expression "]" | "(" [argument_list] ")" ;
+argument_list  ::= expression {"," expression} ;
+
+primary_expr   ::= literal
+                 | struct_literal
+                 | enum_constructor
+                 | "(" expression ")"
+                 | IDENT ;
+
+struct_literal ::= type_expr "{" struct_field {"," struct_field} "}" ;
+struct_field   ::= IDENT "=" expression ;
+enum_constructor ::= variant_path ["(" [argument_list] ")"] ;
+
+literal        ::= INTEGER | FLOAT | STRING | "true" | "false" ;
+```

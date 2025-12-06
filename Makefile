@@ -1,330 +1,162 @@
-# =============================================================================
-# vitte-core – Makefile "front-end" pour toolchain Vitte uniquement
+# ============================================================================
+# Makefile – vitte-core
 #
-# Rôle :
-#   - Fournir une interface uniforme purement Vitte pour :
-#       * builder le workspace via les manifests Muffin (.muf),
-#       * lancer les tests / lint / format,
-#       * produire des archives de distribution,
-#       * offrir une aide auto-documentée.
-#   - Ne dépendre que des outils Vitte (vittec, vitte, vitte-repl, vitte-fmt,
-#     vitte-lint, vitte-test, vitte-muffin), quels que soient leurs backends.
+# Objectifs :
+#   - Fournir des cibles simples pour piloter le bootstrap Vitte (stage0, stage1+2),
+#     le nettoyage, et quelques commandes de confort (env, mini_project, etc.).
+#   - Rester entièrement centré sur le workspace Vitte (aucune référence à
+#     d'autres langages/toolchains que Vitte).
+#   - Servir de façade unique pour les scripts sous ./scripts/.
 #
-# Ce Makefile n’évoque plus aucun autre langage : il suppose l’existence
-# d’une toolchain Vitte installée dans le PATH.
-# =============================================================================
+# Convention :
+#   - Toutes les commandes shell passent par bash via /usr/bin/env.
+#   - Les scripts clés sont :
+#       * scripts/env_local.sh
+#       * scripts/bootstrap_stage0.sh
+#       * scripts/self_host_stage1.sh
+#       * scripts/clean.sh
+# ============================================================================
+
+SHELL := /usr/bin/env bash
+
+# Racine du workspace (ce dépôt).
+WORKSPACE_ROOT := $(CURDIR)
+SCRIPTS_DIR    := $(WORKSPACE_ROOT)/scripts
+ENV_FILE       := $(SCRIPTS_DIR)/env_local.sh
+
+TARGET_DIR     := $(WORKSPACE_ROOT)/target
+MINI_PROJECT_MF := $(WORKSPACE_ROOT)/tests/data/mini_project/muffin.muf
 
 # ---------------------------------------------------------------------------
-# Configuration globale
+# Helpers internes
 # ---------------------------------------------------------------------------
 
-# Nom du projet et version logique pour les archives
-PROJECT_NAME    ?= vitte-core
-PROJECT_VERSION ?= 0.1.0-dev
+# Préfixe pour exécuter un script dans un shell bash avec env_local.sh.
+define VITTE_SHELL
+if [ -f "$(ENV_FILE)" ]; then \
+  source "$(ENV_FILE)"; \
+fi; \
+cd "$(WORKSPACE_ROOT)"; \
+endef
 
-# Répertoires
-ROOT_DIR        := $(CURDIR)
-SRC_DIR         ?= src
-BUILD_DIR       ?= build
-DIST_DIR        ?= dist
-DOCS_DIR        ?= docs
-
-# Fichiers de manifestes Muffin
-PROJECT_MUFFIN  ?= vitte.project.muf
-
-# Outils Vitte
-VITTEC         ?= vittec         # compilateur Vitte (source -> artefacts)
-VITTE          ?= vitte          # exécutable principal / runner
-VITTE_REPL     ?= vitte-repl     # REPL
-VITTE_FMT      ?= vitte-fmt      # formateur
-VITTE_LINT     ?= vitte-lint     # analyseur statique
-VITTE_TEST     ?= vitte-test     # test runner
-VITTE_MUFFIN   ?= vitte-muffin   # orchestrateur Muffin (build plan)
-
-# Profil(s) de build Vitte (debug / release / test, etc.)
-PROFILE         ?= debug
-PROFILE_RELEASE ?= release
-
-# OS / plateforme (pour quelques helpers)
-UNAME_S := $(shell uname -s)
-
-# Couleurs (désactivables via NO_COLOR=1)
-ifeq ($(NO_COLOR),1)
-COLOR_RESET  :=
-COLOR_BLUE   :=
-COLOR_GREEN  :=
-COLOR_YELLOW :=
-COLOR_RED    :=
-else
-COLOR_RESET  := \033[0m
-COLOR_BLUE   := \033[34m
-COLOR_GREEN  := \033[32m
-COLOR_YELLOW := \033[33m
-COLOR_RED    := \033[31m
-endif
+# Texte d'aide : aligné avec les cibles ci-dessous.
+HELP_TEXT = \
+  "Cibles disponibles :" "\n" \
+  "  help                 : Affiche cette aide." "\n" \
+  "  env                  : Affiche l'environnement Vitte local (env_local.sh)." "\n" \
+  "  bootstrap-stage0     : Lance le stage0 (host layer) du bootstrap Vitte." "\n" \
+  "  bootstrap-stage1     : Lance les stages 1+2 (self-host compiler)." "\n" \
+  "  bootstrap-all        : Enchaîne stage0 puis stage1+2." "\n" \
+  "  mini_project         : Smoke build du mini projet de test via vittec." "\n" \
+  "  clean                : Nettoie les artefacts générés (target/, fichiers temporaires)." "\n" \
+  "  distclean            : Nettoyage plus agressif (supprime target/ entièrement)." "\n" \
+  "  fmt                  : Placeholder pour formatage du code Vitte (à brancher plus tard)." "\n" \
+  "  lint                 : Placeholder pour lint/validation Vitte (à brancher plus tard)." "\n" \
+  "  test                 : Placeholder pour tests Vitte (à brancher plus tard)." "\n"
 
 # ---------------------------------------------------------------------------
 # Cible par défaut
 # ---------------------------------------------------------------------------
 
-.DEFAULT_GOAL := help
-
-# ---------------------------------------------------------------------------
-# Helpers d'affichage
-# ---------------------------------------------------------------------------
-
-define ECHO_SECTION
-	@printf "$(COLOR_BLUE)==> %s$(COLOR_RESET)\n" "$(1)"
-endef
-
-define ECHO_OK
-	@printf "$(COLOR_GREEN)[OK]$(COLOR_RESET) %s\n" "$(1)"
-endef
-
-define ECHO_WARN
-	@printf "$(COLOR_YELLOW)[WARN]$(COLOR_RESET) %s\n" "$(1)"
-endef
-
-define ECHO_ERR
-	@printf "$(COLOR_RED)[ERR]$(COLOR_RESET) %s\n" "$(1)"
-endef
-
-# ---------------------------------------------------------------------------
-# Détection d’environnement
-# ---------------------------------------------------------------------------
-
-.PHONY: env
-env: ## Affiche l’environnement Vitte détecté
-	$(call ECHO_SECTION,"Environment (Vitte)")
-	@echo "ROOT_DIR        = $(ROOT_DIR)"
-	@echo "UNAME_S         = $(UNAME_S)"
-	@echo "PROJECT_NAME    = $(PROJECT_NAME)"
-	@echo "PROJECT_VERSION = $(PROJECT_VERSION)"
-	@echo "SRC_DIR         = $(SRC_DIR)"
-	@echo "BUILD_DIR       = $(BUILD_DIR)"
-	@echo "DIST_DIR        = $(DIST_DIR)"
-	@echo "PROJECT_MUFFIN  = $(PROJECT_MUFFIN)"
-	@echo
-	@echo "VITTEC          = $(VITTEC)"
-	@echo "VITTE           = $(VITTE)"
-	@echo "VITTE_REPL      = $(VITTE_REPL)"
-	@echo "VITTE_FMT       = $(VITTE_FMT)"
-	@echo "VITTE_LINT      = $(VITTE_LINT)"
-	@echo "VITTE_TEST      = $(VITTE_TEST)"
-	@echo "VITTE_MUFFIN    = $(VITTE_MUFFIN)"
+.PHONY: default
+default: help
 
 # ---------------------------------------------------------------------------
 # Aide
 # ---------------------------------------------------------------------------
 
 .PHONY: help
-help: ## Affiche cette aide
-	@echo "$(COLOR_BLUE)$(PROJECT_NAME) – Makefile (toolchain Vitte)$(COLOR_RESET)"
-	@echo
-	@echo "Usage :"
-	@echo "  make <target>"
-	@echo
-	@echo "Cibles principales :"
-	@awk 'BEGIN {FS = ":.*##"; printf ""} \
-		/^[a-zA-Z0-9_-]+:.*##/ { \
-			printf "  $(COLOR_GREEN)%-20s$(COLOR_RESET) %s\n", $$1, $$2 \
-		}' $(MAKEFILE_LIST) | sort
-	@echo
+help:
+	@printf $(HELP_TEXT)
 
 # ---------------------------------------------------------------------------
-# Build – via manifest Muffin
+# Environnement
 # ---------------------------------------------------------------------------
 
-.PHONY: all
-all: build ## Alias de build
-
-.PHONY: build
-build: ## Build du projet via Muffin (profil=$(PROFILE))
-	$(call ECHO_SECTION,"Build Vitte (profile=$(PROFILE))")
-	@mkdir -p "$(BUILD_DIR)"
-	@if command -v $(VITTE_MUFFIN) >/dev/null 2>&1; then \
-		$(VITTE_MUFFIN) "$(PROJECT_MUFFIN)" --profile "$(PROFILE)" build; \
+.PHONY: env
+env:
+	@echo "[vitte][make] Workspace root : $(WORKSPACE_ROOT)"
+	@echo "[vitte][make] Scripts dir    : $(SCRIPTS_DIR)"
+	@if [ -f "$(ENV_FILE)" ]; then \
+	  echo "[vitte][make] Sourcing env_local.sh…"; \
+	  bash -lc "source '$(ENV_FILE)' >/dev/null 2>&1 || true; echo \"[vitte][env] VITTE_WORKSPACE_ROOT=\$${VITTE_WORKSPACE_ROOT}\"; echo \"[vitte][env] VITTE_BOOTSTRAP_ROOT=\$${VITTE_BOOTSTRAP_ROOT}\"; echo \"[vitte][env] VITTE_EDITION=\$${VITTE_EDITION}\"; echo \"[vitte][env] VITTE_PROFILE=\$${VITTE_PROFILE}\""; \
 	else \
-		$(call ECHO_WARN,"$(VITTE_MUFFIN) introuvable, fallback simple sur $(VITTEC)"); \
-		$(VITTEC) --project "$(PROJECT_MUFFIN)" --profile "$(PROFILE)" build || true; \
+	  echo "[vitte][make] Aucun env_local.sh trouvé (scripts/env_local.sh)."; \
 	fi
-	$(call ECHO_OK,"build Vitte terminé")
-
-.PHONY: build-release
-build-release: ## Build du projet en mode release (profil=$(PROFILE_RELEASE))
-	$(call ECHO_SECTION,"Build Vitte (release, profile=$(PROFILE_RELEASE))")
-	@mkdir -p "$(BUILD_DIR)"
-	@if command -v $(VITTE_MUFFIN) >/dev/null 2>&1; then \
-		$(VITTE_MUFFIN) "$(PROJECT_MUFFIN)" --profile "$(PROFILE_RELEASE)" build; \
-	else \
-		$(call ECHO_WARN,"$(VITTE_MUFFIN) introuvable, fallback simple sur $(VITTEC)"); \
-		$(VITTEC) --project "$(PROJECT_MUFFIN)" --profile "$(PROFILE_RELEASE)" build || true; \
-	fi
-	$(call ECHO_OK,"build release Vitte terminé")
 
 # ---------------------------------------------------------------------------
-# Vérifications / formatage / lint
+# Bootstrap – stage0 et stage1+2
 # ---------------------------------------------------------------------------
 
-.PHONY: check
-check: ## Vérifie la syntaxe et le typage du projet (équivalent 'check')
-	$(call ECHO_SECTION,"Check Vitte")
-	@if command -v $(VITTEC) >/dev/null 2>&1; then \
-		$(VITTEC) --project "$(PROJECT_MUFFIN)" --profile "$(PROFILE)" check; \
-	else \
-		$(call ECHO_ERR,"$(VITTEC) introuvable, impossible de lancer 'check'"); \
-		exit 1; \
-	fi
-	$(call ECHO_OK,"check Vitte terminé")
+.PHONY: bootstrap-stage0
+bootstrap-stage0:
+	@echo "[vitte][make] Running bootstrap stage0 (host layer)…"
+	@bash -lc '$(VITTE_SHELL) ./scripts/bootstrap_stage0.sh'
+	@echo "[vitte][make] bootstrap-stage0 terminé."
 
-.PHONY: fmt
-fmt: ## Formatage du code Vitte
-	$(call ECHO_SECTION,"Format Vitte")
-	@if command -v $(VITTE_FMT) >/dev/null 2>&1; then \
-		$(VITTE_FMT) "$(SRC_DIR)"; \
-	else \
-		$(call ECHO_WARN,"$(VITTE_FMT) introuvable, format ignoré"); \
-	fi
-	$(call ECHO_OK,"formatage terminé (si outil disponible)")
+.PHONY: bootstrap-stage1
+bootstrap-stage1:
+	@echo "[vitte][make] Running bootstrap stage1+2 (self-host compiler)…"
+	@bash -lc '$(VITTE_SHELL) ./scripts/self_host_stage1.sh'
+	@echo "[vitte][make] bootstrap-stage1 terminé."
 
-.PHONY: lint
-lint: ## Lint / analyse statique Vitte
-	$(call ECHO_SECTION,"Lint Vitte")
-	@if command -v $(VITTE_LINT) >/dev/null 2>&1; then \
-		$(VITTE_LINT) --project "$(PROJECT_MUFFIN)" --profile "$(PROFILE)"; \
-	else \
-		$(call ECHO_WARN,"$(VITTE_LINT) introuvable, lint ignoré"); \
-	fi
-	$(call ECHO_OK,"lint terminé (si outil disponible)")
+.PHONY: bootstrap-all
+bootstrap-all: bootstrap-stage0 bootstrap-stage1
+	@echo "[vitte][make] bootstrap-all terminé (stage0 + stage1+2)."
 
 # ---------------------------------------------------------------------------
-# Tests
+# Mini projet – smoke build
 # ---------------------------------------------------------------------------
 
-.PHONY: test
-test: ## Lance la suite de tests Vitte
-	$(call ECHO_SECTION,"Tests Vitte (profile=$(PROFILE))")
-	@if command -v $(VITTE_TEST) >/dev/null 2>&1; then \
-		$(VITTE_TEST) --project "$(PROJECT_MUFFIN)" --profile "$(PROFILE)"; \
-	else \
-		$(call ECHO_WARN,"$(VITTE_TEST) introuvable, tests ignorés"); \
+.PHONY: mini_project
+mini_project:
+	@echo "[vitte][make] Smoke build du mini_project via vittec (si présent)…"
+	@if [ ! -f "$(MINI_PROJECT_MF)" ]; then \
+	  echo "[vitte][make][WARN] Manifest mini_project introuvable : $(MINI_PROJECT_MF)"; \
+	  exit 1; \
 	fi
-	$(call ECHO_OK,"tests Vitte terminés (si outil disponible)")
-
-.PHONY: test-release
-test-release: ## Tests avec build release
-	$(call ECHO_SECTION,"Tests Vitte (release, profile=$(PROFILE_RELEASE))")
-	@if command -v $(VITTE_TEST) >/dev/null 2>&1; then \
-		$(VITTE_TEST) --project "$(PROJECT_MUFFIN)" --profile "$(PROFILE_RELEASE)"; \
-	else \
-		$(call ECHO_WARN,"$(VITTE_TEST) introuvable, tests ignorés"); \
+	@if [ ! -x "$(TARGET_DIR)/debug/vittec" ]; then \
+	  echo "[vitte][make][WARN] target/debug/vittec introuvable ou non exécutable."; \
+	  echo "[vitte][make][INFO] Tu peux d'abord lancer : make bootstrap-all"; \
+	  exit 1; \
 	fi
-	$(call ECHO_OK,"tests release Vitte terminés (si outil disponible)")
-
-# ---------------------------------------------------------------------------
-# Documentation (générée par un outil Vitte, si disponible)
-# ---------------------------------------------------------------------------
-
-.PHONY: doc
-doc: ## Génère la documentation Vitte (si outil disponible)
-	$(call ECHO_SECTION,"Documentation Vitte")
-	@if command -v $(VITTE) >/dev/null 2>&1; then \
-		$(VITTE) doc --project "$(PROJECT_MUFFIN)" --out "$(DOCS_DIR)" || true; \
-	else \
-		$(call ECHO_WARN,"$(VITTE) introuvable, génération de doc ignorée"); \
-	fi
-	$(call ECHO_OK,"documentation générée (si outil disponible)")
-
-.PHONY: open-doc
-open-doc: doc ## Ouvre la documentation dans le navigateur
-	$(call ECHO_SECTION,"Open documentation")
-	@if [ -d "$(DOCS_DIR)" ]; then \
-		if [ "$(UNAME_S)" = "Darwin" ]; then \
-			open "$(DOCS_DIR)/index.html" || true; \
-		elif [ "$(UNAME_S)" = "Linux" ]; then \
-			xdg-open "$(DOCS_DIR)/index.html" >/dev/null 2>&1 || true; \
-		else \
-			$(call ECHO_WARN,"ouverture de la doc non supportée automatiquement"); \
-		fi; \
-	else \
-		$(call ECHO_WARN,"documentation introuvable, lance 'make doc' d’abord"); \
-	fi
+	@bash -lc '$(VITTE_SHELL) "$(TARGET_DIR)/debug/vittec" "$(MINI_PROJECT_MF)" || echo "[vitte][make][WARN] Commande vittec non encore implémentée ou en erreur (placeholder)."'
 
 # ---------------------------------------------------------------------------
 # Nettoyage
 # ---------------------------------------------------------------------------
 
 .PHONY: clean
-clean: ## Nettoie les artefacts de build Vitte
-	$(call ECHO_SECTION,"Clean Vitte")
-	@rm -rf "$(BUILD_DIR)"
-	$(call ECHO_OK,"clean terminé")
+clean:
+	@echo "[vitte][make] Nettoyage du workspace via scripts/clean.sh…"
+	@bash -lc '$(VITTE_SHELL) ./scripts/clean.sh'
+	@echo "[vitte][make] clean terminé."
 
 .PHONY: distclean
-distclean: clean ## Nettoyage complet (build + dist + docs)
-	$(call ECHO_SECTION,"Distclean Vitte")
-	@rm -rf "$(DIST_DIR)" "$(DOCS_DIR)"
-	$(call ECHO_OK,"distclean terminé")
-
-# ---------------------------------------------------------------------------
-# Distribution / release (archives génériques, indépendantes de l’implémentation)
-# ---------------------------------------------------------------------------
-
-DIST_TAR := $(DIST_DIR)/$(PROJECT_NAME)-$(PROJECT_VERSION).tar.gz
-DIST_ZIP := $(DIST_DIR)/$(PROJECT_NAME)-$(PROJECT_VERSION).zip
-
-.PHONY: dist
-dist: build-release ## Crée une archive source + artefacts Vitte (tar.gz et zip)
-	$(call ECHO_SECTION,"Distribution Vitte")
-	@mkdir -p "$(DIST_DIR)"
-	@tar czf "$(DIST_TAR)" --exclude "$(DIST_DIR)" --exclude ".git" .
-	$(call ECHO_OK,"archive source: $(DIST_TAR)")
-	@if command -v zip >/dev/null 2>&1; then \
-		zip -r "$(DIST_ZIP)" . -x "$(DIST_DIR)/*" -x ".git/*" || true; \
-		$(call ECHO_OK,"archive zip: $(DIST_ZIP)"); \
+distclean: clean
+	@echo "[vitte][make] Suppression complète du répertoire target/…"
+	@if [ -d "$(TARGET_DIR)" ]; then \
+	  rm -rf "$(TARGET_DIR)"; \
+	  echo "[vitte][make] target/ supprimé."; \
 	else \
-		$(call ECHO_WARN,"zip introuvable, archive zip non générée"); \
+	  echo "[vitte][make] Aucun target/ à supprimer."; \
 	fi
 
 # ---------------------------------------------------------------------------
-# Exécution utilitaires
+# Placeholders pour formatting / lint / tests Vitte
+# (à compléter lorsque les outils correspondants existeront)
 # ---------------------------------------------------------------------------
 
-.PHONY: run
-run: build ## Lance le binaire / programme principal Vitte
-	$(call ECHO_SECTION,"Run Vitte (programme principal)")
-	@if command -v $(VITTE) >/dev/null 2>&1; then \
-		$(VITTE) run --project "$(PROJECT_MUFFIN)" --profile "$(PROFILE)" -- $(ARGS); \
-	else \
-		$(call ECHO_ERR,"$(VITTE) introuvable, impossible de lancer le programme"); \
-		exit 1; \
-	fi
+.PHONY: fmt
+fmt:
+	@echo "[vitte][make] fmt : placeholder – à brancher sur vitte.tools.format quand disponible."
 
-.PHONY: repl
-repl: ## Lance le REPL Vitte
-	$(call ECHO_SECTION,"Run REPL Vitte")
-	@if command -v $(VITTE_REPL) >/dev/null 2>&1; then \
-		$(VITTE_REPL) --project "$(PROJECT_MUFFIN)" --profile "$(PROFILE)"; \
-	else \
-		$(call ECHO_ERR,"$(VITTE_REPL) introuvable, impossible de lancer le REPL"); \
-		exit 1; \
-	fi
+.PHONY: lint
+lint:
+	@echo "[vitte][make] lint : placeholder – à brancher sur des passes de validation Vitte."
 
-# ---------------------------------------------------------------------------
-# Hooks d’intégration (CI, pré-commit) – purement Vitte
-# ---------------------------------------------------------------------------
+.PHONY: test
+test:
+	@echo "[vitte][make] test : placeholder – à brancher sur vitte.tools.test_runner et les fixtures de tests."
 
-.PHONY: ci
-ci: fmt lint test ## Pipeline standard pour CI Vitte (format + lint + tests)
-	$(call ECHO_OK,"pipeline CI Vitte locale terminée")
-
-.PHONY: pre-commit
-pre-commit: fmt lint ## Hook pré-commit local (format + lint Vitte)
-	$(call ECHO_OK,"pré-commit Vitte OK")
-
-# ---------------------------------------------------------------------------
-# Sentinelles
-# ---------------------------------------------------------------------------
-
-.PHONY: default
-default: help
+# Fin du Makefile – vitte-core

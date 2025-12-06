@@ -1,0 +1,401 @@
+
+
+module vitte.bootstrap.back.driver_c
+
+import std.collections as coll
+import vitte.compiler.diagnostics as diag
+import vitte.compiler.ir as ir
+import vitte.bootstrap.back.codegen_c as cgen
+
+# ============================================================================
+# Vitte bootstrap - Driver backend C
+# Modèle logique maximal de pilotage du backend C, purement déclaratif
+#
+# Objectifs
+#   - Décrire le modèle de données du “driver” C côté bootstrap :
+#       * description d’un job de compilation C,
+#       * gestion des artefacts (fichiers C, .h, .o, .a, binaires…),
+#       * configuration du toolchain C (clang/gcc/msvc/etc.),
+#       * pipeline de passes / étapes (planification, génération, build).
+#   - Ne contenir aucune logique d’I/O ni d’exécution de process :
+#       * uniquement des structures de données et énumérations.
+#   - Servir de contrat entre :
+#       * le front-end / IR Vitte,
+#       * le backend C (codegen_c),
+#       * la couche “runner” qui orchestre réellement les builds.
+#
+# Conventions
+#   - Tous les noeuds significatifs portent un identifiant stable.
+#   - Les chemins restent de simples chaînes, sans accès disque ici.
+#   - Les statuts d’exécution sont représentés via des enums.
+#   - Aucun usage d’accolades, uniquement `.end` pour clore les blocs.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Identifiants logiques
+# ----------------------------------------------------------------------------
+
+type BtCJobId          = i32
+type BtCStepId         = i32
+type BtCArtifactId     = i32
+type BtCToolInvocationId = i32
+type BtCToolchainId    = i32
+type BtCProfileId      = i32
+
+# Nom lisible pour artefacts, steps, etc.
+struct BtCName
+    id: i32
+    text: String
+    origin_span: diag.SpanId
+.end
+
+# ----------------------------------------------------------------------------
+# Modélisation des chemins & environnements
+# ----------------------------------------------------------------------------
+
+struct BtCPath
+    raw: String             # chemin tel que fourni (relatif ou absolu)
+    is_relative: bool
+    normalized: String      # forme canonique normalisée (si disponible)
+.end
+
+struct BtCEnvVar
+    name: String
+    value: String
+.end
+
+struct BtCEnv
+    vars: coll.Vec[BtCEnvVar]
+.end
+
+# ----------------------------------------------------------------------------
+# Toolchain C & configuration globale
+# ----------------------------------------------------------------------------
+
+enum BtCToolchainKind
+    | Clang
+    | Gcc
+    | Msvc
+    | TinyCc
+    | Custom
+.end
+
+enum BtCOptimizationLevel
+    | O0
+    | O1
+    | O2
+    | O3
+    | Os
+    | Oz
+.end
+
+enum BtCDebugInfoKind
+    | None
+    | LineTablesOnly
+    | Full
+.end
+
+enum BtCWarningPolicy
+    | AsIs           # laisser la config par défaut de l’outil
+    | WarningsAsErrors
+    | SuppressMost
+.end
+
+enum BtCLtoMode
+    | Disabled
+    | Full
+    | Thin
+.end
+
+enum BtCStdLibMode
+    | UseSystem
+    | UseCustom
+    | None
+.end
+
+enum BtCOutputKind
+    | CSourceOnly
+    | Object
+    | StaticLib
+    | SharedLib
+    | Executable
+.end
+
+enum BtCTargetRuntimeKind
+    | HeaderOnly
+    | StaticRuntime
+    | SharedRuntime
+    | External
+.end
+
+struct BtCToolPath
+    program: BtCPath        # chemin vers le binaire (clang/gcc/…)
+    args_prefix: coll.Vec[String]
+.end
+
+struct BtCToolchainConfig
+    id: BtCToolchainId
+    kind: BtCToolchainKind
+    c_compiler: BtCToolPath
+    archiver: BtCToolPath
+    linker: BtCToolPath
+
+    sysroot: BtCPath
+    include_paths: coll.Vec[BtCPath]
+    library_paths: coll.Vec[BtCPath]
+
+    opt_level: BtCOptimizationLevel
+    debug_info: BtCDebugInfoKind
+    warnings: BtCWarningPolicy
+    lto: BtCLtoMode
+    stdlib_mode: BtCStdLibMode
+
+    target_triple: String
+    runtime_kind: BtCTargetRuntimeKind
+    extra_cflags: coll.Vec[String]
+    extra_ldflags: coll.Vec[String]
+    environment: BtCEnv
+.end
+
+# ----------------------------------------------------------------------------
+# Artefacts de build (fichiers et outputs logiques)
+# ----------------------------------------------------------------------------
+
+enum BtCArtifactKind
+    | IrModuleSnapshot         # capture IR (debug / cache)
+    | CSourceUnit              # fichier .c généré
+    | HeaderUnit               # fichier .h généré
+    | ObjectFile               # fichier .o / .obj
+    | StaticLibrary            # .a / .lib
+    | SharedLibrary            # .so / .dll / .dylib
+    | ExecutableBinary         # binaire final
+    | DepFile                  # fichier de dépendances (ex: .d)
+    | DiagLog                  # log de diagnostics émis par les outils
+    | ResponseFile             # fichier @rsp pour arguments longs
+    | ToolStdoutCapture
+    | ToolStderrCapture
+.end
+
+enum BtCArtifactState
+    | Planned                  # prévu dans le graphe, non produit
+    | Produced                 # produit avec succès
+    | Failed                   # tentative de production échouée
+    | Skipped                  # étape court-circuitée / non nécessaire
+    | FromCache                # récupéré depuis un cache externe
+.end
+
+struct BtCArtifactLocation
+    path: BtCPath
+    is_temporary: bool
+    keep_on_success: bool
+.end
+
+struct BtCArtifact
+    id: BtCArtifactId
+    name: BtCName
+    kind: BtCArtifactKind
+
+    location: BtCArtifactLocation
+    produced_by: BtCStepId
+    consumed_by: coll.Vec[BtCStepId]
+
+    state: BtCArtifactState
+    notes: String            # texte libre pour debug / annotations
+.end
+
+# ----------------------------------------------------------------------------
+# Étapes / passes de pipeline
+# ----------------------------------------------------------------------------
+
+enum BtCStepKind
+    | PrepareBackendContext          # allocation CBackendContext + IR
+    | PlanCUnits                     # découpe IR -> fichiers C
+    | GenerateCFiles                 # transformation IR -> C (via codegen_c)
+    | EmitRuntimeHeaders             # copier/écrire les headers runtime
+    | CompileCToObjects              # appel du compilateur C
+    | ArchiveStaticLib               # création d’une lib statique
+    | LinkSharedLib                  # création d’une lib partagée
+    | LinkExecutable                 # lien de l’exécutable final
+    | PostProcessOutputs             # strip, objcopy, etc.
+    | WriteDepFiles                  # émission des fichiers de dépendances
+    | CollectDiagnostics             # agrégation de diagnostics
+    | CustomStep                     # pour extensions futures
+.end
+
+enum BtCStepStatus
+    | NotRun
+    | Running
+    | Succeeded
+    | Failed
+    | Skipped
+.end
+
+# Une étape peut consommer/produire plusieurs artefacts
+struct BtCStepIO
+    inputs: coll.Vec[BtCArtifactId]
+    primary_outputs: coll.Vec[BtCArtifactId]
+    secondary_outputs: coll.Vec[BtCArtifactId]
+.end
+
+# ----------------------------------------------------------------------------
+# Tool invocations (modèle abstrait d’un process)
+# ----------------------------------------------------------------------------
+
+enum BtCToolKind
+    | CCompiler
+    | Linker
+    | Archiver
+    | ObjCopy
+    | CustomTool
+.end
+
+enum BtCStdioCaptureMode
+    | Inherit
+    | CaptureStdout
+    | CaptureStderr
+    | CaptureBoth
+.end
+
+struct BtCToolInvocation
+    id: BtCToolInvocationId
+    kind: BtCToolKind
+
+    display_name: BtCName
+
+    program: BtCPath
+    args: coll.Vec[String]
+    working_dir: BtCPath
+    env: BtCEnv
+
+    referenced_inputs: coll.Vec[BtCArtifactId]
+    referenced_outputs: coll.Vec[BtCArtifactId]
+
+    stdio_mode: BtCStdioCaptureMode
+
+    # indices vers artefacts dédiés de capture
+    stdout_artifact: BtCArtifactId
+    stderr_artifact: BtCArtifactId
+    diag_log_artifact: BtCArtifactId
+.end
+
+# ----------------------------------------------------------------------------
+# Step runtime info (statuts, timings, etc.)
+# ----------------------------------------------------------------------------
+
+struct BtCStepRuntimeInfo
+    status: BtCStepStatus
+    start_time_millis: i64
+    end_time_millis: i64
+
+    primary_tool: BtCToolInvocationId
+    auxiliary_tools: coll.Vec[BtCToolInvocationId]
+
+    error_count: i32
+    warning_count: i32
+.end
+
+struct BtCStep
+    id: BtCStepId
+    kind: BtCStepKind
+    name: BtCName
+
+    io: BtCStepIO
+    depends_on: coll.Vec[BtCStepId]
+    order_index: i32
+
+    runtime: BtCStepRuntimeInfo
+.end
+
+# ----------------------------------------------------------------------------
+# Profils et presets backend C
+# ----------------------------------------------------------------------------
+
+enum BtCProfileKind
+    | Debug
+    | Release
+    | RelWithDebInfo
+    | Custom
+.end
+
+struct BtCProfile
+    id: BtCProfileId
+    kind: BtCProfileKind
+    name: BtCName
+
+    toolchain: BtCToolchainConfig
+    backend_options: cgen.CBackendOptions
+    output_kind: BtCOutputKind
+
+    enable_color_diagnostics: bool
+    enable_verbose_build: bool
+    enable_cache_integration: bool
+.end
+
+# ----------------------------------------------------------------------------
+# Job de compilation C (unité logique de build)
+# ----------------------------------------------------------------------------
+
+enum BtCJobStatus
+    | NotPlanned
+    | Planned
+    | Running
+    | Succeeded
+    | Failed
+    | Cancelled
+.end
+
+struct BtCIrInput
+    ir_module: ir.ModuleId
+    root_span: diag.SpanId
+    logical_name: BtCName
+.end
+
+struct BtCOutputLayout
+    root_output_dir: BtCPath
+    c_sources_dir: BtCPath
+    headers_dir: BtCPath
+    objects_dir: BtCPath
+    libs_dir: BtCPath
+    bins_dir: BtCPath
+    depfiles_dir: BtCPath
+    logs_dir: BtCPath
+.end
+
+struct BtCJobDiagnosticsSummary
+    error_count: i32
+    warning_count: i32
+    note_count: i32
+    diag_log_artifacts: coll.Vec[BtCArtifactId]
+.end
+
+struct BtCJob
+    id: BtCJobId
+    name: BtCName
+
+    profile: BtCProfile
+    ir_input: BtCIrInput
+    output_layout: BtCOutputLayout
+
+    artifacts: coll.Vec[BtCArtifact]
+    steps: coll.Vec[BtCStep]
+    tools: coll.Vec[BtCToolInvocation]
+
+    status: BtCJobStatus
+    diag_summary: BtCJobDiagnosticsSummary
+.end
+
+# ----------------------------------------------------------------------------
+# Contexte global du driver backend C
+# ----------------------------------------------------------------------------
+
+struct BtCDriverContext
+    jobs: coll.Vec[BtCJob]
+    default_profile: BtCProfile
+    active_profile: BtCProfile
+
+    # mapping IR -> jobs (ex: ci plus tard on supporte des builds multi-modules)
+    ir_to_job: coll.Map[ir.ModuleId, BtCJobId]
+
+    # racine logique du workspace pour résolution relative
+    workspace_root: BtCPath
+.end

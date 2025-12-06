@@ -1,0 +1,690 @@
+module std.string.std_string
+
+import std.collections as coll
+
+# ============================================================================
+# std.string.std_string – Modèle logique des chaînes de caractères
+# (maximal, déclaratif, sans I/O)
+#
+# Objectifs :
+#   - Décrire une famille de représentations de chaînes :
+#       * String possédée (buffer dynamique),
+#       * vues & slices (&str, &mut str logiques),
+#       * SmallString / inline string,
+#       * Rope (chaîne segmentée/arborescente),
+#       * interning (pool de chaînes dédupliquées),
+#       * opérations logiques (concat, slice, replace, normalize, etc.)
+#         sous forme de requêtes/résultats/métriques.
+#   - Servir de contrat de données entre :
+#       * le compilateur / typechecker,
+#       * le runtime / VM (impl concrètes),
+#       * les outils (debugger, profiler, visualiseurs, IDE).
+#   - Ne contenir :
+#       * aucune fonction,
+#       * aucune logique d’algorithme,
+#       * aucune I/O.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Identifiants
+# ---------------------------------------------------------------------------
+
+struct StdStringId
+    raw: u64
+.end
+
+struct StdStringSliceId
+    raw: u64
+.end
+
+struct StdRopeId
+    raw: u64
+.end
+
+struct StdSmallStringId
+    raw: u64
+.end
+
+struct StdStringInternerId
+    raw: u64
+.end
+
+struct StdStringOpId
+    raw: u64
+.end
+
+struct StdStringSessionId
+    raw: u64
+.end
+
+struct StdStringSnapshotId
+    raw: u64
+.end
+
+# ---------------------------------------------------------------------------
+# Genres de chaînes / backend
+# ---------------------------------------------------------------------------
+
+enum StdStringKind
+    StdStringKindOwned           # String possédée
+    StdStringKindSlice           # vue &str
+    StdStringKindSliceMut        # vue &mut str
+    StdStringKindSmall           # SmallString (inline)
+    StdStringKindRope            # Rope
+    StdStringKindStatic          # chaîne statique (segment binaire ou ROM)
+    StdStringKindInterned        # chaîne internée
+    StdStringKindOther
+.end
+
+enum StdStringBackendKind
+    StdStringBackendRuntimeBuiltin
+    StdStringBackendNativeHost
+    StdStringBackendPureVitte
+    StdStringBackendExperimental
+    StdStringBackendOther
+.end
+
+# ---------------------------------------------------------------------------
+# Encodage / structure logique
+# ---------------------------------------------------------------------------
+
+enum StdStringEncodingKind
+    StdStringEncodingUtf8
+    StdStringEncodingUtf16Le
+    StdStringEncodingUtf16Be
+    StdStringEncodingLatin1
+    StdStringEncodingAscii
+    StdStringEncodingOther
+.end
+
+enum StdStringNormalizationForm
+    StdStringNormNone
+    StdStringNormNfc
+    StdStringNormNfd
+    StdStringNormNfkc
+    StdStringNormNfkd
+    StdStringNormCustom
+.end
+
+struct StdStringEncodingInfo
+    encoding: StdStringEncodingKind
+
+    # True si le buffer est garanti UTF-8 valide
+    is_valid_utf8: bool
+
+    # True si la chaîne est pure ASCII
+    is_ascii: bool
+
+    # Normalisation Unicode supposée (si connue)
+    normalization: StdStringNormalizationForm
+
+    # True si les limites de graphemes sont connues/pré-calculées
+    has_grapheme_index: bool
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Stratégie de capacité / croissance
+# ---------------------------------------------------------------------------
+
+enum StdStringGrowthStrategy
+    StdStringGrowthDouble
+    StdStringGrowthFactor
+    StdStringGrowthGeometric
+    StdStringGrowthFixed
+    StdStringGrowthOther
+.end
+
+struct StdStringCapacityHint
+    # Capacité initiale (en octets)
+    initial_capacity_bytes: u64
+
+    # Stratégie de croissance
+    growth_strategy: StdStringGrowthStrategy
+
+    # Facteur de croissance (numérateur/dénominateur)
+    growth_factor_numerator: u32
+    growth_factor_denominator: u32
+
+    # True si shrink_to_fit autorisé
+    allow_shrink: bool
+
+    # Capacité max suggérée (0 = illimitée)
+    max_capacity_bytes: u64
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Statistiques de chaînes
+# ---------------------------------------------------------------------------
+
+struct StdStringStats
+    # Longueurs logiques
+    len_bytes: u64
+    len_chars: u64
+    len_graphemes: u64
+
+    # Capacité allouée (octets)
+    capacity_bytes: u64
+
+    # Nombre de réallocations
+    realloc_count: u64
+
+    # Nombre de concaténations / opérations mutantes
+    concat_count: u64
+    insert_count: u64
+    replace_count: u64
+
+    # Longueur maximale observée (octets)
+    max_observed_len_bytes: u64
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Métadonnées communes
+# ---------------------------------------------------------------------------
+
+struct StdStringMeta
+    id: StdStringId
+
+    kind: StdStringKind
+    backend_kind: StdStringBackendKind
+
+    # Nom logique / debug (ex: "source-file-buffer", "token-lexeme")
+    logical_name: String
+    debug_label: String
+
+    encoding_info: StdStringEncodingInfo
+    capacity_hint: StdStringCapacityHint
+    stats: StdStringStats
+
+    # Flags de comportement
+    is_interned: bool
+    is_thread_safe: bool
+    is_shared: bool
+    is_read_only: bool
+
+    # Tags libres
+    tags: coll.Vec<String>
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# String possédée – buffer dynamique
+# ---------------------------------------------------------------------------
+
+struct StdStringCore
+    # Pointeur logique vers les données (représentation abstraite)
+    data_ptr_repr: u64
+
+    # Longueurs logiques
+    len_bytes: u64
+    len_chars: u64
+    len_graphemes: u64
+
+    # Capacité en octets
+    capacity_bytes: u64
+
+    # Snapshot optionnel du contenu pour debug/inspection
+    debug_bytes_snapshot: coll.Vec<u8>
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdString
+    meta: StdStringMeta
+    core: StdStringCore
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# SmallString – buffer essentiellement inline
+# ---------------------------------------------------------------------------
+
+struct StdSmallStringInlineMeta
+    # Capacité inline (en octets)
+    inline_capacity_bytes: u32
+
+    # True si on est encore 100% inline
+    is_inline: bool
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdSmallStringCore
+    inline_meta: StdSmallStringInlineMeta
+
+    # Buffer inline logique
+    inline_buffer: coll.Vec<u8>
+
+    # Buffer heap si débordement
+    heap_buffer: coll.Vec<u8>
+
+    # Longueurs logiques
+    len_bytes: u64
+    len_chars: u64
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdSmallString
+    id: StdSmallStringId
+
+    meta: StdStringMeta
+    core: StdSmallStringCore
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Slices (&str / &mut str) – vues sur un buffer existant
+# ---------------------------------------------------------------------------
+
+struct StdStrSliceMeta
+    id: StdStringSliceId
+
+    # Id de la chaîne possédée ou internée d’origine
+    owner_string_id: StdStringId
+
+    encoding_info: StdStringEncodingInfo
+
+    # Longueurs logiques de la vue
+    len_bytes: u64
+    len_chars: u64
+
+    # True si cette slice est considérée "mut"
+    is_mut: bool
+
+    debug_label: String
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdStrSliceCore
+    # Pointeur logique vers le buffer d’origine
+    data_ptr_repr: u64
+
+    # Offset en octets dans le buffer d’origine
+    offset_bytes: u64
+
+    # Longueur (octets)
+    len_bytes: u64
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdStrSlice
+    meta: StdStrSliceMeta
+    core: StdStrSliceCore
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Rope – chaîne segmentée/arborescente
+# ---------------------------------------------------------------------------
+
+enum StdRopeNodeKind
+    StdRopeNodeLeaf
+    StdRopeNodeInternal
+.end
+
+struct StdRopeNode
+    kind: StdRopeNodeKind
+
+    # Index de ce node dans le tableau des nodes
+    self_index: u64
+
+    # Index du parent (ou UINT64_MAX si racine)
+    parent_index: u64
+
+    # Enfants (pour nodes internes)
+    children_indices: coll.Vec<u64>
+
+    # Informations d’agrégation (pour navigation rapide)
+    subtree_bytes: u64
+    subtree_chars: u64
+
+    # Snapshot partiel (facultatif) pour debug
+    debug_snippet: String
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdRopeCore
+    # Stockage des nodes
+    nodes: coll.Vec<StdRopeNode>
+
+    # Index de la racine
+    root_index: u64
+
+    # Stats globales
+    total_bytes: u64
+    total_chars: u64
+    depth: u32
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdRope
+    id: StdRopeId
+
+    meta: StdStringMeta
+    core: StdRopeCore
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Interner de chaînes
+# ---------------------------------------------------------------------------
+
+struct StdStringInternerEntry
+    string_id: StdStringId
+
+    # Texte canonique (optionnel, pour introspection)
+    canonical_text: String
+
+    # Compteur de références logiques (handles qui pointent vers cette chaîne)
+    ref_count: u64
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdStringInterner
+    id: StdStringInternerId
+
+    # Toutes les entrées internées
+    entries: coll.Vec<StdStringInternerEntry>
+
+    # Index par texte canonique
+    string_id_by_text: coll.HashMap<String, StdStringId>
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Erreurs / opérations sur chaînes
+# ---------------------------------------------------------------------------
+
+enum StdStringErrorKind
+    StdStringErrorEncoding
+    StdStringErrorOutOfBounds
+    StdStringErrorInvalidSliceBoundary
+    StdStringErrorNormalizationFailed
+    StdStringErrorCapacityExceeded
+    StdStringErrorOther
+.end
+
+struct StdStringError
+    kind: StdStringErrorKind
+
+    message: String
+
+    # String concernée
+    string_id: StdStringId
+
+    # Indices impliqués (si pertinent)
+    byte_index: u64
+    char_index: u64
+
+    extra: coll.HashMap<String, String]
+.end
+
+enum StdStringOpKind
+    StdStringOpConcat
+    StdStringOpSlice
+    StdStringOpReplace
+    StdStringOpInsert
+    StdStringOpRemoveRange
+    StdStringOpToLowercase
+    StdStringOpToUppercase
+    StdStringOpNormalize
+    StdStringOpFromUtf8
+    StdStringOpToUtf8
+    StdStringOpIntern
+    StdStringOpOther
+.end
+
+struct StdStringConcatParams
+    # True si l’on autorise le re-use de buffer de destination
+    allow_in_place: bool
+
+    # True si l’on vérifie l’UTF-8 après concat
+    validate_utf8_after: bool
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdStringSliceParams
+    # bornes en bytes (logiques)
+    start_byte: u64
+    end_byte: u64
+
+    # True si la slice doit respecter les frontières UTF-8/graphemes
+    require_char_boundary: bool
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdStringReplaceParams
+    # motif à remplacer
+    pattern: String
+
+    # remplacement
+    replacement: String
+
+    # True si on remplace toutes les occurrences
+    replace_all: bool
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdStringNormalizeParams
+    target_norm: StdStringNormalizationForm
+
+    # True si l’on veut préserver le même encodage
+    preserve_encoding: bool
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdStringInternParams
+    # Id de l’interner cible
+    interner_id: StdStringInternerId
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdStringOpRequest
+    id: StdStringOpId
+
+    kind: StdStringOpKind
+
+    # String principale
+    primary_string_id: StdStringId
+
+    # Strings secondaires pour concat/replace, etc.
+    secondary_string_id: StdStringId
+    tertiary_string_id: StdStringId
+
+    # Paramètres spécifiques
+    concat_params: StdStringConcatParams
+    slice_params: StdStringSliceParams
+    replace_params: StdStringReplaceParams
+    normalize_params: StdStringNormalizeParams
+    intern_params: StdStringInternParams
+
+    # Contexte logique (ex: "lexer", "formatter", "ide-doc-preview")
+    logical_context: String
+
+    tags: coll.Vec<String>
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdStringOpResult
+    id: StdStringOpId
+
+    # True si succès logique
+    success: bool
+
+    # Erreur (si !success)
+    error: StdStringError
+
+    # Nouvelle string résultante (concat/replace/normalize)
+    result_string_id: StdStringId
+
+    # Nouvelle slice créée (slice op)
+    result_slice_id: StdStringSliceId
+
+    # Id de chaîne internée (op Intern)
+    interned_string_id: StdStringId
+
+    # Infos de longueur après op
+    result_len_bytes: u64
+    result_len_chars: u64
+
+    # Indique si un nouvel interning a eu lieu (nouvelle entrée)
+    created_new_intern_entry: bool
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Métriques / sessions / snapshots
+# ---------------------------------------------------------------------------
+
+struct StdStringMetrics
+    # Nombre total d’opérations
+    total_ops: u64
+
+    # Par type
+    concat_ops: u64
+    slice_ops: u64
+    replace_ops: u64
+    insert_ops: u64
+    remove_range_ops: u64
+    to_lowercase_ops: u64
+    to_uppercase_ops: u64
+    normalize_ops: u64
+    from_utf8_ops: u64
+    to_utf8_ops: u64
+    intern_ops: u64
+
+    # Erreurs
+    error_count: u64
+    error_count_by_kind: coll.HashMap<String, u64>
+
+    # Longueurs / tailles globales
+    total_bytes_created: u64
+    total_bytes_freed: u64
+
+    # Latence logique (ms)
+    total_latency_ms: u64
+    max_latency_ms: u64
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdStringSessionMeta
+    id: StdStringSessionId
+
+    logical_name: String
+    description: String
+
+    started_at: String
+    finished_at: String
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdStringSession
+    meta: StdStringSessionMeta
+
+    op_requests: coll.Vec<StdStringOpRequest>
+    op_results: coll.Vec<StdStringOpResult>
+
+    metrics: StdStringMetrics
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdStringSnapshot
+    id: StdStringSnapshotId
+
+    captured_at: String
+
+    # Sessions incluses
+    sessions: coll.Vec<StdStringSession>
+
+    metrics: StdStringMetrics
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Registre / modèle global
+# ---------------------------------------------------------------------------
+
+struct StdStringRegistryEntry
+    string_id: StdStringId
+
+    # Encodage / propriétés
+    encoding_info: StdStringEncodingInfo
+
+    # Longueurs
+    len_bytes: u64
+    len_chars: u64
+
+    # Rôle logique / tags
+    logical_name: String
+    tags: coll.Vec<String>
+
+    # True si la chaîne est internée
+    is_interned: bool
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdStringRegistry
+    # Chaînes connues
+    strings: coll.Vec<StdStringRegistryEntry>
+
+    # Index par texte (optionnel: hash ou snippet)
+    string_ids_by_logical_name: coll.HashMap<String, coll.Vec<StdStringId>>
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdStringModel
+    # Chaînes possédées
+    owned_strings: coll.Vec<StdString>
+
+    # SmallStrings
+    small_strings: coll.Vec<StdSmallString>
+
+    # Slices
+    slices: coll.Vec<StdStrSlice>
+
+    # Ropes
+    ropes: coll.Vec<StdRope>
+
+    # Interner global
+    interner: StdStringInterner
+
+    # Registre d’introspection
+    registry: StdStringRegistry
+
+    # Sessions & snapshots d’opérations
+    sessions: coll.Vec<StdStringSession>
+    snapshots: coll.Vec<StdStringSnapshot>
+
+    # Données libres (version de schéma, notes)
+    extra: coll.HashMap<String, String]
+.end

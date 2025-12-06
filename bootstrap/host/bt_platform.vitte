@@ -1,0 +1,454 @@
+module vitte.bootstrap.host.bt_platform
+
+import std.collections as coll
+import vitte.bootstrap.host.bt_env as env
+import vitte.bootstrap.host.bt_fs as fs
+import vitte.bootstrap.host.bt_io as io
+import vitte.bootstrap.core.bt_toolchain as tc
+
+# ============================================================================
+# Vitte bootstrap host – Modèle logique des plateformes & cibles de build
+# (maximal, déclaratif, sans I/O)
+#
+# Objectifs :
+#   - Décrire, au niveau purement déclaratif :
+#       * les architectures, OS, environnements et ABI,
+#       * les triples de cibles (target triple, target "spec"),
+#       * les capacités CPU et limites de plateforme,
+#       * les modèles de runtime (native, VM, WASM, embedded),
+#       * les profils de build (debug/release/test/bench),
+#       * les correspondances avec la toolchain Vitte et l’environnement hôte.
+#   - Servir de contrat entre :
+#       * la toolchain (`bt_toolchain`),
+#       * l’environnement hôte (`bt_env`, `bt_fs`, `bt_io`),
+#       * les orchestrateurs de build / CI / IDE.
+#   - Ne contenir :
+#       * aucune fonction,
+#       * aucune logique de détection,
+#       * aucune I/O ni formatage.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Identifiants internes
+# ---------------------------------------------------------------------------
+
+struct PlTargetId
+    raw: u32
+.end
+
+struct PlRuntimeId
+    raw: u32
+.end
+
+struct PlBuildProfileId
+    raw: u32
+.end
+
+struct PlPlatformSnapshotId
+    raw: u32
+.end
+
+# ---------------------------------------------------------------------------
+# Architecture, OS, environnement, ABI
+# ---------------------------------------------------------------------------
+
+enum PlArch
+    ArchX86_64
+    ArchX86_32
+    ArchAarch64
+    ArchArmv7
+    ArchRiscv64
+    ArchWasm32
+    ArchWasm64
+    ArchMips64
+    ArchPowerPc64
+    ArchOther
+.end
+
+enum PlOs
+    OsLinux
+    OsMacos
+    OsWindows
+    OsFreeBsd
+    OsNetBsd
+    OsOpenBsd
+    OsIos
+    OsAndroid
+    OsWasi
+    OsNone         # bare metal
+    OsOther
+.end
+
+enum PlEnvironment
+    EnvGnu
+    EnvMusl
+    EnvMsvc
+    EnvNewlib
+    EnvWasi
+    EnvNone
+    EnvOther
+.end
+
+enum PlAbiKind
+    AbiSystemV
+    AbiWin64
+    AbiItanium
+    AbiAapcs
+    AbiWasm
+    AbiVitteVm
+    AbiBareMetal
+    AbiOther
+.end
+
+struct PlTargetTriple
+    arch: PlArch
+    vendor: String              # ex: "unknown", "apple", "pc"
+    os: PlOs
+    environment: PlEnvironment
+    abi: PlAbiKind
+
+    # Représentation canonique LLVM-style, ex: "x86_64-unknown-linux-gnu"
+    triple_text: String
+
+    extra: coll.HashMap<String, String>
+.end
+
+enum PlEndianness
+    EndianLittle
+    EndianBig
+    EndianOther
+.end
+
+enum PlPointerWidth
+    Ptr32
+    Ptr64
+    PtrOther
+.end
+
+# ---------------------------------------------------------------------------
+# Capacités CPU et limites de plateforme
+# ---------------------------------------------------------------------------
+
+struct PlCpuFeatures
+    # Groupe générique de features (dépend de l’arch)
+    has_sse2: bool
+    has_sse3: bool
+    has_sse4: bool
+    has_avx: bool
+    has_avx2: bool
+    has_avx512: bool
+
+    has_neon: bool
+    has_simd128: bool
+
+    has_hw_float: bool
+    has_atomics: bool
+    has_cmpxchg16b: bool
+
+    # Liste de flags bruts (passés à LLVM ou backend)
+    raw_features: coll.Vec<String>
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct PlTypeLayoutLimits
+    # Tailles en bytes
+    size_of_i8: u8
+    size_of_i16: u8
+    size_of_i32: u8
+    size_of_i64: u8
+    size_of_isize: u8
+
+    size_of_f32: u8
+    size_of_f64: u8
+
+    size_of_ptr: u8
+
+    # Alignements
+    align_of_i8: u8
+    align_of_i16: u8
+    align_of_i32: u8
+    align_of_i64: u8
+    align_of_isize: u8
+    align_of_f32: u8
+    align_of_f64: u8
+    align_of_ptr: u8
+
+    # Tailles max des objets
+    max_object_size_bytes: u64
+    max_stack_size_bytes: u64
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct PlConcurrencyLimits
+    max_threads: u32           # 0 = inconnu
+    max_thread_local_bytes: u64
+    has_thread_local: bool
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct PlPlatformLimits
+    endianness: PlEndianness
+    pointer_width: PlPointerWidth
+
+    cpu_features: PlCpuFeatures
+    type_layout: PlTypeLayoutLimits
+    concurrency: PlConcurrencyLimits
+
+    # Tailles/limites supplémentaires (file descriptors, open files, etc.)
+    max_open_files: u32
+    max_path_length: u32
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Modèles de runtime et threading
+# ---------------------------------------------------------------------------
+
+enum PlRuntimeKind
+    RuntimeNative           # binaire natif (ELF/Mach-O/PE)
+    RuntimeVitteVm          # bytecode VM Vitte
+    RuntimeWasm             # WebAssembly (wasi, browser, etc.)
+    RuntimeEmbedded         # bare metal / microcontrôleurs
+    RuntimeOther
+.end
+
+enum PlThreadingModel
+    ThreadingNone           # single-threaded seulement
+    ThreadingOsThreads      # threads OS (pthreads, Win32)
+    ThreadingGreenThreads   # runtime green threads
+    ThreadingHybrid
+    ThreadingOther
+.end
+
+enum PlExceptionModel
+    ExNone
+    ExZeroCost
+    ExSetjmpLongjmp
+    ExOther
+.end
+
+enum PlLinkerKind
+    LinkerSystem
+    LinkerLld
+    LinkerMold
+    LinkerCustom
+    LinkerNone              # runtime non lié (VM, interprété)
+.end
+
+struct PlRuntimeSpec
+    id: PlRuntimeId
+    kind: PlRuntimeKind
+
+    name: String                # ex: "native-elf", "vitte-vm", "wasi"
+    description: String
+
+    threading: PlThreadingModel
+    exception_model: PlExceptionModel
+
+    # Format d’artefact
+    object_format: String       # ex: "elf", "mach-o", "coff", "wasm", "bytecode"
+    default_extension: String   # ex: ".o", ".wasm", ".vbc"
+    executable_extension: String
+
+    # Lien avec la toolchain
+    toolchain_profile_id: String
+    component_ids: coll.Vec<String>   # ids logiques de TcComponent utilisés
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Profils de build (debug, release, test, etc.)
+# ---------------------------------------------------------------------------
+
+enum PlOptLevel
+    OptDebug
+    OptRelease
+    OptSize
+    OptSizeMin
+    OptCustom
+.end
+
+enum PlDebugInfoLevel
+    DebugNone
+    DebugLineTablesOnly
+    DebugLimited
+    DebugFull
+.end
+
+enum PlPanicStrategy
+    PanicAbort
+    PanicUnwind
+    PanicOther
+.end
+
+struct PlBuildProfile
+    id: PlBuildProfileId
+
+    name: String                # ex: "debug", "release", "test", "bench"
+    description: String
+
+    opt_level: PlOptLevel
+    debug_info: PlDebugInfoLevel
+    panic_strategy: PlPanicStrategy
+
+    # Comportements de vérification
+    overflow_checks: bool
+    bounds_checks: bool
+    debug_assertions: bool
+
+    # Codegen
+    lto_enabled: bool
+    incremental_enabled: bool
+
+    # Flags toolchain supplémentaires (texte brut)
+    toolchain_flags: coll.Vec<String>
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct PlBuildProfileTable
+    profiles: coll.Vec<PlBuildProfile>
+
+    # Index : nom → id
+    profile_index_by_name: coll.HashMap<String, PlBuildProfileId>
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Spécification d’une cible (target)
+# ---------------------------------------------------------------------------
+
+enum PlTargetKind
+    TargetHost            # cible = host courant
+    TargetCross           # cross-compilation
+    TargetVirtual         # cible virtuelle (VM, WASM, etc.)
+    TargetOther
+.end
+
+struct PlTargetSpec
+    id: PlTargetId
+    kind: PlTargetKind
+
+    name: String                    # ex: "x86_64-unknown-linux-gnu"
+    display_name: String            # ex: "Linux x86_64 (native)"
+    description: String
+
+    triple: PlTargetTriple
+    platform_limits: PlPlatformLimits
+
+    # Runtime par défaut + liste des runtimes supportés
+    default_runtime: PlRuntimeId
+    supported_runtimes: coll.Vec<PlRuntimeId>
+
+    # Linker par défaut
+    linker_kind: PlLinkerKind
+    linker_executable: String
+    linker_flags: coll.Vec<String>
+
+    # Chemins supplémentaires (sysroot, lib dirs, include dirs)
+    sysroot_path: fs.FsPath
+    lib_paths: coll.Vec<fs.FsPath>
+    include_paths: coll.Vec<fs.FsPath>
+
+    # Flags pour la toolchain
+    toolchain_target_id: String          # id logique dans TcToolchainProfile
+    toolchain_extra_flags: coll.Vec<String>
+
+    # Profils de build disponibles
+    build_profiles: PlBuildProfileTable
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Mapping host → cible(s) Vitte
+# ---------------------------------------------------------------------------
+
+struct PlHostTargetMapping
+    # Snapshot de l’environnement hôte (simplifié)
+    os_family: env.BtOsFamily
+    arch_name: String                  # ex: "x86_64", "aarch64"
+    is_ci_environment: bool
+
+    # Cible considérée comme "host" pour cet environnement
+    host_target_id: PlTargetId
+
+    # Cibles alternatives (cross) typiques pour ce host
+    cross_target_ids: coll.Vec<PlTargetId>
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Snapshots de plateforme (host + FS + IO)
+# ---------------------------------------------------------------------------
+
+struct PlPlatformSnapshot
+    id: PlPlatformSnapshotId
+
+    # Identité
+    name: String                      # ex: "local-macos-dev"
+    description: String
+
+    # Host environment associé (id logique vers BtHostEnvironment sérialisé)
+    host_env_id: String
+
+    # Modèle FS associé (id logique vers BtFileSystemModel sérialisé)
+    fs_model_id: String
+
+    # Modèle I/O associé (id logique vers BtIoModel sérialisé)
+    io_model_id: String
+
+    # Cible host courante (si connue)
+    host_target_id: PlTargetId
+
+    # Profils de build utilisés par défaut
+    default_build_profile: PlBuildProfileId
+    test_build_profile: PlBuildProfileId
+    bench_build_profile: PlBuildProfileId
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Catalogue de plateformes / cibles
+# ---------------------------------------------------------------------------
+
+struct PlTargetCatalog
+    targets: coll.Vec<PlTargetSpec>
+    runtimes: coll.Vec<PlRuntimeSpec>
+
+    # Indexation
+    target_index_by_name: coll.HashMap<String, PlTargetId>
+    target_index_by_triple_text: coll.HashMap<String, PlTargetId>
+
+    runtime_index_by_name: coll.HashMap<String, PlRuntimeId>
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct PlPlatformCatalog
+    # Catalogue complet des cibles supportées
+    target_catalog: PlTargetCatalog
+
+    # Mappings host → target
+    host_mappings: coll.Vec<PlHostTargetMapping>
+
+    # Snapshots de plateforme
+    snapshots: coll.Vec<PlPlatformSnapshot>
+
+    # Cible "par défaut" pour ce repo/bootstrap
+    default_target_id: PlTargetId
+
+    # Profils de build globaux
+    global_build_profiles: PlBuildProfileTable
+
+    # Données globales libres
+    extra: coll.HashMap<String, String>
+.end

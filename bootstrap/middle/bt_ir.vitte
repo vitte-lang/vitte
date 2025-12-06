@@ -1,0 +1,813 @@
+module vitte.bootstrap.middle.bt_ir
+
+import std.collections as coll
+import vitte.bootstrap.front.bt_span as span
+import vitte.bootstrap.front.bt_resolve as res
+import vitte.bootstrap.front.bt_symbol as sy
+import vitte.bootstrap.host.bt_platform as pl
+
+# ============================================================================
+# Vitte bootstrap middle – Modèle logique de l’IR (Intermediate Representation)
+# (maximal, déclaratif, sans I/O)
+#
+# Objectifs :
+#   - Définir une représentation intermédiaire "canonique" pour le compilateur :
+#       * types IR normalisés,
+#       * valeurs (constantes, temporaires, variables),
+#       * instructions, basic blocks, fonctions, modules, programme,
+#       * CFG, dominators, boucles,
+#       * métadonnées et debug info.
+#   - Servir de contrat entre :
+#       * le front-end (AST, resolve, symbol),
+#       * les passes middle-end (optimisations, analyses),
+#       * les backends (codegen natif, VM, WASM, etc.).
+#   - Ne contenir :
+#       * aucune fonction,
+#       * aucune logique d’analyse/optimisation,
+#       * aucune I/O ni formatage.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Identifiants IR
+# ---------------------------------------------------------------------------
+
+struct IrTypeId
+    raw: u32
+.end
+
+struct IrValueId
+    raw: u32
+.end
+
+struct IrInstrId
+    raw: u32
+.end
+
+struct IrBlockId
+    raw: u32
+.end
+
+struct IrFuncId
+    raw: u32
+.end
+
+struct IrGlobalId
+    raw: u32
+.end
+
+struct IrModuleId
+    raw: u32
+.end
+
+struct IrProgramId
+    raw: u32
+.end
+
+# ---------------------------------------------------------------------------
+# Types IR
+# ---------------------------------------------------------------------------
+
+enum IrTypeKind
+    IrTyVoid
+    IrTyBool
+    IrTyInt
+    IrTyFloat
+    IrTyPointer
+    IrTyArray
+    IrTySlice
+    IrTyStruct
+    IrTyUnion
+    IrTyEnum
+    IrTyFunction
+    IrTyTuple
+    IrTyOpaque
+    IrTyNever
+    IrTyMetadata
+    IrTyOther
+.end
+
+enum IrIntSign
+    IrSignUnsigned
+    IrSignSigned
+    IrSignUnknown
+.end
+
+struct IrIntType
+    bits: u32                 # ex: 1, 8, 16, 32, 64
+    sign: IrIntSign
+.end
+
+enum IrFloatWidth
+    IrF16
+    IrF32
+    IrF64
+    IrF80
+    IrF128
+    IrFUnknown
+.end
+
+struct IrFloatType
+    width: IrFloatWidth
+.end
+
+struct IrPointerType
+    pointee: IrTypeId
+    addr_space: u32           # 0 = default
+    is_mutable: bool
+.end
+
+struct IrArrayType
+    element: IrTypeId
+    length: u64
+.end
+
+struct IrSliceType
+    element: IrTypeId
+.end
+
+struct IrField
+    name: String
+    ty: IrTypeId
+    index: u32
+    is_public: bool
+    is_packed: bool
+
+    # Alignement forcé (0 = par défaut)
+    align_override: u32
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrStructType
+    name: String
+    fields: coll.Vec<IrField>
+    is_packed: bool
+    is_transparent: bool
+
+    # Lien vers le symbole frontend (struct/union/tuple)
+    symbol_id: sy.SySymbolInstanceId
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrUnionType
+    name: String
+    fields: coll.Vec<IrField>
+
+    symbol_id: sy.SySymbolInstanceId
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrEnumVariant
+    name: String
+    index: u32
+    payload_type: IrTypeId
+
+    symbol_id: sy.SySymbolInstanceId
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrEnumType
+    name: String
+    repr_type: IrTypeId           # type de représentation (int)
+    variants: coll.Vec<IrEnumVariant>
+
+    symbol_id: sy.SySymbolInstanceId
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrTupleType
+    elements: coll.Vec<IrTypeId>
+.end
+
+struct IrFunctionType
+    params: coll.Vec<IrTypeId>
+    result: IrTypeId
+    is_variadic: bool
+    calling_convention: String        # ex: "vitte", "C", "system"
+
+    # Lien éventuel avec la plateforme/ABI
+    abi_kind: pl.PlAbiKind
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrType
+    id: IrTypeId
+    kind: IrTypeKind
+
+    int_ty: IrIntType
+    float_ty: IrFloatType
+    ptr_ty: IrPointerType
+    array_ty: IrArrayType
+    slice_ty: IrSliceType
+    struct_ty: IrStructType
+    union_ty: IrUnionType
+    enum_ty: IrEnumType
+    tuple_ty: IrTupleType
+    fn_ty: IrFunctionType
+
+    # Taille/alignement logiques si connus (0 = inconnu)
+    size_bytes: u64
+    align_bytes: u32
+
+    # Lien vers type frontend éventuel
+    sy_type_id: sy.SyTypeId
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Valeurs IR
+# ---------------------------------------------------------------------------
+
+enum IrValueKind
+    IrValUndef
+    IrValPoison
+    IrValConstInt
+    IrValConstFloat
+    IrValConstBool
+    IrValConstNull
+    IrValConstAggregate
+    IrValGlobalRef
+    IrValFunctionRef
+    IrValBlockParam
+    IrValLocal
+    IrValTemp
+    IrValMetadata
+    IrValOther
+.end
+
+struct IrConstInt
+    ty: IrTypeId
+    value: i128
+.end
+
+struct IrConstFloat
+    ty: IrTypeId
+    value_bits: u128
+.end
+
+struct IrConstAggregate
+    ty: IrTypeId
+    element_values: coll.Vec<IrValueId>
+.end
+
+struct IrValue
+    id: IrValueId
+    kind: IrValueKind
+
+    ty: IrTypeId
+
+    const_int: IrConstInt
+    const_float: IrConstFloat
+    const_aggregate: IrConstAggregate
+
+    # Références
+    referenced_global: IrGlobalId
+    referenced_function: IrFuncId
+
+    # Variables locales / temporaires
+    name: String
+    is_argument: bool
+    is_captured: bool
+
+    # Lien vers symbole / binding frontend
+    symbol_instance_id: sy.SySymbolInstanceId
+
+    # Debug info
+    debug_span_id: span.BfSpanId
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Opérandes et instructions
+# ---------------------------------------------------------------------------
+
+enum IrOperandKind
+    IrOperandValue
+    IrOperandImmediate
+    IrOperandUndef
+    IrOperandMetadata
+    IrOperandOther
+.end
+
+struct IrImmediate
+    ty: IrTypeId
+    int_value: i128
+    float_bits: u128
+    bool_value: bool
+    null_value: bool
+.end
+
+struct IrOperand
+    kind: IrOperandKind
+
+    value_id: IrValueId
+    immediate: IrImmediate
+
+    extra: coll.HashMap<String, String>
+.end
+
+enum IrBinaryOp
+    IrAdd
+    IrSub
+    IrMul
+    IrDiv
+    IrRem
+    IrAnd
+    IrOr
+    IrXor
+    IrShl
+    IrShr
+    IrEq
+    IrNe
+    IrLt
+    IrLe
+    IrGt
+    IrGe
+    IrOther
+.end
+
+enum IrUnaryOp
+    IrNeg
+    IrNot
+    IrBitNot
+    IrOtherUnary
+.end
+
+enum IrCastKind
+    IrCastBitcast
+    IrCastTrunc
+    IrCastZext
+    IrCastSext
+    IrCastFptrunc
+    IrCastFpext
+    IrCastFptoui
+    IrCastFptosi
+    IrCastUitofp
+    IrCastSitofp
+    IrCastPtrtoint
+    IrCastInttoptr
+    IrCastOther
+.end
+
+enum IrMemoryOpKind
+    IrLoad
+    IrStore
+    IrAlloca
+    IrGep
+    IrMemCopy
+    IrMemSet
+    IrMemMove
+    IrOtherMem
+.end
+
+enum IrTerminatorKind
+    IrTermReturn
+    IrTermBranch
+    IrTermCondBranch
+    IrTermSwitch
+    IrTermUnreachable
+    IrTermCallAbort
+    IrTermOther
+.end
+
+enum IrInstrKind
+    IrInstrBinary
+    IrInstrUnary
+    IrInstrCast
+    IrInstrCompare
+    IrInstrSelect
+    IrInstrCall
+    IrInstrIntrinsic
+    IrInstrMemory
+    IrInstrPhi
+    IrInstrTerminator
+    IrInstrOther
+.end
+
+struct IrInstrLocation
+    span_id: span.BfSpanId
+    file_id: span.BfFileId
+    notes: String
+.end
+
+struct IrPhiIncoming
+    block: IrBlockId
+    value: IrValueId
+.end
+
+struct IrCallInfo
+    callee: IrValueId
+    args: coll.Vec<IrOperand>
+    calling_convention: String
+    is_tail_call: bool
+    is_inline_hint: bool
+.end
+
+struct IrMemoryOp
+    kind: IrMemoryOpKind
+
+    # Operandes typiques
+    ptr: IrValueId
+    src: IrValueId
+    dst: IrValueId
+    size: IrValueId
+    align: u32
+    is_volatile: bool
+.end
+
+struct IrTerminator
+    kind: IrTerminatorKind
+
+    # Return
+    return_value: IrValueId
+
+    # Branch simple
+    target: IrBlockId
+
+    # Branch conditionnel
+    cond: IrValueId
+    true_target: IrBlockId
+    false_target: IrBlockId
+
+    # Switch
+    switch_value: IrValueId
+    switch_default: IrBlockId
+    switch_targets: coll.Vec<IrBlockId>
+    switch_values: coll.Vec<IrValueId>
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrInstruction
+    id: IrInstrId
+    kind: IrInstrKind
+
+    # Résultat produit par l’instruction (si applicable)
+    result_value: IrValueId
+
+    # Opérations
+    binary_op: IrBinaryOp
+    unary_op: IrUnaryOp
+    cast_kind: IrCastKind
+    memory_op: IrMemoryOp
+    phi_incomings: coll.Vec<IrPhiIncoming>
+    call_info: IrCallInfo
+    terminator: IrTerminator
+
+    # Operandes génériques
+    operands: coll.Vec<IrOperand>
+
+    # Bloc parent
+    parent_block: IrBlockId
+
+    # Location/debug
+    loc: IrInstrLocation
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Basic blocks / CFG local
+# ---------------------------------------------------------------------------
+
+enum IrBlockKind
+    IrBlockNormal
+    IrBlockEntry
+    IrBlockExit
+    IrBlockUnreachable
+    IrBlockOther
+.end
+
+struct IrBasicBlock
+    id: IrBlockId
+    kind: IrBlockKind
+
+    name: String
+    index: u32                 # index séquentiel dans la fonction
+
+    # Instructions dans ce bloc
+    instr_ids: coll.Vec<IrInstrId>
+
+    # Terminator (obligatoire pour blocs normaux)
+    terminator_id: IrInstrId
+
+    # Successeurs/prédécesseurs (local CFG)
+    succ_blocks: coll.Vec<IrBlockId>
+    pred_blocks: coll.Vec<IrBlockId>
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrCfgEdge
+    from_block: IrBlockId
+    to_block: IrBlockId
+    is_critical: bool
+    is_back_edge: bool
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrCfg
+    blocks: coll.Vec<IrBasicBlock>
+    edges: coll.Vec<IrCfgEdge>
+
+    entry_block: IrBlockId
+    exit_blocks: coll.Vec<IrBlockId>
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Fonctions, globals, modules
+# ---------------------------------------------------------------------------
+
+enum IrLinkage
+    IrLinkageInternal
+    IrLinkageExternal
+    IrLinkageWeak
+    IrLinkageExported
+    IrLinkageImport
+    IrLinkageOther
+.end
+
+enum IrVisibility
+    IrVisDefault
+    IrVisHidden
+    IrVisProtected
+    IrVisPrivate
+    IrVisOther
+.end
+
+enum IrFunctionKind
+    IrFnNormal
+    IrFnIntrinsic
+    IrFnExtern
+    IrFnConstructor
+    IrFnDestructor
+    IrFnTest
+    IrFnOther
+.end
+
+struct IrParam
+    value_id: IrValueId
+    name: String
+    ty: IrTypeId
+    index: u32
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrFunctionMetadata
+    is_inline_hint: bool
+    is_no_inline: bool
+    is_cold: bool
+    is_hot: bool
+    is_pure: bool
+    is_const: bool
+
+    # Liens vers symboles frontend / resolve
+    symbol_id: sy.SySymbolInstanceId
+    res_symbol_id: res.ResSymbolId
+
+    # Span primaire de la fn
+    primary_span_id: span.BfSpanId
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrFunction
+    id: IrFuncId
+    name: String
+    display_name: String
+
+    kind: IrFunctionKind
+    linkage: IrLinkage
+    visibility: IrVisibility
+
+    fn_type: IrTypeId
+
+    # Paramètres et bloc d’entrée
+    params: coll.Vec<IrParam>
+    entry_block: IrBlockId
+
+    # Blocks et CFG
+    blocks: coll.Vec<IrBasicBlock>
+    cfg: IrCfg
+
+    # Résumé
+    num_instructions: u32
+    num_blocks: u32
+
+    metadata: IrFunctionMetadata
+
+    extra: coll.HashMap<String, String>
+.end
+
+enum IrGlobalKind
+    IrGlobalVariable
+    IrGlobalConstant
+    IrGlobalString
+    IrGlobalOther
+.end
+
+struct IrGlobal
+    id: IrGlobalId
+    name: String
+
+    kind: IrGlobalKind
+    linkage: IrLinkage
+    visibility: IrVisibility
+
+    ty: IrTypeId
+    init_value: IrValueId
+
+    is_thread_local: bool
+    is_mutable: bool
+
+    # Span / symbole frontend
+    symbol_id: sy.SySymbolInstanceId
+    primary_span_id: span.BfSpanId
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrModuleMetadata
+    name: String
+    source_file_path: String
+
+    # Liens vers frontend
+    resolve_file_id: res.ResFileId
+
+    # Target et runtime
+    target_id: pl.PlTargetId
+    runtime_id: pl.PlRuntimeId
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrModule
+    id: IrModuleId
+    meta: IrModuleMetadata
+
+    # Tables
+    types: coll.Vec<IrType>
+    globals: coll.Vec<IrGlobal>
+    functions: coll.Vec<IrFunction>
+
+    # Indexation
+    type_index_by_name: coll.HashMap<String, IrTypeId]
+    global_index_by_name: coll.HashMap<String, IrGlobalId]
+    function_index_by_name: coll.HashMap<String, IrFuncId]
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Programme IR global
+# ---------------------------------------------------------------------------
+
+struct IrProgramMetadata
+    id: IrProgramId
+
+    project_name: String
+    edition: String
+    profile: String
+
+    created_at: String
+    updated_at: String
+
+    # Cible globale
+    default_target_id: pl.PlTargetId
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrProgram
+    meta: IrProgramMetadata
+
+    modules: coll.Vec<IrModule>
+
+    # Entrypoints (main, tests, etc.)
+    main_function_id: IrFuncId
+    test_entry_functions: coll.Vec<IrFuncId>
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Analyses structurées (dominance, boucles)
+# ---------------------------------------------------------------------------
+
+struct IrDomTreeNode
+    block_id: IrBlockId
+    parent_id: IrBlockId
+    children: coll.Vec<IrBlockId>
+
+    dom_frontier: coll.Vec<IrBlockId>
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrDominatorTree
+    root_block: IrBlockId
+    nodes: coll.Vec<IrDomTreeNode>
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrLoop
+    header: IrBlockId
+    blocks: coll.Vec<IrBlockId>
+
+    # Boucle parente (si imbriquée)
+    parent_header: IrBlockId
+
+    is_innermost: bool
+    is_outermost: bool
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrLoopNest
+    loops: coll.Vec<IrLoop>
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Résumés et index globaux
+# ---------------------------------------------------------------------------
+
+struct IrFunctionSummary
+    func_id: IrFuncId
+
+    num_blocks: u32
+    num_instructions: u32
+    num_calls: u32
+    num_allocas: u32
+    num_loads: u32
+    num_stores: u32
+
+    has_loops: bool
+    has_recursion: bool
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrModuleSummary
+    module_id: IrModuleId
+
+    num_functions: u32
+    num_globals: u32
+    num_types: u32
+
+    total_instructions: u64
+    total_blocks: u64
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrProgramSummary
+    program_id: IrProgramId
+
+    num_modules: u32
+    num_functions: u32
+    num_globals: u32
+    num_types: u32
+
+    total_instructions: u64
+    total_blocks: u64
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct IrIndex
+    # Index par nom global (module:function, module:global, etc.)
+    function_global_name_to_id: coll.HashMap<String, IrFuncId]
+    global_name_to_id: coll.HashMap<String, IrGlobalId]
+
+    # Index par symbol frontend
+    func_ids_by_symbol: coll.HashMap<u32, coll.Vec<IrFuncId]]
+    global_ids_by_symbol: coll.HashMap<u32, coll.Vec<IrGlobalId]]
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct BtIrModel
+    program: IrProgram
+
+    function_summaries: coll.Vec<IrFunctionSummary]
+    module_summaries: coll.Vec<IrModuleSummary]
+    program_summary: IrProgramSummary
+
+    index: IrIndex
+
+    extra: coll.HashMap<String, String>
+.end

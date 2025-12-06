@@ -1,0 +1,596 @@
+module std.io.std_io
+
+import std.collections as coll
+import std.fs.std_fs as sfs
+import std.io.read_to_string as rts
+
+# ============================================================================
+# std.io.std_io – Modèle logique global de l’I/O standard
+# (maximal, déclaratif, sans I/O)
+#
+# Objectifs :
+#   - Décrire une vue déclarative unifiée des flux d’I/O :
+#       * devices / streams (stdin, stdout, stderr, fichiers, pipes, buffers),
+#       * modes d’accès, buffering, encodage,
+#       * opérations logiques d’I/O (read, write, flush, seek, close),
+#       * erreurs, diagnostics, métriques, sessions et snapshots,
+#       * liens vers les sous-modèles spécialisés (FS, read_to_string, etc.).
+#   - Servir de contrat de données entre :
+#       * le compilateur / typechecker,
+#       * le runtime / VM (impl concrètes d’I/O),
+#       * les outils (debugger, profiler, visualiseurs, IDE).
+#   - Ne contenir :
+#       * aucune fonction,
+#       * aucune logique d’I/O ou d’algorithme,
+#       * aucun accès réel au système de fichiers ou au réseau.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Identifiants internes
+# ---------------------------------------------------------------------------
+
+struct StdIoStreamId
+    raw: u64
+.end
+
+struct StdIoDeviceId
+    raw: u64
+.end
+
+struct StdIoChannelId
+    raw: u64
+.end
+
+struct StdIoBufferId
+    raw: u64
+.end
+
+struct StdIoOpId
+    raw: u64
+.end
+
+struct StdIoSessionId
+    raw: u64
+.end
+
+struct StdIoSnapshotId
+    raw: u64
+.end
+
+# ---------------------------------------------------------------------------
+# Genres de stream / device / canal
+# ---------------------------------------------------------------------------
+
+enum StdIoStreamKind
+    StdIoStreamStdin
+    StdIoStreamStdout
+    StdIoStreamStderr
+    StdIoStreamFile
+    StdIoStreamPipe
+    StdIoStreamSocket
+    StdIoStreamMemory
+    StdIoStreamNull
+    StdIoStreamCustom
+    StdIoStreamOther
+.end
+
+enum StdIoDeviceKind
+    StdIoDeviceConsole
+    StdIoDeviceFileSystem
+    StdIoDevicePipe
+    StdIoDeviceSocket
+    StdIoDeviceInMemory
+    StdIoDeviceVirtual
+    StdIoDeviceOther
+.end
+
+enum StdIoChannelDirection
+    StdIoChannelInput
+    StdIoChannelOutput
+    StdIoChannelDuplex
+.end
+
+enum StdIoAccessMode
+    StdIoAccessRead
+    StdIoAccessWrite
+    StdIoAccessReadWrite
+    StdIoAccessAppend
+.end
+
+enum StdIoBlockingMode
+    StdIoBlocking
+    StdIoNonBlocking
+.end
+
+enum StdIoBufferingMode
+    StdIoUnbuffered
+    StdIoLineBuffered
+    StdIoBlockBuffered
+    StdIoCustomBuffered
+.end
+
+enum StdIoFlushPolicy
+    StdIoFlushManual
+    StdIoFlushOnNewline
+    StdIoFlushOnWrite
+    StdIoFlushOnClose
+    StdIoFlushOther
+.end
+
+# ---------------------------------------------------------------------------
+# Encodage / texte (vue générique)
+# ---------------------------------------------------------------------------
+
+enum StdIoTextEncodingKind
+    StdIoTextEncodingUnknown
+    StdIoTextEncodingUtf8
+    StdIoTextEncodingUtf16Le
+    StdIoTextEncodingUtf16Be
+    StdIoTextEncodingLatin1
+    StdIoTextEncodingAscii
+    StdIoTextEncodingOther
+.end
+
+struct StdIoTextEncodingConfig
+    kind: StdIoTextEncodingKind
+
+    # True si l’encodage est auto-détecté
+    auto_detect: bool
+
+    # Policy BOM
+    preserve_bom: bool
+
+    # True si décodage strict
+    strict: bool
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Buffers d’I/O (modèle data-only)
+# ---------------------------------------------------------------------------
+
+enum StdIoBufferKind
+    StdIoBufferKindRead
+    StdIoBufferKindWrite
+    StdIoBufferKindDuplex
+    StdIoBufferKindOther
+.end
+
+struct StdIoBufferConfig
+    kind: StdIoBufferKind
+
+    # Taille cible en octets
+    target_capacity_bytes: u64
+
+    # Taille max (0 = illimitée)
+    max_capacity_bytes: u64
+
+    # Mode de buffering
+    buffering_mode: StdIoBufferingMode
+
+    # Policy de flush (pour les buffers d’écriture)
+    flush_policy: StdIoFlushPolicy
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct StdIoBufferStats
+    # Octets actuellement stockés
+    buffered_bytes: u64
+
+    # Octets écrits vers le backend depuis la création
+    total_flushed_bytes: u64
+
+    # Nombre de flush
+    flush_count: u64
+
+    # Nombre d’extensions de buffer
+    grow_count: u64
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct StdIoBuffer
+    id: StdIoBufferId
+
+    config: StdIoBufferConfig
+    stats: StdIoBufferStats
+
+    # Représentation logique du contenu courant (facultatif, pour debug)
+    debug_bytes_snapshot: coll.Vec<u8>
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Devices et canaux I/O
+# ---------------------------------------------------------------------------
+
+struct StdIoDevice
+    id: StdIoDeviceId
+
+    kind: StdIoDeviceKind
+
+    # Nom logique / debug (ex: "console", "fs", "pipe-1")
+    logical_name: String
+    debug_label: String
+
+    # Pour devices adossés au FS
+    root_path_id: sfs.StdFsPathId
+
+    # Capabilities
+    can_read: bool
+    can_write: bool
+    can_seek: bool
+    can_flush: bool
+    supports_text_encoding: bool
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdIoChannel
+    id: StdIoChannelId
+
+    device_id: StdIoDeviceId
+
+    direction: StdIoChannelDirection
+
+    # Pour les canaux adossés à un handle FS
+    fs_handle_id: sfs.StdFsHandleId
+
+    # Buffers associés (si présents)
+    read_buffer_id: StdIoBufferId
+    write_buffer_id: StdIoBufferId
+
+    # Encodage texte logique (si ce canal transporte du texte)
+    text_encoding: StdIoTextEncodingConfig
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Config / état / métriques d’un stream I/O
+# ---------------------------------------------------------------------------
+
+struct StdIoStreamConfig
+    kind: StdIoStreamKind
+
+    # Canal sous-jacent
+    channel_id: StdIoChannelId
+
+    # Mode d’accès
+    access_mode: StdIoAccessMode
+
+    # Mode de blocage
+    blocking_mode: StdIoBlockingMode
+
+    # Buffering
+    buffering_mode: StdIoBufferingMode
+
+    # Flush policy
+    flush_policy: StdIoFlushPolicy
+
+    # Pour les streams de fichiers
+    primary_path_id: sfs.StdFsPathId
+
+    # Pour les streams logiques (nom d’alias)
+    logical_name: String
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdIoStreamState
+    # True si le stream est encore ouvert
+    is_open: bool
+
+    # True si EOF atteint pour la lecture
+    eof: bool
+
+    # Offset logique (pour les fichiers, si seekable)
+    position: u64
+
+    # Dernier code d’erreur logique (texte)
+    last_error_label: String
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdIoStreamMetrics
+    # Nombre d’opérations
+    read_ops: u64
+    write_ops: u64
+    flush_ops: u64
+    seek_ops: u64
+
+    # Octets transférés
+    bytes_read: u64
+    bytes_written: u64
+
+    # Erreurs
+    error_count: u64
+
+    # Latence (ms) – métriques logiques
+    total_read_latency_ms: u64
+    total_write_latency_ms: u64
+    max_read_latency_ms: u64
+    max_write_latency_ms: u64
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdIoStream
+    id: StdIoStreamId
+
+    config: StdIoStreamConfig
+    state: StdIoStreamState
+    metrics: StdIoStreamMetrics
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Erreurs et opérations I/O
+# ---------------------------------------------------------------------------
+
+enum StdIoErrorKind
+    StdIoErrorFsUnderlying           # erreur remontée depuis std.fs
+    StdIoErrorEncoding               # erreur d’encodage / décodage texte
+    StdIoErrorClosed                 # stream/handle fermé
+    StdIoErrorInterrupted            # opération interrompue
+    StdIoErrorWouldBlock             # mode non-blocking et pas de données
+    StdIoErrorInvalidInput           # paramètres invalides
+    StdIoErrorOutOfSpace             # impossible d’allouer / out-of-space backend
+    StdIoErrorOther
+.end
+
+struct StdIoError
+    kind: StdIoErrorKind
+
+    # Message humain
+    message: String
+
+    # Erreur FS sous-jacente (si applicable)
+    fs_error: sfs.StdFsError
+
+    # Stream concerné (si applicable)
+    stream_id: StdIoStreamId
+
+    # Opération logique
+    op_name: String                  # ex: "read", "write", "flush", "seek"
+
+    extra: coll.HashMap<String, String]
+.end
+
+enum StdIoOpKind
+    StdIoOpRead
+    StdIoOpWrite
+    StdIoOpFlush
+    StdIoOpSeek
+    StdIoOpOpenStream
+    StdIoOpCloseStream
+    StdIoOpCreatePipe
+    StdIoOpDuplicateStream
+    StdIoOpOther
+.end
+
+struct StdIoReadParams
+    # Nombre maximum d’octets à lire
+    max_bytes: u64
+
+    # True si l’appel peut retourner avant d’avoir rempli max_bytes
+    allow_partial: bool
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdIoWriteParams
+    # Longueur du buffer source (octets)
+    buffer_len_bytes: u64
+
+    # True si flush implicite autorisé
+    flush_implicitly: bool
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdIoSeekParams
+    # Offset (en octets)
+    offset: i64
+
+    # Point de référence ("start", "current", "end")
+    reference: String
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdIoOpRequest
+    id: StdIoOpId
+
+    kind: StdIoOpKind
+
+    # Stream cible
+    stream_id: StdIoStreamId
+
+    # Paramètres spécifiques (un seul sera pertinent selon kind)
+    read_params: StdIoReadParams
+    write_params: StdIoWriteParams
+    seek_params: StdIoSeekParams
+
+    # Buffer logique source/destination (identifiant)
+    buffer_id: StdIoBufferId
+
+    # Contexte logique (ex: "compiler-stdout", "user-input")
+    logical_context: String
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdIoOpResult
+    id: StdIoOpId
+
+    # True si succès logique
+    success: bool
+
+    # Erreur (si !success)
+    error: StdIoError
+
+    # Octets effectivement transférés (read/write)
+    bytes_transferred: u64
+
+    # Nouvelle position (pour seek)
+    new_position: u64
+
+    # Timestamps/latence (ms) – logique, pas d’horloge réelle ici
+    latency_ms: u64
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Sessions / métriques globales I/O
+# ---------------------------------------------------------------------------
+
+struct StdIoSessionMeta
+    id: StdIoSessionId
+
+    # Nom logique (ex: "compiler-run-1", "repl-session-2025-12-05")
+    logical_name: String
+    description: String
+
+    # Timestamps logiques (ISO 8601)
+    started_at: String
+    finished_at: String
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdIoSessionMetrics
+    # Nombre total d’opérations
+    total_ops: u64
+
+    read_ops: u64
+    write_ops: u64
+    flush_ops: u64
+    seek_ops: u64
+
+    # Octets totaux
+    total_bytes_read: u64
+    total_bytes_written: u64
+
+    # Erreurs
+    total_errors: u64
+    error_count_by_kind: coll.HashMap<String, u64>
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdIoSession
+    meta: StdIoSessionMeta
+
+    # Streams impliqués dans la session
+    streams: coll.Vec<StdIoStream>
+
+    # Opérations observées
+    op_requests: coll.Vec<StdIoOpRequest>
+    op_results: coll.Vec<StdIoOpResult>
+
+    # Métriques agrégées
+    metrics: StdIoSessionMetrics
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Snapshots I/O
+# ---------------------------------------------------------------------------
+
+struct StdIoSnapshot
+    id: StdIoSnapshotId
+
+    # Contexte temporel
+    captured_at: String
+
+    # Streams connus au moment du snapshot
+    streams: coll.Vec<StdIoStream>
+
+    # Sessions associées (optionnel)
+    sessions: coll.Vec<StdIoSession>
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Liens vers sous-modèles std.io spécialisés
+# ---------------------------------------------------------------------------
+
+struct StdIoTextOpsLink
+    # Référence logique vers le modèle read_to_string
+    read_to_string_model_id: String
+
+    # Copie facultative des métriques globales read_to_string
+    read_to_string_metrics: rts.StdIoReadToStringMetrics
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Index global / registre des streams
+# ---------------------------------------------------------------------------
+
+struct StdIoRegistryEntry
+    stream_id: StdIoStreamId
+
+    # Infos principales
+    kind: StdIoStreamKind
+    logical_name: String
+
+    # Device / canal
+    device_id: StdIoDeviceId
+    channel_id: StdIoChannelId
+
+    # Stats instantanées
+    metrics: StdIoStreamMetrics
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdIoRegistry
+    # Streams connus
+    streams: coll.Vec<StdIoRegistryEntry>
+
+    # Index par logical_name
+    stream_id_by_name: coll.HashMap<String, StdIoStreamId>
+
+    # Index par type (ex: "stdout", "stderr")
+    stream_ids_by_kind_label: coll.HashMap<String, coll.Vec<StdIoStreamId>>
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Modèle racine std.io
+# ---------------------------------------------------------------------------
+
+struct StdIoModel
+    # Devices disponibles
+    devices: coll.Vec<StdIoDevice>
+
+    # Canaux logiques
+    channels: coll.Vec<StdIoChannel>
+
+    # Sessions d’I/O
+    sessions: coll.Vec<StdIoSession>
+
+    # Snapshots globaux
+    snapshots: coll.Vec<StdIoSnapshot>
+
+    # Registre streams
+    registry: StdIoRegistry
+
+    # Liens vers sous-modèles spécialisés (ex: read_to_string)
+    text_ops_link: StdIoTextOpsLink
+
+    # Données libres (version de schéma, tags, notes)
+    extra: coll.HashMap<String, String]
+.end

@@ -1,0 +1,406 @@
+
+
+module vitte.bootstrap.cli.bt_help
+
+import std.collections as coll
+import vitte.compiler.diagnostics as diag
+import vitte.bootstrap.cli.bt_args as bt_args
+import vitte.bootstrap.cli.bt_cli as bt_cli
+import vitte.bootstrap.cli.bt_commands as bt_commands
+import vitte.bootstrap.cli.bt_colors as bt_colors
+
+# ============================================================================
+# Vitte bootstrap - Help system (bt_help)
+# Modèle logique ultra complet pour le système d’aide CLI du bootstrap :
+#   - description des topics d’aide (commandes, groupes, concepts, tutos, FAQ),
+#   - sections structurées (résumé, usage, options, exemples, notes…),
+#   - index de recherche, tags, liens croisés,
+#   - profils de rendu (CLI simple, détaillé, Studio, web),
+#   - intégration avec les commandes, options, couleurs et pipelines.
+#
+# Objectifs
+#   - Aucun parsing, aucune I/O : uniquement des structures, enums et unions.
+#   - Servir de contrat entre :
+#       * le parseur CLI / driver (bt_args, bt_cli),
+#       * le registre de commandes (bt_commands),
+#       * les frontends (CLI texte, Vitte Studio, docs web).
+#   - Respect strict de la syntaxe Vitte : pas d’accolades, blocs terminés par `.end`.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Identifiants & noms
+# ----------------------------------------------------------------------------
+
+type BtHelpTopicId          = i32
+type BtHelpSectionId        = i32
+type BtHelpIndexEntryId     = i32
+type BtHelpTagId            = i32
+type BtHelpLinkId           = i32
+type BtHelpRenderProfileId  = i32
+type BtHelpLayoutId         = i32
+type BtHelpSessionId        = i32
+
+struct BtHelpName
+    id: i32
+    text: String
+    origin_span: diag.SpanId
+.end
+
+# ----------------------------------------------------------------------------
+# Tags & catégories de topics
+# ----------------------------------------------------------------------------
+
+enum BtHelpTopicKind
+    | TopicCommand          # aide sur une commande
+    | TopicCommandGroup     # aide sur un groupe de commandes
+    | TopicConcept          # concept (profil, layout, backend…)
+    | TopicTutorial         # guide pas-à-pas
+    | TopicFAQ              # questions fréquentes
+    | TopicTroubleshooting  # résolution de problèmes
+    | TopicReference        # référence exhaustive
+    | TopicReleaseNotes     # infos de versions
+    | TopicCustom
+.end
+
+struct BtHelpTag
+    id: BtHelpTagId
+    name: BtHelpName
+
+    # Label human-friendly (ex: "ci", "workspace", "bootstrap", "studio")
+    label: String
+    description: String
+.end
+
+# ----------------------------------------------------------------------------
+# Sections d’aide
+# ----------------------------------------------------------------------------
+
+enum BtHelpSectionKind
+    | SectionSummary
+    | SectionUsage
+    | SectionOptions
+    | SectionArguments
+    | SectionExamples
+    | SectionDetails
+    | SectionNotes
+    | SectionDiagnostics
+    | SectionEnvironment
+    | SectionFiles
+    | SectionSeeAlso
+    | SectionTroubleshooting
+    | SectionFAQ
+    | SectionCustom
+.end
+
+struct BtHelpSection
+    id: BtHelpSectionId
+    name: BtHelpName
+    kind: BtHelpSectionKind
+
+    # Contenu brut de la section (texte multi-ligne, formaté type markdown)
+    body_text: String
+
+    # Référence éventuelle à un rôle de couleur pour le titre
+    title_color_role: bt_colors.BtColorRoleId
+    has_title_color_role: bool
+
+    # Tags locaux pour cette section
+    tags: coll.Vec[BtHelpTagId]
+.end
+
+# ----------------------------------------------------------------------------
+# Topics d’aide
+# ----------------------------------------------------------------------------
+
+struct BtHelpTopicCommandBinding
+    # Commande liée (if TopicCommand)
+    command: bt_commands.BtCmdDescriptorId
+    has_command: bool
+
+    # Groupe CLI lié (if TopicCommandGroup)
+    command_group: bt_commands.BtCmdGroupId
+    has_command_group: bool
+
+    # Specs CLI sous-jacentes (ex: pour --help détaillé)
+    primary_spec: bt_args.BtCliCommandSpecId
+    has_primary_spec: bool
+
+    # Options essentielles à l’aide (ex: --profile, --target)
+    key_options: coll.Vec[bt_args.BtCliOptionSpecId]
+.end
+
+struct BtHelpTopic
+    id: BtHelpTopicId
+    name: BtHelpName
+    kind: BtHelpTopicKind
+
+    # Identifiant symbolique stable (ex: "cmd.build", "concept.layout")
+    symbolic_id: String
+
+    # Titre complet et sous-titre éventuel
+    title: String
+    subtitle: String
+
+    # Texte de résumé court pour index/listing
+    summary: String
+
+    # Sections composant la page d’aide
+    sections: coll.Vec[BtHelpSectionId]
+
+    # Tags globaux (ci, workspace, bootstrap, experimental…)
+    tags: coll.Vec[BtHelpTagId]
+
+    # Binding commande/groupe/CLI
+    command_binding: BtHelpTopicCommandBinding
+
+    # Indique si ce topic est visible par défaut dans `help`
+    is_visible: bool
+
+    # Indique si ce topic est marqué comme avancé
+    is_advanced: bool
+.end
+
+# ----------------------------------------------------------------------------
+# Index de recherche & liens
+# ----------------------------------------------------------------------------
+
+enum BtHelpIndexEntryKind
+    | IndexByName
+    | IndexBySymbolicId
+    | IndexByTag
+    | IndexByCommandSegment
+    | IndexByConceptKeyword
+    | IndexCustom
+.end
+
+struct BtHelpIndexEntry
+    id: BtHelpIndexEntryId
+    kind: BtHelpIndexEntryKind
+
+    # Texte indexé (mot-clé, segment de commande, etc.)
+    token: String
+
+    # Poids relatif pour scoring
+    weight: i32
+
+    # Topic cible
+    topic: BtHelpTopicId
+.end
+
+enum BtHelpLinkKind
+    | LinkRelatedTopic
+    | LinkCommand
+    | LinkExternalDoc
+    | LinkWebUrl
+    | LinkAnchorInTopic
+    | LinkCustom
+.end
+
+struct BtHelpLink
+    id: BtHelpLinkId
+    kind: BtHelpLinkKind
+
+    # Topic source et cible (si applicable)
+    source_topic: BtHelpTopicId
+    has_source_topic: bool
+
+    target_topic: BtHelpTopicId
+    has_target_topic: bool
+
+    # Commande liée (par ex. "voir aussi : build")
+    target_command: bt_commands.BtCmdDescriptorId
+    has_target_command: bool
+
+    # URL externe optionnelle
+    url: String
+    has_url: bool
+
+    # Texte d’ancre (ex: "voir la doc détaillée du layout")
+    label: String
+.end
+
+# ----------------------------------------------------------------------------
+# Profils de rendu & layouts
+# ----------------------------------------------------------------------------
+
+enum BtHelpRenderMode
+    | RenderCliCompact        # `vittec0 help build`
+    | RenderCliDetailed       # `vittec0 help build --long`
+    | RenderCliSummaryList    # liste des commandes
+    | RenderStudioPane        # panneau d’aide dans Studio
+    | RenderWebDoc            # doc web générée
+    | RenderCustom
+.end
+
+struct BtHelpRenderProfile
+    id: BtHelpRenderProfileId
+    name: BtHelpName
+
+    mode: BtHelpRenderMode
+
+    # Sections prioritaires pour ce mode
+    preferred_sections: coll.Vec[BtHelpSectionKind]
+
+    # Rôles de couleur recommandés pour titre / corps / exemples
+    title_color_role: bt_colors.BtColorRoleId
+    has_title_color_role: bool
+
+    body_color_role: bt_colors.BtColorRoleId
+    has_body_color_role: bool
+
+    example_color_role: bt_colors.BtColorRoleId
+    has_example_color_role: bool
+
+    # Indique si on doit afficher les tags dans ce mode
+    show_tags: bool
+
+    description: String
+.end
+
+enum BtHelpLayoutKind
+    | LayoutSinglePage
+    | LayoutTwoPane           # index à gauche, contenu à droite
+    | LayoutAccordion         # sections repliables
+    | LayoutTabbed            # onglets (usage/options/exemples…)
+    | LayoutCustom
+.end
+
+struct BtHelpLayout
+    id: BtHelpLayoutId
+    name: BtHelpName
+    kind: BtHelpLayoutKind
+
+    # Ordre des sections dans ce layout
+    section_order: coll.Vec[BtHelpSectionKind]
+
+    # Indique si la navigation par liens doit être affichée
+    show_links: bool
+
+    description: String
+.end
+
+# ----------------------------------------------------------------------------
+# Configuration globale d’aide
+# ----------------------------------------------------------------------------
+
+struct BtHelpConfig
+    # Tags globaux
+    tags: coll.Vec[BtHelpTag]
+
+    # Sections (bibliothèque)
+    sections: coll.Vec[BtHelpSection]
+
+    # Topics
+    topics: coll.Vec[BtHelpTopic]
+
+    # Index de recherche
+    index_entries: coll.Vec[BtHelpIndexEntry]
+
+    # Liens croisés
+    links: coll.Vec[BtHelpLink]
+
+    # Profils de rendu
+    render_profiles: coll.Vec[BtHelpRenderProfile]
+
+    # Layouts d’affichage
+    layouts: coll.Vec[BtHelpLayout]
+
+    # Profil de rendu par défaut pour le CLI
+    default_cli_render_profile: BtHelpRenderProfileId
+    has_default_cli_render_profile: bool
+
+    # Layout de base pour le CLI
+    default_cli_layout: BtHelpLayoutId
+    has_default_cli_layout: bool
+.end
+
+# ----------------------------------------------------------------------------
+# Résolution CLI → help
+# ----------------------------------------------------------------------------
+
+enum BtHelpQueryKind
+    | HelpForCommand
+    | HelpForTopicName
+    | HelpForGroup
+    | HelpListCommands
+    | HelpListTopics
+    | HelpSearch
+    | HelpGeneral
+    | HelpCustom
+.end
+
+struct BtHelpQuery
+    kind: BtHelpQueryKind
+
+    # Commande CLI brute
+    cli_call: bt_args.BtCliCommandCall
+
+    # Texte de requête éventuel (ex: "layout", "backend")
+    raw_query: String
+
+    # Commande pour laquelle on demande l’aide (si applicable)
+    target_command: bt_commands.BtCmdDescriptorId
+    has_target_command: bool
+.end
+
+struct BtHelpResolution
+    # Topic principal sélectionné (pour `help X`)
+    main_topic: BtHelpTopicId
+    has_main_topic: bool
+
+    # Topics supplémentaires (liste, recherche…)
+    related_topics: coll.Vec[BtHelpTopicId]
+
+    # Profil de rendu sélectionné
+    render_profile: BtHelpRenderProfileId
+    has_render_profile: bool
+
+    # Layout sélectionné
+    layout: BtHelpLayoutId
+    has_layout: bool
+.end
+
+# ----------------------------------------------------------------------------
+# Diagnostics spécifiques à l’aide
+# ----------------------------------------------------------------------------
+
+enum BtHelpDiagKind
+    | HelpUnknownCommand
+    | HelpUnknownTopic
+    | HelpAmbiguousTopic
+    | HelpNoTopicsFound
+    | HelpInternalMappingError
+.end
+
+struct BtHelpDiag
+    kind: BtHelpDiagKind
+    message: String
+    primary_span: diag.SpanId
+.end
+
+# ----------------------------------------------------------------------------
+# Session d’aide pour une invocation
+# ----------------------------------------------------------------------------
+
+struct BtHelpSession
+    id: BtHelpSessionId
+    name: BtHelpName
+
+    # Contexte CLI global
+    cli_session: bt_args.BtCliSession
+
+    # Run session globale
+    cli_run: bt_cli.BtCliRunSession
+
+    # Configuration d’aide
+    config: BtHelpConfig
+
+    # Requête d’aide courante
+    query: BtHelpQuery
+
+    # Résolution de cette requête
+    resolution: BtHelpResolution
+
+    # Diagnostics d’aide
+    diagnostics: coll.Vec[BtHelpDiag]
+.end

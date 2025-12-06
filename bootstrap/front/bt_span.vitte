@@ -1,0 +1,257 @@
+module vitte.bootstrap.front.bt_span
+
+import std.collections as coll
+
+# ============================================================================
+# Vitte bootstrap front-end – Modèle logique des fichiers & spans source
+# (maximal, déclaratif, sans I/O)
+#
+# Objectifs :
+#   - Centraliser la représentation des fichiers source et des spans :
+#       * fichiers, encodage, newlines, tailles,
+#       * positions (ligne/colonne, offsets),
+#       * spans (intervalle dans un fichier),
+#       * collections/index de spans pour tooling.
+#   - Servir de base commune pour :
+#       * le lexer (bt_lexer),
+#       * le parser/CST/AST (bt_parser, bt_ast),
+#       * les diagnostics (bt_diagnostics),
+#       * les passes de résolution (bt_resolve).
+#   - Ne contenir :
+#       * aucune fonction,
+#       * aucune I/O ni accès au système de fichiers,
+#       * aucune logique de mapping offset -> ligne/colonne.
+#
+# Remarque :
+#   - Ce module peut être utilisé comme "cœur" pour dériver d’autres spans
+#     (AstSpan, LexSpan, DiagSpan) via composition ou duplication.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Identifiants de fichiers et de spans
+# ---------------------------------------------------------------------------
+
+struct BfFileId
+    raw: u32                    # identifiant interne d’un fichier source
+.end
+
+struct BfSpanId
+    raw: u32                    # identifiant interne d’un span
+.end
+
+# ---------------------------------------------------------------------------
+# Encodage, newlines, rôle logique des fichiers
+# ---------------------------------------------------------------------------
+
+enum BfNewlineStyle
+    BfCrLf        # "\r\n"
+    BfLf          # "\n"
+    BfCr          # "\r"
+    BfMixed       # mélange détecté
+.end
+
+enum BfEncoding
+    BfUtf8
+    BfAscii
+    BfLatin1
+    BfOther
+.end
+
+enum BfFileRole
+    BfMainSource          # fichier source principal (unité de compilation)
+    BfIncludedSource      # fichier inclus / importé
+    BfGeneratedSource     # fichier généré (macro, build, etc.)
+    BfStdlibSource        # fichier de la bibliothèque standard
+    BfMacroExpansion      # "vue" résultant d’une expansion de macro
+    BfOther
+.end
+
+# ---------------------------------------------------------------------------
+# Positions et intervalles dans un fichier
+# ---------------------------------------------------------------------------
+
+struct BfByteRange
+    start: u32             # offset de début (inclus), 0-based
+    end: u32               # offset de fin (exclus)
+.end
+
+struct BfLineCol
+    line: u32              # 1-based
+    column: u32            # 1-based
+.end
+
+struct BfFilePosition
+    file_id: BfFileId
+    byte_offset: u32
+    line_col: BfLineCol
+.end
+
+struct BfFileSpan
+    id: BfSpanId
+    file_id: BfFileId
+
+    byte_range: BfByteRange
+    start: BfLineCol
+    end: BfLineCol
+
+    # Propriétés dérivées (booléennes, remplies par les passes supérieures)
+    is_empty: bool
+    is_multiline: bool
+
+    # Tags libres pour tooling (ex: "token", "expr", "type", "diag.primary")
+    tags: coll.Vec<String>
+.end
+
+# ---------------------------------------------------------------------------
+# Métadonnées de fichiers source
+# ---------------------------------------------------------------------------
+
+struct BfSourceFileMetadata
+    id: BfFileId
+
+    # Informations d’identification
+    path: String                 # chemin logique / absolu / virtuel
+    display_name: String         # ce qui est affiché à l’utilisateur
+
+    # Édition / profil / rôle
+    edition: String              # ex: "2025"
+    profile: String              # ex: "core-bootstrap"
+    role: BfFileRole
+
+    # Encodage et newlines
+    encoding: BfEncoding
+    newline_style: BfNewlineStyle
+
+    # Tailles
+    byte_length: u32             # taille en bytes
+    char_length: u32             # taille en "chars" Unicode (logique)
+    line_count: u32              # nombre de lignes
+
+    # Offsets de début de ligne (0-based), de longueur line_count
+    line_start_offsets: coll.Vec<u32>
+
+    # Hash du contenu ou identifiant stable (blake3, sha256, etc.)
+    content_hash: String
+
+    # Données libres
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Spans logiques composés / multi-fichiers (ex: expansions)
+# ---------------------------------------------------------------------------
+
+enum BfLogicalSpanKind
+    BfSpanFileLocal          # span simple dans un fichier
+    BfSpanExpansion          # span projeté via expansion (macro, généré)
+    BfSpanSynthetic          # span synthétique (pas directement présent dans le texte)
+    BfSpanMultiFile          # couvre plusieurs fichiers (rare, pour tooling)
+.end
+
+struct BfLogicalSpan
+    id: BfSpanId
+    kind: BfLogicalSpanKind
+
+    # Span "primaire" (souvent le span source direct)
+    primary: BfFileSpan
+
+    # Spans supplémentaires liés (ex: call-site d’une macro, définition d’un symbole, etc.)
+    related_spans: coll.Vec<BfFileSpan>
+
+    # Informations textuelles supplémentaires
+    description: String
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Collections de fichiers et de spans
+# ---------------------------------------------------------------------------
+
+struct BfFileTable
+    # Table de tous les fichiers connus pour une compilation
+    files: coll.Vec<BfSourceFileMetadata>
+
+    # Index : path logique -> BfFileId.raw
+    file_id_by_path: coll.HashMap<String, u32>
+
+    # Notes libres
+    notes: String
+    extra: coll.HashMap<String, String>
+.end
+
+struct BfSpanTable
+    # Table de spans "file-local"
+    spans: coll.Vec<BfFileSpan>
+
+    # Table de spans logiques (expansions, multi-fichiers, etc.)
+    logical_spans: coll.Vec<BfLogicalSpan>
+
+    # Index : file_id.raw -> liste de spans
+    spans_by_file_id: coll.HashMap<u32, coll.Vec<BfSpanId>>
+
+    # Index optionnel par tags (ex: "token", "expr", "diag.primary")
+    span_ids_by_tag: coll.HashMap<String, coll.Vec<BfSpanId>>
+
+    # Notes libres
+    notes: String
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Snippets / extraits de code (logique, sans I/O)
+# ---------------------------------------------------------------------------
+
+enum BfSnippetKind
+    BfSnippetSingleLine
+    BfSnippetMultiLine
+    BfSnippetGutterOnly
+    BfSnippetOther
+.end
+
+struct BfSnippetHighlight
+    span_id: BfSpanId             # span mis en évidence
+    label: String                 # texte affichable (ex: "here", "previous declaration")
+    is_primary: bool
+.end
+
+struct BfSnippet
+    kind: BfSnippetKind
+    file_id: BfFileId
+
+    # Spans couverts par le snippet
+    region_span_id: BfSpanId
+    highlights: coll.Vec<BfSnippetHighlight>
+
+    # Ligne de contexte supplémentaire (offsets relatifs)
+    leading_context_lines: u32
+    trailing_context_lines: u32
+
+    # Représentation textuelle préformatée (optionnelle)
+    # Remplie par des passes externes (formatage, diag).
+    preformatted: String
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct BfSnippetBundle
+    snippets: coll.Vec<BfSnippet>
+
+    # Index optionnel : span_id.raw -> indices de snippets
+    snippet_indices_by_span: coll.HashMap<u32, coll.Vec<u32>>
+
+    notes: String
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Paquet global spans + fichiers pour une compilation
+# ---------------------------------------------------------------------------
+
+struct BtSpanBundle
+    files: BfFileTable
+    spans: BfSpanTable
+    snippets: BfSnippetBundle
+
+    # Données globales libres (tags, versionning, etc.)
+    extra: coll.HashMap<String, String>
+.end

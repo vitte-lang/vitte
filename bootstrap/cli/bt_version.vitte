@@ -1,0 +1,395 @@
+module vitte.bootstrap.cli.bt_version
+
+import std.collections as coll
+import vitte.compiler.diagnostics as diag
+import vitte.bootstrap.cli.bt_args as bt_args
+import vitte.bootstrap.cli.bt_cli as bt_cli
+import vitte.bootstrap.cli.bt_commands as bt_commands
+import vitte.bootstrap.cli.bt_help as bt_help
+import vitte.bootstrap.cli.bt_colors as bt_colors
+
+# ============================================================================
+# Vitte bootstrap - Version & about model (bt_version)
+# Modèle logique ultra complet pour la gestion de `--version`, `version`,
+# et des informations "about" des binaires bootstrap :
+#   - description des versions (semver, édition, canal, build info),
+#   - composants (compiler, runtime, std, outils, bootstrap stages),
+#   - fonctionnalités exposées et introduites par version,
+#   - contraintes de compatibilité et matrices de support,
+#   - intégration avec CLI (bt_args, bt_cli, bt_commands, bt_help, bt_colors).
+#
+# Objectifs
+#   - Aucun parsing, aucune I/O, aucune logique d’affichage directe.
+#   - Servir de contrat entre :
+#       * le frontend `lc` et les autres binaires,
+#       * le driver CLI bootstrap,
+#       * les frontends texte / Studio / web.
+#   - Respect strict de la syntaxe Vitte : pas d’accolades, blocs terminés par `.end`.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Identifiants & noms
+# ----------------------------------------------------------------------------
+
+type BtVersionDescriptorId  = i32
+type BtVersionComponentId   = i32
+type BtVersionFeatureId     = i32
+type BtVersionCompatId      = i32
+type BtVersionFormatId      = i32
+type BtVersionSessionId     = i32
+
+struct BtVersionName
+    id: i32
+    text: String
+    origin_span: diag.SpanId
+.end
+
+# ----------------------------------------------------------------------------
+# Représentation semver & build
+# ----------------------------------------------------------------------------
+
+struct BtSemVer
+    major: i32
+    minor: i32
+    patch: i32
+
+    # Suffixes optionnels ex: "alpha.1", "beta", "rc.1"
+    pre_release: String
+    has_pre_release: bool
+
+    # Métadonnées de build ex: "build.1234.gitabcdef"
+    build_metadata: String
+    has_build_metadata: bool
+.end
+
+enum BtVersionChannel
+    | ChannelStable
+    | ChannelBeta
+    | ChannelNightly
+    | ChannelDev
+.end
+
+struct BtVersionBuildInfo
+    # Profil de build (ex: "debug", "release")
+    build_profile: String
+
+    # Timestamp ISO de build ex: "2025-12-05T14:32:10Z"
+    build_timestamp_iso: String
+
+    # Branch / commit
+    git_branch: String
+    git_commit_hash: String
+    git_commit_short: String
+    git_commit_timestamp_iso: String
+    git_dirty: bool
+
+    # Triples de compilation
+    build_host_triple: String
+    build_target_triple: String
+
+    # Indicateurs
+    is_ci_build: bool
+    is_reproducible_build: bool
+.end
+
+# ----------------------------------------------------------------------------
+# Descripteur global de version (binaire / distribution)
+# ----------------------------------------------------------------------------
+
+struct BtVersionDescriptor
+    id: BtVersionDescriptorId
+    name: BtVersionName
+
+    # Nom du binaire (ex: "lc") et nom long (ex: "Vitte language compiler")
+    binary_name: String
+    long_name: String
+
+    # Version & canal
+    version: BtSemVer
+    channel: BtVersionChannel
+
+    # Édition Vitte (ex: "2025")
+    edition: String
+
+    # Informations de build
+    build_info: BtVersionBuildInfo
+
+    # Texte court et long pour `--version` / about
+    short_about: String
+    long_about: String
+
+    # Indique si ce descripteur est celui par défaut pour ce binaire
+    is_default_for_binary: bool
+.end
+
+# ----------------------------------------------------------------------------
+# Composants versionnés de la distribution
+# ----------------------------------------------------------------------------
+
+enum BtVersionComponentKind
+    | ComponentCompilerCore
+    | ComponentBootstrapStage0
+    | ComponentBootstrapStage1
+    | ComponentBootstrapStage2
+    | ComponentRuntimeVm
+    | ComponentStdLibrary
+    | ComponentTools
+    | ComponentStudio
+    | ComponentCliFrontendLc
+    | ComponentCliToolLRun
+    | ComponentCliToolMuffin
+    | ComponentDocs
+    | ComponentTests
+    | ComponentCustom
+.end
+
+struct BtVersionComponent
+    id: BtVersionComponentId
+    name: BtVersionName
+    kind: BtVersionComponentKind
+
+    # Version logicielle de ce composant
+    version: BtSemVer
+
+    # Identifiant d’édition (ex: "lang-2025", "vm-1", "std-2025")
+    edition: String
+
+    # Lien éventuel vers un descripteur global
+    descriptor: BtVersionDescriptorId
+    has_descriptor: bool
+
+    # Indicateurs
+    is_experimental: bool
+    is_internal_only: bool
+
+    # Résumé pour affichage dans `--version --verbose`
+    summary: String
+.end
+
+# ----------------------------------------------------------------------------
+# Fonctionnalités exposées et introduites par version
+# ----------------------------------------------------------------------------
+
+enum BtVersionFeatureKind
+    | FeatureLanguage
+    | FeatureBackend
+    | FeatureCli
+    | FeatureTooling
+    | FeatureDiagnostics
+    | FeatureTesting
+    | FeaturePackaging
+    | FeatureCustom
+.end
+
+struct BtVersionFeature
+    id: BtVersionFeatureId
+    name: BtVersionName
+    kind: BtVersionFeatureKind
+
+    # Composant principal porteur de cette fonctionnalité
+    component: BtVersionComponentId
+    has_component: bool
+
+    # Version/édition à partir de laquelle la fonctionnalité est disponible
+    since_version: BtSemVer
+    has_since_version: bool
+
+    since_edition: String
+    has_since_edition: bool
+
+    # Indique si la fonctionnalité est expérimentale ou dépréciée
+    is_experimental: bool
+    is_deprecated: bool
+
+    # Version de dépréciation éventuelle
+    deprecated_in: BtSemVer
+    has_deprecated_in: bool
+
+    # Résumés pour `--version --features`
+    short_summary: String
+    long_description: String
+.end
+
+# ----------------------------------------------------------------------------
+# Compatibilité & contraintes
+# ----------------------------------------------------------------------------
+
+enum BtVersionCompatKind
+    | CompatRequiresRuntime
+    | CompatRequiresStd
+    | CompatRequiresToolchain
+    | CompatRequiresOs
+    | CompatRequiresArch
+    | CompatRequiresMuffinEdition
+    | CompatRequiresBootstrapStage
+    | CompatCustom
+.end
+
+struct BtVersionCompat
+    id: BtVersionCompatId
+    kind: BtVersionCompatKind
+
+    # Composant concerné
+    component: BtVersionComponentId
+
+    # Version minimale et maximale supportée d’un autre élément
+    min_version: BtSemVer
+    has_min_version: bool
+
+    max_version: BtSemVer
+    has_max_version: bool
+
+    # Cible conceptuelle (ex: "runtime-vitte", "linux-x86_64")
+    target_key: String
+
+    # Commentaire lisible
+    notes: String
+.end
+
+# ----------------------------------------------------------------------------
+# Formats de sortie pour `--version`
+# ----------------------------------------------------------------------------
+
+enum BtVersionOutputKind
+    | VersionOutputTextShort     # ex: "lc 0.1.0 (edition 2025)"
+    | VersionOutputTextFull      # détails build, composants, features
+    | VersionOutputTextAbout     # texte "about"
+    | VersionOutputJson          # dump JSON machine-readable
+    | VersionOutputCustom
+.end
+
+struct BtVersionFormat
+    id: BtVersionFormatId
+    name: BtVersionName
+
+    kind: BtVersionOutputKind
+
+    # Indique si ce format est adapté à la machine (CI, scripts)
+    is_machine_friendly: bool
+
+    # Indique si ce format est verbeux
+    is_verbose: bool
+
+    # Label CLI (ex: "--version", "--version=full", "--version=json")
+    cli_label: String
+
+    description: String
+.end
+
+# ----------------------------------------------------------------------------
+# Intégration avec CLI (options, commandes, help, couleurs)
+# ----------------------------------------------------------------------------
+
+struct BtVersionCliBinding
+    # Commande principale pour la version (ex: `lc version`)
+    command: bt_commands.BtCmdDescriptorId
+    has_command: bool
+
+    # Option globale liée (ex: `--version`)
+    version_option: bt_args.BtCliOptionSpecId
+    has_version_option: bool
+
+    # Topic d’aide associé (ex: "cmd.version")
+    help_topic: bt_help.BtHelpTopicId
+    has_help_topic: bool
+
+    # Format par défaut pour cette commande/option
+    default_format: BtVersionFormatId
+    has_default_format: bool
+
+    # Rôle de couleur recommandé pour la ligne principale de version
+    main_line_color_role: bt_colors.BtColorRoleId
+    has_main_line_color_role: bool
+.end
+
+# ----------------------------------------------------------------------------
+# Configuration globale des versions
+# ----------------------------------------------------------------------------
+
+struct BtVersionConfig
+    # Descripteurs globaux (binaire/distribution)
+    descriptors: coll.Vec[BtVersionDescriptor]
+
+    # Composants versionnés
+    components: coll.Vec[BtVersionComponent]
+
+    # Fonctionnalités exposées
+    features: coll.Vec[BtVersionFeature]
+
+    # Contraintes de compatibilité
+    compat: coll.Vec[BtVersionCompat]
+
+    # Formats de sortie
+    formats: coll.Vec[BtVersionFormat]
+
+    # Binding CLI
+    cli_binding: BtVersionCliBinding
+
+    # Descripteur par défaut pour ce processus
+    default_descriptor: BtVersionDescriptorId
+    has_default_descriptor: bool
+.end
+
+# ----------------------------------------------------------------------------
+# Session de version pour une invocation CLI
+# ----------------------------------------------------------------------------
+
+struct BtVersionQuery
+    # Appel CLI brut
+    cli_call: bt_args.BtCliCommandCall
+
+    # Format demandé (ex: short / full / json)
+    requested_format: BtVersionFormatId
+    has_requested_format: bool
+
+    # Indique si l’utilisateur veut les features détaillées
+    wants_features: bool
+
+    # Indique si l’utilisateur veut la liste des composants
+    wants_components: bool
+.end
+
+struct BtVersionResolution
+    # Descripteur choisi
+    descriptor: BtVersionDescriptorId
+    has_descriptor: bool
+
+    # Format de sortie choisi
+    format: BtVersionFormatId
+    has_format: bool
+.end
+
+enum BtVersionDiagKind
+    | VersionUnknownFormat
+    | VersionNoDescriptorFound
+    | VersionInternalMappingError
+.end
+
+struct BtVersionDiag
+    kind: BtVersionDiagKind
+    message: String
+    primary_span: diag.SpanId
+.end
+
+struct BtVersionSession
+    id: BtVersionSessionId
+    name: BtVersionName
+
+    # Contexte CLI global
+    cli_session: bt_args.BtCliSession
+
+    # Run session globale
+    cli_run: bt_cli.BtCliRunSession
+
+    # Config de versions
+    config: BtVersionConfig
+
+    # Requête/querie version
+    query: BtVersionQuery
+
+    # Résolution de la requête
+    resolution: BtVersionResolution
+
+    # Diagnostics version
+    diagnostics: coll.Vec[BtVersionDiag]
+.end

@@ -1,214 +1,253 @@
+# ============================================================================
+# Vitte project manifest – vitte-core
+#
+# Ce fichier complète le manifest racine `muffin.muf` en fournissant une vue
+# "projet" plus détaillée de vitte-core, orientée toolchain Vitte :
+#
+#   - métadonnées du projet principal,
+#   - description des sous-projets logiques (compiler, runtime, std, tools),
+#   - profils (dev/release/ci) au niveau projet,
+#   - liens avec le bootstrap et la std,
+#   - options spécifiques pour la toolchain Vitte.
+#
+# Il est purement déclaratif et ne contient aucun script ni règle de build.
+# ============================================================================
 
+[project]
+name        = "vitte-core"
+edition     = "2025"
+version     = "0.1.0"
+description = "Core language, compiler, runtime, std and tooling for Vitte."
 
-muffin "vitte.project.muf"
-    # =========================================================================
-    # Manifest Muffin – projet principal vitte-core
-    #
-    # Rôle :
-    #   - décrire le workspace vitte-core (lang + compiler + outils),
-    #   - fournir les métadonnées (nom, version, auteur, licence),
-    #   - exposer des profils de build (debug/release/test),
-    #   - décrire les cibles (binaires CLI, REPL, tests),
-    #   - documenter l’agencement des modules principaux.
-    #
-    # Remarque :
-    #   - ce fichier reste purement déclaratif : aucune logique de build
-    #     impérative, aucun chemin spécifique à une plateforme.
-    # =========================================================================
+# Type logique du projet (workspace principal de la toolchain Vitte).
+kind        = "workspace"
 
-    # -------------------------------------------------------------------------
-    # Métadonnées du package vitte-core
-    # -------------------------------------------------------------------------
-    name: "vitte-core"
-    description: "Core implementation of the Vitte language, compiler and standard library."
-    version: "0.1.0-dev"
-    edition: "2025"
-    authors: ["Vincent Rousseau"]
-    license: "MIT"
-    homepage: "https://github.com/vitte-lang/vitte-core"
-    repository: "https://github.com/vitte-lang/vitte-core.git"
+# Racine logique du projet (relative à ce fichier).
+root        = "."
 
-    # Tag(s) de profil par défaut – le build system peut sélectionner un profil
-    # via la clé 'profiles' ci-dessous.
-    default-profile: "debug"
+# Manifest workspace principal (racine).
+workspace_manifest = "muffin.muf"
 
-    # -------------------------------------------------------------------------
-    # Configuration du workspace
-    # -------------------------------------------------------------------------
-    workspace: {
-        # Racine logique du workspace (relative à ce fichier).
-        root: ".",
+# Manifest bootstrap agrégé.
+bootstrap_manifest = "bootstrap/mod.muf"
 
-        # Dossiers membres (lang, compiler, etc.).
-        members: [
-            "lang",
-            "lang/std",
-            "compiler",
-            "compiler/src",
-            "compiler/src/l"
-        ]
-    }
+# Manifest std agrégé.
+std_manifest = "src/std/mod.muf"
 
-    # -------------------------------------------------------------------------
-    # Configuration du langage Vitte pour ce projet
-    # -------------------------------------------------------------------------
-    language: {
-        edition: "2025",
-        dialect: "core",
-        # Features activables/désactivables par le build system.
-        features: [
-            "hir",
-            "ir",
-            "llvm",
-            "repl",
-            "project",
-            "progress"
-        ]
-    }
+# ---------------------------------------------------------------------------
+# Sous-projets logiques du repo vitte-core
+# (vue "projet" plus fine que le manifest workspace)
+# ---------------------------------------------------------------------------
 
-    # -------------------------------------------------------------------------
-    # Profils de build (mapping symbolique -> options logiques)
-    # -------------------------------------------------------------------------
-    profiles: {
-        "debug": {
-            optimization: "debug",
-            debug-info: true,
-            incremental: true,
-            warnings-as-errors: false,
-            lto: false
-        },
-        "release": {
-            optimization: "release",
-            debug-info: false,
-            incremental: false,
-            warnings-as-errors: true,
-            lto: true
-        },
-        "test": {
-            optimization: "debug",
-            debug-info: true,
-            incremental: true,
-            warnings-as-errors: false,
-            lto: false
-        }
-    }
+[project.subproject."compiler"]
+kind        = "library"
+description = "Vitte compiler core (front/middle/back, CLI)."
+root        = "src/vitte/compiler"
+edition     = "2025"
 
-    # -------------------------------------------------------------------------
-    # Cibles (binaires, bibliothèques, outils)
-    # -------------------------------------------------------------------------
-    targets: {
-        "vitte": {
-            kind: "binary",
-            # module principal du CLI compilateur
-            main: "vitte.compiler.main",
-            # racine logique du projet pour cette cible
-            root: "compiler/src/l",
-            output-dir: "build",
-            output-name: "vitte",
-            profile: "debug"
-        },
-        "vitte-repl": {
-            kind: "binary",
-            main: "vitte.compiler.repl_main",
-            root: "compiler/src/l",
-            output-dir: "build",
-            output-name: "vitte-repl",
-            profile: "debug"
-        },
-        "vitte-tests": {
-            kind: "test",
-            main: "vitte.tests.main",
-            root: "tests",
-            output-dir: "build/tests",
-            output-name: "vitte-tests",
-            profile: "test"
-        }
-    }
+modules = [
+  "vitte.compiler.lexer",
+  "vitte.compiler.parser",
+  "vitte.compiler.ast",
+  "vitte.compiler.span",
+  "vitte.compiler.diagnostics",
+  "vitte.compiler.scope",
+  "vitte.compiler.symbols",
+  "vitte.compiler.types",
+  "vitte.compiler.hir",
+  "vitte.compiler.mir",
+  "vitte.compiler.typecheck",
+  "vitte.compiler.constant_fold",
+  "vitte.compiler.flow_analysis",
+  "vitte.compiler.optimize",
+  "vitte.compiler.ir",
+  "vitte.compiler.codegen.bytecode",
+  "vitte.compiler.codegen.text",
+  "vitte.compiler.link",
+  "vitte.compiler.cli.main",
+]
 
-    # -------------------------------------------------------------------------
-    # Description logique de la std Vitte (niveau module)
-    # -------------------------------------------------------------------------
-    std: {
-        # Modules de base (couche langage / runtime).
-        modules-core: [
-            "std.core",
-            "std.collections",
-            "std.io",
-            "std.os",
-            "std.math"
-        ],
+[project.subproject."runtime"]
+kind        = "library"
+description = "Vitte runtime core (VM, bytecode, GC, std hooks, CLI run)."
+root        = "src/vitte/runtime"
+edition     = "2025"
 
-        # Modules utilitaires ou expérimentaux.
-        modules-extra: [
-            "std.fmt",
-            "std.fs",
-            "std.time"
-        ]
-    }
+modules = [
+  "vitte.runtime.vm",
+  "vitte.runtime.bytecode",
+  "vitte.runtime.gc",
+  "vitte.runtime.std_hooks",
+  "vitte.runtime.cli.run",
+]
 
-    # -------------------------------------------------------------------------
-    # Description logique du compilateur Vitte (modules principaux)
-    # -------------------------------------------------------------------------
-    compiler: {
-        modules-front: [
-            "vitte.compiler.lexer",
-            "vitte.compiler.parser",
-            "vitte.compiler.ast",
-            "vitte.compiler.diagnostics",
-            "vitte.compiler.language",
-            "vitte.compiler.path"
-        ],
-        modules-middle: [
-            "vitte.compiler.hir",
-            "vitte.compiler.ir",
-            "vitte.compiler.project",
-            "vitte.compiler.progress",
-            "vitte.compiler.pipeline"
-        ],
-        modules-back: [
-            "vitte.compiler.linker",
-            "vitte.compiler.llvm",
-            "vitte.compiler.codegen"
-        ],
-        modules-tools: [
-            "vitte.compiler.repl",
-            "vitte.compiler.lsp",
-            "vitte.compiler.cli"
-        ]
-    }
+[project.subproject."tools"]
+kind        = "tooling"
+description = "Vitte tools (formatter, LSP, symbol browser, test runner, CLI)."
+root        = "src/vitte/tools"
+edition     = "2025"
 
-    # -------------------------------------------------------------------------
-    # Dépendances déclaratives (autres paquets / std)
-    # -------------------------------------------------------------------------
-    deps: [
-        "std/core",
-        "std/collections",
-        "std/io",
-        "std/os",
-        "std/math"
-    ]
+modules = [
+  "vitte.tools.format",
+  "vitte.tools.lsp",
+  "vitte.tools.symbols",
+  "vitte.tools.test_runner",
+  "vitte.tools.cli.main",
+]
 
-    # -------------------------------------------------------------------------
-    # Section expérimentale : hooks / outils externes
-    #
-    # Un système de build ou un IDE peut utiliser ces métadonnées pour proposer
-    # des commandes prédéfinies (formatage, lint, benchmarks, etc.).
-    # -------------------------------------------------------------------------
-    tools: {
-        "fmt": {
-            kind: "formatter",
-            command: "vitte fmt",
-            description: "Format Vitte source files."
-        },
-        "check": {
-            kind: "analyzer",
-            command: "vitte check",
-            description: "Run static checks without emitting binaries."
-        },
-        "bench": {
-            kind: "benchmark",
-            command: "vitte bench",
-            description: "Run Vitte micro-benchmarks."
-        }
-    }
-.end
+[project.subproject."std"]
+kind        = "library"
+description = "Vitte standard library (std) – logical bundle."
+root        = "src/std"
+edition     = "2025"
+
+modules = [
+  "std.collections",
+  "std.collections.std_vec",
+  "std.collections.std_map",
+  "std.fs",
+  "std.fs.std_fs",
+  "std.io",
+  "std.io.std_io",
+  "std.io.read_to_string",
+  "std.path",
+  "std.path.std_path",
+  "std.string",
+  "std.string.std_string",
+  "std.time",
+  "std.time.std_time",
+]
+
+[project.subproject."bootstrap"]
+kind        = "bootstrap-meta"
+description = "Bootstrap-related metadata (host, front, middle, back, cli, core, pipeline)."
+root        = "bootstrap"
+edition     = "2025"
+
+manifests = [
+  "bootstrap/mod.muf",
+  "bootstrap/host/mod.muf",
+  "bootstrap/front/mod.muf",
+  "bootstrap/middle/mod.muf",
+  "bootstrap/back/mod.muf",
+  "bootstrap/cli/mod.muf",
+  "bootstrap/core/mod.muf",
+  "bootstrap/pipeline/mod.muf",
+]
+
+[project.subproject."tests"]
+kind        = "tests"
+description = "Tests, fixtures and sample projects for the Vitte toolchain."
+root        = "tests"
+edition     = "2025"
+
+paths = [
+  "tests/data",
+  "tests/data/mini_project",
+  "tests/data/samples",
+  "tests/data/lex",
+  "tests/data/parse",
+]
+
+# ---------------------------------------------------------------------------
+# Profils projet – dev / release / ci
+# ---------------------------------------------------------------------------
+
+[project.profile."dev"]
+description = "Profil de développement : tout le core (compiler/runtime/std/tools/bootstrap/tests)."
+subprojects = ["compiler", "runtime", "std", "tools", "bootstrap", "tests"]
+edition     = "2025"
+
+[project.profile."release"]
+description = "Profil release : focus sur compiler/runtime/std/tools en mode publié."
+subprojects = ["compiler", "runtime", "std", "tools"]
+edition     = "2025"
+
+[project.profile."ci"]
+description = "Profil CI : inclut l’ensemble des sous-projets, y compris bootstrap et tests."
+subprojects = ["compiler", "runtime", "std", "tools", "bootstrap", "tests"]
+edition     = "2025"
+
+# ---------------------------------------------------------------------------
+# Dépendances logiques (entre sous-projets)
+# ---------------------------------------------------------------------------
+
+[project.deps."compiler"]
+# Le compilateur dépend de la std (contrats, modèles) et des tests.
+depends_on = ["std", "tests"]
+
+[project.deps."runtime"]
+depends_on = ["std", "tests"]
+
+[project.deps."tools"]
+depends_on = ["compiler", "runtime", "std"]
+
+[project.deps."std"]
+depends_on = []
+
+[project.deps."bootstrap"]
+depends_on = ["compiler", "runtime", "std", "tools"]
+
+[project.deps."tests"]
+depends_on = ["compiler", "runtime", "std", "tools"]
+
+# ---------------------------------------------------------------------------
+# Entrées principales (binaries logiques)
+# ---------------------------------------------------------------------------
+
+[project.entry."vittec"]
+kind        = "program"
+description = "Main Vitte compiler binary."
+subproject  = "compiler"
+entry       = "vitte.compiler.cli.main"
+
+[project.entry."vitte-run"]
+kind        = "program"
+description = "Main Vitte runtime/runner."
+subproject  = "runtime"
+entry       = "vitte.runtime.cli.run"
+
+[project.entry."vitte-tools"]
+kind        = "program"
+description = "Bundle d’outils Vitte (formatter, LSP, symbols, tests…)."
+subproject  = "tools"
+entry       = "vitte.tools.cli.main"
+
+[project.entry."vitte-bootstrap"]
+kind        = "program"
+description = "Commande pour piloter le bootstrap Vitte (stages, reports)."
+subproject  = "bootstrap"
+entry       = "bootstrap.cli.entry"
+
+# ---------------------------------------------------------------------------
+# Tooling – paramètres spécifiques pour la toolchain Vitte
+# ---------------------------------------------------------------------------
+
+[tool.vitte.project]
+# Edition par défaut utilisée par les outils (CLI, LSP, etc.).
+default_edition = "2025"
+
+# Profil par défaut lorsque non spécifié (dev/release/ci).
+default_profile = "dev"
+
+# Std à charger par défaut pour ce projet.
+std_manifest = "src/std/mod.muf"
+
+# Bootstrap à considérer pour les opérations liées aux stages.
+bootstrap_manifest = "bootstrap/mod.muf"
+
+# Liste d’entrées "publiques" suggérées aux UIs/outils.
+entry_binaries = [
+  "vittec",
+  "vitte-run",
+  "vitte-tools",
+  "vitte-bootstrap",
+]
+
+[tool.vitte.project.test]
+# Attentes logiques globales au niveau projet.
+expect_compiler_present = true
+expect_runtime_present  = true
+expect_std_present      = true
+expect_tools_present    = true
+expect_tests_present    = true

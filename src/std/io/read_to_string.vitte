@@ -1,0 +1,368 @@
+module std.io.read_to_string
+
+import std.collections as coll
+import std.fs.std_fs as sfs
+
+# ============================================================================
+# std.io.read_to_string – Modèle logique des opérations "read_to_string"
+# (maximal, déclaratif, sans I/O)
+#
+# Objectifs :
+#   - Décrire, au niveau purement déclaratif, les opérations de lecture
+#     de texte "read_to_string" (depuis fichier, handle, buffer mémoire, etc.) :
+#       * options de lecture / encodage / normalisation,
+#       * requêtes et résultats structurés,
+#       * erreurs et diagnostics logiques,
+#       * métriques et résumés pour le profiling/observabilité.
+#   - Servir de contrat de données entre :
+#       * le compilateur / typechecker,
+#       * le runtime / VM (impl concrètes d’I/O),
+#       * les outils (debugger, profiler, visualiseurs, IDE).
+#   - Ne contenir :
+#       * aucune fonction,
+#       * aucune logique d’I/O ou d’algorithme,
+#       * aucun accès réel au système de fichiers.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Identifiants
+# ---------------------------------------------------------------------------
+
+struct StdIoReadToStringOpId
+    raw: u64
+.end
+
+struct StdIoReadToStringSessionId
+    raw: u64
+.end
+
+struct StdIoReadToStringSnapshotId
+    raw: u64
+.end
+
+# ---------------------------------------------------------------------------
+# Encodage / fin de ligne / normalisation
+# ---------------------------------------------------------------------------
+
+enum StdIoTextEncoding
+    StdIoTextEncodingUtf8
+    StdIoTextEncodingUtf16Le
+    StdIoTextEncodingUtf16Be
+    StdIoTextEncodingLatin1
+    StdIoTextEncodingAscii
+    StdIoTextEncodingOther
+.end
+
+enum StdIoEncodingDetectionMode
+    StdIoEncodingDetectFromBom          # BOM si présent, sinon fallback
+    StdIoEncodingForceUtf8              # forcer UTF-8, erreurs possibles
+    StdIoEncodingForceExplicit          # utiliser l’encodage explicitement fourni
+    StdIoEncodingHeuristics             # heuristiques (out-of-band, env, etc.)
+    StdIoEncodingOther
+.end
+
+enum StdIoNewlineMode
+    StdIoNewlinePreserve                # ne pas modifier les fins de ligne
+    StdIoNewlineNormalizeToLf           # normaliser vers "\n"
+    StdIoNewlineNormalizeToCrLf         # normaliser vers "\r\n"
+    StdIoNewlineStripTrailing           # strip trailing CR/LF finaux
+    StdIoNewlineOther
+.end
+
+enum StdIoBomHandling
+    StdIoBomKeep                         # conserver le BOM dans la chaîne
+    StdIoBomStrip                        # retirer le BOM si présent
+    StdIoBomRequire                      # considérer absence BOM comme erreur
+    StdIoBomIgnore                       # ignorer la question du BOM
+.end
+
+# ---------------------------------------------------------------------------
+# Options de lecture / limites
+# ---------------------------------------------------------------------------
+
+struct StdIoReadToStringLimits
+    # Taille maximale de lecture (octets bruts)
+    max_bytes: u64
+
+    # Taille maximale de la chaîne résultante (caractères/logical scalar values)
+    max_chars: u64
+
+    # True si un dépassement doit être traité comme une erreur
+    error_on_truncation: bool
+
+    # True si l’impl est autorisée à tronquer proprement (sans erreur dure)
+    allow_truncation: bool
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct StdIoReadToStringOptions
+    # Encodage cible (string interne)
+    target_encoding: StdIoTextEncoding
+
+    # Mode de détection de l’encodage
+    encoding_detection: StdIoEncodingDetectionMode
+
+    # Gestion du BOM
+    bom_handling: StdIoBomHandling
+
+    # Gestion des fins de lignes
+    newline_mode: StdIoNewlineMode
+
+    # Interprétation de la sortie (strict vs permissive)
+    # - strict : toute séquence invalide est une erreur
+    # - permissive : remplacer par U+FFFD, etc.
+    strict_decoding: bool
+
+    # Limites de taille
+    limits: StdIoReadToStringLimits
+
+    # Tags libres (profiling, logging, instrumentation)
+    tags: coll.Vec<String>
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Source logique de la lecture
+# ---------------------------------------------------------------------------
+
+enum StdIoReadSourceKind
+    StdIoReadSourcePath                # fichier adressé par un chemin
+    StdIoReadSourceHandle              # handle logique existant
+    StdIoReadSourceMemoryBuffer        # buffer mémoire (slice/vec de bytes)
+    StdIoReadSourceStdin               # entrée standard
+    StdIoReadSourceOther
+.end
+
+struct StdIoReadSourcePath
+    path_id: sfs.StdFsPathId
+
+    # Méta logique (project-root, config-file, etc.)
+    logical_role: String
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct StdIoReadSourceHandle
+    handle_id: sfs.StdFsHandleId
+
+    # Indique si la position doit être remise à zéro avant lecture
+    rewind_before_read: bool
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct StdIoReadSourceMemory
+    # Représentation logique d’un buffer mémoire de bytes
+    buffer_id: u64
+
+    # Longueur en octets
+    len_bytes: u64
+
+    extra: coll.HashMap<String, String>
+.end
+
+struct StdIoReadSource
+    kind: StdIoReadSourceKind
+
+    from_path: StdIoReadSourcePath
+    from_handle: StdIoReadSourceHandle
+    from_memory: StdIoReadSourceMemory
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Erreurs spécifiques à read_to_string
+# ---------------------------------------------------------------------------
+
+enum StdIoReadToStringErrorKind
+    StdIoReadToStringErrorFs              # erreur de FS sous-jacente (open/read)
+    StdIoReadToStringErrorEncoding        # encodage invalide / non supporté
+    StdIoReadToStringErrorBom             # BOM manquant/inattendu selon policy
+    StdIoReadToStringErrorTruncation      # dépassement de limite (max_bytes/max_chars)
+    StdIoReadToStringErrorNewline         # problème de normalisation EOL
+    StdIoReadToStringErrorInterrupted     # opération interrompue
+    StdIoReadToStringErrorOther
+.end
+
+struct StdIoReadToStringError
+    kind: StdIoReadToStringErrorKind
+
+    # Message humain
+    message: String
+
+    # Code bas niveau, si propagé depuis le FS ou l’OS
+    fs_error: sfs.StdFsError
+
+    # Position approximative (en bytes) où l’erreur est survenue
+    byte_offset: u64
+
+    # Nombre de caractères déjà décodés au moment de l’erreur
+    decoded_chars_count: u64
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Requête read_to_string
+# ---------------------------------------------------------------------------
+
+struct StdIoReadToStringRequest
+    id: StdIoReadToStringOpId
+
+    # Source
+    source: StdIoReadSource
+
+    # Options/logique de lecture
+    options: StdIoReadToStringOptions
+
+    # Contexte logique (ex: "parse-config", "load-source-file")
+    logical_context: String
+
+    # Tags libres pour instrumentation
+    tags: coll.Vec<String>
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Résultat read_to_string
+# ---------------------------------------------------------------------------
+
+struct StdIoReadToStringResult
+    id: StdIoReadToStringOpId
+
+    # True si l’opération est un succès logique complet
+    success: bool
+
+    # Erreur (si !success)
+    error: StdIoReadToStringError
+
+    # Chaîne résultante (si succès ou succès partiel toléré)
+    text: String
+
+    # Encodage réellement utilisé
+    effective_encoding: StdIoTextEncoding
+
+    # Indique si un BOM a été trouvé
+    bom_present: bool
+
+    # Indique si un tronquage a été appliqué
+    truncated: bool
+
+    # Stats sur la lecture
+    bytes_read: u64
+    chars_decoded: u64
+
+    # Indique si des séquences invalides ont été rencontrées
+    had_invalid_sequences: bool
+
+    extra: coll.HashMap<String, String>
+.end
+
+# ---------------------------------------------------------------------------
+# Métriques / profilage
+# ---------------------------------------------------------------------------
+
+struct StdIoReadToStringMetrics
+    # Nombre total d’opérations
+    total_ops: u64
+
+    # Succès / erreurs
+    success_count: u64
+    error_count: u64
+
+    # Décomposition par type d’erreur
+    error_count_by_kind: coll.HashMap<String, u64]
+
+    # Octets / caractères
+    total_bytes_read: u64
+    total_chars_decoded: u64
+
+    # Temps de latence (ms) – modèle purement logique
+    total_latency_ms: u64
+    max_latency_ms: u64
+    min_latency_ms: u64
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Session de read_to_string (agrégation)
+# ---------------------------------------------------------------------------
+
+struct StdIoReadToStringSessionMeta
+    id: StdIoReadToStringSessionId
+
+    # Contexte de session (ex: "compiler-run", "repl-session")
+    logical_name: String
+    description: String
+
+    # Timestamp de début / fin
+    started_at: String
+    finished_at: String
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdIoReadToStringSession
+    meta: StdIoReadToStringSessionMeta
+
+    # Requêtes / résultats observés dans cette session
+    requests: coll.Vec<StdIoReadToStringRequest]
+    results: coll.Vec<StdIoReadToStringResult]
+
+    # Métriques agrégées
+    metrics: StdIoReadToStringMetrics
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Snapshots / index global
+# ---------------------------------------------------------------------------
+
+struct StdIoReadToStringSnapshot
+    id: StdIoReadToStringSnapshotId
+
+    # Contexte temporel
+    captured_at: String
+
+    # Sessions observées
+    sessions: coll.Vec<StdIoReadToStringSession]
+
+    # Métriques agrégées
+    metrics: StdIoReadToStringMetrics
+
+    extra: coll.HashMap<String, String]
+.end
+
+struct StdIoReadToStringIndex
+    # Mapping par chemin (texte canonique) vers dernier résultat connu
+    last_result_by_path_text: coll.HashMap<String, StdIoReadToStringResult]
+
+    # Mapping par contexte logique (ex: "parse-config") vers métriques
+    metrics_by_context: coll.HashMap<String, StdIoReadToStringMetrics]
+
+    extra: coll.HashMap<String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Modèle racine std.io.read_to_string
+# ---------------------------------------------------------------------------
+
+struct StdIoReadToStringModel
+    # Sessions individuelles
+    sessions: coll.Vec<StdIoReadToStringSession]
+
+    # Snapshots enregistrés
+    snapshots: coll.Vec<StdIoReadToStringSnapshot]
+
+    # Index global (accès rapide par chemin/contexte)
+    index: StdIoReadToStringIndex
+
+    # Données libres (notes, version de schéma, tags)
+    extra: coll.HashMap<String, String]
+.end

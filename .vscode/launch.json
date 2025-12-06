@@ -1,0 +1,166 @@
+
+
+{
+  // ========================================================================
+  // VS Code – Launch configuration for the Vitte toolchain (vitte-core)
+  //
+  // This file defines debugger/launch entries for:
+  //   - the Vitte compiler CLI (vittec),
+  //   - the Vitte runtime/runner (vitte-run),
+  //   - a sample mini project used in tests,
+  //   - a generic "custom Vitte command" entry.
+  //
+  // Notes:
+  //   - These configurations assume native binaries located under `target/`.
+  //   - You can adjust `program`, `args` and `preLaunchTask` as your
+  //     build pipeline evolves.
+  // ========================================================================
+  "version": "0.2.0",
+  "configurations": [
+    // ----------------------------------------------------------------------
+    // 1) Vitte compiler – debug build
+    // ----------------------------------------------------------------------
+    {
+      "name": "Vitte: vittec (debug)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/target/debug/vittec",
+      "args": [
+        // Example: compile a project manifest in verbose mode
+        //"--verbose",
+        //"tests/data/mini_project/muffin.muf"
+      ],
+      "cwd": "${workspaceFolder}",
+      "environment": [
+        {
+          "name": "VITTE_WORKSPACE_ROOT",
+          "value": "${workspaceFolder}"
+        }
+      ],
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "MIMode": "lldb",
+      "preLaunchTask": "build vittec (debug)"
+    },
+
+    // ----------------------------------------------------------------------
+    // 2) Vitte compiler – release build
+    // ----------------------------------------------------------------------
+    {
+      "name": "Vitte: vittec (release)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/target/release/vittec",
+      "args": [
+        // Example: build a project in release mode
+        //"--release",
+        //"tests/data/mini_project/muffin.muf"
+      ],
+      "cwd": "${workspaceFolder}",
+      "environment": [
+        {
+          "name": "VITTE_WORKSPACE_ROOT",
+          "value": "${workspaceFolder}"
+        }
+      ],
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "MIMode": "lldb",
+      "preLaunchTask": "build vittec (release)"
+    },
+
+    // ----------------------------------------------------------------------
+    // 3) Vitte runtime – run compiled bytecode
+    // ----------------------------------------------------------------------
+    {
+      "name": "Vitte: vitte-run (debug)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/target/debug/vitte-run",
+      "args": [
+        // Example bytecode file – adapt to your actual layout
+        //"target/core/bytecode/mini_project.vbc"
+      ],
+      "cwd": "${workspaceFolder}",
+      "environment": [
+        {
+          "name": "VITTE_WORKSPACE_ROOT",
+          "value": "${workspaceFolder}"
+        }
+      ],
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "MIMode": "lldb",
+      "preLaunchTask": "build vitte-run (debug)"
+    },
+
+    // ----------------------------------------------------------------------
+    // 4) Mini project – run via vittec (end-to-end smoke)
+    // ----------------------------------------------------------------------
+    {
+      "name": "Vitte: mini_project smoke (vittec + vitte-run)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/target/debug/vittec",
+      "args": [
+        // Example scenario:
+        //   - compile the mini_project manifest
+        //   - emit bytecode into a known location
+        //   - optionally chain with vitte-run via your scripts
+        "tests/data/mini_project/muffin.muf"
+      ],
+      "cwd": "${workspaceFolder}",
+      "environment": [
+        {
+          "name": "VITTE_WORKSPACE_ROOT",
+          "value": "${workspaceFolder}"
+        }
+      ],
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "MIMode": "lldb",
+      "preLaunchTask": "build mini_project (debug)"
+    },
+
+    // ----------------------------------------------------------------------
+    // 5) Custom Vitte command – run arbitrary Vitte binary or script
+    // ----------------------------------------------------------------------
+    {
+      "name": "Vitte: custom command",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${input:vitteProgramPath}",
+      "args": [
+        "${input:vitteArgs}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "environment": [
+        {
+          "name": "VITTE_WORKSPACE_ROOT",
+          "value": "${workspaceFolder}"
+        }
+      ],
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "MIMode": "lldb"
+    }
+  ],
+
+  // ------------------------------------------------------------------------
+  // Interactive inputs – used by "Vitte: custom command"
+  // ------------------------------------------------------------------------
+  "inputs": [
+    {
+      "id": "vitteProgramPath",
+      "type": "promptString",
+      "description": "Path to the Vitte binary to run (relative or absolute).",
+      "default": "${workspaceFolder}/target/debug/vittec"
+    },
+    {
+      "id": "vitteArgs",
+      "type": "promptString",
+      "description": "Arguments to pass to the Vitte binary (optional).",
+      "default": ""
+    }
+  ]
+}
