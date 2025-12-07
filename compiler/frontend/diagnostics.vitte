@@ -1,190 +1,254 @@
 module vitte.compiler.frontend.diagnostics
 
-import vitte.compiler.frontend.span as sp
+import std.collections as coll
 
-# ============================================================================
-# Vitte compiler – Diagnostics frontend
+# =============================================================================
+# Vitte compiler – Diagnostics de frontend (version projet complète)
 #
-# Rôle :
-#   - Représenter les diagnostics du compilateur (erreurs, warnings, notes),
-#   - Collecter les diagnostics dans un "sink" partagé,
-#   - Fournir une impression uniforme sur stdout/stderr :
+# Objectifs :
+#   - Fournir des types stables pour représenter :
+#       * les spans (fichier + positions),
+#       * la sévérité (error / warning / note),
+#       * les labels multiples (primary/secondary) par diagnostic,
+#       * un diagnostic individuel,
+#       * un bag de diagnostics (DiagnosticBag) accumulé pendant le frontend.
+#   - Servir de contrat entre :
+#       * le lexer / parser,
+#       * la résolution / typage,
+#       * le driver du compilateur,
+#       * les outils (LSP, formatters, etc.).
 #
-#       diag:<severity>:<code>:<file>:L<line>C<col>: <message>
-#
-#   - Ne dépendre d’aucun backend ni du système de fichiers.
-# ============================================================================
+# Conventions :
+#   - Pas d'I/O dans ce module : uniquement des structures de données
+#     et des helpers purs (construction, requêtes, fusion).
+#   - L'affichage (formatage texte) est laissé à un autre module
+#     (ex. vitte.compiler.frontend.reporter).
+# =============================================================================
 
-# ---------------------------------------------------------------------------
-# Types de base
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Spans
+# -----------------------------------------------------------------------------
+
+struct Span
+  file: String
+  start_line: Int
+  start_col: Int
+  end_line: Int
+  end_col: Int
+.end
+
+fn Span.dummy(file: String) -> Span
+  # Span artificiel pour les cas où l'on n'a pas encore de position précise.
+  return Span(
+    file = file,
+    start_line = 0,
+    start_col = 0,
+    end_line = 0,
+    end_col = 0,
+  )
+.end
+
+fn Span.is_dummy(self: Span) -> Bool
+  return self.start_line == 0 and self.end_line == 0
+.end
+
+fn Span.same_file(a: Span, b: Span) -> Bool
+  return a.file == b.file
+.end
+
+fn Span.merge(a: Span, b: Span) -> Span
+  # Fusion grossière de deux spans sur le même fichier.
+  if a.file != b.file
+    # Si les fichiers diffèrent, on retourne simplement a.
+    return a
+  end
+
+  let start_line =
+    if a.start_line <= b.start_line then a.start_line else b.start_line end
+  let start_col =
+    if a.start_col <= b.start_col then a.start_col else b.start_col end
+  let end_line =
+    if a.end_line >= b.end_line then a.end_line else b.end_line end
+  let end_col =
+    if a.end_col >= b.end_col then a.end_col else b.end_col end
+
+  return Span(
+    file = a.file,
+    start_line = start_line,
+    start_col = start_col,
+    end_line = end_line,
+    end_col = end_col,
+  )
+.end
+
+# -----------------------------------------------------------------------------
+# Sévérité
+# -----------------------------------------------------------------------------
 
 enum Severity
-    Error
-    Warning
-    Note
+  Error
+  Warning
+  Note
 .end
+
+fn Severity.is_error(self: Severity) -> Bool
+  return self == Severity.Error
+.end
+
+fn Severity.is_warning(self: Severity) -> Bool
+  return self == Severity.Warning
+.end
+
+fn Severity.is_note(self: Severity) -> Bool
+  return self == Severity.Note
+.end
+
+# -----------------------------------------------------------------------------
+# Labels de diagnostic
+# -----------------------------------------------------------------------------
+
+struct DiagnosticLabel
+  message: String
+  span: Span
+  is_primary: Bool
+.end
+
+fn DiagnosticLabel.primary(message: String, span: Span) -> DiagnosticLabel
+  return DiagnosticLabel(
+    message = message,
+    span = span,
+    is_primary = true,
+  )
+.end
+
+fn DiagnosticLabel.secondary(message: String, span: Span) -> DiagnosticLabel
+  return DiagnosticLabel(
+    message = message,
+    span = span,
+    is_primary = false,
+  )
+.end
+
+# -----------------------------------------------------------------------------
+# Diagnostic principal
+# -----------------------------------------------------------------------------
 
 struct Diagnostic
-    severity: Severity
-    code: string
-    message: string
-    span: sp.FileSpan
+  message: String
+  span: Span
+  severity: Severity
+  code: String            # ex : "E0001", "W0001"
+  labels: coll.Vec[DiagnosticLabel]
 .end
 
-struct DiagSink
-    diags: Diagnostic[]
+fn Diagnostic.error(msg: String, span: Span, code: String) -> Diagnostic
+  let labels = coll.Vec[DiagnosticLabel].new()
+  labels.push(DiagnosticLabel.primary(msg, span))
+  return Diagnostic(
+    message = msg,
+    span = span,
+    severity = Severity.Error,
+    code = code,
+    labels = labels,
+  )
 .end
 
-# ---------------------------------------------------------------------------
-# Construction du sink
-# ---------------------------------------------------------------------------
-
-fn diag_sink_new() -> DiagSink:
-    let sink: DiagSink =
-        DiagSink(
-            diags = [],
-        )
-    .end
-    return sink
+fn Diagnostic.warning(msg: String, span: Span, code: String) -> Diagnostic
+  let labels = coll.Vec[DiagnosticLabel].new()
+  labels.push(DiagnosticLabel.primary(msg, span))
+  return Diagnostic(
+    message = msg,
+    span = span,
+    severity = Severity.Warning,
+    code = code,
+    labels = labels,
+  )
 .end
 
-# ---------------------------------------------------------------------------
-# Helpers internes
-# ---------------------------------------------------------------------------
-
-fn severity_as_str(sev: Severity) -> string:
-    if sev == Severity::Error:
-        return "error"
-    .end
-    if sev == Severity::Warning:
-        return "warning"
-    .end
-    return "note"
+fn Diagnostic.note(msg: String, span: Span, code: String) -> Diagnostic
+  let labels = coll.Vec[DiagnosticLabel].new()
+  labels.push(DiagnosticLabel.primary(msg, span))
+  return Diagnostic(
+    message = msg,
+    span = span,
+    severity = Severity.Note,
+    code = code,
+    labels = labels,
+  )
 .end
 
-# ---------------------------------------------------------------------------
-# Ajout de diagnostics
-# ---------------------------------------------------------------------------
-
-fn diag_add(
-    sink: &mut DiagSink,
-    severity: Severity,
-    code: string,
-    file_path: string,
-    line: i32,
-    column: i32,
-    message: string,
-) -> ():
-    let pos: sp.SpanPos =
-        sp.SpanPos(
-            line = line,
-            column = column,
-        )
-    .end
-
-    let s: sp.Span =
-        sp.Span(
-            start = pos,
-            end = pos,
-        )
-    .end
-
-    let fs: sp.FileSpan =
-        sp.FileSpan(
-            file_path = file_path,
-            span = s,
-        )
-    .end
-
-    let d: Diagnostic =
-        Diagnostic(
-            severity = severity,
-            code = code,
-            message = message,
-            span = fs,
-        )
-    .end
-
-    push(sink.diags, d)
-    ret ()
+fn Diagnostic.add_secondary_label(self: &mut Diagnostic, msg: String, span: Span) -> Unit
+  let lbl = DiagnosticLabel.secondary(msg, span)
+  self.labels.push(lbl)
 .end
 
-fn diag_error(
-    sink: &mut DiagSink,
-    code: string,
-    file_path: string,
-    line: i32,
-    column: i32,
-    message: string,
-) -> ():
-    diag_add(sink, Severity::Error, code, file_path, line, column, message)
-    ret ()
+# -----------------------------------------------------------------------------
+# Bag de diagnostics
+# -----------------------------------------------------------------------------
+
+struct DiagnosticBag
+  items: coll.Vec[Diagnostic]
 .end
 
-fn diag_warning(
-    sink: &mut DiagSink,
-    code: string,
-    file_path: string,
-    line: i32,
-    column: i32,
-    message: string,
-) -> ():
-    diag_add(sink, Severity::Warning, code, file_path, line, column, message)
-    ret ()
+# Constructeur et helpers principaux ------------------------------------------
+
+fn DiagnosticBag.new() -> DiagnosticBag
+  return DiagnosticBag(
+    items = coll.Vec[Diagnostic].new(),
+  )
 .end
 
-fn diag_note(
-    sink: &mut DiagSink,
-    code: string,
-    file_path: string,
-    line: i32,
-    column: i32,
-    message: string,
-) -> ():
-    diag_add(sink, Severity::Note, code, file_path, line, column, message)
-    ret ()
+fn DiagnosticBag.is_empty(self: DiagnosticBag) -> Bool
+  return self.items.len() == 0
 .end
 
-# ---------------------------------------------------------------------------
-# Inspection / impression
-# ---------------------------------------------------------------------------
-
-fn diag_has_errors(sink: &DiagSink) -> bool:
-    let mut i: i32 = 0
-    let n: i32 = len(sink.diags)
-
-    while i < n:
-        let d: Diagnostic = sink.diags[i]
-        if d.severity == Severity::Error:
-            return true
-        .end
-        i = i + 1
-    .end
-
-    return false
+fn DiagnosticBag.len(self: DiagnosticBag) -> Int
+  return self.items.len()
 .end
 
-fn diag_print(d: &Diagnostic) -> ():
-    let sev_str: string = severity_as_str(d.severity)
-    let file_path: string = d.span.file_path
-    let line: i32 = d.span.span.start.line
-    let col: i32 = d.span.span.start.column
-
-    # Format standard :
-    #   diag:<severity>:<code>:<file>:L<line>C<col>: <message>
-    say "diag:" sev_str ":" d.code ":" file_path ":L" line "C" col ": " d.message
-    ret ()
+fn DiagnosticBag.get(self: DiagnosticBag, index: Int) -> Diagnostic
+  # Lève si index hors bornes, comportement conforme à Vec.
+  return self.items[index]
 .end
 
-fn diag_print_all(sink: &DiagSink) -> ():
-    let mut i: i32 = 0
-    let n: i32 = len(sink.diags)
+fn DiagnosticBag.add(self: &mut DiagnosticBag, diag: Diagnostic) -> Unit
+  self.items.push(diag)
+.end
 
-    while i < n:
-        diag_print(&sink.diags[i])
-        i = i + 1
-    .end
+fn DiagnosticBag.add_error(self: &mut DiagnosticBag, msg: String, span: Span, code: String) -> Unit
+  let d = Diagnostic.error(msg, span, code)
+  self.items.push(d)
+.end
 
-    ret ()
+fn DiagnosticBag.add_warning(self: &mut DiagnosticBag, msg: String, span: Span, code: String) -> Unit
+  let d = Diagnostic.warning(msg, span, code)
+  self.items.push(d)
+.end
+
+fn DiagnosticBag.add_note(self: &mut DiagnosticBag, msg: String, span: Span, code: String) -> Unit
+  let d = Diagnostic.note(msg, span, code)
+  self.items.push(d)
+.end
+
+fn DiagnosticBag.has_error(self: DiagnosticBag) -> Bool
+  for d in self.items
+    if d.severity == Severity.Error
+      return true
+    end
+  end
+  return false
+.end
+
+fn DiagnosticBag.clear(self: &mut DiagnosticBag) -> Unit
+  # Réinitialise le bag sans allouer de nouveau vecteur.
+  # Implémentation naïve : tant que len > 0, pop.
+  # Pour l'instant, on se contente de recréer un Vec vide.
+  self.items = coll.Vec[Diagnostic].new()
+.end
+
+fn DiagnosticBag.extend(self: &mut DiagnosticBag, other: DiagnosticBag) -> Unit
+  # Ajoute tous les diagnostics de `other` dans `self`.
+  for d in other.items
+    self.items.push(d)
+  end
 .end

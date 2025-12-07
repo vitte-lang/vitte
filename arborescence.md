@@ -1,6 +1,6 @@
 # Arborescence du projet
 
-_Généré automatiquement le 2025-12-06 22:30:24._
+_Généré automatiquement le 2025-12-07 14:16:40._
 
 - .DS_Store
 - .editorconfig
@@ -75,6 +75,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 066d981562093a13edc0f3526084ae03c73bb4
       - 11d832f202e3b55e57bebdf905b32062aaf82e
       - 201084446c64dfbb18713c0f7ddde46e0876e3
+      - 37ced4ae7aa98bdee72d06ed7b9285496e4d61
       - 476f82e3a224dfb0d1e11cbfd001718e5e38ae
       - 5ef3499a96df4f4d9c481e27ee05463a979ab9
       - 5f1e1e7e6908c87bbcd4fd388a3edf68ef2d0c
@@ -112,6 +113,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 40f7d273264214eba648e581641c2610505af0
       - 91d90e8aee3d649844f8207ce8a6f78d22572b
       - 994d1e8b3b5d3d1e68fac4b3dd0649f66cdd0e
+      - a42bc4d75ee73746401e0c5d45575369e9c988
       - b86fcd6b8400df502f35bf4cf9051ed66ec229
       - d204e03f16660f8a8555e536dc3532dcb34ee6
       - e1700adebe30fe0d6c268da2980f4030a9b1a0
@@ -168,6 +170,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - e8dd938a88d34dc45bf5fb2b3c2dde4cc33332
     - 0f/
       - 7fcbf267a30147884f22f031fd504dbcb7c742
+      - 856bc17acc6ae66604a06a7dc338df53ffc650
       - 8c6f85f3c5d7882ab1249ddf743bcaae224d82
       - 9bc06680631a1db913868d586375defd46393b
     - 10/
@@ -196,9 +199,11 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - dbf23a302b67e74030de56e3fc14098312a1e5
       - f24eabaecfd061ad7bb3087bb1ace8dba7ba68
     - 12/
+      - 10afd552d2e1c967344e4fdacdc0d90973a1cc
       - 24bae1ade869e92fc16ab5860ad38f7bbdd7e5
       - 297bfdfcbe770540bd3e81f655581cdc249b48
       - 5d0cf946a886f24c10d8debb9845e724d8605d
+      - 6061f2946c7ca9f270952b70be3f231e71cd2f
       - c495946742989688d4e12a6e281d52b390eb18
       - c74e29d4de561d451fd735fdf16b963845d193
       - e8fd440f186dcea524fb52f9d7175d504bd6b5
@@ -257,6 +262,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 2233ae663ed887153f61dd92bec3ffdc406e00
       - 2d4bab33f977b7d3cceb0ee2f77ef5cb8aa4c2
       - 411f45acb72661d608bdf72b9b097d4bf24708
+      - 5e8bb727df4e75219dd463b99c1922ed99c34d
       - 64d2b6bb817aef8082c19ce91839190f107e21
       - 7e04fef509acb0fe53debc0b5be90de09c1bc3
       - 941aed3f6355c8a3188fb241bb5614281c8ef1
@@ -275,11 +281,13 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 8bb61c3c0fcb9a19a2d375ab9856593593ad17
       - d51fc439797638fadad0af8a231dc4b3d808fd
       - d79a65104a9f6d53e0fb6958d888355eb25d5a
+      - e3b8db0ed88366795321cf4e6147529485e43f
       - f7d6662e1e1099de9129532e7b48769969b3a8
     - 1a/
       - 2192f76a61f8994cafe33ba954abc75a2214f8
       - 42aa77b19b67cccabb635e9aa4bc83ba0b207a
       - 48f09c463f917678c86e944842554da98e9cc0
+      - 6892dfdb2dd1725fc6e3c17c7d9c4a6b36aea2
       - 99dd2f6ace49bcaf4f9faaea54d34ca3fa142a
       - c3355e29eccf7570b6f0265273ae55b22f66eb
       - ec3fd6c416ba5bc5fc494108ad50f46e913694
@@ -343,6 +351,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 7544658efa1156e9f4e01892968083fccf32ac
       - 84d9741b2c1b1b52dd5cea3634bfc7f956f274
       - 930c75a4baa1ba8874bd6673b1193cd9176b90
+      - acdc995a8fe92652a5fc07b8285c09ec7f4585
     - 22/
       - 4608da026d277cf0bb462aafc775b16666811e
       - 4baecfc5266f89a74e409b7e1c2019edec542f
@@ -358,6 +367,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 363df80dd642db88be2d1c6be1133ef8ac7cdb
       - 496372704070a91b5cacaafcd716318a3b3353
       - 53bc1343f634444e6ff9c900d118182570e5c9
+      - 665f348c4ade1e1e7ea2d420717ba06b1d9ecc
       - 92d32b4c015013542b8a0c7940a4ce0020acec
       - b40c1445c27ecc7828b42485f2a26c51497a09
       - c1337842108303efa9b66231bf3d0a83c8657c
@@ -410,12 +420,14 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 14370e71a6f8cb4ee5bfbfbb08febc18777a07
       - 19807986ffdeedf0a817570f440ec94c9a2199
       - 455de5946c33ef7714dafe245c9093e221727e
+      - 7d15a8ed094ab68409a2cf90b78d56eac810ba
       - 7f27b65abaf08bd6dcdbeb117c39b2b6713f41
       - d9aaf5dfc4be7773d6d4b70f9b1e7a4bc6e52d
     - 2a/
       - 152a33b7485a258674c65fde83f5cc324ddd5b
       - 1f994497150327a2c148a5dc813f4f2d054325
       - 5cce4a9285bb86d122be9cc4943b3ecd1931f2
+      - 6e8a99f18d215995165b8532c5ea585c4cbe08
       - 747a584b9231932918d08604247f42e1195fd3
       - 7eb4e8c620fce2f09d26ff539c45598ea4e42c
       - 93a84ac3661745e9530db58823f4c7485ba102
@@ -425,6 +437,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - e68994452550639bc96e0dbcbf6f606e75b01e
     - 2b/
       - 05fb2fde4028b747678a8a5bde1954fe947611
+      - 0c484b368ab56b23ce2d3e6c03b034315e8b2c
       - 1883b7839cad8b0b6ee456d81415bf117c239b
       - 2444570cb11b3dee118ef914014f7d91f780d8
       - 24557ca1130814bb96d8234a1d9fb843dba103
@@ -448,6 +461,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 808d76cd89377679be7a1155d753971f320032
       - 9d35f1328a2549bac5e0ab4fd23f8a95ee767a
       - b4cf23f0f3f2a0c766fbb48b55fa0a334a8e0f
+      - cfddbcba31cdd4ca26596efd75b2969a1b102e
     - 2e/
       - 144b7cce7513cd9c0dea619aeb17e346075b9f
       - 2f6992e2917bae6852cdc9fdd91a1844ac39e1
@@ -471,6 +485,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 3c36f28cd2fb1257c1213e35a0e1440cad0091
       - 6d8c5da0901b74f97d671be08816bff94b9f36
       - 86dd4636cd49cbc573767596213e6e789906a3
+      - a8b58f0e31a14dc07e9495398a573fcf4425aa
       - dc54c034fa5d4b8e45a26cb4a9f0adb0dec35d
       - f134ca7603bbad18465e8c2f3ed1b16f5ea399
     - 31/
@@ -513,6 +528,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - f4da3ca99962638127652653a4ef2bf37ae946
       - fd7d175734a7096809eae6625379f1245c870f
     - 35/
+      - 0e2baf0f98aff19e74fd98436568687f55ea41
       - aeea67b3c7a398b72e0fee97c08b8739708fc9
       - b724018c7554a4acc4a255ea1765d8362bde2f
       - f21e935ea6280ae38c726ce4e76e072df3b1c6
@@ -582,6 +598,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - cc49a60d8ad71855bd5afa73fe68cdc5d8bfa2
       - ec02faa30954a89d43dae605d7012ec48ccfd7
     - 3c/
+      - 11a3a6201d2e279518ed04ba2a8a46f5f76f37
       - 151a999b1f10254437ebce1b39dc324ac67efa
       - 2cb9675a04105aa55e2271522ebbacde506907
       - 387a6c53c0927caa73b9b93dfbebb5b66993a6
@@ -666,6 +683,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 243159984018ec5a49e7abb97a2ad169edaea2
       - 29bd47c309627721ec3a6247d3a7d691061950
       - 3d691529b633b698b58ce6fcd675063dde1a22
+      - 60ad2ab91520a76028dcdf8490f14216cebee2
       - 68b09a1d4ec5154201c7fb958353b8da84922d
       - fe098c8e11c7db89b09cb033cebcdf5aa4a4fe
     - 46/
@@ -764,6 +782,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 11da44b75fd82375f6730786b1194b546a02c2
       - 29282a1f4bf6303f9c14c6ee46829f4d0eec4e
       - 36a1307c66e840a1851c123bcc93622fc9a106
+      - 7064f397ba9fda34a7da730f82a5002aa801f6
       - 76130083de4f405ffb7daee6200cb57d113c7e
       - 76468cc7b70e8418881e2bbc5b4727883fa188
       - 827f2d47beef17c5c794751cb8eef262ab9559
@@ -795,6 +814,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 2e3a957bf19a6bab07811a71cfc6628d94c3fa
       - 5237882230bc8f4364db378882dd0136cfd932
       - 6d0a2444c001d1c238635de4505531b8245646
+      - 8dc904bba0d5230fb681c1dc0d82ee8577392e
       - aedbe847acf99140903fda6003cc3347a43172
       - d53fbd249740cc5aa1c6df6676439b50918806
     - 52/
@@ -825,6 +845,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - b37f61d754b690d7c29d9a72a7fc0adda42df3
       - e9b0c6d2a1df4881e7ea80f23ae342f330e58c
     - 56/
+      - 2b9e765b2445fd0cace70aa673417d915a8987
       - 2fd77cae51adaee96cba616031237ba7226c88
       - 50155a8a8d45243891d79419913d2929f4a972
       - 64bc9766cacd30a40ffc787d902a6807ef94d3
@@ -873,6 +894,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 617765fad7ba3255589881efaf6ee4d64ea1bd
       - 669c8d6bcd92f9a183048479cde4aceeb180ce
       - 6aee67afa8a9f876d8a437862bb2a1a3b091de
+      - 7b5c859549d475b6a9ce4dba992fa565f2c5f2
       - 8954d832b5ecb0f5de44b4b51778a430d21f53
       - 8e445834b366c89e1babed822f30c520b7171c
       - 931b38d661547334faf654dc9029aa0be5df36
@@ -897,6 +919,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 55a1417d6747689c2ac6f721170edfa145b156
       - 7fc69c0a0fb61cf2d3bd76b55e352bbf583203
       - 8d55bb40c84f5b833c49f5e77c9ff85d99b24e
+      - 8f76e74abe2c379774ac262e95d89230ad8a6d
       - 92d1d7957e771e65a15e2c3dcd1f21880a2ece
       - bae02e949a5ea063b368c692d2455fe3adda5b
       - d51a6311e7a0b601df31b12c55db6cbe3bab5d
@@ -936,6 +959,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - afebd8d34769f42c36286ef7b7788b78f1e566
       - d36fc03d7db24ba6a3ad1e224534c9a26c2269
       - e7f608b9012ac2b50780c75bf26e398f7b77f4
+      - f1636b36c6e4ba61b7d09643ea8c5a5f8193a6
     - 62/
       - 13c2741d4482d366e74c7eaaa69b0f06580ddf
       - 146b0aaa7765ccb48c874a4e7fe35e860214ae
@@ -966,6 +990,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 5697ed6324c80211833e297a94de98d93240fc
       - 809ae9ea124f6d513bd2f4bd883942649ee843
       - 82bfc532b77c1b043b2f3fc43ef2b79e1be33d
+      - af32e7bb66370cb55e620f947cd103d2228970
       - c1faf7f5a0caf8c728e8f76d4179ffb5d6fb54
       - d8fc9c5c269aac41a5fdd4298a69cfc905e238
       - dda31a2bb94a77ed9ae88d6b01a88c1bd7cae7
@@ -994,8 +1019,10 @@ _Généré automatiquement le 2025-12-06 22:30:24._
     - 68/
       - 0ac8b653e7dc22d427d744d08191e63d44175d
       - 106530e6833a5a4933d5d65a777a0dd96fe031
+      - 1edce5933770f5e2760906d01ac9189b6d6d53
       - 4dcb64ff0a5f9aa67e27b29b0f9537b5ce3253
       - 5a42f96cd4ba0f75f5595dad62d7bcdca6c67f
+      - 5ce7ea395deb2b2855067c1608460a025787d7
       - 7234f3fb23778d5b234b833b85bcfbf7d9f38e
       - 7d481babf1701fd79d6de4aaa76d82ce7ff62e
       - 7fce52c318682500bf2f4c178d88bb2bcc49d5
@@ -1069,6 +1096,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
     - 70/
       - 007ddfcce34c08382538d064d61a56b2a12dd1
       - 0355bee8087fdd7fd5001c3c25c6cb5cf54732
+      - 0e31663d5b5fe273c3877668668373d349f0fa
       - 275371c1c9cfb5d1d04e6f1a58fd9c167a1127
     - 71/
       - 11edc93c189580ce0e922a48bc1b78cf344805
@@ -1087,6 +1115,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 9aeefba4f3d67d5ad872b8122a5a00785658dc
       - 9ebf102cd843f5a6d33a6e07261e6e506fa6f2
       - b565ce9431626d0dd55ae8c87fe9f477c8659e
+      - fd5adb5f271af23483b528513b2ba1283ad79b
     - 73/
       - 1dca7986f4ffd143e58653feb519ddcebcbf90
       - 88a23f3993ba79d6a678cc1fae3cb1a2c104ca
@@ -1168,6 +1197,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - ef63124833660a0a798f10b8a0775712571650
     - 7e/
       - 6c9533ad88092ba9ed318d5f8d5bbebc855efa
+      - 8787d5d2a8d240c3464690a77072205666e6e1
       - 8ba5bbc2141f2ca4baa69f994ae714a3c2cf95
       - becfb7ac97d6e9a7019b98349ca3fb85d37605
       - c40eee0f781907fcd1ed7369d38258b05d0407
@@ -1183,6 +1213,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 1d12e86dbebc65d9ed01da22df2e58f184bea8
       - 21c6c31bfd7d4be196e2f27c4b10dc0320ae92
       - 2992c4220de19a90767f3000a79a31b98d0df7
+      - 2f407b61869603a77231569f63c89673e3e6ff
       - 4b620325da42848d7e9fbb4a72275aee24f06e
       - 5887145663f6720d075ba381e46a6ce2f402c0
       - 5ffce11419c5d82f6a18012f6d202b2550df12
@@ -1279,6 +1310,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 56a575963961a53ee92639ff2a4e1c6ab9ae3a
       - 8e13f4eae4ebd859a02fe518581cc801875409
       - 9ed9565c1c75235c93e08b7730a28fe07bb834
+      - a07ef3db026b1c81c99d237f7787975dc50391
       - bbf54995e7a7c676a50409f166601708e6b63f
       - e9f2671b4a149d4b69700ef22b40f1ff2ee478
     - 8c/
@@ -1355,6 +1387,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 97441cb7b3916bd1ce4b747d4ded240ebd62f3
       - 97ec13b50562aafedb3e82b812d2bceda7d28f
       - a7d2b3184cb1771271ff3d3396f53a2d10c90b
+      - aaa3898fc030d8151971646ec4df1b7c04e4b4
       - ad89d94b3e6ef94fb958229b53544d878d3444
     - 96/
       - 36a3d97eb7918f176825305f3f7babb1710654
@@ -1443,6 +1476,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - b3118336b00c090fb8c394ded9385f51641c61
       - f9c0ab527f30c7e4508e24fee2a1d3cdacbbe5
     - a1/
+      - 04df62e098241a7236a100b8ba941b915781f1
       - 456c50001ce589982c529055afd622f616f64f
       - 5ced04f2f7f1a0a06e2f104e2f577d00d2a697
       - 6a9d0df1c06ab3af396edfd78931d6ea81e6b6
@@ -1486,6 +1520,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - b3da30e41aacee1fb2b3755eca835f2fdf97d3
       - ba84a36ce4c99aa2beca03dea0edb6184acd61
       - c0691fd286e822e559f53ecbbde0dbef4aaf32
+      - cc9e647d6ba2b16da07dc0c2ec75a932363398
       - d407ead50b7320afdde8bbcc7d0ae89dcccad6
     - a6/
       - 26fe78cc53a1d0e53de300d2ec38bbaeaef7cc
@@ -1523,6 +1558,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - a45e0abfbdfc3dbd734ec9b9c696fb6b67e2b5
     - ab/
       - 0cacc7f62271194078263dd3447b2143de47f4
+      - 2892f14777cc7eebcbb4c72a4c4af0071c1b75
       - 37bac9da0b5ba00f1401b3ddae83cc39679671
       - 3aede1d89a2beb591ff0bd188d21602bd357a2
       - 748c72daa92c2897b88c5ef144661bc6d96429
@@ -1542,6 +1578,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 49a5309c7b894e8373bade3b47ae7458dfea68
       - 54336649954b552864f4fdcda51bb21df6f682
       - 7ee9139d78bb7f3dc58c2b5c279d0c53024cda
+      - 87937401fe2c987136d920056c1fdd1cbbb243
       - ac40cbc1ce1b25ccf265fed1c0314b398c71c7
       - c915aa5cb4ce2cffc15ee289903e923676e18f
     - ae/
@@ -1580,6 +1617,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - fa98e01ed0ce2590e717c1cd864c5d30c2acfb
     - b2/
       - 09390b5b6eeb86601ff56b192294526c815377
+      - 1378439842b7d9aeb93dfe440226dd6c07b299
       - 1bee8626ace8b48cfb7c84936e068b4663a47c
       - 1d25c8789d01b8be4b1290f0bc71d62fc4e451
       - 2868675417b91c02dfbebab45f52e83720130a
@@ -1709,6 +1747,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
     - c1/
       - 2974bc5976acd4ad7d72d858722bb654c23d79
       - 2eab1b1f3deda669038a2f8ab4b589f3db7d95
+      - 37d003fcc155c9b62adcdbe45b50384577a27a
       - 38b2d02c3c441baa5e89922cc543e8fec3746f
       - 72115b15e81c4016ace023fb46b3891dc9fd06
       - a893f3e162b779ab734e688ac5fdfaaf5dd479
@@ -1732,7 +1771,9 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 25283d3e2691491f6dd1517f6d664994e8df8d
       - 259ed3f237c4e8d66ad25c18ef88ad6467b60f
       - 6eeaa311efa4f99cddb0b80af44b018fb74352
+      - 78b77fb1e910d1f12b489d9a1504c4250f129e
       - 7d8712e41b9aae150e0b1b0c4bf1752b7647fb
+      - b20f2af2ca1d06faddbe7a84ed2f05efe12767
       - d99164ab303baee33a8a962d12d483960b02ae
     - c5/
       - 224dfe6c884730037d54e349932e9953b61c69
@@ -1807,6 +1848,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - e978d26e1d328ce1cf9f87a004b1ca5e1b2b00
     - ce/
       - 0cd24f5d789af38bc0bf5974b6d02a4a276cc1
+      - 660b000121702c243edeb0bc59a40445c0991f
       - 8f500189923df1256fb82d714c5c595c6e8f20
       - a762fbac624e4b77e6210ba5c2fd5f062e6e9d
       - c5ec04bea6997ada53293612135c5ca35c56f3
@@ -2090,11 +2132,13 @@ _Généré automatiquement le 2025-12-06 22:30:24._
       - 445983569dff3adb0fb71b822b42d855ffe060
       - 81f128eb0d793758ca31d603dbf3f719e36adf
       - 902f9a2b53d1750e4ded606cc398f9aeb67a46
+      - d3aa0fddb55660dea5367d611a08448166fa57
       - effd41c179595ffc0340dcd5bb420069437928
     - f3/
       - 684d019c2abeb85ab220af18575fdb4f56e42a
       - 79fae4a8b05308112dafc1c15621512a341196
       - c7615a5ac917717e80a1363d231fc5aa6d9dfe
+      - fb76a88b73611aa6f924898fec78c3c928556e
     - f4/
       - 287f96aaf614734c0eb881f6a80c51e6d0a823
       - 3575dbf46e6e4c51b60f1c895b6e21f71bc67c
@@ -2261,6 +2305,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
     - commands.vitte
     - help.vitte
     - l.vitte
+    - main.vitte
     - mod.muf
     - tests.vitte
     - version.vitte
@@ -2325,6 +2370,10 @@ _Généré automatiquement le 2025-12-06 22:30:24._
     - config_example.vitte
     - diag_test.vitte
     - json_parser.vitte
+- goldens/
+  - mini_project_main.golden
+  - mini_project_manifest.golden
+  - resolver_scope_rules.golden
 - grammar/
   - vitte.ebnf
   - vitte.pest
@@ -2343,6 +2392,10 @@ _Généré automatiquement le 2025-12-06 22:30:24._
   - run_goldens.sh
   - self_host_stage1.sh
   - steelc
+- smoke/
+  - build_compiler.vitte
+  - help.vitte
+  - stage_self_host.vitte
 - source.vitte
 - src/
   - std/
@@ -2428,5 +2481,7 @@ _Généré automatiquement le 2025-12-06 22:30:24._
     - t_bt_help.vitte
     - t_bt_stage_self_host.vitte
 - tools/
+  - vitte_build.py
+  - vitte_tests.py
 - tree.sh
 - vitte.project.muf

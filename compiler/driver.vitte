@@ -1,0 +1,308 @@
+module vitte.compiler.driver
+
+import std.fs as fs
+import std.path as path
+import std.string as str
+import std.time as time
+import std.collections as coll
+
+import vitte.compiler.frontend.lexer as lexer
+import vitte.compiler.frontend.parser as parser
+import vitte.compiler.frontend.diagnostics as diag
+import vitte.compiler.frontend.ast as ast
+import vitte.compiler.ir.ir as ir
+import vitte.compiler.ir.ir_builder as ir_builder
+
+# =============================================================================
+# Vitte compiler – Driver de haut niveau (contrat host / driver)
+#
+# Objectifs :
+#   - Point d'entrée unique pour le host (actuellement Python vittec_stage1.py).
+#   - Orchestration complète :
+#       * chargement du manifest Muffin,
+#       * collecte des fichiers .vitte,
+#       * frontend (lex + parse + resolve + typecheck),
+#       * IR,
+#       * backend (C ou VM),
+#       * écriture du binaire out_bin.
+#   - Fournir des codes retour stables :
+#       * 0 = succès,
+#       * 1 = erreurs de compilation (user),
+#       * 2 = bug interne / I/O critique.
+# =============================================================================
+
+struct DriverConfig
+  project_path: String
+  out_bin: String
+  log_path: String?
+.end
+
+struct DriverContext
+  cfg: DriverConfig
+  sources: coll.Vec[String]
+  diags: diag.DiagnosticBag
+  modules: coll.Vec[ast.Module]
+  ir_program: ir.Program
+.end
+
+# -----------------------------------------------------------------------------
+# Points d'entrée publics – appelés par le host Python
+# -----------------------------------------------------------------------------
+
+fn run_build(project_path: String, out_bin: String, log_path: String?) -> Int
+  let cfg = DriverConfig(
+    project_path = project_path,
+    out_bin = out_bin,
+    log_path = log_path,
+  )
+
+  let ctx = DriverContext(
+    cfg = cfg,
+    sources = coll.Vec[String].new(),
+    diags = diag.DiagnosticBag.new(),
+    modules = coll.Vec[ast.Module].new(),
+    ir_program = ir.Program.empty(),
+  )
+
+  # Étape 1 : manifest Muffin
+  let manifest_res = load_manifest(ctx)
+  if manifest_res.is_err()
+    # load_manifest doit avoir déposé au moins un diagnostic exploitable.
+    report_diagnostics(ctx)
+    return 1
+  end
+
+  # Étape 2 : collecte des sources
+  let files_res = collect_project_sources(ctx)
+  if files_res.is_err()
+    report_diagnostics(ctx)
+    return 1
+  end
+
+  # Étape 3 : frontend (lex + parse, plus tard resolve/typecheck)
+  let front_res = run_frontend(ctx)
+  if front_res.is_err()
+    report_diagnostics(ctx)
+    return 1
+  end
+
+  # Étape 4 : IR + backend
+  let ir_res = build_ir(ctx)
+  if ir_res.is_err()
+    log_internal_error(ctx, "build_ir a échoué")
+    report_diagnostics(ctx)
+    return 2
+  end
+
+  let be_res = run_backend(ctx)
+  if be_res.is_err()
+    # Erreurs backend souvent assimilables à des erreurs user
+    # (fichiers manquants, toolchain C, etc.), mais on peut affiner plus tard.
+    report_diagnostics(ctx)
+    return 1
+  end
+
+  flush_logs(ctx)
+  return 0
+.end
+
+fn run_check(project_path: String, log_path: String?) -> Int
+  let cfg = DriverConfig(
+    project_path = project_path,
+    out_bin = "",
+    log_path = log_path,
+  )
+
+  let ctx = DriverContext(
+    cfg = cfg,
+    sources = coll.Vec[String].new(),
+    diags = diag.DiagnosticBag.new(),
+    modules = coll.Vec[ast.Module].new(),
+    ir_program = ir.Program.empty(),
+  )
+
+  let manifest_res = load_manifest(ctx)
+  if manifest_res.is_err()
+    report_diagnostics(ctx)
+    return 1
+  end
+
+  let files_res = collect_project_sources(ctx)
+  if files_res.is_err()
+    report_diagnostics(ctx)
+    return 1
+  end
+
+  let front_res = run_frontend(ctx)
+  if front_res.is_err()
+    report_diagnostics(ctx)
+    return 1
+  end
+
+  flush_logs(ctx)
+  return 0
+.end
+
+# -----------------------------------------------------------------------------
+# Manifest & collecte des sources
+# -----------------------------------------------------------------------------
+
+fn load_manifest(ctx: DriverContext) -> Result[Unit, Unit]
+  let manifest = ctx.cfg.project_path
+
+  # Vérifier que le manifest existe bien sur disque.
+  let exists = fs.exists(manifest)
+  if not exists
+    let span = diag.Span.dummy(manifest)
+    ctx.diags.add_error(
+      "Manifest Muffin introuvable",
+      span,
+      "E0000",
+    )
+    return Err(())
+  end
+
+  # TODO:
+  #   - lire le contenu du manifest
+  #   - parser Muffin
+  #   - initialiser la configuration interne du projet dans le contexte
+  return Ok(())
+.end
+
+fn collect_project_sources(ctx: DriverContext) -> Result[Unit, Unit]
+  let manifest = ctx.cfg.project_path
+  let root     = path.dirname(manifest)
+
+  let sources = coll.Vec[String].new()
+
+  for subdir_name in ["bootstrap", "compiler", "src"]
+    let base = path.join(root, subdir_name)
+    if not fs.is_dir(base)
+      continue
+    end
+
+    let entries = fs.walk_recursive(base)
+    for entry in entries
+      if entry.is_file() and str.ends_with(entry.path, ".vitte")
+        sources.push(entry.path)
+      end
+    end
+  end
+
+  # TODO: trier sources pour un ordre déterministe quand Vec exposera un tri.
+  # sources.sort()
+
+  ctx.sources = sources
+
+  if ctx.sources.len() == 0
+    let span = diag.Span.dummy(root)
+    ctx.diags.add_warning(
+      "Aucun fichier .vitte trouvé dans bootstrap/, compiler/ ou src/",
+      span,
+      "W0001",
+    )
+  end
+
+  return Ok(())
+.end
+
+# -----------------------------------------------------------------------------
+# Frontend : lecture, lexing, parsing
+# -----------------------------------------------------------------------------
+
+fn run_frontend(ctx: DriverContext) -> Result[Unit, Unit]
+  # Frontend Vitte :
+  #   - pour chaque fichier .vitte dans ctx.sources :
+  #       * lire le texte,
+  #       * lexer,
+  #       * parser,
+  #       * accumuler diagnostics dans ctx.diags,
+  #       * stocker le module AST dans ctx.modules.
+  #
+  # Si au moins une erreur est rencontrée, on renvoie Err(()).
+  # Sinon, Ok(()).
+
+  for file_path in ctx.sources
+    # 1) Lecture du fichier source
+    let text_res = fs.read_to_string(file_path)
+    if text_res.is_err()
+      let span = diag.Span.dummy(file_path)
+      ctx.diags.add_error(
+        "Impossible de lire le fichier source",
+        span,
+        "E0001",
+      )
+      # On continue quand même les autres fichiers pour accumuler un max d'erreurs.
+      continue
+    end
+    let text = text_res.unwrap()
+
+    # 2) Lexing
+    let tokens = lexer.lex(text, file_path, &mut ctx.diags)
+
+    # 3) Parsing
+    let module = parser.parse_module(tokens, file_path, &mut ctx.diags)
+
+    # 4) Stocker l'AST dans le contexte
+    ctx.modules.push(module)
+  end
+
+  if ctx.diags.has_error()
+    return Err(())
+  end
+
+  return Ok(())
+.end
+
+# -----------------------------------------------------------------------------
+# IR + backend (stubs pour l'instant)
+# -----------------------------------------------------------------------------
+
+fn build_ir(ctx: DriverContext) -> Result[Unit, Unit]
+  # Construction du programme IR à partir des modules AST.
+  let prog = ir_builder.build_ir_program(ctx.modules, &mut ctx.diags)
+  ctx.ir_program = prog
+
+  # Si le builder a émis des erreurs (par ex. incohérences futures),
+  # on pourra les traiter ici. Pour l'instant, on se contente de vérifier.
+  if ctx.diags.has_error()
+    return Err(())
+  end
+
+  return Ok(())
+.end
+
+fn run_backend(ctx: DriverContext) -> Result[Unit, Unit]
+  # TODO:
+  #   - appeler un backend (C ou VM) pour produire ctx.cfg.out_bin
+  return Ok(())
+.end
+
+# -----------------------------------------------------------------------------
+# Diagnostics & logging (affichage délégué pour l'instant)
+# -----------------------------------------------------------------------------
+
+fn report_diagnostics(ctx: DriverContext) -> Unit
+  # TODO:
+  #   - ce module ne fait pas d'I/O lui-même.
+  #   - brancher plus tard sur vitte.compiler.frontend.reporter
+  #     pour formatage et impression.
+  pass
+.end
+
+fn log_internal_error(ctx: DriverContext, msg: String) -> Unit
+  # TODO:
+  #   - enregistrer un diagnostic "bug interne" avec un code dédié (ex: "E9999")
+  let span = diag.Span.dummy(ctx.cfg.project_path)
+  ctx.diags.add_error(
+    msg,
+    span,
+    "E9999",
+  )
+.end
+
+fn flush_logs(ctx: DriverContext) -> Unit
+  # TODO:
+  #   - flush vers un fichier de log si ctx.cfg.log_path est présent
+  pass
+.end

@@ -1,561 +1,254 @@
-
-
-module vitte.bootstrap.front.bt_ast
+module vitte.compiler.frontend.ast
 
 import std.collections as coll
+import vitte.compiler.frontend.diagnostics as diag
 
-# ============================================================================
-# Vitte bootstrap front-end – AST logique (maximal, déclaratif, sans I/O)
-#
-# Objectifs :
-#   - Fournir une représentation purement déclarative de l’AST du langage Vitte
-#     (édition bootstrap/core) pour les front-ends de compilation.
-#   - Servir de contrat entre :
-#       * le lexer/parser,
-#       * les passes de résolution, typage, désucrage,
-#       * les outils (dump AST, lints, IDE, tests).
-#   - Ne contenir :
-#       * aucune fonction,
-#       * aucune manipulation d’I/O ou de système de fichiers,
-#       * aucune logique de compilation.
-#
-# Convention générale :
-#   - Tous les nœuds ont un `AstNodeId` et un `AstSpan`.
-#   - Les relations entre nœuds se font par id (pour permettre des tables
-#     séparées si besoin) ou par sous-structures directes.
-# ============================================================================
+# -----------------------------------------------------------------------------
+# Identifiants, visibilité, types, fonctions
+# -----------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Identifiants de nœuds et spans
-# ---------------------------------------------------------------------------
-
-struct AstNodeId
-    raw: u32               # identifiant interne stable dans une run de compilation
+struct Ident
+  name: String
+  span: diag.Span
 .end
 
-struct AstSpan
-    file: String           # chemin logique du fichier source
-    start_offset: u32      # offset en bytes/caractères depuis le début du fichier
-    end_offset: u32
-    start_line: u32        # 1-based
-    start_col: u32         # 1-based
-    end_line: u32
-    end_col: u32
+enum Visibility
+  Private
+  Pub
+  PubCrate
 .end
 
-struct AstIdent
-    name: String
-    span: AstSpan
+# Expressions de type (types déclarés dans le code source)
+enum TypeExprKind
+  # ex: "i32", "String", "foo.Bar"
+  Named
+    path: coll.Vec[Ident]
+
+  # ex: (T, U)
+  Tuple
+    items: coll.Vec[TypeExpr]
+
+  # ex: ()
+  Unit
+
+  # ex: type inféré (par le typechecker)
+  Infer
 .end
 
-struct AstItemRef
-    id: AstNodeId
+struct TypeExpr
+  kind: TypeExprKind
+  span: diag.Span
 .end
 
-struct AstExprRef
-    id: AstNodeId
+fn TypeExpr.named_from_ident(name: Ident) -> TypeExpr
+  let path = coll.Vec[Ident].new()
+  path.push(name)
+
+  let span = name.span
+  let kind = TypeExprKind.Named(
+    path = path,
+  )
+
+  return TypeExpr(
+    kind = kind,
+    span = span,
+  )
 .end
 
-struct AstTypeRef
-    id: AstNodeId
+# Handles logiques pour référencer des blocs/expressions dans d'autres
+# structures (le stockage réel peut se faire dans une arène ailleurs).
+type BlockId = Int
+type ExprId = Int
+type StmtId = Int
+
+struct Block
+  stmts: coll.Vec[StmtId]
+  span: diag.Span
 .end
 
-struct AstPatternRef
-    id: AstNodeId
+enum StmtKind
+  Expr
+    expr: ExprId
+  Empty
 .end
 
-# ---------------------------------------------------------------------------
-# Visibilité, mutabilité, attributs
-# ---------------------------------------------------------------------------
-
-enum AstVisibility
-    Public          # pub
-    PublicCrate     # pub(crate)
-    PublicSuper     # pub(super)
-    Private         # (par défaut)
+struct Stmt
+  kind: StmtKind
+  span: diag.Span
 .end
 
-enum AstMutability
-    Immutable
-    Mutable
+enum ExprKind
+  Name
+    ident: Ident
+  IntLiteral
+    value: Int
 .end
 
-struct AstAttributeArg
-    key: String             # ex: "path", "reason"
-    value: String           # valeur brute ou déjà normalisée
-    span: AstSpan
+struct Expr
+  kind: ExprKind
+  span: diag.Span
 .end
 
-struct AstAttribute
-    id: AstNodeId
-    name: AstIdent
-    args: coll.Vec<AstAttributeArg>
-    is_outer: bool          # true pour #[...] externe, false pour #[...] interne
-    span: AstSpan
+struct FnParam
+  name: Ident
+  ty: Option[TypeExpr]
+  default_value: Option[ExprId]
+  span: diag.Span
 .end
 
-# ---------------------------------------------------------------------------
-# Littéraux
-# ---------------------------------------------------------------------------
-
-enum AstLiteralKind
-    Int
-    Float
-    String
-    Bool
-    Char
-    Null
-    Unit
+enum FnKind
+  Normal
+  Extern
+  Intrinsic
 .end
 
-struct AstLiteral
-    kind: AstLiteralKind
-    text: String            # représentation textuelle telle que dans le source
-    span: AstSpan
+struct FnDecl
+  name: Ident
+  vis: Visibility
+  kind: FnKind
+  params: coll.Vec[FnParam]
+  return_type: Option[TypeExpr]
+  body: Option[BlockId]
+  span: diag.Span
 .end
 
-# ---------------------------------------------------------------------------
-# Chemins (paths) et génériques
-# ---------------------------------------------------------------------------
-
-struct AstGenericArg
-    span: AstSpan
-    type_arg: AstTypeRef        # type, si pertinent
-    const_expr: AstExprRef      # expression constante, si pertinente
-    name: AstIdent              # pour les arguments nommés (éventuels)
+fn FnParam.new(name: Ident, ty: Option[TypeExpr], default_value: Option[ExprId], span: diag.Span) -> FnParam
+  return FnParam(
+    name = name,
+    ty = ty,
+    default_value = default_value,
+    span = span,
+  )
 .end
 
-struct AstPathSegment
-    ident: AstIdent
-    generic_args: coll.Vec<AstGenericArg>
-    span: AstSpan
+fn FnDecl.new(
+  name: Ident,
+  vis: Visibility,
+  kind: FnKind,
+  params: coll.Vec[FnParam],
+  return_type: Option[TypeExpr],
+  body: Option[BlockId],
+  span: diag.Span,
+) -> FnDecl
+  return FnDecl(
+    name = name,
+    vis = vis,
+    kind = kind,
+    params = params,
+    return_type = return_type,
+    body = body,
+    span = span,
+  )
 .end
 
-struct AstPath
-    segments: coll.Vec<AstPathSegment>
-    is_absolute: bool
-    span: AstSpan
+# -----------------------------------------------------------------------------
+# Déclarations de haut niveau (items)
+# -----------------------------------------------------------------------------
+
+enum ModuleItemKind
+  ModuleDecl
+  ImportDecl
+  StructDecl
+  FnDecl
+  EnumDecl
+  TypeAliasDecl
+  ConstDecl
 .end
 
-struct AstGenericParam
-    id: AstNodeId
-    name: AstIdent
-    kind: String                    # ex: "type", "const", "lifetime"
-    bounds: coll.Vec<AstTypeRef>
-    default_type: AstTypeRef
-    span: AstSpan
+struct ModuleItem
+  kind: ModuleItemKind
+  name: String
+  span: diag.Span
+
+  # Payload optionnel pour chaque genre d'item.
+  # Pour l'instant, on ne modèle que les fonctions de façon détaillée.
+  fn_decl: Option[FnDecl]
 .end
 
-struct AstWherePredicate
-    id: AstNodeId
-    target: AstTypeRef
-    bounds: coll.Vec<AstTypeRef>
-    span: AstSpan
+fn ModuleItem.new(kind: ModuleItemKind, name: String, span: diag.Span) -> ModuleItem
+  return ModuleItem(
+    kind = kind,
+    name = name,
+    span = span,
+    fn_decl = None,
+  )
 .end
 
-# ---------------------------------------------------------------------------
-# Types
-# ---------------------------------------------------------------------------
-
-enum AstTypeKind
-    Named           # chemin vers un type nommé
-    Tuple
-    Array
-    Slice
-    Reference
-    Pointer
-    FnType
-    Unit
-    Never
-    Infer
-    GenericParam
+fn ModuleItem.from_fn(decl: FnDecl) -> ModuleItem
+  return ModuleItem(
+    kind = ModuleItemKind.FnDecl,
+    name = decl.name.name,
+    span = decl.span,
+    fn_decl = Some(decl),
+  )
 .end
 
-struct AstType
-    id: AstNodeId
-    kind: AstTypeKind
-    span: AstSpan
+# -----------------------------------------------------------------------------
+# Module
+# -----------------------------------------------------------------------------
 
-    # Pour Named / GenericParam
-    name: AstIdent
-    path: AstPath
-
-    # Pour constructions composites
-    element_type: AstTypeRef              # ex: T pour &T, [T], *const T
-    tuple_elements: coll.Vec<AstTypeRef>
-    array_size: AstExprRef                # expression constante pour [T; N]
-
-    # Pour types de fonction
-    fn_params: coll.Vec<AstTypeRef>
-    fn_return: AstTypeRef
-
-    # Qualificateurs
-    is_reference: bool
-    is_mut: bool
-    is_optional: bool                     # pour les types optionnels éventuels
-
-    # Métadonnées génériques
-    attributes: coll.Vec<AstAttribute>
+struct Module
+  file: String
+  items: coll.Vec[ModuleItem]
+  blocks: coll.Vec[Block]
+  stmts: coll.Vec[Stmt]
+  exprs: coll.Vec[Expr]
 .end
 
-# ---------------------------------------------------------------------------
-# Patterns
-# ---------------------------------------------------------------------------
-
-enum AstPatternKind
-    Wildcard           # _
-    Bind               # x, ref x, mut x
-    Tuple
-    Struct
-    Enum
-    Literal
-    Range
-    Slice
-    Or                 # p1 | p2
+fn empty_module(file: String) -> Module
+  # Helper utilisé par le parser tant que la construction fine des items
+  # n'est pas encore implémentée.
+  return Module(
+    file = file,
+    items = coll.Vec[ModuleItem].new(),
+    blocks = coll.Vec[Block].new(),
+    stmts = coll.Vec[Stmt].new(),
+    exprs = coll.Vec[Expr].new(),
+  )
 .end
 
-struct AstPattern
-    id: AstNodeId
-    kind: AstPatternKind
-    span: AstSpan
-
-    name: AstIdent                     # pour Bind, champs nommés, variants
-    ty: AstTypeRef                     # annotation de type éventuelle
-    is_mut: bool                       # let mut x = ...
-    is_ref: bool                       # ref x, ref mut x
-
-    literal: AstLiteral                # pour PatternLiteral
-    sub_patterns: coll.Vec<AstPatternRef>  # pour Tuple, Struct, Enum, Or, Slice
-
-    # Pour les patterns structurés (struct/enum)
-    path: AstPath                      # ex: MyEnum::Variant
-
-    attributes: coll.Vec<AstAttribute>
+fn Module.new(file: String) -> Module
+  return empty_module(file)
 .end
 
-# ---------------------------------------------------------------------------
-# Expressions
-# ---------------------------------------------------------------------------
-
-enum AstUnaryOp
-    Neg         # -
-    Not         # !
-    Ref         # &
-    Deref       # *
+fn Module.add_item(self: &mut Module, item: ModuleItem) -> Unit
+  self.items.push(item)
 .end
 
-enum AstBinaryOp
-    Add
-    Sub
-    Mul
-    Div
-    Rem
-    And
-    Or
-    BitAnd
-    BitOr
-    BitXor
-    Shl
-    Shr
-    Eq
-    Ne
-    Lt
-    Le
-    Gt
-    Ge
+fn Module.len(self: Module) -> Int
+  return self.items.len()
 .end
 
-enum AstAssignOp
-    Assign          # =
-    AddAssign       # +=
-    SubAssign       # -=
-    MulAssign       # *=
-    DivAssign       # /=
-    RemAssign       # %=
-    BitAndAssign    # &=
-    BitOrAssign     # |=
-    BitXorAssign    # ^=
-    ShlAssign       # <<=
-    ShrAssign       # >>=
+fn Module.is_empty(self: Module) -> Bool
+  return self.items.len() == 0
 .end
 
-enum AstExprKind
-    Literal
-    NameRef
-    Path
-    Unary
-    Binary
-    Call
-    Field
-    Index
-    If
-    While
-    For
-    Loop
-    Block
-    Return
-    Break
-    Continue
-    Assign
-    Match
-    Lambda
-    StructLiteral
-    Tuple
-    Array
-    Cast
-    Grouped
-    ErrorExpr       # placeholder pour exprs invalides
+fn Module.add_block(self: &mut Module, block: Block) -> BlockId
+  let id = self.blocks.len()
+  self.blocks.push(block)
+  return id
 .end
 
-struct AstMatchArm
-    id: AstNodeId
-    pattern: AstPatternRef
-    guard: AstExprRef
-    body: AstExprRef
-    span: AstSpan
-    attributes: coll.Vec<AstAttribute>
+fn Module.get_block(self: &Module, id: BlockId) -> Block
+  return self.blocks[id]
 .end
 
-struct AstExpr
-    id: AstNodeId
-    kind: AstExprKind
-    span: AstSpan
-
-    # L’expression peut être annotée avec un type (après typage)
-    ty: AstTypeRef
-
-    # Données partagées / multi-usage selon kind
-    literal: AstLiteral              # pour Literal
-    path: AstPath                    # pour NameRef/Path
-    unary_op: AstUnaryOp             # pour Unary
-    binary_op: AstBinaryOp           # pour Binary
-    assign_op: AstAssignOp           # pour Assign op
-    callee: AstExprRef               # pour Call
-    args: coll.Vec<AstExprRef>       # pour Call/Tuple/Array
-    target: AstExprRef               # pour Field/Index/Assign lhs
-    field_name: AstIdent             # pour Field
-    index_expr: AstExprRef           # pour Index
-    lhs: AstExprRef                  # pour Binary/Assign
-    rhs: AstExprRef                  # pour Binary/Assign
-    cond: AstExprRef                 # pour If/While/Match guard
-    then_block: AstBlockRef          # pour If
-    else_block: AstBlockRef          # pour If (optionnel, peut être vide)
-    loop_body: AstBlockRef           # pour While/For/Loop
-    pattern: AstPatternRef           # pour For (pattern itérateur)
-    iterator: AstExprRef             # pour For
-    label: String                    # label de loop/break/continue
-    value: AstExprRef                # pour Return, Break value (si supporté)
-    match_arms: coll.Vec<AstMatchArm>
-    lambda_params: coll.Vec<AstPatternRef>
-    lambda_body: AstExprRef
-    cast_type: AstTypeRef            # pour Cast
-
-    attributes: coll.Vec<AstAttribute>
+fn Module.add_stmt(self: &mut Module, stmt: Stmt) -> StmtId
+  let id = self.stmts.len()
+  self.stmts.push(stmt)
+  return id
 .end
 
-struct AstBlockRef
-    id: AstNodeId
+fn Module.get_stmt(self: &Module, id: StmtId) -> Stmt
+  return self.stmts[id]
 .end
 
-struct AstBlock
-    id: AstNodeId
-    span: AstSpan
-    stmts: coll.Vec<AstStmt>
-    tail_expr: AstExprRef
-    attributes: coll.Vec<AstAttribute>
+fn Module.add_expr(self: &mut Module, expr: Expr) -> ExprId
+  let id = self.exprs.len()
+  self.exprs.push(expr)
+  return id
 .end
 
-# ---------------------------------------------------------------------------
-# Instructions (statements)
-# ---------------------------------------------------------------------------
-
-enum AstStmtKind
-    ExprStmt        # expr terminée par ;
-    Let             # let pattern [: type] = expr ;
-    Item            # déclaration imbriquée (fn, struct, etc.)
-    Empty           # ;
-.end
-
-struct AstStmt
-    id: AstNodeId
-    kind: AstStmtKind
-    span: AstSpan
-
-    expr: AstExprRef             # pour ExprStmt, let init, etc.
-    pattern: AstPatternRef       # pour let
-    ty: AstTypeRef               # type annoté dans let pattern : T
-    is_mut: bool                 # let mut
-    item: AstItemRef             # pour Item
-
-    attributes: coll.Vec<AstAttribute>
-.end
-
-# ---------------------------------------------------------------------------
-# Imports (use)
-# ---------------------------------------------------------------------------
-
-enum AstUseKind
-    Single      # use foo::bar;
-    Glob        # use foo::*;
-    Group       # use foo::{bar, baz};
-.end
-
-struct AstUseTree
-    id: AstNodeId
-    span: AstSpan
-
-    path: AstPath
-    alias: AstIdent
-    kind: AstUseKind
-
-    # Pour Group : enfants représentant les éléments du groupe
-    children: coll.Vec<AstUseTree>
-
-    attributes: coll.Vec<AstAttribute>
-.end
-
-# ---------------------------------------------------------------------------
-# Champs, structs, enums
-# ---------------------------------------------------------------------------
-
-enum AstStructKind
-    Normal      # struct Nom { ... }
-    Tuple       # struct Nom(...)
-    Unit        # struct Nom;
-.end
-
-struct AstField
-    id: AstNodeId
-    name: AstIdent
-    ty: AstTypeRef
-    vis: AstVisibility
-    mutability: AstMutability
-    span: AstSpan
-    attributes: coll.Vec<AstAttribute>
-.end
-
-struct AstStructDef
-    kind: AstStructKind
-    fields: coll.Vec<AstField>        # pour Normal/Unit (vide si Unit)
-    tuple_fields: coll.Vec<AstField>  # pour Tuple
-    is_extern: bool
-    attributes: coll.Vec<AstAttribute>
-.end
-
-struct AstEnumVariant
-    id: AstNodeId
-    name: AstIdent
-    fields: coll.Vec<AstField>        # peut servir pour tuple-like ou struct-like
-    span: AstSpan
-    attributes: coll.Vec<AstAttribute>
-.end
-
-struct AstEnumDef
-    variants: coll.Vec<AstEnumVariant>
-    is_extern: bool
-    attributes: coll.Vec<AstAttribute>
-.end
-
-# ---------------------------------------------------------------------------
-# Fonctions, signatures, paramètres
-# ---------------------------------------------------------------------------
-
-struct AstFnParam
-    id: AstNodeId
-    name: AstIdent
-    ty: AstTypeRef
-    mutability: AstMutability
-    is_self: bool                 # true pour self / &self / &mut self
-    span: AstSpan
-    attributes: coll.Vec<AstAttribute>
-.end
-
-struct AstFnSig
-    generic_params: coll.Vec<AstGenericParam>
-    params: coll.Vec<AstFnParam>
-    return_type: AstTypeRef
-    where_clauses: coll.Vec<AstWherePredicate>
-    is_async: bool
-    is_unsafe: bool
-    is_extern: bool
-    calling_convention: String    # ex: "C", "vitte", etc.
-    span: AstSpan
-.end
-
-struct AstFnDef
-    sig: AstFnSig
-    body: AstBlockRef
-.end
-
-# ---------------------------------------------------------------------------
-# Items et module racine
-# ---------------------------------------------------------------------------
-
-enum AstItemKind
-    Module
-    Use
-    Struct
-    Enum
-    TypeAlias
-    Union
-    Fn
-    Const
-    Static
-    Program
-    Service
-    Kernel
-    Driver
-    Tool
-    Scenario
-    Pipeline
-.end
-
-struct AstItem
-    id: AstNodeId
-    kind: AstItemKind
-    vis: AstVisibility
-    name: AstIdent
-    span: AstSpan
-
-    attributes: coll.Vec<AstAttribute>
-    generic_params: coll.Vec<AstGenericParam>
-    where_clauses: coll.Vec<AstWherePredicate>
-
-    # Contenu spécifique selon kind (multi-usage, certains resteront vides)
-    module_items: coll.Vec<AstItemRef>   # pour Module
-    use_tree: AstUseTree                 # pour Use
-    struct_def: AstStructDef             # pour Struct
-    enum_def: AstEnumDef                 # pour Enum
-    alias_type: AstTypeRef               # pour TypeAlias
-    fn_def: AstFnDef                     # pour Fn
-    const_type: AstTypeRef               # pour Const/Static
-    const_value: AstExprRef              # pour Const/Static
-.end
-
-struct AstModule
-    id: AstNodeId
-    name: AstIdent
-    span: AstSpan
-
-    is_root: bool
-    file_path: String
-
-    attributes: coll.Vec<AstAttribute>
-    items: coll.Vec<AstItem>
-.end
-
-# ---------------------------------------------------------------------------
-# Racine AST pour un fichier / unité de compilation
-# ---------------------------------------------------------------------------
-
-struct BtAst
-    root_module: AstModule
-
-    # Tables globales éventuelles pour outils qui veulent indexer
-    all_items: coll.Vec<AstItem>
-    all_exprs: coll.Vec<AstExpr>
-    all_types: coll.Vec<AstType>
-    all_patterns: coll.Vec<AstPattern>
-    all_blocks: coll.Vec<AstBlock>
-    all_stmts: coll.Vec<AstStmt>
+fn Module.get_expr(self: &Module, id: ExprId) -> Expr
+  return self.exprs[id]
 .end

@@ -1,439 +1,748 @@
-module vitte.bootstrap.front.bt_lexer
+module vitte.compiler.frontend.parser
 
 import std.collections as coll
-import vitte.bootstrap.front.bt_ast as ast
-import vitte.bootstrap.front.bt_span as span
 
-# ============================================================================
-# Vitte bootstrap front-end – Modèle logique du lexer (maximal, sans I/O)
+import vitte.compiler.frontend.lexer as lex
+import vitte.compiler.frontend.diagnostics as diag
+import vitte.compiler.frontend.ast as ast
+
+# =============================================================================
+# Vitte compiler – Parser runtime (version avec AST rempli)
 #
 # Objectifs :
-#   - Décrire la représentation purement déclarative :
-#       * des fichiers source (texte, lignes),
-#       * des tokens, trivia et canaux,
-#       * des erreurs de lexing,
-#       * des configurations/options de lexing,
-#       * des flux de tokens produits par le lexer.
-#   - Servir de contrat entre :
-#       * l’implémentation du lexer,
-#       * les passes suivantes (parser, pré-analyse),
-#       * les outils (dump de tokens, IDE, tests).
-#   - Ne contenir aucune logique de lexing, ni d’I/O, ni de formatage.
-# ============================================================================
+#   - parse_module(tokens, file, diags) -> ast.Module complet,
+#   - Parser qui:
+#       * parcourt les tokens,
+#       * dispatch les déclarations toplevel,
+#       * construit des ast.ModuleItem (ModuleDecl, ImportDecl, StructDecl, FnDecl),
+#       * accumule diagnostics.
+# =============================================================================
 
-# ---------------------------------------------------------------------------
-# Fichiers source et positions
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# État du parser
+# -----------------------------------------------------------------------------
 
-enum LexNewlineStyle
-    CrLf        # "\r\n"
-    Lf          # "\n"
-    Cr          # "\r"
-    Mixed       # mélange détecté
+struct Parser
+  tokens: coll.Vec[lex.Token]
+  index: Int
+  file: String
+  diags: &mut diag.DiagnosticBag
 .end
 
-enum LexEncoding
-    Utf8
-    Ascii
-    Other
+fn Parser.new(tokens: coll.Vec[lex.Token], file: String, diags: &mut diag.DiagnosticBag) -> Parser
+  return Parser(
+    tokens = tokens,
+    index = 0,
+    file = file,
+    diags = diags,
+  )
 .end
 
-struct LexSourceFile
-    path: String                     # chemin logique (ou interne) du fichier
-    display_name: String             # nom affichable (optionnel)
-    bf_file_id: span.BfFileId        # id logique dans la table de spans
-    encoding: LexEncoding
-    newline_style: LexNewlineStyle
+# -----------------------------------------------------------------------------
+# API publique
+# -----------------------------------------------------------------------------
 
-    # Taille et contenu abstrait
-    byte_length: u32                 # taille en bytes
-    char_length: u32                 # taille logique en "chars" Unicode
-
-    # Offsets de début de ligne (0-based), de longueur line_count
-    line_start_offsets: coll.Vec<u32>
-
-    # Informations additionnelles libres
-    hash: String                     # hash du contenu (sha256/blake3, etc.) ou vide
-    extra: coll.HashMap<String, String>
+fn parse_module(
+  tokens: coll.Vec[lex.Token],
+  file: String,
+  diags: &mut diag.DiagnosticBag,
+) -> ast.Module
+  let parser = Parser.new(tokens, file, diags)
+  return parser.parse_module()
 .end
 
-# ---------------------------------------------------------------------------
-# Trivia (espaces, commentaires, etc.)
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Helpers de navigation
+# -----------------------------------------------------------------------------
 
-enum LexTriviaKind
-    Whitespace          # espaces, tabs (hors newlines)
-    Newline             # saut(s) de ligne
-    LineComment         # commentaire ligne
-    BlockComment        # commentaire bloc
-    DocLineComment      # commentaire doc ligne
-    DocBlockComment     # commentaire doc bloc
-    Shebang             # ligne de shebang en tête de fichier
-    Unknown
+fn Parser.is_eof(self: Parser) -> Bool
+  return self.index >= self.tokens.len()
 .end
 
-struct LexTrivia
-    kind: LexTriviaKind
-    span: ast.AstSpan
-    span_id: span.BfSpanId           # lien vers le span table front-end
-    text: String                     # texte brut tel que lu (optionnel)
+fn Parser.current(self: Parser) -> lex.Token
+  if self.is_eof()
+    # Hypothèse : le lexer ajoute toujours un token Eof final.
+    return self.tokens[self.tokens.len() - 1]
+  end
+  return self.tokens[self.index]
 .end
 
-# ---------------------------------------------------------------------------
-# Tokens : genres, canaux, mots-clés
-# ---------------------------------------------------------------------------
-
-enum LexChannel
-    Default             # tokens visibles pour le parser
-    Hidden              # trivia attachés, directives masquées, etc.
-    Doc                 # canal documentaire éventuel
-    Directive           # directives de préprocessing, si supporté
+fn Parser.peek_kind(self: Parser) -> lex.TokenKind
+  let tok = self.current()
+  return tok.kind
 .end
 
-enum LexNumericBase
-    Decimal
-    Hex
-    Octal
-    Binary
-    UnknownBase
+fn Parser.advance(self: &mut Parser) -> lex.Token
+  let tok = self.current()
+  if not self.is_eof()
+    self.index = self.index + 1
+  end
+  return tok
 .end
 
-enum LexStringStyle
-    Normal              # "..."
-    Raw                 # r"..." (ou équivalent Vitte)
-    Multiline           # """..."""
-    Interpolated        # "... ${expr} ..."
+fn Parser.match_kind(self: &mut Parser, kind: lex.TokenKind) -> Bool
+  if self.peek_kind() == kind
+    self.advance()
+    return true
+  end
+  return false
 .end
 
-enum LexTokenKind
-    # Identifiants et mots-clés
-    Identifier
-    Keyword
+fn Parser.expect_kind(self: &mut Parser, kind: lex.TokenKind, code: String, msg: String) -> lex.Token
+  let tok = self.current()
+  if tok.kind == kind
+    self.advance()
+    return tok
+  end
 
-    # Littéraux
-    IntLiteral
-    FloatLiteral
-    StringLiteral
-    CharLiteral
-    BoolLiteral
-    NullLiteral
+  # Diagnostic simple : "token attendu"
+  let span = tok.span
+  self.diags.add_error(msg, span, code)
 
-    # Spécifique au contrôle d’indentation (si applicable)
-    NewlineToken        # token logique de fin de ligne
-    Indent              # indentation augmentée
-    Dedent              # indentation réduite
-
-    # Punctuation / symboles
-    LParen              # (
-    RParen              # )
-    LBracket            # [
-    RBracket            # ]
-    LBrace              # {  (rare si syntaxe .end, mais possible pour certains contextes)
-    RBrace              # }
-    Comma               # ,
-    Dot                 # .
-    Colon               # :
-    Semicolon           # ;
-    Arrow               # ->
-    FatArrow            # =>
-    Pipe                # |
-    Ampersand           # &
-    Question            # ?
-    At                  # @
-    Hash                # #
-    Dollar              # $
-
-    # Opérateurs
-    Plus                # +
-    Minus               # -
-    Star                # *
-    Slash               # /
-    Percent             # %
-    Caret               # ^
-    Bang                # !
-    Tilde               # ~
-    Equal               # =
-    Less                # <
-    Greater             # >
-    PlusEqual           # +=
-    MinusEqual          # -=
-    StarEqual           # *=
-    SlashEqual          # /=
-    PercentEqual        # %=
-    AndAnd              # &&
-    OrOr                # ||
-    EqualEqual          # ==
-    BangEqual           # !=
-    LessEqual           # <=
-    GreaterEqual        # >=
-    ShiftLeft           # <<
-    ShiftRight          # >>
-    ShiftLeftEqual      # <<=
-    ShiftRightEqual     # >>=
-    AmpersandEqual      # &=
-    PipeEqual           # |=
-    CaretEqual          # ^=
-
-    # Délimiteurs spécifiques Vitte (ex: ".end")
-    DotEnd              # token pour le ".end" logique
-
-    # Divers
-    UnknownToken
-    Eof
+  # On retourne quand même le token courant pour éviter de casser le flux.
+  self.advance()
+  return tok
 .end
 
-enum LexKeyword
-    # Modules / imports / exports
-    KwModule
-    KwImport
-    KwExport
+fn Parser.expect_symbol(self: &mut Parser, symbol: String, code: String, msg: String) -> lex.Token
+  let tok = self.current()
+  if tok.lexeme == symbol
+    self.advance()
+    return tok
+  end
 
-    # Unités de haut niveau
-    KwProgram
-    KwService
-    KwKernel
-    KwDriver
-    KwTool
-    KwScenario
-    KwPipeline
+  self.diags.add_error(
+    msg,
+    tok.span,
+    code,
+  )
 
-    # Types / déclarations
-    KwStruct
-    KwUnion
-    KwEnum
-    KwTypeAlias       # typedef / type alias
-    KwInline
-    KwFn
-    KwConst
-    KwStatic
-    KwLet
-
-    # Contrôle de flux
-    KwIf
-    KwElse
-    KwWhile
-    KwFor
-    KwLoop
-    KwMatch
-    KwReturn
-    KwBreak
-    KwContinue
-    KwIn
-    KwAs
-
-    # Modificateurs / autres
-    KwPub
-    KwMut
-    KwAsync
-    KwAwait
-    KwUnsafe
-    KwExtern
-    KwWhere
-
-    # Valeurs spéciales
-    KwTrue
-    KwFalse
-    KwNull
-
-    # Phrase / DSL éventuelles (extensible)
-    KwSay
-    KwDo
-    KwWhen
-    KwSet
-
-    # Réservé pour extensions futures
-    KwReserved
+  self.advance()
+  return tok
 .end
 
-struct LexTokenId
-    raw: u32                         # identifiant interne dans le flux de tokens
+# -----------------------------------------------------------------------------
+# Parsing haut niveau – module
+# -----------------------------------------------------------------------------
+
+fn Parser.parse_module(self: &mut Parser) -> ast.Module
+  # On construit le module AST et on le remplit au fur et à mesure.
+  let module = ast.Module.new(self.file)
+
+  # Pour pouvoir muter module dans la boucle, on crée une variable mutable.
+  let mut_mod = module
+
+  while not self.is_eof()
+    let kind = self.peek_kind()
+
+    if kind == lex.TokenKind.Eof
+      break
+    end
+
+    # Sauter les lignes vides
+    if kind == lex.TokenKind.Newline
+      self.advance()
+      continue
+    end
+
+    self.parse_toplevel_item(&mut mut_mod)
+  end
+
+  return mut_mod
 .end
 
-struct LexToken
-    id: LexTokenId
-    kind: LexTokenKind
-    channel: LexChannel
+# -----------------------------------------------------------------------------
+# Parsing des items de haut niveau
+# -----------------------------------------------------------------------------
 
-    # Texte tel que lu (non normalisé)
-    lexeme: String
-    span: ast.AstSpan
-    span_id: span.BfSpanId           # id dans la BfSpanTable associé à ce token
+fn Parser.parse_toplevel_item(self: &mut Parser, module: &mut ast.Module) -> Unit
+  # Dispatch des déclarations de haut niveau selon le token courant.
+  let kind = self.peek_kind()
 
-    # Trivia associés
-    leading_trivia: coll.Vec<LexTrivia>
-    trailing_trivia: coll.Vec<LexTrivia>
+  if kind == lex.TokenKind.KwModule
+    self.parse_module_decl(module)
+    return
+  end
 
-    # Informations de position rapide
-    line: u32                       # ligne 1-based
-    column: u32                     # colonne 1-based
+  if kind == lex.TokenKind.KwImport
+    self.parse_import_decl(module)
+    return
+  end
 
-    # Informations spécialisées (selon le kind) ------------------------------
-    is_keyword: bool                # true si `kind == Keyword`
-    keyword: LexKeyword             # valeur si is_keyword == true (sinon valeur par défaut)
+  if kind == lex.TokenKind.KwStruct
+    self.parse_struct_decl(module)
+    return
+  end
 
-    # Littéraux numériques
-    numeric_base: LexNumericBase
-    numeric_suffix: String          # suffixe typé éventuel, ex: "u32", "f64"
+  if kind == lex.TokenKind.KwFn
+    self.parse_fn_decl(module)
+    return
+  end
 
-    # Représentations normalisées (facultatives, pour tooling/tests)
-    int_text: String                # forme canonique d’un entier
-    float_text: String              # forme canonique d’un flottant
-    string_content: String          # contenu d’une string (sans guillemets)
-    char_content: String            # contenu d’un char (sans quotes)
-    string_style: LexStringStyle
+  # Token inattendu au toplevel : on signale une erreur puis on se resynchronise.
+  let tok = self.current()
+  let span = tok.span
+  self.diags.add_error(
+    "Déclaration de haut niveau inattendue",
+    span,
+    "E1000",
+  )
 
-    # Interpolation / templates éventuels
-    interpolation_id: u32           # id logique d’un groupe d’interpolation, 0 si non applicable
-
-    # Données libres supplémentaires
-    extra: coll.HashMap<String, String>
+  self.synchronize()
 .end
 
-# ---------------------------------------------------------------------------
-# Modes de lexing et état
-# ---------------------------------------------------------------------------
+fn Parser.synchronize(self: &mut Parser) -> Unit
+  # Avancer jusqu'à un point de synchronisation raisonnable après une erreur :
+  #   - newline,
+  #   - EOF.
+  # Plus tard, on pourra ajouter d'autres points (module, struct, fn, etc.).
 
-enum LexModeKind
-    Normal
-    InString
-    InStringInterpolation
-    InTemplate
-    InAttribute
-    InCommentBlock
-    Custom
+  while not self.is_eof()
+    let kind = self.peek_kind()
+
+    if kind == lex.TokenKind.Newline or kind == lex.TokenKind.Eof
+      # On consomme éventuellement le newline, mais on laisse EOF au parser.
+      if kind == lex.TokenKind.Newline
+        self.advance()
+      end
+      return
+    end
+
+    self.advance()
+  end
 .end
 
-struct LexMode
-    kind: LexModeKind
-    name: String                    # nom lisible ou identifiant du mode
-    depth: u32                      # profondeur (pour commentaires imbriqués, etc.)
+# -----------------------------------------------------------------------------
+# Déclarations de module / import / struct / fn → construisent des ModuleItem
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Helpers pour les fonctions : types, paramètres, corps
+# -----------------------------------------------------------------------------
+
+fn Parser.parse_type_expr(self: &mut Parser) -> ast.TypeExpr
+  # Pour le moment, on supporte uniquement les types nommés simples : Ident
+  if self.peek_kind() == lex.TokenKind.Ident
+    let t = self.advance()
+    let ident = ast.Ident(
+      name = t.lexeme,
+      span = t.span,
+    )
+    return ast.TypeExpr.named_from_ident(ident)
+  end
+
+  let tok = self.current()
+  self.diags.add_error(
+    "Type attendu",
+    tok.span,
+    "E1034",
+  )
+
+  # Type de repli : ident vide, span = token courant
+  let dummy_ident = ast.Ident(
+    name = "",
+    span = tok.span,
+  )
+  return ast.TypeExpr.named_from_ident(dummy_ident)
 .end
 
-struct LexStateSnapshot
-    # Snapshot d’état pour debug ou tooling
-    file: LexSourceFile
-    offset: u32                     # offset courant en bytes
-    line: u32
-    column: u32
+fn Parser.parse_fn_param(self: &mut Parser) -> ast.FnParam
+  # <ident> (':' TypeExpr)?
+  let name = ""
+  let name_span = self.current().span
 
-    modes: coll.Vec<LexMode>        # pile de modes
-    pending_indent_level: u32       # indentation logique courante
+  if self.peek_kind() == lex.TokenKind.Ident
+    let t = self.advance()
+    let name = t.lexeme
+    let name_span = t.span
+  else
+    let tok = self.current()
+    let span = tok.span
+    self.diags.add_error(
+      "Nom de paramètre attendu",
+      span,
+      "E1036",
+    )
+  end
+
+  let ident = ast.Ident(
+    name = name,
+    span = name_span,
+  )
+
+  # Paramètre typé : ':' TypeExpr
+  let tok = self.current()
+  if tok.lexeme == ":"
+    # Consommer le ':'
+    self.expect_symbol(
+      ":",
+      "E1037",
+      "':' attendu après le nom du paramètre",
+    )
+
+    let ty = self.parse_type_expr()
+    let span = diag.Span.merge(name_span, ty.span)
+
+    let param = ast.FnParam.new(
+      ident,
+      Some(ty),
+      None,
+      span,
+    )
+    return param
+  end
+
+  # Paramètre sans type
+  let param = ast.FnParam.new(
+    ident,
+    None,
+    None,
+    name_span,
+  )
+  return param
 .end
 
-# ---------------------------------------------------------------------------
-# Erreurs de lexing
-# ---------------------------------------------------------------------------
+fn Parser.parse_fn_param_list(self: &mut Parser) -> coll.Vec[ast.FnParam]
+  let params = coll.Vec[ast.FnParam].new()
 
-enum LexErrorKind
-    UnexpectedChar
-    InvalidNumberLiteral
-    UnterminatedString
-    UnterminatedChar
-    InvalidEscape
-    NestedBlockCommentTooDeep
-    UnterminatedBlockComment
-    IndentationError
-    InvalidToken
-    EncodingError
-    ShebangError
-    InternalError
-    CustomError
+  # '('
+  self.expect_symbol(
+    "(",
+    "E1032",
+    "Parenthèse ouvrante '(' attendue après le nom de la fonction",
+  )
+
+  # Cas : aucun paramètre
+  let tok = self.current()
+  if tok.lexeme == ")"
+    self.advance()
+    return params
+  end
+
+  while not self.is_eof()
+    let param = self.parse_fn_param()
+    params.push(param)
+
+    let sep = self.current()
+
+    if sep.lexeme == ","
+      self.advance()
+      let after = self.current()
+      if after.lexeme == ")"
+        self.advance()
+        break
+      end
+      continue
+    end
+
+    if sep.lexeme == ")"
+      self.advance()
+      break
+    end
+
+    # Autre chose : erreur douce, on sort de la liste.
+    self.diags.add_error(
+      "',' ou ')' attendu après un paramètre de fonction",
+      sep.span,
+      "E1033",
+    )
+    break
+  end
+
+  return params
 .end
 
-struct LexErrorId
-    raw: u32
+fn Parser.parse_expr(self: &mut Parser, module: &mut ast.Module) -> ast.ExprId
+  # Expression minimale : un identifiant
+  if self.peek_kind() == lex.TokenKind.Ident
+    let t = self.advance()
+    let ident = ast.Ident(
+      name = t.lexeme,
+      span = t.span,
+    )
+    let expr = ast.Expr(
+      kind = ast.ExprKind.Name(
+        ident = ident,
+      ),
+      span = t.span,
+    )
+    let id = module.add_expr(expr)
+    return id
+  end
+
+  let tok = self.current()
+  self.diags.add_error(
+    "Expression attendue",
+    tok.span,
+    "E2000",
+  )
+
+  # Expression de secours : ident vide
+  let dummy_ident = ast.Ident(
+    name = "",
+    span = tok.span,
+  )
+  let expr = ast.Expr(
+    kind = ast.ExprKind.Name(
+      ident = dummy_ident,
+    ),
+    span = tok.span,
+  )
+  let id = module.add_expr(expr)
+  return id
 .end
 
-struct LexError
-    id: LexErrorId
-    kind: LexErrorKind
+fn Parser.parse_stmt(self: &mut Parser, module: &mut ast.Module) -> ast.StmtId
+  let tok = self.current()
 
-    message: String                 # message principal
-    span: ast.AstSpan               # zone fautive principale
-    span_id: span.BfSpanId          # id de span source (pour table globale)
+  # ---------------------------------------------------------------------------
+  # return ...
+  # ---------------------------------------------------------------------------
+  if tok.lexeme == "return"
+    let kw = self.advance()
 
-    # Pointeurs supplémentaires potentiels (zones liées)
-    related_spans: coll.Vec<ast.AstSpan>
-    related_span_ids: coll.Vec<span.BfSpanId>
+    # return nu sur la ligne
+    if self.peek_kind() == lex.TokenKind.Newline or self.peek_kind() == lex.TokenKind.Eof or self.current().lexeme == ".end"
+      let stmt = ast.Stmt(
+        kind = ast.StmtKind.Return(
+          value = None,
+        ),
+        span = kw.span,
+      )
+      let id = module.add_stmt(stmt)
+      return id
+    end
 
-    # Données structurées pour tooling/tests
-    code: String                    # code stable éventuel, ex: "LEX0001"
-    details: coll.HashMap<String, String>
+    # return avec une expression
+    let expr_id = self.parse_expr(module)
+    let expr = module.get_expr(expr_id)
+    let stmt_span = diag.Span.merge(kw.span, expr.span)
 
-    # Informations contextuelles rapides
-    line: u32
-    column: u32
+    let stmt = ast.Stmt(
+      kind = ast.StmtKind.Return(
+        value = Some(expr_id),
+      ),
+      span = stmt_span,
+    )
+    let id = module.add_stmt(stmt)
+
+    # Consommer jusqu'à fin de ligne (mais pas le '.end')
+    while not self.is_eof()
+      let k = self.peek_kind()
+      if k == lex.TokenKind.Newline or k == lex.TokenKind.Eof
+        if k == lex.TokenKind.Newline
+          self.advance()
+        end
+        break
+      end
+      if self.current().lexeme == ".end"
+        break
+      end
+      self.advance()
+    end
+
+    return id
+  end
+
+  # ---------------------------------------------------------------------------
+  # Statement = expression simple
+  # ---------------------------------------------------------------------------
+  let expr_id = self.parse_expr(module)
+  let expr = module.get_expr(expr_id)
+  let stmt_span = expr.span
+
+  let stmt = ast.Stmt(
+    kind = ast.StmtKind.Expr(
+      expr = expr_id,
+    ),
+    span = stmt_span,
+  )
+  let id = module.add_stmt(stmt)
+
+  # Consommer jusqu'à fin de ligne (mais pas le '.end')
+  while not self.is_eof()
+    let k = self.peek_kind()
+    if k == lex.TokenKind.Newline or k == lex.TokenKind.Eof
+      if k == lex.TokenKind.Newline
+        self.advance()
+      end
+      break
+    end
+    if self.current().lexeme == ".end"
+      break
+    end
+    self.advance()
+  end
+
+  return id
 .end
 
-struct LexErrorSummary
-    count_total: u32
-    count_warning_like: u32         # si certaines erreurs sont déclassées en warnings
-    count_error_like: u32
-    has_fatal: bool
+fn Parser.parse_block(self: &mut Parser, module: &mut ast.Module) -> ast.BlockId
+  let start_tok = self.current()
+  let start_span = start_tok.span
+
+  let stmt_ids = coll.Vec[ast.StmtId].new()
+
+  while not self.is_eof()
+    let tok = self.current()
+
+    # Fin de bloc
+    if tok.lexeme == ".end"
+      let end_span = tok.span
+      self.advance()
+
+      let span = diag.Span.merge(start_span, end_span)
+      let block = ast.Block(
+        stmts = stmt_ids,
+        span = span,
+      )
+      let id = module.add_block(block)
+      return id
+    end
+
+    # Sauter les lignes vides
+    if tok.kind == lex.TokenKind.Newline
+      self.advance()
+      continue
+    end
+
+    # Sinon, on parse un statement
+    let stmt_id = self.parse_stmt(module)
+    stmt_ids.push(stmt_id)
+  end
+
+  # Pas de '.end' : on ferme sur le dernier token (EOF typiquement).
+  let last = self.current()
+  let span = diag.Span.merge(start_span, last.span)
+  let block = ast.Block(
+    stmts = stmt_ids,
+    span = span,
+  )
+  let id = module.add_block(block)
+  return id
 .end
 
-# ---------------------------------------------------------------------------
-# Configuration du lexer
-# ---------------------------------------------------------------------------
+fn Parser.parse_module_decl(self: &mut Parser, module: &mut ast.Module) -> Unit
+  # module <Ident> ...
+  let kw_tok = self.expect_kind(
+    lex.TokenKind.KwModule,
+    "E1001",
+    "Mot-clé 'module' attendu",
+  )
+  let kw_span = kw_tok.span
 
-struct LexConfig
-    # Comportement général
-    allow_tabs: bool                # true si les tabs sont acceptés dans l’indentation
-    treat_tabs_as_error: bool       # true si un tab dans l’indent génère une erreur
-    keep_whitespace_tokens: bool    # true si on matérialise des tokens Whitespace
-    keep_newline_tokens: bool       # true si on garde explicitement NewlineToken
+  let name = ""
+  let name_span = kw_span
 
-    # Commentaires / doc
-    keep_line_comments: bool
-    keep_block_comments: bool
-    keep_doc_comments: bool
+  if self.peek_kind() == lex.TokenKind.Ident
+    let t = self.advance()
+    let name = t.lexeme
+    let name_span = t.span
+  else
+    let tok = self.current()
+    let span = tok.span
+    self.diags.add_error(
+      "Nom de module attendu après 'module'",
+      span,
+      "E1002",
+    )
+  end
 
-    # Shebang
-    allow_shebang: bool
-    shebang_mandatory_first_line: bool
+  let decl_span = diag.Span.merge(kw_span, name_span)
+  let item = ast.ModuleItem.new(
+    ast.ModuleItemKind.ModuleDecl,
+    name,
+    decl_span,
+  )
+  module.add_item(item)
 
-    # Indentation
-    use_indentation_sensitivity: bool
-    indent_width_spaces: u32        # largeur logique d’une indentation (0 = auto)
-
-    # Chaînes / interpolation
-    enable_string_interpolation: bool
-    max_interpolation_depth: u32
-
-    # Sécurité / robustesse
-    max_token_count: u32            # 0 = illimité
-    max_error_count: u32            # 0 = illimité
-
-    # Données additionnelles/options spécifiques
-    options: coll.HashMap<String, String>
+  # Consommer le reste de la ligne (paramètres futurs, attributs, etc.)
+  while not self.is_eof()
+    let kind = self.peek_kind()
+    if kind == lex.TokenKind.Newline or kind == lex.TokenKind.Eof
+      if kind == lex.TokenKind.Newline
+        self.advance()
+      end
+      break
+    end
+    self.advance()
+  end
 .end
 
-# ---------------------------------------------------------------------------
-# Flux de tokens produit par le lexer
-# ---------------------------------------------------------------------------
+fn Parser.parse_import_decl(self: &mut Parser, module: &mut ast.Module) -> Unit
+  # import <Ident> ...
+  let kw_tok = self.expect_kind(
+    lex.TokenKind.KwImport,
+    "E1010",
+    "Mot-clé 'import' attendu",
+  )
+  let kw_span = kw_tok.span
 
-struct LexTokenStream
-    file: LexSourceFile
-    config: LexConfig
+  let name = ""
+  let name_span = kw_span
 
-    span_table: span.BfSpanTable     # table des spans produits pendant le lexing
-    tokens: coll.Vec<LexToken>
-    errors: coll.Vec<LexError>
+  if self.peek_kind() == lex.TokenKind.Ident
+    let t = self.advance()
+    let name = t.lexeme
+    let name_span = t.span
+  else
+    let tok = self.current()
+    let span = tok.span
+    self.diags.add_error(
+      "Nom de module attendu après 'import'",
+      span,
+      "E1011",
+    )
+  end
 
-    # Informations agrégées
-    error_summary: LexErrorSummary
-    had_truncation: bool            # true si le flux a été tronqué (max_token_count)
+  let decl_span = diag.Span.merge(kw_span, name_span)
+  let item = ast.ModuleItem.new(
+    ast.ModuleItemKind.ImportDecl,
+    name,
+    decl_span,
+  )
+  module.add_item(item)
+
+  while not self.is_eof()
+    let kind = self.peek_kind()
+    if kind == lex.TokenKind.Newline or kind == lex.TokenKind.Eof
+      if kind == lex.TokenKind.Newline
+        self.advance()
+      end
+      break
+    end
+    self.advance()
+  end
 .end
 
-struct LexBundle
-    # Ensemble de flux de tokens, typiquement pour un workspace / projet
-    streams: coll.Vec<LexTokenStream>
+fn Parser.parse_struct_decl(self: &mut Parser, module: &mut ast.Module) -> Unit
+  # struct <Ident> ...
+  let kw_tok = self.expect_kind(
+    lex.TokenKind.KwStruct,
+    "E1020",
+    "Mot-clé 'struct' attendu",
+  )
+  let kw_span = kw_tok.span
 
-    # Stats globales
-    total_tokens: u32
-    total_errors: u32
-    total_files: u32
+  let name = ""
+  let name_span = kw_span
 
-    # Détails supplémentaires (clé/valeur) pour tooling
-    extra: coll.HashMap<String, String>
+  if self.peek_kind() == lex.TokenKind.Ident
+    let t = self.advance()
+    let name = t.lexeme
+    let name_span = t.span
+  else
+    let tok = self.current()
+    let span = tok.span
+    self.diags.add_error(
+      "Nom de struct attendu après 'struct'",
+      span,
+      "E1021",
+    )
+  end
+
+  let decl_span = diag.Span.merge(kw_span, name_span)
+  let item = ast.ModuleItem.new(
+    ast.ModuleItemKind.StructDecl,
+    name,
+    decl_span,
+  )
+  module.add_item(item)
+
+  # TODO: plus tard, parser les champs jusqu'à 'end'.
+  # Pour l'instant, on avance jusqu'à la fin de ligne.
+  while not self.is_eof()
+    let kind = self.peek_kind()
+    if kind == lex.TokenKind.Newline or kind == lex.TokenKind.Eof
+      if kind == lex.TokenKind.Newline
+        self.advance()
+      end
+      break
+    end
+    self.advance()
+  end
+.end
+
+fn Parser.parse_fn_decl(self: &mut Parser, module: &mut ast.Module) -> Unit
+  # fn <Ident>(...) [-> Type] .end
+  let kw_tok = self.expect_kind(
+    lex.TokenKind.KwFn,
+    "E1030",
+    "Mot-clé 'fn' attendu",
+  )
+  let kw_span = kw_tok.span
+
+  let name = ""
+  let name_span = kw_span
+
+  if self.peek_kind() == lex.TokenKind.Ident
+    let t = self.advance()
+    let name = t.lexeme
+    let name_span = t.span
+  else
+    let tok = self.current()
+    let span = tok.span
+    self.diags.add_error(
+      "Nom de fonction attendu après 'fn'",
+      span,
+      "E1031",
+    )
+  end
+
+  let ident = ast.Ident(
+    name = name,
+    span = name_span,
+  )
+
+  # Paramètres : fn name (param, ...) ...
+  let params = self.parse_fn_param_list()
+
+  # Type de retour optionnel : '-> Type'
+  let tok_after_params = self.current()
+  if tok_after_params.lexeme == "->"
+    self.expect_symbol(
+      "->",
+      "E1038",
+      "Symbole '->' attendu avant le type de retour",
+    )
+
+    let ret_ty = self.parse_type_expr()
+
+    # Corps de fonction jusqu'à '.end'
+    let body_id = self.parse_block(module)
+    let block = module.get_block(body_id)
+    let decl_span = diag.Span.merge(kw_span, block.span)
+
+    let decl = ast.FnDecl.new(
+      ident,
+      ast.Visibility.Private,
+      ast.FnKind.Normal,
+      params,
+      Some(ret_ty),
+      Some(body_id),
+      decl_span,
+    )
+
+    let item = ast.ModuleItem.from_fn(decl)
+    module.add_item(item)
+    return
+  end
+
+  # Pas de type de retour explicite
+  let body_id = self.parse_block(module)
+  let block = module.get_block(body_id)
+  let decl_span = diag.Span.merge(kw_span, block.span)
+
+  let decl = ast.FnDecl.new(
+    ident,
+    ast.Visibility.Private,
+    ast.FnKind.Normal,
+    params,
+    None,
+    Some(body_id),
+    decl_span,
+  )
+
+  let item = ast.ModuleItem.from_fn(decl)
+  module.add_item(item)
 .end
