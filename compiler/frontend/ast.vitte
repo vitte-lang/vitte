@@ -69,6 +69,8 @@ struct Block
 enum StmtKind
   Expr
     expr: ExprId
+  Return
+    value: Option[ExprId]
   Empty
 .end
 
@@ -77,11 +79,38 @@ struct Stmt
   span: diag.Span
 .end
 
+enum BinaryOp
+  Add      # +
+  Sub      # -
+  Mul      # *
+  Div      # /
+  Eq       # ==
+  Ne       # !=
+  Lt       # <
+  Le       # <=
+  Gt       # >
+  Ge       # >=
+.end
+
 enum ExprKind
+  # x, foo, my_module.some_name, etc.
   Name
     ident: Ident
+
+  # 42, 0, 123456
   IntLiteral
-    value: Int
+    value: String
+
+  # foo(a, b, c)
+  Call
+    callee: ExprId
+    args: coll.Vec[ExprId]
+
+  # a + b, x * y, a == b, etc.
+  Binary
+    op: BinaryOp
+    lhs: ExprId
+    rhs: ExprId
 .end
 
 struct Expr
