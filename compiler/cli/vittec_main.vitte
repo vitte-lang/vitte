@@ -37,6 +37,37 @@ fn default_config() -> CompilerConfig:
     return cfg
 .end
 
+fn print_tokens(tokens: lex.Token[]) -> ():
+    let mut i: i32 = 0
+    let n: i32 = len(tokens)
+    say "[vittec] tokens:"
+    while i < n:
+        let t = tokens[i]
+        say "  " t.span.file ":L" t.span.start_line "C" t.span.start_col " " t.kind " " t.lexeme
+        i = i + 1
+    .end
+.end
+
+fn emit_frontend_report(
+    cfg: &CompilerConfig,
+    tokens: lex.Token[],
+    parsed: Option[ast.Module],
+    sink: &diag.DiagSink,
+) -> ():
+    if cfg.dump_tokens:
+        print_tokens(tokens)
+    .end
+
+    if cfg.dump_ast and parsed.is_some():
+        let module = parsed.unwrap()
+        ast.ast_print_debug(&module)
+    .end
+
+    if not sink.is_empty():
+        diag.diag_print_all(&sink)
+    .end
+.end
+
 fn print_usage(prog: string) -> ():
     say "Usage: " prog " [OPTIONS] <input.vitte>"
     say ""
@@ -121,41 +152,23 @@ fn run_compiler(cfg: &CompilerConfig) -> i32:
     # Lexing
     let tokens = lex.lex(text, cfg.input_path, &mut sink)
 
-    if diag.diag_has_errors(&sink):
-        diag.diag_print_all(&sink)
-        return 1
+    let mut parsed_module: Option[ast.Module] = None
+    if not diag.diag_has_errors(&sink):
+        let module = parser.parse_module(tokens, cfg.input_path, &mut sink)
+        parsed_module = Some(module)
     .end
 
-    if cfg.dump_tokens:
-        let mut i: i32 = 0
-        let n: i32 = len(tokens)
-        say "[vittec] tokens:"
-        while i < n:
-            let t = tokens[i]
-            say "  " t.span.file_path ":L" t.span.span.start.line "C" t.span.span.start.column " " t.kind " " t.value
-            i = i + 1
-        .end
-        return 0
-    .end
-
-    # Parsing
-    let ast_module: ast.AstModule = parser.parse_file(tokens, cfg.input_path, &mut sink)
-
-    if diag.diag_has_errors(&sink):
-        diag.diag_print_all(&sink)
-        return 1
-    .end
-
-    if cfg.dump_ast:
-        ast.ast_print_debug(&ast_module)
-        return 0
-    .end
+    emit_frontend_report(cfg, tokens, parsed_module, &sink)
 
     # TODO:
     #   - sema: scope + symbols + types + typecheck
     #   - IR: construction + optimisations
     #   - backend: bytecode / C / binaire
     #   - écriture des artefacts (cfg.profile, etc.)
+
+    if diag.diag_has_errors(&sink):
+        return 1
+    .end
     return 0
 .end
 

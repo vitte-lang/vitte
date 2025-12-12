@@ -141,6 +141,16 @@ struct Diagnostic
   labels: coll.Vec[DiagnosticLabel]
 .end
 
+fn diagnostic_severity_name(sev: Severity) -> String
+  if sev == Severity.Error
+    return "error"
+  end
+  if sev == Severity.Warning
+    return "warning"
+  end
+  return "note"
+.end
+
 fn Diagnostic.error(msg: String, span: Span, code: String) -> Diagnostic
   let labels = coll.Vec[DiagnosticLabel].new()
   labels.push(DiagnosticLabel.primary(msg, span))
@@ -182,6 +192,15 @@ fn Diagnostic.add_secondary_label(self: &mut Diagnostic, msg: String, span: Span
   self.labels.push(lbl)
 .end
 
+fn diagnostic_primary_span(d: Diagnostic) -> Span
+  for lbl in d.labels
+    if lbl.is_primary
+      return lbl.span
+    end
+  end
+  return d.span
+.end
+
 # -----------------------------------------------------------------------------
 # Bag de diagnostics
 # -----------------------------------------------------------------------------
@@ -189,6 +208,10 @@ fn Diagnostic.add_secondary_label(self: &mut Diagnostic, msg: String, span: Span
 struct DiagnosticBag
   items: coll.Vec[Diagnostic]
 .end
+
+# Compatibilité minimale avec l'ancien vocabulaire "DiagSink"
+# (utilisé par quelques appels CLI/tests).
+type DiagSink = DiagnosticBag
 
 # Constructeur et helpers principaux ------------------------------------------
 
@@ -250,5 +273,58 @@ fn DiagnosticBag.extend(self: &mut DiagnosticBag, other: DiagnosticBag) -> Unit
   # Ajoute tous les diagnostics de `other` dans `self`.
   for d in other.items
     self.items.push(d)
+  end
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers conviviaux (compat shim pour le CLI)
+# -----------------------------------------------------------------------------
+
+fn diag_sink_new() -> DiagSink
+  return DiagnosticBag.new()
+.end
+
+fn diag_error(sink: &mut DiagSink, code: String, file: String, line: Int, col: Int, msg: String) -> Unit
+  let span = Span(
+    file = file,
+    start_line = line,
+    start_col = col,
+    end_line = line,
+    end_col = col,
+  )
+  sink.add_error(msg, span, code)
+.end
+
+fn diag_warning(sink: &mut DiagSink, code: String, file: String, line: Int, col: Int, msg: String) -> Unit
+  let span = Span(
+    file = file,
+    start_line = line,
+    start_col = col,
+    end_line = line,
+    end_col = col,
+  )
+  sink.add_warning(msg, span, code)
+.end
+
+fn diag_note(sink: &mut DiagSink, code: String, file: String, line: Int, col: Int, msg: String) -> Unit
+  let span = Span(
+    file = file,
+    start_line = line,
+    start_col = col,
+    end_line = line,
+    end_col = col,
+  )
+  sink.add_note(msg, span, code)
+.end
+
+fn diag_has_errors(sink: &DiagSink) -> Bool
+  return sink.has_error()
+.end
+
+fn diag_print_all(sink: &DiagSink) -> Unit
+  for d in sink.items
+    let sev = diagnostic_severity_name(d.severity)
+    let span = diagnostic_primary_span(d)
+    say sev "[" d.code "] " span.file ":" span.start_line ":" span.start_col ": " d.message
   end
 .end

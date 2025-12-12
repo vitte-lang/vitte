@@ -44,15 +44,12 @@ fn TypeExpr.named_from_ident(name: Ident) -> TypeExpr
   let path = coll.Vec[Ident].new()
   path.push(name)
 
-  let span = name.span
-  let kind = TypeExprKind.Named(
-    path = path,
-  )
+  return TypeExpr.named_from_path(path, name.span)
+.end
 
-  return TypeExpr(
-    kind = kind,
-    span = span,
-  )
+fn TypeExpr.named_from_path(path: coll.Vec[Ident], span: diag.Span) -> TypeExpr
+  let kind = TypeExprKind.Named(path = path)
+  return TypeExpr(kind = kind, span = span)
 .end
 
 # Handles logiques pour référencer des blocs/expressions dans d'autres
@@ -71,6 +68,21 @@ enum StmtKind
     expr: ExprId
   Return
     value: Option[ExprId]
+  Let
+    name: Ident
+    mutable: Bool
+    ty: Option[TypeExpr]
+    value: Option[ExprId]
+  While
+    cond: ExprId
+    body: BlockId
+  If
+    cond: ExprId
+    then_block: BlockId
+    else_block: Option[BlockId]
+  Match
+    scrutinee: ExprId
+    arms: coll.Vec[MatchArm]
   Empty
 .end
 
@@ -84,6 +96,7 @@ enum BinaryOp
   Sub      # -
   Mul      # *
   Div      # /
+  Assign   # =
   Eq       # ==
   Ne       # !=
   Lt       # <
@@ -93,6 +106,10 @@ enum BinaryOp
 .end
 
 enum ExprKind
+  # foo.bar, Foo::Bar::baz
+  PathName
+    path: coll.Vec[Ident]
+
   # x, foo, my_module.some_name, etc.
   Name
     ident: Ident
@@ -100,6 +117,27 @@ enum ExprKind
   # 42, 0, 123456
   IntLiteral
     value: String
+
+  # 42.0, 1.5
+  FloatLiteral
+    value: String
+
+  # 'x'
+  CharLiteral
+    value: String
+
+  # "hello"
+  StringLiteral
+    value: String
+
+  # true / false
+  BoolLiteral
+    value: Bool
+
+  # Foo { x = 1, y = 2 }
+  StructLiteral
+    type_path: coll.Vec[Ident]
+    fields: coll.Vec[StructField]
 
   # foo(a, b, c)
   Call
@@ -111,6 +149,65 @@ enum ExprKind
     op: BinaryOp
     lhs: ExprId
     rhs: ExprId
+
+  # Bloc utilisé comme expression (notamment pour les match arms)
+  BlockExpr
+    block: BlockId
+
+  # if ... else ... en expression
+  IfExpr
+    cond: ExprId
+    then_block: BlockId
+    else_block: Option[BlockId]
+
+  # match en expression (ou statement)
+  MatchExpr
+    scrutinee: ExprId
+    arms: coll.Vec[MatchArm]
+.end
+
+struct MatchArm
+  pattern: MatchPattern
+  guard: Option[ExprId]
+  body: BlockId
+.end
+
+enum MatchPatternKind
+  Wildcard
+  Path
+    path: coll.Vec[Ident]
+  Int
+    value: String
+  Float
+    value: String
+  Char
+    value: String
+  Bool
+    value: Bool
+  String
+    value: String
+  Tuple
+    items: coll.Vec[MatchPattern]
+  Struct
+    type_path: coll.Vec[Ident]
+    fields: coll.Vec[StructPatternField]
+.end
+
+struct StructPatternField
+  name: Ident
+  pattern: MatchPattern
+  span: diag.Span
+.end
+
+struct MatchPattern
+  kind: MatchPatternKind
+  span: diag.Span
+.end
+
+struct StructField
+  name: Ident
+  value: ExprId
+  span: diag.Span
 .end
 
 struct Expr

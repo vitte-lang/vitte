@@ -38,6 +38,7 @@ enum TokenKind
   Ident
   IntLiteral
   FloatLiteral
+  CharLiteral
   StringLiteral
 
   # Mots-clés principaux (à compléter si besoin) -----------------------------
@@ -53,14 +54,33 @@ enum TokenKind
   KwScenario
   KwPipeline
   KwEnd
+  KwLet
+  KwMut
+  KwIf
+  KwElse
+  KwWhile
+  KwMatch
+  KwTrue
+  KwFalse
+  KwLet
+  KwMut
+  KwIf
+  KwElse
+  KwWhile
+  KwMatch
+  KwTrue
+  KwFalse
 
   # Punctuations et opérateurs simples ---------------------------------------
   LParen         # (
   RParen         # )
+  LBrace         # {
+  RBrace         # }
   LBracket       # [
   RBracket       # ]
   Comma          # ,
   Colon          # :
+  ColonColon     # ::
   Dot            # .
   Equal          # =
   Plus           # +
@@ -151,7 +171,13 @@ fn Lexer.run(self: &mut Lexer) -> coll.Vec[Token]
   end
 
   # Ajouter un token EOF final avec un span factice
-  let eof_span = diag.Span.dummy(self.file)
+  let eof_span = diag.Span(
+    file = self.file,
+    start_line = self.line,
+    start_col = self.col,
+    end_line = self.line,
+    end_col = self.col,
+  )
   let eof = Token.new(TokenKind.Eof, "", eof_span)
   self.tokens.push(eof)
 
@@ -268,6 +294,12 @@ fn Lexer.lex_one_token(self: &mut Lexer) -> Unit
     return
   end
 
+  # Caractères
+  if c == '\''
+    self.lex_char_literal()
+    return
+  end
+
   # Chaînes
   if c == '"'
     self.lex_string()
@@ -318,6 +350,14 @@ fn Lexer.lex_ident_or_keyword(self: &mut Lexer) -> Unit
     else if buf == "scenario" then TokenKind.KwScenario
     else if buf == "pipeline" then TokenKind.KwPipeline
     else if buf == "end" then TokenKind.KwEnd
+    else if buf == "let" then TokenKind.KwLet
+    else if buf == "mut" then TokenKind.KwMut
+    else if buf == "if" then TokenKind.KwIf
+    else if buf == "else" then TokenKind.KwElse
+    else if buf == "while" then TokenKind.KwWhile
+    else if buf == "match" then TokenKind.KwMatch
+    else if buf == "true" then TokenKind.KwTrue
+    else if buf == "false" then TokenKind.KwFalse
     else TokenKind.Ident
     end
 
@@ -362,6 +402,75 @@ fn Lexer.lex_number(self: &mut Lexer) -> Unit
     if seen_dot then TokenKind.FloatLiteral else TokenKind.IntLiteral end
 
   self.push_token(kind, buf, span)
+.end
+
+fn Lexer.lex_char_literal(self: &mut Lexer) -> Unit
+  let start_line = self.line
+  let start_col = self.col
+
+  # Consommer la quote ouvrante
+  let _ = self.advance()
+
+  let buf = ""
+  let terminated = false
+
+  if self.is_eof()
+    let span = self.make_span_single()
+    self.diags.add_error(
+      "Littéral de caractère non terminé",
+      span,
+      "E2008",
+    )
+    self.push_token(TokenKind.CharLiteral, buf, span)
+    return
+  end
+
+  let c = self.peek_char()
+
+  # Support d'une forme minimale : un caractère ou une séquence d'échappement simple.
+  if c == '\\'
+    let first = self.advance()
+    buf = buf + str.from_char(first)
+    if not self.is_eof()
+      let escaped = self.advance()
+      buf = buf + str.from_char(escaped)
+    end
+  else if c == '\n' or c == '\0'
+    let span = self.make_span_single()
+    self.diags.add_error(
+      "Littéral de caractère non terminé",
+      span,
+      "E2008",
+    )
+    self.push_token(TokenKind.CharLiteral, buf, span)
+    return
+  else
+    let ch = self.advance()
+    buf = buf + str.from_char(ch)
+  end
+
+  if self.peek_char() == '\''
+    self.advance()
+    terminated = true
+  end
+
+  let span = diag.Span(
+    file = self.file,
+    start_line = start_line,
+    start_col = start_col,
+    end_line = self.line,
+    end_col = self.col,
+  )
+
+  if not terminated
+    self.diags.add_error(
+      "Littéral de caractère non terminé",
+      span,
+      "E2008",
+    )
+  end
+
+  self.push_token(TokenKind.CharLiteral, buf, span)
 .end
 
 fn Lexer.lex_string(self: &mut Lexer) -> Unit
@@ -478,6 +587,16 @@ fn Lexer.lex_operator_or_punct(self: &mut Lexer) -> Unit
     return
   end
 
+  if c == '{'
+    self.push_token(TokenKind.LBrace, "{", span)
+    return
+  end
+
+  if c == '}'
+    self.push_token(TokenKind.RBrace, "}", span)
+    return
+  end
+
   if c == '['
     self.push_token(TokenKind.LBracket, "[", span)
     return
@@ -494,6 +613,11 @@ fn Lexer.lex_operator_or_punct(self: &mut Lexer) -> Unit
   end
 
   if c == ':'
+    if next == ':'
+      self.advance()
+      self.push_token(TokenKind.ColonColon, "::", span)
+      return
+    end
     self.push_token(TokenKind.Colon, ":", span)
     return
   end

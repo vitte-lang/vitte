@@ -51,6 +51,15 @@ fn parse_module(
   return parser.parse_module()
 .end
 
+# Alias pratique pour compat CLI (parse_file == parse_module)
+fn parse_file(
+  tokens: coll.Vec[lex.Token],
+  file: String,
+  diags: &mut diag.DiagnosticBag,
+) -> ast.Module
+  return parse_module(tokens, file, diags)
+.end
+
 # -----------------------------------------------------------------------------
 # Helpers de navigation
 # -----------------------------------------------------------------------------
@@ -70,6 +79,31 @@ fn Parser.current(self: Parser) -> lex.Token
 fn Parser.peek_kind(self: Parser) -> lex.TokenKind
   let tok = self.current()
   return tok.kind
+.end
+
+fn Parser.peek_next_kind(self: Parser) -> lex.TokenKind
+  let next_index = self.index + 1
+  if next_index >= self.tokens.len()
+    return lex.TokenKind.Eof
+  end
+  return self.tokens[next_index].kind
+.end
+
+fn Parser.peek_is_dot_end(self: Parser) -> Bool
+  let tok = self.current()
+
+  if tok.lexeme == ".end" or tok.kind == lex.TokenKind.KwEnd or tok.lexeme == "end"
+    return true
+  end
+
+  if tok.kind == lex.TokenKind.Dot
+    let next_kind = self.peek_next_kind()
+    if next_kind == lex.TokenKind.KwEnd
+      return true
+    end
+  end
+
+  return false
 .end
 
 fn Parser.advance(self: &mut Parser) -> lex.Token
@@ -122,6 +156,126 @@ fn Parser.expect_symbol(self: &mut Parser, symbol: String, code: String, msg: St
 .end
 
 # -----------------------------------------------------------------------------
+# Helpers noms/chemins et fin de bloc
+# -----------------------------------------------------------------------------
+
+fn Parser.parse_ident_path(self: &mut Parser, err_code: String, err_msg: String) -> (coll.Vec[ast.Ident], diag.Span)
+  let idents = coll.Vec[ast.Ident].new()
+
+  if self.peek_kind() != lex.TokenKind.Ident
+    let tok = self.current()
+    self.diags.add_error(err_msg, tok.span, err_code)
+    return (idents, tok.span)
+  end
+
+  let first_tok = self.advance()
+  let first_ident = ast.Ident(
+    name = first_tok.lexeme,
+    span = first_tok.span,
+  )
+  idents.push(first_ident)
+
+  let mut out_span = first_tok.span
+
+  while not self.is_eof() and (self.peek_kind() == lex.TokenKind.Dot or self.peek_kind() == lex.TokenKind.ColonColon)
+    let sep_tok = self.advance()
+
+    if self.peek_kind() != lex.TokenKind.Ident
+      self.diags.add_error(
+        "Identifiant attendu après un séparateur de chemin",
+        sep_tok.span,
+        "E0901",
+      )
+      break
+    end
+
+    let seg_tok = self.advance()
+    let ident = ast.Ident(
+      name = seg_tok.lexeme,
+      span = seg_tok.span,
+    )
+    idents.push(ident)
+    out_span = diag.Span.merge(out_span, seg_tok.span)
+  end
+
+  return (idents, out_span)
+.end
+
+fn Parser.path_to_string(idents: coll.Vec[ast.Ident]) -> String
+  let mut out = ""
+  let mut first = true
+
+  for ident in idents
+    if not first
+      out = out + "."
+    else
+      first = false
+    end
+    out = out + ident.name
+  end
+
+  return out
+.end
+
+fn Parser.is_block_end(self: Parser) -> Bool
+  let tok = self.current()
+
+  if tok.kind == lex.TokenKind.Eof
+    return true
+  end
+
+  if tok.lexeme == ".end" or tok.kind == lex.TokenKind.KwEnd or tok.lexeme == "end"
+    return true
+  end
+
+  if tok.kind == lex.TokenKind.RBrace
+    return true
+  end
+
+  if tok.kind == lex.TokenKind.Dot
+    let next_index = self.index + 1
+    if next_index < self.tokens.len()
+      let next = self.tokens[next_index]
+      if next.kind == lex.TokenKind.KwEnd or next.lexeme == "end"
+        return true
+      end
+    end
+  end
+
+  return false
+.end
+
+fn Parser.consume_block_end(self: &mut Parser) -> diag.Span
+  let tok = self.current()
+
+  if tok.lexeme == ".end"
+    self.advance()
+    return tok.span
+  end
+
+  if tok.kind == lex.TokenKind.Dot
+    let dot_span = tok.span
+    self.advance()
+
+    if self.peek_kind() == lex.TokenKind.KwEnd or self.current().lexeme == "end"
+      let end_tok = self.current()
+      self.advance()
+      return diag.Span.merge(dot_span, end_tok.span)
+    end
+
+    return dot_span
+  end
+
+  if tok.kind == lex.TokenKind.RBrace
+    self.advance()
+    return tok.span
+  end
+
+  self.advance()
+  return tok.span
+.end
+
+# -----------------------------------------------------------------------------
 # Parsing haut niveau – module
 # -----------------------------------------------------------------------------
 
@@ -158,6 +312,11 @@ fn Parser.parse_module(self: &mut Parser) -> ast.Module
 fn Parser.parse_toplevel_item(self: &mut Parser, module: &mut ast.Module) -> Unit
   # Dispatch des déclarations de haut niveau selon le token courant.
   let kind = self.peek_kind()
+
+  if kind == lex.TokenKind.KwLet
+    self.parse_let_stmt(module)
+    return
+  end
 
   if kind == lex.TokenKind.KwModule
     self.parse_module_decl(module)
@@ -223,12 +382,11 @@ fn Parser.synchronize(self: &mut Parser) -> Unit
 fn Parser.parse_type_expr(self: &mut Parser) -> ast.TypeExpr
   # Pour le moment, on supporte uniquement les types nommés simples : Ident
   if self.peek_kind() == lex.TokenKind.Ident
-    let t = self.advance()
-    let ident = ast.Ident(
-      name = t.lexeme,
-      span = t.span,
+    let (idents, span) = self.parse_ident_path(
+      "E1035",
+      "Nom de type attendu",
     )
-    return ast.TypeExpr.named_from_ident(ident)
+    return ast.TypeExpr.named_from_path(idents, span)
   end
 
   let tok = self.current()
@@ -248,19 +406,18 @@ fn Parser.parse_type_expr(self: &mut Parser) -> ast.TypeExpr
 
 fn Parser.parse_fn_param(self: &mut Parser) -> ast.FnParam
   # <ident> (':' TypeExpr)?
-  let name = ""
-  let name_span = self.current().span
+  let mut name = ""
+  let mut name_span = self.current().span
 
   if self.peek_kind() == lex.TokenKind.Ident
     let t = self.advance()
-    let name = t.lexeme
-    let name_span = t.span
+    name = t.lexeme
+    name_span = t.span
   else
     let tok = self.current()
-    let span = tok.span
     self.diags.add_error(
       "Nom de paramètre attendu",
-      span,
+      tok.span,
       "E1036",
     )
   end
@@ -353,31 +510,146 @@ fn Parser.parse_fn_param_list(self: &mut Parser) -> coll.Vec[ast.FnParam]
 .end
 
 fn Parser.parse_expr(self: &mut Parser, module: &mut ast.Module) -> ast.ExprId
-  # Expression minimale : un identifiant
-  if self.peek_kind() == lex.TokenKind.Ident
-    let t = self.advance()
-    let ident = ast.Ident(
-      name = t.lexeme,
-      span = t.span,
-    )
+  return self.parse_binary_expr(module, 0)
+.end
+
+fn Parser.parse_primary_expr(self: &mut Parser, module: &mut ast.Module) -> ast.ExprId
+  let tok = self.current()
+
+  if tok.kind == lex.TokenKind.FloatLiteral
+    self.advance()
     let expr = ast.Expr(
-      kind = ast.ExprKind.Name(
-        ident = ident,
+      kind = ast.ExprKind.FloatLiteral(
+        value = tok.lexeme,
       ),
-      span = t.span,
+      span = tok.span,
     )
-    let id = module.add_expr(expr)
-    return id
+    return module.add_expr(expr)
   end
 
-  let tok = self.current()
+  if tok.kind == lex.TokenKind.CharLiteral
+    self.advance()
+    let expr = ast.Expr(
+      kind = ast.ExprKind.CharLiteral(
+        value = tok.lexeme,
+      ),
+      span = tok.span,
+    )
+    return module.add_expr(expr)
+  end
+
+  if tok.kind == lex.TokenKind.StringLiteral
+    self.advance()
+    let expr = ast.Expr(
+      kind = ast.ExprKind.StringLiteral(
+        value = tok.lexeme,
+      ),
+      span = tok.span,
+    )
+    return module.add_expr(expr)
+  end
+
+  if tok.kind == lex.TokenKind.KwTrue
+    self.advance()
+    let expr = ast.Expr(
+      kind = ast.ExprKind.BoolLiteral(
+        value = true,
+      ),
+      span = tok.span,
+    )
+    return module.add_expr(expr)
+  end
+
+  if tok.kind == lex.TokenKind.KwFalse
+    self.advance()
+    let expr = ast.Expr(
+      kind = ast.ExprKind.BoolLiteral(
+        value = false,
+      ),
+      span = tok.span,
+    )
+    return module.add_expr(expr)
+  end
+
+  if tok.kind == lex.TokenKind.IntLiteral
+    self.advance()
+    let expr = ast.Expr(
+      kind = ast.ExprKind.IntLiteral(
+        value = tok.lexeme,
+      ),
+      span = tok.span,
+    )
+    return module.add_expr(expr)
+  end
+
+  if tok.kind == lex.TokenKind.Ident
+    let (idents, span) = self.parse_ident_path(
+      "E2004",
+      "Identifiant attendu dans une expression",
+    )
+
+    # Struct literal si suivi de '{'
+    if self.peek_kind() == lex.TokenKind.LBrace
+      self.advance()
+      let (fields, end_span) = self.parse_struct_literal_fields(module)
+      let final_span = diag.Span.merge(span, end_span)
+      let expr = ast.Expr(
+        kind = ast.ExprKind.StructLiteral(
+          type_path = idents,
+          fields = fields,
+        ),
+        span = final_span,
+      )
+      return module.add_expr(expr)
+    end
+
+    # Sinon, simple nom/chemin
+    let expr = ast.Expr(
+      kind = ast.ExprKind.PathName(
+        path = idents,
+      ),
+      span = span,
+    )
+    return module.add_expr(expr)
+  end
+
+  if tok.kind == lex.TokenKind.LParen
+    self.advance()
+    let inner_id = self.parse_expr(module)
+    self.expect_symbol(
+      ")",
+      "E2002",
+      "Parenthèse fermante ')' attendue",
+    )
+
+    let inner = module.get_expr(inner_id)
+    let span = diag.Span.merge(tok.span, inner.span)
+    let mut_expr = ast.Expr(
+      kind = inner.kind,
+      span = span,
+    )
+    return module.add_expr(mut_expr)
+  end
+
+  if tok.kind == lex.TokenKind.LBrace
+    let lbrace = self.advance()
+    let block_id = self.parse_block_braced(module, lbrace.span)
+    let block = module.get_block(block_id)
+    let expr = ast.Expr(
+      kind = ast.ExprKind.BlockExpr(
+        block = block_id,
+      ),
+      span = block.span,
+    )
+    return module.add_expr(expr)
+  end
+
   self.diags.add_error(
     "Expression attendue",
     tok.span,
     "E2000",
   )
 
-  # Expression de secours : ident vide
   let dummy_ident = ast.Ident(
     name = "",
     span = tok.span,
@@ -388,12 +660,364 @@ fn Parser.parse_expr(self: &mut Parser, module: &mut ast.Module) -> ast.ExprId
     ),
     span = tok.span,
   )
-  let id = module.add_expr(expr)
-  return id
+  self.advance()
+  return module.add_expr(expr)
+.end
+
+fn Parser.parse_struct_literal_fields(self: &mut Parser, module: &mut ast.Module) -> (coll.Vec[ast.StructField], diag.Span)
+  let fields = coll.Vec[ast.StructField].new()
+  let mut end_span = self.current().span
+
+  while not self.is_eof()
+    if self.peek_kind() == lex.TokenKind.RBrace
+      let brace = self.advance()
+      end_span = brace.span
+      break
+    end
+
+    if self.peek_is_dot_end()
+      let bad = self.current()
+      self.diags.add_error(
+        "Un littéral de struct se ferme avec '}' (et non '.end')",
+        bad.span,
+        "E2009",
+      )
+      let consumed = self.consume_block_end()
+      end_span = consumed
+      break
+    end
+
+    if self.peek_kind() == lex.TokenKind.Newline
+      self.advance()
+      continue
+    end
+
+    # Nom du champ
+    if self.peek_kind() != lex.TokenKind.Ident
+      let tok = self.current()
+      self.diags.add_error(
+        "Nom de champ attendu dans un littéral de struct",
+        tok.span,
+        "E2005",
+      )
+      self.advance()
+      continue
+    end
+
+    let name_tok = self.advance()
+    let name_ident = ast.Ident(name = name_tok.lexeme, span = name_tok.span)
+
+    self.expect_symbol(
+      "=",
+      "E2006",
+      "'=' attendu après le nom du champ",
+    )
+
+    let value_id = self.parse_expr(module)
+    let value_expr = module.get_expr(value_id)
+    let field_span = diag.Span.merge(name_tok.span, value_expr.span)
+
+    let field = ast.StructField(
+      name = name_ident,
+      value = value_id,
+      span = field_span,
+    )
+    fields.push(field)
+    end_span = field_span
+
+    if self.peek_kind() == lex.TokenKind.Comma
+      self.advance()
+      continue
+    end
+
+    if self.peek_kind() == lex.TokenKind.RBrace
+      let brace = self.advance()
+      end_span = diag.Span.merge(end_span, brace.span)
+      break
+    end
+
+    # Séparateur manquant : diagnostic et tentative de récupération
+    let sep = self.current()
+    self.diags.add_error(
+      "',' ou '}' attendu après un champ de struct",
+      sep.span,
+      "E2007",
+    )
+    # Récupération : avancer jusqu'à un séparateur raisonnable
+    while not self.is_eof()
+      let k = self.peek_kind()
+      if k == lex.TokenKind.Comma or k == lex.TokenKind.RBrace or self.peek_is_dot_end() or k == lex.TokenKind.Newline
+        break
+      end
+      self.advance()
+    end
+
+    if self.peek_kind() == lex.TokenKind.Comma
+      self.advance()
+      continue
+    end
+
+    if self.peek_kind() == lex.TokenKind.RBrace
+      let brace = self.advance()
+      end_span = diag.Span.merge(end_span, brace.span)
+      break
+    end
+
+    if self.peek_is_dot_end()
+      let bad_span = self.consume_block_end()
+      self.diags.add_error(
+        "Un littéral de struct se ferme avec '}' (et non '.end')",
+        bad_span,
+        "E2009",
+      )
+      end_span = bad_span
+      break
+    end
+
+    if self.peek_kind() == lex.TokenKind.Newline
+      self.advance()
+    end
+  end
+
+  return (fields, end_span)
+.end
+
+fn Parser.parse_call_expr(self: &mut Parser, module: &mut ast.Module) -> ast.ExprId
+  let mut callee_id = self.parse_primary_expr(module)
+
+  while not self.is_eof() and self.peek_kind() == lex.TokenKind.LParen
+    let lparen = self.advance()
+    let args = coll.Vec[ast.ExprId].new()
+
+    if self.peek_kind() == lex.TokenKind.RParen
+      self.advance()
+    else
+      while not self.is_eof()
+        let arg_id = self.parse_expr(module)
+        args.push(arg_id)
+
+        if self.peek_kind() == lex.TokenKind.Comma
+          self.advance()
+          continue
+        end
+
+        if self.peek_kind() == lex.TokenKind.RParen
+          self.advance()
+          break
+        end
+
+        let sep = self.current()
+        self.diags.add_error(
+          "',' ou ')' attendu dans la liste d'arguments",
+          sep.span,
+          "E2003",
+        )
+        break
+      end
+    end
+
+    let callee_expr = module.get_expr(callee_id)
+    let span =
+      if args.len() == 0
+        diag.Span.merge(callee_expr.span, lparen.span)
+      else
+        let last_arg = module.get_expr(args[args.len() - 1])
+        diag.Span.merge(callee_expr.span, last_arg.span)
+      end
+
+    let call_expr = ast.Expr(
+      kind = ast.ExprKind.Call(
+        callee = callee_id,
+        args = args,
+      ),
+      span = span,
+    )
+    callee_id = module.add_expr(call_expr)
+  end
+
+  return callee_id
+.end
+
+fn Parser.binary_precedence(self: Parser, op: ast.BinaryOp) -> Int
+  if op == ast.BinaryOp.Assign
+    return 1
+  end
+
+  if op == ast.BinaryOp.Mul or op == ast.BinaryOp.Div
+    return 20
+  end
+
+  if op == ast.BinaryOp.Add or op == ast.BinaryOp.Sub
+    return 10
+  end
+
+  if op == ast.BinaryOp.Eq or op == ast.BinaryOp.Ne
+    return 4
+  end
+
+  if op == ast.BinaryOp.Lt or op == ast.BinaryOp.Le or op == ast.BinaryOp.Gt or op == ast.BinaryOp.Ge
+    return 5
+  end
+
+  return -1
+.end
+
+struct BinaryOpLookahead
+  found: Bool
+  op: ast.BinaryOp
+.end
+
+fn Parser.current_binary_op(self: Parser) -> BinaryOpLookahead
+  let tok = self.current()
+
+  if tok.kind == lex.TokenKind.Plus
+    return BinaryOpLookahead(found = true, op = ast.BinaryOp.Add)
+  end
+  if tok.kind == lex.TokenKind.Minus
+    return BinaryOpLookahead(found = true, op = ast.BinaryOp.Sub)
+  end
+  if tok.kind == lex.TokenKind.Star
+    return BinaryOpLookahead(found = true, op = ast.BinaryOp.Mul)
+  end
+  if tok.kind == lex.TokenKind.Slash
+    return BinaryOpLookahead(found = true, op = ast.BinaryOp.Div)
+  end
+  if tok.kind == lex.TokenKind.EqualEqual
+    return BinaryOpLookahead(found = true, op = ast.BinaryOp.Eq)
+  end
+  if tok.kind == lex.TokenKind.BangEqual
+    return BinaryOpLookahead(found = true, op = ast.BinaryOp.Ne)
+  end
+  if tok.kind == lex.TokenKind.Less
+    return BinaryOpLookahead(found = true, op = ast.BinaryOp.Lt)
+  end
+  if tok.kind == lex.TokenKind.LessEqual
+    return BinaryOpLookahead(found = true, op = ast.BinaryOp.Le)
+  end
+  if tok.kind == lex.TokenKind.Greater
+    return BinaryOpLookahead(found = true, op = ast.BinaryOp.Gt)
+  end
+  if tok.kind == lex.TokenKind.GreaterEqual
+    return BinaryOpLookahead(found = true, op = ast.BinaryOp.Ge)
+  end
+  if tok.kind == lex.TokenKind.Equal
+    return BinaryOpLookahead(found = true, op = ast.BinaryOp.Assign)
+  end
+
+  return BinaryOpLookahead(found = false, op = ast.BinaryOp.Add)
+.end
+
+fn Parser.parse_binary_expr(self: &mut Parser, module: &mut ast.Module, min_prec: Int) -> ast.ExprId
+  let mut lhs = self.parse_call_expr(module)
+
+  while not self.is_eof()
+    let look = self.current_binary_op()
+    if not look.found
+      break
+    end
+
+    let op = look.op
+    let prec = self.binary_precedence(op)
+    if prec < min_prec
+      break
+    end
+
+    self.advance()
+    let next_prec = if op == ast.BinaryOp.Assign then prec else prec + 1 end
+    let rhs = self.parse_binary_expr(module, next_prec)
+
+    let lhs_expr = module.get_expr(lhs)
+    let rhs_expr = module.get_expr(rhs)
+    let span = diag.Span.merge(lhs_expr.span, rhs_expr.span)
+
+    let bin_expr = ast.Expr(
+      kind = ast.ExprKind.Binary(
+        op = op,
+        lhs = lhs,
+        rhs = rhs,
+      ),
+      span = span,
+    )
+    lhs = module.add_expr(bin_expr)
+  end
+
+  return lhs
 .end
 
 fn Parser.parse_stmt(self: &mut Parser, module: &mut ast.Module) -> ast.StmtId
   let tok = self.current()
+
+  # ---------------------------------------------------------------------------
+  # let ...
+  # ---------------------------------------------------------------------------
+  if tok.kind == lex.TokenKind.KwLet
+    return self.parse_let_stmt(module)
+  end
+
+  # ---------------------------------------------------------------------------
+  # while ...
+  # ---------------------------------------------------------------------------
+  if tok.kind == lex.TokenKind.KwWhile
+    let kw = self.advance()
+    let cond_id = self.parse_expr(module)
+    let body_id = self.parse_block(module)
+    let body = module.get_block(body_id)
+    let span = diag.Span.merge(kw.span, body.span)
+
+    let stmt = ast.Stmt(
+      kind = ast.StmtKind.While(
+        cond = cond_id,
+        body = body_id,
+      ),
+      span = span,
+    )
+    return module.add_stmt(stmt)
+  end
+
+  # ---------------------------------------------------------------------------
+  # if ... else ...
+  # ---------------------------------------------------------------------------
+  if tok.kind == lex.TokenKind.KwIf
+    let kw = self.advance()
+    let cond_id = self.parse_expr(module)
+    let then_block_id = self.parse_block(module)
+    let then_block = module.get_block(then_block_id)
+
+    let mut has_else = false
+    let mut else_block_id = 0
+    if self.peek_kind() == lex.TokenKind.KwElse
+      self.advance()
+      else_block_id = self.parse_block(module)
+      has_else = true
+    end
+
+    let end_span =
+      if has_else
+        let blk = module.get_block(else_block_id)
+        blk.span
+      else
+        then_block.span
+      end
+
+    let stmt_span = diag.Span.merge(kw.span, end_span)
+
+    let stmt = ast.Stmt(
+      kind = ast.StmtKind.If(
+        cond = cond_id,
+        then_block = then_block_id,
+        else_block = if has_else then Some(else_block_id) else None end,
+      ),
+      span = stmt_span,
+    )
+    return module.add_stmt(stmt)
+  end
+
+  # ---------------------------------------------------------------------------
+  # match ...
+  # ---------------------------------------------------------------------------
+  if tok.kind == lex.TokenKind.KwMatch
+    return self.parse_match_stmt(module)
+  end
 
   # ---------------------------------------------------------------------------
   # return ...
@@ -435,7 +1059,7 @@ fn Parser.parse_stmt(self: &mut Parser, module: &mut ast.Module) -> ast.StmtId
         end
         break
       end
-      if self.current().lexeme == ".end"
+      if self.is_block_end()
         break
       end
       self.advance()
@@ -468,7 +1092,7 @@ fn Parser.parse_stmt(self: &mut Parser, module: &mut ast.Module) -> ast.StmtId
       end
       break
     end
-    if self.current().lexeme == ".end"
+    if self.is_block_end()
       break
     end
     self.advance()
@@ -478,20 +1102,118 @@ fn Parser.parse_stmt(self: &mut Parser, module: &mut ast.Module) -> ast.StmtId
 .end
 
 fn Parser.parse_block(self: &mut Parser, module: &mut ast.Module) -> ast.BlockId
+  if self.peek_kind() == lex.TokenKind.LBrace
+    let lbrace = self.advance()
+    return self.parse_block_impl(
+      module,
+      true,    # allow_rbrace
+      false,   # allow_dot_end
+      "Bloc '{ ... }' non terminé",
+      "E1301",
+      Some(lbrace.span),
+    )
+  end
+
+  return self.parse_block_impl(
+    module,
+    false,   # allow_rbrace
+    true,    # allow_dot_end
+    "Bloc non terminé ('.end' manquant)",
+    "E1300",
+    None,
+  )
+.end
+
+fn Parser.parse_block_braced(self: &mut Parser, module: &mut ast.Module, open_span: diag.Span) -> ast.BlockId
+  return self.parse_block_impl(
+    module,
+    true,    # allow_rbrace
+    false,   # allow_dot_end
+    "Bloc '{ ... }' non terminé",
+    "E1301",
+    Some(open_span),
+  )
+.end
+
+fn Parser.parse_block_impl(
+  self: &mut Parser,
+  module: &mut ast.Module,
+  allow_rbrace: Bool,
+  allow_dot_end: Bool,
+  missing_msg: String,
+  missing_code: String,
+  start_span_override: Option[diag.Span],
+) -> ast.BlockId
   let start_tok = self.current()
-  let start_span = start_tok.span
+  let start_span =
+    if start_span_override.is_some()
+      start_span_override.unwrap()
+    else
+      start_tok.span
+    end
 
   let stmt_ids = coll.Vec[ast.StmtId].new()
 
-  while not self.is_eof()
+  while true
     let tok = self.current()
 
-    # Fin de bloc
-    if tok.lexeme == ".end"
-      let end_span = tok.span
-      self.advance()
+    # Fermeture explicite par '}'
+    if tok.kind == lex.TokenKind.RBrace
+      if allow_rbrace
+        let end_span = tok.span
+        self.advance()
+        let span = diag.Span.merge(start_span, end_span)
+        let block = ast.Block(
+          stmts = stmt_ids,
+          span = span,
+        )
+        let id = module.add_block(block)
+        return id
+      else
+        self.diags.add_error(
+          missing_msg,
+          tok.span,
+          missing_code,
+        )
+        let span = diag.Span.merge(start_span, tok.span)
+        let block = ast.Block(
+          stmts = stmt_ids,
+          span = span,
+        )
+        let id = module.add_block(block)
+        self.advance()
+        return id
+      end
+    end
+
+    # Fermeture explicite par '.end'
+    if self.peek_is_dot_end()
+      let end_span = self.consume_block_end()
+      if not allow_dot_end
+        self.diags.add_error(
+          "Utiliser '}' pour fermer ce bloc",
+          end_span,
+          "E1302",
+        )
+      end
 
       let span = diag.Span.merge(start_span, end_span)
+      let block = ast.Block(
+        stmts = stmt_ids,
+        span = span,
+      )
+      let id = module.add_block(block)
+      return id
+    end
+
+    # EOF inattendu
+    if tok.kind == lex.TokenKind.Eof
+      self.diags.add_error(
+        missing_msg,
+        tok.span,
+        missing_code,
+      )
+      let span = diag.Span.merge(start_span, tok.span)
       let block = ast.Block(
         stmts = stmt_ids,
         span = span,
@@ -531,22 +1253,11 @@ fn Parser.parse_module_decl(self: &mut Parser, module: &mut ast.Module) -> Unit
   )
   let kw_span = kw_tok.span
 
-  let name = ""
-  let name_span = kw_span
-
-  if self.peek_kind() == lex.TokenKind.Ident
-    let t = self.advance()
-    let name = t.lexeme
-    let name_span = t.span
-  else
-    let tok = self.current()
-    let span = tok.span
-    self.diags.add_error(
-      "Nom de module attendu après 'module'",
-      span,
-      "E1002",
-    )
-  end
+  let (idents, name_span) = self.parse_ident_path(
+    "E1002",
+    "Nom de module attendu après 'module'",
+  )
+  let name = self.path_to_string(idents)
 
   let decl_span = diag.Span.merge(kw_span, name_span)
   let item = ast.ModuleItem.new(
@@ -578,22 +1289,11 @@ fn Parser.parse_import_decl(self: &mut Parser, module: &mut ast.Module) -> Unit
   )
   let kw_span = kw_tok.span
 
-  let name = ""
-  let name_span = kw_span
-
-  if self.peek_kind() == lex.TokenKind.Ident
-    let t = self.advance()
-    let name = t.lexeme
-    let name_span = t.span
-  else
-    let tok = self.current()
-    let span = tok.span
-    self.diags.add_error(
-      "Nom de module attendu après 'import'",
-      span,
-      "E1011",
-    )
-  end
+  let (idents, name_span) = self.parse_ident_path(
+    "E1011",
+    "Nom de module attendu après 'import'",
+  )
+  let name = self.path_to_string(idents)
 
   let decl_span = diag.Span.merge(kw_span, name_span)
   let item = ast.ModuleItem.new(
@@ -624,13 +1324,13 @@ fn Parser.parse_struct_decl(self: &mut Parser, module: &mut ast.Module) -> Unit
   )
   let kw_span = kw_tok.span
 
-  let name = ""
-  let name_span = kw_span
+  let mut name = ""
+  let mut name_span = kw_span
 
   if self.peek_kind() == lex.TokenKind.Ident
     let t = self.advance()
-    let name = t.lexeme
-    let name_span = t.span
+    name = t.lexeme
+    name_span = t.span
   else
     let tok = self.current()
     let span = tok.span
@@ -672,13 +1372,13 @@ fn Parser.parse_fn_decl(self: &mut Parser, module: &mut ast.Module) -> Unit
   )
   let kw_span = kw_tok.span
 
-  let name = ""
-  let name_span = kw_span
+  let mut name = ""
+  let mut name_span = kw_span
 
   if self.peek_kind() == lex.TokenKind.Ident
     let t = self.advance()
-    let name = t.lexeme
-    let name_span = t.span
+    name = t.lexeme
+    name_span = t.span
   else
     let tok = self.current()
     let span = tok.span
@@ -745,4 +1445,472 @@ fn Parser.parse_fn_decl(self: &mut Parser, module: &mut ast.Module) -> Unit
 
   let item = ast.ModuleItem.from_fn(decl)
   module.add_item(item)
+.end
+
+# -----------------------------------------------------------------------------
+# Déclarations / statements supplémentaires
+# -----------------------------------------------------------------------------
+
+fn Parser.parse_let_stmt(self: &mut Parser, module: &mut ast.Module) -> ast.StmtId
+  let kw = self.expect_kind(
+    lex.TokenKind.KwLet,
+    "E1100",
+    "Mot-clé 'let' attendu",
+  )
+
+  let mut is_mut = false
+  if self.peek_kind() == lex.TokenKind.KwMut
+    self.advance()
+    is_mut = true
+  end
+
+  let mut name = ""
+  let mut name_span = kw.span
+  if self.peek_kind() == lex.TokenKind.Ident
+    let t = self.advance()
+    name = t.lexeme
+    name_span = t.span
+  else
+    let tok = self.current()
+    self.diags.add_error(
+      "Identifiant attendu après 'let'",
+      tok.span,
+      "E1101",
+    )
+  end
+
+  let ident = ast.Ident(
+    name = name,
+    span = name_span,
+  )
+
+  # Type optionnel
+  let mut ty = None
+  if self.current().lexeme == ":"
+    self.expect_symbol(":", "E1102", "':' attendu après le nom dans une déclaration let")
+    let parsed_ty = self.parse_type_expr()
+    ty = Some(parsed_ty)
+  end
+
+  # Initialisation optionnelle
+  let mut value_id = None
+  if self.current().lexeme == "="
+    self.advance()
+    let expr_id = self.parse_expr(module)
+    value_id = Some(expr_id)
+  end
+
+  let mut end_span = name_span
+  if ty.is_some()
+    let t = ty.unwrap()
+    end_span = diag.Span.merge(end_span, t.span)
+  end
+  if value_id.is_some()
+    let expr = module.get_expr(value_id.unwrap())
+    end_span = diag.Span.merge(end_span, expr.span)
+  end
+
+  let stmt = ast.Stmt(
+    kind = ast.StmtKind.Let(
+      name = ident,
+      mutable = is_mut,
+      ty = ty,
+      value = value_id,
+    ),
+    span = diag.Span.merge(kw.span, end_span),
+  )
+  let id = module.add_stmt(stmt)
+
+  # Consommer jusqu'à la fin de ligne ou de bloc
+  while not self.is_eof()
+    let k = self.peek_kind()
+    if k == lex.TokenKind.Newline or k == lex.TokenKind.Eof or self.is_block_end()
+      if k == lex.TokenKind.Newline
+        self.advance()
+      end
+      break
+    end
+    self.advance()
+  end
+
+  return id
+.end
+
+fn Parser.parse_match_stmt(self: &mut Parser, module: &mut ast.Module) -> ast.StmtId
+  let kw = self.expect_kind(
+    lex.TokenKind.KwMatch,
+    "E1200",
+    "Mot-clé 'match' attendu",
+  )
+
+  let scrutinee_id = self.parse_expr(module)
+  let arms = coll.Vec[ast.MatchArm].new()
+
+  while not self.is_eof()
+    # Fin de match
+    if self.is_block_end()
+      let end_span = self.consume_block_end()
+      let scrutinee = module.get_expr(scrutinee_id)
+      let span = diag.Span.merge(kw.span, diag.Span.merge(scrutinee.span, end_span))
+      let stmt = ast.Stmt(
+        kind = ast.StmtKind.Match(
+          scrutinee = scrutinee_id,
+          arms = arms,
+        ),
+        span = span,
+      )
+      return module.add_stmt(stmt)
+    end
+
+    # Sauter les newlines
+    if self.peek_kind() == lex.TokenKind.Newline
+      self.advance()
+      continue
+    end
+
+    let pattern = self.parse_match_pattern()
+    let mut guard_expr: Option[ast.ExprId] = None
+    let mut guard_expr_id: ast.ExprId = 0
+    let mut has_guard = false
+
+    if self.current().kind == lex.TokenKind.KwIf
+      self.advance()
+      let guard_id = self.parse_expr(module)
+      guard_expr = Some(guard_id)
+      guard_expr_id = guard_id
+      has_guard = true
+    end
+
+    if self.current().kind == lex.TokenKind.FatArrow or self.current().lexeme == "=>"
+      self.advance()
+    else
+      self.diags.add_error(
+        "Symbole '=>' attendu dans un bras de match",
+        self.current().span,
+        "E1201",
+      )
+    end
+
+    # Corps du bras : bloc classique .end ou fin de match/bras suivant
+    let body_id = self.parse_block(module)
+    let body = module.get_block(body_id)
+
+    let mut arm_span = diag.Span.merge(pattern.span, body.span)
+    if has_guard
+      let guard = module.get_expr(guard_expr_id)
+      arm_span = diag.Span.merge(pattern.span, diag.Span.merge(guard.span, body.span))
+    end
+
+    let arm = ast.MatchArm(
+      pattern = pattern,
+      guard = guard_expr,
+      body = body_id,
+    )
+    arms.push(arm)
+  end
+
+  # Si on sort de la boucle : match non terminé, on construit quand même
+  let scrutinee = module.get_expr(scrutinee_id)
+  let stmt_span = diag.Span.merge(kw.span, scrutinee.span)
+  let stmt = ast.Stmt(
+    kind = ast.StmtKind.Match(
+      scrutinee = scrutinee_id,
+      arms = arms,
+    ),
+    span = stmt_span,
+  )
+  return module.add_stmt(stmt)
+.end
+
+fn Parser.parse_match_pattern(self: &mut Parser) -> ast.MatchPattern
+  let tok = self.current()
+
+  if tok.lexeme == "_"
+    self.advance()
+    return ast.MatchPattern(
+      kind = ast.MatchPatternKind.Wildcard,
+      span = tok.span,
+    )
+  end
+
+  if tok.kind == lex.TokenKind.LParen
+    return self.parse_tuple_pattern()
+  end
+
+  if tok.kind == lex.TokenKind.IntLiteral
+    self.advance()
+    return ast.MatchPattern(
+      kind = ast.MatchPatternKind.Int(
+        value = tok.lexeme,
+      ),
+      span = tok.span,
+    )
+  end
+
+  if tok.kind == lex.TokenKind.FloatLiteral
+    self.advance()
+    return ast.MatchPattern(
+      kind = ast.MatchPatternKind.Float(
+        value = tok.lexeme,
+      ),
+      span = tok.span,
+    )
+  end
+
+  if tok.kind == lex.TokenKind.CharLiteral
+    self.advance()
+    return ast.MatchPattern(
+      kind = ast.MatchPatternKind.Char(
+        value = tok.lexeme,
+      ),
+      span = tok.span,
+    )
+  end
+
+  if tok.kind == lex.TokenKind.StringLiteral
+    self.advance()
+    return ast.MatchPattern(
+      kind = ast.MatchPatternKind.String(
+        value = tok.lexeme,
+      ),
+      span = tok.span,
+    )
+  end
+
+  if tok.kind == lex.TokenKind.KwTrue
+    self.advance()
+    return ast.MatchPattern(
+      kind = ast.MatchPatternKind.Bool(value = true),
+      span = tok.span,
+    )
+  end
+
+  if tok.kind == lex.TokenKind.KwFalse
+    self.advance()
+    return ast.MatchPattern(
+      kind = ast.MatchPatternKind.Bool(value = false),
+      span = tok.span,
+    )
+  end
+
+  if tok.kind == lex.TokenKind.Ident
+    let (idents, span) = self.parse_ident_path(
+      "E1202",
+      "Identifiant attendu dans un pattern de match",
+    )
+
+    if self.peek_kind() == lex.TokenKind.LBrace
+      self.advance()
+      let (fields, end_span) = self.parse_struct_pattern_fields()
+      let pat_span = diag.Span.merge(span, end_span)
+      return ast.MatchPattern(
+        kind = ast.MatchPatternKind.Struct(
+          type_path = idents,
+          fields = fields,
+        ),
+        span = pat_span,
+      )
+    end
+
+    return ast.MatchPattern(
+      kind = ast.MatchPatternKind.Path(path = idents),
+      span = span,
+    )
+  end
+
+  self.diags.add_error(
+    "Pattern de match invalide",
+    tok.span,
+    "E1203",
+  )
+
+  self.advance()
+  return ast.MatchPattern(
+    kind = ast.MatchPatternKind.Wildcard,
+    span = tok.span,
+  )
+.end
+
+fn Parser.parse_tuple_pattern(self: &mut Parser) -> ast.MatchPattern
+  let lparen = self.expect_kind(
+    lex.TokenKind.LParen,
+    "E1204",
+    "Parenthèse ouvrante '(' attendue dans un pattern de tuple",
+  )
+
+  # Cas unit '()'
+  if self.peek_kind() == lex.TokenKind.RParen
+    let rparen = self.advance()
+    let span = diag.Span.merge(lparen.span, rparen.span)
+    return ast.MatchPattern(
+      kind = ast.MatchPatternKind.Tuple(items = coll.Vec[ast.MatchPattern].new()),
+      span = span,
+    )
+  end
+
+  let items = coll.Vec[ast.MatchPattern].new()
+  let mut last_span = lparen.span
+  let mut saw_comma = false
+
+  while not self.is_eof()
+    let pat = self.parse_match_pattern()
+    last_span = pat.span
+    items.push(pat)
+
+    if self.peek_kind() == lex.TokenKind.Comma
+      self.advance()
+      saw_comma = true
+      continue
+    end
+
+    if self.peek_kind() == lex.TokenKind.RParen
+      let rparen = self.advance()
+      last_span = diag.Span.merge(last_span, rparen.span)
+      break
+    end
+
+    let sep = self.current()
+    self.diags.add_error(
+      "',' ou ')' attendu dans un pattern de tuple",
+      sep.span,
+      "E1205",
+    )
+    break
+  end
+
+  # Single element without comma = pattern parenthésé
+  if items.len() == 1 and not saw_comma
+    let span = diag.Span.merge(lparen.span, last_span)
+    let single = items[0]
+    return ast.MatchPattern(
+      kind = single.kind,
+      span = span,
+    )
+  end
+
+  let span = diag.Span.merge(lparen.span, last_span)
+  return ast.MatchPattern(
+    kind = ast.MatchPatternKind.Tuple(items = items),
+    span = span,
+  )
+.end
+
+fn Parser.parse_struct_pattern_fields(self: &mut Parser) -> (coll.Vec[ast.StructPatternField], diag.Span)
+  let fields = coll.Vec[ast.StructPatternField].new()
+  let mut end_span = self.current().span
+
+  while not self.is_eof()
+    if self.peek_kind() == lex.TokenKind.RBrace
+      let brace = self.advance()
+      end_span = brace.span
+      break
+    end
+
+    if self.peek_is_dot_end()
+      let bad = self.current()
+      self.diags.add_error(
+        "Utiliser '}' pour fermer un pattern de struct (pas '.end')",
+        bad.span,
+        "E1206",
+      )
+      let consumed = self.consume_block_end()
+      end_span = consumed
+      break
+    end
+
+    if self.peek_kind() == lex.TokenKind.Newline
+      self.advance()
+      continue
+    end
+
+    if self.peek_kind() != lex.TokenKind.Ident
+      let tok = self.current()
+      self.diags.add_error(
+        "Nom de champ attendu dans un pattern de struct",
+        tok.span,
+        "E1207",
+      )
+      self.advance()
+      continue
+    end
+
+    let name_tok = self.advance()
+    let name_ident = ast.Ident(name = name_tok.lexeme, span = name_tok.span)
+
+    let mut field_pattern: ast.MatchPattern
+    if self.peek_kind() == lex.TokenKind.Equal
+      self.advance()
+      field_pattern = self.parse_match_pattern()
+    else
+      # Destructuration courte : foo { x } == foo { x = x }
+      let path = coll.Vec[ast.Ident].new()
+      path.push(name_ident)
+      field_pattern = ast.MatchPattern(
+        kind = ast.MatchPatternKind.Path(path = path),
+        span = name_tok.span,
+      )
+    end
+
+    let field_span = diag.Span.merge(name_tok.span, field_pattern.span)
+    let field = ast.StructPatternField(
+      name = name_ident,
+      pattern = field_pattern,
+      span = field_span,
+    )
+    fields.push(field)
+    end_span = field_span
+
+    if self.peek_kind() == lex.TokenKind.Comma
+      self.advance()
+      continue
+    end
+
+    if self.peek_kind() == lex.TokenKind.RBrace
+      let brace = self.advance()
+      end_span = diag.Span.merge(end_span, brace.span)
+      break
+    end
+
+    let sep = self.current()
+    self.diags.add_error(
+      "',' ou '}' attendu après un champ de pattern struct",
+      sep.span,
+      "E1208",
+    )
+    while not self.is_eof()
+      let k = self.peek_kind()
+      if k == lex.TokenKind.Comma or k == lex.TokenKind.RBrace or self.peek_is_dot_end() or k == lex.TokenKind.Newline
+        break
+      end
+      self.advance()
+    end
+
+    if self.peek_kind() == lex.TokenKind.Comma
+      self.advance()
+      continue
+    end
+
+    if self.peek_kind() == lex.TokenKind.RBrace
+      let brace = self.advance()
+      end_span = diag.Span.merge(end_span, brace.span)
+      break
+    end
+
+    if self.peek_is_dot_end()
+      let bad_span = self.consume_block_end()
+      self.diags.add_error(
+        "Utiliser '}' pour fermer un pattern de struct (pas '.end')",
+        bad_span,
+        "E1206",
+      )
+      end_span = bad_span
+      break
+    end
+
+    if self.peek_kind() == lex.TokenKind.Newline
+      self.advance()
+    end
+  end
+
+  return (fields, end_span)
 .end
