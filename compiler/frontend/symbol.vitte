@@ -346,8 +346,11 @@ struct SyTypeBinding
 .end
 
 struct SyBindingIndex
-    # ast_id.raw -> index dans une table de SyTypeBinding
+    # ast_id.raw -> index dans une table de SyTypeBinding (IDs supposés uniques par unité; si des spans/IDs sont réutilisés via macros, prévoir une clé par unité)
     binding_index_by_ast_id: coll.HashMap<u32, u32>
+
+    # Index optionnel par unité pour éviter les collisions d’IDs cross-unit (clé = file/module logical id)
+    binding_index_by_unit_and_ast_id: coll.HashMap<string, coll.HashMap<u32, u32>>
 
     # symbol_instance_id.raw -> indices de bindings
     binding_indices_by_symbol_instance: coll.HashMap<u32, coll.Vec<u32>>
@@ -441,6 +444,7 @@ struct BtSymbolIndex
 
     # ast_id.raw -> (unit index, binding index)
     binding_index_by_ast_id: coll.HashMap<u32, string>
+    binding_index_by_unit_and_ast_id: coll.HashMap<string, coll.HashMap<u32, string>>   # clé = file/module id -> map locale
 
     # Résolution inverse : type id -> occurrences (symbol instances)
     symbol_instance_ids_by_type: coll.HashMap<u32, coll.Vec<u32>>
@@ -453,6 +457,92 @@ struct BtSymbolBundle
     units: coll.Vec<BtSymbolUnit>
     summary: BtSymbolBundleSummary
     index: BtSymbolIndex
+
+    extra: coll.HashMap<string, string>
+.end
+
+# ---------------------------------------------------------------------------
+# Tables et vues normalisées (exploitation tooling/IDE)
+# ---------------------------------------------------------------------------
+
+struct SyTypeTable
+    # Types normalisés
+    types: coll.Vec<SyType>
+
+    # Index inverses
+    type_index_by_id_raw: coll.HashMap<u32, u32>                # SyTypeId.raw -> index dans types
+    type_ids_by_symbol_raw: coll.HashMap<u32, coll.Vec<u32>>    # ResSymbolId.raw -> [SyTypeId.raw]
+    type_ids_by_kind: coll.HashMap<SyTypeKind, coll.Vec<u32>>   # SyTypeKind -> ids
+
+    # Primitifs pré-résolus
+    primitive_ids_by_name: coll.HashMap<string, u32>            # surface spellings ("i32") -> SyTypeId.raw
+    primitive_ids_by_kind: coll.HashMap<SyPrimitiveTypeKind, u32>   # enum SyPrimitiveTypeKind -> SyTypeId.raw
+
+    extra: coll.HashMap<string, string>
+.end
+
+struct SySymbolView
+    # Vue légère pour export (JSON/CLI/IDE)
+    instance_id: SySymbolInstanceId
+    res_symbol_id: res.ResSymbolId
+    kind: SySymbolInstanceKind
+    ty: SyTypeId
+    span: ast.AstSpan
+    tags: coll.Vec<string>
+    is_function: bool
+    mutability: SyMutability                 # mutabilité précise telle que résolue/typée
+    region: SyRegionId                       # région dominante pour suivre les prêts/borrows
+    display_name: string
+.end
+
+struct SySymbolInstanceTable
+    instances: coll.Vec<SySymbolInstance>
+    symbol_views: coll.Vec<SySymbolView>                        # vues légères alignées 1:1 avec instances (même index)
+    symbol_views_alignment_checksum: u64                        # hash simple (ex: len + ids) pour détecter du drift entre vectors
+
+    # Index inverses
+    instance_index_by_id_raw: coll.HashMap<u32, u32>                  # SySymbolInstanceId.raw -> index
+    instance_ids_by_res_symbol_raw: coll.HashMap<u32, coll.Vec<u32>>  # ResSymbolId.raw -> instances
+    instance_ids_by_type_raw: coll.HashMap<u32, coll.Vec<u32>>        # SyTypeId.raw -> instances
+    instance_ids_by_kind: coll.HashMap<SySymbolInstanceKind, coll.Vec<u32>>   # SySymbolInstanceKind -> ids
+    symbol_view_index_by_instance_id_raw: coll.HashMap<u32, u32>      # SySymbolInstanceId.raw -> index dans symbol_views
+
+    extra: coll.HashMap<string, string>
+.end
+
+struct SyBindingTable
+    bindings: coll.Vec<SyTypeBinding>
+    index: SyBindingIndex
+
+    # Index supplémentaires pratiques pour tooling
+    binding_indices_by_kind: coll.HashMap<SyBindingKind, coll.Vec<u32>>   # SyBindingKind -> indices
+
+    extra: coll.HashMap<string, string>
+.end
+
+struct SyRegionTable
+    regions: coll.Vec<SyRegion>
+    region_index_by_id_raw: coll.HashMap<u32, u32>                # SyRegionId.raw -> index
+    region_ids_by_kind: coll.HashMap<SyRegionKind, coll.Vec<u32>> # SyRegionKind -> ids
+    extra: coll.HashMap<string, string>
+.end
+
+struct SyConstraintTable
+    constraints: coll.Vec<SyConstraint>
+    constraint_index_by_id_raw: coll.HashMap<u32, u32>            # SyConstraintId.raw -> index
+    constraint_ids_by_kind: coll.HashMap<SyConstraintKind, coll.Vec<u32>>   # SyConstraintKind -> ids
+    extra: coll.HashMap<string, string>
+.end
+
+struct BtSymbolTables
+    types: SyTypeTable
+    symbols: SySymbolInstanceTable
+    bindings: SyBindingTable
+    regions: SyRegionTable
+    constraints: SyConstraintTable
+
+    # Résumé global
+    summary: SyTypingSummary
 
     extra: coll.HashMap<string, string>
 .end

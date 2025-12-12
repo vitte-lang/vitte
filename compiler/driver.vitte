@@ -9,6 +9,7 @@ import std.collections as coll
 import vitte.compiler.frontend.lexer as lexer
 import vitte.compiler.frontend.parser as parser
 import vitte.compiler.frontend.diagnostics as diag
+import vitte.compiler.frontend.reporter as reporter
 import vitte.compiler.frontend.ast as ast
 import vitte.compiler.ir.ir as ir
 import vitte.compiler.ir.ir_builder as ir_builder
@@ -35,6 +36,7 @@ struct DriverConfig
   project_path: String
   out_bin: String
   log_path: String?
+  emit_text_diags: Bool
 .end
 
 struct DriverContext
@@ -45,15 +47,32 @@ struct DriverContext
   ir_program: ir.Program
 .end
 
+struct DriverResult
+  exit_code: Int
+  diagnostics: coll.Vec[diag.Diagnostic]
+  diagnostics_json: coll.Vec[diag.DiagnosticJson]
+  diagnostics_output: coll.Vec[diag.DiagnosticOutput]
+.end
+
+fn driver_result(ctx: DriverContext, exit_code: Int) -> DriverResult
+  return DriverResult(
+    exit_code = exit_code,
+    diagnostics = ctx.diags.items,
+    diagnostics_json = ctx.diags.to_json_list(),
+    diagnostics_output = ctx.diags.to_output_list(),
+  )
+.end
+
 # -----------------------------------------------------------------------------
 # Points d'entrée publics – appelés par le host Python
 # -----------------------------------------------------------------------------
 
-fn run_build(project_path: String, out_bin: String, log_path: String?) -> Int
+fn run_build(project_path: String, out_bin: String, log_path: String?) -> DriverResult
   let cfg = DriverConfig(
     project_path = project_path,
     out_bin = out_bin,
     log_path = log_path,
+    emit_text_diags = true,
   )
 
   let ctx = DriverContext(
@@ -69,21 +88,21 @@ fn run_build(project_path: String, out_bin: String, log_path: String?) -> Int
   if manifest_res.is_err()
     # load_manifest doit avoir déposé au moins un diagnostic exploitable.
     report_diagnostics(ctx)
-    return 1
+    return driver_result(ctx, 1)
   end
 
   # Étape 2 : collecte des sources
   let files_res = collect_project_sources(ctx)
   if files_res.is_err()
     report_diagnostics(ctx)
-    return 1
+    return driver_result(ctx, 1)
   end
 
   # Étape 3 : frontend (lex + parse, plus tard resolve/typecheck)
   let front_res = run_frontend(ctx)
   if front_res.is_err()
     report_diagnostics(ctx)
-    return 1
+    return driver_result(ctx, 1)
   end
 
   # Étape 4 : IR + backend
@@ -91,7 +110,7 @@ fn run_build(project_path: String, out_bin: String, log_path: String?) -> Int
   if ir_res.is_err()
     log_internal_error(ctx, "build_ir a échoué")
     report_diagnostics(ctx)
-    return 2
+    return driver_result(ctx, 2)
   end
 
   let be_res = run_backend(ctx)
@@ -99,18 +118,19 @@ fn run_build(project_path: String, out_bin: String, log_path: String?) -> Int
     # Erreurs backend souvent assimilables à des erreurs user
     # (fichiers manquants, toolchain C, etc.), mais on peut affiner plus tard.
     report_diagnostics(ctx)
-    return 1
+    return driver_result(ctx, 1)
   end
 
   flush_logs(ctx)
-  return 0
+  return driver_result(ctx, 0)
 .end
 
-fn run_check(project_path: String, log_path: String?) -> Int
+fn run_check(project_path: String, log_path: String?) -> DriverResult
   let cfg = DriverConfig(
     project_path = project_path,
     out_bin = "",
     log_path = log_path,
+    emit_text_diags = true,
   )
 
   let ctx = DriverContext(
@@ -124,23 +144,23 @@ fn run_check(project_path: String, log_path: String?) -> Int
   let manifest_res = load_manifest(ctx)
   if manifest_res.is_err()
     report_diagnostics(ctx)
-    return 1
+    return driver_result(ctx, 1)
   end
 
   let files_res = collect_project_sources(ctx)
   if files_res.is_err()
     report_diagnostics(ctx)
-    return 1
+    return driver_result(ctx, 1)
   end
 
   let front_res = run_frontend(ctx)
   if front_res.is_err()
     report_diagnostics(ctx)
-    return 1
+    return driver_result(ctx, 1)
   end
 
   flush_logs(ctx)
-  return 0
+  return driver_result(ctx, 0)
 .end
 
 # -----------------------------------------------------------------------------
@@ -189,8 +209,7 @@ fn collect_project_sources(ctx: DriverContext) -> Result[Unit, Unit]
     end
   end
 
-  # TODO: trier sources pour un ordre déterministe quand Vec exposera un tri.
-  # sources.sort()
+  sort_strings(&mut sources)
 
   ctx.sources = sources
 
@@ -204,6 +223,28 @@ fn collect_project_sources(ctx: DriverContext) -> Result[Unit, Unit]
   end
 
   return Ok(())
+.end
+
+fn sort_strings(vec: &mut coll.Vec[String]) -> Unit
+  # Tri déterministe simple (bubble sort) en attendant un sort standard dans Vec.
+  let n = vec.len()
+  if n <= 1
+    return
+  end
+
+  let i = 0
+  while i < n
+    let j = 0
+    while j + 1 < n - i
+      if vec[j] > vec[j + 1]
+        let tmp = vec[j]
+        vec[j] = vec[j + 1]
+        vec[j + 1] = tmp
+      end
+      j = j + 1
+    end
+    i = i + 1
+  end
 .end
 
 # -----------------------------------------------------------------------------
@@ -283,11 +324,15 @@ fn run_backend(ctx: DriverContext) -> Result[Unit, Unit]
 # -----------------------------------------------------------------------------
 
 fn report_diagnostics(ctx: DriverContext) -> Unit
-  # TODO:
-  #   - ce module ne fait pas d'I/O lui-même.
-  #   - brancher plus tard sur vitte.compiler.frontend.reporter
-  #     pour formatage et impression.
-  pass
+  if not ctx.cfg.emit_text_diags
+    return
+  end
+
+  let mut cache = reporter.ReporterCache.new()
+  for d in ctx.diags.items
+    let text = reporter.format_diagnostic_with_cache(d, &mut cache)
+    say text
+  end
 .end
 
 fn log_internal_error(ctx: DriverContext, msg: String) -> Unit

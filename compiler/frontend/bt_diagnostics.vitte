@@ -1,0 +1,74 @@
+module vitte.bootstrap.front.bt_diagnostics
+
+import std.collections as coll
+import vitte.bootstrap.front.bt_span as span
+
+# ============================================================================
+# Bootstrap diagnostics – structures déclaratives
+# ----------------------------------------------------------------------------
+# Le bootstrap utilise des diagnostics identifiables (DiagId) et un agrégat
+# BtDiagnostics pour transporter les erreurs/avertissements entre passes.
+# Pas de logique I/O ici : uniquement des structures de données.
+# ============================================================================
+
+struct DiagId
+    raw: u32
+.end
+
+enum DiagSeverity
+    DiagError
+    DiagWarning
+    DiagNote
+    DiagInfo
+    DiagHint
+.end
+
+struct DiagLabel
+    message: String
+    span: span.BfFileSpan
+    span_id: span.BfSpanId
+    is_primary: bool
+.end
+
+struct Diag
+    id: DiagId
+    severity: DiagSeverity
+    code: String
+    message: String
+
+    primary_span: span.BfFileSpan
+    primary_span_id: span.BfSpanId
+
+    labels: coll.Vec<DiagLabel>
+    related: coll.Vec<DiagId>
+
+    stage: String             # ex: "lexer", "parser", "resolve"
+    category: String          # ex: "syntax", "name-resolution"
+    notes: coll.Vec<String>
+
+    is_fatal: bool
+    extra: coll.HashMap[String, String]
+.end
+
+struct BtDiagnosticsSummary
+    total: u32
+    errors: u32
+    warnings: u32
+    notes: u32
+    info: u32
+
+    has_errors: bool
+    has_warnings: bool
+.end
+
+struct BtDiagnostics
+    diagnostics: coll.Vec<Diag>
+    summary: BtDiagnosticsSummary
+
+    # Indexation pratique
+    index_by_id: coll.HashMap<u32, u32>                       # DiagId.raw -> index
+    index_by_code: coll.HashMap<String, coll.Vec<u32>>        # code -> indices
+    index_by_file: coll.HashMap<String, coll.Vec<u32>>        # chemin de fichier -> indices
+
+    extra: coll.HashMap[String, String]
+.end

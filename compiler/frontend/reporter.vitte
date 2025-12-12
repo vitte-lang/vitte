@@ -1,0 +1,211 @@
+module vitte.compiler.frontend.reporter
+
+import std.fs as fs
+import std.string as str
+import std.collections as coll
+
+import vitte.compiler.frontend.diagnostics as diag
+
+# =============================================================================
+# Reporter texte pour les diagnostics frontend.
+# - Formate un Diagnostic avec labels multiples (primaires/secondaires).
+# - Affiche une ligne de contexte du fichier source quand elle est disponible.
+# - Ne réalise l'I/O fichier que dans ce module.
+# =============================================================================
+
+fn repeat_char(ch: Char, count: Int) -> String
+  let out = ""
+  let i = 0
+  while i < count
+    out = out + str.from_char(ch)
+    i = i + 1
+  end
+  return out
+.end
+
+struct ContextLine
+  ok: Bool
+  text: String
+.end
+
+struct ReporterCache
+  lines_by_file: coll.HashMap[String, coll.Vec[String]]
+.end
+
+fn ReporterCache.new() -> ReporterCache
+  return ReporterCache(
+    lines_by_file = coll.HashMap[String, coll.Vec[String]](),
+  )
+.end
+
+fn split_lines(text: String) -> coll.Vec[String]
+  let lines = coll.Vec[String].new()
+  let current = ""
+  let i = 0
+
+  while i < text.len()
+    let ch = text[i]
+    if ch == '\n'
+      lines.push(current)
+      current = ""
+      i = i + 1
+      continue
+    end
+    current = current + str.from_char(ch)
+    i = i + 1
+  end
+
+  lines.push(current)
+  return lines
+.end
+
+fn ReporterCache.lines_for_file(self: &mut ReporterCache, file: String) -> Option[coll.Vec[String]]
+  if self.lines_by_file.contains_key(file)
+    return Some(self.lines_by_file[file])
+  end
+
+  let res = fs.read_to_string(file)
+  if res.is_err()
+    return None
+  end
+
+  let text = res.unwrap()
+  let lines = split_lines(text)
+  self.lines_by_file[file] = lines
+  return Some(self.lines_by_file[file])
+.end
+
+fn extract_line(text: String, wanted_line: Int) -> ContextLine
+  let current = 1
+  let buf = ""
+  let i = 0
+
+  while i < text.len()
+    let ch = text[i]
+    if ch == '\n'
+      if current == wanted_line
+        return ContextLine(
+          ok = true,
+          text = buf,
+        )
+      end
+      current = current + 1
+      buf = ""
+      i = i + 1
+      continue
+    end
+    if current == wanted_line
+      buf = buf + str.from_char(ch)
+    end
+    i = i + 1
+  end
+
+  if current == wanted_line
+    return ContextLine(
+      ok = true,
+      text = buf,
+    )
+  end
+
+  return ContextLine(
+    ok = false,
+    text = "",
+  )
+.end
+
+fn read_context_line(span: diag.Span, cache: &mut ReporterCache) -> ContextLine
+  if span.start_line <= 0
+    return ContextLine(
+      ok = false,
+      text = "",
+    )
+  end
+
+  let opt_lines = cache.lines_for_file(span.file)
+  if not opt_lines.is_some()
+    return ContextLine(
+      ok = false,
+      text = "",
+    )
+  end
+
+  let lines = opt_lines.unwrap()
+  if span.start_line < 1 or span.start_line > lines.len()
+    return ContextLine(
+      ok = false,
+      text = "",
+    )
+  end
+
+  return ContextLine(
+    ok = true,
+    text = lines[span.start_line - 1],
+  )
+.end
+
+fn marker_for_span(span: diag.Span) -> String
+  let start_col = if span.start_col <= 0 then 1 else span.start_col end
+  let end_col =
+    if span.end_col >= span.start_col and span.end_col > 0
+      then span.end_col
+      else span.start_col
+    end
+
+  let caret_count = if end_col - start_col + 1 > 0 then end_col - start_col + 1 else 1 end
+  let spaces = repeat_char(' ', start_col - 1)
+  let carets = repeat_char('^', caret_count)
+  return spaces + carets
+.end
+
+fn join_lines(lines: coll.Vec[String]) -> String
+  let out = ""
+  for line in lines
+    if out == ""
+      out = line
+    else
+      out = out + "\n" + line
+    end
+  end
+  return out
+.end
+
+fn format_label_block(lbl: diag.DiagnosticLabel, cache: &mut ReporterCache) -> coll.Vec[String]
+  let lines = coll.Vec[String].new()
+  let role = if lbl.is_primary then "primary" else "secondary" end
+
+  let ctx = read_context_line(lbl.span, cache)
+  lines.push("   | " + role + ": " + lbl.message)
+  if ctx.ok
+    lines.push("   | ")
+    lines.push(lbl.span.start_line + " | " + ctx.text)
+    lines.push("   | " + marker_for_span(lbl.span))
+  else
+    lines.push("   | (source indisponible)")
+  end
+  return lines
+.end
+
+fn format_diagnostic_with_cache(d: diag.Diagnostic, cache: &mut ReporterCache) -> String
+  let lines = coll.Vec[String].new()
+  let primary_span = diag.diagnostic_primary_span(d)
+  let sev = diag.diagnostic_severity_name(d.severity)
+
+  lines.push(sev + "[" + d.code + "] " + primary_span.file + ":" + primary_span.start_line + ":" + primary_span.start_col + ": " + d.message)
+  lines.push("  --> " + primary_span.file + ":" + primary_span.start_line + ":" + primary_span.start_col)
+  lines.push("   |")
+
+  for lbl in d.labels
+    let block = format_label_block(lbl, cache)
+    for ln in block
+      lines.push(ln)
+    end
+    lines.push("   |")
+  end
+
+  return join_lines(lines)
+.end
+
+fn format_diagnostic(d: diag.Diagnostic) -> String
+  let mut cache = ReporterCache.new()
+  return format_diagnostic_with_cache(d, &mut cache)
+.end

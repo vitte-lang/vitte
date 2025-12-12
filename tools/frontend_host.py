@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+import re
 
 
 # =============================================================================
@@ -22,14 +23,86 @@ class Span:
     column: int
 
 
+ERROR_CODE_BY_MESSAGE = {
+    "',' ou '}' attendu après un champ de pattern struct": "E1208",
+    "Utiliser '}' pour fermer un pattern de struct (pas '.end')": "E1206",
+    "',' ou ')' attendu après un paramètre de fonction": "E1101",
+    "',' ou '}' attendu après un champ de struct": "E2007",
+    "Un littéral de struct se ferme avec '}' (et non '.end')": "E2009",
+    "Bloc non terminé ('.end' manquant)": "E1300",
+    "Utiliser '}' pour fermer ce bloc": "E1302",
+}
+
+
 @dataclass
 class Diagnostic:
     message: str
     span: Span
+    code: str = "E0000"
+    severity: str = "error"
 
 
-def format_diag(diag: Diagnostic) -> str:
-    return f"{diag.span.file}:{diag.span.line}:{diag.span.column}: {diag.message}"
+def _read_context(diag: Diagnostic) -> tuple[str, str] | None:
+    """
+    Retourne (source_line, caret_line) pour afficher le contexte d'une erreur.
+    """
+    try:
+        lines = diag.span.file.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    line_index = diag.span.line - 1
+    if line_index < 0 or line_index >= len(lines):
+        return None
+    src = lines[line_index]
+    caret = " " * (max(diag.span.column, 1) - 1) + "^"
+    return src, caret
+
+
+def diag_to_json(diag: Diagnostic) -> dict:
+    context = _read_context(diag)
+    ctx = None
+    if context is not None:
+        src, caret = context
+        ctx = {
+            "line": diag.span.line,
+            "column": diag.span.column,
+            "source": src,
+            "marker": caret,
+        }
+    return {
+        "message": diag.message,
+        "code": diag.code,
+        "severity": diag.severity,
+        "span": {
+            "file": str(diag.span.file),
+            "line": diag.span.line,
+            "column": diag.span.column,
+        },
+        "context": ctx,
+    }
+
+
+def format_diag(diag: Diagnostic, *, with_context: bool = True) -> str:
+    head = (
+        f"{diag.severity}[{diag.code}] "
+        f"{diag.span.file}:{diag.span.line}:{diag.span.column}: {diag.message}"
+    )
+    if not with_context:
+        return head
+
+    context = _read_context(diag)
+    if context is None:
+        return head
+
+    src, caret = context
+    parts = [
+        head,
+        f"  --> {diag.span.file}:{diag.span.line}:{diag.span.column}",
+        "   |",
+        f"{diag.span.line:4} | {src}",
+        f"   | {caret}",
+    ]
+    return "\n".join(parts)
 
 
 class TokenKind(Enum):
@@ -159,6 +232,9 @@ class Lexer:
         if c in (" ", "\t", "\r"):
             self.advance()
             return
+        if c == "#":
+            self.skip_comment()
+            return
         if c == "\n":
             span = self.span_here()
             self.advance()
@@ -185,6 +261,12 @@ class Lexer:
             return
 
         self.lex_operator_or_punct()
+
+    def skip_comment(self) -> None:
+        while not self.is_eof():
+            if self.peek() == "\n":
+                break
+            self.advance()
 
     def lex_ident(self) -> None:
         start = self.span_here()
@@ -250,6 +332,7 @@ class Lexer:
             ("!", "="): (TokenKind.BANG_EQ, "!="),
             ("<", "="): (TokenKind.LE, "<="),
             (">", "="): (TokenKind.GE, ">="),
+            (":", ":"): (TokenKind.COLON_COLON, "::"),
         }
         if (c, n) in two_char:
             kind, lexeme = two_char[(c, n)]
@@ -422,18 +505,30 @@ class Parser:
             return
         if tok.kind == TokenKind.KW_WHILE:
             self.advance()
-            self.parse_expr()
+            self.parse_expr(stop_on_lbrace=True)
+            brace_tok = self.match(TokenKind.L_BRACE)
+            if brace_tok:
+                self.parse_block_in_braces(brace_tok)
+                return
             self.parse_block()
             return
         if tok.kind == TokenKind.KW_IF:
             self.advance()
-            self.parse_expr()
+            self.parse_expr(stop_on_lbrace=True)
+            brace_tok = self.match(TokenKind.L_BRACE)
+            if brace_tok:
+                self.parse_block_in_braces(brace_tok)
+                return
             self.parse_block(stop_kinds=(TokenKind.KW_ELSE,))
             if self.match(TokenKind.KW_ELSE):
                 self.parse_block()
             return
         if tok.kind == TokenKind.KW_MATCH:
             self.parse_match_stmt()
+            return
+        if tok.kind == TokenKind.L_BRACE:
+            brace_tok = self.advance()
+            self.parse_block_in_braces(brace_tok)
             return
         if tok.kind == TokenKind.IDENT and self.current().lexeme == "return":
             self.advance()
@@ -587,16 +682,18 @@ class Parser:
                 return
             self.advance()
 
-    def parse_expr(self, min_prec: int = 0) -> None:
-        lhs = self.parse_primary()
+    def parse_expr(self, min_prec: int = 0, stop_on_lbrace: bool = False) -> None:
+        lhs = self.parse_primary(stop_on_lbrace=stop_on_lbrace)
         while True:
             tok = self.current()
+            if stop_on_lbrace and tok.kind == TokenKind.L_BRACE:
+                break
             op_prec = self.binary_prec(tok.kind)
             if op_prec < min_prec:
                 break
             op = tok.kind
             self.advance()
-            self.parse_expr(op_prec + (0 if op == TokenKind.EQUAL else 1))
+            self.parse_expr(op_prec + (0 if op == TokenKind.EQUAL else 1), stop_on_lbrace=stop_on_lbrace)
             lhs = tok
         return lhs
 
@@ -613,7 +710,7 @@ class Parser:
             return 5
         return -1
 
-    def parse_primary(self) -> Token:
+    def parse_primary(self, stop_on_lbrace: bool = False) -> Token:
         tok = self.current()
         if tok.kind == TokenKind.MINUS:
             self.advance()
@@ -633,6 +730,8 @@ class Parser:
             ident_tok = self.advance()
             while self.match(TokenKind.DOT) or self.match(TokenKind.COLON_COLON):
                 self.expect(TokenKind.IDENT, "Identifiant attendu après un séparateur de chemin")
+            if stop_on_lbrace and self.current().kind == TokenKind.L_BRACE:
+                return ident_tok
             if self.match(TokenKind.L_BRACE):
                 self.parse_struct_literal_fields(ident_tok)
             return ident_tok
@@ -724,6 +823,10 @@ class Parser:
         depth = 1
         while depth > 0:
             tok = self.current()
+            if tok.kind == TokenKind.DOT_END:
+                self.diags.append(Diagnostic("Utiliser '}' pour fermer ce bloc", tok.span))
+                self.advance()
+                return
             if tok.kind == TokenKind.EOF:
                 self.diags.append(Diagnostic("Bloc '{ ... }' non terminé", start_tok.span))
                 return
@@ -740,5 +843,283 @@ def run_frontend(path: Path) -> Tuple[int, List[Diagnostic]]:
     tokens, lex_diags = lexer.lex()
     parser = Parser(tokens)
     parse_diags = parser.parse_file()
-    diags = list(lex_diags) + list(parse_diags)
+    semantic_diags = run_semantic_checks(path, text)
+    diags = list(lex_diags) + list(parse_diags) + semantic_diags
+    for diag in diags:
+        diag.code = ERROR_CODE_BY_MESSAGE.get(diag.message, diag.code)
     return (1 if diags else 0), diags
+
+
+# -----------------------------------------------------------------------------
+# Semantic checks (very lightweight scope/type simulation)
+# -----------------------------------------------------------------------------
+
+STRUCT_DECL_RE = re.compile(r"^\s*struct\s+([A-Za-z_][A-Za-z0-9_]*)")
+FN_DECL_RE = re.compile(
+    r"^\s*fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\((?P<params>[^)]*)\)\s*(?:->\s*(?P<ret>.+))?"
+)
+
+
+@dataclass
+class FunctionInfo:
+    name: str
+    params: List[Tuple[str, Optional[str]]]
+    return_type: Optional[str]
+    header_line: int
+    body: List[Tuple[int, str]]
+
+
+def run_semantic_checks(path: Path, text: str) -> List[Diagnostic]:
+    lines = text.splitlines()
+    structs = collect_struct_names(lines)
+    functions = collect_functions(lines)
+    diags: List[Diagnostic] = []
+    for fn in functions:
+        diags.extend(analyze_function(fn, structs, path))
+    return diags
+
+
+def collect_struct_names(lines: List[str]) -> set[str]:
+    names: set[str] = set()
+    for line in lines:
+        match = STRUCT_DECL_RE.match(line)
+        if match:
+            names.add(match.group(1))
+    return names
+
+
+def collect_functions(lines: List[str]) -> List[FunctionInfo]:
+    functions: List[FunctionInfo] = []
+    current: Optional[FunctionInfo] = None
+    block_depth = 0
+    for idx, raw_line in enumerate(lines, start=1):
+        line = raw_line.rstrip("\n")
+        stripped = line.strip()
+
+        if current is None:
+            match = FN_DECL_RE.match(stripped)
+            if match:
+                params = parse_param_list(match.group("params") or "")
+                ret_ty = (match.group("ret") or "").strip() or None
+                current = FunctionInfo(
+                    name=match.group(1),
+                    params=params,
+                    return_type=ret_ty,
+                    header_line=idx,
+                    body=[],
+                )
+                block_depth = 0
+            continue
+
+        if stripped == ".end":
+            if block_depth == 0:
+                functions.append(current)
+                current = None
+                continue
+            block_depth = max(block_depth - 1, 0)
+            current.body.append((idx, line))
+            continue
+
+        current.body.append((idx, line))
+
+        if stripped.startswith("while "):
+            block_depth += 1
+        elif stripped.startswith("if "):
+            block_depth += 1
+        elif stripped.startswith("match "):
+            block_depth += 1
+
+    return functions
+
+
+def parse_param_list(text: str) -> List[Tuple[str, Optional[str]]]:
+    params: List[Tuple[str, Optional[str]]] = []
+    stripped = text.strip()
+    if not stripped:
+        return params
+    for raw_param in stripped.split(","):
+        param = raw_param.strip()
+        if not param:
+            continue
+        if ":" in param:
+            name, ty = param.split(":", 1)
+            params.append((name.strip(), ty.strip() or None))
+        else:
+            params.append((param, None))
+    return params
+
+
+def analyze_function(fn: FunctionInfo, structs: set[str], path: Path) -> List[Diagnostic]:
+    diags: List[Diagnostic] = []
+    locals_types: Dict[str, str] = {}
+    for name, ty in fn.params:
+        locals_types[name] = ty or "unknown"
+
+    for line_no, raw_line in fn.body:
+        line = raw_line.split("#", 1)[0].rstrip()
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("let "):
+            handle_let(stripped, locals_types, structs, path, line_no, diags)
+            continue
+        if stripped.startswith("return"):
+            expr = stripped[len("return") :].strip()
+            expr_type, extra = infer_expr_type(expr, locals_types, structs, path, line_no)
+            diags.extend(extra)
+            expected = fn.return_type
+            if expected:
+                if not expr and expected not in ("()", "unit"):
+                    diags.append(
+                        Diagnostic(
+                            f"return expects `{expected}`, got `unit`",
+                            Span(path, line_no, 1),
+                            code="E7101",
+                        )
+                    )
+                elif expr and expr_type != expected:
+                    diags.append(
+                        Diagnostic(
+                            f"return expects `{expected}`, got `{expr_type or 'unknown'}`",
+                            Span(path, line_no, 1),
+                            code="E7101",
+                        )
+                    )
+            continue
+
+        if (
+            "=" in stripped
+            and "=>" not in stripped
+            and not stripped.startswith("match ")
+            and not stripped.startswith("return ")
+        ):
+            lhs, rhs = stripped.split("=", 1)
+            name = lhs.strip().split()[0]
+            if not name:
+                continue
+            if name not in locals_types:
+                diags.append(
+                    Diagnostic(
+                        f"assignment to unknown variable `{name}`",
+                        Span(path, line_no, 1),
+                        code="E7103",
+                    )
+                )
+            else:
+                _, extra = infer_expr_type(rhs.strip(), locals_types, structs, path, line_no)
+                diags.extend(extra)
+            continue
+
+    return diags
+
+
+def handle_let(
+    line: str,
+    locals_types: Dict[str, str],
+    structs: set[str],
+    path: Path,
+    line_no: int,
+    diags: List[Diagnostic],
+) -> None:
+    remainder = line[4:].strip()
+    if remainder.startswith("mut "):
+        remainder = remainder[4:].strip()
+    eq_index = remainder.find("=")
+    colon_index = remainder.find(":")
+    name_slice_end = len(remainder)
+    if colon_index != -1 and (eq_index == -1 or colon_index < eq_index):
+        name_slice_end = colon_index
+    elif eq_index != -1:
+        name_slice_end = eq_index
+    name_token = remainder[:name_slice_end].strip()
+    name = name_token.split()[0] if name_token else ""
+    annotated_type: Optional[str] = None
+    expr: Optional[str] = None
+
+    if colon_index != -1 and (eq_index == -1 or colon_index < eq_index):
+        before = remainder[:colon_index]
+        after_colon = remainder[colon_index + 1 :]
+        if "=" in after_colon:
+            annotated_type, expr = after_colon.split("=", 1)
+        else:
+            annotated_type = after_colon
+    elif eq_index != -1:
+        expr = remainder.split("=", 1)[1]
+
+    annotated_type = annotated_type.strip() if annotated_type else None
+    expr = expr.strip() if expr else None
+
+    locals_types[name] = annotated_type or "unknown"
+    if expr:
+        expr_type, extra = infer_expr_type(expr, locals_types, structs, path, line_no)
+        diags.extend(extra)
+        if locals_types[name] == "unknown" and expr_type not in ("", "unknown"):
+            locals_types[name] = expr_type
+
+
+STRUCT_LITERAL_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_:.]*)\s*\{")
+IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*")
+
+
+def infer_expr_type(
+    expr: str,
+    locals_types: Dict[str, str],
+    structs: set[str],
+    path: Path,
+    line_no: int,
+) -> Tuple[str, List[Diagnostic]]:
+    diags: List[Diagnostic] = []
+    stripped = expr.strip()
+    if not stripped:
+        return ("unit", diags)
+
+    match = STRUCT_LITERAL_RE.match(stripped)
+    if match:
+        type_path = match.group(1)
+        base = type_path.split("::")[-1].split(".")[-1]
+        if base not in structs:
+            diags.append(
+                Diagnostic(
+                    "struct literal with unknown type",
+                    Span(path, line_no, 1),
+                    code="E7100",
+                )
+            )
+            return ("unknown", diags)
+        return (base, diags)
+
+    if stripped[0].isdigit():
+        if "." in stripped:
+            return ("f64", diags)
+        return ("i32", diags)
+
+    if stripped in ("true", "false"):
+        return ("bool", diags)
+
+    if stripped.startswith('"'):
+        return ("string", diags)
+    if stripped.startswith("'"):
+        return ("char", diags)
+
+    if "(" in stripped and stripped.endswith(")"):
+        callee = stripped.split("(", 1)[0].strip()
+        if callee in locals_types:
+            return ("unknown", diags)
+        # Function call / path – non local ⇒ unresolved symbol but we keep unknown type
+        return ("unknown", diags)
+
+    name_match = IDENT_RE.match(stripped)
+    if name_match:
+        ident = name_match.group(0)
+        if ident in locals_types:
+            return (locals_types[ident], diags)
+        diags.append(
+            Diagnostic(
+                f"unresolved identifier `{ident}`",
+                Span(path, line_no, 1),
+                code="E7102",
+            )
+        )
+        return ("unknown", diags)
+
+    return ("unknown", diags)

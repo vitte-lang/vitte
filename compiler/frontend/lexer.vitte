@@ -62,14 +62,6 @@ enum TokenKind
   KwMatch
   KwTrue
   KwFalse
-  KwLet
-  KwMut
-  KwIf
-  KwElse
-  KwWhile
-  KwMatch
-  KwTrue
-  KwFalse
 
   # Punctuations et opérateurs simples ---------------------------------------
   LParen         # (
@@ -279,6 +271,7 @@ fn Lexer.lex_one_token(self: &mut Lexer) -> Unit
     let span = self.make_span_single()
     self.advance()
     self.push_token(TokenKind.Newline, "\n", span)
+    self.handle_indent_after_newline()
     return
   end
 
@@ -419,7 +412,7 @@ fn Lexer.lex_char_literal(self: &mut Lexer) -> Unit
     self.diags.add_error(
       "Littéral de caractère non terminé",
       span,
-      "E2008",
+      diag.code_for_message("Littéral de caractère non terminé"),
     )
     self.push_token(TokenKind.CharLiteral, buf, span)
     return
@@ -440,7 +433,7 @@ fn Lexer.lex_char_literal(self: &mut Lexer) -> Unit
     self.diags.add_error(
       "Littéral de caractère non terminé",
       span,
-      "E2008",
+      diag.code_for_message("Littéral de caractère non terminé"),
     )
     self.push_token(TokenKind.CharLiteral, buf, span)
     return
@@ -466,7 +459,7 @@ fn Lexer.lex_char_literal(self: &mut Lexer) -> Unit
     self.diags.add_error(
       "Littéral de caractère non terminé",
       span,
-      "E2008",
+      diag.code_for_message("Littéral de caractère non terminé"),
     )
   end
 
@@ -514,7 +507,7 @@ fn Lexer.lex_string(self: &mut Lexer) -> Unit
     self.diags.add_error(
       "Littéral de chaîne non terminé",
       span,
-      "E2001",
+      diag.code_for_message("Littéral de chaîne non terminé"),
     )
   end
 
@@ -667,9 +660,23 @@ fn Lexer.lex_operator_or_punct(self: &mut Lexer) -> Unit
     return
   end
 
-  # Caractère inconnu : produire Unknown et éventuellement diagnostiquer plus tard.
+  # Caractère inconnu : produire Unknown et signaler immédiatement.
   let s = str.from_char(c)
   self.push_token(TokenKind.Unknown, s, span)
+  self.diags.add_error(
+    "Caractère invalide",
+    span,
+    diag.code_for_message("Caractère invalide"),
+  )
+.end
+
+# -----------------------------------------------------------------------------
+# Indentation – stubs pour préparer un lexing sensible à l'indentation
+# -----------------------------------------------------------------------------
+
+fn Lexer.handle_indent_after_newline(self: &mut Lexer) -> Unit
+  # Placeholder : on pourra ici mesurer l'indentation et émettre Indent/Dedent.
+  return
 .end
 
 # -----------------------------------------------------------------------------

@@ -103,11 +103,10 @@ def format_frontend_diags(input_path: Path) -> tuple[int, list[str]] | None:
 
     formatted: list[str] = []
     for diag in frontend_diags:
-        code = FRONTEND_MESSAGE_TO_CODE.get(diag.message)  # type: ignore[attr-defined]
-        if code:
-            formatted.append(f"error[{code}] {fh_format_diag(diag)}")
-        else:
-            formatted.append(f"error[frontend] {fh_format_diag(diag)}")
+        code = getattr(diag, "code", None)  # type: ignore[attr-defined]
+        if (not code or code == "E0000") and diag.message in FRONTEND_MESSAGE_TO_CODE:
+            diag.code = FRONTEND_MESSAGE_TO_CODE[diag.message]  # type: ignore[attr-defined]
+        formatted.append(fh_format_diag(diag))  # type: ignore[arg-type]
     return (rc or 1, formatted)
 
 

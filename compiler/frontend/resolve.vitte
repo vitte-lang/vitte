@@ -409,6 +409,10 @@ struct ResBindingIndex
     # path_id.raw -> index dans une table de ResPathResolution
     path_by_ast_id: coll.HashMap<u32, u32>
 
+    # Variantes namespacées par unité pour éviter les collisions d’IDs si des spans sont réutilisés via macros ou imports cross-file
+    binding_by_unit_and_ast_id: coll.HashMap<String, coll.HashMap<u32, u32>>   # clé = file/module id logique -> map locale
+    path_by_unit_and_ast_id: coll.HashMap<String, coll.HashMap<u32, u32>>
+
     notes: String
 .end
 
@@ -521,6 +525,8 @@ struct BtResolveIndex
     unit_index_by_file_path: coll.HashMap<String, u32>
     symbol_ids_by_qualified_name: coll.HashMap<String, coll.Vec<ResSymbolId>>
     module_scope_by_name: coll.HashMap<String, ResScopeId>
+    binding_by_unit_and_ast_id: coll.HashMap<String, coll.HashMap<u32, String>>   # (file/module id -> ast_id.raw -> "unit_index,binding_index")
+    path_by_unit_and_ast_id: coll.HashMap<String, coll.HashMap<u32, String>>      # idem pour path resolutions
 
     notes: String
 .end

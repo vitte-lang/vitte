@@ -68,10 +68,26 @@ fn Parser.is_eof(self: Parser) -> Bool
   return self.index >= self.tokens.len()
 .end
 
+fn Parser.sentinel(self: Parser) -> lex.Token
+  let dummy_span = diag.Span.dummy(self.file)
+  return lex.Token(
+    kind = lex.TokenKind.Eof,
+    lexeme = "",
+    span = dummy_span,
+  )
+.end
+
 fn Parser.current(self: Parser) -> lex.Token
+  if self.tokens.len() == 0
+    return self.sentinel()
+  end
+
   if self.is_eof()
-    # Hypothèse : le lexer ajoute toujours un token Eof final.
-    return self.tokens[self.tokens.len() - 1]
+    # Hypothèse : le lexer ajoute toujours un token Eof final, sinon sentinel.
+    if self.tokens.len() > 0
+      return self.tokens[self.tokens.len() - 1]
+    end
+    return self.sentinel()
   end
   return self.tokens[self.index]
 .end
@@ -1170,11 +1186,16 @@ fn Parser.parse_block_impl(
         let id = module.add_block(block)
         return id
       else
-        self.diags.add_error(
+        let mut d = diag.Diagnostic.error(
           missing_msg,
           tok.span,
           missing_code,
         )
+        d.add_secondary_label(
+          "Bloc ouvert ici",
+          start_span,
+        )
+        self.diags.add(d)
         let span = diag.Span.merge(start_span, tok.span)
         let block = ast.Block(
           stmts = stmt_ids,
@@ -1190,11 +1211,16 @@ fn Parser.parse_block_impl(
     if self.peek_is_dot_end()
       let end_span = self.consume_block_end()
       if not allow_dot_end
-        self.diags.add_error(
+        let mut d = diag.Diagnostic.error(
           "Utiliser '}' pour fermer ce bloc",
           end_span,
           "E1302",
         )
+        d.add_secondary_label(
+          "Bloc ouvert ici",
+          start_span,
+        )
+        self.diags.add(d)
       end
 
       let span = diag.Span.merge(start_span, end_span)
@@ -1208,11 +1234,16 @@ fn Parser.parse_block_impl(
 
     # EOF inattendu
     if tok.kind == lex.TokenKind.Eof
-      self.diags.add_error(
+      let mut d = diag.Diagnostic.error(
         missing_msg,
         tok.span,
         missing_code,
       )
+      d.add_secondary_label(
+        "Bloc ouvert ici",
+        start_span,
+      )
+      self.diags.add(d)
       let span = diag.Span.merge(start_span, tok.span)
       let block = ast.Block(
         stmts = stmt_ids,

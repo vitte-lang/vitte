@@ -1,6 +1,7 @@
 module vitte.compiler.frontend.tokens
 
 import std.collections as coll
+import vitte.compiler.frontend.diagnostics as diag
 import vitte.compiler.frontend.lexer as lex
 
 # ============================================================================
@@ -24,8 +25,8 @@ import vitte.compiler.frontend.lexer as lex
 #       * aucune I/O ni formatage.
 #
 # Remarque :
-#   - Ce module réutilise les enums `lex.LexTokenKind` et `lex.LexKeyword` et
-#     les enrichit avec des métadonnées structurées.
+#   - Ce module réutilise l'enum `lex.TokenKind` et l'enrichit avec des
+#     métadonnées structurées.
 # ============================================================================
 
 # ---------------------------------------------------------------------------
@@ -60,11 +61,13 @@ enum TkLiteralCategory
 
 enum TkOperatorCategory
     TkOpArithmetic
-    TkOpLogical
+    TkOpLogicalShortCircuit
+    TkOpLogicalNonShortCircuit
     TkOpComparison
     TkOpAssignment
     TkOpBitwise
     TkOpShift
+    TkOpFlow
     TkOpOther
 .end
 
@@ -88,7 +91,7 @@ enum TkAssoc
 
 struct TkTokenClassInfo
     # Kind lexical brut
-    token_kind: lex.LexTokenKind
+    token_kind: lex.TokenKind
 
     # Classification générale
     category: TkTokenCategory
@@ -99,21 +102,21 @@ struct TkTokenClassInfo
     fixity: TkFixity
     precedence: u8
     assoc: TkAssoc
-    is_associative: bool
+    is_associative: Bool
 
     # Mots-clés / identifiants
-    is_keyword_token: bool         # true si utilisé comme "Keyword"
-    can_be_contextual: bool       # true si mot-clé contextuel possible
+    is_keyword_token: Bool         # true si utilisé comme "Keyword"
+    can_be_contextual: Bool       # true si mot-clé contextuel possible
 
     # Représentation textuelle typique
-    display_name: string          # ex: "identifier", "integer literal", "+"
-    sample_lexeme: string         # ex: "foo", "42", "if"
-    description: string
+    display_name: String          # ex: "identifier", "integer literal", "+"
+    sample_lexeme: String         # ex: "foo", "42", "if"
+    description: String
 
     # Tags libres pour tooling (ex: "binary-op", "comparison", "statement-start")
-    tags: coll.Vec<string>
+    tags: coll.Vec[String]
 
-    extra: coll.HashMap<string, string>
+    extra: coll.HashMap[String, String]
 .end
 
 # ---------------------------------------------------------------------------
@@ -130,30 +133,31 @@ enum TkKeywordGroup
     KwgVisibility      # pub
     KwgValues          # true, false, null
     KwgPhraseDsl       # say, do, when, set
+    KwgBlock           # end, .
     KwgOther
 .end
 
 struct TkKeywordInfo
-    keyword: lex.LexKeyword
+    keyword: lex.TokenKind
 
     # Texte canonique dans le langage (ex: "module")
-    canonical_text: string
+    canonical_text: String
 
     # Groupe / famille de ce mot-clé
     group: TkKeywordGroup
 
     # Mots-clés réservés / contextuels
-    is_reserved: bool            # toujours mot-clé
-    is_contextual: bool          # mot-clé contextuel selon le contexte
-    is_future_reserved: bool     # actuellement non utilisé mais réservé
+    is_reserved: Bool            # toujours mot-clé
+    is_contextual: Bool          # mot-clé contextuel selon le contexte
+    is_future_reserved: Bool     # actuellement non utilisé mais réservé
 
     # Contextes d’utilisation
-    allowed_contexts: coll.Vec<string>    # ex: ["item", "expr", "type", "pattern"]
+    allowed_contexts: coll.Vec[String]    # ex: ["item", "expr", "type", "pattern"]
 
-    description: string
-    tags: coll.Vec<string>
+    description: String
+    tags: coll.Vec[String]
 
-    extra: coll.HashMap<string, string>
+    extra: coll.HashMap[String, String]
 .end
 
 # ---------------------------------------------------------------------------
@@ -161,22 +165,22 @@ struct TkKeywordInfo
 # ---------------------------------------------------------------------------
 
 struct TkOperatorInfo
-    token_kind: lex.LexTokenKind
+    token_kind: lex.TokenKind
 
-    textual_repr: string             # ex: "+", "&&", "=="
+    textual_repr: String             # ex: "+", "&&", "=="
     category: TkOperatorCategory
     fixity: TkFixity
     precedence: u8
     assoc: TkAssoc
 
     # Utilisation typique (ex: "binary", "unary-prefix", "unary-postfix")
-    usage: string
+    usage: String
 
     # Description lisible
-    description: string
+    description: String
 
-    tags: coll.Vec<string>
-    extra: coll.HashMap<string, string>
+    tags: coll.Vec[String]
+    extra: coll.HashMap[String, String]
 .end
 
 # ---------------------------------------------------------------------------
@@ -192,18 +196,18 @@ enum TkDelimiterKind
 .end
 
 struct TkDelimiterInfo
-    open_kind: lex.LexTokenKind
-    close_kind: lex.LexTokenKind
+    open_kind: lex.TokenKind
+    close_kind: lex.TokenKind
 
     kind: TkDelimiterKind
-    name: string                     # ex: "parentheses", "brackets"
-    can_nest: bool
+    name: String                     # ex: "parentheses", "brackets"
+    can_nest: Bool
 
     # Exemple de forme complète
-    sample: string                   # ex: "( ... )"
+    sample: String                   # ex: "( ... )"
 
-    tags: coll.Vec<string>
-    extra: coll.HashMap<string, string>
+    tags: coll.Vec[String]
+    extra: coll.HashMap[String, String]
 .end
 
 # ---------------------------------------------------------------------------
@@ -224,13 +228,26 @@ struct TkTokenTables
     delimiter_infos: coll.Vec<TkDelimiterInfo>
 
     # Indexation rapide (clé = nom symbolique du kind/keyword)
-    token_class_index_by_kind_name: coll.HashMap<string, u32>
-    keyword_info_index_by_text: coll.HashMap<string, u32>
-    operator_info_index_by_repr: coll.HashMap<string, u32>
-    delimiter_index_by_open_repr: coll.HashMap<string, u32>
-    delimiter_index_by_close_repr: coll.HashMap<string, u32>
+    token_class_index_by_kind_name: coll.HashMap[String, u32>
+    keyword_info_index_by_text: coll.HashMap[String, u32>
+    operator_info_index_by_repr: coll.HashMap[String, u32>
+    delimiter_index_by_open_repr: coll.HashMap[String, u32>
+    delimiter_index_by_close_repr: coll.HashMap[String, u32>
 
-    extra: coll.HashMap<string, string>
+    extra: coll.HashMap[String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Vue légère pour les occurrences de tokens (export tooling/JSON)
+# ---------------------------------------------------------------------------
+
+struct TkTokenView
+    kind: lex.TokenKind
+    lexeme: String
+    span: diag.Span
+
+    category: TkTokenCategory
+    is_keyword: Bool
 .end
 
 # ---------------------------------------------------------------------------
@@ -251,27 +268,27 @@ struct TkTokenFileSummary
     count_indentation: u32
 
     # Comptage agrégé par catégorie (clé = nom de catégorie)
-    count_by_category: coll.HashMap<string, u32>
+    count_by_category: coll.HashMap[String, u32>
 
     # Comptage par mot-clé texte canonique
-    count_by_keyword_text: coll.HashMap<string, u32>
+    count_by_keyword_text: coll.HashMap[String, u32>
 
     # Indicateur d’erreurs lexicales/problèmes graves sur ce flux
-    has_lex_errors: bool
+    has_lex_errors: Bool
 .end
 
 struct TkTokenFileInfo
-    file_path: string
-    display_name: string
+    file_path: String
+    display_name: String
 
     # Snapshot du flux de tokens produit par le lexer pour ce fichier
-    token_stream: lex.LexTokenStream
+    token_stream: coll.Vec[lex.Token]
 
     # Résumé/statistiques
     summary: TkTokenFileSummary
 
     # Données additionnelles (ex: profil d’édition, tags, etc.)
-    extra: coll.HashMap<string, string>
+    extra: coll.HashMap[String, String]
 .end
 
 # ---------------------------------------------------------------------------
@@ -293,12 +310,12 @@ struct TkTokenGlobalSummary
     total_indentation: u32
 
     # Comptage agrégé par catégorie
-    count_by_category: coll.HashMap<string, u32>
+    count_by_category: coll.HashMap[String, u32>
 
     # Comptage agrégé par mot-clé texte canonique
-    count_by_keyword_text: coll.HashMap<string, u32>
+    count_by_keyword_text: coll.HashMap[String, u32>
 
-    extra: coll.HashMap<string, string>
+    extra: coll.HashMap[String, String]
 .end
 
 # ---------------------------------------------------------------------------
@@ -316,5 +333,1256 @@ struct BtTokenModel
     global_summary: TkTokenGlobalSummary
 
     # Données libres pour tooling/CI/IDE/docs
-    extra: coll.HashMap<string, string>
+    extra: coll.HashMap[String, String]
+.end
+
+# ---------------------------------------------------------------------------
+# Tables statiques par défaut (contrat tooling/CLI)
+# ---------------------------------------------------------------------------
+
+fn token_kind_name(kind: lex.TokenKind) -> String
+    if kind == lex.TokenKind.Eof then return "Eof"
+    else if kind == lex.TokenKind.Ident then return "Ident"
+    else if kind == lex.TokenKind.IntLiteral then return "IntLiteral"
+    else if kind == lex.TokenKind.FloatLiteral then return "FloatLiteral"
+    else if kind == lex.TokenKind.CharLiteral then return "CharLiteral"
+    else if kind == lex.TokenKind.StringLiteral then return "StringLiteral"
+    else if kind == lex.TokenKind.KwModule then return "KwModule"
+    else if kind == lex.TokenKind.KwImport then return "KwImport"
+    else if kind == lex.TokenKind.KwExport then return "KwExport"
+    else if kind == lex.TokenKind.KwStruct then return "KwStruct"
+    else if kind == lex.TokenKind.KwEnum then return "KwEnum"
+    else if kind == lex.TokenKind.KwUnion then return "KwUnion"
+    else if kind == lex.TokenKind.KwType then return "KwType"
+    else if kind == lex.TokenKind.KwFn then return "KwFn"
+    else if kind == lex.TokenKind.KwProgram then return "KwProgram"
+    else if kind == lex.TokenKind.KwScenario then return "KwScenario"
+    else if kind == lex.TokenKind.KwPipeline then return "KwPipeline"
+    else if kind == lex.TokenKind.KwEnd then return "KwEnd"
+    else if kind == lex.TokenKind.KwLet then return "KwLet"
+    else if kind == lex.TokenKind.KwMut then return "KwMut"
+    else if kind == lex.TokenKind.KwIf then return "KwIf"
+    else if kind == lex.TokenKind.KwElse then return "KwElse"
+    else if kind == lex.TokenKind.KwWhile then return "KwWhile"
+    else if kind == lex.TokenKind.KwMatch then return "KwMatch"
+    else if kind == lex.TokenKind.KwTrue then return "KwTrue"
+    else if kind == lex.TokenKind.KwFalse then return "KwFalse"
+    else if kind == lex.TokenKind.LParen then return "LParen"
+    else if kind == lex.TokenKind.RParen then return "RParen"
+    else if kind == lex.TokenKind.LBrace then return "LBrace"
+    else if kind == lex.TokenKind.RBrace then return "RBrace"
+    else if kind == lex.TokenKind.LBracket then return "LBracket"
+    else if kind == lex.TokenKind.RBracket then return "RBracket"
+    else if kind == lex.TokenKind.Comma then return "Comma"
+    else if kind == lex.TokenKind.Colon then return "Colon"
+    else if kind == lex.TokenKind.ColonColon then return "ColonColon"
+    else if kind == lex.TokenKind.Dot then return "Dot"
+    else if kind == lex.TokenKind.Equal then return "Equal"
+    else if kind == lex.TokenKind.Plus then return "Plus"
+    else if kind == lex.TokenKind.Minus then return "Minus"
+    else if kind == lex.TokenKind.Star then return "Star"
+    else if kind == lex.TokenKind.Slash then return "Slash"
+    else if kind == lex.TokenKind.Percent then return "Percent"
+    else if kind == lex.TokenKind.Arrow then return "Arrow"
+    else if kind == lex.TokenKind.FatArrow then return "FatArrow"
+    else if kind == lex.TokenKind.EqualEqual then return "EqualEqual"
+    else if kind == lex.TokenKind.BangEqual then return "BangEqual"
+    else if kind == lex.TokenKind.Less then return "Less"
+    else if kind == lex.TokenKind.LessEqual then return "LessEqual"
+    else if kind == lex.TokenKind.Greater then return "Greater"
+    else if kind == lex.TokenKind.GreaterEqual then return "GreaterEqual"
+    else if kind == lex.TokenKind.AmpAmp then return "AmpAmp"
+    else if kind == lex.TokenKind.PipePipe then return "PipePipe"
+    else if kind == lex.TokenKind.Newline then return "Newline"
+    else if kind == lex.TokenKind.Indent then return "Indent"
+    else if kind == lex.TokenKind.Dedent then return "Dedent"
+    else if kind == lex.TokenKind.Unknown then return "Unknown"
+    end
+    return "Unknown"
+.end
+
+fn token_kind_lexeme(kind: lex.TokenKind) -> String
+    if kind == lex.TokenKind.LParen then return "("
+    else if kind == lex.TokenKind.RParen then return ")"
+    else if kind == lex.TokenKind.LBrace then return "{"
+    else if kind == lex.TokenKind.RBrace then return "}"
+    else if kind == lex.TokenKind.LBracket then return "["
+    else if kind == lex.TokenKind.RBracket then return "]"
+    else if kind == lex.TokenKind.Comma then return ","
+    else if kind == lex.TokenKind.Colon then return ":"
+    else if kind == lex.TokenKind.ColonColon then return "::"
+    else if kind == lex.TokenKind.Dot then return "."
+    else if kind == lex.TokenKind.Equal then return "="
+    else if kind == lex.TokenKind.Plus then return "+"
+    else if kind == lex.TokenKind.Minus then return "-"
+    else if kind == lex.TokenKind.Star then return "*"
+    else if kind == lex.TokenKind.Slash then return "/"
+    else if kind == lex.TokenKind.Percent then return "%"
+    else if kind == lex.TokenKind.Arrow then return "->"
+    else if kind == lex.TokenKind.FatArrow then return "=>"
+    else if kind == lex.TokenKind.EqualEqual then return "=="
+    else if kind == lex.TokenKind.BangEqual then return "!="
+    else if kind == lex.TokenKind.Less then return "<"
+    else if kind == lex.TokenKind.LessEqual then return "<="
+    else if kind == lex.TokenKind.Greater then return ">"
+    else if kind == lex.TokenKind.GreaterEqual then return ">="
+    else if kind == lex.TokenKind.AmpAmp then return "&&"
+    else if kind == lex.TokenKind.PipePipe then return "||"
+    else if kind == lex.TokenKind.Newline then return "\\n"
+    else if kind == lex.TokenKind.Indent then return "<indent>"
+    else if kind == lex.TokenKind.Dedent then return "<dedent>"
+    end
+    return ""
+.end
+
+fn default_token_class_infos() -> coll.Vec[TkTokenClassInfo]
+    let items = coll.Vec[TkTokenClassInfo].new()
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Eof,
+        category = TkTokenCategory.TkEof,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkNoFixity,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "end of file",
+        sample_lexeme = "",
+        description = "Token synthétique indiquant la fin du flux.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Ident,
+        category = TkTokenCategory.TkIdentifier,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkNoFixity,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = true,
+        display_name = "identifier",
+        sample_lexeme = "foo",
+        description = "Nom symbolique utilisé pour les variables, types, modules…",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.IntLiteral,
+        category = TkTokenCategory.TkLiteral,
+        literal_category = TkLiteralCategory.TkLitInt,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkNoFixity,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "integer literal",
+        sample_lexeme = "42",
+        description = "Nombre entier décimal.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.FloatLiteral,
+        category = TkTokenCategory.TkLiteral,
+        literal_category = TkLiteralCategory.TkLitFloat,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkNoFixity,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "float literal",
+        sample_lexeme = "3.14",
+        description = "Nombre flottant simple.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.CharLiteral,
+        category = TkTokenCategory.TkLiteral,
+        literal_category = TkLiteralCategory.TkLitChar,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkNoFixity,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "char literal",
+        sample_lexeme = "'a'",
+        description = "Caractère unique ou séquence d'échappement.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.StringLiteral,
+        category = TkTokenCategory.TkLiteral,
+        literal_category = TkLiteralCategory.TkLitString,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkNoFixity,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "string literal",
+        sample_lexeme = "\"hello\"",
+        description = "Chaîne de caractères simple ligne.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    # Mots-clés ---------------------------------------------------------------
+    let push_keyword_info = fn (items: &mut coll.Vec[TkTokenClassInfo], kind: lex.TokenKind, sample: String, desc: String, tags: coll.Vec[String]) -> Unit
+        items.push(TkTokenClassInfo(
+            token_kind = kind,
+            category = TkTokenCategory.TkKeyword,
+            literal_category = TkLiteralCategory.TkLitOther,
+            operator_category = TkOperatorCategory.TkOpOther,
+            fixity = TkFixity.TkNoFixity,
+            precedence = 0,
+            assoc = TkAssoc.TkNonAssoc,
+            is_associative = false,
+            is_keyword_token = true,
+            can_be_contextual = false,
+            display_name = sample,
+            sample_lexeme = sample,
+            description = desc,
+            tags = tags,
+            extra = coll.HashMap[String, String](),
+        ))
+    .end
+
+    let kw_tags_module = coll.Vec[String].new()
+    kw_tags_module.push("keyword")
+    kw_tags_module.push("module")
+    push_keyword_info(&mut items, lex.TokenKind.KwModule, "module", "Déclare un module ou un namespace.", kw_tags_module)
+
+    let kw_tags_import = coll.Vec[String].new()
+    kw_tags_import.push("keyword")
+    kw_tags_import.push("import")
+    push_keyword_info(&mut items, lex.TokenKind.KwImport, "import", "Importe un module ou une ressource.", kw_tags_import)
+
+    let kw_tags_export = coll.Vec[String].new()
+    kw_tags_export.push("keyword")
+    kw_tags_export.push("visibility")
+    push_keyword_info(&mut items, lex.TokenKind.KwExport, "export", "Rend un symbole visible à l'extérieur.", kw_tags_export)
+
+    let kw_tags_struct = coll.Vec[String].new()
+    kw_tags_struct.push("keyword")
+    kw_tags_struct.push("type")
+    push_keyword_info(&mut items, lex.TokenKind.KwStruct, "struct", "Déclare une structure nominale.", kw_tags_struct)
+
+    let kw_tags_enum = coll.Vec[String].new()
+    kw_tags_enum.push("keyword")
+    kw_tags_enum.push("type")
+    push_keyword_info(&mut items, lex.TokenKind.KwEnum, "enum", "Déclare un enum à variantes.", kw_tags_enum)
+
+    let kw_tags_union = coll.Vec[String].new()
+    kw_tags_union.push("keyword")
+    kw_tags_union.push("type")
+    push_keyword_info(&mut items, lex.TokenKind.KwUnion, "union", "Déclare une union non sécurisée.", kw_tags_union)
+
+    let kw_tags_type = coll.Vec[String].new()
+    kw_tags_type.push("keyword")
+    kw_tags_type.push("alias")
+    push_keyword_info(&mut items, lex.TokenKind.KwType, "type", "Alias ou définition de type.", kw_tags_type)
+
+    let kw_tags_fn = coll.Vec[String].new()
+    kw_tags_fn.push("keyword")
+    kw_tags_fn.push("function")
+    push_keyword_info(&mut items, lex.TokenKind.KwFn, "fn", "Déclaration de fonction.", kw_tags_fn)
+
+    let kw_tags_program = coll.Vec[String].new()
+    kw_tags_program.push("keyword")
+    kw_tags_program.push("unit")
+    push_keyword_info(&mut items, lex.TokenKind.KwProgram, "program", "Unité principale exécutable.", kw_tags_program)
+
+    let kw_tags_scenario = coll.Vec[String].new()
+    kw_tags_scenario.push("keyword")
+    kw_tags_scenario.push("unit")
+    push_keyword_info(&mut items, lex.TokenKind.KwScenario, "scenario", "Déclare un scénario ou pipeline.", kw_tags_scenario)
+
+    let kw_tags_pipeline = coll.Vec[String].new()
+    kw_tags_pipeline.push("keyword")
+    kw_tags_pipeline.push("unit")
+    push_keyword_info(&mut items, lex.TokenKind.KwPipeline, "pipeline", "Déclare une unité de pipeline.", kw_tags_pipeline)
+
+    let kw_tags_end = coll.Vec[String].new()
+    kw_tags_end.push("keyword")
+    kw_tags_end.push("block")
+    push_keyword_info(&mut items, lex.TokenKind.KwEnd, "end", "Ferme explicitement un bloc.", kw_tags_end)
+
+    let kw_tags_let = coll.Vec[String].new()
+    kw_tags_let.push("keyword")
+    kw_tags_let.push("binding")
+    push_keyword_info(&mut items, lex.TokenKind.KwLet, "let", "Déclaration de variable immuable.", kw_tags_let)
+
+    let kw_tags_mut = coll.Vec[String].new()
+    kw_tags_mut.push("keyword")
+    kw_tags_mut.push("mutability")
+    push_keyword_info(&mut items, lex.TokenKind.KwMut, "mut", "Marqueur de mutabilité pour une binding.", kw_tags_mut)
+
+    let kw_tags_if = coll.Vec[String].new()
+    kw_tags_if.push("keyword")
+    kw_tags_if.push("control")
+    push_keyword_info(&mut items, lex.TokenKind.KwIf, "if", "Conditionnelle classique.", kw_tags_if)
+
+    let kw_tags_else = coll.Vec[String].new()
+    kw_tags_else.push("keyword")
+    kw_tags_else.push("control")
+    push_keyword_info(&mut items, lex.TokenKind.KwElse, "else", "Branche alternative d'un if.", kw_tags_else)
+
+    let kw_tags_while = coll.Vec[String].new()
+    kw_tags_while.push("keyword")
+    kw_tags_while.push("loop")
+    push_keyword_info(&mut items, lex.TokenKind.KwWhile, "while", "Boucle while classique.", kw_tags_while)
+
+    let kw_tags_match = coll.Vec[String].new()
+    kw_tags_match.push("keyword")
+    kw_tags_match.push("pattern")
+    push_keyword_info(&mut items, lex.TokenKind.KwMatch, "match", "Expression de pattern matching.", kw_tags_match)
+
+    let kw_tags_true = coll.Vec[String].new()
+    kw_tags_true.push("keyword")
+    kw_tags_true.push("boolean")
+    push_keyword_info(&mut items, lex.TokenKind.KwTrue, "true", "Constante booléenne vraie.", kw_tags_true)
+
+    let kw_tags_false = coll.Vec[String].new()
+    kw_tags_false.push("keyword")
+    kw_tags_false.push("boolean")
+    push_keyword_info(&mut items, lex.TokenKind.KwFalse, "false", "Constante booléenne fausse.", kw_tags_false)
+
+    # Délimiteurs / ponctuation ----------------------------------------------
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.LParen,
+        category = TkTokenCategory.TkDelimiter,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkSurround,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "left parenthesis",
+        sample_lexeme = "(",
+        description = "Parenthèse ouvrante.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.RParen,
+        category = TkTokenCategory.TkDelimiter,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkSurround,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "right parenthesis",
+        sample_lexeme = ")",
+        description = "Parenthèse fermante.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.LBrace,
+        category = TkTokenCategory.TkDelimiter,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkSurround,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "left brace",
+        sample_lexeme = "{",
+        description = "Accolade ouvrante.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.RBrace,
+        category = TkTokenCategory.TkDelimiter,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkSurround,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "right brace",
+        sample_lexeme = "}",
+        description = "Accolade fermante.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.LBracket,
+        category = TkTokenCategory.TkDelimiter,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkSurround,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "left bracket",
+        sample_lexeme = "[",
+        description = "Crochet ouvrant.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.RBracket,
+        category = TkTokenCategory.TkDelimiter,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkSurround,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "right bracket",
+        sample_lexeme = "]",
+        description = "Crochet fermant.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Comma,
+        category = TkTokenCategory.TkPunctuation,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkNoFixity,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "comma",
+        sample_lexeme = ",",
+        description = "Séparateur de liste.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Colon,
+        category = TkTokenCategory.TkPunctuation,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkNoFixity,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "colon",
+        sample_lexeme = ":",
+        description = "Annotation de type, mapping ou label.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.ColonColon,
+        category = TkTokenCategory.TkPunctuation,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkNoFixity,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "path separator",
+        sample_lexeme = "::",
+        description = "Séparateur de chemin qualifié.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Dot,
+        category = TkTokenCategory.TkPunctuation,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkInfix,
+        precedence = 9,
+        assoc = TkAssoc.TkLeft,
+        is_associative = true,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "dot",
+        sample_lexeme = ".",
+        description = "Accès membre / fin d'instruction.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    # Opérateurs -------------------------------------------------------------
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Equal,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpAssignment,
+        fixity = TkFixity.TkInfix,
+        precedence = 1,
+        assoc = TkAssoc.TkRight,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "assignment",
+        sample_lexeme = "=",
+        description = "Affectation simple.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Plus,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpArithmetic,
+        fixity = TkFixity.TkInfix,
+        precedence = 7,
+        assoc = TkAssoc.TkLeft,
+        is_associative = true,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "plus",
+        sample_lexeme = "+",
+        description = "Addition ou signe unaire.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Minus,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpArithmetic,
+        fixity = TkFixity.TkInfix,
+        precedence = 7,
+        assoc = TkAssoc.TkLeft,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "minus",
+        sample_lexeme = "-",
+        description = "Soustraction ou négation.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Star,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpArithmetic,
+        fixity = TkFixity.TkInfix,
+        precedence = 8,
+        assoc = TkAssoc.TkLeft,
+        is_associative = true,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "star",
+        sample_lexeme = "*",
+        description = "Multiplication ou pointer/déréférencement (futur).",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Slash,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpArithmetic,
+        fixity = TkFixity.TkInfix,
+        precedence = 8,
+        assoc = TkAssoc.TkLeft,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "slash",
+        sample_lexeme = "/",
+        description = "Division.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Percent,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpArithmetic,
+        fixity = TkFixity.TkInfix,
+        precedence = 8,
+        assoc = TkAssoc.TkLeft,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "percent",
+        sample_lexeme = "%",
+        description = "Modulo.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Arrow,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpFlow,
+        fixity = TkFixity.TkInfix,
+        precedence = 2,
+        assoc = TkAssoc.TkRight,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "thin arrow",
+        sample_lexeme = "->",
+        description = "Flèche utilisée pour les types de retour ou transitions.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.FatArrow,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpFlow,
+        fixity = TkFixity.TkInfix,
+        precedence = 2,
+        assoc = TkAssoc.TkRight,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "fat arrow",
+        sample_lexeme = "=>",
+        description = "Flèche de match / lambda.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.EqualEqual,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpComparison,
+        fixity = TkFixity.TkInfix,
+        precedence = 5,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "equal",
+        sample_lexeme = "==",
+        description = "Test d'égalité.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.BangEqual,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpComparison,
+        fixity = TkFixity.TkInfix,
+        precedence = 5,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "not equal",
+        sample_lexeme = "!=",
+        description = "Test de différence.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Less,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpComparison,
+        fixity = TkFixity.TkInfix,
+        precedence = 6,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "less than",
+        sample_lexeme = "<",
+        description = "Comparaison stricte inférieure.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.LessEqual,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpComparison,
+        fixity = TkFixity.TkInfix,
+        precedence = 6,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "less or equal",
+        sample_lexeme = "<=",
+        description = "Comparaison inférieure ou égale.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Greater,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpComparison,
+        fixity = TkFixity.TkInfix,
+        precedence = 6,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "greater than",
+        sample_lexeme = ">",
+        description = "Comparaison stricte supérieure.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.GreaterEqual,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpComparison,
+        fixity = TkFixity.TkInfix,
+        precedence = 6,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "greater or equal",
+        sample_lexeme = ">=",
+        description = "Comparaison supérieure ou égale.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.AmpAmp,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpLogicalShortCircuit,
+        fixity = TkFixity.TkInfix,
+        precedence = 4,
+        assoc = TkAssoc.TkLeft,
+        is_associative = true,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "logical and",
+        sample_lexeme = "&&",
+        description = "ET logique avec court-circuit.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.PipePipe,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpLogicalShortCircuit,
+        fixity = TkFixity.TkInfix,
+        precedence = 3,
+        assoc = TkAssoc.TkLeft,
+        is_associative = true,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "logical or",
+        sample_lexeme = "||",
+        description = "OU logique avec court-circuit.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    # Indentation / structure -------------------------------------------------
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Newline,
+        category = TkTokenCategory.TkIndentation,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkNoFixity,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "newline",
+        sample_lexeme = "\\n",
+        description = "Séparateur logique de ligne.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Indent,
+        category = TkTokenCategory.TkIndentation,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkNoFixity,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "indent",
+        sample_lexeme = "<indent>",
+        description = "Indentation logique (block-based).",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Dedent,
+        category = TkTokenCategory.TkIndentation,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkNoFixity,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "dedent",
+        sample_lexeme = "<dedent>",
+        description = "Désindentation logique (block-based).",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Unknown,
+        category = TkTokenCategory.TkOther,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpOther,
+        fixity = TkFixity.TkNoFixity,
+        precedence = 0,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "unknown",
+        sample_lexeme = "?",
+        description = "Caractère non reconnu par le lexer.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    return items
+.end
+
+fn default_keyword_infos() -> coll.Vec[TkKeywordInfo]
+    let items = coll.Vec[TkKeywordInfo].new()
+
+    let push_kw = fn (items: &mut coll.Vec[TkKeywordInfo], kind: lex.TokenKind, text: String, group: TkKeywordGroup, contexts: coll.Vec[String], desc: String, tags: coll.Vec[String]) -> Unit
+        items.push(TkKeywordInfo(
+            keyword = kind,
+            canonical_text = text,
+            group = group,
+            is_reserved = true,
+            is_contextual = false,
+            is_future_reserved = false,
+            allowed_contexts = contexts,
+            description = desc,
+            tags = tags,
+            extra = coll.HashMap[String, String](),
+        ))
+    .end
+
+    let tags_module = coll.Vec[String].new()
+    tags_module.push("module")
+    tags_module.push("declaration")
+
+    let ctx_module = coll.Vec[String].new()
+    ctx_module.push("item")
+    push_kw(&mut items, lex.TokenKind.KwModule, "module", TkKeywordGroup.KwgModule, ctx_module, "Déclare un module racine ou imbriqué.", tags_module)
+
+    let tags_import = coll.Vec[String].new()
+    tags_import.push("import")
+    tags_import.push("module")
+    let ctx_import = coll.Vec[String].new()
+    ctx_import.push("item")
+    push_kw(&mut items, lex.TokenKind.KwImport, "import", TkKeywordGroup.KwgModule, ctx_import, "Importe un module ou une unité voisine.", tags_import)
+
+    let tags_export = coll.Vec[String].new()
+    tags_export.push("visibility")
+    tags_export.push("module")
+    let ctx_export = coll.Vec[String].new()
+    ctx_export.push("item")
+    push_kw(&mut items, lex.TokenKind.KwExport, "export", TkKeywordGroup.KwgModule, ctx_export, "Expose des symboles vers l'extérieur.", tags_export)
+
+    let tags_struct = coll.Vec[String].new()
+    tags_struct.push("type")
+    tags_struct.push("data")
+    let ctx_struct = coll.Vec[String].new()
+    ctx_struct.push("item")
+    ctx_struct.push("type")
+    push_kw(&mut items, lex.TokenKind.KwStruct, "struct", TkKeywordGroup.KwgType, ctx_struct, "Définit une structure.", tags_struct)
+
+    let tags_enum = coll.Vec[String].new()
+    tags_enum.push("type")
+    tags_enum.push("variant")
+    let ctx_enum = coll.Vec[String].new()
+    ctx_enum.push("item")
+    ctx_enum.push("type")
+    push_kw(&mut items, lex.TokenKind.KwEnum, "enum", TkKeywordGroup.KwgType, ctx_enum, "Définit un enum.", tags_enum)
+
+    let tags_union = coll.Vec[String].new()
+    tags_union.push("type")
+    tags_union.push("unsafe")
+    let ctx_union = coll.Vec[String].new()
+    ctx_union.push("item")
+    ctx_union.push("type")
+    push_kw(&mut items, lex.TokenKind.KwUnion, "union", TkKeywordGroup.KwgType, ctx_union, "Définit une union non sécurisée.", tags_union)
+
+    let tags_type = coll.Vec[String].new()
+    tags_type.push("type")
+    tags_type.push("alias")
+    let ctx_type_kw = coll.Vec[String].new()
+    ctx_type_kw.push("item")
+    ctx_type_kw.push("type")
+    push_kw(&mut items, lex.TokenKind.KwType, "type", TkKeywordGroup.KwgType, ctx_type_kw, "Alias de type ou définition avancée.", tags_type)
+
+    let tags_fn = coll.Vec[String].new()
+    tags_fn.push("function")
+    tags_fn.push("item")
+    let ctx_fn = coll.Vec[String].new()
+    ctx_fn.push("item")
+    push_kw(&mut items, lex.TokenKind.KwFn, "fn", TkKeywordGroup.KwgFn, ctx_fn, "Déclare une fonction.", tags_fn)
+
+    let tags_program = coll.Vec[String].new()
+    tags_program.push("unit")
+    tags_program.push("entrypoint")
+    let ctx_program = coll.Vec[String].new()
+    ctx_program.push("item")
+    push_kw(&mut items, lex.TokenKind.KwProgram, "program", TkKeywordGroup.KwgUnit, ctx_program, "Unité principale exécutable.", tags_program)
+
+    let tags_scenario = coll.Vec[String].new()
+    tags_scenario.push("unit")
+    tags_scenario.push("workflow")
+    let ctx_scenario = coll.Vec[String].new()
+    ctx_scenario.push("item")
+    push_kw(&mut items, lex.TokenKind.KwScenario, "scenario", TkKeywordGroup.KwgUnit, ctx_scenario, "Scénario ou pipeline orchestré.", tags_scenario)
+
+    let tags_pipeline = coll.Vec[String].new()
+    tags_pipeline.push("unit")
+    tags_pipeline.push("pipeline")
+    let ctx_pipeline = coll.Vec[String].new()
+    ctx_pipeline.push("item")
+    push_kw(&mut items, lex.TokenKind.KwPipeline, "pipeline", TkKeywordGroup.KwgUnit, ctx_pipeline, "Chaîne de traitement ou pipeline.", tags_pipeline)
+
+    let tags_end = coll.Vec[String].new()
+    tags_end.push("block")
+    tags_end.push("terminator")
+    let ctx_end = coll.Vec[String].new()
+    ctx_end.push("expr")
+    ctx_end.push("stmt")
+    push_kw(&mut items, lex.TokenKind.KwEnd, "end", TkKeywordGroup.KwgBlock, ctx_end, "Ferme un bloc délimité.", tags_end)
+
+    let tags_let = coll.Vec[String].new()
+    tags_let.push("binding")
+    tags_let.push("immutable")
+    let ctx_let = coll.Vec[String].new()
+    ctx_let.push("item")
+    ctx_let.push("stmt")
+    push_kw(&mut items, lex.TokenKind.KwLet, "let", TkKeywordGroup.KwgVarConst, ctx_let, "Déclare une binding immuable.", tags_let)
+
+    let tags_mut = coll.Vec[String].new()
+    tags_mut.push("binding")
+    tags_mut.push("mutability")
+    let ctx_mut = coll.Vec[String].new()
+    ctx_mut.push("item")
+    ctx_mut.push("stmt")
+    push_kw(&mut items, lex.TokenKind.KwMut, "mut", TkKeywordGroup.KwgVarConst, ctx_mut, "Marqueur de mutabilité.", tags_mut)
+
+    let tags_if = coll.Vec[String].new()
+    tags_if.push("control")
+    tags_if.push("branch")
+    let ctx_if = coll.Vec[String].new()
+    ctx_if.push("expr")
+    ctx_if.push("stmt")
+    push_kw(&mut items, lex.TokenKind.KwIf, "if", TkKeywordGroup.KwgControl, ctx_if, "Démarre une branche conditionnelle.", tags_if)
+
+    let tags_else = coll.Vec[String].new()
+    tags_else.push("control")
+    tags_else.push("branch")
+    let ctx_else = coll.Vec[String].new()
+    ctx_else.push("expr")
+    ctx_else.push("stmt")
+    push_kw(&mut items, lex.TokenKind.KwElse, "else", TkKeywordGroup.KwgControl, ctx_else, "Branche alternative.", tags_else)
+
+    let tags_while = coll.Vec[String].new()
+    tags_while.push("loop")
+    tags_while.push("control")
+    let ctx_while = coll.Vec[String].new()
+    ctx_while.push("stmt")
+    push_kw(&mut items, lex.TokenKind.KwWhile, "while", TkKeywordGroup.KwgControl, ctx_while, "Boucle while (condition en tête).", tags_while)
+
+    let tags_match = coll.Vec[String].new()
+    tags_match.push("pattern")
+    tags_match.push("control")
+    let ctx_match = coll.Vec[String].new()
+    ctx_match.push("expr")
+    ctx_match.push("stmt")
+    push_kw(&mut items, lex.TokenKind.KwMatch, "match", TkKeywordGroup.KwgControl, ctx_match, "Pattern matching avec bras et flèches.", tags_match)
+
+    let tags_true = coll.Vec[String].new()
+    tags_true.push("bool")
+    tags_true.push("literal")
+    let ctx_true = coll.Vec[String].new()
+    ctx_true.push("expr")
+    push_kw(&mut items, lex.TokenKind.KwTrue, "true", TkKeywordGroup.KwgValues, ctx_true, "Constante booléenne true.", tags_true)
+
+    let tags_false = coll.Vec[String].new()
+    tags_false.push("bool")
+    tags_false.push("literal")
+    let ctx_false = coll.Vec[String].new()
+    ctx_false.push("expr")
+    push_kw(&mut items, lex.TokenKind.KwFalse, "false", TkKeywordGroup.KwgValues, ctx_false, "Constante booléenne false.", tags_false)
+
+    return items
+.end
+
+fn default_operator_infos() -> coll.Vec[TkOperatorInfo]
+    let items = coll.Vec[TkOperatorInfo].new()
+
+    let push_op = fn (items: &mut coll.Vec[TkOperatorInfo], kind: lex.TokenKind, repr: String, category: TkOperatorCategory, precedence: u8, assoc: TkAssoc, usage: String, desc: String, tags: coll.Vec[String]) -> Unit
+        items.push(TkOperatorInfo(
+            token_kind = kind,
+            textual_repr = repr,
+            category = category,
+            fixity = TkFixity.TkInfix,
+            precedence = precedence,
+            assoc = assoc,
+            usage = usage,
+            description = desc,
+            tags = tags,
+            extra = coll.HashMap[String, String](),
+        ))
+    .end
+
+    let tags_assign = coll.Vec[String].new()
+    tags_assign.push("assignment")
+    tags_assign.push("binary-op")
+    push_op(&mut items, lex.TokenKind.Equal, "=", TkOperatorCategory.TkOpAssignment, 1, TkAssoc.TkRight, "assignment", "Affectation simple.", tags_assign)
+
+    let tags_or = coll.Vec[String].new()
+    tags_or.push("logical")
+    tags_or.push("short-circuit")
+    push_op(&mut items, lex.TokenKind.PipePipe, "||", TkOperatorCategory.TkOpLogicalShortCircuit, 3, TkAssoc.TkLeft, "binary", "OU logique court-circuit.", tags_or)
+
+    let tags_and = coll.Vec[String].new()
+    tags_and.push("logical")
+    tags_and.push("short-circuit")
+    push_op(&mut items, lex.TokenKind.AmpAmp, "&&", TkOperatorCategory.TkOpLogicalShortCircuit, 4, TkAssoc.TkLeft, "binary", "ET logique court-circuit.", tags_and)
+
+    let tags_eq = coll.Vec[String].new()
+    tags_eq.push("comparison")
+    tags_eq.push("equality")
+    push_op(&mut items, lex.TokenKind.EqualEqual, "==", TkOperatorCategory.TkOpComparison, 5, TkAssoc.TkNonAssoc, "binary", "Comparaison d'égalité.", tags_eq)
+
+    let tags_ne = coll.Vec[String].new()
+    tags_ne.push("comparison")
+    push_op(&mut items, lex.TokenKind.BangEqual, "!=", TkOperatorCategory.TkOpComparison, 5, TkAssoc.TkNonAssoc, "binary", "Comparaison de différence.", tags_ne)
+
+    let tags_lt = coll.Vec[String].new()
+    tags_lt.push("comparison")
+    push_op(&mut items, lex.TokenKind.Less, "<", TkOperatorCategory.TkOpComparison, 6, TkAssoc.TkNonAssoc, "binary", "Inférieur strict.", tags_lt)
+
+    let tags_le = coll.Vec[String].new()
+    tags_le.push("comparison")
+    push_op(&mut items, lex.TokenKind.LessEqual, "<=", TkOperatorCategory.TkOpComparison, 6, TkAssoc.TkNonAssoc, "binary", "Inférieur ou égal.", tags_le)
+
+    let tags_gt = coll.Vec[String].new()
+    tags_gt.push("comparison")
+    push_op(&mut items, lex.TokenKind.Greater, ">", TkOperatorCategory.TkOpComparison, 6, TkAssoc.TkNonAssoc, "binary", "Supérieur strict.", tags_gt)
+
+    let tags_ge = coll.Vec[String].new()
+    tags_ge.push("comparison")
+    push_op(&mut items, lex.TokenKind.GreaterEqual, ">=", TkOperatorCategory.TkOpComparison, 6, TkAssoc.TkNonAssoc, "binary", "Supérieur ou égal.", tags_ge)
+
+    let tags_plus = coll.Vec[String].new()
+    tags_plus.push("arithmetic")
+    tags_plus.push("binary-op")
+    push_op(&mut items, lex.TokenKind.Plus, "+", TkOperatorCategory.TkOpArithmetic, 7, TkAssoc.TkLeft, "binary or unary", "Addition ou signe positif.", tags_plus)
+
+    let tags_minus = coll.Vec[String].new()
+    tags_minus.push("arithmetic")
+    tags_minus.push("binary-op")
+    push_op(&mut items, lex.TokenKind.Minus, "-", TkOperatorCategory.TkOpArithmetic, 7, TkAssoc.TkLeft, "binary or unary", "Soustraction ou négation.", tags_minus)
+
+    let tags_star = coll.Vec[String].new()
+    tags_star.push("arithmetic")
+    tags_star.push("binary-op")
+    push_op(&mut items, lex.TokenKind.Star, "*", TkOperatorCategory.TkOpArithmetic, 8, TkAssoc.TkLeft, "binary", "Multiplication.", tags_star)
+
+    let tags_slash = coll.Vec[String].new()
+    tags_slash.push("arithmetic")
+    tags_slash.push("binary-op")
+    push_op(&mut items, lex.TokenKind.Slash, "/", TkOperatorCategory.TkOpArithmetic, 8, TkAssoc.TkLeft, "binary", "Division.", tags_slash)
+
+    let tags_percent = coll.Vec[String].new()
+    tags_percent.push("arithmetic")
+    tags_percent.push("binary-op")
+    push_op(&mut items, lex.TokenKind.Percent, "%", TkOperatorCategory.TkOpArithmetic, 8, TkAssoc.TkLeft, "binary", "Modulo.", tags_percent)
+
+    let tags_arrow = coll.Vec[String].new()
+    tags_arrow.push("flow")
+    tags_arrow.push("type")
+    push_op(&mut items, lex.TokenKind.Arrow, "->", TkOperatorCategory.TkOpFlow, 2, TkAssoc.TkRight, "type-separator", "Flèche fine (signature, retour).", tags_arrow)
+
+    let tags_fat_arrow = coll.Vec[String].new()
+    tags_fat_arrow.push("flow")
+    tags_fat_arrow.push("match")
+    push_op(&mut items, lex.TokenKind.FatArrow, "=>", TkOperatorCategory.TkOpFlow, 2, TkAssoc.TkRight, "match-arm", "Flèche de match / lambda.", tags_fat_arrow)
+
+    let tags_dot = coll.Vec[String].new()
+    tags_dot.push("access")
+    tags_dot.push("member")
+    push_op(&mut items, lex.TokenKind.Dot, ".", TkOperatorCategory.TkOpOther, 9, TkAssoc.TkLeft, "member-access", "Accès membre / segmentation de chemin.", tags_dot)
+
+    let tags_path = coll.Vec[String].new()
+    tags_path.push("path")
+    tags_path.push("namespace")
+    push_op(&mut items, lex.TokenKind.ColonColon, "::", TkOperatorCategory.TkOpOther, 9, TkAssoc.TkLeft, "path-separator", "Séparateur de chemin qualifié.", tags_path)
+
+    let tags_colon = coll.Vec[String].new()
+    tags_colon.push("annotation")
+    tags_colon.push("type")
+    push_op(&mut items, lex.TokenKind.Colon, ":", TkOperatorCategory.TkOpOther, 9, TkAssoc.TkLeft, "separator", "Annotation de type ou mapping clé/valeur.", tags_colon)
+
+    return items
+.end
+
+fn default_delimiter_infos() -> coll.Vec[TkDelimiterInfo]
+    let items = coll.Vec[TkDelimiterInfo].new()
+
+    let push_delim = fn (items: &mut coll.Vec[TkDelimiterInfo], open_kind: lex.TokenKind, close_kind: lex.TokenKind, kind: TkDelimiterKind, name: String, sample: String, tags: coll.Vec[String]) -> Unit
+        items.push(TkDelimiterInfo(
+            open_kind = open_kind,
+            close_kind = close_kind,
+            kind = kind,
+            name = name,
+            can_nest = true,
+            sample = sample,
+            tags = tags,
+            extra = coll.HashMap[String, String](),
+        ))
+    .end
+
+    let tags_paren = coll.Vec[String].new()
+    tags_paren.push("grouping")
+    tags_paren.push("call")
+    push_delim(&mut items, lex.TokenKind.LParen, lex.TokenKind.RParen, TkDelimiterKind.TkDelimParens, "parentheses", "( ... )", tags_paren)
+
+    let tags_bracket = coll.Vec[String].new()
+    tags_bracket.push("index")
+    tags_bracket.push("collection")
+    push_delim(&mut items, lex.TokenKind.LBracket, lex.TokenKind.RBracket, TkDelimiterKind.TkDelimBrackets, "brackets", "[ ... ]", tags_bracket)
+
+    let tags_brace = coll.Vec[String].new()
+    tags_brace.push("block")
+    tags_brace.push("scope")
+    push_delim(&mut items, lex.TokenKind.LBrace, lex.TokenKind.RBrace, TkDelimiterKind.TkDelimBraces, "braces", "{ ... }", tags_brace)
+
+    return items
+.end
+
+fn default_tables() -> TkTokenTables
+    let token_classes = default_token_class_infos()
+    let keyword_infos = default_keyword_infos()
+    let operator_infos = default_operator_infos()
+    let delimiter_infos = default_delimiter_infos()
+
+    let token_class_index_by_kind_name = coll.HashMap[String, u32]()
+    let keyword_info_index_by_text = coll.HashMap[String, u32]()
+    let operator_info_index_by_repr = coll.HashMap[String, u32]()
+    let delimiter_index_by_open_repr = coll.HashMap[String, u32]()
+    let delimiter_index_by_close_repr = coll.HashMap[String, u32]()
+
+    let idx_tc: u32 = 0
+    for info in token_classes
+        token_class_index_by_kind_name[token_kind_name(info.token_kind)] = idx_tc
+        idx_tc = idx_tc + 1
+    end
+
+    let idx_kw: u32 = 0
+    for info in keyword_infos
+        keyword_info_index_by_text[info.canonical_text] = idx_kw
+        idx_kw = idx_kw + 1
+    end
+
+    let idx_op: u32 = 0
+    for info in operator_infos
+        operator_info_index_by_repr[info.textual_repr] = idx_op
+        idx_op = idx_op + 1
+    end
+
+    let idx_delim: u32 = 0
+    for info in delimiter_infos
+        let open_repr = token_kind_lexeme(info.open_kind)
+        let close_repr = token_kind_lexeme(info.close_kind)
+        if open_repr != ""
+            delimiter_index_by_open_repr[open_repr] = idx_delim
+        end
+        if close_repr != ""
+            delimiter_index_by_close_repr[close_repr] = idx_delim
+        end
+        idx_delim = idx_delim + 1
+    end
+
+    return TkTokenTables(
+        token_classes = token_classes,
+        keyword_infos = keyword_infos,
+        operator_infos = operator_infos,
+        delimiter_infos = delimiter_infos,
+        token_class_index_by_kind_name = token_class_index_by_kind_name,
+        keyword_info_index_by_text = keyword_info_index_by_text,
+        operator_info_index_by_repr = operator_info_index_by_repr,
+        delimiter_index_by_open_repr = delimiter_index_by_open_repr,
+        delimiter_index_by_close_repr = delimiter_index_by_close_repr,
+        extra = coll.HashMap[String, String](),
+    )
 .end

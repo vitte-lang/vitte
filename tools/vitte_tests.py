@@ -21,6 +21,7 @@ Contraintes :
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -43,6 +44,8 @@ SMOKE_DIR = TESTS_DIR / "smoke"
 MALFORMED_DIR = TESTS_DIR / "malformed"
 PARSE_DIR = TESTS_DIR / "data" / "parse"
 GOLDEN_PARSE_DIR = TESTS_DIR / "goldens" / "parse"
+TOKEN_TABLES_SRC = ROOT / "compiler" / "frontend" / "tokens.vitte"
+LEXER_SRC = ROOT / "compiler" / "frontend" / "lexer.vitte"
 
 
 # ---------------------------------------------------------------------------
@@ -128,9 +131,92 @@ def load_golden_expectations(path: Path) -> tuple[int, list[str]]:
     return (expected_exit if expected_exit is not None else 0, expected_strings)
 
 
+def load_token_kinds() -> list[str]:
+    """Extrait les noms de TokenKind depuis compiler/frontend/lexer.vitte."""
+    if not LEXER_SRC.is_file():
+        print(f"[vitte-tests] ERROR: lexer introuvable: {LEXER_SRC}")
+        return []
+
+    names: list[str] = []
+    in_enum = False
+    for raw in LEXER_SRC.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line.startswith("enum TokenKind"):
+            in_enum = True
+            continue
+        if not in_enum:
+            continue
+        if line.startswith(".end"):
+            break
+        if not line or line.startswith("#"):
+            continue
+        name = line.split()[0]
+        if name:
+            names.append(name)
+    return names
+
+
+def load_token_class_kinds() -> set[str]:
+    """Collecte les lex.TokenKind utilisés dans default_token_class_infos()."""
+    if not TOKEN_TABLES_SRC.is_file():
+        print(f"[vitte-tests] ERROR: tables tokens introuvables: {TOKEN_TABLES_SRC}")
+        return set()
+
+    collecting = False
+    block: list[str] = []
+    for raw in TOKEN_TABLES_SRC.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line.startswith("fn default_token_class_infos"):
+            collecting = True
+            continue
+        if collecting and line.startswith("fn ") and "default_token_class_infos" not in line:
+            break
+        if collecting:
+            block.append(raw)
+
+    text = "\n".join(block)
+    pattern = re.compile(r"lex\\.TokenKind\\.([A-Za-z0-9_]+)")
+    return {match.group(1) for match in pattern.finditer(text)}
+
+
 # ---------------------------------------------------------------------------
 # Commandes de tests
 # ---------------------------------------------------------------------------
+
+def cmd_token_tables(args: argparse.Namespace) -> int:
+    """
+    Vérifie que chaque lex.TokenKind possède une entrée TkTokenClassInfo.
+
+    Objectif : garder les tables tokens synchronisées avec le lexer
+    sans exécuter le compilateur.
+    """
+    lexer_kinds = load_token_kinds()
+    table_kinds = load_token_class_kinds()
+
+    if not lexer_kinds:
+        print("[vitte-tests] ERROR: aucun TokenKind détecté (lexer manquant ?)")
+        return 1
+    if not table_kinds:
+        print("[vitte-tests] ERROR: aucune entrée TkTokenClassInfo détectée")
+        return 1
+
+    missing = [k for k in lexer_kinds if k not in table_kinds]
+    extra = [k for k in sorted(table_kinds) if k not in lexer_kinds]
+
+    if missing:
+        print("[vitte-tests] FAIL: TokenKind sans TkTokenClassInfo:")
+        for name in missing:
+            print(f"  - {name}")
+        return 1
+
+    if extra:
+        print("[vitte-tests] NOTE: entrées présentes seulement dans tokens.vitte:")
+        for name in extra:
+            print(f"  - {name}")
+
+    print(f"[vitte-tests] token-tables: {len(lexer_kinds)} kinds couverts")
+    return 0
+
 
 def cmd_smoke(args: argparse.Namespace) -> int:
     """
@@ -319,21 +405,30 @@ def cmd_parser_wrapper(args: argparse.Namespace) -> int:
 def cmd_all(args: argparse.Namespace) -> int:
     """
     Exécute toutes les familles de tests dans l'ordre :
-      1) smoke
-      2) parse
-      3) malformed
-      4) goldens
+      1) token-tables
+      2) smoke
+      3) parse
+      4) malformed
+      5) goldens
     """
+    rc_tokens = cmd_token_tables(args)
     rc_smoke = cmd_smoke(args)
     rc_parse = cmd_parse(args)
     rc_malformed = cmd_malformed(args)
     rc_goldens = cmd_goldens(args)
 
-    if rc_smoke == 0 and rc_parse == 0 and rc_malformed == 0 and rc_goldens == 0:
+    if (
+        rc_tokens == 0
+        and rc_smoke == 0
+        and rc_parse == 0
+        and rc_malformed == 0
+        and rc_goldens == 0
+    ):
         print("[vitte-tests] ALL TESTS PASSED")
         return 0
 
     print("[vitte-tests] SOME TESTS FAILED:")
+    print(f"  token-tables -> {'OK' if rc_tokens == 0 else 'FAIL'}")
     print(f"  smoke     -> {'OK' if rc_smoke == 0 else 'FAIL'}")
     print(f"  parse     -> {'OK' if rc_parse == 0 else 'FAIL'}")
     print(f"  malformed -> {'OK' if rc_malformed == 0 else 'FAIL'}")
@@ -351,6 +446,13 @@ def build_parser() -> argparse.ArgumentParser:
         description="Runner de tests (dev-only) pour le projet vitte-core.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    # vitte_tests.py token-tables
+    p_token_tables = sub.add_parser(
+        "token-tables",
+        help="Vérifie la couverture des TokenKind dans les tables de tokens.",
+    )
+    p_token_tables.set_defaults(func=cmd_token_tables)
 
     # vitte_tests.py smoke
     p_smoke = sub.add_parser(
@@ -390,7 +492,7 @@ def build_parser() -> argparse.ArgumentParser:
     # vitte_tests.py all
     p_all = sub.add_parser(
         "all",
-        help="Exécute l'ensemble des tests : smoke, malformed, goldens.",
+        help="Exécute l'ensemble des tests : token-tables, smoke, malformed, goldens.",
     )
     p_all.set_defaults(func=cmd_all)
 

@@ -1,0 +1,284 @@
+module vitte.bootstrap.front.bt_ast
+
+import std.collections as coll
+import vitte.bootstrap.front.bt_span as span
+import vitte.bootstrap.front.bt_diagnostics as diag
+
+# ============================================================================
+# Bootstrap AST – modèle déclaratif
+# ----------------------------------------------------------------------------
+# AST léger destiné aux passes bootstrap (resolve, symbol, IR). Il fournit des
+# identifiants stables (AstNodeId) et des spans précis, sans logique d'exécution.
+# ============================================================================
+
+# Identifiants ----------------------------------------------------------------
+
+struct AstNodeId
+    raw: u32
+.end
+
+struct AstFileId
+    raw: u32
+.end
+
+struct AstTokenId
+    raw: u32
+.end
+
+# Spans -----------------------------------------------------------------------
+
+struct AstSpan
+    file: String
+    start_offset: u32
+    end_offset: u32
+    start_line: u32
+    start_col: u32
+    end_line: u32
+    end_col: u32
+.end
+
+fn AstSpan.empty(file: String) -> AstSpan
+    return AstSpan(
+        file = file,
+        start_offset = 0,
+        end_offset = 0,
+        start_line = 1,
+        start_col = 1,
+        end_line = 1,
+        end_col = 1,
+    )
+.end
+
+# Visibilité et attributs -----------------------------------------------------
+
+enum AstVisibility
+    AstVisPrivate
+    AstVisPub
+    AstVisPubCrate
+    AstVisInherited
+.end
+
+struct AstAttribute
+    name: String
+    args: coll.Vec<String>
+    span: AstSpan
+    span_id: span.BfSpanId
+.end
+
+# Identifiants et chemins -----------------------------------------------------
+
+struct AstIdent
+    name: String
+    span: AstSpan
+    span_id: span.BfSpanId
+.end
+
+struct AstPath
+    segments: coll.Vec<AstIdent>
+    span: AstSpan
+    span_id: span.BfSpanId
+.end
+
+# Types -----------------------------------------------------------------------
+
+enum AstTypeRefKind
+    AstTypeNamed          # chemin vers un type nommé
+    AstTypeTuple
+    AstTypeUnit
+    AstTypeInfer
+    AstTypeUnknown
+.end
+
+struct AstTypeRef
+    kind: AstTypeRefKind
+    path: AstPath                 # pour AstTypeNamed
+    tuple_items: coll.Vec<AstTypeRef>
+    span: AstSpan
+    span_id: span.BfSpanId
+.end
+
+# Expressions / patterns (simplifié) -----------------------------------------
+
+enum AstExprKind
+    AstExprPath
+    AstExprLiteral
+    AstExprCall
+    AstExprBinary
+    AstExprBlock
+    AstExprIf
+    AstExprMatch
+    AstExprOther
+.end
+
+struct AstExpr
+    id: AstNodeId
+    kind: AstExprKind
+    span: AstSpan
+    span_id: span.BfSpanId
+.end
+
+enum AstPatternKind
+    AstPatWildcard
+    AstPatIdent
+    AstPatTuple
+    AstPatStruct
+    AstPatLiteral
+    AstPatOther
+.end
+
+struct AstPattern
+    id: AstNodeId
+    kind: AstPatternKind
+    span: AstSpan
+    span_id: span.BfSpanId
+.end
+
+# Imports ---------------------------------------------------------------------
+
+struct AstUseTree
+    id: AstNodeId
+    path: AstPath
+    alias: AstIdent
+    is_glob: bool
+    span: AstSpan
+    span_id: span.BfSpanId
+.end
+
+# Déclarations ----------------------------------------------------------------
+
+enum AstItemKind
+    AstItemModule
+    AstItemImport
+    AstItemStruct
+    AstItemEnum
+    AstItemUnion
+    AstItemTypeAlias
+    AstItemFn
+    AstItemConst
+    AstItemStatic
+    AstItemProgram
+    AstItemScenario
+    AstItemPipeline
+    AstItemService
+    AstItemKernel
+    AstItemDriver
+    AstItemTool
+    AstItemOther
+.end
+
+struct AstParam
+    id: AstNodeId
+    name: AstIdent
+    ty: AstTypeRef
+    span: AstSpan
+    span_id: span.BfSpanId
+.end
+
+struct AstBlock
+    id: AstNodeId
+    statements: coll.Vec<AstNodeId>   # ids de Stmt
+    span: AstSpan
+    span_id: span.BfSpanId
+.end
+
+enum AstStmtKind
+    AstStmtLet
+    AstStmtExpr
+    AstStmtReturn
+    AstStmtItem
+    AstStmtOther
+.end
+
+struct AstStmt
+    id: AstNodeId
+    kind: AstStmtKind
+    span: AstSpan
+    span_id: span.BfSpanId
+.end
+
+struct AstFunction
+    id: AstNodeId
+    name: AstIdent
+    vis: AstVisibility
+    params: coll.Vec<AstParam>
+    return_type: AstTypeRef
+    body: AstBlock
+    attributes: coll.Vec<AstAttribute>
+    span: AstSpan
+    span_id: span.BfSpanId
+.end
+
+struct AstItem
+    id: AstNodeId
+    kind: AstItemKind
+    name: AstIdent
+    vis: AstVisibility
+    span: AstSpan
+    span_id: span.BfSpanId
+
+    use_tree: AstUseTree
+    function: AstFunction
+
+    attributes: coll.Vec<AstAttribute>
+.end
+
+# Noeud générique / index -----------------------------------------------------
+
+enum AstNodeKind
+    NodeItem
+    NodeUseTree
+    NodeFunctionDecl
+    NodeBlock
+    NodeStmt
+    NodeExpr
+    NodePattern
+    NodeTypeRef
+    NodeOther
+.end
+
+struct AstNode
+    id: AstNodeId
+    kind: AstNodeKind
+    payload: AstNodeId           # id vers la structure réelle (item/expr/stmt…)
+    span: AstSpan
+    span_id: span.BfSpanId
+    parent: AstNodeId
+.end
+
+struct AstIndex
+    node_index_by_id: coll.HashMap<u32, u32>         # AstNodeId.raw -> index dans nodes
+    item_index_by_id: coll.HashMap<u32, u32>         # AstItem.id.raw -> index
+    function_index_by_id: coll.HashMap<u32, u32>
+    block_index_by_id: coll.HashMap<u32, u32>
+    stmt_index_by_id: coll.HashMap<u32, u32>
+    expr_index_by_id: coll.HashMap<u32, u32>
+    pattern_index_by_id: coll.HashMap<u32, u32>
+    use_tree_index_by_id: coll.HashMap<u32, u32>
+    type_index_by_id: coll.HashMap<u32, u32>
+.end
+
+# Racine AST ------------------------------------------------------------------
+
+struct BtAst
+    file_id: AstFileId
+    file_path: String
+    root: AstNodeId
+
+    spans: coll.Vec<AstSpan>
+    nodes: coll.Vec<AstNode>
+    items: coll.Vec<AstItem>
+    functions: coll.Vec<AstFunction>
+    blocks: coll.Vec<AstBlock>
+    stmts: coll.Vec<AstStmt>
+    exprs: coll.Vec<AstExpr>
+    patterns: coll.Vec<AstPattern>
+    types: coll.Vec<AstTypeRef>
+    use_trees: coll.Vec<AstUseTree>
+
+    attributes: coll.Vec<AstAttribute>
+
+    index: AstIndex
+    diagnostics: diag.BtDiagnostics
+
+    extra: coll.HashMap<String, String>
+.end
