@@ -1,0 +1,1 @@
+# example plugin manifest (placeholder)

@@ -1,0 +1,741 @@
+# plugins/fs_vfs/api/path/encoding.vitte
+# Encoding interop
+# Blocks use `.end` only.
+#
+# Purpose
+# -------
+# Path encodings differ between platforms/backends:
+# - Unix-like OSes typically treat paths as opaque byte sequences.
+# - Windows uses UTF-16 wide strings.
+# - Some virtual backends (zipfs/httpfs) are UTF-8 by construction.
+#
+# This module provides a small, allocation-optional abstraction to represent
+# an "OS string" (opaque path bytes / utf16) and to convert to/from UTF-8
+# when possible.
+#
+# Design constraints
+# ------------------
+# - No heap allocation required: conversions support caller-provided buffers.
+# - Stable surface for host/runtime wiring.
+# - Conservative: never assume UTF-8 unless validated.
+#
+# Status conventions
+# ------------------
+# - 0  : OK
+# - 1  : NeedsMoreSpace (output buffer too small)
+# - 2  : InvalidEncoding (malformed input)
+# - 3  : Unsupported (backend/host does not support operation)
+# - <0 : Error
+
+mod plugins.fs_vfs.api.path.encoding
+
+pub const ENC_OK: i32 = 0
+pub const ENC_MORE: i32 = 1
+pub const ENC_INVALID: i32 = 2
+pub const ENC_UNSUPPORTED: i32 = 3
+pub const ENC_ERR: i32 = -1
+
+# -----------------------------------------------------------------------------
+# Error helpers
+# -----------------------------------------------------------------------------
+
+pub fn error_set(out_err: *plugins.fs_vfs.api.types.Error, kind: plugins.fs_vfs.api.types.ErrorKind, code: i32, msg: str) -> ()
+  if out_err == 0
+    ret ()
+  .end
+  out_err^.kind = kind
+  out_err^.code = code
+  out_err^.message = msg
+  ret ()
+.end
+
+pub fn error_clear(out_err: *plugins.fs_vfs.api.types.Error) -> ()
+  if out_err == 0
+    ret ()
+  .end
+  out_err^.kind = plugins.fs_vfs.api.types.ErrorKind.Other
+  out_err^.code = 0
+  out_err^.message = ""
+  ret ()
+.end
+
+# -----------------------------------------------------------------------------
+# Types
+# -----------------------------------------------------------------------------
+
+# EncodingKind indicates how an OS string is represented.
+#
+# - Utf8: Valid UTF-8 bytes.
+# - Bytes: Opaque bytes (Unix semantics).
+# - Utf16: UTF-16 code units (Windows semantics).
+# - Other: Backend-specific.
+
+pub enum EncodingKind
+  Utf8
+  Bytes
+  Utf16
+  Other
+.end
+
+# A non-owning view over bytes.
+# Used for Unix path bytes and for UTF-8 strings.
+pub struct ByteView
+  ptr: *u8
+  len: usize
+.end
+
+pub fn byte_view(ptr: *u8, len: usize) -> ByteView
+  ret ByteView(ptr: ptr, len: len)
+.end
+
+# A non-owning view over UTF-16 code units.
+pub struct U16View
+  ptr: *u16
+  len: usize
+.end
+
+pub fn u16_view(ptr: *u16, len: usize) -> U16View
+  ret U16View(ptr: ptr, len: len)
+.end
+
+# OsStrView is a non-owning view of an OS string.
+# Exactly one of {bytes, utf16} is used depending on kind.
+# For kind Utf8/Bytes: bytes is used.
+# For kind Utf16: utf16 is used.
+
+pub struct OsStrView
+  kind: EncodingKind
+  bytes: ByteView
+  utf16: U16View
+.end
+
+pub fn os_str_from_bytes(ptr: *u8, len: usize) -> OsStrView
+  ret OsStrView(kind: EncodingKind.Bytes, bytes: byte_view(ptr, len), utf16: u16_view(0, 0))
+.end
+
+pub fn os_str_from_utf8(ptr: *u8, len: usize) -> OsStrView
+  ret OsStrView(kind: EncodingKind.Utf8, bytes: byte_view(ptr, len), utf16: u16_view(0, 0))
+.end
+
+pub fn os_str_from_utf16(ptr: *u16, len: usize) -> OsStrView
+  ret OsStrView(kind: EncodingKind.Utf16, bytes: byte_view(0, 0), utf16: u16_view(ptr, len))
+.end
+
+pub fn os_str_empty() -> OsStrView
+  ret os_str_from_bytes(0, 0)
+.end
+
+pub fn os_is_utf8(s: OsStrView) -> bool
+  ret s.kind == EncodingKind.Utf8
+.end
+
+pub fn os_is_bytes(s: OsStrView) -> bool
+  ret s.kind == EncodingKind.Bytes
+.end
+
+pub fn os_is_utf16(s: OsStrView) -> bool
+  ret s.kind == EncodingKind.Utf16
+.end
+
+# A tiny buffer descriptor for "write into caller buffer" APIs.
+# Caller owns memory; callee writes up to cap bytes/u16.
+
+pub struct OutBytes
+  ptr: *u8
+  cap: usize
+.end
+
+pub struct OutU16
+  ptr: *u16
+  cap: usize
+.end
+
+pub fn out_bytes(ptr: *u8, cap: usize) -> OutBytes
+  ret OutBytes(ptr: ptr, cap: cap)
+.end
+
+pub fn out_u16(ptr: *u16, cap: usize) -> OutU16
+  ret OutU16(ptr: ptr, cap: cap)
+.end
+
+# -----------------------------------------------------------------------------
+# UTF-8 validation
+# -----------------------------------------------------------------------------
+
+# Validate UTF-8 in-place.
+# Returns:
+# - 0 OK
+# - 2 InvalidEncoding
+pub fn validate_utf8(bytes: ByteView) -> i32
+  # Minimal UTF-8 validator (no allocation).
+  # Rejects invalid leading/continuation patterns and overlong encodings.
+
+  let i: usize = 0
+  loop
+    if i >= bytes.len
+      break
+    .end
+
+    let b0: u8 = (bytes.ptr + i)^
+
+    if b0 < 0x80
+      i = i + 1
+      continue
+    .end
+
+    # Determine sequence length
+    let need: usize = 0
+    if b0 >= 0xC2 && b0 <= 0xDF
+      need = 2
+    .end
+    if b0 >= 0xE0 && b0 <= 0xEF
+      need = 3
+    .end
+    if b0 >= 0xF0 && b0 <= 0xF4
+      need = 4
+    .end
+
+    if need == 0
+      ret ENC_INVALID
+    .end
+
+    if i + need > bytes.len
+      ret ENC_INVALID
+    .end
+
+    # Load continuation bytes
+    let b1: u8 = (bytes.ptr + i + 1)^
+    if (b1 & 0xC0) != 0x80
+      ret ENC_INVALID
+    .end
+
+    if need == 2
+      i = i + 2
+      continue
+    .end
+
+    let b2: u8 = (bytes.ptr + i + 2)^
+    if (b2 & 0xC0) != 0x80
+      ret ENC_INVALID
+    .end
+
+    if need == 3
+      # Reject overlongs / surrogates
+      if b0 == 0xE0 && b1 < 0xA0
+        ret ENC_INVALID
+      .end
+      if b0 == 0xED && b1 >= 0xA0
+        ret ENC_INVALID
+      .end
+
+      i = i + 3
+      continue
+    .end
+
+    let b3: u8 = (bytes.ptr + i + 3)^
+    if (b3 & 0xC0) != 0x80
+      ret ENC_INVALID
+    .end
+
+    # Reject overlongs and > U+10FFFF
+    if b0 == 0xF0 && b1 < 0x90
+      ret ENC_INVALID
+    .end
+    if b0 == 0xF4 && b1 >= 0x90
+      ret ENC_INVALID
+    .end
+
+    i = i + 4
+  .end
+
+  ret ENC_OK
+.end
+
+# -----------------------------------------------------------------------------
+# Conversions: UTF-8 <-> OS
+# -----------------------------------------------------------------------------
+
+# Try to view an OsStrView as UTF-8 without copying.
+#
+# Returns:
+# - 0 OK and out_utf8 is set to a view
+# - 2 InvalidEncoding
+# - 3 Unsupported (if kind is Utf16 and host conversion not available)
+
+pub fn as_utf8_view(s: OsStrView, out_utf8: *ByteView, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if out_utf8 == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2500, "encoding.as_utf8_view: out_utf8 null")
+    ret -2500
+  .end
+
+  if s.kind == EncodingKind.Utf8
+    out_utf8^ = s.bytes
+    ret ENC_OK
+  .end
+
+  if s.kind == EncodingKind.Bytes
+    # bytes might still be valid utf8; validate first
+    let rc = validate_utf8(s.bytes)
+    if rc != ENC_OK
+      error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, ENC_INVALID, "encoding.as_utf8_view: bytes not utf8")
+      ret ENC_INVALID
+    .end
+    out_utf8^ = s.bytes
+    ret ENC_OK
+  .end
+
+  if s.kind == EncodingKind.Utf16
+    # need conversion; not possible without an output buffer
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Unsupported, ENC_UNSUPPORTED, "encoding.as_utf8_view: utf16 requires copy")
+    ret ENC_UNSUPPORTED
+  .end
+
+  error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Unsupported, ENC_UNSUPPORTED, "encoding.as_utf8_view: unsupported kind")
+  ret ENC_UNSUPPORTED
+.end
+
+# Convert OsStrView to UTF-8 by writing into caller buffer.
+#
+# Returns:
+# - 0 OK
+# - 1 NeedsMoreSpace
+# - 2 InvalidEncoding
+# - 3 Unsupported
+#
+# Outputs:
+# - out_len: bytes written
+
+pub fn to_utf8(s: OsStrView, out: OutBytes, out_len: *usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if out_len != 0
+    out_len^ = 0
+  .end
+
+  if out.ptr == 0 && out.cap != 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2501, "encoding.to_utf8: out.ptr null")
+    ret -2501
+  .end
+
+  if s.kind == EncodingKind.Utf8
+    # copy
+    if s.bytes.len > out.cap
+      error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, ENC_MORE, "encoding.to_utf8: buffer too small")
+      ret ENC_MORE
+    .end
+
+    let i: usize = 0
+    loop
+      if i >= s.bytes.len
+        break
+      .end
+      (out.ptr + i)^ = (s.bytes.ptr + i)^
+      i = i + 1
+    .end
+
+    if out_len != 0
+      out_len^ = s.bytes.len
+    .end
+
+    ret ENC_OK
+  .end
+
+  if s.kind == EncodingKind.Bytes
+    let vrc = validate_utf8(s.bytes)
+    if vrc != ENC_OK
+      error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, ENC_INVALID, "encoding.to_utf8: invalid utf8")
+      ret ENC_INVALID
+    .end
+
+    if s.bytes.len > out.cap
+      error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, ENC_MORE, "encoding.to_utf8: buffer too small")
+      ret ENC_MORE
+    .end
+
+    let i: usize = 0
+    loop
+      if i >= s.bytes.len
+        break
+      .end
+      (out.ptr + i)^ = (s.bytes.ptr + i)^
+      i = i + 1
+    .end
+
+    if out_len != 0
+      out_len^ = s.bytes.len
+    .end
+
+    ret ENC_OK
+  .end
+
+  if s.kind == EncodingKind.Utf16
+    # delegate to host for utf16->utf8 conversion
+    let n: usize = 0
+    let rc = __host_utf16_to_utf8(s.utf16, out, &n, out_err)
+    if rc == ENC_OK
+      if out_len != 0
+        out_len^ = n
+      .end
+    .end
+    ret rc
+  .end
+
+  error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Unsupported, ENC_UNSUPPORTED, "encoding.to_utf8: unsupported kind")
+  ret ENC_UNSUPPORTED
+.end
+
+# Convert UTF-8 bytes into an OS string representation.
+#
+# For Unix-like, this is typically Bytes (opaque) but we also allow Utf8.
+# For Windows, host may prefer Utf16.
+#
+# Returns:
+# - 0 OK
+# - 1 NeedsMoreSpace
+# - 2 InvalidEncoding
+# - 3 Unsupported
+#
+# Outputs:
+# - out_kind: kind produced
+# - out_bytes_len / out_u16_len: length written
+
+pub fn from_utf8(
+  utf8: ByteView,
+  prefer_utf16: bool,
+  out_kind: *EncodingKind,
+  out_bytes: OutBytes,
+  out_bytes_len: *usize,
+  out_u16: OutU16,
+  out_u16_len: *usize,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_clear(out_err)
+
+  if out_kind != 0
+    out_kind^ = EncodingKind.Utf8
+  .end
+  if out_bytes_len != 0
+    out_bytes_len^ = 0
+  .end
+  if out_u16_len != 0
+    out_u16_len^ = 0
+  .end
+
+  let vrc = validate_utf8(utf8)
+  if vrc != ENC_OK
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, ENC_INVALID, "encoding.from_utf8: invalid utf8")
+    ret ENC_INVALID
+  .end
+
+  if prefer_utf16
+    # delegate utf8->utf16
+    let n16: usize = 0
+    let rc = __host_utf8_to_utf16(utf8, out_u16, &n16, out_err)
+    if rc == ENC_OK
+      if out_kind != 0
+        out_kind^ = EncodingKind.Utf16
+      .end
+      if out_u16_len != 0
+        out_u16_len^ = n16
+      .end
+    .end
+    ret rc
+  .end
+
+  # produce utf8 bytes
+  if utf8.len > out_bytes.cap
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, ENC_MORE, "encoding.from_utf8: out_bytes too small")
+    ret ENC_MORE
+  .end
+
+  let i: usize = 0
+  loop
+    if i >= utf8.len
+      break
+    .end
+    (out_bytes.ptr + i)^ = (utf8.ptr + i)^
+    i = i + 1
+  .end
+
+  if out_kind != 0
+    out_kind^ = EncodingKind.Utf8
+  .end
+  if out_bytes_len != 0
+    out_bytes_len^ = utf8.len
+  .end
+
+  ret ENC_OK
+.end
+
+# Convert opaque bytes to UTF-8 lossy (replacement char U+FFFD).
+#
+# This is useful for diagnostics/logging ONLY.
+# It may lose information.
+#
+# Returns:
+# - 0 OK
+# - 1 NeedsMoreSpace
+
+pub fn to_utf8_lossy(bytes: ByteView, out: OutBytes, out_len: *usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if out_len != 0
+    out_len^ = 0
+  .end
+
+  if bytes.ptr == 0 && bytes.len != 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2502, "encoding.to_utf8_lossy: bytes null")
+    ret -2502
+  .end
+
+  # If already valid UTF-8, copy directly.
+  let vrc = validate_utf8(bytes)
+  if vrc == ENC_OK
+    if bytes.len > out.cap
+      error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, ENC_MORE, "encoding.to_utf8_lossy: out too small")
+      ret ENC_MORE
+    .end
+
+    let i: usize = 0
+    loop
+      if i >= bytes.len
+        break
+      .end
+      (out.ptr + i)^ = (bytes.ptr + i)^
+      i = i + 1
+    .end
+
+    if out_len != 0
+      out_len^ = bytes.len
+    .end
+
+    ret ENC_OK
+  .end
+
+  # Lossy: scan bytes and replace invalid sequences with "?" (ASCII 0x3F)
+  # (We avoid inserting multi-byte U+FFFD to keep things simple without unicode tables.)
+
+  let i: usize = 0
+  let j: usize = 0
+
+  loop
+    if i >= bytes.len
+      break
+    .end
+
+    if j >= out.cap
+      error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, ENC_MORE, "encoding.to_utf8_lossy: out too small")
+      ret ENC_MORE
+    .end
+
+    let b: u8 = (bytes.ptr + i)^
+    if b < 0x80
+      (out.ptr + j)^ = b
+      i = i + 1
+      j = j + 1
+      continue
+    .end
+
+    # For any non-ascii byte, we conservatively replace with '?'
+    (out.ptr + j)^ = 0x3F
+    i = i + 1
+    j = j + 1
+  .end
+
+  if out_len != 0
+    out_len^ = j
+  .end
+
+  ret ENC_OK
+.end
+
+# -----------------------------------------------------------------------------
+# Percent-encoding helpers (URL/file URI safe)
+# -----------------------------------------------------------------------------
+
+# Percent-encode bytes into ASCII.
+#
+# - Unreserved: ALPHA / DIGIT / '-' / '.' / '_' / '~'
+# - Everything else becomes %HH
+#
+# Returns 0 OK, 1 NeedsMoreSpace.
+
+pub fn percent_encode(src: ByteView, out: OutBytes, out_len: *usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if out_len != 0
+    out_len^ = 0
+  .end
+
+  let j: usize = 0
+  let i: usize = 0
+
+  loop
+    if i >= src.len
+      break
+    .end
+
+    let b: u8 = (src.ptr + i)^
+    let unreserved = false
+
+    if (b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A) || (b >= 0x30 && b <= 0x39)
+      unreserved = true
+    .end
+    if b == 0x2D || b == 0x2E || b == 0x5F || b == 0x7E
+      unreserved = true
+    .end
+
+    if unreserved
+      if j + 1 > out.cap
+        error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, ENC_MORE, "encoding.percent_encode: out too small")
+        ret ENC_MORE
+      .end
+      (out.ptr + j)^ = b
+      j = j + 1
+      i = i + 1
+      continue
+    .end
+
+    # %HH
+    if j + 3 > out.cap
+      error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, ENC_MORE, "encoding.percent_encode: out too small")
+      ret ENC_MORE
+    .end
+
+    (out.ptr + j)^ = 0x25
+    (out.ptr + j + 1)^ = __hex_upper((b >> 4) & 0x0F)
+    (out.ptr + j + 2)^ = __hex_upper(b & 0x0F)
+
+    j = j + 3
+    i = i + 1
+  .end
+
+  if out_len != 0
+    out_len^ = j
+  .end
+
+  ret ENC_OK
+.end
+
+pub fn __hex_upper(x: u8) -> u8
+  if x < 10
+    ret 0x30 + x
+  .end
+  ret 0x41 + (x - 10)
+.end
+
+pub fn __hex_val(b: u8) -> i32
+  if b >= 0x30 && b <= 0x39
+    ret (b - 0x30) as i32
+  .end
+  if b >= 0x41 && b <= 0x46
+    ret (b - 0x41 + 10) as i32
+  .end
+  if b >= 0x61 && b <= 0x66
+    ret (b - 0x61 + 10) as i32
+  .end
+  ret -1
+.end
+
+# Percent-decode ASCII bytes.
+#
+# Accepts sequences %HH, leaves other bytes as-is.
+#
+# Returns:
+# - 0 OK
+# - 1 NeedsMoreSpace
+# - 2 InvalidEncoding
+
+pub fn percent_decode(src: ByteView, out: OutBytes, out_len: *usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if out_len != 0
+    out_len^ = 0
+  .end
+
+  let i: usize = 0
+  let j: usize = 0
+
+  loop
+    if i >= src.len
+      break
+    .end
+
+    if j + 1 > out.cap
+      error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, ENC_MORE, "encoding.percent_decode: out too small")
+      ret ENC_MORE
+    .end
+
+    let b: u8 = (src.ptr + i)^
+    if b != 0x25
+      (out.ptr + j)^ = b
+      i = i + 1
+      j = j + 1
+      continue
+    .end
+
+    # Need %HH
+    if i + 2 >= src.len
+      error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, ENC_INVALID, "encoding.percent_decode: truncated %")
+      ret ENC_INVALID
+    .end
+
+    let h1: u8 = (src.ptr + i + 1)^
+    let h2: u8 = (src.ptr + i + 2)^
+
+    let v1 = __hex_val(h1)
+    let v2 = __hex_val(h2)
+    if v1 < 0 || v2 < 0
+      error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, ENC_INVALID, "encoding.percent_decode: invalid hex")
+      ret ENC_INVALID
+    .end
+
+    let outb: u8 = ((v1 as u8) << 4) | (v2 as u8)
+    (out.ptr + j)^ = outb
+
+    i = i + 3
+    j = j + 1
+  .end
+
+  if out_len != 0
+    out_len^ = j
+  .end
+
+  ret ENC_OK
+.end
+
+# -----------------------------------------------------------------------------
+# Host/runtime hooks (placeholders)
+# -----------------------------------------------------------------------------
+
+# The host/runtime should provide UTF-16/UTF-8 conversions.
+#
+# Returns:
+# - 0 OK
+# - 1 NeedsMoreSpace
+# - 2 InvalidEncoding
+# - 3 Unsupported
+
+pub fn __host_utf16_to_utf8(
+  _src: U16View,
+  _out: OutBytes,
+  _out_len: *usize,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Unsupported, ENC_UNSUPPORTED, "utf16_to_utf8: not wired")
+  ret ENC_UNSUPPORTED
+.end
+
+pub fn __host_utf8_to_utf16(
+  _src: ByteView,
+  _out: OutU16,
+  _out_len: *usize,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Unsupported, ENC_UNSUPPORTED, "utf8_to_utf16: not wired")
+  ret ENC_UNSUPPORTED
+.end
+
+.end

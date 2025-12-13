@@ -1,0 +1,921 @@
+# plugins/fs_vfs/api/io/stream.vitte
+# Streaming IO (optional)
+# Blocks use `.end` only.
+#
+# This module defines a small "stream" abstraction for incremental IO.
+#
+# Goals:
+# - Work across VFS files and future non-file endpoints (pipes, sockets, httpfs).
+# - No heap allocation required: caller supplies buffers.
+# - Support both direct read/write and vectored IO.
+# - Provide adapters: File -> StreamReader/StreamWriter.
+# - Provide utilities: read_exact, write_all, copy, pump, take/limit.
+#
+# Status conventions:
+# - 0  : OK
+# - 1  : EOF / closed (read side)
+# - 2  : WouldBlock (non-blocking, optional)
+# - 3  : Interrupted (retryable)
+# - <0 : Error
+
+mod plugins.fs_vfs.api.io.stream
+
+pub const STREAM_OK: i32 = 0
+pub const STREAM_EOF: i32 = 1
+pub const STREAM_WOULD_BLOCK: i32 = 2
+pub const STREAM_INTR: i32 = 3
+pub const STREAM_ERR: i32 = -1
+
+# -----------------------------------------------------------------------------
+# Error helpers
+# -----------------------------------------------------------------------------
+
+pub fn error_set(out_err: *plugins.fs_vfs.api.types.Error, kind: plugins.fs_vfs.api.types.ErrorKind, code: i32, msg: str) -> ()
+  if out_err == 0
+    ret ()
+  .end
+  out_err^.kind = kind
+  out_err^.code = code
+  out_err^.message = msg
+  ret ()
+.end
+
+pub fn error_clear(out_err: *plugins.fs_vfs.api.types.Error) -> ()
+  if out_err == 0
+    ret ()
+  .end
+  out_err^.kind = plugins.fs_vfs.api.types.ErrorKind.Other
+  out_err^.code = 0
+  out_err^.message = ""
+  ret ()
+.end
+
+# -----------------------------------------------------------------------------
+# Vectored IO types
+# -----------------------------------------------------------------------------
+
+# Equivalent to POSIX iovec.
+pub struct IoSlice
+  ptr: *u8
+  len: usize
+.end
+
+pub fn ioslice(ptr: *u8, len: usize) -> IoSlice
+  ret IoSlice(ptr: ptr, len: len)
+.end
+
+# -----------------------------------------------------------------------------
+# Stream function pointers (vtable)
+# -----------------------------------------------------------------------------
+
+# Notes on function signatures:
+# - ctx is an opaque pointer/address (usize) set by the creator.
+# - all functions are best-effort to set out_err on failure.
+# - close may be called multiple times.
+
+pub struct ReaderVTable
+  read: fn(usize, *u8, usize, *usize, *plugins.fs_vfs.api.types.Error) -> i32
+  read_vectored: fn(usize, *IoSlice, usize, *usize, *plugins.fs_vfs.api.types.Error) -> i32
+  close: fn(usize) -> ()
+.end
+
+pub struct WriterVTable
+  write: fn(usize, *u8, usize, *usize, *plugins.fs_vfs.api.types.Error) -> i32
+  write_vectored: fn(usize, *IoSlice, usize, *usize, *plugins.fs_vfs.api.types.Error) -> i32
+  flush: fn(usize, *plugins.fs_vfs.api.types.Error) -> i32
+  close: fn(usize) -> ()
+.end
+
+# -----------------------------------------------------------------------------
+# Stream handles
+# -----------------------------------------------------------------------------
+
+pub struct StreamReader
+  ctx: usize
+  vt: *ReaderVTable
+.end
+
+pub struct StreamWriter
+  ctx: usize
+  vt: *WriterVTable
+.end
+
+pub fn reader_invalid() -> StreamReader
+  ret StreamReader(ctx: 0, vt: 0)
+.end
+
+pub fn writer_invalid() -> StreamWriter
+  ret StreamWriter(ctx: 0, vt: 0)
+.end
+
+pub fn reader_is_valid(r: StreamReader) -> bool
+  ret r.vt != 0
+.end
+
+pub fn writer_is_valid(w: StreamWriter) -> bool
+  ret w.vt != 0
+.end
+
+# -----------------------------------------------------------------------------
+# Core dispatch
+# -----------------------------------------------------------------------------
+
+pub fn read(r: StreamReader, dst: *u8, dst_cap: usize, out_n: *usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+  if out_n != 0
+    out_n^ = 0
+  .end
+
+  if r.vt == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2300, "stream.read: invalid reader")
+    ret -2300
+  .end
+
+  if dst == 0 && dst_cap != 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2301, "stream.read: dst is null")
+    ret -2301
+  .end
+
+  ret r.vt^.read(r.ctx, dst, dst_cap, out_n, out_err)
+.end
+
+pub fn read_vectored(r: StreamReader, slices: *IoSlice, slices_len: usize, out_n: *usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+  if out_n != 0
+    out_n^ = 0
+  .end
+
+  if r.vt == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2302, "stream.read_vectored: invalid reader")
+    ret -2302
+  .end
+
+  if slices == 0 && slices_len != 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2303, "stream.read_vectored: slices is null")
+    ret -2303
+  .end
+
+  ret r.vt^.read_vectored(r.ctx, slices, slices_len, out_n, out_err)
+.end
+
+pub fn close_reader(r: StreamReader) -> ()
+  if r.vt == 0
+    ret ()
+  .end
+  r.vt^.close(r.ctx)
+  ret ()
+.end
+
+pub fn write(w: StreamWriter, src: *u8, src_len: usize, out_n: *usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+  if out_n != 0
+    out_n^ = 0
+  .end
+
+  if w.vt == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2310, "stream.write: invalid writer")
+    ret -2310
+  .end
+
+  if src == 0 && src_len != 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2311, "stream.write: src is null")
+    ret -2311
+  .end
+
+  ret w.vt^.write(w.ctx, src, src_len, out_n, out_err)
+.end
+
+pub fn write_vectored(w: StreamWriter, slices: *IoSlice, slices_len: usize, out_n: *usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+  if out_n != 0
+    out_n^ = 0
+  .end
+
+  if w.vt == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2312, "stream.write_vectored: invalid writer")
+    ret -2312
+  .end
+
+  if slices == 0 && slices_len != 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2313, "stream.write_vectored: slices is null")
+    ret -2313
+  .end
+
+  ret w.vt^.write_vectored(w.ctx, slices, slices_len, out_n, out_err)
+.end
+
+pub fn flush(w: StreamWriter, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if w.vt == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2314, "stream.flush: invalid writer")
+    ret -2314
+  .end
+
+  ret w.vt^.flush(w.ctx, out_err)
+.end
+
+pub fn close_writer(w: StreamWriter) -> ()
+  if w.vt == 0
+    ret ()
+  .end
+  w.vt^.close(w.ctx)
+  ret ()
+.end
+
+# -----------------------------------------------------------------------------
+# Utilities
+# -----------------------------------------------------------------------------
+
+# read_exact: fill exactly dst_len bytes.
+# Returns 0 OK, <0 error.
+# If EOF occurs early, returns -2320.
+pub fn read_exact(r: StreamReader, dst: *u8, dst_len: usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if dst == 0 && dst_len != 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2319, "stream.read_exact: dst is null")
+    ret -2319
+  .end
+
+  let off: usize = 0
+  loop
+    if off >= dst_len
+      break
+    .end
+
+    let n: usize = 0
+    let rc = read(r, dst + off, dst_len - off, &n, out_err)
+
+    if rc == STREAM_INTR
+      continue
+    .end
+
+    if rc == STREAM_WOULD_BLOCK
+      # non-blocking behavior: treat as retryable
+      continue
+    .end
+
+    if rc == STREAM_EOF
+      error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Io, -2320, "stream.read_exact: unexpected EOF")
+      ret -2320
+    .end
+
+    if rc != STREAM_OK
+      ret rc
+    .end
+
+    if n == 0
+      # defensive: treat as EOF
+      error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Io, -2320, "stream.read_exact: unexpected EOF")
+      ret -2320
+    .end
+
+    off = off + n
+  .end
+
+  ret STREAM_OK
+.end
+
+# write_all: write the entire buffer.
+# Returns 0 OK, <0 error.
+# If repeated short writes with 0 progress happen, returns -2330.
+pub fn write_all(w: StreamWriter, src: *u8, src_len: usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if src == 0 && src_len != 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2329, "stream.write_all: src is null")
+    ret -2329
+  .end
+
+  let off: usize = 0
+  let no_progress: u32 = 0
+
+  loop
+    if off >= src_len
+      break
+    .end
+
+    let n: usize = 0
+    let rc = write(w, src + off, src_len - off, &n, out_err)
+
+    if rc == STREAM_INTR
+      continue
+    .end
+
+    if rc == STREAM_WOULD_BLOCK
+      continue
+    .end
+
+    if rc != STREAM_OK
+      ret rc
+    .end
+
+    if n == 0
+      no_progress = no_progress + 1
+      if no_progress >= 4
+        error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Io, -2330, "stream.write_all: no progress")
+        ret -2330
+      .end
+      continue
+    .end
+
+    no_progress = 0
+    off = off + n
+  .end
+
+  ret STREAM_OK
+.end
+
+# copy: copy bytes from reader to writer using scratch buffer.
+# Returns total bytes copied, -1 on error.
+pub fn copy(r: StreamReader, w: StreamWriter, scratch: *u8, scratch_cap: usize, out_err: *plugins.fs_vfs.api.types.Error) -> i64
+  error_clear(out_err)
+
+  if scratch == 0 || scratch_cap == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2340, "stream.copy: scratch missing")
+    ret -1
+  .end
+
+  let total: i64 = 0
+
+  loop
+    let n: usize = 0
+    let rr = read(r, scratch, scratch_cap, &n, out_err)
+
+    if rr == STREAM_INTR
+      continue
+    .end
+
+    if rr == STREAM_WOULD_BLOCK
+      continue
+    .end
+
+    if rr == STREAM_EOF
+      break
+    .end
+
+    if rr != STREAM_OK
+      ret -1
+    .end
+
+    if n == 0
+      break
+    .end
+
+    let wr = write_all(w, scratch, n, out_err)
+    if wr != STREAM_OK
+      ret -1
+    .end
+
+    total = total + (n as i64)
+  .end
+
+  ret total
+.end
+
+# pump: copy at most `limit` bytes from reader to writer.
+# Returns bytes copied, -1 on error.
+pub fn pump(r: StreamReader, w: StreamWriter, scratch: *u8, scratch_cap: usize, limit: u64, out_err: *plugins.fs_vfs.api.types.Error) -> i64
+  error_clear(out_err)
+
+  if scratch == 0 || scratch_cap == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2341, "stream.pump: scratch missing")
+    ret -1
+  .end
+
+  let left: u64 = limit
+  let total: i64 = 0
+
+  loop
+    if left == 0
+      break
+    .end
+
+    let chunk = scratch_cap
+    if (left as usize) < chunk
+      chunk = left as usize
+    .end
+
+    let n: usize = 0
+    let rr = read(r, scratch, chunk, &n, out_err)
+
+    if rr == STREAM_INTR || rr == STREAM_WOULD_BLOCK
+      continue
+    .end
+
+    if rr == STREAM_EOF
+      break
+    .end
+
+    if rr != STREAM_OK
+      ret -1
+    .end
+
+    if n == 0
+      break
+    .end
+
+    let wr = write_all(w, scratch, n, out_err)
+    if wr != STREAM_OK
+      ret -1
+    .end
+
+    left = left - (n as u64)
+    total = total + (n as i64)
+  .end
+
+  ret total
+.end
+
+# -----------------------------------------------------------------------------
+# Adapters: VFS file -> Stream
+# -----------------------------------------------------------------------------
+
+# Context for file reader/writer adapters.
+pub struct FileCtx
+  vfs: plugins.fs_vfs.api.types.Vfs
+  file: plugins.fs_vfs.api.types.VfsFile
+.end
+
+# A small fixed pool for contexts so we don't require heap allocations.
+# If you have an allocator, replace this with heap allocation.
+
+pub const FILE_CTX_MAX: usize = 32
+
+pub struct FileCtxSlot
+  used: bool
+  ctx: FileCtx
+.end
+
+# Global pool (placeholder). Runtime should place this in plugin state.
+pub static mut __file_ctx_pool: *FileCtxSlot = 0
+pub static mut __file_ctx_pool_cap: usize = 0
+
+# Initialize pool.
+# Caller provides backing storage for `cap` slots.
+pub fn file_ctx_pool_init(slots: *FileCtxSlot, cap: usize) -> ()
+  __file_ctx_pool = slots
+  __file_ctx_pool_cap = cap
+
+  if slots != 0
+    let i: usize = 0
+    loop
+      if i >= cap
+        break
+      .end
+      (slots + i)^.used = false
+      i = i + 1
+    .end
+  .end
+
+  ret ()
+.end
+
+pub fn __file_ctx_alloc(vfs: plugins.fs_vfs.api.types.Vfs, file: plugins.fs_vfs.api.types.VfsFile, out_ctx: *usize) -> i32
+  if out_ctx == 0
+    ret -2350
+  .end
+  out_ctx^ = 0
+
+  if __file_ctx_pool == 0 || __file_ctx_pool_cap == 0
+    ret -2351
+  .end
+
+  let i: usize = 0
+  loop
+    if i >= __file_ctx_pool_cap
+      break
+    .end
+
+    let s = __file_ctx_pool + i
+    if !s^.used
+      s^.used = true
+      s^.ctx.vfs = vfs
+      s^.ctx.file = file
+      out_ctx^ = (s as usize)
+      ret STREAM_OK
+    .end
+
+    i = i + 1
+  .end
+
+  ret -2352
+.end
+
+pub fn __file_ctx_free(ctx: usize) -> ()
+  if ctx == 0
+    ret ()
+  .end
+  let s: *FileCtxSlot = (ctx as *FileCtxSlot)
+  s^.used = false
+  ret ()
+.end
+
+# File reader vtable functions
+pub fn __file_read(ctx: usize, dst: *u8, dst_cap: usize, out_n: *usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+  if out_n != 0
+    out_n^ = 0
+  .end
+  if ctx == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2360, "stream.file_read: ctx null")
+    ret -2360
+  .end
+
+  let s: *FileCtxSlot = (ctx as *FileCtxSlot)
+  let vfs = s^.ctx.vfs
+  let file = s^.ctx.file
+
+  let n: usize = 0
+  let rc = plugins.fs_vfs.api.io.read_write.__host_file_read(vfs, file, dst, dst_cap, &n, out_err)
+  if rc != 0
+    ret rc
+  .end
+
+  if out_n != 0
+    out_n^ = n
+  .end
+
+  if n == 0
+    ret STREAM_EOF
+  .end
+
+  ret STREAM_OK
+.end
+
+pub fn __file_read_vectored(ctx: usize, slices: *IoSlice, slices_len: usize, out_n: *usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+  if out_n != 0
+    out_n^ = 0
+  .end
+
+  if slices_len == 0
+    ret STREAM_OK
+  .end
+
+  # naive implementation: read into first non-empty slice
+  let i: usize = 0
+  loop
+    if i >= slices_len
+      break
+    .end
+    let s = slices + i
+    if s^.len != 0
+      let n: usize = 0
+      let rc = __file_read(ctx, s^.ptr, s^.len, &n, out_err)
+      if out_n != 0
+        out_n^ = n
+      .end
+      ret rc
+    .end
+    i = i + 1
+  .end
+
+  ret STREAM_OK
+.end
+
+pub fn __file_reader_close(ctx: usize) -> ()
+  __file_ctx_free(ctx)
+  ret ()
+.end
+
+# File writer vtable functions
+pub fn __file_write(ctx: usize, src: *u8, src_len: usize, out_n: *usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+  if out_n != 0
+    out_n^ = 0
+  .end
+
+  if ctx == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2370, "stream.file_write: ctx null")
+    ret -2370
+  .end
+
+  let s: *FileCtxSlot = (ctx as *FileCtxSlot)
+  let vfs = s^.ctx.vfs
+  let file = s^.ctx.file
+
+  let n: usize = 0
+  let rc = plugins.fs_vfs.api.io.read_write.__host_file_write(vfs, file, src, src_len, &n, out_err)
+  if rc != 0
+    ret rc
+  .end
+
+  if out_n != 0
+    out_n^ = n
+  .end
+
+  ret STREAM_OK
+.end
+
+pub fn __file_write_vectored(ctx: usize, slices: *IoSlice, slices_len: usize, out_n: *usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+  if out_n != 0
+    out_n^ = 0
+  .end
+
+  # naive implementation: write slices in order
+  let total: usize = 0
+  let i: usize = 0
+  loop
+    if i >= slices_len
+      break
+    .end
+
+    let s = slices + i
+    if s^.len != 0
+      let n: usize = 0
+      let rc = __file_write(ctx, s^.ptr, s^.len, &n, out_err)
+      if rc != STREAM_OK
+        if out_n != 0
+          out_n^ = total
+        .end
+        ret rc
+      .end
+
+      total = total + n
+      if n < s^.len
+        # short write stops
+        if out_n != 0
+          out_n^ = total
+        .end
+        ret STREAM_OK
+      .end
+    .end
+
+    i = i + 1
+  .end
+
+  if out_n != 0
+    out_n^ = total
+  .end
+
+  ret STREAM_OK
+.end
+
+pub fn __file_flush(_ctx: usize, _out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  # no-op for simple backends
+  ret STREAM_OK
+.end
+
+pub fn __file_writer_close(ctx: usize) -> ()
+  __file_ctx_free(ctx)
+  ret ()
+.end
+
+# Global vtables (static)
+pub static __file_reader_vt: ReaderVTable = ReaderVTable(
+  read: __file_read,
+  read_vectored: __file_read_vectored,
+  close: __file_reader_close,
+)
+
+pub static __file_writer_vt: WriterVTable = WriterVTable(
+  write: __file_write,
+  write_vectored: __file_write_vectored,
+  flush: __file_flush,
+  close: __file_writer_close,
+)
+
+# Create a StreamReader from a VfsFile.
+# Requires file_ctx_pool_init to have been called.
+pub fn from_file_reader(
+  vfs: plugins.fs_vfs.api.types.Vfs,
+  file: plugins.fs_vfs.api.types.VfsFile,
+  out: *StreamReader,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_clear(out_err)
+
+  if out == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2380, "stream.from_file_reader: out null")
+    ret -2380
+  .end
+
+  let ctx: usize = 0
+  let rc = __file_ctx_alloc(vfs, file, &ctx)
+  if rc != STREAM_OK
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Io, -2381, "stream.from_file_reader: ctx alloc failed")
+    out^ = reader_invalid()
+    ret -2381
+  .end
+
+  out^.ctx = ctx
+  out^.vt = &__file_reader_vt
+  ret STREAM_OK
+.end
+
+# Create a StreamWriter from a VfsFile.
+# Requires file_ctx_pool_init to have been called.
+pub fn from_file_writer(
+  vfs: plugins.fs_vfs.api.types.Vfs,
+  file: plugins.fs_vfs.api.types.VfsFile,
+  out: *StreamWriter,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_clear(out_err)
+
+  if out == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2390, "stream.from_file_writer: out null")
+    ret -2390
+  .end
+
+  let ctx: usize = 0
+  let rc = __file_ctx_alloc(vfs, file, &ctx)
+  if rc != STREAM_OK
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Io, -2391, "stream.from_file_writer: ctx alloc failed")
+    out^ = writer_invalid()
+    ret -2391
+  .end
+
+  out^.ctx = ctx
+  out^.vt = &__file_writer_vt
+  ret STREAM_OK
+.end
+
+# -----------------------------------------------------------------------------
+# Decorators (no heap)
+# -----------------------------------------------------------------------------
+
+# TakeReader: limits number of bytes readable from an underlying reader.
+
+pub struct TakeCtx
+  inner: StreamReader
+  left: u64
+.end
+
+pub const TAKE_CTX_MAX: usize = 32
+
+pub struct TakeCtxSlot
+  used: bool
+  ctx: TakeCtx
+.end
+
+pub static mut __take_ctx_pool: *TakeCtxSlot = 0
+pub static mut __take_ctx_pool_cap: usize = 0
+
+pub fn take_ctx_pool_init(slots: *TakeCtxSlot, cap: usize) -> ()
+  __take_ctx_pool = slots
+  __take_ctx_pool_cap = cap
+
+  if slots != 0
+    let i: usize = 0
+    loop
+      if i >= cap
+        break
+      .end
+      (slots + i)^.used = false
+      i = i + 1
+    .end
+  .end
+
+  ret ()
+.end
+
+pub fn __take_ctx_alloc(inner: StreamReader, limit: u64, out_ctx: *usize) -> i32
+  if out_ctx == 0
+    ret -2400
+  .end
+  out_ctx^ = 0
+
+  if __take_ctx_pool == 0 || __take_ctx_pool_cap == 0
+    ret -2401
+  .end
+
+  let i: usize = 0
+  loop
+    if i >= __take_ctx_pool_cap
+      break
+    .end
+
+    let s = __take_ctx_pool + i
+    if !s^.used
+      s^.used = true
+      s^.ctx.inner = inner
+      s^.ctx.left = limit
+      out_ctx^ = (s as usize)
+      ret STREAM_OK
+    .end
+
+    i = i + 1
+  .end
+
+  ret -2402
+.end
+
+pub fn __take_ctx_free(ctx: usize) -> ()
+  if ctx == 0
+    ret ()
+  .end
+  let s: *TakeCtxSlot = (ctx as *TakeCtxSlot)
+  s^.used = false
+  ret ()
+.end
+
+pub fn __take_read(ctx: usize, dst: *u8, dst_cap: usize, out_n: *usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+  if out_n != 0
+    out_n^ = 0
+  .end
+
+  if ctx == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2410, "stream.take_read: ctx null")
+    ret -2410
+  .end
+
+  let s: *TakeCtxSlot = (ctx as *TakeCtxSlot)
+  let left = s^.ctx.left
+
+  if left == 0
+    ret STREAM_EOF
+  .end
+
+  let cap = dst_cap
+  if (left as usize) < cap
+    cap = left as usize
+  .end
+
+  let n: usize = 0
+  let rc = read(s^.ctx.inner, dst, cap, &n, out_err)
+  if rc != STREAM_OK
+    if rc == STREAM_EOF
+      s^.ctx.left = 0
+    .end
+    ret rc
+  .end
+
+  s^.ctx.left = s^.ctx.left - (n as u64)
+  if out_n != 0
+    out_n^ = n
+  .end
+
+  ret STREAM_OK
+.end
+
+pub fn __take_read_vectored(ctx: usize, slices: *IoSlice, slices_len: usize, out_n: *usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+  if out_n != 0
+    out_n^ = 0
+  .end
+
+  # naive: read into first slice, honoring left
+  if slices_len == 0
+    ret STREAM_OK
+  .end
+
+  let i: usize = 0
+  loop
+    if i >= slices_len
+      break
+    .end
+    let s = slices + i
+    if s^.len != 0
+      ret __take_read(ctx, s^.ptr, s^.len, out_n, out_err)
+    .end
+    i = i + 1
+  .end
+
+  ret STREAM_OK
+.end
+
+pub fn __take_close(ctx: usize) -> ()
+  __take_ctx_free(ctx)
+  ret ()
+.end
+
+pub static __take_reader_vt: ReaderVTable = ReaderVTable(
+  read: __take_read,
+  read_vectored: __take_read_vectored,
+  close: __take_close,
+)
+
+# Create a limited reader.
+pub fn take(inner: StreamReader, limit: u64, out: *StreamReader, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if out == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2420, "stream.take: out null")
+    ret -2420
+  .end
+
+  if inner.vt == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2421, "stream.take: inner invalid")
+    out^ = reader_invalid()
+    ret -2421
+  .end
+
+  let ctx: usize = 0
+  let rc = __take_ctx_alloc(inner, limit, &ctx)
+  if rc != STREAM_OK
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Io, -2422, "stream.take: ctx alloc failed")
+    out^ = reader_invalid()
+    ret -2422
+  .end
+
+  out^.ctx = ctx
+  out^.vt = &__take_reader_vt
+  ret STREAM_OK
+.end
+
+.end

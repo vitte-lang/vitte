@@ -1,0 +1,270 @@
+# plugins/fs_vfs/api/dir/read_dir.vitte
+# ReadDir iterator
+# Blocks use `.end` only.
+#
+# This module defines a low-level directory iterator API designed to work
+# across multiple VFS backends (osfs/memfs/overlay/zipfs/etc.).
+#
+# Conventions:
+# - Functions return status codes:
+#   - 0  : OK (value written to out param)
+#   - 1  : End of iteration (no more entries)
+#   - <0 : Error
+# - Errors are returned via out `plugins.fs_vfs.api.types.Error` when provided.
+#
+# NOTE: The actual backend calls are provided by the VFS host/runtime layer.
+# This file contains the stable surface + placeholder host hooks.
+
+mod plugins.fs_vfs.api.dir.read_dir
+
+# -----------------------------------------------------------------------------
+# Types
+# -----------------------------------------------------------------------------
+
+pub const RD_OK: i32 = 0
+pub const RD_END: i32 = 1
+pub const RD_ERR: i32 = -1
+
+# A single directory entry.
+# Keep this lightweight. Higher-level helpers can call metadata() on demand.
+#
+# Fields are best-effort:
+# - `name` is the last path segment.
+# - `path` is the full resolved path (if backend can provide it) else "".
+# - `file_type` may be Other when unknown.
+# - `inode` may be 0 when unknown.
+#
+# If your stdlib has Path/PathBuf, replace strings with those types.
+pub struct DirEntry
+  name: str
+  path: str
+  file_type: plugins.fs_vfs.api.types.FileType
+  inode: u64
+.end
+
+pub fn dir_entry_empty() -> DirEntry
+  ret DirEntry(
+    name: "",
+    path: "",
+    file_type: plugins.fs_vfs.api.types.FileType.Other,
+    inode: 0,
+  )
+.end
+
+# ReadDir handle.
+# `handle` is backend-defined.
+pub struct ReadDir
+  vfs: plugins.fs_vfs.api.types.Vfs
+  handle: plugins.fs_vfs.api.types.HandleId
+  done: bool
+.end
+
+pub fn read_dir_invalid(vfs: plugins.fs_vfs.api.types.Vfs) -> ReadDir
+  ret ReadDir(vfs: vfs, handle: 0, done: true)
+.end
+
+# -----------------------------------------------------------------------------
+# Error helpers
+# -----------------------------------------------------------------------------
+
+pub fn error_set(out_err: *plugins.fs_vfs.api.types.Error, kind: plugins.fs_vfs.api.types.ErrorKind, code: i32, msg: str) -> ()
+  if out_err == 0
+    ret ()
+  .end
+  out_err^.kind = kind
+  out_err^.code = code
+  out_err^.message = msg
+  ret ()
+.end
+
+pub fn error_clear(out_err: *plugins.fs_vfs.api.types.Error) -> ()
+  if out_err == 0
+    ret ()
+  .end
+  out_err^.kind = plugins.fs_vfs.api.types.ErrorKind.Other
+  out_err^.code = 0
+  out_err^.message = ""
+  ret ()
+.end
+
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
+
+# Open a directory for iteration.
+#
+# Arguments:
+# - vfs: Vfs instance
+# - path: directory path (string for now)
+# - out: receives ReadDir handle
+# - out_err: optional error
+#
+# Returns:
+# - 0 on success
+# - <0 on error
+pub fn open(vfs: plugins.fs_vfs.api.types.Vfs, path: str, out: *ReadDir, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if out == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -10, "read_dir.open: out is null")
+    ret -10
+  .end
+
+  let h: plugins.fs_vfs.api.types.HandleId = 0
+  let rc = __host_readdir_open(vfs, path, &h, out_err)
+  if rc != 0
+    # host already populated out_err best-effort
+    out^ = read_dir_invalid(vfs)
+    ret rc
+  .end
+
+  out^.vfs = vfs
+  out^.handle = h
+  out^.done = false
+  ret RD_OK
+.end
+
+# Close the iterator.
+# Safe to call multiple times.
+pub fn close(rd: *ReadDir) -> ()
+  if rd == 0
+    ret ()
+  .end
+
+  if rd^.handle != 0
+    __host_readdir_close(rd^.vfs, rd^.handle)
+    rd^.handle = 0
+  .end
+
+  rd^.done = true
+  ret ()
+.end
+
+# Advance the iterator.
+#
+# Arguments:
+# - rd: pointer to ReadDir
+# - out: receives DirEntry
+# - out_err: optional error
+#
+# Returns:
+# - 0 = ok
+# - 1 = end
+# - <0 = error
+pub fn next(rd: *ReadDir, out: *DirEntry, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if rd == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -11, "read_dir.next: rd is null")
+    ret -11
+  .end
+  if out == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -12, "read_dir.next: out is null")
+    ret -12
+  .end
+
+  if rd^.done
+    # already ended
+    out^ = dir_entry_empty()
+    ret RD_END
+  .end
+
+  if rd^.handle == 0
+    rd^.done = true
+    out^ = dir_entry_empty()
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -13, "read_dir.next: invalid handle")
+    ret -13
+  .end
+
+  # Prepare outputs
+  let name: str = ""
+  let path: str = ""
+  let ft: plugins.fs_vfs.api.types.FileType = plugins.fs_vfs.api.types.FileType.Other
+  let inode: u64 = 0
+
+  let rc = __host_readdir_next(rd^.vfs, rd^.handle, &name, &path, &ft, &inode, out_err)
+
+  if rc == RD_END
+    rd^.done = true
+    out^ = dir_entry_empty()
+    ret RD_END
+  .end
+
+  if rc != RD_OK
+    # error
+    out^ = dir_entry_empty()
+    ret rc
+  .end
+
+  out^.name = name
+  out^.path = path
+  out^.file_type = ft
+  out^.inode = inode
+  ret RD_OK
+.end
+
+# Convenience: iterate and count entries.
+# Useful for tests/smoke.
+pub fn count_all(vfs: plugins.fs_vfs.api.types.Vfs, path: str, out_err: *plugins.fs_vfs.api.types.Error) -> i64
+  let rd: ReadDir = read_dir_invalid(vfs)
+  let rc = open(vfs, path, &rd, out_err)
+  if rc != RD_OK
+    ret -1
+  .end
+
+  let n: i64 = 0
+  let e: DirEntry = dir_entry_empty()
+
+  loop
+    let r = next(&rd, &e, out_err)
+    if r == RD_END
+      break
+    .end
+    if r != RD_OK
+      close(&rd)
+      ret -1
+    .end
+    n = n + 1
+  .end
+
+  close(&rd)
+  ret n
+.end
+
+# -----------------------------------------------------------------------------
+# Host/runtime hooks (placeholders)
+# -----------------------------------------------------------------------------
+
+# These functions must be provided by the host/runtime layer.
+#
+# Recommended semantics:
+# - open: returns 0 and writes a handle on success.
+# - next: returns 0 and writes fields, or 1 on end.
+# - close: releases handle.
+#
+# In a WASM sandbox, these would be hostcalls.
+# In dylib mode, these could be function pointers in HostContext.
+
+pub fn __host_readdir_open(_vfs: plugins.fs_vfs.api.types.Vfs, _path: str, _out_handle: *plugins.fs_vfs.api.types.HandleId, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Unsupported, -1000, "readdir_open: not wired")
+  ret -1000
+.end
+
+pub fn __host_readdir_next(
+  _vfs: plugins.fs_vfs.api.types.Vfs,
+  _handle: plugins.fs_vfs.api.types.HandleId,
+  _out_name: *str,
+  _out_path: *str,
+  _out_type: *plugins.fs_vfs.api.types.FileType,
+  _out_inode: *u64,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Unsupported, -1001, "readdir_next: not wired")
+  ret -1001
+.end
+
+pub fn __host_readdir_close(_vfs: plugins.fs_vfs.api.types.Vfs, _handle: plugins.fs_vfs.api.types.HandleId) -> ()
+  ret ()
+.end
+
+.end
