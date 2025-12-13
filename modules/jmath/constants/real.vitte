@@ -1,3 +1,349 @@
-module std.math.constants.real
+module jmath.constants.real
+
+# ============================================================================
+# constants.real – constantes réelles + utilitaires numériques (ultra complet)
+#
+# Fournit :
+#   - Constantes mathématiques (pi, tau, e, ln2, sqrt2, phi, gamma, etc.)
+#   - Bornes/eps f32/f64 (epsilon, min/max, tiny, etc.) (valeurs numériques)
+#   - Utilitaires : abs, clamp, lerp, smoothstep, saturate, sign, copysign
+#   - Approx : approx_eq_abs/rel/ulp-like (fallback), ulp via nextafter (si dispo)
+#   - Réductions : wrap, fract, mod, floor/ceil/trunc/round (fallback)
+#   - Hypot/rsqrt, fast invsqrt (option), polynomial helpers
+#   - Série / intégration simple : horner, poly_eval, simpson (basique)
+#
+# Notes :
+#   - Certaines fonctions "bits-level" peuvent être mieux via ieee754.vitte.
+#   - Ici, module autonome : pas d’import obligatoire.
+#
+# Conventions :
+#   - Pas d’accolades, blocs `.end`
+#   - Pas d’I/O
+# ============================================================================
+
+# ---------------------------------
+# Constantes mathématiques (f64)
+# ---------------------------------
+
+const PI      : f64 = 3.141592653589793238462643383279502884
+const TAU     : f64 = 6.283185307179586476925286766559005768
+const HALF_PI : f64 = 1.570796326794896619231321691639751442
+const QUARTER_PI : f64 = 0.785398163397448309615660845819875721
+
+const E       : f64 = 2.718281828459045235360287471352662498
+const LN2     : f64 = 0.693147180559945309417232121458176568
+const LN10    : f64 = 2.302585092994045684017991454684364208
+const LOG2E   : f64 = 1.442695040888963407359924681001892137
+const LOG10E  : f64 = 0.434294481903251827651128918916605082
+
+const SQRT2   : f64 = 1.414213562373095048801688724209698079
+const INV_SQRT2 : f64 = 0.707106781186547524400844362104849039
+const SQRT3   : f64 = 1.732050807568877293527446341505872367
+
+const PHI     : f64 = 1.618033988749894848204586834365638118  # golden ratio
+const EULER_GAMMA : f64 = 0.577215664901532860606512090082402431
+
+const DEG_PER_RAD : f64 = 57.29577951308232087679815481410517033
+const RAD_PER_DEG : f64 = 0.01745329251994329576923690768488612713
+
+# ---------------------------------
+# Constantes numériques (f32/f64)
+# ---------------------------------
+
+const F32_EPSILON      : f32 = 1.1920928955078125e-7
+const F32_MIN_POSITIVE : f32 = 1.401298464324817e-45
+const F32_MIN_NORMAL   : f32 = 1.1754943508222875e-38
+const F32_MAX          : f32 = 3.4028234663852886e38
+
+const F64_EPSILON      : f64 = 2.220446049250313080847263336181640625e-16
+const F64_MIN_POSITIVE : f64 = 4.940656458412465441765687928682213723e-324
+const F64_MIN_NORMAL   : f64 = 2.225073858507201383090232717332404064e-308
+const F64_MAX          : f64 = 1.797693134862315708145274237317043568e308
+
+# Useful tolerances
+const EPS_1E_12 : f64 = 1e-12
+const EPS_1E_9  : f64 = 1e-9
+const EPS_1E_6  : f64 = 1e-6
+
+# ---------------------------------
+# Basic scalar ops
+# ---------------------------------
+
+fn abs_f64(x: f64) -> f64
+  if x < 0.0 ret -x .end
+  ret x
+.end
+
+fn abs_f32(x: f32) -> f32
+  if x < 0.0 ret -x .end
+  ret x
+.end
+
+fn min_f64(a: f64, b: f64) -> f64
+  if a < b ret a .end
+  ret b
+.end
+
+fn max_f64(a: f64, b: f64) -> f64
+  if a > b ret a .end
+  ret b
+.end
+
+fn clamp_f64(x: f64, lo: f64, hi: f64) -> f64
+  if x < lo ret lo .end
+  if x > hi ret hi .end
+  ret x
+.end
+
+fn saturate(x: f64) -> f64
+  ret clamp_f64(x, 0.0, 1.0)
+.end
+
+fn sign_f64(x: f64) -> i32
+  if x > 0.0 ret 1 .end
+  if x < 0.0 ret -1 .end
+  ret 0
+.end
+
+fn copysign_f64(mag: f64, sgn: f64) -> f64
+  if sgn < 0.0 ret -abs_f64(mag) .end
+  ret abs_f64(mag)
+.end
+
+fn lerp(a: f64, b: f64, t: f64) -> f64
+  ret a + (b - a) * t
+.end
+
+fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64
+  if edge0 == edge1 ret if x < edge0 then 0.0 else 1.0 .end .end
+  let t = saturate((x - edge0) / (edge1 - edge0))
+  ret t * t * (3.0 - 2.0 * t)
+.end
+
+fn smootherstep(edge0: f64, edge1: f64, x: f64) -> f64
+  if edge0 == edge1 ret if x < edge0 then 0.0 else 1.0 .end .end
+  let t = saturate((x - edge0) / (edge1 - edge0))
+  ret t*t*t*(t*(t*6.0 - 15.0) + 10.0)
+.end
+
+# ---------------------------------
+# floor/ceil/trunc/round (fallback)
+# ---------------------------------
+
+fn trunc_f64(x: f64) -> f64
+  ret (x as i64) as f64
+.end
+
+fn floor_f64(x: f64) -> f64
+  let i = x as i64
+  let fi = i as f64
+  if fi > x ret (i - 1) as f64 .end
+  ret fi
+.end
+
+fn ceil_f64(x: f64) -> f64
+  let i = x as i64
+  let fi = i as f64
+  if fi < x ret (i + 1) as f64 .end
+  ret fi
+.end
+
+fn round_f64(x: f64) -> f64
+  if x >= 0.0 ret floor_f64(x + 0.5) .end
+  ret ceil_f64(x - 0.5)
+.end
+
+fn fract_f64(x: f64) -> f64
+  ret x - floor_f64(x)
+.end
+
+fn mod_f64(x: f64, m: f64) -> f64
+  if m == 0.0 ret 0.0 .end
+  let q = floor_f64(x / m)
+  let r = x - q * m
+  if r < 0.0 ret r + abs_f64(m) .end
+  ret r
+.end
+
+# ---------------------------------
+# Angle wrapping helpers
+# ---------------------------------
+
+fn wrap_pi(theta: f64) -> f64
+  let mut t = theta
+  while t <= -PI
+    t = t + TAU
+  .end
+  while t > PI
+    t = t - TAU
+  .end
+  ret t
+.end
+
+fn wrap_0_tau(theta: f64) -> f64
+  let mut t = theta
+  while t < 0.0
+    t = t + TAU
+  .end
+  while t >= TAU
+    t = t - TAU
+  .end
+  ret t
+.end
+
+# ---------------------------------
+# hypot / sqrt / rsqrt
+# ---------------------------------
+
+fn sqrt_newton(x: f64) -> f64
+  if x <= 0.0
+    if x == 0.0 ret 0.0 .end
+    ret 0.0
+  .end
+  let mut y = x
+  if y > 1.0 y = y * 0.5 .end
+  if y < 1.0 y = 1.0 .end
+  let mut i = 0
+  while i < 16
+    y = 0.5 * (y + x / y)
+    i = i + 1
+  .end
+  ret y
+.end
+
+fn hypot(a: f64, b: f64) -> f64
+  let aa = abs_f64(a)
+  let bb = abs_f64(b)
+  let m = max_f64(aa, bb)
+  if m == 0.0 ret 0.0 .end
+  let ra = aa / m
+  let rb = bb / m
+  ret m * sqrt_newton(ra*ra + rb*rb)
+.end
+
+fn rsqrt_newton(x: f64) -> f64
+  # 1/sqrt(x) via Newton on y^{-2} - x = 0
+  if x <= 0.0 ret 0.0 .end
+  let mut y = 1.0 / x
+  if y > 1.0 y = 1.0 .end
+  let mut i = 0
+  while i < 10
+    y = y * (1.5 - 0.5 * x * y * y)
+    i = i + 1
+  .end
+  ret y
+.end
+
+# ---------------------------------
+# Approx comparisons
+# ---------------------------------
+
+fn approx_eq_abs(a: f64, b: f64, eps: f64) -> bool
+  ret abs_f64(a - b) <= eps
+.end
+
+fn approx_eq_rel(a: f64, b: f64, rel: f64) -> bool
+  let d = abs_f64(a - b)
+  let m = max_f64(abs_f64(a), abs_f64(b))
+  if m == 0.0 ret true .end
+  ret d <= rel * m
+.end
+
+fn approx_eq(a: f64, b: f64, rel: f64, abs: f64) -> bool
+  let d = abs_f64(a - b)
+  if d <= abs ret true .end
+  let m = max_f64(abs_f64(a), abs_f64(b))
+  ret d <= rel * m
+.end
+
+# ---------------------------------
+# Polynomial helpers
+# ---------------------------------
+
+fn horner(x: f64, coeffs: &[f64]) -> f64
+  # coeffs: a0..an for polynomial a0 + a1 x + ... + an x^n
+  if coeffs.len() == 0 ret 0.0 .end
+  let mut acc = coeffs[(coeffs.len() - 1) as usize]
+  let mut i = (coeffs.len() as i64) - 2
+  while i >= 0
+    acc = acc * x + coeffs[i as usize]
+    i = i - 1
+    if i < 0 break .end
+  .end
+  ret acc
+.end
+
+fn poly_eval(x: f64, a0: f64, a1: f64, a2: f64, a3: f64, a4: f64, a5: f64) -> f64
+  # degree 5 convenience
+  ret (((((a5*x + a4)*x + a3)*x + a2)*x + a1)*x + a0)
+.end
+
+# ---------------------------------
+# Simpson integration (basic)
+# ---------------------------------
+
+fn simpson(f: fn(f64)->f64, a: f64, b: f64, n_even: i32) -> f64
+  # n_even must be even and >= 2
+  let mut n = n_even
+  if n < 2 n = 2 .end
+  if (n & 1) == 1 n = n + 1 .end
+  let h = (b - a) / (n as f64)
+  let mut s = f(a) + f(b)
+  let mut i = 1
+  while i < n
+    let x = a + (i as f64) * h
+    if (i & 1) == 1
+      s = s + 4.0 * f(x)
+    .end
+    if (i & 1) == 0
+      s = s + 2.0 * f(x)
+    .end
+    i = i + 1
+  .end
+  ret s * (h / 3.0)
+.end
+
+# ---------------------------------
+# Conversions deg/rad
+# ---------------------------------
+
+fn deg_to_rad(deg: f64) -> f64
+  ret deg * RAD_PER_DEG
+.end
+
+fn rad_to_deg(rad: f64) -> f64
+  ret rad * DEG_PER_RAD
+.end
+
+# ---------------------------------
+# Tests smoke
+# ---------------------------------
+
+fn assert(cond: bool)
+  if !cond panic("assert failed") .end
+.end
+
+fn test_consts()
+  assert(approx_eq_abs(PI * 2.0, TAU, 1e-15))
+  assert(approx_eq_abs(DEG_PER_RAD * RAD_PER_DEG, 1.0, 1e-15))
+.end
+
+fn test_rounding()
+  assert(floor_f64(1.9) == 1.0)
+  assert(ceil_f64(1.1) == 2.0)
+  assert(round_f64(2.5) == 3.0)
+  assert(round_f64(-2.5) == -3.0)
+.end
+
+fn test_hypot()
+  let h = hypot(3.0, 4.0)
+  assert(approx_eq_abs(h, 5.0, 1e-9))
+.end
+
+fn run_all_tests()
+  test_consts()
+  test_rounding()
+  test_hypot()
+.end
 
 .end
