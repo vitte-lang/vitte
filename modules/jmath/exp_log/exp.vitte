@@ -1,3 +1,453 @@
-module std.math.exp_log.exp
+// File: exp_log/exp.vitte
+// Module: exp_log.exp
+//
+// Objectif:
+//   - Implémentation IEEE-754 friendly de exp/exp2/exp10/expm1 pour f64 et f32
+//   - Range reduction + approximation polynomiale (Horner/Estrin)
+//   - Gestion propre des cas limites: NaN, ±Inf, overflow/underflow, très petits x
+//
+// Dépendances attendues (noyau):
+//   core/basic.vitte : is_nan/is_inf/is_finite/abs/copysign/floor/trunc/scalb
+//   core/rounding.vitte : nearbyint ou round (optionnel)
+//   core/safe.vitte : clamp (optionnel)
+//
+// Notes:
+//   - On privilégie la stabilité numérique sur la micro-optimisation.
+//   - Pour expm1, on utilise une série dédiée sur |x| petit pour éviter la perte de précision.
 
+module exp_log.exp
+
+use core.basic as basic
+
+// -----------------------------
+// Constantes (f64)
+// -----------------------------
+const LN2: f64 = 0.693147180559945309417232121458176568
+const INV_LN2: f64 = 1.442695040888963407359924681001892137
+const LOG2_10: f64 = 3.321928094887362347870319429489390176 // log2(10)
+const LN10: f64 = 2.302585092994045684017991454684364208
+
+// Split de ln2 pour limiter l’erreur de réduction d’argument (double-double light).
+// ln2_hi + ln2_lo = ln2
+const LN2_HI: f64 = 0.69314718036912381649017333984375
+const LN2_LO: f64 = 0.000000000190821492927058782614724152
+
+// Limites pratiques f64 pour exp(x):
+// exp( 709.782712893384 ) ~ DBL_MAX
+// exp(-745.1332191019411) ~ min subnormal
+const EXP_OVERFLOW_X: f64 = 709.782712893384
+const EXP_UNDERFLOW_X: f64 = -745.1332191019411
+
+// Seuils pour expm1 (f64)
+const EXPM1_TINY: f64 = 1.0e-8
+const EXP_TINY: f64 = 2.0e-16
+
+// -----------------------------
+// Constantes (f32) dérivées
+// -----------------------------
+const LN2_F: f32 = 0.69314718056
+const INV_LN2_F: f32 = 1.44269504089
+const LOG2_10_F: f32 = 3.32192809489
+const EXP_OVERFLOW_X_F: f32 = 88.722839
+const EXP_UNDERFLOW_X_F: f32 = -103.972084
+
+// -----------------------------
+// API publique
+// -----------------------------
+pub fn exp(x: f64) -> f64
+  ret exp64_impl(x)
+.end
+
+pub fn exp2(x: f64) -> f64
+  // exp2(x) = 2^x
+  ret exp2_64_impl(x)
+.end
+
+pub fn exp10(x: f64) -> f64
+  // exp10(x) = 10^x = 2^(x*log2(10))
+  ret exp2_64_impl(x * LOG2_10)
+.end
+
+pub fn expm1(x: f64) -> f64
+  ret expm1_64_impl(x)
+.end
+
+pub fn exp_f32(x: f32) -> f32
+  ret exp32_impl(x)
+.end
+
+pub fn exp2_f32(x: f32) -> f32
+  ret exp2_32_impl(x)
+.end
+
+pub fn exp10_f32(x: f32) -> f32
+  ret exp2_32_impl(x * LOG2_10_F)
+.end
+
+pub fn expm1_f32(x: f32) -> f32
+  ret expm1_32_impl(x)
+.end
+
+// -----------------------------
+// Impl exp f64
+// -----------------------------
+fn exp64_impl(x: f64) -> f64
+  // Cas spéciaux IEEE-754
+  if basic.is_nan(x)
+    ret x
+  .end
+  if basic.is_inf(x)
+    if x > 0.0
+      ret x // +inf
+    .end
+    ret 0.0 // exp(-inf)=0
+  .end
+
+  // Saturations
+  if x > EXP_OVERFLOW_X
+    ret basic.inf_f64()
+  .end
+  if x < EXP_UNDERFLOW_X
+    ret 0.0
+  .end
+
+  // Très petit x: exp(x) ~ 1 + x
+  if basic.abs(x) < EXP_TINY
+    ret 1.0 + x
+  .end
+
+  // Range reduction: x = k*ln2 + r, r dans ~[-ln2/2, ln2/2]
+  // k = round(x / ln2)
+  let k_f: f64 = nearbyint_f64(x * INV_LN2)
+  let k: i32 = to_i32_saturate(k_f)
+
+  // r = x - k*ln2 (en split hi/lo)
+  let r: f64 = (x - k_f * LN2_HI) - k_f * LN2_LO
+
+  // Approximant de exp(r) sur intervalle réduit
+  let er: f64 = exp_r_poly_f64(r)
+
+  // exp(x) = scalb(er, k)  (er * 2^k)
+  ret basic.scalb(er, k)
+.end
+
+// Approximant exp(r) pour r ~ [-0.35, 0.35]
+// Polynomiale de type minimax-ish (coeffs classiques style Cephes) adaptée Horner.
+// er ≈ 1 + r + r^2/2 + r^3*c3 + ... (coeffs ajustés)
+fn exp_r_poly_f64(r: f64) -> f64
+  let r2: f64 = r * r
+
+  // Coeffs pour exp(r) - 1 - r sur intervalle réduit.
+  // (On reconstruit exp(r) = 1 + r + r2 * P(r))
+  const C2: f64 = 0.5
+  const C3: f64 = 0.166666666666666657414808128
+  const C4: f64 = 0.041666666666666664353702032
+  const C5: f64 = 0.008333333333333333217685101
+  const C6: f64 = 0.001388888888888889006365890
+  const C7: f64 = 0.000198412698412698412360846
+  const C8: f64 = 0.000024801587301587301532166
+  const C9: f64 = 0.000002755731922398589065255
+
+  // Horner sur r : ((((((C9*r + C8)*r + C7)*r + ... )*r + C3)*r + C2)
+  let p: f64 =
+    (((((((C9 * r + C8) * r + C7) * r + C6) * r + C5) * r + C4) * r + C3) * r + C2)
+
+  ret 1.0 + r + (r2 * p)
+.end
+
+// exp2 pour f64 : 2^x = 2^k * 2^f avec x = k + f, f in [-0.5,0.5]
+fn exp2_64_impl(x: f64) -> f64
+  if basic.is_nan(x)
+    ret x
+  .end
+  if basic.is_inf(x)
+    if x > 0.0
+      ret x
+    .end
+    ret 0.0
+  .end
+
+  // Bornes approximatives exp2 overflow/underflow (f64):
+  // 2^1024 overflow, 2^-1075 underflow (subnormals)
+  if x > 1024.0
+    ret basic.inf_f64()
+  .end
+  if x < -1075.0
+    ret 0.0
+  .end
+
+  let k_f: f64 = nearbyint_f64(x)
+  let k: i32 = to_i32_saturate(k_f)
+  let f: f64 = x - k_f
+
+  // 2^f = exp(f * ln2)
+  let t: f64 = f * LN2
+  let ef: f64 = exp_r_poly_f64(t)
+
+  ret basic.scalb(ef, k)
+.end
+
+// expm1 f64 : exp(x)-1 avec précision sur petits x
+fn expm1_64_impl(x: f64) -> f64
+  if basic.is_nan(x)
+    ret x
+  .end
+  if basic.is_inf(x)
+    if x > 0.0
+      ret x // +inf - 1 = +inf
+    .end
+    ret -1.0 // exp(-inf)-1 = -1
+  .end
+
+  // Très petit: série expm1(x) ≈ x + x^2/2 + x^3/6 + ...
+  if basic.abs(x) < EXPM1_TINY
+    ret expm1_series_f64(x)
+  .end
+
+  // Saturations exp avant de soustraire 1
+  if x > EXP_OVERFLOW_X
+    ret basic.inf_f64()
+  .end
+  if x < EXP_UNDERFLOW_X
+    ret -1.0
+  .end
+
+  // On calcule exp via range reduction, puis -1
+  let e: f64 = exp64_impl(x)
+  ret e - 1.0
+.end
+
+fn expm1_series_f64(x: f64) -> f64
+  // Série tronquée: x + x^2/2 + x^3/6 + x^4/24 + x^5/120
+  let x2: f64 = x * x
+  let x3: f64 = x2 * x
+  let x4: f64 = x2 * x2
+  let x5: f64 = x4 * x
+
+  ret x
+    + x2 * 0.5
+    + x3 * 0.16666666666666666
+    + x4 * 0.041666666666666664
+    + x5 * 0.008333333333333333
+.end
+
+// -----------------------------
+// Impl exp f32
+// -----------------------------
+fn exp32_impl(x: f32) -> f32
+  if basic.is_nan_f32(x)
+    ret x
+  .end
+  if basic.is_inf_f32(x)
+    if x > 0.0
+      ret x
+    .end
+    ret 0.0
+  .end
+
+  if x > EXP_OVERFLOW_X_F
+    ret basic.inf_f32()
+  .end
+  if x < EXP_UNDERFLOW_X_F
+    ret 0.0
+  .end
+
+  if basic.abs_f32(x) < 1.0e-6
+    ret 1.0 + x
+  .end
+
+  let k_f: f32 = nearbyint_f32(x * INV_LN2_F)
+  let k: i32 = to_i32_saturate_f32(k_f)
+
+  // r = x - k*ln2 (pas de split en f32)
+  let r: f32 = x - k_f * LN2_F
+
+  let er: f32 = exp_r_poly_f32(r)
+
+  ret basic.scalb_f32(er, k)
+.end
+
+fn exp_r_poly_f32(r: f32) -> f32
+  let r2: f32 = r * r
+
+  const C2: f32 = 0.5
+  const C3: f32 = 0.16666667
+  const C4: f32 = 0.041666668
+  const C5: f32 = 0.008333334
+  const C6: f32 = 0.001388889
+  const C7: f32 = 0.0001984127
+
+  let p: f32 =
+    (((((C7 * r + C6) * r + C5) * r + C4) * r + C3) * r + C2)
+
+  ret 1.0 + r + (r2 * p)
+.end
+
+fn exp2_32_impl(x: f32) -> f32
+  if basic.is_nan_f32(x)
+    ret x
+  .end
+  if basic.is_inf_f32(x)
+    if x > 0.0
+      ret x
+    .end
+    ret 0.0
+  .end
+
+  // bornes f32: 2^128 overflow, 2^-150 underflow approx
+  if x > 128.0
+    ret basic.inf_f32()
+  .end
+  if x < -150.0
+    ret 0.0
+  .end
+
+  let k_f: f32 = nearbyint_f32(x)
+  let k: i32 = to_i32_saturate_f32(k_f)
+  let f: f32 = x - k_f
+
+  let t: f32 = f * LN2_F
+  let ef: f32 = exp_r_poly_f32(t)
+
+  ret basic.scalb_f32(ef, k)
+.end
+
+fn expm1_32_impl(x: f32) -> f32
+  if basic.is_nan_f32(x)
+    ret x
+  .end
+  if basic.is_inf_f32(x)
+    if x > 0.0
+      ret x
+    .end
+    ret -1.0
+  .end
+
+  if basic.abs_f32(x) < 1.0e-4
+    ret expm1_series_f32(x)
+  .end
+
+  if x > EXP_OVERFLOW_X_F
+    ret basic.inf_f32()
+  .end
+  if x < EXP_UNDERFLOW_X_F
+    ret -1.0
+  .end
+
+  let e: f32 = exp32_impl(x)
+  ret e - 1.0
+.end
+
+fn expm1_series_f32(x: f32) -> f32
+  let x2: f32 = x * x
+  let x3: f32 = x2 * x
+  let x4: f32 = x2 * x2
+  ret x + x2 * 0.5 + x3 * 0.16666667 + x4 * 0.041666668
+.end
+
+// -----------------------------
+// Helpers (conversion + rounding)
+// -----------------------------
+fn nearbyint_f64(x: f64) -> f64
+  // Fallback: round-to-nearest-ties-to-even si basic.nearbyint existe.
+  // Sinon, approximation via floor(x+0.5) pour x>=0 et ceil(x-0.5) pour x<0.
+  if basic.has_nearbyint_f64()
+    ret basic.nearbyint(x)
+  .end
+
+  if x >= 0.0
+    ret basic.floor(x + 0.5)
+  .end
+  // ceil(x - 0.5) = -floor(-x + 0.5)
+  ret -basic.floor((-x) + 0.5)
+.end
+
+fn nearbyint_f32(x: f32) -> f32
+  if basic.has_nearbyint_f32()
+    ret basic.nearbyint_f32(x)
+  .end
+  if x >= 0.0
+    ret basic.floor_f32(x + 0.5)
+  .end
+  ret -basic.floor_f32((-x) + 0.5)
+.end
+
+fn to_i32_saturate(x: f64) -> i32
+  if x > 2147483647.0
+    ret 2147483647
+  .end
+  if x < -2147483648.0
+    ret -2147483648
+  .end
+  ret basic.trunc_i32(x)
+.end
+
+fn to_i32_saturate_f32(x: f32) -> i32
+  if x > 2147483647.0
+    ret 2147483647
+  .end
+  if x < -2147483648.0
+    ret -2147483648
+  .end
+  ret basic.trunc_i32_f32(x)
+.end
+
+// -----------------------------
+// Tests (smoke + propriétés)
+// -----------------------------
+pub fn test_exp_log_exp_smoke() -> void
+  // exactitudes de base
+  assert_close_f64(exp(0.0), 1.0, 0.0)
+  assert_close_f64(exp(LN2), 2.0, 1e-12)
+  assert_close_f64(exp(-LN2), 0.5, 1e-12)
+
+  assert_close_f64(exp2(0.0), 1.0, 0.0)
+  assert_close_f64(exp2(1.0), 2.0, 1e-12)
+  assert_close_f64(exp2(-1.0), 0.5, 1e-12)
+
+  assert_close_f64(exp10(0.0), 1.0, 0.0)
+  assert_close_f64(exp10(1.0), 10.0, 1e-11)
+
+  // expm1 précision proche de 0
+  assert_close_f64(expm1(1e-12), 1e-12, 1e-24)
+  assert_close_f64(expm1(-1e-12), -1e-12, 1e-24)
+
+  // monotonicité locale
+  let a: f64 = exp(0.1)
+  let b: f64 = exp(0.1000000001)
+  assert_true(b > a)
+
+  // cas spéciaux
+  let nan: f64 = basic.nan_f64()
+  assert_true(basic.is_nan(exp(nan)))
+  assert_true(exp(basic.inf_f64()) == basic.inf_f64())
+  assert_true(exp(-basic.inf_f64()) == 0.0)
+
+  // f32
+  assert_close_f32(exp_f32(0.0), 1.0, 0.0)
+  assert_close_f32(exp2_f32(1.0), 2.0, 1e-6)
+  assert_close_f32(exp10_f32(1.0), 10.0, 1e-5)
+.end
+
+fn assert_true(cond: bool) -> void
+  if !cond
+    basic.panic("assert_true failed")
+  .end
+.end
+
+fn assert_close_f64(x: f64, y: f64, tol: f64) -> void
+  // tol absolue + relative soft
+  let d: f64 = basic.abs(x - y)
+  let t: f64 = tol + 1e-12 * basic.max(basic.abs(x), basic.abs(y))
+  if d > t
+    basic.panic("assert_close_f64 failed")
+  .end
+.end
+
+fn assert_close_f32(x: f32, y: f32, tol: f32) -> void
+  let d: f32 = basic.abs_f32(x - y)
+  let t: f32 = tol + 1e-5 * basic.max_f32(basic.abs_f32(x), basic.abs_f32(y))
+  if d > t
+    basic.panic("assert_close_f32 failed")
+  .end
 .end
