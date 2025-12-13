@@ -1,3 +1,469 @@
-module std.math.complex.abs_arg
+module jmath.complex.abs_arg
+
+# ============================================================================
+# complex.abs_arg – magnitude (abs) & argument (arg) robustes pour complexes
+#
+# Objectifs :
+#   - abs(z) robuste (évite overflow/underflow) : hypot stable
+#   - arg(z) robuste : atan2 stable (avec options : approx rapide / précise / cordic)
+#   - conversions polaire <-> cartésien
+#   - normalisations d’angles
+#   - tests smoke + cas limites
+#
+# Dépendances :
+#   - Optionnel : jmath.precise_math (atan2_precise, sin/cos précis)
+#   - Optionnel : algorithms.fast_math (atan2 rapide)
+#   - Ici : on embarque des implémentations internes minimales (sans import)
+#
+# Conventions :
+#   - Pas d’accolades, blocs en `.end`
+#   - Pas d’I/O
+# ============================================================================
+
+# ---------------------------------
+# Constantes
+# ---------------------------------
+
+const PI      : f64 = 3.141592653589793238462643383279502884
+const TAU     : f64 = 6.283185307179586476925286766559005768
+const HALF_PI : f64 = 1.570796326794896619231321691639751442
+
+# ---------------------------------
+# Types
+# ---------------------------------
+
+struct Complex
+  re : f64
+  im : f64
+.end
+
+struct Polar
+  r : f64
+  theta : f64
+.end
+
+enum ArgMode
+  # Approximations rapides
+  Fast
+  # Plus robuste (réduction + séries)
+  Precise
+  # Bridge cordic si dispo (ici fallback)
+  Cordic
+.end
+
+struct ArgCfg
+  mode : ArgMode
+  # si mode=Cordic, nb iters ; sinon ignoré
+  cordic_iters : i32
+.end
+
+fn arg_cfg_fast() -> ArgCfg
+  ret ArgCfg { mode: ArgMode.Fast, cordic_iters: 32 }
+.end
+
+fn arg_cfg_precise() -> ArgCfg
+  ret ArgCfg { mode: ArgMode.Precise, cordic_iters: 40 }
+.end
+
+fn arg_cfg_cordic(iters: i32) -> ArgCfg
+  ret ArgCfg { mode: ArgMode.Cordic, cordic_iters: iters }
+.end
+
+# ---------------------------------
+# Utils
+# ---------------------------------
+
+fn abs_f64(x: f64) -> f64
+  if x < 0.0 ret -x .end
+  ret x
+.end
+
+fn max_f64(a: f64, b: f64) -> f64
+  if a > b ret a .end
+  ret b
+.end
+
+fn is_finite(x: f64) -> bool
+  if x > 1e308 ret false .end
+  if x < -1e308 ret false .end
+  ret true
+.end
+
+fn wrap_angle_pi(theta: f64) -> f64
+  let mut t = theta
+  while t <= -PI
+    t = t + TAU
+  .end
+  while t > PI
+    t = t - TAU
+  .end
+  ret t
+.end
+
+fn wrap_angle_0_tau(theta: f64) -> f64
+  let mut t = theta
+  while t < 0.0
+    t = t + TAU
+  .end
+  while t >= TAU
+    t = t - TAU
+  .end
+  ret t
+.end
+
+fn copysign_f64(mag: f64, sgn: f64) -> f64
+  if sgn < 0.0 ret -abs_f64(mag) .end
+  ret abs_f64(mag)
+.end
+
+# ---------------------------------
+# Robust hypot (abs)
+# ---------------------------------
+# abs(z)=sqrt(re^2+im^2) robuste :
+#   - mise à l’échelle par max(|re|,|im|)
+#   - hypot = m * sqrt((re/m)^2 + (im/m)^2)
+#
+# Note : sqrt via Newton fallback (stable).
+fn sqrt_newton(x: f64) -> f64
+  if x <= 0.0
+    if x == 0.0 ret 0.0 .end
+    ret 0.0
+  .end
+
+  # guess
+  let mut y = x
+  if y > 1.0
+    y = y * 0.5
+  .end
+  if y < 1.0
+    y = 1.0
+  .end
+
+  let mut i = 0
+  while i < 12
+    y = 0.5 * (y + x / y)
+    i = i + 1
+  .end
+  ret y
+.end
+
+fn hypot_robust(a: f64, b: f64) -> f64
+  let aa = abs_f64(a)
+  let bb = abs_f64(b)
+  let m = max_f64(aa, bb)
+  if m == 0.0
+    ret 0.0
+  .end
+  let ra = aa / m
+  let rb = bb / m
+  ret m * sqrt_newton(ra*ra + rb*rb)
+.end
+
+fn abs_complex(z: Complex) -> f64
+  ret hypot_robust(z.re, z.im)
+.end
+
+# ---------------------------------
+# atan / atan2 (fast)
+# ---------------------------------
+
+const ATAN_A : f64 = 1.0
+const ATAN_B : f64 = 0.280872
+const ATAN_C : f64 = 0.8284
+const ATAN_D : f64 = 0.1333
+
+fn atan_rational(x: f64) -> f64
+  let x2 = x * x
+  let num = x * (ATAN_A + ATAN_B * x2)
+  let den = 1.0 + ATAN_C * x2 + ATAN_D * x2 * x2
+  ret num / den
+.end
+
+fn atan_fast(x: f64) -> f64
+  let ax = abs_f64(x)
+  if ax < 1e-18 ret x .end
+  if ax > 1.0
+    let t = atan_rational(1.0 / ax)
+    ret copysign_f64(HALF_PI - t, x)
+  .end
+  ret atan_rational(x)
+.end
+
+fn atan2_fast(y: f64, x: f64) -> f64
+  if x > 0.0
+    ret atan_fast(y / x)
+  .end
+  if x < 0.0
+    if y >= 0.0
+      ret atan_fast(y / x) + PI
+    .end
+    ret atan_fast(y / x) - PI
+  .end
+  if y > 0.0 ret HALF_PI .end
+  if y < 0.0 ret -HALF_PI .end
+  ret 0.0
+.end
+
+# ---------------------------------
+# atan2 (precise-ish) + range reduction light
+# ---------------------------------
+
+fn floor_f64(x: f64) -> f64
+  let i = x as i64
+  let fi = i as f64
+  if fi > x
+    ret (i - 1) as f64
+  .end
+  ret fi
+.end
+
+const PI_HI : f64 = 3.141592653589793116
+const PI_LO : f64 = 1.224646799147353207e-16
+
+fn reduce_angle_half_pi(theta: f64) -> (f64, i32)
+  let inv = 2.0 / PI
+  let kf = floor_f64(theta * inv + 0.5)
+  let k = kf as i32
+
+  let kf64 = k as f64
+  let p2_hi = 0.5 * PI_HI
+  let p2_lo = 0.5 * PI_LO
+
+  let r1 = theta - kf64 * p2_hi
+  let r2 = r1 - kf64 * p2_lo
+  ret (r2, k)
+.end
+
+fn atan2_precise(y: f64, x: f64) -> f64
+  # On s'appuie sur atan_fast (rational) mais avec correction quadrant stricte.
+  # Pour des besoins plus “mathlib”, brancher vers jmath.precise_math.atan2_precise.
+  let a = atan2_fast(y, x)
+  # wrap via split pi si nécessaire (ici simple)
+  ret wrap_angle_pi(a)
+.end
+
+# ---------------------------------
+# sin/cos minimal (pour polaire)
+# ---------------------------------
+# On fournit une paire sin/cos “suffisante” :
+#   - réduction quadrant + Taylor 9/8 sur [-pi/4, pi/4]
+# Pour exactitude top, importer sin/cos de precise_math ou cordic.
+
+fn wrap_pi(x: f64) -> f64
+  let mut t = x
+  while t <= -PI
+    t = t + TAU
+  .end
+  while t > PI
+    t = t - TAU
+  .end
+  ret t
+.end
+
+fn sin_poly(r: f64) -> f64
+  let x = r
+  let x2 = x*x
+  let x3 = x2*x
+  let x5 = x3*x2
+  let x7 = x5*x2
+  let x9 = x7*x2
+  ret x - x3*(1.0/6.0) + x5*(1.0/120.0) - x7*(1.0/5040.0) + x9*(1.0/362880.0)
+.end
+
+fn cos_poly(r: f64) -> f64
+  let x2 = r*r
+  let x4 = x2*x2
+  let x6 = x4*x2
+  let x8 = x4*x4
+  ret 1.0 - 0.5*x2 + x4*(1.0/24.0) - x6*(1.0/720.0) + x8*(1.0/40320.0)
+.end
+
+fn sincos_min(theta: f64) -> (f64, f64)
+  # reduce to r in [-pi/2, pi/2] with quadrant k
+  let rr = reduce_angle_half_pi(theta)
+  let mut r = rr.0
+  let k = rr.1
+
+  # fold to [-pi/4, pi/4]
+  let mut swap = false
+  if r > (0.5*HALF_PI)
+    r = HALF_PI - r
+    swap = true
+  .end
+  if r < -(0.5*HALF_PI)
+    r = -HALF_PI - r
+    swap = true
+  .end
+
+  let s0 = sin_poly(r)
+  let c0 = cos_poly(r)
+
+  let mut s = s0
+  let mut c = c0
+  if swap
+    s = c0
+    c = s0
+  .end
+
+  let q = k & 3
+  if q == 0 ret (s, c) .end
+  if q == 1 ret (c, -s) .end
+  if q == 2 ret (-s, -c) .end
+  ret (-c, s)
+.end
+
+# ---------------------------------
+# arg(z) dispatcher
+# ---------------------------------
+
+fn arg_complex(z: Complex, cfg: ArgCfg) -> f64
+  if cfg.mode == ArgMode.Fast
+    ret atan2_fast(z.im, z.re)
+  .end
+  if cfg.mode == ArgMode.Precise
+    ret atan2_precise(z.im, z.re)
+  .end
+  # Cordic : fallback -> precise
+  # (À remplacer par appel jmath/algorithms/cordic si tu l’actives)
+  ret atan2_precise(z.im, z.re)
+.end
+
+# ---------------------------------
+# Polar conversions
+# ---------------------------------
+
+fn to_polar(z: Complex, cfg: ArgCfg) -> Polar
+  let r = abs_complex(z)
+  let th = arg_complex(z, cfg)
+  ret Polar { r: r, theta: th }
+.end
+
+fn from_polar(p: Polar) -> Complex
+  let sc = sincos_min(p.theta)
+  ret Complex { re: p.r * sc.1, im: p.r * sc.0 }
+.end
+
+fn normalize_polar(mut p: Polar) -> Polar
+  if p.r < 0.0
+    p.r = -p.r
+    p.theta = wrap_angle_pi(p.theta + PI)
+    ret p
+  .end
+  p.theta = wrap_angle_pi(p.theta)
+  ret p
+.end
+
+# ---------------------------------
+# Convenience API
+# ---------------------------------
+
+fn complex(re: f64, im: f64) -> Complex
+  ret Complex { re: re, im: im }
+.end
+
+fn abs(re: f64, im: f64) -> f64
+  ret hypot_robust(re, im)
+.end
+
+fn arg(re: f64, im: f64, cfg: ArgCfg) -> f64
+  ret arg_complex(Complex { re: re, im: im }, cfg)
+.end
+
+fn abs_arg(z: Complex, cfg: ArgCfg) -> (f64, f64)
+  ret (abs_complex(z), arg_complex(z, cfg))
+.end
+
+# ---------------------------------
+# Edge cases & helpers
+# ---------------------------------
+
+fn is_zero(z: Complex) -> bool
+  ret z.re == 0.0 && z.im == 0.0
+.end
+
+fn is_nan_like(x: f64) -> bool
+  # placeholder portable: NaN != NaN
+  ret x != x
+.end
+
+fn abs_arg_safe(z: Complex, cfg: ArgCfg) -> (f64, f64)
+  # Si NaN, on propage; si zéro, arg=0
+  if is_nan_like(z.re) || is_nan_like(z.im)
+    ret (z.re + z.im, z.re + z.im)
+  .end
+  if is_zero(z)
+    ret (0.0, 0.0)
+  .end
+  ret abs_arg(z, cfg)
+.end
+
+# ---------------------------------
+# Tests
+# ---------------------------------
+
+fn approx_eq(a: f64, b: f64, eps: f64) -> bool
+  ret abs_f64(a - b) <= eps
+.end
+
+fn test_abs_basic()
+  let z = complex(3.0, 4.0)
+  let r = abs_complex(z)
+  if !approx_eq(r, 5.0, 1e-10)
+    panic("abs 3-4-5 failed")
+  .end
+.end
+
+fn test_abs_scale()
+  # Large magnitude should not overflow in hypot_robust
+  let z = complex(1e308, 1e308)
+  let r = abs_complex(z)
+  if !is_finite(r)
+    panic("abs overflow")
+  .end
+.end
+
+fn test_arg_quadrants()
+  let cfg = arg_cfg_fast()
+
+  let a0 = arg(1.0, 0.0, cfg)
+  if abs_f64(a0) > 1e-12 panic("arg(1,0)") .end
+
+  let a1 = arg(0.0, 1.0, cfg)
+  if abs_f64(a1 - HALF_PI) > 2e-3 panic("arg(0,1)") .end
+
+  let a2 = arg(-1.0, 0.0, cfg)
+  if abs_f64(abs_f64(a2) - PI) > 2e-3 panic("arg(-1,0)") .end
+
+  let a3 = arg(0.0, -1.0, cfg)
+  if abs_f64(a3 + HALF_PI) > 2e-3 panic("arg(0,-1)") .end
+.end
+
+fn test_polar_roundtrip()
+  let cfg = arg_cfg_precise()
+  let z = complex(0.25, -0.75)
+  let p = to_polar(z, cfg)
+  let z2 = from_polar(p)
+  # roundtrip approximatif (sin/cos min)
+  if abs_f64(z2.re - z.re) > 2e-3 || abs_f64(z2.im - z.im) > 2e-3
+    panic("polar roundtrip failed")
+  .end
+.end
+
+fn test_abs_arg_safe()
+  let cfg = arg_cfg_fast()
+  let z0 = complex(0.0, 0.0)
+  let aa = abs_arg_safe(z0, cfg)
+  if aa.0 != 0.0 || aa.1 != 0.0
+    panic("abs_arg_safe zero failed")
+  .end
+.end
+
+fn run_all_tests()
+  test_abs_basic()
+  test_abs_scale()
+  test_arg_quadrants()
+  test_polar_roundtrip()
+  test_abs_arg_safe()
+.end
 
 .end

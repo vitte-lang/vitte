@@ -1,3 +1,351 @@
-module std.math.core.nextafter
+# nextafter.vitte
+# -----------------------------------------------------------------------------
+# IEEE-754 nextafter / nextup / nextdown
+# - nextafter_f32(x, y): prochain float après x en direction de y
+# - nextafter_f64(x, y): idem double
+# - nextup/nextdown: wrappers directionnels (vers +inf / -inf)
+# - helpers bits (to_bits/from_bits), classification (nan/inf/zero)
+#
+# Dépendances: core/basic.vitte (Error/Result/Option/assert, constants)
+# Contrainte: pas d'accolades, blocs en .end
+# -----------------------------------------------------------------------------
 
+mod core.nextafter
+
+use core.basic
+use core.compare
+
+# -----------------------------------------------------------------------------
+# Constants IEEE-754 (bits)
+# -----------------------------------------------------------------------------
+# f32:
+# +inf  = 0x7F800000
+# -inf  = 0xFF800000
+# max   = 0x7F7FFFFF
+# minsub= 0x00000001 (plus petit subnormal positif)
+#
+# f64:
+# +inf  = 0x7FF0000000000000
+# -inf  = 0xFFF0000000000000
+# max   = 0x7FEFFFFFFFFFFFFF
+# minsub= 0x0000000000000001
+
+const F32_POS_INF_BITS: U32 = 2139095040
+const F32_NEG_INF_BITS: U32 = 4286578688
+const F32_MAX_FIN_BITS: U32 = 2139095039
+const F32_MIN_SUB_BITS: U32 = 1
+
+const F64_POS_INF_BITS: U64 = 9218868437227405312
+const F64_NEG_INF_BITS: U64 = 18442240474082181120
+const F64_MAX_FIN_BITS: U64 = 9218868437227405311
+const F64_MIN_SUB_BITS: U64 = 1
+
+# -----------------------------------------------------------------------------
+# Bitcasts + predicates
+# -----------------------------------------------------------------------------
+
+fn f32_to_bits(x: F32) -> U32
+  ret _intrinsic_f32_to_bits(x)
 .end
+
+fn f32_from_bits(u: U32) -> F32
+  ret _intrinsic_f32_from_bits(u)
+.end
+
+fn f64_to_bits(x: F64) -> U64
+  ret _intrinsic_f64_to_bits(x)
+.end
+
+fn f64_from_bits(u: U64) -> F64
+  ret _intrinsic_f64_from_bits(u)
+.end
+
+fn f32_is_nan(x: F32) -> Bool
+  ret _intrinsic_f32_is_nan(x)
+.end
+
+fn f64_is_nan(x: F64) -> Bool
+  ret _intrinsic_f64_is_nan(x)
+.end
+
+fn f32_is_inf(x: F32) -> Bool
+  let u: U32 = f32_to_bits(x)
+  ret u == F32_POS_INF_BITS || u == F32_NEG_INF_BITS
+.end
+
+fn f64_is_inf(x: F64) -> Bool
+  let u: U64 = f64_to_bits(x)
+  ret u == F64_POS_INF_BITS || u == F64_NEG_INF_BITS
+.end
+
+fn f32_is_zero(x: F32) -> Bool
+  # couvre +0.0 et -0.0
+  ret x == 0.0
+.end
+
+fn f64_is_zero(x: F64) -> Bool
+  ret x == 0.0
+.end
+
+fn f32_signbit(x: F32) -> Bool
+  ret (f32_to_bits(x) >> 31) == 1
+.end
+
+fn f64_signbit(x: F64) -> Bool
+  ret (f64_to_bits(x) >> 63) == 1
+.end
+
+# -----------------------------------------------------------------------------
+# nextafter — cœur
+# -----------------------------------------------------------------------------
+
+fn nextafter_f32(x: F32, y: F32) -> F32
+  # NaN propagation
+  if f32_is_nan(x)
+    ret x
+  .end
+  if f32_is_nan(y)
+    ret y
+  .end
+
+  # égalité (inclut +0 == -0)
+  if x == y
+    ret y
+  .end
+
+  # Si x est 0, aller vers le plus petit subnormal avec signe selon y
+  if f32_is_zero(x)
+    if y > 0.0
+      ret f32_from_bits(F32_MIN_SUB_BITS)
+    .end
+    if y < 0.0
+      ret f32_from_bits(F32_MIN_SUB_BITS | 2147483648) # set sign bit
+    .end
+    # y == 0 déjà traité par x==y, mais safe fallback
+    ret y
+  .end
+
+  let ux: U32 = f32_to_bits(x)
+
+  # Direction: vers y
+  # Algorithme IEEE classique via incr/decr sur la représentation sign-magnitude
+  # Règle:
+  # - si x < y:  (aller "vers le haut")
+  #     - si x est négatif: décrémenter bits (devient moins négatif)
+  #     - sinon: incrémenter bits
+  # - si x > y:  (aller "vers le bas")
+  #     - si x est négatif: incrémenter bits (devient plus négatif)
+  #     - sinon: décrémenter bits
+  let inc: Bool = false
+
+  if x < y
+    if f32_signbit(x)
+      inc = false
+    .end
+    else
+      inc = true
+    .end
+  .end
+  else
+    # x > y
+    if f32_signbit(x)
+      inc = true
+    .end
+    else
+      inc = false
+    .end
+  .end
+
+  let u: U32 = ux
+  if inc
+    u = u + 1
+  .end
+  else
+    u = u - 1
+  .end
+
+  ret f32_from_bits(u)
+.end
+
+fn nextafter_f64(x: F64, y: F64) -> F64
+  if f64_is_nan(x)
+    ret x
+  .end
+  if f64_is_nan(y)
+    ret y
+  .end
+
+  if x == y
+    ret y
+  .end
+
+  if f64_is_zero(x)
+    if y > 0.0
+      ret f64_from_bits(F64_MIN_SUB_BITS)
+    .end
+    if y < 0.0
+      ret f64_from_bits(F64_MIN_SUB_BITS | 9223372036854775808)
+    .end
+    ret y
+  .end
+
+  let ux: U64 = f64_to_bits(x)
+  let inc: Bool = false
+
+  if x < y
+    if f64_signbit(x)
+      inc = false
+    .end
+    else
+      inc = true
+    .end
+  .end
+  else
+    if f64_signbit(x)
+      inc = true
+    .end
+    else
+      inc = false
+    .end
+  .end
+
+  let u: U64 = ux
+  if inc
+    u = u + 1
+  .end
+  else
+    u = u - 1
+  .end
+
+  ret f64_from_bits(u)
+.end
+
+# -----------------------------------------------------------------------------
+# nextup / nextdown
+# -----------------------------------------------------------------------------
+
+fn nextup_f32(x: F32) -> F32
+  ret nextafter_f32(x, _intrinsic_f32_pos_inf())
+.end
+
+fn nextdown_f32(x: F32) -> F32
+  ret nextafter_f32(x, _intrinsic_f32_neg_inf())
+.end
+
+fn nextup_f64(x: F64) -> F64
+  ret nextafter_f64(x, _intrinsic_f64_pos_inf())
+.end
+
+fn nextdown_f64(x: F64) -> F64
+  ret nextafter_f64(x, _intrinsic_f64_neg_inf())
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers: ulp step / neighbors
+# -----------------------------------------------------------------------------
+
+fn ulp_step_f32(x: F32) -> F32
+  # distance vers nextup (utile pour analyse)
+  let nx: F32 = nextup_f32(x)
+  ret nx - x
+.end
+
+fn ulp_step_f64(x: F64) -> F64
+  let nx: F64 = nextup_f64(x)
+  ret nx - x
+.end
+
+fn neighbors_f64(x: F64) -> (F64, F64)
+  # (prev, next)
+  ret (nextdown_f64(x), nextup_f64(x))
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests
+# -----------------------------------------------------------------------------
+
+fn _t_zero_to_one_f64() -> void
+  let z: F64 = 0.0
+  let a: F64 = nextafter_f64(z, 1.0)
+  assert(f64_to_bits(a) == F64_MIN_SUB_BITS, "nextafter_f64(0,1)=min subnormal")
+.end
+
+fn _t_inf_to_zero_f64() -> void
+  let inf: F64 = _intrinsic_f64_pos_inf()
+  let a: F64 = nextafter_f64(inf, 0.0)
+  assert(f64_to_bits(a) == F64_MAX_FIN_BITS, "nextafter_f64(+inf,0)=max finite")
+.end
+
+fn _t_max_to_inf_f64() -> void
+  let max: F64 = f64_from_bits(F64_MAX_FIN_BITS)
+  let a: F64 = nextafter_f64(max, _intrinsic_f64_pos_inf())
+  assert(f64_to_bits(a) == F64_POS_INF_BITS, "nextafter_f64(max,+inf)=+inf")
+.end
+
+fn _t_one_to_zero_f64() -> void
+  let a: F64 = nextafter_f64(1.0, 0.0)
+  assert(a < 1.0, "nextafter_f64(1,0) < 1")
+.end
+
+fn nextafter_smoke_tests() -> void
+  _t_zero_to_one_f64()
+  _t_inf_to_zero_f64()
+  _t_max_to_inf_f64()
+  _t_one_to_zero_f64()
+.end
+
+# -----------------------------------------------------------------------------
+# Intrinsics placeholders (à binder au runtime/VM)
+# -----------------------------------------------------------------------------
+# Obligatoires:
+# - f32_to_bits / f32_from_bits
+# - f64_to_bits / f64_from_bits
+# - isnan
+# Optionnels:
+# - pos_inf / neg_inf constants (sinon reconstruire via bits)
+# -----------------------------------------------------------------------------
+
+fn _intrinsic_f32_to_bits(x: F32) -> U32
+  let _ = x
+  ret 0
+.end
+
+fn _intrinsic_f32_from_bits(u: U32) -> F32
+  let _ = u
+  ret 0.0
+.end
+
+fn _intrinsic_f64_to_bits(x: F64) -> U64
+  let _ = x
+  ret 0
+.end
+
+fn _intrinsic_f64_from_bits(u: U64) -> F64
+  let _ = u
+  ret 0.0
+.end
+
+fn _intrinsic_f32_is_nan(x: F32) -> Bool
+  let _ = x
+  ret false
+.end
+
+fn _intrinsic_f64_is_nan(x: F64) -> Bool
+  let _ = x
+  ret false
+.end
+
+fn _intrinsic_f32_pos_inf() -> F32
+  ret f32_from_bits(F32_POS_INF_BITS)
+.end
+
+fn _intrinsic_f32_neg_inf() -> F32
+  ret f32_from_bits(F32_NEG_INF_BITS)
+.end
+
+fn _intrinsic_f64_pos_inf() -> F64
+  ret f64_from_bits(F64_POS_INF_BITS)
+.end
+
+fn _intrinsic_f64_neg_inf() -> F64
+  ret f64_from_bits
