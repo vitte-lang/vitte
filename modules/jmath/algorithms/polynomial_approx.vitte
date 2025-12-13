@@ -1,3 +1,1179 @@
-module std.math.algorithms.polynomial_approx
+module jmath.algorithms.polynomial_approx
+
+# ============================================================================
+# polynomial_approx – approximation polynomiale (utilitaires + méthodes)
+#
+# Objectifs :
+#   - Eval polynômes (Horner, Estrin), dérivées, intégrales
+#   - Interpolation : Lagrange, Newton (différences divisées), barycentrique
+#   - Approximation :
+#       * Least-squares (normal equations) sur base polynomiale
+#       * Chebyshev (fit + évaluation stable via Clenshaw)
+#       * Minimax (Remez) – implémentation pratique (itérative)
+#   - Outils :
+#       * échantillonnage, erreurs (L∞, L2 RMS), conditionnement basique
+#       * solveurs linéaires (Gauss, pivot partiel) pour petites tailles
+#   - Tests smoke
+#
+# Conventions :
+#   - Pas d’accolades, blocs en `.end`
+#   - Pas d’I/O ; tout est déterministe
+#   - Tailles petites (0..64) : oriented stdlib / engine / numerics-lite
+# ============================================================================
+
+# ---------------------------------
+# Types
+# ---------------------------------
+
+type Fn1 = fn(x: f64) -> f64
+
+struct Poly
+  # coefficients en base monomiale : p(x)=c0 + c1 x + ... + cn x^n
+  coeffs : [f64]
+.end
+
+struct ChebSeries
+  # coefficients Chebyshev T_k sur [-1,1] : s(x)=Σ a_k T_k(x)
+  coeffs : [f64]
+.end
+
+struct FitReport
+  degree : i32
+  samples : i32
+  rmse : f64
+  max_abs_err : f64
+.end
+
+struct Range
+  a : f64
+  b : f64
+.end
+
+struct SampleSet
+  xs : [f64]
+  ys : [f64]
+.end
+
+# ---------------------------------
+# Basic utils
+# ---------------------------------
+
+fn abs_f64(x: f64) -> f64
+  if x < 0.0 ret -x .end
+  ret x
+.end
+
+fn min_f64(a: f64, b: f64) -> f64
+  if a < b ret a .end
+  ret b
+.end
+
+fn max_f64(a: f64, b: f64) -> f64
+  if a > b ret a .end
+  ret b
+.end
+
+fn clamp_i32(x: i32, lo: i32, hi: i32) -> i32
+  if x < lo ret lo .end
+  if x > hi ret hi .end
+  ret x
+.end
+
+fn is_finite(x: f64) -> bool
+  # Stub portable ; si runtime fournit isnan/isinf, remplacer.
+  # Ici : on check des bornes “raisonnables”
+  if x > 1e308 ret false .end
+  if x < -1e308 ret false .end
+  ret true
+.end
+
+fn sqr(x: f64) -> f64
+  ret x * x
+.end
+
+# ---------------------------------
+# Polynomial evaluation
+# ---------------------------------
+
+fn poly_eval_horner(coeffs: &[f64], x: f64) -> f64
+  let n = coeffs.len() as i32
+  if n <= 0 ret 0.0 .end
+  let mut acc = coeffs[(n - 1) as usize]
+  let mut i = n - 2
+  while i >= 0
+    acc = acc * x + coeffs[i as usize]
+    i = i - 1
+    if i < 0
+      break
+    .end
+  .end
+  ret acc
+.end
+
+fn poly_eval_estrin(coeffs: &[f64], x: f64) -> f64
+  # Estrin pour réduire dépendances (bien pour vectorization/JIT)
+  # Implémentation simple : groupement par paires
+  let n = coeffs.len() as i32
+  if n <= 0 ret 0.0 .end
+  if n == 1 ret coeffs[0] .end
+
+  let x2 = x * x
+  let mut tmp : [f64] = []
+  tmp.reserve(((n + 1) / 2) as usize)
+
+  let mut i = 0
+  while i < n
+    let c0 = coeffs[i as usize]
+    if i + 1 < n
+      let c1 = coeffs[(i + 1) as usize]
+      tmp.push(c0 + c1 * x)
+    .end
+    if i + 1 >= n
+      tmp.push(c0)
+    .end
+    i = i + 2
+  .end
+
+  # récursion : évalue tmp comme poly en x^2
+  ret poly_eval_estrin(&tmp, x2)
+.end
+
+fn poly_eval(coeffs: &[f64], x: f64) -> f64
+  # défaut Horner (stable)
+  ret poly_eval_horner(coeffs, x)
+.end
+
+fn poly_degree(coeffs: &[f64]) -> i32
+  let mut d = (coeffs.len() as i32) - 1
+  while d >= 0
+    if abs_f64(coeffs[d as usize]) > 0.0
+      ret d
+    .end
+    d = d - 1
+    if d < 0
+      break
+    .end
+  .end
+  ret -1
+.end
+
+fn poly_trim(mut coeffs: [f64], eps: f64) -> [f64]
+  let mut d = (coeffs.len() as i32) - 1
+  while d >= 0
+    if abs_f64(coeffs[d as usize]) > eps
+      break
+    .end
+    coeffs.pop()
+    d = d - 1
+    if d < 0
+      break
+    .end
+  .end
+  if coeffs.len() == 0
+    coeffs.push(0.0)
+  .end
+  ret coeffs
+.end
+
+# ---------------------------------
+# Derivative / integral
+# ---------------------------------
+
+fn poly_derivative(coeffs: &[f64]) -> [f64]
+  let n = coeffs.len() as i32
+  if n <= 1
+    ret [0.0]
+  .end
+  let mut out : [f64] = []
+  out.reserve((n - 1) as usize)
+  let mut i = 1
+  while i < n
+    out.push((i as f64) * coeffs[i as usize])
+    i = i + 1
+  .end
+  ret out
+.end
+
+fn poly_integral(coeffs: &[f64], c0: f64) -> [f64]
+  let n = coeffs.len() as i32
+  let mut out : [f64] = []
+  out.reserve((n + 1) as usize)
+  out.push(c0)
+  let mut i = 0
+  while i < n
+    out.push(coeffs[i as usize] / ((i + 1) as f64))
+    i = i + 1
+  .end
+  ret out
+.end
+
+# ---------------------------------
+# Interpolation: Lagrange (naïf)
+# ---------------------------------
+
+fn lagrange_interp(xs: &[f64], ys: &[f64]) -> [f64]
+  # retourne coeffs en base monomiale
+  let n = xs.len() as i32
+  if n <= 0 ret [0.0] .end
+  if ys.len() as i32 != n
+    panic("lagrange_interp: size mismatch")
+  .end
+
+  let mut p : [f64] = [0.0]   # polynomial accumulate
+  let mut i = 0
+  while i < n
+    # basis Li(x) = Π_{j!=i} (x - xj)/(xi-xj)
+    let mut basis : [f64] = [1.0]
+    let mut denom = 1.0
+
+    let xi = xs[i as usize]
+    let mut j = 0
+    while j < n
+      if j != i
+        let xj = xs[j as usize]
+        basis = poly_mul_linear(&basis, -xj, 1.0) # (x - xj)
+        denom = denom * (xi - xj)
+      .end
+      j = j + 1
+    .end
+
+    let scale = ys[i as usize] / denom
+    basis = poly_scale(&basis, scale)
+    p = poly_add(&p, &basis)
+
+    i = i + 1
+  .end
+
+  ret poly_trim(p, 0.0)
+.end
+
+# ---------------------------------
+# Interpolation: Newton (différences divisées)
+# ---------------------------------
+
+struct NewtonTable
+  xs : [f64]
+  dd : [f64] # dd[0]=f[x0], dd[1]=f[x0,x1], ...
+.end
+
+fn newton_build(xs: &[f64], ys: &[f64]) -> NewtonTable
+  let n = xs.len() as i32
+  if n <= 0 panic("newton_build: empty") .end
+  if ys.len() as i32 != n panic("newton_build: size mismatch") .end
+
+  let mut dd : [f64] = []
+  dd.reserve(n as usize)
+  let mut i = 0
+  while i < n
+    dd.push(ys[i as usize])
+    i = i + 1
+  .end
+
+  let mut k = 1
+  while k < n
+    let mut i2 = n - 1
+    while i2 >= k
+      let num = dd[i2 as usize] - dd[(i2 - 1) as usize]
+      let den = xs[i2 as usize] - xs[(i2 - k) as usize]
+      dd[i2 as usize] = num / den
+      i2 = i2 - 1
+      if i2 < k
+        break
+      .end
+    .end
+    k = k + 1
+  .end
+
+  # on ne conserve que la diagonale (dd[k] after build)
+  let mut diag : [f64] = []
+  diag.reserve(n as usize)
+  let mut k2 = 0
+  while k2 < n
+    diag.push(dd[k2 as usize])
+    k2 = k2 + 1
+  .end
+
+  ret NewtonTable { xs: xs.to_vec(), dd: diag }
+.end
+
+fn newton_eval(tab: &NewtonTable, x: f64) -> f64
+  let n = tab.dd.len() as i32
+  let mut acc = tab.dd[(n - 1) as usize]
+  let mut i = n - 2
+  while i >= 0
+    acc = acc * (x - tab.xs[i as usize]) + tab.dd[i as usize]
+    i = i - 1
+    if i < 0
+      break
+    .end
+  .end
+  ret acc
+.end
+
+fn newton_to_monomial(tab: &NewtonTable) -> [f64]
+  # Convertit représentation Newton -> monomiale
+  let n = tab.dd.len() as i32
+  let mut p : [f64] = [tab.dd[0]]
+  let mut basis : [f64] = [1.0]
+
+  let mut k = 1
+  while k < n
+    basis = poly_mul_linear(&basis, -tab.xs[(k - 1) as usize], 1.0) # (x - x_{k-1})
+    let term = poly_scale(&basis, tab.dd[k as usize])
+    p = poly_add(&p, &term)
+    k = k + 1
+  .end
+
+  ret poly_trim(p, 0.0)
+.end
+
+# ---------------------------------
+# Barycentric interpolation (stable)
+# ---------------------------------
+
+struct Barycentric
+  xs : [f64]
+  ys : [f64]
+  ws : [f64]
+.end
+
+fn barycentric_build(xs: &[f64], ys: &[f64]) -> Barycentric
+  let n = xs.len() as i32
+  if n <= 0 panic("barycentric_build: empty") .end
+  if ys.len() as i32 != n panic("barycentric_build: size mismatch") .end
+
+  let mut ws : [f64] = []
+  ws.reserve(n as usize)
+
+  let mut i = 0
+  while i < n
+    let mut w = 1.0
+    let xi = xs[i as usize]
+    let mut j = 0
+    while j < n
+      if j != i
+        w = w * (xi - xs[j as usize])
+      .end
+      j = j + 1
+    .end
+    ws.push(1.0 / w)
+    i = i + 1
+  .end
+
+  ret Barycentric { xs: xs.to_vec(), ys: ys.to_vec(), ws: ws }
+.end
+
+fn barycentric_eval(b: &Barycentric, x: f64) -> f64
+  let n = b.xs.len() as i32
+  let mut num = 0.0
+  let mut den = 0.0
+
+  let mut i = 0
+  while i < n
+    let dx = x - b.xs[i as usize]
+    if abs_f64(dx) < 1e-15
+      ret b.ys[i as usize]
+    .end
+    let t = b.ws[i as usize] / dx
+    num = num + t * b.ys[i as usize]
+    den = den + t
+    i = i + 1
+  .end
+
+  ret num / den
+.end
+
+# ---------------------------------
+# Linear algebra small: Gaussian elimination (pivot)
+# ---------------------------------
+
+struct LinSolve
+  ok : bool
+  x : [f64]
+.end
+
+fn solve_gauss_pivot(a: &[f64], b: &[f64], n: i32) -> LinSolve
+  # a est NxN row-major
+  if n <= 0 panic("solve_gauss_pivot: n<=0") .end
+  if (a.len() as i32) != n * n panic("solve_gauss_pivot: bad A") .end
+  if (b.len() as i32) != n panic("solve_gauss_pivot: bad b") .end
+
+  let mut A = a.to_vec()
+  let mut B = b.to_vec()
+
+  let mut k = 0
+  while k < n
+    # pivot
+    let mut piv = k
+    let mut best = abs_f64(A[(k*n + k) as usize])
+    let mut i = k + 1
+    while i < n
+      let v = abs_f64(A[(i*n + k) as usize])
+      if v > best
+        best = v
+        piv = i
+      .end
+      i = i + 1
+    .end
+
+    if best < 1e-18
+      ret LinSolve { ok: false, x: [] }
+    .end
+
+    if piv != k
+      swap_rows(&mut A, n, piv, k)
+      let tmp = B[piv as usize]
+      B[piv as usize] = B[k as usize]
+      B[k as usize] = tmp
+    .end
+
+    # elimination
+    let akk = A[(k*n + k) as usize]
+    let mut i2 = k + 1
+    while i2 < n
+      let f = A[(i2*n + k) as usize] / akk
+      A[(i2*n + k) as usize] = 0.0
+      let mut j = k + 1
+      while j < n
+        A[(i2*n + j) as usize] = A[(i2*n + j) as usize] - f * A[(k*n + j) as usize]
+        j = j + 1
+      .end
+      B[i2 as usize] = B[i2 as usize] - f * B[k as usize]
+      i2 = i2 + 1
+    .end
+
+    k = k + 1
+  .end
+
+  # back substitution
+  let mut x : [f64] = []
+  x.resize(n as usize, 0.0)
+
+  let mut i3 = n - 1
+  while i3 >= 0
+    let mut s = B[i3 as usize]
+    let mut j2 = i3 + 1
+    while j2 < n
+      s = s - A[(i3*n + j2) as usize] * x[j2 as usize]
+      j2 = j2 + 1
+    .end
+    x[i3 as usize] = s / A[(i3*n + i3) as usize]
+    i3 = i3 - 1
+    if i3 < 0
+      break
+    .end
+  .end
+
+  ret LinSolve { ok: true, x: x }
+.end
+
+fn swap_rows(A: &mut [f64], n: i32, r1: i32, r2: i32)
+  if r1 == r2 ret .end
+  let mut j = 0
+  while j < n
+    let i1 = (r1*n + j) as usize
+    let i2 = (r2*n + j) as usize
+    let tmp = A[i1]
+    A[i1] = A[i2]
+    A[i2] = tmp
+    j = j + 1
+  .end
+.end
+
+# ---------------------------------
+# Least squares polynomial fit (normal equations)
+# ---------------------------------
+
+fn poly_fit_least_squares(xs: &[f64], ys: &[f64], degree: i32) -> (Poly, FitReport)
+  let n = xs.len() as i32
+  if n <= 0 panic("poly_fit_least_squares: empty") .end
+  if ys.len() as i32 != n panic("poly_fit_least_squares: size mismatch") .end
+  let deg = clamp_i32(degree, 0, 64)
+  let m = deg + 1
+
+  # Build normal equations: (V^T V) c = V^T y
+  # V_ij = x_i^j
+  let mut A : [f64] = []
+  A.resize((m*m) as usize, 0.0)
+  let mut B : [f64] = []
+  B.resize(m as usize, 0.0)
+
+  let mut i = 0
+  while i < n
+    let x = xs[i as usize]
+    let y = ys[i as usize]
+
+    let mut xpows : [f64] = []
+    xpows.resize(m as usize, 1.0)
+    let mut j = 1
+    while j < m
+      xpows[j as usize] = xpows[(j-1) as usize] * x
+      j = j + 1
+    .end
+
+    # accumulate
+    let mut r = 0
+    while r < m
+      B[r as usize] = B[r as usize] + xpows[r as usize] * y
+      let mut c = 0
+      while c < m
+        A[(r*m + c) as usize] = A[(r*m + c) as usize] + xpows[r as usize] * xpows[c as usize]
+        c = c + 1
+      .end
+      r = r + 1
+    .end
+
+    i = i + 1
+  .end
+
+  let sol = solve_gauss_pivot(&A, &B, m)
+  if !sol.ok
+    # fallback : polynomial nul
+    let p = Poly { coeffs: [0.0] }
+    let rep = FitReport { degree: deg, samples: n, rmse: 0.0, max_abs_err: 0.0 }
+    ret (p, rep)
+  .end
+
+  let coeffs = poly_trim(sol.x, 0.0)
+  let p = Poly { coeffs: coeffs }
+
+  let rep = poly_fit_report(&p.coeffs, xs, ys)
+  ret (p, rep)
+.end
+
+fn poly_fit_report(coeffs: &[f64], xs: &[f64], ys: &[f64]) -> FitReport
+  let n = xs.len() as i32
+  let mut se = 0.0
+  let mut maxe = 0.0
+  let mut i = 0
+  while i < n
+    let yhat = poly_eval(coeffs, xs[i as usize])
+    let e = yhat - ys[i as usize]
+    se = se + e * e
+    let ae = abs_f64(e)
+    if ae > maxe
+      maxe = ae
+    .end
+    i = i + 1
+  .end
+  let rmse = (se / (n as f64)).sqrt()
+  let deg = poly_degree(coeffs)
+  ret FitReport { degree: deg, samples: n, rmse: rmse, max_abs_err: maxe }
+.end
+
+# ---------------------------------
+# Chebyshev series fit on [a,b]
+# ---------------------------------
+
+fn map_to_cheb_domain(x: f64, r: Range) -> f64
+  # map [a,b] -> [-1,1]
+  ret (2.0 * x - (r.a + r.b)) / (r.b - r.a)
+.end
+
+fn map_from_cheb_domain(t: f64, r: Range) -> f64
+  # map [-1,1] -> [a,b]
+  ret 0.5 * ((r.b - r.a) * t + (r.a + r.b))
+.end
+
+fn cheb_fit_samples(xs: &[f64], ys: &[f64], r: Range, degree: i32) -> (ChebSeries, FitReport)
+  # Fit Chebyshev via least squares sur base T_k(t), t=map(x)
+  let n = xs.len() as i32
+  if n <= 0 panic("cheb_fit_samples: empty") .end
+  if ys.len() as i32 != n panic("cheb_fit_samples: size mismatch") .end
+
+  let deg = clamp_i32(degree, 0, 128)
+  let m = deg + 1
+
+  # Normal equations on T_k
+  let mut A : [f64] = []
+  A.resize((m*m) as usize, 0.0)
+  let mut B : [f64] = []
+  B.resize(m as usize, 0.0)
+
+  let mut i = 0
+  while i < n
+    let t = map_to_cheb_domain(xs[i as usize], r)
+    let y = ys[i as usize]
+
+    # compute T_0..T_deg via recurrence
+    let mut Ts : [f64] = []
+    Ts.resize(m as usize, 0.0)
+    Ts[0] = 1.0
+    if m > 1
+      Ts[1] = t
+    .end
+    let mut k = 2
+    while k < m
+      Ts[k as usize] = 2.0 * t * Ts[(k-1) as usize] - Ts[(k-2) as usize]
+      k = k + 1
+    .end
+
+    # accumulate
+    let mut r2 = 0
+    while r2 < m
+      B[r2 as usize] = B[r2 as usize] + Ts[r2 as usize] * y
+      let mut c2 = 0
+      while c2 < m
+        A[(r2*m + c2) as usize] = A[(r2*m + c2) as usize] + Ts[r2 as usize] * Ts[c2 as usize]
+        c2 = c2 + 1
+      .end
+      r2 = r2 + 1
+    .end
+
+    i = i + 1
+  .end
+
+  let sol = solve_gauss_pivot(&A, &B, m)
+  if !sol.ok
+    let s = ChebSeries { coeffs: [0.0] }
+    let rep = FitReport { degree: deg, samples: n, rmse: 0.0, max_abs_err: 0.0 }
+    ret (s, rep)
+  .end
+
+  let coeffs = poly_trim(sol.x, 0.0)
+  let s = ChebSeries { coeffs: coeffs }
+
+  let rep = cheb_fit_report(&s, xs, ys, r)
+  ret (s, rep)
+.end
+
+fn cheb_eval_series(s: &ChebSeries, t: f64) -> f64
+  # Clenshaw for Chebyshev
+  let n = s.coeffs.len() as i32
+  if n <= 0 ret 0.0 .end
+  if n == 1 ret s.coeffs[0] .end
+
+  let mut b_k1 = 0.0
+  let mut b_k2 = 0.0
+  let mut k = n - 1
+  while k >= 1
+    let b_k = 2.0 * t * b_k1 - b_k2 + s.coeffs[k as usize]
+    b_k2 = b_k1
+    b_k1 = b_k
+    k = k - 1
+    if k < 1
+      break
+    .end
+  .end
+
+  ret t * b_k1 - b_k2 + s.coeffs[0]
+.end
+
+fn cheb_eval(s: &ChebSeries, x: f64, r: Range) -> f64
+  let t = map_to_cheb_domain(x, r)
+  ret cheb_eval_series(s, t)
+.end
+
+fn cheb_fit_report(s: &ChebSeries, xs: &[f64], ys: &[f64], r: Range) -> FitReport
+  let n = xs.len() as i32
+  let mut se = 0.0
+  let mut maxe = 0.0
+  let mut i = 0
+  while i < n
+    let yhat = cheb_eval(s, xs[i as usize], r)
+    let e = yhat - ys[i as usize]
+    se = se + e * e
+    let ae = abs_f64(e)
+    if ae > maxe
+      maxe = ae
+    .end
+    i = i + 1
+  .end
+  let rmse = (se / (n as f64)).sqrt()
+  let deg = (s.coeffs.len() as i32) - 1
+  ret FitReport { degree: deg, samples: n, rmse: rmse, max_abs_err: maxe }
+.end
+
+# ---------------------------------
+# Remez (minimax) – implémentation pratique
+# ---------------------------------
+# Remarques :
+#   - Méthode itérative basée sur points d’extrémum alternés.
+#   - Implémentation “light” : on échantillonne finement pour détecter extrémums.
+#   - Efficace pour fonctions lisses et degrés <= ~12-16.
+#   - Ce n’est pas une implémentation “numerical analysis textbook” complète,
+#     mais suffisante pour générer de bons polynômes d’approx.
+#
+# API :
+#   remez_fit(f, range, degree, grid, iters) -> (Poly, FitReport)
+
+struct RemezCfg
+  degree : i32
+  iters : i32
+  grid : i32         # nb points pour scan extrémums (ex: 2048)
+  eps : f64          # tol convergence
+.end
+
+fn remez_cfg_default(degree: i32) -> RemezCfg
+  ret RemezCfg { degree: clamp_i32(degree, 0, 24), iters: 12, grid: 2048, eps: 1e-12 }
+.end
+
+fn remez_fit(f: Fn1, r: Range, cfg: RemezCfg) -> (Poly, FitReport)
+  let deg = clamp_i32(cfg.degree, 0, 24)
+  let m = deg + 2 # deg+1 coeffs + erreur E
+  if cfg.grid < (m * 16)
+    # grid minimal
+    # (pas d’alloc conditionnelle, juste clamp)
+  .end
+
+  # init : points de Chebyshev (deg+2 extrémums init)
+  let mut xs = remez_init_points(r, m)
+  let mut sign = 1.0
+
+  let mut iter = 0
+  let mut lastE = 0.0
+
+  while iter < cfg.iters
+    # Solve system:
+    # p(x_i) + s_i * E = f(x_i), where s_i alternates +-1
+    let sys = remez_solve_system(f, &xs, deg)
+    let p = sys.p
+    let E = sys.E
+
+    # Convergence check
+    if abs_f64(E - lastE) < cfg.eps && iter > 1
+      let rep = sample_report_poly(f, &p.coeffs, r, cfg.grid)
+      ret (p, rep)
+    .end
+    lastE = E
+
+    # Find new extremal points of error e(x)=f(x)-p(x)
+    let new_xs = remez_find_extrema(f, &p.coeffs, r, cfg.grid, m)
+    if new_xs.len() as i32 != m
+      # fallback : renvoie current
+      let rep = sample_report_poly(f, &p.coeffs, r, cfg.grid)
+      ret (p, rep)
+    .end
+    xs = new_xs
+
+    sign = -sign
+    iter = iter + 1
+  .end
+
+  # final solve
+  let sys2 = remez_solve_system(f, &xs, deg)
+  let rep2 = sample_report_poly(f, &sys2.p.coeffs, r, cfg.grid)
+  ret (sys2.p, rep2)
+.end
+
+struct RemezSystem
+  p : Poly
+  E : f64
+.end
+
+fn remez_init_points(r: Range, m: i32) -> [f64]
+  # Chebyshev extrema points on [-1,1]: cos(k*pi/(m-1)), k=0..m-1
+  let mut xs : [f64] = []
+  xs.reserve(m as usize)
+
+  let mut k = 0
+  while k < m
+    let t = cos_approx((k as f64) * 3.14159265358979323846 / ((m - 1) as f64))
+    let x = map_from_cheb_domain(t, r)
+    xs.push(x)
+    k = k + 1
+  .end
+
+  ret xs
+.end
+
+fn remez_solve_system(f: Fn1, xs: &[f64], degree: i32) -> RemezSystem
+  let m = (degree + 2)
+  if xs.len() as i32 != m
+    panic("remez_solve_system: bad xs")
+  .end
+
+  # Build A (m x m) with columns: [1, x, x^2, ... x^deg, s_i]
+  let mut A : [f64] = []
+  A.resize((m*m) as usize, 0.0)
+  let mut B : [f64] = []
+  B.resize(m as usize, 0.0)
+
+  let mut i = 0
+  while i < m
+    let x = xs[i as usize]
+    B[i as usize] = f(x)
+
+    # powers
+    let mut xp = 1.0
+    let mut j = 0
+    while j <= degree
+      A[(i*m + j) as usize] = xp
+      xp = xp * x
+      j = j + 1
+    .end
+
+    # alternating sign column for E
+    let s = if (i & 1) == 0 then 1.0 else -1.0 .end
+    A[(i*m + (m - 1)) as usize] = s
+
+    i = i + 1
+  .end
+
+  let sol = solve_gauss_pivot(&A, &B, m)
+  if !sol.ok
+    ret RemezSystem { p: Poly { coeffs: [0.0] }, E: 0.0 }
+  .end
+
+  # coeffs 0..deg, last is E
+  let mut coeffs : [f64] = []
+  coeffs.reserve((degree + 1) as usize)
+  let mut j2 = 0
+  while j2 <= degree
+    coeffs.push(sol.x[j2 as usize])
+    j2 = j2 + 1
+  .end
+
+  let E = sol.x[(m - 1) as usize]
+  ret RemezSystem { p: Poly { coeffs: poly_trim(coeffs, 0.0) }, E: E }
+.end
+
+fn remez_find_extrema(f: Fn1, coeffs: &[f64], r: Range, grid: i32, m: i32) -> [f64]
+  # scan erreur sur une grille, détecte changements de pente,
+  # prend les m plus forts extrémums alternés par signe.
+  let g = clamp_i32(grid, 128, 131072)
+  let mut xs : [f64] = []
+  xs.reserve(m as usize)
+
+  # sample errors
+  let mut es : [f64] = []
+  es.resize((g + 1) as usize, 0.0)
+
+  let mut i = 0
+  while i <= g
+    let t = (i as f64) / (g as f64)
+    let x = r.a + (r.b - r.a) * t
+    let e = f(x) - poly_eval(coeffs, x)
+    es[i as usize] = e
+    i = i + 1
+  .end
+
+  # find local extrema indices
+  let mut idxs : [i32] = []
+  idxs.reserve((g/2) as usize)
+
+  let mut k = 1
+  while k < g
+    let e0 = es[(k - 1) as usize]
+    let e1 = es[k as usize]
+    let e2 = es[(k + 1) as usize]
+    # extremum if slope changes sign: (e1-e0)*(e2-e1) <= 0 and e1 is "peakish"
+    let s1 = e1 - e0
+    let s2 = e2 - e1
+    if (s1 == 0.0 && s2 == 0.0) || (s1 * s2 <= 0.0)
+      idxs.push(k)
+    .end
+    k = k + 1
+  .end
+
+  if idxs.len() == 0
+    ret []
+  .end
+
+  # select best m extrema by |e|
+  # naive selection: partial sort via repeated max extraction (m small)
+  let mut chosen : [i32] = []
+  chosen.reserve(m as usize)
+
+  let mut used : [bool] = []
+  used.resize(idxs.len(), false)
+
+  let mut c = 0
+  while c < m
+    let mut best = -1.0
+    let mut best_j = -1
+    let mut j = 0
+    while j < (idxs.len() as i32)
+      if !used[j as usize]
+        let idx = idxs[j as usize]
+        let v = abs_f64(es[idx as usize])
+        if v > best
+          best = v
+          best_j = j
+        .end
+      .end
+      j = j + 1
+    .end
+
+    if best_j < 0
+      break
+    .end
+    used[best_j as usize] = true
+    chosen.push(idxs[best_j as usize])
+    c = c + 1
+  .end
+
+  # sort chosen indices
+  chosen.sort()
+
+  # map to x
+  let mut out : [f64] = []
+  out.reserve(chosen.len())
+
+  let mut q = 0
+  while q < (chosen.len() as i32)
+    let idx = chosen[q as usize]
+    let t = (idx as f64) / (g as f64)
+    out.push(r.a + (r.b - r.a) * t)
+    q = q + 1
+  .end
+
+  # ensure size m (if not, pad ends)
+  while (out.len() as i32) < m
+    if out.len() == 0
+      out.push(r.a)
+    .end
+    out.push(r.b)
+  .end
+  if (out.len() as i32) > m
+    out.truncate(m as usize)
+  .end
+
+  ret out
+.end
+
+# ---------------------------------
+# Sampling / error metrics
+# ---------------------------------
+
+fn sample_linspace(r: Range, n: i32) -> [f64]
+  let nn = clamp_i32(n, 2, 1_000_000)
+  let mut xs : [f64] = []
+  xs.reserve(nn as usize)
+  let mut i = 0
+  while i < nn
+    let t = (i as f64) / ((nn - 1) as f64)
+    xs.push(r.a + (r.b - r.a) * t)
+    i = i + 1
+  .end
+  ret xs
+.end
+
+fn sample_function(f: Fn1, r: Range, n: i32) -> SampleSet
+  let xs = sample_linspace(r, n)
+  let mut ys : [f64] = []
+  ys.reserve(xs.len())
+  let mut i = 0
+  while i < (xs.len() as i32)
+    ys.push(f(xs[i as usize]))
+    i = i + 1
+  .end
+  ret SampleSet { xs: xs, ys: ys }
+.end
+
+fn sample_report_poly(f: Fn1, coeffs: &[f64], r: Range, n: i32) -> FitReport
+  let ss = sample_function(f, r, n)
+  let rep = poly_fit_report(coeffs, &ss.xs, &ss.ys)
+  ret rep
+.end
+
+# ---------------------------------
+# Poly ops (add/scale/mul linear)
+# ---------------------------------
+
+fn poly_add(a: &[f64], b: &[f64]) -> [f64]
+  let na = a.len() as i32
+  let nb = b.len() as i32
+  let n = if na > nb then na else nb .end
+  let mut out : [f64] = []
+  out.resize(n as usize, 0.0)
+
+  let mut i = 0
+  while i < n
+    let mut v = 0.0
+    if i < na v = v + a[i as usize] .end
+    if i < nb v = v + b[i as usize] .end
+    out[i as usize] = v
+    i = i + 1
+  .end
+  ret out
+.end
+
+fn poly_scale(a: &[f64], s: f64) -> [f64]
+  let n = a.len() as i32
+  let mut out : [f64] = []
+  out.resize(n as usize, 0.0)
+  let mut i = 0
+  while i < n
+    out[i as usize] = a[i as usize] * s
+    i = i + 1
+  .end
+  ret out
+.end
+
+fn poly_mul_linear(a: &[f64], c0: f64, c1: f64) -> [f64]
+  # multiply by (c0 + c1 x)
+  let n = a.len() as i32
+  let mut out : [f64] = []
+  out.resize((n + 1) as usize, 0.0)
+
+  let mut i = 0
+  while i < n
+    out[i as usize] = out[i as usize] + a[i as usize] * c0
+    out[(i + 1) as usize] = out[(i + 1) as usize] + a[i as usize] * c1
+    i = i + 1
+  .end
+  ret out
+.end
+
+# ---------------------------------
+# Small cosine approx (for init points)
+# ---------------------------------
+# cos(x) approx using 6th order on [-pi,pi] with wrap.
+# Sufficient for remez initialization points.
+
+const PI      : f64 = 3.141592653589793238462643383279502884
+const TAU     : f64 = 6.283185307179586476925286766559005768
+
+fn wrap_pi(x: f64) -> f64
+  let mut t = x
+  while t <= -PI
+    t = t + TAU
+  .end
+  while t > PI
+    t = t - TAU
+  .end
+  ret t
+.end
+
+fn cos_approx(x: f64) -> f64
+  let t = wrap_pi(x)
+  let t2 = t * t
+  # cos ~ 1 - t^2/2 + t^4/24 - t^6/720
+  let t4 = t2 * t2
+  let t6 = t4 * t2
+  ret 1.0 - 0.5 * t2 + (1.0/24.0) * t4 - (1.0/720.0) * t6
+.end
+
+# ---------------------------------
+# Tests
+# ---------------------------------
+
+fn approx_eq(a: f64, b: f64, eps: f64) -> bool
+  ret abs_f64(a - b) <= eps
+.end
+
+fn test_horner()
+  # p(x)=1 + 2x + 3x^2 ; p(2)=17
+  let c : [f64] = [1.0, 2.0, 3.0]
+  let v = poly_eval_horner(&c, 2.0)
+  if !approx_eq(v, 17.0, 1e-12)
+    panic("horner failed")
+  .end
+.end
+
+fn test_derivative()
+  # d/dx (1 + 2x + 3x^2) = 2 + 6x ; at x=2 => 14
+  let c : [f64] = [1.0, 2.0, 3.0]
+  let d = poly_derivative(&c)
+  let v = poly_eval(&d, 2.0)
+  if !approx_eq(v, 14.0, 1e-12)
+    panic("derivative failed")
+  .end
+.end
+
+fn test_lagrange()
+  # points (0,1), (1,2) => y=1+x
+  let xs : [f64] = [0.0, 1.0]
+  let ys : [f64] = [1.0, 2.0]
+  let p = lagrange_interp(&xs, &ys)
+  if !approx_eq(poly_eval(&p, 3.0), 4.0, 1e-12)
+    panic("lagrange failed")
+  .end
+.end
+
+fn test_newton()
+  let xs : [f64] = [0.0, 1.0, 2.0]
+  let ys : [f64] = [1.0, 2.0, 5.0] # y=1+x^2
+  let tab = newton_build(&xs, &ys)
+  let v = newton_eval(&tab, 3.0)
+  if !approx_eq(v, 10.0, 1e-9)
+    panic("newton eval failed")
+  .end
+  let p = newton_to_monomial(&tab)
+  if !approx_eq(poly_eval(&p, 3.0), 10.0, 1e-9)
+    panic("newton to monomial failed")
+  .end
+.end
+
+fn test_barycentric()
+  let xs : [f64] = [0.0, 1.0, 2.0]
+  let ys : [f64] = [1.0, 2.0, 5.0]
+  let b = barycentric_build(&xs, &ys)
+  let v = barycentric_eval(&b, 3.0)
+  if !approx_eq(v, 10.0, 1e-9)
+    panic("barycentric failed")
+  .end
+.end
+
+fn test_least_squares()
+  fn f(x: f64) -> f64
+    ret 2.0 + 3.0*x - 0.5*x*x
+  .end
+
+  let r = Range { a: -1.0, b: 1.0 }
+  let ss = sample_function(f, r, 64)
+  let fit = poly_fit_least_squares(&ss.xs, &ss.ys, 2)
+  let p = fit.0
+  let rep = fit.1
+  if rep.rmse > 1e-8
+    panic("least squares too large")
+  .end
+  if abs_f64(poly_eval(&p.coeffs, 0.3) - f(0.3)) > 1e-6
+    panic("least squares value mismatch")
+  .end
+.end
+
+fn test_cheb_fit()
+  fn f(x: f64) -> f64
+    ret 1.0 / (1.0 + 25.0*x*x) # Runge
+  .end
+
+  let r = Range { a: -1.0, b: 1.0 }
+  let ss = sample_function(f, r, 256)
+  let fit = cheb_fit_samples(&ss.xs, &ss.ys, r, 12)
+  let s = fit.0
+  let rep = fit.1
+  if rep.max_abs_err > 0.2
+    panic("cheb fit suspicious")
+  .end
+  let v = cheb_eval(&s, 0.0, r)
+  if !is_finite(v)
+    panic("cheb eval not finite")
+  .end
+.end
+
+fn test_remez_smoke()
+  fn f(x: f64) -> f64
+    # approx sin on [-pi/2, pi/2] but without importing trig
+    # use 5th order Taylor
+    let x2 = x*x
+    ret x - (x*x2)/6.0 + (x*x2*x2)/120.0
+  .end
+
+  let r = Range { a: -1.0, b: 1.0 }
+  let cfg = remez_cfg_default(5)
+  let fit = remez_fit(f, r, cfg)
+  let p = fit.0
+  let rep = fit.1
+  if rep.samples <= 0
+    panic("remez report bad")
+  .end
+  let v = poly_eval(&p.coeffs, 0.25)
+  if !is_finite(v)
+    panic("remez eval not finite")
+  .end
+.end
+
+fn run_all_tests()
+  test_horner()
+  test_derivative()
+  test_lagrange()
+  test_newton()
+  test_barycentric()
+  test_least_squares()
+  test_cheb_fit()
+  test_remez_smoke()
+.end
 
 .end

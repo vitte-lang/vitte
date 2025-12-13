@@ -1,3 +1,549 @@
-module std.math.constants.tolerance
+module jmath.constants.tolerance
+
+# ============================================================================
+# constants.tolerance – tolérances numériques & comparateurs robustes (ultra)
+#
+# Fournit :
+#   - Types :
+#       * TolAbs, TolRel, TolAbsRel, TolUlps (f32/f64)
+#       * Cmp (Less/Equal/Greater/Unordered)
+#       * CmpResult : ok + reason
+#   - Fonctions :
+#       * approx_eq_abs / approx_eq_rel / approx_eq_absrel
+#       * approx_cmp_* (retourne Cmp + gestion NaN)
+#       * almost_equal_ulps_f32/f64 (ULP distance via mapping total-order)
+#       * ulp_distance_f32/f64 (distance entière)
+#       * nextafter/nextup/nextdown (fallback bits)
+#       * within_interval / clamp / saturate
+#       * norm2 / hypot / safe_div
+#       * default tolerances (engineering vs strict)
+#   - Presets :
+#       * tol_strict_f64, tol_engineering_f64, tol_loose_f64, etc.
+#
+# Notes :
+#   - Les fonctions ULP et nextafter dépendent de bitcasts.
+#     Branche ça sur jmath.constants.ieee754 si tu l’as (to_bits/from_bits).
+#   - Ici on inclut une impl bits-level autonome (placeholders).
+#
+# Conventions :
+#   - Pas d’accolades, blocs `.end`
+#   - Pas d’I/O
+# ============================================================================
+
+# ---------------------------------
+# Types
+# ---------------------------------
+
+enum Cmp
+  Less
+  Equal
+  Greater
+  Unordered
+.end
+
+struct CmpResult
+  ok : bool
+  cmp : Cmp
+  reason : i32   # 0 ok, 1 nan, 2 inf-mismatch, 3 out-of-tol
+.end
+
+struct TolAbsF64
+  eps : f64
+.end
+
+struct TolRelF64
+  rel : f64
+.end
+
+struct TolAbsRelF64
+  abs : f64
+  rel : f64
+.end
+
+struct TolUlpsF64
+  max_ulps : u64
+.end
+
+struct TolAbsF32
+  eps : f32
+.end
+
+struct TolRelF32
+  rel : f32
+.end
+
+struct TolAbsRelF32
+  abs : f32
+  rel : f32
+.end
+
+struct TolUlpsF32
+  max_ulps : u64
+.end
+
+# ---------------------------------
+# IEEE masks (minimal, for ulps)
+# ---------------------------------
+
+const F32_SIGN_MASK : u32 = 0x80000000
+const F32_EXP_MASK  : u32 = 0x7F800000
+const F32_FRAC_MASK : u32 = 0x007FFFFF
+
+const F64_SIGN_MASK : u64 = 0x8000000000000000
+const F64_EXP_MASK  : u64 = 0x7FF0000000000000
+const F64_FRAC_MASK : u64 = 0x000FFFFFFFFFFFFF
+
+const F32_POS_INF_BITS : u32 = 0x7F800000
+const F32_NEG_INF_BITS : u32 = 0xFF800000
+
+const F64_POS_INF_BITS : u64 = 0x7FF0000000000000
+const F64_NEG_INF_BITS : u64 = 0xFFF0000000000000
+
+# ---------------------------------
+# Utils
+# ---------------------------------
+
+fn abs_f64(x: f64) -> f64
+  if x < 0.0 ret -x .end
+  ret x
+.end
+
+fn abs_f32(x: f32) -> f32
+  if x < 0.0 ret -x .end
+  ret x
+.end
+
+fn max_f64(a: f64, b: f64) -> f64
+  if a > b ret a .end
+  ret b
+.end
+
+fn max_f32(a: f32, b: f32) -> f32
+  if a > b ret a .end
+  ret b
+.end
+
+fn clamp_f64(x: f64, lo: f64, hi: f64) -> f64
+  if x < lo ret lo .end
+  if x > hi ret hi .end
+  ret x
+.end
+
+fn clamp_f32(x: f32, lo: f32, hi: f32) -> f32
+  if x < lo ret lo .end
+  if x > hi ret hi .end
+  ret x
+.end
+
+fn saturate_f64(x: f64) -> f64
+  ret clamp_f64(x, 0.0, 1.0)
+.end
+
+fn saturate_f32(x: f32) -> f32
+  ret clamp_f32(x, 0.0, 1.0)
+.end
+
+fn is_nan_f64(x: f64) -> bool
+  ret x != x
+.end
+
+fn is_nan_f32(x: f32) -> bool
+  ret x != x
+.end
+
+# ---------------------------------
+# Bitcast placeholders (branch to intrinsics)
+# ---------------------------------
+
+fn f32_to_bits(x: f32) -> u32
+  # TODO: intrinsic
+  ret x as u32
+.end
+
+fn f32_from_bits(u: u32) -> f32
+  # TODO: intrinsic
+  ret u as f32
+.end
+
+fn f64_to_bits(x: f64) -> u64
+  # TODO: intrinsic
+  ret x as u64
+.end
+
+fn f64_from_bits(u: u64) -> f64
+  # TODO: intrinsic
+  ret u as f64
+.end
+
+# ---------------------------------
+# Classification (bits)
+# ---------------------------------
+
+fn f32_is_inf(x: f32) -> bool
+  let u = f32_to_bits(x)
+  let e = (u & F32_EXP_MASK)
+  let f = (u & F32_FRAC_MASK)
+  ret e == F32_EXP_MASK && f == 0
+.end
+
+fn f64_is_inf(x: f64) -> bool
+  let u = f64_to_bits(x)
+  let e = (u & F64_EXP_MASK)
+  let f = (u & F64_FRAC_MASK)
+  ret e == F64_EXP_MASK && f == 0
+.end
+
+fn f32_is_finite(x: f32) -> bool
+  let u = f32_to_bits(x)
+  ret (u & F32_EXP_MASK) != F32_EXP_MASK
+.end
+
+fn f64_is_finite(x: f64) -> bool
+  let u = f64_to_bits(x)
+  ret (u & F64_EXP_MASK) != F64_EXP_MASK
+.end
+
+fn f32_signbit(x: f32) -> bool
+  ret (f32_to_bits(x) & F32_SIGN_MASK) != 0
+.end
+
+fn f64_signbit(x: f64) -> bool
+  ret (f64_to_bits(x) & F64_SIGN_MASK) != 0
+.end
+
+# ---------------------------------
+# Total order key for ULP distance
+# ---------------------------------
+
+fn f32_total_key(u: u32) -> u32
+  if (u & F32_SIGN_MASK) != 0
+    ret ~u
+  .end
+  ret u ^ F32_SIGN_MASK
+.end
+
+fn f64_total_key(u: u64) -> u64
+  if (u & F64_SIGN_MASK) != 0
+    ret ~u
+  .end
+  ret u ^ F64_SIGN_MASK
+.end
+
+fn ulp_distance_f32(a: f32, b: f32) -> (bool, u64)
+  if is_nan_f32(a) || is_nan_f32(b) ret (false, 0) .end
+  let ka = f32_total_key(f32_to_bits(a))
+  let kb = f32_total_key(f32_to_bits(b))
+  if ka >= kb ret (true, (ka - kb) as u64) .end
+  ret (true, (kb - ka) as u64)
+.end
+
+fn ulp_distance_f64(a: f64, b: f64) -> (bool, u64)
+  if is_nan_f64(a) || is_nan_f64(b) ret (false, 0) .end
+  let ka = f64_total_key(f64_to_bits(a))
+  let kb = f64_total_key(f64_to_bits(b))
+  if ka >= kb ret (true, ka - kb) .end
+  ret (true, kb - ka)
+.end
+
+fn almost_equal_ulps_f32(a: f32, b: f32, max_ulps: u64) -> bool
+  let d = ulp_distance_f32(a, b)
+  if !d.0 ret false .end
+  ret d.1 <= max_ulps
+.end
+
+fn almost_equal_ulps_f64(a: f64, b: f64, max_ulps: u64) -> bool
+  let d = ulp_distance_f64(a, b)
+  if !d.0 ret false .end
+  ret d.1 <= max_ulps
+.end
+
+# ---------------------------------
+# nextafter / nextup / nextdown
+# ---------------------------------
+
+fn f32_nextafter(x: f32, toward: f32) -> f32
+  if is_nan_f32(x) || is_nan_f32(toward) ret x + toward .end
+  if x == toward ret toward .end
+
+  if x == 0.0
+    if toward < 0.0 ret f32_from_bits(1 | F32_SIGN_MASK) .end
+    ret f32_from_bits(1)
+  .end
+
+  let ux = f32_to_bits(x)
+  let sx = (ux & F32_SIGN_MASK) != 0
+  let inc = if toward > x then true else false .end
+  let mut uy = ux
+  if inc
+    if sx uy = uy - 1 .end
+    if !sx uy = uy + 1 .end
+  .end
+  if !inc
+    if sx uy = uy + 1 .end
+    if !sx uy = uy - 1 .end
+  .end
+  ret f32_from_bits(uy)
+.end
+
+fn f64_nextafter(x: f64, toward: f64) -> f64
+  if is_nan_f64(x) || is_nan_f64(toward) ret x + toward .end
+  if x == toward ret toward .end
+
+  if x == 0.0
+    if toward < 0.0 ret f64_from_bits(1 | F64_SIGN_MASK) .end
+    ret f64_from_bits(1)
+  .end
+
+  let ux = f64_to_bits(x)
+  let sx = (ux & F64_SIGN_MASK) != 0
+  let inc = if toward > x then true else false .end
+  let mut uy = ux
+  if inc
+    if sx uy = uy - 1 .end
+    if !sx uy = uy + 1 .end
+  .end
+  if !inc
+    if sx uy = uy + 1 .end
+    if !sx uy = uy - 1 .end
+  .end
+  ret f64_from_bits(uy)
+.end
+
+fn f32_nextup(x: f32) -> f32
+  ret f32_nextafter(x, f32_from_bits(F32_POS_INF_BITS))
+.end
+
+fn f32_nextdown(x: f32) -> f32
+  ret f32_nextafter(x, f32_from_bits(F32_NEG_INF_BITS))
+.end
+
+fn f64_nextup(x: f64) -> f64
+  ret f64_nextafter(x, f64_from_bits(F64_POS_INF_BITS))
+.end
+
+fn f64_nextdown(x: f64) -> f64
+  ret f64_nextafter(x, f64_from_bits(F64_NEG_INF_BITS))
+.end
+
+# ---------------------------------
+# Approx eq (abs / rel / absrel)
+# ---------------------------------
+
+fn approx_eq_abs_f64(a: f64, b: f64, eps: f64) -> bool
+  ret abs_f64(a - b) <= eps
+.end
+
+fn approx_eq_rel_f64(a: f64, b: f64, rel: f64) -> bool
+  let d = abs_f64(a - b)
+  let m = max_f64(abs_f64(a), abs_f64(b))
+  if m == 0.0 ret true .end
+  ret d <= rel * m
+.end
+
+fn approx_eq_absrel_f64(a: f64, b: f64, abs: f64, rel: f64) -> bool
+  let d = abs_f64(a - b)
+  if d <= abs ret true .end
+  let m = max_f64(abs_f64(a), abs_f64(b))
+  ret d <= rel * m
+.end
+
+fn approx_eq_abs_f32(a: f32, b: f32, eps: f32) -> bool
+  ret abs_f32(a - b) <= eps
+.end
+
+fn approx_eq_rel_f32(a: f32, b: f32, rel: f32) -> bool
+  let d = abs_f32(a - b)
+  let m = max_f32(abs_f32(a), abs_f32(b))
+  if m == 0.0 ret true .end
+  ret d <= rel * m
+.end
+
+fn approx_eq_absrel_f32(a: f32, b: f32, abs: f32, rel: f32) -> bool
+  let d = abs_f32(a - b)
+  if d <= abs ret true .end
+  let m = max_f32(abs_f32(a), abs_f32(b))
+  ret d <= rel * m
+.end
+
+# ---------------------------------
+# Compare helpers returning CmpResult
+# ---------------------------------
+
+fn cmp_f64(a: f64, b: f64) -> Cmp
+  if is_nan_f64(a) || is_nan_f64(b) ret Cmp.Unordered .end
+  if a < b ret Cmp.Less .end
+  if a > b ret Cmp.Greater .end
+  ret Cmp.Equal
+.end
+
+fn cmp_f32(a: f32, b: f32) -> Cmp
+  if is_nan_f32(a) || is_nan_f32(b) ret Cmp.Unordered .end
+  if a < b ret Cmp.Less .end
+  if a > b ret Cmp.Greater .end
+  ret Cmp.Equal
+.end
+
+fn approx_cmp_absrel_f64(a: f64, b: f64, abs: f64, rel: f64) -> CmpResult
+  if is_nan_f64(a) || is_nan_f64(b)
+    ret CmpResult { ok: false, cmp: Cmp.Unordered, reason: 1 }
+  .end
+  if a == b
+    ret CmpResult { ok: true, cmp: Cmp.Equal, reason: 0 }
+  .end
+  let ok = approx_eq_absrel_f64(a, b, abs, rel)
+  if ok
+    ret CmpResult { ok: true, cmp: Cmp.Equal, reason: 0 }
+  .end
+  let c = cmp_f64(a, b)
+  ret CmpResult { ok: false, cmp: c, reason: 3 }
+.end
+
+fn approx_cmp_ulps_f64(a: f64, b: f64, max_ulps: u64) -> CmpResult
+  if is_nan_f64(a) || is_nan_f64(b)
+    ret CmpResult { ok: false, cmp: Cmp.Unordered, reason: 1 }
+  .end
+  if almost_equal_ulps_f64(a, b, max_ulps)
+    ret CmpResult { ok: true, cmp: Cmp.Equal, reason: 0 }
+  .end
+  let c = cmp_f64(a, b)
+  ret CmpResult { ok: false, cmp: c, reason: 3 }
+.end
+
+fn approx_cmp_absrel_f32(a: f32, b: f32, abs: f32, rel: f32) -> CmpResult
+  if is_nan_f32(a) || is_nan_f32(b)
+    ret CmpResult { ok: false, cmp: Cmp.Unordered, reason: 1 }
+  .end
+  if a == b
+    ret CmpResult { ok: true, cmp: Cmp.Equal, reason: 0 }
+  .end
+  let ok = approx_eq_absrel_f32(a, b, abs, rel)
+  if ok
+    ret CmpResult { ok: true, cmp: Cmp.Equal, reason: 0 }
+  .end
+  let c = cmp_f32(a, b)
+  ret CmpResult { ok: false, cmp: c, reason: 3 }
+.end
+
+fn approx_cmp_ulps_f32(a: f32, b: f32, max_ulps: u64) -> CmpResult
+  if is_nan_f32(a) || is_nan_f32(b)
+    ret CmpResult { ok: false, cmp: Cmp.Unordered, reason: 1 }
+  .end
+  if almost_equal_ulps_f32(a, b, max_ulps)
+    ret CmpResult { ok: true, cmp: Cmp.Equal, reason: 0 }
+  .end
+  let c = cmp_f32(a, b)
+  ret CmpResult { ok: false, cmp: c, reason: 3 }
+.end
+
+# ---------------------------------
+# Norms / safe divide
+# ---------------------------------
+
+fn hypot_f64(a: f64, b: f64) -> f64
+  let aa = abs_f64(a)
+  let bb = abs_f64(b)
+  let m = if aa > bb then aa else bb .end
+  if m == 0.0 ret 0.0 .end
+  let ra = aa / m
+  let rb = bb / m
+  # sqrt via Newton
+  let mut x = ra*ra + rb*rb
+  let mut y = x
+  if y < 1.0 y = 1.0 .end
+  let mut i = 0
+  while i < 10
+    y = 0.5 * (y + x / y)
+    i = i + 1
+  .end
+  ret m * y
+.end
+
+fn safe_div_f64(num: f64, den: f64, fallback: f64) -> f64
+  if den == 0.0 ret fallback .end
+  ret num / den
+.end
+
+# ---------------------------------
+# Presets (f64)
+# ---------------------------------
+
+fn tol_strict_f64() -> TolAbsRelF64
+  ret TolAbsRelF64 { abs: 1e-12, rel: 1e-12 }
+.end
+
+fn tol_engineering_f64() -> TolAbsRelF64
+  ret TolAbsRelF64 { abs: 1e-9, rel: 1e-9 }
+.end
+
+fn tol_loose_f64() -> TolAbsRelF64
+  ret TolAbsRelF64 { abs: 1e-6, rel: 1e-6 }
+.end
+
+fn tol_ulps_strict_f64() -> TolUlpsF64
+  ret TolUlpsF64 { max_ulps: 8 }
+.end
+
+fn tol_ulps_engineering_f64() -> TolUlpsF64
+  ret TolUlpsF64 { max_ulps: 64 }
+.end
+
+# Presets (f32)
+fn tol_strict_f32() -> TolAbsRelF32
+  ret TolAbsRelF32 { abs: 1e-6, rel: 1e-6 }
+.end
+
+fn tol_engineering_f32() -> TolAbsRelF32
+  ret TolAbsRelF32 { abs: 1e-5, rel: 1e-5 }
+.end
+
+fn tol_ulps_strict_f32() -> TolUlpsF32
+  ret TolUlpsF32 { max_ulps: 4 }
+.end
+
+fn tol_ulps_engineering_f32() -> TolUlpsF32
+  ret TolUlpsF32 { max_ulps: 32 }
+.end
+
+# ---------------------------------
+# High-level helpers using presets
+# ---------------------------------
+
+fn approx_eq_default_f64(a: f64, b: f64) -> bool
+  let t = tol_engineering_f64()
+  ret approx_eq_absrel_f64(a, b, t.abs, t.rel)
+.end
+
+fn approx_eq_default_f32(a: f32, b: f32) -> bool
+  let t = tol_engineering_f32()
+  ret approx_eq_absrel_f32(a, b, t.abs, t.rel)
+.end
+
+# ---------------------------------
+# Tests smoke
+# ---------------------------------
+
+fn assert(cond: bool)
+  if !cond panic("assert failed") .end
+.end
+
+fn test_absrel()
+  assert(approx_eq_absrel_f64(1.0, 1.0 + 1e-10, 1e-9, 1e-9))
+  assert(!approx_eq_absrel_f64(1.0, 1.0 + 1e-6, 1e-9, 1e-9))
+.end
+
+fn test_ulps()
+  # if bitcasts are correct, nextup differs by small ulps
+  let a = 1.0
+  let b = f64_nextup(a)
+  let d = ulp_distance_f64(a, b)
+  if d.0
+    assert(d.1 == 1)
+  .end
+.end
+
+fn run_all_tests()
+  test_absrel()
+  test_ulps()
+.end
 
 .end

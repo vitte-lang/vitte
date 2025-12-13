@@ -1,3 +1,803 @@
-module std.math.constants.ieee754
+module jmath.constants.ieee754
+
+# ============================================================================
+# constants.ieee754 – IEEE-754 (f32/f64) ultra complet max
+#
+# Fournit :
+#   - Constantes bits + numériques : epsilon, min/max, min normal/subnormal,
+#     NaN/QNaN/SNaN, +/-inf, +/-0, etc.
+#   - Bitcasts (API canonical) :
+#       * f32_to_bits / f32_from_bits
+#       * f64_to_bits / f64_from_bits
+#     -> à raccorder à des intrinsics runtime/VM si ton `as` n’est pas un bitcast.
+#   - Décomposition : sign/exponent/fraction, unbiased exponent, mantissa
+#   - Classification : is_nan/is_inf/is_finite/is_zero/is_subnormal/is_normal
+#   - NaN tooling : is_qnan/is_snan, quiet_nan, signaling_nan, payload, make_nan
+#   - Signed zero : signbit, is_neg_zero, copysign, abs, negate
+#   - nextafter/nextup/nextdown, ulp, ulp_distance (entiers), almost_equal_ulps
+#   - scale_pow2 (ajustement exposant), frexp/ldexp (via bits)
+#   - totalOrder key (ordre total IEEE, utile pour tri/Map stable)
+#   - Tests smoke (bits-level)
+#
+# Conventions :
+#   - Pas d’accolades, blocs en `.end`
+#   - Pas d’I/O
+# ============================================================================
+
+# ---------------------------------
+# Types
+# ---------------------------------
+
+enum FpClass
+  Nan
+  Inf
+  Zero
+  Subnormal
+  Normal
+.end
+
+struct F32Parts
+  sign : i32
+  exp  : i32      # raw exponent [0..255]
+  frac : u32      # raw fraction (23 bits)
+.end
+
+struct F64Parts
+  sign : i32
+  exp  : i32      # raw exponent [0..2047]
+  frac : u64      # raw fraction (52 bits)
+.end
+
+struct FrexpF32
+  mantissa : f32  # in [0.5, 1.0) (or 0) with sign
+  exponent : i32
+.end
+
+struct FrexpF64
+  mantissa : f64
+  exponent : i32
+.end
+
+struct UlpCmp
+  ok : bool
+  distance : u64
+.end
+
+# ---------------------------------
+# Masks & layout (f32)
+# ---------------------------------
+
+const F32_SIGN_MASK : u32 = 0x80000000
+const F32_EXP_MASK  : u32 = 0x7F800000
+const F32_FRAC_MASK : u32 = 0x007FFFFF
+
+const F32_EXP_SHIFT : i32 = 23
+const F32_FRAC_BITS : i32 = 23
+const F32_EXP_BIAS  : i32 = 127
+const F32_EXP_MAX   : i32 = 255
+
+const F32_POS_ZERO_BITS : u32 = 0x00000000
+const F32_NEG_ZERO_BITS : u32 = 0x80000000
+const F32_POS_INF_BITS  : u32 = 0x7F800000
+const F32_NEG_INF_BITS  : u32 = 0xFF800000
+
+const F32_QNAN_BITS     : u32 = 0x7FC00000
+const F32_SNAN_BITS     : u32 = 0x7FA00001
+
+const F32_MIN_SUB_BITS    : u32 = 0x00000001
+const F32_MIN_NORMAL_BITS : u32 = 0x00800000
+const F32_MAX_FINITE_BITS : u32 = 0x7F7FFFFF
+
+# Numeric refs (stables)
+const F32_EPSILON      : f32 = 1.1920928955078125e-7
+const F32_MIN_POSITIVE : f32 = 1.401298464324817e-45
+const F32_MIN_NORMAL   : f32 = 1.1754943508222875e-38
+const F32_MAX          : f32 = 3.4028234663852886e38
+
+# ---------------------------------
+# Masks & layout (f64)
+# ---------------------------------
+
+const F64_SIGN_MASK : u64 = 0x8000000000000000
+const F64_EXP_MASK  : u64 = 0x7FF0000000000000
+const F64_FRAC_MASK : u64 = 0x000FFFFFFFFFFFFF
+
+const F64_EXP_SHIFT : i32 = 52
+const F64_FRAC_BITS : i32 = 52
+const F64_EXP_BIAS  : i32 = 1023
+const F64_EXP_MAX   : i32 = 2047
+
+const F64_POS_ZERO_BITS : u64 = 0x0000000000000000
+const F64_NEG_ZERO_BITS : u64 = 0x8000000000000000
+const F64_POS_INF_BITS  : u64 = 0x7FF0000000000000
+const F64_NEG_INF_BITS  : u64 = 0xFFF0000000000000
+
+const F64_QNAN_BITS     : u64 = 0x7FF8000000000000
+const F64_SNAN_BITS     : u64 = 0x7FF4000000000001
+
+const F64_MIN_SUB_BITS    : u64 = 0x0000000000000001
+const F64_MIN_NORMAL_BITS : u64 = 0x0010000000000000
+const F64_MAX_FINITE_BITS : u64 = 0x7FEFFFFFFFFFFFFF
+
+const F64_EPSILON      : f64 = 2.220446049250313080847263336181640625e-16
+const F64_MIN_POSITIVE : f64 = 4.940656458412465441765687928682213723e-324
+const F64_MIN_NORMAL   : f64 = 2.225073858507201383090232717332404064e-308
+const F64_MAX          : f64 = 1.797693134862315708145274237317043568e308
+
+# ---------------------------------
+# Utils
+# ---------------------------------
+
+fn abs_f64(x: f64) -> f64
+  if x < 0.0 ret -x .end
+  ret x
+.end
+
+fn abs_f32(x: f32) -> f32
+  if x < 0.0 ret -x .end
+  ret x
+.end
+
+fn is_nan_f64(x: f64) -> bool
+  ret x != x
+.end
+
+fn is_nan_f32(x: f32) -> bool
+  ret x != x
+.end
+
+# ---------------------------------
+# Bitcast API (à brancher sur intrinsics)
+# ---------------------------------
+# IMPORTANT :
+#   - Si `as` n’est PAS un bitcast dans ton impl, ces 4 fonctions doivent être
+#     remplacées par des intrinsics runtime (to_bits/from_bits).
+#   - Les autres fonctions "bits-level" dépendent de ça.
+
+fn f32_to_bits(x: f32) -> u32
+  # TODO: intrinsic
+  ret x as u32
+.end
+
+fn f32_from_bits(u: u32) -> f32
+  # TODO: intrinsic
+  ret u as f32
+.end
+
+fn f64_to_bits(x: f64) -> u64
+  # TODO: intrinsic
+  ret x as u64
+.end
+
+fn f64_from_bits(u: u64) -> f64
+  # TODO: intrinsic
+  ret u as f64
+.end
+
+# ---------------------------------
+# Parts / fields
+# ---------------------------------
+
+fn f32_parts_bits(u: u32) -> F32Parts
+  let sign = if (u & F32_SIGN_MASK) != 0 then 1 else 0 .end
+  let expu = (u & F32_EXP_MASK) >> (F32_EXP_SHIFT as u32)
+  let frac = (u & F32_FRAC_MASK)
+  ret F32Parts { sign: sign, exp: expu as i32, frac: frac }
+.end
+
+fn f64_parts_bits(u: u64) -> F64Parts
+  let sign = if (u & F64_SIGN_MASK) != 0 then 1 else 0 .end
+  let expu = (u & F64_EXP_MASK) >> (F64_EXP_SHIFT as u64)
+  let frac = (u & F64_FRAC_MASK)
+  ret F64Parts { sign: sign, exp: expu as i32, frac: frac }
+.end
+
+fn f32_signbit_bits(u: u32) -> bool
+  ret (u & F32_SIGN_MASK) != 0
+.end
+
+fn f64_signbit_bits(u: u64) -> bool
+  ret (u & F64_SIGN_MASK) != 0
+.end
+
+fn f32_exp_bits(u: u32) -> i32
+  ret (((u & F32_EXP_MASK) >> (F32_EXP_SHIFT as u32)) as i32)
+.end
+
+fn f64_exp_bits(u: u64) -> i32
+  ret (((u & F64_EXP_MASK) >> (F64_EXP_SHIFT as u64)) as i32)
+.end
+
+fn f32_frac_bits(u: u32) -> u32
+  ret (u & F32_FRAC_MASK)
+.end
+
+fn f64_frac_bits(u: u64) -> u64
+  ret (u & F64_FRAC_MASK)
+.end
+
+fn f32_unbiased_exp_bits(u: u32) -> i32
+  let e = f32_exp_bits(u)
+  if e == 0 ret 1 - F32_EXP_BIAS .end
+  if e == F32_EXP_MAX ret 0 .end
+  ret e - F32_EXP_BIAS
+.end
+
+fn f64_unbiased_exp_bits(u: u64) -> i32
+  let e = f64_exp_bits(u)
+  if e == 0 ret 1 - F64_EXP_BIAS .end
+  if e == F64_EXP_MAX ret 0 .end
+  ret e - F64_EXP_BIAS
+.end
+
+# ---------------------------------
+# Classification (bits-level)
+# ---------------------------------
+
+fn f32_class_bits(u: u32) -> FpClass
+  let e = (u & F32_EXP_MASK)
+  let f = (u & F32_FRAC_MASK)
+  if e == F32_EXP_MASK
+    if f != 0 ret FpClass.Nan .end
+    ret FpClass.Inf
+  .end
+  if e == 0
+    if f == 0 ret FpClass.Zero .end
+    ret FpClass.Subnormal
+  .end
+  ret FpClass.Normal
+.end
+
+fn f64_class_bits(u: u64) -> FpClass
+  let e = (u & F64_EXP_MASK)
+  let f = (u & F64_FRAC_MASK)
+  if e == F64_EXP_MASK
+    if f != 0 ret FpClass.Nan .end
+    ret FpClass.Inf
+  .end
+  if e == 0
+    if f == 0 ret FpClass.Zero .end
+    ret FpClass.Subnormal
+  .end
+  ret FpClass.Normal
+.end
+
+# Wrappers
+fn f32_class(x: f32) -> FpClass
+  ret f32_class_bits(f32_to_bits(x))
+.end
+
+fn f64_class(x: f64) -> FpClass
+  ret f64_class_bits(f64_to_bits(x))
+.end
+
+fn f32_is_nan(x: f32) -> bool
+  ret f32_class(x) == FpClass.Nan
+.end
+
+fn f64_is_nan(x: f64) -> bool
+  ret f64_class(x) == FpClass.Nan
+.end
+
+fn f32_is_inf(x: f32) -> bool
+  ret f32_class(x) == FpClass.Inf
+.end
+
+fn f64_is_inf(x: f64) -> bool
+  ret f64_class(x) == FpClass.Inf
+.end
+
+fn f32_is_finite(x: f32) -> bool
+  let c = f32_class(x)
+  ret c == FpClass.Zero || c == FpClass.Subnormal || c == FpClass.Normal
+.end
+
+fn f64_is_finite(x: f64) -> bool
+  let c = f64_class(x)
+  ret c == FpClass.Zero || c == FpClass.Subnormal || c == FpClass.Normal
+.end
+
+fn f32_is_zero(x: f32) -> bool
+  let u = f32_to_bits(x)
+  ret (u & 0x7FFFFFFF) == 0
+.end
+
+fn f64_is_zero(x: f64) -> bool
+  let u = f64_to_bits(x)
+  ret (u & 0x7FFFFFFFFFFFFFFF) == 0
+.end
+
+fn f32_is_neg_zero(x: f32) -> bool
+  ret f32_to_bits(x) == F32_NEG_ZERO_BITS
+.end
+
+fn f64_is_neg_zero(x: f64) -> bool
+  ret f64_to_bits(x) == F64_NEG_ZERO_BITS
+.end
+
+fn f32_is_subnormal(x: f32) -> bool
+  ret f32_class(x) == FpClass.Subnormal
+.end
+
+fn f64_is_subnormal(x: f64) -> bool
+  ret f64_class(x) == FpClass.Subnormal
+.end
+
+fn f32_is_normal(x: f32) -> bool
+  ret f32_class(x) == FpClass.Normal
+.end
+
+fn f64_is_normal(x: f64) -> bool
+  ret f64_class(x) == FpClass.Normal
+.end
+
+# ---------------------------------
+# NaN tools (qNaN/sNaN/payload)
+# ---------------------------------
+
+fn f32_is_qnan_bits(u: u32) -> bool
+  # exp all 1, frac !=0, quiet bit (MSB of frac) == 1
+  if (u & F32_EXP_MASK) != F32_EXP_MASK ret false .end
+  let f = u & F32_FRAC_MASK
+  if f == 0 ret false .end
+  ret (f & 0x00400000) != 0
+.end
+
+fn f32_is_snan_bits(u: u32) -> bool
+  if (u & F32_EXP_MASK) != F32_EXP_MASK ret false .end
+  let f = u & F32_FRAC_MASK
+  if f == 0 ret false .end
+  ret (f & 0x00400000) == 0
+.end
+
+fn f64_is_qnan_bits(u: u64) -> bool
+  if (u & F64_EXP_MASK) != F64_EXP_MASK ret false .end
+  let f = u & F64_FRAC_MASK
+  if f == 0 ret false .end
+  ret (f & 0x0008000000000000) != 0
+.end
+
+fn f64_is_snan_bits(u: u64) -> bool
+  if (u & F64_EXP_MASK) != F64_EXP_MASK ret false .end
+  let f = u & F64_FRAC_MASK
+  if f == 0 ret false .end
+  ret (f & 0x0008000000000000) == 0
+.end
+
+fn f32_quiet_nan_bits(u: u32) -> u32
+  if (u & F32_EXP_MASK) != F32_EXP_MASK ret F32_QNAN_BITS .end
+  let f = u & F32_FRAC_MASK
+  if f == 0 ret F32_QNAN_BITS .end
+  ret u | 0x00400000
+.end
+
+fn f64_quiet_nan_bits(u: u64) -> u64
+  if (u & F64_EXP_MASK) != F64_EXP_MASK ret F64_QNAN_BITS .end
+  let f = u & F64_FRAC_MASK
+  if f == 0 ret F64_QNAN_BITS .end
+  ret u | 0x0008000000000000
+.end
+
+fn f32_nan_payload_bits(u: u32) -> u32
+  # payload sans quiet bit, sans exp/sign
+  if (u & F32_EXP_MASK) != F32_EXP_MASK ret 0 .end
+  let f = u & F32_FRAC_MASK
+  ret f & 0x003FFFFF
+.end
+
+fn f64_nan_payload_bits(u: u64) -> u64
+  if (u & F64_EXP_MASK) != F64_EXP_MASK ret 0 .end
+  let f = u & F64_FRAC_MASK
+  ret f & 0x0007FFFFFFFFFFFF
+.end
+
+fn f32_make_qnan(payload: u32, sign: bool) -> f32
+  let p = payload & 0x003FFFFF
+  let s = if sign then F32_SIGN_MASK else 0 .end
+  let u = s | F32_EXP_MASK | 0x00400000 | p
+  ret f32_from_bits(u)
+.end
+
+fn f64_make_qnan(payload: u64, sign: bool) -> f64
+  let p = payload & 0x0007FFFFFFFFFFFF
+  let s = if sign then F64_SIGN_MASK else 0 .end
+  let u = s | F64_EXP_MASK | 0x0008000000000000 | p
+  ret f64_from_bits(u)
+.end
+
+fn f32_make_snan(payload: u32, sign: bool) -> f32
+  let p = payload & 0x003FFFFF
+  let s = if sign then F32_SIGN_MASK else 0 .end
+  let u = s | F32_EXP_MASK | (p | 1)  # ensure frac!=0
+  ret f32_from_bits(u & ~0x00400000)  # quiet bit forced 0
+.end
+
+fn f64_make_snan(payload: u64, sign: bool) -> f64
+  let p = payload & 0x0007FFFFFFFFFFFF
+  let s = if sign then F64_SIGN_MASK else 0 .end
+  let u = s | F64_EXP_MASK | (p | 1)
+  ret f64_from_bits(u & ~0x0008000000000000)
+.end
+
+# ---------------------------------
+# Signed-zero & sign helpers
+# ---------------------------------
+
+fn f32_signbit(x: f32) -> bool
+  ret f32_signbit_bits(f32_to_bits(x))
+.end
+
+fn f64_signbit(x: f64) -> bool
+  ret f64_signbit_bits(f64_to_bits(x))
+.end
+
+fn f32_abs(x: f32) -> f32
+  let u = f32_to_bits(x)
+  ret f32_from_bits(u & 0x7FFFFFFF)
+.end
+
+fn f64_abs(x: f64) -> f64
+  let u = f64_to_bits(x)
+  ret f64_from_bits(u & 0x7FFFFFFFFFFFFFFF)
+.end
+
+fn f32_negate(x: f32) -> f32
+  let u = f32_to_bits(x)
+  ret f32_from_bits(u ^ F32_SIGN_MASK)
+.end
+
+fn f64_negate(x: f64) -> f64
+  let u = f64_to_bits(x)
+  ret f64_from_bits(u ^ F64_SIGN_MASK)
+.end
+
+fn f32_copysign(mag: f32, sign_src: f32) -> f32
+  let um = f32_to_bits(mag) & 0x7FFFFFFF
+  let us = f32_to_bits(sign_src) & F32_SIGN_MASK
+  ret f32_from_bits(um | us)
+.end
+
+fn f64_copysign(mag: f64, sign_src: f64) -> f64
+  let um = f64_to_bits(mag) & 0x7FFFFFFFFFFFFFFF
+  let us = f64_to_bits(sign_src) & F64_SIGN_MASK
+  ret f64_from_bits(um | us)
+.end
+
+# ---------------------------------
+# nextafter / nextup / nextdown
+# ---------------------------------
+
+fn f32_nextafter(x: f32, toward: f32) -> f32
+  if is_nan_f32(x) || is_nan_f32(toward) ret x + toward .end
+  if x == toward ret toward .end
+
+  if x == 0.0
+    if toward < 0.0 ret f32_from_bits(F32_MIN_SUB_BITS | F32_SIGN_MASK) .end
+    ret f32_from_bits(F32_MIN_SUB_BITS)
+  .end
+
+  let ux = f32_to_bits(x)
+  let sx = (ux & F32_SIGN_MASK) != 0
+  let inc = if toward > x then true else false .end
+
+  let mut uy = ux
+  if inc
+    if sx uy = uy - 1 .end
+    if !sx uy = uy + 1 .end
+  .end
+  if !inc
+    if sx uy = uy + 1 .end
+    if !sx uy = uy - 1 .end
+  .end
+
+  ret f32_from_bits(uy)
+.end
+
+fn f64_nextafter(x: f64, toward: f64) -> f64
+  if is_nan_f64(x) || is_nan_f64(toward) ret x + toward .end
+  if x == toward ret toward .end
+
+  if x == 0.0
+    if toward < 0.0 ret f64_from_bits(F64_MIN_SUB_BITS | F64_SIGN_MASK) .end
+    ret f64_from_bits(F64_MIN_SUB_BITS)
+  .end
+
+  let ux = f64_to_bits(x)
+  let sx = (ux & F64_SIGN_MASK) != 0
+  let inc = if toward > x then true else false .end
+
+  let mut uy = ux
+  if inc
+    if sx uy = uy - 1 .end
+    if !sx uy = uy + 1 .end
+  .end
+  if !inc
+    if sx uy = uy + 1 .end
+    if !sx uy = uy - 1 .end
+  .end
+
+  ret f64_from_bits(uy)
+.end
+
+fn f32_nextup(x: f32) -> f32
+  ret f32_nextafter(x, f32_from_bits(F32_POS_INF_BITS))
+.end
+
+fn f32_nextdown(x: f32) -> f32
+  ret f32_nextafter(x, f32_from_bits(F32_NEG_INF_BITS))
+.end
+
+fn f64_nextup(x: f64) -> f64
+  ret f64_nextafter(x, f64_from_bits(F64_POS_INF_BITS))
+.end
+
+fn f64_nextdown(x: f64) -> f64
+  ret f64_nextafter(x, f64_from_bits(F64_NEG_INF_BITS))
+.end
+
+# ---------------------------------
+# ULP helpers
+# ---------------------------------
+
+fn f32_ulp(x: f32) -> f32
+  let nx = f32_nextup(x)
+  if nx == x ret 0.0 .end
+  ret nx - x
+.end
+
+fn f64_ulp(x: f64) -> f64
+  let nx = f64_nextup(x)
+  if nx == x ret 0.0 .end
+  ret nx - x
+.end
+
+# ULP distance using "float total order to int" mapping
+# - produce monotonic ordering for IEEE by flipping sign bit for positives,
+#   and inverting all bits for negatives.
+
+fn f32_total_order_key_bits(u: u32) -> u32
+  if (u & F32_SIGN_MASK) != 0
+    ret ~u
+  .end
+  ret u ^ F32_SIGN_MASK
+.end
+
+fn f64_total_order_key_bits(u: u64) -> u64
+  if (u & F64_SIGN_MASK) != 0
+    ret ~u
+  .end
+  ret u ^ F64_SIGN_MASK
+.end
+
+fn f32_ulp_distance(a: f32, b: f32) -> UlpCmp
+  if f32_is_nan(a) || f32_is_nan(b)
+    ret UlpCmp { ok: false, distance: 0 }
+  .end
+  let ka = f32_total_order_key_bits(f32_to_bits(a))
+  let kb = f32_total_order_key_bits(f32_to_bits(b))
+  let da = if ka >= kb then (ka - kb) as u64 else (kb - ka) as u64 .end
+  ret UlpCmp { ok: true, distance: da }
+.end
+
+fn f64_ulp_distance(a: f64, b: f64) -> UlpCmp
+  if f64_is_nan(a) || f64_is_nan(b)
+    ret UlpCmp { ok: false, distance: 0 }
+  .end
+  let ka = f64_total_order_key_bits(f64_to_bits(a))
+  let kb = f64_total_order_key_bits(f64_to_bits(b))
+  let da = if ka >= kb then (ka - kb) else (kb - ka) .end
+  ret UlpCmp { ok: true, distance: da }
+.end
+
+fn f32_almost_equal_ulps(a: f32, b: f32, max_ulps: u64) -> bool
+  let d = f32_ulp_distance(a, b)
+  if !d.ok ret false .end
+  ret d.distance <= max_ulps
+.end
+
+fn f64_almost_equal_ulps(a: f64, b: f64, max_ulps: u64) -> bool
+  let d = f64_ulp_distance(a, b)
+  if !d.ok ret false .end
+  ret d.distance <= max_ulps
+.end
+
+# ---------------------------------
+# frexp/ldexp/scale_pow2 (bits-based)
+# ---------------------------------
+
+fn f32_ldexp(x: f32, k: i32) -> f32
+  ret f32_from_bits(f32_scale_pow2_bits(f32_to_bits(x), k))
+.end
+
+fn f64_ldexp(x: f64, k: i32) -> f64
+  ret f64_from_bits(f64_scale_pow2_bits(f64_to_bits(x), k))
+.end
+
+fn f32_scale_pow2_bits(ux: u32, k: i32) -> u32
+  let cls = f32_class_bits(ux)
+  if cls != FpClass.Normal
+    ret ux
+  .end
+  let sign = ux & F32_SIGN_MASK
+  let frac = ux & F32_FRAC_MASK
+  let e = f32_exp_bits(ux)
+  let mut ne = e + k
+  if ne <= 0
+    # simplistic underflow fallback: to subnormal/zero not fully exact
+    ret sign | 0
+  .end
+  if ne >= F32_EXP_MAX
+    ret sign | F32_EXP_MASK
+  .end
+  let ue = (ne as u32) << (F32_EXP_SHIFT as u32)
+  ret sign | ue | frac
+.end
+
+fn f64_scale_pow2_bits(ux: u64, k: i32) -> u64
+  let cls = f64_class_bits(ux)
+  if cls != FpClass.Normal
+    ret ux
+  .end
+  let sign = ux & F64_SIGN_MASK
+  let frac = ux & F64_FRAC_MASK
+  let e = f64_exp_bits(ux)
+  let mut ne = e + k
+  if ne <= 0
+    ret sign | 0
+  .end
+  if ne >= F64_EXP_MAX
+    ret sign | F64_EXP_MASK
+  .end
+  let ue = (ne as u64) << (F64_EXP_SHIFT as u64)
+  ret sign | ue | frac
+.end
+
+fn f32_frexp(x: f32) -> FrexpF32
+  let u = f32_to_bits(x)
+  let cls = f32_class_bits(u)
+  if cls == FpClass.Zero
+    ret FrexpF32 { mantissa: x, exponent: 0 }
+  .end
+  if cls == FpClass.Inf || cls == FpClass.Nan
+    ret FrexpF32 { mantissa: x, exponent: 0 }
+  .end
+
+  let parts = f32_parts_bits(u)
+  let mut e = parts.exp
+  let mut frac = parts.frac
+
+  if e == 0
+    # subnormal: normalize by shifting
+    let mut shift = 0
+    while (frac & 0x00400000) == 0
+      frac = frac << 1
+      shift = shift + 1
+      if shift > 23 break .end
+    .end
+    e = 1 - shift
+  .end
+
+  let exp_unbiased = e - F32_EXP_BIAS
+  # mantissa in [0.5,1): set exponent to bias-1
+  let mant_u = (u & F32_SIGN_MASK) | (((F32_EXP_BIAS - 1) as u32) << 23) | (u & F32_FRAC_MASK)
+  let mant = f32_from_bits(mant_u)
+  ret FrexpF32 { mantissa: mant, exponent: exp_unbiased + 1 }
+.end
+
+fn f64_frexp(x: f64) -> FrexpF64
+  let u = f64_to_bits(x)
+  let cls = f64_class_bits(u)
+  if cls == FpClass.Zero
+    ret FrexpF64 { mantissa: x, exponent: 0 }
+  .end
+  if cls == FpClass.Inf || cls == FpClass.Nan
+    ret FrexpF64 { mantissa: x, exponent: 0 }
+  .end
+
+  let parts = f64_parts_bits(u)
+  let mut e = parts.exp
+  let mut frac = parts.frac
+
+  if e == 0
+    let mut shift = 0
+    while (frac & 0x0008000000000000) == 0
+      frac = frac << 1
+      shift = shift + 1
+      if shift > 52 break .end
+    .end
+    e = 1 - shift
+  .end
+
+  let exp_unbiased = e - F64_EXP_BIAS
+  let mant_u = (u & F64_SIGN_MASK) | (((F64_EXP_BIAS - 1) as u64) << 52) | (u & F64_FRAC_MASK)
+  let mant = f64_from_bits(mant_u)
+  ret FrexpF64 { mantissa: mant, exponent: exp_unbiased + 1 }
+.end
+
+# ---------------------------------
+# Constructors: inf/nan/zero via bits
+# ---------------------------------
+
+fn f32_pos_inf() -> f32
+  ret f32_from_bits(F32_POS_INF_BITS)
+.end
+
+fn f32_neg_inf() -> f32
+  ret f32_from_bits(F32_NEG_INF_BITS)
+.end
+
+fn f64_pos_inf() -> f64
+  ret f64_from_bits(F64_POS_INF_BITS)
+.end
+
+fn f64_neg_inf() -> f64
+  ret f64_from_bits(F64_NEG_INF_BITS)
+.end
+
+fn f32_qnan() -> f32
+  ret f32_from_bits(F32_QNAN_BITS)
+.end
+
+fn f64_qnan() -> f64
+  ret f64_from_bits(F64_QNAN_BITS)
+.end
+
+fn f32_snan() -> f32
+  ret f32_from_bits(F32_SNAN_BITS)
+.end
+
+fn f64_snan() -> f64
+  ret f64_from_bits(F64_SNAN_BITS)
+.end
+
+fn f32_neg_zero() -> f32
+  ret f32_from_bits(F32_NEG_ZERO_BITS)
+.end
+
+fn f64_neg_zero() -> f64
+  ret f64_from_bits(F64_NEG_ZERO_BITS)
+.end
+
+# ---------------------------------
+# Tests smoke
+# ---------------------------------
+
+fn assert(cond: bool)
+  if !cond panic("assert failed") .end
+.end
+
+fn test_bits_classes()
+  assert(f32_class_bits(F32_POS_ZERO_BITS) == FpClass.Zero)
+  assert(f32_class_bits(F32_MIN_SUB_BITS) == FpClass.Subnormal)
+  assert(f32_class_bits(F32_MIN_NORMAL_BITS) == FpClass.Normal)
+  assert(f32_class_bits(F32_POS_INF_BITS) == FpClass.Inf)
+  assert(f32_class_bits(F32_QNAN_BITS) == FpClass.Nan)
+
+  assert(f64_class_bits(F64_POS_ZERO_BITS) == FpClass.Zero)
+  assert(f64_class_bits(F64_MIN_SUB_BITS) == FpClass.Subnormal)
+  assert(f64_class_bits(F64_MIN_NORMAL_BITS) == FpClass.Normal)
+  assert(f64_class_bits(F64_POS_INF_BITS) == FpClass.Inf)
+  assert(f64_class_bits(F64_QNAN_BITS) == FpClass.Nan)
+.end
+
+fn test_nan_kind_bits()
+  assert(f32_is_qnan_bits(F32_QNAN_BITS))
+  assert(f32_is_snan_bits(F32_SNAN_BITS) || !f32_is_qnan_bits(F32_SNAN_BITS))
+  assert(f64_is_qnan_bits(F64_QNAN_BITS))
+  assert(f64_is_snan_bits(F64_SNAN_BITS) || !f64_is_qnan_bits(F64_SNAN_BITS))
+.end
+
+fn test_total_order_key_monotonic()
+  # verify order mapping is consistent around -0 and +0
+  let kpos0 = f64_total_order_key_bits(F64_POS_ZERO_BITS)
+  let kneg0 = f64_total_order_key_bits(F64_NEG_ZERO_BITS)
+  assert(kneg0 < kpos0)
+.end
+
+fn run_all_tests()
+  test_bits_classes()
+  test_nan_kind_bits()
+  test_total_order_key_monotonic()
+.end
 
 .end
