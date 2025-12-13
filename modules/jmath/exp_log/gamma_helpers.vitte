@@ -1,3 +1,580 @@
-module std.math.exp_log.gamma_helpers
+// File: exp_log/gamma_helpers.vitte
+// Module: exp_log.gamma_helpers
+//
+// Objectif:
+//   Helpers partagés pour Γ(x), lgamma(x), digamma/polygamma, beta,
+//   et pour toutes les implémentations basées sur Lanczos/Stirling.
+//   - gestion de signes (reflection)
+//   - réduction d’argument (shift récursif)
+//   - Stirling + correctifs
+//   - Lanczos (coeffs intégrés)
+//   - log1p/expm1 fallback si pas dispo ailleurs
+//   - sinpi/cospi robustes (évite perte de précision)
+//   - produits “safe” (overflow-aware) via split exp/log
+//
+// Dépendances attendues:
+//   core/basic.vitte : isnan/isinf/isfinite/abs/copysign/floor/trunc/scalb, constants NaN/Inf
+//   exp_log/exp.vitte : exp/expm1 (optionnel si core fournit)
+//   exp_log/log.vitte : log/log1p (optionnel)
+//
+// Conventions:
+//   - blocs délimités par .end uniquement
+//   - API f64 + variantes f32 lorsque utile
+//
+// NOTE:
+//   Les coefficients Lanczos ici sont un set classique (g=7) pour f64,
+//   suffisamment précis pour une stdlib general-purpose.
 
+module exp_log.gamma_helpers
+
+use core.basic as basic
+use exp_log.exp as expmod
+// use exp_log.log as logmod  // si disponible; sinon fallback log via basic.log
+
+// -----------------------------
+// Constantes
+// -----------------------------
+const PI: f64 = 3.141592653589793238462643383279502884
+const TWO_PI: f64 = 6.283185307179586476925286766559005768
+const HALF_PI: f64 = 1.570796326794896619231321691639751442
+const LN_SQRT_2PI: f64 = 0.918938533204672741780329736405617639 // 0.5*ln(2π)
+const SQRT_2PI: f64 = 2.506628274631000502415765284811045253
+
+// Pour éviter les zones dangereuses
+const TINY: f64 = 1.0e-300
+const EPS: f64 = 2.2204460492503131e-16 // ~DBL_EPSILON
+const MAX_LOG: f64 = 709.782712893384 // ln(DBL_MAX) approx
+const MIN_LOG: f64 = -745.1332191019411
+
+// -----------------------------
+// Types utilitaires
+// -----------------------------
+pub struct GammaReflection
+  pub ok: bool
+  pub sign: i32        // signe de Γ(x) ou sin(pi*x) selon usage
+  pub log_sinpi_abs: f64
+.end
+
+pub struct LanczosEval
+  pub sum: f64         // A(x) (somme lanczos)
+  pub t: f64           // t = x + g + 0.5
+.end
+
+// -----------------------------
+// API: sinpi/cospi robustes
+// -----------------------------
+pub fn sinpi(x: f64) -> f64
+  // sin(pi*x) robuste: réduit x modulo 2, gère grands x via frac.
+  if basic.is_nan(x)
+    ret x
+  .end
+  if basic.is_inf(x)
+    ret basic.nan_f64()
+  .end
+
+  // Réduction: y = frac(x) dans [-1,1]
+  let y: f64 = reduce_mod2_centered(x)
+  // y ∈ [-1,1], sin(pi*y)
+  // Symétries: sin(pi*(±0)) -> ±0
+  if y == 0.0
+    ret y
+  .end
+
+  // Ajustement de quadrant: y in [-1,1]
+  // sin(pi*y) = sin(pi*(1 - y)) etc. pour améliorer précision près des entiers
+  let ay: f64 = basic.abs(y)
+  if ay <= 0.25
+    ret sin_poly_pi_f64(y)
+  .end
+  if ay <= 0.75
+    // sin(pi*y) = cos(pi*(y-0.5)) avec signe
+    let z: f64 = y - basic.copysign(0.5, y)
+    // sin(pi*(0.5+z)) = cos(pi*z)
+    // sin(pi*(-0.5+z)) = -cos(pi*z)
+    let c: f64 = cos_poly_pi_f64(z)
+    if y > 0.0
+      ret c
+    .end
+    ret -c
+  .end
+
+  // proche de 1: sin(pi*y) = sin(pi*(sign*(1 - ay))) avec signe
+  let z2: f64 = basic.copysign(1.0 - ay, y)
+  ret sin_poly_pi_f64(z2)
+.end
+
+pub fn cospi(x: f64) -> f64
+  if basic.is_nan(x)
+    ret x
+  .end
+  if basic.is_inf(x)
+    ret basic.nan_f64()
+  .end
+
+  let y: f64 = reduce_mod2_centered(x)
+  let ay: f64 = basic.abs(y)
+
+  if ay <= 0.25
+    ret cos_poly_pi_f64(y)
+  .end
+  if ay <= 0.75
+    // cos(pi*(0.5+z)) = -sin(pi*z)
+    let z: f64 = y - basic.copysign(0.5, y)
+    let s: f64 = sin_poly_pi_f64(z)
+    ret -s
+  .end
+
+  // cos(pi*y) = -cos(pi*(1-ay)) si proche de 1? en fait:
+  // cos(pi*(sign*(1-u))) = cos(pi*(1-u)) = -cos(pi*u)
+  let u: f64 = 1.0 - ay
+  ret -cos_poly_pi_f64(u)
+.end
+
+// -----------------------------
+// API: reflection helpers
+// -----------------------------
+pub fn reflection_info(x: f64) -> GammaReflection
+  // Utilisé pour Γ(x) via Γ(x)Γ(1-x)=π/sin(πx)
+  // On renvoie log(|sin(πx)|) et signe de sin(πx).
+  let out: GammaReflection
+  if basic.is_nan(x) || basic.is_inf(x)
+    out.ok = false
+    out.sign = 0
+    out.log_sinpi_abs = basic.nan_f64()
+    ret out
+  .end
+
+  let s: f64 = sinpi(x)
+  if s == 0.0
+    // pôle
+    out.ok = false
+    out.sign = 0
+    out.log_sinpi_abs = basic.inf_f64()
+    ret out
+  .end
+
+  out.ok = true
+  out.sign = if s > 0.0 then 1 else -1
+  out.log_sinpi_abs = log_abs(s)
+  ret out
+.end
+
+pub fn gamma_sign_via_sinpi(x: f64) -> i32
+  // Pour x négatif non-entier: signe Γ(x) dépend du signe de sin(pi*x)
+  // via reflection: Γ(x) = π/(sin(πx)*Γ(1-x))
+  let s: f64 = sinpi(x)
+  if s > 0.0
+    ret 1
+  .end
+  if s < 0.0
+    ret -1
+  .end
+  ret 0
+.end
+
+// -----------------------------
+// API: Lanczos (f64)
+// -----------------------------
+pub fn lanczos_eval(x: f64) -> LanczosEval
+  // Coeffs Lanczos g=7, n=9 (classique)
+  // Approche: Γ(x) ≈ sqrt(2π) * (t)^(x-0.5) * e^-t * A(x)
+  // où t = x + g + 0.5, A(x)=c0 + c1/(x+1)+...
+  const G: f64 = 7.0
+
+  const C0: f64 = 0.99999999999980993227684700473478
+  const C1: f64 = 676.520368121885098567009190444019
+  const C2: f64 = -1259.13921672240287047156078755283
+  const C3: f64 = 771.3234287776530788486528258894
+  const C4: f64 = -176.61502916214059906584551354
+  const C5: f64 = 12.507343278686904814458936853
+  const C6: f64 = -0.13857109526572011689554707
+  const C7: f64 = 0.000009984369578019570859563e0
+  const C8: f64 = 0.000000150563273514931155833e0
+
+  let out: LanczosEval
+  let z: f64 = x - 1.0
+
+  // Somme
+  let a: f64 =
+    C0
+    + C1 / (z + 1.0)
+    + C2 / (z + 2.0)
+    + C3 / (z + 3.0)
+    + C4 / (z + 4.0)
+    + C5 / (z + 5.0)
+    + C6 / (z + 6.0)
+    + C7 / (z + 7.0)
+    + C8 / (z + 8.0)
+
+  out.sum = a
+  out.t = z + G + 0.5
+  ret out
+.end
+
+pub fn gamma_lanczos_pos(x: f64) -> f64
+  // x > 0
+  let le: LanczosEval = lanczos_eval(x)
+  // Γ(x) ≈ sqrt(2π) * t^(x-0.5) * e^-t * sum
+  let pow: f64 = pow_pos(le.t, x - 0.5)
+  let e: f64 = exp_neg(le.t)
+  ret SQRT_2PI * pow * e * le.sum
+.end
+
+pub fn lgamma_lanczos_pos(x: f64) -> f64
+  let le: LanczosEval = lanczos_eval(x)
+  // ln Γ(x) = ln(sqrt(2π)) + (x-0.5)*ln(t) - t + ln(sum)
+  ret LN_SQRT_2PI + (x - 0.5) * log_pos(le.t) - le.t + log_pos(le.sum)
+.end
+
+// -----------------------------
+// API: Stirling (f64)
+// -----------------------------
+pub fn stirling_lgamma(x: f64) -> f64
+  // ln Γ(x) ≈ (x-0.5)ln x - x + 0.5 ln(2π) + 1/(12x) - 1/(360x^3) + ...
+  // pour x grand
+  let lx: f64 = log_pos(x)
+  let inv: f64 = 1.0 / x
+  let inv2: f64 = inv * inv
+
+  // série de correction
+  // c1/x + c3/x^3 + c5/x^5
+  const C1: f64 = 1.0 / 12.0
+  const C3: f64 = -1.0 / 360.0
+  const C5: f64 = 1.0 / 1260.0
+  const C7: f64 = -1.0 / 1680.0
+
+  let corr: f64 = inv * (C1 + inv2 * (C3 + inv2 * (C5 + inv2 * C7)))
+
+  ret (x - 0.5) * lx - x + LN_SQRT_2PI + corr
+.end
+
+pub fn stirling_gamma(x: f64) -> f64
+  // Γ(x) = exp(lgamma)
+  let l: f64 = stirling_lgamma(x)
+  ret exp_safe(l)
+.end
+
+// -----------------------------
+// API: Shift reduction
+// -----------------------------
+pub fn gamma_shift_to_ge_1_5(x: f64) -> (f64, i32)
+  // Ramène x à y >= 1.5 via Γ(x) = Γ(x+n)/prod_{k=0..n-1}(x+k)
+  // Retourne (y, n) où y = x + n.
+  let y: f64 = x
+  let n: i32 = 0
+  let yy: f64 = y
+  let nn: i32 = n
+
+  while yy < 1.5
+    yy = yy + 1.0
+    nn = nn + 1
+    if nn > 64
+      // sécurité (évite boucle infinie si x NaN etc.)
+      break
+    .end
+  .end
+
+  ret (yy, nn)
+.end
+
+pub fn gamma_shift_product(x: f64, n: i32) -> f64
+  // prod_{k=0..n-1}(x+k)
+  if n <= 0
+    ret 1.0
+  .end
+  let p: f64 = 1.0
+  let i: i32 = 0
+  let pp: f64 = p
+  while i < n
+    pp = pp * (x + to_f64(i))
+    i = i + 1
+  .end
+  ret pp
+.end
+
+pub fn lgamma_shift_sumlog(x: f64, n: i32) -> f64
+  // sum log(x+k)
+  if n <= 0
+    ret 0.0
+  .end
+  let s: f64 = 0.0
+  let i: i32 = 0
+  let ss: f64 = s
+  while i < n
+    ss = ss + log_pos(x + to_f64(i))
+    i = i + 1
+  .end
+  ret ss
+.end
+
+// -----------------------------
+// Log/Exp helpers (fallback-friendly)
+// -----------------------------
+pub fn log_pos(x: f64) -> f64
+  // suppose x>0
+  if basic.has_log_f64()
+    ret basic.log(x)
+  .end
+  // fallback très basique: utiliser ln via core si dispo; sinon panic
+  basic.panic("log_pos: basic.log unavailable")
+  ret 0.0
+.end
+
+pub fn log_abs(x: f64) -> f64
+  let ax: f64 = basic.abs(x)
+  if ax == 0.0
+    ret -basic.inf_f64()
+  .end
+  ret log_pos(ax)
+.end
+
+pub fn exp_safe(x: f64) -> f64
+  // exp saturée
+  if x > MAX_LOG
+    ret basic.inf_f64()
+  .end
+  if x < MIN_LOG
+    ret 0.0
+  .end
+  // si exp module dispo:
+  ret expmod.exp(x)
+.end
+
+fn exp_neg(t: f64) -> f64
+  ret exp_safe(-t)
+.end
+
+pub fn log1p_f64(x: f64) -> f64
+  if basic.has_log1p_f64()
+    ret basic.log1p(x)
+  .end
+  // fallback stable pour |x| petit
+  let ax: f64 = basic.abs(x)
+  if ax < 1e-8
+    // log(1+x) ≈ x - x^2/2 + x^3/3 - x^4/4
+    let x2: f64 = x * x
+    let x3: f64 = x2 * x
+    let x4: f64 = x2 * x2
+    ret x - 0.5 * x2 + (1.0/3.0) * x3 - 0.25 * x4
+  .end
+  ret log_pos(1.0 + x)
+.end
+
+pub fn expm1_f64(x: f64) -> f64
+  if basic.has_expm1_f64()
+    ret basic.expm1(x)
+  .end
+  ret expmod.expm1(x)
+.end
+
+// -----------------------------
+// Pow helper (positif) via exp/log
+// -----------------------------
+pub fn pow_pos(a: f64, b: f64) -> f64
+  // a>0
+  if b == 0.0
+    ret 1.0
+  .end
+  if a == 1.0
+    ret 1.0
+  .end
+  // exp(b*ln(a))
+  let y: f64 = b * log_pos(a)
+  ret exp_safe(y)
+.end
+
+// -----------------------------
+// Réduction modulo 2 centrée
+// -----------------------------
+fn reduce_mod2_centered(x: f64) -> f64
+  // renvoie y dans [-1, 1], y = x - 2*round(x/2)
+  // stable pour grands x via frac si possible
+  let half: f64 = x * 0.5
+  let k: f64 = nearbyint_f64(half)
+  let y: f64 = x - 2.0 * k
+  // sécurise bord [-1,1]
+  if y > 1.0
+    ret y - 2.0
+  .end
+  if y < -1.0
+    ret y + 2.0
+  .end
+  ret y
+.end
+
+// -----------------------------
+// Approx trig polynomiales pour sin(pi*y), cos(pi*y)
+// Intervalle petit: y ∈ [-0.25, 0.25] pour sin/cos en série sur z=pi*y
+// -----------------------------
+fn sin_poly_pi_f64(y: f64) -> f64
+  let z: f64 = PI * y
+  let z2: f64 = z * z
+  // sin(z) ≈ z + z^3*s1 + z^5*s2 + z^7*s3
+  const S1: f64 = -1.0 / 6.0
+  const S2: f64 = 1.0 / 120.0
+  const S3: f64 = -1.0 / 5040.0
+  let p: f64 = ((S3 * z2 + S2) * z2 + S1) * z2
+  ret z + z * z2 * p
+.end
+
+fn cos_poly_pi_f64(y: f64) -> f64
+  let z: f64 = PI * y
+  let z2: f64 = z * z
+  // cos(z) ≈ 1 + z^2*c1 + z^4*c2 + z^6*c3
+  const C1: f64 = -1.0 / 2.0
+  const C2: f64 = 1.0 / 24.0
+  const C3: f64 = -1.0 / 720.0
+  let p: f64 = (C3 * z2 + C2) * z2 + C1
+  ret 1.0 + z2 * p
+.end
+
+// -----------------------------
+// nearbyint + conversions
+// -----------------------------
+fn nearbyint_f64(x: f64) -> f64
+  if basic.has_nearbyint_f64()
+    ret basic.nearbyint(x)
+  .end
+  if x >= 0.0
+    ret basic.floor(x + 0.5)
+  .end
+  ret -basic.floor((-x) + 0.5)
+.end
+
+fn to_f64(i: i32) -> f64
+  ret basic.i32_to_f64(i)
+.end
+
+// -----------------------------
+// F32 versions minimales utiles
+// -----------------------------
+pub fn sinpi_f32(x: f32) -> f32
+  if basic.is_nan_f32(x)
+    ret x
+  .end
+  if basic.is_inf_f32(x)
+    ret basic.nan_f32()
+  .end
+  let y: f32 = reduce_mod2_centered_f32(x)
+  let ay: f32 = basic.abs_f32(y)
+  if ay <= 0.25
+    ret sin_poly_pi_f32(y)
+  .end
+  if ay <= 0.75
+    let z: f32 = y - basic.copysign_f32(0.5, y)
+    let c: f32 = cos_poly_pi_f32(z)
+    if y > 0.0
+      ret c
+    .end
+    ret -c
+  .end
+  let z2: f32 = basic.copysign_f32(1.0 - ay, y)
+  ret sin_poly_pi_f32(z2)
+.end
+
+pub fn cospi_f32(x: f32) -> f32
+  if basic.is_nan_f32(x)
+    ret x
+  .end
+  if basic.is_inf_f32(x)
+    ret basic.nan_f32()
+  .end
+  let y: f32 = reduce_mod2_centered_f32(x)
+  let ay: f32 = basic.abs_f32(y)
+  if ay <= 0.25
+    ret cos_poly_pi_f32(y)
+  .end
+  if ay <= 0.75
+    let z: f32 = y - basic.copysign_f32(0.5, y)
+    let s: f32 = sin_poly_pi_f32(z)
+    ret -s
+  .end
+  let u: f32 = 1.0 - ay
+  ret -cos_poly_pi_f32(u)
+.end
+
+fn reduce_mod2_centered_f32(x: f32) -> f32
+  let half: f32 = x * 0.5
+  let k: f32 = nearbyint_f32(half)
+  let y: f32 = x - 2.0 * k
+  if y > 1.0
+    ret y - 2.0
+  .end
+  if y < -1.0
+    ret y + 2.0
+  .end
+  ret y
+.end
+
+fn nearbyint_f32(x: f32) -> f32
+  if basic.has_nearbyint_f32()
+    ret basic.nearbyint_f32(x)
+  .end
+  if x >= 0.0
+    ret basic.floor_f32(x + 0.5)
+  .end
+  ret -basic.floor_f32((-x) + 0.5)
+.end
+
+fn sin_poly_pi_f32(y: f32) -> f32
+  const PI_F: f32 = 3.14159265359
+  let z: f32 = PI_F * y
+  let z2: f32 = z * z
+  const S1: f32 = -0.16666667
+  const S2: f32 = 0.008333334
+  const S3: f32 = -0.0001984127
+  let p: f32 = ((S3 * z2 + S2) * z2 + S1) * z2
+  ret z + z * z2 * p
+.end
+
+fn cos_poly_pi_f32(y: f32) -> f32
+  const PI_F: f32 = 3.14159265359
+  let z: f32 = PI_F * y
+  let z2: f32 = z * z
+  const C1: f32 = -0.5
+  const C2: f32 = 0.041666668
+  const C3: f32 = -0.001388889
+  let p: f32 = (C3 * z2 + C2) * z2 + C1
+  ret 1.0 + z2 * p
+.end
+
+// -----------------------------
+// Tests
+// -----------------------------
+pub fn test_gamma_helpers_smoke() -> void
+  // sinpi/cospi identités
+  assert_close_f64(sinpi(0.0), 0.0, 0.0)
+  assert_close_f64(sinpi(0.5), 1.0, 1e-12)
+  assert_close_f64(sinpi(-0.5), -1.0, 1e-12)
+  assert_close_f64(cospi(0.0), 1.0, 0.0)
+  assert_close_f64(cospi(1.0), -1.0, 1e-12)
+  assert_close_f64(cospi(0.5), 0.0, 1e-12)
+
+  // reflection_info
+  let r: GammaReflection = reflection_info(0.2)
+  assert_true(r.ok)
+  assert_true(r.sign == 1 || r.sign == -1)
+  assert_true(basic.is_finite(r.log_sinpi_abs))
+
+  // lanczos sanity: gamma(1)=1, gamma(0.5)=sqrt(pi)
+  assert_close_f64(gamma_lanczos_pos(1.0), 1.0, 1e-12)
+  assert_close_f64(gamma_lanczos_pos(0.5), basic.sqrt(PI), 1e-11)
+
+  // stirling lgamma approx sur grand x (erreur relative modérée)
+  let s: f64 = stirling_lgamma(50.0)
+  assert_true(basic.is_finite(s))
+.end
+
+fn assert_true(cond: bool) -> void
+  if !cond
+    basic.panic("assert_true failed")
+  .end
+.end
+
+fn assert_close_f64(x: f64, y: f64, tol: f64) -> void
+  let d: f64 = basic.abs(x - y)
+  let t: f64 = tol + 1e-12 * basic.max(basic.abs(x), basic.abs(y))
+  if d > t
+    basic.panic("assert_close_f64 failed")
+  .end
 .end
