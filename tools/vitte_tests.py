@@ -402,6 +402,23 @@ def cmd_parser_wrapper(args: argparse.Namespace) -> int:
     return 0 if passed == total else 1
 
 
+def cmd_ir_dump(args: argparse.Namespace) -> int:
+    """
+    Exécute les tests Python qui valident le formatage du dump IR.
+
+    Objectif : verrouiller les instructions principales (unaires, appels,
+    littéraux string/tuple) sans dépendre d'un binaire vittec complet.
+    """
+    python_bin = sys.executable or "python3"
+    cmd = [python_bin, "-m", "unittest", "tests.ir.test_ir_dump"]
+    rc = run_cmd(cmd, cwd=ROOT)
+    if rc == 0:
+        print("[vitte-tests] ir-dump: OK")
+    else:
+        print(f"[vitte-tests] ir-dump: FAILED (exit {rc})")
+    return rc
+
+
 def cmd_all(args: argparse.Namespace) -> int:
     """
     Exécute toutes les familles de tests dans l'ordre :
@@ -410,12 +427,14 @@ def cmd_all(args: argparse.Namespace) -> int:
       3) parse
       4) malformed
       5) goldens
+      6) ir-dump (formatage Python)
     """
     rc_tokens = cmd_token_tables(args)
     rc_smoke = cmd_smoke(args)
     rc_parse = cmd_parse(args)
     rc_malformed = cmd_malformed(args)
     rc_goldens = cmd_goldens(args)
+    rc_ir = cmd_ir_dump(args)
 
     if (
         rc_tokens == 0
@@ -423,11 +442,13 @@ def cmd_all(args: argparse.Namespace) -> int:
         and rc_parse == 0
         and rc_malformed == 0
         and rc_goldens == 0
+        and rc_ir == 0
     ):
         print("[vitte-tests] ALL TESTS PASSED")
         return 0
 
     print("[vitte-tests] SOME TESTS FAILED:")
+    print(f"  ir-dump   -> {'OK' if rc_ir == 0 else 'FAIL'}")
     print(f"  token-tables -> {'OK' if rc_tokens == 0 else 'FAIL'}")
     print(f"  smoke     -> {'OK' if rc_smoke == 0 else 'FAIL'}")
     print(f"  parse     -> {'OK' if rc_parse == 0 else 'FAIL'}")
@@ -488,6 +509,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exécute run_parser_with_diags.py sur les goldens parse (sans shell).",
     )
     p_parser_wrapper.set_defaults(func=cmd_parser_wrapper)
+
+    # vitte_tests.py ir-dump
+    p_ir_dump = sub.add_parser(
+        "ir-dump",
+        help="Exécute les tests Python de formatage du dump IR.",
+    )
+    p_ir_dump.set_defaults(func=cmd_ir_dump)
 
     # vitte_tests.py all
     p_all = sub.add_parser(

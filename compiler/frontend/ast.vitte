@@ -40,6 +40,13 @@ struct TypeExpr
   span: diag.Span
 .end
 
+fn TypeExpr.from_name(name: String, span: diag.Span) -> TypeExpr
+  let ident = Ident(name = name, span = span)
+  let path = coll.Vec[Ident].new()
+  path.push(ident)
+  return TypeExpr.named_from_path(path, span)
+.end
+
 fn TypeExpr.named_from_ident(name: Ident) -> TypeExpr
   let path = coll.Vec[Ident].new()
   path.push(name)
@@ -110,6 +117,11 @@ enum ExprKind
   PathName
     path: coll.Vec[Ident]
 
+  # Opérations unaires (-x, !flag)
+  Unary
+    op: UnaryOp
+    operand: ExprId
+
   # x, foo, my_module.some_name, etc.
   Name
     ident: Ident
@@ -129,6 +141,10 @@ enum ExprKind
   # "hello"
   StringLiteral
     value: String
+
+  # (a, b, c)
+  TupleLiteral
+    items: coll.Vec[ExprId]
 
   # true / false
   BoolLiteral
@@ -164,6 +180,11 @@ enum ExprKind
   MatchExpr
     scrutinee: ExprId
     arms: coll.Vec[MatchArm]
+.end
+
+enum UnaryOp
+  Neg
+  Not
 .end
 
 struct MatchArm
@@ -213,6 +234,20 @@ struct StructField
 struct Expr
   kind: ExprKind
   span: diag.Span
+.end
+
+struct TypeInfo
+  expr_types: coll.HashMap[ExprId, TypeExpr]
+  symbol_types: coll.HashMap[String, TypeExpr]
+  return_types: coll.HashMap[String, TypeExpr]
+.end
+
+fn TypeInfo.empty() -> TypeInfo
+  return TypeInfo(
+    expr_types = coll.HashMap[ExprId, TypeExpr].new(),
+    symbol_types = coll.HashMap[String, TypeExpr].new(),
+    return_types = coll.HashMap[String, TypeExpr].new(),
+  )
 .end
 
 struct FnParam
@@ -319,6 +354,7 @@ struct Module
   blocks: coll.Vec[Block]
   stmts: coll.Vec[Stmt]
   exprs: coll.Vec[Expr]
+  type_info: TypeInfo
 .end
 
 fn empty_module(file: String) -> Module
@@ -330,6 +366,7 @@ fn empty_module(file: String) -> Module
     blocks = coll.Vec[Block].new(),
     stmts = coll.Vec[Stmt].new(),
     exprs = coll.Vec[Expr].new(),
+    type_info = TypeInfo.empty(),
   )
 .end
 
@@ -377,4 +414,37 @@ fn Module.add_expr(self: &mut Module, expr: Expr) -> ExprId
 
 fn Module.get_expr(self: &Module, id: ExprId) -> Expr
   return self.exprs[id]
+.end
+
+fn Module.set_expr_type(self: &mut Module, id: ExprId, ty: TypeExpr) -> Unit
+  self.type_info.expr_types.insert(id, ty)
+.end
+
+fn Module.get_expr_type(self: Module, id: ExprId) -> Option[TypeExpr]
+  if self.type_info.expr_types.contains_key(id)
+    return Some(self.type_info.expr_types[id])
+  end
+  return None
+.end
+
+fn Module.set_symbol_type(self: &mut Module, name: String, ty: TypeExpr) -> Unit
+  self.type_info.symbol_types.insert(name, ty)
+.end
+
+fn Module.get_symbol_type(self: Module, name: String) -> Option[TypeExpr]
+  if self.type_info.symbol_types.contains_key(name)
+    return Some(self.type_info.symbol_types[name])
+  end
+  return None
+.end
+
+fn Module.set_return_type(self: &mut Module, fn_name: String, ty: TypeExpr) -> Unit
+  self.type_info.return_types.insert(fn_name, ty)
+.end
+
+fn Module.get_return_type(self: Module, fn_name: String) -> Option[TypeExpr]
+  if self.type_info.return_types.contains_key(fn_name)
+    return Some(self.type_info.return_types[fn_name])
+  end
+  return None
 .end

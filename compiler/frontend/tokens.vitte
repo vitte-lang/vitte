@@ -387,6 +387,7 @@ fn token_kind_name(kind: lex.TokenKind) -> String
     else if kind == lex.TokenKind.FatArrow then return "FatArrow"
     else if kind == lex.TokenKind.EqualEqual then return "EqualEqual"
     else if kind == lex.TokenKind.BangEqual then return "BangEqual"
+    else if kind == lex.TokenKind.Bang then return "Bang"
     else if kind == lex.TokenKind.Less then return "Less"
     else if kind == lex.TokenKind.LessEqual then return "LessEqual"
     else if kind == lex.TokenKind.Greater then return "Greater"
@@ -422,6 +423,7 @@ fn token_kind_lexeme(kind: lex.TokenKind) -> String
     else if kind == lex.TokenKind.FatArrow then return "=>"
     else if kind == lex.TokenKind.EqualEqual then return "=="
     else if kind == lex.TokenKind.BangEqual then return "!="
+    else if kind == lex.TokenKind.Bang then return "!"
     else if kind == lex.TokenKind.Less then return "<"
     else if kind == lex.TokenKind.LessEqual then return "<="
     else if kind == lex.TokenKind.Greater then return ">"
@@ -1030,6 +1032,24 @@ fn default_token_class_infos() -> coll.Vec[TkTokenClassInfo]
     ))
 
     items.push(TkTokenClassInfo(
+        token_kind = lex.TokenKind.Bang,
+        category = TkTokenCategory.TkOperator,
+        literal_category = TkLiteralCategory.TkLitOther,
+        operator_category = TkOperatorCategory.TkOpLogicalNonShortCircuit,
+        fixity = TkFixity.TkPrefix,
+        precedence = 7,
+        assoc = TkAssoc.TkNonAssoc,
+        is_associative = false,
+        is_keyword_token = false,
+        can_be_contextual = false,
+        display_name = "logical not",
+        sample_lexeme = "!",
+        description = "Négation logique.",
+        tags = coll.Vec[String].new(),
+        extra = coll.HashMap[String, String](),
+    ))
+
+    items.push(TkTokenClassInfo(
         token_kind = lex.TokenKind.Less,
         category = TkTokenCategory.TkOperator,
         literal_category = TkLiteralCategory.TkLitOther,
@@ -1417,6 +1437,21 @@ fn default_operator_infos() -> coll.Vec[TkOperatorInfo]
     tags_and.push("logical")
     tags_and.push("short-circuit")
     push_op(&mut items, lex.TokenKind.AmpAmp, "&&", TkOperatorCategory.TkOpLogicalShortCircuit, 4, TkAssoc.TkLeft, "binary", "ET logique court-circuit.", tags_and)
+
+    let tags_not = coll.Vec[String].new()
+    tags_not.push("logical")
+    items.push(TkOperatorInfo(
+        token_kind = lex.TokenKind.Bang,
+        textual_repr = "!",
+        category = TkOperatorCategory.TkOpLogicalNonShortCircuit,
+        fixity = TkFixity.TkPrefix,
+        precedence = 7,
+        assoc = TkAssoc.TkNonAssoc,
+        usage = "unary-prefix",
+        description = "Négation logique.",
+        tags = tags_not,
+        extra = coll.HashMap[String, String](),
+    ))
 
     let tags_eq = coll.Vec[String].new()
     tags_eq.push("comparison")

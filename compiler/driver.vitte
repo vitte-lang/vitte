@@ -12,7 +12,9 @@ import vitte.compiler.frontend.diagnostics as diag
 import vitte.compiler.frontend.reporter as reporter
 import vitte.compiler.frontend.ast as ast
 import vitte.compiler.ir.ir as ir
-import vitte.compiler.ir.ir_builder as ir_builder
+import vitte.compiler.ir.builder as ir_builder
+import vitte.compiler.ir.dump as ir_dump
+import vitte.compiler.sema.typecheck as sema
 
 # =============================================================================
 # Vitte compiler – Driver de haut niveau (contrat host / driver)
@@ -37,6 +39,27 @@ struct DriverConfig
   out_bin: String
   log_path: String?
   emit_text_diags: Bool
+  emit_ir_text: Bool
+  emit_bytecode: Bool
+.end
+
+pub struct DriverFlags
+  emit_ir_text: Bool
+  emit_bytecode: Bool
+.end
+
+fn DriverFlags.build_defaults() -> DriverFlags
+  return DriverFlags(
+    emit_ir_text = true,
+    emit_bytecode = true,
+  )
+.end
+
+fn DriverFlags.check_defaults() -> DriverFlags
+  return DriverFlags(
+    emit_ir_text = false,
+    emit_bytecode = false,
+  )
 .end
 
 struct DriverContext
@@ -68,11 +91,17 @@ fn driver_result(ctx: DriverContext, exit_code: Int) -> DriverResult
 # -----------------------------------------------------------------------------
 
 fn run_build(project_path: String, out_bin: String, log_path: String?) -> DriverResult
+  return run_build_with_flags(project_path, out_bin, log_path, DriverFlags.build_defaults())
+.end
+
+fn run_build_with_flags(project_path: String, out_bin: String, log_path: String?, flags: DriverFlags) -> DriverResult
   let cfg = DriverConfig(
     project_path = project_path,
     out_bin = out_bin,
     log_path = log_path,
     emit_text_diags = true,
+    emit_ir_text = flags.emit_ir_text,
+    emit_bytecode = flags.emit_bytecode,
   )
 
   let ctx = DriverContext(
@@ -105,7 +134,14 @@ fn run_build(project_path: String, out_bin: String, log_path: String?) -> Driver
     return driver_result(ctx, 1)
   end
 
-  # Étape 4 : IR + backend
+  # Étape 4 : typage minimal
+  let sema_res = run_sema(ctx)
+  if sema_res.is_err()
+    report_diagnostics(ctx)
+    return driver_result(ctx, 1)
+  end
+
+  # Étape 5 : IR + backend
   let ir_res = build_ir(ctx)
   if ir_res.is_err()
     log_internal_error(ctx, "build_ir a échoué")
@@ -126,11 +162,17 @@ fn run_build(project_path: String, out_bin: String, log_path: String?) -> Driver
 .end
 
 fn run_check(project_path: String, log_path: String?) -> DriverResult
+  return run_check_with_flags(project_path, log_path, DriverFlags.check_defaults())
+.end
+
+fn run_check_with_flags(project_path: String, log_path: String?, flags: DriverFlags) -> DriverResult
   let cfg = DriverConfig(
     project_path = project_path,
     out_bin = "",
     log_path = log_path,
     emit_text_diags = true,
+    emit_ir_text = flags.emit_ir_text,
+    emit_bytecode = flags.emit_bytecode,
   )
 
   let ctx = DriverContext(
@@ -159,6 +201,12 @@ fn run_check(project_path: String, log_path: String?) -> DriverResult
     return driver_result(ctx, 1)
   end
 
+  let sema_res = run_sema(ctx)
+  if sema_res.is_err()
+    report_diagnostics(ctx)
+    return driver_result(ctx, 1)
+  end
+
   flush_logs(ctx)
   return driver_result(ctx, 0)
 .end
@@ -182,8 +230,18 @@ fn load_manifest(ctx: DriverContext) -> Result[Unit, Unit]
     return Err(())
   end
 
+  let read_res = fs.read_to_string(manifest)
+  if read_res.is_err()
+    let span = diag.Span.dummy(manifest)
+    ctx.diags.add_error(
+      "Impossible de lire le manifest",
+      span,
+      "E0002",
+    )
+    return Err(())
+  end
+
   # TODO:
-  #   - lire le contenu du manifest
   #   - parser Muffin
   #   - initialiser la configuration interne du projet dans le contexte
   return Ok(())
@@ -301,21 +359,77 @@ fn run_frontend(ctx: DriverContext) -> Result[Unit, Unit]
 
 fn build_ir(ctx: DriverContext) -> Result[Unit, Unit]
   # Construction du programme IR à partir des modules AST.
-  let prog = ir_builder.build_ir_program(ctx.modules, &mut ctx.diags)
-  ctx.ir_program = prog
+  let result = ir_builder.build_program(ctx.modules)
+  let dlen = result.diagnostics.len()
+  let di = 0usize
+  while di < dlen
+    let d = result.diagnostics[di]
+    ctx.diags.add(d)
+    di = di + 1usize
+  end
+  let errs = ir.validate_program(result.program)
+  let i = 0usize
+  while i < errs.len()
+    let e = errs[i]
+    ctx.diags.add_error(e.message, e.span, "E3000")
+    i = i + 1usize
+  end
+  ctx.ir_program = result.program
 
-  # Si le builder a émis des erreurs (par ex. incohérences futures),
-  # on pourra les traiter ici. Pour l'instant, on se contente de vérifier.
   if ctx.diags.has_error()
     return Err(())
   end
 
+  # TODO: brancher backend bytecode/dump
   return Ok(())
 .end
 
+fn run_sema(ctx: DriverContext) -> Result[Unit, Unit]
+  let res = sema.run_typecheck(&mut ctx.modules, &mut ctx.diags)
+  if res.is_err()
+    return Err(())
+  end
+  return Ok(())
+.end
+
+fn ir_text_output_path(cfg: DriverConfig) -> String
+  if cfg.out_bin != ""
+    return cfg.out_bin + ".ir.txt"
+  end
+  let root = path.dirname(cfg.project_path)
+  return path.join(root, "target/core/ir_dump.txt")
+.end
+
+fn bytecode_output_path(cfg: DriverConfig) -> String
+  if cfg.out_bin != ""
+    return cfg.out_bin
+  end
+  let root = path.dirname(cfg.project_path)
+  return path.join(root, "target/core/out.vbc")
+.end
+
 fn run_backend(ctx: DriverContext) -> Result[Unit, Unit]
-  # TODO:
-  #   - appeler un backend (C ou VM) pour produire ctx.cfg.out_bin
+  if ctx.cfg.emit_ir_text
+    let ir_path = ir_text_output_path(ctx.cfg)
+    let ir_dir = path.dirname(ir_path)
+    if ir_dir != ""
+      fs.create_dir_all(ir_dir)
+    end
+    let dump = ir_dump.format_program(ctx.ir_program)
+    fs.write_all(ir_path, dump.as_bytes())
+  end
+
+  if ctx.cfg.emit_bytecode
+    let bc_path = bytecode_output_path(ctx.cfg)
+    let bc_dir = path.dirname(bc_path)
+    if bc_dir != ""
+      fs.create_dir_all(bc_dir)
+    end
+    let stub = "# vitte bytecode placeholder\n"
+      + "modules=" + str.from_int(ctx.ir_program.modules.len() as Int) + "\n"
+    fs.write_all(bc_path, stub.as_bytes())
+  end
+
   return Ok(())
 .end
 

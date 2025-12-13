@@ -84,6 +84,7 @@ enum TokenKind
   FatArrow       # =>
   EqualEqual     # ==
   BangEqual      # !=
+  Bang           # !
   Less           # <
   LessEqual      # <=
   Greater        # >
@@ -541,6 +542,11 @@ fn Lexer.lex_operator_or_punct(self: &mut Lexer) -> Unit
   if c == '!' and next == '='
     self.advance()
     self.push_token(TokenKind.BangEqual, "!=", span)
+    return
+  end
+
+  if c == '!' and next != '='
+    self.push_token(TokenKind.Bang, "!", span)
     return
   end
 
