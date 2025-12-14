@@ -1,8 +1,8 @@
 module vitte.compiler.cli:
     files = [
-        "args.vitte",
-        "diagnostics.vitte",
+        "build.vitte",
+        "lc_common.vitte",
         "main.vitte",
-        "subcommands.vitte",
+        "vittec_main.vitte",
     ]
 .end

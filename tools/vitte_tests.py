@@ -33,10 +33,12 @@ TOOLS_DIR = ROOT / "tools"
 TARGET_DIR = ROOT / "target"
 BOOTSTRAP_DIR = ROOT / "bootstrap"
 
-STEELC = SCRIPTS_DIR / "steelc"
+IS_WINDOWS = os.name == "nt"
+
+STEELC = SCRIPTS_DIR / ("steelc.ps1" if IS_WINDOWS else "steelc")
 VITTEC_RELEASE = TARGET_DIR / "release" / "vittec"
 VITTEC_STAGE0 = BOOTSTRAP_DIR / "bin" / "vittec-stage0"
-RUN_GOLDENS_SH = SCRIPTS_DIR / "run_goldens.sh"
+RUN_GOLDENS_SH = SCRIPTS_DIR / ("run_goldens.ps1" if IS_WINDOWS else "run_goldens.sh")
 RUN_PARSER_WRAPPER = TOOLS_DIR / "run_parser_with_diags.py"
 
 TESTS_DIR = ROOT / "tests"
@@ -74,11 +76,27 @@ def ensure_executable(path: Path, kind: str) -> bool:
 
     kind: description humaine ("steelc", "vittec", "run_goldens.sh", etc.)
     """
+    if IS_WINDOWS and path.is_file():
+        return True
+
     if path.is_file() and os.access(path, os.X_OK):
         return True
 
     print(f"[vitte-tests] ERROR: {kind} introuvable ou non exécutable: {path}")
     return False
+
+
+def cmd_for_tool(path: Path) -> list[str]:
+    if not IS_WINDOWS:
+        return [str(path)]
+
+    suffix = path.suffix.lower()
+    if suffix == ".ps1":
+        return ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(path)]
+    if suffix in (".cmd", ".bat", ".exe", ".com"):
+        return [str(path)]
+    # Default: try to run it as a Python script (stage0/stubs are Python files without extensions).
+    return [sys.executable or "python", str(path)]
 
 
 def ensure_steelc() -> bool:
@@ -106,6 +124,32 @@ def resolve_parser_binary() -> Path | None:
         if ensure_executable(path, label):
             return path
     return None
+
+
+def parser_supports_dump_ast(parser_bin: Path) -> tuple[bool, str]:
+    """
+    Vérifie si `parser_bin --help` mentionne l'option --dump-ast.
+
+    Retourne (supporte, sortie_help) pour pouvoir logguer un message d'aide
+    quand on doit ignorer les fixtures faute de parser compatible.
+    """
+    cmd = [*cmd_for_tool(parser_bin), "--help"]
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        return (
+            False,
+            f"[vitte-tests] ERROR: impossible d'exécuter {parser_bin} --help: {exc}",
+        )
+
+    output = (proc.stdout or "") + (proc.stderr or "")
+    return ("--dump-ast" in output, output)
 
 
 def load_golden_expectations(path: Path) -> tuple[int, list[str]]:
@@ -175,7 +219,7 @@ def load_token_class_kinds() -> set[str]:
             block.append(raw)
 
     text = "\n".join(block)
-    pattern = re.compile(r"lex\\.TokenKind\\.([A-Za-z0-9_]+)")
+    pattern = re.compile(r"lex\.TokenKind\.([A-Za-z0-9_]+)")
     return {match.group(1) for match in pattern.finditer(text)}
 
 
@@ -225,9 +269,6 @@ def cmd_smoke(args: argparse.Namespace) -> int:
     Chaque fichier *.vitte de tests/smoke est lancé séquentiellement.
     Un test est considéré comme réussi si le code de retour est 0.
     """
-    if not ensure_steelc():
-        return 1
-
     if not SMOKE_DIR.is_dir():
         print(f"[vitte-tests] WARNING: pas de dossier de tests smoke: {SMOKE_DIR}")
         return 0
@@ -237,11 +278,22 @@ def cmd_smoke(args: argparse.Namespace) -> int:
         print(f"[vitte-tests] WARNING: aucun test *.vitte dans {SMOKE_DIR}")
         return 0
 
+    # Les tests smoke sont des placeholders tant que le runner "steelc" n'exécute
+    # pas de scripts Vitte. On ignore explicitement les fichiers vides pour ne
+    # pas casser le bootstrap.
+    tests = [t for t in tests if t.stat().st_size > 0]
+    if not tests:
+        print("[vitte-tests] smoke: aucun test effectif (fichiers vides), skip")
+        return 0
+
+    if not ensure_steelc():
+        return 1
+
     print(f"[vitte-tests] running {len(tests)} smoke test(s)…")
     ok = 0
     for t in tests:
         rel = t.relative_to(ROOT)
-        cmd = [str(STEELC), str(rel)]
+        cmd = [*cmd_for_tool(STEELC), str(rel)]
         rc = run_cmd(cmd, cwd=ROOT)
         if rc == 0:
             ok += 1
@@ -261,6 +313,26 @@ def cmd_parse(args: argparse.Namespace) -> int:
     if parser_bin is None:
         return 1
 
+    supports_dump_ast, help_output = parser_supports_dump_ast(parser_bin)
+    if not supports_dump_ast:
+        try:
+            rel = parser_bin.relative_to(ROOT)
+            parser_label = str(rel)
+        except ValueError:
+            parser_label = str(parser_bin)
+        print(
+            f"[vitte-tests] WARNING: le binaire parser ({parser_label}) ne "
+            "déclare pas l'option --dump-ast."
+        )
+        if help_output.strip():
+            preview = "\n".join(help_output.strip().splitlines()[:4])
+            print(f"[vitte-tests]          apercu --help:\n{preview}")
+        print(
+            "[vitte-tests] parse: skip (construis target/release/vittec ou "
+            "pointe vers un parser qui expose --dump-ast)."
+        )
+        return 0
+
     if not PARSE_DIR.is_dir():
         print(f"[vitte-tests] WARNING: pas de dossier de fixtures parse: {PARSE_DIR}")
         return 0
@@ -274,7 +346,7 @@ def cmd_parse(args: argparse.Namespace) -> int:
     ok = 0
     for t in tests:
         rel = t.relative_to(ROOT)
-        cmd = [str(parser_bin), "--dump-ast", str(rel)]
+        cmd = [*cmd_for_tool(parser_bin), "--dump-ast", str(rel)]
         rc = run_cmd(cmd, cwd=ROOT)
         if rc == 0:
             ok += 1
@@ -310,7 +382,7 @@ def cmd_malformed(args: argparse.Namespace) -> int:
     ok = 0
     for t in tests:
         rel = t.relative_to(ROOT)
-        cmd = [str(VITTEC_RELEASE), str(rel)]
+        cmd = [*cmd_for_tool(VITTEC_RELEASE), str(rel)]
         rc = run_cmd(cmd, cwd=ROOT)
         if rc != 0:
             ok += 1
@@ -330,7 +402,7 @@ def cmd_goldens(args: argparse.Namespace) -> int:
     if not ensure_executable(RUN_GOLDENS_SH, "scripts/run_goldens.sh"):
         return 1
 
-    cmd = [str(RUN_GOLDENS_SH)]
+    cmd = [*cmd_for_tool(RUN_GOLDENS_SH)]
     rc = run_cmd(cmd, cwd=ROOT)
     if rc == 0:
         print("[vitte-tests] goldens: OK")

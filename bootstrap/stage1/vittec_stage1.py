@@ -56,14 +56,48 @@ def find_vitte_sources(project_manifest: Path) -> list[Path]:
 
 
 def create_placeholder_binary(path: Path, project: Path) -> None:
-    script = """#!/usr/bin/env sh
-echo "[vittec][bootstrap] binaire fictif pour {project}"
-echo "Ce fichier a été généré par le bootstrap Python (stage1)."
-echo "Aucune compilation réelle n'a été effectuée."
-exit 0
+    # Le "binaire" stage1/stage2 est un script Python exécutable :
+    # - fonctionne sur POSIX (shebang + chmod),
+    # - fonctionne sur Windows via `python <file>` (pas d'extension requise).
+    # Il sert de placeholder tant que le compilateur Vitte natif n'est pas câblé.
+    script = """#!/usr/bin/env python3
+from __future__ import annotations
+
+from pathlib import Path
+import sys
+
+
+def _find_repo_root(start: Path) -> Path:
+    for candidate in (start, *start.parents):
+        if (candidate / "muffin.muf").is_file():
+            return candidate
+    return start
+
+
+def main() -> int:
+    here = Path(__file__).resolve()
+    repo_root = _find_repo_root(here.parent)
+    stage1_dir = repo_root / "bootstrap" / "stage1"
+
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    if str(stage1_dir) not in sys.path:
+        sys.path.insert(0, str(stage1_dir))
+
+    try:
+        from vittec_stage1 import main as stage1_main
+    except Exception as exc:
+        print(f"[vittec][bootstrap][ERROR] stage1 wrapper indisponible: {exc}", file=sys.stderr)
+        return 2
+
+    return int(stage1_main())
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
 """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(script.format(project=project), encoding="utf-8")
+    path.write_text(script, encoding="utf-8")
     path.chmod(0o755)
 
 
