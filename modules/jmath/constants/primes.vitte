@@ -2,34 +2,6 @@ module jmath.algorithms.primes
 
 # ============================================================================
 # algorithms.primes – nombres premiers (ultra complet)
-#
-# Fournit :
-#   - Tests de primalité :
-#       * is_prime_u32 (déterministe)
-#       * is_prime_u64_trial (petits)
-#       * miller_rabin_u64 (déterministe pour u64 via bases)
-#   - Génération :
-#       * next_prime_u64, prev_prime_u64
-#       * primes_up_to (sieve Eratosthenes)
-#       * segmented_sieve (grand N)
-#   - Décomposition / arithmétique :
-#       * gcd/lcm (u64)
-#       * egcd (coeff Bézout) (i64)
-#       * mod_pow (u64)
-#       * mod_mul (overflow-safe via double-and-add)
-#       * mod_inv (inverse mod p)
-#       * pollard_rho (factorisation u64)
-#       * factor_u64 (factorisation complète triée)
-#       * phi_u64 (totient Euler via facteurs)
-#       * divisor_count / divisor_sum / divisors_list
-#   - Outils :
-#       * primorial, mobius (via facteurs), jacobi_symbol
-#       * primes iterator (simple)
-#   - Tests smoke
-#
-# Conventions :
-#   - Pas d’accolades, blocs `.end`
-#   - Pas d’I/O
 # ============================================================================
 
 # ---------------------------------
@@ -41,26 +13,10 @@ fn abs_i64(x: i64) -> i64
   ret x
 .end
 
-fn max_u64(a: u64, b: u64) -> u64
-  if a > b ret a .end
-  ret b
-.end
-
-fn min_u64(a: u64, b: u64) -> u64
-  if a < b ret a .end
-  ret b
-.end
-
-fn is_even_u64(x: u64) -> bool
-  ret (x & 1) == 0
-.end
-
-fn is_odd_u64(x: u64) -> bool
-  ret (x & 1) == 1
-.end
+fn is_even_u64(x: u64) -> bool ret (x & 1) == 0 .end
+fn is_odd_u64(x: u64) -> bool ret (x & 1) == 1 .end
 
 fn u64_sqrt_floor(n: u64) -> u64
-  # integer sqrt via Newton
   if n < 2 ret n .end
   let mut x = n
   let mut y = (x + 1) >> 1
@@ -96,7 +52,6 @@ struct Egcd
 .end
 
 fn egcd_i64(a: i64, b: i64) -> Egcd
-  # extended Euclid: ax + by = g
   let mut old_r = a
   let mut r = b
   let mut old_s = 1
@@ -106,6 +61,7 @@ fn egcd_i64(a: i64, b: i64) -> Egcd
 
   while r != 0
     let q = old_r / r
+
     let tmp_r = old_r - q*r
     old_r = r
     r = tmp_r
@@ -136,19 +92,7 @@ fn mod_inv_i64(a: i64, m: i64) -> (bool, i64)
 # Modular arithmetic (u64 safe)
 # ---------------------------------
 
-fn mod_add(a: u64, b: u64, m: u64) -> u64
-  let s = a + b
-  if s >= m ret s - m .end
-  ret s
-.end
-
-fn mod_sub(a: u64, b: u64, m: u64) -> u64
-  if a >= b ret a - b .end
-  ret m - (b - a) % m
-.end
-
 fn mod_mul(a: u64, b: u64, m: u64) -> u64
-  # overflow-safe multiplication modulo m by double-and-add
   if m == 0 ret 0 .end
   let mut res : u64 = 0
   let mut x = a % m
@@ -178,7 +122,7 @@ fn mod_pow(mut a: u64, mut e: u64, m: u64) -> u64
 .end
 
 # ---------------------------------
-# Trial division primality (small)
+# Trial primality
 # ---------------------------------
 
 fn is_prime_u32(n: u32) -> bool
@@ -186,6 +130,7 @@ fn is_prime_u32(n: u32) -> bool
   if n == 2 || n == 3 ret true .end
   if (n & 1) == 0 ret false .end
   if n % 3 == 0 ret false .end
+
   let mut i : u32 = 5
   while (i as u64) * (i as u64) <= (n as u64)
     if n % i == 0 ret false .end
@@ -200,6 +145,7 @@ fn is_prime_u64_trial(n: u64) -> bool
   if n == 2 || n == 3 ret true .end
   if (n & 1) == 0 ret false .end
   if n % 3 == 0 ret false .end
+
   let mut i : u64 = 5
   while i*i <= n
     if n % i == 0 ret false .end
@@ -214,7 +160,6 @@ fn is_prime_u64_trial(n: u64) -> bool
 # ---------------------------------
 
 fn mr_decompose(n: u64) -> (u64, u32)
-  # n-1 = d * 2^s, d odd
   let mut d = n - 1
   let mut s : u32 = 0
   while (d & 1) == 0
@@ -242,7 +187,6 @@ fn miller_rabin_u64(n: u64) -> bool
   if n == 2 || n == 3 ret true .end
   if (n & 1) == 0 ret false .end
 
-  # small prime trial
   let small : [u64] = [3,5,7,11,13,17,19,23,29,31,37]
   let mut i = 0
   while i < small.len() as i32
@@ -256,13 +200,8 @@ fn miller_rabin_u64(n: u64) -> bool
   let d = ds.0
   let s = ds.1
 
-  # Deterministic bases for 64-bit (well-known set)
-  # {2, 3, 5, 7, 11, 13, 17} works up to 341,550,071,728,321.
-  # Full u64 deterministic: {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37}
-  # Alternative minimal: {2,325,9375,28178,450775,9780504,1795265022}
-  # -> use minimal strong set (faster), still deterministic for u64.
+  # set déterministe u64 (minimal fort)
   let bases : [u64] = [2, 325, 9375, 28178, 450775, 9780504, 1795265022]
-
   let mut j = 0
   while j < bases.len() as i32
     let a = bases[j as usize]
@@ -273,11 +212,8 @@ fn miller_rabin_u64(n: u64) -> bool
 .end
 
 fn is_prime_u64(n: u64) -> bool
-  # fast router
   if n < 4 ret n > 1 .end
-  if n < 10_000_000
-    ret is_prime_u64_trial(n)
-  .end
+  if n < 10_000_000 ret is_prime_u64_trial(n) .end
   ret miller_rabin_u64(n)
 .end
 
@@ -345,6 +281,7 @@ fn primes_up_to(n: u64) -> [u64]
 fn segmented_sieve(lo: u64, hi: u64) -> [u64]
   if hi < 2 || hi < lo ret [] .end
   let l = if lo < 2 then 2 else lo .end
+
   let size = (hi - l + 1) as usize
   let mut mark : [bool] = []
   mark.resize(size, false)
@@ -357,6 +294,7 @@ fn segmented_sieve(lo: u64, hi: u64) -> [u64]
     let p = base[i as usize]
     let mut start = (l + p - 1) / p * p
     if start < p*p start = p*p .end
+
     let mut m = start
     while m <= hi
       mark[(m - l) as usize] = true
@@ -379,7 +317,6 @@ fn segmented_sieve(lo: u64, hi: u64) -> [u64]
 # ---------------------------------
 
 fn rng_step(mut x: u64) -> u64
-  # xorshift64*
   x = x ^ (x >> 12)
   x = x ^ (x << 25)
   x = x ^ (x >> 27)
@@ -387,7 +324,6 @@ fn rng_step(mut x: u64) -> u64
 .end
 
 fn rho_f(x: u64, c: u64, n: u64) -> u64
-  # f(x) = x^2 + c mod n
   let t = mod_mul(x, x, n)
   ret (t + c) % n
 .end
@@ -403,6 +339,7 @@ fn pollard_rho(n: u64, seed: u64) -> u64
 
   let mut d : u64 = 1
   let mut iter : u64 = 0
+
   while d == 1
     x = rho_f(x, c, n)
     y = rho_f(rho_f(y, c, n), c, n)
@@ -412,7 +349,6 @@ fn pollard_rho(n: u64, seed: u64) -> u64
 
     iter = iter + 1
     if iter > 200000
-      # retry with new parameters
       let s2 = rng_step(seed + iter)
       x = s2 % n
       y = x
@@ -428,14 +364,50 @@ fn pollard_rho(n: u64, seed: u64) -> u64
 .end
 
 # ---------------------------------
+# Sorting helper
+# ---------------------------------
+
+fn sort_u64(a: &mut [u64])
+  let n = a.len() as i32
+  let mut i = 1
+  while i < n
+    let key = a[i as usize]
+    let mut j = i - 1
+    while j >= 0 && a[j as usize] > key
+      a[(j + 1) as usize] = a[j as usize]
+      j = j - 1
+      if j < 0 break .end
+    .end
+    a[(j + 1) as usize] = key
+    i = i + 1
+  .end
+.end
+
+# ---------------------------------
 # Factorization (complete)
 # ---------------------------------
+
+fn factor_rec(n: u64, fac: &mut [u64], mut seed: u64)
+  if n == 1 ret .end
+  if is_prime_u64(n)
+    fac.push(n)
+    ret
+  .end
+
+  let mut d = pollard_rho(n, seed)
+  while d == 0 || d == 1 || d == n
+    seed = rng_step(seed)
+    d = pollard_rho(n, seed)
+  .end
+
+  factor_rec(d, fac, rng_step(seed + 1))
+  factor_rec(n / d, fac, rng_step(seed + 2))
+.end
 
 fn factor_u64(mut n: u64) -> [u64]
   let mut fac : [u64] = []
   if n < 2 ret fac .end
 
-  # small trial division
   let small : [u64] = [2,3,5,7,11,13,17,19,23,29,31,37]
   let mut i = 0
   while i < small.len() as i32
@@ -458,44 +430,9 @@ fn factor_u64(mut n: u64) -> [u64]
     ret fac
   .end
 
-  # recursive rho
   factor_rec(n, &mut fac, 88172645463393265)
   sort_u64(&mut fac)
   ret fac
-.end
-
-fn factor_rec(n: u64, fac: &mut [u64], mut seed: u64)
-  if n == 1 ret .end
-  if is_prime_u64(n)
-    fac.push(n)
-    ret
-  .end
-
-  let mut d = pollard_rho(n, seed)
-  while d == 0 || d == 1 || d == n
-    seed = rng_step(seed)
-    d = pollard_rho(n, seed)
-  .end
-
-  factor_rec(d, fac, rng_step(seed + 1))
-  factor_rec(n / d, fac, rng_step(seed + 2))
-.end
-
-fn sort_u64(a: &mut [u64])
-  # insertion sort (small arrays)
-  let n = a.len() as i32
-  let mut i = 1
-  while i < n
-    let key = a[i as usize]
-    let mut j = i - 1
-    while j >= 0 && a[j as usize] > key
-      a[(j + 1) as usize] = a[j as usize]
-      j = j - 1
-      if j < 0 break .end
-    .end
-    a[(j + 1) as usize] = key
-    i = i + 1
-  .end
 .end
 
 # ---------------------------------
@@ -505,13 +442,14 @@ fn sort_u64(a: &mut [u64])
 fn phi_u64(n: u64) -> u64
   if n == 0 ret 0 .end
   if n == 1 ret 1 .end
+
   let f = factor_u64(n)
   if f.len() == 0 ret 1 .end
+
   let mut res = n
   let mut i = 0
   while i < f.len() as i32
     let p = f[i as usize]
-    # skip duplicates
     let mut j = i + 1
     while j < f.len() as i32 && f[j as usize] == p
       j = j + 1
@@ -525,8 +463,10 @@ fn phi_u64(n: u64) -> u64
 fn divisor_count(n: u64) -> u64
   if n == 0 ret 0 .end
   if n == 1 ret 1 .end
+
   let f = factor_u64(n)
   if f.len() == 0 ret 1 .end
+
   let mut count : u64 = 1
   let mut i = 0
   while i < f.len() as i32
@@ -537,9 +477,7 @@ fn divisor_count(n: u64) -> u64
       e = e + 1
       j = j + 1
     .end
-    count = count * (e + 0)  # e already counts occurrences? adjust:
-    # correct: exponent occurrences = e, multiplicative factor = (e+1)
-    count = count / e * (e + 1)
+    count = count * (e + 1)
     i = j
   .end
   ret count
@@ -548,6 +486,7 @@ fn divisor_count(n: u64) -> u64
 fn divisor_sum(n: u64) -> u64
   if n == 0 ret 0 .end
   if n == 1 ret 1 .end
+
   let f = factor_u64(n)
   if f.len() == 0 ret 1 .end
 
@@ -562,7 +501,6 @@ fn divisor_sum(n: u64) -> u64
       j = j + 1
     .end
 
-    # term = (p^(e+1)-1)/(p-1)
     let mut pe1 : u64 = 1
     let mut k : u64 = 0
     while k < (e + 1)
@@ -579,12 +517,13 @@ fn divisor_sum(n: u64) -> u64
 fn divisors_list(n: u64) -> [u64]
   if n == 0 ret [] .end
   if n == 1 ret [1] .end
+
   let f = factor_u64(n)
   if f.len() == 0 ret [1, n] .end
 
-  # build prime powers groups
   let mut primes : [u64] = []
   let mut exps : [u64] = []
+
   let mut i = 0
   while i < f.len() as i32
     let p = f[i as usize]
@@ -629,23 +568,6 @@ fn divisors_list(n: u64) -> [u64]
 # Mobius / Jacobi / primorial
 # ---------------------------------
 
-fn mobius_u64(n: u64) -> i32
-  if n == 0 ret 0 .end
-  if n == 1 ret 1 .end
-  let f = factor_u64(n)
-  if f.len() == 0 ret 1 .end
-  # if any squared prime divides => 0
-  let mut i = 1
-  while i < f.len() as i32
-    if f[i as usize] == f[(i - 1) as usize] ret 0 .end
-    i = i + 1
-  .end
-  # (-1)^{k} where k distinct primes
-  let k = distinct_count_sorted(&f)
-  if (k & 1) == 0 ret 1 .end
-  ret -1
-.end
-
 fn distinct_count_sorted(a: &[u64]) -> i32
   if a.len() == 0 ret 0 .end
   let mut c = 1
@@ -657,11 +579,29 @@ fn distinct_count_sorted(a: &[u64]) -> i32
   ret c
 .end
 
+fn mobius_u64(n: u64) -> i32
+  if n == 0 ret 0 .end
+  if n == 1 ret 1 .end
+
+  let f = factor_u64(n)
+  if f.len() == 0 ret 1 .end
+
+  let mut i = 1
+  while i < f.len() as i32
+    if f[i as usize] == f[(i - 1) as usize] ret 0 .end
+    i = i + 1
+  .end
+
+  let k = distinct_count_sorted(&f)
+  if (k & 1) == 0 ret 1 .end
+  ret -1
+.end
+
 fn jacobi_symbol(mut a: i64, mut n: i64) -> i32
-  # n odd positive
   if n <= 0 || (n & 1) == 0 ret 0 .end
   a = a % n
   if a < 0 a = a + n .end
+
   let mut t : i32 = 1
   while a != 0
     while (a & 1) == 0
@@ -669,26 +609,26 @@ fn jacobi_symbol(mut a: i64, mut n: i64) -> i32
       let r = n & 7
       if r == 3 || r == 5 t = -t .end
     .end
-    # swap
+
     let tmp = a
     a = n
     n = tmp
+
     if (a & 3) == 3 && (n & 3) == 3 t = -t .end
     a = a % n
   .end
+
   if n == 1 ret t .end
   ret 0
 .end
 
 fn primorial_u64(limit: u64) -> u64
-  # product of primes <= limit, saturates on overflow (wrap not handled)
   if limit < 2 ret 1 .end
   let ps = primes_up_to(limit)
   let mut prod : u64 = 1
   let mut i = 0
   while i < ps.len() as i32
     let p = ps[i as usize]
-    # naive overflow check
     if prod > (0xFFFFFFFFFFFFFFFF / p) ret prod .end
     prod = prod * p
     i = i + 1
@@ -697,7 +637,7 @@ fn primorial_u64(limit: u64) -> u64
 .end
 
 # ---------------------------------
-# Simple iterator (stateful)
+# Simple iterator
 # ---------------------------------
 
 struct PrimeIter
@@ -729,7 +669,7 @@ fn test_is_prime()
 
   assert(is_prime_u64(2))
   assert(is_prime_u64(3))
-  assert(is_prime_u64(18446744073709551557)) # known prime near u64 max
+  assert(is_prime_u64(18446744073709551557))
 .end
 
 fn test_sieve()
@@ -741,7 +681,7 @@ fn test_sieve()
 
 fn test_factor_phi()
   let f = factor_u64(360)
-  assert(f.len() as i32 == 6)  # 2,2,2,3,3,5
+  assert(f.len() as i32 == 6)
   assert(phi_u64(9) == 6)
 .end
 
@@ -750,6 +690,7 @@ fn test_divisors()
   assert(ds.len() as i32 == 6)
   assert(ds[0] == 1)
   assert(ds[5] == 12)
+  assert(divisor_count(12) == 6)
 .end
 
 fn run_all_tests()

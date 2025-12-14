@@ -1,72 +1,31 @@
-module jmath.constants.real
+module jmath.real.real
 
 # ============================================================================
-# constants.real – constantes réelles + utilitaires numériques (ultra complet)
+# real.vitte — utilitaires numériques généraux pour réels (f32 / f64)
 #
 # Fournit :
-#   - Constantes mathématiques (pi, tau, e, ln2, sqrt2, phi, gamma, etc.)
-#   - Bornes/eps f32/f64 (epsilon, min/max, tiny, etc.) (valeurs numériques)
-#   - Utilitaires : abs, clamp, lerp, smoothstep, saturate, sign, copysign
-#   - Approx : approx_eq_abs/rel/ulp-like (fallback), ulp via nextafter (si dispo)
-#   - Réductions : wrap, fract, mod, floor/ceil/trunc/round (fallback)
-#   - Hypot/rsqrt, fast invsqrt (option), polynomial helpers
-#   - Série / intégration simple : horner, poly_eval, simpson (basique)
+#   - fonctions de base (abs, min/max, clamp, saturate, signum)
+#   - NaN / Inf / finitude (via ieee754)
+#   - interpolation (lerp, inv_lerp, remap)
+#   - courbes (smoothstep, smootherstep)
+#   - comparaisons approchées (abs / rel / combinée)
+#   - helpers ULP (via ieee754)
+#   - helpers angulaires (wrap)
+#   - statistiques simples (mean, midpoint)
 #
-# Notes :
-#   - Certaines fonctions "bits-level" peuvent être mieux via ieee754.vitte.
-#   - Ici, module autonome : pas d’import obligatoire.
+# Dépendances :
+#   - jmath.constants.ieee754
 #
-# Conventions :
-#   - Pas d’accolades, blocs `.end`
-#   - Pas d’I/O
+# Pas d’I/O, blocs `.end`
 # ============================================================================
 
-# ---------------------------------
-# Constantes mathématiques (f64)
-# ---------------------------------
+import jmath.constants.ieee754 as ieee
 
-const PI      : f64 = 3.141592653589793238462643383279502884
-const TAU     : f64 = 6.283185307179586476925286766559005768
-const HALF_PI : f64 = 1.570796326794896619231321691639751442
-const QUARTER_PI : f64 = 0.785398163397448309615660845819875721
-
-const E       : f64 = 2.718281828459045235360287471352662498
-const LN2     : f64 = 0.693147180559945309417232121458176568
-const LN10    : f64 = 2.302585092994045684017991454684364208
-const LOG2E   : f64 = 1.442695040888963407359924681001892137
-const LOG10E  : f64 = 0.434294481903251827651128918916605082
-
-const SQRT2   : f64 = 1.414213562373095048801688724209698079
-const INV_SQRT2 : f64 = 0.707106781186547524400844362104849039
-const SQRT3   : f64 = 1.732050807568877293527446341505872367
-
-const PHI     : f64 = 1.618033988749894848204586834365638118  # golden ratio
-const EULER_GAMMA : f64 = 0.577215664901532860606512090082402431
-
-const DEG_PER_RAD : f64 = 57.29577951308232087679815481410517033
-const RAD_PER_DEG : f64 = 0.01745329251994329576923690768488612713
+const PI  : f64 = 3.141592653589793238462643383279502884
+const TAU : f64 = 6.283185307179586476925286766559005768
 
 # ---------------------------------
-# Constantes numériques (f32/f64)
-# ---------------------------------
-
-const F32_EPSILON      : f32 = 1.1920928955078125e-7
-const F32_MIN_POSITIVE : f32 = 1.401298464324817e-45
-const F32_MIN_NORMAL   : f32 = 1.1754943508222875e-38
-const F32_MAX          : f32 = 3.4028234663852886e38
-
-const F64_EPSILON      : f64 = 2.220446049250313080847263336181640625e-16
-const F64_MIN_POSITIVE : f64 = 4.940656458412465441765687928682213723e-324
-const F64_MIN_NORMAL   : f64 = 2.225073858507201383090232717332404064e-308
-const F64_MAX          : f64 = 1.797693134862315708145274237317043568e308
-
-# Useful tolerances
-const EPS_1E_12 : f64 = 1e-12
-const EPS_1E_9  : f64 = 1e-9
-const EPS_1E_6  : f64 = 1e-6
-
-# ---------------------------------
-# Basic scalar ops
+# Basics
 # ---------------------------------
 
 fn abs_f64(x: f64) -> f64
@@ -89,84 +48,177 @@ fn max_f64(a: f64, b: f64) -> f64
   ret b
 .end
 
+fn min_f32(a: f32, b: f32) -> f32
+  if a < b ret a .end
+  ret b
+.end
+
+fn max_f32(a: f32, b: f32) -> f32
+  if a > b ret a .end
+  ret b
+.end
+
 fn clamp_f64(x: f64, lo: f64, hi: f64) -> f64
   if x < lo ret lo .end
   if x > hi ret hi .end
   ret x
 .end
 
-fn saturate(x: f64) -> f64
+fn clamp_f32(x: f32, lo: f32, hi: f32) -> f32
+  if x < lo ret lo .end
+  if x > hi ret hi .end
+  ret x
+.end
+
+fn saturate_f64(x: f64) -> f64
   ret clamp_f64(x, 0.0, 1.0)
 .end
 
-fn sign_f64(x: f64) -> i32
-  if x > 0.0 ret 1 .end
-  if x < 0.0 ret -1 .end
-  ret 0
+fn saturate_f32(x: f32) -> f32
+  ret clamp_f32(x, 0.0, 1.0)
 .end
 
-fn copysign_f64(mag: f64, sgn: f64) -> f64
-  if sgn < 0.0 ret -abs_f64(mag) .end
-  ret abs_f64(mag)
+fn signum_f64(x: f64) -> f64
+  if x > 0.0 ret 1.0 .end
+  if x < 0.0 ret -1.0 .end
+  ret 0.0
 .end
 
-fn lerp(a: f64, b: f64, t: f64) -> f64
+fn signum_f32(x: f32) -> f32
+  if x > 0.0 ret 1.0 .end
+  if x < 0.0 ret -1.0 .end
+  ret 0.0
+.end
+
+# ---------------------------------
+# NaN / Inf / Finite (delegation ieee)
+# ---------------------------------
+
+fn is_nan_f64(x: f64) -> bool ret x != x .end
+fn is_nan_f32(x: f32) -> bool ret x != x .end
+
+fn is_inf_f64(x: f64) -> bool ret ieee.f64_is_inf(x) .end
+fn is_inf_f32(x: f32) -> bool ret ieee.f32_is_inf(x) .end
+
+fn is_finite_f64(x: f64) -> bool ret ieee.f64_is_finite(x) .end
+fn is_finite_f32(x: f32) -> bool ret ieee.f32_is_finite(x) .end
+
+# ---------------------------------
+# Interpolation / Mapping
+# ---------------------------------
+
+fn lerp_f64(a: f64, b: f64, t: f64) -> f64
   ret a + (b - a) * t
 .end
 
-fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64
-  if edge0 == edge1 ret if x < edge0 then 0.0 else 1.0 .end .end
-  let t = saturate((x - edge0) / (edge1 - edge0))
-  ret t * t * (3.0 - 2.0 * t)
+fn lerp_f32(a: f32, b: f32, t: f32) -> f32
+  ret a + (b - a) * t
 .end
 
-fn smootherstep(edge0: f64, edge1: f64, x: f64) -> f64
-  if edge0 == edge1 ret if x < edge0 then 0.0 else 1.0 .end .end
-  let t = saturate((x - edge0) / (edge1 - edge0))
+fn inv_lerp_f64(a: f64, b: f64, x: f64) -> f64
+  let d = b - a
+  if d == 0.0 ret 0.0 .end
+  ret (x - a) / d
+.end
+
+fn inv_lerp_f32(a: f32, b: f32, x: f32) -> f32
+  let d = b - a
+  if d == 0.0 ret 0.0 .end
+  ret (x - a) / d
+.end
+
+fn remap_f64(in0: f64, in1: f64, out0: f64, out1: f64, x: f64) -> f64
+  ret lerp_f64(out0, out1, inv_lerp_f64(in0, in1, x))
+.end
+
+fn remap_f32(in0: f32, in1: f32, out0: f32, out1: f32, x: f32) -> f32
+  ret lerp_f32(out0, out1, inv_lerp_f32(in0, in1, x))
+.end
+
+# ---------------------------------
+# Courbes lissées
+# ---------------------------------
+
+fn smoothstep_f64(edge0: f64, edge1: f64, x: f64) -> f64
+  let t = saturate_f64(inv_lerp_f64(edge0, edge1, x))
+  ret t*t*(3.0 - 2.0*t)
+.end
+
+fn smootherstep_f64(edge0: f64, edge1: f64, x: f64) -> f64
+  let t = saturate_f64(inv_lerp_f64(edge0, edge1, x))
   ret t*t*t*(t*(t*6.0 - 15.0) + 10.0)
 .end
 
 # ---------------------------------
-# floor/ceil/trunc/round (fallback)
+# Approximation numérique
 # ---------------------------------
 
-fn trunc_f64(x: f64) -> f64
-  ret (x as i64) as f64
+fn approx_eq_abs_f64(a: f64, b: f64, eps: f64) -> bool
+  ret abs_f64(a - b) <= eps
 .end
 
-fn floor_f64(x: f64) -> f64
-  let i = x as i64
-  let fi = i as f64
-  if fi > x ret (i - 1) as f64 .end
-  ret fi
+fn approx_eq_abs_f32(a: f32, b: f32, eps: f32) -> bool
+  ret abs_f32(a - b) <= eps
 .end
 
-fn ceil_f64(x: f64) -> f64
-  let i = x as i64
-  let fi = i as f64
-  if fi < x ret (i + 1) as f64 .end
-  ret fi
+fn approx_eq_rel_f64(a: f64, b: f64, eps: f64) -> bool
+  let d = abs_f64(a - b)
+  let mut m = abs_f64(a)
+  let bb = abs_f64(b)
+  if bb > m m = bb .end
+  if m == 0.0 ret d <= eps .end
+  ret d <= eps * m
 .end
 
-fn round_f64(x: f64) -> f64
-  if x >= 0.0 ret floor_f64(x + 0.5) .end
-  ret ceil_f64(x - 0.5)
+fn approx_eq_rel_f32(a: f32, b: f32, eps: f32) -> bool
+  let d = abs_f32(a - b)
+  let mut m = abs_f32(a)
+  let bb = abs_f32(b)
+  if bb > m m = bb .end
+  if m == 0.0 ret d <= eps .end
+  ret d <= eps * m
 .end
 
-fn fract_f64(x: f64) -> f64
-  ret x - floor_f64(x)
+fn approx_eq_f64(a: f64, b: f64, rel: f64, abs: f64) -> bool
+  let d = abs_f64(a - b)
+  if d <= abs ret true .end
+  let mut m = abs_f64(a)
+  let bb = abs_f64(b)
+  if bb > m m = bb .end
+  ret d <= rel * m
 .end
 
-fn mod_f64(x: f64, m: f64) -> f64
-  if m == 0.0 ret 0.0 .end
-  let q = floor_f64(x / m)
-  let r = x - q * m
-  if r < 0.0 ret r + abs_f64(m) .end
-  ret r
+fn approx_eq_f32(a: f32, b: f32, rel: f32, abs: f32) -> bool
+  let d = abs_f32(a - b)
+  if d <= abs ret true .end
+  let mut m = abs_f32(a)
+  let bb = abs_f32(b)
+  if bb > m m = bb .end
+  ret d <= rel * m
 .end
 
 # ---------------------------------
-# Angle wrapping helpers
+# ULP helpers (delegation ieee754)
+# ---------------------------------
+
+fn ulp_distance_f64(a: f64, b: f64) -> ieee.UlpCmp
+  ret ieee.f64_ulp_distance(a, b)
+.end
+
+fn ulp_distance_f32(a: f32, b: f32) -> ieee.UlpCmp
+  ret ieee.f32_ulp_distance(a, b)
+.end
+
+fn almost_equal_ulps_f64(a: f64, b: f64, max_ulps: u64) -> bool
+  ret ieee.f64_almost_equal_ulps(a, b, max_ulps)
+.end
+
+fn almost_equal_ulps_f32(a: f32, b: f32, max_ulps: u64) -> bool
+  ret ieee.f32_almost_equal_ulps(a, b, max_ulps)
+.end
+
+# ---------------------------------
+# Angles (radians)
 # ---------------------------------
 
 fn wrap_pi(theta: f64) -> f64
@@ -192,127 +244,16 @@ fn wrap_0_tau(theta: f64) -> f64
 .end
 
 # ---------------------------------
-# hypot / sqrt / rsqrt
+# Statistiques simples
 # ---------------------------------
 
-fn sqrt_newton(x: f64) -> f64
-  if x <= 0.0
-    if x == 0.0 ret 0.0 .end
-    ret 0.0
-  .end
-  let mut y = x
-  if y > 1.0 y = y * 0.5 .end
-  if y < 1.0 y = 1.0 .end
-  let mut i = 0
-  while i < 16
-    y = 0.5 * (y + x / y)
-    i = i + 1
-  .end
-  ret y
+fn mean_f64(a: f64, b: f64) -> f64
+  ret 0.5 * (a + b)
 .end
 
-fn hypot(a: f64, b: f64) -> f64
-  let aa = abs_f64(a)
-  let bb = abs_f64(b)
-  let m = max_f64(aa, bb)
-  if m == 0.0 ret 0.0 .end
-  let ra = aa / m
-  let rb = bb / m
-  ret m * sqrt_newton(ra*ra + rb*rb)
-.end
-
-fn rsqrt_newton(x: f64) -> f64
-  # 1/sqrt(x) via Newton on y^{-2} - x = 0
-  if x <= 0.0 ret 0.0 .end
-  let mut y = 1.0 / x
-  if y > 1.0 y = 1.0 .end
-  let mut i = 0
-  while i < 10
-    y = y * (1.5 - 0.5 * x * y * y)
-    i = i + 1
-  .end
-  ret y
-.end
-
-# ---------------------------------
-# Approx comparisons
-# ---------------------------------
-
-fn approx_eq_abs(a: f64, b: f64, eps: f64) -> bool
-  ret abs_f64(a - b) <= eps
-.end
-
-fn approx_eq_rel(a: f64, b: f64, rel: f64) -> bool
-  let d = abs_f64(a - b)
-  let m = max_f64(abs_f64(a), abs_f64(b))
-  if m == 0.0 ret true .end
-  ret d <= rel * m
-.end
-
-fn approx_eq(a: f64, b: f64, rel: f64, abs: f64) -> bool
-  let d = abs_f64(a - b)
-  if d <= abs ret true .end
-  let m = max_f64(abs_f64(a), abs_f64(b))
-  ret d <= rel * m
-.end
-
-# ---------------------------------
-# Polynomial helpers
-# ---------------------------------
-
-fn horner(x: f64, coeffs: &[f64]) -> f64
-  # coeffs: a0..an for polynomial a0 + a1 x + ... + an x^n
-  if coeffs.len() == 0 ret 0.0 .end
-  let mut acc = coeffs[(coeffs.len() - 1) as usize]
-  let mut i = (coeffs.len() as i64) - 2
-  while i >= 0
-    acc = acc * x + coeffs[i as usize]
-    i = i - 1
-    if i < 0 break .end
-  .end
-  ret acc
-.end
-
-fn poly_eval(x: f64, a0: f64, a1: f64, a2: f64, a3: f64, a4: f64, a5: f64) -> f64
-  # degree 5 convenience
-  ret (((((a5*x + a4)*x + a3)*x + a2)*x + a1)*x + a0)
-.end
-
-# ---------------------------------
-# Simpson integration (basic)
-# ---------------------------------
-
-fn simpson(f: fn(f64)->f64, a: f64, b: f64, n_even: i32) -> f64
-  # n_even must be even and >= 2
-  let mut n = n_even
-  if n < 2 n = 2 .end
-  if (n & 1) == 1 n = n + 1 .end
-  let h = (b - a) / (n as f64)
-  let mut s = f(a) + f(b)
-  let mut i = 1
-  while i < n
-    let x = a + (i as f64) * h
-    if (i & 1) == 1
-      s = s + 4.0 * f(x)
-    .end
-    if (i & 1) == 0
-      s = s + 2.0 * f(x)
-    .end
-    i = i + 1
-  .end
-  ret s * (h / 3.0)
-.end
-
-# ---------------------------------
-# Conversions deg/rad
-# ---------------------------------
-
-fn deg_to_rad(deg: f64) -> f64
-  ret deg * RAD_PER_DEG
-.end
-
-fn rad_to_deg(rad: f64) -> f64
-  ret rad * DEG_PER_RAD
+fn midpoint_f64(a: f64, b: f64) -> f64
+  # forme stable
+  ret a + (b - a) * 0.5
 .end
 
 # ---------------------------------
@@ -323,27 +264,27 @@ fn assert(cond: bool)
   if !cond panic("assert failed") .end
 .end
 
-fn test_consts()
-  assert(approx_eq_abs(PI * 2.0, TAU, 1e-15))
-  assert(approx_eq_abs(DEG_PER_RAD * RAD_PER_DEG, 1.0, 1e-15))
+fn test_basic()
+  assert(abs_f64(-1.0) == 1.0)
+  assert(clamp_f64(2.0, 0.0, 1.0) == 1.0)
 .end
 
-fn test_rounding()
-  assert(floor_f64(1.9) == 1.0)
-  assert(ceil_f64(1.1) == 2.0)
-  assert(round_f64(2.5) == 3.0)
-  assert(round_f64(-2.5) == -3.0)
+fn test_lerp()
+  let v = lerp_f64(10.0, 20.0, 0.25)
+  assert(approx_eq_abs_f64(v, 12.5, 1e-12))
 .end
 
-fn test_hypot()
-  let h = hypot(3.0, 4.0)
-  assert(approx_eq_abs(h, 5.0, 1e-9))
+fn test_wrap()
+  let a = wrap_pi(PI)
+  assert(a == PI)
+  let b = wrap_pi(-PI)
+  assert(b == PI)
 .end
 
 fn run_all_tests()
-  test_consts()
-  test_rounding()
-  test_hypot()
+  test_basic()
+  test_lerp()
+  test_wrap()
 .end
 
 .end
