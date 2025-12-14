@@ -1,4 +1,4 @@
-module algorithms.cordic
+module jmath.algorithms.cordic
 
 # ============================================================================
 # CORDIC – COordinate Rotation DIgital Computer
@@ -10,9 +10,9 @@ module algorithms.cordic
 #
 # Notes :
 #   - Pas d’accolades : blocs fermés par `.end`
-#   - L’API est volontairement “stdlib-like” (pure, sans I/O)
-#   - Le CORDIC “rotation mode” converge pour |theta| <= ~pi/2 (on normalise)
-#   - Le “gain” K dépend du nombre d’itérations. On applique 1/K via table.
+#   - API “stdlib-like” (pure, sans I/O)
+#   - Rotation mode converge pour |theta| <= ~pi/2 (on normalise)
+#   - Gain K dépend du nombre d’itérations. On applique 1/K via table.
 # ============================================================================
 
 # ---------------------------------
@@ -24,7 +24,6 @@ const TAU     : f64 = 6.283185307179586476925286766559005768
 const HALF_PI : f64 = 1.570796326794896619231321691639751442
 
 # Table arctan(2^-i) en radians (i=0..59)
-# (précision suffisante pour f64; on tronque à 60 itérations max)
 const ATAN_POW2 : [f64; 60] =
   [
     0.7853981633974483096156608458198757,
@@ -86,9 +85,7 @@ const ATAN_POW2 : [f64; 60] =
     0.0000000000000000138777878078144567
   ]
 
-# Gains K pour N itérations (1..32 “classique” + 60 pour f64).
-# K_N = Π_{i=0..N-1} 1/sqrt(1 + 2^(-2i))
-# On stocke INV_K_N = 1/K_N (multiplicateur à appliquer en sortie).
+# INV_K_N = 1/K_N
 const INV_K_1  : f64 = 0.70710678118654752440084436210485
 const INV_K_2  : f64 = 0.63245553203367586639977870888654
 const INV_K_3  : f64 = 0.61357199107789634961024710990292
@@ -121,8 +118,6 @@ const INV_K_29 : f64 = 0.60725293500888124127884181662284
 const INV_K_30 : f64 = 0.60725293500888124022542234029878
 const INV_K_31 : f64 = 0.60725293500888123996206747114210
 const INV_K_32 : f64 = 0.60725293500888123989622975470054
-
-# Pour 60 itérations, c’est quasiment la même limite.
 const INV_K_60 : f64 = 0.6072529350088812398962297547
 
 # ---------------------------------
@@ -173,8 +168,6 @@ fn wrap_angle_pi(theta: f64) -> f64
   # Normalise dans (-pi, pi]
   let mut t = theta
 
-  # réduction grossière
-  # (on évite la dépendance à fmod; boucle sûre)
   while t <= -PI
     t = t + TAU
   .end
@@ -188,45 +181,116 @@ fn wrap_angle_pi(theta: f64) -> f64
 fn inv_k_for_iters(iters: i32) -> f64
   let n = clamp_i32(iters, 1, 60)
 
-  if n == 1  ret INV_K_1  .end
-  if n == 2  ret INV_K_2  .end
-  if n == 3  ret INV_K_3  .end
-  if n == 4  ret INV_K_4  .end
-  if n == 5  ret INV_K_5  .end
-  if n == 6  ret INV_K_6  .end
-  if n == 7  ret INV_K_7  .end
-  if n == 8  ret INV_K_8  .end
-  if n == 9  ret INV_K_9  .end
-  if n == 10 ret INV_K_10 .end
-  if n == 11 ret INV_K_11 .end
-  if n == 12 ret INV_K_12 .end
-  if n == 13 ret INV_K_13 .end
-  if n == 14 ret INV_K_14 .end
-  if n == 15 ret INV_K_15 .end
-  if n == 16 ret INV_K_16 .end
-  if n == 17 ret INV_K_17 .end
-  if n == 18 ret INV_K_18 .end
-  if n == 19 ret INV_K_19 .end
-  if n == 20 ret INV_K_20 .end
-  if n == 21 ret INV_K_21 .end
-  if n == 22 ret INV_K_22 .end
-  if n == 23 ret INV_K_23 .end
-  if n == 24 ret INV_K_24 .end
-  if n == 25 ret INV_K_25 .end
-  if n == 26 ret INV_K_26 .end
-  if n == 27 ret INV_K_27 .end
-  if n == 28 ret INV_K_28 .end
-  if n == 29 ret INV_K_29 .end
-  if n == 30 ret INV_K_30 .end
-  if n == 31 ret INV_K_31 .end
-  if n == 32 ret INV_K_32 .end
+  if n == 1
+    ret INV_K_1
+  .end
+  if n == 2
+    ret INV_K_2
+  .end
+  if n == 3
+    ret INV_K_3
+  .end
+  if n == 4
+    ret INV_K_4
+  .end
+  if n == 5
+    ret INV_K_5
+  .end
+  if n == 6
+    ret INV_K_6
+  .end
+  if n == 7
+    ret INV_K_7
+  .end
+  if n == 8
+    ret INV_K_8
+  .end
+  if n == 9
+    ret INV_K_9
+  .end
+  if n == 10
+    ret INV_K_10
+  .end
+  if n == 11
+    ret INV_K_11
+  .end
+  if n == 12
+    ret INV_K_12
+  .end
+  if n == 13
+    ret INV_K_13
+  .end
+  if n == 14
+    ret INV_K_14
+  .end
+  if n == 15
+    ret INV_K_15
+  .end
+  if n == 16
+    ret INV_K_16
+  .end
+  if n == 17
+    ret INV_K_17
+  .end
+  if n == 18
+    ret INV_K_18
+  .end
+  if n == 19
+    ret INV_K_19
+  .end
+  if n == 20
+    ret INV_K_20
+  .end
+  if n == 21
+    ret INV_K_21
+  .end
+  if n == 22
+    ret INV_K_22
+  .end
+  if n == 23
+    ret INV_K_23
+  .end
+  if n == 24
+    ret INV_K_24
+  .end
+  if n == 25
+    ret INV_K_25
+  .end
+  if n == 26
+    ret INV_K_26
+  .end
+  if n == 27
+    ret INV_K_27
+  .end
+  if n == 28
+    ret INV_K_28
+  .end
+  if n == 29
+    ret INV_K_29
+  .end
+  if n == 30
+    ret INV_K_30
+  .end
+  if n == 31
+    ret INV_K_31
+  .end
+  if n == 32
+    ret INV_K_32
+  .end
 
   ret INV_K_60
 .end
 
+fn make_result2(a: f64, b: f64) -> CordicResult2
+  let mut r : CordicResult2
+  r.a = a
+  r.b = b
+  ret r
+.end
+
 fn normalize_for_rotation(theta: f64) -> CordicResult2
-  # Ramène l’angle dans [-pi/2, +pi/2] en absorbant un flip de signe.
-  # On renvoie (theta_norm, sign_flip) via (a,b) : b vaut +1 ou -1.
+  # Ramène l’angle dans [-pi/2, +pi/2] et retourne (theta_norm, sign_flip)
+  # sign_flip vaut +1 ou -1
   let mut t = wrap_angle_pi(theta)
   let mut s = 1.0
 
@@ -240,7 +304,18 @@ fn normalize_for_rotation(theta: f64) -> CordicResult2
     s = -1.0
   .end
 
-  ret CordicResult2 { a: t, b: s }
+  ret make_result2(t, s)
+.end
+
+fn pow2_neg_i(i: i32) -> f64
+  # 2^-i en float via boucle (simple et déterministe)
+  let mut v = 1.0
+  let mut k = 0
+  while k < i
+    v = v * 0.5
+    k = k + 1
+  .end
+  ret v
 .end
 
 # ---------------------------------
@@ -262,9 +337,9 @@ fn cordic_sin_cos(theta: f64, iterations: i32) -> CordicResult2
   while i < n
     let di = if z >= 0.0 then 1.0 else -1.0 .end
 
-    # shifts par 2^-i
-    let x_new = x - di * y * pow2_neg_i(i)
-    let y_new = y + di * x * pow2_neg_i(i)
+    let shift = pow2_neg_i(i)
+    let x_new = x - di * y * shift
+    let y_new = y + di * x * shift
     let z_new = z - di * ATAN_POW2[i as usize]
 
     x = x_new
@@ -274,8 +349,7 @@ fn cordic_sin_cos(theta: f64, iterations: i32) -> CordicResult2
     i = i + 1
   .end
 
-  # flip = -1 => (cos, sin) changent de signe (rotation de pi)
-  ret CordicResult2 { a: x * flip, b: y * flip }
+  ret make_result2(x * flip, y * flip)
 .end
 
 fn cordic_cos(theta: f64, iterations: i32) -> f64
@@ -288,17 +362,6 @@ fn cordic_sin(theta: f64, iterations: i32) -> f64
   ret r.b
 .end
 
-fn pow2_neg_i(i: i32) -> f64
-  # 2^-i en float via boucle (simple et déterministe)
-  let mut v = 1.0
-  let mut k = 0
-  while k < i
-    v = v * 0.5
-    k = k + 1
-  .end
-  ret v
-.end
-
 # ---------------------------------
 # CORDIC (float) – Vectoring mode (atan2)
 # ---------------------------------
@@ -306,8 +369,7 @@ fn pow2_neg_i(i: i32) -> f64
 fn cordic_atan2(y0: f64, x0: f64, iterations: i32) -> f64
   let n = clamp_i32(iterations, 1, 60)
 
-  # Gestion quadrants : on veut x >= 0 pour convergence “standard”.
-  # On ramène (x,y) dans demi-plan x>=0 puis on ajuste l’angle.
+  # Gestion quadrants : on ramène (x,y) dans demi-plan x>=0 puis on ajuste l’angle.
   let mut x = x0
   let mut y = y0
   let mut angle_bias = 0.0
@@ -324,8 +386,9 @@ fn cordic_atan2(y0: f64, x0: f64, iterations: i32) -> f64
   while i < n
     let di = if y >= 0.0 then 1.0 else -1.0 .end
 
-    let x_new = x + di * y * pow2_neg_i(i)
-    let y_new = y - di * x * pow2_neg_i(i)
+    let shift = pow2_neg_i(i)
+    let x_new = x + di * y * shift
+    let y_new = y - di * x * shift
     let z_new = z + di * ATAN_POW2[i as usize]
 
     x = x_new
@@ -335,10 +398,8 @@ fn cordic_atan2(y0: f64, x0: f64, iterations: i32) -> f64
     i = i + 1
   .end
 
-  # Ajustement quadrant
   let mut out = z + angle_bias
   out = wrap_angle_pi(out)
-
   ret out
 .end
 
@@ -373,20 +434,15 @@ fn q31_sub(a: Q31, b: Q31) -> Q31
 .end
 
 fn q31_shr(a: Q31, sh: i32) -> Q31
-  # arith shift
   ret a >> sh
 .end
 
 fn q31_mul(a: Q31, b: Q31) -> Q31
-  # (a*b) >> 31 avec élargissement i128 “logique”
   let prod = (a as i128) * (b as i128)
   ret (prod >> 31) as Q31
 .end
 
-# atan(2^-i) en Q31 (radians) pour i=0..31 (utile pour atan2 Q31)
-# On stocke des radians en Q1.31 (donc plage [-1,+1) ≠ pi), mais ici on veut angle.
-# => On encode l’angle en Q2.30 (scalaire 2^30) pour tenir pi.
-# On définit un format ANG30 : réel = raw / 2^30, plage ~[-2,+2).
+# Angle en ANG30 : réel = raw / 2^30, plage ~[-2,+2)
 type ANG30 = i64
 const ANG30_ONE : ANG30 = 1073741824  # 2^30
 
@@ -434,9 +490,8 @@ const ATAN_POW2_ANG30 : [ANG30; 32] =
     0
   ]
 
-# Gain inv_k en Q31 pour 16/32 itérations (classique)
 const INV_K_16_Q31 : Q31 = 1304381788  # ~= 0.6072529351 * 2^31
-const INV_K_32_Q31 : Q31 = 1304381788  # limite identique à cette précision
+const INV_K_32_Q31 : Q31 = 1304381788
 
 fn inv_k_q31(iters: i32) -> Q31
   let n = clamp_i32(iters, 1, 32)
@@ -446,6 +501,13 @@ fn inv_k_q31(iters: i32) -> Q31
   ret INV_K_32_Q31
 .end
 
+fn make_result_q31(a: Q31, b: Q31) -> CordicResultQ31
+  let mut r : CordicResultQ31
+  r.a = a
+  r.b = b
+  ret r
+.end
+
 # ---------------------------------
 # CORDIC (Q31) – sin/cos (rotation)
 # ---------------------------------
@@ -453,7 +515,6 @@ fn inv_k_q31(iters: i32) -> Q31
 fn cordic_sin_cos_q31(theta_rad: f64, iterations: i32) -> CordicResultQ31
   let n = clamp_i32(iterations, 1, 32)
 
-  # normalisation angle (float) puis conversion en ANG30
   let norm = normalize_for_rotation(theta_rad)
   let z0 = ang30_from_f64(norm.a)
   let flip = if norm.b >= 0.0 then 1 else -1 .end
@@ -466,8 +527,6 @@ fn cordic_sin_cos_q31(theta_rad: f64, iterations: i32) -> CordicResultQ31
   while i < n
     let di = if z >= 0 then 1 else -1 .end
 
-    # x' = x - di*(y >> i)
-    # y' = y + di*(x >> i)
     let x_shift = q31_shr(x, i)
     let y_shift = q31_shr(y, i)
 
@@ -487,7 +546,7 @@ fn cordic_sin_cos_q31(theta_rad: f64, iterations: i32) -> CordicResultQ31
     y = -y
   .end
 
-  ret CordicResultQ31 { a: x, b: y }
+  ret make_result_q31(x, y)
 .end
 
 fn cordic_sin_q31(theta_rad: f64, iterations: i32) -> Q31
@@ -507,7 +566,6 @@ fn cordic_cos_q31(theta_rad: f64, iterations: i32) -> Q31
 fn cordic_atan2_q31(y: Q31, x: Q31, iterations: i32) -> f64
   let n = clamp_i32(iterations, 1, 32)
 
-  # vectoring: ramener x>=0 en Q31 et appliquer bias PI si besoin
   let mut vx = x
   let mut vy = y
   let mut bias : f64 = 0.0
@@ -519,16 +577,14 @@ fn cordic_atan2_q31(y: Q31, x: Q31, iterations: i32) -> f64
   .end
 
   let mut z : ANG30 = 0
-
   let mut i = 0
+
   while i < n
     let di = if vy >= 0 then 1 else -1 .end
 
     let x_shift = q31_shr(vx, i)
     let y_shift = q31_shr(vy, i)
 
-    # x' = x + di*(y>>i)
-    # y' = y - di*(x>>i)
     let x_new = if di > 0 then q31_add(vx, y_shift) else q31_sub(vx, y_shift) .end
     let y_new = if di > 0 then q31_sub(vy, x_shift) else q31_add(vy, x_shift) .end
     let z_new = if di > 0 then (z + ATAN_POW2_ANG30[i as usize]) else (z - ATAN_POW2_ANG30[i as usize]) .end
@@ -566,7 +622,6 @@ fn approx_eq(a: f64, b: f64, eps: f64) -> bool
 
 fn test_wrap_angle_pi()
   let a = wrap_angle_pi(PI + 0.1)
-  # doit être proche de -PI + 0.1
   if !approx_eq(a, -PI + 0.1, 1e-12)
     panic("wrap_angle_pi failed")
   .end
@@ -576,32 +631,52 @@ fn test_sin_cos_basic()
   let n = 40
 
   let r0 = cordic_sin_cos(0.0, n)
-  if !approx_eq(r0.a, 1.0, 1e-12) panic("cos(0) failed") .end
-  if !approx_eq(r0.b, 0.0, 1e-12) panic("sin(0) failed") .end
+  if !approx_eq(r0.a, 1.0, 1e-12)
+    panic("cos(0) failed")
+  .end
+  if !approx_eq(r0.b, 0.0, 1e-12)
+    panic("sin(0) failed")
+  .end
 
   let r1 = cordic_sin_cos(HALF_PI, n)
-  if !approx_eq(r1.a, 0.0, 1e-10) panic("cos(pi/2) failed") .end
-  if !approx_eq(r1.b, 1.0, 1e-10) panic("sin(pi/2) failed") .end
+  if !approx_eq(r1.a, 0.0, 1e-10)
+    panic("cos(pi/2) failed")
+  .end
+  if !approx_eq(r1.b, 1.0, 1e-10)
+    panic("sin(pi/2) failed")
+  .end
 
   let r2 = cordic_sin_cos(PI, n)
-  if !approx_eq(r2.a, -1.0, 1e-10) panic("cos(pi) failed") .end
-  if !approx_eq(r2.b, 0.0, 1e-10) panic("sin(pi) failed") .end
+  if !approx_eq(r2.a, -1.0, 1e-10)
+    panic("cos(pi) failed")
+  .end
+  if !approx_eq(r2.b, 0.0, 1e-10)
+    panic("sin(pi) failed")
+  .end
 .end
 
 fn test_atan2_quadrants()
   let n = 50
 
   let a0 = cordic_atan2(0.0, 1.0, n)
-  if !approx_eq(a0, 0.0, 1e-12) panic("atan2(0,1) failed") .end
+  if !approx_eq(a0, 0.0, 1e-12)
+    panic("atan2(0,1) failed")
+  .end
 
   let a1 = cordic_atan2(1.0, 0.0, n)
-  if !approx_eq(a1, HALF_PI, 1e-9) panic("atan2(1,0) failed") .end
+  if !approx_eq(a1, HALF_PI, 1e-9)
+    panic("atan2(1,0) failed")
+  .end
 
   let a2 = cordic_atan2(0.0, -1.0, n)
-  if !approx_eq(abs_f64(a2), PI, 1e-9) panic("atan2(0,-1) failed") .end
+  if !approx_eq(abs_f64(a2), PI, 1e-9)
+    panic("atan2(0,-1) failed")
+  .end
 
   let a3 = cordic_atan2(-1.0, 0.0, n)
-  if !approx_eq(a3, -HALF_PI, 1e-9) panic("atan2(-1,0) failed") .end
+  if !approx_eq(a3, -HALF_PI, 1e-9)
+    panic("atan2(-1,0) failed")
+  .end
 .end
 
 fn test_q31_roundtrip()
@@ -618,8 +693,12 @@ fn test_q31_sin_cos_smoke()
   let r = cordic_sin_cos_q31(0.0, n)
   let c = q31_to_f64(r.a)
   let s = q31_to_f64(r.b)
-  if !approx_eq(c, 1.0, 2e-6) panic("q31 cos(0) failed") .end
-  if !approx_eq(s, 0.0, 2e-6) panic("q31 sin(0) failed") .end
+  if !approx_eq(c, 1.0, 2e-6)
+    panic("q31 cos(0) failed")
+  .end
+  if !approx_eq(s, 0.0, 2e-6)
+    panic("q31 sin(0) failed")
+  .end
 .end
 
 fn run_all_tests()
@@ -628,6 +707,4 @@ fn run_all_tests()
   test_atan2_quadrants()
   test_q31_roundtrip()
   test_q31_sin_cos_smoke()
-.end
-
 .end

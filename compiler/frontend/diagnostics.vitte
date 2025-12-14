@@ -1,6 +1,7 @@
 module vitte.compiler.frontend.diagnostics
 
 import std.collections as coll
+import vitte.compiler.span as source_span
 
 # =============================================================================
 # Vitte compiler – Diagnostics de frontend (version projet complète)
@@ -29,56 +30,22 @@ import std.collections as coll
 # Spans
 # -----------------------------------------------------------------------------
 
-struct Span
-  file: String
-  start_line: Int
-  start_col: Int
-  end_line: Int
-  end_col: Int
-.end
+type Span = source_span.Span
 
 fn Span.dummy(file: String) -> Span
-  # Span artificiel pour les cas où l'on n'a pas encore de position précise.
-  return Span(
-    file = file,
-    start_line = 0,
-    start_col = 0,
-    end_line = 0,
-    end_col = 0,
-  )
+  return source_span.Span.dummy(file)
 .end
 
 fn Span.is_dummy(self: Span) -> Bool
-  return self.start_line == 0 and self.end_line == 0
+  return source_span.Span.is_dummy(self)
 .end
 
 fn Span.same_file(a: Span, b: Span) -> Bool
-  return a.file == b.file
+  return source_span.Span.same_file(a, b)
 .end
 
 fn Span.merge(a: Span, b: Span) -> Span
-  # Fusion grossière de deux spans sur le même fichier.
-  if a.file != b.file
-    # Si les fichiers diffèrent, on retourne simplement a.
-    return a
-  end
-
-  let start_line =
-    if a.start_line <= b.start_line then a.start_line else b.start_line end
-  let start_col =
-    if a.start_col <= b.start_col then a.start_col else b.start_col end
-  let end_line =
-    if a.end_line >= b.end_line then a.end_line else b.end_line end
-  let end_col =
-    if a.end_col >= b.end_col then a.end_col else b.end_col end
-
-  return Span(
-    file = a.file,
-    start_line = start_line,
-    start_col = start_col,
-    end_line = end_line,
-    end_col = end_col,
-  )
+  return source_span.Span.merge(a, b)
 .end
 
 # -----------------------------------------------------------------------------

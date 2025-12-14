@@ -1,45 +1,10 @@
 module jmath.complex.trig
 
 # ============================================================================
-# complex.trig – fonctions trigonométriques / hyperboliques complexes (ultra)
-#
-# Fournit :
-#   - trig: sin, cos, tan, cot, sec, csc
-#   - inverses trig: asin, acos, atan, acot, asec, acsc
-#   - hyperboliques: sinh, cosh, tanh, coth, sech, csch
-#   - inverses hyperboliques: asinh, acosh, atanh, acoth, asech, acsch
-#   - utilitaires: exp/log/sqrt, abs/arg, polar, réductions, approx_eq
-#
-# Formules (principales) :
-#   sin(x+iy) = sin x cosh y + i cos x sinh y
-#   cos(x+iy) = cos x cosh y - i sin x sinh y
-#   tan(z) = sin(z)/cos(z)
-#
-#   asin(z) = -i log( i z + sqrt(1 - z^2) )
-#   acos(z) =  pi/2 - asin(z)
-#   atan(z) = (i/2) [ log(1 - i z) - log(1 + i z) ]
-#
-#   sinh(z) = (exp(z) - exp(-z))/2
-#   cosh(z) = (exp(z) + exp(-z))/2
-#   tanh(z) = sinh(z)/cosh(z)
-#
-#   asinh(z)= log(z + sqrt(z^2 + 1))
-#   acosh(z)= log(z + sqrt(z+1)*sqrt(z-1))
-#   atanh(z)= 0.5 * [log(1+z) - log(1-z)]
-#
-# Notes :
-#   - Implémentation autonome sans import obligatoire.
-#   - “min” pour sin/cos/exp/log réels: suffisant, mais tu peux remplacer par precise_math.
-#   - Gestion de divisions robustes et garde-fous (zéro/NaN).
-#
-# Conventions :
-#   - Pas d’accolades, blocs en `.end`
-#   - Pas d’I/O
+# complex.trig – trig/hyperboliques complexes (ultra)
+# - Impl autonome : Complex + exp/log/sqrt + trig/hyp + inverses
+# - Pas d’accolades, blocs `.end`
 # ============================================================================
-
-# ---------------------------------
-# Constantes
-# ---------------------------------
 
 const PI      : f64 = 3.141592653589793238462643383279502884
 const TAU     : f64 = 6.283185307179586476925286766559005768
@@ -47,10 +12,6 @@ const HALF_PI : f64 = 1.570796326794896619231321691639751442
 
 const LN2     : f64 = 0.693147180559945309417232121458176568
 const INV_LN2 : f64 = 1.442695040888963407359924681001892137
-
-# ---------------------------------
-# Types
-# ---------------------------------
 
 struct Complex
   re : f64
@@ -255,13 +216,8 @@ fn sincos_min(theta: f64) -> (f64, f64)
   ret (-c, s)
 .end
 
-fn sin_min(theta: f64) -> f64
-  ret sincos_min(theta).0
-.end
-
-fn cos_min(theta: f64) -> f64
-  ret sincos_min(theta).1
-.end
+fn sin_min(theta: f64) -> f64 ret sincos_min(theta).0 .end
+fn cos_min(theta: f64) -> f64 ret sincos_min(theta).1 .end
 
 # ---------------------------------
 # exp/log minimal (real)
@@ -313,6 +269,7 @@ struct Frexp
 .end
 
 fn frexp_f64(x: f64) -> Frexp
+  if x == 0.0 ret Frexp { mantissa: 0.0, exponent: 0 } .end
   let mut v = x
   let mut e = 0
   while v >= 1.0
@@ -357,53 +314,24 @@ fn log_min(x: f64) -> f64
 # Complex core
 # ---------------------------------
 
-fn c(re: f64, im: f64) -> Complex
-  ret Complex { re: re, im: im }
-.end
+fn c(re: f64, im: f64) -> Complex ret Complex { re: re, im: im } .end
+fn zero() -> Complex ret c(0.0, 0.0) .end
+fn one() -> Complex ret c(1.0, 0.0) .end
+fn i_unit() -> Complex ret c(0.0, 1.0) .end
 
-fn zero() -> Complex
-  ret c(0.0, 0.0)
-.end
-
-fn one() -> Complex
-  ret c(1.0, 0.0)
-.end
-
-fn i_unit() -> Complex
-  ret c(0.0, 1.0)
-.end
-
-fn add(a: Complex, b: Complex) -> Complex
-  ret c(a.re + b.re, a.im + b.im)
-.end
-
-fn sub(a: Complex, b: Complex) -> Complex
-  ret c(a.re - b.re, a.im - b.im)
-.end
-
-fn neg(a: Complex) -> Complex
-  ret c(-a.re, -a.im)
-.end
+fn add(a: Complex, b: Complex) -> Complex ret c(a.re + b.re, a.im + b.im) .end
+fn sub(a: Complex, b: Complex) -> Complex ret c(a.re - b.re, a.im - b.im) .end
+fn neg(a: Complex) -> Complex ret c(-a.re, -a.im) .end
 
 fn mul(a: Complex, b: Complex) -> Complex
   ret c(a.re*b.re - a.im*b.im, a.re*b.im + a.im*b.re)
 .end
 
-fn mul_real(a: Complex, s: f64) -> Complex
-  ret c(a.re*s, a.im*s)
-.end
+fn mul_real(a: Complex, s: f64) -> Complex ret c(a.re*s, a.im*s) .end
+fn conj(a: Complex) -> Complex ret c(a.re, -a.im) .end
 
-fn conj(a: Complex) -> Complex
-  ret c(a.re, -a.im)
-.end
-
-fn abs_c(a: Complex) -> f64
-  ret hypot_robust(a.re, a.im)
-.end
-
-fn arg_c(a: Complex) -> f64
-  ret atan2_fallback(a.im, a.re)
-.end
+fn abs_c(a: Complex) -> f64 ret hypot_robust(a.re, a.im) .end
+fn arg_c(a: Complex) -> f64 ret atan2_fallback(a.im, a.re) .end
 
 fn div(a: Complex, b: Complex) -> ComplexErr
   let br = b.re
@@ -430,9 +358,7 @@ fn div(a: Complex, b: Complex) -> ComplexErr
   ret ComplexErr { ok: true, value: c(re, im) }
 .end
 
-fn inv(a: Complex) -> ComplexErr
-  ret div(one(), a)
-.end
+fn inv(a: Complex) -> ComplexErr ret div(one(), a) .end
 
 fn sqrt_c(z: Complex) -> Complex
   # principal sqrt
@@ -446,6 +372,7 @@ fn sqrt_c(z: Complex) -> Complex
 fn exp_c(z: Complex) -> Complex
   let ex = exp_min(z.re)
   let sc = sincos_min(z.im)
+  # e^(x+iy)=e^x(cos y + i sin y)
   ret c(ex * sc.1, ex * sc.0)
 .end
 
@@ -459,19 +386,38 @@ fn log1p_c(z: Complex) -> ComplexErr
   ret log_c(add(one(), z))
 .end
 
+fn polar(z: Complex) -> Polar
+  ret Polar { r: abs_c(z), theta: wrap_angle_pi(arg_c(z)) }
+.end
+
+fn from_polar(r: f64, theta: f64) -> Complex
+  let sc = sincos_min(theta)
+  ret c(r * sc.1, r * sc.0)
+.end
+
 # ---------------------------------
 # Hyperbolic (complex)
 # ---------------------------------
 
+fn sinh_real(x: f64) -> f64
+  let ex = exp_min(x)
+  let em = exp_min(-x)
+  ret 0.5 * (ex - em)
+.end
+
+fn cosh_real(x: f64) -> f64
+  let ex = exp_min(x)
+  let em = exp_min(-x)
+  ret 0.5 * (ex + em)
+.end
+
 fn sinh(z: Complex) -> Complex
-  # (e^z - e^{-z})/2
   let ez = exp_c(z)
   let emz = exp_c(neg(z))
   ret mul_real(sub(ez, emz), 0.5)
 .end
 
 fn cosh(z: Complex) -> Complex
-  # (e^z + e^{-z})/2
   let ez = exp_c(z)
   let emz = exp_c(neg(z))
   ret mul_real(add(ez, emz), 0.5)
@@ -489,20 +435,10 @@ fn coth(z: Complex) -> ComplexErr
   ret inv(th.value)
 .end
 
-fn sech(z: Complex) -> ComplexErr
-  let ch = cosh(z)
-  ret inv(ch)
-.end
-
-fn csch(z: Complex) -> ComplexErr
-  let sh = sinh(z)
-  ret inv(sh)
-.end
-
-# Inverses hyperboliques
+fn sech(z: Complex) -> ComplexErr ret inv(cosh(z)) .end
+fn csch(z: Complex) -> ComplexErr ret inv(sinh(z)) .end
 
 fn asinh(z: Complex) -> ComplexErr
-  # log(z + sqrt(z^2 + 1))
   let z2 = mul(z, z)
   let t = add(z2, one())
   let s = sqrt_c(t)
@@ -511,7 +447,6 @@ fn asinh(z: Complex) -> ComplexErr
 .end
 
 fn acosh(z: Complex) -> ComplexErr
-  # log(z + sqrt(z+1)*sqrt(z-1))
   let sp = sqrt_c(add(z, one()))
   let sm = sqrt_c(sub(z, one()))
   let w = add(z, mul(sp, sm))
@@ -519,7 +454,6 @@ fn acosh(z: Complex) -> ComplexErr
 .end
 
 fn atanh(z: Complex) -> ComplexErr
-  # 0.5*(log(1+z)-log(1-z))
   let lp = log_c(add(one(), z))
   if !lp.ok ret lp .end
   let lm = log_c(sub(one(), z))
@@ -528,24 +462,21 @@ fn atanh(z: Complex) -> ComplexErr
 .end
 
 fn acoth(z: Complex) -> ComplexErr
-  # atanh(1/z)
   let iz = inv(z)
   if !iz.ok ret iz .end
-  return atanh(iz.value)
+  ret atanh(iz.value)
 .end
 
 fn asech(z: Complex) -> ComplexErr
-  # acosh(1/z)
   let iz = inv(z)
   if !iz.ok ret iz .end
-  return acosh(iz.value)
+  ret acosh(iz.value)
 .end
 
 fn acsch(z: Complex) -> ComplexErr
-  # asinh(1/z)
   let iz = inv(z)
   if !iz.ok ret iz .end
-  return asinh(iz.value)
+  ret asinh(iz.value)
 .end
 
 # ---------------------------------
@@ -571,9 +502,7 @@ fn cos(z: Complex) -> Complex
 .end
 
 fn tan(z: Complex) -> ComplexErr
-  let s = sin(z)
-  let c0 = cos(z)
-  ret div(s, c0)
+  ret div(sin(z), cos(z))
 .end
 
 fn cot(z: Complex) -> ComplexErr
@@ -582,28 +511,8 @@ fn cot(z: Complex) -> ComplexErr
   ret inv(t.value)
 .end
 
-fn sec(z: Complex) -> ComplexErr
-  let c0 = cos(z)
-  ret inv(c0)
-.end
-
-fn csc(z: Complex) -> ComplexErr
-  let s = sin(z)
-  ret inv(s)
-.end
-
-# Real sinh/cosh (fast via exp_min)
-fn sinh_real(x: f64) -> f64
-  let ex = exp_min(x)
-  let em = exp_min(-x)
-  ret 0.5 * (ex - em)
-.end
-
-fn cosh_real(x: f64) -> f64
-  let ex = exp_min(x)
-  let em = exp_min(-x)
-  ret 0.5 * (ex + em)
-.end
+fn sec(z: Complex) -> ComplexErr ret inv(cos(z)) .end
+fn csc(z: Complex) -> ComplexErr ret inv(sin(z)) .end
 
 # ---------------------------------
 # Inverses trig (complex)
@@ -618,12 +527,11 @@ fn asin(z: Complex) -> ComplexErr
   let w = add(iz, s)
   let lw = log_c(w)
   if !lw.ok ret lw .end
-  # -i * lw = (lw.im) + i*(-lw.re)
+  # -i*(a+ib)= b + i*(-a)
   ret ComplexErr { ok: true, value: c(lw.value.im, -lw.value.re) }
 .end
 
 fn acos(z: Complex) -> ComplexErr
-  # pi/2 - asin(z)
   let a = asin(z)
   if !a.ok ret a .end
   ret ComplexErr { ok: true, value: sub(c(HALF_PI, 0.0), a.value) }
@@ -637,47 +545,35 @@ fn atan(z: Complex) -> ComplexErr
   let b = log_c(add(one(), iz))
   if !b.ok ret b .end
   let d = sub(a.value, b.value)
-  # (i/2)*d = ( -d.im/2 ) + i( d.re/2 )
+  # (i/2)*(dr + i di) = (-di/2) + i(dr/2)
   ret ComplexErr { ok: true, value: c(-0.5*d.im, 0.5*d.re) }
 .end
 
 fn acot(z: Complex) -> ComplexErr
-  # acot(z) = atan(1/z)
   let iz = inv(z)
   if !iz.ok ret iz .end
-  return atan(iz.value)
+  ret atan(iz.value)
 .end
 
 fn asec(z: Complex) -> ComplexErr
-  # asec(z) = acos(1/z)
   let iz = inv(z)
   if !iz.ok ret iz .end
-  return acos(iz.value)
+  ret acos(iz.value)
 .end
 
 fn acsc(z: Complex) -> ComplexErr
-  # acsc(z) = asin(1/z)
   let iz = inv(z)
   if !iz.ok ret iz .end
-  return asin(iz.value)
+  ret asin(iz.value)
 .end
 
 # ---------------------------------
-# Extra identities (optional helpers)
+# Extra identities
 # ---------------------------------
 
-fn sinpi(z: Complex) -> Complex
-  # sin(pi z)
-  ret sin(mul_real(z, PI))
-.end
-
-fn cospi(z: Complex) -> Complex
-  ret cos(mul_real(z, PI))
-.end
-
-fn tanpi(z: Complex) -> ComplexErr
-  ret tan(mul_real(z, PI))
-.end
+fn sinpi(z: Complex) -> Complex ret sin(mul_real(z, PI)) .end
+fn cospi(z: Complex) -> Complex ret cos(mul_real(z, PI)) .end
+fn tanpi(z: Complex) -> ComplexErr ret tan(mul_real(z, PI)) .end
 
 # ---------------------------------
 # Tests
@@ -695,7 +591,6 @@ fn test_trig_real_axis()
   let z = c(0.3, 0.0)
   let s = sin(z)
   let c0 = cos(z)
-  # should match real sin/cos min
   if abs_f64(s.im) > 1e-9 panic("sin real axis imag") .end
   if abs_f64(c0.im) > 1e-9 panic("cos real axis imag") .end
   if abs_f64(s.re - sin_min(0.3)) > 5e-6 panic("sin mismatch") .end
@@ -707,18 +602,9 @@ fn test_asin_sin_roundtrip()
   let a = asin(z)
   if !a.ok panic("asin failed") .end
   let s = sin(a.value)
-  # roundtrip approx
   if abs_c(sub(s, z)) > 2e-2
     panic("asin/sin roundtrip too large")
   .end
-.end
-
-fn abs_c(z: Complex) -> f64
-  ret hypot_robust(z.re, z.im)
-.end
-
-fn sub_c(a: Complex, b: Complex) -> Complex
-  ret c(a.re - b.re, a.im - b.im)
 .end
 
 fn test_atan_tan_roundtrip()
@@ -727,7 +613,7 @@ fn test_atan_tan_roundtrip()
   if !a.ok panic("atan failed") .end
   let t = tan(a.value)
   if !t.ok panic("tan failed") .end
-  if abs_c(sub_c(t.value, z)) > 3e-2
+  if abs_c(sub(t.value, z)) > 3e-2
     panic("atan/tan roundtrip too large")
   .end
 .end

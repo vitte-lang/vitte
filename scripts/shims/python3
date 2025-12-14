@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Lightweight shim to provide a python3 command on platforms that only expose `python`.
+
+set -euo pipefail
+
+if command -v python >/dev/null 2>&1; then
+  exec python "$@"
+fi
+
+if command -v py >/dev/null 2>&1; then
+  exec py -3 "$@"
+fi
+
+echo "python3 shim: no suitable Python interpreter found on PATH" >&2
+exit 127

@@ -31,6 +31,10 @@ const HALF_PI : f64 = 1.570796326794896619231321691639751442
 const LN2     : f64 = 0.693147180559945309417232121458176568
 const INV_LN2 : f64 = 1.442695040888963407359924681001892137
 
+# split π for reduction helper (double-double light)
+const PI_HI : f64 = 3.141592653589793116
+const PI_LO : f64 = 1.224646799147353207e-16
+
 # ---------------------------------
 # Types
 # ---------------------------------
@@ -50,7 +54,6 @@ struct ComplexErr
   value : Complex
 .end
 
-# For parsing minimal
 enum ParseErrKind
   Empty
   InvalidChar
@@ -65,32 +68,50 @@ struct ParseResult
   err : ParseErrKind
 .end
 
+struct ParseF64
+  ok : bool
+  value : f64
+.end
+
 # ---------------------------------
 # Base utils
 # ---------------------------------
 
 fn abs_f64(x: f64) -> f64
-  if x < 0.0 ret -x .end
+  if x < 0.0
+    ret -x
+  .end
   ret x
 .end
 
 fn max_f64(a: f64, b: f64) -> f64
-  if a > b ret a .end
+  if a > b
+    ret a
+  .end
   ret b
 .end
 
 fn min_f64(a: f64, b: f64) -> f64
-  if a < b ret a .end
+  if a < b
+    ret a
+  .end
   ret b
 .end
 
+fn clamp_f64(x: f64, lo: f64, hi: f64) -> f64
+  if x < lo ret lo .end
+  if x > hi ret hi .end
+  ret x
+.end
+
 fn copysign_f64(mag: f64, sgn: f64) -> f64
-  if sgn < 0.0 ret -abs_f64(mag) .end
+  if sgn < 0.0
+    ret -abs_f64(mag)
+  .end
   ret abs_f64(mag)
 .end
 
 fn is_nan_like(x: f64) -> bool
-  # portable NaN check
   ret x != x
 .end
 
@@ -122,20 +143,34 @@ fn wrap_angle_0_tau(theta: f64) -> f64
   ret t
 .end
 
+fn floor_f64(x: f64) -> f64
+  let i = x as i64
+  let fi = i as f64
+  if fi > x
+    ret (i - 1) as f64
+  .end
+  ret fi
+.end
+
 # ---------------------------------
 # Robust sqrt + hypot
 # ---------------------------------
 
 fn sqrt_newton(x: f64) -> f64
   if x <= 0.0
-    if x == 0.0 ret 0.0 .end
+    if x == 0.0
+      ret 0.0
+    .end
     ret 0.0
   .end
 
-  # heuristic initial
   let mut y = x
-  if y > 1.0 y = y * 0.5 .end
-  if y < 1.0 y = 1.0 .end
+  if y > 1.0
+    y = y * 0.5
+  .end
+  if y < 1.0
+    y = 1.0
+  .end
 
   let mut i = 0
   while i < 14
@@ -149,7 +184,9 @@ fn hypot_robust(a: f64, b: f64) -> f64
   let aa = abs_f64(a)
   let bb = abs_f64(b)
   let m = max_f64(aa, bb)
-  if m == 0.0 ret 0.0 .end
+  if m == 0.0
+    ret 0.0
+  .end
   let ra = aa / m
   let rb = bb / m
   ret m * sqrt_newton(ra*ra + rb*rb)
@@ -173,7 +210,9 @@ fn atan_rational(x: f64) -> f64
 
 fn atan_fallback(x: f64) -> f64
   let ax = abs_f64(x)
-  if ax < 1e-18 ret x .end
+  if ax < 1e-18
+    ret x
+  .end
   if ax > 1.0
     let t = atan_rational(1.0/ax)
     ret copysign_f64(HALF_PI - t, x)
@@ -186,7 +225,9 @@ fn atan2_fallback(y: f64, x: f64) -> f64
     ret atan_fallback(y / x)
   .end
   if x < 0.0
-    if y >= 0.0 ret atan_fallback(y / x) + PI .end
+    if y >= 0.0
+      ret atan_fallback(y / x) + PI
+    .end
     ret atan_fallback(y / x) - PI
   .end
   if y > 0.0 ret HALF_PI .end
@@ -198,38 +239,27 @@ fn atan2_fallback(y: f64, x: f64) -> f64
 # sin/cos minimal (for exp/polar)
 # ---------------------------------
 
-fn floor_f64(x: f64) -> f64
-  let i = x as i64
-  let fi = i as f64
-  if fi > x
-    ret (i - 1) as f64
-  .end
-  ret fi
-.end
-
-const PI_HI : f64 = 3.141592653589793116
-const PI_LO : f64 = 1.224646799147353207e-16
-
 fn reduce_angle_half_pi(theta: f64) -> (f64, i32)
   let inv = 2.0 / PI
   let kf = floor_f64(theta * inv + 0.5)
   let k = kf as i32
+
   let kf64 = k as f64
   let p2_hi = 0.5 * PI_HI
   let p2_lo = 0.5 * PI_LO
+
   let r1 = theta - kf64 * p2_hi
   let r2 = r1 - kf64 * p2_lo
   ret (r2, k)
 .end
 
 fn sin_poly(r: f64) -> f64
-  let x = r
-  let x2 = x*x
-  let x3 = x2*x
+  let x2 = r*r
+  let x3 = x2*r
   let x5 = x3*x2
   let x7 = x5*x2
   let x9 = x7*x2
-  ret x - x3*(1.0/6.0) + x5*(1.0/120.0) - x7*(1.0/5040.0) + x9*(1.0/362880.0)
+  ret r - x3*(1.0/6.0) + x5*(1.0/120.0) - x7*(1.0/5040.0) + x9*(1.0/362880.0)
 .end
 
 fn cos_poly(r: f64) -> f64
@@ -294,6 +324,7 @@ fn ldexp_f64(x: f64, exp2: i32) -> f64
     .end
     ret v
   .end
+
   if exp2 < 0
     let mut k = 0
     let n = -exp2
@@ -303,6 +334,7 @@ fn ldexp_f64(x: f64, exp2: i32) -> f64
     .end
     ret v
   .end
+
   ret v
 .end
 
@@ -364,7 +396,9 @@ fn log1p_series9(t: f64) -> f64
 .end
 
 fn log_min(x: f64) -> f64
-  if x <= 0.0 ret -1e300 .end
+  if x <= 0.0
+    ret -1e300
+  .end
   let fr = frexp_f64(x)
   let t = fr.mantissa - 1.0
   ret log1p_series9(t) + (fr.exponent as f64) * LN2
@@ -411,7 +445,6 @@ fn conj(a: Complex) -> Complex
 .end
 
 fn mul(a: Complex, b: Complex) -> Complex
-  # (a+bi)(c+di)=(ac-bd)+i(ad+bc)
   ret Complex { re: a.re*b.re - a.im*b.im, im: a.re*b.im + a.im*b.re }
 .end
 
@@ -420,11 +453,7 @@ fn mul_real(a: Complex, s: f64) -> Complex
 .end
 
 fn div(a: Complex, b: Complex) -> ComplexErr
-  # robust division using scaling:
-  # if |br| >= |bi|:
-  #   r = bi/br; denom = br + bi*r
-  # else:
-  #   r = br/bi; denom = bi + br*r
+  # robust division with ratio trick
   let br = b.re
   let bi = b.im
   if br == 0.0 && bi == 0.0
@@ -462,7 +491,6 @@ fn abs(a: Complex) -> f64
 .end
 
 fn norm2(a: Complex) -> f64
-  # |a|^2
   ret a.re*a.re + a.im*a.im
 .end
 
@@ -475,7 +503,7 @@ fn normalize(a: Complex) -> ComplexErr
   if r == 0.0
     ret ComplexErr { ok: false, value: zero() }
   .end
-  ret ComplexErr { ok: true, value: Complex { re: a.re/r, im: a.im/r } }
+  ret ComplexErr { ok: true, value: Complex { re: a.re / r, im: a.im / r } }
 .end
 
 # ---------------------------------
@@ -518,8 +546,7 @@ fn log(a: Complex) -> ComplexErr
   if r == 0.0
     ret ComplexErr { ok: false, value: zero() }
   .end
-  let th = arg(a)
-  ret ComplexErr { ok: true, value: Complex { re: log_min(r), im: th } }
+  ret ComplexErr { ok: true, value: Complex { re: log_min(r), im: arg(a) } }
 .end
 
 fn pow(a: Complex, b: Complex) -> ComplexErr
@@ -533,16 +560,12 @@ fn pow(a: Complex, b: Complex) -> ComplexErr
 .end
 
 fn pow_real(a: Complex, p: f64) -> ComplexErr
-  let b = Complex { re: p, im: 0.0 }
-  ret pow(a, b)
+  ret pow(a, Complex { re: p, im: 0.0 })
 .end
 
 # ---------------------------------
 # Trig/hyperbolic (minimal)
 # ---------------------------------
-# sin(z)=sin(x)cosh(y)+i cos(x)sinh(y)
-# cos(z)=cos(x)cosh(y)-i sin(x)sinh(y)
-# We provide cosh/sinh via exp, to keep deps minimal.
 
 fn sinh_min(x: f64) -> f64
   let ex = exp_min(x)
@@ -561,7 +584,7 @@ fn sin(a: Complex) -> Complex
   let cx = cos_min(a.re)
   let shy = sinh_min(a.im)
   let chy = cosh_min(a.im)
-  ret Complex { re: sx*chy, im: cx*shy }
+  ret Complex { re: sx * chy, im: cx * shy }
 .end
 
 fn cos(a: Complex) -> Complex
@@ -569,13 +592,33 @@ fn cos(a: Complex) -> Complex
   let cx = cos_min(a.re)
   let shy = sinh_min(a.im)
   let chy = cosh_min(a.im)
-  ret Complex { re: cx*chy, im: -sx*shy }
+  ret Complex { re: cx * chy, im: -sx * shy }
 .end
 
 fn tan(a: Complex) -> ComplexErr
-  let s = sin(a)
-  let c = cos(a)
-  ret div(s, c)
+  ret div(sin(a), cos(a))
+.end
+
+fn sinh(a: Complex) -> Complex
+  # sinh(x+iy)=sinh(x)cos(y)+i cosh(x)sin(y)
+  let shx = sinh_min(a.re)
+  let chx = cosh_min(a.re)
+  let sy = sin_min(a.im)
+  let cy = cos_min(a.im)
+  ret Complex { re: shx * cy, im: chx * sy }
+.end
+
+fn cosh(a: Complex) -> Complex
+  # cosh(x+iy)=cosh(x)cos(y)+i sinh(x)sin(y)
+  let shx = sinh_min(a.re)
+  let chx = cosh_min(a.re)
+  let sy = sin_min(a.im)
+  let cy = cos_min(a.im)
+  ret Complex { re: chx * cy, im: shx * sy }
+.end
+
+fn tanh(a: Complex) -> ComplexErr
+  ret div(sinh(a), cosh(a))
 .end
 
 # ---------------------------------
@@ -589,103 +632,41 @@ fn approx_eq(a: Complex, b: Complex, eps: f64) -> bool
 fn approx_eq_rel(a: Complex, b: Complex, eps_abs: f64, eps_rel: f64) -> bool
   let dre = abs_f64(a.re - b.re)
   let dim = abs_f64(a.im - b.im)
+
   let sre = max_f64(abs_f64(a.re), abs_f64(b.re))
   let sim = max_f64(abs_f64(a.im), abs_f64(b.im))
+
   let ok_re = dre <= max_f64(eps_abs, eps_rel * sre)
   let ok_im = dim <= max_f64(eps_abs, eps_rel * sim)
   ret ok_re && ok_im
 .end
 
 # ---------------------------------
-# Parsing minimal
+# Parsing minimal (sans espaces)
 # ---------------------------------
-# Formats acceptés (sans espaces pour simplicité) :
+# Formats acceptés (sans espaces) :
 #   "a+bi", "a-bi", "bi", "-bi", "a", "i", "-i"
-#   où a,b sont float simples (avec '.'), exponent non géré ici.
+#   a,b : decimal simple (pas d'exponent, pas d'underscores)
 #
-# Pour parse float, on implémente un parse decimal minimal.
+# Note : strip_spaces est un passthrough ; garder l'entrée sans espaces.
 
-fn parse(s: &str) -> ParseResult
-  if s.len() == 0
-    ret ParseResult { ok: false, value: zero(), err: ParseErrKind.Empty }
-  .end
-
-  let t = strip_spaces(s)
-  if t.len() == 0
-    ret ParseResult { ok: false, value: zero(), err: ParseErrKind.Empty }
-  .end
-
-  # special: "i" or "+i" or "-i"
-  if t == "i" || t == "+i"
-    ret ParseResult { ok: true, value: Complex { re: 0.0, im: 1.0 }, err: ParseErrKind.Empty }
-  .end
-  if t == "-i"
-    ret ParseResult { ok: true, value: Complex { re: 0.0, im: -1.0 }, err: ParseErrKind.Empty }
-  .end
-
-  # find trailing 'i'
-  let has_i = t.ends_with("i")
-  if !has_i
-    # pure real
-    let pr = parse_f64_min(t)
-    if !pr.ok
-      ret ParseResult { ok: false, value: zero(), err: ParseErrKind.InvalidNumber }
-    .end
-    ret ParseResult { ok: true, value: Complex { re: pr.value, im: 0.0 }, err: ParseErrKind.Empty }
-  .end
-
-  # remove trailing i
-  let u = t.slice(0, (t.len() - 1) as i32)
-
-  # split at last '+' or '-' that is not the first char
-  let idx = find_last_pm(u)
-  if idx < 0
-    # only imaginary coefficient
-    if u.len() == 0
-      ret ParseResult { ok: true, value: Complex { re: 0.0, im: 1.0 }, err: ParseErrKind.Empty }
-    .end
-    if u == "+"
-      ret ParseResult { ok: true, value: Complex { re: 0.0, im: 1.0 }, err: ParseErrKind.Empty }
-    .end
-    if u == "-"
-      ret ParseResult { ok: true, value: Complex { re: 0.0, im: -1.0 }, err: ParseErrKind.Empty }
-    .end
-    let pi = parse_f64_min(u)
-    if !pi.ok
-      ret ParseResult { ok: false, value: zero(), err: ParseErrKind.InvalidNumber }
-    .end
-    ret ParseResult { ok: true, value: Complex { re: 0.0, im: pi.value }, err: ParseErrKind.Empty }
-  .end
-
-  let left = u.slice(0, idx)
-  let right = u.slice(idx, u.len() as i32)
-
-  let pr = parse_f64_min(left)
-  if !pr.ok
-    ret ParseResult { ok: false, value: zero(), err: ParseErrKind.InvalidNumber }
-  .end
-
-  # right begins with + or -
-  if right == "+" || right == "-"
-    let im = if right == "+" then 1.0 else -1.0 .end
-    ret ParseResult { ok: true, value: Complex { re: pr.value, im: im }, err: ParseErrKind.Empty }
-  .end
-
-  let pi2 = parse_f64_min(right)
-  if !pi2.ok
-    ret ParseResult { ok: false, value: zero(), err: ParseErrKind.InvalidNumber }
-  .end
-
-  ret ParseResult { ok: true, value: Complex { re: pr.value, im: pi2.value }, err: ParseErrKind.Empty }
+fn strip_spaces(s: &str) -> &str
+  ret s
 .end
 
-struct ParseF64
-  ok : bool
-  value : f64
+fn find_last_pm(s: &str) -> i32
+  let mut i = (s.len() as i32) - 1
+  while i >= 1
+    let ch = s[i]
+    if ch == '+' || ch == '-'
+      ret i
+    .end
+    i = i - 1
+  .end
+  ret -1
 .end
 
 fn parse_f64_min(s: &str) -> ParseF64
-  # minimal decimal parser: [sign] digits [.] digits
   if s.len() == 0
     ret ParseF64 { ok: false, value: 0.0 }
   .end
@@ -738,23 +719,70 @@ fn parse_f64_min(s: &str) -> ParseF64
   ret ParseF64 { ok: true, value: sign * v }
 .end
 
-fn strip_spaces(s: &str) -> &str
-  # minimal: assumes no leading/trailing spaces in most cases
-  # If you want full, implement trim; here pass-through.
-  ret s
-.end
-
-fn find_last_pm(s: &str) -> i32
-  # last '+' or '-' after index 0
-  let mut i = (s.len() as i32) - 1
-  while i >= 1
-    let ch = s[i]
-    if ch == '+' || ch == '-'
-      ret i
-    .end
-    i = i - 1
+fn parse(s: &str) -> ParseResult
+  if s.len() == 0
+    ret ParseResult { ok: false, value: zero(), err: ParseErrKind.Empty }
   .end
-  ret -1
+
+  let t = strip_spaces(s)
+  if t.len() == 0
+    ret ParseResult { ok: false, value: zero(), err: ParseErrKind.Empty }
+  .end
+
+  if t == "i" || t == "+i"
+    ret ParseResult { ok: true, value: Complex { re: 0.0, im: 1.0 }, err: ParseErrKind.Empty }
+  .end
+  if t == "-i"
+    ret ParseResult { ok: true, value: Complex { re: 0.0, im: -1.0 }, err: ParseErrKind.Empty }
+  .end
+
+  let has_i = t.ends_with("i")
+  if !has_i
+    let pr = parse_f64_min(t)
+    if !pr.ok
+      ret ParseResult { ok: false, value: zero(), err: ParseErrKind.InvalidNumber }
+    .end
+    ret ParseResult { ok: true, value: Complex { re: pr.value, im: 0.0 }, err: ParseErrKind.Empty }
+  .end
+
+  let u = t.slice(0, (t.len() - 1) as i32)
+  let idx = find_last_pm(u)
+
+  if idx < 0
+    if u.len() == 0 || u == "+"
+      ret ParseResult { ok: true, value: Complex { re: 0.0, im: 1.0 }, err: ParseErrKind.Empty }
+    .end
+    if u == "-"
+      ret ParseResult { ok: true, value: Complex { re: 0.0, im: -1.0 }, err: ParseErrKind.Empty }
+    .end
+    let pi = parse_f64_min(u)
+    if !pi.ok
+      ret ParseResult { ok: false, value: zero(), err: ParseErrKind.InvalidNumber }
+    .end
+    ret ParseResult { ok: true, value: Complex { re: 0.0, im: pi.value }, err: ParseErrKind.Empty }
+  .end
+
+  let left = u.slice(0, idx)
+  let right = u.slice(idx, u.len() as i32)
+
+  let pr = parse_f64_min(left)
+  if !pr.ok
+    ret ParseResult { ok: false, value: zero(), err: ParseErrKind.InvalidNumber }
+  .end
+
+  if right == "+"
+    ret ParseResult { ok: true, value: Complex { re: pr.value, im: 1.0 }, err: ParseErrKind.Empty }
+  .end
+  if right == "-"
+    ret ParseResult { ok: true, value: Complex { re: pr.value, im: -1.0 }, err: ParseErrKind.Empty }
+  .end
+
+  let pi2 = parse_f64_min(right)
+  if !pi2.ok
+    ret ParseResult { ok: false, value: zero(), err: ParseErrKind.InvalidNumber }
+  .end
+
+  ret ParseResult { ok: true, value: Complex { re: pr.value, im: pi2.value }, err: ParseErrKind.Empty }
 .end
 
 # ---------------------------------
@@ -766,7 +794,9 @@ fn test_basic_arith()
   let b = complex(3.0, -4.0)
 
   let s = add(a, b)
-  if s.re != 4.0 || s.im != -2.0 panic("add failed") .end
+  if s.re != 4.0 || s.im != -2.0
+    panic("add failed")
+  .end
 
   let p = mul(a, b) # (1+2i)(3-4i)=11+2i
   if abs_f64(p.re - 11.0) > 1e-12 || abs_f64(p.im - 2.0) > 1e-12
@@ -774,23 +804,33 @@ fn test_basic_arith()
   .end
 
   let d = div(a, b)
-  if !d.ok panic("div failed") .end
+  if !d.ok
+    panic("div failed")
+  .end
 .end
 
 fn test_abs_arg()
   let z = complex(3.0, 4.0)
   let r = abs(z)
-  if abs_f64(r - 5.0) > 1e-10 panic("abs failed") .end
+  if abs_f64(r - 5.0) > 1e-10
+    panic("abs failed")
+  .end
+
   let th = arg(z)
-  if abs_f64(th - atan2_fallback(4.0, 3.0)) > 1e-12 panic("arg failed") .end
+  if abs_f64(th - atan2_fallback(4.0, 3.0)) > 1e-12
+    panic("arg failed")
+  .end
 .end
 
 fn test_exp_log_roundtrip()
   let z = complex(0.2, -0.7)
   let ez = exp(z)
   let lz = log(ez)
-  if !lz.ok panic("log failed") .end
-  # approx roundtrip
+  if !lz.ok
+    panic("log failed")
+  .end
+
+  # approx roundtrip (fallback exp/log)
   if abs_f64(lz.value.re - z.re) > 2e-2 || abs_f64(lz.value.im - z.im) > 2e-2
     panic("exp/log roundtrip too large")
   .end
@@ -798,15 +838,24 @@ fn test_exp_log_roundtrip()
 
 fn test_parse()
   let p1 = parse("1+2i")
-  if !p1.ok || p1.value.re != 1.0 || p1.value.im != 2.0 panic("parse 1+2i") .end
+  if !p1.ok || p1.value.re != 1.0 || p1.value.im != 2.0
+    panic("parse 1+2i")
+  .end
 
-  let p2 = parse("-3.5- i")
-  # strip_spaces is passthrough => this will likely fail; keep smoke simple:
-  let p3 = parse("-i")
-  if !p3.ok || p3.value.im != -1.0 panic("parse -i") .end
+  let p2 = parse("-i")
+  if !p2.ok || p2.value.re != 0.0 || p2.value.im != -1.0
+    panic("parse -i")
+  .end
 
-  let p4 = parse("2")
-  if !p4.ok || p4.value.re != 2.0 || p4.value.im != 0.0 panic("parse 2") .end
+  let p3 = parse("2")
+  if !p3.ok || p3.value.re != 2.0 || p3.value.im != 0.0
+    panic("parse 2")
+  .end
+
+  let p4 = parse("3.5-4i")
+  if !p4.ok || abs_f64(p4.value.re - 3.5) > 1e-12 || abs_f64(p4.value.im + 4.0) > 1e-12
+    panic("parse 3.5-4i")
+  .end
 .end
 
 fn run_all_tests()

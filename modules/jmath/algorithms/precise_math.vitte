@@ -1,8 +1,5 @@
 module std.math.algorithms.precise_math
 
-.end
-module jmath.precise_math
-
 # ============================================================================
 # precise_math – primitives numériques “précision d’abord”
 #
@@ -10,8 +7,8 @@ module jmath.precise_math
 #   - Utilitaires robustes (comparaisons, ulp-ish, clamp, scaling)
 #   - Sommes compensées (Kahan, Neumaier), dot produits stables
 #   - Réductions d’angles haute précision (range reduction)
-#   - Trig/exp/log “précis” via stratégies:
-#       * polynomial + réduction + itérations Newton/Householder
+#   - Trig/exp/log “précis” via stratégies :
+#       * polynomial + réduction + itérations Newton/Householder (light)
 #       * CORDIC bridge possible si module dispo
 #   - Racines (sqrt) via Newton + garde-fous
 #   - Fonctions spéciales utiles (sinc, log1p, expm1)
@@ -35,12 +32,10 @@ const HALF_PI : f64 = 1.570796326794896619231321691639751442
 const LN2     : f64 = 0.693147180559945309417232121458176568
 const INV_LN2 : f64 = 1.442695040888963407359924681001892137
 
-# Split constants for high-precision range reduction (Payne–Hanek style light)
-# ln2_hi + ln2_lo = ln2 (double-double)
+# split constants for high-precision range reduction (double-double light)
 const LN2_HI : f64 = 0.69314718036912381649017333984375
 const LN2_LO : f64 = 0.000000000190821492927058781614426
 
-# pi split (double-double)
 const PI_HI  : f64 = 3.141592653589793116
 const PI_LO  : f64 = 1.224646799147353207e-16
 
@@ -49,34 +44,50 @@ const PI_LO  : f64 = 1.224646799147353207e-16
 # ---------------------------------
 
 fn abs_f64(x: f64) -> f64
-  if x < 0.0 ret -x .end
+  if x < 0.0
+    ret -x
+  .end
   ret x
 .end
 
 fn min_f64(a: f64, b: f64) -> f64
-  if a < b ret a .end
+  if a < b
+    ret a
+  .end
   ret b
 .end
 
 fn max_f64(a: f64, b: f64) -> f64
-  if a > b ret a .end
+  if a > b
+    ret a
+  .end
   ret b
 .end
 
 fn clamp_f64(x: f64, lo: f64, hi: f64) -> f64
-  if x < lo ret lo .end
-  if x > hi ret hi .end
+  if x < lo
+    ret lo
+  .end
+  if x > hi
+    ret hi
+  .end
   ret x
 .end
 
 fn sign_f64(x: f64) -> f64
-  if x > 0.0 ret 1.0 .end
-  if x < 0.0 ret -1.0 .end
+  if x > 0.0
+    ret 1.0
+  .end
+  if x < 0.0
+    ret -1.0
+  .end
   ret 0.0
 .end
 
 fn copysign_f64(mag: f64, sgn: f64) -> f64
-  if sgn < 0.0 ret -abs_f64(mag) .end
+  if sgn < 0.0
+    ret -abs_f64(mag)
+  .end
   ret abs_f64(mag)
 .end
 
@@ -85,8 +96,12 @@ fn sqr(x: f64) -> f64
 .end
 
 fn is_finite(x: f64) -> bool
-  if x > 1e308 ret false .end
-  if x < -1e308 ret false .end
+  if x > 1e308
+    ret false
+  .end
+  if x < -1e308
+    ret false
+  .end
   ret true
 .end
 
@@ -104,7 +119,7 @@ fn dd_make(hi: f64, lo: f64) -> DD
 .end
 
 fn dd_add(a: DD, b: DD) -> DD
-  # TwoSum
+  # TwoSum for hi + hi, then accumulate lo
   let s = a.hi + b.hi
   let v = s - a.hi
   let e = (a.hi - (s - v)) + (b.hi - v) + a.lo + b.lo
@@ -118,7 +133,7 @@ fn dd_sub(a: DD, b: DD) -> DD
 .end
 
 fn dd_mul(a: DD, b: DD) -> DD
-  # Dekker split (approx) without FMA; acceptable for corrections
+  # light correction; for full accuracy use FMA-based split if available
   let p = a.hi * b.hi
   let e = a.hi * b.lo + a.lo * b.hi + a.lo * b.lo
   let hi = p + e
@@ -222,9 +237,14 @@ struct ErrStats
 .end
 
 fn err_stats(y: &[f64], yhat: &[f64], eps_rel: f64) -> ErrStats
-  if y.len() != yhat.len() panic("err_stats: size mismatch") .end
+  if y.len() != yhat.len()
+    panic("err_stats: size mismatch")
+  .end
+
   let n = y.len() as i32
-  if n <= 0 ret ErrStats { max_abs: 0.0, max_rel: 0.0, rmse: 0.0 } .end
+  if n <= 0
+    ret ErrStats { max_abs: 0.0, max_rel: 0.0, rmse: 0.0 }
+  .end
 
   let mut se = 0.0
   let mut ma = 0.0
@@ -234,11 +254,15 @@ fn err_stats(y: &[f64], yhat: &[f64], eps_rel: f64) -> ErrStats
   while i < n
     let e = yhat[i as usize] - y[i as usize]
     let ae = abs_f64(e)
-    if ae > ma ma = ae .end
+    if ae > ma
+      ma = ae
+    .end
 
     let denom = max_f64(abs_f64(y[i as usize]), eps_rel)
     let re = ae / denom
-    if re > mr mr = re .end
+    if re > mr
+      mr = re
+    .end
 
     se = se + e * e
     i = i + 1
@@ -249,11 +273,10 @@ fn err_stats(y: &[f64], yhat: &[f64], eps_rel: f64) -> ErrStats
 .end
 
 # ---------------------------------
-# Range reduction (angles) with double-double π
+# Range reduction (angles) with split π
 # ---------------------------------
 
 fn wrap_angle_pi(theta: f64) -> f64
-  # Basic wrap in (-pi, pi]
   let mut t = theta
   while t <= -PI
     t = t + TAU
@@ -265,68 +288,49 @@ fn wrap_angle_pi(theta: f64) -> f64
 .end
 
 fn reduce_angle_half_pi(theta: f64) -> (f64, i32)
-  # Reduce theta to r in [-pi/2, pi/2] with quadrant q (multiple of pi/2):
-  # theta = q*(pi/2) + r
-  #
-  # Strategy:
-  #   k = round(theta / (pi/2))
-  #   r = theta - k*(pi/2) using split pi_hi/pi_lo for extra precision.
+  # theta = k*(pi/2) + r, r in approx [-pi/4,pi/4] after folding
   let inv = 2.0 / PI
   let kf = floor_f64(theta * inv + 0.5)
   let k = kf as i32
-
-  # r = theta - k*(pi/2)
   let kf64 = k as f64
+
   let p2_hi = 0.5 * PI_HI
   let p2_lo = 0.5 * PI_LO
 
-  # theta - k*p2 (double-double)
   let r1 = theta - kf64 * p2_hi
   let r2 = r1 - kf64 * p2_lo
   ret (r2, k)
 .end
 
 # ---------------------------------
-# Precise sin/cos via reduction + polynomial + correction
+# Precise-ish sin/cos via reduction + poly
 # ---------------------------------
-# Use a relatively high-order minimax-ish polynomial on [-pi/4, pi/4] after folding.
-# We reduce to r in [-pi/2, pi/2], then fold to [-pi/4, pi/4] for better poly.
-# Coefs: Taylor for simplicity, error OK for “precise enough” without libm.
 
-# sin on [-pi/4, pi/4]
 fn sin_poly(r: f64) -> f64
-  let x = r
-  let x2 = x*x
-  let x3 = x2*x
+  let x2 = r*r
+  let x3 = x2*r
   let x5 = x3*x2
   let x7 = x5*x2
   let x9 = x7*x2
-  # x - x^3/6 + x^5/120 - x^7/5040 + x^9/362880
-  ret x - x3*(1.0/6.0) + x5*(1.0/120.0) - x7*(1.0/5040.0) + x9*(1.0/362880.0)
+  ret r - x3*(1.0/6.0) + x5*(1.0/120.0) - x7*(1.0/5040.0) + x9*(1.0/362880.0)
 .end
 
-# cos on [-pi/4, pi/4]
 fn cos_poly(r: f64) -> f64
   let x2 = r*r
   let x4 = x2*x2
   let x6 = x4*x2
   let x8 = x4*x4
-  # 1 - x^2/2 + x^4/24 - x^6/720 + x^8/40320
   ret 1.0 - x2*0.5 + x4*(1.0/24.0) - x6*(1.0/720.0) + x8*(1.0/40320.0)
 .end
 
 fn sincos_precise(theta: f64) -> (f64, f64)
-  # Reduce
   let rr = reduce_angle_half_pi(theta)
   let mut r = rr.0
   let k = rr.1
 
-  # Fold to [-pi/4, pi/4] using identities:
-  # sin(r) with r in [-pi/2, pi/2]
-  # If |r| > pi/4: use sin(r)=cos(pi/2 - r), cos(r)=sin(pi/2 - r)
+  # fold to [-pi/4, pi/4] using sin/cos swap
   let mut swap = false
   if r > (0.5*HALF_PI)
-    # r > pi/4
     r = HALF_PI - r
     swap = true
   .end
@@ -341,12 +345,10 @@ fn sincos_precise(theta: f64) -> (f64, f64)
   let mut s = s0
   let mut c = c0
   if swap
-    # swapped roles due to fold
     s = c0
     c = s0
   .end
 
-  # Apply quadrant k (mod 4): theta = k*(pi/2) + r
   let q = k & 3
   if q == 0
     ret (s, c)
@@ -373,21 +375,18 @@ fn cos_precise(theta: f64) -> f64
 # ---------------------------------
 
 fn expm1_precise(x: f64) -> f64
-  # For small x, use series to avoid catastrophic cancellation.
   let ax = abs_f64(x)
   if ax < 1e-5
     let x2 = x*x
     let x3 = x2*x
     let x4 = x2*x2
     let x5 = x4*x
-    # x + x^2/2 + x^3/6 + x^4/24 + x^5/120
     ret x + 0.5*x2 + (1.0/6.0)*x3 + (1.0/24.0)*x4 + (1.0/120.0)*x5
   .end
   ret exp_precise(x) - 1.0
 .end
 
 fn log1p_precise(x: f64) -> f64
-  # For small x, series; for general, log(1+x).
   if x <= -1.0
     ret -1e300
   .end
@@ -397,35 +396,16 @@ fn log1p_precise(x: f64) -> f64
     let x3 = x2*x
     let x4 = x2*x2
     let x5 = x4*x
-    # x - x^2/2 + x^3/3 - x^4/4 + x^5/5
     ret x - 0.5*x2 + (1.0/3.0)*x3 - 0.25*x4 + 0.2*x5
   .end
   ret log_precise(1.0 + x)
 .end
 
 # ---------------------------------
-# exp/log (precise-ish) via hi/lo ln2
+# exp/log (precise-ish) via split ln2
 # ---------------------------------
 
-fn exp_precise(x: f64) -> f64
-  # Range reduction: x = k*ln2 + r, r small.
-  # Use DD for subtraction: r = x - k*ln2_hi - k*ln2_lo
-  let xc = clamp_f64(x, -700.0, 700.0)
-  let kf = floor_f64(xc * INV_LN2 + 0.5)
-  let k = kf as i32
-  let kf64 = k as f64
-
-  let r1 = xc - kf64 * LN2_HI
-  let r = r1 - kf64 * LN2_LO
-
-  # exp(r) polynomial + one Newton refinement for y=exp(r) (optional)
-  let y0 = exp_poly7(r)
-  let y = y0 # keep deterministic; could refine with y *= 1 + (r - ln(y)) etc.
-  ret ldexp_f64(y, k)
-.end
-
 fn exp_poly7(r: f64) -> f64
-  # 1 + r + r^2/2 + r^3/6 + r^4/24 + r^5/120 + r^6/720 + r^7/5040
   let r2 = r*r
   let r3 = r2*r
   let r4 = r2*r2
@@ -435,23 +415,20 @@ fn exp_poly7(r: f64) -> f64
   ret 1.0 + r + 0.5*r2 + (1.0/6.0)*r3 + (1.0/24.0)*r4 + (1.0/120.0)*r5 + (1.0/720.0)*r6 + (1.0/5040.0)*r7
 .end
 
-fn log_precise(x: f64) -> f64
-  if x <= 0.0
-    ret -1e300
-  .end
-  let fr = frexp_f64(x)
-  let m = fr.mantissa
-  let e = fr.exponent
+fn exp_precise(x: f64) -> f64
+  let xc = clamp_f64(x, -700.0, 700.0)
+  let kf = floor_f64(xc * INV_LN2 + 0.5)
+  let k = kf as i32
+  let kf64 = k as f64
 
-  # Use log(m) with m in [0.5,1): transform to y in [sqrt(1/2), sqrt(2)] by one step
-  # Here simple: log(m)=log1p(t) with t=m-1 in [-0.5,0)
-  let t = m - 1.0
-  let lm = log1p_series9(t)
-  ret lm + (e as f64) * LN2
+  let r1 = xc - kf64 * LN2_HI
+  let r = r1 - kf64 * LN2_LO
+
+  let y = exp_poly7(r)
+  ret ldexp_f64(y, k)
 .end
 
 fn log1p_series9(t: f64) -> f64
-  # Alternating series up to 9th, stable for |t|<=0.5
   let t2 = t*t
   let t3 = t2*t
   let t4 = t2*t2
@@ -471,23 +448,37 @@ fn log1p_series9(t: f64) -> f64
     + (1.0/9.0)*t9
 .end
 
+fn log_precise(x: f64) -> f64
+  if x <= 0.0
+    ret -1e300
+  .end
+
+  let fr = frexp_f64(x)
+  let m = fr.mantissa
+  let e = fr.exponent
+
+  let t = m - 1.0
+  let lm = log1p_series9(t)
+  ret lm + (e as f64) * LN2
+.end
+
 # ---------------------------------
 # sqrt (Newton) with safeguards
 # ---------------------------------
 
 fn sqrt_precise(x: f64) -> f64
   if x <= 0.0
-    if x == 0.0 ret 0.0 .end
+    if x == 0.0
+      ret 0.0
+    .end
     ret 0.0
   .end
 
-  # initial guess via exponent
   let fr = frexp_f64(x)
   let mut y = ldexp_f64(1.0, fr.exponent / 2)
 
-  # Newton iterations: y_{n+1} = 0.5*(y + x/y)
   let mut i = 0
-  while i < 8
+  while i < 10
     y = 0.5 * (y + x / y)
     i = i + 1
   .end
@@ -499,20 +490,18 @@ fn sqrt_precise(x: f64) -> f64
 # ---------------------------------
 
 fn sinc_precise(x: f64) -> f64
-  # sinc(x)=sin(x)/x with stable series near 0
   let ax = abs_f64(x)
   if ax < 1e-4
     let x2 = x*x
     let x4 = x2*x2
     let x6 = x4*x2
-    # 1 - x^2/6 + x^4/120 - x^6/5040
     ret 1.0 - x2*(1.0/6.0) + x4*(1.0/120.0) - x6*(1.0/5040.0)
   .end
   ret sin_precise(x) / x
 .end
 
 # ---------------------------------
-# atan/atan2 via rational + refinement (optional)
+# atan/atan2 via rational
 # ---------------------------------
 
 const ATAN_A : f64 = 1.0
@@ -529,7 +518,9 @@ fn atan_rational(x: f64) -> f64
 
 fn atan_precise(x: f64) -> f64
   let ax = abs_f64(x)
-  if ax < 1e-18 ret x .end
+  if ax < 1e-18
+    ret x
+  .end
   if ax > 1.0
     let t = atan_rational(1.0/ax)
     ret copysign_f64(HALF_PI - t, x)
@@ -542,11 +533,17 @@ fn atan2_precise(y: f64, x: f64) -> f64
     ret atan_precise(y / x)
   .end
   if x < 0.0
-    if y >= 0.0 ret atan_precise(y / x) + PI .end
+    if y >= 0.0
+      ret atan_precise(y / x) + PI
+    .end
     ret atan_precise(y / x) - PI
   .end
-  if y > 0.0 ret HALF_PI .end
-  if y < 0.0 ret -HALF_PI .end
+  if y > 0.0
+    ret HALF_PI
+  .end
+  if y < 0.0
+    ret -HALF_PI
+  .end
   ret 0.0
 .end
 
@@ -573,6 +570,7 @@ fn ldexp_f64(x: f64, exp2: i32) -> f64
     .end
     ret v
   .end
+
   if exp2 < 0
     let mut k = 0
     let n = -exp2
@@ -582,6 +580,7 @@ fn ldexp_f64(x: f64, exp2: i32) -> f64
     .end
     ret v
   .end
+
   ret v
 .end
 
@@ -617,7 +616,6 @@ fn test_kahan()
   let s1 = xs[0] + xs[1] + xs[2]
   let s2 = sum_kahan(&xs)
   if abs_f64(s1) > 0.1
-    # naive can lose the 1.0; kahan should keep it
     if !approx_eq(s2, 1.0, 1e-6)
       panic("kahan failed")
     .end
@@ -626,12 +624,20 @@ fn test_kahan()
 
 fn test_sincos()
   let sc0 = sincos_precise(0.0)
-  if !approx_eq(sc0.0, 0.0, 1e-12) panic("sin(0)") .end
-  if !approx_eq(sc0.1, 1.0, 1e-6)  panic("cos(0)") .end
+  if !approx_eq(sc0.0, 0.0, 1e-12)
+    panic("sin(0)")
+  .end
+  if !approx_eq(sc0.1, 1.0, 1e-6)
+    panic("cos(0)")
+  .end
 
   let sc1 = sincos_precise(HALF_PI)
-  if abs_f64(sc1.1) > 5e-4 panic("cos(pi/2)") .end
-  if abs_f64(sc1.0 - 1.0) > 5e-4 panic("sin(pi/2)") .end
+  if abs_f64(sc1.1) > 5e-4
+    panic("cos(pi/2)")
+  .end
+  if abs_f64(sc1.0 - 1.0) > 5e-4
+    panic("sin(pi/2)")
+  .end
 .end
 
 fn test_log1p_expm1()

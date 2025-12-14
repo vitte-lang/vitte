@@ -1,4 +1,4 @@
-module algorithms.fast_math
+module jmath.algorithms.fast_math
 
 # ============================================================================
 # fast_math – approximations, utilities, et primitives perf-oriented
@@ -17,7 +17,7 @@ module algorithms.fast_math
 # Conventions :
 #   - Pas d’accolades, blocs en `.end`
 #   - Pas d’I/O, pas d’alloc obligatoire
-#   - Les approximations sont “engine-friendly” : rapides, stables, bornées
+#   - Approximations “engine-friendly” : rapides, stables, bornées
 # ============================================================================
 
 # ---------------------------------
@@ -35,50 +35,74 @@ const INV_LN2 : f64 = 1.442695040888963407359924681001892137
 # ---------------------------------
 
 fn min_f64(a: f64, b: f64) -> f64
-  if a < b ret a .end
+  if a < b
+    ret a
+  .end
   ret b
 .end
 
 fn max_f64(a: f64, b: f64) -> f64
-  if a > b ret a .end
+  if a > b
+    ret a
+  .end
   ret b
 .end
 
 fn min_i32(a: i32, b: i32) -> i32
-  if a < b ret a .end
+  if a < b
+    ret a
+  .end
   ret b
 .end
 
 fn max_i32(a: i32, b: i32) -> i32
-  if a > b ret a .end
+  if a > b
+    ret a
+  .end
   ret b
 .end
 
 fn clamp_f64(x: f64, lo: f64, hi: f64) -> f64
-  if x < lo ret lo .end
-  if x > hi ret hi .end
+  if x < lo
+    ret lo
+  .end
+  if x > hi
+    ret hi
+  .end
   ret x
 .end
 
 fn clamp_i32(x: i32, lo: i32, hi: i32) -> i32
-  if x < lo ret lo .end
-  if x > hi ret hi .end
+  if x < lo
+    ret lo
+  .end
+  if x > hi
+    ret hi
+  .end
   ret x
 .end
 
 fn abs_f64(x: f64) -> f64
-  if x < 0.0 ret -x .end
+  if x < 0.0
+    ret -x
+  .end
   ret x
 .end
 
 fn abs_i64(x: i64) -> i64
-  if x < 0 ret -x .end
+  if x < 0
+    ret -x
+  .end
   ret x
 .end
 
 fn sign_f64(x: f64) -> f64
-  if x > 0.0 ret 1.0 .end
-  if x < 0.0 ret -1.0 .end
+  if x > 0.0
+    ret 1.0
+  .end
+  if x < 0.0
+    ret -1.0
+  .end
   ret 0.0
 .end
 
@@ -94,7 +118,6 @@ fn lerp_f64(a: f64, b: f64, t: f64) -> f64
 .end
 
 fn smoothstep_f64(edge0: f64, edge1: f64, x: f64) -> f64
-  # classic smoothstep
   let t = clamp_f64((x - edge0) / (edge1 - edge0), 0.0, 1.0)
   ret t * t * (3.0 - 2.0 * t)
 .end
@@ -143,23 +166,13 @@ fn wrap_angle_0_tau(theta: f64) -> f64
 # ---------------------------------
 # Trig (approximations + option CORDIC)
 # ---------------------------------
-# Approximations minimax-like sur intervalle réduit.
-# Stratégie :
-#   - normaliser angle -> [-pi, pi]
-#   - plier vers [-pi/2, pi/2]
-#   - approx sin(x) sur [-pi/2, pi/2] via poly d’ordre 7
-#   - cos(x) via sin(pi/2 - x)
-#
-# Poly (type Taylor amélioré) :
-#   sin(x) ≈ x + c3*x^3 + c5*x^5 + c7*x^7
-# Coefs choisis pour bon compromis perf/erreur.
 
-const SIN_C3 : f64 = -0.16666666666666666      # -1/6
-const SIN_C5 : f64 =  0.008333333333333333     #  1/120
-const SIN_C7 : f64 = -0.0001984126984126984    # -1/5040
+const SIN_C3 : f64 = -0.16666666666666666
+const SIN_C5 : f64 =  0.008333333333333333
+const SIN_C7 : f64 = -0.0001984126984126984
 
 fn fold_to_half_pi(x: f64) -> f64
-  # x en [-pi, pi], on replie sur [-pi/2, pi/2]
+  # x en [-pi, pi], repli sur [-pi/2, pi/2]
   let mut t = x
   if t > HALF_PI
     t = PI - t
@@ -173,7 +186,6 @@ fn fold_to_half_pi(x: f64) -> f64
 fn fast_sin_poly(theta: f64) -> f64
   let x = fold_to_half_pi(wrap_angle_pi(theta))
   let x2 = x * x
-  # x + c3 x^3 + c5 x^5 + c7 x^7
   ret x + x * x2 * (SIN_C3 + x2 * (SIN_C5 + x2 * SIN_C7))
 .end
 
@@ -181,13 +193,19 @@ fn fast_cos_poly(theta: f64) -> f64
   ret fast_sin_poly(HALF_PI - theta)
 .end
 
-fn fast_sincos_poly(theta: f64) -> (f64, f64)
-  ret (fast_sin_poly(theta), fast_cos_poly(theta))
+struct SinCos
+  s : f64
+  c : f64
 .end
 
-# Si tu as algorithms.cordic dans ton std, tu peux remplacer ces wrappers
-# par un import + appel direct.
-# Ici on expose une API “pluggable” :
+fn fast_sincos_poly(theta: f64) -> SinCos
+  let mut r : SinCos
+  r.s = fast_sin_poly(theta)
+  r.c = fast_cos_poly(theta)
+  ret r
+.end
+
+# API pluggable (CORDIC optional)
 struct TrigCfg
   use_cordic : bool
   cordic_iters : i32
@@ -199,7 +217,8 @@ fn trig_cfg_default() -> TrigCfg
 
 fn sin(theta: f64, cfg: TrigCfg) -> f64
   if cfg.use_cordic
-    # Stub : à remplacer par `import algorithms.cordic` puis call.
+    # Stub : remplacer par import + appel direct si module CORDIC dispo.
+    # import jmath.algorithms.cordic as cordic
     # ret cordic.cordic_sin(theta, cfg.cordic_iters)
     ret fast_sin_poly(theta)
   .end
@@ -213,7 +232,7 @@ fn cos(theta: f64, cfg: TrigCfg) -> f64
   ret fast_cos_poly(theta)
 .end
 
-fn sincos(theta: f64, cfg: TrigCfg) -> (f64, f64)
+fn sincos(theta: f64, cfg: TrigCfg) -> SinCos
   if cfg.use_cordic
     ret fast_sincos_poly(theta)
   .end
@@ -223,15 +242,18 @@ fn sincos(theta: f64, cfg: TrigCfg) -> (f64, f64)
 # ---------------------------------
 # atan / atan2 (approx rapide)
 # ---------------------------------
-# atan(x) approx (rational) :
-#   atan(x) ~ x*(a + b*x^2) / (1 + c*x^2 + d*x^4)
-# puis réduction :
-#   atan(x) = sign(x)*pi/2 - atan(1/|x|) si |x|>1
 
 const ATAN_A : f64 = 1.0
 const ATAN_B : f64 = 0.280872
 const ATAN_C : f64 = 0.8284
 const ATAN_D : f64 = 0.1333
+
+fn fast_atan_core(x: f64) -> f64
+  let x2 = x * x
+  let num = x * (ATAN_A + ATAN_B * x2)
+  let den = 1.0 + ATAN_C * x2 + ATAN_D * x2 * x2
+  ret num / den
+.end
 
 fn fast_atan(x: f64) -> f64
   let ax = abs_f64(x)
@@ -248,13 +270,6 @@ fn fast_atan(x: f64) -> f64
   ret fast_atan_core(x)
 .end
 
-fn fast_atan_core(x: f64) -> f64
-  let x2 = x * x
-  let num = x * (ATAN_A + ATAN_B * x2)
-  let den = 1.0 + ATAN_C * x2 + ATAN_D * x2 * x2
-  ret num / den
-.end
-
 fn fast_atan2(y: f64, x: f64) -> f64
   if x > 0.0
     ret fast_atan(y / x)
@@ -265,23 +280,23 @@ fn fast_atan2(y: f64, x: f64) -> f64
     .end
     ret fast_atan(y / x) - PI
   .end
-  # x == 0
-  if y > 0.0 ret HALF_PI .end
-  if y < 0.0 ret -HALF_PI .end
+
+  if y > 0.0
+    ret HALF_PI
+  .end
+  if y < 0.0
+    ret -HALF_PI
+  .end
   ret 0.0
 .end
 
 # ---------------------------------
 # Fast inverse sqrt / rsqrt
 # ---------------------------------
-# Version f32 (classique), plus raffinement Newton.
-# On manipule le bit pattern via i32.
-# Note : dépend de reinterpret_cast primitives ; si ton runtime n’en a pas,
-# remplace par FFI ou supprime.
-#
-# Ici on fournit une abstraction "bitcast" à adapter :
+# Note : bitcast à brancher sur ton runtime (intrinsic/ffi).
+# Fallback actuel : panic.
+
 fn bitcast_f32_to_i32(x: f32) -> i32
-  # TODO: à implémenter via runtime intrinsic
   panic("bitcast_f32_to_i32 not implemented")
 .end
 
@@ -290,12 +305,10 @@ fn bitcast_i32_to_f32(x: i32) -> f32
 .end
 
 fn fast_rsqrt_f32(x: f32) -> f32
-  # Quake III
   let xhalf : f32 = x * 0.5
   let mut i : i32 = bitcast_f32_to_i32(x)
   i = 0x5f3759df - (i >> 1)
   let mut y : f32 = bitcast_i32_to_f32(i)
-  # 1st Newton iteration
   y = y * (1.5 - xhalf * y * y)
   ret y
 .end
@@ -304,7 +317,6 @@ fn fast_rsqrt_f32_refine(x: f32, iters: i32) -> f32
   let mut y = fast_rsqrt_f32(x)
   let mut k = 0
   while k < iters
-    # y = y*(1.5 - 0.5*x*y*y)
     y = y * (1.5 - (0.5 * x) * y * y)
     k = k + 1
   .end
@@ -312,71 +324,23 @@ fn fast_rsqrt_f32_refine(x: f32, iters: i32) -> f32
 .end
 
 fn fast_sqrt_f32(x: f32) -> f32
-  if x <= 0.0 ret 0.0 .end
+  if x <= 0.0
+    ret 0.0
+  .end
   ret x * fast_rsqrt_f32_refine(x, 1)
 .end
 
 # ---------------------------------
 # exp / log approximations
 # ---------------------------------
-# exp(x) :
-#   x = k*ln2 + r, k = round(x/ln2), r in [-ln2/2, ln2/2]
-#   exp(x) = 2^k * exp(r)
-# exp(r) approx poly (order 5)
-#
-# log(x) :
-#   range reduction via frexp : x = m*2^e, m in [0.5, 1)
-#   log(x) = log(m) + e*ln2
-#   log(m) approx via log1p around 1 : m = 1+t, t in [-0.5,0)
-#   log(1+t) ~ t - t^2/2 + t^3/3 - t^4/4 + t^5/5
-
-fn fast_exp(x: f64) -> f64
-  # clamp input for stability (avoid overflow)
-  let xc = clamp_f64(x, -700.0, 700.0)
-  let kf = floor_f64(xc * INV_LN2 + 0.5)
-  let k = kf as i32
-  let r = xc - (k as f64) * LN2
-
-  let er = exp_poly5(r)
-  ret ldexp_f64(er, k)
-.end
 
 fn exp_poly5(r: f64) -> f64
-  # 1 + r + r^2/2 + r^3/6 + r^4/24 + r^5/120
   let r2 = r * r
   let r3 = r2 * r
   let r4 = r2 * r2
   let r5 = r4 * r
   ret 1.0 + r + 0.5 * r2 + (1.0/6.0) * r3 + (1.0/24.0) * r4 + (1.0/120.0) * r5
 .end
-
-fn fast_log(x: f64) -> f64
-  if x <= 0.0
-    # convention : -inf => grand négatif
-    ret -1e300
-  .end
-
-  let fr = frexp_f64(x)
-  let m = fr.mantissa
-  let e = fr.exponent
-
-  # m in [0.5,1). Transform to 1+t in [0.5,1) => t in [-0.5,0)
-  let t = m - 1.0
-  let lm = log1p_poly5(t)
-  ret lm + (e as f64) * LN2
-.end
-
-fn log1p_poly5(t: f64) -> f64
-  # t - t^2/2 + t^3/3 - t^4/4 + t^5/5
-  let t2 = t * t
-  let t3 = t2 * t
-  let t4 = t2 * t2
-  let t5 = t4 * t
-  ret t - 0.5*t2 + (1.0/3.0)*t3 - 0.25*t4 + 0.2*t5
-.end
-
-# --- floor/ldexp/frexp primitives à adapter selon runtime ---
-# Versions fallback simples (moins perf). Idéalement remplacer par intrinsics.
 
 fn floor_f64(x: f64) -> f64
   let i = x as i64
@@ -388,8 +352,8 @@ fn floor_f64(x: f64) -> f64
 .end
 
 fn ldexp_f64(x: f64, exp2: i32) -> f64
-  # x * 2^exp2 via boucle (fallback)
   let mut v = x
+
   if exp2 > 0
     let mut k = 0
     while k < exp2
@@ -418,8 +382,6 @@ struct Frexp
 .end
 
 fn frexp_f64(x: f64) -> Frexp
-  # Fallback : normalise en [0.5,1) en multipliant/divisant par 2.
-  # Coûteux mais portable.
   let mut v = x
   let mut e = 0
 
@@ -435,12 +397,45 @@ fn frexp_f64(x: f64) -> Frexp
   ret Frexp { mantissa: v, exponent: e }
 .end
 
+fn fast_exp(x: f64) -> f64
+  let xc = clamp_f64(x, -700.0, 700.0)
+  let kf = floor_f64(xc * INV_LN2 + 0.5)
+  let k = kf as i32
+  let r = xc - (k as f64) * LN2
+  let er = exp_poly5(r)
+  ret ldexp_f64(er, k)
+.end
+
+fn log1p_poly5(t: f64) -> f64
+  let t2 = t * t
+  let t3 = t2 * t
+  let t4 = t2 * t2
+  let t5 = t4 * t
+  ret t - 0.5*t2 + (1.0/3.0)*t3 - 0.25*t4 + 0.2*t5
+.end
+
+fn fast_log(x: f64) -> f64
+  if x <= 0.0
+    ret -1e300
+  .end
+
+  let fr = frexp_f64(x)
+  let m = fr.mantissa
+  let e = fr.exponent
+
+  let t = m - 1.0
+  let lm = log1p_poly5(t)
+  ret lm + (e as f64) * LN2
+.end
+
 # ---------------------------------
 # pow (int) et pow (float)
 # ---------------------------------
 
 fn powi_f64(mut base: f64, mut exp: i64) -> f64
-  if exp == 0 ret 1.0 .end
+  if exp == 0
+    ret 1.0
+  .end
   if exp < 0
     base = 1.0 / base
     exp = -exp
@@ -461,7 +456,6 @@ fn powi_f64(mut base: f64, mut exp: i64) -> f64
 .end
 
 fn pow_f64(a: f64, b: f64) -> f64
-  # pow(a,b) = exp(b*log(a))
   if a <= 0.0
     ret 0.0
   .end
@@ -478,16 +472,17 @@ fn integrate_trapz(f: Fn1, a: f64, b: f64, n: i32) -> f64
   let nn = max_i32(n, 1)
   let h = (b - a) / (nn as f64)
   let mut sum = 0.5 * (f(a) + f(b))
+
   let mut i = 1
   while i < nn
     sum = sum + f(a + (i as f64) * h)
     i = i + 1
   .end
+
   ret sum * h
 .end
 
 fn integrate_simpson(f: Fn1, a: f64, b: f64, n: i32) -> f64
-  # n pair
   let mut nn = max_i32(n, 2)
   if (nn & 1) == 1
     nn = nn + 1
@@ -534,7 +529,6 @@ fn xorshift32_next(rng: &mut XorShift32) -> u32
 .end
 
 fn u32_to_unit_f64(x: u32) -> f64
-  # [0,1)
   ret (x as f64) / 4294967296.0
 .end
 
@@ -543,7 +537,6 @@ fn xorshift32_next_f64(rng: &mut XorShift32) -> f64
 .end
 
 fn hash_u64(mut x: u64) -> u64
-  # SplitMix64-style mixer
   x = x + 0x9e3779b97f4a7c15
   let mut z = x
   z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9
@@ -576,13 +569,21 @@ fn test_trig_poly()
 
   let s0 = sin(0.0, cfg)
   let c0 = cos(0.0, cfg)
-  if !approx_eq(s0, 0.0, 1e-12) panic("sin(0) failed") .end
-  if !approx_eq(c0, 1.0, 1e-6)  panic("cos(0) failed") .end
+  if !approx_eq(s0, 0.0, 1e-12)
+    panic("sin(0) failed")
+  .end
+  if !approx_eq(c0, 1.0, 1e-6)
+    panic("cos(0) failed")
+  .end
 
   let s1 = sin(HALF_PI, cfg)
   let c1 = cos(HALF_PI, cfg)
-  if !approx_eq(s1, 1.0, 2e-3) panic("sin(pi/2) failed") .end
-  if abs_f64(c1) > 2e-3         panic("cos(pi/2) failed") .end
+  if !approx_eq(s1, 1.0, 2e-3)
+    panic("sin(pi/2) failed")
+  .end
+  if abs_f64(c1) > 2e-3
+    panic("cos(pi/2) failed")
+  .end
 .end
 
 fn test_atan2()
@@ -603,7 +604,9 @@ fn test_exp_log()
 
 fn test_powi()
   let v = powi_f64(2.0, 10)
-  if !approx_eq(v, 1024.0, 1e-12) panic("powi failed") .end
+  if !approx_eq(v, 1024.0, 1e-12)
+    panic("powi failed")
+  .end
 .end
 
 fn test_rng()
@@ -622,6 +625,4 @@ fn run_all_tests()
   test_exp_log()
   test_powi()
   test_rng()
-.end
-
 .end

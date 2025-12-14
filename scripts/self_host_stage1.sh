@@ -15,6 +15,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1_DIR="$ROOT/target/bootstrap/stage1"
 
+SHIMS_DIR="$ROOT/scripts/shims"
+if [ -d "$SHIMS_DIR" ]; then
+  PATH="$SHIMS_DIR:$PATH"
+  export PATH
+fi
+
+if [ -z "${PYTHONIOENCODING:-}" ]; then
+  export PYTHONIOENCODING="utf-8"
+fi
+
 mkdir -p "$STAGE1_DIR/logs"
 
 VITTEC_STAGE0="$ROOT/bootstrap/bin/vittec-stage0"

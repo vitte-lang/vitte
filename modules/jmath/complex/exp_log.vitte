@@ -9,12 +9,13 @@ module jmath.complex.exp_log
 #   - pow(z,w), pow_real(z,p), sqrt(z), cbrt(z)
 #   - polar helpers : to_polar, from_polar, normalize_polar
 #   - utilitaires : hypot robuste, atan2 fallback, sin/cos min, exp/log réels min
+#   - extra : exp2/log2/exp10/log10, cis, log_abs_arg, principal_arg
 #   - tests smoke + cas limites
 #
 # Design :
 #   - Autonome : pas d’import obligatoire
-#   - Fallbacks "min" pour sin/cos/exp/log réels (suffisant pour runtime sans libm)
-#   - Division/scale robustes sur exp/log et sqrt/pow
+#   - Fallbacks "min" pour sin/cos/exp/log réels (runtime sans libm)
+#   - Garde-fous overflow/underflow via scaling (hypot/div) + clamp
 #
 # Conventions :
 #   - Pas d’accolades, blocs en `.end`
@@ -31,6 +32,10 @@ const HALF_PI : f64 = 1.570796326794896619231321691639751442
 
 const LN2     : f64 = 0.693147180559945309417232121458176568
 const INV_LN2 : f64 = 1.442695040888963407359924681001892137
+
+# split π for reduction helper (double-double light)
+const PI_HI : f64 = 3.141592653589793116
+const PI_LO : f64 = 1.224646799147353207e-16
 
 # ---------------------------------
 # Types
@@ -102,6 +107,26 @@ fn wrap_angle_pi(theta: f64) -> f64
   ret t
 .end
 
+fn wrap_angle_0_tau(theta: f64) -> f64
+  let mut t = theta
+  while t < 0.0
+    t = t + TAU
+  .end
+  while t >= TAU
+    t = t - TAU
+  .end
+  ret t
+.end
+
+fn floor_f64(x: f64) -> f64
+  let i = x as i64
+  let fi = i as f64
+  if fi > x
+    ret (i - 1) as f64
+  .end
+  ret fi
+.end
+
 # ---------------------------------
 # Robust sqrt + hypot
 # ---------------------------------
@@ -117,7 +142,7 @@ fn sqrt_newton(x: f64) -> f64
   if y < 1.0 y = 1.0 .end
 
   let mut i = 0
-  while i < 14
+  while i < 16
     y = 0.5 * (y + x / y)
     i = i + 1
   .end
@@ -177,38 +202,27 @@ fn atan2_fallback(y: f64, x: f64) -> f64
 # sin/cos minimal (needed for exp/polar)
 # ---------------------------------
 
-fn floor_f64(x: f64) -> f64
-  let i = x as i64
-  let fi = i as f64
-  if fi > x
-    ret (i - 1) as f64
-  .end
-  ret fi
-.end
-
-const PI_HI : f64 = 3.141592653589793116
-const PI_LO : f64 = 1.224646799147353207e-16
-
 fn reduce_angle_half_pi(theta: f64) -> (f64, i32)
   let inv = 2.0 / PI
   let kf = floor_f64(theta * inv + 0.5)
   let k = kf as i32
+
   let kf64 = k as f64
   let p2_hi = 0.5 * PI_HI
   let p2_lo = 0.5 * PI_LO
+
   let r1 = theta - kf64 * p2_hi
   let r2 = r1 - kf64 * p2_lo
   ret (r2, k)
 .end
 
 fn sin_poly(r: f64) -> f64
-  let x = r
-  let x2 = x*x
-  let x3 = x2*x
+  let x2 = r*r
+  let x3 = x2*r
   let x5 = x3*x2
   let x7 = x5*x2
   let x9 = x7*x2
-  ret x - x3*(1.0/6.0) + x5*(1.0/120.0) - x7*(1.0/5040.0) + x9*(1.0/362880.0)
+  ret r - x3*(1.0/6.0) + x5*(1.0/120.0) - x7*(1.0/5040.0) + x9*(1.0/362880.0)
 .end
 
 fn cos_poly(r: f64) -> f64
@@ -375,7 +389,7 @@ fn log1p_min(x: f64) -> f64
 .end
 
 # ---------------------------------
-# Constructors / helpers
+# Complex constructors & algebra
 # ---------------------------------
 
 fn complex(re: f64, im: f64) -> Complex
@@ -406,6 +420,10 @@ fn neg(a: Complex) -> Complex
   ret Complex { re: -a.re, im: -a.im }
 .end
 
+fn conj(a: Complex) -> Complex
+  ret Complex { re: a.re, im: -a.im }
+.end
+
 fn mul(a: Complex, b: Complex) -> Complex
   ret Complex { re: a.re*b.re - a.im*b.im, im: a.re*b.im + a.im*b.re }
 .end
@@ -414,12 +432,8 @@ fn mul_real(a: Complex, s: f64) -> Complex
   ret Complex { re: a.re*s, im: a.im*s }
 .end
 
-fn conj(a: Complex) -> Complex
-  ret Complex { re: a.re, im: -a.im }
-.end
-
 fn div(a: Complex, b: Complex) -> ComplexErr
-  # robust division
+  # robust division using ratio scaling
   let br = b.re
   let bi = b.im
   if br == 0.0 && bi == 0.0
@@ -448,16 +462,33 @@ fn inv(a: Complex) -> ComplexErr
   ret div(one(), a)
 .end
 
-fn abs(a: Complex) -> f64
-  ret hypot_robust(a.re, a.im)
+fn abs(z: Complex) -> f64
+  ret hypot_robust(z.re, z.im)
 .end
 
-fn arg(a: Complex) -> f64
-  ret atan2_fallback(a.im, a.re)
+fn arg(z: Complex) -> f64
+  ret atan2_fallback(z.im, z.re)
 .end
 
-fn to_polar(a: Complex) -> Polar
-  ret Polar { r: abs(a), theta: arg(a) }
+fn principal_arg(theta: f64) -> f64
+  ret wrap_angle_pi(theta)
+.end
+
+fn log_abs_arg(z: Complex) -> ComplexErr
+  # returns (ln|z|, arg(z)) packaged as Complex(re=ln|z|, im=arg)
+  let r = abs(z)
+  if r == 0.0
+    ret ComplexErr { ok: false, value: zero() }
+  .end
+  ret ComplexErr { ok: true, value: Complex { re: log_min(r), im: arg(z) } }
+.end
+
+# ---------------------------------
+# Polar helpers
+# ---------------------------------
+
+fn to_polar(z: Complex) -> Polar
+  ret Polar { r: abs(z), theta: arg(z) }
 .end
 
 fn from_polar(p: Polar) -> Complex
@@ -475,6 +506,12 @@ fn normalize_polar(mut p: Polar) -> Polar
   ret p
 .end
 
+fn cis(theta: f64) -> Complex
+  # cis(θ) = cosθ + i sinθ
+  let sc = sincos_min(theta)
+  ret Complex { re: sc.1, im: sc.0 }
+.end
+
 # ---------------------------------
 # Complex exp / expm1
 # ---------------------------------
@@ -487,36 +524,29 @@ fn exp(z: Complex) -> Complex
 .end
 
 fn expm1(z: Complex) -> Complex
-  # expm1(x+iy) = exp(x)(cos y + i sin y) - 1
-  # do expm1 on real part for precision near 0:
+  # expm1(z) = exp(z) - 1, with stable real part for small re
   let exm1 = expm1_min(z.re)
   let ex = exm1 + 1.0
   let sc = sincos_min(z.im)
-  # (ex*(c + i s) - 1) = (ex*c - 1) + i(ex*s)
   ret Complex { re: ex * sc.1 - 1.0, im: ex * sc.0 }
 .end
 
 # ---------------------------------
-# Complex log / log1p
+# Complex log / log1p / base
 # ---------------------------------
 
 fn log(z: Complex) -> ComplexErr
-  # log(z) = ln|z| + i arg(z)
-  let r = abs(z)
-  if r == 0.0
-    ret ComplexErr { ok: false, value: zero() }
-  .end
-  ret ComplexErr { ok: true, value: Complex { re: log_min(r), im: arg(z) } }
+  # principal log: ln|z| + i arg(z)
+  ret log_abs_arg(z)
 .end
 
 fn log1p(z: Complex) -> ComplexErr
   # log(1+z)
-  let w = add(one(), z)
-  ret log(w)
+  ret log(add(one(), z))
 .end
 
 fn log_base(z: Complex, base: Complex) -> ComplexErr
-  # log_base(z) = log(z) / log(base)
+  # log_base(z) = log(z)/log(base)
   let lz = log(z)
   if !lz.ok ret ComplexErr { ok: false, value: zero() } .end
   let lb = log(base)
@@ -527,11 +557,11 @@ fn log_base(z: Complex, base: Complex) -> ComplexErr
 .end
 
 # ---------------------------------
-# Complex pow + roots
+# Complex pow / roots
 # ---------------------------------
 
 fn pow(z: Complex, w: Complex) -> ComplexErr
-  # z^w = exp(w*log(z))
+  # z^w = exp(w * log(z))
   let lz = log(z)
   if !lz.ok
     ret ComplexErr { ok: false, value: zero() }
@@ -545,7 +575,7 @@ fn pow_real(z: Complex, p: f64) -> ComplexErr
 .end
 
 fn sqrt(z: Complex) -> Complex
-  # principal sqrt:
+  # principal sqrt via stable formula:
   # r = |z|
   # u = sqrt((r + x)/2)
   # v = sign(y)*sqrt((r - x)/2)
@@ -553,38 +583,39 @@ fn sqrt(z: Complex) -> Complex
   if r == 0.0
     ret zero()
   .end
+
   let u = sqrt_newton(0.5 * (r + z.re))
   let v = copysign_f64(sqrt_newton(0.5 * (r - z.re)), z.im)
   ret Complex { re: u, im: v }
 .end
 
 fn cbrt(z: Complex) -> Complex
-  # principal cube root using polar:
-  # z = r e^{iθ} => cbrt = r^{1/3} e^{iθ/3}
+  # principal cube root in polar (robust enough):
+  # r^{1/3} via exp(log(r)/3), theta/3
   let p = to_polar(z)
+  if p.r == 0.0
+    ret zero()
+  .end
   let r13 = exp_min((1.0/3.0) * log_min(p.r))
-  let th = p.theta / 3.0
-  ret from_polar(Polar { r: r13, theta: th })
+  ret from_polar(Polar { r: r13, theta: p.theta / 3.0 })
 .end
 
 # ---------------------------------
-# Extra: exp/log properties helpers
+# Extra bases: exp2/log2/exp10/log10
 # ---------------------------------
 
 fn exp2(z: Complex) -> Complex
-  # exp2(z) = 2^z = exp(z * ln2)
+  # 2^z = exp(z * ln2)
   ret exp(mul_real(z, LN2))
 .end
 
 fn log2(z: Complex) -> ComplexErr
   let lz = log(z)
   if !lz.ok ret ComplexErr { ok: false, value: zero() } .end
-  # divide by ln2
   ret ComplexErr { ok: true, value: Complex { re: lz.value.re / LN2, im: lz.value.im / LN2 } }
 .end
 
 fn exp10(z: Complex) -> Complex
-  # 10^z = exp(z * ln(10))
   let ln10 = log_min(10.0)
   ret exp(mul_real(z, ln10))
 .end
@@ -611,7 +642,18 @@ fn approx_eq_c(a: Complex, b: Complex, eps: f64) -> bool
 fn test_exp_basic()
   let z = complex(0.0, 0.0)
   let e = exp(z)
-  if !approx_eq_c(e, one(), 1e-6) panic("exp(0) failed") .end
+  if !approx_eq_c(e, one(), 1e-6)
+    panic("exp(0) failed")
+  .end
+.end
+
+fn test_expm1_small()
+  let z = complex(1e-9, -2e-9)
+  let a = expm1(z)
+  # expm1(z) ~ z for tiny z
+  if abs_f64(a.re - z.re) > 1e-6 || abs_f64(a.im - z.im) > 1e-6
+    panic("expm1 small failed")
+  .end
 .end
 
 fn test_log_basic()
@@ -623,44 +665,90 @@ fn test_log_basic()
   .end
 .end
 
+fn test_log1p_small()
+  let z = complex(1e-9, -1e-9)
+  let l = log1p(z)
+  if !l.ok panic("log1p failed") .end
+  # log(1+z) ~ z
+  if abs_f64(l.value.re - z.re) > 1e-6 || abs_f64(l.value.im - z.im) > 1e-6
+    panic("log1p small wrong")
+  .end
+.end
+
 fn test_exp_log_roundtrip()
   let z = complex(0.2, -0.7)
   let ez = exp(z)
   let lz = log(ez)
-  if !lz.ok panic("log(exp(z)) failed") .end
-  # tol assez large (fallback min)
+  if !lz.ok
+    panic("log(exp(z)) failed")
+  .end
+  # tol large (fallback min)
   if abs_f64(lz.value.re - z.re) > 3e-2 || abs_f64(lz.value.im - z.im) > 3e-2
     panic("roundtrip too large")
   .end
 .end
 
-fn test_pow()
+fn test_pow_real()
   let z = complex(2.0, 0.0)
-  let w = complex(3.0, 0.0)
-  let p = pow(z, w)
-  if !p.ok panic("pow failed") .end
+  let p = pow_real(z, 3.0)
+  if !p.ok panic("pow_real failed") .end
   if abs_f64(p.value.re - 8.0) > 5e-2 || abs_f64(p.value.im) > 5e-2
-    panic("pow(2,3) wrong")
+    panic("pow_real(2,3) wrong")
+  .end
+.end
+
+fn test_pow_complex()
+  let z = complex(1.2, -0.4)
+  let w = complex(-0.3, 0.7)
+  let p = pow(z, w)
+  if !p.ok panic("pow complex failed") .end
+  # sanity: result finite-ish
+  if !is_finite(p.value.re) || !is_finite(p.value.im)
+    panic("pow produced non-finite")
   .end
 .end
 
 fn test_sqrt()
   let z = complex(3.0, 4.0)
   let w = sqrt(z)
-  # w^2 should be z (approx)
   let ww = mul(w, w)
   if abs_f64(ww.re - z.re) > 2e-6 || abs_f64(ww.im - z.im) > 2e-6
-    # fallback sin/cos not involved; should be good
     panic("sqrt check failed")
+  .end
+.end
+
+fn test_cbrt()
+  let z = complex(8.0, 0.0)
+  let w = cbrt(z)
+  # w^3 ~ z
+  let w2 = mul(w, w)
+  let w3 = mul(w2, w)
+  if abs_f64(w3.re - z.re) > 2e-1 || abs_f64(w3.im - z.im) > 2e-1
+    panic("cbrt check failed")
+  .end
+.end
+
+fn test_log_base()
+  let z = complex(8.0, 0.0)
+  let b = complex(2.0, 0.0)
+  let lb = log_base(z, b)
+  if !lb.ok panic("log_base failed") .end
+  if abs_f64(lb.value.re - 3.0) > 1e-1
+    panic("log_base(8,2) wrong")
   .end
 .end
 
 fn run_all_tests()
   test_exp_basic()
+  test_expm1_small()
   test_log_basic()
+  test_log1p_small()
   test_exp_log_roundtrip()
-  test_pow()
+  test_pow_real()
+  test_pow_complex()
   test_sqrt()
+  test_cbrt()
+  test_log_base()
 .end
 
 .end
