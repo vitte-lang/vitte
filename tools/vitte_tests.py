@@ -175,7 +175,7 @@ def load_token_class_kinds() -> set[str]:
             block.append(raw)
 
     text = "\n".join(block)
-    pattern = re.compile(r"lex\\.TokenKind\\.([A-Za-z0-9_]+)")
+    pattern = re.compile(r"lex\.TokenKind\.([A-Za-z0-9_]+)")
     return {match.group(1) for match in pattern.finditer(text)}
 
 
