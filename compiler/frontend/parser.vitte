@@ -529,6 +529,32 @@ fn Parser.parse_expr(self: &mut Parser, module: &mut ast.Module) -> ast.ExprId
   return self.parse_binary_expr(module, 0)
 .end
 
+fn Parser.parse_unary_expr(self: &mut Parser, module: &mut ast.Module) -> ast.ExprId
+  let tok = self.current()
+  if tok.kind == lex.TokenKind.Minus or tok.kind == lex.TokenKind.Bang
+    let op =
+      if tok.kind == lex.TokenKind.Minus
+        ast.UnaryOp.Neg
+      else
+        ast.UnaryOp.Not
+      end
+    self.advance()
+    let operand_id = self.parse_unary_expr(module)
+    let operand_expr = module.get_expr(operand_id)
+    let span = diag.Span.merge(tok.span, operand_expr.span)
+    let expr = ast.Expr(
+      kind = ast.ExprKind.Unary(
+        op = op,
+        operand = operand_id,
+      ),
+      span = span,
+    )
+    return module.add_expr(expr)
+  end
+
+  return self.parse_call_expr(module)
+.end
+
 fn Parser.parse_primary_expr(self: &mut Parser, module: &mut ast.Module) -> ast.ExprId
   let tok = self.current()
 
@@ -630,16 +656,60 @@ fn Parser.parse_primary_expr(self: &mut Parser, module: &mut ast.Module) -> ast.
   end
 
   if tok.kind == lex.TokenKind.LParen
-    self.advance()
-    let inner_id = self.parse_expr(module)
+    let lparen = self.advance()
+    if self.peek_kind() == lex.TokenKind.RParen
+      let rparen = self.advance()
+      let span = diag.Span.merge(lparen.span, rparen.span)
+      let expr = ast.Expr(
+        kind = ast.ExprKind.TupleLiteral(items = coll.Vec[ast.ExprId].new()),
+        span = span,
+      )
+      return module.add_expr(expr)
+    end
+
+    let first_id = self.parse_expr(module)
+
+    if self.peek_kind() == lex.TokenKind.Comma
+      let items = coll.Vec[ast.ExprId].new()
+      items.push(first_id)
+      while not self.is_eof()
+        if self.peek_kind() == lex.TokenKind.Comma
+          self.advance()
+        end
+        if self.peek_kind() == lex.TokenKind.RParen
+          break
+        end
+        let item_id = self.parse_expr(module)
+        items.push(item_id)
+        if self.peek_kind() == lex.TokenKind.RParen
+          break
+        end
+        if self.peek_kind() != lex.TokenKind.Comma
+          break
+        end
+      end
+      self.expect_symbol(
+        ")",
+        "E2002",
+        "Parenthèse fermante ')' attendue",
+      )
+      let last_expr = module.get_expr(items[items.len() - 1usize])
+      let span = diag.Span.merge(lparen.span, last_expr.span)
+      let tuple_expr = ast.Expr(
+        kind = ast.ExprKind.TupleLiteral(items = items),
+        span = span,
+      )
+      return module.add_expr(tuple_expr)
+    end
+
     self.expect_symbol(
       ")",
       "E2002",
       "Parenthèse fermante ')' attendue",
     )
 
-    let inner = module.get_expr(inner_id)
-    let span = diag.Span.merge(tok.span, inner.span)
+    let inner = module.get_expr(first_id)
+    let span = diag.Span.merge(lparen.span, inner.span)
     let mut_expr = ast.Expr(
       kind = inner.kind,
       span = span,
@@ -924,7 +994,7 @@ fn Parser.current_binary_op(self: Parser) -> BinaryOpLookahead
 .end
 
 fn Parser.parse_binary_expr(self: &mut Parser, module: &mut ast.Module, min_prec: Int) -> ast.ExprId
-  let mut lhs = self.parse_call_expr(module)
+  let mut lhs = self.parse_unary_expr(module)
 
   while not self.is_eof()
     let look = self.current_binary_op()

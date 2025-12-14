@@ -1,0 +1,158 @@
+# plugins/fs_vfs/api/io/seek.vitte
+# Seek API
+# Blocks use `.end` only.
+#
+# This module defines a portable seek surface for VFS files.
+#
+# Design:
+# - Minimal, POSIX-like semantics.
+# - Works via host/runtime hooks.
+# - Does not assume 64-bit host offsets but exposes u64 offsets to users.
+#
+# Status conventions:
+# - 0  : OK
+# - <0 : Error
+
+mod plugins.fs_vfs.api.io.seek
+
+pub const SEEK_OK: i32 = 0
+pub const SEEK_ERR: i32 = -1
+
+# -----------------------------------------------------------------------------
+# Error helpers
+# -----------------------------------------------------------------------------
+
+pub fn error_set(out_err: *plugins.fs_vfs.api.types.Error, kind: plugins.fs_vfs.api.types.ErrorKind, code: i32, msg: str) -> ()
+  if out_err == 0
+    ret ()
+  .end
+  out_err^.kind = kind
+  out_err^.code = code
+  out_err^.message = msg
+  ret ()
+.end
+
+pub fn error_clear(out_err: *plugins.fs_vfs.api.types.Error) -> ()
+  if out_err == 0
+    ret ()
+  .end
+  out_err^.kind = plugins.fs_vfs.api.types.ErrorKind.Other
+  out_err^.code = 0
+  out_err^.message = ""
+  ret ()
+.end
+
+# -----------------------------------------------------------------------------
+# Types
+# -----------------------------------------------------------------------------
+
+# SeekFrom models where the seek is relative to.
+#
+# Conventions:
+# - Start: absolute offset.
+# - Current: relative signed delta from current.
+# - End: relative signed delta from end (typically negative to move backwards).
+#
+# Note: We use i64 deltas to represent signed movement.
+pub enum SeekFrom
+  Start(u64)
+  Current(i64)
+  End(i64)
+.end
+
+# -----------------------------------------------------------------------------
+# API
+# -----------------------------------------------------------------------------
+
+# Seek file cursor.
+#
+# Arguments:
+# - vfs: Vfs instance
+# - file: VfsFile handle
+# - from: SeekFrom
+# - out_pos: receives new cursor position (bytes from start)
+# - out_err: optional error
+#
+# Returns 0 OK, <0 error.
+pub fn seek(
+  vfs: plugins.fs_vfs.api.types.Vfs,
+  file: plugins.fs_vfs.api.types.VfsFile,
+  from: SeekFrom,
+  out_pos: *u64,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_clear(out_err)
+
+  if out_pos == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2200, "seek: out_pos is null")
+    ret -2200
+  .end
+
+  let pos: u64 = 0
+  let rc = __host_file_seek(vfs, file, from, &pos, out_err)
+  if rc != 0
+    ret rc
+  .end
+
+  out_pos^ = pos
+  ret SEEK_OK
+.end
+
+# Convenience: tell current cursor.
+# Implemented by seeking Current(0).
+pub fn tell(
+  vfs: plugins.fs_vfs.api.types.Vfs,
+  file: plugins.fs_vfs.api.types.VfsFile,
+  out_pos: *u64,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  ret seek(vfs, file, SeekFrom.Current(0), out_pos, out_err)
+.end
+
+# Convenience: rewind to start.
+pub fn rewind(
+  vfs: plugins.fs_vfs.api.types.Vfs,
+  file: plugins.fs_vfs.api.types.VfsFile,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  let pos: u64 = 0
+  let rc = seek(vfs, file, SeekFrom.Start(0), &pos, out_err)
+  ret rc
+.end
+
+# Convenience: set position to an absolute offset.
+pub fn set_position(
+  vfs: plugins.fs_vfs.api.types.Vfs,
+  file: plugins.fs_vfs.api.types.VfsFile,
+  pos: u64,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  let tmp: u64 = 0
+  ret seek(vfs, file, SeekFrom.Start(pos), &tmp, out_err)
+.end
+
+# -----------------------------------------------------------------------------
+# Host/runtime hook (placeholder)
+# -----------------------------------------------------------------------------
+
+# Host must implement seeking.
+#
+# Recommended semantics:
+# - Return 0 on success and write new absolute position to out_pos.
+# - Return <0 on error (and populate out_err best-effort).
+# - For unsupported backends, return -2201.
+#
+# NOTE: Many backends (zipfs/tarfs) may support limited seeking.
+
+pub fn __host_file_seek(
+  _vfs: plugins.fs_vfs.api.types.Vfs,
+  _file: plugins.fs_vfs.api.types.VfsFile,
+  _from: SeekFrom,
+  _out_pos: *u64,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Unsupported, -2201, "file_seek: not wired")
+  ret -2201
+.end
+
+.end

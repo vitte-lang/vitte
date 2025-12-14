@@ -341,6 +341,50 @@ Deliverables associés :
 - dump texte IR unique (utilisé par `vitte-ir-dump`) ;
 - API `vitte.compiler.ir` pour itérer sur les blocs/instructions et insérer des passes ultérieures (fold, DCE léger) sans rompre la SSA.
 
+### 6.5. Pipeline structuré (parse → AST → IR SSA → opt → backend)
+
+Phases et entrées/sorties attendues :
+
+- `Parse` : `Token` → `AstNode` (+ `Span`, diagnostics syntaxe). Aucun symbol/type connu.
+- `AST enrichi` : AST fermé et annoté (modules/imports résolus, attributs). Invariants : arbre sans références croisées, spans complets.
+- `IR SSA build` : CFG en SSA unique. Entrées : AST résolu (noms/types si dispo). Sorties : `Module { functions }`, chaque `Function` est SSA valide (une définition par valeur).
+- `Optimisations` : passes locales/globales sur l’IR SSA (fold, DCE, simplif branches). Invariants : SSA conservé, CFG sans blocs morts, typage stable.
+- `Backend` : abaissement IR → bytecode/VM. Invariants : uniquement des instructions connues du backend, blocs ordonnés (RPO/topo), pool de constantes fermé.
+
+Guides de transition :
+
+- AST → IR : toute structure de contrôle devient blocs + terminators. Pas d’effets implicites ni de captures implicites.
+- IR → Opt : recalculer/valider les dérivés CFG (dominateurs, liveness) après modifications.
+- Opt → Backend : interdiction de laisser des instructions « abstract » non supportées par la VM ; normaliser les types (pas de `Unknown` si le backend exige du concret).
+
+### 6.6. Définition SSA (IR unique)
+
+Identifiants et blocs :
+
+- `FuncId`, `BlockId`, `ValueId` uniques par module.
+- `Block { id, params: Vec<(ValueId, Type)>, instrs: Vec<Instr>, term: Terminator }` ; les `params` jouent le rôle de `phi`.
+- Terminators autorisés : `Jump { target, args }`, `Branch { cond, then_tgt, then_args, else_tgt, else_args }`, `Return { value? }`, `Unreachable`.
+
+Invariants SSA :
+
+- Un bloc d’entrée unique par fonction (sans prédécesseur) ; ses `params` = args formels.
+- Un bloc = 0..n instructions puis exactement 1 terminator.
+- Toute utilisation est dominée par sa définition ; une seule définition par `ValueId`.
+- Les `params` de bloc sont immuables et alimentés par chaque arête sortante (`Jump`/`Branch`).
+- Types portés sur chaque valeur ; `Return` respecte le type de sortie déclaré.
+
+Analyses dérivées (à maintenir après chaque passe CFG) :
+
+- `DomTree`/`IDom` + `DominanceFrontier` pour placer/valider les `params`/phi.
+- `Liveness` SSA (par bloc) pour DCE et scheduling ; si des accès mémoire persistent, suivre séparément `MemLoc`.
+- `UseDef`/`DefUse` pour propager les constantes/copier et compter les usages.
+
+Jeu d’instructions minimal (extensible) :
+
+- Scalaires : `Const*`, `Unary(Neg/Not)`, `Binary(Add/Sub/Mul/Div/Mod/And/Or)`, `Cmp(Eq/Ne/Lt/Le/Gt/Ge)`, `Select` (optionnel).
+- Effets : `Call { callee, args }`, `StoreVar/LoadVar` si des slots existent (à supprimer avant le backend si SSA strict), `Cast` optionnel.
+- Terminators listés ci-dessus.
+
 ---
 
 ## 7. Passes d’analyse et d’optimisation

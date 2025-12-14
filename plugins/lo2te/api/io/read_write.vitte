@@ -1,0 +1,402 @@
+# plugins/fs_vfs/api/io/read_write.vitte
+# Read/write helpers
+# Blocks use `.end` only.
+#
+# This module defines helper functions for reading/writing VFS files.
+#
+# Design constraints:
+# - Caller provides buffers (no allocation requirement).
+# - Streaming-friendly primitives: read_exact, write_all, copy.
+# - Works across multiple VFS backends by calling host/runtime hooks.
+#
+# Status conventions:
+# - 0  : OK
+# - 1  : EOF (for reads)
+# - <0 : Error
+
+mod plugins.fs_vfs.api.io.read_write
+
+pub const RW_OK: i32 = 0
+pub const RW_EOF: i32 = 1
+pub const RW_ERR: i32 = -1
+
+# -----------------------------------------------------------------------------
+# Error helpers
+# -----------------------------------------------------------------------------
+
+pub fn error_set(out_err: *plugins.fs_vfs.api.types.Error, kind: plugins.fs_vfs.api.types.ErrorKind, code: i32, msg: str) -> ()
+  if out_err == 0
+    ret ()
+  .end
+  out_err^.kind = kind
+  out_err^.code = code
+  out_err^.message = msg
+  ret ()
+.end
+
+pub fn error_clear(out_err: *plugins.fs_vfs.api.types.Error) -> ()
+  if out_err == 0
+    ret ()
+  .end
+  out_err^.kind = plugins.fs_vfs.api.types.ErrorKind.Other
+  out_err^.code = 0
+  out_err^.message = ""
+  ret ()
+.end
+
+# -----------------------------------------------------------------------------
+# Low-level host hooks
+# -----------------------------------------------------------------------------
+
+# Read up to dst_cap bytes from file into dst.
+# Writes out_n bytes. out_n == 0 means EOF.
+# Returns 0 OK, <0 error.
+pub fn __host_file_read(
+  _vfs: plugins.fs_vfs.api.types.Vfs,
+  _file: plugins.fs_vfs.api.types.VfsFile,
+  _dst: *u8,
+  _dst_cap: usize,
+  _out_n: *usize,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Unsupported, -2100, "file_read: not wired")
+  ret -2100
+.end
+
+# Write up to src_len bytes from src into file.
+# Writes out_n bytes actually written (may be short).
+# Returns 0 OK, <0 error.
+pub fn __host_file_write(
+  _vfs: plugins.fs_vfs.api.types.Vfs,
+  _file: plugins.fs_vfs.api.types.VfsFile,
+  _src: *u8,
+  _src_len: usize,
+  _out_n: *usize,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Unsupported, -2101, "file_write: not wired")
+  ret -2101
+.end
+
+# -----------------------------------------------------------------------------
+# Primitives
+# -----------------------------------------------------------------------------
+
+# Read once.
+#
+# Returns:
+# - 0 OK (out_n set)
+# - 1 EOF (out_n = 0)
+# - <0 error
+pub fn read(
+  vfs: plugins.fs_vfs.api.types.Vfs,
+  file: plugins.fs_vfs.api.types.VfsFile,
+  dst: *u8,
+  dst_cap: usize,
+  out_n: *usize,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_clear(out_err)
+
+  if out_n != 0
+    out_n^ = 0
+  .end
+
+  if dst == 0 && dst_cap != 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2110, "read: dst is null")
+    ret -2110
+  .end
+
+  let n: usize = 0
+  let rc = __host_file_read(vfs, file, dst, dst_cap, &n, out_err)
+  if rc != 0
+    ret rc
+  .end
+
+  if out_n != 0
+    out_n^ = n
+  .end
+
+  if n == 0
+    ret RW_EOF
+  .end
+
+  ret RW_OK
+.end
+
+# Write once.
+#
+# Returns 0 OK (<0 error). out_n set to bytes written.
+pub fn write(
+  vfs: plugins.fs_vfs.api.types.Vfs,
+  file: plugins.fs_vfs.api.types.VfsFile,
+  src: *u8,
+  src_len: usize,
+  out_n: *usize,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_clear(out_err)
+
+  if out_n != 0
+    out_n^ = 0
+  .end
+
+  if src == 0 && src_len != 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2120, "write: src is null")
+    ret -2120
+  .end
+
+  let n: usize = 0
+  let rc = __host_file_write(vfs, file, src, src_len, &n, out_err)
+  if rc != 0
+    ret rc
+  .end
+
+  if out_n != 0
+    out_n^ = n
+  .end
+
+  ret RW_OK
+.end
+
+# -----------------------------------------------------------------------------
+# Convenience operations
+# -----------------------------------------------------------------------------
+
+# Read exactly dst_len bytes into dst.
+#
+# Returns:
+# - 0 OK
+# - <0 error
+# If EOF occurs early, returns -2130.
+pub fn read_exact(
+  vfs: plugins.fs_vfs.api.types.Vfs,
+  file: plugins.fs_vfs.api.types.VfsFile,
+  dst: *u8,
+  dst_len: usize,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_clear(out_err)
+
+  if dst == 0 && dst_len != 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2129, "read_exact: dst is null")
+    ret -2129
+  .end
+
+  let off: usize = 0
+  loop
+    if off >= dst_len
+      break
+    .end
+
+    let n: usize = 0
+    let rc = __host_file_read(vfs, file, dst + off, dst_len - off, &n, out_err)
+    if rc != 0
+      ret rc
+    .end
+
+    if n == 0
+      error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Io, -2130, "read_exact: unexpected EOF")
+      ret -2130
+    .end
+
+    off = off + n
+  .end
+
+  ret RW_OK
+.end
+
+# Write all bytes from src.
+#
+# Returns:
+# - 0 OK
+# - <0 error
+# If a backend repeatedly returns short writes with 0 progress, returns -2140.
+pub fn write_all(
+  vfs: plugins.fs_vfs.api.types.Vfs,
+  file: plugins.fs_vfs.api.types.VfsFile,
+  src: *u8,
+  src_len: usize,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_clear(out_err)
+
+  if src == 0 && src_len != 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2139, "write_all: src is null")
+    ret -2139
+  .end
+
+  let off: usize = 0
+  let no_progress: u32 = 0
+
+  loop
+    if off >= src_len
+      break
+    .end
+
+    let n: usize = 0
+    let rc = __host_file_write(vfs, file, src + off, src_len - off, &n, out_err)
+    if rc != 0
+      ret rc
+    .end
+
+    if n == 0
+      no_progress = no_progress + 1
+      if no_progress >= 4
+        error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Io, -2140, "write_all: no progress")
+        ret -2140
+      .end
+      continue
+    .end
+
+    no_progress = 0
+    off = off + n
+  .end
+
+  ret RW_OK
+.end
+
+# Copy from src file to dst file using a caller-provided scratch buffer.
+#
+# Returns total bytes copied on success, -1 on error.
+pub fn copy(
+  vfs: plugins.fs_vfs.api.types.Vfs,
+  src: plugins.fs_vfs.api.types.VfsFile,
+  dst: plugins.fs_vfs.api.types.VfsFile,
+  scratch: *u8,
+  scratch_cap: usize,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i64
+  error_clear(out_err)
+
+  if scratch == 0 || scratch_cap == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2150, "copy: scratch buffer missing")
+    ret -1
+  .end
+
+  let total: i64 = 0
+
+  loop
+    let n: usize = 0
+    let rr = __host_file_read(vfs, src, scratch, scratch_cap, &n, out_err)
+    if rr != 0
+      ret -1
+    .end
+
+    if n == 0
+      break
+    .end
+
+    let wr = write_all(vfs, dst, scratch, n, out_err)
+    if wr != 0
+      ret -1
+    .end
+
+    total = total + (n as i64)
+  .end
+
+  ret total
+.end
+
+# Read entire file into a caller-managed growing buffer.
+#
+# Caller provides:
+# - buf_ptr: pointer to current buffer
+# - buf_len: current length
+# - buf_cap: current capacity
+# - grow: callback to grow buffer to at least new_cap
+#
+# This avoids enforcing a specific Vec type.
+#
+# grow signature:
+#   grow(old_ptr, old_cap, new_cap) -> new_ptr
+# Caller must preserve existing data.
+#
+# Returns total bytes read, -1 on error.
+pub fn read_to_end(
+  vfs: plugins.fs_vfs.api.types.Vfs,
+  file: plugins.fs_vfs.api.types.VfsFile,
+  buf_ptr: *u8,
+  buf_len: *usize,
+  buf_cap: *usize,
+  grow: fn(*u8, usize, usize) -> *u8,
+  scratch: *u8,
+  scratch_cap: usize,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i64
+  error_clear(out_err)
+
+  if buf_len == 0 || buf_cap == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2160, "read_to_end: buf_len/buf_cap null")
+    ret -1
+  .end
+
+  if scratch == 0 || scratch_cap == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -2161, "read_to_end: scratch missing")
+    ret -1
+  .end
+
+  let ptr = buf_ptr
+  let len = buf_len^
+  let cap = buf_cap^
+
+  let total: i64 = len as i64
+
+  loop
+    let n: usize = 0
+    let rr = __host_file_read(vfs, file, scratch, scratch_cap, &n, out_err)
+    if rr != 0
+      ret -1
+    .end
+
+    if n == 0
+      break
+    .end
+
+    # ensure capacity
+    let need = len + n
+    if need > cap
+      let new_cap = cap
+      loop
+        if new_cap >= need
+          break
+        .end
+        # grow factor 2
+        new_cap = new_cap * 2
+        if new_cap < 64
+          new_cap = 64
+        .end
+      .end
+
+      let new_ptr = grow(ptr, cap, new_cap)
+      if new_ptr == 0
+        error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Io, -2162, "read_to_end: grow failed")
+        ret -1
+      .end
+
+      ptr = new_ptr
+      cap = new_cap
+    .end
+
+    # copy scratch into buffer
+    let i: usize = 0
+    loop
+      if i >= n
+        break
+      .end
+      (ptr + len + i)^ = (scratch + i)^
+      i = i + 1
+    .end
+
+    len = len + n
+    total = total + (n as i64)
+  .end
+
+  # write back
+  buf_len^ = len
+  buf_cap^ = cap
+
+  ret total
+.end
+
+.end

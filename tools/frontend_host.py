@@ -117,12 +117,38 @@ class TokenKind(Enum):
     KW_IMPORT = auto()
     KW_STRUCT = auto()
     KW_FN = auto()
+    KW_CONST = auto()
     KW_LET = auto()
     KW_MUT = auto()
     KW_IF = auto()
+    KW_ELIF = auto()
     KW_ELSE = auto()
+    KW_FOR = auto()
+    KW_IN = auto()
     KW_WHILE = auto()
     KW_MATCH = auto()
+    KW_EXPORT = auto()
+    KW_ENUM = auto()
+    KW_UNION = auto()
+    KW_TYPE = auto()
+    KW_PROGRAM = auto()
+    KW_SCENARIO = auto()
+    KW_PIPELINE = auto()
+    KW_MOD = auto()
+    KW_USE = auto()
+    KW_SET = auto()
+    KW_SAY = auto()
+    KW_DO = auto()
+    KW_RET = auto()
+    KW_WHEN = auto()
+    KW_LOOP = auto()
+    KW_FROM = auto()
+    KW_TO = auto()
+    KW_STEP = auto()
+    KW_AS = auto()
+    KW_AND = auto()
+    KW_OR = auto()
+    KW_NOT = auto()
     KW_TRUE = auto()
     KW_FALSE = auto()
 
@@ -133,37 +159,73 @@ class TokenKind(Enum):
     R_PAREN = auto()
     L_BRACE = auto()
     R_BRACE = auto()
+    L_BRACKET = auto()
+    R_BRACKET = auto()
     COMMA = auto()
     COLON = auto()
     COLON_COLON = auto()
     DOT = auto()
     EQUAL = auto()
+    PLUS_EQUAL = auto()
+    MINUS_EQUAL = auto()
+    STAR_EQUAL = auto()
+    SLASH_EQUAL = auto()
     ARROW = auto()
     FAT_ARROW = auto()
     PLUS = auto()
     MINUS = auto()
     STAR = auto()
     SLASH = auto()
+    PERCENT = auto()
     LT = auto()
     LE = auto()
     GT = auto()
     GE = auto()
     EQ_EQ = auto()
     BANG_EQ = auto()
+    BANG = auto()
+    AMP_AMP = auto()
+    PIPE_PIPE = auto()
     UNKNOWN = auto()
 
 
 KEYWORDS = {
     "module": TokenKind.KW_MODULE,
+    "mod": TokenKind.KW_MOD,
     "import": TokenKind.KW_IMPORT,
+    "use": TokenKind.KW_USE,
     "struct": TokenKind.KW_STRUCT,
+    "enum": TokenKind.KW_ENUM,
+    "union": TokenKind.KW_UNION,
+    "type": TokenKind.KW_TYPE,
     "fn": TokenKind.KW_FN,
+    "program": TokenKind.KW_PROGRAM,
+    "scenario": TokenKind.KW_SCENARIO,
+    "pipeline": TokenKind.KW_PIPELINE,
+    "const": TokenKind.KW_CONST,
     "let": TokenKind.KW_LET,
     "mut": TokenKind.KW_MUT,
     "if": TokenKind.KW_IF,
+    "elif": TokenKind.KW_ELIF,
     "else": TokenKind.KW_ELSE,
+    "for": TokenKind.KW_FOR,
+    "in": TokenKind.KW_IN,
     "while": TokenKind.KW_WHILE,
     "match": TokenKind.KW_MATCH,
+    "export": TokenKind.KW_EXPORT,
+    "set": TokenKind.KW_SET,
+    "say": TokenKind.KW_SAY,
+    "do": TokenKind.KW_DO,
+    "ret": TokenKind.KW_RET,
+    "when": TokenKind.KW_WHEN,
+    "loop": TokenKind.KW_LOOP,
+    "from": TokenKind.KW_FROM,
+    "to": TokenKind.KW_TO,
+    "step": TokenKind.KW_STEP,
+    "as": TokenKind.KW_AS,
+    "and": TokenKind.KW_AND,
+    "or": TokenKind.KW_OR,
+    "not": TokenKind.KW_NOT,
     "true": TokenKind.KW_TRUE,
     "false": TokenKind.KW_FALSE,
 }
@@ -328,11 +390,17 @@ class Lexer:
         two_char = {
             ("-", ">"): (TokenKind.ARROW, "->"),
             ("=", ">"): (TokenKind.FAT_ARROW, "=>"),
+            ("+", "="): (TokenKind.PLUS_EQUAL, "+="),
+            ("-", "="): (TokenKind.MINUS_EQUAL, "-="),
+            ("*", "="): (TokenKind.STAR_EQUAL, "*="),
+            ("/", "="): (TokenKind.SLASH_EQUAL, "/="),
             ("=", "="): (TokenKind.EQ_EQ, "=="),
             ("!", "="): (TokenKind.BANG_EQ, "!="),
             ("<", "="): (TokenKind.LE, "<="),
             (">", "="): (TokenKind.GE, ">="),
             (":", ":"): (TokenKind.COLON_COLON, "::"),
+            ("&", "&"): (TokenKind.AMP_AMP, "&&"),
+            ("|", "|"): (TokenKind.PIPE_PIPE, "||"),
         }
         if (c, n) in two_char:
             kind, lexeme = two_char[(c, n)]
@@ -345,6 +413,8 @@ class Lexer:
             ")": TokenKind.R_PAREN,
             "{": TokenKind.L_BRACE,
             "}": TokenKind.R_BRACE,
+            "[": TokenKind.L_BRACKET,
+            "]": TokenKind.R_BRACKET,
             ",": TokenKind.COMMA,
             ":": TokenKind.COLON,
             ".": TokenKind.DOT,
@@ -353,8 +423,10 @@ class Lexer:
             "-": TokenKind.MINUS,
             "*": TokenKind.STAR,
             "/": TokenKind.SLASH,
+            "%": TokenKind.PERCENT,
             "<": TokenKind.LT,
             ">": TokenKind.GT,
+            "!": TokenKind.BANG,
         }
         kind = single.get(c, TokenKind.UNKNOWN)
         self.add(kind, c, start)
@@ -395,14 +467,31 @@ class Parser:
             if self.current().kind == TokenKind.KW_MODULE:
                 self.parse_module_decl()
                 continue
+            if self.current().kind == TokenKind.KW_MOD:
+                self.parse_mod_decl()
+                continue
             if self.current().kind == TokenKind.KW_IMPORT:
                 self.parse_import_decl()
+                continue
+            if self.current().kind == TokenKind.KW_USE:
+                self.parse_use_decl()
                 continue
             if self.current().kind == TokenKind.KW_STRUCT:
                 self.parse_struct_decl()
                 continue
+            if self.current().kind == TokenKind.KW_TYPE:
+                self.parse_type_decl()
+                continue
             if self.current().kind == TokenKind.KW_FN:
                 self.parse_fn_decl()
+                continue
+            if self.current().kind in (TokenKind.KW_PROGRAM, TokenKind.KW_SCENARIO, TokenKind.KW_PIPELINE):
+                self.parse_program_decl()
+                continue
+            if self.current().kind == TokenKind.KW_EXPORT:
+                # export <decl> : ignorer doucement dans le stub
+                self.advance()
+                self.skip_to_eol()
                 continue
             # Inconnu au toplevel : erreur douce + skip ligne
             tok = self.advance()
@@ -423,10 +512,28 @@ class Parser:
             self.diags.append(Diagnostic("Nom de module attendu après 'module'", self.current().span))
         self.skip_to_eol()
 
+    def parse_mod_decl(self) -> None:
+        self.advance()
+        # mod a/b/c : accepter chemins simples "a/b" ou "a.b"
+        while self.current().kind in (TokenKind.IDENT, TokenKind.DOT, TokenKind.SLASH):
+            self.advance()
+        self.skip_to_eol()
+
     def parse_import_decl(self) -> None:
         self.advance()
         if self.current().kind != TokenKind.IDENT:
             self.diags.append(Diagnostic("Nom de module attendu après 'import'", self.current().span))
+        self.skip_to_eol()
+
+    def parse_use_decl(self) -> None:
+        self.advance()
+        while self.current().kind in (TokenKind.IDENT, TokenKind.DOT, TokenKind.SLASH):
+            self.advance()
+        if self.match(TokenKind.KW_AS):
+            if self.current().kind == TokenKind.IDENT:
+                self.advance()
+            else:
+                self.diags.append(Diagnostic("Alias attendu après 'as' dans use", self.current().span))
         self.skip_to_eol()
 
     def parse_struct_decl(self) -> None:
@@ -440,6 +547,26 @@ class Parser:
             self.advance()
             if self.current().kind == TokenKind.NEWLINE:
                 self.advance()
+
+    def parse_type_decl(self) -> None:
+        # type <Name> ... .end
+        self.advance()
+        if self.current().kind == TokenKind.IDENT:
+            self.advance()
+        else:
+            self.diags.append(Diagnostic("Nom de type attendu après 'type'", self.current().span))
+        # Consommer un bloc éventuel jusqu'à .end
+        self.parse_block()
+
+    def parse_program_decl(self) -> None:
+        # program/service/pipeline <module> .end
+        self.advance()
+        if self.current().kind == TokenKind.IDENT:
+            while self.current().kind in (TokenKind.IDENT, TokenKind.DOT):
+                self.advance()
+        else:
+            self.diags.append(Diagnostic("Nom de module attendu après l'entrée", self.current().span))
+        self.parse_block()
 
     # ---- Functions -------------------------------------------------------
     def parse_fn_decl(self) -> None:
@@ -493,6 +620,8 @@ class Parser:
             if tok.kind == TokenKind.DOT_END:
                 self.advance()
                 return
+            if tok.kind == TokenKind.KW_ELIF and TokenKind.KW_ELIF in stop_set:
+                return
             if tok.kind == TokenKind.NEWLINE:
                 self.advance()
                 continue
@@ -500,8 +629,11 @@ class Parser:
 
     def parse_stmt(self) -> None:
         tok = self.current()
-        if tok.kind == TokenKind.KW_LET:
+        if tok.kind in (TokenKind.KW_LET, TokenKind.KW_CONST):
             self.parse_let_stmt()
+            return
+        if tok.kind == TokenKind.KW_SET:
+            self.parse_set_stmt()
             return
         if tok.kind == TokenKind.KW_WHILE:
             self.advance()
@@ -519,12 +651,37 @@ class Parser:
             if brace_tok:
                 self.parse_block_in_braces(brace_tok)
                 return
-            self.parse_block(stop_kinds=(TokenKind.KW_ELSE,))
+            self.parse_block(stop_kinds=(TokenKind.KW_ELSE, TokenKind.KW_ELIF))
+            while self.match(TokenKind.KW_ELIF):
+                self.parse_expr(stop_on_lbrace=True)
+                brace_tok = self.match(TokenKind.L_BRACE)
+                if brace_tok:
+                    self.parse_block_in_braces(brace_tok)
+                else:
+                    self.parse_block(stop_kinds=(TokenKind.KW_ELSE, TokenKind.KW_ELIF))
             if self.match(TokenKind.KW_ELSE):
                 self.parse_block()
             return
+        if tok.kind == TokenKind.KW_FOR:
+            self.advance()
+            if self.current().kind == TokenKind.IDENT:
+                self.advance()
+            if self.match(TokenKind.KW_IN):
+                self.parse_expr(stop_on_lbrace=True)
+            brace_tok = self.match(TokenKind.L_BRACE)
+            if brace_tok:
+                self.parse_block_in_braces(brace_tok)
+                return
+            self.parse_block()
+            return
         if tok.kind == TokenKind.KW_MATCH:
             self.parse_match_stmt()
+            return
+        if tok.kind == TokenKind.KW_WHEN:
+            self.parse_when_stmt()
+            return
+        if tok.kind == TokenKind.KW_LOOP:
+            self.parse_loop_stmt()
             return
         if tok.kind == TokenKind.L_BRACE:
             brace_tok = self.advance()
@@ -533,6 +690,26 @@ class Parser:
         if tok.kind == TokenKind.IDENT and self.current().lexeme == "return":
             self.advance()
             if self.current().kind not in (TokenKind.NEWLINE, TokenKind.DOT_END, TokenKind.EOF):
+                self.parse_expr()
+            self.skip_to_eol()
+            return
+        if tok.kind == TokenKind.KW_RET:
+            self.advance()
+            if self.current().kind not in (TokenKind.NEWLINE, TokenKind.DOT_END, TokenKind.EOF):
+                self.parse_expr()
+            self.skip_to_eol()
+            return
+        if tok.kind == TokenKind.KW_SAY:
+            self.advance()
+            if self.current().kind not in (TokenKind.NEWLINE, TokenKind.DOT_END, TokenKind.EOF):
+                self.parse_expr()
+            self.skip_to_eol()
+            return
+        if tok.kind == TokenKind.KW_DO:
+            self.advance()
+            if self.current().kind == TokenKind.IDENT:
+                self.advance()
+            while self.current().kind not in (TokenKind.NEWLINE, TokenKind.DOT_END, TokenKind.EOF):
                 self.parse_expr()
             self.skip_to_eol()
             return
@@ -551,6 +728,19 @@ class Parser:
         if self.match(TokenKind.COLON):
             self.parse_type_expr()
         if self.match(TokenKind.EQUAL):
+            self.parse_expr()
+
+    def parse_set_stmt(self) -> None:
+        # phrase: set foo.bar = expr
+        self.advance()
+        self.parse_phrase_assign_target()
+        if (
+            self.match(TokenKind.EQUAL)
+            or self.match(TokenKind.PLUS_EQUAL)
+            or self.match(TokenKind.MINUS_EQUAL)
+            or self.match(TokenKind.STAR_EQUAL)
+            or self.match(TokenKind.SLASH_EQUAL)
+        ):
             self.parse_expr()
 
     def parse_match_stmt(self) -> None:
@@ -583,7 +773,8 @@ class Parser:
         if self.current().kind == TokenKind.DOT_END:
             return
         if self.current().kind == TokenKind.L_BRACE:
-            self.parse_block_in_braces(self.current())
+            brace_tok = self.advance()
+            self.parse_block_in_braces(brace_tok)
             return
         if self.current().kind == TokenKind.IDENT and self.current().lexeme == "return":
             self.advance()
@@ -593,6 +784,31 @@ class Parser:
             return
         self.parse_expr()
         self.skip_to_eol()
+
+    def parse_when_stmt(self) -> None:
+        # phrase syntax: when <expr> ... elif/else ... .end
+        self.advance()
+        self.parse_expr(stop_on_lbrace=True)
+        self.parse_block(stop_kinds=(TokenKind.KW_ELSE, TokenKind.KW_ELIF))
+        while self.match(TokenKind.KW_ELSE):
+            if self.match(TokenKind.KW_WHEN) or self.match(TokenKind.KW_IF) or self.match(TokenKind.KW_ELIF):
+                self.parse_expr(stop_on_lbrace=True)
+                self.parse_block(stop_kinds=(TokenKind.KW_ELSE, TokenKind.KW_ELIF))
+            else:
+                self.parse_block()
+
+    def parse_loop_stmt(self) -> None:
+        # phrase syntax: loop i from a to b [step c] ... .end
+        self.advance()
+        if self.current().kind == TokenKind.IDENT:
+            self.advance()
+        if self.match(TokenKind.KW_FROM):
+            self.parse_expr(stop_on_lbrace=True)
+        if self.match(TokenKind.KW_TO):
+            self.parse_expr(stop_on_lbrace=True)
+        if self.match(TokenKind.KW_STEP):
+            self.parse_expr(stop_on_lbrace=True)
+        self.parse_block()
 
     # ---- Expressions -----------------------------------------------------
     def parse_match_pattern(self) -> None:
@@ -682,6 +898,14 @@ class Parser:
                 return
             self.advance()
 
+    def parse_phrase_assign_target(self) -> None:
+        if self.current().kind != TokenKind.IDENT:
+            self.diags.append(Diagnostic("Cible d'affectation attendue après 'set'", self.current().span))
+            return
+        self.advance()
+        while self.match(TokenKind.DOT):
+            self.expect(TokenKind.IDENT, "Identifiant attendu après '.'")
+
     def parse_expr(self, min_prec: int = 0, stop_on_lbrace: bool = False) -> None:
         lhs = self.parse_primary(stop_on_lbrace=stop_on_lbrace)
         while True:
@@ -693,15 +917,28 @@ class Parser:
                 break
             op = tok.kind
             self.advance()
-            self.parse_expr(op_prec + (0 if op == TokenKind.EQUAL else 1), stop_on_lbrace=stop_on_lbrace)
+            is_assignment = op in (
+                TokenKind.EQUAL,
+                TokenKind.PLUS_EQUAL,
+                TokenKind.MINUS_EQUAL,
+                TokenKind.STAR_EQUAL,
+                TokenKind.SLASH_EQUAL,
+            )
+            self.parse_expr(op_prec + (0 if is_assignment else 1), stop_on_lbrace=stop_on_lbrace)
             lhs = tok
         return lhs
 
     def binary_prec(self, kind: TokenKind) -> int:
-        if kind == TokenKind.EQUAL:
+        if kind in (TokenKind.EQUAL, TokenKind.PLUS_EQUAL, TokenKind.MINUS_EQUAL, TokenKind.STAR_EQUAL, TokenKind.SLASH_EQUAL):
             return 1
+        if kind in (TokenKind.PIPE_PIPE, TokenKind.KW_OR):
+            return 2
+        if kind in (TokenKind.AMP_AMP, TokenKind.KW_AND):
+            return 3
         if kind in (TokenKind.STAR, TokenKind.SLASH):
             return 20
+        if kind in (TokenKind.PERCENT,):
+            return 18
         if kind in (TokenKind.PLUS, TokenKind.MINUS):
             return 10
         if kind in (TokenKind.EQ_EQ, TokenKind.BANG_EQ):
@@ -712,7 +949,7 @@ class Parser:
 
     def parse_primary(self, stop_on_lbrace: bool = False) -> Token:
         tok = self.current()
-        if tok.kind == TokenKind.MINUS:
+        if tok.kind in (TokenKind.MINUS, TokenKind.KW_NOT, TokenKind.BANG):
             self.advance()
             self.parse_primary()
             return tok
@@ -928,6 +1165,14 @@ def collect_functions(lines: List[str]) -> List[FunctionInfo]:
             block_depth += 1
         elif stripped.startswith("match "):
             block_depth += 1
+        elif stripped.startswith("elif "):
+            block_depth += 1
+        elif stripped.startswith("for "):
+            block_depth += 1
+        elif stripped.startswith("when "):
+            block_depth += 1
+        elif stripped.startswith("loop "):
+            block_depth += 1
 
     return functions
 
@@ -987,14 +1232,37 @@ def analyze_function(fn: FunctionInfo, structs: set[str], path: Path) -> List[Di
                     )
             continue
 
-        if (
-            "=" in stripped
-            and "=>" not in stripped
-            and not stripped.startswith("match ")
-            and not stripped.startswith("return ")
-        ):
+        if stripped.startswith("ret"):
+            expr = stripped[len("ret") :].strip()
+            expr_type, extra = infer_expr_type(expr, locals_types, structs, path, line_no)
+            diags.extend(extra)
+            expected = fn.return_type
+            if expected and expr_type and expected not in ("()", "unit") and expr_type not in ("", "unknown", "unit"):
+                if expr_type != expected:
+                    diags.append(
+                        Diagnostic(
+                            f"return expects `{expected}`, got `{expr_type}`",
+                            Span(path, line_no, 1),
+                            code="E7101",
+                        )
+                    )
+            continue
+
+        if stripped.startswith("set "):
+            assign = stripped[len("set ") :].strip()
+            name = assign.split("=", 1)[0].strip().split()[0] if "=" in assign else assign.split()[0]
+            if name:
+                locals_types.setdefault(name, "unknown")
+            continue
+        if stripped.startswith("say ") or stripped.startswith("do "):
+            # phrase surface statements : ignorés côté check léger
+            continue
+
+        has_compound_assign = any(op in stripped for op in ("+=", "-=", "*=", "/="))
+        is_simple_assign = "=" in stripped and all(op not in stripped for op in ("==", ">=", "<=", "!=", "=>"))
+        if (has_compound_assign or is_simple_assign) and not stripped.startswith("match ") and not stripped.startswith("return "):
             lhs, rhs = stripped.split("=", 1)
-            name = lhs.strip().split()[0]
+            name = lhs.strip().split()[0].rstrip("+-*/")
             if not name:
                 continue
             if name not in locals_types:

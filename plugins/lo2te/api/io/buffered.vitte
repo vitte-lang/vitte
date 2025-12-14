@@ -1,0 +1,532 @@
+# plugins/fs_vfs/api/io/buffered.vitte
+# Buffered IO (optional)
+# Blocks use `.end` only.
+#
+# This module provides simple buffered reader/writer adapters around VfsFile.
+#
+# Design constraints:
+# - No dependency on collections: caller provides the buffer memory.
+# - Streaming-friendly: incremental fill/flush.
+# - Works on top of the lower-level host hooks for VfsFile read/write.
+#
+# Status conventions:
+# - 0  : OK
+# - 1  : EOF (for reads)
+# - <0 : Error
+
+mod plugins.fs_vfs.api.io.buffered
+
+pub const BUF_OK: i32 = 0
+pub const BUF_EOF: i32 = 1
+pub const BUF_ERR: i32 = -1
+
+# -----------------------------------------------------------------------------
+# Error helpers
+# -----------------------------------------------------------------------------
+
+pub fn error_set(out_err: *plugins.fs_vfs.api.types.Error, kind: plugins.fs_vfs.api.types.ErrorKind, code: i32, msg: str) -> ()
+  if out_err == 0
+    ret ()
+  .end
+  out_err^.kind = kind
+  out_err^.code = code
+  out_err^.message = msg
+  ret ()
+.end
+
+pub fn error_clear(out_err: *plugins.fs_vfs.api.types.Error) -> ()
+  if out_err == 0
+    ret ()
+  .end
+  out_err^.kind = plugins.fs_vfs.api.types.ErrorKind.Other
+  out_err^.code = 0
+  out_err^.message = ""
+  ret ()
+.end
+
+# -----------------------------------------------------------------------------
+# Buffered Reader
+# -----------------------------------------------------------------------------
+
+# BufReader wraps a VfsFile and a caller-provided byte buffer.
+#
+# Invariants:
+# - buf_ptr != 0
+# - buf_cap > 0
+# - 0 <= pos <= len <= buf_cap
+# - file handle is valid
+pub struct BufReader
+  vfs: plugins.fs_vfs.api.types.Vfs
+  file: plugins.fs_vfs.api.types.VfsFile
+
+  buf_ptr: *u8
+  buf_cap: usize
+
+  pos: usize
+  len: usize
+
+  eof: bool
+.end
+
+pub fn reader_invalid(vfs: plugins.fs_vfs.api.types.Vfs) -> BufReader
+  ret BufReader(
+    vfs: vfs,
+    file: plugins.fs_vfs.api.types.VfsFile(handle: 0),
+    buf_ptr: 0,
+    buf_cap: 0,
+    pos: 0,
+    len: 0,
+    eof: true,
+  )
+.end
+
+# Initialize a reader.
+#
+# Arguments:
+# - vfs: Vfs
+# - file: VfsFile
+# - buf_ptr/buf_cap: buffer memory provided by caller
+# - out: receives BufReader
+#
+# Returns 0 on success, <0 on error.
+pub fn reader_new(
+  vfs: plugins.fs_vfs.api.types.Vfs,
+  file: plugins.fs_vfs.api.types.VfsFile,
+  buf_ptr: *u8,
+  buf_cap: usize,
+  out: *BufReader,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_clear(out_err)
+
+  if out == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -60, "buffered.reader_new: out is null")
+    ret -60
+  .end
+
+  if buf_ptr == 0 || buf_cap == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -61, "buffered.reader_new: buffer missing")
+    out^ = reader_invalid(vfs)
+    ret -61
+  .end
+
+  out^.vfs = vfs
+  out^.file = file
+  out^.buf_ptr = buf_ptr
+  out^.buf_cap = buf_cap
+  out^.pos = 0
+  out^.len = 0
+  out^.eof = false
+
+  ret BUF_OK
+.end
+
+# Refill internal buffer from file.
+#
+# Returns:
+# - 0 OK (some bytes available or could be 0 at EOF)
+# - 1 EOF
+# - <0 error
+pub fn reader_fill(r: *BufReader, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if r == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -62, "buffered.reader_fill: r is null")
+    ret -62
+  .end
+
+  if r^.eof
+    ret BUF_EOF
+  .end
+
+  # if buffer already has unread bytes, don't refill
+  if r^.pos < r^.len
+    ret BUF_OK
+  .end
+
+  r^.pos = 0
+  r^.len = 0
+
+  let n: usize = 0
+  let rc = __host_file_read(r^.vfs, r^.file, r^.buf_ptr, r^.buf_cap, &n, out_err)
+  if rc != 0
+    ret rc
+  .end
+
+  r^.len = n
+  if n == 0
+    r^.eof = true
+    ret BUF_EOF
+  .end
+
+  ret BUF_OK
+.end
+
+# Read up to `dst_cap` bytes into dst.
+#
+# Outputs:
+# - out_n: number of bytes written
+#
+# Returns:
+# - 0 OK
+# - 1 EOF (no bytes produced)
+# - <0 error
+pub fn read(r: *BufReader, dst: *u8, dst_cap: usize, out_n: *usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if out_n != 0
+    out_n^ = 0
+  .end
+
+  if r == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -63, "buffered.read: r is null")
+    ret -63
+  .end
+  if dst == 0 && dst_cap != 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -64, "buffered.read: dst is null")
+    ret -64
+  .end
+
+  if dst_cap == 0
+    ret BUF_OK
+  .end
+
+  # Ensure buffer has data
+  let frc = reader_fill(r, out_err)
+  if frc == BUF_EOF
+    ret BUF_EOF
+  .end
+  if frc != BUF_OK
+    ret frc
+  .end
+
+  let avail = r^.len - r^.pos
+  let take = avail
+  if take > dst_cap
+    take = dst_cap
+  .end
+
+  # copy bytes
+  let i: usize = 0
+  loop
+    if i >= take
+      break
+    .end
+    (dst + i)^ = (r^.buf_ptr + r^.pos + i)^
+    i = i + 1
+  .end
+
+  r^.pos = r^.pos + take
+
+  if out_n != 0
+    out_n^ = take
+  .end
+
+  ret BUF_OK
+.end
+
+# Read a single byte.
+# Returns:
+# - 0 OK (byte written to out)
+# - 1 EOF
+# - <0 error
+pub fn read_u8(r: *BufReader, out: *u8, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if out == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -65, "buffered.read_u8: out is null")
+    ret -65
+  .end
+
+  let n: usize = 0
+  let rc = read(r, out, 1, &n, out_err)
+  if rc == BUF_OK && n == 1
+    ret BUF_OK
+  .end
+  if rc == BUF_EOF
+    ret BUF_EOF
+  .end
+  ret rc
+.end
+
+# Skip up to n bytes.
+# Returns number skipped.
+pub fn skip(r: *BufReader, n: usize, out_err: *plugins.fs_vfs.api.types.Error) -> i64
+  error_clear(out_err)
+
+  if r == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -66, "buffered.skip: r is null")
+    ret -1
+  .end
+
+  let left = n
+  let skipped: i64 = 0
+
+  loop
+    if left == 0
+      break
+    .end
+
+    let frc = reader_fill(r, out_err)
+    if frc == BUF_EOF
+      break
+    .end
+    if frc != BUF_OK
+      ret -1
+    .end
+
+    let avail = r^.len - r^.pos
+    let take = avail
+    if take > left
+      take = left
+    .end
+
+    r^.pos = r^.pos + take
+    left = left - take
+    skipped = skipped + (take as i64)
+  .end
+
+  ret skipped
+.end
+
+# -----------------------------------------------------------------------------
+# Buffered Writer
+# -----------------------------------------------------------------------------
+
+# BufWriter wraps a VfsFile and a caller-provided byte buffer.
+#
+# Invariants:
+# - buf_ptr != 0
+# - buf_cap > 0
+# - 0 <= len <= buf_cap
+pub struct BufWriter
+  vfs: plugins.fs_vfs.api.types.Vfs
+  file: plugins.fs_vfs.api.types.VfsFile
+
+  buf_ptr: *u8
+  buf_cap: usize
+
+  len: usize
+
+  closed: bool
+.end
+
+pub fn writer_invalid(vfs: plugins.fs_vfs.api.types.Vfs) -> BufWriter
+  ret BufWriter(
+    vfs: vfs,
+    file: plugins.fs_vfs.api.types.VfsFile(handle: 0),
+    buf_ptr: 0,
+    buf_cap: 0,
+    len: 0,
+    closed: true,
+  )
+.end
+
+pub fn writer_new(
+  vfs: plugins.fs_vfs.api.types.Vfs,
+  file: plugins.fs_vfs.api.types.VfsFile,
+  buf_ptr: *u8,
+  buf_cap: usize,
+  out: *BufWriter,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_clear(out_err)
+
+  if out == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -70, "buffered.writer_new: out is null")
+    ret -70
+  .end
+
+  if buf_ptr == 0 || buf_cap == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -71, "buffered.writer_new: buffer missing")
+    out^ = writer_invalid(vfs)
+    ret -71
+  .end
+
+  out^.vfs = vfs
+  out^.file = file
+  out^.buf_ptr = buf_ptr
+  out^.buf_cap = buf_cap
+  out^.len = 0
+  out^.closed = false
+
+  ret BUF_OK
+.end
+
+# Flush internal buffer to file.
+# Returns 0 OK, <0 error.
+pub fn flush(w: *BufWriter, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if w == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -72, "buffered.flush: w is null")
+    ret -72
+  .end
+
+  if w^.closed
+    ret BUF_OK
+  .end
+
+  if w^.len == 0
+    ret BUF_OK
+  .end
+
+  let wrote: usize = 0
+  let rc = __host_file_write(w^.vfs, w^.file, w^.buf_ptr, w^.len, &wrote, out_err)
+  if rc != 0
+    ret rc
+  .end
+
+  # If short write, shift remaining (best effort).
+  if wrote < w^.len
+    let remain = w^.len - wrote
+    let i: usize = 0
+    loop
+      if i >= remain
+        break
+      .end
+      (w^.buf_ptr + i)^ = (w^.buf_ptr + wrote + i)^
+      i = i + 1
+    .end
+    w^.len = remain
+    ret BUF_OK
+  .end
+
+  w^.len = 0
+  ret BUF_OK
+.end
+
+# Write bytes into the buffer. Flushes when necessary.
+#
+# Outputs:
+# - out_n: number of bytes consumed from src
+#
+# Returns 0 OK, <0 error.
+pub fn write(w: *BufWriter, src: *u8, src_len: usize, out_n: *usize, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if out_n != 0
+    out_n^ = 0
+  .end
+
+  if w == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -73, "buffered.write: w is null")
+    ret -73
+  .end
+  if src == 0 && src_len != 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -74, "buffered.write: src is null")
+    ret -74
+  .end
+
+  if w^.closed
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -75, "buffered.write: writer closed")
+    ret -75
+  .end
+
+  let consumed: usize = 0
+
+  loop
+    if consumed >= src_len
+      break
+    .end
+
+    # If buffer full, flush
+    if w^.len == w^.buf_cap
+      let frc = flush(w, out_err)
+      if frc != BUF_OK
+        ret frc
+      .end
+    .end
+
+    let space = w^.buf_cap - w^.len
+    let take = src_len - consumed
+    if take > space
+      take = space
+    .end
+
+    # copy bytes
+    let i: usize = 0
+    loop
+      if i >= take
+        break
+      .end
+      (w^.buf_ptr + w^.len + i)^ = (src + consumed + i)^
+      i = i + 1
+    .end
+
+    w^.len = w^.len + take
+    consumed = consumed + take
+  .end
+
+  if out_n != 0
+    out_n^ = consumed
+  .end
+
+  ret BUF_OK
+.end
+
+pub fn write_u8(w: *BufWriter, b: u8, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  let tmp: u8 = b
+  let n: usize = 0
+  ret write(w, &tmp, 1, &n, out_err)
+.end
+
+# Close writer (flushes).
+pub fn close(w: *BufWriter, out_err: *plugins.fs_vfs.api.types.Error) -> i32
+  error_clear(out_err)
+
+  if w == 0
+    error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.InvalidInput, -76, "buffered.close: w is null")
+    ret -76
+  .end
+
+  if w^.closed
+    ret BUF_OK
+  .end
+
+  let rc = flush(w, out_err)
+  if rc != BUF_OK
+    ret rc
+  .end
+
+  w^.closed = true
+  ret BUF_OK
+.end
+
+# -----------------------------------------------------------------------------
+# Host/runtime hooks (placeholders)
+# -----------------------------------------------------------------------------
+
+# These functions must be wired to the VFS host layer.
+#
+# Recommended semantics:
+# - read: returns 0 and writes out_n bytes to dst (0 means EOF)
+# - write: returns 0 and writes out_n bytes consumed (may be short)
+
+pub fn __host_file_read(
+  _vfs: plugins.fs_vfs.api.types.Vfs,
+  _file: plugins.fs_vfs.api.types.VfsFile,
+  _dst: *u8,
+  _dst_cap: usize,
+  _out_n: *usize,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Unsupported, -2000, "file_read: not wired")
+  ret -2000
+.end
+
+pub fn __host_file_write(
+  _vfs: plugins.fs_vfs.api.types.Vfs,
+  _file: plugins.fs_vfs.api.types.VfsFile,
+  _src: *u8,
+  _src_len: usize,
+  _out_n: *usize,
+  out_err: *plugins.fs_vfs.api.types.Error,
+) -> i32
+  error_set(out_err, plugins.fs_vfs.api.types.ErrorKind.Unsupported, -2001, "file_write: not wired")
+  ret -2001
+.end
+
+.end
