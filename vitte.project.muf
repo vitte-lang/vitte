@@ -83,7 +83,11 @@ modules = [
   "vitte.compiler.codegen.bytecode",
   "vitte.compiler.codegen.text",
   "vitte.compiler.link",
+  "vitte.compiler.build.engine",
+  "vitte.compiler.build.muffin",
   "vitte.compiler.cli.main",
+  "vitte.compiler.cli.lc_build",
+  "vitte.compiler.cli.lc_common",
 ]
 
 [project.subproject."runtime"]
@@ -97,6 +101,7 @@ modules = [
   "vitte.runtime.bytecode",
   "vitte.runtime.gc",
   "vitte.runtime.std_hooks",
+  "vitte.runtime.env",
   "vitte.runtime.cli.run",
 ]
 
@@ -219,6 +224,12 @@ kind        = "program"
 description = "Main Vitte compiler binary."
 subproject  = "compiler"
 entry       = "vitte.compiler.cli.main"
+
+[project.entry."lc-build"]
+kind        = "program"
+description = "Legacy lc-build frontend (build driver)."
+subproject  = "compiler"
+entry       = "vitte.compiler.cli.lc_build"
 
 [project.entry."vitte-run"]
 kind        = "program"

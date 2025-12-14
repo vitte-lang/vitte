@@ -1,16 +1,33 @@
 module vitte.compiler.cli.main
 
-import vitte.compiler.vittec as vittec
+import vitte.compiler.cli.args as args
+import vitte.compiler.cli.subcommands as sub
+import vitte.runtime.env as env
 
-# =============================================================================
-# vittec – Point d’entrée CLI en Vitte (sans Muffin)
-#
-# Rôle :
-#   - offrir un `fn main(args)` en Vitte côté src/,
-#   - déléguer toute la logique au module cœur du compilateur
-#     défini dans compiler/vittec_main.vitte (module vitte.compiler.vittec).
-# =============================================================================
+fn main(raw_args: Vec[String]) -> i32
+    let opts = args.parse_args(raw_args)
 
-fn main(args: string[]) -> i32:
-    return vittec.main(args)
+    match opts.command
+        args.CliBuild ->
+            let res = sub.cmd_build(opts)
+            if res.success
+                return 0
+            .end
+            return 1
+        args.CliRun ->
+            let res = sub.cmd_run(opts)
+            return res.exit_code
+        args.CliFmt ->
+            let ok = sub.cmd_fmt(opts)
+            return if ok then 0 else 1
+        args.CliTest ->
+            let res = sub.cmd_test(opts)
+            return if res.success then 0 else 1
+    .end
+.end
+
+program vitte.compiler.cli.main:
+    let argv = env.args()
+    let code = main(argv)
+    env.exit(code)
 .end

@@ -16,7 +16,96 @@ struct CliOptions
     profile: String
 .end
 
+fn default_cli_options() -> CliOptions
+    return CliOptions {
+        command = CliCommand::CliBuild,
+        manifest = default_manifest_path(),
+        out_dir = default_out_dir(),
+        profile = "dev"
+    }
+.end
+
+fn default_manifest_path() -> String
+    return "vitte.project.muf"
+.end
+
+fn default_out_dir() -> String
+    return "target"
+.end
+
 fn parse_args(raw: coll.Vec[String]) -> CliOptions
-    # Parsing minimal : placeholder logique.
-    return CliOptions { command = CliBuild, manifest = "", out_dir = "target", profile = "dev" }
+    let mut opts = default_cli_options()
+    if raw.len() <= 1
+        return opts
+    .end
+
+    let mut idx: i32 = 1
+    let mut command_seen = false
+    let mut manifest_consumed = false # tracks whether a non-default manifest was provided
+    while idx < raw.len()
+        let arg = raw[idx]
+
+        if arg == "--manifest" or arg == "-m"
+            if idx + 1 >= raw.len()
+                say "[cli.args] missing value after " + arg
+                break
+            .end
+            opts.manifest = raw[idx + 1]
+            manifest_consumed = true
+            idx = idx + 2
+            continue
+        .end
+
+        if arg == "--out-dir" or arg == "-o"
+            if idx + 1 >= raw.len()
+                say "[cli.args] missing value after " + arg
+                break
+            .end
+            opts.out_dir = raw[idx + 1]
+            idx = idx + 2
+            continue
+        .end
+
+        if arg == "--profile" or arg == "-p"
+            if idx + 1 >= raw.len()
+                say "[cli.args] missing value after " + arg
+                break
+            .end
+            opts.profile = raw[idx + 1]
+            idx = idx + 2
+            continue
+        .end
+
+        if not command_seen
+            opts.command = command_from_token(arg)
+            command_seen = true
+            idx = idx + 1
+            continue
+        .end
+
+        # first positional argument after the command = manifest
+        if not manifest_consumed
+            opts.manifest = arg
+            manifest_consumed = true
+        else
+            # ignored for now (future extension: multiple paths)
+            say "[cli.args] ignoring extra positional arg: " + arg
+        .end
+        idx = idx + 1
+    .end
+
+    return opts
+.end
+
+fn command_from_token(token: String) -> CliCommand
+    if token == "run"
+        return CliCommand::CliRun
+    .end
+    if token == "fmt"
+        return CliCommand::CliFmt
+    .end
+    if token == "test"
+        return CliCommand::CliTest
+    .end
+    return CliCommand::CliBuild
 .end

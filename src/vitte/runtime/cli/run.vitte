@@ -22,21 +22,23 @@ struct RunContext
     load_error: String
 .end
 
-fn parse_args(args: Vec[String]) -> RunOptions
+fn parse_args(args: coll.Vec[String]) -> RunOptions
     # Placeholder de parsing CLI.
+    let _ = args
     return RunOptions { manifest_path = "", entry_override = "" }
 .end
 
 fn make_run_context(bytecode_path: String, std: hooks.StdHooks) -> RunContext
     let load = load_demo_chunk(bytecode_path)
+    let chunk = load.chunk
     let state = vm.VmState {
-        chunk = load.chunk,
+        chunk = chunk,
         frames = coll.Vec[vm.VmFrame](),
         value_stack = coll.Vec[vm.VmValue](),
         heap = vm.VmHeapRegion { base = 0, limit = 0, hp = 0, objects = coll.Vec[vm.VmHeapObject]() },
         std = std
     }
-    return RunContext { chunk = load.chunk, vm_state = state, std = std, load_error = load.error }
+    return RunContext { chunk = chunk, vm_state = state, std = std, load_error = load.error }
 .end
 
 fn run_chunk(ctx: RunContext) -> i32
@@ -76,7 +78,7 @@ fn validate_code_bytes(code_bytes: coll.Vec[u8]) -> String
         let operand_count = code_bytes[pc + 1]
 
         # Vérifie que l’opcode est connu et que le nombre d’opérandes correspond au modèle simplifié.
-        let expected = -1
+        let mut expected = -1
         if opcode == 0       # OpConst
             expected = 1
         .end

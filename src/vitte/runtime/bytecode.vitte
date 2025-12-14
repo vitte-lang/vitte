@@ -129,3 +129,270 @@ struct LvmLoadError
     message: String
     span: diag.SpanId
 .end
+
+struct LvmDecodeResult
+    inst: LvmInstruction
+    byte_size: i32
+    error: String
+.end
+
+struct LvmOpcodeLookup
+    opcode: LvmOpcode
+    found: bool
+.end
+
+fn lvm_decode_at(code: coll.Vec[u8], pc: i32) -> LvmDecodeResult
+    let mut result = LvmDecodeResult {
+        inst = LvmInstruction { opcode = LvmOpcode::OpConst, operands = coll.Vec[i32]() },
+        byte_size = 0,
+        error = ""
+    }
+    if pc < 0 or pc + 2 > code.len()
+        result.error = "pc out of bounds"
+        return result
+    .end
+
+    let opcode_byte = code[pc]
+    let operand_count = code[pc + 1] as i32
+    let lookup = lvm_opcode_from_byte(opcode_byte)
+    if not lookup.found
+        result.error = "unknown opcode byte " + opcode_byte.to_string()
+        return result
+    .end
+
+    let expected = lvm_operand_count(lookup.opcode)
+    if expected >= 0 and operand_count != expected
+        result.error = "opcode " + lvm_opcode_name(lookup.opcode) + " expects " + expected.to_string() + " operands, found " + operand_count.to_string()
+        return result
+    .end
+
+    let total_size = 2 + operand_count * 4
+    if pc + total_size > code.len()
+        result.error = "truncated operands for opcode " + lvm_opcode_name(lookup.opcode)
+        return result
+    .end
+
+    let operands = coll.Vec[i32]()
+    let mut i: i32 = 0
+    while i < operand_count
+        let base = pc + 2 + i * 4
+        let b0 = code[base]
+        let b1 = code[base + 1]
+        let b2 = code[base + 2]
+        let b3 = code[base + 3]
+        let value = (b0 as i32) | (b1 as i32) << 8 | (b2 as i32) << 16 | (b3 as i32) << 24
+        operands.push(value)
+        i = i + 1
+    .end
+
+    result.inst = LvmInstruction { opcode = lookup.opcode, operands = operands }
+    result.byte_size = total_size
+    return result
+.end
+
+fn lvm_opcode_from_byte(value: u8) -> LvmOpcodeLookup
+    if value == 0
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpConst, found = true }
+    .end
+    if value == 1
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpAdd, found = true }
+    .end
+    if value == 2
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpSub, found = true }
+    .end
+    if value == 3
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpMul, found = true }
+    .end
+    if value == 4
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpDiv, found = true }
+    .end
+    if value == 5
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpMod, found = true }
+    .end
+    if value == 6
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpNeg, found = true }
+    .end
+    if value == 7
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpCmpEq, found = true }
+    .end
+    if value == 8
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpCmpNe, found = true }
+    .end
+    if value == 9
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpCmpLt, found = true }
+    .end
+    if value == 10
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpCmpLe, found = true }
+    .end
+    if value == 11
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpCmpGt, found = true }
+    .end
+    if value == 12
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpCmpGe, found = true }
+    .end
+    if value == 13
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpLoadLocal, found = true }
+    .end
+    if value == 14
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpStoreLocal, found = true }
+    .end
+    if value == 15
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpLoadField, found = true }
+    .end
+    if value == 16
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpStoreField, found = true }
+    .end
+    if value == 17
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpAllocHeap, found = true }
+    .end
+    if value == 18
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpJmp, found = true }
+    .end
+    if value == 19
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpJmpIf, found = true }
+    .end
+    if value == 20
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpCall, found = true }
+    .end
+    if value == 21
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpCallIndirect, found = true }
+    .end
+    if value == 22
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpRet, found = true }
+    .end
+    if value == 23
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpStdPrint, found = true }
+    .end
+    if value == 24
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpStdPrintln, found = true }
+    .end
+    if value == 25
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpStdMakeString, found = true }
+    .end
+    if value == 26
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpStdConcatString, found = true }
+    .end
+    if value == 27
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpStdArrayPush, found = true }
+    .end
+    if value == 28
+        return LvmOpcodeLookup { opcode = LvmOpcode::OpStdArrayGet, found = true }
+    .end
+    return LvmOpcodeLookup { opcode = LvmOpcode::OpConst, found = false }
+.end
+
+fn lvm_operand_count(opcode: LvmOpcode) -> i32
+    if opcode == LvmOpcode::OpConst
+        return 1
+    .end
+    if opcode == LvmOpcode::OpAdd or opcode == LvmOpcode::OpSub or opcode == LvmOpcode::OpMul or opcode == LvmOpcode::OpDiv or opcode == LvmOpcode::OpMod
+        return 0
+    .end
+    if opcode == LvmOpcode::OpNeg
+        return 0
+    .end
+    if opcode == LvmOpcode::OpCmpEq or opcode == LvmOpcode::OpCmpNe or opcode == LvmOpcode::OpCmpLt or opcode == LvmOpcode::OpCmpLe or opcode == LvmOpcode::OpCmpGt or opcode == LvmOpcode::OpCmpGe
+        return 0
+    .end
+    if opcode == LvmOpcode::OpLoadLocal or opcode == LvmOpcode::OpStoreLocal or opcode == LvmOpcode::OpLoadField or opcode == LvmOpcode::OpStoreField or opcode == LvmOpcode::OpAllocHeap or opcode == LvmOpcode::OpCall or opcode == LvmOpcode::OpStdMakeString
+        return 1
+    .end
+    if opcode == LvmOpcode::OpJmp or opcode == LvmOpcode::OpJmpIf or opcode == LvmOpcode::OpCallIndirect or opcode == LvmOpcode::OpRet
+        return 0
+    .end
+    if opcode == LvmOpcode::OpStdPrint or opcode == LvmOpcode::OpStdPrintln or opcode == LvmOpcode::OpStdConcatString or opcode == LvmOpcode::OpStdArrayPush or opcode == LvmOpcode::OpStdArrayGet
+        return 0
+    .end
+    return 0
+.end
+
+fn lvm_opcode_name(opcode: LvmOpcode) -> String
+    if opcode == LvmOpcode::OpConst
+        return "OpConst"
+    .end
+    if opcode == LvmOpcode::OpAdd
+        return "OpAdd"
+    .end
+    if opcode == LvmOpcode::OpSub
+        return "OpSub"
+    .end
+    if opcode == LvmOpcode::OpMul
+        return "OpMul"
+    .end
+    if opcode == LvmOpcode::OpDiv
+        return "OpDiv"
+    .end
+    if opcode == LvmOpcode::OpMod
+        return "OpMod"
+    .end
+    if opcode == LvmOpcode::OpNeg
+        return "OpNeg"
+    .end
+    if opcode == LvmOpcode::OpCmpEq
+        return "OpCmpEq"
+    .end
+    if opcode == LvmOpcode::OpCmpNe
+        return "OpCmpNe"
+    .end
+    if opcode == LvmOpcode::OpCmpLt
+        return "OpCmpLt"
+    .end
+    if opcode == LvmOpcode::OpCmpLe
+        return "OpCmpLe"
+    .end
+    if opcode == LvmOpcode::OpCmpGt
+        return "OpCmpGt"
+    .end
+    if opcode == LvmOpcode::OpCmpGe
+        return "OpCmpGe"
+    .end
+    if opcode == LvmOpcode::OpLoadLocal
+        return "OpLoadLocal"
+    .end
+    if opcode == LvmOpcode::OpStoreLocal
+        return "OpStoreLocal"
+    .end
+    if opcode == LvmOpcode::OpLoadField
+        return "OpLoadField"
+    .end
+    if opcode == LvmOpcode::OpStoreField
+        return "OpStoreField"
+    .end
+    if opcode == LvmOpcode::OpAllocHeap
+        return "OpAllocHeap"
+    .end
+    if opcode == LvmOpcode::OpJmp
+        return "OpJmp"
+    .end
+    if opcode == LvmOpcode::OpJmpIf
+        return "OpJmpIf"
+    .end
+    if opcode == LvmOpcode::OpCall
+        return "OpCall"
+    .end
+    if opcode == LvmOpcode::OpCallIndirect
+        return "OpCallIndirect"
+    .end
+    if opcode == LvmOpcode::OpRet
+        return "OpRet"
+    .end
+    if opcode == LvmOpcode::OpStdPrint
+        return "OpStdPrint"
+    .end
+    if opcode == LvmOpcode::OpStdPrintln
+        return "OpStdPrintln"
+    .end
+    if opcode == LvmOpcode::OpStdMakeString
+        return "OpStdMakeString"
+    .end
+    if opcode == LvmOpcode::OpStdConcatString
+        return "OpStdConcatString"
+    .end
+    if opcode == LvmOpcode::OpStdArrayPush
+        return "OpStdArrayPush"
+    .end
+    if opcode == LvmOpcode::OpStdArrayGet
+        return "OpStdArrayGet"
+    .end
+    return "<unknown>"
+.end

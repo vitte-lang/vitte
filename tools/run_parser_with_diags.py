@@ -67,6 +67,9 @@ def build_cmd(bin_path: Path, input_path: Path) -> list[str]:
         first_bytes = b""
 
     if first_bytes.startswith(b"#!"):
+        if os.name == "nt":
+            python = sys.executable or "python3"
+            return [python, str(bin_path), "--dump-ast", str(input_path)]
         return [str(bin_path), "--dump-ast", str(input_path)]
 
     # Heuristique : vittec-stage0 est un fichier texte (pas ELF).
@@ -107,7 +110,8 @@ def format_frontend_diags(input_path: Path) -> tuple[int, list[str]] | None:
         if (not code or code == "E0000") and diag.message in FRONTEND_MESSAGE_TO_CODE:
             diag.code = FRONTEND_MESSAGE_TO_CODE[diag.message]  # type: ignore[attr-defined]
         formatted.append(fh_format_diag(diag))  # type: ignore[arg-type]
-    return (rc or 1, formatted)
+    normalized_rc = rc or (1 if formatted else 0)
+    return (normalized_rc, formatted)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -135,6 +139,9 @@ def main(argv: list[str] | None = None) -> int:
             return frontend_rc or 1
         if frontend_rc:
             return frontend_rc
+        # Fallback frontend disponible et OK : inutile de lancer un parser
+        # stage0/stub qui ne supporte pas --dump-ast.
+        return 0
 
     rc, _ = run_parser(bin_path, args.input)
     return rc

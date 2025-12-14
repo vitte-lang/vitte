@@ -99,8 +99,8 @@ fn vm_value_from_const(const_index: i32, constant: bc.LvmConst) -> VmValue
         return VmValue { tag = VmValueTag::VmF64, payload = VmValuePayload { f64_value = constant.payload.f64_value } }
     .end
     if constant.tag == bc.LvmConstTag::ConstString
-        # On encode un pointeur logique vers la constante (index dans le pool).
-        return VmValue { tag = VmValueTag::VmStringRef, payload = VmValuePayload { heap_ptr = const_index as i64 } }
+        # Encodage : pointeur < 0 => index constant pool (évite collision avec heap).
+        return VmValue { tag = VmValueTag::VmStringRef, payload = VmValuePayload { heap_ptr = -1 - (const_index as i64) } }
     .end
     return VmValue { tag = VmValueTag::VmNil, payload = VmValuePayload { i64_value = 0 } }
 .end
@@ -111,16 +111,33 @@ fn vm_string_bytes(state: VmState, value: VmValue) -> coll.Vec[u8]
         return bytes
     .end
 
-    let heap_index = value.payload.heap_ptr as i32
-    if heap_index >= 0 and heap_index < state.heap.objects.len()
-        let obj = state.heap.objects[heap_index]
-        if obj.tag == VmHeapTag::HeapString
-            return obj.payload.string_bytes
+    let ptr = value.payload.heap_ptr
+    if ptr >= 0
+        let heap_index = ptr as i32
+        if heap_index >= 0 and heap_index < state.heap.objects.len()
+            let obj = state.heap.objects[heap_index]
+            if obj.tag == VmHeapTag::HeapString
+                return obj.payload.string_bytes
+            .end
         .end
+
+        # Compat legacy: anciennes valeurs string référencent le const pool en >= 0.
+        if heap_index >= 0 and heap_index < state.chunk.const_pool.consts.len()
+            let str_val = state.chunk.const_pool.consts[heap_index].payload.string_value
+            let raw = str_val.as_bytes()
+            let mut i: i32 = 0
+            while i < raw.len()
+                bytes.push(raw[i])
+                i = i + 1
+            .end
+            return bytes
+        .end
+        return bytes
     .end
 
-    if heap_index >= 0 and heap_index < state.chunk.const_pool.consts.len()
-        let str_val = state.chunk.const_pool.consts[heap_index].payload.string_value
+    let const_index = (-1 - ptr) as i32
+    if const_index >= 0 and const_index < state.chunk.const_pool.consts.len()
+        let str_val = state.chunk.const_pool.consts[const_index].payload.string_value
         let raw = str_val.as_bytes()
         let mut i: i32 = 0
         while i < raw.len()
