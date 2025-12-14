@@ -35,6 +35,25 @@ bootstrap_manifest = "bootstrap/mod.muf"
 std_manifest = "src/std/mod.muf"
 
 # ---------------------------------------------------------------------------
+# Sources du projet (lie les fichiers .vitte aux manifest/workspace).
+# ---------------------------------------------------------------------------
+
+[project.sources]
+roots = [
+  "bootstrap",
+  "compiler",
+  "modules",
+  "plugins",
+  "src",
+  "tests",
+  "examples",
+  "smoke",
+]
+files = [
+  "source.vitte",
+]
+
+# ---------------------------------------------------------------------------
 # Sous-projets logiques du repo vitte-core
 # (vue "projet" plus fine que le manifest workspace)
 # ---------------------------------------------------------------------------

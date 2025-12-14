@@ -6,6 +6,12 @@ import sys
 from dataclasses import dataclass
 import json
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from tools.project_sources import collect_project_sources
+
 @dataclass
 class ProjectCommandOptions:
     """
@@ -43,23 +49,10 @@ def write_text(path: Path, content: str) -> None:
 
 def find_vitte_sources(project_manifest: Path) -> list[Path]:
     """
-    Retourne la liste des fichiers .vitte pertinents pour le projet,
-    en scannant les répertoires bootstrap/, compiler/ et src/ à côté
-    du manifest Muffin.
+    Retourne la liste complète des fichiers .vitte pertinents déclarés dans
+    le manifest Muffin (section [project.sources]).
     """
-    root = project_manifest.parent
-    sources: list[Path] = []
-
-    for subdir_name in ("bootstrap", "compiler", "src"):
-        base = root / subdir_name
-        if not base.is_dir():
-            continue
-        for path in base.rglob("*.vitte"):
-            sources.append(path)
-
-    # Tri pour des résultats déterministes
-    sources.sort()
-    return sources
+    return collect_project_sources(project_manifest)
 
 
 def create_placeholder_binary(path: Path, project: Path) -> None:
@@ -130,7 +123,7 @@ def cmd_build_project(opts: ProjectCommandOptions) -> int:
         f"  root     = {root}\n"
         f"  out-bin  = {opts.out_bin}\n"
         f"  log-file = {opts.log_file}\n"
-        f"  sources  = {len(sources)} fichiers .vitte trouvés sous bootstrap/, compiler/, src/"
+        f"  sources  = {len(sources)} fichiers .vitte déclarés via project.sources"
     )
     print(msg)
     log_if_needed(opts.log_file, msg)
@@ -181,7 +174,7 @@ def cmd_check_project(opts: ProjectCommandOptions) -> int:
         f"[vittec][bootstrap] check projet (Muffin) : {opts.project}\n"
         f"  root     = {root}\n"
         f"  log-file = {opts.log_file}\n"
-        f"  sources  = {len(sources)} fichiers .vitte trouvés sous bootstrap/, compiler/, src/\n"
+        f"  sources  = {len(sources)} fichiers .vitte déclarés via project.sources\n"
         "  (implémentation réelle à écrire en Vitte : parse + resolve + typecheck.)"
     )
     print(msg)

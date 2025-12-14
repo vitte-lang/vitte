@@ -26,6 +26,14 @@ case ":$PATH:" in
   *) export PATH="$ROOT/target/release:$PATH" ;;
 esac
 
+SHIMS_DIR="$ROOT/scripts/shims"
+if [ -d "$SHIMS_DIR" ]; then
+  case ":$PATH:" in
+    *":$SHIMS_DIR:"*) ;;
+    *) export PATH="$SHIMS_DIR:$PATH" ;;
+  esac
+fi
+
 echo "[vitte][env] ROOT=$VITTE_ROOT"
 echo "[vitte][env] TARGET=$VITTE_TARGET"
 echo "[vitte][env] BOOTSTRAP=$VITTE_BOOTSTRAP"
