@@ -1,0 +1,15 @@
+#ifndef VITTE_SDK_ABI_ABI_VERSION_H
+#define VITTE_SDK_ABI_ABI_VERSION_H
+
+
+
+
+/* ABI versioning for Vitte SDK */
+#define VITTE_ABI_VERSION_MAJOR 0
+#define VITTE_ABI_VERSION_MINOR 1
+#define VITTE_ABI_VERSION_PATCH 0
+
+#define VITTE_ABI_VERSION_STRING "0.1.0"
+
+
+#endif /* VITTE_SDK_ABI_ABI_VERSION_H */

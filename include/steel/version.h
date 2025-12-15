@@ -1,4 +1,0 @@
-#pragma once
-#define STEEL_VERSION_MAJOR 0
-#define STEEL_VERSION_MINOR 2
-#define STEEL_VERSION_PATCH 0

@@ -1,0 +1,12 @@
+#ifndef VITTEC_INCLUDE_VITTEC_DIAG_SEVERITY_H
+    #define VITTEC_INCLUDE_VITTEC_DIAG_SEVERITY_H
+
+
+
+    typedef enum vittec_severity {
+  VITTEC_SEV_ERROR = 0,
+  VITTEC_SEV_WARNING = 1,
+  VITTEC_SEV_NOTE = 2
+} vittec_severity_t;
+
+    #endif /* VITTEC_INCLUDE_VITTEC_DIAG_SEVERITY_H */
