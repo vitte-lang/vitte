@@ -1,0 +1,12 @@
+C:\Users\vince\Documents\GitHub\vitte\rust\target\debug\deps\tracing-79241c9bcc4ca826.d: C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\lib.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\macros.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\dispatcher.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\field.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\instrument.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\level_filters.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\span.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\subscriber.rs
+
+C:\Users\vince\Documents\GitHub\vitte\rust\target\debug\deps\libtracing-79241c9bcc4ca826.rmeta: C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\lib.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\macros.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\dispatcher.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\field.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\instrument.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\level_filters.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\span.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\subscriber.rs
+
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\lib.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\macros.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\dispatcher.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\field.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\instrument.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\level_filters.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\span.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tracing-0.1.43\src\subscriber.rs:
