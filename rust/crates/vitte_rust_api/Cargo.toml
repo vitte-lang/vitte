@@ -1,14 +1,35 @@
+# vitte/rust/crates/vitte_rust_api/Cargo.toml
+
 [package]
 name = "vitte_rust_api"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "C ABI surface for Rust components in the Vitte toolchain."
+repository = "https://github.com/gogin/vitte"
 
 [lib]
+name = "vitte_rust_api"
+path = "src/lib.rs"
 crate-type = ["staticlib", "cdylib"]
 
+[features]
+default = ["std", "alloc", "muf", "regex"]
+
+# Base runtime
+std = ["alloc", "vitte_common/std"]
+alloc = ["vitte_common/alloc"]
+
+# Optional exported subsystems
+muf = ["vitte_muf"]
+regex = ["vitte_regex"]
+
 [dependencies]
-vitte_common = { path = "../vitte_common" }
-vitte_muf = { path = "../vitte_muf" }
-vitte_unicode = { path = "../vitte_unicode" }
-vitte_regex = { path = "../vitte_regex" }
+vitte_common = { path = "../vitte_common", default-features = false, features = ["alloc"] }
+vitte_muf = { path = "../vitte_muf", optional = true, default-features = true }
+vitte_regex = { path = "../vitte_regex", optional = true, default-features = true }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
