@@ -1,0 +1,1042 @@
+# plugins/crypto/api/seal.vitte
+# SecretBox / memory sealing (stub)
+# Blocks use `.end` only.
+
+mod plugins.crypto.api.seal
+
+# TODO
+
+.end
+
+# plugins/beryl-crypto/api/seal.vitte
+# SecretBox / memory sealing — unified contract (data-first, backend-agnostic) — MAX+++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Définir une API maximale pour:
+#       * chiffrer/"sceller" des secrets en mémoire et au repos,
+#       * gérer buffers sensibles (locked/guarded),
+#       * fournir wrap/unwrap (KMS/HW/remote) et sealed blobs.
+#   - Couvrir:
+#       * providers enumerate/query/select + ProviderInfo/AlgInfo
+#       * handles slot+generation (Provider/Key/SealCtx/SealedBlob/SensitiveBuf)
+#       * policies: AEAD choice, nonce policy, AAD, compression flag, expiry, attestation
+#       * one-shot seal/open (in/out) + views + iovec
+#       * streaming seal/open
+#       * keystore integration (wrap/unwrap keys)
+#       * audit events
+#       * ABI typed outputs (runtime marshalling)
+#   - Aucun I/O; les backends gèrent le stockage/transport.
+
+module plugins.crypto.api.seal
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const SEAL_API_VERSION_MAJOR : u32 = 1
+const SEAL_API_VERSION_MINOR : u32 = 0
+const SEAL_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum SealError
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidAlgorithm
+  InvalidPolicy
+
+  InvalidKey
+  InvalidContext
+  InvalidSealedBlob
+  InvalidSensitiveBuffer
+  InvalidStream
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  InvalidNonce
+  InvalidAad
+  InvalidTag
+  AuthenticationFailed
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  Expired
+  NotYetValid
+
+  AttestationRequired
+  AttestationFailed
+
+  ProviderUnavailable
+  ProviderBusy
+  PermissionDenied
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Identifiers / metadata
+# ============================================================================
+
+type SealProviderId = string
+
+type SealAlgId = string
+
+type HashId = string
+
+type AeadId = string
+
+enum SealBackendKind
+  Unknown
+  Software
+  Hardware
+  Kms
+  Remote
+.end
+
+# ============================================================================
+# Views / iovec
+# ============================================================================
+
+struct ByteSlice
+  ptr  : u64
+  len  : u64
+.end
+
+struct MutByteSlice
+  ptr  : u64
+  len  : u64
+.end
+
+struct IoVec
+  slices     : coll.Vec[ByteSlice]
+  total_len  : u64
+.end
+
+struct MutIoVec
+  slices     : coll.Vec[MutByteSlice]
+  total_len  : u64
+.end
+
+# ============================================================================
+# Handles
+# ============================================================================
+
+type SealHandle = u64
+
+enum SealHandleKind
+  None
+  Provider
+  Key
+  Context
+  Stream
+  SealedBlob
+  SensitiveBuffer
+.end
+
+struct SealOpaque
+  kind   : SealHandleKind
+  value  : SealHandle
+.end
+
+# ============================================================================
+# Length sets / limits
+# ============================================================================
+
+struct LenSet
+  min        : u32
+  max        : u32
+  step       : u32
+  preferred  : coll.Vec[u32]
+.end
+
+struct SealLimits
+  key_max         : u32
+  blob_max        : u64
+  msg_max         : u64
+  aad_max         : u64
+
+  nonce_max       : u32
+  tag_max         : u32
+
+  streams_max     : u32
+  ops_per_sec     : u32
+.end
+
+# ============================================================================
+# Algorithms / formats
+# ============================================================================
+
+enum SealKind
+  Unknown
+  SecretBox
+  MemorySeal
+  BlobSeal
+.end
+
+enum SealBlobFormat
+  # provider-defined binary envelope
+  ProviderEnvelope
+
+  # standardized-like envelope (self-describing)
+  PortableEnvelope
+.end
+
+enum SealKeyFormat
+  Raw
+  Wrapped
+  KeystoreRef
+.end
+
+enum SealAadMode
+  None
+  Optional
+  Required
+.end
+
+enum SealCompression
+  None
+  Zstd
+  Lz4
+.end
+
+# ============================================================================
+# Sensitive memory
+# ============================================================================
+
+enum SensitiveMemKind
+  Normal
+  Locked
+  Guarded
+  Mlocked
+  SecureEnclave
+.end
+
+enum SensitiveMemWipeMode
+  None
+  BestEffort
+  Always
+.end
+
+struct SensitiveMemPolicy
+  kind         : SensitiveMemKind
+  wipe_mode    : SensitiveMemWipeMode
+
+  # if true, deny exporting plaintext from SensitiveBuffer
+  no_export    : bool
+
+  # guard page size or provider-defined
+  guard_bytes  : u32
+.end
+
+struct SensitiveBufInfo
+  policy       : SensitiveMemPolicy
+  len          : u64
+
+  flags        : u32
+.end
+
+struct SensitiveBufRef
+  buf          : SealOpaque
+  info         : SensitiveBufInfo
+.end
+
+# ============================================================================
+# Nonce policy
+# ============================================================================
+
+enum SealNoncePolicyKind
+  ProviderDefault
+  Random
+  Counter
+  XorMask
+.end
+
+struct SealNoncePolicy
+  kind               : SealNoncePolicyKind
+  strict_nonce       : bool
+
+  # label namespace to scope uniqueness (e.g. "seal", "secretbox")
+  label              : string
+
+  # counter mode state
+  counter_start      : u64
+  counter_bits       : u32
+
+  # if strict, return NonceExhausted when space is exhausted
+  strict_exhaustion  : bool
+.end
+
+# ============================================================================
+# Attestation / metadata
+# ============================================================================
+
+enum SealAttestationKind
+  None
+  ProviderLocal
+  HardwareQuote
+  Remote
+.end
+
+struct SealAttestationPolicy
+  kind          : SealAttestationKind
+
+  # provider-defined required claims
+  claims        : coll.Vec[string]
+
+  # opaque challenge blob
+  challenge     : coll.Vec[u8]
+.end
+
+struct SealTimePolicy
+  not_before_ms : u64
+  not_after_ms  : u64
+.end
+
+struct SealMetadata
+  # user metadata
+  label         : string
+  purpose       : string
+
+  created_ms    : u64
+
+  # for expiry enforcement
+  time          : SealTimePolicy
+
+  # optional key id / provider id
+  key_id        : string
+  provider_id   : SealProviderId
+
+  # optional audit correlation
+  correlation_id : string
+
+  # opaque metadata blob
+  extra         : coll.Vec[u8]
+.end
+
+# ============================================================================
+# Policy
+# ============================================================================
+
+struct SealAeadPolicy
+  aead_id        : AeadId
+  nonce_lens     : LenSet
+  tag_lens       : LenSet
+
+  aad_mode       : SealAadMode
+.end
+
+struct SealWrapPolicy
+  # if true, use provider keystore wrapping for keys and blobs
+  use_keystore    : bool
+
+  # optional KMS key reference / URI
+  kms_key_ref     : string
+
+  # provider-defined wrapped format version
+  wrap_version    : u32
+.end
+
+struct SealPolicy
+  kind            : SealKind
+
+  aead            : SealAeadPolicy
+  nonce           : SealNoncePolicy
+
+  compression     : SealCompression
+
+  attestation     : SealAttestationPolicy
+
+  time            : SealTimePolicy
+
+  wrap            : SealWrapPolicy
+
+  sensitive_mem   : SensitiveMemPolicy
+
+  # hardening
+  constant_time   : bool
+  sidechannel_hard : bool
+.end
+
+# ============================================================================
+# Provider / algorithm info
+# ============================================================================
+
+const SEAL_FLAG_VIEWS              : u32 = 1
+const SEAL_FLAG_IOVEC              : u32 = 2
+
+const SEAL_FLAG_SECRETBOX          : u32 = 4
+const SEAL_FLAG_MEMORY_SEAL        : u32 = 8
+const SEAL_FLAG_BLOB_SEAL          : u32 = 16
+
+const SEAL_FLAG_STREAMING          : u32 = 32
+
+const SEAL_FLAG_COMPRESSION        : u32 = 64
+const SEAL_FLAG_ATTESTATION        : u32 = 128
+
+const SEAL_FLAG_KEYSTORE_WRAP      : u32 = 256
+
+const SEAL_FLAG_CONSTANT_TIME      : u32 = 512
+const SEAL_FLAG_SIDECHANNEL_HARD   : u32 = 1024
+
+const SEAL_PROVIDER_FLAG_SOFTWARE   : u32 = 1
+const SEAL_PROVIDER_FLAG_HARDWARE   : u32 = 2
+const SEAL_PROVIDER_FLAG_KMS        : u32 = 4
+const SEAL_PROVIDER_FLAG_REMOTE     : u32 = 8
+const SEAL_PROVIDER_FLAG_THREADSAFE : u32 = 16
+const SEAL_PROVIDER_FLAG_SANDBOXED  : u32 = 32
+
+struct SealAlgInfo
+  id            : SealAlgId
+  name          : string
+
+  kind          : SealKind
+
+  # preferred AEAD
+  aead_id       : AeadId
+
+  # key, nonce, tag lengths
+  key_lens      : LenSet
+  nonce_lens    : LenSet
+  tag_lens      : LenSet
+
+  # blob formats
+  blob_formats  : coll.Vec[SealBlobFormat]
+
+  flags         : u32
+  limits        : SealLimits
+.end
+
+struct SealProviderInfo
+  id            : SealProviderId
+  name          : string
+  vendor        : string
+  version       : string
+
+  backend       : SealBackendKind
+  priority      : i32
+  flags         : u32
+
+  build         : string
+  device        : string
+  location      : string
+
+  algorithms    : coll.Vec[SealAlgInfo]
+  limits        : SealLimits
+.end
+
+# ============================================================================
+# Key and context
+# ============================================================================
+
+enum SealKeyUsage
+  Seal
+  Open
+  SealAndOpen
+.end
+
+struct SealKeyConstraints
+  usage          : SealKeyUsage
+  allow_hw       : bool
+  fips           : bool
+
+  no_export_key  : bool
+.end
+
+struct SealKeyInfo
+  provider_id    : SealProviderId
+  alg_id         : SealAlgId
+
+  key_id         : string
+
+  usage          : SealKeyUsage
+
+  key_len        : u32
+
+  created_ms     : u64
+  expires_ms     : u64
+
+  flags          : u32
+  constraints    : SealKeyConstraints
+.end
+
+struct SealKeyRef
+  key            : SealOpaque
+  info           : SealKeyInfo
+.end
+
+struct SealContextInfo
+  provider_id    : SealProviderId
+  alg_id         : SealAlgId
+
+  key            : SealOpaque
+
+  policy         : SealPolicy
+  metadata       : SealMetadata
+
+  flags          : u32
+.end
+
+struct SealContextRef
+  ctx            : SealOpaque
+  info           : SealContextInfo
+.end
+
+# ============================================================================
+# Sealed blob
+# ============================================================================
+
+struct SealedBlobInfo
+  provider_id    : SealProviderId
+  alg_id         : SealAlgId
+
+  format         : SealBlobFormat
+
+  # envelope fields for routing
+  key_id         : string
+  nonce          : coll.Vec[u8]
+  tag            : coll.Vec[u8]
+
+  # optional metadata
+  metadata       : SealMetadata
+
+  # sizes
+  plaintext_len  : u64
+  ciphertext_len : u64
+
+  flags          : u32
+.end
+
+struct SealedBlobRef
+  blob           : SealOpaque
+  info           : SealedBlobInfo
+.end
+
+struct SealedBlob
+  bytes          : coll.Vec[u8]
+  format         : SealBlobFormat
+.end
+
+struct SealedBlobView
+  bytes          : ByteSlice
+  format         : SealBlobFormat
+.end
+
+# ============================================================================
+# One-shot seal/open
+# ============================================================================
+
+struct SealRequest
+  ctx            : SealContextRef
+  plaintext      : coll.Vec[u8]
+  aad            : coll.Vec[u8]
+
+  blob_format    : SealBlobFormat
+.end
+
+struct SealResponse
+  err            : SealError
+  sealed         : SealedBlob
+.end
+
+struct OpenRequest
+  ctx            : SealContextRef
+  sealed         : SealedBlob
+  aad            : coll.Vec[u8]
+
+  # if true, output to sensitive buffer
+  to_sensitive   : bool
+.end
+
+struct OpenResponse
+  err            : SealError
+
+  plaintext      : coll.Vec[u8]
+  sensitive      : SensitiveBufRef
+.end
+
+# Views
+struct SealRequestView
+  ctx            : SealContextRef
+  plaintext      : ByteSlice
+  aad            : ByteSlice
+
+  output_blob    : MutByteSlice
+  blob_format    : SealBlobFormat
+.end
+
+struct SealResponseView
+  err            : SealError
+  written        : u64
+.end
+
+struct OpenRequestView
+  ctx            : SealContextRef
+  sealed         : SealedBlobView
+  aad            : ByteSlice
+
+  output_plain   : MutByteSlice
+.end
+
+struct OpenResponseView
+  err            : SealError
+  written        : u64
+.end
+
+# IoVec
+struct SealIoVecRequestView
+  ctx            : SealContextRef
+  plaintext      : IoVec
+  aad            : ByteSlice
+
+  output_blob    : MutByteSlice
+  blob_format    : SealBlobFormat
+.end
+
+struct OpenIoVecRequestView
+  ctx            : SealContextRef
+  sealed         : SealedBlobView
+  aad            : ByteSlice
+
+  output_plain   : MutIoVec
+.end
+
+# ============================================================================
+# Streaming
+# ============================================================================
+
+enum SealStreamKind
+  Seal
+  Open
+.end
+
+enum SealStreamState
+  Init
+  Data
+  Final
+  Closed
+.end
+
+struct SealStreamInfo
+  provider_id    : SealProviderId
+  alg_id         : SealAlgId
+
+  ctx            : SealOpaque
+
+  kind           : SealStreamKind
+  state          : SealStreamState
+
+  aad_len        : u64
+  msg_len        : u64
+
+  blob_format    : SealBlobFormat
+
+  flags          : u32
+.end
+
+struct SealStreamRef
+  stream         : SealOpaque
+  info           : SealStreamInfo
+.end
+
+struct SealStreamStartRequest
+  ctx            : SealContextRef
+  kind           : SealStreamKind
+  blob_format    : SealBlobFormat
+  aad            : coll.Vec[u8]
+.end
+
+struct SealStreamStartResponse
+  err            : SealError
+  stream         : SealStreamRef
+.end
+
+struct SealStreamUpdateRequest
+  stream         : SealStreamRef
+  chunk          : coll.Vec[u8]
+.end
+
+struct SealStreamUpdateResponse
+  err            : SealError
+.end
+
+struct SealStreamUpdateRequestView
+  stream         : SealStreamRef
+  chunk          : ByteSlice
+.end
+
+struct SealStreamUpdateResponseView
+  err            : SealError
+  consumed       : u64
+.end
+
+struct SealStreamFinishRequest
+  stream         : SealStreamRef
+  # for Open mode: provide final tag/envelope if needed
+  tail           : coll.Vec[u8]
+.end
+
+struct SealStreamFinishResponse
+  err            : SealError
+
+  sealed         : SealedBlob
+  plaintext      : coll.Vec[u8]
+
+  valid          : bool
+.end
+
+struct SealStreamFinishRequestView
+  stream         : SealStreamRef
+  tail           : ByteSlice
+
+  output         : MutByteSlice
+.end
+
+struct SealStreamFinishResponseView
+  err            : SealError
+  written        : u64
+  valid          : bool
+.end
+
+# ============================================================================
+# Sensitive buffer operations
+# ============================================================================
+
+struct SensitiveAllocRequest
+  policy         : SensitiveMemPolicy
+  len            : u64
+.end
+
+struct SensitiveAllocResponse
+  err            : SealError
+  buf            : SensitiveBufRef
+.end
+
+struct SensitiveFreeRequest
+  buf            : SensitiveBufRef
+.end
+
+struct SensitiveFreeResponse
+  err            : SealError
+.end
+
+struct SensitiveWriteRequestView
+  buf            : SensitiveBufRef
+  input          : ByteSlice
+  offset         : u64
+.end
+
+struct SensitiveWriteResponseView
+  err            : SealError
+  written        : u64
+.end
+
+struct SensitiveReadRequestView
+  buf            : SensitiveBufRef
+  output         : MutByteSlice
+  offset         : u64
+.end
+
+struct SensitiveReadResponseView
+  err            : SealError
+  written        : u64
+.end
+
+struct SensitiveWipeRequest
+  buf            : SensitiveBufRef
+.end
+
+struct SensitiveWipeResponse
+  err            : SealError
+.end
+
+# ============================================================================
+# Keystore wrap/unwrap
+# ============================================================================
+
+struct SealWrapKeyRequest
+  key            : SealKeyRef
+  wrap_policy    : SealWrapPolicy
+.end
+
+struct SealWrapKeyResponse
+  err            : SealError
+  wrapped        : coll.Vec[u8]
+.end
+
+struct SealUnwrapKeyRequest
+  provider_id    : SealProviderId
+  alg_id         : SealAlgId
+  wrap_policy    : SealWrapPolicy
+  wrapped        : coll.Vec[u8]
+.end
+
+struct SealUnwrapKeyResponse
+  err            : SealError
+  key            : SealKeyRef
+.end
+
+# ============================================================================
+# Audit
+# ============================================================================
+
+enum SealAuditKind
+  ProviderSelected
+  KeyGenerated
+  KeyImported
+  ContextCreated
+
+  Sealed
+  Opened
+
+  StreamStarted
+  StreamUpdated
+  StreamFinished
+
+  SensitiveAllocated
+  SensitiveWiped
+
+  WrappedKey
+  UnwrappedKey
+
+  Destroyed
+.end
+
+struct SealAuditEvent
+  kind            : SealAuditKind
+  provider_id     : SealProviderId
+  alg_id          : SealAlgId
+
+  key_id          : string
+  ctx_id          : string
+  stream_id       : string
+
+  ts_ms           : u64
+  detail          : string
+.end
+
+fn seal_audit_emit(ev : SealAuditEvent)
+.end
+
+# ============================================================================
+# ABI outputs
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : SealProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : SealAlgInfo)
+.end
+
+fn abi_out_select_response(provider_id : SealProviderId, alg_id : SealAlgId)
+.end
+
+fn abi_out_key_ref_struct(key : SealKeyRef)
+.end
+
+fn abi_out_ctx_ref_struct(ctx : SealContextRef)
+.end
+
+fn abi_out_seal_response(resp : SealResponse)
+.end
+
+fn abi_out_open_response(resp : OpenResponse)
+.end
+
+fn abi_out_seal_response_view(resp : SealResponseView)
+.end
+
+fn abi_out_open_response_view(resp : OpenResponseView)
+.end
+
+fn abi_out_stream_start_response(resp : SealStreamStartResponse)
+.end
+
+fn abi_out_stream_finish_response(resp : SealStreamFinishResponse)
+.end
+
+fn abi_out_stream_finish_response_view(resp : SealStreamFinishResponseView)
+.end
+
+fn abi_out_sensitive_alloc_response(resp : SensitiveAllocResponse)
+.end
+
+fn abi_out_wrap_key_response(resp : SealWrapKeyResponse)
+.end
+
+fn abi_out_unwrap_key_response(resp : SealUnwrapKeyResponse)
+.end
+
+fn abi_out_error(err : SealError)
+.end
+
+# ============================================================================
+# Provider surface
+# ============================================================================
+
+fn seal_provider_enumerate()
+.end
+
+fn seal_provider_query(provider_id : SealProviderId)
+.end
+
+fn seal_provider_select(provider_id : SealProviderId, alg_id : SealAlgId)
+.end
+
+# Keys
+fn seal_key_generate(provider_id : SealProviderId, alg_id : SealAlgId, usage : SealKeyUsage, constraints : SealKeyConstraints)
+.end
+
+fn seal_key_import(provider_id : SealProviderId, alg_id : SealAlgId, usage : SealKeyUsage, constraints : SealKeyConstraints, key_bytes : coll.Vec[u8], format : SealKeyFormat)
+.end
+
+fn seal_key_destroy(key : SealOpaque)
+.end
+
+# Context
+fn seal_context_create(key : SealOpaque, policy : SealPolicy, metadata : SealMetadata)
+.end
+
+fn seal_context_destroy(ctx : SealContextRef)
+.end
+
+# One-shot
+fn seal(req : SealRequest)
+.end
+
+fn open(req : OpenRequest)
+.end
+
+fn seal_view(req : SealRequestView)
+.end
+
+fn open_view(req : OpenRequestView)
+.end
+
+fn seal_iovec_view(req : SealIoVecRequestView)
+.end
+
+fn open_iovec_view(req : OpenIoVecRequestView)
+.end
+
+# Streaming
+fn seal_stream_start(req : SealStreamStartRequest)
+.end
+
+fn seal_stream_update(req : SealStreamUpdateRequest)
+.end
+
+fn seal_stream_update_view(req : SealStreamUpdateRequestView)
+.end
+
+fn seal_stream_finish(req : SealStreamFinishRequest)
+.end
+
+fn seal_stream_finish_view(req : SealStreamFinishRequestView)
+.end
+
+fn seal_stream_destroy(stream : SealOpaque)
+.end
+
+# Sensitive buffers
+fn seal_sensitive_alloc(req : SensitiveAllocRequest)
+.end
+
+fn seal_sensitive_free(req : SensitiveFreeRequest)
+.end
+
+fn seal_sensitive_write_view(req : SensitiveWriteRequestView)
+.end
+
+fn seal_sensitive_read_view(req : SensitiveReadRequestView)
+.end
+
+fn seal_sensitive_wipe(req : SensitiveWipeRequest)
+.end
+
+# Keystore wrap/unwrap
+fn seal_wrap_key(req : SealWrapKeyRequest)
+.end
+
+fn seal_unwrap_key(req : SealUnwrapKeyRequest)
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+fn seal_default_sensitive_policy_locked() -> SensitiveMemPolicy
+  let p : SensitiveMemPolicy = SensitiveMemPolicy
+  return p
+.end
+
+fn seal_default_nonce_policy_random(label : string) -> SealNoncePolicy
+  let p : SealNoncePolicy = SealNoncePolicy
+  return p
+.end
+
+fn seal_default_policy_secretbox(aead_id : AeadId) -> SealPolicy
+  let p : SealPolicy = SealPolicy
+  return p
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# Providers
+# - Impl enumerate/query/select + fill ProviderInfo/AlgInfo.
+# - Remplacer sortie texte par ABI structs.
+# - Policy de choix provider (software vs hw vs kms/remote) + fallback.
+#
+# Handles
+# - Impl handles slot+generation (O(1) lookup thread-safe).
+# - Espaces séparés (Key/Context/Stream/SealedBlob/SensitiveBuffer).
+# - Destroy idempotent + poison.
+#
+# AEAD integration
+# - Brancher sur modules AEAD (AES-GCM, ChaCha20-Poly1305, XChaCha20-Poly1305, AES-GCM-SIV).
+# - Nonce policy strict_nonce + reuse detection.
+# - constant-time tag compare.
+#
+# Portable envelope
+# - Définir format stable: header (version, provider/alg ids), nonce, tag, metadata, ciphertext.
+# - Option compress-before-encrypt.
+#
+# Sensitive memory
+# - mlock/guard pages via runtime; no_export enforcement.
+# - memwipe temps.
+#
+# Streaming
+# - Incremental AEAD (if available) or chunking scheme.
+# - State machine strict.
+#
+# Keystore
+# - wrap/unwrap via provider-defined format + KMS integration.
+#
+# Attestation
+# - Hardware quote / remote attestation policies.
+#
+# Tests
+# - Roundtrip seal/open.
+# - Fuzz malformed envelopes.
+# - Property: streaming == one-shot.
+# - Side-channel checks best effort.
+
+.end

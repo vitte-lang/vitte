@@ -1,0 +1,796 @@
+# plugins/beryl/api/aead/aead.vitte
+# AEAD API contract (trait-like, data-first) — MAX++
+#
+# Objectifs:
+#   - Contrat AEAD maximal, stable et backend-agnostic (software/HW/KMS/remote).
+#   - Aucun I/O, aucune crypto.
+#   - Support one-shot + streaming + keystore + wrapping + audit.
+#   - Support buffers "owned" (Vec) ET vues zero-copy (slice) + marshalling.
+#
+# Conventions:
+#   - Handles opaques (provider-owned) stockés/validés par runtime (slot+generation).
+#   - Entrypoints "typed" (structs) + option ABI générique (opcode + blobs).
+#   - Les providers peuvent ignorer les sections zero-copy s'ils ne supportent pas.
+#
+# Vitte 2025 (core + phrase) ; blocs `.end`.
+
+module plugins.crypto.api.aead.aead
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning (API / ABI contract)
+# ============================================================================
+
+const AEAD_API_VERSION_MAJOR : u32 = 1
+const AEAD_API_VERSION_MINOR : u32 = 1
+const AEAD_API_VERSION_PATCH : u32 = 0
+
+# ABI generic opcodes (optional)
+const AEAD_ABI_OPCODE_PROVIDER_ENUMERATE : u32 = 1
+const AEAD_ABI_OPCODE_PROVIDER_QUERY     : u32 = 2
+const AEAD_ABI_OPCODE_PROVIDER_SELECT    : u32 = 3
+
+const AEAD_ABI_OPCODE_KEY_GENERATE       : u32 = 10
+const AEAD_ABI_OPCODE_KEY_IMPORT         : u32 = 11
+const AEAD_ABI_OPCODE_KEY_DESTROY        : u32 = 12
+
+const AEAD_ABI_OPCODE_CTX_CREATE         : u32 = 20
+const AEAD_ABI_OPCODE_CTX_DESTROY        : u32 = 21
+const AEAD_ABI_OPCODE_REKEY              : u32 = 22
+
+const AEAD_ABI_OPCODE_SEAL               : u32 = 30
+const AEAD_ABI_OPCODE_OPEN               : u32 = 31
+
+const AEAD_ABI_OPCODE_STREAM_START       : u32 = 40
+const AEAD_ABI_OPCODE_STREAM_AAD         : u32 = 41
+const AEAD_ABI_OPCODE_STREAM_UPDATE      : u32 = 42
+const AEAD_ABI_OPCODE_STREAM_FINISH      : u32 = 43
+const AEAD_ABI_OPCODE_STREAM_DESTROY     : u32 = 44
+
+const AEAD_ABI_OPCODE_KEYSTORE_PUT       : u32 = 50
+const AEAD_ABI_OPCODE_KEYSTORE_GET       : u32 = 51
+const AEAD_ABI_OPCODE_KEY_WRAP           : u32 = 52
+const AEAD_ABI_OPCODE_KEY_UNWRAP         : u32 = 53
+
+const AEAD_ABI_OPCODE_AUDIT_PULL         : u32 = 60
+
+# ============================================================================
+# Capability flags (alg/provider/context)
+# ============================================================================
+
+# Algorithm flags
+const AEAD_FLAG_DETACHED          : u32 = 1
+const AEAD_FLAG_STREAMING         : u32 = 2
+const AEAD_FLAG_REKEY             : u32 = 4
+const AEAD_FLAG_XNONCE            : u32 = 8
+const AEAD_FLAG_NONCE_MISUSE_RES  : u32 = 16
+const AEAD_FLAG_HW_ACCEL          : u32 = 32
+const AEAD_FLAG_FIPS              : u32 = 64
+const AEAD_FLAG_SIDECHANNEL_HARD  : u32 = 128
+const AEAD_FLAG_CONSTANT_TIME     : u32 = 256
+const AEAD_FLAG_EXPORT_RESTRICTED : u32 = 512
+
+# Provider flags
+const AEAD_PROVIDER_FLAG_SOFTWARE      : u32 = 1
+const AEAD_PROVIDER_FLAG_HARDWARE      : u32 = 2
+const AEAD_PROVIDER_FLAG_KMS           : u32 = 4
+const AEAD_PROVIDER_FLAG_REMOTE        : u32 = 8
+const AEAD_PROVIDER_FLAG_DETERMINISTIC : u32 = 16
+const AEAD_PROVIDER_FLAG_THREADSAFE    : u32 = 32
+const AEAD_PROVIDER_FLAG_SANDBOXED     : u32 = 64
+
+# Context flags
+const AEAD_CTX_FLAG_DETACHED_DEFAULT   : u32 = 1
+const AEAD_CTX_FLAG_ALLOW_XNONCE       : u32 = 2
+const AEAD_CTX_FLAG_STRICT_NONCE       : u32 = 4
+const AEAD_CTX_FLAG_AUDIT              : u32 = 8
+const AEAD_CTX_FLAG_LOW_LATENCY        : u32 = 16
+const AEAD_CTX_FLAG_LOW_MEMORY         : u32 = 32
+
+# ============================================================================
+# Error model
+# ============================================================================
+
+enum AeadError
+  Ok
+  Unsupported
+
+  InvalidKey
+  InvalidNonce
+  InvalidTag
+  InvalidAad
+  InvalidPlaintext
+  InvalidCiphertext
+  InvalidContext
+  InvalidProvider
+  InvalidAlgorithm
+  InvalidPolicy
+
+  AuthFailed
+  BufferTooSmall
+  MessageTooLarge
+  AadTooLarge
+
+  NonceReuseDetected
+  NonceExhausted
+  KeyExpired
+  KeyNotFound
+
+  ProviderUnavailable
+  ProviderBusy
+  PermissionDenied
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Identifiers / metadata
+# ============================================================================
+
+type AeadProviderId = string
+type AeadAlgId      = string
+type AeadKeyId      = string
+
+enum AeadBackendKind
+  Unknown
+  Software
+  Hardware
+  Kms
+  Remote
+.end
+
+enum AeadFamily
+  Unknown
+  AesGcm
+  ChaCha20Poly1305
+  XChaCha20Poly1305
+  AesGcmSiv
+  AsconAead
+.end
+
+enum AeadDirection
+  Seal
+  Open
+.end
+
+enum AeadFormat
+  Combined
+  Detached
+.end
+
+enum AeadNonceMode
+  External
+  Random
+  Counter
+  Derived
+.end
+
+enum AeadTagMode
+  Fixed
+  Variable
+.end
+
+enum AeadKeyUsage
+  SealOnly
+  OpenOnly
+  SealAndOpen
+.end
+
+enum AeadKeyOrigin
+  Generated
+  Imported
+  Derived
+  External
+.end
+
+enum AeadKeyExportPolicy
+  Exportable
+  WrappedOnly
+  NonExportable
+.end
+
+enum AeadAuditLevel
+  Off
+  ErrorsOnly
+  Ops
+  OpsAndSizes
+  Verbose
+.end
+
+struct AeadLimits
+  key_min        : u32
+  key_max        : u32
+  nonce_min      : u32
+  nonce_max      : u32
+  tag_min        : u32
+  tag_max        : u32
+  aad_max        : u64
+  msg_max        : u64
+  cipher_max     : u64
+.end
+
+struct AeadLenSet
+  min            : u32
+  max            : u32
+  step           : u32
+  preferred      : coll.Vec[u32]
+.end
+
+struct AeadAlgInfo
+  id             : AeadAlgId
+  name           : string
+  family         : AeadFamily
+
+  key_lens       : AeadLenSet
+  nonce_lens     : AeadLenSet
+  tag_lens       : AeadLenSet
+
+  tag_mode       : AeadTagMode
+  flags          : u32
+  limits         : AeadLimits
+.end
+
+struct AeadProviderInfo
+  id             : AeadProviderId
+  name           : string
+  vendor         : string
+  version        : string
+
+  backend        : AeadBackendKind
+  priority       : i32
+  flags          : u32
+
+  build          : string
+  device         : string
+  location       : string
+
+  algorithms     : coll.Vec[AeadAlgInfo]
+.end
+
+# ============================================================================
+# Opaque handles (provider-owned)
+# ============================================================================
+
+type AeadHandle = u64
+
+enum AeadHandleKind
+  None
+  Provider
+  Key
+  Context
+  Stream
+.end
+
+struct AeadOpaque
+  kind           : AeadHandleKind
+  value          : AeadHandle
+.end
+
+# ============================================================================
+# Zero-copy view types (optional)
+# ============================================================================
+
+struct ByteSlice
+  ptr            : u64
+  len            : u64
+.end
+
+struct MutByteSlice
+  ptr            : u64
+  len            : u64
+.end
+
+struct IoVec
+  slices         : coll.Vec[ByteSlice]
+  total_len      : u64
+.end
+
+struct MutIoVec
+  slices         : coll.Vec[MutByteSlice]
+  total_len      : u64
+.end
+
+enum AeadEncoding
+  Unknown
+  Binary
+  Json
+  Toml
+.end
+
+struct AeadBlob
+  encoding       : AeadEncoding
+  bytes          : coll.Vec[u8]
+.end
+
+# ============================================================================
+# Key model
+# ============================================================================
+
+struct AeadKeyConstraints
+  nonce_mode     : AeadNonceMode
+  strict_nonce   : bool
+
+  export_policy  : AeadKeyExportPolicy
+
+  max_ops        : u64
+  max_bytes      : u64
+.end
+
+struct AeadKeyInfo
+  provider_id    : AeadProviderId
+  alg_id         : AeadAlgId
+  key_id         : AeadKeyId
+
+  usage          : AeadKeyUsage
+  origin         : AeadKeyOrigin
+  export_policy  : AeadKeyExportPolicy
+
+  key_len        : u32
+  created_ms     : u64
+  expires_ms     : u64
+  flags          : u32
+
+  constraints    : AeadKeyConstraints
+.end
+
+struct AeadKeyRef
+  key            : AeadOpaque
+  info           : AeadKeyInfo
+.end
+
+# ============================================================================
+# Context model
+# ============================================================================
+
+struct AeadContextPolicy
+  format_default : AeadFormat
+  audit_level    : AeadAuditLevel
+  nonce_mode     : AeadNonceMode
+  strict_nonce   : bool
+  allow_xnonce   : bool
+.end
+
+struct AeadContextInfo
+  provider_id    : AeadProviderId
+  alg_id         : AeadAlgId
+  key            : AeadOpaque
+  flags          : u32
+  policy         : AeadContextPolicy
+.end
+
+struct AeadContextRef
+  ctx            : AeadOpaque
+  info           : AeadContextInfo
+.end
+
+# ============================================================================
+# Owned payload containers
+# ============================================================================
+
+struct AeadBytes
+  bytes          : coll.Vec[u8]
+.end
+
+struct AeadNonce
+  bytes          : coll.Vec[u8]
+.end
+
+struct AeadTag
+  bytes          : coll.Vec[u8]
+.end
+
+struct AeadAad
+  bytes          : coll.Vec[u8]
+.end
+
+struct AeadPlaintext
+  bytes          : coll.Vec[u8]
+.end
+
+struct AeadCiphertext
+  bytes          : coll.Vec[u8]
+.end
+
+struct AeadDetached
+  cipher         : AeadCiphertext
+  tag            : AeadTag
+.end
+
+struct AeadCombined
+  bytes          : coll.Vec[u8]
+.end
+
+# ============================================================================
+# Zero-copy payload containers (views)
+# ============================================================================
+
+struct AeadNonceView
+  bytes          : ByteSlice
+.end
+
+struct AeadTagView
+  bytes          : ByteSlice
+.end
+
+struct AeadAadView
+  bytes          : ByteSlice
+.end
+
+struct AeadPlaintextView
+  bytes          : ByteSlice
+.end
+
+struct AeadCiphertextView
+  bytes          : ByteSlice
+.end
+
+struct AeadDetachedView
+  cipher         : AeadCiphertextView
+  tag            : AeadTagView
+.end
+
+struct AeadCombinedView
+  bytes          : ByteSlice
+.end
+
+# ============================================================================
+# One-shot requests / responses
+# ============================================================================
+
+struct AeadSealOptions
+  format         : AeadFormat
+  tag_len        : u32
+  nonce_mode     : AeadNonceMode
+  audit_level    : AeadAuditLevel
+.end
+
+struct AeadOpenOptions
+  format         : AeadFormat
+  tag_len        : u32
+  nonce_mode     : AeadNonceMode
+  audit_level    : AeadAuditLevel
+.end
+
+struct AeadSealRequest
+  ctx            : AeadContextRef
+  nonce          : AeadNonce
+  aad            : AeadAad
+  plaintext      : AeadPlaintext
+  options        : AeadSealOptions
+.end
+
+struct AeadOpenRequest
+  ctx            : AeadContextRef
+  nonce          : AeadNonce
+  aad            : AeadAad
+
+  cipher         : AeadCiphertext
+  tag            : AeadTag
+
+  combined       : AeadCombined
+
+  options        : AeadOpenOptions
+.end
+
+struct AeadSealResponse
+  err            : AeadError
+  nonce_used     : AeadNonce
+  detached       : AeadDetached
+  combined       : AeadCombined
+.end
+
+struct AeadOpenResponse
+  err            : AeadError
+  plaintext      : AeadPlaintext
+.end
+
+# Zero-copy one-shot (optional)
+struct AeadSealRequestView
+  ctx            : AeadContextRef
+  nonce          : AeadNonceView
+  aad            : AeadAadView
+  plaintext      : AeadPlaintextView
+  options        : AeadSealOptions
+.end
+
+struct AeadOpenRequestView
+  ctx            : AeadContextRef
+  nonce          : AeadNonceView
+  aad            : AeadAadView
+
+  detached       : AeadDetachedView
+  combined       : AeadCombinedView
+
+  options        : AeadOpenOptions
+.end
+
+struct AeadSealResponseView
+  err            : AeadError
+  nonce_used     : AeadNonceView
+  detached       : AeadDetachedView
+  combined       : AeadCombinedView
+.end
+
+struct AeadOpenResponseView
+  err            : AeadError
+  plaintext      : AeadPlaintextView
+.end
+
+# ============================================================================
+# Streaming API
+# ============================================================================
+
+enum AeadStreamRole
+  Seal
+  Open
+.end
+
+enum AeadStreamState
+  Init
+  Aad
+  Data
+  Final
+  Closed
+.end
+
+struct AeadStreamInfo
+  provider_id    : AeadProviderId
+  alg_id         : AeadAlgId
+  ctx            : AeadOpaque
+  role           : AeadStreamRole
+  state          : AeadStreamState
+  flags          : u32
+.end
+
+struct AeadStreamRef
+  stream         : AeadOpaque
+  info           : AeadStreamInfo
+.end
+
+struct AeadStreamStartRequest
+  ctx            : AeadContextRef
+  nonce          : AeadNonce
+  role           : AeadStreamRole
+  options        : AeadSealOptions
+.end
+
+struct AeadStreamStartResponse
+  err            : AeadError
+  stream         : AeadStreamRef
+  nonce_used     : AeadNonce
+.end
+
+struct AeadStreamAadRequest
+  stream         : AeadStreamRef
+  aad            : AeadAad
+.end
+
+struct AeadStreamAadResponse
+  err            : AeadError
+.end
+
+struct AeadStreamUpdateRequest
+  stream         : AeadStreamRef
+  chunk          : AeadBytes
+.end
+
+struct AeadStreamUpdateResponse
+  err            : AeadError
+  out_chunk      : AeadBytes
+.end
+
+struct AeadStreamFinishRequest
+  stream         : AeadStreamRef
+  tag            : AeadTag
+.end
+
+struct AeadStreamFinishResponse
+  err            : AeadError
+  tag            : AeadTag
+.end
+
+# ============================================================================
+# Provider selection & session options
+# ============================================================================
+
+struct AeadSelector
+  provider_id    : AeadProviderId
+  alg_id         : AeadAlgId
+  backend        : AeadBackendKind
+  require_flags  : u32
+  forbid_flags   : u32
+.end
+
+struct AeadSessionOptions
+  policy         : AeadContextPolicy
+  selector       : AeadSelector
+  prefer_fast    : bool
+  prefer_small   : bool
+  timeout_ms     : u64
+.end
+
+# ============================================================================
+# Audit / telemetry
+# ============================================================================
+
+enum AeadAuditEventKind
+  KeyCreate
+  KeyImport
+  KeyDestroy
+  CtxCreate
+  CtxDestroy
+  Seal
+  Open
+  StreamStart
+  StreamUpdate
+  StreamFinish
+.end
+
+struct AeadAuditEvent
+  kind           : AeadAuditEventKind
+  when_ms        : u64
+  provider_id    : AeadProviderId
+  alg_id         : AeadAlgId
+  key_id         : AeadKeyId
+  ok             : bool
+  err            : AeadError
+  aad_bytes      : u64
+  msg_bytes      : u64
+.end
+
+# ============================================================================
+# Key store / wrapping
+# ============================================================================
+
+struct AeadWrappedKey
+  bytes          : coll.Vec[u8]
+.end
+
+struct AeadKeyStorePutRequest
+  provider_id    : AeadProviderId
+  key_id         : AeadKeyId
+  key_ref        : AeadKeyRef
+.end
+
+struct AeadKeyStoreGetRequest
+  provider_id    : AeadProviderId
+  key_id         : AeadKeyId
+.end
+
+struct AeadKeyStoreGetResponse
+  err            : AeadError
+  key_ref        : AeadKeyRef
+.end
+
+struct AeadKeyWrapRequest
+  wrapping_key   : AeadKeyRef
+  target_key     : AeadKeyRef
+.end
+
+struct AeadKeyWrapResponse
+  err            : AeadError
+  wrapped        : AeadWrappedKey
+.end
+
+struct AeadKeyUnwrapRequest
+  wrapping_key   : AeadKeyRef
+  wrapped        : AeadWrappedKey
+  usage          : AeadKeyUsage
+  alg_id         : AeadAlgId
+.end
+
+struct AeadKeyUnwrapResponse
+  err            : AeadError
+  key_ref        : AeadKeyRef
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn aead_provider_enumerate()
+.end
+
+fn aead_provider_query(provider_id : AeadProviderId)
+.end
+
+fn aead_provider_select(opts : AeadSessionOptions)
+.end
+
+fn aead_key_generate(provider_id : AeadProviderId, alg_id : AeadAlgId, usage : AeadKeyUsage)
+.end
+
+fn aead_key_import(provider_id : AeadProviderId, alg_id : AeadAlgId, usage : AeadKeyUsage, key_bytes : coll.Vec[u8])
+.end
+
+fn aead_key_destroy(key : AeadOpaque)
+.end
+
+fn aead_context_create(key : AeadOpaque, flags : u32)
+.end
+
+fn aead_context_destroy(ctx : AeadOpaque)
+.end
+
+fn aead_rekey(ctx : AeadOpaque)
+.end
+
+fn aead_seal(req : AeadSealRequest)
+.end
+
+fn aead_open(req : AeadOpenRequest)
+.end
+
+# Optional zero-copy
+fn aead_seal_view(req : AeadSealRequestView)
+.end
+
+fn aead_open_view(req : AeadOpenRequestView)
+.end
+
+# Streaming
+fn aead_stream_start(req : AeadStreamStartRequest)
+.end
+
+fn aead_stream_aad(req : AeadStreamAadRequest)
+.end
+
+fn aead_stream_update(req : AeadStreamUpdateRequest)
+.end
+
+fn aead_stream_finish(req : AeadStreamFinishRequest)
+.end
+
+fn aead_stream_destroy(stream : AeadOpaque)
+.end
+
+# Keystore / wrapping
+fn aead_keystore_put(req : AeadKeyStorePutRequest)
+.end
+
+fn aead_keystore_get(req : AeadKeyStoreGetRequest)
+.end
+
+fn aead_key_wrap(req : AeadKeyWrapRequest)
+.end
+
+fn aead_key_unwrap(req : AeadKeyUnwrapRequest)
+.end
+
+# Audit
+fn aead_audit_pull(provider_id : AeadProviderId)
+.end
+
+# ============================================================================
+# Provider surface (generic ABI dispatch)
+# ============================================================================
+
+fn aead_abi_call(opcode : u32, in_blob : AeadBlob)
+.end
+
+# ============================================================================
+# Minimal semantic helpers
+# ============================================================================
+
+fn aead_error_name(err : AeadError) -> string
+  return "AeadError"
+.end
+
+fn aead_family_name(f : AeadFamily) -> string
+  return "AeadFamily"
+.end
+
+fn aead_backend_name(b : AeadBackendKind) -> string
+  return "AeadBackendKind"
+.end
+
+fn aead_format_name(fmt : AeadFormat) -> string
+  return "AeadFormat"
+.end

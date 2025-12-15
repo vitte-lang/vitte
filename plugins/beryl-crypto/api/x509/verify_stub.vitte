@@ -1,0 +1,844 @@
+# plugins/beryl-crypto/api/x509/verify_stub.vitte
+# X.509 Certificate Verification — API contract (data-first, backend-agnostic) — MAX+++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat de vérification X.509 maximal:
+#       * providers enumerate/query/select + ProviderInfo/AlgInfo
+#       * parse/validate certificats + chaînes
+#       * policies:
+#           - hostname / SAN / IP
+#           - EKU/KU constraints
+#           - time validity
+#           - trust store selection
+#           - revocation (CRL/OCSP)
+#           - CT (Certificate Transparency)
+#           - pinning
+#           - name constraints
+#           - path length / basic constraints / key usage
+#       * outputs structurés (VerifiedChain, VerifiedPeer)
+#       * views (zero-copy) + iovec
+#       * cache (intermediate certs, crl, ocsp)
+#       * audit events
+#       * ABI typed outputs (runtime marshalling)
+#   - Aucun I/O réseau ici: OCSP/CRL fetch est hors scope, on accepte les blobs.
+#   - Aucune crypto réelle ici: signature checks déléguées aux providers.
+
+module plugins.crypto.api.x509.verify
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const X509_VERIFY_API_VERSION_MAJOR : u32 = 1
+const X509_VERIFY_API_VERSION_MINOR : u32 = 0
+const X509_VERIFY_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum X509Error
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidAlgorithm
+  InvalidPolicy
+
+  InvalidCertificate
+  InvalidCertificateChain
+  InvalidTrustAnchor
+  InvalidHostname
+  InvalidName
+
+  InvalidTime
+  NotYetValid
+  Expired
+
+  InvalidSignature
+  SignatureVerifyFailed
+
+  PathBuildingFailed
+  PathValidationFailed
+
+  UnknownIssuer
+  UntrustedRoot
+  NameMismatch
+  NameConstraintsViolation
+
+  KeyUsageViolation
+  ExtendedKeyUsageViolation
+  BasicConstraintsViolation
+  PolicyConstraintsViolation
+
+  Revoked
+  RevocationStatusUnknown
+  OcspInvalid
+  CrlInvalid
+
+  CtRequired
+  CtInvalid
+
+  PinningViolation
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  PermissionDenied
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Identifiers / metadata
+# ============================================================================
+
+type X509ProviderId = string
+
+type X509AlgId = string
+
+type HashId = string
+
+enum X509BackendKind
+  Unknown
+  Software
+  Hardware
+  Kms
+  Remote
+.end
+
+# ============================================================================
+# Views / iovec
+# ============================================================================
+
+struct ByteSlice
+  ptr  : u64
+  len  : u64
+.end
+
+struct MutByteSlice
+  ptr  : u64
+  len  : u64
+.end
+
+struct IoVec
+  slices     : coll.Vec[ByteSlice]
+  total_len  : u64
+.end
+
+# ============================================================================
+# Handles
+# ============================================================================
+
+type X509Handle = u64
+
+enum X509HandleKind
+  None
+  Provider
+  TrustStore
+  Cache
+  Context
+.end
+
+struct X509Opaque
+  kind   : X509HandleKind
+  value  : X509Handle
+.end
+
+# ============================================================================
+# Certificate encodings
+# ============================================================================
+
+enum X509CertFormat
+  X509Der
+  X509Pem
+.end
+
+struct X509Certificate
+  bytes   : coll.Vec[u8]
+  format  : X509CertFormat
+.end
+
+struct X509CertificateView
+  bytes   : ByteSlice
+  format  : X509CertFormat
+.end
+
+struct X509CertificateChain
+  certs   : coll.Vec[X509Certificate]
+.end
+
+struct X509CertificateChainView
+  certs   : coll.Vec[X509CertificateView]
+.end
+
+# ============================================================================
+# Parsed certificate info (normalized)
+# ============================================================================
+
+struct X509Name
+  # normalized string (RFC 4514 / provider defined)
+  rfc4514  : string
+
+  # raw DER of Name (optional)
+  der      : coll.Vec[u8]
+.end
+
+struct X509GeneralName
+  # type tag (DNS=2, IP=7, URI=6, etc.) provider-defined mapping
+  tag      : u32
+  value    : string
+.end
+
+struct X509Spki
+  # SubjectPublicKeyInfo DER
+  der      : coll.Vec[u8]
+
+  # algorithm OID as string
+  alg_oid  : string
+
+  # key bytes (algorithm-defined)
+  key      : coll.Vec[u8]
+.end
+
+struct X509Validity
+  not_before_ms : u64
+  not_after_ms  : u64
+.end
+
+struct X509KeyUsage
+  digital_signature : bool
+  content_commitment : bool
+  key_encipherment : bool
+  data_encipherment : bool
+  key_agreement : bool
+  key_cert_sign : bool
+  crl_sign : bool
+  encipher_only : bool
+  decipher_only : bool
+.end
+
+struct X509ExtendedKeyUsage
+  # list of EKU OIDs
+  oids     : coll.Vec[string]
+.end
+
+struct X509BasicConstraints
+  is_ca        : bool
+  path_len     : i32
+.end
+
+struct X509SubjectAltName
+  names    : coll.Vec[X509GeneralName]
+.end
+
+struct X509CertFingerprint
+  hash_id  : HashId
+  bytes    : coll.Vec[u8]
+.end
+
+struct X509ParsedCert
+  subject        : X509Name
+  issuer         : X509Name
+
+  serial_hex     : string
+
+  spki           : X509Spki
+
+  validity       : X509Validity
+
+  key_usage      : X509KeyUsage
+  ext_key_usage  : X509ExtendedKeyUsage
+  basic          : X509BasicConstraints
+
+  san            : X509SubjectAltName
+
+  # policy OIDs
+  policies       : coll.Vec[string]
+
+  # SKI/AKI (hex)
+  subject_key_id : string
+  auth_key_id    : string
+
+  # fingerprints (optional)
+  fingerprints   : coll.Vec[X509CertFingerprint]
+
+  # raw tbsCertificate DER, signature algorithm, signature value
+  tbs_der        : coll.Vec[u8]
+  sig_alg_oid    : string
+  sig_value      : coll.Vec[u8]
+.end
+
+# ============================================================================
+# Revocation artifacts (provided as blobs)
+# ============================================================================
+
+enum X509RevocationFormat
+  OcspDer
+  OcspPem
+  CrlDer
+  CrlPem
+.end
+
+struct X509RevocationObject
+  bytes    : coll.Vec[u8]
+  format   : X509RevocationFormat
+.end
+
+struct X509RevocationSet
+  objects  : coll.Vec[X509RevocationObject]
+.end
+
+# ============================================================================
+# CT artifacts
+# ============================================================================
+
+struct X509CtSct
+  # SignedCertificateTimestamp (binary) or provider-defined
+  bytes    : coll.Vec[u8]
+.end
+
+struct X509CtSctList
+  scts     : coll.Vec[X509CtSct]
+.end
+
+# ============================================================================
+# Trust store + cache
+# ============================================================================
+
+enum X509TrustStoreKind
+  System
+  User
+  Embedded
+  Custom
+.end
+
+struct X509TrustAnchor
+  cert     : X509Certificate
+  # optional constraints for anchor usage
+  constraints : coll.Vec[string]
+.end
+
+struct X509TrustStoreInfo
+  kind     : X509TrustStoreKind
+  name     : string
+  anchors  : coll.Vec[X509TrustAnchor]
+.end
+
+struct X509CachePolicy
+  enable            : bool
+  max_entries       : u32
+  ttl_ms            : u64
+.end
+
+# ============================================================================
+# Policy
+# ============================================================================
+
+enum X509VerifyPurpose
+  TlsServer
+  TlsClient
+  CodeSigning
+  EmailProtection
+  TimeStamping
+  OcspSigning
+  Any
+.end
+
+enum X509NameMatchMode
+  # RFC 6125 style matching
+  Rfc6125
+
+  # strict exact
+  Exact
+.end
+
+struct X509HostnamePolicy
+  hostname          : string
+  ip                : string
+  require_san       : bool
+  match_mode        : X509NameMatchMode
+.end
+
+struct X509TimePolicy
+  now_ms            : u64
+  allow_skew_ms     : u64
+.end
+
+struct X509EkuPolicy
+  purpose           : X509VerifyPurpose
+  required_oids     : coll.Vec[string]
+  allow_any_eku     : bool
+.end
+
+struct X509KuPolicy
+  require_digital_signature : bool
+  require_key_encipherment  : bool
+  require_key_agreement     : bool
+.end
+
+struct X509BasicConstraintsPolicy
+  allow_non_ca_intermediate  : bool
+  max_path_len               : i32
+.end
+
+struct X509NameConstraintsPolicy
+  # provider-defined encoded constraints blobs (DER)
+  permitted_subtrees : coll.Vec[coll.Vec[u8]]
+  excluded_subtrees  : coll.Vec[coll.Vec[u8]]
+.end
+
+struct X509PinPolicy
+  # list of pins (SPKI hashes, cert hashes) provider-defined
+  pins              : coll.Vec[coll.Vec[u8]]
+  hash_id           : HashId
+  enforce           : bool
+.end
+
+struct X509RevocationPolicy
+  enable_ocsp       : bool
+  enable_crl        : bool
+  require_fresh     : bool
+  soft_fail         : bool
+.end
+
+struct X509CtPolicy
+  require_ct        : bool
+  # accepted log ids (provider-defined)
+  log_ids           : coll.Vec[coll.Vec[u8]]
+.end
+
+struct X509PathPolicy
+  # policy OIDs allowlist/require list
+  require_policies  : coll.Vec[string]
+  inhibit_any       : bool
+.end
+
+struct X509VerifyPolicy
+  purpose           : X509VerifyPurpose
+
+  hostname          : X509HostnamePolicy
+  time              : X509TimePolicy
+
+  eku               : X509EkuPolicy
+  ku                : X509KuPolicy
+  basic             : X509BasicConstraintsPolicy
+  name_constraints  : X509NameConstraintsPolicy
+
+  pinning           : X509PinPolicy
+
+  revocation        : X509RevocationPolicy
+  ct                : X509CtPolicy
+
+  path              : X509PathPolicy
+
+  strict_der        : bool
+  constant_time     : bool
+  sidechannel_hard  : bool
+.end
+
+# ============================================================================
+# Provider / algorithm info
+# ============================================================================
+
+struct X509Limits
+  chain_max         : u32
+  cert_max          : u32
+  name_max          : u32
+
+  revocation_max    : u32
+  ct_max            : u32
+
+  msg_max           : u64
+
+  ops_per_sec       : u32
+.end
+
+const X509_FLAG_VIEWS            : u32 = 1
+const X509_FLAG_IOVEC            : u32 = 2
+const X509_FLAG_OCSP             : u32 = 4
+const X509_FLAG_CRL              : u32 = 8
+const X509_FLAG_CT               : u32 = 16
+const X509_FLAG_PATH_BUILD       : u32 = 32
+const X509_FLAG_NAME_CONSTRAINTS : u32 = 64
+const X509_FLAG_PINNING          : u32 = 128
+const X509_FLAG_STRICT_DER       : u32 = 256
+
+const X509_PROVIDER_FLAG_SOFTWARE    : u32 = 1
+const X509_PROVIDER_FLAG_HARDWARE    : u32 = 2
+const X509_PROVIDER_FLAG_KMS         : u32 = 4
+const X509_PROVIDER_FLAG_REMOTE      : u32 = 8
+const X509_PROVIDER_FLAG_THREADSAFE  : u32 = 16
+const X509_PROVIDER_FLAG_SANDBOXED   : u32 = 32
+
+struct X509AlgInfo
+  id           : X509AlgId
+  name         : string
+
+  flags        : u32
+  limits       : X509Limits
+.end
+
+struct X509ProviderInfo
+  id           : X509ProviderId
+  name         : string
+  vendor       : string
+  version      : string
+
+  backend      : X509BackendKind
+  priority     : i32
+  flags        : u32
+
+  build        : string
+  device       : string
+  location     : string
+
+  algorithms   : coll.Vec[X509AlgInfo]
+  limits       : X509Limits
+.end
+
+# ============================================================================
+# Verification output
+# ============================================================================
+
+enum X509ChainValidationLevel
+  None
+  Parsed
+  SignatureChecked
+  PathBuilt
+  FullyValidated
+.end
+
+struct X509VerifiedCert
+  parsed          : X509ParsedCert
+
+  # validation notes
+  is_trust_anchor : bool
+  is_ca           : bool
+
+  # per-cert errors/warnings (strings)
+  issues          : coll.Vec[string]
+.end
+
+struct X509VerifiedChain
+  level           : X509ChainValidationLevel
+
+  chain           : coll.Vec[X509VerifiedCert]
+
+  # selected trust anchor (subject)
+  trust_anchor    : X509Name
+
+  # aggregated issues
+  issues          : coll.Vec[string]
+
+  # timestamps
+  verified_ms     : u64
+.end
+
+struct X509VerifyResult
+  err             : X509Error
+  verified        : bool
+  chain           : X509VerifiedChain
+.end
+
+# Views result
+struct X509VerifyResultView
+  err             : X509Error
+  verified        : bool
+  written         : u64
+.end
+
+# ============================================================================
+# Contexts
+# ============================================================================
+
+struct X509ContextInfo
+  provider_id      : X509ProviderId
+  alg_id           : X509AlgId
+
+  policy           : X509VerifyPolicy
+  trust_store      : X509Opaque
+  cache            : X509Opaque
+
+  flags            : u32
+.end
+
+struct X509ContextRef
+  ctx              : X509Opaque
+  info             : X509ContextInfo
+.end
+
+# ============================================================================
+# Requests / responses
+# ============================================================================
+
+struct X509ProviderSelectRequest
+  provider_id      : X509ProviderId
+  alg_id           : X509AlgId
+.end
+
+struct X509ProviderSelectResponse
+  err              : X509Error
+  provider         : X509ProviderInfo
+  algorithm        : X509AlgInfo
+.end
+
+struct X509TrustStoreCreateRequest
+  provider_id      : X509ProviderId
+  kind             : X509TrustStoreKind
+  info             : X509TrustStoreInfo
+.end
+
+struct X509TrustStoreCreateResponse
+  err              : X509Error
+  trust_store      : X509Opaque
+.end
+
+struct X509TrustStoreDestroyRequest
+  trust_store      : X509Opaque
+.end
+
+struct X509TrustStoreDestroyResponse
+  err              : X509Error
+.end
+
+struct X509CacheCreateRequest
+  provider_id      : X509ProviderId
+  policy           : X509CachePolicy
+.end
+
+struct X509CacheCreateResponse
+  err              : X509Error
+  cache            : X509Opaque
+.end
+
+struct X509CacheDestroyRequest
+  cache            : X509Opaque
+.end
+
+struct X509CacheDestroyResponse
+  err              : X509Error
+.end
+
+struct X509ContextCreateRequest
+  provider_id      : X509ProviderId
+  alg_id           : X509AlgId
+
+  policy           : X509VerifyPolicy
+  trust_store      : X509Opaque
+  cache            : X509Opaque
+.end
+
+struct X509ContextCreateResponse
+  err              : X509Error
+  ctx              : X509ContextRef
+.end
+
+struct X509ContextDestroyRequest
+  ctx              : X509ContextRef
+.end
+
+struct X509ContextDestroyResponse
+  err              : X509Error
+.end
+
+# Verify a chain
+struct X509VerifyRequest
+  ctx              : X509ContextRef
+
+  chain            : X509CertificateChain
+
+  # optional intermediates pool
+  intermediates    : coll.Vec[X509Certificate]
+
+  # optional revocation objects (OCSP/CRL)
+  revocation       : X509RevocationSet
+
+  # optional SCT list
+  ct_scts          : X509CtSctList
+.end
+
+struct X509VerifyResponse
+  err              : X509Error
+  result           : X509VerifyResult
+.end
+
+# Views
+struct X509VerifyRequestView
+  ctx              : X509ContextRef
+
+  chain            : X509CertificateChainView
+
+  intermediates    : coll.Vec[X509CertificateView]
+  revocation       : coll.Vec[ByteSlice]
+  ct_scts          : coll.Vec[ByteSlice]
+
+  output_json      : MutByteSlice
+.end
+
+struct X509VerifyResponseView
+  err              : X509Error
+  verified         : bool
+  written          : u64
+.end
+
+# ============================================================================
+# Audit
+# ============================================================================
+
+enum X509AuditKind
+  ProviderSelected
+  TrustStoreCreated
+  CacheCreated
+  ContextCreated
+  Verified
+  Destroyed
+.end
+
+struct X509AuditEvent
+  kind            : X509AuditKind
+  provider_id     : X509ProviderId
+  alg_id          : X509AlgId
+
+  hostname        : string
+
+  ts_ms           : u64
+  detail          : string
+.end
+
+fn x509_audit_emit(ev : X509AuditEvent)
+.end
+
+# ============================================================================
+# ABI outputs
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : X509ProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : X509AlgInfo)
+.end
+
+fn abi_out_select_response(resp : X509ProviderSelectResponse)
+.end
+
+fn abi_out_trust_store_create_response(resp : X509TrustStoreCreateResponse)
+.end
+
+fn abi_out_cache_create_response(resp : X509CacheCreateResponse)
+.end
+
+fn abi_out_ctx_create_response(resp : X509ContextCreateResponse)
+.end
+
+fn abi_out_verify_response(resp : X509VerifyResponse)
+.end
+
+fn abi_out_verify_response_view(resp : X509VerifyResponseView)
+.end
+
+fn abi_out_error(err : X509Error)
+.end
+
+# ============================================================================
+# Provider surface
+# ============================================================================
+
+fn x509_provider_enumerate()
+.end
+
+fn x509_provider_query(provider_id : X509ProviderId)
+.end
+
+fn x509_provider_select(req : X509ProviderSelectRequest)
+.end
+
+fn x509_trust_store_create(req : X509TrustStoreCreateRequest)
+.end
+
+fn x509_trust_store_destroy(req : X509TrustStoreDestroyRequest)
+.end
+
+fn x509_cache_create(req : X509CacheCreateRequest)
+.end
+
+fn x509_cache_destroy(req : X509CacheDestroyRequest)
+.end
+
+fn x509_context_create(req : X509ContextCreateRequest)
+.end
+
+fn x509_context_destroy(req : X509ContextDestroyRequest)
+.end
+
+fn x509_verify(req : X509VerifyRequest)
+.end
+
+fn x509_verify_view(req : X509VerifyRequestView)
+.end
+
+# ============================================================================
+# Helpers
+# ============================================================================
+
+fn x509_default_time_policy(now_ms : u64) -> X509TimePolicy
+  let p : X509TimePolicy = X509TimePolicy
+  return p
+.end
+
+fn x509_default_policy_tls_server(hostname : string, now_ms : u64) -> X509VerifyPolicy
+  let p : X509VerifyPolicy = X509VerifyPolicy
+  return p
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# Parsing
+# - DER/PEM parsing: TBSCertificate, extensions.
+# - Strict DER option.
+#
+# Path building
+# - Build chain using intermediates + trust anchors.
+# - Enforce basic constraints, pathLen.
+#
+# Signature verify
+# - Verify signatures using SPKI + signature algorithm.
+# - Delegate to signature providers (ECDSA/Ed25519/RSA, etc.).
+#
+# Hostname / SAN
+# - RFC 6125 matching, wildcard rules.
+# - IP SAN matching.
+#
+# Revocation
+# - OCSP staple parse/verify, CRL parse/verify.
+# - soft-fail vs hard-fail.
+#
+# CT
+# - SCT list verification vs log list.
+#
+# Pinning
+# - SPKI pinset enforcement.
+#
+# Caches
+# - Cache intermediates, OCSP/CRL.
+#
+# Tests
+# - RFC 5280 path validation vectors.
+# - Wycheproof X.509 path building tests.
+# - Fuzz DER/PEM.
+
+.end

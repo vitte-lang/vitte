@@ -1,0 +1,618 @@
+# plugins/beryl-crypto/primitives/curve25519/field.vitte
+# Curve25519 / Ed25519 field GF(2^255-19) — MAX+++
+# Blocks use `.end` only.
+#
+# Representation:
+#   - 5 limbs of 51 bits each (little radix), as used by many Ed25519 implementations.
+#   - Limb layout is internal; canonical encoding is 32-byte little-endian.
+#
+# Provides:
+#   - Fe type + arithmetic (add/sub/neg/mul/sqr)
+#   - carry/reduce, conditional subtract p
+#   - ct helpers (cswap/select/eq) best-effort
+#   - encode/decode, inversion, sqrt, sqrt_ratio
+#
+# Notes:
+#   - Constant-time is best-effort; avoid secret-dependent branches where feasible.
+#   - No intrinsics; higher layers may provide accelerated providers.
+
+module plugins.crypto.primitives.curve25519.field
+
+import std.collections as coll
+
+import plugins.crypto.api.types as t
+import plugins.crypto.host.time_const as ct
+
+# ============================================================================
+# Constants
+# ============================================================================
+
+const FE_MASK51 : u64 = 2251799813685247  # 2^51 - 1
+
+# p = 2^255 - 19
+const FE_P0 : u64 = 2251799813685229
+const FE_P1 : u64 = 2251799813685247
+const FE_P2 : u64 = 2251799813685247
+const FE_P3 : u64 = 2251799813685247
+const FE_P4 : u64 = 2251799813685247
+
+# d = -121665/121666 mod p (Ed25519)
+const FE_D0 : u64 = 929955233495203
+const FE_D1 : u64 = 466365720129213
+const FE_D2 : u64 = 1662059464998953
+const FE_D3 : u64 = 2033849074728123
+const FE_D4 : u64 = 1442794654840575
+
+# 2*d
+const FE_D2_0 : u64 = 1859910466990425
+const FE_D2_1 : u64 = 932731440258426
+const FE_D2_2 : u64 = 1072319116312658
+const FE_D2_3 : u64 = 1815898335770999
+const FE_D2_4 : u64 = 633789495995903
+
+# sqrt(-1)
+const FE_SQRTM1_0 : u64 = 1718705420411056
+const FE_SQRTM1_1 : u64 = 234908883556509
+const FE_SQRTM1_2 : u64 = 2233514472574048
+const FE_SQRTM1_3 : u64 = 2117202627021982
+const FE_SQRTM1_4 : u64 = 765476049583133
+
+# Exponent words for inversion: p-2
+const FE_INV_E0 : u64 = 0xFFFF_FFFF_FFFF_FFEB
+const FE_INV_E1 : u64 = 0xFFFF_FFFF_FFFF_FFFF
+const FE_INV_E2 : u64 = 0xFFFF_FFFF_FFFF_FFFF
+const FE_INV_E3 : u64 = 0x7FFF_FFFF_FFFF_FFFF
+
+# Exponent words for sqrt: (p+3)/8
+const FE_SQRT_E0 : u64 = 0xFFFF_FFFF_FFFF_FFEE
+const FE_SQRT_E1 : u64 = 0xFFFF_FFFF_FFFF_FFFF
+const FE_SQRT_E2 : u64 = 0xFFFF_FFFF_FFFF_FFFF
+const FE_SQRT_E3 : u64 = 0x0FFF_FFFF_FFFF_FFFF
+
+# ============================================================================
+# Types
+# ============================================================================
+
+struct Fe
+  l0 : u64
+  l1 : u64
+  l2 : u64
+  l3 : u64
+  l4 : u64
+.end
+
+# ============================================================================
+# Constructors
+# ============================================================================
+
+fn fe_new(l0 : u64, l1 : u64, l2 : u64, l3 : u64, l4 : u64) -> Fe
+  let x : Fe = Fe
+  x.l0 = l0
+  x.l1 = l1
+  x.l2 = l2
+  x.l3 = l3
+  x.l4 = l4
+  return x
+.end
+
+fn fe_zero() -> Fe
+  return fe_new(0, 0, 0, 0, 0)
+.end
+
+fn fe_one() -> Fe
+  return fe_new(1, 0, 0, 0, 0)
+.end
+
+fn fe_p() -> Fe
+  return fe_new(FE_P0, FE_P1, FE_P2, FE_P3, FE_P4)
+.end
+
+fn fe_d() -> Fe
+  return fe_new(FE_D0, FE_D1, FE_D2, FE_D3, FE_D4)
+.end
+
+fn fe_d2() -> Fe
+  return fe_new(FE_D2_0, FE_D2_1, FE_D2_2, FE_D2_3, FE_D2_4)
+.end
+
+fn fe_sqrtm1() -> Fe
+  return fe_new(FE_SQRTM1_0, FE_SQRTM1_1, FE_SQRTM1_2, FE_SQRTM1_3, FE_SQRTM1_4)
+.end
+
+# ============================================================================
+# Carry / reduce
+# ============================================================================
+
+fn fe_carry_reduce(x_in : Fe) -> Fe
+  let x : Fe = x_in
+
+  let c0 : u64 = x.l0 >> 51
+  x.l0 &= FE_MASK51
+  x.l1 += c0
+
+  let c1 : u64 = x.l1 >> 51
+  x.l1 &= FE_MASK51
+  x.l2 += c1
+
+  let c2 : u64 = x.l2 >> 51
+  x.l2 &= FE_MASK51
+  x.l3 += c2
+
+  let c3 : u64 = x.l3 >> 51
+  x.l3 &= FE_MASK51
+  x.l4 += c3
+
+  let c4 : u64 = x.l4 >> 51
+  x.l4 &= FE_MASK51
+  x.l0 += c4 * 19
+
+  let c00 : u64 = x.l0 >> 51
+  x.l0 &= FE_MASK51
+  x.l1 += c00
+
+  return x
+.end
+
+fn fe_add(a : Fe, b : Fe) -> Fe
+  return fe_carry_reduce(fe_new(a.l0 + b.l0, a.l1 + b.l1, a.l2 + b.l2, a.l3 + b.l3, a.l4 + b.l4))
+.end
+
+fn fe_sub(a : Fe, b : Fe) -> Fe
+  # a - b + 2p
+  let x : Fe = Fe
+  x.l0 = (2 * FE_P0) + a.l0 - b.l0
+  x.l1 = (2 * FE_P1) + a.l1 - b.l1
+  x.l2 = (2 * FE_P2) + a.l2 - b.l2
+  x.l3 = (2 * FE_P3) + a.l3 - b.l3
+  x.l4 = (2 * FE_P4) + a.l4 - b.l4
+  return fe_carry_reduce(x)
+.end
+
+fn fe_neg(a : Fe) -> Fe
+  let x : Fe = Fe
+  x.l0 = (2 * FE_P0) - a.l0
+  x.l1 = (2 * FE_P1) - a.l1
+  x.l2 = (2 * FE_P2) - a.l2
+  x.l3 = (2 * FE_P3) - a.l3
+  x.l4 = (2 * FE_P4) - a.l4
+  return fe_carry_reduce(x)
+.end
+
+fn fe_mul(a : Fe, b : Fe) -> Fe
+  let f0 : u128 = a.l0 as u128
+  let f1 : u128 = a.l1 as u128
+  let f2 : u128 = a.l2 as u128
+  let f3 : u128 = a.l3 as u128
+  let f4 : u128 = a.l4 as u128
+
+  let g0 : u128 = b.l0 as u128
+  let g1 : u128 = b.l1 as u128
+  let g2 : u128 = b.l2 as u128
+  let g3 : u128 = b.l3 as u128
+  let g4 : u128 = b.l4 as u128
+
+  let g1_19 : u128 = 19 * g1
+  let g2_19 : u128 = 19 * g2
+  let g3_19 : u128 = 19 * g3
+  let g4_19 : u128 = 19 * g4
+
+  let h0 : u128 = f0*g0 + f1*g4_19 + f2*g3_19 + f3*g2_19 + f4*g1_19
+  let h1 : u128 = f0*g1 + f1*g0     + f2*g4_19 + f3*g3_19 + f4*g2_19
+  let h2 : u128 = f0*g2 + f1*g1     + f2*g0     + f3*g4_19 + f4*g3_19
+  let h3 : u128 = f0*g3 + f1*g2     + f2*g1     + f3*g0     + f4*g4_19
+  let h4 : u128 = f0*g4 + f1*g3     + f2*g2     + f3*g1     + f4*g0
+
+  let c0 : u64 = (h0 >> 51) as u64
+  let x0 : u64 = (h0 & (FE_MASK51 as u128)) as u64
+  h1 += c0 as u128
+
+  let c1 : u64 = (h1 >> 51) as u64
+  let x1 : u64 = (h1 & (FE_MASK51 as u128)) as u64
+  h2 += c1 as u128
+
+  let c2 : u64 = (h2 >> 51) as u64
+  let x2 : u64 = (h2 & (FE_MASK51 as u128)) as u64
+  h3 += c2 as u128
+
+  let c3 : u64 = (h3 >> 51) as u64
+  let x3 : u64 = (h3 & (FE_MASK51 as u128)) as u64
+  h4 += c3 as u128
+
+  let c4 : u64 = (h4 >> 51) as u64
+  let x4 : u64 = (h4 & (FE_MASK51 as u128)) as u64
+
+  let x0b : u64 = x0 + (c4 * 19)
+
+  return fe_carry_reduce(fe_new(x0b, x1, x2, x3, x4))
+.end
+
+fn fe_sqr(a : Fe) -> Fe
+  return fe_mul(a, a)
+.end
+
+fn fe_mul_small(a : Fe, c : u64) -> Fe
+  return fe_carry_reduce(fe_new(a.l0 * c, a.l1 * c, a.l2 * c, a.l3 * c, a.l4 * c))
+.end
+
+# ============================================================================
+# Constant-time helpers (best-effort)
+# ============================================================================
+
+fn fe_ct_select(mask64 : u64, a : Fe, b : Fe) -> Fe
+  # if mask64 == all-ones => pick a else b
+  let r : Fe = Fe
+  r.l0 = ct.ct_select_u64(mask64, a.l0, b.l0)
+  r.l1 = ct.ct_select_u64(mask64, a.l1, b.l1)
+  r.l2 = ct.ct_select_u64(mask64, a.l2, b.l2)
+  r.l3 = ct.ct_select_u64(mask64, a.l3, b.l3)
+  r.l4 = ct.ct_select_u64(mask64, a.l4, b.l4)
+  return r
+.end
+
+fn fe_ct_cswap(a_in : Fe, b_in : Fe, bit : u8) -> (Fe, Fe)
+  let mask : u64 = (0 - (bit as u64))
+
+  let a : Fe = a_in
+  let b : Fe = b_in
+
+  let t0 : u64 = (a.l0 ^ b.l0) & mask
+  let t1 : u64 = (a.l1 ^ b.l1) & mask
+  let t2 : u64 = (a.l2 ^ b.l2) & mask
+  let t3 : u64 = (a.l3 ^ b.l3) & mask
+  let t4 : u64 = (a.l4 ^ b.l4) & mask
+
+  let aa : Fe = Fe
+  let bb : Fe = Fe
+
+  aa.l0 = a.l0 ^ t0
+  bb.l0 = b.l0 ^ t0
+
+  aa.l1 = a.l1 ^ t1
+  bb.l1 = b.l1 ^ t1
+
+  aa.l2 = a.l2 ^ t2
+  bb.l2 = b.l2 ^ t2
+
+  aa.l3 = a.l3 ^ t3
+  bb.l3 = b.l3 ^ t3
+
+  aa.l4 = a.l4 ^ t4
+  bb.l4 = b.l4 ^ t4
+
+  return (aa, bb)
+.end
+
+# Compare canonical encodings, ct bytes eq.
+fn fe_ct_eq(a : Fe, b : Fe) -> u8
+  let ab : coll.Vec[u8] = coll.Vec[u8]
+  let bb : coll.Vec[u8] = coll.Vec[u8]
+
+  let i : u32 = 0
+  while i < 32
+    ab.push(0)
+    bb.push(0)
+    i += 1
+  .end
+
+  let av : t.MutByteSlice = t.MutByteSlice
+  av.ptr = ab.ptr()
+  av.len = 32
+
+  let bv : t.MutByteSlice = t.MutByteSlice
+  bv.ptr = bb.ptr()
+  bv.len = 32
+
+  fe_to_bytes(av, a)
+  fe_to_bytes(bv, b)
+
+  let asv : t.ByteSlice = t.ByteSlice
+  asv.ptr = ab.ptr()
+  asv.len = 32
+
+  let bsv : t.ByteSlice = t.ByteSlice
+  bsv.ptr = bb.ptr()
+  bsv.len = 32
+
+  return ct.ct_eq_bytes(asv, bsv)
+.end
+
+fn fe_is_zero(a : Fe) -> bool
+  return fe_ct_eq(a, fe_zero()) == 1
+.end
+
+fn fe_is_negative(a : Fe) -> u8
+  # LSB of canonical encoding
+  let out : coll.Vec[u8] = coll.Vec[u8]
+  let i : u32 = 0
+  while i < 32
+    out.push(0)
+    i += 1
+  .end
+
+  let mv : t.MutByteSlice = t.MutByteSlice
+  mv.ptr = out.ptr()
+  mv.len = 32
+
+  fe_to_bytes(mv, a)
+  return out[0] & 1
+.end
+
+# ============================================================================
+# Canonical reduction against p
+# ============================================================================
+
+fn fe_cond_sub_p(x_in : Fe) -> Fe
+  let x0 : Fe = fe_carry_reduce(x_in)
+
+  # Compare x0 with p (high->low)
+  let gt : u64 = 0
+  let eq : u64 = 0xFFFF_FFFF_FFFF_FFFF
+
+  let lt4 : u64 = ct.ct_lt_u64(x0.l4, FE_P4) as u64
+  let gt4 : u64 = ct.ct_lt_u64(FE_P4, x0.l4) as u64
+  let eq4 : u64 = ct.ct_eq_u64(x0.l4, FE_P4) as u64
+  gt |= gt4 & eq
+  eq &= eq4
+  eq &= ~lt4
+
+  let lt3 : u64 = ct.ct_lt_u64(x0.l3, FE_P3) as u64
+  let gt3 : u64 = ct.ct_lt_u64(FE_P3, x0.l3) as u64
+  let eq3 : u64 = ct.ct_eq_u64(x0.l3, FE_P3) as u64
+  gt |= gt3 & eq
+  eq &= eq3
+  eq &= ~lt3
+
+  let lt2 : u64 = ct.ct_lt_u64(x0.l2, FE_P2) as u64
+  let gt2 : u64 = ct.ct_lt_u64(FE_P2, x0.l2) as u64
+  let eq2 : u64 = ct.ct_eq_u64(x0.l2, FE_P2) as u64
+  gt |= gt2 & eq
+  eq &= eq2
+  eq &= ~lt2
+
+  let lt1 : u64 = ct.ct_lt_u64(x0.l1, FE_P1) as u64
+  let gt1 : u64 = ct.ct_lt_u64(FE_P1, x0.l1) as u64
+  let eq1 : u64 = ct.ct_eq_u64(x0.l1, FE_P1) as u64
+  gt |= gt1 & eq
+  eq &= eq1
+  eq &= ~lt1
+
+  let lt0 : u64 = ct.ct_lt_u64(x0.l0, FE_P0) as u64
+  let gt0 : u64 = ct.ct_lt_u64(FE_P0, x0.l0) as u64
+  let eq0 : u64 = ct.ct_eq_u64(x0.l0, FE_P0) as u64
+  gt |= gt0 & eq
+  eq &= eq0
+  eq &= ~lt0
+
+  let ge : u64 = gt | eq
+
+  let y : Fe = fe_sub(x0, fe_p())
+
+  return fe_ct_select(ge, y, x0)
+.end
+
+# ============================================================================
+# Encoding / decoding
+# ============================================================================
+
+fn fe_to_bytes(out : t.MutByteSlice, a_in : Fe)
+  if out.len < 32
+    return
+  .end
+
+  let a : Fe = fe_cond_sub_p(a_in)
+
+  # Pack 5x51 into 4x64 words
+  let t0 : u64 = a.l0 | (a.l1 << 51)
+  let t1 : u64 = (a.l1 >> 13) | (a.l2 << 38)
+  let t2 : u64 = (a.l2 >> 26) | (a.l3 << 25)
+  let t3 : u64 = (a.l3 >> 39) | (a.l4 << 12)
+
+  ct.store_u64_le(out, 0, t0)
+  ct.store_u64_le(out, 8, t1)
+  ct.store_u64_le(out, 16, t2)
+  ct.store_u64_le(out, 24, t3)
+.end
+
+fn fe_from_bytes(s : t.ByteSlice) -> Fe
+  # 32 bytes; caller should clear sign bit if used for y-coordinate.
+  if s.len < 32
+    return fe_zero()
+  .end
+
+  # The offsets match common ref implementations; relies on ct.load_u64_le bounds.
+  let t0 : u64 = ct.load_u64_le(s, 0)
+  let t1 : u64 = ct.load_u64_le(s, 6)
+  let t2 : u64 = ct.load_u64_le(s, 12)
+  let t3 : u64 = ct.load_u64_le(s, 19)
+  let t4 : u64 = ct.load_u64_le(s, 24)
+
+  let h0 : u64 = t0 & FE_MASK51
+  let h1 : u64 = (t1 >> 3) & FE_MASK51
+  let h2 : u64 = (t2 >> 6) & FE_MASK51
+  let h3 : u64 = (t3 >> 1) & FE_MASK51
+  let h4 : u64 = (t4 >> 12) & FE_MASK51
+
+  return fe_carry_reduce(fe_new(h0, h1, h2, h3, h4))
+.end
+
+# ============================================================================
+# Exponentiation / inversion / sqrt
+# ============================================================================
+
+fn fe_pow_words(a : Fe, e0 : u64, e1 : u64, e2 : u64, e3 : u64, bits : u32) -> Fe
+  # Public exponent; constant-time not required.
+  let r : Fe = fe_one()
+  let base : Fe = a
+
+  let i : i32 = (bits as i32) - 1
+  while i >= 0
+    r = fe_sqr(r)
+
+    let wi : u32 = (i as u32) / 64
+    let bi : u32 = (i as u32) % 64
+
+    let w : u64 = 0
+    if wi == 0
+      w = e0
+    .end
+    if wi == 1
+      w = e1
+    .end
+    if wi == 2
+      w = e2
+    .end
+    if wi == 3
+      w = e3
+    .end
+
+    let bit : u64 = (w >> bi) & 1
+    if bit == 1
+      r = fe_mul(r, base)
+    .end
+
+    i -= 1
+  .end
+
+  return r
+.end
+
+fn fe_invert(a : Fe) -> Fe
+  return fe_pow_words(a, FE_INV_E0, FE_INV_E1, FE_INV_E2, FE_INV_E3, 255)
+.end
+
+fn fe_sqrt(a : Fe) -> (Fe, bool)
+  # p % 8 == 5
+  let x : Fe = fe_pow_words(a, FE_SQRT_E0, FE_SQRT_E1, FE_SQRT_E2, FE_SQRT_E3, 252)
+
+  let x2 : Fe = fe_sqr(x)
+  if fe_ct_eq(x2, a) == 1
+    return (x, true)
+  .end
+
+  let x3 : Fe = fe_mul(x, fe_sqrtm1())
+  let x32 : Fe = fe_sqr(x3)
+  if fe_ct_eq(x32, a) == 1
+    return (x3, true)
+  .end
+
+  return (fe_zero(), false)
+.end
+
+fn fe_sqrt_ratio(u : Fe, v : Fe) -> (Fe, bool)
+  let invv : Fe = fe_invert(v)
+  let a : Fe = fe_mul(u, invv)
+  return fe_sqrt(a)
+.end
+
+# ============================================================================
+# Public constants accessors (avoid duplicating in callers)
+# ============================================================================
+
+fn fe_const_d() -> Fe
+  return fe_d()
+.end
+
+fn fe_const_d2() -> Fe
+  return fe_d2()
+.end
+
+fn fe_const_sqrtm1() -> Fe
+  return fe_sqrtm1()
+.end
+
+# ============================================================================
+# Smoke tests (pure)
+# ============================================================================
+
+fn test_encode_decode_zero_one() -> bool
+  let z : Fe = fe_zero()
+  let o : Fe = fe_one()
+
+  let bz : coll.Vec[u8] = coll.Vec[u8]
+  let bo : coll.Vec[u8] = coll.Vec[u8]
+
+  let i : u32 = 0
+  while i < 32
+    bz.push(0)
+    bo.push(0)
+    i += 1
+  .end
+
+  let oz : t.MutByteSlice = t.MutByteSlice
+  oz.ptr = bz.ptr()
+  oz.len = 32
+
+  let oo : t.MutByteSlice = t.MutByteSlice
+  oo.ptr = bo.ptr()
+  oo.len = 32
+
+  fe_to_bytes(oz, z)
+  fe_to_bytes(oo, o)
+
+  # one encodes as 0x01 then zeros
+  if bo[0] != 1
+    return false
+  .end
+
+  let j : u32 = 1
+  while j < 32
+    if bo[j] != 0
+      return false
+    .end
+    j += 1
+  .end
+
+  let inz : t.ByteSlice = t.ByteSlice
+  inz.ptr = bz.ptr()
+  inz.len = 32
+
+  let ino : t.ByteSlice = t.ByteSlice
+  ino.ptr = bo.ptr()
+  ino.len = 32
+
+  let z2 : Fe = fe_from_bytes(inz)
+  let o2 : Fe = fe_from_bytes(ino)
+
+  if fe_ct_eq(z, z2) != 1
+    return false
+  .end
+
+  if fe_ct_eq(o, o2) != 1
+    return false
+  .end
+
+  return true
+.end
+
+fn test_invert_roundtrip_nonzero() -> bool
+  let a : Fe = fe_new(5, 7, 11, 13, 17)
+  let inv : Fe = fe_invert(a)
+  let prod : Fe = fe_mul(a, inv)
+  # prod should be 1
+  return fe_ct_eq(fe_cond_sub_p(prod), fe_one()) == 1
+.end
+
+fn test_sqrt_square() -> bool
+  let a : Fe = fe_new(9, 0, 0, 0, 0)
+  let r = fe_sqrt(a)
+  if not r.1
+    return false
+  .end
+  let s : Fe = fe_sqr(r.0)
+  return fe_ct_eq(fe_cond_sub_p(s), fe_cond_sub_p(a)) == 1
+.end
+
+fn run_smoke_tests() -> bool
+  if not test_encode_decode_zero_one()
+    return false
+  .end
+  if not test_invert_roundtrip_nonzero()
+    return false
+  .end
+  if not test_sqrt_square()
+    return false
+  .end
+  return true
+.end
+
+.end

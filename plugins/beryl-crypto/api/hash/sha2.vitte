@@ -1,0 +1,486 @@
+# plugins/crypto/api/hash/sha2.vitte
+# SHA-2 family
+# Blocks use `.end` only.
+
+mod plugins.crypto.api.hash.sha2
+
+# TODO
+
+.end
+
+# plugins/beryl/api/hash/sha2.vitte
+# SHA-2 family — SHA-224/256/384/512 + SHA-512/224 + SHA-512/256
+# API contract (data-first, backend-agnostic) — MAX++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat SHA-2 maximal:
+#       * variantes (224/256/384/512/512-224/512-256)
+#       * one-shot + streaming
+#       * views (zero-copy) optionnelles
+#       * providers/caps/limits + alg descriptors
+#   - Aucun I/O ici. Aucune impl crypto réelle.
+#
+# Notes:
+#   - SHA-2 = deux familles internes:
+#       * SHA-224/256: mots 32-bit, block=64
+#       * SHA-384/512/512-224/512-256: mots 64-bit, block=128
+
+module plugins.crypto.api.hash.sha2
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const SHA2_API_VERSION_MAJOR : u32 = 1
+const SHA2_API_VERSION_MINOR : u32 = 0
+const SHA2_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Variants
+# ============================================================================
+
+enum Sha2Alg
+  Sha224
+  Sha256
+  Sha384
+  Sha512
+  Sha512_224
+  Sha512_256
+.end
+
+# Output lengths in bytes
+const SHA224_OUT_LEN     : u32 = 28
+const SHA256_OUT_LEN     : u32 = 32
+const SHA384_OUT_LEN     : u32 = 48
+const SHA512_OUT_LEN     : u32 = 64
+const SHA512_224_OUT_LEN : u32 = 28
+const SHA512_256_OUT_LEN : u32 = 32
+
+# Block lengths in bytes
+const SHA2_32_BLOCK_LEN  : u32 = 64
+const SHA2_64_BLOCK_LEN  : u32 = 128
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum Sha2Error
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidPolicy
+  InvalidAlgorithm
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Provider metadata
+# ============================================================================
+
+type Sha2ProviderId = string
+
+enum Sha2BackendKind
+  Unknown
+  Software
+  Hardware
+  Remote
+.end
+
+const SHA2_FLAG_ONE_SHOT          : u32 = 1
+const SHA2_FLAG_STREAMING         : u32 = 2
+const SHA2_FLAG_VIEWS             : u32 = 4
+
+const SHA2_FLAG_SHA224            : u32 = 16
+const SHA2_FLAG_SHA256            : u32 = 32
+const SHA2_FLAG_SHA384            : u32 = 64
+const SHA2_FLAG_SHA512            : u32 = 128
+const SHA2_FLAG_SHA512_224        : u32 = 256
+const SHA2_FLAG_SHA512_256        : u32 = 512
+
+const SHA2_FLAG_SIMD              : u32 = 1024
+const SHA2_FLAG_PARALLEL          : u32 = 2048
+
+const SHA2_PROVIDER_FLAG_SOFTWARE   : u32 = 1
+const SHA2_PROVIDER_FLAG_HARDWARE   : u32 = 2
+const SHA2_PROVIDER_FLAG_REMOTE     : u32 = 4
+const SHA2_PROVIDER_FLAG_THREADSAFE : u32 = 8
+const SHA2_PROVIDER_FLAG_SANDBOXED  : u32 = 16
+
+struct Sha2Limits
+  in_max            : u64
+  out_max           : u64
+  msg_max           : u64
+
+  block_len         : u32
+.end
+
+struct Sha2AlgInfo
+  alg               : Sha2Alg
+  name              : string
+  out_len           : u32
+  block_len         : u32
+  flags             : u32
+  limits            : Sha2Limits
+.end
+
+struct Sha2ProviderInfo
+  id                : Sha2ProviderId
+  name              : string
+  vendor            : string
+  version           : string
+
+  backend           : Sha2BackendKind
+  priority          : i32
+  flags             : u32
+
+  build             : string
+  device            : string
+  location          : string
+
+  algorithms        : coll.Vec[Sha2AlgInfo]
+  limits            : Sha2Limits
+.end
+
+# ============================================================================
+# Views (zero-copy optional)
+# ============================================================================
+
+struct ByteSlice
+  ptr               : u64
+  len               : u64
+.end
+
+struct MutByteSlice
+  ptr               : u64
+  len               : u64
+.end
+
+struct IoVec
+  slices            : coll.Vec[ByteSlice]
+  total_len         : u64
+.end
+
+# ============================================================================
+# Policy
+# ============================================================================
+
+struct Sha2Policy
+  alg               : Sha2Alg
+
+  # output length (usually canonical for alg)
+  out_len           : u32
+  strict_out_len    : bool
+
+  # Hardening
+  constant_time     : bool
+.end
+
+# ============================================================================
+# Owned payload containers
+# ============================================================================
+
+struct Sha2Bytes
+  bytes             : coll.Vec[u8]
+.end
+
+struct Sha2Digest
+  bytes             : coll.Vec[u8]
+.end
+
+# ============================================================================
+# One-shot
+# ============================================================================
+
+struct Sha2HashRequest
+  provider_id        : Sha2ProviderId
+  policy             : Sha2Policy
+  input              : Sha2Bytes
+.end
+
+struct Sha2HashResponse
+  err                : Sha2Error
+  digest             : Sha2Digest
+.end
+
+struct Sha2HashRequestView
+  provider_id        : Sha2ProviderId
+  policy             : Sha2Policy
+  input              : ByteSlice
+  output             : MutByteSlice
+.end
+
+struct Sha2HashResponseView
+  err                : Sha2Error
+  written            : u64
+.end
+
+# ============================================================================
+# Streaming
+# ============================================================================
+
+enum Sha2StreamState
+  Init
+  Data
+  Final
+  Closed
+.end
+
+struct Sha2StreamInfo
+  provider_id        : Sha2ProviderId
+  policy             : Sha2Policy
+  state              : Sha2StreamState
+
+  total_in           : u64
+  flags              : u32
+.end
+
+struct Sha2Stream
+  handle             : u64
+  info               : Sha2StreamInfo
+.end
+
+struct Sha2StreamStartRequest
+  provider_id        : Sha2ProviderId
+  policy             : Sha2Policy
+.end
+
+struct Sha2StreamStartResponse
+  err                : Sha2Error
+  stream             : Sha2Stream
+.end
+
+struct Sha2StreamUpdateRequest
+  stream             : Sha2Stream
+  input              : Sha2Bytes
+.end
+
+struct Sha2StreamUpdateResponse
+  err                : Sha2Error
+.end
+
+struct Sha2StreamUpdateRequestView
+  stream             : Sha2Stream
+  input              : ByteSlice
+.end
+
+struct Sha2StreamUpdateResponseView
+  err                : Sha2Error
+.end
+
+struct Sha2StreamFinishRequest
+  stream             : Sha2Stream
+  out_len            : u32
+.end
+
+struct Sha2StreamFinishResponse
+  err                : Sha2Error
+  digest             : Sha2Digest
+.end
+
+struct Sha2StreamFinishRequestView
+  stream             : Sha2Stream
+  output             : MutByteSlice
+.end
+
+struct Sha2StreamFinishResponseView
+  err                : Sha2Error
+  written            : u64
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : Sha2ProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : Sha2AlgInfo)
+.end
+
+fn abi_out_hash_response(resp : Sha2HashResponse)
+.end
+
+fn abi_out_hash_response_view(resp : Sha2HashResponseView)
+.end
+
+fn abi_out_stream_start_response(resp : Sha2StreamStartResponse)
+.end
+
+fn abi_out_stream_finish_response(resp : Sha2StreamFinishResponse)
+.end
+
+fn abi_out_stream_finish_response_view(resp : Sha2StreamFinishResponseView)
+.end
+
+fn abi_out_error(err : Sha2Error)
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn sha2_provider_enumerate()
+.end
+
+fn sha2_provider_query(provider_id : Sha2ProviderId)
+.end
+
+fn sha2_hash(req : Sha2HashRequest)
+.end
+
+fn sha2_hash_view(req : Sha2HashRequestView)
+.end
+
+fn sha2_stream_start(req : Sha2StreamStartRequest)
+.end
+
+fn sha2_stream_update(req : Sha2StreamUpdateRequest)
+.end
+
+fn sha2_stream_update_view(req : Sha2StreamUpdateRequestView)
+.end
+
+fn sha2_stream_finish(req : Sha2StreamFinishRequest)
+.end
+
+fn sha2_stream_finish_view(req : Sha2StreamFinishRequestView)
+.end
+
+fn sha2_stream_destroy(stream : Sha2Stream)
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+fn sha2_out_len(alg : Sha2Alg) -> u32
+  return 0
+.end
+
+fn sha2_block_len(alg : Sha2Alg) -> u32
+  return 0
+.end
+
+fn sha2_default_policy_224() -> Sha2Policy
+  let p : Sha2Policy = Sha2Policy
+  return p
+.end
+
+fn sha2_default_policy_256() -> Sha2Policy
+  let p : Sha2Policy = Sha2Policy
+  return p
+.end
+
+fn sha2_default_policy_384() -> Sha2Policy
+  let p : Sha2Policy = Sha2Policy
+  return p
+.end
+
+fn sha2_default_policy_512() -> Sha2Policy
+  let p : Sha2Policy = Sha2Policy
+  return p
+.end
+
+fn sha2_default_policy_512_224() -> Sha2Policy
+  let p : Sha2Policy = Sha2Policy
+  return p
+.end
+
+fn sha2_default_policy_512_256() -> Sha2Policy
+  let p : Sha2Policy = Sha2Policy
+  return p
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX++
+# ============================================================================
+
+# Providers
+# - Impl enumerate/query + `Sha2ProviderInfo`/`Sha2AlgInfo`.
+# - Remplacer toute sortie "texte" par ABI structs.
+# - Politique de choix provider (software vs hw vs remote) + fallback.
+# - Exposer flags algos supportés (SHA224/SHA256/SHA384/SHA512/SHA512_224/SHA512_256).
+
+# Core SHA-224/256 (32-bit)
+# - Impl SHA-256 compression (SHA-224 = IV différent + truncation):
+#     * parse big-endian u32 words.
+#     * message schedule W[0..63] avec σ0/σ1.
+#     * rounds 0..63 avec constants K[64].
+#     * state (a..h) + Σ0/Σ1, Ch, Maj.
+# - Padding:
+#     * append 0x80, pad zeros to 56 mod 64, append 64-bit length (bits) big-endian.
+# - Streaming:
+#     * buffer partial blocks (64)
+#     * maintain state (8 u32) + total_len bits.
+
+# Core SHA-384/512/512-224/512-256 (64-bit)
+# - Impl SHA-512 compression:
+#     * parse big-endian u64 words.
+#     * message schedule W[0..79] avec σ0/σ1.
+#     * rounds 0..79 avec constants K[80].
+#     * state (a..h) u64.
+# - Padding:
+#     * append 0x80, pad zeros to 112 mod 128, append 128-bit length (bits) big-endian.
+# - Variants:
+#     * SHA-384 = IV différent + truncation 48.
+#     * SHA-512/224 et SHA-512/256 = IV spécifiques + truncation.
+
+# One-shot
+# - Impl `sha2_hash` / `sha2_hash_view`:
+#     * strict_out_len => out_len doit être canonique pour l’algo.
+#     * BufferTooSmall + written.
+#     * output stable.
+
+# Streaming
+# - Impl start/update/finish:
+#     * finish idempotent.
+#     * accept arbitrary chunk sizes.
+#     * finalize padding.
+# - Views update:
+#     * avoid copies when possible.
+
+# Validation / limits
+# - Enforce msg_max / in_max / out_max.
+# - Return MessageTooLarge on overflow.
+
+# Side-channel hardening
+# - constant_time best effort.
+# - memwipe internal state on destroy.
+
+# Tests
+# - NIST vectors:
+#     * SHA-224, SHA-256, SHA-384, SHA-512 KAT.
+#     * SHA-512/224 and SHA-512/256 known vectors.
+# - Properties:
+#     * streaming == one-shot.
+# - Negative:
+#     * out_len invalid, buffer too small.
+# - Fuzz:
+#     * random chunking + random input sizes.
+
+# Bench
+# - microbench one-shot vs streaming + hw accel if present.
+
+.end

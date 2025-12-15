@@ -1,0 +1,703 @@
+# plugins/crypto/host/caps.vitte
+# Capabilities
+# Blocks use `.end` only.
+
+mod plugins.crypto.host.caps
+
+# TODO
+
+.end
+
+# plugins/beryl-crypto/host/caps.vitte
+# Capabilities — host/runtime/provider negotiation — MAX+++
+# Blocks use `.end` only.
+
+module plugins.crypto.host.caps
+
+import std.collections as coll
+
+import plugins.crypto.api.types as t
+
+# ==========================================================================
+# Goals
+#   - Provide a stable, structured capability model used by:
+#       * registry selection policy (software vs hw vs remote)
+#       * provider enumerate/query/select
+#       * algorithm feature gating (views/iovec/streaming/ct)
+#       * runtime ABI level negotiation (struct marshalling, handles)
+#   - This module is HOST/INTERNAL (not part of public API) unless re-exported.
+# ==========================================================================
+
+# ==========================================================================
+# Basic platform descriptors
+# ==========================================================================
+
+enum Endian
+  Little
+  Big
+  Unknown
+.end
+
+enum CpuArch
+  X86
+  X86_64
+  Arm
+  Aarch64
+  RiscV32
+  RiscV64
+  Wasm32
+  Wasm64
+  Unknown
+.end
+
+enum OsKind
+  Linux
+  MacOS
+  Windows
+  FreeBSD
+  OpenBSD
+  NetBSD
+  DragonFly
+  Android
+  IOS
+  Wasm
+  Unknown
+.end
+
+enum SandboxLevel
+  None
+  Partial
+  Strict
+  Unknown
+.end
+
+struct HostIdentity
+  os       : OsKind
+  arch     : CpuArch
+  endian   : Endian
+
+  os_ver   : string
+  arch_ver : string
+.end
+
+# ==========================================================================
+# Bitmask utilities
+# ==========================================================================
+
+type CapsMask = u64
+
+type CapsId = u32
+
+fn caps_mask_has(mask : CapsMask, flag : CapsMask) -> bool
+  if (mask & flag) == flag
+    return true
+  .end
+  return false
+.end
+
+fn caps_mask_any(mask : CapsMask, flags : CapsMask) -> bool
+  if (mask & flags) != 0
+    return true
+  .end
+  return false
+.end
+
+fn caps_mask_set(mask : CapsMask, flag : CapsMask) -> CapsMask
+  return mask | flag
+.end
+
+fn caps_mask_clear(mask : CapsMask, flag : CapsMask) -> CapsMask
+  return mask & (~flag)
+.end
+
+# ==========================================================================
+# Host / CPU features
+# ==========================================================================
+
+# CPU ISA and crypto acceleration (informative).
+# Providers MUST still advertise their own capabilities.
+
+const CPU_FEAT_SSE2        : CapsMask = 1
+const CPU_FEAT_SSE3        : CapsMask = 2
+const CPU_FEAT_SSSE3       : CapsMask = 4
+const CPU_FEAT_SSE41       : CapsMask = 8
+const CPU_FEAT_AVX         : CapsMask = 16
+const CPU_FEAT_AVX2        : CapsMask = 32
+const CPU_FEAT_AVX512F     : CapsMask = 64
+
+const CPU_FEAT_AESNI       : CapsMask = 128
+const CPU_FEAT_PCLMULQDQ   : CapsMask = 256
+const CPU_FEAT_RDRAND      : CapsMask = 512
+const CPU_FEAT_RDSEED      : CapsMask = 1024
+
+const CPU_FEAT_ARM_NEON    : CapsMask = 2048
+const CPU_FEAT_ARM_AES     : CapsMask = 4096
+const CPU_FEAT_ARM_PMULL   : CapsMask = 8192
+const CPU_FEAT_ARM_SHA1    : CapsMask = 16384
+const CPU_FEAT_ARM_SHA2    : CapsMask = 32768
+
+const CPU_FEAT_RISCV_V     : CapsMask = 65536
+
+struct HostCpuCaps
+  feats : CapsMask
+
+  # microarch strings are informational only
+  vendor : string
+  model  : string
+.end
+
+# ==========================================================================
+# Runtime ABI level
+# ==========================================================================
+
+# ABI level is a negotiated contract between runtime and plugin.
+# Increasing ABI level may enable:
+#   - structured ABI marshalling (out structs)
+#   - handle tables (slot+generation)
+#   - zero-copy views
+#   - iovec
+#   - streaming
+
+const ABI_LEVEL_MIN             : u32 = 0
+const ABI_LEVEL_STRUCT_OUT      : u32 = 1
+const ABI_LEVEL_HANDLES_SG      : u32 = 2
+const ABI_LEVEL_VIEWS           : u32 = 3
+const ABI_LEVEL_IOVEC           : u32 = 4
+const ABI_LEVEL_STREAMING       : u32 = 5
+const ABI_LEVEL_SECURE_MEM      : u32 = 6
+const ABI_LEVEL_AUDIT_CHANNEL   : u32 = 7
+
+struct RuntimeAbiCaps
+  abi_level          : u32
+
+  # granular negotiation (for partial runtimes)
+  struct_out         : bool
+  handles_slot_gen   : bool
+
+  views              : bool
+  iovec              : bool
+  streaming          : bool
+
+  secure_memory      : bool
+  audit_channel      : bool
+
+  # concurrency
+  threads            : bool
+  atomics            : bool
+
+  # sandboxing info
+  sandbox            : SandboxLevel
+.end
+
+fn runtime_abi_caps_make(abi_level : u32) -> RuntimeAbiCaps
+  let r : RuntimeAbiCaps = RuntimeAbiCaps
+  r.abi_level = abi_level
+
+  r.struct_out = abi_level >= ABI_LEVEL_STRUCT_OUT
+  r.handles_slot_gen = abi_level >= ABI_LEVEL_HANDLES_SG
+
+  r.views = abi_level >= ABI_LEVEL_VIEWS
+  r.iovec = abi_level >= ABI_LEVEL_IOVEC
+  r.streaming = abi_level >= ABI_LEVEL_STREAMING
+
+  r.secure_memory = abi_level >= ABI_LEVEL_SECURE_MEM
+  r.audit_channel = abi_level >= ABI_LEVEL_AUDIT_CHANNEL
+
+  # conservative defaults
+  r.threads = true
+  r.atomics = true
+
+  r.sandbox = SandboxLevel.Unknown
+  return r
+.end
+
+# ==========================================================================
+# Provider capabilities
+# ==========================================================================
+
+# Provider flags define global properties.
+# These MUST be returned in ProviderInfo/ProviderCaps.
+
+const PROVIDER_FLAG_THREADSAFE          : CapsMask = 1
+const PROVIDER_FLAG_SANDBOXED           : CapsMask = 2
+const PROVIDER_FLAG_REMOTE              : CapsMask = 4
+const PROVIDER_FLAG_HW_ACCEL            : CapsMask = 8
+const PROVIDER_FLAG_SOFTWARE            : CapsMask = 16
+const PROVIDER_FLAG_FIPS                : CapsMask = 32
+const PROVIDER_FLAG_SIDECHANNEL_HARD    : CapsMask = 64
+const PROVIDER_FLAG_CONSTANT_TIME       : CapsMask = 128
+const PROVIDER_FLAG_AUDIT               : CapsMask = 256
+
+const PROVIDER_FLAG_KEYSTORE            : CapsMask = 512
+const PROVIDER_FLAG_WRAP_UNWRAP         : CapsMask = 1024
+
+const PROVIDER_FLAG_VIEWS               : CapsMask = 2048
+const PROVIDER_FLAG_IOVEC               : CapsMask = 4096
+const PROVIDER_FLAG_STREAMING           : CapsMask = 8192
+
+const PROVIDER_FLAG_DETERMINISTIC       : CapsMask = 16384
+
+struct ProviderCaps
+  provider_id   : string
+  provider_name : string
+
+  flags         : CapsMask
+
+  # ABI support expected by provider
+  min_abi_level : u32
+
+  # Optional scoring hints (registry policy)
+  priority      : i32
+
+  # Informational
+  notes         : string
+.end
+
+fn provider_caps_default() -> ProviderCaps
+  let p : ProviderCaps = ProviderCaps
+  p.flags = 0
+  p.min_abi_level = ABI_LEVEL_MIN
+  p.priority = 0
+  p.notes = ""
+  return p
+.end
+
+# ==========================================================================
+# Algorithm capabilities
+# ==========================================================================
+
+# Shared algorithm flags across families.
+
+const ALG_FLAG_ONE_SHOT            : CapsMask = 1
+const ALG_FLAG_STREAMING           : CapsMask = 2
+const ALG_FLAG_VIEWS               : CapsMask = 4
+const ALG_FLAG_IOVEC               : CapsMask = 8
+
+const ALG_FLAG_CONSTANT_TIME       : CapsMask = 16
+const ALG_FLAG_SIDECHANNEL_HARD    : CapsMask = 32
+
+const ALG_FLAG_STRICT_NONCE        : CapsMask = 64
+const ALG_FLAG_NONCE_REUSE_DETECT  : CapsMask = 128
+const ALG_FLAG_NONCE_EXHAUST_DETECT: CapsMask = 256
+
+const ALG_FLAG_AUDIT               : CapsMask = 512
+
+# Limits/shape are family-dependent but kept generic.
+
+struct AlgLimits
+  msg_max    : u64
+  aad_max    : u64
+  out_max    : u64
+
+  # key/nonce/tag sizes as sets/ranges (best-effort)
+  key_min    : u32
+  key_max    : u32
+
+  nonce_min  : u32
+  nonce_max  : u32
+
+  tag_min    : u32
+  tag_max    : u32
+.end
+
+fn alg_limits_default() -> AlgLimits
+  let l : AlgLimits = AlgLimits
+  l.msg_max = 0
+  l.aad_max = 0
+  l.out_max = 0
+
+  l.key_min = 0
+  l.key_max = 0
+  l.nonce_min = 0
+  l.nonce_max = 0
+  l.tag_min = 0
+  l.tag_max = 0
+
+  return l
+.end
+
+struct AlgCaps
+  alg_id      : string
+  family      : string
+
+  flags       : CapsMask
+  limits      : AlgLimits
+
+  # scoring hint within provider
+  priority    : i32
+
+  notes       : string
+.end
+
+fn alg_caps_default() -> AlgCaps
+  let a : AlgCaps = AlgCaps
+  a.flags = 0
+  a.limits = alg_limits_default()
+  a.priority = 0
+  a.notes = ""
+  return a
+.end
+
+# ==========================================================================
+# Policy capability matrix
+# ==========================================================================
+
+# Some providers can only satisfy certain policy combinations.
+# This structure lets registry/host validate a requested policy.
+
+struct PolicyCaps
+  # If true, provider will return deterministic outputs for same inputs
+  deterministic_ok    : bool
+
+  constant_time_ok    : bool
+  sidechannel_hard_ok : bool
+
+  strict_nonce_ok     : bool
+
+  views_ok            : bool
+  iovec_ok            : bool
+  streaming_ok        : bool
+
+  audit_ok            : bool
+
+  secure_memory_ok    : bool
+.end
+
+fn policy_caps_default() -> PolicyCaps
+  let p : PolicyCaps = PolicyCaps
+  p.deterministic_ok = true
+
+  p.constant_time_ok = false
+  p.sidechannel_hard_ok = false
+  p.strict_nonce_ok = false
+
+  p.views_ok = false
+  p.iovec_ok = false
+  p.streaming_ok = false
+
+  p.audit_ok = false
+  p.secure_memory_ok = false
+
+  return p
+.end
+
+# ==========================================================================
+# Combined capability snapshot
+# ==========================================================================
+
+struct HostCaps
+  ident   : HostIdentity
+  cpu     : HostCpuCaps
+  abi     : RuntimeAbiCaps
+
+  # Optional: allow registry to store pre-scored provider list
+  providers : coll.Vec[ProviderCaps]
+.end
+
+fn host_caps_default() -> HostCaps
+  let h : HostCaps = HostCaps
+
+  h.ident = HostIdentity
+  h.ident.os = OsKind.Unknown
+  h.ident.arch = CpuArch.Unknown
+  h.ident.endian = Endian.Unknown
+  h.ident.os_ver = ""
+  h.ident.arch_ver = ""
+
+  h.cpu = HostCpuCaps
+  h.cpu.feats = 0
+  h.cpu.vendor = ""
+  h.cpu.model = ""
+
+  h.abi = runtime_abi_caps_make(ABI_LEVEL_MIN)
+
+  h.providers = coll.Vec[ProviderCaps]
+  return h
+.end
+
+# ==========================================================================
+# Detection hooks (stubs)
+# ==========================================================================
+
+# These hooks are intentionally stubs: implement in runtime bindings.
+# They must be safe to call at startup.
+
+fn host_detect_identity() -> HostIdentity
+  let i : HostIdentity = HostIdentity
+  i.os = OsKind.Unknown
+  i.arch = CpuArch.Unknown
+  i.endian = Endian.Unknown
+  i.os_ver = ""
+  i.arch_ver = ""
+  return i
+.end
+
+fn host_detect_cpu_caps() -> HostCpuCaps
+  let c : HostCpuCaps = HostCpuCaps
+  c.feats = 0
+  c.vendor = ""
+  c.model = ""
+  return c
+.end
+
+fn host_detect_runtime_abi() -> RuntimeAbiCaps
+  # Runtime should set ABI level based on actual feature availability.
+  return runtime_abi_caps_make(ABI_LEVEL_MIN)
+.end
+
+fn host_caps_detect_all() -> HostCaps
+  let h : HostCaps = host_caps_default()
+  h.ident = host_detect_identity()
+  h.cpu = host_detect_cpu_caps()
+  h.abi = host_detect_runtime_abi()
+  return h
+.end
+
+# ==========================================================================
+# Scoring and selection helpers (host-side heuristics)
+# ==========================================================================
+
+# The registry may apply a selection policy:
+#   - prefer providers that satisfy requested policy
+#   - then prefer HW accel
+#   - then prefer CT/sidechannel
+#   - then prefer local (non-remote)
+# This module provides helper scoring; registry can override.
+
+struct SelectPolicy
+  require_threadsafe   : bool
+
+  require_views        : bool
+  require_iovec        : bool
+  require_streaming    : bool
+
+  require_constant_time: bool
+  require_sidechannel  : bool
+
+  prefer_hw            : bool
+  prefer_local         : bool
+
+  # if non-zero, drop providers with min_abi_level > this
+  max_abi_level        : u32
+.end
+
+fn select_policy_default() -> SelectPolicy
+  let p : SelectPolicy = SelectPolicy
+  p.require_threadsafe = false
+
+  p.require_views = false
+  p.require_iovec = false
+  p.require_streaming = false
+
+  p.require_constant_time = false
+  p.require_sidechannel = false
+
+  p.prefer_hw = true
+  p.prefer_local = true
+
+  p.max_abi_level = 0
+  return p
+.end
+
+fn provider_caps_satisfies(p : ProviderCaps, abi : RuntimeAbiCaps, pol : SelectPolicy) -> bool
+  if pol.max_abi_level != 0
+    if p.min_abi_level > pol.max_abi_level
+      return false
+    .end
+  .end
+
+  # runtime ABI must satisfy provider requirements
+  if abi.abi_level < p.min_abi_level
+    return false
+  .end
+
+  if pol.require_threadsafe
+    if not caps_mask_has(p.flags, PROVIDER_FLAG_THREADSAFE)
+      return false
+    .end
+  .end
+
+  if pol.require_views
+    if not caps_mask_has(p.flags, PROVIDER_FLAG_VIEWS)
+      return false
+    .end
+  .end
+
+  if pol.require_iovec
+    if not caps_mask_has(p.flags, PROVIDER_FLAG_IOVEC)
+      return false
+    .end
+  .end
+
+  if pol.require_streaming
+    if not caps_mask_has(p.flags, PROVIDER_FLAG_STREAMING)
+      return false
+    .end
+  .end
+
+  if pol.require_constant_time
+    if not caps_mask_has(p.flags, PROVIDER_FLAG_CONSTANT_TIME)
+      return false
+    .end
+  .end
+
+  if pol.require_sidechannel
+    if not caps_mask_has(p.flags, PROVIDER_FLAG_SIDECHANNEL_HARD)
+      return false
+    .end
+  .end
+
+  return true
+.end
+
+fn provider_score(p : ProviderCaps, pol : SelectPolicy) -> i32
+  let s : i32 = 0
+
+  # base priority hint
+  s += p.priority
+
+  if pol.prefer_hw
+    if caps_mask_has(p.flags, PROVIDER_FLAG_HW_ACCEL)
+      s += 1000
+    .end
+  .end
+
+  if pol.prefer_local
+    if not caps_mask_has(p.flags, PROVIDER_FLAG_REMOTE)
+      s += 200
+    .end
+  .end
+
+  if caps_mask_has(p.flags, PROVIDER_FLAG_CONSTANT_TIME)
+    s += 50
+  .end
+
+  if caps_mask_has(p.flags, PROVIDER_FLAG_SIDECHANNEL_HARD)
+    s += 50
+  .end
+
+  if caps_mask_has(p.flags, PROVIDER_FLAG_SANDBOXED)
+    s += 10
+  .end
+
+  if caps_mask_has(p.flags, PROVIDER_FLAG_AUDIT)
+    s += 5
+  .end
+
+  return s
+.end
+
+struct ProviderChoice
+  ok         : bool
+  provider   : ProviderCaps
+  score      : i32
+
+  reason     : string
+.end
+
+fn choose_best_provider(caps : HostCaps, pol : SelectPolicy) -> ProviderChoice
+  let best : ProviderChoice = ProviderChoice
+  best.ok = false
+  best.score = -2147483648
+  best.reason = "no provider"
+
+  let i : u64 = 0
+  while i < caps.providers.len()
+    let p : ProviderCaps = caps.providers[i]
+
+    if provider_caps_satisfies(p, caps.abi, pol)
+      let s : i32 = provider_score(p, pol)
+      if (not best.ok) or (s > best.score)
+        best.ok = true
+        best.provider = p
+        best.score = s
+        best.reason = "matched"
+      .end
+    .end
+
+    i += 1
+  .end
+
+  return best
+.end
+
+# ==========================================================================
+# Provider/algorithm negotiation helpers
+# ==========================================================================
+
+struct AlgNegotiation
+  ok      : bool
+  alg     : AlgCaps
+  reason  : string
+.end
+
+fn alg_caps_satisfies(a : AlgCaps, abi : RuntimeAbiCaps, pol : SelectPolicy) -> bool
+  # views/iovec/streaming require runtime ABI support too
+  if pol.require_views
+    if not abi.views
+      return false
+    .end
+    if not caps_mask_has(a.flags, ALG_FLAG_VIEWS)
+      return false
+    .end
+  .end
+
+  if pol.require_iovec
+    if not abi.iovec
+      return false
+    .end
+    if not caps_mask_has(a.flags, ALG_FLAG_IOVEC)
+      return false
+    .end
+  .end
+
+  if pol.require_streaming
+    if not abi.streaming
+      return false
+    .end
+    if not caps_mask_has(a.flags, ALG_FLAG_STREAMING)
+      return false
+    .end
+  .end
+
+  if pol.require_constant_time
+    if not caps_mask_has(a.flags, ALG_FLAG_CONSTANT_TIME)
+      return false
+    .end
+  .end
+
+  if pol.require_sidechannel
+    if not caps_mask_has(a.flags, ALG_FLAG_SIDECHANNEL_HARD)
+      return false
+    .end
+  .end
+
+  return true
+.end
+
+# ==========================================================================
+# Canonical family ids (string constants)
+# ==========================================================================
+
+const FAMILY_AEAD   : string = "aead"
+const FAMILY_HASH   : string = "hash"
+const FAMILY_MAC    : string = "mac"
+const FAMILY_SIGN   : string = "sign"
+const FAMILY_KEX    : string = "kex"
+const FAMILY_CIPHER : string = "cipher"
+const FAMILY_RAND   : string = "rand"
+
+# ==========================================================================
+# Debug formatting hooks (stubs)
+# ==========================================================================
+
+fn caps_mask_to_string(mask : CapsMask) -> string
+  # Host may implement a richer formatter.
+  return ""
+.end
+
+fn host_caps_to_string(h : HostCaps) -> string
+  return ""
+.end
+
+.end

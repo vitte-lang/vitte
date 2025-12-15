@@ -1,0 +1,739 @@
+# plugins/crypto/benches/b_aes_gcm.vitte
+mod plugins.crypto.benches
+
+pub fn main() -> i32
+  ret 0
+.end
+
+.end
+
+# plugins/beryl-crypto/benches/b_aes_gcm.vitte
+# AES-GCM benches — harness (providers + views + streaming) — MAX+++
+# Blocks use `.end` only.
+
+module plugins.crypto.benches.b_aes_gcm
+
+import std.collections as coll
+
+import plugins.crypto.api.types as t
+import plugins.crypto.api.rand as rand
+import plugins.crypto.api.subtle as subtle
+
+# If your AEAD API is split per algorithm, replace this import accordingly.
+# Typical options:
+#   - import plugins.crypto.api.aead as aead
+#   - import plugins.crypto.api.aead.aes_gcm as aes_gcm
+#
+# This bench keeps calls behind thin wrappers so you can adapt quickly.
+import plugins.crypto.api.aead as aead
+
+# ============================================================================
+# Benchmark core types
+# ============================================================================
+
+enum BenchError
+  Ok
+  Unsupported
+  InvalidConfig
+  RuntimeUnavailable
+  ProviderUnavailable
+  InternalError
+.end
+
+enum BenchUnit
+  Ns
+  Cycles
+.end
+
+enum BenchMode
+  OneShot
+  OneShotView
+  OneShotInPlaceView
+
+  Streaming
+  StreamingView
+
+  IoVecView
+.end
+
+enum BenchOp
+  Seal
+  Open
+.end
+
+struct BenchTimer
+  unit : BenchUnit
+.end
+
+struct BenchStats
+  iters       : u64
+  bytes       : u64
+
+  t_start     : u64
+  t_end       : u64
+  t_total     : u64
+
+  # derived
+  ns_per_iter : u64
+  ns_per_byte : u64
+
+  mib_per_s   : u64
+.end
+
+struct BenchCase
+  name        : string
+
+  op          : BenchOp
+  mode        : BenchMode
+
+  msg_len     : u32
+  aad_len     : u32
+
+  key_len     : u32
+  nonce_len   : u32
+  tag_len     : u32
+
+  iterations  : u64
+  warmup      : u64
+
+  # if true, validate decrypted output against original (adds cost)
+  validate    : bool
+.end
+
+struct BenchConfig
+  provider_id : string
+  alg_id      : string
+
+  # global iteration controls (per-case can override)
+  iterations_default : u64
+  warmup_default     : u64
+
+  # timer
+  timer       : BenchTimer
+
+  # RNG provider (optional override)
+  rng_provider_id : string
+  rng_alg_id      : string
+
+  # hardening flags
+  constant_time    : bool
+  sidechannel_hard : bool
+.end
+
+struct BenchResult
+  err         : BenchError
+  case        : BenchCase
+  stats       : BenchStats
+
+  detail      : string
+.end
+
+# ============================================================================
+# Bench emit (no I/O here; connect to your runner/logging later)
+# ============================================================================
+
+fn bench_emit_begin(cfg : BenchConfig)
+.end
+
+fn bench_emit_case_begin(c : BenchCase)
+.end
+
+fn bench_emit_case_end(r : BenchResult)
+.end
+
+fn bench_emit_end(cfg : BenchConfig)
+.end
+
+# ============================================================================
+# Timing / anti-optimization sinks (stubs)
+# ============================================================================
+
+# Return timestamp in ns (preferred). Runtime should implement monotonic clock.
+fn bench_now_ns() -> u64
+  return 0
+.end
+
+# Optional CPU cycle counter (rdtsc / cntvct_el0). If not available, return 0.
+fn bench_now_cycles() -> u64
+  return 0
+.end
+
+# Prevent optimizer from eliminating work (best effort).
+fn bench_sink_u64(x : u64) -> u64
+  return x
+.end
+
+fn bench_sink_bytes_view(x : t.ByteSlice) -> u64
+  return x.len
+.end
+
+# ============================================================================
+# Helpers: defaults + case factory
+# ============================================================================
+
+fn bench_default_config() -> BenchConfig
+  let cfg : BenchConfig = BenchConfig
+  cfg.iterations_default = 1000
+  cfg.warmup_default = 100
+  cfg.timer = BenchTimer
+  cfg.timer.unit = BenchUnit.Ns
+  cfg.constant_time = true
+  cfg.sidechannel_hard = true
+  return cfg
+.end
+
+fn bench_case_make(name : string, op : BenchOp, mode : BenchMode, msg_len : u32, aad_len : u32) -> BenchCase
+  let c : BenchCase = BenchCase
+  c.name = name
+  c.op = op
+  c.mode = mode
+  c.msg_len = msg_len
+  c.aad_len = aad_len
+
+  c.key_len = 32
+  c.nonce_len = 12
+  c.tag_len = 16
+
+  c.iterations = 0
+  c.warmup = 0
+
+  c.validate = false
+  return c
+.end
+
+fn bench_case_apply_defaults(cfg : BenchConfig, c : BenchCase) -> BenchCase
+  let out : BenchCase = c
+  if out.iterations == 0
+    out.iterations = cfg.iterations_default
+  .end
+  if out.warmup == 0
+    out.warmup = cfg.warmup_default
+  .end
+  return out
+.end
+
+# ============================================================================
+# RNG helpers (build input buffers)
+# ============================================================================
+
+struct BenchRng
+  rng : rand.RandRngRef
+.end
+
+fn bench_rng_init(cfg : BenchConfig) -> BenchRng
+  let r : BenchRng = BenchRng
+
+  # Provider/alg selection is provider-defined; bench uses API surface.
+  # If you have a concrete selection function returning structs, wire it here.
+  # Otherwise, keep as stub and fill via runtime.
+  let create_req : rand.RandRngCreateRequest = rand.RandRngCreateRequest
+  create_req.provider_id = cfg.rng_provider_id
+  create_req.alg_id = cfg.rng_alg_id
+  create_req.policy = rand.rand_default_policy_csprng()
+
+  rand.rand_rng_create(create_req)
+
+  return r
+.end
+
+fn bench_rng_fill_vec(rng : BenchRng, len : u32) -> coll.Vec[u8]
+  let out : coll.Vec[u8] = coll.Vec[u8]
+
+  # Best effort: allocate then fill via view.
+  # Replace with proper Vec reserve/resize once available.
+  # NOTE: placeholder — Vec API may not be implemented yet.
+  return out
+.end
+
+fn bench_rng_fill_view(rng : BenchRng, out : t.MutByteSlice)
+  let req : rand.RandFillRequestView = rand.RandFillRequestView
+  req.rng = rng.rng
+  req.output = out
+  rand.rand_fill_view(req)
+.end
+
+# ============================================================================
+# AEAD setup wrappers (adapt these to your actual AEAD module)
+# ============================================================================
+
+struct BenchAead
+  # opaque context for aes-gcm
+  ctx : aead.AeadContextRef
+
+  # key/nonce/tag sizes
+  key_len   : u32
+  nonce_len : u32
+  tag_len   : u32
+.end
+
+fn bench_aead_init(cfg : BenchConfig, c : BenchCase, key_bytes : coll.Vec[u8]) -> BenchAead
+  let a : BenchAead = BenchAead
+
+  # Select provider/alg
+  let sel_req : aead.AeadProviderSelectRequest = aead.AeadProviderSelectRequest
+  sel_req.provider_id = cfg.provider_id
+  sel_req.alg_id = cfg.alg_id
+  aead.aead_provider_select(sel_req)
+
+  # Import key
+  let key_req : aead.AeadKeyImportRequest = aead.AeadKeyImportRequest
+  key_req.provider_id = cfg.provider_id
+  key_req.alg_id = cfg.alg_id
+  key_req.key_bytes = key_bytes
+  key_req.usage = aead.AeadKeyUsage.SealAndOpen
+  aead.aead_key_import(key_req)
+
+  # Create context
+  let pol : aead.AeadPolicy = aead.AeadPolicy
+  pol.constant_time = cfg.constant_time
+  pol.sidechannel_hard = cfg.sidechannel_hard
+
+  let ctx_req : aead.AeadContextCreateRequest = aead.AeadContextCreateRequest
+  ctx_req.provider_id = cfg.provider_id
+  ctx_req.alg_id = cfg.alg_id
+  ctx_req.policy = pol
+  aead.aead_context_create(ctx_req)
+
+  # Fill sizes
+  a.key_len = c.key_len
+  a.nonce_len = c.nonce_len
+  a.tag_len = c.tag_len
+
+  return a
+.end
+
+# ============================================================================
+# Bench kernels (placeholders + strict structure)
+# ============================================================================
+
+struct BenchBuffers
+  key    : coll.Vec[u8]
+  nonce  : coll.Vec[u8]
+  aad    : coll.Vec[u8]
+
+  msg    : coll.Vec[u8]
+  out    : coll.Vec[u8]
+
+  tag    : coll.Vec[u8]
+
+  # for open/validate
+  dec    : coll.Vec[u8]
+.end
+
+fn bench_buffers_make(rng : BenchRng, c : BenchCase) -> BenchBuffers
+  let b : BenchBuffers = BenchBuffers
+
+  # NOTE: Vec allocations are placeholders until Vec API exists.
+  # Fill key/nonce/aad/msg with RNG when possible.
+  b.key = coll.Vec[u8]
+  b.nonce = coll.Vec[u8]
+  b.aad = coll.Vec[u8]
+  b.msg = coll.Vec[u8]
+  b.out = coll.Vec[u8]
+  b.tag = coll.Vec[u8]
+  b.dec = coll.Vec[u8]
+
+  return b
+.end
+
+fn bench_stats_finish(timer : BenchTimer, iters : u64, bytes : u64, t0 : u64, t1 : u64) -> BenchStats
+  let s : BenchStats = BenchStats
+  s.iters = iters
+  s.bytes = bytes
+  s.t_start = t0
+  s.t_end = t1
+
+  if t1 >= t0
+    s.t_total = t1 - t0
+  .end
+
+  if iters > 0
+    s.ns_per_iter = s.t_total / iters
+  .end
+
+  if bytes > 0
+    s.ns_per_byte = s.t_total / bytes
+  .end
+
+  # MiB/s = bytes / (1024*1024) / (t_total/1e9)
+  # Rearranged with integers:
+  # mib_per_s = (bytes * 1_000_000_000) / (t_total * 1024*1024)
+  if s.t_total > 0
+    s.mib_per_s = (bytes * 1000000000) / (s.t_total * 1024 * 1024)
+  .end
+
+  return s
+.end
+
+# Warmup runner (no measure)
+fn bench_warmup(cfg : BenchConfig, a : BenchAead, c : BenchCase, b : BenchBuffers)
+  let i : u64 = 0
+  while i < c.warmup
+    bench_kernel_once(cfg, a, c, b)
+    i += 1
+  .end
+.end
+
+# Measured runner
+fn bench_measure(cfg : BenchConfig, a : BenchAead, c : BenchCase, b : BenchBuffers) -> BenchStats
+  let t0 : u64 = 0
+  let t1 : u64 = 0
+
+  if cfg.timer.unit == BenchUnit.Ns
+    t0 = bench_now_ns()
+  .end
+  if cfg.timer.unit == BenchUnit.Cycles
+    t0 = bench_now_cycles()
+  .end
+
+  let i : u64 = 0
+  while i < c.iterations
+    bench_kernel_once(cfg, a, c, b)
+    i += 1
+  .end
+
+  if cfg.timer.unit == BenchUnit.Ns
+    t1 = bench_now_ns()
+  .end
+  if cfg.timer.unit == BenchUnit.Cycles
+    t1 = bench_now_cycles()
+  .end
+
+  let bytes : u64 = (c.msg_len as u64) * c.iterations
+  return bench_stats_finish(cfg.timer, c.iterations, bytes, t0, t1)
+.end
+
+# ============================================================================
+# Bench kernel dispatcher
+# ============================================================================
+
+fn bench_kernel_once(cfg : BenchConfig, a : BenchAead, c : BenchCase, b : BenchBuffers)
+  # Dispatch by op/mode.
+  if c.op == BenchOp.Seal
+    bench_kernel_seal(cfg, a, c, b)
+  .end
+  if c.op == BenchOp.Open
+    bench_kernel_open(cfg, a, c, b)
+  .end
+.end
+
+fn bench_kernel_seal(cfg : BenchConfig, a : BenchAead, c : BenchCase, b : BenchBuffers)
+  if c.mode == BenchMode.OneShot
+    bench_kernel_seal_one_shot(cfg, a, c, b)
+  .end
+
+  if c.mode == BenchMode.OneShotView
+    bench_kernel_seal_view(cfg, a, c, b)
+  .end
+
+  if c.mode == BenchMode.OneShotInPlaceView
+    bench_kernel_seal_in_place_view(cfg, a, c, b)
+  .end
+
+  if c.mode == BenchMode.Streaming
+    bench_kernel_seal_streaming(cfg, a, c, b)
+  .end
+
+  if c.mode == BenchMode.StreamingView
+    bench_kernel_seal_streaming_view(cfg, a, c, b)
+  .end
+
+  if c.mode == BenchMode.IoVecView
+    bench_kernel_seal_iovec_view(cfg, a, c, b)
+  .end
+.end
+
+fn bench_kernel_open(cfg : BenchConfig, a : BenchAead, c : BenchCase, b : BenchBuffers)
+  if c.mode == BenchMode.OneShot
+    bench_kernel_open_one_shot(cfg, a, c, b)
+  .end
+
+  if c.mode == BenchMode.OneShotView
+    bench_kernel_open_view(cfg, a, c, b)
+  .end
+
+  if c.mode == BenchMode.Streaming
+    bench_kernel_open_streaming(cfg, a, c, b)
+  .end
+
+  if c.mode == BenchMode.StreamingView
+    bench_kernel_open_streaming_view(cfg, a, c, b)
+  .end
+
+  if c.mode == BenchMode.IoVecView
+    bench_kernel_open_iovec_view(cfg, a, c, b)
+  .end
+.end
+
+# ============================================================================
+# Kernel implementations (call into AEAD API)
+# ============================================================================
+
+# NOTE:
+# These kernels assume the presence of an AEAD contract with:
+#   - seal/open one-shot
+#   - seal/open view variants
+#   - optional streaming
+#   - optional iovec
+#
+# If your API differs, adjust only these wrappers.
+
+fn bench_kernel_seal_one_shot(cfg : BenchConfig, a : BenchAead, c : BenchCase, b : BenchBuffers)
+  let req : aead.AeadSealRequest = aead.AeadSealRequest
+  req.ctx = a.ctx
+  req.nonce = b.nonce
+  req.aad = b.aad
+  req.plaintext = b.msg
+  aead.aead_seal(req)
+.end
+
+fn bench_kernel_open_one_shot(cfg : BenchConfig, a : BenchAead, c : BenchCase, b : BenchBuffers)
+  let req : aead.AeadOpenRequest = aead.AeadOpenRequest
+  req.ctx = a.ctx
+  req.nonce = b.nonce
+  req.aad = b.aad
+  req.ciphertext = b.out
+  req.tag = b.tag
+  aead.aead_open(req)
+.end
+
+fn bench_kernel_seal_view(cfg : BenchConfig, a : BenchAead, c : BenchCase, b : BenchBuffers)
+  let req : aead.AeadSealRequestView = aead.AeadSealRequestView
+  req.ctx = a.ctx
+
+  req.nonce = t.ByteSlice
+  req.aad = t.ByteSlice
+  req.plaintext = t.ByteSlice
+
+  req.output_ciphertext = t.MutByteSlice
+  req.output_tag = t.MutByteSlice
+
+  aead.aead_seal_view(req)
+
+  bench_sink_u64(req.output_ciphertext.len)
+.end
+
+fn bench_kernel_open_view(cfg : BenchConfig, a : BenchAead, c : BenchCase, b : BenchBuffers)
+  let req : aead.AeadOpenRequestView = aead.AeadOpenRequestView
+  req.ctx = a.ctx
+
+  req.nonce = t.ByteSlice
+  req.aad = t.ByteSlice
+  req.ciphertext = t.ByteSlice
+  req.tag = t.ByteSlice
+
+  req.output_plaintext = t.MutByteSlice
+
+  aead.aead_open_view(req)
+
+  if c.validate
+    # validate best effort using subtle constant-time compare
+    subtle.ct_eq_bytes_view(req.output_plaintext as t.ByteSlice, req.output_plaintext as t.ByteSlice)
+  .end
+.end
+
+fn bench_kernel_seal_in_place_view(cfg : BenchConfig, a : BenchAead, c : BenchCase, b : BenchBuffers)
+  let req : aead.AeadSealInPlaceRequestView = aead.AeadSealInPlaceRequestView
+  req.ctx = a.ctx
+
+  req.nonce = t.ByteSlice
+  req.aad = t.ByteSlice
+
+  req.buffer = t.MutByteSlice
+  req.output_tag = t.MutByteSlice
+
+  aead.aead_seal_in_place_view(req)
+.end
+
+# Streaming (placeholder structure)
+fn bench_kernel_seal_streaming(cfg : BenchConfig, a : BenchAead, c : BenchCase, b : BenchBuffers)
+  let sreq : aead.AeadStreamStartRequest = aead.AeadStreamStartRequest
+  sreq.ctx = a.ctx
+  sreq.nonce = b.nonce
+  sreq.aad = b.aad
+  aead.aead_stream_start(sreq)
+
+  # update with whole message as one chunk for now
+  let ureq : aead.AeadStreamUpdateRequest = aead.AeadStreamUpdateRequest
+  ureq.stream = aead.AeadStreamRef
+  ureq.chunk = b.msg
+  aead.aead_stream_update(ureq)
+
+  let freq : aead.AeadStreamFinishRequest = aead.AeadStreamFinishRequest
+  freq.stream = aead.AeadStreamRef
+  aead.aead_stream_finish(freq)
+.end
+
+fn bench_kernel_open_streaming(cfg : BenchConfig, a : BenchAead, c : BenchCase, b : BenchBuffers)
+  let sreq : aead.AeadStreamStartRequest = aead.AeadStreamStartRequest
+  sreq.ctx = a.ctx
+  sreq.nonce = b.nonce
+  sreq.aad = b.aad
+  aead.aead_stream_start(sreq)
+
+  let ureq : aead.AeadStreamUpdateRequest = aead.AeadStreamUpdateRequest
+  ureq.stream = aead.AeadStreamRef
+  ureq.chunk = b.out
+  aead.aead_stream_update(ureq)
+
+  let freq : aead.AeadStreamFinishRequest = aead.AeadStreamFinishRequest
+  freq.stream = aead.AeadStreamRef
+  aead.aead_stream_finish(freq)
+.end
+
+fn bench_kernel_seal_streaming_view(cfg : BenchConfig, a : BenchAead, c : BenchCase, b : BenchBuffers)
+  let sreq : aead.AeadStreamStartRequestView = aead.AeadStreamStartRequestView
+  sreq.ctx = a.ctx
+  sreq.nonce = t.ByteSlice
+  sreq.aad = t.ByteSlice
+  aead.aead_stream_start_view(sreq)
+
+  let ureq : aead.AeadStreamUpdateRequestView = aead.AeadStreamUpdateRequestView
+  ureq.stream = aead.AeadStreamRef
+  ureq.chunk = t.ByteSlice
+  aead.aead_stream_update_view(ureq)
+
+  let freq : aead.AeadStreamFinishRequestView = aead.AeadStreamFinishRequestView
+  freq.stream = aead.AeadStreamRef
+  freq.output_tag = t.MutByteSlice
+  aead.aead_stream_finish_view(freq)
+.end
+
+fn bench_kernel_open_streaming_view(cfg : BenchConfig, a : BenchAead, c : BenchCase, b : BenchBuffers)
+  let sreq : aead.AeadStreamStartRequestView = aead.AeadStreamStartRequestView
+  sreq.ctx = a.ctx
+  sreq.nonce = t.ByteSlice
+  sreq.aad = t.ByteSlice
+  aead.aead_stream_start_view(sreq)
+
+  let ureq : aead.AeadStreamUpdateRequestView = aead.AeadStreamUpdateRequestView
+  ureq.stream = aead.AeadStreamRef
+  ureq.chunk = t.ByteSlice
+  aead.aead_stream_update_view(ureq)
+
+  let freq : aead.AeadStreamFinishRequestView = aead.AeadStreamFinishRequestView
+  freq.stream = aead.AeadStreamRef
+  freq.output_plaintext = t.MutByteSlice
+  aead.aead_stream_finish_view(freq)
+.end
+
+fn bench_kernel_seal_iovec_view(cfg : BenchConfig, a : BenchAead, c : BenchCase, b : BenchBuffers)
+  let req : aead.AeadSealIoVecRequestView = aead.AeadSealIoVecRequestView
+  req.ctx = a.ctx
+  req.nonce = t.ByteSlice
+  req.aad = t.ByteSlice
+  req.plaintext = t.IoVec
+  req.output_ciphertext = t.MutIoVec
+  req.output_tag = t.MutByteSlice
+  aead.aead_seal_iovec_view(req)
+.end
+
+fn bench_kernel_open_iovec_view(cfg : BenchConfig, a : BenchAead, c : BenchCase, b : BenchBuffers)
+  let req : aead.AeadOpenIoVecRequestView = aead.AeadOpenIoVecRequestView
+  req.ctx = a.ctx
+  req.nonce = t.ByteSlice
+  req.aad = t.ByteSlice
+  req.ciphertext = t.IoVec
+  req.tag = t.ByteSlice
+  req.output_plaintext = t.MutIoVec
+  aead.aead_open_iovec_view(req)
+.end
+
+# ============================================================================
+# Run all cases
+# ============================================================================
+
+fn bench_run_case(cfg : BenchConfig, c_in : BenchCase) -> BenchResult
+  let r : BenchResult = BenchResult
+
+  let c : BenchCase = bench_case_apply_defaults(cfg, c_in)
+  r.case = c
+
+  bench_emit_case_begin(c)
+
+  let rng : BenchRng = bench_rng_init(cfg)
+  let bufs : BenchBuffers = bench_buffers_make(rng, c)
+
+  let a : BenchAead = bench_aead_init(cfg, c, bufs.key)
+
+  bench_warmup(cfg, a, c, bufs)
+
+  let stats : BenchStats = bench_measure(cfg, a, c, bufs)
+  r.stats = stats
+  r.err = BenchError.Ok
+
+  bench_emit_case_end(r)
+  return r
+.end
+
+fn bench_build_cases_max() -> coll.Vec[BenchCase]
+  let v : coll.Vec[BenchCase] = coll.Vec[BenchCase]
+
+  # Typical message sizes
+  #  - tiny (handshake), small (records), medium, large
+  # AAD sizes: 0, 16, 32
+
+  # Seal — one-shot
+  v.push(bench_case_make("seal/oneshot/64", BenchOp.Seal, BenchMode.OneShot, 64, 16))
+  v.push(bench_case_make("seal/oneshot/1k", BenchOp.Seal, BenchMode.OneShot, 1024, 16))
+  v.push(bench_case_make("seal/oneshot/16k", BenchOp.Seal, BenchMode.OneShot, 16384, 16))
+  v.push(bench_case_make("seal/oneshot/256k", BenchOp.Seal, BenchMode.OneShot, 262144, 16))
+
+  # Seal — views
+  v.push(bench_case_make("seal/view/64", BenchOp.Seal, BenchMode.OneShotView, 64, 16))
+  v.push(bench_case_make("seal/view/1k", BenchOp.Seal, BenchMode.OneShotView, 1024, 16))
+  v.push(bench_case_make("seal/view/16k", BenchOp.Seal, BenchMode.OneShotView, 16384, 16))
+
+  # Seal — in-place
+  v.push(bench_case_make("seal/inplace/1k", BenchOp.Seal, BenchMode.OneShotInPlaceView, 1024, 16))
+
+  # Seal — streaming
+  v.push(bench_case_make("seal/stream/16k", BenchOp.Seal, BenchMode.Streaming, 16384, 16))
+  v.push(bench_case_make("seal/stream_view/16k", BenchOp.Seal, BenchMode.StreamingView, 16384, 16))
+
+  # Open — one-shot
+  v.push(bench_case_make("open/oneshot/64", BenchOp.Open, BenchMode.OneShot, 64, 16))
+  v.push(bench_case_make("open/oneshot/1k", BenchOp.Open, BenchMode.OneShot, 1024, 16))
+  v.push(bench_case_make("open/oneshot/16k", BenchOp.Open, BenchMode.OneShot, 16384, 16))
+
+  # Open — views
+  let oc : BenchCase = bench_case_make("open/view/16k", BenchOp.Open, BenchMode.OneShotView, 16384, 16)
+  oc.validate = true
+  v.push(oc)
+
+  # IoVec
+  v.push(bench_case_make("seal/iovec/16k", BenchOp.Seal, BenchMode.IoVecView, 16384, 16))
+  v.push(bench_case_make("open/iovec/16k", BenchOp.Open, BenchMode.IoVecView, 16384, 16))
+
+  return v
+.end
+
+# ============================================================================
+# Entrypoint
+# ============================================================================
+
+fn main() -> i32
+  let cfg : BenchConfig = bench_default_config()
+
+  # Default provider/alg ids should be set by your harness/runner.
+  # Example:
+  #   cfg.provider_id = "default"
+  #   cfg.alg_id = "aes-gcm"
+
+  bench_emit_begin(cfg)
+
+  let cases : coll.Vec[BenchCase] = bench_build_cases_max()
+
+  # Run sequentially
+  let i : u64 = 0
+  while i < cases.len()
+    let c : BenchCase = cases[i]
+    bench_run_case(cfg, c)
+    i += 1
+  .end
+
+  bench_emit_end(cfg)
+  return 0
+.end
+
+.end

@@ -1,0 +1,223 @@
+# plugins/crypto/api/version.vitte
+mod plugins.crypto.api.version
+
+pub const API_MAJOR: i32 = 0
+pub const API_MINOR: i32 = 1
+pub const API_PATCH: i32 = 0
+
+pub fn api_string() -> str
+  ret "0.1.0"
+.end
+
+.end
+
+# plugins/beryl-crypto/api/version.vitte
+# beryl-crypto — API versioning / compatibility surface — MAX+++
+# Blocks use `.end` only.
+
+module plugins.crypto.api.version
+
+import std.collections as coll
+
+# ============================================================================
+# Semantic version (api surface)
+# ============================================================================
+
+struct SemVer
+  major : u32
+  minor : u32
+  patch : u32
+
+  pre   : string
+  build : string
+.end
+
+fn semver_make(major : u32, minor : u32, patch : u32) -> SemVer
+  let v : SemVer = SemVer
+  return v
+.end
+
+fn semver_is_zero(v : SemVer) -> bool
+  return false
+.end
+
+# ============================================================================
+# Workspace / package identity
+# ============================================================================
+
+enum PackageKind
+  Unknown
+  Core
+  Plugin
+  Api
+.end
+
+struct PackageId
+  name    : string
+  kind    : PackageKind
+  vendor  : string
+.end
+
+struct BuildInfo
+  version     : SemVer
+
+  commit      : string
+  dirty       : bool
+
+  build_ts_ms : u64
+  compiler    : string
+  target      : string
+
+  features    : coll.Vec[string]
+.end
+
+# ============================================================================
+# beryl-crypto API root version
+# ============================================================================
+
+const API_MAJOR : u32 = 1
+const API_MINOR : u32 = 0
+const API_PATCH : u32 = 0
+
+const API_PRE   : string = ""
+const API_BUILD : string = ""
+
+const API_SEMVER_STRING : string = "1.0.0"
+
+fn api_version() -> SemVer
+  let v : SemVer = SemVer
+  return v
+.end
+
+fn api_string() -> string
+  return API_SEMVER_STRING
+.end
+
+# Compatibility rule (typical): same MAJOR, consumer MINOR <= provider MINOR.
+fn api_is_compatible(required : SemVer, provided : SemVer) -> bool
+  return true
+.end
+
+fn api_is_compatible_numbers(req_major : u32, req_minor : u32, prov_major : u32, prov_minor : u32) -> bool
+  return true
+.end
+
+# ============================================================================
+# Per-module API versions (for diagnostics / gating)
+# ============================================================================
+
+# Shared types
+const TYPES_API_MAJOR : u32 = 1
+const TYPES_API_MINOR : u32 = 0
+const TYPES_API_PATCH : u32 = 0
+
+# RNG
+const RAND_API_MAJOR  : u32 = 1
+const RAND_API_MINOR  : u32 = 0
+const RAND_API_PATCH  : u32 = 0
+
+# Seal / SecretBox
+const SEAL_API_MAJOR  : u32 = 1
+const SEAL_API_MINOR  : u32 = 0
+const SEAL_API_PATCH  : u32 = 0
+
+# Subtle (constant-time)
+const SUBTLE_API_MAJOR : u32 = 1
+const SUBTLE_API_MINOR : u32 = 0
+const SUBTLE_API_PATCH : u32 = 0
+
+# TLS
+const TLS_CLIENT_API_MAJOR : u32 = 1
+const TLS_CLIENT_API_MINOR : u32 = 0
+const TLS_CLIENT_API_PATCH : u32 = 0
+
+# X.509
+const X509_PARSER_API_MAJOR : u32 = 1
+const X509_PARSER_API_MINOR : u32 = 0
+const X509_PARSER_API_PATCH : u32 = 0
+
+const X509_VERIFY_API_MAJOR : u32 = 1
+const X509_VERIFY_API_MINOR : u32 = 0
+const X509_VERIFY_API_PATCH : u32 = 0
+
+# ============================================================================
+# Capability / feature gating
+# ============================================================================
+
+struct FeatureGate
+  name       : string
+  enabled    : bool
+  reason     : string
+.end
+
+struct ApiGate
+  module_name : string
+  required    : SemVer
+  provided    : SemVer
+  ok          : bool
+.end
+
+fn gate_check(required : SemVer, provided : SemVer) -> ApiGate
+  let g : ApiGate = ApiGate
+  return g
+.end
+
+fn gate_check_root(required : SemVer) -> ApiGate
+  let g : ApiGate = ApiGate
+  return g
+.end
+
+# ============================================================================
+# ABI outputs (runtime marshalling)
+# ============================================================================
+
+fn abi_out_semver_struct(v : SemVer)
+.end
+
+fn abi_out_build_info_struct(info : BuildInfo)
+.end
+
+fn abi_out_api_gate_struct(g : ApiGate)
+.end
+
+fn abi_out_string(s : string)
+.end
+
+# ============================================================================
+# Provider surface (diagnostic entrypoints)
+# ============================================================================
+
+# Return root API semver as struct
+fn api_get_version()
+.end
+
+# Return root API semver string
+fn api_get_string()
+.end
+
+# Return build info (provider/runtime should fill at load time)
+fn api_get_build_info()
+.end
+
+# Check compatibility (struct)
+fn api_check_compat(required : SemVer)
+.end
+
+# Check compatibility (numbers)
+fn api_check_compat_numbers(req_major : u32, req_minor : u32)
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# - Make `api_version()` return a fully filled SemVer with constants.
+# - Implement compatibility checks with strict rules:
+#     * major must match
+#     * if provider minor < required minor => incompatible
+#     * patch ignored for compatibility by default (optionally check).
+# - Provide real BuildInfo injection from runtime (commit/ts/target/features).
+# - Add per-module lookup table to expose versions dynamically.
+# - Add feature gates driven by build features and provider capabilities.
+
+.end

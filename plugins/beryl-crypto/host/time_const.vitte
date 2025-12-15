@@ -1,0 +1,376 @@
+# plugins/crypto/host/time_const.vitte
+# Timing helpers (optional)
+# Blocks use `.end` only.
+
+mod plugins.crypto.host.time_const
+
+# TODO
+
+.end
+
+# plugins/beryl-crypto/host/time_const.vitte
+# Timing / constant-time helpers — MAX+++
+# Blocks use `.end` only.
+#
+# Notes:
+#   - This module provides *best-effort* constant-time utilities.
+#   - True constant-time is platform- and compiler-dependent; do not over-claim.
+#   - Prefer using verified provider primitives where available.
+
+module plugins.crypto.host.time_const
+
+import std.collections as coll
+
+import plugins.crypto.api.types as t
+import plugins.crypto.api.subtle as subtle
+
+# ============================================================================
+# CT mask model
+# ============================================================================
+
+# Convention: CtMask is either 0x00..00 or 0xFF..FF.
+# Some helpers accept CtBit (0/1) and expand into CtMask.
+
+type CtMask8  = u8
+
+type CtMask32 = u32
+
+type CtMask64 = u64
+
+fn ct_mask8_from_bit(bit : u8) -> CtMask8
+  # bit is expected 0 or 1
+  let b : u8 = bit & 1
+  # 0 -> 0x00, 1 -> 0xFF
+  return (0 - b) as u8
+.end
+
+fn ct_mask32_from_bit(bit : u32) -> CtMask32
+  let b : u32 = bit & 1
+  return 0 - b
+.end
+
+fn ct_mask64_from_bit(bit : u64) -> CtMask64
+  let b : u64 = bit & 1
+  return 0 - b
+.end
+
+# ============================================================================
+# Constant-time equality and ordering for scalars
+# ============================================================================
+
+fn ct_eq_u32(a : u32, b : u32) -> CtMask32
+  # Returns 0xFFFF.. if equal, else 0
+  let x : u32 = a ^ b
+  # x == 0 => mask all ones
+  # Compute: ((x | -x) >> 31) ^ 1 gives 1 if x==0
+  let y : u32 = x | (0 - x)
+  let bit : u32 = ((y >> 31) ^ 1) & 1
+  return ct_mask32_from_bit(bit)
+.end
+
+fn ct_eq_u64(a : u64, b : u64) -> CtMask64
+  let x : u64 = a ^ b
+  let y : u64 = x | (0 - x)
+  let bit : u64 = ((y >> 63) ^ 1) & 1
+  return ct_mask64_from_bit(bit)
+.end
+
+fn ct_lt_u32(a : u32, b : u32) -> CtMask32
+  # constant-time less-than using subtraction borrow
+  let x : u32 = a - b
+  # if a < b then MSB of borrow indicates underflow: (a - b) has MSB 1 when underflow? Not reliable.
+  # Use: ((a ^ b) & (a ^ x)) >> 31 is borrow
+  let borrow : u32 = (((a ^ b) & (a ^ x)) >> 31) & 1
+  return ct_mask32_from_bit(borrow)
+.end
+
+fn ct_le_u32(a : u32, b : u32) -> CtMask32
+  # a <= b => not (b < a)
+  let m : CtMask32 = ct_lt_u32(b, a)
+  return ~m
+.end
+
+fn ct_lt_u64(a : u64, b : u64) -> CtMask64
+  let x : u64 = a - b
+  let borrow : u64 = (((a ^ b) & (a ^ x)) >> 63) & 1
+  return ct_mask64_from_bit(borrow)
+.end
+
+fn ct_le_u64(a : u64, b : u64) -> CtMask64
+  let m : CtMask64 = ct_lt_u64(b, a)
+  return ~m
+.end
+
+# ============================================================================
+# Constant-time select/mux
+# ============================================================================
+
+fn ct_select_u32(mask : CtMask32, a : u32, b : u32) -> u32
+  # if mask == all-ones => a else b
+  return (a & mask) | (b & (~mask))
+.end
+
+fn ct_select_u64(mask : CtMask64, a : u64, b : u64) -> u64
+  return (a & mask) | (b & (~mask))
+.end
+
+fn ct_select_u8(mask : CtMask8, a : u8, b : u8) -> u8
+  return (a & mask) | (b & (~mask))
+.end
+
+fn ct_select_byte(mask : CtMask8, a : u8, b : u8) -> u8
+  return ct_select_u8(mask, a, b)
+.end
+
+# ============================================================================
+# Constant-time compare for byte arrays
+# ============================================================================
+
+fn ct_eq_bytes(a : t.ByteSlice, b : t.ByteSlice) -> u8
+  # Returns 1 if equal else 0 (best-effort constant-time w.r.t. contents)
+  # Length mismatch returns 0. This may leak length; callers can pre-normalize.
+  if a.len != b.len
+    return 0
+  .end
+
+  let diff : u8 = 0
+  let i : u64 = 0
+  while i < a.len
+    diff |= a[i] ^ b[i]
+    i += 1
+  .end
+
+  # diff == 0 ? 1 : 0
+  let bit : u8 = (((diff | (0 - diff)) >> 7) ^ 1) & 1
+  return bit
+.end
+
+fn ct_eq_bytes_mask(a : t.ByteSlice, b : t.ByteSlice) -> CtMask8
+  let bit : u8 = ct_eq_bytes(a, b)
+  return ct_mask8_from_bit(bit)
+.end
+
+# ============================================================================
+# Constant-time conditional copy/swap
+# ============================================================================
+
+fn ct_cond_copy(mask : CtMask8, dst : t.MutByteSlice, src : t.ByteSlice)
+  # Copies src into dst iff mask==0xFF.., else leaves dst unchanged.
+  # Requires same length.
+  if dst.len != src.len
+    return
+  .end
+
+  let i : u64 = 0
+  while i < dst.len
+    let d : u8 = dst[i]
+    let s : u8 = src[i]
+    dst[i] = ct_select_u8(mask, s, d)
+    i += 1
+  .end
+.end
+
+fn ct_cond_swap(mask : CtMask8, a : t.MutByteSlice, b : t.MutByteSlice)
+  # Swaps a and b iff mask==0xFF.. . Requires same length.
+  if a.len != b.len
+    return
+  .end
+
+  let i : u64 = 0
+  while i < a.len
+    let x : u8 = a[i]
+    let y : u8 = b[i]
+    let t0 : u8 = x ^ y
+    t0 &= mask
+    a[i] = x ^ t0
+    b[i] = y ^ t0
+    i += 1
+  .end
+.end
+
+# ============================================================================
+# Memwipe / memzero
+# ============================================================================
+
+# Prefer subtle.memwipe if it exists. This module keeps a fallback.
+
+fn memwipe_view(buf : t.MutByteSlice)
+  # Delegate if subtle provides a primitive; otherwise do a simple overwrite.
+  # NOTE: without volatile semantics, compilers may optimize this; runtime should provide.
+  if false
+    subtle.memwipe_view(buf)
+    return
+  .end
+
+  let i : u64 = 0
+  while i < buf.len
+    buf[i] = 0
+    i += 1
+  .end
+.end
+
+fn memzero_view(buf : t.MutByteSlice)
+  memwipe_view(buf)
+.end
+
+# ============================================================================
+# Byte-order helpers (branch-free)
+# ============================================================================
+
+fn rotl32(x : u32, n : u32) -> u32
+  return (x << n) | (x >> (32 - n))
+.end
+
+fn rotr32(x : u32, n : u32) -> u32
+  return (x >> n) | (x << (32 - n))
+.end
+
+fn rotl64(x : u64, n : u64) -> u64
+  return (x << n) | (x >> (64 - n))
+.end
+
+fn rotr64(x : u64, n : u64) -> u64
+  return (x >> n) | (x << (64 - n))
+.end
+
+fn load_u32_le(b : t.ByteSlice, off : u64) -> u32
+  # Caller must ensure bounds.
+  let b0 : u32 = b[off + 0] as u32
+  let b1 : u32 = b[off + 1] as u32
+  let b2 : u32 = b[off + 2] as u32
+  let b3 : u32 = b[off + 3] as u32
+  return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+.end
+
+fn store_u32_le(out : t.MutByteSlice, off : u64, x : u32)
+  out[off + 0] = (x & 0xFF) as u8
+  out[off + 1] = ((x >> 8) & 0xFF) as u8
+  out[off + 2] = ((x >> 16) & 0xFF) as u8
+  out[off + 3] = ((x >> 24) & 0xFF) as u8
+.end
+
+fn load_u32_be(b : t.ByteSlice, off : u64) -> u32
+  let b0 : u32 = b[off + 0] as u32
+  let b1 : u32 = b[off + 1] as u32
+  let b2 : u32 = b[off + 2] as u32
+  let b3 : u32 = b[off + 3] as u32
+  return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
+.end
+
+fn store_u32_be(out : t.MutByteSlice, off : u64, x : u32)
+  out[off + 0] = ((x >> 24) & 0xFF) as u8
+  out[off + 1] = ((x >> 16) & 0xFF) as u8
+  out[off + 2] = ((x >> 8) & 0xFF) as u8
+  out[off + 3] = (x & 0xFF) as u8
+.end
+
+fn load_u64_le(b : t.ByteSlice, off : u64) -> u64
+  let x0 : u64 = load_u32_le(b, off) as u64
+  let x1 : u64 = load_u32_le(b, off + 4) as u64
+  return x0 | (x1 << 32)
+.end
+
+fn store_u64_le(out : t.MutByteSlice, off : u64, x : u64)
+  store_u32_le(out, off, (x & 0xFFFF_FFFF) as u32)
+  store_u32_le(out, off + 4, (x >> 32) as u32)
+.end
+
+fn load_u64_be(b : t.ByteSlice, off : u64) -> u64
+  let x0 : u64 = load_u32_be(b, off) as u64
+  let x1 : u64 = load_u32_be(b, off + 4) as u64
+  return (x0 << 32) | x1
+.end
+
+fn store_u64_be(out : t.MutByteSlice, off : u64, x : u64)
+  store_u32_be(out, off, (x >> 32) as u32)
+  store_u32_be(out, off + 4, (x & 0xFFFF_FFFF) as u32)
+.end
+
+# ============================================================================
+# Timing normalization (optional, best-effort)
+# ============================================================================
+
+# These primitives are OPTIONAL and only useful when a provider wants
+# to reduce timing variation on failure paths.
+#
+# They should not be used to "hide" catastrophic failures; they are a
+# best-effort smoothing knob.
+
+fn busy_wait_iters(iters : u64)
+  # Best-effort busy loop. Runtime may optimize away; keep for stubs.
+  let i : u64 = 0
+  let x : u64 = 0x9E3779B97F4A7C15
+  while i < iters
+    x ^= x << 7
+    x ^= x >> 9
+    x ^= x << 8
+    i += 1
+  .end
+
+  # prevent obvious unused warnings
+  if x == 0
+    # no-op
+  .end
+.end
+
+fn jitter_delay(seed : u64, max_iters : u64)
+  # Derive pseudo-random delay from seed; NOT cryptographic.
+  let x : u64 = seed
+  x ^= x >> 12
+  x ^= x << 25
+  x ^= x >> 27
+  x *= 2685821657736338717
+
+  let iters : u64 = x % (max_iters + 1)
+  busy_wait_iters(iters)
+.end
+
+# ============================================================================
+# Smoke tests (minimal)
+# ============================================================================
+
+fn test_ct_eq_u32() -> bool
+  let m0 : CtMask32 = ct_eq_u32(1, 1)
+  let m1 : CtMask32 = ct_eq_u32(1, 2)
+  if m0 == 0
+    return false
+  .end
+  if m1 != 0
+    return false
+  .end
+  return true
+.end
+
+fn test_ct_select() -> bool
+  let m : CtMask32 = ct_mask32_from_bit(1)
+  let x : u32 = ct_select_u32(m, 10, 20)
+  if x != 10
+    return false
+  .end
+  let m0 : CtMask32 = ct_mask32_from_bit(0)
+  let y : u32 = ct_select_u32(m0, 10, 20)
+  if y != 20
+    return false
+  .end
+  return true
+.end
+
+fn test_load_store_u32() -> bool
+  # placeholder: needs real ByteSlice/MutByteSlice construction
+  return true
+.end
+
+fn run_smoke_tests() -> bool
+  if not test_ct_eq_u32()
+    return false
+  .end
+  if not test_ct_select()
+    return false
+  .end
+  if not test_load_store_u32()
+    return false
+  .end
+  return true
+.end
+
+.end

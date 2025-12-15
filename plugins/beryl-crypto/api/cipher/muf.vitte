@@ -1,0 +1,795 @@
+
+
+# plugins/beryl-crypto/api/cipher/muf.vitte
+# Muffin (.muf) manifest schema + decoding contract for the Cipher plugin layer — MAX++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Modèle de données ultra complet:
+#       * document Muffin (AST) + valeurs typées + spans
+#       * décodage vers schéma manifest générique (package/workspace/targets/deps/features)
+#       * validation (sans I/O)
+#       * schéma convenience spécifique "cipher" (block/stream, modes, policies, presets)
+#   - Pas de parsing réel ici: contrats + stubs.
+#
+# Conventions:
+#   - Le runtime/tooling implémente le parser .muf + marshalling ABI.
+#   - Les enums de convenience servent à stabiliser les manifests cross-toolchain.
+
+module plugins.crypto.api.cipher.muf
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const MUF_API_VERSION_MAJOR : u32 = 1
+const MUF_API_VERSION_MINOR : u32 = 0
+const MUF_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Source location / diagnostics
+# ============================================================================
+
+struct MufPos
+  line : u32
+  col  : u32
+.end
+
+struct MufSpan
+  file  : string
+  start : MufPos
+  end   : MufPos
+.end
+
+enum MufSeverity
+  Info
+  Warning
+  Error
+.end
+
+enum MufDiagCode
+  Unknown
+  ParseError
+
+  DuplicateKey
+  UnknownKey
+  TypeMismatch
+  MissingRequired
+
+  InvalidValue
+  InvalidPath
+  InvalidVersion
+  InvalidTarget
+  InvalidDependency
+  InvalidFeature
+  InvalidPlatform
+  InvalidToolchain
+
+  CyclicDependency
+
+  # Cipher specific
+  InvalidCipherAlg
+  InvalidCipherMode
+  InvalidCipherPreset
+  InvalidCipherPolicy
+  InvalidIvPolicy
+  InvalidNoncePolicy
+  InvalidKeyPolicy
+  InvalidProviderPolicy
+.end
+
+struct MufDiagnostic
+  severity : MufSeverity
+  code     : MufDiagCode
+  message  : string
+  span     : MufSpan
+
+  hint     : string
+  note     : string
+.end
+
+struct MufDiagnostics
+  items : coll.Vec[MufDiagnostic]
+.end
+
+# ============================================================================
+# Generic result container (data-first)
+# ============================================================================
+
+struct MufResultValue
+  ok        : bool
+  err_code  : MufDiagCode
+  err_msg   : string
+.end
+
+# ============================================================================
+# Core scalar types
+# ============================================================================
+
+enum MufValueKind
+  Null
+  Bool
+  Int
+  Float
+  String
+  DateTime
+  Array
+  Table
+.end
+
+struct MufInt
+  value : i64
+.end
+
+struct MufFloat
+  value : f64
+.end
+
+struct MufString
+  value : string
+.end
+
+struct MufBool
+  value : bool
+.end
+
+struct MufDateTime
+  iso : string
+.end
+
+# ============================================================================
+# Composite values
+# ============================================================================
+
+struct MufKey
+  text : string
+.end
+
+struct MufKeyPath
+  segments : coll.Vec[MufKey]
+.end
+
+struct MufArray
+  items : coll.Vec[MufValue]
+.end
+
+struct MufTableEntry
+  key   : MufKey
+  value : MufValue
+  span  : MufSpan
+.end
+
+struct MufTable
+  entries : coll.Vec[MufTableEntry]
+.end
+
+struct MufValue
+  kind : MufValueKind
+
+  b    : MufBool
+  i    : MufInt
+  f    : MufFloat
+  s    : MufString
+  dt   : MufDateTime
+
+  arr  : MufArray
+  tab  : MufTable
+
+  span : MufSpan
+.end
+
+struct MufDocument
+  root        : MufTable
+  diagnostics : MufDiagnostics
+.end
+
+# ============================================================================
+# Schema: workspace/package/targets
+# ============================================================================
+
+enum MufLicenseKind
+  Unknown
+  MIT
+  Apache2
+  BSD2
+  BSD3
+  MPL2
+  GPL3
+  LGPL3
+  Proprietary
+.end
+
+struct MufLicense
+  kind : MufLicenseKind
+  text : string
+  file : string
+.end
+
+struct MufRepository
+  url : string
+  homepage : string
+  issues : string
+.end
+
+struct MufAuthor
+  name  : string
+  email : string
+  url   : string
+.end
+
+struct MufPackage
+  name        : string
+  version     : string
+  description : string
+
+  license     : MufLicense
+  repository  : MufRepository
+  authors     : coll.Vec[MufAuthor]
+
+  edition     : string
+  keywords    : coll.Vec[string]
+  categories  : coll.Vec[string]
+
+  readme      : string
+  homepage    : string
+
+  publish     : bool
+.end
+
+struct MufWorkspace
+  members   : coll.Vec[string]
+  exclude   : coll.Vec[string]
+  resolver  : string
+.end
+
+enum MufTargetKind
+  Lib
+  Bin
+  Plugin
+  Tool
+  Test
+  Bench
+  Example
+.end
+
+enum MufLinkMode
+  Static
+  Dynamic
+.end
+
+enum MufOptLevel
+  O0
+  O1
+  O2
+  O3
+  Os
+  Oz
+.end
+
+enum MufDebugInfo
+  None
+  Line
+  Full
+.end
+
+enum MufSanitizer
+  None
+  Address
+  Thread
+  Memory
+  Undefined
+.end
+
+enum MufBuildMode
+  Debug
+  Release
+  Profile
+.end
+
+enum MufOs
+  Any
+  Linux
+  MacOS
+  Windows
+  FreeBSD
+  NetBSD
+  OpenBSD
+  DragonFly
+  IOS
+  Android
+  WASI
+.end
+
+enum MufArch
+  Any
+  X86
+  X86_64
+  Arm
+  Aarch64
+  RiscV64
+  Wasm32
+  Wasm64
+.end
+
+enum MufAbi
+  Any
+  Gnu
+  Musl
+  Msvc
+  Android
+  Eabi
+.end
+
+struct MufPlatform
+  os   : MufOs
+  arch : MufArch
+  abi  : MufAbi
+.end
+
+struct MufCfgExpr
+  expr : string
+.end
+
+struct MufPath
+  path : string
+.end
+
+struct MufTargetSource
+  main     : MufPath
+  sources  : coll.Vec[MufPath]
+  includes : coll.Vec[MufPath]
+.end
+
+struct MufTargetArtifacts
+  out_dir     : MufPath
+  out_name    : string
+  link_mode   : MufLinkMode
+  emit_map    : bool
+  emit_debug  : bool
+.end
+
+struct MufTarget
+  name        : string
+  kind        : MufTargetKind
+
+  source      : MufTargetSource
+  artifacts   : MufTargetArtifacts
+
+  cfg         : MufCfgExpr
+  platform    : MufPlatform
+
+  features    : coll.Vec[string]
+  deps        : coll.Vec[string]
+
+  opt_level   : MufOptLevel
+  debug_info  : MufDebugInfo
+  lto         : bool
+  sanitizer   : MufSanitizer
+  strip       : bool
+
+  link_args   : coll.Vec[string]
+  defines     : coll.Vec[string]
+.end
+
+# ============================================================================
+# Schema: dependencies / features
+# ============================================================================
+
+enum MufDepKind
+  Normal
+  Dev
+  Build
+.end
+
+enum MufDepSourceKind
+  Path
+  Git
+  Registry
+  LocalArchive
+  System
+.end
+
+struct MufDepGit
+  url    : string
+  rev    : string
+  tag    : string
+  branch : string
+  subdir : string
+.end
+
+struct MufDepRegistry
+  name        : string
+  version_req : string
+.end
+
+struct MufDepPath
+  path : MufPath
+.end
+
+struct MufDepArchive
+  path   : MufPath
+  sha256 : string
+.end
+
+struct MufDepSystem
+  name        : string
+  pkg_config  : string
+  min_version : string
+.end
+
+struct MufDependency
+  name      : string
+  kind      : MufDepKind
+  optional  : bool
+
+  source_kind : MufDepSourceKind
+
+  git       : MufDepGit
+  reg       : MufDepRegistry
+  path      : MufDepPath
+  archive   : MufDepArchive
+  system    : MufDepSystem
+
+  features  : coll.Vec[string]
+  default_features : bool
+
+  cfg       : MufCfgExpr
+  platform  : MufPlatform
+.end
+
+enum MufFeaturePolicy
+  Default
+  OptIn
+  OptOut
+.end
+
+struct MufFeature
+  name       : string
+  enabled_by_default : bool
+  policy     : MufFeaturePolicy
+
+  implies    : coll.Vec[string]
+  deps       : coll.Vec[string]
+  cfg        : MufCfgExpr
+.end
+
+struct MufFeatureSet
+  features   : coll.Vec[MufFeature]
+.end
+
+# ============================================================================
+# Schema: toolchain / profiles
+# ============================================================================
+
+struct MufToolchain
+  compiler      : string
+  linker        : string
+  archiver      : string
+
+  sysroot       : MufPath
+  target_triple : string
+
+  env           : coll.Vec[string]
+  paths         : coll.Vec[MufPath]
+.end
+
+struct MufProfile
+  name          : string
+  mode          : MufBuildMode
+
+  opt_level     : MufOptLevel
+  debug_info    : MufDebugInfo
+
+  lto           : bool
+  strip         : bool
+  panic_abort   : bool
+
+  sanitizer     : MufSanitizer
+  incremental   : bool
+
+  codegen_units : u32
+.end
+
+struct MufPublish
+  registry          : string
+  allow_prerelease  : bool
+  sign              : bool
+  checksum          : bool
+.end
+
+# ============================================================================
+# Schema: full manifest (decoded)
+# ============================================================================
+
+struct MufManifest
+  package       : MufPackage
+  workspace     : MufWorkspace
+
+  toolchain     : MufToolchain
+  profiles      : coll.Vec[MufProfile]
+
+  dependencies  : coll.Vec[MufDependency]
+  features      : MufFeatureSet
+
+  targets       : coll.Vec[MufTarget]
+  publish       : MufPublish
+
+  diagnostics   : MufDiagnostics
+.end
+
+# ============================================================================
+# Cipher convenience schema
+# ============================================================================
+
+# Algorithms used by manifests (decoded from strings by tooling).
+
+enum MufCipherAlg
+  Aes
+  ChaCha20
+.end
+
+enum MufCipherFamily
+  Block
+  Stream
+.end
+
+enum MufCipherMode
+  # Block cipher modes
+  Ecb
+  Cbc
+  Ctr
+  Xts
+
+  # Stream cipher mode (for ChaCha20)
+  XorStream
+.end
+
+enum MufCipherDirection
+  Encrypt
+  Decrypt
+.end
+
+enum MufCipherBackendPreference
+  Auto
+  Software
+  Hardware
+  Remote
+.end
+
+enum MufCipherIvPolicy
+  # Caller supplies IV and manages uniqueness/entropy.
+  CallerManaged
+
+  # Provider generates IV (requires API to return IV).
+  ProviderRandom
+
+  # Provider maintains monotonic counter IV (CTR-like), requires stored state.
+  MonotonicCounter
+.end
+
+enum MufCipherNoncePolicy
+  # For stream ciphers / CTR: enforce per-key nonce uniqueness.
+  CallerManaged
+  StrictUnique
+  MonotonicCounter
+  ProviderRandom
+.end
+
+enum MufCipherKeyPolicy
+  CallerKey
+  ProviderGenerated
+  ProviderKms
+.end
+
+struct MufCipherLimits
+  key_max        : u32
+  iv_max         : u32
+  nonce_max      : u32
+
+  msg_max        : u64
+
+  # streaming constraints
+  chunk_max      : u32
+.end
+
+struct MufCipherPolicy
+  alg            : MufCipherAlg
+  family         : MufCipherFamily
+  mode           : MufCipherMode
+  direction      : MufCipherDirection
+
+  prefer         : MufCipherBackendPreference
+
+  # Key/IV/nonce management
+  key_policy     : MufCipherKeyPolicy
+  iv_policy      : MufCipherIvPolicy
+  nonce_policy   : MufCipherNoncePolicy
+
+  # Mode-specific validation knobs
+  strict_lengths : bool
+  allow_ecb      : bool
+  allow_streaming : bool
+
+  # Padding (CBC/ECB): string surface decoded into enum by tooling.
+  padding        : string
+
+  # Hardening
+  constant_time   : bool
+  sidechannel_hard : bool
+.end
+
+struct MufCipherProviderOverride
+  provider_id    : string
+  priority       : i32
+  required_flags : u32
+.end
+
+struct MufCipherModule
+  name           : string
+  path           : MufPath
+  enabled        : bool
+
+  alg            : MufCipherAlg
+  family         : MufCipherFamily
+  mode           : MufCipherMode
+
+  feature        : string
+
+  policy         : MufCipherPolicy
+  limits         : MufCipherLimits
+.end
+
+struct MufCipherPreset
+  name           : string
+  description    : string
+
+  policy         : MufCipherPolicy
+  provider       : MufCipherProviderOverride
+
+  modules        : coll.Vec[MufCipherModule]
+.end
+
+struct MufCipherManifest
+  manifest        : MufManifest
+
+  cipher_modules  : coll.Vec[MufCipherModule]
+  presets         : coll.Vec[MufCipherPreset]
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_document(doc : MufDocument)
+.end
+
+fn abi_out_manifest(man : MufManifest)
+.end
+
+fn abi_out_cipher_manifest(man : MufCipherManifest)
+.end
+
+fn abi_out_diagnostics(diags : MufDiagnostics)
+.end
+
+fn abi_out_diag(diag : MufDiagnostic)
+.end
+
+# ============================================================================
+# Parser/decoder surface (stubs)
+# ============================================================================
+
+fn muf_parse(text : string) -> MufDocument
+  let doc : MufDocument = MufDocument
+  return doc
+.end
+
+fn muf_decode(doc : MufDocument) -> MufManifest
+  let m : MufManifest = MufManifest
+  return m
+.end
+
+fn muf_decode_cipher(doc : MufDocument) -> MufCipherManifest
+  let m : MufCipherManifest = MufCipherManifest
+  return m
+.end
+
+fn muf_validate(man : MufManifest) -> MufDiagnostics
+  let d : MufDiagnostics = MufDiagnostics
+  return d
+.end
+
+fn muf_validate_cipher(man : MufCipherManifest) -> MufDiagnostics
+  let d : MufDiagnostics = MufDiagnostics
+  return d
+.end
+
+# ============================================================================
+# Helpers (pure) — minimal placeholders
+# ============================================================================
+
+fn muf_default_platform_any() -> MufPlatform
+  let p : MufPlatform = MufPlatform
+  return p
+.end
+
+fn muf_default_profile_debug() -> MufProfile
+  let p : MufProfile = MufProfile
+  return p
+.end
+
+fn muf_default_profile_release() -> MufProfile
+  let p : MufProfile = MufProfile
+  return p
+.end
+
+fn muf_cipher_default_policy_aes_ctr() -> MufCipherPolicy
+  let p : MufCipherPolicy = MufCipherPolicy
+  return p
+.end
+
+fn muf_cipher_default_policy_chacha20() -> MufCipherPolicy
+  let p : MufCipherPolicy = MufCipherPolicy
+  return p
+.end
+
+fn muf_cipher_default_modules() -> coll.Vec[MufCipherModule]
+  let v : coll.Vec[MufCipherModule] = coll.Vec[MufCipherModule]
+  return v
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX++
+# ============================================================================
+
+# Parser
+# - Définir la grammaire .muf (clés, tables, arrays, strings multi-line, escapes).
+# - Produire AST MufDocument + spans exacts.
+# - Détecter duplicate keys, merges de tables, arrays-of-tables si supportés.
+
+# Decoder (generic)
+# - Mapper les sections:
+#     * [package], [workspace], [toolchain], [profile.*]
+#     * [dependencies], [dependencies.dev], [dependencies.build]
+#     * [features], [target.*]
+#     * [publish]
+# - Type checking strict (TypeMismatch) + UnknownKey.
+# - Support conditions cfg/platform (MufCfgExpr / MufPlatform).
+
+# Decoder (cipher)
+# - Lire des sections:
+#     * [cipher]
+#     * [[cipher.module]]
+#     * [[cipher.preset]]
+#     * [cipher.policy.*]
+# - Convertir strings -> enums (alg, family, mode, direction, iv_policy, nonce_policy).
+# - Remplir limites par défaut selon (alg/mode).
+#
+# Validation
+# - Cohérence policy:
+#     * ECB interdit par défaut (allow_ecb=false)
+#     * CBC/ECB: padding valide (None/PKCS7/ISO7816-4, etc.)
+#     * CTR/XorStream: nonce/iv policy cohérente
+#     * XTS: requires tweak policy (extension future)
+# - Streaming:
+#     * CTR/XorStream streaming ok
+#     * CBC streaming: update multiple of block except finish (padding)
+# - Limits:
+#     * msg_max, key/iv/nonce bounds
+# - Deps/features:
+#     * deps existantes, cycles, features inconnues
+#
+# ABI
+# - Impl marshalling struct pour tool/runtime.
+# - Diagnostics stable ordering.
+#
+# Presets
+# - Presets standards:
+#     * aes_ctr_default
+#     * aes_cbc_pkcs7_compat
+#     * chacha20_stream_fast
+# - Provider overrides + fallback.
+
+.end

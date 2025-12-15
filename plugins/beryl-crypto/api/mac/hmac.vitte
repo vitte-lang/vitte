@@ -1,0 +1,677 @@
+# plugins/crypto/api/mac/hmac.vitte
+# HMAC
+# Blocks use `.end` only.
+
+mod plugins.crypto.api.mac.hmac
+
+# TODO
+
+.end
+
+# plugins/beryl-crypto/api/mac/hmac.vitte
+# HMAC — Hash-based Message Authentication Code — API contract (data-first, backend-agnostic) — MAX+++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat HMAC complet:
+#       * providers enumerate/query/select + fill ProviderInfo/AlgInfo
+#       * algos (HMAC-SHA1/256/384/512, etc. via hash_id)
+#       * handles (Provider/Key/Context/Stream)
+#       * keygen/import/export, compute one-shot, streaming
+#       * views (zero-copy) + iovec
+#       * policy (strict_len, constant-time verify, truncation)
+#       * verify (constant-time compare) + audit events
+#       * limits (msg_max, key_max, tag_len constraints)
+#   - Aucun I/O et pas d'impl crypto réelle ici.
+#
+# Notes:
+#   - HMAC(K, m) = H( (K' xor opad) || H( (K' xor ipad) || m ) )
+#   - Where K' is key padded/truncated to block_len.
+#   - Tag truncation allowed by policy but verify must compare constant-time.
+
+module plugins.crypto.api.mac.hmac
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const HMAC_API_VERSION_MAJOR : u32 = 1
+const HMAC_API_VERSION_MINOR : u32 = 0
+const HMAC_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum HmacError
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidAlgorithm
+  InvalidHash
+
+  InvalidKey
+  InvalidContext
+  InvalidStream
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  InvalidPolicy
+  InvalidTag
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  PermissionDenied
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  VerifyFailed
+
+  InternalError
+.end
+
+# ============================================================================
+# Identifiers / metadata
+# ============================================================================
+
+type HmacProviderId = string
+
+type HmacAlgId = string
+
+type HashId = string
+
+enum HmacBackendKind
+  Unknown
+  Software
+  Hardware
+  Kms
+  Remote
+.end
+
+# ============================================================================
+# Capability flags
+# ============================================================================
+
+const HMAC_FLAG_KEYGEN                : u32 = 1
+const HMAC_FLAG_KEY_IMPORT            : u32 = 2
+const HMAC_FLAG_KEY_EXPORT            : u32 = 4
+
+const HMAC_FLAG_ONE_SHOT              : u32 = 8
+const HMAC_FLAG_VERIFY                : u32 = 16
+
+const HMAC_FLAG_STREAMING             : u32 = 32
+const HMAC_FLAG_VIEWS                 : u32 = 64
+const HMAC_FLAG_IOVEC                 : u32 = 128
+
+const HMAC_FLAG_CONSTANT_TIME         : u32 = 256
+const HMAC_FLAG_SIDECHANNEL_HARD      : u32 = 512
+
+const HMAC_PROVIDER_FLAG_SOFTWARE     : u32 = 1
+const HMAC_PROVIDER_FLAG_HARDWARE     : u32 = 2
+const HMAC_PROVIDER_FLAG_KMS          : u32 = 4
+const HMAC_PROVIDER_FLAG_REMOTE       : u32 = 8
+const HMAC_PROVIDER_FLAG_THREADSAFE   : u32 = 16
+const HMAC_PROVIDER_FLAG_SANDBOXED    : u32 = 32
+
+# ============================================================================
+# Limits / lens
+# ============================================================================
+
+struct LenSet
+  min           : u32
+  max           : u32
+  step          : u32
+  preferred     : coll.Vec[u32]
+.end
+
+struct HmacLimits
+  key_max       : u32
+  msg_max       : u64
+
+  tag_max       : u32
+  tag_min       : u32
+
+  ops_per_sec   : u32
+.end
+
+struct HmacAlgInfo
+  id            : HmacAlgId
+  name          : string
+
+  # Underlying hash to use (e.g., "sha256")
+  hash_id       : HashId
+
+  # hash block length (bytes)
+  block_len     : u32
+
+  # hash output length (bytes)
+  hash_len      : u32
+
+  # tag lengths allowed (truncation)
+  tag_lens      : LenSet
+
+  flags         : u32
+  limits        : HmacLimits
+.end
+
+struct HmacProviderInfo
+  id            : HmacProviderId
+  name          : string
+  vendor        : string
+  version       : string
+
+  backend       : HmacBackendKind
+  priority      : i32
+  flags         : u32
+
+  build         : string
+  device        : string
+  location      : string
+
+  algorithms    : coll.Vec[HmacAlgInfo]
+  limits        : HmacLimits
+.end
+
+# ============================================================================
+# Handles (opaque)
+# ============================================================================
+
+type HmacHandle = u64
+
+enum HmacHandleKind
+  None
+  Provider
+  Key
+  Context
+  Stream
+.end
+
+struct HmacOpaque
+  kind          : HmacHandleKind
+  value         : HmacHandle
+.end
+
+# ============================================================================
+# Views / iovec
+# ============================================================================
+
+struct ByteSlice
+  ptr           : u64
+  len           : u64
+.end
+
+struct MutByteSlice
+  ptr           : u64
+  len           : u64
+.end
+
+struct IoVec
+  slices        : coll.Vec[ByteSlice]
+  total_len     : u64
+.end
+
+struct MutIoVec
+  slices        : coll.Vec[MutByteSlice]
+  total_len     : u64
+.end
+
+# ============================================================================
+# Owned payload containers
+# ============================================================================
+
+struct HmacBytes
+  bytes         : coll.Vec[u8]
+.end
+
+struct HmacKey
+  bytes         : coll.Vec[u8]
+.end
+
+struct HmacTag
+  bytes         : coll.Vec[u8]
+.end
+
+# ============================================================================
+# Views payload containers
+# ============================================================================
+
+struct HmacKeyView
+  bytes         : ByteSlice
+.end
+
+struct HmacTagView
+  bytes         : ByteSlice
+.end
+
+# ============================================================================
+# Policy
+# ============================================================================
+
+struct HmacPolicy
+  hash_id            : HashId
+
+  # if true, enforce key len <= key_max (otherwise allow provider to hash-long-key)
+  strict_key_len     : bool
+
+  # if true, enforce out_len/tag_len exactly equals hash_len or one of tag_lens
+  strict_tag_len     : bool
+
+  # requested tag length (0 => default/hash_len)
+  tag_len            : u32
+
+  # verification constant-time compare
+  constant_time_verify : bool
+
+  # hardening request
+  sidechannel_hard   : bool
+.end
+
+# ============================================================================
+# Key / context model
+# ============================================================================
+
+enum HmacKeyUsage
+  Mac
+  Verify
+  MacAndVerify
+.end
+
+struct HmacKeyConstraints
+  usage            : HmacKeyUsage
+  fips             : bool
+  allow_hw         : bool
+.end
+
+struct HmacKeyInfo
+  provider_id      : HmacProviderId
+  alg_id           : HmacAlgId
+  hash_id          : HashId
+
+  key_id           : string
+  usage            : HmacKeyUsage
+
+  key_len          : u32
+  tag_len          : u32
+
+  created_ms       : u64
+  expires_ms       : u64
+
+  flags            : u32
+  constraints      : HmacKeyConstraints
+.end
+
+struct HmacKeyRef
+  key              : HmacOpaque
+  info             : HmacKeyInfo
+.end
+
+struct HmacContextInfo
+  provider_id      : HmacProviderId
+  alg_id           : HmacAlgId
+
+  key              : HmacOpaque
+  policy           : HmacPolicy
+
+  flags            : u32
+.end
+
+struct HmacContextRef
+  ctx              : HmacOpaque
+  info             : HmacContextInfo
+.end
+
+# ============================================================================
+# One-shot operations
+# ============================================================================
+
+struct HmacMacRequest
+  ctx              : HmacContextRef
+  input            : HmacBytes
+.end
+
+struct HmacMacResponse
+  err              : HmacError
+  tag              : HmacTag
+.end
+
+struct HmacVerifyRequest
+  ctx              : HmacContextRef
+  input            : HmacBytes
+  tag              : HmacTag
+.end
+
+struct HmacVerifyResponse
+  err              : HmacError
+  valid            : bool
+.end
+
+# Views one-shot
+struct HmacMacRequestView
+  ctx              : HmacContextRef
+  input            : ByteSlice
+  output_tag       : MutByteSlice
+.end
+
+struct HmacMacResponseView
+  err              : HmacError
+  written          : u64
+.end
+
+struct HmacVerifyRequestView
+  ctx              : HmacContextRef
+  input            : ByteSlice
+  tag              : ByteSlice
+.end
+
+struct HmacVerifyResponseView
+  err              : HmacError
+  valid            : bool
+.end
+
+# IoVec one-shot
+struct HmacMacIoVecRequestView
+  ctx              : HmacContextRef
+  input            : IoVec
+  output_tag       : MutByteSlice
+.end
+
+struct HmacVerifyIoVecRequestView
+  ctx              : HmacContextRef
+  input            : IoVec
+  tag              : ByteSlice
+.end
+
+# ============================================================================
+# Streaming
+# ============================================================================
+
+enum HmacStreamState
+  Init
+  Data
+  Final
+  Closed
+.end
+
+struct HmacStreamInfo
+  provider_id      : HmacProviderId
+  alg_id           : HmacAlgId
+  ctx              : HmacOpaque
+
+  state            : HmacStreamState
+
+  tag_len          : u32
+  msg_len          : u64
+
+  flags            : u32
+.end
+
+struct HmacStreamRef
+  stream           : HmacOpaque
+  info             : HmacStreamInfo
+.end
+
+struct HmacStreamStartRequest
+  ctx              : HmacContextRef
+.end
+
+struct HmacStreamStartResponse
+  err              : HmacError
+  stream           : HmacStreamRef
+.end
+
+struct HmacStreamUpdateRequest
+  stream           : HmacStreamRef
+  chunk            : HmacBytes
+.end
+
+struct HmacStreamUpdateResponse
+  err              : HmacError
+.end
+
+struct HmacStreamUpdateRequestView
+  stream           : HmacStreamRef
+  chunk            : ByteSlice
+.end
+
+struct HmacStreamUpdateResponseView
+  err              : HmacError
+  consumed         : u64
+.end
+
+struct HmacStreamFinishRequest
+  stream           : HmacStreamRef
+.end
+
+struct HmacStreamFinishResponse
+  err              : HmacError
+  tag              : HmacTag
+.end
+
+struct HmacStreamFinishRequestView
+  stream           : HmacStreamRef
+  output_tag       : MutByteSlice
+.end
+
+struct HmacStreamFinishResponseView
+  err              : HmacError
+  written          : u64
+.end
+
+# ============================================================================
+# Audit
+# ============================================================================
+
+enum HmacAuditKind
+  ProviderSelected
+  KeyGenerated
+  KeyImported
+  ContextCreated
+  StreamStarted
+  StreamUpdated
+  MacComputed
+  VerifyChecked
+  Destroyed
+.end
+
+struct HmacAuditEvent
+  kind            : HmacAuditKind
+  provider_id     : HmacProviderId
+  alg_id          : HmacAlgId
+  hash_id         : HashId
+
+  key_id          : string
+  ctx_id          : string
+  stream_id       : string
+
+  ts_ms           : u64
+  detail          : string
+.end
+
+fn hmac_audit_emit(ev : HmacAuditEvent)
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : HmacProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : HmacAlgInfo)
+.end
+
+fn abi_out_key_ref_struct(k : HmacKeyRef)
+.end
+
+fn abi_out_ctx_ref_struct(c : HmacContextRef)
+.end
+
+fn abi_out_stream_start_response(resp : HmacStreamStartResponse)
+.end
+
+fn abi_out_mac_response(resp : HmacMacResponse)
+.end
+
+fn abi_out_verify_response(resp : HmacVerifyResponse)
+.end
+
+fn abi_out_mac_response_view(resp : HmacMacResponseView)
+.end
+
+fn abi_out_verify_response_view(resp : HmacVerifyResponseView)
+.end
+
+fn abi_out_stream_finish_response(resp : HmacStreamFinishResponse)
+.end
+
+fn abi_out_stream_finish_response_view(resp : HmacStreamFinishResponseView)
+.end
+
+fn abi_out_error(err : HmacError)
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn hmac_provider_enumerate()
+.end
+
+fn hmac_provider_query(provider_id : HmacProviderId)
+.end
+
+fn hmac_provider_select(provider_id : HmacProviderId, alg_id : HmacAlgId)
+.end
+
+fn hmac_key_generate(provider_id : HmacProviderId, alg_id : HmacAlgId, usage : HmacKeyUsage, key_len : u32, constraints : HmacKeyConstraints)
+.end
+
+fn hmac_key_import(provider_id : HmacProviderId, alg_id : HmacAlgId, usage : HmacKeyUsage, key_bytes : coll.Vec[u8], constraints : HmacKeyConstraints)
+.end
+
+fn hmac_key_destroy(key : HmacOpaque)
+.end
+
+fn hmac_context_create(key : HmacOpaque, policy : HmacPolicy)
+.end
+
+fn hmac_context_destroy(ctx : HmacOpaque)
+.end
+
+fn hmac_mac(req : HmacMacRequest)
+.end
+
+fn hmac_verify(req : HmacVerifyRequest)
+.end
+
+fn hmac_mac_view(req : HmacMacRequestView)
+.end
+
+fn hmac_verify_view(req : HmacVerifyRequestView)
+.end
+
+fn hmac_mac_iovec_view(req : HmacMacIoVecRequestView)
+.end
+
+fn hmac_verify_iovec_view(req : HmacVerifyIoVecRequestView)
+.end
+
+fn hmac_stream_start(req : HmacStreamStartRequest)
+.end
+
+fn hmac_stream_update(req : HmacStreamUpdateRequest)
+.end
+
+fn hmac_stream_update_view(req : HmacStreamUpdateRequestView)
+.end
+
+fn hmac_stream_finish(req : HmacStreamFinishRequest)
+.end
+
+fn hmac_stream_finish_view(req : HmacStreamFinishRequestView)
+.end
+
+fn hmac_stream_destroy(stream : HmacOpaque)
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+fn hmac_default_policy(hash_id : HashId) -> HmacPolicy
+  let p : HmacPolicy = HmacPolicy
+  return p
+.end
+
+fn hmac_default_constraints() -> HmacKeyConstraints
+  let c : HmacKeyConstraints = HmacKeyConstraints
+  return c
+.end
+
+fn hmac_tag_len_default_for_hash(hash_len : u32) -> u32
+  return hash_len
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# Providers / registry
+# - Impl enumerate/query/select et remplir `HmacProviderInfo`/`HmacAlgInfo`.
+# - Remplacer toute sortie "texte" par ABI structs.
+# - Politique de choix provider (software vs hw vs kms/remote) + fallback.
+
+# Handles
+# - Impl handles slot+generation (O(1) lookup) thread-safe.
+# - Destroy idempotent + poison.
+
+# HMAC core
+# - Intégration avec `hash` providers (sha1/sha2/sha3/blake2...
+#   via `hash_id` + block_len/hash_len)
+# - Construction K':
+#     * if key_len > block_len: K' = H(key)
+#     * else: pad with zeros to block_len
+# - Precompute inner/outer states for perf.
+
+# One-shot
+# - mac:
+#     * out_len/tag_len validation
+#     * BufferTooSmall + written
+# - verify:
+#     * constant-time compare
+#     * VerifyFailed stable
+#     * allow truncation if policy permits
+
+# Streaming
+# - start/update/finish:
+#     * update arbitraire chunks
+#     * finish idempotent
+#     * msg_max enforcement
+
+# Side-channel hardening
+# - constant-time compare + secret-independent memory.
+# - memwipe temps + key material.
+
+# Tests
+# - RFC 2104 HMAC vectors.
+# - RFC 4231 (HMAC-SHA256) vectors.
+# - Properties: streaming == one-shot.
+# - Fuzz: random chunking, random inputs, invalid tag lengths.
+
+# Audit
+# - Emission stable events for keygen/import/context/stream/mac/verify/destroy.
+
+.end

@@ -1,0 +1,582 @@
+# plugins/crypto/api/kdf/argon2_stub.vitte
+# argon2 (stub)
+# Blocks use `.end` only.
+
+mod plugins.crypto.api.kdf.argon2_stub
+
+# TODO
+
+.end
+
+# plugins/beryl/api/kdf/argon2.vitte
+# Argon2 — KDF / password hashing — API contract (data-first, backend-agnostic) — MAX++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat Argon2 maximal:
+#       * Argon2d / Argon2i / Argon2id
+#       * password hashing + KDF (raw)
+#       * parameters (m_cost/t_cost/p_lanes) + version
+#       * salt, secret, associated data (AD)
+#       * one-shot + streaming (input) optionnel
+#       * views (zero-copy) optionnelles
+#       * providers/caps/limits
+#       * encoding string (PHC) optionnel (hash string)
+#   - Aucun I/O ici. Aucune impl crypto réelle.
+#
+# Notes:
+#   - Argon2 outputs:
+#       * raw (bytes) for KDF use
+#       * encoded string (PHC) for password storage/verification
+#   - Policies control strictness and limits.
+
+module plugins.crypto.api.kdf.argon2
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const ARGON2_API_VERSION_MAJOR : u32 = 1
+const ARGON2_API_VERSION_MINOR : u32 = 0
+const ARGON2_API_VERSION_PATCH : u32 = 0
+
+# Argon2 internal version (RFC 9106 uses 0x13)
+const ARGON2_VERSION_10 : u32 = 0x10
+const ARGON2_VERSION_13 : u32 = 0x13
+
+# ============================================================================
+# Algorithms / variants
+# ============================================================================
+
+enum Argon2Alg
+  Argon2d
+  Argon2i
+  Argon2id
+.end
+
+# Typical minimums (informational; enforced by policy/limits)
+const ARGON2_MIN_PWD_LEN  : u32 = 0
+const ARGON2_MIN_SALT_LEN : u32 = 8
+const ARGON2_MIN_OUT_LEN  : u32 = 4
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum Argon2Error
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidPolicy
+  InvalidAlgorithm
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  InvalidPassword
+  InvalidSalt
+  InvalidParams
+  InvalidVersion
+
+  VerifyFailed
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Provider metadata
+# ============================================================================
+
+type Argon2ProviderId = string
+
+enum Argon2BackendKind
+  Unknown
+  Software
+  Hardware
+  Remote
+.end
+
+const ARGON2_FLAG_KDF_RAW           : u32 = 1
+const ARGON2_FLAG_HASH_ENCODED      : u32 = 2
+const ARGON2_FLAG_VERIFY_ENCODED    : u32 = 4
+const ARGON2_FLAG_STREAMING_INPUT   : u32 = 8
+const ARGON2_FLAG_VIEWS             : u32 = 16
+
+const ARGON2_FLAG_ARGON2D           : u32 = 32
+const ARGON2_FLAG_ARGON2I           : u32 = 64
+const ARGON2_FLAG_ARGON2ID          : u32 = 128
+
+const ARGON2_FLAG_SIMD              : u32 = 256
+const ARGON2_FLAG_PARALLEL          : u32 = 512
+
+const ARGON2_PROVIDER_FLAG_SOFTWARE   : u32 = 1
+const ARGON2_PROVIDER_FLAG_HARDWARE   : u32 = 2
+const ARGON2_PROVIDER_FLAG_REMOTE     : u32 = 4
+const ARGON2_PROVIDER_FLAG_THREADSAFE : u32 = 8
+const ARGON2_PROVIDER_FLAG_SANDBOXED  : u32 = 16
+
+struct Argon2Limits
+  pwd_max            : u32
+  salt_max           : u32
+  secret_max         : u32
+  ad_max             : u32
+
+  out_max            : u32
+
+  # params
+  t_cost_min         : u32
+  t_cost_max         : u32
+  m_cost_kib_min     : u32
+  m_cost_kib_max     : u32
+  lanes_min          : u32
+  lanes_max          : u32
+
+  # encoded string
+  encoded_max        : u32
+
+  # operational
+  max_ops_per_sec    : u32
+.end
+
+struct Argon2AlgInfo
+  alg                : Argon2Alg
+  name               : string
+  flags              : u32
+  limits             : Argon2Limits
+.end
+
+struct Argon2ProviderInfo
+  id                 : Argon2ProviderId
+  name               : string
+  vendor             : string
+  version            : string
+
+  backend            : Argon2BackendKind
+  priority           : i32
+  flags              : u32
+
+  build              : string
+  device             : string
+  location           : string
+
+  algorithms         : coll.Vec[Argon2AlgInfo]
+  limits             : Argon2Limits
+.end
+
+# ============================================================================
+# Views (zero-copy optional)
+# ============================================================================
+
+struct ByteSlice
+  ptr                : u64
+  len                : u64
+.end
+
+struct MutByteSlice
+  ptr                : u64
+  len                : u64
+.end
+
+# ============================================================================
+# Params / policy
+# ============================================================================
+
+struct Argon2Params
+  alg                : Argon2Alg
+  version            : u32
+
+  # time cost (iterations)
+  t_cost             : u32
+
+  # memory cost in KiB
+  m_cost_kib          : u32
+
+  # degree of parallelism (lanes)
+  lanes              : u32
+
+  # output length in bytes
+  out_len             : u32
+.end
+
+struct Argon2Policy
+  params              : Argon2Params
+
+  # strictness
+  strict_salt_len     : bool
+  strict_out_len      : bool
+  strict_version      : bool
+
+  # allow empty password? (some systems permit)
+  allow_empty_password : bool
+
+  # PHC string encoding (argon2id$v=19$m=...,t=...,p=...$salt$hash)
+  want_encoded_string  : bool
+
+  # Hardening
+  constant_time_verify : bool
+
+  # limits overrides (optional: 0 means "use provider defaults")
+  pwd_max_override      : u32
+  salt_max_override     : u32
+  out_max_override      : u32
+.end
+
+# ============================================================================
+# Inputs
+# ============================================================================
+
+struct Argon2Password
+  bytes              : coll.Vec[u8]
+.end
+
+struct Argon2Salt
+  bytes              : coll.Vec[u8]
+.end
+
+struct Argon2Secret
+  bytes              : coll.Vec[u8]
+.end
+
+struct Argon2AssociatedData
+  bytes              : coll.Vec[u8]
+.end
+
+# ============================================================================
+# Outputs
+# ============================================================================
+
+struct Argon2Raw
+  bytes              : coll.Vec[u8]
+.end
+
+struct Argon2Encoded
+  text               : string
+.end
+
+# ============================================================================
+# One-shot API
+# ============================================================================
+
+struct Argon2KdfRequest
+  provider_id         : Argon2ProviderId
+  policy              : Argon2Policy
+
+  password            : Argon2Password
+  salt                : Argon2Salt
+
+  secret              : Argon2Secret
+  ad                  : Argon2AssociatedData
+.end
+
+struct Argon2KdfResponse
+  err                 : Argon2Error
+
+  raw                 : Argon2Raw
+  encoded             : Argon2Encoded
+.end
+
+struct Argon2KdfRequestView
+  provider_id         : Argon2ProviderId
+  policy              : Argon2Policy
+
+  password            : ByteSlice
+  salt                : ByteSlice
+
+  secret              : ByteSlice
+  ad                  : ByteSlice
+
+  output_raw          : MutByteSlice
+  output_encoded      : MutByteSlice
+.end
+
+struct Argon2KdfResponseView
+  err                 : Argon2Error
+  raw_written         : u64
+  encoded_written     : u64
+.end
+
+# Verify a PHC-encoded hash string against a password (optional feature).
+struct Argon2VerifyRequest
+  provider_id         : Argon2ProviderId
+  policy              : Argon2Policy
+
+  password            : Argon2Password
+  encoded             : Argon2Encoded
+.end
+
+struct Argon2VerifyResponse
+  err                 : Argon2Error
+  ok                  : bool
+.end
+
+struct Argon2VerifyRequestView
+  provider_id         : Argon2ProviderId
+  policy              : Argon2Policy
+
+  password            : ByteSlice
+  encoded             : ByteSlice
+.end
+
+struct Argon2VerifyResponseView
+  err                 : Argon2Error
+  ok                  : bool
+.end
+
+# ============================================================================
+# Streaming input (optional)
+# ============================================================================
+
+enum Argon2StreamState
+  Init
+  Password
+  Final
+  Closed
+.end
+
+struct Argon2StreamInfo
+  provider_id         : Argon2ProviderId
+  policy              : Argon2Policy
+  state               : Argon2StreamState
+
+  total_pwd           : u64
+  flags               : u32
+.end
+
+struct Argon2Stream
+  handle              : u64
+  info                : Argon2StreamInfo
+.end
+
+struct Argon2StreamStartRequest
+  provider_id         : Argon2ProviderId
+  policy              : Argon2Policy
+  salt                : Argon2Salt
+  secret              : Argon2Secret
+  ad                  : Argon2AssociatedData
+.end
+
+struct Argon2StreamStartResponse
+  err                 : Argon2Error
+  stream              : Argon2Stream
+.end
+
+struct Argon2StreamUpdateRequest
+  stream              : Argon2Stream
+  password_chunk      : Argon2Password
+.end
+
+struct Argon2StreamUpdateResponse
+  err                 : Argon2Error
+.end
+
+struct Argon2StreamUpdateRequestView
+  stream              : Argon2Stream
+  password_chunk      : ByteSlice
+.end
+
+struct Argon2StreamUpdateResponseView
+  err                 : Argon2Error
+.end
+
+struct Argon2StreamFinishRequest
+  stream              : Argon2Stream
+.end
+
+struct Argon2StreamFinishResponse
+  err                 : Argon2Error
+  raw                 : Argon2Raw
+  encoded             : Argon2Encoded
+.end
+
+struct Argon2StreamFinishRequestView
+  stream              : Argon2Stream
+  output_raw          : MutByteSlice
+  output_encoded      : MutByteSlice
+.end
+
+struct Argon2StreamFinishResponseView
+  err                 : Argon2Error
+  raw_written         : u64
+  encoded_written     : u64
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : Argon2ProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : Argon2AlgInfo)
+.end
+
+fn abi_out_kdf_response(resp : Argon2KdfResponse)
+.end
+
+fn abi_out_kdf_response_view(resp : Argon2KdfResponseView)
+.end
+
+fn abi_out_verify_response(resp : Argon2VerifyResponse)
+.end
+
+fn abi_out_verify_response_view(resp : Argon2VerifyResponseView)
+.end
+
+fn abi_out_stream_start_response(resp : Argon2StreamStartResponse)
+.end
+
+fn abi_out_stream_finish_response(resp : Argon2StreamFinishResponse)
+.end
+
+fn abi_out_stream_finish_response_view(resp : Argon2StreamFinishResponseView)
+.end
+
+fn abi_out_error(err : Argon2Error)
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn argon2_provider_enumerate()
+.end
+
+fn argon2_provider_query(provider_id : Argon2ProviderId)
+.end
+
+fn argon2_kdf(req : Argon2KdfRequest)
+.end
+
+fn argon2_kdf_view(req : Argon2KdfRequestView)
+.end
+
+fn argon2_verify(req : Argon2VerifyRequest)
+.end
+
+fn argon2_verify_view(req : Argon2VerifyRequestView)
+.end
+
+fn argon2_stream_start(req : Argon2StreamStartRequest)
+.end
+
+fn argon2_stream_update(req : Argon2StreamUpdateRequest)
+.end
+
+fn argon2_stream_update_view(req : Argon2StreamUpdateRequestView)
+.end
+
+fn argon2_stream_finish(req : Argon2StreamFinishRequest)
+.end
+
+fn argon2_stream_finish_view(req : Argon2StreamFinishRequestView)
+.end
+
+fn argon2_stream_destroy(stream : Argon2Stream)
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+fn argon2_default_params_id() -> Argon2Params
+  let p : Argon2Params = Argon2Params
+  return p
+.end
+
+fn argon2_default_policy_id() -> Argon2Policy
+  let p : Argon2Policy = Argon2Policy
+  return p
+.end
+
+fn argon2_out_len_min() -> u32
+  return ARGON2_MIN_OUT_LEN
+.end
+
+fn argon2_salt_len_min() -> u32
+  return ARGON2_MIN_SALT_LEN
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX++
+# ============================================================================
+
+# Providers
+# - Impl enumerate/query + `Argon2ProviderInfo`/`Argon2AlgInfo`.
+# - Remplacer toute sortie "texte" par ABI structs.
+# - Politique de choix provider (software vs SIMD vs hw vs remote) + fallback.
+
+# Core Argon2 (RFC 9106)
+# - Impl Blake2b-based compression G.
+# - Memory filling + indexing (data-dependent for Argon2d).
+# - Variants:
+#     * Argon2i (data-independent)
+#     * Argon2d (data-dependent)
+#     * Argon2id (hybrid)
+# - Parallel lanes + synchronization.
+
+# Parameter validation
+# - Enforce t_cost/m_cost_kib/lanes within provider limits.
+# - Enforce salt len >= 8 when strict_salt_len.
+# - Enforce out_len canonical/min when strict_out_len.
+# - Enforce version == 0x13 when strict_version.
+# - Enforce password non-empty unless allow_empty_password.
+
+# One-shot
+# - Impl `argon2_kdf` and `argon2_kdf_view`:
+#     * raw output (bytes)
+#     * encoded string (PHC) when want_encoded_string.
+#     * BufferTooSmall + written for views.
+# - Implement PHC string formatting:
+#     * $argon2id$v=19$m=...,t=...,p=...$salt_b64$hash_b64
+
+# Verify
+# - Impl `argon2_verify` / view:
+#     * parse PHC string
+#     * recompute and constant-time compare (constant_time_verify)
+#     * return VerifyFailed vs ok=false policy
+
+# Streaming input
+# - Optional: accept password in chunks
+# - Maintain total_pwd; enforce pwd limits.
+# - Finish computes KDF with collected password.
+# - Destroy idempotent + memwipe.
+
+# Side-channel hardening
+# - constant-time compare for verify.
+# - memwipe: password buffers, state, memory blocks.
+# - optional secure memory (mlock/guard) in runtime.
+
+# Tests
+# - RFC 9106 test vectors (Argon2id recommended).
+# - Known PHC string vectors (encode/decode/verify).
+# - Properties:
+#     * view == owned.
+#     * streaming == one-shot.
+# - Negative:
+#     * invalid params, invalid version, invalid base64, bad verify.
+# - Fuzz:
+#     * PHC string parser.
+#     * random params within bounds.
+
+# Bench
+# - microbench varying t_cost/m_cost/lanes.
+# - provider comparison (software vs SIMD vs hw/remote).
+
+.end

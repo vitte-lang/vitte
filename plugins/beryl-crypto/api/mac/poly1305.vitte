@@ -1,0 +1,681 @@
+# plugins/crypto/api/mac/poly1305.vitte
+# Poly1305
+# Blocks use `.end` only.
+
+mod plugins.crypto.api.mac.poly1305
+
+# TODO
+
+.end
+
+# plugins/beryl-crypto/api/mac/poly1305.vitte
+# Poly1305 — One-time authenticator — API contract (data-first, backend-agnostic) — MAX+++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat Poly1305 complet:
+#       * providers enumerate/query/select + ProviderInfo/AlgInfo
+#       * Poly1305 RFC 8439 (one-time key, 16-byte tag)
+#       * handles (Provider/Key/Context/Stream)
+#       * key import/export (et keygen optionnel), compute one-shot, streaming
+#       * views (zero-copy) + iovec
+#       * policy (strict_len, constant-time verify, clamp enforcement)
+#       * verify (constant-time compare) + audit events
+#       * limits (msg_max, key_max)
+#   - Aucun I/O et pas d'impl crypto réelle ici.
+#
+# Notes:
+#   - Poly1305 requires a one-time 32-byte key (r||s):
+#       * r (16 bytes) is clamped
+#       * s (16 bytes) is added at the end
+#   - Tag length is fixed at 16 bytes.
+#   - In practice, Poly1305 key is derived from stream cipher (e.g., ChaCha20-Poly1305).
+
+module plugins.crypto.api.mac.poly1305
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const POLY1305_API_VERSION_MAJOR : u32 = 1
+const POLY1305_API_VERSION_MINOR : u32 = 0
+const POLY1305_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum Poly1305Error
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidAlgorithm
+
+  InvalidKey
+  InvalidContext
+  InvalidStream
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  InvalidPolicy
+  InvalidTag
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  PermissionDenied
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  VerifyFailed
+
+  InternalError
+.end
+
+# ============================================================================
+# Identifiers / metadata
+# ============================================================================
+
+type Poly1305ProviderId = string
+
+type Poly1305AlgId = string
+
+enum Poly1305BackendKind
+  Unknown
+  Software
+  Hardware
+  Kms
+  Remote
+.end
+
+# ============================================================================
+# Capability flags
+# ============================================================================
+
+const POLY1305_FLAG_KEYGEN              : u32 = 1
+const POLY1305_FLAG_KEY_IMPORT          : u32 = 2
+const POLY1305_FLAG_KEY_EXPORT          : u32 = 4
+
+const POLY1305_FLAG_ONE_SHOT            : u32 = 8
+const POLY1305_FLAG_VERIFY              : u32 = 16
+
+const POLY1305_FLAG_STREAMING           : u32 = 32
+const POLY1305_FLAG_VIEWS               : u32 = 64
+const POLY1305_FLAG_IOVEC               : u32 = 128
+
+const POLY1305_FLAG_CONSTANT_TIME       : u32 = 256
+const POLY1305_FLAG_SIDECHANNEL_HARD    : u32 = 512
+
+const POLY1305_PROVIDER_FLAG_SOFTWARE   : u32 = 1
+const POLY1305_PROVIDER_FLAG_HARDWARE   : u32 = 2
+const POLY1305_PROVIDER_FLAG_KMS        : u32 = 4
+const POLY1305_PROVIDER_FLAG_REMOTE     : u32 = 8
+const POLY1305_PROVIDER_FLAG_THREADSAFE : u32 = 16
+const POLY1305_PROVIDER_FLAG_SANDBOXED  : u32 = 32
+
+# ============================================================================
+# Limits / lens
+# ============================================================================
+
+struct LenSet
+  min           : u32
+  max           : u32
+  step          : u32
+  preferred     : coll.Vec[u32]
+.end
+
+struct Poly1305Limits
+  # Poly1305 key is typically 32 bytes
+  key_max       : u32
+
+  # tag is fixed 16 bytes
+  tag_len       : u32
+
+  # max message length accepted
+  msg_max       : u64
+
+  ops_per_sec   : u32
+.end
+
+struct Poly1305AlgInfo
+  id            : Poly1305AlgId
+  name          : string
+
+  # fixed sizes
+  key_len       : u32
+  tag_len       : u32
+
+  # Optional: allow different key containers (e.g., r-only from provider) — still expressed as allowed lens.
+  key_lens      : LenSet
+
+  flags         : u32
+  limits        : Poly1305Limits
+.end
+
+struct Poly1305ProviderInfo
+  id            : Poly1305ProviderId
+  name          : string
+  vendor        : string
+  version       : string
+
+  backend       : Poly1305BackendKind
+  priority      : i32
+  flags         : u32
+
+  build         : string
+  device        : string
+  location      : string
+
+  algorithms    : coll.Vec[Poly1305AlgInfo]
+  limits        : Poly1305Limits
+.end
+
+# ============================================================================
+# Handles (opaque)
+# ============================================================================
+
+type Poly1305Handle = u64
+
+enum Poly1305HandleKind
+  None
+  Provider
+  Key
+  Context
+  Stream
+.end
+
+struct Poly1305Opaque
+  kind          : Poly1305HandleKind
+  value         : Poly1305Handle
+.end
+
+# ============================================================================
+# Views / iovec
+# ============================================================================
+
+struct ByteSlice
+  ptr           : u64
+  len           : u64
+.end
+
+struct MutByteSlice
+  ptr           : u64
+  len           : u64
+.end
+
+struct IoVec
+  slices        : coll.Vec[ByteSlice]
+  total_len     : u64
+.end
+
+struct MutIoVec
+  slices        : coll.Vec[MutByteSlice]
+  total_len     : u64
+.end
+
+# ============================================================================
+# Owned payload containers
+# ============================================================================
+
+struct Poly1305Bytes
+  bytes         : coll.Vec[u8]
+.end
+
+struct Poly1305Key
+  bytes         : coll.Vec[u8]
+.end
+
+struct Poly1305Tag
+  bytes         : coll.Vec[u8]
+.end
+
+# ============================================================================
+# Views payload containers
+# ============================================================================
+
+struct Poly1305KeyView
+  bytes         : ByteSlice
+.end
+
+struct Poly1305TagView
+  bytes         : ByteSlice
+.end
+
+# ============================================================================
+# Policy
+# ============================================================================
+
+struct Poly1305Policy
+  # If true, enforce key length strictly equals 32 (or alg.key_len).
+  strict_key_len       : bool
+
+  # If true, enforce tag len strictly equals 16.
+  strict_tag_len       : bool
+
+  # If true, provider must clamp r, or verify key is already clamped.
+  enforce_clamp        : bool
+
+  # constant-time verification compare
+  constant_time_verify : bool
+
+  # hardening request
+  sidechannel_hard     : bool
+.end
+
+# ============================================================================
+# Key / context model
+# ============================================================================
+
+enum Poly1305KeyUsage
+  Mac
+  Verify
+  MacAndVerify
+.end
+
+struct Poly1305KeyConstraints
+  usage            : Poly1305KeyUsage
+  # if true, forbid exporting raw key bytes
+  no_export        : bool
+
+  fips             : bool
+  allow_hw         : bool
+.end
+
+struct Poly1305KeyInfo
+  provider_id      : Poly1305ProviderId
+  alg_id           : Poly1305AlgId
+
+  key_id           : string
+  usage            : Poly1305KeyUsage
+
+  key_len          : u32
+  tag_len          : u32
+
+  # One-time key guidance
+  one_time_only    : bool
+  use_counter      : u64
+
+  created_ms       : u64
+  expires_ms       : u64
+
+  flags            : u32
+  constraints      : Poly1305KeyConstraints
+.end
+
+struct Poly1305KeyRef
+  key              : Poly1305Opaque
+  info             : Poly1305KeyInfo
+.end
+
+struct Poly1305ContextInfo
+  provider_id      : Poly1305ProviderId
+  alg_id           : Poly1305AlgId
+
+  key              : Poly1305Opaque
+  policy           : Poly1305Policy
+
+  flags            : u32
+.end
+
+struct Poly1305ContextRef
+  ctx              : Poly1305Opaque
+  info             : Poly1305ContextInfo
+.end
+
+# ============================================================================
+# One-shot operations
+# ============================================================================
+
+struct Poly1305MacRequest
+  ctx              : Poly1305ContextRef
+  input            : Poly1305Bytes
+.end
+
+struct Poly1305MacResponse
+  err              : Poly1305Error
+  tag              : Poly1305Tag
+.end
+
+struct Poly1305VerifyRequest
+  ctx              : Poly1305ContextRef
+  input            : Poly1305Bytes
+  tag              : Poly1305Tag
+.end
+
+struct Poly1305VerifyResponse
+  err              : Poly1305Error
+  valid            : bool
+.end
+
+# Views one-shot
+struct Poly1305MacRequestView
+  ctx              : Poly1305ContextRef
+  input            : ByteSlice
+  output_tag       : MutByteSlice
+.end
+
+struct Poly1305MacResponseView
+  err              : Poly1305Error
+  written          : u64
+.end
+
+struct Poly1305VerifyRequestView
+  ctx              : Poly1305ContextRef
+  input            : ByteSlice
+  tag              : ByteSlice
+.end
+
+struct Poly1305VerifyResponseView
+  err              : Poly1305Error
+  valid            : bool
+.end
+
+# IoVec one-shot
+struct Poly1305MacIoVecRequestView
+  ctx              : Poly1305ContextRef
+  input            : IoVec
+  output_tag       : MutByteSlice
+.end
+
+struct Poly1305VerifyIoVecRequestView
+  ctx              : Poly1305ContextRef
+  input            : IoVec
+  tag              : ByteSlice
+.end
+
+# ============================================================================
+# Streaming
+# ============================================================================
+
+enum Poly1305StreamState
+  Init
+  Data
+  Final
+  Closed
+.end
+
+struct Poly1305StreamInfo
+  provider_id      : Poly1305ProviderId
+  alg_id           : Poly1305AlgId
+  ctx              : Poly1305Opaque
+
+  state            : Poly1305StreamState
+
+  tag_len          : u32
+  msg_len          : u64
+
+  # one-time usage enforcement counters
+  blocks_seen      : u64
+
+  flags            : u32
+.end
+
+struct Poly1305StreamRef
+  stream           : Poly1305Opaque
+  info             : Poly1305StreamInfo
+.end
+
+struct Poly1305StreamStartRequest
+  ctx              : Poly1305ContextRef
+.end
+
+struct Poly1305StreamStartResponse
+  err              : Poly1305Error
+  stream           : Poly1305StreamRef
+.end
+
+struct Poly1305StreamUpdateRequest
+  stream           : Poly1305StreamRef
+  chunk            : Poly1305Bytes
+.end
+
+struct Poly1305StreamUpdateResponse
+  err              : Poly1305Error
+.end
+
+struct Poly1305StreamUpdateRequestView
+  stream           : Poly1305StreamRef
+  chunk            : ByteSlice
+.end
+
+struct Poly1305StreamUpdateResponseView
+  err              : Poly1305Error
+  consumed         : u64
+.end
+
+struct Poly1305StreamFinishRequest
+  stream           : Poly1305StreamRef
+.end
+
+struct Poly1305StreamFinishResponse
+  err              : Poly1305Error
+  tag              : Poly1305Tag
+.end
+
+struct Poly1305StreamFinishRequestView
+  stream           : Poly1305StreamRef
+  output_tag       : MutByteSlice
+.end
+
+struct Poly1305StreamFinishResponseView
+  err              : Poly1305Error
+  written          : u64
+.end
+
+# ============================================================================
+# Audit
+# ============================================================================
+
+enum Poly1305AuditKind
+  ProviderSelected
+  KeyGenerated
+  KeyImported
+  ContextCreated
+  StreamStarted
+  StreamUpdated
+  MacComputed
+  VerifyChecked
+  Destroyed
+.end
+
+struct Poly1305AuditEvent
+  kind            : Poly1305AuditKind
+  provider_id     : Poly1305ProviderId
+  alg_id          : Poly1305AlgId
+
+  key_id          : string
+  ctx_id          : string
+  stream_id       : string
+
+  ts_ms           : u64
+  detail          : string
+.end
+
+fn poly1305_audit_emit(ev : Poly1305AuditEvent)
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : Poly1305ProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : Poly1305AlgInfo)
+.end
+
+fn abi_out_key_ref_struct(k : Poly1305KeyRef)
+.end
+
+fn abi_out_ctx_ref_struct(c : Poly1305ContextRef)
+.end
+
+fn abi_out_stream_start_response(resp : Poly1305StreamStartResponse)
+.end
+
+fn abi_out_mac_response(resp : Poly1305MacResponse)
+.end
+
+fn abi_out_verify_response(resp : Poly1305VerifyResponse)
+.end
+
+fn abi_out_mac_response_view(resp : Poly1305MacResponseView)
+.end
+
+fn abi_out_verify_response_view(resp : Poly1305VerifyResponseView)
+.end
+
+fn abi_out_stream_finish_response(resp : Poly1305StreamFinishResponse)
+.end
+
+fn abi_out_stream_finish_response_view(resp : Poly1305StreamFinishResponseView)
+.end
+
+fn abi_out_error(err : Poly1305Error)
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn poly1305_provider_enumerate()
+.end
+
+fn poly1305_provider_query(provider_id : Poly1305ProviderId)
+.end
+
+fn poly1305_provider_select(provider_id : Poly1305ProviderId, alg_id : Poly1305AlgId)
+.end
+
+fn poly1305_key_generate(provider_id : Poly1305ProviderId, alg_id : Poly1305AlgId, usage : Poly1305KeyUsage, key_len : u32, constraints : Poly1305KeyConstraints)
+.end
+
+fn poly1305_key_import(provider_id : Poly1305ProviderId, alg_id : Poly1305AlgId, usage : Poly1305KeyUsage, key_bytes : coll.Vec[u8], constraints : Poly1305KeyConstraints)
+.end
+
+fn poly1305_key_export(key : Poly1305Opaque)
+.end
+
+fn poly1305_key_destroy(key : Poly1305Opaque)
+.end
+
+fn poly1305_context_create(key : Poly1305Opaque, policy : Poly1305Policy)
+.end
+
+fn poly1305_context_destroy(ctx : Poly1305Opaque)
+.end
+
+fn poly1305_mac(req : Poly1305MacRequest)
+.end
+
+fn poly1305_verify(req : Poly1305VerifyRequest)
+.end
+
+fn poly1305_mac_view(req : Poly1305MacRequestView)
+.end
+
+fn poly1305_verify_view(req : Poly1305VerifyRequestView)
+.end
+
+fn poly1305_mac_iovec_view(req : Poly1305MacIoVecRequestView)
+.end
+
+fn poly1305_verify_iovec_view(req : Poly1305VerifyIoVecRequestView)
+.end
+
+fn poly1305_stream_start(req : Poly1305StreamStartRequest)
+.end
+
+fn poly1305_stream_update(req : Poly1305StreamUpdateRequest)
+.end
+
+fn poly1305_stream_update_view(req : Poly1305StreamUpdateRequestView)
+.end
+
+fn poly1305_stream_finish(req : Poly1305StreamFinishRequest)
+.end
+
+fn poly1305_stream_finish_view(req : Poly1305StreamFinishRequestView)
+.end
+
+fn poly1305_stream_destroy(stream : Poly1305Opaque)
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+fn poly1305_default_policy() -> Poly1305Policy
+  let p : Poly1305Policy = Poly1305Policy
+  return p
+.end
+
+fn poly1305_default_constraints() -> Poly1305KeyConstraints
+  let c : Poly1305KeyConstraints = Poly1305KeyConstraints
+  return c
+.end
+
+fn poly1305_tag_len_fixed() -> u32
+  return 16
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# Providers / registry
+# - Impl enumerate/query/select et remplir `Poly1305ProviderInfo`/`Poly1305AlgInfo`.
+# - Remplacer toute sortie "texte" par ABI structs.
+# - Politique de choix provider (software vs hw vs kms/remote) + fallback.
+
+# Handles
+# - Impl handles slot+generation (O(1) lookup) thread-safe.
+# - Destroy idempotent + poison.
+
+# Poly1305 core (RFC 8439)
+# - Clamp r:
+#     * r[3], r[7], r[11], r[15] &= 15
+#     * r[4], r[8], r[12] &= 252
+# - Process message in 16-byte blocks with 1-bit appended.
+# - Finalize: add s, output 16-byte tag.
+#
+# Streaming
+# - Maintain accumulator and partial block buffer.
+# - Update arbitrary chunk sizes.
+# - Finish idempotent.
+#
+# Verify
+# - constant-time compare for 16-byte tag.
+# - VerifyFailed stable.
+#
+# One-time key policy
+# - Enforce one-time usage by default (context/stream increments use_counter).
+# - Option to disable enforcement only for testing.
+#
+# Side-channel hardening
+# - constant-time where appropriate.
+# - secret-independent memory.
+# - memwipe temps + key material.
+#
+# Tests
+# - RFC 8439 Poly1305 test vectors.
+# - Properties: streaming == one-shot.
+# - Negative: key len invalid, tag len invalid, buffer too small.
+# - Fuzz: random chunking, random inputs.
+#
+# Audit
+# - Emission stable events for keygen/import/context/stream/mac/verify/destroy.
+
+.end

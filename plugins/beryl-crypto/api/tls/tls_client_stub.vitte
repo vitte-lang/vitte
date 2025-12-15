@@ -1,0 +1,915 @@
+# plugins/crypto/api/tls/tls_client_stub.vitte
+# TLS client (stub)
+# Blocks use `.end` only.
+
+mod plugins.crypto.api.tls.tls_client_stub
+
+# TODO
+
+.end
+
+# plugins/beryl-crypto/api/tls/tls_client_stub.vitte
+# TLS Client — API contract (data-first, backend-agnostic) — MAX+++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat TLS client maximal (sans impl réseau):
+#       * providers enumerate/query/select + ProviderInfo/AlgInfo
+#       * policies: versions, cipher suites, kex, sig schemes, ALPN, SNI, OCSP, CT, ECH, 0-RTT, PSK
+#       * session cache / resumption tickets
+#       * state machine: connect/handshake/read/write/close
+#       * views (zero-copy) + iovec
+#       * audit events + key log hooks (optionnel)
+#       * handles slot+generation (Provider/Client/Conn/Stream/Session)
+#       * ABI typed outputs (runtime marshalling)
+#   - Aucune impl crypto, aucun socket I/O ici: ce module définit l'interface et les types.
+#
+# Notes:
+#   - TLS 1.3 (RFC 8446) est prioritaire; TLS 1.2 optionnel.
+#   - La gestion réseau (TCP/QUIC) est hors scope; on échange via buffers (input/output) et events.
+
+module plugins.crypto.api.tls.tls_client
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const TLS_CLIENT_API_VERSION_MAJOR : u32 = 1
+const TLS_CLIENT_API_VERSION_MINOR : u32 = 0
+const TLS_CLIENT_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum TlsError
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidAlgorithm
+  InvalidPolicy
+
+  InvalidClient
+  InvalidConn
+  InvalidSession
+  InvalidStream
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  InvalidHostname
+  InvalidAlpn
+  InvalidSni
+
+  InvalidCertificate
+  InvalidCertificateChain
+  CertificateVerifyFailed
+  CertificateExpired
+  CertificateRevoked
+  CertificateUnknown
+
+  HandshakeFailed
+  ProtocolError
+  AlertReceived
+  AlertSent
+
+  WouldBlock
+  NeedMoreInput
+  OutputBufferTooSmall
+
+  KeyUpdateRequired
+  EarlyDataRejected
+  SessionNotResumable
+
+  ProviderUnavailable
+  ProviderBusy
+  PermissionDenied
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Identifiers / metadata
+# ============================================================================
+
+type TlsProviderId = string
+
+type TlsAlgId = string
+
+enum TlsBackendKind
+  Unknown
+  Software
+  Hardware
+  Kms
+  Remote
+.end
+
+# ============================================================================
+# TLS versions
+# ============================================================================
+
+enum TlsVersion
+  Tls10
+  Tls11
+  Tls12
+  Tls13
+.end
+
+# ============================================================================
+# Cipher suites / groups / sig schemes
+# ============================================================================
+
+# TLS 1.3 cipher suites (subset + extensible id)
+struct TlsCipherSuite
+  id      : u16
+  name    : string
+.end
+
+# Supported named groups (EC/DH)
+struct TlsNamedGroup
+  id      : u16
+  name    : string
+.end
+
+# Signature schemes
+struct TlsSignatureScheme
+  id      : u16
+  name    : string
+.end
+
+# ============================================================================
+# ALPN / SNI
+# ============================================================================
+
+struct TlsAlpn
+  name    : string
+.end
+
+struct TlsSni
+  host    : string
+.end
+
+# ============================================================================
+# Certificates / identity
+# ============================================================================
+
+enum TlsCertFormat
+  # X.509 DER
+  X509Der
+
+  # X.509 PEM
+  X509Pem
+.end
+
+struct TlsCertificate
+  bytes   : coll.Vec[u8]
+  format  : TlsCertFormat
+.end
+
+struct TlsCertificateChain
+  certs   : coll.Vec[TlsCertificate]
+.end
+
+struct TlsPrivateKey
+  bytes   : coll.Vec[u8]
+  format  : TlsCertFormat
+.end
+
+struct TlsClientIdentity
+  chain   : TlsCertificateChain
+  key     : TlsPrivateKey
+.end
+
+# ============================================================================
+# Views / iovec
+# ============================================================================
+
+struct ByteSlice
+  ptr     : u64
+  len     : u64
+.end
+
+struct MutByteSlice
+  ptr     : u64
+  len     : u64
+.end
+
+struct IoVec
+  slices    : coll.Vec[ByteSlice]
+  total_len : u64
+.end
+
+struct MutIoVec
+  slices    : coll.Vec[MutByteSlice]
+  total_len : u64
+.end
+
+# ============================================================================
+# Handles (opaque)
+# ============================================================================
+
+type TlsHandle = u64
+
+enum TlsHandleKind
+  None
+  Provider
+  Client
+  Conn
+  Stream
+  Session
+.end
+
+struct TlsOpaque
+  kind    : TlsHandleKind
+  value   : TlsHandle
+.end
+
+# ============================================================================
+# Limits / capabilities
+# ============================================================================
+
+struct LenSet
+  min        : u32
+  max        : u32
+  step       : u32
+  preferred  : coll.Vec[u32]
+.end
+
+struct TlsLimits
+  in_max          : u64
+  out_max         : u64
+
+  record_max      : u32
+  handshake_max   : u32
+
+  alpn_max        : u32
+  sni_max         : u32
+
+  cert_chain_max  : u32
+
+  sessions_max    : u32
+
+  ops_per_sec     : u32
+.end
+
+const TLS_FLAG_VIEWS            : u32 = 1
+const TLS_FLAG_IOVEC            : u32 = 2
+const TLS_FLAG_TLS13            : u32 = 4
+const TLS_FLAG_TLS12            : u32 = 8
+const TLS_FLAG_0RTT             : u32 = 16
+const TLS_FLAG_PSK              : u32 = 32
+const TLS_FLAG_SESSION_CACHE    : u32 = 64
+const TLS_FLAG_ECH              : u32 = 128
+const TLS_FLAG_KEYLOG           : u32 = 256
+const TLS_FLAG_CERT_VALIDATION  : u32 = 512
+const TLS_FLAG_OCSP             : u32 = 1024
+const TLS_FLAG_CT               : u32 = 2048
+
+const TLS_PROVIDER_FLAG_SOFTWARE    : u32 = 1
+const TLS_PROVIDER_FLAG_HARDWARE    : u32 = 2
+const TLS_PROVIDER_FLAG_KMS         : u32 = 4
+const TLS_PROVIDER_FLAG_REMOTE      : u32 = 8
+const TLS_PROVIDER_FLAG_THREADSAFE  : u32 = 16
+const TLS_PROVIDER_FLAG_SANDBOXED   : u32 = 32
+
+# ============================================================================
+# Provider / alg info
+# ============================================================================
+
+struct TlsAlgInfo
+  id            : TlsAlgId
+  name          : string
+
+  # Supported protocol versions
+  versions      : coll.Vec[TlsVersion]
+
+  # TLS 1.3 suites (and TLS 1.2 ids if enabled)
+  cipher_suites : coll.Vec[TlsCipherSuite]
+
+  # Supported groups and signature schemes
+  groups        : coll.Vec[TlsNamedGroup]
+  sig_schemes   : coll.Vec[TlsSignatureScheme]
+
+  # Flags & limits
+  flags         : u32
+  limits        : TlsLimits
+.end
+
+struct TlsProviderInfo
+  id            : TlsProviderId
+  name          : string
+  vendor        : string
+  version       : string
+
+  backend       : TlsBackendKind
+  priority      : i32
+  flags         : u32
+
+  build         : string
+  device        : string
+  location      : string
+
+  algorithms    : coll.Vec[TlsAlgInfo]
+  limits        : TlsLimits
+.end
+
+# ============================================================================
+# Policy
+# ============================================================================
+
+enum TlsVerifyMode
+  # Strict system trust store + hostname verification
+  Strict
+
+  # Accept invalid chains (for dev), still does parsing
+  InsecureSkipVerify
+
+  # Custom validation via callback/event (runtime) — placeholder
+  Custom
+.end
+
+struct TlsSessionCachePolicy
+  enable           : bool
+  max_sessions     : u32
+  ttl_ms           : u64
+.end
+
+struct TlsResumptionPolicy
+  enable           : bool
+  allow_tickets    : bool
+  allow_psk        : bool
+  allow_0rtt       : bool
+.end
+
+struct TlsKeyUpdatePolicy
+  # request/update keys after N bytes (0 => provider default)
+  bytes_threshold  : u64
+.end
+
+struct TlsAlpnPolicy
+  list             : coll.Vec[TlsAlpn]
+  require_match    : bool
+.end
+
+struct TlsSniPolicy
+  sni              : TlsSni
+  require_sni      : bool
+.end
+
+struct TlsVersionPolicy
+  min              : TlsVersion
+  max              : TlsVersion
+
+  # if set, exact allowlist
+  allow            : coll.Vec[TlsVersion]
+.end
+
+struct TlsCipherPolicy
+  # cipher suites allowlist (ids)
+  allow            : coll.Vec[u16]
+
+  # prefer order as given
+  prefer_order     : bool
+.end
+
+struct TlsGroupPolicy
+  allow            : coll.Vec[u16]
+  prefer_order     : bool
+.end
+
+struct TlsSigSchemePolicy
+  allow            : coll.Vec[u16]
+  prefer_order     : bool
+.end
+
+struct TlsCertificatePolicy
+  verify_mode      : TlsVerifyMode
+
+  # Optional pinned SPKI / cert hash list (bytes), semantics provider-defined
+  pinset           : coll.Vec[coll.Vec[u8]]
+
+  # Client auth identity
+  identity         : TlsClientIdentity
+.end
+
+struct TlsEarlyDataPolicy
+  enable           : bool
+  max_early_data   : u32
+.end
+
+struct TlsEchPolicy
+  enable           : bool
+  # Config list is provider-defined blob (ECHConfigList)
+  config_list      : coll.Vec[u8]
+.end
+
+struct TlsPolicy
+  alg_id           : TlsAlgId
+
+  server_name      : string
+
+  versions         : TlsVersionPolicy
+  cipher_suites    : TlsCipherPolicy
+  groups           : TlsGroupPolicy
+  sig_schemes      : TlsSigSchemePolicy
+
+  alpn             : TlsAlpnPolicy
+  sni              : TlsSniPolicy
+
+  certs            : TlsCertificatePolicy
+
+  resumption       : TlsResumptionPolicy
+  session_cache    : TlsSessionCachePolicy
+  early_data       : TlsEarlyDataPolicy
+
+  ech              : TlsEchPolicy
+  key_update       : TlsKeyUpdatePolicy
+
+  # hardening
+  constant_time    : bool
+  sidechannel_hard : bool
+.end
+
+# ============================================================================
+# Client / connection state
+# ============================================================================
+
+enum TlsConnState
+  Init
+  Handshaking
+  Connected
+  Closing
+  Closed
+  Failed
+.end
+
+enum TlsHandshakePhase
+  None
+  ClientHello
+  ServerHello
+  EncryptedExtensions
+  Certificate
+  CertificateVerify
+  Finished
+  PostHandshake
+.end
+
+enum TlsEventKind
+  None
+  NeedNetworkWrite
+  NeedNetworkRead
+
+  HandshakeProgress
+  Connected
+  Closed
+
+  Alert
+  KeyUpdate
+  NewSessionTicket
+
+  PeerCertificate
+  PeerVerified
+
+  EarlyDataAccepted
+  EarlyDataRejected
+
+  KeyLogLine
+.end
+
+struct TlsEvent
+  kind             : TlsEventKind
+  state            : TlsConnState
+  phase            : TlsHandshakePhase
+
+  # TLS alert (level/description) if relevant
+  alert_level      : u8
+  alert_desc       : u8
+
+  # Free-form detail / debug
+  detail           : string
+
+  # Optional payload (tickets, certs, keylog)
+  payload          : coll.Vec[u8]
+
+  ts_ms            : u64
+.end
+
+struct TlsConnInfo
+  provider_id       : TlsProviderId
+  alg_id            : TlsAlgId
+
+  server_name       : string
+  alpn_selected     : string
+
+  version           : TlsVersion
+  cipher_suite      : u16
+
+  state             : TlsConnState
+  phase             : TlsHandshakePhase
+
+  early_data        : bool
+  resumed           : bool
+
+  in_bytes          : u64
+  out_bytes         : u64
+
+  flags             : u32
+.end
+
+struct TlsConnRef
+  conn              : TlsOpaque
+  info              : TlsConnInfo
+.end
+
+# ============================================================================
+# Session / tickets
+# ============================================================================
+
+struct TlsSessionTicket
+  bytes            : coll.Vec[u8]
+  expires_ms       : u64
+  max_early_data   : u32
+.end
+
+struct TlsSession
+  server_name      : string
+  alpn             : string
+  ticket           : TlsSessionTicket
+.end
+
+struct TlsSessionRef
+  session          : TlsOpaque
+  server_name      : string
+  expires_ms       : u64
+.end
+
+# ============================================================================
+# Requests / responses
+# ============================================================================
+
+struct TlsProviderSelectRequest
+  provider_id      : TlsProviderId
+  alg_id           : TlsAlgId
+.end
+
+struct TlsProviderSelectResponse
+  err              : TlsError
+  provider         : TlsProviderInfo
+  algorithm        : TlsAlgInfo
+.end
+
+struct TlsClientCreateRequest
+  provider_id      : TlsProviderId
+  policy           : TlsPolicy
+.end
+
+struct TlsClientCreateResponse
+  err              : TlsError
+  client           : TlsOpaque
+.end
+
+struct TlsClientDestroyRequest
+  client           : TlsOpaque
+.end
+
+struct TlsClientDestroyResponse
+  err              : TlsError
+.end
+
+# Create a new connection (logical) using optional session for resumption
+struct TlsConnCreateRequest
+  client           : TlsOpaque
+  session          : TlsSessionRef
+.end
+
+struct TlsConnCreateResponse
+  err              : TlsError
+  conn             : TlsConnRef
+.end
+
+struct TlsConnDestroyRequest
+  conn             : TlsConnRef
+.end
+
+struct TlsConnDestroyResponse
+  err              : TlsError
+.end
+
+# Feed inbound network bytes (from TCP/QUIC)
+struct TlsConnFeedInputRequest
+  conn             : TlsConnRef
+  input            : coll.Vec[u8]
+.end
+
+struct TlsConnFeedInputResponse
+  err              : TlsError
+  consumed         : u64
+  events           : coll.Vec[TlsEvent]
+.end
+
+# Produce outbound network bytes to send
+struct TlsConnPullOutputRequest
+  conn             : TlsConnRef
+  max_bytes        : u32
+.end
+
+struct TlsConnPullOutputResponse
+  err              : TlsError
+  output           : coll.Vec[u8]
+  events           : coll.Vec[TlsEvent]
+.end
+
+# Application data write (encrypt)
+struct TlsWriteRequest
+  conn             : TlsConnRef
+  plaintext        : coll.Vec[u8]
+.end
+
+struct TlsWriteResponse
+  err              : TlsError
+  written          : u64
+  events           : coll.Vec[TlsEvent]
+.end
+
+# Application data read (decrypt)
+struct TlsReadRequest
+  conn             : TlsConnRef
+  max_bytes        : u32
+.end
+
+struct TlsReadResponse
+  err              : TlsError
+  plaintext        : coll.Vec[u8]
+  events           : coll.Vec[TlsEvent]
+.end
+
+# Close connection
+struct TlsCloseRequest
+  conn             : TlsConnRef
+  send_close_notify : bool
+.end
+
+struct TlsCloseResponse
+  err              : TlsError
+  events           : coll.Vec[TlsEvent]
+.end
+
+# Views + iovec variants
+
+struct TlsConnFeedInputRequestView
+  conn             : TlsConnRef
+  input            : ByteSlice
+.end
+
+struct TlsConnFeedInputResponseView
+  err              : TlsError
+  consumed         : u64
+.end
+
+struct TlsConnPullOutputRequestView
+  conn             : TlsConnRef
+  output           : MutByteSlice
+.end
+
+struct TlsConnPullOutputResponseView
+  err              : TlsError
+  written          : u64
+.end
+
+struct TlsWriteRequestView
+  conn             : TlsConnRef
+  plaintext        : ByteSlice
+.end
+
+struct TlsWriteResponseView
+  err              : TlsError
+  consumed         : u64
+.end
+
+struct TlsReadRequestView
+  conn             : TlsConnRef
+  output           : MutByteSlice
+.end
+
+struct TlsReadResponseView
+  err              : TlsError
+  written          : u64
+.end
+
+struct TlsWriteIoVecRequestView
+  conn             : TlsConnRef
+  plaintext        : IoVec
+.end
+
+struct TlsReadIoVecRequestView
+  conn             : TlsConnRef
+  output           : MutIoVec
+.end
+
+# ============================================================================
+# Audit
+# ============================================================================
+
+enum TlsAuditKind
+  ProviderSelected
+  ClientCreated
+  ConnCreated
+  HandshakeProgress
+  Connected
+  DataWritten
+  DataRead
+  SessionTicket
+  KeyUpdated
+  Alert
+  Closed
+  Destroyed
+.end
+
+struct TlsAuditEvent
+  kind             : TlsAuditKind
+  provider_id      : TlsProviderId
+  alg_id           : TlsAlgId
+
+  server_name      : string
+  conn_id          : string
+
+  ts_ms            : u64
+  detail           : string
+.end
+
+fn tls_audit_emit(ev : TlsAuditEvent)
+.end
+
+# Key log (NSS format) — optional
+fn tls_keylog_line(line : string)
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : TlsProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : TlsAlgInfo)
+.end
+
+fn abi_out_select_response(resp : TlsProviderSelectResponse)
+.end
+
+fn abi_out_client_create_response(resp : TlsClientCreateResponse)
+.end
+
+fn abi_out_conn_create_response(resp : TlsConnCreateResponse)
+.end
+
+fn abi_out_feed_input_response(resp : TlsConnFeedInputResponse)
+.end
+
+fn abi_out_pull_output_response(resp : TlsConnPullOutputResponse)
+.end
+
+fn abi_out_read_response(resp : TlsReadResponse)
+.end
+
+fn abi_out_write_response(resp : TlsWriteResponse)
+.end
+
+fn abi_out_close_response(resp : TlsCloseResponse)
+.end
+
+fn abi_out_error(err : TlsError)
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn tls_provider_enumerate()
+.end
+
+fn tls_provider_query(provider_id : TlsProviderId)
+.end
+
+fn tls_provider_select(req : TlsProviderSelectRequest)
+.end
+
+fn tls_client_create(req : TlsClientCreateRequest)
+.end
+
+fn tls_client_destroy(req : TlsClientDestroyRequest)
+.end
+
+fn tls_conn_create(req : TlsConnCreateRequest)
+.end
+
+fn tls_conn_destroy(req : TlsConnDestroyRequest)
+.end
+
+fn tls_conn_feed_input(req : TlsConnFeedInputRequest)
+.end
+
+fn tls_conn_pull_output(req : TlsConnPullOutputRequest)
+.end
+
+fn tls_write(req : TlsWriteRequest)
+.end
+
+fn tls_read(req : TlsReadRequest)
+.end
+
+fn tls_close(req : TlsCloseRequest)
+.end
+
+# Views
+fn tls_conn_feed_input_view(req : TlsConnFeedInputRequestView)
+.end
+
+fn tls_conn_pull_output_view(req : TlsConnPullOutputRequestView)
+.end
+
+fn tls_write_view(req : TlsWriteRequestView)
+.end
+
+fn tls_read_view(req : TlsReadRequestView)
+.end
+
+fn tls_write_iovec_view(req : TlsWriteIoVecRequestView)
+.end
+
+fn tls_read_iovec_view(req : TlsReadIoVecRequestView)
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+fn tls_default_version_policy_tls13() -> TlsVersionPolicy
+  let p : TlsVersionPolicy = TlsVersionPolicy
+  return p
+.end
+
+fn tls_default_policy(server_name : string) -> TlsPolicy
+  let p : TlsPolicy = TlsPolicy
+  return p
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# Providers / registry
+# - Impl enumerate/query/select et remplir `TlsProviderInfo`/`TlsAlgInfo`.
+# - Remplacer toute sortie "texte" par ABI structs.
+# - Politique de choix provider (software vs hw vs kms/remote) + fallback.
+#
+# Handles
+# - Impl handles slot+generation (O(1) lookup) thread-safe.
+# - Séparer espaces de handles (Client/Conn/Session/Stream) + validation kind.
+# - Destroy idempotent + poison (use-after-free logique).
+#
+# State machine
+# - Handshake TLS 1.3 complet (ClientHello, extensions, key schedule, transcript).
+# - Support TLS 1.2 optionnel (ECDHE + AEAD) si activé.
+# - Gestion alerts stable.
+# - KeyUpdate post-handshake.
+#
+# Buffering
+# - feed_input/pull_output: parse records, generate outbound records.
+# - NeedMoreInput/WouldBlock semantics.
+#
+# App data
+# - read/write application data, segmentation records, record padding.
+# - Backpressure: OutputBufferTooSmall + written.
+#
+# Resumption
+# - NewSessionTicket capture, session cache, PSK binder, 0-RTT.
+# - EarlyDataAccepted/Rejected events.
+#
+# Validation
+# - hostname verification + chain verification (system trust store / custom).
+# - OCSP stapling + CT policy (optionnel).
+#
+# ECH
+# - Support ECHConfigList parsing + ClientHelloOuter/Inner.
+#
+# Side-channel hardening
+# - constant-time where applicable, secret-independent memory.
+# - memwipe secrets at destroy.
+#
+# Tests
+# - interop tests vs known TLS stacks.
+# - fuzz: record parser, handshake transcript, resumption.
+# - property: handshake transcript stable, alert mapping stable.
+
+.end

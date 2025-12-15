@@ -1,0 +1,511 @@
+# plugins/crypto/api/encoding/pem.vitte
+# PEM
+# Blocks use `.end` only.
+
+mod plugins.crypto.api.encoding.pem
+
+# TODO
+
+.end
+
+# plugins/beryl/api/encoding/pem.vitte
+# PEM (RFC 7468 / PEM armor) — API contract (data-first, backend-agnostic) — MAX++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat PEM maximal:
+#       * encode/decode PEM armor (BEGIN/END), label, headers optionnels
+#       * Base64 (standard) interne + wrapping (64 chars/line)
+#       * parsing strict vs permissif (whitespace, headers, multiple blocks)
+#       * streaming (incremental) + views (zero-copy) optionnelles
+#       * support multi-block (bundle) et extraction
+#   - Aucun I/O ici.
+#
+# Notes:
+#   - PEM = text armor autour d’un blob binaire encodé Base64.
+#   - Labels typiques: "CERTIFICATE", "PRIVATE KEY", "PUBLIC KEY", "RSA PRIVATE KEY", etc.
+#   - Headers "Proc-Type"/"DEK-Info" (legacy) peuvent exister; policy contrôle.
+
+module plugins.crypto.api.encoding.pem
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const PEM_API_VERSION_MAJOR : u32 = 1
+const PEM_API_VERSION_MINOR : u32 = 0
+const PEM_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum PemError
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidPolicy
+
+  InvalidInput
+  InvalidOutput
+
+  # Framing
+  BeginMissing
+  EndMissing
+  LabelMismatch
+  LabelInvalid
+  HeaderInvalid
+  HeaderNotAllowed
+
+  # Base64
+  Base64Invalid
+
+  # Multi-block
+  NoBlocks
+  BlockIndexOutOfRange
+
+  BufferTooSmall
+  OutputTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Policy
+# ============================================================================
+
+enum PemWhitespace
+  Reject
+  Allow
+.end
+
+enum PemHeaders
+  Reject
+  Allow
+  AllowLegacyOnly
+.end
+
+enum PemMultipleBlocks
+  Reject
+  Allow
+.end
+
+enum PemLineBreak
+  LF
+  CRLF
+.end
+
+struct PemPolicy
+  whitespace        : PemWhitespace
+  headers           : PemHeaders
+  multiple_blocks   : PemMultipleBlocks
+
+  # encoding
+  line_break        : PemLineBreak
+  line_width        : u32
+
+  # strictness
+  strict_label      : bool
+  strict_base64     : bool
+.end
+
+# ============================================================================
+# Provider metadata
+# ============================================================================
+
+type PemProviderId = string
+
+enum PemBackendKind
+  Unknown
+  Software
+  Hardware
+  Remote
+.end
+
+const PEM_FLAG_ENCODE_ONE_SHOT      : u32 = 1
+const PEM_FLAG_DECODE_ONE_SHOT      : u32 = 2
+const PEM_FLAG_STREAMING_DECODE     : u32 = 4
+const PEM_FLAG_STREAMING_ENCODE     : u32 = 8
+const PEM_FLAG_VIEWS                : u32 = 16
+
+const PEM_PROVIDER_FLAG_SOFTWARE    : u32 = 1
+const PEM_PROVIDER_FLAG_HARDWARE    : u32 = 2
+const PEM_PROVIDER_FLAG_REMOTE      : u32 = 4
+const PEM_PROVIDER_FLAG_THREADSAFE  : u32 = 8
+const PEM_PROVIDER_FLAG_SANDBOXED   : u32 = 16
+
+struct PemLimits
+  in_max            : u64
+  out_max           : u64
+.end
+
+struct PemProviderInfo
+  id                : PemProviderId
+  name              : string
+  vendor            : string
+  version           : string
+
+  backend           : PemBackendKind
+  priority          : i32
+  flags             : u32
+
+  build             : string
+  device            : string
+  location          : string
+
+  limits            : PemLimits
+.end
+
+# ============================================================================
+# Views (zero-copy optional)
+# ============================================================================
+
+struct ByteSlice
+  ptr               : u64
+  len               : u64
+.end
+
+struct MutByteSlice
+  ptr               : u64
+  len               : u64
+.end
+
+# ============================================================================
+# Core types
+# ============================================================================
+
+struct PemHeader
+  key               : string
+  value             : string
+.end
+
+struct PemBlock
+  label             : string
+  headers           : coll.Vec[PemHeader]
+  bytes             : coll.Vec[u8]
+.end
+
+# View variant referencing a backing buffer.
+struct PemBlockView
+  label             : string
+  headers           : coll.Vec[PemHeader]
+  bytes             : ByteSlice
+.end
+
+struct PemBundle
+  blocks            : coll.Vec[PemBlock]
+.end
+
+# ============================================================================
+# One-shot decode/encode
+# ============================================================================
+
+struct PemDecodeRequest
+  provider_id        : PemProviderId
+  policy             : PemPolicy
+  input              : string
+.end
+
+struct PemDecodeResponse
+  err                : PemError
+  bundle             : PemBundle
+.end
+
+struct PemDecodeRequestView
+  provider_id        : PemProviderId
+  policy             : PemPolicy
+  input              : ByteSlice
+.end
+
+struct PemDecodeResponseView
+  err                : PemError
+  # output is provider-defined: could emit only the first block view.
+  block              : PemBlockView
+  blocks_found        : u32
+.end
+
+struct PemEncodeRequest
+  provider_id        : PemProviderId
+  policy             : PemPolicy
+  block              : PemBlock
+.end
+
+struct PemEncodeResponse
+  err                : PemError
+  output             : string
+.end
+
+struct PemEncodeRequestView
+  provider_id        : PemProviderId
+  policy             : PemPolicy
+  label              : string
+  headers            : coll.Vec[PemHeader]
+  bytes              : ByteSlice
+  output             : MutByteSlice
+.end
+
+struct PemEncodeResponseView
+  err                : PemError
+  written            : u64
+.end
+
+struct PemEncodeBundleRequest
+  provider_id        : PemProviderId
+  policy             : PemPolicy
+  bundle             : PemBundle
+.end
+
+struct PemEncodeBundleResponse
+  err                : PemError
+  output             : string
+.end
+
+# ============================================================================
+# Streaming decode/encode
+# ============================================================================
+
+enum PemStreamKind
+  Decode
+  Encode
+.end
+
+enum PemStreamState
+  Init
+  Header
+  Base64
+  Final
+  Closed
+.end
+
+struct PemStreamInfo
+  provider_id        : PemProviderId
+  kind               : PemStreamKind
+  policy             : PemPolicy
+  state              : PemStreamState
+
+  buffered_in        : u32
+  buffered_out       : u32
+
+  # decode tracking
+  blocks_found       : u32
+
+  flags              : u32
+.end
+
+struct PemStream
+  handle             : u64
+  info               : PemStreamInfo
+.end
+
+struct PemStreamStartRequest
+  provider_id        : PemProviderId
+  kind               : PemStreamKind
+  policy             : PemPolicy
+.end
+
+struct PemStreamStartResponse
+  err                : PemError
+  stream             : PemStream
+.end
+
+struct PemStreamUpdateRequest
+  stream             : PemStream
+  input              : string
+.end
+
+struct PemStreamUpdateResponse
+  err                : PemError
+  output             : string
+.end
+
+struct PemStreamUpdateRequestView
+  stream             : PemStream
+  input              : ByteSlice
+  output             : MutByteSlice
+.end
+
+struct PemStreamUpdateResponseView
+  err                : PemError
+  written            : u64
+.end
+
+struct PemStreamFinishRequest
+  stream             : PemStream
+.end
+
+struct PemStreamFinishResponse
+  err                : PemError
+  output             : string
+.end
+
+struct PemStreamFinishResponseView
+  err                : PemError
+  written            : u64
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : PemProviderInfo)
+.end
+
+fn abi_out_decode_response(resp : PemDecodeResponse)
+.end
+
+fn abi_out_decode_response_view(resp : PemDecodeResponseView)
+.end
+
+fn abi_out_encode_response(resp : PemEncodeResponse)
+.end
+
+fn abi_out_encode_response_view(resp : PemEncodeResponseView)
+.end
+
+fn abi_out_encode_bundle_response(resp : PemEncodeBundleResponse)
+.end
+
+fn abi_out_stream_start_response(resp : PemStreamStartResponse)
+.end
+
+fn abi_out_stream_update_response(resp : PemStreamUpdateResponse)
+.end
+
+fn abi_out_stream_update_response_view(resp : PemStreamUpdateResponseView)
+.end
+
+fn abi_out_stream_finish_response(resp : PemStreamFinishResponse)
+.end
+
+fn abi_out_stream_finish_response_view(resp : PemStreamFinishResponseView)
+.end
+
+fn abi_out_error(err : PemError)
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn pem_provider_enumerate()
+.end
+
+fn pem_provider_query(provider_id : PemProviderId)
+.end
+
+fn pem_decode(req : PemDecodeRequest)
+.end
+
+fn pem_decode_view(req : PemDecodeRequestView)
+.end
+
+fn pem_encode(req : PemEncodeRequest)
+.end
+
+fn pem_encode_view(req : PemEncodeRequestView)
+.end
+
+fn pem_encode_bundle(req : PemEncodeBundleRequest)
+.end
+
+fn pem_stream_start(req : PemStreamStartRequest)
+.end
+
+fn pem_stream_update(req : PemStreamUpdateRequest)
+.end
+
+fn pem_stream_update_view(req : PemStreamUpdateRequestView)
+.end
+
+fn pem_stream_finish(req : PemStreamFinishRequest)
+.end
+
+fn pem_stream_destroy(stream : PemStream)
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+# Compute worst-case encoded PEM size for a block of `n` bytes.
+fn pem_encoded_len(label_len : u64, headers_count : u64, n : u64, policy : PemPolicy) -> u64
+  return 0
+.end
+
+fn pem_default_policy_strict() -> PemPolicy
+  let p : PemPolicy = PemPolicy
+  return p
+.end
+
+fn pem_default_policy_permissive() -> PemPolicy
+  let p : PemPolicy = PemPolicy
+  return p
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX++
+# ============================================================================
+
+# Providers
+# - Impl enumerate/query + PemProviderInfo.
+# - Remplacer toute sortie "texte" par ABI structs.
+
+# Decode
+# - Impl parsing RFC 7468:
+#     * trouver BEGIN/END.
+#     * label extraction + validation (strict_label).
+#     * headers parse (Key: Value) + policy.headers.
+#     * base64 decode (strict_base64) + line wrapping.
+# - Multi-block:
+#     * Reject/Allow selon policy.multiple_blocks.
+#     * construire PemBundle.
+# - Views:
+#     * PemBlockView.bytes slice dans input (si possible) OU buffer interne.
+
+# Encode
+# - Impl output:
+#     * "-----BEGIN {LABEL}-----" + headers + blank line + base64 + END.
+#     * line_width default 64.
+#     * line_break LF/CRLF.
+# - Bundle:
+#     * concat blocks avec séparation stable.
+# - Views:
+#     * BufferTooSmall + written.
+
+# Streaming
+# - Decode streaming:
+#     * state machine: Init->Header->Base64->Final.
+#     * gérer boundaries BEGIN/END split.
+#     * base64 chunked decode.
+# - Encode streaming:
+#     * chunk base64 encode + line wrap + END.
+
+# Security / hardening
+# - Robustness against malicious inputs:
+#     * extremely long lines, missing END, nested BEGIN.
+#     * limit sizes (PemLimits + policy maxima if added).
+# - Avoid quadratic scans (use streaming/linear parsing).
+
+# Tests
+# - RFC 7468 examples.
+# - Bundles with multiple blocks.
+# - Headers legacy (Proc-Type/DEK-Info) accept/reject.
+# - Negative: label mismatch, invalid base64, missing end.
+# - Fuzz: random chunking streaming + mutated markers.
+
+# Bench
+# - microbench decode/encode (one-shot vs streaming).
+
+.end

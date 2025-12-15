@@ -1,0 +1,606 @@
+# plugins/crypto/benches/b_ed25519.vitte
+mod plugins.crypto.benches
+
+pub fn main() -> i32
+  ret 0
+.end
+
+.end
+
+# plugins/beryl-crypto/benches/b_ed25519.vitte
+# Ed25519 benches — harness (keygen/sign/verify + views) — MAX+++
+# Blocks use `.end` only.
+
+module plugins.crypto.benches.b_ed25519
+
+import std.collections as coll
+
+import plugins.crypto.api.types as t
+import plugins.crypto.api.rand as rand
+import plugins.crypto.api.subtle as subtle
+
+# Signature API surface (adapt wrappers if split per algorithm)
+import plugins.crypto.api.sign as sign
+
+# ============================================================================
+# Benchmark core types
+# ============================================================================
+
+enum BenchError
+  Ok
+  Unsupported
+  InvalidConfig
+  RuntimeUnavailable
+  ProviderUnavailable
+  InternalError
+.end
+
+enum BenchUnit
+  Ns
+  Cycles
+.end
+
+enum BenchMode
+  OneShot
+  OneShotView
+  IoVecView
+.end
+
+enum BenchOp
+  KeyGen
+  Sign
+  Verify
+  BatchVerify
+.end
+
+struct BenchTimer
+  unit : BenchUnit
+.end
+
+struct BenchStats
+  iters       : u64
+  bytes       : u64
+
+  t_start     : u64
+  t_end       : u64
+  t_total     : u64
+
+  ns_per_iter : u64
+  ns_per_byte : u64
+
+  mib_per_s   : u64
+.end
+
+struct BenchCase
+  name        : string
+
+  op          : BenchOp
+  mode        : BenchMode
+
+  msg_len     : u32
+  batch_n     : u32
+
+  iterations  : u64
+  warmup      : u64
+
+  # if true, validate signature outputs / verify results (adds cost)
+  validate    : bool
+
+  # if true, message regenerated each iter using RNG (adds overhead)
+  rng_message : bool
+.end
+
+struct BenchConfig
+  provider_id : string
+  alg_id      : string
+
+  iterations_default : u64
+  warmup_default     : u64
+
+  timer       : BenchTimer
+
+  rng_provider_id : string
+  rng_alg_id      : string
+
+  constant_time    : bool
+  sidechannel_hard : bool
+
+  # if true, prefer batch verify when available
+  prefer_batch      : bool
+.end
+
+struct BenchResult
+  err         : BenchError
+  case        : BenchCase
+  stats       : BenchStats
+
+  detail      : string
+.end
+
+# ============================================================================
+# Bench emit (no I/O here)
+# ============================================================================
+
+fn bench_emit_begin(cfg : BenchConfig)
+.end
+
+fn bench_emit_case_begin(c : BenchCase)
+.end
+
+fn bench_emit_case_end(r : BenchResult)
+.end
+
+fn bench_emit_end(cfg : BenchConfig)
+.end
+
+# ============================================================================
+# Timing / sinks (stubs)
+# ============================================================================
+
+fn bench_now_ns() -> u64
+  return 0
+.end
+
+fn bench_now_cycles() -> u64
+  return 0
+.end
+
+fn bench_sink_u64(x : u64) -> u64
+  return x
+.end
+
+fn bench_sink_bytes_view(x : t.ByteSlice) -> u64
+  return x.len
+.end
+
+# ============================================================================
+# Helpers: defaults + case factory
+# ============================================================================
+
+fn bench_default_config() -> BenchConfig
+  let cfg : BenchConfig = BenchConfig
+
+  cfg.iterations_default = 5000
+  cfg.warmup_default = 500
+
+  cfg.timer = BenchTimer
+  cfg.timer.unit = BenchUnit.Ns
+
+  cfg.constant_time = true
+  cfg.sidechannel_hard = true
+
+  cfg.alg_id = "ed25519"
+  cfg.prefer_batch = true
+
+  return cfg
+.end
+
+fn bench_case_make(name : string, op : BenchOp, mode : BenchMode, msg_len : u32) -> BenchCase
+  let c : BenchCase = BenchCase
+
+  c.name = name
+  c.op = op
+  c.mode = mode
+
+  c.msg_len = msg_len
+  c.batch_n = 0
+
+  c.iterations = 0
+  c.warmup = 0
+
+  c.validate = false
+  c.rng_message = false
+
+  return c
+.end
+
+fn bench_case_apply_defaults(cfg : BenchConfig, c : BenchCase) -> BenchCase
+  let out : BenchCase = c
+
+  if out.iterations == 0
+    out.iterations = cfg.iterations_default
+  .end
+
+  if out.warmup == 0
+    out.warmup = cfg.warmup_default
+  .end
+
+  # default batch size
+  if out.batch_n == 0
+    out.batch_n = 64
+  .end
+
+  return out
+.end
+
+# ============================================================================
+# RNG helpers
+# ============================================================================
+
+struct BenchRng
+  rng : rand.RandRngRef
+.end
+
+fn bench_rng_init(cfg : BenchConfig) -> BenchRng
+  let r : BenchRng = BenchRng
+
+  let create_req : rand.RandRngCreateRequest = rand.RandRngCreateRequest
+  create_req.provider_id = cfg.rng_provider_id
+  create_req.alg_id = cfg.rng_alg_id
+  create_req.policy = rand.rand_default_policy_csprng()
+
+  rand.rand_rng_create(create_req)
+
+  return r
+.end
+
+fn bench_rng_fill_view(rng : BenchRng, out : t.MutByteSlice)
+  let req : rand.RandFillRequestView = rand.RandFillRequestView
+  req.rng = rng.rng
+  req.output = out
+  rand.rand_fill_view(req)
+.end
+
+# ============================================================================
+# Sign API setup wrappers
+# ============================================================================
+
+struct BenchSign
+  provider_id : string
+  alg_id      : string
+
+  policy      : sign.SignPolicy
+
+  # handles
+  keypair     : sign.SignKeyPairRef
+
+  # public key bytes cached for verify-only cases
+  public_key  : coll.Vec[u8]
+.end
+
+fn bench_sign_init(cfg : BenchConfig) -> BenchSign
+  let s : BenchSign = BenchSign
+
+  s.provider_id = cfg.provider_id
+  s.alg_id = cfg.alg_id
+
+  # Select provider/alg
+  let sel : sign.SignProviderSelectRequest = sign.SignProviderSelectRequest
+  sel.provider_id = cfg.provider_id
+  sel.alg_id = cfg.alg_id
+  sign.sign_provider_select(sel)
+
+  let pol : sign.SignPolicy = sign.SignPolicy
+  pol.constant_time = cfg.constant_time
+  pol.sidechannel_hard = cfg.sidechannel_hard
+  s.policy = pol
+
+  # Create/generate a keypair for sign/verify benches.
+  let kreq : sign.SignKeyPairGenerateRequest = sign.SignKeyPairGenerateRequest
+  kreq.provider_id = cfg.provider_id
+  kreq.alg_id = cfg.alg_id
+  kreq.policy = pol
+  sign.sign_keypair_generate(kreq)
+
+  # Cache pubkey (placeholder; depends on API)
+  s.public_key = coll.Vec[u8]
+
+  return s
+.end
+
+# ============================================================================
+# Buffers
+# ============================================================================
+
+struct BenchBuffers
+  msg       : coll.Vec[u8]
+  sig       : coll.Vec[u8]
+
+  # for batch verify
+  msgs      : coll.Vec[coll.Vec[u8]]
+  sigs      : coll.Vec[coll.Vec[u8]]
+  pks       : coll.Vec[coll.Vec[u8]]
+.end
+
+fn bench_buffers_make(rng : BenchRng, c : BenchCase) -> BenchBuffers
+  let b : BenchBuffers = BenchBuffers
+
+  # NOTE: Vec allocations are placeholders until Vec API exists.
+  b.msg = coll.Vec[u8]
+  b.sig = coll.Vec[u8]
+
+  b.msgs = coll.Vec[coll.Vec[u8]]
+  b.sigs = coll.Vec[coll.Vec[u8]]
+  b.pks  = coll.Vec[coll.Vec[u8]]
+
+  return b
+.end
+
+# ============================================================================
+# Stats
+# ============================================================================
+
+fn bench_stats_finish(timer : BenchTimer, iters : u64, bytes : u64, t0 : u64, t1 : u64) -> BenchStats
+  let s : BenchStats = BenchStats
+  s.iters = iters
+  s.bytes = bytes
+  s.t_start = t0
+  s.t_end = t1
+
+  if t1 >= t0
+    s.t_total = t1 - t0
+  .end
+
+  if iters > 0
+    s.ns_per_iter = s.t_total / iters
+  .end
+
+  if bytes > 0
+    s.ns_per_byte = s.t_total / bytes
+  .end
+
+  if s.t_total > 0
+    s.mib_per_s = (bytes * 1000000000) / (s.t_total * 1024 * 1024)
+  .end
+
+  return s
+.end
+
+# ============================================================================
+# Warmup + measure
+# ============================================================================
+
+fn bench_warmup(cfg : BenchConfig, s : BenchSign, rng : BenchRng, c : BenchCase, b : BenchBuffers)
+  let i : u64 = 0
+  while i < c.warmup
+    bench_kernel_once(cfg, s, rng, c, b)
+    i += 1
+  .end
+.end
+
+fn bench_measure(cfg : BenchConfig, s : BenchSign, rng : BenchRng, c : BenchCase, b : BenchBuffers) -> BenchStats
+  let t0 : u64 = 0
+  let t1 : u64 = 0
+
+  if cfg.timer.unit == BenchUnit.Ns
+    t0 = bench_now_ns()
+  .end
+  if cfg.timer.unit == BenchUnit.Cycles
+    t0 = bench_now_cycles()
+  .end
+
+  let i : u64 = 0
+  while i < c.iterations
+    bench_kernel_once(cfg, s, rng, c, b)
+    i += 1
+  .end
+
+  if cfg.timer.unit == BenchUnit.Ns
+    t1 = bench_now_ns()
+  .end
+  if cfg.timer.unit == BenchUnit.Cycles
+    t1 = bench_now_cycles()
+  .end
+
+  # bytes processed depends on op; for sign/verify it's message bytes
+  let bytes : u64 = (c.msg_len as u64) * c.iterations
+  return bench_stats_finish(cfg.timer, c.iterations, bytes, t0, t1)
+.end
+
+# ============================================================================
+# Kernel dispatcher
+# ============================================================================
+
+fn bench_kernel_once(cfg : BenchConfig, s : BenchSign, rng : BenchRng, c : BenchCase, b : BenchBuffers)
+  if c.rng_message
+    # Refill message each iter to avoid cache artifacts (adds RNG overhead)
+    bench_rng_fill_view(rng, t.MutByteSlice)
+  .end
+
+  if c.op == BenchOp.KeyGen
+    bench_kernel_keygen(cfg, s, c)
+  .end
+
+  if c.op == BenchOp.Sign
+    bench_kernel_sign(cfg, s, c, b)
+  .end
+
+  if c.op == BenchOp.Verify
+    bench_kernel_verify(cfg, s, c, b)
+  .end
+
+  if c.op == BenchOp.BatchVerify
+    bench_kernel_batch_verify(cfg, s, c, b)
+  .end
+.end
+
+# ============================================================================
+# Kernels (Sign API)
+# ============================================================================
+
+fn bench_kernel_keygen(cfg : BenchConfig, s : BenchSign, c : BenchCase)
+  let req : sign.SignKeyPairGenerateRequest = sign.SignKeyPairGenerateRequest
+  req.provider_id = cfg.provider_id
+  req.alg_id = cfg.alg_id
+  req.policy = s.policy
+  sign.sign_keypair_generate(req)
+.end
+
+fn bench_kernel_sign(cfg : BenchConfig, s : BenchSign, c : BenchCase, b : BenchBuffers)
+  if c.mode == BenchMode.OneShot
+    let req : sign.SignRequest = sign.SignRequest
+    req.keypair = s.keypair
+    req.message = b.msg
+    sign.sign(req)
+  .end
+
+  if c.mode == BenchMode.OneShotView
+    let req : sign.SignRequestView = sign.SignRequestView
+    req.keypair = s.keypair
+    req.message = t.ByteSlice
+    req.signature = t.MutByteSlice
+    sign.sign_view(req)
+    bench_sink_u64(req.signature.len)
+  .end
+
+  if c.mode == BenchMode.IoVecView
+    let req : sign.SignIoVecRequestView = sign.SignIoVecRequestView
+    req.keypair = s.keypair
+    req.message = t.IoVec
+    req.signature = t.MutByteSlice
+    sign.sign_iovec_view(req)
+  .end
+.end
+
+fn bench_kernel_verify(cfg : BenchConfig, s : BenchSign, c : BenchCase, b : BenchBuffers)
+  if c.mode == BenchMode.OneShot
+    let req : sign.VerifyRequest = sign.VerifyRequest
+    req.public_key = s.public_key
+    req.message = b.msg
+    req.signature = b.sig
+    sign.verify(req)
+  .end
+
+  if c.mode == BenchMode.OneShotView
+    let req : sign.VerifyRequestView = sign.VerifyRequestView
+    req.public_key = t.ByteSlice
+    req.message = t.ByteSlice
+    req.signature = t.ByteSlice
+    sign.verify_view(req)
+
+    if c.validate
+      # enforce stable boolean via constant-time bool normalization (best effort)
+      subtle.ct_bool_normalize(true)
+    .end
+  .end
+
+  if c.mode == BenchMode.IoVecView
+    let req : sign.VerifyIoVecRequestView = sign.VerifyIoVecRequestView
+    req.public_key = t.ByteSlice
+    req.message = t.IoVec
+    req.signature = t.ByteSlice
+    sign.verify_iovec_view(req)
+  .end
+.end
+
+fn bench_kernel_batch_verify(cfg : BenchConfig, s : BenchSign, c : BenchCase, b : BenchBuffers)
+  # Optional API; if not supported, provider should return Unsupported.
+  let req : sign.BatchVerifyRequest = sign.BatchVerifyRequest
+  req.public_keys = b.pks
+  req.messages = b.msgs
+  req.signatures = b.sigs
+  req.batch_n = c.batch_n
+  sign.batch_verify(req)
+.end
+
+# ============================================================================
+# Run case
+# ============================================================================
+
+fn bench_run_case(cfg : BenchConfig, c_in : BenchCase) -> BenchResult
+  let r : BenchResult = BenchResult
+
+  let c : BenchCase = bench_case_apply_defaults(cfg, c_in)
+  r.case = c
+
+  bench_emit_case_begin(c)
+
+  let rng : BenchRng = bench_rng_init(cfg)
+  let b : BenchBuffers = bench_buffers_make(rng, c)
+
+  let s : BenchSign = bench_sign_init(cfg)
+
+  # Precompute a signature for verify benches (best effort)
+  if c.op == BenchOp.Verify
+    let sreq : sign.SignRequest = sign.SignRequest
+    sreq.keypair = s.keypair
+    sreq.message = b.msg
+    sign.sign(sreq)
+  .end
+
+  if c.op == BenchOp.BatchVerify
+    # TODO: build arrays of (pk,msg,sig) of size batch_n.
+    # This is a placeholder until Vec APIs exist.
+    bench_sink_u64(c.batch_n as u64)
+  .end
+
+  bench_warmup(cfg, s, rng, c, b)
+
+  let stats : BenchStats = bench_measure(cfg, s, rng, c, b)
+  r.stats = stats
+  r.err = BenchError.Ok
+
+  bench_emit_case_end(r)
+  return r
+.end
+
+fn bench_build_cases_max() -> coll.Vec[BenchCase]
+  let v : coll.Vec[BenchCase] = coll.Vec[BenchCase]
+
+  # Message sizes
+  # - empty, short, medium, large
+
+  # Keygen
+  v.push(bench_case_make("keygen/oneshot", BenchOp.KeyGen, BenchMode.OneShot, 0))
+
+  # Sign
+  v.push(bench_case_make("sign/oneshot/0", BenchOp.Sign, BenchMode.OneShot, 0))
+  v.push(bench_case_make("sign/oneshot/64", BenchOp.Sign, BenchMode.OneShot, 64))
+  v.push(bench_case_make("sign/oneshot/1k", BenchOp.Sign, BenchMode.OneShot, 1024))
+  v.push(bench_case_make("sign/view/64", BenchOp.Sign, BenchMode.OneShotView, 64))
+  v.push(bench_case_make("sign/iovec/16k", BenchOp.Sign, BenchMode.IoVecView, 16384))
+
+  # Verify
+  let vc : BenchCase = bench_case_make("verify/view/64", BenchOp.Verify, BenchMode.OneShotView, 64)
+  vc.validate = true
+  v.push(vc)
+
+  v.push(bench_case_make("verify/oneshot/1k", BenchOp.Verify, BenchMode.OneShot, 1024))
+  v.push(bench_case_make("verify/iovec/16k", BenchOp.Verify, BenchMode.IoVecView, 16384))
+
+  # Batch verify (optional)
+  let bc : BenchCase = bench_case_make("batch_verify/64x64", BenchOp.BatchVerify, BenchMode.OneShot, 64)
+  bc.batch_n = 64
+  bc.validate = true
+  v.push(bc)
+
+  # RNG-message variants (captures cost of hashing large random payloads)
+  let rs : BenchCase = bench_case_make("sign/oneshot/16k_rng", BenchOp.Sign, BenchMode.OneShot, 16384)
+  rs.rng_message = true
+  v.push(rs)
+
+  let rv : BenchCase = bench_case_make("verify/oneshot/16k_rng", BenchOp.Verify, BenchMode.OneShot, 16384)
+  rv.rng_message = true
+  v.push(rv)
+
+  return v
+.end
+
+# ============================================================================
+# Entrypoint
+# ============================================================================
+
+fn main() -> i32
+  let cfg : BenchConfig = bench_default_config()
+
+  # Default provider/alg ids should be set by harness/runner.
+  # Example:
+  #   cfg.provider_id = "default"
+  #   cfg.alg_id = "ed25519"
+
+  bench_emit_begin(cfg)
+
+  let cases : coll.Vec[BenchCase] = bench_build_cases_max()
+
+  let i : u64 = 0
+  while i < cases.len()
+    let c : BenchCase = cases[i]
+    bench_run_case(cfg, c)
+    i += 1
+  .end
+
+  bench_emit_end(cfg)
+  return 0
+.end
+
+.end

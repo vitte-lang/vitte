@@ -1,0 +1,569 @@
+# plugins/crypto/api/cipher/block.vitte
+# Block cipher trait
+# Blocks use `.end` only.
+
+mod plugins.crypto.api.cipher.block
+
+# TODO
+
+.end
+
+# plugins/beryl/api/cipher/block.vitte
+# Block cipher — generic API contract (data-first, backend-agnostic) — MAX++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Définir un contrat universel pour les ciphers blocs:
+#       * providers + alg descriptors + capabilities
+#       * handles (provider/key/context/stream)
+#       * one-shot (block + buffer) + streaming
+#       * views (zero-copy) optionnelles
+#   - Ne contient aucune crypto réelle.
+#
+# Remarques:
+#   - AES, Camellia, SM4, ARIA, Twofish, Serpent, Blowfish, CAST-128, etc.
+#     se branchent via `BlockAlgInfo`.
+
+module plugins.crypto.api.cipher.block
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const BLOCK_API_VERSION_MAJOR : u32 = 1
+const BLOCK_API_VERSION_MINOR : u32 = 0
+const BLOCK_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum BlockError
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidAlgorithm
+  InvalidKey
+  InvalidContext
+  InvalidStream
+
+  InvalidInput
+  InvalidOutput
+  InvalidIv
+  InvalidNonce
+  InvalidTweak
+  InvalidPolicy
+
+  BufferTooSmall
+  MessageTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  PermissionDenied
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Identifiers / metadata
+# ============================================================================
+
+type BlockProviderId = string
+
+type BlockAlgId = string
+
+type BlockModeId = string
+
+enum BlockBackendKind
+  Unknown
+  Software
+  Hardware
+  Kms
+  Remote
+.end
+
+enum BlockDirection
+  Encrypt
+  Decrypt
+.end
+
+enum BlockPadding
+  None
+  Pkcs7
+  Iso7816_4
+  AnsiX923
+  Zero
+.end
+
+enum BlockKeyUsage
+  EncryptOnly
+  DecryptOnly
+  EncryptAndDecrypt
+.end
+
+# ============================================================================
+# Capability flags
+# ============================================================================
+
+const BLOCK_FLAG_BLOCK_ENCRYPT        : u32 = 1
+const BLOCK_FLAG_BLOCK_DECRYPT        : u32 = 2
+const BLOCK_FLAG_ONE_SHOT_BUFFER      : u32 = 4
+const BLOCK_FLAG_STREAMING            : u32 = 8
+
+const BLOCK_FLAG_ECB                  : u32 = 16
+const BLOCK_FLAG_CBC                  : u32 = 32
+const BLOCK_FLAG_CTR                  : u32 = 64
+const BLOCK_FLAG_XTS                  : u32 = 128
+const BLOCK_FLAG_CFB                  : u32 = 256
+const BLOCK_FLAG_OFB                  : u32 = 512
+
+const BLOCK_FLAG_HW_ACCEL             : u32 = 1024
+const BLOCK_FLAG_FIPS                 : u32 = 2048
+const BLOCK_FLAG_SIDECHANNEL_HARD     : u32 = 4096
+const BLOCK_FLAG_CONSTANT_TIME        : u32 = 8192
+
+const BLOCK_PROVIDER_FLAG_SOFTWARE    : u32 = 1
+const BLOCK_PROVIDER_FLAG_HARDWARE    : u32 = 2
+const BLOCK_PROVIDER_FLAG_KMS         : u32 = 4
+const BLOCK_PROVIDER_FLAG_REMOTE      : u32 = 8
+const BLOCK_PROVIDER_FLAG_THREADSAFE  : u32 = 16
+const BLOCK_PROVIDER_FLAG_SANDBOXED   : u32 = 32
+
+# ============================================================================
+# Limits / lens
+# ============================================================================
+
+struct BlockLimits
+  key_min       : u32
+  key_max       : u32
+  iv_min        : u32
+  iv_max        : u32
+  nonce_min     : u32
+  nonce_max     : u32
+  tweak_min     : u32
+  tweak_max     : u32
+
+  msg_max       : u64
+.end
+
+struct LenSet
+  min           : u32
+  max           : u32
+  step          : u32
+  preferred     : coll.Vec[u32]
+.end
+
+struct BlockAlgInfo
+  id            : BlockAlgId
+  name          : string
+  family        : string
+
+  block_len     : u32
+  key_lens      : LenSet
+
+  iv_lens       : LenSet
+  nonce_lens    : LenSet
+  tweak_lens    : LenSet
+
+  modes         : coll.Vec[BlockModeId]
+  flags         : u32
+  limits        : BlockLimits
+.end
+
+struct BlockProviderInfo
+  id            : BlockProviderId
+  name          : string
+  vendor        : string
+  version       : string
+
+  backend       : BlockBackendKind
+  priority      : i32
+  flags         : u32
+
+  build         : string
+  device        : string
+  location      : string
+
+  algorithms    : coll.Vec[BlockAlgInfo]
+.end
+
+# ============================================================================
+# Handles (opaque)
+# ============================================================================
+
+type BlockHandle = u64
+
+enum BlockHandleKind
+  None
+  Provider
+  Key
+  Context
+  Stream
+.end
+
+struct BlockOpaque
+  kind          : BlockHandleKind
+  value         : BlockHandle
+.end
+
+# ============================================================================
+# Views (zero-copy optional)
+# ============================================================================
+
+struct ByteSlice
+  ptr           : u64
+  len           : u64
+.end
+
+struct MutByteSlice
+  ptr           : u64
+  len           : u64
+.end
+
+struct IoVec
+  slices        : coll.Vec[ByteSlice]
+  total_len     : u64
+.end
+
+struct MutIoVec
+  slices        : coll.Vec[MutByteSlice]
+  total_len     : u64
+.end
+
+# ============================================================================
+# Owned payload containers
+# ============================================================================
+
+struct BlockBytes
+  bytes         : coll.Vec[u8]
+.end
+
+struct BlockIv
+  bytes         : coll.Vec[u8]
+.end
+
+struct BlockNonce
+  bytes         : coll.Vec[u8]
+.end
+
+struct BlockTweak
+  bytes         : coll.Vec[u8]
+.end
+
+struct BlockFixed
+  bytes         : coll.Vec[u8]
+.end
+
+# ============================================================================
+# Views payload containers
+# ============================================================================
+
+struct BlockBytesView
+  bytes         : ByteSlice
+.end
+
+struct BlockIvView
+  bytes         : ByteSlice
+.end
+
+struct BlockNonceView
+  bytes         : ByteSlice
+.end
+
+struct BlockTweakView
+  bytes         : ByteSlice
+.end
+
+struct BlockFixedView
+  bytes         : ByteSlice
+.end
+
+# ============================================================================
+# Key / context model
+# ============================================================================
+
+struct BlockKeyConstraints
+  usage         : BlockKeyUsage
+  fips          : bool
+  allow_hw      : bool
+.end
+
+struct BlockKeyInfo
+  provider_id   : BlockProviderId
+  alg_id        : BlockAlgId
+  key_id        : string
+
+  usage         : BlockKeyUsage
+  key_len       : u32
+
+  created_ms    : u64
+  expires_ms    : u64
+
+  flags         : u32
+  constraints   : BlockKeyConstraints
+.end
+
+struct BlockKeyRef
+  key           : BlockOpaque
+  info          : BlockKeyInfo
+.end
+
+struct BlockContextPolicy
+  mode_id       : BlockModeId
+  dir           : BlockDirection
+  padding       : BlockPadding
+  strict_len    : bool
+.end
+
+struct BlockContextInfo
+  provider_id   : BlockProviderId
+  alg_id        : BlockAlgId
+  key           : BlockOpaque
+  flags         : u32
+  policy        : BlockContextPolicy
+.end
+
+struct BlockContextRef
+  ctx           : BlockOpaque
+  info          : BlockContextInfo
+.end
+
+# ============================================================================
+# One-shot operations
+# ============================================================================
+
+struct BlockCryptFixedOptions
+  mode_id       : BlockModeId
+  padding       : BlockPadding
+.end
+
+struct BlockCryptFixedRequest
+  ctx           : BlockContextRef
+  in_block      : BlockFixed
+  options       : BlockCryptFixedOptions
+.end
+
+struct BlockCryptFixedResponse
+  err           : BlockError
+  out_block     : BlockFixed
+.end
+
+struct BlockCryptBufferOptions
+  mode_id       : BlockModeId
+  padding       : BlockPadding
+.end
+
+struct BlockCryptBufferRequest
+  ctx           : BlockContextRef
+  iv            : BlockIv
+  nonce         : BlockNonce
+  tweak         : BlockTweak
+
+  in_bytes      : BlockBytes
+  options       : BlockCryptBufferOptions
+.end
+
+struct BlockCryptBufferResponse
+  err           : BlockError
+  out_bytes     : BlockBytes
+.end
+
+# Views one-shot
+struct BlockCryptFixedRequestView
+  ctx           : BlockContextRef
+  in_block      : BlockFixedView
+  options       : BlockCryptFixedOptions
+.end
+
+struct BlockCryptFixedResponseView
+  err           : BlockError
+  out_block     : BlockFixedView
+.end
+
+struct BlockCryptBufferRequestView
+  ctx           : BlockContextRef
+  iv            : BlockIvView
+  nonce         : BlockNonceView
+  tweak         : BlockTweakView
+
+  in_bytes      : ByteSlice
+  options       : BlockCryptBufferOptions
+.end
+
+struct BlockCryptBufferResponseView
+  err           : BlockError
+  out_bytes     : ByteSlice
+.end
+
+# ============================================================================
+# Streaming
+# ============================================================================
+
+enum BlockStreamState
+  Init
+  Iv
+  Data
+  Final
+  Closed
+.end
+
+struct BlockStreamInfo
+  provider_id   : BlockProviderId
+  alg_id        : BlockAlgId
+  ctx           : BlockOpaque
+  mode_id       : BlockModeId
+  dir           : BlockDirection
+  state         : BlockStreamState
+  flags         : u32
+.end
+
+struct BlockStreamRef
+  stream        : BlockOpaque
+  info          : BlockStreamInfo
+.end
+
+struct BlockStreamStartRequest
+  ctx           : BlockContextRef
+  iv            : BlockIv
+  nonce         : BlockNonce
+  tweak         : BlockTweak
+.end
+
+struct BlockStreamStartResponse
+  err           : BlockError
+  stream        : BlockStreamRef
+.end
+
+struct BlockStreamUpdateRequest
+  stream        : BlockStreamRef
+  chunk         : BlockBytes
+.end
+
+struct BlockStreamUpdateResponse
+  err           : BlockError
+  out_chunk     : BlockBytes
+.end
+
+struct BlockStreamFinishRequest
+  stream        : BlockStreamRef
+.end
+
+struct BlockStreamFinishResponse
+  err           : BlockError
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : BlockProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : BlockAlgInfo)
+.end
+
+fn abi_out_key_ref_struct(key_ref : BlockKeyRef)
+.end
+
+fn abi_out_ctx_ref_struct(ctx_ref : BlockContextRef)
+.end
+
+fn abi_out_crypt_fixed_response(resp : BlockCryptFixedResponse)
+.end
+
+fn abi_out_crypt_buffer_response(resp : BlockCryptBufferResponse)
+.end
+
+fn abi_out_crypt_fixed_response_view(resp : BlockCryptFixedResponseView)
+.end
+
+fn abi_out_crypt_buffer_response_view(resp : BlockCryptBufferResponseView)
+.end
+
+fn abi_out_stream_start_response(resp : BlockStreamStartResponse)
+.end
+
+fn abi_out_stream_update_response(resp : BlockStreamUpdateResponse)
+.end
+
+fn abi_out_stream_finish_response(resp : BlockStreamFinishResponse)
+.end
+
+fn abi_out_error(err : BlockError)
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn block_provider_enumerate()
+.end
+
+fn block_provider_query(provider_id : BlockProviderId)
+.end
+
+fn block_provider_select(provider_id : BlockProviderId, alg_id : BlockAlgId)
+.end
+
+fn block_key_generate(provider_id : BlockProviderId, alg_id : BlockAlgId, key_len : u32, usage : BlockKeyUsage)
+.end
+
+fn block_key_import(provider_id : BlockProviderId, alg_id : BlockAlgId, usage : BlockKeyUsage, key_bytes : coll.Vec[u8])
+.end
+
+fn block_key_destroy(key : BlockOpaque)
+.end
+
+fn block_context_create(key : BlockOpaque, flags : u32, policy : BlockContextPolicy)
+.end
+
+fn block_context_destroy(ctx : BlockOpaque)
+.end
+
+fn block_crypt_fixed(req : BlockCryptFixedRequest)
+.end
+
+fn block_crypt_buffer(req : BlockCryptBufferRequest)
+.end
+
+fn block_crypt_fixed_view(req : BlockCryptFixedRequestView)
+.end
+
+fn block_crypt_buffer_view(req : BlockCryptBufferRequestView)
+.end
+
+fn block_stream_start(req : BlockStreamStartRequest)
+.end
+
+fn block_stream_update(req : BlockStreamUpdateRequest)
+.end
+
+fn block_stream_finish(req : BlockStreamFinishRequest)
+.end
+
+fn block_stream_destroy(stream : BlockOpaque)
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle)
+# ============================================================================
+
+# - Impl provider enumerate/query/select + fill BlockProviderInfo/BlockAlgInfo.
+# - Impl handles slot+generation O(1) thread-safe (provider/key/context/stream).
+# - Définir conventions des modes (ECB/CBC/CTR/XTS/CFB/OFB) et des inputs iv/nonce/tweak.
+# - Impl key mgmt + secure memory + memwipe.
+# - Impl contexts + policy validation.
+# - Impl one-shot + streaming + views (zero-copy) selon runtime.
+# - Side-channel hardening: constant-time, secret-independent memory.
+# - Tests: vectors (par algo), streaming state machine, fuzz malformed inputs.
+
+.end

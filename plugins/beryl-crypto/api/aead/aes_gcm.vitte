@@ -1,0 +1,982 @@
+# plugins/beryl/api/aead/aes_gcm.vitte
+# AES-GCM provider (Beryl) — aligned to aead.vitte (owned + view stubs) — MAX++
+
+module plugins.crypto.api.aead.aes_gcm
+
+import std.collections as coll
+import plugins.crypto.api.aead.aead as aead
+
+# ============================================================================
+# Provider identity
+# ============================================================================
+
+const PROVIDER_ID       : aead.AeadProviderId  = "beryl.software.aes_gcm.stub"
+const PROVIDER_NAME     : string              = "Beryl AES-GCM (stub)"
+const PROVIDER_VENDOR   : string              = "vitte-core"
+const PROVIDER_VERSION  : string              = "0.0.0"
+
+const PROVIDER_BACKEND  : aead.AeadBackendKind = aead.AeadBackendKind.Software
+const PROVIDER_FLAGS    : u32                 = aead.AEAD_PROVIDER_FLAG_SOFTWARE + aead.AEAD_PROVIDER_FLAG_THREADSAFE
+const PROVIDER_PRIORITY : i32                 = 10
+
+const PROVIDER_BUILD    : string              = ""
+const PROVIDER_DEVICE   : string              = ""
+const PROVIDER_LOCATION : string              = ""
+
+# ============================================================================
+# Algorithms: AES-128-GCM / AES-256-GCM
+# ============================================================================
+
+const ALG128_ID     : aead.AeadAlgId   = "aes-128-gcm"
+const ALG256_ID     : aead.AeadAlgId   = "aes-256-gcm"
+const ALG_NAME      : string          = "AES-GCM"
+const ALG_FAMILY    : aead.AeadFamily  = aead.AeadFamily.AesGcm
+
+const KEY_LEN_128   : u32 = 16
+const KEY_LEN_256   : u32 = 32
+const NONCE_LEN     : u32 = 12
+const TAG_LEN       : u32 = 16
+
+const LIMIT_AAD_MAX : u64 = 1_073_741_824
+const LIMIT_MSG_MAX : u64 = 1_073_741_824
+const LIMIT_CIPH_MAX: u64 = 1_073_741_824 + 16
+
+# AES-GCM is NOT nonce-misuse resistant.
+const ALG_FLAGS_COMMON : u32 = aead.AEAD_FLAG_DETACHED + aead.AEAD_FLAG_CONSTANT_TIME
+
+# ============================================================================
+# ABI stubs (runtime/loader provided)
+# ============================================================================
+
+fn abi_now_ms() -> u64
+  return 0
+.end
+
+fn abi_vec_len_u8(v : coll.Vec[u8]) -> u64
+  return 0
+.end
+
+fn abi_bytes_concat(a : coll.Vec[u8], b : coll.Vec[u8]) -> coll.Vec[u8]
+  return coll.Vec[u8]()
+.end
+
+fn abi_split_combined(combined : coll.Vec[u8], tag_len : u32) -> aead.AeadDetached
+  return aead.AeadDetached {
+    cipher = aead.AeadCiphertext { bytes = coll.Vec[u8]() },
+    tag = aead.AeadTag { bytes = coll.Vec[u8]() },
+  }
+.end
+
+fn abi_copy_from_slice(src : aead.ByteSlice) -> coll.Vec[u8]
+  return coll.Vec[u8]()
+.end
+
+fn abi_out_provider_info_struct(info : aead.AeadProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : aead.AeadAlgInfo)
+.end
+
+fn abi_out_select(provider_id : aead.AeadProviderId, alg_id : aead.AeadAlgId)
+.end
+
+fn abi_out_key_ref_struct(key_ref : aead.AeadKeyRef)
+.end
+
+fn abi_out_ctx_ref_struct(ctx_ref : aead.AeadContextRef)
+.end
+
+fn abi_out_stream_start_response(resp : aead.AeadStreamStartResponse)
+.end
+
+fn abi_out_stream_aad_response(resp : aead.AeadStreamAadResponse)
+.end
+
+fn abi_out_stream_update_response(resp : aead.AeadStreamUpdateResponse)
+.end
+
+fn abi_out_stream_finish_response(resp : aead.AeadStreamFinishResponse)
+.end
+
+fn abi_out_seal_response(resp : aead.AeadSealResponse)
+.end
+
+fn abi_out_open_response(resp : aead.AeadOpenResponse)
+.end
+
+fn abi_out_seal_response_view(resp : aead.AeadSealResponseView)
+.end
+
+fn abi_out_open_response_view(resp : aead.AeadOpenResponseView)
+.end
+
+fn abi_out_keystore_get_response(resp : aead.AeadKeyStoreGetResponse)
+.end
+
+fn abi_out_key_wrap_response(resp : aead.AeadKeyWrapResponse)
+.end
+
+fn abi_out_key_unwrap_response(resp : aead.AeadKeyUnwrapResponse)
+.end
+
+fn abi_out_audit_event_struct(ev : aead.AeadAuditEvent)
+.end
+
+fn abi_out_error(err : aead.AeadError)
+.end
+
+# Handles (slot+generation = runtime responsibility)
+fn abi_handles_new_key(provider_id : aead.AeadProviderId, alg_id : aead.AeadAlgId) -> u64
+  return 0
+.end
+
+fn abi_handles_new_ctx(provider_id : aead.AeadProviderId, alg_id : aead.AeadAlgId, key_handle : u64) -> u64
+  return 0
+.end
+
+fn abi_handles_new_stream(provider_id : aead.AeadProviderId, alg_id : aead.AeadAlgId, ctx_handle : u64) -> u64
+  return 0
+.end
+
+fn abi_handles_drop(kind : aead.AeadHandleKind, handle : u64)
+.end
+
+fn abi_handles_validate(kind : aead.AeadHandleKind, handle : u64) -> bool
+  return false
+.end
+
+fn abi_handles_key_alg_id(key_handle : u64) -> aead.AeadAlgId
+  return ""
+.end
+
+# Nonce policy enforcement
+fn abi_nonce_check_and_record(key_handle : u64, nonce : coll.Vec[u8], strict : bool) -> aead.AeadError
+  return aead.AeadError.Unsupported
+.end
+
+# Keystore / wrapping
+fn abi_keystore_put(provider_id : aead.AeadProviderId, key_id : aead.AeadKeyId, key_handle : u64) -> aead.AeadError
+  return aead.AeadError.Unsupported
+.end
+
+fn abi_keystore_get(provider_id : aead.AeadProviderId, key_id : aead.AeadKeyId) -> u64
+  return 0
+.end
+
+fn abi_key_wrap_impl(wrapping_key_handle : u64, target_key_handle : u64) -> coll.Vec[u8]
+  return coll.Vec[u8]()
+.end
+
+fn abi_key_unwrap_impl(wrapping_key_handle : u64, wrapped : coll.Vec[u8], usage : aead.AeadKeyUsage, alg_id : aead.AeadAlgId) -> u64
+  return 0
+.end
+
+# Crypto backend hooks
+fn backend_aes_gcm_seal_detached(key_handle : u64, alg_id : aead.AeadAlgId, nonce : coll.Vec[u8], aad : coll.Vec[u8], plaintext : coll.Vec[u8]) -> aead.AeadDetached
+  return aead.AeadDetached {
+    cipher = aead.AeadCiphertext { bytes = coll.Vec[u8]() },
+    tag = aead.AeadTag { bytes = coll.Vec[u8]() },
+  }
+.end
+
+fn backend_aes_gcm_open_detached(key_handle : u64, alg_id : aead.AeadAlgId, nonce : coll.Vec[u8], aad : coll.Vec[u8], cipher : coll.Vec[u8], tag : coll.Vec[u8]) -> aead.AeadPlaintext
+  return aead.AeadPlaintext { bytes = coll.Vec[u8]() }
+.end
+
+# Streaming backend (optional)
+fn backend_stream_supported() -> bool
+  return false
+.end
+
+fn backend_stream_start(key_handle : u64, alg_id : aead.AeadAlgId, nonce : coll.Vec[u8], role : aead.AeadStreamRole, flags : u32) -> u64
+  return 0
+.end
+
+fn backend_stream_aad(stream_handle : u64, aad : coll.Vec[u8]) -> aead.AeadError
+  return aead.AeadError.Unsupported
+.end
+
+fn backend_stream_update(stream_handle : u64, chunk : coll.Vec[u8]) -> aead.AeadBytes
+  return aead.AeadBytes { bytes = coll.Vec[u8]() }
+.end
+
+fn backend_stream_finish_seal(stream_handle : u64) -> aead.AeadTag
+  return aead.AeadTag { bytes = coll.Vec[u8]() }
+.end
+
+fn backend_stream_finish_open(stream_handle : u64, tag : coll.Vec[u8]) -> aead.AeadError
+  return aead.AeadError.Unsupported
+.end
+
+fn backend_stream_destroy(stream_handle : u64)
+.end
+
+# ============================================================================
+# Helpers
+# ============================================================================
+
+fn is_supported_alg(alg_id : aead.AeadAlgId) -> bool
+  if alg_id == ALG128_ID
+    return true
+  .end
+  if alg_id == ALG256_ID
+    return true
+  .end
+  return false
+.end
+
+fn alg_key_len(alg_id : aead.AeadAlgId) -> u32
+  if alg_id == ALG128_ID
+    return KEY_LEN_128
+  .end
+  if alg_id == ALG256_ID
+    return KEY_LEN_256
+  .end
+  return 0
+.end
+
+fn validate_nonce_len(nonce : aead.AeadNonce) -> aead.AeadError
+  let n : u64 = abi_vec_len_u8(nonce.bytes)
+  if n == 0
+    return aead.AeadError.Ok
+  .end
+  if n != NONCE_LEN
+    return aead.AeadError.InvalidNonce
+  .end
+  return aead.AeadError.Ok
+.end
+
+fn validate_tag_len(tag : aead.AeadTag) -> aead.AeadError
+  let n : u64 = abi_vec_len_u8(tag.bytes)
+  if n == 0
+    return aead.AeadError.Ok
+  .end
+  if n != TAG_LEN
+    return aead.AeadError.InvalidTag
+  .end
+  return aead.AeadError.Ok
+.end
+
+fn validate_options_seal(opt : aead.AeadSealOptions) -> aead.AeadError
+  if opt.tag_len != 0
+    if opt.tag_len != TAG_LEN
+      return aead.AeadError.InvalidPolicy
+    .end
+  .end
+  return aead.AeadError.Ok
+.end
+
+fn validate_options_open(opt : aead.AeadOpenOptions) -> aead.AeadError
+  if opt.tag_len != 0
+    if opt.tag_len != TAG_LEN
+      return aead.AeadError.InvalidPolicy
+    .end
+  .end
+  return aead.AeadError.Ok
+.end
+
+fn make_len_set_fixed(n : u32) -> aead.AeadLenSet
+  return aead.AeadLenSet { min = n, max = n, step = 0, preferred = coll.Vec[u32]() }
+.end
+
+fn make_limits(key_len : u32) -> aead.AeadLimits
+  return aead.AeadLimits {
+    key_min = key_len,
+    key_max = key_len,
+    nonce_min = NONCE_LEN,
+    nonce_max = NONCE_LEN,
+    tag_min = TAG_LEN,
+    tag_max = TAG_LEN,
+    aad_max = LIMIT_AAD_MAX,
+    msg_max = LIMIT_MSG_MAX,
+    cipher_max = LIMIT_CIPH_MAX,
+  }
+.end
+
+fn audit_emit(kind : aead.AeadAuditEventKind, ok : bool, err : aead.AeadError, alg_id : aead.AeadAlgId, key_id : aead.AeadKeyId, aad_bytes : u64, msg_bytes : u64)
+  let ev : aead.AeadAuditEvent = aead.AeadAuditEvent {
+    kind = kind,
+    when_ms = abi_now_ms(),
+    provider_id = PROVIDER_ID,
+    alg_id = alg_id,
+    key_id = key_id,
+    ok = ok,
+    err = err,
+    aad_bytes = aad_bytes,
+    msg_bytes = msg_bytes,
+  }
+  abi_out_audit_event_struct(ev)
+.end
+
+# ============================================================================
+# Provider surface
+# ============================================================================
+
+fn emit_provider_info()
+  let info : aead.AeadProviderInfo = aead.AeadProviderInfo {
+    id = PROVIDER_ID,
+    name = PROVIDER_NAME,
+    vendor = PROVIDER_VENDOR,
+    version = PROVIDER_VERSION,
+    backend = PROVIDER_BACKEND,
+    priority = PROVIDER_PRIORITY,
+    flags = PROVIDER_FLAGS,
+    build = PROVIDER_BUILD,
+    device = PROVIDER_DEVICE,
+    location = PROVIDER_LOCATION,
+    algorithms = coll.Vec[aead.AeadAlgInfo](),
+  }
+  abi_out_provider_info_struct(info)
+.end
+
+fn emit_alg_info(alg_id : aead.AeadAlgId)
+  let k : u32 = alg_key_len(alg_id)
+  let info : aead.AeadAlgInfo = aead.AeadAlgInfo {
+    id = alg_id,
+    name = ALG_NAME,
+    family = ALG_FAMILY,
+    key_lens = make_len_set_fixed(k),
+    nonce_lens = make_len_set_fixed(NONCE_LEN),
+    tag_lens = make_len_set_fixed(TAG_LEN),
+    tag_mode = aead.AeadTagMode.Fixed,
+    flags = ALG_FLAGS_COMMON,
+    limits = make_limits(k),
+  }
+  abi_out_alg_info_struct(info)
+.end
+
+fn aead_provider_enumerate()
+  emit_provider_info()
+  emit_alg_info(ALG128_ID)
+  emit_alg_info(ALG256_ID)
+.end
+
+fn aead_provider_query(provider_id : aead.AeadProviderId)
+  if provider_id != PROVIDER_ID
+    abi_out_error(aead.AeadError.InvalidProvider)
+    return
+  .end
+  emit_provider_info()
+  emit_alg_info(ALG128_ID)
+  emit_alg_info(ALG256_ID)
+.end
+
+fn aead_provider_select(opts : aead.AeadSessionOptions)
+  if opts.selector.alg_id == ALG128_ID
+    abi_out_select(PROVIDER_ID, ALG128_ID)
+    return
+  .end
+  if opts.selector.alg_id == ALG256_ID
+    abi_out_select(PROVIDER_ID, ALG256_ID)
+    return
+  .end
+  abi_out_select(PROVIDER_ID, ALG256_ID)
+.end
+
+# ============================================================================
+# Keys / contexts
+# ============================================================================
+
+fn aead_key_generate(provider_id : aead.AeadProviderId, alg_id : aead.AeadAlgId, usage : aead.AeadKeyUsage)
+  if provider_id != PROVIDER_ID
+    abi_out_error(aead.AeadError.ProviderUnavailable)
+    return
+  .end
+  if not is_supported_alg(alg_id)
+    abi_out_error(aead.AeadError.Unsupported)
+    return
+  .end
+
+  let key_len : u32 = alg_key_len(alg_id)
+  if key_len == 0
+    abi_out_error(aead.AeadError.Unsupported)
+    return
+  .end
+
+  let h : u64 = abi_handles_new_key(PROVIDER_ID, alg_id)
+  if h == 0
+    abi_out_error(aead.AeadError.ProviderBusy)
+    return
+  .end
+
+  let now : u64 = abi_now_ms()
+  let key_id : aead.AeadKeyId = ""
+
+  let constraints : aead.AeadKeyConstraints = aead.AeadKeyConstraints {
+    nonce_mode = aead.AeadNonceMode.External,
+    strict_nonce = true,
+    export_policy = aead.AeadKeyExportPolicy.NonExportable,
+    max_ops = 0,
+    max_bytes = 0,
+  }
+
+  let info : aead.AeadKeyInfo = aead.AeadKeyInfo {
+    provider_id = PROVIDER_ID,
+    alg_id = alg_id,
+    key_id = key_id,
+    usage = usage,
+    origin = aead.AeadKeyOrigin.Generated,
+    export_policy = aead.AeadKeyExportPolicy.NonExportable,
+    key_len = key_len,
+    created_ms = now,
+    expires_ms = 0,
+    flags = ALG_FLAGS_COMMON,
+    constraints = constraints,
+  }
+
+  let key_ref : aead.AeadKeyRef = aead.AeadKeyRef {
+    key = aead.AeadOpaque { kind = aead.AeadHandleKind.Key, value = h },
+    info = info,
+  }
+
+  abi_out_key_ref_struct(key_ref)
+  audit_emit(aead.AeadAuditEventKind.KeyCreate, true, aead.AeadError.Ok, alg_id, key_id, 0, 0)
+.end
+
+fn aead_key_import(provider_id : aead.AeadProviderId, alg_id : aead.AeadAlgId, usage : aead.AeadKeyUsage, key_bytes : coll.Vec[u8])
+  if provider_id != PROVIDER_ID
+    abi_out_error(aead.AeadError.ProviderUnavailable)
+    return
+  .end
+  if not is_supported_alg(alg_id)
+    abi_out_error(aead.AeadError.Unsupported)
+    return
+  .end
+
+  let h : u64 = abi_handles_new_key(PROVIDER_ID, alg_id)
+  if h == 0
+    abi_out_error(aead.AeadError.ProviderBusy)
+    return
+  .end
+
+  let now : u64 = abi_now_ms()
+  let key_id : aead.AeadKeyId = ""
+
+  let constraints : aead.AeadKeyConstraints = aead.AeadKeyConstraints {
+    nonce_mode = aead.AeadNonceMode.External,
+    strict_nonce = true,
+    export_policy = aead.AeadKeyExportPolicy.NonExportable,
+    max_ops = 0,
+    max_bytes = 0,
+  }
+
+  let info : aead.AeadKeyInfo = aead.AeadKeyInfo {
+    provider_id = PROVIDER_ID,
+    alg_id = alg_id,
+    key_id = key_id,
+    usage = usage,
+    origin = aead.AeadKeyOrigin.Imported,
+    export_policy = aead.AeadKeyExportPolicy.NonExportable,
+    key_len = alg_key_len(alg_id),
+    created_ms = now,
+    expires_ms = 0,
+    flags = ALG_FLAGS_COMMON,
+    constraints = constraints,
+  }
+
+  let key_ref : aead.AeadKeyRef = aead.AeadKeyRef {
+    key = aead.AeadOpaque { kind = aead.AeadHandleKind.Key, value = h },
+    info = info,
+  }
+
+  abi_out_key_ref_struct(key_ref)
+  audit_emit(aead.AeadAuditEventKind.KeyImport, true, aead.AeadError.Ok, alg_id, key_id, 0, 0)
+.end
+
+fn aead_key_destroy(key : aead.AeadOpaque)
+  if key.value == 0
+    abi_out_error(aead.AeadError.InvalidKey)
+    return
+  .end
+  abi_handles_drop(aead.AeadHandleKind.Key, key.value)
+  audit_emit(aead.AeadAuditEventKind.KeyDestroy, true, aead.AeadError.Ok, "", "", 0, 0)
+.end
+
+fn aead_context_create(key : aead.AeadOpaque, flags : u32)
+  if key.value == 0
+    abi_out_error(aead.AeadError.InvalidKey)
+    return
+  .end
+  if not abi_handles_validate(aead.AeadHandleKind.Key, key.value)
+    abi_out_error(aead.AeadError.InvalidKey)
+    return
+  .end
+
+  let alg_id : aead.AeadAlgId = abi_handles_key_alg_id(key.value)
+  if not is_supported_alg(alg_id)
+    abi_out_error(aead.AeadError.InvalidAlgorithm)
+    return
+  .end
+
+  let ctx_h : u64 = abi_handles_new_ctx(PROVIDER_ID, alg_id, key.value)
+  if ctx_h == 0
+    abi_out_error(aead.AeadError.ProviderBusy)
+    return
+  .end
+
+  let policy : aead.AeadContextPolicy = aead.AeadContextPolicy {
+    format_default = aead.AeadFormat.Detached,
+    audit_level = aead.AeadAuditLevel.ErrorsOnly,
+    nonce_mode = aead.AeadNonceMode.External,
+    strict_nonce = true,
+    allow_xnonce = false,
+  }
+
+  let info : aead.AeadContextInfo = aead.AeadContextInfo {
+    provider_id = PROVIDER_ID,
+    alg_id = alg_id,
+    key = key,
+    flags = flags,
+    policy = policy,
+  }
+
+  let ctx_ref : aead.AeadContextRef = aead.AeadContextRef {
+    ctx = aead.AeadOpaque { kind = aead.AeadHandleKind.Context, value = ctx_h },
+    info = info,
+  }
+
+  abi_out_ctx_ref_struct(ctx_ref)
+  audit_emit(aead.AeadAuditEventKind.CtxCreate, true, aead.AeadError.Ok, alg_id, "", 0, 0)
+.end
+
+fn aead_context_destroy(ctx : aead.AeadOpaque)
+  if ctx.value == 0
+    abi_out_error(aead.AeadError.InvalidContext)
+    return
+  .end
+  abi_handles_drop(aead.AeadHandleKind.Context, ctx.value)
+  audit_emit(aead.AeadAuditEventKind.CtxDestroy, true, aead.AeadError.Ok, "", "", 0, 0)
+.end
+
+fn aead_rekey(ctx : aead.AeadOpaque)
+  abi_out_error(aead.AeadError.Unsupported)
+.end
+
+# ============================================================================
+# One-shot (owned)
+# ============================================================================
+
+fn aead_seal(req : aead.AeadSealRequest)
+  let alg_id : aead.AeadAlgId = req.ctx.info.alg_id
+  if not is_supported_alg(alg_id)
+    abi_out_seal_response(aead.AeadSealResponse {
+      err = aead.AeadError.InvalidAlgorithm,
+      nonce_used = req.nonce,
+      detached = aead.AeadDetached { cipher = aead.AeadCiphertext { bytes = coll.Vec[u8]() }, tag = aead.AeadTag { bytes = coll.Vec[u8]() } },
+      combined = aead.AeadCombined { bytes = coll.Vec[u8]() },
+    })
+    audit_emit(aead.AeadAuditEventKind.Seal, false, aead.AeadError.InvalidAlgorithm, alg_id, "", 0, 0)
+    return
+  .end
+
+  let e_opt : aead.AeadError = validate_options_seal(req.options)
+  if e_opt != aead.AeadError.Ok
+    abi_out_seal_response(aead.AeadSealResponse {
+      err = e_opt,
+      nonce_used = req.nonce,
+      detached = aead.AeadDetached { cipher = aead.AeadCiphertext { bytes = coll.Vec[u8]() }, tag = aead.AeadTag { bytes = coll.Vec[u8]() } },
+      combined = aead.AeadCombined { bytes = coll.Vec[u8]() },
+    })
+    audit_emit(aead.AeadAuditEventKind.Seal, false, e_opt, alg_id, "", 0, 0)
+    return
+  .end
+
+  let e_nonce_len : aead.AeadError = validate_nonce_len(req.nonce)
+  if e_nonce_len != aead.AeadError.Ok
+    abi_out_seal_response(aead.AeadSealResponse {
+      err = e_nonce_len,
+      nonce_used = req.nonce,
+      detached = aead.AeadDetached { cipher = aead.AeadCiphertext { bytes = coll.Vec[u8]() }, tag = aead.AeadTag { bytes = coll.Vec[u8]() } },
+      combined = aead.AeadCombined { bytes = coll.Vec[u8]() },
+    })
+    audit_emit(aead.AeadAuditEventKind.Seal, false, e_nonce_len, alg_id, "", 0, 0)
+    return
+  .end
+
+  let key_handle : u64 = req.ctx.info.key.value
+  let strict : bool = req.ctx.info.policy.strict_nonce
+  let e_np : aead.AeadError = abi_nonce_check_and_record(key_handle, req.nonce.bytes, strict)
+  if e_np != aead.AeadError.Ok
+    abi_out_seal_response(aead.AeadSealResponse {
+      err = e_np,
+      nonce_used = req.nonce,
+      detached = aead.AeadDetached { cipher = aead.AeadCiphertext { bytes = coll.Vec[u8]() }, tag = aead.AeadTag { bytes = coll.Vec[u8]() } },
+      combined = aead.AeadCombined { bytes = coll.Vec[u8]() },
+    })
+    audit_emit(aead.AeadAuditEventKind.Seal, false, e_np, alg_id, "", 0, 0)
+    return
+  .end
+
+  let detached : aead.AeadDetached = backend_aes_gcm_seal_detached(key_handle, alg_id, req.nonce.bytes, req.aad.bytes, req.plaintext.bytes)
+
+  if req.options.format == aead.AeadFormat.Detached
+    abi_out_seal_response(aead.AeadSealResponse {
+      err = aead.AeadError.Ok,
+      nonce_used = req.nonce,
+      detached = detached,
+      combined = aead.AeadCombined { bytes = coll.Vec[u8]() },
+    })
+    audit_emit(aead.AeadAuditEventKind.Seal, true, aead.AeadError.Ok, alg_id, "", 0, 0)
+    return
+  .end
+
+  let combined_bytes : coll.Vec[u8] = abi_bytes_concat(detached.cipher.bytes, detached.tag.bytes)
+  abi_out_seal_response(aead.AeadSealResponse {
+    err = aead.AeadError.Ok,
+    nonce_used = req.nonce,
+    detached = aead.AeadDetached { cipher = aead.AeadCiphertext { bytes = coll.Vec[u8]() }, tag = aead.AeadTag { bytes = coll.Vec[u8]() } },
+    combined = aead.AeadCombined { bytes = combined_bytes },
+  })
+  audit_emit(aead.AeadAuditEventKind.Seal, true, aead.AeadError.Ok, alg_id, "", 0, 0)
+.end
+
+fn aead_open(req : aead.AeadOpenRequest)
+  let alg_id : aead.AeadAlgId = req.ctx.info.alg_id
+  if not is_supported_alg(alg_id)
+    abi_out_open_response(aead.AeadOpenResponse { err = aead.AeadError.InvalidAlgorithm, plaintext = aead.AeadPlaintext { bytes = coll.Vec[u8]() } })
+    audit_emit(aead.AeadAuditEventKind.Open, false, aead.AeadError.InvalidAlgorithm, alg_id, "", 0, 0)
+    return
+  .end
+
+  let e_opt : aead.AeadError = validate_options_open(req.options)
+  if e_opt != aead.AeadError.Ok
+    abi_out_open_response(aead.AeadOpenResponse { err = e_opt, plaintext = aead.AeadPlaintext { bytes = coll.Vec[u8]() } })
+    audit_emit(aead.AeadAuditEventKind.Open, false, e_opt, alg_id, "", 0, 0)
+    return
+  .end
+
+  let e_nonce_len : aead.AeadError = validate_nonce_len(req.nonce)
+  if e_nonce_len != aead.AeadError.Ok
+    abi_out_open_response(aead.AeadOpenResponse { err = e_nonce_len, plaintext = aead.AeadPlaintext { bytes = coll.Vec[u8]() } })
+    audit_emit(aead.AeadAuditEventKind.Open, false, e_nonce_len, alg_id, "", 0, 0)
+    return
+  .end
+
+  let key_handle : u64 = req.ctx.info.key.value
+  let strict : bool = req.ctx.info.policy.strict_nonce
+  let e_np : aead.AeadError = abi_nonce_check_and_record(key_handle, req.nonce.bytes, strict)
+  if e_np != aead.AeadError.Ok
+    abi_out_open_response(aead.AeadOpenResponse { err = e_np, plaintext = aead.AeadPlaintext { bytes = coll.Vec[u8]() } })
+    audit_emit(aead.AeadAuditEventKind.Open, false, e_np, alg_id, "", 0, 0)
+    return
+  .end
+
+  let mut cipher_bytes : coll.Vec[u8] = req.cipher.bytes
+  let mut tag_bytes    : coll.Vec[u8] = req.tag.bytes
+
+  if req.options.format == aead.AeadFormat.Combined
+    let d : aead.AeadDetached = abi_split_combined(req.combined.bytes, TAG_LEN)
+    cipher_bytes = d.cipher.bytes
+    tag_bytes = d.tag.bytes
+  .end
+
+  let e_tag_len : aead.AeadError = validate_tag_len(aead.AeadTag { bytes = tag_bytes })
+  if e_tag_len != aead.AeadError.Ok
+    abi_out_open_response(aead.AeadOpenResponse { err = e_tag_len, plaintext = aead.AeadPlaintext { bytes = coll.Vec[u8]() } })
+    audit_emit(aead.AeadAuditEventKind.Open, false, e_tag_len, alg_id, "", 0, 0)
+    return
+  .end
+
+  let pt : aead.AeadPlaintext = backend_aes_gcm_open_detached(key_handle, alg_id, req.nonce.bytes, req.aad.bytes, cipher_bytes, tag_bytes)
+  abi_out_open_response(aead.AeadOpenResponse { err = aead.AeadError.Ok, plaintext = pt })
+  audit_emit(aead.AeadAuditEventKind.Open, true, aead.AeadError.Ok, alg_id, "", 0, 0)
+.end
+
+# ============================================================================
+# Zero-copy one-shot entrypoints (views)
+# ============================================================================
+
+fn aead_seal_view(req : aead.AeadSealRequestView)
+  let _owned : aead.AeadSealRequest = aead.AeadSealRequest {
+    ctx = req.ctx,
+    nonce = aead.AeadNonce { bytes = abi_copy_from_slice(req.nonce.bytes) },
+    aad = aead.AeadAad { bytes = abi_copy_from_slice(req.aad.bytes) },
+    plaintext = aead.AeadPlaintext { bytes = abi_copy_from_slice(req.plaintext.bytes) },
+    options = req.options,
+  }
+
+  abi_out_seal_response_view(aead.AeadSealResponseView {
+    err = aead.AeadError.Unsupported,
+    nonce_used = aead.AeadNonceView { bytes = req.nonce.bytes },
+    detached = aead.AeadDetachedView {
+      cipher = aead.AeadCiphertextView { bytes = aead.ByteSlice { ptr = 0, len = 0 } },
+      tag = aead.AeadTagView { bytes = aead.ByteSlice { ptr = 0, len = 0 } },
+    },
+    combined = aead.AeadCombinedView { bytes = aead.ByteSlice { ptr = 0, len = 0 } },
+  })
+.end
+
+fn aead_open_view(req : aead.AeadOpenRequestView)
+  let _owned : aead.AeadOpenRequest = aead.AeadOpenRequest {
+    ctx = req.ctx,
+    nonce = aead.AeadNonce { bytes = abi_copy_from_slice(req.nonce.bytes) },
+    aad = aead.AeadAad { bytes = abi_copy_from_slice(req.aad.bytes) },
+    cipher = aead.AeadCiphertext { bytes = coll.Vec[u8]() },
+    tag = aead.AeadTag { bytes = coll.Vec[u8]() },
+    combined = aead.AeadCombined { bytes = abi_copy_from_slice(req.combined.bytes) },
+    options = req.options,
+  }
+
+  abi_out_open_response_view(aead.AeadOpenResponseView {
+    err = aead.AeadError.Unsupported,
+    plaintext = aead.AeadPlaintextView { bytes = aead.ByteSlice { ptr = 0, len = 0 } },
+  })
+.end
+
+# ============================================================================
+# Streaming
+# ============================================================================
+
+fn aead_stream_start(req : aead.AeadStreamStartRequest)
+  let alg_id : aead.AeadAlgId = req.ctx.info.alg_id
+  if not is_supported_alg(alg_id)
+    abi_out_stream_start_response(aead.AeadStreamStartResponse {
+      err = aead.AeadError.InvalidAlgorithm,
+      stream = aead.AeadStreamRef {
+        stream = aead.AeadOpaque { kind = aead.AeadHandleKind.Stream, value = 0 },
+        info = aead.AeadStreamInfo { provider_id = PROVIDER_ID, alg_id = alg_id, ctx = req.ctx.ctx, role = req.role, state = aead.AeadStreamState.Closed, flags = 0 },
+      },
+      nonce_used = req.nonce,
+    })
+    return
+  .end
+
+  let e_nonce_len : aead.AeadError = validate_nonce_len(req.nonce)
+  if e_nonce_len != aead.AeadError.Ok
+    abi_out_stream_start_response(aead.AeadStreamStartResponse {
+      err = e_nonce_len,
+      stream = aead.AeadStreamRef {
+        stream = aead.AeadOpaque { kind = aead.AeadHandleKind.Stream, value = 0 },
+        info = aead.AeadStreamInfo { provider_id = PROVIDER_ID, alg_id = alg_id, ctx = req.ctx.ctx, role = req.role, state = aead.AeadStreamState.Closed, flags = 0 },
+      },
+      nonce_used = req.nonce,
+    })
+    return
+  .end
+
+  let sh : u64 = abi_handles_new_stream(PROVIDER_ID, alg_id, req.ctx.ctx.value)
+  if sh == 0
+    abi_out_stream_start_response(aead.AeadStreamStartResponse {
+      err = aead.AeadError.ProviderBusy,
+      stream = aead.AeadStreamRef {
+        stream = aead.AeadOpaque { kind = aead.AeadHandleKind.Stream, value = 0 },
+        info = aead.AeadStreamInfo { provider_id = PROVIDER_ID, alg_id = alg_id, ctx = req.ctx.ctx, role = req.role, state = aead.AeadStreamState.Closed, flags = 0 },
+      },
+      nonce_used = req.nonce,
+    })
+    return
+  .end
+
+  if backend_stream_supported()
+    let _b : u64 = backend_stream_start(req.ctx.info.key.value, alg_id, req.nonce.bytes, req.role, 0)
+  .end
+
+  abi_out_stream_start_response(aead.AeadStreamStartResponse {
+    err = aead.AeadError.Ok,
+    stream = aead.AeadStreamRef {
+      stream = aead.AeadOpaque { kind = aead.AeadHandleKind.Stream, value = sh },
+      info = aead.AeadStreamInfo { provider_id = PROVIDER_ID, alg_id = alg_id, ctx = req.ctx.ctx, role = req.role, state = aead.AeadStreamState.Init, flags = 0 },
+    },
+    nonce_used = req.nonce,
+  })
+.end
+
+fn aead_stream_aad(req : aead.AeadStreamAadRequest)
+  if backend_stream_supported()
+    let e : aead.AeadError = backend_stream_aad(req.stream.stream.value, req.aad.bytes)
+    abi_out_stream_aad_response(aead.AeadStreamAadResponse { err = e })
+    return
+  .end
+  abi_out_stream_aad_response(aead.AeadStreamAadResponse { err = aead.AeadError.Unsupported })
+.end
+
+fn aead_stream_update(req : aead.AeadStreamUpdateRequest)
+  if backend_stream_supported()
+    let outb : aead.AeadBytes = backend_stream_update(req.stream.stream.value, req.chunk.bytes)
+    abi_out_stream_update_response(aead.AeadStreamUpdateResponse { err = aead.AeadError.Ok, out_chunk = outb })
+    return
+  .end
+  abi_out_stream_update_response(aead.AeadStreamUpdateResponse { err = aead.AeadError.Unsupported, out_chunk = aead.AeadBytes { bytes = coll.Vec[u8]() } })
+.end
+
+fn aead_stream_finish(req : aead.AeadStreamFinishRequest)
+  if backend_stream_supported()
+    if req.stream.info.role == aead.AeadStreamRole.Seal
+      let tag : aead.AeadTag = backend_stream_finish_seal(req.stream.stream.value)
+      abi_out_stream_finish_response(aead.AeadStreamFinishResponse { err = aead.AeadError.Ok, tag = tag })
+      backend_stream_destroy(req.stream.stream.value)
+      return
+    .end
+
+    let e : aead.AeadError = backend_stream_finish_open(req.stream.stream.value, req.tag.bytes)
+    abi_out_stream_finish_response(aead.AeadStreamFinishResponse { err = e, tag = aead.AeadTag { bytes = coll.Vec[u8]() } })
+    backend_stream_destroy(req.stream.stream.value)
+    return
+  .end
+
+  abi_out_stream_finish_response(aead.AeadStreamFinishResponse { err = aead.AeadError.Unsupported, tag = aead.AeadTag { bytes = coll.Vec[u8]() } })
+.end
+
+fn aead_stream_destroy(stream : aead.AeadOpaque)
+  if stream.value == 0
+    abi_out_error(aead.AeadError.InternalError)
+    return
+  .end
+  abi_handles_drop(aead.AeadHandleKind.Stream, stream.value)
+.end
+
+# ============================================================================
+# Keystore / wrapping / audit pull
+# ============================================================================
+
+fn aead_keystore_put(req : aead.AeadKeyStorePutRequest)
+  let h : u64 = req.key_ref.key.value
+  if h == 0
+    abi_out_error(aead.AeadError.InvalidKey)
+    return
+  .end
+  let e : aead.AeadError = abi_keystore_put(req.provider_id, req.key_id, h)
+  if e != aead.AeadError.Ok
+    abi_out_error(e)
+    return
+  .end
+.end
+
+fn aead_keystore_get(req : aead.AeadKeyStoreGetRequest)
+  let h : u64 = abi_keystore_get(req.provider_id, req.key_id)
+  if h == 0
+    abi_out_keystore_get_response(aead.AeadKeyStoreGetResponse {
+      err = aead.AeadError.KeyNotFound,
+      key_ref = aead.AeadKeyRef {
+        key = aead.AeadOpaque { kind = aead.AeadHandleKind.Key, value = 0 },
+        info = aead.AeadKeyInfo {
+          provider_id = req.provider_id,
+          alg_id = "",
+          key_id = req.key_id,
+          usage = aead.AeadKeyUsage.SealAndOpen,
+          origin = aead.AeadKeyOrigin.External,
+          export_policy = aead.AeadKeyExportPolicy.NonExportable,
+          key_len = 0,
+          created_ms = 0,
+          expires_ms = 0,
+          flags = 0,
+          constraints = aead.AeadKeyConstraints { nonce_mode = aead.AeadNonceMode.External, strict_nonce = true, export_policy = aead.AeadKeyExportPolicy.NonExportable, max_ops = 0, max_bytes = 0 },
+        },
+      },
+    })
+    return
+  .end
+
+  abi_out_keystore_get_response(aead.AeadKeyStoreGetResponse {
+    err = aead.AeadError.Ok,
+    key_ref = aead.AeadKeyRef {
+      key = aead.AeadOpaque { kind = aead.AeadHandleKind.Key, value = h },
+      info = aead.AeadKeyInfo {
+        provider_id = req.provider_id,
+        alg_id = "",
+        key_id = req.key_id,
+        usage = aead.AeadKeyUsage.SealAndOpen,
+        origin = aead.AeadKeyOrigin.External,
+        export_policy = aead.AeadKeyExportPolicy.NonExportable,
+        key_len = 0,
+        created_ms = 0,
+        expires_ms = 0,
+        flags = ALG_FLAGS_COMMON,
+        constraints = aead.AeadKeyConstraints { nonce_mode = aead.AeadNonceMode.External, strict_nonce = true, export_policy = aead.AeadKeyExportPolicy.NonExportable, max_ops = 0, max_bytes = 0 },
+      },
+    },
+  })
+.end
+
+fn aead_key_wrap(req : aead.AeadKeyWrapRequest)
+  let wk : u64 = req.wrapping_key.key.value
+  let tk : u64 = req.target_key.key.value
+  if wk == 0
+    abi_out_key_wrap_response(aead.AeadKeyWrapResponse { err = aead.AeadError.InvalidKey, wrapped = aead.AeadWrappedKey { bytes = coll.Vec[u8]() } })
+    return
+  .end
+  if tk == 0
+    abi_out_key_wrap_response(aead.AeadKeyWrapResponse { err = aead.AeadError.InvalidKey, wrapped = aead.AeadWrappedKey { bytes = coll.Vec[u8]() } })
+    return
+  .end
+
+  let wrapped : coll.Vec[u8] = abi_key_wrap_impl(wk, tk)
+  abi_out_key_wrap_response(aead.AeadKeyWrapResponse { err = aead.AeadError.Ok, wrapped = aead.AeadWrappedKey { bytes = wrapped } })
+.end
+
+fn aead_key_unwrap(req : aead.AeadKeyUnwrapRequest)
+  let wk : u64 = req.wrapping_key.key.value
+  if wk == 0
+    abi_out_key_unwrap_response(aead.AeadKeyUnwrapResponse {
+      err = aead.AeadError.InvalidKey,
+      key_ref = aead.AeadKeyRef {
+        key = aead.AeadOpaque { kind = aead.AeadHandleKind.Key, value = 0 },
+        info = aead.AeadKeyInfo {
+          provider_id = PROVIDER_ID,
+          alg_id = req.alg_id,
+          key_id = "",
+          usage = req.usage,
+          origin = aead.AeadKeyOrigin.External,
+          export_policy = aead.AeadKeyExportPolicy.NonExportable,
+          key_len = 0,
+          created_ms = 0,
+          expires_ms = 0,
+          flags = 0,
+          constraints = aead.AeadKeyConstraints { nonce_mode = aead.AeadNonceMode.External, strict_nonce = true, export_policy = aead.AeadKeyExportPolicy.NonExportable, max_ops = 0, max_bytes = 0 },
+        },
+      },
+    })
+    return
+  .end
+
+  let new_h : u64 = abi_key_unwrap_impl(wk, req.wrapped.bytes, req.usage, req.alg_id)
+  if new_h == 0
+    abi_out_key_unwrap_response(aead.AeadKeyUnwrapResponse {
+      err = aead.AeadError.Unsupported,
+      key_ref = aead.AeadKeyRef {
+        key = aead.AeadOpaque { kind = aead.AeadHandleKind.Key, value = 0 },
+        info = aead.AeadKeyInfo {
+          provider_id = PROVIDER_ID,
+          alg_id = req.alg_id,
+          key_id = "",
+          usage = req.usage,
+          origin = aead.AeadKeyOrigin.External,
+          export_policy = aead.AeadKeyExportPolicy.NonExportable,
+          key_len = 0,
+          created_ms = 0,
+          expires_ms = 0,
+          flags = 0,
+          constraints = aead.AeadKeyConstraints { nonce_mode = aead.AeadNonceMode.External, strict_nonce = true, export_policy = aead.AeadKeyExportPolicy.NonExportable, max_ops = 0, max_bytes = 0 },
+        },
+      },
+    })
+    return
+  .end
+
+  abi_out_key_unwrap_response(aead.AeadKeyUnwrapResponse {
+    err = aead.AeadError.Ok,
+    key_ref = aead.AeadKeyRef {
+      key = aead.AeadOpaque { kind = aead.AeadHandleKind.Key, value = new_h },
+      info = aead.AeadKeyInfo {
+        provider_id = PROVIDER_ID,
+        alg_id = req.alg_id,
+        key_id = "",
+        usage = req.usage,
+        origin = aead.AeadKeyOrigin.External,
+        export_policy = aead.AeadKeyExportPolicy.NonExportable,
+        key_len = 0,
+        created_ms = 0,
+        expires_ms = 0,
+        flags = ALG_FLAGS_COMMON,
+        constraints = aead.AeadKeyConstraints { nonce_mode = aead.AeadNonceMode.External, strict_nonce = true, export_policy = aead.AeadKeyExportPolicy.NonExportable, max_ops = 0, max_bytes = 0 },
+      },
+    },
+  })
+.end
+
+fn aead_audit_pull(provider_id : aead.AeadProviderId)
+  if provider_id != PROVIDER_ID
+    abi_out_error(aead.AeadError.InvalidProvider)
+    return
+  .end
+.end

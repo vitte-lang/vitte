@@ -1,0 +1,637 @@
+
+
+# plugins/beryl-crypto/api/encoding/base64.vitte
+# Base64 / Base64URL (+ MIME) — API contract (data-first, backend-agnostic) — MAX+++ 2025
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat d'encodage/décodage Base64 complet:
+#       * variantes (standard, url-safe), padding on/off
+#       * strict vs permissif (whitespace/invalid chars)
+#       * reporting d'erreurs (index/char) stable
+#       * one-shot + streaming (incremental)
+#       * views (zero-copy) + iovec (scatter/gather)
+#       * providers/caps/limits + selection
+#   - Aucun I/O ici. Aucune impl réelle.
+#
+# RFC:
+#   - RFC 4648 (Base16/Base32/Base64) — Base64 standard + URL-safe.
+#   - MIME Base64 (RFC 2045) => line breaks (historical/compat).
+
+module plugins.crypto.api.encoding.base64
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const BASE64_API_VERSION_MAJOR : u32 = 1
+const BASE64_API_VERSION_MINOR : u32 = 1
+const BASE64_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum Base64Error
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidPolicy
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+  InvalidPadding
+  InvalidCharacter
+
+  BufferTooSmall
+  OutputTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# Detailed decoding status (optional)
+struct Base64DecodeErrorInfo
+  # index in input (bytes/chars) where failure occurred
+  index            : u64
+
+  # offending byte (0 if none)
+  byte             : u8
+
+  # whether the byte was whitespace
+  is_ws            : bool
+
+  # whether failure was caused by padding
+  padding_issue    : bool
+.end
+
+struct Base64Status
+  err              : Base64Error
+  written          : u64
+  consumed         : u64
+  detail           : Base64DecodeErrorInfo
+.end
+
+# ============================================================================
+# Variants / policy
+# ============================================================================
+
+enum Base64Variant
+  Standard
+  UrlSafe
+.end
+
+enum Base64Padding
+  Required
+  Optional
+  Omit
+.end
+
+enum Base64Whitespace
+  Reject
+  Allow
+.end
+
+enum Base64InvalidChars
+  Reject
+  Skip
+.end
+
+enum Base64LineBreak
+  None
+  LF
+  CRLF
+.end
+
+# Policy knobs
+struct Base64Policy
+  variant           : Base64Variant
+  padding           : Base64Padding
+
+  # Decoding controls
+  whitespace        : Base64Whitespace
+  invalid_chars     : Base64InvalidChars
+
+  # Encoding controls (MIME-like)
+  line_break        : Base64LineBreak
+  line_width        : u32
+
+  # Strictness
+  strict_length     : bool
+  strict_final_bits : bool
+
+  # If true, require canonical encoding (no non-minimal forms)
+  canonical         : bool
+.end
+
+# Codec description (resolved)
+struct Base64CodecInfo
+  variant           : Base64Variant
+  alphabet          : string
+  pad_char          : u8
+  supports_padding  : bool
+  supports_mime     : bool
+.end
+
+# ============================================================================
+# Provider metadata
+# ============================================================================
+
+type Base64ProviderId = string
+
+enum Base64BackendKind
+  Unknown
+  Software
+  Hardware
+  Remote
+.end
+
+const BASE64_FLAG_ENCODE_ONE_SHOT     : u32 = 1
+const BASE64_FLAG_DECODE_ONE_SHOT     : u32 = 2
+const BASE64_FLAG_STREAMING_ENCODE    : u32 = 4
+const BASE64_FLAG_STREAMING_DECODE    : u32 = 8
+const BASE64_FLAG_VIEWS               : u32 = 16
+
+const BASE64_FLAG_IOVEC               : u32 = 32
+const BASE64_FLAG_SIMD                : u32 = 64
+
+const BASE64_PROVIDER_FLAG_SOFTWARE   : u32 = 1
+const BASE64_PROVIDER_FLAG_HARDWARE   : u32 = 2
+const BASE64_PROVIDER_FLAG_REMOTE     : u32 = 4
+const BASE64_PROVIDER_FLAG_THREADSAFE : u32 = 8
+const BASE64_PROVIDER_FLAG_SANDBOXED  : u32 = 16
+
+struct Base64Limits
+  in_max             : u64
+  out_max            : u64
+
+  # streaming
+  chunk_in_max       : u64
+  chunk_out_max      : u64
+.end
+
+struct Base64ProviderInfo
+  id                 : Base64ProviderId
+  name               : string
+  vendor             : string
+  version            : string
+
+  backend            : Base64BackendKind
+  priority           : i32
+  flags              : u32
+
+  build              : string
+  device             : string
+  location           : string
+
+  limits             : Base64Limits
+.end
+
+# ============================================================================
+# Views (zero-copy optional)
+# ============================================================================
+
+struct ByteSlice
+  ptr                : u64
+  len                : u64
+.end
+
+struct MutByteSlice
+  ptr                : u64
+  len                : u64
+.end
+
+struct IoVec
+  slices             : coll.Vec[ByteSlice]
+  total_len          : u64
+.end
+
+struct MutIoVec
+  slices             : coll.Vec[MutByteSlice]
+  total_len          : u64
+.end
+
+# ============================================================================
+# Owned payload containers
+# ============================================================================
+
+struct Base64Bytes
+  bytes              : coll.Vec[u8]
+.end
+
+struct Base64Text
+  text               : string
+.end
+
+# ============================================================================
+# One-shot encode/decode (owned)
+# ============================================================================
+
+struct Base64EncodeRequest
+  provider_id        : Base64ProviderId
+  policy             : Base64Policy
+  input              : Base64Bytes
+.end
+
+struct Base64EncodeResponse
+  err                : Base64Error
+  output             : Base64Text
+.end
+
+struct Base64DecodeRequest
+  provider_id        : Base64ProviderId
+  policy             : Base64Policy
+  input              : Base64Text
+.end
+
+struct Base64DecodeResponse
+  err                : Base64Error
+  output             : Base64Bytes
+  detail             : Base64DecodeErrorInfo
+.end
+
+# ============================================================================
+# One-shot encode/decode (views)
+# ============================================================================
+
+# Encode writes ASCII bytes into `output` (caller-managed).
+struct Base64EncodeRequestView
+  provider_id        : Base64ProviderId
+  policy             : Base64Policy
+  input              : ByteSlice
+  output             : MutByteSlice
+.end
+
+struct Base64EncodeResponseView
+  err                : Base64Error
+  written            : u64
+.end
+
+# Decode accepts ASCII bytes in `input` (not necessarily null-terminated).
+struct Base64DecodeRequestView
+  provider_id        : Base64ProviderId
+  policy             : Base64Policy
+  input              : ByteSlice
+  output             : MutByteSlice
+.end
+
+struct Base64DecodeResponseView
+  err                : Base64Error
+  written            : u64
+  consumed           : u64
+  detail             : Base64DecodeErrorInfo
+.end
+
+# Scatter/gather one-shot (optional)
+struct Base64EncodeIoVecRequestView
+  provider_id        : Base64ProviderId
+  policy             : Base64Policy
+  input              : IoVec
+  output             : MutByteSlice
+.end
+
+struct Base64DecodeIoVecRequestView
+  provider_id        : Base64ProviderId
+  policy             : Base64Policy
+  input              : IoVec
+  output             : MutByteSlice
+.end
+
+# ============================================================================
+# Streaming encode/decode
+# ============================================================================
+
+enum Base64StreamKind
+  Encode
+  Decode
+.end
+
+enum Base64StreamState
+  Init
+  Data
+  Final
+  Closed
+.end
+
+struct Base64StreamInfo
+  provider_id        : Base64ProviderId
+  kind               : Base64StreamKind
+  policy             : Base64Policy
+  state              : Base64StreamState
+
+  # buffered tail sizes
+  buffered_in        : u32
+  buffered_out       : u32
+
+  # decoder state
+  seen_pad           : bool
+  seen_non_ws_after_pad : bool
+
+  flags              : u32
+.end
+
+# Opaque handle (slot+generation impl côté runtime)
+struct Base64Stream
+  handle             : u64
+  info               : Base64StreamInfo
+.end
+
+struct Base64StreamStartRequest
+  provider_id        : Base64ProviderId
+  kind               : Base64StreamKind
+  policy             : Base64Policy
+.end
+
+struct Base64StreamStartResponse
+  err                : Base64Error
+  stream             : Base64Stream
+.end
+
+# Owned update
+struct Base64StreamUpdateRequest
+  stream             : Base64Stream
+  input              : Base64Bytes
+.end
+
+struct Base64StreamUpdateResponse
+  err                : Base64Error
+  kind               : Base64StreamKind
+
+  output_text        : Base64Text
+  output_bytes       : Base64Bytes
+
+  detail             : Base64DecodeErrorInfo
+.end
+
+# View update: write to caller buffer
+struct Base64StreamUpdateRequestView
+  stream             : Base64Stream
+  input              : ByteSlice
+  output             : MutByteSlice
+.end
+
+struct Base64StreamUpdateResponseView
+  err                : Base64Error
+  written            : u64
+  consumed           : u64
+  detail             : Base64DecodeErrorInfo
+.end
+
+# Finish flushes buffered tails.
+struct Base64StreamFinishRequest
+  stream             : Base64Stream
+.end
+
+struct Base64StreamFinishResponse
+  err                : Base64Error
+  kind               : Base64StreamKind
+
+  output_text        : Base64Text
+  output_bytes       : Base64Bytes
+
+  detail             : Base64DecodeErrorInfo
+.end
+
+struct Base64StreamFinishResponseView
+  err                : Base64Error
+  written            : u64
+  consumed           : u64
+  detail             : Base64DecodeErrorInfo
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : Base64ProviderInfo)
+.end
+
+fn abi_out_codec_info_struct(info : Base64CodecInfo)
+.end
+
+fn abi_out_encode_response(resp : Base64EncodeResponse)
+.end
+
+fn abi_out_decode_response(resp : Base64DecodeResponse)
+.end
+
+fn abi_out_encode_response_view(resp : Base64EncodeResponseView)
+.end
+
+fn abi_out_decode_response_view(resp : Base64DecodeResponseView)
+.end
+
+fn abi_out_stream_start_response(resp : Base64StreamStartResponse)
+.end
+
+fn abi_out_stream_update_response(resp : Base64StreamUpdateResponse)
+.end
+
+fn abi_out_stream_update_response_view(resp : Base64StreamUpdateResponseView)
+.end
+
+fn abi_out_stream_finish_response(resp : Base64StreamFinishResponse)
+.end
+
+fn abi_out_stream_finish_response_view(resp : Base64StreamFinishResponseView)
+.end
+
+fn abi_out_status(status : Base64Status)
+.end
+
+fn abi_out_error(err : Base64Error)
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn base64_provider_enumerate()
+.end
+
+fn base64_provider_query(provider_id : Base64ProviderId)
+.end
+
+fn base64_codec_info(policy : Base64Policy) -> Base64CodecInfo
+  let info : Base64CodecInfo = Base64CodecInfo
+  return info
+.end
+
+fn base64_encode(req : Base64EncodeRequest)
+.end
+
+fn base64_decode(req : Base64DecodeRequest)
+.end
+
+fn base64_encode_view(req : Base64EncodeRequestView)
+.end
+
+fn base64_decode_view(req : Base64DecodeRequestView)
+.end
+
+fn base64_encode_iovec_view(req : Base64EncodeIoVecRequestView)
+.end
+
+fn base64_decode_iovec_view(req : Base64DecodeIoVecRequestView)
+.end
+
+fn base64_stream_start(req : Base64StreamStartRequest)
+.end
+
+fn base64_stream_update(req : Base64StreamUpdateRequest)
+.end
+
+fn base64_stream_update_view(req : Base64StreamUpdateRequestView)
+.end
+
+fn base64_stream_finish(req : Base64StreamFinishRequest)
+.end
+
+fn base64_stream_destroy(stream : Base64Stream)
+.end
+
+# ============================================================================
+# Size helpers (pure)
+# ============================================================================
+
+# Encoded size without line breaks/policy overhead.
+fn base64_encoded_len_raw(n : u64, padding : Base64Padding) -> u64
+  return 0
+.end
+
+# Worst-case output size for encoding `n` bytes under policy (incl line breaks).
+fn base64_encoded_len(n : u64, policy : Base64Policy) -> u64
+  return 0
+.end
+
+# Decoded max bytes from `n` base64 chars (approx upper bound).
+fn base64_decoded_len_raw(n : u64) -> u64
+  return 0
+.end
+
+# Worst-case output size for decoding `n` chars under policy (incl whitespace/skip).
+fn base64_decoded_len(n : u64, policy : Base64Policy) -> u64
+  return 0
+.end
+
+# Validate input under policy; returns status with first offending index.
+fn base64_validate(input : ByteSlice, policy : Base64Policy) -> Base64Status
+  let st : Base64Status = Base64Status
+  return st
+.end
+
+# ============================================================================
+# Default policies
+# ============================================================================
+
+fn base64_policy_standard() -> Base64Policy
+  let p : Base64Policy = Base64Policy
+  return p
+.end
+
+fn base64_policy_urlsafe() -> Base64Policy
+  let p : Base64Policy = Base64Policy
+  return p
+.end
+
+# MIME-like: line breaks (76 chars, CRLF), padding required.
+fn base64_policy_mime() -> Base64Policy
+  let p : Base64Policy = Base64Policy
+  return p
+.end
+
+# Strict canonical RFC4648: reject whitespace, invalid chars, enforce final bits.
+fn base64_policy_strict_rfc4648() -> Base64Policy
+  let p : Base64Policy = Base64Policy
+  return p
+.end
+
+# Permissive decoder: allow whitespace, skip invalid chars, accept optional padding.
+fn base64_policy_permissive_decode() -> Base64Policy
+  let p : Base64Policy = Base64Policy
+  return p
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# Providers
+# - Impl enumerate/query + `Base64ProviderInfo` (SIMD, software, remote).
+# - Remplacer toute sortie texte par ABI structs.
+# - Sélection provider par défaut (priority, flags, sandboxing).
+
+# Encode
+# - Impl RFC 4648 standard + url-safe.
+# - Padding:
+#     * Required: toujours '=' pour aligner 4.
+#     * Optional: encode avec '=' ou sans (policy-driven).
+#     * Omit: encode sans '='.
+# - MIME:
+#     * line_width (>=4) + line_break (LF/CRLF)
+#     * pas de trailing whitespace
+# - IoVec:
+#     * encoder sans concat input (gather reads)
+
+# Decode
+# - Table decode (256) + fast paths SIMD.
+# - Whitespace:
+#     * Reject vs Allow (ASCII WS: space, tab, CR, LF)
+# - invalid_chars:
+#     * Reject: InvalidCharacter(index, byte)
+#     * Skip: ignore mais maintenir consumed stable
+# - strict_length:
+#     * impose len%4 rules si padding required
+# - strict_final_bits:
+#     * reject non-zero discarded bits in last quantum
+# - canonical:
+#     * reject non-canonical forms (eg extra padding, stray chars after pad)
+# - Report:
+#     * detail.index + detail.byte for first failure
+#     * consumed bytes count in views/streaming
+
+# Streaming
+# - Encode:
+#     * bufferiser 0..2 bytes input
+#     * produire 4 chars/quantum
+#     * finish: flush + padding selon policy + line breaks
+# - Decode:
+#     * bufferiser 0..3 chars
+#     * gérer '=' et EOF
+#     * erreurs stables + detail
+# - Views:
+#     * BufferTooSmall + written + consumed
+#     * support in-place si output overlaps? (doc: generally not safe)
+#
+# Helpers
+# - base64_encoded_len/base64_decoded_len corrects incl line breaks.
+# - base64_validate returns first offending position.
+
+# Hardening
+# - Best-effort constant-time not required here, but avoid data-dependent branches for secret contexts if requested.
+# - Memwipe temporaires si impl alloue.
+
+# Tests
+# - RFC 4648 vectors.
+# - URL-safe vectors.
+# - MIME line break vectors.
+# - Strict final bits tests.
+# - Negative: invalid chars/padding/whitespace/extra trailing.
+# - Fuzz: random input + random chunking streaming + iovec boundary splits.
+
+# Bench
+# - microbench encode/decode + SIMD paths.
+
+.end

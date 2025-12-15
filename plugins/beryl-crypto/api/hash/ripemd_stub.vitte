@@ -1,0 +1,433 @@
+# plugins/beryl/api/hash/ripemd.vitte
+# RIPEMD-160 / RIPEMD-256 / RIPEMD-320 — hash — API contract (data-first, backend-agnostic) — MAX++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat RIPEMD maximal:
+#       * variantes (160/256/320)
+#       * one-shot + streaming
+#       * views (zero-copy) optionnelles
+#       * providers/caps/limits
+#   - Aucun I/O ici. Aucune impl crypto réelle.
+#
+# Notes:
+#   - RIPEMD-160 (20 bytes) est la variante la plus courante.
+#   - RIPEMD-256/320 existent mais support variable.
+
+module plugins.crypto.api.hash.ripemd
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const RIPEMD_API_VERSION_MAJOR : u32 = 1
+const RIPEMD_API_VERSION_MINOR : u32 = 0
+const RIPEMD_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Variants
+# ============================================================================
+
+enum RipemdAlg
+  Ripemd160
+  Ripemd256
+  Ripemd320
+.end
+
+# Output lengths in bytes
+const RIPEMD160_OUT_LEN : u32 = 20
+const RIPEMD256_OUT_LEN : u32 = 32
+const RIPEMD320_OUT_LEN : u32 = 40
+
+const RIPEMD_BLOCK_LEN  : u32 = 64
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum RipemdError
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidPolicy
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Provider metadata
+# ============================================================================
+
+type RipemdProviderId = string
+
+enum RipemdBackendKind
+  Unknown
+  Software
+  Hardware
+  Remote
+.end
+
+const RIPEMD_FLAG_ONE_SHOT        : u32 = 1
+const RIPEMD_FLAG_STREAMING       : u32 = 2
+const RIPEMD_FLAG_VIEWS           : u32 = 4
+
+const RIPEMD_FLAG_RIPEMD160       : u32 = 16
+const RIPEMD_FLAG_RIPEMD256       : u32 = 32
+const RIPEMD_FLAG_RIPEMD320       : u32 = 64
+
+const RIPEMD_FLAG_SIMD            : u32 = 128
+
+const RIPEMD_PROVIDER_FLAG_SOFTWARE   : u32 = 1
+const RIPEMD_PROVIDER_FLAG_HARDWARE   : u32 = 2
+const RIPEMD_PROVIDER_FLAG_REMOTE     : u32 = 4
+const RIPEMD_PROVIDER_FLAG_THREADSAFE : u32 = 8
+const RIPEMD_PROVIDER_FLAG_SANDBOXED  : u32 = 16
+
+struct RipemdLimits
+  in_max            : u64
+  out_max           : u64
+  msg_max           : u64
+
+  block_len         : u32
+.end
+
+struct RipemdAlgInfo
+  alg               : RipemdAlg
+  name              : string
+  out_len           : u32
+  block_len         : u32
+  flags             : u32
+  limits            : RipemdLimits
+.end
+
+struct RipemdProviderInfo
+  id                : RipemdProviderId
+  name              : string
+  vendor            : string
+  version           : string
+
+  backend           : RipemdBackendKind
+  priority          : i32
+  flags             : u32
+
+  build             : string
+  device            : string
+  location          : string
+
+  algorithms        : coll.Vec[RipemdAlgInfo]
+  limits            : RipemdLimits
+.end
+
+# ============================================================================
+# Views (zero-copy optional)
+# ============================================================================
+
+struct ByteSlice
+  ptr               : u64
+  len               : u64
+.end
+
+struct MutByteSlice
+  ptr               : u64
+  len               : u64
+.end
+
+struct IoVec
+  slices            : coll.Vec[ByteSlice]
+  total_len         : u64
+.end
+
+# ============================================================================
+# Policy
+# ============================================================================
+
+struct RipemdPolicy
+  alg               : RipemdAlg
+  out_len           : u32
+
+  # If true, enforce canonical out_len for the alg.
+  strict_out_len    : bool
+
+  # Hardening
+  constant_time     : bool
+.end
+
+# ============================================================================
+# Owned payload containers
+# ============================================================================
+
+struct RipemdBytes
+  bytes             : coll.Vec[u8]
+.end
+
+struct RipemdDigest
+  bytes             : coll.Vec[u8]
+.end
+
+# ============================================================================
+# One-shot
+# ============================================================================
+
+struct RipemdHashRequest
+  provider_id        : RipemdProviderId
+  policy             : RipemdPolicy
+  input              : RipemdBytes
+.end
+
+struct RipemdHashResponse
+  err                : RipemdError
+  digest             : RipemdDigest
+.end
+
+struct RipemdHashRequestView
+  provider_id        : RipemdProviderId
+  policy             : RipemdPolicy
+  input              : ByteSlice
+  output             : MutByteSlice
+.end
+
+struct RipemdHashResponseView
+  err                : RipemdError
+  written            : u64
+.end
+
+# ============================================================================
+# Streaming
+# ============================================================================
+
+enum RipemdStreamState
+  Init
+  Data
+  Final
+  Closed
+.end
+
+struct RipemdStreamInfo
+  provider_id        : RipemdProviderId
+  policy             : RipemdPolicy
+  state              : RipemdStreamState
+
+  total_in           : u64
+  flags              : u32
+.end
+
+struct RipemdStream
+  handle             : u64
+  info               : RipemdStreamInfo
+.end
+
+struct RipemdStreamStartRequest
+  provider_id        : RipemdProviderId
+  policy             : RipemdPolicy
+.end
+
+struct RipemdStreamStartResponse
+  err                : RipemdError
+  stream             : RipemdStream
+.end
+
+struct RipemdStreamUpdateRequest
+  stream             : RipemdStream
+  input              : RipemdBytes
+.end
+
+struct RipemdStreamUpdateResponse
+  err                : RipemdError
+.end
+
+struct RipemdStreamUpdateRequestView
+  stream             : RipemdStream
+  input              : ByteSlice
+.end
+
+struct RipemdStreamUpdateResponseView
+  err                : RipemdError
+.end
+
+struct RipemdStreamFinishRequest
+  stream             : RipemdStream
+  out_len            : u32
+.end
+
+struct RipemdStreamFinishResponse
+  err                : RipemdError
+  digest             : RipemdDigest
+.end
+
+struct RipemdStreamFinishRequestView
+  stream             : RipemdStream
+  output             : MutByteSlice
+.end
+
+struct RipemdStreamFinishResponseView
+  err                : RipemdError
+  written            : u64
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : RipemdProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : RipemdAlgInfo)
+.end
+
+fn abi_out_hash_response(resp : RipemdHashResponse)
+.end
+
+fn abi_out_hash_response_view(resp : RipemdHashResponseView)
+.end
+
+fn abi_out_stream_start_response(resp : RipemdStreamStartResponse)
+.end
+
+fn abi_out_stream_finish_response(resp : RipemdStreamFinishResponse)
+.end
+
+fn abi_out_stream_finish_response_view(resp : RipemdStreamFinishResponseView)
+.end
+
+fn abi_out_error(err : RipemdError)
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn ripemd_provider_enumerate()
+.end
+
+fn ripemd_provider_query(provider_id : RipemdProviderId)
+.end
+
+fn ripemd_hash(req : RipemdHashRequest)
+.end
+
+fn ripemd_hash_view(req : RipemdHashRequestView)
+.end
+
+fn ripemd_stream_start(req : RipemdStreamStartRequest)
+.end
+
+fn ripemd_stream_update(req : RipemdStreamUpdateRequest)
+.end
+
+fn ripemd_stream_update_view(req : RipemdStreamUpdateRequestView)
+.end
+
+fn ripemd_stream_finish(req : RipemdStreamFinishRequest)
+.end
+
+fn ripemd_stream_finish_view(req : RipemdStreamFinishRequestView)
+.end
+
+fn ripemd_stream_destroy(stream : RipemdStream)
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+fn ripemd_block_len() -> u32
+  return RIPEMD_BLOCK_LEN
+.end
+
+fn ripemd_out_len(alg : RipemdAlg) -> u32
+  return 0
+.end
+
+fn ripemd_default_policy_160() -> RipemdPolicy
+  let p : RipemdPolicy = RipemdPolicy
+  return p
+.end
+
+fn ripemd_default_policy_256() -> RipemdPolicy
+  let p : RipemdPolicy = RipemdPolicy
+  return p
+.end
+
+fn ripemd_default_policy_320() -> RipemdPolicy
+  let p : RipemdPolicy = RipemdPolicy
+  return p
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX++
+# ============================================================================
+
+# Providers
+# - Impl enumerate/query + `RipemdProviderInfo`/`RipemdAlgInfo`.
+# - Remplacer toute sortie "texte" par ABI structs.
+# - Politique de choix provider (software vs hw vs remote) + fallback.
+
+# Core RIPEMD
+# - Impl RIPEMD-160 compression + padding + length.
+# - Impl RIPEMD-256/320 si requis (peut être optionnel, flags).
+# - Attention endianness (little-endian words) + rotation constants.
+
+# One-shot
+# - Impl `ripemd_hash` et `ripemd_hash_view`:
+#     * validate out_len vs alg (strict_out_len)
+#     * BufferTooSmall + written
+#     * output stable
+
+# Streaming
+# - Impl start/update/finish:
+#     * state machine stable, finish idempotent
+#     * accept arbitrary chunk sizes
+#     * finalize padding + length
+# - Views update:
+#     * avoid copies when possible
+
+# Validation / limits
+# - Enforce msg_max / in_max / out_max.
+# - Return MessageTooLarge on overflow.
+
+# Side-channel hardening
+# - constant_time best effort.
+# - memwipe internal state on destroy.
+
+# Tests
+# - Vectors RIPEMD-160 (known test vectors).
+# - Properties:
+#     * streaming == one-shot.
+# - Negative:
+#     * out_len invalid, buffer too small.
+# - Fuzz:
+#     * random chunking + random input sizes.
+
+# Bench
+# - microbench one-shot vs streaming.
+
+.end
+# plugins/crypto/api/hash/ripemd_stub.vitte
+# RIPEMD (stub)
+# Blocks use `.end` only.
+
+mod plugins.crypto.api.hash.ripemd_stub
+
+# TODO
+
+.end

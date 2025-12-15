@@ -1,0 +1,938 @@
+# plugins/beryl-crypto/api/sign/ecdsa_stub.vitte
+# ECDSA — Elliptic Curve Digital Signature Algorithm — API contract (data-first, backend-agnostic) — MAX+++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat ECDSA maximal:
+#       * providers enumerate/query/select + ProviderInfo/AlgInfo
+#       * courbes (P-256/P-384/P-521/secp256k1) + formats de points
+#       * handles (Provider/KeyPair/PublicKey/Context/Stream)
+#       * keygen/import/export, sign/verify
+#       * modes: message direct (hash interne) ou prehash
+#       * policies: RFC6979 (deterministic), low-S canonical, strict validation
+#       * views (zero-copy) + iovec
+#       * streaming (absorb message) via hash interne, finish => signature/verify
+#       * audit events + limits
+#   - Aucun I/O, aucune impl crypto réelle.
+#
+# Notes:
+#   - ECDSA signs a hash digest e = H(m) (ou prehash fourni).
+#   - Nonce k: deterministic RFC6979 recommandé, sinon RNG provider.
+#   - Canonical low-S (Bitcoin/interop) exposé via policy.
+
+module plugins.crypto.api.sign.ecdsa
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const ECDSA_API_VERSION_MAJOR : u32 = 1
+const ECDSA_API_VERSION_MINOR : u32 = 0
+const ECDSA_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum EcdsaError
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidAlgorithm
+  InvalidCurve
+  InvalidHash
+
+  InvalidKey
+  InvalidKeyPair
+  InvalidPublicKey
+  InvalidContext
+  InvalidStream
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  InvalidEncoding
+  InvalidPoint
+  InvalidScalar
+  InvalidPolicy
+
+  InvalidSignature
+  VerifyFailed
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  PermissionDenied
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Identifiers / metadata
+# ============================================================================
+
+type EcdsaProviderId = string
+
+type EcdsaAlgId = string
+
+type HashId = string
+
+enum EcdsaBackendKind
+  Unknown
+  Software
+  Hardware
+  Kms
+  Remote
+.end
+
+# ============================================================================
+# Curves / formats
+# ============================================================================
+
+enum EcdsaCurve
+  P256
+  P384
+  P521
+  Secp256k1
+.end
+
+enum EcdsaPointFormat
+  Uncompressed
+  Compressed
+.end
+
+# Signature encodings
+enum EcdsaSigFormat
+  # ASN.1 DER sequence of two INTEGER (r,s)
+  Der
+
+  # fixed size concatenation r||s (big-endian), size depends on curve
+  RawRsFixed
+.end
+
+# ============================================================================
+# Capability flags
+# ============================================================================
+
+const ECDSA_FLAG_KEYGEN              : u32 = 1
+const ECDSA_FLAG_KEY_IMPORT          : u32 = 2
+const ECDSA_FLAG_KEY_EXPORT          : u32 = 4
+
+const ECDSA_FLAG_SIGN_ONE_SHOT       : u32 = 8
+const ECDSA_FLAG_VERIFY_ONE_SHOT     : u32 = 16
+
+const ECDSA_FLAG_STREAMING           : u32 = 32
+
+const ECDSA_FLAG_VIEWS               : u32 = 64
+const ECDSA_FLAG_IOVEC               : u32 = 128
+
+const ECDSA_FLAG_DETERMINISTIC_K     : u32 = 256
+const ECDSA_FLAG_CANONICAL_LOW_S     : u32 = 512
+
+const ECDSA_FLAG_CONSTANT_TIME       : u32 = 1024
+const ECDSA_FLAG_SIDECHANNEL_HARD    : u32 = 2048
+
+const ECDSA_PROVIDER_FLAG_SOFTWARE   : u32 = 1
+const ECDSA_PROVIDER_FLAG_HARDWARE   : u32 = 2
+const ECDSA_PROVIDER_FLAG_KMS        : u32 = 4
+const ECDSA_PROVIDER_FLAG_REMOTE     : u32 = 8
+const ECDSA_PROVIDER_FLAG_THREADSAFE : u32 = 16
+const ECDSA_PROVIDER_FLAG_SANDBOXED  : u32 = 32
+
+# ============================================================================
+# Limits / lens
+# ============================================================================
+
+struct LenSet
+  min           : u32
+  max           : u32
+  step          : u32
+  preferred     : coll.Vec[u32]
+.end
+
+struct EcdsaLimits
+  priv_max      : u32
+  pub_max       : u32
+  sig_max       : u32
+
+  msg_max       : u64
+  digest_max    : u32
+
+  ops_per_sec   : u32
+.end
+
+struct EcdsaAlgInfo
+  id            : EcdsaAlgId
+  name          : string
+
+  curve         : EcdsaCurve
+  point_format  : EcdsaPointFormat
+
+  # Allowed hash functions for prehash or internal hashing.
+  allowed_hashes : coll.Vec[HashId]
+
+  # key sizes
+  priv_lens     : LenSet
+  pub_lens      : LenSet
+
+  # signature sizes
+  sig_der_lens  : LenSet
+  sig_raw_lens  : LenSet
+
+  flags         : u32
+  limits        : EcdsaLimits
+.end
+
+struct EcdsaProviderInfo
+  id            : EcdsaProviderId
+  name          : string
+  vendor        : string
+  version       : string
+
+  backend       : EcdsaBackendKind
+  priority      : i32
+  flags         : u32
+
+  build         : string
+  device        : string
+  location      : string
+
+  algorithms    : coll.Vec[EcdsaAlgInfo]
+  limits        : EcdsaLimits
+.end
+
+# ============================================================================
+# Handles (opaque)
+# ============================================================================
+
+type EcdsaHandle = u64
+
+enum EcdsaHandleKind
+  None
+  Provider
+  KeyPair
+  PublicKey
+  Context
+  Stream
+.end
+
+struct EcdsaOpaque
+  kind          : EcdsaHandleKind
+  value         : EcdsaHandle
+.end
+
+# ============================================================================
+# Views / iovec
+# ============================================================================
+
+struct ByteSlice
+  ptr           : u64
+  len           : u64
+.end
+
+struct MutByteSlice
+  ptr           : u64
+  len           : u64
+.end
+
+struct IoVec
+  slices        : coll.Vec[ByteSlice]
+  total_len     : u64
+.end
+
+struct MutIoVec
+  slices        : coll.Vec[MutByteSlice]
+  total_len     : u64
+.end
+
+# ============================================================================
+# Owned key material containers
+# ============================================================================
+
+struct EcdsaPrivateKey
+  bytes         : coll.Vec[u8]
+.end
+
+struct EcdsaPublicKey
+  bytes         : coll.Vec[u8]
+  format        : EcdsaPointFormat
+.end
+
+struct EcdsaKeyPair
+  private_key   : EcdsaPrivateKey
+  public_key    : EcdsaPublicKey
+.end
+
+struct EcdsaSignature
+  bytes         : coll.Vec[u8]
+  format        : EcdsaSigFormat
+.end
+
+# ============================================================================
+# Views key material containers
+# ============================================================================
+
+struct EcdsaPrivateKeyView
+  bytes         : ByteSlice
+.end
+
+struct EcdsaPublicKeyView
+  bytes         : ByteSlice
+  format        : EcdsaPointFormat
+.end
+
+struct EcdsaSignatureView
+  bytes         : ByteSlice
+  format        : EcdsaSigFormat
+.end
+
+# ============================================================================
+# Policy
+# ============================================================================
+
+struct EcdsaValidationPolicy
+  strict_pubkey_validation : bool
+  strict_encoding          : bool
+
+  # Accept only canonical low-S if true
+  enforce_low_s            : bool
+
+  # constant-time verify best effort
+  constant_time_verify     : bool
+.end
+
+struct EcdsaNoncePolicy
+  # Deterministic nonce generation (RFC6979) when possible.
+  deterministic_k          : bool
+
+  # Optional RNG id if deterministic_k=false
+  rng_id                   : string
+.end
+
+struct EcdsaHashPolicy
+  # If true, input is already a digest.
+  prehashed                : bool
+
+  # Hash function id. For prehashed=true, this is used for truncation rules.
+  hash_id                  : HashId
+
+  # Digest length expected when prehashed=true (0 => provider default for hash_id).
+  digest_len               : u32
+.end
+
+struct EcdsaPolicy
+  validation               : EcdsaValidationPolicy
+  nonce                    : EcdsaNoncePolicy
+  hashing                  : EcdsaHashPolicy
+
+  # Signature format preference
+  sig_format               : EcdsaSigFormat
+
+  # hardening request
+  sidechannel_hard         : bool
+.end
+
+# ============================================================================
+# Key references
+# ============================================================================
+
+enum EcdsaKeyUsage
+  Sign
+  Verify
+  SignAndVerify
+.end
+
+struct EcdsaKeyConstraints
+  usage            : EcdsaKeyUsage
+  fips             : bool
+  allow_hw         : bool
+
+  # if true, forbid exporting private key bytes
+  no_export_priv   : bool
+.end
+
+struct EcdsaKeyInfo
+  provider_id     : EcdsaProviderId
+  alg_id          : EcdsaAlgId
+
+  curve           : EcdsaCurve
+  point_format    : EcdsaPointFormat
+
+  key_id          : string
+  usage           : EcdsaKeyUsage
+
+  priv_len        : u32
+  pub_len         : u32
+
+  created_ms      : u64
+  expires_ms      : u64
+
+  flags           : u32
+  constraints     : EcdsaKeyConstraints
+.end
+
+struct EcdsaKeyPairRef
+  kp              : EcdsaOpaque
+  info            : EcdsaKeyInfo
+.end
+
+struct EcdsaPublicKeyRef
+  pk              : EcdsaOpaque
+  info            : EcdsaKeyInfo
+.end
+
+# ============================================================================
+# Contexts
+# ============================================================================
+
+struct EcdsaContextInfo
+  provider_id     : EcdsaProviderId
+  alg_id          : EcdsaAlgId
+
+  key             : EcdsaOpaque
+  policy          : EcdsaPolicy
+
+  flags           : u32
+.end
+
+struct EcdsaContextRef
+  ctx             : EcdsaOpaque
+  info            : EcdsaContextInfo
+.end
+
+# ============================================================================
+# One-shot sign/verify
+# ============================================================================
+
+struct EcdsaSignRequest
+  ctx             : EcdsaContextRef
+  input           : coll.Vec[u8]
+.end
+
+struct EcdsaSignResponse
+  err             : EcdsaError
+  signature       : EcdsaSignature
+.end
+
+struct EcdsaVerifyRequest
+  ctx             : EcdsaContextRef
+  input           : coll.Vec[u8]
+  signature       : EcdsaSignature
+.end
+
+struct EcdsaVerifyResponse
+  err             : EcdsaError
+  valid           : bool
+.end
+
+# Views one-shot
+struct EcdsaSignRequestView
+  ctx             : EcdsaContextRef
+  input           : ByteSlice
+  output_sig      : MutByteSlice
+  sig_format      : EcdsaSigFormat
+.end
+
+struct EcdsaSignResponseView
+  err             : EcdsaError
+  written         : u64
+.end
+
+struct EcdsaVerifyRequestView
+  ctx             : EcdsaContextRef
+  input           : ByteSlice
+  signature       : ByteSlice
+  sig_format      : EcdsaSigFormat
+.end
+
+struct EcdsaVerifyResponseView
+  err             : EcdsaError
+  valid           : bool
+.end
+
+# IoVec one-shot
+struct EcdsaSignIoVecRequestView
+  ctx             : EcdsaContextRef
+  input           : IoVec
+  output_sig      : MutByteSlice
+  sig_format      : EcdsaSigFormat
+.end
+
+struct EcdsaVerifyIoVecRequestView
+  ctx             : EcdsaContextRef
+  input           : IoVec
+  signature       : ByteSlice
+  sig_format      : EcdsaSigFormat
+.end
+
+# ============================================================================
+# Streaming (message hashing inside provider)
+# ============================================================================
+
+enum EcdsaStreamKind
+  Sign
+  Verify
+.end
+
+enum EcdsaStreamState
+  Init
+  Data
+  Final
+  Closed
+.end
+
+struct EcdsaStreamInfo
+  provider_id     : EcdsaProviderId
+  alg_id          : EcdsaAlgId
+  ctx             : EcdsaOpaque
+
+  kind            : EcdsaStreamKind
+  state           : EcdsaStreamState
+
+  msg_len         : u64
+  sig_format      : EcdsaSigFormat
+
+  flags           : u32
+.end
+
+struct EcdsaStreamRef
+  stream          : EcdsaOpaque
+  info            : EcdsaStreamInfo
+.end
+
+struct EcdsaStreamStartRequest
+  ctx             : EcdsaContextRef
+  kind            : EcdsaStreamKind
+.end
+
+struct EcdsaStreamStartResponse
+  err             : EcdsaError
+  stream          : EcdsaStreamRef
+.end
+
+struct EcdsaStreamUpdateRequest
+  stream          : EcdsaStreamRef
+  chunk           : coll.Vec[u8]
+.end
+
+struct EcdsaStreamUpdateResponse
+  err             : EcdsaError
+.end
+
+struct EcdsaStreamUpdateRequestView
+  stream          : EcdsaStreamRef
+  chunk           : ByteSlice
+.end
+
+struct EcdsaStreamUpdateResponseView
+  err             : EcdsaError
+  consumed        : u64
+.end
+
+struct EcdsaStreamFinishRequest
+  stream          : EcdsaStreamRef
+
+  # Only used when kind==Verify
+  signature       : EcdsaSignature
+.end
+
+struct EcdsaStreamFinishResponse
+  err             : EcdsaError
+
+  # kind==Sign
+  signature       : EcdsaSignature
+
+  # kind==Verify
+  valid           : bool
+.end
+
+struct EcdsaStreamFinishRequestView
+  stream          : EcdsaStreamRef
+
+  # For Verify
+  signature       : ByteSlice
+  sig_format      : EcdsaSigFormat
+
+  # For Sign
+  output_sig      : MutByteSlice
+.end
+
+struct EcdsaStreamFinishResponseView
+  err             : EcdsaError
+  written         : u64
+  valid           : bool
+.end
+
+# ============================================================================
+# Provider selection + keys
+# ============================================================================
+
+struct EcdsaProviderSelectRequest
+  provider_id     : EcdsaProviderId
+  alg_id          : EcdsaAlgId
+.end
+
+struct EcdsaProviderSelectResponse
+  err             : EcdsaError
+  provider        : EcdsaProviderInfo
+  algorithm       : EcdsaAlgInfo
+.end
+
+struct EcdsaKeyGenRequest
+  provider_id     : EcdsaProviderId
+  alg_id          : EcdsaAlgId
+  usage           : EcdsaKeyUsage
+  constraints     : EcdsaKeyConstraints
+.end
+
+struct EcdsaKeyGenResponse
+  err             : EcdsaError
+  keypair         : EcdsaKeyPairRef
+.end
+
+struct EcdsaKeyImportRequest
+  provider_id     : EcdsaProviderId
+  alg_id          : EcdsaAlgId
+  usage           : EcdsaKeyUsage
+  constraints     : EcdsaKeyConstraints
+
+  private_key     : EcdsaPrivateKey
+  public_key      : EcdsaPublicKey
+.end
+
+struct EcdsaKeyImportResponse
+  err             : EcdsaError
+  keypair         : EcdsaKeyPairRef
+.end
+
+struct EcdsaPublicKeyImportRequest
+  provider_id     : EcdsaProviderId
+  alg_id          : EcdsaAlgId
+  constraints     : EcdsaKeyConstraints
+
+  public_key      : EcdsaPublicKey
+.end
+
+struct EcdsaPublicKeyImportResponse
+  err             : EcdsaError
+  public_key      : EcdsaPublicKeyRef
+.end
+
+struct EcdsaPublicKeyExportRequest
+  public_key      : EcdsaPublicKeyRef
+  format          : EcdsaPointFormat
+.end
+
+struct EcdsaPublicKeyExportResponse
+  err             : EcdsaError
+  public_key      : EcdsaPublicKey
+.end
+
+struct EcdsaKeyDestroyRequest
+  key             : EcdsaOpaque
+.end
+
+struct EcdsaKeyDestroyResponse
+  err             : EcdsaError
+.end
+
+struct EcdsaContextCreateRequest
+  key             : EcdsaOpaque
+  policy          : EcdsaPolicy
+.end
+
+struct EcdsaContextCreateResponse
+  err             : EcdsaError
+  ctx             : EcdsaContextRef
+.end
+
+struct EcdsaContextDestroyRequest
+  ctx             : EcdsaContextRef
+.end
+
+struct EcdsaContextDestroyResponse
+  err             : EcdsaError
+.end
+
+# ============================================================================
+# Audit
+# ============================================================================
+
+enum EcdsaAuditKind
+  ProviderSelected
+  KeyGenerated
+  KeyImported
+  PeerKeyImported
+  ContextCreated
+  StreamStarted
+  StreamUpdated
+  Signed
+  Verified
+  Destroyed
+.end
+
+struct EcdsaAuditEvent
+  kind            : EcdsaAuditKind
+  provider_id     : EcdsaProviderId
+  alg_id          : EcdsaAlgId
+
+  key_id          : string
+  ctx_id          : string
+  stream_id       : string
+
+  ts_ms           : u64
+  detail          : string
+.end
+
+fn ecdsa_audit_emit(ev : EcdsaAuditEvent)
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : EcdsaProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : EcdsaAlgInfo)
+.end
+
+fn abi_out_keypair_ref_struct(kp : EcdsaKeyPairRef)
+.end
+
+fn abi_out_public_key_ref_struct(pk : EcdsaPublicKeyRef)
+.end
+
+fn abi_out_ctx_ref_struct(ctx : EcdsaContextRef)
+.end
+
+fn abi_out_select_response(resp : EcdsaProviderSelectResponse)
+.end
+
+fn abi_out_keygen_response(resp : EcdsaKeyGenResponse)
+.end
+
+fn abi_out_keyimport_response(resp : EcdsaKeyImportResponse)
+.end
+
+fn abi_out_pubkey_import_response(resp : EcdsaPublicKeyImportResponse)
+.end
+
+fn abi_out_pubkey_export_response(resp : EcdsaPublicKeyExportResponse)
+.end
+
+fn abi_out_ctx_create_response(resp : EcdsaContextCreateResponse)
+.end
+
+fn abi_out_sign_response(resp : EcdsaSignResponse)
+.end
+
+fn abi_out_verify_response(resp : EcdsaVerifyResponse)
+.end
+
+fn abi_out_sign_response_view(resp : EcdsaSignResponseView)
+.end
+
+fn abi_out_verify_response_view(resp : EcdsaVerifyResponseView)
+.end
+
+fn abi_out_stream_start_response(resp : EcdsaStreamStartResponse)
+.end
+
+fn abi_out_stream_finish_response(resp : EcdsaStreamFinishResponse)
+.end
+
+fn abi_out_stream_finish_response_view(resp : EcdsaStreamFinishResponseView)
+.end
+
+fn abi_out_error(err : EcdsaError)
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn ecdsa_provider_enumerate()
+.end
+
+fn ecdsa_provider_query(provider_id : EcdsaProviderId)
+.end
+
+fn ecdsa_provider_select(req : EcdsaProviderSelectRequest)
+.end
+
+fn ecdsa_keygen(req : EcdsaKeyGenRequest)
+.end
+
+fn ecdsa_key_import(req : EcdsaKeyImportRequest)
+.end
+
+fn ecdsa_public_key_import(req : EcdsaPublicKeyImportRequest)
+.end
+
+fn ecdsa_public_key_export(req : EcdsaPublicKeyExportRequest)
+.end
+
+fn ecdsa_key_destroy(req : EcdsaKeyDestroyRequest)
+.end
+
+fn ecdsa_context_create(req : EcdsaContextCreateRequest)
+.end
+
+fn ecdsa_context_destroy(req : EcdsaContextDestroyRequest)
+.end
+
+fn ecdsa_sign(req : EcdsaSignRequest)
+.end
+
+fn ecdsa_verify(req : EcdsaVerifyRequest)
+.end
+
+fn ecdsa_sign_view(req : EcdsaSignRequestView)
+.end
+
+fn ecdsa_verify_view(req : EcdsaVerifyRequestView)
+.end
+
+fn ecdsa_sign_iovec_view(req : EcdsaSignIoVecRequestView)
+.end
+
+fn ecdsa_verify_iovec_view(req : EcdsaVerifyIoVecRequestView)
+.end
+
+fn ecdsa_stream_start(req : EcdsaStreamStartRequest)
+.end
+
+fn ecdsa_stream_update(req : EcdsaStreamUpdateRequest)
+.end
+
+fn ecdsa_stream_update_view(req : EcdsaStreamUpdateRequestView)
+.end
+
+fn ecdsa_stream_finish(req : EcdsaStreamFinishRequest)
+.end
+
+fn ecdsa_stream_finish_view(req : EcdsaStreamFinishRequestView)
+.end
+
+fn ecdsa_stream_destroy(stream : EcdsaOpaque)
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+fn ecdsa_default_validation_policy() -> EcdsaValidationPolicy
+  let p : EcdsaValidationPolicy = EcdsaValidationPolicy
+  return p
+.end
+
+fn ecdsa_default_nonce_policy_deterministic() -> EcdsaNoncePolicy
+  let p : EcdsaNoncePolicy = EcdsaNoncePolicy
+  return p
+.end
+
+fn ecdsa_default_hash_policy_internal(hash_id : HashId) -> EcdsaHashPolicy
+  let p : EcdsaHashPolicy = EcdsaHashPolicy
+  return p
+.end
+
+fn ecdsa_default_hash_policy_prehash(hash_id : HashId, digest_len : u32) -> EcdsaHashPolicy
+  let p : EcdsaHashPolicy = EcdsaHashPolicy
+  return p
+.end
+
+fn ecdsa_default_policy_prehash_rfc6979(hash_id : HashId, sig_format : EcdsaSigFormat) -> EcdsaPolicy
+  let p : EcdsaPolicy = EcdsaPolicy
+  return p
+.end
+
+fn ecdsa_default_constraints() -> EcdsaKeyConstraints
+  let c : EcdsaKeyConstraints = EcdsaKeyConstraints
+  return c
+.end
+
+# Curve helpers
+fn ecdsa_raw_rs_len_for_curve(curve : EcdsaCurve) -> u32
+  return 0
+.end
+
+fn ecdsa_sig_der_max_for_curve(curve : EcdsaCurve) -> u32
+  return 0
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# Providers / registry
+# - Impl enumerate/query/select et remplir `EcdsaProviderInfo`/`EcdsaAlgInfo`.
+# - Remplacer toute sortie "texte" par ABI structs.
+# - Politique de choix provider (software vs hw vs kms/remote) + fallback.
+
+# Handles
+# - Impl handles slot+generation (O(1) lookup) thread-safe.
+# - Destroy idempotent + poison.
+
+# ECDSA core
+# - Scalar mult constant-time + Jacobian/affine.
+# - Sign:
+#     * nonce k: RFC6979 deterministic (HMAC over hash_id) si disponible.
+#     * sinon RNG secure.
+#     * compute r,s; enforce low-S if policy.
+# - Verify:
+#     * strict point validation (on-curve, not infinity).
+#     * constant-time best effort compare where possible.
+# - Hashing:
+#     * internal hashing via hash provider (hash_id) OR prehashed input.
+#     * truncation rules for e based on curve order bitlen.
+
+# Encodings
+# - SEC1 public key decode/encode compressed/uncompressed.
+# - Signature DER parse/encode with strict canonical integer encoding.
+# - Raw r||s fixed sizes per curve.
+
+# Streaming
+# - Stream absorbs message chunks into internal hash context.
+# - Finish:
+#     * Sign => finalize hash => sign digest => emit signature.
+#     * Verify => finalize hash => verify against signature.
+# - Ensure msg_max enforcement + idempotent finish/destroy.
+
+# Side-channel hardening
+# - constant-time scalar mult; avoid secret-dependent branches/memory.
+# - memwipe temporaires (nonce k, intermediate scalars).
+
+# Tests
+# - Wycheproof ECDSA vectors.
+# - RFC6979 vectors (deterministic k) for supported hash/curves.
+# - Interop DER encoding strictness.
+# - Properties: verify(sign(m)) == true.
+# - Fuzz: invalid DER, invalid points, random chunking streaming.
+
+# Audit
+# - Emission stable events for keygen/import/context/stream/sign/verify/destroy.
+
+.end
+# plugins/crypto/api/sign/ecdsa_stub.vitte
+# ECDSA (stub)
+# Blocks use `.end` only.
+
+mod plugins.crypto.api.sign.ecdsa_stub
+
+# TODO
+
+.end

@@ -1,0 +1,406 @@
+# plugins/beryl-crypto/backends/hw/armv8_crypto_stub.vitte
+# ARMv8 Crypto Extensions backend — contract (data-first, backend-agnostic) — MAX+++
+# Blocks use `.end` only.
+#
+# Scope:
+#   - Backend contract for ARMv8/AArch64 Crypto Extensions:
+#       * feature detection (AES, PMULL, SHA1, SHA2, SHA3 optional)
+#       * AES key schedule and block encrypt/decrypt
+#       * optional helpers for GCM (GHASH via PMULL) and CTR
+#       * optional SHA accelerators (sha1, sha256, sha512) contracts
+#       * constant-time requirements and zeroization hooks
+#   - Real implementation can be runtime intrinsics / asm.
+
+module plugins.crypto.backends.hw.armv8_crypto
+
+import std.collections as coll
+
+import plugins.crypto.api.types as t
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const ARMV8_CRYPTO_API_VERSION_MAJOR : u32 = 1
+const ARMV8_CRYPTO_API_VERSION_MINOR : u32 = 0
+const ARMV8_CRYPTO_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum Armv8CryptoError
+  Ok
+  Unsupported
+
+  FeatureUnavailable
+
+  InvalidKey
+  InvalidContext
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  BufferTooSmall
+
+  InternalError
+.end
+
+# ============================================================================
+# CPU features (AArch64)
+# ============================================================================
+
+# Feature flags (bitset)
+const ARMFEAT_AES    : u64 = 1
+const ARMFEAT_PMULL  : u64 = 2
+const ARMFEAT_SHA1   : u64 = 4
+const ARMFEAT_SHA2   : u64 = 8
+const ARMFEAT_SHA3   : u64 = 16
+const ARMFEAT_SM3    : u64 = 32
+const ARMFEAT_SM4    : u64 = 64
+
+struct ArmFeatures
+  flags : u64
+
+  # best effort: implementer/vendor info
+  vendor : string
+  model  : string
+
+  # OS/kernel reported auxval/hwcaps raw values (optional)
+  hwcap   : u64
+  hwcap2  : u64
+.end
+
+fn arm_features_detect() -> ArmFeatures
+  let f : ArmFeatures = ArmFeatures
+  return f
+.end
+
+fn arm_features_has(features : ArmFeatures, flag : u64) -> bool
+  return false
+.end
+
+# ============================================================================
+# Backend capabilities
+# ============================================================================
+
+# Flags
+const ARMV8_CAP_AES       : u64 = 1
+const ARMV8_CAP_PMULL     : u64 = 2
+
+const ARMV8_CAP_KEY_128   : u64 = 4
+const ARMV8_CAP_KEY_192   : u64 = 8
+const ARMV8_CAP_KEY_256   : u64 = 16
+
+const ARMV8_CAP_ENC       : u64 = 32
+const ARMV8_CAP_DEC       : u64 = 64
+
+const ARMV8_CAP_GHASH     : u64 = 128
+const ARMV8_CAP_CTR       : u64 = 256
+
+const ARMV8_CAP_SHA1      : u64 = 512
+const ARMV8_CAP_SHA256    : u64 = 1024
+const ARMV8_CAP_SHA512    : u64 = 2048
+
+const ARMV8_CAP_CONSTANT_TIME : u64 = 4096
+
+struct Armv8Caps
+  cpu        : ArmFeatures
+  caps       : u64
+
+  block_len  : u32
+
+  lanes      : u32
+.end
+
+fn armv8_caps() -> Armv8Caps
+  let c : Armv8Caps = Armv8Caps
+  return c
+.end
+
+fn armv8_is_available() -> bool
+  return false
+.end
+
+# ============================================================================
+# Key schedule / contexts (AES)
+# ============================================================================
+
+# Opaque handles (slot+generation in runtime recommended)
+
+type Armv8Handle = u64
+
+enum Armv8HandleKind
+  None
+  AesEncKey
+  AesDecKey
+  GhashKey
+  CtrState
+
+  Sha1State
+  Sha256State
+  Sha512State
+.end
+
+struct Armv8Opaque
+  kind  : Armv8HandleKind
+  value : Armv8Handle
+.end
+
+# Key size
+
+enum AesKeyLen
+  Aes128
+  Aes192
+  Aes256
+.end
+
+struct AesKeyScheduleInfo
+  key_len      : AesKeyLen
+  rounds       : u32
+
+  sched_bytes  : u32
+  flags        : u64
+.end
+
+struct AesEncKeyRef
+  key   : Armv8Opaque
+  info  : AesKeyScheduleInfo
+.end
+
+struct AesDecKeyRef
+  key   : Armv8Opaque
+  info  : AesKeyScheduleInfo
+.end
+
+# ============================================================================
+# AES block operations (16 bytes)
+# ============================================================================
+
+# Expand key for encryption.
+fn armv8_aes_expand_enc_key(key_bytes : coll.Vec[u8])
+.end
+
+# Expand key for decryption.
+fn armv8_aes_expand_dec_key(key_bytes : coll.Vec[u8])
+.end
+
+fn armv8_aes_key_destroy(key : Armv8Opaque)
+.end
+
+# Encrypt single block: out = AES_enc(key, in)
+fn armv8_aes_encrypt_block_view(enc_key : AesEncKeyRef, input : t.ByteSlice, output : t.MutByteSlice) -> Armv8CryptoError
+.end
+
+# Decrypt single block
+fn armv8_aes_decrypt_block_view(dec_key : AesDecKeyRef, input : t.ByteSlice, output : t.MutByteSlice) -> Armv8CryptoError
+.end
+
+# Multi-block ops; length must be multiple of 16.
+fn armv8_aes_encrypt_blocks_view(enc_key : AesEncKeyRef, input : t.ByteSlice, output : t.MutByteSlice) -> Armv8CryptoError
+.end
+
+fn armv8_aes_decrypt_blocks_view(dec_key : AesDecKeyRef, input : t.ByteSlice, output : t.MutByteSlice) -> Armv8CryptoError
+.end
+
+# In-place
+fn armv8_aes_encrypt_blocks_in_place_view(enc_key : AesEncKeyRef, buf : t.MutByteSlice) -> Armv8CryptoError
+.end
+
+fn armv8_aes_decrypt_blocks_in_place_view(dec_key : AesDecKeyRef, buf : t.MutByteSlice) -> Armv8CryptoError
+.end
+
+# ============================================================================
+# CTR helper (optional)
+# ============================================================================
+
+struct Ctr128
+  block : coll.Vec[u8]
+.end
+
+struct CtrStateInfo
+  key_len     : AesKeyLen
+  counter_len : u32
+  offset      : u64
+  flags       : u64
+.end
+
+struct CtrStateRef
+  state : Armv8Opaque
+  info  : CtrStateInfo
+.end
+
+fn armv8_ctr_state_create(enc_key : AesEncKeyRef, initial_counter_block : coll.Vec[u8])
+.end
+
+fn armv8_ctr_state_destroy(state : CtrStateRef)
+.end
+
+fn armv8_ctr_xor_view(state : CtrStateRef, input : t.ByteSlice, output : t.MutByteSlice) -> Armv8CryptoError
+.end
+
+fn armv8_ctr_xor_in_place_view(state : CtrStateRef, buf : t.MutByteSlice) -> Armv8CryptoError
+.end
+
+# ============================================================================
+# GHASH / PMULL helper (optional, for AES-GCM)
+# ============================================================================
+
+struct GhashKeyInfo
+  h_len : u32
+  flags : u64
+.end
+
+struct GhashKeyRef
+  key  : Armv8Opaque
+  info : GhashKeyInfo
+.end
+
+fn armv8_ghash_key_create_from_h(h : coll.Vec[u8])
+.end
+
+fn armv8_ghash_key_destroy(key : GhashKeyRef)
+.end
+
+# GHASH update: y = GHASH_H(y, data)
+fn armv8_ghash_update_view(key : GhashKeyRef, y_in : t.ByteSlice, data : t.ByteSlice, y_out : t.MutByteSlice) -> Armv8CryptoError
+.end
+
+fn armv8_ghash_compute_view(key : GhashKeyRef, aad : t.ByteSlice, ctext : t.ByteSlice, out_tag : t.MutByteSlice) -> Armv8CryptoError
+.end
+
+# ============================================================================
+# SHA accelerators (optional)
+# ============================================================================
+
+struct Sha1StateInfo
+  flags : u64
+  total_len : u64
+.end
+
+struct Sha1StateRef
+  state : Armv8Opaque
+  info  : Sha1StateInfo
+.end
+
+fn armv8_sha1_state_create()
+.end
+
+fn armv8_sha1_state_update_view(state : Sha1StateRef, input : t.ByteSlice) -> Armv8CryptoError
+.end
+
+fn armv8_sha1_state_finish_view(state : Sha1StateRef, out20 : t.MutByteSlice) -> Armv8CryptoError
+.end
+
+fn armv8_sha1_state_destroy(state : Sha1StateRef)
+.end
+
+struct Sha256StateInfo
+  flags : u64
+  total_len : u64
+.end
+
+struct Sha256StateRef
+  state : Armv8Opaque
+  info  : Sha256StateInfo
+.end
+
+fn armv8_sha256_state_create()
+.end
+
+fn armv8_sha256_state_update_view(state : Sha256StateRef, input : t.ByteSlice) -> Armv8CryptoError
+.end
+
+fn armv8_sha256_state_finish_view(state : Sha256StateRef, out32 : t.MutByteSlice) -> Armv8CryptoError
+.end
+
+fn armv8_sha256_state_destroy(state : Sha256StateRef)
+.end
+
+struct Sha512StateInfo
+  flags : u64
+  total_len : u64
+.end
+
+struct Sha512StateRef
+  state : Armv8Opaque
+  info  : Sha512StateInfo
+.end
+
+fn armv8_sha512_state_create()
+.end
+
+fn armv8_sha512_state_update_view(state : Sha512StateRef, input : t.ByteSlice) -> Armv8CryptoError
+.end
+
+fn armv8_sha512_state_finish_view(state : Sha512StateRef, out64 : t.MutByteSlice) -> Armv8CryptoError
+.end
+
+fn armv8_sha512_state_destroy(state : Sha512StateRef)
+.end
+
+# ============================================================================
+# Zeroization / hardening
+# ============================================================================
+
+fn armv8_memwipe_view(buf : t.MutByteSlice) -> Armv8CryptoError
+.end
+
+# ============================================================================
+# ABI outputs (runtime marshalling)
+# ============================================================================
+
+fn abi_out_arm_features_struct(f : ArmFeatures)
+.end
+
+fn abi_out_caps_struct(c : Armv8Caps)
+.end
+
+fn abi_out_error(err : Armv8CryptoError)
+.end
+
+# ============================================================================
+# Provider surface (diagnostic entrypoints)
+# ============================================================================
+
+fn armv8_get_features()
+.end
+
+fn armv8_get_caps()
+.end
+
+fn armv8_self_test()
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# Feature detect
+# - Use getauxval(AT_HWCAP/AT_HWCAP2) on Linux, sysctl on Apple, etc.
+# - Map to ARMFEAT_* flags.
+#
+# AES
+# - Implement key schedule and block ops using AESE/AESD + AESMC/AESIMC.
+# - Multi-block parallelism via NEON lanes.
+#
+# CTR
+# - 128-bit counter increment, partial block buffering.
+#
+# GHASH
+# - PMULL-based GHASH with reduction polynomial.
+#
+# SHA
+# - Implement SHA1/SHA256/SHA512 compression helpers using SHA instructions.
+# - Provide streaming states with buffering/padding in higher-level hash modules.
+#
+# Hardening
+# - Avoid secret-dependent branches/memory.
+# - Ensure memwipe uses runtime intrinsic.
+#
+# Tests
+# - KAT vectors for AES and GHASH.
+# - Compare with software fallback.
+
+.end

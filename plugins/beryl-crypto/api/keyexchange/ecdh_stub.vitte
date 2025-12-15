@@ -1,0 +1,680 @@
+# plugins/crypto/api/keyexchange/ecdh_stub.vitte
+# ECDH (stub)
+# Blocks use `.end` only.
+
+mod plugins.crypto.api.keyexchange.ecdh_stub
+
+# TODO
+
+.end
+
+# plugins/beryl-crypto/api/keyexchange/ecdh.vitte
+# ECDH — Elliptic Curve Diffie-Hellman — Key Exchange API contract (data-first, backend-agnostic) — MAX+++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat ECDH maximal:
+#       * providers enumerate/query/select
+#       * algos/courbes (P-256/P-384/P-521, X25519, X448)
+#       * handles (Provider/KeyPair/PublicKey/Session)
+#       * keygen/import/export, derive shared secret
+#       * KDF integration hooks (HKDF) + label/context
+#       * views (zero-copy) + iovec
+#       * policies (strict validation, cofactor, constant-time)
+#       * audit events + limits
+#   - Aucun I/O, aucune impl crypto réelle.
+#
+# Notes:
+#   - ECDH classical: derive Z = (d_A * Q_B).x (curve-dependent encoding)
+#   - X25519/X448: RFC 7748.
+#   - We expose both "raw shared" and "kdf output" convenience.
+
+module plugins.crypto.api.keyexchange.ecdh
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const ECDH_API_VERSION_MAJOR : u32 = 1
+const ECDH_API_VERSION_MINOR : u32 = 0
+const ECDH_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum EcdhError
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidAlgorithm
+  InvalidCurve
+
+  InvalidKey
+  InvalidKeyPair
+  InvalidPublicKey
+  InvalidSession
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  InvalidEncoding
+  InvalidPoint
+  InvalidScalar
+  InvalidPolicy
+
+  BufferTooSmall
+  OutputTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  PermissionDenied
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Identifiers / metadata
+# ============================================================================
+
+type EcdhProviderId = string
+
+type EcdhAlgId = string
+
+enum EcdhBackendKind
+  Unknown
+  Software
+  Hardware
+  Kms
+  Remote
+.end
+
+# ============================================================================
+# Curves / algos
+# ============================================================================
+
+enum EcdhCurve
+  P256
+  P384
+  P521
+  X25519
+  X448
+.end
+
+enum EcdhPointFormat
+  # SEC1 encoding for short Weierstrass curves
+  Uncompressed
+  Compressed
+
+  # RFC 7748 fixed length (X25519/X448)
+  Montgomery
+.end
+
+enum EcdhSecretFormat
+  # raw shared secret bytes as produced by backend
+  Raw
+
+  # classical Weierstrass: X coordinate only (or curve-defined)
+  XCoordinate
+
+  # standardized fixed-length output (pad/normalize)
+  Normalized
+.end
+
+# ============================================================================
+# Capability flags
+# ============================================================================
+
+const ECDH_FLAG_KEYGEN               : u32 = 1
+const ECDH_FLAG_KEY_IMPORT           : u32 = 2
+const ECDH_FLAG_KEY_EXPORT           : u32 = 4
+
+const ECDH_FLAG_DERIVE_RAW           : u32 = 8
+const ECDH_FLAG_DERIVE_KDF           : u32 = 16
+
+const ECDH_FLAG_VIEWS                : u32 = 32
+const ECDH_FLAG_IOVEC                : u32 = 64
+
+const ECDH_FLAG_CONSTANT_TIME        : u32 = 128
+const ECDH_FLAG_SIDECHANNEL_HARD     : u32 = 256
+
+const ECDH_PROVIDER_FLAG_SOFTWARE    : u32 = 1
+const ECDH_PROVIDER_FLAG_HARDWARE    : u32 = 2
+const ECDH_PROVIDER_FLAG_KMS         : u32 = 4
+const ECDH_PROVIDER_FLAG_REMOTE      : u32 = 8
+const ECDH_PROVIDER_FLAG_THREADSAFE  : u32 = 16
+const ECDH_PROVIDER_FLAG_SANDBOXED   : u32 = 32
+
+# ============================================================================
+# Limits / lens
+# ============================================================================
+
+struct LenSet
+  min           : u32
+  max           : u32
+  step          : u32
+  preferred     : coll.Vec[u32]
+.end
+
+struct EcdhLimits
+  priv_max      : u32
+  pub_max       : u32
+  secret_max    : u32
+
+  kdf_out_max   : u32
+
+  ops_per_sec   : u32
+.end
+
+struct EcdhAlgInfo
+  id            : EcdhAlgId
+  name          : string
+
+  curve         : EcdhCurve
+  point_format  : EcdhPointFormat
+
+  priv_lens     : LenSet
+  pub_lens      : LenSet
+  secret_lens   : LenSet
+
+  flags         : u32
+  limits        : EcdhLimits
+.end
+
+struct EcdhProviderInfo
+  id            : EcdhProviderId
+  name          : string
+  vendor        : string
+  version       : string
+
+  backend       : EcdhBackendKind
+  priority      : i32
+  flags         : u32
+
+  build         : string
+  device        : string
+  location      : string
+
+  algorithms    : coll.Vec[EcdhAlgInfo]
+  limits        : EcdhLimits
+.end
+
+# ============================================================================
+# Handles (opaque)
+# ============================================================================
+
+type EcdhHandle = u64
+
+enum EcdhHandleKind
+  None
+  Provider
+  KeyPair
+  PublicKey
+  Session
+.end
+
+struct EcdhOpaque
+  kind          : EcdhHandleKind
+  value         : EcdhHandle
+.end
+
+# ============================================================================
+# Views / iovec
+# ============================================================================
+
+struct ByteSlice
+  ptr           : u64
+  len           : u64
+.end
+
+struct MutByteSlice
+  ptr           : u64
+  len           : u64
+.end
+
+struct IoVec
+  slices        : coll.Vec[ByteSlice]
+  total_len     : u64
+.end
+
+struct MutIoVec
+  slices        : coll.Vec[MutByteSlice]
+  total_len     : u64
+.end
+
+# ============================================================================
+# Owned key material containers
+# ============================================================================
+
+struct EcdhPrivateKey
+  bytes         : coll.Vec[u8]
+.end
+
+struct EcdhPublicKey
+  bytes         : coll.Vec[u8]
+  format        : EcdhPointFormat
+.end
+
+struct EcdhKeyPair
+  private_key   : EcdhPrivateKey
+  public_key    : EcdhPublicKey
+.end
+
+struct EcdhSharedSecret
+  bytes         : coll.Vec[u8]
+  format        : EcdhSecretFormat
+.end
+
+# ============================================================================
+# Views key material containers
+# ============================================================================
+
+struct EcdhPrivateKeyView
+  bytes         : ByteSlice
+.end
+
+struct EcdhPublicKeyView
+  bytes         : ByteSlice
+  format        : EcdhPointFormat
+.end
+
+# ============================================================================
+# Policy
+# ============================================================================
+
+struct EcdhValidationPolicy
+  # Validate that public key is on curve and not small subgroup.
+  strict_pubkey_validation : bool
+
+  # For curves with cofactor, enforce cofactor clearing.
+  cofactor_clearing        : bool
+
+  # Reject non-canonical encodings.
+  strict_encoding          : bool
+
+  # constant-time best effort
+  constant_time            : bool
+.end
+
+struct EcdhKdfPolicy
+  # If true, derive secret with HKDF-like interface directly.
+  enable_kdf              : bool
+
+  # KDF id string (e.g., "hkdf-sha256") resolved by runtime/provider.
+  kdf_id                  : string
+
+  # optional salt/info
+  salt                    : coll.Vec[u8]
+  info                    : coll.Vec[u8]
+
+  out_len                 : u32
+.end
+
+struct EcdhPolicy
+  validation              : EcdhValidationPolicy
+  kdf                     : EcdhKdfPolicy
+
+  # Output format preference
+  secret_format           : EcdhSecretFormat
+.end
+
+# ============================================================================
+# Key references
+# ============================================================================
+
+struct EcdhKeyInfo
+  provider_id     : EcdhProviderId
+  alg_id          : EcdhAlgId
+
+  curve           : EcdhCurve
+  point_format    : EcdhPointFormat
+
+  key_id          : string
+  created_ms      : u64
+  expires_ms      : u64
+
+  flags           : u32
+.end
+
+struct EcdhKeyPairRef
+  kp              : EcdhOpaque
+  info            : EcdhKeyInfo
+.end
+
+struct EcdhPublicKeyRef
+  pk              : EcdhOpaque
+  info            : EcdhKeyInfo
+.end
+
+# ============================================================================
+# Session / derive
+# ============================================================================
+
+struct EcdhSessionInfo
+  provider_id     : EcdhProviderId
+  alg_id          : EcdhAlgId
+  curve           : EcdhCurve
+
+  local_kp        : EcdhOpaque
+  peer_pk         : EcdhOpaque
+
+  flags           : u32
+  policy          : EcdhPolicy
+.end
+
+struct EcdhSessionRef
+  session         : EcdhOpaque
+  info            : EcdhSessionInfo
+.end
+
+struct EcdhDeriveRequest
+  session         : EcdhSessionRef
+.end
+
+struct EcdhDeriveResponse
+  err             : EcdhError
+  secret          : EcdhSharedSecret
+  kdf_out         : coll.Vec[u8]
+.end
+
+struct EcdhDeriveRequestView
+  session         : EcdhSessionRef
+  output_secret   : MutByteSlice
+  output_kdf      : MutByteSlice
+.end
+
+struct EcdhDeriveResponseView
+  err             : EcdhError
+  secret_written  : u64
+  kdf_written     : u64
+.end
+
+# ============================================================================
+# Operations: provider, key, session
+# ============================================================================
+
+struct EcdhProviderSelectRequest
+  provider_id     : EcdhProviderId
+  alg_id          : EcdhAlgId
+.end
+
+struct EcdhProviderSelectResponse
+  err             : EcdhError
+  provider        : EcdhProviderInfo
+  algorithm       : EcdhAlgInfo
+.end
+
+struct EcdhKeyGenRequest
+  provider_id     : EcdhProviderId
+  alg_id          : EcdhAlgId
+  policy          : EcdhPolicy
+.end
+
+struct EcdhKeyGenResponse
+  err             : EcdhError
+  keypair         : EcdhKeyPairRef
+.end
+
+struct EcdhKeyImportRequest
+  provider_id     : EcdhProviderId
+  alg_id          : EcdhAlgId
+  policy          : EcdhPolicy
+
+  private_key     : EcdhPrivateKey
+  public_key      : EcdhPublicKey
+.end
+
+struct EcdhKeyImportResponse
+  err             : EcdhError
+  keypair         : EcdhKeyPairRef
+.end
+
+struct EcdhPublicKeyImportRequest
+  provider_id     : EcdhProviderId
+  alg_id          : EcdhAlgId
+  policy          : EcdhPolicy
+
+  public_key      : EcdhPublicKey
+.end
+
+struct EcdhPublicKeyImportResponse
+  err             : EcdhError
+  public_key      : EcdhPublicKeyRef
+.end
+
+struct EcdhPublicKeyExportRequest
+  public_key      : EcdhPublicKeyRef
+  format          : EcdhPointFormat
+.end
+
+struct EcdhPublicKeyExportResponse
+  err             : EcdhError
+  public_key      : EcdhPublicKey
+.end
+
+struct EcdhKeyDestroyRequest
+  key             : EcdhOpaque
+.end
+
+struct EcdhKeyDestroyResponse
+  err             : EcdhError
+.end
+
+struct EcdhSessionCreateRequest
+  provider_id     : EcdhProviderId
+  alg_id          : EcdhAlgId
+  policy          : EcdhPolicy
+
+  local_keypair   : EcdhKeyPairRef
+  peer_public_key : EcdhPublicKeyRef
+.end
+
+struct EcdhSessionCreateResponse
+  err             : EcdhError
+  session         : EcdhSessionRef
+.end
+
+struct EcdhSessionDestroyRequest
+  session         : EcdhSessionRef
+.end
+
+struct EcdhSessionDestroyResponse
+  err             : EcdhError
+.end
+
+# ============================================================================
+# Audit
+# ============================================================================
+
+enum EcdhAuditKind
+  ProviderSelected
+  KeyGenerated
+  KeyImported
+  PeerKeyImported
+  SessionCreated
+  SecretDerived
+  Destroyed
+.end
+
+struct EcdhAuditEvent
+  kind            : EcdhAuditKind
+  provider_id     : EcdhProviderId
+  alg_id          : EcdhAlgId
+
+  key_id          : string
+  session_id      : string
+
+  ts_ms           : u64
+  detail          : string
+.end
+
+fn ecdh_audit_emit(ev : EcdhAuditEvent)
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : EcdhProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : EcdhAlgInfo)
+.end
+
+fn abi_out_keypair_ref_struct(kp : EcdhKeyPairRef)
+.end
+
+fn abi_out_public_key_ref_struct(pk : EcdhPublicKeyRef)
+.end
+
+fn abi_out_session_ref_struct(s : EcdhSessionRef)
+.end
+
+fn abi_out_select_response(resp : EcdhProviderSelectResponse)
+.end
+
+fn abi_out_keygen_response(resp : EcdhKeyGenResponse)
+.end
+
+fn abi_out_keyimport_response(resp : EcdhKeyImportResponse)
+.end
+
+fn abi_out_peerkey_import_response(resp : EcdhPublicKeyImportResponse)
+.end
+
+fn abi_out_publickey_export_response(resp : EcdhPublicKeyExportResponse)
+.end
+
+fn abi_out_session_create_response(resp : EcdhSessionCreateResponse)
+.end
+
+fn abi_out_derive_response(resp : EcdhDeriveResponse)
+.end
+
+fn abi_out_derive_response_view(resp : EcdhDeriveResponseView)
+.end
+
+fn abi_out_error(err : EcdhError)
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn ecdh_provider_enumerate()
+.end
+
+fn ecdh_provider_query(provider_id : EcdhProviderId)
+.end
+
+fn ecdh_provider_select(req : EcdhProviderSelectRequest)
+.end
+
+fn ecdh_keygen(req : EcdhKeyGenRequest)
+.end
+
+fn ecdh_key_import(req : EcdhKeyImportRequest)
+.end
+
+fn ecdh_peer_public_key_import(req : EcdhPublicKeyImportRequest)
+.end
+
+fn ecdh_public_key_export(req : EcdhPublicKeyExportRequest)
+.end
+
+fn ecdh_key_destroy(req : EcdhKeyDestroyRequest)
+.end
+
+fn ecdh_session_create(req : EcdhSessionCreateRequest)
+.end
+
+fn ecdh_session_destroy(req : EcdhSessionDestroyRequest)
+.end
+
+fn ecdh_derive(req : EcdhDeriveRequest)
+.end
+
+fn ecdh_derive_view(req : EcdhDeriveRequestView)
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+fn ecdh_default_validation_policy() -> EcdhValidationPolicy
+  let p : EcdhValidationPolicy = EcdhValidationPolicy
+  return p
+.end
+
+fn ecdh_default_kdf_policy_none() -> EcdhKdfPolicy
+  let p : EcdhKdfPolicy = EcdhKdfPolicy
+  return p
+.end
+
+fn ecdh_default_policy_raw() -> EcdhPolicy
+  let p : EcdhPolicy = EcdhPolicy
+  return p
+.end
+
+fn ecdh_default_policy_hkdf_sha256(out_len : u32) -> EcdhPolicy
+  let p : EcdhPolicy = EcdhPolicy
+  return p
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# Providers / registry
+# - Impl enumerate/query/select + fill ProviderInfo/AlgInfo.
+# - Remplacer ABI texte par structs (marshalling runtime).
+# - Définir politique de priorité (software vs hw vs kms/remote) + fallback.
+
+# Handles
+# - Impl handles slot+generation (O(1)) thread-safe: Provider/KeyPair/PublicKey/Session.
+# - Destroy idempotent + poison.
+
+# ECDH/XDH core
+# - P-256/P-384/P-521:
+#     * scalar mult constant-time.
+#     * SEC1 point decode/encode (compressed/uncompressed).
+#     * strict point validation + subgroup checks.
+# - X25519/X448:
+#     * RFC 7748 clamping + scalar mult.
+#     * reject all-zero output.
+#
+# Secret formats
+# - Raw vs XCoordinate vs Normalized mapping per curve.
+# - Normalized: fixed-length output, left-pad as needed.
+
+# KDF integration
+# - If enable_kdf:
+#     * derive raw secret then feed to HKDF (or configured KDF id)
+#     * support salt/info.
+# - Ensure kdf_out_len bounds.
+
+# Side-channel hardening
+# - constant-time, secret-independent memory.
+# - memwipe temporaires.
+
+# Tests
+# - RFC 7748 test vectors (X25519/X448).
+# - Wycheproof ECDH vectors for NIST curves.
+# - Interop vectors (openssl/libsodium) optional.
+# - Property: derive(A,B)==derive(B,A).
+# - Negative: invalid points/encodings.
+
+# Audit
+# - Emission stable events for keygen/import/session/derive/destroy.
+
+.end

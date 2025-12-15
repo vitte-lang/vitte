@@ -1,0 +1,381 @@
+# plugins/crypto/backends/hw/aesni_stub.vitte
+# AES-NI (stub)
+# Blocks use `.end` only.
+
+mod plugins.crypto.backends.hw.aesni_stub
+
+# TODO
+
+.end
+
+# plugins/beryl-crypto/backends/hw/aesni_stub.vitte
+# AES-NI / CLMUL backend — contract (data-first, backend-agnostic) — MAX+++
+# Blocks use `.end` only.
+#
+# Scope:
+#   - This module describes the *hardware-accelerated* AES backend surface.
+#   - It does NOT implement crypto here; it defines contracts and types for:
+#       * CPU feature detection (AES-NI, PCLMULQDQ, AVX, AVX2, AVX-512, VAES)
+#       * key schedule / block encrypt/decrypt (16-byte)
+#       * optional helpers for GCM (GHASH via CLMUL) and CTR
+#       * constant-time requirements and zeroization hooks
+#   - Real implementations may be:
+#       * runtime intrinsics
+#       * asm blobs
+#       * platform-specific shims
+
+module plugins.crypto.backends.hw.aesni
+
+import std.collections as coll
+
+import plugins.crypto.api.types as t
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const AESNI_API_VERSION_MAJOR : u32 = 1
+const AESNI_API_VERSION_MINOR : u32 = 0
+const AESNI_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum AesniError
+  Ok
+  Unsupported
+
+  FeatureUnavailable
+  InvalidKey
+  InvalidContext
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  BufferTooSmall
+
+  InternalError
+.end
+
+# ============================================================================
+# CPU features (x86/x86_64)
+# ============================================================================
+
+# Feature flags (bitset)
+const CPUFEAT_AESNI      : u64 = 1
+const CPUFEAT_PCLMUL     : u64 = 2
+const CPUFEAT_SSE2       : u64 = 4
+const CPUFEAT_SSE3       : u64 = 8
+const CPUFEAT_SSSE3      : u64 = 16
+const CPUFEAT_SSE41      : u64 = 32
+const CPUFEAT_SSE42      : u64 = 64
+const CPUFEAT_AVX        : u64 = 128
+const CPUFEAT_AVX2       : u64 = 256
+const CPUFEAT_AVX512F    : u64 = 512
+const CPUFEAT_AVX512VL   : u64 = 1024
+const CPUFEAT_VAES       : u64 = 2048
+const CPUFEAT_VPCLMULQDQ : u64 = 4096
+
+struct CpuFeatures
+  flags : u64
+  # best effort: vendor string ("GenuineIntel", "AuthenticAMD")
+  vendor : string
+  # best effort: brand string
+  brand  : string
+.end
+
+fn cpu_features_detect() -> CpuFeatures
+  let f : CpuFeatures = CpuFeatures
+  return f
+.end
+
+fn cpu_features_has(features : CpuFeatures, flag : u64) -> bool
+  return false
+.end
+
+# ============================================================================
+# Backend capabilities
+# ============================================================================
+
+# Flags
+const AESNI_CAP_AES      : u64 = 1
+const AESNI_CAP_CLMUL    : u64 = 2
+const AESNI_CAP_VAES     : u64 = 4
+const AESNI_CAP_VPCLMUL  : u64 = 8
+
+const AESNI_CAP_KEY_128  : u64 = 16
+const AESNI_CAP_KEY_192  : u64 = 32
+const AESNI_CAP_KEY_256  : u64 = 64
+
+const AESNI_CAP_ENC      : u64 = 128
+const AESNI_CAP_DEC      : u64 = 256
+
+const AESNI_CAP_GHASH    : u64 = 512
+const AESNI_CAP_CTR      : u64 = 1024
+
+const AESNI_CAP_CONSTANT_TIME : u64 = 2048
+
+struct AesniCaps
+  cpu     : CpuFeatures
+  caps    : u64
+
+  # block size (always 16 for AES)
+  block_len : u32
+
+  # preferred unroll/parallelism hint (implementation-defined)
+  lanes      : u32
+.end
+
+fn aesni_caps() -> AesniCaps
+  let c : AesniCaps = AesniCaps
+  return c
+.end
+
+fn aesni_is_available() -> bool
+  return false
+.end
+
+# ============================================================================
+# Key schedule / contexts
+# ============================================================================
+
+# Opaque handles (slot+generation in runtime recommended)
+
+type AesniHandle = u64
+
+enum AesniHandleKind
+  None
+  EncKey
+  DecKey
+  GhashKey
+  CtrState
+.end
+
+struct AesniOpaque
+  kind  : AesniHandleKind
+  value : AesniHandle
+.end
+
+# Key size
+
+enum AesKeyLen
+  Aes128
+  Aes192
+  Aes256
+.end
+
+# Mode direction
+
+enum AesDir
+  Encrypt
+  Decrypt
+.end
+
+struct AesKeyScheduleInfo
+  key_len     : AesKeyLen
+  rounds      : u32
+
+  # opaque sizes for schedule blob (implementation-defined)
+  sched_bytes : u32
+
+  flags       : u64
+.end
+
+struct AesEncKeyRef
+  key   : AesniOpaque
+  info  : AesKeyScheduleInfo
+.end
+
+struct AesDecKeyRef
+  key   : AesniOpaque
+  info  : AesKeyScheduleInfo
+.end
+
+# ============================================================================
+# Block cipher operations (16 bytes)
+# ============================================================================
+
+struct AesBlock
+  bytes : coll.Vec[u8]
+.end
+
+struct AesBlockView
+  bytes : t.ByteSlice
+.end
+
+struct MutAesBlockView
+  bytes : t.MutByteSlice
+.end
+
+# Expand key for encryption.
+# key_bytes must be 16/24/32 bytes.
+fn aesni_expand_enc_key(key_bytes : coll.Vec[u8])
+.end
+
+# Expand key for decryption (may derive from enc schedule).
+fn aesni_expand_dec_key(key_bytes : coll.Vec[u8])
+.end
+
+# Destroy keys (idempotent).
+fn aesni_key_destroy(key : AesniOpaque)
+.end
+
+# Encrypt single block: out = AES_enc(key, in)
+fn aesni_encrypt_block_view(enc_key : AesEncKeyRef, input : t.ByteSlice, output : t.MutByteSlice) -> AesniError
+.end
+
+# Decrypt single block
+fn aesni_decrypt_block_view(dec_key : AesDecKeyRef, input : t.ByteSlice, output : t.MutByteSlice) -> AesniError
+.end
+
+# Multi-block encrypt/decrypt (ECB-like primitive), length must be multiple of 16.
+fn aesni_encrypt_blocks_view(enc_key : AesEncKeyRef, input : t.ByteSlice, output : t.MutByteSlice) -> AesniError
+.end
+
+fn aesni_decrypt_blocks_view(dec_key : AesDecKeyRef, input : t.ByteSlice, output : t.MutByteSlice) -> AesniError
+.end
+
+# In-place variants
+fn aesni_encrypt_blocks_in_place_view(enc_key : AesEncKeyRef, buf : t.MutByteSlice) -> AesniError
+.end
+
+fn aesni_decrypt_blocks_in_place_view(dec_key : AesDecKeyRef, buf : t.MutByteSlice) -> AesniError
+.end
+
+# ============================================================================
+# CTR helper (optional)
+# ============================================================================
+
+struct Ctr128
+  # 16-byte counter block
+  block : coll.Vec[u8]
+.end
+
+struct CtrStateInfo
+  key_len     : AesKeyLen
+  counter_len : u32
+
+  # bytes generated so far
+  offset      : u64
+
+  flags       : u64
+.end
+
+struct CtrStateRef
+  state : AesniOpaque
+  info  : CtrStateInfo
+.end
+
+fn aesni_ctr_state_create(enc_key : AesEncKeyRef, initial_counter_block : coll.Vec[u8])
+.end
+
+fn aesni_ctr_state_destroy(state : CtrStateRef)
+.end
+
+# XOR keystream into input -> output (stream cipher). Arbitrary length.
+fn aesni_ctr_xor_view(state : CtrStateRef, input : t.ByteSlice, output : t.MutByteSlice) -> AesniError
+.end
+
+fn aesni_ctr_xor_in_place_view(state : CtrStateRef, buf : t.MutByteSlice) -> AesniError
+.end
+
+# ============================================================================
+# GHASH / CLMUL helper (optional, for AES-GCM)
+# ============================================================================
+
+struct GhashKeyInfo
+  # H = AES_K(0^128) precomputed (or provider-defined)
+  h_len : u32
+  flags : u64
+.end
+
+struct GhashKeyRef
+  key  : AesniOpaque
+  info : GhashKeyInfo
+.end
+
+# Create GHASH key from raw H (16 bytes) or from AES key (provider-defined).
+fn aesni_ghash_key_create_from_h(h : coll.Vec[u8])
+.end
+
+fn aesni_ghash_key_destroy(key : GhashKeyRef)
+.end
+
+# GHASH update: y = GHASH_H(y, data)
+# data_len must be multiple of 16; caller pads per GCM rules.
+fn aesni_ghash_update_view(key : GhashKeyRef, y_in : t.ByteSlice, data : t.ByteSlice, y_out : t.MutByteSlice) -> AesniError
+.end
+
+# Convenience: compute GHASH over AAD and ciphertext blocks (caller supplies lengths and padding).
+fn aesni_ghash_compute_view(key : GhashKeyRef, aad : t.ByteSlice, ctext : t.ByteSlice, out_tag : t.MutByteSlice) -> AesniError
+.end
+
+# ============================================================================
+# Zeroization / hardening
+# ============================================================================
+
+# Best-effort wipe of internal state blobs.
+fn aesni_memwipe_view(buf : t.MutByteSlice) -> AesniError
+.end
+
+# ============================================================================
+# ABI outputs (runtime marshalling)
+# ============================================================================
+
+fn abi_out_cpu_features_struct(f : CpuFeatures)
+.end
+
+fn abi_out_caps_struct(c : AesniCaps)
+.end
+
+fn abi_out_error(err : AesniError)
+.end
+
+# ============================================================================
+# Provider surface (diagnostic entrypoints)
+# ============================================================================
+
+fn aesni_get_cpu_features()
+.end
+
+fn aesni_get_caps()
+.end
+
+fn aesni_self_test()
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# Feature detect
+# - CPUID detection: AESNI, PCLMULQDQ, AVX, VAES, VPCLMULQDQ.
+# - OSXSAVE/XGETBV gating for AVX usage.
+#
+# Key schedule
+# - Implement AES-128/192/256 expand using AESKEYGENASSIST.
+# - Store schedules in protected memory; wipe on destroy.
+#
+# Block ops
+# - Implement encrypt/decrypt block using AESENC/AESDEC.
+# - Multi-block parallelism (lanes) with unrolled loops.
+#
+# CTR
+# - Implement counter increment (128-bit) + partial block buffering.
+# - Ensure stable errors on overflow / MessageTooLarge.
+#
+# GHASH
+# - Implement CLMUL-based GHASH with reduction polynomial.
+# - Constant-time tag compare should be done in higher-level AEAD module (subtle.ct_verify_tag).
+#
+# Hardening
+# - Avoid secret-dependent branches/memory.
+# - Ensure memwipe uses volatile or runtime intrinsic.
+#
+# Tests
+# - KAT for AES block encrypt/decrypt (NIST SP 800-38A).
+# - GHASH known vectors (SP 800-38D).
+# - Differential vs software fallback backend.
+
+.end

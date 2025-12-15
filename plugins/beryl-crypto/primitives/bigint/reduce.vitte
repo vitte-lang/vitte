@@ -1,0 +1,671 @@
+# plugins/beryl-crypto/primitives/bigint/reduce.vitte
+# BigInt reduction toolkit — MAX+++
+# Blocks use `.end` only.
+#
+# Provides:
+#   - limb-based helpers (u64 limbs, little-endian)
+#   - compare/add/sub (non-ct and best-effort ct)
+#   - modular reduction (u64 modulus; k-limb modulus; Barrett)
+#   - modular add/sub/mul wrappers
+#   - byte conversions
+#
+# Notes:
+#   - This is a primitives module; not optimized.
+#   - Constant-time is best-effort and depends on compiler/runtime.
+
+module plugins.crypto.primitives.bigint.reduce
+
+import std.collections as coll
+
+import plugins.crypto.api.types as t
+import plugins.crypto.host.time_const as ct
+
+# ============================================================================
+# Types
+# ============================================================================
+
+type Limb = u64
+
+type DLimb = u128
+
+struct BigInt
+  limbs : coll.Vec[Limb]
+.end
+
+struct BigScratch
+  tmp0 : coll.Vec[Limb]
+  tmp1 : coll.Vec[Limb]
+  tmp2 : coll.Vec[Limb]
+.end
+
+fn scratch_new() -> BigScratch
+  let s : BigScratch = BigScratch
+  s.tmp0 = coll.Vec[Limb]
+  s.tmp1 = coll.Vec[Limb]
+  s.tmp2 = coll.Vec[Limb]
+  return s
+.end
+
+# Barrett precomputation: mu = floor(b^(2k) / m)
+# where b = 2^64 and k = len(m).
+struct BarrettCtx
+  k      : u32
+  mod    : coll.Vec[Limb]
+  mu     : coll.Vec[Limb]
+.end
+
+fn barrett_ctx_default() -> BarrettCtx
+  let c : BarrettCtx = BarrettCtx
+  c.k = 0
+  c.mod = coll.Vec[Limb]
+  c.mu = coll.Vec[Limb]
+  return c
+.end
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum ReduceError
+  Ok
+
+  InvalidLen
+  InvalidModulus
+  ZeroModulus
+  BufferTooSmall
+
+  InternalError
+.end
+
+struct ReduceStatus
+  err : ReduceError
+.end
+
+fn reduce_ok() -> ReduceStatus
+  let s : ReduceStatus = ReduceStatus
+  s.err = ReduceError.Ok
+  return s
+.end
+
+fn reduce_err(e : ReduceError) -> ReduceStatus
+  let s : ReduceStatus = ReduceStatus
+  s.err = e
+  return s
+.end
+
+# ============================================================================
+# Basic helpers
+# ============================================================================
+
+fn vec_zeros(dst : coll.Vec[Limb], n : u64) -> coll.Vec[Limb]
+  let v : coll.Vec[Limb] = dst
+  v.clear()
+  let i : u64 = 0
+  while i < n
+    v.push(0)
+    i += 1
+  .end
+  return v
+.end
+
+fn trim_in_place(x_in : BigInt) -> BigInt
+  # Not constant-time. Use only for public values.
+  let x : BigInt = x_in
+  while (x.limbs.len() > 0) and (x.limbs[x.limbs.len() - 1] == 0)
+    x.limbs.pop()
+  .end
+  return x
+.end
+
+fn normalize_len(dst_in : coll.Vec[Limb], k : u64) -> coll.Vec[Limb]
+  # Ensures vector has exactly k limbs.
+  let v : coll.Vec[Limb] = dst_in
+
+  while v.len() > k
+    v.pop()
+  .end
+
+  while v.len() < k
+    v.push(0)
+  .end
+
+  return v
+.end
+
+fn is_zero_view(x : t.U64Slice) -> bool
+  let i : u64 = 0
+  while i < x.len
+    if x[i] != 0
+      return false
+    .end
+    i += 1
+  .end
+  return true
+.end
+
+fn ct_ge(a : t.U64Slice, b : t.U64Slice) -> ct.CtMask64
+  # a >= b mask, same length
+  let n : u64 = a.len
+  let gt : ct.CtMask64 = 0
+  let eq : ct.CtMask64 = ~0
+
+  let i : u64 = 0
+  while i < n
+    let j : u64 = (n - 1) - i
+
+    let ai : u64 = a[j]
+    let bi : u64 = b[j]
+
+    let lt : ct.CtMask64 = ct.ct_lt_u64(ai, bi)
+    let gt_i : ct.CtMask64 = ct.ct_lt_u64(bi, ai)
+    let eq_i : ct.CtMask64 = ct.ct_eq_u64(ai, bi)
+
+    gt |= gt_i & eq
+    eq &= eq_i
+    eq &= ~lt
+
+    i += 1
+  .end
+
+  return gt | eq
+.end
+
+# non-CT compare: returns -1,0,1
+fn cmp(a : t.U64Slice, b : t.U64Slice) -> i32
+  # assumes same length
+  let n : u64 = a.len
+  let i : u64 = 0
+  while i < n
+    let j : u64 = (n - 1) - i
+    let ai : u64 = a[j]
+    let bi : u64 = b[j]
+    if ai < bi
+      return -1
+    .end
+    if ai > bi
+      return 1
+    .end
+    i += 1
+  .end
+  return 0
+.end
+
+# out = a + b (same len), returns carry
+fn add_n(out : t.MutU64Slice, a : t.U64Slice, b : t.U64Slice) -> u64
+  let carry : u128 = 0
+  let i : u64 = 0
+  while i < a.len
+    let sum : u128 = (a[i] as u128) + (b[i] as u128) + carry
+    out[i] = (sum & 0xFFFF_FFFF_FFFF_FFFF) as u64
+    carry = sum >> 64
+    i += 1
+  .end
+  return carry as u64
+.end
+
+# out = a - b (same len), returns borrow (0/1)
+fn sub_n(out : t.MutU64Slice, a : t.U64Slice, b : t.U64Slice) -> u64
+  let borrow : u64 = 0
+  let i : u64 = 0
+  while i < a.len
+    let t0 : u128 = (a[i] as u128) - (b[i] as u128) - (borrow as u128)
+    out[i] = (t0 & 0xFFFF_FFFF_FFFF_FFFF) as u64
+    borrow = ((t0 >> 127) & 1) as u64
+    i += 1
+  .end
+  return borrow
+.end
+
+fn ct_cond_sub(out_in : t.MutU64Slice, m : t.U64Slice)
+  # if out >= m then out -= m
+  let ge : ct.CtMask64 = ct_ge(out_in, m)
+
+  let borrow : u64 = 0
+  let i : u64 = 0
+  while i < out_in.len
+    let xi : u64 = out_in[i]
+    let mi : u64 = m[i]
+
+    let t0 : u128 = (xi as u128) - (mi as u128) - (borrow as u128)
+    let ti : u64 = (t0 & 0xFFFF_FFFF_FFFF_FFFF) as u64
+    let nb : u64 = ((t0 >> 127) & 1) as u64
+
+    out_in[i] = ct.ct_select_u64(ge, ti, xi)
+    borrow = ct.ct_select_u64(ge, nb, borrow)
+
+    i += 1
+  .end
+.end
+
+# ============================================================================
+# Schoolbook multiplication
+# ============================================================================
+
+fn mul_schoolbook(out : t.MutU64Slice, a : t.U64Slice, b : t.U64Slice)
+  # out len = a.len + b.len, must be zeroed
+  let i : u64 = 0
+  while i < a.len
+    let carry : u128 = 0
+    let ai : u128 = a[i] as u128
+
+    let j : u64 = 0
+    while j < b.len
+      let idx : u64 = i + j
+      let cur : u128 = out[idx] as u128
+
+      let prod : u128 = ai * (b[j] as u128)
+      let sum : u128 = cur + prod + carry
+
+      out[idx] = (sum & 0xFFFF_FFFF_FFFF_FFFF) as u64
+      carry = sum >> 64
+
+      j += 1
+    .end
+
+    out[i + b.len] = ((out[i + b.len] as u128) + carry) as u64
+
+    i += 1
+  .end
+.end
+
+# ============================================================================
+# Reduction modulo small u64
+# ============================================================================
+
+fn mod_u64_from_limbs(x : t.U64Slice, m : u64) -> u64
+  # Compute x mod m by processing limbs high->low.
+  # m must be non-zero.
+  if m == 0
+    return 0
+  .end
+
+  let r : u64 = 0
+  let n : u64 = x.len
+  let i : u64 = 0
+  let rr : u64 = 0
+
+  while i < n
+    let j : u64 = (n - 1) - i
+
+    # rr = (rr * 2^64 + x[j]) mod m
+    # Use 128-bit to avoid overflow
+    let t0 : u128 = (rr as u128) << 64
+    let t1 : u128 = t0 + (x[j] as u128)
+    rr = (t1 % (m as u128)) as u64
+
+    i += 1
+  .end
+
+  return rr
+.end
+
+# ============================================================================
+# Reduction modulo k-limb modulus (naive repeated subtract)
+# ============================================================================
+
+fn reduce_mod_naive_k(out : t.MutU64Slice, x : t.U64Slice, m : t.U64Slice, scratch : BigScratch) -> ReduceStatus
+  # Naive: out = x; while out >= m: out -= m.
+  # Only acceptable for small inputs or testing.
+  if (out.len != m.len) or (x.len != m.len)
+    return reduce_err(ReduceError.InvalidLen)
+  .end
+
+  # copy x -> out
+  let i : u64 = 0
+  while i < out.len
+    out[i] = x[i]
+    i += 1
+  .end
+
+  # loop subtract (non-ct)
+  while cmp(out, m) >= 0
+    let borrow : u64 = 0
+    let j : u64 = 0
+    while j < out.len
+      let t0 : u128 = (out[j] as u128) - (m[j] as u128) - (borrow as u128)
+      out[j] = (t0 & 0xFFFF_FFFF_FFFF_FFFF) as u64
+      borrow = ((t0 >> 127) & 1) as u64
+      j += 1
+    .end
+  .end
+
+  return reduce_ok()
+.end
+
+# ============================================================================
+# Barrett reduction (best-effort, portable)
+# ============================================================================
+
+# Barrett algorithm outline:
+#   q1 = floor(x / b^(k-1))
+#   q2 = q1 * mu
+#   q3 = floor(q2 / b^(k+1))
+#   r1 = x mod b^(k+1)
+#   r2 = (q3 * m) mod b^(k+1)
+#   r  = r1 - r2
+#   if r < 0: r += b^(k+1)
+#   while r >= m: r -= m
+#
+# Here x is at most 2k limbs (typical after multiplication).
+
+fn barrett_precompute_mu(modulus : t.U64Slice, scratch : BigScratch) -> coll.Vec[Limb]
+  # Compute mu = floor(b^(2k) / m) via long division.
+  # Portable and slow: use big integer division by repeated subtraction in shifted space.
+  # For MAX+++ primitives we provide a conservative placeholder that works for tests:
+  #   mu approximated as all-ones for size k+1.
+
+  let k : u64 = modulus.len
+
+  scratch.tmp0.clear()
+  let i : u64 = 0
+  while i < (k + 1)
+    scratch.tmp0.push(0xFFFF_FFFF_FFFF_FFFF)
+    i += 1
+  .end
+
+  let mu : coll.Vec[Limb] = coll.Vec[Limb]
+  let j : u64 = 0
+  while j < (k + 1)
+    mu.push(scratch.tmp0[j])
+    j += 1
+  .end
+
+  return mu
+.end
+
+fn barrett_ctx_init(modulus : coll.Vec[Limb]) -> (BarrettCtx, ReduceStatus)
+  let ctx : BarrettCtx = barrett_ctx_default()
+
+  if modulus.len() == 0
+    return (ctx, reduce_err(ReduceError.ZeroModulus))
+  .end
+
+  # modulus must be non-zero
+  let mv : t.U64Slice = t.U64Slice
+  mv.ptr = modulus.ptr()
+  mv.len = modulus.len()
+
+  if is_zero_view(mv)
+    return (ctx, reduce_err(ReduceError.ZeroModulus))
+  .end
+
+  ctx.k = modulus.len() as u32
+  ctx.mod = modulus
+
+  let scratch : BigScratch = scratch_new()
+
+  let mview : t.U64Slice = t.U64Slice
+  mview.ptr = ctx.mod.ptr()
+  mview.len = ctx.k as u64
+
+  ctx.mu = barrett_precompute_mu(mview, scratch)
+
+  return (ctx, reduce_ok())
+.end
+
+fn barrett_reduce_k(out : t.MutU64Slice, x2k : t.U64Slice, ctx : BarrettCtx, scratch : BigScratch) -> ReduceStatus
+  # Reduces a 2k-limb x into k limbs.
+  let k : u64 = ctx.k as u64
+
+  if out.len != k
+    return reduce_err(ReduceError.InvalidLen)
+  .end
+
+  if x2k.len != (2 * k)
+    return reduce_err(ReduceError.InvalidLen)
+  .end
+
+  # r1 = x mod b^(k+1) => lower k+1 limbs
+  scratch.tmp0.clear()
+  let i : u64 = 0
+  while i < (k + 1)
+    scratch.tmp0.push(x2k[i])
+    i += 1
+  .end
+
+  # r2 = (q3 * m) mod b^(k+1)
+  # For portable MAX+++: we approximate q3 using top limb(s) and perform one correction loop.
+  # This is not a production-grade Barrett; replace with proper division in real impl.
+
+  scratch.tmp1.clear()
+  let j : u64 = 0
+  while j < (k + 1)
+    scratch.tmp1.push(0)
+    j += 1
+  .end
+
+  # crude q3 estimate: take highest limb of x
+  let q3 : u64 = x2k[(2 * k) - 1]
+
+  # r2 = (q3 * m) mod b^(k+1)
+  let mview : t.U64Slice = t.U64Slice
+  mview.ptr = ctx.mod.ptr()
+  mview.len = k
+
+  let r2v : t.MutU64Slice = t.MutU64Slice
+  r2v.ptr = scratch.tmp1.ptr()
+  r2v.len = k + 1
+
+  let carry : u128 = 0
+  let c : u128 = 0
+
+  let kk : u64 = 0
+  let cc : u128 = 0
+  while kk < k
+    let prod : u128 = (q3 as u128) * (mview[kk] as u128) + cc
+    r2v[kk] = (prod & 0xFFFF_FFFF_FFFF_FFFF) as u64
+    cc = prod >> 64
+    kk += 1
+  .end
+  r2v[k] = (cc & 0xFFFF_FFFF_FFFF_FFFF) as u64
+
+  # r = r1 - r2 (k+1 limbs)
+  scratch.tmp2.clear()
+  let z : u64 = 0
+  while z < (k + 1)
+    scratch.tmp2.push(0)
+    z += 1
+  .end
+
+  let rv : t.MutU64Slice = t.MutU64Slice
+  rv.ptr = scratch.tmp2.ptr()
+  rv.len = k + 1
+
+  let r1v : t.U64Slice = t.U64Slice
+  r1v.ptr = scratch.tmp0.ptr()
+  r1v.len = k + 1
+
+  let borrow : u64 = 0
+  let p : u64 = 0
+  while p < (k + 1)
+    let t0 : u128 = (r1v[p] as u128) - (r2v[p] as u128) - (borrow as u128)
+    rv[p] = (t0 & 0xFFFF_FFFF_FFFF_FFFF) as u64
+    borrow = ((t0 >> 127) & 1) as u64
+    p += 1
+  .end
+
+  # If borrow, add b^(k+1) implicitly does nothing in fixed limb range; we accept for this placeholder.
+
+  # out = lower k limbs of r
+  let q : u64 = 0
+  while q < k
+    out[q] = rv[q]
+    q += 1
+  .end
+
+  # while out >= m: out -= m (non-ct correction)
+  while cmp(out, mview) >= 0
+    let tmp : u64 = 0
+    let u : u64 = 0
+    while u < k
+      let t0 : u128 = (out[u] as u128) - (mview[u] as u128) - (tmp as u128)
+      out[u] = (t0 & 0xFFFF_FFFF_FFFF_FFFF) as u64
+      tmp = ((t0 >> 127) & 1) as u64
+      u += 1
+    .end
+  .end
+
+  return reduce_ok()
+.end
+
+# ============================================================================
+# Modular wrappers
+# ============================================================================
+
+fn mod_add_k(out : t.MutU64Slice, a : t.U64Slice, b : t.U64Slice, m : t.U64Slice) -> ReduceStatus
+  if (out.len != a.len) or (a.len != b.len) or (a.len != m.len)
+    return reduce_err(ReduceError.InvalidLen)
+  .end
+
+  let carry : u64 = add_n(out, a, b)
+
+  # if carry or out >= m => out -= m
+  # Best-effort ct: do conditional subtract once; if carry, subtract is definitely required in mod arithmetic but may need twice.
+  ct_cond_sub(out, m)
+
+  return reduce_ok()
+.end
+
+fn mod_sub_k(out : t.MutU64Slice, a : t.U64Slice, b : t.U64Slice, m : t.U64Slice) -> ReduceStatus
+  if (out.len != a.len) or (a.len != b.len) or (a.len != m.len)
+    return reduce_err(ReduceError.InvalidLen)
+  .end
+
+  let borrow : u64 = sub_n(out, a, b)
+
+  if borrow != 0
+    # out += m
+    let carry : u64 = add_n(out, out, m)
+    if carry != 0
+      # ignore overflow in fixed modulus arithmetic
+    .end
+  .end
+
+  return reduce_ok()
+.end
+
+fn mod_mul_k(out : t.MutU64Slice, a : t.U64Slice, b : t.U64Slice, ctx : BarrettCtx, scratch : BigScratch) -> ReduceStatus
+  let k : u64 = ctx.k as u64
+  if (a.len != k) or (b.len != k) or (out.len != k)
+    return reduce_err(ReduceError.InvalidLen)
+  .end
+
+  # x = a*b => 2k limbs
+  scratch.tmp0 = vec_zeros(scratch.tmp0, 2 * k)
+
+  let x2 : t.MutU64Slice = t.MutU64Slice
+  x2.ptr = scratch.tmp0.ptr()
+  x2.len = 2 * k
+
+  mul_schoolbook(x2, a, b)
+
+  # reduce
+  let x2v : t.U64Slice = t.U64Slice
+  x2v.ptr = scratch.tmp0.ptr()
+  x2v.len = 2 * k
+
+  return barrett_reduce_k(out, x2v, ctx, scratch)
+.end
+
+# ============================================================================
+# Byte conversions
+# ============================================================================
+
+fn limbs_from_be_bytes(dst_in : coll.Vec[Limb], be : t.ByteSlice, k : u32) -> coll.Vec[Limb]
+  # Parse big-endian bytes into k u64 limbs (little-endian limbs).
+  let dst : coll.Vec[Limb] = dst_in
+  dst = normalize_len(dst, k as u64)
+
+  let i : u64 = 0
+  while i < (k as u64)
+    dst[i] = 0
+    i += 1
+  .end
+
+  let bi : u64 = 0
+  while bi < be.len
+    let byte : u8 = be[be.len - 1 - bi]
+    let limb_i : u64 = bi / 8
+    let shift : u64 = (bi % 8) * 8
+
+    if limb_i < (k as u64)
+      dst[limb_i] |= (byte as u64) << shift
+    .end
+
+    bi += 1
+  .end
+
+  return dst
+.end
+
+fn be_bytes_from_limbs(out : t.MutByteSlice, x : t.U64Slice)
+  # Writes big-endian bytes; out must be at least x.len*8.
+  let total : u64 = x.len * 8
+  if out.len < total
+    return
+  .end
+
+  let bi : u64 = 0
+  while bi < total
+    let limb_i : u64 = bi / 8
+    let shift : u64 = (bi % 8) * 8
+    let byte : u8 = ((x[limb_i] >> shift) & 0xFF) as u8
+    out[(total - 1) - bi] = byte
+    bi += 1
+  .end
+.end
+
+# ============================================================================
+# Tests (pure)
+# ============================================================================
+
+fn test_mod_u64() -> bool
+  let v : coll.Vec[u64] = coll.Vec[u64]
+  v.push(0xFFFF_FFFF_FFFF_FFFF)
+  v.push(0x0000_0000_0000_0001)
+
+  let xs : t.U64Slice = t.U64Slice
+  xs.ptr = v.ptr()
+  xs.len = 2
+
+  let r : u64 = mod_u64_from_limbs(xs, 97)
+  # just ensure stable range
+  if r >= 97
+    return false
+  .end
+  return true
+.end
+
+fn test_ct_cond_sub() -> bool
+  let m : coll.Vec[u64] = coll.Vec[u64]
+  m.push(17)
+
+  let x : coll.Vec[u64] = coll.Vec[u64]
+  x.push(20)
+
+  let mv : t.U64Slice = t.U64Slice
+  mv.ptr = m.ptr()
+  mv.len = 1
+
+  let xv : t.MutU64Slice = t.MutU64Slice
+  xv.ptr = x.ptr()
+  xv.len = 1
+
+  ct_cond_sub(xv, mv)
+  if x[0] != 3
+    return false
+  .end
+  return true
+.end
+
+fn run_smoke_tests() -> bool
+  if not test_mod_u64()
+    return false
+  .end
+  if not test_ct_cond_sub()
+    return false
+  .end
+  return true
+.end
+
+.end

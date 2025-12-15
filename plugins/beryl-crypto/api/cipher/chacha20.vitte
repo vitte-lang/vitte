@@ -1,0 +1,587 @@
+# plugins/beryl/api/cipher/chacha20.vitte
+# ChaCha20 / HChaCha20 — stream cipher — API contract (data-first, backend-agnostic) — MAX++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat ChaCha20 maximal: providers, algos, capabilities, handles.
+#   - One-shot XOR (keystream) + streaming (incremental XOR).
+#   - Views (zero-copy) optionnelles.
+#   - Aucun calcul crypto réel dans ce fichier.
+#
+# Notes:
+#   - ChaCha20 (IETF) : key=32, nonce=12, counter=32-bit, state=16x u32.
+#   - HChaCha20: derivation subkey (key=32, nonce=16) utilisée par XChaCha20.
+
+module plugins.crypto.api.cipher.chacha20
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const CHACHA20_API_VERSION_MAJOR : u32 = 1
+const CHACHA20_API_VERSION_MINOR : u32 = 0
+const CHACHA20_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Constants
+# ============================================================================
+
+const CHACHA20_KEY_LEN        : u32 = 32
+const CHACHA20_NONCE_IETF_LEN : u32 = 12
+const HCHACHA20_NONCE_LEN     : u32 = 16
+
+const CHACHA20_BLOCK_LEN      : u32 = 64
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum ChaCha20Error
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidAlgorithm
+  InvalidKey
+  InvalidContext
+  InvalidStream
+
+  InvalidInput
+  InvalidOutput
+  InvalidNonce
+  InvalidCounter
+  InvalidPolicy
+
+  BufferTooSmall
+  MessageTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  PermissionDenied
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Identifiers / metadata
+# ============================================================================
+
+type ChaChaProviderId = string
+
+enum ChaChaBackendKind
+  Unknown
+  Software
+  Hardware
+  Kms
+  Remote
+.end
+
+enum ChaChaFamily
+  ChaCha
+.end
+
+enum ChaChaAlg
+  ChaCha20
+  HChaCha20
+.end
+
+# ChaCha20 IETF XOR direction is symmetric; keep for API symmetry.
+enum ChaChaDirection
+  Xor
+.end
+
+enum ChaChaKeyUsage
+  XorOnly
+.end
+
+# ============================================================================
+# Capability flags
+# ============================================================================
+
+const CHACHA_FLAG_CHACHA20            : u32 = 1
+const CHACHA_FLAG_HCHACHA20           : u32 = 2
+
+const CHACHA_FLAG_ONE_SHOT_XOR        : u32 = 4
+const CHACHA_FLAG_STREAMING           : u32 = 8
+const CHACHA_FLAG_VIEWS               : u32 = 16
+
+const CHACHA_FLAG_CONSTANT_TIME       : u32 = 32
+const CHACHA_FLAG_SIDECHANNEL_HARD    : u32 = 64
+
+const CHACHA_FLAG_SIMD                : u32 = 128
+
+const CHACHA_PROVIDER_FLAG_SOFTWARE   : u32 = 1
+const CHACHA_PROVIDER_FLAG_HARDWARE   : u32 = 2
+const CHACHA_PROVIDER_FLAG_KMS        : u32 = 4
+const CHACHA_PROVIDER_FLAG_REMOTE     : u32 = 8
+const CHACHA_PROVIDER_FLAG_THREADSAFE : u32 = 16
+const CHACHA_PROVIDER_FLAG_SANDBOXED  : u32 = 32
+
+# ============================================================================
+# Limits / lens
+# ============================================================================
+
+struct ChaChaLimits
+  key_min     : u32
+  key_max     : u32
+  nonce_min   : u32
+  nonce_max   : u32
+
+  msg_max     : u64
+.end
+
+struct ChaChaLenSet
+  min         : u32
+  max         : u32
+  step        : u32
+  preferred   : coll.Vec[u32]
+.end
+
+struct ChaChaAlgInfo
+  alg         : ChaChaAlg
+  name        : string
+  family      : ChaChaFamily
+
+  block_len   : u32
+  key_lens    : ChaChaLenSet
+  nonce_lens  : ChaChaLenSet
+
+  flags       : u32
+  limits      : ChaChaLimits
+.end
+
+struct ChaChaProviderInfo
+  id          : ChaChaProviderId
+  name        : string
+  vendor      : string
+  version     : string
+
+  backend     : ChaChaBackendKind
+  priority    : i32
+  flags       : u32
+
+  build       : string
+  device      : string
+  location    : string
+
+  algorithms  : coll.Vec[ChaChaAlgInfo]
+.end
+
+# ============================================================================
+# Handles (opaque)
+# ============================================================================
+
+type ChaChaHandle = u64
+
+enum ChaChaHandleKind
+  None
+  Provider
+  Key
+  Context
+  Stream
+.end
+
+struct ChaChaOpaque
+  kind        : ChaChaHandleKind
+  value       : ChaChaHandle
+.end
+
+# ============================================================================
+# Views (zero-copy optional)
+# ============================================================================
+
+struct ByteSlice
+  ptr         : u64
+  len         : u64
+.end
+
+struct MutByteSlice
+  ptr         : u64
+  len         : u64
+.end
+
+struct IoVec
+  slices      : coll.Vec[ByteSlice]
+  total_len   : u64
+.end
+
+struct MutIoVec
+  slices      : coll.Vec[MutByteSlice]
+  total_len   : u64
+.end
+
+# ============================================================================
+# Owned payload containers
+# ============================================================================
+
+struct ChaChaBytes
+  bytes       : coll.Vec[u8]
+.end
+
+struct ChaChaKey
+  bytes       : coll.Vec[u8]
+.end
+
+struct ChaChaNonce
+  bytes       : coll.Vec[u8]
+.end
+
+struct ChaChaCounter
+  value       : u32
+.end
+
+# HChaCha20 output is 32 bytes subkey
+struct HChaChaSubKey
+  bytes       : coll.Vec[u8]
+.end
+
+# ============================================================================
+# Views payload containers
+# ============================================================================
+
+struct ChaChaKeyView
+  bytes       : ByteSlice
+.end
+
+struct ChaChaNonceView
+  bytes       : ByteSlice
+.end
+
+struct ChaChaBytesView
+  bytes       : ByteSlice
+.end
+
+struct HChaChaSubKeyView
+  bytes       : ByteSlice
+.end
+
+# ============================================================================
+# Key / context model
+# ============================================================================
+
+struct ChaChaKeyConstraints
+  usage       : ChaChaKeyUsage
+  fips        : bool
+  allow_hw    : bool
+.end
+
+struct ChaChaKeyInfo
+  provider_id : ChaChaProviderId
+  alg         : ChaChaAlg
+  key_id      : string
+
+  usage       : ChaChaKeyUsage
+  key_len     : u32
+
+  created_ms  : u64
+  expires_ms  : u64
+
+  flags       : u32
+  constraints : ChaChaKeyConstraints
+.end
+
+struct ChaChaKeyRef
+  key         : ChaChaOpaque
+  info        : ChaChaKeyInfo
+.end
+
+struct ChaChaContextPolicy
+  strict_nonce_len : bool
+  strict_counter   : bool
+  constant_time    : bool
+.end
+
+struct ChaChaContextInfo
+  provider_id : ChaChaProviderId
+  alg         : ChaChaAlg
+  key         : ChaChaOpaque
+  flags       : u32
+  policy      : ChaChaContextPolicy
+.end
+
+struct ChaChaContextRef
+  ctx         : ChaChaOpaque
+  info        : ChaChaContextInfo
+.end
+
+# ============================================================================
+# One-shot operations
+# ============================================================================
+
+# ChaCha20 XOR (encrypt/decrypt) : out = in XOR keystream
+struct ChaCha20XorRequest
+  ctx         : ChaChaContextRef
+  nonce       : ChaChaNonce
+  counter     : ChaChaCounter
+  input       : ChaChaBytes
+.end
+
+struct ChaCha20XorResponse
+  err         : ChaCha20Error
+  output      : ChaChaBytes
+.end
+
+struct ChaCha20XorRequestView
+  ctx         : ChaChaContextRef
+  nonce       : ChaChaNonceView
+  counter     : ChaChaCounter
+  input       : ByteSlice
+  output      : MutByteSlice
+.end
+
+struct ChaCha20XorResponseView
+  err         : ChaCha20Error
+  written     : u64
+.end
+
+# HChaCha20 derive subkey: (key, nonce16) -> subkey32
+struct HChaCha20DeriveRequest
+  ctx         : ChaChaContextRef
+  nonce16     : ChaChaNonce
+.end
+
+struct HChaCha20DeriveResponse
+  err         : ChaCha20Error
+  subkey32    : HChaChaSubKey
+.end
+
+struct HChaCha20DeriveRequestView
+  ctx         : ChaChaContextRef
+  nonce16     : ChaChaNonceView
+  subkey32    : MutByteSlice
+.end
+
+struct HChaCha20DeriveResponseView
+  err         : ChaCha20Error
+  written     : u64
+.end
+
+# ============================================================================
+# Streaming
+# ============================================================================
+
+enum ChaChaStreamState
+  Init
+  Nonce
+  Data
+  Final
+  Closed
+.end
+
+struct ChaChaStreamInfo
+  provider_id : ChaChaProviderId
+  alg         : ChaChaAlg
+  ctx         : ChaChaOpaque
+  state       : ChaChaStreamState
+
+  nonce_len   : u32
+  counter     : u32
+  flags       : u32
+.end
+
+struct ChaChaStreamRef
+  stream      : ChaChaOpaque
+  info        : ChaChaStreamInfo
+.end
+
+struct ChaChaStreamStartRequest
+  ctx         : ChaChaContextRef
+  nonce       : ChaChaNonce
+  counter     : ChaChaCounter
+.end
+
+struct ChaChaStreamStartResponse
+  err         : ChaCha20Error
+  stream      : ChaChaStreamRef
+.end
+
+struct ChaChaStreamUpdateRequest
+  stream      : ChaChaStreamRef
+  chunk       : ChaChaBytes
+.end
+
+struct ChaChaStreamUpdateResponse
+  err         : ChaCha20Error
+  out_chunk   : ChaChaBytes
+.end
+
+struct ChaChaStreamFinishRequest
+  stream      : ChaChaStreamRef
+.end
+
+struct ChaChaStreamFinishResponse
+  err         : ChaCha20Error
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : ChaChaProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : ChaChaAlgInfo)
+.end
+
+fn abi_out_key_ref_struct(key_ref : ChaChaKeyRef)
+.end
+
+fn abi_out_ctx_ref_struct(ctx_ref : ChaChaContextRef)
+.end
+
+fn abi_out_xor_response(resp : ChaCha20XorResponse)
+.end
+
+fn abi_out_xor_response_view(resp : ChaCha20XorResponseView)
+.end
+
+fn abi_out_derive_response(resp : HChaCha20DeriveResponse)
+.end
+
+fn abi_out_derive_response_view(resp : HChaCha20DeriveResponseView)
+.end
+
+fn abi_out_stream_start_response(resp : ChaChaStreamStartResponse)
+.end
+
+fn abi_out_stream_update_response(resp : ChaChaStreamUpdateResponse)
+.end
+
+fn abi_out_stream_finish_response(resp : ChaChaStreamFinishResponse)
+.end
+
+fn abi_out_error(err : ChaCha20Error)
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn chacha_provider_enumerate()
+.end
+
+fn chacha_provider_query(provider_id : ChaChaProviderId)
+.end
+
+fn chacha_provider_select(provider_id : ChaChaProviderId, alg : ChaChaAlg)
+.end
+
+fn chacha_key_import(provider_id : ChaChaProviderId, alg : ChaChaAlg, usage : ChaChaKeyUsage, key_bytes : coll.Vec[u8])
+.end
+
+fn chacha_key_destroy(key : ChaChaOpaque)
+.end
+
+fn chacha_context_create(key : ChaChaOpaque, flags : u32, policy : ChaChaContextPolicy)
+.end
+
+fn chacha_context_destroy(ctx : ChaChaOpaque)
+.end
+
+# ChaCha20 XOR
+fn chacha20_xor(req : ChaCha20XorRequest)
+.end
+
+fn chacha20_xor_view(req : ChaCha20XorRequestView)
+.end
+
+# HChaCha20 derive
+fn hchacha20_derive(req : HChaCha20DeriveRequest)
+.end
+
+fn hchacha20_derive_view(req : HChaCha20DeriveRequestView)
+.end
+
+# Streaming (ChaCha20)
+fn chacha_stream_start(req : ChaChaStreamStartRequest)
+.end
+
+fn chacha_stream_update(req : ChaChaStreamUpdateRequest)
+.end
+
+fn chacha_stream_finish(req : ChaChaStreamFinishRequest)
+.end
+
+fn chacha_stream_destroy(stream : ChaChaOpaque)
+.end
+
+# ============================================================================
+# Minimal helpers
+# ============================================================================
+
+fn chacha20_key_len() -> u32
+  return CHACHA20_KEY_LEN
+.end
+
+fn chacha20_nonce_len_ietf() -> u32
+  return CHACHA20_NONCE_IETF_LEN
+.end
+
+fn hchacha20_nonce_len() -> u32
+  return HCHACHA20_NONCE_LEN
+.end
+
+fn chacha20_block_len() -> u32
+  return CHACHA20_BLOCK_LEN
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX++
+# ============================================================================
+
+# Providers / registry
+# - Impl enumerate/query/select et remplir `ChaChaProviderInfo`/`ChaChaAlgInfo`.
+# - Remplacer toute sortie "texte" par ABI structs (`abi_out_*_struct`).
+# - Politique de choix provider (soft vs SIMD vs hw) + fallback.
+
+# Handles
+# - Impl handles slot+generation (O(1)) thread-safe: Provider/Key/Context/Stream.
+# - Destroy idempotent + poison (détecter use-after-free logique).
+
+# Core ChaCha20
+# - Impl ChaCha20 (IETF): quarter-round, 20 rounds, add-original, serialize LE.
+# - Counter 32-bit (RFC 8439): gestion overflow + erreurs stables (InvalidCounter / MessageTooLarge).
+# - Impl XOR one-shot + views (in-place possible).
+
+# HChaCha20
+# - Impl HChaCha20 (nonce16): derive subkey32 constant-time.
+# - Exposer pour XChaCha20 (utilisé par AEAD XChaCha20-Poly1305).
+
+# Streaming
+# - Impl start/update/finish:
+#     * update sur chunks arbitraires.
+#     * conserver offset intra-bloc (64 bytes) + counter increments.
+#     * finish idempotent.
+# - Support in-place sur update si backend permet.
+
+# Validation
+# - Enforcer key_len == 32 (ChaCha20/HChaCha20).
+# - Enforcer nonce_len: 12 (ChaCha20 IETF) / 16 (HChaCha20).
+# - `strict_nonce_len` et `strict_counter` via policy.
+
+# Side-channel hardening
+# - constant-time, secret-independent memory access.
+# - memwipe: state, keystream blocks, temporaires.
+
+# Tests
+# - Vectors:
+#     * RFC 8439 ChaCha20 test vectors (block function + XOR).
+#     * HChaCha20 vectors (libsodium / draft).
+# - Properties:
+#     * xor(xor(m)) roundtrip.
+#     * streaming == one-shot.
+# - Fuzz:
+#     * nonces invalides, counter overflow, tailles aléatoires.
+
+# Bench (optionnel)
+# - microbench one-shot vs streaming + views.
+
+.end

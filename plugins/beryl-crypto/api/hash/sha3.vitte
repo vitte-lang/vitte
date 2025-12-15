@@ -1,0 +1,1318 @@
+# plugins/beryl/api/hash/sha3.vitte
+# SHA-3 family — SHA3-224/256/384/512 + SHAKE128/256 (+ optional cSHAKE/KMAC hooks)
+# API contract (data-first, backend-agnostic) — MAX++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat SHA-3 maximal:
+#       * SHA3-224/256/384/512 (hash)
+#       * SHAKE128/256 (XOF) + one-shot & streaming (read)
+#       * views (zero-copy) optionnelles
+#       * providers/caps/limits + alg descriptors
+#       * extension points cSHAKE/KMAC (optionnels)
+#   - Aucun I/O ici. Aucune impl crypto réelle.
+#
+# Notes:
+#   - Keccak-f[1600], rate/capacity selon variante.
+#   - SHA3 = suffix 0x06, SHAKE = suffix 0x1F (domain separation).
+#   - XOF: sortie arbitraire (par chunks), streamable.
+
+module plugins.crypto.api.hash.sha3
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const SHA3_API_VERSION_MAJOR : u32 = 1
+const SHA3_API_VERSION_MINOR : u32 = 0
+const SHA3_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Variants
+# ============================================================================
+
+enum Sha3Alg
+  Sha3_224
+  Sha3_256
+  Sha3_384
+  Sha3_512
+
+  Shake128
+  Shake256
+
+  # Optional extendable families
+  Cshake128
+  Cshake256
+
+  # Optional MAC
+  Kmac128
+  Kmac256
+.end
+
+# Output lengths (bytes) for SHA3 fixed-output variants
+const SHA3_224_OUT_LEN : u32 = 28
+const SHA3_256_OUT_LEN : u32 = 32
+const SHA3_384_OUT_LEN : u32 = 48
+const SHA3_512_OUT_LEN : u32 = 64
+
+# Rates (bytes) for common variants
+# (informational; used by providers for sizing/streaming)
+const SHA3_RATE_SHA3_224 : u32 = 144
+const SHA3_RATE_SHA3_256 : u32 = 136
+const SHA3_RATE_SHA3_384 : u32 = 104
+const SHA3_RATE_SHA3_512 : u32 = 72
+const SHA3_RATE_SHAKE128 : u32 = 168
+const SHA3_RATE_SHAKE256 : u32 = 136
+
+# Keccak-f width and lane sizes (informational)
+const KECCAK_F_WIDTH_BITS : u32 = 1600
+const KECCAK_LANE_BITS    : u32 = 64
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum Sha3Error
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidPolicy
+  InvalidAlgorithm
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  InvalidCustomization
+  InvalidFunctionName
+  InvalidKey
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Provider metadata
+# ============================================================================
+
+type Sha3ProviderId = string
+
+enum Sha3BackendKind
+  Unknown
+  Software
+  Hardware
+  Remote
+.end
+
+const SHA3_FLAG_ONE_SHOT_HASH        : u32 = 1
+const SHA3_FLAG_ONE_SHOT_XOF         : u32 = 2
+const SHA3_FLAG_STREAMING_HASH       : u32 = 4
+const SHA3_FLAG_STREAMING_XOF        : u32 = 8
+const SHA3_FLAG_VIEWS                : u32 = 16
+
+const SHA3_FLAG_SHA3_224             : u32 = 32
+const SHA3_FLAG_SHA3_256             : u32 = 64
+const SHA3_FLAG_SHA3_384             : u32 = 128
+const SHA3_FLAG_SHA3_512             : u32 = 256
+const SHA3_FLAG_SHAKE128             : u32 = 512
+const SHA3_FLAG_SHAKE256             : u32 = 1024
+
+const SHA3_FLAG_CSHAKE               : u32 = 2048
+const SHA3_FLAG_KMAC                 : u32 = 4096
+
+const SHA3_FLAG_SIMD                 : u32 = 8192
+const SHA3_FLAG_PARALLEL             : u32 = 16384
+
+const SHA3_PROVIDER_FLAG_SOFTWARE    : u32 = 1
+const SHA3_PROVIDER_FLAG_HARDWARE    : u32 = 2
+const SHA3_PROVIDER_FLAG_REMOTE      : u32 = 4
+const SHA3_PROVIDER_FLAG_THREADSAFE  : u32 = 8
+const SHA3_PROVIDER_FLAG_SANDBOXED   : u32 = 16
+
+struct Sha3Limits
+  in_max            : u64
+  out_max           : u64
+  xof_out_max       : u64
+  msg_max           : u64
+
+  # For streaming
+  rate_bytes        : u32
+.end
+
+struct Sha3AlgInfo
+  alg               : Sha3Alg
+  name              : string
+
+  # For fixed-output hashes, out_len is canonical.
+  # For XOF, out_len is default / recommended.
+  out_len           : u32
+  rate_bytes        : u32
+
+  flags             : u32
+  limits            : Sha3Limits
+.end
+
+struct Sha3ProviderInfo
+  id                : Sha3ProviderId
+  name              : string
+  vendor            : string
+  version           : string
+
+  backend           : Sha3BackendKind
+  priority          : i32
+  flags             : u32
+
+  build             : string
+  device            : string
+  location          : string
+
+  algorithms        : coll.Vec[Sha3AlgInfo]
+  limits            : Sha3Limits
+.end
+
+# ============================================================================
+# Views (zero-copy optional)
+# ============================================================================
+
+struct ByteSlice
+  ptr               : u64
+  len               : u64
+.end
+
+struct MutByteSlice
+  ptr               : u64
+  len               : u64
+.end
+
+struct IoVec
+  slices            : coll.Vec[ByteSlice]
+  total_len         : u64
+.end
+
+struct MutIoVec
+  slices            : coll.Vec[MutByteSlice]
+  total_len         : u64
+.end
+
+# ============================================================================
+# Policy
+# ============================================================================
+
+enum Sha3Mode
+  Hash
+  Xof
+  Mac
+.end
+
+struct Sha3Customization
+  # cSHAKE/KMAC customization string S
+  custom            : string
+.end
+
+struct Sha3FunctionName
+  # cSHAKE function-name string N
+  name              : string
+.end
+
+struct Sha3Key
+  bytes             : coll.Vec[u8]
+.end
+
+struct Sha3Policy
+  alg               : Sha3Alg
+  mode              : Sha3Mode
+
+  # Output control
+  out_len           : u32
+  strict_out_len    : bool
+
+  # XOF control
+  xof               : bool
+  xof_out_max       : u64
+
+  # Domain separation (informational; provider decides defaults)
+  domain_suffix     : u8
+
+  # Optional cSHAKE customization
+  function_name     : Sha3FunctionName
+  customization     : Sha3Customization
+
+  # Optional KMAC key
+  key               : Sha3Key
+
+  # Hardening
+  constant_time     : bool
+.end
+
+# ============================================================================
+# Owned payload containers
+# ============================================================================
+
+struct Sha3Bytes
+  bytes             : coll.Vec[u8]
+.end
+
+struct Sha3Digest
+  bytes             : coll.Vec[u8]
+.end
+
+# ============================================================================
+# One-shot
+# ============================================================================
+
+struct Sha3HashRequest
+  provider_id        : Sha3ProviderId
+  policy             : Sha3Policy
+  input              : Sha3Bytes
+.end
+
+struct Sha3HashResponse
+  err                : Sha3Error
+  digest             : Sha3Digest
+.end
+
+struct Sha3HashRequestView
+  provider_id        : Sha3ProviderId
+  policy             : Sha3Policy
+  input              : ByteSlice
+  output             : MutByteSlice
+.end
+
+struct Sha3HashResponseView
+  err                : Sha3Error
+  written            : u64
+.end
+
+# One-shot XOF: for SHAKE/cSHAKE modes
+struct Sha3XofRequest
+  provider_id        : Sha3ProviderId
+  policy             : Sha3Policy
+  input              : Sha3Bytes
+  want               : u64
+.end
+
+struct Sha3XofResponse
+  err                : Sha3Error
+  output             : Sha3Bytes
+.end
+
+struct Sha3XofRequestView
+  provider_id        : Sha3ProviderId
+  policy             : Sha3Policy
+  input              : ByteSlice
+  output             : MutByteSlice
+.end
+
+struct Sha3XofResponseView
+  err                : Sha3Error
+  written            : u64
+.end
+
+# ============================================================================
+# Streaming
+# ============================================================================
+
+enum Sha3StreamKind
+  Hash
+  Xof
+  Mac
+.end
+
+enum Sha3StreamState
+  Init
+  Data
+  Squeezing
+  Final
+  Closed
+.end
+
+struct Sha3StreamInfo
+  provider_id        : Sha3ProviderId
+  policy             : Sha3Policy
+  kind               : Sha3StreamKind
+  state              : Sha3StreamState
+
+  total_in           : u64
+  total_out          : u64
+
+  flags              : u32
+.end
+
+struct Sha3Stream
+  handle             : u64
+  info               : Sha3StreamInfo
+.end
+
+struct Sha3StreamStartRequest
+  provider_id        : Sha3ProviderId
+  policy             : Sha3Policy
+.end
+
+struct Sha3StreamStartResponse
+  err                : Sha3Error
+  stream             : Sha3Stream
+.end
+
+struct Sha3StreamUpdateRequest
+  stream             : Sha3Stream
+  input              : Sha3Bytes
+.end
+
+struct Sha3StreamUpdateResponse
+  err                : Sha3Error
+.end
+
+struct Sha3StreamUpdateRequestView
+  stream             : Sha3Stream
+  input              : ByteSlice
+.end
+
+struct Sha3StreamUpdateResponseView
+  err                : Sha3Error
+.end
+
+# Read XOF output from a stream (SHAKE/cSHAKE) or MAC output if supported.
+struct Sha3StreamReadRequest
+  stream             : Sha3Stream
+  want               : u64
+.end
+
+struct Sha3StreamReadResponse
+  err                : Sha3Error
+  output             : Sha3Bytes
+.end
+
+struct Sha3StreamReadRequestView
+  stream             : Sha3Stream
+  output             : MutByteSlice
+.end
+
+struct Sha3StreamReadResponseView
+  err                : Sha3Error
+  written            : u64
+.end
+
+# Finish:
+#  - Hash: produce digest
+#  - XOF: optional finalize step; output may also be read via StreamRead
+struct Sha3StreamFinishRequest
+  stream             : Sha3Stream
+  out_len            : u32
+.end
+
+struct Sha3StreamFinishResponse
+  err                : Sha3Error
+  digest             : Sha3Digest
+.end
+
+struct Sha3StreamFinishRequestView
+  stream             : Sha3Stream
+  output             : MutByteSlice
+.end
+
+struct Sha3StreamFinishResponseView
+  err                : Sha3Error
+  written            : u64
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : Sha3ProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : Sha3AlgInfo)
+.end
+
+fn abi_out_hash_response(resp : Sha3HashResponse)
+.end
+
+fn abi_out_hash_response_view(resp : Sha3HashResponseView)
+.end
+
+fn abi_out_xof_response(resp : Sha3XofResponse)
+.end
+
+fn abi_out_xof_response_view(resp : Sha3XofResponseView)
+.end
+
+fn abi_out_stream_start_response(resp : Sha3StreamStartResponse)
+.end
+
+fn abi_out_stream_read_response(resp : Sha3StreamReadResponse)
+.end
+
+fn abi_out_stream_read_response_view(resp : Sha3StreamReadResponseView)
+.end
+
+fn abi_out_stream_finish_response(resp : Sha3StreamFinishResponse)
+.end
+
+fn abi_out_stream_finish_response_view(resp : Sha3StreamFinishResponseView)
+.end
+
+fn abi_out_error(err : Sha3Error)
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn sha3_provider_enumerate()
+.end
+
+fn sha3_provider_query(provider_id : Sha3ProviderId)
+.end
+
+# One-shot hash
+fn sha3_hash(req : Sha3HashRequest)
+.end
+
+fn sha3_hash_view(req : Sha3HashRequestView)
+.end
+
+# One-shot XOF
+fn sha3_xof(req : Sha3XofRequest)
+.end
+
+fn sha3_xof_view(req : Sha3XofRequestView)
+.end
+
+# Streaming
+fn sha3_stream_start(req : Sha3StreamStartRequest)
+.end
+
+fn sha3_stream_update(req : Sha3StreamUpdateRequest)
+.end
+
+fn sha3_stream_update_view(req : Sha3StreamUpdateRequestView)
+.end
+
+fn sha3_stream_read(req : Sha3StreamReadRequest)
+.end
+
+fn sha3_stream_read_view(req : Sha3StreamReadRequestView)
+.end
+
+fn sha3_stream_finish(req : Sha3StreamFinishRequest)
+.end
+
+fn sha3_stream_finish_view(req : Sha3StreamFinishRequestView)
+.end
+
+fn sha3_stream_destroy(stream : Sha3Stream)
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+fn sha3_out_len(alg : Sha3Alg) -> u32
+  return 0
+.end
+
+fn sha3_rate_bytes(alg : Sha3Alg) -> u32
+  return 0
+.end
+
+fn sha3_default_policy_sha3_224() -> Sha3Policy
+  let p : Sha3Policy = Sha3Policy
+  return p
+.end
+
+fn sha3_default_policy_sha3_256() -> Sha3Policy
+  let p : Sha3Policy = Sha3Policy
+  return p
+.end
+
+fn sha3_default_policy_sha3_384() -> Sha3Policy
+  let p : Sha3Policy = Sha3Policy
+  return p
+.end
+
+fn sha3_default_policy_sha3_512() -> Sha3Policy
+  let p : Sha3Policy = Sha3Policy
+  return p
+.end
+
+fn sha3_default_policy_shake128() -> Sha3Policy
+  let p : Sha3Policy = Sha3Policy
+  return p
+.end
+
+fn sha3_default_policy_shake256() -> Sha3Policy
+  let p : Sha3Policy = Sha3Policy
+  return p
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX++
+# ============================================================================
+
+# Providers
+# - Impl enumerate/query + `Sha3ProviderInfo`/`Sha3AlgInfo`.
+# - Remplacer toute sortie "texte" par ABI structs.
+# - Politique de choix provider (software vs hw vs remote) + fallback.
+# - Exposer flags algos supportés (SHA3-224/256/384/512, SHAKE128/256).
+# - Optionnels: cSHAKE/KMAC si provider le supporte.
+
+# Core Keccak
+# - Impl sponge Keccak-f[1600]:
+#     * state 5x5 lanes (u64) little-endian.
+#     * permutation rounds (θ, ρ, π, χ, ι) + RC constants.
+# - Absorb:
+#     * XOR input into rate portion.
+#     * permute when rate filled.
+# - Pad/domain separation:
+#     * SHA3 suffix 0x06.
+#     * SHAKE suffix 0x1F.
+#     * cSHAKE/KMAC: N,S encoding + suffix 0x04 (spec).
+# - Squeeze:
+#     * output from rate portion, permute as needed.
+
+# One-shot
+# - Impl `sha3_hash` / `sha3_hash_view`:
+#     * strict_out_len => out_len canonical for SHA3 alg.
+#     * BufferTooSmall + written.
+# - Impl `sha3_xof` / `sha3_xof_view`:
+#     * enforce xof_out_max.
+#     * output chunking stable.
+
+# Streaming
+# - Impl start/update:
+#     * buffer partial rate blocks
+#     * maintain total_in
+# - XOF read:
+#     * allow repeated reads, update total_out
+#     * transition state to Squeezing
+# - Finish:
+#     * hash: finalize pad then squeeze digest
+#     * xof: optional finalize, keep reader state
+# - Destroy:
+#     * idempotent + memwipe state.
+
+# Validation / limits
+# - Enforce msg_max / in_max / out_max / xof_out_max.
+# - Return MessageTooLarge on overflow.
+# - Validate customization/function-name lengths if cSHAKE.
+# - Validate key length if KMAC.
+
+# Side-channel hardening
+# - constant_time best effort (esp. KMAC).
+# - memwipe internal state on destroy.
+
+# Tests
+# - NIST SHA-3 vectors:
+#     * SHA3-224/256/384/512 KAT.
+#     * SHAKE128/256 XOF vectors.
+# - Properties:
+#     * streaming == one-shot.
+#     * XOF read chunking invariant.
+# - Negative:
+#     * out_len invalid, buffer too small, xof_out_max exceeded.
+# - Fuzz:
+#     * random chunking + random input sizes + random want sizes.
+
+# Bench
+# - microbench absorb/squeeze throughput.
+# - compare software vs hw accel if present.
+
+.end
+# plugins/beryl/api/hash/mod.vitte
+# Hash API umbrella module — MAX++ (2025)
+#
+# Conventions:
+#   - Module index only (no logic).
+#   - Uses `.end` block terminator.
+#   - Re-exports submodules for a stable import surface.
+
+mod plugins.crypto.api.hash
+
+# ---------------------------------------------------------------------------
+# Legacy / compatibility
+# ---------------------------------------------------------------------------
+
+pub mod sha1
+
+# ---------------------------------------------------------------------------
+# SHA-2 / SHA-3 families
+# ---------------------------------------------------------------------------
+
+pub mod sha2
+pub mod sha3
+
+# ---------------------------------------------------------------------------
+# Modern fast hashes / XOF
+# ---------------------------------------------------------------------------
+
+pub mod blake3
+
+# ---------------------------------------------------------------------------
+# Additional hashes
+# ---------------------------------------------------------------------------
+
+pub mod ripemd
+
+# ---------------------------------------------------------------------------
+# Future:
+#   - md5 (legacy)
+#   - sha512_t (variants)
+#   - sm3, gost
+#   - kangaroo_twelve, tuplehash
+#   - parallel tree hashes
+# ---------------------------------------------------------------------------
+
+.end
+
+# plugins/beryl/api/hash/sha3.vitte
+# SHA-3 family — SHA3-224/256/384/512 + SHAKE128/256 (+ optional cSHAKE/KMAC hooks)
+# API contract (data-first, backend-agnostic) — MAX++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat SHA-3 maximal:
+#       * SHA3-224/256/384/512 (hash)
+#       * SHAKE128/256 (XOF) + one-shot & streaming (read)
+#       * views (zero-copy) optionnelles
+#       * providers/caps/limits + alg descriptors
+#       * extension points cSHAKE/KMAC (optionnels)
+#   - Aucun I/O ici. Aucune impl crypto réelle.
+#
+# Notes:
+#   - Keccak-f[1600], rate/capacity selon variante.
+#   - SHA3 = suffix 0x06, SHAKE = suffix 0x1F (domain separation).
+#   - XOF: sortie arbitraire (par chunks), streamable.
+
+module plugins.crypto.api.hash.sha3
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const SHA3_API_VERSION_MAJOR : u32 = 1
+const SHA3_API_VERSION_MINOR : u32 = 0
+const SHA3_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Variants
+# ============================================================================
+
+enum Sha3Alg
+  Sha3_224
+  Sha3_256
+  Sha3_384
+  Sha3_512
+
+  Shake128
+  Shake256
+
+  # Optional extendable families
+  Cshake128
+  Cshake256
+
+  # Optional MAC
+  Kmac128
+  Kmac256
+.end
+
+# Output lengths (bytes) for SHA3 fixed-output variants
+const SHA3_224_OUT_LEN : u32 = 28
+const SHA3_256_OUT_LEN : u32 = 32
+const SHA3_384_OUT_LEN : u32 = 48
+const SHA3_512_OUT_LEN : u32 = 64
+
+# Rates (bytes) for common variants
+# (informational; used by providers for sizing/streaming)
+const SHA3_RATE_SHA3_224 : u32 = 144
+const SHA3_RATE_SHA3_256 : u32 = 136
+const SHA3_RATE_SHA3_384 : u32 = 104
+const SHA3_RATE_SHA3_512 : u32 = 72
+const SHA3_RATE_SHAKE128 : u32 = 168
+const SHA3_RATE_SHAKE256 : u32 = 136
+
+# Keccak-f width and lane sizes (informational)
+const KECCAK_F_WIDTH_BITS : u32 = 1600
+const KECCAK_LANE_BITS    : u32 = 64
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum Sha3Error
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidPolicy
+  InvalidAlgorithm
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  InvalidCustomization
+  InvalidFunctionName
+  InvalidKey
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Provider metadata
+# ============================================================================
+
+type Sha3ProviderId = string
+
+enum Sha3BackendKind
+  Unknown
+  Software
+  Hardware
+  Remote
+.end
+
+const SHA3_FLAG_ONE_SHOT_HASH        : u32 = 1
+const SHA3_FLAG_ONE_SHOT_XOF         : u32 = 2
+const SHA3_FLAG_STREAMING_HASH       : u32 = 4
+const SHA3_FLAG_STREAMING_XOF        : u32 = 8
+const SHA3_FLAG_VIEWS                : u32 = 16
+
+const SHA3_FLAG_SHA3_224             : u32 = 32
+const SHA3_FLAG_SHA3_256             : u32 = 64
+const SHA3_FLAG_SHA3_384             : u32 = 128
+const SHA3_FLAG_SHA3_512             : u32 = 256
+const SHA3_FLAG_SHAKE128             : u32 = 512
+const SHA3_FLAG_SHAKE256             : u32 = 1024
+
+const SHA3_FLAG_CSHAKE               : u32 = 2048
+const SHA3_FLAG_KMAC                 : u32 = 4096
+
+const SHA3_FLAG_SIMD                 : u32 = 8192
+const SHA3_FLAG_PARALLEL             : u32 = 16384
+
+const SHA3_PROVIDER_FLAG_SOFTWARE    : u32 = 1
+const SHA3_PROVIDER_FLAG_HARDWARE    : u32 = 2
+const SHA3_PROVIDER_FLAG_REMOTE      : u32 = 4
+const SHA3_PROVIDER_FLAG_THREADSAFE  : u32 = 8
+const SHA3_PROVIDER_FLAG_SANDBOXED   : u32 = 16
+
+struct Sha3Limits
+  in_max            : u64
+  out_max           : u64
+  xof_out_max       : u64
+  msg_max           : u64
+
+  # For streaming
+  rate_bytes        : u32
+.end
+
+struct Sha3AlgInfo
+  alg               : Sha3Alg
+  name              : string
+
+  # For fixed-output hashes, out_len is canonical.
+  # For XOF, out_len is default / recommended.
+  out_len           : u32
+  rate_bytes        : u32
+
+  flags             : u32
+  limits            : Sha3Limits
+.end
+
+struct Sha3ProviderInfo
+  id                : Sha3ProviderId
+  name              : string
+  vendor            : string
+  version           : string
+
+  backend           : Sha3BackendKind
+  priority          : i32
+  flags             : u32
+
+  build             : string
+  device            : string
+  location          : string
+
+  algorithms        : coll.Vec[Sha3AlgInfo]
+  limits            : Sha3Limits
+.end
+
+# ============================================================================
+# Views (zero-copy optional)
+# ============================================================================
+
+struct ByteSlice
+  ptr               : u64
+  len               : u64
+.end
+
+struct MutByteSlice
+  ptr               : u64
+  len               : u64
+.end
+
+struct IoVec
+  slices            : coll.Vec[ByteSlice]
+  total_len         : u64
+.end
+
+struct MutIoVec
+  slices            : coll.Vec[MutByteSlice]
+  total_len         : u64
+.end
+
+# ============================================================================
+# Policy
+# ============================================================================
+
+enum Sha3Mode
+  Hash
+  Xof
+  Mac
+.end
+
+struct Sha3Customization
+  # cSHAKE/KMAC customization string S
+  custom            : string
+.end
+
+struct Sha3FunctionName
+  # cSHAKE function-name string N
+  name              : string
+.end
+
+struct Sha3Key
+  bytes             : coll.Vec[u8]
+.end
+
+struct Sha3Policy
+  alg               : Sha3Alg
+  mode              : Sha3Mode
+
+  # Output control
+  out_len           : u32
+  strict_out_len    : bool
+
+  # XOF control
+  xof               : bool
+  xof_out_max       : u64
+
+  # Domain separation (informational; provider decides defaults)
+  domain_suffix     : u8
+
+  # Optional cSHAKE customization
+  function_name     : Sha3FunctionName
+  customization     : Sha3Customization
+
+  # Optional KMAC key
+  key               : Sha3Key
+
+  # Hardening
+  constant_time     : bool
+.end
+
+# ============================================================================
+# Owned payload containers
+# ============================================================================
+
+struct Sha3Bytes
+  bytes             : coll.Vec[u8]
+.end
+
+struct Sha3Digest
+  bytes             : coll.Vec[u8]
+.end
+
+# ============================================================================
+# One-shot
+# ============================================================================
+
+struct Sha3HashRequest
+  provider_id        : Sha3ProviderId
+  policy             : Sha3Policy
+  input              : Sha3Bytes
+.end
+
+struct Sha3HashResponse
+  err                : Sha3Error
+  digest             : Sha3Digest
+.end
+
+struct Sha3HashRequestView
+  provider_id        : Sha3ProviderId
+  policy             : Sha3Policy
+  input              : ByteSlice
+  output             : MutByteSlice
+.end
+
+struct Sha3HashResponseView
+  err                : Sha3Error
+  written            : u64
+.end
+
+# One-shot XOF: for SHAKE/cSHAKE modes
+struct Sha3XofRequest
+  provider_id        : Sha3ProviderId
+  policy             : Sha3Policy
+  input              : Sha3Bytes
+  want               : u64
+.end
+
+struct Sha3XofResponse
+  err                : Sha3Error
+  output             : Sha3Bytes
+.end
+
+struct Sha3XofRequestView
+  provider_id        : Sha3ProviderId
+  policy             : Sha3Policy
+  input              : ByteSlice
+  output             : MutByteSlice
+.end
+
+struct Sha3XofResponseView
+  err                : Sha3Error
+  written            : u64
+.end
+
+# ============================================================================
+# Streaming
+# ============================================================================
+
+enum Sha3StreamKind
+  Hash
+  Xof
+  Mac
+.end
+
+enum Sha3StreamState
+  Init
+  Data
+  Squeezing
+  Final
+  Closed
+.end
+
+struct Sha3StreamInfo
+  provider_id        : Sha3ProviderId
+  policy             : Sha3Policy
+  kind               : Sha3StreamKind
+  state              : Sha3StreamState
+
+  total_in           : u64
+  total_out          : u64
+
+  flags              : u32
+.end
+
+struct Sha3Stream
+  handle             : u64
+  info               : Sha3StreamInfo
+.end
+
+struct Sha3StreamStartRequest
+  provider_id        : Sha3ProviderId
+  policy             : Sha3Policy
+.end
+
+struct Sha3StreamStartResponse
+  err                : Sha3Error
+  stream             : Sha3Stream
+.end
+
+struct Sha3StreamUpdateRequest
+  stream             : Sha3Stream
+  input              : Sha3Bytes
+.end
+
+struct Sha3StreamUpdateResponse
+  err                : Sha3Error
+.end
+
+struct Sha3StreamUpdateRequestView
+  stream             : Sha3Stream
+  input              : ByteSlice
+.end
+
+struct Sha3StreamUpdateResponseView
+  err                : Sha3Error
+.end
+
+# Read XOF output from a stream (SHAKE/cSHAKE) or MAC output if supported.
+struct Sha3StreamReadRequest
+  stream             : Sha3Stream
+  want               : u64
+.end
+
+struct Sha3StreamReadResponse
+  err                : Sha3Error
+  output             : Sha3Bytes
+.end
+
+struct Sha3StreamReadRequestView
+  stream             : Sha3Stream
+  output             : MutByteSlice
+.end
+
+struct Sha3StreamReadResponseView
+  err                : Sha3Error
+  written            : u64
+.end
+
+# Finish:
+#  - Hash: produce digest
+#  - XOF: optional finalize step; output may also be read via StreamRead
+struct Sha3StreamFinishRequest
+  stream             : Sha3Stream
+  out_len            : u32
+.end
+
+struct Sha3StreamFinishResponse
+  err                : Sha3Error
+  digest             : Sha3Digest
+.end
+
+struct Sha3StreamFinishRequestView
+  stream             : Sha3Stream
+  output             : MutByteSlice
+.end
+
+struct Sha3StreamFinishResponseView
+  err                : Sha3Error
+  written            : u64
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : Sha3ProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : Sha3AlgInfo)
+.end
+
+fn abi_out_hash_response(resp : Sha3HashResponse)
+.end
+
+fn abi_out_hash_response_view(resp : Sha3HashResponseView)
+.end
+
+fn abi_out_xof_response(resp : Sha3XofResponse)
+.end
+
+fn abi_out_xof_response_view(resp : Sha3XofResponseView)
+.end
+
+fn abi_out_stream_start_response(resp : Sha3StreamStartResponse)
+.end
+
+fn abi_out_stream_read_response(resp : Sha3StreamReadResponse)
+.end
+
+fn abi_out_stream_read_response_view(resp : Sha3StreamReadResponseView)
+.end
+
+fn abi_out_stream_finish_response(resp : Sha3StreamFinishResponse)
+.end
+
+fn abi_out_stream_finish_response_view(resp : Sha3StreamFinishResponseView)
+.end
+
+fn abi_out_error(err : Sha3Error)
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn sha3_provider_enumerate()
+.end
+
+fn sha3_provider_query(provider_id : Sha3ProviderId)
+.end
+
+# One-shot hash
+fn sha3_hash(req : Sha3HashRequest)
+.end
+
+fn sha3_hash_view(req : Sha3HashRequestView)
+.end
+
+# One-shot XOF
+fn sha3_xof(req : Sha3XofRequest)
+.end
+
+fn sha3_xof_view(req : Sha3XofRequestView)
+.end
+
+# Streaming
+fn sha3_stream_start(req : Sha3StreamStartRequest)
+.end
+
+fn sha3_stream_update(req : Sha3StreamUpdateRequest)
+.end
+
+fn sha3_stream_update_view(req : Sha3StreamUpdateRequestView)
+.end
+
+fn sha3_stream_read(req : Sha3StreamReadRequest)
+.end
+
+fn sha3_stream_read_view(req : Sha3StreamReadRequestView)
+.end
+
+fn sha3_stream_finish(req : Sha3StreamFinishRequest)
+.end
+
+fn sha3_stream_finish_view(req : Sha3StreamFinishRequestView)
+.end
+
+fn sha3_stream_destroy(stream : Sha3Stream)
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+fn sha3_out_len(alg : Sha3Alg) -> u32
+  return 0
+.end
+
+fn sha3_rate_bytes(alg : Sha3Alg) -> u32
+  return 0
+.end
+
+fn sha3_default_policy_sha3_224() -> Sha3Policy
+  let p : Sha3Policy = Sha3Policy
+  return p
+.end
+
+fn sha3_default_policy_sha3_256() -> Sha3Policy
+  let p : Sha3Policy = Sha3Policy
+  return p
+.end
+
+fn sha3_default_policy_sha3_384() -> Sha3Policy
+  let p : Sha3Policy = Sha3Policy
+  return p
+.end
+
+fn sha3_default_policy_sha3_512() -> Sha3Policy
+  let p : Sha3Policy = Sha3Policy
+  return p
+.end
+
+fn sha3_default_policy_shake128() -> Sha3Policy
+  let p : Sha3Policy = Sha3Policy
+  return p
+.end
+
+fn sha3_default_policy_shake256() -> Sha3Policy
+  let p : Sha3Policy = Sha3Policy
+  return p
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX++
+# ============================================================================
+
+# Providers
+# - Impl enumerate/query + `Sha3ProviderInfo`/`Sha3AlgInfo`.
+# - Remplacer toute sortie "texte" par ABI structs.
+# - Politique de choix provider (software vs hw vs remote) + fallback.
+# - Exposer flags algos supportés (SHA3-224/256/384/512, SHAKE128/256).
+# - Optionnels: cSHAKE/KMAC si provider le supporte.
+
+# Core Keccak
+# - Impl sponge Keccak-f[1600]:
+#     * state 5x5 lanes (u64) little-endian.
+#     * permutation rounds (θ, ρ, π, χ, ι) + RC constants.
+# - Absorb:
+#     * XOR input into rate portion.
+#     * permute when rate filled.
+# - Pad/domain separation:
+#     * SHA3 suffix 0x06.
+#     * SHAKE suffix 0x1F.
+#     * cSHAKE/KMAC: N,S encoding + suffix 0x04 (spec).
+# - Squeeze:
+#     * output from rate portion, permute as needed.
+
+# One-shot
+# - Impl `sha3_hash` / `sha3_hash_view`:
+#     * strict_out_len => out_len canonical for SHA3 alg.
+#     * BufferTooSmall + written.
+# - Impl `sha3_xof` / `sha3_xof_view`:
+#     * enforce xof_out_max.
+#     * output chunking stable.
+
+# Streaming
+# - Impl start/update:
+#     * buffer partial rate blocks
+#     * maintain total_in
+# - XOF read:
+#     * allow repeated reads, update total_out
+#     * transition state to Squeezing
+# - Finish:
+#     * hash: finalize pad then squeeze digest
+#     * xof: optional finalize, keep reader state
+# - Destroy:
+#     * idempotent + memwipe state.
+
+# Validation / limits
+# - Enforce msg_max / in_max / out_max / xof_out_max.
+# - Return MessageTooLarge on overflow.
+# - Validate customization/function-name lengths if cSHAKE.
+# - Validate key length if KMAC.
+
+# Side-channel hardening
+# - constant_time best effort (esp. KMAC).
+# - memwipe internal state on destroy.
+
+# Tests
+# - NIST SHA-3 vectors:
+#     * SHA3-224/256/384/512 KAT.
+#     * SHAKE128/256 XOF vectors.
+# - Properties:
+#     * streaming == one-shot.
+#     * XOF read chunking invariant.
+# - Negative:
+#     * out_len invalid, buffer too small, xof_out_max exceeded.
+# - Fuzz:
+#     * random chunking + random input sizes + random want sizes.
+
+# Bench
+# - microbench absorb/squeeze throughput.
+# - compare software vs hw accel if present.
+
+.end

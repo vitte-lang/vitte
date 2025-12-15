@@ -1,0 +1,509 @@
+# plugins/beryl/api/hash/blake3.vitte
+# BLAKE3 — hash/XOF/KDF — API contract (data-first, backend-agnostic) — MAX++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat BLAKE3 maximal:
+#       * hash (32 bytes), XOF (extendable), keyed hash, derive_key
+#       * one-shot + streaming
+#       * views (zero-copy) optionnelles
+#       * providers/caps/limits
+#   - Aucun I/O ici. Aucune impl crypto réelle.
+#
+# Notes:
+#   - BLAKE3 output par défaut: 32 bytes.
+#   - XOF: output arbitraire (par chunks), streamable.
+#   - Modes:
+#       * Hash mode (unkeyed)
+#       * Keyed hash (32-byte key)
+#       * Derive key (context string)
+
+module plugins.crypto.api.hash.blake3
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const BLAKE3_API_VERSION_MAJOR : u32 = 1
+const BLAKE3_API_VERSION_MINOR : u32 = 0
+const BLAKE3_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Constants
+# ============================================================================
+
+const BLAKE3_OUT_LEN      : u32 = 32
+const BLAKE3_KEY_LEN      : u32 = 32
+const BLAKE3_BLOCK_LEN    : u32 = 64
+const BLAKE3_CHUNK_LEN    : u32 = 1024
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum Blake3Error
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidPolicy
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+  InvalidKey
+  InvalidContext
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Provider metadata
+# ============================================================================
+
+type Blake3ProviderId = string
+
+enum Blake3BackendKind
+  Unknown
+  Software
+  Hardware
+  Remote
+.end
+
+const BLAKE3_FLAG_HASH_ONE_SHOT        : u32 = 1
+const BLAKE3_FLAG_XOF_ONE_SHOT         : u32 = 2
+const BLAKE3_FLAG_STREAMING_HASH       : u32 = 4
+const BLAKE3_FLAG_STREAMING_XOF        : u32 = 8
+const BLAKE3_FLAG_KEYED_HASH           : u32 = 16
+const BLAKE3_FLAG_DERIVE_KEY           : u32 = 32
+const BLAKE3_FLAG_VIEWS                : u32 = 64
+
+const BLAKE3_FLAG_SIMD                 : u32 = 128
+const BLAKE3_FLAG_PARALLEL             : u32 = 256
+
+const BLAKE3_PROVIDER_FLAG_SOFTWARE    : u32 = 1
+const BLAKE3_PROVIDER_FLAG_HARDWARE    : u32 = 2
+const BLAKE3_PROVIDER_FLAG_REMOTE      : u32 = 4
+const BLAKE3_PROVIDER_FLAG_THREADSAFE  : u32 = 8
+const BLAKE3_PROVIDER_FLAG_SANDBOXED   : u32 = 16
+
+struct Blake3Limits
+  in_max            : u64
+  out_max           : u64
+  xof_out_max       : u64
+
+  # streaming caps
+  chunk_len         : u32
+.end
+
+struct Blake3ProviderInfo
+  id                : Blake3ProviderId
+  name              : string
+  vendor            : string
+  version           : string
+
+  backend           : Blake3BackendKind
+  priority          : i32
+  flags             : u32
+
+  build             : string
+  device            : string
+  location          : string
+
+  limits            : Blake3Limits
+.end
+
+# ============================================================================
+# Views (zero-copy optional)
+# ============================================================================
+
+struct ByteSlice
+  ptr               : u64
+  len               : u64
+.end
+
+struct MutByteSlice
+  ptr               : u64
+  len               : u64
+.end
+
+struct IoVec
+  slices            : coll.Vec[ByteSlice]
+  total_len         : u64
+.end
+
+struct MutIoVec
+  slices            : coll.Vec[MutByteSlice]
+  total_len         : u64
+.end
+
+# ============================================================================
+# Modes / policy
+# ============================================================================
+
+enum Blake3Mode
+  Hash
+  Keyed
+  Derive
+.end
+
+struct Blake3Policy
+  mode              : Blake3Mode
+
+  # Hash output default (32) unless XOF used
+  out_len           : u32
+
+  # XOF output control
+  xof               : bool
+  xof_out_max       : u64
+
+  # Streaming behavior
+  chunk_hint        : u32
+
+  # Hardening
+  constant_time     : bool
+.end
+
+# ============================================================================
+# Owned payload containers
+# ============================================================================
+
+struct Blake3Bytes
+  bytes             : coll.Vec[u8]
+.end
+
+struct Blake3Key
+  bytes             : coll.Vec[u8]
+.end
+
+struct Blake3Context
+  text              : string
+.end
+
+struct Blake3Digest
+  bytes             : coll.Vec[u8]
+.end
+
+# ============================================================================
+# Views payload containers
+# ============================================================================
+
+struct Blake3KeyView
+  bytes             : ByteSlice
+.end
+
+struct Blake3DigestView
+  bytes             : MutByteSlice
+.end
+
+# ============================================================================
+# One-shot
+# ============================================================================
+
+struct Blake3HashRequest
+  provider_id        : Blake3ProviderId
+  policy             : Blake3Policy
+  input              : Blake3Bytes
+  key                : Blake3Key
+  context            : Blake3Context
+.end
+
+struct Blake3HashResponse
+  err                : Blake3Error
+  digest             : Blake3Digest
+.end
+
+struct Blake3HashRequestView
+  provider_id        : Blake3ProviderId
+  policy             : Blake3Policy
+  input              : ByteSlice
+  key                : Blake3KeyView
+  context            : Blake3Context
+  output             : MutByteSlice
+.end
+
+struct Blake3HashResponseView
+  err                : Blake3Error
+  written            : u64
+.end
+
+# Derive key helper: returns 32 bytes (or configured out_len)
+struct Blake3DeriveKeyRequest
+  provider_id        : Blake3ProviderId
+  context            : Blake3Context
+  input              : Blake3Bytes
+.end
+
+struct Blake3DeriveKeyResponse
+  err                : Blake3Error
+  out_key            : Blake3Digest
+.end
+
+# ============================================================================
+# Streaming
+# ============================================================================
+
+enum Blake3StreamKind
+  Hash
+  Xof
+.end
+
+enum Blake3StreamState
+  Init
+  Data
+  Final
+  Closed
+.end
+
+struct Blake3StreamInfo
+  provider_id        : Blake3ProviderId
+  policy             : Blake3Policy
+  kind               : Blake3StreamKind
+  state              : Blake3StreamState
+
+  total_in           : u64
+  total_out          : u64
+  flags              : u32
+.end
+
+struct Blake3Stream
+  handle             : u64
+  info               : Blake3StreamInfo
+.end
+
+struct Blake3StreamStartRequest
+  provider_id        : Blake3ProviderId
+  policy             : Blake3Policy
+  key                : Blake3Key
+  context            : Blake3Context
+.end
+
+struct Blake3StreamStartResponse
+  err                : Blake3Error
+  stream             : Blake3Stream
+.end
+
+struct Blake3StreamUpdateRequest
+  stream             : Blake3Stream
+  input              : Blake3Bytes
+.end
+
+struct Blake3StreamUpdateResponse
+  err                : Blake3Error
+.end
+
+# Read XOF output from stream.
+struct Blake3StreamReadRequest
+  stream             : Blake3Stream
+  want               : u64
+.end
+
+struct Blake3StreamReadResponse
+  err                : Blake3Error
+  output             : Blake3Bytes
+.end
+
+struct Blake3StreamReadRequestView
+  stream             : Blake3Stream
+  output             : MutByteSlice
+.end
+
+struct Blake3StreamReadResponseView
+  err                : Blake3Error
+  written            : u64
+.end
+
+struct Blake3StreamFinishRequest
+  stream             : Blake3Stream
+  out_len            : u32
+.end
+
+struct Blake3StreamFinishResponse
+  err                : Blake3Error
+  digest             : Blake3Digest
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : Blake3ProviderInfo)
+.end
+
+fn abi_out_hash_response(resp : Blake3HashResponse)
+.end
+
+fn abi_out_hash_response_view(resp : Blake3HashResponseView)
+.end
+
+fn abi_out_derive_key_response(resp : Blake3DeriveKeyResponse)
+.end
+
+fn abi_out_stream_start_response(resp : Blake3StreamStartResponse)
+.end
+
+fn abi_out_stream_read_response(resp : Blake3StreamReadResponse)
+.end
+
+fn abi_out_stream_read_response_view(resp : Blake3StreamReadResponseView)
+.end
+
+fn abi_out_stream_finish_response(resp : Blake3StreamFinishResponse)
+.end
+
+fn abi_out_error(err : Blake3Error)
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn blake3_provider_enumerate()
+.end
+
+fn blake3_provider_query(provider_id : Blake3ProviderId)
+.end
+
+# One-shot hash/XOF
+fn blake3_hash(req : Blake3HashRequest)
+.end
+
+fn blake3_hash_view(req : Blake3HashRequestView)
+.end
+
+fn blake3_derive_key(req : Blake3DeriveKeyRequest)
+.end
+
+# Streaming
+fn blake3_stream_start(req : Blake3StreamStartRequest)
+.end
+
+fn blake3_stream_update(req : Blake3StreamUpdateRequest)
+.end
+
+fn blake3_stream_read(req : Blake3StreamReadRequest)
+.end
+
+fn blake3_stream_read_view(req : Blake3StreamReadRequestView)
+.end
+
+fn blake3_stream_finish(req : Blake3StreamFinishRequest)
+.end
+
+fn blake3_stream_destroy(stream : Blake3Stream)
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+fn blake3_out_len() -> u32
+  return BLAKE3_OUT_LEN
+.end
+
+fn blake3_key_len() -> u32
+  return BLAKE3_KEY_LEN
+.end
+
+fn blake3_block_len() -> u32
+  return BLAKE3_BLOCK_LEN
+.end
+
+fn blake3_chunk_len() -> u32
+  return BLAKE3_CHUNK_LEN
+.end
+
+fn blake3_default_policy_hash() -> Blake3Policy
+  let p : Blake3Policy = Blake3Policy
+  return p
+.end
+
+fn blake3_default_policy_xof() -> Blake3Policy
+  let p : Blake3Policy = Blake3Policy
+  return p
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX++
+# ============================================================================
+
+# Providers
+# - Impl enumerate/query + `Blake3ProviderInfo` (software, SIMD, parallel, remote).
+# - Remplacer toute sortie "texte" par ABI structs.
+
+# Core BLAKE3
+# - Impl compression + chunk chaining + parent nodes.
+# - Parallelism: chunked hashing + SIMD.
+# - Modes:
+#     * Hash (unkeyed)
+#     * Keyed hash (32-byte key)
+#     * Derive key (context string) => output key material
+
+# One-shot
+# - Impl `blake3_hash`:
+#     * si policy.xof => output len variable (policy.out_len / policy.xof_out_max)
+#     * sinon output = 32 bytes
+# - Views:
+#     * BufferTooSmall + written
+#     * output slice fourni par l’appelant
+
+# Streaming
+# - Impl start/update:
+#     * buffer chunk (1024) + compress
+#     * maintain CV stack
+# - Finish:
+#     * Hash: produce digest (out_len)
+#     * XOF: keep output reader state
+# - XOF read:
+#     * produce arbitrary bytes, update output counter
+#     * enforce xof_out_max
+# - Destroy:
+#     * idempotent + memwipe state
+
+# Validation
+# - key_len == 32 when mode==Keyed.
+# - context non-empty when mode==Derive.
+# - enforce limits: in_max/out_max/xof_out_max.
+
+# Side-channel hardening
+# - constant-time: avoid secret-dependent branches when keyed.
+# - memwipe: key, CVs, temp blocks.
+
+# Tests
+# - Official BLAKE3 test vectors (hash, keyed, derive, XOF).
+# - Properties:
+#     * streaming == one-shot.
+#     * XOF read chunking invariant.
+# - Negative:
+#     * invalid key len, empty context, output too small.
+# - Fuzz:
+#     * random chunking, random output sizes.
+
+# Bench
+# - microbench hash (var sizes) + XOF throughput + SIMD path.
+
+.end
+# plugins/crypto/api/hash/blake3.vitte
+# BLAKE3
+# Blocks use `.end` only.
+
+mod plugins.crypto.api.hash.blake3
+
+# TODO
+
+.end

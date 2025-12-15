@@ -1,0 +1,963 @@
+
+
+# plugins/beryl-crypto/api/sign/rsa_pss_stub.vitte
+# RSA-PSS — Probabilistic Signature Scheme (PKCS#1 v2.2) — API contract (data-first, backend-agnostic) — MAX+++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat RSA-PSS maximal:
+#       * providers enumerate/query/select + ProviderInfo/AlgInfo
+#       * key management (keygen/import/export) + public key import/export
+#       * sign/verify one-shot + views + iovec
+#       * streaming (hashing inside provider): absorb message then sign/verify
+#       * policy:
+#           - hash_id / mgf1_hash_id
+#           - salt_len (auto / max / explicit)
+#           - trailer_field (0xBC)
+#           - prehashed vs internal hash
+#           - strict encoding + constant-time verify
+#       * formats:
+#           - signatures raw bytes
+#           - public key encodings (SPKI DER, PKCS1 DER) + modulus/exponent raw
+#           - private key encodings (PKCS8 DER, PKCS1 DER)
+#       * handles (Provider/KeyPair/PublicKey/Context/Stream)
+#       * limits (key sizes, msg_max, digest_max, sig_max)
+#       * audit events
+#   - Aucun I/O, aucune impl crypto réelle.
+#
+# Notes:
+#   - RSA-PSS uses EMSA-PSS encoding:
+#       * mHash = H(M)
+#       * salt randomly generated (or deterministic by provider policy)
+#       * MGF1 based on mgf1_hash_id
+#       * trailer field 0xBC
+#   - Verify must be constant-time best effort.
+
+module plugins.crypto.api.sign.rsa_pss
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const RSA_PSS_API_VERSION_MAJOR : u32 = 1
+const RSA_PSS_API_VERSION_MINOR : u32 = 0
+const RSA_PSS_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum RsaPssError
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidAlgorithm
+  InvalidHash
+
+  InvalidKey
+  InvalidKeyPair
+  InvalidPublicKey
+  InvalidContext
+  InvalidStream
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  InvalidEncoding
+  InvalidPolicy
+
+  InvalidSignature
+  VerifyFailed
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  PermissionDenied
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Identifiers / metadata
+# ============================================================================
+
+type RsaPssProviderId = string
+
+type RsaPssAlgId = string
+
+type HashId = string
+
+enum RsaPssBackendKind
+  Unknown
+  Software
+  Hardware
+  Kms
+  Remote
+.end
+
+# ============================================================================
+# RSA sizes / algorithms
+# ============================================================================
+
+enum RsaModulusBits
+  Bits1024
+  Bits1536
+  Bits2048
+  Bits3072
+  Bits4096
+  Bits8192
+.end
+
+# Trailer field for PSS
+const RSA_PSS_TRAILER_FIELD_BC : u8 = 188
+
+# ============================================================================
+# Key / signature formats
+# ============================================================================
+
+enum RsaPublicKeyFormat
+  # SubjectPublicKeyInfo DER
+  SpkiDer
+
+  # RSAPublicKey (PKCS#1) DER
+  Pkcs1Der
+
+  # Raw modulus/exponent
+  ModExpRaw
+.end
+
+enum RsaPrivateKeyFormat
+  # PrivateKeyInfo (PKCS#8) DER
+  Pkcs8Der
+
+  # RSAPrivateKey (PKCS#1) DER
+  Pkcs1Der
+
+  # Optional opaque provider wrapping
+  Wrapped
+.end
+
+enum RsaSignatureFormat
+  Raw
+.end
+
+# ============================================================================
+# Capability flags
+# ============================================================================
+
+const RSA_PSS_FLAG_KEYGEN                 : u32 = 1
+const RSA_PSS_FLAG_KEY_IMPORT             : u32 = 2
+const RSA_PSS_FLAG_KEY_EXPORT             : u32 = 4
+
+const RSA_PSS_FLAG_SIGN_ONE_SHOT          : u32 = 8
+const RSA_PSS_FLAG_VERIFY_ONE_SHOT        : u32 = 16
+
+const RSA_PSS_FLAG_STREAMING              : u32 = 32
+
+const RSA_PSS_FLAG_VIEWS                  : u32 = 64
+const RSA_PSS_FLAG_IOVEC                  : u32 = 128
+
+const RSA_PSS_FLAG_PREHASH                : u32 = 256
+const RSA_PSS_FLAG_INTERNAL_HASH          : u32 = 512
+
+const RSA_PSS_FLAG_MGF1                   : u32 = 1024
+const RSA_PSS_FLAG_SALT_LEN               : u32 = 2048
+
+const RSA_PSS_FLAG_CONSTANT_TIME          : u32 = 4096
+const RSA_PSS_FLAG_SIDECHANNEL_HARD       : u32 = 8192
+
+const RSA_PSS_PROVIDER_FLAG_SOFTWARE      : u32 = 1
+const RSA_PSS_PROVIDER_FLAG_HARDWARE      : u32 = 2
+const RSA_PSS_PROVIDER_FLAG_KMS           : u32 = 4
+const RSA_PSS_PROVIDER_FLAG_REMOTE        : u32 = 8
+const RSA_PSS_PROVIDER_FLAG_THREADSAFE    : u32 = 16
+const RSA_PSS_PROVIDER_FLAG_SANDBOXED     : u32 = 32
+
+# ============================================================================
+# Limits / lens
+# ============================================================================
+
+struct LenSet
+  min           : u32
+  max           : u32
+  step          : u32
+  preferred     : coll.Vec[u32]
+.end
+
+struct RsaPssLimits
+  # modulus bits bounds
+  bits_min      : u32
+  bits_max      : u32
+
+  # signature max
+  sig_max       : u32
+
+  # message/digest bounds
+  msg_max       : u64
+  digest_max    : u32
+
+  # export sizes
+  pub_max       : u32
+  priv_max      : u32
+
+  ops_per_sec   : u32
+.end
+
+struct RsaPssAlgInfo
+  id            : RsaPssAlgId
+  name          : string
+
+  # modulus bit lengths supported
+  modulus_bits  : LenSet
+
+  # hash used for mHash
+  hash_id       : HashId
+
+  # mgf1 hash used for mask generation
+  mgf1_hash_id  : HashId
+
+  # salt length constraints (bytes)
+  salt_lens     : LenSet
+
+  # trailer field
+  trailer_field : u8
+
+  flags         : u32
+  limits        : RsaPssLimits
+.end
+
+struct RsaPssProviderInfo
+  id            : RsaPssProviderId
+  name          : string
+  vendor        : string
+  version       : string
+
+  backend       : RsaPssBackendKind
+  priority      : i32
+  flags         : u32
+
+  build         : string
+  device        : string
+  location      : string
+
+  algorithms    : coll.Vec[RsaPssAlgInfo]
+  limits        : RsaPssLimits
+.end
+
+# ============================================================================
+# Handles (opaque)
+# ============================================================================
+
+type RsaPssHandle = u64
+
+enum RsaPssHandleKind
+  None
+  Provider
+  KeyPair
+  PublicKey
+  Context
+  Stream
+.end
+
+struct RsaPssOpaque
+  kind          : RsaPssHandleKind
+  value         : RsaPssHandle
+.end
+
+# ============================================================================
+# Views / iovec
+# ============================================================================
+
+struct ByteSlice
+  ptr           : u64
+  len           : u64
+.end
+
+struct MutByteSlice
+  ptr           : u64
+  len           : u64
+.end
+
+struct IoVec
+  slices        : coll.Vec[ByteSlice]
+  total_len     : u64
+.end
+
+struct MutIoVec
+  slices        : coll.Vec[MutByteSlice]
+  total_len     : u64
+.end
+
+# ============================================================================
+# Owned key material containers
+# ============================================================================
+
+struct RsaModExp
+  modulus        : coll.Vec[u8]
+  exponent       : coll.Vec[u8]
+.end
+
+struct RsaPublicKey
+  bytes          : coll.Vec[u8]
+  format         : RsaPublicKeyFormat
+
+  # optional parsed view
+  modexp         : RsaModExp
+.end
+
+struct RsaPrivateKey
+  bytes          : coll.Vec[u8]
+  format         : RsaPrivateKeyFormat
+.end
+
+struct RsaKeyPair
+  private_key    : RsaPrivateKey
+  public_key     : RsaPublicKey
+.end
+
+struct RsaPssSignature
+  bytes          : coll.Vec[u8]
+  format         : RsaSignatureFormat
+.end
+
+# ============================================================================
+# Views key material containers
+# ============================================================================
+
+struct RsaPublicKeyView
+  bytes          : ByteSlice
+  format         : RsaPublicKeyFormat
+.end
+
+struct RsaPrivateKeyView
+  bytes          : ByteSlice
+  format         : RsaPrivateKeyFormat
+.end
+
+struct RsaSignatureView
+  bytes          : ByteSlice
+  format         : RsaSignatureFormat
+.end
+
+# ============================================================================
+# Policy
+# ============================================================================
+
+enum RsaPssSaltLenMode
+  Auto
+  Max
+  Explicit
+.end
+
+struct RsaPssValidationPolicy
+  strict_encoding        : bool
+  constant_time_verify   : bool
+  allow_legacy_hashes    : bool
+.end
+
+struct RsaPssHashPolicy
+  prehashed              : bool
+  hash_id                : HashId
+  digest_len             : u32
+.end
+
+struct RsaPssSaltPolicy
+  mode                   : RsaPssSaltLenMode
+  salt_len               : u32
+.end
+
+struct RsaPssMgfPolicy
+  mgf1_hash_id           : HashId
+.end
+
+struct RsaPssPolicy
+  validation             : RsaPssValidationPolicy
+  hashing                : RsaPssHashPolicy
+  salt                   : RsaPssSaltPolicy
+  mgf                    : RsaPssMgfPolicy
+
+  trailer_field          : u8
+
+  sidechannel_hard       : bool
+.end
+
+# ============================================================================
+# Key references
+# ============================================================================
+
+enum RsaPssKeyUsage
+  Sign
+  Verify
+  SignAndVerify
+.end
+
+struct RsaPssKeyConstraints
+  usage             : RsaPssKeyUsage
+  fips              : bool
+  allow_hw          : bool
+  no_export_priv    : bool
+.end
+
+struct RsaPssKeyInfo
+  provider_id       : RsaPssProviderId
+  alg_id            : RsaPssAlgId
+
+  hash_id           : HashId
+  mgf1_hash_id      : HashId
+
+  key_id            : string
+  usage             : RsaPssKeyUsage
+
+  modulus_bits      : u32
+
+  created_ms        : u64
+  expires_ms        : u64
+
+  flags             : u32
+  constraints       : RsaPssKeyConstraints
+.end
+
+struct RsaPssKeyPairRef
+  kp               : RsaPssOpaque
+  info             : RsaPssKeyInfo
+.end
+
+struct RsaPssPublicKeyRef
+  pk               : RsaPssOpaque
+  info             : RsaPssKeyInfo
+.end
+
+# ============================================================================
+# Contexts
+# ============================================================================
+
+struct RsaPssContextInfo
+  provider_id      : RsaPssProviderId
+  alg_id           : RsaPssAlgId
+
+  key              : RsaPssOpaque
+  policy           : RsaPssPolicy
+
+  flags            : u32
+.end
+
+struct RsaPssContextRef
+  ctx              : RsaPssOpaque
+  info             : RsaPssContextInfo
+.end
+
+# ============================================================================
+# One-shot sign/verify
+# ============================================================================
+
+struct RsaPssSignRequest
+  ctx              : RsaPssContextRef
+  input            : coll.Vec[u8]
+.end
+
+struct RsaPssSignResponse
+  err              : RsaPssError
+  signature        : RsaPssSignature
+.end
+
+struct RsaPssVerifyRequest
+  ctx              : RsaPssContextRef
+  input            : coll.Vec[u8]
+  signature        : RsaPssSignature
+.end
+
+struct RsaPssVerifyResponse
+  err              : RsaPssError
+  valid            : bool
+.end
+
+struct RsaPssSignRequestView
+  ctx              : RsaPssContextRef
+  input            : ByteSlice
+  output_sig       : MutByteSlice
+.end
+
+struct RsaPssSignResponseView
+  err              : RsaPssError
+  written          : u64
+.end
+
+struct RsaPssVerifyRequestView
+  ctx              : RsaPssContextRef
+  input            : ByteSlice
+  signature        : ByteSlice
+.end
+
+struct RsaPssVerifyResponseView
+  err              : RsaPssError
+  valid            : bool
+.end
+
+struct RsaPssSignIoVecRequestView
+  ctx              : RsaPssContextRef
+  input            : IoVec
+  output_sig       : MutByteSlice
+.end
+
+struct RsaPssVerifyIoVecRequestView
+  ctx              : RsaPssContextRef
+  input            : IoVec
+  signature        : ByteSlice
+.end
+
+# ============================================================================
+# Streaming
+# ============================================================================
+
+enum RsaPssStreamKind
+  Sign
+  Verify
+.end
+
+enum RsaPssStreamState
+  Init
+  Data
+  Final
+  Closed
+.end
+
+struct RsaPssStreamInfo
+  provider_id      : RsaPssProviderId
+  alg_id           : RsaPssAlgId
+  ctx              : RsaPssOpaque
+
+  kind             : RsaPssStreamKind
+  state            : RsaPssStreamState
+
+  msg_len          : u64
+
+  flags            : u32
+.end
+
+struct RsaPssStreamRef
+  stream           : RsaPssOpaque
+  info             : RsaPssStreamInfo
+.end
+
+struct RsaPssStreamStartRequest
+  ctx              : RsaPssContextRef
+  kind             : RsaPssStreamKind
+.end
+
+struct RsaPssStreamStartResponse
+  err              : RsaPssError
+  stream           : RsaPssStreamRef
+.end
+
+struct RsaPssStreamUpdateRequest
+  stream           : RsaPssStreamRef
+  chunk            : coll.Vec[u8]
+.end
+
+struct RsaPssStreamUpdateResponse
+  err              : RsaPssError
+.end
+
+struct RsaPssStreamUpdateRequestView
+  stream           : RsaPssStreamRef
+  chunk            : ByteSlice
+.end
+
+struct RsaPssStreamUpdateResponseView
+  err              : RsaPssError
+  consumed         : u64
+.end
+
+struct RsaPssStreamFinishRequest
+  stream           : RsaPssStreamRef
+  signature        : RsaPssSignature
+.end
+
+struct RsaPssStreamFinishResponse
+  err              : RsaPssError
+  signature        : RsaPssSignature
+  valid            : bool
+.end
+
+struct RsaPssStreamFinishRequestView
+  stream           : RsaPssStreamRef
+  signature        : ByteSlice
+  output_sig       : MutByteSlice
+.end
+
+struct RsaPssStreamFinishResponseView
+  err              : RsaPssError
+  written          : u64
+  valid            : bool
+.end
+
+# ============================================================================
+# Provider selection + keys
+# ============================================================================
+
+struct RsaPssProviderSelectRequest
+  provider_id      : RsaPssProviderId
+  alg_id           : RsaPssAlgId
+.end
+
+struct RsaPssProviderSelectResponse
+  err              : RsaPssError
+  provider         : RsaPssProviderInfo
+  algorithm        : RsaPssAlgInfo
+.end
+
+struct RsaPssKeyGenRequest
+  provider_id      : RsaPssProviderId
+  alg_id           : RsaPssAlgId
+  usage            : RsaPssKeyUsage
+  modulus_bits     : u32
+  constraints      : RsaPssKeyConstraints
+.end
+
+struct RsaPssKeyGenResponse
+  err              : RsaPssError
+  keypair          : RsaPssKeyPairRef
+.end
+
+struct RsaPssKeyImportRequest
+  provider_id      : RsaPssProviderId
+  alg_id           : RsaPssAlgId
+  usage            : RsaPssKeyUsage
+  constraints      : RsaPssKeyConstraints
+
+  private_key      : RsaPrivateKey
+  public_key       : RsaPublicKey
+.end
+
+struct RsaPssKeyImportResponse
+  err              : RsaPssError
+  keypair          : RsaPssKeyPairRef
+.end
+
+struct RsaPssPublicKeyImportRequest
+  provider_id      : RsaPssProviderId
+  alg_id           : RsaPssAlgId
+  constraints      : RsaPssKeyConstraints
+  public_key       : RsaPublicKey
+.end
+
+struct RsaPssPublicKeyImportResponse
+  err              : RsaPssError
+  public_key       : RsaPssPublicKeyRef
+.end
+
+struct RsaPssPublicKeyExportRequest
+  public_key       : RsaPssPublicKeyRef
+  format           : RsaPublicKeyFormat
+.end
+
+struct RsaPssPublicKeyExportResponse
+  err              : RsaPssError
+  public_key       : RsaPublicKey
+.end
+
+struct RsaPssPrivateKeyExportRequest
+  keypair          : RsaPssKeyPairRef
+  format           : RsaPrivateKeyFormat
+.end
+
+struct RsaPssPrivateKeyExportResponse
+  err              : RsaPssError
+  private_key      : RsaPrivateKey
+.end
+
+struct RsaPssKeyDestroyRequest
+  key              : RsaPssOpaque
+.end
+
+struct RsaPssKeyDestroyResponse
+  err              : RsaPssError
+.end
+
+struct RsaPssContextCreateRequest
+  key              : RsaPssOpaque
+  policy           : RsaPssPolicy
+.end
+
+struct RsaPssContextCreateResponse
+  err              : RsaPssError
+  ctx              : RsaPssContextRef
+.end
+
+struct RsaPssContextDestroyRequest
+  ctx              : RsaPssContextRef
+.end
+
+struct RsaPssContextDestroyResponse
+  err              : RsaPssError
+.end
+
+# ============================================================================
+# Audit
+# ============================================================================
+
+enum RsaPssAuditKind
+  ProviderSelected
+  KeyGenerated
+  KeyImported
+  PeerKeyImported
+  ContextCreated
+  StreamStarted
+  StreamUpdated
+  Signed
+  Verified
+  Destroyed
+.end
+
+struct RsaPssAuditEvent
+  kind             : RsaPssAuditKind
+  provider_id      : RsaPssProviderId
+  alg_id           : RsaPssAlgId
+
+  key_id           : string
+  ctx_id           : string
+  stream_id        : string
+
+  ts_ms            : u64
+  detail           : string
+.end
+
+fn rsa_pss_audit_emit(ev : RsaPssAuditEvent)
+.end
+
+# ============================================================================
+# ABI outputs
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : RsaPssProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : RsaPssAlgInfo)
+.end
+
+fn abi_out_keypair_ref_struct(kp : RsaPssKeyPairRef)
+.end
+
+fn abi_out_public_key_ref_struct(pk : RsaPssPublicKeyRef)
+.end
+
+fn abi_out_ctx_ref_struct(ctx : RsaPssContextRef)
+.end
+
+fn abi_out_select_response(resp : RsaPssProviderSelectResponse)
+.end
+
+fn abi_out_keygen_response(resp : RsaPssKeyGenResponse)
+.end
+
+fn abi_out_keyimport_response(resp : RsaPssKeyImportResponse)
+.end
+
+fn abi_out_pubkey_import_response(resp : RsaPssPublicKeyImportResponse)
+.end
+
+fn abi_out_pubkey_export_response(resp : RsaPssPublicKeyExportResponse)
+.end
+
+fn abi_out_privkey_export_response(resp : RsaPssPrivateKeyExportResponse)
+.end
+
+fn abi_out_ctx_create_response(resp : RsaPssContextCreateResponse)
+.end
+
+fn abi_out_sign_response(resp : RsaPssSignResponse)
+.end
+
+fn abi_out_verify_response(resp : RsaPssVerifyResponse)
+.end
+
+fn abi_out_sign_response_view(resp : RsaPssSignResponseView)
+.end
+
+fn abi_out_verify_response_view(resp : RsaPssVerifyResponseView)
+.end
+
+fn abi_out_stream_start_response(resp : RsaPssStreamStartResponse)
+.end
+
+fn abi_out_stream_finish_response(resp : RsaPssStreamFinishResponse)
+.end
+
+fn abi_out_stream_finish_response_view(resp : RsaPssStreamFinishResponseView)
+.end
+
+fn abi_out_error(err : RsaPssError)
+.end
+
+# ============================================================================
+# Provider surface
+# ============================================================================
+
+fn rsa_pss_provider_enumerate()
+.end
+
+fn rsa_pss_provider_query(provider_id : RsaPssProviderId)
+.end
+
+fn rsa_pss_provider_select(req : RsaPssProviderSelectRequest)
+.end
+
+fn rsa_pss_keygen(req : RsaPssKeyGenRequest)
+.end
+
+fn rsa_pss_key_import(req : RsaPssKeyImportRequest)
+.end
+
+fn rsa_pss_public_key_import(req : RsaPssPublicKeyImportRequest)
+.end
+
+fn rsa_pss_public_key_export(req : RsaPssPublicKeyExportRequest)
+.end
+
+fn rsa_pss_private_key_export(req : RsaPssPrivateKeyExportRequest)
+.end
+
+fn rsa_pss_key_destroy(req : RsaPssKeyDestroyRequest)
+.end
+
+fn rsa_pss_context_create(req : RsaPssContextCreateRequest)
+.end
+
+fn rsa_pss_context_destroy(req : RsaPssContextDestroyRequest)
+.end
+
+fn rsa_pss_sign(req : RsaPssSignRequest)
+.end
+
+fn rsa_pss_verify(req : RsaPssVerifyRequest)
+.end
+
+fn rsa_pss_sign_view(req : RsaPssSignRequestView)
+.end
+
+fn rsa_pss_verify_view(req : RsaPssVerifyRequestView)
+.end
+
+fn rsa_pss_sign_iovec_view(req : RsaPssSignIoVecRequestView)
+.end
+
+fn rsa_pss_verify_iovec_view(req : RsaPssVerifyIoVecRequestView)
+.end
+
+fn rsa_pss_stream_start(req : RsaPssStreamStartRequest)
+.end
+
+fn rsa_pss_stream_update(req : RsaPssStreamUpdateRequest)
+.end
+
+fn rsa_pss_stream_update_view(req : RsaPssStreamUpdateRequestView)
+.end
+
+fn rsa_pss_stream_finish(req : RsaPssStreamFinishRequest)
+.end
+
+fn rsa_pss_stream_finish_view(req : RsaPssStreamFinishRequestView)
+.end
+
+fn rsa_pss_stream_destroy(stream : RsaPssOpaque)
+.end
+
+# ============================================================================
+# Helpers
+# ============================================================================
+
+fn rsa_pss_default_validation_policy() -> RsaPssValidationPolicy
+  let p : RsaPssValidationPolicy = RsaPssValidationPolicy
+  return p
+.end
+
+fn rsa_pss_default_hash_policy_internal(hash_id : HashId) -> RsaPssHashPolicy
+  let p : RsaPssHashPolicy = RsaPssHashPolicy
+  return p
+.end
+
+fn rsa_pss_default_hash_policy_prehash(hash_id : HashId, digest_len : u32) -> RsaPssHashPolicy
+  let p : RsaPssHashPolicy = RsaPssHashPolicy
+  return p
+.end
+
+fn rsa_pss_default_salt_policy_auto() -> RsaPssSaltPolicy
+  let p : RsaPssSaltPolicy = RsaPssSaltPolicy
+  return p
+.end
+
+fn rsa_pss_default_salt_policy_max() -> RsaPssSaltPolicy
+  let p : RsaPssSaltPolicy = RsaPssSaltPolicy
+  return p
+.end
+
+fn rsa_pss_default_salt_policy_explicit(salt_len : u32) -> RsaPssSaltPolicy
+  let p : RsaPssSaltPolicy = RsaPssSaltPolicy
+  return p
+.end
+
+fn rsa_pss_default_mgf_policy_mgf1(hash_id : HashId) -> RsaPssMgfPolicy
+  let p : RsaPssMgfPolicy = RsaPssMgfPolicy
+  return p
+.end
+
+fn rsa_pss_default_policy(hash_id : HashId, mgf1_hash_id : HashId) -> RsaPssPolicy
+  let p : RsaPssPolicy = RsaPssPolicy
+  return p
+.end
+
+fn rsa_pss_default_constraints() -> RsaPssKeyConstraints
+  let c : RsaPssKeyConstraints = RsaPssKeyConstraints
+  return c
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# Providers / registry
+# - Impl enumerate/query/select et remplir `RsaPssProviderInfo`/`RsaPssAlgInfo`.
+# - Remplacer toute sortie "texte" par ABI structs.
+# - Politique de choix provider (software vs hw vs kms/remote) + fallback.
+
+# Handles
+# - Impl handles slot+generation (O(1) lookup) thread-safe.
+# - Destroy idempotent + poison.
+
+# RSA core
+# - Keygen (primes, CRT) + validation exponent.
+# - Signing: blinding + CRT hardening.
+# - Verify: strict checks.
+#
+# EMSA-PSS encoding (PKCS#1 v2.2)
+# - MGF1.
+# - salt_len Auto/Max/Explicit.
+# - trailer field 0xBC.
+#
+# Hashing
+# - Internal hashing OR prehashed input.
+#
+# Streaming
+# - absorb message -> finalize hash -> sign/verify.
+#
+# Encodings
+# - Strict DER parsing for PKCS#1/PKCS#8/SPKI.
+#
+# Tests
+# - Wycheproof RSA-PSS vectors + PKCS#1 test vectors.
+# - Fuzz DER + random chunking streaming.
+
+.end

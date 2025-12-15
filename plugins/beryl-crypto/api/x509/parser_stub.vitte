@@ -1,0 +1,769 @@
+# plugins/crypto/api/x509/parser_stub.vitte
+# X509 parser (stub)
+# Blocks use `.end` only.
+
+mod plugins.crypto.api.x509.parser_stub
+
+# TODO
+
+.end
+
+# plugins/beryl-crypto/api/x509/parser_stub.vitte
+# X.509 parser — API contract (data-first, backend-agnostic) — MAX+++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat de parsing X.509 maximal:
+#       * providers enumerate/query/select + ProviderInfo/AlgInfo
+#       * parse cert DER/PEM -> ParsedCert
+#       * parse chain -> ParsedChain
+#       * parse CSR (PKCS#10) optionnel
+#       * parse CRL / OCSP objects optionnel
+#       * extraction extensions (SAN, KU, EKU, BC, policies, SKI/AKI, AIA/CRLDP, NC)
+#       * views (zero-copy) + iovec
+#       * output formats: struct (typed) + JSON (optional)
+#       * limits, caching hooks, audit
+#       * ABI typed outputs (runtime marshalling)
+#   - Aucun I/O, aucune vérification cryptographique ici (signature validation déléguée à verify).
+
+module plugins.crypto.api.x509.parser
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const X509_PARSER_API_VERSION_MAJOR : u32 = 1
+const X509_PARSER_API_VERSION_MINOR : u32 = 0
+const X509_PARSER_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum X509ParseError
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidAlgorithm
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  InvalidDer
+  InvalidPem
+  InvalidBase64
+
+  InvalidOid
+  InvalidUtf8
+
+  InvalidTime
+
+  InvalidCertificate
+  InvalidCsr
+  InvalidCrl
+  InvalidOcsp
+
+  Truncated
+  TrailingData
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  PermissionDenied
+  RateLimited
+  Timeout
+
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Identifiers / metadata
+# ============================================================================
+
+type X509ParserProviderId = string
+
+type X509ParserAlgId = string
+
+type HashId = string
+
+enum X509BackendKind
+  Unknown
+  Software
+  Hardware
+  Kms
+  Remote
+.end
+
+# ============================================================================
+# Views / iovec
+# ============================================================================
+
+struct ByteSlice
+  ptr  : u64
+  len  : u64
+.end
+
+struct MutByteSlice
+  ptr  : u64
+  len  : u64
+.end
+
+struct IoVec
+  slices     : coll.Vec[ByteSlice]
+  total_len  : u64
+.end
+
+# ============================================================================
+# Handles
+# ============================================================================
+
+type X509Handle = u64
+
+enum X509HandleKind
+  None
+  Provider
+  Context
+  Cache
+.end
+
+struct X509Opaque
+  kind   : X509HandleKind
+  value  : X509Handle
+.end
+
+# ============================================================================
+# Encodings
+# ============================================================================
+
+enum X509Encoding
+  Der
+  Pem
+.end
+
+enum X509ObjectKind
+  Certificate
+  Chain
+  Csr
+  Crl
+  OcspResponse
+  Unknown
+.end
+
+# ============================================================================
+# OIDs / extension tags
+# ============================================================================
+
+# For convenience, OIDs are represented as dotted string.
+# Providers may keep a cached interned representation.
+
+type Oid = string
+
+# ============================================================================
+# Parsed structures (normalized)
+# ============================================================================
+
+struct X509Name
+  rfc4514  : string
+  der      : coll.Vec[u8]
+.end
+
+struct X509GeneralName
+  tag      : u32
+  value    : string
+.end
+
+struct X509SubjectAltName
+  names    : coll.Vec[X509GeneralName]
+.end
+
+struct X509Validity
+  not_before_ms : u64
+  not_after_ms  : u64
+.end
+
+struct X509Spki
+  der      : coll.Vec[u8]
+  alg_oid  : Oid
+  key      : coll.Vec[u8]
+.end
+
+struct X509KeyUsage
+  digital_signature : bool
+  content_commitment : bool
+  key_encipherment : bool
+  data_encipherment : bool
+  key_agreement : bool
+  key_cert_sign : bool
+  crl_sign : bool
+  encipher_only : bool
+  decipher_only : bool
+.end
+
+struct X509ExtendedKeyUsage
+  oids     : coll.Vec[Oid]
+.end
+
+struct X509BasicConstraints
+  is_ca    : bool
+  path_len : i32
+.end
+
+struct X509Policies
+  oids     : coll.Vec[Oid]
+.end
+
+struct X509AuthorityInfoAccess
+  # list of URIs (OCSP, CA Issuers) — provider-defined mapping
+  ocsp_uris       : coll.Vec[string]
+  ca_issuers_uris : coll.Vec[string]
+.end
+
+struct X509CrlDistributionPoints
+  uris     : coll.Vec[string]
+.end
+
+struct X509NameConstraints
+  # raw DER blobs for now; verify module may interpret
+  permitted_subtrees : coll.Vec[coll.Vec[u8]]
+  excluded_subtrees  : coll.Vec[coll.Vec[u8]]
+.end
+
+struct X509Fingerprint
+  hash_id  : HashId
+  bytes    : coll.Vec[u8]
+.end
+
+struct X509SigInfo
+  sig_alg_oid : Oid
+  sig_value   : coll.Vec[u8]
+  tbs_der     : coll.Vec[u8]
+.end
+
+struct X509ParsedCert
+  subject        : X509Name
+  issuer         : X509Name
+
+  serial_hex     : string
+
+  spki           : X509Spki
+
+  validity       : X509Validity
+
+  key_usage      : X509KeyUsage
+  ext_key_usage  : X509ExtendedKeyUsage
+  basic          : X509BasicConstraints
+  san            : X509SubjectAltName
+  policies       : X509Policies
+
+  subject_key_id : string
+  auth_key_id    : string
+
+  aia            : X509AuthorityInfoAccess
+  crldp          : X509CrlDistributionPoints
+  name_constraints : X509NameConstraints
+
+  fingerprints   : coll.Vec[X509Fingerprint]
+
+  sig            : X509SigInfo
+
+  # raw certificate bytes normalized to DER
+  der            : coll.Vec[u8]
+.end
+
+struct X509ParsedChain
+  certs          : coll.Vec[X509ParsedCert]
+.end
+
+# ============================================================================
+# CSR / CRL / OCSP (optional parsing)
+# ============================================================================
+
+enum X509CsrFormat
+  Pkcs10Der
+  Pkcs10Pem
+.end
+
+struct X509Csr
+  bytes     : coll.Vec[u8]
+  format    : X509CsrFormat
+.end
+
+struct X509ParsedCsr
+  subject        : X509Name
+  spki           : X509Spki
+  attributes     : coll.Vec[Oid]
+  extensions     : coll.Vec[Oid]
+
+  sig            : X509SigInfo
+  der            : coll.Vec[u8]
+.end
+
+enum X509CrlFormat
+  CrlDer
+  CrlPem
+.end
+
+struct X509Crl
+  bytes     : coll.Vec[u8]
+  format    : X509CrlFormat
+.end
+
+struct X509ParsedCrl
+  issuer         : X509Name
+  this_update_ms : u64
+  next_update_ms : u64
+
+  revoked_serials : coll.Vec[string]
+
+  sig            : X509SigInfo
+  der            : coll.Vec[u8]
+.end
+
+enum X509OcspFormat
+  OcspDer
+  OcspPem
+.end
+
+struct X509OcspResponse
+  bytes     : coll.Vec[u8]
+  format    : X509OcspFormat
+.end
+
+struct X509ParsedOcsp
+  produced_at_ms  : u64
+  responder_id    : string
+
+  # provider-defined status strings
+  statuses        : coll.Vec[string]
+
+  sig            : X509SigInfo
+  der            : coll.Vec[u8]
+.end
+
+# ============================================================================
+# Limits / flags
+# ============================================================================
+
+struct X509ParserLimits
+  cert_max        : u32
+  chain_max       : u32
+
+  name_max        : u32
+  ext_max         : u32
+
+  der_max         : u64
+  pem_max         : u64
+
+  iovec_max       : u32
+
+  ops_per_sec     : u32
+.end
+
+const X509_PARSER_FLAG_CERT_PARSE      : u32 = 1
+const X509_PARSER_FLAG_CHAIN_PARSE     : u32 = 2
+const X509_PARSER_FLAG_CSR_PARSE       : u32 = 4
+const X509_PARSER_FLAG_CRL_PARSE       : u32 = 8
+const X509_PARSER_FLAG_OCSP_PARSE      : u32 = 16
+
+const X509_PARSER_FLAG_VIEWS           : u32 = 32
+const X509_PARSER_FLAG_IOVEC           : u32 = 64
+
+const X509_PARSER_FLAG_JSON_OUTPUT     : u32 = 128
+
+const X509_PROVIDER_FLAG_SOFTWARE      : u32 = 1
+const X509_PROVIDER_FLAG_HARDWARE      : u32 = 2
+const X509_PROVIDER_FLAG_KMS           : u32 = 4
+const X509_PROVIDER_FLAG_REMOTE        : u32 = 8
+const X509_PROVIDER_FLAG_THREADSAFE    : u32 = 16
+const X509_PROVIDER_FLAG_SANDBOXED     : u32 = 32
+
+# ============================================================================
+# Provider info
+# ============================================================================
+
+struct X509ParserAlgInfo
+  id            : X509ParserAlgId
+  name          : string
+
+  flags         : u32
+  limits        : X509ParserLimits
+.end
+
+struct X509ParserProviderInfo
+  id            : X509ParserProviderId
+  name          : string
+  vendor        : string
+  version       : string
+
+  backend       : X509BackendKind
+  priority      : i32
+  flags         : u32
+
+  build         : string
+  device        : string
+  location      : string
+
+  algorithms    : coll.Vec[X509ParserAlgInfo]
+  limits        : X509ParserLimits
+.end
+
+# ============================================================================
+# Context + cache
+# ============================================================================
+
+struct X509ParserCachePolicy
+  enable        : bool
+  max_entries   : u32
+  ttl_ms        : u64
+.end
+
+struct X509ParserContextPolicy
+  strict_der         : bool
+  normalize_to_der   : bool
+  compute_fingerprints : bool
+
+  hash_ids           : coll.Vec[HashId]
+.end
+
+struct X509ParserContextInfo
+  provider_id    : X509ParserProviderId
+  alg_id         : X509ParserAlgId
+
+  policy         : X509ParserContextPolicy
+  cache          : X509Opaque
+
+  flags          : u32
+.end
+
+struct X509ParserContextRef
+  ctx            : X509Opaque
+  info           : X509ParserContextInfo
+.end
+
+# ============================================================================
+# Requests / responses
+# ============================================================================
+
+struct X509ParserProviderSelectRequest
+  provider_id    : X509ParserProviderId
+  alg_id         : X509ParserAlgId
+.end
+
+struct X509ParserProviderSelectResponse
+  err            : X509ParseError
+  provider       : X509ParserProviderInfo
+  algorithm      : X509ParserAlgInfo
+.end
+
+struct X509ParserCacheCreateRequest
+  provider_id    : X509ParserProviderId
+  policy         : X509ParserCachePolicy
+.end
+
+struct X509ParserCacheCreateResponse
+  err            : X509ParseError
+  cache          : X509Opaque
+.end
+
+struct X509ParserCacheDestroyRequest
+  cache          : X509Opaque
+.end
+
+struct X509ParserCacheDestroyResponse
+  err            : X509ParseError
+.end
+
+struct X509ParserContextCreateRequest
+  provider_id    : X509ParserProviderId
+  alg_id         : X509ParserAlgId
+  policy         : X509ParserContextPolicy
+  cache          : X509Opaque
+.end
+
+struct X509ParserContextCreateResponse
+  err            : X509ParseError
+  ctx            : X509ParserContextRef
+.end
+
+struct X509ParserContextDestroyRequest
+  ctx            : X509ParserContextRef
+.end
+
+struct X509ParserContextDestroyResponse
+  err            : X509ParseError
+.end
+
+# Determine object kind (quick sniff)
+struct X509SniffRequest
+  input          : coll.Vec[u8]
+.end
+
+struct X509SniffResponse
+  err            : X509ParseError
+  kind           : X509ObjectKind
+  encoding       : X509Encoding
+.end
+
+# Parse certificate
+struct X509ParseCertRequest
+  ctx            : X509ParserContextRef
+  cert           : X509Certificate
+.end
+
+struct X509ParseCertResponse
+  err            : X509ParseError
+  cert           : X509ParsedCert
+.end
+
+# Parse chain
+struct X509ParseChainRequest
+  ctx            : X509ParserContextRef
+  chain          : coll.Vec[X509Certificate]
+.end
+
+struct X509ParseChainResponse
+  err            : X509ParseError
+  chain          : X509ParsedChain
+.end
+
+# Parse CSR
+struct X509ParseCsrRequest
+  ctx            : X509ParserContextRef
+  csr            : X509Csr
+.end
+
+struct X509ParseCsrResponse
+  err            : X509ParseError
+  csr            : X509ParsedCsr
+.end
+
+# Parse CRL
+struct X509ParseCrlRequest
+  ctx            : X509ParserContextRef
+  crl            : X509Crl
+.end
+
+struct X509ParseCrlResponse
+  err            : X509ParseError
+  crl            : X509ParsedCrl
+.end
+
+# Parse OCSP response
+struct X509ParseOcspRequest
+  ctx            : X509ParserContextRef
+  ocsp           : X509OcspResponse
+.end
+
+struct X509ParseOcspResponse
+  err            : X509ParseError
+  ocsp           : X509ParsedOcsp
+.end
+
+# Views variants
+struct X509ParseCertRequestView
+  ctx            : X509ParserContextRef
+  bytes          : ByteSlice
+  encoding       : X509Encoding
+  output_json    : MutByteSlice
+.end
+
+struct X509ParseCertResponseView
+  err            : X509ParseError
+  written        : u64
+.end
+
+struct X509SniffRequestView
+  input          : ByteSlice
+.end
+
+struct X509SniffResponseView
+  err            : X509ParseError
+  kind           : X509ObjectKind
+  encoding       : X509Encoding
+.end
+
+# IOVEC
+struct X509ParseCertIoVecRequestView
+  ctx            : X509ParserContextRef
+  input          : IoVec
+  encoding       : X509Encoding
+  output_json    : MutByteSlice
+.end
+
+# ============================================================================
+# Audit
+# ============================================================================
+
+enum X509ParserAuditKind
+  ProviderSelected
+  CacheCreated
+  ContextCreated
+  Sniffed
+  ParsedCert
+  ParsedChain
+  ParsedCsr
+  ParsedCrl
+  ParsedOcsp
+  Destroyed
+.end
+
+struct X509ParserAuditEvent
+  kind         : X509ParserAuditKind
+  provider_id  : X509ParserProviderId
+  alg_id       : X509ParserAlgId
+
+  ts_ms        : u64
+  detail       : string
+.end
+
+fn x509_parser_audit_emit(ev : X509ParserAuditEvent)
+.end
+
+# ============================================================================
+# ABI outputs
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : X509ParserProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : X509ParserAlgInfo)
+.end
+
+fn abi_out_select_response(resp : X509ParserProviderSelectResponse)
+.end
+
+fn abi_out_cache_create_response(resp : X509ParserCacheCreateResponse)
+.end
+
+fn abi_out_ctx_create_response(resp : X509ParserContextCreateResponse)
+.end
+
+fn abi_out_sniff_response(resp : X509SniffResponse)
+.end
+
+fn abi_out_parse_cert_response(resp : X509ParseCertResponse)
+.end
+
+fn abi_out_parse_chain_response(resp : X509ParseChainResponse)
+.end
+
+fn abi_out_parse_csr_response(resp : X509ParseCsrResponse)
+.end
+
+fn abi_out_parse_crl_response(resp : X509ParseCrlResponse)
+.end
+
+fn abi_out_parse_ocsp_response(resp : X509ParseOcspResponse)
+.end
+
+fn abi_out_parse_cert_response_view(resp : X509ParseCertResponseView)
+.end
+
+fn abi_out_error(err : X509ParseError)
+.end
+
+# ============================================================================
+# Provider surface
+# ============================================================================
+
+fn x509_parser_provider_enumerate()
+.end
+
+fn x509_parser_provider_query(provider_id : X509ParserProviderId)
+.end
+
+fn x509_parser_provider_select(req : X509ParserProviderSelectRequest)
+.end
+
+fn x509_parser_cache_create(req : X509ParserCacheCreateRequest)
+.end
+
+fn x509_parser_cache_destroy(req : X509ParserCacheDestroyRequest)
+.end
+
+fn x509_parser_context_create(req : X509ParserContextCreateRequest)
+.end
+
+fn x509_parser_context_destroy(req : X509ParserContextDestroyRequest)
+.end
+
+fn x509_sniff(req : X509SniffRequest)
+.end
+
+fn x509_sniff_view(req : X509SniffRequestView)
+.end
+
+fn x509_parse_cert(req : X509ParseCertRequest)
+.end
+
+fn x509_parse_chain(req : X509ParseChainRequest)
+.end
+
+fn x509_parse_csr(req : X509ParseCsrRequest)
+.end
+
+fn x509_parse_crl(req : X509ParseCrlRequest)
+.end
+
+fn x509_parse_ocsp(req : X509ParseOcspRequest)
+.end
+
+fn x509_parse_cert_view(req : X509ParseCertRequestView)
+.end
+
+fn x509_parse_cert_iovec_view(req : X509ParseCertIoVecRequestView)
+.end
+
+# ============================================================================
+# Helpers
+# ============================================================================
+
+fn x509_parser_default_context_policy() -> X509ParserContextPolicy
+  let p : X509ParserContextPolicy = X509ParserContextPolicy
+  return p
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# PEM
+# - Detect PEM blocks, base64 decode, extract DER.
+#
+# DER parsing
+# - Parse ASN.1 DER: SEQUENCE, INTEGER, BIT STRING, OID, UTCTime/GeneralizedTime.
+# - Parse TBSCertificate + signatureAlgorithm + signatureValue.
+#
+# Extensions
+# - SAN, KU, EKU, BasicConstraints, CertificatePolicies.
+# - SKI/AKI, AIA, CRLDP, NameConstraints.
+#
+# Normalization
+# - Canonical Name string (RFC 4514) + keep DER.
+# - Normalize to DER output.
+#
+# Fingerprints
+# - Compute hashes (SHA-256, SHA-1, etc.) using hash providers.
+#
+# CSR/CRL/OCSP
+# - Optional parsers with strict DER option.
+#
+# Caching
+# - Cache decoded DER and parsed results.
+#
+# Tests
+# - Golden DER/PEM fixtures.
+# - Fuzz DER parser.
+# - Cross-check parsed fields vs known libs.
+
+.end

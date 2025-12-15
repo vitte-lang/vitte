@@ -1,0 +1,793 @@
+# plugins/crypto/api/sign/signature.vitte
+# Signature traits
+# Blocks use `.end` only.
+
+mod plugins.crypto.api.sign.signature
+
+# TODO
+
+.end
+
+# plugins/beryl-crypto/api/sign/signature.vitte
+# Signature traits / unified contract — MAX+++ (Vitte 2025)
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Définir une ABI/contrat unifié pour la signature:
+#       * Provider/Alg discovery
+#       * Key management (keypair/public key)
+#       * Contexts + policies
+#       * sign/verify (one-shot + views + iovec)
+#       * streaming (absorb + finish)
+#       * audit + limits
+#   - Permettre de brancher ECDSA / Ed25519 / RSA-PSS sans changer l'API côté client.
+#   - Purement déclaratif: aucun I/O, aucune crypto ici.
+
+module plugins.crypto.api.sign.signature
+
+import std.collections as coll
+
+import plugins.crypto.api.sign.ecdsa as ecdsa
+import plugins.crypto.api.sign.ed25519 as ed25519
+import plugins.crypto.api.sign.rsa_pss as rsa_pss
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const SIGNATURE_API_VERSION_MAJOR : u32 = 1
+const SIGNATURE_API_VERSION_MINOR : u32 = 0
+const SIGNATURE_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Unified identifiers
+# ============================================================================
+
+type SigProviderId = string
+
+type SigAlgId = string
+
+type HashId = string
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum SigError
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidAlgorithm
+
+  InvalidKey
+  InvalidKeyPair
+  InvalidPublicKey
+  InvalidContext
+  InvalidStream
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  InvalidEncoding
+  InvalidPolicy
+  InvalidSignature
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  PermissionDenied
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  VerifyFailed
+  InternalError
+.end
+
+# ============================================================================
+# Signature scheme kinds
+# ============================================================================
+
+enum SigScheme
+  Unknown
+  Ecdsa
+  Ed25519
+  RsaPss
+.end
+
+enum SigBackendKind
+  Unknown
+  Software
+  Hardware
+  Kms
+  Remote
+.end
+
+# ============================================================================
+# Common views / iovec
+# ============================================================================
+
+struct ByteSlice
+  ptr  : u64
+  len  : u64
+.end
+
+struct MutByteSlice
+  ptr  : u64
+  len  : u64
+.end
+
+struct IoVec
+  slices     : coll.Vec[ByteSlice]
+  total_len  : u64
+.end
+
+struct MutIoVec
+  slices     : coll.Vec[MutByteSlice]
+  total_len  : u64
+.end
+
+# ============================================================================
+# Handle model
+# ============================================================================
+
+type SigHandle = u64
+
+enum SigHandleKind
+  None
+  Provider
+  KeyPair
+  PublicKey
+  Context
+  Stream
+.end
+
+struct SigOpaque
+  kind   : SigHandleKind
+  value  : SigHandle
+.end
+
+# ============================================================================
+# Common limits
+# ============================================================================
+
+struct LenSet
+  min        : u32
+  max        : u32
+  step       : u32
+  preferred  : coll.Vec[u32]
+.end
+
+struct SigLimits
+  priv_max     : u32
+  pub_max      : u32
+  sig_max      : u32
+
+  msg_max      : u64
+  digest_max   : u32
+
+  ops_per_sec  : u32
+.end
+
+# ============================================================================
+# Common policy (unified) + per-scheme payloads
+# ============================================================================
+
+struct SigValidationPolicy
+  strict_encoding        : bool
+  constant_time_verify   : bool
+  allow_legacy_hashes    : bool
+  sidechannel_hard       : bool
+.end
+
+struct SigHashPolicy
+  prehashed              : bool
+  hash_id                : HashId
+  digest_len             : u32
+.end
+
+# Scheme-specific policy payloads (opaque, forwarded to scheme module)
+
+struct SigPolicyEcdsa
+  policy  : ecdsa.EcdsaPolicy
+.end
+
+struct SigPolicyEd25519
+  policy  : ed25519.Ed25519Policy
+.end
+
+struct SigPolicyRsaPss
+  policy  : rsa_pss.RsaPssPolicy
+.end
+
+struct SigPolicy
+  scheme           : SigScheme
+
+  validation       : SigValidationPolicy
+  hashing          : SigHashPolicy
+
+  # Exactly one of these should be considered, based on scheme.
+  ecdsa            : SigPolicyEcdsa
+  ed25519          : SigPolicyEd25519
+  rsa_pss          : SigPolicyRsaPss
+.end
+
+# ============================================================================
+# Algorithms / providers (unified view)
+# ============================================================================
+
+struct SigAlgInfo
+  id               : SigAlgId
+  name             : string
+
+  scheme           : SigScheme
+
+  # scheme specific algo id (forwarded)
+  scheme_alg_id    : string
+
+  # commonly used hash
+  hash_id          : HashId
+
+  # key sizes
+  priv_lens        : LenSet
+  pub_lens         : LenSet
+
+  # signature sizes
+  sig_lens         : LenSet
+
+  flags            : u32
+  limits           : SigLimits
+.end
+
+struct SigProviderInfo
+  id               : SigProviderId
+  name             : string
+  vendor           : string
+  version          : string
+
+  backend          : SigBackendKind
+  priority         : i32
+  flags            : u32
+
+  build            : string
+  device           : string
+  location         : string
+
+  algorithms       : coll.Vec[SigAlgInfo]
+  limits           : SigLimits
+.end
+
+# ============================================================================
+# Key material (unified container)
+# ============================================================================
+
+enum SigPublicKeyFormat
+  Unknown
+
+  # ECDSA variants
+  EcdsaSec1
+
+  # Ed25519 raw
+  Ed25519Raw
+
+  # RSA variants
+  RsaSpkiDer
+  RsaPkcs1Der
+  RsaModExpRaw
+.end
+
+enum SigPrivateKeyFormat
+  Unknown
+
+  # ECDSA
+  EcdsaPrivRaw
+
+  # Ed25519
+  Ed25519Seed
+
+  # RSA
+  RsaPkcs8Der
+  RsaPkcs1Der
+  RsaWrapped
+.end
+
+enum SigSignatureFormat
+  Unknown
+
+  # ECDSA
+  EcdsaDer
+  EcdsaRawRsFixed
+
+  # Ed25519
+  Ed25519Raw
+
+  # RSA-PSS
+  RsaPssRaw
+.end
+
+struct SigPublicKey
+  bytes    : coll.Vec[u8]
+  format   : SigPublicKeyFormat
+.end
+
+struct SigPrivateKey
+  bytes    : coll.Vec[u8]
+  format   : SigPrivateKeyFormat
+.end
+
+struct SigKeyPair
+  private_key  : SigPrivateKey
+  public_key   : SigPublicKey
+.end
+
+struct SigSignature
+  bytes    : coll.Vec[u8]
+  format   : SigSignatureFormat
+.end
+
+# Views
+struct SigPublicKeyView
+  bytes    : ByteSlice
+  format   : SigPublicKeyFormat
+.end
+
+struct SigPrivateKeyView
+  bytes    : ByteSlice
+  format   : SigPrivateKeyFormat
+.end
+
+struct SigSignatureView
+  bytes    : ByteSlice
+  format   : SigSignatureFormat
+.end
+
+# ============================================================================
+# Unified key refs
+# ============================================================================
+
+enum SigKeyUsage
+  Sign
+  Verify
+  SignAndVerify
+.end
+
+struct SigKeyConstraints
+  usage           : SigKeyUsage
+  fips            : bool
+  allow_hw        : bool
+
+  no_export_priv  : bool
+.end
+
+struct SigKeyInfo
+  provider_id     : SigProviderId
+  alg_id          : SigAlgId
+
+  scheme          : SigScheme
+  scheme_alg_id   : string
+
+  key_id          : string
+  usage           : SigKeyUsage
+
+  priv_len        : u32
+  pub_len         : u32
+
+  created_ms      : u64
+  expires_ms      : u64
+
+  flags           : u32
+  constraints     : SigKeyConstraints
+.end
+
+struct SigKeyPairRef
+  kp             : SigOpaque
+  info           : SigKeyInfo
+.end
+
+struct SigPublicKeyRef
+  pk             : SigOpaque
+  info           : SigKeyInfo
+.end
+
+# ============================================================================
+# Contexts
+# ============================================================================
+
+struct SigContextInfo
+  provider_id     : SigProviderId
+  alg_id          : SigAlgId
+
+  key             : SigOpaque
+  policy          : SigPolicy
+
+  flags           : u32
+.end
+
+struct SigContextRef
+  ctx             : SigOpaque
+  info            : SigContextInfo
+.end
+
+# ============================================================================
+# One-shot sign/verify
+# ============================================================================
+
+struct SigSignRequest
+  ctx             : SigContextRef
+  input           : coll.Vec[u8]
+  sig_format      : SigSignatureFormat
+.end
+
+struct SigSignResponse
+  err             : SigError
+  signature       : SigSignature
+.end
+
+struct SigVerifyRequest
+  ctx             : SigContextRef
+  input           : coll.Vec[u8]
+  signature       : SigSignature
+.end
+
+struct SigVerifyResponse
+  err             : SigError
+  valid           : bool
+.end
+
+# Views
+struct SigSignRequestView
+  ctx             : SigContextRef
+  input           : ByteSlice
+  output_sig      : MutByteSlice
+  sig_format      : SigSignatureFormat
+.end
+
+struct SigSignResponseView
+  err             : SigError
+  written         : u64
+.end
+
+struct SigVerifyRequestView
+  ctx             : SigContextRef
+  input           : ByteSlice
+  signature       : ByteSlice
+  sig_format      : SigSignatureFormat
+.end
+
+struct SigVerifyResponseView
+  err             : SigError
+  valid           : bool
+.end
+
+# IoVec
+struct SigSignIoVecRequestView
+  ctx             : SigContextRef
+  input           : IoVec
+  output_sig      : MutByteSlice
+  sig_format      : SigSignatureFormat
+.end
+
+struct SigVerifyIoVecRequestView
+  ctx             : SigContextRef
+  input           : IoVec
+  signature       : ByteSlice
+  sig_format      : SigSignatureFormat
+.end
+
+# ============================================================================
+# Streaming
+# ============================================================================
+
+enum SigStreamKind
+  Sign
+  Verify
+.end
+
+enum SigStreamState
+  Init
+  Data
+  Final
+  Closed
+.end
+
+struct SigStreamInfo
+  provider_id     : SigProviderId
+  alg_id          : SigAlgId
+  ctx             : SigOpaque
+
+  kind            : SigStreamKind
+  state           : SigStreamState
+
+  msg_len         : u64
+  sig_format      : SigSignatureFormat
+
+  flags           : u32
+.end
+
+struct SigStreamRef
+  stream          : SigOpaque
+  info            : SigStreamInfo
+.end
+
+struct SigStreamStartRequest
+  ctx             : SigContextRef
+  kind            : SigStreamKind
+  sig_format      : SigSignatureFormat
+.end
+
+struct SigStreamStartResponse
+  err             : SigError
+  stream          : SigStreamRef
+.end
+
+struct SigStreamUpdateRequest
+  stream          : SigStreamRef
+  chunk           : coll.Vec[u8]
+.end
+
+struct SigStreamUpdateResponse
+  err             : SigError
+.end
+
+struct SigStreamUpdateRequestView
+  stream          : SigStreamRef
+  chunk           : ByteSlice
+.end
+
+struct SigStreamUpdateResponseView
+  err             : SigError
+  consumed        : u64
+.end
+
+struct SigStreamFinishRequest
+  stream          : SigStreamRef
+  signature       : SigSignature
+.end
+
+struct SigStreamFinishResponse
+  err             : SigError
+  signature       : SigSignature
+  valid           : bool
+.end
+
+struct SigStreamFinishRequestView
+  stream          : SigStreamRef
+  signature       : ByteSlice
+  sig_format      : SigSignatureFormat
+  output_sig      : MutByteSlice
+.end
+
+struct SigStreamFinishResponseView
+  err             : SigError
+  written         : u64
+  valid           : bool
+.end
+
+# ============================================================================
+# Audit
+# ============================================================================
+
+enum SigAuditKind
+  ProviderSelected
+  KeyGenerated
+  KeyImported
+  PeerKeyImported
+  ContextCreated
+  StreamStarted
+  StreamUpdated
+  Signed
+  Verified
+  Destroyed
+.end
+
+struct SigAuditEvent
+  kind            : SigAuditKind
+  provider_id     : SigProviderId
+  alg_id          : SigAlgId
+  scheme          : SigScheme
+
+  key_id          : string
+  ctx_id          : string
+  stream_id       : string
+
+  ts_ms           : u64
+  detail          : string
+.end
+
+fn signature_audit_emit(ev : SigAuditEvent)
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : SigProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : SigAlgInfo)
+.end
+
+fn abi_out_keypair_ref_struct(kp : SigKeyPairRef)
+.end
+
+fn abi_out_public_key_ref_struct(pk : SigPublicKeyRef)
+.end
+
+fn abi_out_ctx_ref_struct(ctx : SigContextRef)
+.end
+
+fn abi_out_stream_start_response(resp : SigStreamStartResponse)
+.end
+
+fn abi_out_sign_response(resp : SigSignResponse)
+.end
+
+fn abi_out_verify_response(resp : SigVerifyResponse)
+.end
+
+fn abi_out_sign_response_view(resp : SigSignResponseView)
+.end
+
+fn abi_out_verify_response_view(resp : SigVerifyResponseView)
+.end
+
+fn abi_out_stream_finish_response(resp : SigStreamFinishResponse)
+.end
+
+fn abi_out_stream_finish_response_view(resp : SigStreamFinishResponseView)
+.end
+
+fn abi_out_error(err : SigError)
+.end
+
+# ============================================================================
+# Unified provider surface (typed entrypoints)
+# ============================================================================
+
+# Provider enumerate/query/select should map to underlying scheme providers.
+# A runtime dispatch layer typically normalizes info + performs selection.
+
+fn signature_provider_enumerate()
+.end
+
+fn signature_provider_query(provider_id : SigProviderId)
+.end
+
+fn signature_provider_select(provider_id : SigProviderId, alg_id : SigAlgId)
+.end
+
+# Keys
+fn signature_keygen(provider_id : SigProviderId, alg_id : SigAlgId, usage : SigKeyUsage, constraints : SigKeyConstraints)
+.end
+
+fn signature_key_import(provider_id : SigProviderId, alg_id : SigAlgId, usage : SigKeyUsage, constraints : SigKeyConstraints, keypair : SigKeyPair)
+.end
+
+fn signature_public_key_import(provider_id : SigProviderId, alg_id : SigAlgId, constraints : SigKeyConstraints, public_key : SigPublicKey)
+.end
+
+fn signature_public_key_export(public_key : SigPublicKeyRef, format : SigPublicKeyFormat)
+.end
+
+fn signature_private_key_export(keypair : SigKeyPairRef, format : SigPrivateKeyFormat)
+.end
+
+fn signature_key_destroy(key : SigOpaque)
+.end
+
+# Context
+fn signature_context_create(key : SigOpaque, policy : SigPolicy)
+.end
+
+fn signature_context_destroy(ctx : SigContextRef)
+.end
+
+# One-shot
+fn signature_sign(req : SigSignRequest)
+.end
+
+fn signature_verify(req : SigVerifyRequest)
+.end
+
+fn signature_sign_view(req : SigSignRequestView)
+.end
+
+fn signature_verify_view(req : SigVerifyRequestView)
+.end
+
+fn signature_sign_iovec_view(req : SigSignIoVecRequestView)
+.end
+
+fn signature_verify_iovec_view(req : SigVerifyIoVecRequestView)
+.end
+
+# Streaming
+fn signature_stream_start(req : SigStreamStartRequest)
+.end
+
+fn signature_stream_update(req : SigStreamUpdateRequest)
+.end
+
+fn signature_stream_update_view(req : SigStreamUpdateRequestView)
+.end
+
+fn signature_stream_finish(req : SigStreamFinishRequest)
+.end
+
+fn signature_stream_finish_view(req : SigStreamFinishRequestView)
+.end
+
+fn signature_stream_destroy(stream : SigOpaque)
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+fn signature_default_validation_policy() -> SigValidationPolicy
+  let p : SigValidationPolicy = SigValidationPolicy
+  return p
+.end
+
+fn signature_default_hash_policy_internal(hash_id : HashId) -> SigHashPolicy
+  let p : SigHashPolicy = SigHashPolicy
+  return p
+.end
+
+fn signature_default_hash_policy_prehash(hash_id : HashId, digest_len : u32) -> SigHashPolicy
+  let p : SigHashPolicy = SigHashPolicy
+  return p
+.end
+
+fn signature_default_policy_for_scheme(scheme : SigScheme) -> SigPolicy
+  let p : SigPolicy = SigPolicy
+  return p
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# Runtime dispatch
+# - Normaliser providers/algos des sous-modules:
+#     * ECDSA: ecdsa.EcdsaProviderInfo/EcdsaAlgInfo
+#     * Ed25519: ed25519.Ed25519ProviderInfo/Ed25519AlgInfo
+#     * RSA-PSS: rsa_pss.RsaPssProviderInfo/RsaPssAlgInfo
+# - Construire SigProviderInfo/SigAlgInfo stable (IDs globalement uniques).
+# - Politique de sélection (priority, flags, allow_hw, fips, etc.) + fallback.
+#
+# Type mapping
+# - Mapper formats clés/signatures:
+#     * ECDSA DER/raw-rs
+#     * Ed25519 raw
+#     * RSA-PSS raw
+# - Traduire policy unifiée -> policy scheme-specific.
+#
+# Handles
+# - Impl handles slot+generation (O(1)) thread-safe avec espaces séparés.
+# - Destroy idempotent + poison.
+#
+# Streaming
+# - Router streaming vers sous-module:
+#     * ECDSA/RSA-PSS: hash interne si supporté
+#     * Ed25519ph: streaming natif (prehash)
+# - Assurer msg_max/digest_max enforcement.
+#
+# Security
+# - constant-time verify best effort.
+# - memwipe buffers temporaires (si runtime expose API).
+#
+# Tests
+# - Roundtrip cross-schemes: verify(sign(m)) == true.
+# - Fuzz: dispatch tables, invalid formats, random chunking streaming.
+# - Interop: ensure signature formats are stable.
+
+.end

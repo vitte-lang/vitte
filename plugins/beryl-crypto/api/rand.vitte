@@ -1,0 +1,714 @@
+# plugins/crypto/api/rand.vitte
+# RNG traits + fill_bytes
+# Blocks use `.end` only.
+
+mod plugins.crypto.api.rand
+
+# TODO
+
+.end
+
+# plugins/beryl-crypto/api/rand.vitte
+# RNG / DRBG — unified contract (data-first, backend-agnostic) — MAX+++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Définir une API RNG maximale utilisable par:
+#       * crypto (nonces, salts, keygen),
+#       * systèmes (entropy pool),
+#       * tests (DRBG déterministe).
+#   - Couvrir:
+#       * providers enumerate/query/select + ProviderInfo/AlgInfo
+#       * handles (Provider/Rng/Stream)
+#       * one-shot fill bytes + views + iovec
+#       * DRBG (CTR-DRBG / HMAC-DRBG / Hash-DRBG) contract + personalization
+#       * reseed/refresh/limits
+#       * nonce policy (unique/non-repeating) + counters
+#       * audit + ABI typed outputs
+#   - Aucun I/O; l'entropie est fournie via runtime/provider.
+
+module plugins.crypto.api.rand
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const RAND_API_VERSION_MAJOR : u32 = 1
+const RAND_API_VERSION_MINOR : u32 = 0
+const RAND_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum RandError
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidAlgorithm
+
+  InvalidRng
+  InvalidStream
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+  InvalidPolicy
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  EntropyUnavailable
+  EntropyInsufficient
+
+  ReseedRequired
+  ReseedFailed
+
+  NonceExhausted
+  NonceReuseDetected
+
+  ProviderUnavailable
+  ProviderBusy
+  PermissionDenied
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  InternalError
+.end
+
+# ============================================================================
+# Identifiers / metadata
+# ============================================================================
+
+type RandProviderId = string
+
+type RandAlgId = string
+
+type HashId = string
+
+type CipherId = string
+
+enum RandBackendKind
+  Unknown
+  Software
+  Hardware
+  Kms
+  Remote
+.end
+
+# ============================================================================
+# Views / iovec
+# ============================================================================
+
+struct ByteSlice
+  ptr  : u64
+  len  : u64
+.end
+
+struct MutByteSlice
+  ptr  : u64
+  len  : u64
+.end
+
+struct IoVec
+  slices     : coll.Vec[ByteSlice]
+  total_len  : u64
+.end
+
+struct MutIoVec
+  slices     : coll.Vec[MutByteSlice]
+  total_len  : u64
+.end
+
+# ============================================================================
+# Handles
+# ============================================================================
+
+type RandHandle = u64
+
+enum RandHandleKind
+  None
+  Provider
+  Rng
+  Stream
+.end
+
+struct RandOpaque
+  kind   : RandHandleKind
+  value  : RandHandle
+.end
+
+# ============================================================================
+# Common lens / limits
+# ============================================================================
+
+struct LenSet
+  min        : u32
+  max        : u32
+  step       : u32
+  preferred  : coll.Vec[u32]
+.end
+
+struct RandLimits
+  out_max              : u64
+  chunk_max            : u32
+
+  # entropy / seed constraints
+  seed_min             : u32
+  seed_max             : u32
+
+  # reseed constraints
+  reseed_interval_max  : u64
+  reseed_bytes_max     : u64
+
+  # nonce constraints
+  nonce_max            : u32
+
+  ops_per_sec          : u32
+.end
+
+# ============================================================================
+# RNG kinds / algorithms
+# ============================================================================
+
+enum RandKind
+  Unknown
+
+  # True random / entropy sourced
+  Trng
+
+  # Cryptographically secure RNG
+  Csprng
+
+  # Deterministic RNG for tests
+  Drbg
+.end
+
+enum RandDrbgKind
+  Unknown
+
+  # NIST SP 800-90A
+  CtrDrbg
+  HmacDrbg
+  HashDrbg
+.end
+
+# ============================================================================
+# Policy
+# ============================================================================
+
+enum RandStrength
+  Weak
+  Normal
+  Strong
+.end
+
+enum RandPredictionResistance
+  Disabled
+  Enabled
+.end
+
+struct RandEntropyPolicy
+  strength          : RandStrength
+  require_trng      : bool
+
+  # optional: minimum entropy bits requested
+  min_entropy_bits  : u32
+.end
+
+struct RandReseedPolicy
+  enable                    : bool
+  prediction_resistance     : RandPredictionResistance
+
+  # reseed at most after N bytes generated (0 => provider default)
+  reseed_bytes_threshold    : u64
+
+  # reseed at most after N milliseconds (0 => provider default)
+  reseed_time_threshold_ms  : u64
+.end
+
+struct RandNoncePolicy
+  # If true, provider must ensure no reuse for a given (key_id,label) tuple.
+  strict_nonce              : bool
+
+  # Optional label namespace (e.g. "aes-gcm", "chacha20")
+  label                     : string
+
+  # Monotonic counter fallback allowed (if provider permits)
+  allow_counter_fallback    : bool
+
+  # If strict, return NonceExhausted when space is exhausted.
+  strict_exhaustion         : bool
+.end
+
+struct RandDrbgPolicy
+  kind                       : RandDrbgKind
+
+  # For CTR-DRBG: cipher id (AES-128/AES-256), for others: hash id
+  cipher_id                  : CipherId
+  hash_id                    : HashId
+
+  # personalization string (optional)
+  personalization            : coll.Vec[u8]
+
+  # additional input per request (optional, provider may ignore)
+  additional_input           : coll.Vec[u8]
+
+  # enforce deterministic mode (tests)
+  deterministic              : bool
+.end
+
+struct RandPolicy
+  kind                 : RandKind
+
+  entropy              : RandEntropyPolicy
+  reseed               : RandReseedPolicy
+  nonce                : RandNoncePolicy
+  drbg                 : RandDrbgPolicy
+
+  # hardening
+  constant_time        : bool
+  sidechannel_hard     : bool
+.end
+
+# ============================================================================
+# Provider / algorithm info
+# ============================================================================
+
+const RAND_FLAG_VIEWS              : u32 = 1
+const RAND_FLAG_IOVEC              : u32 = 2
+
+const RAND_FLAG_TRNG               : u32 = 4
+const RAND_FLAG_CSPRNG             : u32 = 8
+const RAND_FLAG_DRBG               : u32 = 16
+
+const RAND_FLAG_DRBG_CTR           : u32 = 32
+const RAND_FLAG_DRBG_HMAC          : u32 = 64
+const RAND_FLAG_DRBG_HASH          : u32 = 128
+
+const RAND_FLAG_RESEED             : u32 = 256
+const RAND_FLAG_PRED_RESIST        : u32 = 512
+
+const RAND_FLAG_NONCE              : u32 = 1024
+const RAND_FLAG_NONCE_STRICT       : u32 = 2048
+
+const RAND_FLAG_CONSTANT_TIME      : u32 = 4096
+const RAND_FLAG_SIDECHANNEL_HARD   : u32 = 8192
+
+const RAND_PROVIDER_FLAG_SOFTWARE   : u32 = 1
+const RAND_PROVIDER_FLAG_HARDWARE   : u32 = 2
+const RAND_PROVIDER_FLAG_KMS        : u32 = 4
+const RAND_PROVIDER_FLAG_REMOTE     : u32 = 8
+const RAND_PROVIDER_FLAG_THREADSAFE : u32 = 16
+const RAND_PROVIDER_FLAG_SANDBOXED  : u32 = 32
+
+struct RandAlgInfo
+  id            : RandAlgId
+  name          : string
+
+  kind          : RandKind
+  drbg_kind     : RandDrbgKind
+
+  # supported primitives
+  hash_id       : HashId
+  cipher_id     : CipherId
+
+  # nonce sizes (bytes) if nonce mode supported
+  nonce_lens    : LenSet
+
+  flags         : u32
+  limits        : RandLimits
+.end
+
+struct RandProviderInfo
+  id            : RandProviderId
+  name          : string
+  vendor        : string
+  version       : string
+
+  backend       : RandBackendKind
+  priority      : i32
+  flags         : u32
+
+  build         : string
+  device        : string
+  location      : string
+
+  algorithms    : coll.Vec[RandAlgInfo]
+  limits        : RandLimits
+.end
+
+# ============================================================================
+# RNG instance / stream state
+# ============================================================================
+
+enum RandStreamState
+  Init
+  Open
+  Closed
+.end
+
+struct RandRngInfo
+  provider_id     : RandProviderId
+  alg_id          : RandAlgId
+
+  policy          : RandPolicy
+
+  generated_bytes : u64
+  reseed_count    : u64
+
+  flags           : u32
+.end
+
+struct RandRngRef
+  rng             : RandOpaque
+  info            : RandRngInfo
+.end
+
+struct RandStreamInfo
+  provider_id     : RandProviderId
+  alg_id          : RandAlgId
+
+  rng             : RandOpaque
+
+  state           : RandStreamState
+  generated_bytes : u64
+
+  flags           : u32
+.end
+
+struct RandStreamRef
+  stream          : RandOpaque
+  info            : RandStreamInfo
+.end
+
+# ============================================================================
+# Requests / responses
+# ============================================================================
+
+struct RandProviderSelectRequest
+  provider_id     : RandProviderId
+  alg_id          : RandAlgId
+.end
+
+struct RandProviderSelectResponse
+  err             : RandError
+  provider        : RandProviderInfo
+  algorithm       : RandAlgInfo
+.end
+
+struct RandRngCreateRequest
+  provider_id     : RandProviderId
+  alg_id          : RandAlgId
+  policy          : RandPolicy
+
+  # seed material for DRBG; empty => provider derives from entropy
+  seed            : coll.Vec[u8]
+.end
+
+struct RandRngCreateResponse
+  err             : RandError
+  rng             : RandRngRef
+.end
+
+struct RandRngDestroyRequest
+  rng             : RandRngRef
+.end
+
+struct RandRngDestroyResponse
+  err             : RandError
+.end
+
+# One-shot fill
+struct RandFillRequest
+  rng             : RandRngRef
+  out_len         : u32
+.end
+
+struct RandFillResponse
+  err             : RandError
+  bytes           : coll.Vec[u8]
+.end
+
+# Views fill
+struct RandFillRequestView
+  rng             : RandRngRef
+  output          : MutByteSlice
+.end
+
+struct RandFillResponseView
+  err             : RandError
+  written         : u64
+.end
+
+# IOVEC fill
+struct RandFillIoVecRequestView
+  rng             : RandRngRef
+  output          : MutIoVec
+.end
+
+# Nonce generation (for a given usage label)
+struct RandNonceRequest
+  rng             : RandRngRef
+  nonce_len       : u32
+  label           : string
+.end
+
+struct RandNonceResponse
+  err             : RandError
+  nonce           : coll.Vec[u8]
+.end
+
+struct RandNonceRequestView
+  rng             : RandRngRef
+  label           : string
+  output          : MutByteSlice
+.end
+
+struct RandNonceResponseView
+  err             : RandError
+  written         : u64
+.end
+
+# Reseed
+struct RandReseedRequest
+  rng             : RandRngRef
+  # optional additional input
+  additional      : coll.Vec[u8]
+.end
+
+struct RandReseedResponse
+  err             : RandError
+  reseed_count    : u64
+.end
+
+# Streaming (optional): open a stream and fill repeatedly
+struct RandStreamOpenRequest
+  rng             : RandRngRef
+.end
+
+struct RandStreamOpenResponse
+  err             : RandError
+  stream          : RandStreamRef
+.end
+
+struct RandStreamCloseRequest
+  stream          : RandStreamRef
+.end
+
+struct RandStreamCloseResponse
+  err             : RandError
+.end
+
+struct RandStreamFillRequestView
+  stream          : RandStreamRef
+  output          : MutByteSlice
+.end
+
+struct RandStreamFillResponseView
+  err             : RandError
+  written         : u64
+.end
+
+# ============================================================================
+# Audit
+# ============================================================================
+
+enum RandAuditKind
+  ProviderSelected
+  RngCreated
+  Reseeded
+  Filled
+  NonceGenerated
+  StreamOpened
+  StreamClosed
+  Destroyed
+.end
+
+struct RandAuditEvent
+  kind            : RandAuditKind
+  provider_id     : RandProviderId
+  alg_id          : RandAlgId
+
+  rng_id          : string
+  stream_id       : string
+
+  ts_ms           : u64
+  detail          : string
+.end
+
+fn rand_audit_emit(ev : RandAuditEvent)
+.end
+
+# ============================================================================
+# ABI outputs
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : RandProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : RandAlgInfo)
+.end
+
+fn abi_out_select_response(resp : RandProviderSelectResponse)
+.end
+
+fn abi_out_rng_create_response(resp : RandRngCreateResponse)
+.end
+
+fn abi_out_fill_response(resp : RandFillResponse)
+.end
+
+fn abi_out_fill_response_view(resp : RandFillResponseView)
+.end
+
+fn abi_out_nonce_response(resp : RandNonceResponse)
+.end
+
+fn abi_out_nonce_response_view(resp : RandNonceResponseView)
+.end
+
+fn abi_out_reseed_response(resp : RandReseedResponse)
+.end
+
+fn abi_out_stream_open_response(resp : RandStreamOpenResponse)
+.end
+
+fn abi_out_stream_fill_response_view(resp : RandStreamFillResponseView)
+.end
+
+fn abi_out_error(err : RandError)
+.end
+
+# ============================================================================
+# Provider surface
+# ============================================================================
+
+fn rand_provider_enumerate()
+.end
+
+fn rand_provider_query(provider_id : RandProviderId)
+.end
+
+fn rand_provider_select(req : RandProviderSelectRequest)
+.end
+
+fn rand_rng_create(req : RandRngCreateRequest)
+.end
+
+fn rand_rng_destroy(req : RandRngDestroyRequest)
+.end
+
+fn rand_fill(req : RandFillRequest)
+.end
+
+fn rand_fill_view(req : RandFillRequestView)
+.end
+
+fn rand_fill_iovec_view(req : RandFillIoVecRequestView)
+.end
+
+fn rand_nonce(req : RandNonceRequest)
+.end
+
+fn rand_nonce_view(req : RandNonceRequestView)
+.end
+
+fn rand_reseed(req : RandReseedRequest)
+.end
+
+fn rand_stream_open(req : RandStreamOpenRequest)
+.end
+
+fn rand_stream_close(req : RandStreamCloseRequest)
+.end
+
+fn rand_stream_fill_view(req : RandStreamFillRequestView)
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+fn rand_default_entropy_policy() -> RandEntropyPolicy
+  let p : RandEntropyPolicy = RandEntropyPolicy
+  return p
+.end
+
+fn rand_default_reseed_policy() -> RandReseedPolicy
+  let p : RandReseedPolicy = RandReseedPolicy
+  return p
+.end
+
+fn rand_default_nonce_policy(label : string) -> RandNoncePolicy
+  let p : RandNoncePolicy = RandNoncePolicy
+  return p
+.end
+
+fn rand_default_drbg_policy_ctr_aes256(hash_id : HashId) -> RandDrbgPolicy
+  let p : RandDrbgPolicy = RandDrbgPolicy
+  return p
+.end
+
+fn rand_default_policy_csprng() -> RandPolicy
+  let p : RandPolicy = RandPolicy
+  return p
+.end
+
+fn rand_default_policy_drbg_ctr() -> RandPolicy
+  let p : RandPolicy = RandPolicy
+  return p
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# Providers
+# - Impl enumerate/query/select + fill ProviderInfo/AlgInfo.
+# - Remplacer toute sortie texte par ABI structs.
+# - Politique de choix provider (soft vs hw vs remote) + fallback.
+#
+# Handles
+# - Impl tables handles slot+generation (O(1) thread-safe).
+# - Espaces séparés (Rng/Stream) + validation kind.
+# - Destroy idempotent + poison (use-after-free logique).
+#
+# TRNG / entropy
+# - Support OS entropy (getrandom) + hardware RNG.
+# - Enforcer min_entropy_bits + EntropyInsufficient.
+#
+# DRBG (SP 800-90A)
+# - CTR-DRBG (AES-128/256): update, instantiate, reseed, generate.
+# - HMAC-DRBG (HMAC-SHA256): instantiate, reseed, generate.
+# - Hash-DRBG (SHA-256): instantiate, reseed, generate.
+# - Personalization + additional input.
+# - Prediction resistance.
+#
+# Nonce policy
+# - strict_nonce + reuse detection (per key_id/label).
+# - NonceExhausted / NonceReuseDetected.
+# - Counter fallback option if allowed.
+#
+# Views / iovec
+# - Zero-copy output filling.
+# - Scatter/gather for large fills.
+#
+# Side-channel hardening
+# - constant-time best effort.
+# - memwipe internal state on destroy/reseed.
+#
+# Tests
+# - NIST DRBG test vectors.
+# - Property: streaming == one-shot.
+# - Fuzz: random chunk sizes, invalid policies, counter overflow.
+
+.end

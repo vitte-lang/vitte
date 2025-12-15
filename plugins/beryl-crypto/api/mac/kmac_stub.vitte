@@ -1,0 +1,705 @@
+# plugins/beryl-crypto/api/mac/kmac.vitte
+# KMAC (Keccak Message Authentication Code) — API contract (data-first, backend-agnostic) — MAX+++
+# Blocks use `.end` only.
+#
+# Objectifs:
+#   - Contrat KMAC complet:
+#       * providers enumerate/query/select + ProviderInfo/AlgInfo
+#       * KMAC128 / KMAC256 (SP 800-185)
+#       * customization string + function name domain sep
+#       * variable-length output (tag_len)
+#       * one-shot + streaming
+#       * views (zero-copy) + iovec
+#       * verify constant-time (compare)
+#       * policies: strict_len, canonical encoding, side-channel flags
+#       * handles (Provider/Key/Context/Stream)
+#       * audit events + limits
+#   - Aucun I/O et pas d'impl crypto réelle ici.
+#
+# Notes:
+#   - KMAC is based on cSHAKE (SP 800-185) + bytepad/encode_string.
+#   - output length is variable; tag_len controls output bytes.
+#   - KMAC keys are strings; keylen can be arbitrary but providers may cap.
+
+module plugins.crypto.api.mac.kmac
+
+import std.collections as coll
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const KMAC_API_VERSION_MAJOR : u32 = 1
+const KMAC_API_VERSION_MINOR : u32 = 0
+const KMAC_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum KmacError
+  Ok
+  Unsupported
+
+  InvalidProvider
+  InvalidAlgorithm
+
+  InvalidKey
+  InvalidContext
+  InvalidStream
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  InvalidPolicy
+  InvalidCustomization
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  ProviderUnavailable
+  ProviderBusy
+  PermissionDenied
+  RateLimited
+  Timeout
+
+  MalformedInput
+  SerializationError
+  DeserializationError
+
+  VerifyFailed
+
+  InternalError
+.end
+
+# ============================================================================
+# Identifiers / metadata
+# ============================================================================
+
+type KmacProviderId = string
+
+type KmacAlgId = string
+
+enum KmacBackendKind
+  Unknown
+  Software
+  Hardware
+  Kms
+  Remote
+.end
+
+# ============================================================================
+# KMAC variants
+# ============================================================================
+
+enum KmacVariant
+  Kmac128
+  Kmac256
+.end
+
+# ============================================================================
+# Capability flags
+# ============================================================================
+
+const KMAC_FLAG_KEYGEN               : u32 = 1
+const KMAC_FLAG_KEY_IMPORT           : u32 = 2
+const KMAC_FLAG_KEY_EXPORT           : u32 = 4
+
+const KMAC_FLAG_ONE_SHOT             : u32 = 8
+const KMAC_FLAG_VERIFY               : u32 = 16
+
+const KMAC_FLAG_STREAMING            : u32 = 32
+const KMAC_FLAG_VIEWS                : u32 = 64
+const KMAC_FLAG_IOVEC                : u32 = 128
+
+const KMAC_FLAG_CONSTANT_TIME        : u32 = 256
+const KMAC_FLAG_SIDECHANNEL_HARD     : u32 = 512
+
+const KMAC_PROVIDER_FLAG_SOFTWARE    : u32 = 1
+const KMAC_PROVIDER_FLAG_HARDWARE    : u32 = 2
+const KMAC_PROVIDER_FLAG_KMS         : u32 = 4
+const KMAC_PROVIDER_FLAG_REMOTE      : u32 = 8
+const KMAC_PROVIDER_FLAG_THREADSAFE  : u32 = 16
+const KMAC_PROVIDER_FLAG_SANDBOXED   : u32 = 32
+
+# ============================================================================
+# Limits / lens
+# ============================================================================
+
+struct LenSet
+  min           : u32
+  max           : u32
+  step          : u32
+  preferred     : coll.Vec[u32]
+.end
+
+struct KmacLimits
+  key_max       : u32
+  msg_max       : u64
+
+  tag_max       : u32
+  tag_min       : u32
+
+  custom_max    : u32
+
+  ops_per_sec   : u32
+.end
+
+struct KmacAlgInfo
+  id            : KmacAlgId
+  name          : string
+
+  variant       : KmacVariant
+
+  # Keccak capacity (bits): 256 for KMAC128, 512 for KMAC256
+  capacity_bits : u32
+
+  # rate (bytes) = (1600 - capacity_bits)/8
+  rate_bytes    : u32
+
+  # default tag length in bytes (provider choice)
+  default_tag_len : u32
+
+  tag_lens      : LenSet
+
+  flags         : u32
+  limits        : KmacLimits
+.end
+
+struct KmacProviderInfo
+  id            : KmacProviderId
+  name          : string
+  vendor        : string
+  version       : string
+
+  backend       : KmacBackendKind
+  priority      : i32
+  flags         : u32
+
+  build         : string
+  device        : string
+  location      : string
+
+  algorithms    : coll.Vec[KmacAlgInfo]
+  limits        : KmacLimits
+.end
+
+# ============================================================================
+# Handles (opaque)
+# ============================================================================
+
+type KmacHandle = u64
+
+enum KmacHandleKind
+  None
+  Provider
+  Key
+  Context
+  Stream
+.end
+
+struct KmacOpaque
+  kind          : KmacHandleKind
+  value         : KmacHandle
+.end
+
+# ============================================================================
+# Views / iovec
+# ============================================================================
+
+struct ByteSlice
+  ptr           : u64
+  len           : u64
+.end
+
+struct MutByteSlice
+  ptr           : u64
+  len           : u64
+.end
+
+struct IoVec
+  slices        : coll.Vec[ByteSlice]
+  total_len     : u64
+.end
+
+struct MutIoVec
+  slices        : coll.Vec[MutByteSlice]
+  total_len     : u64
+.end
+
+# ============================================================================
+# Owned payload containers
+# ============================================================================
+
+struct KmacBytes
+  bytes         : coll.Vec[u8]
+.end
+
+struct KmacKey
+  bytes         : coll.Vec[u8]
+.end
+
+struct KmacTag
+  bytes         : coll.Vec[u8]
+.end
+
+struct KmacString
+  # UTF-8 bytes for customization string / function name
+  bytes         : coll.Vec[u8]
+.end
+
+# ============================================================================
+# Views payload containers
+# ============================================================================
+
+struct KmacKeyView
+  bytes         : ByteSlice
+.end
+
+struct KmacTagView
+  bytes         : ByteSlice
+.end
+
+struct KmacStringView
+  bytes         : ByteSlice
+.end
+
+# ============================================================================
+# Policy
+# ============================================================================
+
+struct KmacPolicy
+  variant            : KmacVariant
+
+  # requested output length (0 => provider default)
+  tag_len            : u32
+
+  # customization string (cSHAKE)
+  customization      : KmacString
+
+  # function name (defaults to "KMAC") if empty
+  function_name      : KmacString
+
+  # strict constraints
+  strict_tag_len     : bool
+  strict_custom      : bool
+
+  # verification constant-time compare
+  constant_time_verify : bool
+
+  # hardening request
+  sidechannel_hard   : bool
+.end
+
+# ============================================================================
+# Key / context model
+# ============================================================================
+
+enum KmacKeyUsage
+  Mac
+  Verify
+  MacAndVerify
+.end
+
+struct KmacKeyConstraints
+  usage            : KmacKeyUsage
+  fips             : bool
+  allow_hw         : bool
+.end
+
+struct KmacKeyInfo
+  provider_id      : KmacProviderId
+  alg_id           : KmacAlgId
+
+  key_id           : string
+  usage            : KmacKeyUsage
+
+  key_len          : u32
+  tag_len          : u32
+
+  created_ms       : u64
+  expires_ms       : u64
+
+  flags            : u32
+  constraints      : KmacKeyConstraints
+.end
+
+struct KmacKeyRef
+  key              : KmacOpaque
+  info             : KmacKeyInfo
+.end
+
+struct KmacContextInfo
+  provider_id      : KmacProviderId
+  alg_id           : KmacAlgId
+
+  key              : KmacOpaque
+  policy           : KmacPolicy
+
+  flags            : u32
+.end
+
+struct KmacContextRef
+  ctx              : KmacOpaque
+  info             : KmacContextInfo
+.end
+
+# ============================================================================
+# One-shot operations
+# ============================================================================
+
+struct KmacMacRequest
+  ctx              : KmacContextRef
+  input            : KmacBytes
+.end
+
+struct KmacMacResponse
+  err              : KmacError
+  tag              : KmacTag
+.end
+
+struct KmacVerifyRequest
+  ctx              : KmacContextRef
+  input            : KmacBytes
+  tag              : KmacTag
+.end
+
+struct KmacVerifyResponse
+  err              : KmacError
+  valid            : bool
+.end
+
+# Views one-shot
+struct KmacMacRequestView
+  ctx              : KmacContextRef
+  input            : ByteSlice
+  output_tag       : MutByteSlice
+.end
+
+struct KmacMacResponseView
+  err              : KmacError
+  written          : u64
+.end
+
+struct KmacVerifyRequestView
+  ctx              : KmacContextRef
+  input            : ByteSlice
+  tag              : ByteSlice
+.end
+
+struct KmacVerifyResponseView
+  err              : KmacError
+  valid            : bool
+.end
+
+# IoVec one-shot
+struct KmacMacIoVecRequestView
+  ctx              : KmacContextRef
+  input            : IoVec
+  output_tag       : MutByteSlice
+.end
+
+struct KmacVerifyIoVecRequestView
+  ctx              : KmacContextRef
+  input            : IoVec
+  tag              : ByteSlice
+.end
+
+# ============================================================================
+# Streaming
+# ============================================================================
+
+enum KmacStreamState
+  Init
+  Data
+  Final
+  Closed
+.end
+
+struct KmacStreamInfo
+  provider_id      : KmacProviderId
+  alg_id           : KmacAlgId
+  ctx              : KmacOpaque
+
+  state            : KmacStreamState
+
+  tag_len          : u32
+  msg_len          : u64
+
+  flags            : u32
+.end
+
+struct KmacStreamRef
+  stream           : KmacOpaque
+  info             : KmacStreamInfo
+.end
+
+struct KmacStreamStartRequest
+  ctx              : KmacContextRef
+.end
+
+struct KmacStreamStartResponse
+  err              : KmacError
+  stream           : KmacStreamRef
+.end
+
+struct KmacStreamUpdateRequest
+  stream           : KmacStreamRef
+  chunk            : KmacBytes
+.end
+
+struct KmacStreamUpdateResponse
+  err              : KmacError
+.end
+
+struct KmacStreamUpdateRequestView
+  stream           : KmacStreamRef
+  chunk            : ByteSlice
+.end
+
+struct KmacStreamUpdateResponseView
+  err              : KmacError
+  consumed         : u64
+.end
+
+struct KmacStreamFinishRequest
+  stream           : KmacStreamRef
+.end
+
+struct KmacStreamFinishResponse
+  err              : KmacError
+  tag              : KmacTag
+.end
+
+struct KmacStreamFinishRequestView
+  stream           : KmacStreamRef
+  output_tag       : MutByteSlice
+.end
+
+struct KmacStreamFinishResponseView
+  err              : KmacError
+  written          : u64
+.end
+
+# ============================================================================
+# Audit
+# ============================================================================
+
+enum KmacAuditKind
+  ProviderSelected
+  KeyGenerated
+  KeyImported
+  ContextCreated
+  StreamStarted
+  StreamUpdated
+  MacComputed
+  VerifyChecked
+  Destroyed
+.end
+
+struct KmacAuditEvent
+  kind            : KmacAuditKind
+  provider_id     : KmacProviderId
+  alg_id          : KmacAlgId
+
+  key_id          : string
+  ctx_id          : string
+  stream_id       : string
+
+  ts_ms           : u64
+  detail          : string
+.end
+
+fn kmac_audit_emit(ev : KmacAuditEvent)
+.end
+
+# ============================================================================
+# ABI outputs (runtime provided)
+# ============================================================================
+
+fn abi_out_provider_info_struct(info : KmacProviderInfo)
+.end
+
+fn abi_out_alg_info_struct(info : KmacAlgInfo)
+.end
+
+fn abi_out_key_ref_struct(k : KmacKeyRef)
+.end
+
+fn abi_out_ctx_ref_struct(c : KmacContextRef)
+.end
+
+fn abi_out_stream_start_response(resp : KmacStreamStartResponse)
+.end
+
+fn abi_out_mac_response(resp : KmacMacResponse)
+.end
+
+fn abi_out_verify_response(resp : KmacVerifyResponse)
+.end
+
+fn abi_out_mac_response_view(resp : KmacMacResponseView)
+.end
+
+fn abi_out_verify_response_view(resp : KmacVerifyResponseView)
+.end
+
+fn abi_out_stream_finish_response(resp : KmacStreamFinishResponse)
+.end
+
+fn abi_out_stream_finish_response_view(resp : KmacStreamFinishResponseView)
+.end
+
+fn abi_out_error(err : KmacError)
+.end
+
+# ============================================================================
+# Provider surface (typed entrypoints)
+# ============================================================================
+
+fn kmac_provider_enumerate()
+.end
+
+fn kmac_provider_query(provider_id : KmacProviderId)
+.end
+
+fn kmac_provider_select(provider_id : KmacProviderId, alg_id : KmacAlgId)
+.end
+
+fn kmac_key_generate(provider_id : KmacProviderId, alg_id : KmacAlgId, usage : KmacKeyUsage, key_len : u32, constraints : KmacKeyConstraints)
+.end
+
+fn kmac_key_import(provider_id : KmacProviderId, alg_id : KmacAlgId, usage : KmacKeyUsage, key_bytes : coll.Vec[u8], constraints : KmacKeyConstraints)
+.end
+
+fn kmac_key_destroy(key : KmacOpaque)
+.end
+
+fn kmac_context_create(key : KmacOpaque, policy : KmacPolicy)
+.end
+
+fn kmac_context_destroy(ctx : KmacOpaque)
+.end
+
+fn kmac_mac(req : KmacMacRequest)
+.end
+
+fn kmac_verify(req : KmacVerifyRequest)
+.end
+
+fn kmac_mac_view(req : KmacMacRequestView)
+.end
+
+fn kmac_verify_view(req : KmacVerifyRequestView)
+.end
+
+fn kmac_mac_iovec_view(req : KmacMacIoVecRequestView)
+.end
+
+fn kmac_verify_iovec_view(req : KmacVerifyIoVecRequestView)
+.end
+
+fn kmac_stream_start(req : KmacStreamStartRequest)
+.end
+
+fn kmac_stream_update(req : KmacStreamUpdateRequest)
+.end
+
+fn kmac_stream_update_view(req : KmacStreamUpdateRequestView)
+.end
+
+fn kmac_stream_finish(req : KmacStreamFinishRequest)
+.end
+
+fn kmac_stream_finish_view(req : KmacStreamFinishRequestView)
+.end
+
+fn kmac_stream_destroy(stream : KmacOpaque)
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+fn kmac_default_customization_empty() -> KmacString
+  let s : KmacString = KmacString
+  return s
+.end
+
+fn kmac_default_function_name_kmac() -> KmacString
+  let s : KmacString = KmacString
+  return s
+.end
+
+fn kmac_default_policy_kmac128(tag_len : u32) -> KmacPolicy
+  let p : KmacPolicy = KmacPolicy
+  return p
+.end
+
+fn kmac_default_policy_kmac256(tag_len : u32) -> KmacPolicy
+  let p : KmacPolicy = KmacPolicy
+  return p
+.end
+
+fn kmac_default_constraints() -> KmacKeyConstraints
+  let c : KmacKeyConstraints = KmacKeyConstraints
+  return c
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# Providers / registry
+# - Impl enumerate/query/select et remplir `KmacProviderInfo`/`KmacAlgInfo`.
+# - Remplacer sortie "texte" par ABI structs.
+# - Politique provider (software vs hw vs kms/remote) + fallback.
+
+# Handles
+# - Impl handles slot+generation (O(1) lookup) thread-safe.
+# - Destroy idempotent + poison.
+
+# KMAC core (SP 800-185)
+# - Implement encode_string, left_encode, bytepad.
+# - Implement cSHAKE128/cSHAKE256 domain separation with:
+#     * function_name (N)
+#     * customization (S)
+# - KMAC128/256:
+#     * absorb key (bytepad(encode_string(K), rate))
+#     * absorb message
+#     * squeeze output tag_len
+# - streaming: incremental absorb + finalize squeeze.
+
+# Verify
+# - constant-time compare for tag.
+# - truncation allowed by tag_len policy.
+
+# Validation
+# - Enforce customization length <= custom_max.
+# - Enforce tag_len within tag_lens/limits.
+# - msg_max enforcement.
+
+# Side-channel hardening
+# - constant-time where appropriate.
+# - memwipe temps + internal state.
+
+# Tests
+# - NIST SP 800-185 test vectors (KMAC128/256).
+# - Properties: streaming == one-shot.
+# - Fuzz: random chunking, random custom strings, invalid tag_len.
+
+# Audit
+# - Emission stable events for keygen/import/context/stream/mac/verify/destroy.
+
+.end
+# plugins/crypto/api/mac/kmac_stub.vitte
+# KMAC (stub)
+# Blocks use `.end` only.
+
+mod plugins.crypto.api.mac.kmac_stub
+
+# TODO
+
+.end

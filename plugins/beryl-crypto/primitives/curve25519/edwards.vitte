@@ -1,0 +1,928 @@
+# plugins/crypto/primitives/curve25519/edwards.vitte
+# Edwards form
+# Blocks use `.end` only.
+
+mod plugins.crypto.primitives.curve25519.edwards
+
+# TODO
+
+.end
+
+# plugins/beryl-crypto/primitives/curve25519/edwards.vitte
+# Curve25519 / Ed25519 Edwards form primitives — MAX+++
+# Blocks use `.end` only.
+#
+# Implements:
+#   - Field GF(p) with p = 2^255 - 19 using 5x51-bit limbs
+#   - Extended Edwards coordinates (X,Y,Z,T)
+#   - Point add/double, scalar multiplication (ladder + cswap)
+#   - Encode/decode (compressed y + sign(x)) compatible with Ed25519
+#   - Best-effort constant-time utilities (no secret-dependent branches for ladder)
+#
+# Notes:
+#   - Constant-time is best-effort and compiler/runtime dependent.
+#   - No platform intrinsics; higher layers may provide accelerated backends.
+
+module plugins.crypto.primitives.curve25519.edwards
+
+import std.collections as coll
+
+import plugins.crypto.api.types as t
+import plugins.crypto.host.time_const as ct
+
+# ============================================================================
+# Constants
+# ============================================================================
+
+const MASK51 : u64 = 2251799813685247  # 2^51 - 1
+
+# p = 2^255 - 19 in 5x51 limbs
+const P0 : u64 = 2251799813685229
+const P1 : u64 = 2251799813685247
+const P2 : u64 = 2251799813685247
+const P3 : u64 = 2251799813685247
+const P4 : u64 = 2251799813685247
+
+# d = -121665/121666 mod p  (Ed25519 parameter)
+const D0 : u64 = 929955233495203
+const D1 : u64 = 466365720129213
+const D2 : u64 = 1662059464998953
+const D3 : u64 = 2033849074728123
+const D4 : u64 = 1442794654840575
+
+# d2 = 2*d mod p
+const D2_0 : u64 = 1859910466990425
+const D2_1 : u64 = 932731440258426
+const D2_2 : u64 = 1072319116312658
+const D2_3 : u64 = 1815898335770999
+const D2_4 : u64 = 633789495995903
+
+# sqrt(-1) mod p
+const SQRTM1_0 : u64 = 1718705420411056
+const SQRTM1_1 : u64 = 234908883556509
+const SQRTM1_2 : u64 = 2233514472574048
+const SQRTM1_3 : u64 = 2117202627021982
+const SQRTM1_4 : u64 = 765476049583133
+
+# Basepoint coordinates (affine) in 5x51 limbs
+const Bx0 : u64 = 1738742601995546
+const Bx1 : u64 = 1146398526822698
+const Bx2 : u64 = 2070867633025821
+const Bx3 : u64 = 562264141797630
+const Bx4 : u64 = 587772402128613
+
+const By0 : u64 = 1801439850948184
+const By1 : u64 = 1351079888211148
+const By2 : u64 = 450359962737049
+const By3 : u64 = 900719925474099
+const By4 : u64 = 1801439850948198
+
+# Exponents as 4x u64 little-endian words
+# inv: p-2
+const INV_E0 : u64 = 0xFFFF_FFFF_FFFF_FFEB
+const INV_E1 : u64 = 0xFFFF_FFFF_FFFF_FFFF
+const INV_E2 : u64 = 0xFFFF_FFFF_FFFF_FFFF
+const INV_E3 : u64 = 0x7FFF_FFFF_FFFF_FFFF
+
+# sqrt: (p+3)/8
+const SQRT_E0 : u64 = 0xFFFF_FFFF_FFFF_FFEE
+const SQRT_E1 : u64 = 0xFFFF_FFFF_FFFF_FFFF
+const SQRT_E2 : u64 = 0xFFFF_FFFF_FFFF_FFFF
+const SQRT_E3 : u64 = 0x0FFF_FFFF_FFFF_FFFF
+
+# ============================================================================
+# Field element GF(p)
+# ============================================================================
+
+struct Fe
+  l0 : u64
+  l1 : u64
+  l2 : u64
+  l3 : u64
+  l4 : u64
+.end
+
+fn fe_new(l0 : u64, l1 : u64, l2 : u64, l3 : u64, l4 : u64) -> Fe
+  let x : Fe = Fe
+  x.l0 = l0
+  x.l1 = l1
+  x.l2 = l2
+  x.l3 = l3
+  x.l4 = l4
+  return x
+.end
+
+fn fe_zero() -> Fe
+  return fe_new(0, 0, 0, 0, 0)
+.end
+
+fn fe_one() -> Fe
+  return fe_new(1, 0, 0, 0, 0)
+.end
+
+fn fe_p() -> Fe
+  return fe_new(P0, P1, P2, P3, P4)
+.end
+
+fn fe_d() -> Fe
+  return fe_new(D0, D1, D2, D3, D4)
+.end
+
+fn fe_d2() -> Fe
+  return fe_new(D2_0, D2_1, D2_2, D2_3, D2_4)
+.end
+
+fn fe_sqrtm1() -> Fe
+  return fe_new(SQRTM1_0, SQRTM1_1, SQRTM1_2, SQRTM1_3, SQRTM1_4)
+.end
+
+fn fe_carry_reduce(x_in : Fe) -> Fe
+  # Ensure limbs are within 51-bit range, folding carry from top with *19.
+  let x : Fe = x_in
+
+  let c0 : u64 = x.l0 >> 51
+  x.l0 &= MASK51
+  x.l1 += c0
+
+  let c1 : u64 = x.l1 >> 51
+  x.l1 &= MASK51
+  x.l2 += c1
+
+  let c2 : u64 = x.l2 >> 51
+  x.l2 &= MASK51
+  x.l3 += c2
+
+  let c3 : u64 = x.l3 >> 51
+  x.l3 &= MASK51
+  x.l4 += c3
+
+  let c4 : u64 = x.l4 >> 51
+  x.l4 &= MASK51
+  x.l0 += c4 * 19
+
+  let c00 : u64 = x.l0 >> 51
+  x.l0 &= MASK51
+  x.l1 += c00
+
+  return x
+.end
+
+fn fe_add(a : Fe, b : Fe) -> Fe
+  let x : Fe = fe_new(a.l0 + b.l0, a.l1 + b.l1, a.l2 + b.l2, a.l3 + b.l3, a.l4 + b.l4)
+  return fe_carry_reduce(x)
+.end
+
+fn fe_sub(a : Fe, b : Fe) -> Fe
+  # a - b + 2p (avoid underflow)
+  let x : Fe = Fe
+  x.l0 = (2 * P0) + a.l0 - b.l0
+  x.l1 = (2 * P1) + a.l1 - b.l1
+  x.l2 = (2 * P2) + a.l2 - b.l2
+  x.l3 = (2 * P3) + a.l3 - b.l3
+  x.l4 = (2 * P4) + a.l4 - b.l4
+  return fe_carry_reduce(x)
+.end
+
+fn fe_neg(a : Fe) -> Fe
+  # 0 - a + 2p
+  let x : Fe = Fe
+  x.l0 = (2 * P0) - a.l0
+  x.l1 = (2 * P1) - a.l1
+  x.l2 = (2 * P2) - a.l2
+  x.l3 = (2 * P3) - a.l3
+  x.l4 = (2 * P4) - a.l4
+  return fe_carry_reduce(x)
+.end
+
+fn fe_mul(a : Fe, b : Fe) -> Fe
+  let f0 : u128 = a.l0 as u128
+  let f1 : u128 = a.l1 as u128
+  let f2 : u128 = a.l2 as u128
+  let f3 : u128 = a.l3 as u128
+  let f4 : u128 = a.l4 as u128
+
+  let g0 : u128 = b.l0 as u128
+  let g1 : u128 = b.l1 as u128
+  let g2 : u128 = b.l2 as u128
+  let g3 : u128 = b.l3 as u128
+  let g4 : u128 = b.l4 as u128
+
+  let g1_19 : u128 = 19 * g1
+  let g2_19 : u128 = 19 * g2
+  let g3_19 : u128 = 19 * g3
+  let g4_19 : u128 = 19 * g4
+
+  let h0 : u128 = f0*g0 + f1*g4_19 + f2*g3_19 + f3*g2_19 + f4*g1_19
+  let h1 : u128 = f0*g1 + f1*g0     + f2*g4_19 + f3*g3_19 + f4*g2_19
+  let h2 : u128 = f0*g2 + f1*g1     + f2*g0     + f3*g4_19 + f4*g3_19
+  let h3 : u128 = f0*g3 + f1*g2     + f2*g1     + f3*g0     + f4*g4_19
+  let h4 : u128 = f0*g4 + f1*g3     + f2*g2     + f3*g1     + f4*g0
+
+  let c0 : u64 = (h0 >> 51) as u64
+  let x0 : u64 = (h0 & (MASK51 as u128)) as u64
+  h1 += c0 as u128
+
+  let c1 : u64 = (h1 >> 51) as u64
+  let x1 : u64 = (h1 & (MASK51 as u128)) as u64
+  h2 += c1 as u128
+
+  let c2 : u64 = (h2 >> 51) as u64
+  let x2 : u64 = (h2 & (MASK51 as u128)) as u64
+  h3 += c2 as u128
+
+  let c3 : u64 = (h3 >> 51) as u64
+  let x3 : u64 = (h3 & (MASK51 as u128)) as u64
+  h4 += c3 as u128
+
+  let c4 : u64 = (h4 >> 51) as u64
+  let x4 : u64 = (h4 & (MASK51 as u128)) as u64
+
+  let x0b : u64 = x0 + (c4 * 19)
+
+  let y : Fe = fe_new(x0b, x1, x2, x3, x4)
+  return fe_carry_reduce(y)
+.end
+
+fn fe_sqr(a : Fe) -> Fe
+  return fe_mul(a, a)
+.end
+
+fn fe_ct_cswap(a_in : Fe, b_in : Fe, bit : u8) -> (Fe, Fe)
+  # bit is 0 or 1
+  let mask : u64 = (0 - (bit as u64))
+
+  let a : Fe = a_in
+  let b : Fe = b_in
+
+  let t0 : u64 = (a.l0 ^ b.l0) & mask
+  let t1 : u64 = (a.l1 ^ b.l1) & mask
+  let t2 : u64 = (a.l2 ^ b.l2) & mask
+  let t3 : u64 = (a.l3 ^ b.l3) & mask
+  let t4 : u64 = (a.l4 ^ b.l4) & mask
+
+  let aa : Fe = Fe
+  let bb : Fe = Fe
+
+  aa.l0 = a.l0 ^ t0
+  bb.l0 = b.l0 ^ t0
+
+  aa.l1 = a.l1 ^ t1
+  bb.l1 = b.l1 ^ t1
+
+  aa.l2 = a.l2 ^ t2
+  bb.l2 = b.l2 ^ t2
+
+  aa.l3 = a.l3 ^ t3
+  bb.l3 = b.l3 ^ t3
+
+  aa.l4 = a.l4 ^ t4
+  bb.l4 = b.l4 ^ t4
+
+  return (aa, bb)
+.end
+
+fn fe_ct_eq(a : Fe, b : Fe) -> u8
+  # best-effort eq: compare canonical bytes
+  let ab : coll.Vec[u8] = coll.Vec[u8]
+  let bb : coll.Vec[u8] = coll.Vec[u8]
+
+  let i : u32 = 0
+  while i < 32
+    ab.push(0)
+    bb.push(0)
+    i += 1
+  .end
+
+  let av : t.MutByteSlice = t.MutByteSlice
+  av.ptr = ab.ptr()
+  av.len = 32
+
+  let bv : t.MutByteSlice = t.MutByteSlice
+  bv.ptr = bb.ptr()
+  bv.len = 32
+
+  fe_to_bytes(av, a)
+  fe_to_bytes(bv, b)
+
+  let asv : t.ByteSlice = t.ByteSlice
+  asv.ptr = ab.ptr()
+  asv.len = 32
+
+  let bsv : t.ByteSlice = t.ByteSlice
+  bsv.ptr = bb.ptr()
+  bsv.len = 32
+
+  return ct.ct_eq_bytes(asv, bsv)
+.end
+
+fn fe_is_zero(a : Fe) -> bool
+  return fe_ct_eq(a, fe_zero()) == 1
+.end
+
+fn fe_is_negative(a : Fe) -> u8
+  # return LSB of canonical encoding
+  let out : coll.Vec[u8] = coll.Vec[u8]
+  let i : u32 = 0
+  while i < 32
+    out.push(0)
+    i += 1
+  .end
+
+  let mv : t.MutByteSlice = t.MutByteSlice
+  mv.ptr = out.ptr()
+  mv.len = 32
+
+  fe_to_bytes(mv, a)
+  return out[0] & 1
+.end
+
+fn fe_cond_sub_p(x_in : Fe) -> Fe
+  # If x >= p then x -= p (best-effort constant-time).
+  let x0 : Fe = fe_carry_reduce(x_in)
+
+  # Compare x0 with p using ct on limbs high->low.
+  let gt : u64 = 0
+  let eq : u64 = 0xFFFF_FFFF_FFFF_FFFF
+
+  # limb4
+  let lt4 : u64 = ct.ct_lt_u64(x0.l4, P4) as u64
+  let gt4 : u64 = ct.ct_lt_u64(P4, x0.l4) as u64
+  let eq4 : u64 = ct.ct_eq_u64(x0.l4, P4) as u64
+  gt |= gt4 & eq
+  eq &= eq4
+  eq &= ~lt4
+
+  # limb3
+  let lt3 : u64 = ct.ct_lt_u64(x0.l3, P3) as u64
+  let gt3 : u64 = ct.ct_lt_u64(P3, x0.l3) as u64
+  let eq3 : u64 = ct.ct_eq_u64(x0.l3, P3) as u64
+  gt |= gt3 & eq
+  eq &= eq3
+  eq &= ~lt3
+
+  # limb2
+  let lt2 : u64 = ct.ct_lt_u64(x0.l2, P2) as u64
+  let gt2 : u64 = ct.ct_lt_u64(P2, x0.l2) as u64
+  let eq2 : u64 = ct.ct_eq_u64(x0.l2, P2) as u64
+  gt |= gt2 & eq
+  eq &= eq2
+  eq &= ~lt2
+
+  # limb1
+  let lt1 : u64 = ct.ct_lt_u64(x0.l1, P1) as u64
+  let gt1 : u64 = ct.ct_lt_u64(P1, x0.l1) as u64
+  let eq1 : u64 = ct.ct_eq_u64(x0.l1, P1) as u64
+  gt |= gt1 & eq
+  eq &= eq1
+  eq &= ~lt1
+
+  # limb0
+  let lt0 : u64 = ct.ct_lt_u64(x0.l0, P0) as u64
+  let gt0 : u64 = ct.ct_lt_u64(P0, x0.l0) as u64
+  let eq0 : u64 = ct.ct_eq_u64(x0.l0, P0) as u64
+  gt |= gt0 & eq
+  eq &= eq0
+  eq &= ~lt0
+
+  # ge = gt | eq
+  let ge : u64 = gt | eq
+
+  # compute x - p
+  let y : Fe = fe_sub(x0, fe_p())
+
+  # select (ge ? y : x0)
+  let r : Fe = Fe
+  r.l0 = ct.ct_select_u64(ge, y.l0, x0.l0)
+  r.l1 = ct.ct_select_u64(ge, y.l1, x0.l1)
+  r.l2 = ct.ct_select_u64(ge, y.l2, x0.l2)
+  r.l3 = ct.ct_select_u64(ge, y.l3, x0.l3)
+  r.l4 = ct.ct_select_u64(ge, y.l4, x0.l4)
+
+  return r
+.end
+
+fn fe_to_bytes(out : t.MutByteSlice, a_in : Fe)
+  # Canonical encoding (little-endian 32 bytes).
+  let a0 : Fe = fe_cond_sub_p(a_in)
+
+  # Pack 5x51 into 4x64.
+  let t0 : u64 = a0.l0 | (a0.l1 << 51)
+  let t1 : u64 = (a0.l1 >> 13) | (a0.l2 << 38)
+  let t2 : u64 = (a0.l2 >> 26) | (a0.l3 << 25)
+  let t3 : u64 = (a0.l3 >> 39) | (a0.l4 << 12)
+
+  if out.len < 32
+    return
+  .end
+
+  ct.store_u64_le(out, 0, t0)
+  ct.store_u64_le(out, 8, t1)
+  ct.store_u64_le(out, 16, t2)
+  ct.store_u64_le(out, 24, t3)
+.end
+
+fn fe_from_bytes(s : t.ByteSlice) -> Fe
+  # Expects 32 bytes, ignores high bit (caller should clear if needed).
+  if s.len < 32
+    return fe_zero()
+  .end
+
+  let t0 : u64 = ct.load_u64_le(s, 0)
+  let t1 : u64 = ct.load_u64_le(s, 6)
+  let t2 : u64 = ct.load_u64_le(s, 12)
+  let t3 : u64 = ct.load_u64_le(s, 19)
+  let t4 : u64 = ct.load_u64_le(s, 24)
+
+  let h0 : u64 = t0 & MASK51
+  let h1 : u64 = (t1 >> 3) & MASK51
+  let h2 : u64 = (t2 >> 6) & MASK51
+  let h3 : u64 = (t3 >> 1) & MASK51
+  let h4 : u64 = (t4 >> 12) & MASK51
+
+  return fe_carry_reduce(fe_new(h0, h1, h2, h3, h4))
+.end
+
+fn fe_pow_words(a : Fe, e0 : u64, e1 : u64, e2 : u64, e3 : u64, bits : u32) -> Fe
+  # Exponentiation by square-and-multiply, bits processed MSB->LSB.
+  # Exponent bits are public constants.
+  let r : Fe = fe_one()
+  let base : Fe = a
+
+  let i : i32 = (bits as i32) - 1
+  while i >= 0
+    r = fe_sqr(r)
+
+    let wi : u32 = (i as u32) / 64
+    let bi : u32 = (i as u32) % 64
+
+    let w : u64 = 0
+    if wi == 0
+      w = e0
+    .end
+    if wi == 1
+      w = e1
+    .end
+    if wi == 2
+      w = e2
+    .end
+    if wi == 3
+      w = e3
+    .end
+
+    let bit : u64 = (w >> bi) & 1
+    if bit == 1
+      r = fe_mul(r, base)
+    .end
+
+    i -= 1
+  .end
+
+  return r
+.end
+
+fn fe_invert(a : Fe) -> Fe
+  return fe_pow_words(a, INV_E0, INV_E1, INV_E2, INV_E3, 255)
+.end
+
+fn fe_sqrt(a : Fe) -> (Fe, bool)
+  # sqrt in GF(p) where p % 8 == 5
+  # x = a^((p+3)/8)
+  # if x^2 != a then x = x*sqrtm1
+  let x : Fe = fe_pow_words(a, SQRT_E0, SQRT_E1, SQRT_E2, SQRT_E3, 252)
+
+  let x2 : Fe = fe_sqr(x)
+  if fe_ct_eq(x2, a) == 1
+    return (x, true)
+  .end
+
+  let x3 : Fe = fe_mul(x, fe_sqrtm1())
+  let x32 : Fe = fe_sqr(x3)
+  if fe_ct_eq(x32, a) == 1
+    return (x3, true)
+  .end
+
+  return (fe_zero(), false)
+.end
+
+fn fe_sqrt_ratio(u : Fe, v : Fe) -> (Fe, bool)
+  # Compute sqrt(u/v) = sqrt(u * inv(v))
+  let invv : Fe = fe_invert(v)
+  let a : Fe = fe_mul(u, invv)
+  return fe_sqrt(a)
+.end
+
+# ============================================================================
+# Edwards points (extended coordinates)
+# ============================================================================
+
+struct EdwardsPoint
+  X : Fe
+  Y : Fe
+  Z : Fe
+  T : Fe
+.end
+
+struct EdwardsAffine
+  x : Fe
+  y : Fe
+.end
+
+fn edwards_identity() -> EdwardsPoint
+  let p : EdwardsPoint = EdwardsPoint
+  p.X = fe_zero()
+  p.Y = fe_one()
+  p.Z = fe_one()
+  p.T = fe_zero()
+  return p
+.end
+
+fn edwards_basepoint() -> EdwardsPoint
+  let p : EdwardsPoint = EdwardsPoint
+  p.X = fe_new(Bx0, Bx1, Bx2, Bx3, Bx4)
+  p.Y = fe_new(By0, By1, By2, By3, By4)
+  p.Z = fe_one()
+  p.T = fe_mul(p.X, p.Y)
+  return p
+.end
+
+fn edwards_to_affine(p : EdwardsPoint) -> EdwardsAffine
+  let invz : Fe = fe_invert(p.Z)
+  let a : EdwardsAffine = EdwardsAffine
+  a.x = fe_mul(p.X, invz)
+  a.y = fe_mul(p.Y, invz)
+  return a
+.end
+
+fn edwards_add(p : EdwardsPoint, q : EdwardsPoint) -> EdwardsPoint
+  # Extended coordinates add (Hisil et al.)
+  let y1mx1 : Fe = fe_sub(p.Y, p.X)
+  let y1px1 : Fe = fe_add(p.Y, p.X)
+  let y2mx2 : Fe = fe_sub(q.Y, q.X)
+  let y2px2 : Fe = fe_add(q.Y, q.X)
+
+  let A : Fe = fe_mul(y1mx1, y2mx2)
+  let B : Fe = fe_mul(y1px1, y2px2)
+
+  let C : Fe = fe_mul(fe_mul(p.T, q.T), fe_d2())
+  let D : Fe = fe_mul(fe_mul(p.Z, q.Z), fe_new(2, 0, 0, 0, 0))
+
+  let E : Fe = fe_sub(B, A)
+  let F : Fe = fe_sub(D, C)
+  let G : Fe = fe_add(D, C)
+  let H : Fe = fe_add(B, A)
+
+  let r : EdwardsPoint = EdwardsPoint
+  r.X = fe_mul(E, F)
+  r.Y = fe_mul(G, H)
+  r.Z = fe_mul(F, G)
+  r.T = fe_mul(E, H)
+  return r
+.end
+
+fn edwards_double(p : EdwardsPoint) -> EdwardsPoint
+  let A : Fe = fe_sqr(p.X)
+  let B : Fe = fe_sqr(p.Y)
+  let C : Fe = fe_sqr(p.Z)
+  let C2 : Fe = fe_add(C, C)
+  let D : Fe = fe_neg(A)
+  let E : Fe = fe_sub(fe_sqr(fe_add(p.X, p.Y)), fe_add(A, B))
+  let G : Fe = fe_add(D, B)
+  let F : Fe = fe_sub(G, C2)
+  let H : Fe = fe_sub(D, B)
+
+  let r : EdwardsPoint = EdwardsPoint
+  r.X = fe_mul(E, F)
+  r.Y = fe_mul(G, H)
+  r.Z = fe_mul(F, G)
+  r.T = fe_mul(E, H)
+  return r
+.end
+
+fn edwards_ct_cswap(p_in : EdwardsPoint, q_in : EdwardsPoint, bit : u8) -> (EdwardsPoint, EdwardsPoint)
+  let p : EdwardsPoint = p_in
+  let q : EdwardsPoint = q_in
+
+  let txy = fe_ct_cswap(p.X, q.X, bit)
+  p.X = txy.0
+  q.X = txy.1
+
+  let tyy = fe_ct_cswap(p.Y, q.Y, bit)
+  p.Y = tyy.0
+  q.Y = tyy.1
+
+  let tzz = fe_ct_cswap(p.Z, q.Z, bit)
+  p.Z = tzz.0
+  q.Z = tzz.1
+
+  let ttt = fe_ct_cswap(p.T, q.T, bit)
+  p.T = ttt.0
+  q.T = ttt.1
+
+  return (p, q)
+.end
+
+# Scalar is 32 bytes little-endian. Ladder processes bits 255..0.
+fn scalar_get_bit_le(s : t.ByteSlice, i : u32) -> u8
+  let byte_i : u32 = i / 8
+  let bit_i : u32 = i % 8
+  if (byte_i as u64) >= s.len
+    return 0
+  .end
+  return (s[byte_i as u64] >> bit_i) & 1
+.end
+
+fn edwards_scalar_mul(p : EdwardsPoint, scalar_le : t.ByteSlice) -> EdwardsPoint
+  let r0 : EdwardsPoint = edwards_identity()
+  let r1 : EdwardsPoint = p
+
+  let prev : u8 = 0
+
+  let i : i32 = 255
+  while i >= 0
+    let bit : u8 = scalar_get_bit_le(scalar_le, i as u32)
+    let swap : u8 = bit ^ prev
+
+    let sw = edwards_ct_cswap(r0, r1, swap)
+    r0 = sw.0
+    r1 = sw.1
+
+    let r1n : EdwardsPoint = edwards_add(r0, r1)
+    let r0n : EdwardsPoint = edwards_double(r0)
+
+    r1 = r1n
+    r0 = r0n
+
+    prev = bit
+    i -= 1
+  .end
+
+  let swf = edwards_ct_cswap(r0, r1, prev)
+  r0 = swf.0
+
+  return r0
+.end
+
+fn edwards_scalar_mul_base(scalar_le : t.ByteSlice) -> EdwardsPoint
+  return edwards_scalar_mul(edwards_basepoint(), scalar_le)
+.end
+
+# Clamp scalar (Ed25519): clear bits 0..2, clear bit 255, set bit 254.
+fn ed25519_scalar_clamp(s_in : coll.Vec[u8]) -> coll.Vec[u8]
+  let s : coll.Vec[u8] = s_in
+  if s.len() < 32
+    return s
+  .end
+
+  s[0] &= 248
+  s[31] &= 127
+  s[31] |= 64
+
+  return s
+.end
+
+# ============================================================================
+# Encode / decode (compressed)
+# ============================================================================
+
+fn edwards_encode(out32 : t.MutByteSlice, p : EdwardsPoint)
+  # out32 must be 32 bytes
+  if out32.len < 32
+    return
+  .end
+
+  let a : EdwardsAffine = edwards_to_affine(p)
+
+  fe_to_bytes(out32, a.y)
+
+  let sign : u8 = fe_is_negative(a.x)
+  out32[31] = out32[31] | (sign << 7)
+.end
+
+fn edwards_decode(in32 : t.ByteSlice) -> (EdwardsPoint, bool)
+  if in32.len < 32
+    return (edwards_identity(), false)
+  .end
+
+  # Copy input and clear sign bit for y parsing
+  let tmp : coll.Vec[u8] = coll.Vec[u8]
+  let i : u32 = 0
+  while i < 32
+    tmp.push(in32[i as u64])
+    i += 1
+  .end
+
+  let sign : u8 = (tmp[31] >> 7) & 1
+  tmp[31] &= 127
+
+  let ys : t.ByteSlice = t.ByteSlice
+  ys.ptr = tmp.ptr()
+  ys.len = 32
+
+  let y : Fe = fe_from_bytes(ys)
+
+  # Recover x from curve equation:
+  # x^2 = (y^2 - 1) / (d*y^2 + 1)
+  let y2 : Fe = fe_sqr(y)
+  let u : Fe = fe_sub(y2, fe_one())
+  let v : Fe = fe_add(fe_mul(fe_d(), y2), fe_one())
+
+  let xs = fe_sqrt_ratio(u, v)
+  if not xs.1
+    return (edwards_identity(), false)
+  .end
+
+  let x : Fe = xs.0
+
+  # If x==0 and sign==1 => invalid
+  if fe_is_zero(x) and (sign == 1)
+    return (edwards_identity(), false)
+  .end
+
+  # Fix sign
+  let xneg : u8 = fe_is_negative(x)
+  if xneg != sign
+    x = fe_neg(x)
+  .end
+
+  let p : EdwardsPoint = EdwardsPoint
+  p.X = x
+  p.Y = y
+  p.Z = fe_one()
+  p.T = fe_mul(x, y)
+
+  # Optional on-curve check (best-effort)
+  if not edwards_is_on_curve(p)
+    return (edwards_identity(), false)
+  .end
+
+  return (p, true)
+.end
+
+fn edwards_is_on_curve(p : EdwardsPoint) -> bool
+  # Check in affine: -x^2 + y^2 == 1 + d*x^2*y^2
+  let a : EdwardsAffine = edwards_to_affine(p)
+  let x2 : Fe = fe_sqr(a.x)
+  let y2 : Fe = fe_sqr(a.y)
+
+  let lhs : Fe = fe_add(y2, fe_neg(x2))
+  let rhs : Fe = fe_add(fe_one(), fe_mul(fe_d(), fe_mul(x2, y2)))
+
+  return fe_ct_eq(lhs, rhs) == 1
+.end
+
+# ============================================================================
+# Smoke tests
+# ============================================================================
+
+fn test_basepoint_on_curve() -> bool
+  return edwards_is_on_curve(edwards_basepoint())
+.end
+
+fn test_encode_decode_roundtrip() -> bool
+  let p : EdwardsPoint = edwards_basepoint()
+
+  let buf : coll.Vec[u8] = coll.Vec[u8]
+  let i : u32 = 0
+  while i < 32
+    buf.push(0)
+    i += 1
+  .end
+
+  let out : t.MutByteSlice = t.MutByteSlice
+  out.ptr = buf.ptr()
+  out.len = 32
+
+  edwards_encode(out, p)
+
+  let inp : t.ByteSlice = t.ByteSlice
+  inp.ptr = buf.ptr()
+  inp.len = 32
+
+  let dec = edwards_decode(inp)
+  if not dec.1
+    return false
+  .end
+
+  # Compare encoded forms (canonical compare)
+  let buf2 : coll.Vec[u8] = coll.Vec[u8]
+  let j : u32 = 0
+  while j < 32
+    buf2.push(0)
+    j += 1
+  .end
+
+  let out2 : t.MutByteSlice = t.MutByteSlice
+  out2.ptr = buf2.ptr()
+  out2.len = 32
+
+  edwards_encode(out2, dec.0)
+
+  let a : t.ByteSlice = t.ByteSlice
+  a.ptr = buf.ptr()
+  a.len = 32
+
+  let b : t.ByteSlice = t.ByteSlice
+  b.ptr = buf2.ptr()
+  b.len = 32
+
+  return ct.ct_eq_bytes(a, b) == 1
+.end
+
+fn test_scalar_mul_zero_one() -> bool
+  let s0 : coll.Vec[u8] = coll.Vec[u8]
+  let s1 : coll.Vec[u8] = coll.Vec[u8]
+
+  let i : u32 = 0
+  while i < 32
+    s0.push(0)
+    s1.push(0)
+    i += 1
+  .end
+
+  s1[0] = 1
+
+  let ss0 : t.ByteSlice = t.ByteSlice
+  ss0.ptr = s0.ptr()
+  ss0.len = 32
+
+  let ss1 : t.ByteSlice = t.ByteSlice
+  ss1.ptr = s1.ptr()
+  ss1.len = 32
+
+  let p0 : EdwardsPoint = edwards_scalar_mul_base(ss0)
+  let p1 : EdwardsPoint = edwards_scalar_mul_base(ss1)
+
+  # p0 should encode to identity (y=1, sign=0)
+  let buf0 : coll.Vec[u8] = coll.Vec[u8]
+  let buf1 : coll.Vec[u8] = coll.Vec[u8]
+
+  let j : u32 = 0
+  while j < 32
+    buf0.push(0)
+    buf1.push(0)
+    j += 1
+  .end
+
+  let o0 : t.MutByteSlice = t.MutByteSlice
+  o0.ptr = buf0.ptr()
+  o0.len = 32
+
+  let o1 : t.MutByteSlice = t.MutByteSlice
+  o1.ptr = buf1.ptr()
+  o1.len = 32
+
+  edwards_encode(o0, p0)
+  edwards_encode(o1, p1)
+
+  # identity encoding: 1 followed by zeros
+  if buf0[0] != 1
+    return false
+  .end
+
+  let k : u32 = 1
+  while k < 32
+    if buf0[k] != 0
+      return false
+    .end
+    k += 1
+  .end
+
+  # p1 should match basepoint encoding
+  let bb : coll.Vec[u8] = coll.Vec[u8]
+  let u : u32 = 0
+  while u < 32
+    bb.push(0)
+    u += 1
+  .end
+
+  let ob : t.MutByteSlice = t.MutByteSlice
+  ob.ptr = bb.ptr()
+  ob.len = 32
+
+  edwards_encode(ob, edwards_basepoint())
+
+  let a : t.ByteSlice = t.ByteSlice
+  a.ptr = buf1.ptr()
+  a.len = 32
+
+  let b : t.ByteSlice = t.ByteSlice
+  b.ptr = bb.ptr()
+  b.len = 32
+
+  return ct.ct_eq_bytes(a, b) == 1
+.end
+
+fn run_smoke_tests() -> bool
+  if not test_basepoint_on_curve()
+    return false
+  .end
+  if not test_encode_decode_roundtrip()
+    return false
+  .end
+  if not test_scalar_mul_zero_one()
+    return false
+  .end
+  return true
+.end
+
+.end

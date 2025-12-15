@@ -1,0 +1,448 @@
+# plugins/beryl-crypto/backends/hw/rng_os_stub.vitte
+# OS RNG backend — contract (data-first, backend-agnostic) — MAX+++
+# Blocks use `.end` only.
+#
+# Scope:
+#   - Backend contract for OS-provided randomness / entropy:
+#       * feature detection / source selection:
+#           - Linux: getrandom(2), /dev/urandom
+#           - BSD/macOS: getentropy(2), arc4random_buf, SecRandomCopyBytes
+#           - Windows: BCryptGenRandom (CNG)
+#       * one-shot fill bytes (views + iovec)
+#       * optional streaming handle
+#       * optional entropy health checks / diagnostics
+#       * hardening: no secret-dependent branches, wipe temps
+#   - This is an OS/backend layer; high-level DRBG/policy lives in plugins.crypto.api.rand.
+
+module plugins.crypto.backends.hw.rng_os
+
+import std.collections as coll
+
+import plugins.crypto.api.types as t
+
+# ============================================================================
+# Versioning
+# ============================================================================
+
+const RNG_OS_API_VERSION_MAJOR : u32 = 1
+const RNG_OS_API_VERSION_MINOR : u32 = 0
+const RNG_OS_API_VERSION_PATCH : u32 = 0
+
+# ============================================================================
+# Errors
+# ============================================================================
+
+enum RngOsError
+  Ok
+  Unsupported
+
+  FeatureUnavailable
+  SourceUnavailable
+
+  InvalidInput
+  InvalidOutput
+  InvalidLength
+
+  BufferTooSmall
+  OutputTooLarge
+  MessageTooLarge
+
+  PermissionDenied
+  RateLimited
+  Timeout
+
+  EntropyUnavailable
+  EntropyInsufficient
+
+  Interrupted
+
+  InternalError
+.end
+
+# ============================================================================
+# Sources / features
+# ============================================================================
+
+enum RngOsSourceKind
+  Unknown
+
+  # Linux
+  GetRandom
+  DevUrandom
+
+  # BSD/macOS
+  GetEntropy
+  Arc4Random
+  SecRandom
+
+  # Windows
+  BCryptGenRandom
+.end
+
+# Feature flags (bitset)
+const RNGOS_FEAT_GETRANDOM     : u64 = 1
+const RNGOS_FEAT_DEV_URANDOM   : u64 = 2
+const RNGOS_FEAT_GETENTROPY    : u64 = 4
+const RNGOS_FEAT_ARC4RANDOM    : u64 = 8
+const RNGOS_FEAT_SECRANDOM     : u64 = 16
+const RNGOS_FEAT_BCRYPT        : u64 = 32
+
+# Health / diagnostics flags
+const RNGOS_FEAT_BLOCKING_OK   : u64 = 64
+const RNGOS_FEAT_NONBLOCK_OK   : u64 = 128
+
+struct RngOsFeatures
+  flags      : u64
+  os_name    : string
+  os_version : string
+
+  # best effort
+  detail     : string
+.end
+
+fn rng_os_features_detect() -> RngOsFeatures
+  let f : RngOsFeatures = RngOsFeatures
+  return f
+.end
+
+fn rng_os_features_has(features : RngOsFeatures, flag : u64) -> bool
+  return false
+.end
+
+# ============================================================================
+# Backend capabilities
+# ============================================================================
+
+const RNGOS_CAP_VIEWS          : u64 = 1
+const RNGOS_CAP_IOVEC          : u64 = 2
+const RNGOS_CAP_STREAMING      : u64 = 4
+
+const RNGOS_CAP_BLOCKING       : u64 = 8
+const RNGOS_CAP_NONBLOCKING    : u64 = 16
+
+const RNGOS_CAP_THREADSAFE     : u64 = 32
+const RNGOS_CAP_CONSTANT_TIME  : u64 = 64
+
+struct RngOsLimits
+  out_max     : u64
+  chunk_max   : u32
+  iovec_max   : u32
+
+  ops_per_sec : u32
+.end
+
+struct RngOsCaps
+  features       : RngOsFeatures
+
+  # preferred selected source
+  source         : RngOsSourceKind
+
+  caps           : u64
+  limits         : RngOsLimits
+.end
+
+fn rng_os_caps() -> RngOsCaps
+  let c : RngOsCaps = RngOsCaps
+  return c
+.end
+
+fn rng_os_is_available() -> bool
+  return false
+.end
+
+# ============================================================================
+# Handles / streaming
+# ============================================================================
+
+# Opaque handles (slot+generation recommended in runtime)
+
+type RngOsHandle = u64
+
+enum RngOsHandleKind
+  None
+  Stream
+.end
+
+struct RngOsOpaque
+  kind   : RngOsHandleKind
+  value  : RngOsHandle
+.end
+
+enum RngOsStreamState
+  Init
+  Open
+  Closed
+.end
+
+struct RngOsStreamInfo
+  source        : RngOsSourceKind
+  state         : RngOsStreamState
+
+  generated     : u64
+
+  # blocking behavior hint
+  blocking      : bool
+
+  flags         : u64
+.end
+
+struct RngOsStreamRef
+  stream        : RngOsOpaque
+  info          : RngOsStreamInfo
+.end
+
+# ============================================================================
+# Requests / responses
+# ============================================================================
+
+struct RngOsSelectSourceRequest
+  # requested source (Unknown => auto)
+  source        : RngOsSourceKind
+
+  # prefer non-blocking if available
+  nonblocking   : bool
+.end
+
+struct RngOsSelectSourceResponse
+  err           : RngOsError
+  selected      : RngOsSourceKind
+
+  caps          : RngOsCaps
+.end
+
+struct RngOsFillRequestView
+  # optional: override source for this call
+  source        : RngOsSourceKind
+  nonblocking   : bool
+
+  output        : t.MutByteSlice
+.end
+
+struct RngOsFillResponseView
+  err           : RngOsError
+  written       : u64
+.end
+
+struct RngOsFillIoVecRequestView
+  source        : RngOsSourceKind
+  nonblocking   : bool
+
+  output        : t.MutIoVec
+.end
+
+struct RngOsStreamOpenRequest
+  source        : RngOsSourceKind
+  nonblocking   : bool
+.end
+
+struct RngOsStreamOpenResponse
+  err           : RngOsError
+  stream        : RngOsStreamRef
+.end
+
+struct RngOsStreamCloseRequest
+  stream        : RngOsStreamRef
+.end
+
+struct RngOsStreamCloseResponse
+  err           : RngOsError
+.end
+
+struct RngOsStreamFillRequestView
+  stream        : RngOsStreamRef
+  output        : t.MutByteSlice
+.end
+
+struct RngOsStreamFillResponseView
+  err           : RngOsError
+  written       : u64
+.end
+
+# ============================================================================
+# Diagnostics / health
+# ============================================================================
+
+enum RngOsHealthKind
+  Unknown
+  Basic
+  Extended
+.end
+
+struct RngOsHealthReport
+  kind          : RngOsHealthKind
+  ok            : bool
+
+  source        : RngOsSourceKind
+
+  # best effort details
+  detail        : string
+
+  # counts
+  samples       : u32
+  failures      : u32
+
+  ts_ms         : u64
+.end
+
+struct RngOsHealthCheckRequest
+  kind          : RngOsHealthKind
+  source        : RngOsSourceKind
+  nonblocking   : bool
+
+  # sample size per iteration
+  sample_len    : u32
+  iterations    : u32
+.end
+
+struct RngOsHealthCheckResponse
+  err           : RngOsError
+  report        : RngOsHealthReport
+.end
+
+# ============================================================================
+# Audit (optional)
+# ============================================================================
+
+enum RngOsAuditKind
+  SourceSelected
+  Filled
+  StreamOpened
+  StreamClosed
+  HealthChecked
+.end
+
+struct RngOsAuditEvent
+  kind          : RngOsAuditKind
+  source        : RngOsSourceKind
+
+  ts_ms         : u64
+  detail        : string
+.end
+
+fn rng_os_audit_emit(ev : RngOsAuditEvent)
+.end
+
+# ============================================================================
+# ABI outputs (runtime marshalling)
+# ============================================================================
+
+fn abi_out_features_struct(f : RngOsFeatures)
+.end
+
+fn abi_out_caps_struct(c : RngOsCaps)
+.end
+
+fn abi_out_select_response(resp : RngOsSelectSourceResponse)
+.end
+
+fn abi_out_fill_response_view(resp : RngOsFillResponseView)
+.end
+
+fn abi_out_stream_open_response(resp : RngOsStreamOpenResponse)
+.end
+
+fn abi_out_stream_fill_response_view(resp : RngOsStreamFillResponseView)
+.end
+
+fn abi_out_health_check_response(resp : RngOsHealthCheckResponse)
+.end
+
+fn abi_out_error(err : RngOsError)
+.end
+
+# ============================================================================
+# Provider surface (entrypoints)
+# ============================================================================
+
+# Discover available sources/features.
+fn rng_os_get_features()
+.end
+
+# Get caps (including selected default source).
+fn rng_os_get_caps()
+.end
+
+# Select preferred source.
+fn rng_os_select_source(req : RngOsSelectSourceRequest)
+.end
+
+# One-shot fill.
+fn rng_os_fill_view(req : RngOsFillRequestView)
+.end
+
+fn rng_os_fill_iovec_view(req : RngOsFillIoVecRequestView)
+.end
+
+# Streaming.
+fn rng_os_stream_open(req : RngOsStreamOpenRequest)
+.end
+
+fn rng_os_stream_close(req : RngOsStreamCloseRequest)
+.end
+
+fn rng_os_stream_fill_view(req : RngOsStreamFillRequestView)
+.end
+
+# Health check.
+fn rng_os_health_check(req : RngOsHealthCheckRequest)
+.end
+
+# Self-test (quick).
+fn rng_os_self_test()
+.end
+
+# ============================================================================
+# Helpers (pure)
+# ============================================================================
+
+fn rng_os_default_limits() -> RngOsLimits
+  let l : RngOsLimits = RngOsLimits
+  return l
+.end
+
+fn rng_os_default_select_request() -> RngOsSelectSourceRequest
+  let r : RngOsSelectSourceRequest = RngOsSelectSourceRequest
+  return r
+.end
+
+# ============================================================================
+# TODO checklist (impl réelle) — MAX+++
+# ============================================================================
+
+# Linux
+# - Prefer getrandom(2) with proper flags; handle EINTR, EAGAIN.
+# - Fallback /dev/urandom when appropriate.
+#
+# macOS / BSD
+# - Use getentropy(2) when available.
+# - Use arc4random_buf as stable fallback.
+# - Use SecRandomCopyBytes for stronger system RNG on Apple.
+#
+# Windows
+# - Use BCryptGenRandom (BCRYPT_USE_SYSTEM_PREFERRED_RNG).
+#
+# Selection policy
+# - Choose best available source based on platform and availability.
+# - Respect nonblocking preference where supported.
+#
+# Limits
+# - Enforce out_max/chunk_max; return MessageTooLarge.
+# - Implement iovec scatter fill.
+#
+# Streaming
+# - Implement optional stream handle only if OS API benefits.
+# - Otherwise map stream_fill to one-shot calls.
+#
+# Health
+# - Basic health check: ensure calls succeed and output not all-zero.
+# - Extended: collect timing + failure stats, but do NOT implement statistical randomness tests here.
+#
+# Hardening
+# - Avoid leaking errno/details unless debug.
+# - memwipe temporary buffers if any.
+#
+# Tests
+# - Platform-specific integration tests.
+# - Fuzz: invalid lengths, iovec edge cases.
+
+.end
