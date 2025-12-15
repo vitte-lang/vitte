@@ -1,10 +1,77 @@
+# vitte/rust/cbindgen.toml
+#
+# cbindgen configuration for Vitte FFI headers.
+#
+# Target output (by script):
+#   rust/include-gen/vitte_rust_api.h
+#
+# Keep this deterministic and ABI-stable.
+
 language = "C"
-include_guard = "VITTE_RUST_API_H"
+
+# Prefer pragma once (simple, portable enough). You can also set include_guard.
 pragma_once = true
 
-[parse]
-parse_deps = false
+# Keep symbol names as-is (we use explicit #[no_mangle] and C-friendly naming).
+# If you want a namespace/prefix strategy, do it in Rust via names, not here.
+include_version = false
 
-[export]
-include = ["vr_buf", "vr_err", "vr_abi_version", "vr_buf_free",
-           "vr_muf_to_json", "vr_utf8_validate", "vr_regex_is_match"]
+# Sort output to make diffs stable
+sort_by = "Name"
+
+# Style
+line_length = 100
+tab_width = 2
+
+# Avoid generating documentation comments if you want a clean header
+documentation = true
+
+# We don't want C++ name mangling issues; cbindgen can emit extern blocks if needed.
+# For pure C, this is fine. If you also want C++ guards, set:
+#   cpp_compat = true
+# but it affects output. Keep disabled and wrap with extern "C" manually if needed.
+cpp_compat = false
+
+# Exclude internal items. Prefer exporting only what is in the crate root.
+# This typically works best if you keep your FFI API in lib.rs.
+export = { include = [
+  "VitteSliceU8",
+  "VitteSliceMutU8",
+  "VitteStr",
+  "VitteStatus",
+  "VitteHandle",
+  "VITTE_RUST_API_ABI_VERSION",
+  "vitte_rust_api_abi_version",
+  "vitte_rust_api_clear_last_error",
+  "vitte_rust_api_last_error",
+  "vitte_muf_parse_and_normalize",
+  "vitte_regex_compile",
+  "vitte_regex_free",
+  "vitte_regex_find_first",
+  "vitte_utf8_validate",
+] }
+
+# If you tag things with #[cbindgen::ignore], they won't be emitted.
+# Excluding std types (always).
+exclude = [
+  "std::.*",
+]
+
+# Rename rules (keep none for now)
+[export.rename]
+
+# Optional: remove unnecessary includes to keep header standalone-ish
+sys_includes = ["stdint.h", "stddef.h"]
+
+# Layout options
+[layout]
+packed = false
+
+# Formatting / defines
+[defines]
+"feature = regex" = "VITTE_FEATURE_REGEX"
+"feature = muf"   = "VITTE_FEATURE_MUF"
+
+# If you want macro expansion / constant emission:
+# [macro_expansion]
+# bitflags = true
