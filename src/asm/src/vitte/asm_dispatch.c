@@ -1,136 +1,205 @@
-#include "vitte/asm.h"
-#include "vitte/cpu.h"
-#include <string.h>
+// vitte/src/asm/src/vitte/asm_dispatch.c
+//
+// ASM fastpaths dispatch (runtime selection)
+//
+// Contract:
+//   - Exposes stable façade entry points for runtime/stdlib:
+//       vitte_memcpy, vitte_memset, vitte_utf8_validate, vitte_fnv1a64
+//   - Selects best implementation based on arch + CPU caps.
+//   - Safe defaults: baseline versions (or stub for utf8).
+//
+// Notes:
+//   - This file intentionally avoids any heavy dependencies.
+//   - CPU detection is “best-effort”: if not available, stays on baseline.
+//   - Thread-safety: minimal once-init via atomic CAS; re-entrant safe.
+//
+// Build:
+//   - Compile this TU once into your asm/static runtime lib.
+//   - Ensure asm symbols are linked in (aarch64 and/or x86_64 objects).
+//
 
-/* ----------------------------
- * C reference implementations
- * ---------------------------- */
-void* vitte_memcpy_ref(void* dst, const void* src, size_t n) { return memcpy(dst, src, n); }
-void* vitte_memset_ref(void* dst, int byte, size_t n) { return memset(dst, byte, n); }
+#include <stddef.h>
+#include <stdint.h>
 
-uint64_t vitte_fnv1a64_ref(const void* data, size_t n) {
-  const unsigned char* p = (const unsigned char*)data;
-  uint64_t h = 1469598103934665603ull;
-  for(size_t i=0;i<n;i++) { h ^= (uint64_t)p[i]; h *= 1099511628211ull; }
-  return h;
-}
-
-/* Optional: if you don't provide it, asm utf8 stubs will still link if not used. */
-__attribute__((weak)) int vitte_utf8_validate_ref(const uint8_t* p, size_t n) {
-  /* Simple, correct UTF-8 validator (scalar). */
-  size_t i = 0;
-  while(i < n) {
-    uint8_t c = p[i];
-    if(c < 0x80) { i++; continue; }
-
-    if((c & 0xE0) == 0xC0) {
-      if(i+1 >= n) return 0;
-      uint8_t c1 = p[i+1];
-      if((c1 & 0xC0) != 0x80) return 0;
-      uint32_t cp = ((uint32_t)(c & 0x1F) << 6) | (uint32_t)(c1 & 0x3F);
-      if(cp < 0x80) return 0; /* overlong */
-      i += 2; continue;
-    }
-
-    if((c & 0xF0) == 0xE0) {
-      if(i+2 >= n) return 0;
-      uint8_t c1 = p[i+1], c2 = p[i+2];
-      if((c1 & 0xC0) != 0x80 || (c2 & 0xC0) != 0x80) return 0;
-      uint32_t cp = ((uint32_t)(c & 0x0F) << 12) | ((uint32_t)(c1 & 0x3F) << 6) | (uint32_t)(c2 & 0x3F);
-      if(cp < 0x800) return 0; /* overlong */
-      if(cp >= 0xD800 && cp <= 0xDFFF) return 0; /* surrogate */
-      i += 3; continue;
-    }
-
-    if((c & 0xF8) == 0xF0) {
-      if(i+3 >= n) return 0;
-      uint8_t c1 = p[i+1], c2 = p[i+2], c3 = p[i+3];
-      if((c1 & 0xC0) != 0x80 || (c2 & 0xC0) != 0x80 || (c3 & 0xC0) != 0x80) return 0;
-      uint32_t cp = ((uint32_t)(c & 0x07) << 18) | ((uint32_t)(c1 & 0x3F) << 12) | ((uint32_t)(c2 & 0x3F) << 6) | (uint32_t)(c3 & 0x3F);
-      if(cp < 0x10000 || cp > 0x10FFFF) return 0; /* overlong / out of range */
-      i += 4; continue;
-    }
-
-    return 0;
-  }
-  return 1;
-}
-
-/* ---------------------------------
- * External asm variant declarations
- * --------------------------------- */
-#if defined(__x86_64__) || defined(_M_X64)
-extern void* vitte_memcpy_baseline(void* dst, const void* src, size_t n);
-extern void* vitte_memcpy_sse2(void* dst, const void* src, size_t n);
-extern void* vitte_memcpy_avx2(void* dst, const void* src, size_t n);
-
-extern void* vitte_memset_baseline(void* dst, int byte, size_t n);
-extern void* vitte_memset_sse2(void* dst, int byte, size_t n);
-extern void* vitte_memset_avx2(void* dst, int byte, size_t n);
-
-extern uint64_t vitte_fnv1a64_asm(const void* data, size_t n);
-extern int vitte_utf8_validate_asm(const uint8_t* p, size_t n);
-#elif defined(__aarch64__) || defined(_M_ARM64)
-extern void* vitte_memcpy_baseline(void* dst, const void* src, size_t n);
-extern void* vitte_memcpy_neon(void* dst, const void* src, size_t n);
-
-extern void* vitte_memset_baseline(void* dst, int byte, size_t n);
-extern void* vitte_memset_neon(void* dst, int byte, size_t n);
-
-extern uint64_t vitte_fnv1a64_asm(const void* data, size_t n);
-extern int vitte_utf8_validate_asm(const uint8_t* p, size_t n);
+#if defined(_MSC_VER)
+#  include <intrin.h>
 #endif
 
-/* ----------------------------
- * Dispatch via function pointers
- * ---------------------------- */
-typedef void*    (*memcpy_fn)(void*, const void*, size_t);
-typedef void*    (*memset_fn)(void*, int, size_t);
-typedef uint64_t (*hash_fn)(const void*, size_t);
-typedef int      (*utf8_fn)(const uint8_t*, size_t);
+#if !defined(__STDC_NO_ATOMICS__)
+#  include <stdatomic.h>
+#endif
 
-static memcpy_fn g_memcpy = 0;
-static memset_fn g_memset = 0;
-static hash_fn   g_hash   = 0;
-static utf8_fn   g_utf8   = 0;
+#include "vitte/src/asm/include/vitte/asm.h"
+#include "vitte/src/asm/include/vitte/asm_verify.h"
+#include "vitte/src/asm/include/vitte/cpu.h"
 
-static void vitte_asm_init(void) {
-  vitte_cpu_features f = vitte_cpu_detect();
+// -----------------------------------------------------------------------------
+// Public façade (stable API)
+// -----------------------------------------------------------------------------
 
-#if defined(__x86_64__) || defined(_M_X64)
-  g_memcpy = vitte_memcpy_baseline;
-  g_memset = vitte_memset_baseline;
-  if(f.has_avx2) {
-    g_memcpy = vitte_memcpy_avx2;
-    g_memset = vitte_memset_avx2;
-  } else if(f.has_sse2) {
-    g_memcpy = vitte_memcpy_sse2;
-    g_memset = vitte_memset_sse2;
-  }
-  g_hash = vitte_fnv1a64_asm;
-  g_utf8 = vitte_utf8_validate_asm;
-#elif defined(__aarch64__) || defined(_M_ARM64)
-  g_memcpy = vitte_memcpy_baseline;
-  g_memset = vitte_memset_baseline;
-  if(f.has_neon) {
-    g_memcpy = vitte_memcpy_neon;
-    g_memset = vitte_memset_neon;
-  }
-  g_hash = vitte_fnv1a64_asm;
-  g_utf8 = vitte_utf8_validate_asm;
+typedef void* (*vitte_memcpy_fn)(void*, const void*, size_t);
+typedef void* (*vitte_memset_fn)(void*, int, size_t);
+typedef int   (*vitte_utf8_validate_fn)(const uint8_t*, size_t);
+
+typedef struct vitte_asm_fast_t {
+  vitte_memcpy_fn memcpy_fn;
+  vitte_memset_fn memset_fn;
+  vitte_utf8_validate_fn utf8_validate_fn;
+} vitte_asm_fast_t;
+
+// Global dispatch table
+static vitte_asm_fast_t g_fast = {
+  /* memcpy_fn */ (vitte_memcpy_fn)0,
+  /* memset_fn */ (vitte_memset_fn)0,
+  /* utf8_validate_fn */ (vitte_utf8_validate_fn)0,
+};
+
+#if !defined(__STDC_NO_ATOMICS__)
+static atomic_int g_inited = 0; // 0=not init, 1=init
 #else
-  g_memcpy = vitte_memcpy_ref;
-  g_memset = vitte_memset_ref;
-  g_hash   = vitte_fnv1a64_ref;
-  g_utf8   = vitte_utf8_validate_ref;
+static volatile int g_inited = 0;
+#endif
+
+// -----------------------------------------------------------------------------
+// Minimal CPU detection helpers
+// -----------------------------------------------------------------------------
+
+static uint8_t vitte_has_avx2_sysv(void) {
+#if defined(__x86_64__) || defined(_M_X64)
+  // Prefer runtime detection if available.
+  // GCC/Clang: __builtin_cpu_supports.
+#  if defined(__GNUC__) || defined(__clang__)
+    // This requires -march=x86-64 (ok) and not -mno-builtin-cpu.
+    // It’s safe even if the binary was not compiled with AVX2.
+    return __builtin_cpu_supports("avx2") ? 1u : 0u;
+#  elif defined(_MSC_VER)
+    int cpuInfo[4] = {0};
+    __cpuid(cpuInfo, 0);
+    if (cpuInfo[0] < 7) return 0u;
+    __cpuidex(cpuInfo, 7, 0);
+    // EBX bit 5 = AVX2
+    return (cpuInfo[1] & (1 << 5)) ? 1u : 0u;
+#  else
+    return 0u;
+#  endif
+#else
+  return 0u;
 #endif
 }
 
-static inline void ensure_init(void) {
-  if(!g_memcpy) vitte_asm_init();
+static uint8_t vitte_has_sse2_sysv(void) {
+#if defined(__x86_64__) || defined(_M_X64)
+  // SSE2 is mandatory on x86_64.
+  return 1u;
+#else
+  return 0u;
+#endif
 }
 
-void* vitte_memcpy_fast(void* dst, const void* src, size_t n) { ensure_init(); return g_memcpy(dst, src, n); }
-void* vitte_memset_fast(void* dst, int byte, size_t n) { ensure_init(); return g_memset(dst, byte, n); }
-uint64_t vitte_fnv1a64_fast(const void* data, size_t n) { ensure_init(); return g_hash(data, n); }
-int vitte_utf8_validate_fast(const uint8_t* p, size_t n) { ensure_init(); return g_utf8(p, n); }
+static uint8_t vitte_has_neon_aarch64(void) {
+#if defined(__aarch64__) || defined(_M_ARM64)
+  // NEON is mandatory in AArch64 ISA.
+  return 1u;
+#else
+  return 0u;
+#endif
+}
+
+// -----------------------------------------------------------------------------
+// Dispatcher init (idempotent)
+// -----------------------------------------------------------------------------
+
+static void vitte_asm_dispatch_init_impl(void) {
+  // Default assignments (safe)
+#if defined(__aarch64__) || defined(_M_ARM64)
+  g_fast.memcpy_fn = vitte_memcpy_baseline;
+  g_fast.memset_fn = vitte_memset_baseline;
+  g_fast.utf8_validate_fn = vitte_utf8_validate_stub;
+
+  // Prefer NEON variants if linked
+  if (vitte_has_neon_aarch64()) {
+    // If you want build-time gating, wrap these in #if defined(VITTE_ENABLE_NEON)
+    g_fast.memcpy_fn = vitte_memcpy_neon;
+    g_fast.memset_fn = vitte_memset_neon;
+  }
+
+#elif defined(__x86_64__) || defined(_M_X64)
+  // Baselines for x86_64
+  // Prefer SSE2 version over "baseline" if you keep both; SSE2 is always safe.
+  g_fast.memcpy_fn = vitte_memcpy_sse2;
+  g_fast.memset_fn = vitte_memset_sse2;
+  g_fast.utf8_validate_fn = vitte_utf8_validate_stub;
+
+  // Prefer AVX2 if present and linked
+  if (vitte_has_avx2_sysv()) {
+    g_fast.memcpy_fn = vitte_memcpy_avx2;
+    g_fast.memset_fn = vitte_memset_avx2;
+  }
+
+#else
+  // Unknown arch: fall back to baseline if available; else leave null
+  g_fast.memcpy_fn = vitte_memcpy_baseline;
+  g_fast.memset_fn = vitte_memset_baseline;
+  g_fast.utf8_validate_fn = vitte_utf8_validate_stub;
+#endif
+
+  // Hard fail-safes: if any pointer is NULL, point to safest symbols.
+  if (!g_fast.memcpy_fn) g_fast.memcpy_fn = vitte_memcpy_baseline;
+  if (!g_fast.memset_fn) g_fast.memset_fn = vitte_memset_baseline;
+  if (!g_fast.utf8_validate_fn) g_fast.utf8_validate_fn = vitte_utf8_validate_stub;
+}
+
+static inline void vitte_asm_dispatch_init_once(void) {
+#if !defined(__STDC_NO_ATOMICS__)
+  int expected = 0;
+  if (atomic_compare_exchange_strong(&g_inited, &expected, 1)) {
+    vitte_asm_dispatch_init_impl();
+  }
+#else
+  // Best-effort non-atomic fallback (single-thread init recommended)
+  if (!g_inited) {
+    g_inited = 1;
+    vitte_asm_dispatch_init_impl();
+  }
+#endif
+}
+
+// -----------------------------------------------------------------------------
+// Public façade functions
+// -----------------------------------------------------------------------------
+
+void* vitte_memcpy(void* dst, const void* src, size_t n) {
+  vitte_asm_dispatch_init_once();
+  return g_fast.memcpy_fn(dst, src, n);
+}
+
+void* vitte_memset(void* dst, int c, size_t n) {
+  vitte_asm_dispatch_init_once();
+  return g_fast.memset_fn(dst, c, n);
+}
+
+int vitte_utf8_validate(const uint8_t* data, size_t len) {
+  vitte_asm_dispatch_init_once();
+  return g_fast.utf8_validate_fn(data, len);
+}
+
+// FNV is already a single stable symbol (arch-specific impl linked)
+uint64_t vitte_hash_fnv1a64(const uint8_t* data, size_t len) {
+  return vitte_fnv1a64(data, len);
+}
+
+// Optional: expose current selected impls for debugging/telemetry
+const void* vitte_asm_selected_memcpy(void) {
+  vitte_asm_dispatch_init_once();
+  return (const void*)(uintptr_t)g_fast.memcpy_fn;
+}
+
+const void* vitte_asm_selected_memset(void) {
+  vitte_asm_dispatch_init_once();
+  return (const void*)(uintptr_t)g_fast.memset_fn;
+}
+
+const void* vitte_asm_selected_utf8_validate(void) {
+  vitte_asm_dispatch_init_once();
+  return (const void*)(uintptr_t)g_fast.utf8_validate_fn;
+}
