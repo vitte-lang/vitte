@@ -144,6 +144,13 @@ export VITTE_ENV_SILENT=1
 source ./scripts/env_local.sh
 ```
 
+Sur Windows (PowerShell), utiliser la variante `.ps1` :
+
+```powershell
+$env:VITTE_ENV_SILENT=1
+. .\scripts\env_local.ps1
+```
+
 ---
 
 ## Commandes Makefile
@@ -180,6 +187,12 @@ make bootstrap-stage0
   - `samples/report.txt`,
   - `logs/stage0.log`.
 
+Sur Windows (sans Makefile), équivalent :
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\bootstrap_stage0.ps1 -EnsureStage1 stub
+```
+
 ### Bootstrap stage1 + stage2 (self-host compiler)
 
 ```bash
@@ -194,6 +207,13 @@ make bootstrap-stage1
 - Expose éventuellement un `target/debug/vittec` (symlink vers le binaire le plus récent) si les hooks de build produisent des binaires.
 
 Les étapes de build réelles sont laissées à des scripts hooks (par exemple : `scripts/hooks/build_vittec_stage1.sh`, `scripts/hooks/build_vittec_stage2.sh`).
+
+Sur Windows (sans Makefile), équivalents :
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\self_host_stage1.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\hooks\build_vittec_stage2.ps1
+```
 
 ### Bootstrap complet
 
@@ -225,6 +245,12 @@ make clean
 
 - Passe par `scripts/clean.sh` ;
 - Nettoie `target/` (en conservant le dossier) et quelques fichiers temporaires (`*.tmp`, `*.swp`, `*~`, `.DS_Store`, …).
+
+Sur Windows, équivalent :
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\clean.ps1
+```
 
 ```bash
 make distclean

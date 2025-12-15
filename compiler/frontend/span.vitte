@@ -1,257 +1,224 @@
-module vitte.compiler.frontend.span
+module vitte.compiler.span
 
 import std.collections as coll
 
-# ============================================================================
-# Vitte compiler front-end – Modèle logique des fichiers & spans source
-# (maximal, déclaratif, sans I/O)
-#
-# Objectifs :
-#   - Centraliser la représentation des fichiers source et des spans :
-#       * fichiers, encodage, newlines, tailles,
-#       * positions (ligne/colonne, offsets),
-#       * spans (intervalle dans un fichier),
-#       * collections/index de spans pour tooling.
-#   - Servir de base commune pour :
-#       * le lexer (lexer),
-#       * le parser/CST/AST (parser, ast),
-#       * les diagnostics (diagnostics),
-#       * les passes de résolution (resolve).
-#   - Ne contenir :
-#       * aucune fonction,
-#       * aucune I/O ni accès au système de fichiers,
-#       * aucune logique de mapping offset -> ligne/colonne.
-#
-# Remarque :
-#   - Ce module peut être utilisé comme "cœur" pour dériver d’autres spans
-#     (AstSpan, LexSpan, DiagSpan) via composition ou duplication.
-# ============================================================================
+# =============================================================================
+# Span utilities shared by the lexer, parser and diagnostics.
+# =============================================================================
 
-# ---------------------------------------------------------------------------
-# Identifiants de fichiers et de spans
-# ---------------------------------------------------------------------------
-
-struct BfFileId
-    raw: u32                    # identifiant interne d’un fichier source
+struct LineCol
+  line: Int
+  column: Int
 .end
 
-struct BfSpanId
-    raw: u32                    # identifiant interne d’un span
+struct Span
+  file: String
+  start_line: Int
+  start_col: Int
+  end_line: Int
+  end_col: Int
 .end
 
-# ---------------------------------------------------------------------------
-# Encodage, newlines, rôle logique des fichiers
-# ---------------------------------------------------------------------------
+fn Span.new(file: String, start_line: Int, start_col: Int, end_line: Int, end_col: Int) -> Span
+  # Normalise the range so start is <= end.
+  let s_line = start_line
+  let s_col = start_col
+  let e_line = end_line
+  let e_col = end_col
 
-enum BfNewlineStyle
-    BfCrLf        # "\r\n"
-    BfLf          # "\n"
-    BfCr          # "\r"
-    BfMixed       # mélange détecté
+  if e_line < s_line or (e_line == s_line and e_col < s_col)
+    let tmp_line = s_line
+    let tmp_col = s_col
+    s_line = e_line
+    s_col = e_col
+    e_line = tmp_line
+    e_col = tmp_col
+  end
+
+  return Span(
+    file = file,
+    start_line = s_line,
+    start_col = s_col,
+    end_line = e_line,
+    end_col = e_col,
+  )
 .end
 
-enum BfEncoding
-    BfUtf8
-    BfAscii
-    BfLatin1
-    BfOther
+fn Span.single(file: String, line: Int, col: Int) -> Span
+  return Span.new(file, line, col, line, col)
 .end
 
-enum BfFileRole
-    BfMainSource          # fichier source principal (unité de compilation)
-    BfIncludedSource      # fichier inclus / importé
-    BfGeneratedSource     # fichier généré (macro, build, etc.)
-    BfStdlibSource        # fichier de la bibliothèque standard
-    BfMacroExpansion      # "vue" résultant d’une expansion de macro
-    BfOther
+fn Span.from_positions(file: String, start: LineCol, end: LineCol) -> Span
+  return Span.new(file, start.line, start.column, end.line, end.column)
 .end
 
-# ---------------------------------------------------------------------------
-# Positions et intervalles dans un fichier
-# ---------------------------------------------------------------------------
-
-struct BfByteRange
-    start: u32             # offset de début (inclus), 0-based
-    end: u32               # offset de fin (exclus)
+fn Span.dummy(file: String) -> Span
+  return Span(
+    file = file,
+    start_line = 0,
+    start_col = 0,
+    end_line = 0,
+    end_col = 0,
+  )
 .end
 
-struct BfLineCol
-    line: u32              # 1-based
-    column: u32            # 1-based
+fn Span.is_dummy(self: Span) -> Bool
+  return self.start_line == 0 and self.end_line == 0
 .end
 
-struct BfFilePosition
-    file_id: BfFileId
-    byte_offset: u32
-    line_col: BfLineCol
+fn Span.same_file(a: Span, b: Span) -> Bool
+  return a.file == b.file
 .end
 
-struct BfFileSpan
-    id: BfSpanId
-    file_id: BfFileId
+fn Span.merge(a: Span, b: Span) -> Span
+  if a.is_dummy()
+    return b
+  end
+  if b.is_dummy()
+    return a
+  end
 
-    byte_range: BfByteRange
-    start: BfLineCol
-    end: BfLineCol
+  if not Span.same_file(a, b)
+    return a
+  end
 
-    # Propriétés dérivées (booléennes, remplies par les passes supérieures)
-    is_empty: bool
-    is_multiline: bool
+  let start_line =
+    if a.start_line <= b.start_line then a.start_line else b.start_line end
+  let start_col =
+    if a.start_col <= b.start_col then a.start_col else b.start_col end
+  let end_line =
+    if a.end_line >= b.end_line then a.end_line else b.end_line end
+  let end_col =
+    if a.end_col >= b.end_col then a.end_col else b.end_col end
 
-    # Tags libres pour tooling (ex: "token", "expr", "type", "diag.primary")
-    tags: coll.Vec<string>
+  return Span(
+    file = a.file,
+    start_line = start_line,
+    start_col = start_col,
+    end_line = end_line,
+    end_col = end_col,
+  )
 .end
 
-# ---------------------------------------------------------------------------
-# Métadonnées de fichiers source
-# ---------------------------------------------------------------------------
-
-struct BfSourceFileMetadata
-    id: BfFileId
-
-    # Informations d’identification
-    path: string                 # chemin logique / absolu / virtuel
-    display_name: string         # ce qui est affiché à l’utilisateur
-
-    # Édition / profil / rôle
-    edition: string              # ex: "2025"
-    profile: string              # ex: "core-bootstrap"
-    role: BfFileRole
-
-    # Encodage et newlines
-    encoding: BfEncoding
-    newline_style: BfNewlineStyle
-
-    # Tailles
-    byte_length: u32             # taille en bytes
-    char_length: u32             # taille en "chars" Unicode (logique)
-    line_count: u32              # nombre de lignes
-
-    # Offsets de début de ligne (0-based), de longueur line_count
-    line_start_offsets: coll.Vec<u32>
-
-    # Hash du contenu ou identifiant stable (blake3, sha256, etc.)
-    content_hash: string
-
-    # Données libres
-    extra: coll.HashMap<string, string>
+fn Span.enclose_points(file: String, points: coll.Vec[LineCol]) -> Span
+  if points.len() == 0
+    return Span.dummy(file)
+  end
+  let first = points[0]
+  let span = Span.single(file, first.line, first.column)
+  let i = 1
+  while i < points.len()
+    let p = points[i]
+    let pt_span = Span.single(file, p.line, p.column)
+    span = Span.merge(span, pt_span)
+    i = i + 1
+  end
+  return span
 .end
 
-# ---------------------------------------------------------------------------
-# Spans logiques composés / multi-fichiers (ex: expansions)
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Line index helpers: map byte offsets to (line, column).
+# -----------------------------------------------------------------------------
 
-enum BfLogicalSpanKind
-    BfSpanFileLocal          # span simple dans un fichier
-    BfSpanExpansion          # span projeté via expansion (macro, généré)
-    BfSpanSynthetic          # span synthétique (pas directement présent dans le texte)
-    BfSpanMultiFile          # couvre plusieurs fichiers (rare, pour tooling)
+struct LineIndex
+  file: String
+  line_starts: coll.Vec[Int]
+  text_len: Int
 .end
 
-struct BfLogicalSpan
-    id: BfSpanId
-    kind: BfLogicalSpanKind
+fn LineIndex.build(file: String, text: String) -> LineIndex
+  let starts = coll.Vec[Int].new()
+  starts.push(0)
 
-    # Span "primaire" (souvent le span source direct)
-    primary: BfFileSpan
+  let i = 0
+  let len = text.len()
+  while i < len
+    let ch = text[i]
+    if ch == '\r'
+      let next = i + 1
+      if next < len and text[next] == '\n'
+        i = i + 1
+        next = next + 1
+      end
+      starts.push(next)
+    else if ch == '\n'
+      starts.push(i + 1)
+    end
+    i = i + 1
+  end
 
-    # Spans supplémentaires liés (ex: call-site d’une macro, définition d’un symbole, etc.)
-    related_spans: coll.Vec<BfFileSpan>
-
-    # Informations textuelles supplémentaires
-    description: string
-    extra: coll.HashMap<string, string>
+  return LineIndex(
+    file = file,
+    line_starts = starts,
+    text_len = len,
+  )
 .end
 
-# ---------------------------------------------------------------------------
-# Collections de fichiers et de spans
-# ---------------------------------------------------------------------------
-
-struct BfFileTable
-    # Table de tous les fichiers connus pour une compilation
-    files: coll.Vec<BfSourceFileMetadata>
-
-    # Index : path logique -> BfFileId.raw
-    file_id_by_path: coll.HashMap<string, u32>
-
-    # Notes libres
-    notes: string
-    extra: coll.HashMap<string, string>
+fn LineIndex.line_count(self: LineIndex) -> Int
+  return self.line_starts.len()
 .end
 
-struct BfSpanTable
-    # Table de spans "file-local"
-    spans: coll.Vec<BfFileSpan>
-
-    # Table de spans logiques (expansions, multi-fichiers, etc.)
-    logical_spans: coll.Vec<BfLogicalSpan>
-
-    # Index : file_id.raw -> liste de spans
-    spans_by_file_id: coll.HashMap<u32, coll.Vec<BfSpanId>>
-
-    # Index optionnel par tags (ex: "token", "expr", "diag.primary")
-    span_ids_by_tag: coll.HashMap<string, coll.Vec<BfSpanId>>
-
-    # Notes libres
-    notes: string
-    extra: coll.HashMap<string, string>
+fn LineIndex.clamp_offset(self: LineIndex, offset: Int) -> Int
+  if offset < 0
+    return 0
+  end
+  if offset > self.text_len
+    return self.text_len
+  end
+  return offset
 .end
 
-# ---------------------------------------------------------------------------
-# Snippets / extraits de code (logique, sans I/O)
-# ---------------------------------------------------------------------------
+fn LineIndex.line_col_for_offset(self: LineIndex, offset: Int) -> LineCol
+  if self.line_starts.len() == 0
+    return LineCol(line = 0, column = 0)
+  end
 
-enum BfSnippetKind
-    BfSnippetSingleLine
-    BfSnippetMultiLine
-    BfSnippetGutterOnly
-    BfSnippetOther
+  let off = self.clamp_offset(offset)
+  let lo = 0
+  let hi = self.line_starts.len() - 1
+  while lo <= hi
+    let mid = lo + (hi - lo) / 2
+    let start = self.line_starts[mid]
+    let next =
+      if mid + 1 < self.line_starts.len()
+        then self.line_starts[mid + 1]
+        else self.text_len + 1
+      end
+
+    if off < start
+      hi = mid - 1
+      continue
+    end
+
+    if off >= next
+      lo = mid + 1
+      continue
+    end
+
+    let column = (off - start) + 1
+    return LineCol(line = mid + 1, column = column)
+  end
+
+  # Fallback: point to the last known line.
+  let last_index = self.line_starts.len() - 1
+  let last_start = self.line_starts[last_index]
+  let column = (off - last_start) + 1
+  return LineCol(line = last_index + 1, column = column)
 .end
 
-struct BfSnippetHighlight
-    span_id: BfSpanId             # span mis en évidence
-    label: string                 # texte affichable (ex: "here", "previous declaration")
-    is_primary: bool
-.end
+fn LineIndex.span_for_range(self: LineIndex, start_offset: Int, end_offset: Int) -> Span
+  # Les offsets fournis correspondent aux positions dans la chaŒne source.
+  # Le point de d'entrÇ¸e est inclusif, celui de sortie exclusif : on rÇ¸assigne
+  # donc l'offset de fin au dernier caractŠre consommÇ¸ (ou au dÇ¸but si vide).
+  let clamped_start = self.clamp_offset(start_offset)
+  let adjusted_end =
+    if end_offset <= clamped_start
+      clamped_start
+    else
+      self.clamp_offset(end_offset - 1)
+    end
 
-struct BfSnippet
-    kind: BfSnippetKind
-    file_id: BfFileId
-
-    # Spans couverts par le snippet
-    region_span_id: BfSpanId
-    highlights: coll.Vec<BfSnippetHighlight>
-
-    # Ligne de contexte supplémentaire (offsets relatifs)
-    leading_context_lines: u32
-    trailing_context_lines: u32
-
-    # Représentation textuelle préformatée (optionnelle)
-    # Remplie par des passes externes (formatage, diag).
-    preformatted: string
-
-    extra: coll.HashMap<string, string>
-.end
-
-struct BfSnippetBundle
-    snippets: coll.Vec<BfSnippet>
-
-    # Index optionnel : span_id.raw -> indices de snippets
-    snippet_indices_by_span: coll.HashMap<u32, coll.Vec<u32>>
-
-    notes: string
-    extra: coll.HashMap<string, string>
-.end
-
-# ---------------------------------------------------------------------------
-# Paquet global spans + fichiers pour une compilation
-# ---------------------------------------------------------------------------
-
-struct BtSpanBundle
-    files: BfFileTable
-    spans: BfSpanTable
-    snippets: BfSnippetBundle
-
-    # Données globales libres (tags, versionning, etc.)
-    extra: coll.HashMap<string, string>
+  let start = self.line_col_for_offset(clamped_start)
+  let end = self.line_col_for_offset(adjusted_end)
+  return Span.from_positions(self.file, start, end)
 .end

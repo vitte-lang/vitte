@@ -1,4 +1,4 @@
-module vitte.compiler.ir.ir
+module vitte.compiler.ir
 
 import std.collections as coll
 import std.string as str
@@ -113,6 +113,13 @@ fn types_equal(a: Type, b: Type) -> Bool
     end
   end
   return a.kind == b.kind and a.name == b.name
+.end
+
+fn types_compatible(expected: Type, actual: Type) -> Bool
+  if expected.kind == TypeKind.Unknown or actual.kind == TypeKind.Unknown
+    return true
+  end
+  return types_equal(expected, actual)
 .end
 
 pub enum BinOp
@@ -683,6 +690,37 @@ fn validate_types(f: Function, out: &mut coll.Vec[ValidationError]) -> Unit
           pass
       end
       ii = ii + 1usize
+    end
+
+    match b.terminator
+      Some(Terminator.Return(value = vopt)) ->
+        let expected = f.ret_type
+        match vopt
+          Some(v) ->
+            let got = type_for_value(types, v)
+            if expected.kind == TypeKind.Unit
+              if got.kind != TypeKind.Unit and got.kind != TypeKind.Unknown
+                out.push(ValidationError(
+                  message = "Return dans " + f.name + " attend unit mais obtient " + type_name(got),
+                  span = f.span,
+                ))
+              end
+            elif expected.kind != TypeKind.Unknown and not types_compatible(expected, got)
+              out.push(ValidationError(
+                message = "Type de return invalide dans " + f.name + ": attendu " + type_name(expected) + ", obtenu " + type_name(got),
+                span = f.span,
+              ))
+            end
+          None ->
+            if expected.kind != TypeKind.Unit and expected.kind != TypeKind.Unknown
+              out.push(ValidationError(
+                message = "Return sans valeur dans " + f.name + " (attendu " + type_name(f.ret_type) + ")",
+                span = f.span,
+              ))
+            end
+        end
+      _ ->
+        pass
     end
     bi = bi + 1usize
   end

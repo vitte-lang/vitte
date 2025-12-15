@@ -9,9 +9,9 @@ module jmath.complex.roots
 #   - Solveurs polynomiaux :
 #       * linéaire : ax+b=0
 #       * quadratique : ax^2+bx+c=0 (réel/complexe) stable
-#       * cubique : Cardano (réel/complexe) robuste
-#       * quartique : Ferrari (implémentation pratique) (option: plus fragile)
-#   - Outils : Durand–Kerner (poly degré >=2) + raffinage Newton
+#       * cubique : Cardano (réel/complexe) robuste (coeffs réels)
+#       * quartique : Ferrari (pratique) (coeffs réels) – plus sensible
+#   - Outils : Durand–Kerner (poly degré >=2) + helpers
 #   - Tests smoke
 #
 # Conventions :
@@ -30,6 +30,10 @@ const HALF_PI : f64 = 1.570796326794896619231321691639751442
 
 const LN2     : f64 = 0.693147180559945309417232121458176568
 const INV_LN2 : f64 = 1.442695040888963407359924681001892137
+
+# split π for reduction helper
+const PI_HI : f64 = 3.141592653589793116
+const PI_LO : f64 = 1.224646799147353207e-16
 
 # ---------------------------------
 # Types
@@ -74,6 +78,12 @@ struct Solve4
   r1 : Complex
   r2 : Complex
   r3 : Complex
+.end
+
+# Durand–Kerner cfg
+struct DKCfg
+  iters : i32
+  eps : f64
 .end
 
 # ---------------------------------
@@ -121,6 +131,19 @@ fn wrap_angle_pi(theta: f64) -> f64
   ret t
 .end
 
+fn floor_f64(x: f64) -> f64
+  let i = x as i64
+  let fi = i as f64
+  if fi > x
+    ret (i - 1) as f64
+  .end
+  ret fi
+.end
+
+# ---------------------------------
+# Robust sqrt + hypot
+# ---------------------------------
+
 fn sqrt_newton(x: f64) -> f64
   if x <= 0.0
     if x == 0.0 ret 0.0 .end
@@ -130,7 +153,7 @@ fn sqrt_newton(x: f64) -> f64
   if y > 1.0 y = y * 0.5 .end
   if y < 1.0 y = 1.0 .end
   let mut i = 0
-  while i < 14
+  while i < 16
     y = 0.5 * (y + x / y)
     i = i + 1
   .end
@@ -195,40 +218,6 @@ fn abs_c(a: Complex) -> f64
   ret hypot_robust(a.re, a.im)
 .end
 
-fn arg_c(a: Complex) -> f64
-  # atan2 fallback
-  ret atan2_fallback(a.im, a.re)
-.end
-
-fn div(a: Complex, b: Complex) -> ComplexErr
-  let br = b.re
-  let bi = b.im
-  if br == 0.0 && bi == 0.0
-    ret ComplexErr { ok: false, value: zero() }
-  .end
-
-  let abr = abs_f64(br)
-  let abi = abs_f64(bi)
-
-  if abr >= abi
-    let r = bi / br
-    let denom = br + bi*r
-    let re = (a.re + a.im*r) / denom
-    let im = (a.im - a.re*r) / denom
-    ret ComplexErr { ok: true, value: c(re, im) }
-  .end
-
-  let r = br / bi
-  let denom = bi + br*r
-  let re = (a.re*r + a.im) / denom
-  let im = (a.im*r - a.re) / denom
-  ret ComplexErr { ok: true, value: c(re, im) }
-.end
-
-fn inv(a: Complex) -> ComplexErr
-  ret div(one(), a)
-.end
-
 # ---------------------------------
 # atan2 fallback
 # ---------------------------------
@@ -256,7 +245,9 @@ fn atan_fallback(x: f64) -> f64
 .end
 
 fn atan2_fallback(y: f64, x: f64) -> f64
-  if x > 0.0 ret atan_fallback(y / x) .end
+  if x > 0.0
+    ret atan_fallback(y / x)
+  .end
   if x < 0.0
     if y >= 0.0 ret atan_fallback(y / x) + PI .end
     ret atan_fallback(y / x) - PI
@@ -266,40 +257,35 @@ fn atan2_fallback(y: f64, x: f64) -> f64
   ret 0.0
 .end
 
-# ---------------------------------
-# sin/cos + exp/log minimal (for polar)
-# ---------------------------------
-
-fn floor_f64(x: f64) -> f64
-  let i = x as i64
-  let fi = i as f64
-  if fi > x ret (i - 1) as f64 .end
-  ret fi
+fn arg_c(a: Complex) -> f64
+  ret atan2_fallback(a.im, a.re)
 .end
 
-const PI_HI : f64 = 3.141592653589793116
-const PI_LO : f64 = 1.224646799147353207e-16
+# ---------------------------------
+# sin/cos minimal (for polar roots)
+# ---------------------------------
 
 fn reduce_angle_half_pi(theta: f64) -> (f64, i32)
   let inv = 2.0 / PI
   let kf = floor_f64(theta * inv + 0.5)
   let k = kf as i32
+
   let kf64 = k as f64
   let p2_hi = 0.5 * PI_HI
   let p2_lo = 0.5 * PI_LO
+
   let r1 = theta - kf64 * p2_hi
   let r2 = r1 - kf64 * p2_lo
   ret (r2, k)
 .end
 
 fn sin_poly(r: f64) -> f64
-  let x = r
-  let x2 = x*x
-  let x3 = x2*x
+  let x2 = r*r
+  let x3 = x2*r
   let x5 = x3*x2
   let x7 = x5*x2
   let x9 = x7*x2
-  ret x - x3*(1.0/6.0) + x5*(1.0/120.0) - x7*(1.0/5040.0) + x9*(1.0/362880.0)
+  ret r - x3*(1.0/6.0) + x5*(1.0/120.0) - x7*(1.0/5040.0) + x9*(1.0/362880.0)
 .end
 
 fn cos_poly(r: f64) -> f64
@@ -327,6 +313,7 @@ fn sincos_min(theta: f64) -> (f64, f64)
 
   let s0 = sin_poly(r)
   let c0 = cos_poly(r)
+
   let mut s = s0
   let mut c = c0
   if swap
@@ -341,15 +328,13 @@ fn sincos_min(theta: f64) -> (f64, f64)
   ret (-c, s)
 .end
 
-fn exp_poly7(r: f64) -> f64
-  let r2 = r*r
-  let r3 = r2*r
-  let r4 = r2*r2
-  let r5 = r4*r
-  let r6 = r3*r3
-  let r7 = r6*r
-  ret 1.0 + r + 0.5*r2 + (1.0/6.0)*r3 + (1.0/24.0)*r4 + (1.0/120.0)*r5 + (1.0/720.0)*r6 + (1.0/5040.0)*r7
+fn cos_angle(theta: f64) -> f64
+  ret sincos_min(theta).1
 .end
+
+# ---------------------------------
+# Real exp/log minimal (for r^(1/n))
+# ---------------------------------
 
 fn ldexp_f64(x: f64, exp2: i32) -> f64
   let mut v = x
@@ -371,6 +356,16 @@ fn ldexp_f64(x: f64, exp2: i32) -> f64
     ret v
   .end
   ret v
+.end
+
+fn exp_poly7(r: f64) -> f64
+  let r2 = r*r
+  let r3 = r2*r
+  let r4 = r2*r2
+  let r5 = r4*r
+  let r6 = r3*r3
+  let r7 = r6*r
+  ret 1.0 + r + 0.5*r2 + (1.0/6.0)*r3 + (1.0/24.0)*r4 + (1.0/120.0)*r5 + (1.0/720.0)*r6 + (1.0/5040.0)*r7
 .end
 
 fn exp_min(x: f64) -> f64
@@ -458,6 +453,7 @@ fn roots_n(z: Complex, n: i32) -> RootsResult
   if n <= 0
     ret RootsResult { ok: false, roots: [] }
   .end
+
   if z.re == 0.0 && z.im == 0.0
     let mut out : [Complex] = []
     out.push(zero())
@@ -490,7 +486,6 @@ fn cbrt_all(z: Complex) -> RootsResult
 .end
 
 fn sqrt_principal(z: Complex) -> Complex
-  # principal via stable formula
   let r = abs_c(z)
   if r == 0.0 ret zero() .end
   let u = sqrt_newton(0.5 * (r + z.re))
@@ -499,11 +494,11 @@ fn sqrt_principal(z: Complex) -> Complex
 .end
 
 # ---------------------------------
-# Polynomial helpers (complex evaluation)
+# Polynomial helpers (complex)
 # ---------------------------------
 
 fn poly_eval_complex(coeffs: &[Complex], x: Complex) -> Complex
-  # Horner
+  # Horner; coeffs: c0..cn
   let n = coeffs.len() as i32
   if n <= 0 ret zero() .end
   let mut acc = coeffs[(n - 1) as usize]
@@ -532,7 +527,7 @@ fn poly_deriv_coeffs(coeffs: &[Complex]) -> [Complex]
 .end
 
 # ---------------------------------
-# Linear / Quadratic (stable)
+# Linear / Quadratic (stable) – real coeffs
 # ---------------------------------
 
 fn solve_linear(a: f64, b: f64) -> (bool, f64)
@@ -544,7 +539,9 @@ fn solve_quadratic_real(a: f64, b: f64, c0: f64) -> Solve2
   # ax^2+bx+c=0 ; stable via q = -0.5*(b + sign(b)*sqrt(D))
   if a == 0.0
     let lin = solve_linear(b, c0)
-    if !lin.0 ret Solve2 { ok: false, r0: zero(), r1: zero() } .end
+    if !lin.0
+      ret Solve2 { ok: false, r0: zero(), r1: zero() }
+    .end
     let x = lin.1
     ret Solve2 { ok: true, r0: c(x, 0.0), r1: c(x, 0.0) }
   .end
@@ -565,10 +562,9 @@ fn solve_quadratic_real(a: f64, b: f64, c0: f64) -> Solve2
 .end
 
 # ---------------------------------
-# Cubic (Cardano) – coefficients real
+# Cubic (Cardano) – real coeffs
 # ---------------------------------
 # Solve: ax^3 + bx^2 + cx + d = 0
-# Reduce to depressed: t^3 + pt + q = 0 via x = t - b/(3a)
 
 fn cbrt_real(x: f64) -> f64
   if x == 0.0 ret 0.0 .end
@@ -585,19 +581,19 @@ fn solve_cubic_real(a: f64, b: f64, c1: f64, d: f64) -> Solve3
     ret Solve3 { ok: true, r0: q.r0, r1: q.r1, r2: q.r1 }
   .end
 
+  # normalize
   let inva = 1.0 / a
   let bb = b * inva
   let cc = c1 * inva
   let dd = d * inva
 
+  # depressed t^3 + p t + q = 0 via x = t - bb/3
   let shift = bb / 3.0
-
   let p = cc - (bb*bb)/3.0
   let q = (2.0*bb*bb*bb)/27.0 - (bb*cc)/3.0 + dd
 
-  let p3 = (p/3.0)
-  let q2 = (q/2.0)
-
+  let p3 = p / 3.0
+  let q2 = q / 2.0
   let disc = q2*q2 + p3*p3*p3
 
   if disc >= 0.0
@@ -607,15 +603,14 @@ fn solve_cubic_real(a: f64, b: f64, c1: f64, d: f64) -> Solve3
     let t0 = u + v
     let x0 = t0 - shift
 
-    # complex pair
     let re = -0.5*(u+v) - shift
     let im = (sqrt_newton(3.0)/2.0) * (u - v)
     ret Solve3 { ok: true, r0: c(x0, 0.0), r1: c(re, im), r2: c(re, -im) }
   .end
 
   # three real roots
-  let r = sqrt_newton(-p3*p3*p3) # = sqrt(-(p/3)^3)
-  let phi = atan2_fallback(r, -q2) # phi = atan2(sqrt(-disc), -q/2)
+  let sdisc = sqrt_newton(-disc)
+  let phi = atan2_fallback(sdisc, -q2)
   let m = 2.0 * sqrt_newton(-p/3.0)
 
   let t0 = m * cos_angle(phi/3.0)
@@ -630,21 +625,27 @@ fn solve_cubic_real(a: f64, b: f64, c1: f64, d: f64) -> Solve3
   }
 .end
 
-# cos using sincos_min
-fn cos_angle(theta: f64) -> f64
-  ret sincos_min(theta).1
-.end
+# ---------------------------------
+# Quartic (Ferrari) – real coeffs (pratique)
+# ---------------------------------
 
-# ---------------------------------
-# Quartic (Ferrari) – pratique (real coeffs)
-# ---------------------------------
-# Note: quartiques sont sensibles. Implémentation “usable”:
-#   - Normalisation en monique
-#   - Dépression via x = y - b/4a
-#   - Résolution du cubic resolvent
-#   - Construction des 4 racines
-#
-# Cette implémentation vise degrés bas et tests smoke.
+fn select_real_root3(s3: Solve3) -> Complex
+  let mut best = s3.r0
+  let mut bi = abs_f64(best.im)
+
+  let i1 = abs_f64(s3.r1.im)
+  if i1 < bi
+    best = s3.r1
+    bi = i1
+  .end
+
+  let i2 = abs_f64(s3.r2.im)
+  if i2 < bi
+    best = s3.r2
+  .end
+
+  ret best
+.end
 
 fn solve_quartic_real(a: f64, b: f64, c1: f64, d: f64, e: f64) -> Solve4
   if a == 0.0
@@ -666,30 +667,21 @@ fn solve_quartic_real(a: f64, b: f64, c1: f64, d: f64, e: f64) -> Solve4
   let q = C + A*A2/8.0 - A*B/2.0
   let r0 = D - 3.0*A2*A2/256.0 + A2*B/16.0 - A*C/4.0
 
-  # resolvent cubic: u^3 - (p/2)u^2 - r u + (r p/2 - q^2/8) = 0 (variant)
-  # We'll use standard: u^3 - p u^2 - 4 r u + (4 r p - q^2) = 0 / 8 scaling
-  let ca = 1.0
-  let cb = -p
-  let cc = -4.0*r0
-  let cd = 4.0*r0*p - q*q
-  let u3 = solve_cubic_real(ca, cb, cc, cd)
+  # resolvent cubic (scaled practical form):
+  # u^3 - p u^2 - 4 r u + (4 r p - q^2) = 0
+  let u3 = solve_cubic_real(1.0, -p, -4.0*r0, 4.0*r0*p - q*q)
   if !u3.ok
     ret Solve4 { ok: false, r0: zero(), r1: zero(), r2: zero(), r3: zero() }
   .end
 
-  # choose one root u (real preferred)
-  let u = select_real_root3(u3)
+  let u = select_real_root3(u3).re
 
-  let U = sqrt_newton(max_f64(0.0, u.re))
-  let sgnq = if q >= 0.0 then 1.0 else -1.0 .end
-
+  let U = sqrt_newton(max_f64(0.0, u))
   let v = if U == 0.0 then 0.0 else (-q / (2.0*U)) .end
 
-  # Solve two quadratics:
-  # y^2 + U y + (p/2 + u/2 + v) = 0
-  # y^2 - U y + (p/2 + u/2 - v) = 0
-  let k1 = 0.5*p + 0.5*u.re + v
-  let k2 = 0.5*p + 0.5*u.re - v
+  # two quadratics
+  let k1 = 0.5*p + 0.5*u + v
+  let k2 = 0.5*p + 0.5*u - v
 
   let s1 = solve_quadratic_real(1.0, U, k1)
   let s2 = solve_quadratic_real(1.0, -U, k2)
@@ -703,33 +695,23 @@ fn solve_quartic_real(a: f64, b: f64, c1: f64, d: f64, e: f64) -> Solve4
   ret Solve4 { ok: true, r0: x0, r1: x1, r2: x2, r3: x3 }
 .end
 
-fn select_real_root3(s3: Solve3) -> Complex
-  # prefer root with smallest |im|
-  let mut best = s3.r0
-  let mut bi = abs_f64(best.im)
-  let i1 = abs_f64(s3.r1.im)
-  if i1 < bi
-    best = s3.r1
-    bi = i1
-  .end
-  let i2 = abs_f64(s3.r2.im)
-  if i2 < bi
-    best = s3.r2
-  .end
-  ret best
-.end
-
 # ---------------------------------
-# Durand–Kerner for general polynomial (complex coeffs)
+# Durand–Kerner (complex coeffs)
 # ---------------------------------
-
-struct DKCfg
-  iters : i32
-  eps : f64
-.end
 
 fn dk_cfg_default() -> DKCfg
   ret DKCfg { iters: 64, eps: 1e-10 }
+.end
+
+fn max_coeff_abs(coeffs: &[Complex]) -> f64
+  let mut m = 0.0
+  let mut i = 0
+  while i < (coeffs.len() as i32)
+    let a = abs_c(coeffs[i as usize])
+    if a > m m = a .end
+    i = i + 1
+  .end
+  ret m
 .end
 
 fn solve_poly_durand_kerner(coeffs: &[Complex], cfg: DKCfg) -> RootsResult
@@ -738,18 +720,17 @@ fn solve_poly_durand_kerner(coeffs: &[Complex], cfg: DKCfg) -> RootsResult
   if n < 1
     ret RootsResult { ok: false, roots: [] }
   .end
+
   if n == 1
     # c0 + c1 x = 0 => x = -c0/c1
-    let c0 = coeffs[0]
-    let c1 = coeffs[1]
-    let q = div(neg(c0), c1)
+    let q = div(neg(coeffs[0]), coeffs[1])
     if !q.ok ret RootsResult { ok: false, roots: [] } .end
     let mut out : [Complex] = []
     out.push(q.value)
     ret RootsResult { ok: true, roots: out }
   .end
 
-  # initial guesses on circle
+  # initial guesses on a circle
   let mut roots : [Complex] = []
   roots.resize(n as usize, zero())
 
@@ -783,7 +764,6 @@ fn solve_poly_durand_kerner(coeffs: &[Complex], cfg: DKCfg) -> RootsResult
 
       let step = div(fxi, denom)
       if !step.ok
-        # numerical issue
         ret RootsResult { ok: false, roots: roots }
       .end
 
@@ -805,17 +785,6 @@ fn solve_poly_durand_kerner(coeffs: &[Complex], cfg: DKCfg) -> RootsResult
   ret RootsResult { ok: true, roots: roots }
 .end
 
-fn max_coeff_abs(coeffs: &[Complex]) -> f64
-  let mut m = 0.0
-  let mut i = 0
-  while i < (coeffs.len() as i32)
-    let a = abs_c(coeffs[i as usize])
-    if a > m m = a .end
-    i = i + 1
-  .end
-  ret m
-.end
-
 # ---------------------------------
 # Tests
 # ---------------------------------
@@ -825,10 +794,18 @@ fn approx_eq(a: f64, b: f64, eps: f64) -> bool
 .end
 
 fn test_roots_n_unity()
-  # z=1, n=4 => roots are i^k
   let rr = roots_n(one(), 4)
   if !rr.ok panic("roots_n failed") .end
-  if rr.roots.len() as i32 != 4 panic("roots_n size") .end
+  if (rr.roots.len() as i32) != 4 panic("roots_n size") .end
+.end
+
+fn test_sqrt_principal()
+  let z = c(3.0, 4.0)
+  let w = sqrt_principal(z)
+  let ww = mul(w, w)
+  if abs_f64(ww.re - z.re) > 2e-6 || abs_f64(ww.im - z.im) > 2e-6
+    panic("sqrt_principal wrong")
+  .end
 .end
 
 fn test_quadratic()
@@ -849,10 +826,12 @@ fn test_dk()
   let coeffs : [Complex] = [c(1.0, 0.0), c(0.0, 0.0), c(1.0, 0.0)]
   let rr = solve_poly_durand_kerner(&coeffs, dk_cfg_default())
   if !rr.ok panic("dk failed") .end
+  if (rr.roots.len() as i32) != 2 panic("dk size") .end
 .end
 
 fn run_all_tests()
   test_roots_n_unity()
+  test_sqrt_principal()
   test_quadratic()
   test_cubic()
   test_dk()

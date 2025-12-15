@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
 from tools.frontend_host import Diagnostic, Span, run_frontend
+from tools.project_sources import collect_project_sources
 
 
 @dataclass
@@ -28,15 +29,7 @@ def _log(log_file: Optional[Path], message: str) -> None:
 
 
 def _collect_sources(project_manifest: Path) -> List[Path]:
-    root = project_manifest.parent
-    sources: List[Path] = []
-    for subdir in ("bootstrap", "compiler", "src"):
-        base = root / subdir
-        if not base.is_dir():
-            continue
-        sources.extend(base.rglob("*.vitte"))
-    sources.sort()
-    return sources
+    return collect_project_sources(project_manifest)
 
 
 def _manifest_missing_diag(project_manifest: Path) -> Diagnostic:

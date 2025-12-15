@@ -4,6 +4,7 @@ import std.collections as coll
 import std.string as str
 
 import vitte.compiler.frontend.diagnostics as diag
+import vitte.compiler.span as source_span
 
 # =============================================================================
 # Vitte compiler – Lexer runtime (squelette projet complet)
@@ -127,19 +128,18 @@ struct Lexer
   source: String
   file: String
   index: Int
-  line: Int
-  col: Int
+  line_index: source_span.LineIndex
   tokens: coll.Vec[Token]
   diags: &mut diag.DiagnosticBag
 .end
 
 fn Lexer.new(source: String, file: String, diags: &mut diag.DiagnosticBag) -> Lexer
+  let line_index = source_span.LineIndex.build(file, source)
   return Lexer(
     source = source,
     file = file,
     index = 0,
-    line = 1,
-    col = 1,
+    line_index = line_index,
     tokens = coll.Vec[Token].new(),
     diags = diags,
   )
@@ -164,13 +164,7 @@ fn Lexer.run(self: &mut Lexer) -> coll.Vec[Token]
   end
 
   # Ajouter un token EOF final avec un span factice
-  let eof_span = diag.Span(
-    file = self.file,
-    start_line = self.line,
-    start_col = self.col,
-    end_line = self.line,
-    end_col = self.col,
-  )
+  let eof_span = self.make_span_from_offsets(self.index, self.index)
   let eof = Token.new(TokenKind.Eof, "", eof_span)
   self.tokens.push(eof)
 
@@ -207,26 +201,7 @@ fn Lexer.advance(self: &mut Lexer) -> Char
 
   let c = self.source[self.index]
   self.index = self.index + 1
-
-  if c == '\n'
-    self.line = self.line + 1
-    self.col = 1
-  else
-    self.col = self.col + 1
-  end
-
   return c
-.end
-
-fn Lexer.make_span_single(self: Lexer) -> diag.Span
-  # Span élémentaire au point courant (utile pour les tokens 1-char).
-  return diag.Span(
-    file = self.file,
-    start_line = self.line,
-    start_col = self.col,
-    end_line = self.line,
-    end_col = self.col,
-  )
 .end
 
 fn Lexer.push_token(self: &mut Lexer, kind: TokenKind, lexeme: String, span: diag.Span) -> Unit
@@ -234,10 +209,18 @@ fn Lexer.push_token(self: &mut Lexer, kind: TokenKind, lexeme: String, span: dia
   self.tokens.push(tok)
 .end
 
-fn Lexer.push_simple_token(self: &mut Lexer, kind: TokenKind, c: Char) -> Unit
-  let span = self.make_span_single()
-  let s = str.from_char(c)
-  self.push_token(kind, s, span)
+fn Lexer.make_span_from_offsets(self: Lexer, start_offset: Int, end_offset: Int) -> diag.Span
+  return self.line_index.span_for_range(start_offset, end_offset)
+.end
+
+fn Lexer.skip_line_comment(self: &mut Lexer) -> Unit
+  while not self.is_eof()
+    let c = self.peek_char()
+    if c == '\n'
+      break
+    end
+    self.advance()
+  end
 .end
 
 # -----------------------------------------------------------------------------
@@ -267,10 +250,17 @@ fn Lexer.lex_one_token(self: &mut Lexer) -> Unit
     return
   end
 
+  # Commentaires commençant par '#'
+  if c == '#'
+    self.skip_line_comment()
+    return
+  end
+
   # Newline -> token Newline
   if c == '\n'
-    let span = self.make_span_single()
+    let start = self.index
     self.advance()
+    let span = self.make_span_from_offsets(start, self.index)
     self.push_token(TokenKind.Newline, "\n", span)
     self.handle_indent_after_newline()
     return
@@ -309,8 +299,7 @@ fn Lexer.lex_one_token(self: &mut Lexer) -> Unit
 # -----------------------------------------------------------------------------
 
 fn Lexer.lex_ident_or_keyword(self: &mut Lexer) -> Unit
-  let start_line = self.line
-  let start_col = self.col
+  let start_offset = self.index
 
   let buf = ""
   while true
@@ -322,13 +311,7 @@ fn Lexer.lex_ident_or_keyword(self: &mut Lexer) -> Unit
     buf = buf + str.from_char(ch)
   end
 
-  let span = diag.Span(
-    file = self.file,
-    start_line = start_line,
-    start_col = start_col,
-    end_line = self.line,
-    end_col = self.col,
-  )
+  let span = self.make_span_from_offsets(start_offset, self.index)
 
   # Classification en mots-clés ou Ident
   let kind =
@@ -359,8 +342,7 @@ fn Lexer.lex_ident_or_keyword(self: &mut Lexer) -> Unit
 .end
 
 fn Lexer.lex_number(self: &mut Lexer) -> Unit
-  let start_line = self.line
-  let start_col = self.col
+  let start_offset = self.index
 
   let buf = ""
   let seen_dot = false
@@ -384,13 +366,7 @@ fn Lexer.lex_number(self: &mut Lexer) -> Unit
     break
   end
 
-  let span = diag.Span(
-    file = self.file,
-    start_line = start_line,
-    start_col = start_col,
-    end_line = self.line,
-    end_col = self.col,
-  )
+  let span = self.make_span_from_offsets(start_offset, self.index)
 
   let kind =
     if seen_dot then TokenKind.FloatLiteral else TokenKind.IntLiteral end
@@ -399,8 +375,7 @@ fn Lexer.lex_number(self: &mut Lexer) -> Unit
 .end
 
 fn Lexer.lex_char_literal(self: &mut Lexer) -> Unit
-  let start_line = self.line
-  let start_col = self.col
+  let start_offset = self.index
 
   # Consommer la quote ouvrante
   let _ = self.advance()
@@ -409,11 +384,11 @@ fn Lexer.lex_char_literal(self: &mut Lexer) -> Unit
   let terminated = false
 
   if self.is_eof()
-    let span = self.make_span_single()
+    let span = self.make_span_from_offsets(start_offset, self.index)
     self.diags.add_error(
-      "Littéral de caractère non terminé",
+      "Litt?ral de caract?re non termin?",
       span,
-      diag.code_for_message("Littéral de caractère non terminé"),
+      diag.code_for_message("Litt?ral de caract?re non termin?"),
     )
     self.push_token(TokenKind.CharLiteral, buf, span)
     return
@@ -421,20 +396,21 @@ fn Lexer.lex_char_literal(self: &mut Lexer) -> Unit
 
   let c = self.peek_char()
 
-  # Support d'une forme minimale : un caractère ou une séquence d'échappement simple.
-  if c == '\\'
+  # Support d'une forme minimale : un caract?re ou une s?quence d'?chappement simple.
+  if c == '\'
     let first = self.advance()
     buf = buf + str.from_char(first)
     if not self.is_eof()
       let escaped = self.advance()
       buf = buf + str.from_char(escaped)
     end
-  else if c == '\n' or c == '\0'
-    let span = self.make_span_single()
+  else if c == '
+' or c == ' '
+    let span = self.make_span_from_offsets(start_offset, self.index)
     self.diags.add_error(
-      "Littéral de caractère non terminé",
+      "Litt?ral de caract?re non termin?",
       span,
-      diag.code_for_message("Littéral de caractère non terminé"),
+      diag.code_for_message("Litt?ral de caract?re non termin?"),
     )
     self.push_token(TokenKind.CharLiteral, buf, span)
     return
@@ -443,24 +419,18 @@ fn Lexer.lex_char_literal(self: &mut Lexer) -> Unit
     buf = buf + str.from_char(ch)
   end
 
-  if self.peek_char() == '\''
+  if self.peek_char() == '''
     self.advance()
     terminated = true
   end
 
-  let span = diag.Span(
-    file = self.file,
-    start_line = start_line,
-    start_col = start_col,
-    end_line = self.line,
-    end_col = self.col,
-  )
+  let span = self.make_span_from_offsets(start_offset, self.index)
 
   if not terminated
     self.diags.add_error(
-      "Littéral de caractère non terminé",
+      "Litt?ral de caract?re non termin?",
       span,
-      diag.code_for_message("Littéral de caractère non terminé"),
+      diag.code_for_message("Litt?ral de caract?re non termin?"),
     )
   end
 
@@ -468,11 +438,10 @@ fn Lexer.lex_char_literal(self: &mut Lexer) -> Unit
 .end
 
 fn Lexer.lex_string(self: &mut Lexer) -> Unit
-  let start_line = self.line
-  let start_col = self.col
+  let start_offset = self.index
 
   # Consommer le guillemet ouvrant
-  let quote = self.advance()
+  let _ = self.advance()
 
   let buf = ""
   let terminated = false
@@ -481,13 +450,14 @@ fn Lexer.lex_string(self: &mut Lexer) -> Unit
     let c = self.peek_char()
 
     if c == '"'
-      # Fin de chaîne
+      # Fin de cha?ne
       self.advance()
       terminated = true
       break
     end
 
-    if c == '\n'
+    if c == '
+'
       # Fin de ligne avant la fermeture : erreur
       break
     end
@@ -496,19 +466,13 @@ fn Lexer.lex_string(self: &mut Lexer) -> Unit
     buf = buf + str.from_char(ch)
   end
 
-  let span = diag.Span(
-    file = self.file,
-    start_line = start_line,
-    start_col = start_col,
-    end_line = self.line,
-    end_col = self.col,
-  )
+  let span = self.make_span_from_offsets(start_offset, self.index)
 
   if not terminated
     self.diags.add_error(
-      "Littéral de chaîne non terminé",
+      "Litt?ral de cha?ne non termin?e",
       span,
-      diag.code_for_message("Littéral de chaîne non terminé"),
+      diag.code_for_message("Litt?ral de cha?ne non termin?e"),
     )
   end
 
@@ -516,65 +480,103 @@ fn Lexer.lex_string(self: &mut Lexer) -> Unit
 .end
 
 fn Lexer.lex_operator_or_punct(self: &mut Lexer) -> Unit
-  let span = self.make_span_single()
+  let start_offset = self.index
   let c = self.advance()
   let next = self.peek_char()
 
-  # 2-caractères d'abord
+  # 2-caract?res d'abord
   if c == '-' and next == '>'
     self.advance()
+    let span = self.make_span_from_offsets(start_offset, self.index)
     self.push_token(TokenKind.Arrow, "->", span)
     return
   end
 
   if c == '=' and next == '>'
     self.advance()
+    let span = self.make_span_from_offsets(start_offset, self.index)
     self.push_token(TokenKind.FatArrow, "=>", span)
     return
   end
 
   if c == '=' and next == '='
     self.advance()
+    let span = self.make_span_from_offsets(start_offset, self.index)
     self.push_token(TokenKind.EqualEqual, "==", span)
     return
   end
 
   if c == '!' and next == '='
     self.advance()
+    let span = self.make_span_from_offsets(start_offset, self.index)
     self.push_token(TokenKind.BangEqual, "!=", span)
     return
   end
 
+  if c == '+' and next == '='
+    self.advance()
+    let span = self.make_span_from_offsets(start_offset, self.index)
+    self.push_token(TokenKind.PlusEqual, "+=", span)
+    return
+  end
+
+  if c == '-' and next == '='
+    self.advance()
+    let span = self.make_span_from_offsets(start_offset, self.index)
+    self.push_token(TokenKind.MinusEqual, "-=", span)
+    return
+  end
+
+  if c == '*' and next == '='
+    self.advance()
+    let span = self.make_span_from_offsets(start_offset, self.index)
+    self.push_token(TokenKind.StarEqual, "*=", span)
+    return
+  end
+
+  if c == '/' and next == '='
+    self.advance()
+    let span = self.make_span_from_offsets(start_offset, self.index)
+    self.push_token(TokenKind.SlashEqual, "/=", span)
+    return
+  end
+
   if c == '!' and next != '='
+    let span = self.make_span_from_offsets(start_offset, self.index)
     self.push_token(TokenKind.Bang, "!", span)
     return
   end
 
   if c == '<' and next == '='
     self.advance()
+    let span = self.make_span_from_offsets(start_offset, self.index)
     self.push_token(TokenKind.LessEqual, "<=", span)
     return
   end
 
   if c == '>' and next == '='
     self.advance()
+    let span = self.make_span_from_offsets(start_offset, self.index)
     self.push_token(TokenKind.GreaterEqual, ">=", span)
     return
   end
 
   if c == '&' and next == '&'
     self.advance()
+    let span = self.make_span_from_offsets(start_offset, self.index)
     self.push_token(TokenKind.AmpAmp, "&&", span)
     return
   end
 
   if c == '|' and next == '|'
     self.advance()
+    let span = self.make_span_from_offsets(start_offset, self.index)
     self.push_token(TokenKind.PipePipe, "||", span)
     return
   end
 
-  # Sinon, 1-caractère
+  # Sinon, 1-caract?re
+  let span = self.make_span_from_offsets(start_offset, self.index)
 
   if c == '('
     self.push_token(TokenKind.LParen, "(", span)
@@ -614,7 +616,8 @@ fn Lexer.lex_operator_or_punct(self: &mut Lexer) -> Unit
   if c == ':'
     if next == ':'
       self.advance()
-      self.push_token(TokenKind.ColonColon, "::", span)
+      let wide_span = self.make_span_from_offsets(start_offset, self.index)
+      self.push_token(TokenKind.ColonColon, "::", wide_span)
       return
     end
     self.push_token(TokenKind.Colon, ":", span)
@@ -666,19 +669,15 @@ fn Lexer.lex_operator_or_punct(self: &mut Lexer) -> Unit
     return
   end
 
-  # Caractère inconnu : produire Unknown et signaler immédiatement.
+  # Caract?re inconnu : produire Unknown et signaler imm?diatement.
   let s = str.from_char(c)
   self.push_token(TokenKind.Unknown, s, span)
   self.diags.add_error(
-    "Caractère invalide",
+    "Caract?re invalide",
     span,
-    diag.code_for_message("Caractère invalide"),
+    diag.code_for_message("Caract?re invalide"),
   )
 .end
-
-# -----------------------------------------------------------------------------
-# Indentation – stubs pour préparer un lexing sensible à l'indentation
-# -----------------------------------------------------------------------------
 
 fn Lexer.handle_indent_after_newline(self: &mut Lexer) -> Unit
   # Placeholder : on pourra ici mesurer l'indentation et émettre Indent/Dedent.

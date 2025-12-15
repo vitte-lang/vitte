@@ -2,18 +2,6 @@ module jmath.constants.angles
 
 # ============================================================================
 # constants.angles – constantes d’angles + conversions + normalisations (ultra)
-#
-# Objectifs :
-#   - Constantes : pi, tau, pi/2, pi/4, etc. + degrés/radians + gradians/turns
-#   - Conversions : deg<->rad, grad<->rad, turn<->rad
-#   - Normalisations robustes : wrap [-pi,pi], [0,2pi), [-pi/2,pi/2], etc.
-#   - Réductions rapides : quadrant (k * pi/2) + reste (r)
-#   - Tables utiles : multiples de pi/12, pi/16, pi/180
-#   - Outils : approx_eq, clamp, safe_mod
-#
-# Conventions :
-#   - Pas d’accolades, blocs en `.end`
-#   - Pas d’I/O
 # ============================================================================
 
 # ---------------------------------
@@ -23,7 +11,7 @@ module jmath.constants.angles
 const PI      : f64 = 3.141592653589793238462643383279502884
 const TAU     : f64 = 6.283185307179586476925286766559005768
 
-const HALF_PI : f64 = 1.570796326794896619231321691639751442
+const HALF_PI    : f64 = 1.570796326794896619231321691639751442
 const QUARTER_PI : f64 = 0.785398163397448309615660845819875721
 
 const THIRD_PI : f64 = 1.047197551196597746154214461093167628
@@ -58,7 +46,6 @@ const RAD_PER_ARC_SEC : f64 = RAD_PER_DEG / ARC_SEC_PER_DEG
 # Multiples pratiques de pi
 # ---------------------------------
 
-# pi / n
 const PI_OVER_2   : f64 = HALF_PI
 const PI_OVER_3   : f64 = THIRD_PI
 const PI_OVER_4   : f64 = QUARTER_PI
@@ -68,9 +55,8 @@ const PI_OVER_12  : f64 = 0.2617993877991494365385536152732919070
 const PI_OVER_16  : f64 = 0.1963495408493620774039152114549689304
 const PI_OVER_180 : f64 = RAD_PER_DEG
 
-# multiples entiers
-const TWO_PI_OVER_3  : f64 = 2.094395102393195492308428922186335257
-const THREE_PI_OVER_2: f64 = 4.712388980384689857693965074919254326
+const TWO_PI_OVER_3   : f64 = 2.094395102393195492308428922186335257
+const THREE_PI_OVER_2 : f64 = 4.712388980384689857693965074919254326
 
 # ---------------------------------
 # Splits double-double (réduction précise)
@@ -82,12 +68,11 @@ const PI_LO  : f64 = 1.224646799147353207e-16
 const TAU_HI : f64 = 6.283185307179586232
 const TAU_LO : f64 = 2.449293598294706414e-16
 
-# (pi/2) split
 const PIO2_HI : f64 = 1.570796326794896558
 const PIO2_LO : f64 = 6.123233995736766036e-17
 
 # ---------------------------------
-# Utils de base
+# Utils
 # ---------------------------------
 
 fn abs_f64(x: f64) -> f64
@@ -126,87 +111,35 @@ fn floor_f64(x: f64) -> f64
 # Conversions
 # ---------------------------------
 
-fn rad_to_deg(rad: f64) -> f64
-  ret rad * DEG_PER_RAD
-.end
+fn rad_to_deg(rad: f64) -> f64 ret rad * DEG_PER_RAD .end
+fn deg_to_rad(deg: f64) -> f64 ret deg * RAD_PER_DEG .end
 
-fn deg_to_rad(deg: f64) -> f64
-  ret deg * RAD_PER_DEG
-.end
+fn rad_to_grad(rad: f64) -> f64 ret rad * GRAD_PER_RAD .end
+fn grad_to_rad(grad: f64) -> f64 ret grad * RAD_PER_GRAD .end
 
-fn rad_to_grad(rad: f64) -> f64
-  ret rad * GRAD_PER_RAD
-.end
+fn rad_to_turn(rad: f64) -> f64 ret rad * TURN_PER_RAD .end
+fn turn_to_rad(turn: f64) -> f64 ret turn * RAD_PER_TURN .end
 
-fn grad_to_rad(grad: f64) -> f64
-  ret grad * RAD_PER_GRAD
-.end
+fn deg_to_grad(deg: f64) -> f64 ret deg * (400.0/360.0) .end
+fn grad_to_deg(grad: f64) -> f64 ret grad * (360.0/400.0) .end
 
-fn rad_to_turn(rad: f64) -> f64
-  ret rad * TURN_PER_RAD
-.end
+fn deg_to_turn(deg: f64) -> f64 ret deg / 360.0 .end
+fn turn_to_deg(turn: f64) -> f64 ret turn * 360.0 .end
 
-fn turn_to_rad(turn: f64) -> f64
-  ret turn * RAD_PER_TURN
-.end
+fn grad_to_turn(grad: f64) -> f64 ret grad / 400.0 .end
+fn turn_to_grad(turn: f64) -> f64 ret turn * 400.0 .end
 
-fn deg_to_grad(deg: f64) -> f64
-  # 360 deg = 400 grad
-  ret deg * (400.0/360.0)
-.end
+fn deg_to_arcmin(deg: f64) -> f64 ret deg * ARC_MIN_PER_DEG .end
+fn deg_to_arcsec(deg: f64) -> f64 ret deg * ARC_SEC_PER_DEG .end
 
-fn grad_to_deg(grad: f64) -> f64
-  ret grad * (360.0/400.0)
-.end
+fn arcmin_to_deg(arcmin: f64) -> f64 ret arcmin / ARC_MIN_PER_DEG .end
+fn arcsec_to_deg(arcsec: f64) -> f64 ret arcsec / ARC_SEC_PER_DEG .end
 
-fn deg_to_turn(deg: f64) -> f64
-  ret deg / 360.0
-.end
+fn arcmin_to_rad(arcmin: f64) -> f64 ret arcmin * RAD_PER_ARC_MIN .end
+fn arcsec_to_rad(arcsec: f64) -> f64 ret arcsec * RAD_PER_ARC_SEC .end
 
-fn turn_to_deg(turn: f64) -> f64
-  ret turn * 360.0
-.end
-
-fn grad_to_turn(grad: f64) -> f64
-  ret grad / 400.0
-.end
-
-fn turn_to_grad(turn: f64) -> f64
-  ret turn * 400.0
-.end
-
-# Arcminutes/seconds
-fn deg_to_arcmin(deg: f64) -> f64
-  ret deg * ARC_MIN_PER_DEG
-.end
-
-fn deg_to_arcsec(deg: f64) -> f64
-  ret deg * ARC_SEC_PER_DEG
-.end
-
-fn arcmin_to_deg(arcmin: f64) -> f64
-  ret arcmin / ARC_MIN_PER_DEG
-.end
-
-fn arcsec_to_deg(arcsec: f64) -> f64
-  ret arcsec / ARC_SEC_PER_DEG
-.end
-
-fn arcmin_to_rad(arcmin: f64) -> f64
-  ret arcmin * RAD_PER_ARC_MIN
-.end
-
-fn arcsec_to_rad(arcsec: f64) -> f64
-  ret arcsec * RAD_PER_ARC_SEC
-.end
-
-fn rad_to_arcmin(rad: f64) -> f64
-  ret rad_to_deg(rad) * ARC_MIN_PER_DEG
-.end
-
-fn rad_to_arcsec(rad: f64) -> f64
-  ret rad_to_deg(rad) * ARC_SEC_PER_DEG
-.end
+fn rad_to_arcmin(rad: f64) -> f64 ret rad_to_deg(rad) * ARC_MIN_PER_DEG .end
+fn rad_to_arcsec(rad: f64) -> f64 ret rad_to_deg(rad) * ARC_SEC_PER_DEG .end
 
 # ---------------------------------
 # Normalisations (wrapping)
@@ -238,14 +171,9 @@ fn wrap_0_tau(theta: f64) -> f64
 
 fn wrap_half_pi(theta: f64) -> f64
   # [-pi/2, pi/2]
-  # Reduce to (-pi,pi] then fold
   let t = wrap_pi(theta)
-  if t > HALF_PI
-    ret PI - t
-  .end
-  if t < -HALF_PI
-    ret -PI - t
-  .end
+  if t > HALF_PI ret PI - t .end
+  if t < -HALF_PI ret -PI - t .end
   ret t
 .end
 
@@ -288,17 +216,12 @@ fn wrap_turn_1(turn: f64) -> f64
 # ---------------------------------
 # Réduction quadrant (k*pi/2 + r)
 # ---------------------------------
-# retourne r (petit) et k (entier) tel que:
-# theta = k*(pi/2) + r
-# avec r ~ [-pi/4, pi/4] après folding optionnel.
 
 fn reduce_pio2(theta: f64) -> (f64, i32)
-  # k = round(theta / (pi/2))
   let inv = 2.0 / PI
   let kf = floor_f64(theta * inv + 0.5)
   let k = kf as i32
 
-  # r = theta - k*(pi/2) avec split (double-double léger)
   let kf64 = k as f64
   let r1 = theta - kf64 * PIO2_HI
   let r2 = r1 - kf64 * PIO2_LO
@@ -306,7 +229,6 @@ fn reduce_pio2(theta: f64) -> (f64, i32)
 .end
 
 fn fold_to_pio4(r: f64, k: i32) -> (f64, i32, bool)
-  # Applique folding pour obtenir |r|<=pi/4, et indique si swap sin/cos
   let mut rr = r
   let mut kk = k
   let mut swap = false
@@ -321,18 +243,13 @@ fn fold_to_pio4(r: f64, k: i32) -> (f64, i32, bool)
     kk = kk - 1
     swap = true
   .end
-
   ret (rr, kk, swap)
 .end
 
-# ---------------------------------
-# Helpers pour sinus/cosinus (interfaces)
-# ---------------------------------
-
 struct ReducedAngle
-  r : f64        # petit reste
-  k : i32        # quadrant multiples pi/2
-  swap : bool    # pour polys sur |r|<=pi/4
+  r : f64
+  k : i32
+  swap : bool
 .end
 
 fn reduce_for_trig(theta: f64) -> ReducedAngle
@@ -346,23 +263,21 @@ fn quadrant(k: i32) -> i32
 .end
 
 # ---------------------------------
-# Safe mod helpers (pour ints)
+# Safe mod helpers
 # ---------------------------------
 
 fn mod_i32(a: i32, m: i32) -> i32
-  # remainder always in [0,m)
   let mut r = a % m
   if r < 0 r = r + m .end
   ret r
 .end
 
 fn mod_f64_positive(x: f64, m: f64) -> f64
-  # x mod m in [0,m)
   if m <= 0.0 ret 0.0 .end
   let q = floor_f64(x / m)
-  let r = x - q*m
-  if r < 0.0 ret r + m .end
-  if r >= m ret r - m .end
+  let mut r = x - q*m
+  if r < 0.0 r = r + m .end
+  if r >= m r = r - m .end
   ret r
 .end
 

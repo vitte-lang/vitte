@@ -6,6 +6,12 @@ import sys
 from dataclasses import dataclass
 import json
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from tools.project_sources import collect_project_sources
+
 @dataclass
 class ProjectCommandOptions:
     """
@@ -43,34 +49,55 @@ def write_text(path: Path, content: str) -> None:
 
 def find_vitte_sources(project_manifest: Path) -> list[Path]:
     """
-    Retourne la liste des fichiers .vitte pertinents pour le projet,
-    en scannant les répertoires bootstrap/, compiler/ et src/ à côté
-    du manifest Muffin.
+    Retourne la liste complète des fichiers .vitte pertinents déclarés dans
+    le manifest Muffin (section [project.sources]).
     """
-    root = project_manifest.parent
-    sources: list[Path] = []
-
-    for subdir_name in ("bootstrap", "compiler", "src"):
-        base = root / subdir_name
-        if not base.is_dir():
-            continue
-        for path in base.rglob("*.vitte"):
-            sources.append(path)
-
-    # Tri pour des résultats déterministes
-    sources.sort()
-    return sources
+    return collect_project_sources(project_manifest)
 
 
 def create_placeholder_binary(path: Path, project: Path) -> None:
-    script = """#!/usr/bin/env sh
-echo "[vittec][bootstrap] binaire fictif pour {project}"
-echo "Ce fichier a été généré par le bootstrap Python (stage1)."
-echo "Aucune compilation réelle n'a été effectuée."
-exit 0
+    # Le "binaire" stage1/stage2 est un script Python exécutable :
+    # - fonctionne sur POSIX (shebang + chmod),
+    # - fonctionne sur Windows via `python <file>` (pas d'extension requise).
+    # Il sert de placeholder tant que le compilateur Vitte natif n'est pas câblé.
+    script = """#!/usr/bin/env python3
+from __future__ import annotations
+
+from pathlib import Path
+import sys
+
+
+def _find_repo_root(start: Path) -> Path:
+    for candidate in (start, *start.parents):
+        if (candidate / "muffin.muf").is_file():
+            return candidate
+    return start
+
+
+def main() -> int:
+    here = Path(__file__).resolve()
+    repo_root = _find_repo_root(here.parent)
+    stage1_dir = repo_root / "bootstrap" / "stage1"
+
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    if str(stage1_dir) not in sys.path:
+        sys.path.insert(0, str(stage1_dir))
+
+    try:
+        from vittec_stage1 import main as stage1_main
+    except Exception as exc:
+        print(f"[vittec][bootstrap][ERROR] stage1 wrapper indisponible: {exc}", file=sys.stderr)
+        return 2
+
+    return int(stage1_main())
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
 """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(script.format(project=project), encoding="utf-8")
+    path.write_text(script, encoding="utf-8")
     path.chmod(0o755)
 
 
@@ -130,7 +157,7 @@ def cmd_build_project(opts: ProjectCommandOptions) -> int:
         f"  root     = {root}\n"
         f"  out-bin  = {opts.out_bin}\n"
         f"  log-file = {opts.log_file}\n"
-        f"  sources  = {len(sources)} fichiers .vitte trouvés sous bootstrap/, compiler/, src/"
+        f"  sources  = {len(sources)} fichiers .vitte déclarés via project.sources"
     )
     print(msg)
     log_if_needed(opts.log_file, msg)
@@ -181,7 +208,7 @@ def cmd_check_project(opts: ProjectCommandOptions) -> int:
         f"[vittec][bootstrap] check projet (Muffin) : {opts.project}\n"
         f"  root     = {root}\n"
         f"  log-file = {opts.log_file}\n"
-        f"  sources  = {len(sources)} fichiers .vitte trouvés sous bootstrap/, compiler/, src/\n"
+        f"  sources  = {len(sources)} fichiers .vitte déclarés via project.sources\n"
         "  (implémentation réelle à écrire en Vitte : parse + resolve + typecheck.)"
     )
     print(msg)
