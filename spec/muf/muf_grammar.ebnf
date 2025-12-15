@@ -1,35 +1,29 @@
-  # MUF 2025 — strong grammar (EBNF) — reference
-  #
-  # Design:
-  # - indentation + `.end` blocks (no braces)
-  # - simple key/value + lists
-  # - multiple `package` blocks
-  #
-  program        ::= WS? { toplevel WS? } ;
-  toplevel       ::= workspace_block | toolchain_block | package_block | profile_block ;
+  # MUF 2025 — Strong grammar (EBNF) — reference
+
+  program         ::= WS? { toplevel WS? } ;
+  toplevel        ::= workspace_block | toolchain_block | package_block | profile_block ;
 
   workspace_block ::= "workspace" NL { kv_line } ".end" ;
   toolchain_block ::= "toolchain" NL { kv_line } ".end" ;
   profile_block   ::= "profile" WS1 ident NL { kv_line } ".end" ;
+  package_block   ::= "package" NL { kv_line } ".end" ;
 
-  package_block  ::= "package" NL { kv_line } ".end" ;
+  kv_line         ::= WS1 ident WS1 value NL? ;
 
-  kv_line        ::= WS1 ident WS1 value NL? ;
+  value           ::= string | ident | boolean | number | list ;
+  list            ::= "[" WS? [ value { WS? "," WS? value } ] WS? "]" ;
 
-  value          ::= string | ident | boolean | number | list ;
-  list           ::= "[" WS? [ value { WS? "," WS? value } ] WS? "]" ;
+  boolean         ::= "true" | "false" ;
+  number          ::= int | float ;
+  int             ::= DIGIT { DIGIT } ;
+  float           ::= DIGIT { DIGIT } "." DIGIT { DIGIT } ;
 
-  boolean        ::= "true" | "false" ;
-  number         ::= int | float ;
-  int            ::= DIGIT { DIGIT } ;
-  float          ::= DIGIT { DIGIT } "." DIGIT { DIGIT } ;
+  ident           ::= ALPHA { ALPHA | DIGIT | "_" | "-" } ;
+  string          ::= """ { char } """ ;
 
-  ident          ::= ALPHA { ALPHA | DIGIT | "_" | "-" } ;
-  string         ::= """ { char } """ ;
-
-  NL             ::= "
+  NL              ::= "
 " | "
 " ;
-  WS             ::= { " " | "	" | NL | comment } ;
-  WS1            ::= ( " " | "	" ) { " " | "	" } ;
-  comment        ::= "#" { ? not NL ? } NL? ;
+  WS              ::= { " " | "	" | NL | comment } ;
+  WS1             ::= ( " " | "	" ) { " " | "	" } ;
+  comment         ::= "#" { ? not NL ? } NL? ;

@@ -1,0 +1,163 @@
+# Vitte 2025 – Grammaire EBNF (core + phrase)
+#
+# Cette grammaire couvre le langage au maximum tel qu'utilisé par le parser :
+# modules/import/export, declarations de types (struct/union/enum/type),
+# fonctions, scenarios, points d'entree, controle de flux, expressions,
+# patterns, litteraux, ainsi que la surface "phrase" (mod/use/type/fn/scn/prog).
+
+program            ::= WS? { toplevel_decl WS? } ;
+
+toplevel_decl      ::= module_decl
+                     | import_decl
+                     | export_decl
+                     | type_decl
+                     | function_decl
+                     | scenario_decl
+                     | entrypoint_decl
+                     | global_decl ;
+
+module_decl        ::= "module" WS1 module_path ;
+import_decl        ::= "import" WS1 module_path [ WS1 "as" WS1 ident ] ;
+export_decl        ::= "export" WS1 "all" [ WS1 "from" WS1 module_path ]
+                     | "export" WS1 export_list [ WS1 "from" WS1 module_path ] ;
+export_list        ::= ident { WS? "," WS? ident } ;
+module_path        ::= ident { WS? "." WS? ident } ;
+
+type_decl          ::= struct_decl | union_decl | enum_decl | type_alias ;
+struct_decl        ::= "struct" WS1 ident WS? type_body ;
+union_decl         ::= "union"  WS1 ident WS? type_body ;
+type_body          ::= NEWLINE? WS? { field_decl WS? } ".end" ;
+field_decl         ::= ident WS? ":" WS? type_expr [ WS? "=" WS? expression ] ;
+enum_decl          ::= "enum" WS1 ident WS? enum_body ;
+enum_body          ::= NEWLINE? WS? { enum_entry WS? } ".end" ;
+enum_entry         ::= ident [ WS? "(" WS? enum_payload? WS? ")" ] ;
+enum_payload       ::= enum_payload_field { WS? "," WS? enum_payload_field } ;
+enum_payload_field ::= ident WS? ":" WS? type_expr ;
+type_alias         ::= "type" WS1 ident WS? "=" WS? type_expr ;
+
+function_decl      ::= "fn" WS1 ident WS? "(" WS? param_list? WS? ")"
+                        [ WS? "->" WS? type_expr ] WS? block ;
+scenario_decl      ::= "scenario" WS1 ident WS? "(" WS? param_list? WS? ")" WS? block ;
+param_list         ::= param { WS? "," WS? param } ;
+param              ::= ident WS? ":" WS? type_expr ;
+
+entrypoint_decl    ::= entry_kind WS1 module_path WS? block ;
+entry_kind         ::= "program" | "service" | "kernel" | "driver" | "tool" | "scenario" | "pipeline" ;
+
+block              ::= brace_block | end_block ;
+brace_block        ::= "{" WS? { statement WS? } "}" ;
+end_block          ::= NEWLINE? WS? { statement WS? } ".end" ;
+
+statement          ::= declaration
+                     | assignment
+                     | control_flow
+                     | jump_stmt
+                     | return_stmt
+                     | expr_stmt ;
+
+declaration        ::= "let" WS1 ["mut" WS1?] ident [ WS? ":" WS? type_expr ] WS? "=" WS? expression
+                     | "const" WS1 ident [ WS? ":" WS? type_expr ] WS? "=" WS? expression ;
+global_decl        ::= declaration ;
+
+assignment         ::= assignable WS? assign_op WS? expression ;
+assignable         ::= postfix_expr ;
+assign_op          ::= "=" | "+=" | "-=" | "*=" | "/=" ;
+expr_stmt          ::= expression ;
+
+control_flow       ::= if_stmt | loop_stmt | match_stmt ;
+if_stmt            ::= "if" WS1 expression WS? block
+                        { WS? "elif" WS1 expression WS? block }
+                        [ WS? "else" WS? block ] ;
+loop_stmt          ::= "while" WS1 expression WS? block
+                     | "for" WS1 ident WS1 "in" WS1 expression WS? block ;
+match_stmt         ::= "match" WS1 expression WS? match_block ;
+match_block        ::= NEWLINE? WS? { match_arm WS? } ".end" ;
+match_arm          ::= pattern WS? "=>" WS? block ;
+
+jump_stmt          ::= "break" | "continue" ;
+return_stmt        ::= "return" [ WS1 expression ] ;
+
+expression         ::= unary_expr { WS? bin_op WS? unary_expr } ;
+bin_op             ::= "+" | "-" | "*" | "/" | "%" | "==" | "!=" | "<" | "<=" | ">" | ">=" | "and" | "or" ;
+unary_expr         ::= { unary_op } postfix_expr ;
+unary_op           ::= "-" | "not" ;
+postfix_expr       ::= primary_expr { postfix_op } ;
+postfix_op         ::= WS? "." WS? ident
+                     | WS? "[" WS? expression WS? "]"
+                     | WS? "(" WS? arg_list? WS? ")" ;
+primary_expr       ::= literal
+                     | struct_lit
+                     | enum_ctor
+                     | "(" WS? expression WS? ")"
+                     | ident ;
+arg_list           ::= expression { WS? "," WS? expression } ;
+
+literal            ::= int_lit | float_lit | string_lit | "true" | "false" ;
+struct_lit         ::= type_expr WS? "{" WS? struct_field { WS? "," WS? struct_field } WS? "}" ;
+struct_field       ::= ident WS? "=" WS? expression ;
+enum_ctor          ::= variant_path [ WS? "(" WS? arg_list? WS? ")" ] ;
+
+pattern            ::= "_" | literal | variant_pattern | ident | pattern_tuple ;
+variant_pattern    ::= variant_path [ WS? "(" WS? pattern_payload? WS? ")" ] ;
+pattern_payload    ::= pattern { WS? "," WS? pattern } ;
+variant_path       ::= type_expr WS? "::" WS? ident ;
+pattern_tuple      ::= "(" WS? pattern { WS? "," WS? pattern } WS? ")" ;
+
+type_expr          ::= type_name [ WS? "[" WS? type_expr { WS? "," WS? type_expr } WS? "]" ] ;
+type_name          ::= ident { WS? "." WS? ident } ;
+
+# ---------------------------------------------------------------------------
+# Surface syntax "phrase" (desugaree vers le noyau ci-dessus)
+# ---------------------------------------------------------------------------
+phrase_program     ::= WS? { phrase_toplevel WS? } ;
+phrase_toplevel    ::= module_line | use_line | type_block | fn_block | scenario_block | program_block ;
+
+module_line        ::= "mod" WS1 phrase_module_path ;
+use_line           ::= "use" WS1 phrase_module_path [ WS1 "as" WS1 ident ] ;
+phrase_module_path ::= phrase_module_segment { "/" phrase_module_segment } ;
+phrase_module_segment ::= ident { "." ident } ;
+
+type_block         ::= "type" WS1 ident WS? { field_line WS? } ".end" ;
+field_line         ::= "field" WS1 ident WS? ":" WS? phrase_type_name ;
+phrase_type_name   ::= ident { "." ident } ;
+
+fn_block           ::= "fn" WS1 ident phrase_param_list? phrase_return_type? WS? { phrase_stmt WS? } ".end" ;
+phrase_param_list  ::= WS1 ident WS? ":" WS? phrase_type_name { WS1 ident WS? ":" WS? phrase_type_name } ;
+phrase_return_type ::= WS? "->" WS? phrase_type_name ;
+
+scenario_block     ::= "scn" WS1 ident WS? { phrase_stmt WS? } ".end" ;
+program_block      ::= "prog" WS1 phrase_module_path "." ident WS? { phrase_stmt WS? } ".end" ;
+
+phrase_stmt        ::= set_line | say_line | do_line | ret_line | when_block | loop_block ;
+set_line           ::= "set" WS1 phrase_assign_target WS? "=" WS? phrase_expr ;
+phrase_assign_target ::= ident { "." ident } ;
+say_line           ::= "say" WS1 phrase_string ;
+do_line            ::= "do" WS1 ident { WS1 phrase_expr } ;
+ret_line           ::= "ret" [ WS1 phrase_expr ] ;
+
+when_block         ::= "when" WS1 phrase_expr WS? { phrase_stmt WS? }
+                        { WS? "else" WS1 "when" WS1 phrase_expr WS? { phrase_stmt WS? } }
+                        [ WS? "else" WS? { phrase_stmt WS? } ] ".end" ;
+loop_block         ::= "loop" WS1 ident WS1 "from" WS1 phrase_expr WS1 "to" WS1 phrase_expr
+                        [ WS1 "step" WS1 phrase_expr ]
+                        WS? { phrase_stmt WS? } ".end" ;
+
+phrase_expr        ::= phrase_primary { WS? phrase_bin_op WS? phrase_primary } ;
+phrase_bin_op      ::= "+" | "-" | "*" | "/" | "%" | "==" | "!=" | "<" | "<=" | ">" | ">=" | "and" | "or" ;
+phrase_primary     ::= phrase_string | number_lit | ident ;
+phrase_string      ::= "\"" { phrase_string_char } "\"" ;
+phrase_string_char ::= "\\\"" | "\\\\" | ? any non-quote, non-newline ? ;
+
+# ---------------------------------------------------------------------------
+# Lexical helpers (informels, a adapter a l'outil utilise)
+# ---------------------------------------------------------------------------
+ident              ::= ? identifier (ASCII lettres, chiffres, _) ? ;
+int_lit            ::= ? entier decimal ? ;
+float_lit          ::= ? flottant decimal avec '.' ? ;
+number_lit         ::= int_lit | float_lit ;
+string_lit         ::= "\"" { string_char } "\"" ;
+string_char        ::= "\\\"" | "\\\\" | ? tout caractere sauf guillemet et fin de ligne ? ;
+WS                 ::= { " " | "\t" | NEWLINE | comment } ;
+WS1                ::= ( " " | "\t" | NEWLINE | comment ) { " " | "\t" | NEWLINE | comment } ;
+NEWLINE            ::= "\n" | "\r\n" ;
+comment            ::= "#" { ? tout sauf fin de ligne ? } NEWLINE? ;

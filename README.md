@@ -1,23 +1,16 @@
-# Vitte 2025 — Steel toolchain (native-first, single-stage)
+# Vitte 2025 — Toolchain "Steel" (portable native, single-stage)
 
-This is a **complete scaffold** for a portable Vitte toolchain in C:
+Components
+- `steel`  : build driver (reads `muffin.muf`, plans/executes builds)
+- `steelc` : compiler (Vitte -> C17 backend) — scaffolded core
+- `runtime`: minimal ABI (slices/handles/panic) — TODO
+- `pal`    : Platform Abstraction Layer (POSIX/Win32) — TODO
 
-- `steel`  : build driver (parses `muffin.muf`, plans builds, invokes toolchain)
-- `steelc` : compiler (Vitte -> C11 backend) — minimal working subset
-- `runtime` + `pal` : portability layer (POSIX/Win32) — skeleton contracts
+Build model
+- `muffin.muf` is mandatory. Without it, nothing builds.
+- The output model mirrors Rust/Cargo intent (packages, profiles, lockfile),
+  but MUF syntax is Vitte-native (`.end` blocks).
 
-Goals:
-- portable targets: Linux/macOS/Windows/*BSD/Solaris-style POSIX
-- AOT native output via generated C (then clang/zig cc)
-- MUF as the only build manifest (required)
-
-Notes:
-- This repo contains a minimal but **functional** `steelc` that can compile a tiny Vitte subset:
-  `module`, `fn main() -> i32`, `return <int>;`, `.end` blocks.
-- `steel` currently plans builds and can execute toolchain commands if enabled (see TODOs).
-
-Layout:
-- `include/steel/**` public headers
-- `src/**` implementations
-- `std/` Vitte stdlib placeholder
-- `examples/` example projects
+Status
+- This repository is a **complete project skeleton**: directories, headers, docs, tests, fuzz, bench.
+- A minimal `steelc` subset can be wired as the first milestone (parser_core + backend_c).

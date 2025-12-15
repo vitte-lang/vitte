@@ -1,1 +1,1 @@
-# TODO: semantics
+# TODO: language semantics

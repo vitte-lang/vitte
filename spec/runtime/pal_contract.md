@@ -1,1 +1,1 @@
-# TODO: PAL contract
+# TODO: stable PAL contract

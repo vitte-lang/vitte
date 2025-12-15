@@ -1,2 +1,2 @@
 #pragma once
-/* TODO */
+/* TODO: platform detection */

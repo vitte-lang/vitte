@@ -1,4 +1,4 @@
-# Workspace MUF (required)
+# Workspace MUF — required
 workspace
   name "vitte"
   version "0.2.0"

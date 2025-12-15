@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 #include "steel/vitte/lexer.h"
 #include "steel/vitte/ast.h"
 

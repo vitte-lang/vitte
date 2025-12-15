@@ -4,18 +4,15 @@
 typedef enum {
   MUF_BLOCK_WORKSPACE = 1,
   MUF_BLOCK_TOOLCHAIN = 2,
-  MUF_BLOCK_PACKAGE   = 3,
-  MUF_BLOCK_PROFILE   = 4,
+  MUF_BLOCK_PACKAGE = 3,
+  MUF_BLOCK_PROFILE = 4,
 } muf_block_kind;
 
-typedef struct {
-  const char* key;
-  const char* val; /* raw token, already unquoted if string */
-} muf_kv;
+typedef struct { const char* key; const char* val; } muf_kv;
 
 typedef struct {
   muf_block_kind kind;
-  const char* name;     /* for profile or package name, otherwise NULL */
+  const char* name;
   muf_kv* kvs;
   size_t kv_len;
   size_t kv_cap;
