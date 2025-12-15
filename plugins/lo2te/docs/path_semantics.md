@@ -1,3 +1,0 @@
-# Path semantics
-
-TODO
