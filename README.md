@@ -15,7 +15,7 @@ make install    # Installer le binaire
 ## Utilisation
 
 ```bash
-steel programme.steel
+steel programme.vitte
 ```
 
 ## Développement
