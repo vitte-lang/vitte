@@ -34,6 +34,8 @@ endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+option(VITTE_ENABLE_ASM_FASTPATHS "Build and link the Vitte .S fastpaths" OFF)
+
 # ============================================================================
 # Framework source files (bench/)
 # ============================================================================
@@ -43,18 +45,6 @@ set(BENCH_FRAMEWORK_SOURCES
   src/bench/bench_registry.c
   src/bench/bench_stats.c
   src/bench/bench_time.c
-  src/bench/benchmark_init.c
-  src/bench/runner.c
-  src/bench/options.c
-  src/bench/output.c
-  src/bench/timing.c
-  src/bench/sample.c
-  src/bench/json_parser.c
-  src/bench/alloc.c
-  src/bench/strutil.c
-  src/bench/format.c
-  src/bench/csv.c
-  src/bench/log.c
 )
 
 set(BENCH_FRAMEWORK_HEADERS
@@ -124,6 +114,68 @@ set(ALL_SOURCES
   ${BENCH_MACRO_SOURCES}
 )
 
+if(VITTE_ENABLE_ASM_FASTPATHS)
+  if(APPLE)
+    message(FATAL_ERROR "ASM fastpaths are not supported on macOS yet. Disable VITTE_ENABLE_ASM_FASTPATHS.")
+  endif()
+
+  enable_language(ASM)
+
+  set(VITTE_ASM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../src/asm)
+
+  set(VITTE_ASM_C_SOURCES
+    ${VITTE_ASM_ROOT}/src/vitte/asm_dispatch.c
+    ${VITTE_ASM_ROOT}/src/vitte/asm_verify.c
+    ${VITTE_ASM_ROOT}/src/vitte/cpu.c
+  )
+
+  set(VITTE_ASM_X86_64_SOURCES
+    ${VITTE_ASM_ROOT}/src/asm/x86_64/hash/vitte_fnv1a64.S
+    ${VITTE_ASM_ROOT}/src/asm/x86_64/memcpy/vitte_memcpy_baseline.S
+    ${VITTE_ASM_ROOT}/src/asm/x86_64/memcpy/vitte_memcpy_sse2.S
+    ${VITTE_ASM_ROOT}/src/asm/x86_64/memcpy/vitte_memcpy_avx2.S
+    ${VITTE_ASM_ROOT}/src/asm/x86_64/memset/vitte_memset_baseline.S
+    ${VITTE_ASM_ROOT}/src/asm/x86_64/memset/vitte_memset_sse2.S
+    ${VITTE_ASM_ROOT}/src/asm/x86_64/memset/vitte_memset_avx2.S
+    ${VITTE_ASM_ROOT}/src/asm/x86_64/utf8/vitte_utf8_validate_stub.S
+  )
+
+  set(VITTE_ASM_AARCH64_SOURCES
+    ${VITTE_ASM_ROOT}/src/asm/aarch64/hash/vitte_fnv1a64.S
+    ${VITTE_ASM_ROOT}/src/asm/aarch64/memcpy/vitte_memcpy_baseline.S
+    ${VITTE_ASM_ROOT}/src/asm/aarch64/memcpy/vitte_memcpy_neon.S
+    ${VITTE_ASM_ROOT}/src/asm/aarch64/memset/vitte_memset_baseline.S
+    ${VITTE_ASM_ROOT}/src/asm/aarch64/memset/vitte_memset_neon.S
+    ${VITTE_ASM_ROOT}/src/asm/aarch64/utf8/vitte_utf8_validate_stub.S
+  )
+
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
+    set(VITTE_ASM_ARCH_SOURCES ${VITTE_ASM_X86_64_SOURCES})
+  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+    set(VITTE_ASM_ARCH_SOURCES ${VITTE_ASM_AARCH64_SOURCES})
+  else()
+    message(FATAL_ERROR "ASM fastpaths enabled but unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+  endif()
+
+  add_library(vitte_asm_fastpaths STATIC
+    ${VITTE_ASM_C_SOURCES}
+    ${VITTE_ASM_ARCH_SOURCES}
+  )
+
+  target_include_directories(vitte_asm_fastpaths
+    PUBLIC
+      ${CMAKE_CURRENT_SOURCE_DIR}/src
+      ${VITTE_ASM_ROOT}/include
+      ${CMAKE_CURRENT_SOURCE_DIR}/..
+  )
+
+  if(NOT MSVC)
+    target_compile_definitions(vitte_asm_fastpaths PRIVATE VITTE_ASM_ELF=1)
+  endif()
+
+  list(APPEND ALL_SOURCES src/bench/bench_asm_shim.c)
+endif()
+
 # ============================================================================
 # Main executable: vittec-bench
 # ============================================================================
@@ -142,6 +194,14 @@ if(APPLE)
 elseif(UNIX AND NOT APPLE)
   # Linux: link rt for clock_gettime
   target_link_libraries(vittec-bench rt)
+endif()
+
+if(VITTE_ENABLE_ASM_FASTPATHS)
+  target_link_libraries(vittec-bench PRIVATE vitte_asm_fastpaths)
+  target_compile_definitions(vittec-bench PRIVATE
+    VITTE_BENCH_USE_ASM_MEMCPY=1
+    VITTE_BENCH_USE_ASM_HASH=1
+  )
 endif()
 
 # ============================================================================
