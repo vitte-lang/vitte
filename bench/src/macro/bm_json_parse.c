@@ -1,267 +1,441 @@
+// File: bench/src/macro/bm_json_parse.c
+// Benchmark: JSON parsing (Vitte) — "max" benchmark TU (C17/C23).
+//
+// Objectif :
+//   - Mesurer un parseur JSON (ex: vitte/json) sur plusieurs tailles de payloads.
+//   - Prend en charge 2 modes :
+//       (A) API réelle si disponible (define BENCH_HAVE_VITTE_JSON=1 + include + hooks)
+//       (B) fallback benchmark (scan + validate minimal) si API absente
+//
+// Intégration :
+//   - Enregistrement explicite recommandé via bench_register_std/bench_register_runtime/etc.
+//   - Auto-reg possible si BENCH_ENABLE_AUTOREG=1 + GCC/Clang.
+//
+// IMPORTANT :
+//   - Tu dois adapter les hooks "VITTE JSON API" ci-dessous à ton impl réelle.
+//   - Les payloads sont générés en mémoire (pas I/O) pour bench stable.
+//   - Le bench évite mallocs dans la boucle hot (state pré-alloué).
+
 #include "bench/bench.h"
+
+#include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
-#include <string.h>
-#include "bench/bench.h"
-#include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
 
-/*
-  bm_json_parse.c (max)
+// ======================================================================================
+// Vitte JSON API hook (à adapter)
+// ======================================================================================
+//
+// Pour brancher un vrai parseur :
+//   - définir BENCH_HAVE_VITTE_JSON=1
+//   - fournir les fonctions suivantes, ou adapter les wrappers.
+// Exemple d’API possible:
+//   typedef struct vitte_json_doc vitte_json_doc_t;
+//   bool vitte_json_parse(vitte_json_doc_t* out, const char* s, size_t n);
+//   void vitte_json_doc_free(vitte_json_doc_t* doc);
+//
+// Ici, on définit une ABI minimale "wrapper" local.
 
-  Goal:
-  - Macro benchmark that approximates real JSON parse costs without external deps.
-  - Validates structure, parses strings (incl escapes), parses numbers (int/frac/exp),
-    tracks nesting, and touches most bytes.
+#ifndef BENCH_HAVE_VITTE_JSON
+  #define BENCH_HAVE_VITTE_JSON 0
+#endif
 
-  Notes:
-  - This is still a "toy" parser (no full Unicode validation), but it is far closer
-    to a realistic workload than a delimiter counter.
-  - The macro runner already loops for ~seconds, so this function should do
-    one moderately sized parse per call.
-*/
+#if BENCH_HAVE_VITTE_JSON
+  // TODO: include tes headers réels ici.
+  // #include "vitte/json/json.h"
 
-/* small */
-static const char* g_json_s =
-  "{\"k\":123,\"arr\":[1,2,3,4,5],\"s\":\"hello\",\"b\":true,\"n\":null}";
+  // ---- EXEMPLE WRAPPERS (à remplacer) ----
+  typedef struct vitte_json_doc {
+    void* _opaque;
+  } vitte_json_doc_t;
 
-/* medium */
-static const char* g_json_m =
-  "{"
-  "\"user\":{\"id\":42,\"name\":\"Vincent\\nDev\",\"tags\":[\"c\",\"rust\",\"vm\",\"ffi\"],\"active\":true},"
-  "\"metrics\":[{\"t\":1,\"v\":0.25},{\"t\":2,\"v\":1.5e2},{\"t\":3,\"v\":-3.75}],"
-  "\"cfg\":{\"opt\":{\"lto\":true,\"codegen_units\":1},\"arch\":\"arm64\"},"
-  "\"note\":\"escapes: \\\"quote\\\" \\\\ backslash \\/ slash \\t tab\""
-  "}";
+  static bool vitte_json_parse_wrapper(vitte_json_doc_t* out, const char* s, size_t n) {
+    (void)out; (void)s; (void)n;
+    // return vitte_json_parse(out, s, n);
+    return false;
+  }
 
-/* large (constructed by repeating patterns) */
-static const char* g_json_l =
-  "{\n"
-  "  \"items\": [\n"
-  "    {\"id\":1,\"name\":\"alpha\",\"vals\":[1,2,3,4,5],\"ok\":true},\n"
-  "    {\"id\":2,\"name\":\"beta\",\"vals\":[6,7,8,9,10],\"ok\":false},\n"
-  "    {\"id\":3,\"name\":\"gamma\",\"vals\":[11,12,13,14,15],\"ok\":true},\n"
-  "    {\"id\":4,\"name\":\"delta\",\"vals\":[16,17,18,19,20],\"ok\":true}\n"
-  "  ],\n"
-  "  \"meta\": {\"count\": 4, \"ver\": \"0.1.0\", \"desc\": \"bench json parse large\"},\n"
-  "  \"floats\": [0.0, 1.0, -1.25, 3.14159, 2.99792458e8, -6.022e23],\n"
-  "  \"nested\": {\"a\":{\"b\":{\"c\":{\"d\":[1,{\"e\":\"x\"}],\"f\":null}}}}\n"
-  "}\n";
+  static void vitte_json_doc_free_wrapper(vitte_json_doc_t* doc) {
+    (void)doc;
+    // vitte_json_doc_free(doc);
+  }
+#endif
 
-static const char* g_docs[] = { NULL, NULL, NULL };
+// ======================================================================================
+// Fallback parser (validation minimaliste) — stable & deterministic
+// ======================================================================================
+//
+// But : approx CPU cost du "parse" si API réelle non branchée.
+// On fait :
+//   - scan des tokens JSON (strings, numbers, punctuation)
+//   - validation basique des guillemets/escapes + stack profondeur {}
+// (Ceci ne remplace pas un vrai parse, mais donne un bench reproductible.)
 
-static volatile uint64_t sink = 0;
-static uint32_t rng_state = 0xC0FFEEu;
+typedef struct json_scan_state {
+  const char* s;
+  size_t n;
+  size_t i;
+  int depth_obj;
+  int depth_arr;
+  uint64_t checksum;
+} json_scan_state_t;
 
-static BENCH_INLINE uint32_t rng_u32(void) {
-  /* LCG: deterministic, cheap */
-  rng_state = (uint32_t)(rng_state * 1664525u + 1013904223u);
-  return rng_state;
+static inline bool is_ws(char c) {
+  return c == ' ' || c == '\n' || c == '\r' || c == '\t';
 }
 
-static BENCH_INLINE int is_ws(char c) {
-  return c == ' ' || c == '\t' || c == '\n' || c == '\r';
-}
+static inline bool is_digit(char c) { return (c >= '0' && c <= '9'); }
 
-static BENCH_INLINE const char* skip_ws(const char* p) {
-  while(is_ws(*p)) p++;
-  return p;
-}
+static bool scan_string(json_scan_state_t* st) {
+  // st->s[st->i] == '"'
+  st->i++; // skip "
+  while (st->i < st->n) {
+    char c = st->s[st->i++];
+    st->checksum = (st->checksum * 1315423911u) ^ (uint8_t)c;
 
-static BENCH_INLINE int is_digit(char c) {
-  return (unsigned char)c >= '0' && (unsigned char)c <= '9';
-}
-
-static const char* parse_string(const char* p, uint64_t* acc) {
-  /* p points to opening '"' */
-  if(*p != '"') return NULL;
-  p++;
-  uint64_t len = 0;
-  for(;;) {
-    char c = *p++;
-    if(c == '\0') return NULL;
-    if(c == '"') break;
-    if(c == '\\') {
-      /* escape */
-      char e = *p++;
-      if(e == '\0') return NULL;
-      switch(e) {
+    if (c == '"') return true;
+    if (c == '\\') {
+      if (st->i >= st->n) return false;
+      char e = st->s[st->i++];
+      st->checksum ^= (uint8_t)e * 2654435761u;
+      // minimal validation of escapes
+      switch (e) {
         case '"': case '\\': case '/': case 'b': case 'f': case 'n': case 'r': case 't':
-          len++;
           break;
         case 'u': {
-          /* accept 4 hex digits (no surrogate checks) */
-          for(int i=0;i<4;i++) {
-            char h = *p++;
-            if(h == '\0') return NULL;
-            int ok = (h >= '0' && h <= '9') || (h >= 'a' && h <= 'f') || (h >= 'A' && h <= 'F');
-            if(!ok) return NULL;
+          // 4 hex digits
+          for (int k = 0; k < 4; k++) {
+            if (st->i >= st->n) return false;
+            char h = st->s[st->i++];
+            bool ok = (h >= '0' && h <= '9') || (h >= 'a' && h <= 'f') || (h >= 'A' && h <= 'F');
+            if (!ok) return false;
+            st->checksum ^= (uint8_t)h + (uint64_t)k;
           }
-          len++;
         } break;
         default:
-          return NULL;
+          return false;
       }
-    } else {
-      /* disallow control chars */
-      if((unsigned char)c < 0x20) return NULL;
-      len++;
     }
   }
-  *acc ^= (len * 1315423911ull);
-  return p;
+  return false;
 }
 
-static const char* parse_number(const char* p, uint64_t* acc) {
-  /* JSON number: -? int frac? exp? */
-  const char* start = p;
-  if(*p == '-') p++;
+static bool scan_number(json_scan_state_t* st) {
+  // minimal number scan: -? (0|[1-9][0-9]*) (\.[0-9]+)? ([eE][+-]?[0-9]+)?
+  size_t start = st->i;
+  if (st->s[st->i] == '-') st->i++;
+  if (st->i >= st->n) return false;
 
-  if(*p == '0') {
-    p++;
+  if (st->s[st->i] == '0') {
+    st->i++;
   } else {
-    if(!is_digit(*p)) return NULL;
-    while(is_digit(*p)) p++;
+    if (!is_digit(st->s[st->i])) return false;
+    while (st->i < st->n && is_digit(st->s[st->i])) st->i++;
   }
 
-  if(*p == '.') {
-    p++;
-    if(!is_digit(*p)) return NULL;
-    while(is_digit(*p)) p++;
+  if (st->i < st->n && st->s[st->i] == '.') {
+    st->i++;
+    if (st->i >= st->n || !is_digit(st->s[st->i])) return false;
+    while (st->i < st->n && is_digit(st->s[st->i])) st->i++;
   }
 
-  if(*p == 'e' || *p == 'E') {
-    p++;
-    if(*p == '+' || *p == '-') p++;
-    if(!is_digit(*p)) return NULL;
-    while(is_digit(*p)) p++;
+  if (st->i < st->n && (st->s[st->i] == 'e' || st->s[st->i] == 'E')) {
+    st->i++;
+    if (st->i < st->n && (st->s[st->i] == '+' || st->s[st->i] == '-')) st->i++;
+    if (st->i >= st->n || !is_digit(st->s[st->i])) return false;
+    while (st->i < st->n && is_digit(st->s[st->i])) st->i++;
   }
 
-  /* fold a small hash of the number bytes */
-  uint64_t h = 1469598103934665603ull;
-  for(const char* q = start; q < p; q++) {
-    h ^= (uint64_t)(unsigned char)*q;
-    h *= 1099511628211ull;
-  }
-  *acc ^= h;
-  return p;
+  // update checksum
+  for (size_t k = start; k < st->i; k++) st->checksum = (st->checksum * 16777619u) ^ (uint8_t)st->s[k];
+  return true;
 }
 
-static const char* parse_value(const char* p, uint64_t* acc, int depth);
+static bool scan_literal(json_scan_state_t* st, const char* lit) {
+  size_t m = strlen(lit);
+  if (st->i + m > st->n) return false;
+  if (memcmp(st->s + st->i, lit, m) != 0) return false;
+  for (size_t k = 0; k < m; k++) st->checksum = (st->checksum * 1099511628211ULL) ^ (uint8_t)lit[k];
+  st->i += m;
+  return true;
+}
 
-static const char* parse_array(const char* p, uint64_t* acc, int depth) {
-  if(*p != '[') return NULL;
-  p = skip_ws(p + 1);
+static bool json_scan_validate(const char* s, size_t n, uint64_t* out_checksum) {
+  json_scan_state_t st;
+  st.s = s; st.n = n; st.i = 0;
+  st.depth_obj = 0;
+  st.depth_arr = 0;
+  st.checksum = 1469598103934665603ULL;
 
-  if(*p == ']') return p + 1;
+  while (st.i < st.n) {
+    char c = st.s[st.i];
+    if (is_ws(c)) { st.i++; continue; }
 
-  for(;;) {
-    p = parse_value(p, acc, depth + 1);
-    if(!p) return NULL;
-    p = skip_ws(p);
-
-    if(*p == ',') {
-      p = skip_ws(p + 1);
-      continue;
+    switch (c) {
+      case '{': st.depth_obj++; st.checksum ^= 0xA1; st.i++; break;
+      case '}': st.depth_obj--; st.checksum ^= 0xA2; st.i++; if (st.depth_obj < 0) return false; break;
+      case '[': st.depth_arr++; st.checksum ^= 0xB1; st.i++; break;
+      case ']': st.depth_arr--; st.checksum ^= 0xB2; st.i++; if (st.depth_arr < 0) return false; break;
+      case ':': st.checksum ^= 0xC1; st.i++; break;
+      case ',': st.checksum ^= 0xC2; st.i++; break;
+      case '"':
+        if (!scan_string(&st)) return false;
+        break;
+      case 't':
+        if (!scan_literal(&st, "true")) return false;
+        break;
+      case 'f':
+        if (!scan_literal(&st, "false")) return false;
+        break;
+      case 'n':
+        if (!scan_literal(&st, "null")) return false;
+        break;
+      default:
+        if (c == '-' || is_digit(c)) {
+          if (!scan_number(&st)) return false;
+        } else {
+          return false;
+        }
+        break;
     }
-    if(*p == ']') return p + 1;
-    return NULL;
   }
+
+  if (st.depth_obj != 0 || st.depth_arr != 0) return false;
+  if (out_checksum) *out_checksum = st.checksum;
+  return true;
 }
 
-static const char* parse_object(const char* p, uint64_t* acc, int depth) {
-  if(*p != '{') return NULL;
-  p = skip_ws(p + 1);
+// ======================================================================================
+// Payload generator (no I/O; deterministic)
+// ======================================================================================
 
-  if(*p == '}') return p + 1;
+typedef struct bm_json_state {
+  char* payload_small;
+  size_t small_n;
 
-  for(;;) {
-    /* key */
-    p = parse_string(p, acc);
-    if(!p) return NULL;
-    p = skip_ws(p);
-    if(*p != ':') return NULL;
-    p = skip_ws(p + 1);
+  char* payload_med;
+  size_t med_n;
 
-    /* value */
-    p = parse_value(p, acc, depth + 1);
-    if(!p) return NULL;
-    p = skip_ws(p);
+  char* payload_large;
+  size_t large_n;
 
-    if(*p == ',') {
-      p = skip_ws(p + 1);
-      continue;
+#if BENCH_HAVE_VITTE_JSON
+  vitte_json_doc_t doc;
+#endif
+
+  uint64_t sink; // blackhole
+} bm_json_state_t;
+
+static void append_str(char** buf, size_t* len, size_t* cap, const char* s) {
+  size_t m = strlen(s);
+  if (*len + m + 1 > *cap) {
+    size_t nc = (*cap == 0) ? 1024 : *cap;
+    while (*len + m + 1 > nc) nc *= 2;
+    *buf = (char*)realloc(*buf, nc);
+    if (!*buf) { fprintf(stderr, "bm_json_parse: OOM\n"); exit(1); }
+    *cap = nc;
+  }
+  memcpy(*buf + *len, s, m);
+  *len += m;
+  (*buf)[*len] = '\0';
+}
+
+static char* build_payload(size_t items, size_t str_len, size_t* out_n) {
+  char* buf = NULL;
+  size_t len = 0, cap = 0;
+
+  append_str(&buf, &len, &cap, "{ \"items\": [");
+
+  for (size_t i = 0; i < items; i++) {
+    char tmp[256];
+#if defined(_MSC_VER)
+    _snprintf_s(tmp, sizeof(tmp), _TRUNCATE, "{\"id\":%llu,\"name\":\"", (unsigned long long)i);
+#else
+    snprintf(tmp, sizeof(tmp), "{\"id\":%llu,\"name\":\"", (unsigned long long)i);
+#endif
+    append_str(&buf, &len, &cap, tmp);
+
+    // deterministic string content
+    for (size_t k = 0; k < str_len; k++) {
+      char c = (char)('a' + (int)((i + k) % 26));
+      char one[2] = { c, 0 };
+      append_str(&buf, &len, &cap, one);
     }
-    if(*p == '}') return p + 1;
-    return NULL;
+
+    append_str(&buf, &len, &cap, "\",\"ok\":true,\"v\":");
+#if defined(_MSC_VER)
+    _snprintf_s(tmp, sizeof(tmp), _TRUNCATE, "%llu", (unsigned long long)(i * 1315423911ULL));
+#else
+    snprintf(tmp, sizeof(tmp), "%llu", (unsigned long long)(i * 1315423911ULL));
+#endif
+    append_str(&buf, &len, &cap, tmp);
+
+    append_str(&buf, &len, &cap, "}");
+
+    if (i + 1 < items) append_str(&buf, &len, &cap, ",");
   }
+
+  append_str(&buf, &len, &cap, "], \"meta\": {\"count\": ");
+  {
+    char tmp[64];
+#if defined(_MSC_VER)
+    _snprintf_s(tmp, sizeof(tmp), _TRUNCATE, "%llu", (unsigned long long)items);
+#else
+    snprintf(tmp, sizeof(tmp), "%llu", (unsigned long long)items);
+#endif
+    append_str(&buf, &len, &cap, tmp);
+  }
+  append_str(&buf, &len, &cap, ", \"tag\": \"bench\" } }");
+
+  if (out_n) *out_n = len;
+  return buf;
 }
 
-static const char* parse_value(const char* p, uint64_t* acc, int depth) {
-  if(depth > 64) return NULL;
-  p = skip_ws(p);
+// ======================================================================================
+// Bench setup/teardown
+// ======================================================================================
 
-  switch(*p) {
-    case '"':
-      return parse_string(p, acc);
-    case '{':
-      *acc += 17u;
-      return parse_object(p, acc, depth);
-    case '[':
-      *acc += 31u;
-      return parse_array(p, acc, depth);
-    case 't':
-      if(p[0]=='t' && p[1]=='r' && p[2]=='u' && p[3]=='e') { *acc ^= 0xA5A5u; return p + 4; }
-      return NULL;
-    case 'f':
-      if(p[0]=='f' && p[1]=='a' && p[2]=='l' && p[3]=='s' && p[4]=='e') { *acc ^= 0x5A5Au; return p + 5; }
-      return NULL;
-    case 'n':
-      if(p[0]=='n' && p[1]=='u' && p[2]=='l' && p[3]=='l') { *acc ^= 0xDEADu; return p + 4; }
-      return NULL;
-    default:
-      if(*p == '-' || is_digit(*p)) return parse_number(p, acc);
-      return NULL;
-  }
-}
-
-void bm_json_parse(void* ctx) {
+static void* bm_json_setup(bench_ctx_t* ctx) {
   (void)ctx;
+  bm_json_state_t* st = (bm_json_state_t*)calloc(1, sizeof(*st));
+  if (!st) { fprintf(stderr, "bm_json_parse: OOM\n"); exit(1); }
 
-  /* init doc table once */
-  if(!g_docs[0]) {
-    g_docs[0] = g_json_s;
-    g_docs[1] = g_json_m;
-    g_docs[2] = g_json_l;
+  // Tune sizes to get representative overhead:
+  // small: ~1-5KB, medium: ~50-150KB, large: ~1-3MB (depending on str_len)
+  st->payload_small = build_payload(64, 16, &st->small_n);
+  st->payload_med   = build_payload(2048, 16, &st->med_n);
+  st->payload_large = build_payload(32768, 8, &st->large_n);
+
+  // sanity: fallback validator should accept
+  uint64_t cs = 0;
+  if (!json_scan_validate(st->payload_small, st->small_n, &cs)) { fprintf(stderr, "bm_json_parse: small invalid\n"); exit(2); }
+  if (!json_scan_validate(st->payload_med,   st->med_n,   &cs)) { fprintf(stderr, "bm_json_parse: med invalid\n"); exit(2); }
+  if (!json_scan_validate(st->payload_large, st->large_n, &cs)) { fprintf(stderr, "bm_json_parse: large invalid\n"); exit(2); }
+
+  st->sink = 0x12345678ULL ^ cs;
+  return st;
+}
+
+static void bm_json_teardown(bench_ctx_t* ctx, void* state) {
+  (void)ctx;
+  bm_json_state_t* st = (bm_json_state_t*)state;
+  if (!st) return;
+
+#if BENCH_HAVE_VITTE_JSON
+  vitte_json_doc_free_wrapper(&st->doc);
+#endif
+
+  free(st->payload_small);
+  free(st->payload_med);
+  free(st->payload_large);
+  free(st);
+}
+
+// ======================================================================================
+// Bench runs
+// ======================================================================================
+
+static inline void bench_blackhole_u64(volatile uint64_t x) { (void)x; }
+
+static void bm_json_parse_small(bench_ctx_t* ctx, void* state, uint64_t iters) {
+  (void)ctx;
+  bm_json_state_t* st = (bm_json_state_t*)state;
+  uint64_t acc = st->sink;
+
+  for (uint64_t i = 0; i < iters; i++) {
+#if BENCH_HAVE_VITTE_JSON
+    bool ok = vitte_json_parse_wrapper(&st->doc, st->payload_small, st->small_n);
+    acc ^= (uint64_t)ok + (acc << 1);
+#else
+    uint64_t cs = 0;
+    bool ok = json_scan_validate(st->payload_small, st->small_n, &cs);
+    acc ^= (uint64_t)ok + cs;
+#endif
   }
 
-  /* rotate docs to avoid constant-only micro-optimizations */
-  const uint32_t r = rng_u32();
-  const char* doc = g_docs[(size_t)(r % 3u)];
+  st->sink = acc;
+  bench_blackhole_u64(acc);
+}
 
-  uint64_t acc = 0;
-  const char* p = parse_value(doc, &acc, 0);
-  if(!p) {
-    /* should not happen: doc is valid; still mutate sink deterministically */
-    sink ^= 0xBAD0BAD0ull;
-    return;
-  }
-  p = skip_ws(p);
-  if(*p != '\0') {
-    /* trailing junk */
-    sink ^= 0xBADC0FFEEull;
-    return;
-  }
+static void bm_json_parse_med(bench_ctx_t* ctx, void* state, uint64_t iters) {
+  (void)ctx;
+  bm_json_state_t* st = (bm_json_state_t*)state;
+  uint64_t acc = st->sink;
 
-  /* fold size and some bytes to ensure the loop touches memory */
-  const size_t n = strlen(doc);
-  acc ^= (uint64_t)n * 11400714819323198485ull;
-  if(n > 0) {
-    acc ^= (uint64_t)(unsigned char)doc[0] << 1;
-    acc ^= (uint64_t)(unsigned char)doc[n/2] << 3;
-    acc ^= (uint64_t)(unsigned char)doc[n-1] << 5;
+  for (uint64_t i = 0; i < iters; i++) {
+#if BENCH_HAVE_VITTE_JSON
+    bool ok = vitte_json_parse_wrapper(&st->doc, st->payload_med, st->med_n);
+    acc ^= (uint64_t)ok + (acc << 1);
+#else
+    uint64_t cs = 0;
+    bool ok = json_scan_validate(st->payload_med, st->med_n, &cs);
+    acc ^= (uint64_t)ok + cs;
+#endif
   }
 
-  sink ^= acc;
+  st->sink = acc;
+  bench_blackhole_u64(acc);
+}
+
+static void bm_json_parse_large(bench_ctx_t* ctx, void* state, uint64_t iters) {
+  (void)ctx;
+  bm_json_state_t* st = (bm_json_state_t*)state;
+  uint64_t acc = st->sink;
+
+  for (uint64_t i = 0; i < iters; i++) {
+#if BENCH_HAVE_VITTE_JSON
+    bool ok = vitte_json_parse_wrapper(&st->doc, st->payload_large, st->large_n);
+    acc ^= (uint64_t)ok + (acc << 1);
+#else
+    uint64_t cs = 0;
+    bool ok = json_scan_validate(st->payload_large, st->large_n, &cs);
+    acc ^= (uint64_t)ok + cs;
+#endif
+  }
+
+  st->sink = acc;
+  bench_blackhole_u64(acc);
+}
+
+// ======================================================================================
+// Registration
+// ======================================================================================
+//
+// Recommandé (portable): choisir un module hook existant, ex bench_register_std().
+// Si tu préfères auto-reg: define BENCH_ENABLE_AUTOREG=1 (GCC/Clang) et remplace par BENCH_CASE macros.
+
+void bench_register_std(bench_registry_t* r) {
+  // JSON parse – small
+  bench_register_case(r, (bench_case_t){
+    .name = "macro.json_parse.small",
+    .description = "Parse JSON small payload (~few KB)",
+    .setup = bm_json_setup,
+    .teardown = bm_json_teardown,
+    .run = bm_json_parse_small,
+    .flags = 0u,
+  });
+
+  // JSON parse – medium
+  bench_register_case(r, (bench_case_t){
+    .name = "macro.json_parse.medium",
+    .description = "Parse JSON medium payload (~100 KB)",
+    .setup = bm_json_setup,
+    .teardown = bm_json_teardown,
+    .run = bm_json_parse_med,
+    .flags = 0u,
+  });
+
+  // JSON parse – large
+  bench_register_case(r, (bench_case_t){
+    .name = "macro.json_parse.large",
+    .description = "Parse JSON large payload (~MBs)",
+    .setup = bm_json_setup,
+    .teardown = bm_json_teardown,
+    .run = bm_json_parse_large,
+    .flags = 0u,
+  });
 }
 
 void bench_register_macro_json(void) {
