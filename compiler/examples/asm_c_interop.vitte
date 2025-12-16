@@ -1,0 +1,96 @@
+// asm_c_interop.vitte - Assembly/C interoperability examples
+
+// Call C function from assembly context
+extern fn strlen(str: *const char) -> usize
+
+fn strlen_asm(str: *const char) -> usize {
+    let result: usize
+    
+    asm "call strlen"
+        : "=a"(result)
+        : "D"(str)  // rdi = str
+        : "rcx", "rdx", "rsi"
+    
+    return result
+}
+
+// Access global variable via assembly
+extern let errno: i32
+
+fn get_errno() -> i32 {
+    let err: i32
+    
+    asm "mov %0, (errno)"
+        : "=r"(err)
+    
+    return err
+}
+
+// C function with assembly implementation
+fn fast_index_of(haystack: *const char, needle: char) -> i32 {
+    let result: i32
+    let len = strlen(haystack)
+    
+    asm "cld
+         mov $-1, %0
+         mov $0, %%rcx
+    loop_start:
+         cmp %%rcx, %2
+         jge loop_end
+         mov (%1, %%rcx), %%al
+         cmp %3, %%al
+         je found
+         inc %%rcx
+         jmp loop_start
+    found:
+         mov %%rcx, %0
+    loop_end:"
+        : "=r"(result)
+        : "r"(haystack), "r"(len), "r"(needle)
+        : "rcx", "rax"
+    
+    return result
+}
+
+// Inline assembly with struct interaction
+struct Point {
+    x: i32
+    y: i32
+}
+
+fn point_distance_squared(p: Point) -> i64 {
+    let result: i64
+    
+    asm "mov %2, %%rax
+         imul %%rax
+         mov %3, %%rax
+         imul %%rax
+         add %%rax, %0"
+        : "=r"(result)
+        : "0"(0), "r"(p.x), "r"(p.y)
+        : "rax"
+    
+    return result
+}
+
+// Varargs function with assembly
+fn printf_fast(format: *const char, ...) -> i32 {
+    let result: i32
+    
+    asm "call printf"
+        : "=a"(result)
+        : "D"(format)  // rdi = format string
+        : "rcx", "rdx", "rsi"
+    
+    return result
+}
+
+fn main() {
+    let str = "hello"
+    let len = strlen_asm(str)
+    say len
+    
+    let p = Point { x: 3, y: 4 }
+    let dist2 = point_distance_squared(p)
+    say dist2
+}
