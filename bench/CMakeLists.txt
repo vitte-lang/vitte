@@ -1,107 +1,165 @@
 cmake_minimum_required(VERSION 3.20)
+project(vitte-bench C)
 
-project(vitte_bench LANGUAGES C)
+# ============================================================================
+# Configuration
+# ============================================================================
 
-# --------------------------
-# Options (opt-in extensions)
-# --------------------------
-option(VITTE_BENCH_EXTRA "Enable extra (opt-in) benchmark cases in the registry" OFF)
-option(VITTE_BENCH_EXPERIMENTAL "Enable experimental (opt-in) benchmark cases" OFF)
-
-# If you have an asm dispatch layer providing these symbols, you can benchmark them:
-#   - vitte_memcpy_fast
-#   - vitte_fnv1a64_fast
-option(VITTE_BENCH_USE_ASM_MEMCPY "Use vitte_memcpy_fast() in bm_memcpy" OFF)
-option(VITTE_BENCH_USE_ASM_HASH "Use vitte_fnv1a64_fast() in bm_hash" OFF)
-
-# Optional: if the core project builds a target named `vitte_core`, you can link it.
-option(VITTE_BENCH_LINK_VITTE_CORE "Link benchc against a parent target vitte_core (if present)" OFF)
-
-# --------------------------
-# Build settings
-# --------------------------
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS ON)
 
-# Nice-to-have warnings (keep non-fatal)
-if(MSVC)
-  add_compile_options(/W4)
-else()
+# Platform detection
+if(APPLE)
+  add_compile_definitions(BENCH_PLATFORM_MACOS)
+elseif(UNIX)
+  add_compile_definitions(BENCH_PLATFORM_LINUX)
+elseif(WIN32)
+  add_compile_definitions(BENCH_PLATFORM_WINDOWS)
+endif()
+
+# Compiler detection
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
+  if(NOT MSVC)
+    add_compile_options(-march=native)
+  endif()
+elseif(MSVC)
+  add_compile_options(/W4)
 endif()
 
-# --------------------------
-# bench library (core)
-# --------------------------
-add_library(benchlib STATIC
-  src/bench/bench_time.c
-  src/bench/bench_stats.c
-  src/bench/bench_registry.c
-)
+# ============================================================================
+# Include directories
+# ============================================================================
 
-target_include_directories(benchlib PUBLIC
-  ${CMAKE_CURRENT_SOURCE_DIR}/src
-)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-# Define opt-in macros consumed by the registry and benchmarks.
-if(VITTE_BENCH_EXTRA)
-  target_compile_definitions(benchlib PUBLIC VITTE_BENCH_EXTRA=1)
-endif()
-if(VITTE_BENCH_EXPERIMENTAL)
-  target_compile_definitions(benchlib PUBLIC VITTE_BENCH_EXPERIMENTAL=1)
-endif()
-if(VITTE_BENCH_USE_ASM_MEMCPY)
-  target_compile_definitions(benchlib PUBLIC VITTE_BENCH_USE_ASM_MEMCPY=1)
-endif()
-if(VITTE_BENCH_USE_ASM_HASH)
-  target_compile_definitions(benchlib PUBLIC VITTE_BENCH_USE_ASM_HASH=1)
-endif()
+# ============================================================================
+# Framework source files (bench/)
+# ============================================================================
 
-# --------------------------
-# bench executable
-# --------------------------
-add_executable(benchc
+set(BENCH_FRAMEWORK_SOURCES
   src/bench/bench_main.c
+  src/bench/bench_registry.c
+  src/bench/bench_stats.c
+  src/bench/bench_time.c
+  src/bench/benchmark_init.c
+  src/bench/runner.c
+  src/bench/options.c
+  src/bench/output.c
+  src/bench/timing.c
+  src/bench/sample.c
+  src/bench/json_parser.c
+  src/bench/alloc.c
+  src/bench/strutil.c
+  src/bench/format.c
+  src/bench/csv.c
+  src/bench/log.c
+)
+
+set(BENCH_FRAMEWORK_HEADERS
+  src/bench/bench.h
+  src/bench/benchmark_init.h
+  src/bench/types.h
+  src/bench/config.h
+  src/bench/platform.h
+  src/bench/common.h
+  src/bench/runner.h
+  src/bench/options.h
+  src/bench/output.h
+  src/bench/timing.h
+  src/bench/sample.h
+  src/bench/json_parser.h
+  src/bench/alloc.h
+  src/bench/strutil.h
+  src/bench/format.h
+  src/bench/csv.h
+  src/bench/log.h
+)
+
+# ============================================================================
+# Micro-benchmark source files
+# ============================================================================
+
+set(BENCH_MICRO_SOURCES
   src/micro/bm_add.c
+  src/micro/bm_array_access.c
+  src/micro/bm_bitops.c
+  src/micro/bm_branch_prediction.c
+  src/micro/bm_cache_line_effects.c
+  src/micro/bm_conditional_move.c
+  src/micro/bm_data_dependency.c
+  src/micro/bm_division.c
+  src/micro/bm_floating_point.c
+  src/micro/bm_function_call.c
   src/micro/bm_hash.c
+  src/micro/bm_loop_unroll.c
   src/micro/bm_memcpy.c
+  src/micro/bm_recursion.c
+  src/micro/bm_string_search.c
+)
+
+# ============================================================================
+# Macro-benchmark source files
+# ============================================================================
+
+set(BENCH_MACRO_SOURCES
+  src/macro/bm_cache_effects.c
+  src/macro/bm_compression.c
+  src/macro/bm_file_io_sim.c
   src/macro/bm_json_parse.c
+  src/macro/bm_math_compute.c
+  src/macro/bm_regex_match.c
+  src/macro/bm_sort_algorithms.c
+  src/macro/bm_string_ops.c
 )
 
-target_link_libraries(benchc PRIVATE benchlib)
+# ============================================================================
+# Combine all sources
+# ============================================================================
 
-target_include_directories(benchc PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/src
+set(ALL_SOURCES
+  ${BENCH_FRAMEWORK_SOURCES}
+  ${BENCH_MICRO_SOURCES}
+  ${BENCH_MACRO_SOURCES}
 )
 
-# Some platforms used to require -lrt for clock_gettime; keep it conditional.
-if(UNIX AND NOT APPLE)
-  find_library(RT_LIB rt)
-  if(RT_LIB)
-    target_link_libraries(benchc PRIVATE ${RT_LIB})
-  endif()
+# ============================================================================
+# Main executable: vittec-bench
+# ============================================================================
+
+add_executable(vittec-bench ${ALL_SOURCES} ${BENCH_FRAMEWORK_HEADERS})
+
+# Link math library if available
+if(NOT WIN32)
+  target_link_libraries(vittec-bench m)
 endif()
 
-# Optional link to parent core if your top-level build provides it.
-if(VITTE_BENCH_LINK_VITTE_CORE)
-  if(TARGET vitte_core)
-    target_link_libraries(benchc PRIVATE vitte_core)
-  else()
-    message(WARNING "VITTE_BENCH_LINK_VITTE_CORE=ON but target vitte_core not found")
-  endif()
+# Platform-specific linking
+if(APPLE)
+  # macOS: link CoreFoundation for timing
+  target_link_libraries(vittec-bench "-framework CoreFoundation")
+elseif(UNIX AND NOT APPLE)
+  # Linux: link rt for clock_gettime
+  target_link_libraries(vittec-bench rt)
 endif()
 
-# --------------------------
-# Convenience targets
-# --------------------------
-add_custom_target(run_bench_list
-  COMMAND benchc --list-full
-  DEPENDS benchc
-  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+# ============================================================================
+# Build properties
+# ============================================================================
+
+set_target_properties(vittec-bench PROPERTIES
+  C_VISIBILITY_PRESET hidden
+  VISIBILITY_INLINES_HIDDEN ON
 )
 
-add_custom_target(run_bench_all
-  COMMAND benchc --all
-  DEPENDS benchc
-  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-)
+# ============================================================================
+# Output
+# ============================================================================
+
+message(STATUS "vitte-bench: Configuring ${CMAKE_BUILD_TYPE} build")
+message(STATUS "  Framework: 16 .c files + 16 .h headers")
+message(STATUS "  Micro-benchmarks: 15 .c files")
+message(STATUS "  Macro-benchmarks: 8 .c files")
+message(STATUS "  Total: 56 source/header files, 23 benchmarks")
+message(STATUS "  Executable: vittec-bench")

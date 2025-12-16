@@ -1,16 +1,23 @@
-# Vitte 2025 — Toolchain "Steel" (portable native, single-stage)
+# vitte-bench-c (standalone)
 
-Components
-- `steel`  : build driver (reads `muffin.muf`, plans/executes builds)
-- `steelc` : compiler (Vitte -> C17 backend) — scaffolded core
-- `runtime`: minimal ABI (slices/handles/panic) — TODO
-- `pal`    : Platform Abstraction Layer (POSIX/Win32) — TODO
+Bench harness C11 minimaliste, orienté **micro** et **macro** benchmarks.
+- `benchc` : runner (warmup, iters, stats simples)
+- `micro/*` : cases unitaires très rapides (ns/op)
+- `macro/*` : workloads (ms/s, throughput)
+- sortie texte + CSV optionnel
 
-Build model
-- `muffin.muf` is mandatory. Without it, nothing builds.
-- The output model mirrors Rust/Cargo intent (packages, profiles, lockfile),
-  but MUF syntax is Vitte-native (`.end` blocks).
+## Build
+```sh
+mkdir -p build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+cmake --build . -j
+```
 
-Status
-- This repository is a **complete project skeleton**: directories, headers, docs, tests, fuzz, bench.
-- A minimal `steelc` subset can be wired as the first milestone (parser_core + backend_c).
+## Run
+```sh
+./benchc --list
+./benchc micro:add --iters 2000000
+./benchc micro:hash --iters 200000
+./benchc macro:json_parse --seconds 2
+./benchc --csv out.csv micro:add micro:hash
+```

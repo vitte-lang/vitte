@@ -1,0 +1,83 @@
+// inline_asm.vitte - Inline assembly examples
+
+// Basic inline assembly for fast operations
+fn cpu_count() -> i32 {
+    // Count CPUs using CPUID
+    asm "cpuid"
+        : "=b"(count)  // output: result in rbx
+        : "a"(1)       // input: eax = 1
+        : "rcx", "rdx" // clobbered
+    
+    return count
+}
+
+// Bit manipulation using inline assembly
+fn bit_scan_forward(x: u64) -> u32 {
+    asm "bsf %1, %0"
+        : "=r"(result)
+        : "r"(x)
+    
+    return result
+}
+
+// Memory barrier
+fn memory_barrier() {
+    asm volatile "mfence" : : : "memory"
+}
+
+// Atomic increment
+fn atomic_inc(addr: *mut i32) -> i32 {
+    asm volatile "lock; incl %0"
+        : "+m"(*addr)
+        :
+        : "memory"
+    
+    return 0
+}
+
+// SIMD example: add 4 floats at once
+fn simd_add_4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    let result: [f32; 4]
+    
+    asm "addps %1, %0"
+        : "=x"(result)
+        : "x"(b), "0"(a)
+    
+    return result
+}
+
+// High-resolution timer (x86-64)
+fn rdtsc() -> u64 {
+    let result: u64
+    
+    asm "rdtsc"
+        : "=A"(result)
+    
+    return result
+}
+
+// Memory read barrier
+fn read_barrier() {
+    asm volatile "lfence" : : : "memory"
+}
+
+// Pause instruction (for spinlocks)
+fn cpu_pause() {
+    asm volatile "pause"
+}
+
+// Get return address
+fn get_return_address() -> *mut void {
+    let addr: *mut void
+    
+    asm "mov %%rax, [%%rbp + 8]"
+        : "=r"(addr)
+    
+    return addr
+}
+
+fn main() {
+    memory_barrier()
+    cpu_pause()
+    read_barrier()
+}
