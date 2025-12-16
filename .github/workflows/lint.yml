@@ -1,0 +1,86 @@
+name: Lint & Format
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint-rust:
+    name: Lint Rust Code
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+
+    - name: Cache cargo build
+      uses: actions/cache@v3
+      with:
+        path: rust/target
+        key: ${{ runner.os }}-cargo-build-lint-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Run rustfmt
+      working-directory: ./rust
+      run: cargo fmt --all -- --check
+
+    - name: Run clippy
+      working-directory: ./rust
+      run: cargo clippy --all -- -D warnings
+
+  lint-c:
+    name: Lint C Code
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install tools
+      run: sudo apt-get update && sudo apt-get install -y clang-format clang cppcheck
+
+    - name: Check C formatting
+      run: |
+        find compiler/src -name "*.c" -o -name "*.h" | while read file; do
+          clang-format -style=file "$file" | diff -u "$file" - || (echo "File $file needs formatting"; exit 1)
+        done
+
+    - name: Run cppcheck
+      run: cppcheck --enable=all --suppress=missingIncludeSystem compiler/src/
+
+  check-formatting:
+    name: Check Markdown Formatting
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install markdownlint
+      run: npm install -g markdownlint-cli
+
+    - name: Check Markdown files
+      run: markdownlint '**/*.md' --ignore node_modules --ignore target --ignore rust/target
+
+    - name: Check YAML files
+      run: |
+        sudo apt-get install -y yamllint
+        yamllint .github/workflows/
+
+  license-check:
+    name: Check Licenses
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install license checker
+      run: npm install -g license-report
+
+    - name: Check Rust licenses
+      working-directory: ./rust
+      continue-on-error: true
+      run: cargo tree --licenses

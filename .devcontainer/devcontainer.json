@@ -1,0 +1,57 @@
+# For the best development experience, use VS Code with extensions:
+# - C/C++: ms-vscode.cpptools
+# - Rust: rust-lang.rust-analyzer
+# - CMake: twxs.cmake
+# - GitLens: eamodio.gitlens
+# - Docker (optional): ms-azuretools.vscode-docker
+# - YAML: redhat.vscode-yaml
+
+version: '3.8'
+
+build:
+  dockerfile: Dockerfile
+  context: .
+  args:
+    BUILDKIT_INLINE_CACHE: 1
+
+image: vitte-dev:latest
+containerEnv:
+  RUST_BACKTRACE: 1
+  RUST_LOG: debug
+
+features:
+  ghcr.io/devcontainers/features/git:1: {}
+  ghcr.io/devcontainers/features/github-cli:1: {}
+
+# Use 'postCreateCommand' to run commands after the container is created
+postCreateCommand: bash scripts/dev-setup.sh
+
+# Customize the VS Code experience
+customizations:
+  vscode:
+    extensions:
+      - ms-vscode.cpptools
+      - rust-lang.rust-analyzer
+      - twxs.cmake
+      - eamodio.gitlens
+      - ms-azuretools.vscode-docker
+      - redhat.vscode-yaml
+      - marus25.cortex-debug
+      - vadimcn.vscode-lldb
+    settings:
+      "[rust]":
+        editor.formatOnSave: true
+        editor.defaultFormatter: rust-lang.rust-analyzer
+      "[c]":
+        editor.defaultFormatter: ms-vscode.cpptools
+        editor.formatOnSave: true
+      "rust-analyzer.checkOnSave.command": "clippy"
+      "search.exclude":
+        "**/target": true
+        "**/build": true
+
+# Forward ports (if needed for future web UI)
+forwardPorts: []
+
+# Set the default shell to bash
+remoteUser: vscode

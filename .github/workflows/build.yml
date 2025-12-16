@@ -1,0 +1,95 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build-debug:
+    name: Build Debug
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install dependencies (Linux)
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y build-essential cmake
+
+    - name: Install dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: brew install cmake
+
+    - name: Install dependencies (Windows)
+      if: runner.os == 'Windows'
+      run: choco install cmake
+
+    - name: Bootstrap compiler
+      run: |
+        bash scripts/bootstrap_stage0.sh
+        bash scripts/self_host_stage1.sh
+
+    - name: Verify vittec executable
+      run: |
+        ./target/debug/vittec --version
+
+    - name: Build mini_project example
+      run: |
+        ./target/debug/vittec tests/data/mini_project/muffin.muf
+
+  build-release:
+    name: Build Release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install dependencies
+      run: |
+        if [ "$RUNNER_OS" == "Linux" ]; then
+          sudo apt-get update && sudo apt-get install -y build-essential cmake
+        elif [ "$RUNNER_OS" == "macOS" ]; then
+          brew install cmake
+        fi
+      shell: bash
+
+    - name: Build release binary
+      run: |
+        mkdir -p build
+        cd build
+        cmake -DCMAKE_BUILD_TYPE=Release ..
+        make vittec
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: vittec-${{ matrix.os }}
+        path: build/target/release/vittec
+
+  check-documentation:
+    name: Check Documentation Build
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Check docs structure
+      run: |
+        test -d docs/tutorials || exit 1
+        test -d docs/api || exit 1
+        test -d docs/architecture || exit 1
+        test -d docs/language-spec || exit 1
+        test -f docs/README.md || exit 1
+        test -f INSTALL.md || exit 1
+        echo "Documentation structure OK"

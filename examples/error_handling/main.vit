@@ -1,0 +1,45 @@
+enum ParseError {
+    InvalidNumber(String),
+    RangeError(String),
+}
+
+fn parse_age(input: &str) -> Result<u8, ParseError> {
+    match input.parse::<u8>() {
+        Ok(age) => {
+            if age >= 0 && age <= 150 {
+                Ok(age)
+            } else {
+                Err(ParseError::RangeError(
+                    "Age must be between 0 and 150".to_string()
+                ))
+            }
+        }
+        Err(_) => Err(ParseError::InvalidNumber(
+            format!("'{}' is not a valid number", input)
+        )),
+    }
+}
+
+fn process_age(input: &str) -> Result<String, String> {
+    let age = parse_age(input)?
+
+    let category = match age {
+        0..=12 => "child",
+        13..=19 => "teenager",
+        20..=65 => "adult",
+        _ => "senior",
+    }
+
+    Ok(format!("Age {} is in the {} category", age, category))
+}
+
+fn main() {
+    let inputs = vec!["25", "invalid", "200", "18"]
+
+    for input in inputs {
+        match process_age(input) {
+            Ok(msg) => println!("✓ {}", msg),
+            Err(err) => println!("✗ Error: {}", err),
+        }
+    }
+}
