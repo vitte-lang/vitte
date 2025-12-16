@@ -1,0 +1,32 @@
+use std::fs::File
+use std::io::{self, Read, Write}
+
+fn write_example(path: &str) -> io::Result<()> {
+    let mut file = File::create(path)?
+    file.write_all(b"Hello, Vitte!\n")?
+    file.write_all(b"This is a file I/O example.\n")?
+    Ok(())
+}
+
+fn read_example(path: &str) -> io::Result<String> {
+    let mut file = File::open(path)?
+    let mut contents = String::new()
+    file.read_to_string(&mut contents)?
+    Ok(contents)
+}
+
+fn main() {
+    let filename = "example.txt"
+
+    // Write to file
+    match write_example(filename) {
+        Ok(_) => println!("File written successfully"),
+        Err(e) => println!("Write error: {}", e),
+    }
+
+    // Read from file
+    match read_example(filename) {
+        Ok(contents) => println!("File contents:\n{}", contents),
+        Err(e) => println!("Read error: {}", e),
+    }
+}

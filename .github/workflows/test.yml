@@ -1,0 +1,120 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test-compiler:
+    name: Test Compiler
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        rust: [stable]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install C compiler (Linux)
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y build-essential cmake
+
+    - name: Install C compiler (macOS)
+      if: runner.os == 'macOS'
+      run: brew install cmake
+
+    - name: Install C compiler (Windows)
+      if: runner.os == 'Windows'
+      run: choco install cmake
+
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo index
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo build
+      uses: actions/cache@v3
+      with:
+        path: rust/target
+        key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Run compiler tests
+      run: cd compiler && ./scripts/run_tests.sh
+
+    - name: Run Rust tests
+      working-directory: ./rust
+      run: cargo test --verbose
+
+  test-runtime:
+    name: Test Runtime
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install dependencies (Linux)
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y build-essential
+
+    - name: Install dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: brew install cmake
+
+    - name: Build and test runtime
+      run: |
+        mkdir -p build
+        cd build
+        cmake ..
+        make test-runtime
+
+  test-stdlib:
+    name: Test Standard Library
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y build-essential
+
+    - name: Bootstrap compiler
+      run: |
+        ./scripts/bootstrap_stage0.sh
+        ./scripts/self_host_stage1.sh
+
+    - name: Test standard library
+      run: make test-stdlib
+
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y build-essential
+
+    - name: Bootstrap compiler
+      run: |
+        ./scripts/bootstrap_stage0.sh
+        ./scripts/self_host_stage1.sh
+
+    - name: Run smoke tests
+      run: cd compiler/tests/smoke && for test in *.vit; do echo "Testing $test"; ../../scripts/run_test.sh "$test"; done

@@ -1,0 +1,50 @@
+# Feature Flags Configuration
+
+[features]
+# Standard library
+std = { default = true, description = "Standard library" }
+alloc = { default = true, description = "Memory allocation" }
+collections = { default = true, description = "Collections (Vec, HashMap, etc.)" }
+
+# Platform features
+threads = { default = true, description = "Threading support" }
+network = { default = true, description = "Networking" }
+filesystem = { default = true, description = "Filesystem operations" }
+process = { default = true, description = "Process management" }
+
+# Optimizations
+lto = { default = false, description = "Link-time optimization" }
+fat_lto = { default = false, description = "Fat LTO (slower but better)" }
+simd = { default = true, description = "SIMD support" }
+
+# Debugging
+debug = { default = false, description = "Debug symbols" }
+backtrace = { default = true, description = "Stack backtraces" }
+profiling = { default = false, description = "Profiling support" }
+
+# Runtime
+panic_abort = { default = false, description = "Panic aborts immediately" }
+panic_unwind = { default = true, description = "Panic unwinds stack" }
+
+[feature_dependencies]
+# lto requires link = true
+lto = ["link"]
+
+# fat_lto requires lto
+fat_lto = ["lto"]
+
+# debug features
+backtrace = ["debug"]
+
+[profiles.debug]
+enabled_features = ["debug", "backtrace"]
+opt_level = 0
+
+[profiles.release]
+enabled_features = ["lto", "simd"]
+opt_level = 3
+strip = true
+
+[profiles.test]
+enabled_features = ["debug", "backtrace", "profiling"]
+opt_level = 1

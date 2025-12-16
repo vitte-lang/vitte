@@ -1,0 +1,18 @@
+#[no_mangle]
+pub extern "C" fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+#[no_mangle]
+pub extern "C" fn greet(name_ptr: *const i8, name_len: usize) -> i32 {
+    if name_ptr.is_null() {
+        return -1
+    }
+
+    unsafe {
+        let slice = std::slice::from_raw_parts(name_ptr as *const u8, name_len)
+        let name = std::str::from_utf8(slice).unwrap_or("unknown")
+        println!("Hello, {}!", name)
+        0
+    }
+}
