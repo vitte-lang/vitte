@@ -41,6 +41,15 @@ extern "C" {
 #include <stdint.h>
 #include <stdbool.h>
 
+#if defined(_WIN32)
+  #ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+  #endif
+  #include <windows.h>
+#else
+  #include <time.h>
+#endif
+
 // ======================================================================================
 // Bench context
 // ======================================================================================
@@ -139,8 +148,15 @@ void bench_autoreg_register_case(const bench_case_t* c);
 // Time utilities (bench_time.c)
 // ======================================================================================
 
-// Opaque type in header; defined in bench_time.c
-typedef struct bench_clock bench_clock_t;
+// bench_clock_t needs full definition because some runners store it by value.
+typedef struct bench_clock {
+#if defined(_WIN32)
+  LARGE_INTEGER qpc_freq;
+#else
+  int has_clock_gettime;
+  clockid_t clock_id;
+#endif
+} bench_clock_t;
 
 bench_clock_t bench_clock_init(void);
 uint64_t bench_now_ns(const bench_clock_t* c);
