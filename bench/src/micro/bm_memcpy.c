@@ -96,3 +96,9 @@ void bm_memcpy(void* ctx) {
 
   sink = acc;
 }
+
+void bench_register_micro_memcpy(void) {
+  extern int bench_registry_add(const char* id, int kind, bench_fn_t fn, void* ctx);
+  
+  bench_registry_add("micro:memcpy", BENCH_MICRO, bm_memcpy, NULL);
+}

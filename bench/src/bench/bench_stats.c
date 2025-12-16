@@ -43,8 +43,8 @@ static double quantile_lerp(const double* sorted, int n, double q) {
   return a + (b - a) * frac;
 }
 
-bench_stats bench_compute_stats(const double* samples, int n) {
-  bench_stats s = (bench_stats){0,0,0,0,0};
+bench_stats_t bench_compute_stats(const double* samples, int n) {
+  bench_stats_t s = (bench_stats_t){0,0,0,0,0,0,0};
   if(!samples || n <= 0) return s;
 
   double* tmp = (double*)malloc((size_t)n * sizeof(double));
@@ -78,8 +78,17 @@ bench_stats bench_compute_stats(const double* samples, int n) {
 
   s.min = tmp[0];
   s.max = tmp[m - 1];
-  s.p50 = quantile_lerp(tmp, m, 0.50);
+  s.median = quantile_lerp(tmp, m, 0.50);
   s.p95 = quantile_lerp(tmp, m, 0.95);
+  s.p99 = quantile_lerp(tmp, m, 0.99);
+
+  /* Compute standard deviation */
+  double sum_sq_diff = 0.0;
+  for(int i = 0; i < m; i++) {
+    const double diff = tmp[i] - s.mean;
+    sum_sq_diff += diff * diff;
+  }
+  s.stddev = sqrt(sum_sq_diff / (double)m);
 
   free(tmp);
   return s;

@@ -1,4 +1,5 @@
 #include "bench/bench.h"
+#include "bench/benchmark_init.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -51,16 +52,16 @@ static int parse_f64(const char* s, double* out) {
   return 1;
 }
 
-static const bench_case* find_case(const char* id) {
+static const bench_case_t* find_case(const char* id) {
   int n = 0;
-  const bench_case* all = bench_registry_all(&n);
+  const bench_case_t* all = bench_registry_all(&n);
   for(int i=0;i<n;i++) if(strcmp(all[i].id, id) == 0) return &all[i];
   return NULL;
 }
 
 static int list_cases(int full) {
   int n = 0;
-  const bench_case* all = bench_registry_all(&n);
+  const bench_case_t* all = bench_registry_all(&n);
   for(int i=0;i<n;i++) {
     if(!full) {
       printf("%s\n", all[i].id);
@@ -77,11 +78,11 @@ static int id_matches_filter(const char* id, const char* filter) {
   return strstr(id, filter) != NULL;
 }
 
-static void warmup(const bench_case* c, int warmup_calls) {
+static void warmup(const bench_case_t* c, int warmup_calls) {
   for(int i=0;i<warmup_calls;i++) c->fn(c->ctx);
 }
 
-static int run_micro(const bench_case* c, int iters, int samples, int warmup_calls, FILE* csv) {
+static int run_micro(const bench_case_t* c, int iters, int samples, int warmup_calls, FILE* csv) {
   warmup(c, warmup_calls);
   double* ss = (double*)malloc((size_t)samples * sizeof(double));
   if(!ss) return 1;
@@ -93,19 +94,19 @@ static int run_micro(const bench_case* c, int iters, int samples, int warmup_cal
     ss[s] = (double)(t1 - t0) / (double)iters; /* ns/op */
   }
 
-  bench_stats st = bench_compute_stats(ss, samples);
-  printf("%-16s mean=%.2f ns/op  p50=%.2f  p95=%.2f  min=%.2f  max=%.2f\n",
-    c->id, st.mean, st.p50, st.p95, st.min, st.max);
+  bench_stats_t st = bench_compute_stats(ss, samples);
+  printf("%-16s mean=%.2f ns/op  median=%.2f  p95=%.2f  min=%.2f  max=%.2f\n",
+    c->id, st.mean, st.median, st.p95, st.min, st.max);
 
   if(csv) {
-    fprintf(csv, "%s,%.6f,%.6f,%.6f,%.6f,%.6f\n", c->id, st.mean, st.p50, st.p95, st.min, st.max);
+    fprintf(csv, "%s,%.6f,%.6f,%.6f,%.6f,%.6f\n", c->id, st.mean, st.median, st.p95, st.min, st.max);
   }
 
   free(ss);
   return 0;
 }
 
-static int run_macro(const bench_case* c, double seconds, int samples, int warmup_calls, int timecheck, FILE* csv) {
+static int run_macro(const bench_case_t* c, double seconds, int samples, int warmup_calls, int timecheck, FILE* csv) {
   /* macro: estimate ops/s by calling fn in a loop for ~seconds
      Reduce timer overhead by checking time every `timecheck` iterations. */
   if(timecheck <= 0) timecheck = 256;
@@ -131,12 +132,12 @@ static int run_macro(const bench_case* c, double seconds, int samples, int warmu
     ss[s] = (double)it / seconds; /* ops/s */
   }
 
-  bench_stats st = bench_compute_stats(ss, samples);
-  printf("%-16s mean=%.2f ops/s  p50=%.2f  p95=%.2f  min=%.2f  max=%.2f\n",
-    c->id, st.mean, st.p50, st.p95, st.min, st.max);
+  bench_stats_t st = bench_compute_stats(ss, samples);
+  printf("%-16s mean=%.2f ops/s  median=%.2f  p95=%.2f  min=%.2f  max=%.2f\n",
+    c->id, st.mean, st.median, st.p95, st.min, st.max);
 
   if(csv) {
-    fprintf(csv, "%s,%.6f,%.6f,%.6f,%.6f,%.6f\n", c->id, st.mean, st.p50, st.p95, st.min, st.max);
+    fprintf(csv, "%s,%.6f,%.6f,%.6f,%.6f,%.6f\n", c->id, st.mean, st.median, st.p95, st.min, st.max);
   }
 
   free(ss);
@@ -144,6 +145,9 @@ static int run_macro(const bench_case* c, double seconds, int samples, int warmu
 }
 
 int bench_run(int argc, char** argv) {
+  /* Initialize all benchmarks */
+  bench_init_all_benchmarks();
+  
   int iters = 1000000;
   int samples = 7;
   double seconds = 2.0;
@@ -206,9 +210,9 @@ int bench_run(int argc, char** argv) {
 
   if(do_all) {
     int n = 0;
-    const bench_case* all = bench_registry_all(&n);
+    const bench_case_t* all = bench_registry_all(&n);
     for(int j=0;j<n;j++) {
-      const bench_case* c = &all[j];
+      const bench_case_t* c = &all[j];
       if(!id_matches_filter(c->id, filter)) continue;
       if(c->kind == BENCH_MICRO) rc |= run_micro(c, iters, samples, warmup_calls, csv);
       else rc |= run_macro(c, seconds, samples, warmup_calls, timecheck, csv);
@@ -218,7 +222,7 @@ int bench_run(int argc, char** argv) {
 
     for(; i<argc; i++) {
       if(!id_matches_filter(argv[i], filter)) continue;
-      const bench_case* c = find_case(argv[i]);
+      const bench_case_t* c = find_case(argv[i]);
       if(!c) { fprintf(stderr, "unknown case: %s\n", argv[i]); rc = 1; continue; }
       if(c->kind == BENCH_MICRO) rc |= run_micro(c, iters, samples, warmup_calls, csv);
       else rc |= run_macro(c, seconds, samples, warmup_calls, timecheck, csv);

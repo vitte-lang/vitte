@@ -123,3 +123,9 @@ void bm_hash(void* ctx) {
   /* Make it observable. */
   sink = acc;
 }
+
+void bench_register_micro_hash(void) {
+  extern int bench_registry_add(const char* id, int kind, bench_fn_t fn, void* ctx);
+  
+  bench_registry_add("micro:hash", BENCH_MICRO, bm_hash, NULL);
+}

@@ -17,6 +17,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "bench/types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,32 +36,6 @@ extern "C" {
 #endif
 
 /* ----------------------
- * Core types
- * ---------------------- */
-
-typedef enum bench_kind {
-  BENCH_MICRO = 0,
-  BENCH_MACRO = 1,
-} bench_kind;
-
-typedef void (*bench_fn)(void* ctx);
-
-typedef struct bench_case {
-  const char* id;     /* e.g. "micro:hash" */
-  bench_kind kind;    /* BENCH_MICRO or BENCH_MACRO */
-  bench_fn fn;        /* benchmark body */
-  void* ctx;          /* opaque context (often NULL) */
-} bench_case;
-
-typedef struct bench_stats {
-  double mean;
-  double p50;
-  double p95;
-  double min;
-  double max;
-} bench_stats;
-
-/* ----------------------
  * Time
  * ---------------------- */
 
@@ -72,13 +47,13 @@ uint64_t bench_now_ns(void);
  * ---------------------- */
 
 /* Returns pointer to a static array of cases; count written to out_count (if non-NULL). */
-const bench_case* bench_registry_all(int* out_count);
+const bench_case_t* bench_registry_all(int* out_count);
 
 /* ----------------------
  * Stats
  * ---------------------- */
 
-bench_stats bench_compute_stats(const double* samples, int n);
+bench_stats_t bench_compute_stats(const double* samples, int n);
 
 /* ----------------------
  * Runner

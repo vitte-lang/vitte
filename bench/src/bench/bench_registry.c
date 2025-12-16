@@ -4,96 +4,30 @@
   bench_registry.c (max)
 
   Objectif:
-  - Registry simple, stable, triable par id côté outils, extensible sans casser le build.
-  - Les nouveaux benches peuvent être ajoutés via les sections guardées ci-dessous.
-
-  Conventions:
-  - id: "micro:<name>" ou "macro:<name>"
-  - ctx: NULL par défaut (paramétrisation possible plus tard)
+  - Registry simple, stable, utilisant un registre dynamique via bench_registry_add().
+  - Les benchmarks sont enregistrés au startup via benchmark_init.c.
+  - Pas de hardcoding des benchmarks individuels.
 */
 
-/* ----------------------
- * Declarations (existing)
- * ---------------------- */
+#define MAX_CASES 256
 
-/* micro */
-void bm_add(void* ctx);
-void bm_hash(void* ctx);
-void bm_memcpy(void* ctx);
+static bench_case_t g_cases[MAX_CASES];
+static int g_count = 0;
 
-/* macro */
-void bm_json_parse(void* ctx);
-
-/* ----------------------
- * Optional extension points
- * ----------------------
- *
- * Activer avec:
- *   -DVITTE_BENCH_EXTRA=1
- *
- * Puis fournir les implémentations bm_* correspondantes.
- */
-#if defined(VITTE_BENCH_EXTRA)
-/* micro extra (provide implementations when enabling the macro) */
-/* void bm_strlen(void* ctx); */
-/* void bm_memchr(void* ctx); */
-/* void bm_branch(void* ctx); */
-
-/* macro extra */
-/* void bm_io_read(void* ctx); */
-#endif
-
-/*
- * Experimental (opt-in):
- *   -DVITTE_BENCH_EXPERIMENTAL=1
- */
-#if defined(VITTE_BENCH_EXPERIMENTAL)
-/* void bm_vm_dispatch(void* ctx); */
-#endif
-
-/* ----------------------
- * Registry macros
- * ---------------------- */
-
-#define BENCH_MICRO_CASE(ID, FN) { (ID), BENCH_MICRO, (FN), NULL }
-#define BENCH_MACRO_CASE(ID, FN) { (ID), BENCH_MACRO, (FN), NULL }
-
-/* ----------------------
- * Registry
- * ---------------------- */
-
-static bench_case g_cases[] = {
-  /* core micro */
-  BENCH_MICRO_CASE("micro:add",    bm_add),
-  BENCH_MICRO_CASE("micro:hash",   bm_hash),
-  BENCH_MICRO_CASE("micro:memcpy", bm_memcpy),
-
-  /* core macro */
-  BENCH_MACRO_CASE("macro:json_parse", bm_json_parse),
-
-#if defined(VITTE_BENCH_EXTRA)
-  /*
-    EXTRAS (opt-in):
-    - Ajoute ici tes nouveaux cases, une fois leurs fonctions présentes.
-
-    Exemple:
-      BENCH_MICRO_CASE("micro:strlen", bm_strlen),
-      BENCH_MACRO_CASE("macro:io_read", bm_io_read),
-  */
-#endif
-
-#if defined(VITTE_BENCH_EXPERIMENTAL)
-  /*
-    EXPERIMENTAL (opt-in):
-    - Bench VM dispatch, decode, etc.
-  */
-#endif
-};
-
-const bench_case* bench_registry_all(int* out_count) {
-  if(out_count) *out_count = (int)(sizeof(g_cases) / sizeof(g_cases[0]));
-  return g_cases;
+int bench_registry_add(const char* id, int kind, bench_fn_t fn, void* ctx) {
+  if (g_count >= MAX_CASES) {
+    return 0;  /* Registry full */
+  }
+  
+  g_cases[g_count].id = id;
+  g_cases[g_count].kind = (bench_kind_t)kind;
+  g_cases[g_count].fn = fn;
+  g_cases[g_count].ctx = ctx;
+  g_count++;
+  return 1;
 }
 
-#undef BENCH_MICRO_CASE
-#undef BENCH_MACRO_CASE
+const bench_case_t* bench_registry_all(int* out_count) {
+  if (out_count) *out_count = g_count;
+  return g_cases;
+}

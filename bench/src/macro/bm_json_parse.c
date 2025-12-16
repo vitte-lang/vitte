@@ -263,3 +263,9 @@ void bm_json_parse(void* ctx) {
 
   sink ^= acc;
 }
+
+void bench_register_macro_json(void) {
+  extern int bench_registry_add(const char* id, int kind, bench_fn_t fn, void* ctx);
+  
+  bench_registry_add("macro:json_parse", BENCH_MACRO, bm_json_parse, NULL);
+}
