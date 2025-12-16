@@ -62,6 +62,18 @@ static inline int vittec_severity_is_note(vittec_severity_t s) {
   return s == VITTEC_SEV_NOTE;
 }
 
+/* local helper: strcmp without <string.h> */
+/* returns 0 if equal, non-zero otherwise */
+static inline int vittec__streq(const char* a, const char* b) {
+  if(a == b) return 0;
+  if(!a || !b) return 1;
+  while(*a && *b) {
+    if(*a != *b) return 1;
+    a++; b++;
+  }
+  return (*a == '\0' && *b == '\0') ? 0 : 1;
+}
+
 /* Parse severity from ASCII string.
 
    Accepts:
@@ -75,18 +87,6 @@ static inline int vittec_severity_from_cstr(const char* s, vittec_severity_t* ou
 
   /* minimal, ASCII-only compare */
   #define EQ(A,B) (0 == vittec__streq((A),(B)))
-
-  /* local helper: strcmp without <string.h> */
-  /* returns 0 if equal, non-zero otherwise */
-  static inline int vittec__streq(const char* a, const char* b) {
-    if(a == b) return 0;
-    if(!a || !b) return 1;
-    while(*a && *b) {
-      if(*a != *b) return 1;
-      a++; b++;
-    }
-    return (*a == '\0' && *b == '\0') ? 0 : 1;
-  }
 
   if(EQ(s, "error") || EQ(s, "err")) {
     *out = VITTEC_SEV_ERROR;
