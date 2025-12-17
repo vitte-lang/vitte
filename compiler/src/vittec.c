@@ -9,6 +9,7 @@
 #include "vittec/front/lexer.h"
 #include "vittec/front/parser.h"
 #include "vittec/back/emit_c.h"
+#include "vitte/codegen.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -103,18 +104,40 @@ int vittec_compile(vittec_session_t* s, const vittec_compile_options_t* opt) {
   if (opt->emit_kind == VITTEC_EMIT_TOKENS) {
     print_tokens(opt->input_path, fb.data, (uint32_t)fb.len, file_id, &s->diags);
   } else if (opt->emit_kind == VITTEC_EMIT_C) {
-    vittec_lexer_t lx;
-    vittec_lexer_init(&lx, fb.data, (uint32_t)fb.len, file_id, &s->diags);
-
-    vittec_parse_unit_t u;
-    vittec_parse_unit(&lx, &u);
-
     const char* out_path = opt->output_path ? opt->output_path : "out.c";
-    if (vittec_emit_c_file(&u, out_path) != 0) {
-      fprintf(stderr, "error: cannot write: %s\\n", out_path);
+
+    vitte_ctx vctx;
+    vitte_ctx_init(&vctx);
+    vitte_codegen_unit unit;
+    vitte_codegen_unit_init(&unit);
+
+    vitte_error verr;
+    memset(&verr, 0, sizeof(verr));
+    vitte_result build_rc = vitte_codegen_unit_build(&vctx, fb.data, (size_t)fb.len, &unit, &verr);
+    if (build_rc != VITTE_OK) {
+      const char* msg = verr.message[0] ? verr.message : "vitte codegen unit build failed";
+      fprintf(stderr, "error: %s:%u:%u: %s (code %d)\n",
+              opt->input_path ? opt->input_path : "(stdin)",
+              (unsigned)verr.line,
+              (unsigned)verr.col,
+              msg,
+              (int)verr.code);
+      vitte_codegen_unit_reset(&vctx, &unit);
+      vitte_ctx_free(&vctx);
       vittec_free_file_buf(&fb);
       return 1;
     }
+
+    if (vittec_emit_c_file(&unit, out_path) != 0) {
+      fprintf(stderr, "error: cannot write: %s\n", out_path);
+      vitte_codegen_unit_reset(&vctx, &unit);
+      vitte_ctx_free(&vctx);
+      vittec_free_file_buf(&fb);
+      return 1;
+    }
+
+    vitte_codegen_unit_reset(&vctx, &unit);
+    vitte_ctx_free(&vctx);
   } else {
     /* default: tokens */
     print_tokens(opt->input_path, fb.data, (uint32_t)fb.len, file_id, &s->diags);
