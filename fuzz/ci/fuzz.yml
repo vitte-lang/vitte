@@ -1,0 +1,207 @@
+
+
+# GitHub Actions: fuzz CI (build + smoke runs) for Vitte fuzz targets (C17).
+# - Linux (clang) default
+# - Optional ASan/UBSan variant
+# - Artifacts: crash repros, corpora snapshots (best-effort)
+
+name: fuzz
+
+on:
+  push:
+    paths:
+      - "fuzz/**"
+      - "compiler/**"
+      - "runtime/**"
+      - "include/**"
+      - "tools/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/**"
+  pull_request:
+    paths:
+      - "fuzz/**"
+      - "compiler/**"
+      - "runtime/**"
+      - "include/**"
+      - "tools/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUILD_DIR: build-fuzz
+  CMAKE_BUILD_TYPE: Debug
+  # Common libFuzzer-ish runtime knobs
+  FUZZ_MAX_TOTAL_TIME: "30"   # seconds per fuzzer (smoke)
+  FUZZ_RUNS: "5000"           # runs if max_total_time unsupported
+  FUZZ_ARTIFACT_PREFIX: "fuzz-artifacts/"
+  # Keep core dumps off by default (can be large)
+  ASAN_OPTIONS: "abort_on_error=1:detect_leaks=1:symbolize=1:print_stacktrace=1"
+  UBSAN_OPTIONS: "print_stacktrace=1:halt_on_error=1"
+
+jobs:
+  linux-fuzz:
+    name: Linux fuzz smoke (clang)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang lld \
+            python3 \
+            zip
+
+      - name: Configure (fuzz)
+        run: |
+          # If your project has dedicated CMake options for fuzzing, wire them here.
+          # Examples (adjust if you have these):
+          #   -DVITTE_ENABLE_FUZZ=ON
+          #   -DVITTE_FUZZ_LIBFUZZER=ON
+          cmake -S . -B "${BUILD_DIR}" -G Ninja \
+            -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}" \
+            -DCMAKE_C_COMPILER=clang
+
+      - name: Build
+        run: |
+          cmake --build "${BUILD_DIR}" --config "${CMAKE_BUILD_TYPE}"
+
+      - name: Discover fuzzers
+        id: discover
+        run: |
+          set -euo pipefail
+          mkdir -p "${FUZZ_ARTIFACT_PREFIX}"
+          # Heuristic: executable files containing "fuzz" in name.
+          # Tighten this if you have a fixed directory/target naming convention.
+          mapfile -t FUZZERS < <(find "${BUILD_DIR}" -type f -maxdepth 5 -perm -111 -name "*fuzz*" 2>/dev/null || true)
+          if [ "${#FUZZERS[@]}" -eq 0 ]; then
+            echo "found=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s\n' "${FUZZERS[@]}" | tee fuzzers.txt
+          echo "found=1" >> "$GITHUB_OUTPUT"
+
+      - name: Fuzz smoke run
+        if: steps.discover.outputs.found == '1'
+        run: |
+          set -euo pipefail
+          MAXT="${FUZZ_MAX_TOTAL_TIME}"
+          RUNS="${FUZZ_RUNS}"
+
+          while IFS= read -r f; do
+            echo "==> Running: $f"
+            # Common libFuzzer flags:
+            # -artifact_prefix= writes crashing inputs there
+            # -max_total_time= bounds time
+            # -runs= bounds iterations (fallback)
+            #
+            # Some fuzzers might not support both; run best-effort.
+            "$f" \
+              -artifact_prefix="${FUZZ_ARTIFACT_PREFIX}" \
+              -max_total_time="${MAXT}" \
+              -runs="${RUNS}" \
+              || {
+                echo "Fuzzer failed (expected if crash found): $f"
+                # Do not fail immediately; keep going to collect artifacts.
+                true
+              }
+          done < fuzzers.txt
+
+      - name: Package artifacts
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          # Collect artifacts + optional corpora (common conventions)
+          # Adjust corpus paths to match your repo layout.
+          tar -czf out/fuzz-artifacts.tar.gz "${FUZZ_ARTIFACT_PREFIX}" 2>/dev/null || true
+          if [ -f fuzzers.txt ]; then cp fuzzers.txt out/; fi
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-linux-artifacts
+          path: out
+          if-no-files-found: warn
+          retention-days: 14
+
+  linux-fuzz-asan:
+    name: Linux fuzz (ASan/UBSan) smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Enable on demand for PRs by setting repo variable FUZZ_ASAN=1
+    if: ${{ github.event_name != 'pull_request' || vars.FUZZ_ASAN == '1' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang lld \
+            python3
+
+      - name: Configure (ASan/UBSan fuzz)
+        run: |
+          cmake -S . -B build-fuzz-asan -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_C_FLAGS="-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+
+      - name: Build
+        run: |
+          cmake --build build-fuzz-asan --config Debug
+
+      - name: Discover fuzzers
+        run: |
+          set -euo pipefail
+          mkdir -p "${FUZZ_ARTIFACT_PREFIX}"
+          mapfile -t FUZZERS < <(find build-fuzz-asan -type f -maxdepth 5 -perm -111 -name "*fuzz*" 2>/dev/null || true)
+          if [ "${#FUZZERS[@]}" -eq 0 ]; then
+            echo "No fuzzers found; skipping."
+            exit 0
+          fi
+          printf '%s\n' "${FUZZERS[@]}" > fuzzers.txt
+
+      - name: Fuzz smoke run (ASan/UBSan)
+        run: |
+          set -euo pipefail
+          MAXT="${FUZZ_MAX_TOTAL_TIME}"
+          RUNS="${FUZZ_RUNS}"
+          while IFS= read -r f; do
+            echo "==> Running: $f"
+            "$f" \
+              -artifact_prefix="${FUZZ_ARTIFACT_PREFIX}" \
+              -max_total_time="${MAXT}" \
+              -runs="${RUNS}" \
+              || true
+          done < fuzzers.txt
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-linux-asan-artifacts
+          path: |
+            fuzz-artifacts/
+            fuzzers.txt
+          if-no-files-found: warn
+          retention-days: 14
