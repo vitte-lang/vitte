@@ -1,0 +1,10 @@
+C:\Users\vince\Documents\GitHub\vitte\rust\target\debug\deps\tinytemplate-e6d9a62c27e2a261.d: C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\lib.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\compiler.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\error.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\instruction.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\syntax.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\template.rs
+
+C:\Users\vince\Documents\GitHub\vitte\rust\target\debug\deps\libtinytemplate-e6d9a62c27e2a261.rmeta: C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\lib.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\compiler.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\error.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\instruction.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\syntax.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\template.rs
+
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\lib.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\compiler.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\error.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\instruction.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\syntax.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tinytemplate-1.2.1\src\template.rs:
