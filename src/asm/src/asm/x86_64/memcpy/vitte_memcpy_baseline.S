@@ -25,13 +25,10 @@
 // Clobbers:
 //   rax, rcx, r8..r11, xmm0..xmm3, flags
 
-    .text
-    .p2align 4, 0x90
+#include "common/asm_macros.S"
 
-    .globl  vitte_memcpy_baseline
-    .type   vitte_memcpy_baseline, @function
-
-vitte_memcpy_baseline:
+    VITTE_P2ALIGN(4)
+    VITTE_FUNC_BEGIN(vitte_memcpy_baseline)
     mov     %rdi, %rax            // save original dst for return
 
     test    %rdx, %rdx
@@ -167,4 +164,4 @@ vitte_memcpy_baseline:
 .Lret:
     ret
 
-    .size vitte_memcpy_baseline, .-vitte_memcpy_baseline
+    VITTE_FUNC_END(vitte_memcpy_baseline)

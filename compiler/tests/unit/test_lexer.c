@@ -1,220 +1,181 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <assert.h>
+#include <stdio.h>
+#include <string.h>
 
-#include "compiler/lexer.h"
+#include "vittec/front/lexer.h"
+#include "vittec/front/token.h"
 
-#define TEST(name) printf("TEST: %s\n", name)
-#define ASSERT(cond) assert(cond)
+#define ASSERT_TRUE(cond) assert(cond)
 #define ASSERT_EQ(a, b) assert((a) == (b))
-#define ASSERT_STR_EQ(a, b) assert(strcmp((a), (b)) == 0)
 
-void test_lexer_empty(void) {
-    TEST("lexer_empty");
-    
-    lexer_t *lex = lexer_create("", 0);
-    ASSERT(lex != NULL);
-    
-    uint32_t count = 0;
-    token_t *tokens = lexer_tokenize(lex, &count);
-    
-    ASSERT(tokens != NULL);
-    ASSERT_EQ(count, 1);  /* EOF token */
-    ASSERT_EQ(tokens[0].kind, TOK_EOF);
-    
-    free(tokens);
-    lexer_destroy(lex);
+static size_t lex_with_options(
+  const char* src,
+  vittec_diag_sink_t* sink,
+  const vittec_lexer_options_t* opt,
+  vittec_token_t* out,
+  size_t cap
+) {
+  vittec_lexer_t lx;
+  uint32_t len = (uint32_t)strlen(src);
+  if (opt) {
+    vittec_lexer_init_ex(&lx, src, len, 1u, sink, NULL, opt);
+  } else {
+    vittec_lexer_init(&lx, src, len, 1u, sink);
+  }
+  size_t count = 0;
+  for (;;) {
+    ASSERT_TRUE(count < cap);
+    out[count] = vittec_lex_next(&lx);
+    count++;
+    if (out[count - 1].kind == VITTEC_TOK_EOF) break;
+  }
+  return count;
 }
 
-void test_lexer_identifier(void) {
-    TEST("lexer_identifier");
-    
-    const char *src = "hello world";
-    lexer_t *lex = lexer_create(src, strlen(src));
-    ASSERT(lex != NULL);
-    
-    uint32_t count = 0;
-    token_t *tokens = lexer_tokenize(lex, &count);
-    
-    ASSERT(tokens != NULL);
-    ASSERT_EQ(tokens[0].kind, TOK_IDENT);
-    ASSERT_EQ(tokens[0].line, 1);
-    ASSERT_EQ(tokens[0].col, 1);
-    ASSERT_EQ(tokens[1].kind, TOK_IDENT);
-    ASSERT_EQ(tokens[2].kind, TOK_EOF);
-    
-    free(tokens);
-    lexer_destroy(lex);
+static size_t lex_source(const char* src, vittec_token_t* out, size_t cap) {
+  return lex_with_options(src, NULL, NULL, out, cap);
 }
 
-void test_lexer_keywords(void) {
-    TEST("lexer_keywords");
-    
-    const char *src = "fn let if else while for";
-    lexer_t *lex = lexer_create(src, strlen(src));
-    ASSERT(lex != NULL);
-    
-    uint32_t count = 0;
-    token_t *tokens = lexer_tokenize(lex, &count);
-    
-    ASSERT(tokens != NULL);
-    ASSERT_EQ(tokens[0].kind, TOK_KEYWORD);  /* fn */
-    ASSERT_EQ(tokens[1].kind, TOK_KEYWORD);  /* let */
-    ASSERT_EQ(tokens[2].kind, TOK_KEYWORD);  /* if */
-    ASSERT_EQ(tokens[3].kind, TOK_KEYWORD);  /* else */
-    ASSERT_EQ(tokens[4].kind, TOK_KEYWORD);  /* while */
-    ASSERT_EQ(tokens[5].kind, TOK_KEYWORD);  /* for */
-    
-    free(tokens);
-    lexer_destroy(lex);
+static void test_lexer_basic_sequence(void) {
+  printf("TEST: lexer_basic_sequence\n");
+  const char* src = "foo 42 \"hi\" + -";
+  vittec_token_t toks[16];
+  size_t count = lex_source(src, toks, 16);
+  ASSERT_TRUE(count >= 6);
+
+  ASSERT_EQ(toks[0].kind, VITTEC_TOK_IDENT);
+  ASSERT_TRUE(vittec_sv_eq_cstr(toks[0].text, "foo"));
+
+  ASSERT_EQ(toks[1].kind, VITTEC_TOK_INT);
+  ASSERT_TRUE(vittec_sv_eq_cstr(toks[1].text, "42"));
+
+  ASSERT_EQ(toks[2].kind, VITTEC_TOK_STRING);
+  ASSERT_TRUE(vittec_sv_eq_cstr(toks[2].text, "\"hi\""));
+
+  ASSERT_EQ(toks[3].kind, VITTEC_TOK_PUNCT);
+  ASSERT_EQ(toks[3].as.punct, VITTEC_PUNCT_PLUS);
+
+  ASSERT_EQ(toks[4].kind, VITTEC_TOK_PUNCT);
+  ASSERT_EQ(toks[4].as.punct, VITTEC_PUNCT_MINUS);
+
+  ASSERT_EQ(toks[5].kind, VITTEC_TOK_EOF);
 }
 
-void test_lexer_integers(void) {
-    TEST("lexer_integers");
-    
-    const char *src = "42 0x2a 0b101010 0o52";
-    lexer_t *lex = lexer_create(src, strlen(src));
-    ASSERT(lex != NULL);
-    
-    uint32_t count = 0;
-    token_t *tokens = lexer_tokenize(lex, &count);
-    
-    ASSERT(tokens != NULL);
-    ASSERT_EQ(tokens[0].kind, TOK_INT);   /* 42 */
-    ASSERT_EQ(tokens[1].kind, TOK_INT);   /* 0x2a */
-    ASSERT_EQ(tokens[2].kind, TOK_INT);   /* 0b101010 */
-    ASSERT_EQ(tokens[3].kind, TOK_INT);   /* 0o52 */
-    ASSERT_EQ(tokens[4].kind, TOK_EOF);
-    
-    free(tokens);
-    lexer_destroy(lex);
+static void test_lexer_keywords(void) {
+  printf("TEST: lexer_keywords\n");
+  const char* src = "fn let return end";
+  vittec_token_t toks[16];
+  size_t count = lex_source(src, toks, 16);
+  ASSERT_TRUE(count >= 5);
+
+  ASSERT_EQ(toks[0].kind, VITTEC_TOK_KEYWORD);
+  ASSERT_EQ(toks[0].as.kw, VITTEC_KW_FN);
+
+  ASSERT_EQ(toks[1].kind, VITTEC_TOK_KEYWORD);
+  ASSERT_EQ(toks[1].as.kw, VITTEC_KW_LET);
+
+  ASSERT_EQ(toks[2].kind, VITTEC_TOK_KEYWORD);
+  ASSERT_EQ(toks[2].as.kw, VITTEC_KW_RETURN);
+
+  ASSERT_EQ(toks[3].kind, VITTEC_TOK_KEYWORD);
+  ASSERT_EQ(toks[3].as.kw, VITTEC_KW_END);
 }
 
-void test_lexer_floats(void) {
-    TEST("lexer_floats");
-    
-    const char *src = "3.14 1.0 2e10 3.5e-2";
-    lexer_t *lex = lexer_create(src, strlen(src));
-    ASSERT(lex != NULL);
-    
-    uint32_t count = 0;
-    token_t *tokens = lexer_tokenize(lex, &count);
-    
-    ASSERT(tokens != NULL);
-    ASSERT_EQ(tokens[0].kind, TOK_FLOAT);  /* 3.14 */
-    ASSERT_EQ(tokens[1].kind, TOK_FLOAT);  /* 1.0 */
-    ASSERT_EQ(tokens[2].kind, TOK_FLOAT);  /* 2e10 */
-    ASSERT_EQ(tokens[3].kind, TOK_FLOAT);  /* 3.5e-2 */
-    ASSERT_EQ(tokens[4].kind, TOK_EOF);
-    
-    free(tokens);
-    lexer_destroy(lex);
+static void test_lexer_punctuation_suite(void) {
+  printf("TEST: lexer_punctuation_suite\n");
+  const char* src = "() [] , ; . : -> => == !=";
+  vittec_token_t toks[32];
+  size_t count = lex_source(src, toks, 32);
+  ASSERT_TRUE(count >= 12);
+
+  ASSERT_EQ(toks[0].kind, VITTEC_TOK_PUNCT);
+  ASSERT_EQ(toks[0].as.punct, VITTEC_PUNCT_LPAREN);
+  ASSERT_EQ(toks[1].as.punct, VITTEC_PUNCT_RPAREN);
+  ASSERT_EQ(toks[2].as.punct, VITTEC_PUNCT_LBRACK);
+  ASSERT_EQ(toks[3].as.punct, VITTEC_PUNCT_RBRACK);
+  ASSERT_EQ(toks[4].as.punct, VITTEC_PUNCT_COMMA);
+  ASSERT_EQ(toks[5].as.punct, VITTEC_PUNCT_SEMI);
+  ASSERT_EQ(toks[6].as.punct, VITTEC_PUNCT_DOT);
+  ASSERT_EQ(toks[7].as.punct, VITTEC_PUNCT_COLON);
+  ASSERT_EQ(toks[8].as.punct, VITTEC_PUNCT_ARROW);
+  ASSERT_EQ(toks[9].as.punct, VITTEC_PUNCT_FATARROW);
+  ASSERT_EQ(toks[10].as.punct, VITTEC_PUNCT_EQEQ);
+  ASSERT_EQ(toks[11].as.punct, VITTEC_PUNCT_NE);
 }
 
-void test_lexer_strings(void) {
-    TEST("lexer_strings");
-    
-    const char *src = "\"hello\" 'world'";
-    lexer_t *lex = lexer_create(src, strlen(src));
-    ASSERT(lex != NULL);
-    
-    uint32_t count = 0;
-    token_t *tokens = lexer_tokenize(lex, &count);
-    
-    ASSERT(tokens != NULL);
-    ASSERT_EQ(tokens[0].kind, TOK_STRING);
-    ASSERT_EQ(tokens[1].kind, TOK_STRING);
-    ASSERT_EQ(tokens[2].kind, TOK_EOF);
-    
-    free(tokens);
-    lexer_destroy(lex);
+static void test_lexer_newlines_and_comments(void) {
+  printf("TEST: lexer_newlines_and_comments\n");
+  const char* src = "a\n// comment\nb";
+  vittec_lexer_options_t opt;
+  vittec_lexer_options_init(&opt);
+  opt.flags = VITTEC_LEX_KEEP_NEWLINES | VITTEC_LEX_KEEP_COMMENTS;
+  vittec_token_t toks[16];
+  size_t count = lex_with_options(src, NULL, &opt, toks, 16);
+  ASSERT_TRUE(count >= 5);
+
+  ASSERT_EQ(toks[0].kind, VITTEC_TOK_IDENT);
+  ASSERT_EQ(toks[1].kind, VITTEC_TOK_NEWLINE);
+  ASSERT_EQ(toks[2].kind, VITTEC_TOK_COMMENT);
+  ASSERT_TRUE(vittec_sv_eq_cstr(toks[2].text, "// comment"));
+  ASSERT_EQ(toks[3].kind, VITTEC_TOK_NEWLINE);
+  ASSERT_EQ(toks[4].kind, VITTEC_TOK_IDENT);
 }
 
-void test_lexer_punctuation(void) {
-    TEST("lexer_punctuation");
-    
-    const char *src = "() [] {} , ; . :";
-    lexer_t *lex = lexer_create(src, strlen(src));
-    ASSERT(lex != NULL);
-    
-    uint32_t count = 0;
-    token_t *tokens = lexer_tokenize(lex, &count);
-    
-    ASSERT(tokens != NULL);
-    ASSERT_EQ(tokens[0].kind, TOK_LPAREN);
-    ASSERT_EQ(tokens[1].kind, TOK_RPAREN);
-    ASSERT_EQ(tokens[2].kind, TOK_LBRACK);
-    ASSERT_EQ(tokens[3].kind, TOK_RBRACK);
-    ASSERT_EQ(tokens[4].kind, TOK_LBRACE);
-    ASSERT_EQ(tokens[5].kind, TOK_RBRACE);
-    ASSERT_EQ(tokens[6].kind, TOK_COMMA);
-    ASSERT_EQ(tokens[7].kind, TOK_SEMICOLON);
-    ASSERT_EQ(tokens[8].kind, TOK_DOT);
-    ASSERT_EQ(tokens[9].kind, TOK_COLON);
-    
-    free(tokens);
-    lexer_destroy(lex);
+static void test_lexer_reports_diagnostics(void) {
+  printf("TEST: lexer_reports_diagnostics\n");
+  vittec_diag_sink_t sink;
+  vittec_diag_sink_init(&sink);
+
+  vittec_token_t toks[8];
+  size_t count = lex_with_options("#", &sink, NULL, toks, 8);
+  ASSERT_TRUE(count >= 1);
+  ASSERT_EQ(toks[count - 1].kind, VITTEC_TOK_EOF);
+
+  ASSERT_EQ(sink.len, 1u);
+  ASSERT_EQ(sink.diags[0].severity, VITTEC_SEV_ERROR);
+  ASSERT_EQ(sink.diags[0].span.lo, 0u);
+
+  vittec_diag_sink_free(&sink);
 }
 
-void test_lexer_operators(void) {
-    TEST("lexer_operators");
-    
-    const char *src = "+ - * / % = < > !";
-    lexer_t *lex = lexer_create(src, strlen(src));
-    ASSERT(lex != NULL);
-    
-    uint32_t count = 0;
-    token_t *tokens = lexer_tokenize(lex, &count);
-    
-    ASSERT(tokens != NULL);
-    ASSERT_EQ(tokens[0].kind, TOK_PLUS);
-    ASSERT_EQ(tokens[1].kind, TOK_MINUS);
-    ASSERT_EQ(tokens[2].kind, TOK_STAR);
-    ASSERT_EQ(tokens[3].kind, TOK_SLASH);
-    ASSERT_EQ(tokens[4].kind, TOK_PERCENT);
-    ASSERT_EQ(tokens[5].kind, TOK_ASSIGN);
-    ASSERT_EQ(tokens[6].kind, TOK_LT);
-    ASSERT_EQ(tokens[7].kind, TOK_GT);
-    ASSERT_EQ(tokens[8].kind, TOK_BANG);
-    
-    free(tokens);
-    lexer_destroy(lex);
+static void test_lexer_unterminated_block_comment_diag(void) {
+  printf("TEST: lexer_unterminated_block_comment_diag\n");
+  vittec_diag_sink_t sink;
+  vittec_diag_sink_init(&sink);
+
+  vittec_token_t toks[4];
+  size_t count = lex_with_options("/* unterminated", &sink, NULL, toks, 4);
+  ASSERT_TRUE(count >= 1);
+  ASSERT_EQ(sink.len, 1u);
+  ASSERT_TRUE(vittec_sv_eq_cstr(sink.diags[0].message, "unterminated block comment"));
+
+  vittec_diag_sink_free(&sink);
 }
 
-void test_lexer_line_tracking(void) {
-    TEST("lexer_line_tracking");
-    
-    const char *src = "a\nb\nc";
-    lexer_t *lex = lexer_create(src, strlen(src));
-    ASSERT(lex != NULL);
-    
-    uint32_t count = 0;
-    token_t *tokens = lexer_tokenize(lex, &count);
-    
-    ASSERT(tokens != NULL);
-    ASSERT_EQ(tokens[0].line, 1);  /* a */
-    ASSERT_EQ(tokens[1].line, 2);  /* b */
-    ASSERT_EQ(tokens[2].line, 3);  /* c */
-    
-    free(tokens);
-    lexer_destroy(lex);
+static void test_lexer_unterminated_string_escape_diag(void) {
+  printf("TEST: lexer_unterminated_string_escape_diag\n");
+  vittec_diag_sink_t sink;
+  vittec_diag_sink_init(&sink);
+
+  const char* src = "\"escape\\";
+  vittec_token_t toks[8];
+  size_t count = lex_with_options(src, &sink, NULL, toks, 8);
+  ASSERT_TRUE(count >= 1);
+  ASSERT_EQ(sink.len, 1u);
+  ASSERT_TRUE(vittec_sv_eq_cstr(sink.diags[0].message, "unterminated string literal"));
+
+  vittec_diag_sink_free(&sink);
 }
 
 int main(void) {
-    printf("=== Lexer Unit Tests ===\n\n");
-    
-    test_lexer_empty();
-    test_lexer_identifier();
-    test_lexer_keywords();
-    test_lexer_integers();
-    test_lexer_floats();
-    test_lexer_strings();
-    test_lexer_punctuation();
-    test_lexer_operators();
-    test_lexer_line_tracking();
-    
-    printf("\n=== All tests passed! ===\n");
-    
-    return 0;
+  printf("=== vittec Lexer Unit Tests ===\n\n");
+  test_lexer_basic_sequence();
+  test_lexer_keywords();
+  test_lexer_punctuation_suite();
+  test_lexer_newlines_and_comments();
+  test_lexer_reports_diagnostics();
+  test_lexer_unterminated_block_comment_diag();
+  test_lexer_unterminated_string_escape_diag();
+  printf("\nAll vittec lexer tests passed.\n");
+  return 0;
 }

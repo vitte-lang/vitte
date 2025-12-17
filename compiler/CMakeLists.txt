@@ -12,6 +12,7 @@ set(VITTEC_COMPILER_SOURCES
     src/ast.c
     src/parser.c
     src/lexer.c
+    src/front/vittec_lexer.c
     src/types.c
     src/hir.c
     src/ir.c
@@ -26,6 +27,16 @@ set(VITTEC_COMPILER_SOURCES
     src/optimizer.c
     src/target.c
     src/driver.c
+    src/back/emit_c.c
+    src/diag/diagnostic.c
+    src/diag/emitter.c
+    src/diag/source_map.c
+    src/support/arena.c
+    src/support/fs.c
+    src/support/log.c
+    src/support/str.c
+    src/support/vec.c
+    src/vitte_stub.c
 )
 
 # Create compiler library
@@ -74,12 +85,30 @@ target_link_libraries(test_symbol_table PRIVATE vittec_compiler)
 target_include_directories(test_symbol_table PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_test(NAME test_symbol_table COMMAND test_symbol_table)
 
+# Test: Diagnostics & Source Map
+add_executable(test_diag tests/unit/test_diag.c)
+target_link_libraries(test_diag PRIVATE vittec_compiler)
+target_include_directories(test_diag PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_test(NAME test_diag COMMAND test_diag)
+
 # Main executable
 add_executable(vittec src/main.c src/vittec.c src/version.c)
 target_link_libraries(vittec PRIVATE vittec_compiler)
 target_include_directories(vittec PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
+)
+
+set(VITTEC_TOKEN_TEST_SCRIPT ${CMAKE_SOURCE_DIR}/../tests/integration/cli_tokens/run_cli_tokens.sh)
+set(VITTEC_TOKEN_TEST_SRC ${CMAKE_SOURCE_DIR}/../tests/integration/cli_tokens/sample_program.vitte)
+set(VITTEC_TOKEN_TEST_EXPECTED ${CMAKE_SOURCE_DIR}/../tests/integration/cli_tokens/expected_tokens.txt)
+
+add_test(
+    NAME integration_cli_tokens
+    COMMAND ${VITTEC_TOKEN_TEST_SCRIPT}
+            $<TARGET_FILE:vittec>
+            ${VITTEC_TOKEN_TEST_SRC}
+            ${VITTEC_TOKEN_TEST_EXPECTED}
 )
 
 # Installation

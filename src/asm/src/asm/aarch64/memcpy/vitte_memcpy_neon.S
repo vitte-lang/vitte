@@ -26,13 +26,10 @@
 // Clobbers:
 //   x3..x12, v0..v7, flags
 
-    .text
-    .p2align  2
+#include "common/asm_macros.S"
 
-    .global   vitte_memcpy_neon
-    .type     vitte_memcpy_neon, %function
-
-vitte_memcpy_neon:
+    VITTE_P2ALIGN(2)
+    VITTE_FUNC_BEGIN(vitte_memcpy_neon)
     // Save original dst for return
     mov     x3, x0
 
@@ -211,4 +208,4 @@ vitte_memcpy_neon:
     mov     x0, x3
     ret
 
-    .size    vitte_memcpy_neon, .-vitte_memcpy_neon
+    VITTE_FUNC_END(vitte_memcpy_neon)

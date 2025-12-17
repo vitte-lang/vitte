@@ -29,9 +29,10 @@
 #  include <stdatomic.h>
 #endif
 
-#include "vitte/src/asm/include/vitte/asm.h"
-#include "vitte/src/asm/include/vitte/asm_verify.h"
-#include "vitte/src/asm/include/vitte/cpu.h"
+#include "vitte/asm.h"
+#include "vitte/asm_fastpaths.h"
+#include "vitte/asm_verify.h"
+#include "vitte/cpu.h"
 
 // -----------------------------------------------------------------------------
 // Public façade (stable API)

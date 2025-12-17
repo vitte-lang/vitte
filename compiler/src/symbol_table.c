@@ -43,5 +43,7 @@ symbol_t* symbol_table_lookup(symbol_table_t *st, const char *name) {
 
 void symbol_table_insert(symbol_table_t *st, const char *name, symbol_kind_t kind, void *type) {
     if (!st || !name) return;
+    (void)kind;
+    (void)type;
     // TODO: Implement insert logic
 }

@@ -23,13 +23,10 @@
 //
 // Clobbers: rax, rcx, rdx, r8, flags
 
-    .text
-    .p2align 4, 0x90
+#include "common/asm_macros.S"
 
-    .globl  vitte_fnv1a64
-    .type   vitte_fnv1a64, @function
-
-vitte_fnv1a64:
+    VITTE_P2ALIGN(4)
+    VITTE_FUNC_BEGIN(vitte_fnv1a64)
     // hash = offset basis 0xcbf29ce484222325
     movabs  $0xcbf29ce484222325, %rax
 
@@ -104,4 +101,4 @@ vitte_fnv1a64:
 .Lret:
     ret
 
-    .size vitte_fnv1a64, .-vitte_fnv1a64
+    VITTE_FUNC_END(vitte_fnv1a64)

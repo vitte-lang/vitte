@@ -24,13 +24,10 @@
 //
 // Clobbers: x3..x9, v0..v3, flags
 
-    .text
-    .p2align 2
+#include "common/asm_macros.S"
 
-    .global vitte_memset_baseline
-    .type   vitte_memset_baseline, %function
-
-vitte_memset_baseline:
+    VITTE_P2ALIGN(2)
+    VITTE_FUNC_BEGIN(vitte_memset_baseline)
     // Save original dst for return
     mov     x3, x0
 
@@ -179,4 +176,4 @@ vitte_memset_baseline:
     mov     x0, x3
     ret
 
-    .size vitte_memset_baseline, .-vitte_memset_baseline
+    VITTE_FUNC_END(vitte_memset_baseline)

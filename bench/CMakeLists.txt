@@ -115,10 +115,6 @@ set(ALL_SOURCES
 )
 
 if(VITTE_ENABLE_ASM_FASTPATHS)
-  if(APPLE)
-    message(FATAL_ERROR "ASM fastpaths are not supported on macOS yet. Disable VITTE_ENABLE_ASM_FASTPATHS.")
-  endif()
-
   enable_language(ASM)
 
   set(VITTE_ASM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../src/asm)
@@ -167,9 +163,13 @@ if(VITTE_ENABLE_ASM_FASTPATHS)
       ${CMAKE_CURRENT_SOURCE_DIR}/src
       ${VITTE_ASM_ROOT}/include
       ${CMAKE_CURRENT_SOURCE_DIR}/..
+    PRIVATE
+      ${VITTE_ASM_ROOT}/src/asm
   )
 
-  if(NOT MSVC)
+  if(APPLE)
+    target_compile_definitions(vitte_asm_fastpaths PRIVATE VITTE_ASM_MACHO=1)
+  elseif(NOT MSVC)
     target_compile_definitions(vitte_asm_fastpaths PRIVATE VITTE_ASM_ELF=1)
   endif()
 
@@ -184,16 +184,16 @@ add_executable(vittec-bench ${ALL_SOURCES} ${BENCH_FRAMEWORK_HEADERS})
 
 # Link math library if available
 if(NOT WIN32)
-  target_link_libraries(vittec-bench m)
+  target_link_libraries(vittec-bench PRIVATE m)
 endif()
 
 # Platform-specific linking
 if(APPLE)
   # macOS: link CoreFoundation for timing
-  target_link_libraries(vittec-bench "-framework CoreFoundation")
+  target_link_libraries(vittec-bench PRIVATE "-framework CoreFoundation")
 elseif(UNIX AND NOT APPLE)
   # Linux: link rt for clock_gettime
-  target_link_libraries(vittec-bench rt)
+  target_link_libraries(vittec-bench PRIVATE rt)
 endif()
 
 if(VITTE_ENABLE_ASM_FASTPATHS)

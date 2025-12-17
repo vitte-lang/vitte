@@ -28,12 +28,10 @@
 //   targets (rare for aarch64), we'd need conditional handling. We assume LE.
 //
 // ---------------------------------------------------------------------------
+#include "common/asm_macros.S"
 
-    .text
-    .p2align  2
-
-    .global   vitte_fnv1a64
-    .type     vitte_fnv1a64, %function
+    VITTE_P2ALIGN(2)
+    VITTE_FUNC_BEGIN(vitte_fnv1a64)
 
 // Constants
 //   OFFSET = 0xcbf29ce484222325
@@ -161,4 +159,4 @@ vitte_fnv1a64:
     mov     x0, x2
     ret
 
-    .size   vitte_fnv1a64, .-vitte_fnv1a64
+    VITTE_FUNC_END(vitte_fnv1a64)

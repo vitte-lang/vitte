@@ -135,6 +135,7 @@ static void skip_whitespace(lexer_t *lex) {
 }
 
 static token_t make_token(token_kind_t kind, uint32_t line, uint32_t col, uint32_t start_pos, uint32_t len) {
+    (void)start_pos;
     token_t tok;
     tok.kind = kind;
     tok.line = line;
@@ -179,6 +180,7 @@ static token_t scan_number(lexer_t *lex) {
     uint32_t start_line = lex->line;
     uint32_t start_col = lex->col;
     uint32_t start_pos = lex->pos;
+    int is_float = 0;
     
     /* Check for hex, octal, binary prefixes */
     if (lex->input[lex->pos] == '0' && lex->pos + 1 < lex->len) {
@@ -225,6 +227,7 @@ static token_t scan_number(lexer_t *lex) {
                 lex->pos++;
                 lex->col++;
             }
+            is_float = 1;
         }
     }
     
@@ -240,10 +243,11 @@ static token_t scan_number(lexer_t *lex) {
             lex->pos++;
             lex->col++;
         }
-        return make_token(TOK_FLOAT, start_line, start_col, start_pos, lex->pos - start_pos);
+        is_float = 1;
     }
     
-    return make_token(TOK_INT, start_line, start_col, start_pos, lex->pos - start_pos);
+    token_kind_t kind = is_float ? TOK_FLOAT : TOK_INT;
+    return make_token(kind, start_line, start_col, start_pos, lex->pos - start_pos);
 }
 
 static token_t scan_ident(lexer_t *lex) {

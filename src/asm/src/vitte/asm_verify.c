@@ -26,22 +26,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "vitte/src/asm/include/vitte/asm.h"
-#include "vitte/src/asm/include/vitte/asm_verify.h"
-#include "vitte/src/asm/include/vitte/cpu.h"
+#include "vitte/asm.h"
+#include "vitte/asm_fastpaths.h"
+#include "vitte/asm_verify.h"
+#include "vitte/cpu.h"
 
 // -----------------------------------------------------------------------------
 // Error model
 // -----------------------------------------------------------------------------
 
-typedef enum vitte_verify_err_t {
-  VITTE_VERIFY_OK = 0,
-  VITTE_VERIFY_E_MEMCPY_MISMATCH = 1,
-  VITTE_VERIFY_E_MEMSET_MISMATCH = 2,
-  VITTE_VERIFY_E_FNV_MISMATCH = 3,
-  VITTE_VERIFY_E_UTF8_MISMATCH = 4,
-  VITTE_VERIFY_E_INVAL = 10
-} vitte_verify_err_t;
+typedef vitte_asm_verify_status_t vitte_verify_err_t;
 
 // -----------------------------------------------------------------------------
 // Deterministic RNG (xorshift64*)
@@ -224,9 +218,9 @@ static vitte_verify_err_t verify_memcpy(uint64_t* rng, size_t iters) {
     base(d0p, srcp, n);
     fast(d1p, srcp, n);
 
-    if (!vitte_memeq(d0p, d1p, n)) return VITTE_VERIFY_E_MEMCPY_MISMATCH;
+    if (!vitte_memeq(d0p, d1p, n)) return VITTE_ASM_VERIFY_E_MEMCPY_MISMATCH;
   }
-  return VITTE_VERIFY_OK;
+  return VITTE_ASM_VERIFY_OK;
 }
 
 static vitte_verify_err_t verify_memset(uint64_t* rng, size_t iters) {
@@ -253,9 +247,9 @@ static vitte_verify_err_t verify_memset(uint64_t* rng, size_t iters) {
     base(p0, c, n);
     fast(p1, c, n);
 
-    if (!vitte_memeq(p0, p1, n)) return VITTE_VERIFY_E_MEMSET_MISMATCH;
+    if (!vitte_memeq(p0, p1, n)) return VITTE_ASM_VERIFY_E_MEMSET_MISMATCH;
   }
-  return VITTE_VERIFY_OK;
+  return VITTE_ASM_VERIFY_OK;
 }
 
 static vitte_verify_err_t verify_fnv(uint64_t* rng, size_t iters) {
@@ -268,9 +262,9 @@ static vitte_verify_err_t verify_fnv(uint64_t* rng, size_t iters) {
 
     uint64_t a = vitte_fnv1a64(buf, n);
     uint64_t b = vitte_fnv1a64_ref(buf, n);
-    if (a != b) return VITTE_VERIFY_E_FNV_MISMATCH;
+    if (a != b) return VITTE_ASM_VERIFY_E_FNV_MISMATCH;
   }
-  return VITTE_VERIFY_OK;
+  return VITTE_ASM_VERIFY_OK;
 }
 
 static vitte_verify_err_t verify_utf8(uint64_t* rng, size_t iters) {
@@ -292,33 +286,33 @@ static vitte_verify_err_t verify_utf8(uint64_t* rng, size_t iters) {
 
     int a = fn(buf, n);
     int b = vitte_utf8_validate_ref(buf, n);
-    if (a != b) return VITTE_VERIFY_E_UTF8_MISMATCH;
+    if (a != b) return VITTE_ASM_VERIFY_E_UTF8_MISMATCH;
   }
-  return VITTE_VERIFY_OK;
+  return VITTE_ASM_VERIFY_OK;
 }
 
 // -----------------------------------------------------------------------------
 // Public entry points
 // -----------------------------------------------------------------------------
 
-int vitte_asm_verify_all(size_t iterations) {
-  if (iterations == 0) return (int)VITTE_VERIFY_E_INVAL;
+vitte_asm_verify_status_t vitte_asm_verify_all(size_t iterations) {
+  if (iterations == 0) return VITTE_ASM_VERIFY_E_INVAL;
 
   uint64_t rng = 0x9e3779b97f4a7c15ULL; // fixed seed
 
   vitte_verify_err_t e;
 
   e = verify_memcpy(&rng, iterations);
-  if (e) return (int)e;
+  if (e) return e;
 
   e = verify_memset(&rng, iterations);
-  if (e) return (int)e;
+  if (e) return e;
 
   e = verify_fnv(&rng, iterations);
-  if (e) return (int)e;
+  if (e) return e;
 
   e = verify_utf8(&rng, iterations);
-  if (e) return (int)e;
+  if (e) return e;
 
-  return 0;
+  return VITTE_ASM_VERIFY_OK;
 }

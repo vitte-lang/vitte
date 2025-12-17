@@ -707,13 +707,13 @@ int vittec_emit_c_file_ex(
 
     const char* inc_leaf = h_path;
     for(const char* p = h_path; *p; p++) {
-      if(*p == '/' || *p == '\') inc_leaf = p + 1;
+      if(*p == '/' || *p == '\\') inc_leaf = p + 1;
     }
     header_leaf = inc_leaf;
 
     const char* guard_leaf = base;
     for(const char* p = base; guard_leaf && *p; p++) {
-      if(*p == '/' || *p == '\') guard_leaf = p + 1;
+      if(*p == '/' || *p == '\\') guard_leaf = p + 1;
     }
     guard_hint = guard_leaf;
   } else {

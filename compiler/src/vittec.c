@@ -19,10 +19,90 @@ struct vittec_session {
   vittec_diag_sink_t diags;
 };
 
+static const char* keyword_name(vittec_keyword_t kw) {
+  switch (kw) {
+    case VITTEC_KW_MODULE: return "kw_module";
+    case VITTEC_KW_IMPORT: return "kw_import";
+    case VITTEC_KW_EXPORT: return "kw_export";
+    case VITTEC_KW_USE: return "kw_use";
+    case VITTEC_KW_TYPE: return "kw_type";
+    case VITTEC_KW_STRUCT: return "kw_struct";
+    case VITTEC_KW_ENUM: return "kw_enum";
+    case VITTEC_KW_UNION: return "kw_union";
+    case VITTEC_KW_FN: return "kw_fn";
+    case VITTEC_KW_SCN: return "kw_scn";
+    case VITTEC_KW_SCENARIO: return "kw_scenario";
+    case VITTEC_KW_PROGRAM: return "kw_program";
+    case VITTEC_KW_SERVICE: return "kw_service";
+    case VITTEC_KW_KERNEL: return "kw_kernel";
+    case VITTEC_KW_DRIVER: return "kw_driver";
+    case VITTEC_KW_TOOL: return "kw_tool";
+    case VITTEC_KW_PIPELINE: return "kw_pipeline";
+    case VITTEC_KW_LET: return "kw_let";
+    case VITTEC_KW_CONST: return "kw_const";
+    case VITTEC_KW_IF: return "kw_if";
+    case VITTEC_KW_ELIF: return "kw_elif";
+    case VITTEC_KW_ELSE: return "kw_else";
+    case VITTEC_KW_WHILE: return "kw_while";
+    case VITTEC_KW_FOR: return "kw_for";
+    case VITTEC_KW_MATCH: return "kw_match";
+    case VITTEC_KW_BREAK: return "kw_break";
+    case VITTEC_KW_CONTINUE: return "kw_continue";
+    case VITTEC_KW_RETURN: return "kw_return";
+    case VITTEC_KW_RET: return "kw_ret";
+    case VITTEC_KW_SET: return "kw_set";
+    case VITTEC_KW_SAY: return "kw_say";
+    case VITTEC_KW_DO: return "kw_do";
+    case VITTEC_KW_WHEN: return "kw_when";
+    case VITTEC_KW_LOOP: return "kw_loop";
+    case VITTEC_KW_TRUE: return "kw_true";
+    case VITTEC_KW_FALSE: return "kw_false";
+    case VITTEC_KW_NULL: return "kw_null";
+    case VITTEC_KW_END: return "kw_end";
+    default: return "kw_unknown";
+  }
+}
+
+static const char* punct_name(vittec_punct_t punct) {
+  switch (punct) {
+    case VITTEC_PUNCT_LPAREN: return "punct_lparen";
+    case VITTEC_PUNCT_RPAREN: return "punct_rparen";
+    case VITTEC_PUNCT_LBRACK: return "punct_lbrack";
+    case VITTEC_PUNCT_RBRACK: return "punct_rbrack";
+    case VITTEC_PUNCT_COMMA: return "punct_comma";
+    case VITTEC_PUNCT_DOT: return "punct_dot";
+    case VITTEC_PUNCT_COLON: return "punct_colon";
+    case VITTEC_PUNCT_SEMI: return "punct_semi";
+    case VITTEC_PUNCT_EQ: return "punct_eq";
+    case VITTEC_PUNCT_PLUS: return "punct_plus";
+    case VITTEC_PUNCT_MINUS: return "punct_minus";
+    case VITTEC_PUNCT_STAR: return "punct_star";
+    case VITTEC_PUNCT_SLASH: return "punct_slash";
+    case VITTEC_PUNCT_PERCENT: return "punct_percent";
+    case VITTEC_PUNCT_AMP: return "punct_amp";
+    case VITTEC_PUNCT_PIPE: return "punct_pipe";
+    case VITTEC_PUNCT_CARET: return "punct_caret";
+    case VITTEC_PUNCT_TILDE: return "punct_tilde";
+    case VITTEC_PUNCT_BANG: return "punct_bang";
+    case VITTEC_PUNCT_LT: return "punct_lt";
+    case VITTEC_PUNCT_GT: return "punct_gt";
+    case VITTEC_PUNCT_LE: return "punct_le";
+    case VITTEC_PUNCT_GE: return "punct_ge";
+    case VITTEC_PUNCT_EQEQ: return "punct_eqeq";
+    case VITTEC_PUNCT_NE: return "punct_ne";
+    case VITTEC_PUNCT_ANDAND: return "punct_andand";
+    case VITTEC_PUNCT_OROR: return "punct_oror";
+    case VITTEC_PUNCT_ARROW: return "punct_arrow";
+    case VITTEC_PUNCT_FATARROW: return "punct_fatarrow";
+    case VITTEC_PUNCT_QUESTION: return "punct_question";
+    default: return "punct_unknown";
+  }
+}
+
 vittec_session_t* vittec_session_new(void) {
   vittec_session_t* s = (vittec_session_t*)calloc(1, sizeof(vittec_session_t));
   VITTEC_ASSERT(s != NULL);
-  vittec_sourcemap_init(&s->sm);
+  vittec_source_map_init(&s->sm);
   vittec_diag_sink_init(&s->diags);
   return s;
 }
@@ -30,63 +110,35 @@ vittec_session_t* vittec_session_new(void) {
 void vittec_session_free(vittec_session_t* s) {
   if (!s) return;
   vittec_diag_sink_free(&s->diags);
-  vittec_sourcemap_free(&s->sm);
+  vittec_source_map_free(&s->sm);
   free(s);
 }
 
-static void print_tokens(const char* path, const char* src, uint32_t len, uint32_t file_id, vittec_diag_sink_t* diags) {
+static void print_tokens(const char* path, const char* src, uint32_t len, vittec_file_id_t file_id, vittec_diag_sink_t* diags) {
   (void)path;
   vittec_lexer_t lx;
   vittec_lexer_init(&lx, src, len, file_id, diags);
 
   for (;;) {
     vittec_token_t t = vittec_lex_next(&lx);
-    if (t.kind == TK_EOF) break;
+    if (t.kind == VITTEC_TOK_EOF) break;
 
-    const char* k = "TK_UNKNOWN";
-    switch (t.kind) {
-      case TK_IDENT: k="TK_IDENT"; break;
-      case TK_INT: k="TK_INT"; break;
-      case TK_FLOAT: k="TK_FLOAT"; break;
-      case TK_STRING: k="TK_STRING"; break;
-      case TK_DOT: k="TK_DOT"; break;
-      case TK_COMMA: k="TK_COMMA"; break;
-      case TK_COLON: k="TK_COLON"; break;
-      case TK_SEMI: k="TK_SEMI"; break;
-      case TK_LPAREN: k="TK_LPAREN"; break;
-      case TK_RPAREN: k="TK_RPAREN"; break;
-      case TK_LBRACK: k="TK_LBRACK"; break;
-      case TK_RBRACK: k="TK_RBRACK"; break;
-      case TK_ARROW: k="TK_ARROW"; break;
-      case TK_EQ: k="TK_EQ"; break;
-      case TK_KW_MODULE: k="TK_KW_MODULE"; break;
-      case TK_KW_IMPORT: k="TK_KW_IMPORT"; break;
-      case TK_KW_EXPORT: k="TK_KW_EXPORT"; break;
-      case TK_KW_STRUCT: k="TK_KW_STRUCT"; break;
-      case TK_KW_ENUM: k="TK_KW_ENUM"; break;
-      case TK_KW_TYPE: k="TK_KW_TYPE"; break;
-      case TK_KW_FN: k="TK_KW_FN"; break;
-      case TK_KW_LET: k="TK_KW_LET"; break;
-      case TK_KW_CONST: k="TK_KW_CONST"; break;
-      case TK_KW_IF: k="TK_KW_IF"; break;
-      case TK_KW_ELIF: k="TK_KW_ELIF"; break;
-      case TK_KW_ELSE: k="TK_KW_ELSE"; break;
-      case TK_KW_WHILE: k="TK_KW_WHILE"; break;
-      case TK_KW_FOR: k="TK_KW_FOR"; break;
-      case TK_KW_MATCH: k="TK_KW_MATCH"; break;
-      case TK_KW_BREAK: k="TK_KW_BREAK"; break;
-      case TK_KW_CONTINUE: k="TK_KW_CONTINUE"; break;
-      case TK_KW_RET: k="TK_KW_RET"; break;
-      case TK_KW_SAY: k="TK_KW_SAY"; break;
-      case TK_KW_DO: k="TK_KW_DO"; break;
-      case TK_KW_SET: k="TK_KW_SET"; break;
-      case TK_KW_LOOP: k="TK_KW_LOOP"; break;
-      case TK_KW_WHEN: k="TK_KW_WHEN"; break;
-      case TK_KW_END: k="TK_KW_END"; break;
-      default: break;
+    const char* kind_name = vittec_token_kind_name(t.kind);
+    char detail[64];
+    detail[0] = '\0';
+    if (t.kind == VITTEC_TOK_KEYWORD) {
+      snprintf(detail, sizeof(detail), " (%s)", keyword_name(t.as.kw));
+    } else if (t.kind == VITTEC_TOK_PUNCT) {
+      snprintf(detail, sizeof(detail), " (%s)", punct_name(t.as.punct));
     }
 
-    printf("%s %u..%u `%.*s`\\n", k, t.span.lo, t.span.hi, (int)t.text.len, t.text.data);
+    printf("%s%s %u..%u `%.*s`\n",
+           kind_name ? kind_name : "unknown",
+           detail,
+           t.span.lo,
+           t.span.hi,
+           (int)t.text.len,
+           t.text.data ? t.text.data : "");
   }
 }
 
@@ -99,7 +151,14 @@ int vittec_compile(vittec_session_t* s, const vittec_compile_options_t* opt) {
     return 1;
   }
 
-  uint32_t file_id = vittec_sourcemap_add(&s->sm, opt->input_path, fb.data, (uint32_t)fb.len);
+  vittec_file_id_t file_id = 0;
+  vittec_sv_t path_sv = vittec_sv(opt->input_path, (uint64_t)strlen(opt->input_path));
+  int sm_err = vittec_source_map_add_memory(&s->sm, path_sv, fb.data, (size_t)fb.len, 1, &file_id);
+  if (sm_err != VITTEC_SM_OK) {
+    fprintf(stderr, "error: cannot register source: %s\n", opt->input_path);
+    vittec_free_file_buf(&fb);
+    return 1;
+  }
 
   if (opt->emit_kind == VITTEC_EMIT_TOKENS) {
     print_tokens(opt->input_path, fb.data, (uint32_t)fb.len, file_id, &s->diags);

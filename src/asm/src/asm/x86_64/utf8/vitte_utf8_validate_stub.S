@@ -30,13 +30,10 @@
 //
 // Clobbers: rax, rcx, rdx, r8..r10, flags
 
-    .text
-    .p2align 4, 0x90
+#include "common/asm_macros.S"
 
-    .globl  vitte_utf8_validate_stub
-    .type   vitte_utf8_validate_stub, @function
-
-vitte_utf8_validate_stub:
+    VITTE_P2ALIGN(4)
+    VITTE_FUNC_BEGIN(vitte_utf8_validate_stub)
     // if (len == 0) return 1
     test    %rsi, %rsi
     je      .Lok
@@ -184,4 +181,4 @@ vitte_utf8_validate_stub:
     xor     %eax, %eax
     ret
 
-    .size vitte_utf8_validate_stub, .-vitte_utf8_validate_stub
+    VITTE_FUNC_END(vitte_utf8_validate_stub)

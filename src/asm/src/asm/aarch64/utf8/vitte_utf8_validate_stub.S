@@ -37,13 +37,10 @@
 // Return convention:
 //   w0 = 1 if ok else 0
 
-    .text
-    .p2align 2
+#include "common/asm_macros.S"
 
-    .global vitte_utf8_validate_stub
-    .type   vitte_utf8_validate_stub, %function
-
-vitte_utf8_validate_stub:
+    VITTE_P2ALIGN(2)
+    VITTE_FUNC_BEGIN(vitte_utf8_validate_stub)
     // if (len == 0) return 1
     cbz     x1, .Lok
 
@@ -188,4 +185,4 @@ vitte_utf8_validate_stub:
     mov     w0, #0
     ret
 
-    .size vitte_utf8_validate_stub, .-vitte_utf8_validate_stub
+    VITTE_FUNC_END(vitte_utf8_validate_stub)
