@@ -1,0 +1,86 @@
+# toolchain/config/targets/windows_x86_64_msvc.toml
+#
+# Vitte toolchain target preset: Windows on x86_64 with MSVC environment.
+#
+# Notes:
+#  - clang targeting MSVC typically uses lld-link (COFF/MSVC linker frontend).
+#  - Sysroot is not usually used; MSVC include/lib paths come from the VS/SDK env
+#    (vcvars / Developer Command Prompt) or are injected via /imsvc and -libpath.
+#  - If you want fully hermetic builds, you can set sdk.sysroot to a packaged SDK
+#    root and drive include/lib explicitly in your higher-level config.
+
+[target]
+name   = "windows_x86_64_msvc"
+triple = "x86_64-pc-windows-msvc"
+
+[os]
+family = "windows"
+name   = "windows"
+
+[arch]
+name  = "x86_64"
+cpu   = "generic"
+march = ""
+
+[abi]
+name = "msvc"
+
+[sdk]
+kind        = "windows"
+use_xcrun   = false
+sysroot     = ""          # optional; usually empty (VS env drives include/lib)
+min_version = ""
+
+[toolchain]
+clang       = ""          # "clang-cl" is also acceptable; keep empty to probe
+clangxx     = ""          # "clang-cl" can be used for C++ too
+lld         = ""          # prefer "lld-link" for MSVC-style linking
+llvm_ar     = ""          # not used for MSVC .lib import libs, but available
+llvm_ranlib = ""
+
+[compile]
+lang_std_c   = "c17"
+lang_std_cxx = "c++20"
+
+opt   = "O2"
+debug = "g0"
+pic   = false
+lto   = false
+
+warnings = "default"
+color_diagnostics = true
+
+defines = [
+  "VITTE_TARGET_WINDOWS=1",
+  "VITTE_TARGET_X86_64=1",
+  "VITTE_TARGET_MSVC=1",
+]
+
+include_dirs = [
+  # Prefer to rely on VS env; otherwise inject explicit include roots here.
+]
+
+[link]
+use_lld = true
+pie     = false
+shared  = false
+
+args = [
+  # Example: "/SUBSYSTEM:CONSOLE",
+]
+
+[libraries]
+lib_dirs = [
+  # Example: "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.xxxx.x/um/x64",
+]
+
+libs = [
+  # Example: "kernel32",
+  # Example: "user32",
+]
+
+[output]
+obj_ext  = ".obj"
+exe_ext  = ".exe"
+dll_ext  = ".dll"
+lib_ext  = ".lib"
