@@ -1,51 +1,27 @@
-#pragma once
-
-/*
-  runner.h
-
-  Benchmark runner interface and orchestration.
-*/
+// runner.h - benchmark runner entry point for vitte/bench (C17)
+//
+// SPDX-License-Identifier: MIT
 
 #ifndef VITTE_BENCH_RUNNER_H
 #define VITTE_BENCH_RUNNER_H
 
-#include "types.h"
-#include <stdint.h>
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
-/* Runner configuration */
-typedef struct {
-  uint32_t iterations;      /* Micro: iterations per sample */
-  uint32_t samples;         /* Number of samples to collect */
-  double duration_seconds;  /* Macro: duration per sample */
-  uint32_t warmup_count;    /* Warmup iterations before sampling */
-  uint32_t timecheck_freq;  /* Macro: check elapsed time every N iterations */
-  const char* filter;       /* Filter benchmarks by substring */
-  int run_all;              /* Run all registered benchmarks */
-  const char* csv_output;   /* Optional CSV output file */
-} bench_runner_config_t;
+// Main runner entry point.
+//
+// Expected behavior:
+//   - Parses CLI options (see bench/options.h)
+//   - Selects benchmarks from the registry (see bench/registry.h)
+//   - Runs warmup/repeats
+//   - Prints human output and optionally writes JSON/CSV outputs
+//
+// Returns process exit code (0 = success, non-zero = failure).
+int bench_runner_run(int argc, char** argv);
 
-/* Default configuration */
-#define BENCH_RUNNER_CONFIG_DEFAULT \
-  { \
-    .iterations = 1000000, \
-    .samples = 7, \
-    .duration_seconds = 2.0, \
-    .warmup_count = 1000, \
-    .timecheck_freq = 256, \
-    .filter = NULL, \
-    .run_all = 0, \
-    .csv_output = NULL, \
-  }
+#if defined(__cplusplus)
+} // extern "C"
+#endif
 
-/* Run a single benchmark case */
-bench_result_t bench_run_case(
-    const bench_case_t* case_info,
-    const bench_runner_config_t* config);
-
-/* Run multiple benchmark cases */
-void bench_run_all(
-    const bench_result_t* results,
-    int result_count,
-    const bench_runner_config_t* config);
-
-#endif /* VITTE_BENCH_RUNNER_H */
+#endif // VITTE_BENCH_RUNNER_H

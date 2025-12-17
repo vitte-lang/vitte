@@ -1,167 +1,315 @@
-# vitte
+# Vitte Language — Modern Systems Programming Language
 
-Toolchain du langage **Vitte** : spécification, compilateur(s), runtime, stdlib, outils et benches.
+<p align="center">
+  <img src="assets/logo-vitte.svg" alt="Vitte Logo" width="220">
+</p>
 
-> Statut : **expérimental**. APIs/format de fichiers/sémantique peuvent évoluer sans préavis.
+<p align="center">
+  <i>Rapide comme C++, sûr comme Rust, simple comme Go — et prêt pour le futur.</i>
+</p>
+
+<p align="center">
+  <a href="https://github.com/vitte-lang/vitte/releases">
+    <img alt="Release" src="https://img.shields.io/github/v/release/vitte-lang/vitte?style=flat-square">
+  </a>
+  <img alt="License" src="https://img.shields.io/github/license/vitte-lang/vitte?style=flat-square">
+  <img alt="Top language" src="https://img.shields.io/github/languages/top/vitte-lang/vitte?style=flat-square">
+</p>
 
 ---
 
-## Objectifs
+## 📖 Sommaire
 
-- **Langage** : syntaxe "core + phrase" (blocs fermés par `.end`), modules, types, fonctions/scénarios.
-- **Toolchain** : lexer/parser → IR → backend (C ou VM/bytecode selon milestone) + outils (fmt/LSP à terme).
-- **Runtime/Stdlib** : primitives (strings/slices), erreurs, utilitaires std.
-- **Qualité** : builds reproductibles, tests de non-régression, benchs traçables.
+1. [Présentation](#-présentation)
+2. [Pourquoi Vitte ?](#-pourquoi-vitte-)
+3. [État du projet](#-état-du-projet)
+4. [Architecture](#-architecture)
+5. [Compatibilité & cibles](#-compatibilité--cibles)
+6. [Installation](#-installation)
+7. [Quickstart](#-quickstart)
+8. [CLI & outils](#-cli--outils)
+9. [Éditeur & LSP](#-éditeur--lsp)
+10. [Exemples](#-exemples)
+11. [Crates du monorepo](#-crates-du-monorepo)
+12. [Roadmap](#-roadmap)
+13. [Contribuer](#-contribuer)
+14. [Licence](#-licence)
 
 ---
 
-## Démarrage rapide
+## 🌟 Présentation
 
-Cloner :
+**Vitte** est un langage **systèmes & applicatif** pensé pour l’ère post-2025 : performance, sûreté mémoire et expressivité sans chichis.
+
+> _« Un langage doit te laisser coder vite, bien, et longtemps. »_
+
+- **Sûreté** : pas de `null` implicite, emprunts vérifiés statiquement.
+- **Perfs** : exécution native (LLVM), JIT (Cranelift) ou VM bytecode (VITBC).
+- **Interop** : C/C++/Rust/Zig via FFI, et WebAssembly.
+- **DX** : LSP complet (diagnostics, complétion, go-to), CLI outillée.
+
+---
+
+## 🧭 État du projet
+
+- **MSRV** : Rust `1.82.0` (épinglé via `rust-toolchain.toml`).
+- **Qualité** : lints stricts (`.clippy.toml`), `cargo deny`, tests & snapshots.
+- **Stabilité** : grammaire et IR évoluent encore ; l’ABI VITBC est **versionnée**.
+
+> ⚠️ Jusqu’à la v1, des changements **break** peuvent survenir entre releases.
+
+---
+
+## 🛠 Architecture
+
+```
+          ┌──────────────┐
+          │  Source .vit │
+          └──────┬───────┘
+                 ▼
+       ┌─────────────────┐
+       │ Front-end        │
+       │  lexer, parser,  │
+       │  diagnostics     │
+       └────────┬────────┘
+                ▼
+       ┌─────────────────┐
+       │   IR (CFG/DFG)   │
+       │  passes & checks │
+       └────────┬────────┘
+                ▼
+   ┌────────────────────────┐
+   │ Backends               │
+   │  • LLVM (opt)          │
+   │  • Cranelift (JIT)     │
+   │  • VM Vitte (VITBC)    │
+   └──────────┬─────────────┘
+              ▼
+         Exécutable / Bytecode
+```
+
+---
+
+## 🖥 Compatibilité & cibles
+
+Support de dev quotidien : **Linux x86_64/ARM64**, **macOS (Intel/Apple Silicon)**, **Windows x64/ARM64**, **WASM**.
+Cibles élargies (Android, BSD, RISC-V, embedded) sont **expérimentales** et suivies via `deny.toml`.
+
+- OS/arch suivies : voir `rust-toolchain.toml` (`targets`) et `deny.toml` (`[graph].targets`).
+
+---
+
+## ⬇ Installation
+# Homebrew Vitte Tap
+
+Official Homebrew Tap to install the [Vitte programming language](https://github.com/vitte-lang/vitte).
+
+---
+
+## Installation
+
+First, add the tap:
+
+```sh
+brew tap vitte-lang/vitte
+```
+
+---
+
+## Then install VITTE
+```sh
+brew install vitte
+```
+### Depuis les sources (recommandé)
 
 ```bash
+# Prérequis : Rust 1.82.0 (toolchain épinglée)
 git clone https://github.com/vitte-lang/vitte.git
 cd vitte
+
+# Build complet (workspace)
+cargo build --workspace --all-features
+
+# Outils CLI (binaire "vitte")
+cargo build -p vitte-tools --features cli --release
+./target/release/vitte --help
 ```
 
-Build (CMake) — la plupart des projets utilisent un out-of-tree build :
+### Auto-complétions (bash/zsh/fish/pwsh/elvish/nu)
+
+Après build, un message s’affiche. Installation automatique :
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
+./target/release/vitte completions --install
 ```
 
-Exécution : le binaire exact dépend du repo (compiler/runner/tools). Liste rapide des exécutables générés :
+Manuelle (ex.) :
 
 ```bash
-find build -maxdepth 3 -type f -perm -111 | head -n 50
+./target/release/vitte completions --shell zsh --dir "$XDG_DATA_HOME/zsh/site-functions"
 ```
 
 ---
 
-## Exemple Vitte (syntaxe `.end`)
+## ⚡ Quickstart
+
+Fichier `hello.vit` :
 
 ```vitte
-# hello.vitte
-fn main() -> i32
-  say "hello, vitte"
-  ret 0
-.end
+do main() {
+    print("Hello, Vitte!")
+}
 ```
 
-Notes :
-- Les exemples et modules générés dans ce projet privilégient **`.end`** (pas d’accolades).
-- La surface "phrase" (`say`, `set`, `do`, `when`, `loop`, `ret`) est du sucre de surface au-dessus du noyau.
+Compile & exécute :
+
+```bash
+# Pack en VITBC puis exécute via le runtime
+./target/release/vitte pack hello.vit -o hello.vitbc
+./target/release/vitte run hello.vitbc
+```
+
+> Tu as aussi `vitte fmt`, `vitte check`, `vitte dump`, `vitte graph` (voir plus bas).
 
 ---
 
-## Benchmarks
+## 🧰 CLI & outils
 
-Un runner robuste est fourni : `run_benchmarks.sh`.
+Le binaire principal **`vitte`** regroupe les sous-commandes :
+
+```text
+vitte
+├─ fmt     # formatage des sources
+├─ check   # diagnostics statiques, lints
+├─ pack    # compile → VITBC (bytecode)
+├─ dump    # inspecte un .vitbc (sections/CRC/compression)
+├─ graph   # exports CFG/DFG (DOT)
+└─ run     # exécute VITBC via le runtime/VM
+```
 
 Exemples :
 
 ```bash
-# Build + exécute 5 runs avec warmup
-chmod +x ./run_benchmarks.sh
-./run_benchmarks.sh --build --repeat 5 --warmup 1
+vitte fmt src/ --write
+vitte check .
+vitte pack examples/fib.vit -O2 -o build/fib.vitbc
+vitte dump build/fib.vitbc
+vitte graph build/fib.vitbc --dot out/cfg.dot
+vitte run build/fib.vitbc
 
-# Filtrer (si le runner supporte un flag de filter)
-./run_benchmarks.sh --bench-filter "json" --out dist/bench
+### Autres outils du monorepo
+
+Outre la commande unique `vitte`, le crate `vitte-tools` expose plusieurs binaires spécialisés :
+
+| Binaire        | Description rapide                               | Build |
+|----------------|---------------------------------------------------|-------|
+| `vitte-asm`    | Assembleur `.vit.s → .vitbc`                      | `cargo build -p vitte-tools --bin vitte-asm` |
+| `vitte-disasm` | Désassembleur `.vitbc → texte/JSON`               | `cargo build -p vitte-tools --bin vitte-disasm` |
+| `vitte-link`   | Linker multi-chunks (fusion, déduplication, strip)| `cargo build -p vitte-tools --bin vitte-link` |
+| `vitte-repl`*  | REPL expérimental (couleurs/historique inclus)    | `cargo build -p vitte-tools --bin vitte-repl --features repl-cli` |
+
+> `*` Le REPL est actuellement livré en mode **stub** : l’interface démarre et gère l’historique/couleurs, mais signale que la compilation à la volée n’est pas encore branchée. Utile pour tester l’intégration CLI/LSP sans bloquer le build.
 ```
 
-Sorties :
-- `dist/bench/<run_id>/summary.json` : métadonnées (git/système), résultats (exit codes), layout artifacts
-- `dist/bench/<run_id>/summary.csv`  : index run, code retour, artifact associé
-- `dist/bench/<run_id>/logs/`        : logs
-- `dist/bench/<run_id>/raw/`         : sorties JSON brutes si le runner l’émet
-
 ---
 
-## Arborescence (vue d’ensemble)
+## 🧑‍💻 Éditeur & LSP
 
-Cette arborescence peut varier, mais le repo est typiquement organisé autour de :
+- **LSP** : `vitte-lsp` (VS Code, Neovim, etc.).
+  Build : `cargo build -p vitte-lsp --features stdio --release` → binaire `vitte-lsp`.
 
-- `spec/` : spécifications (grammaire, sémantique, ABI/FFI, modules)
-- `grammar/` : grammaire parser (ex: `vitte.pest`)
-- `compiler/` ou `src/` : frontend (lexer/parser/AST), IR, backends
-- `runtime/` : runtime/VM, alloc, erreurs
-- `std/` : stdlib (modules)
-- `bench/` : micro-benchs + framework
-- `tools/` : scripts CI, packaging, utilitaires
-- `muffin.muf` / `muffin.lock` : manifests (si présents) pour l’orchestration build/deps
-
----
-
-## Pré-requis (recommandés)
-
-- **CMake** (>= 3.20 recommandé)
-- Un compilateur C/C++ moderne (**Clang** ou **GCC**)
-- **Ninja** (optionnel, mais accélère les builds)
-- **Python 3** (si scripts/outils)
-
-Vérification rapide :
+- **VS Code** : extension TextMate incluse (`editors/vscode-vitte/`).
+  Installe via “Install from VSIX…” ou dev :
 
 ```bash
-cmake --version
-cc --version || clang --version
-ninja --version || true
-python3 --version || true
+# pack rapide (depuis editors/vscode-vitte/)
+npm i && npm run build   # si tu as un package.json ; sinon charge le dossier tel quel
+```
+
+- **Coloration GitHub** : `.gitattributes` mappe `.vit` & `.vitte` → Rust pour un highlight correct.
+
+---
+
+## 🔬 Exemples
+
+### Pattern Matching
+
+```vitte
+match get_data() {
+    Ok(val) => print(val),
+    Err(e)  => print("Erreur: " + e),
+}
+```
+
+### Async
+
+```vitte
+async do fetch() {
+    await net::get("https://example.org")
+}
+```
+
+### FFI C
+
+```vitte
+extern(c) do printf(fmt: *u8, ...) -> i32
+
+do main() {
+    printf("Nombre: %d\\n", 42)
+}
 ```
 
 ---
 
-## Dépannage
+## 🗂 Crates du monorepo
 
-### Erreur Git : `fatal: bad object refs/remotes/origin/HEAD` / `did not send all necessary objects`
-
-Ça correspond généralement à une ref `origin/HEAD` locale corrompue. Correctif :
-
-```bash
-git update-ref -d refs/remotes/origin/HEAD
-git remote set-head origin -a
-git fetch --prune --tags origin
-```
-
-Si ça persiste : vérifie `packed-refs` :
-
-```bash
-grep -n "refs/remotes/origin/HEAD" .git/packed-refs || true
-```
-
----
-
-## Contribuer
-
-Principes :
-- Modifs petites et atomiques, messages de commit explicites.
-- Ajoute/maj les **tests** quand tu touches au lexer/parser/IR.
-- Les exemples Vitte doivent respecter la convention **`.end`**.
-
-Workflow typique :
-
-```bash
-git checkout -b feat/<sujet>
-# edits
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
-# tests (si disponibles)
-ctest --test-dir build --output-on-failure || true
-```
+| Crate            | Rôle                                                    |
+|------------------|---------------------------------------------------------|
+| `vitte-core`     | Types de base, IDs, erreurs communes.                   |
+| `vitte-lexer`    | Lexeur.                                                 |
+| `vitte-parser`   | Grammaire + AST + diagnostics.                          |
+| `vitte-ast`      | Structures AST.                                         |
+| `vitte-ir`       | IR, CFG/DFG, passes, export DOT.                        |
+| `vitte-vitbc`    | Format VITBC : lecture/écriture, sections, CRC, comp.   |
+| `vitte-vm`       | VM/interpréteur pur.                                    |
+| `vitte-runtime`  | Loader/VM, snapshots, REPL/CLI optionnels.              |
+| `vitte-tools`    | Suite CLI : `vitte` (fmt/check/pack/dump/graph/run).    |
+| `vitte-lsp`      | Serveur LSP (stdio/tcp).                                |
+| `vitte-wasm`     | Bindings WebAssembly (expérimental).                    |
+| `stdlib`         | Bibliothèque standard (pré-lude, I/O, temps…).          |
+| `modules/*`      | Modules additionnels (optionnels).                      |
+| `tests`          | Tests d’intégration E2E cross-crates.                   |
 
 ---
 
-## Roadmap (haut niveau)
+## 🗺 Roadmap
 
-- Stabiliser frontend (lexer/parser) + golden tests
-- Définir IR minimal + passes (name resolution / typing subset)
-- Choisir et verrouiller le backend du milestone (C backend minimal **ou** VM minimal)
-- Runtime minimal (strings/slices, erreurs/panic/report)
-- Stdlib prioritaire (`std/core`, `std/cli`, `std/io`, `std/fs`)
-- Bench/perf : schéma JSON stable + comparateur
+- [x] IR & passes de base (CFG/DFG, DOT)
+- [x] VITBC v2 (sections, CRC32, compression)
+- [x] VM & runtime (fuel, invariants)
+- [x] CLI `vitte` (fmt/check/pack/dump/graph/run)
+- [x] LSP initial (diagnostics, hover, completion)
+- [ ] Backends LLVM/Cranelift stabilisés
+- [ ] Debugger + DAP
+- [ ] WASM complet (WASI + std partielle)
+- [ ] Stdlib étendue (net/fs/async)
 
 ---
 
-## Licence
+## 🤝 Contribuer
 
-Voir `LICENSE`.
+- **Guides** : [CONTRIBUTING.md](CONTRIBUTING.md)
+- **Qualité** : `cargo fmt` • `cargo clippy -D warnings` • `cargo test` • `cargo deny check`
+- **MSRV** : 1.82.0 • **unsafe** interdit par défaut.
+- **Sécurité** : signale toute vulnérabilité en privé (voir `SECURITY.md` si présent, sinon issue privée/mainteneurs).
+
+---
+
+## 📜 Licence
+
+Triple licence : **MIT OR Apache-2.0 OR BSD-3-Clause**
+Voir `LICENSE-MIT`, `LICENSE-APACHE`, `LICENSE-BSD`.
+
+---
+
+> _Du code clair, des invariants solides, et la joie tranquille des builds vertes._ 🟢

@@ -1,75 +1,112 @@
-#pragma once
 
-/*
-  config.h
 
-  Benchmark configuration and feature detection.
-*/
+// config.h — build configuration for vitte/bench (C17)
+//
+// Centralized feature toggles and compile-time configuration.
+//
+// This header is included by common.h and can be included anywhere.
+// Keep it dependency-free (only preprocessor).
 
 #ifndef VITTE_BENCH_CONFIG_H
 #define VITTE_BENCH_CONFIG_H
 
-#include <stdint.h>
-#include <stddef.h>
+// -----------------------------------------------------------------------------
+// Build mode
+// -----------------------------------------------------------------------------
 
-/* Platform detection */
-#if defined(__APPLE__)
-  #define VITTE_BENCH_PLATFORM_MACOS 1
-#elif defined(__linux__)
-  #define VITTE_BENCH_PLATFORM_LINUX 1
-#elif defined(_WIN32) || defined(_WIN64)
-  #define VITTE_BENCH_PLATFORM_WINDOWS 1
-#else
-  #define VITTE_BENCH_PLATFORM_POSIX 1
+#if !defined(VITTE_BENCH_DEBUG)
+  // Define to 1 for extra checks/logging in bench runtime.
+  #define VITTE_BENCH_DEBUG 0
 #endif
 
-/* Compiler detection */
-#if defined(__clang__)
-  #define VITTE_BENCH_COMPILER_CLANG 1
-#elif defined(__GNUC__)
-  #define VITTE_BENCH_COMPILER_GCC 1
-#elif defined(_MSC_VER)
-  #define VITTE_BENCH_COMPILER_MSVC 1
+#if !defined(VITTE_BENCH_ENABLE_ASSERTS)
+  #define VITTE_BENCH_ENABLE_ASSERTS 1
 #endif
 
-/* C standard compliance */
-#if __STDC_VERSION__ >= 201112L
-  #define VITTE_BENCH_C11 1
+// -----------------------------------------------------------------------------
+// Output defaults
+// -----------------------------------------------------------------------------
+
+#if !defined(VITTE_BENCH_DEFAULT_ITERS)
+  #define VITTE_BENCH_DEFAULT_ITERS 500000ULL
 #endif
 
-/* Alignment macros */
-#if defined(__GNUC__) || defined(__clang__)
-  #define VITTE_BENCH_ALIGNED(N) __attribute__((aligned(N)))
-#elif defined(_MSC_VER)
-  #define VITTE_BENCH_ALIGNED(N) __declspec(align(N))
-#else
-  #define VITTE_BENCH_ALIGNED(N)
+#if !defined(VITTE_BENCH_DEFAULT_REPEATS)
+  #define VITTE_BENCH_DEFAULT_REPEATS 5u
 #endif
 
-/* Likely/Unlikely hints */
-#if defined(__GNUC__) || defined(__clang__)
-  #define VITTE_BENCH_LIKELY(x) __builtin_expect(!!(x), 1)
-  #define VITTE_BENCH_UNLIKELY(x) __builtin_expect(!!(x), 0)
-#else
-  #define VITTE_BENCH_LIKELY(x) (x)
-  #define VITTE_BENCH_UNLIKELY(x) (x)
+#if !defined(VITTE_BENCH_DEFAULT_WARMUP)
+  #define VITTE_BENCH_DEFAULT_WARMUP 1u
 #endif
 
-/* Feature flags */
-#ifndef VITTE_BENCH_EXTRA
-  #define VITTE_BENCH_EXTRA 0
+#if !defined(VITTE_BENCH_DEFAULT_SIZE)
+  #define VITTE_BENCH_DEFAULT_SIZE 64u
 #endif
 
-#ifndef VITTE_BENCH_EXPERIMENTAL
-  #define VITTE_BENCH_EXPERIMENTAL 0
+#if !defined(VITTE_BENCH_DEFAULT_SEED)
+  #define VITTE_BENCH_DEFAULT_SEED 0x123456789ABCDEF0ULL
 #endif
 
-#ifndef VITTE_BENCH_USE_ASM_MEMCPY
-  #define VITTE_BENCH_USE_ASM_MEMCPY 0
+// -----------------------------------------------------------------------------
+// Providers (registry)
+// -----------------------------------------------------------------------------
+
+// By default, optional providers are weak on GCC/Clang and auto-detected.
+// On MSVC, weak is not portable; enable suites explicitly via these defines.
+
+#if !defined(VITTE_BENCH_ENABLE_MICRO)
+  #define VITTE_BENCH_ENABLE_MICRO 0
 #endif
 
-#ifndef VITTE_BENCH_USE_ASM_HASH
-  #define VITTE_BENCH_USE_ASM_HASH 0
+#if !defined(VITTE_BENCH_ENABLE_MACRO)
+  #define VITTE_BENCH_ENABLE_MACRO 0
 #endif
 
-#endif /* VITTE_BENCH_CONFIG_H */
+#if !defined(VITTE_BENCH_ENABLE_JSON)
+  #define VITTE_BENCH_ENABLE_JSON 0
+#endif
+
+// -----------------------------------------------------------------------------
+// Cache line size (best-effort default)
+// -----------------------------------------------------------------------------
+
+#if !defined(BENCH_CACHELINE_SIZE)
+  #define BENCH_CACHELINE_SIZE 64u
+#endif
+
+// -----------------------------------------------------------------------------
+// Time / cycles
+// -----------------------------------------------------------------------------
+
+// If you want to force-disable cycle counters and use only ns:
+//   - define VITTE_BENCH_DISABLE_CYCLES to 1
+
+#if !defined(VITTE_BENCH_DISABLE_CYCLES)
+  #define VITTE_BENCH_DISABLE_CYCLES 0
+#endif
+
+// -----------------------------------------------------------------------------
+// Allocator hooks
+// -----------------------------------------------------------------------------
+
+// Allow overriding malloc/free for benchmarks.
+// Define these to custom functions/macros before including bench code.
+
+#if !defined(VITTE_BENCH_MALLOC)
+  #define VITTE_BENCH_MALLOC(sz) malloc((sz))
+#endif
+
+#if !defined(VITTE_BENCH_FREE)
+  #define VITTE_BENCH_FREE(p) free((p))
+#endif
+
+// -----------------------------------------------------------------------------
+// Platform specifics
+// -----------------------------------------------------------------------------
+
+// If you need to disable OS affinity/priority tweaks:
+#if !defined(VITTE_BENCH_ENABLE_RUNTIME_TWEAKS)
+  #define VITTE_BENCH_ENABLE_RUNTIME_TWEAKS 1
+#endif
+
+#endif // VITTE_BENCH_CONFIG_H

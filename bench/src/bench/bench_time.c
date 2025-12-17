@@ -1,279 +1,345 @@
-// File: bench/src/bench/bench_time.c
-// Vitte benchmark time utilities — "max" (C17/C23).
-//
-// Fournit :
-//   - bench_clock_init() / bench_now_ns(): horloge monotone haute résolution
-//   - bench_sleep_ms(): sleep portable
-//   - bench_estimate_timer_overhead_ns(): estimation overhead timer
-//   - bench_format_duration(): formatage ns/us/ms/s
-//   - bench_cpu_logical_count(): nombre de CPU logiques (best-effort)
-//   - bench_pin_to_single_cpu(): pinning affinity (Windows/Linux best-effort)
-//   - bench_spin_wait_ns(): attente active (spin)
-//
-// Conçu pour être utilisé par bench_main.c.
-//
-// Notes :
-//   - Sur Windows : QueryPerformanceCounter / SetThreadAffinityMask.
-//   - Sur POSIX : clock_gettime(CLOCK_MONOTONIC[_RAW]) sinon timespec_get fallback.
-//   - macOS: clock_gettime ok (10.12+). Pinning non exposé via API publique standard -> false.
-//   - Sur Linux old glibc: clock_gettime pouvait nécessiter -lrt, mais plus généralement plus nécessaire.
-//
-// API (bench/bench.h) :
-//   typedef struct bench_clock bench_clock_t;
-//   bench_clock_t bench_clock_init(void);
-//   uint64_t bench_now_ns(const bench_clock_t* c);
-//   void bench_sleep_ms(uint32_t ms);
-//   uint64_t bench_estimate_timer_overhead_ns(const bench_clock_t* c, int iters);
-//   const char* bench_format_duration(char* buf, size_t buf_len, uint64_t ns);
-//   uint32_t bench_cpu_logical_count(void);
-//   bool bench_pin_to_single_cpu(uint32_t cpu_index);
-//   void bench_spin_wait_ns(const bench_clock_t* c, uint64_t ns);
+// bench_time.c — timing utilities for benchmarking (C17, max)
 
-#include "bench/bench.h"
+#include "bench_time.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <string.h>
+#include <stddef.h>
 
 #if defined(_WIN32)
   #define WIN32_LEAN_AND_MEAN
   #include <windows.h>
 #else
   #include <time.h>
-  #include <errno.h>
   #include <unistd.h>
-  #if defined(__linux__)
-    #include <sched.h>
-  #endif
   #if defined(__APPLE__)
-    #include <sys/types.h>
-    #include <sys/sysctl.h>
+    #include <mach/mach_time.h>
   #endif
 #endif
 
-// ======================================================================================
-// Internal helpers
-// ======================================================================================
+#if defined(_MSC_VER)
+  #include <intrin.h>
+#endif
 
-static uint64_t bench_timespec_to_ns(struct timespec ts) {
-  return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
-}
+// ----------------------------------------------------------------------------
+// Arch detection
+// ----------------------------------------------------------------------------
 
-static uint64_t bench_saturating_sub_u64(uint64_t a, uint64_t b) {
-  return (a > b) ? (a - b) : 0;
-}
-
-// ======================================================================================
-// Public: init + now
-// ======================================================================================
-
-bench_clock_t bench_clock_init(void) {
-  bench_clock_t c;
-#if defined(_WIN32)
-  QueryPerformanceFrequency(&c.qpc_freq);
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+  #define BENCH_TIME_X86 1
 #else
-  c.has_clock_gettime = 0;
-  c.clock_id = (clockid_t)0;
+  #define BENCH_TIME_X86 0
+#endif
 
-  // Prefer MONOTONIC_RAW when present (Linux), else MONOTONIC.
-  #if defined(CLOCK_MONOTONIC_RAW)
-    c.clock_id = CLOCK_MONOTONIC_RAW;
-    c.has_clock_gettime = 1;
-  #elif defined(CLOCK_MONOTONIC)
-    c.clock_id = CLOCK_MONOTONIC;
-    c.has_clock_gettime = 1;
+#if defined(__aarch64__) || defined(_M_ARM64)
+  #define BENCH_TIME_ARM64 1
+#else
+  #define BENCH_TIME_ARM64 0
+#endif
+
+#if defined(__arm__) || defined(_M_ARM)
+  #define BENCH_TIME_ARM32 1
+#else
+  #define BENCH_TIME_ARM32 0
+#endif
+
+#if BENCH_TIME_X86 && !defined(_MSC_VER)
+  #include <x86intrin.h>
+#endif
+
+// ----------------------------------------------------------------------------
+// Internal helpers
+// ----------------------------------------------------------------------------
+
+static inline void bench_cpu_relax(void) {
+#if BENCH_TIME_X86
+  #if defined(_MSC_VER)
+    _mm_pause();
   #else
-    c.has_clock_gettime = 0;
+    __asm__ __volatile__("pause" ::: "memory");
   #endif
+#elif BENCH_TIME_ARM64 || BENCH_TIME_ARM32
+  #if defined(_MSC_VER)
+    __yield();
+  #else
+    __asm__ __volatile__("yield" ::: "memory");
+  #endif
+#else
+  // no-op
+#endif
+}
 
-  // Runtime validation (defensive)
-  #if defined(CLOCK_MONOTONIC_RAW) || defined(CLOCK_MONOTONIC)
-    if (c.has_clock_gettime) {
-      struct timespec ts;
-      if (clock_gettime(c.clock_id, &ts) != 0) {
-        c.has_clock_gettime = 0;
-      }
+static uint64_t bench_time_now_ns_fallback(void) {
+#if defined(_WIN32)
+  static LARGE_INTEGER freq;
+  static int init = 0;
+  if (!init) {
+    QueryPerformanceFrequency(&freq);
+    init = 1;
+  }
+  LARGE_INTEGER c;
+  QueryPerformanceCounter(&c);
+
+  const uint64_t ticks = (uint64_t)c.QuadPart;
+  const uint64_t f     = (uint64_t)freq.QuadPart;
+
+  const uint64_t sec = ticks / f;
+  const uint64_t rem = ticks - sec * f;
+
+  return sec * UINT64_C(1000000000) + (rem * UINT64_C(1000000000) / f);
+#else
+  #if defined(CLOCK_MONOTONIC)
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+      return (uint64_t)ts.tv_sec * UINT64_C(1000000000) + (uint64_t)ts.tv_nsec;
     }
   #endif
+
+  #if defined(__APPLE__)
+    static mach_timebase_info_data_t tb;
+    static int init = 0;
+    if (!init) {
+      (void)mach_timebase_info(&tb);
+      init = 1;
+    }
+    const uint64_t t = mach_absolute_time();
+    return (t * (uint64_t)tb.numer) / (uint64_t)tb.denom;
+  #endif
+
+  return 0;
 #endif
-  return c;
 }
 
-uint64_t bench_now_ns(const bench_clock_t* c) {
-#if defined(_WIN32)
-  LARGE_INTEGER t;
-  QueryPerformanceCounter(&t);
+// ----------------------------------------------------------------------------
+// Public: monotonic ns
+// ----------------------------------------------------------------------------
 
-  // ns = (t * 1e9) / freq; use long double to reduce overflow risk.
-  // (freq is stable; QPC is monotonic)
-  long double ns = ((long double)t.QuadPart * 1000000000.0L) / (long double)c->qpc_freq.QuadPart;
-  return (uint64_t)ns;
+uint64_t bench_time_now_ns(void) {
+  return bench_time_now_ns_fallback();
+}
+
+// ----------------------------------------------------------------------------
+// x86: TSC helpers + CPUID freq (best-effort)
+// ----------------------------------------------------------------------------
+
+#if BENCH_TIME_X86
+
+static inline void bench_x86_lfence(void) {
+#if defined(_MSC_VER)
+  _mm_lfence();
 #else
-  if (c && c->has_clock_gettime) {
-    struct timespec ts;
-    if (clock_gettime(c->clock_id, &ts) == 0) {
-      return bench_timespec_to_ns(ts);
+  __asm__ __volatile__("lfence" ::: "memory");
+#endif
+}
+
+static inline uint64_t bench_x86_rdtsc(void) {
+#if defined(_MSC_VER)
+  return (uint64_t)__rdtsc();
+#else
+  return (uint64_t)__rdtsc();
+#endif
+}
+
+static inline uint64_t bench_x86_rdtscp(uint32_t* aux) {
+#if defined(_MSC_VER)
+  unsigned int x = 0;
+  uint64_t v = (uint64_t)__rdtscp(&x);
+  if (aux) *aux = (uint32_t)x;
+  return v;
+#else
+  unsigned int x = 0;
+  uint64_t v = (uint64_t)__rdtscp(&x);
+  if (aux) *aux = (uint32_t)x;
+  return v;
+#endif
+}
+
+static inline void bench_x86_cpuid(uint32_t leaf, uint32_t subleaf,
+                                   uint32_t* a, uint32_t* b, uint32_t* c, uint32_t* d) {
+#if defined(_MSC_VER)
+  int regs[4];
+  __cpuidex(regs, (int)leaf, (int)subleaf);
+  if (a) *a = (uint32_t)regs[0];
+  if (b) *b = (uint32_t)regs[1];
+  if (c) *c = (uint32_t)regs[2];
+  if (d) *d = (uint32_t)regs[3];
+#else
+  uint32_t ra, rb, rc, rd;
+  __asm__ __volatile__("cpuid"
+                       : "=a"(ra), "=b"(rb), "=c"(rc), "=d"(rd)
+                       : "a"(leaf), "c"(subleaf)
+                       : "memory");
+  if (a) *a = ra;
+  if (b) *b = rb;
+  if (c) *c = rc;
+  if (d) *d = rd;
+#endif
+}
+
+// Try CPUID leaf 0x15 (TSC/crystal relationship) then 0x16 (base MHz).
+static uint64_t bench_x86_tsc_freq_hz_cpuid(void) {
+  uint32_t a=0,b=0,c=0,d=0;
+
+  // Max leaf?
+  bench_x86_cpuid(0, 0, &a, &b, &c, &d);
+  const uint32_t max_leaf = a;
+
+  if (max_leaf >= 0x15) {
+    uint32_t denom=0, numer=0, crystal=0;
+    bench_x86_cpuid(0x15, 0, &denom, &numer, &crystal, &d);
+
+    // 0x15: EAX=denom, EBX=numer, ECX=crystal Hz (may be 0).
+    if (denom != 0 && numer != 0 && crystal != 0) {
+      // tsc_hz = crystal_hz * numer / denom
+      const uint64_t hz = ((uint64_t)crystal * (uint64_t)numer) / (uint64_t)denom;
+      if (hz) return hz;
     }
   }
 
-  // Fallback: C11 timespec_get (not monotonic, but always available)
-  struct timespec ts2;
-  timespec_get(&ts2, TIME_UTC);
-  return bench_timespec_to_ns(ts2);
+  if (max_leaf >= 0x16) {
+    // 0x16: EAX=base MHz (Intel doc; not universal)
+    uint32_t base_mhz=0;
+    bench_x86_cpuid(0x16, 0, &base_mhz, &b, &c, &d);
+    if (base_mhz) return (uint64_t)base_mhz * UINT64_C(1000000);
+  }
+
+  return 0;
+}
+
+#endif // BENCH_TIME_X86
+
+// ----------------------------------------------------------------------------
+// AArch64: CNTVCT/CNTFRQ (GCC/Clang inline asm only; MSVC fallback)
+// ----------------------------------------------------------------------------
+
+#if BENCH_TIME_ARM64 && !defined(_MSC_VER)
+
+static inline uint64_t bench_arm64_cntvct(void) {
+  uint64_t v;
+  __asm__ __volatile__("mrs %0, cntvct_el0" : "=r"(v));
+  return v;
+}
+
+static inline uint64_t bench_arm64_cntfrq(void) {
+  uint64_t v;
+  __asm__ __volatile__("mrs %0, cntfrq_el0" : "=r"(v));
+  return v;
+}
+
+static inline void bench_arm64_isb(void) {
+  __asm__ __volatile__("isb" ::: "memory");
+}
+
+#endif
+
+// ----------------------------------------------------------------------------
+// Public: cycles counters
+// ----------------------------------------------------------------------------
+
+uint64_t bench_time_cycles_now(void) {
+#if BENCH_TIME_X86
+  return bench_x86_rdtsc();
+#elif BENCH_TIME_ARM64 && !defined(_MSC_VER)
+  return bench_arm64_cntvct();
+#else
+  return bench_time_now_ns();
 #endif
 }
 
-// ======================================================================================
-// Sleep
-// ======================================================================================
+uint64_t bench_time_cycles_begin(void) {
+#if BENCH_TIME_X86
+  bench_x86_lfence();
+  return bench_x86_rdtsc();
+#elif BENCH_TIME_ARM64 && !defined(_MSC_VER)
+  bench_arm64_isb();
+  return bench_arm64_cntvct();
+#else
+  return bench_time_now_ns();
+#endif
+}
 
-void bench_sleep_ms(uint32_t ms) {
+uint64_t bench_time_cycles_end(void) {
+#if BENCH_TIME_X86
+  uint32_t aux = 0;
+  const uint64_t v = bench_x86_rdtscp(&aux);
+  (void)aux;
+  bench_x86_lfence();
+  return v;
+#elif BENCH_TIME_ARM64 && !defined(_MSC_VER)
+  bench_arm64_isb();
+  const uint64_t v = bench_arm64_cntvct();
+  bench_arm64_isb();
+  return v;
+#else
+  return bench_time_now_ns();
+#endif
+}
+
+// ----------------------------------------------------------------------------
+// Public: frequency (Hz)
+// ----------------------------------------------------------------------------
+
+static uint64_t bench_time_estimate_cycles_hz(uint32_t sample_ms) {
+  if (sample_ms < 25) sample_ms = 25;
+  if (sample_ms > 1000) sample_ms = 1000;
+
+  const uint64_t t0 = bench_time_now_ns();
+  const uint64_t c0 = bench_time_cycles_begin();
+
+  // Sleep best-effort (can oversleep).
+  bench_time_sleep_ms(sample_ms);
+
+  const uint64_t c1 = bench_time_cycles_end();
+  const uint64_t t1 = bench_time_now_ns();
+
+  const uint64_t dt = (t1 >= t0) ? (t1 - t0) : 0;
+  const uint64_t dc = (c1 >= c0) ? (c1 - c0) : 0;
+
+  if (dt == 0 || dc == 0) return 0;
+  return (dc * UINT64_C(1000000000)) / dt;
+}
+
+uint64_t bench_time_cycles_freq_hz(void) {
+  static uint64_t cached = 0;
+  if (cached) return cached;
+
+#if BENCH_TIME_ARM64 && !defined(_MSC_VER)
+  cached = bench_arm64_cntfrq();
+  return cached;
+#elif BENCH_TIME_X86
+  cached = bench_x86_tsc_freq_hz_cpuid();
+  if (cached) return cached;
+
+  // fallback: estimate (works if TSC is invariant enough)
+  cached = bench_time_estimate_cycles_hz(200);
+  return cached;
+#else
+  cached = 0;
+  return 0;
+#endif
+}
+
+// ----------------------------------------------------------------------------
+// Public: sleep / busy wait
+// ----------------------------------------------------------------------------
+
+void bench_time_sleep_ms(uint32_t ms) {
 #if defined(_WIN32)
   Sleep((DWORD)ms);
 #else
-  struct timespec req;
-  req.tv_sec = (time_t)(ms / 1000U);
-  req.tv_nsec = (long)((ms % 1000U) * 1000000UL);
-
-  while (nanosleep(&req, &req) != 0) {
-    if (errno == EINTR) continue;
-    break;
-  }
+  struct timespec ts;
+  ts.tv_sec  = (time_t)(ms / 1000u);
+  ts.tv_nsec = (long)((ms % 1000u) * 1000000u);
+  (void)nanosleep(&ts, NULL);
 #endif
 }
 
-// ======================================================================================
-// Timer overhead estimation
-// ======================================================================================
+void bench_time_busy_wait_ns(uint64_t ns) {
+  const uint64_t start = bench_time_now_ns();
+  if (start == 0) return;
 
-uint64_t bench_estimate_timer_overhead_ns(const bench_clock_t* c, int iters) {
-  if (iters <= 0) iters = 20000;
-  const int runs = 7;
-
-  uint64_t best_total = UINT64_MAX;
-
-  for (int r = 0; r < runs; r++) {
-    uint64_t t0 = bench_now_ns(c);
-    for (int i = 0; i < iters; i++) {
-      (void)bench_now_ns(c);
-    }
-    uint64_t t1 = bench_now_ns(c);
-    uint64_t dt = t1 - t0;
-    if (dt < best_total) best_total = dt;
-  }
-
-  if (best_total == UINT64_MAX) return 0;
-  return best_total / (uint64_t)iters;
-}
-
-// ======================================================================================
-// Duration formatting
-// ======================================================================================
-
-const char* bench_format_duration(char* buf, size_t buf_len, uint64_t ns) {
-  if (!buf || buf_len == 0) return "";
-
-  if (ns < 1000ULL) {
-#if defined(_MSC_VER)
-    _snprintf_s(buf, buf_len, _TRUNCATE, "%lluns", (unsigned long long)ns);
-#else
-    snprintf(buf, buf_len, "%lluns", (unsigned long long)ns);
-#endif
-    return buf;
-  }
-
-  if (ns < 1000ULL * 1000ULL) {
-    double us = (double)ns / 1000.0;
-#if defined(_MSC_VER)
-    _snprintf_s(buf, buf_len, _TRUNCATE, "%.3fus", us);
-#else
-    snprintf(buf, buf_len, "%.3fus", us);
-#endif
-    return buf;
-  }
-
-  if (ns < 1000ULL * 1000ULL * 1000ULL) {
-    double ms = (double)ns / 1000000.0;
-#if defined(_MSC_VER)
-    _snprintf_s(buf, buf_len, _TRUNCATE, "%.3fms", ms);
-#else
-    snprintf(buf, buf_len, "%.3fms", ms);
-#endif
-    return buf;
-  }
-
-  double s = (double)ns / 1000000000.0;
-#if defined(_MSC_VER)
-  _snprintf_s(buf, buf_len, _TRUNCATE, "%.6fs", s);
-#else
-  snprintf(buf, buf_len, "%.6fs", s);
-#endif
-  return buf;
-}
-
-// ======================================================================================
-// CPU info
-// ======================================================================================
-
-uint32_t bench_cpu_logical_count(void) {
-#if defined(_WIN32)
-  SYSTEM_INFO si;
-  GetSystemInfo(&si);
-  if (si.dwNumberOfProcessors == 0) return 1;
-  return (uint32_t)si.dwNumberOfProcessors;
-#elif defined(__APPLE__)
-  int nm[2] = { CTL_HW, HW_NCPU };
-  int ncpu = 0;
-  size_t len = sizeof(ncpu);
-  if (sysctl(nm, 2, &ncpu, &len, NULL, 0) == 0 && ncpu > 0) return (uint32_t)ncpu;
-  return 1;
-#else
-  long n = sysconf(_SC_NPROCESSORS_ONLN);
-  if (n <= 0) return 1;
-  return (uint32_t)n;
-#endif
-}
-
-// ======================================================================================
-// Pinning to a single CPU (best-effort)
-// ======================================================================================
-
-bool bench_pin_to_single_cpu(uint32_t cpu_index) {
-#if defined(_WIN32)
-  if (cpu_index >= 64) return false;
-  DWORD_PTR mask = ((DWORD_PTR)1) << cpu_index;
-  HANDLE th = GetCurrentThread();
-  DWORD_PTR prev = SetThreadAffinityMask(th, mask);
-  return (prev != 0);
-
-#elif defined(__linux__)
-  cpu_set_t set;
-  CPU_ZERO(&set);
-  CPU_SET((int)cpu_index, &set);
-  int rc = sched_setaffinity(0, sizeof(set), &set);
-  return rc == 0;
-
-#else
-  (void)cpu_index;
-  // macOS / others: no stable public C API in standard headers here.
-  return false;
-#endif
-}
-
-// ======================================================================================
-// Spin wait (busy loop) for sub-millisecond stabilization
-// ======================================================================================
-
-void bench_spin_wait_ns(const bench_clock_t* c, uint64_t ns) {
-  if (ns == 0) return;
-  uint64_t start = bench_now_ns(c);
-  while (bench_saturating_sub_u64(bench_now_ns(c), start) < ns) {
-#if defined(_WIN32)
-    YieldProcessor();
-#else
-    __asm__ __volatile__("" ::: "memory");
-#endif
+  for (;;) {
+    const uint64_t now = bench_time_now_ns();
+    if (now == 0) return;
+    if (now - start >= ns) break;
+    bench_cpu_relax();
   }
 }
