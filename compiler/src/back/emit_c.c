@@ -1,4 +1,3 @@
-
 #include "vittec/back/emit_c.h"
 
 #include <stdio.h>
@@ -107,12 +106,68 @@ static void vittec__sanitize_ident(const char* in, char* out, size_t cap) {
   out[j] = 0;
 }
 
+static void vittec__make_header_guard(
+  char out[512],
+  const vittec_emit_c_options_t* opt,
+  const char* base_hint
+) {
+  if(!out) return;
+  const char* pre = (opt && opt->header_guard_prefix) ? opt->header_guard_prefix : "VITTE_";
+
+  char base_leaf[256];
+  if(base_hint && base_hint[0]) {
+    vittec__sanitize_ident(base_hint, base_leaf, sizeof(base_leaf));
+  } else {
+    vittec__sanitize_ident("generated", base_leaf, sizeof(base_leaf));
+  }
+
+  for(size_t i = 0; base_leaf[i]; i++) {
+    base_leaf[i] = (char)toupper((unsigned char)base_leaf[i]);
+  }
+
+  snprintf(out, 512, "%s%s_H", pre, base_leaf[0] ? base_leaf : "GENERATED");
+}
+
 static void vittec__sv_to_cstr(vittec_sv_t sv, char* out, size_t cap) {
   if(!out || cap == 0) return;
   size_t n = sv.len;
   if(n >= cap) n = cap - 1;
   if(sv.data && n) memcpy(out, sv.data, n);
   out[n] = 0;
+}
+
+static vittec_sv_t vittec__sv_from_cstr(const char* s) {
+  if(!s) return vittec_sv("", 0);
+  return vittec_sv(s, (uint64_t)strlen(s));
+}
+
+static void vittec__qualified_ident(
+  char* out,
+  size_t cap,
+  const char* prefix,
+  const char* module_name,
+  const char* name,
+  const char* fallback
+) {
+  if(!out || cap == 0) return;
+  const char* mod = module_name ? module_name : "";
+  const char* base = (name && name[0]) ? name : fallback;
+
+  char smod[256];
+  char sbase[256];
+  vittec__sanitize_ident(mod, smod, sizeof(smod));
+  vittec__sanitize_ident(base ? base : "", sbase, sizeof(sbase));
+
+  const char* pre = prefix ? prefix : "";
+  if(smod[0] && sbase[0]) {
+    snprintf(out, cap, "%s%s_%s", pre, smod, sbase);
+  } else if(sbase[0]) {
+    snprintf(out, cap, "%s%s", pre, sbase);
+  } else if(smod[0]) {
+    snprintf(out, cap, "%s%s_module", pre, smod);
+  } else {
+    snprintf(out, cap, "%stype", pre);
+  }
 }
 
 /* -------------------------------------------------------------------------
@@ -318,7 +373,7 @@ static void vittec__emit_header_buf(
   vittec__buf_t* b,
   const vittec_emit_c_options_t* opt,
   const char* guard,
-  const vittec_parse_unit_t* u
+  const vitte_codegen_unit* unit
 ) {
   vittec__buf_printf(b, "#ifndef %s\n#define %s\n\n", guard, guard);
   vittec__buf_printf(b, "#include <stdint.h>\n#include <stddef.h>\n\n");
@@ -328,11 +383,13 @@ static void vittec__emit_header_buf(
     vittec__buf_printf(b, "/* generated header: bootstrap prototypes */\n\n");
   }
 
-  if(u && u->fns && u->fns_len) {
-    for(uint32_t i=0; i<u->fns_len; i++) {
+  if(unit && unit->functions && unit->function_count) {
+    for(size_t i = 0; i < unit->function_count; i++) {
+      const vitte_codegen_function* fn = &unit->functions[i];
       char cname[512];
-      vittec__mangle(cname, sizeof(cname), opt, u->module_name, u->fns[i].name);
-      /* Bootstrap: signatures are not lowered yet, default to int(void). */
+      vittec_sv_t mod = vittec__sv_from_cstr(vitte_codegen_function_module_name(fn));
+      vittec_sv_t name = vittec__sv_from_cstr(fn->name);
+      vittec__mangle(cname, sizeof(cname), opt, mod, name);
       vittec__buf_printf(b, "int %s(void);\n", cname);
     }
   }
@@ -341,39 +398,109 @@ static void vittec__emit_header_buf(
   vittec__buf_printf(b, "#endif /* %s */\n", guard);
 }
 
-static void vittec__emit_functions_buf(vittec__buf_t* b, const vittec_emit_c_options_t* opt, const vittec_parse_unit_t* u) {
-  if(!u) {
-    vittec__buf_printf(b, "/* (no parse unit) */\n\n");
+static void vittec__emit_modules_buf(vittec__buf_t* b, const vitte_codegen_unit* unit) {
+  vittec__buf_printf(b, "/* modules */\n");
+  if(!unit || unit->module_count == 0) {
+    vittec__buf_printf(b, "/*   (none) */\n\n");
+    return;
+  }
+  for(size_t i = 0; i < unit->module_count; i++) {
+    const vitte_codegen_module* mod = &unit->modules[i];
+    const char* name = mod->name ? mod->name : "(anonymous)";
+    vittec__buf_printf(
+      b,
+      "/*   module %s (%u:%u -> %u:%u) */\n",
+      name,
+      (unsigned)mod->span.start.line,
+      (unsigned)mod->span.start.col,
+      (unsigned)mod->span.end.line,
+      (unsigned)mod->span.end.col
+    );
+  }
+  vittec__buf_printf(b, "\n");
+}
+
+static void vittec__emit_types_buf(
+  vittec__buf_t* b,
+  const vittec_emit_c_options_t* opt,
+  const vitte_codegen_unit* unit
+) {
+  vittec__buf_printf(b, "/* types */\n");
+  if(!unit || unit->type_count == 0) {
+    vittec__buf_printf(b, "/*   (none) */\n\n");
+    return;
+  }
+
+  const char* prefix = (opt && opt->namespace_prefix) ? opt->namespace_prefix : "vitte_";
+  for(size_t i = 0; i < unit->type_count; i++) {
+    const vitte_codegen_type* ty = &unit->types[i];
+    const char* module_name = vitte_codegen_type_module_name(ty);
+
+    char ident[512];
+    vittec__qualified_ident(ident, sizeof(ident), prefix, module_name, ty->name, "type");
+
+    vittec__buf_printf(
+      b,
+      "typedef struct %s {\n  /* TODO: %zu fields lowered from Vitte */\n} %s;\n\n",
+      ident,
+      ty->field_count,
+      ident
+    );
+  }
+}
+
+static void vittec__emit_functions_buf(
+  vittec__buf_t* b,
+  const vittec_emit_c_options_t* opt,
+  const vitte_codegen_unit* unit
+) {
+  if(!unit) {
+    vittec__buf_printf(b, "/* (no codegen unit) */\n\n");
     return;
   }
 
   if(opt && opt->emit_debug_comments) {
-    char mod[256];
-    vittec__sv_to_cstr(u->module_name, mod, sizeof(mod));
-    vittec__buf_printf(b, "/* module: %s */\n", mod[0] ? mod : "(none)");
-    vittec__buf_printf(b, "/* functions: %u */\n\n", (unsigned)u->fns_len);
+    vittec__buf_printf(b, "/* functions: %zu */\n\n", unit->function_count);
   }
 
-  if(u->fns && u->fns_len) {
-    for(uint32_t i=0; i<u->fns_len; i++) {
-      const vittec_fn_decl_t* fn = &u->fns[i];
+  if(unit->functions && unit->function_count) {
+    for(size_t i = 0; i < unit->function_count; i++) {
+      const vitte_codegen_function* fn = &unit->functions[i];
 
       char cname[512];
-      vittec__mangle(cname, sizeof(cname), opt, u->module_name, fn->name);
+      vittec_sv_t mod = vittec__sv_from_cstr(vitte_codegen_function_module_name(fn));
+      vittec_sv_t name = vittec__sv_from_cstr(fn->name);
+      vittec__mangle(cname, sizeof(cname), opt, mod, name);
+
+      const char* mod_label = (mod.len && mod.data && mod.data[0]) ? mod.data : "(root)";
+      const char* fn_label = (fn->name && fn->name[0]) ? fn->name : "(anon)";
+
+      vittec__buf_printf(
+        b,
+        "/* %s::%s params=%zu stmts=%zu */\n",
+        mod_label,
+        fn_label,
+        fn->param_count,
+        fn->stmt_count
+      );
 
       if(opt && opt->emit_line_directives) {
-        /* We only have byte spans at this stage; emit a comment placeholder. */
-#if defined(_MSC_VER)
-        vittec__buf_printf(b, "/* line: (byte offsets %u..%u) */\n", (unsigned)fn->sig_span.lo, (unsigned)fn->sig_span.hi);
-#else
-        vittec__buf_printf(b, "/* line: (byte offsets %u..%u) */\n", (unsigned)fn->sig_span.lo, (unsigned)fn->sig_span.hi);
-#endif
+        vittec__buf_printf(
+          b,
+          "/* span: %u:%u -> %u:%u */\n",
+          (unsigned)fn->span.start.line,
+          (unsigned)fn->span.start.col,
+          (unsigned)fn->span.end.line,
+          (unsigned)fn->span.end.col
+        );
       }
 
       if(opt && opt->emit_debug_comments) {
-        vittec__buf_printf(b, "/* fn name span: %u..%u */\n", (unsigned)fn->name_span.lo, (unsigned)fn->name_span.hi);
-        vittec__buf_printf(b, "/* fn sig span:  %u..%u */\n", (unsigned)fn->sig_span.lo, (unsigned)fn->sig_span.hi);
-        vittec__buf_printf(b, "/* fn body span: %u..%u (has_body=%u) */\n", (unsigned)fn->body_span.lo, (unsigned)fn->body_span.hi, (unsigned)fn->has_body);
+        vittec__buf_printf(
+          b,
+          "/* body stmts=%zu */\n",
+          fn->stmt_count
+        );
       }
 
       /* Bootstrap signature: int(void). */
@@ -390,53 +517,181 @@ static void vittec__emit_functions_buf(vittec__buf_t* b, const vittec_emit_c_opt
   }
 }
 
-static void vittec__emit_main_buf(vittec__buf_t* b, const vittec_emit_c_options_t* opt, const vittec_parse_unit_t* u) {
-  (void)opt;
+static void vittec__emit_main_buf(
+  vittec__buf_t* b,
+  const vittec_emit_c_options_t* opt,
+  const vitte_codegen_unit* unit
+) {
+  size_t entry_count = unit ? unit->entrypoint_count : 0;
+  vittec__buf_printf(b, "/* entrypoints: %zu */\n", entry_count);
 
-  if(u && u->has_main) {
-    /* Attempt to call lowered main if present. */
-    /* Note: the bootstrap parser flags has_main when it sees `fn main`. */
+  if(unit && entry_count) {
+    const vitte_codegen_entrypoint* ep = &unit->entrypoints[0];
+    const char* module_name = ep->module_path ? ep->module_path : "(root)";
+    const char* symbol = ep->symbol ? ep->symbol : "main";
+
+    for(size_t i = 0; i < entry_count; i++) {
+      const vitte_codegen_entrypoint* cur = &unit->entrypoints[i];
+      vittec__buf_printf(
+        b,
+        "/*   [%zu] %s::%s */\n",
+        i,
+        cur->module_path ? cur->module_path : "(root)",
+        cur->symbol ? cur->symbol : "(anon)"
+      );
+    }
 
     char cname[512];
-    vittec_sv_t mod = u->module_name;
-    vittec_sv_t name;
-    name.data = "main";
-    name.len = 4;
-    vittec__mangle(cname, sizeof(cname), opt, mod, name);
+    vittec_sv_t mod_sv = vittec__sv_from_cstr(module_name);
+    vittec_sv_t sym_sv = vittec__sv_from_cstr(symbol);
+    vittec__mangle(cname, sizeof(cname), opt, mod_sv, sym_sv);
 
     vittec__buf_printf(b, "int main(void) {\n");
-    vittec__buf_printf(b, "  /* bootstrap: call lowered main stub */\n");
+    vittec__buf_printf(b, "  /* bootstrap: call lowered entrypoint */\n");
     vittec__buf_printf(b, "  return %s();\n", cname);
     vittec__buf_printf(b, "}\n");
   } else {
     vittec__buf_printf(b, "int main(void) {\n");
-    vittec__buf_printf(b, "  /* bootstrap: no `fn main` detected */\n");
+    vittec__buf_printf(b, "  /* bootstrap: no entrypoints detected */\n");
     vittec__buf_printf(b, "  return 0;\n");
     vittec__buf_printf(b, "}\n");
   }
+}
+
+static int vittec__emit_unit_buffers(
+  const vitte_codegen_unit* unit,
+  const vittec_emit_c_options_t* opt,
+  const char* header_include_leaf,
+  const char* header_guard_hint,
+  vittec__buf_t* cbuf,
+  vittec__buf_t* hbuf
+) {
+  if(!unit || !opt || !cbuf) return VITTEC_EMIT_C_EINVAL;
+
+  vittec__emit_preamble_buf(cbuf, opt);
+
+  if(opt->emit_header) {
+    const char* inc = (header_include_leaf && header_include_leaf[0]) ? header_include_leaf : "generated.h";
+    vittec__buf_printf(cbuf, "#include \"%s\"\n\n", inc);
+  }
+
+  vittec__emit_modules_buf(cbuf, unit);
+  vittec__emit_types_buf(cbuf, opt, unit);
+  vittec__emit_functions_buf(cbuf, opt, unit);
+  vittec__emit_main_buf(cbuf, opt, unit);
+
+  if(opt->emit_header) {
+    if(!hbuf) return VITTEC_EMIT_C_EINVAL;
+    char guard[512];
+    vittec__make_header_guard(guard, opt, header_guard_hint);
+    vittec__emit_header_buf(hbuf, opt, guard, unit);
+  }
+
+  return VITTEC_EMIT_C_OK;
+}
+
+void vittec_emit_c_buffer_init(vittec_emit_c_buffer_t* buf) {
+  if(!buf) return;
+  buf->c_data = NULL;
+  buf->c_size = 0;
+  buf->h_data = NULL;
+  buf->h_size = 0;
+}
+
+void vittec_emit_c_buffer_reset(vittec_emit_c_buffer_t* buf) {
+  if(!buf) return;
+  if(buf->c_data) free(buf->c_data);
+  if(buf->h_data) free(buf->h_data);
+  vittec_emit_c_buffer_init(buf);
+}
+
+static int vittec__transfer_buffer(vittec__buf_t* src, char** out_data, size_t* out_size) {
+  if(!src || !out_data || !out_size) return VITTEC_EMIT_C_EINVAL;
+  if(!vittec__buf_reserve(src, 1)) return VITTEC_EMIT_C_EINTERNAL;
+  src->data[src->len] = 0;
+  *out_data = src->data;
+  *out_size = src->len;
+  src->data = NULL;
+  src->len = 0;
+  src->cap = 0;
+  return VITTEC_EMIT_C_OK;
+}
+
+int vittec_emit_c_buffer(
+  const vitte_codegen_unit* unit,
+  vittec_emit_c_buffer_t* out,
+  const vittec_emit_c_options_t* opt_in
+) {
+  if(!unit || !out) return VITTEC_EMIT_C_EINVAL;
+
+  vittec_emit_c_buffer_reset(out);
+
+  vittec_emit_c_options_t opt = vittec__opt_or_default(opt_in);
+
+  vittec__buf_t cbuf;
+  vittec__buf_init(&cbuf);
+  vittec__buf_t hbuf;
+  vittec__buf_init(&hbuf);
+
+  const char* header_leaf = NULL;
+  const char* guard_hint = NULL;
+  if(opt.emit_header) {
+    header_leaf = "generated.h";
+    guard_hint = "generated";
+  }
+
+  int rc = vittec__emit_unit_buffers(unit, &opt, header_leaf, guard_hint, &cbuf, opt.emit_header ? &hbuf : NULL);
+  if(rc != VITTEC_EMIT_C_OK) {
+    vittec__buf_free(&cbuf);
+    vittec__buf_free(&hbuf);
+    return rc;
+  }
+
+  rc = vittec__transfer_buffer(&cbuf, &out->c_data, &out->c_size);
+  if(rc != VITTEC_EMIT_C_OK) {
+    vittec__buf_free(&cbuf);
+    vittec__buf_free(&hbuf);
+    vittec_emit_c_buffer_reset(out);
+    return rc;
+  }
+
+  if(opt.emit_header) {
+    rc = vittec__transfer_buffer(&hbuf, &out->h_data, &out->h_size);
+    if(rc != VITTEC_EMIT_C_OK) {
+      vittec__buf_free(&cbuf);
+      vittec__buf_free(&hbuf);
+      vittec_emit_c_buffer_reset(out);
+      return rc;
+    }
+  }
+
+  vittec__buf_free(&cbuf);
+  vittec__buf_free(&hbuf);
+  return VITTEC_EMIT_C_OK;
 }
 
 /* -------------------------------------------------------------------------
  * Public API
  * ------------------------------------------------------------------------- */
 
-int vittec_emit_c_file(const vittec_parse_unit_t* u, const char* out_path) {
-  return vittec_emit_c_file_ex(u, out_path, NULL);
+int vittec_emit_c_file(const vitte_codegen_unit* unit, const char* out_path) {
+  return vittec_emit_c_file_ex(unit, out_path, NULL);
 }
 
 int vittec_emit_c_file_ex(
-  const vittec_parse_unit_t* u,
+  const vitte_codegen_unit* unit,
   const char* out_path,
   const vittec_emit_c_options_t* opt_in
 ) {
-  if(!out_path || !out_path[0]) return VITTEC_EMIT_C_EINVAL;
+  if(!unit || !out_path || !out_path[0]) return VITTEC_EMIT_C_EINVAL;
 
   vittec_emit_c_options_t opt = vittec__opt_or_default(opt_in);
 
-  /* Resolve output paths. */
   char* base = NULL;
   char* c_path = NULL;
   char* h_path = NULL;
+  const char* header_leaf = NULL;
+  const char* guard_hint = NULL;
 
   if(opt.emit_header) {
     base = vittec__path_without_ext(out_path);
@@ -444,79 +699,49 @@ int vittec_emit_c_file_ex(
     c_path = vittec__path_with_ext(base, ".c");
     h_path = vittec__path_with_ext(base, ".h");
     if(!c_path || !h_path) {
-      free(base);
+      if(base) free(base);
       if(c_path) free(c_path);
       if(h_path) free(h_path);
       return VITTEC_EMIT_C_EINTERNAL;
     }
+
+    const char* inc_leaf = h_path;
+    for(const char* p = h_path; *p; p++) {
+      if(*p == '/' || *p == '\') inc_leaf = p + 1;
+    }
+    header_leaf = inc_leaf;
+
+    const char* guard_leaf = base;
+    for(const char* p = base; guard_leaf && *p; p++) {
+      if(*p == '/' || *p == '\') guard_leaf = p + 1;
+    }
+    guard_hint = guard_leaf;
   } else {
     c_path = vittec__strdup(out_path);
     if(!c_path) return VITTEC_EMIT_C_EINTERNAL;
   }
 
-  /* Build C file content (buffer). */
   vittec__buf_t cbuf;
   vittec__buf_init(&cbuf);
+  vittec__buf_t hbuf;
+  vittec__buf_init(&hbuf);
 
-  vittec__emit_preamble_buf(&cbuf, &opt);
+  int rc = vittec__emit_unit_buffers(unit, &opt, header_leaf, guard_hint, &cbuf, opt.emit_header ? &hbuf : NULL);
+  if(rc != VITTEC_EMIT_C_OK) goto cleanup;
+
+  rc = vittec__write_file_or_path(&opt, c_path, cbuf.data ? cbuf.data : "", cbuf.len);
+  if(rc != VITTEC_EMIT_C_OK) goto cleanup;
 
   if(opt.emit_header) {
-    /* include generated header */
-    const char* inc = h_path;
-    const char* leaf = inc;
-    for(const char* p = inc; *p; p++) {
-      if(*p == '/' || *p == '\\') leaf = p + 1;
-    }
-    vittec__buf_printf(&cbuf, "#include \"%s\"\n\n", leaf);
-  }
-
-  vittec__emit_functions_buf(&cbuf, &opt, u);
-  vittec__emit_main_buf(&cbuf, &opt, u);
-
-  /* Write C file. */
-  int rc = vittec__write_file_or_path(&opt, c_path, cbuf.data ? cbuf.data : "", cbuf.len);
-
-  /* Optional header emission. */
-  if(rc == VITTEC_EMIT_C_OK && opt.emit_header) {
-    vittec__buf_t hbuf;
-    vittec__buf_init(&hbuf);
-
-    /* guard derived from base name */
-    const char* pre = opt.header_guard_prefix ? opt.header_guard_prefix : "VITTE_";
-
-    char base_leaf[256];
-    base_leaf[0] = 0;
-    if(base) {
-      const char* leaf = base;
-      for(const char* p = base; *p; p++) {
-        if(*p == '/' || *p == '\\') leaf = p + 1;
-      }
-      vittec__sanitize_ident(leaf, base_leaf, sizeof(base_leaf));
-    } else {
-      vittec__sanitize_ident("generated", base_leaf, sizeof(base_leaf));
-    }
-
-    /* to upper */
-    for(size_t i=0; base_leaf[i]; i++) {
-      base_leaf[i] = (char)toupper((unsigned char)base_leaf[i]);
-    }
-
-    char guard[512];
-    snprintf(guard, sizeof(guard), "%s%s_H", pre, base_leaf[0] ? base_leaf : "GENERATED");
-
-    vittec__emit_header_buf(&hbuf, &opt, guard, u);
-
     rc = vittec__write_file_or_path(&opt, h_path, hbuf.data ? hbuf.data : "", hbuf.len);
-
-    vittec__buf_free(&hbuf);
+    if(rc != VITTEC_EMIT_C_OK) goto cleanup;
   }
 
+cleanup:
   vittec__buf_free(&cbuf);
-
+  vittec__buf_free(&hbuf);
   if(base) free(base);
   if(c_path) free(c_path);
   if(h_path) free(h_path);
-
   return rc;
 }
-

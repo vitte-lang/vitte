@@ -34,6 +34,13 @@ typedef enum {
     TOK_DOT,
     TOK_COLON,
     TOK_ARROW,
+    TOK_BANG,
+    TOK_AMP,
+    TOK_PIPE,
+    TOK_CARET,
+    TOK_TILDE,
+    TOK_QUESTION,
+    TOK_ERROR,
 } token_kind_t;
 
 typedef struct token {

@@ -11,6 +11,7 @@ help:
 	@echo "  make run-list      - List available benchmarks"
 	@echo "  make run-micro     - Run only micro benchmarks"
 	@echo "  make run-macro     - Run only macro benchmarks"
+	@echo "  make vitte-tests   - Build and run Vitte lexer/parser tests"
 
 build:
 	mkdir -p $(BUILD_DIR)
@@ -30,5 +31,8 @@ run-micro: build
 
 run-macro: build
 	$(BUILD_DIR)/benchc --filter macro
+
+vitte-tests: build
+	cmake --build $(BUILD_DIR) --target vitte_tests
 
 all: build

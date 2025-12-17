@@ -149,6 +149,36 @@ Point d’attention :
 - `bench/src/bench/platform.h` inclut une implémentation conditionnelle via `BENCH_PLATFORM_IMPLEMENTATION`.
   Définir cette macro dans **exactement une** translation unit, ou définir `BENCH_PLATFORM_NO_IMPL` partout et fournir l’impl ailleurs.
 
+### Toolchain locale (Windows)
+
+Pour construire `src/vitte/*.c` et exécuter les tests unitaires depuis Windows, installe les outils et configure CMake ainsi :
+
+1. Installer Clang et Ninja via `winget` :
+
+   ```powershell
+   winget install -e --id LLVM.LLVM --accept-package-agreements --accept-source-agreements
+   winget install -e --id Ninja-build.Ninja --accept-package-agreements --accept-source-agreements
+   ```
+
+2. Configurer CMake avec les binaire installés (adapter les chemins si besoin) :
+
+   ```powershell
+   $clang = "C:/Program Files/LLVM/bin/clang.exe"
+   $ninja = "$env:LOCALAPPDATA/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/ninja.exe"
+   cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER="$clang" -DCMAKE_MAKE_PROGRAM="$ninja"
+   ```
+
+3. Construire et lancer les tests `vitte_t_lexer` et `vitte_t_desugar_phrase` :
+
+   ```powershell
+   cmake --build build --target vitte_tests
+   ctest --test-dir build --output-on-failure
+   ```
+
+   Une cible Make équivalente est disponible : `make vitte-tests`.
+
+> ℹ️ Alternative GCC/MinGW : si tu préfères utiliser `gcc`, décompresse un bundle WinLibs (ex. `C:\Tools\mingw64`) puis configure CMake avec `-DCMAKE_C_COMPILER="C:/Tools/mingw64/bin/gcc.exe"` (et éventuellement `-DCMAKE_RC_COMPILER="C:/Tools/mingw64/bin/windres.exe"`). Les mêmes commandes `cmake --build ... --target vitte_tests` fonctionnent ensuite.
+
 ---
 
 ## Bench

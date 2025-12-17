@@ -33,6 +33,7 @@ add_library(vittec_compiler STATIC ${VITTEC_COMPILER_SOURCES})
 
 target_include_directories(vittec_compiler PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
     $<INSTALL_INTERFACE:include>
 )
 
@@ -76,7 +77,10 @@ add_test(NAME test_symbol_table COMMAND test_symbol_table)
 # Main executable
 add_executable(vittec src/main.c src/vittec.c src/version.c)
 target_link_libraries(vittec PRIVATE vittec_compiler)
-target_include_directories(vittec PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(vittec PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+)
 
 # Installation
 install(TARGETS vittec RUNTIME DESTINATION bin)

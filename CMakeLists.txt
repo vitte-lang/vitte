@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(vitte_bench LANGUAGES C)
+project(vitte LANGUAGES C)
 
 # --------------------------
 # Options (opt-in extensions)
@@ -31,16 +31,64 @@ else()
 endif()
 
 # --------------------------
+# Vitte core library + tests
+# --------------------------
+add_library(vitte_core STATIC
+  src/vitte/ast.c
+  src/vitte/lexer.c
+  src/vitte/parser_phrase.c
+  src/vitte/desugar_phrase.c
+  src/vitte/codegen.c
+)
+
+target_include_directories(vitte_core PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+enable_testing()
+
+add_executable(vitte_t_lexer tests/unit/vitte/t_lexer.c)
+target_link_libraries(vitte_t_lexer PRIVATE vitte_core)
+
+add_executable(vitte_t_desugar tests/unit/vitte/t_desugar_phrase.c)
+target_link_libraries(vitte_t_desugar PRIVATE vitte_core)
+
+add_executable(vitte_t_codegen tests/unit/vitte/t_codegen.c)
+target_link_libraries(vitte_t_codegen PRIVATE vitte_core)
+
+add_executable(vitte_t_parser tests/unit/vitte/t_parser_phrase.c)
+target_link_libraries(vitte_t_parser PRIVATE vitte_core)
+
+add_executable(vitte_t_emit tests/unit/vitte/t_emit_c_backend.c compiler/src/back/emit_c.c)
+target_link_libraries(vitte_t_emit PRIVATE vitte_core)
+target_include_directories(vitte_t_emit PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/compiler/include
+)
+
+add_test(NAME vitte_t_lexer COMMAND vitte_t_lexer)
+add_test(NAME vitte_t_desugar COMMAND vitte_t_desugar)
+add_test(NAME vitte_t_codegen COMMAND vitte_t_codegen)
+add_test(NAME vitte_t_parser COMMAND vitte_t_parser)
+add_test(NAME vitte_t_emit COMMAND vitte_t_emit)
+
+add_custom_target(vitte_tests
+  COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+  DEPENDS vitte_t_lexer vitte_t_desugar vitte_t_codegen vitte_t_parser vitte_t_emit
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+# --------------------------
 # bench library (core)
 # --------------------------
 add_library(benchlib STATIC
-  src/bench/bench_time.c
-  src/bench/bench_stats.c
-  src/bench/bench_registry.c
+  bench/src/bench/bench_time.c
+  bench/src/bench/bench_stats.c
+  bench/src/bench/bench_registry.c
 )
 
 target_include_directories(benchlib PUBLIC
-  ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/bench/src
 )
 
 # Define opt-in macros consumed by the registry and benchmarks.
@@ -61,17 +109,17 @@ endif()
 # bench executable
 # --------------------------
 add_executable(benchc
-  src/bench/bench_main.c
-  src/micro/bm_add.c
-  src/micro/bm_hash.c
-  src/micro/bm_memcpy.c
-  src/macro/bm_json_parse.c
+  bench/src/bench/bench_main.c
+  bench/src/micro/bm_add.c
+  bench/src/micro/bm_hash.c
+  bench/src/micro/bm_memcpy.c
+  bench/src/macro/bm_json_parse.c
 )
 
 target_link_libraries(benchc PRIVATE benchlib)
 
 target_include_directories(benchc PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/bench/src
 )
 
 # Some platforms used to require -lrt for clock_gettime; keep it conditional.

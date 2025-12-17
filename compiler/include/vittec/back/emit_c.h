@@ -14,7 +14,7 @@
   - Provide an options struct to extend behavior without breaking ABI.
 
   Contract:
-  - Input is a parse unit (bootstrap index or richer AST).
+  - Input is a vitte_codegen_unit (phrase parser + desugar output).
   - Output is a single .c file (and optionally a matching .h header).
   - The emitter should not perform heavy semantic checks (that belongs to sema/).
 */
@@ -22,7 +22,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "vittec/front/parser.h"
+#include "vittec/support/str.h"
+#include "vitte/codegen.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -132,13 +133,28 @@ typedef struct vittec_emit_c_options {
 void vittec_emit_c_options_init(vittec_emit_c_options_t* opt);
 
 /* -------------------------------------------------------------------------
+ * In-memory emission buffers
+ * ------------------------------------------------------------------------- */
+
+typedef struct vittec_emit_c_buffer {
+  char* c_data;
+  size_t c_size;
+  char* h_data;
+  size_t h_size;
+} vittec_emit_c_buffer_t;
+
+void vittec_emit_c_buffer_init(vittec_emit_c_buffer_t* buf);
+void vittec_emit_c_buffer_reset(vittec_emit_c_buffer_t* buf);
+
+
+/* -------------------------------------------------------------------------
  * API
  * ------------------------------------------------------------------------- */
 
 /* Backward compatible convenience API.
-   Equivalent to vittec_emit_c_file_ex(u, out_path, NULL).
+   Equivalent to vittec_emit_c_file_ex(unit, out_path, NULL).
 */
-int vittec_emit_c_file(const vittec_parse_unit_t* u, const char* out_path);
+int vittec_emit_c_file(const vitte_codegen_unit* unit, const char* out_path);
 
 /* Extended API with options.
 
@@ -153,8 +169,21 @@ int vittec_emit_c_file(const vittec_parse_unit_t* u, const char* out_path);
    - non-zero on failure (see vittec_emit_c_err_t)
 */
 int vittec_emit_c_file_ex(
-  const vittec_parse_unit_t* u,
+  const vitte_codegen_unit* unit,
   const char* out_path,
+  const vittec_emit_c_options_t* opt
+);
+
+/* Emit into caller-owned buffers instead of writing to disk.
+
+   Contract:
+   - `out` must be initialized via vittec_emit_c_buffer_init (or zeroed).
+   - On success, `out->c_data`/`h_data` (if any) are heap allocations owned by caller.
+   - Call vittec_emit_c_buffer_reset to free captured memory.
+*/
+int vittec_emit_c_buffer(
+  const vitte_codegen_unit* unit,
+  vittec_emit_c_buffer_t* out,
   const vittec_emit_c_options_t* opt
 );
 
