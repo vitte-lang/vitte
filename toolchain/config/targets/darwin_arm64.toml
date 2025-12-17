@@ -1,0 +1,85 @@
+# toolchain/config/targets/darwin_arm64.toml
+#
+# Vitte toolchain target preset: Apple macOS (Darwin) on ARM64 (Apple Silicon).
+#
+# This file is a toolchain preset consumed by Vitte’s build/config loader.
+# Keep it declarative: no host probing here; probing belongs in clang_probe/clang_env.
+
+[target]
+name   = "darwin_arm64"
+triple = "aarch64-apple-darwin"
+
+[os]
+family = "darwin"
+name   = "macos"
+
+[arch]
+name = "arm64"
+cpu  = "apple-m1"   # informational hint (clang -mcpu may override)
+march = ""          # keep empty unless you want to force -march=...
+
+[abi]
+name = "default"    # macOS does not use gnu/msvc style ABI tags
+
+[sdk]
+# sysroot: on macOS, recommended to resolve via xcrun --show-sdk-path (clang_sdk.c)
+kind        = "macos"
+use_xcrun   = true
+sysroot     = ""          # leave empty; resolved dynamically
+min_version = "11.0"      # default deployment target; adjust for compatibility
+
+[toolchain]
+# Prefer using clang driver + lld where appropriate.
+# Paths can be absolute or empty (PATH/probing).
+clang     = ""
+clangxx   = ""
+lld       = ""            # lld or ld.lld; on mac it may still route to ld64 unless -fuse-ld=lld
+llvm_ar   = ""
+llvm_ranlib = ""
+
+[compile]
+lang_std_c   = "c17"
+lang_std_cxx = "c++20"
+
+opt   = "O2"       # O0/O1/O2/O3/Os/Oz
+debug = "g0"       # g0/g1/g2/g3
+pic   = true
+lto   = false
+
+warnings = "default"       # policy keyword (mapped by your config loader)
+color_diagnostics = true
+
+# Common defines for mac builds (optional)
+defines = [
+  "VITTE_TARGET_DARWIN=1",
+  "VITTE_TARGET_ARM64=1",
+]
+
+# Additional include roots (optional)
+include_dirs = [
+]
+
+[link]
+use_lld = true
+pie     = true
+shared  = false
+
+# Extra linker args (optional)
+args = [
+  # "-Wl,-dead_strip",
+]
+
+[libraries]
+# -L directories (optional)
+lib_dirs = [
+]
+
+# -l libraries (optional)
+libs = [
+]
+
+[output]
+obj_ext  = ".o"
+exe_ext  = ""      # macOS executables have no extension
+dll_ext  = ".dylib"
+lib_ext  = ".a"

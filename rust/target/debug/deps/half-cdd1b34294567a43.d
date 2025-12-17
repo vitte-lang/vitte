@@ -1,0 +1,12 @@
+C:\Users\vince\Documents\GitHub\vitte\rust\target\debug\deps\half-cdd1b34294567a43.d: C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\lib.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\bfloat.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\bfloat\convert.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\binary16.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\binary16\arch.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\binary16\arch\x86.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\leading_zeros.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\slice.rs
+
+C:\Users\vince\Documents\GitHub\vitte\rust\target\debug\deps\libhalf-cdd1b34294567a43.rmeta: C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\lib.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\bfloat.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\bfloat\convert.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\binary16.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\binary16\arch.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\binary16\arch\x86.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\leading_zeros.rs C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\slice.rs
+
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\lib.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\bfloat.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\bfloat\convert.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\binary16.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\binary16\arch.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\binary16\arch\x86.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\leading_zeros.rs:
+C:\Users\vince\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\half-2.7.1\src\slice.rs:
