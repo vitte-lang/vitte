@@ -1,0 +1,112 @@
+# toolchain/config/c_std.toml
+#
+# Canonical C/C++ standard and policy defaults for the Vitte toolchain.
+#
+# This file is intended to be imported/merged by target presets and build profiles.
+# Keep it stable: other configs should override values, not duplicate structure.
+
+[version]
+schema = 1
+
+[language]
+# Default language standards used when not overridden by a target/profile.
+c_std   = "c17"
+cxx_std = "c++20"
+
+# If true, treat .c as C, .cc/.cpp as C++; otherwise explicit lang must be provided.
+infer_from_extension = true
+
+[diagnostics]
+# Color diagnostics if supported.
+color = true
+
+# Clang diagnostics style controls.
+no_caret  = false
+no_column = false
+
+# Emit -ftime-trace (JSON traces) for compile units.
+time_trace = false
+
+[warnings]
+# Policy keyword resolved by clang_flags.c -> tc_clang_push_warnings().
+# Typical values: "none", "default", "strict", "pedantic", "wall", "wextra".
+profile = "default"
+
+# If true, turn warnings into errors.
+werror = false
+
+[optimization]
+# One of: "O0","O1","O2","O3","Os","Oz"
+level = "O2"
+
+# Debug info: "g0","g1","g2","g3"
+debug = "g0"
+
+[codegen]
+# Position Independent Code (PIC) for shared libs / some platforms.
+pic = true
+
+# Position Independent Executables (PIE) for main binaries (where applicable).
+pie = true
+
+# Link Time Optimization.
+lto = false
+
+# Strip symbols at link time (policy; actual flags depend on platform).
+strip = false
+
+[determinism]
+# Prefer deterministic builds: stable archives, stable debug paths, etc.
+enabled = true
+
+# Optional prefix remaps (useful for reproducible builds).
+# Recommended form: "from=to" (clang accepts -ffile-prefix-map=from=to)
+file_prefix_map  = ""
+macro_prefix_map = ""
+
+[deps]
+# Generate dependency files for incremental builds.
+enabled = true
+
+# If true: -MD (include system headers). If false: -MMD.
+system_headers = false
+
+# -MP: add phony targets to avoid missing header errors when removed.
+phony_targets = true
+
+# Default depfile extension for objects (e.g. foo.o -> foo.d).
+dep_ext = ".d"
+
+[defines]
+# Global defines applied to every TU (strings: "NAME" or "NAME=VALUE").
+global = [
+  # "VITTE_BUILD=1",
+]
+
+[includes]
+# Global include dirs applied to every TU.
+global = [
+  # "toolchain/config/include",
+]
+
+[link]
+# Prefer lld when available.
+use_lld = true
+
+# Extra args appended to link line (target/profile can override/extend).
+args = [
+]
+
+[libraries]
+# Global -L dirs and -l libs applied to every link.
+lib_dirs = [
+]
+libs = [
+]
+
+[response_files]
+# Use @rsp by default on Windows; elsewhere optional.
+enable_default = true
+
+# Max args threshold to force rsp (if your loader enforces it). 0 = loader decides.
+force_if_args_ge = 0

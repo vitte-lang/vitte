@@ -1,0 +1,84 @@
+# toolchain/config/targets/windows_x86_64_gnu.toml
+#
+# Vitte toolchain target preset: Windows on x86_64 with GNU/MinGW-style environment.
+#
+# Notes:
+#  - This preset is intended for clang targeting MinGW (gnu) rather than MSVC.
+#  - lld may be used as "lld" or "lld-link" depending on setup; for MinGW you
+#    usually want "lld" (GNU-ish) or "ld.lld". Keep empty to let probing decide.
+#  - Sysroot is optional; for MSYS2/MinGW you can set sysroot to the MinGW root.
+
+[target]
+name   = "windows_x86_64_gnu"
+triple = "x86_64-w64-windows-gnu"
+
+[os]
+family = "windows"
+name   = "windows"
+
+[arch]
+name  = "x86_64"
+cpu   = "generic"
+march = ""
+
+[abi]
+name = "gnu"
+
+[sdk]
+kind        = "none"
+use_xcrun   = false
+sysroot     = ""          # optional: MinGW root as sysroot for cross setups
+min_version = ""
+
+[toolchain]
+clang       = ""          # e.g. "clang" or absolute path
+clangxx     = ""
+lld         = ""          # e.g. "lld" or "ld.lld"
+llvm_ar     = ""
+llvm_ranlib = ""
+
+[compile]
+lang_std_c   = "c17"
+lang_std_cxx = "c++20"
+
+opt   = "O2"
+debug = "g0"
+pic   = false            # Windows typically does not use -fPIC for PE/COFF
+lto   = false
+
+warnings = "default"
+color_diagnostics = true
+
+defines = [
+  "VITTE_TARGET_WINDOWS=1",
+  "VITTE_TARGET_X86_64=1",
+  "VITTE_TARGET_GNU=1",
+]
+
+include_dirs = [
+  # "C:/msys64/mingw64/include",
+]
+
+[link]
+use_lld = true
+pie     = false
+shared  = false
+
+args = [
+  # "-Wl,--gc-sections",
+]
+
+[libraries]
+lib_dirs = [
+  # "C:/msys64/mingw64/lib",
+]
+
+libs = [
+  # "ws2_32",
+]
+
+[output]
+obj_ext  = ".obj"
+exe_ext  = ".exe"
+dll_ext  = ".dll"
+lib_ext  = ".a"
