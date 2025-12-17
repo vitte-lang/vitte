@@ -181,6 +181,18 @@ static uint64_t hash_mix64(const void* data, size_t n) {
   return seed;
 }
 
+static inline void sip_round(uint64_t* v0, uint64_t* v1,
+                             uint64_t* v2, uint64_t* v3) {
+  *v0 += *v1; *v2 += *v3;
+  *v1 = rotl64(*v1, 13); *v3 = rotl64(*v3, 16);
+  *v1 ^= *v0; *v3 ^= *v2;
+  *v0 = rotl64(*v0, 32);
+  *v2 += *v1; *v0 += *v3;
+  *v1 = rotl64(*v1, 17); *v3 = rotl64(*v3, 21);
+  *v1 ^= *v2; *v3 ^= *v0;
+  *v2 = rotl64(*v2, 32);
+}
+
 // Siphash-like toy (not a compliant SipHash; only a “heavier” baseline)
 static uint64_t hash_toy_sip(const void* data, size_t n) {
   const uint8_t* p = (const uint8_t*)data;
@@ -194,23 +206,13 @@ static uint64_t hash_toy_sip(const void* data, size_t n) {
   uint64_t k1 = 0x0f0e0d0c0b0a0908ULL;
   v0 ^= k0; v1 ^= k1; v2 ^= k0; v3 ^= k1;
 
-  auto void sip_round(void) {
-    v0 += v1; v2 += v3;
-    v1 = rotl64(v1, 13); v3 = rotl64(v3, 16);
-    v1 ^= v0; v3 ^= v2;
-    v0 = rotl64(v0, 32);
-    v2 += v1; v0 += v3;
-    v1 = rotl64(v1, 17); v3 = rotl64(v3, 21);
-    v1 ^= v2; v3 ^= v0;
-    v2 = rotl64(v2, 32);
-  }
-
   size_t i = 0;
   while (i + 8 <= n) {
     uint64_t m;
     memcpy(&m, p + i, 8);
     v3 ^= m;
-    sip_round(); sip_round(); // 2 rounds
+    sip_round(&v0, &v1, &v2, &v3);
+    sip_round(&v0, &v1, &v2, &v3);
     v0 ^= m;
     i += 8;
   }
@@ -220,11 +222,15 @@ static uint64_t hash_toy_sip(const void* data, size_t n) {
   for (size_t r = 0; r < rem; r++) b |= ((uint64_t)p[i + r]) << (8 * r);
 
   v3 ^= b;
-  sip_round(); sip_round();
+  sip_round(&v0, &v1, &v2, &v3);
+  sip_round(&v0, &v1, &v2, &v3);
   v0 ^= b;
 
   v2 ^= 0xff;
-  sip_round(); sip_round(); sip_round(); sip_round(); // 4 rounds
+  sip_round(&v0, &v1, &v2, &v3);
+  sip_round(&v0, &v1, &v2, &v3);
+  sip_round(&v0, &v1, &v2, &v3);
+  sip_round(&v0, &v1, &v2, &v3);
   return (v0 ^ v1) ^ (v2 ^ v3);
 }
 

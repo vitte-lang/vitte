@@ -8,7 +8,7 @@
 //
 // This header is portable; no platform syscalls required.
 //
-// Depends on: fuzz_assert.h
+// Depends on: fuzz_assert.h, fuzz_util.h
 
 #ifndef VITTE_FUZZ_INCLUDE_FUZZ_FUZZ_IO_H
 #define VITTE_FUZZ_INCLUDE_FUZZ_FUZZ_IO_H
@@ -24,6 +24,7 @@ extern "C" {
 #include <string.h>
 
 #include "fuzz_assert.h"
+#include "fuzz_util.h"
 
 //------------------------------------------------------------------------------
 // Mem reader
@@ -221,11 +222,6 @@ fuzz_reader_read_svar(fuzz_reader* r, int64_t* out, unsigned max_bytes) {
 // Bounded “string” reads from a fuzz buffer
 //  - length-prefixed (uvar) string slices (no NUL requirement)
 //------------------------------------------------------------------------------
-
-typedef struct fuzz_bytes_view {
-  const uint8_t* data;
-  size_t size;
-} fuzz_bytes_view;
 
 FUZZ_INLINE static int
 fuzz_reader_read_bytes_view(fuzz_reader* r, size_t n, fuzz_bytes_view* out) {

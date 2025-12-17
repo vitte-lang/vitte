@@ -1,5 +1,5 @@
-// C:\Users\vince\Documents\GitHub\vitte\fuzz\include\fuzz\fuzz_mutadors.h
-// fuzz_mutadors.h — mutation helpers for fuzzing (C17)
+// C:\Users\vince\Documents\GitHub\vitte\fuzz\include\fuzz\fuzz_mutators.h
+// fuzz_mutators.h — mutation helpers for fuzzing (C17)
 //
 // Provides:
 //  - small deterministic PRNG
@@ -16,8 +16,8 @@
 //
 // Dependencies: fuzz_assert.h, fuzz_dict.h, fuzz_io.h
 
-#ifndef VITTE_FUZZ_INCLUDE_FUZZ_FUZZ_MUTADORS_H
-#define VITTE_FUZZ_INCLUDE_FUZZ_FUZZ_MUTADORS_H
+#ifndef VITTE_FUZZ_INCLUDE_FUZZ_FUZZ_MUTATORS_H
+#define VITTE_FUZZ_INCLUDE_FUZZ_FUZZ_MUTATORS_H
 
 #if defined(__cplusplus)
 extern "C" {
@@ -31,46 +31,7 @@ extern "C" {
 #include "fuzz_assert.h"
 #include "fuzz_dict.h"
 #include "fuzz_io.h"
-
-//------------------------------------------------------------------------------
-// Deterministic PRNG (xorshift64*)
-//------------------------------------------------------------------------------
-
-typedef struct fuzz_rng {
-  uint64_t s;
-} fuzz_rng;
-
-FUZZ_INLINE static void
-fuzz_rng_seed(fuzz_rng* r, uint64_t seed) {
-  FUZZ_ASSERT(r);
-  // Avoid zero state.
-  r->s = seed ? seed : 0x9E3779B97F4A7C15ull;
-}
-
-FUZZ_INLINE static uint64_t
-fuzz_rng_next_u64(fuzz_rng* r) {
-  FUZZ_ASSERT(r);
-  uint64_t x = r->s;
-  x ^= x >> 12;
-  x ^= x << 25;
-  x ^= x >> 27;
-  r->s = x;
-  return x * 2685821657736338717ull;
-}
-
-FUZZ_INLINE static uint32_t
-fuzz_rng_next_u32(fuzz_rng* r) {
-  return (uint32_t)fuzz_rng_next_u64(r);
-}
-
-FUZZ_INLINE static size_t
-fuzz_rng_range(fuzz_rng* r, size_t hi_exclusive) {
-  FUZZ_ASSERT(r);
-  if (hi_exclusive == 0)
-    return 0;
-  // Rejection-free for power-of-two ranges; ok for fuzzing.
-  return (size_t)(fuzz_rng_next_u64(r) % (uint64_t)hi_exclusive);
-}
+#include "fuzz_util.h"
 
 FUZZ_INLINE static int
 fuzz_rng_bool(fuzz_rng* r) {
@@ -282,4 +243,12 @@ fuzz_mut_delete_range(uint8_t* data, size_t* size, const fuzz_mutation_cfg* cfg,
   return fuzz_buf_delete(data, size, pos, del_n);
 }
 
-FUZZ_INLINE static int fuzz_
+//------------------------------------------------------------------------------
+// End of mutator helpers (extend as needed)
+//------------------------------------------------------------------------------
+
+#if defined(__cplusplus)
+} // extern "C"
+#endif
+
+#endif // VITTE_FUZZ_INCLUDE_FUZZ_FUZZ_MUTATORS_H

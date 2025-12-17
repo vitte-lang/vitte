@@ -30,6 +30,7 @@ extern "C" {
 #include <stdint.h>
 
 #include "fuzz_assert.h"
+#include "fuzz_util.h"
 
 //------------------------------------------------------------------------------
 // Configuration
@@ -48,34 +49,6 @@ extern "C" {
 #ifndef FUZZ_TRACE_MAX_KV
 #define FUZZ_TRACE_MAX_KV 1024u
 #endif
-
-//------------------------------------------------------------------------------
-// Hash helpers (FNV-1a 32-bit)
-//------------------------------------------------------------------------------
-
-FUZZ_INLINE static uint32_t
-fuzz_fnv1a32(const void* data, size_t n) {
-  const uint8_t* p = (const uint8_t*)data;
-  uint32_t h = 2166136261u;
-  for (size_t i = 0; i < n; ++i) {
-    h ^= (uint32_t)p[i];
-    h *= 16777619u;
-  }
-  return h;
-}
-
-FUZZ_INLINE static uint32_t
-fuzz_hash_cstr32(const char* s) {
-  if (!s)
-    return 0u;
-  // bounded to avoid walking huge strings
-  uint32_t h = 2166136261u;
-  for (size_t i = 0; s[i] != 0 && i < 256; ++i) {
-    h ^= (uint32_t)(uint8_t)s[i];
-    h *= 16777619u;
-  }
-  return h ? h : 1u;
-}
 
 //------------------------------------------------------------------------------
 // Trace state

@@ -530,7 +530,8 @@ static int run_all(FILE* out, const opts* o) {
 
     // Warmup (non compté)
     for (uint32_t w = 0; w < o->warmup; ++w) {
-      bench_result r = run_one(c, iters_eff, o->size, o->seed ^ (UINT64_C(0xWARM) + w));
+      const uint64_t warm_salt = UINT64_C(0x5741524D); // ASCII "WARM"
+      bench_result r = run_one(c, iters_eff, o->size, o->seed ^ (warm_salt + w));
       (void)r;
       if (o->json) {
         print_json_run(out, c, &r, w, 1u, iters_eff);

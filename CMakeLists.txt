@@ -33,14 +33,17 @@ endif()
 # --------------------------
 # bench library (core)
 # --------------------------
+set(BENCH_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/bench/src)
+
 add_library(benchlib STATIC
-  src/bench/bench_time.c
-  src/bench/bench_stats.c
-  src/bench/bench_registry.c
+  bench/src/bench/bench_time.c
+  bench/src/bench/bench_stats.c
+  bench/src/bench/bench_registry.c
+  bench/src/bench/stubs.c
 )
 
 target_include_directories(benchlib PUBLIC
-  ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${BENCH_SRC_DIR}
 )
 
 # Define opt-in macros consumed by the registry and benchmarks.
@@ -61,17 +64,14 @@ endif()
 # bench executable
 # --------------------------
 add_executable(benchc
-  src/bench/bench_main.c
-  src/micro/bm_add.c
-  src/micro/bm_hash.c
-  src/micro/bm_memcpy.c
-  src/macro/bm_json_parse.c
+  bench/src/bench/bench_main.c
+  bench/src/bench/alloc.c
 )
 
 target_link_libraries(benchc PRIVATE benchlib)
 
 target_include_directories(benchc PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${BENCH_SRC_DIR}
 )
 
 # Some platforms used to require -lrt for clock_gettime; keep it conditional.

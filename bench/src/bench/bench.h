@@ -40,6 +40,23 @@ extern "C" {
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <inttypes.h>
+
+// Legacy registry compatibility ------------------------------------------------
+// The current harness still expects bench_fn_t + bench_registry_add macros used
+// throughout micro/macro suites. Provide lightweight forward declarations so
+// those translation units build until the new bench runtime replaces them.
+#ifndef VITTE_BENCH_LEGACY_REGISTRY
+#define VITTE_BENCH_LEGACY_REGISTRY 1
+typedef int (*bench_fn_t)(void* ctx, int64_t iters);
+int bench_registry_add(const char* id, int kind, bench_fn_t fn, void* ctx);
+#ifndef BENCH_MICRO
+#define BENCH_MICRO 1
+#endif
+#ifndef BENCH_MACRO
+#define BENCH_MACRO 2
+#endif
+#endif
 
 #if defined(_WIN32)
   #ifndef WIN32_LEAN_AND_MEAN

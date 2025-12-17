@@ -10,11 +10,12 @@
 //   - fuzz_assert.h     (crash/asserter)
 //   - fuzz_io.h         (bounded mem reader + file read helpers)
 //   - fuzz_dict.h       (simple .dict loader + token store)
-//   - fuzz_mutadors.h   (mutation helpers)
+//   - fuzz_mutators.h   (mutation helpers)
 //   - fuzz_trace.h      (lightweight tracing)
 //   - fuzz_util.h       (misc utilities)
 //   - fuzz_target.h     (target ABI helpers)
-//   - fuzz_driver.h     (libFuzzer/AFL/standalone driver glue)
+//   - (driver not included: include fuzz_driver.h manually after defining
+//       FUZZ_DRIVER_TARGET / standalone options)
 //
 // Define FUZZ_DRIVER_STANDALONE_MAIN=1 before including fuzz_driver.h
 // if you want a standalone main() in a target TU.
@@ -28,9 +29,8 @@ extern "C" {
 
 #include "fuzz_assert.h"
 #include "fuzz_dict.h"
-#include "fuzz_driver.h"
 #include "fuzz_io.h"
-#include "fuzz_mutadors.h"
+#include "fuzz_mutators.h"
 #include "fuzz_target.h"
 #include "fuzz_trace.h"
 #include "fuzz_util.h"

@@ -3,6 +3,9 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "bench/common.h"
+
+
 /*
   bm_memcpy.c (complet max)
 
@@ -64,41 +67,47 @@ static BENCH_INLINE uint64_t fold8(const uint8_t* p, size_t n) {
   return x;
 }
 
-void bm_memcpy(void* ctx) {
+static int bm_memcpy(void* ctx, int64_t iters) {
   (void)ctx;
+  if (iters <= 0)
+    return 0;
+
   init_buffers();
 
   static const size_t sizes[] = { 8,16,32,64,128,256,512,1024,4096 };
+  const size_t sizes_count = sizeof(sizes) / sizeof(sizes[0]);
 
-  const uint32_t r = rng_u32();
   uint64_t acc = sink;
 
-  /* 6 copies per call: mix sizes, alignments, offsets */
-  for(int k=0;k<6;k++) {
-    const uint32_t pick = r + (uint32_t)k * 0x9E3779B9u;
-    const size_t n = sizes[pick % (sizeof(sizes)/sizeof(sizes[0]))];
+  for(int64_t iter = 0; iter < iters; ++iter) {
+    const uint32_t base = rng_u32() + (uint32_t)iter;
 
-    /* offsets within 0..63 to vary alignment */
-    const size_t so = (size_t)((pick >> 1) & 63u);
-    const size_t doff = (size_t)((pick >> 7) & 63u);
+    /* 6 copies per iteration: mix sizes, alignments, offsets */
+    for(int k=0;k<6;k++) {
+      const uint32_t pick = base + (uint32_t)k * 0x9E3779B9u;
+      const size_t n = sizes[pick % sizes_count];
 
-    uint8_t* d = dst_buf + doff;
-    const uint8_t* s = src_buf + so;
+      /* offsets within 0..63 to vary alignment */
+      const size_t so = (size_t)((pick >> 1) & 63u);
+      const size_t doff = (size_t)((pick >> 7) & 63u);
 
-    do_memcpy(d, s, n);
+      uint8_t* d = dst_buf + doff;
+      const uint8_t* s = src_buf + so;
 
-    /* Fold a few bytes from dst to prevent elision */
-    acc ^= fold8(d, n) + (uint64_t)n;
+      do_memcpy(d, s, n);
 
-    /* Small perturbation to avoid perfect repetition */
-    dst_buf[(doff + (n ? (n-1) : 0)) & (sizeof(dst_buf)-1)] ^= (uint8_t)pick;
+      /* Fold a few bytes from dst to prevent elision */
+      acc ^= fold8(d, n) + (uint64_t)n;
+
+      /* Small perturbation to avoid perfect repetition */
+      dst_buf[(doff + (n ? (n-1) : 0)) & (sizeof(dst_buf)-1)] ^= (uint8_t)pick;
+    }
   }
 
   sink = acc;
+  return 0;
 }
 
 void bench_register_micro_memcpy(void) {
-  extern int bench_registry_add(const char* id, int kind, bench_fn_t fn, void* ctx);
-  
   bench_registry_add("micro:memcpy", BENCH_MICRO, bm_memcpy, NULL);
 }

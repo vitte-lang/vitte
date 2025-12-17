@@ -26,6 +26,7 @@ extern "C" {
 #include <string.h>
 
 #include "fuzz_assert.h"
+#include "fuzz_util.h"
 
 //------------------------------------------------------------------------------
 // Types
@@ -46,21 +47,6 @@ typedef struct fuzz_dict_view {
   const fuzz_token* toks;
   size_t len;
 } fuzz_dict_view;
-
-//------------------------------------------------------------------------------
-// Hash (FNV-1a 64-bit) for stable token IDs
-//------------------------------------------------------------------------------
-
-FUZZ_INLINE static uint64_t
-fuzz_fnv1a64(const void* data, size_t n) {
-  const uint8_t* p = (const uint8_t*)data;
-  uint64_t h = 1469598103934665603ull;
-  for (size_t i = 0; i < n; ++i) {
-    h ^= (uint64_t)p[i];
-    h *= 1099511628211ull;
-  }
-  return h;
-}
 
 //------------------------------------------------------------------------------
 // Allocation helpers

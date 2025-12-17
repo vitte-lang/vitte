@@ -46,9 +46,9 @@ extern "C" {
 #endif
 
 #if defined(__clang__) || defined(__GNUC__)
-  #define FUZZ_UNREACHABLE() __builtin_unreachable()
+  #define FUZZ_UNREACHABLE_HINT() __builtin_unreachable()
 #else
-  #define FUZZ_UNREACHABLE() do { } while (0)
+  #define FUZZ_UNREACHABLE_HINT() do { } while (0)
 #endif
 
 #ifndef FUZZ_ASSERT_ENABLED
@@ -76,8 +76,13 @@ extern "C" {
   #endif
 #endif
 
-// These symbols exist in some sanitizer runtimes; keep them weakly referenced.
-#if defined(__clang__) || defined(__GNUC__)
+// These symbols exist in sanitizer runtimes; optionally stub them during
+// standalone builds that do not link sanitizer libs.
+#if defined(FUZZ_DISABLE_SANITIZER_TRACE)
+  FUZZ_INLINE static void __sanitizer_print_stack_trace(void) {
+    // no-op stub for standalone builds
+  }
+#elif defined(__clang__) || defined(__GNUC__)
   __attribute__((weak)) void __sanitizer_print_stack_trace(void);
 #endif
 
@@ -231,10 +236,16 @@ FUZZ_NORETURN FUZZ_INLINE static void fuzz_unreachable_at(
   fuzz_oom_at(__FILE__, (int)__LINE__, FUZZ_FUNC, (msg))
 
 #define FUZZ_UNREACHABLE_MSG(msg) \
-  fuzz_unreachable_at(__FILE__, (int)__LINE__, FUZZ_FUNC, (msg))
+  do { \
+    fuzz_unreachable_at(__FILE__, (int)__LINE__, FUZZ_FUNC, (msg)); \
+    FUZZ_UNREACHABLE_HINT(); \
+  } while (0)
 
 #define FUZZ_UNREACHABLE() \
-  fuzz_unreachable_at(__FILE__, (int)__LINE__, FUZZ_FUNC, NULL)
+  do { \
+    fuzz_unreachable_at(__FILE__, (int)__LINE__, FUZZ_FUNC, NULL); \
+    FUZZ_UNREACHABLE_HINT(); \
+  } while (0)
 
 // Assertions
 #if FUZZ_ASSERT_ENABLED

@@ -193,7 +193,7 @@ typedef struct vitte_bm_case {
 // =====================================================================================
 
 static vitte_bm_result bm_malloc_free(uint64_t iters, size_t size, uint64_t seed) {
-  uint64_t checksum = vitte_hash_mix_u64(seed ^ UINT64_C(0xA11OC0DE));
+  uint64_t checksum = vitte_hash_mix_u64(seed ^ UINT64_C(0xA110C0DE)); // "ALLOC0DE"
   const uint64_t t0 = vitte_time_now_ns();
 
   for (uint64_t i = 0; i < iters; ++i) {
@@ -218,7 +218,7 @@ static vitte_bm_result bm_malloc_free(uint64_t iters, size_t size, uint64_t seed
 }
 
 static vitte_bm_result bm_calloc_free(uint64_t iters, size_t size, uint64_t seed) {
-  uint64_t checksum = vitte_hash_mix_u64(seed ^ UINT64_C(0xCA11OC));
+  uint64_t checksum = vitte_hash_mix_u64(seed ^ UINT64_C(0xCA110C)); // "CALL0C"
   const uint64_t t0 = vitte_time_now_ns();
 
   for (uint64_t i = 0; i < iters; ++i) {
@@ -253,7 +253,7 @@ static vitte_bm_result bm_calloc_free(uint64_t iters, size_t size, uint64_t seed
 static vitte_bm_result bm_realloc_grow_shrink(uint64_t iters, size_t size, uint64_t seed) {
   // Pattern: allocate small, grow to size, shrink, free.
   // This captures realloc metadata behavior.
-  uint64_t checksum = vitte_hash_mix_u64(seed ^ UINT64_C(0xREA11OC));
+  uint64_t checksum = vitte_hash_mix_u64(seed ^ UINT64_C(0xDEA110C)); // "DEA110C"
   const size_t small = (size >= 16) ? 16 : (size ? size : 1);
   const uint64_t t0 = vitte_time_now_ns();
 
@@ -278,7 +278,7 @@ static vitte_bm_result bm_realloc_grow_shrink(uint64_t iters, size_t size, uint6
     if (!r2) {
       // If shrink fails, q is still valid.
       free(q);
-      checksum ^= UINT64_C(0x5HR1NK) ^ i;
+      checksum ^= UINT64_C(0x5A71B9) ^ i; // "SHRINK"
       break;
     }
 
@@ -298,7 +298,7 @@ static vitte_bm_result bm_realloc_grow_shrink(uint64_t iters, size_t size, uint6
 
 static vitte_bm_result bm_aligned_alloc_free(uint64_t iters, size_t size, uint64_t seed) {
   // alignment is varied a bit to stress different allocator paths.
-  uint64_t checksum = vitte_hash_mix_u64(seed ^ UINT64_C(0xA11GN));
+  uint64_t checksum = vitte_hash_mix_u64(seed ^ UINT64_C(0xA11E09)); // "ALIGN"
   const uint64_t t0 = vitte_time_now_ns();
 
   for (uint64_t i = 0; i < iters; ++i) {
@@ -307,7 +307,7 @@ static vitte_bm_result bm_aligned_alloc_free(uint64_t iters, size_t size, uint64
 
     void* p = vitte_aligned_alloc_wrap(alignment, size ? size : 1);
     if (!p) {
-      checksum ^= UINT64_C(0xA11FAIL) ^ i;
+      checksum ^= UINT64_C(0xA11FA11) ^ i; // "ALLFAIL"
       break;
     }
 
@@ -381,7 +381,7 @@ static vitte_bm_result bm_arena_bump(uint64_t iters, size_t size, uint64_t seed)
   const size_t cap = (size ? size : 1) * 1024u + 4096u;
   vitte_arena arena;
   if (!vitte_arena_init(&arena, cap)) {
-    vitte_bm_result r = {0, checksum ^ UINT64_C(0xARFAIL), iters, size};
+    vitte_bm_result r = {0, checksum ^ UINT64_C(0xAF5A11), iters, size}; // "ARFAIL"
     return r;
   }
 
@@ -394,7 +394,7 @@ static vitte_bm_result bm_arena_bump(uint64_t iters, size_t size, uint64_t seed)
       vitte_arena_reset(&arena);
       p = vitte_arena_alloc(&arena, size ? size : 1, align);
       if (!p) {
-        checksum ^= UINT64_C(0xARNAFAIL) ^ i;
+        checksum ^= UINT64_C(0xAF1AF11) ^ i; // "ARNAFAIL"
         break;
       }
     }
@@ -470,11 +470,11 @@ static void vitte_pool_free_one(vitte_pool* p, void* ptr) {
 
 static vitte_bm_result bm_pool_reuse(uint64_t iters, size_t size, uint64_t seed) {
   // Allocate/free from a fixed-size pool: models allocator fast-path w/ reuse.
-  uint64_t checksum = vitte_hash_mix_u64(seed ^ UINT64_C(0xP001));
+  uint64_t checksum = vitte_hash_mix_u64(seed ^ UINT64_C(0x5001)); // "POOL"
   const uint32_t stride = (uint32_t)((size < 8 ? 8 : size) + 8);
   vitte_pool pool;
   if (!vitte_pool_init(&pool, 4096u, stride)) {
-    vitte_bm_result r = {0, checksum ^ UINT64_C(0xP00LFAIL), iters, size};
+    vitte_bm_result r = {0, checksum ^ UINT64_C(0x5001FA11), iters, size}; // "POOLFAIL"
     return r;
   }
 
@@ -483,7 +483,7 @@ static vitte_bm_result bm_pool_reuse(uint64_t iters, size_t size, uint64_t seed)
   for (uint64_t i = 0; i < iters; ++i) {
     void* p = vitte_pool_alloc(&pool);
     if (!p) {
-      checksum ^= UINT64_C(0xP00LEMPTY) ^ i;
+      checksum ^= UINT64_C(0x5001E9F7) ^ i; // "POOLEMPTY"
       break;
     }
     vitte_touch_memory((uint8_t*)p, size, &checksum);

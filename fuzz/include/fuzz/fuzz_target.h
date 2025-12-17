@@ -33,6 +33,7 @@ extern "C" {
 
 #include "fuzz_assert.h"
 #include "fuzz_io.h"
+#include "fuzz_util.h"
 
 //------------------------------------------------------------------------------
 // Target signature
@@ -62,13 +63,10 @@ fuzz_target_seed64(const uint8_t* data, size_t size) {
   // Deterministic seed derivation from input prefix.
   // Uses a tiny FNV-1a over up to 32 bytes.
   const size_t n = (size < 32) ? size : 32;
-  uint64_t h = 1469598103934665603ull;
-  for (size_t i = 0; i < n; ++i) {
-    h ^= (uint64_t)data[i];
-    h *= 1099511628211ull;
-  }
-  // Avoid 0
-  return h ? h : 0x9E3779B97F4A7C15ull;
+  uint64_t h = fuzz_fnv1a64(data, n);
+  if (!h)
+    h = 0x9E3779B97F4A7C15ull;
+  return h;
 }
 
 FUZZ_INLINE static fuzz_reader
