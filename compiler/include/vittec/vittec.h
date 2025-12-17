@@ -17,15 +17,7 @@
   - Prefer forward-compatible, options-based APIs.
 */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #define VITTEC_PUBLIC_API_VERSION 1u
-
-#ifdef __cplusplus
-} /* extern "C" */
-#endif
 
 /* -------------------------------------------------------------------------
  * Core config / version
@@ -57,6 +49,50 @@ extern "C" {
  * ------------------------------------------------------------------------- */
 
 #include "vittec/back/emit_c.h"
+
+/* -------------------------------------------------------------------------
+ * Public compiler session / options API
+ * ------------------------------------------------------------------------- */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct vittec_session vittec_session_t;
+
+typedef enum vittec_emit_kind {
+  VITTEC_EMIT_TOKENS = 0,
+  VITTEC_EMIT_C = 1,
+} vittec_emit_kind_t;
+
+typedef struct vittec_compile_options {
+  /* Size of this struct in bytes (set by caller for forward compatibility). */
+  uint32_t size;
+
+  /* Input/output paths (UTF-8). */
+  const char* input_path;
+  const char* output_path; /* optional, CLI default is stdout in emit-c mode */
+
+  vittec_emit_kind_t emit_kind;
+  int json_diagnostics;
+
+  /* Optional override for emit_c (NULL -> defaults). */
+  const vittec_emit_c_options_t* emit_c_options;
+
+  /* Optional capture buffer for emit_c (NULL -> fallback to disk output). */
+  vittec_emit_c_buffer_t* emit_c_buffer;
+} vittec_compile_options_t;
+
+void vittec_compile_options_init(vittec_compile_options_t* opt);
+
+vittec_session_t* vittec_session_new(void);
+void vittec_session_free(vittec_session_t* s);
+
+int vittec_compile(vittec_session_t* s, const vittec_compile_options_t* opt);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 /* -------------------------------------------------------------------------
  * Notes
