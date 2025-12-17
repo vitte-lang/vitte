@@ -402,3 +402,148 @@ Happy coding! 🚀
 
 *Complete Vitte Programming Language Implementation*
 *Ready for Development, Production, and Community*
+
+# README_START_HERE
+
+Point d’entrée unique pour naviguer dans le repo **vitte** (langage, toolchain, runtime, stdlib, bench, docs).
+
+> Statut : **expérimental**. Les APIs, formats et la sémantique peuvent évoluer.
+
+---
+
+## 1) Démarrage rapide (3 chemins)
+
+### A) Je veux juste builder et exécuter quelque chose
+
+```bash
+git clone https://github.com/vitte-lang/vitte.git
+cd vitte
+
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+
+# liste rapide des exécutables générés
+find build -maxdepth 3 -type f -perm -111 | head -n 50
+```
+
+### B) Je veux comprendre la syntaxe / le langage
+
+- **Grammaire** : `grammar/` (ex: `vitte.pest`) et/ou `spec/` (si présent)
+- **Convention de blocs** : les exemples du projet privilégient **`.end`** (pas d’accolades)
+
+Exemple minimal :
+
+```vitte
+fn main() -> i32
+  say "hello, vitte"
+  ret 0
+.end
+```
+
+### C) Je veux bosser sur le compilateur / runtime
+
+- Frontend : lexer/parser/AST (souvent `compiler/` ou `src/` selon layout)
+- Middle-end : IR + passes (name resolution, typing subset)
+- Backend : C backend minimal **ou** VM/bytecode (selon milestone)
+- Runtime : erreurs/panic/report, strings/slices, alloc, etc.
+
+---
+
+## 2) Navigation rapide par besoin
+
+- **Build / Toolchain** :
+  - CMake : `CMakeLists.txt`
+  - Scripts : `tools/scripts/`
+- **Spécifications** : `spec/` (si présent)
+- **Grammaire parser** : `grammar/`
+- **Stdlib** : `std/`
+- **Bench** : `bench/` + `run_benchmarks.sh`
+
+Si tu veux juste “où est quoi” :
+
+```bash
+ls
+find . -maxdepth 2 -type d | sed 's|^\./||' | sort | head -n 200
+```
+
+---
+
+## 3) Benchmarks (runner recommandé)
+
+Le runner `run_benchmarks.sh` sert de wrapper reproductible (métadonnées git/système + run-id + export).
+
+```bash
+chmod +x ./run_benchmarks.sh
+
+# build + 5 runs + 1 warmup
+./run_benchmarks.sh --build --repeat 5 --warmup 1
+
+# filtre (si le runner le supporte)
+./run_benchmarks.sh --bench-filter "json" --out dist/bench
+```
+
+Sorties :
+- `dist/bench/<run_id>/summary.json`
+- `dist/bench/<run_id>/summary.csv`
+- `dist/bench/<run_id>/logs/`
+- `dist/bench/<run_id>/raw/` (si le runner sort du JSON)
+
+---
+
+## 4) Dépannage (pratique)
+
+### Erreur Git : `fatal: bad object refs/remotes/origin/HEAD` / `did not send all necessary objects`
+
+Ça arrive quand `refs/remotes/origin/HEAD` est corrompu localement.
+
+```bash
+git update-ref -d refs/remotes/origin/HEAD
+git remote set-head origin -a
+git fetch --prune --tags origin
+```
+
+Si besoin, vérifie si la ref est packée :
+
+```bash
+grep -n "refs/remotes/origin/HEAD" .git/packed-refs || true
+```
+
+### Je ne trouve pas le binaire (compiler/bench/tool)
+
+Après build, liste les exécutables :
+
+```bash
+find build -maxdepth 5 -type f -perm -111 | sort | head -n 200
+```
+
+---
+
+## 5) Contribuer (règles de base)
+
+- Modifs petites et atomiques.
+- Tests de non-régression quand tu touches au lexer/parser/IR.
+- Exemples Vitte : respecter **`.end`**.
+
+Workflow :
+
+```bash
+git checkout -b feat/<sujet>
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure || true
+```
+
+---
+
+## 6) Documents d’entrée recommandés
+
+- `README.md` : vue “repo + quickstart”
+- `TODO.md` : backlog opérationnel
+- `spec/` : sémantique/ABI/modules (si présent)
+- `grammar/` : grammaire parser
+
+---
+
+## 7) Version
+
+La version source de vérité est généralement dans `VERSION` (si présent).
