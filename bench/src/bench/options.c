@@ -1,96 +1,528 @@
-#include "bench/options.h"
-#include "bench/runner.h"
+
+
+// options.c - CLI options parsing for vitte/bench (C17)
+//
+// Goals:
+//   - No getopt dependency; portable across Windows/macOS/Linux.
+//   - Deterministic defaults suitable for benchmarking.
+//   - Clear, CI-friendly error reporting.
+//
+// SPDX-License-Identifier: MIT
+
+#include <stddef.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+#include <stdlib.h>
+#include <inttypes.h>
 
-/*
-  options.c
+// If an external options.h exists, prefer it.
+#if defined(__has_include)
+  #if __has_include("bench/options.h")
+    #include "bench/options.h"
+  #elif __has_include("options.h")
+    #include "options.h"
+  #endif
+#endif
 
-  Command-line options parsing.
-*/
+// Optional logger (best-effort).
+#if defined(__has_include)
+  #if __has_include("bench/log.h")
+    #include "bench/log.h"
+  #elif __has_include("log.h")
+    #include "log.h"
+  #endif
+#endif
 
-void bench_print_usage(const char* program) {
-  printf("Usage: %s [OPTIONS] [BENCHMARKS]\n\n", program);
-  printf("Options:\n");
-  printf("  -h, --help              Show this help message\n");
-  printf("  --list                  List available benchmarks\n");
-  printf("  --list-full             List with details (kind, etc.)\n");
-  printf("  --all                   Run all registered benchmarks\n");
-  printf("  --filter SUBSTR         Filter benchmarks by substring\n");
-  printf("  --iters N               Micro: iterations per sample (default 1000000)\n");
-  printf("  --samples N             Number of samples (default 7)\n");
-  printf("  --seconds S             Macro: duration per sample (default 2.0)\n");
-  printf("  --warmup N              Warmup iterations (default 1000)\n");
-  printf("  --timecheck N           Macro: check clock every N iterations (default 256)\n");
-  printf("  --csv FILE              Write results as CSV\n");
-  printf("  --json FILE             Write results as JSON\n");
-  printf("\nExamples:\n");
-  printf("  %s --list\n", program);
-  printf("  %s --iters 5000000 micro:add\n", program);
-  printf("  %s --seconds 3 macro:json_parse\n", program);
-  printf("  %s --all --filter hash\n", program);
+// -----------------------------------------------------------------------------
+// Fallback public surface (only if options.h was not included)
+// -----------------------------------------------------------------------------
+
+#ifndef VITTE_BENCH_OPTIONS_H
+#define VITTE_BENCH_OPTIONS_H
+
+typedef struct bench_options
+{
+    const char* program;
+
+    // Selection
+    const char* filter;     // substring or glob-like (runner-defined)
+    const char* bench_name; // run a single named bench (optional)
+    bool list;              // list available benches
+
+    // Execution
+    int32_t repeat;         // run each benchmark N times
+    int32_t warmup;         // warmup iterations per benchmark
+    int32_t threads;        // runner-defined; 1 = single-thread
+    int64_t min_time_ms;    // runner-defined; 0 = no min-time policy
+    uint64_t seed;          // RNG seed (if used)
+    bool fail_fast;         // stop on first failure
+
+    // Output
+    const char* out_json;   // path to json results
+    const char* out_csv;    // path to csv results
+
+    // Logging/UI
+    bool quiet;
+    bool verbose;
+    bool color;             // request color output
+
+    // Meta
+    bool show_help;
+    bool show_version;
+} bench_options;
+
+typedef enum bench_opt_result
+{
+    BENCH_OPT_OK = 0,
+    BENCH_OPT_EXIT = 1,
+    BENCH_OPT_ERR = -1
+} bench_opt_result;
+
+bench_options bench_options_default(void);
+bench_opt_result bench_options_parse(bench_options* opt, int argc, char** argv, char* err, size_t err_cap);
+void bench_options_print_help(const char* prog, FILE* out);
+void bench_options_print_version(FILE* out);
+
+#endif // VITTE_BENCH_OPTIONS_H
+
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+
+static void bo__set_err(char* err, size_t cap, const char* msg)
+{
+    if (!err || cap == 0) return;
+    if (!msg) msg = "error";
+    (void)snprintf(err, cap, "%s", msg);
 }
 
-int bench_parse_options(int argc, char** argv, bench_options_t* opts) {
-  if (!opts) return 0;
+static void bo__set_errf1(char* err, size_t cap, const char* fmt, const char* a)
+{
+    if (!err || cap == 0) return;
+    if (!fmt) { bo__set_err(err, cap, "error"); return; }
+    (void)snprintf(err, cap, fmt, a ? a : "");
+}
 
-  /* Initialize with defaults */
-  memset(opts, 0, sizeof(*opts));
-  opts->runner_config = (bench_runner_config_t)BENCH_RUNNER_CONFIG_DEFAULT;
+static void bo__set_errf2(char* err, size_t cap, const char* fmt, const char* a, const char* b)
+{
+    if (!err || cap == 0) return;
+    if (!fmt) { bo__set_err(err, cap, "error"); return; }
+    (void)snprintf(err, cap, fmt, a ? a : "", b ? b : "");
+}
 
-  /* Allocate space for case names */
-  opts->case_names = (const char**)malloc(argc * sizeof(const char*));
-  if (!opts->case_names) return 0;
+static bool bo__streq(const char* a, const char* b)
+{
+    if (!a || !b) return false;
+    return strcmp(a, b) == 0;
+}
 
-  for (int i = 1; i < argc; i++) {
-    const char* arg = argv[i];
+static bool bo__starts_with(const char* s, const char* pfx)
+{
+    if (!s || !pfx) return false;
+    size_t n = strlen(pfx);
+    return strncmp(s, pfx, n) == 0;
+}
 
-    if (strcmp(arg, "-h") == 0 || strcmp(arg, "--help") == 0) {
-      opts->show_help = 1;
-    } else if (strcmp(arg, "--list") == 0) {
-      opts->list_benchmarks = 1;
-    } else if (strcmp(arg, "--list-full") == 0) {
-      opts->list_full = 1;
-    } else if (strcmp(arg, "--all") == 0) {
-      opts->run_all = 1;
-    } else if (strcmp(arg, "--filter") == 0) {
-      if (i + 1 < argc) {
-        opts->runner_config.filter = argv[++i];
-      }
-    } else if (strcmp(arg, "--iters") == 0) {
-      if (i + 1 < argc) {
-        opts->runner_config.iterations = (uint32_t)atoi(argv[++i]);
-      }
-    } else if (strcmp(arg, "--samples") == 0) {
-      if (i + 1 < argc) {
-        opts->runner_config.samples = (uint32_t)atoi(argv[++i]);
-      }
-    } else if (strcmp(arg, "--seconds") == 0) {
-      if (i + 1 < argc) {
-        opts->runner_config.duration_seconds = atof(argv[++i]);
-      }
-    } else if (strcmp(arg, "--warmup") == 0) {
-      if (i + 1 < argc) {
-        opts->runner_config.warmup_count = (uint32_t)atoi(argv[++i]);
-      }
-    } else if (strcmp(arg, "--timecheck") == 0) {
-      if (i + 1 < argc) {
-        opts->runner_config.timecheck_freq = (uint32_t)atoi(argv[++i]);
-      }
-    } else if (strcmp(arg, "--csv") == 0) {
-      if (i + 1 < argc) {
-        opts->csv_file = argv[++i];
-      }
-    } else if (strcmp(arg, "--json") == 0) {
-      if (i + 1 < argc) {
-        opts->json_file = argv[++i];
-      }
-    } else if (arg[0] != '-') {
-      /* Non-option argument: benchmark name */
-      opts->case_names[opts->case_count++] = arg;
+static const char* bo__basename(const char* path)
+{
+    if (!path) return "bench";
+    const char* b = path;
+    for (const char* p = path; *p; ++p)
+    {
+        if (*p == '/' || *p == '\\') b = p + 1;
     }
-  }
+    return b;
+}
 
-  return 1;
+static bool bo__parse_i32(const char* s, int32_t* out)
+{
+    if (out) *out = 0;
+    if (!s || !*s) return false;
+    char* endp = NULL;
+    long v = strtol(s, &endp, 10);
+    if (!endp || *endp != '\0') return false;
+    if (v < INT32_MIN || v > INT32_MAX) return false;
+    if (out) *out = (int32_t)v;
+    return true;
+}
+
+static bool bo__parse_i64(const char* s, int64_t* out)
+{
+    if (out) *out = 0;
+    if (!s || !*s) return false;
+    char* endp = NULL;
+    long long v = strtoll(s, &endp, 10);
+    if (!endp || *endp != '\0') return false;
+    if (out) *out = (int64_t)v;
+    return true;
+}
+
+static bool bo__parse_u64(const char* s, uint64_t* out)
+{
+    if (out) *out = 0;
+    if (!s || !*s) return false;
+    char* endp = NULL;
+    unsigned long long v = strtoull(s, &endp, 0); // base 0: accepts 0x...
+    if (!endp || *endp != '\0') return false;
+    if (out) *out = (uint64_t)v;
+    return true;
+}
+
+static bool bo__take_value(int* i, int argc, char** argv, const char* arg, const char* opt_name, const char** out_val)
+{
+    // Supports:
+    //   --opt=value
+    //   --opt value
+    //   -o value
+    // Does NOT support clustered short flags like -abc.
+
+    if (out_val) *out_val = NULL;
+    if (!i || !argv || !arg || !opt_name) return false;
+
+    const char* eq = strchr(arg, '=');
+    if (eq)
+    {
+        // --opt=value
+        if (out_val) *out_val = eq + 1;
+        return true;
+    }
+
+    // --opt value
+    if (*i + 1 >= argc) return false;
+    (*i)++;
+    if (out_val) *out_val = argv[*i];
+    return true;
+}
+
+static void bo__normalize_logging(bench_options* opt)
+{
+    // If both quiet and verbose are set, quiet wins.
+    if (!opt) return;
+    if (opt->quiet) opt->verbose = false;
+
+#if defined(BENCH_LOG_TRACE) && defined(BLOG_INFO)
+    // If log.h is present and initialized elsewhere, we can set level.
+    // Keep this best-effort and non-fatal.
+    if (opt->quiet)
+        bench_log_set_level(BENCH_LOG_ERROR);
+    else if (opt->verbose)
+        bench_log_set_level(BENCH_LOG_DEBUG);
+#endif
+}
+
+// -----------------------------------------------------------------------------
+// Public API
+// -----------------------------------------------------------------------------
+
+bench_options bench_options_default(void)
+{
+    bench_options o;
+    memset(&o, 0, sizeof(o));
+
+    o.program = "bench";
+
+    o.filter = NULL;
+    o.bench_name = NULL;
+    o.list = false;
+
+    o.repeat = 1;
+    o.warmup = 0;
+    o.threads = 1;
+    o.min_time_ms = 0;
+    o.seed = 0;
+    o.fail_fast = false;
+
+    o.out_json = NULL;
+    o.out_csv = NULL;
+
+    o.quiet = false;
+    o.verbose = false;
+    o.color = true;
+
+    o.show_help = false;
+    o.show_version = false;
+
+    return o;
+}
+
+bench_opt_result bench_options_parse(bench_options* opt, int argc, char** argv, char* err, size_t err_cap)
+{
+    if (err && err_cap) err[0] = '\0';
+
+    if (!opt)
+    {
+        bo__set_err(err, err_cap, "options: null output struct");
+        return BENCH_OPT_ERR;
+    }
+
+    *opt = bench_options_default();
+
+    if (argc > 0 && argv && argv[0])
+        opt->program = bo__basename(argv[0]);
+
+    for (int i = 1; i < argc; ++i)
+    {
+        const char* a = argv[i];
+        if (!a || !*a) continue;
+
+        // Positional: treat as bench_name if provided and not an option.
+        if (a[0] != '-')
+        {
+            if (!opt->bench_name)
+            {
+                opt->bench_name = a;
+                continue;
+            }
+            bo__set_errf2(err, err_cap, "unexpected argument '%s' (already have bench '%s')", a, opt->bench_name);
+            return BENCH_OPT_ERR;
+        }
+
+        // Common help/version
+        if (bo__streq(a, "-h") || bo__streq(a, "--help"))
+        {
+            opt->show_help = true;
+            return BENCH_OPT_EXIT;
+        }
+        if (bo__streq(a, "--version") || bo__streq(a, "-V"))
+        {
+            opt->show_version = true;
+            return BENCH_OPT_EXIT;
+        }
+
+        if (bo__streq(a, "--list") || bo__streq(a, "-l"))
+        {
+            opt->list = true;
+            continue;
+        }
+
+        if (bo__streq(a, "--fail-fast"))
+        {
+            opt->fail_fast = true;
+            continue;
+        }
+
+        if (bo__streq(a, "--quiet") || bo__streq(a, "-q"))
+        {
+            opt->quiet = true;
+            continue;
+        }
+
+        if (bo__streq(a, "--verbose") || bo__streq(a, "-v"))
+        {
+            opt->verbose = true;
+            continue;
+        }
+
+        if (bo__streq(a, "--color"))
+        {
+            opt->color = true;
+            continue;
+        }
+
+        if (bo__streq(a, "--no-color"))
+        {
+            opt->color = false;
+            continue;
+        }
+
+        // value options
+        if (bo__starts_with(a, "--filter"))
+        {
+            const char* v = NULL;
+            if (!bo__take_value(&i, argc, argv, a, "--filter", &v) || !v || !*v)
+            {
+                bo__set_err(err, err_cap, "--filter requires a non-empty value");
+                return BENCH_OPT_ERR;
+            }
+            opt->filter = v;
+            continue;
+        }
+
+        if (bo__starts_with(a, "--bench") || bo__streq(a, "-b"))
+        {
+            const char* v = NULL;
+            if (!bo__take_value(&i, argc, argv, a, "--bench", &v) || !v || !*v)
+            {
+                bo__set_err(err, err_cap, "--bench requires a non-empty value");
+                return BENCH_OPT_ERR;
+            }
+            opt->bench_name = v;
+            continue;
+        }
+
+        if (bo__starts_with(a, "--repeat") || bo__streq(a, "-r"))
+        {
+            const char* v = NULL;
+            if (!bo__take_value(&i, argc, argv, a, "--repeat", &v))
+            {
+                bo__set_err(err, err_cap, "--repeat requires a value");
+                return BENCH_OPT_ERR;
+            }
+            int32_t n = 0;
+            if (!bo__parse_i32(v, &n) || n <= 0)
+            {
+                bo__set_errf1(err, err_cap, "invalid --repeat '%s' (expected integer > 0)", v);
+                return BENCH_OPT_ERR;
+            }
+            opt->repeat = n;
+            continue;
+        }
+
+        if (bo__starts_with(a, "--warmup"))
+        {
+            const char* v = NULL;
+            if (!bo__take_value(&i, argc, argv, a, "--warmup", &v))
+            {
+                bo__set_err(err, err_cap, "--warmup requires a value");
+                return BENCH_OPT_ERR;
+            }
+            int32_t n = 0;
+            if (!bo__parse_i32(v, &n) || n < 0)
+            {
+                bo__set_errf1(err, err_cap, "invalid --warmup '%s' (expected integer >= 0)", v);
+                return BENCH_OPT_ERR;
+            }
+            opt->warmup = n;
+            continue;
+        }
+
+        if (bo__starts_with(a, "--threads") || bo__streq(a, "-j"))
+        {
+            const char* v = NULL;
+            if (!bo__take_value(&i, argc, argv, a, "--threads", &v))
+            {
+                bo__set_err(err, err_cap, "--threads requires a value");
+                return BENCH_OPT_ERR;
+            }
+            int32_t n = 0;
+            if (!bo__parse_i32(v, &n) || n <= 0)
+            {
+                bo__set_errf1(err, err_cap, "invalid --threads '%s' (expected integer > 0)", v);
+                return BENCH_OPT_ERR;
+            }
+            opt->threads = n;
+            continue;
+        }
+
+        if (bo__starts_with(a, "--min-time-ms"))
+        {
+            const char* v = NULL;
+            if (!bo__take_value(&i, argc, argv, a, "--min-time-ms", &v))
+            {
+                bo__set_err(err, err_cap, "--min-time-ms requires a value");
+                return BENCH_OPT_ERR;
+            }
+            int64_t ms = 0;
+            if (!bo__parse_i64(v, &ms) || ms < 0)
+            {
+                bo__set_errf1(err, err_cap, "invalid --min-time-ms '%s' (expected integer >= 0)", v);
+                return BENCH_OPT_ERR;
+            }
+            opt->min_time_ms = ms;
+            continue;
+        }
+
+        if (bo__starts_with(a, "--seed"))
+        {
+            const char* v = NULL;
+            if (!bo__take_value(&i, argc, argv, a, "--seed", &v))
+            {
+                bo__set_err(err, err_cap, "--seed requires a value");
+                return BENCH_OPT_ERR;
+            }
+            uint64_t seed = 0;
+            if (!bo__parse_u64(v, &seed))
+            {
+                bo__set_errf1(err, err_cap, "invalid --seed '%s' (expected integer, supports 0x..)", v);
+                return BENCH_OPT_ERR;
+            }
+            opt->seed = seed;
+            continue;
+        }
+
+        if (bo__starts_with(a, "--json"))
+        {
+            const char* v = NULL;
+            if (!bo__take_value(&i, argc, argv, a, "--json", &v) || !v || !*v)
+            {
+                bo__set_err(err, err_cap, "--json requires a non-empty path");
+                return BENCH_OPT_ERR;
+            }
+            opt->out_json = v;
+            continue;
+        }
+
+        if (bo__starts_with(a, "--csv"))
+        {
+            const char* v = NULL;
+            if (!bo__take_value(&i, argc, argv, a, "--csv", &v) || !v || !*v)
+            {
+                bo__set_err(err, err_cap, "--csv requires a non-empty path");
+                return BENCH_OPT_ERR;
+            }
+            opt->out_csv = v;
+            continue;
+        }
+
+        // Unknown option
+        bo__set_errf1(err, err_cap, "unknown option '%s'", a);
+        return BENCH_OPT_ERR;
+    }
+
+    bo__normalize_logging(opt);
+    return BENCH_OPT_OK;
+}
+
+void bench_options_print_help(const char* prog, FILE* out)
+{
+    if (!out) out = stderr;
+    const char* p = bo__basename(prog);
+
+    (void)fprintf(out,
+        "Usage: %s [options] [bench_name]\n"
+        "\n"
+        "Selection:\n"
+        "  -l, --list                 List available benchmarks\n"
+        "  -b, --bench <name>         Run a single benchmark by exact name\n"
+        "      --filter <pattern>     Filter benchmarks (runner-defined matching)\n"
+        "\n"
+        "Execution:\n"
+        "  -r, --repeat <N>           Run each benchmark N times (default: 1)\n"
+        "      --warmup <N>           Warmup iterations per benchmark (default: 0)\n"
+        "  -j, --threads <N>          Threads/concurrency hint (default: 1)\n"
+        "      --min-time-ms <MS>     Minimum time per benchmark (default: 0)\n"
+        "      --seed <U64>           RNG seed (supports 0x.., default: 0)\n"
+        "      --fail-fast            Stop on first failure\n"
+        "\n"
+        "Output:\n"
+        "      --json <path>          Write results as JSON\n"
+        "      --csv <path>           Write results as CSV\n"
+        "\n"
+        "Logging/UI:\n"
+        "  -q, --quiet                Reduce output (errors only)\n"
+        "  -v, --verbose              Increase output\n"
+        "      --color                Force color output (default)\n"
+        "      --no-color             Disable color output\n"
+        "\n"
+        "Meta:\n"
+        "  -h, --help                 Show this help\n"
+        "  -V, --version              Show version\n",
+        p);
+}
+
+void bench_options_print_version(FILE* out)
+{
+    if (!out) out = stdout;
+
+#if defined(VITTE_VERSION_STRING)
+    (void)fprintf(out, "%s\n", VITTE_VERSION_STRING);
+#elif defined(VITTE_VERSION)
+    (void)fprintf(out, "%s\n", VITTE_VERSION);
+#elif defined(BENCH_VERSION)
+    (void)fprintf(out, "%s\n", BENCH_VERSION);
+#else
+    (void)fprintf(out, "dev\n");
+#endif
 }

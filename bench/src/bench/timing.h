@@ -1,62 +1,71 @@
-#pragma once
 
-/*
-  timing.h
 
-  Advanced timing utilities for benchmarking.
-*/
+// timing.h - timing/stat helpers for vitte/bench (C17)
+//
+// SPDX-License-Identifier: MIT
 
 #ifndef VITTE_BENCH_TIMING_H
 #define VITTE_BENCH_TIMING_H
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 #include <stdint.h>
-#include <stdbool.h>
-#include "bench/platform.h"
+#include <stddef.h>
 
-/* Forward declaration */
-uint64_t bench_now_ns(void);
+// -----------------------------------------------------------------------------
+// Timer
+// -----------------------------------------------------------------------------
 
-/* Timing result structure */
-typedef struct {
-  uint64_t start_ns;
-  uint64_t end_ns;
-  uint64_t elapsed_ns;
-} bench_timing_t;
+typedef struct bench_timer
+{
+    uint64_t t0_ns;
+} bench_timer;
 
-/* Timer state for scoped measurements */
-typedef struct {
-  uint64_t start;
-  uint64_t accumulated;
-  bool running;
-} bench_timer_t;
+// Start timer.
+void bench_timer_start(bench_timer* t);
 
-/* Start timing */
-BENCH_INLINE bench_timing_t bench_time_start(void) {
-  bench_timing_t t = {0};
-  t.start_ns = bench_now_ns();
-  return t;
-}
+// Elapsed time since start in nanoseconds.
+uint64_t bench_timer_elapsed_ns(const bench_timer* t);
 
-/* End timing and compute elapsed */
-BENCH_INLINE uint64_t bench_time_end(bench_timing_t* t) {
-  t->end_ns = bench_now_ns();
-  t->elapsed_ns = t->end_ns - t->start_ns;
-  return t->elapsed_ns;
-}
+// Conversions.
+double bench_ns_to_ms(uint64_t ns);
+double bench_ns_to_s(uint64_t ns);
 
-/* Create a new scoped timer */
-bench_timer_t bench_timer_new(void);
+// -----------------------------------------------------------------------------
+// Stats
+// -----------------------------------------------------------------------------
 
-/* Start timer */
-void bench_timer_start(bench_timer_t* timer);
+typedef struct bench_stats
+{
+    int32_t count;
 
-/* Stop timer and accumulate */
-uint64_t bench_timer_stop(bench_timer_t* timer);
+    // Basic stats
+    double min;
+    double max;
+    double mean;
+    double stddev;
 
-/* Get accumulated time */
-uint64_t bench_timer_elapsed(const bench_timer_t* timer);
+    // Quantiles
+    double median;
+    double p90;
+    double p99;
+} bench_stats;
 
-/* Reset timer */
-void bench_timer_reset(bench_timer_t* timer);
+// Compute stats over `samples[count]`.
+bench_stats bench_stats_compute(const double* samples, int32_t count);
 
-#endif /* VITTE_BENCH_TIMING_H */
+// -----------------------------------------------------------------------------
+// Formatting
+// -----------------------------------------------------------------------------
+
+// Format a duration expressed in nanoseconds into a compact string (ns/us/ms/s).
+// Writes into `out` (capacity `cap`) and returns `out`.
+char* bench_format_duration(double ns, char* out, size_t cap);
+
+#if defined(__cplusplus)
+} // extern "C"
+#endif
+
+#endif // VITTE_BENCH_TIMING_H

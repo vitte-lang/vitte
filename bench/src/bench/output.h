@@ -1,44 +1,84 @@
-#pragma once
 
-/*
-  output.h
 
-  Benchmark result formatting and output.
-*/
+// output.h - benchmark output/reporting for vitte/bench (C17)
+//
+// SPDX-License-Identifier: MIT
 
 #ifndef VITTE_BENCH_OUTPUT_H
 #define VITTE_BENCH_OUTPUT_H
 
-#include "types.h"
-#include <stdio.h>
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
-/* Output format */
-typedef enum {
-  BENCH_OUT_TEXT,
-  BENCH_OUT_CSV,
-  BENCH_OUT_JSON,
-  BENCH_OUT_HISTOGRAM,
-} bench_output_format_t;
+#include <stdint.h>  // int32_t, int64_t, uint64_t
+#include <stdbool.h> // bool
+#include <stdio.h>   // FILE
 
-/* Print benchmark result to stdout */
-void bench_print_result(const bench_result_t* result);
+// -----------------------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------------------
 
-/* Print header for text output */
-void bench_print_header(void);
+typedef enum bench_status
+{
+    BENCH_STATUS_OK = 0,
+    BENCH_STATUS_FAILED = 1,
+    BENCH_STATUS_SKIPPED = 2
+} bench_status;
 
-/* Print footer for text output */
-void bench_print_footer(void);
+typedef struct bench_metric
+{
+    // Primary metric: nanoseconds per operation.
+    double ns_per_op;
 
-/* Write CSV header */
-void bench_csv_header(FILE* f);
+    // Optional throughput metrics.
+    double bytes_per_sec;
+    double items_per_sec;
 
-/* Write CSV row */
-void bench_csv_row(FILE* f, const bench_result_t* result);
+    // Run context.
+    int64_t iterations;
+    double elapsed_ms;
+} bench_metric;
 
-/* Format time with appropriate unit (ns/us/ms/s) */
-void bench_format_time(char* buf, size_t bufsz, double ns);
+typedef struct bench_result
+{
+    const char* name;
+    bench_status status;
+    bench_metric metric;
 
-/* Format throughput (ops/sec, MB/s, etc.) */
-void bench_format_throughput(char* buf, size_t bufsz, double ops_per_sec);
+    // Optional failure reason (may be NULL).
+    const char* error;
+} bench_result;
 
-#endif /* VITTE_BENCH_OUTPUT_H */
+typedef struct bench_report
+{
+    const bench_result* results;
+    int32_t count;
+
+    // Optional metadata.
+    const char* suite_name;
+    uint64_t seed;
+    int32_t threads;
+    int32_t repeat;
+    int32_t warmup;
+    int64_t timestamp_ms;
+} bench_report;
+
+// -----------------------------------------------------------------------------
+// API
+// -----------------------------------------------------------------------------
+
+// Print a compact human-readable table to `out`.
+void bench_output_print_human(FILE* out, const bench_report* rep);
+
+// Write JSON report to `path`. Returns true on success.
+bool bench_output_write_json_path(const char* path, const bench_report* rep);
+
+// Write CSV report to `path`. Returns true on success.
+bool bench_output_write_csv_path(const char* path, const bench_report* rep);
+
+#if defined(__cplusplus)
+} // extern "C"
+#endif
+
+#endif // VITTE_BENCH_OUTPUT_H

@@ -1,642 +1,609 @@
-// File: bench/src/bench/bench_main.c
-// Vitte benchmark runner (C17/C23 compatible) — "max" version.
+// bench_main.c — Vitte benchmark runner (C17, max)
+// -----------------------------------------------------------------------------
+// Objectif : un binaire CLI unique pour exécuter les micro/benchmarks enregistrés
+// via un registry (bench_registry.c), avec filtrage, répétitions, warmup,
+// sorties texte/JSON/CSV, stats (min/mean/p50/p90/stddev), et mesures ns/cycles.
 //
-// Features:
-// - Uses bench/bench.h API (registry + time + stats).
-// - CLI: --list, --filter, --exclude, --iters, --warmup, --repeat, --min-time-ms,
-//        --json, --csv, --seed, --pin-cpu, --sleep-ms, --trim, --no-overhead, -v.
-// - Auto calibration (iters=0) to reach min-time target per sample.
-// - Stats: min/max/mean/stddev/median/p90/p95/p99/MAD/IQR + outliers counts.
-// - Optional trimming for reporting: none/iqr/mad.
-// - JSON/CSV output.
-// - Best-effort timer overhead compensation.
+// Contrat attendu (implémenté ailleurs, typiquement bench_registry.c) :
+//   - un tableau statique de cas (suite/name/fn)
+//   - chaque fn exécute un cas et renvoie un résultat (elapsed_ns + checksum)
+//   - bench_main.c ne dépend pas de ton framework interne, juste de ce contrat.
 //
-// Build expectation:
-//   - bench_registry.c provides bench_register_all() (and optional module hooks).
-//   - bench_time.c provides time utilities.
-//   - bench_stats.c provides samples+stats.
-//   - bench.h provides types/prototypes.
-//
-// NOTE: This runner does not depend on platform-specific code beyond bench_time.c.
+// Si ton repo expose déjà bench.h, adapte les typedef/extern ci-dessous en 1:1.
+// -----------------------------------------------------------------------------
 
-#include "bench/bench.h"
-
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdint.h>
-#include <stdbool.h>
+#include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include <errno.h>
-#include <inttypes.h>
+#include <math.h>
 
-// ======================================================================================
-// helpers
-// ======================================================================================
+#if defined(_WIN32)
+  #define WIN32_LEAN_AND_MEAN
+  #include <windows.h>
+#endif
 
-static bool bench_streq(const char* a, const char* b) {
-  if (a == b) return true;
-  if (!a || !b) return false;
-  return strcmp(a, b) == 0;
+// ============================================================================
+// Interface attendue du registry (à fournir dans bench_registry.c)
+// ============================================================================
+
+typedef struct bench_result {
+  uint64_t elapsed_ns; // temps total (ns)
+  uint64_t checksum;   // anti-DCE
+  uint64_t iters;      // itérations réellement exécutées (>= demandé si auto-scale)
+  size_t   size;       // paramètre size
+  uint64_t cycles;     // optionnel : delta cycles (0 si non supporté)
+} bench_result;
+
+typedef bench_result (*bench_fn)(uint64_t iters, size_t size, uint64_t seed);
+
+typedef struct bench_case {
+  const char* suite;   // ex: "alloc", "micro", "json"
+  const char* name;    // ex: "malloc_free"
+  bench_fn     fn;     // impl
+  uint32_t     flags;  // réservé (0)
+} bench_case;
+
+// Doit renvoyer un pointeur sur un tableau statique et écrire out_count.
+extern const bench_case* bench_registry_list(size_t* out_count);
+
+// Optionnel : init (si ton registry fait du lazy init / auto-registration)
+extern void bench_registry_init(void);
+
+// Optionnel : compteur cycles (bench_asm_shim.c). Si absent, on fallback.
+extern uint64_t bench_asm_cycles_begin(void);
+extern uint64_t bench_asm_cycles_end(void);
+
+// ============================================================================
+// Temps monotone ns (fallback robuste)
+// ============================================================================
+
+static uint64_t time_now_ns(void) {
+#if defined(_WIN32)
+  static LARGE_INTEGER freq;
+  static int init = 0;
+  if (!init) {
+    QueryPerformanceFrequency(&freq);
+    init = 1;
+  }
+  LARGE_INTEGER c;
+  QueryPerformanceCounter(&c);
+
+  const uint64_t ticks = (uint64_t)c.QuadPart;
+  const uint64_t f     = (uint64_t)freq.QuadPart;
+  const uint64_t sec   = ticks / f;
+  const uint64_t rem   = ticks - sec * f;
+
+  return sec * UINT64_C(1000000000) + (rem * UINT64_C(1000000000) / f);
+#else
+  // POSIX
+  #include <time.h>
+  struct timespec ts;
+  (void)clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (uint64_t)ts.tv_sec * UINT64_C(1000000000) + (uint64_t)ts.tv_nsec;
+#endif
 }
 
-static bool bench_contains(const char* haystack, const char* needle) {
-  if (!needle || needle[0] == '\0') return true;
-  if (!haystack) return false;
-  return strstr(haystack, needle) != NULL;
-}
+// ============================================================================
+// Parsing util
+// ============================================================================
 
-static void bench_die_usage(const char* argv0, const char* msg) {
-  if (msg && msg[0]) fprintf(stderr, "bench: %s\n", msg);
-  fprintf(stderr,
-    "Usage: %s [options]\n"
-    "\n"
-    "Options:\n"
-    "  --list                    List benchmarks\n"
-    "  --filter <substr>          Run only benchmarks containing substring\n"
-    "  --exclude <substr>         Exclude benchmarks containing substring\n"
-    "  --iters <N>                Fixed iters per sample (0 => auto; default 0)\n"
-    "  --warmup <N>               Warmup iters before measuring (0 => auto)\n"
-    "  --repeat <K>               Samples per benchmark (default 15)\n"
-    "  --min-time-ms <T>          Target ms per sample in auto mode (default 50)\n"
-    "  --seed <u64>               Seed exposed to benches (default 1)\n"
-    "  --pin-cpu <idx>            Pin current thread to CPU idx (best-effort)\n"
-    "  --sleep-ms <ms>            Sleep before running (stabilize turbo) (default 0)\n"
-    "  --trim <none|iqr|mad>      Trim samples for reporting (default none)\n"
-    "  --no-overhead              Disable timer overhead compensation\n"
-    "  --json <path>              Write results JSON\n"
-    "  --csv <path>               Write results CSV\n"
-    "  -v, --verbose              Verbose\n"
-    "  -h, --help                 Help\n"
-    "\n",
-    argv0
-  );
-  exit(2);
-}
-
-static bool bench_parse_u64(const char* s, uint64_t* out) {
-  if (!s || !out) return false;
+static int parse_u64(const char* s, uint64_t* out) {
+  if (!s || !*s) return 0;
   errno = 0;
   char* end = NULL;
   unsigned long long v = strtoull(s, &end, 10);
-  if (errno != 0 || !end || *end != '\0') return false;
-  *out = (uint64_t)v;
-  return true;
+  if (errno != 0 || end == s || *end != '\0') return 0;
+  if (out) *out = (uint64_t)v;
+  return 1;
 }
 
-static bool bench_parse_i32(const char* s, int* out) {
-  if (!s || !out) return false;
-  errno = 0;
-  char* end = NULL;
-  long v = strtol(s, &end, 10);
-  if (errno != 0 || !end || *end != '\0') return false;
-  if (v < -2147483647L - 1L || v > 2147483647L) return false;
-  *out = (int)v;
-  return true;
+static int parse_size(const char* s, size_t* out) {
+  uint64_t v = 0;
+  if (!parse_u64(s, &v)) return 0;
+  if (out) *out = (size_t)v;
+  return 1;
 }
 
-static bool bench_parse_f64(const char* s, double* out) {
-  if (!s || !out) return false;
-  errno = 0;
-  char* end = NULL;
-  double v = strtod(s, &end);
-  if (errno != 0 || !end || *end != '\0') return false;
-  *out = v;
-  return true;
+static const char* safe_str(const char* s) { return s ? s : ""; }
+
+// wildcard match: '*' '?' (ASCII)
+static int wildmatch(const char* pat, const char* str) {
+  // iterative backtracking
+  const char* p = pat;
+  const char* s = str;
+  const char* star = NULL;
+  const char* ss = NULL;
+
+  while (*s) {
+    if (*p == '*') {
+      star = p++;
+      ss = s;
+      continue;
+    }
+    if (*p == '?' || *p == *s) {
+      p++; s++;
+      continue;
+    }
+    if (star) {
+      p = star + 1;
+      s = ++ss;
+      continue;
+    }
+    return 0;
+  }
+  while (*p == '*') p++;
+  return (*p == '\0');
 }
 
-static bool bench_parse_trim_mode(const char* s, bench_trim_mode_t* out) {
-  if (!s || !out) return false;
-  if (bench_streq(s, "none")) { *out = BENCH_TRIM_NONE; return true; }
-  if (bench_streq(s, "iqr"))  { *out = BENCH_TRIM_IQR;  return true; }
-  if (bench_streq(s, "mad"))  { *out = BENCH_TRIM_MAD;  return true; }
-  return false;
+// ============================================================================
+// Stats
+// ============================================================================
+
+typedef struct stats {
+  double min;
+  double max;
+  double mean;
+  double stddev;
+  double p50;
+  double p90;
+} stats;
+
+static int cmp_dbl(const void* a, const void* b) {
+  const double da = *(const double*)a;
+  const double db = *(const double*)b;
+  return (da < db) ? -1 : (da > db) ? 1 : 0;
 }
 
-// ======================================================================================
-// CLI config
-// ======================================================================================
+static double percentile_sorted(const double* v, size_t n, double p) {
+  if (n == 0) return 0.0;
+  if (p <= 0.0) return v[0];
+  if (p >= 1.0) return v[n - 1];
+  const double x = p * (double)(n - 1);
+  const size_t i = (size_t)x;
+  const double f = x - (double)i;
+  if (i + 1 >= n) return v[n - 1];
+  return v[i] * (1.0 - f) + v[i + 1] * f;
+}
 
-typedef struct bench_cli {
-  bool list_only;
-  const char* filter;
-  const char* exclude;
+static stats compute_stats(const double* samples, size_t n) {
+  stats st;
+  st.min = 0; st.max = 0; st.mean = 0; st.stddev = 0; st.p50 = 0; st.p90 = 0;
+  if (n == 0) return st;
 
-  uint64_t iters;        // fixed iters per sample (0 => auto)
-  uint64_t warmup;       // warmup iters (0 => auto)
-  int repeat;            // samples
-  double min_time_ms;    // auto target
+  double sum = 0.0;
+  double mn = samples[0], mx = samples[0];
+  for (size_t i = 0; i < n; ++i) {
+    const double x = samples[i];
+    sum += x;
+    if (x < mn) mn = x;
+    if (x > mx) mx = x;
+  }
+  const double mean = sum / (double)n;
 
+  double var = 0.0;
+  for (size_t i = 0; i < n; ++i) {
+    const double d = samples[i] - mean;
+    var += d * d;
+  }
+  var = (n > 1) ? (var / (double)(n - 1)) : 0.0;
+
+  // percentiles require sorted copy
+  double* tmp = (double*)malloc(n * sizeof(double));
+  if (tmp) {
+    memcpy(tmp, samples, n * sizeof(double));
+    qsort(tmp, n, sizeof(double), cmp_dbl);
+    st.p50 = percentile_sorted(tmp, n, 0.50);
+    st.p90 = percentile_sorted(tmp, n, 0.90);
+    free(tmp);
+  } else {
+    st.p50 = mean;
+    st.p90 = mean;
+  }
+
+  st.min = mn;
+  st.max = mx;
+  st.mean = mean;
+  st.stddev = sqrt(var);
+  return st;
+}
+
+// ============================================================================
+// Options CLI
+// ============================================================================
+
+typedef struct opts {
+  const char* suite_pat;     // wildcard
+  const char* case_pat;      // wildcard
+  uint64_t iters;
+  size_t   size;
   uint64_t seed;
-  int verbose;
+  uint32_t warmup;           // nb runs warmup (non comptés)
+  uint32_t repeats;          // nb runs mesurés
+  uint32_t min_time_ms;      // auto-scale iters pour atteindre ce temps (0 = off)
+  int      list;
+  int      json;
+  int      csv;
+  const char* out_path;      // "-" ou NULL = stdout
+} opts;
 
-  bool no_overhead;
-  uint32_t pin_cpu;      // UINT32_MAX => none
-  uint32_t sleep_ms;
-
-  bench_trim_mode_t trim;
-
-  const char* json_out;
-  const char* csv_out;
-} bench_cli_t;
-
-static bench_cli_t bench_cli_default(void) {
-  bench_cli_t c;
-  c.list_only = false;
-  c.filter = NULL;
-  c.exclude = NULL;
-
-  c.iters = 0;
-  c.warmup = 0;
-  c.repeat = 15;
-  c.min_time_ms = 50.0;
-
-  c.seed = 1;
-  c.verbose = 0;
-
-  c.no_overhead = false;
-  c.pin_cpu = UINT32_MAX;
-  c.sleep_ms = 0;
-
-  c.trim = BENCH_TRIM_NONE;
-
-  c.json_out = NULL;
-  c.csv_out = NULL;
-  return c;
+static void print_usage(FILE* f, const char* argv0) {
+  fprintf(f,
+    "Usage: %s [options]\n"
+    "\n"
+    "Selection:\n"
+    "  --suite <pat>        suite wildcard (default: *)\n"
+    "  --case <pat>         case wildcard  (default: *)\n"
+    "  --list               list cases and exit\n"
+    "\n"
+    "Run params:\n"
+    "  --iters <N>          iterations per run (default: 500000)\n"
+    "  --size <B>           size parameter (default: 64)\n"
+    "  --seed <S>           seed (default: 0x1234..)\n"
+    "  --warmup <N>         warmup runs (default: 1)\n"
+    "  --repeats <N>        measured runs (default: 5)\n"
+    "  --min-time-ms <MS>   auto-scale iters to reach min time per run (default: 0)\n"
+    "\n"
+    "Output:\n"
+    "  --json               JSON lines (one per run + one summary)\n"
+    "  --csv                CSV (one summary line per case)\n"
+    "  --out <path>         output file (default: stdout)\n"
+    "\n"
+    "Examples:\n"
+    "  %s --list\n"
+    "  %s --suite alloc --case * --iters 500000 --size 64\n"
+    "  %s --suite micro --case memcpy* --min-time-ms 50 --repeats 10 --json\n",
+    argv0, argv0, argv0, argv0
+  );
 }
 
-static bench_cli_t bench_cli_parse(int argc, char** argv) {
-  bench_cli_t c = bench_cli_default();
+static int parse_args(int argc, char** argv, opts* o) {
+  o->suite_pat = "*";
+  o->case_pat  = "*";
+  o->iters     = 500000;
+  o->size      = 64;
+  o->seed      = UINT64_C(0x123456789ABCDEF0);
+  o->warmup    = 1;
+  o->repeats   = 5;
+  o->min_time_ms = 0;
+  o->list      = 0;
+  o->json      = 0;
+  o->csv       = 0;
+  o->out_path  = NULL;
 
-  for (int i = 1; i < argc; i++) {
+  for (int i = 1; i < argc; ++i) {
     const char* a = argv[i];
 
-    if (bench_streq(a, "--list")) {
-      c.list_only = true;
-
-    } else if (bench_streq(a, "--filter")) {
-      if (i + 1 >= argc) bench_die_usage(argv[0], "--filter requires value");
-      c.filter = argv[++i];
-
-    } else if (bench_streq(a, "--exclude")) {
-      if (i + 1 >= argc) bench_die_usage(argv[0], "--exclude requires value");
-      c.exclude = argv[++i];
-
-    } else if (bench_streq(a, "--iters")) {
-      if (i + 1 >= argc) bench_die_usage(argv[0], "--iters requires value");
-      if (!bench_parse_u64(argv[++i], &c.iters)) bench_die_usage(argv[0], "invalid --iters");
-      // allow 0 => auto
-
-    } else if (bench_streq(a, "--warmup")) {
-      if (i + 1 >= argc) bench_die_usage(argv[0], "--warmup requires value");
-      if (!bench_parse_u64(argv[++i], &c.warmup)) bench_die_usage(argv[0], "invalid --warmup");
-
-    } else if (bench_streq(a, "--repeat")) {
-      if (i + 1 >= argc) bench_die_usage(argv[0], "--repeat requires value");
-      if (!bench_parse_i32(argv[++i], &c.repeat) || c.repeat <= 0 || c.repeat > 10000) {
-        bench_die_usage(argv[0], "invalid --repeat");
-      }
-
-    } else if (bench_streq(a, "--min-time-ms")) {
-      if (i + 1 >= argc) bench_die_usage(argv[0], "--min-time-ms requires value");
-      if (!bench_parse_f64(argv[++i], &c.min_time_ms) || c.min_time_ms <= 0.0) {
-        bench_die_usage(argv[0], "invalid --min-time-ms");
-      }
-
-    } else if (bench_streq(a, "--seed")) {
-      if (i + 1 >= argc) bench_die_usage(argv[0], "--seed requires value");
-      if (!bench_parse_u64(argv[++i], &c.seed)) bench_die_usage(argv[0], "invalid --seed");
-
-    } else if (bench_streq(a, "--pin-cpu")) {
-      if (i + 1 >= argc) bench_die_usage(argv[0], "--pin-cpu requires idx");
-      uint64_t tmp = 0;
-      if (!bench_parse_u64(argv[++i], &tmp) || tmp > 0xffffffffULL) bench_die_usage(argv[0], "invalid --pin-cpu");
-      c.pin_cpu = (uint32_t)tmp;
-
-    } else if (bench_streq(a, "--sleep-ms")) {
-      if (i + 1 >= argc) bench_die_usage(argv[0], "--sleep-ms requires ms");
-      uint64_t tmp = 0;
-      if (!bench_parse_u64(argv[++i], &tmp) || tmp > 0xffffffffULL) bench_die_usage(argv[0], "invalid --sleep-ms");
-      c.sleep_ms = (uint32_t)tmp;
-
-    } else if (bench_streq(a, "--trim")) {
-      if (i + 1 >= argc) bench_die_usage(argv[0], "--trim requires value");
-      if (!bench_parse_trim_mode(argv[++i], &c.trim)) bench_die_usage(argv[0], "invalid --trim (use none|iqr|mad)");
-
-    } else if (bench_streq(a, "--no-overhead")) {
-      c.no_overhead = true;
-
-    } else if (bench_streq(a, "--json")) {
-      if (i + 1 >= argc) bench_die_usage(argv[0], "--json requires path");
-      c.json_out = argv[++i];
-
-    } else if (bench_streq(a, "--csv")) {
-      if (i + 1 >= argc) bench_die_usage(argv[0], "--csv requires path");
-      c.csv_out = argv[++i];
-
-    } else if (bench_streq(a, "-v") || bench_streq(a, "--verbose")) {
-      c.verbose++;
-
-    } else if (bench_streq(a, "-h") || bench_streq(a, "--help")) {
-      bench_die_usage(argv[0], NULL);
-
+    if (!strcmp(a, "--help") || !strcmp(a, "-h")) {
+      print_usage(stdout, argv[0]);
+      exit(0);
+    } else if (!strcmp(a, "--list")) {
+      o->list = 1;
+    } else if (!strcmp(a, "--json")) {
+      o->json = 1;
+    } else if (!strcmp(a, "--csv")) {
+      o->csv = 1;
+    } else if (!strcmp(a, "--suite") && i + 1 < argc) {
+      o->suite_pat = argv[++i];
+    } else if (!strcmp(a, "--case") && i + 1 < argc) {
+      o->case_pat = argv[++i];
+    } else if (!strcmp(a, "--iters") && i + 1 < argc) {
+      if (!parse_u64(argv[++i], &o->iters)) return 0;
+    } else if (!strcmp(a, "--size") && i + 1 < argc) {
+      if (!parse_size(argv[++i], &o->size)) return 0;
+    } else if (!strcmp(a, "--seed") && i + 1 < argc) {
+      if (!parse_u64(argv[++i], &o->seed)) return 0;
+    } else if (!strcmp(a, "--warmup") && i + 1 < argc) {
+      uint64_t v = 0; if (!parse_u64(argv[++i], &v)) return 0; o->warmup = (uint32_t)v;
+    } else if (!strcmp(a, "--repeats") && i + 1 < argc) {
+      uint64_t v = 0; if (!parse_u64(argv[++i], &v)) return 0; o->repeats = (uint32_t)v;
+    } else if (!strcmp(a, "--min-time-ms") && i + 1 < argc) {
+      uint64_t v = 0; if (!parse_u64(argv[++i], &v)) return 0; o->min_time_ms = (uint32_t)v;
+    } else if (!strcmp(a, "--out") && i + 1 < argc) {
+      o->out_path = argv[++i];
     } else {
-      char buf[256];
-#if defined(_MSC_VER)
-      _snprintf_s(buf, sizeof(buf), _TRUNCATE, "unknown arg: %s", a);
-#else
-      snprintf(buf, sizeof(buf), "unknown arg: %s", a);
-#endif
-      bench_die_usage(argv[0], buf);
+      fprintf(stderr, "Unknown arg: %s\n", a);
+      return 0;
     }
   }
 
-  return c;
+  if (o->repeats == 0) o->repeats = 1;
+  return 1;
 }
 
-// ======================================================================================
-// selection + calibration
-// ======================================================================================
+// ============================================================================
+// Runner
+// ============================================================================
 
-static bool bench_case_selected(const bench_case_t* bc, const bench_cli_t* cli) {
-  if (cli->filter && !bench_contains(bc->name, cli->filter)) return false;
-  if (cli->exclude && bench_contains(bc->name, cli->exclude)) return false;
-  return true;
-}
-
-static uint64_t bench_choose_auto_warmup(uint64_t iters_fixed) {
-  if (iters_fixed > 0) {
-    uint64_t w = iters_fixed / 10;
-    return (w > 0) ? w : 1;
-  }
-  return 1000;
-}
-
-static uint64_t bench_calibrate_iters(
-  const bench_clock_t* clk,
-  bench_ctx_t* ctx,
-  const bench_case_t* bc,
-  void* state,
-  double min_time_ms,
-  uint64_t timer_overhead_ns
-) {
-  const uint64_t cap = 1ULL << 34;
-  uint64_t iters = 1;
-
-  // Exponential search for target time
-  for (int step = 0; step < 64; step++) {
-    uint64_t t0 = bench_now_ns(clk);
-    bc->run(ctx, state, iters);
-    uint64_t t1 = bench_now_ns(clk);
-
-    uint64_t dt = t1 - t0;
-    dt = (dt > timer_overhead_ns) ? (dt - timer_overhead_ns) : dt;
-
-    double ms = (double)dt / 1000000.0;
-    if (ms >= min_time_ms) return iters;
-
-    if (iters >= cap / 2) return cap;
-    iters *= 2;
-  }
-  return iters;
-}
-
-// ======================================================================================
-// results container
-// ======================================================================================
-
-typedef struct bench_result {
-  const char* name;
-  const char* description;
-  uint64_t iters_total;
-
-  bench_samples_t raw_ns_per_op;      // samples collected (ns/op)
-  bench_samples_t report_ns_per_op;   // after trim mode applied
-
-  bench_stats_t raw_stats;
-  bench_stats_t report_stats;
-
-  double ns_per_op; // representative (median of report)
-  double ops_per_s; // 1e9 / ns_per_op
-} bench_result_t;
-
-typedef struct bench_results {
-  bench_result_t* v;
-  size_t len;
-  size_t cap;
-} bench_results_t;
-
-static void bench_results_init(bench_results_t* r) { r->v = NULL; r->len = 0; r->cap = 0; }
-static void bench_results_free(bench_results_t* r) {
-  if (!r) return;
-  for (size_t i = 0; i < r->len; i++) {
-    bench_samples_free(&r->v[i].raw_ns_per_op);
-    bench_samples_free(&r->v[i].report_ns_per_op);
-  }
-  free(r->v);
-  r->v = NULL;
-  r->len = 0;
-  r->cap = 0;
-}
-static void bench_results_push(bench_results_t* r, bench_result_t x) {
-  if (r->len == r->cap) {
-    r->cap = (r->cap == 0) ? 16 : (r->cap * 2);
-    r->v = (bench_result_t*)realloc(r->v, r->cap * sizeof(bench_result_t));
-    if (!r->v) { fprintf(stderr, "bench: OOM\n"); exit(1); }
-  }
-  r->v[r->len++] = x;
-}
-
-// ======================================================================================
-// Reporting
-// ======================================================================================
-
-static void bench_print_table(const bench_results_t* results) {
-  printf("\n%-44s %12s %12s %12s %12s %8s\n",
-    "benchmark", "ns/op", "ops/s", "p90", "p99", "n");
-  printf("%-44s %12s %12s %12s %12s %8s\n",
-    "--------------------------------------------", "------------", "------------", "------------", "------------", "--------");
-
-  for (size_t i = 0; i < results->len; i++) {
-    const bench_result_t* r = &results->v[i];
-    printf("%-44s %12.2f %12.0f %12.2f %12.2f %8zu\n",
-      r->name,
-      r->ns_per_op,
-      r->ops_per_s,
-      r->report_stats.q90,
-      r->report_stats.q99,
-      r->report_stats.n_finite
-    );
-  }
-  printf("\n");
-}
-
-static void bench_write_json(const char* path, const bench_results_t* results, const bench_cli_t* cli) {
+static FILE* open_out(const char* path) {
+  if (!path || !strcmp(path, "-")) return stdout;
   FILE* f = fopen(path, "wb");
   if (!f) {
-    fprintf(stderr, "bench: cannot open json output '%s': %s\n", path, strerror(errno));
-    exit(3);
+    fprintf(stderr, "Failed to open --out '%s'\n", path);
+    return NULL;
   }
-
-  fprintf(f, "{\n");
-  fprintf(f, "  \"config\": {\n");
-  fprintf(f, "    \"iters\": %" PRIu64 ",\n", cli->iters);
-  fprintf(f, "    \"warmup\": %" PRIu64 ",\n", cli->warmup);
-  fprintf(f, "    \"repeat\": %d,\n", cli->repeat);
-  fprintf(f, "    \"min_time_ms\": %.6f,\n", cli->min_time_ms);
-  fprintf(f, "    \"seed\": %" PRIu64 ",\n", cli->seed);
-  fprintf(f, "    \"trim\": \"%s\",\n", (cli->trim == BENCH_TRIM_NONE ? "none" : (cli->trim == BENCH_TRIM_IQR ? "iqr" : "mad")));
-  fprintf(f, "    \"no_overhead\": %s,\n", cli->no_overhead ? "true" : "false");
-  fprintf(f, "    \"pin_cpu\": %s,\n", (cli->pin_cpu == UINT32_MAX ? "null" : "0"));
-  if (cli->pin_cpu != UINT32_MAX) fprintf(f, "    \"pin_cpu_value\": %u,\n", cli->pin_cpu);
-  fprintf(f, "    \"sleep_ms\": %u\n", cli->sleep_ms);
-  fprintf(f, "  },\n");
-
-  fprintf(f, "  \"results\": [\n");
-  for (size_t i = 0; i < results->len; i++) {
-    const bench_result_t* r = &results->v[i];
-    const bench_stats_t* st = &r->report_stats;
-
-    fprintf(f,
-      "    {\n"
-      "      \"name\": \"%s\",\n"
-      "      \"iters_total\": %" PRIu64 ",\n"
-      "      \"ns_per_op\": %.9f,\n"
-      "      \"ops_per_s\": %.9f,\n"
-      "      \"stats\": {\n"
-      "        \"min\": %.9f,\n"
-      "        \"max\": %.9f,\n"
-      "        \"mean\": %.9f,\n"
-      "        \"stddev\": %.9f,\n"
-      "        \"median\": %.9f,\n"
-      "        \"p90\": %.9f,\n"
-      "        \"p95\": %.9f,\n"
-      "        \"p99\": %.9f,\n"
-      "        \"mad\": %.9f,\n"
-      "        \"iqr\": %.9f,\n"
-      "        \"q25\": %.9f,\n"
-      "        \"q75\": %.9f,\n"
-      "        \"n\": %zu,\n"
-      "        \"n_finite\": %zu,\n"
-      "        \"outliers_iqr\": %zu,\n"
-      "        \"outliers_mad\": %zu\n"
-      "      }\n"
-      "    }%s\n",
-      r->name,
-      r->iters_total,
-      r->ns_per_op,
-      r->ops_per_s,
-      st->min, st->max, st->mean, st->stddev, st->q50, st->q90, st->q95, st->q99,
-      st->mad, st->iqr, st->q25, st->q75,
-      st->n, st->n_finite, st->n_outliers_iqr, st->n_outliers_mad,
-      (i + 1 < results->len) ? "," : ""
-    );
-  }
-  fprintf(f, "  ]\n}\n");
-  fclose(f);
+  return f;
 }
 
-static void bench_write_csv(const char* path, const bench_results_t* results) {
-  FILE* f = fopen(path, "wb");
-  if (!f) {
-    fprintf(stderr, "bench: cannot open csv output '%s': %s\n", path, strerror(errno));
-    exit(3);
-  }
-  fprintf(f, "name,iters_total,ns_per_op,ops_per_s,min,mean,median,p90,p95,p99,max,stddev,mad,iqr,q25,q75,n_finite,out_iqr,out_mad\n");
-  for (size_t i = 0; i < results->len; i++) {
-    const bench_result_t* r = &results->v[i];
-    const bench_stats_t* st = &r->report_stats;
-    fprintf(f,
-      "\"%s\",%" PRIu64 ",%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%zu,%zu,%zu\n",
-      r->name,
-      r->iters_total,
-      r->ns_per_op,
-      r->ops_per_s,
-      st->min, st->mean, st->q50, st->q90, st->q95, st->q99, st->max, st->stddev,
-      st->mad, st->iqr, st->q25, st->q75,
-      st->n_finite, st->n_outliers_iqr, st->n_outliers_mad
-    );
-  }
-  fclose(f);
+static void close_out(FILE* f) {
+  if (f && f != stdout) fclose(f);
 }
 
-// ======================================================================================
-// Run one bench
-// ======================================================================================
-
-static bench_result_t bench_run_one(
-  const bench_clock_t* clk,
-  const bench_cli_t* cli,
-  bench_ctx_t* ctx,
-  const bench_case_t* bc,
-  uint64_t timer_overhead_ns
-) {
-  bench_result_t out;
-  memset(&out, 0, sizeof(out));
-  out.name = bc->name;
-  out.description = bc->description ? bc->description : "";
-  out.iters_total = 0;
-
-  bench_samples_init(&out.raw_ns_per_op);
-  bench_samples_init(&out.report_ns_per_op);
-
-  void* state = NULL;
-  if (bc->setup) state = bc->setup(ctx);
-
-  uint64_t warmup_iters = (cli->warmup != 0) ? cli->warmup : bench_choose_auto_warmup(cli->iters);
-  if (warmup_iters > 0) {
-    bc->run(ctx, state, warmup_iters);
+static void list_cases(FILE* out) {
+  size_t n = 0;
+  const bench_case* cases = bench_registry_list(&n);
+  for (size_t i = 0; i < n; ++i) {
+    fprintf(out, "%s/%s\n", safe_str(cases[i].suite), safe_str(cases[i].name));
   }
-
-  uint64_t iters_per_sample = cli->iters;
-
-  for (int k = 0; k < cli->repeat; k++) {
-    if (iters_per_sample == 0) {
-      iters_per_sample = bench_calibrate_iters(clk, ctx, bc, state, cli->min_time_ms, timer_overhead_ns);
-      if (iters_per_sample == 0) iters_per_sample = 1;
-    }
-
-    uint64_t t0 = bench_now_ns(clk);
-    bc->run(ctx, state, iters_per_sample);
-    uint64_t t1 = bench_now_ns(clk);
-
-    uint64_t dt = t1 - t0;
-    if (!cli->no_overhead) {
-      dt = (dt > timer_overhead_ns) ? (dt - timer_overhead_ns) : dt;
-    }
-
-    double ns_per_op = (double)dt / (double)iters_per_sample;
-    bench_samples_push(&out.raw_ns_per_op, ns_per_op);
-    out.iters_total += iters_per_sample;
-
-    if (cli->iters == 0) iters_per_sample = 0;
-  }
-
-  if (bc->teardown) bc->teardown(ctx, state);
-
-  out.raw_stats = bench_stats_compute(&out.raw_ns_per_op);
-
-  // trimming for reporting
-  if (cli->trim == BENCH_TRIM_NONE) {
-    // copy raw into report
-    bench_samples_reserve(&out.report_ns_per_op, out.raw_ns_per_op.len);
-    for (size_t i = 0; i < out.raw_ns_per_op.len; i++) bench_samples_push(&out.report_ns_per_op, out.raw_ns_per_op.v[i]);
-  } else {
-    out.report_ns_per_op = bench_samples_trimmed(&out.raw_ns_per_op, cli->trim);
-  }
-
-  out.report_stats = bench_stats_compute(&out.report_ns_per_op);
-
-  // Representative: median of report
-  out.ns_per_op = out.report_stats.q50;
-  out.ops_per_s = bench_stats_ops_per_s_from_ns_per_op(out.ns_per_op);
-
-  return out;
 }
 
-// ======================================================================================
-// Main
-// ======================================================================================
+static int case_selected(const bench_case* c, const opts* o) {
+  if (!wildmatch(o->suite_pat, safe_str(c->suite))) return 0;
+  if (!wildmatch(o->case_pat,  safe_str(c->name)))  return 0;
+  return 1;
+}
 
-int main(int argc, char** argv) {
-  bench_cli_t cli = bench_cli_parse(argc, argv);
+static bench_result run_one(const bench_case* c, uint64_t iters, size_t size, uint64_t seed) {
+  // Prefer fn-provided elapsed_ns. If elapsed_ns==0, bench_main measures around.
+  const uint64_t t0 = time_now_ns();
+  uint64_t cy0 = 0, cy1 = 0;
 
-  if (cli.pin_cpu != UINT32_MAX) {
-    (void)bench_pin_to_single_cpu(cli.pin_cpu);
+  // cycles begin/end : si bench_asm_shim est linké, ça marche; sinon link error.
+  // Pour éviter un link error, tu peux fournir des stubs dans bench_asm_shim.c
+  // ou commenter ces lignes.
+  cy0 = bench_asm_cycles_begin();
+  bench_result r = c->fn(iters, size, seed);
+  cy1 = bench_asm_cycles_end();
+
+  const uint64_t t1 = time_now_ns();
+
+  if (r.elapsed_ns == 0) {
+    r.elapsed_ns = (t1 >= t0) ? (t1 - t0) : 0;
   }
-  if (cli.sleep_ms != 0) {
-    bench_sleep_ms(cli.sleep_ms);
+  if (r.cycles == 0 && cy1 >= cy0) {
+    r.cycles = (cy1 - cy0);
   }
+  if (r.iters == 0) r.iters = iters;
+  r.size = size;
+  return r;
+}
 
-  bench_clock_t clk = bench_clock_init();
-  uint64_t overhead_ns = cli.no_overhead ? 0 : bench_estimate_timer_overhead_ns(&clk, 20000);
+static uint64_t autoscale_iters(const bench_case* c, const opts* o) {
+  if (o->min_time_ms == 0) return o->iters;
 
-  if (cli.verbose) {
-    fprintf(stdout, "bench: cpu logical=%u\n", bench_cpu_logical_count());
-    fprintf(stdout, "bench: timer overhead ~ %" PRIu64 " ns\n", overhead_ns);
+  const uint64_t target_ns = (uint64_t)o->min_time_ms * UINT64_C(1000000);
+  uint64_t it = (o->iters > 0) ? o->iters : 1;
+
+  // ramp-up : doubler jusqu'à atteindre target ou overflow garde-fou
+  for (int step = 0; step < 20; ++step) {
+    bench_result r = run_one(c, it, o->size, o->seed ^ (uint64_t)step);
+    if (r.elapsed_ns >= target_ns) return it;
+
+    // éviter overflow
+    if (it > (UINT64_MAX / 2)) return it;
+    it *= 2;
   }
+  return it;
+}
 
-  bench_ctx_t ctx;
-  memset(&ctx, 0, sizeof(ctx));
-  ctx.seed = cli.seed;
-  ctx.verbose = cli.verbose;
-  ctx.user = NULL;
+static void print_json_run(FILE* out, const bench_case* c, const bench_result* r,
+                           uint32_t run_idx, uint32_t warmup, uint64_t iters_req) {
+  // JSON lines (une par ligne)
+  fprintf(out,
+    "{"
+      "\"type\":\"run\","
+      "\"suite\":\"%s\","
+      "\"case\":\"%s\","
+      "\"run\":%u,"
+      "\"warmup\":%u,"
+      "\"iters_req\":%llu,"
+      "\"iters\":%llu,"
+      "\"size\":%llu,"
+      "\"elapsed_ns\":%llu,"
+      "\"ns_per_iter\":%.6f,"
+      "\"ops_per_s\":%.6f,"
+      "\"cycles\":%llu,"
+      "\"checksum\":%llu"
+    "}\n",
+    safe_str(c->suite),
+    safe_str(c->name),
+    (unsigned)run_idx,
+    (unsigned)warmup,
+    (unsigned long long)iters_req,
+    (unsigned long long)r->iters,
+    (unsigned long long)r->size,
+    (unsigned long long)r->elapsed_ns,
+    (r->iters ? ((double)r->elapsed_ns / (double)r->iters) : 0.0),
+    (r->elapsed_ns ? (1e9 * (double)r->iters / (double)r->elapsed_ns) : 0.0),
+    (unsigned long long)r->cycles,
+    (unsigned long long)r->checksum
+  );
+}
 
-  bench_registry_t reg;
-  bench_registry_api_init(&reg);
+static void print_json_summary(FILE* out, const bench_case* c, const opts* o,
+                              uint64_t iters_eff, const stats* st_ns_per_iter,
+                              uint64_t checksum_xor) {
+  fprintf(out,
+    "{"
+      "\"type\":\"summary\","
+      "\"suite\":\"%s\","
+      "\"case\":\"%s\","
+      "\"iters\":%llu,"
+      "\"size\":%llu,"
+      "\"repeats\":%u,"
+      "\"warmup\":%u,"
+      "\"min_time_ms\":%u,"
+      "\"ns_per_iter\":{"
+        "\"min\":%.6f,"
+        "\"mean\":%.6f,"
+        "\"p50\":%.6f,"
+        "\"p90\":%.6f,"
+        "\"max\":%.6f,"
+        "\"stddev\":%.6f"
+      "},"
+      "\"checksum_xor\":%llu"
+    "}\n",
+    safe_str(c->suite),
+    safe_str(c->name),
+    (unsigned long long)iters_eff,
+    (unsigned long long)o->size,
+    (unsigned)o->repeats,
+    (unsigned)o->warmup,
+    (unsigned)o->min_time_ms,
+    st_ns_per_iter->min,
+    st_ns_per_iter->mean,
+    st_ns_per_iter->p50,
+    st_ns_per_iter->p90,
+    st_ns_per_iter->max,
+    st_ns_per_iter->stddev,
+    (unsigned long long)checksum_xor
+  );
+}
 
-  bench_register_all(&reg);
+static void print_text_summary(FILE* out, const bench_case* c, const opts* o,
+                              uint64_t iters_eff, const stats* st_ns_per_iter,
+                              uint64_t checksum_xor) {
+  fprintf(out,
+    "%s/%s  iters=%llu size=%zu  ns/iter: min=%.3f mean=%.3f p50=%.3f p90=%.3f max=%.3f sd=%.3f  checksum_xor=%llu\n",
+    safe_str(c->suite),
+    safe_str(c->name),
+    (unsigned long long)iters_eff,
+    o->size,
+    st_ns_per_iter->min,
+    st_ns_per_iter->mean,
+    st_ns_per_iter->p50,
+    st_ns_per_iter->p90,
+    st_ns_per_iter->max,
+    st_ns_per_iter->stddev,
+    (unsigned long long)checksum_xor
+  );
+}
 
-  if (reg.len == 0) {
-    fprintf(stderr, "bench: registry empty (no benchmarks registered)\n");
-    bench_registry_api_free(&reg);
+static void print_csv_header(FILE* out) {
+  fprintf(out,
+    "suite,case,iters,size,repeats,warmup,min_time_ms,"
+    "ns_per_iter_min,ns_per_iter_mean,ns_per_iter_p50,ns_per_iter_p90,ns_per_iter_max,ns_per_iter_stddev,"
+    "checksum_xor\n"
+  );
+}
+
+static void print_csv_summary(FILE* out, const bench_case* c, const opts* o,
+                             uint64_t iters_eff, const stats* st, uint64_t checksum_xor) {
+  fprintf(out,
+    "%s,%s,%llu,%llu,%u,%u,%u,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%llu\n",
+    safe_str(c->suite),
+    safe_str(c->name),
+    (unsigned long long)iters_eff,
+    (unsigned long long)o->size,
+    (unsigned)o->repeats,
+    (unsigned)o->warmup,
+    (unsigned)o->min_time_ms,
+    st->min, st->mean, st->p50, st->p90, st->max, st->stddev,
+    (unsigned long long)checksum_xor
+  );
+}
+
+static int run_all(FILE* out, const opts* o) {
+  size_t n = 0;
+  const bench_case* cases = bench_registry_list(&n);
+
+  if (n == 0 || !cases) {
+    fprintf(stderr, "No bench cases registered.\n");
     return 2;
   }
 
-  if (cli.list_only) {
-    for (size_t i = 0; i < reg.len; i++) {
-      const bench_case_t* bc = &reg.cases[i];
-      if (!bench_case_selected(bc, &cli)) continue;
-      if (bc->description && bc->description[0]) {
-        printf("%s — %s\n", bc->name, bc->description);
-      } else {
-        printf("%s\n", bc->name);
+  if (o->csv) print_csv_header(out);
+
+  int ran_any = 0;
+  int rc = 0;
+
+  for (size_t i = 0; i < n; ++i) {
+    const bench_case* c = &cases[i];
+    if (!case_selected(c, o)) continue;
+
+    ran_any = 1;
+
+    // iters effective (auto-scale)
+    const uint64_t iters_eff = autoscale_iters(c, o);
+
+    // Warmup (non compté)
+    for (uint32_t w = 0; w < o->warmup; ++w) {
+      bench_result r = run_one(c, iters_eff, o->size, o->seed ^ (UINT64_C(0xWARM) + w));
+      (void)r;
+      if (o->json) {
+        print_json_run(out, c, &r, w, 1u, iters_eff);
       }
     }
-    bench_registry_api_free(&reg);
+
+    // Runs mesurés
+    const uint32_t reps = (o->repeats ? o->repeats : 1);
+    double* ns_per_iter = (double*)malloc((size_t)reps * sizeof(double));
+    if (!ns_per_iter) {
+      fprintf(stderr, "OOM allocating samples.\n");
+      return 3;
+    }
+
+    uint64_t checksum_xor = 0;
+
+    for (uint32_t rix = 0; rix < reps; ++rix) {
+      bench_result r = run_one(c, iters_eff, o->size, o->seed ^ (UINT64_C(0xC0DE) + rix));
+      checksum_xor ^= r.checksum;
+
+      const double nspi = (r.iters ? ((double)r.elapsed_ns / (double)r.iters) : 0.0);
+      ns_per_iter[rix] = nspi;
+
+      if (o->json) {
+        print_json_run(out, c, &r, rix, 0u, iters_eff);
+      }
+    }
+
+    const stats st = compute_stats(ns_per_iter, reps);
+
+    if (o->json) {
+      print_json_summary(out, c, o, iters_eff, &st, checksum_xor);
+    } else if (o->csv) {
+      print_csv_summary(out, c, o, iters_eff, &st, checksum_xor);
+    } else {
+      print_text_summary(out, c, o, iters_eff, &st, checksum_xor);
+    }
+
+    free(ns_per_iter);
+  }
+
+  if (!ran_any) {
+    fprintf(stderr, "No cases matched --suite '%s' --case '%s'\n", o->suite_pat, o->case_pat);
+    rc = 4;
+  }
+
+  return rc;
+}
+
+// ============================================================================
+// main
+// ============================================================================
+
+int main(int argc, char** argv) {
+  opts o;
+  if (!parse_args(argc, argv, &o)) {
+    print_usage(stderr, argv[0]);
+    return 2;
+  }
+
+  // Registry init (si non fourni, linker error => supprime l’appel ou fournis stub)
+  bench_registry_init();
+
+  FILE* out = open_out(o.out_path);
+  if (!out) return 2;
+
+  if (o.list) {
+    list_cases(out);
+    close_out(out);
     return 0;
   }
 
-  bench_results_t results;
-  bench_results_init(&results);
-
-  int selected = 0;
-  for (size_t i = 0; i < reg.len; i++) {
-    const bench_case_t* bc = &reg.cases[i];
-    if (!bench_case_selected(bc, &cli)) continue;
-    selected++;
-
-    if (cli.verbose) {
-      fprintf(stdout, "bench: running %s\n", bc->name);
-    }
-
-    bench_result_t r = bench_run_one(&clk, &cli, &ctx, bc, overhead_ns);
-    bench_results_push(&results, r);
-
-    // per-bench line
-    printf("%-44s  %10.2f ns/op  %10.0f ops/s  (p90=%.2f p99=%.2f n=%zu out_iqr=%zu out_mad=%zu)\n",
-      r.name,
-      r.ns_per_op,
-      r.ops_per_s,
-      r.report_stats.q90,
-      r.report_stats.q99,
-      r.report_stats.n_finite,
-      r.report_stats.n_outliers_iqr,
-      r.report_stats.n_outliers_mad
-    );
-  }
-
-  if (selected == 0) {
-    fprintf(stderr, "bench: no benchmark selected (filter='%s', exclude='%s')\n",
-      cli.filter ? cli.filter : "",
-      cli.exclude ? cli.exclude : ""
-    );
-    bench_results_free(&results);
-    bench_registry_api_free(&reg);
-    return 2;
-  }
-
-  bench_print_table(&results);
-
-  if (cli.json_out) {
-    bench_write_json(cli.json_out, &results, &cli);
-    if (cli.verbose) fprintf(stdout, "bench: wrote json: %s\n", cli.json_out);
-  }
-  if (cli.csv_out) {
-    bench_write_csv(cli.csv_out, &results);
-    if (cli.verbose) fprintf(stdout, "bench: wrote csv: %s\n", cli.csv_out);
-  }
-
-  bench_results_free(&results);
-  bench_registry_api_free(&reg);
-  return 0;
+  const int rc = run_all(out, &o);
+  close_out(out);
+  return rc;
 }
