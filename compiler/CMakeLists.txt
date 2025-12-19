@@ -6,6 +6,8 @@ project(vittec_compiler VERSION 0.1.0 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+option(VITTEC_ENABLE_RUST_API "Build and link Rust FFI (vitte_rust_api)" OFF)
+
 # Compiler library sources
 set(VITTEC_COMPILER_SOURCES
     src/compiler.c
@@ -13,6 +15,7 @@ set(VITTEC_COMPILER_SOURCES
     src/parser.c
     src/lexer.c
     src/front/vittec_lexer.c
+    src/front/muf_rust.c
     src/types.c
     src/hir.c
     src/ir.c
@@ -47,6 +50,54 @@ target_include_directories(vittec_compiler PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
     $<INSTALL_INTERFACE:include>
 )
+
+if(VITTEC_ENABLE_RUST_API)
+    target_compile_definitions(vittec_compiler PUBLIC VITTEC_ENABLE_RUST_API=1)
+
+    find_program(CARGO_EXECUTABLE cargo REQUIRED)
+    set(VITTE_RUST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../rust)
+    set(VITTE_RUST_MANIFEST ${VITTE_RUST_DIR}/Cargo.toml)
+
+    # NOTE: Cargo output location depends on target triple; we rely on default host build here.
+    set(VITTE_RUST_PROFILE release)
+    set(VITTE_RUST_LIBDIR ${VITTE_RUST_DIR}/target/${VITTE_RUST_PROFILE})
+    set(VITTE_RUST_STATICLIB ${VITTE_RUST_LIBDIR}/libvitte_rust_api.a)
+
+    if(NOT TARGET vitte_rust_api_build)
+        file(GLOB_RECURSE VITTE_RUST_WORKSPACE_SOURCES
+            CONFIGURE_DEPENDS
+            ${VITTE_RUST_DIR}/Cargo.toml
+            ${VITTE_RUST_DIR}/Cargo.lock
+            ${VITTE_RUST_DIR}/crates/*/Cargo.toml
+            ${VITTE_RUST_DIR}/crates/*/src/*.rs
+        )
+
+        add_custom_command(
+            OUTPUT ${VITTE_RUST_STATICLIB}
+            COMMAND ${CARGO_EXECUTABLE} build -p vitte_rust_api --profile ${VITTE_RUST_PROFILE} --manifest-path ${VITTE_RUST_MANIFEST}
+            BYPRODUCTS ${VITTE_RUST_STATICLIB}
+            WORKING_DIRECTORY ${VITTE_RUST_DIR}
+            DEPENDS ${VITTE_RUST_WORKSPACE_SOURCES}
+            COMMENT "Building Rust staticlib: vitte_rust_api"
+            VERBATIM
+        )
+
+        add_custom_target(vitte_rust_api_build DEPENDS ${VITTE_RUST_STATICLIB})
+    endif()
+
+    if(NOT TARGET vitte_rust_api)
+        add_library(vitte_rust_api STATIC IMPORTED GLOBAL)
+        set_target_properties(vitte_rust_api PROPERTIES IMPORTED_LOCATION ${VITTE_RUST_STATICLIB})
+        add_dependencies(vitte_rust_api vitte_rust_api_build)
+    endif()
+
+    target_include_directories(vittec_compiler PUBLIC ${VITTE_RUST_DIR}/include-gen)
+    target_link_libraries(vittec_compiler PUBLIC vitte_rust_api)
+
+    if(APPLE)
+      target_link_libraries(vittec_compiler PUBLIC "-framework CoreFoundation")
+    endif()
+endif()
 
 # Compiler flags
 if(MSVC)
@@ -91,6 +142,13 @@ target_link_libraries(test_diag PRIVATE vittec_compiler)
 target_include_directories(test_diag PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_test(NAME test_diag COMMAND test_diag)
 
+if(VITTEC_ENABLE_RUST_API)
+  add_executable(test_muf_rust tests/unit/test_muf_rust.c)
+  target_link_libraries(test_muf_rust PRIVATE vittec_compiler)
+  target_include_directories(test_muf_rust PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  add_test(NAME test_muf_rust COMMAND test_muf_rust)
+endif()
+
 # Main executable
 add_executable(vittec src/main.c src/vittec.c src/version.c)
 target_link_libraries(vittec PRIVATE vittec_compiler)
@@ -99,9 +157,9 @@ target_include_directories(vittec PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
 )
 
-set(VITTEC_TOKEN_TEST_SCRIPT ${CMAKE_SOURCE_DIR}/../tests/integration/cli_tokens/run_cli_tokens.sh)
-set(VITTEC_TOKEN_TEST_SRC ${CMAKE_SOURCE_DIR}/../tests/integration/cli_tokens/sample_program.vitte)
-set(VITTEC_TOKEN_TEST_EXPECTED ${CMAKE_SOURCE_DIR}/../tests/integration/cli_tokens/expected_tokens.txt)
+set(VITTEC_TOKEN_TEST_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/../tests/integration/cli_tokens/run_cli_tokens.sh)
+set(VITTEC_TOKEN_TEST_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../tests/integration/cli_tokens/sample_program.vitte)
+set(VITTEC_TOKEN_TEST_EXPECTED ${CMAKE_CURRENT_SOURCE_DIR}/../tests/integration/cli_tokens/expected_tokens.txt)
 
 add_test(
     NAME integration_cli_tokens

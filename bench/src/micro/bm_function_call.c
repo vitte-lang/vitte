@@ -15,7 +15,7 @@
   - Tail-recursive patterns.
 */
 
-static BENCH_INLINE uint32_t add_inline(uint32_t a, uint32_t b) {
+static inline uint32_t add_inline(uint32_t a, uint32_t b) {
   return a + b;
 }
 
@@ -35,8 +35,9 @@ static uint32_t deep_call(uint32_t x) {
   return mid_call(x) + mid_call(x + 1);
 }
 
-static void bm_call_inline(void* ctx) {
+static int bm_call_inline(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t sum = 0;
   for (int iter = 0; iter < 100000; iter++) {
@@ -45,10 +46,12 @@ static void bm_call_inline(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_call_direct(void* ctx) {
+static int bm_call_direct(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t sum = 0;
   for (int iter = 0; iter < 100000; iter++) {
@@ -57,10 +60,12 @@ static void bm_call_direct(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_call_leaf(void* ctx) {
+static int bm_call_leaf(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t sum = 0;
   for (int iter = 0; iter < 100000; iter++) {
@@ -69,10 +74,12 @@ static void bm_call_leaf(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_call_chain(void* ctx) {
+static int bm_call_chain(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t sum = 0;
   for (int iter = 0; iter < 10000; iter++) {
@@ -81,10 +88,12 @@ static void bm_call_chain(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_call_deep(void* ctx) {
+static int bm_call_deep(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t sum = 0;
   for (int iter = 0; iter < 1000; iter++) {
@@ -93,6 +102,7 @@ static void bm_call_deep(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
 void bench_register_micro_calls(void) {

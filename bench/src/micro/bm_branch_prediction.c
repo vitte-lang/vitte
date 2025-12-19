@@ -15,8 +15,9 @@
   - Varying branch frequencies.
 */
 
-static void bm_branch_predictable(void* ctx) {
+static int bm_branch_predictable(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t sum = 0;
   uint32_t data[256];
@@ -36,10 +37,12 @@ static void bm_branch_predictable(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_branch_unpredictable(void* ctx) {
+static int bm_branch_unpredictable(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t sum = 0;
   uint32_t data[256];
@@ -63,10 +66,12 @@ static void bm_branch_unpredictable(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_branch_dense(void* ctx) {
+static int bm_branch_dense(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t sum = 0;
   
@@ -79,6 +84,7 @@ static void bm_branch_dense(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
 void bench_register_micro_branch(void) {

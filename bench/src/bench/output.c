@@ -19,6 +19,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <inttypes.h>
+#include <locale.h>
+
+#if defined(VITTE_ENABLE_RUST_API) && VITTE_ENABLE_RUST_API
+  #include "vitte_rust_api.h"
+#endif
 
 #if defined(__has_include)
   #if __has_include("bench/output.h")
@@ -80,12 +85,14 @@ typedef struct bench_report
     int32_t count;
 
     // Optional metadata
+    const char* schema;
     const char* suite_name;
     uint64_t seed;
     int32_t threads;
     int32_t repeat;
     int32_t warmup;
     int64_t timestamp_ms;
+    bool include_samples;
 } bench_report;
 
 // Print a compact table to `out`.
@@ -214,6 +221,11 @@ static bool bo__write_json_stream(FILE* out, const bench_report* rep)
 
     (void)fputs("{\n", out);
 
+    const char* schema = (rep->schema && *rep->schema) ? rep->schema : "vitte.bench.v1";
+    (void)fputs("  \"schema\": \"", out);
+    bo__json_escape_write(out, schema);
+    (void)fputs("\",\n", out);
+
     // metadata
     (void)fputs("  \"suite\": \"", out);
     bo__json_escape_write(out, rep->suite_name ? rep->suite_name : "bench");
@@ -224,6 +236,10 @@ static bool bo__write_json_stream(FILE* out, const bench_report* rep)
     (void)fprintf(out, "  \"threads\": %d,\n", (int)rep->threads);
     (void)fprintf(out, "  \"repeat\": %d,\n", (int)rep->repeat);
     (void)fprintf(out, "  \"warmup\": %d,\n", (int)rep->warmup);
+    (void)fprintf(out, "  \"iters\": %" PRId64 ",\n", (int64_t)rep->iters);
+    (void)fprintf(out, "  \"calibrate_ms\": %" PRId64 ",\n", (int64_t)rep->calibrate_ms);
+    (void)fprintf(out, "  \"cpu\": {\"requested\": %d, \"pinned\": %d},\n",
+                  (int)rep->cpu_index, (int)rep->cpu_pinned);
 
     // results
     (void)fputs("  \"results\": [\n", out);
@@ -262,6 +278,37 @@ static bool bo__write_json_stream(FILE* out, const bench_report* rep)
         bo__print_num(out, r->metric.items_per_sec, "0");
         (void)fputs(",\n", out);
 
+        (void)fputs("      \"ns_per_op_stats\": {\n", out);
+        (void)fputs("        \"median\": ", out); bo__print_num(out, r->metric.ns_per_op_median, "0"); (void)fputs(",\n", out);
+        (void)fputs("        \"p95\": ", out); bo__print_num(out, r->metric.ns_per_op_p95, "0"); (void)fputs(",\n", out);
+        (void)fputs("        \"mad\": ", out); bo__print_num(out, r->metric.ns_per_op_mad, "0"); (void)fputs(",\n", out);
+        (void)fputs("        \"iqr\": ", out); bo__print_num(out, r->metric.ns_per_op_iqr, "0"); (void)fputs(",\n", out);
+        (void)fputs("        \"ci95_low\": ", out); bo__print_num(out, r->metric.ns_per_op_ci95_low, "0"); (void)fputs(",\n", out);
+        (void)fputs("        \"ci95_high\": ", out); bo__print_num(out, r->metric.ns_per_op_ci95_high, "0"); (void)fputs("\n", out);
+        (void)fputs("      },\n", out);
+
+        (void)fputs("      \"runner\": {", out);
+        (void)fprintf(out, "\"iters_per_call\": %" PRId64 ", ", (int64_t)r->metric.iters_per_call);
+        (void)fprintf(out, "\"calls_per_sample\": %" PRId64 ", ", (int64_t)r->metric.calls_per_sample);
+        (void)fprintf(out, "\"target_time_ms\": %" PRId64 "},\n", (int64_t)r->metric.target_time_ms);
+
+        (void)fputs("      \"cpu_telemetry\": {", out);
+        (void)fputs("\"cycles_per_sec_min\": ", out); bo__print_num(out, r->metric.cycles_per_sec_min, "0"); (void)fputs(", ", out);
+        (void)fputs("\"cycles_per_sec_max\": ", out); bo__print_num(out, r->metric.cycles_per_sec_max, "0"); (void)fputs(", ", out);
+        (void)fprintf(out, "\"throttling_suspected\": %s},\n",
+                      r->metric.throttling_suspected ? "true" : "false");
+
+        if (rep->include_samples)
+        {
+            (void)fputs("      \"samples_ns_per_op\": [", out);
+            for (int32_t k = 0; k < r->samples_count; ++k)
+            {
+                if (k) (void)fputs(", ", out);
+                bo__print_num(out, r->samples_ns_per_op ? r->samples_ns_per_op[k] : 0.0, "0");
+            }
+            (void)fputs("],\n", out);
+        }
+
         (void)fputs("      \"error\": ", out);
         if (r->error && *r->error)
         {
@@ -285,18 +332,320 @@ static bool bo__write_json_stream(FILE* out, const bench_report* rep)
     return ferror(out) == 0;
 }
 
+#if defined(VITTE_ENABLE_RUST_API) && VITTE_ENABLE_RUST_API
+static int32_t bo__rust_write_file(void* ctx, const uint8_t* bytes, size_t len)
+{
+    if (!ctx) return (int32_t)VITTE_ERR_NULL_POINTER;
+    FILE* f = (FILE*)ctx;
+    if (!bytes && len != 0) return (int32_t)VITTE_ERR_NULL_POINTER;
+    if (len == 0) return 0;
+    const size_t wr = fwrite(bytes, 1, len, f);
+    if (wr != len || ferror(f)) return (int32_t)VITTE_ERR_IO;
+    return 0;
+}
+
+static int32_t bo__idx_check(const bench_report* rep, int32_t idx)
+{
+    if (!rep) return (int32_t)VITTE_ERR_NULL_POINTER;
+    if (idx < 0 || idx >= rep->count) return (int32_t)VITTE_ERR_OUT_OF_RANGE;
+    if (!rep->results && rep->count != 0) return (int32_t)VITTE_ERR_NULL_POINTER;
+    return 0;
+}
+
+static int32_t bo__get_schema(void* ctx, vitte_str_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    if (!rep) return (int32_t)VITTE_ERR_NULL_POINTER;
+    *out = vitte_str_from_cstr(rep->schema ? rep->schema : "");
+    return 0;
+}
+
+static int32_t bo__get_suite(void* ctx, vitte_str_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    if (!rep) return (int32_t)VITTE_ERR_NULL_POINTER;
+    *out = vitte_str_from_cstr(rep->suite_name ? rep->suite_name : "");
+    return 0;
+}
+
+static int32_t bo__get_timestamp_ms(void* ctx, int64_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    if (!rep) return (int32_t)VITTE_ERR_NULL_POINTER;
+    *out = rep->timestamp_ms;
+    return 0;
+}
+
+static int32_t bo__get_seed(void* ctx, uint64_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    if (!rep) return (int32_t)VITTE_ERR_NULL_POINTER;
+    *out = rep->seed;
+    return 0;
+}
+
+static int32_t bo__get_threads(void* ctx, int32_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    if (!rep) return (int32_t)VITTE_ERR_NULL_POINTER;
+    *out = rep->threads;
+    return 0;
+}
+
+static int32_t bo__get_repeat(void* ctx, int32_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    if (!rep) return (int32_t)VITTE_ERR_NULL_POINTER;
+    *out = rep->repeat;
+    return 0;
+}
+
+static int32_t bo__get_warmup(void* ctx, int32_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    if (!rep) return (int32_t)VITTE_ERR_NULL_POINTER;
+    *out = rep->warmup;
+    return 0;
+}
+
+static int32_t bo__get_iters(void* ctx, int64_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    if (!rep) return (int32_t)VITTE_ERR_NULL_POINTER;
+    *out = rep->iters;
+    return 0;
+}
+
+static int32_t bo__get_calibrate_ms(void* ctx, int64_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    if (!rep) return (int32_t)VITTE_ERR_NULL_POINTER;
+    *out = rep->calibrate_ms;
+    return 0;
+}
+
+static int32_t bo__get_cpu_index(void* ctx, int32_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    if (!rep) return (int32_t)VITTE_ERR_NULL_POINTER;
+    *out = rep->cpu_index;
+    return 0;
+}
+
+static int32_t bo__get_cpu_pinned(void* ctx, int32_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    if (!rep) return (int32_t)VITTE_ERR_NULL_POINTER;
+    *out = rep->cpu_pinned;
+    return 0;
+}
+
+static int32_t bo__get_include_samples(void* ctx, int32_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    if (!rep) return (int32_t)VITTE_ERR_NULL_POINTER;
+    *out = rep->include_samples ? 1 : 0;
+    return 0;
+}
+
+static int32_t bo__get_results_count(void* ctx, int32_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    if (!rep) return (int32_t)VITTE_ERR_NULL_POINTER;
+    *out = rep->count;
+    return 0;
+}
+
+static int32_t bo__get_result_name(void* ctx, int32_t idx, vitte_str_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    const int32_t rc = bo__idx_check(rep, idx);
+    if (rc != 0) return rc;
+    const bench_result* r = &rep->results[idx];
+    *out = vitte_str_from_cstr(r->name ? r->name : "");
+    return 0;
+}
+
+static int32_t bo__get_result_status(void* ctx, int32_t idx, int32_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    const int32_t rc = bo__idx_check(rep, idx);
+    if (rc != 0) return rc;
+    const bench_result* r = &rep->results[idx];
+    *out = (int32_t)r->status;
+    return 0;
+}
+
+static int32_t bo__get_result_error(void* ctx, int32_t idx, vitte_str_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    const int32_t rc = bo__idx_check(rep, idx);
+    if (rc != 0) return rc;
+    const bench_result* r = &rep->results[idx];
+    *out = vitte_str_from_cstr(r->error ? r->error : "");
+    return 0;
+}
+
+#define BO__METRIC_GETTER_F64(name, field) \
+static int32_t name(void* ctx, int32_t idx, double* out) \
+{ \
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER; \
+    const bench_report* rep = (const bench_report*)ctx; \
+    const int32_t rc = bo__idx_check(rep, idx); \
+    if (rc != 0) return rc; \
+    const bench_result* r = &rep->results[idx]; \
+    *out = r->metric.field; \
+    return 0; \
+}
+
+#define BO__METRIC_GETTER_I64(name, field) \
+static int32_t name(void* ctx, int32_t idx, int64_t* out) \
+{ \
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER; \
+    const bench_report* rep = (const bench_report*)ctx; \
+    const int32_t rc = bo__idx_check(rep, idx); \
+    if (rc != 0) return rc; \
+    const bench_result* r = &rep->results[idx]; \
+    *out = r->metric.field; \
+    return 0; \
+}
+
+BO__METRIC_GETTER_F64(bo__m_ns_per_op, ns_per_op)
+BO__METRIC_GETTER_F64(bo__m_ns_per_op_median, ns_per_op_median)
+BO__METRIC_GETTER_F64(bo__m_ns_per_op_p95, ns_per_op_p95)
+BO__METRIC_GETTER_F64(bo__m_ns_per_op_mad, ns_per_op_mad)
+BO__METRIC_GETTER_F64(bo__m_ns_per_op_iqr, ns_per_op_iqr)
+BO__METRIC_GETTER_F64(bo__m_ns_per_op_ci95_low, ns_per_op_ci95_low)
+BO__METRIC_GETTER_F64(bo__m_ns_per_op_ci95_high, ns_per_op_ci95_high)
+BO__METRIC_GETTER_F64(bo__m_bytes_per_sec, bytes_per_sec)
+BO__METRIC_GETTER_F64(bo__m_items_per_sec, items_per_sec)
+BO__METRIC_GETTER_I64(bo__m_iterations, iterations)
+BO__METRIC_GETTER_F64(bo__m_elapsed_ms, elapsed_ms)
+BO__METRIC_GETTER_I64(bo__m_iters_per_call, iters_per_call)
+BO__METRIC_GETTER_I64(bo__m_calls_per_sample, calls_per_sample)
+BO__METRIC_GETTER_I64(bo__m_target_time_ms, target_time_ms)
+BO__METRIC_GETTER_F64(bo__m_cycles_per_sec_min, cycles_per_sec_min)
+BO__METRIC_GETTER_F64(bo__m_cycles_per_sec_max, cycles_per_sec_max)
+
+static int32_t bo__m_throttling_suspected(void* ctx, int32_t idx, int32_t* out)
+{
+    if (!out) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    const int32_t rc = bo__idx_check(rep, idx);
+    if (rc != 0) return rc;
+    const bench_result* r = &rep->results[idx];
+    *out = r->metric.throttling_suspected ? 1 : 0;
+    return 0;
+}
+
+static int32_t bo__get_samples(void* ctx, int32_t idx, const double** out_ptr, int32_t* out_count)
+{
+    if (!out_ptr || !out_count) return (int32_t)VITTE_ERR_NULL_POINTER;
+    const bench_report* rep = (const bench_report*)ctx;
+    const int32_t rc = bo__idx_check(rep, idx);
+    if (rc != 0) return rc;
+    const bench_result* r = &rep->results[idx];
+    *out_ptr = r->samples_ns_per_op;
+    *out_count = r->samples_count;
+    return 0;
+}
+
+static const vitte_bench_report_vtable_t BO__VT = {
+    .get_schema = bo__get_schema,
+    .get_suite = bo__get_suite,
+    .get_timestamp_ms = bo__get_timestamp_ms,
+    .get_seed = bo__get_seed,
+    .get_threads = bo__get_threads,
+    .get_repeat = bo__get_repeat,
+    .get_warmup = bo__get_warmup,
+    .get_iters = bo__get_iters,
+    .get_calibrate_ms = bo__get_calibrate_ms,
+    .get_cpu_index = bo__get_cpu_index,
+    .get_cpu_pinned = bo__get_cpu_pinned,
+    .get_include_samples = bo__get_include_samples,
+
+    .get_results_count = bo__get_results_count,
+    .get_result_name = bo__get_result_name,
+    .get_result_status = bo__get_result_status,
+    .get_result_error = bo__get_result_error,
+
+    .get_metric_ns_per_op = bo__m_ns_per_op,
+    .get_metric_ns_per_op_median = bo__m_ns_per_op_median,
+    .get_metric_ns_per_op_p95 = bo__m_ns_per_op_p95,
+    .get_metric_ns_per_op_mad = bo__m_ns_per_op_mad,
+    .get_metric_ns_per_op_iqr = bo__m_ns_per_op_iqr,
+    .get_metric_ns_per_op_ci95_low = bo__m_ns_per_op_ci95_low,
+    .get_metric_ns_per_op_ci95_high = bo__m_ns_per_op_ci95_high,
+    .get_metric_bytes_per_sec = bo__m_bytes_per_sec,
+    .get_metric_items_per_sec = bo__m_items_per_sec,
+    .get_metric_iterations = bo__m_iterations,
+    .get_metric_elapsed_ms = bo__m_elapsed_ms,
+    .get_metric_iters_per_call = bo__m_iters_per_call,
+    .get_metric_calls_per_sample = bo__m_calls_per_sample,
+    .get_metric_target_time_ms = bo__m_target_time_ms,
+    .get_metric_cycles_per_sec_min = bo__m_cycles_per_sec_min,
+    .get_metric_cycles_per_sec_max = bo__m_cycles_per_sec_max,
+    .get_metric_throttling_suspected = bo__m_throttling_suspected,
+
+    .get_samples = bo__get_samples,
+};
+
+static bool bo__write_json_stream_rust(FILE* out, const bench_report* rep)
+{
+    if (!out || !rep) return false;
+    const vitte_bench_report_view_t view = { .ctx = (void*)rep, .vt = &BO__VT };
+    const vitte_writer_t w = { .ctx = (void*)out, .write = bo__rust_write_file, .max_bytes = 0 };
+    const vitte_status_t st = vitte_bench_report_write_json(view, w);
+    return (st.code == (int32_t)VITTE_ERR_OK) && (ferror(out) == 0);
+}
+
+static bool bo__write_csv_stream_rust(FILE* out, const bench_report* rep)
+{
+    if (!out || !rep) return false;
+    const vitte_bench_report_view_t view = { .ctx = (void*)rep, .vt = &BO__VT };
+    const vitte_writer_t w = { .ctx = (void*)out, .write = bo__rust_write_file, .max_bytes = 0 };
+    const vitte_status_t st = vitte_bench_report_write_csv(view, w);
+    return (st.code == (int32_t)VITTE_ERR_OK) && (ferror(out) == 0);
+}
+#endif
+
 static bool bo__write_csv_stream(FILE* out, const bench_report* rep)
 {
     if (!out || !rep) return false;
 
     // header
-    (void)fputs("name,status,iterations,elapsed_ms,ns_per_op,bytes_per_sec,items_per_sec,error\n", out);
+    (void)fputs(
+        "schema,name,status,iterations,elapsed_ms,ns_per_op,ns_per_op_median,ns_per_op_p95,ns_per_op_mad,ns_per_op_iqr,ns_per_op_ci95_low,ns_per_op_ci95_high,"
+        "bytes_per_sec,items_per_sec,"
+        "iters_per_call,calls_per_sample,target_time_ms,"
+        "cycles_per_sec_min,cycles_per_sec_max,throttling_suspected,"
+        "error\n",
+        out);
 
     for (int32_t i = 0; i < rep->count; ++i)
     {
         const bench_result* r = &rep->results[i];
         if (!r) continue;
 
+        const char* schema = (rep->schema && *rep->schema) ? rep->schema : "vitte.bench.v1";
+        bo__csv_write_cell(out, schema);
+        (void)fputc(',', out);
         bo__csv_write_cell(out, r->name ? r->name : "");
         (void)fputc(',', out);
         bo__csv_write_cell(out, bo__status_str(r->status));
@@ -310,11 +659,41 @@ static bool bo__write_csv_stream(FILE* out, const bench_report* rep)
         if (bo__is_finite(r->metric.ns_per_op)) (void)fprintf(out, "%.6f,", r->metric.ns_per_op);
         else (void)fputs("0,", out);
 
+        if (bo__is_finite(r->metric.ns_per_op_median)) (void)fprintf(out, "%.6f,", r->metric.ns_per_op_median);
+        else (void)fputs("0,", out);
+
+        if (bo__is_finite(r->metric.ns_per_op_p95)) (void)fprintf(out, "%.6f,", r->metric.ns_per_op_p95);
+        else (void)fputs("0,", out);
+
+        if (bo__is_finite(r->metric.ns_per_op_mad)) (void)fprintf(out, "%.6f,", r->metric.ns_per_op_mad);
+        else (void)fputs("0,", out);
+
+        if (bo__is_finite(r->metric.ns_per_op_iqr)) (void)fprintf(out, "%.6f,", r->metric.ns_per_op_iqr);
+        else (void)fputs("0,", out);
+
+        if (bo__is_finite(r->metric.ns_per_op_ci95_low)) (void)fprintf(out, "%.6f,", r->metric.ns_per_op_ci95_low);
+        else (void)fputs("0,", out);
+
+        if (bo__is_finite(r->metric.ns_per_op_ci95_high)) (void)fprintf(out, "%.6f,", r->metric.ns_per_op_ci95_high);
+        else (void)fputs("0,", out);
+
         if (bo__is_finite(r->metric.bytes_per_sec)) (void)fprintf(out, "%.6f,", r->metric.bytes_per_sec);
         else (void)fputs("0,", out);
 
         if (bo__is_finite(r->metric.items_per_sec)) (void)fprintf(out, "%.6f,", r->metric.items_per_sec);
         else (void)fputs("0,", out);
+
+        (void)fprintf(out, "%" PRId64 ",", (int64_t)r->metric.iters_per_call);
+        (void)fprintf(out, "%" PRId64 ",", (int64_t)r->metric.calls_per_sample);
+        (void)fprintf(out, "%" PRId64 ",", (int64_t)r->metric.target_time_ms);
+
+        if (bo__is_finite(r->metric.cycles_per_sec_min)) (void)fprintf(out, "%.6f,", r->metric.cycles_per_sec_min);
+        else (void)fputs("0,", out);
+
+        if (bo__is_finite(r->metric.cycles_per_sec_max)) (void)fprintf(out, "%.6f,", r->metric.cycles_per_sec_max);
+        else (void)fputs("0,", out);
+
+        (void)fputs(r->metric.throttling_suspected ? "true," : "false,", out);
 
         bo__csv_write_cell(out, (r->error && *r->error) ? r->error : "");
         (void)fputc('\n', out);
@@ -442,7 +821,31 @@ void bench_output_print_human(FILE* out, const bench_report* rep)
 bool bench_output_write_json_path(const char* path, const bench_report* rep)
 {
     if (!path || !*path || !rep) return false;
-    bool ok = bo__write_file_atomic(path, bo__write_json_stream, rep);
+    const char* prev = setlocale(LC_NUMERIC, NULL);
+    char prev_copy[64];
+    prev_copy[0] = '\0';
+    if (prev) (void)snprintf(prev_copy, sizeof(prev_copy), "%s", prev);
+    (void)setlocale(LC_NUMERIC, "C");
+    bool ok = false;
+    if (strcmp(path, "-") == 0)
+    {
+#if defined(VITTE_ENABLE_RUST_API) && VITTE_ENABLE_RUST_API
+        ok = bo__write_json_stream_rust(stdout, rep);
+        if (!ok) ok = bo__write_json_stream(stdout, rep);
+#else
+        ok = bo__write_json_stream(stdout, rep);
+#endif
+    }
+    else
+    {
+#if defined(VITTE_ENABLE_RUST_API) && VITTE_ENABLE_RUST_API
+        ok = bo__write_file_atomic(path, bo__write_json_stream_rust, rep);
+        if (!ok) ok = bo__write_file_atomic(path, bo__write_json_stream, rep);
+#else
+        ok = bo__write_file_atomic(path, bo__write_json_stream, rep);
+#endif
+    }
+    if (prev_copy[0]) (void)setlocale(LC_NUMERIC, prev_copy);
 
 #if defined(BLOG_INFO)
     if (ok) BLOG_INFO("wrote json: %s", path);
@@ -455,7 +858,31 @@ bool bench_output_write_json_path(const char* path, const bench_report* rep)
 bool bench_output_write_csv_path(const char* path, const bench_report* rep)
 {
     if (!path || !*path || !rep) return false;
-    bool ok = bo__write_file_atomic(path, bo__write_csv_stream, rep);
+    const char* prev = setlocale(LC_NUMERIC, NULL);
+    char prev_copy[64];
+    prev_copy[0] = '\0';
+    if (prev) (void)snprintf(prev_copy, sizeof(prev_copy), "%s", prev);
+    (void)setlocale(LC_NUMERIC, "C");
+    bool ok = false;
+    if (strcmp(path, "-") == 0)
+    {
+#if defined(VITTE_ENABLE_RUST_API) && VITTE_ENABLE_RUST_API
+        ok = bo__write_csv_stream_rust(stdout, rep);
+        if (!ok) ok = bo__write_csv_stream(stdout, rep);
+#else
+        ok = bo__write_csv_stream(stdout, rep);
+#endif
+    }
+    else
+    {
+#if defined(VITTE_ENABLE_RUST_API) && VITTE_ENABLE_RUST_API
+        ok = bo__write_file_atomic(path, bo__write_csv_stream_rust, rep);
+        if (!ok) ok = bo__write_file_atomic(path, bo__write_csv_stream, rep);
+#else
+        ok = bo__write_file_atomic(path, bo__write_csv_stream, rep);
+#endif
+    }
+    if (prev_copy[0]) (void)setlocale(LC_NUMERIC, prev_copy);
 
 #if defined(BLOG_INFO)
     if (ok) BLOG_INFO("wrote csv: %s", path);

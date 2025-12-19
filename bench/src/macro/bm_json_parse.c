@@ -406,36 +406,37 @@ static void bm_json_parse_large(bench_ctx_t* ctx, void* state, uint64_t iters) {
 // Recommandé (portable): choisir un module hook existant, ex bench_register_std().
 // Si tu préfères auto-reg: define BENCH_ENABLE_AUTOREG=1 (GCC/Clang) et remplace par BENCH_CASE macros.
 
+#if 0
 void bench_register_std(bench_registry_t* r) {
-  // JSON parse – small
-  bench_register_case(r, (bench_case_t){
-    .name = "macro.json_parse.small",
-    .description = "Parse JSON small payload (~few KB)",
-    .setup = bm_json_setup,
-    .teardown = bm_json_teardown,
-    .run = bm_json_parse_small,
-    .flags = 0u,
-  });
+  (void)r;
+}
+#endif
 
-  // JSON parse – medium
-  bench_register_case(r, (bench_case_t){
-    .name = "macro.json_parse.medium",
-    .description = "Parse JSON medium payload (~100 KB)",
-    .setup = bm_json_setup,
-    .teardown = bm_json_teardown,
-    .run = bm_json_parse_med,
-    .flags = 0u,
-  });
+static int bm_json_parse(void* ctx, int64_t iters) {
+  (void)ctx;
+  if (iters <= 0) return 0;
 
-  // JSON parse – large
-  bench_register_case(r, (bench_case_t){
-    .name = "macro.json_parse.large",
-    .description = "Parse JSON large payload (~MBs)",
-    .setup = bm_json_setup,
-    .teardown = bm_json_teardown,
-    .run = bm_json_parse_large,
-    .flags = 0u,
-  });
+  static char* payload = NULL;
+  static size_t payload_len = 0;
+  static int initialized = 0;
+  static uint64_t sink = 0;
+
+  if (!initialized) {
+    payload = build_payload(2048, 16, &payload_len);
+    if (!payload) return -1;
+    initialized = 1;
+  }
+
+  for (int64_t i = 0; i < iters; ++i) {
+    uint64_t cs = 0;
+    if (!json_scan_validate(payload, payload_len, &cs)) {
+      return -1;
+    }
+    sink ^= cs + (uint64_t)i;
+  }
+
+  bench_blackhole_u64(sink);
+  return 0;
 }
 
 void bench_register_macro_json(void) {

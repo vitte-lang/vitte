@@ -32,8 +32,9 @@ static void init_file_sim(void) {
 }
 
 /* Sequential read simulation */
-static void bm_file_sequential_read(void* ctx) {
+static int bm_file_sequential_read(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_file_sim();
   
   unsigned char buf[BUFFER_SIZE];
@@ -51,11 +52,13 @@ static void bm_file_sequential_read(void* ctx) {
     }
   }
   (void)total;
+  return 0;
 }
 
 /* Random access simulation */
-static void bm_file_random_access(void* ctx) {
+static int bm_file_random_access(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_file_sim();
   
   unsigned char buf[BUFFER_SIZE];
@@ -74,11 +77,13 @@ static void bm_file_random_access(void* ctx) {
     }
   }
   (void)total;
+  return 0;
 }
 
 /* Buffered read with cache simulation */
-static void bm_file_buffered_read(void* ctx) {
+static int bm_file_buffered_read(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_file_sim();
   
   unsigned char cache[BUFFER_SIZE];
@@ -100,11 +105,13 @@ static void bm_file_buffered_read(void* ctx) {
     }
   }
   (void)total;
+  return 0;
 }
 
 /* Line-by-line read simulation */
-static void bm_file_line_read(void* ctx) {
+static int bm_file_line_read(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_file_sim();
   
   const unsigned char* pos = g_file_data;
@@ -130,6 +137,7 @@ static void bm_file_line_read(void* ctx) {
     }
   }
   (void)line_count;
+  return 0;
 }
 
 void bench_register_macro_file_io(void) {

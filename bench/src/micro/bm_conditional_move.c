@@ -34,8 +34,9 @@ static uint32_t conditional_bitwise(uint32_t a, uint32_t b, int cond) {
   return (a + b) ^ ((a + b) ^ (a - b)) & ~mask;
 }
 
-static void bm_cmov_branch(void* ctx) {
+static int bm_cmov_branch(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t sum = 0;
   uint32_t conds[] = { 1, 0, 1, 0, 1, 0, 1, 0 };
@@ -46,10 +47,12 @@ static void bm_cmov_branch(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_cmov_ternary(void* ctx) {
+static int bm_cmov_ternary(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t sum = 0;
   uint32_t conds[] = { 1, 0, 1, 0, 1, 0, 1, 0 };
@@ -60,10 +63,12 @@ static void bm_cmov_ternary(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_cmov_bitwise(void* ctx) {
+static int bm_cmov_bitwise(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t sum = 0;
   uint32_t conds[] = { 1, 0, 1, 0, 1, 0, 1, 0 };
@@ -74,10 +79,12 @@ static void bm_cmov_bitwise(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_cmov_random(void* ctx) {
+static int bm_cmov_random(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t sum = 0;
   uint32_t seed = 0xDEADBEEF;
@@ -90,6 +97,7 @@ static void bm_cmov_random(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
 void bench_register_micro_cmov(void) {

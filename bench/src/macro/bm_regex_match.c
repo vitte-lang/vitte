@@ -110,8 +110,9 @@ static const char* test_urls[] = {
   "no-scheme.com",
 };
 
-static void bm_regex_glob(void* ctx) {
+static int bm_regex_glob(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   /* Glob matching: 100 iterations per pattern */
   for (int iter = 0; iter < 100; iter++) {
@@ -123,10 +124,12 @@ static void bm_regex_glob(void* ctx) {
       (void)result;
     }
   }
+  return 0;
 }
 
-static void bm_regex_email(void* ctx) {
+static int bm_regex_email(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   /* Email validation: 200 iterations per email */
   for (int iter = 0; iter < 200; iter++) {
@@ -135,10 +138,12 @@ static void bm_regex_email(void* ctx) {
       (void)result;
     }
   }
+  return 0;
 }
 
-static void bm_regex_url(void* ctx) {
+static int bm_regex_url(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   /* URL validation: 200 iterations per URL */
   for (int iter = 0; iter < 200; iter++) {
@@ -147,6 +152,7 @@ static void bm_regex_url(void* ctx) {
       (void)result;
     }
   }
+  return 0;
 }
 
 void bench_register_macro_regex(void) {

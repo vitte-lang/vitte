@@ -255,6 +255,87 @@ static void bm_hash_run(bench_ctx_t* ctx, void* state, uint64_t iters,
   bench_blackhole_u64(acc);
 }
 
+#if VITTE_BENCH_LEGACY_REGISTRY
+
+typedef uint8_t* (*bm_hash_buf_getter_t)(bm_hash_state_t* st);
+
+typedef struct bm_hash_case_desc {
+  const char* id;
+  const char* description;
+  size_t size;
+  hash_fn_t fn;
+  bm_hash_buf_getter_t get_buf;
+  bm_hash_state_t* state;
+} bm_hash_case_desc_t;
+
+static uint8_t* bm_hash_buf32(bm_hash_state_t* st) { return st->buf32; }
+static uint8_t* bm_hash_buf256(bm_hash_state_t* st) { return st->buf256; }
+static uint8_t* bm_hash_buf4k(bm_hash_state_t* st) { return st->buf4k; }
+static uint8_t* bm_hash_buf64k(bm_hash_state_t* st) { return st->buf64k; }
+
+static bm_hash_case_desc_t g_bm_hash_cases[] = {
+  { "micro:hash.fnv1a.32B",  "FNV-1a 64 on 32B buffer",    32,     hash_fnv1a64, bm_hash_buf32,  NULL },
+  { "micro:hash.fnv1a.256B", "FNV-1a 64 on 256B buffer",   256,    hash_fnv1a64, bm_hash_buf256, NULL },
+  { "micro:hash.fnv1a.4KB",  "FNV-1a 64 on 4KB buffer",    4096,   hash_fnv1a64, bm_hash_buf4k,  NULL },
+  { "micro:hash.fnv1a.64KB", "FNV-1a 64 on 64KB buffer",   65536,  hash_fnv1a64, bm_hash_buf64k, NULL },
+  { "micro:hash.mix64.32B",  "mix64 on 32B buffer",        32,     hash_mix64,   bm_hash_buf32,  NULL },
+  { "micro:hash.mix64.256B", "mix64 on 256B buffer",       256,    hash_mix64,   bm_hash_buf256, NULL },
+  { "micro:hash.mix64.4KB",  "mix64 on 4KB buffer",        4096,   hash_mix64,   bm_hash_buf4k,  NULL },
+  { "micro:hash.mix64.64KB", "mix64 on 64KB buffer",       65536,  hash_mix64,   bm_hash_buf64k, NULL },
+  { "micro:hash.toy_sip.32B","toy sip-like on 32B buffer", 32,     hash_toy_sip, bm_hash_buf32,  NULL },
+  { "micro:hash.toy_sip.256B","toy sip-like on 256B buffer",256,   hash_toy_sip, bm_hash_buf256, NULL },
+  { "micro:hash.toy_sip.4KB","toy sip-like on 4KB buffer", 4096,   hash_toy_sip, bm_hash_buf4k,  NULL },
+  { "micro:hash.toy_sip.64KB","toy sip-like on 64KB buffer",65536, hash_toy_sip, bm_hash_buf64k, NULL },
+};
+
+static int g_bm_hash_shutdown_registered = 0;
+
+static void bm_hash_legacy_shutdown(void) {
+  for (size_t i = 0; i < sizeof(g_bm_hash_cases) / sizeof(g_bm_hash_cases[0]); ++i) {
+    bm_hash_case_desc_t* desc = &g_bm_hash_cases[i];
+    if (desc->state) {
+      bm_hash_teardown(NULL, desc->state);
+      desc->state = NULL;
+    }
+  }
+}
+
+void bench_micro_hash_release_all(void) {
+  bm_hash_legacy_shutdown();
+}
+
+static int bm_hash_legacy_entry(void* user_ctx, int64_t iters) {
+  if (iters <= 0) return 0;
+  bm_hash_case_desc_t* desc = (bm_hash_case_desc_t*)user_ctx;
+  if (!desc) return -1;
+
+  if (!desc->state) {
+    desc->state = (bm_hash_state_t*)bm_hash_setup(NULL);
+    if (!desc->state) return -1;
+    if (!g_bm_hash_shutdown_registered) {
+      if (atexit(bm_hash_legacy_shutdown) == 0) {
+        g_bm_hash_shutdown_registered = 1;
+      }
+    }
+  }
+
+  uint8_t* buf = desc->get_buf(desc->state);
+  if (!buf) return -1;
+
+  bm_hash_run(NULL, desc->state, (uint64_t)iters, buf, desc->size, desc->fn);
+  return 0;
+}
+
+void bench_register_micro_hash(void) {
+  extern int bench_registry_add(const char* id, int kind, bench_fn_t fn, void* ctx);
+  for (size_t i = 0; i < sizeof(g_bm_hash_cases) / sizeof(g_bm_hash_cases[0]); ++i) {
+    bm_hash_case_desc_t* desc = &g_bm_hash_cases[i];
+    bench_registry_add(desc->id, BENCH_MICRO, bm_hash_legacy_entry, desc);
+  }
+}
+
+#else  // VITTE_BENCH_LEGACY_REGISTRY
+
 #define DEF_BENCH(NAME, BUF_FIELD, SIZE, FN)                                    \
   static void NAME(bench_ctx_t* ctx, void* state, uint64_t iters) {             \
     bm_hash_state_t* st = (bm_hash_state_t*)state;                              \
@@ -352,3 +433,5 @@ void bench_register_std(bench_registry_t* r) {
   bm_hash_register(r);
 }
 #endif
+
+#endif  // VITTE_BENCH_LEGACY_REGISTRY

@@ -48,8 +48,9 @@ static const char* find_substr(const char* haystack, const char* needle) {
   return NULL;
 }
 
-static void bm_string_findchar_common(void* ctx) {
+static int bm_string_findchar_common(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   for (int iter = 0; iter < 10000; iter++) {
     for (char c = 'a'; c <= 'z'; c++) {
@@ -57,42 +58,51 @@ static void bm_string_findchar_common(void* ctx) {
       (void)found;
     }
   }
+  return 0;
 }
 
-static void bm_string_findchar_rare(void* ctx) {
+static int bm_string_findchar_rare(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   for (int iter = 0; iter < 10000; iter++) {
     const char* found = find_char(haystack, '$');
     (void)found;
   }
+  return 0;
 }
 
-static void bm_string_findsubstr_short(void* ctx) {
+static int bm_string_findsubstr_short(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   for (int iter = 0; iter < 1000; iter++) {
     const char* found = find_substr(haystack, "fox");
     (void)found;
   }
+  return 0;
 }
 
-static void bm_string_findsubstr_long(void* ctx) {
+static int bm_string_findsubstr_long(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   for (int iter = 0; iter < 1000; iter++) {
     const char* found = find_substr(haystack, "brown fox jumps");
     (void)found;
   }
+  return 0;
 }
 
-static void bm_string_findsubstr_notfound(void* ctx) {
+static int bm_string_findsubstr_notfound(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   for (int iter = 0; iter < 1000; iter++) {
     const char* found = find_substr(haystack, "xyz123");
     (void)found;
   }
+  return 0;
 }
 
 void bench_register_micro_string_search(void) {

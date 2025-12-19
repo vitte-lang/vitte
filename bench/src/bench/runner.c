@@ -28,6 +28,11 @@
 #include "bench/options.h"
 #include "bench/output.h"
 #include "bench/registry.h"
+#include "bench/benchmark_init.h"
+#include "bench/bench_stats.h"
+#include "bench/bench_time.h"
+
+void bench_register_builtin_suites(void);
 
 // Provide platform time impl here to avoid link errors in small builds.
 // If you already compile another TU with BENCH_PLATFORM_IMPLEMENTATION,
@@ -105,67 +110,145 @@ static double runner__ns_per_op(uint64_t ns, int64_t iters)
     return (double)ns / (double)iters;
 }
 
-// Calibrate an iteration count so elapsed time meets min_time_ms (if > 0).
-// Requires that BENCH_FN_CALL supports (ctx, iters).
-static int runner__calibrate_iters(const bench_case_t* c, int64_t min_time_ms, int64_t* out_iters)
+static uint64_t runner__hash_str_u64(const char* s)
 {
-    if (out_iters) *out_iters = 1;
-    if (!c) return -1;
-    if (min_time_ms <= 0)
+    // FNV-1a 64-bit
+    uint64_t h = UINT64_C(1469598103934665603);
+    if (!s) return h;
+    for (const unsigned char* p = (const unsigned char*)s; *p; ++p)
     {
-        if (out_iters) *out_iters = 1;
+        h ^= (uint64_t)(*p);
+        h *= UINT64_C(1099511628211);
+    }
+    return h;
+}
+
+typedef struct runner_batch
+{
+    uint64_t elapsed_ns;
+    uint64_t cycles;
+    int64_t work; // iters_per_call * calls
+} runner_batch;
+
+static int runner__run_batch(const bench_case_t* c, int64_t iters_per_call, int64_t calls, runner_batch* out)
+{
+    if (out) memset(out, 0, sizeof(*out));
+    if (!c) return -1;
+    if (iters_per_call <= 0) iters_per_call = 1;
+    if (calls <= 0) calls = 1;
+
+    const uint64_t t0 = bench_time_now_ns();
+    const uint64_t cy0 = bench_time_cycles_now();
+
+    for (int64_t i = 0; i < calls; ++i)
+    {
+        int rc = BENCH_FN_CALL(c, iters_per_call);
+        if (rc == BENCH_RC_SKIPPED) return BENCH_RC_SKIPPED;
+        if (rc != BENCH_RC_OK) return rc;
+    }
+
+    const uint64_t cy1 = bench_time_cycles_now();
+    const uint64_t t1 = bench_time_now_ns();
+
+    if (out)
+    {
+        out->elapsed_ns = (t1 >= t0) ? (t1 - t0) : 0;
+        out->cycles = (cy1 >= cy0) ? (cy1 - cy0) : 0;
+        out->work = iters_per_call * calls;
+    }
+    return 0;
+}
+
+// Calibrate a (iters_per_call, calls_per_sample) pair so elapsed time meets target_ms (if > 0).
+// Strategy:
+//   - If opt_itters > 0: keep iters_per_call fixed and scale calls_per_sample.
+//   - If opt_itters == 0: probe whether the benchmark scales with iters; if not, scale calls.
+static int runner__calibrate(const bench_case_t* c,
+                             int64_t opt_iters,
+                             int64_t target_ms,
+                             int64_t* out_iters_per_call,
+                             int64_t* out_calls_per_sample)
+{
+    if (out_iters_per_call) *out_iters_per_call = (opt_iters > 0) ? opt_iters : 1;
+    if (out_calls_per_sample) *out_calls_per_sample = 1;
+    if (!c) return -1;
+
+    if (target_ms <= 0)
+    {
+        if (out_iters_per_call) *out_iters_per_call = (opt_iters > 0) ? opt_iters : 1;
+        if (out_calls_per_sample) *out_calls_per_sample = 1;
         return 0;
     }
 
-    const int64_t target_ns = min_time_ms * 1000000ll;
-    int64_t iters = 1;
+    const int64_t target_ns = target_ms * 1000000ll;
+    const int64_t cap = (int64_t)1e12;
 
-    // Hard cap to avoid runaway.
-    const int64_t iters_cap = (int64_t)1e12;
+    int64_t iters_per_call = (opt_iters > 0) ? opt_iters : 1;
+    int64_t calls = 1;
 
-    for (int step = 0; step < 60; ++step)
+    // Probe scaling: does doubling iters increase time meaningfully?
+    bool scales_with_iters = false;
+    if (opt_iters == 0)
     {
-        uint64_t t0 = bench_time_now_ns();
-        int rc = BENCH_FN_CALL(c, iters);
-        uint64_t t1 = bench_time_now_ns();
+        runner_batch a, b;
+        int rc1 = runner__run_batch(c, 1, 1, &a);
+        if (rc1 == BENCH_RC_SKIPPED) return BENCH_RC_SKIPPED;
+        if (rc1 != 0) return rc1;
+        int rc2 = runner__run_batch(c, 2, 1, &b);
+        if (rc2 == BENCH_RC_SKIPPED) return BENCH_RC_SKIPPED;
+        if (rc2 != 0) return rc2;
 
-        if (rc == BENCH_RC_SKIPPED) return BENCH_RC_SKIPPED;
-        if (rc != BENCH_RC_OK) return rc;
-
-        uint64_t dt = (t1 >= t0) ? (t1 - t0) : 0;
-        if ((int64_t)dt >= target_ns)
+        if (a.elapsed_ns > 0 && b.elapsed_ns > a.elapsed_ns)
         {
-            if (out_iters) *out_iters = iters;
-            return 0;
-        }
-
-        // If dt is 0 (very fast), aggressively increase.
-        if (dt == 0)
-        {
-            if (iters > iters_cap / 1024) { iters = iters_cap; }
-            else iters *= 1024;
-        }
-        else
-        {
-            // Scale approximately to reach target.
-            double scale = (double)target_ns / (double)dt;
-            if (scale < 2.0) scale = 2.0;
-            if (scale > 1024.0) scale = 1024.0;
-
-            double next = (double)iters * scale;
-            if (next > (double)iters_cap) next = (double)iters_cap;
-            iters = (int64_t)next;
-        }
-
-        if (iters <= 0) iters = 1;
-        if (iters >= iters_cap)
-        {
-            if (out_iters) *out_iters = iters_cap;
-            return 0;
+            double ratio = (double)b.elapsed_ns / (double)a.elapsed_ns;
+            scales_with_iters = (ratio > 1.5);
         }
     }
 
-    if (out_iters) *out_iters = iters;
+    for (int step = 0; step < 40; ++step)
+    {
+        runner_batch m;
+        int rc = runner__run_batch(c, iters_per_call, calls, &m);
+        if (rc == BENCH_RC_SKIPPED) return BENCH_RC_SKIPPED;
+        if (rc != 0) return rc;
+
+        int64_t dt = (int64_t)m.elapsed_ns;
+        if (dt >= target_ns)
+            break;
+
+        if (dt <= 0)
+        {
+            // Too fast: quickly grow calls.
+            if (calls > cap / 1024) calls = cap;
+            else calls *= 1024;
+            continue;
+        }
+
+        double scale = (double)target_ns / (double)dt;
+        if (scale < 2.0) scale = 2.0;
+        if (scale > 1024.0) scale = 1024.0;
+
+        if (opt_iters == 0 && scales_with_iters)
+        {
+            double next = (double)iters_per_call * scale;
+            if (next > (double)cap) next = (double)cap;
+            iters_per_call = (int64_t)next;
+        }
+        else
+        {
+            double next = (double)calls * scale;
+            if (next > (double)cap) next = (double)cap;
+            calls = (int64_t)next;
+        }
+
+        if (iters_per_call <= 0) iters_per_call = 1;
+        if (calls <= 0) calls = 1;
+        if (iters_per_call >= cap) iters_per_call = cap;
+        if (calls >= cap) calls = cap;
+    }
+
+    if (out_iters_per_call) *out_iters_per_call = iters_per_call;
+    if (out_calls_per_sample) *out_calls_per_sample = calls;
     return 0;
 }
 
@@ -257,15 +340,37 @@ static void runner__list_benches(FILE* out)
     }
 }
 
-static bench_status runner__run_one(const bench_case_t* c, const bench_options* opt, bench_metric* m, const char** out_err)
+static bench_status runner__run_one(const bench_case_t* c,
+                                    const bench_options* opt,
+                                    bench_metric* m,
+                                    const char** out_err,
+                                    double** out_samples_ns_per_op,
+                                    int32_t* out_samples_count)
 {
     if (out_err) *out_err = NULL;
+    if (out_samples_ns_per_op) *out_samples_ns_per_op = NULL;
+    if (out_samples_count) *out_samples_count = 0;
     if (!c || !m) return BENCH_STATUS_FAILED;
 
-    // warmup
+    // calibrate
+    int64_t iters_per_call = 1;
+    int64_t calls_per_sample = 1;
+    int calib_rc = runner__calibrate(c, opt->iters, opt->calibrate_ms, &iters_per_call, &calls_per_sample);
+    if (calib_rc == BENCH_RC_SKIPPED)
+        return BENCH_STATUS_SKIPPED;
+    if (calib_rc != 0)
+    {
+        static char buf[256];
+        runner__format_err(buf, sizeof(buf), c->id, calib_rc);
+        if (out_err) *out_err = buf;
+        return BENCH_STATUS_FAILED;
+    }
+
+    // warmup (best-effort; not counted)
     for (int32_t w = 0; w < opt->warmup; ++w)
     {
-        int rc = BENCH_FN_CALL(c, 1);
+        runner_batch wb;
+        int rc = runner__run_batch(c, iters_per_call, calls_per_sample, &wb);
         if (rc == BENCH_RC_SKIPPED)
         {
             if (out_err) *out_err = NULL;
@@ -280,47 +385,95 @@ static bench_status runner__run_one(const bench_case_t* c, const bench_options* 
         }
     }
 
-    // calibrate iterations
-    int64_t iters = 1;
-    int calib_rc = runner__calibrate_iters(c, opt->min_time_ms, &iters);
-    if (calib_rc == BENCH_RC_SKIPPED)
-        return BENCH_STATUS_SKIPPED;
-    if (calib_rc != 0)
+    // repeats (collect samples)
+    const int32_t reps = (opt->repeat > 0) ? opt->repeat : 1;
+    double* samples = (double*)calloc((size_t)reps, sizeof(double));
+    double* cycles_per_sec = (double*)calloc((size_t)reps, sizeof(double));
+    if (!samples || !cycles_per_sec)
     {
-        static char buf[256];
-        runner__format_err(buf, sizeof(buf), c->id, calib_rc);
-        if (out_err) *out_err = buf;
+        free(samples);
+        free(cycles_per_sec);
+        if (out_err) *out_err = "out of memory";
         return BENCH_STATUS_FAILED;
     }
 
-    // repeats (aggregate mean)
     uint64_t total_ns = 0;
-    int64_t total_iters = 0;
+    int64_t total_work = 0;
+    double cyc_min = 0.0, cyc_max = 0.0;
+    int cyc_have = 0;
 
-    for (int32_t r = 0; r < opt->repeat; ++r)
+    for (int32_t r = 0; r < reps; ++r)
     {
-        uint64_t t0 = bench_time_now_ns();
-        int rc = BENCH_FN_CALL(c, iters);
-        uint64_t t1 = bench_time_now_ns();
-
+        runner_batch b;
+        int rc = runner__run_batch(c, iters_per_call, calls_per_sample, &b);
         if (rc == BENCH_RC_SKIPPED)
+        {
+            free(samples);
+            free(cycles_per_sec);
             return BENCH_STATUS_SKIPPED;
+        }
         if (rc != BENCH_RC_OK)
         {
             static char buf[256];
             runner__format_err(buf, sizeof(buf), c->id, rc);
             if (out_err) *out_err = buf;
+            free(samples);
+            free(cycles_per_sec);
             return BENCH_STATUS_FAILED;
         }
 
-        uint64_t dt = (t1 >= t0) ? (t1 - t0) : 0;
+        const uint64_t dt = b.elapsed_ns;
         total_ns += dt;
-        total_iters += iters;
+        total_work += b.work;
+
+        samples[r] = runner__ns_per_op(dt, b.work);
+
+        if (dt > 0 && b.cycles > 0)
+        {
+            const double cps = (double)b.cycles * 1e9 / (double)dt;
+            cycles_per_sec[r] = cps;
+            if (!cyc_have) { cyc_min = cyc_max = cps; cyc_have = 1; }
+            else { if (cps < cyc_min) cyc_min = cps; if (cps > cyc_max) cyc_max = cps; }
+        }
     }
 
-    m->iterations = total_iters;
+    bench_stats st;
+    (void)bench_stats_compute_f64(samples, (size_t)reps, &st);
+
+    double ci_low = st.p50, ci_high = st.p50;
+    (void)bench_stats_bootstrap_ci_median_f64(samples, (size_t)reps,
+                                              opt->seed ^ runner__hash_str_u64(c->id),
+                                              500, 0.025, 0.975, &ci_low, &ci_high);
+
+    m->iterations = total_work;
     m->elapsed_ms = runner__ns_to_ms(total_ns);
-    m->ns_per_op = runner__ns_per_op(total_ns, total_iters);
+    m->ns_per_op = runner__ns_per_op(total_ns, total_work);
+
+    m->ns_per_op_median = st.p50;
+    m->ns_per_op_p95 = st.p95;
+    m->ns_per_op_mad = st.mad;
+    m->ns_per_op_iqr = st.iqr;
+    m->ns_per_op_ci95_low = ci_low;
+    m->ns_per_op_ci95_high = ci_high;
+
+    m->iters_per_call = iters_per_call;
+    m->calls_per_sample = calls_per_sample;
+    m->target_time_ms = opt->calibrate_ms;
+
+    m->cycles_per_sec_min = cyc_have ? cyc_min : 0.0;
+    m->cycles_per_sec_max = cyc_have ? cyc_max : 0.0;
+    m->throttling_suspected = (cyc_have && cyc_min > 0.0) ? ((cyc_max / cyc_min) > 1.10) : false;
+
+    if (out_samples_ns_per_op && opt->include_samples && (opt->out_json && *opt->out_json))
+    {
+        *out_samples_ns_per_op = samples;
+        if (out_samples_count) *out_samples_count = reps;
+    }
+    else
+    {
+        free(samples);
+    }
+    free(cycles_per_sec);
 
     return BENCH_STATUS_OK;
 }
@@ -329,6 +482,8 @@ static bench_status runner__run_one(const bench_case_t* c, const bench_options* 
 // Returns process exit code.
 int bench_runner_run(int argc, char** argv)
 {
+    bench_register_builtin_suites();
+
     bench_options opt;
     char err[256];
 
@@ -350,6 +505,26 @@ int bench_runner_run(int argc, char** argv)
     {
         runner__list_benches(stdout);
         return 0;
+    }
+
+    const bool want_human =
+        (!opt.quiet) &&
+        (
+            (opt.format && strcmp(opt.format, "human") == 0) ||
+            (
+                (!opt.format || strcmp(opt.format, "auto") == 0) &&
+                !(opt.out_json && *opt.out_json) &&
+                !(opt.out_csv && *opt.out_csv)
+            )
+        );
+
+    benchmark_runtime_init();
+    int cpu_pinned = 0;
+    if (opt.cpu >= 0)
+    {
+        cpu_pinned = benchmark_pin_to_single_cpu(opt.cpu) ? 1 : 0;
+        if (!cpu_pinned && !opt.quiet)
+            (void)fprintf(stderr, "warn: failed to pin to CPU %d (unsupported or permission denied)\n", (int)opt.cpu);
     }
 
     runner_sel sel;
@@ -384,9 +559,25 @@ int bench_runner_run(int argc, char** argv)
 
     // Execute.
     int failures = 0;
+    const int64_t t0_ms = (int64_t)bench_time_now_ms();
+    static const char* k_time_budget_exceeded = "time budget exceeded";
 
     for (int32_t i = 0; i < sel.selected_count; ++i)
     {
+        if (opt.time_budget_ms > 0)
+        {
+            const int64_t now_ms = (int64_t)bench_time_now_ms();
+            if ((now_ms - t0_ms) >= opt.time_budget_ms)
+            {
+                for (int32_t k = i; k < sel.selected_count; ++k)
+                {
+                    results[k].status = BENCH_STATUS_SKIPPED;
+                    results[k].error = k_time_budget_exceeded;
+                }
+                break;
+            }
+        }
+
         const char* name = results[i].name;
         int32_t idx = bench_registry_find(name);
         const bench_case_t* c = bench_registry_get(idx);
@@ -403,10 +594,14 @@ int bench_runner_run(int argc, char** argv)
         const char* perr = NULL;
         bench_metric m;
         memset(&m, 0, sizeof(m));
+        double* samples_ns = NULL;
+        int32_t samples_count = 0;
 
-        bench_status st = runner__run_one(c, &opt, &m, &perr);
+        bench_status st = runner__run_one(c, &opt, &m, &perr, &samples_ns, &samples_count);
         results[i].status = st;
         results[i].metric = m;
+        results[i].samples_ns_per_op = samples_ns;
+        results[i].samples_count = samples_count;
         results[i].error = perr;
 
         if (st == BENCH_STATUS_FAILED)
@@ -420,14 +615,20 @@ int bench_runner_run(int argc, char** argv)
     memset(&rep, 0, sizeof(rep));
     rep.results = results;
     rep.count = sel.selected_count;
+    rep.schema = opt.output_version;
     rep.suite_name = "bench";
     rep.seed = opt.seed;
     rep.threads = opt.threads;
     rep.repeat = opt.repeat;
     rep.warmup = opt.warmup;
     rep.timestamp_ms = runner__epoch_ms_best_effort();
+    rep.include_samples = opt.include_samples;
+    rep.cpu_pinned = cpu_pinned;
+    rep.cpu_index = opt.cpu;
+    rep.calibrate_ms = opt.calibrate_ms;
+    rep.iters = opt.iters;
 
-    if (!opt.quiet)
+    if (want_human)
         bench_output_print_human(stdout, &rep);
 
     if (opt.out_json && *opt.out_json)
@@ -435,6 +636,9 @@ int bench_runner_run(int argc, char** argv)
 
     if (opt.out_csv && *opt.out_csv)
         (void)bench_output_write_csv_path(opt.out_csv, &rep);
+
+    for (int32_t i = 0; i < sel.selected_count; ++i)
+        free((void*)results[i].samples_ns_per_op);
 
     free(results);
 

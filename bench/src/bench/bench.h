@@ -122,6 +122,15 @@ void bench_register_muf(bench_registry_t* r);
 void bench_register_regex(bench_registry_t* r);
 void bench_register_unicode(bench_registry_t* r);
 
+// Micro hash suite (bm_hash.c)
+#if !VITTE_BENCH_LEGACY_REGISTRY
+void bm_hash_register(bench_registry_t* r);
+#endif
+#if VITTE_BENCH_LEGACY_REGISTRY
+void bench_register_micro_hash(void);
+void bench_micro_hash_release_all(void);
+#endif
+
 // ======================================================================================
 // Auto-registration support (optional; best-effort)
 // ======================================================================================

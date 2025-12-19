@@ -84,8 +84,9 @@ static void init_array(int* arr, int n, int pattern) {
   }
 }
 
-static void bm_sort_bubble(void* ctx) {
+static int bm_sort_bubble(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   int arr[256];
   for (int iter = 0; iter < 10; iter++) {
@@ -94,10 +95,12 @@ static void bm_sort_bubble(void* ctx) {
       bubble_sort(arr, 256);
     }
   }
+  return 0;
 }
 
-static void bm_sort_insertion(void* ctx) {
+static int bm_sort_insertion(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   int arr[512];
   for (int iter = 0; iter < 10; iter++) {
@@ -106,10 +109,12 @@ static void bm_sort_insertion(void* ctx) {
       insertion_sort(arr, 512);
     }
   }
+  return 0;
 }
 
-static void bm_sort_quick(void* ctx) {
+static int bm_sort_quick(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   int arr[1024];
   for (int iter = 0; iter < 5; iter++) {
@@ -118,6 +123,7 @@ static void bm_sort_quick(void* ctx) {
       quicksort(arr, 0, 1023);
     }
   }
+  return 0;
 }
 
 void bench_register_macro_sorts(void) {

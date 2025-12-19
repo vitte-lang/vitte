@@ -34,8 +34,9 @@ static uint32_t popcount_brian_kernighan(uint32_t x) {
   return count;
 }
 
-static void bm_bitops_and_or(void* ctx) {
+static int bm_bitops_and_or(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t a = 0xAAAAAAAA;
   uint32_t b = 0x55555555;
@@ -49,10 +50,12 @@ static void bm_bitops_and_or(void* ctx) {
     }
   }
   (void)result;
+  return 0;
 }
 
-static void bm_bitops_shift(void* ctx) {
+static int bm_bitops_shift(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t x = 0x12345678;
   uint32_t result = 0;
@@ -64,10 +67,12 @@ static void bm_bitops_shift(void* ctx) {
     }
   }
   (void)result;
+  return 0;
 }
 
-static void bm_bitops_popcount_naive(void* ctx) {
+static int bm_bitops_popcount_naive(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t values[] = {
     0xAAAAAAAA, 0x55555555, 0x11111111, 0xFFFFFFFF,
@@ -81,10 +86,12 @@ static void bm_bitops_popcount_naive(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_bitops_popcount_bk(void* ctx) {
+static int bm_bitops_popcount_bk(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t values[] = {
     0xAAAAAAAA, 0x55555555, 0x11111111, 0xFFFFFFFF,
@@ -98,6 +105,7 @@ static void bm_bitops_popcount_bk(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
 void bench_register_micro_bitops(void) {

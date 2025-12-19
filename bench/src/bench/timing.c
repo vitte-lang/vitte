@@ -19,6 +19,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <stdio.h>
 
 #include "bench/platform.h"
 

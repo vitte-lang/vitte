@@ -76,11 +76,12 @@ static const char* words[] = {
   "function", "method", "variable", "constant", "parameter",
 };
 
-static void bm_string_concat(void* ctx) {
+static int bm_string_concat(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   StringBuf* sb = strbuf_new();
-  if (!sb) return;
+  if (!sb) return -1;
   
   for (int iter = 0; iter < 50; iter++) {
     strbuf_reset(sb);
@@ -92,13 +93,15 @@ static void bm_string_concat(void* ctx) {
   }
   
   strbuf_free(sb);
+  return 0;
 }
 
-static void bm_string_search(void* ctx) {
+static int bm_string_search(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   StringBuf* sb = strbuf_new();
-  if (!sb) return;
+  if (!sb) return -1;
   
   for (int iter = 0; iter < 50; iter++) {
     strbuf_reset(sb);
@@ -115,13 +118,15 @@ static void bm_string_search(void* ctx) {
   }
   
   strbuf_free(sb);
+  return 0;
 }
 
-static void bm_string_case(void* ctx) {
+static int bm_string_case(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   StringBuf* sb = strbuf_new();
-  if (!sb) return;
+  if (!sb) return -1;
   
   for (int iter = 0; iter < 50; iter++) {
     strbuf_reset(sb);
@@ -136,6 +141,7 @@ static void bm_string_case(void* ctx) {
   }
   
   strbuf_free(sb);
+  return 0;
 }
 
 void bench_register_macro_strings(void) {

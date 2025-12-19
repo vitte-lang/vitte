@@ -1,8 +1,19 @@
-// vitte/rust/crates/vitte_muf/src/lex.rs
-#![allow(dead_code)]
+// vitte/rust/crates/vitte_muf/src/lib.rs
+//
+// Minimal Muffin (.muf) manifest parser + pretty printer.
+//
+// The C project consumes this through `vitte_rust_api`. This crate focuses on:
+//   - Deterministic output for normalization
+//   - Strict validation to avoid "normalizing" invalid inputs silently
+//
+// Supported input syntaxes:
+//   - Phase 0: line-oriented `key value` (legacy stubs in this repo)
+//   - Phase 1: block syntax starting with `muffin <ver>` and terminated by `.end`
 
-use crate::span::{Pos, Span};
-use crate::token::{Token, TokenKind};
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
 
 use vitte_common::err::{ErrCode, VResult, VitteError};
 
@@ -12,309 +23,366 @@ use alloc::string::String;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
-#[derive(Copy, Clone, Debug)]
-pub struct LexOptions {
-    pub emit_newlines: bool,
+#[cfg(feature = "alloc")]
+#[derive(Clone, Debug)]
+pub struct Manifest {
+    lines: Vec<String>,
 }
 
-impl Default for LexOptions {
-    fn default() -> Self {
-        Self { emit_newlines: true }
+#[cfg(feature = "alloc")]
+pub fn parse_manifest_str(input: &str) -> VResult<Manifest> {
+    // Find first meaningful line to select parser mode.
+    let first = input
+        .lines()
+        .map(|l| l.trim())
+        .find(|l| !l.is_empty() && !l.starts_with('#') && !l.starts_with("//"));
+
+    let Some(first) = first else {
+        return Err(VitteError::new(ErrCode::ParseError).with_msg("empty manifest"));
+    };
+
+    if first.starts_with("muffin") {
+        parse_phase1_block_manifest(input)
+    } else {
+        parse_phase0_kv_manifest(input)
     }
 }
 
-pub struct Lexer<'a> {
-    s: &'a [u8],
-    i: usize,
-    line: u32,
-    col: u32,
-
-    // indentation stack (spaces count)
-    indents: Vec<u32>,
-    pending: Vec<TokenKind>,
-    opt: LexOptions,
+#[cfg(not(feature = "alloc"))]
+pub fn parse_manifest_str(_: &str) -> VResult<()> {
+    Err(VitteError::new(ErrCode::Unsupported))
 }
 
-impl<'a> Lexer<'a> {
-    pub fn new(input: &'a str, opt: LexOptions) -> Self {
-        Self {
-            s: input.as_bytes(),
-            i: 0,
-            line: 0,
-            col: 0,
-            indents: vec![0],
-            pending: Vec::new(),
-            opt,
+// =============================================================================
+// Phase 0: strict line-oriented `key value` (legacy)
+// =============================================================================
+
+#[cfg(feature = "alloc")]
+fn parse_phase0_kv_manifest(input: &str) -> VResult<Manifest> {
+    // This allow-list intentionally stays small: the goal is to catch typos and
+    // avoid treating arbitrary text as a valid manifest.
+    const ALLOWED_HEAD_KEYS: &[&str] = &[
+        "kind",
+        "name",
+        "version",
+        "src",
+        "include",
+        "tests",
+        "deps",
+        "dep",
+        "module",
+        "package",
+        "workspace",
+        "target",
+        "profile",
+        "toolchain",
+        "scripts",
+        "publish",
+        "lock",
+        "meta",
+        "c",
+        "cpp",
+        "ld",
+    ];
+
+    fn is_ident(s: &str) -> bool {
+        let mut chars = s.chars();
+        let Some(c0) = chars.next() else { return false };
+        if !(c0 == '_' || c0.is_ascii_alphabetic()) {
+            return false;
+        }
+        chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
+    }
+
+    fn is_key(s: &str) -> bool {
+        let mut it = s.split('.');
+        let Some(head) = it.next() else { return false };
+        if !is_ident(head) {
+            return false;
+        }
+        it.all(is_ident)
+    }
+
+    fn is_allowed(s: &str) -> bool {
+        let head = s.split('.').next().unwrap_or("");
+        ALLOWED_HEAD_KEYS.iter().any(|k| *k == head)
+    }
+
+    fn is_value(v: &str) -> bool {
+        let v = v.trim();
+        if v.is_empty() {
+            return false;
+        }
+        // Accept either a quoted string (possibly containing spaces),
+        // or a single bare token.
+        if v.starts_with('"') {
+            v.len() >= 2 && v.ends_with('"')
+        } else {
+            !v.chars().any(|c| c.is_whitespace())
         }
     }
 
-    pub fn next(&mut self) -> VResult<Token> {
-        if let Some(k) = self.pending.pop() {
-            return Ok(self.mk_tok(k, self.pos(), self.pos(), ""));
+    let mut out: Vec<String> = Vec::new();
+
+    for (line_idx, raw) in input.lines().enumerate() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with("//") {
+            continue;
         }
 
-        self.skip_ws_and_comments()?;
+        let mut parts = line.splitn(2, char::is_whitespace);
+        let key = parts.next().unwrap_or("");
+        let value = parts.next().unwrap_or("").trim();
 
-        let start = self.pos();
+        if !is_key(key) {
+            return Err(VitteError::new(ErrCode::ParseError)
+                .with_msg("invalid key syntax")
+                .with_detail("line", (line_idx + 1).to_string())
+                .with_detail("key", key.to_string()));
+        }
+        if !is_allowed(key) {
+            return Err(VitteError::new(ErrCode::ParseError)
+                .with_msg("unknown directive")
+                .with_detail("line", (line_idx + 1).to_string())
+                .with_detail("key", key.to_string()));
+        }
+        if !is_value(value) {
+            return Err(VitteError::new(ErrCode::ParseError)
+                .with_msg("invalid value syntax")
+                .with_detail("line", (line_idx + 1).to_string())
+                .with_detail("key", key.to_string()));
+        }
 
-        if self.i >= self.s.len() {
-            // emit pending dedents
-            if self.indents.len() > 1 {
-                self.indents.pop();
-                return Ok(self.mk_tok(TokenKind::Dedent, start, start, ""));
+        out.push(format!("{key} {value}"));
+    }
+
+    if out.is_empty() {
+        return Err(VitteError::new(ErrCode::ParseError).with_msg("empty manifest"));
+    }
+
+    Ok(Manifest { lines: out })
+}
+
+// =============================================================================
+// Phase 1: `muffin <ver>` header + `.end` blocks (early)
+// =============================================================================
+
+#[cfg(feature = "alloc")]
+fn parse_phase1_block_manifest(input: &str) -> VResult<Manifest> {
+    fn leading_spaces(s: &str) -> usize {
+        s.as_bytes().iter().take_while(|b| **b == b' ').count()
+    }
+
+    fn strip_comment(s: &str) -> &str {
+        // Conservative: only strips when comment marker appears after optional whitespace.
+        let t = s.trim_start();
+        if t.starts_with('#') || t.starts_with("//") {
+            ""
+        } else {
+            s
+        }
+    }
+
+    fn is_ident(s: &str) -> bool {
+        let mut chars = s.chars();
+        let Some(c0) = chars.next() else { return false };
+        if !(c0 == '_' || c0.is_ascii_alphabetic()) {
+            return false;
+        }
+        chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
+    }
+
+    fn is_module_path(s: &str) -> bool {
+        let mut it = s.split('/');
+        let Some(head) = it.next() else { return false };
+        if !is_ident(head) {
+            return false;
+        }
+        it.all(is_ident)
+    }
+
+    fn is_header(line: &str) -> bool {
+        let t = line.trim();
+        if !t.starts_with("muffin") {
+            return false;
+        }
+        let rest = t["muffin".len()..].trim_start();
+        if rest.is_empty() {
+            return false;
+        }
+        // Accept `muffin 1`, `muffin \"1\"`, or `muffin = \"1\"`.
+        if rest.starts_with('=') {
+            let rhs = rest[1..].trim();
+            rhs.starts_with('"') && rhs.ends_with('"') && rhs.len() >= 2
+        } else {
+            (rest.chars().all(|c| c.is_ascii_digit() || c == '.'))
+                || (rest.starts_with('"') && rest.ends_with('"') && rest.len() >= 2)
+        }
+    }
+
+    fn is_kv_stmt(t: &str) -> bool {
+        // key = value (we validate key-ish and non-empty rhs)
+        let Some((lhs, rhs)) = t.split_once('=') else { return false };
+        let key = lhs.trim();
+        let rhs = rhs.trim();
+        if key.is_empty() || rhs.is_empty() {
+            return false;
+        }
+        let mut it = key.split('.');
+        let Some(head) = it.next() else { return false };
+        if !is_ident(head) || !it.all(is_ident) {
+            return false;
+        }
+        true
+    }
+
+    fn is_block_start(t: &str) -> bool {
+        // A minimal, strict allow-list for top-level and nested blocks.
+        // (We don't attempt to fully enforce per-body grammar yet.)
+        let mut it = t.split_whitespace();
+        let Some(kw) = it.next() else { return false };
+        matches!(
+            kw,
+            "workspace"
+                | "package"
+                | "module"
+                | "target"
+                | "profile"
+                | "toolchain"
+                | "deps"
+                | "scripts"
+                | "publish"
+                | "lock"
+                | "meta"
+                | "overrides"
+                | "features"
+                | "members"
+                | "paths"
+                | "allow"
+                | "deny"
+        ) && match kw {
+            // keyword must be followed by name/path for some blocks
+            "workspace" | "module" => match it.next() {
+                Some(v) => is_module_path(v),
+                None => false,
+            },
+            "package" | "target" | "profile" | "toolchain" => match it.next() {
+                Some(v) => is_ident(v),
+                None => false,
+            },
+            _ => true,
+        }
+    }
+
+    fn is_include(t: &str) -> bool {
+        let t = t.trim();
+        if !t.starts_with("include ") {
+            return false;
+        }
+        let rest = t["include".len()..].trim();
+        rest.starts_with('"') && rest.ends_with('"') && rest.len() >= 2
+    }
+
+    let mut out: Vec<String> = Vec::new();
+    let mut stack: Vec<usize> = Vec::new(); // indentation of block starts
+    let mut header_seen = false;
+
+    for (line_idx, raw0) in input.lines().enumerate() {
+        let raw0 = strip_comment(raw0);
+        let trimmed = raw0.trim_end();
+        let t = trimmed.trim();
+        if t.is_empty() {
+            continue;
+        }
+
+        let indent = leading_spaces(trimmed);
+        if !header_seen {
+            if indent != 0 {
+                return Err(VitteError::new(ErrCode::ParseError)
+                    .with_msg("header must start at column 1")
+                    .with_detail("line", (line_idx + 1).to_string()));
             }
-            return Ok(self.mk_tok(TokenKind::Eof, start, start, ""));
-        }
-
-        let b = self.s[self.i];
-
-        // newline
-        if b == b'\n' {
-            self.bump();
-            let end = self.pos();
-            if self.opt.emit_newlines {
-                // after newline, process indentation of the next line
-                self.handle_indent()?;
-                return Ok(self.mk_tok(TokenKind::Newline, start, end, "\n"));
-            } else {
-                // even if not emitting, still handle indent
-                self.handle_indent()?;
-                return self.next();
+            if !is_header(t) {
+                return Err(VitteError::new(ErrCode::ParseError)
+                    .with_msg("expected header `muffin <ver>`")
+                    .with_detail("line", (line_idx + 1).to_string()));
             }
+            header_seen = true;
+            out.push(t.to_string());
+            continue;
         }
 
-        // ".end"
-        if b == b'.' && self.peek_str(".end") {
-            self.bump_n(4);
-            let end = self.pos();
-            return Ok(self.mk_tok(TokenKind::DotEnd, start, end, ".end"));
+        // Indentation rules:
+        // - `.end` must align with its block opener indentation.
+        // - Any non-`.end` line inside a block must be more indented than its parent opener.
+        if t == ".end" {
+            let Some(block_indent) = stack.pop() else {
+                return Err(VitteError::new(ErrCode::ParseError)
+                    .with_msg("unexpected .end (no open block)")
+                    .with_detail("line", (line_idx + 1).to_string()));
+            };
+            if indent != block_indent {
+                return Err(VitteError::new(ErrCode::ParseError)
+                    .with_msg(".end indentation mismatch")
+                    .with_detail("line", (line_idx + 1).to_string()));
+            }
+            out.push(format!("{}{}", "  ".repeat(stack.len()), ".end"));
+            continue;
         }
 
-        // punct
-        let (kind, lit_len) = match b {
-            b'=' => (TokenKind::Eq, 1),
-            b'[' => (TokenKind::LBracket, 1),
-            b']' => (TokenKind::RBracket, 1),
-            b',' => (TokenKind::Comma, 1),
-            b':' => (TokenKind::Colon, 1),
-            b'/' => (TokenKind::Slash, 1),
-            b'.' => (TokenKind::Dot, 1),
-            _ => (TokenKind::Eof, 0),
-        };
-        if lit_len != 0 {
-            self.bump_n(lit_len);
-            let end = self.pos();
-            let text = core::str::from_utf8(&[b]).unwrap_or("");
-            return Ok(self.mk_tok(kind, start, end, text));
+        if let Some(&parent_indent) = stack.last() {
+            if indent <= parent_indent {
+                return Err(VitteError::new(ErrCode::ParseError)
+                    .with_msg("expected indented line inside block")
+                    .with_detail("line", (line_idx + 1).to_string()));
+            }
+        } else if indent != 0 {
+            return Err(VitteError::new(ErrCode::ParseError)
+                .with_msg("unexpected indentation at top-level")
+                .with_detail("line", (line_idx + 1).to_string()));
         }
 
-        // string
-        if b == b'"' {
-            return self.lex_string();
+        // Minimal syntax validation.
+        if !(is_include(t) || is_kv_stmt(t) || is_block_start(t)) {
+            return Err(VitteError::new(ErrCode::ParseError)
+                .with_msg("unexpected directive")
+                .with_detail("line", (line_idx + 1).to_string()));
         }
 
-        // int
-        if (b'0'..=b'9').contains(&b) {
-            return self.lex_int();
-        }
+        // Normalize indentation to 2 spaces per nesting level.
+        out.push(format!("{}{}", "  ".repeat(stack.len()), t));
 
-        // ident
-        if is_ident_start(b) {
-            return self.lex_ident();
+        // Block openers push their indentation. We use the original indent as the
+        // alignment requirement for `.end`, but output is normalized anyway.
+        if is_block_start(t) {
+            stack.push(indent);
         }
-
-        Err(VitteError::new(ErrCode::LexError))
     }
 
-    fn lex_ident(&mut self) -> VResult<Token> {
-        let start = self.pos();
-        let mut j = self.i;
-        while j < self.s.len() && is_ident_continue(self.s[j]) {
-            j += 1;
-        }
-        let bytes = &self.s[self.i..j];
-        self.bump_n(j - self.i);
-        let end = self.pos();
-        let text = core::str::from_utf8(bytes).map_err(|_| VitteError::new(ErrCode::Utf8Invalid))?;
-        Ok(self.mk_tok(TokenKind::Ident, start, end, text))
+    if !header_seen {
+        return Err(VitteError::new(ErrCode::ParseError).with_msg("missing header"));
+    }
+    if !stack.is_empty() {
+        return Err(VitteError::new(ErrCode::ParseError).with_msg("unterminated block(s)"));
     }
 
-    fn lex_int(&mut self) -> VResult<Token> {
-        let start = self.pos();
-        let mut j = self.i;
-        while j < self.s.len() && (b'0'..=b'9').contains(&self.s[j]) {
-            j += 1;
-        }
-        let bytes = &self.s[self.i..j];
-        self.bump_n(j - self.i);
-        let end = self.pos();
-        let text = core::str::from_utf8(bytes).map_err(|_| VitteError::new(ErrCode::Utf8Invalid))?;
-        Ok(self.mk_tok(TokenKind::Int, start, end, text))
-    }
+    Ok(Manifest { lines: out })
+}
 
-    fn lex_string(&mut self) -> VResult<Token> {
-        let start = self.pos();
-        self.bump(); // "
+pub mod pretty {
+    #[cfg(feature = "alloc")]
+    use super::{Manifest, String};
+
+    #[cfg(feature = "alloc")]
+    pub fn manifest_to_string(m: &Manifest) -> String {
         let mut out = String::new();
-        while self.i < self.s.len() {
-            let b = self.s[self.i];
-            if b == b'"' {
-                self.bump();
-                let end = self.pos();
-                return Ok(Token {
-                    kind: TokenKind::String,
-                    span: Span::new(start, end),
-                    text: out,
-                });
+        for (i, line) in m.lines.iter().enumerate() {
+            if i != 0 {
+                out.push('\n');
             }
-            if b == b'\\' {
-                self.bump();
-                if self.i >= self.s.len() {
-                    return Err(VitteError::new(ErrCode::LexError));
-                }
-                let e = self.s[self.i];
-                self.bump();
-                match e {
-                    b'n' => out.push('\n'),
-                    b'r' => out.push('\r'),
-                    b't' => out.push('\t'),
-                    b'"' => out.push('"'),
-                    b'\\' => out.push('\\'),
-                    _ => return Err(VitteError::new(ErrCode::LexError)),
-                }
-                continue;
-            }
-            // raw byte (UTF-8 validation delegated to Rust String push)
-            out.push(b as char);
-            self.bump();
+            out.push_str(line);
         }
-        Err(VitteError::new(ErrCode::LexError))
+        out.push('\n');
+        out
     }
-
-    fn skip_ws_and_comments(&mut self) -> VResult<()> {
-        loop {
-            if self.i >= self.s.len() {
-                return Ok(());
-            }
-            let b = self.s[self.i];
-            // spaces/tabs (not newlines) are handled here
-            if b == b' ' || b == b'\t' || b == b'\r' {
-                self.bump();
-                continue;
-            }
-            // comments start with '#', to end of line
-            if b == b'#' {
-                while self.i < self.s.len() && self.s[self.i] != b'\n' {
-                    self.bump();
-                }
-                continue;
-            }
-            // '//' comment
-            if b == b'/' && self.i + 1 < self.s.len() && self.s[self.i + 1] == b'/' {
-                while self.i < self.s.len() && self.s[self.i] != b'\n' {
-                    self.bump();
-                }
-                continue;
-            }
-            break;
-        }
-        Ok(())
-    }
-
-    fn handle_indent(&mut self) -> VResult<()> {
-        // Look ahead at next line indentation (spaces only; tabs discouraged but accepted)
-        let mut j = self.i;
-        let mut spaces: u32 = 0;
-
-        while j < self.s.len() {
-            let b = self.s[j];
-            if b == b' ' {
-                spaces += 1;
-                j += 1;
-                continue;
-            }
-            if b == b'\t' {
-                // treat tab as 2 spaces (heuristic); configurable later
-                spaces += 2;
-                j += 1;
-                continue;
-            }
-            break;
-        }
-
-        // If next is newline or EOF, do nothing (blank line)
-        if j >= self.s.len() || self.s[j] == b'\n' {
-            return Ok(());
-        }
-
-        let cur = *self.indents.last().unwrap_or(&0);
-        if spaces > cur {
-            self.indents.push(spaces);
-            self.pending.push(TokenKind::Indent);
-        } else if spaces < cur {
-            // pop until match or underflow
-            while self.indents.len() > 1 && *self.indents.last().unwrap() > spaces {
-                self.indents.pop();
-                self.pending.push(TokenKind::Dedent);
-            }
-            // If mismatch, treat as error (strict)
-            if *self.indents.last().unwrap_or(&0) != spaces {
-                return Err(VitteError::new(ErrCode::LexError));
-            }
-        }
-
-        Ok(())
-    }
-
-    fn mk_tok(&self, kind: TokenKind, start: Pos, end: Pos, text: &str) -> Token {
-        Token {
-            kind,
-            span: Span::new(start, end),
-            text: text.into(),
-        }
-    }
-
-    #[inline]
-    fn pos(&self) -> Pos {
-        Pos::new(self.i, self.line, self.col)
-    }
-
-    #[inline]
-    fn bump(&mut self) {
-        if self.i < self.s.len() {
-            let b = self.s[self.i];
-            self.i += 1;
-            if b == b'\n' {
-                self.line += 1;
-                self.col = 0;
-            } else {
-                self.col += 1;
-            }
-        }
-    }
-
-    #[inline]
-    fn bump_n(&mut self, n: usize) {
-        for _ in 0..n {
-            self.bump();
-        }
-    }
-
-    #[inline]
-    fn peek_str(&self, s: &str) -> bool {
-        let bytes = s.as_bytes();
-        self.s.len() >= self.i + bytes.len() && &self.s[self.i..self.i + bytes.len()] == bytes
-    }
-}
-
-#[inline]
-fn is_ident_start(b: u8) -> bool {
-    (b'A'..=b'Z').contains(&b)
-        || (b'a'..=b'z').contains(&b)
-        || b == b'_'
-}
-
-#[inline]
-fn is_ident_continue(b: u8) -> bool {
-    is_ident_start(b) || (b'0'..=b'9').contains(&b) || b == b'-'
 }

@@ -30,6 +30,14 @@
 // Public types
 // ============================================================================
 
+// If the project provides a header, prefer it.
+#if defined(__has_include)
+  #if __has_include("bench/bench_stats.h")
+    #include "bench/bench_stats.h"
+  #endif
+#endif
+
+#ifndef VITTE_BENCH_STATS_H
 typedef struct bench_stats {
   double min;
   double max;
@@ -39,7 +47,10 @@ typedef struct bench_stats {
   double p90;
   double p95;
   double p99;
+  double mad;
+  double iqr;
 } bench_stats;
+#endif
 
 // Optional: store raw + derived values.
 typedef struct bench_sample {
@@ -119,6 +130,8 @@ static void bench_stats_zero(bench_stats* st) {
   st->p90 = 0.0;
   st->p95 = 0.0;
   st->p99 = 0.0;
+  st->mad = 0.0;
+  st->iqr = 0.0;
 }
 
 // Welford (stable) mean/variance.
@@ -216,6 +229,89 @@ int bench_stats_compute_f64(const double* samples, size_t n, bench_stats* out) {
   out->p95 = bench_percentile_sorted(tmp, m, 0.95);
   out->p99 = bench_percentile_sorted(tmp, m, 0.99);
 
+  const double p25 = bench_percentile_sorted(tmp, m, 0.25);
+  const double p75 = bench_percentile_sorted(tmp, m, 0.75);
+  out->iqr = p75 - p25;
+
+  // MAD: median(|x - median(x)|)
+  const double med = out->p50;
+  for (size_t i = 0; i < m; ++i) {
+    double d = tmp[i] - med;
+    if (d < 0.0) d = -d;
+    tmp[i] = d;
+  }
+  qsort(tmp, m, sizeof(double), bench_cmp_f64);
+  out->mad = bench_percentile_sorted(tmp, m, 0.50);
+
+  free(tmp);
+  return 1;
+}
+
+// ---------------------------------------------------------------------------
+// Bootstrap CI (median)
+// ---------------------------------------------------------------------------
+
+static uint64_t bench_splitmix64(uint64_t* s) {
+  uint64_t z = (*s += UINT64_C(0x9E3779B97F4A7C15));
+  z = (z ^ (z >> 30)) * UINT64_C(0xBF58476D1CE4E5B9);
+  z = (z ^ (z >> 27)) * UINT64_C(0x94D049BB133111EB);
+  return z ^ (z >> 31);
+}
+
+static size_t bench_rand_index(uint64_t* s, size_t n) {
+  if (n == 0) return 0;
+  // Use high bits for slightly better distribution.
+  return (size_t)(bench_splitmix64(s) % (uint64_t)n);
+}
+
+int bench_stats_bootstrap_ci_median_f64(const double* samples, size_t n,
+                                       uint64_t seed,
+                                       int iters,
+                                       double alpha_low,
+                                       double alpha_high,
+                                       double* out_low,
+                                       double* out_high)
+{
+  if (out_low) *out_low = 0.0;
+  if (out_high) *out_high = 0.0;
+  if (!samples) return (n == 0) ? 1 : 0;
+  if (n == 0) return 1;
+  if (iters <= 0) iters = 500;
+
+  if (alpha_low < 0.0) alpha_low = 0.0;
+  if (alpha_high > 1.0) alpha_high = 1.0;
+  if (alpha_high < alpha_low) { double t = alpha_low; alpha_low = alpha_high; alpha_high = t; }
+
+  double* boot = (double*)malloc((size_t)iters * sizeof(double));
+  double* tmp = (double*)malloc(n * sizeof(double));
+  if (!boot || !tmp)
+  {
+    free(boot);
+    free(tmp);
+    // Best-effort fallback: CI collapses to sample median.
+    bench_stats st;
+    (void)bench_stats_compute_f64(samples, n, &st);
+    if (out_low) *out_low = st.p50;
+    if (out_high) *out_high = st.p50;
+    return 1;
+  }
+
+  uint64_t rng = seed ? seed : UINT64_C(0x243F6A8885A308D3);
+  for (int b = 0; b < iters; ++b)
+  {
+    for (size_t i = 0; i < n; ++i) tmp[i] = samples[bench_rand_index(&rng, n)];
+    qsort(tmp, n, sizeof(double), bench_cmp_f64);
+    boot[b] = bench_percentile_sorted(tmp, n, 0.50);
+  }
+
+  qsort(boot, (size_t)iters, sizeof(double), bench_cmp_f64);
+  const size_t ilo = (size_t)((double)(iters - 1) * alpha_low);
+  const size_t ihi = (size_t)((double)(iters - 1) * alpha_high);
+
+  if (out_low) *out_low = boot[ilo];
+  if (out_high) *out_high = boot[ihi];
+
+  free(boot);
   free(tmp);
   return 1;
 }

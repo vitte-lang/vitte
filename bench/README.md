@@ -57,6 +57,11 @@ bench/
 └── README.md                   # This file
 ```
 
+## Hash Suite Integration
+
+- `bench/src/micro/bm_hash.c` must be part of your build whenever you want the `bench_register_micro_hash()` legacy hook or the new `bm_hash_register()` API. The translation unit exports the registrar so `bench/src/bench/register_builtin.c` can discover the hash micro-benchmarks.
+- Legacy runners that lazily allocate hash buffers can release them deterministically (for long-lived or embedded harnesses) by calling `bench_micro_hash_release_all()` instead of waiting for process exit.
+
 ## Features
 
 ### Micro-benchmarks (15)

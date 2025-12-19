@@ -190,6 +190,11 @@
   #define VITTEC_ENABLE_MUFFIN 1
 #endif
 
+/* Enable linking against the Rust FFI crate (vitte_rust_api). */
+#ifndef VITTEC_ENABLE_RUST_API
+  #define VITTEC_ENABLE_RUST_API 0
+#endif
+
 /* ANSI colors in diagnostics (subject to runtime NO_COLOR / TTY). */
 #ifndef VITTEC_ENABLE_COLOR
   #define VITTEC_ENABLE_COLOR 1

@@ -12,10 +12,13 @@
 #include <stdio.h>
 
 typedef enum {
-  BENCH_LOG_DEBUG = 0,
-  BENCH_LOG_INFO = 1,
-  BENCH_LOG_WARN = 2,
-  BENCH_LOG_ERROR = 3,
+  BENCH_LOG_TRACE = 0,
+  BENCH_LOG_DEBUG = 1,
+  BENCH_LOG_INFO = 2,
+  BENCH_LOG_WARN = 3,
+  BENCH_LOG_ERROR = 4,
+  BENCH_LOG_FATAL = 5,
+  BENCH_LOG_OFF = 6,
 } bench_log_level_t;
 
 /* Set log level */

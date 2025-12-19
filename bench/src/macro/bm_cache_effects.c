@@ -33,8 +33,9 @@ static void init_cache_buffer(void) {
 }
 
 /* Working set fits in L1 */
-static void bm_cache_l1(void* ctx) {
+static int bm_cache_l1(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_cache_buffer();
   
   char local[L1_SIZE / 2];
@@ -47,15 +48,17 @@ static void bm_cache_l1(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
 /* Working set fits in L2 */
-static void bm_cache_l2(void* ctx) {
+static int bm_cache_l2(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_cache_buffer();
   
   char* buf = (char*)malloc(L2_SIZE / 4);
-  if (!buf) return;
+  if (!buf) return -1;
   memcpy(buf, g_large_buffer, L2_SIZE / 4);
   
   uint64_t sum = 0;
@@ -66,11 +69,13 @@ static void bm_cache_l2(void* ctx) {
   }
   (void)sum;
   free(buf);
+  return 0;
 }
 
 /* Working set fits in L3 */
-static void bm_cache_l3(void* ctx) {
+static int bm_cache_l3(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_cache_buffer();
   
   uint64_t sum = 0;
@@ -80,11 +85,13 @@ static void bm_cache_l3(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
 /* Cache line stride (false sharing) */
-static void bm_cache_line_stride(void* ctx) {
+static int bm_cache_line_stride(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_cache_buffer();
   
   uint64_t sum = 0;
@@ -96,16 +103,18 @@ static void bm_cache_line_stride(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
 /* Random access in working set */
-static void bm_cache_random_small(void* ctx) {
+static int bm_cache_random_small(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_cache_buffer();
   
   /* Random access within L2 */
   char* buf = (char*)malloc(L2_SIZE);
-  if (!buf) return;
+  if (!buf) return -1;
   memcpy(buf, g_large_buffer, L2_SIZE);
   
   uint32_t seed = 0x12345678;
@@ -119,6 +128,7 @@ static void bm_cache_random_small(void* ctx) {
   }
   (void)sum;
   free(buf);
+  return 0;
 }
 
 void bench_register_macro_cache(void) {

@@ -16,8 +16,9 @@
   - Parallel FP (independent operations).
 */
 
-static void bm_float_add(void* ctx) {
+static int bm_float_add(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   float sum = 0.0f;
   for (int iter = 0; iter < 100000; iter++) {
@@ -26,10 +27,12 @@ static void bm_float_add(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_float_mul(void* ctx) {
+static int bm_float_mul(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   float prod = 1.0f;
   for (int iter = 0; iter < 100000; iter++) {
@@ -39,10 +42,12 @@ static void bm_float_mul(void* ctx) {
     if (prod > 1e10f) prod = 1.0f;  /* Prevent overflow */
   }
   (void)prod;
+  return 0;
 }
 
-static void bm_float_div(void* ctx) {
+static int bm_float_div(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   float q = 1.0f;
   for (int iter = 0; iter < 10000; iter++) {
@@ -52,10 +57,12 @@ static void bm_float_div(void* ctx) {
     }
   }
   (void)q;
+  return 0;
 }
 
-static void bm_float_chain(void* ctx) {
+static int bm_float_chain(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   float x = 1.0f;
   for (int iter = 0; iter < 100000; iter++) {
@@ -63,10 +70,12 @@ static void bm_float_chain(void* ctx) {
     x = x / 1.00001f - 0.00001f;
   }
   (void)x;
+  return 0;
 }
 
-static void bm_float_parallel(void* ctx) {
+static int bm_float_parallel(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   float x1 = 1.0f, x2 = 2.0f, x3 = 3.0f, x4 = 4.0f;
   
@@ -77,10 +86,12 @@ static void bm_float_parallel(void* ctx) {
     x4 = x4 * 1.0001f + 0.4f;
   }
   (void)(x1 + x2 + x3 + x4);
+  return 0;
 }
 
-static void bm_float_array(void* ctx) {
+static int bm_float_array(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   float data[256];
   for (int i = 0; i < 256; i++) {
@@ -94,6 +105,7 @@ static void bm_float_array(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
 void bench_register_micro_float(void) {

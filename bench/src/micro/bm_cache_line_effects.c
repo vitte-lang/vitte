@@ -24,8 +24,9 @@ typedef struct {
   char padding[CACHE_LINE - sizeof(uint32_t)];
 } CachePaddedInt;
 
-static void bm_cache_aligned_access(void* ctx) {
+static int bm_cache_aligned_access(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   CachePaddedInt data[256];
   for (int i = 0; i < 256; i++) {
@@ -39,10 +40,12 @@ static void bm_cache_aligned_access(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_cache_unaligned_access(void* ctx) {
+static int bm_cache_unaligned_access(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t data[512];
   for (int i = 0; i < 512; i++) {
@@ -57,10 +60,12 @@ static void bm_cache_unaligned_access(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_cache_line_dense(void* ctx) {
+static int bm_cache_line_dense(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t data[256];
   for (int i = 0; i < 256; i++) {
@@ -75,10 +80,12 @@ static void bm_cache_line_dense(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_cache_line_sparse(void* ctx) {
+static int bm_cache_line_sparse(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t data[256];
   for (int i = 0; i < 256; i++) {
@@ -93,10 +100,12 @@ static void bm_cache_line_sparse(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_cache_false_sharing(void* ctx) {
+static int bm_cache_false_sharing(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   /* Two uint32_t in same cache line */
   uint32_t data[2];
@@ -109,6 +118,7 @@ static void bm_cache_false_sharing(void* ctx) {
     data[0] += data[1];
   }
   (void)(data[0] + data[1]);
+  return 0;
 }
 
 void bench_register_micro_cache_line(void) {

@@ -37,15 +37,15 @@ extern crate core;
 extern crate alloc;
 
 use core::ffi::c_void;
-use core::ptr;
 
-use vitte_common::err::{ErrCode, VitteErr, VitteError};
+use vitte_common::err::{ErrCode, VitteError};
 
 #[cfg(feature = "alloc")]
 use alloc::string::String;
 
 #[cfg(feature = "alloc")]
 use alloc::boxed::Box;
+
 
 // Optional backends
 #[cfg(feature = "muf")]
@@ -59,7 +59,7 @@ use vitte_regex::{RegexFlags, VRegex};
 // =============================================================================
 
 /// ABI version for vitte_rust_api (increment on breaking changes).
-pub const VITTE_RUST_API_ABI_VERSION: u32 = 1;
+pub const VITTE_RUST_API_ABI_VERSION: u32 = 2;
 
 // =============================================================================
 // Last error (thread-local, debug support)
@@ -179,11 +179,6 @@ fn set_last_error(e: &VitteError) {
 fn set_last_error(_: &VitteError) {}
 
 #[inline]
-fn null_ptr<T>() -> *mut T {
-    ptr::null_mut()
-}
-
-#[inline]
 unsafe fn slice_from_raw<'a>(s: VitteSliceU8) -> Result<&'a [u8], ErrCode> {
     if s.ptr.is_null() && s.len != 0 {
         return Err(ErrCode::NullPointer);
@@ -223,6 +218,8 @@ fn write_bytes(out: VitteSliceMutU8, bytes: &[u8]) -> Result<usize, ErrCode> {
         Ok(bytes.len())
     }
 }
+
+// (bench streaming output intentionally avoids a size-query pass)
 
 // =============================================================================
 // ABI info
@@ -473,5 +470,1063 @@ pub extern "C" fn vitte_utf8_validate(src: VitteSliceU8) -> i32 {
     match core::str::from_utf8(bytes) {
         Ok(_) => 1,
         Err(_) => 0,
+    }
+}
+
+// =============================================================================
+// Bench output helpers (structless ABI + streaming writer)
+// =============================================================================
+
+#[cfg(feature = "alloc")]
+mod bench_stream {
+    use super::*;
+    use core::fmt;
+
+    const DEFAULT_MAX_BYTES: usize = 16 * 1024 * 1024;
+    const MAX_RESULTS: usize = 1_000_000;
+    const MAX_SAMPLES_PER_RESULT: usize = 1_000_000;
+
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    pub struct VitteWriter {
+        pub ctx: *mut c_void,
+        pub write: Option<extern "C" fn(ctx: *mut c_void, bytes: *const u8, len: usize) -> i32>,
+        pub max_bytes: usize,
+    }
+
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    pub struct VitteBenchReportView {
+        pub ctx: *mut c_void,
+        pub vt: *const VitteBenchReportVTable,
+    }
+
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    pub struct VitteBenchReportVTable {
+        pub get_schema: Option<extern "C" fn(ctx: *mut c_void, out: *mut VitteStr) -> i32>,
+        pub get_suite: Option<extern "C" fn(ctx: *mut c_void, out: *mut VitteStr) -> i32>,
+        pub get_timestamp_ms: Option<extern "C" fn(ctx: *mut c_void, out: *mut i64) -> i32>,
+        pub get_seed: Option<extern "C" fn(ctx: *mut c_void, out: *mut u64) -> i32>,
+        pub get_threads: Option<extern "C" fn(ctx: *mut c_void, out: *mut i32) -> i32>,
+        pub get_repeat: Option<extern "C" fn(ctx: *mut c_void, out: *mut i32) -> i32>,
+        pub get_warmup: Option<extern "C" fn(ctx: *mut c_void, out: *mut i32) -> i32>,
+        pub get_iters: Option<extern "C" fn(ctx: *mut c_void, out: *mut i64) -> i32>,
+        pub get_calibrate_ms: Option<extern "C" fn(ctx: *mut c_void, out: *mut i64) -> i32>,
+        pub get_cpu_index: Option<extern "C" fn(ctx: *mut c_void, out: *mut i32) -> i32>,
+        pub get_cpu_pinned: Option<extern "C" fn(ctx: *mut c_void, out: *mut i32) -> i32>,
+        pub get_include_samples: Option<extern "C" fn(ctx: *mut c_void, out: *mut i32) -> i32>,
+
+        pub get_results_count: Option<extern "C" fn(ctx: *mut c_void, out: *mut i32) -> i32>,
+        pub get_result_name: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut VitteStr) -> i32>,
+        pub get_result_status: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut i32) -> i32>,
+        pub get_result_error: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut VitteStr) -> i32>,
+
+        pub get_metric_ns_per_op: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut f64) -> i32>,
+        pub get_metric_ns_per_op_median: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut f64) -> i32>,
+        pub get_metric_ns_per_op_p95: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut f64) -> i32>,
+        pub get_metric_ns_per_op_mad: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut f64) -> i32>,
+        pub get_metric_ns_per_op_iqr: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut f64) -> i32>,
+        pub get_metric_ns_per_op_ci95_low: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut f64) -> i32>,
+        pub get_metric_ns_per_op_ci95_high: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut f64) -> i32>,
+        pub get_metric_bytes_per_sec: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut f64) -> i32>,
+        pub get_metric_items_per_sec: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut f64) -> i32>,
+        pub get_metric_iterations: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut i64) -> i32>,
+        pub get_metric_elapsed_ms: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut f64) -> i32>,
+        pub get_metric_iters_per_call: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut i64) -> i32>,
+        pub get_metric_calls_per_sample: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut i64) -> i32>,
+        pub get_metric_target_time_ms: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut i64) -> i32>,
+        pub get_metric_cycles_per_sec_min: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut f64) -> i32>,
+        pub get_metric_cycles_per_sec_max: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut f64) -> i32>,
+        pub get_metric_throttling_suspected: Option<extern "C" fn(ctx: *mut c_void, idx: i32, out: *mut i32) -> i32>,
+
+        pub get_samples:
+            Option<extern "C" fn(ctx: *mut c_void, idx: i32, out_ptr: *mut *const f64, out_count: *mut i32) -> i32>,
+    }
+
+    pub enum StreamErr {
+        Code(i32),
+    }
+
+    impl From<ErrCode> for StreamErr {
+        fn from(c: ErrCode) -> Self {
+            StreamErr::Code(c as i32)
+        }
+    }
+
+    struct CbWriter {
+        writer: VitteWriter,
+        written: usize,
+        max: usize,
+    }
+
+    impl CbWriter {
+        fn new(writer: VitteWriter) -> Result<Self, StreamErr> {
+            let max = if writer.max_bytes == 0 { DEFAULT_MAX_BYTES } else { writer.max_bytes };
+            Ok(Self { writer, written: 0, max })
+        }
+
+        fn write_all(&mut self, bytes: &[u8]) -> Result<(), StreamErr> {
+            if bytes.is_empty() {
+                return Ok(());
+            }
+            let new_total = self.written.saturating_add(bytes.len());
+            if new_total > self.max {
+                return Err(ErrCode::NoSpace.into());
+            }
+            let Some(f) = self.writer.write else {
+                return Err(ErrCode::NullPointer.into());
+            };
+            let rc = f(self.writer.ctx, bytes.as_ptr(), bytes.len());
+            if rc != 0 {
+                return Err(StreamErr::Code(rc));
+            }
+            self.written = new_total;
+            Ok(())
+        }
+    }
+
+    struct StackBuf<const N: usize> {
+        buf: [u8; N],
+        len: usize,
+    }
+
+    impl<const N: usize> StackBuf<N> {
+        fn new() -> Self {
+            Self { buf: [0u8; N], len: 0 }
+        }
+        fn as_bytes(&self) -> &[u8] {
+            &self.buf[..self.len]
+        }
+    }
+
+    impl<const N: usize> fmt::Write for StackBuf<N> {
+        fn write_str(&mut self, s: &str) -> fmt::Result {
+            let b = s.as_bytes();
+            if self.len + b.len() > N {
+                return Err(fmt::Error);
+            }
+            self.buf[self.len..self.len + b.len()].copy_from_slice(b);
+            self.len += b.len();
+            Ok(())
+        }
+    }
+
+    fn normalize_f64(v: f64) -> f64 {
+        if v.is_finite() { v } else { 0.0 }
+    }
+
+    fn write_i64(w: &mut CbWriter, v: i64) -> Result<(), StreamErr> {
+        let mut buf = itoa::Buffer::new();
+        w.write_all(buf.format(v).as_bytes())
+    }
+
+    fn write_u64(w: &mut CbWriter, v: u64) -> Result<(), StreamErr> {
+        let mut buf = itoa::Buffer::new();
+        w.write_all(buf.format(v).as_bytes())
+    }
+
+    fn write_i32(w: &mut CbWriter, v: i32) -> Result<(), StreamErr> {
+        let mut buf = itoa::Buffer::new();
+        w.write_all(buf.format(v).as_bytes())
+    }
+
+    fn write_bool(w: &mut CbWriter, v: bool) -> Result<(), StreamErr> {
+        w.write_all(if v { b"true" } else { b"false" })
+    }
+
+    fn write_f64_6(w: &mut CbWriter, v: f64) -> Result<(), StreamErr> {
+        let v = normalize_f64(v);
+        let mut buf: StackBuf<64> = StackBuf::new();
+        let _ = fmt::write(&mut buf, format_args!("{:.6}", v)).map_err(|_| ErrCode::Overflow)?;
+        w.write_all(buf.as_bytes())
+    }
+
+    fn json_escape_into(w: &mut CbWriter, bytes: &[u8]) -> Result<(), StreamErr> {
+        let s = String::from_utf8_lossy(bytes);
+        for ch in s.chars() {
+            match ch {
+                '"' => w.write_all(b"\\\"")?,
+                '\\' => w.write_all(b"\\\\")?,
+                '\u{08}' => w.write_all(b"\\b")?,
+                '\u{0C}' => w.write_all(b"\\f")?,
+                '\n' => w.write_all(b"\\n")?,
+                '\r' => w.write_all(b"\\r")?,
+                '\t' => w.write_all(b"\\t")?,
+                c if (c as u32) < 0x20 => {
+                    let mut buf: StackBuf<8> = StackBuf::new();
+                    let _ = fmt::write(&mut buf, format_args!("\\u{:04x}", c as u32))
+                        .map_err(|_| ErrCode::Overflow)?;
+                    w.write_all(buf.as_bytes())?;
+                }
+                c => {
+                    let mut tmp = [0u8; 4];
+                    w.write_all(c.encode_utf8(&mut tmp).as_bytes())?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    unsafe fn view_vt<'a>(view: VitteBenchReportView) -> Result<&'a VitteBenchReportVTable, StreamErr> {
+        if view.vt.is_null() {
+            return Err(ErrCode::NullPointer.into());
+        }
+        Ok(&*view.vt)
+    }
+
+    unsafe fn call_str(
+        get: Option<extern "C" fn(*mut c_void, *mut VitteStr) -> i32>,
+        ctx: *mut c_void,
+    ) -> Result<VitteStr, StreamErr> {
+        let Some(f) = get else { return Err(ErrCode::NotImplemented.into()); };
+        let mut out = VitteStr { ptr: core::ptr::null(), len: 0 };
+        let rc = f(ctx, &mut out as *mut VitteStr);
+        if rc != 0 {
+            return Err(StreamErr::Code(rc));
+        }
+        if out.ptr.is_null() && out.len != 0 {
+            return Err(ErrCode::NullPointer.into());
+        }
+        Ok(out)
+    }
+
+    unsafe fn call_i32(
+        get: Option<extern "C" fn(*mut c_void, *mut i32) -> i32>,
+        ctx: *mut c_void,
+    ) -> Result<i32, StreamErr> {
+        let Some(f) = get else { return Err(ErrCode::NotImplemented.into()); };
+        let mut out: i32 = 0;
+        let rc = f(ctx, &mut out as *mut i32);
+        if rc != 0 { return Err(StreamErr::Code(rc)); }
+        Ok(out)
+    }
+
+    unsafe fn call_i64(
+        get: Option<extern "C" fn(*mut c_void, *mut i64) -> i32>,
+        ctx: *mut c_void,
+    ) -> Result<i64, StreamErr> {
+        let Some(f) = get else { return Err(ErrCode::NotImplemented.into()); };
+        let mut out: i64 = 0;
+        let rc = f(ctx, &mut out as *mut i64);
+        if rc != 0 { return Err(StreamErr::Code(rc)); }
+        Ok(out)
+    }
+
+    unsafe fn call_u64(
+        get: Option<extern "C" fn(*mut c_void, *mut u64) -> i32>,
+        ctx: *mut c_void,
+    ) -> Result<u64, StreamErr> {
+        let Some(f) = get else { return Err(ErrCode::NotImplemented.into()); };
+        let mut out: u64 = 0;
+        let rc = f(ctx, &mut out as *mut u64);
+        if rc != 0 { return Err(StreamErr::Code(rc)); }
+        Ok(out)
+    }
+
+    unsafe fn call_str_idx(
+        get: Option<extern "C" fn(*mut c_void, i32, *mut VitteStr) -> i32>,
+        ctx: *mut c_void,
+        idx: i32,
+    ) -> Result<VitteStr, StreamErr> {
+        let Some(f) = get else { return Err(ErrCode::NotImplemented.into()); };
+        let mut out = VitteStr { ptr: core::ptr::null(), len: 0 };
+        let rc = f(ctx, idx, &mut out as *mut VitteStr);
+        if rc != 0 { return Err(StreamErr::Code(rc)); }
+        if out.ptr.is_null() && out.len != 0 {
+            return Err(ErrCode::NullPointer.into());
+        }
+        Ok(out)
+    }
+
+    unsafe fn call_i32_idx(
+        get: Option<extern "C" fn(*mut c_void, i32, *mut i32) -> i32>,
+        ctx: *mut c_void,
+        idx: i32,
+    ) -> Result<i32, StreamErr> {
+        let Some(f) = get else { return Err(ErrCode::NotImplemented.into()); };
+        let mut out: i32 = 0;
+        let rc = f(ctx, idx, &mut out as *mut i32);
+        if rc != 0 { return Err(StreamErr::Code(rc)); }
+        Ok(out)
+    }
+
+    unsafe fn call_i64_idx(
+        get: Option<extern "C" fn(*mut c_void, i32, *mut i64) -> i32>,
+        ctx: *mut c_void,
+        idx: i32,
+    ) -> Result<i64, StreamErr> {
+        let Some(f) = get else { return Err(ErrCode::NotImplemented.into()); };
+        let mut out: i64 = 0;
+        let rc = f(ctx, idx, &mut out as *mut i64);
+        if rc != 0 { return Err(StreamErr::Code(rc)); }
+        Ok(out)
+    }
+
+    unsafe fn call_f64_idx(
+        get: Option<extern "C" fn(*mut c_void, i32, *mut f64) -> i32>,
+        ctx: *mut c_void,
+        idx: i32,
+    ) -> Result<f64, StreamErr> {
+        let Some(f) = get else { return Err(ErrCode::NotImplemented.into()); };
+        let mut out: f64 = 0.0;
+        let rc = f(ctx, idx, &mut out as *mut f64);
+        if rc != 0 { return Err(StreamErr::Code(rc)); }
+        Ok(out)
+    }
+
+    unsafe fn call_samples(
+        get: Option<extern "C" fn(*mut c_void, i32, *mut *const f64, *mut i32) -> i32>,
+        ctx: *mut c_void,
+        idx: i32,
+    ) -> Result<(*const f64, i32), StreamErr> {
+        let Some(f) = get else { return Err(ErrCode::NotImplemented.into()); };
+        let mut out_ptr: *const f64 = core::ptr::null();
+        let mut out_count: i32 = 0;
+        let rc = f(ctx, idx, &mut out_ptr as *mut *const f64, &mut out_count as *mut i32);
+        if rc != 0 { return Err(StreamErr::Code(rc)); }
+        Ok((out_ptr, out_count))
+    }
+
+    fn status_str(status: i32) -> &'static [u8] {
+        match status {
+            0 => b"ok",
+            1 => b"failed",
+            2 => b"skipped",
+            _ => b"unknown",
+        }
+    }
+
+    pub unsafe fn write_json(view: VitteBenchReportView, writer: VitteWriter) -> Result<usize, StreamErr> {
+        let vt = view_vt(view)?;
+        let mut w = CbWriter::new(writer)?;
+
+        let schema = call_str(vt.get_schema, view.ctx)?;
+        let suite = call_str(vt.get_suite, view.ctx)?;
+        let timestamp_ms = call_i64(vt.get_timestamp_ms, view.ctx)?;
+        let seed = call_u64(vt.get_seed, view.ctx)?;
+        let threads = call_i32(vt.get_threads, view.ctx)?;
+        let repeat = call_i32(vt.get_repeat, view.ctx)?;
+        let warmup = call_i32(vt.get_warmup, view.ctx)?;
+        let iters = call_i64(vt.get_iters, view.ctx)?;
+        let calibrate_ms = call_i64(vt.get_calibrate_ms, view.ctx)?;
+        let cpu_index = call_i32(vt.get_cpu_index, view.ctx)?;
+        let cpu_pinned = call_i32(vt.get_cpu_pinned, view.ctx)?;
+        let include_samples = call_i32(vt.get_include_samples, view.ctx)? != 0;
+        let results_count = call_i32(vt.get_results_count, view.ctx)?;
+
+        if results_count < 0 {
+            return Err(ErrCode::OutOfRange.into());
+        }
+        let results_count_usize = results_count as usize;
+        if results_count_usize > MAX_RESULTS {
+            return Err(ErrCode::OutOfRange.into());
+        }
+
+        let schema_bytes = unsafe { slice_from_raw::< 'static >(VitteSliceU8 { ptr: schema.ptr, len: schema.len })? };
+        let schema_bytes = if schema_bytes.is_empty() { b"vitte.bench.v1".as_slice() } else { schema_bytes };
+        let suite_bytes = unsafe { slice_from_raw::< 'static >(VitteSliceU8 { ptr: suite.ptr, len: suite.len })? };
+        let suite_bytes = if suite_bytes.is_empty() { b"bench".as_slice() } else { suite_bytes };
+
+        w.write_all(b"{\n  \"schema\": \"")?;
+        json_escape_into(&mut w, schema_bytes)?;
+        w.write_all(b"\",\n  \"suite\": \"")?;
+        json_escape_into(&mut w, suite_bytes)?;
+        w.write_all(b"\",\n  \"timestamp_ms\": ")?;
+        write_i64(&mut w, timestamp_ms)?;
+        w.write_all(b",\n  \"seed\": ")?;
+        write_u64(&mut w, seed)?;
+        w.write_all(b",\n  \"threads\": ")?;
+        write_i32(&mut w, threads)?;
+        w.write_all(b",\n  \"repeat\": ")?;
+        write_i32(&mut w, repeat)?;
+        w.write_all(b",\n  \"warmup\": ")?;
+        write_i32(&mut w, warmup)?;
+        w.write_all(b",\n  \"iters\": ")?;
+        write_i64(&mut w, iters)?;
+        w.write_all(b",\n  \"calibrate_ms\": ")?;
+        write_i64(&mut w, calibrate_ms)?;
+        w.write_all(b",\n  \"cpu\": {\"requested\": ")?;
+        write_i32(&mut w, cpu_index)?;
+        w.write_all(b", \"pinned\": ")?;
+        write_i32(&mut w, cpu_pinned)?;
+        w.write_all(b"},\n  \"results\": [\n")?;
+
+        for i in 0..results_count {
+            let name = call_str_idx(vt.get_result_name, view.ctx, i)?;
+            let status = call_i32_idx(vt.get_result_status, view.ctx, i)?;
+            let error = call_str_idx(vt.get_result_error, view.ctx, i)?;
+
+            let name_bytes = unsafe { slice_from_raw::< 'static >(VitteSliceU8 { ptr: name.ptr, len: name.len })? };
+            let error_bytes = unsafe { slice_from_raw::< 'static >(VitteSliceU8 { ptr: error.ptr, len: error.len })? };
+
+            w.write_all(b"    {\n      \"name\": \"")?;
+            json_escape_into(&mut w, name_bytes)?;
+            w.write_all(b"\",\n      \"status\": \"")?;
+            w.write_all(status_str(status))?;
+            w.write_all(b"\",\n      \"iterations\": ")?;
+            write_i64(&mut w, call_i64_idx(vt.get_metric_iterations, view.ctx, i)?)?;
+            w.write_all(b",\n      \"elapsed_ms\": ")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_elapsed_ms, view.ctx, i)?)?;
+            w.write_all(b",\n      \"ns_per_op\": ")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_ns_per_op, view.ctx, i)?)?;
+            w.write_all(b",\n      \"bytes_per_sec\": ")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_bytes_per_sec, view.ctx, i)?)?;
+            w.write_all(b",\n      \"items_per_sec\": ")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_items_per_sec, view.ctx, i)?)?;
+            w.write_all(b",\n      \"ns_per_op_stats\": {\n        \"median\": ")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_ns_per_op_median, view.ctx, i)?)?;
+            w.write_all(b",\n        \"p95\": ")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_ns_per_op_p95, view.ctx, i)?)?;
+            w.write_all(b",\n        \"mad\": ")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_ns_per_op_mad, view.ctx, i)?)?;
+            w.write_all(b",\n        \"iqr\": ")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_ns_per_op_iqr, view.ctx, i)?)?;
+            w.write_all(b",\n        \"ci95_low\": ")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_ns_per_op_ci95_low, view.ctx, i)?)?;
+            w.write_all(b",\n        \"ci95_high\": ")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_ns_per_op_ci95_high, view.ctx, i)?)?;
+            w.write_all(b"\n      },\n      \"runner\": {\"iters_per_call\": ")?;
+            write_i64(&mut w, call_i64_idx(vt.get_metric_iters_per_call, view.ctx, i)?)?;
+            w.write_all(b", \"calls_per_sample\": ")?;
+            write_i64(&mut w, call_i64_idx(vt.get_metric_calls_per_sample, view.ctx, i)?)?;
+            w.write_all(b", \"target_time_ms\": ")?;
+            write_i64(&mut w, call_i64_idx(vt.get_metric_target_time_ms, view.ctx, i)?)?;
+            w.write_all(b"},\n      \"cpu_telemetry\": {\"cycles_per_sec_min\": ")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_cycles_per_sec_min, view.ctx, i)?)?;
+            w.write_all(b", \"cycles_per_sec_max\": ")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_cycles_per_sec_max, view.ctx, i)?)?;
+            w.write_all(b", \"throttling_suspected\": ")?;
+            write_bool(
+                &mut w,
+                call_i32_idx(vt.get_metric_throttling_suspected, view.ctx, i)? != 0,
+            )?;
+            w.write_all(b"},\n")?;
+
+            if include_samples {
+                w.write_all(b"      \"samples_ns_per_op\": [")?;
+                let (sptr, scount) = call_samples(vt.get_samples, view.ctx, i)?;
+                if scount < 0 {
+                    return Err(ErrCode::OutOfRange.into());
+                }
+                if sptr.is_null() && scount != 0 {
+                    return Err(ErrCode::NullPointer.into());
+                }
+                let scount_usize = scount as usize;
+                if scount_usize > MAX_SAMPLES_PER_RESULT {
+                    return Err(ErrCode::OutOfRange.into());
+                }
+                let samples = core::slice::from_raw_parts(sptr, scount_usize);
+                for (k, s) in samples.iter().enumerate() {
+                    if k != 0 {
+                        w.write_all(b", ")?;
+                    }
+                    write_f64_6(&mut w, *s)?;
+                }
+                w.write_all(b"],\n")?;
+            }
+
+            w.write_all(b"      \"error\": ")?;
+            if !error_bytes.is_empty() {
+                w.write_all(b"\"")?;
+                json_escape_into(&mut w, error_bytes)?;
+                w.write_all(b"\"\n")?;
+            } else {
+                w.write_all(b"null\n")?;
+            }
+
+            w.write_all(b"    }")?;
+            if (i as usize) + 1 < results_count_usize {
+                w.write_all(b",")?;
+            }
+            w.write_all(b"\n")?;
+        }
+
+        w.write_all(b"  ]\n}\n")?;
+        Ok(w.written)
+    }
+
+    fn csv_write_cell(w: &mut CbWriter, bytes: &[u8]) -> Result<(), StreamErr> {
+        let s = String::from_utf8_lossy(bytes);
+        let mut need_quote = false;
+        for ch in s.chars() {
+            if ch == ',' || ch == '"' || ch == '\n' || ch == '\r' {
+                need_quote = true;
+                break;
+            }
+        }
+
+        if !need_quote {
+            return w.write_all(s.as_bytes());
+        }
+
+        w.write_all(b"\"")?;
+        for b in s.as_bytes() {
+            if *b == b'"' {
+                w.write_all(b"\"")?;
+            }
+            w.write_all(core::slice::from_ref(b))?;
+        }
+        w.write_all(b"\"")?;
+        Ok(())
+    }
+
+    pub unsafe fn write_csv(view: VitteBenchReportView, writer: VitteWriter) -> Result<usize, StreamErr> {
+        let vt = view_vt(view)?;
+        let mut w = CbWriter::new(writer)?;
+
+        let schema = call_str(vt.get_schema, view.ctx)?;
+        let schema_bytes = unsafe { slice_from_raw::< 'static >(VitteSliceU8 { ptr: schema.ptr, len: schema.len })? };
+        let schema_bytes = if schema_bytes.is_empty() { b"vitte.bench.v1".as_slice() } else { schema_bytes };
+
+        let results_count = call_i32(vt.get_results_count, view.ctx)?;
+        if results_count < 0 {
+            return Err(ErrCode::OutOfRange.into());
+        }
+        let results_count_usize = results_count as usize;
+        if results_count_usize > MAX_RESULTS {
+            return Err(ErrCode::OutOfRange.into());
+        }
+
+        w.write_all(b"schema,name,status,iterations,elapsed_ms,ns_per_op,ns_per_op_median,ns_per_op_p95,ns_per_op_mad,ns_per_op_iqr,ns_per_op_ci95_low,ns_per_op_ci95_high,bytes_per_sec,items_per_sec,iters_per_call,calls_per_sample,target_time_ms,cycles_per_sec_min,cycles_per_sec_max,throttling_suspected,error\n")?;
+
+        for i in 0..results_count {
+            let name = call_str_idx(vt.get_result_name, view.ctx, i)?;
+            let status = call_i32_idx(vt.get_result_status, view.ctx, i)?;
+            let error = call_str_idx(vt.get_result_error, view.ctx, i)?;
+
+            let name_bytes = unsafe { slice_from_raw::< 'static >(VitteSliceU8 { ptr: name.ptr, len: name.len })? };
+            let error_bytes = unsafe { slice_from_raw::< 'static >(VitteSliceU8 { ptr: error.ptr, len: error.len })? };
+
+            csv_write_cell(&mut w, schema_bytes)?;
+            w.write_all(b",")?;
+            csv_write_cell(&mut w, name_bytes)?;
+            w.write_all(b",")?;
+            csv_write_cell(&mut w, status_str(status))?;
+            w.write_all(b",")?;
+
+            write_i64(&mut w, call_i64_idx(vt.get_metric_iterations, view.ctx, i)?)?;
+            w.write_all(b",")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_elapsed_ms, view.ctx, i)?)?;
+            w.write_all(b",")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_ns_per_op, view.ctx, i)?)?;
+            w.write_all(b",")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_ns_per_op_median, view.ctx, i)?)?;
+            w.write_all(b",")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_ns_per_op_p95, view.ctx, i)?)?;
+            w.write_all(b",")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_ns_per_op_mad, view.ctx, i)?)?;
+            w.write_all(b",")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_ns_per_op_iqr, view.ctx, i)?)?;
+            w.write_all(b",")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_ns_per_op_ci95_low, view.ctx, i)?)?;
+            w.write_all(b",")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_ns_per_op_ci95_high, view.ctx, i)?)?;
+            w.write_all(b",")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_bytes_per_sec, view.ctx, i)?)?;
+            w.write_all(b",")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_items_per_sec, view.ctx, i)?)?;
+            w.write_all(b",")?;
+            write_i64(&mut w, call_i64_idx(vt.get_metric_iters_per_call, view.ctx, i)?)?;
+            w.write_all(b",")?;
+            write_i64(&mut w, call_i64_idx(vt.get_metric_calls_per_sample, view.ctx, i)?)?;
+            w.write_all(b",")?;
+            write_i64(&mut w, call_i64_idx(vt.get_metric_target_time_ms, view.ctx, i)?)?;
+            w.write_all(b",")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_cycles_per_sec_min, view.ctx, i)?)?;
+            w.write_all(b",")?;
+            write_f64_6(&mut w, call_f64_idx(vt.get_metric_cycles_per_sec_max, view.ctx, i)?)?;
+            w.write_all(b",")?;
+            write_bool(&mut w, call_i32_idx(vt.get_metric_throttling_suspected, view.ctx, i)? != 0)?;
+            w.write_all(b",")?;
+            csv_write_cell(&mut w, error_bytes)?;
+            w.write_all(b"\n")?;
+        }
+
+        Ok(w.written)
+    }
+}
+
+#[cfg(feature = "alloc")]
+#[no_mangle]
+pub extern "C" fn vitte_bench_report_write_json(
+    view: bench_stream::VitteBenchReportView,
+    writer: bench_stream::VitteWriter,
+) -> VitteStatus {
+    clear_last_error();
+    unsafe {
+        match bench_stream::write_json(view, writer) {
+            Ok(n) => VitteStatus::ok_written(n),
+            Err(bench_stream::StreamErr::Code(code)) => VitteStatus { code, written: 0 },
+        }
+    }
+}
+
+#[cfg(not(feature = "alloc"))]
+#[no_mangle]
+pub extern "C" fn vitte_bench_report_write_json(_view: *const c_void, _writer: *const c_void) -> VitteStatus {
+    clear_last_error();
+    VitteStatus::err(ErrCode::Unsupported)
+}
+
+#[cfg(feature = "alloc")]
+#[no_mangle]
+pub extern "C" fn vitte_bench_report_write_csv(
+    view: bench_stream::VitteBenchReportView,
+    writer: bench_stream::VitteWriter,
+) -> VitteStatus {
+    clear_last_error();
+    unsafe {
+        match bench_stream::write_csv(view, writer) {
+            Ok(n) => VitteStatus::ok_written(n),
+            Err(bench_stream::StreamErr::Code(code)) => VitteStatus { code, written: 0 },
+        }
+    }
+}
+
+#[cfg(not(feature = "alloc"))]
+#[no_mangle]
+pub extern "C" fn vitte_bench_report_write_csv(_view: *const c_void, _writer: *const c_void) -> VitteStatus {
+    clear_last_error();
+    VitteStatus::err(ErrCode::Unsupported)
+}
+
+#[cfg(all(test, feature = "alloc"))]
+mod tests {
+    use super::*;
+
+    use alloc::boxed::Box;
+    use alloc::vec::Vec;
+
+    struct TestResult {
+        name: &'static [u8],
+        status: i32,
+        error: &'static [u8],
+        metric: TestMetric,
+        samples: &'static [f64],
+    }
+
+    #[derive(Copy, Clone)]
+    struct TestMetric {
+        ns_per_op: f64,
+        ns_per_op_median: f64,
+        ns_per_op_p95: f64,
+        ns_per_op_mad: f64,
+        ns_per_op_iqr: f64,
+        ns_per_op_ci95_low: f64,
+        ns_per_op_ci95_high: f64,
+        bytes_per_sec: f64,
+        items_per_sec: f64,
+        iterations: i64,
+        elapsed_ms: f64,
+        iters_per_call: i64,
+        calls_per_sample: i64,
+        target_time_ms: i64,
+        cycles_per_sec_min: f64,
+        cycles_per_sec_max: f64,
+        throttling_suspected: i32,
+    }
+
+    struct TestReport {
+        schema: &'static [u8],
+        suite: &'static [u8],
+        timestamp_ms: i64,
+        seed: u64,
+        threads: i32,
+        repeat: i32,
+        warmup: i32,
+        iters: i64,
+        calibrate_ms: i64,
+        cpu_index: i32,
+        cpu_pinned: i32,
+        include_samples: i32,
+        results: &'static [TestResult],
+    }
+
+    fn out_str(bytes: &'static [u8]) -> VitteStr {
+        VitteStr { ptr: bytes.as_ptr(), len: bytes.len() }
+    }
+
+    extern "C" fn w_get_schema(ctx: *mut c_void, out: *mut VitteStr) -> i32 {
+        unsafe {
+            if out.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            *out = out_str(rep.schema);
+            0
+        }
+    }
+    extern "C" fn w_get_suite(ctx: *mut c_void, out: *mut VitteStr) -> i32 {
+        unsafe {
+            if out.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            *out = out_str(rep.suite);
+            0
+        }
+    }
+    extern "C" fn w_get_timestamp_ms(ctx: *mut c_void, out: *mut i64) -> i32 {
+        unsafe {
+            if out.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            *out = rep.timestamp_ms;
+            0
+        }
+    }
+    extern "C" fn w_get_seed(ctx: *mut c_void, out: *mut u64) -> i32 {
+        unsafe {
+            if out.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            *out = rep.seed;
+            0
+        }
+    }
+    extern "C" fn w_get_threads(ctx: *mut c_void, out: *mut i32) -> i32 {
+        unsafe {
+            if out.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            *out = rep.threads;
+            0
+        }
+    }
+    extern "C" fn w_get_repeat(ctx: *mut c_void, out: *mut i32) -> i32 {
+        unsafe {
+            if out.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            *out = rep.repeat;
+            0
+        }
+    }
+    extern "C" fn w_get_warmup(ctx: *mut c_void, out: *mut i32) -> i32 {
+        unsafe {
+            if out.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            *out = rep.warmup;
+            0
+        }
+    }
+    extern "C" fn w_get_iters(ctx: *mut c_void, out: *mut i64) -> i32 {
+        unsafe {
+            if out.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            *out = rep.iters;
+            0
+        }
+    }
+    extern "C" fn w_get_calibrate_ms(ctx: *mut c_void, out: *mut i64) -> i32 {
+        unsafe {
+            if out.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            *out = rep.calibrate_ms;
+            0
+        }
+    }
+    extern "C" fn w_get_cpu_index(ctx: *mut c_void, out: *mut i32) -> i32 {
+        unsafe {
+            if out.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            *out = rep.cpu_index;
+            0
+        }
+    }
+    extern "C" fn w_get_cpu_pinned(ctx: *mut c_void, out: *mut i32) -> i32 {
+        unsafe {
+            if out.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            *out = rep.cpu_pinned;
+            0
+        }
+    }
+    extern "C" fn w_get_include_samples(ctx: *mut c_void, out: *mut i32) -> i32 {
+        unsafe {
+            if out.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            *out = rep.include_samples;
+            0
+        }
+    }
+
+    extern "C" fn w_get_results_count(ctx: *mut c_void, out: *mut i32) -> i32 {
+        unsafe {
+            if out.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            *out = rep.results.len() as i32;
+            0
+        }
+    }
+
+    unsafe fn get_result<'a>(rep: &'a TestReport, idx: i32) -> Result<&'a TestResult, i32> {
+        if idx < 0 {
+            return Err(ErrCode::OutOfRange as i32);
+        }
+        rep.results.get(idx as usize).ok_or(ErrCode::OutOfRange as i32)
+    }
+
+    extern "C" fn w_get_result_name(ctx: *mut c_void, idx: i32, out: *mut VitteStr) -> i32 {
+        unsafe {
+            if out.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            let r = match get_result(rep, idx) {
+                Ok(v) => v,
+                Err(c) => return c,
+            };
+            *out = out_str(r.name);
+            0
+        }
+    }
+    extern "C" fn w_get_result_status(ctx: *mut c_void, idx: i32, out: *mut i32) -> i32 {
+        unsafe {
+            if out.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            let r = match get_result(rep, idx) {
+                Ok(v) => v,
+                Err(c) => return c,
+            };
+            *out = r.status;
+            0
+        }
+    }
+    extern "C" fn w_get_result_error(ctx: *mut c_void, idx: i32, out: *mut VitteStr) -> i32 {
+        unsafe {
+            if out.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            let r = match get_result(rep, idx) {
+                Ok(v) => v,
+                Err(c) => return c,
+            };
+            *out = out_str(r.error);
+            0
+        }
+    }
+
+    macro_rules! metric_f64 {
+        ($name:ident, $field:ident) => {
+            extern "C" fn $name(ctx: *mut c_void, idx: i32, out: *mut f64) -> i32 {
+                unsafe {
+                    if out.is_null() {
+                        return ErrCode::NullPointer as i32;
+                    }
+                    let rep = &*(ctx as *const TestReport);
+                    let r = match get_result(rep, idx) {
+                        Ok(v) => v,
+                        Err(c) => return c,
+                    };
+                    *out = r.metric.$field;
+                    0
+                }
+            }
+        };
+    }
+    macro_rules! metric_i64 {
+        ($name:ident, $field:ident) => {
+            extern "C" fn $name(ctx: *mut c_void, idx: i32, out: *mut i64) -> i32 {
+                unsafe {
+                    if out.is_null() {
+                        return ErrCode::NullPointer as i32;
+                    }
+                    let rep = &*(ctx as *const TestReport);
+                    let r = match get_result(rep, idx) {
+                        Ok(v) => v,
+                        Err(c) => return c,
+                    };
+                    *out = r.metric.$field;
+                    0
+                }
+            }
+        };
+    }
+    macro_rules! metric_i32 {
+        ($name:ident, $field:ident) => {
+            extern "C" fn $name(ctx: *mut c_void, idx: i32, out: *mut i32) -> i32 {
+                unsafe {
+                    if out.is_null() {
+                        return ErrCode::NullPointer as i32;
+                    }
+                    let rep = &*(ctx as *const TestReport);
+                    let r = match get_result(rep, idx) {
+                        Ok(v) => v,
+                        Err(c) => return c,
+                    };
+                    *out = r.metric.$field;
+                    0
+                }
+            }
+        };
+    }
+
+    metric_f64!(m_ns_per_op, ns_per_op);
+    metric_f64!(m_ns_per_op_median, ns_per_op_median);
+    metric_f64!(m_ns_per_op_p95, ns_per_op_p95);
+    metric_f64!(m_ns_per_op_mad, ns_per_op_mad);
+    metric_f64!(m_ns_per_op_iqr, ns_per_op_iqr);
+    metric_f64!(m_ns_per_op_ci95_low, ns_per_op_ci95_low);
+    metric_f64!(m_ns_per_op_ci95_high, ns_per_op_ci95_high);
+    metric_f64!(m_bytes_per_sec, bytes_per_sec);
+    metric_f64!(m_items_per_sec, items_per_sec);
+    metric_i64!(m_iterations, iterations);
+    metric_f64!(m_elapsed_ms, elapsed_ms);
+    metric_i64!(m_iters_per_call, iters_per_call);
+    metric_i64!(m_calls_per_sample, calls_per_sample);
+    metric_i64!(m_target_time_ms, target_time_ms);
+    metric_f64!(m_cycles_per_sec_min, cycles_per_sec_min);
+    metric_f64!(m_cycles_per_sec_max, cycles_per_sec_max);
+    metric_i32!(m_throttling_suspected, throttling_suspected);
+
+    extern "C" fn w_get_samples(ctx: *mut c_void, idx: i32, out_ptr: *mut *const f64, out_count: *mut i32) -> i32 {
+        unsafe {
+            if out_ptr.is_null() || out_count.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            let rep = &*(ctx as *const TestReport);
+            let r = match get_result(rep, idx) {
+                Ok(v) => v,
+                Err(c) => return c,
+            };
+            *out_ptr = r.samples.as_ptr();
+            *out_count = r.samples.len() as i32;
+            0
+        }
+    }
+
+    extern "C" fn w_write_vec(ctx: *mut c_void, bytes: *const u8, len: usize) -> i32 {
+        unsafe {
+            if ctx.is_null() {
+                return ErrCode::NullPointer as i32;
+            }
+            if bytes.is_null() && len != 0 {
+                return ErrCode::NullPointer as i32;
+            }
+            let v = &mut *(ctx as *mut Vec<u8>);
+            if len != 0 {
+                v.extend_from_slice(core::slice::from_raw_parts(bytes, len));
+            }
+            0
+        }
+    }
+
+    #[test]
+    fn bench_report_json_snapshot() {
+        static SAMPLES: [f64; 3] = [1.0, f64::NAN, 2.5];
+        static RESULTS: [TestResult; 1] = [TestResult {
+            name: b"demo/escape \" \\\\ \n",
+            status: 0,
+            error: b"",
+            metric: TestMetric {
+                ns_per_op: 1.23456789,
+                ns_per_op_median: 1.0,
+                ns_per_op_p95: 2.0,
+                ns_per_op_mad: 0.5,
+                ns_per_op_iqr: 0.25,
+                ns_per_op_ci95_low: 0.9,
+                ns_per_op_ci95_high: 1.1,
+                bytes_per_sec: f64::INFINITY,
+                items_per_sec: 42.0,
+                iterations: 1000,
+                elapsed_ms: 12.345678,
+                iters_per_call: 4,
+                calls_per_sample: 5,
+                target_time_ms: 6,
+                cycles_per_sec_min: f64::INFINITY,
+                cycles_per_sec_max: 3_000_000_000.0,
+                throttling_suspected: 0,
+            },
+            samples: &SAMPLES,
+        }];
+
+        let rep = TestReport {
+            schema: b"",
+            suite: b"",
+            timestamp_ms: 1_700_000_000_000,
+            seed: 123,
+            threads: 1,
+            repeat: 3,
+            warmup: 1,
+            iters: 7,
+            calibrate_ms: 50,
+            cpu_index: 2,
+            cpu_pinned: 1,
+            include_samples: 1,
+            results: &RESULTS,
+        };
+
+        let vt = bench_stream::VitteBenchReportVTable {
+            get_schema: Some(w_get_schema),
+            get_suite: Some(w_get_suite),
+            get_timestamp_ms: Some(w_get_timestamp_ms),
+            get_seed: Some(w_get_seed),
+            get_threads: Some(w_get_threads),
+            get_repeat: Some(w_get_repeat),
+            get_warmup: Some(w_get_warmup),
+            get_iters: Some(w_get_iters),
+            get_calibrate_ms: Some(w_get_calibrate_ms),
+            get_cpu_index: Some(w_get_cpu_index),
+            get_cpu_pinned: Some(w_get_cpu_pinned),
+            get_include_samples: Some(w_get_include_samples),
+
+            get_results_count: Some(w_get_results_count),
+            get_result_name: Some(w_get_result_name),
+            get_result_status: Some(w_get_result_status),
+            get_result_error: Some(w_get_result_error),
+
+            get_metric_ns_per_op: Some(m_ns_per_op),
+            get_metric_ns_per_op_median: Some(m_ns_per_op_median),
+            get_metric_ns_per_op_p95: Some(m_ns_per_op_p95),
+            get_metric_ns_per_op_mad: Some(m_ns_per_op_mad),
+            get_metric_ns_per_op_iqr: Some(m_ns_per_op_iqr),
+            get_metric_ns_per_op_ci95_low: Some(m_ns_per_op_ci95_low),
+            get_metric_ns_per_op_ci95_high: Some(m_ns_per_op_ci95_high),
+            get_metric_bytes_per_sec: Some(m_bytes_per_sec),
+            get_metric_items_per_sec: Some(m_items_per_sec),
+            get_metric_iterations: Some(m_iterations),
+            get_metric_elapsed_ms: Some(m_elapsed_ms),
+            get_metric_iters_per_call: Some(m_iters_per_call),
+            get_metric_calls_per_sample: Some(m_calls_per_sample),
+            get_metric_target_time_ms: Some(m_target_time_ms),
+            get_metric_cycles_per_sec_min: Some(m_cycles_per_sec_min),
+            get_metric_cycles_per_sec_max: Some(m_cycles_per_sec_max),
+            get_metric_throttling_suspected: Some(m_throttling_suspected),
+
+            get_samples: Some(w_get_samples),
+        };
+
+        let mut buf: Box<Vec<u8>> = Box::new(Vec::new());
+        let writer = bench_stream::VitteWriter { ctx: buf.as_mut() as *mut Vec<u8> as *mut c_void, write: Some(w_write_vec), max_bytes: 0 };
+        let view = bench_stream::VitteBenchReportView { ctx: &rep as *const TestReport as *mut c_void, vt: &vt };
+        let n = unsafe { bench_stream::write_json(view, writer).expect("write_json ok") };
+        assert_eq!(n, buf.len());
+
+        let got = core::str::from_utf8(&buf).unwrap();
+        let expected = include_str!("snapshots/bench_report.json.snap");
+        assert_eq!(got, expected);
     }
 }

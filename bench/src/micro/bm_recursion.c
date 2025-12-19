@@ -31,34 +31,40 @@ static uint32_t ackermann(uint32_t m, uint32_t n) {
   return ackermann(m - 1, ackermann(m, n - 1));
 }
 
-static void bm_recursion_fib(void* ctx) {
+static int bm_recursion_fib(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint64_t result = 0;
   for (int iter = 0; iter < 100; iter++) {
     result += fib(20);  /* ~10k calls per iter */
   }
   (void)result;
+  return 0;
 }
 
-static void bm_recursion_factorial(void* ctx) {
+static int bm_recursion_factorial(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint64_t result = 0;
   for (int iter = 0; iter < 10000; iter++) {
     result += factorial(15);
   }
   (void)result;
+  return 0;
 }
 
-static void bm_recursion_ackermann(void* ctx) {
+static int bm_recursion_ackermann(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t result = 0;
   for (int iter = 0; iter < 1000; iter++) {
     result += ackermann(3, 3);  /* ~61k calls */
   }
   (void)result;
+  return 0;
 }
 
 void bench_register_micro_recursion(void) {

@@ -41,8 +41,9 @@ static void init_benchmark_arrays(void) {
   initialized = 1;
 }
 
-static void bm_array_sequential(void* ctx) {
+static int bm_array_sequential(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_benchmark_arrays();
   
   uint32_t sum = 0;
@@ -53,10 +54,12 @@ static void bm_array_sequential(void* ctx) {
   }
   /* Use sum to prevent optimization */
   (void)sum;
+  return 0;
 }
 
-static void bm_array_stride4(void* ctx) {
+static int bm_array_stride4(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_benchmark_arrays();
   
   uint32_t sum = 0;
@@ -66,10 +69,12 @@ static void bm_array_stride4(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_array_stride16(void* ctx) {
+static int bm_array_stride16(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_benchmark_arrays();
   
   uint32_t sum = 0;
@@ -79,10 +84,12 @@ static void bm_array_stride16(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_array_random(void* ctx) {
+static int bm_array_random(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_benchmark_arrays();
   
   uint32_t sum = 0;
@@ -92,6 +99,7 @@ static void bm_array_random(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
 void bench_register_micro_array(void) {

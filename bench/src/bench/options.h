@@ -22,22 +22,33 @@ typedef struct bench_options
 {
     const char* program;
 
+    // Output format (controls human table vs machine output to stdout).
+    // "auto" means:
+    //   - print human table if no machine-readable output requested
+    //   - suppress human table if --json/--csv is used
+    const char* format; // "auto" (default), "human", "json", "csv"
+
     // Selection
     const char* filter;     // substring or glob-like (runner-defined matching)
     const char* bench_name; // run a single named bench (optional)
     bool list;              // list available benches
 
     // Execution
+    int64_t iters;          // iterations per call passed to benchmark fn (0 = auto/best-effort)
     int32_t repeat;         // run each benchmark N times
     int32_t warmup;         // warmup iterations per benchmark
     int32_t threads;        // concurrency hint; 1 = single-thread
-    int64_t min_time_ms;    // minimum time per benchmark; 0 = disabled
+    int64_t calibrate_ms;   // calibration target per measured sample; 0 = disabled
+    int64_t time_budget_ms; // global wall-clock budget for the whole run; 0 = disabled
     uint64_t seed;          // RNG seed (supports 0x..)
     bool fail_fast;         // stop on first failure
+    int32_t cpu;            // pin to CPU index; -1 disables
 
     // Output
     const char* out_json;   // path to json results
     const char* out_csv;    // path to csv results
+    const char* output_version; // schema id, ex: "vitte.bench.v1"
+    bool include_samples;       // include per-repeat samples in JSON (default: false)
 
     // Logging/UI
     bool quiet;

@@ -29,8 +29,9 @@ static void init_bench_data(void) {
 }
 
 /* Naive loop: no unrolling */
-static void bm_loop_naive(void* ctx) {
+static int bm_loop_naive(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_bench_data();
   
   int sum = 0;
@@ -40,11 +41,13 @@ static void bm_loop_naive(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
 /* Manual 2x unroll */
-static void bm_loop_unroll2(void* ctx) {
+static int bm_loop_unroll2(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_bench_data();
   
   int sum = 0;
@@ -55,11 +58,13 @@ static void bm_loop_unroll2(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
 /* Manual 4x unroll */
-static void bm_loop_unroll4(void* ctx) {
+static int bm_loop_unroll4(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_bench_data();
   
   int sum = 0;
@@ -72,11 +77,13 @@ static void bm_loop_unroll4(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
 /* Manual 8x unroll */
-static void bm_loop_unroll8(void* ctx) {
+static int bm_loop_unroll8(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   init_bench_data();
   
   int sum = 0;
@@ -93,6 +100,7 @@ static void bm_loop_unroll8(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
 void bench_register_micro_loop(void) {

@@ -1,15 +1,97 @@
 #include "vittec/vittec.h"
 #include "vittec/version.h"
+#include "vittec/muf.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static void usage(void) {
   printf("vittec %s\\n", vittec_version_string());
-  printf("usage: vittec [--tokens|--emit-c] <input.vitte> [-o out]\\n");
+  printf("usage:\\n");
+  printf("  vittec [--tokens|--emit-c] <input.vitte> [-o out]\\n");
+  printf("  vittec muf fmt <file.muf>\\n");
+  printf("\\n");
+}
+
+static int cmd_muf_fmt(const char* path) {
+  FILE* f = fopen(path, "rb");
+  if (!f) {
+    fprintf(stderr, "error: cannot open: %s\\n", path);
+    return 2;
+  }
+
+  if (fseek(f, 0, SEEK_END) != 0) {
+    fprintf(stderr, "error: cannot seek: %s\\n", path);
+    fclose(f);
+    return 2;
+  }
+
+  long n = ftell(f);
+  if (n < 0) {
+    fprintf(stderr, "error: cannot tell: %s\\n", path);
+    fclose(f);
+    return 2;
+  }
+  if (fseek(f, 0, SEEK_SET) != 0) {
+    fprintf(stderr, "error: cannot seek: %s\\n", path);
+    fclose(f);
+    return 2;
+  }
+
+  size_t len = (size_t)n;
+  char* buf = (char*)malloc(len + 1);
+  if (!buf) {
+    fprintf(stderr, "error: out of memory\\n");
+    fclose(f);
+    return 2;
+  }
+
+  size_t rd = fread(buf, 1, len, f);
+  fclose(f);
+  if (rd != len) {
+    fprintf(stderr, "error: short read: %s\\n", path);
+    free(buf);
+    return 2;
+  }
+  buf[len] = '\0';
+
+  size_t out_len = 0;
+  size_t out_cap = (len * 2u) + 4096u;
+  char* out = (char*)malloc(out_cap);
+  if (!out) {
+    fprintf(stderr, "error: out of memory\\n");
+    free(buf);
+    return 2;
+  }
+
+  int rc = vittec_muf_normalize(buf, len, out, out_cap, &out_len);
+  if (rc != 0) {
+    fprintf(stderr, "error: muf normalize failed (code=%d)\\n", rc);
+    free(out);
+    free(buf);
+    return 1;
+  }
+
+  fwrite(out, 1, out_len, stdout);
+  free(out);
+  free(buf);
+  return 0;
 }
 
 int main(int argc, char** argv) {
   if (argc < 2) { usage(); return 2; }
+
+  if (!strcmp(argv[1], "muf")) {
+    if (argc >= 3 && (!strcmp(argv[2], "-h") || !strcmp(argv[2], "--help"))) {
+      usage();
+      return 0;
+    }
+    if (argc == 4 && !strcmp(argv[2], "fmt")) {
+      return cmd_muf_fmt(argv[3]);
+    }
+    fprintf(stderr, "error: usage: vittec muf fmt <file.muf>\\n");
+    return 2;
+  }
 
   vittec_compile_options_t opt;
   memset(&opt, 0, sizeof(opt));

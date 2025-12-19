@@ -86,8 +86,9 @@ static size_t pattern_compress(const char* src, unsigned char* dst, size_t dst_c
   return out_pos;
 }
 
-static void bm_compression_rle(void* ctx) {
+static int bm_compression_rle(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   const char* text =
     "aaaaaabbbbccccddddeeeeffffgggghhhhiiiijjjj"
@@ -100,10 +101,12 @@ static void bm_compression_rle(void* ctx) {
   for (int iter = 0; iter < 100; iter++) {
     rle_compress(text, out, sizeof(out));
   }
+  return 0;
 }
 
-static void bm_compression_pattern(void* ctx) {
+static int bm_compression_pattern(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   const char* text = "the quick brown fox jumps over the lazy dog. "
                      "the quick brown fox jumps over the lazy dog. "
@@ -115,10 +118,12 @@ static void bm_compression_pattern(void* ctx) {
   for (int iter = 0; iter < 50; iter++) {
     pattern_compress(text, out, sizeof(out));
   }
+  return 0;
 }
 
-static void bm_compression_repeated(void* ctx) {
+static int bm_compression_repeated(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   unsigned char out[8192];
   
@@ -130,6 +135,7 @@ static void bm_compression_repeated(void* ctx) {
     rle_compress(text, out, sizeof(out));
     pattern_compress(text, out, sizeof(out));
   }
+  return 0;
 }
 
 void bench_register_macro_compression(void) {

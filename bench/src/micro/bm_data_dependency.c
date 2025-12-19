@@ -15,8 +15,9 @@
   - Mixed patterns.
 */
 
-static void bm_dep_chain_int(void* ctx) {
+static int bm_dep_chain_int(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t x = 0x12345678;
   for (int iter = 0; iter < 100000; iter++) {
@@ -25,10 +26,12 @@ static void bm_dep_chain_int(void* ctx) {
     }
   }
   (void)x;
+  return 0;
 }
 
-static void bm_dep_chain_add(void* ctx) {
+static int bm_dep_chain_add(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t x = 1;
   for (int iter = 0; iter < 100000; iter++) {
@@ -37,10 +40,12 @@ static void bm_dep_chain_add(void* ctx) {
     }
   }
   (void)x;
+  return 0;
 }
 
-static void bm_dep_parallel(void* ctx) {
+static int bm_dep_parallel(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t x1 = 1, x2 = 2, x3 = 3, x4 = 4;
   
@@ -53,10 +58,12 @@ static void bm_dep_parallel(void* ctx) {
     }
   }
   (void)(x1 + x2 + x3 + x4);
+  return 0;
 }
 
-static void bm_dep_mixed(void* ctx) {
+static int bm_dep_mixed(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t x = 1;
   uint32_t y1 = 1, y2 = 2, y3 = 3;
@@ -70,10 +77,12 @@ static void bm_dep_mixed(void* ctx) {
     }
   }
   (void)(x + y1 + y2 + y3);
+  return 0;
 }
 
-static void bm_dep_load_chain(void* ctx) {
+static int bm_dep_load_chain(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t data[256];
   for (int i = 0; i < 256; i++) {
@@ -87,6 +96,7 @@ static void bm_dep_load_chain(void* ctx) {
     }
   }
   (void)idx;
+  return 0;
 }
 
 void bench_register_micro_dependency(void) {

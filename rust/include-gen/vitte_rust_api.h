@@ -17,6 +17,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,7 +27,7 @@ extern "C" {
 // ABI version
 // =============================================================================
 
-#define VITTE_RUST_API_ABI_VERSION 1u
+#define VITTE_RUST_API_ABI_VERSION 2u
 
 uint32_t vitte_rust_api_abi_version(void);
 
@@ -115,6 +116,85 @@ typedef struct vitte_status_t {
 typedef struct vitte_handle_t {
   size_t raw; // 0 = null; opaque pointer value from Rust
 } vitte_handle_t;
+
+// =============================================================================
+// Bench output (C -> Rust helper, structless ABI)
+// =============================================================================
+//
+// Goal: avoid copying C benchmark structs into this header and avoid the
+// "size query + malloc + second pass" pattern by streaming via callback.
+//
+// The C side provides a `vitte_bench_report_view_t` whose vtable exposes getters
+// for report metadata and per-result fields. Rust emits stable JSON/CSV.
+
+typedef enum vitte_bench_status_t {
+  VITTE_BENCH_STATUS_OK = 0,
+  VITTE_BENCH_STATUS_FAILED = 1,
+  VITTE_BENCH_STATUS_SKIPPED = 2
+} vitte_bench_status_t;
+
+typedef int32_t (*vitte_write_fn)(void* ctx, const uint8_t* bytes, size_t len);
+
+typedef struct vitte_writer_t {
+  void* ctx;
+  vitte_write_fn write;
+  size_t max_bytes; // 0 => library default cap
+} vitte_writer_t;
+
+typedef struct vitte_bench_report_vtable_t {
+  // Report metadata
+  int32_t (*get_schema)(void* ctx, vitte_str_t* out);       // default handled by Rust if empty
+  int32_t (*get_suite)(void* ctx, vitte_str_t* out);        // default handled by Rust if empty
+  int32_t (*get_timestamp_ms)(void* ctx, int64_t* out);
+  int32_t (*get_seed)(void* ctx, uint64_t* out);
+  int32_t (*get_threads)(void* ctx, int32_t* out);
+  int32_t (*get_repeat)(void* ctx, int32_t* out);
+  int32_t (*get_warmup)(void* ctx, int32_t* out);
+  int32_t (*get_iters)(void* ctx, int64_t* out);
+  int32_t (*get_calibrate_ms)(void* ctx, int64_t* out);
+  int32_t (*get_cpu_index)(void* ctx, int32_t* out);
+  int32_t (*get_cpu_pinned)(void* ctx, int32_t* out);
+  int32_t (*get_include_samples)(void* ctx, int32_t* out); // 0/1
+
+  // Results
+  int32_t (*get_results_count)(void* ctx, int32_t* out);
+  int32_t (*get_result_name)(void* ctx, int32_t idx, vitte_str_t* out);
+  int32_t (*get_result_status)(void* ctx, int32_t idx, int32_t* out); // vitte_bench_status_t
+  int32_t (*get_result_error)(void* ctx, int32_t idx, vitte_str_t* out); // empty => ""
+
+  // Metrics (double => JSON number; NaN/Inf normalized by Rust)
+  int32_t (*get_metric_ns_per_op)(void* ctx, int32_t idx, double* out);
+  int32_t (*get_metric_ns_per_op_median)(void* ctx, int32_t idx, double* out);
+  int32_t (*get_metric_ns_per_op_p95)(void* ctx, int32_t idx, double* out);
+  int32_t (*get_metric_ns_per_op_mad)(void* ctx, int32_t idx, double* out);
+  int32_t (*get_metric_ns_per_op_iqr)(void* ctx, int32_t idx, double* out);
+  int32_t (*get_metric_ns_per_op_ci95_low)(void* ctx, int32_t idx, double* out);
+  int32_t (*get_metric_ns_per_op_ci95_high)(void* ctx, int32_t idx, double* out);
+  int32_t (*get_metric_bytes_per_sec)(void* ctx, int32_t idx, double* out);
+  int32_t (*get_metric_items_per_sec)(void* ctx, int32_t idx, double* out);
+  int32_t (*get_metric_iterations)(void* ctx, int32_t idx, int64_t* out);
+  int32_t (*get_metric_elapsed_ms)(void* ctx, int32_t idx, double* out);
+  int32_t (*get_metric_iters_per_call)(void* ctx, int32_t idx, int64_t* out);
+  int32_t (*get_metric_calls_per_sample)(void* ctx, int32_t idx, int64_t* out);
+  int32_t (*get_metric_target_time_ms)(void* ctx, int32_t idx, int64_t* out);
+  int32_t (*get_metric_cycles_per_sec_min)(void* ctx, int32_t idx, double* out);
+  int32_t (*get_metric_cycles_per_sec_max)(void* ctx, int32_t idx, double* out);
+  int32_t (*get_metric_throttling_suspected)(void* ctx, int32_t idx, int32_t* out); // 0/1
+
+  // Samples (optional)
+  int32_t (*get_samples)(void* ctx, int32_t idx, const double** out_ptr, int32_t* out_count);
+} vitte_bench_report_vtable_t;
+
+typedef struct vitte_bench_report_view_t {
+  void* ctx;
+  const vitte_bench_report_vtable_t* vt;
+} vitte_bench_report_view_t;
+
+// Stream JSON/CSV by calling `writer.write(writer.ctx, bytes, len)`.
+// - code=0 => ok, `written` is bytes written
+// - other code => failure (writer error code may be forwarded)
+vitte_status_t vitte_bench_report_write_json(vitte_bench_report_view_t view, vitte_writer_t writer);
+vitte_status_t vitte_bench_report_write_csv(vitte_bench_report_view_t view, vitte_writer_t writer);
 
 static inline vitte_str_t vitte_str_from_cstr(const char* s) {
   // Convenience only; assumes NUL-terminated input and uses strlen.

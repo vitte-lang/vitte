@@ -16,8 +16,9 @@
   - Division chains.
 */
 
-static void bm_div_constant(void* ctx) {
+static int bm_div_constant(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t sum = 0;
   uint32_t x = 0x12345678;
@@ -28,10 +29,12 @@ static void bm_div_constant(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_div_variable(void* ctx) {
+static int bm_div_variable(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t sum = 0;
   uint32_t divisors[] = { 3, 5, 7, 11, 13, 17, 19, 23 };
@@ -43,10 +46,12 @@ static void bm_div_variable(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_modulo(void* ctx) {
+static int bm_modulo(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t sum = 0;
   uint32_t x = 0x12345678;
@@ -57,10 +62,12 @@ static void bm_modulo(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_divmod(void* ctx) {
+static int bm_divmod(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t sum = 0;
   uint32_t x = 0x12345678;
@@ -73,10 +80,12 @@ static void bm_divmod(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_div_chain(void* ctx) {
+static int bm_div_chain(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   uint32_t x = 0xFFFFFFFF;
   
@@ -86,6 +95,7 @@ static void bm_div_chain(void* ctx) {
     }
   }
   (void)x;
+  return 0;
 }
 
 void bench_register_micro_division(void) {

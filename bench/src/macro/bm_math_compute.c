@@ -71,8 +71,9 @@ static void matrix10_init(Matrix10* m, int seed) {
   }
 }
 
-static void bm_math_matrix4(void* ctx) {
+static int bm_math_matrix4(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   Matrix4 a, b;
   matrix4_init(&a, 1);
@@ -82,10 +83,12 @@ static void bm_math_matrix4(void* ctx) {
     Matrix4 result = matrix4_mult(&a, &b);
     b = result;  /* reuse result as next input */
   }
+  return 0;
 }
 
-static void bm_math_matrix10(void* ctx) {
+static int bm_math_matrix10(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   Matrix10 a, b;
   matrix10_init(&a, 1);
@@ -95,10 +98,12 @@ static void bm_math_matrix10(void* ctx) {
     Matrix10 result = matrix10_mult(&a, &b);
     b = result;
   }
+  return 0;
 }
 
-static void bm_math_trig(void* ctx) {
+static int bm_math_trig(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   double sum = 0.0;
   for (int iter = 0; iter < 1000; iter++) {
@@ -110,10 +115,12 @@ static void bm_math_trig(void* ctx) {
     }
   }
   (void)sum;  /* avoid optimizer removing it */
+  return 0;
 }
 
-static void bm_math_log_exp(void* ctx) {
+static int bm_math_log_exp(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   double sum = 0.0;
   for (int iter = 0; iter < 1000; iter++) {
@@ -124,10 +131,12 @@ static void bm_math_log_exp(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
-static void bm_math_sqrt(void* ctx) {
+static int bm_math_sqrt(void* ctx, int64_t iters) {
   (void)ctx;
+  (void)iters;
   
   double sum = 0.0;
   for (int iter = 0; iter < 10000; iter++) {
@@ -138,6 +147,7 @@ static void bm_math_sqrt(void* ctx) {
     }
   }
   (void)sum;
+  return 0;
 }
 
 void bench_register_macro_math(void) {
