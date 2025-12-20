@@ -31,9 +31,11 @@ static void test_token_sequence(void) {
 
     vitte_token* toks = NULL;
     size_t count = 0;
-    vitte_error err = {0};
-    vitte_result r = vitte_lex_all(&ctx, src, strlen(src), &toks, &count, &err);
+    vitte_diag_bag diags;
+    vitte_diag_bag_init(&diags);
+    vitte_result r = vitte_lex_all(&ctx, 0u, src, strlen(src), &toks, &count, &diags);
     assert_true(r == VITTE_OK, "token sequence lex");
+    assert_true(!vitte_diag_bag_has_errors(&diags), "no lex diagnostics");
     assert_true(toks != NULL && count > 0, "token buffer");
 
     const vitte_token_kind expected[] = {
@@ -61,6 +63,7 @@ static void test_token_sequence(void) {
     assert_true(arrows == 1, "arrow token");
 
     free(toks);
+    vitte_diag_bag_free(&diags);
     vitte_ctx_free(&ctx);
 }
 
@@ -70,9 +73,11 @@ static void test_literals(void) {
     vitte_ctx_init(&ctx);
     vitte_token* toks = NULL;
     size_t count = 0;
-    vitte_error err = {0};
-    vitte_result r = vitte_lex_all(&ctx, src, strlen(src), &toks, &count, &err);
+    vitte_diag_bag diags;
+    vitte_diag_bag_init(&diags);
+    vitte_result r = vitte_lex_all(&ctx, 0u, src, strlen(src), &toks, &count, &diags);
     assert_true(r == VITTE_OK, "literal lex ok");
+    assert_true(!vitte_diag_bag_has_errors(&diags), "no lex diagnostics (literals)");
     assert_true(count >= 6, "literal tokens count");
     size_t str_idx = (size_t)-1;
     size_t int_idx = (size_t)-1;
@@ -85,6 +90,7 @@ static void test_literals(void) {
     assert_true(toks[str_idx].len == 7, "string literal length includes quotes");
     assert_true(int_idx > str_idx, "int literal present");
     free(toks);
+    vitte_diag_bag_free(&diags);
     vitte_ctx_free(&ctx);
 }
 

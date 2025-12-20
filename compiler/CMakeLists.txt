@@ -15,7 +15,6 @@ set(VITTEC_COMPILER_SOURCES
     src/parser.c
     src/lexer.c
     src/front/vittec_lexer.c
-    src/front/muf_rust.c
     src/types.c
     src/hir.c
     src/ir.c
@@ -41,6 +40,11 @@ set(VITTEC_COMPILER_SOURCES
     src/support/vec.c
     src/vitte_stub.c
 )
+
+# Rust-dependent sources (must be in the target sources list to satisfy link symbols).
+if(VITTEC_ENABLE_RUST_API)
+    list(APPEND VITTEC_COMPILER_SOURCES src/front/muf_rust.c)
+endif()
 
 # Create compiler library
 add_library(vittec_compiler STATIC ${VITTEC_COMPILER_SOURCES})

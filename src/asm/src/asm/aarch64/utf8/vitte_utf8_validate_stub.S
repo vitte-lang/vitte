@@ -39,6 +39,7 @@
 
 #include "common/asm_macros.S"
 
+    VITTE_TEXT
     VITTE_P2ALIGN(2)
     VITTE_FUNC_BEGIN(vitte_utf8_validate_stub)
     // if (len == 0) return 1

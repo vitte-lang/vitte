@@ -31,6 +31,7 @@ Welcome to the Vitte Programming Language documentation. This directory contains
 - [Language Reference](./language-spec/reference.md) - Complete language specification
 - [Standard Library API](./api/stdlib.md) - Standard library documentation
 - [CLI Reference](./api/cli.md) - Command-line tool documentation
+- [Diagnostics](./diagnostics.md) - Error and warning codes
 
 ## Architecture
 

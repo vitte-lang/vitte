@@ -1,7 +1,9 @@
 #include "vittec/vittec.h"
 #include "vittec/version.h"
-#include "vittec/muf.h"
-#include "vitte_rust_api.h"
+#if VITTEC_ENABLE_RUST_API
+  #include "vittec/muf.h"
+  #include "vitte_rust_api.h"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,10 +12,13 @@ static void usage(void) {
   printf("vittec %s\\n", vittec_version_string());
   printf("usage:\\n");
   printf("  vittec [--tokens|--emit-c] <input.vitte> [-o out]\\n");
+#if VITTEC_ENABLE_RUST_API
   printf("  vittec muf fmt <file.muf>\\n");
+#endif
   printf("\\n");
 }
 
+#if VITTEC_ENABLE_RUST_API
 static int cmd_muf_fmt(const char* path) {
   FILE* f = fopen(path, "rb");
   if (!f) {
@@ -78,6 +83,13 @@ static int cmd_muf_fmt(const char* path) {
   free(buf);
   return 0;
 }
+#else
+static int cmd_muf_fmt(const char* path) {
+  (void)path;
+  fprintf(stderr, "error: muf support requires a Rust-enabled build\\n");
+  return 2;
+}
+#endif
 
 int main(int argc, char** argv) {
 #if VITTEC_ENABLE_RUST_API

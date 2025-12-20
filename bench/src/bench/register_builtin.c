@@ -15,6 +15,7 @@ void bench_register_micro_memcpy(void);
 void bench_register_micro_recursion(void);
 void bench_register_micro_string_search(void);
 void bench_register_micro_hash(void);
+void bench_register_micro_fnv1a64(void);
 
 // Macro benchmark registrars
 void bench_register_macro_cache(void);
@@ -54,6 +55,7 @@ void bench_register_builtin_suites(void) {
   bench_register_micro_recursion();
   bench_register_micro_string_search();
   bench_register_micro_hash();
+  bench_register_micro_fnv1a64();
 
   // Macro suites
   bench_register_macro_cache();

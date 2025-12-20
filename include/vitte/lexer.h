@@ -2,6 +2,7 @@
 #define VITTE_LEXER_H
 
 #include "vitte.h"
+#include "vitte/diag.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -77,17 +78,17 @@ typedef struct {
     vitte_token_kind kind;
     const char* lexeme;
     size_t len;
-    uint32_t line;
-    uint32_t col;
+    vitte_span span;
 } vitte_token;
 
 /* Surface API kept minimal for now. */
 vitte_result vitte_lex_all(vitte_ctx* ctx,
+                           vitte_file_id file_id,
                            const char* src,
                            size_t len,
                            vitte_token** out_tokens,
                            size_t* out_count,
-                           vitte_error* err);
+                           vitte_diag_bag* diags);
 
 #ifdef __cplusplus
 }

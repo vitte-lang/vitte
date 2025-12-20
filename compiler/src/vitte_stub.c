@@ -1,5 +1,21 @@
 #include "vitte/codegen.h"
 #include <string.h>
+#include <stdlib.h>
+
+void vitte_diag_bag_init(vitte_diag_bag* b) {
+  if (!b) return;
+  memset(b, 0, sizeof(*b));
+}
+
+void vitte_diag_bag_free(vitte_diag_bag* b) {
+  if (!b) return;
+  free(b->diags);
+  memset(b, 0, sizeof(*b));
+}
+
+int vitte_diag_bag_has_errors(const vitte_diag_bag* b) {
+  return b && b->errors != 0;
+}
 
 void vitte_ctx_init(vitte_ctx* ctx) {
   if (!ctx) return;
@@ -27,19 +43,16 @@ void vitte_codegen_unit_reset(vitte_ctx* ctx, vitte_codegen_unit* unit) {
 }
 
 vitte_result vitte_codegen_unit_build(vitte_ctx* ctx,
+                                      vitte_file_id file_id,
                                       const char* src,
                                       size_t len,
                                       vitte_codegen_unit* out,
-                                      vitte_error* err) {
+                                      vitte_diag_bag* diags) {
   (void)ctx;
+  (void)file_id;
   (void)src;
   (void)len;
   (void)out;
-  if (err) {
-    err->code = VITTE_ERRC_NONE;
-    err->line = 0;
-    err->col = 0;
-    err->message[0] = '\0';
-  }
+  (void)diags;
   return VITTE_OK;
 }

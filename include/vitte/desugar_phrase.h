@@ -2,6 +2,7 @@
 #define VITTE_DESUGAR_PHRASE_H
 
 #include "vitte.h"
+#include "vitte/diag.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -10,7 +11,7 @@ extern "C" {
 vitte_result vitte_desugar_phrase(vitte_ctx* ctx,
                                   vitte_ast* phrase_ast,
                                   vitte_ast** out_core_ast,
-                                  vitte_error* err);
+                                  vitte_diag_bag* diags);
 
 #ifdef __cplusplus
 }

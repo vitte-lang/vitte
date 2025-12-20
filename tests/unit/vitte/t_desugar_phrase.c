@@ -33,13 +33,6 @@ static void t_fail(const char* file, int line, const char* msg) {
 }
 #define T_ASSERT(x) do { if (!(x)) t_fail(__FILE__, __LINE__, #x); } while (0)
 
-static void print_err(const vitte_error* e) {
-    if (!e) return;
-    fprintf(stderr, "err: code=%d line=%u col=%u: %s\n",
-            (int)e->code, (unsigned)e->line, (unsigned)e->col,
-            e->message[0] ? e->message : "(no message)");
-}
-
 static const vitte_ast* child_at(const vitte_ast* node, size_t index) {
     const vitte_ast* child = node ? node->first_child : NULL;
     while (child && index--) {
@@ -84,11 +77,14 @@ static void test_core_assignments(void) {
     vitte_ctx ctx;
     vitte_ctx_init(&ctx);
     vitte_ast *phrase = NULL, *core = NULL;
-    vitte_error err;
-    memset(&err, 0, sizeof(err));
-    T_ASSERT(vitte_parse_phrase(&ctx, src, strlen(src), &phrase, &err) == VITTE_OK);
-    memset(&err, 0, sizeof(err));
-    T_ASSERT(vitte_desugar_phrase(&ctx, phrase, &core, &err) == VITTE_OK);
+    vitte_diag_bag diags;
+    vitte_diag_bag_init(&diags);
+    T_ASSERT(vitte_parse_phrase(&ctx, 0u, src, strlen(src), &phrase, &diags) == VITTE_OK);
+    T_ASSERT(!vitte_diag_bag_has_errors(&diags));
+    vitte_diag_bag_free(&diags);
+    vitte_diag_bag_init(&diags);
+    T_ASSERT(vitte_desugar_phrase(&ctx, phrase, &core, &diags) == VITTE_OK);
+    T_ASSERT(!vitte_diag_bag_has_errors(&diags));
 
     const vitte_ast* fn = child_of_kind(core, VITTE_AST_FN_DECL, 0);
     T_ASSERT(fn != NULL);
@@ -118,6 +114,7 @@ static void test_core_assignments(void) {
 
     vitte_ast_free(&ctx, core);
     vitte_ast_free(&ctx, phrase);
+    vitte_diag_bag_free(&diags);
     vitte_ctx_free(&ctx);
 }
 
@@ -139,11 +136,14 @@ static void test_when_loop_lowering(void) {
     vitte_ctx ctx;
     vitte_ctx_init(&ctx);
     vitte_ast *phrase = NULL, *core = NULL;
-    vitte_error err;
-    memset(&err, 0, sizeof(err));
-    T_ASSERT(vitte_parse_phrase(&ctx, src, strlen(src), &phrase, &err) == VITTE_OK);
-    memset(&err, 0, sizeof(err));
-    T_ASSERT(vitte_desugar_phrase(&ctx, phrase, &core, &err) == VITTE_OK);
+    vitte_diag_bag diags;
+    vitte_diag_bag_init(&diags);
+    T_ASSERT(vitte_parse_phrase(&ctx, 0u, src, strlen(src), &phrase, &diags) == VITTE_OK);
+    T_ASSERT(!vitte_diag_bag_has_errors(&diags));
+    vitte_diag_bag_free(&diags);
+    vitte_diag_bag_init(&diags);
+    T_ASSERT(vitte_desugar_phrase(&ctx, phrase, &core, &diags) == VITTE_OK);
+    T_ASSERT(!vitte_diag_bag_has_errors(&diags));
 
     const vitte_ast* fn = child_of_kind(core, VITTE_AST_FN_DECL, 0);
     T_ASSERT(fn != NULL);
@@ -180,6 +180,7 @@ static void test_when_loop_lowering(void) {
 
     vitte_ast_free(&ctx, core);
     vitte_ast_free(&ctx, phrase);
+    vitte_diag_bag_free(&diags);
     vitte_ctx_free(&ctx);
 }
 
@@ -194,11 +195,14 @@ static void test_module_and_use_passthrough(void) {
     vitte_ctx ctx;
     vitte_ctx_init(&ctx);
     vitte_ast *phrase = NULL, *core = NULL;
-    vitte_error err;
-    memset(&err, 0, sizeof(err));
-    T_ASSERT(vitte_parse_phrase(&ctx, src, strlen(src), &phrase, &err) == VITTE_OK);
-    memset(&err, 0, sizeof(err));
-    T_ASSERT(vitte_desugar_phrase(&ctx, phrase, &core, &err) == VITTE_OK);
+    vitte_diag_bag diags;
+    vitte_diag_bag_init(&diags);
+    T_ASSERT(vitte_parse_phrase(&ctx, 0u, src, strlen(src), &phrase, &diags) == VITTE_OK);
+    T_ASSERT(!vitte_diag_bag_has_errors(&diags));
+    vitte_diag_bag_free(&diags);
+    vitte_diag_bag_init(&diags);
+    T_ASSERT(vitte_desugar_phrase(&ctx, phrase, &core, &diags) == VITTE_OK);
+    T_ASSERT(!vitte_diag_bag_has_errors(&diags));
 
     const vitte_ast* mod = child_of_kind(core, VITTE_AST_MODULE_DECL, 0);
     T_ASSERT(mod && mod->text && strcmp(mod->text, "demo.core") == 0);
@@ -208,6 +212,7 @@ static void test_module_and_use_passthrough(void) {
 
     vitte_ast_free(&ctx, core);
     vitte_ast_free(&ctx, phrase);
+    vitte_diag_bag_free(&diags);
     vitte_ctx_free(&ctx);
 }
 
@@ -227,11 +232,14 @@ static void test_chained_else_when_lowering(void) {
     vitte_ctx ctx;
     vitte_ctx_init(&ctx);
     vitte_ast *phrase = NULL, *core = NULL;
-    vitte_error err;
-    memset(&err, 0, sizeof(err));
-    T_ASSERT(vitte_parse_phrase(&ctx, src, strlen(src), &phrase, &err) == VITTE_OK);
-    memset(&err, 0, sizeof(err));
-    T_ASSERT(vitte_desugar_phrase(&ctx, phrase, &core, &err) == VITTE_OK);
+    vitte_diag_bag diags;
+    vitte_diag_bag_init(&diags);
+    T_ASSERT(vitte_parse_phrase(&ctx, 0u, src, strlen(src), &phrase, &diags) == VITTE_OK);
+    T_ASSERT(!vitte_diag_bag_has_errors(&diags));
+    vitte_diag_bag_free(&diags);
+    vitte_diag_bag_init(&diags);
+    T_ASSERT(vitte_desugar_phrase(&ctx, phrase, &core, &diags) == VITTE_OK);
+    T_ASSERT(!vitte_diag_bag_has_errors(&diags));
 
     const vitte_ast* fn = child_of_kind(core, VITTE_AST_FN_DECL, 0);
     T_ASSERT(fn != NULL);
@@ -259,13 +267,15 @@ static void test_chained_else_when_lowering(void) {
 
     vitte_ast_free(&ctx, core);
     vitte_ast_free(&ctx, phrase);
+    vitte_diag_bag_free(&diags);
     vitte_ctx_free(&ctx);
 }
 
 static void test_desugar_reports_corrupted_loop_and_set(void) {
     vitte_ctx ctx;
     vitte_ctx_init(&ctx);
-    vitte_error err;
+    vitte_diag_bag diags;
+    vitte_diag_bag_init(&diags);
     vitte_ast *phrase = NULL, *core = NULL;
 
     const char* loop_src =
@@ -275,8 +285,9 @@ static void test_desugar_reports_corrupted_loop_and_set(void) {
         "  .end\n"
         "  ret 0\n"
         ".end\n";
-    memset(&err, 0, sizeof(err));
-    T_ASSERT(vitte_parse_phrase(&ctx, loop_src, strlen(loop_src), &phrase, &err) == VITTE_OK);
+    T_ASSERT(vitte_parse_phrase(&ctx, 0u, loop_src, strlen(loop_src), &phrase, &diags) == VITTE_OK);
+    T_ASSERT(!vitte_diag_bag_has_errors(&diags));
+    vitte_diag_bag_free(&diags);
     vitte_ast* fn = child_of_kind_mut(phrase, VITTE_AST_FN_DECL, 0);
     T_ASSERT(fn != NULL);
     vitte_ast* fn_block = child_of_kind_mut(fn, VITTE_AST_BLOCK, 0);
@@ -300,9 +311,11 @@ static void test_desugar_reports_corrupted_loop_and_set(void) {
         vitte_ast_free(&ctx, child);
     }
 
-    memset(&err, 0, sizeof(err));
-    T_ASSERT(vitte_desugar_phrase(&ctx, phrase, &core, &err) == VITTE_ERR_DESUGAR);
-    T_ASSERT(err.code == VITTE_ERRC_SYNTAX);
+    vitte_diag_bag_init(&diags);
+    T_ASSERT(vitte_desugar_phrase(&ctx, phrase, &core, &diags) == VITTE_ERR_DESUGAR);
+    T_ASSERT(vitte_diag_bag_has_errors(&diags));
+    T_ASSERT(diags.len > 0 && strcmp(diags.diags[0].code, "V0004") == 0);
+    vitte_diag_bag_free(&diags);
     if (core) {
         vitte_ast_free(&ctx, core);
         core = NULL;
@@ -314,8 +327,10 @@ static void test_desugar_reports_corrupted_loop_and_set(void) {
         "fn setter()\n"
         "  set value = 1\n"
         ".end\n";
-    memset(&err, 0, sizeof(err));
-    T_ASSERT(vitte_parse_phrase(&ctx, set_src, strlen(set_src), &phrase, &err) == VITTE_OK);
+    vitte_diag_bag_init(&diags);
+    T_ASSERT(vitte_parse_phrase(&ctx, 0u, set_src, strlen(set_src), &phrase, &diags) == VITTE_OK);
+    T_ASSERT(!vitte_diag_bag_has_errors(&diags));
+    vitte_diag_bag_free(&diags);
     fn = child_of_kind_mut(phrase, VITTE_AST_FN_DECL, 0);
     T_ASSERT(fn != NULL);
     fn_block = child_of_kind_mut(fn, VITTE_AST_BLOCK, 0);
@@ -328,9 +343,11 @@ static void test_desugar_reports_corrupted_loop_and_set(void) {
         target->next = NULL;
     }
 
-    memset(&err, 0, sizeof(err));
-    T_ASSERT(vitte_desugar_phrase(&ctx, phrase, &core, &err) == VITTE_ERR_DESUGAR);
-    T_ASSERT(err.code == VITTE_ERRC_SYNTAX);
+    vitte_diag_bag_init(&diags);
+    T_ASSERT(vitte_desugar_phrase(&ctx, phrase, &core, &diags) == VITTE_ERR_DESUGAR);
+    T_ASSERT(vitte_diag_bag_has_errors(&diags));
+    T_ASSERT(diags.len > 0 && strcmp(diags.diags[0].code, "V0004") == 0);
+    vitte_diag_bag_free(&diags);
     if (core) vitte_ast_free(&ctx, core);
     vitte_ast_free(&ctx, phrase);
     vitte_ctx_free(&ctx);
@@ -342,28 +359,29 @@ static void expect_desugar_fail(const char* title, const char* src) {
 
     vitte_ast* phrase = NULL;
     vitte_ast* core = NULL;
-    vitte_error err;
-    memset(&err, 0, sizeof(err));
+    vitte_diag_bag diags;
+    vitte_diag_bag_init(&diags);
 
-    vitte_result r = vitte_parse_phrase(&ctx, src, strlen(src), &phrase, &err);
+    vitte_result r = vitte_parse_phrase(&ctx, 0u, src, strlen(src), &phrase, &diags);
     if (r == VITTE_OK) {
-        memset(&err, 0, sizeof(err));
-        r = vitte_desugar_phrase(&ctx, phrase, &core, &err);
+        T_ASSERT(!vitte_diag_bag_has_errors(&diags));
+        vitte_diag_bag_free(&diags);
+        vitte_diag_bag_init(&diags);
+        r = vitte_desugar_phrase(&ctx, phrase, &core, &diags);
         if (r == VITTE_OK) {
             fprintf(stderr, "desugar should fail: %s\n", title);
             g_fail = 1;
         } else {
-            T_ASSERT(err.line > 0);
-            T_ASSERT(err.col > 0);
+            T_ASSERT(vitte_diag_bag_has_errors(&diags));
         }
     } else {
         /* parse failing is acceptable for invalid phrase */
-        T_ASSERT(err.line > 0);
-        T_ASSERT(err.col > 0);
+        T_ASSERT(vitte_diag_bag_has_errors(&diags));
     }
 
     if (core) vitte_ast_free(&ctx, core);
     if (phrase) vitte_ast_free(&ctx, phrase);
+    vitte_diag_bag_free(&diags);
     vitte_ctx_free(&ctx);
 }
 
@@ -376,14 +394,16 @@ static void test_parse_error_unmatched_end(void) {
     vitte_ctx_init(&ctx);
 
     vitte_ast* phrase = NULL;
-    vitte_error err;
-    memset(&err, 0, sizeof(err));
+    vitte_diag_bag diags;
+    vitte_diag_bag_init(&diags);
 
-    vitte_result r = vitte_parse_phrase(&ctx, src, strlen(src), &phrase, &err);
+    vitte_result r = vitte_parse_phrase(&ctx, 0u, src, strlen(src), &phrase, &diags);
     T_ASSERT(r == VITTE_ERR_PARSE);
-    T_ASSERT(err.code != VITTE_ERRC_NONE);
+    T_ASSERT(vitte_diag_bag_has_errors(&diags));
+    T_ASSERT(diags.len > 0 && strcmp(diags.diags[0].code, "V0002") == 0);
 
     if (phrase) vitte_ast_free(&ctx, phrase);
+    vitte_diag_bag_free(&diags);
     vitte_ctx_free(&ctx);
 }
 

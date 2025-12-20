@@ -1,15 +1,14 @@
 #include "vitte/desugar_phrase.h"
+#include "diag_codes.h"
+#include "lint_phrase.h"
 #include <stdlib.h>
 #include <string.h>
 
-static void set_err(vitte_error* err, vitte_error_code code, uint32_t line, uint32_t col, const char* msg) {
-    if (!err) return;
-    err->code = code;
-    err->line = line;
-    err->col = col;
-    if (msg) {
-        strncpy(err->message, msg, sizeof(err->message) - 1);
-        err->message[sizeof(err->message) - 1] = '\0';
+static void emit_error(vitte_diag_bag* diags, vitte_error_code code, vitte_span sp, const char* msg) {
+    vitte_diag* d = vitte_diag_bag_push(diags, VITTE_SEV_ERROR, vitte_errc_code(code), sp, msg ? msg : "");
+    if (d) {
+        const char* help = vitte_errc_help(code);
+        if (help && help[0]) vitte_diag_set_help(d, help);
     }
 }
 
@@ -79,14 +78,14 @@ static vitte_ast* clone_subtree(const vitte_ast* node) {
     return copy;
 }
 
-static vitte_ast* desugar_node(const vitte_ast* node, vitte_error* err);
-static vitte_ast* desugar_block(const vitte_ast* block, vitte_error* err);
-static vitte_ast* desugar_stmt(const vitte_ast* stmt, vitte_error* err);
+static vitte_ast* desugar_node(const vitte_ast* node, vitte_diag_bag* diags);
+static vitte_ast* desugar_block(const vitte_ast* block, vitte_diag_bag* diags);
+static vitte_ast* desugar_stmt(const vitte_ast* stmt, vitte_diag_bag* diags);
 
 static vitte_ast* build_call(const char* callee,
                              const vitte_ast* arg_list,
-                             vitte_error* err) {
-    (void)err;
+                             vitte_diag_bag* diags) {
+    (void)diags;
     vitte_ast* call = (vitte_ast*)calloc(1, sizeof(vitte_ast));
     if (!call) return NULL;
     call->kind = VITTE_AST_EXPR_CALL;
@@ -111,13 +110,13 @@ static vitte_ast* build_call(const char* callee,
     return call;
 }
 
-static vitte_ast* desugar_block(const vitte_ast* block, vitte_error* err) {
+static vitte_ast* desugar_block(const vitte_ast* block, vitte_diag_bag* diags) {
     vitte_ast* out = ast_clone_header(block, VITTE_AST_BLOCK);
     if (!out) return NULL;
     out->first_child = out->last_child = NULL;
     const vitte_ast* stmt = block->first_child;
     while (stmt) {
-        vitte_ast* lowered = desugar_stmt(stmt, err);
+        vitte_ast* lowered = desugar_stmt(stmt, diags);
         if (!lowered) {
             vitte_ast_free(NULL, out);
             return NULL;
@@ -128,11 +127,11 @@ static vitte_ast* desugar_block(const vitte_ast* block, vitte_error* err) {
     return out;
 }
 
-static vitte_ast* desugar_set_stmt(const vitte_ast* stmt, vitte_error* err) {
+static vitte_ast* desugar_set_stmt(const vitte_ast* stmt, vitte_diag_bag* diags) {
     const vitte_ast* target = stmt->first_child;
     const vitte_ast* value = target ? target->next : NULL;
     if (!target || !value) {
-        set_err(err, VITTE_ERRC_SYNTAX, stmt->span.start.line, stmt->span.start.col, "set requires target and value");
+        emit_error(diags, VITTE_ERRC_SYNTAX, stmt ? stmt->span : vitte_span_make(0u, 0u, 0u), "set requires target and value");
         return NULL;
     }
     vitte_ast* node = ast_clone_header(stmt, VITTE_AST_CORE_STMT_ASSIGN);
@@ -151,13 +150,13 @@ static vitte_ast* desugar_set_stmt(const vitte_ast* stmt, vitte_error* err) {
     return node;
 }
 
-static vitte_ast* desugar_say_stmt(const vitte_ast* stmt, vitte_error* err) {
+static vitte_ast* desugar_say_stmt(const vitte_ast* stmt, vitte_diag_bag* diags) {
     const vitte_ast* expr = stmt->first_child;
     if (!expr) {
-        set_err(err, VITTE_ERRC_SYNTAX, stmt->span.start.line, stmt->span.start.col, "say requires expression");
+        emit_error(diags, VITTE_ERRC_SYNTAX, stmt ? stmt->span : vitte_span_make(0u, 0u, 0u), "say requires expression");
         return NULL;
     }
-    vitte_ast* call = build_call("say", expr, err);
+    vitte_ast* call = build_call("say", expr, diags);
     if (!call) return NULL;
     vitte_ast* node = ast_clone_header(stmt, VITTE_AST_CORE_STMT_EXPR);
     if (!node) {
@@ -168,12 +167,12 @@ static vitte_ast* desugar_say_stmt(const vitte_ast* stmt, vitte_error* err) {
     return node;
 }
 
-static vitte_ast* desugar_do_stmt(const vitte_ast* stmt, vitte_error* err) {
+static vitte_ast* desugar_do_stmt(const vitte_ast* stmt, vitte_diag_bag* diags) {
     if (!stmt->text) {
-        set_err(err, VITTE_ERRC_SYNTAX, stmt->span.start.line, stmt->span.start.col, "do requires callee");
+        emit_error(diags, VITTE_ERRC_SYNTAX, stmt ? stmt->span : vitte_span_make(0u, 0u, 0u), "do requires callee");
         return NULL;
     }
-    vitte_ast* call = build_call(stmt->text, stmt->first_child, err);
+    vitte_ast* call = build_call(stmt->text, stmt->first_child, diags);
     if (!call) return NULL;
     vitte_ast* node = ast_clone_header(stmt, VITTE_AST_CORE_STMT_EXPR);
     if (!node) {
@@ -199,7 +198,7 @@ static vitte_ast* desugar_ret_stmt(const vitte_ast* stmt) {
     return node;
 }
 
-static vitte_ast* desugar_when_stmt(const vitte_ast* stmt, vitte_error* err) {
+static vitte_ast* desugar_when_stmt(const vitte_ast* stmt, vitte_diag_bag* diags) {
     vitte_ast* node = ast_clone_header(stmt, VITTE_AST_CORE_STMT_IF);
     if (!node) return NULL;
     const vitte_ast* branch = stmt->first_child;
@@ -216,7 +215,7 @@ static vitte_ast* desugar_when_stmt(const vitte_ast* stmt, vitte_error* err) {
         if (!branch->literal.bool_value && !cond) {
             vitte_ast_free(NULL, branch_copy);
             vitte_ast_free(NULL, node);
-            set_err(err, VITTE_ERRC_SYNTAX, branch->span.start.line, branch->span.start.col, "invalid when branch");
+            emit_error(diags, VITTE_ERRC_SYNTAX, branch ? branch->span : vitte_span_make(0u, 0u, 0u), "invalid when branch");
             return NULL;
         }
         if (cond) {
@@ -231,10 +230,10 @@ static vitte_ast* desugar_when_stmt(const vitte_ast* stmt, vitte_error* err) {
         if (!block) {
             vitte_ast_free(NULL, branch_copy);
             vitte_ast_free(NULL, node);
-            set_err(err, VITTE_ERRC_SYNTAX, branch->span.start.line, branch->span.start.col, "when branch missing block");
+            emit_error(diags, VITTE_ERRC_SYNTAX, branch ? branch->span : vitte_span_make(0u, 0u, 0u), "when branch missing block");
             return NULL;
         }
-        vitte_ast* block_copy = desugar_block(block, err);
+        vitte_ast* block_copy = desugar_block(block, diags);
         if (!block_copy) {
             vitte_ast_free(NULL, branch_copy);
             vitte_ast_free(NULL, node);
@@ -247,7 +246,7 @@ static vitte_ast* desugar_when_stmt(const vitte_ast* stmt, vitte_error* err) {
     return node;
 }
 
-static vitte_ast* desugar_loop_stmt(const vitte_ast* stmt, vitte_error* err) {
+static vitte_ast* desugar_loop_stmt(const vitte_ast* stmt, vitte_diag_bag* diags) {
     const vitte_ast* start_expr = stmt->first_child;
     const vitte_ast* end_expr = start_expr ? start_expr->next : NULL;
     const vitte_ast* next_expr = end_expr ? end_expr->next : NULL;
@@ -260,12 +259,20 @@ static vitte_ast* desugar_loop_stmt(const vitte_ast* stmt, vitte_error* err) {
         block_node = next_expr;
     }
     if (!start_expr || !end_expr || !block_node) {
-        set_err(err, VITTE_ERRC_SYNTAX, stmt->span.start.line, stmt->span.start.col, "loop missing components");
+        emit_error(diags, VITTE_ERRC_SYNTAX, stmt ? stmt->span : vitte_span_make(0u, 0u, 0u), "loop missing components");
         return NULL;
     }
     vitte_ast* node = ast_clone_header(stmt, VITTE_AST_CORE_STMT_FOR);
     if (!node) return NULL;
     node->first_child = node->last_child = NULL;
+    /* Preserve loop variable name (stmt->text) so backends can emit a proper `for` loop. */
+    if (stmt && stmt->text && !node->text) {
+        node->text = dup_cstr(stmt->text);
+        if (!node->text) {
+            vitte_ast_free(NULL, node);
+            return NULL;
+        }
+    }
     vitte_ast* start_copy = clone_subtree(start_expr);
     vitte_ast* end_copy = clone_subtree(end_expr);
     if (!start_copy || !end_copy) {
@@ -284,7 +291,7 @@ static vitte_ast* desugar_loop_stmt(const vitte_ast* stmt, vitte_error* err) {
         }
         ast_add_child(node, step_copy);
     }
-    vitte_ast* body_copy = desugar_block(block_node, err);
+    vitte_ast* body_copy = desugar_block(block_node, diags);
     if (!body_copy) {
         vitte_ast_free(NULL, node);
         return NULL;
@@ -293,44 +300,44 @@ static vitte_ast* desugar_loop_stmt(const vitte_ast* stmt, vitte_error* err) {
     return node;
 }
 
-static vitte_ast* desugar_stmt(const vitte_ast* stmt, vitte_error* err) {
+static vitte_ast* desugar_stmt(const vitte_ast* stmt, vitte_diag_bag* diags) {
     switch (stmt->kind) {
         case VITTE_AST_PHR_STMT_SET:
-            return desugar_set_stmt(stmt, err);
+            return desugar_set_stmt(stmt, diags);
         case VITTE_AST_PHR_STMT_SAY:
-            return desugar_say_stmt(stmt, err);
+            return desugar_say_stmt(stmt, diags);
         case VITTE_AST_PHR_STMT_DO:
-            return desugar_do_stmt(stmt, err);
+            return desugar_do_stmt(stmt, diags);
         case VITTE_AST_PHR_STMT_RET:
             return desugar_ret_stmt(stmt);
         case VITTE_AST_PHR_STMT_WHEN:
-            return desugar_when_stmt(stmt, err);
+            return desugar_when_stmt(stmt, diags);
         case VITTE_AST_PHR_STMT_LOOP:
-            return desugar_loop_stmt(stmt, err);
+            return desugar_loop_stmt(stmt, diags);
         default:
             return clone_subtree(stmt);
     }
 }
 
-static vitte_ast* desugar_node(const vitte_ast* node, vitte_error* err) {
+static vitte_ast* desugar_node(const vitte_ast* node, vitte_diag_bag* diags) {
     if (!node) return NULL;
     switch (node->kind) {
         case VITTE_AST_BLOCK:
-            return desugar_block(node, err);
+            return desugar_block(node, diags);
         case VITTE_AST_PHR_STMT_SET:
         case VITTE_AST_PHR_STMT_SAY:
         case VITTE_AST_PHR_STMT_DO:
         case VITTE_AST_PHR_STMT_RET:
         case VITTE_AST_PHR_STMT_WHEN:
         case VITTE_AST_PHR_STMT_LOOP:
-            return desugar_stmt(node, err);
+            return desugar_stmt(node, diags);
         default: {
             vitte_ast* copy = ast_clone_header(node, node->kind);
             if (!copy) return NULL;
             copy->first_child = copy->last_child = NULL;
             const vitte_ast* child = node->first_child;
             while (child) {
-                vitte_ast* child_copy = desugar_node(child, err);
+                vitte_ast* child_copy = desugar_node(child, diags);
                 if (!child_copy) {
                     vitte_ast_free(NULL, copy);
                     return NULL;
@@ -346,22 +353,23 @@ static vitte_ast* desugar_node(const vitte_ast* node, vitte_error* err) {
 vitte_result vitte_desugar_phrase(vitte_ctx* ctx,
                                   vitte_ast* phrase_ast,
                                   vitte_ast** out_core_ast,
-                                  vitte_error* err) {
+                                  vitte_diag_bag* diags) {
     (void)ctx;
     if (!phrase_ast || !out_core_ast) {
-        set_err(err, VITTE_ERRC_SYNTAX, 0, 0, "invalid arguments");
+        emit_error(diags, VITTE_ERRC_SYNTAX, vitte_span_make(0u, 0u, 0u), "invalid arguments");
         return VITTE_ERR_DESUGAR;
     }
     if (phrase_ast->kind != VITTE_AST_PHR_UNIT) {
-        set_err(err, VITTE_ERRC_SYNTAX, phrase_ast->span.start.line, phrase_ast->span.start.col, "expected phrase AST");
+        emit_error(diags, VITTE_ERRC_SYNTAX, phrase_ast ? phrase_ast->span : vitte_span_make(0u, 0u, 0u), "expected phrase AST");
         return VITTE_ERR_DESUGAR;
     }
+
     vitte_ast* core = ast_clone_header(phrase_ast, VITTE_AST_CORE_UNIT);
     if (!core) return VITTE_ERR_INTERNAL;
     core->first_child = core->last_child = NULL;
     const vitte_ast* child = phrase_ast->first_child;
     while (child) {
-        vitte_ast* lowered = desugar_node(child, err);
+        vitte_ast* lowered = desugar_node(child, diags);
         if (!lowered) {
             vitte_ast_free(ctx, core);
             return VITTE_ERR_DESUGAR;
@@ -370,5 +378,7 @@ vitte_result vitte_desugar_phrase(vitte_ctx* ctx,
         child = child->next;
     }
     *out_core_ast = core;
+
+    vitte_lint_phrase(phrase_ast, diags);
     return VITTE_OK;
 }

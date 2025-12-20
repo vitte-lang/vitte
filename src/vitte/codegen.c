@@ -1,17 +1,15 @@
 #include "vitte/codegen.h"
 #include "vitte/parser_phrase.h"
 #include "vitte/desugar_phrase.h"
+#include "diag_codes.h"
 #include <stdlib.h>
 #include <string.h>
 
-static void cg_set_err(vitte_error* err, vitte_error_code code, uint32_t line, uint32_t col, const char* msg) {
-    if (!err) return;
-    err->code = code;
-    err->line = line;
-    err->col = col;
-    if (msg) {
-        strncpy(err->message, msg, sizeof(err->message) - 1);
-        err->message[sizeof(err->message) - 1] = '\0';
+static void emit_error(vitte_diag_bag* diags, vitte_error_code code, vitte_span sp, const char* msg) {
+    vitte_diag* d = vitte_diag_bag_push(diags, VITTE_SEV_ERROR, vitte_errc_code(code), sp, msg ? msg : "");
+    if (d) {
+        const char* help = vitte_errc_help(code);
+        if (help && help[0]) vitte_diag_set_help(d, help);
     }
 }
 
@@ -205,22 +203,23 @@ static int process_core_ast(vitte_codegen_unit* unit) {
 }
 
 vitte_result vitte_codegen_unit_build(vitte_ctx* ctx,
+                                      vitte_file_id file_id,
                                       const char* src,
                                       size_t len,
                                       vitte_codegen_unit* out,
-                                      vitte_error* err) {
+                                      vitte_diag_bag* diags) {
     if (!out) return VITTE_ERR_INTERNAL;
     vitte_codegen_unit_reset(ctx, out);
 
     vitte_ast* phrase = NULL;
-    vitte_result r = vitte_parse_phrase(ctx, src, len, &phrase, err);
+    vitte_result r = vitte_parse_phrase(ctx, file_id, src, len, &phrase, diags);
     if (r != VITTE_OK) {
         if (phrase) vitte_ast_free(ctx, phrase);
         return r;
     }
 
     vitte_ast* core = NULL;
-    r = vitte_desugar_phrase(ctx, phrase, &core, err);
+    r = vitte_desugar_phrase(ctx, phrase, &core, diags);
     if (r != VITTE_OK) {
         if (phrase) vitte_ast_free(ctx, phrase);
         return r;
@@ -231,7 +230,7 @@ vitte_result vitte_codegen_unit_build(vitte_ctx* ctx,
 
     if (!process_core_ast(out)) {
         vitte_codegen_unit_reset(ctx, out);
-        cg_set_err(err, VITTE_ERRC_SYNTAX, 0, 0, "codegen allocation failure");
+        emit_error(diags, VITTE_ERRC_SYNTAX, vitte_span_make(file_id, 0u, 0u), "codegen allocation failure");
         return VITTE_ERR_INTERNAL;
     }
 

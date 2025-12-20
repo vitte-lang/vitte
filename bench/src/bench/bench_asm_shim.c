@@ -241,3 +241,14 @@ void bench_asm_prefetch_t0(const void* p) {
   (void)p;
 #endif
 }
+
+// ----------------------------------------------------------------------------
+// Optional "fastpath" shims expected by some micro benches.
+// ----------------------------------------------------------------------------
+
+#if defined(VITTE_BENCH_USE_ASM_MEMCPY)
+extern void* vitte_memcpy(void* dst, const void* src, size_t n);
+void* vitte_memcpy_fast(void* dst, const void* src, size_t n) {
+  return vitte_memcpy(dst, src, n);
+}
+#endif

@@ -1,9 +1,11 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "vittec/diag/diagnostic.h"
+#include "vittec/diag/emitter.h"
 #include "vittec/diag/source_map.h"
 
 #define ASSERT_TRUE(cond) assert(cond)
@@ -125,10 +127,84 @@ static void test_diag_bag_push_new_cycle(void) {
   ASSERT_EQ(bag.len, 0u);
 }
 
+static char* slurp_file(FILE* f, size_t* out_len) {
+  if (out_len) *out_len = 0;
+  if (!f) return NULL;
+  if (fseek(f, 0, SEEK_END) != 0) return NULL;
+  long n = ftell(f);
+  if (n < 0) return NULL;
+  if (fseek(f, 0, SEEK_SET) != 0) return NULL;
+  size_t len = (size_t)n;
+  char* buf = (char*)malloc(len + 1u);
+  if (!buf) return NULL;
+  size_t rd = fread(buf, 1, len, f);
+  buf[rd] = '\0';
+  if (out_len) *out_len = rd;
+  return buf;
+}
+
+static void test_emitters_smoke(void) {
+  printf("TEST: emitters_smoke\n");
+
+  const char* src = "alpha\nbeta\ngamma\n";
+  vittec_source_map_t sm;
+  vittec_source_map_init(&sm);
+
+  vittec_file_id_t file = UINT32_MAX;
+  vittec_sv_t path = vittec_sv("mem://emit", 10);
+  ASSERT_EQ(vittec_source_map_add_memory(&sm, path, src, strlen(src), 1, &file), VITTEC_SM_OK);
+
+  vittec_diag_bag_t bag;
+  vittec_diag_bag_init(&bag);
+  vittec_span_t sp = vittec_span(file, 6u, 10u); /* "beta" */
+  vittec_diag_t* d = vittec_diag_error(&bag, vittec_sv("E0001", 5), sp, vittec_sv("broken", 6));
+  ASSERT_TRUE(d != NULL);
+  vittec_diag_set_help(d, vittec_sv("hint", 4));
+
+  /* Human */
+  FILE* hf = tmpfile();
+  ASSERT_TRUE(hf != NULL);
+  vittec_emit_options_t hop;
+  vittec_emit_options_init(&hop);
+  hop.out_stream = hf;
+  hop.context_lines = 1;
+  vittec_emit_human_bag_ex(&sm, &bag, &hop);
+  fflush(hf);
+  size_t hlen = 0;
+  char* htxt = slurp_file(hf, &hlen);
+  ASSERT_TRUE(htxt != NULL);
+  ASSERT_TRUE(strstr(htxt, "error") != NULL);
+  ASSERT_TRUE(strstr(htxt, "mem://emit:2:1") != NULL);
+  ASSERT_TRUE(strstr(htxt, "beta") != NULL);
+  free(htxt);
+  fclose(hf);
+
+  /* JSON */
+  FILE* jf = tmpfile();
+  ASSERT_TRUE(jf != NULL);
+  vittec_emit_options_t jop;
+  vittec_emit_options_init(&jop);
+  jop.out_stream = jf;
+  jop.json_one_per_line = 1;
+  vittec_emit_json_bag_ex(&sm, &bag, &jop);
+  fflush(jf);
+  size_t jlen = 0;
+  char* jtxt = slurp_file(jf, &jlen);
+  ASSERT_TRUE(jtxt != NULL);
+  ASSERT_TRUE(strstr(jtxt, "\"severity\":\"error\"") != NULL);
+  ASSERT_TRUE(strstr(jtxt, "\"file\":\"mem://emit\"") != NULL);
+  free(jtxt);
+  fclose(jf);
+
+  vittec_diag_bag_free(&bag);
+  vittec_source_map_free(&sm);
+}
+
 int main(void) {
   test_source_map_line_math();
   test_diag_bag_push_and_free();
   test_diag_bag_push_new_cycle();
+  test_emitters_smoke();
   printf("All diag/source_map tests passed.\n");
   return 0;
 }

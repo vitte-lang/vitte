@@ -1,5 +1,6 @@
 #include "vitte/parser_phrase.h"
 #include "vitte/lexer.h"
+#include "diag_codes.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -8,7 +9,7 @@ typedef struct {
     vitte_token* tokens;
     size_t count;
     size_t pos;
-    vitte_error* err;
+    vitte_diag_bag* diags;
 } vitte_parser;
 
 typedef struct {
@@ -17,15 +18,13 @@ typedef struct {
     size_t cap;
 } str_builder;
 
-static void set_err(vitte_error* err, vitte_error_code code, uint32_t line, uint32_t col, const char* msg) {
-    if (!err) return;
-    err->code = code;
-    err->line = line;
-    err->col = col;
-    if (msg) {
-        strncpy(err->message, msg, sizeof(err->message) - 1);
-        err->message[sizeof(err->message) - 1] = '\0';
+static vitte_result emit_error(vitte_diag_bag* diags, vitte_error_code code, vitte_span sp, const char* msg) {
+    vitte_diag* d = vitte_diag_bag_push(diags, VITTE_SEV_ERROR, vitte_errc_code(code), sp, msg ? msg : "");
+    if (d) {
+        const char* help = vitte_errc_help(code);
+        if (help && help[0]) vitte_diag_set_help(d, help);
     }
+    return VITTE_ERR_PARSE;
 }
 
 static const vitte_token* parser_peek(const vitte_parser* p) {
@@ -63,21 +62,15 @@ static int parser_match(vitte_parser* p, vitte_token_kind kind) {
 }
 
 static vitte_span span_from_tokens(const vitte_token* start, const vitte_token* end) {
-    vitte_span span;
-    if (start) {
-        span.start.line = start->line;
-        span.start.col = start->col;
-    } else {
-        span.start.line = 0;
-        span.start.col = 0;
-    }
-    if (end) {
-        span.end.line = end->line;
-        span.end.col = end->col + (uint32_t)(end->len ? end->len - 1 : 0);
-    } else {
-        span.end = span.start;
-    }
-    return span;
+    if (!start && !end) return vitte_span_make(0u, 0u, 0u);
+    if (!start) start = end;
+    if (!end) end = start;
+    vitte_span sp;
+    sp.file_id = start->span.file_id;
+    sp.lo = start->span.lo;
+    sp.hi = end->span.hi;
+    if (sp.hi < sp.lo) sp.hi = sp.lo;
+    return sp;
 }
 
 static vitte_ast* ast_new(vitte_ast_kind kind, const vitte_token* start, const vitte_token* end) {
@@ -144,14 +137,38 @@ static void skip_newlines(vitte_parser* p) {
     }
 }
 
+static void parser_sync_to_stmt_boundary(vitte_parser* p) {
+    if (!p) return;
+    while (!parser_at_end(p)) {
+        if (parser_check(p, VITTE_TOK_NEWLINE)) {
+            (void)parser_advance(p);
+            return;
+        }
+        if (parser_check(p, VITTE_TOK_DOTEND)) {
+            return;
+        }
+        (void)parser_advance(p);
+    }
+}
+
+static void parser_sync_to_toplevel_boundary(vitte_parser* p) {
+    if (!p) return;
+    while (!parser_at_end(p)) {
+        if (parser_check(p, VITTE_TOK_NEWLINE)) {
+            (void)parser_advance(p);
+            return;
+        }
+        (void)parser_advance(p);
+    }
+}
+
 static vitte_result parser_expect(vitte_parser* p, vitte_token_kind kind, const char* msg) {
     if (parser_check(p, kind)) {
         parser_advance(p);
         return VITTE_OK;
     }
     const vitte_token* tok = parser_peek(p);
-    set_err(p->err, VITTE_ERRC_SYNTAX, tok->line, tok->col, msg);
-    return VITTE_ERR_PARSE;
+    return emit_error(p->diags, VITTE_ERRC_SYNTAX, tok ? tok->span : vitte_span_make(0u, 0u, 0u), msg);
 }
 
 static vitte_ast* parse_toplevel(vitte_parser* p);
@@ -208,7 +225,7 @@ static int binop_precedence(vitte_token_kind kind, vitte_binary_op* op_out) {
 static vitte_ast* parse_identifier_path(vitte_parser* p, int allow_slash) {
     const vitte_token* first = parser_peek(p);
     if (!parser_check(p, VITTE_TOK_IDENT)) {
-        set_err(p->err, VITTE_ERRC_SYNTAX, first->line, first->col, "expected identifier");
+        (void)emit_error(p->diags, VITTE_ERRC_SYNTAX, first ? first->span : vitte_span_make(0u, 0u, 0u), "expected identifier");
         return NULL;
     }
     str_builder sb = {0};
@@ -221,7 +238,7 @@ static vitte_ast* parse_identifier_path(vitte_parser* p, int allow_slash) {
         if (parser_match(p, VITTE_TOK_DOT)) {
             const vitte_token* seg = parser_peek(p);
             if (!parser_check(p, VITTE_TOK_IDENT)) {
-                set_err(p->err, VITTE_ERRC_SYNTAX, seg->line, seg->col, "expected identifier segment");
+                (void)emit_error(p->diags, VITTE_ERRC_SYNTAX, seg ? seg->span : vitte_span_make(0u, 0u, 0u), "expected identifier segment");
                 free(sb.data);
                 return NULL;
             }
@@ -235,7 +252,7 @@ static vitte_ast* parse_identifier_path(vitte_parser* p, int allow_slash) {
         if (allow_slash && parser_match(p, VITTE_TOK_SLASH)) {
             const vitte_token* seg = parser_peek(p);
             if (!parser_check(p, VITTE_TOK_IDENT)) {
-                set_err(p->err, VITTE_ERRC_SYNTAX, seg->line, seg->col, "expected identifier segment");
+                (void)emit_error(p->diags, VITTE_ERRC_SYNTAX, seg ? seg->span : vitte_span_make(0u, 0u, 0u), "expected identifier segment");
                 free(sb.data);
                 return NULL;
             }
@@ -269,8 +286,7 @@ static vitte_result expect_newline(vitte_parser* p) {
         return VITTE_OK;
     }
     const vitte_token* tok = parser_peek(p);
-    set_err(p->err, VITTE_ERRC_SYNTAX, tok->line, tok->col, "expected newline");
-    return VITTE_ERR_PARSE;
+    return emit_error(p->diags, VITTE_ERRC_SYNTAX, tok ? tok->span : vitte_span_make(0u, 0u, 0u), "expected newline");
 }
 
 static vitte_ast* parse_type_ref(vitte_parser* p) {
@@ -287,12 +303,12 @@ static vitte_ast* parse_module_path(vitte_parser* p) {
 static vitte_ast* parse_field_line(vitte_parser* p) {
     const vitte_token* start = parser_peek(p);
     if (!parser_match(p, VITTE_TOK_KW_FIELD)) {
-        set_err(p->err, VITTE_ERRC_SYNTAX, start->line, start->col, "expected field");
+        (void)emit_error(p->diags, VITTE_ERRC_SYNTAX, start ? start->span : vitte_span_make(0u, 0u, 0u), "expected field");
         return NULL;
     }
     const vitte_token* name_tok = parser_peek(p);
     if (!parser_check(p, VITTE_TOK_IDENT)) {
-        set_err(p->err, VITTE_ERRC_SYNTAX, name_tok->line, name_tok->col, "expected field name");
+        (void)emit_error(p->diags, VITTE_ERRC_SYNTAX, name_tok ? name_tok->span : vitte_span_make(0u, 0u, 0u), "expected field name");
         return NULL;
     }
     parser_advance(p);
@@ -324,7 +340,7 @@ static vitte_ast* parse_param_list(vitte_parser* p, int* out_error) {
     while (1) {
         const vitte_token* name_tok = parser_peek(p);
         if (!parser_check(p, VITTE_TOK_IDENT)) {
-            set_err(p->err, VITTE_ERRC_SYNTAX, name_tok->line, name_tok->col, "expected parameter name");
+            (void)emit_error(p->diags, VITTE_ERRC_SYNTAX, name_tok ? name_tok->span : vitte_span_make(0u, 0u, 0u), "expected parameter name");
             vitte_ast_free(NULL, first_param);
             if (out_error) *out_error = 1;
             return NULL;
@@ -403,7 +419,7 @@ static vitte_ast* parse_use_line(vitte_parser* p) {
     if (parser_match(p, VITTE_TOK_KW_AS)) {
         const vitte_token* alias_tok = parser_peek(p);
         if (!parser_check(p, VITTE_TOK_IDENT)) {
-            set_err(p->err, VITTE_ERRC_SYNTAX, alias_tok->line, alias_tok->col, "expected alias identifier");
+            (void)emit_error(p->diags, VITTE_ERRC_SYNTAX, alias_tok ? alias_tok->span : vitte_span_make(0u, 0u, 0u), "expected alias identifier");
             vitte_ast_free(NULL, use);
             return NULL;
         }
@@ -420,7 +436,7 @@ static vitte_ast* parse_use_line(vitte_parser* p) {
 static vitte_ast* parse_type_block(vitte_parser* p) {
     const vitte_token* name_tok = parser_peek(p);
     if (!parser_check(p, VITTE_TOK_IDENT)) {
-        set_err(p->err, VITTE_ERRC_SYNTAX, name_tok->line, name_tok->col, "expected type name");
+        (void)emit_error(p->diags, VITTE_ERRC_SYNTAX, name_tok ? name_tok->span : vitte_span_make(0u, 0u, 0u), "expected type name");
         return NULL;
     }
     parser_advance(p);
@@ -455,7 +471,7 @@ static vitte_ast* parse_type_block(vitte_parser* p) {
 static vitte_ast* parse_fn_block(vitte_parser* p) {
     const vitte_token* name_tok = parser_peek(p);
     if (!parser_check(p, VITTE_TOK_IDENT)) {
-        set_err(p->err, VITTE_ERRC_SYNTAX, name_tok->line, name_tok->col, "expected function name");
+        (void)emit_error(p->diags, VITTE_ERRC_SYNTAX, name_tok ? name_tok->span : vitte_span_make(0u, 0u, 0u), "expected function name");
         return NULL;
     }
     parser_advance(p);
@@ -511,7 +527,7 @@ static vitte_ast* parse_fn_block(vitte_parser* p) {
 static vitte_ast* parse_scn_block(vitte_parser* p) {
     const vitte_token* name_tok = parser_peek(p);
     if (!parser_check(p, VITTE_TOK_IDENT)) {
-        set_err(p->err, VITTE_ERRC_SYNTAX, name_tok->line, name_tok->col, "expected scenario name");
+        (void)emit_error(p->diags, VITTE_ERRC_SYNTAX, name_tok ? name_tok->span : vitte_span_make(0u, 0u, 0u), "expected scenario name");
         return NULL;
     }
     parser_advance(p);
@@ -541,7 +557,7 @@ static vitte_ast* parse_prog_block(vitte_parser* p) {
     }
     const vitte_token* entry_tok = parser_peek(p);
     if (!parser_check(p, VITTE_TOK_IDENT)) {
-        set_err(p->err, VITTE_ERRC_SYNTAX, entry_tok->line, entry_tok->col, "expected entry identifier");
+        (void)emit_error(p->diags, VITTE_ERRC_SYNTAX, entry_tok ? entry_tok->span : vitte_span_make(0u, 0u, 0u), "expected entry identifier");
         vitte_ast_free(NULL, path);
         return NULL;
     }
@@ -574,13 +590,28 @@ static vitte_ast* parse_phrase_block(vitte_parser* p, vitte_ast_kind parent_kind
     if (!block) return NULL;
     skip_newlines(p);
     while (!parser_check(p, VITTE_TOK_DOTEND) && !parser_at_end(p)) {
+        size_t before = p->pos;
         vitte_ast* stmt = parse_phrase_stmt(p);
         if (!stmt) {
-            vitte_ast_free(NULL, block);
-            return NULL;
+            parser_sync_to_stmt_boundary(p);
+            if (p->pos == before && !parser_at_end(p)) (void)parser_advance(p);
+            skip_newlines(p);
+            continue;
         }
         ast_add_child(block, stmt);
         skip_newlines(p);
+    }
+    if (parser_at_end(p)) {
+        const vitte_token* eof = parser_peek(p);
+        vitte_span eof_sp = eof ? eof->span : vitte_span_make(0u, 0u, 0u);
+        vitte_diag* d = vitte_diag_bag_push(p->diags, VITTE_SEV_ERROR, vitte_errc_code(VITTE_ERRC_MISSING_END), eof_sp, "missing `.end` to close this block");
+        if (d) {
+            if (start) (void)vitte_diag_add_label(d, VITTE_DIAG_LABEL_SECONDARY, start->span, "block starts here");
+            const char* help = vitte_errc_help(VITTE_ERRC_MISSING_END);
+            if (help && help[0]) vitte_diag_set_help(d, help);
+        }
+        vitte_ast_free(NULL, block);
+        return NULL;
     }
     if (parser_expect(p, VITTE_TOK_DOTEND, "expected .end") != VITTE_OK) {
         vitte_ast_free(NULL, block);
@@ -643,7 +674,7 @@ static vitte_ast* parse_stmt_do(vitte_parser* p) {
     const vitte_token* start = parser_prev(p);
     const vitte_token* name_tok = parser_peek(p);
     if (!parser_check(p, VITTE_TOK_IDENT)) {
-        set_err(p->err, VITTE_ERRC_SYNTAX, name_tok->line, name_tok->col, "expected identifier after do");
+        (void)emit_error(p->diags, VITTE_ERRC_SYNTAX, name_tok ? name_tok->span : vitte_span_make(0u, 0u, 0u), "expected identifier after do");
         return NULL;
     }
     parser_advance(p);
@@ -761,6 +792,18 @@ static vitte_ast* parse_stmt_when(vitte_parser* p) {
             break;
         }
     }
+    if (parser_at_end(p)) {
+        const vitte_token* eof = parser_peek(p);
+        vitte_span eof_sp = eof ? eof->span : vitte_span_make(0u, 0u, 0u);
+        vitte_diag* d = vitte_diag_bag_push(p->diags, VITTE_SEV_ERROR, vitte_errc_code(VITTE_ERRC_MISSING_END), eof_sp, "missing `.end` to close this `when` block");
+        if (d) {
+            if (start) (void)vitte_diag_add_label(d, VITTE_DIAG_LABEL_SECONDARY, start->span, "`when` starts here");
+            const char* help = vitte_errc_help(VITTE_ERRC_MISSING_END);
+            if (help && help[0]) vitte_diag_set_help(d, help);
+        }
+        vitte_ast_free(NULL, when_stmt);
+        return NULL;
+    }
     if (parser_expect(p, VITTE_TOK_DOTEND, "expected .end for when") != VITTE_OK) {
         vitte_ast_free(NULL, when_stmt);
         return NULL;
@@ -776,7 +819,7 @@ static vitte_ast* parse_stmt_loop(vitte_parser* p) {
     const vitte_token* start = parser_prev(p);
     const vitte_token* name_tok = parser_peek(p);
     if (!parser_check(p, VITTE_TOK_IDENT)) {
-        set_err(p->err, VITTE_ERRC_SYNTAX, name_tok->line, name_tok->col, "expected loop variable name");
+        (void)emit_error(p->diags, VITTE_ERRC_SYNTAX, name_tok ? name_tok->span : vitte_span_make(0u, 0u, 0u), "expected loop variable name");
         return NULL;
     }
     parser_advance(p);
@@ -853,7 +896,7 @@ static vitte_ast* parse_phrase_stmt(vitte_parser* p) {
             parser_advance(p);
             return parse_stmt_loop(p);
         default:
-            set_err(p->err, VITTE_ERRC_SYNTAX, tok->line, tok->col, "unexpected token in phrase block");
+            (void)emit_error(p->diags, VITTE_ERRC_SYNTAX, tok ? tok->span : vitte_span_make(0u, 0u, 0u), "unexpected token in phrase block");
             return NULL;
     }
 }
@@ -898,7 +941,7 @@ static vitte_ast* parse_primary(vitte_parser* p) {
         }
         return expr;
     }
-    set_err(p->err, VITTE_ERRC_SYNTAX, tok->line, tok->col, "expected expression");
+    (void)emit_error(p->diags, VITTE_ERRC_SYNTAX, tok ? tok->span : vitte_span_make(0u, 0u, 0u), "expected expression");
     return NULL;
 }
 
@@ -950,6 +993,10 @@ static vitte_ast* parse_expression(vitte_parser* p, int min_prec) {
 
 static vitte_ast* parse_toplevel(vitte_parser* p) {
     const vitte_token* tok = parser_peek(p);
+    if (parser_check(p, VITTE_TOK_DOTEND)) {
+        (void)emit_error(p->diags, VITTE_ERRC_UNMATCHED_END, tok ? tok->span : vitte_span_make(0u, 0u, 0u), "unmatched `.end`");
+        return NULL;
+    }
     if (parser_match(p, VITTE_TOK_KW_MOD)) {
         return parse_module_line(p);
     }
@@ -968,30 +1015,31 @@ static vitte_ast* parse_toplevel(vitte_parser* p) {
     if (parser_match(p, VITTE_TOK_KW_PROG)) {
         return parse_prog_block(p);
     }
-    set_err(p->err, VITTE_ERRC_SYNTAX, tok->line, tok->col, "unexpected token at top level");
+    (void)emit_error(p->diags, VITTE_ERRC_SYNTAX, tok ? tok->span : vitte_span_make(0u, 0u, 0u), "unexpected token at top level");
     return NULL;
 }
 
 vitte_result vitte_parse_phrase(vitte_ctx* ctx,
+                                vitte_file_id file_id,
                                 const char* src,
                                 size_t len,
                                 vitte_ast** out_ast,
-                                vitte_error* err) {
+                                vitte_diag_bag* diags) {
     if (!out_ast) {
-        set_err(err, VITTE_ERRC_SYNTAX, 0, 0, "invalid out_ast");
+        (void)emit_error(diags, VITTE_ERRC_SYNTAX, vitte_span_make(file_id, 0u, 0u), "invalid out_ast");
         return VITTE_ERR_PARSE;
     }
     *out_ast = NULL;
 
     vitte_token* toks = NULL;
     size_t count = 0;
-    vitte_result lr = vitte_lex_all(ctx, src, len, &toks, &count, err);
+    vitte_result lr = vitte_lex_all(ctx, file_id, src, len, &toks, &count, diags);
     if (lr != VITTE_OK) {
         free(toks);
         return lr;
     }
 
-    vitte_parser parser = {ctx, toks, count, 0, err};
+    vitte_parser parser = {ctx, toks, count, 0, diags};
     vitte_ast* root = ast_new(VITTE_AST_PHR_UNIT, parser_peek(&parser), parser_peek(&parser));
     if (!root) {
         free(toks);
@@ -1000,11 +1048,13 @@ vitte_result vitte_parse_phrase(vitte_ctx* ctx,
 
     skip_newlines(&parser);
     while (!parser_at_end(&parser)) {
+        size_t before = parser.pos;
         vitte_ast* node = parse_toplevel(&parser);
         if (!node) {
-            vitte_ast_free(ctx, root);
-            free(toks);
-            return VITTE_ERR_PARSE;
+            parser_sync_to_toplevel_boundary(&parser);
+            if (parser.pos == before && !parser_at_end(&parser)) (void)parser_advance(&parser);
+            skip_newlines(&parser);
+            continue;
         }
         ast_add_child(root, node);
         skip_newlines(&parser);
@@ -1012,5 +1062,5 @@ vitte_result vitte_parse_phrase(vitte_ctx* ctx,
 
     *out_ast = root;
     free(toks);
-    return VITTE_OK;
+    return vitte_diag_bag_has_errors(diags) ? VITTE_ERR_PARSE : VITTE_OK;
 }

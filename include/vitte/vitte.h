@@ -16,6 +16,8 @@ typedef enum {
     VITTE_ERR_INTERNAL = 99
 } vitte_result;
 
+typedef uint32_t vitte_file_id;
+
 typedef enum {
     VITTE_ERRC_NONE = 0,
     VITTE_ERRC_UNEXPECTED_EOF,
@@ -26,8 +28,9 @@ typedef enum {
 
 typedef struct {
     vitte_error_code code;
-    uint32_t line;
-    uint32_t col;
+    vitte_file_id file_id;
+    uint32_t lo; /* byte offset (inclusive) */
+    uint32_t hi; /* byte offset (exclusive) */
     char message[128];
 } vitte_error;
 
@@ -38,12 +41,21 @@ typedef struct {
 typedef struct {
     uint32_t line;
     uint32_t col;
-} vitte_location;
+} vitte_line_col;
 
 typedef struct {
-    vitte_location start;
-    vitte_location end;
+    vitte_file_id file_id;
+    uint32_t lo; /* byte offset (inclusive) */
+    uint32_t hi; /* byte offset (exclusive) */
 } vitte_span;
+
+static inline vitte_span vitte_span_make(vitte_file_id file_id, uint32_t lo, uint32_t hi) {
+    vitte_span sp;
+    sp.file_id = file_id;
+    sp.lo = lo;
+    sp.hi = hi;
+    return sp;
+}
 
 typedef enum {
     VITTE_AST_PHR_UNIT = 1,

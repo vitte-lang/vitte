@@ -170,24 +170,70 @@ int vittec_compile(vittec_session_t* s, const vittec_compile_options_t* opt) {
     vitte_codegen_unit unit;
     vitte_codegen_unit_init(&unit);
 
-    vitte_error verr;
-    memset(&verr, 0, sizeof(verr));
-    vitte_result build_rc = vitte_codegen_unit_build(&vctx, fb.data, (size_t)fb.len, &unit, &verr);
+    vitte_diag_bag lbag;
+    vitte_diag_bag_init(&lbag);
+    vitte_result build_rc = vitte_codegen_unit_build(&vctx, (vitte_file_id)file_id, fb.data, (size_t)fb.len, &unit, &lbag);
     if (build_rc != VITTE_OK) {
-      const char* msg = verr.message[0] ? verr.message : "vitte codegen unit build failed";
-      fprintf(stderr, "error: %s:%u:%u: %s (code %d)\n",
-              opt->input_path ? opt->input_path : "(stdin)",
-              (unsigned)verr.line,
-              (unsigned)verr.col,
-              msg,
-              (int)verr.code);
+      vittec_diag_bag_t bag;
+      vittec_diag_bag_init(&bag);
+
+      /* Convert libvitte diagnostics into vittec diagnostics for rendering. */
+      for (uint32_t i = 0; i < lbag.len; i++) {
+        const vitte_diag* ld = &lbag.diags[i];
+        vittec_severity_t sev = VITTEC_SEV_ERROR;
+        if (ld->severity == VITTE_SEV_WARNING) sev = VITTEC_SEV_WARNING;
+        else if (ld->severity == VITTE_SEV_NOTE) sev = VITTEC_SEV_NOTE;
+
+        vittec_sv_t code = vittec_sv(ld->code, (uint64_t)strlen(ld->code));
+        vittec_sv_t message = vittec_sv(ld->message ? ld->message : "", (uint64_t)strlen(ld->message ? ld->message : ""));
+
+        vitte_span primary = vitte_span_make(0u, 0u, 0u);
+        for (uint32_t li = 0; li < ld->labels_len; li++) {
+          if (ld->labels[li].style == VITTE_DIAG_LABEL_PRIMARY) {
+            primary = ld->labels[li].span;
+            break;
+          }
+        }
+        vittec_span_t sp = vittec_span((vittec_file_id_t)primary.file_id, primary.lo, primary.hi);
+
+        vittec_diag_t* d = vittec_diag_bag_push_new(&bag, sev, code, sp, message);
+        if (!d) continue;
+
+        for (uint32_t li = 0; li < ld->labels_len; li++) {
+          const vitte_diag_label* lab = &ld->labels[li];
+          if (lab->style != VITTE_DIAG_LABEL_SECONDARY) continue;
+          vittec_span_t lsp = vittec_span((vittec_file_id_t)lab->span.file_id, lab->span.lo, lab->span.hi);
+          vittec_diag_add_label(d, VITTEC_DIAG_LABEL_SECONDARY, lsp, vittec_sv(lab->message ? lab->message : "", (uint64_t)strlen(lab->message ? lab->message : "")));
+        }
+
+        if (ld->help && ld->help[0]) vittec_diag_set_help(d, vittec_sv(ld->help, (uint64_t)strlen(ld->help)));
+        for (uint32_t ni = 0; ni < ld->notes_len; ni++) {
+          const char* note = ld->notes[ni] ? ld->notes[ni] : "";
+          vittec_diag_add_note(d, vittec_sv(note, (uint64_t)strlen(note)));
+        }
+      }
+
+      vittec_emit_options_t emit_opt;
+      vittec_emit_options_init(&emit_opt);
+      emit_opt.sort_by_location = 1;
+      if (opt->json_diagnostics) vittec_emit_json_bag_ex(&s->sm, &bag, &emit_opt);
+      else vittec_emit_human_bag_ex(&s->sm, &bag, &emit_opt);
+
+      vittec_diag_bag_free(&bag);
+      vitte_diag_bag_free(&lbag);
+
       vitte_codegen_unit_reset(&vctx, &unit);
       vitte_ctx_free(&vctx);
       vittec_free_file_buf(&fb);
       return 1;
     }
+    vitte_diag_bag_free(&lbag);
 
-    if (vittec_emit_c_file(&unit, out_path) != 0) {
+    vittec_emit_c_options_t emit_opt;
+    vittec_emit_c_options_init(&emit_opt);
+    emit_opt.mode = VITTEC_EMIT_C_MODE_FULL;
+
+    if (vittec_emit_c_file_ex(&unit, out_path, &emit_opt) != 0) {
       fprintf(stderr, "error: cannot write: %s\n", out_path);
       vitte_codegen_unit_reset(&vctx, &unit);
       vitte_ctx_free(&vctx);

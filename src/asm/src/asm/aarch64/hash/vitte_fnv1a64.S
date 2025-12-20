@@ -25,13 +25,39 @@
 //   iterating bytes from the loaded 64-bit word in memory order.
 //   On AArch64 (little-endian), LDR loads into register with low bits holding
 //   lowest-address byte, so we can shift/and to extract bytes. For big-endian
-//   targets (rare for aarch64), we'd need conditional handling. We assume LE.
+//   targets (rare for aarch64), we'd need conditional handling. This file
+//   provides a big-endian fallback (byte loop) guarded by __AARCH64EB__.
 //
 // ---------------------------------------------------------------------------
 #include "common/asm_macros.S"
 
+    VITTE_TEXT
     VITTE_P2ALIGN(2)
     VITTE_FUNC_BEGIN(vitte_fnv1a64)
+
+// ---------------------------------------------------------------------------
+// Multiplication strategy
+// ---------------------------------------------------------------------------
+// Default uses MUL by the 64-bit FNV prime.
+// Optionally, define VITTE_FNV1A64_USE_SHIFT_ADD_MUL to use a shift/add
+// sequence for (hash *= 0x00000100000001B3). This can be faster or slower
+// depending on core MUL latency/throughput — measure.
+//
+// Clobbers: tmp when shift/add path is enabled.
+//
+.macro VITTE_FNV1A64_MUL_BY_PRIME dst, src, prime, tmp
+#if defined(VITTE_FNV1A64_USE_SHIFT_ADD_MUL)
+    // prime = 2^40 + 0x1B3, and 0x1B3 = 256+128+32+16+2+1
+    add     \tmp, \src, \src, lsl #1      // *3
+    add     \tmp, \tmp, \src, lsl #4      // +*16  => *19
+    add     \tmp, \tmp, \src, lsl #5      // +*32  => *51
+    add     \tmp, \tmp, \src, lsl #7      // +*128 => *179
+    add     \tmp, \tmp, \src, lsl #8      // +*256 => *435 (=0x1B3)
+    add     \dst, \tmp, \src, lsl #40     // +*2^40
+#else
+    mul     \dst, \src, \prime
+#endif
+.endm
 
 // Constants
 //   OFFSET = 0xcbf29ce484222325
@@ -45,7 +71,6 @@
 //   x4  = tmp word (8B chunk)
 //   x5  = tmp byte (expanded)
 //   x6  = tail count
-//   x7  = tmp shift/mask
 //   x8  = saved ptr (optional / debug)
 //   x9  = saved len (optional / debug)
 //   x10 = scratch
@@ -53,7 +78,6 @@
 //
 // Clobbers: x2..x11, flags
 
-vitte_fnv1a64:
     // Load prime into x3
     // prime = 0x00000100000001B3
     movz    x3, #0x01B3
@@ -69,6 +93,21 @@ vitte_fnv1a64:
     // If len == 0 => return offset
     cbz     x1, .Lret
 
+#if defined(__AARCH64EB__)
+// ---------------------------------------------------------------------------
+// Big-endian fallback
+// ---------------------------------------------------------------------------
+    // This implementation assumes little-endian in the 8-byte block loop.
+    // For __AARCH64EB__, use a simple byte loop to preserve semantics.
+    mov     x6, x1
+.Lbe_loop:
+    ldrb    w5, [x0], #1
+    eor     x2, x2, x5
+    VITTE_FNV1A64_MUL_BY_PRIME x2, x2, x3, x10
+    subs    x6, x6, #1
+    b.ne    .Lbe_loop
+    b       .Lret
+#else
     // Compute number of full 8-byte blocks: nblocks = len >> 3
     lsr     x6, x1, #3
     cbz     x6, .Ltail_setup
@@ -76,7 +115,12 @@ vitte_fnv1a64:
 // ---------------------------------------------------------------------------
 // Block loop: process 8 bytes at a time
 // ---------------------------------------------------------------------------
+    VITTE_P2ALIGN(4)
 .Lblock_loop:
+    // Prefetch ahead to help throughput on large buffers.
+    // Tuning note: offset is a hint; feel free to measure/adjust per target.
+    VITTE_A64_PREFETCH_LD(x0, #256)
+
     // Load 8 bytes (unaligned ok on AArch64)
     ldr     x4, [x0], #8
 
@@ -88,52 +132,48 @@ vitte_fnv1a64:
     //
     // Unrolled for speed (8 steps).
 
+    // b0..b7: use UBFX to extract bytes directly from the loaded word.
+    // This cuts instructions vs (shift+mask) while preserving byte-serial semantics.
+
     // b0
-    and     x5, x4, #0xFF
+    ubfx    x5, x4, #0, #8
     eor     x2, x2, x5
-    mul     x2, x2, x3
+    VITTE_FNV1A64_MUL_BY_PRIME x2, x2, x3, x10
 
     // b1
-    lsr     x7, x4, #8
-    and     x5, x7, #0xFF
+    ubfx    x5, x4, #8, #8
     eor     x2, x2, x5
-    mul     x2, x2, x3
+    VITTE_FNV1A64_MUL_BY_PRIME x2, x2, x3, x10
 
     // b2
-    lsr     x7, x4, #16
-    and     x5, x7, #0xFF
+    ubfx    x5, x4, #16, #8
     eor     x2, x2, x5
-    mul     x2, x2, x3
+    VITTE_FNV1A64_MUL_BY_PRIME x2, x2, x3, x10
 
     // b3
-    lsr     x7, x4, #24
-    and     x5, x7, #0xFF
+    ubfx    x5, x4, #24, #8
     eor     x2, x2, x5
-    mul     x2, x2, x3
+    VITTE_FNV1A64_MUL_BY_PRIME x2, x2, x3, x10
 
     // b4
-    lsr     x7, x4, #32
-    and     x5, x7, #0xFF
+    ubfx    x5, x4, #32, #8
     eor     x2, x2, x5
-    mul     x2, x2, x3
+    VITTE_FNV1A64_MUL_BY_PRIME x2, x2, x3, x10
 
     // b5
-    lsr     x7, x4, #40
-    and     x5, x7, #0xFF
+    ubfx    x5, x4, #40, #8
     eor     x2, x2, x5
-    mul     x2, x2, x3
+    VITTE_FNV1A64_MUL_BY_PRIME x2, x2, x3, x10
 
     // b6
-    lsr     x7, x4, #48
-    and     x5, x7, #0xFF
+    ubfx    x5, x4, #48, #8
     eor     x2, x2, x5
-    mul     x2, x2, x3
+    VITTE_FNV1A64_MUL_BY_PRIME x2, x2, x3, x10
 
     // b7
-    lsr     x7, x4, #56
-    and     x5, x7, #0xFF
+    ubfx    x5, x4, #56, #8
     eor     x2, x2, x5
-    mul     x2, x2, x3
+    VITTE_FNV1A64_MUL_BY_PRIME x2, x2, x3, x10
 
     subs    x6, x6, #1
     b.ne    .Lblock_loop
@@ -150,10 +190,11 @@ vitte_fnv1a64:
     ldrb    w5, [x0], #1
     // w5 zero-extends to x5
     eor     x2, x2, x5
-    mul     x2, x2, x3
+    VITTE_FNV1A64_MUL_BY_PRIME x2, x2, x3, x10
 
     subs    x6, x6, #1
     b.ne    .Ltail_loop
+#endif
 
 .Lret:
     mov     x0, x2

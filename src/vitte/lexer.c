@@ -1,4 +1,5 @@
 #include "vitte/lexer.h"
+#include "diag_codes.h"
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,17 +40,6 @@ static const vitte_keyword g_keywords[] = {
     {VITTE_TOK_KW_PIPELINE, "pipeline"},
     {VITTE_TOK_KW_SCENARIO, "scenario"}
 };
-
-static void set_err(vitte_error* err, vitte_error_code code, uint32_t line, uint32_t col, const char* msg) {
-    if (!err) return;
-    err->code = code;
-    err->line = line;
-    err->col = col;
-    if (msg) {
-        strncpy(err->message, msg, sizeof(err->message) - 1);
-        err->message[sizeof(err->message) - 1] = '\0';
-    }
-}
 
 static int is_ident_start(char c) {
     return (c >= 'a' && c <= 'z') ||
@@ -93,12 +83,11 @@ static int reserve_tokens(token_vec* vec, size_t extra) {
     return 1;
 }
 
-static void push_token(token_vec* vec, vitte_token_kind kind, const char* lexeme, size_t len, uint32_t line, uint32_t col) {
+static void push_token(token_vec* vec, vitte_token_kind kind, const char* lexeme, size_t len, vitte_file_id file_id, uint32_t lo, uint32_t hi) {
     vec->data[vec->count].kind = kind;
     vec->data[vec->count].lexeme = lexeme;
     vec->data[vec->count].len = len;
-    vec->data[vec->count].line = line;
-    vec->data[vec->count].col = col;
+    vec->data[vec->count].span = vitte_span_make(file_id, lo, hi);
     vec->count++;
 }
 
@@ -121,18 +110,13 @@ typedef struct {
     const char* src;
     const char* cur;
     const char* end;
-    uint32_t line;
-    uint32_t col;
+    vitte_file_id file_id;
+    uint32_t off;
     vitte_ctx* ctx;
 } lexer_state;
 
 static void advance_char(lexer_state* st) {
-    if (*st->cur == '\n') {
-        st->line++;
-        st->col = 1;
-    } else {
-        st->col++;
-    }
+    st->off++;
     st->cur++;
 }
 
@@ -142,18 +126,22 @@ static void skip_comment(lexer_state* st) {
     }
 }
 
-static vitte_result emit_error(vitte_error* err, vitte_error_code code, uint32_t line, uint32_t col, const char* msg) {
-    set_err(err, code, line, col, msg);
+static vitte_result emit_error(vitte_diag_bag* diags, vitte_file_id file_id, uint32_t lo, uint32_t hi, vitte_error_code code, const char* msg) {
+    if (hi < lo) hi = lo;
+    vitte_diag* d = vitte_diag_bag_push(diags, VITTE_SEV_ERROR, vitte_errc_code(code), vitte_span_make(file_id, lo, hi), msg ? msg : "");
+    if (d) {
+        const char* help = vitte_errc_help(code);
+        if (help && help[0]) vitte_diag_set_help(d, help);
+    }
     return VITTE_ERR_LEX;
 }
 
 static vitte_result lex_string_literal(lexer_state* st,
                                        token_vec* vec,
-                                       vitte_error* err) {
-    uint32_t start_line = st->line;
-    uint32_t start_col = st->col;
+                                       vitte_diag_bag* diags) {
     const char quote = *st->cur;
     const char* begin = st->cur;
+    uint32_t lo = st->off;
     advance_char(st); /* skip quote */
     while (st->cur < st->end) {
         char c = *st->cur;
@@ -166,23 +154,22 @@ static vitte_result lex_string_literal(lexer_state* st,
         if (c == quote) {
             advance_char(st);
             size_t len = (size_t)(st->cur - begin);
-            push_token(vec, VITTE_TOK_STRING, begin, len, start_line, start_col);
+            push_token(vec, VITTE_TOK_STRING, begin, len, st->file_id, lo, lo + (uint32_t)len);
             return VITTE_OK;
         }
         if (c == '\n' || c == '\r') {
-            return emit_error(err, VITTE_ERRC_SYNTAX, start_line, start_col, "unterminated string literal");
+            return emit_error(diags, st->file_id, lo, lo + 1u, VITTE_ERRC_SYNTAX, "unterminated string literal");
         }
         advance_char(st);
     }
-    return emit_error(err, VITTE_ERRC_UNEXPECTED_EOF, start_line, start_col, "unterminated string literal");
+    return emit_error(diags, st->file_id, lo, lo + 1u, VITTE_ERRC_UNEXPECTED_EOF, "unterminated string literal");
 }
 
 static vitte_result lex_number_literal(lexer_state* st,
                                        token_vec* vec,
-                                       vitte_error* err) {
-    (void)err;
-    uint32_t line = st->line;
-    uint32_t col = st->col;
+                                       vitte_diag_bag* diags) {
+    (void)diags;
+    uint32_t lo = st->off;
     const char* start = st->cur;
     int has_dot = 0;
     while (st->cur < st->end && isdigit((unsigned char)*st->cur)) {
@@ -196,55 +183,52 @@ static vitte_result lex_number_literal(lexer_state* st,
         }
     }
     size_t len = (size_t)(st->cur - start);
-    push_token(vec, has_dot ? VITTE_TOK_FLOAT : VITTE_TOK_INT, start, len, line, col);
+    push_token(vec, has_dot ? VITTE_TOK_FLOAT : VITTE_TOK_INT, start, len, st->file_id, lo, lo + (uint32_t)len);
     return VITTE_OK;
 }
 
 static vitte_result lex_ident_or_keyword(lexer_state* st,
                                          token_vec* vec,
-                                         vitte_error* err) {
-    (void)err;
-    uint32_t line = st->line;
-    uint32_t col = st->col;
+                                         vitte_diag_bag* diags) {
+    (void)diags;
+    uint32_t lo = st->off;
     const char* start = st->cur;
     while (st->cur < st->end && is_ident_continue(*st->cur)) {
         advance_char(st);
     }
     size_t len = (size_t)(st->cur - start);
     vitte_token_kind kind = keyword_lookup(start, len);
-    push_token(vec, kind, start, len, line, col);
+    push_token(vec, kind, start, len, st->file_id, lo, lo + (uint32_t)len);
     return VITTE_OK;
 }
 
 static vitte_result lex_dot(lexer_state* st,
                             token_vec* vec) {
-    uint32_t line = st->line;
-    uint32_t col = st->col;
+    uint32_t lo = st->off;
     const char* start = st->cur;
     if (st->cur + 4 <= st->end && match_word(st->cur, st->end, ".end", 4)) {
         const char next = (st->cur + 4) >= st->end ? '\0' : st->cur[4];
         if (is_word_boundary(next)) {
             st->cur += 4;
-            st->col += 4;
-            push_token(vec, VITTE_TOK_DOTEND, start, 4, line, col);
+            st->off += 4u;
+            push_token(vec, VITTE_TOK_DOTEND, start, 4, st->file_id, lo, lo + 4u);
             return VITTE_OK;
         }
     }
     advance_char(st);
-    push_token(vec, VITTE_TOK_DOT, start, 1, line, col);
+    push_token(vec, VITTE_TOK_DOT, start, 1, st->file_id, lo, lo + 1u);
     return VITTE_OK;
 }
 
 static vitte_result lex_newline(lexer_state* st,
                                 token_vec* vec) {
-    uint32_t line = st->line;
-    uint32_t col = st->col;
+    uint32_t lo = st->off;
     const char* start = st->cur;
     advance_char(st);
     if (*start == '\r' && st->cur < st->end && *st->cur == '\n') {
         advance_char(st);
     }
-    push_token(vec, VITTE_TOK_NEWLINE, start, 1, line, col);
+    push_token(vec, VITTE_TOK_NEWLINE, start, 1, st->file_id, lo, lo + 1u);
     return VITTE_OK;
 }
 
@@ -252,31 +236,31 @@ static vitte_result lex_simple_token(lexer_state* st,
                                      token_vec* vec,
                                      vitte_token_kind kind,
                                      size_t width) {
-    uint32_t line = st->line;
-    uint32_t col = st->col;
+    uint32_t lo = st->off;
     const char* start = st->cur;
     for (size_t i = 0; i < width; ++i) advance_char(st);
-    push_token(vec, kind, start, width, line, col);
+    push_token(vec, kind, start, width, st->file_id, lo, lo + (uint32_t)width);
     return VITTE_OK;
 }
 
 vitte_result vitte_lex_all(vitte_ctx* ctx,
+                           vitte_file_id file_id,
                            const char* src,
                            size_t len,
                            vitte_token** out_tokens,
                            size_t* out_count,
-                           vitte_error* err) {
+                           vitte_diag_bag* diags) {
     (void)ctx;
     if (!src || !out_tokens || !out_count) {
-        return emit_error(err, VITTE_ERRC_SYNTAX, 0, 0, "invalid arguments");
+        return emit_error(diags, file_id, 0u, 0u, VITTE_ERRC_SYNTAX, "invalid arguments");
     }
 
     lexer_state st;
     st.src = src;
     st.cur = src;
     st.end = src + len;
-    st.line = 1;
-    st.col = 1;
+    st.file_id = file_id;
+    st.off = 0u;
     st.ctx = ctx;
 
     token_vec vec = {0};
@@ -305,19 +289,19 @@ vitte_result vitte_lex_all(vitte_ctx* ctx,
         }
         if (isdigit((unsigned char)c)) {
             if (!reserve_tokens(&vec, 1)) goto oom;
-            vitte_result r = lex_number_literal(&st, &vec, err);
+            vitte_result r = lex_number_literal(&st, &vec, diags);
             if (r != VITTE_OK) goto fail;
             continue;
         }
         if (is_ident_start(c)) {
             if (!reserve_tokens(&vec, 1)) goto oom;
-            vitte_result r = lex_ident_or_keyword(&st, &vec, err);
+            vitte_result r = lex_ident_or_keyword(&st, &vec, diags);
             if (r != VITTE_OK) goto fail;
             continue;
         }
         if (c == '"' || c == '\'') {
             if (!reserve_tokens(&vec, 1)) goto oom;
-            vitte_result r = lex_string_literal(&st, &vec, err);
+            vitte_result r = lex_string_literal(&st, &vec, diags);
             if (r != VITTE_OK) goto fail;
             continue;
         }
@@ -407,13 +391,13 @@ vitte_result vitte_lex_all(vitte_ctx* ctx,
                 break;
             default:
             invalid_char:
-                set_err(err, VITTE_ERRC_SYNTAX, st.line, st.col, "invalid character");
+                (void)emit_error(diags, st.file_id, st.off, st.off + 1u, VITTE_ERRC_SYNTAX, "invalid character");
                 goto fail;
         }
     }
 
     if (!reserve_tokens(&vec, 1)) goto oom;
-    push_token(&vec, VITTE_TOK_EOF, st.cur, 0, st.line, st.col);
+    push_token(&vec, VITTE_TOK_EOF, st.cur, 0, st.file_id, st.off, st.off);
     *out_tokens = vec.data;
     *out_count = vec.count;
     return VITTE_OK;

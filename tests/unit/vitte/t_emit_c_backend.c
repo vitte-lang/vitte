@@ -35,10 +35,11 @@ static void test_emit_from_phrase_unit(void) {
     vitte_ctx_init(&ctx);
     vitte_codegen_unit unit;
     vitte_codegen_unit_init(&unit);
-    vitte_error err;
-    memset(&err, 0, sizeof(err));
+    vitte_diag_bag diags;
+    vitte_diag_bag_init(&diags);
 
-    T_ASSERT(vitte_codegen_unit_build(&ctx, src, strlen(src), &unit, &err) == VITTE_OK);
+    T_ASSERT(vitte_codegen_unit_build(&ctx, 0u, src, strlen(src), &unit, &diags) == VITTE_OK);
+    T_ASSERT(!vitte_diag_bag_has_errors(&diags));
 
     vittec_emit_c_options_t opt;
     vittec_emit_c_options_init(&opt);
@@ -60,6 +61,7 @@ static void test_emit_from_phrase_unit(void) {
 
     vittec_emit_c_buffer_reset(&buf);
     vitte_codegen_unit_reset(&ctx, &unit);
+    vitte_diag_bag_free(&diags);
     vitte_ctx_free(&ctx);
 }
 
@@ -70,10 +72,11 @@ static void test_emit_buffer_with_header(void) {
     vitte_ctx_init(&ctx);
     vitte_codegen_unit unit;
     vitte_codegen_unit_init(&unit);
-    vitte_error err;
-    memset(&err, 0, sizeof(err));
+    vitte_diag_bag diags;
+    vitte_diag_bag_init(&diags);
 
-    T_ASSERT(vitte_codegen_unit_build(&ctx, src, strlen(src), &unit, &err) == VITTE_OK);
+    T_ASSERT(vitte_codegen_unit_build(&ctx, 0u, src, strlen(src), &unit, &diags) == VITTE_OK);
+    T_ASSERT(!vitte_diag_bag_has_errors(&diags));
 
     vittec_emit_c_options_t opt;
     vittec_emit_c_options_init(&opt);
@@ -90,6 +93,7 @@ static void test_emit_buffer_with_header(void) {
 
     vittec_emit_c_buffer_reset(&buf);
     vitte_codegen_unit_reset(&ctx, &unit);
+    vitte_diag_bag_free(&diags);
     vitte_ctx_free(&ctx);
 }
 

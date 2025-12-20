@@ -71,27 +71,38 @@
     // Symbol visibility / linkage
     // -----------------------------------------------------------------------
 
+#ifndef VITTE_SYM
+  // Mach-O uses leading-underscore symbol names at the linker level.
+  // Use VITTE_SYM(foo) everywhere we emit/declare public symbols.
+#if defined(VITTE_ASM_MACHO)
+#define VITTE_SYM(sym)          _##sym
+#else
+#define VITTE_SYM(sym)          sym
+#endif
+#endif
+
 #ifndef VITTE_GLOBAL
-#define VITTE_GLOBAL(sym)       .global sym
+  // Prefer .globl for maximum assembler compatibility.
+#define VITTE_GLOBAL(sym)       .globl VITTE_SYM(sym)
 #endif
 
 #ifndef VITTE_HIDDEN
     // Not always supported on Mach-O; guarded below.
 #if defined(VITTE_ASM_ELF)
-#define VITTE_HIDDEN(sym)       .hidden sym
+#define VITTE_HIDDEN(sym)       .hidden VITTE_SYM(sym)
 #else
 #define VITTE_HIDDEN(sym)       /* hidden unsupported */
 #endif
 #endif
 
 #ifndef VITTE_WEAK
-#define VITTE_WEAK(sym)         .weak sym
+#define VITTE_WEAK(sym)         .weak VITTE_SYM(sym)
 #endif
 
 #ifndef VITTE_TYPE_FUNC
     // ELF uses .type sym, %function
 #if defined(VITTE_ASM_ELF)
-#define VITTE_TYPE_FUNC(sym)    .type sym, %function
+#define VITTE_TYPE_FUNC(sym)    .type VITTE_SYM(sym), %function
 #else
 #define VITTE_TYPE_FUNC(sym)    /* Mach-O: no .type */
 #endif
@@ -100,7 +111,7 @@
 #ifndef VITTE_SIZE_FUNC
     // ELF uses .size sym, .-sym
 #if defined(VITTE_ASM_ELF)
-#define VITTE_SIZE_FUNC(sym)    .size sym, .-sym
+#define VITTE_SIZE_FUNC(sym)    .size VITTE_SYM(sym), .-VITTE_SYM(sym)
 #else
 #define VITTE_SIZE_FUNC(sym)    /* Mach-O: no .size */
 #endif
@@ -112,11 +123,9 @@
 
 #ifndef VITTE_FUNC_BEGIN
 #define VITTE_FUNC_BEGIN(sym)   \
-    VITTE_TEXT;                 \
-    VITTE_P2ALIGN(2);           \
+    VITTE_SYM(sym):             \
     VITTE_GLOBAL(sym);          \
-    VITTE_TYPE_FUNC(sym);       \
-sym:
+    VITTE_TYPE_FUNC(sym)
 #endif
 
 #ifndef VITTE_FUNC_END
@@ -180,12 +189,16 @@ sym:
 
 #ifndef VITTE_A64_PREFETCH_LD
     // prfm pldl1keep, [addr, #imm]
-#define VITTE_A64_PREFETCH_LD(addr, imm) prfm pldl1keep, [addr, #imm]
+    // NOTE: Don't write `#imm` here: in the C preprocessor, `#` stringizes the
+    // macro argument, producing `"256"` which breaks the assembler. Call sites
+    // should pass the immediate token (e.g. `#256`) as `imm`.
+#define VITTE_A64_PREFETCH_LD(addr, imm) prfm pldl1keep, [addr, imm]
 #endif
 
 #ifndef VITTE_A64_PREFETCH_ST
     // prfm pstl1keep, [addr, #imm]
-#define VITTE_A64_PREFETCH_ST(addr, imm) prfm pstl1keep, [addr, #imm]
+    // See note above about `#imm` and stringizing.
+#define VITTE_A64_PREFETCH_ST(addr, imm) prfm pstl1keep, [addr, imm]
 #endif
 
     // -----------------------------------------------------------------------

@@ -37,6 +37,11 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 option(VITTE_ENABLE_ASM_FASTPATHS "Build and link the Vitte .S fastpaths" OFF)
 option(VITTE_ENABLE_RUST_API "Build and link Rust FFI (vitte_rust_api)" OFF)
 
+# `VITTE_ENABLE_RUST_API` is a repo-wide toggle used by other subprojects (e.g. the compiler).
+# For the benchmark binary, we keep a dedicated toggle so we can build multiple variants without
+# mutating the global cache variable.
+option(VITTE_BENCH_ENABLE_RUST_API "Enable Rust FFI in benchmarks" ${VITTE_ENABLE_RUST_API})
+
 # ============================================================================
 # Framework source files (bench/)
 # ============================================================================
@@ -84,6 +89,7 @@ set(BENCH_FRAMEWORK_HEADERS
 
 set(BENCH_MICRO_SOURCES
   src/micro/bm_hash.c
+  src/micro/bm_fnv1a64.c
   src/micro/bm_add.c
   src/micro/bm_array_access.c
   src/micro/bm_bitops.c
@@ -124,6 +130,8 @@ set(ALL_SOURCES
   ${BENCH_MICRO_SOURCES}
   ${BENCH_MACRO_SOURCES}
 )
+
+set(ALL_SOURCES_NO_ASM ${ALL_SOURCES})
 
 if(VITTE_ENABLE_ASM_FASTPATHS)
   enable_language(ASM)
@@ -184,96 +192,111 @@ if(VITTE_ENABLE_ASM_FASTPATHS)
     target_compile_definitions(vitte_asm_fastpaths PRIVATE VITTE_ASM_ELF=1)
   endif()
 
-  list(APPEND ALL_SOURCES src/bench/bench_asm_shim.c)
+  set(ALL_SOURCES_ASM ${ALL_SOURCES_NO_ASM} src/bench/bench_asm_shim.c)
 endif()
 
 # ============================================================================
-# Main executable: vittec-bench
+# Rust API (shared target)
 # ============================================================================
 
-add_executable(benchc ${ALL_SOURCES} ${BENCH_FRAMEWORK_HEADERS})
-target_compile_definitions(benchc PRIVATE BENCH_RUNNER_STANDALONE BENCH_PLATFORM_NO_IMPL)
-
-# Link math library if available
-if(NOT WIN32)
-  target_link_libraries(benchc PRIVATE m)
-endif()
-
-if(VITTE_ENABLE_RUST_API)
-  target_compile_definitions(benchc PRIVATE VITTE_ENABLE_RUST_API=1)
+function(vitte_bench_ensure_rust_api_target)
+  if(TARGET vitte_rust_api)
+    return()
+  endif()
 
   set(VITTE_RUST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../rust)
+  set(VITTE_RUST_DIR ${VITTE_RUST_DIR} PARENT_SCOPE)
 
-  if(NOT TARGET vitte_rust_api)
-    find_program(CARGO_EXECUTABLE cargo REQUIRED)
-    set(VITTE_RUST_MANIFEST ${VITTE_RUST_DIR}/Cargo.toml)
+  find_program(CARGO_EXECUTABLE cargo REQUIRED)
+  set(VITTE_RUST_MANIFEST ${VITTE_RUST_DIR}/Cargo.toml)
 
-    # NOTE: Cargo output location depends on target triple; we rely on default host build here.
-    set(VITTE_RUST_PROFILE release)
-    set(VITTE_RUST_LIBDIR ${VITTE_RUST_DIR}/target/${VITTE_RUST_PROFILE})
-    set(VITTE_RUST_STATICLIB ${VITTE_RUST_LIBDIR}/libvitte_rust_api.a)
+  # NOTE: Cargo output location depends on target triple; we rely on default host build here.
+  set(VITTE_RUST_PROFILE release)
+  set(VITTE_RUST_LIBDIR ${VITTE_RUST_DIR}/target/${VITTE_RUST_PROFILE})
+  set(VITTE_RUST_STATICLIB ${VITTE_RUST_LIBDIR}/libvitte_rust_api.a)
 
-    if(NOT TARGET vitte_rust_api_build)
-      file(GLOB_RECURSE VITTE_RUST_WORKSPACE_SOURCES
-        CONFIGURE_DEPENDS
-        ${VITTE_RUST_DIR}/Cargo.toml
-        ${VITTE_RUST_DIR}/Cargo.lock
-        ${VITTE_RUST_DIR}/crates/*/Cargo.toml
-        ${VITTE_RUST_DIR}/crates/*/src/*.rs
-      )
+  if(NOT TARGET vitte_rust_api_build)
+    file(GLOB_RECURSE VITTE_RUST_WORKSPACE_SOURCES
+      CONFIGURE_DEPENDS
+      ${VITTE_RUST_DIR}/Cargo.toml
+      ${VITTE_RUST_DIR}/Cargo.lock
+      ${VITTE_RUST_DIR}/crates/*/Cargo.toml
+      ${VITTE_RUST_DIR}/crates/*/src/*.rs
+    )
 
-      add_custom_command(
-        OUTPUT ${VITTE_RUST_STATICLIB}
-        COMMAND ${CARGO_EXECUTABLE} build -p vitte_rust_api --profile ${VITTE_RUST_PROFILE} --manifest-path ${VITTE_RUST_MANIFEST}
-        WORKING_DIRECTORY ${VITTE_RUST_DIR}
-        DEPENDS ${VITTE_RUST_WORKSPACE_SOURCES}
-        COMMENT "Building Rust staticlib: vitte_rust_api"
-        VERBATIM
-      )
+    add_custom_command(
+      OUTPUT ${VITTE_RUST_STATICLIB}
+      COMMAND ${CARGO_EXECUTABLE} build -p vitte_rust_api --profile ${VITTE_RUST_PROFILE} --manifest-path ${VITTE_RUST_MANIFEST}
+      WORKING_DIRECTORY ${VITTE_RUST_DIR}
+      DEPENDS ${VITTE_RUST_WORKSPACE_SOURCES}
+      COMMENT "Building Rust staticlib: vitte_rust_api"
+      VERBATIM
+    )
 
-      add_custom_target(vitte_rust_api_build DEPENDS ${VITTE_RUST_STATICLIB})
-    endif()
-
-    add_library(vitte_rust_api STATIC IMPORTED GLOBAL)
-    set_target_properties(vitte_rust_api PROPERTIES IMPORTED_LOCATION ${VITTE_RUST_STATICLIB})
-    add_dependencies(vitte_rust_api vitte_rust_api_build)
+    add_custom_target(vitte_rust_api_build DEPENDS ${VITTE_RUST_STATICLIB})
   endif()
 
-  target_include_directories(benchc PRIVATE ${VITTE_RUST_DIR}/include-gen)
-  target_link_libraries(benchc PRIVATE vitte_rust_api)
+  add_library(vitte_rust_api STATIC IMPORTED GLOBAL)
+  set_target_properties(vitte_rust_api PROPERTIES IMPORTED_LOCATION ${VITTE_RUST_STATICLIB})
+  add_dependencies(vitte_rust_api vitte_rust_api_build)
+endfunction()
 
+function(vitte_bench_add_executable target sources enable_asm enable_rust)
+  add_executable(${target} ${sources} ${BENCH_FRAMEWORK_HEADERS})
+  target_compile_definitions(${target} PRIVATE BENCH_RUNNER_STANDALONE BENCH_PLATFORM_NO_IMPL)
+
+  # Link math library if available
+  if(NOT WIN32)
+    target_link_libraries(${target} PRIVATE m)
+  endif()
+
+  # Platform-specific linking
   if(APPLE)
-    target_link_libraries(benchc PRIVATE "-framework CoreFoundation")
+    target_link_libraries(${target} PRIVATE "-framework CoreFoundation")
+  elseif(UNIX AND NOT APPLE)
+    target_link_libraries(${target} PRIVATE rt)
+  elseif(WIN32)
+    target_link_libraries(${target} PRIVATE ntdll)
   endif()
-endif()
 
-# Platform-specific linking
-if(APPLE)
-  # macOS: link CoreFoundation for timing
-  target_link_libraries(benchc PRIVATE "-framework CoreFoundation")
-elseif(UNIX AND NOT APPLE)
-  # Linux: link rt for clock_gettime
-  target_link_libraries(benchc PRIVATE rt)
-elseif(WIN32)
-  target_link_libraries(benchc PRIVATE ntdll)
-endif()
+  if(${enable_rust})
+    vitte_bench_ensure_rust_api_target()
+    target_compile_definitions(${target} PRIVATE VITTE_ENABLE_RUST_API=1)
+    target_include_directories(${target} PRIVATE ${VITTE_RUST_DIR}/include-gen)
+    target_link_libraries(${target} PRIVATE vitte_rust_api)
+  endif()
 
-if(VITTE_ENABLE_ASM_FASTPATHS)
-  target_link_libraries(benchc PRIVATE vitte_asm_fastpaths)
-  target_compile_definitions(benchc PRIVATE
-    VITTE_BENCH_USE_ASM_MEMCPY=1
-    VITTE_BENCH_USE_ASM_HASH=1
+  if(${enable_asm})
+    target_link_libraries(${target} PRIVATE vitte_asm_fastpaths)
+    target_compile_definitions(${target} PRIVATE
+      VITTE_BENCH_USE_ASM_MEMCPY=1
+      VITTE_BENCH_USE_ASM_HASH=1
+    )
+  endif()
+
+  set_target_properties(${target} PROPERTIES
+    C_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
   )
+endfunction()
+
+# ============================================================================
+# Executables
+# ============================================================================
+
+# A single `benchc` binary cannot link both `vitte_asm_fastpaths` and `vitte_rust_api` because
+# they currently provide a conflicting public symbol (`vitte_utf8_validate`). When both features
+# are enabled, we build two variants so you still get a full "C + Rust" build.
+if(VITTE_ENABLE_ASM_FASTPATHS AND VITTE_BENCH_ENABLE_RUST_API)
+  vitte_bench_add_executable(benchc "${ALL_SOURCES_ASM}" ON OFF)
+  vitte_bench_add_executable(benchc_rust "${ALL_SOURCES_NO_ASM}" OFF ON)
+elseif(VITTE_ENABLE_ASM_FASTPATHS)
+  vitte_bench_add_executable(benchc "${ALL_SOURCES_ASM}" ON OFF)
+elseif(VITTE_BENCH_ENABLE_RUST_API)
+  vitte_bench_add_executable(benchc "${ALL_SOURCES_NO_ASM}" OFF ON)
+else()
+  vitte_bench_add_executable(benchc "${ALL_SOURCES_NO_ASM}" OFF OFF)
 endif()
-
-# ============================================================================
-# Build properties
-# ============================================================================
-
-set_target_properties(benchc PROPERTIES
-  C_VISIBILITY_PRESET hidden
-  VISIBILITY_INLINES_HIDDEN ON
-)
 
 # ============================================================================
 # Output
@@ -284,4 +307,8 @@ message(STATUS "  Framework: 16 .c files + 16 .h headers")
 message(STATUS "  Micro-benchmarks: 15 .c files")
 message(STATUS "  Macro-benchmarks: 8 .c files")
 message(STATUS "  Total: 56 source/header files, 23 benchmarks")
-message(STATUS "  Executable: benchc")
+if(TARGET benchc_rust)
+  message(STATUS "  Executables: benchc (ASM) + benchc_rust (Rust)")
+else()
+  message(STATUS "  Executable: benchc")
+endif()

@@ -28,6 +28,7 @@
 
 #include "common/asm_macros.S"
 
+    VITTE_TEXT
     VITTE_P2ALIGN(4)
     VITTE_FUNC_BEGIN(vitte_memset_avx2)
     mov     %rdi, %rax            // save original dst

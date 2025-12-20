@@ -2,6 +2,7 @@
 #define VITTE_CODEGEN_H
 
 #include "vitte.h"
+#include "vitte/diag.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -63,10 +64,11 @@ void vitte_codegen_unit_init(vitte_codegen_unit* unit);
 void vitte_codegen_unit_reset(vitte_ctx* ctx, vitte_codegen_unit* unit);
 
 vitte_result vitte_codegen_unit_build(vitte_ctx* ctx,
+                                      vitte_file_id file_id,
                                       const char* src,
                                       size_t len,
                                       vitte_codegen_unit* out,
-                                      vitte_error* err);
+                                      vitte_diag_bag* diags);
 
 
 /* -------------------------------------------------------------------------

@@ -25,6 +25,7 @@
 
 #include "common/asm_macros.S"
 
+    VITTE_TEXT
     VITTE_P2ALIGN(4)
     VITTE_FUNC_BEGIN(vitte_fnv1a64)
     // hash = offset basis 0xcbf29ce484222325

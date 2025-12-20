@@ -31,11 +31,12 @@ static void test_codegen_module_type_fn(void) {
     vitte_codegen_unit unit;
     vitte_codegen_unit_init(&unit);
 
-    vitte_error err;
-    memset(&err, 0, sizeof(err));
+    vitte_diag_bag diags;
+    vitte_diag_bag_init(&diags);
 
-    vitte_result r = vitte_codegen_unit_build(&ctx, src, strlen(src), &unit, &err);
+    vitte_result r = vitte_codegen_unit_build(&ctx, 0u, src, strlen(src), &unit, &diags);
     assert_true(r == VITTE_OK, "codegen unit build ok");
+    assert_true(!vitte_diag_bag_has_errors(&diags), "no diagnostics");
     assert_true(unit.module_count == 1, "found module");
     assert_true(unit.type_count == 1, "found type");
     assert_true(unit.functions && unit.function_count == 1, "found fn");
@@ -47,6 +48,7 @@ static void test_codegen_module_type_fn(void) {
     assert_true(unit.functions[0].param_count == 2, "param count captured");
 
     vitte_codegen_unit_reset(&ctx, &unit);
+    vitte_diag_bag_free(&diags);
     vitte_ctx_free(&ctx);
 }
 
@@ -63,15 +65,15 @@ static void test_codegen_error(void) {
     vitte_codegen_unit unit;
     vitte_codegen_unit_init(&unit);
 
-    vitte_error err;
-    memset(&err, 0, sizeof(err));
+    vitte_diag_bag diags;
+    vitte_diag_bag_init(&diags);
 
-    vitte_result r = vitte_codegen_unit_build(&ctx, src, strlen(src), &unit, &err);
+    vitte_result r = vitte_codegen_unit_build(&ctx, 0u, src, strlen(src), &unit, &diags);
     assert_true(r == VITTE_ERR_PARSE, "codegen propagates parse error");
-    assert_true(err.code != VITTE_ERRC_NONE, "error code set");
-    assert_true(err.message[0] != '\0', "error message bubbled up");
+    assert_true(vitte_diag_bag_has_errors(&diags), "diagnostics present");
 
     vitte_codegen_unit_reset(&ctx, &unit);
+    vitte_diag_bag_free(&diags);
     vitte_ctx_free(&ctx);
 }
 

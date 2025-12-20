@@ -27,6 +27,7 @@
 
 #include "common/asm_macros.S"
 
+    VITTE_TEXT
     VITTE_P2ALIGN(4)
     VITTE_FUNC_BEGIN(vitte_memcpy_baseline)
     mov     %rdi, %rax            // save original dst for return

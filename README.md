@@ -147,6 +147,19 @@ Objectifs d’ingénierie :
 - **CI-friendly** : execution non-interactive, artefacts machine-friendly (JSON/CSV), modes fast/fail-fast.
 - **Intégrable** : bibliothèques C17 simples à embarquer dans un mono-repo.
 
+
+
+Ici, “plus puissant” veut dire “plus expressif” : le **langage Vitte** vise à offrir des primitives haut niveau,
+sans abandonner les contraintes systèmes (perf, portabilité, ABI/FFI).
+
+- **Types & abstractions** : `struct`, `enum`, `trait`/`interface`, `impl`, `type`, annotations de types, visibilité (`pub`/`private`…).
+- **Contrôle de flux riche** : `match` (pattern matching), exceptions (`try`/`catch`/`throw`), `async`/`await`, `yield`.
+- **Modularité** : `module`, `import`/`export` pour structurer des projets au-delà d’un “header+source”.
+- **Frontière unsafe explicite** : blocs `unsafe { ... }` pour isoler les opérations à risque.
+- **Interop** : appel de C depuis Vitte et export Vitte → C (le compilateur peut aussi **émettre du C**).
+
+Références : `docs/language-spec/reference.md`, `sdk/docs/FFI.md`.
+
 ---
 
 ## Ce que contient le dépôt
