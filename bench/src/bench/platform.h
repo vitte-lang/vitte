@@ -89,6 +89,15 @@ extern "C" {
   #define BENCH_ARCH_PPC64 0
 #endif
 
+#if BENCH_OS_WINDOWS
+  #ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+  #endif
+  #include <windows.h>
+#elif BENCH_OS_UNIX || BENCH_OS_LINUX || BENCH_OS_APPLE
+  #include <sched.h>
+#endif
+
 // -----------------------------------------------------------------------------
 // Compiler / attributes
 // -----------------------------------------------------------------------------
@@ -177,10 +186,8 @@ BENCH_FORCE_INLINE void bench_cpu_pause(void)
 BENCH_FORCE_INLINE void bench_thread_yield(void)
 {
 #if BENCH_OS_WINDOWS
-    #include <windows.h>
     Sleep(0);
 #elif BENCH_OS_UNIX || BENCH_OS_LINUX || BENCH_OS_APPLE
-    #include <sched.h>
     (void)sched_yield();
 #else
     bench_cpu_pause();

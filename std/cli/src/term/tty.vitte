@@ -1,7 +1,203 @@
-module vitte.std.tty
+# C:\Users\gogin\Documents\GitHub\vitte\std\cli\src\term\tty.vitte
+mod std/cli/term/tty
 
-# stub
+use std/prelude
 
-fn _stub()->void
-  ret
+use std/core/option
+use std/core/result
+
+use std/alloc/string
+use std/alloc/vec
+
+use std/os/process
+use std/os/env
+
+use std/cli/term/raw_mode
+use std/cli/term/size
+
+# =============================================================================
+# std::cli::term::tty
+# =============================================================================
+#
+# Objectif:
+# - API unifiée autour du terminal (TTY)
+# - détection stdin/stdout/stderr TTY
+# - helpers raw mode + size
+# - stubs portables, prêts à être remplacés par impl natives
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Types
+# -----------------------------------------------------------------------------
+
+enum Stream
+  Stdin
+  Stdout
+  Stderr
+.end
+
+struct TtyInfo
+  stdin_tty: bool
+  stdout_tty: bool
+  stderr_tty: bool
+  size: size::TermSize
+.end
+
+fn TtyInfo::new(stdin_tty: bool, stdout_tty: bool, stderr_tty: bool, size: size::TermSize) -> TtyInfo
+  ret TtyInfo
+    stdin_tty: stdin_tty
+    stdout_tty: stdout_tty
+    stderr_tty: stderr_tty
+    size: size
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# TTY detection (portable heuristics)
+# -----------------------------------------------------------------------------
+#
+# Strategy:
+# - Prefer process helpers if exposed by runtime
+# - Fallback: env heuristics
+#
+
+fn is_tty_stream(s: Stream) -> bool
+  if process::supports_isatty()
+    match s
+      Stream::Stdin  => ret process::isatty_stdin()
+      Stream::Stdout => ret process::isatty_stdout()
+      Stream::Stderr => ret process::isatty_stderr()
+    .end
+  .end
+
+  # Fallback heuristic:
+  # If TERM is set and not "dumb", assume stdout tty
+  let term = env::get("TERM")
+  if term.is_some()
+    let t = term.unwrap().as_str()
+    if t.len() > 0 && t != "dumb"
+      match s
+        Stream::Stdout => ret true
+        Stream::Stderr => ret true
+        Stream::Stdin  => ret false
+      .end
+    .end
+  .end
+
+  ret false
+.end
+
+fn is_tty_stdin() -> bool
+  ret is_tty_stream(Stream::Stdin)
+.end
+
+fn is_tty_stdout() -> bool
+  ret is_tty_stream(Stream::Stdout)
+.end
+
+fn is_tty_stderr() -> bool
+  ret is_tty_stream(Stream::Stderr)
+.end
+
+# -----------------------------------------------------------------------------
+# Raw mode helpers
+# -----------------------------------------------------------------------------
+
+fn enter_raw_mode() -> result::Result[raw_mode::RawModeGuard, raw_mode::RawModeError]
+  ret raw_mode::enter()
+.end
+
+fn leave_raw_mode() -> void
+  raw_mode::leave()
+.end
+
+fn with_raw_mode(f: fn() -> void) -> result::Result[void, raw_mode::RawModeError]
+  ret raw_mode::with_raw_mode(f)
+.end
+
+fn raw_mode_active() -> bool
+  ret raw_mode::is_active()
+.end
+
+# -----------------------------------------------------------------------------
+# Size helpers
+# -----------------------------------------------------------------------------
+
+fn size() -> size::TermSize
+  ret size::get()
+.end
+
+fn cols() -> u16
+  ret size::get_cols()
+.end
+
+fn rows() -> u16
+  ret size::get_rows()
+.end
+
+# -----------------------------------------------------------------------------
+# High-level info
+# -----------------------------------------------------------------------------
+
+fn info() -> TtyInfo
+  ret TtyInfo::new(
+    is_tty_stdin(),
+    is_tty_stdout(),
+    is_tty_stderr(),
+    size::get()
+  )
+.end
+
+# -----------------------------------------------------------------------------
+# Pretty / debug helpers
+# -----------------------------------------------------------------------------
+
+fn describe() -> string::String
+  let i = info()
+  ret string::String::from_str(
+    string::fmt(
+      "tty: stdin={} stdout={} stderr={} size={}x{}",
+      i.stdin_tty,
+      i.stdout_tty,
+      i.stderr_tty,
+      i.size.cols,
+      i.size.rows
+    )
+  )
+.end
+
+# -----------------------------------------------------------------------------
+# Convenience guards
+# -----------------------------------------------------------------------------
+
+fn require_stdout_tty() -> result::Result[void, string::String]
+  if is_tty_stdout()
+    ret result::Ok(())
+  .end
+  ret result::Err(string::String::from_str("stdout is not a tty"))
+.end
+
+fn require_stdin_tty() -> result::Result[void, string::String]
+  if is_tty_stdin()
+    ret result::Ok(())
+  .end
+  ret result::Err(string::String::from_str("stdin is not a tty"))
+.end
+
+# -----------------------------------------------------------------------------
+# Safe write helpers
+# -----------------------------------------------------------------------------
+
+fn write_if_tty(s: &str) -> void
+  if is_tty_stdout()
+    stdout_write(s)
+  .end
+.end
+
+fn writeln_if_tty(s: &str) -> void
+  if is_tty_stdout()
+    stdout_write(s)
+    stdout_write("\n")
+  .end
 .end

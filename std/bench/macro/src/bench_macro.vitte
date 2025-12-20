@@ -1,7 +1,444 @@
-module vitte.std.bench_macro
+# C:\Users\gogin\Documents\GitHub\vitte\std\bench\macro\src\bench_macro.vitte
+mod std/bench/macro/bench_macro
 
-# stub
+use std/prelude
 
-fn _stub()->void
-  ret
+use std/core/option
+use std/core/result
+
+use std/alloc/vec
+use std/alloc/string
+
+use std/time/instant
+use std/os/process
+
+# =============================================================================
+# std::bench::macro — micro/macro benchmark harness (portable)
+# =============================================================================
+#
+# Objectif:
+# - fournir une API de bench "macro" (scénarios) utilisable par la stdlib
+# - timer: Instant monotonic
+# - sortie: JSON optionnel + table console
+#
+# Design:
+# - BenchCase: (name, fn)
+# - Runner: configure warmup/iters/repeat, collecte stats
+# - Stats: min/max/mean/p50/p90/p99, ns/op, ops/s
+#
+# Remarques:
+# - pas d'allocation dans la hot-path (autant que possible)
+# - bench fn: fn(&mut Bencher)->void ; Bencher propose iter(N, body)
+# - un "black_box" est stub (à remplacer par intrinsic/asm fence)
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Black box (stub)
+# -----------------------------------------------------------------------------
+
+fn black_box_u64(x: u64) -> u64
+  # TODO: remplacer par intrinsic volatile/fence côté runtime
+  ret x
+.end
+
+fn black_box_usize(x: usize) -> usize
+  ret x
+.end
+
+fn black_box_str(s: &str) -> &str
+  ret s
+.end
+
+# -----------------------------------------------------------------------------
+# Percentiles helper
+# -----------------------------------------------------------------------------
+
+fn sort_u64(a: &mut [u64]) -> void
+  # simple insertion sort (bench harness size small)
+  let mut i: usize = 1
+  while i < a.len()
+    let key = a[i]
+    let mut j: usize = i
+    while j > 0 && a[j - 1] > key
+      a[j] = a[j - 1]
+      j = j - 1
+    .end
+    a[j] = key
+    i = i + 1
+  .end
+.end
+
+fn percentile(sorted: &[u64], p: u32) -> u64
+  if sorted.len() == 0
+    ret 0
+  .end
+  if p >= 100
+    ret sorted[sorted.len() - 1]
+  .end
+  let idx = ((sorted.len() - 1) * (p as usize)) / 100
+  ret sorted[idx]
+.end
+
+# -----------------------------------------------------------------------------
+# Stats
+# -----------------------------------------------------------------------------
+
+struct BenchStats
+  samples: usize
+  total_ns: u64
+  min_ns: u64
+  max_ns: u64
+  mean_ns: u64
+  p50_ns: u64
+  p90_ns: u64
+  p99_ns: u64
+.end
+
+fn BenchStats::empty() -> BenchStats
+  ret BenchStats
+    samples: 0
+    total_ns: 0
+    min_ns: 0
+    max_ns: 0
+    mean_ns: 0
+    p50_ns: 0
+    p90_ns: 0
+    p99_ns: 0
+  .end
+.end
+
+fn compute_stats(samples: &mut vec::Vec[u64]) -> BenchStats
+  if samples.len() == 0
+    ret BenchStats::empty()
+  .end
+
+  sort_u64(samples.as_mut_slice())
+
+  let mut total: u64 = 0
+  let mut i: usize = 0
+  while i < samples.len()
+    total = total + samples[i]
+    i = i + 1
+  .end
+
+  let minv = samples[0]
+  let maxv = samples[samples.len() - 1]
+  let mean = total / (samples.len() as u64)
+
+  ret BenchStats
+    samples: samples.len()
+    total_ns: total
+    min_ns: minv
+    max_ns: maxv
+    mean_ns: mean
+    p50_ns: percentile(samples.as_slice(), 50)
+    p90_ns: percentile(samples.as_slice(), 90)
+    p99_ns: percentile(samples.as_slice(), 99)
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Config
+# -----------------------------------------------------------------------------
+
+struct BenchConfig
+  warmup_ms: u64
+  measure_ms: u64
+
+  # per-case:
+  iters_per_sample: u64
+  max_samples: usize
+
+  # output
+  json: bool
+  verbose: bool
+.end
+
+fn BenchConfig::default() -> BenchConfig
+  ret BenchConfig
+    warmup_ms: 200
+    measure_ms: 1000
+    iters_per_sample: 1
+    max_samples: 10_000
+    json: false
+    verbose: false
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Bencher
+# -----------------------------------------------------------------------------
+
+struct Bencher
+  iters: u64
+.end
+
+fn Bencher::new() -> Bencher
+  ret Bencher
+    iters: 1
+  .end
+.end
+
+fn Bencher::iters(self: &Bencher) -> u64
+  ret self.iters
+.end
+
+fn Bencher::set_iters(self: &mut Bencher, n: u64) -> void
+  self.iters = if n == 0 then 1 else n
+.end
+
+# iterate body N times
+fn Bencher::iter(self: &Bencher, body: fn() -> void) -> void
+  let mut i: u64 = 0
+  while i < self.iters
+    body()
+    i = i + 1
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Bench case
+# -----------------------------------------------------------------------------
+
+type BenchFn = fn(&mut Bencher) -> void
+
+struct BenchCase
+  name: string::String
+  f: BenchFn
+.end
+
+fn BenchCase::new(name: &str, f: BenchFn) -> BenchCase
+  ret BenchCase
+    name: string::String::from_str(name)
+    f: f
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Runner
+# -----------------------------------------------------------------------------
+
+struct BenchResult
+  name: string::String
+  iters_per_sample: u64
+  stats: BenchStats
+.end
+
+struct Runner
+  cfg: BenchConfig
+  cases: vec::Vec[BenchCase]
+.end
+
+fn Runner::new(cfg: BenchConfig) -> Runner
+  ret Runner
+    cfg: cfg
+    cases: vec::Vec[BenchCase]::new()
+  .end
+.end
+
+fn Runner::case(self: &mut Runner, name: &str, f: BenchFn) -> void
+  self.cases.push(BenchCase::new(name, f))
+.end
+
+fn warmup_case(cfg: &BenchConfig, f: BenchFn) -> void
+  let mut b = Bencher::new()
+  b.set_iters(cfg.iters_per_sample)
+
+  let start = instant::now()
+  while start.elapsed_ms() < cfg.warmup_ms
+    f(&mut b)
+  .end
+.end
+
+fn measure_case(cfg: &BenchConfig, f: BenchFn) -> BenchStats
+  let mut b = Bencher::new()
+  b.set_iters(cfg.iters_per_sample)
+
+  let mut samples: vec::Vec[u64] = vec::Vec[u64]::new()
+
+  let start = instant::now()
+  while start.elapsed_ms() < cfg.measure_ms && samples.len() < cfg.max_samples
+    let t0 = instant::now()
+    f(&mut b)
+    let dt = t0.elapsed_ns_u64()
+    # normalize to ns/op
+    let per = dt / b.iters()
+    samples.push(per)
+  .end
+
+  ret compute_stats(&mut samples)
+.end
+
+fn format_ns(ns: u64) -> string::String
+  # simple formatting (ns, us, ms)
+  if ns < 1_000
+    ret string::String::from_str(string::fmt("{} ns", ns))
+  .end
+  if ns < 1_000_000
+    let us = ns / 1_000
+    ret string::String::from_str(string::fmt("{} us", us))
+  .end
+  if ns < 1_000_000_000
+    let ms = ns / 1_000_000
+    ret string::String::from_str(string::fmt("{} ms", ms))
+  .end
+  let s = ns / 1_000_000_000
+  ret string::String::from_str(string::fmt("{} s", s))
+.end
+
+fn print_table(results: &vec::Vec[BenchResult]) -> void
+  say "name                            iters   mean     p50      p90      p99      min      max"
+  say "------------------------------------------------------------------------------------------------"
+  let mut i: usize = 0
+  while i < results.len()
+    let r = results[i]
+    let st = r.stats
+    say string::fmt(
+      "{:<30} {:>5}  {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}",
+      r.name.as_str(),
+      r.iters_per_sample,
+      format_ns(st.mean_ns).as_str(),
+      format_ns(st.p50_ns).as_str(),
+      format_ns(st.p90_ns).as_str(),
+      format_ns(st.p99_ns).as_str(),
+      format_ns(st.min_ns).as_str(),
+      format_ns(st.max_ns).as_str()
+    )
+    i = i + 1
+  .end
+.end
+
+fn print_json(results: &vec::Vec[BenchResult]) -> void
+  # minimal JSON (no escape); ok for controlled names
+  say "{"
+  say "  \"bench\": ["
+  let mut i: usize = 0
+  while i < results.len()
+    let r = results[i]
+    let st = r.stats
+    let comma = if i + 1 < results.len() then "," else ""
+    say string::fmt(
+      "    {{\"name\":\"{}\",\"iters\":{},\"mean_ns\":{},\"p50_ns\":{},\"p90_ns\":{},\"p99_ns\":{},\"min_ns\":{},\"max_ns\":{},\"samples\":{}}}{}",
+      r.name.as_str(),
+      r.iters_per_sample,
+      st.mean_ns,
+      st.p50_ns,
+      st.p90_ns,
+      st.p99_ns,
+      st.min_ns,
+      st.max_ns,
+      st.samples,
+      comma
+    )
+    i = i + 1
+  .end
+  say "  ]"
+  say "}"
+.end
+
+fn Runner::run(self: &mut Runner) -> i32
+  if self.cases.len() == 0
+    say "no benchmark cases registered"
+    ret 1
+  .end
+
+  let mut results: vec::Vec[BenchResult] = vec::Vec[BenchResult]::new()
+
+  let mut i: usize = 0
+  while i < self.cases.len()
+    let c = self.cases[i]
+    if self.cfg.verbose
+      say string::fmt("warmup: {}", c.name.as_str())
+    .end
+    warmup_case(&self.cfg, c.f)
+
+    if self.cfg.verbose
+      say string::fmt("measure: {}", c.name.as_str())
+    .end
+    let st = measure_case(&self.cfg, c.f)
+
+    results.push(BenchResult
+      name: c.name
+      iters_per_sample: self.cfg.iters_per_sample
+      stats: st
+    .end)
+
+    i = i + 1
+  .end
+
+  if self.cfg.json
+    print_json(&results)
+  else
+    print_table(&results)
+  .end
+
+  ret 0
+.end
+
+# -----------------------------------------------------------------------------
+# CLI helper (optional)
+# -----------------------------------------------------------------------------
+# Minimal parser: --json --verbose --warmup-ms=N --measure-ms=N --iters=N
+
+fn parse_u64(s: &str, default: u64) -> u64
+  # assume core parsing exists; fallback naive
+  let n = string::parse_u64(s)
+  if n.is_some()
+    ret n.unwrap()
+  .end
+  ret default
+.end
+
+fn config_from_args(args: &vec::Vec[string::String]) -> BenchConfig
+  let mut cfg = BenchConfig::default()
+
+  let mut i: usize = 0
+  while i < args.len()
+    let a = args[i].as_str()
+
+    if a == "--json"
+      cfg.json = true
+    elif a == "--verbose"
+      cfg.verbose = true
+    elif a.starts_with("--warmup-ms=")
+      cfg.warmup_ms = parse_u64(a.split("=").last(), cfg.warmup_ms)
+    elif a.starts_with("--measure-ms=")
+      cfg.measure_ms = parse_u64(a.split("=").last(), cfg.measure_ms)
+    elif a.starts_with("--iters=")
+      cfg.iters_per_sample = parse_u64(a.split("=").last(), cfg.iters_per_sample)
+    .end
+
+    i = i + 1
+  .end
+
+  ret cfg
+.end
+
+# -----------------------------------------------------------------------------
+# Example entrypoint (can be removed if you want pure library)
+# -----------------------------------------------------------------------------
+
+fn main() -> i32
+  let args = process::args()
+  let cfg = config_from_args(&args)
+
+  let mut r = Runner::new(cfg)
+
+  # Example cases (placeholders)
+  r.case("black_box_u64", fn(b: &mut Bencher) -> void
+    b.iter(fn() -> void
+      let x = black_box_u64(123)
+      do x
+    .end)
+  .end)
+
+  r.case("string_fmt_small", fn(b: &mut Bencher) -> void
+    b.iter(fn() -> void
+      let s = string::String::from_str(string::fmt("a{}b", 42))
+      do s.len()
+    .end)
+  .end)
+
+  ret r.run()
 .end

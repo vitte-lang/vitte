@@ -1,7 +1,596 @@
-module vitte.std.async_read_write
+# C:\Users\gogin\Documents\GitHub\vitte\std\async\src\io\async_read_write.vitte
+mod std/async/io/async_read_write
 
-# stub
+use std/prelude
 
-fn _stub()->void
-  ret
+use std/core/option
+use std/core/result
+
+use std/alloc/vec
+use std/alloc/string
+
+use std/time/instant
+use std/os/thread
+
+use std/async/future
+use std/async/executor/waker
+
+# =============================================================================
+# Async I/O traits + utilities (portable minimal layer)
+# =============================================================================
+#
+# But:
+# - définir des traits AsyncRead / AsyncWrite alignés Future::poll(cx)
+# - fournir helpers read_exact / write_all / copy
+# - fournir un adaptateur "polling" (bridge) pour transformer du sync en async
+#   (utile pour tests et impls sans reactor)
+#
+# Hypothèses:
+# - std/io/* existe côté sync (Reader/Writer/Read/Write) OU tu adapteras
+# - ici: on définit une surface async générique.
+#
+# Notes:
+# - buffer = Vec[u8]
+# - les opérations retournent Result[usize, IoError] ou Result[void, IoError]
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Error model
+# -----------------------------------------------------------------------------
+
+enum IoErrorKind
+  Other
+  Eof
+  WouldBlock
+  Interrupted
+  InvalidInput
+  TimedOut
+.end
+
+struct IoError
+  kind: IoErrorKind
+  message: string::String
+.end
+
+fn IoError::new(kind: IoErrorKind, msg: &str) -> IoError
+  ret IoError
+    kind: kind
+    message: string::String::from_str(msg)
+  .end
+.end
+
+fn IoError::eof() -> IoError
+  ret IoError::new(IoErrorKind::Eof, "EOF")
+.end
+
+fn IoError::would_block() -> IoError
+  ret IoError::new(IoErrorKind::WouldBlock, "would block")
+.end
+
+# -----------------------------------------------------------------------------
+# AsyncRead / AsyncWrite traits (poll-based)
+# -----------------------------------------------------------------------------
+
+trait AsyncRead
+  # read up to buf.len bytes
+  fn poll_read(self: &mut Self, cx: &waker::Context, buf: &mut [u8]) -> future::Poll[result::Result[usize, IoError]]
+.end
+
+trait AsyncWrite
+  # write up to buf.len bytes
+  fn poll_write(self: &mut Self, cx: &waker::Context, buf: &[u8]) -> future::Poll[result::Result[usize, IoError]]
+
+  # flush buffered data
+  fn poll_flush(self: &mut Self, cx: &waker::Context) -> future::Poll[result::Result[void, IoError]]
+
+  # close/shutdown
+  fn poll_close(self: &mut Self, cx: &waker::Context) -> future::Poll[result::Result[void, IoError]]
+.end
+
+# -----------------------------------------------------------------------------
+# Ready helpers
+# -----------------------------------------------------------------------------
+
+fn ready_ok_usize(n: usize) -> future::Poll[result::Result[usize, IoError]]
+  ret future::Poll::Ready(result::Ok(n))
+.end
+
+fn ready_ok_void() -> future::Poll[result::Result[void, IoError]]
+  ret future::Poll::Ready(result::Ok(()))
+.end
+
+fn ready_err_usize(e: IoError) -> future::Poll[result::Result[usize, IoError]]
+  ret future::Poll::Ready(result::Err(e))
+.end
+
+fn ready_err_void(e: IoError) -> future::Poll[result::Result[void, IoError]]
+  ret future::Poll::Ready(result::Err(e))
+.end
+
+fn pending_usize() -> future::Poll[result::Result[usize, IoError]]
+  ret future::Poll::Pending
+.end
+
+fn pending_void() -> future::Poll[result::Result[void, IoError]]
+  ret future::Poll::Pending
+.end
+
+# -----------------------------------------------------------------------------
+# Futures: ReadExact / WriteAll / Flush / Close
+# -----------------------------------------------------------------------------
+
+struct ReadExactFuture[R: AsyncRead]
+  r: &mut R
+  buf: &mut [u8]
+  off: usize
+.end
+
+fn read_exact[R: AsyncRead](r: &mut R, buf: &mut [u8]) -> ReadExactFuture[R]
+  ret ReadExactFuture[R]
+    r: r
+    buf: buf
+    off: 0
+  .end
+.end
+
+fn ReadExactFuture::poll(self: &mut ReadExactFuture[R], cx: &waker::Context) -> future::Poll[result::Result[void, IoError]]
+  while self.off < self.buf.len()
+    let chunk = &mut self.buf[self.off..]
+    let p = self.r.poll_read(cx, chunk)
+    match p
+      future::Poll::Pending =>
+        ret future::Poll::Pending
+      future::Poll::Ready(res) =>
+        if res.is_err()
+          ret future::Poll::Ready(result::Err(res.unwrap_err()))
+        .end
+        let n = res.unwrap()
+        if n == 0
+          ret future::Poll::Ready(result::Err(IoError::eof()))
+        .end
+        self.off = self.off + n
+    .end
+  .end
+  ret future::Poll::Ready(result::Ok(()))
+.end
+
+struct WriteAllFuture[W: AsyncWrite]
+  w: &mut W
+  buf: &[u8]
+  off: usize
+.end
+
+fn write_all[W: AsyncWrite](w: &mut W, buf: &[u8]) -> WriteAllFuture[W]
+  ret WriteAllFuture[W]
+    w: w
+    buf: buf
+    off: 0
+  .end
+.end
+
+fn WriteAllFuture::poll(self: &mut WriteAllFuture[W], cx: &waker::Context) -> future::Poll[result::Result[void, IoError]]
+  while self.off < self.buf.len()
+    let chunk = &self.buf[self.off..]
+    let p = self.w.poll_write(cx, chunk)
+    match p
+      future::Poll::Pending =>
+        ret future::Poll::Pending
+      future::Poll::Ready(res) =>
+        if res.is_err()
+          ret future::Poll::Ready(result::Err(res.unwrap_err()))
+        .end
+        let n = res.unwrap()
+        if n == 0
+          ret future::Poll::Ready(result::Err(IoError::new(IoErrorKind::Other, "write returned 0")))
+        .end
+        self.off = self.off + n
+    .end
+  .end
+  ret future::Poll::Ready(result::Ok(()))
+.end
+
+struct FlushFuture[W: AsyncWrite]
+  w: &mut W
+.end
+
+fn flush[W: AsyncWrite](w: &mut W) -> FlushFuture[W]
+  ret FlushFuture[W]
+    w: w
+  .end
+.end
+
+fn FlushFuture::poll(self: &mut FlushFuture[W], cx: &waker::Context) -> future::Poll[result::Result[void, IoError]]
+  ret self.w.poll_flush(cx)
+.end
+
+struct CloseFuture[W: AsyncWrite]
+  w: &mut W
+.end
+
+fn close[W: AsyncWrite](w: &mut W) -> CloseFuture[W]
+  ret CloseFuture[W]
+    w: w
+  .end
+.end
+
+fn CloseFuture::poll(self: &mut CloseFuture[W], cx: &waker::Context) -> future::Poll[result::Result[void, IoError]]
+  ret self.w.poll_close(cx)
+.end
+
+# -----------------------------------------------------------------------------
+# copy() future
+# -----------------------------------------------------------------------------
+
+struct CopyFuture[R: AsyncRead, W: AsyncWrite]
+  r: &mut R
+  w: &mut W
+  buf: vec::Vec[u8]
+  filled: usize
+  consumed: usize
+  total: u64
+  done_read: bool
+.end
+
+fn copy[R: AsyncRead, W: AsyncWrite](r: &mut R, w: &mut W, buf_size: usize) -> CopyFuture[R, W]
+  let mut b: vec::Vec[u8] = vec::Vec[u8]::with_capacity(buf_size)
+  b.resize(buf_size, 0)
+
+  ret CopyFuture[R, W]
+    r: r
+    w: w
+    buf: b
+    filled: 0
+    consumed: 0
+    total: 0
+    done_read: false
+  .end
+.end
+
+fn CopyFuture::poll(self: &mut CopyFuture[R, W], cx: &waker::Context) -> future::Poll[result::Result[u64, IoError]]
+  while true
+    # If we have buffered bytes not yet written, write them first.
+    if self.consumed < self.filled
+      let chunk = &self.buf[self.consumed..self.filled]
+      let pw = self.w.poll_write(cx, chunk)
+      match pw
+        future::Poll::Pending =>
+          ret future::Poll::Pending
+        future::Poll::Ready(resw) =>
+          if resw.is_err()
+            ret future::Poll::Ready(result::Err(resw.unwrap_err()))
+          .end
+          let n = resw.unwrap()
+          if n == 0
+            ret future::Poll::Ready(result::Err(IoError::new(IoErrorKind::Other, "write returned 0")))
+          .end
+          self.consumed = self.consumed + n
+          self.total = self.total + (n as u64)
+          continue
+      .end
+    .end
+
+    # buffer drained
+    self.filled = 0
+    self.consumed = 0
+
+    # if already got EOF => flush and finish
+    if self.done_read
+      let pf = self.w.poll_flush(cx)
+      match pf
+        future::Poll::Pending =>
+          ret future::Poll::Pending
+        future::Poll::Ready(rf) =>
+          if rf.is_err()
+            ret future::Poll::Ready(result::Err(rf.unwrap_err()))
+          .end
+          ret future::Poll::Ready(result::Ok(self.total))
+      .end
+    .end
+
+    # read next chunk
+    let pr = self.r.poll_read(cx, &mut self.buf[..])
+    match pr
+      future::Poll::Pending =>
+        ret future::Poll::Pending
+      future::Poll::Ready(resr) =>
+        if resr.is_err()
+          ret future::Poll::Ready(result::Err(resr.unwrap_err()))
+        .end
+        let n = resr.unwrap()
+        if n == 0
+          self.done_read = true
+          continue
+        .end
+        self.filled = n
+        self.consumed = 0
+        continue
+    .end
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Polling adapters (sync -> async) for tests / fallback impls
+# -----------------------------------------------------------------------------
+
+# Minimal sync traits (if you already have std/io traits, remplace ces stubs)
+trait ReadSync
+  fn read(self: &mut Self, buf: &mut [u8]) -> result::Result[usize, IoError]
+.end
+
+trait WriteSync
+  fn write(self: &mut Self, buf: &[u8]) -> result::Result[usize, IoError]
+  fn flush(self: &mut Self) -> result::Result[void, IoError]
+  fn close(self: &mut Self) -> result::Result[void, IoError]
+.end
+
+# Adapter: wraps a blocking reader and pretends it's async by yielding on WouldBlock/Interrupted.
+struct PollingAsyncReader[R: ReadSync]
+  inner: &mut R
+.end
+
+fn PollingAsyncReader::new(r: &mut R) -> PollingAsyncReader[R]
+  ret PollingAsyncReader[R]
+    inner: r
+  .end
+.end
+
+fn PollingAsyncReader::poll_read(self: &mut PollingAsyncReader[R], cx: &waker::Context, buf: &mut [u8]) -> future::Poll[result::Result[usize, IoError]]
+  let res = self.inner.read(buf)
+  if res.is_ok()
+    ret future::Poll::Ready(res)
+  .end
+
+  let e = res.unwrap_err()
+  if e.kind == IoErrorKind::WouldBlock || e.kind == IoErrorKind::Interrupted
+    cx.waker().wake_by_ref()
+    thread::yield_now()
+    ret future::Poll::Pending
+  .end
+
+  ret future::Poll::Ready(result::Err(e))
+.end
+
+# Adapter: wraps a blocking writer and pretends it's async.
+struct PollingAsyncWriter[W: WriteSync]
+  inner: &mut W
+.end
+
+fn PollingAsyncWriter::new(w: &mut W) -> PollingAsyncWriter[W]
+  ret PollingAsyncWriter[W]
+    inner: w
+  .end
+.end
+
+fn PollingAsyncWriter::poll_write(self: &mut PollingAsyncWriter[W], cx: &waker::Context, buf: &[u8]) -> future::Poll[result::Result[usize, IoError]]
+  let res = self.inner.write(buf)
+  if res.is_ok()
+    ret future::Poll::Ready(res)
+  .end
+
+  let e = res.unwrap_err()
+  if e.kind == IoErrorKind::WouldBlock || e.kind == IoErrorKind::Interrupted
+    cx.waker().wake_by_ref()
+    thread::yield_now()
+    ret future::Poll::Pending
+  .end
+
+  ret future::Poll::Ready(result::Err(e))
+.end
+
+fn PollingAsyncWriter::poll_flush(self: &mut PollingAsyncWriter[W], cx: &waker::Context) -> future::Poll[result::Result[void, IoError]]
+  let res = self.inner.flush()
+  if res.is_ok()
+    ret future::Poll::Ready(res)
+  .end
+
+  let e = res.unwrap_err()
+  if e.kind == IoErrorKind::WouldBlock || e.kind == IoErrorKind::Interrupted
+    cx.waker().wake_by_ref()
+    thread::yield_now()
+    ret future::Poll::Pending
+  .end
+
+  ret future::Poll::Ready(result::Err(e))
+.end
+
+fn PollingAsyncWriter::poll_close(self: &mut PollingAsyncWriter[W], cx: &waker::Context) -> future::Poll[result::Result[void, IoError]]
+  let res = self.inner.close()
+  if res.is_ok()
+    ret future::Poll::Ready(res)
+  .end
+
+  let e = res.unwrap_err()
+  if e.kind == IoErrorKind::WouldBlock || e.kind == IoErrorKind::Interrupted
+    cx.waker().wake_by_ref()
+    thread::yield_now()
+    ret future::Poll::Pending
+  .end
+
+  ret future::Poll::Ready(result::Err(e))
+.end
+
+# -----------------------------------------------------------------------------
+# Small utility: AsyncBufReader (very small)
+# -----------------------------------------------------------------------------
+
+struct AsyncBufReader[R: AsyncRead]
+  inner: &mut R
+  buf: vec::Vec[u8]
+  pos: usize
+  cap: usize
+.end
+
+fn AsyncBufReader::new(inner: &mut R, capacity: usize) -> AsyncBufReader[R]
+  let mut b: vec::Vec[u8] = vec::Vec[u8]::with_capacity(capacity)
+  b.resize(capacity, 0)
+  ret AsyncBufReader[R]
+    inner: inner
+    buf: b
+    pos: 0
+    cap: 0
+  .end
+.end
+
+fn AsyncBufReader::poll_fill(self: &mut AsyncBufReader[R], cx: &waker::Context) -> future::Poll[result::Result[usize, IoError]]
+  self.pos = 0
+  let p = self.inner.poll_read(cx, &mut self.buf[..])
+  match p
+    future::Poll::Pending =>
+      ret future::Poll::Pending
+    future::Poll::Ready(res) =>
+      if res.is_err()
+        ret future::Poll::Ready(result::Err(res.unwrap_err()))
+      .end
+      let n = res.unwrap()
+      self.cap = n
+      ret future::Poll::Ready(result::Ok(n))
+  .end
+.end
+
+fn AsyncBufReader::poll_read(self: &mut AsyncBufReader[R], cx: &waker::Context, out: &mut [u8]) -> future::Poll[result::Result[usize, IoError]]
+  if self.pos >= self.cap
+    let pf = self.poll_fill(cx)
+    match pf
+      future::Poll::Pending =>
+        ret future::Poll::Pending
+      future::Poll::Ready(res) =>
+        if res.is_err()
+          ret future::Poll::Ready(result::Err(res.unwrap_err()))
+        .end
+        if res.unwrap() == 0
+          ret future::Poll::Ready(result::Ok(0))
+        .end
+    .end
+  .end
+
+  let avail = self.cap - self.pos
+  let take = if out.len() < avail then out.len() else avail
+
+  # copy
+  let mut i: usize = 0
+  while i < take
+    out[i] = self.buf[self.pos + i]
+    i = i + 1
+  .end
+
+  self.pos = self.pos + take
+  ret future::Poll::Ready(result::Ok(take))
+.end
+
+# -----------------------------------------------------------------------------
+# Small utility: AsyncBufWriter (small)
+# -----------------------------------------------------------------------------
+
+struct AsyncBufWriter[W: AsyncWrite]
+  inner: &mut W
+  buf: vec::Vec[u8]
+  len: usize
+.end
+
+fn AsyncBufWriter::new(inner: &mut W, capacity: usize) -> AsyncBufWriter[W]
+  let mut b: vec::Vec[u8] = vec::Vec[u8]::with_capacity(capacity)
+  b.resize(capacity, 0)
+  ret AsyncBufWriter[W]
+    inner: inner
+    buf: b
+    len: 0
+  .end
+.end
+
+fn AsyncBufWriter::poll_flush_buf(self: &mut AsyncBufWriter[W], cx: &waker::Context) -> future::Poll[result::Result[void, IoError]]
+  if self.len == 0
+    ret future::Poll::Ready(result::Ok(()))
+  .end
+
+  let p = self.inner.poll_write(cx, &self.buf[0..self.len])
+  match p
+    future::Poll::Pending =>
+      ret future::Poll::Pending
+    future::Poll::Ready(res) =>
+      if res.is_err()
+        ret future::Poll::Ready(result::Err(res.unwrap_err()))
+      .end
+      let n = res.unwrap()
+      if n == 0
+        ret future::Poll::Ready(result::Err(IoError::new(IoErrorKind::Other, "write returned 0")))
+      .end
+
+      # shift remaining
+      if n < self.len
+        let mut i: usize = 0
+        while i < (self.len - n)
+          self.buf[i] = self.buf[n + i]
+          i = i + 1
+        .end
+      .end
+      self.len = self.len - n
+      ret future::Poll::Ready(result::Ok(()))
+  .end
+.end
+
+fn AsyncBufWriter::poll_write(self: &mut AsyncBufWriter[W], cx: &waker::Context, data: &[u8]) -> future::Poll[result::Result[usize, IoError]]
+  # if data bigger than buffer, flush current then write through
+  if data.len() >= self.buf.len()
+    let pf = self.poll_flush_buf(cx)
+    match pf
+      future::Poll::Pending =>
+        ret future::Poll::Pending
+      future::Poll::Ready(rf) =>
+        if rf.is_err()
+          ret future::Poll::Ready(result::Err(rf.unwrap_err()))
+        .end
+    .end
+    ret self.inner.poll_write(cx, data)
+  .end
+
+  # ensure space
+  if self.len + data.len() > self.buf.len()
+    let pf2 = self.poll_flush_buf(cx)
+    match pf2
+      future::Poll::Pending =>
+        ret future::Poll::Pending
+      future::Poll::Ready(rf2) =>
+        if rf2.is_err()
+          ret future::Poll::Ready(result::Err(rf2.unwrap_err()))
+        .end
+    .end
+  .end
+
+  # append to buffer
+  let mut i: usize = 0
+  while i < data.len()
+    self.buf[self.len + i] = data[i]
+    i = i + 1
+  .end
+  self.len = self.len + data.len()
+
+  cx.waker().wake_by_ref()
+  ret future::Poll::Ready(result::Ok(data.len()))
+.end
+
+fn AsyncBufWriter::poll_flush(self: &mut AsyncBufWriter[W], cx: &waker::Context) -> future::Poll[result::Result[void, IoError]]
+  let pf = self.poll_flush_buf(cx)
+  match pf
+    future::Poll::Pending =>
+      ret future::Poll::Pending
+    future::Poll::Ready(rf) =>
+      if rf.is_err()
+        ret future::Poll::Ready(result::Err(rf.unwrap_err()))
+      .end
+  .end
+  ret self.inner.poll_flush(cx)
+.end
+
+fn AsyncBufWriter::poll_close(self: &mut AsyncBufWriter[W], cx: &waker::Context) -> future::Poll[result::Result[void, IoError]]
+  let pf = self.poll_flush(cx)
+  match pf
+    future::Poll::Pending =>
+      ret future::Poll::Pending
+    future::Poll::Ready(rf) =>
+      if rf.is_err()
+        ret future::Poll::Ready(result::Err(rf.unwrap_err()))
+      .end
+  .end
+  ret self.inner.poll_close(cx)
 .end

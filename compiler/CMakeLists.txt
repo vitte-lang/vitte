@@ -61,7 +61,11 @@ if(VITTEC_ENABLE_RUST_API)
     # NOTE: Cargo output location depends on target triple; we rely on default host build here.
     set(VITTE_RUST_PROFILE release)
     set(VITTE_RUST_LIBDIR ${VITTE_RUST_DIR}/target/${VITTE_RUST_PROFILE})
-    set(VITTE_RUST_STATICLIB ${VITTE_RUST_LIBDIR}/libvitte_rust_api.a)
+    if(WIN32)
+        set(VITTE_RUST_STATICLIB ${VITTE_RUST_LIBDIR}/vitte_rust_api.lib)
+    else()
+        set(VITTE_RUST_STATICLIB ${VITTE_RUST_LIBDIR}/libvitte_rust_api.a)
+    endif()
 
     if(NOT TARGET vitte_rust_api_build)
         file(GLOB_RECURSE VITTE_RUST_WORKSPACE_SOURCES
@@ -75,11 +79,10 @@ if(VITTEC_ENABLE_RUST_API)
         add_custom_command(
             OUTPUT ${VITTE_RUST_STATICLIB}
             COMMAND ${CARGO_EXECUTABLE} build -p vitte_rust_api --profile ${VITTE_RUST_PROFILE} --manifest-path ${VITTE_RUST_MANIFEST}
-            BYPRODUCTS ${VITTE_RUST_STATICLIB}
-            WORKING_DIRECTORY ${VITTE_RUST_DIR}
-            DEPENDS ${VITTE_RUST_WORKSPACE_SOURCES}
-            COMMENT "Building Rust staticlib: vitte_rust_api"
-            VERBATIM
+        WORKING_DIRECTORY ${VITTE_RUST_DIR}
+        DEPENDS ${VITTE_RUST_WORKSPACE_SOURCES}
+        COMMENT "Building Rust staticlib: vitte_rust_api"
+        VERBATIM
         )
 
         add_custom_target(vitte_rust_api_build DEPENDS ${VITTE_RUST_STATICLIB})
@@ -93,6 +96,9 @@ if(VITTEC_ENABLE_RUST_API)
 
     target_include_directories(vittec_compiler PUBLIC ${VITTE_RUST_DIR}/include-gen)
     target_link_libraries(vittec_compiler PUBLIC vitte_rust_api)
+    if(WIN32)
+        target_link_libraries(vittec_compiler PUBLIC ntdll)
+    endif()
 
     if(APPLE)
       target_link_libraries(vittec_compiler PUBLIC "-framework CoreFoundation")
@@ -103,7 +109,8 @@ endif()
 if(MSVC)
     target_compile_options(vittec_compiler PRIVATE /W4 /WX)
 else()
-    target_compile_options(vittec_compiler PRIVATE -Wall -Wextra -Werror)
+target_compile_options(vittec_compiler PRIVATE -Wall -Wextra -Werror)
+target_compile_definitions(vittec_compiler PRIVATE _CRT_SECURE_NO_WARNINGS)
     if(CMAKE_BUILD_TYPE MATCHES Debug)
         target_compile_options(vittec_compiler PRIVATE -g -O0)
     endif()
@@ -147,6 +154,11 @@ if(VITTEC_ENABLE_RUST_API)
   target_link_libraries(test_muf_rust PRIVATE vittec_compiler)
   target_include_directories(test_muf_rust PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   add_test(NAME test_muf_rust COMMAND test_muf_rust)
+
+  add_executable(test_rust_abi_smoke tests/unit/test_rust_abi_smoke.c)
+  target_link_libraries(test_rust_abi_smoke PRIVATE vittec_compiler)
+  target_include_directories(test_rust_abi_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  add_test(NAME test_rust_abi_smoke COMMAND test_rust_abi_smoke)
 endif()
 
 # Main executable
@@ -157,17 +169,36 @@ target_include_directories(vittec PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
 )
 
-set(VITTEC_TOKEN_TEST_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/../tests/integration/cli_tokens/run_cli_tokens.sh)
 set(VITTEC_TOKEN_TEST_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../tests/integration/cli_tokens/sample_program.vitte)
 set(VITTEC_TOKEN_TEST_EXPECTED ${CMAKE_CURRENT_SOURCE_DIR}/../tests/integration/cli_tokens/expected_tokens.txt)
 
-add_test(
-    NAME integration_cli_tokens
-    COMMAND ${VITTEC_TOKEN_TEST_SCRIPT}
-            $<TARGET_FILE:vittec>
-            ${VITTEC_TOKEN_TEST_SRC}
-            ${VITTEC_TOKEN_TEST_EXPECTED}
-)
+set(VITTEC_TOKEN_TEST_RUNNER "")
+if(WIN32)
+    find_program(PYTHON_EXECUTABLE NAMES python3 python REQUIRED)
+    set(VITTEC_TOKEN_TEST_RUNNER ${PYTHON_EXECUTABLE})
+    set(VITTEC_TOKEN_TEST_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/../tests/integration/cli_tokens/run_cli_tokens.py)
+else()
+    set(VITTEC_TOKEN_TEST_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/../tests/integration/cli_tokens/run_cli_tokens.sh)
+endif()
+
+if(VITTEC_TOKEN_TEST_RUNNER)
+    add_test(
+        NAME integration_cli_tokens
+        COMMAND ${VITTEC_TOKEN_TEST_RUNNER}
+                ${VITTEC_TOKEN_TEST_SCRIPT}
+                $<TARGET_FILE:vittec>
+                ${VITTEC_TOKEN_TEST_SRC}
+                ${VITTEC_TOKEN_TEST_EXPECTED}
+    )
+else()
+    add_test(
+        NAME integration_cli_tokens
+        COMMAND ${VITTEC_TOKEN_TEST_SCRIPT}
+                $<TARGET_FILE:vittec>
+                ${VITTEC_TOKEN_TEST_SRC}
+                ${VITTEC_TOKEN_TEST_EXPECTED}
+    )
+endif()
 
 # Installation
 install(TARGETS vittec RUNTIME DESTINATION bin)

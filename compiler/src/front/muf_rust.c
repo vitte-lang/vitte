@@ -3,15 +3,24 @@
 
 #include <stdint.h>
 
-#if VITTEC_ENABLE_RUST_API
-  #include "vitte_rust_api.h"
-#endif
+#include "vitte_rust_api.h"
 
-int vittec_muf_normalize(const char* src,
-                         size_t src_len,
-                         char* out,
-                         size_t out_cap,
-                         size_t* out_len) {
+static vitte_err_code_t vittec_rust_api_validate(void) {
+#if VITTEC_ENABLE_RUST_API
+  if (vitte_rust_api_abi_version() != VITTE_RUST_API_ABI_VERSION) {
+    return VITTE_ERR_ABI_VERSION_UNSUPPORTED;
+  }
+  return VITTE_ERR_OK;
+#else
+  return VITTE_ERR_ABI_VERSION_UNSUPPORTED;
+#endif
+}
+
+vitte_err_code_t vittec_muf_normalize(const char* src,
+                                      size_t src_len,
+                                      char* out,
+                                      size_t out_cap,
+                                      size_t* out_len) {
   if (out_len) *out_len = 0;
 
 #if !VITTEC_ENABLE_RUST_API
@@ -19,8 +28,13 @@ int vittec_muf_normalize(const char* src,
   (void)src_len;
   (void)out;
   (void)out_cap;
-  return 251; /* VITTE_ERR_ABI_VERSION_UNSUPPORTED (best-effort, stable int) */
+  return VITTE_ERR_ABI_VERSION_UNSUPPORTED;
 #else
+  const vitte_err_code_t validation = vittec_rust_api_validate();
+  if (validation != VITTE_ERR_OK) {
+    return validation;
+  }
+
   vitte_str_t in;
   in.ptr = (const uint8_t*)src;
   in.len = src_len;
@@ -33,12 +47,12 @@ int vittec_muf_normalize(const char* src,
   if (st.code != 0) {
     if (out && out_cap) out[0] = '\0';
     if (out_len) *out_len = st.written;
-    return (int)st.code;
+    return (vitte_err_code_t)st.code;
   }
 
   if (out && out_cap) out[st.written] = '\0';
   if (out_len) *out_len = st.written;
-  return 0;
+  return VITTE_ERR_OK;
 #endif
 }
 

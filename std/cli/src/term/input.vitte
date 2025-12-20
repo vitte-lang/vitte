@@ -1,7 +1,195 @@
-module vitte.std.input
+# C:\Users\gogin\Documents\GitHub\vitte\std\cli\src\term\input.vitte
+mod std/cli/term/input
 
-# stub
+use std/prelude
 
-fn _stub()->void
-  ret
+use std/core/option
+use std/core/result
+
+use std/alloc/vec
+use std/alloc/string
+
+use std/sync/mutex
+use std/time/duration
+use std/time/instant
+use std/os/thread
+
+# =============================================================================
+# std::cli::term::input
+# =============================================================================
+#
+# Objectif:
+# - primitives d'entrée terminal:
+#   - read_line (line buffered)
+#   - read_key (single key event, best-effort)
+#   - read_password (no-echo, stub)
+#   - poll_input(timeout_ms) (stub)
+#
+# Remarques:
+# - Cette impl est "portable stub" : pas de termios/Win32 raw input.
+# - Upgrade path:
+#   - POSIX: tcgetattr/tcsetattr + read(STDIN)
+#   - Windows: GetConsoleMode/ReadConsoleInputW
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Errors / Events
+# -----------------------------------------------------------------------------
+
+enum InputErrorKind
+  Other
+  Timeout
+  Eof
+  Unsupported
+.end
+
+struct InputError
+  kind: InputErrorKind
+  message: string::String
+.end
+
+fn InputError::new(kind: InputErrorKind, msg: &str) -> InputError
+  ret InputError
+    kind: kind
+    message: string::String::from_str(msg)
+  .end
+.end
+
+enum KeyKind
+  Char(ch: char)
+  Enter
+  Backspace
+  Escape
+  Tab
+  Up
+  Down
+  Left
+  Right
+  Unknown
+.end
+
+struct KeyEvent
+  kind: KeyKind
+  ctrl: bool
+  alt: bool
+  shift: bool
+.end
+
+fn KeyEvent::char(c: char) -> KeyEvent
+  ret KeyEvent
+    kind: KeyKind::Char(c)
+    ctrl: false
+    alt: false
+    shift: false
+  .end
+.end
+
+fn KeyEvent::enter() -> KeyEvent
+  ret KeyEvent
+    kind: KeyKind::Enter
+    ctrl: false
+    alt: false
+    shift: false
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Line input (portable: stdin line)
+# -----------------------------------------------------------------------------
+
+fn read_line() -> result::Result[string::String, InputError]
+  # assumes std/prelude provides stdin_read_line()
+  let s = stdin_read_line()
+  if s.is_none()
+    ret result::Err(InputError::new(InputErrorKind::Eof, "stdin eof"))
+  .end
+  ret result::Ok(s.unwrap())
+.end
+
+fn prompt_line(prompt: &str) -> result::Result[string::String, InputError]
+  stdout_write(prompt)
+  stdout_flush()
+  ret read_line()
+.end
+
+# -----------------------------------------------------------------------------
+# Password input (stub)
+# -----------------------------------------------------------------------------
+
+fn read_password(prompt: &str) -> result::Result[string::String, InputError]
+  # In stub mode, we cannot disable echo; provide clear contract.
+  stdout_write(prompt)
+  stdout_flush()
+  ret read_line()
+.end
+
+# -----------------------------------------------------------------------------
+# Key input (stub)
+# -----------------------------------------------------------------------------
+# Best-effort:
+# - reads a line and returns first char as KeyEvent::Char
+# - Enter => KeyEvent::Enter when empty line
+# - does not support arrows/escape sequences
+
+fn read_key() -> result::Result[KeyEvent, InputError]
+  let line = read_line()
+  if line.is_err()
+    ret result::Err(line.unwrap_err())
+  .end
+
+  let s = line.unwrap()
+  if s.len() == 0
+    ret result::Ok(KeyEvent::enter())
+  .end
+
+  let c = s.chars().first()
+  if c.is_none()
+    ret result::Ok(KeyEvent::enter())
+  .end
+
+  ret result::Ok(KeyEvent::char(c.unwrap()))
+.end
+
+# -----------------------------------------------------------------------------
+# Poll input (stub)
+# -----------------------------------------------------------------------------
+# Sans accès non-bloquant à STDIN, on simule:
+# - timeout_ms==0 => Unsupported
+# - sinon => sleep puis Timeout
+#
+# Upgrade path:
+# - POSIX select/poll sur fd 0
+# - Windows WaitForSingleObject sur handle stdin
+# -----------------------------------------------------------------------------
+
+fn poll_input(timeout_ms: u64) -> result::Result[bool, InputError]
+  if timeout_ms == 0
+    ret result::Err(InputError::new(InputErrorKind::Unsupported, "non-blocking stdin not available in stub"))
+  .end
+
+  thread::sleep_ms(timeout_ms)
+  ret result::Err(InputError::new(InputErrorKind::Timeout, "timeout"))
+.end
+
+# -----------------------------------------------------------------------------
+# Small editable line helper (stub)
+# -----------------------------------------------------------------------------
+# - reads line; trims trailing newline if present
+
+fn read_line_trimmed(prompt: &str) -> result::Result[string::String, InputError]
+  let r = prompt_line(prompt)
+  if r.is_err()
+    ret result::Err(r.unwrap_err())
+  .end
+
+  let mut s = r.unwrap()
+  # normalize \r\n
+  if s.ends_with("\n")
+    s.pop()
+    if s.ends_with("\r")
+      s.pop()
+    .end
+  .end
+  ret result::Ok(s)
 .end
