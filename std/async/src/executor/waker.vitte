@@ -1,7 +1,154 @@
-module vitte.std.waker
+# C:\Users\gogin\Documents\GitHub\vitte\std\async\src\executor\waker.vitte
+mod std/async/executor/waker
 
-# stub
+use std/prelude
 
-fn _stub()->void
-  ret
+use std/core/option
+use std/sync/atomic
+
+# =============================================================================
+# Waker primitives (minimal, portable)
+# =============================================================================
+#
+# Objectif:
+# - fournir un "wake" minimal sans vtable ni allocation
+# - permettre aux futures de signaler qu'elles doivent être repoll
+#
+# Modèle:
+# - WakeFlag: bit atomique "signaled"
+# - Waker: handle léger vers un WakeFlag
+# - Context: transporte un Waker pendant poll()
+#
+# Notes:
+# - Sans Condvar/park/unpark, le wake "réveille" logiquement; la boucle
+#   d'exécution reste responsable de l'attente (yield/backoff).
+# - Si tu ajoutes un scheduler + condvar, WakeFlag peut aussi déclencher
+#   un notify global.
+# =============================================================================
+
+struct WakeFlag
+  signaled: atomic::Bool
+.end
+
+fn WakeFlag::new() -> WakeFlag
+  ret WakeFlag
+    signaled: atomic::Bool::new(false)
+  .end
+.end
+
+fn WakeFlag::signal(self: &WakeFlag) -> void
+  # store(true) suffit pour un flag; ordering abstraite dans atomic::Bool
+  self.signaled.store(true)
+.end
+
+fn WakeFlag::is_signaled(self: &WakeFlag) -> bool
+  ret self.signaled.load()
+.end
+
+fn WakeFlag::take(self: &WakeFlag) -> bool
+  # swap(false): consomme le signal (edge-triggered)
+  ret self.signaled.swap(false)
+.end
+
+fn WakeFlag::clear(self: &WakeFlag) -> void
+  self.signaled.store(false)
+.end
+
+# -----------------------------------------------------------------------------
+# Waker
+# -----------------------------------------------------------------------------
+
+struct Waker
+  flag: &WakeFlag
+.end
+
+fn Waker::new(flag: &WakeFlag) -> Waker
+  ret Waker
+    flag: flag
+  .end
+.end
+
+fn Waker::wake(self: &Waker) -> void
+  self.flag.signal()
+.end
+
+fn Waker::wake_by_ref(self: &Waker) -> void
+  self.flag.signal()
+.end
+
+fn Waker::flag(self: &Waker) -> &WakeFlag
+  ret self.flag
+.end
+
+# -----------------------------------------------------------------------------
+# Context
+# -----------------------------------------------------------------------------
+
+struct Context
+  waker: Waker
+.end
+
+fn Context::new(waker: Waker) -> Context
+  ret Context
+    waker: waker
+  .end
+.end
+
+fn Context::waker(self: &Context) -> &Waker
+  ret &self.waker
+.end
+
+# -----------------------------------------------------------------------------
+# Utility: single-shot notifier (optional helper for futures)
+# -----------------------------------------------------------------------------
+
+struct NotifyOnce
+  fired: atomic::Bool
+  flag: &WakeFlag
+.end
+
+fn NotifyOnce::new(flag: &WakeFlag) -> NotifyOnce
+  ret NotifyOnce
+    fired: atomic::Bool::new(false)
+    flag: flag
+  .end
+.end
+
+fn NotifyOnce::notify(self: &NotifyOnce) -> void
+  # ensure we signal only once
+  if !self.fired.swap(true)
+    self.flag.signal()
+  .end
+.end
+
+fn NotifyOnce::reset(self: &NotifyOnce) -> void
+  self.fired.store(false)
+.end
+
+# -----------------------------------------------------------------------------
+# Utility: WakeSlot (Option<Waker>)
+# -----------------------------------------------------------------------------
+
+struct WakeSlot
+  w: option::Option[Waker]
+.end
+
+fn WakeSlot::new() -> WakeSlot
+  ret WakeSlot
+    w: option::None
+  .end
+.end
+
+fn WakeSlot::set(self: &mut WakeSlot, w: Waker) -> void
+  self.w = option::Some(w)
+.end
+
+fn WakeSlot::clear(self: &mut WakeSlot) -> void
+  self.w = option::None
+.end
+
+fn WakeSlot::wake(self: &WakeSlot) -> void
+  if self.w.is_some()
+    self.w.unwrap().wake()
+  .end
 .end

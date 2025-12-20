@@ -1,7 +1,418 @@
-module vitte.std.future_tests
+# C:\Users\gogin\Documents\GitHub\vitte\std\async\tests\future_tests.vitte
+mod std/async/tests/future_tests
 
-# stub
+use std/prelude
 
-fn _stub()->void
-  ret
+use std/testing/test
+
+use std/core/option
+use std/core/result
+
+use std/alloc/vec
+use std/alloc/box
+use std/alloc/string
+
+use std/sync/atomic
+use std/os/thread
+
+use std/async/future
+use std/async/executor/waker
+
+# =============================================================================
+# Minimal test Context/Waker for polling futures directly
+# =============================================================================
+
+struct TestWaker
+  flag: waker::WakeFlag
+.end
+
+fn TestWaker::new() -> TestWaker
+  ret TestWaker
+    flag: waker::WakeFlag::new()
+  .end
+.end
+
+fn TestWaker::context(self: &TestWaker) -> waker::Context
+  let wk = waker::Waker::new(&self.flag)
+  ret waker::Context::new(wk)
+.end
+
+fn TestWaker::take(self: &TestWaker) -> bool
+  ret self.flag.take()
+.end
+
+# =============================================================================
+# Small helper to drive a future to completion (bounded)
+# =============================================================================
+
+fn drive_void(f: &mut future::Future[void], max_steps: u32) -> bool
+  let tw = TestWaker::new()
+  let cx = tw.context()
+
+  let mut i: u32 = 0
+  while i < max_steps
+    let p = f.poll(&cx)
+    match p
+      future::Poll::Ready(_) =>
+        ret true
+      future::Poll::Pending =>
+        # in a real runtime we'd sleep/yield; here just loop
+        do 0
+    .end
+    i = i + 1
+  .end
+  ret false
+.end
+
+# =============================================================================
+# Tests: Poll helpers
+# =============================================================================
+
+fn t_poll_ready_pending_flags() -> void
+  let p1: future::Poll[i32] = future::Poll::Ready(123)
+  test::assert_true(p1.is_ready(), "Ready is_ready")
+  test::assert_true(!p1.is_pending(), "Ready not pending")
+
+  let p2: future::Poll[i32] = future::Poll::Pending
+  test::assert_true(!p2.is_ready(), "Pending not ready")
+  test::assert_true(p2.is_pending(), "Pending is_pending")
+.end
+
+fn t_ready_pending_helpers() -> void
+  let p = future::ready
+  match p
+    future::Poll::Ready(v) => test::assert_true(v == 7, "ready returns value")
+    future::Poll::Pending  => test::fail("ready returned Pending")
+  .end
+
+  let q: future::Poll[i32] = future::pending[i32]()
+  match q
+    future::Poll::Ready(_) => test::fail("pending returned Ready")
+    future::Poll::Pending  => test::assert_true(true, "pending ok")
+  .end
+.end
+
+# =============================================================================
+# Tests: Ready future
+# =============================================================================
+
+fn t_ready_future_once() -> void
+  let tw = TestWaker::new()
+  let cx = tw.context()
+
+  let mut f = future::Ready::new
+  let p = f.poll(&cx)
+
+  match p
+    future::Poll::Ready(v) => test::assert_true(v == 42, "Ready returns 42")
+    future::Poll::Pending  => test::fail("Ready returned Pending")
+  .end
+.end
+
+# =============================================================================
+# Tests: PendingOnce
+# =============================================================================
+
+fn t_pending_once() -> void
+  let tw = TestWaker::new()
+  let cx = tw.context()
+
+  let mut f = future::PendingOnce::new
+
+  let p1 = f.poll(&cx)
+  match p1
+    future::Poll::Pending => test::assert_true(true, "first poll Pending")
+    future::Poll::Ready(_) => test::fail("first poll should be Pending")
+  .end
+
+  let p2 = f.poll(&cx)
+  match p2
+    future::Poll::Ready(v) => test::assert_true(v == 9, "second poll Ready(9)")
+    future::Poll::Pending  => test::fail("second poll should be Ready")
+  .end
+.end
+
+# =============================================================================
+# Tests: poll_fn
+# =============================================================================
+
+struct CounterFn
+  n: u32
+  cur: u32
+.end
+
+fn CounterFn::new(n: u32) -> CounterFn
+  ret CounterFn
+    n: n
+    cur: 0
+  .end
+.end
+
+fn counter_poll(self: &mut CounterFn, cx: &waker::Context) -> future::Poll[i32]
+  if self.cur < self.n
+    self.cur = self.cur + 1
+    cx.waker().wake_by_ref()
+    ret future::Poll::Pending
+  .end
+  ret future::Poll::Ready(123)
+.end
+
+struct PollFnWrap
+  st: CounterFn
+.end
+
+fn PollFnWrap::new() -> PollFnWrap
+  ret PollFnWrap
+    st: CounterFn::new(3)
+  .end
+.end
+
+fn PollFnWrap::poll(self: &mut PollFnWrap, cx: &waker::Context) -> future::Poll[i32]
+  ret counter_poll(&mut self.st, cx)
+.end
+
+fn t_poll_fn_like() -> void
+  let tw = TestWaker::new()
+  let cx = tw.context()
+
+  let mut f = PollFnWrap::new()
+
+  let mut i: u32 = 0
+  while i < 10
+    let p = f.poll(&cx)
+    match p
+      future::Poll::Pending =>
+        do 0
+      future::Poll::Ready(v) =>
+        test::assert_true(v == 123, "poll_fn reached Ready")
+        ret
+    .end
+    i = i + 1
+  .end
+
+  test::fail("poll_fn did not complete")
+.end
+
+# =============================================================================
+# Tests: Map
+# =============================================================================
+
+struct ReadyI32
+  v: i32
+  done: bool
+.end
+
+fn ReadyI32::new(v: i32) -> ReadyI32
+  ret ReadyI32
+    v: v
+    done: false
+  .end
+.end
+
+fn ReadyI32::poll(self: &mut ReadyI32, _cx: &waker::Context) -> future::Poll[i32]
+  if self.done
+    ret future::Poll::Pending
+  .end
+  self.done = true
+  ret future::Poll::Ready(self.v)
+.end
+
+fn times2(x: i32) -> i32
+  ret x * 2
+.end
+
+fn t_map() -> void
+  let tw = TestWaker::new()
+  let cx = tw.context()
+
+  let base = ReadyI32::new(21)
+  let mut m = future::map[i32, i32, fn(i32)->i32, ReadyI32](base, times2)
+
+  let p = m.poll(&cx)
+  match p
+    future::Poll::Ready(v) => test::assert_true(v == 42, "map applies function")
+    future::Poll::Pending  => test::fail("map pending unexpectedly")
+  .end
+.end
+
+# =============================================================================
+# Tests: Then
+# =============================================================================
+
+struct PendingThenReady
+  first: bool
+.end
+
+fn PendingThenReady::new() -> PendingThenReady
+  ret PendingThenReady
+    first: true
+  .end
+.end
+
+fn PendingThenReady::poll(self: &mut PendingThenReady, cx: &waker::Context) -> future::Poll[i32]
+  if self.first
+    self.first = false
+    cx.waker().wake_by_ref()
+    ret future::Poll::Pending
+  .end
+  ret future::Poll::Ready(5)
+.end
+
+struct ReadyPlus
+  v: i32
+.end
+
+fn ReadyPlus::new(v: i32) -> ReadyPlus
+  ret ReadyPlus
+    v: v
+  .end
+.end
+
+fn ReadyPlus::poll(self: &mut ReadyPlus, _cx: &waker::Context) -> future::Poll[i32]
+  ret future::Poll::Ready(self.v + 10)
+.end
+
+fn make_plus10(x: i32) -> ReadyPlus
+  ret ReadyPlus::new(x)
+.end
+
+fn t_then() -> void
+  let tw = TestWaker::new()
+  let cx = tw.context()
+
+  let base = PendingThenReady::new()
+  let mut th = future::then[i32, i32, fn(i32)->ReadyPlus, PendingThenReady, ReadyPlus](base, make_plus10)
+
+  let p1 = th.poll(&cx)
+  match p1
+    future::Poll::Pending => test::assert_true(true, "then pending first")
+    future::Poll::Ready(_) => test::fail("then ready too early")
+  .end
+
+  let p2 = th.poll(&cx)
+  match p2
+    future::Poll::Ready(v) => test::assert_true(v == 15, "then composes")
+    future::Poll::Pending  => test::fail("then still pending")
+  .end
+.end
+
+# =============================================================================
+# Tests: Inspect
+# =============================================================================
+
+struct Flag
+  v: atomic::Bool
+.end
+
+fn Flag::new() -> Flag
+  ret Flag
+    v: atomic::Bool::new(false)
+  .end
+.end
+
+fn set_flag(f: &Flag) -> void
+  f.v.store(true)
+.end
+
+struct ReadyUnit
+  done: bool
+.end
+
+fn ReadyUnit::new() -> ReadyUnit
+  ret ReadyUnit
+    done: false
+  .end
+.end
+
+fn ReadyUnit::poll(self: &mut ReadyUnit, _cx: &waker::Context) -> future::Poll[void]
+  if self.done
+    ret future::Poll::Pending
+  .end
+  self.done = true
+  ret future::Poll::Ready(())
+.end
+
+fn t_inspect() -> void
+  let tw = TestWaker::new()
+  let cx = tw.context()
+
+  let flag = Flag::new()
+  let base = ReadyUnit::new()
+
+  # closure adapter not assumed; using function pointer pattern: we wrap flag in a struct
+  struct InspectFn
+    f: &Flag
+  .end
+  fn InspectFn::call(self: &InspectFn, _v: void) -> void
+    set_flag(self.f)
+  .end
+
+  let cb = InspectFn
+    f: &flag
+  .end
+
+  # If your generic "Inspect" expects callable type, this works.
+  let mut ins = future::inspect[void, InspectFn, ReadyUnit](base, cb)
+
+  let p = ins.poll(&cx)
+  match p
+    future::Poll::Ready(_) =>
+      test::assert_true(flag.v.load(), "inspect called")
+    future::Poll::Pending =>
+      test::fail("inspect pending unexpectedly")
+  .end
+.end
+
+# =============================================================================
+# Tests: join2
+# =============================================================================
+
+fn t_join2_void() -> void
+  let tw = TestWaker::new()
+  let cx = tw.context()
+
+  let a: box::Box[future::Future[void]] = box::Box::new(future::yield_now())
+  let b: box::Box[future::Future[void]] = box::Box::new(future::yield_now())
+
+  let mut j = future::join2(a, b)
+
+  let mut steps: u32 = 0
+  while steps < 16
+    let p = j.poll(&cx)
+    match p
+      future::Poll::Ready(_) =>
+        test::assert_true(true, "join2 completes")
+        ret
+      future::Poll::Pending =>
+        do 0
+    .end
+    steps = steps + 1
+  .end
+
+  test::fail("join2 did not complete")
+.end
+
+# =============================================================================
+# Runner
+# =============================================================================
+
+fn run_all() -> void
+  test::case("poll_ready_pending_flags", t_poll_ready_pending_flags)
+  test::case("ready_pending_helpers", t_ready_pending_helpers)
+
+  test::case("ready_future_once", t_ready_future_once)
+  test::case("pending_once", t_pending_once)
+
+  test::case("poll_fn_like", t_poll_fn_like)
+
+  test::case("map", t_map)
+  test::case("then", t_then)
+  test::case("inspect", t_inspect)
+
+  test::case("join2_void", t_join2_void)
+.end
+
+fn main() -> i32
+  test::run("std::async::future_tests", run_all)
+  ret 0
 .end

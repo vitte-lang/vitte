@@ -225,7 +225,6 @@ if(VITTE_ENABLE_RUST_API)
       add_custom_command(
         OUTPUT ${VITTE_RUST_STATICLIB}
         COMMAND ${CARGO_EXECUTABLE} build -p vitte_rust_api --profile ${VITTE_RUST_PROFILE} --manifest-path ${VITTE_RUST_MANIFEST}
-        BYPRODUCTS ${VITTE_RUST_STATICLIB}
         WORKING_DIRECTORY ${VITTE_RUST_DIR}
         DEPENDS ${VITTE_RUST_WORKSPACE_SOURCES}
         COMMENT "Building Rust staticlib: vitte_rust_api"
@@ -255,6 +254,8 @@ if(APPLE)
 elseif(UNIX AND NOT APPLE)
   # Linux: link rt for clock_gettime
   target_link_libraries(benchc PRIVATE rt)
+elseif(WIN32)
+  target_link_libraries(benchc PRIVATE ntdll)
 endif()
 
 if(VITTE_ENABLE_ASM_FASTPATHS)

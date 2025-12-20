@@ -1,6 +1,7 @@
 #include "vittec/vittec.h"
 #include "vittec/version.h"
 #include "vittec/muf.h"
+#include "vitte_rust_api.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,8 +65,8 @@ static int cmd_muf_fmt(const char* path) {
     return 2;
   }
 
-  int rc = vittec_muf_normalize(buf, len, out, out_cap, &out_len);
-  if (rc != 0) {
+  vitte_err_code_t rc = vittec_muf_normalize(buf, len, out, out_cap, &out_len);
+  if (rc != VITTE_ERR_OK) {
     fprintf(stderr, "error: muf normalize failed (code=%d)\\n", rc);
     free(out);
     free(buf);
@@ -79,6 +80,14 @@ static int cmd_muf_fmt(const char* path) {
 }
 
 int main(int argc, char** argv) {
+#if VITTEC_ENABLE_RUST_API
+  if (vitte_rust_api_abi_version() != VITTE_RUST_API_ABI_VERSION) {
+    fprintf(stderr,
+            "error: Rust API ABI mismatch; rebuild the Rust staticlib with the "
+            "matching toolchain\\n");
+    return 1;
+  }
+#endif
   if (argc < 2) { usage(); return 2; }
 
   if (!strcmp(argv[1], "muf")) {

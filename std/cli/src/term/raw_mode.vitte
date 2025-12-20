@@ -1,7 +1,142 @@
-module vitte.std.raw_mode
+# C:\Users\gogin\Documents\GitHub\vitte\std\cli\src\term\raw_mode.vitte
+mod std/cli/term/raw_mode
 
-# stub
+use std/prelude
 
-fn _stub()->void
-  ret
+use std/core/option
+use std/core/result
+
+use std/alloc/string
+
+use std/sync/mutex
+use std/sync/atomic
+
+# =============================================================================
+# std::cli::term::raw_mode (portable STUB)
+# =============================================================================
+#
+# Objectif:
+# - fournir une API RAII pour activer/désactiver le "raw mode" terminal
+# - stub: ne modifie rien, mais garde une sémantique stable
+#
+# Upgrade path:
+# - POSIX: termios (tcgetattr/tcsetattr), disable ECHO/ICANON, etc.
+# - Windows: GetConsoleMode/SetConsoleMode (ENABLE_ECHO_INPUT, etc.)
+#
+# Points d'API:
+# - RawModeGuard::enter() -> Result[RawModeGuard, RawModeError]
+# - RawModeGuard::is_active()
+# - RawModeGuard::leave(self)
+# - raw_mode::enter()/leave()/with_raw_mode()
+#
+# =============================================================================
+
+enum RawModeErrorKind
+  Other
+  Unsupported
+.end
+
+struct RawModeError
+  kind: RawModeErrorKind
+  message: string::String
+.end
+
+fn RawModeError::new(kind: RawModeErrorKind, msg: &str) -> RawModeError
+  ret RawModeError
+    kind: kind
+    message: string::String::from_str(msg)
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Global state: nesting counter
+# -----------------------------------------------------------------------------
+# Raw mode is often used in nested contexts; we simulate reference counting.
+
+struct RawModeState
+  depth: atomic::U32
+.end
+
+fn RawModeState::new() -> RawModeState
+  ret RawModeState
+    depth: atomic::U32::new(0)
+  .end
+.end
+
+fn RawModeState::enter(self: &RawModeState) -> u32
+  ret self.depth.fetch_add(1) + 1
+.end
+
+fn RawModeState::leave(self: &RawModeState) -> u32
+  let d = self.depth.load()
+  if d == 0
+    ret 0
+  .end
+  ret self.depth.fetch_sub(1) - 1
+.end
+
+fn RawModeState::is_active(self: &RawModeState) -> bool
+  ret self.depth.load() > 0
+.end
+
+# Singleton (stub). Replace with once/init in your runtime if required.
+let _RAW_MODE_STATE: RawModeState = RawModeState::new()
+
+# -----------------------------------------------------------------------------
+# Guard
+# -----------------------------------------------------------------------------
+
+struct RawModeGuard
+  active: bool
+  depth_after_enter: u32
+.end
+
+fn RawModeGuard::enter() -> result::Result[RawModeGuard, RawModeError]
+  # STUB: we "enable" logically.
+  let d = _RAW_MODE_STATE.enter()
+
+  ret result::Ok(RawModeGuard
+    active: true
+    depth_after_enter: d
+  .end)
+.end
+
+fn RawModeGuard::is_active(self: &RawModeGuard) -> bool
+  ret self.active && _RAW_MODE_STATE.is_active()
+.end
+
+fn RawModeGuard::leave(self: &mut RawModeGuard) -> void
+  if !self.active
+    ret
+  .end
+  let _ = _RAW_MODE_STATE.leave()
+  self.active = false
+.end
+
+# -----------------------------------------------------------------------------
+# Module-level helpers
+# -----------------------------------------------------------------------------
+
+fn enter() -> result::Result[RawModeGuard, RawModeError]
+  ret RawModeGuard::enter()
+.end
+
+fn leave() -> void
+  let _ = _RAW_MODE_STATE.leave()
+.end
+
+fn is_active() -> bool
+  ret _RAW_MODE_STATE.is_active()
+.end
+
+fn with_raw_mode(f: fn() -> void) -> result::Result[void, RawModeError]
+  let mut g = RawModeGuard::enter()
+  if g.is_err()
+    ret result::Err(g.unwrap_err())
+  .end
+
+  let mut guard = g.unwrap()
+  f()
+  guard.leave()
+  ret result::Ok(())
 .end

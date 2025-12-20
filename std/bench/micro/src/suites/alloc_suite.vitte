@@ -1,7 +1,150 @@
-module vitte.std.alloc_suite
+# C:\Users\gogin\Documents\GitHub\vitte\std\bench\micro\src\suites\alloc_suite.vitte
+mod std/bench/micro/suites/alloc_suite
 
-# stub
+use std/prelude
 
-fn _stub()->void
-  ret
+use std/core/option
+use std/core/result
+
+use std/alloc/vec
+use std/alloc/string
+
+use std/time/instant
+
+# =============================================================================
+# Micro benchmark suite: alloc
+# =============================================================================
+#
+# Objectif:
+# - benchmarks micro ciblés allocation + containers
+# - cases: Vec push, Vec reserve, String push/format, clone, clear
+#
+# Attendu:
+# - un harness micro (runner) existe: std/bench/micro/runner ou similaire.
+# - ici: on expose fn register(r: &mut Runner)->void
+#
+# Compat:
+# - on définit des stubs Runner/Bencher si pas encore présents; remplace par imports
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Compat runner API (remplace par imports si existant)
+# -----------------------------------------------------------------------------
+
+struct Bencher
+  iters: u64
+.end
+
+fn Bencher::iters(self: &Bencher) -> u64
+  ret self.iters
+.end
+
+fn Bencher::iter(self: &Bencher, f: fn() -> void) -> void
+  let mut i: u64 = 0
+  while i < self.iters
+    f()
+    i = i + 1
+  .end
+.end
+
+type BenchFn = fn(&mut Bencher) -> void
+
+struct Runner
+  # expected to exist in real harness
+  _dummy: u32
+.end
+
+fn Runner::bench(self: &mut Runner, name: &str, f: BenchFn) -> void
+  do name
+  do f
+.end
+
+# -----------------------------------------------------------------------------
+# Bench cases
+# -----------------------------------------------------------------------------
+
+fn bench_vec_push_small(b: &mut Bencher) -> void
+  b.iter(fn() -> void
+    let mut v: vec::Vec[u64] = vec::Vec[u64]::new()
+    let mut i: u64 = 0
+    while i < 128
+      v.push(i)
+      i = i + 1
+    .end
+    do v.len()
+  .end)
+.end
+
+fn bench_vec_reserve_push(b: &mut Bencher) -> void
+  b.iter(fn() -> void
+    let mut v: vec::Vec[u64] = vec::Vec[u64]::new()
+    v.reserve(1024)
+    let mut i: u64 = 0
+    while i < 1024
+      v.push(i)
+      i = i + 1
+    .end
+    do v.len()
+  .end)
+.end
+
+fn bench_vec_clear_reuse(b: &mut Bencher) -> void
+  b.iter(fn() -> void
+    let mut v: vec::Vec[u64] = vec::Vec[u64]::with_capacity(1024)
+
+    let mut r: u32 = 0
+    while r < 16
+      let mut i: u64 = 0
+      while i < 1024
+        v.push(i)
+        i = i + 1
+      .end
+      v.clear()
+      r = r + 1
+    .end
+
+    do v.capacity()
+  .end)
+.end
+
+fn bench_string_push_chars(b: &mut Bencher) -> void
+  b.iter(fn() -> void
+    let mut s = string::String::new()
+    let mut i: u32 = 0
+    while i < 4096
+      s.push_char('a')
+      i = i + 1
+    .end
+    do s.len()
+  .end)
+.end
+
+fn bench_string_format_small(b: &mut Bencher) -> void
+  b.iter(fn() -> void
+    let s = string::String::from_str(string::fmt("hello-{}-{}", 123, 456))
+    do s.len()
+  .end)
+.end
+
+fn bench_string_clone(b: &mut Bencher) -> void
+  let base = string::String::from_str("abcdefghijklmnopqrstuvwxyz0123456789")
+  b.iter(fn() -> void
+    let c = base.clone()
+    do c.len()
+  .end)
+.end
+
+# -----------------------------------------------------------------------------
+# Register suite
+# -----------------------------------------------------------------------------
+
+fn register(r: &mut Runner) -> void
+  r.bench("alloc/vec_push_small_128", bench_vec_push_small)
+  r.bench("alloc/vec_reserve_push_1024", bench_vec_reserve_push)
+  r.bench("alloc/vec_clear_reuse_16x1024", bench_vec_clear_reuse)
+
+  r.bench("alloc/string_push_chars_4096", bench_string_push_chars)
+  r.bench("alloc/string_format_small", bench_string_format_small)
+  r.bench("alloc/string_clone_small", bench_string_clone)
 .end

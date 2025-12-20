@@ -1,7 +1,476 @@
-module vitte.std.local
+# C:\Users\gogin\Documents\GitHub\vitte\std\async\src\executor\local.vitte
+mod std/async/executor/local
 
-# stub
+use std/prelude
 
-fn _stub()->void
-  ret
+use std/core/option
+use std/core/result
+
+use std/alloc/vec
+use std/alloc/box
+
+use std/sync/atomic
+use std/time/instant
+use std/os/thread
+
+use std/async/future
+use std/async/executor/waker
+
+# =============================================================================
+# LocalExecutor (single-thread, cooperative)
+# =============================================================================
+#
+# Objectif:
+# - exécuter des Future en mono-thread (pas de Send requis)
+# - modèle coopératif: chaque Future doit rendre la main (Poll::Pending)
+# - waker léger: un WakeFlag + signaled-bit (pas de vtable)
+# - scheduler simple: file "ready" + vecteur de tâches
+#
+# Garanties:
+# - pas de starvation simple: round-robin sur ready-queue
+# - si aucune tâche n'est prête: backoff + yield/sleep court
+#
+# Extensions prévues:
+# - timers (sleep) via TimerWheel / min-heap
+# - IO reactor (epoll/kqueue) intégrable via waker.signal()
+# - join handles / cancellation tokens
+#
+# Hypothèses API:
+# - future::Poll[T] = Ready(T) | Pending
+# - trait future::Future[T] { fn poll(self: &mut Self, cx: &waker::Context) -> future::Poll[T] }
+#
+# =============================================================================
+
+type TaskId = u64
+
+enum ExecError
+  Cancelled
+  Panicked
+.end
+
+# -----------------------------------------------------------------------------
+# Backoff policy (simple)
+# -----------------------------------------------------------------------------
+
+struct Backoff
+  spins: u32
+.end
+
+fn Backoff::new() -> Backoff
+  ret Backoff
+    spins: 0
+  .end
+.end
+
+fn Backoff::reset(self: &mut Backoff) -> void
+  self.spins = 0
+.end
+
+fn Backoff::snooze(self: &mut Backoff) -> void
+  # Stratégie:
+  # - quelques yields, puis micro-sleep
+  if self.spins < 32
+    thread::yield_now()
+    self.spins = self.spins + 1
+    ret
+  .end
+
+  # sleep 1ms après une phase de spin
+  thread::sleep_ms(1)
+  if self.spins < 1_000_000_000
+    self.spins = self.spins + 1
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Task state
+# -----------------------------------------------------------------------------
+
+enum TaskState
+  Ready
+  Waiting
+  Completed
+  Cancelled
+.end
+
+# -----------------------------------------------------------------------------
+# Task
+# -----------------------------------------------------------------------------
+
+struct Task
+  id: TaskId
+  state: TaskState
+
+  # Future boxed (type-erased).
+  fut: box::Box[future::Future[void]]
+
+  # Wake flag associated to this task.
+  wake: waker::WakeFlag
+
+  # Stats / debug
+  polls: u64
+  last_poll_ns: u64
+.end
+
+fn Task::new(id: TaskId, fut: box::Box[future::Future[void]]) -> Task
+  let wf = waker::WakeFlag::new()
+  wf.signal() # poll at least once
+  ret Task
+    id: id
+    state: TaskState::Ready
+    fut: fut
+    wake: wf
+    polls: 0
+    last_poll_ns: 0
+  .end
+.end
+
+fn Task::is_done(self: &Task) -> bool
+  ret self.state == TaskState::Completed || self.state == TaskState::Cancelled
+.end
+
+fn Task::cancel(self: &mut Task) -> void
+  if self.is_done()
+    ret
+  .end
+  self.state = TaskState::Cancelled
+.end
+
+# -----------------------------------------------------------------------------
+# Ready queue (simple ring buffer using Vec)
+# -----------------------------------------------------------------------------
+
+struct ReadyQueue
+  q: vec::Vec[TaskId]
+  head: usize
+.end
+
+fn ReadyQueue::new() -> ReadyQueue
+  ret ReadyQueue
+    q: vec::Vec[TaskId]::new()
+    head: 0
+  .end
+.end
+
+fn ReadyQueue::len(self: &ReadyQueue) -> usize
+  # logical len
+  if self.head >= self.q.len()
+    ret 0
+  .end
+  ret self.q.len() - self.head
+.end
+
+fn ReadyQueue::is_empty(self: &ReadyQueue) -> bool
+  ret self.len() == 0
+.end
+
+fn ReadyQueue::push(self: &mut ReadyQueue, id: TaskId) -> void
+  self.q.push(id)
+.end
+
+fn ReadyQueue::pop(self: &mut ReadyQueue) -> option::Option[TaskId]
+  if self.head >= self.q.len()
+    # compact if needed
+    if self.q.len() > 0
+      self.q.clear()
+    .end
+    self.head = 0
+    ret option::None
+  .end
+
+  let id = self.q[self.head]
+  self.head = self.head + 1
+
+  # periodic compaction
+  if self.head >= 64 && self.head * 2 >= self.q.len()
+    # shift down
+    let mut i: usize = self.head
+    let mut j: usize = 0
+    while i < self.q.len()
+      self.q[j] = self.q[i]
+      i = i + 1
+      j = j + 1
+    .end
+    # truncate to j
+    self.q.truncate(j)
+    self.head = 0
+  .end
+
+  ret option::Some(id)
+.end
+
+fn ReadyQueue::clear(self: &mut ReadyQueue) -> void
+  self.q.clear()
+  self.head = 0
+.end
+
+# -----------------------------------------------------------------------------
+# LocalExecutor configuration
+# -----------------------------------------------------------------------------
+
+struct LocalConfig
+  # If true: busy-loop with yield; else uses sleep backoff.
+  busy: bool
+
+  # Maximum polls per tick (fairness / latency bound).
+  max_polls_per_tick: usize
+
+  # Enable debug counters.
+  stats: bool
+.end
+
+fn LocalConfig::default() -> LocalConfig
+  ret LocalConfig
+    busy: false
+    max_polls_per_tick: 1024
+    stats: true
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# LocalExecutor
+# -----------------------------------------------------------------------------
+
+struct LocalExecutor
+  cfg: LocalConfig
+  next_id: TaskId
+
+  # tasks storage
+  tasks: vec::Vec[Task]
+
+  # map id -> index (linear search fallback, can be replaced by HashMap)
+  ids: vec::Vec[TaskId]          # parallel to tasks for quick scan
+
+  # ready ids (round-robin)
+  ready: ReadyQueue
+
+  # global wake flag (optional external wake)
+  global_wake: waker::WakeFlag
+
+  # internal backoff
+  backoff: Backoff
+
+  # stats
+  ticks: u64
+  polls: u64
+.end
+
+fn LocalExecutor::new() -> LocalExecutor
+  ret LocalExecutor::with_config(LocalConfig::default())
+.end
+
+fn LocalExecutor::with_config(cfg: LocalConfig) -> LocalExecutor
+  ret LocalExecutor
+    cfg: cfg
+    next_id: 1
+    tasks: vec::Vec[Task]::new()
+    ids: vec::Vec[TaskId]::new()
+    ready: ReadyQueue::new()
+    global_wake: waker::WakeFlag::new()
+    backoff: Backoff::new()
+    ticks: 0
+    polls: 0
+  .end
+.end
+
+fn LocalExecutor::wake(self: &LocalExecutor) -> void
+  # External signal hook: a reactor/timer can call this to wake the run-loop.
+  self.global_wake.signal()
+.end
+
+fn LocalExecutor::spawn(self: &mut LocalExecutor, fut: box::Box[future::Future[void]]) -> TaskId
+  let id = self.next_id
+  self.next_id = self.next_id + 1
+
+  let t = Task::new(id, fut)
+
+  self.tasks.push(t)
+  self.ids.push(id)
+  self.ready.push(id)
+
+  self.global_wake.signal()
+  ret id
+.end
+
+fn LocalExecutor::task_count(self: &LocalExecutor) -> usize
+  ret self.tasks.len()
+.end
+
+fn LocalExecutor::is_idle(self: &LocalExecutor) -> bool
+  # idle = no tasks at all
+  ret self.tasks.len() == 0
+.end
+
+fn LocalExecutor::find_index(self: &LocalExecutor, id: TaskId) -> option::Option[usize]
+  let mut i: usize = 0
+  while i < self.ids.len()
+    if self.ids[i] == id
+      ret option::Some(i)
+    .end
+    i = i + 1
+  .end
+  ret option::None
+.end
+
+fn LocalExecutor::cancel(self: &mut LocalExecutor, id: TaskId) -> bool
+  let idx = self.find_index(id)
+  if idx.is_none()
+    ret false
+  .end
+  let i = idx.unwrap()
+  self.tasks[i].cancel()
+  self.ready.push(id)
+  self.global_wake.signal()
+  ret true
+.end
+
+fn LocalExecutor::drain_completed(self: &mut LocalExecutor) -> void
+  # remove completed/cancelled tasks
+  let mut i: usize = 0
+  while i < self.tasks.len()
+    if self.tasks[i].is_done()
+      self.tasks.swap_remove(i)
+      self.ids.swap_remove(i)
+      continue
+    .end
+    i = i + 1
+  .end
+.end
+
+fn LocalExecutor::pump_woken_into_ready(self: &mut LocalExecutor) -> void
+  # if a task's wake flag is set, enqueue it
+  let mut i: usize = 0
+  while i < self.tasks.len()
+    let t = &mut self.tasks[i]
+    if t.is_done()
+      i = i + 1
+      continue
+    .end
+
+    if t.wake.take()
+      t.state = TaskState::Ready
+      self.ready.push(t.id)
+    .end
+
+    i = i + 1
+  .end
+.end
+
+fn LocalExecutor::poll_one(self: &mut LocalExecutor, id: TaskId) -> void
+  let idx_opt = self.find_index(id)
+  if idx_opt.is_none()
+    ret
+  .end
+
+  let idx = idx_opt.unwrap()
+  let t = &mut self.tasks[idx]
+
+  if t.is_done()
+    ret
+  .end
+
+  if t.state == TaskState::Cancelled
+    ret
+  .end
+
+  # If wake flag wasn't set, don't poll (protect against duplicates in ready queue)
+  # But allow first poll (Task::new already signaled and ready queue has id once).
+  # Here: require either Ready state, or wake flag already consumed by pump.
+  # We still accept poll if state == Ready.
+  if t.state != TaskState::Ready
+    ret
+  .end
+
+  let wk = waker::Waker::new(&t.wake)
+  let cx = waker::Context::new(wk)
+
+  t.polls = t.polls + 1
+  self.polls = self.polls + 1
+
+  if self.cfg.stats
+    t.last_poll_ns = instant::now().as_nanos_u64()
+  .end
+
+  let p = t.fut.poll(&cx)
+
+  match p
+    future::Poll::Ready(_) =>
+      t.state = TaskState::Completed
+    future::Poll::Pending =>
+      t.state = TaskState::Waiting
+  .end
+.end
+
+fn LocalExecutor::tick(self: &mut LocalExecutor) -> void
+  self.ticks = self.ticks + 1
+
+  # 1) enqueue tasks woken since last tick
+  self.pump_woken_into_ready()
+
+  # 2) poll bounded number of ready tasks (fairness)
+  let mut n: usize = 0
+  while n < self.cfg.max_polls_per_tick
+    let id_opt = self.ready.pop()
+    if id_opt.is_none()
+      break
+    .end
+
+    let id = id_opt.unwrap()
+    self.poll_one(id)
+    n = n + 1
+  .end
+
+  # 3) cleanup completed tasks
+  self.drain_completed()
+.end
+
+fn LocalExecutor::run(self: &mut LocalExecutor) -> void
+  while self.tasks.len() > 0
+    self.tick()
+
+    # If nothing ready, idle strategy
+    if self.ready.is_empty()
+      # If any task got globally woken, reset backoff quickly
+      if self.global_wake.take()
+        self.backoff.reset()
+        continue
+      .end
+
+      if self.cfg.busy
+        thread::yield_now()
+      else
+        self.backoff.snooze()
+      .end
+    else
+      self.backoff.reset()
+    .end
+  .end
+.end
+
+fn LocalExecutor::run_until_idle(self: &mut LocalExecutor, max_ticks: u64) -> bool
+  # Returns true if all tasks completed within max_ticks.
+  let mut t: u64 = 0
+  while t < max_ticks
+    if self.tasks.len() == 0
+      ret true
+    .end
+    self.tick()
+    t = t + 1
+  .end
+  ret self.tasks.len() == 0
+.end
+
+fn LocalExecutor::stats(self: &LocalExecutor) -> (u64, u64, usize)
+  # (ticks, polls, tasks)
+  ret (self.ticks, self.polls, self.tasks.len())
+.end
+
+# -----------------------------------------------------------------------------
+# Convenience API: block_on for a single future (void)
+# -----------------------------------------------------------------------------
+
+fn block_on(fut: box::Box[future::Future[void]]) -> void
+  let mut ex = LocalExecutor::new()
+  ex.spawn(fut)
+  ex.run()
 .end

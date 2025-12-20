@@ -16,6 +16,104 @@
   <img alt="Top language" src="https://img.shields.io/github/languages/top/vitte-lang/vitte?style=flat-square">
 </p>
 
+## TL;DR (10s)
+
+Vitte is an experimental language + C17 codebase that includes a working compiler CLI (`vittec`) and supporting tooling (bench/toolchain/fuzz) aimed at reproducible, CI-friendly systems development.
+
+- For: contributors hacking on a small C compiler/codegen pipeline, and folks who want a portable C17 toolkit around it.
+- Build (compiler): `cd compiler && make debug`
+- Run tests (compiler): `cd compiler && make test`
+- Compile an example (emit C): `cd compiler && ./build/debug/vittec --emit-c examples/hello.vitte -o build/hello.c`
+
+## Quick start (compiler)
+
+These commands mirror `compiler/START_HERE.txt`:
+
+```sh
+cd compiler
+make debug
+make test
+make examples
+make help
+```
+
+## Prereqs
+
+- Compiler toolchain: a C compiler with C17 support (Clang, GCC, or MSVC).
+- Build tools: CMake (3.16+) and a build backend (Make or Ninja).
+- OS notes:
+  - Linux/macOS: `make debug`/`make test` work out of the box if CMake + a compiler are installed.
+  - Windows: easiest is CMake + Ninja + Clang; `make examples` runs `./test_examples.sh` (needs a POSIX shell such as Git Bash/MSYS2/WSL).
+- Optional deps:
+  - `clang-format`/`clang-tidy` (repo has configs) if you want formatting/linting locally.
+
+## Repo layout
+
+- [`compiler/`](compiler/) — the Vitte compiler (`vittec`) + its own docs and Make/CMake glue.
+- [`include/`](include/) — public C headers for the core libraries/tooling.
+- [`src/`](src/) — core language libraries (parser/desugar/codegen building blocks used by the compiler).
+- [`tests/`](tests/) — unit tests for the core libraries.
+- [`examples/`](examples/) — example programs and small samples.
+- [`docs/`](docs/) — additional documentation.
+- [`spec/`](spec/) — language/runtime specs and contracts.
+- [`toolchain/`](toolchain/) — reproducible toolchain/config infrastructure (targets/flags/RSP/env).
+
+## Common workflows
+
+```sh
+# Debug build
+cd compiler && make debug
+
+# Release build
+cd compiler && make release
+
+# Run a single test binary
+cd compiler/build/debug && ./test_lexer
+
+# Run ctest (all tests, or filtered)
+cd compiler/build/debug && ctest --output-on-failure
+cd compiler/build/debug && ctest -R test_lexer --output-on-failure
+
+# Clean build (wipe + rebuild)
+cd compiler && make clean && make debug
+```
+
+## Using the CLI
+
+Assuming you already ran `cd compiler && make debug`:
+
+```sh
+# 1) Tokens: prints one token per line (kind, span, lexeme)
+./build/debug/vittec --tokens examples/hello.vitte
+# Example output (shape):
+# TK_KW_FN 0..2 `fn`
+# TK_IDENT 3..8 `hello`
+
+# 2) Emit C: writes a C file (no stdout on success)
+./build/debug/vittec --emit-c examples/hello.vitte -o build/hello.c
+# Expected: build/hello.c created
+
+# 3) Compile emitted C with your system compiler
+clang -std=c17 build/hello.c -o build/hello
+# Expected: build/hello produced (or build/hello.exe on Windows)
+```
+
+## Project status
+
+> **Implemented:** lexer + token emission, C emission, unit tests, example programs, CMake/Make build glue.
+>
+> **Next:** parser expansion, semantic analysis/type checking, richer lowering/IR, backends beyond “emit C”.
+>
+> **Stability:** early-stage; CLI/output formats and internal APIs may change, but tests should remain the source of truth.
+
+## Troubleshooting
+
+- Missing compiler (`clang`/`gcc`/`cl`): install a C toolchain and ensure it’s on `PATH`.
+- CMake too old: upgrade to CMake 3.16+ (and make sure `cmake --version` matches what you think you installed).
+- Windows generator mismatch (MSVC vs Clang/Ninja): prefer `cmake -G Ninja -DCMAKE_C_COMPILER=clang ...` for predictable builds.
+- `ctest` not found: it ships with CMake; ensure the CMake bin dir is on `PATH` and try `cmake --version` to confirm.
+- PATH/shell issues running scripts: `make examples` uses `./test_examples.sh`; run in Git Bash/MSYS2/WSL, or execute the equivalent steps manually.
+
 ---
 
 ## Sommaire
@@ -178,6 +276,12 @@ Pour construire `src/vitte/*.c` et exécuter les tests unitaires depuis Windows,
    Une cible Make équivalente est disponible : `make vitte-tests`.
 
 > ℹ️ Alternative GCC/MinGW : si tu préfères utiliser `gcc`, décompresse un bundle WinLibs (ex. `C:\Tools\mingw64`) puis configure CMake avec `-DCMAKE_C_COMPILER="C:/Tools/mingw64/bin/gcc.exe"` (et éventuellement `-DCMAKE_RC_COMPILER="C:/Tools/mingw64/bin/windres.exe"`). Les mêmes commandes `cmake --build ... --target vitte_tests` fonctionnent ensuite.
+
+### Windows Rust linking notes
+
+- Both the compiler (`vittec_compiler`) and benchmark (`benchc`) targets link `ntdll` when `WIN32` is set so that the MinGW-style Rust static library can resolve the CRT exports it needs.
+- When building with MinGW we rely on Cargo running on the `stable-x86_64-pc-windows-gnu` toolchain so `libvitte_rust_api.a` matches the GNU ABI that the C build links against (`toolchain/config/targets/windows_x86_64_gnu.toml` describes the target preset).
+
 
 ---
 

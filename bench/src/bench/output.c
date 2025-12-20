@@ -606,22 +606,49 @@ static const vitte_bench_report_vtable_t BO__VT = {
     .get_samples = bo__get_samples,
 };
 
-static bool bo__write_json_stream_rust(FILE* out, const bench_report* rep)
+
+static inline vitte_err_code_t bo__rust_api_validate(void)
 {
-    if (!out || !rep) return false;
+    if (vitte_rust_api_abi_version() != VITTE_RUST_API_ABI_VERSION) {
+        return VITTE_ERR_ABI_VERSION_UNSUPPORTED;
+    }
+    return VITTE_ERR_OK;
+}
+
+static vitte_err_code_t bo__write_json_stream_rust_status(FILE* out, const bench_report* rep)
+{
+    if (!out || !rep) return VITTE_ERR_INVALID_ARGUMENT;
+    const vitte_err_code_t validation = bo__rust_api_validate();
+    if (validation != VITTE_ERR_OK) return validation;
     const vitte_bench_report_view_t view = { .ctx = (void*)rep, .vt = &BO__VT };
     const vitte_writer_t w = { .ctx = (void*)out, .write = bo__rust_write_file, .max_bytes = 0 };
     const vitte_status_t st = vitte_bench_report_write_json(view, w);
-    return (st.code == (int32_t)VITTE_ERR_OK) && (ferror(out) == 0);
+    if (st.code != (int32_t)VITTE_ERR_OK) return (vitte_err_code_t)st.code;
+    if (ferror(out) != 0) return VITTE_ERR_IO;
+    return VITTE_ERR_OK;
+}
+
+static bool bo__write_json_stream_rust(FILE* out, const bench_report* rep)
+{
+    return bo__write_json_stream_rust_status(out, rep) == VITTE_ERR_OK;
+}
+
+static vitte_err_code_t bo__write_csv_stream_rust_status(FILE* out, const bench_report* rep)
+{
+    if (!out || !rep) return VITTE_ERR_INVALID_ARGUMENT;
+    const vitte_err_code_t validation = bo__rust_api_validate();
+    if (validation != VITTE_ERR_OK) return validation;
+    const vitte_bench_report_view_t view = { .ctx = (void*)rep, .vt = &BO__VT };
+    const vitte_writer_t w = { .ctx = (void*)out, .write = bo__rust_write_file, .max_bytes = 0 };
+    const vitte_status_t st = vitte_bench_report_write_csv(view, w);
+    if (st.code != (int32_t)VITTE_ERR_OK) return (vitte_err_code_t)st.code;
+    if (ferror(out) != 0) return VITTE_ERR_IO;
+    return VITTE_ERR_OK;
 }
 
 static bool bo__write_csv_stream_rust(FILE* out, const bench_report* rep)
 {
-    if (!out || !rep) return false;
-    const vitte_bench_report_view_t view = { .ctx = (void*)rep, .vt = &BO__VT };
-    const vitte_writer_t w = { .ctx = (void*)out, .write = bo__rust_write_file, .max_bytes = 0 };
-    const vitte_status_t st = vitte_bench_report_write_csv(view, w);
-    return (st.code == (int32_t)VITTE_ERR_OK) && (ferror(out) == 0);
+    return bo__write_csv_stream_rust_status(out, rep) == VITTE_ERR_OK;
 }
 #endif
 

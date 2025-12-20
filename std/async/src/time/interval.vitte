@@ -1,7 +1,111 @@
-module vitte.std.interval
+# C:\Users\gogin\Documents\GitHub\vitte\std\async\src\time\interval.vitte
+mod std/async/time/interval
 
-# stub
+use std/prelude
 
-fn _stub()->void
-  ret
+use std/core/option
+use std/core/result
+
+use std/time/duration
+use std/time/instant
+use std/os/thread
+
+use std/async/future
+use std/async/executor/waker
+
+# =============================================================================
+# Async time: Interval
+# =============================================================================
+#
+# interval(period) -> stream-like primitive:
+# - tick() returns a Future[void] that completes at each period boundary
+#
+# Impl:
+# - stub/polling based (no reactor integration)
+# - uses Instant + yields/sleep_ms(1)
+#
+# Upgrade path:
+# - integrate with std/async/io/reactor_* timers
+#
+# =============================================================================
+
+enum IntervalError
+  InvalidPeriod
+.end
+
+struct Interval
+  period: duration::Duration
+  next_deadline: instant::Instant
+  started: bool
+.end
+
+fn Interval::new(period: duration::Duration) -> result::Result[Interval, IntervalError]
+  if period.as_nanos_u64() == 0
+    ret result::Err(IntervalError::InvalidPeriod)
+  .end
+
+  ret result::Ok(Interval
+    period: period
+    next_deadline: instant::now()   # will be adjusted on first tick
+    started: false
+  .end)
+.end
+
+fn Interval::period(self: &Interval) -> duration::Duration
+  ret self.period
+.end
+
+fn Interval::reset(self: &mut Interval) -> void
+  self.started = false
+  self.next_deadline = instant::now()
+.end
+
+fn Interval::set_period(self: &mut Interval, period: duration::Duration) -> result::Result[void, IntervalError]
+  if period.as_nanos_u64() == 0
+    ret result::Err(IntervalError::InvalidPeriod)
+  .end
+  self.period = period
+  self.reset()
+  ret result::Ok(())
+.end
+
+# -----------------------------------------------------------------------------
+# Tick future
+# -----------------------------------------------------------------------------
+
+struct TickFuture
+  it: &mut Interval
+.end
+
+fn Interval::tick(self: &mut Interval) -> TickFuture
+  ret TickFuture
+    it: self
+  .end
+.end
+
+fn TickFuture::poll(self: &mut TickFuture, cx: &waker::Context) -> future::Poll[result::Result[void, IntervalError]]
+  let it = &mut self.it
+
+  if !it.started
+    it.started = true
+    it.next_deadline = instant::now().add(it.period)
+  .end
+
+  let now = instant::now()
+  if now.cmp(it.next_deadline) >= 0
+    # schedule next tick, try to avoid drift:
+    # while we're behind, jump by period until in the future
+    let mut next = it.next_deadline
+    while now.cmp(next) >= 0
+      next = next.add(it.period)
+    .end
+    it.next_deadline = next
+
+    ret future::Poll::Ready(result::Ok(()))
+  .end
+
+  # not yet reached
+  cx.waker().wake_by_ref()
+  thread::sleep_ms(1)
+  ret future::Poll::Pending
 .end
