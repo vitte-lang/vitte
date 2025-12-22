@@ -132,7 +132,7 @@ typedef struct cli_parser_state {
 // ============================================================================
 
 // Initialize CLI context
-cli_context_t* cli_init(cli_config_t config);
+cli_context_t* cli_init(void);
 
 // Free CLI context
 void cli_free(cli_context_t *ctx);
