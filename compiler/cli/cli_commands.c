@@ -12,11 +12,16 @@
 // ============================================================================
 
 int cmd_compile(cli_command_t *cmd, int argc, char **argv) {
+    (void)cmd;
+    (void)argc;
+    (void)argv;
+
     printf("=== Vitte Compiler - Compilation Mode ===\n\n");
     
     compile_options_t opts = {0};
     opts.optimization_level = 2;  // Default O2
     opts.verbosity = 1;
+    (void)opts;
     
     printf("[1/5] Parsing input file...\n");
     printf("[2/5] Performing semantic analysis...\n");
@@ -33,11 +38,16 @@ int cmd_compile(cli_command_t *cmd, int argc, char **argv) {
 // ============================================================================
 
 int cmd_test(cli_command_t *cmd, int argc, char **argv) {
+    (void)cmd;
+    (void)argc;
+    (void)argv;
+
     printf("=== Vitte Compiler - Test Runner ===\n\n");
     
     test_options_t opts = {0};
     opts.run_unit_tests = true;
     opts.run_integration_tests = true;
+    (void)opts;
     
     printf("Running unit tests...\n");
     printf("  ✓ test_lexer (234ms)\n");
@@ -62,10 +72,12 @@ int cmd_test(cli_command_t *cmd, int argc, char **argv) {
 // ============================================================================
 
 int cmd_analyze(cli_command_t *cmd, int argc, char **argv) {
+    (void)cmd;
+    (void)argc;
+    (void)argv;
+
     printf("=== Vitte Compiler - Analysis Tool ===\n\n");
-    
-    analyze_options_t opts = {0};
-    
+
     printf("Analyzing code structure...\n\n");
     
     printf("Module Statistics:\n");
@@ -92,6 +104,10 @@ int cmd_analyze(cli_command_t *cmd, int argc, char **argv) {
 // ============================================================================
 
 int cmd_format(cli_command_t *cmd, int argc, char **argv) {
+    (void)cmd;
+    (void)argc;
+    (void)argv;
+
     printf("=== Vitte Compiler - Code Formatter ===\n\n");
     
     printf("Scanning files...\n");
@@ -115,6 +131,10 @@ int cmd_format(cli_command_t *cmd, int argc, char **argv) {
 // ============================================================================
 
 int cmd_lint(cli_command_t *cmd, int argc, char **argv) {
+    (void)cmd;
+    (void)argc;
+    (void)argv;
+
     printf("=== Vitte Compiler - Lint Tool ===\n\n");
     
     printf("Scanning for issues...\n\n");
@@ -138,6 +158,10 @@ int cmd_lint(cli_command_t *cmd, int argc, char **argv) {
 // ============================================================================
 
 int cmd_build(cli_command_t *cmd, int argc, char **argv) {
+    (void)cmd;
+    (void)argc;
+    (void)argv;
+
     printf("=== Vitte Compiler - Build System ===\n\n");
     
     printf("Reading project configuration...\n");
@@ -166,6 +190,10 @@ int cmd_build(cli_command_t *cmd, int argc, char **argv) {
 // ============================================================================
 
 int cmd_install(cli_command_t *cmd, int argc, char **argv) {
+    (void)cmd;
+    (void)argc;
+    (void)argv;
+
     printf("=== Vitte Compiler - Installation ===\n\n");
     
     printf("Verifying installation requirements...\n");
@@ -197,6 +225,10 @@ int cmd_install(cli_command_t *cmd, int argc, char **argv) {
 // ============================================================================
 
 int cmd_clean(cli_command_t *cmd, int argc, char **argv) {
+    (void)cmd;
+    (void)argc;
+    (void)argv;
+
     printf("=== Vitte Compiler - Clean Build Artifacts ===\n\n");
     
     printf("Removing build artifacts...\n");
@@ -214,6 +246,10 @@ int cmd_clean(cli_command_t *cmd, int argc, char **argv) {
 // ============================================================================
 
 int cmd_doc(cli_command_t *cmd, int argc, char **argv) {
+    (void)cmd;
+    (void)argc;
+    (void)argv;
+
     printf("=== Vitte Compiler - Documentation Generator ===\n\n");
     
     printf("Scanning source files for documentation...\n");
@@ -241,6 +277,10 @@ int cmd_doc(cli_command_t *cmd, int argc, char **argv) {
 // ============================================================================
 
 int cmd_version(cli_command_t *cmd, int argc, char **argv) {
+    (void)cmd;
+    (void)argc;
+    (void)argv;
+
     printf("Vitte Compiler v1.0.0\n");
     printf("Build: 2025-01-15\n");
     printf("Copyright: Vitte Project\n");
@@ -254,6 +294,10 @@ int cmd_version(cli_command_t *cmd, int argc, char **argv) {
 // ============================================================================
 
 int cmd_help(cli_command_t *cmd, int argc, char **argv) {
+    (void)cmd;
+    (void)argc;
+    (void)argv;
+
     printf("Vitte Compiler - Usage Help\n\n");
     
     printf("COMMANDS:\n");
