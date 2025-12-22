@@ -16,8 +16,6 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#include "vitte/asm.h"
-#include "vitte/asm_verify.h"
 #include "vitte/cpu.h"
 // -----------------------------------------------------------------------------
 // Small string helpers (no libc dependency beyond basic char ops)

@@ -94,6 +94,12 @@ extern "C" {
     #define WIN32_LEAN_AND_MEAN
   #endif
   #include <windows.h>
+#  if BENCH_COMPILER_MSVC
+#    include <intrin.h>
+#    if BENCH_ARCH_X86_64 || BENCH_ARCH_X86_32
+#      include <immintrin.h>
+#    endif
+#  endif
 #elif BENCH_OS_UNIX || BENCH_OS_LINUX || BENCH_OS_APPLE
   #include <sched.h>
 #endif
@@ -166,12 +172,11 @@ extern "C" {
 BENCH_FORCE_INLINE void bench_cpu_pause(void)
 {
 #if BENCH_ARCH_X86_64 || BENCH_ARCH_X86_32
-  #if BENCH_COMPILER_MSVC
-    #include <immintrin.h>
-    _mm_pause();
-  #else
-    __asm__ __volatile__("pause" ::: "memory");
-  #endif
+#  if BENCH_COMPILER_MSVC
+  _mm_pause();
+#  else
+  __asm__ __volatile__("pause" ::: "memory");
+#  endif
 #elif BENCH_ARCH_ARM64 || BENCH_ARCH_ARM32
   #if defined(__aarch64__) || defined(__arm__)
     __asm__ __volatile__("yield" ::: "memory");
@@ -240,8 +245,12 @@ uint64_t bench_time_now_ns(void)
     if (freq.QuadPart == 0) QueryPerformanceFrequency(&freq);
     LARGE_INTEGER c;
     QueryPerformanceCounter(&c);
-    // ns = counter * 1e9 / freq
-    return (uint64_t)((__int128)c.QuadPart * 1000000000ull / (uint64_t)freq.QuadPart);
+    // ns = (ticks / freq)*1e9 + (ticks % freq)*1e9/freq
+    const uint64_t ticks = (uint64_t)c.QuadPart;
+    const uint64_t f = (uint64_t)freq.QuadPart;
+    const uint64_t sec = ticks / f;
+    const uint64_t rem = ticks - sec * f;
+    return sec * 1000000000ull + (rem * 1000000000ull / f);
 #elif BENCH_OS_APPLE
     // mach_absolute_time with timebase
     static mach_timebase_info_data_t tb = {0, 0};
@@ -266,7 +275,6 @@ uint64_t bench_cycles_now(void)
 {
 #if (BENCH_ARCH_X86_64 || BENCH_ARCH_X86_32)
   #if BENCH_COMPILER_MSVC
-    #include <intrin.h>
     return (uint64_t)__rdtsc();
   #elif BENCH_COMPILER_GCC || BENCH_COMPILER_CLANG
     unsigned int hi = 0, lo = 0;

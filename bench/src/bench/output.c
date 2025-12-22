@@ -7,8 +7,7 @@
 //   - JSON and CSV writers (no external deps)
 //
 // Integration philosophy:
-//   - If project headers exist (bench/output.h etc.), they are included.
-//   - Otherwise, this unit provides a small fallback ABI so it can compile.
+//   - Built as part of vitte/bench; depends on the bench headers/ABI.
 //
 // SPDX-License-Identifier: MIT
 
@@ -25,86 +24,9 @@
   #include "vitte_rust_api.h"
 #endif
 
-#if defined(__has_include)
-  #if __has_include("bench/output.h")
-    #include "bench/output.h"
-  #elif __has_include("output.h")
-    #include "output.h"
-  #endif
-#endif
+#include "bench/output.h"
 
-#if defined(__has_include)
-  #if __has_include("bench/log.h")
-    #include "bench/log.h"
-  #elif __has_include("log.h")
-    #include "log.h"
-  #endif
-#endif
-
-// -----------------------------------------------------------------------------
-// Fallback public surface (only if output.h was not included)
-// -----------------------------------------------------------------------------
-
-#ifndef VITTE_BENCH_OUTPUT_H
-#define VITTE_BENCH_OUTPUT_H
-
-typedef enum bench_status
-{
-    BENCH_STATUS_OK = 0,
-    BENCH_STATUS_FAILED = 1,
-    BENCH_STATUS_SKIPPED = 2
-} bench_status;
-
-typedef struct bench_metric
-{
-    // Primary metric: ns/op (nanoseconds per operation)
-    double ns_per_op;
-
-    // Optional throughput metrics
-    double bytes_per_sec;
-    double items_per_sec;
-
-    // Run context
-    int64_t iterations;
-    double elapsed_ms;
-} bench_metric;
-
-typedef struct bench_result
-{
-    const char* name;
-    bench_status status;
-    bench_metric metric;
-
-    // Optional failure reason (may be NULL)
-    const char* error;
-} bench_result;
-
-typedef struct bench_report
-{
-    const bench_result* results;
-    int32_t count;
-
-    // Optional metadata
-    const char* schema;
-    const char* suite_name;
-    uint64_t seed;
-    int32_t threads;
-    int32_t repeat;
-    int32_t warmup;
-    int64_t timestamp_ms;
-    bool include_samples;
-} bench_report;
-
-// Print a compact table to `out`.
-void bench_output_print_human(FILE* out, const bench_report* rep);
-
-// Write JSON report to path. Returns true on success.
-bool bench_output_write_json_path(const char* path, const bench_report* rep);
-
-// Write CSV report to path. Returns true on success.
-bool bench_output_write_csv_path(const char* path, const bench_report* rep);
-
-#endif // VITTE_BENCH_OUTPUT_H
+#include "bench/log.h"
 
 // -----------------------------------------------------------------------------
 // Internal helpers

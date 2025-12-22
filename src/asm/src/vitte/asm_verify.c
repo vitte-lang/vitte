@@ -26,7 +26,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "vitte/asm.h"
 #include "vitte/asm_fastpaths.h"
 #include "vitte/asm_verify.h"
 #include "vitte/cpu.h"

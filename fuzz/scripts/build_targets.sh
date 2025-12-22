@@ -71,7 +71,62 @@ add_inc "$FUZZ_DIR/include"
 add_inc "$ROOT_DIR/include"
 add_inc "$ROOT_DIR/src"
 add_inc "$ROOT_DIR/compiler/include"
-add_inc "$ROOT_DIR/runtime/include"
+
+# Optional: link in the in-repo "vitte" C implementation so standalone fuzz
+# harnesses can call into it (parser/lexer/diag/desugar/codegen).
+#
+# This keeps the target files small, while still producing standalone binaries
+# under fuzz/out/ via a single compile+link invocation.
+VITTE_LINK="${VITTE_FUZZ_LINK_VITTE:-1}"
+VITTE_SOURCES=""
+if [ "$VITTE_LINK" = "1" ] && [ -d "$ROOT_DIR/src/vitte" ]; then
+  for s in "$ROOT_DIR/src/vitte/"*.c; do
+    [ -f "$s" ] || continue
+    VITTE_SOURCES="$VITTE_SOURCES \"$s\""
+  done
+fi
+
+# Optional: link against the CMake-built vitte_asm_runtime instead of relinking
+# asm sources directly.
+ASM_LINK="${VITTE_FUZZ_LINK_ASM:-1}"
+ASM_LIBS=""
+if [ "$ASM_LINK" = "1" ]; then
+  CMAKE_BUILD_DIR="${VITTE_FUZZ_CMAKE_BUILD_DIR:-$ROOT_DIR/build-fuzz}"
+  CMAKE_GEN_ARGS=""
+  if [ -n "${VITTE_FUZZ_CMAKE_GENERATOR:-}" ]; then
+    CMAKE_GEN_ARGS="-G \"${VITTE_FUZZ_CMAKE_GENERATOR}\""
+  fi
+
+  cmd_cfg="cmake $CMAKE_GEN_ARGS -S \"$ROOT_DIR\" -B \"$CMAKE_BUILD_DIR\" -DVITTE_ENABLE_ASM_RUNTIME=ON -DVITTE_ENABLE_RUNTIME_TESTS=OFF"
+
+  CMAKE_CONFIG="${VITTE_FUZZ_CMAKE_CONFIG:-}"
+  if [ -n "$CMAKE_CONFIG" ]; then
+    cmd_build="cmake --build \"$CMAKE_BUILD_DIR\" --config \"$CMAKE_CONFIG\" --target vitte_asm_runtime"
+  else
+    cmd_build="cmake --build \"$CMAKE_BUILD_DIR\" --target vitte_asm_runtime"
+  fi
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    say "  $cmd_cfg"
+    say "  $cmd_build"
+  else
+    # shellcheck disable=SC2086
+    eval "$cmd_cfg" || die "cmake configure failed"
+    eval "$cmd_build" || die "cmake build failed (vitte_asm_runtime)"
+  fi
+
+  # Locate the produced static library for both single- and multi-config generators.
+  if [ -n "$CMAKE_CONFIG" ]; then
+    asm_lib="$(find "$CMAKE_BUILD_DIR" -type f \( -name 'libvitte_asm_runtime.a' -o -name 'vitte_asm_runtime.lib' \) 2>/dev/null | awk -v cfg="/$CMAKE_CONFIG/" 'index($0,cfg){print;exit} END{if(NR==0)exit 1}')"
+    if [ -z "${asm_lib:-}" ]; then
+      asm_lib="$(find "$CMAKE_BUILD_DIR" -type f \( -name 'libvitte_asm_runtime.a' -o -name 'vitte_asm_runtime.lib' \) 2>/dev/null | awk 'NR==1{print;exit}')"
+    fi
+  else
+    asm_lib="$(find "$CMAKE_BUILD_DIR" -type f \( -name 'libvitte_asm_runtime.a' -o -name 'vitte_asm_runtime.lib' \) 2>/dev/null | awk 'NR==1{print;exit}')"
+  fi
+  [ -n "${asm_lib:-}" ] || die "could not locate built vitte_asm_runtime library under $CMAKE_BUILD_DIR"
+  ASM_LIBS="\"$asm_lib\""
+fi
 
 targets_found=0
 targets_built=0
@@ -91,7 +146,7 @@ for src in "$TARGET_DIR"/*.c; do
   targets_found=$((targets_found + 1))
   out_bin="$OUT_DIR/${base}"
 
-  cmd_link="$CC_CMD $CFLAGS $INCLUDE_FLAGS -DFUZZ_DRIVER_STANDALONE_MAIN=1 -DFUZZ_DISABLE_SANITIZER_TRACE=1 \"$src\""
+  cmd_link="$CC_CMD $CFLAGS $INCLUDE_FLAGS -DFUZZ_DRIVER_STANDALONE_MAIN=1 -DFUZZ_DISABLE_SANITIZER_TRACE=1 \"$src\" $VITTE_SOURCES $ASM_LIBS"
   if [ -n "$LDFLAGS" ]; then
     cmd_link="$cmd_link $LDFLAGS"
   fi
