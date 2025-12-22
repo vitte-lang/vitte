@@ -27,7 +27,8 @@ int main(int argc, char *argv[]) {
     ctx->config.version = VITTE_VERSION;
     ctx->config.description = "Vitte Compiler - Enterprise Programming Language";
     ctx->config.author = "Vitte Project";
-    ctx->config.verbose = false;
+    ctx->config.show_help_on_error = true;
+    ctx->config.verbosity = 1;
     
     // Register all commands
     setup_all_commands(ctx);
