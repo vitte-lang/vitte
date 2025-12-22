@@ -1,0 +1,32 @@
+# vitte/rust/crates/vitte_unicode/Cargo.toml
+
+[package]
+name = "vitte_unicode"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Unicode utilities for the Vitte ecosystem (utf8, normalization, segmentation)."
+repository = "https://github.com/vitte-lang/vitte"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = ["std", "alloc", "normalization", "segmentation"]
+
+std = ["alloc", "vitte_common/std"]
+alloc = ["vitte_common/alloc"]
+
+normalization = ["unicode-normalization"]
+segmentation = ["unicode-segmentation"]
+
+[dependencies]
+vitte_common = { path = "../vitte_common", default-features = false, features = ["alloc"] }
+
+unicode-normalization = { version = "0.1", optional = true }
+unicode-segmentation  = { version = "1", optional = true }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
