@@ -497,3 +497,4 @@ fn opens_block(line: &str) -> bool {
 
     KW.iter().any(|k| l.starts_with(k))
 }
+
