@@ -1,0 +1,674 @@
+/* ============================================================================
+   vitte.ebnf — Vitte 2025 (core + phrase)
+   - Blocs délimités par ".end" (référence)
+   - Séparateurs d’instructions: NEWLINE(s) ou ';'
+   - Les variantes avec accolades sont "legacy" (facultatif, pour compat)
+   ========================================================================== */
+
+/* ----------------------------- Compilation unit ---------------------------- */
+
+CompilationUnit
+  = WS0, ToplevelDecl*, WS0, EOF
+  ;
+
+ToplevelDecl
+  = ModuleDecl
+  | UseDecl
+  | ExportDecl
+  | TypeDecl
+  | FnItem
+  | ScenarioItem
+  | EntrypointDecl
+  | GlobalDecl
+  | EmptyStmt
+  ;
+
+/* --------------------------------- Modules -------------------------------- */
+
+ModuleDecl
+  = "mod", WS1, ModulePath, StmtEnd
+  ;
+
+UseDecl
+  = "use", WS1, UseSpec, StmtEnd
+  ;
+
+UseSpec
+  = ModulePath, (WS1, "as", WS1, Ident)?
+  | ModulePath, WS0, "{", WS0, UseList, WS0, "}"              /* legacy (accolades) */
+  ;
+
+UseList
+  = UseItem, (WS0, ",", WS0, UseItem)*, (WS0, ",")?
+  ;
+
+UseItem
+  = Ident, (WS1, "as", WS1, Ident)?
+  | "*"
+  ;
+
+ExportDecl
+  = "export", WS1, ExportSpec, StmtEnd
+  ;
+
+ExportSpec
+  = "all"
+  | ExportList
+  | "from", WS1, ModulePath, WS1, ExportList
+  ;
+
+ExportList
+  = "{", WS0, ExportItem, (WS0, ",", WS0, ExportItem)*, (WS0, ",")?, WS0, "}"   /* legacy (accolades) */
+  | ExportItem, (WS0, ",", WS0, ExportItem)*                                    /* forme simple */
+  ;
+
+ExportItem
+  = Ident
+  ;
+
+/* ModulePath: supporte "." (core) et "/" (phrase surface) */
+ModulePath
+  = Ident, ( ( "." | "/" ), Ident )*
+  ;
+
+/* ---------------------------------- Types --------------------------------- */
+
+TypeDecl
+  = StructDecl
+  | UnionDecl
+  | EnumDecl
+  | TypeAliasDecl
+  ;
+
+TypeAliasDecl
+  = "type", WS1, Ident, TypeParamsOpt, WS0, "=", WS0, TypeExpr, StmtEnd
+  ;
+
+StructDecl
+  = "type", WS1, Ident, TypeParamsOpt, WS1, "struct", BlockStart,
+    FieldDecl*, BlockEnd
+  ;
+
+UnionDecl
+  = "type", WS1, Ident, TypeParamsOpt, WS1, "union", BlockStart,
+    FieldDecl*, BlockEnd
+  ;
+
+EnumDecl
+  = "type", WS1, Ident, TypeParamsOpt, WS1, "enum", BlockStart,
+    EnumEntry*, BlockEnd
+  ;
+
+FieldDecl
+  = Ident, WS0, ":", WS0, TypeExpr, StmtEnd
+  ;
+
+EnumEntry
+  = Ident, EnumPayloadOpt, StmtEnd
+  ;
+
+EnumPayloadOpt
+  = WS0, "(", WS0, TypeExprListOpt, WS0, ")"
+  | /* empty */
+  ;
+
+TypeParamsOpt
+  = WS0, "[", WS0, TypeParam, (WS0, ",", WS0, TypeParam)*, (WS0, ",")?, WS0, "]"
+  | /* empty */
+  ;
+
+TypeParam
+  = Ident
+  ;
+
+TypeExprListOpt
+  = TypeExpr, (WS0, ",", WS0, TypeExpr)*, (WS0, ",")?
+  | /* empty */
+  ;
+
+/* TypeExpr: type path + args, tuples, fn types, parens */
+TypeExpr
+  = TypeOr
+  ;
+
+TypeOr
+  = TypeAnd, (WS0, "|", WS0, TypeAnd)*               /* unions de types optionnelles */
+  ;
+
+TypeAnd
+  = TypePrimary, TypeSuffix*
+  ;
+
+TypeSuffix
+  = "?"                                              /* option/nullable (surface) */
+  | "*"                                              /* pointeur (surface) */
+  | "[" WS0 "]"                                      /* slice (surface) */
+  ;
+
+TypePrimary
+  = TypePath
+  | TupleType
+  | FnType
+  | "(", WS0, TypeExpr, WS0, ")"
+  ;
+
+TypePath
+  = ModulePath, TypeArgsOpt
+  ;
+
+TypeArgsOpt
+  = WS0, "[", WS0, TypeExpr, (WS0, ",", WS0, TypeExpr)*, (WS0, ",")?, WS0, "]"
+  | /* empty */
+  ;
+
+TupleType
+  = "(", WS0, TypeExpr, WS0, ",", WS0, TypeExpr, (WS0, ",", WS0, TypeExpr)*, (WS0, ",")?, WS0, ")"
+  ;
+
+FnType
+  = "fn", WS0, "(", WS0, TypeExprListOpt, WS0, ")", WS0, "->", WS0, TypeExpr
+  ;
+
+/* ------------------------------ Functions/SCN ------------------------------ */
+
+FnItem
+  = "fn", WS1, Ident, WS0, "(", WS0, ParamListOpt, WS0, ")", ReturnTypeOpt, Block
+  ;
+
+ScenarioItem
+  = "scn", WS1, Ident, WS0, "(", WS0, ParamListOpt, WS0, ")", ReturnTypeOpt, Block
+  ;
+
+ReturnTypeOpt
+  = WS0, "->", WS0, TypeExpr
+  | /* empty */
+  ;
+
+ParamListOpt
+  = Param, (WS0, ",", WS0, Param)*, (WS0, ",")?
+  | /* empty */
+  ;
+
+Param
+  = Ident, WS0, ":", WS0, TypeExpr
+  ;
+
+/* Entrypoints: core + phrase (prog) */
+EntrypointDecl
+  = EntryKind, WS1, ModulePath, Block
+  ;
+
+EntryKind
+  = "prog"        /* phrase */
+  | "program"
+  | "service"
+  | "kernel"
+  | "driver"
+  | "tool"
+  | "scenario"
+  | "pipeline"
+  ;
+
+/* -------------------------------- Statements -------------------------------- */
+
+GlobalDecl
+  = LetDecl
+  | ConstDecl
+  ;
+
+Block
+  = BlockStart, Statement*, BlockEnd
+  ;
+
+BlockStart
+  = StmtEndRequired
+  ;
+
+BlockEnd
+  = WS0, ".end", StmtEnd
+  ;
+
+/* Instruction separators */
+StmtEnd
+  = WS0, (";" | NEWLINE+), WS0
+  ;
+
+StmtEndRequired
+  = WS0, (NEWLINE+), WS0
+  ;
+
+Statement
+  = LetDecl
+  | ConstDecl
+  | AssignStmt
+  | IfStmt
+  | WhileStmt
+  | ForStmt
+  | LoopStmt
+  | MatchStmt
+  | BreakStmt
+  | ContinueStmt
+  | ReturnStmt
+  | SetStmt        /* phrase sugar */
+  | SayStmt        /* phrase sugar */
+  | DoStmt         /* phrase sugar */
+  | WhenStmt       /* phrase sugar */
+  | ExprStmt
+  | EmptyStmt
+  ;
+
+EmptyStmt
+  = WS0, StmtEnd
+  ;
+
+LetDecl
+  = "let", WS1, Ident, TypeAnnotOpt, LetInitOpt, StmtEnd
+  ;
+
+ConstDecl
+  = "const", WS1, Ident, TypeAnnotOpt, ConstInitReq, StmtEnd
+  ;
+
+TypeAnnotOpt
+  = WS0, ":", WS0, TypeExpr
+  | /* empty */
+  ;
+
+LetInitOpt
+  = WS0, "=", WS0, Expr
+  | /* empty */
+  ;
+
+ConstInitReq
+  = WS0, "=", WS0, Expr
+  ;
+
+AssignStmt
+  = LValue, WS0, AssignOp, WS0, Expr, StmtEnd
+  ;
+
+AssignOp
+  = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>="
+  ;
+
+LValue
+  = IdentRef, LValueSuffix*
+  ;
+
+LValueSuffix
+  = ".", Ident
+  | "[", WS0, Expr, WS0, "]"
+  ;
+
+IfStmt
+  = "if", WS1, Expr, Block,
+    ("elif", WS1, Expr, Block)*,
+    ("else", Block)?
+  ;
+
+WhileStmt
+  = "while", WS1, Expr, Block
+  ;
+
+ForStmt
+  = "for", WS1, Ident, WS1, "in", WS1, Expr, Block
+  ;
+
+LoopStmt
+  = "loop", Block
+  ;
+
+MatchStmt
+  = "match", WS1, Expr, BlockStart,
+    MatchArm*, BlockEnd
+  ;
+
+MatchArm
+  = Pattern, WS0, "=>", WS0, MatchRhs
+  ;
+
+MatchRhs
+  = Block
+  | SimpleStmtInMatch
+  ;
+
+SimpleStmtInMatch
+  = (ReturnStmt | BreakStmt | ContinueStmt | ExprStmt | SetStmt | SayStmt | DoStmt), /* StmtEnd inclus */
+    /* empty */
+  ;
+
+BreakStmt
+  = "break", StmtEnd
+  ;
+
+ContinueStmt
+  = "continue", StmtEnd
+  ;
+
+ReturnStmt
+  = ("ret" | "return"), (WS1, Expr)?, StmtEnd
+  ;
+
+/* ------------------------------ Phrase statements --------------------------- */
+
+SetStmt
+  = "set", WS1, LValue, WS0, "=", WS0, Expr, StmtEnd
+  ;
+
+SayStmt
+  = "say", WS1, Expr, StmtEnd
+  ;
+
+DoStmt
+  = "do", WS1, Expr, StmtEnd
+  ;
+
+WhenStmt
+  = "when", WS1, Expr, Block
+  ;
+
+/* -------------------------------- Expressions ------------------------------- */
+
+ExprStmt
+  = Expr, StmtEnd
+  ;
+
+Expr
+  = OrExpr
+  ;
+
+OrExpr
+  = AndExpr, (WS1?, ("or" | "||"), WS1?, AndExpr)*
+  ;
+
+AndExpr
+  = EqExpr, (WS1?, ("and" | "&&"), WS1?, EqExpr)*
+  ;
+
+EqExpr
+  = CmpExpr, (WS0, ("==" | "!="), WS0, CmpExpr)*
+  ;
+
+CmpExpr
+  = BitOrExpr, (WS0, ("<=" | ">=" | "<" | ">"), WS0, BitOrExpr)*
+  ;
+
+BitOrExpr
+  = BitXorExpr, (WS0, "|", WS0, BitXorExpr)*
+  ;
+
+BitXorExpr
+  = BitAndExpr, (WS0, "^", WS0, BitAndExpr)*
+  ;
+
+BitAndExpr
+  = ShiftExpr, (WS0, "&", WS0, ShiftExpr)*
+  ;
+
+ShiftExpr
+  = AddExpr, (WS0, ("<<" | ">>"), WS0, AddExpr)*
+  ;
+
+AddExpr
+  = MulExpr, (WS0, ("+" | "-"), WS0, MulExpr)*
+  ;
+
+MulExpr
+  = UnaryExpr, (WS0, ("*" | "/" | "%"), WS0, UnaryExpr)*
+  ;
+
+UnaryExpr
+  = (("!" | "~" | "-" | "+" | "not"), WS0, UnaryExpr)
+  | PostfixExpr
+  ;
+
+PostfixExpr
+  = PrimaryExpr, PostfixOp*
+  ;
+
+PostfixOp
+  = CallOp
+  | IndexOp
+  | FieldOp
+  | CastOp
+  ;
+
+CallOp
+  = "(", WS0, ArgListOpt, WS0, ")"
+  ;
+
+ArgListOpt
+  = Arg, (WS0, ",", WS0, Arg)*, (WS0, ",")?
+  | /* empty */
+  ;
+
+Arg
+  = Expr
+  | Ident, WS0, ":", WS0, Expr                 /* args nommés (surface) */
+  ;
+
+IndexOp
+  = "[", WS0, Expr, WS0, "]"
+  ;
+
+FieldOp
+  = ".", Ident
+  ;
+
+CastOp
+  = WS1, "as", WS1, TypeExpr
+  ;
+
+PrimaryExpr
+  = Literal
+  | IdentRef
+  | PathExpr
+  | TupleLit
+  | ArrayLit
+  | ParenExpr
+  ;
+
+ParenExpr
+  = "(", WS0, Expr, WS0, ")"
+  ;
+
+TupleLit
+  = "(", WS0, Expr, WS0, ",", WS0, Expr, (WS0, ",", WS0, Expr)*, (WS0, ",")?, WS0, ")"
+  ;
+
+ArrayLit
+  = "[", WS0, ExprListOpt, WS0, "]"
+  ;
+
+ExprListOpt
+  = Expr, (WS0, ",", WS0, Expr)*, (WS0, ",")?
+  | /* empty */
+  ;
+
+/* PathExpr: ident(.|/)ident* + ::ident* (pour variantes/patterns) */
+PathExpr
+  = ModulePath, ("::", Ident)*
+  ;
+
+IdentRef
+  = Ident
+  ;
+
+/* --------------------------------- Patterns -------------------------------- */
+
+Pattern
+  = "_"
+  | Literal
+  | Ident
+  | TuplePattern
+  | VariantPattern
+  ;
+
+TuplePattern
+  = "(", WS0, Pattern, WS0, ",", WS0, Pattern, (WS0, ",", WS0, Pattern)*, (WS0, ",")?, WS0, ")"
+  ;
+
+VariantPattern
+  = TypePath, WS0, "::", WS0, Ident, VariantPatPayloadOpt
+  ;
+
+VariantPatPayloadOpt
+  = WS0, "(", WS0, PatternListOpt, WS0, ")"
+  | /* empty */
+  ;
+
+PatternListOpt
+  = Pattern, (WS0, ",", WS0, Pattern)*, (WS0, ",")?
+  | /* empty */
+  ;
+
+/* --------------------------------- Literals -------------------------------- */
+
+Literal
+  = IntLit
+  | FloatLit
+  | StringLit
+  | CharLit
+  | BoolLit
+  | NullLit
+  ;
+
+BoolLit
+  = "true" | "false"
+  ;
+
+NullLit
+  = "null"
+  ;
+
+IntLit
+  = DecInt | HexInt | BinInt
+  ;
+
+DecInt
+  = DIGIT, (DIGIT | "_")*
+  ;
+
+HexInt
+  = "0x", HEXDIGIT, (HEXDIGIT | "_")*
+  ;
+
+BinInt
+  = "0b", BINDIGIT, (BINDIGIT | "_")*
+  ;
+
+FloatLit
+  = DIGIT, (DIGIT | "_")*, ".", DIGIT, (DIGIT | "_")*, ExpOpt
+  | DIGIT, (DIGIT | "_")*, ExpReq
+  ;
+
+ExpOpt
+  = ExpReq
+  | /* empty */
+  ;
+
+ExpReq
+  = ("e" | "E"), ("+" | "-")?, DIGIT, (DIGIT | "_")*
+  ;
+
+StringLit
+  = "\"", StringChar*, "\""
+  ;
+
+StringChar
+  = ESC
+  | ~["\\\n\r]
+  ;
+
+CharLit
+  = "'", (ESC | ~['\\\n\r]), "'"
+  ;
+
+ESC
+  = "\\", ("\"" | "'" | "\\" | "n" | "r" | "t" | "0" | "x", HEXDIGIT, HEXDIGIT)
+  ;
+
+/* ---------------------------------- Lexing --------------------------------- */
+
+/* Ident interdit sur les mots-clés (réservés). */
+Ident
+  = IDENT_START, IDENT_CONT*
+  ;
+
+IDENT_START
+  = ALPHA | "_"
+  ;
+
+IDENT_CONT
+  = ALPHA | DIGIT | "_"
+  ;
+
+ALPHA
+  = "A"…"Z" | "a"…"z"
+  ;
+
+DIGIT
+  = "0"…"9"
+  ;
+
+HEXDIGIT
+  = DIGIT | "a"…"f" | "A"…"F"
+  ;
+
+BINDIGIT
+  = "0" | "1"
+  ;
+
+/* Whitespace/comments */
+WS0
+  = (WS | Comment)*
+  ;
+
+WS1
+  = (WS | Comment)+
+  ;
+
+WS
+  = " " | "\t"
+  ;
+
+NEWLINE
+  = "\n" | "\r\n"
+  ;
+
+Comment
+  = LineComment
+  | BlockComment
+  ;
+
+LineComment
+  = "//", (~["\n" "\r"])*, (NEWLINE | EOF)
+  ;
+
+BlockComment
+  = "/*", BlockCommentChar*, "*/"
+  ;
+
+BlockCommentChar
+  = BlockComment
+  | ~["*"]
+  | "*", ~["/"]
+  ;
+
+/* End of file */
+EOF
+  = ? end of input ?
+  ;
+
+/* --------------------------- Reserved keywords ------------------------------
+   mod use export from all
+   type struct union enum
+   fn scn prog program service kernel driver tool scenario pipeline
+   let const
+   if elif else
+   while for in loop match
+   break continue ret return
+   set say do when
+   true false null
+   and or not as
+   -------------------------------------------------------------------------- */
