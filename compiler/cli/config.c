@@ -34,13 +34,6 @@ static char* config_trim(char *str) {
     return str;
 }
 
-static char* config_read_value(char *line) {
-    char *eq = strchr(line, '=');
-    if (!eq) return NULL;
-    
-    return config_trim(eq + 1);
-}
-
 // ============================================================================
 // Configuration API Implementation
 // ============================================================================
@@ -302,8 +295,6 @@ void vitte_config_set_defaults(vitte_config_t *config) {
     int opt_level = 2;
     int bool_true = 1;
     int bool_false = 0;
-    float timeout = 30.0f;
-    
     vitte_config_set(config, "verbosity.level", &verbosity, VITTE_CONFIG_INT);
     vitte_config_set(config, "compile.optimization", &opt_level, VITTE_CONFIG_INT);
     vitte_config_set(config, "output.color", &bool_true, VITTE_CONFIG_BOOL);
