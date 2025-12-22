@@ -48,28 +48,32 @@ typedef struct {
 // Command Executors
 // ============================================================================
 
-int cmd_compile(cli_command_t *cmd, int argc, char **argv);
-int cmd_test(cli_command_t *cmd, int argc, char **argv);
-int cmd_analyze(cli_command_t *cmd, int argc, char **argv);
-int cmd_format(cli_command_t *cmd, int argc, char **argv);
-int cmd_lint(cli_command_t *cmd, int argc, char **argv);
-int cmd_build(cli_command_t *cmd, int argc, char **argv);
-int cmd_install(cli_command_t *cmd, int argc, char **argv);
-int cmd_clean(cli_command_t *cmd, int argc, char **argv);
-int cmd_doc(cli_command_t *cmd, int argc, char **argv);
-int cmd_version(cli_command_t *cmd, int argc, char **argv);
-int cmd_help(cli_command_t *cmd, int argc, char **argv);
+int cmd_compile(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv);
+int cmd_run(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv);
+int cmd_test(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv);
+int cmd_analyze(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv);
+int cmd_format(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv);
+int cmd_lint(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv);
+int cmd_build(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv);
+int cmd_bench(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv);
+int cmd_install(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv);
+int cmd_clean(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv);
+int cmd_doc(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv);
+int cmd_version(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv);
+int cmd_help(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv);
 
 // ============================================================================
 // Command Setup Functions
 // ============================================================================
 
 cli_command_t cli_setup_compile_command(void);
+cli_command_t cli_setup_run_command(void);
 cli_command_t cli_setup_test_command(void);
 cli_command_t cli_setup_analyze_command(void);
 cli_command_t cli_setup_format_command(void);
 cli_command_t cli_setup_lint_command(void);
 cli_command_t cli_setup_build_command(void);
+cli_command_t cli_setup_bench_command(void);
 cli_command_t cli_setup_install_command(void);
 cli_command_t cli_setup_clean_command(void);
 cli_command_t cli_setup_doc_command(void);

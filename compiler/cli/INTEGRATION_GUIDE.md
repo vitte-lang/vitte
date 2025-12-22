@@ -113,7 +113,7 @@ Update command implementations to call actual compiler functions:
 #include "../parser/parser.h"
 #include "../codegen/codegen.h"
 
-int cmd_compile(cli_command_t *cmd, int argc, char **argv) {
+int cmd_compile(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv) {
     // Get input file
     const char *input = cli_get_string(ctx, "input");
     const char *output = cli_get_string(ctx, "output");
@@ -173,7 +173,7 @@ Connect CLI compile command to lexer:
 // cli_commands.c
 #include "../lexer/lexer.h"
 
-int cmd_compile(cli_command_t *cmd, int argc, char **argv) {
+int cmd_compile(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv) {
     const char *input_file = cli_get_string(ctx, "input");
     lexer_t *lexer = lexer_create_from_file(input_file);
     

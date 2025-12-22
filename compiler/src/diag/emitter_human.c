@@ -78,6 +78,12 @@ static uint32_t vittec__span_col0(uint32_t line_lo, uint32_t sp_lo) {
   return sp_lo - line_lo;
 }
 
+static uint32_t vittec__context_lines(const vittec_emit_options_t* opt) {
+  if(!opt) return 2u;
+  uint32_t ctx = (opt->context_lines > 0) ? (uint32_t)opt->context_lines : 0u;
+  return ctx ? ctx : 2u;
+}
+
 /* ========================================================================
  * Core rendering
  * ======================================================================== */
@@ -93,7 +99,7 @@ static void vittec__emit_one(FILE* out, const vittec_source_map_t* sm, const vit
 
   if(d->labels && d->labels_len) {
     for(uint32_t i=0; i<d->labels_len; i++) {
-      if(d->labels[i].kind == VITTEC_DIAG_LABEL_PRIMARY) {
+      if(d->labels[i].style == VITTEC_DIAG_LABEL_PRIMARY) {
         primary = d->labels[i].span;
         has_primary = 1;
         break;
@@ -201,7 +207,7 @@ static void vittec__emit_one(FILE* out, const vittec_source_map_t* sm, const vit
       /* label message (primary label text if provided) */
       if(d->labels && d->labels_len) {
         for(uint32_t k=0; k<d->labels_len; k++) {
-          if(d->labels[k].kind == VITTEC_DIAG_LABEL_PRIMARY) {
+          if(d->labels[k].style == VITTEC_DIAG_LABEL_PRIMARY) {
             if(!vittec__sv_is_empty(d->labels[k].message)) {
               fputc(' ', out);
               vittec__fwrite_sv(out, d->labels[k].message);
@@ -217,7 +223,7 @@ static void vittec__emit_one(FILE* out, const vittec_source_map_t* sm, const vit
     if(d->labels && d->labels_len) {
       for(uint32_t k=0; k<d->labels_len; k++) {
         const vittec_diag_label_t* lab = &d->labels[k];
-        if(lab->kind != VITTEC_DIAG_LABEL_SECONDARY) continue;
+        if(lab->style != VITTEC_DIAG_LABEL_SECONDARY) continue;
         if(lab->span.file != primary.file) continue;
         if(!(lab->span.lo < lsp.hi && lsp.lo < lab->span.hi)) continue;
 
@@ -261,32 +267,34 @@ static void vittec__emit_one(FILE* out, const vittec_source_map_t* sm, const vit
  * ======================================================================== */
 
 void vittec_emit_human_one(const vittec_source_map_t* sm, const vittec_diag_t* d) {
-  vittec_emit_human_one_ex(sm, d, stderr, 2u);
-}
-
-void vittec_emit_human_one_ex(const vittec_source_map_t* sm, const vittec_diag_t* d, void* out_file, uint32_t context_lines) {
-  FILE* out = (FILE*)out_file;
-  vittec__emit_one(out ? out : stderr, sm, d, context_lines);
+  vittec__emit_one(stderr, sm, d, 2u);
 }
 
 void vittec_emit_human_bag(const vittec_source_map_t* sm, const vittec_diag_bag_t* bag) {
-  vittec_emit_human_bag_ex(sm, bag, stderr, 2u);
+  vittec_emit_human_bag_ex(sm, bag, NULL);
 }
 
-void vittec_emit_human_bag_ex(const vittec_source_map_t* sm, const vittec_diag_bag_t* bag, void* out_file, uint32_t context_lines) {
-  FILE* out = (FILE*)out_file;
-  if(!out) out = stderr;
+void vittec_emit_human_bag_ex(const vittec_source_map_t* sm, const vittec_diag_bag_t* bag, const vittec_emit_options_t* opt) {
+  FILE* out = opt && opt->out_stream ? (FILE*)opt->out_stream : stderr;
+  uint32_t ctx = vittec__context_lines(opt);
   if(!bag || !bag->diags || bag->len == 0) return;
 
   for(uint32_t i=0; i<bag->len; i++) {
-    vittec__emit_one(out, sm, &bag->diags[i], context_lines);
+    vittec__emit_one(out, sm, &bag->diags[i], ctx);
     if(i + 1u < bag->len) fputc('\n', out);
   }
 }
 
 /* Legacy sink emitter (minimal): prints severity + message + primary span. */
-void vittec_emit_human_sink(const vittec_source_map_t* sm, const vittec_diag_sink_t* sink) {
+void vittec_emit_human(const vittec_source_map_t* sm, const vittec_diag_sink_t* sink) {
+  vittec_emit_human_ex(sm, sink, NULL);
+}
+
+void vittec_emit_human_ex(const vittec_source_map_t* sm, const vittec_diag_sink_t* sink, const vittec_emit_options_t* opt) {
   if(!sink || !sink->diags || sink->len == 0) return;
+  FILE* out = opt && opt->out_stream ? (FILE*)opt->out_stream : stderr;
+  uint32_t ctx = vittec__context_lines(opt);
+
   for(uint32_t i=0; i<sink->len; i++) {
     vittec_diagnostic_t d0 = sink->diags[i];
     vittec_diag_t d;
@@ -301,14 +309,14 @@ void vittec_emit_human_sink(const vittec_source_map_t* sm, const vittec_diag_sin
     if(d.labels) {
       d.labels_len = 1;
       d.labels_cap = 1;
-      d.labels[0].kind = VITTEC_DIAG_LABEL_PRIMARY;
+      d.labels[0].style = VITTEC_DIAG_LABEL_PRIMARY;
       d.labels[0].span = d0.span;
       d.labels[0].message = vittec__sv_empty();
     }
 
-    vittec__emit_one(stderr, sm, &d, 2u);
+    vittec__emit_one(out, sm, &d, ctx);
 
     if(d.labels) free(d.labels);
-    if(i + 1u < sink->len) fputc('\n', stderr);
+    if(i + 1u < sink->len) fputc('\n', out);
   }
 }

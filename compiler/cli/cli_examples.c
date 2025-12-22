@@ -185,10 +185,10 @@ void example_interactive(void) {
 // Example 7: Custom Command
 // ============================================================================
 
-int custom_cmd_example(cli_command_t *cmd, int argc, char **argv) {
+int custom_cmd_example(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv) {
     (void)cmd;
+    printf("Custom command executed (profile: %s)!\n", ctx && ctx->profile ? ctx->profile : "dev");
 
-    printf("Custom command executed!\n");
     printf("Arguments: ");
     for (int i = 0; i < argc; i++) {
         printf("%s ", argv[i]);

@@ -7,6 +7,10 @@
 #include <stdarg.h>
 #include <ctype.h>
 #include <errno.h>
+#include <stdio.h>
+
+#define DEFAULT_PROFILE "dev"
+#define DEFAULT_PRESET_PATH ".vittec/config"
 
 // ============================================================================ 
 // Static Helpers
@@ -63,6 +67,356 @@ static char** cli_split_string(const char *str, const char *delim, int *count) {
     return result;
 }
 
+static const char* cli_canonical_name(const char *name) {
+    if (!name) return NULL;
+    while (*name == '-') name++;
+    return name;
+}
+
+static bool cli_option_name_matches(const char *candidate, const char *query,
+                                    bool case_sensitive) {
+    return cli_str_eq(cli_canonical_name(candidate),
+                      cli_canonical_name(query),
+                      case_sensitive);
+}
+
+static cli_option_t* cli_find_option(cli_command_t *cmd, const char *name,
+                                     bool case_sensitive) {
+    if (!cmd || !name) return NULL;
+    for (size_t i = 0; i < cmd->option_count; i++) {
+        cli_option_t *opt = &cmd->options[i];
+        if ((opt->long_name && cli_option_name_matches(opt->long_name, name, case_sensitive)) ||
+            (opt->short_name && cli_option_name_matches(opt->short_name, name, case_sensitive))) {
+            return opt;
+        }
+    }
+    return NULL;
+}
+
+static void cli_clear_option_values(cli_command_t *cmd) {
+    if (!cmd || !cmd->options) return;
+    for (size_t i = 0; i < cmd->option_count; i++) {
+        if (cmd->options[i].value) {
+            *(const char**)cmd->options[i].value = NULL;
+        }
+    }
+}
+
+static void cli_free_parsed_args(cli_context_t *ctx) {
+    if (!ctx || !ctx->parsed_args) return;
+    for (size_t i = 0; i < ctx->parsed_count; i++) {
+        free(ctx->parsed_args[i]);
+    }
+    free(ctx->parsed_args);
+    ctx->parsed_args = NULL;
+    ctx->parsed_count = 0;
+}
+
+static bool cli_add_positional(cli_context_t *ctx, const char *arg) {
+    if (!ctx || !arg) return false;
+    char *dup = cli_strdup(arg);
+    if (!dup) return false;
+    char **new_args = realloc(ctx->parsed_args, sizeof(char*) * (ctx->parsed_count + 1));
+    if (!new_args) {
+        free(dup);
+        return false;
+    }
+    ctx->parsed_args = new_args;
+    ctx->parsed_args[ctx->parsed_count++] = dup;
+    return true;
+}
+
+static cli_error_t cli_validate_and_set_option(cli_context_t *ctx,
+                                               cli_option_t *opt,
+                                               const char *value,
+                                               const char *arg_name) {
+    if (!opt) return CLI_ERR_INVALID_ARG;
+
+    const char *resolved_value = value;
+    if ((opt->type == CLI_ARG_BOOL || opt->type == CLI_ARG_NONE) && !resolved_value) {
+        resolved_value = "true";
+    }
+
+    if (!resolved_value && opt->type != CLI_ARG_BOOL && opt->type != CLI_ARG_NONE) {
+        cli_log_error(ctx, "Missing value for option %s", arg_name ? arg_name : "(unknown)");
+        return CLI_ERR_MISSING_ARG;
+    }
+
+    switch (opt->type) {
+        case CLI_ARG_INT: {
+            if (!cli_validate_integer(resolved_value)) {
+                cli_log_error(ctx, "Expected integer for option %s", arg_name ? arg_name : "(unknown)");
+                return CLI_ERR_TYPE_MISMATCH;
+            }
+            int parsed = atoi(resolved_value);
+            if ((opt->min_value || opt->max_value) &&
+                (parsed < opt->min_value || parsed > opt->max_value)) {
+                cli_log_error(ctx, "Value for %s must be between %d and %d",
+                              arg_name ? arg_name : "(unknown)", opt->min_value, opt->max_value);
+                return CLI_ERR_RANGE_ERROR;
+            }
+            break;
+        }
+        case CLI_ARG_FLOAT:
+            if (!cli_validate_float(resolved_value)) {
+                cli_log_error(ctx, "Expected float for option %s", arg_name ? arg_name : "(unknown)");
+                return CLI_ERR_TYPE_MISMATCH;
+            }
+            break;
+        case CLI_ARG_ENUM: {
+            bool match = false;
+            for (int i = 0; i < opt->enum_count; i++) {
+                if (cli_str_eq(opt->enum_values[i], resolved_value,
+                               ctx ? ctx->config.case_sensitive_options : false)) {
+                    match = true;
+                    break;
+                }
+            }
+            if (!match) {
+                cli_log_error(ctx, "Invalid value '%s' for option %s", resolved_value,
+                              arg_name ? arg_name : "(unknown)");
+                return CLI_ERR_INVALID_ENUM;
+            }
+            break;
+        }
+        case CLI_ARG_PATH:
+        case CLI_ARG_STRING:
+        case CLI_ARG_MULTI:
+        case CLI_ARG_LIST:
+        case CLI_ARG_BOOL:
+        case CLI_ARG_NONE:
+            break;
+    }
+
+    if (opt->validator && !opt->validator(resolved_value)) {
+        cli_log_error(ctx, "Validation failed for option %s", arg_name ? arg_name : "(unknown)");
+        return CLI_ERR_INVALID_ARG;
+    }
+
+    if (opt->value) {
+        *(const char**)opt->value = resolved_value;
+    }
+    if (opt->on_change) {
+        opt->on_change(resolved_value);
+    }
+
+    return CLI_OK;
+}
+
+static cli_error_t cli_validate_required_options(cli_context_t *ctx,
+                                                 cli_command_t *cmd) {
+    if (!ctx || !cmd) return CLI_ERR_INVALID_ARG;
+    for (size_t i = 0; i < cmd->option_count; i++) {
+        cli_option_t *opt = &cmd->options[i];
+        const char *current = opt->value ? *(const char**)opt->value : NULL;
+        if (opt->required && !current && !opt->default_value) {
+            const char *name = opt->long_name ? cli_canonical_name(opt->long_name)
+                                              : (opt->short_name ? cli_canonical_name(opt->short_name) : "unknown");
+            cli_log_error(ctx, "Missing required option --%s", name);
+            return CLI_ERR_MISSING_ARG;
+        }
+    }
+    return CLI_OK;
+}
+
+static cli_error_t cli_parse_option(cli_context_t *ctx,
+                                    cli_parser_state_t *state,
+                                    cli_command_t *cmd) {
+    if (!ctx || !state || !cmd) return CLI_ERR_INVALID_ARG;
+    const char *arg = state->argv[state->current_index];
+    bool is_long = strncmp(arg, "--", 2) == 0;
+    bool is_short = !is_long && arg[0] == '-' && arg[1] != '\0';
+
+    if (!is_long && !is_short) {
+        return CLI_ERR_INVALID_ARG;
+    }
+
+    cli_error_t result = CLI_OK;
+    const char *value = NULL;
+    cli_option_t *opt = NULL;
+
+    if (is_long) {
+        const char *name = arg + 2;
+        const char *eq = strchr(name, '=');
+        char *name_copy = NULL;
+        if (eq) {
+            size_t len = (size_t)(eq - name);
+            name_copy = malloc(len + 1);
+            if (!name_copy) return CLI_ERR_PARSE_ERROR;
+            memcpy(name_copy, name, len);
+            name_copy[len] = '\0';
+            name = name_copy;
+            value = eq + 1;
+        }
+
+        opt = cli_find_option(cmd, name, ctx->config.case_sensitive_options);
+        if (name_copy) free(name_copy);
+        if (!opt) {
+            cli_log_error(ctx, "Unknown option '%s'", arg);
+            return CLI_ERR_UNKNOWN_OPTION;
+        }
+
+        if (!value && opt->type != CLI_ARG_BOOL && opt->type != CLI_ARG_NONE) {
+            if (state->current_index + 1 >= state->argc) {
+                cli_log_error(ctx, "Missing value for option '%s'", arg);
+                return CLI_ERR_MISSING_ARG;
+            }
+            value = state->argv[++state->current_index];
+        }
+
+        result = cli_validate_and_set_option(ctx, opt, value, arg);
+        state->current_index++;
+        return result;
+    }
+
+    const char *name_part = arg + 1;
+    char short_name[2] = {0};
+    short_name[0] = name_part[0];
+    opt = cli_find_option(cmd, short_name, ctx->config.case_sensitive_options);
+    if (!opt) {
+        cli_log_error(ctx, "Unknown option '%s'", arg);
+        return CLI_ERR_UNKNOWN_OPTION;
+    }
+
+    if (strlen(name_part) > 1) {
+        value = name_part + 1;
+        if (opt->type == CLI_ARG_BOOL || opt->type == CLI_ARG_NONE) {
+            cli_log_error(ctx, "Option '-%s' does not accept a value", short_name);
+            return CLI_ERR_USAGE;
+        }
+    } else if (opt->type != CLI_ARG_BOOL && opt->type != CLI_ARG_NONE) {
+        if (state->current_index + 1 >= state->argc) {
+            cli_log_error(ctx, "Missing value for option '%s'", arg);
+            return CLI_ERR_MISSING_ARG;
+        }
+        value = state->argv[++state->current_index];
+    }
+
+    result = cli_validate_and_set_option(ctx, opt, value, arg);
+    state->current_index++;
+    return result;
+}
+
+static bool cli_is_profile_valid(const char *profile) {
+    if (!profile) return false;
+    const char *valid[] = {"dev", "release", "debug-asm"};
+    for (size_t i = 0; i < sizeof(valid) / sizeof(valid[0]); i++) {
+        if (strcmp(profile, valid[i]) == 0) return true;
+    }
+    return false;
+}
+
+static void cli_set_profile(cli_context_t *ctx, const char *profile) {
+    if (!ctx || !profile) return;
+    if (!cli_is_profile_valid(profile)) {
+        cli_log_warning(ctx, "Unknown profile '%s', falling back to '%s'",
+                        profile, DEFAULT_PROFILE);
+        profile = DEFAULT_PROFILE;
+    }
+    free(ctx->profile);
+    ctx->profile = cli_strdup(profile);
+}
+
+static bool cli_file_exists(const char *path) {
+    if (!path) return false;
+    FILE *f = fopen(path, "r");
+    if (f) {
+        fclose(f);
+        return true;
+    }
+    return false;
+}
+
+static void cli_reset_config_store(cli_context_t *ctx) {
+    if (!ctx) return;
+    if (ctx->config_store) {
+        vitte_config_free(ctx->config_store);
+    }
+    ctx->config_store = vitte_config_create();
+    if (ctx->config_store) {
+        vitte_config_set_defaults(ctx->config_store);
+    }
+}
+
+static void cli_print_preset_summary(cli_context_t *ctx) {
+    if (!ctx || !ctx->config_store) return;
+    size_t count = ctx->config_store->count;
+    size_t limit = count < 8 ? count : 8;
+
+    printf("Preset loaded from %s (%zu entr%s):\n",
+           ctx->preset_path ? ctx->preset_path : DEFAULT_PRESET_PATH,
+           count,
+           count == 1 ? "y" : "ies");
+
+    for (size_t i = 0; i < limit; i++) {
+        vitte_config_entry_t *entry = &ctx->config_store->entries[i];
+        printf("  %s = ", entry->key);
+        switch (entry->type) {
+            case VITTE_CONFIG_STRING:
+            case VITTE_CONFIG_PATH:
+                printf("%s", (char*)entry->value);
+                break;
+            case VITTE_CONFIG_INT:
+                printf("%d", *(int*)entry->value);
+                break;
+            case VITTE_CONFIG_BOOL:
+                printf("%s", *(int*)entry->value ? "true" : "false");
+                break;
+            case VITTE_CONFIG_FLOAT:
+                printf("%f", *(float*)entry->value);
+                break;
+        }
+        printf("\n");
+    }
+
+    if (count > limit) {
+        printf("  ... %zu more entr%s\n", count - limit, (count - limit) == 1 ? "y" : "ies");
+    }
+}
+
+static bool cli_load_preset(cli_context_t *ctx, const char *path, bool quiet) {
+    if (!ctx || !path) return false;
+    
+    ctx->preset_loaded = false;
+    free(ctx->preset_path);
+    ctx->preset_path = NULL;
+
+    if (!cli_file_exists(path)) {
+        if (!quiet) {
+            cli_log_warning(ctx, "Preset file not found: %s", path);
+        }
+        return false;
+    }
+    
+    cli_reset_config_store(ctx);
+    if (!ctx->config_store) {
+        return false;
+    }
+
+    int load_result = vitte_config_load_file(ctx->config_store, path);
+    if (load_result != 0) {
+        cli_log_error(ctx, "Failed to load preset '%s'%s",
+                      path, load_result == -2 ? " (unknown key)" : "");
+        return false;
+    }
+
+    ctx->preset_path = cli_strdup(path);
+    ctx->preset_loaded = true;
+    if (!quiet) {
+        cli_log_info(ctx, "Loaded preset from %s", path);
+    }
+    cli_print_preset_summary(ctx);
+    return true;
+}
+
+static cli_error_t cli_try_load_default_preset(cli_context_t *ctx) {
+    if (!ctx || ctx->preset_loaded) return CLI_OK;
+    if (cli_file_exists(DEFAULT_PRESET_PATH)) {
+        return cli_load_preset(ctx, DEFAULT_PRESET_PATH, true) ? CLI_OK : CLI_ERR_PARSE_ERROR;
+    }
+    return CLI_OK;
+}
+
 // ============================================================================
 // Core Implementation
 // ============================================================================
@@ -82,6 +436,13 @@ cli_context_t* cli_init(void) {
     ctx->parsed_args = NULL;
     ctx->parsed_count = 0;
     ctx->current_command = NULL;
+    ctx->profile = cli_strdup(DEFAULT_PROFILE);
+    ctx->preset_path = NULL;
+    ctx->preset_loaded = false;
+    ctx->config_store = vitte_config_create();
+    if (ctx->config_store) {
+        vitte_config_set_defaults(ctx->config_store);
+    }
 
     return ctx;
 }
@@ -94,6 +455,11 @@ void cli_free(cli_context_t *ctx) {
     }
     free(ctx->parsed_args);
     free(ctx->commands);
+    free(ctx->profile);
+    free(ctx->preset_path);
+    if (ctx->config_store) {
+        vitte_config_free(ctx->config_store);
+    }
     free(ctx);
 }
 
@@ -113,6 +479,14 @@ cli_error_t cli_register_command(cli_context_t *ctx, cli_command_t cmd) {
 cli_error_t cli_parse(cli_context_t *ctx, int argc, char **argv) {
     if (!ctx || argc < 1) return CLI_ERR_INVALID_ARG;
     
+    cli_free_parsed_args(ctx);
+    ctx->current_command = NULL;
+
+    cli_error_t preset_status = cli_try_load_default_preset(ctx);
+    if (preset_status != CLI_OK) {
+        return preset_status;
+    }
+    
     cli_parser_state_t state = {
         .argc = argc,
         .argv = argv,
@@ -120,9 +494,42 @@ cli_error_t cli_parse(cli_context_t *ctx, int argc, char **argv) {
         .last_error = CLI_OK
     };
     
-    // Parse global options first (if any)
+    // Parse global options first (if any) and find the command token
     while (state.current_index < state.argc) {
         const char *arg = state.argv[state.current_index];
+
+        if (strcmp(arg, "--profile") == 0) {
+            if (state.current_index + 1 >= state.argc) {
+                cli_log_error(ctx, "Missing value for --profile");
+                return CLI_ERR_MISSING_ARG;
+            }
+            cli_set_profile(ctx, state.argv[state.current_index + 1]);
+            state.current_index += 2;
+            continue;
+        }
+        if (strncmp(arg, "--profile=", 10) == 0) {
+            cli_set_profile(ctx, arg + 10);
+            state.current_index++;
+            continue;
+        }
+        if ((strcmp(arg, "--config") == 0 || strcmp(arg, "--preset") == 0)) {
+            if (state.current_index + 1 >= state.argc) {
+                cli_log_error(ctx, "Missing value for %s", arg);
+                return CLI_ERR_MISSING_ARG;
+            }
+            if (!cli_load_preset(ctx, state.argv[state.current_index + 1], false)) {
+                return CLI_ERR_PARSE_ERROR;
+            }
+            state.current_index += 2;
+            continue;
+        }
+        if (strncmp(arg, "--config=", 9) == 0) {
+            if (!cli_load_preset(ctx, arg + 9, false)) {
+                return CLI_ERR_PARSE_ERROR;
+            }
+            state.current_index++;
+            continue;
+        }
         
         // Check if it's a command
         if (arg[0] != '-') {
@@ -136,6 +543,10 @@ cli_error_t cli_parse(cli_context_t *ctx, int argc, char **argv) {
             }
             if (ctx->current_command) break;
         }
+        if (arg[0] == '-') {
+            cli_log_error(ctx, "Unknown global option '%s'", arg);
+            return CLI_ERR_UNKNOWN_OPTION;
+        }
         
         state.current_index++;
     }
@@ -143,15 +554,53 @@ cli_error_t cli_parse(cli_context_t *ctx, int argc, char **argv) {
     if (!ctx->current_command && ctx->command_count > 0) {
         ctx->current_command = &ctx->commands[0];
     }
-    
+    if (!ctx->current_command) {
+        cli_log_error(ctx, "No command specified");
+        return CLI_ERR_USAGE;
+    }
+
+    cli_clear_option_values(ctx->current_command);
+
+    // Parse command-specific options and positional arguments
+    while (state.current_index < state.argc) {
+        const char *arg = state.argv[state.current_index];
+        if (strcmp(arg, "--") == 0) {
+            state.current_index++;
+            while (state.current_index < state.argc) {
+                if (!cli_add_positional(ctx, state.argv[state.current_index++])) {
+                    return CLI_ERR_PARSE_ERROR;
+                }
+            }
+            break;
+        }
+
+        if (arg[0] == '-' && arg[1] != '\0') {
+            cli_error_t opt_err = cli_parse_option(ctx, &state, ctx->current_command);
+            if (opt_err != CLI_OK) {
+                return opt_err;
+            }
+            continue;
+        }
+
+        if (!cli_add_positional(ctx, arg)) {
+            return CLI_ERR_PARSE_ERROR;
+        }
+        state.current_index++;
+    }
+
+    cli_error_t required_err = cli_validate_required_options(ctx, ctx->current_command);
+    if (required_err != CLI_OK) {
+        return required_err;
+    }
+
     return CLI_OK;
 }
 
 int cli_execute(cli_context_t *ctx) {
     if (!ctx || !ctx->current_command) return 1;
     
-    return ctx->current_command->execute(ctx->current_command, 
-                                         0, NULL);
+    return ctx->current_command->execute(ctx, ctx->current_command, 
+                                         (int)ctx->parsed_count, ctx->parsed_args);
 }
 
 // ============================================================================
@@ -213,8 +662,10 @@ const char* cli_get_string(cli_context_t *ctx, const char *option_name) {
     
     for (size_t i = 0; i < ctx->current_command->option_count; i++) {
         cli_option_t *opt = &ctx->current_command->options[i];
-        if (cli_str_eq(opt->long_name, option_name, true)) {
-            return opt->value ? *(const char**)opt->value : opt->default_value;
+        if (cli_option_name_matches(opt->long_name, option_name, ctx->config.case_sensitive_options) ||
+            (opt->short_name && cli_option_name_matches(opt->short_name, option_name, ctx->config.case_sensitive_options))) {
+            const char *stored = opt->value ? *(const char**)opt->value : NULL;
+            return stored ? stored : opt->default_value;
         }
     }
     return NULL;
@@ -238,8 +689,12 @@ double cli_get_float(cli_context_t *ctx, const char *option_name) {
 char** cli_get_multi(cli_context_t *ctx, const char *option_name, int *count) {
     const char *str = cli_get_string(ctx, option_name);
     if (!str) {
-        *count = 0;
+        if (count) *count = 0;
         return NULL;
+    }
+    if (!count) {
+        int tmp = 0;
+        return cli_split_string(str, ",", &tmp);
     }
     return cli_split_string(str, ",", count);
 }

@@ -7,6 +7,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Forward decls */
+void vittec_emit_json_one_ex(const vittec_source_map_t* sm, const vittec_diag_t* d, const vittec_emit_options_t* opt);
+
 /* ========================================================================
  * Minimal JSON writer (no deps)
  * ======================================================================== */
@@ -83,7 +86,7 @@ static const char* vittec__sev_name(vittec_severity_t sev) {
 #endif
 }
 
-static const char* vittec__label_kind_name(vittec_diag_label_kind_t k) {
+static const char* vittec__label_style_name(vittec_diag_label_style_t k) {
   switch(k) {
     case VITTEC_DIAG_LABEL_PRIMARY: return "primary";
     case VITTEC_DIAG_LABEL_SECONDARY: return "secondary";
@@ -91,55 +94,8 @@ static const char* vittec__label_kind_name(vittec_diag_label_kind_t k) {
   }
 }
 
-/* ========================================================================
- * Legacy sink emitter (KEEP signature)
- * ======================================================================== */
-
-void vittec_emit_json(const vittec_source_map_t* sm, const vittec_diag_sink_t* diags) {
-  /* Original behavior printed one big JSON object. Keep that shape, but:
-     - escape strings correctly
-     - include path/line/col when source_map is available
-  */
-  (void)sm;
-  if(!diags) return;
-
-  FILE* out = stderr;
-
-  vittec__j_write(out, "{\n  \"diagnostics\": [\n");
-
-  for(uint32_t i = 0; i < diags->len; i++) {
-    const vittec_diagnostic_t* d = &diags->diags[i];
-
-    /* location (best-effort) */
-    vittec_sv_t path = (sm ? vittec_source_map_file_path(sm, d->span.file_id) : (vittec_sv_t){0});
-    vittec_line_col_t lc = (sm ? vittec_source_map_line_col(sm, d->span.file_id, d->span.lo) : (vittec_line_col_t){1u,1u});
-
-    vittec__j_write(out, "    { \"severity\": ");
-    vittec__j_escape_cstr(out, vittec__sev_name(d->severity));
-
-    vittec__j_write(out, ", \"message\": ");
-    vittec__j_escape_sv(out, d->message);
-
-    vittec__j_write(out, ", \"location\": { \"path\": ");
-    vittec__j_escape_sv(out, path);
-    vittec__j_write(out, ", \"file_id\": ");
-    vittec__j_u32(out, d->span.file_id);
-    vittec__j_write(out, ", \"line\": ");
-    vittec__j_u32(out, lc.line);
-    vittec__j_write(out, ", \"col\": ");
-    vittec__j_u32(out, lc.col);
-
-    vittec__j_write(out, ", \"span\": { \"lo\": ");
-    vittec__j_u32(out, d->span.lo);
-    vittec__j_write(out, ", \"hi\": ");
-    vittec__j_u32(out, d->span.hi);
-    vittec__j_write(out, " } }");
-
-    vittec__j_write(out, " }");
-    vittec__j_write(out, (i + 1u == diags->len) ? "\n" : ",\n");
-  }
-
-  vittec__j_write(out, "  ]\n}\n");
+static FILE* vittec__opt_out(const vittec_emit_options_t* opt) {
+  return (opt && opt->out_stream) ? (FILE*)opt->out_stream : stderr;
 }
 
 /* ========================================================================
@@ -151,7 +107,7 @@ static vittec_span_t vittec__primary_span(const vittec_diag_t* d) {
   memset(&sp, 0, sizeof(sp));
   if(!d || !d->labels || d->labels_len == 0) return sp;
   for(uint32_t i=0; i<d->labels_len; i++) {
-    if(d->labels[i].kind == VITTEC_DIAG_LABEL_PRIMARY) return d->labels[i].span;
+    if(d->labels[i].style == VITTEC_DIAG_LABEL_PRIMARY) return d->labels[i].span;
   }
   return d->labels[0].span;
 }
@@ -201,7 +157,7 @@ static void vittec__emit_diag_one_jsonl(FILE* out, const vittec_source_map_t* sm
       vittec_line_col_t lc = vittec_source_map_line_col(sm, lab->span.file, lab->span.lo);
       if(i) vittec__j_putc(out, ',');
       vittec__j_putc(out, '{');
-      vittec__j_write(out, "\"kind\":"); vittec__j_escape_cstr(out, vittec__label_kind_name(lab->kind));
+      vittec__j_write(out, "\"kind\":"); vittec__j_escape_cstr(out, vittec__label_style_name(lab->style));
       vittec__j_write(out, ",\"path\":"); vittec__j_escape_sv(out, p);
       vittec__j_write(out, ",\"file_id\":"); vittec__j_u32(out, lab->span.file);
       vittec__j_write(out, ",\"lo\":"); vittec__j_u32(out, lab->span.lo);
@@ -229,32 +185,36 @@ static void vittec__emit_diag_one_jsonl(FILE* out, const vittec_source_map_t* sm
 }
 
 void vittec_emit_json_one(const vittec_source_map_t* sm, const vittec_diag_t* d) {
-  vittec_emit_json_one_ex(sm, d, stderr, 2u);
+  vittec_emit_json_one_ex(sm, d, NULL);
 }
 
-void vittec_emit_json_one_ex(const vittec_source_map_t* sm, const vittec_diag_t* d, void* out_file, uint32_t context_lines) {
-  FILE* out = (FILE*)out_file;
-  vittec__emit_diag_one_jsonl(out ? out : stderr, sm, d, context_lines);
-  vittec__j_putc(out ? out : stderr, '\n');
+void vittec_emit_json_one_ex(const vittec_source_map_t* sm, const vittec_diag_t* d, const vittec_emit_options_t* opt) {
+  FILE* out = vittec__opt_out(opt);
+  vittec__emit_diag_one_jsonl(out, sm, d, 0u);
+  vittec__j_putc(out, '\n');
 }
 
 void vittec_emit_json_bag(const vittec_source_map_t* sm, const vittec_diag_bag_t* bag) {
-  vittec_emit_json_bag_ex(sm, bag, stderr, 2u);
+  vittec_emit_json_bag_ex(sm, bag, NULL);
 }
 
-void vittec_emit_json_bag_ex(const vittec_source_map_t* sm, const vittec_diag_bag_t* bag, void* out_file, uint32_t context_lines) {
-  FILE* out = (FILE*)out_file;
-  if(!out) out = stderr;
+void vittec_emit_json_bag_ex(const vittec_source_map_t* sm, const vittec_diag_bag_t* bag, const vittec_emit_options_t* opt) {
+  FILE* out = vittec__opt_out(opt);
   if(!bag || !bag->diags || bag->len == 0) return;
 
   for(uint32_t i=0; i<bag->len; i++) {
-    vittec__emit_diag_one_jsonl(out, sm, &bag->diags[i], context_lines);
+    vittec__emit_diag_one_jsonl(out, sm, &bag->diags[i], 0u);
     vittec__j_putc(out, '\n');
   }
 }
 
-void vittec_emit_json_sink(const vittec_source_map_t* sm, const vittec_diag_sink_t* sink) {
+void vittec_emit_json(const vittec_source_map_t* sm, const vittec_diag_sink_t* sink) {
+  vittec_emit_json_ex(sm, sink, NULL);
+}
+
+void vittec_emit_json_ex(const vittec_source_map_t* sm, const vittec_diag_sink_t* sink, const vittec_emit_options_t* opt) {
   if(!sink || !sink->diags || sink->len == 0) return;
+  FILE* out = vittec__opt_out(opt);
 
   /* Stream minimal JSONL from legacy diagnostics. */
   for(uint32_t i=0; i<sink->len; i++) {
@@ -262,17 +222,17 @@ void vittec_emit_json_sink(const vittec_source_map_t* sm, const vittec_diag_sink
     vittec_sv_t path = vittec_source_map_file_path(sm, d0->span.file_id);
     vittec_line_col_t lc0 = vittec_source_map_line_col(sm, d0->span.file_id, d0->span.lo);
 
-    vittec__j_putc(stderr, '{');
-    vittec__j_write(stderr, "\"severity\":"); vittec__j_escape_cstr(stderr, vittec__sev_name(d0->severity));
-    vittec__j_write(stderr, ",\"message\":"); vittec__j_escape_sv(stderr, d0->message);
-    vittec__j_write(stderr, ",\"location\":{");
-    vittec__j_write(stderr, "\"path\":"); vittec__j_escape_sv(stderr, path);
-    vittec__j_write(stderr, ",\"file_id\":"); vittec__j_u32(stderr, d0->span.file_id);
-    vittec__j_write(stderr, ",\"line\":"); vittec__j_u32(stderr, lc0.line);
-    vittec__j_write(stderr, ",\"col\":"); vittec__j_u32(stderr, lc0.col);
-    vittec__j_write(stderr, ",\"span\":{\"lo\":"); vittec__j_u32(stderr, d0->span.lo);
-    vittec__j_write(stderr, ",\"hi\":"); vittec__j_u32(stderr, d0->span.hi);
-    vittec__j_write(stderr, "}}}");
-    vittec__j_putc(stderr, '\n');
+    vittec__j_putc(out, '{');
+    vittec__j_write(out, "\"severity\":"); vittec__j_escape_cstr(out, vittec__sev_name(d0->severity));
+    vittec__j_write(out, ",\"message\":"); vittec__j_escape_sv(out, d0->message);
+    vittec__j_write(out, ",\"location\":{");
+    vittec__j_write(out, "\"path\":"); vittec__j_escape_sv(out, path);
+    vittec__j_write(out, ",\"file_id\":"); vittec__j_u32(out, d0->span.file_id);
+    vittec__j_write(out, ",\"line\":"); vittec__j_u32(out, lc0.line);
+    vittec__j_write(out, ",\"col\":"); vittec__j_u32(out, lc0.col);
+    vittec__j_write(out, ",\"span\":{\"lo\":"); vittec__j_u32(out, d0->span.lo);
+    vittec__j_write(out, ",\"hi\":"); vittec__j_u32(out, d0->span.hi);
+    vittec__j_write(out, "}}}");
+    vittec__j_putc(out, '\n');
   }
 }

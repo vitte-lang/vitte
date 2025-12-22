@@ -148,6 +148,12 @@ cmake --build build
 ./build/vittec help
 ```
 
+### Global options and help
+
+- `--profile {dev,release,debug-asm}` selects the execution profile and is shown in command headers.
+- `--config`/`--preset` loads a `.vittec/config` preset (auto-discovered) and echoes the active file in output.
+- `vittec help` groups commands by domain (compile/run/fmt/etc.) using each command's `.group` value.
+
 ### Integration as Library
 
 ```c

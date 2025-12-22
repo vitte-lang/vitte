@@ -7,10 +7,13 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 option(VITTEC_ENABLE_RUST_API "Build and link Rust FFI (vitte_rust_api)" OFF)
+option(VITTEC_ENABLE_ENTERPRISE_LIB "Build enterprise_lib (x86_64 inline asm)" OFF)
+option(VITTEC_ENABLE_FRONT_EXPERIMENTAL "Build experimental front lexer/parser" OFF)
 
 # Compiler library sources
 set(VITTEC_COMPILER_SOURCES
     src/compiler.c
+    src/asm_optimizer.c
     src/ast.c
     src/parser.c
     src/lexer.c
@@ -25,13 +28,17 @@ set(VITTEC_COMPILER_SOURCES
     src/backend.c
     src/frontend.c
     src/codegen.c
+    src/inline_asm.c
     src/lowering.c
+    src/native_codegen.c
     src/optimizer.c
     src/target.c
     src/driver.c
     src/back/emit_c.c
     src/diag/diagnostic.c
     src/diag/emitter.c
+    src/diag/emitter_human.c
+    src/diag/emitter_json.c
     src/diag/source_map.c
     src/support/arena.c
     src/support/fs.c
@@ -44,6 +51,21 @@ set(VITTEC_COMPILER_SOURCES
 # Rust-dependent sources (must be in the target sources list to satisfy link symbols).
 if(VITTEC_ENABLE_RUST_API)
     list(APPEND VITTEC_COMPILER_SOURCES src/front/muf_rust.c)
+endif()
+
+if(VITTEC_ENABLE_ENTERPRISE_LIB)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+        list(APPEND VITTEC_COMPILER_SOURCES src/enterprise_lib.c)
+    else()
+        message(WARNING "Skipping enterprise_lib.c: VITTEC_ENABLE_ENTERPRISE_LIB requires x86_64, current: ${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+endif()
+
+if(VITTEC_ENABLE_FRONT_EXPERIMENTAL)
+    list(APPEND VITTEC_COMPILER_SOURCES
+        src/front/lexer.c
+        src/front/parser.c
+    )
 endif()
 
 # Create compiler library

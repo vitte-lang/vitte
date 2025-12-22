@@ -511,7 +511,7 @@ To add a new command:
 
 1. Add command function to `cli_commands.c`:
    ```c
-   int cmd_mycommand(cli_command_t *cmd, int argc, char **argv) {
+   int cmd_mycommand(cli_context_t *ctx, cli_command_t *cmd, int argc, char **argv) {
        // Implementation
        return 0;
    }
@@ -533,6 +533,8 @@ To add a new command:
    ```c
    cli_register_command(ctx, cli_setup_mycommand_command());
    ```
+
+Global options such as `--profile` and `--config` are parsed before command dispatch and available via the `cli_context_t` passed into each executor. Help output automatically groups commands by their `.group` key, so set it to place the command under the right section.
 
 ## License
 

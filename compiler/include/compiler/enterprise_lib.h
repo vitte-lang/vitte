@@ -115,6 +115,8 @@ typedef struct {
     size_t allocated;
     size_t block_size;
     volatile uint32_t lock;
+    void *free_list;
+    size_t free_blocks;
 } enterprise_memory_pool_t;
 
 enterprise_memory_pool_t* enterprise_memory_pool_create(

@@ -6,10 +6,27 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdbool.h>
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+static const char *k_known_keys[] = {
+    VITTE_CONFIG_OUTPUT_FORMAT,
+    VITTE_CONFIG_VERBOSITY_LEVEL,
+    VITTE_CONFIG_COLOR_OUTPUT,
+    VITTE_CONFIG_OPTIMIZATION,
+    VITTE_CONFIG_EMIT_IR,
+    VITTE_CONFIG_EMIT_ASM,
+    VITTE_CONFIG_EMIT_C,
+    VITTE_CONFIG_DEBUG_SYMBOLS,
+    VITTE_CONFIG_PARALLEL_BUILD,
+    VITTE_CONFIG_NUM_THREADS,
+    VITTE_CONFIG_CACHE_DIR,
+    VITTE_CONFIG_PROJECT_ROOT,
+    VITTE_CONFIG_INCLUDE_PATHS,
+};
 
 static char* config_strdup(const char *str) {
     if (!str) return NULL;
@@ -32,6 +49,32 @@ static char* config_trim(char *str) {
     }
     
     return str;
+}
+
+static bool config_is_known_key(const char *key) {
+    if (!key) return false;
+    size_t known = sizeof(k_known_keys) / sizeof(k_known_keys[0]);
+    for (size_t i = 0; i < known; i++) {
+        if (strcmp(key, k_known_keys[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void config_clear_entries(vitte_config_t *config) {
+    if (!config) return;
+    for (size_t i = 0; i < config->count; i++) {
+        free(config->entries[i].key);
+        free(config->entries[i].value);
+        config->entries[i].key = NULL;
+        config->entries[i].value = NULL;
+    }
+    config->count = 0;
+    free(config->config_file);
+    config->config_file = NULL;
+    free(config->config_dir);
+    config->config_dir = NULL;
 }
 
 // ============================================================================
@@ -173,7 +216,9 @@ int vitte_config_load_file(vitte_config_t *config, const char *path) {
     if (!file) return -1;
     
     char line[512];
+    int line_number = 0;
     while (fgets(line, sizeof(line), file)) {
+        line_number++;
         // Remove newline
         line[strcspn(line, "\n")] = '\0';
         
@@ -190,6 +235,15 @@ int vitte_config_load_file(vitte_config_t *config, const char *path) {
         *eq = '\0';
         key = config_trim(key);
         
+        if (!config_is_known_key(key)) {
+            fprintf(stderr, "[vitte-config] Unknown key '%s' at %s:%d\n",
+                    key, path, line_number);
+            fclose(file);
+            config_clear_entries(config);
+            vitte_config_set_defaults(config);
+            return -2;
+        }
+
         // Simple type detection
         vitte_config_type_t type = VITTE_CONFIG_STRING;
         if (strcmp(value, "true") == 0 || strcmp(value, "false") == 0) {

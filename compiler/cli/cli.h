@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include "config.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -63,10 +64,13 @@ typedef struct cli_option {
     void (*on_change)(const char *value);
 } cli_option_t;
 
+struct cli_context;
+
 typedef struct cli_command {
     const char *name;
     const char *description;
     const char *long_description;
+    const char *group;          // Logical grouping for help output
     
     // Options for this command
     cli_option_t *options;
@@ -77,7 +81,10 @@ typedef struct cli_command {
     size_t positional_count;
     
     // Execution
-    int (*execute)(struct cli_command *cmd, int argc, char **argv);
+    int (*execute)(struct cli_context *ctx,
+                   struct cli_command *cmd,
+                   int argc,
+                   char **argv);
     
     // Subcommands
     struct cli_command *subcommands;
@@ -116,6 +123,12 @@ typedef struct cli_context {
     
     // Current command being executed
     cli_command_t *current_command;
+
+    // Global execution state
+    char *profile;              // Selected profile (dev, release, debug-asm)
+    char *preset_path;          // Loaded preset file path (e.g., .vittec/config)
+    bool preset_loaded;
+    vitte_config_t *config_store;
 } cli_context_t;
 
 typedef struct cli_parser_state {

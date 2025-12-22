@@ -23,11 +23,13 @@ endif()
 set(CLI_HEADERS
     cli.h
     cli_commands.h
+    config.h
 )
 
 set(CLI_SOURCES
     cli.c
     cli_commands.c
+    config.c
     main.c
 )
 
@@ -38,6 +40,7 @@ set(CLI_SOURCES
 add_library(vitte-cli-lib STATIC
     cli.c
     cli_commands.c
+    config.c
 )
 
 target_include_directories(vitte-cli-lib PUBLIC
@@ -92,6 +95,7 @@ enable_testing()
 add_executable(test-cli
     cli.c
     cli_commands.c
+    config.c
     tests/test_cli.c
 )
 
