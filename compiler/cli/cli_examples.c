@@ -63,15 +63,11 @@ void example_advanced_options(void) {
     int argc = 6;
     
     if (cli_parse(ctx, argc, (char**)argv) == 0) {
-        // Access parsed options
-        int *opt_level = (int*)cli_get(ctx, "O");
-        printf("Optimization level: %d\n", opt_level ? *opt_level : 0);
-        
-        int *debug = (int*)cli_get(ctx, "g");
-        printf("Debug symbols: %s\n", debug ? "enabled" : "disabled");
-        
+        printf("Parsed command: %s\n", ctx->current_command ? ctx->current_command->name : "(none)");
+        printf("CLI option parsing can be wired to real compiler flags here.\n");
+
         int result = cli_execute(ctx);
-        printf("Result: %d\n", result);
+        printf("Execution result: %d\n", result);
     }
     
     cli_free(ctx);
@@ -148,7 +144,7 @@ void example_logging(void) {
     if (!ctx) return;
     
     // Set verbosity
-    ctx->config.verbose = true;
+    ctx->config.verbosity = 3;
     
     // Different log levels
     cli_log_debug(ctx, "This is a debug message (only shown in verbose mode)");
@@ -190,6 +186,8 @@ void example_interactive(void) {
 // ============================================================================
 
 int custom_cmd_example(cli_command_t *cmd, int argc, char **argv) {
+    (void)cmd;
+
     printf("Custom command executed!\n");
     printf("Arguments: ");
     for (int i = 0; i < argc; i++) {
