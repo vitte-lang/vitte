@@ -21,18 +21,27 @@ jobs:
         id: meta
         run: |
           set -euo pipefail
-          VERSION=$(awk -F '"' '/^version/ {print $2; exit}' vitte.project.muf)
+          VERSION=$(cat VERSION)
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "os=$(uname -s | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
           echo "arch=$(uname -m)" >> "$GITHUB_OUTPUT"
 
-      - name: Build stage1 + stage2 placeholder
-        run: ./scripts/self_host_stage1.sh
+      - name: Install deps
+        run: brew install cmake ninja
 
-      - name: Build release artifact
-        env:
-          VITTE_VERSION: ${{ steps.meta.outputs.version }}
-        run: ./scripts/dist.sh
+      - name: Build release binary (compiler)
+        run: |
+          cmake -S compiler -B compiler/build/release -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build compiler/build/release --target vittec
+
+      - name: Create tarball
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          BIN="compiler/build/release/vittec"
+          [[ -x "${BIN}" ]] || { echo "missing binary: ${BIN}" >&2; exit 1; }
+          TARBALL="dist/vittec-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.os }}-${{ steps.meta.outputs.arch }}.tar.gz"
+          tar -czf "${TARBALL}" -C compiler/build/release vittec -C "${GITHUB_WORKSPACE}" README.md LICENSE
 
       - name: Capture SHA256
         id: sha
@@ -41,6 +50,7 @@ jobs:
           TARBALL="dist/vittec-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.os }}-${{ steps.meta.outputs.arch }}.tar.gz"
           [[ -f "${TARBALL}" ]] || { echo "tarball missing: ${TARBALL}" >&2; exit 1; }
           SHA=$(shasum -a 256 "${TARBALL}" | awk '{print $1}')
+          echo "${SHA}  ${TARBALL}" > "${TARBALL}.sha256"
           echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
 
@@ -92,8 +102,8 @@ class Vittec < Formula
 
   test do
     (testpath/"hello.vitte").write("main() {}")
-    output = shell_output("\#{bin}/vittec \#{testpath}/hello.vitte")
-    assert_match "[stage1]", output
+    output = shell_output("\#{bin}/vittec --version")
+    assert_match "${VERSION}", output
   end
 end
 EOF

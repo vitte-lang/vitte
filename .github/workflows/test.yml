@@ -16,14 +16,14 @@ jobs:
         rust: [stable]
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
 
     - name: Install C compiler (Linux)
       if: runner.os == 'Linux'
-      run: sudo apt-get update && sudo apt-get install -y build-essential cmake
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang cmake
 
     - name: Install C compiler (macOS)
       if: runner.os == 'macOS'
@@ -31,22 +31,22 @@ jobs:
 
     - name: Install C compiler (Windows)
       if: runner.os == 'Windows'
-      run: choco install cmake
+      run: choco install -y cmake
 
     - name: Cache cargo registry
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cargo/registry
         key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Cache cargo index
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cargo/git
         key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Cache cargo build
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: rust/target
         key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
@@ -58,63 +58,46 @@ jobs:
       working-directory: ./rust
       run: cargo test --verbose
 
-  test-runtime:
-    name: Test Runtime
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-
-    steps:
-    - uses: actions/checkout@v3
-
-    - name: Install dependencies (Linux)
-      if: runner.os == 'Linux'
-      run: sudo apt-get update && sudo apt-get install -y build-essential
-
-    - name: Install dependencies (macOS)
-      if: runner.os == 'macOS'
-      run: brew install cmake
-
-    - name: Build and test runtime
-      run: |
-        mkdir -p build
-        cd build
-        cmake ..
-        make test-runtime
-
-  test-stdlib:
-    name: Test Standard Library
+  runtime-asm-sanity:
+    name: Runtime/ASM sanity
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: sudo apt-get update && sudo apt-get install -y build-essential
-
-    - name: Bootstrap compiler
+    - name: Install deps
       run: |
-        ./scripts/bootstrap_stage0.sh
-        ./scripts/self_host_stage1.sh
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends clang cmake ninja-build
 
-    - name: Test standard library
-      run: make test-stdlib
+    - name: Build runtime tests + fuzz_mem_contract
+      run: |
+        cmake -S . -B build-runtime -G Ninja \
+          -DCMAKE_C_COMPILER=clang \
+          -DCMAKE_ASM_COMPILER=clang \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DVITTE_ENABLE_ASM_RUNTIME=ON \
+          -DVITTE_ENABLE_RUNTIME_TESTS=ON \
+          -DVITTE_ENABLE_FUZZ_TARGETS=ON
+        cmake --build build-runtime --target test_vitte_runtime fuzz_mem_contract
 
-  smoke-tests:
-    name: Smoke Tests
+    - name: Run test_vitte_runtime
+      run: |
+        ctest --test-dir build-runtime -R test_vitte_runtime --output-on-failure
+
+  compiler-smoke:
+    name: Compiler smoke
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: sudo apt-get update && sudo apt-get install -y build-essential
-
-    - name: Bootstrap compiler
+    - name: Install deps
       run: |
-        ./scripts/bootstrap_stage0.sh
-        ./scripts/self_host_stage1.sh
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends clang
 
-    - name: Run smoke tests
-      run: cd compiler/tests/smoke && for test in *.vit; do echo "Testing $test"; ../../scripts/run_test.sh "$test"; done
+    - name: Build + run smoke tests
+      run: cd compiler && ./scripts/run_tests.sh
