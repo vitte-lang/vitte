@@ -512,3 +512,4 @@ impl From<VitteError> for VitteErr {
         VitteErr::from_code(e.code())
     }
 }
+
