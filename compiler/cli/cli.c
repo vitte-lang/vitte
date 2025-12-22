@@ -8,7 +8,7 @@
 #include <ctype.h>
 #include <errno.h>
 
-// ============================================================================
+// ============================================================================ 
 // Static Helpers
 // ============================================================================
 
@@ -67,17 +67,22 @@ static char** cli_split_string(const char *str, const char *delim, int *count) {
 // Core Implementation
 // ============================================================================
 
-cli_context_t* cli_init(cli_config_t config) {
+cli_context_t* cli_init(void) {
     cli_context_t *ctx = malloc(sizeof(cli_context_t));
     if (!ctx) return NULL;
-    
-    ctx->config = config;
+
+    cli_config_t default_config = (cli_config_t){0};
+    default_config.show_help_on_error = true;
+    default_config.allow_abbreviations = true;
+    default_config.verbosity = 1;
+
+    ctx->config = default_config;
     ctx->commands = NULL;
     ctx->command_count = 0;
     ctx->parsed_args = NULL;
     ctx->parsed_count = 0;
     ctx->current_command = NULL;
-    
+
     return ctx;
 }
 
@@ -103,77 +108,6 @@ cli_error_t cli_register_command(cli_context_t *ctx, cli_command_t cmd) {
     ctx->commands[ctx->command_count++] = cmd;
     
     return CLI_OK;
-}
-
-// ============================================================================
-// Parsing
-// ============================================================================
-
-static cli_error_t cli_parse_option(cli_context_t *ctx, cli_parser_state_t *state,
-                                     cli_option_t *options, size_t opt_count) {
-    const char *arg = state->argv[state->current_index];
-    
-    if (arg[0] != '-') return CLI_ERR_UNKNOWN_OPTION;
-    
-    // Handle --option=value
-    const char *eq = strchr(arg, '=');
-    char option_name[256];
-    const char *option_value = NULL;
-    
-    if (eq) {
-        int len = eq - arg;
-        strncpy(option_name, arg, len < 255 ? len : 255);
-        option_name[len] = '\0';
-        option_value = eq + 1;
-    } else {
-        strncpy(option_name, arg, 255);
-        option_name[255] = '\0';
-    }
-    
-    // Find matching option
-    for (size_t i = 0; i < opt_count; i++) {
-        cli_option_t *opt = &options[i];
-        
-        bool match = false;
-        if (arg[1] != '-' && opt->short_name && 
-            cli_str_eq(option_name, opt->short_name, ctx->config.case_sensitive_options)) {
-            match = true;
-        } else if (arg[1] == '-' && opt->long_name &&
-                   cli_str_eq(option_name, opt->long_name, ctx->config.case_sensitive_options)) {
-            match = true;
-        }
-        
-        if (match) {
-            // Get value if needed
-            if (opt->type != CLI_ARG_BOOL && !option_value) {
-                if (state->current_index + 1 >= state->argc) {
-                    return CLI_ERR_MISSING_ARG;
-                }
-                option_value = state->argv[++state->current_index];
-            }
-            
-            // Validate and store
-            if (opt->validator && option_value && !opt->validator(option_value)) {
-                return CLI_ERR_TYPE_MISMATCH;
-            }
-            
-            if (opt->value) {
-                if (opt->type == CLI_ARG_BOOL) {
-                    *(bool*)opt->value = true;
-                } else if (option_value) {
-                    *(const char**)opt->value = option_value;
-                }
-            }
-            
-            if (opt->on_change && option_value) {
-                opt->on_change(option_value);
-            }
-            
-            return CLI_OK;
-        }
-    }
-    
-    return CLI_ERR_UNKNOWN_OPTION;
 }
 
 cli_error_t cli_parse(cli_context_t *ctx, int argc, char **argv) {
@@ -406,6 +340,7 @@ void cli_print_help(cli_context_t *ctx, cli_command_t *cmd) {
 }
 
 void cli_print_usage(cli_context_t *ctx, cli_command_t *cmd) {
+    (void)ctx;
     if (cmd) {
         printf("Usage: %s [OPTIONS]\n", cmd->name);
     }
@@ -487,6 +422,7 @@ void cli_log_warning(cli_context_t *ctx, const char *fmt, ...) {
 }
 
 void cli_log_error(cli_context_t *ctx, const char *fmt, ...) {
+    (void)ctx;
     printf("[ERROR] ");
     va_list args;
     va_start(args, fmt);
@@ -519,11 +455,13 @@ void cli_print_colored(cli_color_t color, const char *fmt, ...) {
 }
 
 void cli_progress_start(const char *label, size_t total) {
+    (void)total;
     printf("%s: [", label);
     fflush(stdout);
 }
 
 void cli_progress_update(size_t current) {
+    (void)current;
     printf(".");
     fflush(stdout);
 }
@@ -543,6 +481,7 @@ bool cli_confirm(const char *prompt) {
 }
 
 char* cli_prompt(const char *prompt, bool hidden) {
+    (void)hidden;
     printf("%s", prompt);
     fflush(stdout);
     
