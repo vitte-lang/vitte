@@ -1,0 +1,47 @@
+name: Fuzz Harnesses (standalone)
+
+on:
+  push:
+    paths:
+      - "fuzz/**"
+      - "include/**"
+      - "src/**"
+      - "runtime/**"
+      - "compiler/**"
+      - ".github/workflows/fuzz-standalone.yml"
+  pull_request:
+    paths:
+      - "fuzz/**"
+      - "include/**"
+      - "src/**"
+      - "runtime/**"
+      - "compiler/**"
+      - ".github/workflows/fuzz-standalone.yml"
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang cmake ninja-build
+
+      - name: Build standalone harnesses
+        run: |
+          ./fuzz/scripts/build_targets.sh
+
+      - name: Smoke-run harnesses on seeds
+        run: |
+          ./fuzz/out/fuzz_lexer fuzz/targets/corpus/lexer/seed_0001.vitte
+          ./fuzz/out/fuzz_parser fuzz/targets/corpus/parser/seed_0001.vitte
+          ./fuzz/out/fuzz_parser_recovery fuzz/targets/corpus/parser_recovery/seed_0001.vitte
+          ./fuzz/out/fuzz_ast_invariants fuzz/targets/corpus/parser/seed_0002.vitte
+          ./fuzz/out/fuzz_lowering fuzz/targets/corpus/lowering/seed_0001.vitte
+          ./fuzz/out/fuzz_ast_printer fuzz/targets/corpus/ast_printer/seed_0001.vitte
+          ./fuzz/out/fuze_vm_decode fuzz/targets/corpus/fuze_vm_decode/seed_0001.bin

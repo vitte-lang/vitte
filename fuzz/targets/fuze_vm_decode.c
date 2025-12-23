@@ -59,6 +59,15 @@ vm_decode_placeholder(const uint8_t* data, size_t size) {
   FUZZ_TRACE_TAG_U32("vm:magic", magic);
   FUZZ_TRACE_TAG_U32("vm:ver", ver);
 
+  // Alternate endianness probe (helps coverage on wrong-endian code paths).
+  if ((magic & 0xFFu) == 0u && fuzz_reader_remaining(&r) >= 2) {
+    uint16_t be = 0;
+    fuzz_reader rr = r;
+    if (fuzz_reader_read_u16_be(&rr, &be)) {
+      FUZZ_TRACE_TAG_U32("vm:probe_be16", (uint32_t)be);
+    }
+  }
+
   // Mild constraints to bias interesting paths
   if ((magic & 0xFFFFu) == 0x564Du) { // 'VM' pattern
     FUZZ_TRACE_TAG("vm:magic_hit");
@@ -98,6 +107,27 @@ vm_decode_placeholder(const uint8_t* data, size_t size) {
     // Cheap hashing of section content to vary paths
     uint32_t h = fuzz_fnv1a32(payload.data, payload.size);
     FUZZ_TRACE_U32(tag, h);
+
+    // Nested "section list" interpretation (pure placeholder, but exercises
+    // bounded varint + sub-read logic).
+    if ((tag % 5u) == 0u && payload.size > 0) {
+      fuzz_reader sub = fuzz_reader_from(payload.data, payload.size);
+      uint64_t inner = 0;
+      if (fuzz_reader_read_uvar(&sub, &inner, 4)) {
+        if (inner > 32)
+          inner = 32;
+        for (uint64_t j = 0; j < inner && fuzz_reader_remaining(&sub) > 0; ++j) {
+          uint8_t itag = 0;
+          if (!fuzz_reader_read_u8(&sub, &itag))
+            break;
+          fuzz_bytes_view inner_payload;
+          if (!fuzz_reader_read_len_prefixed(&sub, 64, &inner_payload))
+            break;
+          FUZZ_TRACE_TAG_U32("vm:inner_tag", (uint32_t)itag);
+          FUZZ_TRACE_TAG_U32("vm:inner_len", (uint32_t)inner_payload.size);
+        }
+      }
+    }
 
     // Some branchy behavior
     if ((tag % 7u) == 0u && payload.size >= 4) {

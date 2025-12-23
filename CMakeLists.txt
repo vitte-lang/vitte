@@ -11,6 +11,24 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 option(VITTEC_ENABLE_RUST_API "Build and link Rust FFI (vitte_rust_api)" OFF)
 option(VITTEC_ENABLE_ENTERPRISE_LIB "Build enterprise_lib (portable fallbacks on non-x86)" OFF)
 option(VITTEC_ENABLE_FRONT_EXPERIMENTAL "Build experimental front lexer/parser" OFF)
+option(VITTE_ENABLE_LIBFUZZER "Build a libFuzzer harness for vitte_parse_phrase (clang)" OFF)
+
+set(VITTE_ENABLE_RUNTIME_TESTS_DEFAULT OFF)
+if((CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64|aarch64|ARM64|arm64") AND
+   (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU"))
+    set(VITTE_ENABLE_RUNTIME_TESTS_DEFAULT ON)
+endif()
+option(VITTE_ENABLE_RUNTIME_TESTS "Build vitte runtime/asm unit tests" ${VITTE_ENABLE_RUNTIME_TESTS_DEFAULT})
+
+set(VITTE_ENABLE_ASM_RUNTIME_DEFAULT OFF)
+if((CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64|aarch64|ARM64|arm64") AND
+   (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU"))
+    set(VITTE_ENABLE_ASM_RUNTIME_DEFAULT ON)
+endif()
+option(VITTE_ENABLE_ASM_RUNTIME "Build vitte runtime/asm fastpaths library" ${VITTE_ENABLE_ASM_RUNTIME_DEFAULT})
+
+option(VITTE_RUNTIME_ENABLE_STDIO "Enable stdio helpers in vitte runtime API (FILE*)"
+       OFF)
 
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
     set(VITTEC_ENTERPRISE_LIB_ARCH_X86 TRUE)
@@ -80,6 +98,100 @@ target_include_directories(vittec_compiler PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
+
+# -----------------------------------------------------------------------------
+# vitte runtime (dispatch + CPU detect) and optional ASM objects
+# -----------------------------------------------------------------------------
+
+add_library(vitte_runtime STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asm/src/vitte/asm_dispatch.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asm/src/vitte/cpu.c
+)
+target_include_directories(vitte_runtime PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_include_directories(vitte_runtime PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asm/include
+)
+if(VITTE_RUNTIME_ENABLE_STDIO)
+    target_compile_definitions(vitte_runtime PUBLIC VITTE_RUNTIME_ENABLE_STDIO=1)
+endif()
+
+set(VITTE_ASM_RUNTIME_SUPPORTED FALSE)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64|aarch64|ARM64|arm64")
+    set(VITTE_ASM_RUNTIME_SUPPORTED TRUE)
+endif()
+
+if(VITTE_ENABLE_ASM_RUNTIME AND VITTE_ASM_RUNTIME_SUPPORTED)
+    enable_language(ASM)
+
+    set(VITTE_ASM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src/asm)
+    set(VITTE_ASM_SOURCES
+        ${VITTE_ASM_ROOT}/src/vitte/asm_verify.c
+        ${VITTE_ASM_ROOT}/src/asm/common/asm_macros.S
+    )
+
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+        file(GLOB VITTE_ASM_ARCH_SOURCES CONFIGURE_DEPENDS
+            ${VITTE_ASM_ROOT}/src/asm/x86_64/*/*.S
+        )
+        list(APPEND VITTE_ASM_SOURCES ${VITTE_ASM_ARCH_SOURCES})
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|ARM64|arm64")
+        file(GLOB VITTE_ASM_ARCH_SOURCES CONFIGURE_DEPENDS
+            ${VITTE_ASM_ROOT}/src/asm/aarch64/*/*.S
+        )
+        list(APPEND VITTE_ASM_SOURCES ${VITTE_ASM_ARCH_SOURCES})
+    endif()
+
+    add_library(vitte_asm_runtime STATIC ${VITTE_ASM_SOURCES})
+    target_include_directories(vitte_asm_runtime PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    target_include_directories(vitte_asm_runtime PRIVATE
+        ${VITTE_ASM_ROOT}/include
+    )
+    target_link_libraries(vitte_asm_runtime PUBLIC vitte_runtime)
+elseif(VITTE_ENABLE_ASM_RUNTIME)
+    message(STATUS "vitte_asm_runtime: unsupported arch for ASM fastpaths (${CMAKE_SYSTEM_PROCESSOR})")
+endif()
+
+# -----------------------------------------------------------------------------
+# libFuzzer harnesses (optional)
+# -----------------------------------------------------------------------------
+# This builds a single libFuzzer-compatible binary exercising the phrase parser.
+# It is separate from fuzz/scripts/build_targets.sh, which builds standalone
+# harness binaries for quick include+link coverage.
+
+if(VITTE_ENABLE_LIBFUZZER)
+    if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "VITTE_ENABLE_LIBFUZZER requires clang (CMAKE_C_COMPILER_ID=Clang)")
+    endif()
+
+    file(GLOB VITTE_PARSER_FUZZ_SOURCES CONFIGURE_DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/vitte/*.c
+    )
+
+    add_executable(vitte_phrase_fuzz
+        fuzz/targets/fuzz_parser.c
+        ${VITTE_PARSER_FUZZ_SOURCES}
+    )
+
+    target_include_directories(vitte_phrase_fuzz PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+
+    target_compile_options(vitte_phrase_fuzz PRIVATE
+        -fsanitize=fuzzer,address
+        -fno-omit-frame-pointer
+        -O1
+        -g
+    )
+    target_link_options(vitte_phrase_fuzz PRIVATE
+        -fsanitize=fuzzer,address
+    )
+endif()
 
 if(VITTEC_ENABLE_ENTERPRISE_LIB)
     if(VITTEC_ENTERPRISE_LIB_ARCH_X86)
@@ -202,6 +314,50 @@ if(VITTEC_ENABLE_RUST_API)
   target_link_libraries(test_rust_abi_smoke PRIVATE vittec_compiler)
   target_include_directories(test_rust_abi_smoke PRIVATE ${VITTEC_ROOT}/include)
   add_test(NAME test_rust_abi_smoke COMMAND test_rust_abi_smoke)
+endif()
+
+# -----------------------------------------------------------------------------
+# Runtime / ASM unit tests (optional)
+# -----------------------------------------------------------------------------
+
+if(VITTE_ENABLE_RUNTIME_TESTS)
+    if(NOT TARGET vitte_asm_runtime)
+        message(FATAL_ERROR "VITTE_ENABLE_RUNTIME_TESTS=ON requires VITTE_ENABLE_ASM_RUNTIME=ON on this platform/compiler.")
+    endif()
+
+    add_executable(test_vitte_runtime
+        tests/unit/runtime/test_runtime_main.c
+        tests/unit/runtime/t_asm_fastpaths.c
+    )
+    target_link_libraries(test_vitte_runtime PRIVATE vitte_asm_runtime)
+    target_include_directories(test_vitte_runtime PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/unit
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    add_test(NAME test_vitte_runtime COMMAND test_vitte_runtime)
+endif()
+
+# -----------------------------------------------------------------------------
+# Fuzz targets (compile-only sanity via CMake)
+# -----------------------------------------------------------------------------
+
+option(VITTE_ENABLE_FUZZ_TARGETS "Build fuzz harnesses as standalone binaries via CMake" OFF)
+if(VITTE_ENABLE_FUZZ_TARGETS)
+    if(NOT TARGET vitte_asm_runtime)
+        message(FATAL_ERROR "VITTE_ENABLE_FUZZ_TARGETS=ON requires VITTE_ENABLE_ASM_RUNTIME=ON on this platform/compiler.")
+    endif()
+
+    add_executable(fuzz_mem_contract fuzz/targets/fuzz_mem_contract.c)
+    target_compile_definitions(fuzz_mem_contract PRIVATE
+        FUZZ_DRIVER_STANDALONE_MAIN=1
+        FUZZ_DISABLE_SANITIZER_TRACE=1
+    )
+    target_include_directories(fuzz_mem_contract PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/include
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    target_link_libraries(fuzz_mem_contract PRIVATE vitte_asm_runtime)
 endif()
 
 # Main executable

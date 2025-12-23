@@ -262,6 +262,14 @@ Point d’attention :
 
 ### Toolchain locale (Windows)
 
+Option recommandée (preset) : voir `docs/windows.md` et lancer, depuis un **Visual Studio Developer Prompt** :
+
+```powershell
+cmake --preset win-clang-cl-ninja
+cmake --build --preset win-clang-cl-ninja
+ctest --preset win-clang-cl-ninja
+```
+
 Pour construire `src/vitte/*.c` et exécuter les tests unitaires depuis Windows, installe les outils et configure CMake ainsi :
 
 1. Installer Clang et Ninja via `winget` :
