@@ -5,6 +5,7 @@
  *
  * This is a very small program used by:
  *  - toolchain/scripts/smoke.sh (optionally)
+ *  - toolchain/scripts/smoke.ps1 (optionally)
  *  - CI (compile step + link step)
  *
  * Requirements:
@@ -14,6 +15,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <string.h>
 
 static uint64_t tc_fnv1a64(const void* data, size_t len) {

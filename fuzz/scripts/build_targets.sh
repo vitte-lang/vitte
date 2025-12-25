@@ -24,6 +24,12 @@ set -eu
 say() { printf '%s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 2; }
 
+# Ensure sanitizer runtimes (when enabled) use consistent settings even during
+# cmake configure/build invoked by this script.
+: "${ASAN_OPTIONS:=abort_on_error=1:detect_leaks=0:allocator_may_return_null=1:handle_segv=0:handle_sigbus=0:handle_abort=0:symbolize=1:fast_unwind_on_malloc=0}"
+: "${UBSAN_OPTIONS:=halt_on_error=1:abort_on_error=1:print_stacktrace=1:symbolize=1}"
+export ASAN_OPTIONS UBSAN_OPTIONS
+
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 ROOT_DIR="${ROOT_DIR:-$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)}"
 FUZZ_DIR="$ROOT_DIR/fuzz"
@@ -33,9 +39,32 @@ OUT_DIR="$FUZZ_DIR/out"
 CC_CMD="${FUZZ_CC:-${CC:-clang}}"
 CFLAGS_ENV="${FUZZ_CFLAGS:-${VITTE_FUZZ_CFLAGS:-}}"
 LDFLAGS_ENV="${FUZZ_LDFLAGS:-${VITTE_FUZZ_LDFLAGS:-}}"
-CFLAGS_DEFAULT="-std=c17 -g -O1 -fno-omit-frame-pointer -Wall -Wextra -Wpedantic"
+CFLAGS_DEFAULT_BASE="-std=c17 -g -O1 -fno-omit-frame-pointer -Wall -Wextra -Wpedantic"
+LDFLAGS_DEFAULT=""
+
+# Default: enable ASan/UBSan for fuzz builds (debug-friendly).
+# Override with FUZZ_CFLAGS/FUZZ_LDFLAGS or disable via VITTE_FUZZ_SANITIZE=0.
+SANITIZE="${VITTE_FUZZ_SANITIZE:-1}"
+SAN_KIND="${VITTE_FUZZ_SANITIZER:-asan_ubsan}" # asan_ubsan|asan|ubsan|msan|none
+
+SAN_CFLAGS=""
+SAN_LDFLAGS=""
+if [ "$SANITIZE" = "1" ]; then
+  case "$SAN_KIND" in
+    none) SAN_CFLAGS=""; SAN_LDFLAGS="" ;;
+    asan_ubsan) SAN_CFLAGS="-fsanitize=address,undefined"; SAN_LDFLAGS="-fsanitize=address,undefined" ;;
+    asan) SAN_CFLAGS="-fsanitize=address"; SAN_LDFLAGS="-fsanitize=address" ;;
+    ubsan) SAN_CFLAGS="-fsanitize=undefined"; SAN_LDFLAGS="-fsanitize=undefined" ;;
+    msan) SAN_CFLAGS="-fsanitize=memory"; SAN_LDFLAGS="-fsanitize=memory" ;;
+    *) die "unknown VITTE_FUZZ_SANITIZER=$SAN_KIND (expected asan_ubsan|asan|ubsan|msan|none)" ;;
+  esac
+fi
+
+CFLAGS_DEFAULT="$CFLAGS_DEFAULT_BASE $SAN_CFLAGS"
+LDFLAGS_DEFAULT="$SAN_LDFLAGS"
+
 CFLAGS="${CFLAGS_ENV:-$CFLAGS_DEFAULT}"
-LDFLAGS="${LDFLAGS_ENV:-}"
+LDFLAGS="${LDFLAGS_ENV:-$LDFLAGS_DEFAULT}"
 ONLY_TARGET=""
 DRY_RUN=0
 
@@ -83,6 +112,20 @@ if [ "$VITTE_LINK" = "1" ] && [ -d "$ROOT_DIR/src/vitte" ]; then
   for s in "$ROOT_DIR/src/vitte/"*.c; do
     [ -f "$s" ] || continue
     VITTE_SOURCES="$VITTE_SOURCES \"$s\""
+  done
+fi
+
+# Optional: link in the minimal vittec front-end lexer+bootstrap parser so fuzz
+# targets can exercise compiler/bootstrap surfaces without a full CMake build.
+VITTEC_FRONT_LINK="${VITTE_FUZZ_LINK_VITTEC_FRONT:-1}"
+VITTEC_FRONT_SOURCES=""
+if [ "$VITTEC_FRONT_LINK" = "1" ]; then
+  for s in \
+    "$ROOT_DIR/compiler/src/front/vittec_lexer.c" \
+    "$ROOT_DIR/compiler/src/front/parser.c"
+  do
+    [ -f "$s" ] || continue
+    VITTEC_FRONT_SOURCES="$VITTEC_FRONT_SOURCES \"$s\""
   done
 fi
 
@@ -146,7 +189,7 @@ for src in "$TARGET_DIR"/*.c; do
   targets_found=$((targets_found + 1))
   out_bin="$OUT_DIR/${base}"
 
-  cmd_link="$CC_CMD $CFLAGS $INCLUDE_FLAGS -DFUZZ_DRIVER_STANDALONE_MAIN=1 -DFUZZ_DISABLE_SANITIZER_TRACE=1 \"$src\" $VITTE_SOURCES $ASM_LIBS"
+  cmd_link="$CC_CMD $CFLAGS $INCLUDE_FLAGS -DFUZZ_DRIVER_STANDALONE_MAIN=1 -DFUZZ_DISABLE_SANITIZER_TRACE=1 \"$src\" $VITTE_SOURCES $VITTEC_FRONT_SOURCES $ASM_LIBS"
   if [ -n "$LDFLAGS" ]; then
     cmd_link="$cmd_link $LDFLAGS"
   fi

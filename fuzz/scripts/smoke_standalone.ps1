@@ -33,18 +33,39 @@ function Run-TargetDir([string]$target) {
   }
 }
 
-Run-TargetDir "fuzz_lexer"
-Run-TargetDir "fuzz_parser"
-Run-TargetDir "fuzz_parser_recovery"
-Run-TargetDir "fuzz_ast_invariants"
-Run-TargetDir "fuzz_lowering"
-Run-TargetDir "fuzz_ast_printer"
-Run-TargetDir "fuzz_vitte_parser"
-Run-TargetDir "fuzz_typecheck"
-Run-TargetDir "fuzz_lockfile"
-Run-TargetDir "fuzz_muf_parser"
-Run-TargetDir "fuzz_vm_exec"
-Run-TargetDir "fuzir_verify"
-Run-TargetDir "fuzz_diag_json"
-Run-TargetDir "fuze_vm_decode"
-Run-TargetDir "fuzz_asm_verify"
+function Get-SmokeTargets {
+  $raw = & python fuzz/scripts/target_map.py smoke-targets
+  if ($LASTEXITCODE -eq 0 -and $raw) {
+    return ($raw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
+  }
+
+  return @(
+    "fuzz_lexer",
+    "fuzz_parser",
+    "fuzz_parser_recovery",
+    "fuzz_ast_invariants",
+    "fuzz_lowering",
+    "fuzz_ast_printer",
+    "fuzz_vitte_parser",
+    "fuzz_typecheck",
+    "fuzz_lockfile",
+    "fuzz_muf_parser",
+    "fuzz_vm_exec",
+    "fuzir_verify",
+    "fuzz_diag_json",
+    "fuze_vm_decode",
+    "fuzz_asm_verify"
+  )
+}
+
+function Get-StandaloneCorpusRoot([string]$defaultRoot) {
+  $raw = & python fuzz/scripts/target_map.py standalone-corpus-root
+  if ($LASTEXITCODE -eq 0 -and $raw) {
+    return $raw.Trim()
+  }
+  return $defaultRoot
+}
+
+$CorpusDir = Get-StandaloneCorpusRoot $CorpusDir
+
+Get-SmokeTargets | ForEach-Object { Run-TargetDir $_ }
