@@ -42,11 +42,8 @@ static bool tc_should_use_rsp_default(const tc_clang_link_job* job) {
     if (!job) return false;
     if (job->force_rsp) return true;
     if (job->disable_rsp) return false;
-#if defined(_WIN32)
-    return true;
-#else
+    /* Default policy: do not emit/use rsp unless explicitly requested. */
     return false;
-#endif
 }
 
 /* Quote/escape for clang response files.

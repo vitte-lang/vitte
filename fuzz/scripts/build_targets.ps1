@@ -13,6 +13,13 @@ function Die([string]$msg) {
   throw "error: $msg"
 }
 
+if ([string]::IsNullOrWhiteSpace($env:ASAN_OPTIONS)) {
+  $env:ASAN_OPTIONS = "abort_on_error=1:detect_leaks=0:allocator_may_return_null=1:handle_segv=0:handle_sigbus=0:handle_abort=0:symbolize=1:fast_unwind_on_malloc=0"
+}
+if ([string]::IsNullOrWhiteSpace($env:UBSAN_OPTIONS)) {
+  $env:UBSAN_OPTIONS = "halt_on_error=1:abort_on_error=1:print_stacktrace=1:symbolize=1"
+}
+
 function Quote([string]$s) {
   if ($s -match '[\s"`]') { return '"' + ($s -replace '"', '""') + '"' }
   return $s
@@ -44,14 +51,32 @@ if ([string]::IsNullOrWhiteSpace($CFlagsEnv)) { $CFlagsEnv = $env:VITTE_FUZZ_CFL
 $LDFlagsEnv = $env:FUZZ_LDFLAGS
 if ([string]::IsNullOrWhiteSpace($LDFlagsEnv)) { $LDFlagsEnv = $env:VITTE_FUZZ_LDFLAGS }
 
-$CFlagsDefault = "-std=c17 -g -O1 -fno-omit-frame-pointer -Wall -Wextra -Wpedantic"
+$sanitize = $env:VITTE_FUZZ_SANITIZE
+if ([string]::IsNullOrWhiteSpace($sanitize)) { $sanitize = "1" }
+$sanKind = $env:VITTE_FUZZ_SANITIZER
+if ([string]::IsNullOrWhiteSpace($sanKind)) { $sanKind = "asan_ubsan" } # asan_ubsan|asan|ubsan|msan|none
+
+$sanCFlags = ""
+$sanLDFlags = ""
+if ($sanitize -eq "1") {
+  switch ($sanKind) {
+    "none" { $sanCFlags = ""; $sanLDFlags = "" }
+    "asan_ubsan" { $sanCFlags = "-fsanitize=address,undefined"; $sanLDFlags = "-fsanitize=address,undefined" }
+    "asan" { $sanCFlags = "-fsanitize=address"; $sanLDFlags = "-fsanitize=address" }
+    "ubsan" { $sanCFlags = "-fsanitize=undefined"; $sanLDFlags = "-fsanitize=undefined" }
+    "msan" { $sanCFlags = "-fsanitize=memory"; $sanLDFlags = "-fsanitize=memory" }
+    default { Die "unknown VITTE_FUZZ_SANITIZER=$sanKind (expected asan_ubsan|asan|ubsan|msan|none)" }
+  }
+}
+
+$CFlagsDefault = "-std=c17 -g -O1 -fno-omit-frame-pointer -Wall -Wextra -Wpedantic $sanCFlags"
 $CFlagsUse = $CFlags
 if ([string]::IsNullOrWhiteSpace($CFlagsUse)) { $CFlagsUse = $CFlagsEnv }
 if ([string]::IsNullOrWhiteSpace($CFlagsUse)) { $CFlagsUse = $CFlagsDefault }
 
 $LDFlagsUse = $LDFlags
 if ([string]::IsNullOrWhiteSpace($LDFlagsUse)) { $LDFlagsUse = $LDFlagsEnv }
-if ([string]::IsNullOrWhiteSpace($LDFlagsUse)) { $LDFlagsUse = "" }
+if ([string]::IsNullOrWhiteSpace($LDFlagsUse)) { $LDFlagsUse = $sanLDFlags }
 
 function Add-Inc([System.Collections.Generic.List[string]]$incs, [string]$dir) {
   if (Test-Path $dir) { [void]$incs.Add("-I" + (Quote $dir)) }
@@ -68,6 +93,19 @@ if ([string]::IsNullOrWhiteSpace($linkVitte)) { $linkVitte = "1" }
 $vitteSources = @()
 if ($linkVitte -eq "1" -and (Test-Path (Join-Path $RootDir "src/vitte"))) {
   $vitteSources = Get-ChildItem -File (Join-Path $RootDir "src/vitte") -Filter *.c | ForEach-Object { $_.FullName }
+}
+
+$linkVittecFront = $env:VITTE_FUZZ_LINK_VITTEC_FRONT
+if ([string]::IsNullOrWhiteSpace($linkVittecFront)) { $linkVittecFront = "1" }
+$vittecFrontSources = @()
+if ($linkVittecFront -eq "1") {
+  $cand = @(
+    (Join-Path $RootDir "compiler/src/front/vittec_lexer.c"),
+    (Join-Path $RootDir "compiler/src/front/parser.c")
+  )
+  foreach ($c in $cand) {
+    if (Test-Path $c) { $vittecFrontSources += (Resolve-Path $c).Path }
+  }
 }
 
 $linkAsm = $env:VITTE_FUZZ_LINK_ASM
@@ -129,7 +167,7 @@ Get-ChildItem -File $TargetDir -Filter *.c | ForEach-Object {
 
   $outBin = Join-Path $OutDirAbs ($base + ".exe")
 
-  $allSources = @($src) + $vitteSources
+  $allSources = @($src) + $vitteSources + $vittecFrontSources
 
   $cmd = @()
   $cmd += $CCCmd

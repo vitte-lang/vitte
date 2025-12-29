@@ -4,21 +4,23 @@ Param(
   [string[]]$Extra = @()
 )
 
-$dict = ""
-switch ($Target) {
-  "fuzz_lexer" { $dict = "fuzz/dict/lexer_tokers.dict" }
-  "fuzz_parser" { $dict = "fuzz/dict/parsergrammar.dict" }
-  "fuzz_parser_recovery" { $dict = "fuzz/dict/parsergrammar.dict" }
-  "fuzz_lowering" { $dict = "fuzz/dict/parsergrammar.dict" }
-  "fuzz_vitte_parser" { $dict = "fuzz/dict/parsergrammar.dict" }
-  default { $dict = "" }
+function Quote-Sh([string]$s) {
+  return "'" + ($s -replace "'", "'\"'\"'") + "'"
 }
 
+$dict = (& python fuzz/scripts/target_map.py dict $Target).Trim()
+
 if ($dict -ne "" -and (Test-Path $dict)) {
-  & sh -lc "./fuzz/scripts/run.sh '$Target' '$Bin' --dict '$dict' $($Extra -join ' ')" 
+  $targetQ = Quote-Sh $Target
+  $binQ = Quote-Sh $Bin
+  $dictQ = Quote-Sh $dict
+  $extraQ = ($Extra | ForEach-Object { Quote-Sh $_ }) -join " "
+  & sh -lc "./fuzz/scripts/run.sh $targetQ $binQ --dict $dictQ $extraQ"
   exit $LASTEXITCODE
 }
 
-& sh -lc "./fuzz/scripts/run.sh '$Target' '$Bin' $($Extra -join ' ')"
+$targetQ = Quote-Sh $Target
+$binQ = Quote-Sh $Bin
+$extraQ = ($Extra | ForEach-Object { Quote-Sh $_ }) -join " "
+& sh -lc "./fuzz/scripts/run.sh $targetQ $binQ $extraQ"
 exit $LASTEXITCODE
-

@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "toolchain/clang_env.h"
 #include "toolchain/clang_probe.h"
@@ -30,6 +31,7 @@
 #include "toolchain/clang_paths_utils.h"
 #include "toolchain/clang_sdk.h"
 #include "toolchain/clang_target.h"
+#include "toolchain/clang.h"
 #include "toolchain/clang_compile.h"
 #include "toolchain/clang_link.h"
 #include "toolchain/clang_errors.h"
@@ -50,6 +52,10 @@ typedef struct tc_cc_cli_s {
     bool        compile_only;  /* -c */
     bool        shared;        /* -shared */
     bool        use_lld;        /* default true */
+    bool        verbose;       /* --verbose / -v */
+    bool        dry_run;       /* --dry-run */
+    bool        print_config;  /* --print-config */
+    bool        print_flags;   /* --print-flags */
 
     tc_lang     lang;          /* forced, else inferred by extension */
 
@@ -65,12 +71,33 @@ typedef struct tc_cc_cli_s {
 
     const char** libs;
     size_t       libs_count;
+
+    /* owned allocations (arg lists, synthesized args) */
+    const char** _inputs_buf;
+    const char** _extra_buf;
+    const char** _lib_dirs_buf;
+    const char** _libs_buf;
+    char**       _owned_strs;
+    size_t       _owned_strs_count;
 } tc_cc_cli;
 
 static void tc_cc_cli_zero(tc_cc_cli* c) {
     memset(c, 0, sizeof(*c));
     c->use_lld = true;
     c->lang = TC_LANG_C;
+}
+
+static void tc_cc_cli_free(tc_cc_cli* c) {
+    if (!c) return;
+    free((void*)c->_inputs_buf);
+    free((void*)c->_extra_buf);
+    free((void*)c->_lib_dirs_buf);
+    free((void*)c->_libs_buf);
+    if (c->_owned_strs) {
+        for (size_t i = 0; i < c->_owned_strs_count; ++i) free(c->_owned_strs[i]);
+        free(c->_owned_strs);
+    }
+    tc_cc_cli_zero(c);
 }
 
 static bool tc_arg_is(const char* a, const char* lit) {
@@ -97,15 +124,57 @@ static tc_lang tc_infer_lang_from_path(const char* path) {
     return TC_LANG_C;
 }
 
+static bool tc_arg_has_suffix(const char* a, const char* sfx) {
+    if (!a || !sfx) return false;
+    size_t na = strlen(a);
+    size_t ns = strlen(sfx);
+    if (ns > na) return false;
+    return strcmp(a + (na - ns), sfx) == 0;
+}
+
+static char* tc_dup_with_at_prefix(const char* path) {
+    if (!path) return NULL;
+    size_t n = strlen(path);
+    char* s = (char*)malloc(n + 2);
+    if (!s) return NULL;
+    s[0] = '@';
+    memcpy(s + 1, path, n);
+    s[1 + n] = '\0';
+    return s;
+}
+
+static bool tc_push_owned_str(tc_cc_cli* out, char* s) {
+    if (!out || !s) return false;
+    size_t new_count = out->_owned_strs_count + 1;
+    char** p = (char**)realloc(out->_owned_strs, new_count * sizeof(char*));
+    if (!p) return false;
+    out->_owned_strs = p;
+    out->_owned_strs[out->_owned_strs_count++] = s;
+    return true;
+}
+
 /* Very small argv splitter: classify args into inputs/libs/-L/-l and passthrough. */
 static tc_toolchain_err tc_cc_parse_args(int argc, char** argv, tc_cc_cli* out) {
     if (!out) return TC_TOOLCHAIN_EINVAL;
 
-    /* fixed storage (max driver). */
-    static const char* inputs[4096];
-    static const char* extra[4096];
-    static const char* lib_dirs[1024];
-    static const char* libs[1024];
+    enum { TC_CC_MAX_LIST = 4096, TC_CC_MAX_LIBS = 1024 };
+
+    size_t cap_list = (argc > 0 && (size_t)argc < (size_t)TC_CC_MAX_LIST) ? (size_t)argc : (size_t)TC_CC_MAX_LIST;
+    size_t cap_libs = (argc > 0 && (size_t)argc < (size_t)TC_CC_MAX_LIBS) ? (size_t)argc : (size_t)TC_CC_MAX_LIBS;
+
+    const char** inputs = (const char**)calloc(cap_list ? cap_list : 1u, sizeof(const char*));
+    const char** extra = (const char**)calloc(cap_list ? cap_list : 1u, sizeof(const char*));
+    const char** lib_dirs = (const char**)calloc(cap_libs ? cap_libs : 1u, sizeof(const char*));
+    const char** libs = (const char**)calloc(cap_libs ? cap_libs : 1u, sizeof(const char*));
+    if (!inputs || !extra || !lib_dirs || !libs) {
+        free((void*)inputs); free((void*)extra); free((void*)lib_dirs); free((void*)libs);
+        return TC_TOOLCHAIN_ESTATE;
+    }
+
+    out->_inputs_buf = inputs;
+    out->_extra_buf = extra;
+    out->_lib_dirs_buf = lib_dirs;
+    out->_libs_buf = libs;
 
     size_t in_n = 0, ex_n = 0, ld_n = 0, l_n = 0;
 
@@ -114,6 +183,10 @@ static tc_toolchain_err tc_cc_parse_args(int argc, char** argv, tc_cc_cli* out) 
 
         if (tc_arg_is(a, "-c")) { out->compile_only = true; continue; }
         if (tc_arg_is(a, "-shared")) { out->shared = true; continue; }
+        if (tc_arg_is(a, "--dry-run")) { out->dry_run = true; continue; }
+        if (tc_arg_is(a, "--print-config")) { out->print_config = true; continue; }
+        if (tc_arg_is(a, "--print-flags")) { out->print_flags = true; continue; }
+        if (tc_arg_is(a, "--verbose") || tc_arg_is(a, "-v")) { out->verbose = true; continue; }
 
         if (tc_arg_is(a, "-o") && i + 1 < argc) { out->out_path = argv[++i]; continue; }
         if (tc_arg_is(a, "--target") && i + 1 < argc) { out->target_triple = argv[++i]; continue; }
@@ -123,36 +196,65 @@ static tc_toolchain_err tc_cc_parse_args(int argc, char** argv, tc_cc_cli* out) 
 
         if (tc_arg_is(a, "--rsp") && i + 1 < argc) { out->rsp_path = argv[++i]; continue; }
 
-        if (tc_arg_is(a, "-fuse-ld=lld")) { out->use_lld = true; extra[ex_n++] = a; continue; }
+        if (tc_arg_is(a, "-fuse-ld=lld")) {
+            out->use_lld = true;
+            if (ex_n >= cap_list) return TC_TOOLCHAIN_EOVERFLOW;
+            extra[ex_n++] = a;
+            continue;
+        }
 
         if (tc_arg_is(a, "-x") && i + 1 < argc) {
             const char* x = argv[++i];
             if (strcmp(x, "c") == 0) out->lang = TC_LANG_C;
             else if (strcmp(x, "c++") == 0) out->lang = TC_LANG_CXX;
             else if (strcmp(x, "assembler") == 0) out->lang = TC_LANG_ASM;
-            else extra[ex_n++] = x;
-            extra[ex_n++] = "-x";
-            /* keep order: -x <lang> already consumed; store as passthrough in correct order */
-            /* For simplicity: push "-x" then value */
-            /* (we just pushed value then "-x" – fix by swapping) */
-            const char* tmp = extra[ex_n - 1];
-            extra[ex_n - 1] = extra[ex_n - 2];
-            extra[ex_n - 2] = tmp;
+            else {
+                if (ex_n + 2 > cap_list) return TC_TOOLCHAIN_EOVERFLOW;
+                extra[ex_n++] = "-x";
+                extra[ex_n++] = x;
+            }
             continue;
         }
 
-        if (tc_arg_is(a, "-L") && i + 1 < argc) { lib_dirs[ld_n++] = argv[++i]; continue; }
-        if (tc_arg_has_prefix(a, "-L")) { lib_dirs[ld_n++] = a + 2; continue; }
+        if (tc_arg_is(a, "-L") && i + 1 < argc) {
+            if (ld_n >= cap_libs) return TC_TOOLCHAIN_EOVERFLOW;
+            lib_dirs[ld_n++] = argv[++i];
+            continue;
+        }
+        if (tc_arg_has_prefix(a, "-L")) {
+            if (ld_n >= cap_libs) return TC_TOOLCHAIN_EOVERFLOW;
+            lib_dirs[ld_n++] = a + 2;
+            continue;
+        }
 
-        if (tc_arg_is(a, "-l") && i + 1 < argc) { libs[l_n++] = argv[++i]; continue; }
-        if (tc_arg_has_prefix(a, "-l")) { libs[l_n++] = a + 2; continue; }
+        if (tc_arg_is(a, "-l") && i + 1 < argc) {
+            if (l_n >= cap_libs) return TC_TOOLCHAIN_EOVERFLOW;
+            libs[l_n++] = argv[++i];
+            continue;
+        }
+        if (tc_arg_has_prefix(a, "-l")) {
+            if (l_n >= cap_libs) return TC_TOOLCHAIN_EOVERFLOW;
+            libs[l_n++] = a + 2;
+            continue;
+        }
+
+        /* Consume response file as a positional: "file.rsp" -> "@file.rsp" (clang-like). */
+        if (a[0] != '-' && tc_arg_has_suffix(a, ".rsp") && tc_fs_is_file(a)) {
+            if (ex_n >= cap_list) return TC_TOOLCHAIN_EOVERFLOW;
+            char* at = tc_dup_with_at_prefix(a);
+            if (!at || !tc_push_owned_str(out, at)) { free(at); return TC_TOOLCHAIN_ESTATE; }
+            extra[ex_n++] = at;
+            continue;
+        }
 
         /* Input if it looks like a file; else passthrough */
         if (a[0] != '-' && tc_fs_is_file(a)) {
+            if (in_n >= cap_list) return TC_TOOLCHAIN_EOVERFLOW;
             inputs[in_n++] = a;
             continue;
         }
 
+        if (ex_n >= cap_list) return TC_TOOLCHAIN_EOVERFLOW;
         extra[ex_n++] = a;
     }
 
@@ -165,7 +267,7 @@ static tc_toolchain_err tc_cc_parse_args(int argc, char** argv, tc_cc_cli* out) 
     out->libs = libs;
     out->libs_count = l_n;
 
-    if (out->inputs_count == 0) return TC_TOOLCHAIN_EINVAL;
+    if (!out->print_config && out->inputs_count == 0) return TC_TOOLCHAIN_EINVAL;
 
     /* infer lang from first input if user didn't force */
     if (out->lang == TC_LANG_C && out->inputs_count > 0) {
@@ -184,12 +286,36 @@ static int tc_print_err(tc_toolchain_err e, const char* what) {
     return (e == TC_TOOLCHAIN_OK) ? 0 : 1;
 }
 
+static void tc_driver_log_verbose(const tc_cc_cli* cli,
+                                  const tc_clang_paths* paths,
+                                  const tc_target* tgt,
+                                  const char* sysroot) {
+    if (!cli || !cli->verbose) return;
+    fprintf(stderr, "vitte-cc: tool=cc\n");
+    if (tgt) fprintf(stderr, "vitte-cc: target=%s\n", tgt->triple[0] ? tgt->triple : "(host)");
+    fprintf(stderr, "vitte-cc: sysroot=%s\n", (sysroot && sysroot[0]) ? sysroot : "(none)");
+    if (paths) {
+        fprintf(stderr, "vitte-cc: clang=%s\n", paths->clang[0] ? paths->clang : "clang");
+        fprintf(stderr, "vitte-cc: clangxx=%s\n", paths->clangxx[0] ? paths->clangxx : "clang++");
+        fprintf(stderr, "vitte-cc: lld=%s\n", paths->lld[0] ? paths->lld : "lld");
+    }
+}
+
+static void tc_print_argv(const char* tag, const char* const* argv, size_t argc) {
+    fprintf(stdout, "%s:", tag ? tag : "argv");
+    for (size_t i = 0; i < argc; ++i) {
+        const char* a = argv[i] ? argv[i] : "";
+        fprintf(stdout, " %s", a);
+    }
+    fprintf(stdout, "\n");
+}
+
 int main(int argc, char** argv) {
     tc_cc_cli cli;
     tc_cc_cli_zero(&cli);
 
     tc_toolchain_err pe = tc_cc_parse_args(argc, argv, &cli);
-    if (pe != TC_TOOLCHAIN_OK) return tc_print_err(pe, "invalid arguments");
+    if (pe != TC_TOOLCHAIN_OK) { tc_cc_cli_free(&cli); return tc_print_err(pe, "invalid arguments"); }
 
     /* Resolve tool paths */
     tc_clang_paths paths;
@@ -223,6 +349,19 @@ int main(int argc, char** argv) {
         if (tc_clang_sdk_detect(&tgt, &sopts, &sdk) == TC_TOOLCHAIN_OK) {
             if (sdk.found && sdk.sysroot[0]) sysroot = sdk.sysroot;
         }
+    }
+
+    tc_driver_log_verbose(&cli, &paths, &tgt, sysroot);
+
+    if (cli.print_config) {
+        fprintf(stdout, "tool=vitte-cc\n");
+        fprintf(stdout, "target=%s\n", tgt.triple[0] ? tgt.triple : "(host)");
+        fprintf(stdout, "sysroot=%s\n", (sysroot && sysroot[0]) ? sysroot : "(none)");
+        fprintf(stdout, "clang=%s\n", paths.clang[0] ? paths.clang : "clang");
+        fprintf(stdout, "clangxx=%s\n", paths.clangxx[0] ? paths.clangxx : "clang++");
+        fprintf(stdout, "lld=%s\n", paths.lld[0] ? paths.lld : "lld");
+        tc_cc_cli_free(&cli);
+        return 0;
     }
 
     /* Common flags (policy defaults; in a real driver, load from TOML configs) */
@@ -266,8 +405,55 @@ int main(int argc, char** argv) {
         job.extra_args = cli.extra_args;
         job.extra_args_count = cli.extra_args_count;
 
+        if (cli.print_flags || cli.dry_run) {
+            tc_clang_paths eff = paths;
+            const char* clang_exe = eff.clang[0] ? eff.clang : "clang";
+            /* tc_clang_compile_run() builds argv internally; for diagnostics we can re-run it via rsp disabled by default? */
+            job.disable_rsp = true;
+            (void)clang_exe;
+        }
+
+        if (cli.print_flags || cli.dry_run) {
+            /* Build a representative argv (no spawn) using the shared builder. */
+            tc_argv a;
+            tc_argv_zero(&a);
+            tc_clang_paths eff = paths;
+            const char* exe = (cli.lang == TC_LANG_CXX) ? (eff.clangxx[0] ? eff.clangxx : "clang++")
+                                                        : (eff.clang[0] ? eff.clang : "clang");
+            memset(eff.clang, 0, sizeof(eff.clang));
+            strncpy(eff.clang, exe, sizeof(eff.clang) - 1u);
+            tc_clang_compile cjob;
+            tc_clang_compile_zero(&cjob);
+            cjob.lang = job.lang;
+            cjob.input_path = job.input_path;
+            cjob.output_path = job.output_path;
+            cjob.target = job.target;
+            cjob.sysroot_override = job.sysroot_override;
+            cjob.out_kind = TC_OUT_OBJ;
+            if (tc_clang_build_compile_argv(&eff, &common, &cjob, &a) != TC_CLANG_OK) {
+                tc_cc_cli_free(&cli);
+                return tc_print_err(TC_TOOLCHAIN_EOVERFLOW, "argv overflow");
+            }
+            for (size_t i = 0; i < cli.extra_args_count; ++i) {
+                const char* x = cli.extra_args[i];
+                if (x && *x) (void)tc_argv_push(&a, x);
+            }
+
+            if (cli.print_flags) {
+                tc_print_argv("compile", a.argv, a.argc);
+                tc_cc_cli_free(&cli);
+                return 0;
+            }
+            if (cli.dry_run) {
+                tc_print_argv("dry-run compile", a.argv, a.argc);
+                tc_cc_cli_free(&cli);
+                return 0;
+            }
+        }
+
         tc_toolchain_err ce = tc_clang_compile_run(&paths, &common, &job, &res);
-        if (ce != TC_TOOLCHAIN_OK) return tc_print_err(ce, "compile failed");
+        if (ce != TC_TOOLCHAIN_OK) { tc_cc_cli_free(&cli); return tc_print_err(ce, "compile failed"); }
+        tc_cc_cli_free(&cli);
         return 0;
     }
 
@@ -300,8 +486,50 @@ int main(int argc, char** argv) {
 
     ljob.use_lld = cli.use_lld;
 
-    tc_toolchain_err le = tc_clang_link_run(&paths, &common, &ljob, &res);
-    if (le != TC_TOOLCHAIN_OK) return tc_print_err(le, "link failed");
+    if (cli.print_flags || cli.dry_run) {
+        tc_argv a;
+        tc_argv_zero(&a);
+        tc_clang_paths eff = paths;
+        const char* exe = eff.clang[0] ? eff.clang : "clang";
+        memset(eff.clang, 0, sizeof(eff.clang));
+        strncpy(eff.clang, exe, sizeof(eff.clang) - 1u);
 
+        tc_clang_link l;
+        tc_clang_link_zero(&l);
+        l.out_kind = cli.shared ? TC_OUT_SHARED : TC_OUT_EXE;
+        l.output_path = ljob.output_path;
+        l.target = ljob.target;
+        l.sysroot_override = ljob.sysroot_override;
+        l.inputs = ljob.inputs;
+        l.inputs_count = ljob.inputs_count;
+        l.lib_dirs = ljob.lib_dirs;
+        l.lib_dirs_count = ljob.lib_dirs_count;
+        l.libs = ljob.libs;
+        l.libs_count = ljob.libs_count;
+        l.extra = ljob.extra_args;
+        l.extra_count = ljob.extra_args_count;
+        l.use_lld = ljob.use_lld;
+
+        if (tc_clang_build_link_argv(&eff, &common, &l, &a) != TC_CLANG_OK) {
+            tc_cc_cli_free(&cli);
+            return tc_print_err(TC_TOOLCHAIN_EOVERFLOW, "argv overflow");
+        }
+
+        if (cli.print_flags) {
+            tc_print_argv("link", a.argv, a.argc);
+            tc_cc_cli_free(&cli);
+            return 0;
+        }
+        if (cli.dry_run) {
+            tc_print_argv("dry-run link", a.argv, a.argc);
+            tc_cc_cli_free(&cli);
+            return 0;
+        }
+    }
+
+    tc_toolchain_err le = tc_clang_link_run(&paths, &common, &ljob, &res);
+    if (le != TC_TOOLCHAIN_OK) { tc_cc_cli_free(&cli); return tc_print_err(le, "link failed"); }
+
+    tc_cc_cli_free(&cli);
     return 0;
 }

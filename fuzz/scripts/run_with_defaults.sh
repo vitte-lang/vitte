@@ -18,21 +18,9 @@ if [ -z "$TARGET" ] || [ -z "$BIN" ]; then
 fi
 shift 2
 
-DICT=""
-case "$TARGET" in
-  fuzz_lexer)
-    DICT="fuzz/dict/lexer_tokers.dict"
-    ;;
-  fuzz_parser|fuzz_parser_recovery|fuzz_lowering|fuzz_vitte_parser)
-    DICT="fuzz/dict/parsergrammar.dict"
-    ;;
-  *)
-    DICT=""
-    ;;
-esac
+DICT="$(python3 ./fuzz/scripts/target_map.py dict "$TARGET" 2>/dev/null || python ./fuzz/scripts/target_map.py dict "$TARGET")"
 
 if [ -n "$DICT" ] && [ -f "$DICT" ]; then
   exec ./fuzz/scripts/run.sh "$TARGET" "$BIN" --dict "$DICT" "$@"
 fi
 exec ./fuzz/scripts/run.sh "$TARGET" "$BIN" "$@"
-
