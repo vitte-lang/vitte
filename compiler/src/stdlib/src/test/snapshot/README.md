@@ -1,0 +1,3 @@
+# snapshot
+
+snapshot testing (stub)

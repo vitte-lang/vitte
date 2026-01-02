@@ -1,0 +1,728 @@
+# /Users/vincent/Documents/Github/vitte/std/collections/src/btree.vitte
+# -----------------------------------------------------------------------------
+# std/collections/btree
+# -----------------------------------------------------------------------------
+# B-Tree Map (ordered key->value) with a pool-backed node storage.
+#
+# MAX goals:
+# - Provide a real B-Tree algorithm surface (search/insert/split) while staying
+#   bootstrap-friendly by abstracting storage behind a NodePool interface.
+# - No IO, no OS deps. Pure logic + delegated storage.
+#
+# What you get here:
+# - BTreeMap: init, get, contains, put (insert/replace), len, clear
+# - Internal B-Tree insert algorithm (CLRS-style): split_child, insert_nonfull
+# - NodePool facade (expected functions) with safe stubs (replace in your PAL/alloc)
+# - Smoke tests for helper invariants (algorithm stubs won’t fully execute without pool)
+#
+# Key/Value model:
+# - This file implements a concrete Str->Str map to remain minimal and portable.
+# - Once generics land, lift Key/Val and comparator into type params.
+#
+# Degree:
+# - min_degree (t) defines node capacities:
+#     max_keys     = 2t - 1
+#     max_children = 2t
+# - This module uses a runtime-configured degree in BTreeParams but pool must
+#   support that capacity.
+#
+# Storage contract:
+# - Nodes are stored in a NodePool. Each node has:
+#     leaf: Bool
+#     nkeys: U32
+#     keys[i], vals[i] for i in [0..max_keys)
+#     children[i] for i in [0..max_children)
+# - The pool also owns allocation/free of nodes (ids are I32).
+#
+# IMPORTANT:
+# - The default NodePool_* functions here are STUBS returning defaults.
+#   Wire them to real storage (arena/vec) in std.alloc / std.pal.
+#
+# All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.collections.btree
+
+use std.runtime
+use std.string
+
+type Bool = bool
+type U32  = u32
+type I32  = i32
+type Str  = str
+
+# -----------------------------------------------------------------------------
+# Utilities
+# -----------------------------------------------------------------------------
+
+fn u32_min(a: U32, b: U32) -> U32
+  if a < b
+    ret a
+  .end
+  ret b
+.end
+
+fn u32_max(a: U32, b: U32) -> U32
+  if a > b
+    ret a
+  .end
+  ret b
+.end
+
+fn u32_clamp(x: U32, lo: U32, hi: U32) -> U32
+  if x < lo
+    ret lo
+  .end
+  if x > hi
+    ret hi
+  .end
+  ret x
+.end
+
+fn str_len(s: Str) -> U32
+  ret std.string::len(s)
+.end
+
+# Comparator:
+# - Returns <0 if a<b, 0 if equal, >0 if a>b.
+# Expected to exist in std.string; adjust if your API differs.
+fn key_cmp(a: Str, b: Str) -> I32
+  ret std.string::cmp(a, b)
+.end
+
+# -----------------------------------------------------------------------------
+# NodePool abstraction (stubs)
+# -----------------------------------------------------------------------------
+# Replace these with real implementations. The algorithm calls only these.
+# -----------------------------------------------------------------------------
+
+type NodeId = I32
+
+fn nodeid_none() -> NodeId
+  ret -1
+.end
+
+fn nodeid_is_valid(id: NodeId) -> Bool
+  ret id >= 0
+.end
+
+type NodePool struct
+  # opaque handle
+  id: I32
+.end
+
+fn pool_invalid() -> NodePool
+  let p: NodePool
+  set p.id = -1
+  ret p
+.end
+
+fn pool_is_valid(p: &NodePool) -> Bool
+  ret p.id >= 0
+.end
+
+# Pool capabilities for a given configured degree.
+type BTreeParams struct
+  min_degree: U32    # t >= 2 recommended
+.end
+
+fn params_default() -> BTreeParams
+  let p: BTreeParams
+  set p.min_degree = 8
+  ret p
+.end
+
+fn max_keys(params: &BTreeParams) -> U32
+  ret params.min_degree * 2 - 1
+.end
+
+fn max_children(params: &BTreeParams) -> U32
+  ret params.min_degree * 2
+.end
+
+# --- Allocation / lifecycle ---------------------------------------------------
+
+fn pool_alloc_node(pool: &NodePool, leaf: Bool, params: &BTreeParams) -> NodeId
+  # TODO: allocate node with capacity max_keys/max_children
+  ret nodeid_none()
+.end
+
+fn pool_free_node(pool: &NodePool, id: NodeId) -> Bool
+  # TODO: free node
+  ret false
+.end
+
+fn pool_clear(pool: &NodePool) -> Bool
+  # TODO: clear all nodes
+  ret false
+.end
+
+# --- Node metadata ------------------------------------------------------------
+
+fn node_get_leaf(pool: &NodePool, id: NodeId) -> Bool
+  # TODO
+  ret true
+.end
+
+fn node_set_leaf(pool: &NodePool, id: NodeId, leaf: Bool) -> Bool
+  # TODO
+  ret false
+.end
+
+fn node_get_nkeys(pool: &NodePool, id: NodeId) -> U32
+  # TODO
+  ret 0
+.end
+
+fn node_set_nkeys(pool: &NodePool, id: NodeId, n: U32) -> Bool
+  # TODO
+  ret false
+.end
+
+# --- Key/Value slots ----------------------------------------------------------
+
+fn node_get_key(pool: &NodePool, id: NodeId, i: U32) -> Str
+  # TODO
+  ret ""
+.end
+
+fn node_set_key(pool: &NodePool, id: NodeId, i: U32, k: Str) -> Bool
+  # TODO
+  ret false
+.end
+
+fn node_get_val(pool: &NodePool, id: NodeId, i: U32) -> Str
+  # TODO
+  ret ""
+.end
+
+fn node_set_val(pool: &NodePool, id: NodeId, i: U32, v: Str) -> Bool
+  # TODO
+  ret false
+.end
+
+# --- Child pointers -----------------------------------------------------------
+
+fn node_get_child(pool: &NodePool, id: NodeId, i: U32) -> NodeId
+  # TODO
+  ret nodeid_none()
+.end
+
+fn node_set_child(pool: &NodePool, id: NodeId, i: U32, child: NodeId) -> Bool
+  # TODO
+  ret false
+.end
+
+# -----------------------------------------------------------------------------
+# Map API
+# -----------------------------------------------------------------------------
+
+type PutResult enum
+  Inserted
+  Replaced
+  Failed
+.end
+
+type GetResult struct
+  ok: Bool
+  value: Str
+.end
+
+fn get_none() -> GetResult
+  let r: GetResult
+  set r.ok = false
+  set r.value = ""
+  ret r
+.end
+
+fn get_some(v: Str) -> GetResult
+  let r: GetResult
+  set r.ok = true
+  set r.value = v
+  ret r
+.end
+
+type BTreeMap struct
+  params: BTreeParams
+  pool: NodePool
+  root: NodeId
+  len: U32
+.end
+
+fn btree_new(pool: NodePool, params: BTreeParams) -> BTreeMap
+  let m: BTreeMap
+  set m.params = params
+  set m.pool = pool
+  set m.root = nodeid_none()
+  set m.len = 0
+  ret m
+.end
+
+fn btree_is_valid(m: &BTreeMap) -> Bool
+  if !pool_is_valid(&m.pool)
+    ret false
+  .end
+  if m.params.min_degree < 2
+    ret false
+  .end
+  # root can be none (empty)
+  ret true
+.end
+
+fn btree_len(m: &BTreeMap) -> U32
+  ret m.len
+.end
+
+fn btree_is_empty(m: &BTreeMap) -> Bool
+  ret m.len == 0
+.end
+
+fn btree_clear(m: &BTreeMap) -> Bool
+  set m.root = nodeid_none()
+  set m.len = 0
+  ret pool_clear(&m.pool)
+.end
+
+# -----------------------------------------------------------------------------
+# Search (iterative)
+# -----------------------------------------------------------------------------
+
+fn btree_get(m: &BTreeMap, key: Str) -> GetResult
+  if !btree_is_valid(m)
+    ret get_none()
+  .end
+
+  if !nodeid_is_valid(m.root)
+    ret get_none()
+  .end
+
+  let x: NodeId
+  set x = m.root
+
+  while nodeid_is_valid(x)
+    let n = node_get_nkeys(&m.pool, x)
+    let i: U32
+    set i = 0
+
+    # find first i where key <= keys[i]
+    while i < n
+      let ki = node_get_key(&m.pool, x, i)
+      let c = key_cmp(key, ki)
+      if c == 0
+        ret get_some(node_get_val(&m.pool, x, i))
+      .end
+      if c < 0
+        # descend to child i
+        if node_get_leaf(&m.pool, x)
+          ret get_none()
+        .end
+        set x = node_get_child(&m.pool, x, i)
+        # continue outer loop
+        set i = n # break
+      else
+        set i = i + 1
+      .end
+    .end
+
+    if i == n
+      # key greater than all keys -> rightmost child
+      if node_get_leaf(&m.pool, x)
+        ret get_none()
+      .end
+      set x = node_get_child(&m.pool, x, n)
+    .end
+  .end
+
+  ret get_none()
+.end
+
+fn btree_contains(m: &BTreeMap, key: Str) -> Bool
+  let r = btree_get(m, key)
+  ret r.ok
+.end
+
+# -----------------------------------------------------------------------------
+# Insert (CLRS): put / insert-or-replace
+# -----------------------------------------------------------------------------
+
+# Shift keys/vals right within node to make a hole at index `at`.
+fn _node_shift_right_kv(pool: &NodePool, id: NodeId, from: U32, to_excl: U32)
+  # shifts [from..to_excl) one step right, iterating backwards
+  if to_excl == 0
+    ret
+  .end
+  if to_excl <= from
+    ret
+  .end
+
+  let i: U32
+  set i = to_excl
+  while i > from
+    set i = i - 1
+    let k = node_get_key(pool, id, i - 1)
+    let v = node_get_val(pool, id, i - 1)
+    do node_set_key(pool, id, i, k)
+    do node_set_val(pool, id, i, v)
+  .end
+.end
+
+# Shift children right within node to make a hole at index `at`.
+fn _node_shift_right_child(pool: &NodePool, id: NodeId, from: U32, to_excl: U32)
+  if to_excl == 0
+    ret
+  .end
+  if to_excl <= from
+    ret
+  .end
+
+  let i: U32
+  set i = to_excl
+  while i > from
+    set i = i - 1
+    let c = node_get_child(pool, id, i - 1)
+    do node_set_child(pool, id, i, c)
+  .end
+.end
+
+# Split full child y = child(x,i) into y and z, promote median into x.
+fn _split_child(m: &BTreeMap, x: NodeId, i: U32) -> Bool
+  let t = m.params.min_degree
+  let pool = &m.pool
+
+  let y = node_get_child(pool, x, i)
+  if !nodeid_is_valid(y)
+    ret false
+  .end
+
+  let z = pool_alloc_node(pool, node_get_leaf(pool, y), &m.params)
+  if !nodeid_is_valid(z)
+    ret false
+  .end
+
+  # z gets t-1 keys from y (the upper half)
+  do node_set_nkeys(pool, z, t - 1)
+
+  # copy keys/vals y[j+t] -> z[j]
+  let j: U32
+  set j = 0
+  while j < (t - 1)
+    do node_set_key(pool, z, j, node_get_key(pool, y, j + t))
+    do node_set_val(pool, z, j, node_get_val(pool, y, j + t))
+    set j = j + 1
+  .end
+
+  # copy children if not leaf: y[j+t] -> z[j]
+  if !node_get_leaf(pool, y)
+    set j = 0
+    while j < t
+      do node_set_child(pool, z, j, node_get_child(pool, y, j + t))
+      set j = j + 1
+    .end
+  .end
+
+  # reduce y keys to t-1
+  do node_set_nkeys(pool, y, t - 1)
+
+  # shift x children to make room for z at i+1
+  let nx = node_get_nkeys(pool, x)
+  do _node_shift_right_child(pool, x, i + 1, nx + 1)
+  do node_set_child(pool, x, i + 1, z)
+
+  # shift x keys/vals to make room for median at i
+  do _node_shift_right_kv(pool, x, i, nx)
+
+  # promote median key/value from y[t-1]
+  do node_set_key(pool, x, i, node_get_key(pool, y, t - 1))
+  do node_set_val(pool, x, i, node_get_val(pool, y, t - 1))
+
+  # increment x.nkeys
+  do node_set_nkeys(pool, x, nx + 1)
+
+  ret true
+.end
+
+# Insert into node x which is guaranteed non-full.
+# Returns (ok, replaced)
+fn _insert_nonfull(m: &BTreeMap, x: NodeId, key: Str, val: Str) -> (Bool, Bool)
+  let pool = &m.pool
+  let t = m.params.min_degree
+  let mx = max_keys(&m.params)
+
+  let n = node_get_nkeys(pool, x)
+  let leaf = node_get_leaf(pool, x)
+
+  # find position i where key should go (scan from right)
+  let i: I32
+  set i = (I32)n - 1
+
+  if leaf
+    # if exists, replace
+    let kscan: Str
+    while i >= 0
+      set kscan = node_get_key(pool, x, (U32)i)
+      let c = key_cmp(key, kscan)
+      if c == 0
+        do node_set_val(pool, x, (U32)i, val)
+        ret (true, true)
+      .end
+      if c > 0
+        # insert after i
+        set i = i + 1
+        # shift right from i..n
+        do _node_shift_right_kv(pool, x, (U32)i, n)
+        do node_set_key(pool, x, (U32)i, key)
+        do node_set_val(pool, x, (U32)i, val)
+        do node_set_nkeys(pool, x, n + 1)
+        ret (true, false)
+      .end
+      set i = i - 1
+    .end
+
+    # insert at beginning (i == -1)
+    do _node_shift_right_kv(pool, x, 0, n)
+    do node_set_key(pool, x, 0, key)
+    do node_set_val(pool, x, 0, val)
+    do node_set_nkeys(pool, x, n + 1)
+    ret (true, false)
+  .end
+
+  # internal node
+  # find child index to descend (first key >= target)
+  let idx: U32
+  set idx = 0
+  while idx < n
+    let kk = node_get_key(pool, x, idx)
+    let c = key_cmp(key, kk)
+    if c == 0
+      do node_set_val(pool, x, idx, val)
+      ret (true, true)
+    .end
+    if c < 0
+      # descend to child idx
+      set idx = idx # keep
+      # break
+      set idx = idx
+      # break by forcing loop end:
+      set idx = idx
+      # (no 'break' primitive assumed; use sentinel)
+      # We'll exit via a second loop below; handle with a flag.
+      set idx = idx
+      # do nothing
+      # We'll use a flag:
+      set idx = idx
+    .end
+    if c < 0
+      # break
+      set idx = idx
+      # emulate break:
+      set idx = idx
+      # by setting n to idx (not allowed). We'll use a flag approach:
+    .end
+    if c < 0
+      # Instead of break, we return to a label-less approach:
+      # We'll compute by scanning until c < 0, but we need exit.
+    .end
+    if c < 0
+      # unreachable placeholder
+    .end
+    set idx = idx + 1
+  .end
+
+  # The above loop cannot break cleanly without a break statement.
+  # Recompute idx with a deterministic two-pass method:
+  set idx = 0
+  while idx < n
+    let kk2 = node_get_key(pool, x, idx)
+    let c2 = key_cmp(key, kk2)
+    if c2 < 0
+      # found insertion point
+      # stop by forcing idx to remain and exiting via a guard
+      # emulate break: set idx_done = true and jump out
+      # Use idx_done with an outer loop:
+      set idx = idx
+      # but we still need to exit; handle via a dedicated loop below
+    .end
+    if c2 < 0
+      # break requested
+      # We'll store idx in a temp and return from a helper path
+      # (No break; instead use a goto-style with return from this branch)
+      let child = node_get_child(pool, x, idx)
+      # if child full, split and maybe adjust idx
+      let nchild = node_get_nkeys(pool, child)
+      if nchild == mx
+        if !_split_child(m, x, idx)
+          ret (false, false)
+        .end
+        # after split, compare with promoted key at idx
+        let pk = node_get_key(pool, x, idx)
+        let cc = key_cmp(key, pk)
+        if cc > 0
+          set child = node_get_child(pool, x, idx + 1)
+        .end
+      .end
+      ret _insert_nonfull(m, child, key, val)
+    .end
+    set idx = idx + 1
+  .end
+
+  # descend to rightmost child (idx == n)
+  let child2 = node_get_child(pool, x, n)
+  let nchild2 = node_get_nkeys(pool, child2)
+  if nchild2 == mx
+    if !_split_child(m, x, n)
+      ret (false, false)
+    .end
+    let pk2 = node_get_key(pool, x, n)
+    let cc2 = key_cmp(key, pk2)
+    if cc2 > 0
+      set child2 = node_get_child(pool, x, n + 1)
+    .end
+  .end
+  ret _insert_nonfull(m, child2, key, val)
+.end
+
+fn btree_put(m: &BTreeMap, key: Str, val: Str) -> PutResult
+  if !btree_is_valid(m)
+    ret PutResult::Failed
+  .end
+
+  let t = m.params.min_degree
+  let mx = max_keys(&m.params)
+
+  # empty tree: allocate root as leaf
+  if !nodeid_is_valid(m.root)
+    let r = pool_alloc_node(&m.pool, true, &m.params)
+    if !nodeid_is_valid(r)
+      ret PutResult::Failed
+    .end
+    do node_set_nkeys(&m.pool, r, 1)
+    do node_set_key(&m.pool, r, 0, key)
+    do node_set_val(&m.pool, r, 0, val)
+    set m.root = r
+    set m.len = 1
+    ret PutResult::Inserted
+  .end
+
+  let r2 = m.root
+  let nr = node_get_nkeys(&m.pool, r2)
+
+  if nr == mx
+    # root full => split and grow tree height
+    let s = pool_alloc_node(&m.pool, false, &m.params)
+    if !nodeid_is_valid(s)
+      ret PutResult::Failed
+    .end
+
+    do node_set_child(&m.pool, s, 0, r2)
+    do node_set_nkeys(&m.pool, s, 0)
+
+    # split old root
+    if !_split_child(m, s, 0)
+      ret PutResult::Failed
+    .end
+
+    set m.root = s
+
+    let ok: Bool
+    let replaced: Bool
+    (ok, replaced) = _insert_nonfull(m, s, key, val)
+    if !ok
+      ret PutResult::Failed
+    .end
+    if replaced
+      ret PutResult::Replaced
+    .end
+    set m.len = m.len + 1
+    ret PutResult::Inserted
+  .end
+
+  let ok2: Bool
+  let replaced2: Bool
+  (ok2, replaced2) = _insert_nonfull(m, r2, key, val)
+  if !ok2
+    ret PutResult::Failed
+  .end
+  if replaced2
+    ret PutResult::Replaced
+  .end
+  set m.len = m.len + 1
+  ret PutResult::Inserted
+.end
+
+# -----------------------------------------------------------------------------
+# Validation hooks (best-effort)
+# -----------------------------------------------------------------------------
+
+type ValidateResult struct
+  ok: Bool
+  msg: Str
+.end
+
+fn validate_ok() -> ValidateResult
+  let r: ValidateResult
+  set r.ok = true
+  set r.msg = "ok"
+  ret r
+.end
+
+fn validate_err(msg: Str) -> ValidateResult
+  let r: ValidateResult
+  set r.ok = false
+  set r.msg = msg
+  ret r
+.end
+
+# Checks basic invariants that do not require iterating full node contents deeply
+# (since pool is abstract and may be stubbed).
+fn btree_validate_shallow(m: &BTreeMap) -> ValidateResult
+  if !btree_is_valid(m)
+    ret validate_err("btree invalid")
+  .end
+
+  if !nodeid_is_valid(m.root)
+    if m.len != 0
+      ret validate_err("len>0 but empty root")
+    .end
+    ret validate_ok()
+  .end
+
+  if m.params.min_degree < 2
+    ret validate_err("min_degree<2")
+  .end
+
+  ret validate_ok()
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests (scenarios)
+# -----------------------------------------------------------------------------
+
+scn test_btree_params
+  let p = params_default()
+  do std.runtime::assert(p.min_degree >= 2, "t>=2")
+  do std.runtime::assert(max_keys(&p) == p.min_degree * 2 - 1, "max_keys")
+  do std.runtime::assert(max_children(&p) == p.min_degree * 2, "max_children")
+.end
+
+scn test_btree_empty
+  let pool = pool_invalid()
+  let p = params_default()
+  let m = btree_new(pool, p)
+
+  # invalid pool => invalid map but validate_shallow reports invalid
+  let r = btree_validate_shallow(&m)
+  do std.runtime::assert(r.ok == false, "invalid pool")
+.end
+
+scn test_btree_api_compile
+  # This is a compile/smoke test only; pool is stubbed so put/get will fail.
+  let pool = pool_invalid()
+  let p = params_default()
+  let m = btree_new(pool, p)
+
+  do std.runtime::assert(btree_len(&m) == 0, "len 0")
+  let g = btree_get(&m, "k")
+  do std.runtime::assert(g.ok == false, "get none")
+.end
+
+# End of std.collections.btree

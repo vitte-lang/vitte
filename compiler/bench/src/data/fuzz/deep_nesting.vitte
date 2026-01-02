@@ -1,0 +1,292 @@
+mod fuzz.deep_nesting
+
+# -----------------------------------------------------------------------------
+# fuzz/deep_nesting.vitte
+# Purpose: stress parser, block stack, diagnostics, desugar (phrase -> core)
+# - deep nesting of `when`, `loop`, `match`, and `do` blocks
+# - no braces; `.end` terminators only
+# - deterministic (no randomness)
+# -----------------------------------------------------------------------------
+
+type Node
+  id: i32
+  next: i32
+.end
+
+type Stats
+  sum: i32
+  hits: i32
+  misses: i32
+.end
+
+fn stats_zero() -> Stats
+  let s: Stats
+  set s.sum = 0
+  set s.hits = 0
+  set s.misses = 0
+  ret s
+.end
+
+fn clamp_i32(x: i32, lo: i32, hi: i32) -> i32
+  when x < lo
+    ret lo
+  .end
+  when x > hi
+    ret hi
+  .end
+  ret x
+.end
+
+fn fold_depth(x: i32) -> i32
+  # deterministic folding to create interesting match patterns
+  let y = x
+  set y = (y * 1103515245 + 12345) % 2147483647
+  set y = y ^ (y >> 16)
+  ret y
+.end
+
+fn deep_match(a: i32, b: i32, c: i32) -> i32
+  # nested match with nested do blocks
+  let r = 0
+
+  match a % 7
+    0 => do
+      match b % 5
+        0 => do
+          match c % 3
+            0 => do
+              set r = 10
+            .end
+            1 => do
+              set r = 11
+            .end
+            _ => do
+              set r = 12
+            .end
+          .end
+        .end
+        1 => do
+          set r = 20
+        .end
+        2 => do
+          set r = 21
+        .end
+        _ => do
+          set r = 22
+        .end
+      .end
+    .end
+
+    1 => do
+      match b % 4
+        0 => do
+          set r = 30
+        .end
+        1 => do
+          match c % 2
+            0 => do
+              set r = 31
+            .end
+            _ => do
+              set r = 32
+            .end
+          .end
+        .end
+        _ => do
+          set r = 33
+        .end
+      .end
+    .end
+
+    2 => do
+      set r = 40
+    .end
+
+    3 => do
+      match (a + b + c) % 6
+        0 => do
+          set r = 50
+        .end
+        1 => do
+          set r = 51
+        .end
+        2 => do
+          set r = 52
+        .end
+        3 => do
+          set r = 53
+        .end
+        4 => do
+          set r = 54
+        .end
+        _ => do
+          set r = 55
+        .end
+      .end
+    .end
+
+    4 => do
+      set r = 60
+    .end
+
+    5 => do
+      set r = 70
+    .end
+
+    _ => do
+      set r = 80
+    .end
+  .end
+
+  ret r
+.end
+
+fn deep_when_chain(x: i32) -> i32
+  # deep nesting of `when` blocks
+  let r = 0
+
+  when x % 2 == 0
+    when x % 3 == 0
+      when x % 5 == 0
+        set r = 111
+      .end
+      when x % 5 != 0
+        set r = 112
+      .end
+    .end
+
+    when x % 3 != 0
+      when x % 7 == 0
+        set r = 121
+      .end
+      when x % 7 != 0
+        set r = 122
+      .end
+    .end
+  .end
+
+  when x % 2 != 0
+    when x % 11 == 0
+      when x % 13 == 0
+        set r = 211
+      .end
+      when x % 13 != 0
+        set r = 212
+      .end
+    .end
+
+    when x % 11 != 0
+      when x % 17 == 0
+        set r = 221
+      .end
+      when x % 17 != 0
+        set r = 222
+      .end
+    .end
+  .end
+
+  ret r
+.end
+
+fn deep_loop_layers(limit: i32) -> Stats
+  # layered loops; uses break/continue at varying depths
+  let s = stats_zero()
+
+  let i = 0
+  loop
+    when i >= limit
+      break
+    .end
+
+    let a = clamp_i32(fold_depth(i), -100000, 100000)
+
+    # layer 1
+    let j = 0
+    loop
+      when j >= 7
+        break
+      .end
+
+      let b = clamp_i32(fold_depth(a + j), -100000, 100000)
+
+      # layer 2
+      let k = 0
+      loop
+        when k >= 5
+          break
+        .end
+
+        let c = clamp_i32(fold_depth(b + k), -100000, 100000)
+
+        # layer 3: decision tree
+        let dm = deep_match(a, b, c)
+        let dw = deep_when_chain(dm)
+
+        when (dw % 3) == 0
+          set s.hits = s.hits + 1
+          set s.sum = s.sum + (dm ^ dw)
+        .end
+
+        when (dw % 3) != 0
+          set s.misses = s.misses + 1
+          set s.sum = s.sum + (dm + dw)
+        .end
+
+        # controlled continue/break to stress CFG
+        when (k == 2) && ((i % 4) == 1)
+          set k = k + 1
+          continue
+        .end
+
+        when (j == 3) && ((i % 9) == 0)
+          break
+        .end
+
+        set k = k + 1
+      .end
+
+      when (j == 3) && ((i % 9) == 0)
+        # break out of layer 1 early (after layer2 break)
+        break
+      .end
+
+      set j = j + 1
+    .end
+
+    set i = i + 1
+  .end
+
+  ret s
+.end
+
+fn nested_blocks_smoke() -> i32
+  # create deep nesting without heavy runtime work
+  let s = deep_loop_layers(23)
+
+  # a final deeply nested check chain
+  let rc = 0
+  when s.hits >= 0
+    when s.misses >= 0
+      when (s.hits + s.misses) > 0
+        when (s.sum % 2) == 0
+          set rc = 0
+        .end
+        when (s.sum % 2) != 0
+          set rc = 0
+        .end
+      .end
+
+      when (s.hits + s.misses) == 0
+        set rc = 3
+      .end
+    .end
+  .end
+
+  ret rc
+.end
+
+prog deep_nesting
+  # Keep output silent for fuzz runs.
+  let rc = nested_blocks_smoke()
+  ret rc
+.end

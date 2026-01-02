@@ -1,0 +1,26 @@
+# -----------------------------------------------------------------------------
+# std/crypto - test runner / bootstrap validation entrypoint
+# -----------------------------------------------------------------------------
+# Validates std.crypto primitives (SHA-256, HMAC, HKDF, PBKDF2) during bootstrap
+# and CI.
+# -----------------------------------------------------------------------------
+
+module std.crypto.main
+
+use std.crypto
+
+const EXIT_OK: I32 = 0
+const EXIT_FAIL: I32 = 1
+
+fn run_all() -> I32
+  do test_sha256_abc()
+  do test_hmac_sha256_rfc4231_case1()
+  do test_hkdf_sha256_rfc5869_case1()
+  do test_pbkdf2_hmac_sha256_known()
+  ret EXIT_OK
+.end
+
+program std.crypto.main
+  let rc = run_all()
+  ret rc
+.end

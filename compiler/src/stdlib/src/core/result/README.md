@@ -1,0 +1,3 @@
+# result
+
+Result type

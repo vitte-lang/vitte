@@ -1,0 +1,557 @@
+# std/async — library surface (Vitte)
+#
+# Reusable async primitives:
+# - Poll (i32 specialization; extend to generics later)
+# - Waker + Context
+# - FutureI32 (manual vtable: poll_fn id + state handle)
+# - Task + single-thread Executor
+# - Basic futures + combinator skeletons (map/then/join2/timeout)
+# - MPSC channel (ring buffer) + recv future
+#
+# Notes:
+# - The runtime must provide:
+#   - heap_box[T] to allocate state and return a handle/address
+#   - state read/write (dereference) to implement poll fns
+#   - function dispatch by id for user callbacks and bench fns
+#   - wake scheduling (requeue runnable tasks)
+# - No braces; blocks end with `.end`.
+
+mod std.async
+
+# -----------------------------------------------------------------------------
+# Diagnostics
+# -----------------------------------------------------------------------------
+
+fn _panic(msg: str)
+  say "panic: "
+  say msg
+  ret
+.end
+
+fn assert(cond: bool, msg: str)
+  if cond
+    ret
+  .end
+  _panic(msg)
+.end
+
+# -----------------------------------------------------------------------------
+# Poll (i32 specialization)
+# -----------------------------------------------------------------------------
+
+type PollI32 struct
+  ready: bool
+  value: i32
+.end
+
+fn poll_ready_i32(v: i32) -> PollI32
+  let p: PollI32
+  set p.ready = true
+  set p.value = v
+  ret p
+.end
+
+fn poll_pending_i32() -> PollI32
+  let p: PollI32
+  set p.ready = false
+  set p.value = 0
+  ret p
+.end
+
+# -----------------------------------------------------------------------------
+# Waker + Context
+# -----------------------------------------------------------------------------
+
+# Waker is an opaque handle used to schedule a task.
+
+type Waker struct
+  id: usize
+.end
+
+fn waker_null() -> Waker
+  let w: Waker
+  set w.id = 0
+  ret w
+.end
+
+fn waker_is_null(w: Waker) -> bool
+  ret w.id == 0
+.end
+
+fn waker_wake(w: Waker)
+  # TODO(runtime): schedule task w.id.
+  set w = w
+.end
+
+
+type Context struct
+  waker: Waker
+.end
+
+fn cx_make(w: Waker) -> Context
+  let c: Context
+  set c.waker = w
+  ret c
+.end
+
+# -----------------------------------------------------------------------------
+# FutureI32 (manual vtable)
+# -----------------------------------------------------------------------------
+
+# FutureI32 = (poll_fn_id, state_handle)
+# poll_fn_id values are defined in the dispatcher below.
+
+
+type FutureI32 struct
+  poll_fn: usize
+  state: usize
+.end
+
+fn future_i32_make(poll_fn: usize, state: usize) -> FutureI32
+  let f: FutureI32
+  set f.poll_fn = poll_fn
+  set f.state = state
+  ret f
+.end
+
+# Runtime boxing (stub)
+fn heap_box[T](x: T) -> usize
+  # TODO(runtime): allocate x and return handle/address.
+  set x = x
+  ret 0
+.end
+
+# State load/store helpers (stubs)
+fn state_read_i32(handle: usize) -> i32
+  set handle = handle
+  ret 0
+.end
+
+fn state_write_i32(handle: usize, v: i32)
+  set handle = handle
+  set v = v
+.end
+
+fn state_read_usize(handle: usize) -> usize
+  set handle = handle
+  ret 0
+.end
+
+fn state_write_usize(handle: usize, v: usize)
+  set handle = handle
+  set v = v
+.end
+
+fn state_read_bool(handle: usize) -> bool
+  set handle = handle
+  ret false
+.end
+
+fn state_write_bool(handle: usize, v: bool)
+  set handle = handle
+  set v = v
+.end
+
+# Function/callback dispatch (stub)
+fn call_fn_i32(fn_id: usize, arg: i32) -> i32
+  set fn_id = fn_id
+  set arg = arg
+  ret 0
+.end
+
+fn call_fn_future_i32(fn_id: usize, arg: i32) -> FutureI32
+  set fn_id = fn_id
+  set arg = arg
+  ret future_i32_make(0, 0)
+.end
+
+# Poll dispatcher for future kinds
+#
+# poll_fn ids:
+# 1 ready
+# 2 map
+# 3 then
+# 4 join2_sum
+# 5 timeout
+# 6 recv
+
+fn _poll_dispatch_i32(poll_fn: usize, state: usize, cx: Context) -> PollI32
+  if poll_fn == 1
+    # ReadyState = { value: i32 }
+    let v = state_read_i32(state)
+    ret poll_ready_i32(v)
+  .end
+
+  if poll_fn == 2
+    # MapState = { inner: FutureI32, map_fn: usize }
+    # Layout (conceptual): inner.poll_fn, inner.state, map_fn
+    # For now this is a stub until you define concrete state layouts.
+    set state = state
+    set cx = cx
+    ret poll_pending_i32()
+  .end
+
+  if poll_fn == 3
+    # ThenState = { stage: i32, inner: FutureI32, then_fn: usize, next: FutureI32 }
+    set state = state
+    set cx = cx
+    ret poll_pending_i32()
+  .end
+
+  if poll_fn == 4
+    # Join2State = { a: FutureI32, b: FutureI32, done_a, done_b, va, vb }
+    set state = state
+    set cx = cx
+    ret poll_pending_i32()
+  .end
+
+  if poll_fn == 5
+    # TimeoutState = { inner: FutureI32, deadline_ms: i64 }
+    # Needs std.time / runtime timer.
+    set state = state
+    set cx = cx
+    ret poll_pending_i32()
+  .end
+
+  if poll_fn == 6
+    # RecvState = { ch: Chan }
+    set state = state
+    set cx = cx
+    ret poll_pending_i32()
+  .end
+
+  # Unknown
+  set state = state
+  set cx = cx
+  ret poll_pending_i32()
+.end
+
+fn future_i32_poll(f: FutureI32, cx: Context) -> PollI32
+  ret _poll_dispatch_i32(f.poll_fn, f.state, cx)
+.end
+
+# -----------------------------------------------------------------------------
+# Task
+# -----------------------------------------------------------------------------
+
+type TaskState struct
+  done: bool
+  result: i32
+.end
+
+type Task struct
+  id: usize
+  fut: FutureI32
+  state: TaskState
+.end
+
+fn task_make(id: usize, fut: FutureI32) -> Task
+  let t: Task
+  set t.id = id
+  set t.fut = fut
+  let s: TaskState
+  set s.done = false
+  set s.result = 0
+  set t.state = s
+  ret t
+.end
+
+fn task_poll(t: Task) -> bool
+  if t.state.done
+    ret true
+  .end
+
+  let w: Waker
+  set w.id = t.id
+  let cx = cx_make(w)
+
+  let p = future_i32_poll(t.fut, cx)
+  if p.ready
+    set t.state.done = true
+    set t.state.result = p.value
+    ret true
+  .end
+
+  ret false
+.end
+
+# -----------------------------------------------------------------------------
+# Executor (single-thread)
+# -----------------------------------------------------------------------------
+
+type Executor struct
+  next_id: usize
+  tasks: Vec[Task]
+  runq: VecDeque[usize]
+.end
+
+fn exec_new() -> Executor
+  let e: Executor
+  set e.next_id = 1
+  set e.tasks = Vec[Task].new()
+  set e.runq = VecDeque[usize].new()
+  ret e
+.end
+
+fn exec_spawn(e: Executor, fut: FutureI32) -> usize
+  let id = e.next_id
+  set e.next_id = e.next_id + 1
+
+  let t = task_make(id, fut)
+  e.tasks.push(t)
+  e.runq.push_back(id)
+  ret id
+.end
+
+fn exec_find_task_index(e: Executor, id: usize) -> isize
+  let i = 0
+  while i < e.tasks.len()
+    if e.tasks.get(i).id == id
+      ret i as isize
+    .end
+    set i = i + 1
+  .end
+  ret -1
+.end
+
+fn exec_tick(e: Executor) -> bool
+  if e.runq.len() == 0
+    ret false
+  .end
+
+  let id = e.runq.pop_front()
+  let idx = exec_find_task_index(e, id)
+  if idx == -1
+    ret false
+  .end
+
+  let t = e.tasks.get(idx as usize)
+  let done = task_poll(t)
+
+  if not done
+    e.runq.push_back(id)
+  .end
+
+  ret true
+.end
+
+fn exec_run(e: Executor)
+  let spins = 0
+  while true
+    if e.runq.len() == 0
+      break
+    .end
+
+    let progressed = exec_tick(e)
+    if not progressed
+      set spins = spins + 1
+      if spins > 1_000_000
+        _panic("executor: stuck")
+      .end
+    else
+      set spins = 0
+    .end
+  .end
+.end
+
+fn exec_join_result(e: Executor, id: usize) -> i32
+  let idx = exec_find_task_index(e, id)
+  assert(idx != -1, "join: unknown task")
+  let t = e.tasks.get(idx as usize)
+  assert(t.state.done, "join: task not done")
+  ret t.state.result
+.end
+
+# -----------------------------------------------------------------------------
+# Basic futures
+# -----------------------------------------------------------------------------
+
+# Ready future
+
+type ReadyState struct
+  value: i32
+.end
+
+fn ready_state_make(v: i32) -> ReadyState
+  let s: ReadyState
+  set s.value = v
+  ret s
+.end
+
+fn future_ready_i32(v: i32) -> FutureI32
+  let s = ready_state_make(v)
+  let h = heap_box[ReadyState](s)
+  ret future_i32_make(1, h)
+.end
+
+# map combinator (skeleton)
+
+type MapState struct
+  inner: FutureI32
+  map_fn: usize
+.end
+
+fn future_map_i32(inner: FutureI32, map_fn: usize) -> FutureI32
+  let s: MapState
+  set s.inner = inner
+  set s.map_fn = map_fn
+  let h = heap_box[MapState](s)
+  ret future_i32_make(2, h)
+.end
+
+# then combinator (skeleton)
+
+type ThenState struct
+  stage: i32
+  inner: FutureI32
+  then_fn: usize
+  next: FutureI32
+.end
+
+fn future_then_i32(inner: FutureI32, then_fn: usize) -> FutureI32
+  let s: ThenState
+  set s.stage = 0
+  set s.inner = inner
+  set s.then_fn = then_fn
+  set s.next = future_ready_i32(0)
+  let h = heap_box[ThenState](s)
+  ret future_i32_make(3, h)
+.end
+
+# join2 sum combinator (skeleton)
+
+type Join2State struct
+  a: FutureI32
+  b: FutureI32
+  done_a: bool
+  done_b: bool
+  va: i32
+  vb: i32
+.end
+
+fn future_join2_sum_i32(a: FutureI32, b: FutureI32) -> FutureI32
+  let s: Join2State
+  set s.a = a
+  set s.b = b
+  set s.done_a = false
+  set s.done_b = false
+  set s.va = 0
+  set s.vb = 0
+  let h = heap_box[Join2State](s)
+  ret future_i32_make(4, h)
+.end
+
+# timeout combinator (skeleton)
+
+type TimeoutState struct
+  inner: FutureI32
+  deadline_ms: i64
+.end
+
+fn future_timeout_i32(inner: FutureI32, deadline_ms: i64) -> FutureI32
+  let s: TimeoutState
+  set s.inner = inner
+  set s.deadline_ms = deadline_ms
+  let h = heap_box[TimeoutState](s)
+  ret future_i32_make(5, h)
+.end
+
+# -----------------------------------------------------------------------------
+# Channel (MPSC) ring buffer
+# -----------------------------------------------------------------------------
+
+
+type Chan struct
+  buf: Vec[i32]
+  cap: usize
+  rd: usize
+  wr: usize
+  len: usize
+  recv_waker: Waker
+.end
+
+fn chan_new(cap: usize) -> Chan
+  assert(cap != 0, "chan_new: cap=0")
+  let c: Chan
+  set c.buf = Vec[i32].with_len(cap, 0)
+  set c.cap = cap
+  set c.rd = 0
+  set c.wr = 0
+  set c.len = 0
+  set c.recv_waker = waker_null()
+  ret c
+.end
+
+fn chan_send(c: Chan, v: i32) -> bool
+  if c.len == c.cap
+    ret false
+  .end
+
+  c.buf.set(c.wr, v)
+  set c.wr = (c.wr + 1) % c.cap
+  set c.len = c.len + 1
+
+  if not waker_is_null(c.recv_waker)
+    waker_wake(c.recv_waker)
+  .end
+
+  ret true
+.end
+
+fn chan_try_recv(c: Chan) -> PollI32
+  if c.len == 0
+    ret poll_pending_i32()
+  .end
+
+  let v = c.buf.get(c.rd)
+  set c.rd = (c.rd + 1) % c.cap
+  set c.len = c.len - 1
+  ret poll_ready_i32(v)
+.end
+
+fn chan_set_recv_waker(c: Chan, w: Waker)
+  set c.recv_waker = w
+.end
+
+# Receiver future (skeleton)
+
+type RecvState struct
+  ch: Chan
+.end
+
+fn future_recv_i32(ch: Chan) -> FutureI32
+  let s: RecvState
+  set s.ch = ch
+  let h = heap_box[RecvState](s)
+  ret future_i32_make(6, h)
+.end
+
+# -----------------------------------------------------------------------------
+# Self-tests
+# -----------------------------------------------------------------------------
+
+scn test_channel
+  let ch = chan_new(4)
+  assert(chan_send(ch, 7), "send")
+  let p = chan_try_recv(ch)
+  assert(p.ready, "recv ready")
+  assert(p.value == 7, "recv value")
+.end
+
+scn test_executor_skeleton
+  let e = exec_new()
+  let f = future_ready_i32(123)
+  let id = exec_spawn(e, f)
+  exec_run(e)
+  # result depends on runtime state wiring; keep call for API coverage
+  let r = exec_join_result(e, id)
+  set r = r
+.end
+
+prog std.async.selftest
+  do test_channel
+  do test_executor_skeleton
+  say "std.async: selftest done"
+.end
+
+.end

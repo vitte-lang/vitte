@@ -1,0 +1,521 @@
+# -----------------------------------------------------------------------------
+# std/fmt
+# -----------------------------------------------------------------------------
+# Bootstrap-friendly formatting utilities.
+#
+# Scope:
+# - minimal string builder API on top of Vec[U8]
+# - integer formatting (signed/unsigned) in base 10 and base 16
+# - boolean formatting
+# - escaping helpers (C/JSON-ish)
+# - tiny `fmt_write_*` helpers for other std modules
+#
+# Constraints:
+# - no IO, no allocation outside provided Vec
+# - uses `.end` only
+# - relies on std.core intrinsics via local runtime stubs for memcpy/memset
+# - relies on std.collections Vec
+# -----------------------------------------------------------------------------
+
+module std.fmt
+
+use std.collections
+
+# -----------------------------------------------------------------------------
+# Local prelude (types)
+# -----------------------------------------------------------------------------
+
+type Bool = bool
+
+type U8   = u8
+type U16  = u16
+type U32  = u32
+type U64  = u64
+
+type I8   = i8
+type I16  = i16
+type I32  = i32
+type I64  = i64
+
+type USize = usize
+
+type Ptr[T] = ptr[T]
+
+type Str = str
+
+# -----------------------------------------------------------------------------
+# Error model
+# -----------------------------------------------------------------------------
+
+type FmtError enum
+  Ok
+  OutOfMemory
+  Invalid
+.end
+
+# -----------------------------------------------------------------------------
+# Runtime stubs (platform / stage0)
+# -----------------------------------------------------------------------------
+
+fn rt_memcpy(dst: Ptr[U8], src: Ptr[U8], bytes: USize)
+  ret
+.end
+
+fn rt_memset(dst: Ptr[U8], v: U8, bytes: USize)
+  ret
+.end
+
+fn panic(msg: Str)
+  ret
+.end
+
+fn assert(cond: Bool, msg: Str)
+  if !cond
+    do panic(msg)
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Vec helpers
+# -----------------------------------------------------------------------------
+
+fn vec_u8_reserve(v: &Vec[U8], add: USize) -> (Bool, FmtError)
+  let ok: Bool
+  let err: ColError
+  (ok, err) = vec_reserve_bytes[U8](v, 1, add)
+  if ok
+    ret (true, FmtError::Ok)
+  .end
+  ret (false, FmtError::OutOfMemory)
+.end
+
+fn vec_u8_push(v: &Vec[U8], b: U8) -> (Bool, FmtError)
+  let ok: Bool
+  let err: ColError
+  (ok, err) = vec_push[U8](v, 1, b)
+  if ok
+    ret (true, FmtError::Ok)
+  .end
+  ret (false, FmtError::OutOfMemory)
+.end
+
+fn min_usize(a: USize, b: USize) -> USize
+  if a < b
+    ret a
+  .end
+  ret b
+.end
+
+# -----------------------------------------------------------------------------
+# String builder
+# -----------------------------------------------------------------------------
+
+type Builder struct
+  buf: Vec[U8]
+.end
+
+fn builder_new() -> Builder
+  let b: Builder
+  set b.buf = vec_new[U8]()
+  ret b
+.end
+
+fn builder_clear(b: &Builder)
+  do vec_clear[U8](&b.buf)
+.end
+
+fn builder_len(b: &Builder) -> USize
+  ret b.buf.len
+.end
+
+fn builder_bytes(b: &Builder) -> &Vec[U8]
+  ret &b.buf
+.end
+
+fn builder_push_byte(b: &Builder, x: U8) -> (Bool, FmtError)
+  ret vec_u8_push(&b.buf, x)
+.end
+
+fn builder_push_bytes(b: &Builder, p: Ptr[U8], n: USize) -> (Bool, FmtError)
+  let ok: Bool
+  let err: FmtError
+  (ok, err) = vec_u8_reserve(&b.buf, n)
+  if !ok
+    ret (false, err)
+  .end
+
+  let i: USize
+  set i = 0
+  loop
+    if i >= n
+      break
+    .end
+    (ok, err) = vec_u8_push(&b.buf, *(p + i))
+    if !ok
+      ret (false, err)
+    .end
+    set i = i + 1
+  .end
+
+  ret (true, FmtError::Ok)
+.end
+
+fn builder_push_str(b: &Builder, s: &Vec[U8]) -> (Bool, FmtError)
+  if s.len == 0
+    ret (true, FmtError::Ok)
+  .end
+  ret builder_push_bytes(b, (Ptr[U8])s.data, s.len)
+.end
+
+fn builder_push_cstr(b: &Builder, s: Str) -> (Bool, FmtError)
+  # Str is assumed utf-8 bytes with known length in runtime; for bootstrap we
+  # only support embedding ASCII literals by scanning until NUL.
+  let p = (Ptr[U8])s
+  let i: USize
+  set i = 0
+  loop
+    let ch = *(p + i)
+    if ch == 0
+      break
+    .end
+    let ok: Bool
+    let err: FmtError
+    (ok, err) = builder_push_byte(b, ch)
+    if !ok
+      ret (false, err)
+    .end
+    set i = i + 1
+  .end
+  ret (true, FmtError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# Integer formatting
+# -----------------------------------------------------------------------------
+
+fn digit_hex(n: U8, upper: Bool) -> U8
+  if n < 10
+    ret (U8)'0' + n
+  .end
+  if upper
+    ret (U8)'A' + (n - 10)
+  .end
+  ret (U8)'a' + (n - 10)
+.end
+
+fn fmt_u64_base(out: &Builder, x: U64, base: U32, upper: Bool, prefix: Bool) -> (Bool, FmtError)
+  if base != 10 && base != 16
+    ret (false, FmtError::Invalid)
+  .end
+
+  let ok: Bool
+  let err: FmtError
+
+  if prefix && base == 16
+    (ok, err) = builder_push_byte(out, (U8)'0')
+    if !ok
+      ret (false, err)
+    .end
+    (ok, err) = builder_push_byte(out, (U8)(upper ? 'X' : 'x'))
+    if !ok
+      ret (false, err)
+    .end
+  .end
+
+  # temporary reverse buffer on stack (max 64 bits => 64 digits in base2; 20 in base10)
+  let tmp = vec_new[U8]()
+  (ok, err) = vec_u8_reserve(&tmp, 64)
+  if !ok
+    ret (false, err)
+  .end
+
+  if x == 0
+    (ok, err) = vec_u8_push(&tmp, (U8)'0')
+    if !ok
+      ret (false, err)
+    .end
+  else
+    let v = x
+    while v != 0
+      let d: U8
+      if base == 10
+        set d = (U8)(v % 10)
+        set v = v / 10
+        (ok, err) = vec_u8_push(&tmp, (U8)'0' + d)
+      else
+        set d = (U8)(v & 0x0f)
+        set v = v >> 4
+        (ok, err) = vec_u8_push(&tmp, digit_hex(d, upper))
+      .end
+      if !ok
+        ret (false, err)
+      .end
+    .end
+  .end
+
+  # reverse append
+  let i: I32
+  set i = (I32)tmp.len - 1
+  let tp = (Ptr[U8])tmp.data
+  while i >= 0
+    (ok, err) = builder_push_byte(out, *(tp + (USize)i))
+    if !ok
+      ret (false, err)
+    .end
+    set i = i - 1
+  .end
+
+  do vec_drop[U8](&tmp, 1)
+
+  ret (true, FmtError::Ok)
+.end
+
+fn fmt_i64_base(out: &Builder, x: I64, base: U32, upper: Bool, prefix: Bool) -> (Bool, FmtError)
+  let ok: Bool
+  let err: FmtError
+
+  if x < 0
+    (ok, err) = builder_push_byte(out, (U8)'-')
+    if !ok
+      ret (false, err)
+    .end
+    # convert to unsigned magnitude carefully
+    let ux: U64
+    set ux = (U64)(0 - x)
+    ret fmt_u64_base(out, ux, base, upper, prefix)
+  .end
+
+  ret fmt_u64_base(out, (U64)x, base, upper, prefix)
+.end
+
+fn fmt_u32(out: &Builder, x: U32) -> (Bool, FmtError)
+  ret fmt_u64_base(out, (U64)x, 10, false, false)
+.end
+
+fn fmt_i32(out: &Builder, x: I32) -> (Bool, FmtError)
+  ret fmt_i64_base(out, (I64)x, 10, false, false)
+.end
+
+fn fmt_u64_hex(out: &Builder, x: U64, upper: Bool, prefix: Bool) -> (Bool, FmtError)
+  ret fmt_u64_base(out, x, 16, upper, prefix)
+.end
+
+# -----------------------------------------------------------------------------
+# Bool formatting
+# -----------------------------------------------------------------------------
+
+fn fmt_bool(out: &Builder, v: Bool) -> (Bool, FmtError)
+  if v
+    ret builder_push_cstr(out, "true")
+  .end
+  ret builder_push_cstr(out, "false")
+.end
+
+# -----------------------------------------------------------------------------
+# Escaping helpers
+# -----------------------------------------------------------------------------
+
+fn is_printable_ascii(b: U8) -> Bool
+  ret b >= 0x20 && b <= 0x7e
+.end
+
+fn fmt_escape_json(out: &Builder, bytes: &Vec[U8]) -> (Bool, FmtError)
+  let ok: Bool
+  let err: FmtError
+
+  (ok, err) = builder_push_byte(out, (U8)'"')
+  if !ok
+    ret (false, err)
+  .end
+
+  let p = (Ptr[U8])bytes.data
+  let i: USize
+  set i = 0
+  loop
+    if i >= bytes.len
+      break
+    .end
+
+    let b = *(p + i)
+
+    if b == (U8)'"'
+      (ok, err) = builder_push_cstr(out, "\\\"")
+    elif b == (U8)'\\'
+      (ok, err) = builder_push_cstr(out, "\\\\")
+    elif b == 0x08
+      (ok, err) = builder_push_cstr(out, "\\b")
+    elif b == 0x0c
+      (ok, err) = builder_push_cstr(out, "\\f")
+    elif b == 0x0a
+      (ok, err) = builder_push_cstr(out, "\\n")
+    elif b == 0x0d
+      (ok, err) = builder_push_cstr(out, "\\r")
+    elif b == 0x09
+      (ok, err) = builder_push_cstr(out, "\\t")
+    elif is_printable_ascii(b)
+      (ok, err) = builder_push_byte(out, b)
+    else
+      # \u00XX
+      (ok, err) = builder_push_cstr(out, "\\u00")
+      if ok
+        (ok, err) = builder_push_byte(out, digit_hex((b >> 4) & 0x0f, true))
+      .end
+      if ok
+        (ok, err) = builder_push_byte(out, digit_hex(b & 0x0f, true))
+      .end
+    .end
+
+    if !ok
+      ret (false, err)
+    .end
+
+    set i = i + 1
+  .end
+
+  (ok, err) = builder_push_byte(out, (U8)'"')
+  if !ok
+    ret (false, err)
+  .end
+
+  ret (true, FmtError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# Convenience writers
+# -----------------------------------------------------------------------------
+
+fn fmt_write_u32(out: &Vec[U8], x: U32) -> (Bool, FmtError)
+  let b = builder_new()
+  let ok: Bool
+  let err: FmtError
+  (ok, err) = fmt_u32(&b, x)
+  if !ok
+    ret (false, err)
+  .end
+  do vec_clear[U8](out)
+  # copy builder buffer to out
+  let p = (Ptr[U8])b.buf.data
+  let i: USize
+  set i = 0
+  loop
+    if i >= b.buf.len
+      break
+    .end
+    (ok, err) = vec_u8_push(out, *(p + i))
+    if !ok
+      ret (false, err)
+    .end
+    set i = i + 1
+  .end
+  do vec_drop[U8](&b.buf, 1)
+  ret (true, FmtError::Ok)
+.end
+
+fn fmt_write_i32(out: &Vec[U8], x: I32) -> (Bool, FmtError)
+  let b = builder_new()
+  let ok: Bool
+  let err: FmtError
+  (ok, err) = fmt_i32(&b, x)
+  if !ok
+    ret (false, err)
+  .end
+  do vec_clear[U8](out)
+  let p = (Ptr[U8])b.buf.data
+  let i: USize
+  set i = 0
+  loop
+    if i >= b.buf.len
+      break
+    .end
+    (ok, err) = vec_u8_push(out, *(p + i))
+    if !ok
+      ret (false, err)
+    .end
+    set i = i + 1
+  .end
+  do vec_drop[U8](&b.buf, 1)
+  ret (true, FmtError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# Tests (scenarios)
+# -----------------------------------------------------------------------------
+
+fn vec_from_ascii3(a: U8, b: U8, c: U8) -> Vec[U8]
+  let v = vec_new[U8]()
+  let ok: Bool
+  let e: ColError
+  (ok, e) = vec_push[U8](&v, 1, a)
+  (ok, e) = vec_push[U8](&v, 1, b)
+  (ok, e) = vec_push[U8](&v, 1, c)
+  ret v
+.end
+
+fn assert_eq_u8_vec(a: &Vec[U8], b: &Vec[U8])
+  do assert(a.len == b.len, "vec len mismatch")
+  let ap = (Ptr[U8])a.data
+  let bp = (Ptr[U8])b.data
+  let i: USize
+  set i = 0
+  loop
+    if i >= a.len
+      break
+    .end
+    do assert(*(ap + i) == *(bp + i), "vec byte mismatch")
+    set i = i + 1
+  .end
+.end
+
+scn test_fmt_int
+  let b = builder_new()
+  let ok: Bool
+  let err: FmtError
+
+  (ok, err) = fmt_i32(&b, -123)
+  do assert(ok, "fmt")
+
+  # expect "-123"
+  let exp = vec_new[U8]()
+  let e: ColError
+  let ok2: Bool
+  (ok2, e) = vec_push[U8](&exp, 1, (U8)'-')
+  (ok2, e) = vec_push[U8](&exp, 1, (U8)'1')
+  (ok2, e) = vec_push[U8](&exp, 1, (U8)'2')
+  (ok2, e) = vec_push[U8](&exp, 1, (U8)'3')
+
+  do assert_eq_u8_vec(&b.buf, &exp)
+
+  do vec_drop[U8](&exp, 1)
+  do vec_drop[U8](&b.buf, 1)
+.end
+
+scn test_fmt_escape_json
+  let x = vec_from_ascii3((U8)'a', (U8)'\n', (U8)'"')
+  let b = builder_new()
+  let ok: Bool
+  let err: FmtError
+
+  (ok, err) = fmt_escape_json(&b, &x)
+  do assert(ok, "escape")
+
+  # expected "a\n\"" (with surrounding quotes)
+  let exp = vec_new[U8]()
+  let ok2: Bool
+  let e2: ColError
+
+  (ok2, e2) = vec_push[U8](&exp, 1, (U8)'"')
+  (ok2, e2) = vec_push[U8](&exp, 1, (U8)'a')
+  (ok2, e2) = vec_push[U8](&exp, 1, (U8)'\\')
+  (ok2, e2) = vec_push[U8](&exp, 1, (U8)'n')
+  (ok2, e2) = vec_push[U8](&exp, 1, (U8)'\\')
+  (ok2, e2) = vec_push[U8](&exp, 1, (U8)'\"')
+  (ok2, e2) = vec_push[U8](&exp, 1, (U8)'"')
+
+  do assert_eq_u8_vec(&b.buf, &exp)
+
+  do vec_drop[U8](&x, 1)
+  do vec_drop[U8](&exp, 1)
+  do vec_drop[U8](&b.buf, 1)
+.end
+
+# End of std.fmt

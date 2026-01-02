@@ -7,7 +7,7 @@ Il complète :
 - `spec/runtime/pal_contract.md` (contrat PAL)
 
 Objectifs :
-- ABI C99 **portable** et **stable** (C, Rust, Zig, Swift, etc.).
+- ABI C99 **portable** et **stable** (C, Zig, Swift, etc.).
 - Layouts déterministes : tailles/alignements définis, append-only.
 - Ownership explicite : qui alloue, qui libère.
 - Chargement plugins sûr : handshake de version + caps.
@@ -317,16 +317,8 @@ Extension future (prévue) :
 
 ## 11) Bindings (langages)
 
-### 11.1 Rust
-
 Recommandations :
-- `#[repr(C)]` sur toutes les structs.
-- `u8` pour bool.
-- éviter `bool` Rust dans l’ABI.
-
-### 11.2 Swift / Zig / others
-
-- privilégier wrappers générés.
+- privilégier des wrappers générés.
 - ne pas exposer de types dépendants du runtime (ex: `size_t` variable) sans encapsulation.
 
 ---

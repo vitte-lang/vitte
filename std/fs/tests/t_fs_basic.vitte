@@ -1,0 +1,122 @@
+# /Users/vincent/Documents/Github/vitte/std/fs/tests/t_fs_basic.vitte
+# -----------------------------------------------------------------------------
+# std/fs/tests/t_fs_basic
+# -----------------------------------------------------------------------------
+# MAX tests for std.fs.path + std.fs.walk (pure + facade surface)
+#
+# Coverage:
+# - path: normalize/join/dirname/basename/ext/stem/is_absolute/relpath/split
+# - walk: options default + iterator surface (no real FS backend)
+#
+# Notes:
+# - std.fs.walk is syscall-stubbed; traversal tests are smoke-only.
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.fs.tests.t_fs_basic
+
+use std.runtime
+use std.fs.path
+use std.fs.walk
+
+type Bool = bool
+type Str  = str
+
+fn assert_true(b: Bool, msg: Str)
+  do std.runtime::assert(b, msg)
+.end
+
+fn assert_false(b: Bool, msg: Str)
+  do std.runtime::assert(!b, msg)
+.end
+
+fn assert_eq_str(a: Str, b: Str, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+# -----------------------------------------------------------------------------
+# Path tests (POSIX)
+# -----------------------------------------------------------------------------
+
+scn test_path_normalize
+  do assert_eq_str(std.fs.path::normalize("/a//b/./c"), "/a/b/c", "normalize posix")
+  do assert_eq_str(std.fs.path::normalize("/a/b/../c"), "/a/c", "normalize ..")
+  do assert_eq_str(std.fs.path::normalize("a/./b"), "a/b", "normalize rel dot")
+  do assert_eq_str(std.fs.path::normalize("a/b/.."), "a", "normalize rel ..")
+.end
+
+scn test_path_join
+  do assert_eq_str(std.fs.path::join("/a/b", "c"), "/a/b/c", "join simple")
+  do assert_eq_str(std.fs.path::join("/a/b/", "c"), "/a/b/c", "join trailing")
+  do assert_eq_str(std.fs.path::join("", "c"), "c", "join empty left")
+  do assert_eq_str(std.fs.path::join("a", ""), "a", "join empty right")
+.end
+
+scn test_path_dir_base
+  do assert_eq_str(std.fs.path::dirname("/a/b"), "/a", "dirname")
+  do assert_eq_str(std.fs.path::basename("/a/b"), "b", "basename")
+  do assert_eq_str(std.fs.path::dirname("b"), ".", "dirname rel")
+  do assert_eq_str(std.fs.path::basename("b"), "b", "basename rel")
+.end
+
+scn test_path_ext_stem
+  do assert_eq_str(std.fs.path::extname("/a/b.txt"), "txt", "ext")
+  do assert_eq_str(std.fs.path::stem("/a/b.txt"), "b", "stem")
+  do assert_eq_str(std.fs.path::extname(".bashrc"), "", "dotfile ext empty")
+  do assert_eq_str(std.fs.path::stem(".bashrc"), ".bashrc", "dotfile stem")
+.end
+
+scn test_path_abs_rel
+  do assert_true(std.fs.path::is_absolute("/a/b"), "abs posix")
+  do assert_false(std.fs.path::is_absolute("a/b"), "rel posix")
+
+  do assert_eq_str(std.fs.path::relpath("/a/b", "/a/b/c/d"), "c/d", "rel down")
+  do assert_eq_str(std.fs.path::relpath("/a/b/c", "/a/b/d"), "../d", "rel up")
+.end
+
+scn test_path_split
+  let sp = std.fs.path::split("/a/b/c")
+  do assert_eq_str(sp.dir, "/a/b", "split dir")
+  do assert_eq_str(sp.base, "c", "split base")
+.end
+
+# -----------------------------------------------------------------------------
+# Path tests (Windows best-effort)
+# -----------------------------------------------------------------------------
+
+scn test_path_windows_prefix
+  do assert_true(std.fs.path::is_absolute("C:\\a\\b"), "abs drive")
+  do assert_true(std.fs.path::is_absolute("C:/a/b"), "abs drive slashes")
+  do assert_false(std.fs.path::is_absolute("C:foo"), "drive-relative")
+
+  # normalize to slashes
+  do assert_eq_str(std.fs.path::normalize("C:\\a\\\\b\\.\\c"), "C:/a/b/c", "norm drive")
+.end
+
+scn test_path_unc
+  do assert_true(std.fs.path::is_absolute("\\\\server\\share\\a"), "unc abs")
+  do assert_eq_str(std.fs.path::normalize("\\\\server\\share\\a\\..\\b"), "//server/share/b", "unc norm")
+.end
+
+# -----------------------------------------------------------------------------
+# Walk tests (smoke)
+# -----------------------------------------------------------------------------
+
+scn test_walk_options
+  let o = std.fs.walk::walk_options_default()
+  do std.runtime::assert(o.max_depth > 0, "max_depth")
+.end
+
+scn test_walk_iter_surface
+  let o = std.fs.walk::walk_options_default()
+  let it = std.fs.walk::walkiter_new("/tmp", o)
+
+  # Since backend is stubbed, first event should be DirEnter for normalized root
+  let ok: Bool
+  let ev: std.fs.walk::WalkEvent
+  (ok, ev) = std.fs.walk::walkiter_next(&it)
+  do std.runtime::assert(ok == true, "iter first ok")
+  do std.runtime::assert(ev.kind == std.fs.walk::WalkEventKind::DirEnter, "first enter")
+.end
+
+# End of t_fs_basic.vitte

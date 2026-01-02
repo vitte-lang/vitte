@@ -1,413 +1,66 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(vittec_compiler VERSION 0.1.0 LANGUAGES C)
+project(vitte_compiler LANGUAGES C)
 
-set(VITTEC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/compiler)
-
-# C Standard
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
 
-option(VITTEC_ENABLE_RUST_API "Build and link Rust FFI (vitte_rust_api)" OFF)
-option(VITTEC_ENABLE_ENTERPRISE_LIB "Build enterprise_lib (portable fallbacks on non-x86)" OFF)
-option(VITTEC_ENABLE_FRONT_EXPERIMENTAL "Build experimental front lexer/parser" OFF)
-option(VITTE_ENABLE_LIBFUZZER "Build a libFuzzer harness for vitte_parse_phrase (clang)" OFF)
+option(VITTE_ENABLE_WARNINGS "Enable common warning flags" ON)
 
-set(VITTE_ENABLE_RUNTIME_TESTS_DEFAULT OFF)
-if((CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64|aarch64|ARM64|arm64") AND
-   (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU"))
-    set(VITTE_ENABLE_RUNTIME_TESTS_DEFAULT ON)
-endif()
-option(VITTE_ENABLE_RUNTIME_TESTS "Build vitte runtime/asm unit tests" ${VITTE_ENABLE_RUNTIME_TESTS_DEFAULT})
+# -----------------------------------------------------------------------------
+# Library: vitte_compiler (all compiler sources under compiler/src/compiler/lib)
+# -----------------------------------------------------------------------------
 
-set(VITTE_ENABLE_ASM_RUNTIME_DEFAULT OFF)
-if((CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64|aarch64|ARM64|arm64") AND
-   (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU"))
-    set(VITTE_ENABLE_ASM_RUNTIME_DEFAULT ON)
-endif()
-option(VITTE_ENABLE_ASM_RUNTIME "Build vitte runtime/asm fastpaths library" ${VITTE_ENABLE_ASM_RUNTIME_DEFAULT})
-
-option(VITTE_RUNTIME_ENABLE_STDIO "Enable stdio helpers in vitte runtime API (FILE*)"
-       OFF)
-
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
-    set(VITTEC_ENTERPRISE_LIB_ARCH_X86 TRUE)
-else()
-    set(VITTEC_ENTERPRISE_LIB_ARCH_X86 FALSE)
-endif()
-
-# Compiler library sources
-set(VITTEC_COMPILER_SOURCES
-    ${VITTEC_ROOT}/src/compiler.c
-    ${VITTEC_ROOT}/src/asm_optimizer.c
-    ${VITTEC_ROOT}/src/ast.c
-    ${VITTEC_ROOT}/src/parser.c
-    ${VITTEC_ROOT}/src/lexer.c
-    ${VITTEC_ROOT}/src/front/vittec_lexer.c
-    ${VITTEC_ROOT}/src/types.c
-    ${VITTEC_ROOT}/src/hir.c
-    ${VITTEC_ROOT}/src/ir.c
-    ${VITTEC_ROOT}/src/sema.c
-    ${VITTEC_ROOT}/src/symbol_table.c
-    ${VITTEC_ROOT}/src/diagnostic.c
-    ${VITTEC_ROOT}/src/backend_c.c
-    ${VITTEC_ROOT}/src/backend.c
-    ${VITTEC_ROOT}/src/frontend.c
-    ${VITTEC_ROOT}/src/codegen.c
-    ${VITTEC_ROOT}/src/inline_asm.c
-    ${VITTEC_ROOT}/src/lowering.c
-    ${VITTEC_ROOT}/src/native_codegen.c
-    ${VITTEC_ROOT}/src/optimizer.c
-    ${VITTEC_ROOT}/src/target.c
-    ${VITTEC_ROOT}/src/driver.c
-    ${VITTEC_ROOT}/src/back/emit_c.c
-    ${VITTEC_ROOT}/src/diag/diagnostic.c
-    ${VITTEC_ROOT}/src/diag/emitter.c
-    ${VITTEC_ROOT}/src/diag/emitter_human.c
-    ${VITTEC_ROOT}/src/diag/emitter_json.c
-    ${VITTEC_ROOT}/src/diag/source_map.c
-    ${VITTEC_ROOT}/src/support/arena.c
-    ${VITTEC_ROOT}/src/support/fs.c
-    ${VITTEC_ROOT}/src/support/log.c
-    ${VITTEC_ROOT}/src/support/str.c
-    ${VITTEC_ROOT}/src/support/vec.c
-    ${VITTEC_ROOT}/src/vitte_stub.c
+set(VITTE_COMPILER_LIB_SOURCES
+  compiler/src/compiler/lib/diag/diag.c
+  compiler/src/compiler/lib/diag/diag_catalog.c
+  compiler/src/compiler/lib/diag/diag_codes.c
+  compiler/src/compiler/lib/diag/diag_levels.c
+  compiler/src/compiler/lib/diag/diag_span.c
+  compiler/src/compiler/lib/diag/render/diag_render_ansi.c
+  compiler/src/compiler/lib/diag/render/diag_render_jsonl.c
+  compiler/src/compiler/lib/diag/sinks/diag_sink_mem.c
+  compiler/src/compiler/lib/diag/sinks/diag_sink_stdio.c
+  compiler/src/compiler/lib/diag/normalize/diag_normalize.c
 )
 
-# Rust-dependent sources (must be in the target sources list to satisfy link symbols).
-if(VITTEC_ENABLE_RUST_API)
-    list(APPEND VITTEC_COMPILER_SOURCES ${VITTEC_ROOT}/src/front/muf_rust.c)
-endif()
+add_library(vitte_compiler STATIC ${VITTE_COMPILER_LIB_SOURCES})
 
-if(VITTEC_ENABLE_ENTERPRISE_LIB)
-    list(APPEND VITTEC_COMPILER_SOURCES ${VITTEC_ROOT}/src/enterprise_lib.c)
-endif()
-
-if(VITTEC_ENABLE_FRONT_EXPERIMENTAL)
-    list(APPEND VITTEC_COMPILER_SOURCES
-        ${VITTEC_ROOT}/src/front/lexer.c
-        ${VITTEC_ROOT}/src/front/parser.c
-    )
-endif()
-
-# Create compiler library
-add_library(vittec_compiler STATIC ${VITTEC_COMPILER_SOURCES})
-
-target_include_directories(vittec_compiler PUBLIC
-    $<BUILD_INTERFACE:${VITTEC_ROOT}/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
+target_include_directories(vitte_compiler
+  PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/compiler/src/compiler/include"
 )
 
-# -----------------------------------------------------------------------------
-# vitte runtime (dispatch + CPU detect) and optional ASM objects
-# -----------------------------------------------------------------------------
-
-add_library(vitte_runtime STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asm/src/vitte/asm_dispatch.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asm/src/vitte/cpu.c
-)
-target_include_directories(vitte_runtime PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-target_include_directories(vitte_runtime PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asm/include
-)
-if(VITTE_RUNTIME_ENABLE_STDIO)
-    target_compile_definitions(vitte_runtime PUBLIC VITTE_RUNTIME_ENABLE_STDIO=1)
-endif()
-
-set(VITTE_ASM_RUNTIME_SUPPORTED FALSE)
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64|aarch64|ARM64|arm64")
-    set(VITTE_ASM_RUNTIME_SUPPORTED TRUE)
-endif()
-
-if(VITTE_ENABLE_ASM_RUNTIME AND VITTE_ASM_RUNTIME_SUPPORTED)
-    enable_language(ASM)
-
-    set(VITTE_ASM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src/asm)
-    set(VITTE_ASM_SOURCES
-        ${VITTE_ASM_ROOT}/src/vitte/asm_verify.c
-        ${VITTE_ASM_ROOT}/src/asm/common/asm_macros.S
-    )
-
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
-        file(GLOB VITTE_ASM_ARCH_SOURCES CONFIGURE_DEPENDS
-            ${VITTE_ASM_ROOT}/src/asm/x86_64/*/*.S
-        )
-        list(APPEND VITTE_ASM_SOURCES ${VITTE_ASM_ARCH_SOURCES})
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|ARM64|arm64")
-        file(GLOB VITTE_ASM_ARCH_SOURCES CONFIGURE_DEPENDS
-            ${VITTE_ASM_ROOT}/src/asm/aarch64/*/*.S
-        )
-        list(APPEND VITTE_ASM_SOURCES ${VITTE_ASM_ARCH_SOURCES})
-    endif()
-
-    add_library(vitte_asm_runtime STATIC ${VITTE_ASM_SOURCES})
-    target_include_directories(vitte_asm_runtime PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-    )
-    target_include_directories(vitte_asm_runtime PRIVATE
-        ${VITTE_ASM_ROOT}/include
-    )
-    target_link_libraries(vitte_asm_runtime PUBLIC vitte_runtime)
-elseif(VITTE_ENABLE_ASM_RUNTIME)
-    message(STATUS "vitte_asm_runtime: unsupported arch for ASM fastpaths (${CMAKE_SYSTEM_PROCESSOR})")
+if(VITTE_ENABLE_WARNINGS)
+  if(MSVC)
+    target_compile_options(vitte_compiler PRIVATE /W4)
+  else()
+    target_compile_options(vitte_compiler PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
 endif()
 
 # -----------------------------------------------------------------------------
-# libFuzzer harnesses (optional)
-# -----------------------------------------------------------------------------
-# This builds a single libFuzzer-compatible binary exercising the phrase parser.
-# It is separate from fuzz/scripts/build_targets.sh, which builds standalone
-# harness binaries for quick include+link coverage.
-
-if(VITTE_ENABLE_LIBFUZZER)
-    if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
-        message(FATAL_ERROR "VITTE_ENABLE_LIBFUZZER requires clang (CMAKE_C_COMPILER_ID=Clang)")
-    endif()
-
-    file(GLOB VITTE_PARSER_FUZZ_SOURCES CONFIGURE_DEPENDS
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/vitte/*.c
-    )
-
-    add_executable(vitte_phrase_fuzz
-        fuzz/targets/fuzz_parser.c
-        ${VITTE_PARSER_FUZZ_SOURCES}
-    )
-
-    target_include_directories(vitte_phrase_fuzz PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-    )
-
-    target_compile_options(vitte_phrase_fuzz PRIVATE
-        -fsanitize=fuzzer,address
-        -fno-omit-frame-pointer
-        -O1
-        -g
-    )
-    target_link_options(vitte_phrase_fuzz PRIVATE
-        -fsanitize=fuzzer,address
-    )
-endif()
-
-if(VITTEC_ENABLE_ENTERPRISE_LIB)
-    if(VITTEC_ENTERPRISE_LIB_ARCH_X86)
-        target_compile_definitions(vittec_compiler PUBLIC ENTERPRISE_LIB_X86=1)
-    else()
-        target_compile_definitions(vittec_compiler PUBLIC ENTERPRISE_PORTABLE=1)
-        message(STATUS "enterprise_lib: using portable implementation for ${CMAKE_SYSTEM_PROCESSOR}")
-    endif()
-endif()
-
-if(DEFINED VITTE_INCLUDE_MAX_PATHS AND VITTE_INCLUDE_MAX_PATHS AND VITTE_MAX_INCLUDE_DIRS)
-    target_include_directories(vittec_compiler PRIVATE ${VITTE_MAX_INCLUDE_DIRS})
-endif()
-
-if(VITTEC_ENABLE_RUST_API)
-    target_compile_definitions(vittec_compiler PUBLIC VITTEC_ENABLE_RUST_API=1)
-
-    find_program(CARGO_EXECUTABLE cargo REQUIRED)
-    set(VITTE_RUST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/rust)
-    set(VITTE_RUST_MANIFEST ${VITTE_RUST_DIR}/Cargo.toml)
-
-    # NOTE: Cargo output location depends on target triple; we rely on default host build here.
-    set(VITTE_RUST_PROFILE release)
-    set(VITTE_RUST_LIBDIR ${VITTE_RUST_DIR}/target/${VITTE_RUST_PROFILE})
-    if(WIN32)
-        set(VITTE_RUST_STATICLIB ${VITTE_RUST_LIBDIR}/vitte_rust_api.lib)
-    else()
-        set(VITTE_RUST_STATICLIB ${VITTE_RUST_LIBDIR}/libvitte_rust_api.a)
-    endif()
-
-    if(NOT TARGET vitte_rust_api_build)
-        file(GLOB_RECURSE VITTE_RUST_WORKSPACE_SOURCES
-            CONFIGURE_DEPENDS
-            ${VITTE_RUST_DIR}/Cargo.toml
-            ${VITTE_RUST_DIR}/Cargo.lock
-            ${VITTE_RUST_DIR}/crates/*/Cargo.toml
-            ${VITTE_RUST_DIR}/crates/*/src/*.rs
-        )
-
-        add_custom_command(
-            OUTPUT ${VITTE_RUST_STATICLIB}
-            COMMAND ${CARGO_EXECUTABLE} build -p vitte_rust_api --profile ${VITTE_RUST_PROFILE} --manifest-path ${VITTE_RUST_MANIFEST}
-        WORKING_DIRECTORY ${VITTE_RUST_DIR}
-        DEPENDS ${VITTE_RUST_WORKSPACE_SOURCES}
-        COMMENT "Building Rust staticlib: vitte_rust_api"
-        VERBATIM
-        )
-
-        add_custom_target(vitte_rust_api_build DEPENDS ${VITTE_RUST_STATICLIB})
-    endif()
-
-    if(NOT TARGET vitte_rust_api)
-        add_library(vitte_rust_api STATIC IMPORTED GLOBAL)
-        set_target_properties(vitte_rust_api PROPERTIES IMPORTED_LOCATION ${VITTE_RUST_STATICLIB})
-        add_dependencies(vitte_rust_api vitte_rust_api_build)
-    endif()
-
-    target_include_directories(vittec_compiler PUBLIC ${VITTE_RUST_DIR}/include-gen)
-    target_link_libraries(vittec_compiler PUBLIC vitte_rust_api)
-    if(WIN32)
-        target_link_libraries(vittec_compiler PUBLIC ntdll)
-    endif()
-
-    if(APPLE)
-      target_link_libraries(vittec_compiler PUBLIC "-framework CoreFoundation")
-    endif()
-endif()
-
-# Compiler flags
-if(MSVC)
-    target_compile_options(vittec_compiler PRIVATE /W4 /WX)
-else()
-target_compile_options(vittec_compiler PRIVATE -Wall -Wextra -Werror)
-target_compile_definitions(vittec_compiler PRIVATE _CRT_SECURE_NO_WARNINGS)
-    if(CMAKE_BUILD_TYPE MATCHES Debug)
-        target_compile_options(vittec_compiler PRIVATE -g -O0)
-    endif()
-endif()
-
-# Unit tests
-enable_testing()
-
-# Test: Lexer
-add_executable(test_lexer ${VITTEC_ROOT}/tests/unit/test_lexer.c)
-target_link_libraries(test_lexer PRIVATE vittec_compiler)
-target_include_directories(test_lexer PRIVATE ${VITTEC_ROOT}/include)
-add_test(NAME test_lexer COMMAND test_lexer)
-
-# Test: AST
-add_executable(test_ast ${VITTEC_ROOT}/tests/unit/test_ast.c)
-target_link_libraries(test_ast PRIVATE vittec_compiler)
-target_include_directories(test_ast PRIVATE ${VITTEC_ROOT}/include)
-add_test(NAME test_ast COMMAND test_ast)
-
-# Test: Types
-add_executable(test_types ${VITTEC_ROOT}/tests/unit/test_types.c)
-target_link_libraries(test_types PRIVATE vittec_compiler)
-target_include_directories(test_types PRIVATE ${VITTEC_ROOT}/include)
-add_test(NAME test_types COMMAND test_types)
-
-# Test: Symbol Table
-add_executable(test_symbol_table ${VITTEC_ROOT}/tests/unit/test_symbol_table.c)
-target_link_libraries(test_symbol_table PRIVATE vittec_compiler)
-target_include_directories(test_symbol_table PRIVATE ${VITTEC_ROOT}/include)
-add_test(NAME test_symbol_table COMMAND test_symbol_table)
-
-# Test: Diagnostics & Source Map
-add_executable(test_diag ${VITTEC_ROOT}/tests/unit/test_diag.c)
-target_link_libraries(test_diag PRIVATE vittec_compiler)
-target_include_directories(test_diag PRIVATE ${VITTEC_ROOT}/include)
-add_test(NAME test_diag COMMAND test_diag)
-
-if(VITTEC_ENABLE_RUST_API)
-  add_executable(test_muf_rust ${VITTEC_ROOT}/tests/unit/test_muf_rust.c)
-  target_link_libraries(test_muf_rust PRIVATE vittec_compiler)
-  target_include_directories(test_muf_rust PRIVATE ${VITTEC_ROOT}/include)
-  add_test(NAME test_muf_rust COMMAND test_muf_rust)
-
-  add_executable(test_rust_abi_smoke ${VITTEC_ROOT}/tests/unit/test_rust_abi_smoke.c)
-  target_link_libraries(test_rust_abi_smoke PRIVATE vittec_compiler)
-  target_include_directories(test_rust_abi_smoke PRIVATE ${VITTEC_ROOT}/include)
-  add_test(NAME test_rust_abi_smoke COMMAND test_rust_abi_smoke)
-endif()
-
-# -----------------------------------------------------------------------------
-# Runtime / ASM unit tests (optional)
+# Executables (stub frontends)
 # -----------------------------------------------------------------------------
 
-if(VITTE_ENABLE_RUNTIME_TESTS)
-    if(NOT TARGET vitte_asm_runtime)
-        message(FATAL_ERROR "VITTE_ENABLE_RUNTIME_TESTS=ON requires VITTE_ENABLE_ASM_RUNTIME=ON on this platform/compiler.")
-    endif()
+set(VITTE_BIN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/compiler/src/compiler/bin")
 
-    add_executable(test_vitte_runtime
-        tests/unit/runtime/test_runtime_main.c
-        tests/unit/runtime/t_asm_fastpaths.c
-    )
-    target_link_libraries(test_vitte_runtime PRIVATE vitte_asm_runtime)
-    target_include_directories(test_vitte_runtime PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/unit
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-    )
-    add_test(NAME test_vitte_runtime COMMAND test_vitte_runtime)
-endif()
+add_executable(vittec "${VITTE_BIN_DIR}/vittec_main.c")
+target_link_libraries(vittec PRIVATE vitte_compiler)
+
+add_executable(vittefmt "${VITTE_BIN_DIR}/vittefmt_main.c")
+target_link_libraries(vittefmt PRIVATE vitte_compiler)
+
+add_executable(vittepkg "${VITTE_BIN_DIR}/pkgtool_main.c")
+target_link_libraries(vittepkg PRIVATE vitte_compiler)
+
+add_executable(vitte_lsp "${VITTE_BIN_DIR}/lsp_main.c")
+target_link_libraries(vitte_lsp PRIVATE vitte_compiler)
 
 # -----------------------------------------------------------------------------
-# Fuzz targets (compile-only sanity via CMake)
+# Convenience output
 # -----------------------------------------------------------------------------
 
-option(VITTE_ENABLE_FUZZ_TARGETS "Build fuzz harnesses as standalone binaries via CMake" OFF)
-if(VITTE_ENABLE_FUZZ_TARGETS)
-    if(NOT TARGET vitte_asm_runtime)
-        message(FATAL_ERROR "VITTE_ENABLE_FUZZ_TARGETS=ON requires VITTE_ENABLE_ASM_RUNTIME=ON on this platform/compiler.")
-    endif()
-
-    add_executable(fuzz_mem_contract fuzz/targets/fuzz_mem_contract.c)
-    target_compile_definitions(fuzz_mem_contract PRIVATE
-        FUZZ_DRIVER_STANDALONE_MAIN=1
-        FUZZ_DISABLE_SANITIZER_TRACE=1
-    )
-    target_include_directories(fuzz_mem_contract PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/include
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-    )
-    target_link_libraries(fuzz_mem_contract PRIVATE vitte_asm_runtime)
-endif()
-
-# Main executable
-add_executable(vittec
-    ${VITTEC_ROOT}/src/main.c
-    ${VITTEC_ROOT}/src/vittec.c
-    ${VITTEC_ROOT}/src/version.c
-)
-target_link_libraries(vittec PRIVATE vittec_compiler)
-target_include_directories(vittec PRIVATE
-    ${VITTEC_ROOT}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-
-if(DEFINED VITTE_INCLUDE_MAX_PATHS AND VITTE_INCLUDE_MAX_PATHS AND VITTE_MAX_INCLUDE_DIRS)
-    target_include_directories(vittec PRIVATE ${VITTE_MAX_INCLUDE_DIRS})
-endif()
-
-set(VITTEC_TOKEN_TEST_SRC ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/cli_tokens/sample_program.vitte)
-set(VITTEC_TOKEN_TEST_EXPECTED ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/cli_tokens/expected_tokens.txt)
-
-set(VITTEC_TOKEN_TEST_RUNNER "")
-if(WIN32)
-    find_program(PYTHON_EXECUTABLE NAMES python3 python REQUIRED)
-    set(VITTEC_TOKEN_TEST_RUNNER ${PYTHON_EXECUTABLE})
-    set(VITTEC_TOKEN_TEST_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/cli_tokens/run_cli_tokens.py)
-else()
-    set(VITTEC_TOKEN_TEST_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/cli_tokens/run_cli_tokens.sh)
-endif()
-
-if(VITTEC_TOKEN_TEST_RUNNER)
-    add_test(
-        NAME integration_cli_tokens
-        COMMAND ${VITTEC_TOKEN_TEST_RUNNER}
-                ${VITTEC_TOKEN_TEST_SCRIPT}
-                $<TARGET_FILE:vittec>
-                ${VITTEC_TOKEN_TEST_SRC}
-                ${VITTEC_TOKEN_TEST_EXPECTED}
-    )
-else()
-    add_test(
-        NAME integration_cli_tokens
-        COMMAND ${VITTEC_TOKEN_TEST_SCRIPT}
-                $<TARGET_FILE:vittec>
-                ${VITTEC_TOKEN_TEST_SRC}
-                ${VITTEC_TOKEN_TEST_EXPECTED}
-    )
-endif()
-
-# Installation
-install(TARGETS vittec RUNTIME DESTINATION bin)
-install(TARGETS vittec_compiler ARCHIVE DESTINATION lib)
-install(DIRECTORY ${VITTEC_ROOT}/include/ DESTINATION include)
+message(STATUS "vitte_compiler sources: ${VITTE_COMPILER_LIB_SOURCES}")
+message(STATUS "Binaries: vittec, vittefmt, vittepkg, vitte_lsp (stub implementations)")

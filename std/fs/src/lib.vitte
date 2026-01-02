@@ -1,0 +1,905 @@
+
+
+# -----------------------------------------------------------------------------
+# std/fs
+# -----------------------------------------------------------------------------
+# Bootstrap-friendly filesystem primitives.
+#
+# Scope:
+# - pure data types for paths and metadata
+# - minimal, portable operations via runtime hooks:
+#   - open/read/write/close
+#   - stat
+#   - mkdir/rmdir/unlink/rename
+# - path manipulation utilities (join, normalize, split)
+# - small buffering helpers
+#
+# Constraints:
+# - no async
+# - no IO printing (use std.fmt/std.cli elsewhere)
+# - blocks use `.end` only
+# - stage0/runtime provides syscalls; here we define stable API
+# -----------------------------------------------------------------------------
+
+module std.fs
+
+use std.collections
+
+# -----------------------------------------------------------------------------
+# Local prelude (types)
+# -----------------------------------------------------------------------------
+
+type Bool = bool
+
+type U8   = u8
+type U16  = u16
+type U32  = u32
+type U64  = u64
+
+type I32  = i32
+type I64  = i64
+
+type USize = usize
+
+type Ptr[T] = ptr[T]
+
+type Str = str
+
+# -----------------------------------------------------------------------------
+# Errors
+# -----------------------------------------------------------------------------
+
+type FsError enum
+  Ok
+  NotFound
+  Permission
+  AlreadyExists
+  NotDir
+  IsDir
+  Invalid
+  Io
+  NoSpace
+  Busy
+  Unsupported
+  OutOfMemory
+.end
+
+# -----------------------------------------------------------------------------
+# Flags / modes
+# -----------------------------------------------------------------------------
+
+type OpenMode enum
+  Read
+  Write
+  ReadWrite
+  Append
+.end
+
+# Portable create/truncate flags. Runtime may ignore unsupported ones.
+
+type OpenFlags struct
+  create: Bool
+  truncate: Bool
+  exclusive: Bool
+.end
+
+fn openflags_default() -> OpenFlags
+  let f: OpenFlags
+  set f.create = false
+  set f.truncate = false
+  set f.exclusive = false
+  ret f
+.end
+
+# -----------------------------------------------------------------------------
+# File handle
+# -----------------------------------------------------------------------------
+
+type File struct
+  fd: I32
+.end
+
+fn file_invalid() -> File
+  let f: File
+  set f.fd = -1
+  ret f
+.end
+
+fn file_is_valid(f: File) -> Bool
+  ret f.fd >= 0
+.end
+
+# -----------------------------------------------------------------------------
+# Path
+# -----------------------------------------------------------------------------
+
+# Path is stored as UTF-8 bytes in Vec[U8] without trailing NUL.
+
+type Path struct
+  bytes: Vec[U8]
+.end
+
+fn path_new() -> Path
+  let p: Path
+  set p.bytes = vec_new[U8]()
+  ret p
+.end
+
+fn path_from_bytes(b: &Vec[U8]) -> (Bool, FsError, Path)
+  let p = path_new()
+
+  let ok: Bool
+  let e: ColError
+  (ok, e) = vec_reserve_bytes[U8](&p.bytes, 1, b.len)
+  if !ok
+    ret (false, FsError::OutOfMemory, p)
+  .end
+
+  let i: USize
+  set i = 0
+  let bp = (Ptr[U8])b.data
+  loop
+    if i >= b.len
+      break
+    .end
+    (ok, e) = vec_push[U8](&p.bytes, 1, *(bp + i))
+    if !ok
+      do vec_drop[U8](&p.bytes, 1)
+      ret (false, FsError::OutOfMemory, p)
+    .end
+    set i = i + 1
+  .end
+
+  ret (true, FsError::Ok, p)
+.end
+
+fn path_clear(p: &Path)
+  do vec_clear[U8](&p.bytes)
+.end
+
+fn path_len(p: &Path) -> USize
+  ret p.bytes.len
+.end
+
+fn path_bytes(p: &Path) -> &Vec[U8]
+  ret &p.bytes
+.end
+
+fn path_push_byte(p: &Path, b: U8) -> (Bool, FsError)
+  let ok: Bool
+  let e: ColError
+  (ok, e) = vec_push[U8](&p.bytes, 1, b)
+  if ok
+    ret (true, FsError::Ok)
+  .end
+  ret (false, FsError::OutOfMemory)
+.end
+
+fn path_set(p: &Path, b: &Vec[U8]) -> (Bool, FsError)
+  do vec_clear[U8](&p.bytes)
+
+  let ok: Bool
+  let e: ColError
+  (ok, e) = vec_reserve_bytes[U8](&p.bytes, 1, b.len)
+  if !ok
+    ret (false, FsError::OutOfMemory)
+  .end
+
+  let i: USize
+  set i = 0
+  let bp = (Ptr[U8])b.data
+  loop
+    if i >= b.len
+      break
+    .end
+    (ok, e) = vec_push[U8](&p.bytes, 1, *(bp + i))
+    if !ok
+      ret (false, FsError::OutOfMemory)
+    .end
+    set i = i + 1
+  .end
+
+  ret (true, FsError::Ok)
+.end
+
+# Detect separator. Runtime can define OS separator; default '/'.
+fn path_sep() -> U8
+  ret (U8)'/'
+.end
+
+fn path_is_abs(p: &Path) -> Bool
+  if p.bytes.len == 0
+    ret false
+  .end
+  let c0 = *((Ptr[U8])p.bytes.data + 0)
+  ret c0 == path_sep()
+.end
+
+fn path_has_trailing_sep(p: &Path) -> Bool
+  if p.bytes.len == 0
+    ret false
+  .end
+  let last = *((Ptr[U8])p.bytes.data + (p.bytes.len - 1))
+  ret last == path_sep()
+.end
+
+fn path_strip_trailing_sep(p: &Path)
+  # keep root '/' intact
+  while p.bytes.len > 1
+    let last = *((Ptr[U8])p.bytes.data + (p.bytes.len - 1))
+    if last != path_sep()
+      break
+    .end
+    do vec_pop[U8](&p.bytes, 1)
+  .end
+.end
+
+fn path_join(a: &Path, b: &Path, out: &Path) -> (Bool, FsError)
+  do path_clear(out)
+
+  let ok: Bool
+  let e: ColError
+
+  # if b is absolute, result is b
+  if path_is_abs(b)
+    ret path_set(out, &b.bytes)
+  .end
+
+  # reserve
+  let need = a.bytes.len + 1 + b.bytes.len
+  (ok, e) = vec_reserve_bytes[U8](&out.bytes, 1, need)
+  if !ok
+    ret (false, FsError::OutOfMemory)
+  .end
+
+  # copy a
+  let ap = (Ptr[U8])a.bytes.data
+  let i: USize
+  set i = 0
+  loop
+    if i >= a.bytes.len
+      break
+    .end
+    (ok, e) = vec_push[U8](&out.bytes, 1, *(ap + i))
+    if !ok
+      ret (false, FsError::OutOfMemory)
+    .end
+    set i = i + 1
+  .end
+
+  # separator if needed
+  if out.bytes.len > 0
+    let last = *((Ptr[U8])out.bytes.data + (out.bytes.len - 1))
+    if last != path_sep()
+      (ok, e) = vec_push[U8](&out.bytes, 1, path_sep())
+      if !ok
+        ret (false, FsError::OutOfMemory)
+      .end
+    .end
+  .end
+
+  # copy b
+  let bp = (Ptr[U8])b.bytes.data
+  set i = 0
+  loop
+    if i >= b.bytes.len
+      break
+    .end
+    (ok, e) = vec_push[U8](&out.bytes, 1, *(bp + i))
+    if !ok
+      ret (false, FsError::OutOfMemory)
+    .end
+    set i = i + 1
+  .end
+
+  ret (true, FsError::Ok)
+.end
+
+# Split path into (dir, base) like POSIX.
+fn path_split(p: &Path, dir: &Path, base: &Path)
+  do path_clear(dir)
+  do path_clear(base)
+
+  if p.bytes.len == 0
+    ret
+  .end
+
+  let sep = path_sep()
+  let i: I64
+  set i = (I64)p.bytes.len - 1
+  let pp = (Ptr[U8])p.bytes.data
+
+  # skip trailing seps
+  while i > 0 && *(pp + (USize)i) == sep
+    set i = i - 1
+  .end
+
+  # find last sep
+  while i >= 0 && *(pp + (USize)i) != sep
+    set i = i - 1
+  .end
+
+  if i < 0
+    # no sep: dir="", base=p
+    do path_set(base, &p.bytes)
+    ret
+  .end
+
+  # dir = p[0..i] (inclusive sep if root)
+  let dlen = (USize)i
+  if dlen == 0
+    # root '/'
+    do path_push_byte(dir, sep)
+  else
+    let ok: Bool
+    let e: ColError
+    (ok, e) = vec_reserve_bytes[U8](&dir.bytes, 1, dlen)
+    if ok
+      let k: USize
+      set k = 0
+      loop
+        if k >= dlen
+          break
+        .end
+        (ok, e) = vec_push[U8](&dir.bytes, 1, *(pp + k))
+        if !ok
+          break
+        .end
+        set k = k + 1
+      .end
+    .end
+  .end
+
+  # base = p[i+1..]
+  let blen = p.bytes.len - ((USize)i + 1)
+  if blen > 0
+    let ok2: Bool
+    let e2: ColError
+    (ok2, e2) = vec_reserve_bytes[U8](&base.bytes, 1, blen)
+    if ok2
+      let k2: USize
+      set k2 = 0
+      loop
+        if k2 >= blen
+          break
+        .end
+        (ok2, e2) = vec_push[U8](&base.bytes, 1, *(pp + (USize)i + 1 + k2))
+        if !ok2
+          break
+        .end
+        set k2 = k2 + 1
+      .end
+    .end
+  .end
+.end
+
+# Normalize: collapse multiple '/', remove './', resolve '..' (best-effort, no FS).
+fn path_normalize(p: &Path, out: &Path) -> (Bool, FsError)
+  do path_clear(out)
+
+  let sep = path_sep()
+  let ok: Bool
+  let e: ColError
+
+  # components stack as ranges stored in Vec[USize] pairs: [start,len,...]
+  let stack = vec_new[USize]()
+  (ok, e) = vec_reserve_bytes[USize](&stack, 8, (p.bytes.len / 2) + 2)
+  if !ok
+    ret (false, FsError::OutOfMemory)
+  .end
+
+  let abs = path_is_abs(p)
+
+  let pp = (Ptr[U8])p.bytes.data
+  let i: USize
+  set i = 0
+
+  # skip leading seps
+  while i < p.bytes.len && *(pp + i) == sep
+    set i = i + 1
+  .end
+
+  while i <= p.bytes.len
+    # read component [i..j)
+    let j: USize
+    set j = i
+    while j < p.bytes.len && *(pp + j) != sep
+      set j = j + 1
+    .end
+
+    let clen = j - i
+
+    if clen == 0
+      # end or repeated sep
+    elif clen == 1 && *(pp + i) == (U8)'.'
+      # '.' skip
+    elif clen == 2 && *(pp + i) == (U8)'.' && *(pp + i + 1) == (U8)'.'
+      # '..' pop if possible
+      if stack.len >= 2
+        do vec_pop[USize](&stack, 8)
+        do vec_pop[USize](&stack, 8)
+      else
+        # keep leading '..' for relative
+        if !abs
+          (ok, e) = vec_push[USize](&stack, 8, i)
+          if ok
+            (ok, e) = vec_push[USize](&stack, 8, clen)
+          .end
+          if !ok
+            do vec_drop[USize](&stack, 8)
+            ret (false, FsError::OutOfMemory)
+          .end
+        .end
+      .end
+    else
+      (ok, e) = vec_push[USize](&stack, 8, i)
+      if ok
+        (ok, e) = vec_push[USize](&stack, 8, clen)
+      .end
+      if !ok
+        do vec_drop[USize](&stack, 8)
+        ret (false, FsError::OutOfMemory)
+      .end
+    .end
+
+    # skip seps
+    set i = j
+    while i < p.bytes.len && *(pp + i) == sep
+      set i = i + 1
+    .end
+
+    if i >= p.bytes.len
+      break
+    .end
+  .end
+
+  # build output
+  if abs
+    (ok, e) = vec_push[U8](&out.bytes, 1, sep)
+    if !ok
+      do vec_drop[USize](&stack, 8)
+      ret (false, FsError::OutOfMemory)
+    .end
+  .end
+
+  let k: USize
+  set k = 0
+  while k + 1 < stack.len
+    let st: USize
+    let ln: USize
+    set st = *((Ptr[USize])stack.data + k)
+    set ln = *((Ptr[USize])stack.data + k + 1)
+
+    # add sep if needed
+    if out.bytes.len > 0
+      let last = *((Ptr[U8])out.bytes.data + (out.bytes.len - 1))
+      if last != sep
+        (ok, e) = vec_push[U8](&out.bytes, 1, sep)
+        if !ok
+          do vec_drop[USize](&stack, 8)
+          ret (false, FsError::OutOfMemory)
+        .end
+      .end
+    .end
+
+    # copy component
+    let t: USize
+    set t = 0
+    while t < ln
+      (ok, e) = vec_push[U8](&out.bytes, 1, *(pp + st + t))
+      if !ok
+        do vec_drop[USize](&stack, 8)
+        ret (false, FsError::OutOfMemory)
+      .end
+      set t = t + 1
+    .end
+
+    set k = k + 2
+  .end
+
+  if out.bytes.len == 0
+    if abs
+      (ok, e) = vec_push[U8](&out.bytes, 1, sep)
+      if !ok
+        do vec_drop[USize](&stack, 8)
+        ret (false, FsError::OutOfMemory)
+      .end
+    else
+      (ok, e) = vec_push[U8](&out.bytes, 1, (U8)'.')
+      if !ok
+        do vec_drop[USize](&stack, 8)
+        ret (false, FsError::OutOfMemory)
+      .end
+    .end
+  .end
+
+  do vec_drop[USize](&stack, 8)
+  ret (true, FsError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# Metadata
+# -----------------------------------------------------------------------------
+
+type FileType enum
+  Regular
+  Directory
+  Symlink
+  Other
+.end
+
+# Portable subset; runtime fills fields.
+
+type Metadata struct
+  kind: FileType
+  size: U64
+  mtime_sec: I64
+.end
+
+fn metadata_default() -> Metadata
+  let m: Metadata
+  set m.kind = FileType::Other
+  set m.size = 0
+  set m.mtime_sec = 0
+  ret m
+.end
+
+# -----------------------------------------------------------------------------
+# Runtime syscall surface (to be implemented by platform)
+# -----------------------------------------------------------------------------
+
+# open returns fd>=0 or -1
+fn rt_fs_open(path_ptr: Ptr[U8], path_len: USize, mode: OpenMode, flags: OpenFlags) -> I32
+  ret -1
+.end
+
+fn rt_fs_close(fd: I32) -> I32
+  ret -1
+.end
+
+fn rt_fs_read(fd: I32, dst: Ptr[U8], len: USize) -> I64
+  ret -1
+.end
+
+fn rt_fs_write(fd: I32, src: Ptr[U8], len: USize) -> I64
+  ret -1
+.end
+
+fn rt_fs_stat(path_ptr: Ptr[U8], path_len: USize, out_meta: Ptr[Metadata]) -> I32
+  ret -1
+.end
+
+fn rt_fs_mkdir(path_ptr: Ptr[U8], path_len: USize) -> I32
+  ret -1
+.end
+
+fn rt_fs_rmdir(path_ptr: Ptr[U8], path_len: USize) -> I32
+  ret -1
+.end
+
+fn rt_fs_unlink(path_ptr: Ptr[U8], path_len: USize) -> I32
+  ret -1
+.end
+
+fn rt_fs_rename(old_ptr: Ptr[U8], old_len: USize, new_ptr: Ptr[U8], new_len: USize) -> I32
+  ret -1
+.end
+
+# -----------------------------------------------------------------------------
+# Error mapping (portable)
+# -----------------------------------------------------------------------------
+
+# Known runtime errno mapping can be plugged here. For bootstrap we treat -1 as Io.
+fn map_rt_rc(rc: I32) -> FsError
+  if rc == 0
+    ret FsError::Ok
+  .end
+  ret FsError::Io
+.end
+
+# -----------------------------------------------------------------------------
+# High-level API
+# -----------------------------------------------------------------------------
+
+fn fs_open(path: &Path, mode: OpenMode, flags: OpenFlags) -> (Bool, FsError, File)
+  let f = file_invalid()
+
+  if path.bytes.len == 0
+    ret (false, FsError::Invalid, f)
+  .end
+
+  let fd = rt_fs_open((Ptr[U8])path.bytes.data, path.bytes.len, mode, flags)
+  if fd < 0
+    ret (false, FsError::Io, f)
+  .end
+
+  set f.fd = fd
+  ret (true, FsError::Ok, f)
+.end
+
+fn fs_close(f: &File) -> (Bool, FsError)
+  if f.fd < 0
+    ret (true, FsError::Ok)
+  .end
+  let rc = rt_fs_close(f.fd)
+  let e = map_rt_rc(rc)
+  if e != FsError::Ok
+    ret (false, e)
+  .end
+  ret (true, FsError::Ok)
+.end
+
+fn fs_read(f: &File, out: &Vec[U8], max_bytes: USize) -> (Bool, FsError, USize)
+  do vec_clear[U8](out)
+
+  if f.fd < 0
+    ret (false, FsError::Invalid, 0)
+  .end
+
+  let ok: Bool
+  let e: ColError
+  (ok, e) = vec_reserve_bytes[U8](out, 1, max_bytes)
+  if !ok
+    ret (false, FsError::OutOfMemory, 0)
+  .end
+
+  # read into vec by pushing bytes
+  # runtime reads into temp buffer for simplicity
+  let tmp = vec_new[U8]()
+  (ok, e) = vec_reserve_bytes[U8](&tmp, 1, max_bytes)
+  if !ok
+    ret (false, FsError::OutOfMemory, 0)
+  .end
+  # ensure tmp.len == max_bytes by pushing zeros
+  let i: USize
+  set i = 0
+  while i < max_bytes
+    (ok, e) = vec_push[U8](&tmp, 1, 0)
+    if !ok
+      do vec_drop[U8](&tmp, 1)
+      ret (false, FsError::OutOfMemory, 0)
+    .end
+    set i = i + 1
+  .end
+
+  let n = rt_fs_read(f.fd, (Ptr[U8])tmp.data, max_bytes)
+  if n < 0
+    do vec_drop[U8](&tmp, 1)
+    ret (false, FsError::Io, 0)
+  .end
+
+  # copy first n bytes
+  let j: USize
+  set j = 0
+  while j < (USize)n
+    (ok, e) = vec_push[U8](out, 1, *((Ptr[U8])tmp.data + j))
+    if !ok
+      do vec_drop[U8](&tmp, 1)
+      ret (false, FsError::OutOfMemory, 0)
+    .end
+    set j = j + 1
+  .end
+
+  do vec_drop[U8](&tmp, 1)
+  ret (true, FsError::Ok, (USize)n)
+.end
+
+fn fs_write(f: &File, data: &Vec[U8]) -> (Bool, FsError, USize)
+  if f.fd < 0
+    ret (false, FsError::Invalid, 0)
+  .end
+
+  if data.len == 0
+    ret (true, FsError::Ok, 0)
+  .end
+
+  let n = rt_fs_write(f.fd, (Ptr[U8])data.data, data.len)
+  if n < 0
+    ret (false, FsError::Io, 0)
+  .end
+  ret (true, FsError::Ok, (USize)n)
+.end
+
+fn fs_stat(path: &Path) -> (Bool, FsError, Metadata)
+  let m = metadata_default()
+
+  if path.bytes.len == 0
+    ret (false, FsError::Invalid, m)
+  .end
+
+  let rc = rt_fs_stat((Ptr[U8])path.bytes.data, path.bytes.len, &m)
+  let e = map_rt_rc(rc)
+  if e != FsError::Ok
+    ret (false, e, m)
+  .end
+
+  ret (true, FsError::Ok, m)
+.end
+
+fn fs_mkdir(path: &Path) -> (Bool, FsError)
+  if path.bytes.len == 0
+    ret (false, FsError::Invalid)
+  .end
+  let rc = rt_fs_mkdir((Ptr[U8])path.bytes.data, path.bytes.len)
+  let e = map_rt_rc(rc)
+  if e != FsError::Ok
+    ret (false, e)
+  .end
+  ret (true, FsError::Ok)
+.end
+
+fn fs_rmdir(path: &Path) -> (Bool, FsError)
+  if path.bytes.len == 0
+    ret (false, FsError::Invalid)
+  .end
+  let rc = rt_fs_rmdir((Ptr[U8])path.bytes.data, path.bytes.len)
+  let e = map_rt_rc(rc)
+  if e != FsError::Ok
+    ret (false, e)
+  .end
+  ret (true, FsError::Ok)
+.end
+
+fn fs_unlink(path: &Path) -> (Bool, FsError)
+  if path.bytes.len == 0
+    ret (false, FsError::Invalid)
+  .end
+  let rc = rt_fs_unlink((Ptr[U8])path.bytes.data, path.bytes.len)
+  let e = map_rt_rc(rc)
+  if e != FsError::Ok
+    ret (false, e)
+  .end
+  ret (true, FsError::Ok)
+.end
+
+fn fs_rename(oldp: &Path, newp: &Path) -> (Bool, FsError)
+  if oldp.bytes.len == 0 || newp.bytes.len == 0
+    ret (false, FsError::Invalid)
+  .end
+  let rc = rt_fs_rename((Ptr[U8])oldp.bytes.data, oldp.bytes.len, (Ptr[U8])newp.bytes.data, newp.bytes.len)
+  let e = map_rt_rc(rc)
+  if e != FsError::Ok
+    ret (false, e)
+  .end
+  ret (true, FsError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# Buffered copy utility (in-memory)
+# -----------------------------------------------------------------------------
+
+fn fs_copy_file(src: &Path, dst: &Path, buf_size: USize) -> (Bool, FsError)
+  let flags = openflags_default()
+  set flags.create = true
+  set flags.truncate = true
+
+  let ok: Bool
+  let e: FsError
+  let rf: File
+  let wf: File
+
+  (ok, e, rf) = fs_open(src, OpenMode::Read, openflags_default())
+  if !ok
+    ret (false, e)
+  .end
+
+  (ok, e, wf) = fs_open(dst, OpenMode::Write, flags)
+  if !ok
+    do fs_close(&rf)
+    ret (false, e)
+  .end
+
+  let buf = vec_new[U8]()
+
+  loop
+    let n: USize
+    (ok, e, n) = fs_read(&rf, &buf, buf_size)
+    if !ok
+      do fs_close(&rf)
+      do fs_close(&wf)
+      do vec_drop[U8](&buf, 1)
+      ret (false, e)
+    .end
+
+    if n == 0
+      break
+    .end
+
+    let w: USize
+    (ok, e, w) = fs_write(&wf, &buf)
+    if !ok
+      do fs_close(&rf)
+      do fs_close(&wf)
+      do vec_drop[U8](&buf, 1)
+      ret (false, e)
+    .end
+  .end
+
+  do vec_drop[U8](&buf, 1)
+  do fs_close(&rf)
+  do fs_close(&wf)
+
+  ret (true, FsError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# Tests (scenarios)
+# -----------------------------------------------------------------------------
+
+fn panic(msg: Str)
+  ret
+.end
+
+fn assert(cond: Bool, msg: Str)
+  if !cond
+    do panic(msg)
+  .end
+.end
+
+scn test_path_join_split_normalize
+  let ok: Bool
+  let e: FsError
+
+  let a = path_new()
+  let b = path_new()
+  let out = path_new()
+
+  # a="/usr"
+  do path_push_byte(&a, path_sep())
+  do path_push_byte(&a, (U8)'u')
+  do path_push_byte(&a, (U8)'s')
+  do path_push_byte(&a, (U8)'r')
+
+  # b="bin"
+  do path_push_byte(&b, (U8)'b')
+  do path_push_byte(&b, (U8)'i')
+  do path_push_byte(&b, (U8)'n')
+
+  (ok, e) = path_join(&a, &b, &out)
+  do assert(ok, "join")
+
+  # split
+  let dir = path_new()
+  let base = path_new()
+  do path_split(&out, &dir, &base)
+
+  do assert(base.bytes.len == 3, "base len")
+  do assert(*((Ptr[U8])base.bytes.data + 0) == (U8)'b', "base[0]")
+
+  # normalize "/a//b/./c/.." => "/a/b"
+  let p = path_new()
+  do path_push_byte(&p, path_sep())
+  do path_push_byte(&p, (U8)'a')
+  do path_push_byte(&p, path_sep())
+  do path_push_byte(&p, path_sep())
+  do path_push_byte(&p, (U8)'b')
+  do path_push_byte(&p, path_sep())
+  do path_push_byte(&p, (U8)'.')
+  do path_push_byte(&p, path_sep())
+  do path_push_byte(&p, (U8)'c')
+  do path_push_byte(&p, path_sep())
+  do path_push_byte(&p, (U8)'.')
+  do path_push_byte(&p, (U8)'.')
+
+  let norm = path_new()
+  (ok, e) = path_normalize(&p, &norm)
+  do assert(ok, "normalize")
+
+  # expect "/a/b"
+  do assert(norm.bytes.len == 4, "norm len")
+  do assert(*((Ptr[U8])norm.bytes.data + 0) == path_sep(), "norm[0]")
+  do assert(*((Ptr[U8])norm.bytes.data + 1) == (U8)'a', "norm[1]")
+  do assert(*((Ptr[U8])norm.bytes.data + 2) == path_sep(), "norm[2]")
+  do assert(*((Ptr[U8])norm.bytes.data + 3) == (U8)'b', "norm[3]")
+
+  # cleanup
+  do vec_drop[U8](&a.bytes, 1)
+  do vec_drop[U8](&b.bytes, 1)
+  do vec_drop[U8](&out.bytes, 1)
+  do vec_drop[U8](&dir.bytes, 1)
+  do vec_drop[U8](&base.bytes, 1)
+  do vec_drop[U8](&p.bytes, 1)
+  do vec_drop[U8](&norm.bytes, 1)
+.end
+
+# End of std.fs

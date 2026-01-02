@@ -1,0 +1,352 @@
+# -----------------------------------------------------------------------------
+# std/log
+# -----------------------------------------------------------------------------
+# Bootstrap-friendly logging utilities.
+#
+# Key points:
+# - No global singleton: you pass a Logger to calls (pure, testable).
+# - Minimal formatting: fixed prefixes, best-effort stdout printing via std.sys.
+# - Two APIs:
+#     * logger_log_best_effort: ignores sys errors
+#     * logger_log_checked: returns (Bool, LogError)
+#
+# All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.log
+
+use std.runtime
+use std.sys
+
+type Bool = bool
+
+type I32 = i32
+type I64 = i64
+type U32 = u32
+
+type Str = str
+
+type SysError = std.sys::SysError
+
+# -----------------------------------------------------------------------------
+# Error model
+# -----------------------------------------------------------------------------
+
+type LogError enum
+  Ok
+  Invalid
+  OutOfMemory
+  Unsupported
+  Busy
+  Timeout
+  Io
+  Unexpected
+.end
+
+fn log_error_from_sys(e: SysError) -> LogError
+  if e == SysError::Ok
+    ret LogError::Ok
+  .end
+  if e == SysError::Invalid
+    ret LogError::Invalid
+  .end
+  if e == SysError::OutOfMemory
+    ret LogError::OutOfMemory
+  .end
+  if e == SysError::Unsupported
+    ret LogError::Unsupported
+  .end
+  if e == SysError::Busy
+    ret LogError::Busy
+  .end
+  if e == SysError::Timeout
+    ret LogError::Timeout
+  .end
+  if e == SysError::Io
+    ret LogError::Io
+  .end
+  ret LogError::Unexpected
+.end
+
+fn log_error_ok(e: LogError) -> Bool
+  ret e == LogError::Ok
+.end
+
+# -----------------------------------------------------------------------------
+# Log levels
+# -----------------------------------------------------------------------------
+
+type LogLevel enum
+  Debug
+  Info
+  Warn
+  Error
+  Off
+.end
+
+fn log_level_cmp(a: LogLevel, b: LogLevel) -> I32
+  # order: Debug < Info < Warn < Error < Off
+  if a == b
+    ret 0
+  .end
+
+  if a == LogLevel::Debug
+    ret -1
+  .end
+  if b == LogLevel::Debug
+    ret 1
+  .end
+
+  if a == LogLevel::Info
+    ret -1
+  .end
+  if b == LogLevel::Info
+    ret 1
+  .end
+
+  if a == LogLevel::Warn
+    ret -1
+  .end
+  if b == LogLevel::Warn
+    ret 1
+  .end
+
+  if a == LogLevel::Error
+    ret -1
+  .end
+  if b == LogLevel::Error
+    ret 1
+  .end
+
+  # remaining must be Off
+  ret 0
+.end
+
+fn log_level_allows(min_level: LogLevel, level: LogLevel) -> Bool
+  # Off disables all output
+  if min_level == LogLevel::Off
+    ret false
+  .end
+
+  # level Off is never emitted
+  if level == LogLevel::Off
+    ret false
+  .end
+
+  # allowed if level >= min_level
+  ret log_level_cmp(level, min_level) >= 0
+.end
+
+fn log_level_tag(level: LogLevel) -> Str
+  if level == LogLevel::Debug
+    ret "debug"
+  .end
+  if level == LogLevel::Info
+    ret "info"
+  .end
+  if level == LogLevel::Warn
+    ret "warn"
+  .end
+  if level == LogLevel::Error
+    ret "error"
+  .end
+  ret "off"
+.end
+
+# -----------------------------------------------------------------------------
+# Logger
+# -----------------------------------------------------------------------------
+
+type Logger struct
+  min_level: LogLevel
+  enabled: Bool
+.end
+
+fn logger_new(min_level: LogLevel) -> Logger
+  let l: Logger
+  set l.min_level = min_level
+  set l.enabled = true
+  ret l
+.end
+
+fn logger_disabled() -> Logger
+  let l: Logger
+  set l.min_level = LogLevel::Off
+  set l.enabled = false
+  ret l
+.end
+
+fn logger_min_level(l: &Logger) -> LogLevel
+  ret l.min_level
+.end
+
+fn logger_is_enabled(l: &Logger) -> Bool
+  ret l.enabled
+.end
+
+fn logger_set_level(l: &Logger, min_level: LogLevel)
+  set l.min_level = min_level
+.end
+
+fn logger_set_enabled(l: &Logger, enabled: Bool)
+  set l.enabled = enabled
+.end
+
+fn logger_should_emit(l: &Logger, level: LogLevel) -> Bool
+  if !l.enabled
+    ret false
+  .end
+  ret log_level_allows(l.min_level, level)
+.end
+
+# -----------------------------------------------------------------------------
+# Printing internals
+# -----------------------------------------------------------------------------
+
+fn _sys_print(s: Str) -> (Bool, LogError)
+  let ok: Bool
+  let se: SysError
+  (ok, se) = std.sys::print_cstr(s)
+  if !ok
+    ret (false, log_error_from_sys(se))
+  .end
+  ret (true, LogError::Ok)
+.end
+
+fn _sys_println(s: Str) -> (Bool, LogError)
+  let ok: Bool
+  let se: SysError
+  (ok, se) = std.sys::println_cstr(s)
+  if !ok
+    ret (false, log_error_from_sys(se))
+  .end
+  ret (true, LogError::Ok)
+.end
+
+fn _emit_prefix(level: LogLevel) -> (Bool, LogError)
+  let ok: Bool
+  let e: LogError
+
+  (ok, e) = _sys_print("[")
+  if !ok
+    ret (false, e)
+  .end
+
+  (ok, e) = _sys_print(log_level_tag(level))
+  if !ok
+    ret (false, e)
+  .end
+
+  (ok, e) = _sys_print("] ")
+  if !ok
+    ret (false, e)
+  .end
+
+  ret (true, LogError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# Public logging API
+# -----------------------------------------------------------------------------
+
+# Checked: if it prints, it propagates sys errors.
+# If filtered out, it returns (true, Ok) without touching sys.
+fn logger_log_checked(l: &Logger, level: LogLevel, msg: Str) -> (Bool, LogError)
+  if !logger_should_emit(l, level)
+    ret (true, LogError::Ok)
+  .end
+
+  let ok: Bool
+  let e: LogError
+
+  (ok, e) = _emit_prefix(level)
+  if !ok
+    ret (false, e)
+  .end
+
+  (ok, e) = _sys_println(msg)
+  if !ok
+    ret (false, e)
+  .end
+
+  ret (true, LogError::Ok)
+.end
+
+# Best-effort: ignores sys errors.
+fn logger_log_best_effort(l: &Logger, level: LogLevel, msg: Str)
+  let ok: Bool
+  let e: LogError
+  (ok, e) = logger_log_checked(l, level, msg)
+.end
+
+# Convenience wrappers (checked)
+fn logger_debug_checked(l: &Logger, msg: Str) -> (Bool, LogError)
+  ret logger_log_checked(l, LogLevel::Debug, msg)
+.end
+
+fn logger_info_checked(l: &Logger, msg: Str) -> (Bool, LogError)
+  ret logger_log_checked(l, LogLevel::Info, msg)
+.end
+
+fn logger_warn_checked(l: &Logger, msg: Str) -> (Bool, LogError)
+  ret logger_log_checked(l, LogLevel::Warn, msg)
+.end
+
+fn logger_error_checked(l: &Logger, msg: Str) -> (Bool, LogError)
+  ret logger_log_checked(l, LogLevel::Error, msg)
+.end
+
+# Convenience wrappers (best-effort)
+fn logger_debug(l: &Logger, msg: Str)
+  do logger_log_best_effort(l, LogLevel::Debug, msg)
+.end
+
+fn logger_info(l: &Logger, msg: Str)
+  do logger_log_best_effort(l, LogLevel::Info, msg)
+.end
+
+fn logger_warn(l: &Logger, msg: Str)
+  do logger_log_best_effort(l, LogLevel::Warn, msg)
+.end
+
+fn logger_error(l: &Logger, msg: Str)
+  do logger_log_best_effort(l, LogLevel::Error, msg)
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests (scenarios)
+# -----------------------------------------------------------------------------
+
+scn test_log_level_order
+  do std.runtime::assert(log_level_cmp(LogLevel::Debug, LogLevel::Info) < 0, "debug < info")
+  do std.runtime::assert(log_level_cmp(LogLevel::Info, LogLevel::Warn) < 0, "info < warn")
+  do std.runtime::assert(log_level_cmp(LogLevel::Warn, LogLevel::Error) < 0, "warn < error")
+  do std.runtime::assert(log_level_cmp(LogLevel::Error, LogLevel::Off) < 0, "error < off")
+
+  do std.runtime::assert(log_level_allows(LogLevel::Info, LogLevel::Info), "info allows info")
+  do std.runtime::assert(log_level_allows(LogLevel::Info, LogLevel::Warn), "info allows warn")
+  do std.runtime::assert(!log_level_allows(LogLevel::Warn, LogLevel::Info), "warn blocks info")
+  do std.runtime::assert(!log_level_allows(LogLevel::Off, LogLevel::Error), "off blocks all")
+.end
+
+scn test_logger_filtering_no_sys
+  # Ensure tests do not depend on stdout availability:
+  # - Use filters so no sys calls are executed.
+  let l = logger_new(LogLevel::Error)
+
+  let ok: Bool
+  let e: LogError
+
+  (ok, e) = logger_info_checked(&l, "info")
+  do std.runtime::assert(ok && log_error_ok(e), "filtered info ok")
+
+  (ok, e) = logger_warn_checked(&l, "warn")
+  do std.runtime::assert(ok && log_error_ok(e), "filtered warn ok")
+
+  # disable logger => always filtered
+  do logger_set_enabled(&l, false)
+  (ok, e) = logger_error_checked(&l, "error")
+  do std.runtime::assert(ok && log_error_ok(e), "disabled ok")
+.end
+
+# End of std.log

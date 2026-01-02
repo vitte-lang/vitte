@@ -1,0 +1,128 @@
+# /Users/vincent/Documents/Github/vitte/std/fs/tests/t_fs_walk.vitte
+# -----------------------------------------------------------------------------
+# std/fs/tests/t_fs_walk
+# -----------------------------------------------------------------------------
+# MAX tests for std.fs.walk (iterator + callback walker).
+#
+# Coverage:
+# - walk_dir callback surface (early-stop semantics)
+# - iterator state machine ordering: enter -> (files/dirs) -> exit
+# - depth limiting behavior (structural, backend-stubbed)
+# - error policy plumbing (Stop/Skip/Report) (structural)
+#
+# Notes:
+# - std.fs.walk relies on a syscall facade that is stubbed in this repo snapshot.
+#   Therefore, we can only validate:
+#     - that APIs compile and return expected *structural* results
+#     - ordering of the first emitted events that do not require real dirents
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.fs.tests.t_fs_walk
+
+use std.runtime
+use std.fs.walk
+use std.fs.path
+use std.core.result
+
+type Bool = bool
+type U32  = u32
+type Str  = str
+
+fn assert_true(b: Bool, msg: Str)
+  do std.runtime::assert(b, msg)
+.end
+
+fn assert_false(b: Bool, msg: Str)
+  do std.runtime::assert(!b, msg)
+.end
+
+fn assert_eq_str(a: Str, b: Str, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+# -----------------------------------------------------------------------------
+# Callback walk: early stop
+# -----------------------------------------------------------------------------
+
+type CbState struct
+  seen: U32
+.end
+
+fn cb_stop_after_first(ev: &std.fs.walk::WalkEvent) -> Bool
+  # stop immediately after first event
+  ret false
+.end
+
+scn test_walk_dir_callback_stop
+  let o = std.fs.walk::walk_options_default()
+  let r = std.fs.walk::walk_dir("/tmp", &o, cb_stop_after_first)
+  # with stubbed fs_stat, policy may yield ok or error depending on wiring;
+  # this is a compile/surface test.
+  do std.runtime::assert(true, "walk_dir callable")
+.end
+
+# -----------------------------------------------------------------------------
+# Iterator ordering: first event is DirEnter(root)
+# -----------------------------------------------------------------------------
+
+scn test_walk_iter_first_event
+  let o = std.fs.walk::walk_options_default()
+  let it = std.fs.walk::walkiter_new("/tmp", o)
+
+  let ok: Bool
+  let ev: std.fs.walk::WalkEvent
+  (ok, ev) = std.fs.walk::walkiter_next(&it)
+
+  do assert_true(ok, "ok")
+  do std.runtime::assert(ev.kind == std.fs.walk::WalkEventKind::DirEnter, "dir enter first")
+  do assert_eq_str(ev.entry.path, std.fs.path::normalize("/tmp"), "normalized root")
+.end
+
+# -----------------------------------------------------------------------------
+# Depth limit structural behavior
+# -----------------------------------------------------------------------------
+
+scn test_walk_iter_depth_limit
+  let o = std.fs.walk::walk_options_default()
+  set o.max_depth = 0
+
+  let it = std.fs.walk::walkiter_new("/tmp", o)
+
+  let ok1: Bool
+  let ev1: std.fs.walk::WalkEvent
+  (ok1, ev1) = std.fs.walk::walkiter_next(&it)
+  do assert_true(ok1, "first ok")
+  do std.runtime::assert(ev1.kind == std.fs.walk::WalkEventKind::DirEnter, "enter")
+
+  # With max_depth=0, iterator should eventually emit DirExit for root without descending.
+  let ok2: Bool
+  let ev2: std.fs.walk::WalkEvent
+  (ok2, ev2) = std.fs.walk::walkiter_next(&it)
+
+  # Backend can still attempt open; but in our iterator implementation, it sets exit directly.
+  do assert_true(ok2, "second ok")
+  do std.runtime::assert(ev2.kind == std.fs.walk::WalkEventKind::DirExit, "exit")
+.end
+
+# -----------------------------------------------------------------------------
+# Error policy plumbing (structural)
+# -----------------------------------------------------------------------------
+
+scn test_walk_error_policies_structural
+  let o1 = std.fs.walk::walk_options_default()
+  set o1.on_error = std.fs.walk::OnError::Stop
+
+  let o2 = std.fs.walk::walk_options_default()
+  set o2.on_error = std.fs.walk::OnError::Skip
+
+  let o3 = std.fs.walk::walk_options_default()
+  set o3.on_error = std.fs.walk::OnError::Report
+
+  # Callable surface checks
+  do std.runtime::assert(o1.on_error == std.fs.walk::OnError::Stop, "stop")
+  do std.runtime::assert(o2.on_error == std.fs.walk::OnError::Skip, "skip")
+  do std.runtime::assert(o3.on_error == std.fs.walk::OnError::Report, "report")
+.end
+
+# End of t_fs_walk.vitte

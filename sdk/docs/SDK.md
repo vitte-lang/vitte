@@ -182,7 +182,6 @@ VITTE_SYSROOT          # Custom sysroot path
 VITTE_CC               # C compiler override
 VITTE_CFLAGS           # Additional C compiler flags
 VITTE_LDFLAGS          # Additional linker flags
-VITTE_RUST_BACKTRACE   # Rust backtrace for debugging
 ```
 
 ## Tools

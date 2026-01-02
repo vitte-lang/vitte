@@ -1,0 +1,167 @@
+# /Users/vincent/Documents/Github/vitte/std/cli/term/src/raw_mode.vitte
+# -----------------------------------------------------------------------------
+# std/cli/term/raw_mode
+# -----------------------------------------------------------------------------
+# Terminal raw mode interface (platform abstraction).
+#
+# Goals:
+# - Provide a tiny, stable API for enabling/disabling raw mode.
+# - Bootstrap-friendly surface for higher-level line editors.
+# - Defer OS-specific implementation to PAL (platform abstraction layer).
+#
+# Surface:
+# - RawModeGuard: RAII-like handle (explicit close).
+# - raw_mode_enable / raw_mode_disable
+# - raw_mode_is_active (best-effort)
+#
+# Notes:
+# - Actual implementation depends on std.pal.* (termios on Unix, console mode on Windows).
+# - This file provides the public facade and fallback stubs.
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.cli.term.raw_mode
+
+use std.runtime
+
+type Bool = bool
+type I32  = i32
+type Str  = str
+
+# -----------------------------------------------------------------------------
+# PAL bindings (expected)
+# -----------------------------------------------------------------------------
+#
+# The following symbols are expected in the platform layer:
+#
+#   fn pal_term_raw_enable() -> Bool
+#   fn pal_term_raw_disable() -> Bool
+#   fn pal_term_raw_is_active() -> Bool
+#
+# If unavailable during bootstrap, we fall back to safe stubs returning false.
+# -----------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------- 
+# Public guard
+# -----------------------------------------------------------------------------
+
+type RawModeGuard struct
+  active: Bool
+.end
+
+fn guard_none() -> RawModeGuard
+  let g: RawModeGuard
+  set g.active = false
+  ret g
+.end
+
+fn guard_is_active(g: &RawModeGuard) -> Bool
+  ret g.active
+.end
+
+# Explicit close (disable raw mode)
+fn guard_close(g: &RawModeGuard) -> Bool
+  if !g.active
+    ret true
+  .end
+
+  let ok = raw_mode_disable()
+  if ok
+    set g.active = false
+  .end
+  ret ok
+.end
+
+# ----------------------------------------------------------------------------- 
+# Public API
+# -----------------------------------------------------------------------------
+
+# Enable raw mode and return a guard.
+# If enable fails, guard.active=false.
+fn raw_mode_enable() -> RawModeGuard
+  let g = guard_none()
+
+  let ok: Bool
+  set ok = pal_term_raw_enable_safe()
+  if ok
+    set g.active = true
+  .end
+
+  ret g
+.end
+
+# Disable raw mode (idempotent best-effort).
+fn raw_mode_disable() -> Bool
+  ret pal_term_raw_disable_safe()
+.end
+
+# Query active flag (best-effort).
+fn raw_mode_is_active() -> Bool
+  ret pal_term_raw_is_active_safe()
+.end
+
+# ----------------------------------------------------------------------------- 
+# Safe PAL wrappers (stubs by default)
+# -----------------------------------------------------------------------------
+#
+# Replace these with real calls to your PAL layer when available.
+# During bootstrap, they return false so higher-level code can degrade gracefully.
+# -----------------------------------------------------------------------------
+
+fn pal_term_raw_enable_safe() -> Bool
+  # TODO: wire to std.pal.term on supported platforms
+  ret false
+.end
+
+fn pal_term_raw_disable_safe() -> Bool
+  # TODO: wire to std.pal.term on supported platforms
+  ret false
+.end
+
+fn pal_term_raw_is_active_safe() -> Bool
+  # TODO: wire to std.pal.term on supported platforms
+  ret false
+.end
+
+# ----------------------------------------------------------------------------- 
+# Errors (optional)
+# -----------------------------------------------------------------------------
+
+type RawModeError enum
+  Ok
+  Unsupported
+  Failed
+.end
+
+fn raw_mode_enable_ex() -> (Bool, RawModeGuard, RawModeError)
+  let g = raw_mode_enable()
+  if guard_is_active(&g)
+    ret (true, g, RawModeError::Ok)
+  .end
+  ret (false, g, RawModeError::Unsupported)
+.end
+
+fn raw_mode_disable_ex() -> (Bool, RawModeError)
+  let ok = raw_mode_disable()
+  if ok
+    ret (true, RawModeError::Ok)
+  .end
+  ret (false, RawModeError::Unsupported)
+.end
+
+# ----------------------------------------------------------------------------- 
+# Smoke tests (scenarios)
+# -----------------------------------------------------------------------------
+
+scn test_raw_mode_guard
+  let g = raw_mode_enable()
+  # In stub mode, enable is expected to fail (inactive guard)
+  if guard_is_active(&g)
+    let ok = raw_mode_disable()
+    do std.runtime::assert(ok, "disable ok")
+  else
+    do std.runtime::assert(true, "stub ok")
+  .end
+.end
+
+# End of std.cli.term.raw_mode

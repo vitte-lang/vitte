@@ -1,0 +1,81 @@
+mod algo.ds.minheap
+
+type MinHeap
+  keys: [i64]
+  vals: [i64]
+  len:  i64
+.end
+
+fn minheap_new() -> MinHeap
+  let h: MinHeap
+  set h.keys = []
+  set h.vals = []
+  set h.len = 0
+  ret h
+.end
+
+fn minheap_push(h: &mut MinHeap, key: i64, val: i64) -> void
+  do h.keys.push(key)
+  do h.vals.push(val)
+  set h.len = h.len + 1
+  do sift_up(h, h.len - 1)
+.end
+
+fn minheap_pop(h: &mut MinHeap) -> (i64, i64)
+  let k0: i64 = h.keys[0]
+  let v0: i64 = h.vals[0]
+  let last: i64 = h.len - 1
+  set h.keys[0] = h.keys[last]
+  set h.vals[0] = h.vals[last]
+  do h.keys.pop()
+  do h.vals.pop()
+  set h.len = h.len - 1
+  if h.len > 0
+    do sift_down(h, 0)
+  .end
+  ret (k0, v0)
+.end
+
+fn sift_up(h: &mut MinHeap, idx: i64) -> void
+  let i: i64 = idx
+  loop
+    if i <= 0
+      ret
+    .end
+    let p: i64 = (i - 1) / 2
+    if h.keys[p] <= h.keys[i]
+      ret
+    .end
+    do swap(h, p, i)
+    set i = p
+  .end
+.end
+
+fn sift_down(h: &mut MinHeap, idx: i64) -> void
+  let i: i64 = idx
+  loop
+    let l: i64 = 2*i + 1
+    let r: i64 = 2*i + 2
+    if l >= h.len
+      ret
+    .end
+    let m: i64 = l
+    if r < h.len && h.keys[r] < h.keys[l]
+      set m = r
+    .end
+    if h.keys[i] <= h.keys[m]
+      ret
+    .end
+    do swap(h, i, m)
+    set i = m
+  .end
+.end
+
+fn swap(h: &mut MinHeap, a: i64, b: i64) -> void
+  let tk: i64 = h.keys[a]
+  set h.keys[a] = h.keys[b]
+  set h.keys[b] = tk
+  let tv: i64 = h.vals[a]
+  set h.vals[a] = h.vals[b]
+  set h.vals[b] = tv
+.end

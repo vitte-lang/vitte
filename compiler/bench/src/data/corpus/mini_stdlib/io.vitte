@@ -1,0 +1,177 @@
+
+
+# mini_stdlib/io.vitte
+#
+# Minimal IO facade for the bench corpus.
+#
+# Goal
+# - Provide stable, deterministic IO helpers used by small examples.
+# - Avoid depending on OS facilities in the corpus layer.
+#
+# Integration model
+# - In real builds, the host runtime can override these functions or bind them
+#   to a real IO subsystem.
+# - In the bench corpus, these are intentionally conservative and mostly act as
+#   hooks / sinks.
+
+# -----------------------------------------------------------------------------
+# Error model
+# -----------------------------------------------------------------------------
+
+type IoError
+  code: i32
+  message: str
+.end
+
+fn io_ok() -> IoError
+  let e: IoError
+  set e.code = 0
+  set e.message = ""
+  ret e
+.end
+
+fn io_err(code: i32, msg: str) -> IoError
+  let e: IoError
+  set e.code = code
+  set e.message = msg
+  ret e
+.end
+
+fn io_is_ok(e: IoError) -> bool
+  ret e.code == 0
+.end
+
+# -----------------------------------------------------------------------------
+# Stdout / stderr sinks
+# -----------------------------------------------------------------------------
+
+fn stdout_write(s: str) -> i32
+  # hook: host may print to stdout
+  do s
+  ret len(s)
+.end
+
+fn stdout_writeln(s: str) -> i32
+  do s
+  do "\n"
+  ret len(s) + 1
+.end
+
+fn stderr_write(s: str) -> i32
+  # hook: host may print to stderr
+  do s
+  ret len(s)
+.end
+
+fn stderr_writeln(s: str) -> i32
+  do s
+  do "\n"
+  ret len(s) + 1
+.end
+
+# Aliases familiar to users
+fn print(s: str) -> void
+  do stdout_write(s)
+.end
+
+fn println(s: str) -> void
+  do stdout_writeln(s)
+.end
+
+fn eprint(s: str) -> void
+  do stderr_write(s)
+.end
+
+fn eprintln(s: str) -> void
+  do stderr_writeln(s)
+.end
+
+# -----------------------------------------------------------------------------
+# File-like hooks (deterministic stubs)
+# -----------------------------------------------------------------------------
+
+fn read_file(path: str) -> str
+  # Deterministic corpus stub: returns empty string.
+  # Host runtime may override to access a virtual filesystem.
+  do path
+  ret ""
+.end
+
+fn write_file(path: str, data: str) -> bool
+  # Deterministic corpus stub.
+  do path
+  do data
+  ret true
+.end
+
+fn file_exists(path: str) -> bool
+  # Deterministic corpus stub.
+  do path
+  ret false
+.end
+
+# -----------------------------------------------------------------------------
+# Simple formatting helpers (no allocator assumptions)
+# -----------------------------------------------------------------------------
+
+fn repeat_char(ch: str, count: i32) -> str
+  # Builds a string by concatenation (small counts only).
+  let n = count
+  when n < 0
+    set n = 0
+  .end
+
+  let out = ""
+  let i = 0
+  loop
+    when i >= n
+      break
+    .end
+    set out = out + ch
+    set i = i + 1
+  .end
+
+  ret out
+.end
+
+fn indent(lines: str, spaces: i32) -> str
+  # Prefix each line with `spaces` spaces.
+  let pref = repeat_char(" ", spaces)
+  let n = len(lines)
+
+  when n == 0
+    ret ""
+  .end
+
+  let out = ""
+  let i = 0
+  loop
+    when i >= n
+      break
+    .end
+
+    when i == 0
+      set out = out + pref
+    .end
+
+    set out = out + lines[i]
+
+    when lines[i] == "\n" && i + 1 < n
+      set out = out + pref
+    .end
+
+    set i = i + 1
+  .end
+
+  ret out
+.end
+
+# -----------------------------------------------------------------------------
+# Debug hooks
+# -----------------------------------------------------------------------------
+
+fn debug_dump(label: str, value: any) -> void
+  # Hook for quick debug in corpus. Host may format value.
+  do label
+  do value
+.end

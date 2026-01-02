@@ -1,0 +1,39 @@
+mod algo.graph.dijkstra
+
+use algo.graph.graph.Graph
+use algo.ds.minheap.MinHeap
+
+fn dijkstra(g: &Graph, src: i64) -> [i64]
+  let inf: i64 = 0x3fffffffffffffff
+  let dist: [i64] = [inf; g.n]
+  set dist[src] = 0
+
+  let pq: MinHeap = minheap_new()
+  do minheap_push(&mut pq, 0, src)
+
+  loop
+    if pq.len == 0
+      ret dist
+    .end
+    let cur: (i64, i64) = minheap_pop(&mut pq)  # (d,u)
+    let d: i64 = cur.0
+    let u: i64 = cur.1
+    if d != dist[u]
+      continue
+    .end
+
+    let i: i64 = 0
+    loop
+      if i >= g.adj[u].len
+        break
+      .end
+      let v: i64 = g.adj[u][i].to
+      let w: i64 = g.adj[u][i].w
+      if dist[u] + w < dist[v]
+        set dist[v] = dist[u] + w
+        do minheap_push(&mut pq, dist[v], v)
+      .end
+      set i = i + 1
+    .end
+  .end
+.end

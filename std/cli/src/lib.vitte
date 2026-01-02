@@ -1,0 +1,846 @@
+# std/cli — command-line utilities (Vitte)
+#
+# Goals:
+# - Provide a reusable surface for CLI programs: args parsing, commands, flags.
+# - Provide terminal helpers: ANSI wrappers, prompt helpers, progress, tty sizing.
+# - Keep the API dependency-light; low-level TTY/OS calls are stubs to be wired
+#   to runtime/pal.
+#
+# Conventions:
+# - No braces; blocks end with `.end`.
+# - Container assumptions: Vec, Map/Dict (or replace with your collections).
+# - String ops are provided as stubs when std.string isn't wired.
+
+mod std.cli
+
+# -----------------------------------------------------------------------------
+# Diagnostics
+# -----------------------------------------------------------------------------
+
+fn _panic(msg: str)
+  say "panic: "
+  say msg
+  ret
+.end
+
+fn assert(cond: bool, msg: str)
+  if cond
+    ret
+  .end
+  _panic(msg)
+.end
+
+# -----------------------------------------------------------------------------
+# Result / Error
+# -----------------------------------------------------------------------------
+
+type CliError struct
+  code: i32
+  msg: str
+.end
+
+fn cli_error(code: i32, msg: str) -> CliError
+  let e: CliError
+  set e.code = code
+  set e.msg = msg
+  ret e
+.end
+
+# A minimal ResultBool (success + optional message)
+
+type CliStatus struct
+  ok: bool
+  err: CliError
+.end
+
+fn ok_status() -> CliStatus
+  let s: CliStatus
+  set s.ok = true
+  set s.err = cli_error(0, "")
+  ret s
+.end
+
+fn err_status(code: i32, msg: str) -> CliStatus
+  let s: CliStatus
+  set s.ok = false
+  set s.err = cli_error(code, msg)
+  ret s
+.end
+
+# -----------------------------------------------------------------------------
+# String helpers (stubs)
+# -----------------------------------------------------------------------------
+
+fn str_eq(a: str, b: str) -> bool
+  set a = a
+  set b = b
+  ret false
+.end
+
+fn str_starts_with(s: str, p: str) -> bool
+  set s = s
+  set p = p
+  ret false
+.end
+
+fn str_len(s: str) -> usize
+  set s = s
+  ret 0
+.end
+
+fn str_slice(s: str, from: usize, to: usize) -> str
+  set s = s
+  set from = from
+  set to = to
+  ret ""
+.end
+
+fn str_find(s: str, needle: str) -> isize
+  set s = s
+  set needle = needle
+  ret -1
+.end
+
+fn parse_i64(s: str) -> i64
+  set s = s
+  ret 0
+.end
+
+fn parse_u64(s: str) -> u64
+  set s = s
+  ret 0
+.end
+
+fn parse_bool(s: str) -> bool
+  if str_eq(s, "true")
+    ret true
+  .end
+  if str_eq(s, "false")
+    ret false
+  .end
+  ret false
+.end
+
+# -----------------------------------------------------------------------------
+# ANSI helpers (thin facade)
+# -----------------------------------------------------------------------------
+
+# This is a minimal facade; the canonical ANSI implementation is expected to live
+# in std.modules.cli.ansi (or equivalent). Wire these to that module.
+
+fn ansi_reset() -> str
+  ret "\u001b[0m"
+.end
+
+fn ansi_bold() -> str
+  ret "\u001b[1m"
+.end
+
+fn ansi_dim() -> str
+  ret "\u001b[2m"
+.end
+
+fn ansi_underline() -> str
+  ret "\u001b[4m"
+.end
+
+fn ansi_fg_rgb(r: u8, g: u8, b: u8) -> str
+  set r = r
+  set g = g
+  set b = b
+  # TODO: build string "\x1b[38;2;r;g;bm"
+  ret ""
+.end
+
+fn ansi_bg_rgb(r: u8, g: u8, b: u8) -> str
+  set r = r
+  set g = g
+  set b = b
+  ret ""
+.end
+
+fn ansi_strip(s: str) -> str
+  # TODO(std.modules.cli.ansi.strip_ansi)
+  set s = s
+  ret s
+.end
+
+# -----------------------------------------------------------------------------
+# IO / TTY stubs
+# -----------------------------------------------------------------------------
+
+fn stdout_write(s: str)
+  say s
+.end
+
+fn stderr_write(s: str)
+  say s
+.end
+
+fn stdin_read_line() -> str
+  # TODO(runtime): read from stdin
+  ret ""
+.end
+
+fn stdin_read_key() -> i32
+  # TODO(runtime): raw key read (returns keycode)
+  ret 0
+.end
+
+fn tty_isatty() -> bool
+  # TODO(runtime/pal): is stdout a tty?
+  ret false
+.end
+
+type TermSize struct
+  cols: i32
+  rows: i32
+.end
+
+fn term_size() -> TermSize
+  # TODO(runtime/pal)
+  let t: TermSize
+  set t.cols = 0
+  set t.rows = 0
+  ret t
+.end
+
+fn term_enable_raw_mode() -> CliStatus
+  # TODO(runtime/pal)
+  ret ok_status()
+.end
+
+fn term_disable_raw_mode() -> CliStatus
+  # TODO(runtime/pal)
+  ret ok_status()
+.end
+
+# -----------------------------------------------------------------------------
+# Args model
+# -----------------------------------------------------------------------------
+
+# ArgKind: flag (bool), option (takes value), positional
+
+type ArgKind struct
+  v: i32
+.end
+
+fn arg_kind_flag() -> ArgKind
+  let k: ArgKind
+  set k.v = 0
+  ret k
+.end
+
+fn arg_kind_option() -> ArgKind
+  let k: ArgKind
+  set k.v = 1
+  ret k
+.end
+
+fn arg_kind_positional() -> ArgKind
+  let k: ArgKind
+  set k.v = 2
+  ret k
+.end
+
+# Value types
+
+type ValueKind struct
+  v: i32
+.end
+
+fn value_kind_string() -> ValueKind
+  let k: ValueKind
+  set k.v = 0
+  ret k
+.end
+
+fn value_kind_i64() -> ValueKind
+  let k: ValueKind
+  set k.v = 1
+  ret k
+.end
+
+fn value_kind_u64() -> ValueKind
+  let k: ValueKind
+  set k.v = 2
+  ret k
+.end
+
+fn value_kind_bool() -> ValueKind
+  let k: ValueKind
+  set k.v = 3
+  ret k
+.end
+
+# ArgSpec
+
+type ArgSpec struct
+  long: str
+  short: str
+  kind: ArgKind
+  value_kind: ValueKind
+  required: bool
+  multiple: bool
+  default_value: str
+  help: str
+.end
+
+fn arg_spec_make(long: str, short: str, kind: ArgKind, value_kind: ValueKind, required: bool, multiple: bool, default_value: str, help: str) -> ArgSpec
+  let a: ArgSpec
+  set a.long = long
+  set a.short = short
+  set a.kind = kind
+  set a.value_kind = value_kind
+  set a.required = required
+  set a.multiple = multiple
+  set a.default_value = default_value
+  set a.help = help
+  ret a
+.end
+
+# Parsed values are stored as strings (typed accessors parse on demand).
+
+type ArgValues struct
+  # TODO: replace with Map[str, Vec[str]]
+  keys: Vec[str]
+  vals: Vec[Vec[str]]
+.end
+
+fn arg_values_new() -> ArgValues
+  let v: ArgValues
+  set v.keys = Vec[str].new()
+  set v.vals = Vec[Vec[str]].new()
+  ret v
+.end
+
+fn _av_find(v: ArgValues, key: str) -> isize
+  let i = 0
+  while i < v.keys.len()
+    if str_eq(v.keys.get(i), key)
+      ret i as isize
+    .end
+    set i = i + 1
+  .end
+  ret -1
+.end
+
+fn arg_values_push(v: ArgValues, key: str, value: str)
+  let idx = _av_find(v, key)
+  if idx == -1
+    v.keys.push(key)
+    let arr = Vec[str].new()
+    arr.push(value)
+    v.vals.push(arr)
+    ret
+  .end
+
+  let a = v.vals.get(idx as usize)
+  a.push(value)
+.end
+
+fn arg_values_has(v: ArgValues, key: str) -> bool
+  ret _av_find(v, key) != -1
+.end
+
+fn arg_values_get_first(v: ArgValues, key: str) -> str
+  let idx = _av_find(v, key)
+  if idx == -1
+    ret ""
+  .end
+  let a = v.vals.get(idx as usize)
+  if a.len() == 0
+    ret ""
+  .end
+  ret a.get(0)
+.end
+
+fn arg_values_get_all(v: ArgValues, key: str) -> Vec[str]
+  let idx = _av_find(v, key)
+  if idx == -1
+    ret Vec[str].new()
+  .end
+  ret v.vals.get(idx as usize)
+.end
+
+fn arg_get_i64(v: ArgValues, key: str, default_value: i64) -> i64
+  let s = arg_values_get_first(v, key)
+  if s == ""
+    ret default_value
+  .end
+  ret parse_i64(s)
+.end
+
+fn arg_get_u64(v: ArgValues, key: str, default_value: u64) -> u64
+  let s = arg_values_get_first(v, key)
+  if s == ""
+    ret default_value
+  .end
+  ret parse_u64(s)
+.end
+
+fn arg_get_bool(v: ArgValues, key: str, default_value: bool) -> bool
+  # Flag: present => true; absent => default.
+  if arg_values_has(v, key)
+    ret true
+  .end
+  let s = arg_values_get_first(v, key)
+  if s == ""
+    ret default_value
+  .end
+  ret parse_bool(s)
+.end
+
+fn arg_get_str(v: ArgValues, key: str, default_value: str) -> str
+  let s = arg_values_get_first(v, key)
+  if s == ""
+    ret default_value
+  .end
+  ret s
+.end
+
+# -----------------------------------------------------------------------------
+# Parser
+# -----------------------------------------------------------------------------
+
+type Parser struct
+  name: str
+  version: str
+  about: str
+  specs: Vec[ArgSpec]
+  positionals: Vec[ArgSpec]
+.end
+
+fn parser_new(name: str) -> Parser
+  let p: Parser
+  set p.name = name
+  set p.version = ""
+  set p.about = ""
+  set p.specs = Vec[ArgSpec].new()
+  set p.positionals = Vec[ArgSpec].new()
+  ret p
+.end
+
+fn parser_version(p: Parser, v: str)
+  set p.version = v
+.end
+
+fn parser_about(p: Parser, s: str)
+  set p.about = s
+.end
+
+fn parser_add_flag(p: Parser, long: str, short: str, help: str)
+  p.specs.push(arg_spec_make(long, short, arg_kind_flag(), value_kind_bool(), false, false, "", help))
+.end
+
+fn parser_add_option(p: Parser, long: str, short: str, value_kind: ValueKind, required: bool, default_value: str, help: str)
+  p.specs.push(arg_spec_make(long, short, arg_kind_option(), value_kind, required, false, default_value, help))
+.end
+
+fn parser_add_positional(p: Parser, name: str, value_kind: ValueKind, required: bool, multiple: bool, help: str)
+  p.positionals.push(arg_spec_make(name, "", arg_kind_positional(), value_kind, required, multiple, "", help))
+.end
+
+fn _spec_match_long(a: ArgSpec, tok: str) -> bool
+  if a.long == ""
+    ret false
+  .end
+  ret str_eq(tok, "--" + a.long)
+.end
+
+fn _spec_match_short(a: ArgSpec, tok: str) -> bool
+  if a.short == ""
+    ret false
+  .end
+  ret str_eq(tok, "-" + a.short)
+.end
+
+fn _find_spec(p: Parser, tok: str) -> isize
+  let i = 0
+  while i < p.specs.len()
+    let a = p.specs.get(i)
+    if _spec_match_long(a, tok) or _spec_match_short(a, tok)
+      ret i as isize
+    .end
+    set i = i + 1
+  .end
+  ret -1
+.end
+
+fn parser_help(p: Parser) -> str
+  # TODO(std.fmt): build a proper help string.
+  set p = p
+  ret ""
+.end
+
+fn parser_parse(p: Parser, argv: Vec[str]) -> (CliStatus, ArgValues)
+  let out = arg_values_new()
+
+  # default values for options
+  let di = 0
+  while di < p.specs.len()
+    let s = p.specs.get(di)
+    if s.kind.v == arg_kind_option().v
+      if s.default_value != ""
+        arg_values_push(out, s.long, s.default_value)
+      .end
+    .end
+    set di = di + 1
+  .end
+
+  let pos_index = 0
+  let i = 0
+  while i < argv.len()
+    let tok = argv.get(i)
+
+    if str_eq(tok, "--")
+      # rest are positionals
+      set i = i + 1
+      while i < argv.len()
+        let v = argv.get(i)
+        if pos_index >= p.positionals.len()
+          ret (err_status(2, "too many positional args"), out)
+        .end
+        let ps = p.positionals.get(pos_index)
+        arg_values_push(out, ps.long, v)
+        if not ps.multiple
+          set pos_index = pos_index + 1
+        .end
+        set i = i + 1
+      .end
+      break
+    .end
+
+    if str_starts_with(tok, "--") or str_starts_with(tok, "-")
+      # flag/option
+      let idx = _find_spec(p, tok)
+      if idx == -1
+        ret (err_status(2, "unknown option"), out)
+      .end
+
+      let spec = p.specs.get(idx as usize)
+      if spec.kind.v == arg_kind_flag().v
+        arg_values_push(out, spec.long, "true")
+        set i = i + 1
+        continue
+      .end
+
+      # option expects a value
+      if i + 1 >= argv.len()
+        ret (err_status(2, "missing option value"), out)
+      .end
+
+      let val = argv.get(i + 1)
+      arg_values_push(out, spec.long, val)
+      set i = i + 2
+      continue
+    .end
+
+    # positional (implicit)
+    if pos_index >= p.positionals.len()
+      ret (err_status(2, "too many positional args"), out)
+    .end
+
+    let ps2 = p.positionals.get(pos_index)
+    arg_values_push(out, ps2.long, tok)
+    if not ps2.multiple
+      set pos_index = pos_index + 1
+    .end
+
+    set i = i + 1
+  .end
+
+  # required checks
+  let ri = 0
+  while ri < p.specs.len()
+    let s2 = p.specs.get(ri)
+    if s2.required
+      if not arg_values_has(out, s2.long)
+        ret (err_status(2, "missing required option"), out)
+      .end
+    .end
+    set ri = ri + 1
+  .end
+
+  let rj = 0
+  while rj < p.positionals.len()
+    let psp = p.positionals.get(rj)
+    if psp.required
+      if not arg_values_has(out, psp.long)
+        ret (err_status(2, "missing required positional"), out)
+      .end
+    .end
+    set rj = rj + 1
+  .end
+
+  ret (ok_status(), out)
+.end
+
+# -----------------------------------------------------------------------------
+# Commands (subcommands)
+# -----------------------------------------------------------------------------
+
+# Command handler is encoded as an id; dispatch is runtime-defined.
+
+type Command struct
+  name: str
+  about: str
+  parser: Parser
+  handler_fn: usize
+.end
+
+fn command_make(name: str, about: str, parser: Parser, handler_fn: usize) -> Command
+  let c: Command
+  set c.name = name
+  set c.about = about
+  set c.parser = parser
+  set c.handler_fn = handler_fn
+  ret c
+.end
+
+# App contains a root parser + subcommands
+
+type App struct
+  name: str
+  version: str
+  about: str
+  root: Parser
+  commands: Vec[Command]
+.end
+
+fn app_new(name: str) -> App
+  let a: App
+  set a.name = name
+  set a.version = ""
+  set a.about = ""
+  set a.root = parser_new(name)
+  set a.commands = Vec[Command].new()
+  ret a
+.end
+
+fn app_version(a: App, v: str)
+  set a.version = v
+  parser_version(a.root, v)
+.end
+
+fn app_about(a: App, s: str)
+  set a.about = s
+  parser_about(a.root, s)
+.end
+
+fn app_add_flag(a: App, long: str, short: str, help: str)
+  parser_add_flag(a.root, long, short, help)
+.end
+
+fn app_add_option(a: App, long: str, short: str, value_kind: ValueKind, required: bool, default_value: str, help: str)
+  parser_add_option(a.root, long, short, value_kind, required, default_value, help)
+.end
+
+fn app_add_command(a: App, c: Command)
+  a.commands.push(c)
+.end
+
+fn _find_command(a: App, name: str) -> isize
+  let i = 0
+  while i < a.commands.len()
+    if str_eq(a.commands.get(i).name, name)
+      ret i as isize
+    .end
+    set i = i + 1
+  .end
+  ret -1
+.end
+
+fn call_handler(fn_id: usize, args: ArgValues) -> i32
+  # TODO(runtime): dispatch handler with ArgValues
+  set fn_id = fn_id
+  set args = args
+  ret 0
+.end
+
+fn app_run(a: App, argv: Vec[str]) -> i32
+  # Strategy:
+  # - if first non-option token matches a subcommand, run that parser/handler
+  # - otherwise parse with root parser
+
+  if argv.len() == 0
+    let tup = parser_parse(a.root, argv)
+    if not tup.0.ok
+      stderr_write(tup.0.err.msg)
+      ret tup.0.err.code
+    .end
+    ret 0
+  .end
+
+  # find first token that doesn't start with '-'
+  let k = 0
+  while k < argv.len()
+    let t = argv.get(k)
+    if str_starts_with(t, "-")
+      set k = k + 1
+      continue
+    .end
+
+    let idx = _find_command(a, t)
+    if idx != -1
+      let cmd = a.commands.get(idx as usize)
+      # parse remaining args after command name
+      let rest = Vec[str].new()
+      let j = k + 1
+      while j < argv.len()
+        rest.push(argv.get(j))
+        set j = j + 1
+      .end
+
+      let parsed = parser_parse(cmd.parser, rest)
+      if not parsed.0.ok
+        stderr_write(parsed.0.err.msg)
+        ret parsed.0.err.code
+      .end
+
+      ret call_handler(cmd.handler_fn, parsed.1)
+    .end
+
+    break
+  .end
+
+  let parsed2 = parser_parse(a.root, argv)
+  if not parsed2.0.ok
+    stderr_write(parsed2.0.err.msg)
+    ret parsed2.0.err.code
+  .end
+
+  ret 0
+.end
+
+# -----------------------------------------------------------------------------
+# Prompt helpers
+# -----------------------------------------------------------------------------
+
+fn prompt_line(label: str) -> str
+  stdout_write(label)
+  stdout_write(" ")
+  let s = stdin_read_line()
+  ret s
+.end
+
+fn prompt_confirm(label: str, default_yes: bool) -> bool
+  let suffix = "[y/N]"
+  if default_yes
+    set suffix = "[Y/n]"
+  .end
+
+  let line = prompt_line(label + " " + suffix)
+  if line == ""
+    ret default_yes
+  .end
+
+  # crude normalization
+  if str_eq(line, "y") or str_eq(line, "Y") or str_eq(line, "yes") or str_eq(line, "YES")
+    ret true
+  .end
+  if str_eq(line, "n") or str_eq(line, "N") or str_eq(line, "no") or str_eq(line, "NO")
+    ret false
+  .end
+
+  ret default_yes
+.end
+
+# -----------------------------------------------------------------------------
+# Progress (simple)
+# -----------------------------------------------------------------------------
+
+type Progress struct
+  label: str
+  total: i64
+  current: i64
+  last_cols: i32
+.end
+
+fn progress_new(label: str, total: i64) -> Progress
+  let p: Progress
+  set p.label = label
+  set p.total = total
+  set p.current = 0
+  set p.last_cols = 0
+  ret p
+.end
+
+fn progress_tick(p: Progress, delta: i64)
+  set p.current = p.current + delta
+  progress_render(p)
+.end
+
+fn progress_set(p: Progress, value: i64)
+  set p.current = value
+  progress_render(p)
+.end
+
+fn progress_render(p: Progress)
+  if not tty_isatty()
+    ret
+  .end
+
+  let ts = term_size()
+  let cols = ts.cols
+  if cols <= 0
+    set cols = 80
+  .end
+
+  # TODO: real bar + percent; currently prints a single line.
+  stdout_write("\r")
+  stdout_write(p.label)
+  stdout_write(": ")
+  # placeholders
+  stdout_write("...")
+
+  set p.last_cols = cols
+.end
+
+fn progress_finish(p: Progress)
+  if not tty_isatty()
+    ret
+  .end
+  stdout_write("\n")
+  set p = p
+.end
+
+# -----------------------------------------------------------------------------
+# Self-tests
+# -----------------------------------------------------------------------------
+
+scn test_values
+  let v = arg_values_new()
+  arg_values_push(v, "a", "1")
+  arg_values_push(v, "a", "2")
+  assert(arg_values_has(v, "a"), "has")
+  let f = arg_values_get_first(v, "a")
+  set f = f
+.end
+
+scn test_parser_skeleton
+  let p = parser_new("tool")
+  parser_add_flag(p, "verbose", "v", "verbose")
+  parser_add_option(p, "count", "c", value_kind_i64(), false, "3", "count")
+  parser_add_positional(p, "path", value_kind_string(), true, false, "path")
+
+  let argv = Vec[str].new()
+  argv.push("-v")
+  argv.push("--count")
+  argv.push("10")
+  argv.push("file.txt")
+
+  let tup = parser_parse(p, argv)
+  assert(tup.0.ok, "parse ok")
+  let av = tup.1
+  # until str_eq is implemented, these accessors are structural
+  set av = av
+.end
+
+prog std.cli.selftest
+  do test_values
+  do test_parser_skeleton
+  say "std.cli: selftest done"
+.end
+
+.end

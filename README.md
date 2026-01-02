@@ -298,14 +298,6 @@ Pour construire `src/vitte/*.c` et exécuter les tests unitaires depuis Windows,
 
 > ℹ️ Alternative GCC/MinGW : si tu préfères utiliser `gcc`, décompresse un bundle WinLibs (ex. `C:\Tools\mingw64`) puis configure CMake avec `-DCMAKE_C_COMPILER="C:/Tools/mingw64/bin/gcc.exe"` (et éventuellement `-DCMAKE_RC_COMPILER="C:/Tools/mingw64/bin/windres.exe"`). Les mêmes commandes `cmake --build ... --target vitte_tests` fonctionnent ensuite.
 
-### Windows Rust linking notes
-
-- Both the compiler (`vittec_compiler`) and benchmark (`benchc`) targets link `ntdll` when `WIN32` is set so that the MinGW-style Rust static library can resolve the CRT exports it needs.
-- When building with MinGW we rely on Cargo running on the `stable-x86_64-pc-windows-gnu` toolchain so `libvitte_rust_api.a` matches the GNU ABI that the C build links against (`toolchain/config/targets/windows_x86_64_gnu.toml` describes the target preset).
-
-
----
-
 ## Bench
 
 Le module `bench/` fournit :

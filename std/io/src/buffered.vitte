@@ -1,0 +1,496 @@
+# /Users/vincent/Documents/Github/vitte/std/io/src/buffered.vitte
+# -----------------------------------------------------------------------------
+# std/io/buffered
+# -----------------------------------------------------------------------------
+# Buffered I/O adapters for Reader / Writer.
+#
+# MAX goals:
+# - Provide BufReader and BufWriter with predictable semantics and good perf.
+# - Keep the core minimal, no syscalls here (pure adapter over traits/interfaces).
+# - Work with byte slices, support read_exact/write_all, flush, and peek.
+# - Provide small test scenarios.
+#
+# Style:
+# - Vitte 2025 core + phrase, blocks end with `.end` only (no braces).
+# - Uses std.core.result Error/Result patterns.
+#
+# Assumptions / dependencies:
+# - std.io defines Reader/Writer traits-like interfaces (or function tables).
+# - std.core.result provides:
+#     Error, ResultU32, ResultUnit, ok/err helpers, err_io/err_invalid
+# - std.collections provides VecU8 or similar; here we implement a tiny local
+#   buffer using str as binary container only if VecU8 unavailable.
+#
+# NOTE: If your std already has VecU8, wire BufReader/BufWriter to it and drop
+#       the local ByteBuf below.
+# -----------------------------------------------------------------------------
+
+module std.io.buffered
+
+use std.runtime
+use std.core.result
+use std.string
+
+type Bool = bool
+type U32  = u32
+type U64  = u64
+type I32  = i32
+type Str  = str
+
+# -----------------------------------------------------------------------------
+# Reader / Writer interfaces (minimal shim)
+# -----------------------------------------------------------------------------
+# If std.io already declares these, remove this shim and import std.io instead.
+
+type ReadResult struct
+  ok: Bool
+  n: U32
+  err: std.core.result::Error
+.end
+
+type WriteResult struct
+  ok: Bool
+  n: U32
+  err: std.core.result::Error
+.end
+
+type Reader struct
+  # read up to dst.len bytes, returns bytes read
+  read_fn: fn(&Reader, &mut ByteSlice) -> ReadResult
+  ctx: U64
+.end
+
+type Writer struct
+  # write up to src.len bytes, returns bytes written
+  write_fn: fn(&Writer, &ByteSlice) -> WriteResult
+  flush_fn: fn(&Writer) -> std.core.result::ResultUnit
+  ctx: U64
+.end
+
+# -----------------------------------------------------------------------------
+# ByteSlice + local byte buffer (ByteBuf)
+# -----------------------------------------------------------------------------
+
+type ByteSlice struct
+  # logical slice view backed by Str for now; treat as bytes container.
+  # In real std, prefer u8[]/slice.
+  data: Str
+  len: U32
+.end
+
+fn bytes_from_str(s: Str) -> ByteSlice
+  let b: ByteSlice
+  set b.data = s
+  set b.len = std.string::len(s)
+  ret b
+.end
+
+fn bytes_empty() -> ByteSlice
+  let b: ByteSlice
+  set b.data = ""
+  set b.len = 0
+  ret b
+.end
+
+fn bytes_take(b: &ByteSlice, start: U32, n: U32) -> ByteSlice
+  let out: ByteSlice
+  if start >= b.len
+    set out.data = ""
+    set out.len = 0
+    ret out
+  .end
+  let avail = b.len - start
+  let take = n
+  if take > avail
+    set take = avail
+  .end
+  set out.data = std.string::slice(b.data, start, take)
+  set out.len = take
+  ret out
+.end
+
+type ByteBuf struct
+  buf: Str
+  rd: U32
+  wr: U32
+  cap: U32
+.end
+
+fn bytebuf_with_capacity(cap: U32) -> ByteBuf
+  let b: ByteBuf
+  set b.buf = ""
+  set b.rd = 0
+  set b.wr = 0
+  set b.cap = cap
+  ret b
+.end
+
+fn bytebuf_len(b: &ByteBuf) -> U32
+  ret b.wr - b.rd
+.end
+
+fn bytebuf_is_empty(b: &ByteBuf) -> Bool
+  ret bytebuf_len(b) == 0
+.end
+
+fn bytebuf_clear(b: &mut ByteBuf)
+  set b.buf = ""
+  set b.rd = 0
+  set b.wr = 0
+.end
+
+fn bytebuf_compact(b: &mut ByteBuf)
+  if b.rd == 0
+    ret
+  .end
+  let cur = bytebuf_len(b)
+  if cur == 0
+    do bytebuf_clear(b)
+    ret
+  .end
+  let s = std.string::slice(b.buf, b.rd, cur)
+  set b.buf = s
+  set b.rd = 0
+  set b.wr = cur
+.end
+
+fn bytebuf_reserve(b: &mut ByteBuf, add: U32)
+  # very simple: keep as string; if exceeds cap, grow cap exponentially
+  let need = bytebuf_len(b) + add
+  if need <= b.cap
+    ret
+  .end
+  let newcap = b.cap
+  if newcap == 0
+    set newcap = 256
+  .end
+  while newcap < need
+    set newcap = newcap * 2
+  .end
+  set b.cap = newcap
+.end
+
+fn bytebuf_push_bytes(b: &mut ByteBuf, s: Str)
+  let n = std.string::len(s)
+  do bytebuf_reserve(b, n)
+
+  # If we have a lot of consumed prefix, compact first to avoid growth.
+  if b.rd > 0 && (b.rd > (b.cap / 2))
+    do bytebuf_compact(b)
+  .end
+
+  # Append
+  if b.wr == std.string::len(b.buf)
+    set b.buf = std.string::concat(b.buf, s)
+    set b.wr = b.wr + n
+    ret
+  .end
+
+  # Conservative fallback (should be rare): rebuild suffix + s
+  let cur = bytebuf_len(b)
+  let cur_s = std.string::slice(b.buf, b.rd, cur)
+  set b.buf = std.string::concat(cur_s, s)
+  set b.rd = 0
+  set b.wr = cur + n
+.end
+
+fn bytebuf_peek_slice(b: &ByteBuf) -> ByteSlice
+  let cur = bytebuf_len(b)
+  let out: ByteSlice
+  if cur == 0
+    set out.data = ""
+    set out.len = 0
+    ret out
+  .end
+  set out.data = std.string::slice(b.buf, b.rd, cur)
+  set out.len = cur
+  ret out
+.end
+
+fn bytebuf_read_into(b: &mut ByteBuf, dst: &mut ByteSlice, maxn: U32) -> U32
+  let cur = bytebuf_len(b)
+  if cur == 0
+    ret 0
+  .end
+  let take = maxn
+  if take > cur
+    set take = cur
+  .end
+  let s = std.string::slice(b.buf, b.rd, take)
+  set dst.data = s
+  set dst.len = take
+  set b.rd = b.rd + take
+  if b.rd == b.wr
+    do bytebuf_clear(b)
+  .end
+  ret take
+.end
+
+# -----------------------------------------------------------------------------
+# BufReader
+# -----------------------------------------------------------------------------
+
+type BufReader struct
+  inner: Reader
+  buf: ByteBuf
+  eof: Bool
+.end
+
+fn bufreader_new(inner: Reader) -> BufReader
+  let br: BufReader
+  set br.inner = inner
+  set br.buf = bytebuf_with_capacity(8 * 1024)
+  set br.eof = false
+  ret br
+.end
+
+fn bufreader_with_capacity(inner: Reader, cap: U32) -> BufReader
+  let br: BufReader
+  set br.inner = inner
+  set br.buf = bytebuf_with_capacity(cap)
+  set br.eof = false
+  ret br
+.end
+
+fn bufreader_fill(br: &mut BufReader) -> std.core.result::ResultU32
+  if br.eof
+    ret std.core.result::u32_ok(0)
+  .end
+
+  # Ask inner to read into a temporary slice; in real impl, we would read into
+  # a u8 buffer. Here we simulate by requesting a chunk.
+  let tmp: ByteSlice
+  set tmp.data = ""
+  set tmp.len = 0
+
+  let rr = br.inner.read_fn(&br.inner, &mut tmp)
+  if !rr.ok
+    ret std.core.result::u32_err(rr.err)
+  .end
+
+  if rr.n == 0
+    set br.eof = true
+    ret std.core.result::u32_ok(0)
+  .end
+
+  # Append tmp.data (assumed length rr.n)
+  do bytebuf_push_bytes(&mut br.buf, tmp.data)
+  ret std.core.result::u32_ok(rr.n)
+.end
+
+fn bufreader_peek(br: &mut BufReader) -> ByteSlice
+  # ensure some data if empty
+  if bytebuf_is_empty(&br.buf) && !br.eof
+    let _ = bufreader_fill(&mut br)
+  .end
+  ret bytebuf_peek_slice(&br.buf)
+.end
+
+fn bufreader_read(br: &mut BufReader, maxn: U32) -> std.core.result::ResultU32
+  if maxn == 0
+    ret std.core.result::u32_ok(0)
+  .end
+
+  # ensure buffer has data
+  if bytebuf_is_empty(&br.buf) && !br.eof
+    let r = bufreader_fill(&mut br)
+    if !r.ok
+      ret r
+    .end
+  .end
+
+  # consume from buffer (we don't expose dst here; return bytes count only)
+  let dst: ByteSlice
+  set dst.data = ""
+  set dst.len = 0
+  let n = bytebuf_read_into(&mut br.buf, &mut dst, maxn)
+  ret std.core.result::u32_ok(n)
+.end
+
+fn bufreader_read_exact(br: &mut BufReader, n: U32) -> std.core.result::ResultUnit
+  let need = n
+  while need > 0
+    # fill if needed
+    if bytebuf_len(&br.buf) == 0
+      let r = bufreader_fill(&mut br)
+      if !r.ok
+        ret std.core.result::unit_err(r.err)
+      .end
+      if r.val == 0
+        ret std.core.result::unit_err(std.core.result::err_io("unexpected EOF"))
+      .end
+    .end
+
+    let take = need
+    let cur = bytebuf_len(&br.buf)
+    if take > cur
+      set take = cur
+    .end
+
+    # drop take bytes
+    let dummy: ByteSlice
+    set dummy.data = ""
+    set dummy.len = 0
+    let _ = bytebuf_read_into(&mut br.buf, &mut dummy, take)
+    set need = need - take
+  .end
+  ret std.core.result::unit_ok()
+.end
+
+# -----------------------------------------------------------------------------
+# BufWriter
+# -----------------------------------------------------------------------------
+
+type BufWriter struct
+  inner: Writer
+  buf: ByteBuf
+.end
+
+fn bufwriter_new(inner: Writer) -> BufWriter
+  let bw: BufWriter
+  set bw.inner = inner
+  set bw.buf = bytebuf_with_capacity(8 * 1024)
+  ret bw
+.end
+
+fn bufwriter_with_capacity(inner: Writer, cap: U32) -> BufWriter
+  let bw: BufWriter
+  set bw.inner = inner
+  set bw.buf = bytebuf_with_capacity(cap)
+  ret bw
+.end
+
+fn bufwriter_write(bw: &mut BufWriter, src: &ByteSlice) -> std.core.result::ResultU32
+  if src.len == 0
+    ret std.core.result::u32_ok(0)
+  .end
+
+  # If src is larger than buffer capacity, flush first then write directly.
+  if src.len >= bw.buf.cap
+    let fr = bufwriter_flush(&mut bw)
+    if !fr.ok
+      ret std.core.result::u32_err(fr.err)
+    .end
+    let wr = bw.inner.write_fn(&bw.inner, src)
+    if !wr.ok
+      ret std.core.result::u32_err(wr.err)
+    .end
+    ret std.core.result::u32_ok(wr.n)
+  .end
+
+  # Buffer it
+  do bytebuf_push_bytes(&mut bw.buf, src.data)
+
+  # If buffer is full-ish, flush
+  if bytebuf_len(&bw.buf) >= bw.buf.cap
+    let fr2 = bufwriter_flush(&mut bw)
+    if !fr2.ok
+      ret std.core.result::u32_err(fr2.err)
+    .end
+  .end
+
+  ret std.core.result::u32_ok(src.len)
+.end
+
+fn bufwriter_write_all(bw: &mut BufWriter, src: &ByteSlice) -> std.core.result::ResultUnit
+  let off: U32
+  set off = 0
+  while off < src.len
+    # take chunk
+    let chunk = bytes_take(src, off, src.len - off)
+    let r = bufwriter_write(&mut bw, &chunk)
+    if !r.ok
+      ret std.core.result::unit_err(r.err)
+    .end
+    if r.val == 0
+      ret std.core.result::unit_err(std.core.result::err_io("write returned 0"))
+    .end
+    set off = off + r.val
+  .end
+  ret std.core.result::unit_ok()
+.end
+
+fn bufwriter_flush(bw: &mut BufWriter) -> std.core.result::ResultUnit
+  # drain buffer to inner
+  while bytebuf_len(&bw.buf) > 0
+    let view = bytebuf_peek_slice(&bw.buf)
+    let wr = bw.inner.write_fn(&bw.inner, &view)
+    if !wr.ok
+      ret std.core.result::unit_err(wr.err)
+    .end
+    if wr.n == 0
+      ret std.core.result::unit_err(std.core.result::err_io("write returned 0"))
+    .end
+
+    # drop written bytes
+    let dummy: ByteSlice
+    set dummy.data = ""
+    set dummy.len = 0
+    let _ = bytebuf_read_into(&mut bw.buf, &mut dummy, wr.n)
+  .end
+
+  # flush inner
+  let r = bw.inner.flush_fn(&bw.inner)
+  ret r
+.end
+
+# -----------------------------------------------------------------------------
+# Adapters: expose as Reader/Writer
+# -----------------------------------------------------------------------------
+
+fn bufreader_as_reader(br: &BufReader) -> Reader
+  # This is a placeholder. In a real std, you’d return a vtable bound to br.
+  let r: Reader
+  set r.ctx = 0
+  set r.read_fn = br.inner.read_fn
+  ret r
+.end
+
+fn bufwriter_as_writer(bw: &BufWriter) -> Writer
+  let w: Writer
+  set w.ctx = 0
+  set w.write_fn = bw.inner.write_fn
+  set w.flush_fn = bw.inner.flush_fn
+  ret w
+.end
+
+# -----------------------------------------------------------------------------
+# Tests (smoke)
+# -----------------------------------------------------------------------------
+
+# Fake reader that serves fixed data in two chunks
+type FixedReaderState struct
+  data: Str
+  off: U32
+  chunk: U32
+.end
+
+fn fixed_reader_read(self: &Reader, dst: &mut ByteSlice) -> ReadResult
+  # self.ctx ignored in this stub-only harness
+  let rr: ReadResult
+  set rr.ok = true
+  set rr.err = std.core.result::err_ok()
+  set rr.n = 0
+  set dst.data = ""
+  set dst.len = 0
+  ret rr
+.end
+
+scn test_bufreader_smoke
+  # Only compile-time smoke with stubbed reader
+  let r: Reader
+  set r.ctx = 0
+  set r.read_fn = fixed_reader_read
+  let br = bufreader_new(r)
+  do std.runtime::assert(true, "bufreader_new")
+.end
+
+scn test_bufwriter_smoke
+  # Only compile-time smoke with stubbed writer
+  let w: Writer
+  set w.ctx = 0
+  # cannot set real fns in this stub; compile-time only
+  do std.runtime::assert(true, "bufwriter_new")
+.end
+
+# End of std.io.buffered

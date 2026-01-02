@@ -1,0 +1,1198 @@
+# -----------------------------------------------------------------------------
+# std/stdlib
+# -----------------------------------------------------------------------------
+# Umbrella module / prelude.
+#
+# Intent:
+# - Provide a single import that pulls in the core standard library surface.
+# - Offer stable aliases and convenience helpers.
+# - Keep bootstrap-friendly: if runtime hooks are not implemented, helpers are
+#   best-effort and return Unsupported-style errors.
+#
+# Notes:
+# - This file should stay dependency-light and mostly forward to submodules.
+# - Avoid deep-copying recursive structures (JsonValue) to prevent double-free.
+# - Blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.stdlib
+
+use std.collections
+use std.runtime
+use std.regex
+use std.serialize
+use std.process
+
+# -----------------------------------------------------------------------------
+# Prelude types
+# -----------------------------------------------------------------------------
+
+type Bool  = bool
+
+type U8    = u8
+type U16   = u16
+type U32   = u32
+type U64   = u64
+
+type I32   = i32
+type I64   = i64
+
+type USize = usize
+
+type Ptr[T] = ptr[T]
+
+type Str = str
+
+# Common Result-like tuple pattern (bootstrap-friendly, no generics constraints)
+# (ok, err)
+
+type StdError enum
+  Ok
+  Invalid
+  OutOfMemory
+  Unsupported
+  Io
+  Unexpected
+.end
+
+fn std_error_from_rt(rc: I32) -> StdError
+  let e = rt_err(rc)
+  if e == RtError::Ok
+    ret StdError::Ok
+  .end
+  if e == RtError::Invalid
+    ret StdError::Invalid
+  .end
+  if e == RtError::OutOfMemory
+    ret StdError::OutOfMemory
+  .end
+  if e == RtError::Io
+    ret StdError::Io
+  .end
+  if e == RtError::Unsupported
+    ret StdError::Unsupported
+  .end
+  ret StdError::Unexpected
+.end
+
+fn std_error_from_ser(e: SerError) -> StdError
+  if e == SerError::Ok
+    ret StdError::Ok
+  .end
+  if e == SerError::OutOfMemory
+    ret StdError::OutOfMemory
+  .end
+  if e == SerError::Unsupported
+    ret StdError::Unsupported
+  .end
+  ret StdError::Invalid
+.end
+
+fn std_error_from_regex(e: RegexError) -> StdError
+  if e == RegexError::Ok
+    ret StdError::Ok
+  .end
+  if e == RegexError::OutOfMemory
+    ret StdError::OutOfMemory
+  .end
+  if e == RegexError::Unsupported
+    ret StdError::Unsupported
+  .end
+  ret StdError::Invalid
+.end
+
+# -----------------------------------------------------------------------------
+# Panic / assert forwarding
+# -----------------------------------------------------------------------------
+
+fn panic(msg: Str)
+  do std.runtime::panic(msg)
+  ret
+.end
+
+fn assert(cond: Bool, msg: Str)
+  do std.runtime::assert(cond, msg)
+.end
+
+# -----------------------------------------------------------------------------
+# Bytes helpers (small, duplicated intentionally for prelude convenience)
+# -----------------------------------------------------------------------------
+
+fn vec_push_byte(dst: &Vec[U8], b: U8) -> Bool
+  let ok: Bool
+  let e: ColError
+  (ok, e) = vec_push[U8](dst, 1, b)
+  ret ok
+.end
+
+fn vec_push_bytes(dst: &Vec[U8], p: Ptr[U8], n: USize) -> Bool
+  let ok: Bool
+  let e: ColError
+  let i: USize
+  set i = 0
+  while i < n
+    (ok, e) = vec_push[U8](dst, 1, *(p + i))
+    if !ok
+      ret false
+    .end
+    set i = i + 1
+  .end
+  ret true
+.end
+
+fn bytes_clear(v: &Vec[U8])
+  do vec_clear[U8](v)
+.end
+
+fn bytes_assign(dst: &Vec[U8], src: &Vec[U8]) -> Bool
+  do vec_clear[U8](dst)
+  ret vec_push_bytes(dst, (Ptr[U8])src.data, src.len)
+.end
+
+fn bytes_clone(src: &Vec[U8]) -> (Bool, Vec[U8])
+  let out = vec_new[U8]()
+  if !bytes_assign(&out, src)
+    do vec_drop[U8](&out, 1)
+    ret (false, vec_new[U8]())
+  .end
+  ret (true, out)
+.end
+
+fn bytes_from_cstr(s: Str) -> Vec[U8]
+  let v = vec_new[U8]()
+  let p = (Ptr[U8])s
+  let i: USize
+  set i = 0
+  loop
+    let b = *(p + i)
+    if b == 0
+      break
+    .end
+    if !vec_push_byte(&v, b)
+      do vec_drop[U8](&v, 1)
+      ret vec_new[U8]()
+    .end
+    set i = i + 1
+  .end
+  ret v
+.end
+
+fn bytes_eq(a: &Vec[U8], b: &Vec[U8]) -> Bool
+  if a.len != b.len
+    ret false
+  .end
+  let ap = (Ptr[U8])a.data
+  let bp = (Ptr[U8])b.data
+  let i: USize
+  set i = 0
+  while i < a.len
+    if *(ap + i) != *(bp + i)
+      ret false
+    .end
+    set i = i + 1
+  .end
+  ret true
+.end
+
+fn ascii_append(out: &Vec[U8], s: Str) -> Bool
+  let p = (Ptr[U8])s
+  let i: USize
+  set i = 0
+  loop
+    let b = *(p + i)
+    if b == 0
+      break
+    .end
+    if !vec_push_byte(out, b)
+      ret false
+    .end
+    set i = i + 1
+  .end
+  ret true
+.end
+
+fn bytes_join(parts: &Vec[Vec[U8]], sep: &Vec[U8]) -> (Bool, StdError, Vec[U8])
+  let out = vec_new[U8]()
+
+  let i: USize
+  set i = 0
+  while i < parts.len
+    if i != 0
+      if !vec_push_bytes(&out, (Ptr[U8])sep.data, sep.len)
+        do vec_drop[U8](&out, 1)
+        ret (false, StdError::OutOfMemory, vec_new[U8]())
+      .end
+    .end
+
+    let it = *((Ptr[Vec[U8]])parts.data + i)
+    if !vec_push_bytes(&out, (Ptr[U8])it.data, it.len)
+      do vec_drop[U8](&out, 1)
+      ret (false, StdError::OutOfMemory, vec_new[U8]())
+    .end
+
+    set i = i + 1
+  .end
+
+  ret (true, StdError::Ok, out)
+.end
+
+# -----------------------------------------------------------------------------
+# Integer formatting helpers
+# -----------------------------------------------------------------------------
+
+fn i64_to_bytes(n: I64, out: &Vec[U8]) -> (Bool, StdError)
+  do vec_clear[U8](out)
+
+  if n == 0
+    if !vec_push_byte(out, (U8)'0')
+      ret (false, StdError::OutOfMemory)
+    .end
+    ret (true, StdError::Ok)
+  .end
+
+  let x: I64
+  set x = n
+  let neg: Bool
+  set neg = x < 0
+  if neg
+    set x = -x
+  .end
+
+  let tmp = vec_new[U8]()
+  loop
+    let d = (U8)(x % 10)
+    if !vec_push_byte(&tmp, (U8)'0' + d)
+      do vec_drop[U8](&tmp, 1)
+      ret (false, StdError::OutOfMemory)
+    .end
+    set x = x / 10
+    if x == 0
+      break
+    .end
+  .end
+
+  if neg
+    if !vec_push_byte(out, (U8)'-')
+      do vec_drop[U8](&tmp, 1)
+      ret (false, StdError::OutOfMemory)
+    .end
+  .end
+
+  # reverse tmp into out
+  let i: USize
+  set i = tmp.len
+  while i > 0
+    set i = i - 1
+    if !vec_push_byte(out, *((Ptr[U8])tmp.data + i))
+      do vec_drop[U8](&tmp, 1)
+      ret (false, StdError::OutOfMemory)
+    .end
+  .end
+
+  do vec_drop[U8](&tmp, 1)
+  ret (true, StdError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# Hash / checksum helpers
+# -----------------------------------------------------------------------------
+
+fn fnv1a64(bytes: &Vec[U8]) -> U64
+  let h: U64
+  set h = (U64)14695981039346656037
+
+  let p = (Ptr[U8])bytes.data
+  let i: USize
+  set i = 0
+  while i < bytes.len
+    set h = h ^ (U64)(*(p + i))
+    set h = h * (U64)1099511628211
+    set i = i + 1
+  .end
+
+  ret h
+.end
+
+fn fnv1a64_cstr(s: Str) -> U64
+  let b = bytes_from_cstr(s)
+  let h = fnv1a64(&b)
+  do vec_drop[U8](&b, 1)
+  ret h
+.end
+
+# -----------------------------------------------------------------------------
+# Hex helpers
+# -----------------------------------------------------------------------------
+
+fn hex_nibble(n: U8) -> U8
+  if n < 10
+    ret (U8)'0' + n
+  .end
+  ret (U8)'a' + (n - 10)
+.end
+
+fn hex_value(b: U8) -> (Bool, U8)
+  if b >= (U8)'0' && b <= (U8)'9'
+    ret (true, b - (U8)'0')
+  .end
+  if b >= (U8)'a' && b <= (U8)'f'
+    ret (true, 10 + (b - (U8)'a'))
+  .end
+  if b >= (U8)'A' && b <= (U8)'F'
+    ret (true, 10 + (b - (U8)'A'))
+  .end
+  ret (false, 0)
+.end
+
+fn hex_encode(src: &Vec[U8]) -> (Bool, StdError, Vec[U8])
+  let out = vec_new[U8]()
+  let p = (Ptr[U8])src.data
+  let i: USize
+  set i = 0
+  while i < src.len
+    let b = *(p + i)
+    let hi = (U8)((b >> 4) & (U8)0xF)
+    let lo = (U8)(b & (U8)0xF)
+    if !vec_push_byte(&out, hex_nibble(hi))
+      do vec_drop[U8](&out, 1)
+      ret (false, StdError::OutOfMemory, vec_new[U8]())
+    .end
+    if !vec_push_byte(&out, hex_nibble(lo))
+      do vec_drop[U8](&out, 1)
+      ret (false, StdError::OutOfMemory, vec_new[U8]())
+    .end
+    set i = i + 1
+  .end
+  ret (true, StdError::Ok, out)
+.end
+
+fn hex_decode(hex: &Vec[U8]) -> (Bool, StdError, Vec[U8])
+  if (hex.len % 2) != 0
+    ret (false, StdError::Invalid, vec_new[U8]())
+  .end
+
+  let out = vec_new[U8]()
+  let p = (Ptr[U8])hex.data
+
+  let i: USize
+  set i = 0
+  while i < hex.len
+    let ok1: Bool
+    let ok2: Bool
+    let v1: U8
+    let v2: U8
+
+    (ok1, v1) = hex_value(*(p + i))
+    (ok2, v2) = hex_value(*(p + i + 1))
+
+    if !ok1 || !ok2
+      do vec_drop[U8](&out, 1)
+      ret (false, StdError::Invalid, vec_new[U8]())
+    .end
+
+    let b = (U8)((v1 << 4) | v2)
+    if !vec_push_byte(&out, b)
+      do vec_drop[U8](&out, 1)
+      ret (false, StdError::OutOfMemory, vec_new[U8]())
+    .end
+
+    set i = i + 2
+  .end
+
+  ret (true, StdError::Ok, out)
+.end
+
+# -----------------------------------------------------------------------------
+# Base64 helpers (RFC 4648)
+# -----------------------------------------------------------------------------
+
+fn b64_enc_char(v: U8) -> U8
+  if v < 26
+    ret (U8)'A' + v
+  .end
+  if v < 52
+    ret (U8)'a' + (v - 26)
+  .end
+  if v < 62
+    ret (U8)'0' + (v - 52)
+  .end
+  if v == 62
+    ret (U8)'+'
+  .end
+  ret (U8)'/'
+.end
+
+fn b64_dec_val(b: U8) -> (Bool, U8)
+  if b >= (U8)'A' && b <= (U8)'Z'
+    ret (true, b - (U8)'A')
+  .end
+  if b >= (U8)'a' && b <= (U8)'z'
+    ret (true, 26 + (b - (U8)'a'))
+  .end
+  if b >= (U8)'0' && b <= (U8)'9'
+    ret (true, 52 + (b - (U8)'0'))
+  .end
+  if b == (U8)'+'
+    ret (true, 62)
+  .end
+  if b == (U8)'/'
+    ret (true, 63)
+  .end
+  ret (false, 0)
+.end
+
+fn b64_encode(src: &Vec[U8]) -> (Bool, StdError, Vec[U8])
+  let out = vec_new[U8]()
+  let p = (Ptr[U8])src.data
+
+  let i: USize
+  set i = 0
+  while i < src.len
+    let b0: U8
+    let b1: U8
+    let b2: U8
+
+    set b0 = *(p + i)
+
+    if i + 1 < src.len
+      set b1 = *(p + i + 1)
+    else
+      set b1 = 0
+    .end
+
+    if i + 2 < src.len
+      set b2 = *(p + i + 2)
+    else
+      set b2 = 0
+    .end
+
+    let v0 = (U8)(b0 >> 2)
+    let v1 = (U8)(((b0 & (U8)0x03) << 4) | (b1 >> 4))
+    let v2 = (U8)(((b1 & (U8)0x0F) << 2) | (b2 >> 6))
+    let v3 = (U8)(b2 & (U8)0x3F)
+
+    if !vec_push_byte(&out, b64_enc_char(v0))
+      do vec_drop[U8](&out, 1)
+      ret (false, StdError::OutOfMemory, vec_new[U8]())
+    .end
+    if !vec_push_byte(&out, b64_enc_char(v1))
+      do vec_drop[U8](&out, 1)
+      ret (false, StdError::OutOfMemory, vec_new[U8]())
+    .end
+
+    if i + 1 < src.len
+      if !vec_push_byte(&out, b64_enc_char(v2))
+        do vec_drop[U8](&out, 1)
+        ret (false, StdError::OutOfMemory, vec_new[U8]())
+      .end
+    else
+      if !vec_push_byte(&out, (U8)'=')
+        do vec_drop[U8](&out, 1)
+        ret (false, StdError::OutOfMemory, vec_new[U8]())
+      .end
+    .end
+
+    if i + 2 < src.len
+      if !vec_push_byte(&out, b64_enc_char(v3))
+        do vec_drop[U8](&out, 1)
+        ret (false, StdError::OutOfMemory, vec_new[U8]())
+      .end
+    else
+      if !vec_push_byte(&out, (U8)'=')
+        do vec_drop[U8](&out, 1)
+        ret (false, StdError::OutOfMemory, vec_new[U8]())
+      .end
+    .end
+
+    set i = i + 3
+  .end
+
+  ret (true, StdError::Ok, out)
+.end
+
+fn b64_decode(src: &Vec[U8]) -> (Bool, StdError, Vec[U8])
+  let out = vec_new[U8]()
+  let p = (Ptr[U8])src.data
+
+  let quartet: U8
+  set quartet = 0
+
+  let a0: U8
+  let a1: U8
+  let a2: U8
+  let a3: U8
+
+  let pad2: Bool
+  let pad3: Bool
+
+  set pad2 = false
+  set pad3 = false
+
+  let i: USize
+  set i = 0
+  while i < src.len
+    let b = *(p + i)
+
+    # skip ASCII whitespace
+    if b == (U8)' ' || b == (U8)'\n' || b == (U8)'\r' || b == (U8)'\t'
+      set i = i + 1
+      continue
+    .end
+
+    if b == (U8)'='
+      if quartet == 2
+        set pad2 = true
+        set a2 = 0
+        set quartet = 3
+        set i = i + 1
+        continue
+      .end
+      if quartet == 3
+        set pad3 = true
+        set a3 = 0
+        set quartet = 4
+        set i = i + 1
+        continue
+      .end
+      do vec_drop[U8](&out, 1)
+      ret (false, StdError::Invalid, vec_new[U8]())
+    .end
+
+    let okv: Bool
+    let v: U8
+    (okv, v) = b64_dec_val(b)
+    if !okv
+      do vec_drop[U8](&out, 1)
+      ret (false, StdError::Invalid, vec_new[U8]())
+    .end
+
+    if quartet == 0
+      set a0 = v
+      set quartet = 1
+    elif quartet == 1
+      set a1 = v
+      set quartet = 2
+    elif quartet == 2
+      set a2 = v
+      set quartet = 3
+    else
+      set a3 = v
+      set quartet = 4
+    .end
+
+    if quartet == 4
+      let b0 = (U8)((a0 << 2) | (a1 >> 4))
+      let b1 = (U8)(((a1 & (U8)0x0F) << 4) | (a2 >> 2))
+      let b2 = (U8)(((a2 & (U8)0x03) << 6) | a3)
+
+      if !vec_push_byte(&out, b0)
+        do vec_drop[U8](&out, 1)
+        ret (false, StdError::OutOfMemory, vec_new[U8]())
+      .end
+
+      if !pad2
+        if !vec_push_byte(&out, b1)
+          do vec_drop[U8](&out, 1)
+          ret (false, StdError::OutOfMemory, vec_new[U8]())
+        .end
+      .end
+
+      if !pad3
+        if !vec_push_byte(&out, b2)
+          do vec_drop[U8](&out, 1)
+          ret (false, StdError::OutOfMemory, vec_new[U8]())
+        .end
+      .end
+
+      set quartet = 0
+      set pad2 = false
+      set pad3 = false
+    .end
+
+    set i = i + 1
+  .end
+
+  if quartet != 0
+    do vec_drop[U8](&out, 1)
+    ret (false, StdError::Invalid, vec_new[U8]())
+  .end
+
+  ret (true, StdError::Ok, out)
+.end
+
+# -----------------------------------------------------------------------------
+# Console helpers (best-effort)
+# -----------------------------------------------------------------------------
+
+fn write_stdout_bytes(p: Ptr[U8], len: USize) -> (Bool, StdError, USize)
+  let n = rt_stdout_write(p, len)
+  if n < 0
+    ret (false, std_error_from_rt((I32)n), 0)
+  .end
+  ret (true, StdError::Ok, (USize)n)
+.end
+
+fn write_stderr_bytes(p: Ptr[U8], len: USize) -> (Bool, StdError, USize)
+  let n = rt_stderr_write(p, len)
+  if n < 0
+    ret (false, std_error_from_rt((I32)n), 0)
+  .end
+  ret (true, StdError::Ok, (USize)n)
+.end
+
+fn print(s: Str) -> (Bool, StdError)
+  let b = bytes_from_cstr(s)
+  let ok: Bool
+  let e: StdError
+  let n: USize
+  (ok, e, n) = write_stdout_bytes((Ptr[U8])b.data, b.len)
+  do vec_drop[U8](&b, 1)
+  ret (ok, e)
+.end
+
+fn eprint(s: Str) -> (Bool, StdError)
+  let b = bytes_from_cstr(s)
+  let ok: Bool
+  let e: StdError
+  let n: USize
+  (ok, e, n) = write_stderr_bytes((Ptr[U8])b.data, b.len)
+  do vec_drop[U8](&b, 1)
+  ret (ok, e)
+.end
+
+fn println(s: Str) -> (Bool, StdError)
+  let ok: Bool
+  let e: StdError
+  (ok, e) = print(s)
+  if !ok
+    ret (false, e)
+  .end
+  ret print("\n")
+.end
+
+fn eprintln(s: Str) -> (Bool, StdError)
+  let ok: Bool
+  let e: StdError
+  (ok, e) = eprint(s)
+  if !ok
+    ret (false, e)
+  .end
+  ret eprint("\n")
+.end
+
+fn print_i64(n: I64) -> (Bool, StdError)
+  let b = vec_new[U8]()
+  let ok: Bool
+  let e: StdError
+  (ok, e) = i64_to_bytes(n, &b)
+  if !ok
+    do vec_drop[U8](&b, 1)
+    ret (false, e)
+  .end
+  let ok2: Bool
+  let e2: StdError
+  let n2: USize
+  (ok2, e2, n2) = write_stdout_bytes((Ptr[U8])b.data, b.len)
+  do vec_drop[U8](&b, 1)
+  ret (ok2, e2)
+.end
+
+# -----------------------------------------------------------------------------
+# Runtime convenience wrappers (env/args/time)
+# -----------------------------------------------------------------------------
+
+fn sleep_ms(ms: U32) -> (Bool, StdError)
+  let rc = rt_sleep_ms(ms)
+  if rc != 0
+    ret (false, std_error_from_rt(rc))
+  .end
+  ret (true, StdError::Ok)
+.end
+
+fn now_ms() -> (Bool, StdError, I64)
+  let t = rt_time_now_ms()
+  if t < 0
+    ret (false, std_error_from_rt((I32)t), 0)
+  .end
+  ret (true, StdError::Ok, t)
+.end
+
+fn env_get_cstr(key: Str) -> (Bool, StdError, Bool, Vec[U8])
+  let k = bytes_from_cstr(key)
+  let out = vec_new[U8]()
+  let rc = rt_env_get((Ptr[U8])k.data, k.len, &out)
+  do vec_drop[U8](&k, 1)
+
+  if rc == 1
+    ret (true, StdError::Ok, true, out)
+  .end
+  if rc == 0
+    do vec_drop[U8](&out, 1)
+    ret (true, StdError::Ok, false, vec_new[U8]())
+  .end
+
+  do vec_drop[U8](&out, 1)
+  ret (false, std_error_from_rt(rc), false, vec_new[U8]())
+.end
+
+fn env_set_cstr(key: Str, val: Str) -> (Bool, StdError)
+  let k = bytes_from_cstr(key)
+  let v = bytes_from_cstr(val)
+  let rc = rt_env_set((Ptr[U8])k.data, k.len, (Ptr[U8])v.data, v.len)
+  do vec_drop[U8](&k, 1)
+  do vec_drop[U8](&v, 1)
+  if rc != 0
+    ret (false, std_error_from_rt(rc))
+  .end
+  ret (true, StdError::Ok)
+.end
+
+fn args_len() -> (Bool, StdError, USize)
+  let n = rt_args_len()
+  if n < 0
+    ret (false, std_error_from_rt(n), 0)
+  .end
+  ret (true, StdError::Ok, (USize)n)
+.end
+
+fn args_get(i: USize) -> (Bool, StdError, Vec[U8])
+  let out = vec_new[U8]()
+  let rc = rt_args_get(i, &out)
+  if rc < 0
+    do vec_drop[U8](&out, 1)
+    ret (false, std_error_from_rt(rc), vec_new[U8]())
+  .end
+  ret (true, StdError::Ok, out)
+.end
+
+fn vecvec_u8_drop(vv: &Vec[Vec[U8]])
+  let i: USize
+  set i = 0
+  while i < vv.len
+    let it = *((Ptr[Vec[U8]])vv.data + i)
+    do vec_drop[U8](&it, 1)
+    set i = i + 1
+  .end
+  do vec_drop[Vec[U8]](vv, 0)
+.end
+
+fn args_collect() -> (Bool, StdError, Vec[Vec[U8]])
+  let ok: Bool
+  let e: StdError
+  let n: USize
+  (ok, e, n) = args_len()
+  if !ok
+    ret (false, e, vec_new[Vec[U8]]())
+  .end
+
+  let out = vec_new[Vec[U8]]()
+  let idx: USize
+  set idx = 0
+  while idx < n
+    let a: Vec[U8]
+    (ok, e, a) = args_get(idx)
+    if !ok
+      do vecvec_u8_drop(&out)
+      ret (false, e, vec_new[Vec[U8]]())
+    .end
+
+    let okp: Bool
+    let ce: ColError
+    (okp, ce) = vec_push[Vec[U8]](&out, 0, a)
+    if !okp
+      do vec_drop[U8](&a, 1)
+      do vecvec_u8_drop(&out)
+      ret (false, StdError::OutOfMemory, vec_new[Vec[U8]]())
+    .end
+
+    set idx = idx + 1
+  .end
+
+  ret (true, StdError::Ok, out)
+.end
+
+# -----------------------------------------------------------------------------
+# Lightweight adapters around submodules
+# -----------------------------------------------------------------------------
+
+# --- Regex -------------------------------------------------------------------
+
+fn regex_compile_cstr(pat: Str, flags: U32) -> (Bool, StdError, Regex)
+  let ok: Bool
+  let re: RegexError
+  let r: Regex
+  (ok, re, r) = std.regex::regex_new_cstr(pat, flags)
+  if ok
+    ret (true, StdError::Ok, r)
+  .end
+  ret (false, std_error_from_regex(re), r)
+.end
+
+fn regex_is_match_cstr(r: &Regex, s: Str) -> (Bool, StdError, Bool)
+  let b = bytes_from_cstr(s)
+  let ok: Bool
+  let e: RegexError
+  let yes: Bool
+  (ok, e, yes) = std.regex::regex_is_match(r, &b)
+  do vec_drop[U8](&b, 1)
+  if !ok
+    ret (false, std_error_from_regex(e), false)
+  .end
+  ret (true, StdError::Ok, yes)
+.end
+
+fn regex_find_cstr(r: &Regex, s: Str) -> (Bool, StdError, Bool, USize, USize)
+  let b = bytes_from_cstr(s)
+  let ok: Bool
+  let e: RegexError
+  let found: Bool
+  let m: Match
+  (ok, e, found, m) = std.regex::regex_find(r, &b)
+  do vec_drop[U8](&b, 1)
+  if !ok
+    ret (false, std_error_from_regex(e), false, 0, 0)
+  .end
+  if !found
+    ret (true, StdError::Ok, false, 0, 0)
+  .end
+  ret (true, StdError::Ok, true, m.start, m.end)
+.end
+
+fn regex_replace_all_cstr(r: &Regex, s: Str, repl: Str) -> (Bool, StdError, Vec[U8])
+  let ok: Bool
+  let e: RegexError
+  let out: Vec[U8]
+  (ok, e, out) = std.regex::regex_replace_all_cstr(r, s, repl)
+  if !ok
+    do vec_drop[U8](&out, 1)
+    ret (false, std_error_from_regex(e), vec_new[U8]())
+  .end
+  ret (true, StdError::Ok, out)
+.end
+
+fn regex_split_cstr(r: &Regex, s: Str) -> (Bool, StdError, Vec[Vec[U8]])
+  let b = bytes_from_cstr(s)
+  let ok: Bool
+  let e: RegexError
+  let parts: Vec[Vec[U8]]
+  (ok, e, parts) = std.regex::regex_split(r, &b)
+  do vec_drop[U8](&b, 1)
+  if !ok
+    do vecvec_u8_drop(&parts)
+    ret (false, std_error_from_regex(e), vec_new[Vec[U8]]())
+  .end
+  ret (true, StdError::Ok, parts)
+.end
+
+# --- JSON (std.serialize) ----------------------------------------------------
+
+fn json_parse_cstr(s: Str) -> (Bool, StdError, JsonValue)
+  let b = bytes_from_cstr(s)
+  let ok: Bool
+  let e: SerError
+  let v: JsonValue
+  (ok, e, v) = std.serialize::json_parse(&b)
+  do vec_drop[U8](&b, 1)
+  if ok
+    ret (true, StdError::Ok, v)
+  .end
+  ret (false, std_error_from_ser(e), v)
+.end
+
+fn json_stringify_to_bytes(v: &JsonValue, pretty: Bool) -> (Bool, StdError, Vec[U8])
+  let out = vec_new[U8]()
+  let ok: Bool
+  let e: SerError
+  (ok, e) = std.serialize::json_stringify(v, &out, pretty)
+  if ok
+    ret (true, StdError::Ok, out)
+  .end
+  do vec_drop[U8](&out, 1)
+  ret (false, std_error_from_ser(e), vec_new[U8]())
+.end
+
+# JSON getters without copying JsonValue (copying would alias owned Vec fields).
+# - out_* are written only if found && type matches.
+
+fn json_obj_get_int(obj: &JsonValue, key: Str, out_i: &I64) -> (Bool, StdError, Bool)
+  if obj.kind != JsonKind::Object
+    ret (false, StdError::Invalid, false)
+  .end
+
+  let k = bytes_from_cstr(key)
+  let i: USize
+  set i = 0
+  while i < obj.o.len
+    let kv = *((Ptr[JsonKV])obj.o.data + i)
+    if bytes_eq(&kv.key, &k)
+      do vec_drop[U8](&k, 1)
+      if kv.val.kind == JsonKind::Int
+        set *out_i = kv.val.i
+        ret (true, StdError::Ok, true)
+      .end
+      ret (true, StdError::Ok, false)
+    .end
+    set i = i + 1
+  .end
+
+  do vec_drop[U8](&k, 1)
+  ret (true, StdError::Ok, false)
+.end
+
+fn json_obj_get_bool(obj: &JsonValue, key: Str, out_b: &Bool) -> (Bool, StdError, Bool)
+  if obj.kind != JsonKind::Object
+    ret (false, StdError::Invalid, false)
+  .end
+
+  let k = bytes_from_cstr(key)
+  let i: USize
+  set i = 0
+  while i < obj.o.len
+    let kv = *((Ptr[JsonKV])obj.o.data + i)
+    if bytes_eq(&kv.key, &k)
+      do vec_drop[U8](&k, 1)
+      if kv.val.kind == JsonKind::Bool
+        set *out_b = kv.val.b
+        ret (true, StdError::Ok, true)
+      .end
+      ret (true, StdError::Ok, false)
+    .end
+    set i = i + 1
+  .end
+
+  do vec_drop[U8](&k, 1)
+  ret (true, StdError::Ok, false)
+.end
+
+fn json_obj_get_string(obj: &JsonValue, key: Str, out_s: &Vec[U8]) -> (Bool, StdError, Bool)
+  if obj.kind != JsonKind::Object
+    ret (false, StdError::Invalid, false)
+  .end
+
+  let k = bytes_from_cstr(key)
+  let i: USize
+  set i = 0
+  while i < obj.o.len
+    let kv = *((Ptr[JsonKV])obj.o.data + i)
+    if bytes_eq(&kv.key, &k)
+      do vec_drop[U8](&k, 1)
+      if kv.val.kind == JsonKind::String
+        if !bytes_assign(out_s, &kv.val.s)
+          ret (false, StdError::OutOfMemory, false)
+        .end
+        ret (true, StdError::Ok, true)
+      .end
+      ret (true, StdError::Ok, false)
+    .end
+    set i = i + 1
+  .end
+
+  do vec_drop[U8](&k, 1)
+  ret (true, StdError::Ok, false)
+.end
+
+# --- vbin (std.serialize) ----------------------------------------------------
+
+fn vbin_encode_u64(x: U64) -> (Bool, StdError, Vec[U8])
+  let w = std.serialize::writer_new()
+  let ok: Bool
+  let e: SerError
+  (ok, e) = std.serialize::w_write_var_u64(&w, x)
+  if !ok
+    do std.serialize::writer_drop(&w)
+    ret (false, std_error_from_ser(e), vec_new[U8]())
+  .end
+
+  # clone out so we can drop writer
+  let cp: Vec[U8]
+  let ok2: Bool
+  (ok2, cp) = std.serialize::vec_clone_u8(std.serialize::writer_bytes(&w))
+  do std.serialize::writer_drop(&w)
+  if !ok2
+    do vec_drop[U8](&cp, 1)
+    ret (false, StdError::OutOfMemory, vec_new[U8]())
+  .end
+
+  ret (true, StdError::Ok, cp)
+.end
+
+fn vbin_encode_i64(x: I64) -> (Bool, StdError, Vec[U8])
+  let w = std.serialize::writer_new()
+  let ok: Bool
+  let e: SerError
+  (ok, e) = std.serialize::w_write_var_i64(&w, x)
+  if !ok
+    do std.serialize::writer_drop(&w)
+    ret (false, std_error_from_ser(e), vec_new[U8]())
+  .end
+
+  let cp: Vec[U8]
+  let ok2: Bool
+  (ok2, cp) = std.serialize::vec_clone_u8(std.serialize::writer_bytes(&w))
+  do std.serialize::writer_drop(&w)
+  if !ok2
+    do vec_drop[U8](&cp, 1)
+    ret (false, StdError::OutOfMemory, vec_new[U8]())
+  .end
+
+  ret (true, StdError::Ok, cp)
+.end
+
+fn vbin_decode_u64(buf: &Vec[U8]) -> (Bool, StdError, U64)
+  let r = std.serialize::reader_new(buf)
+  let ok: Bool
+  let e: SerError
+  let x: U64
+  (ok, e, x) = std.serialize::r_read_var_u64(&r)
+  if ok
+    ret (true, StdError::Ok, x)
+  .end
+  ret (false, std_error_from_ser(e), 0)
+.end
+
+fn vbin_decode_i64(buf: &Vec[U8]) -> (Bool, StdError, I64)
+  let r = std.serialize::reader_new(buf)
+  let ok: Bool
+  let e: SerError
+  let x: I64
+  (ok, e, x) = std.serialize::r_read_var_i64(&r)
+  if ok
+    ret (true, StdError::Ok, x)
+  .end
+  ret (false, std_error_from_ser(e), 0)
+.end
+
+# -----------------------------------------------------------------------------
+# Test helpers
+# -----------------------------------------------------------------------------
+
+fn expect_bytes_eq(a: &Vec[U8], b: &Vec[U8], msg: Str)
+  do assert(bytes_eq(a, b), msg)
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests (scenarios)
+# -----------------------------------------------------------------------------
+
+scn test_stdlib_smoke_json
+  let ok: Bool
+  let e: StdError
+  let v: JsonValue
+
+  (ok, e, v) = json_parse_cstr("{\"x\":1,\"y\":[true,false],\"s\":\"hi\"}")
+  do assert(ok, "json parse")
+
+  let x: I64
+  set x = 0
+  let found: Bool
+  (ok, e, found) = json_obj_get_int(&v, "x", &x)
+  do assert(ok && found && x == 1, "json get int")
+
+  let out_s = vec_new[U8]()
+  (ok, e, found) = json_obj_get_string(&v, "s", &out_s)
+  do assert(ok && found, "json get string")
+  do vec_drop[U8](&out_s, 1)
+
+  let out = vec_new[U8]()
+  let se: SerError
+  (ok, se) = std.serialize::json_stringify(&v, &out, false)
+  do assert(ok, "json stringify")
+
+  # parse again
+  let v2: JsonValue
+  (ok, se, v2) = std.serialize::json_parse(&out)
+  do assert(ok, "json parse 2")
+
+  do std.serialize::json_drop(&v)
+  do std.serialize::json_drop(&v2)
+  do vec_drop[U8](&out, 1)
+.end
+
+scn test_stdlib_smoke_regex_literal
+  let ok: Bool
+  let e: StdError
+  let r: Regex
+
+  (ok, e, r) = regex_compile_cstr("abc", std.regex::REGEX_F_NONE)
+  do assert(ok, "regex compile")
+
+  let yes: Bool
+  (ok, e, yes) = regex_is_match_cstr(&r, "xxabcxx")
+  do assert(ok && yes, "regex match")
+
+  let found: Bool
+  let s0: USize
+  let e0: USize
+  (ok, e, found, s0, e0) = regex_find_cstr(&r, "xxabcxx")
+  do assert(ok && found && s0 == 2 && e0 == 5, "regex find")
+
+  do std.regex::regex_drop(&r)
+.end
+
+scn test_stdlib_smoke_vbin
+  let ok: Bool
+  let e: StdError
+  let b: Vec[U8]
+
+  (ok, e, b) = vbin_encode_u64((U64)300)
+  do assert(ok, "enc u64")
+
+  let x: U64
+  (ok, e, x) = vbin_decode_u64(&b)
+  do assert(ok && x == (U64)300, "dec u64")
+  do vec_drop[U8](&b, 1)
+
+  (ok, e, b) = vbin_encode_i64((I64)-1)
+  do assert(ok, "enc i64")
+
+  let y: I64
+  (ok, e, y) = vbin_decode_i64(&b)
+  do assert(ok && y == (I64)-1, "dec i64")
+  do vec_drop[U8](&b, 1)
+.end
+
+scn test_stdlib_smoke_hex
+  let src = bytes_from_cstr("abc")
+  let ok: Bool
+  let e: StdError
+  let hx: Vec[U8]
+  (ok, e, hx) = hex_encode(&src)
+  do assert(ok, "hex enc")
+
+  let out: Vec[U8]
+  (ok, e, out) = hex_decode(&hx)
+  do assert(ok && bytes_eq(&out, &src), "hex dec")
+
+  do vec_drop[U8](&src, 1)
+  do vec_drop[U8](&hx, 1)
+  do vec_drop[U8](&out, 1)
+.end
+
+scn test_stdlib_smoke_b64
+  let src = bytes_from_cstr("hello")
+  let ok: Bool
+  let e: StdError
+  let enc: Vec[U8]
+  (ok, e, enc) = b64_encode(&src)
+  do assert(ok, "b64 enc")
+
+  let want = bytes_from_cstr("aGVsbG8=")
+  do expect_bytes_eq(&enc, &want, "b64 enc equals")
+
+  let dec: Vec[U8]
+  (ok, e, dec) = b64_decode(&enc)
+  do assert(ok, "b64 dec")
+  do expect_bytes_eq(&dec, &src, "b64 roundtrip")
+
+  do vec_drop[U8](&src, 1)
+  do vec_drop[U8](&enc, 1)
+  do vec_drop[U8](&want, 1)
+  do vec_drop[U8](&dec, 1)
+.end
+
+scn test_stdlib_smoke_fnv1a
+  let h = fnv1a64_cstr("hello")
+  do assert(h == (U64)0xa430d84680aabd0b, "fnv1a64 hello")
+.end
+
+# End of std.stdlib

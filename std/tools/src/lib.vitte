@@ -1,0 +1,880 @@
+# -----------------------------------------------------------------------------
+# std/tools
+# -----------------------------------------------------------------------------
+# Utilities for building standalone tooling binaries (fmt, lsp, bench, etc.).
+#
+# Goals:
+# - Bootstrap-friendly: no reflection, no heavy formatting, no FP.
+# - Structured error mapping on top of std.sys.
+# - Minimal logging helpers.
+# - Stopwatch + timed execution helpers.
+# - ToolStatus accumulator for CLI-style flows.
+# - Small combinators to compose tool steps without exceptions.
+#
+# Conventions:
+# - Functions return (Bool, ToolError, ...) tuples when they can fail.
+# - Time units are milliseconds (I64).
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.tools
+
+use std.runtime
+use std.sys
+
+# -----------------------------------------------------------------------------
+# Types / errors
+# -----------------------------------------------------------------------------
+
+type Bool = bool
+
+type U8    = u8
+type U32   = u32
+type U64   = u64
+
+type I32   = i32
+type I64   = i64
+
+type USize = usize
+
+type Ptr[T] = ptr[T]
+
+type Str = str
+
+type SysError = std.sys::SysError
+
+# Exit code conventions.
+# Keep them numeric and stable; do not rely on platform enums.
+
+type ExitCode = I32
+
+fn exit_ok() -> ExitCode
+  ret 0
+.end
+
+fn exit_fail() -> ExitCode
+  ret 1
+.end
+
+fn exit_usage() -> ExitCode
+  ret 2
+.end
+
+fn exit_io() -> ExitCode
+  ret 3
+.end
+
+fn exit_config() -> ExitCode
+  ret 4
+.end
+
+fn exit_oom() -> ExitCode
+  ret 5
+.end
+
+fn exit_unsupported() -> ExitCode
+  ret 6
+.end
+
+fn exit_timeout() -> ExitCode
+  ret 7
+.end
+
+fn exit_busy() -> ExitCode
+  ret 8
+.end
+
+fn exit_is_ok(code: ExitCode) -> Bool
+  ret code == exit_ok()
+.end
+
+fn exit_from_bool(ok: Bool) -> ExitCode
+  if ok
+    ret exit_ok()
+  .end
+  ret exit_fail()
+.end
+
+# Tool-level error set.
+
+type ToolError enum
+  Ok
+  Invalid
+  OutOfMemory
+  Unsupported
+  Busy
+  Timeout
+  Io
+  Unexpected
+.end
+
+fn tool_error_ok(e: ToolError) -> Bool
+  ret e == ToolError::Ok
+.end
+
+fn tool_error_msg(e: ToolError) -> Str
+  if e == ToolError::Ok
+    ret "ok"
+  .end
+  if e == ToolError::Invalid
+    ret "invalid"
+  .end
+  if e == ToolError::OutOfMemory
+    ret "out of memory"
+  .end
+  if e == ToolError::Unsupported
+    ret "unsupported"
+  .end
+  if e == ToolError::Busy
+    ret "busy"
+  .end
+  if e == ToolError::Timeout
+    ret "timeout"
+  .end
+  if e == ToolError::Io
+    ret "io"
+  .end
+  ret "unexpected"
+.end
+
+fn tool_error_from_sys(e: SysError) -> ToolError
+  if e == SysError::Ok
+    ret ToolError::Ok
+  .end
+  if e == SysError::Invalid
+    ret ToolError::Invalid
+  .end
+  if e == SysError::OutOfMemory
+    ret ToolError::OutOfMemory
+  .end
+  if e == SysError::Unsupported
+    ret ToolError::Unsupported
+  .end
+  if e == SysError::Busy
+    ret ToolError::Busy
+  .end
+  if e == SysError::Timeout
+    ret ToolError::Timeout
+  .end
+  if e == SysError::Io
+    ret ToolError::Io
+  .end
+  ret ToolError::Unexpected
+.end
+
+fn tool_error_to_exit_code(e: ToolError) -> ExitCode
+  if e == ToolError::Ok
+    ret exit_ok()
+  .end
+  if e == ToolError::Invalid
+    ret exit_usage()
+  .end
+  if e == ToolError::OutOfMemory
+    ret exit_oom()
+  .end
+  if e == ToolError::Unsupported
+    ret exit_unsupported()
+  .end
+  if e == ToolError::Timeout
+    ret exit_timeout()
+  .end
+  if e == ToolError::Busy
+    ret exit_busy()
+  .end
+  if e == ToolError::Io
+    ret exit_io()
+  .end
+  ret exit_fail()
+.end
+
+# A small result carrier used by tool helpers.
+
+type ToolResult struct
+  ok: Bool
+  code: ExitCode
+.end
+
+fn tool_result_ok() -> ToolResult
+  let r: ToolResult
+  set r.ok = true
+  set r.code = exit_ok()
+  ret r
+.end
+
+fn tool_result_code(code: ExitCode) -> ToolResult
+  let r: ToolResult
+  set r.ok = exit_is_ok(code)
+  set r.code = code
+  ret r
+.end
+
+fn tool_result_is_ok(r: &ToolResult) -> Bool
+  ret r.ok && exit_is_ok(r.code)
+.end
+
+fn tool_result_merge(a: ToolResult, b: ToolResult) -> ToolResult
+  if !tool_result_is_ok(&a)
+    ret a
+  .end
+  ret b
+.end
+
+fn tool_result_from_error(e: ToolError) -> ToolResult
+  ret tool_result_code(tool_error_to_exit_code(e))
+.end
+
+# -----------------------------------------------------------------------------
+# Logging (best-effort)
+# -----------------------------------------------------------------------------
+
+# NOTE: std.sys currently exposes C-string printing helpers. We keep this as
+# best-effort: failures are ignored to avoid masking real tool failures.
+
+fn log(msg: Str)
+  let ok: Bool
+  let e: SysError
+  (ok, e) = std.sys::print_cstr(msg)
+.end
+
+fn log_line(msg: Str)
+  let ok: Bool
+  let e: SysError
+  (ok, e) = std.sys::println_cstr(msg)
+.end
+
+fn log_tag(tag: Str, msg: Str)
+  do log("[")
+  do log(tag)
+  do log("] ")
+  do log_line(msg)
+.end
+
+fn log_kv(tag: Str, key: Str, value: Str)
+  do log("[")
+  do log(tag)
+  do log("] ")
+  do log(key)
+  do log(": ")
+  do log_line(value)
+.end
+
+fn log_info(msg: Str)
+  do log_tag("info", msg)
+.end
+
+fn log_warn(msg: Str)
+  do log_tag("warn", msg)
+.end
+
+fn log_err(msg: Str)
+  do log_tag("error", msg)
+.end
+
+fn log_ok(msg: Str)
+  do log_tag("ok", msg)
+.end
+
+fn log_debug(msg: Str)
+  do log_tag("debug", msg)
+.end
+
+# Banner helpers (pure literals; no formatting layer).
+
+fn log_hr()
+  do log_line("------------------------------------------------------------")
+.end
+
+fn log_banner(title: Str)
+  do log_hr()
+  do log_line(title)
+  do log_hr()
+.end
+
+fn log_section(title: Str)
+  do log_line("")
+  do log_tag("section", title)
+.end
+
+# -----------------------------------------------------------------------------
+# Sys guard helpers
+# -----------------------------------------------------------------------------
+
+# Convert a (ok, SysError) into (ok, ToolError).
+fn guard_sys(ok: Bool, se: SysError) -> (Bool, ToolError)
+  if ok
+    ret (true, ToolError::Ok)
+  .end
+  ret (false, tool_error_from_sys(se))
+.end
+
+# Like guard_sys but also prints a tagged message on error.
+fn guard_sys_log(tag: Str, ok: Bool, se: SysError, msg: Str) -> (Bool, ToolError)
+  if ok
+    ret (true, ToolError::Ok)
+  .end
+  do log_tag(tag, msg)
+  ret (false, tool_error_from_sys(se))
+.end
+
+# Guard a (ok, ToolError) and, on error, log a message and return false.
+fn guard_tool_log(tag: Str, ok: Bool, e: ToolError, msg: Str) -> (Bool, ToolError)
+  if ok
+    ret (true, ToolError::Ok)
+  .end
+  do log_tag(tag, msg)
+  do log_kv(tag, "error", tool_error_msg(e))
+  ret (false, e)
+.end
+
+# -----------------------------------------------------------------------------
+# Time / sleep wrappers
+# -----------------------------------------------------------------------------
+
+# now_ms() wrapper.
+# Returns Unsupported if the platform/runtime does not provide a clock.
+fn now_ms() -> (Bool, ToolError, I64)
+  let ok: Bool
+  let se: SysError
+  let ms: I64
+
+  (ok, se, ms) = std.sys::now_ms()
+  if !ok
+    ret (false, tool_error_from_sys(se), 0)
+  .end
+
+  ret (true, ToolError::Ok, ms)
+.end
+
+fn sleep_ms(ms: U32) -> (Bool, ToolError)
+  let ok: Bool
+  let se: SysError
+  (ok, se) = std.sys::sleep_ms(ms)
+  if !ok
+    ret (false, tool_error_from_sys(se))
+  .end
+  ret (true, ToolError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# Stopwatch
+# -----------------------------------------------------------------------------
+
+type Stopwatch struct
+  start_ms: I64
+  running: Bool
+.end
+
+fn stopwatch_new() -> Stopwatch
+  let sw: Stopwatch
+  set sw.start_ms = 0
+  set sw.running = false
+  ret sw
+.end
+
+fn stopwatch_start(sw: &Stopwatch) -> (Bool, ToolError)
+  let ok: Bool
+  let e: ToolError
+  let t: I64
+
+  (ok, e, t) = now_ms()
+  if !ok
+    ret (false, e)
+  .end
+
+  set sw.start_ms = t
+  set sw.running = true
+  ret (true, ToolError::Ok)
+.end
+
+fn stopwatch_restart(sw: &Stopwatch) -> (Bool, ToolError)
+  ret stopwatch_start(sw)
+.end
+
+fn stopwatch_is_running(sw: &Stopwatch) -> Bool
+  ret sw.running
+.end
+
+fn stopwatch_elapsed_ms(sw: &Stopwatch) -> (Bool, ToolError, I64)
+  if !sw.running
+    ret (false, ToolError::Invalid, 0)
+  .end
+
+  let ok: Bool
+  let e: ToolError
+  let t: I64
+
+  (ok, e, t) = now_ms()
+  if !ok
+    ret (false, e, 0)
+  .end
+
+  let dt: I64
+  set dt = t - sw.start_ms
+  if dt < 0
+    set dt = 0
+  .end
+
+  ret (true, ToolError::Ok, dt)
+.end
+
+# Like elapsed_ms but keeps the stopwatch running (alias).
+fn stopwatch_split_ms(sw: &Stopwatch) -> (Bool, ToolError, I64)
+  ret stopwatch_elapsed_ms(sw)
+.end
+
+fn stopwatch_stop(sw: &Stopwatch) -> (Bool, ToolError, I64)
+  let ok: Bool
+  let e: ToolError
+  let dt: I64
+
+  (ok, e, dt) = stopwatch_elapsed_ms(sw)
+  if !ok
+    ret (false, e, 0)
+  .end
+
+  set sw.running = false
+  ret (true, ToolError::Ok, dt)
+.end
+
+# -----------------------------------------------------------------------------
+# Timed execution helpers
+# -----------------------------------------------------------------------------
+
+# Tool entry function type.
+# - returns (ok, exit_code)
+
+type ToolFn = fn() -> (Bool, ExitCode)
+
+type TimedResult struct
+  ok: Bool
+  code: ExitCode
+  elapsed_ms: I64
+  timed: Bool
+.end
+
+fn timed_result_new() -> TimedResult
+  let r: TimedResult
+  set r.ok = false
+  set r.code = exit_fail()
+  set r.elapsed_ms = 0
+  set r.timed = false
+  ret r
+.end
+
+fn timed_result_is_ok(r: &TimedResult) -> Bool
+  ret r.ok && exit_is_ok(r.code)
+.end
+
+# Run a function and measure elapsed time.
+# Logging is best-effort and does not affect the result.
+fn run_timed(name: Str, f: ToolFn) -> (Bool, ToolError, TimedResult)
+  let sw = stopwatch_new()
+
+  let ok: Bool
+  let e: ToolError
+  (ok, e) = stopwatch_start(&sw)
+  if !ok
+    # timing unavailable
+    let r = timed_result_new()
+    let ok2: Bool
+    let code: ExitCode
+    (ok2, code) = f()
+    set r.ok = ok2
+    set r.code = code
+    set r.elapsed_ms = 0
+    set r.timed = false
+    ret (true, ToolError::Ok, r)
+  .end
+
+  do log_tag("tool", name)
+
+  let ok2: Bool
+  let code: ExitCode
+  (ok2, code) = f()
+
+  let dt: I64
+  (ok, e, dt) = stopwatch_stop(&sw)
+  if !ok
+    set dt = 0
+  .end
+
+  let r: TimedResult
+  set r.ok = ok2
+  set r.code = code
+  set r.elapsed_ms = dt
+  set r.timed = true
+
+  ret (true, ToolError::Ok, r)
+.end
+
+# Like run_timed but does not emit the [tool] tag.
+fn run_timed_quiet(f: ToolFn) -> (Bool, ToolError, TimedResult)
+  let sw = stopwatch_new()
+
+  let ok: Bool
+  let e: ToolError
+  (ok, e) = stopwatch_start(&sw)
+  if !ok
+    let r = timed_result_new()
+    let ok2: Bool
+    let code: ExitCode
+    (ok2, code) = f()
+    set r.ok = ok2
+    set r.code = code
+    set r.elapsed_ms = 0
+    set r.timed = false
+    ret (true, ToolError::Ok, r)
+  .end
+
+  let ok2: Bool
+  let code: ExitCode
+  (ok2, code) = f()
+
+  let dt: I64
+  (ok, e, dt) = stopwatch_stop(&sw)
+  if !ok
+    set dt = 0
+  .end
+
+  let r: TimedResult
+  set r.ok = ok2
+  set r.code = code
+  set r.elapsed_ms = dt
+  set r.timed = true
+
+  ret (true, ToolError::Ok, r)
+.end
+
+# Run a function and return an exit code.
+fn run_checked(name: Str, f: ToolFn) -> ExitCode
+  let ok: Bool
+  let e: ToolError
+  let r: TimedResult
+
+  (ok, e, r) = run_timed(name, f)
+  if ok
+    ret r.code
+  .end
+
+  # If we cannot even wrap, fallback.
+  let ok2: Bool
+  let code: ExitCode
+  (ok2, code) = f()
+  ret code
+.end
+
+# Standard "tool main" helper.
+# - prints a banner
+# - runs the tool
+# - prints ok/fail tag
+fn tool_main(title: Str, f: ToolFn) -> ExitCode
+  do log_banner(title)
+  let code = run_checked(title, f)
+  if exit_is_ok(code)
+    do log_ok("done")
+  else
+    do log_err("failed")
+  .end
+  ret code
+.end
+
+# -----------------------------------------------------------------------------
+# ToolStatus: accumulate warnings/errors and compute final exit code
+# -----------------------------------------------------------------------------
+
+type ToolStatus struct
+  ok: Bool
+  warnings: U32
+  errors: U32
+  code: ExitCode
+
+  started: Bool
+  start_ms: I64
+.end
+
+fn tool_status_new() -> ToolStatus
+  let s: ToolStatus
+  set s.ok = true
+  set s.warnings = 0
+  set s.errors = 0
+  set s.code = exit_ok()
+  set s.started = false
+  set s.start_ms = 0
+  ret s
+.end
+
+fn tool_status_begin(s: &ToolStatus)
+  if s.started
+    ret
+  .end
+
+  let ok: Bool
+  let e: ToolError
+  let t: I64
+  (ok, e, t) = now_ms()
+  if ok
+    set s.started = true
+    set s.start_ms = t
+  .end
+.end
+
+fn tool_status_warn(s: &ToolStatus, msg: Str)
+  set s.warnings = s.warnings + 1
+  do log_warn(msg)
+.end
+
+fn tool_status_error(s: &ToolStatus, msg: Str)
+  set s.errors = s.errors + 1
+  set s.ok = false
+  if exit_is_ok(s.code)
+    set s.code = exit_fail()
+  .end
+  do log_err(msg)
+.end
+
+fn tool_status_error_code(s: &ToolStatus, code: ExitCode, msg: Str)
+  set s.errors = s.errors + 1
+  set s.ok = false
+  if exit_is_ok(s.code)
+    set s.code = code
+  .end
+  do log_err(msg)
+.end
+
+fn tool_status_require(s: &ToolStatus, cond: Bool, msg: Str) -> Bool
+  if cond
+    ret true
+  .end
+  do tool_status_error(s, msg)
+  ret false
+.end
+
+fn tool_status_require_code(s: &ToolStatus, cond: Bool, code: ExitCode, msg: Str) -> Bool
+  if cond
+    ret true
+  .end
+  do tool_status_error_code(s, code, msg)
+  ret false
+.end
+
+fn tool_status_has_errors(s: &ToolStatus) -> Bool
+  ret s.errors != 0
+.end
+
+fn tool_status_has_warnings(s: &ToolStatus) -> Bool
+  ret s.warnings != 0
+.end
+
+# Elapsed time since begin (if begin succeeded).
+fn tool_status_elapsed_ms(s: &ToolStatus) -> (Bool, ToolError, I64)
+  if !s.started
+    ret (false, ToolError::Invalid, 0)
+  .end
+
+  let ok: Bool
+  let e: ToolError
+  let t: I64
+  (ok, e, t) = now_ms()
+  if !ok
+    ret (false, e, 0)
+  .end
+
+  let dt: I64
+  set dt = t - s.start_ms
+  if dt < 0
+    set dt = 0
+  .end
+
+  ret (true, ToolError::Ok, dt)
+.end
+
+fn tool_status_finish(s: &ToolStatus) -> ExitCode
+  if s.ok
+    ret exit_ok()
+  .end
+  ret s.code
+.end
+
+# Finish and print a generic summary banner.
+# No numeric counters printed (no formatting layer).
+fn tool_status_finish_log(s: &ToolStatus) -> ExitCode
+  if s.ok
+    if s.warnings != 0
+      do log_warn("done with warnings")
+      ret exit_ok()
+    .end
+    do log_ok("done")
+    ret exit_ok()
+  .end
+
+  do log_err("failed")
+  ret s.code
+.end
+
+# -----------------------------------------------------------------------------
+# Combinators (tool step composition)
+# -----------------------------------------------------------------------------
+
+# A step returns a ToolResult.
+
+type StepFn = fn() -> ToolResult
+
+fn step_ok() -> ToolResult
+  ret tool_result_ok()
+.end
+
+fn step_fail() -> ToolResult
+  ret tool_result_code(exit_fail())
+.end
+
+fn step_run(name: Str, f: StepFn) -> ToolResult
+  do log_tag("step", name)
+  let r = f()
+  if tool_result_is_ok(&r)
+    do log_ok("step ok")
+    ret r
+  .end
+  do log_err("step failed")
+  ret r
+.end
+
+fn steps2(name1: Str, f1: StepFn, name2: Str, f2: StepFn) -> ToolResult
+  let r1 = step_run(name1, f1)
+  if !tool_result_is_ok(&r1)
+    ret r1
+  .end
+  ret step_run(name2, f2)
+.end
+
+fn steps3(name1: Str, f1: StepFn, name2: Str, f2: StepFn, name3: Str, f3: StepFn) -> ToolResult
+  let r = step_run(name1, f1)
+  if !tool_result_is_ok(&r)
+    ret r
+  .end
+
+  set r = step_run(name2, f2)
+  if !tool_result_is_ok(&r)
+    ret r
+  .end
+
+  ret step_run(name3, f3)
+.end
+
+# -----------------------------------------------------------------------------
+# Assertions for tools (no panic formatting)
+# -----------------------------------------------------------------------------
+
+fn tool_assert(cond: Bool, msg: Str)
+  if cond
+    ret
+  .end
+  do log_err(msg)
+  do std.runtime::assert(false, msg)
+.end
+
+fn tool_require(cond: Bool, msg: Str) -> (Bool, ExitCode)
+  if cond
+    ret (true, exit_ok())
+  .end
+  do log_err(msg)
+  ret (false, exit_usage())
+.end
+
+fn tool_fail(msg: Str) -> ToolResult
+  do log_err(msg)
+  ret tool_result_code(exit_fail())
+.end
+
+fn tool_usage(msg: Str) -> ToolResult
+  do log_err(msg)
+  ret tool_result_code(exit_usage())
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests (scenarios)
+# -----------------------------------------------------------------------------
+
+fn _skip_if_unsupported(ok: Bool, e: ToolError) -> Bool
+  if ok
+    ret false
+  .end
+  if e == ToolError::Unsupported
+    ret true
+  .end
+  do std.runtime::assert(false, "std.tools: unexpected error")
+  ret true
+.end
+
+fn _dummy_ok() -> (Bool, ExitCode)
+  ret (true, exit_ok())
+.end
+
+fn _dummy_fail() -> (Bool, ExitCode)
+  ret (false, exit_fail())
+.end
+
+fn _step_ok() -> ToolResult
+  ret tool_result_ok()
+.end
+
+fn _step_fail_usage() -> ToolResult
+  ret tool_result_code(exit_usage())
+.end
+
+scn test_tools_stopwatch_basic
+  let sw = stopwatch_new()
+  let ok: Bool
+  let e: ToolError
+
+  (ok, e) = stopwatch_start(&sw)
+  if _skip_if_unsupported(ok, e)
+    ret
+  .end
+
+  do std.runtime::assert(stopwatch_is_running(&sw), "running")
+
+  let dt: I64
+  (ok, e, dt) = stopwatch_elapsed_ms(&sw)
+  do std.runtime::assert(ok, "elapsed")
+  do std.runtime::assert(dt >= 0, "elapsed nonneg")
+
+  (ok, e, dt) = stopwatch_stop(&sw)
+  do std.runtime::assert(ok, "stop")
+  do std.runtime::assert(!stopwatch_is_running(&sw), "stopped")
+.end
+
+scn test_tools_run_checked
+  let code = run_checked("dummy_ok", _dummy_ok)
+  do std.runtime::assert(code == exit_ok(), "run_checked ok")
+
+  let code2 = run_checked("dummy_fail", _dummy_fail)
+  do std.runtime::assert(code2 == exit_fail(), "run_checked fail")
+.end
+
+scn test_tools_error_to_exit
+  do std.runtime::assert(tool_error_to_exit_code(ToolError::Ok) == exit_ok(), "ok")
+  do std.runtime::assert(tool_error_to_exit_code(ToolError::Invalid) == exit_usage(), "invalid")
+  do std.runtime::assert(tool_error_to_exit_code(ToolError::Io) == exit_io(), "io")
+.end
+
+scn test_tools_status_basic
+  let s = tool_status_new()
+  do tool_status_begin(&s)
+
+  do tool_status_warn(&s, "warn")
+  do std.runtime::assert(tool_status_has_warnings(&s), "has warnings")
+
+  do tool_status_error_code(&s, exit_usage(), "err")
+  do std.runtime::assert(tool_status_has_errors(&s), "has errors")
+
+  let code = tool_status_finish(&s)
+  do std.runtime::assert(code == exit_usage(), "finish code")
+.end
+
+scn test_tools_steps
+  let r = steps2("a", _step_ok, "b", _step_fail_usage)
+  do std.runtime::assert(!tool_result_is_ok(&r), "steps fail")
+  do std.runtime::assert(r.code == exit_usage(), "steps code")
+.end
+
+# End of std.tools

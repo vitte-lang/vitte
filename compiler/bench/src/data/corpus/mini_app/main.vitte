@@ -1,0 +1,161 @@
+mod mini_app.main
+
+# -----------------------------------------------------------------------------
+# mini_app/main.vitte
+# Corpus mini-app: main entrypoints that exercise CLI-style dispatch.
+# - imports submodules
+# - dispatches to mini_app.args program
+# - provides a couple additional tiny commands for compiler corpus coverage
+# -----------------------------------------------------------------------------
+
+use mini_app.args
+
+fn banner()
+  say "mini_app" 
+.end
+
+fn help()
+  banner()
+  say ""
+  say "Programs:"
+  say "  args      - argument parsing demo"
+  say "  math      - tiny arithmetic demo"
+  say "  io        - tiny io/string demo"
+  say ""
+  say "Run:"
+  say "  vittec run mini_app <prog> [args...]"
+  say ""
+.end
+
+fn math_demo(argv: [str]) -> i32
+  # expects: math <a> <b>
+  when len(argv) < 3
+    say "usage: math <a> <b>"
+    ret 2
+  .end
+
+  let a = to_int_lossy(argv[1])
+  let b = to_int_lossy(argv[2])
+
+  let add = a + b
+  let sub = a - b
+  let mul = a * b
+
+  say "add=" + itos(add)
+  say "sub=" + itos(sub)
+  say "mul=" + itos(mul)
+
+  when b != 0
+    let div = a / b
+    let mod = a % b
+    say "div=" + itos(div)
+    say "mod=" + itos(mod)
+  .end
+
+  ret 0
+.end
+
+fn io_demo(argv: [str]) -> i32
+  # exercises basic string ops
+  when len(argv) < 2
+    say "usage: io <value>"
+    ret 2
+  .end
+
+  let s = argv[1]
+  say "len=" + itos(len(s))
+
+  when len(s) > 0
+    say "first=" + s[0]
+  .end
+
+  when len(s) > 1
+    say "second=" + s[1]
+  .end
+
+  say "upper=" + upper(s)
+  say "lower=" + lower(s)
+  say "trim=" + trim(s)
+
+  ret 0
+.end
+
+prog mini_app
+  # argv assumed as process args
+  let argv = args
+
+  when len(argv) < 2
+    help()
+    ret 2
+  .end
+
+  let sub = argv[1]
+
+  match sub
+    "args" => do
+      # forward remaining args: build a new argv with program name "args"
+      # In a real runtime, you'd pass slices; here we reconstruct.
+      let av: [str]
+      set av = []
+      push(av, "args")
+
+      let i = 2
+      loop
+        when i >= len(argv)
+          break
+        .end
+        push(av, argv[i])
+        set i = i + 1
+      .end
+
+      # call args program entry (assumed exposed as function `args`)
+      ret args(av)
+    .end
+
+    "math" => do
+      # forward same argv but drop dispatcher name
+      let av: [str]
+      set av = []
+      push(av, "math")
+
+      let i = 2
+      loop
+        when i >= len(argv)
+          break
+        .end
+        push(av, argv[i])
+        set i = i + 1
+      .end
+
+      ret math_demo(av)
+    .end
+
+    "io" => do
+      let av: [str]
+      set av = []
+      push(av, "io")
+
+      let i = 2
+      loop
+        when i >= len(argv)
+          break
+        .end
+        push(av, argv[i])
+        set i = i + 1
+      .end
+
+      ret io_demo(av)
+    .end
+
+    "help" => do
+      help()
+      ret 0
+    .end
+
+    _ => do
+      say "unknown program: " + sub
+      help()
+      ret 2
+    .end
+  .end
+.end

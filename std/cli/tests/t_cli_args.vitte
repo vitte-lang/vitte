@@ -1,0 +1,236 @@
+# /Users/vincent/Documents/Github/vitte/std/cli/tests/t_cli_args.vitte
+# -----------------------------------------------------------------------------
+# std/cli/tests/t_cli_args
+# -----------------------------------------------------------------------------
+# MAX tests for std.cli.args (streaming scanner).
+#
+# Coverage:
+# - long flag:      --verbose
+# - long opt:       --out=file
+# - long opt next:  --out file
+# - end-of-options: --
+# - positional after -- (even if begins with '-')
+# - short flag:     -v
+# - short group:    -abc => -a -b -c
+# - short opt next: -o file
+# - short opt eq:   -o=file
+# - error cases:    -- (handled), empty/invalid forms
+#
+# Notes:
+# - Uses scan_state_new + scan_next exactly as generated in args.vitte (MAX).
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.cli.tests.t_cli_args
+
+use std.runtime
+use std.string
+use std.cli.args
+
+type Bool = bool
+type U32  = u32
+type Str  = str
+
+fn assert_true(b: Bool, msg: Str)
+  do std.runtime::assert(b, msg)
+.end
+
+fn assert_eq_str(a: Str, b: Str, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_u32(a: U32, b: U32, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_kind(t: &std.cli.args::ArgToken, k: std.cli.args::ArgKind, msg: Str)
+  do std.runtime::assert(t.kind == k, msg)
+.end
+
+# Helper to call scan_next with explicit next existence
+fn next(st: &std.cli.args::ScanState, arg: Str, next_arg: Str, next_exists: Bool) -> (std.cli.args::ArgToken, std.cli.args::ArgError, Bool)
+  ret std.cli.args::scan_next(st, arg, next_arg, next_exists)
+.end
+
+# -----------------------------------------------------------------------------
+# Long forms
+# -----------------------------------------------------------------------------
+
+scn test_args_long_flag
+  let st = std.cli.args::scan_state_new()
+  let t: std.cli.args::ArgToken
+  let e: std.cli.args::ArgError
+  let c: Bool
+
+  (t, e, c) = next(&st, "--verbose", "", false)
+  do assert_kind(&t, std.cli.args::ArgKind::LongFlag, "long flag")
+  do assert_eq_str(t.name, "verbose", "name verbose")
+  do assert_true(!c, "no consume")
+  do assert_true(e == std.cli.args::ArgError::Ok, "ok")
+.end
+
+scn test_args_long_opt_eq
+  let st = std.cli.args::scan_state_new()
+  let t: std.cli.args::ArgToken
+  let e: std.cli.args::ArgError
+  let c: Bool
+
+  (t, e, c) = next(&st, "--out=file", "", false)
+  do assert_kind(&t, std.cli.args::ArgKind::LongOpt, "long opt")
+  do assert_eq_str(t.name, "out", "name out")
+  do assert_eq_str(t.value, "file", "value file")
+  do assert_true(!c, "no consume")
+.end
+
+scn test_args_long_opt_next
+  let st = std.cli.args::scan_state_new()
+  let t: std.cli.args::ArgToken
+  let e: std.cli.args::ArgError
+  let c: Bool
+
+  (t, e, c) = next(&st, "--out", "file", true)
+  do assert_kind(&t, std.cli.args::ArgKind::LongOpt, "long opt upgraded")
+  do assert_eq_str(t.name, "out", "name out")
+  do assert_eq_str(t.value, "file", "value file")
+  do assert_true(c, "consume next")
+.end
+
+# -----------------------------------------------------------------------------
+# Short forms
+# -----------------------------------------------------------------------------
+
+scn test_args_short_flag
+  let st = std.cli.args::scan_state_new()
+  let t: std.cli.args::ArgToken
+  let e: std.cli.args::ArgError
+  let c: Bool
+
+  (t, e, c) = next(&st, "-v", "", false)
+  # may upgrade to ShortOpt only if next exists; here none => flag
+  do assert_kind(&t, std.cli.args::ArgKind::ShortFlag, "short flag")
+  do assert_eq_str(t.name, "v", "name v")
+  do assert_true(!c, "no consume")
+.end
+
+scn test_args_short_group_expansion
+  let st = std.cli.args::scan_state_new()
+  let t: std.cli.args::ArgToken
+  let e: std.cli.args::ArgError
+  let c: Bool
+
+  (t, e, c) = next(&st, "-abc", "", false)
+  do assert_kind(&t, std.cli.args::ArgKind::ShortFlag, "short flag a")
+  do assert_eq_str(t.name, "a", "a")
+
+  # next calls should emit pending b and c without consuming argv
+  (t, e, c) = next(&st, "IGNORED", "", false)
+  do assert_kind(&t, std.cli.args::ArgKind::ShortFlag, "short flag b")
+  do assert_eq_str(t.name, "b", "b")
+  do assert_true(!c, "no consume b")
+
+  (t, e, c) = next(&st, "IGNORED", "", false)
+  do assert_kind(&t, std.cli.args::ArgKind::ShortFlag, "short flag c")
+  do assert_eq_str(t.name, "c", "c")
+  do assert_true(!c, "no consume c")
+.end
+
+scn test_args_short_opt_next
+  let st = std.cli.args::scan_state_new()
+  let t: std.cli.args::ArgToken
+  let e: std.cli.args::ArgError
+  let c: Bool
+
+  (t, e, c) = next(&st, "-o", "file", true)
+  do assert_kind(&t, std.cli.args::ArgKind::ShortOpt, "short opt")
+  do assert_eq_str(t.name, "o", "name o")
+  do assert_eq_str(t.value, "file", "value file")
+  do assert_true(c, "consume next")
+.end
+
+scn test_args_short_opt_eq
+  let st = std.cli.args::scan_state_new()
+  let t: std.cli.args::ArgToken
+  let e: std.cli.args::ArgError
+  let c: Bool
+
+  (t, e, c) = next(&st, "-o=file", "", false)
+  do assert_kind(&t, std.cli.args::ArgKind::ShortOpt, "short opt eq")
+  do assert_eq_str(t.name, "o", "name o")
+  do assert_eq_str(t.value, "file", "value file")
+  do assert_true(!c, "no consume")
+.end
+
+# -----------------------------------------------------------------------------
+# End-of-options and positionals
+# -----------------------------------------------------------------------------
+
+scn test_args_end_of_options
+  let st = std.cli.args::scan_state_new()
+  let t: std.cli.args::ArgToken
+  let e: std.cli.args::ArgError
+  let c: Bool
+
+  (t, e, c) = next(&st, "--", "", false)
+  do assert_true(std.cli.args::token_is_end(&t), "end token")
+  do assert_true(!c, "no consume")
+
+  (t, e, c) = next(&st, "-x", "", false)
+  do assert_kind(&t, std.cli.args::ArgKind::Positional, "pos after --")
+  do assert_eq_str(t.value, "-x", "value -x")
+.end
+
+scn test_args_positional_plain
+  let st = std.cli.args::scan_state_new()
+  let t: std.cli.args::ArgToken
+  let e: std.cli.args::ArgError
+  let c: Bool
+
+  (t, e, c) = next(&st, "file1", "", false)
+  do assert_kind(&t, std.cli.args::ArgKind::Positional, "pos")
+  do assert_eq_str(t.value, "file1", "file1")
+.end
+
+# -----------------------------------------------------------------------------
+# Helpers help/version
+# -----------------------------------------------------------------------------
+
+scn test_args_helpers_help_version
+  let st = std.cli.args::scan_state_new()
+  let t: std.cli.args::ArgToken
+  let e: std.cli.args::ArgError
+  let c: Bool
+
+  (t, e, c) = next(&st, "--help", "", false)
+  do assert_true(std.cli.args::token_is_help(&t), "help long")
+
+  (t, e, c) = next(&st, "-h", "", false)
+  do assert_true(std.cli.args::token_is_help(&t), "help short")
+
+  (t, e, c) = next(&st, "--version", "", false)
+  do assert_true(std.cli.args::token_is_version(&t), "version long")
+
+  (t, e, c) = next(&st, "-V", "", false)
+  do assert_true(std.cli.args::token_is_version(&t), "version short")
+.end
+
+# -----------------------------------------------------------------------------
+# Invalid-ish forms (best-effort)
+# -----------------------------------------------------------------------------
+
+scn test_args_invalid_forms
+  let st = std.cli.args::scan_state_new()
+  let t: std.cli.args::ArgToken
+  let e: std.cli.args::ArgError
+  let c: Bool
+
+  # "--" is special end, not invalid
+  (t, e, c) = next(&st, "--", "", false)
+  do assert_true(std.cli.args::token_is_end(&t), "-- end")
+
+  # "-" alone is positional per scan_next (not short option)
+  (t, e, c) = next(&st, "-", "", false)
+  do assert_kind(&t, std.cli.args::ArgKind::Positional, "dash positional")
+  do assert_eq_str(t.value, "-", "dash")
+.end
+
+# End of t_cli_args.vitte

@@ -1,0 +1,57 @@
+mod cli.table.table
+
+type Table
+  headers: [str]
+  rows: [[str]]
+.end
+
+fn table_new(headers: [str]) -> Table
+  let t: Table
+  set t.headers = headers
+  set t.rows = []
+  ret t
+.end
+
+fn table_add_row(t: &mut Table, row: [str]) -> void
+  do t.rows.push(row)
+.end
+
+fn render(t: &Table) -> str
+  # minimal: tab-separated
+  let out: str = ""
+  let i: i64 = 0
+  loop
+    if i >= t.headers.len
+      break
+    .end
+    set out = out + t.headers[i]
+    if i + 1 < t.headers.len
+      set out = out + "\t"
+    else
+      set out = out + "\n"
+    .end
+    set i = i + 1
+  .end
+
+  let r: i64 = 0
+  loop
+    if r >= t.rows.len
+      ret out
+    .end
+    let row = t.rows[r]
+    let c: i64 = 0
+    loop
+      if c >= row.len
+        break
+      .end
+      set out = out + row[c]
+      if c + 1 < row.len
+        set out = out + "\t"
+      else
+        set out = out + "\n"
+      .end
+      set c = c + 1
+    .end
+    set r = r + 1
+  .end
+.end

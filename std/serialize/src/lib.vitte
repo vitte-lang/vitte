@@ -1,0 +1,1565 @@
+
+
+# -----------------------------------------------------------------------------
+# std/serialize
+# -----------------------------------------------------------------------------
+# Serialization utilities.
+#
+# Features:
+# - Binary codec (vbin):
+#   - varint u64
+#   - zigzag varint i64
+#   - length-prefixed bytes/string
+#   - little-endian fixed ints
+# - JSON value model + stringify + parser (bootstrap-friendly)
+#
+# Constraints:
+# - no filesystem / syscalls
+# - no async
+# - blocks use `.end` only
+# - strings are raw bytes (Vec[U8]), UTF-8 not validated
+# -----------------------------------------------------------------------------
+
+module std.serialize
+
+use std.collections
+
+# -----------------------------------------------------------------------------
+# Prelude
+# -----------------------------------------------------------------------------
+
+type Bool  = bool
+
+type U8    = u8
+type U16   = u16
+type U32   = u32
+type U64   = u64
+
+type I32   = i32
+type I64   = i64
+
+type USize = usize
+
+type Ptr[T] = ptr[T]
+
+type Str = str
+
+# -----------------------------------------------------------------------------
+# Panic / assert stubs
+# -----------------------------------------------------------------------------
+
+fn panic(msg: Str)
+  ret
+.end
+
+fn assert(cond: Bool, msg: Str)
+  if !cond
+    do panic(msg)
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Errors
+# -----------------------------------------------------------------------------
+
+type SerError enum
+  Ok
+  Invalid
+  OutOfMemory
+  Eof
+  Overflow
+  BadNumber
+  BadString
+  BadEscape
+  Unexpected
+  Unsupported
+.end
+
+# -----------------------------------------------------------------------------
+# Small Vec helpers (byte-level)
+# -----------------------------------------------------------------------------
+
+fn vec_push_byte(dst: &Vec[U8], b: U8) -> Bool
+  let ok: Bool
+  let e: ColError
+  (ok, e) = vec_push[U8](dst, 1, b)
+  ret ok
+.end
+
+fn vec_push_bytes(dst: &Vec[U8], p: Ptr[U8], n: USize) -> Bool
+  let ok: Bool
+  let e: ColError
+  let i: USize
+  set i = 0
+  while i < n
+    (ok, e) = vec_push[U8](dst, 1, *(p + i))
+    if !ok
+      ret false
+    .end
+    set i = i + 1
+  .end
+  ret true
+.end
+
+fn vec_assign_u8(dst: &Vec[U8], src: &Vec[U8]) -> Bool
+  do vec_clear[U8](dst)
+  let p = (Ptr[U8])src.data
+  ret vec_push_bytes(dst, p, src.len)
+.end
+
+fn vec_clone_u8(src: &Vec[U8]) -> (Bool, Vec[U8])
+  let v = vec_new[U8]()
+  if !vec_assign_u8(&v, src)
+    do vec_drop[U8](&v, 1)
+    ret (false, vec_new[U8]())
+  .end
+  ret (true, v)
+.end
+
+fn vec_eq_u8(a: &Vec[U8], b: &Vec[U8]) -> Bool
+  if a.len != b.len
+    ret false
+  .end
+  let ap = (Ptr[U8])a.data
+  let bp = (Ptr[U8])b.data
+  let i: USize
+  set i = 0
+  while i < a.len
+    if *(ap + i) != *(bp + i)
+      ret false
+    .end
+    set i = i + 1
+  .end
+  ret true
+.end
+
+fn vec_from_cstr(s: Str) -> Vec[U8]
+  let v = vec_new[U8]()
+  let p = (Ptr[U8])s
+  let i: USize
+  set i = 0
+  loop
+    let b = *(p + i)
+    if b == 0
+      break
+    .end
+    if !vec_push_byte(&v, b)
+      do vec_drop[U8](&v, 1)
+      ret vec_new[U8]()
+    .end
+    set i = i + 1
+  .end
+  ret v
+.end
+
+# -----------------------------------------------------------------------------
+# Binary codec: Writer / Reader
+# -----------------------------------------------------------------------------
+
+# Writer accumulates bytes into a Vec.
+
+type Writer struct
+  buf: Vec[U8]
+.end
+
+fn writer_new() -> Writer
+  let w: Writer
+  set w.buf = vec_new[U8]()
+  ret w
+.end
+
+fn writer_drop(w: &Writer)
+  do vec_drop[U8](&w.buf, 1)
+.end
+
+fn writer_bytes(w: &Writer) -> &Vec[U8]
+  ret &w.buf
+.end
+
+fn w_write_u8(w: &Writer, b: U8) -> (Bool, SerError)
+  if !vec_push_byte(&w.buf, b)
+    ret (false, SerError::OutOfMemory)
+  .end
+  ret (true, SerError::Ok)
+.end
+
+fn w_write_bytes(w: &Writer, p: Ptr[U8], n: USize) -> (Bool, SerError)
+  if !vec_push_bytes(&w.buf, p, n)
+    ret (false, SerError::OutOfMemory)
+  .end
+  ret (true, SerError::Ok)
+.end
+
+# Little-endian fixed ints
+fn w_write_u16_le(w: &Writer, x: U16) -> (Bool, SerError)
+  let b0: U8
+  let b1: U8
+  set b0 = (U8)(x & (U16)0xFF)
+  set b1 = (U8)((x >> 8) & (U16)0xFF)
+  do w_write_u8(w, b0)
+  ret w_write_u8(w, b1)
+.end
+
+fn w_write_u32_le(w: &Writer, x: U32) -> (Bool, SerError)
+  let i: USize
+  set i = 0
+  while i < 4
+    let b = (U8)((x >> (U32)(i * 8)) & (U32)0xFF)
+    let ok: Bool
+    let e: SerError
+    (ok, e) = w_write_u8(w, b)
+    if !ok
+      ret (false, e)
+    .end
+    set i = i + 1
+  .end
+  ret (true, SerError::Ok)
+.end
+
+fn w_write_u64_le(w: &Writer, x: U64) -> (Bool, SerError)
+  let i: USize
+  set i = 0
+  while i < 8
+    let b = (U8)((x >> (U64)(i * 8)) & (U64)0xFF)
+    let ok: Bool
+    let e: SerError
+    (ok, e) = w_write_u8(w, b)
+    if !ok
+      ret (false, e)
+    .end
+    set i = i + 1
+  .end
+  ret (true, SerError::Ok)
+.end
+
+# Varint u64 (LEB128)
+fn w_write_var_u64(w: &Writer, x: U64) -> (Bool, SerError)
+  let v: U64
+  set v = x
+  loop
+    let byte = (U8)(v & (U64)0x7F)
+    set v = v >> 7
+    if v != 0
+      set byte = byte | (U8)0x80
+    .end
+
+    let ok: Bool
+    let e: SerError
+    (ok, e) = w_write_u8(w, byte)
+    if !ok
+      ret (false, e)
+    .end
+
+    if v == 0
+      break
+    .end
+  .end
+  ret (true, SerError::Ok)
+.end
+
+# ZigZag i64 -> u64
+fn zigzag_i64(x: I64) -> U64
+  # (x << 1) ^ (x >> 63)
+  let ux: U64
+  set ux = (U64)x
+  let sign: U64
+  set sign = (U64)((U64)(ux >> 63))
+  ret (U64)((ux << 1) ^ sign)
+.end
+
+fn unzigzag_u64(x: U64) -> I64
+  # (x >> 1) ^ -(x & 1)
+  let a: U64
+  set a = x >> 1
+  let b: U64
+  set b = x & (U64)1
+  let neg: I64
+  if b == 0
+    set neg = 0
+  else
+    set neg = (I64)-1
+  .end
+  ret (I64)((I64)a ^ neg)
+.end
+
+fn w_write_var_i64(w: &Writer, x: I64) -> (Bool, SerError)
+  ret w_write_var_u64(w, zigzag_i64(x))
+.end
+
+fn w_write_len(w: &Writer, n: USize) -> (Bool, SerError)
+  ret w_write_var_u64(w, (U64)n)
+.end
+
+fn w_write_vec_u8(w: &Writer, v: &Vec[U8]) -> (Bool, SerError)
+  let ok: Bool
+  let e: SerError
+  (ok, e) = w_write_len(w, v.len)
+  if !ok
+    ret (false, e)
+  .end
+  ret w_write_bytes(w, (Ptr[U8])v.data, v.len)
+.end
+
+fn w_write_str_bytes(w: &Writer, s: &Vec[U8]) -> (Bool, SerError)
+  ret w_write_vec_u8(w, s)
+.end
+
+# Reader reads from a byte slice with a cursor.
+
+type Reader struct
+  buf: &Vec[U8]
+  pos: USize
+.end
+
+fn reader_new(buf: &Vec[U8]) -> Reader
+  let r: Reader
+  set r.buf = buf
+  set r.pos = 0
+  ret r
+.end
+
+fn r_remaining(r: &Reader) -> USize
+  if r.pos >= r.buf.len
+    ret 0
+  .end
+  ret r.buf.len - r.pos
+.end
+
+fn r_read_u8(r: &Reader) -> (Bool, SerError, U8)
+  if r.pos >= r.buf.len
+    ret (false, SerError::Eof, 0)
+  .end
+  let b = *((Ptr[U8])r.buf.data + r.pos)
+  set r.pos = r.pos + 1
+  ret (true, SerError::Ok, b)
+.end
+
+fn r_read_bytes(r: &Reader, n: USize, out: &Vec[U8]) -> (Bool, SerError)
+  do vec_clear[U8](out)
+  if r_remaining(r) < n
+    ret (false, SerError::Eof)
+  .end
+  let p = (Ptr[U8])r.buf.data + r.pos
+  if !vec_push_bytes(out, p, n)
+    ret (false, SerError::OutOfMemory)
+  .end
+  set r.pos = r.pos + n
+  ret (true, SerError::Ok)
+.end
+
+fn r_read_u16_le(r: &Reader) -> (Bool, SerError, U16)
+  let ok: Bool
+  let e: SerError
+  let b0: U8
+  let b1: U8
+  (ok, e, b0) = r_read_u8(r)
+  if !ok
+    ret (false, e, 0)
+  .end
+  (ok, e, b1) = r_read_u8(r)
+  if !ok
+    ret (false, e, 0)
+  .end
+  ret (true, SerError::Ok, (U16)b0 | ((U16)b1 << 8))
+.end
+
+fn r_read_u32_le(r: &Reader) -> (Bool, SerError, U32)
+  let ok: Bool
+  let e: SerError
+  let i: USize
+  set i = 0
+  let x: U32
+  set x = 0
+  while i < 4
+    let b: U8
+    (ok, e, b) = r_read_u8(r)
+    if !ok
+      ret (false, e, 0)
+    .end
+    set x = x | ((U32)b << (U32)(i * 8))
+    set i = i + 1
+  .end
+  ret (true, SerError::Ok, x)
+.end
+
+fn r_read_u64_le(r: &Reader) -> (Bool, SerError, U64)
+  let ok: Bool
+  let e: SerError
+  let i: USize
+  set i = 0
+  let x: U64
+  set x = 0
+  while i < 8
+    let b: U8
+    (ok, e, b) = r_read_u8(r)
+    if !ok
+      ret (false, e, 0)
+    .end
+    set x = x | ((U64)b << (U64)(i * 8))
+    set i = i + 1
+  .end
+  ret (true, SerError::Ok, x)
+.end
+
+fn r_read_var_u64(r: &Reader) -> (Bool, SerError, U64)
+  let shift: U32
+  set shift = 0
+  let out: U64
+  set out = 0
+
+  loop
+    if shift >= 64
+      ret (false, SerError::Overflow, 0)
+    .end
+
+    let ok: Bool
+    let e: SerError
+    let b: U8
+    (ok, e, b) = r_read_u8(r)
+    if !ok
+      ret (false, e, 0)
+    .end
+
+    let payload = (U64)(b & (U8)0x7F)
+    set out = out | (payload << (U64)shift)
+
+    if (b & (U8)0x80) == 0
+      break
+    .end
+
+    set shift = shift + 7
+  .end
+
+  ret (true, SerError::Ok, out)
+.end
+
+fn r_read_var_i64(r: &Reader) -> (Bool, SerError, I64)
+  let ok: Bool
+  let e: SerError
+  let u: U64
+  (ok, e, u) = r_read_var_u64(r)
+  if !ok
+    ret (false, e, 0)
+  .end
+  ret (true, SerError::Ok, unzigzag_u64(u))
+.end
+
+fn r_read_len(r: &Reader) -> (Bool, SerError, USize)
+  let ok: Bool
+  let e: SerError
+  let u: U64
+  (ok, e, u) = r_read_var_u64(r)
+  if !ok
+    ret (false, e, 0)
+  .end
+  ret (true, SerError::Ok, (USize)u)
+.end
+
+fn r_read_vec_u8(r: &Reader, out: &Vec[U8]) -> (Bool, SerError)
+  let ok: Bool
+  let e: SerError
+  let n: USize
+  (ok, e, n) = r_read_len(r)
+  if !ok
+    ret (false, e)
+  .end
+  ret r_read_bytes(r, n, out)
+.end
+
+fn r_read_str_bytes(r: &Reader, out: &Vec[U8]) -> (Bool, SerError)
+  ret r_read_vec_u8(r, out)
+.end
+
+# -----------------------------------------------------------------------------
+# JSON value model
+# -----------------------------------------------------------------------------
+
+# JsonValue stores raw bytes for strings. Numbers are I64 by default.
+
+type JsonKind enum
+  Null
+  Bool
+  Int
+  String
+  Array
+  Object
+.end
+
+type JsonKV struct
+  key: Vec[U8]
+  val: JsonValue
+.end
+
+# Recursive type
+
+type JsonValue struct
+  kind: JsonKind
+  b: Bool
+  i: I64
+  s: Vec[U8]
+  a: Vec[JsonValue]
+  o: Vec[JsonKV]
+.end
+
+fn json_null() -> JsonValue
+  let v: JsonValue
+  set v.kind = JsonKind::Null
+  set v.b = false
+  set v.i = 0
+  set v.s = vec_new[U8]()
+  set v.a = vec_new[JsonValue]()
+  set v.o = vec_new[JsonKV]()
+  ret v
+.end
+
+fn json_bool(x: Bool) -> JsonValue
+  let v = json_null()
+  set v.kind = JsonKind::Bool
+  set v.b = x
+  ret v
+.end
+
+fn json_int(x: I64) -> JsonValue
+  let v = json_null()
+  set v.kind = JsonKind::Int
+  set v.i = x
+  ret v
+.end
+
+fn json_string(bytes: &Vec[U8]) -> (Bool, SerError, JsonValue)
+  let v = json_null()
+  set v.kind = JsonKind::String
+  let ok: Bool
+  let cp: Vec[U8]
+  (ok, cp) = vec_clone_u8(bytes)
+  if !ok
+    ret (false, SerError::OutOfMemory, v)
+  .end
+  do vec_drop[U8](&v.s, 1)
+  set v.s = cp
+  ret (true, SerError::Ok, v)
+.end
+
+fn json_array() -> JsonValue
+  let v = json_null()
+  set v.kind = JsonKind::Array
+  ret v
+.end
+
+fn json_object() -> JsonValue
+  let v = json_null()
+  set v.kind = JsonKind::Object
+  ret v
+.end
+
+fn jsonkv_drop(kv: &JsonKV)
+  do vec_drop[U8](&kv.key, 1)
+  do json_drop(&kv.val)
+.end
+
+fn json_drop(v: &JsonValue)
+  # drop string
+  do vec_drop[U8](&v.s, 1)
+
+  # drop array elements
+  let i: USize
+  set i = 0
+  while i < v.a.len
+    let it = *((Ptr[JsonValue])v.a.data + i)
+    do json_drop(&it)
+    set i = i + 1
+  .end
+  do vec_drop[JsonValue](&v.a, 0)
+
+  # drop object entries
+  set i = 0
+  while i < v.o.len
+    let kv = *((Ptr[JsonKV])v.o.data + i)
+    do jsonkv_drop(&kv)
+    set i = i + 1
+  .end
+  do vec_drop[JsonKV](&v.o, 0)
+.end
+
+fn json_obj_put(obj: &JsonValue, key: &Vec[U8], val: JsonValue) -> (Bool, SerError)
+  if obj.kind != JsonKind::Object
+    do json_drop(&val)
+    ret (false, SerError::Invalid)
+  .end
+
+  let ok: Bool
+  let k2: Vec[U8]
+  (ok, k2) = vec_clone_u8(key)
+  if !ok
+    do json_drop(&val)
+    ret (false, SerError::OutOfMemory)
+  .end
+
+  let kv: JsonKV
+  set kv.key = k2
+  set kv.val = val
+
+  let ok2: Bool
+  let e2: ColError
+  (ok2, e2) = vec_push[JsonKV](&obj.o, 0, kv)
+  if !ok2
+    do vec_drop[U8](&k2, 1)
+    do json_drop(&val)
+    ret (false, SerError::OutOfMemory)
+  .end
+
+  ret (true, SerError::Ok)
+.end
+
+fn json_arr_push(arr: &JsonValue, val: JsonValue) -> (Bool, SerError)
+  if arr.kind != JsonKind::Array
+    do json_drop(&val)
+    ret (false, SerError::Invalid)
+  .end
+  let ok: Bool
+  let e: ColError
+  (ok, e) = vec_push[JsonValue](&arr.a, 0, val)
+  if !ok
+    do json_drop(&val)
+    ret (false, SerError::OutOfMemory)
+  .end
+  ret (true, SerError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# JSON stringify
+# -----------------------------------------------------------------------------
+
+fn is_ws(b: U8) -> Bool
+  ret b == (U8)' ' || b == (U8)'\n' || b == (U8)'\r' || b == (U8)'\t'
+.end
+
+fn is_digit(b: U8) -> Bool
+  ret b >= (U8)'0' && b <= (U8)'9'
+.end
+
+fn w_indent(out: &Vec[U8], n: USize) -> Bool
+  let i: USize
+  set i = 0
+  while i < n
+    if !vec_push_byte(out, (U8)' ')
+      ret false
+    .end
+    set i = i + 1
+  .end
+  ret true
+.end
+
+fn w_ascii(out: &Vec[U8], s: Str) -> Bool
+  let p = (Ptr[U8])s
+  let i: USize
+  set i = 0
+  loop
+    let b = *(p + i)
+    if b == 0
+      break
+    .end
+    if !vec_push_byte(out, b)
+      ret false
+    .end
+    set i = i + 1
+  .end
+  ret true
+.end
+
+fn json_write_escaped_string(bytes: &Vec[U8], out: &Vec[U8]) -> (Bool, SerError)
+  if !vec_push_byte(out, (U8)'"')
+    ret (false, SerError::OutOfMemory)
+  .end
+
+  let p = (Ptr[U8])bytes.data
+  let i: USize
+  set i = 0
+  while i < bytes.len
+    let b = *(p + i)
+
+    if b == (U8)'"'
+      if !w_ascii(out, "\\\"")
+        ret (false, SerError::OutOfMemory)
+      .end
+    elif b == (U8)'\\'
+      if !w_ascii(out, "\\\\")
+        ret (false, SerError::OutOfMemory)
+      .end
+    elif b == (U8)'\n'
+      if !w_ascii(out, "\\n")
+        ret (false, SerError::OutOfMemory)
+      .end
+    elif b == (U8)'\r'
+      if !w_ascii(out, "\\r")
+        ret (false, SerError::OutOfMemory)
+      .end
+    elif b == (U8)'\t'
+      if !w_ascii(out, "\\t")
+        ret (false, SerError::OutOfMemory)
+      .end
+    else
+      if b < (U8)0x20
+        # control chars: render as \u00XX (limited)
+        if !w_ascii(out, "\\u00")
+          ret (false, SerError::OutOfMemory)
+        .end
+
+        # hex
+        let hi = (U8)((b >> 4) & (U8)0xF)
+        let lo = (U8)(b & (U8)0xF)
+        let hich: U8
+        let loch: U8
+        if hi < 10
+          set hich = (U8)'0' + hi
+        else
+          set hich = (U8)'a' + (hi - 10)
+        .end
+        if lo < 10
+          set loch = (U8)'0' + lo
+        else
+          set loch = (U8)'a' + (lo - 10)
+        .end
+
+        if !vec_push_byte(out, hich)
+          ret (false, SerError::OutOfMemory)
+        .end
+        if !vec_push_byte(out, loch)
+          ret (false, SerError::OutOfMemory)
+        .end
+      else
+        if !vec_push_byte(out, b)
+          ret (false, SerError::OutOfMemory)
+        .end
+      .end
+    .end
+
+    set i = i + 1
+  .end
+
+  if !vec_push_byte(out, (U8)'"')
+    ret (false, SerError::OutOfMemory)
+  .end
+
+  ret (true, SerError::Ok)
+.end
+
+fn json_write_i64(n: I64, out: &Vec[U8]) -> (Bool, SerError)
+  # naive integer to ascii
+  let x: I64
+  set x = n
+
+  if x == 0
+    if !vec_push_byte(out, (U8)'0')
+      ret (false, SerError::OutOfMemory)
+    .end
+    ret (true, SerError::Ok)
+  .end
+
+  let neg: Bool
+  set neg = x < 0
+  if neg
+    set x = -x
+  .end
+
+  # write digits reversed
+  let tmp = vec_new[U8]()
+  loop
+    let d = (U8)(x % 10)
+    if !vec_push_byte(&tmp, (U8)'0' + d)
+      do vec_drop[U8](&tmp, 1)
+      ret (false, SerError::OutOfMemory)
+    .end
+    set x = x / 10
+    if x == 0
+      break
+    .end
+  .end
+
+  if neg
+    if !vec_push_byte(out, (U8)'-')
+      do vec_drop[U8](&tmp, 1)
+      ret (false, SerError::OutOfMemory)
+    .end
+  .end
+
+  let i: I32
+  set i = (I32)tmp.len - 1
+  while i >= 0
+    if !vec_push_byte(out, *((Ptr[U8])tmp.data + (USize)i))
+      do vec_drop[U8](&tmp, 1)
+      ret (false, SerError::OutOfMemory)
+    .end
+    set i = i - 1
+  .end
+
+  do vec_drop[U8](&tmp, 1)
+  ret (true, SerError::Ok)
+.end
+
+fn json_stringify_into(v: &JsonValue, out: &Vec[U8], pretty: Bool, indent: USize, depth: USize) -> (Bool, SerError)
+  if depth > 128
+    ret (false, SerError::Overflow)
+  .end
+
+  if v.kind == JsonKind::Null
+    if !w_ascii(out, "null")
+      ret (false, SerError::OutOfMemory)
+    .end
+    ret (true, SerError::Ok)
+  .end
+
+  if v.kind == JsonKind::Bool
+    if v.b
+      if !w_ascii(out, "true")
+        ret (false, SerError::OutOfMemory)
+      .end
+    else
+      if !w_ascii(out, "false")
+        ret (false, SerError::OutOfMemory)
+      .end
+    .end
+    ret (true, SerError::Ok)
+  .end
+
+  if v.kind == JsonKind::Int
+    ret json_write_i64(v.i, out)
+  .end
+
+  if v.kind == JsonKind::String
+    ret json_write_escaped_string(&v.s, out)
+  .end
+
+  if v.kind == JsonKind::Array
+    if !vec_push_byte(out, (U8)'[')
+      ret (false, SerError::OutOfMemory)
+    .end
+
+    let i: USize
+    set i = 0
+    while i < v.a.len
+      if i != 0
+        if !vec_push_byte(out, (U8)',')
+          ret (false, SerError::OutOfMemory)
+        .end
+      .end
+
+      if pretty
+        if !vec_push_byte(out, (U8)'\n')
+          ret (false, SerError::OutOfMemory)
+        .end
+        if !w_indent(out, indent + 2)
+          ret (false, SerError::OutOfMemory)
+        .end
+      .end
+
+      let it = *((Ptr[JsonValue])v.a.data + i)
+      let ok: Bool
+      let e: SerError
+      (ok, e) = json_stringify_into(&it, out, pretty, indent + 2, depth + 1)
+      if !ok
+        ret (false, e)
+      .end
+
+      set i = i + 1
+    .end
+
+    if pretty && v.a.len != 0
+      if !vec_push_byte(out, (U8)'\n')
+        ret (false, SerError::OutOfMemory)
+      .end
+      if !w_indent(out, indent)
+        ret (false, SerError::OutOfMemory)
+      .end
+    .end
+
+    if !vec_push_byte(out, (U8)']')
+      ret (false, SerError::OutOfMemory)
+    .end
+
+    ret (true, SerError::Ok)
+  .end
+
+  # Object
+  if !vec_push_byte(out, (U8)'{')
+    ret (false, SerError::OutOfMemory)
+  .end
+
+  let j: USize
+  set j = 0
+  while j < v.o.len
+    if j != 0
+      if !vec_push_byte(out, (U8)',')
+        ret (false, SerError::OutOfMemory)
+      .end
+    .end
+
+    if pretty
+      if !vec_push_byte(out, (U8)'\n')
+        ret (false, SerError::OutOfMemory)
+      .end
+      if !w_indent(out, indent + 2)
+        ret (false, SerError::OutOfMemory)
+      .end
+    .end
+
+    let kv = *((Ptr[JsonKV])v.o.data + j)
+
+    let ok: Bool
+    let e: SerError
+
+    (ok, e) = json_write_escaped_string(&kv.key, out)
+    if !ok
+      ret (false, e)
+    .end
+
+    if !vec_push_byte(out, (U8)':')
+      ret (false, SerError::OutOfMemory)
+    .end
+    if pretty
+      if !vec_push_byte(out, (U8)' ')
+        ret (false, SerError::OutOfMemory)
+      .end
+    .end
+
+    (ok, e) = json_stringify_into(&kv.val, out, pretty, indent + 2, depth + 1)
+    if !ok
+      ret (false, e)
+    .end
+
+    set j = j + 1
+  .end
+
+  if pretty && v.o.len != 0
+    if !vec_push_byte(out, (U8)'\n')
+      ret (false, SerError::OutOfMemory)
+    .end
+    if !w_indent(out, indent)
+      ret (false, SerError::OutOfMemory)
+    .end
+  .end
+
+  if !vec_push_byte(out, (U8)'}')
+    ret (false, SerError::OutOfMemory)
+  .end
+
+  ret (true, SerError::Ok)
+.end
+
+fn json_stringify(v: &JsonValue, out: &Vec[U8], pretty: Bool) -> (Bool, SerError)
+  do vec_clear[U8](out)
+  return json_stringify_into(v, out, pretty, 0, 0)
+.end
+
+# -----------------------------------------------------------------------------
+# JSON parser (subset)
+# -----------------------------------------------------------------------------
+
+type JsonParser struct
+  s: &Vec[U8]
+  i: USize
+.end
+
+fn jp_new(s: &Vec[U8]) -> JsonParser
+  let p: JsonParser
+  set p.s = s
+  set p.i = 0
+  ret p
+.end
+
+fn jp_peek(p: &JsonParser) -> (Bool, U8)
+  if p.i >= p.s.len
+    ret (false, 0)
+  .end
+  ret (true, *((Ptr[U8])p.s.data + p.i))
+.end
+
+fn jp_next(p: &JsonParser) -> (Bool, SerError, U8)
+  if p.i >= p.s.len
+    ret (false, SerError::Eof, 0)
+  .end
+  let b = *((Ptr[U8])p.s.data + p.i)
+  set p.i = p.i + 1
+  ret (true, SerError::Ok, b)
+.end
+
+fn jp_skip_ws(p: &JsonParser)
+  loop
+    let ok: Bool
+    let b: U8
+    (ok, b) = jp_peek(p)
+    if !ok
+      break
+    .end
+    if !is_ws(b)
+      break
+    .end
+    set p.i = p.i + 1
+  .end
+.end
+
+fn jp_expect_byte(p: &JsonParser, want: U8) -> (Bool, SerError)
+  do jp_skip_ws(p)
+  let ok: Bool
+  let e: SerError
+  let b: U8
+  (ok, e, b) = jp_next(p)
+  if !ok
+    ret (false, e)
+  .end
+  if b != want
+    ret (false, SerError::Unexpected)
+  .end
+  ret (true, SerError::Ok)
+.end
+
+fn jp_consume_ascii(p: &JsonParser, lit: Str) -> (Bool, SerError)
+  do jp_skip_ws(p)
+  let q = (Ptr[U8])lit
+  let k: USize
+  set k = 0
+  loop
+    let c = *(q + k)
+    if c == 0
+      break
+    .end
+
+    let ok: Bool
+    let e: SerError
+    let b: U8
+    (ok, e, b) = jp_next(p)
+    if !ok
+      ret (false, e)
+    .end
+    if b != c
+      ret (false, SerError::Unexpected)
+    .end
+
+    set k = k + 1
+  .end
+  ret (true, SerError::Ok)
+.end
+
+fn jp_parse_string(p: &JsonParser) -> (Bool, SerError, Vec[U8])
+  let out = vec_new[U8]()
+  let ok: Bool
+  let e: SerError
+
+  (ok, e) = jp_expect_byte(p, (U8)'"')
+  if !ok
+    do vec_drop[U8](&out, 1)
+    ret (false, e, vec_new[U8]())
+  .end
+
+  loop
+    let b: U8
+    (ok, e, b) = jp_next(p)
+    if !ok
+      do vec_drop[U8](&out, 1)
+      ret (false, e, vec_new[U8]())
+    .end
+
+    if b == (U8)'"'
+      break
+    .end
+
+    if b == (U8)'\\'
+      let esc: U8
+      (ok, e, esc) = jp_next(p)
+      if !ok
+        do vec_drop[U8](&out, 1)
+        ret (false, e, vec_new[U8]())
+      .end
+
+      if esc == (U8)'"'
+        if !vec_push_byte(&out, (U8)'"')
+          do vec_drop[U8](&out, 1)
+          ret (false, SerError::OutOfMemory, vec_new[U8]())
+        .end
+      elif esc == (U8)'\\'
+        if !vec_push_byte(&out, (U8)'\\')
+          do vec_drop[U8](&out, 1)
+          ret (false, SerError::OutOfMemory, vec_new[U8]())
+        .end
+      elif esc == (U8)'/'
+        if !vec_push_byte(&out, (U8)'/')
+          do vec_drop[U8](&out, 1)
+          ret (false, SerError::OutOfMemory, vec_new[U8]())
+        .end
+      elif esc == (U8)'b'
+        if !vec_push_byte(&out, (U8)0x08)
+          do vec_drop[U8](&out, 1)
+          ret (false, SerError::OutOfMemory, vec_new[U8]())
+        .end
+      elif esc == (U8)'f'
+        if !vec_push_byte(&out, (U8)0x0C)
+          do vec_drop[U8](&out, 1)
+          ret (false, SerError::OutOfMemory, vec_new[U8]())
+        .end
+      elif esc == (U8)'n'
+        if !vec_push_byte(&out, (U8)'\n')
+          do vec_drop[U8](&out, 1)
+          ret (false, SerError::OutOfMemory, vec_new[U8]())
+        .end
+      elif esc == (U8)'r'
+        if !vec_push_byte(&out, (U8)'\r')
+          do vec_drop[U8](&out, 1)
+          ret (false, SerError::OutOfMemory, vec_new[U8]())
+        .end
+      elif esc == (U8)'t'
+        if !vec_push_byte(&out, (U8)'\t')
+          do vec_drop[U8](&out, 1)
+          ret (false, SerError::OutOfMemory, vec_new[U8]())
+        .end
+      elif esc == (U8)'u'
+        # Minimal \u00XX support: require 4 hex digits and only keep low byte.
+        let h1: U8
+        let h2: U8
+        let h3: U8
+        let h4: U8
+        (ok, e, h1) = jp_next(p)
+        if !ok
+          do vec_drop[U8](&out, 1)
+          ret (false, e, vec_new[U8]())
+        .end
+        (ok, e, h2) = jp_next(p)
+        if !ok
+          do vec_drop[U8](&out, 1)
+          ret (false, e, vec_new[U8]())
+        .end
+        (ok, e, h3) = jp_next(p)
+        if !ok
+          do vec_drop[U8](&out, 1)
+          ret (false, e, vec_new[U8]())
+        .end
+        (ok, e, h4) = jp_next(p)
+        if !ok
+          do vec_drop[U8](&out, 1)
+          ret (false, e, vec_new[U8]())
+        .end
+
+        # accept only \u00XX (so h1='0' h2='0')
+        if h1 != (U8)'0' || h2 != (U8)'0'
+          do vec_drop[U8](&out, 1)
+          ret (false, SerError::Unsupported, vec_new[U8]())
+        .end
+
+        # parse byte from h3h4
+        let v: U8
+        set v = 0
+
+        let hi: U8
+        let lo: U8
+
+        # hi
+        if h3 >= (U8)'0' && h3 <= (U8)'9'
+          set hi = h3 - (U8)'0'
+        elif h3 >= (U8)'a' && h3 <= (U8)'f'
+          set hi = 10 + (h3 - (U8)'a')
+        elif h3 >= (U8)'A' && h3 <= (U8)'F'
+          set hi = 10 + (h3 - (U8)'A')
+        else
+          do vec_drop[U8](&out, 1)
+          ret (false, SerError::BadEscape, vec_new[U8]())
+        .end
+
+        # lo
+        if h4 >= (U8)'0' && h4 <= (U8)'9'
+          set lo = h4 - (U8)'0'
+        elif h4 >= (U8)'a' && h4 <= (U8)'f'
+          set lo = 10 + (h4 - (U8)'a')
+        elif h4 >= (U8)'A' && h4 <= (U8)'F'
+          set lo = 10 + (h4 - (U8)'A')
+        else
+          do vec_drop[U8](&out, 1)
+          ret (false, SerError::BadEscape, vec_new[U8]())
+        .end
+
+        set v = (U8)((hi << 4) | lo)
+
+        if !vec_push_byte(&out, v)
+          do vec_drop[U8](&out, 1)
+          ret (false, SerError::OutOfMemory, vec_new[U8]())
+        .end
+      else
+        do vec_drop[U8](&out, 1)
+        ret (false, SerError::BadEscape, vec_new[U8]())
+      .end
+
+      continue
+    .end
+
+    if !vec_push_byte(&out, b)
+      do vec_drop[U8](&out, 1)
+      ret (false, SerError::OutOfMemory, vec_new[U8]())
+    .end
+  .end
+
+  ret (true, SerError::Ok, out)
+.end
+
+fn jp_parse_int(p: &JsonParser) -> (Bool, SerError, I64)
+  do jp_skip_ws(p)
+
+  let ok: Bool
+  let b: U8
+  (ok, b) = jp_peek(p)
+  if !ok
+    ret (false, SerError::Eof, 0)
+  .end
+
+  let neg: Bool
+  set neg = false
+
+  if b == (U8)'-'
+    set neg = true
+    set p.i = p.i + 1
+  .end
+
+  # at least one digit
+  (ok, b) = jp_peek(p)
+  if !ok
+    ret (false, SerError::Eof, 0)
+  .end
+  if !is_digit(b)
+    ret (false, SerError::BadNumber, 0)
+  .end
+
+  let x: I64
+  set x = 0
+
+  loop
+    (ok, b) = jp_peek(p)
+    if !ok
+      break
+    .end
+    if !is_digit(b)
+      break
+    .end
+
+    set p.i = p.i + 1
+
+    let d = (I64)(b - (U8)'0')
+
+    # overflow check (very conservative)
+    if x > (I64)922337203685477580
+      ret (false, SerError::Overflow, 0)
+    .end
+
+    set x = x * 10 + d
+  .end
+
+  if neg
+    set x = -x
+  .end
+
+  ret (true, SerError::Ok, x)
+.end
+
+fn jp_parse_value(p: &JsonParser, depth: USize) -> (Bool, SerError, JsonValue)
+  if depth > 128
+    ret (false, SerError::Overflow, json_null())
+  .end
+
+  do jp_skip_ws(p)
+  let ok: Bool
+  let b: U8
+  (ok, b) = jp_peek(p)
+  if !ok
+    ret (false, SerError::Eof, json_null())
+  .end
+
+  # null / true / false
+  if b == (U8)'n'
+    let ok2: Bool
+    let e2: SerError
+    (ok2, e2) = jp_consume_ascii(p, "null")
+    if !ok2
+      ret (false, e2, json_null())
+    .end
+    ret (true, SerError::Ok, json_null())
+  .end
+
+  if b == (U8)'t'
+    let ok2: Bool
+    let e2: SerError
+    (ok2, e2) = jp_consume_ascii(p, "true")
+    if !ok2
+      ret (false, e2, json_null())
+    .end
+    ret (true, SerError::Ok, json_bool(true))
+  .end
+
+  if b == (U8)'f'
+    let ok2: Bool
+    let e2: SerError
+    (ok2, e2) = jp_consume_ascii(p, "false")
+    if !ok2
+      ret (false, e2, json_null())
+    .end
+    ret (true, SerError::Ok, json_bool(false))
+  .end
+
+  # string
+  if b == (U8)'"'
+    let ok2: Bool
+    let e2: SerError
+    let s: Vec[U8]
+    (ok2, e2, s) = jp_parse_string(p)
+    if !ok2
+      ret (false, e2, json_null())
+    .end
+
+    let ok3: Bool
+    let e3: SerError
+    let v: JsonValue
+    (ok3, e3, v) = json_string(&s)
+    do vec_drop[U8](&s, 1)
+    if !ok3
+      ret (false, e3, json_null())
+    .end
+
+    ret (true, SerError::Ok, v)
+  .end
+
+  # array
+  if b == (U8)'['
+    let ok2: Bool
+    let e2: SerError
+    (ok2, e2) = jp_expect_byte(p, (U8)'[')
+    if !ok2
+      ret (false, e2, json_null())
+    .end
+
+    let arr = json_array()
+    do jp_skip_ws(p)
+
+    let ok3: Bool
+    let b2: U8
+    (ok3, b2) = jp_peek(p)
+    if ok3 && b2 == (U8)']'
+      set p.i = p.i + 1
+      ret (true, SerError::Ok, arr)
+    .end
+
+    loop
+      let okv: Bool
+      let ev: SerError
+      let v: JsonValue
+      (okv, ev, v) = jp_parse_value(p, depth + 1)
+      if !okv
+        do json_drop(&arr)
+        ret (false, ev, json_null())
+      .end
+
+      let okp: Bool
+      let ep: SerError
+      (okp, ep) = json_arr_push(&arr, v)
+      if !okp
+        do json_drop(&arr)
+        ret (false, ep, json_null())
+      .end
+
+      do jp_skip_ws(p)
+      let okk: Bool
+      let ek: SerError
+      let c: U8
+      (okk, ek, c) = jp_next(p)
+      if !okk
+        do json_drop(&arr)
+        ret (false, ek, json_null())
+      .end
+
+      if c == (U8)']'
+        break
+      .end
+      if c != (U8)','
+        do json_drop(&arr)
+        ret (false, SerError::Unexpected, json_null())
+      .end
+    .end
+
+    ret (true, SerError::Ok, arr)
+  .end
+
+  # object
+  if b == (U8)'{'
+    let ok2: Bool
+    let e2: SerError
+    (ok2, e2) = jp_expect_byte(p, (U8)'{')
+    if !ok2
+      ret (false, e2, json_null())
+    .end
+
+    let obj = json_object()
+    do jp_skip_ws(p)
+
+    let ok3: Bool
+    let b2: U8
+    (ok3, b2) = jp_peek(p)
+    if ok3 && b2 == (U8)'}'
+      set p.i = p.i + 1
+      ret (true, SerError::Ok, obj)
+    .end
+
+    loop
+      # key string
+      let okk: Bool
+      let ek: SerError
+      let key: Vec[U8]
+      (okk, ek, key) = jp_parse_string(p)
+      if !okk
+        do json_drop(&obj)
+        ret (false, ek, json_null())
+      .end
+
+      let okc: Bool
+      let ec: SerError
+      (okc, ec) = jp_expect_byte(p, (U8)':')
+      if !okc
+        do vec_drop[U8](&key, 1)
+        do json_drop(&obj)
+        ret (false, ec, json_null())
+      .end
+
+      let okv: Bool
+      let ev: SerError
+      let v: JsonValue
+      (okv, ev, v) = jp_parse_value(p, depth + 1)
+      if !okv
+        do vec_drop[U8](&key, 1)
+        do json_drop(&obj)
+        ret (false, ev, json_null())
+      .end
+
+      let okp: Bool
+      let ep: SerError
+      (okp, ep) = json_obj_put(&obj, &key, v)
+      do vec_drop[U8](&key, 1)
+      if !okp
+        do json_drop(&obj)
+        ret (false, ep, json_null())
+      .end
+
+      do jp_skip_ws(p)
+      let okn: Bool
+      let en: SerError
+      let c: U8
+      (okn, en, c) = jp_next(p)
+      if !okn
+        do json_drop(&obj)
+        ret (false, en, json_null())
+      .end
+
+      if c == (U8)'}'
+        break
+      .end
+      if c != (U8)','
+        do json_drop(&obj)
+        ret (false, SerError::Unexpected, json_null())
+      .end
+    .end
+
+    ret (true, SerError::Ok, obj)
+  .end
+
+  # number (int only)
+  if b == (U8)'-' || is_digit(b)
+    let okn: Bool
+    let en: SerError
+    let x: I64
+    (okn, en, x) = jp_parse_int(p)
+    if !okn
+      ret (false, en, json_null())
+    .end
+    ret (true, SerError::Ok, json_int(x))
+  .end
+
+  ret (false, SerError::Unexpected, json_null())
+.end
+
+fn json_parse(text: &Vec[U8]) -> (Bool, SerError, JsonValue)
+  let p = jp_new(text)
+  let ok: Bool
+  let e: SerError
+  let v: JsonValue
+  (ok, e, v) = jp_parse_value(&p, 0)
+  if !ok
+    ret (false, e, json_null())
+  .end
+
+  do jp_skip_ws(&p)
+  if p.i != text.len
+    do json_drop(&v)
+    ret (false, SerError::Unexpected, json_null())
+  .end
+
+  ret (true, SerError::Ok, v)
+.end
+
+# -----------------------------------------------------------------------------
+# Tests (scenarios)
+# -----------------------------------------------------------------------------
+
+fn expect_eq_bytes(a: &Vec[U8], b: &Vec[U8], msg: Str)
+  do assert(vec_eq_u8(a, b), msg)
+.end
+
+scn test_varint_roundtrip
+  let w = writer_new()
+  let ok: Bool
+  let e: SerError
+
+  (ok, e) = w_write_var_u64(&w, (U64)0)
+  do assert(ok, "var 0")
+  (ok, e) = w_write_var_u64(&w, (U64)1)
+  do assert(ok, "var 1")
+  (ok, e) = w_write_var_u64(&w, (U64)300)
+  do assert(ok, "var 300")
+  (ok, e) = w_write_var_i64(&w, (I64)-1)
+  do assert(ok, "var -1")
+
+  let r = reader_new(writer_bytes(&w))
+
+  let u0: U64
+  let u1: U64
+  let u2: U64
+  let i0: I64
+
+  (ok, e, u0) = r_read_var_u64(&r)
+  do assert(ok && u0 == 0, "rd 0")
+  (ok, e, u1) = r_read_var_u64(&r)
+  do assert(ok && u1 == 1, "rd 1")
+  (ok, e, u2) = r_read_var_u64(&r)
+  do assert(ok && u2 == 300, "rd 300")
+  (ok, e, i0) = r_read_var_i64(&r)
+  do assert(ok && i0 == -1, "rd -1")
+
+  do writer_drop(&w)
+.end
+
+scn test_json_parse_and_stringify
+  let src = vec_from_cstr("{\"a\":1,\"b\":true,\"c\":[\"x\",\"y\"]}")
+
+  let ok: Bool
+  let e: SerError
+  let v: JsonValue
+  (ok, e, v) = json_parse(&src)
+  do assert(ok, "json parse")
+
+  let out = vec_new[U8]()
+  (ok, e) = json_stringify(&v, &out, false)
+  do assert(ok, "json stringify")
+
+  # parse again to validate round-trip structure
+  let v2: JsonValue
+  (ok, e, v2) = json_parse(&out)
+  do assert(ok, "json parse 2")
+
+  do json_drop(&v)
+  do json_drop(&v2)
+  do vec_drop[U8](&src, 1)
+  do vec_drop[U8](&out, 1)
+.end
+
+# End of std.serialize

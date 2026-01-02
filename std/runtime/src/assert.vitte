@@ -1,0 +1,200 @@
+
+
+# /Users/vincent/Documents/Github/vitte/std/runtime/src/assert.vitte
+# -----------------------------------------------------------------------------
+# std/runtime/assert
+# -----------------------------------------------------------------------------
+# MAX runtime assertions + debug helpers.
+#
+# Goals:
+# - Provide a lightweight assert surface used across stdlib and generated code.
+# - Keep it dependency-minimal and runtime-backend friendly.
+# - Support: assert, debug_assert, unreachable, todo, panic.
+# - Support formatting via runtime (best-effort) without pulling heavy fmt.
+# - Provide `assert_eq_*` helpers for common scalar types.
+# - Keep behavior controllable by build profile/feature flags.
+#
+# Block delimiter: `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.runtime.assert
+
+use std.runtime
+use std.string
+
+type Bool = bool
+type U32  = u32
+type U64  = u64
+type I32  = i32
+type I64  = i64
+type Str  = str
+
+# -----------------------------------------------------------------------------
+# Configuration (compile-time constants)
+# -----------------------------------------------------------------------------
+# In a real build system, these should be set by profiles/features.
+# For now we keep conservative defaults.
+
+const ASSERT_ENABLED: Bool = true
+const DEBUG_ASSERT_ENABLED: Bool = true
+
+# -----------------------------------------------------------------------------
+# Panic backend
+# -----------------------------------------------------------------------------
+# These functions are expected to exist in std.runtime backend.
+# If your runtime already has equivalents, wire them here.
+
+fn panic(msg: Str) -> never
+  # Must terminate execution.
+  do std.runtime::panic(msg)
+.end
+
+fn panic2(msg: Str, detail: Str) -> never
+  # Best-effort concatenate without heavy formatting.
+  # If std.string has concat, use it; else defer to runtime.
+  let full = std.runtime::panic_concat2(msg, detail)
+  do std.runtime::panic(full)
+.end
+
+fn panic3(a: Str, b: Str, c: Str) -> never
+  let full = std.runtime::panic_concat3(a, b, c)
+  do std.runtime::panic(full)
+.end
+
+# -----------------------------------------------------------------------------
+# Assert core
+# -----------------------------------------------------------------------------
+
+fn assert(cond: Bool, msg: Str)
+  if !ASSERT_ENABLED
+    ret
+  .end
+  if cond
+    ret
+  .end
+  do panic(msg)
+.end
+
+fn assert_msg(cond: Bool, msg: Str, detail: Str)
+  if !ASSERT_ENABLED
+    ret
+  .end
+  if cond
+    ret
+  .end
+  do panic2(msg, detail)
+.end
+
+fn debug_assert(cond: Bool, msg: Str)
+  if !DEBUG_ASSERT_ENABLED
+    ret
+  .end
+  if cond
+    ret
+  .end
+  do panic(msg)
+.end
+
+fn unreachable(msg: Str) -> never
+  do panic2("unreachable: ", msg)
+.end
+
+fn todo(msg: Str) -> never
+  do panic2("todo: ", msg)
+.end
+
+# Convenience: unconditional failure
+fn fail(msg: Str) -> never
+  do panic(msg)
+.end
+
+# -----------------------------------------------------------------------------
+# Assert-eq helpers (common scalar types)
+# -----------------------------------------------------------------------------
+# These helpers keep messages short; detailed formatting is runtime-dependent.
+
+fn assert_eq_u64(a: U64, b: U64, msg: Str)
+  if a == b
+    ret
+  .end
+  # best-effort formatting (runtime can include numbers)
+  let detail = std.runtime::fmt_u64_eq(a, b)
+  do panic3("assert_eq_u64 failed: ", msg, detail)
+.end
+
+fn assert_ne_u64(a: U64, b: U64, msg: Str)
+  if a != b
+    ret
+  .end
+  let detail = std.runtime::fmt_u64_ne(a, b)
+  do panic3("assert_ne_u64 failed: ", msg, detail)
+.end
+
+fn assert_eq_i64(a: I64, b: I64, msg: Str)
+  if a == b
+    ret
+  .end
+  let detail = std.runtime::fmt_i64_eq(a, b)
+  do panic3("assert_eq_i64 failed: ", msg, detail)
+.end
+
+fn assert_eq_u32(a: U32, b: U32, msg: Str)
+  if a == b
+    ret
+  .end
+  let detail = std.runtime::fmt_u32_eq(a, b)
+  do panic3("assert_eq_u32 failed: ", msg, detail)
+.end
+
+fn assert_eq_i32(a: I32, b: I32, msg: Str)
+  if a == b
+    ret
+  .end
+  let detail = std.runtime::fmt_i32_eq(a, b)
+  do panic3("assert_eq_i32 failed: ", msg, detail)
+.end
+
+fn assert_eq_bool(a: Bool, b: Bool, msg: Str)
+  if a == b
+    ret
+  .end
+  let detail = std.runtime::fmt_bool_eq(a, b)
+  do panic3("assert_eq_bool failed: ", msg, detail)
+.end
+
+fn assert_nonnull(p: U64, msg: Str)
+  if p != 0
+    ret
+  .end
+  do panic3("assert_nonnull failed: ", msg, " (ptr=0)")
+.end
+
+# -----------------------------------------------------------------------------
+# Result-style helpers
+# -----------------------------------------------------------------------------
+
+fn assert_ok(ok: Bool, msg: Str)
+  # simple alias; use with backends that return ok flags
+  do assert(ok, msg)
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests (pure)
+# -----------------------------------------------------------------------------
+
+scn test_assert_smoke
+  # Should not panic
+  do assert(true, "ok")
+  do debug_assert(true, "ok")
+
+  do assert_eq_u64(1, 1, "eq")
+  do assert_ne_u64(1, 2, "ne")
+  do assert_eq_i64(-1, -1, "eq")
+  do assert_eq_u32(7, 7, "eq")
+  do assert_eq_i32(-7, -7, "eq")
+  do assert_eq_bool(true, true, "eq")
+
+  do assert_nonnull(1, "nonnull")
+.end
+
+# End of std.runtime.assert

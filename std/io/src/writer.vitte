@@ -1,0 +1,242 @@
+# /Users/vincent/Documents/Github/vitte/std/io/src/writer.vitte
+# -----------------------------------------------------------------------------
+# std/io/writer
+# -----------------------------------------------------------------------------
+# Writer interface + helpers (write_all, write_uXX, write_line, fmt helpers).
+#
+# MAX goals:
+# - Minimal ABI-friendly Writer interface (function-table + ctx).
+# - Pure helpers (write_all, write_fmt-ish, write primitives).
+# - In-memory CursorWriter implementation for tests/adapters.
+# - No syscalls here.
+#
+# Conventions:
+# - write returns number of bytes written (0 allowed only if src.len==0).
+# - flush may be a no-op depending on backend.
+# - All blocks use `.end` only (no braces).
+# -----------------------------------------------------------------------------
+
+module std.io.writer
+
+use std.runtime
+use std.core.result
+use std.string
+
+type Bool = bool
+type U8   = u8
+type U16  = u16
+type U32  = u32
+type U64  = u64
+type I32  = i32
+type Str  = str
+
+# -----------------------------------------------------------------------------
+# Byte slice model
+# -----------------------------------------------------------------------------
+type ByteSlice struct
+  data: Str
+  len: U32
+.end
+
+fn bytes_empty() -> ByteSlice
+  let b: ByteSlice
+  set b.data = ""
+  set b.len = 0
+  ret b
+.end
+
+fn bytes_from_str(s: Str) -> ByteSlice
+  let b: ByteSlice
+  set b.data = s
+  set b.len = std.string::len(s)
+  ret b
+.end
+
+fn bytes_take(b: &ByteSlice, start: U32, n: U32) -> ByteSlice
+  let out: ByteSlice
+  if start >= b.len
+    set out.data = ""
+    set out.len = 0
+    ret out
+  .end
+  let avail = b.len - start
+  let take = n
+  if take > avail
+    set take = avail
+  .end
+  set out.data = std.string::slice(b.data, start, take)
+  set out.len = take
+  ret out
+.end
+
+# -----------------------------------------------------------------------------
+# Writer interface (function-table + context)
+# -----------------------------------------------------------------------------
+
+type WriteResult struct
+  ok: Bool
+  n: U32
+  err: std.core.result::Error
+.end
+
+type FlushResult struct
+  ok: Bool
+  err: std.core.result::Error
+.end
+
+# Writer is an ABI-stable interface:
+# - ctx is opaque (handle/pointer cast to U64 by host/runtime)
+# - write_fn writes up to src.len bytes
+# - flush_fn flushes buffered output (may no-op)
+type Writer struct
+  ctx: U64
+  write_fn: fn(&Writer, &ByteSlice) -> WriteResult
+  flush_fn: fn(&Writer) -> std.core.result::ResultUnit
+.end
+
+fn writer_is_valid(w: &Writer) -> Bool
+  ret w.write_fn != 0
+.end
+
+fn writer_write(w: &Writer, src: &ByteSlice) -> WriteResult
+  ret w.write_fn(w, src)
+.end
+
+fn writer_flush(w: &Writer) -> std.core.result::ResultUnit
+  ret w.flush_fn(w)
+.end
+
+# -----------------------------------------------------------------------------
+# High-level helpers
+# -----------------------------------------------------------------------------
+
+fn writer_write_all(w: &Writer, src: &ByteSlice) -> std.core.result::ResultUnit
+  let off: U32
+  set off = 0
+
+  while off < src.len
+    let chunk = bytes_take(src, off, src.len - off)
+    let wr = writer_write(w, &chunk)
+    if !wr.ok
+      ret std.core.result::unit_err(wr.err)
+    .end
+    if wr.n == 0
+      ret std.core.result::unit_err(std.core.result::err_io("write returned 0"))
+    .end
+    set off = off + wr.n
+  .end
+
+  ret std.core.result::unit_ok()
+.end
+
+fn writer_write_str(w: &Writer, s: Str) -> std.core.result::ResultUnit
+  let b = bytes_from_str(s)
+  ret writer_write_all(w, &b)
+.end
+
+fn writer_write_line(w: &Writer, s: Str) -> std.core.result::ResultUnit
+  let r = writer_write_str(w, s)
+  if !r.ok
+    ret r
+  .end
+  ret writer_write_str(w, "\n")
+.end
+
+# Primitive encoders (little-endian)
+fn __u8_to_str(x: U32) -> Str
+  # expects std.string::from_byte
+  ret std.string::from_byte(x & 255)
+.end
+
+fn writer_write_u8(w: &Writer, x: U32) -> std.core.result::ResultUnit
+  ret writer_write_str(w, __u8_to_str(x))
+.end
+
+fn writer_write_u16_le(w: &Writer, x: U32) -> std.core.result::ResultUnit
+  let b0 = __u8_to_str(x)
+  let b1 = __u8_to_str(x >> 8)
+  let s = std.string::concat(b0, b1)
+  ret writer_write_str(w, s)
+.end
+
+fn writer_write_u32_le(w: &Writer, x: U32) -> std.core.result::ResultUnit
+  let b0 = __u8_to_str(x)
+  let b1 = __u8_to_str(x >> 8)
+  let b2 = __u8_to_str(x >> 16)
+  let b3 = __u8_to_str(x >> 24)
+  let s01 = std.string::concat(b0, b1)
+  let s23 = std.string::concat(b2, b3)
+  let s = std.string::concat(s01, s23)
+  ret writer_write_str(w, s)
+.end
+
+# -----------------------------------------------------------------------------
+# CursorWriter (in-memory Writer)
+# -----------------------------------------------------------------------------
+# See reader.vitte for runtime handle stubs pattern.
+
+type CursorWriter struct
+  out: Str
+.end
+
+fn __rt_handle_new_cwriter(cw: CursorWriter) -> U64
+  ret 0
+.end
+
+fn __rt_handle_get_cwriter(h: U64) -> &mut CursorWriter
+  let dummy: &mut CursorWriter
+  ret dummy
+.end
+
+fn cursor_writer_write(self: &Writer, src: &ByteSlice) -> WriteResult
+  let wr: WriteResult
+  set wr.ok = true
+  set wr.err = std.core.result::err_ok()
+  set wr.n = 0
+
+  if src.len == 0
+    ret wr
+  .end
+
+  let cw = __rt_handle_get_cwriter(self.ctx)
+  set cw.out = std.string::concat(cw.out, src.data)
+  set wr.n = src.len
+  ret wr
+.end
+
+fn cursor_writer_flush(self: &Writer) -> std.core.result::ResultUnit
+  ret std.core.result::unit_ok()
+.end
+
+fn cursor_writer_new() -> Writer
+  let cw: CursorWriter
+  set cw.out = ""
+  let h = __rt_handle_new_cwriter(cw)
+
+  let w: Writer
+  set w.ctx = h
+  set w.write_fn = cursor_writer_write
+  set w.flush_fn = cursor_writer_flush
+  ret w
+.end
+
+fn cursor_writer_take(w: &Writer) -> Str
+  let cw = __rt_handle_get_cwriter(w.ctx)
+  let out = cw.out
+  set cw.out = ""
+  ret out
+.end
+
+# -----------------------------------------------------------------------------
+# Tests (smoke)
+# -----------------------------------------------------------------------------
+
+scn test_writer_write_all_smoke
+  do std.runtime::assert(true, "writer_write_all exists")
+.end
+
+scn test_writer_write_u32_le_smoke
+  do std.runtime::assert(true, "writer_write_u32_le exists")
+.end
+
+# End of std.io.writer

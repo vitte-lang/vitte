@@ -1,0 +1,186 @@
+# /Users/vincent/Documents/Github/vitte/std/core/tests/t_core_result.vitte
+# -----------------------------------------------------------------------------
+# std/core/tests/t_core_result
+# -----------------------------------------------------------------------------
+# MAX tests for std.core.result
+#
+# Coverage:
+# - Error constructors + predicates
+# - Ok/Err constructors for all Result types
+# - is_ok/is_err
+# - unwrap_or + ok path
+# - unwrap/expect ok path (avoid unwrap on err in tests)
+# - result_u32/result_str helpers
+#
+# All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.core.tests.t_core_result
+
+use std.runtime
+use std.core.result
+
+type Bool = bool
+type U32  = u32
+type U64  = u64
+type I32  = i32
+type Str  = str
+
+fn assert_true(b: Bool, msg: Str)
+  do std.runtime::assert(b, msg)
+.end
+
+fn assert_false(b: Bool, msg: Str)
+  do std.runtime::assert(!b, msg)
+.end
+
+fn assert_eq_u32(a: U32, b: U32, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_i32(a: I32, b: I32, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_u64(a: U64, b: U64, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_bool(a: Bool, b: Bool, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_str(a: Str, b: Str, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+# -----------------------------------------------------------------------------
+# Error constructors
+# -----------------------------------------------------------------------------
+
+scn test_error_constructors
+  let e0 = std.core.result::err_ok()
+  do assert_true(std.core.result::err_is_ok(&e0), "err_ok is ok")
+  do assert_false(std.core.result::err_is_err(&e0), "err_ok !err")
+
+  let e1 = std.core.result::err_invalid("bad")
+  do assert_true(std.core.result::err_is_err(&e1), "invalid is err")
+  do assert_eq_i32(e1.code, 1, "invalid code")
+
+  let e2 = std.core.result::err_oob("oob")
+  do assert_eq_i32(e2.code, 2, "oob code")
+
+  let e3 = std.core.result::err_nomem("nomem")
+  do assert_eq_i32(e3.code, 3, "nomem code")
+
+  let e4 = std.core.result::err_io("io")
+  do assert_eq_i32(e4.code, 4, "io code")
+
+  let e5 = std.core.result::err_not_found("nf")
+  do assert_eq_i32(e5.code, 5, "not_found code")
+.end
+
+# -----------------------------------------------------------------------------
+# ResultU32
+# -----------------------------------------------------------------------------
+
+scn test_result_u32_ok_err
+  let r1 = std.core.result::u32_ok(7)
+  do assert_true(std.core.result::u32_is_ok(&r1), "u32 ok is_ok")
+  do assert_false(std.core.result::u32_is_err(&r1), "u32 ok !is_err")
+  do assert_eq_u32(std.core.result::u32_unwrap(&r1), 7, "u32 unwrap ok")
+  do assert_eq_u32(std.core.result::u32_expect(&r1, "expect ok"), 7, "u32 expect ok")
+  do assert_eq_u32(std.core.result::u32_unwrap_or(&r1, 9), 7, "u32 unwrap_or ok")
+
+  let e = std.core.result::err_invalid("bad")
+  let r2 = std.core.result::u32_err(e)
+  do assert_false(std.core.result::u32_is_ok(&r2), "u32 err !is_ok")
+  do assert_true(std.core.result::u32_is_err(&r2), "u32 err is_err")
+  do assert_eq_u32(std.core.result::u32_unwrap_or(&r2, 9), 9, "u32 unwrap_or err")
+.end
+
+# -----------------------------------------------------------------------------
+# ResultI32
+# -----------------------------------------------------------------------------
+
+scn test_result_i32_ok_err
+  let r1 = std.core.result::i32_ok(-7)
+  do assert_true(std.core.result::i32_is_ok(&r1), "i32 ok")
+  do assert_eq_i32(std.core.result::i32_unwrap(&r1), -7, "i32 unwrap ok")
+  do assert_eq_i32(std.core.result::i32_unwrap_or(&r1, 3), -7, "i32 unwrap_or ok")
+
+  let e = std.core.result::err_oob("oob")
+  let r2 = std.core.result::i32_err(e)
+  do assert_true(std.core.result::i32_is_err(&r2), "i32 err")
+  do assert_eq_i32(std.core.result::i32_unwrap_or(&r2, 3), 3, "i32 unwrap_or err")
+.end
+
+# -----------------------------------------------------------------------------
+# ResultU64
+# -----------------------------------------------------------------------------
+
+scn test_result_u64_ok_err
+  let r1 = std.core.result::u64_ok(42)
+  do assert_true(std.core.result::u64_is_ok(&r1), "u64 ok")
+  do assert_eq_u64(std.core.result::u64_unwrap(&r1), 42, "u64 unwrap ok")
+  do assert_eq_u64(std.core.result::u64_unwrap_or(&r1, 1), 42, "u64 unwrap_or ok")
+
+  let e = std.core.result::err_nomem("nomem")
+  let r2 = std.core.result::u64_err(e)
+  do assert_true(std.core.result::u64_is_err(&r2), "u64 err")
+  do assert_eq_u64(std.core.result::u64_unwrap_or(&r2, 1), 1, "u64 unwrap_or err")
+.end
+
+# -----------------------------------------------------------------------------
+# ResultBool
+# -----------------------------------------------------------------------------
+
+scn test_result_bool_ok_err
+  let r1 = std.core.result::bool_ok(true)
+  do assert_true(std.core.result::bool_is_ok(&r1), "bool ok")
+  do assert_eq_bool(std.core.result::bool_unwrap(&r1), true, "bool unwrap ok")
+  do assert_eq_bool(std.core.result::bool_unwrap_or(&r1, false), true, "bool unwrap_or ok")
+
+  let e = std.core.result::err_io("io")
+  let r2 = std.core.result::bool_err(e)
+  do assert_true(std.core.result::bool_is_err(&r2), "bool err")
+  do assert_eq_bool(std.core.result::bool_unwrap_or(&r2, false), false, "bool unwrap_or err")
+.end
+
+# -----------------------------------------------------------------------------
+# ResultStr
+# -----------------------------------------------------------------------------
+
+scn test_result_str_ok_err
+  let r1 = std.core.result::str_ok("x")
+  do assert_true(std.core.result::str_is_ok(&r1), "str ok")
+  do assert_eq_str(std.core.result::str_unwrap(&r1), "x", "str unwrap ok")
+  do assert_eq_str(std.core.result::str_expect(&r1, "expect ok"), "x", "str expect ok")
+  do assert_eq_str(std.core.result::str_unwrap_or(&r1, "d"), "x", "str unwrap_or ok")
+
+  let e = std.core.result::err_not_found("nf")
+  let r2 = std.core.result::str_err(e)
+  do assert_true(std.core.result::str_is_err(&r2), "str err")
+  do assert_eq_str(std.core.result::str_unwrap_or(&r2, "d"), "d", "str unwrap_or err")
+.end
+
+# -----------------------------------------------------------------------------
+# Helper constructors
+# -----------------------------------------------------------------------------
+
+scn test_result_helpers
+  let e = std.core.result::err_invalid("bad")
+  let r1 = std.core.result::result_u32(true, 5, e)
+  do assert_true(std.core.result::u32_is_ok(&r1), "result_u32 true")
+  do assert_eq_u32(std.core.result::u32_unwrap(&r1), 5, "result_u32 unwrap")
+
+  let r2 = std.core.result::result_u32(false, 5, e)
+  do assert_true(std.core.result::u32_is_err(&r2), "result_u32 false")
+  do assert_eq_u32(std.core.result::u32_unwrap_or(&r2, 1), 1, "result_u32 unwrap_or")
+
+  let r3 = std.core.result::result_str(true, "ok", e)
+  do assert_true(std.core.result::str_is_ok(&r3), "result_str true")
+  do assert_eq_str(std.core.result::str_unwrap(&r3), "ok", "result_str unwrap")
+.end
+
+# End of t_core_result.vitte

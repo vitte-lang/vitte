@@ -1,0 +1,3 @@
+# Third-party notices
+
+placeholder

@@ -1,0 +1,61 @@
+mod algo.sort.radix_sort_u32
+
+# LSD radix sort for u32 (base 256), stable.
+fn radix_sort_u32(xs: &mut [u32]) -> void
+  if xs.len <= 1
+    ret
+  .end
+  let tmp: [u32] = [0; xs.len]
+
+  let pass: i64 = 0
+  loop
+    if pass >= 4
+      ret
+    .end
+    let cnt: [i64] = [0; 256]
+    let i: i64 = 0
+    loop
+      if i >= xs.len
+        break
+      .end
+      let b: i64 = ((xs[i] >> (pass*8)) & 255) as i64
+      set cnt[b] = cnt[b] + 1
+      set i = i + 1
+    .end
+
+    let sum: i64 = 0
+    let k: i64 = 0
+    loop
+      if k >= 256
+        break
+      .end
+      let c: i64 = cnt[k]
+      set cnt[k] = sum
+      set sum = sum + c
+      set k = k + 1
+    .end
+
+    let j: i64 = 0
+    loop
+      if j >= xs.len
+        break
+      .end
+      let b2: i64 = ((xs[j] >> (pass*8)) & 255) as i64
+      let pos: i64 = cnt[b2]
+      set tmp[pos] = xs[j]
+      set cnt[b2] = cnt[b2] + 1
+      set j = j + 1
+    .end
+
+    let t: i64 = 0
+    loop
+      if t >= xs.len
+        break
+      .end
+      set xs[t] = tmp[t]
+      set t = t + 1
+    .end
+
+    set pass = pass + 1
+  .end
+.end

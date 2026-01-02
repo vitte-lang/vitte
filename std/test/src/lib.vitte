@@ -1,0 +1,810 @@
+# -----------------------------------------------------------------------------
+# std/test
+# -----------------------------------------------------------------------------
+# Test helpers for Vitte standard library and user code.
+#
+# Goals:
+# - Keep zero-dependency expectations: tests can be written with only std.runtime.
+# - Provide assertion helpers (eq/neq/bytes) without requiring formatting.
+# - Provide non-panicking "expect" helpers that return (ok, msg_bytes).
+# - Provide small debug helpers: hexdump (bytes -> ASCII hex bytes), byte diff.
+# - Provide deterministic pseudo-rng (LCG) for simple property-style loops.
+#
+# Notes:
+# - The repository currently uses `scn ... .end` scenarios as smoke tests.
+#   `std.test` does not try to auto-discover or register tests.
+#   It only provides helpers.
+# - This module is byte-oriented (Vec[U8]) and avoids string formatting.
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.test
+
+use std.collections
+use std.runtime
+
+# -----------------------------------------------------------------------------
+# Types
+# -----------------------------------------------------------------------------
+
+type Bool = bool
+
+type U8    = u8
+type U32   = u32
+type U64   = u64
+type I32   = i32
+type I64   = i64
+type USize = usize
+
+type Ptr[T] = ptr[T]
+
+type Str = str
+
+# Non-panicking result for expectations.
+# `msg` is typically an ASCII description (bytes). Caller is responsible to drop.
+
+type Expect struct
+  ok: Bool
+  msg: Vec[U8]
+.end
+
+fn expect_ok() -> Expect
+  let r: Expect
+  set r.ok = true
+  set r.msg = vec_new[U8]()
+  ret r
+.end
+
+fn expect_ok_bytes(msg: Vec[U8]) -> Expect
+  let r: Expect
+  set r.ok = true
+  set r.msg = msg
+  ret r
+.end
+
+fn expect_fail_bytes(msg: Vec[U8]) -> Expect
+  let r: Expect
+  set r.ok = false
+  set r.msg = msg
+  ret r
+.end
+
+fn expect_fail_cstr(msg: Str) -> Expect
+  let m = bytes_from_cstr(msg)
+  ret expect_fail_bytes(m)
+.end
+
+fn expect_drop(e: &Expect)
+  do vec_drop[U8](&e.msg, 1)
+.end
+
+# Assert an expectation (panicking), then drop its message.
+fn expect_assert(e: Expect, msg: Str)
+  if !e.ok
+    do std.runtime::assert(false, msg)
+  .end
+  do vec_drop[U8](&e.msg, 1)
+.end
+
+# Combine expectations:
+# - AND: if left fails, keep it; else drop left msg and return right.
+# - OR : if left ok, drop right msg and return left; else drop left msg and return right.
+fn expect_and(a: Expect, b: Expect) -> Expect
+  if !a.ok
+    ret a
+  .end
+  do vec_drop[U8](&a.msg, 1)
+  ret b
+.end
+
+fn expect_or(a: Expect, b: Expect) -> Expect
+  if a.ok
+    do vec_drop[U8](&b.msg, 1)
+    ret a
+  .end
+  do vec_drop[U8](&a.msg, 1)
+  ret b
+.end
+
+# -----------------------------------------------------------------------------
+# Vec[U8] / C-string helpers
+# -----------------------------------------------------------------------------
+
+fn _vec_push_u8(v: &Vec[U8], b: U8) -> Bool
+  let ok: Bool
+  let e: ColError
+  (ok, e) = vec_push[U8](v, 1, b)
+  ret ok
+.end
+
+fn _vec_push_bytes(v: &Vec[U8], p: Ptr[U8], n: USize) -> Bool
+  let i: USize
+  set i = 0
+  while i < n
+    if !_vec_push_u8(v, *(p + i))
+      ret false
+    .end
+    set i = i + 1
+  .end
+  ret true
+.end
+
+fn _vec_push_vec_u8(dst: &Vec[U8], src: &Vec[U8]) -> Bool
+  ret _vec_push_bytes(dst, (Ptr[U8])src.data, src.len)
+.end
+
+fn _vec_push_cstr(v: &Vec[U8], s: Str) -> Bool
+  let p = (Ptr[U8])s
+  let i: USize
+  set i = 0
+  loop
+    let b = *(p + i)
+    if b == 0
+      break
+    .end
+    if !_vec_push_u8(v, b)
+      ret false
+    .end
+    set i = i + 1
+  .end
+  ret true
+.end
+
+fn bytes_from_cstr(s: Str) -> Vec[U8]
+  let v = vec_new[U8]()
+  if !_vec_push_cstr(&v, s)
+    do vec_drop[U8](&v, 1)
+    ret vec_new[U8]()
+  .end
+  ret v
+.end
+
+# Allocate NUL-terminated bytes.
+fn bytes_to_cbytes(bytes: &Vec[U8]) -> (Bool, Vec[U8])
+  let out = vec_new[U8]()
+  if !_vec_push_vec_u8(&out, bytes)
+    do vec_drop[U8](&out, 1)
+    ret (false, vec_new[U8]())
+  .end
+  if !_vec_push_u8(&out, 0)
+    do vec_drop[U8](&out, 1)
+    ret (false, vec_new[U8]())
+  .end
+  ret (true, out)
+.end
+
+fn bytes_eq(a: &Vec[U8], b: &Vec[U8]) -> Bool
+  if a.len != b.len
+    ret false
+  .end
+  let ap = (Ptr[U8])a.data
+  let bp = (Ptr[U8])b.data
+  let i: USize
+  set i = 0
+  while i < a.len
+    if *(ap + i) != *(bp + i)
+      ret false
+    .end
+    set i = i + 1
+  .end
+  ret true
+.end
+
+fn bytes_starts_with(a: &Vec[U8], prefix: &Vec[U8]) -> Bool
+  if prefix.len > a.len
+    ret false
+  .end
+  let ap = (Ptr[U8])a.data
+  let pp = (Ptr[U8])prefix.data
+  let i: USize
+  set i = 0
+  while i < prefix.len
+    if *(ap + i) != *(pp + i)
+      ret false
+    .end
+    set i = i + 1
+  .end
+  ret true
+.end
+
+fn bytes_ends_with(a: &Vec[U8], suffix: &Vec[U8]) -> Bool
+  if suffix.len > a.len
+    ret false
+  .end
+  let off = a.len - suffix.len
+  let ap = (Ptr[U8])a.data
+  let sp = (Ptr[U8])suffix.data
+  let i: USize
+  set i = 0
+  while i < suffix.len
+    if *(ap + off + i) != *(sp + i)
+      ret false
+    .end
+    set i = i + 1
+  .end
+  ret true
+.end
+
+# Clone bytes.
+fn bytes_clone_get(a: &Vec[U8]) -> (Bool, Vec[U8])
+  let out = vec_new[U8]()
+  if !_vec_push_bytes(&out, (Ptr[U8])a.data, a.len)
+    do vec_drop[U8](&out, 1)
+    ret (false, vec_new[U8]())
+  .end
+  ret (true, out)
+.end
+
+# Back-compat: clone bytes into Expect payload.
+fn bytes_clone(a: &Vec[U8]) -> (Bool, Expect)
+  let ok: Bool
+  let out: Vec[U8]
+  (ok, out) = bytes_clone_get(a)
+  if !ok
+    ret (false, expect_fail_cstr("oom"))
+  .end
+  ret (true, expect_ok_bytes(out))
+.end
+
+# Concatenate two byte arrays.
+fn bytes_concat(a: &Vec[U8], b: &Vec[U8]) -> (Bool, Vec[U8])
+  let out = vec_new[U8]()
+  if !_vec_push_vec_u8(&out, a)
+    do vec_drop[U8](&out, 1)
+    ret (false, vec_new[U8]())
+  .end
+  if !_vec_push_vec_u8(&out, b)
+    do vec_drop[U8](&out, 1)
+    ret (false, vec_new[U8]())
+  .end
+  ret (true, out)
+.end
+
+# Find first index of byte `b` in `a`.
+# Returns (found, idx)
+fn bytes_find_byte(a: &Vec[U8], b: U8) -> (Bool, USize)
+  let p = (Ptr[U8])a.data
+  let i: USize
+  set i = 0
+  while i < a.len
+    if *(p + i) == b
+      ret (true, i)
+    .end
+    set i = i + 1
+  .end
+  ret (false, 0)
+.end
+
+# Find first index of `needle` in `hay` (naive).
+# Returns (found, idx)
+fn bytes_find(hay: &Vec[U8], needle: &Vec[U8]) -> (Bool, USize)
+  if needle.len == 0
+    ret (true, 0)
+  .end
+  if needle.len > hay.len
+    ret (false, 0)
+  .end
+
+  let hp = (Ptr[U8])hay.data
+  let np = (Ptr[U8])needle.data
+
+  let i: USize
+  set i = 0
+  while i + needle.len <= hay.len
+    let j: USize
+    set j = 0
+    while j < needle.len
+      if *(hp + i + j) != *(np + j)
+        break
+      .end
+      set j = j + 1
+    .end
+    if j == needle.len
+      ret (true, i)
+    .end
+    set i = i + 1
+  .end
+
+  ret (false, 0)
+.end
+
+# Decimal encoding helpers for messages.
+fn _push_usize_dec(out: &Vec[U8], n: USize) -> Bool
+  # write digits into tmp then reverse
+  let tmp = vec_new[U8]()
+  let x: USize
+  set x = n
+
+  if x == 0
+    do _vec_push_u8(&tmp, (U8)'0')
+  else
+    while x > 0
+      let d = (U8)(x % 10)
+      do _vec_push_u8(&tmp, (U8)'0' + d)
+      set x = x / 10
+    .end
+  .end
+
+  let i: I64
+  set i = (I64)tmp.len - 1
+  while i >= 0
+    if !_vec_push_u8(out, *((Ptr[U8])tmp.data + (USize)i))
+      do vec_drop[U8](&tmp, 1)
+      ret false
+    .end
+    set i = i - 1
+  .end
+
+  do vec_drop[U8](&tmp, 1)
+  ret true
+.end
+
+# -----------------------------------------------------------------------------
+# Assertions (panicking)
+# -----------------------------------------------------------------------------
+
+fn assert_true(cond: Bool, msg: Str)
+  do std.runtime::assert(cond, msg)
+.end
+
+fn assert_false(cond: Bool, msg: Str)
+  do std.runtime::assert(!cond, msg)
+.end
+
+fn assert_eq_u8(a: U8, b: U8, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_u32(a: U32, b: U32, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_u64(a: U64, b: U64, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_i32(a: I32, b: I32, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_i64(a: I64, b: I64, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_usize(a: USize, b: USize, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_bool(a: Bool, b: Bool, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_ne_u64(a: U64, b: U64, msg: Str)
+  do std.runtime::assert(a != b, msg)
+.end
+
+fn assert_bytes_eq(a: &Vec[U8], b: &Vec[U8], msg: Str)
+  do std.runtime::assert(bytes_eq(a, b), msg)
+.end
+
+fn assert_bytes_ne(a: &Vec[U8], b: &Vec[U8], msg: Str)
+  do std.runtime::assert(!bytes_eq(a, b), msg)
+.end
+
+fn assert_bytes_starts_with(a: &Vec[U8], prefix: &Vec[U8], msg: Str)
+  do std.runtime::assert(bytes_starts_with(a, prefix), msg)
+.end
+
+fn assert_bytes_ends_with(a: &Vec[U8], suffix: &Vec[U8], msg: Str)
+  do std.runtime::assert(bytes_ends_with(a, suffix), msg)
+.end
+
+fn assert_cstr_eq(a: Str, b: Str, msg: Str)
+  let ab = bytes_from_cstr(a)
+  let bb = bytes_from_cstr(b)
+  do std.runtime::assert(bytes_eq(&ab, &bb), msg)
+  do vec_drop[U8](&ab, 1)
+  do vec_drop[U8](&bb, 1)
+.end
+
+# -----------------------------------------------------------------------------
+# Expectations (non-panicking)
+# -----------------------------------------------------------------------------
+
+fn expect_true(cond: Bool, msg: Str) -> Expect
+  if cond
+    ret expect_ok()
+  .end
+  ret expect_fail_cstr(msg)
+.end
+
+fn expect_false(cond: Bool, msg: Str) -> Expect
+  if !cond
+    ret expect_ok()
+  .end
+  ret expect_fail_cstr(msg)
+.end
+
+fn expect_eq_u8(a: U8, b: U8, msg: Str) -> Expect
+  if a == b
+    ret expect_ok()
+  .end
+  ret expect_fail_cstr(msg)
+.end
+
+fn expect_eq_u32(a: U32, b: U32, msg: Str) -> Expect
+  if a == b
+    ret expect_ok()
+  .end
+  ret expect_fail_cstr(msg)
+.end
+
+fn expect_eq_u64(a: U64, b: U64, msg: Str) -> Expect
+  if a == b
+    ret expect_ok()
+  .end
+  ret expect_fail_cstr(msg)
+.end
+
+fn expect_eq_i64(a: I64, b: I64, msg: Str) -> Expect
+  if a == b
+    ret expect_ok()
+  .end
+  ret expect_fail_cstr(msg)
+.end
+
+fn expect_eq_bool(a: Bool, b: Bool, msg: Str) -> Expect
+  if a == b
+    ret expect_ok()
+  .end
+  ret expect_fail_cstr(msg)
+.end
+
+fn expect_eq_usize(a: USize, b: USize, msg: Str) -> Expect
+  if a == b
+    ret expect_ok()
+  .end
+  ret expect_fail_cstr(msg)
+.end
+
+fn expect_ne_u64(a: U64, b: U64, msg: Str) -> Expect
+  if a != b
+    ret expect_ok()
+  .end
+  ret expect_fail_cstr(msg)
+.end
+
+fn expect_eq_bytes(a: &Vec[U8], b: &Vec[U8], msg: Str) -> Expect
+  if bytes_eq(a, b)
+    ret expect_ok()
+  .end
+  ret expect_fail_cstr(msg)
+.end
+
+fn expect_starts_with(a: &Vec[U8], prefix: &Vec[U8], msg: Str) -> Expect
+  if bytes_starts_with(a, prefix)
+    ret expect_ok()
+  .end
+  ret expect_fail_cstr(msg)
+.end
+
+fn expect_ends_with(a: &Vec[U8], suffix: &Vec[U8], msg: Str) -> Expect
+  if bytes_ends_with(a, suffix)
+    ret expect_ok()
+  .end
+  ret expect_fail_cstr(msg)
+.end
+
+# -----------------------------------------------------------------------------
+# Debug helpers: hex / diff
+# -----------------------------------------------------------------------------
+
+fn _hex_digit(n: U8) -> U8
+  if n < 10
+    ret (U8)'0' + n
+  .end
+  ret (U8)'a' + (n - 10)
+.end
+
+# Hexdump bytes into ASCII bytes (no trailing NUL).
+# Format: "aa bb cc" (space-separated)
+fn hexdump(bytes: &Vec[U8], max: USize) -> (Bool, Vec[U8])
+  let out = vec_new[U8]()
+
+  let n: USize
+  set n = bytes.len
+  if max != 0 && n > max
+    set n = max
+  .end
+
+  let p = (Ptr[U8])bytes.data
+  let i: USize
+  set i = 0
+  while i < n
+    let b = *(p + i)
+    let hi = (U8)((b >> 4) & 0x0f)
+    let lo = (U8)(b & 0x0f)
+
+    if !_vec_push_u8(&out, _hex_digit(hi))
+      do vec_drop[U8](&out, 1)
+      ret (false, vec_new[U8]())
+    .end
+    if !_vec_push_u8(&out, _hex_digit(lo))
+      do vec_drop[U8](&out, 1)
+      ret (false, vec_new[U8]())
+    .end
+
+    if i + 1 < n
+      if !_vec_push_u8(&out, (U8)' ')
+        do vec_drop[U8](&out, 1)
+        ret (false, vec_new[U8]())
+      .end
+    .end
+
+    set i = i + 1
+  .end
+
+  ret (true, out)
+.end
+
+# Find first differing byte index.
+# Returns (has_diff, idx)
+fn bytes_first_diff(a: &Vec[U8], b: &Vec[U8]) -> (Bool, USize)
+  let n: USize
+  set n = a.len
+  if b.len < n
+    set n = b.len
+  .end
+
+  let ap = (Ptr[U8])a.data
+  let bp = (Ptr[U8])b.data
+
+  let i: USize
+  set i = 0
+  while i < n
+    if *(ap + i) != *(bp + i)
+      ret (true, i)
+    .end
+    set i = i + 1
+  .end
+
+  if a.len != b.len
+    ret (true, n)
+  .end
+
+  ret (false, 0)
+.end
+
+# Produce a short diff message as bytes.
+# Format: "diff at <idx> (a=<len> b=<len>)" (ASCII)
+fn bytes_diff_msg(a: &Vec[U8], b: &Vec[U8]) -> (Bool, Vec[U8])
+  let has: Bool
+  let idx: USize
+  (has, idx) = bytes_first_diff(a, b)
+  if !has
+    ret (true, bytes_from_cstr("no diff"))
+  .end
+
+  let out = vec_new[U8]()
+  if !_vec_push_cstr(&out, "diff at ")
+    do vec_drop[U8](&out, 1)
+    ret (false, vec_new[U8]())
+  .end
+  if !_push_usize_dec(&out, idx)
+    do vec_drop[U8](&out, 1)
+    ret (false, vec_new[U8]())
+  .end
+
+  if !_vec_push_cstr(&out, " (a=")
+    do vec_drop[U8](&out, 1)
+    ret (false, vec_new[U8]())
+  .end
+  if !_push_usize_dec(&out, a.len)
+    do vec_drop[U8](&out, 1)
+    ret (false, vec_new[U8]())
+  .end
+  if !_vec_push_cstr(&out, " b=")
+    do vec_drop[U8](&out, 1)
+    ret (false, vec_new[U8]())
+  .end
+  if !_push_usize_dec(&out, b.len)
+    do vec_drop[U8](&out, 1)
+    ret (false, vec_new[U8]())
+  .end
+  if !_vec_push_u8(&out, (U8)')')
+    do vec_drop[U8](&out, 1)
+    ret (false, vec_new[U8]())
+  .end
+
+  ret (true, out)
+.end
+
+# -----------------------------------------------------------------------------
+# Deterministic pseudo RNG (LCG)
+# -----------------------------------------------------------------------------
+
+# 64-bit LCG parameters (PCG-style constants, not cryptographic).
+# new_seed = old_seed * A + C
+fn lcg_next(seed: &U64) -> U64
+  let A: U64
+  let C: U64
+  set A = (U64)6364136223846793005
+  set C = (U64)1442695040888963407
+  set *seed = (*seed * A) + C
+  ret *seed
+.end
+
+fn rand_u32(seed: &U64) -> U32
+  let x = lcg_next(seed)
+  ret (U32)(x >> 32)
+.end
+
+fn rand_u64(seed: &U64) -> U64
+  # combine two steps to increase diffusion a bit
+  let a = lcg_next(seed)
+  let b = lcg_next(seed)
+  ret a ^ (b << 1)
+.end
+
+fn rand_range_u32(seed: &U64, lo: U32, hi: U32) -> U32
+  if hi <= lo
+    ret lo
+  .end
+  let span = hi - lo
+  let r = rand_u32(seed)
+  ret lo + (r % span)
+.end
+
+fn rand_range_u64(seed: &U64, lo: U64, hi: U64) -> U64
+  if hi <= lo
+    ret lo
+  .end
+  let span = hi - lo
+  let r = rand_u64(seed)
+  ret lo + (r % span)
+.end
+
+# Fill bytes with random data.
+fn fill_random_u8(seed: &U64, out: &Vec[U8], n: USize) -> Bool
+  let i: USize
+  set i = 0
+  while i < n
+    let r = rand_u32(seed)
+    if !_vec_push_u8(out, (U8)(r & 0xff))
+      ret false
+    .end
+    set i = i + 1
+  .end
+  ret true
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests for std.test itself
+# -----------------------------------------------------------------------------
+
+scn test_test_expect_and_or
+  let a = expect_true(true, "a")
+  let b = expect_true(true, "b")
+  let c = expect_false(true, "c")
+
+  let r1 = expect_and(a, b)
+  do std.runtime::assert(r1.ok, "and ok")
+  do expect_drop(&r1)
+
+  let r2 = expect_or(c, expect_true(true, "x"))
+  do std.runtime::assert(r2.ok, "or ok")
+  do expect_drop(&r2)
+.end
+
+scn test_test_hexdump_and_diff
+  let a = vec_new[U8]()
+  do _vec_push_u8(&a, (U8)0x01)
+  do _vec_push_u8(&a, (U8)0xab)
+  do _vec_push_u8(&a, (U8)0xff)
+
+  let ok: Bool
+  let h: Vec[U8]
+  (ok, h) = hexdump(&a, 0)
+  do std.runtime::assert(ok, "hexdump")
+
+  let want = bytes_from_cstr("01 ab ff")
+  do std.runtime::assert(bytes_eq(&h, &want), "hexdump eq")
+
+  let b = vec_new[U8]()
+  do _vec_push_u8(&b, (U8)0x01)
+  do _vec_push_u8(&b, (U8)0xaa)
+  do _vec_push_u8(&b, (U8)0xff)
+
+  let has: Bool
+  let idx: USize
+  (has, idx) = bytes_first_diff(&a, &b)
+  do std.runtime::assert(has && idx == 1, "diff idx")
+
+  let dm: Vec[U8]
+  (ok, dm) = bytes_diff_msg(&a, &b)
+  do std.runtime::assert(ok, "diff msg")
+
+  do vec_drop[U8](&dm, 1)
+  do vec_drop[U8](&b, 1)
+  do vec_drop[U8](&want, 1)
+  do vec_drop[U8](&h, 1)
+  do vec_drop[U8](&a, 1)
+.end
+
+scn test_test_bytes_prefix_suffix_find
+  let a = bytes_from_cstr("hello world")
+  let p = bytes_from_cstr("hello")
+  let s = bytes_from_cstr("world")
+
+  do std.runtime::assert(bytes_starts_with(&a, &p), "starts_with")
+  do std.runtime::assert(bytes_ends_with(&a, &s), "ends_with")
+
+  let found: Bool
+  let idx: USize
+  (found, idx) = bytes_find_byte(&a, (U8)' ')
+  do std.runtime::assert(found && idx == 5, "find_byte")
+
+  let needle = bytes_from_cstr("lo w")
+  (found, idx) = bytes_find(&a, &needle)
+  do std.runtime::assert(found && idx == 3, "find")
+
+  do vec_drop[U8](&needle, 1)
+  do vec_drop[U8](&s, 1)
+  do vec_drop[U8](&p, 1)
+  do vec_drop[U8](&a, 1)
+.end
+
+scn test_test_to_cbytes
+  let a = bytes_from_cstr("abc")
+  let ok: Bool
+  let c: Vec[U8]
+  (ok, c) = bytes_to_cbytes(&a)
+  do std.runtime::assert(ok, "to_cbytes")
+  do std.runtime::assert(c.len == 4, "cbytes len")
+  do std.runtime::assert(*((Ptr[U8])c.data + 3) == 0, "cbytes nul")
+  do vec_drop[U8](&c, 1)
+  do vec_drop[U8](&a, 1)
+.end
+
+scn test_test_lcg_determinism
+  let s1: U64
+  let s2: U64
+  set s1 = (U64)123
+  set s2 = (U64)123
+
+  let i: U32
+  set i = 0
+  while i < 10
+    let a = lcg_next(&s1)
+    let b = lcg_next(&s2)
+    do std.runtime::assert(a == b, "lcg same")
+    set i = i + 1
+  .end
+.end
+
+scn test_test_rand_range
+  let seed: U64
+  set seed = (U64)42
+
+  let i: U32
+  set i = 0
+  while i < 100
+    let x = rand_range_u32(&seed, 10, 20)
+    do std.runtime::assert(x >= 10 && x < 20, "range")
+    set i = i + 1
+  .end
+.end
+
+scn test_test_fill_random
+  let seed: U64
+  set seed = (U64)1
+
+  let v = vec_new[U8]()
+  let ok = fill_random_u8(&seed, &v, 16)
+  do std.runtime::assert(ok, "fill_random")
+  do std.runtime::assert(v.len == 16, "fill len")
+
+  do vec_drop[U8](&v, 1)
+.end
+
+# End of std.test

@@ -33,7 +33,7 @@ Non-objectifs :
 
 ### 2.1 Zéro exception
 
-- En C/Rust : pas d’exception ; erreurs via `Result`/codes.
+- En C : pas d’exception ; erreurs via `Result`/codes.
 - En Vitte (langage) : erreurs runtime via mécanisme défini par VM (trap/panic/Result), mais le modèle de diagnostics reste cohérent.
 
 ### 2.2 Codes stables

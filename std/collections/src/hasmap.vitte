@@ -1,0 +1,484 @@
+# std/collections/hashmap.vitte
+# -----------------------------------------------------------------------------
+# std/collections/hashmap
+# -----------------------------------------------------------------------------
+# HashMap (open addressing) with storage abstraction.
+#
+# MAX goals:
+# - Practical API: put (insert/replace), get, contains, remove, len, clear, iter.
+# - Open addressing + linear probing.
+# - Bootstrap-friendly: fixed capacity; storage delegated to SlotBuf.
+# - Deterministic: caller supplies capacity; no resizing in this module.
+#
+# Design:
+# - Concrete Str -> Str hashmap (no generics yet).
+# - Slot state: 0 empty, 1 full, 2 tombstone
+# - Hash: FNV-1a 64-bit over bytes (best-effort; wire to std.string bytes later).
+# - Removal leaves tombstones; insertion prefers first tomb.
+#
+# Notes:
+# - SlotBuf functions are stubs; wire to real storage (arena/vec/slice).
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.collections.hashmap
+
+use std.runtime
+use std.string
+
+type Bool = bool
+type U8   = u8
+type U32  = u32
+type U64  = u64
+type I32  = i32
+type Str  = str
+
+# -----------------------------------------------------------------------------
+# Slot buffer abstraction (stubs)
+# -----------------------------------------------------------------------------
+
+type SlotBuf struct
+  id: I32
+.end
+
+fn slotbuf_invalid() -> SlotBuf
+  let b: SlotBuf
+  set b.id = -1
+  ret b
+.end
+
+fn slotbuf_is_valid(b: &SlotBuf) -> Bool
+  ret b.id >= 0
+.end
+
+fn slotbuf_cap(b: &SlotBuf) -> U32
+  # TODO
+  ret 0
+.end
+
+fn slotbuf_get_state(b: &SlotBuf, i: U32) -> U8
+  # TODO
+  ret 0
+.end
+
+fn slotbuf_set_state(b: &SlotBuf, i: U32, s: U8) -> Bool
+  # TODO
+  ret false
+.end
+
+fn slotbuf_get_key(b: &SlotBuf, i: U32) -> Str
+  # TODO
+  ret ""
+.end
+
+fn slotbuf_set_key(b: &SlotBuf, i: U32, k: Str) -> Bool
+  # TODO
+  ret false
+.end
+
+fn slotbuf_get_val(b: &SlotBuf, i: U32) -> Str
+  # TODO
+  ret ""
+.end
+
+fn slotbuf_set_val(b: &SlotBuf, i: U32, v: Str) -> Bool
+  # TODO
+  ret false
+.end
+
+fn slotbuf_clear_slot(b: &SlotBuf, i: U32) -> Bool
+  do slotbuf_set_state(b, i, 0)
+  do slotbuf_set_key(b, i, "")
+  do slotbuf_set_val(b, i, "")
+  ret true
+.end
+
+fn slotbuf_clear_all(b: &SlotBuf) -> Bool
+  let cap = slotbuf_cap(b)
+  let i: U32
+  set i = 0
+  while i < cap
+    do slotbuf_clear_slot(b, i)
+    set i = i + 1
+  .end
+  ret true
+.end
+
+# -----------------------------------------------------------------------------
+# Hash (FNV-1a 64-bit) best-effort
+# -----------------------------------------------------------------------------
+
+fn fnv_offset() -> U64
+  ret 14695981039346656037
+.end
+
+fn fnv_prime() -> U64
+  ret 1099511628211
+.end
+
+fn str_len(s: Str) -> U32
+  ret std.string::len(s)
+.end
+
+fn str_slice(s: Str, start: U32, len: U32) -> Str
+  ret std.string::slice(s, start, len)
+.end
+
+fn _byte_val(ch: Str) -> U8
+  # ASCII best-effort: real implementation should use byte_at
+  if ch == "0" ret 48 .end
+  if ch == "1" ret 49 .end
+  if ch == "2" ret 50 .end
+  if ch == "3" ret 51 .end
+  if ch == "4" ret 52 .end
+  if ch == "5" ret 53 .end
+  if ch == "6" ret 54 .end
+  if ch == "7" ret 55 .end
+  if ch == "8" ret 56 .end
+  if ch == "9" ret 57 .end
+  if ch == "a" ret 97 .end
+  if ch == "b" ret 98 .end
+  if ch == "c" ret 99 .end
+  if ch == "d" ret 100 .end
+  if ch == "e" ret 101 .end
+  if ch == "f" ret 102 .end
+  if ch == "g" ret 103 .end
+  if ch == "h" ret 104 .end
+  if ch == "i" ret 105 .end
+  if ch == "j" ret 106 .end
+  if ch == "k" ret 107 .end
+  if ch == "l" ret 108 .end
+  if ch == "m" ret 109 .end
+  if ch == "n" ret 110 .end
+  if ch == "o" ret 111 .end
+  if ch == "p" ret 112 .end
+  if ch == "q" ret 113 .end
+  if ch == "r" ret 114 .end
+  if ch == "s" ret 115 .end
+  if ch == "t" ret 116 .end
+  if ch == "u" ret 117 .end
+  if ch == "v" ret 118 .end
+  if ch == "w" ret 119 .end
+  if ch == "x" ret 120 .end
+  if ch == "y" ret 121 .end
+  if ch == "z" ret 122 .end
+  if ch == "-" ret 45 .end
+  if ch == "_" ret 95 .end
+  if ch == "." ret 46 .end
+  if ch == "/" ret 47 .end
+  if ch == ":" ret 58 .end
+  ret 0
+.end
+
+fn hash_str(s: Str) -> U64
+  let h: U64
+  set h = fnv_offset()
+
+  let i: U32
+  set i = 0
+  while i < str_len(s)
+    let ch = str_slice(s, i, 1)
+    let b: U8
+    set b = _byte_val(ch)
+    set h = h ^ (U64)b
+    set h = h * fnv_prime()
+    set i = i + 1
+  .end
+
+  ret h
+.end
+
+# -----------------------------------------------------------------------------
+# Map types
+# -----------------------------------------------------------------------------
+
+type HashMapError enum
+  Ok
+  Full
+  NotFound
+  Invalid
+.end
+
+type GetResult struct
+  ok: Bool
+  value: Str
+.end
+
+fn get_none() -> GetResult
+  let r: GetResult
+  set r.ok = false
+  set r.value = ""
+  ret r
+.end
+
+fn get_some(v: Str) -> GetResult
+  let r: GetResult
+  set r.ok = true
+  set r.value = v
+  ret r
+.end
+
+type PutResult enum
+  Inserted
+  Replaced
+  Failed
+.end
+
+type HashMap struct
+  buf: SlotBuf
+  len: U32
+  tombs: U32
+.end
+
+fn hashmap_new(buf: SlotBuf) -> HashMap
+  let m: HashMap
+  set m.buf = buf
+  set m.len = 0
+  set m.tombs = 0
+  ret m
+.end
+
+fn hashmap_is_valid(m: &HashMap) -> Bool
+  if !slotbuf_is_valid(&m.buf)
+    ret false
+  .end
+  ret slotbuf_cap(&m.buf) > 0
+.end
+
+fn hashmap_cap(m: &HashMap) -> U32
+  if !hashmap_is_valid(m)
+    ret 0
+  .end
+  ret slotbuf_cap(&m.buf)
+.end
+
+fn hashmap_len(m: &HashMap) -> U32
+  ret m.len
+.end
+
+fn hashmap_is_empty(m: &HashMap) -> Bool
+  ret m.len == 0
+.end
+
+fn hashmap_clear(m: &HashMap) -> HashMapError
+  if !hashmap_is_valid(m)
+    ret HashMapError::Invalid
+  .end
+  do slotbuf_clear_all(&m.buf)
+  set m.len = 0
+  set m.tombs = 0
+  ret HashMapError::Ok
+.end
+
+# -----------------------------------------------------------------------------
+# Probing
+# -----------------------------------------------------------------------------
+
+# Returns:
+# - found: key exists
+# - idx: slot of found key OR first empty slot if not found (or cap if full)
+# - first_tomb: first tomb index encountered (cap if none)
+fn _probe_find(m: &HashMap, key: Str) -> (Bool, U32, U32)
+  let cap = slotbuf_cap(&m.buf)
+  if cap == 0
+    ret (false, 0, 0)
+  .end
+
+  let h = hash_str(key)
+  let start = (U32)(h % (U64)cap)
+
+  let first_tomb: U32
+  set first_tomb = cap
+
+  let step: U32
+  set step = 0
+  while step < cap
+    let idx = (start + step) % cap
+    let st = slotbuf_get_state(&m.buf, idx)
+
+    if st == 0
+      # empty => stop
+      ret (false, idx, first_tomb)
+    .end
+
+    if st == 2
+      if first_tomb == cap
+        set first_tomb = idx
+      .end
+      set step = step + 1
+      continue
+    .end
+
+    # full
+    let k = slotbuf_get_key(&m.buf, idx)
+    if k == key
+      ret (true, idx, first_tomb)
+    .end
+
+    set step = step + 1
+  .end
+
+  ret (false, cap, first_tomb)
+.end
+
+# -----------------------------------------------------------------------------
+# Public ops
+# -----------------------------------------------------------------------------
+
+fn hashmap_contains(m: &HashMap, key: Str) -> Bool
+  if !hashmap_is_valid(m)
+    ret false
+  .end
+  let found: Bool
+  let idx: U32
+  let tomb: U32
+  (found, idx, tomb) = _probe_find(m, key)
+  ret found
+.end
+
+fn hashmap_get(m: &HashMap, key: Str) -> GetResult
+  if !hashmap_is_valid(m)
+    ret get_none()
+  .end
+  let found: Bool
+  let idx: U32
+  let tomb: U32
+  (found, idx, tomb) = _probe_find(m, key)
+  if !found
+    ret get_none()
+  .end
+  ret get_some(slotbuf_get_val(&m.buf, idx))
+.end
+
+fn hashmap_put(m: &HashMap, key: Str, val: Str) -> PutResult
+  if !hashmap_is_valid(m)
+    ret PutResult::Failed
+  .end
+
+  let cap = slotbuf_cap(&m.buf)
+  if cap == 0
+    ret PutResult::Failed
+  .end
+
+  # Conservative full check (tombs do not increase effective capacity).
+  if m.len >= cap
+    ret PutResult::Failed
+  .end
+
+  let found: Bool
+  let idx: U32
+  let tomb: U32
+  (found, idx, tomb) = _probe_find(m, key)
+
+  if found
+    if !slotbuf_set_val(&m.buf, idx, val)
+      ret PutResult::Failed
+    .end
+    ret PutResult::Replaced
+  .end
+
+  # choose insertion slot
+  let ins: U32
+  if tomb != cap
+    set ins = tomb
+    if m.tombs > 0
+      set m.tombs = m.tombs - 1
+    .end
+  else
+    set ins = idx
+  .end
+
+  if ins >= cap
+    ret PutResult::Failed
+  .end
+
+  if !slotbuf_set_key(&m.buf, ins, key)
+    ret PutResult::Failed
+  .end
+  if !slotbuf_set_val(&m.buf, ins, val)
+    ret PutResult::Failed
+  .end
+  if !slotbuf_set_state(&m.buf, ins, 1)
+    ret PutResult::Failed
+  .end
+
+  set m.len = m.len + 1
+  ret PutResult::Inserted
+.end
+
+fn hashmap_remove(m: &HashMap, key: Str) -> HashMapError
+  if !hashmap_is_valid(m)
+    ret HashMapError::Invalid
+  .end
+
+  let found: Bool
+  let idx: U32
+  let tomb: U32
+  (found, idx, tomb) = _probe_find(m, key)
+
+  if !found
+    ret HashMapError::NotFound
+  .end
+
+  do slotbuf_set_state(&m.buf, idx, 2)
+  do slotbuf_set_key(&m.buf, idx, "")
+  do slotbuf_set_val(&m.buf, idx, "")
+
+  if m.len > 0
+    set m.len = m.len - 1
+  .end
+  set m.tombs = m.tombs + 1
+
+  ret HashMapError::Ok
+.end
+
+# -----------------------------------------------------------------------------
+# Iteration: scan full slots
+# -----------------------------------------------------------------------------
+
+type Iter struct
+  idx: U32
+.end
+
+fn iter_new() -> Iter
+  let it: Iter
+  set it.idx = 0
+  ret it
+.end
+
+fn hashmap_iter_next(m: &HashMap, it: &Iter) -> (Bool, Str, Str)
+  if !hashmap_is_valid(m)
+    ret (false, "", "")
+  .end
+
+  let cap = slotbuf_cap(&m.buf)
+  while it.idx < cap
+    let i = it.idx
+    set it.idx = it.idx + 1
+    if slotbuf_get_state(&m.buf, i) == 1
+      ret (true, slotbuf_get_key(&m.buf, i), slotbuf_get_val(&m.buf, i))
+    .end
+  .end
+
+  ret (false, "", "")
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests (scenarios)
+# -----------------------------------------------------------------------------
+
+scn test_hashmap_hash_stable
+  let h1 = hash_str("abc")
+  let h2 = hash_str("abc")
+  do std.runtime::assert(h1 == h2, "stable")
+.end
+
+scn test_hashmap_api_smoke
+  let b = slotbuf_invalid()
+  let m = hashmap_new(b)
+  do std.runtime::assert(hashmap_is_valid(&m) == false, "invalid")
+  let r = hashmap_get(&m, "k")
+  do std.runtime::assert(r.ok == false, "get none")
+.end
+
+# End of std.collections.hashmap

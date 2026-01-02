@@ -1,0 +1,420 @@
+# std/collections/hashset.vitte
+# -----------------------------------------------------------------------------
+# std/collections/hashset
+# -----------------------------------------------------------------------------
+# HashSet (open addressing) with storage abstraction.
+#
+# MAX goals:
+# - Provide a practical HashSet API: insert, contains, remove, len, clear, iter.
+# - Open addressing + linear probing.
+# - Bootstrap-friendly: storage delegated to a SlotBuf interface (no hard alloc).
+# - Deterministic: caller provides buffer capacity; no resizing here.
+#
+# Design:
+# - Fixed-capacity hash set for Str keys (no generics yet).
+# - Slots store: state + key
+#     state: 0 empty, 1 filled, 2 tombstone
+# - Hash: FNV-1a 64-bit over bytes (string as bytes best-effort).
+#
+# Notes:
+# - This file includes SlotBuf stubs. Wire to real storage (arena/vec/slice).
+# - Equality is exact string equality.
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.collections.hashset
+
+use std.runtime
+use std.string
+
+type Bool = bool
+type U8   = u8
+type U32  = u32
+type U64  = u64
+type I32  = i32
+type Str  = str
+
+# -----------------------------------------------------------------------------
+# Slot buffer abstraction (stubs)
+# -----------------------------------------------------------------------------
+# Replace with your native slice/vec when available.
+# -----------------------------------------------------------------------------
+
+type SlotBuf struct
+  id: I32
+.end
+
+fn slotbuf_invalid() -> SlotBuf
+  let b: SlotBuf
+  set b.id = -1
+  ret b
+.end
+
+fn slotbuf_is_valid(b: &SlotBuf) -> Bool
+  ret b.id >= 0
+.end
+
+# capacity in slots
+fn slotbuf_cap(b: &SlotBuf) -> U32
+  # TODO: wire to real buffer
+  ret 0
+.end
+
+# state: 0 empty, 1 full, 2 tomb
+fn slotbuf_get_state(b: &SlotBuf, i: U32) -> U8
+  # TODO
+  ret 0
+.end
+
+fn slotbuf_set_state(b: &SlotBuf, i: U32, s: U8) -> Bool
+  # TODO
+  ret false
+.end
+
+fn slotbuf_get_key(b: &SlotBuf, i: U32) -> Str
+  # TODO
+  ret ""
+.end
+
+fn slotbuf_set_key(b: &SlotBuf, i: U32, k: Str) -> Bool
+  # TODO
+  ret false
+.end
+
+fn slotbuf_clear_key(b: &SlotBuf, i: U32) -> Bool
+  # Optional: reset key storage
+  ret slotbuf_set_key(b, i, "")
+.end
+
+fn slotbuf_clear_all(b: &SlotBuf) -> Bool
+  let cap = slotbuf_cap(b)
+  let i: U32
+  set i = 0
+  while i < cap
+    do slotbuf_set_state(b, i, 0)
+    do slotbuf_clear_key(b, i)
+    set i = i + 1
+  .end
+  ret true
+.end
+
+# -----------------------------------------------------------------------------
+# Hash (FNV-1a 64-bit) over string bytes (best-effort)
+# -----------------------------------------------------------------------------
+
+fn fnv_offset() -> U64
+  ret 14695981039346656037
+.end
+
+fn fnv_prime() -> U64
+  ret 1099511628211
+.end
+
+# Minimal byte access:
+# - If std.string exposes bytes, wire this.
+# - Here we treat slice(s,i,1) as a “byte string” and map some ASCII.
+#   This is imperfect but keeps bootstrap logic self-contained.
+fn _byte_val(ch: Str) -> U8
+  # ASCII best-effort
+  if ch == "\x00" ret 0 .end
+  if ch == "\x01" ret 1 .end
+  if ch == "\x02" ret 2 .end
+  if ch == "\x03" ret 3 .end
+  if ch == "\x04" ret 4 .end
+  if ch == "\x05" ret 5 .end
+  if ch == "\x06" ret 6 .end
+  if ch == "\x07" ret 7 .end
+  if ch == "\x08" ret 8 .end
+  if ch == "\x09" ret 9 .end
+  if ch == "\x0a" ret 10 .end
+  if ch == "\x0b" ret 11 .end
+  if ch == "\x0c" ret 12 .end
+  if ch == "\x0d" ret 13 .end
+  if ch == "\x0e" ret 14 .end
+  if ch == "\x0f" ret 15 .end
+  if ch == "\x10" ret 16 .end
+  if ch == "\x11" ret 17 .end
+  if ch == "\x12" ret 18 .end
+  if ch == "\x13" ret 19 .end
+  if ch == "\x14" ret 20 .end
+  if ch == "\x15" ret 21 .end
+  if ch == "\x16" ret 22 .end
+  if ch == "\x17" ret 23 .end
+  if ch == "\x18" ret 24 .end
+  if ch == "\x19" ret 25 .end
+  if ch == "\x1a" ret 26 .end
+  if ch == "\x1b" ret 27 .end
+  if ch == "\x1c" ret 28 .end
+  if ch == "\x1d" ret 29 .end
+  if ch == "\x1e" ret 30 .end
+  if ch == "\x1f" ret 31 .end
+  # printable ASCII (space..~) not enumerated; fallback:
+  ret 0
+.end
+
+fn str_len(s: Str) -> U32
+  ret std.string::len(s)
+.end
+
+fn str_slice(s: Str, start: U32, len: U32) -> Str
+  ret std.string::slice(s, start, len)
+.end
+
+fn hash_str(s: Str) -> U64
+  let h: U64
+  set h = fnv_offset()
+
+  let i: U32
+  set i = 0
+  while i < str_len(s)
+    let ch = str_slice(s, i, 1)
+    let b: U8
+    # If your std.string has byte_at, replace next line.
+    set b = _byte_val(ch)
+
+    set h = h ^ (U64)b
+    set h = h * fnv_prime()
+    set i = i + 1
+  .end
+
+  ret h
+.end
+
+# -----------------------------------------------------------------------------
+# Public HashSet (Str keys)
+# -----------------------------------------------------------------------------
+
+type HashSetError enum
+  Ok
+  Full
+  NotFound
+  Invalid
+.end
+
+type HashSet struct
+  buf: SlotBuf
+  len: U32
+  tombs: U32
+.end
+
+fn hashset_new(buf: SlotBuf) -> HashSet
+  let s: HashSet
+  set s.buf = buf
+  set s.len = 0
+  set s.tombs = 0
+  ret s
+.end
+
+fn hashset_is_valid(s: &HashSet) -> Bool
+  if !slotbuf_is_valid(&s.buf)
+    ret false
+  .end
+  ret slotbuf_cap(&s.buf) > 0
+.end
+
+fn hashset_cap(s: &HashSet) -> U32
+  if !hashset_is_valid(s)
+    ret 0
+  .end
+  ret slotbuf_cap(&s.buf)
+.end
+
+fn hashset_len(s: &HashSet) -> U32
+  ret s.len
+.end
+
+fn hashset_is_empty(s: &HashSet) -> Bool
+  ret s.len == 0
+.end
+
+fn hashset_clear(s: &HashSet) -> HashSetError
+  if !hashset_is_valid(s)
+    ret HashSetError::Invalid
+  .end
+  do slotbuf_clear_all(&s.buf)
+  set s.len = 0
+  set s.tombs = 0
+  ret HashSetError::Ok
+.end
+
+# Find slot for key.
+# Returns (found, slot_index, first_tomb_index_or_cap)
+fn _probe_find(s: &HashSet, key: Str) -> (Bool, U32, U32)
+  let cap = slotbuf_cap(&s.buf)
+  if cap == 0
+    ret (false, 0, 0)
+  .end
+
+  let h = hash_str(key)
+  let start = (U32)(h % (U64)cap)
+
+  let first_tomb: U32
+  set first_tomb = cap
+
+  let i: U32
+  set i = 0
+  while i < cap
+    let idx = (start + i) % cap
+    let st = slotbuf_get_state(&s.buf, idx)
+
+    if st == 0
+      # empty stops search; key not found
+      ret (false, idx, first_tomb)
+    .end
+
+    if st == 2
+      # tombstone: remember first
+      if first_tomb == cap
+        set first_tomb = idx
+      .end
+      set i = i + 1
+      continue
+    .end
+
+    # st == 1
+    let k = slotbuf_get_key(&s.buf, idx)
+    if k == key
+      ret (true, idx, first_tomb)
+    .end
+
+    set i = i + 1
+  .end
+
+  # full table scan
+  ret (false, cap, first_tomb)
+.end
+
+fn hashset_contains(s: &HashSet, key: Str) -> Bool
+  if !hashset_is_valid(s)
+    ret false
+  .end
+  let found: Bool
+  let idx: U32
+  let tomb: U32
+  (found, idx, tomb) = _probe_find(s, key)
+  ret found
+.end
+
+fn hashset_insert(s: &HashSet, key: Str) -> (HashSetError, Bool)
+  # returns (err, inserted_new)
+  if !hashset_is_valid(s)
+    ret (HashSetError::Invalid, false)
+  .end
+
+  let cap = slotbuf_cap(&s.buf)
+  if s.len >= cap
+    ret (HashSetError::Full, false)
+  .end
+
+  let found: Bool
+  let idx: U32
+  let tomb: U32
+  (found, idx, tomb) = _probe_find(s, key)
+
+  if found
+    ret (HashSetError::Ok, false)
+  .end
+
+  # choose insertion slot: prefer first tomb if any, else idx (empty)
+  let ins: U32
+  if tomb != cap
+    set ins = tomb
+    # overwriting a tomb reduces tomb count
+    if s.tombs > 0
+      set s.tombs = s.tombs - 1
+    .end
+  else
+    set ins = idx
+  .end
+
+  if ins >= cap
+    ret (HashSetError::Full, false)
+  .end
+
+  if !slotbuf_set_key(&s.buf, ins, key)
+    ret (HashSetError::Invalid, false)
+  .end
+  if !slotbuf_set_state(&s.buf, ins, 1)
+    ret (HashSetError::Invalid, false)
+  .end
+
+  set s.len = s.len + 1
+  ret (HashSetError::Ok, true)
+.end
+
+fn hashset_remove(s: &HashSet, key: Str) -> HashSetError
+  if !hashset_is_valid(s)
+    ret HashSetError::Invalid
+  .end
+
+  let found: Bool
+  let idx: U32
+  let tomb: U32
+  (found, idx, tomb) = _probe_find(s, key)
+
+  if !found
+    ret HashSetError::NotFound
+  .end
+
+  # mark as tombstone
+  do slotbuf_set_state(&s.buf, idx, 2)
+  do slotbuf_clear_key(&s.buf, idx)
+
+  if s.len > 0
+    set s.len = s.len - 1
+  .end
+  set s.tombs = s.tombs + 1
+
+  ret HashSetError::Ok
+.end
+
+# -----------------------------------------------------------------------------
+# Iteration: scan filled slots
+# -----------------------------------------------------------------------------
+
+type Iter struct
+  idx: U32
+.end
+
+fn iter_new() -> Iter
+  let it: Iter
+  set it.idx = 0
+  ret it
+.end
+
+fn hashset_iter_next(s: &HashSet, it: &Iter) -> (Bool, Str)
+  if !hashset_is_valid(s)
+    ret (false, "")
+  .end
+  let cap = slotbuf_cap(&s.buf)
+
+  while it.idx < cap
+    let i = it.idx
+    set it.idx = it.idx + 1
+    if slotbuf_get_state(&s.buf, i) == 1
+      ret (true, slotbuf_get_key(&s.buf, i))
+    .end
+  .end
+
+  ret (false, "")
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests (scenarios)
+# -----------------------------------------------------------------------------
+# Algorithm compilation tests; buffer is stubbed until wired.
+# -----------------------------------------------------------------------------
+
+scn test_hashset_hash
+  let h1 = hash_str("a")
+  let h2 = hash_str("a")
+  do std.runtime::assert(h1 == h2, "stable hash")
+.end
+
+scn test_hashset_api_smoke
+  let b = slotbuf_invalid()
+  let s = hashset_new(b)
+  do std.runtime::assert(hashset_is_valid(&s) == false, "invalid buffer")
+.end
+
+# End of std.collections.hashset

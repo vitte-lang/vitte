@@ -1,0 +1,141 @@
+
+
+# /Users/vincent/Documents/Github/vitte/std/runtime/src/panic.vitte
+# -----------------------------------------------------------------------------
+# std/runtime/panic
+# -----------------------------------------------------------------------------
+# MAX panic surface.
+#
+# Goals:
+# - Provide a single, stable panic entry point used by stdlib and generated code.
+# - Keep implementation minimal and backend-friendly.
+# - Offer small helpers for composing panic messages without pulling std.fmt.
+# - Provide "catch"/"abort" policy hooks (best-effort), without assuming exceptions.
+#
+# Notes:
+# - The actual termination mechanism is backend-defined (abort/exit/trap).
+# - If the runtime supports unwinding, it may map panic to an unwind event.
+# - For early stage0, panic may be a simple trap.
+#
+# Blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.runtime.panic
+
+use std.runtime
+use std.string
+
+type Bool = bool
+type U32  = u32
+type U64  = u64
+type Str  = str
+
+# -----------------------------------------------------------------------------
+# Policy
+# -----------------------------------------------------------------------------
+# PANIC_ABORT=true means: terminate immediately.
+# PANIC_ABORT=false may allow backend to unwind/catch (if supported).
+
+const PANIC_ABORT: Bool = true
+
+# -----------------------------------------------------------------------------
+# Core entry points
+# -----------------------------------------------------------------------------
+
+fn panic(msg: Str) -> never
+  # canonical panic entry
+  do std.runtime::panic(msg)
+.end
+
+fn panic_abort(msg: Str) -> never
+  # force abort policy regardless of global setting
+  do std.runtime::panic_abort(msg)
+.end
+
+fn panic_trap() -> never
+  # immediate trap (no message)
+  do std.runtime::trap()
+.end
+
+fn panic_if(cond: Bool, msg: Str)
+  if !cond
+    ret
+  .end
+  do panic(msg)
+.end
+
+# -----------------------------------------------------------------------------
+# Minimal message composition helpers
+# -----------------------------------------------------------------------------
+# These helpers delegate to backend to avoid allocations when possible.
+
+fn concat2(a: Str, b: Str) -> Str
+  ret std.runtime::panic_concat2(a, b)
+.end
+
+fn concat3(a: Str, b: Str, c: Str) -> Str
+  ret std.runtime::panic_concat3(a, b, c)
+.end
+
+fn panic2(a: Str, b: Str) -> never
+  let msg = concat2(a, b)
+  if PANIC_ABORT
+    do panic_abort(msg)
+  .end
+  do panic(msg)
+.end
+
+fn panic3(a: Str, b: Str, c: Str) -> never
+  let msg = concat3(a, b, c)
+  if PANIC_ABORT
+    do panic_abort(msg)
+  .end
+  do panic(msg)
+.end
+
+fn unreachable(msg: Str) -> never
+  do panic2("unreachable: ", msg)
+.end
+
+fn todo(msg: Str) -> never
+  do panic2("todo: ", msg)
+.end
+
+# -----------------------------------------------------------------------------
+# Optional catch API (best-effort)
+# -----------------------------------------------------------------------------
+# If the backend supports unwinding/catching, these can be implemented.
+# Otherwise they can return `false`/no-op.
+
+fn can_catch() -> Bool
+  ret std.runtime::panic_can_catch()
+.end
+
+fn try_run(f: fn() -> void) -> Bool
+  # Runs f and returns true if completed without panic; false if panicked and caught.
+  # Backend-defined; if unsupported, returns true after running f (panics abort).
+  ret std.runtime::panic_try_run(f)
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke test
+# -----------------------------------------------------------------------------
+
+scn test_panic_surface
+  # Do not trigger panic here.
+  do std.runtime::assert(concat2("a", "b") == std.runtime::panic_concat2("a", "b"), "concat2")
+  do std.runtime::assert(concat3("a", "b", "c") == std.runtime::panic_concat3("a", "b", "c"), "concat3")
+
+  let _ = panic
+  let _ = panic_abort
+  let _ = panic_trap
+  let _ = panic_if
+  let _ = panic2
+  let _ = panic3
+  let _ = unreachable
+  let _ = todo
+  let _ = can_catch
+  let _ = try_run
+.end
+
+# End of std.runtime.panic

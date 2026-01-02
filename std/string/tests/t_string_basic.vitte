@@ -1,0 +1,243 @@
+
+
+# /Users/vincent/Documents/Github/vitte/std/string/tests/t_string_basic.vitte
+# -----------------------------------------------------------------------------
+# std/string/tests - basic coverage
+# -----------------------------------------------------------------------------
+# MAX goals:
+# - Provide broad smoke + property-ish tests for std.string surface.
+# - Exercise helpers from:
+#     * std.string.ascii
+#     * std.string.replace
+#     * std.string.split
+#     * std.string.utf8
+# - Verify invariants: lengths, boundaries, no panics on edge cases.
+#
+# Notes:
+# - This suite assumes the following std.string APIs exist:
+#     len(s) -> u64
+#     byte_at(s,i) -> u8
+#     slice(s,start,len) -> str
+#     from_byte(u8) -> str
+#     builder_with_capacity(u64) -> Builder
+#     builder_push_str(Builder,str)
+#     builder_push_byte(Builder,u8)
+#     builder_finish(Builder) -> str
+# - If your std.string differs, adapt the helper wrappers only.
+# -----------------------------------------------------------------------------
+
+module std.string.tests.t_string_basic
+
+use std.runtime
+use std.string
+
+use std.string.ascii
+use std.string.replace
+use std.string.split
+use std.string.utf8
+
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
+
+type Bool = bool
+
+type U8  = u8
+
+type U32 = u32
+
+type U64 = u64
+
+type Str = str
+
+fn assert_true(b: Bool, msg: Str)
+  do std.runtime::assert(b, msg)
+.end
+
+fn assert_false(b: Bool, msg: Str)
+  do std.runtime::assert(!b, msg)
+.end
+
+fn assert_eq_u64(a: U64, b: U64, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_u32(a: U32, b: U32, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_str(a: Str, b: Str, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn build_str(parts: Str) -> Str
+  # helper: return parts (kept for future extension)
+  ret parts
+.end
+
+# -----------------------------------------------------------------------------
+# ASCII module tests (integration)
+# -----------------------------------------------------------------------------
+
+scn test_ascii_integration
+  do assert_true(std.string.ascii::is_ascii_str("Hello_123"), "ascii is_ascii_str")
+  do assert_false(std.string.ascii::is_ascii_str("é"), "ascii rejects non-ascii")
+
+  do assert_true(std.string.ascii::eq_ignore_case("Hello", "hELLo"), "ascii eq_ignore_case")
+  do assert_false(std.string.ascii::eq_ignore_case("Hello", "Hell0"), "ascii not equal")
+
+  do assert_true(std.string.ascii::starts_with_ignore_case("Content-Type", "content"), "starts_with_ignore_case")
+  do assert_true(std.string.ascii::ends_with_ignore_case("Content-Type", "TYPE"), "ends_with_ignore_case")
+
+  do assert_eq_u64(std.string.ascii::parse_u64_dec_or("42", 0), 42, "parse dec")
+  do assert_eq_u64(std.string.ascii::parse_u64_hex_or("0x2a", 0), 42, "parse hex")
+.end
+
+# -----------------------------------------------------------------------------
+# Replace module tests (integration)
+# -----------------------------------------------------------------------------
+
+scn test_replace_integration
+  do assert_eq_str(std.string.replace::replace_all("a-b-c", "-", ":"), "a:b:c", "replace_all")
+  do assert_eq_str(std.string.replace::replace_first("a-b-c", "-", ":"), "a:b-c", "replace_first")
+  do assert_eq_str(std.string.replace::replace_last("a-b-c", "-", ":"), "a-b:c", "replace_last")
+
+  # no match
+  do assert_eq_str(std.string.replace::replace_all("abc", "z", "x"), "abc", "replace no match")
+
+  # byte replacement
+  do assert_eq_str(std.string.replace::replace_byte_all("a-b", 0x2d, 0x3a), "a:b", "replace_byte_all")
+.end
+
+# -----------------------------------------------------------------------------
+# Split module tests (integration)
+# -----------------------------------------------------------------------------
+
+scn test_split_integration
+  let l: Str
+  let r: Str
+  let ok: Bool
+
+  (l, r, ok) = std.string.split::split_once("a::b::c", "::")
+  do assert_true(ok, "split_once ok")
+  do assert_eq_str(l, "a", "split_once left")
+  do assert_eq_str(r, "b::c", "split_once right")
+
+  (l, r, ok) = std.string.split::rsplit_once("a::b::c", "::")
+  do assert_true(ok, "rsplit_once ok")
+  do assert_eq_str(l, "a::b", "rsplit_once left")
+  do assert_eq_str(r, "c", "rsplit_once right")
+
+  # iterator
+  let it = std.string.split::split_new("a::b::c", "::")
+  let part: Str
+
+  (it, part, ok) = std.string.split::split_next(it)
+  do assert_true(ok, "split_next 1")
+  do assert_eq_str(part, "a", "split part 1")
+
+  (it, part, ok) = std.string.split::split_next(it)
+  do assert_true(ok, "split_next 2")
+  do assert_eq_str(part, "b", "split part 2")
+
+  (it, part, ok) = std.string.split::split_next(it)
+  do assert_true(ok, "split_next 3")
+  do assert_eq_str(part, "c", "split part 3")
+
+  (it, part, ok) = std.string.split::split_next(it)
+  do assert_false(ok, "split_next end")
+
+  # whitespace iterator
+  let itw = std.string.split::split_whitespace_new("  a\t b\n\n c  ")
+  (itw, part, ok) = std.string.split::split_whitespace_next(itw)
+  do assert_true(ok, "ws 1")
+  do assert_eq_str(part, "a", "ws part 1")
+  (itw, part, ok) = std.string.split::split_whitespace_next(itw)
+  do assert_true(ok, "ws 2")
+  do assert_eq_str(part, "b", "ws part 2")
+  (itw, part, ok) = std.string.split::split_whitespace_next(itw)
+  do assert_true(ok, "ws 3")
+  do assert_eq_str(part, "c", "ws part 3")
+  (itw, part, ok) = std.string.split::split_whitespace_next(itw)
+  do assert_false(ok, "ws end")
+.end
+
+# -----------------------------------------------------------------------------
+# UTF-8 module tests (integration)
+# -----------------------------------------------------------------------------
+
+scn test_utf8_integration
+  # ascii
+  do assert_true(std.string.utf8::validate("hello"), "utf8 validate ascii")
+  do assert_eq_u64(std.string.utf8::count_codepoints("hello"), 5, "count cp ascii")
+
+  # multi-byte
+  let s: Str
+  set s = "aéz"  # 1 + 2 + 1 bytes
+  do assert_true(std.string.utf8::validate(s), "utf8 validate a-é-z")
+  do assert_eq_u64(std.string::len(s), 4, "len bytes")
+  do assert_eq_u64(std.string.utf8::count_codepoints(s), 3, "count cp")
+
+  # boundaries
+  do assert_true(std.string.utf8::is_char_boundary(s, 0), "b0")
+  do assert_true(std.string.utf8::is_char_boundary(s, 1), "after a")
+  do assert_false(std.string.utf8::is_char_boundary(s, 2), "inside é")
+  do assert_true(std.string.utf8::is_char_boundary(s, 3), "after é")
+  do assert_true(std.string.utf8::is_char_boundary(s, 4), "end")
+
+  do assert_eq_u64(std.string.utf8::prev_boundary(s, 2), 1, "prev boundary")
+  do assert_eq_u64(std.string.utf8::next_boundary(s, 2), 3, "next boundary")
+
+  # decode/encode
+  let cp: U32
+  let sz: U64
+  let ok: Bool
+  (cp, sz, ok) = std.string.utf8::decode_next_at("é", 0)
+  do assert_true(ok, "decode é")
+  do assert_eq_u32(cp, 0x00e9, "cp é")
+  do assert_eq_u64(sz, 2, "sz é")
+  do assert_eq_str(std.string.utf8::encode_to_string(cp), "é", "encode é")
+
+  # slicing by codepoints
+  do assert_eq_str(std.string.utf8::slice_by_codepoints(s, 0, 1), "a", "slice cp 0")
+  do assert_eq_str(std.string.utf8::slice_by_codepoints(s, 1, 1), "é", "slice cp 1")
+  do assert_eq_str(std.string.utf8::slice_by_codepoints(s, 2, 1), "z", "slice cp 2")
+.end
+
+# -----------------------------------------------------------------------------
+# Builder smoke tests
+# -----------------------------------------------------------------------------
+
+scn test_string_builder_smoke
+  let b = std.string::builder_with_capacity(16)
+  do std.string::builder_push_str(b, "he")
+  do std.string::builder_push_str(b, "llo")
+  do std.string::builder_push_byte(b, 0x21) # '!'
+  let out = std.string::builder_finish(b)
+  do assert_eq_str(out, "hello!", "builder result")
+.end
+
+# -----------------------------------------------------------------------------
+# Edge case battery
+# -----------------------------------------------------------------------------
+
+scn test_edge_cases
+  # empty string behavior
+  do assert_eq_u64(std.string::len(""), 0, "len empty")
+  do assert_true(std.string.utf8::validate(""), "utf8 empty")
+
+  # replace with empty repl
+  do assert_eq_str(std.string.replace::replace_all("a-b-c", "-", ""), "abc", "replace drop")
+
+  # split on missing separator
+  let l: Str
+  let r: Str
+  let ok: Bool
+  (l, r, ok) = std.string.split::split_once("abc", "::")
+  do assert_false(ok, "split miss")
+
+  # trim whitespace via ascii
+  do assert_eq_str(std.string.ascii::trim_ascii_whitespace("  x\n"), "x", "trim ws")
+.end
+
+# End of t_string_basic

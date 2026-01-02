@@ -8,7 +8,7 @@ Ce document définit la matrice de **triples** supportés par Vitte et sert de r
 Objectifs :
 - Nommer clairement les plateformes **officielles**.
 - Distinguer support **Tier 1/2/3**.
-- Standardiser les triples au format “type LLVM/Rust”.
+- Standardiser les triples au format “type LLVM”.
 
 Non-objectifs :
 - Couvrir toutes les variantes historiques (ex: i386, powerpc) — extensible plus tard.

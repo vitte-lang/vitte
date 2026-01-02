@@ -3,7 +3,7 @@
 # Runtime ABI — slices, strings, handles, erreurs (contrat stable)
 
 Ce document définit l’ABI **stable** entre :
-- le **runtime/VM** (impl en C/Rust),
+- le **runtime/VM** (implémenté en C),
 - les **modules natifs** (plugins/dylibs),
 - et la couche **PAL** (voir `pal_contract.md`).
 

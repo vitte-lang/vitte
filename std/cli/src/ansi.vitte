@@ -1,0 +1,619 @@
+
+
+# -----------------------------------------------------------------------------
+# std/cli/ansi
+# -----------------------------------------------------------------------------
+# ANSI escape utilities (SGR, cursor, clear, OSC) for terminals.
+#
+# Features:
+# - Primitives: ESC, BEL, ST, CSI, OSC, sgr_code
+# - Styles: reset, bold/dim/italic/underline/blink/inverse/hidden/strikethrough
+#   + reset variants
+# - Colors:
+#     * 8-color fg8/bg8 + named helpers black..white and on_* + bright_* variants
+#     * 256-color fg256/bg256
+#     * truecolor fgrgb/bgrgb
+# - Composer: paint/paint2/paint3
+# - Cursor & clear controls
+# - OSC: set_title, hyperlink
+# - Detection stubs: supports_truecolor
+# - Stripping stub: strip_ansi
+#
+# Notes:
+# - Bootstrap-friendly: no heavy formatting.
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.cli.ansi
+
+use std.runtime
+
+type Bool = bool
+
+type U8  = u8
+type U16 = u16
+type U32 = u32
+type I32 = i32
+
+type Str = str
+
+# -----------------------------------------------------------------------------
+# Primitives
+# -----------------------------------------------------------------------------
+
+# Escape and terminators
+fn ESC() -> Str
+  ret "\x1b"
+.end
+
+fn BEL() -> Str
+  ret "\x07"
+.end
+
+# String terminator for OSC (ESC \)
+fn ST() -> Str
+  ret "\x1b\\"
+.end
+
+# CSI introducer (ESC [)
+fn CSI() -> Str
+  ret "\x1b["
+.end
+
+# OSC introducer (ESC ])
+fn OSC() -> Str
+  ret "\x1b]"
+.end
+
+# Build CSI: ESC [ <params> <final>
+fn csi(params: Str, final: Str) -> Str
+  ret CSI() + params + final
+.end
+
+# Build SGR: ESC [ <params> m
+fn sgr(params: Str) -> Str
+  ret csi(params, "m")
+.end
+
+# Build a single SGR code: ESC [ <code> m
+fn sgr_code(code: I32) -> Str
+  ret sgr(i32_to_dec(code))
+.end
+
+# Build OSC with BEL terminator: ESC ] <code> ; <payload> BEL
+fn osc(code: Str, payload: Str) -> Str
+  ret OSC() + code + ";" + payload + BEL()
+.end
+
+# Build OSC with ST terminator: ESC ] <code> ; <payload> ST
+fn osc_st(code: Str, payload: Str) -> Str
+  ret OSC() + code + ";" + payload + ST()
+.end
+
+# -----------------------------------------------------------------------------
+# Decimal conversion (minimal)
+# -----------------------------------------------------------------------------
+
+fn digit(n: U8) -> Str
+  if n == 0
+    ret "0"
+  .end
+  if n == 1
+    ret "1"
+  .end
+  if n == 2
+    ret "2"
+  .end
+  if n == 3
+    ret "3"
+  .end
+  if n == 4
+    ret "4"
+  .end
+  if n == 5
+    ret "5"
+  .end
+  if n == 6
+    ret "6"
+  .end
+  if n == 7
+    ret "7"
+  .end
+  if n == 8
+    ret "8"
+  .end
+  if n == 9
+    ret "9"
+  .end
+  ret "?"
+.end
+
+fn u32_to_dec(n: U32) -> Str
+  if n == 0
+    ret "0"
+  .end
+
+  let x: U32
+  set x = n
+
+  # Build in reverse via prepend. Assumes `+` supports string concat.
+  let s: Str
+  set s = ""
+
+  while x > 0
+    let d: U8
+    set d = (U8)(x % 10)
+    set s = digit(d) + s
+    set x = x / 10
+  .end
+
+  ret s
+.end
+
+fn i32_to_dec(n: I32) -> Str
+  if n == 0
+    ret "0"
+  .end
+
+  if n > 0
+    ret u32_to_dec((U32)n)
+  .end
+
+  # negative
+  if n == (-2147483648)
+    ret "-2147483648"
+  .end
+
+  ret "-" + u32_to_dec((U32)(-n))
+.end
+
+# Join 2 numbers with a separator
+fn u32_join(a: U32, sep: Str, b: U32) -> Str
+  ret u32_to_dec(a) + sep + u32_to_dec(b)
+.end
+
+fn u32_join3(a: U32, sep: Str, b: U32, sep2: Str, c: U32) -> Str
+  ret u32_to_dec(a) + sep + u32_to_dec(b) + sep2 + u32_to_dec(c)
+.end
+
+# -----------------------------------------------------------------------------
+# Styles (SGR)
+# -----------------------------------------------------------------------------
+
+fn reset() -> Str
+  ret sgr_code(0)
+.end
+
+fn bold() -> Str
+  ret sgr_code(1)
+.end
+
+fn dim() -> Str
+  ret sgr_code(2)
+.end
+
+fn italic() -> Str
+  ret sgr_code(3)
+.end
+
+fn underline() -> Str
+  ret sgr_code(4)
+.end
+
+fn blink() -> Str
+  ret sgr_code(5)
+.end
+
+fn inverse() -> Str
+  ret sgr_code(7)
+.end
+
+fn hidden() -> Str
+  ret sgr_code(8)
+.end
+
+fn strikethrough() -> Str
+  ret sgr_code(9)
+.end
+
+# Reset variants
+fn reset_bold_dim() -> Str
+  ret sgr_code(22)
+.end
+
+fn reset_italic() -> Str
+  ret sgr_code(23)
+.end
+
+fn reset_underline() -> Str
+  ret sgr_code(24)
+.end
+
+fn reset_blink() -> Str
+  ret sgr_code(25)
+.end
+
+fn reset_inverse() -> Str
+  ret sgr_code(27)
+.end
+
+fn reset_hidden() -> Str
+  ret sgr_code(28)
+.end
+
+fn reset_strikethrough() -> Str
+  ret sgr_code(29)
+.end
+
+# Reset colors (foreground/background)
+fn reset_fg() -> Str
+  ret sgr_code(39)
+.end
+
+fn reset_bg() -> Str
+  ret sgr_code(49)
+.end
+
+# -----------------------------------------------------------------------------
+# 8-color helpers
+# -----------------------------------------------------------------------------
+
+# idx: 0..7 = black, red, green, yellow, blue, magenta, cyan, white
+# bright: false => 30..37 / 40..47
+#         true  => 90..97 / 100..107
+
+fn fg8(idx: U8, bright: Bool) -> Str
+  let base: I32
+  if bright
+    set base = 90
+  else
+    set base = 30
+  .end
+  ret sgr_code(base + (I32)idx)
+.end
+
+fn bg8(idx: U8, bright: Bool) -> Str
+  let base: I32
+  if bright
+    set base = 100
+  else
+    set base = 40
+  .end
+  ret sgr_code(base + (I32)idx)
+.end
+
+# Named colors (fg)
+fn black() -> Str
+  ret fg8(0, false)
+.end
+
+fn red() -> Str
+  ret fg8(1, false)
+.end
+
+fn green() -> Str
+  ret fg8(2, false)
+.end
+
+fn yellow() -> Str
+  ret fg8(3, false)
+.end
+
+fn blue() -> Str
+  ret fg8(4, false)
+.end
+
+fn magenta() -> Str
+  ret fg8(5, false)
+.end
+
+fn cyan() -> Str
+  ret fg8(6, false)
+.end
+
+fn white() -> Str
+  ret fg8(7, false)
+.end
+
+# Named bright colors (fg)
+fn bright_black() -> Str
+  ret fg8(0, true)
+.end
+
+fn bright_red() -> Str
+  ret fg8(1, true)
+.end
+
+fn bright_green() -> Str
+  ret fg8(2, true)
+.end
+
+fn bright_yellow() -> Str
+  ret fg8(3, true)
+.end
+
+fn bright_blue() -> Str
+  ret fg8(4, true)
+.end
+
+fn bright_magenta() -> Str
+  ret fg8(5, true)
+.end
+
+fn bright_cyan() -> Str
+  ret fg8(6, true)
+.end
+
+fn bright_white() -> Str
+  ret fg8(7, true)
+.end
+
+# Background named colors
+fn on_black() -> Str
+  ret bg8(0, false)
+.end
+
+fn on_red() -> Str
+  ret bg8(1, false)
+.end
+
+fn on_green() -> Str
+  ret bg8(2, false)
+.end
+
+fn on_yellow() -> Str
+  ret bg8(3, false)
+.end
+
+fn on_blue() -> Str
+  ret bg8(4, false)
+.end
+
+fn on_magenta() -> Str
+  ret bg8(5, false)
+.end
+
+fn on_cyan() -> Str
+  ret bg8(6, false)
+.end
+
+fn on_white() -> Str
+  ret bg8(7, false)
+.end
+
+# Background bright
+fn on_bright_black() -> Str
+  ret bg8(0, true)
+.end
+
+fn on_bright_red() -> Str
+  ret bg8(1, true)
+.end
+
+fn on_bright_green() -> Str
+  ret bg8(2, true)
+.end
+
+fn on_bright_yellow() -> Str
+  ret bg8(3, true)
+.end
+
+fn on_bright_blue() -> Str
+  ret bg8(4, true)
+.end
+
+fn on_bright_magenta() -> Str
+  ret bg8(5, true)
+.end
+
+fn on_bright_cyan() -> Str
+  ret bg8(6, true)
+.end
+
+fn on_bright_white() -> Str
+  ret bg8(7, true)
+.end
+
+# -----------------------------------------------------------------------------
+# 256-color and truecolor
+# -----------------------------------------------------------------------------
+
+fn fg256(n: U8) -> Str
+  # 38;5;<n>
+  ret sgr("38;5;" + u32_to_dec((U32)n))
+.end
+
+fn bg256(n: U8) -> Str
+  # 48;5;<n>
+  ret sgr("48;5;" + u32_to_dec((U32)n))
+.end
+
+fn fgrgb(r: U8, g: U8, b: U8) -> Str
+  # 38;2;<r>;<g>;<b>
+  ret sgr("38;2;" + u32_join3((U32)r, ";", (U32)g, ";", (U32)b))
+.end
+
+fn bgrgb(r: U8, g: U8, b: U8) -> Str
+  # 48;2;<r>;<g>;<b>
+  ret sgr("48;2;" + u32_join3((U32)r, ";", (U32)g, ";", (U32)b))
+.end
+
+# Heuristic capability check.
+# Conservative default: false.
+fn supports_truecolor() -> Bool
+  ret false
+.end
+
+# -----------------------------------------------------------------------------
+# Composer
+# -----------------------------------------------------------------------------
+
+# Apply an ANSI prefix and suffix reset around a string.
+fn paint(s: Str, prefix: Str) -> Str
+  ret prefix + s + reset()
+.end
+
+# Apply multiple prefixes (in order) and suffix reset.
+fn paint2(s: Str, a: Str, b: Str) -> Str
+  ret a + b + s + reset()
+.end
+
+fn paint3(s: Str, a: Str, b: Str, c: Str) -> Str
+  ret a + b + c + s + reset()
+.end
+
+# Paint with explicit suffix instead of reset.
+fn paint_with_suffix(s: Str, prefix: Str, suffix: Str) -> Str
+  ret prefix + s + suffix
+.end
+
+# -----------------------------------------------------------------------------
+# Cursor & clear controls
+# -----------------------------------------------------------------------------
+
+fn cursor_up(n: U32) -> Str
+  ret csi(u32_to_dec(n), "A")
+.end
+
+fn cursor_down(n: U32) -> Str
+  ret csi(u32_to_dec(n), "B")
+.end
+
+fn cursor_forward(n: U32) -> Str
+  ret csi(u32_to_dec(n), "C")
+.end
+
+fn cursor_back(n: U32) -> Str
+  ret csi(u32_to_dec(n), "D")
+.end
+
+fn cursor_next_line(n: U32) -> Str
+  ret csi(u32_to_dec(n), "E")
+.end
+
+fn cursor_prev_line(n: U32) -> Str
+  ret csi(u32_to_dec(n), "F")
+.end
+
+fn cursor_column(col1: U32) -> Str
+  # 1-based column
+  ret csi(u32_to_dec(col1), "G")
+.end
+
+fn cursor_pos(row1: U32, col1: U32) -> Str
+  # 1-based row/col
+  ret csi(u32_join(row1, ";", col1), "H")
+.end
+
+fn cursor_home() -> Str
+  ret cursor_pos(1, 1)
+.end
+
+fn cursor_save() -> Str
+  # DECSC (ESC 7)
+  ret ESC() + "7"
+.end
+
+fn cursor_restore() -> Str
+  # DECRC (ESC 8)
+  ret ESC() + "8"
+.end
+
+fn cursor_hide() -> Str
+  ret csi("?25", "l")
+.end
+
+fn cursor_show() -> Str
+  ret csi("?25", "h")
+.end
+
+# Clear screen variants
+fn clear_screen() -> Str
+  ret csi("2", "J")
+.end
+
+fn clear_screen_down() -> Str
+  ret csi("0", "J")
+.end
+
+fn clear_screen_up() -> Str
+  ret csi("1", "J")
+.end
+
+# Clear line variants
+fn clear_line() -> Str
+  ret csi("2", "K")
+.end
+
+fn clear_line_right() -> Str
+  ret csi("0", "K")
+.end
+
+fn clear_line_left() -> Str
+  ret csi("1", "K")
+.end
+
+# Scrolling
+fn scroll_up(n: U32) -> Str
+  ret csi(u32_to_dec(n), "S")
+.end
+
+fn scroll_down(n: U32) -> Str
+  ret csi(u32_to_dec(n), "T")
+.end
+
+# -----------------------------------------------------------------------------
+# OSC helpers
+# -----------------------------------------------------------------------------
+
+# Set terminal title (OSC 0)
+# Uses ST terminator for robustness.
+fn set_title(title: Str) -> Str
+  ret osc_st("0", title)
+.end
+
+# Hyperlink (OSC 8)
+# Format (ST terminated):
+#   ESC ] 8 ;; <url> ST <text> ESC ] 8 ;; ST
+fn hyperlink(url: Str, text: Str) -> Str
+  let open = osc_st("8;;", url)
+  let close = osc_st("8;;", "")
+  ret open + text + close
+.end
+
+# -----------------------------------------------------------------------------
+# ANSI stripping (best-effort)
+# -----------------------------------------------------------------------------
+
+# Conservative default: no-op.
+# A full implementation needs byte-wise iteration and string building.
+fn strip_ansi(s: Str) -> Str
+  ret s
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests (scenarios)
+# -----------------------------------------------------------------------------
+
+scn test_ansi_basics
+  do std.runtime::assert(reset() != "", "reset")
+  do std.runtime::assert(bold() != "", "bold")
+  do std.runtime::assert(underline() != "", "underline")
+
+  do std.runtime::assert(red() != "", "red")
+  do std.runtime::assert(on_blue() != "", "on_blue")
+
+  do std.runtime::assert(fg256(12) != "", "fg256")
+  do std.runtime::assert(bg256(200) != "", "bg256")
+
+  do std.runtime::assert(fgrgb(1, 2, 3) != "", "fgrgb")
+  do std.runtime::assert(bgrgb(4, 5, 6) != "", "bgrgb")
+
+  do std.runtime::assert(cursor_up(1) != "", "cursor_up")
+  do std.runtime::assert(clear_screen() != "", "clear_screen")
+
+  do std.runtime::assert(set_title("x") != "", "set_title")
+  do std.runtime::assert(hyperlink("u", "t") != "", "hyperlink")
+.end
+
+# End of std.cli.ansi

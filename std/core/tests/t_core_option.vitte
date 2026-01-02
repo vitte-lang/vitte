@@ -1,0 +1,163 @@
+# /Users/vincent/Documents/Github/vitte/std/core/tests/t_core_option.vitte
+# -----------------------------------------------------------------------------
+# std/core/tests/t_core_option
+# -----------------------------------------------------------------------------
+# MAX tests for std.core.option
+#
+# Coverage:
+# - none/some constructors for all option types
+# - is_some/is_none
+# - unwrap_or happy path + none path
+# - unwrap happy path (avoid unwrap on none in tests)
+# - option_* helper constructors
+#
+# All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.core.tests.t_core_option
+
+use std.runtime
+use std.core.option
+
+type Bool = bool
+type U32  = u32
+type U64  = u64
+type I32  = i32
+type Str  = str
+
+fn assert_true(b: Bool, msg: Str)
+  do std.runtime::assert(b, msg)
+.end
+
+fn assert_false(b: Bool, msg: Str)
+  do std.runtime::assert(!b, msg)
+.end
+
+fn assert_eq_u32(a: U32, b: U32, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_i32(a: I32, b: I32, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_u64(a: U64, b: U64, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_bool(a: Bool, b: Bool, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_str(a: Str, b: Str, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+# -----------------------------------------------------------------------------
+# OptionU32
+# -----------------------------------------------------------------------------
+
+scn test_option_u32_none_some
+  let n = std.core.option::u32_none()
+  do assert_true(std.core.option::u32_is_none(&n), "u32 none is_none")
+  do assert_false(std.core.option::u32_is_some(&n), "u32 none !is_some")
+  do assert_eq_u32(std.core.option::u32_unwrap_or(&n, 9), 9, "u32 unwrap_or none")
+
+  let s = std.core.option::u32_some(7)
+  do assert_true(std.core.option::u32_is_some(&s), "u32 some is_some")
+  do assert_false(std.core.option::u32_is_none(&s), "u32 some !is_none")
+  do assert_eq_u32(std.core.option::u32_unwrap(&s), 7, "u32 unwrap some")
+  do assert_eq_u32(std.core.option::u32_unwrap_or(&s, 9), 7, "u32 unwrap_or some")
+.end
+
+# -----------------------------------------------------------------------------
+# OptionI32
+# -----------------------------------------------------------------------------
+
+scn test_option_i32_none_some
+  let n = std.core.option::i32_none()
+  do assert_true(std.core.option::i32_is_none(&n), "i32 none is_none")
+  do assert_false(std.core.option::i32_is_some(&n), "i32 none !is_some")
+  do assert_eq_i32(std.core.option::i32_unwrap_or(&n, -3), -3, "i32 unwrap_or none")
+
+  let s = std.core.option::i32_some(-7)
+  do assert_true(std.core.option::i32_is_some(&s), "i32 some is_some")
+  do assert_false(std.core.option::i32_is_none(&s), "i32 some !is_none")
+  do assert_eq_i32(std.core.option::i32_unwrap(&s), -7, "i32 unwrap some")
+  do assert_eq_i32(std.core.option::i32_unwrap_or(&s, -3), -7, "i32 unwrap_or some")
+.end
+
+# -----------------------------------------------------------------------------
+# OptionU64
+# -----------------------------------------------------------------------------
+
+scn test_option_u64_none_some
+  let n = std.core.option::u64_none()
+  do assert_true(std.core.option::u64_is_none(&n), "u64 none is_none")
+  do assert_false(std.core.option::u64_is_some(&n), "u64 none !is_some")
+  do assert_eq_u64(std.core.option::u64_unwrap_or(&n, 11), 11, "u64 unwrap_or none")
+
+  let s = std.core.option::u64_some(42)
+  do assert_true(std.core.option::u64_is_some(&s), "u64 some is_some")
+  do assert_false(std.core.option::u64_is_none(&s), "u64 some !is_none")
+  do assert_eq_u64(std.core.option::u64_unwrap(&s), 42, "u64 unwrap some")
+  do assert_eq_u64(std.core.option::u64_unwrap_or(&s, 11), 42, "u64 unwrap_or some")
+.end
+
+# -----------------------------------------------------------------------------
+# OptionBool
+# -----------------------------------------------------------------------------
+
+scn test_option_bool_none_some
+  let n = std.core.option::bool_none()
+  do assert_true(std.core.option::bool_is_none(&n), "bool none is_none")
+  do assert_false(std.core.option::bool_is_some(&n), "bool none !is_some")
+  do assert_eq_bool(std.core.option::bool_unwrap_or(&n, true), true, "bool unwrap_or none")
+
+  let s = std.core.option::bool_some(true)
+  do assert_true(std.core.option::bool_is_some(&s), "bool some is_some")
+  do assert_false(std.core.option::bool_is_none(&s), "bool some !is_none")
+  do assert_eq_bool(std.core.option::bool_unwrap(&s), true, "bool unwrap some")
+  do assert_eq_bool(std.core.option::bool_unwrap_or(&s, false), true, "bool unwrap_or some")
+.end
+
+# -----------------------------------------------------------------------------
+# OptionStr
+# -----------------------------------------------------------------------------
+
+scn test_option_str_none_some
+  let n = std.core.option::str_none()
+  do assert_true(std.core.option::str_is_none(&n), "str none is_none")
+  do assert_false(std.core.option::str_is_some(&n), "str none !is_some")
+  do assert_eq_str(std.core.option::str_unwrap_or(&n, "d"), "d", "str unwrap_or none")
+
+  let s = std.core.option::str_some("ok")
+  do assert_true(std.core.option::str_is_some(&s), "str some is_some")
+  do assert_false(std.core.option::str_is_none(&s), "str some !is_none")
+  do assert_eq_str(std.core.option::str_unwrap(&s), "ok", "str unwrap some")
+  do assert_eq_str(std.core.option::str_unwrap_or(&s, "d"), "ok", "str unwrap_or some")
+.end
+
+# -----------------------------------------------------------------------------
+# option_* helper constructors
+# -----------------------------------------------------------------------------
+
+scn test_option_helpers
+  let a = std.core.option::option_u32(true, 5)
+  do assert_true(std.core.option::u32_is_some(&a), "option_u32 true")
+  do assert_eq_u32(std.core.option::u32_unwrap(&a), 5, "option_u32 unwrap")
+
+  let b = std.core.option::option_u32(false, 99)
+  do assert_true(std.core.option::u32_is_none(&b), "option_u32 false")
+  do assert_eq_u32(std.core.option::u32_unwrap_or(&b, 1), 1, "option_u32 unwrap_or")
+
+  let c = std.core.option::option_str(true, "x")
+  do assert_true(std.core.option::str_is_some(&c), "option_str true")
+  do assert_eq_str(std.core.option::str_unwrap(&c), "x", "option_str unwrap")
+
+  let d = std.core.option::option_str(false, "x")
+  do assert_true(std.core.option::str_is_none(&d), "option_str false")
+  do assert_eq_str(std.core.option::str_unwrap_or(&d, "y"), "y", "option_str unwrap_or")
+.end
+
+# End of t_core_option.vitte

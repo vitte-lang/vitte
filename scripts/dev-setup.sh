@@ -67,29 +67,6 @@ install_dependencies() {
     echo ""
 }
 
-# Install Rust
-install_rust() {
-    if ! command -v rustc &> /dev/null; then
-        echo -e "${BLUE}Installing Rust...${NC}"
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        source "$HOME/.cargo/env"
-        echo -e "${GREEN}✓ Rust installed${NC}"
-    else
-        echo -e "${GREEN}✓ Rust already installed${NC}"
-    fi
-
-    # Update Rust
-    echo -e "${BLUE}Updating Rust...${NC}"
-    rustup update
-
-    # Install tools
-    echo -e "${BLUE}Installing Rust tools...${NC}"
-    rustup component add rustfmt clippy
-    cargo install cargo-audit
-    echo -e "${GREEN}✓ Rust tools installed${NC}"
-    echo ""
-}
-
 # Setup Git hooks
 setup_git_hooks() {
     echo -e "${BLUE}Setting up Git hooks...${NC}"
@@ -98,22 +75,7 @@ setup_git_hooks() {
     cat > .git/hooks/pre-commit << 'EOF'
 #!/bin/bash
 echo "Running pre-commit checks..."
-
-# Format Rust code
-cargo fmt --manifest-path rust/Cargo.toml -- --check
-if [ $? -ne 0 ]; then
-    echo "⚠ Run 'cargo fmt --manifest-path rust/Cargo.toml' to fix formatting"
-    exit 1
-fi
-
-# Lint Rust code
-cargo clippy --manifest-path rust/Cargo.toml -- -D warnings
-if [ $? -ne 0 ]; then
-    echo "⚠ Fix clippy warnings before committing"
-    exit 1
-fi
-
-echo "✓ Pre-commit checks passed"
+echo "No automated checks configured."
 EOF
 
     chmod +x .git/hooks/pre-commit
@@ -169,15 +131,6 @@ verify_setup() {
         FAILURES=$((FAILURES + 1))
     fi
 
-    # Check Rust
-    if command -v rustc &> /dev/null; then
-        echo -e "${GREEN}✓ Rust${NC}"
-        rustc --version
-    else
-        echo -e "${YELLOW}✗ Rust not found${NC}"
-        FAILURES=$((FAILURES + 1))
-    fi
-
     # Check Git
     if command -v git &> /dev/null; then
         echo -e "${GREEN}✓ Git${NC}"
@@ -199,7 +152,6 @@ verify_setup() {
 # Main setup flow
 main() {
     install_dependencies
-    install_rust
     init_submodules
     setup_git_hooks
     bootstrap_compiler

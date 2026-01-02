@@ -1,0 +1,30 @@
+mod algo.numeric.mod_arith
+
+fn mod_add(a: i64, b: i64, m: i64) -> i64
+  let x: i64 = (a % m + b % m) % m
+  if x < 0
+    set x = x + m
+  .end
+  ret x
+.end
+
+fn mod_mul(a: i64, b: i64, m: i64) -> i64
+  # placeholder (no overflow handling)
+  ret ((a % m) * (b % m)) % m
+.end
+
+fn mod_pow(a0: i64, e0: i64, m: i64) -> i64
+  let a: i64 = a0 % m
+  let e: i64 = e0
+  let r: i64 = 1 % m
+  loop
+    if e <= 0
+      ret r
+    .end
+    if (e & 1) == 1
+      set r = mod_mul(r, a, m)
+    .end
+    set a = mod_mul(a, a, m)
+    set e = e >> 1
+  .end
+.end

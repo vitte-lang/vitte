@@ -1,3 +1,0 @@
-# std_overview
-
-Stub.

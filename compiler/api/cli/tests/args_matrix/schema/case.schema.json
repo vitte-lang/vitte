@@ -1,0 +1,178 @@
+
+
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vitte.dev/schemas/args-matrix/case.schema.json",
+  "title": "vittec args_matrix case",
+  "description": "Schema for a single CLI test case in api/cli/tests/args_matrix/cases/*.case.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "argv", "expect"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Logical case name (should match the filename stem).",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "tags": {
+      "type": "array",
+      "description": "Optional tags for grouping/filtering.",
+      "items": { "type": "string", "minLength": 1, "maxLength": 64 },
+      "uniqueItems": true
+    },
+    "argv": {
+      "type": "array",
+      "description": "Argument vector. argv[0] may be 'vittec' and will be replaced by the runner with VITTEC if provided.",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "stdin": {
+      "description": "Optional stdin injection.",
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Inline stdin payload (UTF-8)."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file"],
+          "properties": {
+            "file": {
+              "$ref": "#/$defs/relPath",
+              "description": "Path to a file (relative to args_matrix root) whose contents will be piped to stdin."
+            }
+          }
+        }
+      ]
+    },
+    "cwd": {
+      "$ref": "#/$defs/relPath",
+      "description": "Working directory for the process (relative to args_matrix root)."
+    },
+    "env": {
+      "type": "object",
+      "description": "Environment overrides (added/overridden for the spawned process).",
+      "additionalProperties": { "type": "string" }
+    },
+    "timeouts": {
+      "type": "object",
+      "description": "Optional timeouts for the case.",
+      "additionalProperties": false,
+      "properties": {
+        "seconds": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 3600,
+          "description": "Wall timeout in seconds."
+        }
+      }
+    },
+    "platform": {
+      "type": "object",
+      "description": "Optional platform constraints to skip cases on unsupported hosts.",
+      "additionalProperties": false,
+      "properties": {
+        "os": {
+          "type": "array",
+          "description": "Allowed host OS values.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "linux",
+              "macos",
+              "windows",
+              "freebsd",
+              "netbsd",
+              "openbsd",
+              "dragonfly",
+              "solaris",
+              "illumos"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "arch": {
+          "type": "array",
+          "description": "Allowed host CPU architectures.",
+          "items": {
+            "type": "string",
+            "enum": ["x86_64", "aarch64", "armv7", "riscv64", "ppc64le", "s390x"]
+          },
+          "uniqueItems": true
+        },
+        "reason": {
+          "type": "string",
+          "description": "Human-readable reason for platform restriction.",
+          "maxLength": 400
+        }
+      }
+    },
+    "expect": {
+      "type": "object",
+      "description": "Expected process result.",
+      "additionalProperties": false,
+      "required": ["exit", "stdout", "stderr"],
+      "properties": {
+        "exit": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255,
+          "description": "Expected exit code."
+        },
+        "stdout": {
+          "$ref": "#/$defs/goldenPath",
+          "description": "Golden stdout path (relative to args_matrix/golden)."
+        },
+        "stderr": {
+          "$ref": "#/$defs/goldenPath",
+          "description": "Golden stderr path (relative to args_matrix/golden)."
+        },
+        "stdout_contains": {
+          "type": "array",
+          "description": "Optional substrings that must appear in stdout (in addition to golden compare, if your runner supports it).",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "stderr_contains": {
+          "type": "array",
+          "description": "Optional substrings that must appear in stderr (in addition to golden compare, if your runner supports it).",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "notes": {
+      "type": "string",
+      "description": "Freeform notes for maintainers.",
+      "maxLength": 2000
+    }
+  },
+  "$defs": {
+    "relPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "description": "Portable relative path (POSIX separators).",
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*\\.\\./)(?!\\.\\./)[A-Za-z0-9_./-]+$"
+    },
+    "goldenPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "description": "Path under args_matrix/golden (POSIX separators).",
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*\\.\\./)(?!\\.\\./)(?:golden/)?[A-Za-z0-9_./-]+\\.(?:txt|log|json)$"
+    }
+  },
+  "examples": [
+    {
+      "name": "combined_shorts",
+      "argv": ["vittec", "build", "-vqn", "./examples/hello.vitte"],
+      "expect": {
+        "exit": 0,
+        "stdout": "golden/combined_shorts.stdout.txt",
+        "stderr": "golden/combined_shorts.stderr.txt"
+      }
+    }
+  ]
+}

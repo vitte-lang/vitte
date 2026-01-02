@@ -1,0 +1,42 @@
+mod cli.log.logger
+
+use cli.log.level.*
+use cli.ansi.color.*
+use cli.term.output.*
+
+type Logger
+  level: i64
+.end
+
+fn logger_new(level: i64) -> Logger
+  let l: Logger
+  set l.level = level
+  ret l
+.end
+
+fn log(l: &Logger, level: i64, msg: str) -> void
+  if level < l.level
+    ret
+  .end
+
+  let tag: str = "INFO"
+  if level == 0
+    set tag = "TRACE"
+  elif level == 1
+    set tag = "DEBUG"
+  elif level == 2
+    set tag = "INFO"
+  elif level == 3
+    set tag = "WARN"
+  else
+    set tag = "ERROR"
+  .end
+
+  let line: str = "[" + tag + "] " + msg
+  if level == 3
+    set line = yellow(line)
+  elif level >= 4
+    set line = red(line)
+  .end
+  do print(line + "\n")
+.end

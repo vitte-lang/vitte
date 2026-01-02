@@ -14,24 +14,9 @@ This document lists third-party dependencies and their licenses.
 | Meson | 0.63+ | Apache 2.0 | Build system | Alternative to CMake |
 | Unity Test Framework | Latest | MIT | Unit testing | For C tests |
 
-#### Rust Crates
-
-Use `cargo tree --licenses` to see full Rust dependency tree.
-
-Core dependencies:
-- `serde` - MIT/Apache-2.0 - Serialization
-- `parking_lot` - MIT/Apache-2.0 - Synchronization primitives
-- `log` - MIT/Apache-2.0 - Logging
-- `thiserror` - MIT/Apache-2.0 - Error handling
-
 ### Development Dependencies
 
-| Name | License | Purpose |
-|------|---------|---------|
-| Cargo | MIT/Apache-2.0 | Rust package manager |
-| Rustfmt | MIT/Apache-2.0 | Code formatting |
-| Clippy | MIT/Apache-2.0 | Linting |
-| Criterion | Apache-2.0 | Benchmarking |
+No additional language-specific package managers are required beyond the C toolchain (CMake/Ninja/Clang/GCC).
 
 ## License Compliance
 
@@ -58,24 +43,16 @@ Core dependencies:
 
 ## Dependency Updates
 
-We maintain dependencies using:
-
-- **Cargo audit** - Check for known vulnerabilities
-- **Dependabot** - Automated dependency updates
-- **Regular updates** - Keep dependencies current
-
-Run locally:
-```bash
-cargo audit
-cargo update
-```
+We maintain dependencies by regularly reviewing upstream releases and running standard security/advisory checks for third-party libraries.
+- Prefer minimal dependency sets.
+- Review changelogs and licenses before upgrading.
 
 ## Adding New Dependencies
 
 When adding new dependencies:
 
 1. **Check license compatibility** - Ensure it's compatible with Apache 2.0 / MIT
-2. **Verify security** - Run `cargo audit`
+2. **Verify security** - Check for known advisories or CVEs
 3. **Minimize dependencies** - Prefer small, focused crates
 4. **Document** - Update this file
 

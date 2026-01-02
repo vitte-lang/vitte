@@ -1,0 +1,1800 @@
+# -----------------------------------------------------------------------------
+# std/compression
+# -----------------------------------------------------------------------------
+# Bootstrap-friendly compression primitives.
+#
+# Provided algorithms:
+# - None   : passthrough
+# - RLE    : run-length encoding for bytes
+# - LZ77   : naive LZ77/LZSS-style sliding window (offset,length) tokens
+# - Huff   : dynamic Huffman coding for bytes (with canonical codes)
+#
+# Also provided:
+# - BitReader / BitWriter
+# - CRC32 (IEEE) + Adler32
+# - Simple container format "VCZ1" (Vitte Compressed Z1)
+#
+# Notes:
+# - The implementation is designed to be self-contained and deterministic.
+# - Memory management is delegated to std.collections Vec + Allocator.
+# - Element sizes are explicit (bootstrap/stage0 friendly).
+# -----------------------------------------------------------------------------
+
+module std.compression
+
+use std.collections
+
+# -----------------------------------------------------------------------------
+# Types
+# -----------------------------------------------------------------------------
+
+type CompressionAlgo enum
+  None
+  Rle
+  Lz77
+  Huff
+.end
+
+type CompressionError enum
+  Ok
+  OutOfMemory
+  Invalid
+  Corrupt
+  Unsupported
+  TooLarge
+.end
+
+# Convenience result helpers
+fn ok_err(ok: Bool, err: ColError) -> (Bool, CompressionError)
+  if ok
+    ret (true, CompressionError::Ok)
+  .end
+  if err == ColError::OutOfMemory
+    ret (false, CompressionError::OutOfMemory)
+  .end
+  ret (false, CompressionError::Invalid)
+.end
+
+# -----------------------------------------------------------------------------
+# Byte buffer helpers (Vec[U8])
+# -----------------------------------------------------------------------------
+
+fn buf_new() -> Vec[U8]
+  ret vec_new[U8]()
+.end
+
+fn buf_reserve(out: &Vec[U8], additional: USize) -> (Bool, CompressionError)
+  let ok: Bool
+  let err: ColError
+  (ok, err) = vec_reserve_bytes[U8](out, 1, additional)
+  if ok
+    ret (true, CompressionError::Ok)
+  .end
+  ret (false, CompressionError::OutOfMemory)
+.end
+
+fn buf_push(out: &Vec[U8], b: U8) -> (Bool, CompressionError)
+  let ok: Bool
+  let err: ColError
+  (ok, err) = vec_push[U8](out, 1, b)
+  if ok
+    ret (true, CompressionError::Ok)
+  .end
+  ret (false, CompressionError::OutOfMemory)
+.end
+
+fn buf_len(in: &Vec[U8]) -> USize
+  ret in.len
+.end
+
+fn buf_get(in: &Vec[U8], i: USize) -> (Bool, CompressionError, U8)
+  if i >= in.len
+    ret (false, CompressionError::Invalid, 0)
+  .end
+  let p = (Ptr[U8])in.data
+  ret (true, CompressionError::Ok, *(p + i))
+.end
+
+fn buf_put_u32_le(out: &Vec[U8], x: U32) -> (Bool, CompressionError)
+  let ok: Bool
+  let err: CompressionError
+  (ok, err) = buf_push(out, (U8)(x & 0xff))
+  if !ok
+    ret (false, err)
+  .end
+  (ok, err) = buf_push(out, (U8)((x >> 8) & 0xff))
+  if !ok
+    ret (false, err)
+  .end
+  (ok, err) = buf_push(out, (U8)((x >> 16) & 0xff))
+  if !ok
+    ret (false, err)
+  .end
+  (ok, err) = buf_push(out, (U8)((x >> 24) & 0xff))
+  if !ok
+    ret (false, err)
+  .end
+  ret (true, CompressionError::Ok)
+.end
+
+fn buf_get_u32_le(in: &Vec[U8], pos: &USize) -> (Bool, CompressionError, U32)
+  if *pos + 4 > in.len
+    ret (false, CompressionError::Corrupt, 0)
+  .end
+  let p = (Ptr[U8])in.data
+  let i = *pos
+  let b0 = (U32)(*(p + i + 0))
+  let b1 = (U32)(*(p + i + 1))
+  let b2 = (U32)(*(p + i + 2))
+  let b3 = (U32)(*(p + i + 3))
+  set *pos = *pos + 4
+  ret (true, CompressionError::Ok, b0 | (b1 << 8) | (b2 << 16) | (b3 << 24))
+.end
+
+fn buf_put_u16_le(out: &Vec[U8], x: U16) -> (Bool, CompressionError)
+  let ok: Bool
+  let err: CompressionError
+  (ok, err) = buf_push(out, (U8)(x & 0xff))
+  if !ok
+    ret (false, err)
+  .end
+  (ok, err) = buf_push(out, (U8)((x >> 8) & 0xff))
+  if !ok
+    ret (false, err)
+  .end
+  ret (true, CompressionError::Ok)
+.end
+
+fn buf_get_u16_le(in: &Vec[U8], pos: &USize) -> (Bool, CompressionError, U16)
+  if *pos + 2 > in.len
+    ret (false, CompressionError::Corrupt, 0)
+  .end
+  let p = (Ptr[U8])in.data
+  let i = *pos
+  let b0 = (U16)(*(p + i + 0))
+  let b1 = (U16)(*(p + i + 1))
+  set *pos = *pos + 2
+  ret (true, CompressionError::Ok, (U16)(b0 | (b1 << 8)))
+.end
+
+# -----------------------------------------------------------------------------
+# CRC32 (IEEE 802.3)
+# -----------------------------------------------------------------------------
+
+fn crc32_update(crc: U32, b: U8) -> U32
+  let c = crc ^ (U32)b
+  let k: USize
+  set k = 0
+  loop
+    if k >= 8
+      break
+    .end
+    if (c & 1) != 0
+      set c = (c >> 1) ^ 0xEDB88320
+    else
+      set c = c >> 1
+    .end
+    set k = k + 1
+  .end
+  ret c
+.end
+
+fn crc32_bytes(p: Ptr[U8], n: USize) -> U32
+  let crc: U32
+  set crc = 0xFFFFFFFF
+  let i: USize
+  set i = 0
+  loop
+    if i >= n
+      break
+    .end
+    set crc = crc32_update(crc, *(p + i))
+    set i = i + 1
+  .end
+  ret ~crc
+.end
+
+fn crc32_vec(v: &Vec[U8]) -> U32
+  if v.len == 0
+    ret 0
+  .end
+  ret crc32_bytes((Ptr[U8])v.data, v.len)
+.end
+
+# -----------------------------------------------------------------------------
+# Adler32
+# -----------------------------------------------------------------------------
+
+fn adler32_bytes(p: Ptr[U8], n: USize) -> U32
+  let a: U32
+  let b: U32
+  set a = 1
+  set b = 0
+  let i: USize
+  set i = 0
+  loop
+    if i >= n
+      break
+    .end
+    set a = (a + (U32)(*(p + i))) % 65521
+    set b = (b + a) % 65521
+    set i = i + 1
+  .end
+  ret (b << 16) | a
+.end
+
+fn adler32_vec(v: &Vec[U8]) -> U32
+  if v.len == 0
+    ret 1
+  .end
+  ret adler32_bytes((Ptr[U8])v.data, v.len)
+.end
+
+# -----------------------------------------------------------------------------
+# BitWriter / BitReader (LSB-first)
+# -----------------------------------------------------------------------------
+
+type BitWriter struct
+  out: Vec[U8]
+  bitbuf: U32
+  bitlen: U8
+.end
+
+fn bitw_new() -> BitWriter
+  let w: BitWriter
+  set w.out = buf_new()
+  set w.bitbuf = 0
+  set w.bitlen = 0
+  ret w
+.end
+
+fn bitw_write_bits(w: &BitWriter, bits: U32, nbits: U8) -> (Bool, CompressionError)
+  # append nbits from bits (LSB-first)
+  if nbits == 0
+    ret (true, CompressionError::Ok)
+  .end
+
+  let b = bits
+  let n = nbits
+  loop
+    if n == 0
+      break
+    .end
+
+    set w.bitbuf = w.bitbuf | ((b & 1) << w.bitlen)
+    set w.bitlen = w.bitlen + 1
+    set b = b >> 1
+    set n = n - 1
+
+    if w.bitlen == 8
+      let ok: Bool
+      let err: CompressionError
+      (ok, err) = buf_push(&w.out, (U8)(w.bitbuf & 0xff))
+      if !ok
+        ret (false, err)
+      .end
+      set w.bitbuf = 0
+      set w.bitlen = 0
+    .end
+  .end
+
+  ret (true, CompressionError::Ok)
+.end
+
+fn bitw_flush(w: &BitWriter) -> (Bool, CompressionError)
+  if w.bitlen == 0
+    ret (true, CompressionError::Ok)
+  .end
+  let ok: Bool
+  let err: CompressionError
+  (ok, err) = buf_push(&w.out, (U8)(w.bitbuf & 0xff))
+  if !ok
+    ret (false, err)
+  .end
+  set w.bitbuf = 0
+  set w.bitlen = 0
+  ret (true, CompressionError::Ok)
+.end
+
+
+type BitReader struct
+  in: &Vec[U8]
+  pos: USize
+  bitbuf: U32
+  bitlen: U8
+.end
+
+fn bitr_new(in: &Vec[U8]) -> BitReader
+  let r: BitReader
+  set r.in = in
+  set r.pos = 0
+  set r.bitbuf = 0
+  set r.bitlen = 0
+  ret r
+.end
+
+fn bitr_fill(r: &BitReader) -> Bool
+  if r.pos >= r.in.len
+    ret false
+  .end
+  let p = (Ptr[U8])r.in.data
+  set r.bitbuf = r.bitbuf | ((U32)(*(p + r.pos)) << r.bitlen)
+  set r.bitlen = r.bitlen + 8
+  set r.pos = r.pos + 1
+  ret true
+.end
+
+fn bitr_read_bit(r: &BitReader) -> (Bool, CompressionError, U32)
+  if r.bitlen == 0
+    if !bitr_fill(r)
+      ret (false, CompressionError::Corrupt, 0)
+    .end
+  .end
+
+  let bit = r.bitbuf & 1
+  set r.bitbuf = r.bitbuf >> 1
+  set r.bitlen = r.bitlen - 1
+  ret (true, CompressionError::Ok, bit)
+.end
+
+fn bitr_read_bits(r: &BitReader, nbits: U8) -> (Bool, CompressionError, U32)
+  let n = nbits
+  let out: U32
+  set out = 0
+  let shift: U8
+  set shift = 0
+
+  loop
+    if n == 0
+      break
+    .end
+    let ok: Bool
+    let err: CompressionError
+    let bit: U32
+    (ok, err, bit) = bitr_read_bit(r)
+    if !ok
+      ret (false, err, 0)
+    .end
+    set out = out | (bit << shift)
+    set shift = shift + 1
+    set n = n - 1
+  .end
+
+  ret (true, CompressionError::Ok, out)
+.end
+
+# -----------------------------------------------------------------------------
+# RLE (bytes)
+# Format: [count:U8][value:U8]...
+# -----------------------------------------------------------------------------
+
+fn rle_compress(in: &Vec[U8], out: &Vec[U8]) -> (Bool, CompressionError)
+  do vec_clear[U8](out)
+  if in.len == 0
+    ret (true, CompressionError::Ok)
+  .end
+
+  let p = (Ptr[U8])in.data
+  let i: USize
+  set i = 0
+  loop
+    if i >= in.len
+      break
+    .end
+
+    let v = *(p + i)
+    let run: USize
+    set run = 1
+
+    loop
+      if i + run >= in.len
+        break
+      .end
+      if run >= 255
+        break
+      .end
+      if *(p + i + run) != v
+        break
+      .end
+      set run = run + 1
+    .end
+
+    let ok: Bool
+    let err: CompressionError
+    (ok, err) = buf_push(out, (U8)run)
+    if !ok
+      ret (false, err)
+    .end
+    (ok, err) = buf_push(out, v)
+    if !ok
+      ret (false, err)
+    .end
+
+    set i = i + run
+  .end
+
+  ret (true, CompressionError::Ok)
+.end
+
+fn rle_decompress(in: &Vec[U8], out: &Vec[U8]) -> (Bool, CompressionError)
+  do vec_clear[U8](out)
+  if (in.len % 2) != 0
+    ret (false, CompressionError::Corrupt)
+  .end
+
+  let p = (Ptr[U8])in.data
+  let i: USize
+  set i = 0
+  loop
+    if i >= in.len
+      break
+    .end
+
+    let run = *(p + i + 0)
+    let v = *(p + i + 1)
+
+    let k: USize
+    set k = 0
+    loop
+      if k >= (USize)run
+        break
+      .end
+      let ok: Bool
+      let err: CompressionError
+      (ok, err) = buf_push(out, v)
+      if !ok
+        ret (false, err)
+      .end
+      set k = k + 1
+    .end
+
+    set i = i + 2
+  .end
+
+  ret (true, CompressionError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# LZ77 (naive)
+# Token stream format (bytes):
+#  - 0x00 literal  : 0x00 [byte]
+#  - 0x01 match    : 0x01 [offset:U16LE] [len:U8]
+# Offset is distance back from current output position (1..WINDOW).
+# -----------------------------------------------------------------------------
+
+const LZ_WINDOW: USize = 4096
+const LZ_MIN_MATCH: USize = 3
+const LZ_MAX_MATCH: USize = 18
+
+fn lz77_find_best(in_p: Ptr[U8], in_len: USize, pos: USize) -> (USize, USize)
+  # returns (best_offset, best_len)
+  let best_len: USize
+  let best_off: USize
+  set best_len = 0
+  set best_off = 0
+
+  let start: USize
+  if pos > LZ_WINDOW
+    set start = pos - LZ_WINDOW
+  else
+    set start = 0
+  .end
+
+  let j: USize
+  set j = start
+  loop
+    if j >= pos
+      break
+    .end
+
+    # compute match length at j
+    let k: USize
+    set k = 0
+    loop
+      if k >= LZ_MAX_MATCH
+        break
+      .end
+      if pos + k >= in_len
+        break
+      .end
+      if *(in_p + j + k) != *(in_p + pos + k)
+        break
+      .end
+      set k = k + 1
+    .end
+
+    if k > best_len
+      set best_len = k
+      set best_off = pos - j
+      if best_len == LZ_MAX_MATCH
+        break
+      .end
+    .end
+
+    set j = j + 1
+  .end
+
+  ret (best_off, best_len)
+.end
+
+fn lz77_compress(in: &Vec[U8], out: &Vec[U8]) -> (Bool, CompressionError)
+  do vec_clear[U8](out)
+  if in.len == 0
+    ret (true, CompressionError::Ok)
+  .end
+
+  let ok: Bool
+  let err: CompressionError
+
+  let p = (Ptr[U8])in.data
+  let i: USize
+  set i = 0
+  loop
+    if i >= in.len
+      break
+    .end
+
+    let off: USize
+    let mlen: USize
+    (off, mlen) = lz77_find_best(p, in.len, i)
+
+    if mlen >= LZ_MIN_MATCH
+      # match token
+      (ok, err) = buf_push(out, 0x01)
+      if !ok
+        ret (false, err)
+      .end
+      (ok, err) = buf_put_u16_le(out, (U16)off)
+      if !ok
+        ret (false, err)
+      .end
+      (ok, err) = buf_push(out, (U8)mlen)
+      if !ok
+        ret (false, err)
+      .end
+      set i = i + mlen
+    else
+      # literal token
+      (ok, err) = buf_push(out, 0x00)
+      if !ok
+        ret (false, err)
+      .end
+      (ok, err) = buf_push(out, *(p + i))
+      if !ok
+        ret (false, err)
+      .end
+      set i = i + 1
+    .end
+  .end
+
+  ret (true, CompressionError::Ok)
+.end
+
+fn lz77_decompress(in: &Vec[U8], out: &Vec[U8]) -> (Bool, CompressionError)
+  do vec_clear[U8](out)
+
+  let ok: Bool
+  let err: CompressionError
+
+  let p = (Ptr[U8])in.data
+  let i: USize
+  set i = 0
+
+  loop
+    if i >= in.len
+      break
+    .end
+
+    let tag = *(p + i)
+    set i = i + 1
+
+    if tag == 0x00
+      if i >= in.len
+        ret (false, CompressionError::Corrupt)
+      .end
+      (ok, err) = buf_push(out, *(p + i))
+      if !ok
+        ret (false, err)
+      .end
+      set i = i + 1
+      continue
+    .end
+
+    if tag == 0x01
+      if i + 3 > in.len
+        ret (false, CompressionError::Corrupt)
+      .end
+
+      let pos = i
+      let off = (USize)((U16)(*(p + pos + 0)) | ((U16)(*(p + pos + 1)) << 8))
+      let mlen = (USize)(*(p + pos + 2))
+      set i = i + 3
+
+      if off == 0
+        ret (false, CompressionError::Corrupt)
+      .end
+      if mlen < LZ_MIN_MATCH
+        ret (false, CompressionError::Corrupt)
+      .end
+
+      let out_len = out.len
+      if off > out_len
+        ret (false, CompressionError::Corrupt)
+      .end
+
+      # copy with overlap support (like memmove)
+      let k: USize
+      set k = 0
+      loop
+        if k >= mlen
+          break
+        .end
+        let src_idx = out.len - off
+        let src_p = (Ptr[U8])out.data
+        let b = *(src_p + src_idx)
+        (ok, err) = buf_push(out, b)
+        if !ok
+          ret (false, err)
+        .end
+        set k = k + 1
+      .end
+
+      continue
+    .end
+
+    ret (false, CompressionError::Corrupt)
+  .end
+
+  ret (true, CompressionError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# Huffman (dynamic, canonical)
+# Format:
+#  - u32 original_len
+#  - 256 bytes: code_len[sym] (0 means unused)
+#  - bitstream (LSB-first codes)
+#
+# Practical constraint:
+#  - If any generated code length exceeds 24 bits, we return Unsupported.
+#    (A full bounded-length Huffman would require a more complex algorithm.)
+# -----------------------------------------------------------------------------
+
+type HuffNode struct
+  freq: U32
+  left: I32
+  right: I32
+  sym: I32
+.end
+
+type HuffStackItem struct
+  idx: I32
+  depth: U8
+.end
+
+type HuffDecNode struct
+  child0: I32
+  child1: I32
+  sym: I32
+.end
+
+fn vec_u32_new(n: USize) -> Vec[U32]
+  let v = vec_new[U32]()
+  let i: USize
+  set i = 0
+  loop
+    if i >= n
+      break
+    .end
+    let ok: Bool
+    let err: ColError
+    (ok, err) = vec_push[U32](&v, 4, 0)
+    # ignore OOM in helper; callers handle later on compression path
+    set i = i + 1
+  .end
+  ret v
+.end
+
+fn vec_u8_new(n: USize) -> Vec[U8]
+  let v = vec_new[U8]()
+  let i: USize
+  set i = 0
+  loop
+    if i >= n
+      break
+    .end
+    let ok: Bool
+    let err: ColError
+    (ok, err) = vec_push[U8](&v, 1, 0)
+    set i = i + 1
+  .end
+  ret v
+.end
+
+fn huff_build_code_lengths(freq: &Vec[U32], out_lens: &Vec[U8]) -> (Bool, CompressionError)
+  # out_lens must be length 256
+  if out_lens.len != 256
+    ret (false, CompressionError::Invalid)
+  .end
+
+  # init nodes with all symbols that have freq>0
+  let nodes = vec_new[HuffNode]()
+  let active = vec_new[I32]()
+
+  let s: USize
+  set s = 0
+  loop
+    if s >= 256
+      break
+    .end
+
+    let f = *((Ptr[U32])freq.data + s)
+    if f != 0
+      let n: HuffNode
+      set n.freq = f
+      set n.left = -1
+      set n.right = -1
+      set n.sym = (I32)s
+
+      let ok: Bool
+      let err: ColError
+      (ok, err) = vec_push[HuffNode](&nodes, 16, n)
+      if !ok
+        ret (false, CompressionError::OutOfMemory)
+      .end
+      (ok, err) = vec_push[I32](&active, 4, (I32)(nodes.len - 1))
+      if !ok
+        ret (false, CompressionError::OutOfMemory)
+      .end
+    .end
+
+    set s = s + 1
+  .end
+
+  # special cases: empty or single symbol
+  if active.len == 0
+    # all lens already zero
+    ret (true, CompressionError::Ok)
+  .end
+  if active.len == 1
+    let only = *((Ptr[I32])active.data + 0)
+    let sym = nodes.data[only].sym
+    *((Ptr[U8])out_lens.data + (USize)sym) = 1
+    ret (true, CompressionError::Ok)
+  .end
+
+  # merge two smallest until one remains (O(n^2), n<=256)
+  loop
+    if active.len <= 1
+      break
+    .end
+
+    # find smallest a,b indices in active
+    let ai: USize
+    let bi: USize
+    set ai = 0
+    set bi = 1
+
+    let aidx = *((Ptr[I32])active.data + ai)
+    let bidx = *((Ptr[I32])active.data + bi)
+
+    let af = nodes.data[aidx].freq
+    let bf = nodes.data[bidx].freq
+
+    if bf < af
+      let tmpi = ai
+      set ai = bi
+      set bi = tmpi
+      let tmp = aidx
+      set aidx = bidx
+      set bidx = tmp
+      let tmpf = af
+      set af = bf
+      set bf = tmpf
+    .end
+
+    let k: USize
+    set k = 2
+    loop
+      if k >= active.len
+        break
+      .end
+      let idx = *((Ptr[I32])active.data + k)
+      let f = nodes.data[idx].freq
+      if f < af
+        set bi = ai
+        set bf = af
+        set bidx = aidx
+        set ai = k
+        set af = f
+        set aidx = idx
+      elif f < bf
+        set bi = k
+        set bf = f
+        set bidx = idx
+      .end
+      set k = k + 1
+    .end
+
+    # create parent node
+    let parent: HuffNode
+    set parent.freq = af + bf
+    set parent.left = aidx
+    set parent.right = bidx
+    set parent.sym = -1
+
+    let ok: Bool
+    let err: ColError
+    (ok, err) = vec_push[HuffNode](&nodes, 16, parent)
+    if !ok
+      ret (false, CompressionError::OutOfMemory)
+    .end
+
+    let parent_idx = (I32)(nodes.len - 1)
+
+    # remove higher index first in active, replace lower with parent
+    if ai > bi
+      let t = ai
+      set ai = bi
+      set bi = t
+    .end
+
+    # active[ai] = parent, swap_remove bi
+    *((Ptr[I32])active.data + ai) = parent_idx
+
+    let removed: I32
+    let ok2: Bool
+    let err2: ColError
+    (ok2, err2) = vec_swap_remove[I32](&active, bi, 4, &removed)
+    if !ok2
+      ret (false, CompressionError::Invalid)
+    .end
+  .end
+
+  let root = *((Ptr[I32])active.data + 0)
+
+  # traverse to compute code lengths
+  let stack = vec_new[HuffStackItem]()
+  let it: HuffStackItem
+  set it.idx = root
+  set it.depth = 0
+  let ok: Bool
+  let err: ColError
+  (ok, err) = vec_push[HuffStackItem](&stack, 8, it)
+  if !ok
+    ret (false, CompressionError::OutOfMemory)
+  .end
+
+  loop
+    if stack.len == 0
+      break
+    .end
+
+    let item: HuffStackItem
+    (ok, err) = vec_pop_bytes[HuffStackItem](&stack, 8, &item)
+    if !ok
+      ret (false, CompressionError::Invalid)
+    .end
+
+    let n = nodes.data[item.idx]
+    if n.sym >= 0
+      # leaf
+      let d = item.depth
+      if d == 0
+        set d = 1
+      .end
+      if d > 24
+        ret (false, CompressionError::Unsupported)
+      .end
+      *((Ptr[U8])out_lens.data + (USize)n.sym) = d
+      continue
+    .end
+
+    # internal: push children with depth+1
+    let c0: HuffStackItem
+    set c0.idx = n.left
+    set c0.depth = item.depth + 1
+    let c1: HuffStackItem
+    set c1.idx = n.right
+    set c1.depth = item.depth + 1
+
+    (ok, err) = vec_push[HuffStackItem](&stack, 8, c0)
+    if !ok
+      ret (false, CompressionError::OutOfMemory)
+    .end
+    (ok, err) = vec_push[HuffStackItem](&stack, 8, c1)
+    if !ok
+      ret (false, CompressionError::OutOfMemory)
+    .end
+  .end
+
+  ret (true, CompressionError::Ok)
+.end
+
+fn huff_build_canonical(lens: &Vec[U8], codes_out: &Vec[U32], maxbits_out: &U8) -> (Bool, CompressionError)
+  # lens: 256
+  if lens.len != 256
+    ret (false, CompressionError::Invalid)
+  .end
+
+  # ensure codes_out has 256 entries
+  if codes_out.len != 256
+    ret (false, CompressionError::Invalid)
+  .end
+
+  # find max bits
+  let maxb: U8
+  set maxb = 0
+  let s: USize
+  set s = 0
+  loop
+    if s >= 256
+      break
+    .end
+    let l = *((Ptr[U8])lens.data + s)
+    if l > maxb
+      set maxb = l
+    .end
+    set s = s + 1
+  .end
+
+  if maxb == 0
+    set *maxbits_out = 0
+    ret (true, CompressionError::Ok)
+  .end
+
+  # count lengths (1..maxb)
+  let counts = vec_u32_new((USize)maxb + 1)
+  if counts.len != (USize)maxb + 1
+    ret (false, CompressionError::OutOfMemory)
+  .end
+
+  set s = 0
+  loop
+    if s >= 256
+      break
+    .end
+    let l = *((Ptr[U8])lens.data + s)
+    if l != 0
+      let cptr = (Ptr[U32])counts.data
+      *(cptr + (USize)l) = *(cptr + (USize)l) + 1
+    .end
+    set s = s + 1
+  .end
+
+  # compute first codes
+  let next = vec_u32_new((USize)maxb + 1)
+  if next.len != (USize)maxb + 1
+    ret (false, CompressionError::OutOfMemory)
+  .end
+
+  let code: U32
+  set code = 0
+  let bits: USize
+  set bits = 1
+  loop
+    if bits > (USize)maxb
+      break
+    .end
+    set code = (code + *((Ptr[U32])counts.data + (bits - 1))) << 1
+    *((Ptr[U32])next.data + bits) = code
+    set bits = bits + 1
+  .end
+
+  # assign canonical codes
+  set s = 0
+  loop
+    if s >= 256
+      break
+    .end
+
+    let l = *((Ptr[U8])lens.data + s)
+    if l == 0
+      *((Ptr[U32])codes_out.data + s) = 0
+      set s = s + 1
+      continue
+    .end
+
+    let c = *((Ptr[U32])next.data + (USize)l)
+    *((Ptr[U32])codes_out.data + s) = c
+    *((Ptr[U32])next.data + (USize)l) = c + 1
+    set s = s + 1
+  .end
+
+  set *maxbits_out = maxb
+  ret (true, CompressionError::Ok)
+.end
+
+fn huff_encode(in: &Vec[U8], out: &Vec[U8]) -> (Bool, CompressionError)
+  do vec_clear[U8](out)
+
+  # freq table
+  let freq = vec_u32_new(256)
+  if freq.len != 256
+    ret (false, CompressionError::OutOfMemory)
+  .end
+
+  let p = (Ptr[U8])in.data
+  let i: USize
+  set i = 0
+  loop
+    if i >= in.len
+      break
+    .end
+    let b = *(p + i)
+    let fptr = (Ptr[U32])freq.data
+    *(fptr + (USize)b) = *(fptr + (USize)b) + 1
+    set i = i + 1
+  .end
+
+  # code lengths
+  let lens = vec_u8_new(256)
+  if lens.len != 256
+    ret (false, CompressionError::OutOfMemory)
+  .end
+
+  let ok: Bool
+  let err: CompressionError
+  (ok, err) = huff_build_code_lengths(&freq, &lens)
+  if !ok
+    ret (false, err)
+  .end
+
+  # canonical codes
+  let codes = vec_new[U32]()
+  # allocate 256 zeros
+  let s: USize
+  set s = 0
+  loop
+    if s >= 256
+      break
+    .end
+    let ok2: Bool
+    let err2: ColError
+    (ok2, err2) = vec_push[U32](&codes, 4, 0)
+    if !ok2
+      ret (false, CompressionError::OutOfMemory)
+    .end
+    set s = s + 1
+  .end
+
+  let maxb: U8
+  set maxb = 0
+  (ok, err) = huff_build_canonical(&lens, &codes, &maxb)
+  if !ok
+    ret (false, err)
+  .end
+
+  # header
+  (ok, err) = buf_put_u32_le(out, (U32)in.len)
+  if !ok
+    ret (false, err)
+  .end
+
+  # lens table
+  set s = 0
+  loop
+    if s >= 256
+      break
+    .end
+    (ok, err) = buf_push(out, *((Ptr[U8])lens.data + s))
+    if !ok
+      ret (false, err)
+    .end
+    set s = s + 1
+  .end
+
+  # bitstream
+  let w = bitw_new()
+
+  set i = 0
+  loop
+    if i >= in.len
+      break
+    .end
+
+    let b = *(p + i)
+    let l = *((Ptr[U8])lens.data + (USize)b)
+    let c = *((Ptr[U32])codes.data + (USize)b)
+
+    # write code bits MSB-first is canonical; but our bitwriter is LSB-first.
+    # We therefore reverse the code bits for length l.
+    let rc: U32
+    set rc = 0
+    let k: U8
+    set k = 0
+    loop
+      if k >= l
+        break
+      .end
+      set rc = (rc << 1) | ((c >> (l - 1 - k)) & 1)
+      set k = k + 1
+    .end
+
+    # now emit rc LSB-first by writing bits one by one
+    (ok, err) = bitw_write_bits(&w, rc, l)
+    if !ok
+      ret (false, err)
+    .end
+
+    set i = i + 1
+  .end
+
+  (ok, err) = bitw_flush(&w)
+  if !ok
+    ret (false, err)
+  .end
+
+  # append w.out bytes to out
+  let wp = (Ptr[U8])w.out.data
+  let wi: USize
+  set wi = 0
+  loop
+    if wi >= w.out.len
+      break
+    .end
+    (ok, err) = buf_push(out, *(wp + wi))
+    if !ok
+      ret (false, err)
+    .end
+    set wi = wi + 1
+  .end
+
+  ret (true, CompressionError::Ok)
+.end
+
+fn huff_build_decode_tree(lens: &Vec[U8], codes: &Vec[U32]) -> (Bool, CompressionError, Vec[HuffDecNode])
+  let nodes = vec_new[HuffDecNode]()
+
+  # push root
+  let root: HuffDecNode
+  set root.child0 = -1
+  set root.child1 = -1
+  set root.sym = -1
+  let ok: Bool
+  let err: ColError
+  (ok, err) = vec_push[HuffDecNode](&nodes, 12, root)
+  if !ok
+    ret (false, CompressionError::OutOfMemory, nodes)
+  .end
+
+  let s: USize
+  set s = 0
+  loop
+    if s >= 256
+      break
+    .end
+
+    let l = *((Ptr[U8])lens.data + s)
+    if l == 0
+      set s = s + 1
+      continue
+    .end
+
+    let code = *((Ptr[U32])codes.data + s)
+
+    # traverse bits MSB-first
+    let cur: I32
+    set cur = 0
+    let k: U8
+    set k = 0
+    loop
+      if k >= l
+        break
+      .end
+
+      let bit = (code >> (l - 1 - k)) & 1
+      let child: I32
+      if bit == 0
+        set child = nodes.data[cur].child0
+      else
+        set child = nodes.data[cur].child1
+      .end
+
+      if child < 0
+        let n: HuffDecNode
+        set n.child0 = -1
+        set n.child1 = -1
+        set n.sym = -1
+        let ok2: Bool
+        let err2: ColError
+        (ok2, err2) = vec_push[HuffDecNode](&nodes, 12, n)
+        if !ok2
+          ret (false, CompressionError::OutOfMemory, nodes)
+        .end
+        set child = (I32)(nodes.len - 1)
+        if bit == 0
+          set nodes.data[cur].child0 = child
+        else
+          set nodes.data[cur].child1 = child
+        .end
+      .end
+
+      set cur = child
+      set k = k + 1
+    .end
+
+    # assign leaf symbol
+    set nodes.data[cur].sym = (I32)s
+
+    set s = s + 1
+  .end
+
+  ret (true, CompressionError::Ok, nodes)
+.end
+
+fn huff_decode(in: &Vec[U8], out: &Vec[U8]) -> (Bool, CompressionError)
+  do vec_clear[U8](out)
+
+  let pos: USize
+  set pos = 0
+
+  let ok: Bool
+  let err: CompressionError
+  let orig: U32
+  (ok, err, orig) = buf_get_u32_le(in, &pos)
+  if !ok
+    ret (false, err)
+  .end
+
+  if pos + 256 > in.len
+    ret (false, CompressionError::Corrupt)
+  .end
+
+  let lens = vec_u8_new(256)
+  if lens.len != 256
+    ret (false, CompressionError::OutOfMemory)
+  .end
+
+  # copy lens
+  let p = (Ptr[U8])in.data
+  let s: USize
+  set s = 0
+  loop
+    if s >= 256
+      break
+    .end
+    *((Ptr[U8])lens.data + s) = *(p + pos + s)
+    set s = s + 1
+  .end
+  set pos = pos + 256
+
+  # codes
+  let codes = vec_new[U32]()
+  set s = 0
+  loop
+    if s >= 256
+      break
+    .end
+    let ok2: Bool
+    let err2: ColError
+    (ok2, err2) = vec_push[U32](&codes, 4, 0)
+    if !ok2
+      ret (false, CompressionError::OutOfMemory)
+    .end
+    set s = s + 1
+  .end
+
+  let maxb: U8
+  set maxb = 0
+  (ok, err) = huff_build_canonical(&lens, &codes, &maxb)
+  if !ok
+    ret (false, err)
+  .end
+
+  let tree_ok: Bool
+  let tree_err: CompressionError
+  let tree: Vec[HuffDecNode]
+  (tree_ok, tree_err, tree) = huff_build_decode_tree(&lens, &codes)
+  if !tree_ok
+    ret (false, tree_err)
+  .end
+
+  # bit reader over remaining bytes
+  let bits_in = vec_new[U8]()
+  # create view by copying tail (simple, bootstrap-friendly)
+  let i: USize
+  set i = pos
+  loop
+    if i >= in.len
+      break
+    .end
+    let ok3: Bool
+    let err3: ColError
+    (ok3, err3) = vec_push[U8](&bits_in, 1, *(p + i))
+    if !ok3
+      ret (false, CompressionError::OutOfMemory)
+    .end
+    set i = i + 1
+  .end
+
+  let r = bitr_new(&bits_in)
+
+  let out_target = (USize)orig
+  # guard against absurd sizes
+  if out_target > (1024 * 1024 * 128)
+    ret (false, CompressionError::TooLarge)
+  .end
+
+  (ok, err) = buf_reserve(out, out_target)
+  if !ok
+    ret (false, err)
+  .end
+
+  loop
+    if out.len >= out_target
+      break
+    .end
+
+    let cur: I32
+    set cur = 0
+
+    loop
+      if cur < 0
+        ret (false, CompressionError::Corrupt)
+      .end
+
+      if tree.data[cur].sym >= 0
+        let b = (U8)tree.data[cur].sym
+        (ok, err) = buf_push(out, b)
+        if !ok
+          ret (false, err)
+        .end
+        break
+      .end
+
+      let bok: Bool
+      let berr: CompressionError
+      let bit: U32
+      (bok, berr, bit) = bitr_read_bit(&r)
+      if !bok
+        ret (false, berr)
+      .end
+
+      if bit == 0
+        set cur = tree.data[cur].child0
+      else
+        set cur = tree.data[cur].child1
+      .end
+    .end
+  .end
+
+  if out.len != out_target
+    ret (false, CompressionError::Corrupt)
+  .end
+
+  ret (true, CompressionError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# High-level API
+# -----------------------------------------------------------------------------
+
+fn compress_bytes(algo: CompressionAlgo, in: &Vec[U8], out: &Vec[U8]) -> (Bool, CompressionError)
+  if algo == CompressionAlgo::None
+    do vec_clear[U8](out)
+    # copy
+    let ok: Bool
+    let err: CompressionError
+    (ok, err) = buf_reserve(out, in.len)
+    if !ok
+      ret (false, err)
+    .end
+    let p = (Ptr[U8])in.data
+    let i: USize
+    set i = 0
+    loop
+      if i >= in.len
+        break
+      .end
+      (ok, err) = buf_push(out, *(p + i))
+      if !ok
+        ret (false, err)
+      .end
+      set i = i + 1
+    .end
+    ret (true, CompressionError::Ok)
+  .end
+
+  if algo == CompressionAlgo::Rle
+    ret rle_compress(in, out)
+  .end
+
+  if algo == CompressionAlgo::Lz77
+    ret lz77_compress(in, out)
+  .end
+
+  if algo == CompressionAlgo::Huff
+    ret huff_encode(in, out)
+  .end
+
+  ret (false, CompressionError::Unsupported)
+.end
+
+fn decompress_bytes(algo: CompressionAlgo, in: &Vec[U8], out: &Vec[U8]) -> (Bool, CompressionError)
+  if algo == CompressionAlgo::None
+    ret compress_bytes(CompressionAlgo::None, in, out)
+  .end
+
+  if algo == CompressionAlgo::Rle
+    ret rle_decompress(in, out)
+  .end
+
+  if algo == CompressionAlgo::Lz77
+    ret lz77_decompress(in, out)
+  .end
+
+  if algo == CompressionAlgo::Huff
+    ret huff_decode(in, out)
+  .end
+
+  ret (false, CompressionError::Unsupported)
+.end
+
+# -----------------------------------------------------------------------------
+# VCZ1 container
+# -----------------------------------------------------------------------------
+# Layout (little-endian):
+#  magic[4] = 'V''C''Z''1'
+#  algo     = u8
+#  reserved = u8 (0)
+#  reserved = u16 (0)
+#  raw_len  = u32
+#  crc32    = u32 (of raw bytes)
+#  payload_len = u32
+#  payload bytes
+# -----------------------------------------------------------------------------
+
+const VCZ_MAGIC0: U8 = 0x56   # 'V'
+const VCZ_MAGIC1: U8 = 0x43   # 'C'
+const VCZ_MAGIC2: U8 = 0x5A   # 'Z'
+const VCZ_MAGIC3: U8 = 0x31   # '1'
+
+fn vcz_pack(algo: CompressionAlgo, raw: &Vec[U8], out: &Vec[U8]) -> (Bool, CompressionError)
+  do vec_clear[U8](out)
+
+  let payload = buf_new()
+  let ok: Bool
+  let err: CompressionError
+  (ok, err) = compress_bytes(algo, raw, &payload)
+  if !ok
+    ret (false, err)
+  .end
+
+  let crc = crc32_vec(raw)
+
+  # header
+  (ok, err) = buf_push(out, VCZ_MAGIC0)
+  if !ok
+    ret (false, err)
+  .end
+  (ok, err) = buf_push(out, VCZ_MAGIC1)
+  if !ok
+    ret (false, err)
+  .end
+  (ok, err) = buf_push(out, VCZ_MAGIC2)
+  if !ok
+    ret (false, err)
+  .end
+  (ok, err) = buf_push(out, VCZ_MAGIC3)
+  if !ok
+    ret (false, err)
+  .end
+
+  (ok, err) = buf_push(out, (U8)algo)
+  if !ok
+    ret (false, err)
+  .end
+  (ok, err) = buf_push(out, 0)
+  if !ok
+    ret (false, err)
+  .end
+  (ok, err) = buf_put_u16_le(out, 0)
+  if !ok
+    ret (false, err)
+  .end
+
+  (ok, err) = buf_put_u32_le(out, (U32)raw.len)
+  if !ok
+    ret (false, err)
+  .end
+  (ok, err) = buf_put_u32_le(out, crc)
+  if !ok
+    ret (false, err)
+  .end
+  (ok, err) = buf_put_u32_le(out, (U32)payload.len)
+  if !ok
+    ret (false, err)
+  .end
+
+  # payload
+  let pp = (Ptr[U8])payload.data
+  let i: USize
+  set i = 0
+  loop
+    if i >= payload.len
+      break
+    .end
+    (ok, err) = buf_push(out, *(pp + i))
+    if !ok
+      ret (false, err)
+    .end
+    set i = i + 1
+  .end
+
+  ret (true, CompressionError::Ok)
+.end
+
+fn vcz_unpack(in: &Vec[U8], algo_out: &CompressionAlgo, raw_out: &Vec[U8]) -> (Bool, CompressionError)
+  do vec_clear[U8](raw_out)
+
+  if in.len < 4 + 1 + 1 + 2 + 4 + 4 + 4
+    ret (false, CompressionError::Corrupt)
+  .end
+
+  let p = (Ptr[U8])in.data
+  if *(p + 0) != VCZ_MAGIC0 || *(p + 1) != VCZ_MAGIC1 || *(p + 2) != VCZ_MAGIC2 || *(p + 3) != VCZ_MAGIC3
+    ret (false, CompressionError::Invalid)
+  .end
+
+  let algo = (CompressionAlgo)(*(p + 4))
+  set *algo_out = algo
+
+  let pos: USize
+  set pos = 4 + 1 + 1 + 2
+
+  let ok: Bool
+  let err: CompressionError
+  let raw_len_u32: U32
+  let crc_u32: U32
+  let pay_len_u32: U32
+
+  (ok, err, raw_len_u32) = buf_get_u32_le(in, &pos)
+  if !ok
+    ret (false, err)
+  .end
+  (ok, err, crc_u32) = buf_get_u32_le(in, &pos)
+  if !ok
+    ret (false, err)
+  .end
+  (ok, err, pay_len_u32) = buf_get_u32_le(in, &pos)
+  if !ok
+    ret (false, err)
+  .end
+
+  let pay_len = (USize)pay_len_u32
+  if pos + pay_len > in.len
+    ret (false, CompressionError::Corrupt)
+  .end
+
+  # slice payload into a temporary vec
+  let payload = buf_new()
+  (ok, err) = buf_reserve(&payload, pay_len)
+  if !ok
+    ret (false, err)
+  .end
+
+  let i: USize
+  set i = 0
+  loop
+    if i >= pay_len
+      break
+    .end
+    (ok, err) = buf_push(&payload, *(p + pos + i))
+    if !ok
+      ret (false, err)
+    .end
+    set i = i + 1
+  .end
+
+  # decode
+  (ok, err) = decompress_bytes(algo, &payload, raw_out)
+  if !ok
+    ret (false, err)
+  .end
+
+  if raw_out.len != (USize)raw_len_u32
+    ret (false, CompressionError::Corrupt)
+  .end
+
+  let crc2 = crc32_vec(raw_out)
+  if crc2 != crc_u32
+    ret (false, CompressionError::Corrupt)
+  .end
+
+  ret (true, CompressionError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# Tests (scenarios)
+# -----------------------------------------------------------------------------
+
+fn buf_from_ascii(s: Str) -> Vec[U8]
+  # placeholder: runtime should provide str iteration.
+  # For bootstrap tests we build manually in each scenario.
+  ret buf_new()
+.end
+
+fn assert_eq_u8_vec(a: &Vec[U8], b: &Vec[U8])
+  do assert(a.len == b.len, "vec len mismatch")
+  let i: USize
+  set i = 0
+  let ap = (Ptr[U8])a.data
+  let bp = (Ptr[U8])b.data
+  loop
+    if i >= a.len
+      break
+    .end
+    do assert(*(ap + i) == *(bp + i), "vec byte mismatch")
+    set i = i + 1
+  .end
+.end
+
+scn test_rle_roundtrip
+  let raw = buf_new()
+  let ok: Bool
+  let err: CompressionError
+
+  # aaabccccccdde
+  (ok, err) = buf_push(&raw, (U8)'a')
+  (ok, err) = buf_push(&raw, (U8)'a')
+  (ok, err) = buf_push(&raw, (U8)'a')
+  (ok, err) = buf_push(&raw, (U8)'b')
+  (ok, err) = buf_push(&raw, (U8)'c')
+  (ok, err) = buf_push(&raw, (U8)'c')
+  (ok, err) = buf_push(&raw, (U8)'c')
+  (ok, err) = buf_push(&raw, (U8)'c')
+  (ok, err) = buf_push(&raw, (U8)'c')
+  (ok, err) = buf_push(&raw, (U8)'c')
+  (ok, err) = buf_push(&raw, (U8)'d')
+  (ok, err) = buf_push(&raw, (U8)'d')
+  (ok, err) = buf_push(&raw, (U8)'e')
+
+  let c = buf_new()
+  let d = buf_new()
+
+  (ok, err) = rle_compress(&raw, &c)
+  do assert(ok, "rle_compress")
+  (ok, err) = rle_decompress(&c, &d)
+  do assert(ok, "rle_decompress")
+
+  do assert_eq_u8_vec(&raw, &d)
+.end
+
+scn test_lz77_roundtrip
+  let raw = buf_new()
+  let ok: Bool
+  let err: CompressionError
+
+  # "abcabcabcabc----abcabcabcabc"
+  let s: Str
+  set s = "abcabcabcabc----abcabcabcabc"
+  # build manually (bootstrap)
+  let i: USize
+  set i = 0
+  loop
+    if i >= 28
+      break
+    .end
+    # hardcoded bytes
+    if i == 0 || i == 3 || i == 6 || i == 9 || i == 16 || i == 19 || i == 22 || i == 25
+      (ok, err) = buf_push(&raw, (U8)'a')
+    elif i == 1 || i == 4 || i == 7 || i == 10 || i == 17 || i == 20 || i == 23 || i == 26
+      (ok, err) = buf_push(&raw, (U8)'b')
+    elif i == 2 || i == 5 || i == 8 || i == 11 || i == 18 || i == 21 || i == 24 || i == 27
+      (ok, err) = buf_push(&raw, (U8)'c')
+    else
+      (ok, err) = buf_push(&raw, (U8)'-')
+    .end
+    set i = i + 1
+  .end
+
+  let c = buf_new()
+  let d = buf_new()
+
+  (ok, err) = lz77_compress(&raw, &c)
+  do assert(ok, "lz77_compress")
+  (ok, err) = lz77_decompress(&c, &d)
+  do assert(ok, "lz77_decompress")
+
+  do assert_eq_u8_vec(&raw, &d)
+.end
+
+scn test_huff_roundtrip
+  let raw = buf_new()
+  let ok: Bool
+  let err: CompressionError
+
+  # "mississippi mississippi mississippi"
+  let i: USize
+  set i = 0
+  loop
+    if i >= 33
+      break
+    .end
+    # pattern: 11 chars + space repeated 3 times
+    let j = i % 12
+    if j == 0
+      (ok, err) = buf_push(&raw, (U8)'m')
+    elif j == 1
+      (ok, err) = buf_push(&raw, (U8)'i')
+    elif j == 2
+      (ok, err) = buf_push(&raw, (U8)'s')
+    elif j == 3
+      (ok, err) = buf_push(&raw, (U8)'s')
+    elif j == 4
+      (ok, err) = buf_push(&raw, (U8)'i')
+    elif j == 5
+      (ok, err) = buf_push(&raw, (U8)'s')
+    elif j == 6
+      (ok, err) = buf_push(&raw, (U8)'s')
+    elif j == 7
+      (ok, err) = buf_push(&raw, (U8)'i')
+    elif j == 8
+      (ok, err) = buf_push(&raw, (U8)'p')
+    elif j == 9
+      (ok, err) = buf_push(&raw, (U8)'p')
+    elif j == 10
+      (ok, err) = buf_push(&raw, (U8)'i')
+    else
+      (ok, err) = buf_push(&raw, (U8)' ')
+    .end
+    set i = i + 1
+  .end
+
+  let c = buf_new()
+  let d = buf_new()
+
+  (ok, err) = huff_encode(&raw, &c)
+  # Huff can return Unsupported if code lengths exceed limit; accept either
+  if !ok
+    do assert(err == CompressionError::Unsupported, "unexpected huff failure")
+    ret
+  .end
+
+  (ok, err) = huff_decode(&c, &d)
+  do assert(ok, "huff_decode")
+
+  do assert_eq_u8_vec(&raw, &d)
+.end
+
+scn test_vcz_container
+  let raw = buf_new()
+  let ok: Bool
+  let err: CompressionError
+
+  # some repetitive bytes
+  let i: USize
+  set i = 0
+  loop
+    if i >= 200
+      break
+    .end
+    if (i % 5) == 0
+      (ok, err) = buf_push(&raw, 0)
+    elif (i % 5) == 1
+      (ok, err) = buf_push(&raw, 1)
+    elif (i % 5) == 2
+      (ok, err) = buf_push(&raw, 1)
+    elif (i % 5) == 3
+      (ok, err) = buf_push(&raw, 2)
+    else
+      (ok, err) = buf_push(&raw, 3)
+    .end
+    set i = i + 1
+  .end
+
+  let packed = buf_new()
+  (ok, err) = vcz_pack(CompressionAlgo::Lz77, &raw, &packed)
+  do assert(ok, "vcz_pack")
+
+  let algo: CompressionAlgo
+  let out = buf_new()
+  (ok, err) = vcz_unpack(&packed, &algo, &out)
+  do assert(ok, "vcz_unpack")
+  do assert(algo == CompressionAlgo::Lz77, "algo mismatch")
+
+  do assert_eq_u8_vec(&raw, &out)
+.end
+
+# End of std.compression

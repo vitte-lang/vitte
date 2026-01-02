@@ -1,0 +1,1090 @@
+# -----------------------------------------------------------------------------
+# std/time
+# -----------------------------------------------------------------------------
+# Time utilities.
+#
+# This module provides a bootstrap-friendly time API built on std.sys:
+# - Duration: millisecond-resolution span
+# - Instant: monotonic-ish timestamp (best-effort)
+# - SystemTime: wall-clock-ish timestamp (best-effort)
+# - sleep(Duration)
+#
+# Notes:
+# - The runtime hooks are currently exposed through std.sys::now_ms/sleep_ms.
+# - Units are primarily milliseconds to avoid FP/formatting.
+# - Where the runtime does not support time, functions return Unsupported.
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.time
+
+use std.runtime
+use std.sys
+
+# -----------------------------------------------------------------------------
+# Types / errors
+# -----------------------------------------------------------------------------
+
+type Bool = bool
+
+type U32   = u32
+type U64   = u64
+
+type I32   = i32
+type I64   = i64
+
+type USize = usize
+
+type Ptr[T] = ptr[T]
+
+type SysError = std.sys::SysError
+
+# Time error set.
+
+type TimeError enum
+  Ok
+  Invalid
+  OutOfMemory
+  Unsupported
+  Busy
+  Timeout
+  Io
+  Unexpected
+.end
+
+fn time_error_ok(e: TimeError) -> Bool
+  ret e == TimeError::Ok
+.end
+
+fn time_error_from_sys(e: SysError) -> TimeError
+  if e == SysError::Ok
+    ret TimeError::Ok
+  .end
+  if e == SysError::Invalid
+    ret TimeError::Invalid
+  .end
+  if e == SysError::OutOfMemory
+    ret TimeError::OutOfMemory
+  .end
+  if e == SysError::Unsupported
+    ret TimeError::Unsupported
+  .end
+  if e == SysError::Busy
+    ret TimeError::Busy
+  .end
+  if e == SysError::Timeout
+    ret TimeError::Timeout
+  .end
+  if e == SysError::Io
+    ret TimeError::Io
+  .end
+  ret TimeError::Unexpected
+.end
+
+# -----------------------------------------------------------------------------
+# Duration
+# -----------------------------------------------------------------------------
+
+# Millisecond resolution duration.
+# Convention: Duration is non-negative in public constructors; internal operations
+# may still clamp.
+
+type Duration struct
+  ms: I64
+.end
+
+fn _i64_max() -> I64
+  ret 9223372036854775807
+.end
+
+fn _i64_min() -> I64
+  ret -9223372036854775808
+.end
+
+fn duration_zero() -> Duration
+  let d: Duration
+  set d.ms = 0
+  ret d
+.end
+
+fn duration_ms(ms: I64) -> Duration
+  let d: Duration
+  if ms < 0
+    set d.ms = 0
+    ret d
+  .end
+  set d.ms = ms
+  ret d
+.end
+
+fn duration_secs(secs: I64) -> Duration
+  if secs <= 0
+    ret duration_zero()
+  .end
+
+  # saturating secs*1000
+  let max = _i64_max()
+  if secs > (max / 1000)
+    let d: Duration
+    set d.ms = max
+    ret d
+  .end
+
+  let d: Duration
+  set d.ms = secs * 1000
+  ret d
+.end
+
+# From seconds + nanoseconds (best-effort, rounds down to ms).
+fn duration_parts(secs: I64, nanos: I32) -> Duration
+  if secs < 0
+    ret duration_zero()
+  .end
+
+  let base = duration_secs(secs)
+
+  let add_ms: I64
+  set add_ms = 0
+  if nanos > 0
+    set add_ms = (I64)(nanos / 1000000)
+  .end
+
+  ret duration_saturating_add(base, duration_ms(add_ms))
+.end
+
+fn duration_millis(d: &Duration) -> I64
+  ret d.ms
+.end
+
+fn duration_secs_floor(d: &Duration) -> I64
+  if d.ms <= 0
+    ret 0
+  .end
+  ret d.ms / 1000
+.end
+
+fn duration_is_zero(d: &Duration) -> Bool
+  ret d.ms == 0
+.end
+
+fn duration_cmp(a: &Duration, b: &Duration) -> I32
+  if a.ms < b.ms
+    ret -1
+  .end
+  if a.ms > b.ms
+    ret 1
+  .end
+  ret 0
+.end
+
+fn duration_saturating_add(a: Duration, b: Duration) -> Duration
+  let max = _i64_max()
+  let min = _i64_min()
+
+  let x = a.ms
+  let y = b.ms
+
+  # clamp negatives
+  if x < 0
+    set x = 0
+  .end
+  if y < 0
+    set y = 0
+  .end
+
+  if y > 0 && x > (max - y)
+    let d: Duration
+    set d.ms = max
+    ret d
+  .end
+
+  let d: Duration
+  set d.ms = x + y
+  ret d
+.end
+
+fn duration_saturating_sub(a: Duration, b: Duration) -> Duration
+  let x = a.ms
+  let y = b.ms
+  if x < 0
+    set x = 0
+  .end
+  if y < 0
+    set y = 0
+  .end
+
+  if y >= x
+    ret duration_zero()
+  .end
+
+  let d: Duration
+  set d.ms = x - y
+  ret d
+.end
+
+fn duration_min(a: Duration, b: Duration) -> Duration
+  if a.ms <= b.ms
+    ret a
+  .end
+  ret b
+.end
+
+fn duration_max(a: Duration, b: Duration) -> Duration
+  if a.ms >= b.ms
+    ret a
+  .end
+  ret b
+.end
+
+# Multiply by a small factor (saturating).
+fn duration_mul_u32(d: Duration, k: U32) -> Duration
+  if d.ms <= 0
+    ret duration_zero()
+  .end
+  if k == 0
+    ret duration_zero()
+  .end
+
+  let max = _i64_max()
+  let kk: I64
+  set kk = (I64)k
+
+  if d.ms > (max / kk)
+    let out: Duration
+    set out.ms = max
+    ret out
+  .end
+
+  let out: Duration
+  set out.ms = d.ms * kk
+  ret out
+.end
+
+# Divide by a small factor (floors).
+fn duration_div_u32(d: Duration, k: U32) -> Duration
+  if d.ms <= 0
+    ret duration_zero()
+  .end
+  if k == 0
+    ret duration_zero()
+  .end
+
+  let out: Duration
+  set out.ms = d.ms / (I64)k
+  ret out
+.end
+
+# -----------------------------------------------------------------------------
+# Instant
+# -----------------------------------------------------------------------------
+
+type Instant struct
+  t_ms: I64
+.end
+
+fn instant_from_ms(ms: I64) -> Instant
+  let t: Instant
+  set t.t_ms = ms
+  ret t
+.end
+
+fn instant_now() -> (Bool, TimeError, Instant)
+  let ok: Bool
+  let se: SysError
+  let ms: I64
+
+  (ok, se, ms) = std.sys::now_ms()
+  if !ok
+    ret (false, time_error_from_sys(se), instant_from_ms(0))
+  .end
+
+  ret (true, TimeError::Ok, instant_from_ms(ms))
+.end
+
+fn instant_ms(t: &Instant) -> I64
+  ret t.t_ms
+.end
+
+fn instant_cmp(a: &Instant, b: &Instant) -> I32
+  if a.t_ms < b.t_ms
+    ret -1
+  .end
+  if a.t_ms > b.t_ms
+    ret 1
+  .end
+  ret 0
+.end
+
+fn instant_add(t: Instant, d: Duration) -> Instant
+  let out: Instant
+  set out.t_ms = t.t_ms + d.ms
+  ret out
+.end
+
+fn instant_sub(t: Instant, d: Duration) -> Instant
+  let out: Instant
+  set out.t_ms = t.t_ms - d.ms
+  ret out
+.end
+
+# Elapsed since `start` (clamped to 0).
+fn instant_elapsed(start: Instant) -> (Bool, TimeError, Duration)
+  let ok: Bool
+  let e: TimeError
+  let now: Instant
+
+  (ok, e, now) = instant_now()
+  if !ok
+    ret (false, e, duration_zero())
+  .end
+
+  let dt: I64
+  set dt = now.t_ms - start.t_ms
+  if dt < 0
+    set dt = 0
+  .end
+
+  ret (true, TimeError::Ok, duration_ms(dt))
+.end
+
+# Duration between two instants (clamped to 0).
+fn instant_duration_between(a: Instant, b: Instant) -> Duration
+  let dt = a.t_ms - b.t_ms
+  if dt < 0
+    ret duration_zero()
+  .end
+  ret duration_ms(dt)
+.end
+
+# -----------------------------------------------------------------------------
+# SystemTime
+# -----------------------------------------------------------------------------
+
+# Best-effort "wall clock" time.
+# Representation is milliseconds since an origin defined by the runtime.
+
+type SystemTime struct
+  ms: I64
+.end
+
+fn system_time_from_ms(ms: I64) -> SystemTime
+  let t: SystemTime
+  set t.ms = ms
+  ret t
+.end
+
+fn system_time_unix_epoch() -> SystemTime
+  ret system_time_from_ms(0)
+.end
+
+fn system_time_now() -> (Bool, TimeError, SystemTime)
+  let ok: Bool
+  let se: SysError
+  let ms: I64
+
+  (ok, se, ms) = std.sys::now_ms()
+  if !ok
+    ret (false, time_error_from_sys(se), system_time_from_ms(0))
+  .end
+
+  ret (true, TimeError::Ok, system_time_from_ms(ms))
+.end
+
+fn system_time_ms(t: &SystemTime) -> I64
+  ret t.ms
+.end
+
+fn system_time_cmp(a: &SystemTime, b: &SystemTime) -> I32
+  if a.ms < b.ms
+    ret -1
+  .end
+  if a.ms > b.ms
+    ret 1
+  .end
+  ret 0
+.end
+
+# Duration since `earlier`. If earlier > later, returns Invalid.
+fn system_time_duration_since(later: SystemTime, earlier: SystemTime) -> (Bool, TimeError, Duration)
+  if later.ms < earlier.ms
+    ret (false, TimeError::Invalid, duration_zero())
+  .end
+  ret (true, TimeError::Ok, duration_ms(later.ms - earlier.ms))
+.end
+
+# -----------------------------------------------------------------------------
+# Sleep
+# -----------------------------------------------------------------------------
+
+# Sleep for a duration. Splits into U32 chunks to match sys.sleep_ms.
+fn sleep(d: Duration) -> (Bool, TimeError)
+  let rem: I64
+  set rem = d.ms
+
+  if rem <= 0
+    ret (true, TimeError::Ok)
+  .end
+
+  # U32 max = 0xffffffff
+  let max_chunk: I64
+  set max_chunk = 4294967295
+
+  while rem > 0
+    let chunk: I64
+    if rem > max_chunk
+      set chunk = max_chunk
+    else
+      set chunk = rem
+    .end
+
+    let ok: Bool
+    let se: SysError
+    (ok, se) = std.sys::sleep_ms((U32)chunk)
+    if !ok
+      ret (false, time_error_from_sys(se))
+    .end
+
+    set rem = rem - chunk
+  .end
+
+  ret (true, TimeError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests (scenarios)
+# -----------------------------------------------------------------------------
+
+fn _skip_if_unsupported(ok: Bool, e: TimeError) -> Bool
+  if ok
+    ret false
+  .end
+  if e == TimeError::Unsupported
+    ret true
+  .end
+  do std.runtime::assert(false, "std.time: unexpected error")
+  ret true
+.end
+
+scn test_time_duration_math
+  let a = duration_secs(1)
+  let b = duration_ms(250)
+
+  let c = duration_saturating_add(a, b)
+  do std.runtime::assert(duration_millis(&c) == 1250, "add")
+
+  let d = duration_saturating_sub(c, duration_ms(2000))
+  do std.runtime::assert(duration_is_zero(&d), "sub clamp")
+
+  let e = duration_mul_u32(duration_ms(10), 5)
+  do std.runtime::assert(duration_millis(&e) == 50, "mul")
+
+  let f = duration_div_u32(duration_ms(55), 10)
+  do std.runtime::assert(duration_millis(&f) == 5, "div")
+.end
+
+scn test_time_sleep_0
+  let ok: Bool
+  let e: TimeError
+  (ok, e) = sleep(duration_zero())
+  do std.runtime::assert(ok, "sleep 0")
+.end
+
+scn test_time_instant_monotonic
+  let ok: Bool
+  let e: TimeError
+  let t0: Instant
+  let t1: Instant
+
+  (ok, e, t0) = instant_now()
+  if _skip_if_unsupported(ok, e)
+    ret
+  .end
+
+  (ok, e) = sleep(duration_zero())
+  do std.runtime::assert(ok, "sleep 0")
+
+  (ok, e, t1) = instant_now()
+  do std.runtime::assert(ok, "instant now 2")
+
+  do std.runtime::assert(t1.t_ms >= t0.t_ms, "monotonic")
+.end
+
+scn test_time_instant_elapsed
+  let ok: Bool
+  let e: TimeError
+  let start: Instant
+  let dt: Duration
+
+  (ok, e, start) = instant_now()
+  if _skip_if_unsupported(ok, e)
+    ret
+  .end
+
+  (ok, e, dt) = instant_elapsed(start)
+  do std.runtime::assert(ok, "elapsed")
+  do std.runtime::assert(duration_millis(&dt) >= 0, "elapsed nonneg")
+.end
+
+scn test_time_system_time_since_epoch
+  let ok: Bool
+  let e: TimeError
+  let now: SystemTime
+
+  (ok, e, now) = system_time_now()
+  if _skip_if_unsupported(ok, e)
+    ret
+  .end
+
+  let epoch = system_time_unix_epoch()
+  let dt: Duration
+  (ok, e, dt) = system_time_duration_since(now, epoch)
+  do std.runtime::assert(ok, "since epoch")
+  do std.runtime::assert(duration_millis(&dt) >= 0, "since nonneg")
+.end
+
+# End of std.time
+
+# -----------------------------------------------------------------------------
+# std/time
+# -----------------------------------------------------------------------------
+# Time utilities.
+#
+# This module provides a bootstrap-friendly time API built on std.sys:
+# - Duration: millisecond-resolution span
+# - Instant: monotonic-ish timestamp (best-effort)
+# - SystemTime: wall-clock-ish timestamp (best-effort)
+# - sleep(Duration)
+#
+# Notes:
+# - The runtime hooks are currently exposed through std.sys::now_ms/sleep_ms.
+# - Units are primarily milliseconds to avoid FP/formatting.
+# - Where the runtime does not support time, functions return Unsupported.
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.time
+
+use std.runtime
+use std.sys
+
+# -----------------------------------------------------------------------------
+# Types / errors
+# -----------------------------------------------------------------------------
+
+type Bool = bool
+
+type U32   = u32
+type U64   = u64
+
+type I32   = i32
+type I64   = i64
+
+type USize = usize
+
+type Ptr[T] = ptr[T]
+
+type SysError = std.sys::SysError
+
+# Time error set.
+
+type TimeError enum
+  Ok
+  Invalid
+  OutOfMemory
+  Unsupported
+  Busy
+  Timeout
+  Io
+  Unexpected
+.end
+
+fn time_error_ok(e: TimeError) -> Bool
+  ret e == TimeError::Ok
+.end
+
+fn time_error_from_sys(e: SysError) -> TimeError
+  if e == SysError::Ok
+    ret TimeError::Ok
+  .end
+  if e == SysError::Invalid
+    ret TimeError::Invalid
+  .end
+  if e == SysError::OutOfMemory
+    ret TimeError::OutOfMemory
+  .end
+  if e == SysError::Unsupported
+    ret TimeError::Unsupported
+  .end
+  if e == SysError::Busy
+    ret TimeError::Busy
+  .end
+  if e == SysError::Timeout
+    ret TimeError::Timeout
+  .end
+  if e == SysError::Io
+    ret TimeError::Io
+  .end
+  ret TimeError::Unexpected
+.end
+
+# -----------------------------------------------------------------------------
+# Duration
+# -----------------------------------------------------------------------------
+
+# Millisecond resolution duration.
+# Convention: Duration is non-negative in public constructors; internal operations
+# may still clamp.
+
+type Duration struct
+  ms: I64
+.end
+
+fn _i64_max() -> I64
+  ret 9223372036854775807
+.end
+
+fn _i64_min() -> I64
+  ret -9223372036854775808
+.end
+
+fn duration_zero() -> Duration
+  let d: Duration
+  set d.ms = 0
+  ret d
+.end
+
+fn duration_ms(ms: I64) -> Duration
+  let d: Duration
+  if ms < 0
+    set d.ms = 0
+    ret d
+  .end
+  set d.ms = ms
+  ret d
+.end
+
+fn duration_secs(secs: I64) -> Duration
+  if secs <= 0
+    ret duration_zero()
+  .end
+
+  # saturating secs*1000
+  let max = _i64_max()
+  if secs > (max / 1000)
+    let d: Duration
+    set d.ms = max
+    ret d
+  .end
+
+  let d: Duration
+  set d.ms = secs * 1000
+  ret d
+.end
+
+# From seconds + nanoseconds (best-effort, rounds down to ms).
+fn duration_parts(secs: I64, nanos: I32) -> Duration
+  if secs < 0
+    ret duration_zero()
+  .end
+
+  let base = duration_secs(secs)
+
+  let add_ms: I64
+  set add_ms = 0
+  if nanos > 0
+    set add_ms = (I64)(nanos / 1000000)
+  .end
+
+  ret duration_saturating_add(base, duration_ms(add_ms))
+.end
+
+fn duration_millis(d: &Duration) -> I64
+  ret d.ms
+.end
+
+fn duration_secs_floor(d: &Duration) -> I64
+  if d.ms <= 0
+    ret 0
+  .end
+  ret d.ms / 1000
+.end
+
+fn duration_is_zero(d: &Duration) -> Bool
+  ret d.ms == 0
+.end
+
+fn duration_cmp(a: &Duration, b: &Duration) -> I32
+  if a.ms < b.ms
+    ret -1
+  .end
+  if a.ms > b.ms
+    ret 1
+  .end
+  ret 0
+.end
+
+fn duration_saturating_add(a: Duration, b: Duration) -> Duration
+  let max = _i64_max()
+
+  let x = a.ms
+  let y = b.ms
+
+  # clamp negatives
+  if x < 0
+    set x = 0
+  .end
+  if y < 0
+    set y = 0
+  .end
+
+  if y > 0 && x > (max - y)
+    let d: Duration
+    set d.ms = max
+    ret d
+  .end
+
+  let d: Duration
+  set d.ms = x + y
+  ret d
+.end
+
+fn duration_saturating_sub(a: Duration, b: Duration) -> Duration
+  let x = a.ms
+  let y = b.ms
+  if x < 0
+    set x = 0
+  .end
+  if y < 0
+    set y = 0
+  .end
+
+  if y >= x
+    ret duration_zero()
+  .end
+
+  let d: Duration
+  set d.ms = x - y
+  ret d
+.end
+
+fn duration_min(a: Duration, b: Duration) -> Duration
+  if a.ms <= b.ms
+    ret a
+  .end
+  ret b
+.end
+
+fn duration_max(a: Duration, b: Duration) -> Duration
+  if a.ms >= b.ms
+    ret a
+  .end
+  ret b
+.end
+
+# Multiply by a small factor (saturating).
+fn duration_mul_u32(d: Duration, k: U32) -> Duration
+  if d.ms <= 0
+    ret duration_zero()
+  .end
+  if k == 0
+    ret duration_zero()
+  .end
+
+  let max = _i64_max()
+  let kk: I64
+  set kk = (I64)k
+
+  if d.ms > (max / kk)
+    let out: Duration
+    set out.ms = max
+    ret out
+  .end
+
+  let out: Duration
+  set out.ms = d.ms * kk
+  ret out
+.end
+
+# Divide by a small factor (floors).
+fn duration_div_u32(d: Duration, k: U32) -> Duration
+  if d.ms <= 0
+    ret duration_zero()
+  .end
+  if k == 0
+    ret duration_zero()
+  .end
+
+  let out: Duration
+  set out.ms = d.ms / (I64)k
+  ret out
+.end
+
+# -----------------------------------------------------------------------------
+# Instant
+# -----------------------------------------------------------------------------
+
+type Instant struct
+  t_ms: I64
+.end
+
+fn instant_from_ms(ms: I64) -> Instant
+  let t: Instant
+  set t.t_ms = ms
+  ret t
+.end
+
+fn instant_now() -> (Bool, TimeError, Instant)
+  let ok: Bool
+  let se: SysError
+  let ms: I64
+
+  (ok, se, ms) = std.sys::now_ms()
+  if !ok
+    ret (false, time_error_from_sys(se), instant_from_ms(0))
+  .end
+
+  ret (true, TimeError::Ok, instant_from_ms(ms))
+.end
+
+fn instant_ms(t: &Instant) -> I64
+  ret t.t_ms
+.end
+
+fn instant_cmp(a: &Instant, b: &Instant) -> I32
+  if a.t_ms < b.t_ms
+    ret -1
+  .end
+  if a.t_ms > b.t_ms
+    ret 1
+  .end
+  ret 0
+.end
+
+fn instant_add(t: Instant, d: Duration) -> Instant
+  let out: Instant
+  set out.t_ms = t.t_ms + d.ms
+  ret out
+.end
+
+fn instant_sub(t: Instant, d: Duration) -> Instant
+  let out: Instant
+  set out.t_ms = t.t_ms - d.ms
+  ret out
+.end
+
+# Elapsed since `start` (clamped to 0).
+fn instant_elapsed(start: Instant) -> (Bool, TimeError, Duration)
+  let ok: Bool
+  let e: TimeError
+  let now: Instant
+
+  (ok, e, now) = instant_now()
+  if !ok
+    ret (false, e, duration_zero())
+  .end
+
+  let dt: I64
+  set dt = now.t_ms - start.t_ms
+  if dt < 0
+    set dt = 0
+  .end
+
+  ret (true, TimeError::Ok, duration_ms(dt))
+.end
+
+# Duration between two instants (clamped to 0).
+fn instant_duration_between(a: Instant, b: Instant) -> Duration
+  let dt = a.t_ms - b.t_ms
+  if dt < 0
+    ret duration_zero()
+  .end
+  ret duration_ms(dt)
+.end
+
+# -----------------------------------------------------------------------------
+# SystemTime
+# -----------------------------------------------------------------------------
+
+# Best-effort "wall clock" time.
+# Representation is milliseconds since an origin defined by the runtime.
+
+type SystemTime struct
+  ms: I64
+.end
+
+fn system_time_from_ms(ms: I64) -> SystemTime
+  let t: SystemTime
+  set t.ms = ms
+  ret t
+.end
+
+fn system_time_unix_epoch() -> SystemTime
+  ret system_time_from_ms(0)
+.end
+
+fn system_time_now() -> (Bool, TimeError, SystemTime)
+  let ok: Bool
+  let se: SysError
+  let ms: I64
+
+  (ok, se, ms) = std.sys::now_ms()
+  if !ok
+    ret (false, time_error_from_sys(se), system_time_from_ms(0))
+  .end
+
+  ret (true, TimeError::Ok, system_time_from_ms(ms))
+.end
+
+fn system_time_ms(t: &SystemTime) -> I64
+  ret t.ms
+.end
+
+fn system_time_cmp(a: &SystemTime, b: &SystemTime) -> I32
+  if a.ms < b.ms
+    ret -1
+  .end
+  if a.ms > b.ms
+    ret 1
+  .end
+  ret 0
+.end
+
+# Duration since `earlier`. If earlier > later, returns Invalid.
+fn system_time_duration_since(later: SystemTime, earlier: SystemTime) -> (Bool, TimeError, Duration)
+  if later.ms < earlier.ms
+    ret (false, TimeError::Invalid, duration_zero())
+  .end
+  ret (true, TimeError::Ok, duration_ms(later.ms - earlier.ms))
+.end
+
+# -----------------------------------------------------------------------------
+# Sleep
+# -----------------------------------------------------------------------------
+
+# Sleep for a duration. Splits into U32 chunks to match sys.sleep_ms.
+fn sleep(d: Duration) -> (Bool, TimeError)
+  let rem: I64
+  set rem = d.ms
+
+  if rem <= 0
+    ret (true, TimeError::Ok)
+  .end
+
+  # U32 max = 0xffffffff
+  let max_chunk: I64
+  set max_chunk = 4294967295
+
+  while rem > 0
+    let chunk: I64
+    if rem > max_chunk
+      set chunk = max_chunk
+    else
+      set chunk = rem
+    .end
+
+    let ok: Bool
+    let se: SysError
+    (ok, se) = std.sys::sleep_ms((U32)chunk)
+    if !ok
+      ret (false, time_error_from_sys(se))
+    .end
+
+    set rem = rem - chunk
+  .end
+
+  ret (true, TimeError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests (scenarios)
+# -----------------------------------------------------------------------------
+
+fn _skip_if_unsupported(ok: Bool, e: TimeError) -> Bool
+  if ok
+    ret false
+  .end
+  if e == TimeError::Unsupported
+    ret true
+  .end
+  do std.runtime::assert(false, "std.time: unexpected error")
+  ret true
+.end
+
+scn test_time_duration_math
+  let a = duration_secs(1)
+  let b = duration_ms(250)
+
+  let c = duration_saturating_add(a, b)
+  do std.runtime::assert(duration_millis(&c) == 1250, "add")
+
+  let d = duration_saturating_sub(c, duration_ms(2000))
+  do std.runtime::assert(duration_is_zero(&d), "sub clamp")
+
+  let e = duration_mul_u32(duration_ms(10), 5)
+  do std.runtime::assert(duration_millis(&e) == 50, "mul")
+
+  let f = duration_div_u32(duration_ms(55), 10)
+  do std.runtime::assert(duration_millis(&f) == 5, "div")
+.end
+
+scn test_time_sleep_0
+  let ok: Bool
+  let e: TimeError
+  (ok, e) = sleep(duration_zero())
+  do std.runtime::assert(ok, "sleep 0")
+.end
+
+scn test_time_instant_monotonic
+  let ok: Bool
+  let e: TimeError
+  let t0: Instant
+  let t1: Instant
+
+  (ok, e, t0) = instant_now()
+  if _skip_if_unsupported(ok, e)
+    ret
+  .end
+
+  (ok, e) = sleep(duration_zero())
+  do std.runtime::assert(ok, "sleep 0")
+
+  (ok, e, t1) = instant_now()
+  do std.runtime::assert(ok, "instant now 2")
+
+  do std.runtime::assert(t1.t_ms >= t0.t_ms, "monotonic")
+.end
+
+scn test_time_instant_elapsed
+  let ok: Bool
+  let e: TimeError
+  let start: Instant
+  let dt: Duration
+
+  (ok, e, start) = instant_now()
+  if _skip_if_unsupported(ok, e)
+    ret
+  .end
+
+  (ok, e, dt) = instant_elapsed(start)
+  do std.runtime::assert(ok, "elapsed")
+  do std.runtime::assert(duration_millis(&dt) >= 0, "elapsed nonneg")
+.end
+
+scn test_time_system_time_since_epoch
+  let ok: Bool
+  let e: TimeError
+  let now: SystemTime
+
+  (ok, e, now) = system_time_now()
+  if _skip_if_unsupported(ok, e)
+    ret
+  .end
+
+  let epoch = system_time_unix_epoch()
+  let dt: Duration
+  (ok, e, dt) = system_time_duration_since(now, epoch)
+  do std.runtime::assert(ok, "since epoch")
+  do std.runtime::assert(duration_millis(&dt) >= 0, "since nonneg")
+.end
+
+# End of std.time

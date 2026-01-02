@@ -1,0 +1,48 @@
+mod cli.progress.bar
+
+use cli.term.output.*
+use cli.ansi.cursor.*
+
+type ProgressBar
+  total: i64
+  cur: i64
+  width: i64
+.end
+
+fn bar_new(total: i64) -> ProgressBar
+  let b: ProgressBar
+  set b.total = total
+  set b.cur = 0
+  set b.width = 30
+  ret b
+.end
+
+fn bar_set(b: &mut ProgressBar, cur: i64) -> void
+  set b.cur = cur
+.end
+
+fn bar_render(b: &ProgressBar) -> str
+  if b.total <= 0
+    ret ""
+  .end
+  let filled: i64 = (b.cur * b.width) / b.total
+  let out: str = "["
+  let i: i64 = 0
+  loop
+    if i >= b.width
+      break
+    .end
+    if i < filled
+      set out = out + "#"
+    else
+      set out = out + "-"
+    .end
+    set i = i + 1
+  .end
+  set out = out + "]"
+  ret out
+.end
+
+fn bar_print(b: &ProgressBar, msg: str) -> void
+  do print(clear_line() + "\r" + bar_render(b) + " " + msg)
+.end

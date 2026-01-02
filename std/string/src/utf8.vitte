@@ -1,0 +1,577 @@
+
+
+# /Users/vincent/Documents/Github/vitte/std/string/src/utf8.vitte
+# -----------------------------------------------------------------------------
+# std/string/utf8
+# -----------------------------------------------------------------------------
+# UTF-8 utilities: validation, decoding/encoding, code point iteration, and
+# safe slicing helpers.
+#
+# Scope
+# - Validate UTF-8 byte sequences.
+# - Decode next codepoint (U32) from a byte offset.
+# - Encode a codepoint into UTF-8 bytes.
+# - Iterate over codepoints and compute char boundaries.
+# - Provide helpers for: is_char_boundary, next_boundary, prev_boundary,
+#   count_codepoints, byte_index_of_nth_cp.
+#
+# Assumptions about std.string
+# - std.string::len(s) -> u64
+# - std.string::byte_at(s, i) -> u8
+# - std.string::slice(s, start, len) -> str
+# - std.string::builder_with_capacity(cap) -> Builder
+# - std.string::builder_push_byte(builder, u8)
+# - std.string::builder_finish(builder) -> str
+#
+# If builder_push_byte does not exist, adapt encode_to_string() wrappers.
+#
+# Blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.string.utf8
+
+use std.runtime
+use std.string
+
+# -----------------------------------------------------------------------------
+# Types
+# -----------------------------------------------------------------------------
+
+type Bool = bool
+
+type U8  = u8
+
+type U16 = u16
+
+type U32 = u32
+
+type U64 = u64
+
+type I32 = i32
+
+type Str = str
+
+# Sentinel for "not found".
+const NPOS: U64 = 0xffffffffffffffff
+
+# Replacement character U+FFFD
+const REPLACEMENT: U32 = 0x0000fffd
+
+# -----------------------------------------------------------------------------
+# Internal helpers
+# -----------------------------------------------------------------------------
+
+fn is_cont(b: U8) -> Bool
+  # 10xxxxxx
+  ret (b & 0xc0) == 0x80
+.end
+
+fn lead_len(b0: U8) -> U64
+  # Return expected byte length from leading byte (1..4) or 0 if invalid.
+  if b0 <= 0x7f
+    ret 1
+  .end
+  if b0 >= 0xc2 && b0 <= 0xdf
+    ret 2
+  .end
+  if b0 >= 0xe0 && b0 <= 0xef
+    ret 3
+  .end
+  if b0 >= 0xf0 && b0 <= 0xf4
+    ret 4
+  .end
+  ret 0
+.end
+
+fn is_surrogate(cp: U32) -> Bool
+  ret cp >= 0xd800 && cp <= 0xdfff
+.end
+
+fn is_valid_scalar(cp: U32) -> Bool
+  # Unicode scalar value: 0..10FFFF excluding surrogates
+  if cp > 0x10ffff
+    ret false
+  .end
+  if is_surrogate(cp)
+    ret false
+  .end
+  ret true
+.end
+
+# -----------------------------------------------------------------------------
+# Validate a UTF-8 string (byte-wise)
+# -----------------------------------------------------------------------------
+
+fn validate(s: Str) -> Bool
+  let n = std.string::len(s)
+  let i: U64
+  set i = 0
+
+  while i < n
+    let b0 = std.string::byte_at(s, i)
+
+    if b0 <= 0x7f
+      set i = i + 1
+      continue
+    .end
+
+    let len = lead_len(b0)
+    if len == 0
+      ret false
+    .end
+
+    if i + len > n
+      ret false
+    .end
+
+    if len == 2
+      let b1 = std.string::byte_at(s, i + 1)
+      if !is_cont(b1)
+        ret false
+      .end
+
+      # decode
+      let cp = (((b0 & 0x1f) as U32) << 6) | ((b1 & 0x3f) as U32)
+      if cp < 0x80
+        ret false
+      .end
+      if !is_valid_scalar(cp)
+        ret false
+      .end
+
+      set i = i + 2
+      continue
+    .end
+
+    if len == 3
+      let b1 = std.string::byte_at(s, i + 1)
+      let b2 = std.string::byte_at(s, i + 2)
+      if !is_cont(b1) || !is_cont(b2)
+        ret false
+      .end
+
+      # Reject overlongs and surrogates via byte constraints.
+      # E0: b1 >= A0
+      if b0 == 0xe0 && b1 < 0xa0
+        ret false
+      .end
+      # ED: b1 <= 9F (exclude surrogates)
+      if b0 == 0xed && b1 > 0x9f
+        ret false
+      .end
+
+      let cp = (((b0 & 0x0f) as U32) << 12) | (((b1 & 0x3f) as U32) << 6) | ((b2 & 0x3f) as U32)
+      if cp < 0x800
+        ret false
+      .end
+      if !is_valid_scalar(cp)
+        ret false
+      .end
+
+      set i = i + 3
+      continue
+    .end
+
+    # len == 4
+    let b1 = std.string::byte_at(s, i + 1)
+    let b2 = std.string::byte_at(s, i + 2)
+    let b3 = std.string::byte_at(s, i + 3)
+    if !is_cont(b1) || !is_cont(b2) || !is_cont(b3)
+      ret false
+    .end
+
+    # F0: b1 >= 90 (no overlong)
+    if b0 == 0xf0 && b1 < 0x90
+      ret false
+    .end
+    # F4: b1 <= 8F (<= 10FFFF)
+    if b0 == 0xf4 && b1 > 0x8f
+      ret false
+    .end
+
+    let cp = (((b0 & 0x07) as U32) << 18) | (((b1 & 0x3f) as U32) << 12) | (((b2 & 0x3f) as U32) << 6) | ((b3 & 0x3f) as U32)
+    if cp < 0x10000
+      ret false
+    .end
+    if !is_valid_scalar(cp)
+      ret false
+    .end
+
+    set i = i + 4
+  .end
+
+  ret true
+.end
+
+# -----------------------------------------------------------------------------
+# Decode next codepoint from byte offset
+# -----------------------------------------------------------------------------
+# Returns (cp, size, ok). If ok=false, cp=U+FFFD and size is best-effort (>=1).
+
+fn decode_next_at(s: Str, offset: U64) -> (U32, U64, Bool)
+  let n = std.string::len(s)
+  if offset >= n
+    ret (0, 0, false)
+  .end
+
+  let b0 = std.string::byte_at(s, offset)
+  if b0 <= 0x7f
+    ret (b0 as U32, 1, true)
+  .end
+
+  let len = lead_len(b0)
+  if len == 0
+    ret (REPLACEMENT, 1, false)
+  .end
+
+  if offset + len > n
+    ret (REPLACEMENT, 1, false)
+  .end
+
+  if len == 2
+    let b1 = std.string::byte_at(s, offset + 1)
+    if !is_cont(b1)
+      ret (REPLACEMENT, 1, false)
+    .end
+    let cp = (((b0 & 0x1f) as U32) << 6) | ((b1 & 0x3f) as U32)
+    if cp < 0x80 || !is_valid_scalar(cp)
+      ret (REPLACEMENT, 1, false)
+    .end
+    ret (cp, 2, true)
+  .end
+
+  if len == 3
+    let b1 = std.string::byte_at(s, offset + 1)
+    let b2 = std.string::byte_at(s, offset + 2)
+    if !is_cont(b1) || !is_cont(b2)
+      ret (REPLACEMENT, 1, false)
+    .end
+    if b0 == 0xe0 && b1 < 0xa0
+      ret (REPLACEMENT, 1, false)
+    .end
+    if b0 == 0xed && b1 > 0x9f
+      ret (REPLACEMENT, 1, false)
+    .end
+    let cp = (((b0 & 0x0f) as U32) << 12) | (((b1 & 0x3f) as U32) << 6) | ((b2 & 0x3f) as U32)
+    if cp < 0x800 || !is_valid_scalar(cp)
+      ret (REPLACEMENT, 1, false)
+    .end
+    ret (cp, 3, true)
+  .end
+
+  # len == 4
+  let b1 = std.string::byte_at(s, offset + 1)
+  let b2 = std.string::byte_at(s, offset + 2)
+  let b3 = std.string::byte_at(s, offset + 3)
+  if !is_cont(b1) || !is_cont(b2) || !is_cont(b3)
+    ret (REPLACEMENT, 1, false)
+  .end
+  if b0 == 0xf0 && b1 < 0x90
+    ret (REPLACEMENT, 1, false)
+  .end
+  if b0 == 0xf4 && b1 > 0x8f
+    ret (REPLACEMENT, 1, false)
+  .end
+  let cp = (((b0 & 0x07) as U32) << 18) | (((b1 & 0x3f) as U32) << 12) | (((b2 & 0x3f) as U32) << 6) | ((b3 & 0x3f) as U32)
+  if cp < 0x10000 || !is_valid_scalar(cp)
+    ret (REPLACEMENT, 1, false)
+  .end
+  ret (cp, 4, true)
+.end
+
+# Decode next codepoint from iterator state.
+# Returns (next_offset, cp, ok).
+
+fn decode_next(s: Str, offset: U64) -> (U64, U32, Bool)
+  let cp: U32
+  let sz: U64
+  let ok: Bool
+  (cp, sz, ok) = decode_next_at(s, offset)
+  if sz == 0
+    ret (offset, cp, false)
+  .end
+  ret (offset + sz, cp, ok)
+.end
+
+# -----------------------------------------------------------------------------
+# Encode codepoint to UTF-8 bytes
+# -----------------------------------------------------------------------------
+# Returns (b0,b1,b2,b3,len,ok). If ok=false, encodes U+FFFD.
+
+fn encode_to_bytes(cp_in: U32) -> (U8, U8, U8, U8, U64, Bool)
+  let cp = cp_in
+  if !is_valid_scalar(cp)
+    set cp = REPLACEMENT
+  .end
+
+  if cp <= 0x7f
+    ret (cp as U8, 0, 0, 0, 1, true)
+  .end
+
+  if cp <= 0x7ff
+    let b0 = (0xc0 | ((cp >> 6) as U8))
+    let b1 = (0x80 | ((cp & 0x3f) as U8))
+    ret (b0, b1, 0, 0, 2, true)
+  .end
+
+  if cp <= 0xffff
+    let b0 = (0xe0 | ((cp >> 12) as U8))
+    let b1 = (0x80 | (((cp >> 6) & 0x3f) as U8))
+    let b2 = (0x80 | ((cp & 0x3f) as U8))
+    ret (b0, b1, b2, 0, 3, true)
+  .end
+
+  let b0 = (0xf0 | ((cp >> 18) as U8))
+  let b1 = (0x80 | (((cp >> 12) & 0x3f) as U8))
+  let b2 = (0x80 | (((cp >> 6) & 0x3f) as U8))
+  let b3 = (0x80 | ((cp & 0x3f) as U8))
+  ret (b0, b1, b2, b3, 4, true)
+.end
+
+# Append UTF-8 encoding of cp to a string Builder.
+
+fn encode_push(b: std.string::Builder, cp: U32) -> std.string::Builder
+  let b0: U8
+  let b1: U8
+  let b2: U8
+  let b3: U8
+  let n: U64
+  let ok: Bool
+  (b0, b1, b2, b3, n, ok) = encode_to_bytes(cp)
+
+  do std.string::builder_push_byte(b, b0)
+  if n >= 2
+    do std.string::builder_push_byte(b, b1)
+  .end
+  if n >= 3
+    do std.string::builder_push_byte(b, b2)
+  .end
+  if n >= 4
+    do std.string::builder_push_byte(b, b3)
+  .end
+
+  ret b
+.end
+
+fn encode_to_string(cp: U32) -> Str
+  let b = std.string::builder_with_capacity(4)
+  let b2 = encode_push(b, cp)
+  ret std.string::builder_finish(b2)
+.end
+
+# -----------------------------------------------------------------------------
+# Char boundary helpers
+# -----------------------------------------------------------------------------
+
+fn is_char_boundary(s: Str, idx: U64) -> Bool
+  let n = std.string::len(s)
+  if idx == 0 || idx == n
+    ret true
+  .end
+  if idx > n
+    ret false
+  .end
+  let b = std.string::byte_at(s, idx)
+  # boundary if not continuation byte
+  ret !is_cont(b)
+.end
+
+fn next_boundary(s: Str, idx: U64) -> U64
+  let n = std.string::len(s)
+  if idx >= n
+    ret n
+  .end
+  let i: U64
+  set i = idx
+  if is_char_boundary(s, i)
+    ret i
+  .end
+  # move forward until boundary
+  while i < n
+    if is_char_boundary(s, i)
+      ret i
+    .end
+    set i = i + 1
+  .end
+  ret n
+.end
+
+fn prev_boundary(s: Str, idx: U64) -> U64
+  let n = std.string::len(s)
+  if idx == 0
+    ret 0
+  .end
+  if idx > n
+    set idx = n
+  .end
+
+  let i: U64
+  set i = idx
+  if is_char_boundary(s, i)
+    ret i
+  .end
+
+  while i > 0
+    set i = i - 1
+    if is_char_boundary(s, i)
+      ret i
+    .end
+  .end
+  ret 0
+.end
+
+# -----------------------------------------------------------------------------
+# Counting / indexing
+# -----------------------------------------------------------------------------
+
+fn count_codepoints(s: Str) -> U64
+  let n = std.string::len(s)
+  let i: U64
+  let c: U64
+  set i = 0
+  set c = 0
+
+  while i < n
+    let cp: U32
+    let sz: U64
+    let ok: Bool
+    (cp, sz, ok) = decode_next_at(s, i)
+    if sz == 0
+      break
+    .end
+    set i = i + sz
+    set c = c + 1
+  .end
+
+  ret c
+.end
+
+# Return byte index of nth codepoint (0-based). If nth==count returns len.
+# On invalid UTF-8, still advances best-effort (replacement size=1).
+
+fn byte_index_of_nth_cp(s: Str, nth: U64) -> U64
+  let n = std.string::len(s)
+  let i: U64
+  let k: U64
+  set i = 0
+  set k = 0
+
+  while i < n
+    if k == nth
+      ret i
+    .end
+
+    let cp: U32
+    let sz: U64
+    let ok: Bool
+    (cp, sz, ok) = decode_next_at(s, i)
+    if sz == 0
+      break
+    .end
+
+    set i = i + sz
+    set k = k + 1
+  .end
+
+  if k == nth
+    ret i
+  .end
+
+  ret NPOS
+.end
+
+# -----------------------------------------------------------------------------
+# Safe slice by codepoint range (start_cp, len_cp)
+# -----------------------------------------------------------------------------
+
+fn slice_by_codepoints(s: Str, start_cp: U64, len_cp: U64) -> Str
+  if len_cp == 0
+    ret ""
+  .end
+
+  let start_b = byte_index_of_nth_cp(s, start_cp)
+  if start_b == NPOS
+    ret ""
+  .end
+
+  let end_cp = start_cp + len_cp
+  let end_b = byte_index_of_nth_cp(s, end_cp)
+  if end_b == NPOS
+    # if end is beyond, slice to end
+    let n = std.string::len(s)
+    ret std.string::slice(s, start_b, n - start_b)
+  .end
+
+  ret std.string::slice(s, start_b, end_b - start_b)
+.end
+
+# -----------------------------------------------------------------------------
+# Tests
+# -----------------------------------------------------------------------------
+
+fn assert_true(b: Bool, msg: Str)
+  do std.runtime::assert(b, msg)
+.end
+
+fn assert_false(b: Bool, msg: Str)
+  do std.runtime::assert(!b, msg)
+.end
+
+fn assert_eq_u64(a: U64, b: U64, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_u32(a: U32, b: U32, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_str(a: Str, b: Str, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+scn test_utf8_validate_ascii
+  do assert_true(validate("hello"), "ascii ok")
+  do assert_eq_u64(count_codepoints("hello"), 5, "cp count")
+.end
+
+scn test_utf8_decode_encode
+  # U+00E9 (é)
+  let s: Str
+  set s = "é"
+  do assert_true(validate(s), "é valid")
+
+  let cp: U32
+  let sz: U64
+  let ok: Bool
+  (cp, sz, ok) = decode_next_at(s, 0)
+  do assert_true(ok, "decode ok")
+  do assert_eq_u32(cp, 0x00e9, "cp é")
+  do assert_eq_u64(sz, 2, "size é")
+
+  let out = encode_to_string(cp)
+  do assert_true(validate(out), "encoded valid")
+  do assert_eq_str(out, s, "encode roundtrip")
+.end
+
+scn test_utf8_boundary
+  let s: Str
+  set s = "aéz"  # bytes: 1 + 2 + 1
+  do assert_true(is_char_boundary(s, 0), "b0")
+  do assert_true(is_char_boundary(s, 1), "after a")
+  do assert_false(is_char_boundary(s, 2), "inside é")
+  do assert_true(is_char_boundary(s, 3), "after é")
+
+  do assert_eq_u64(prev_boundary(s, 2), 1, "prev boundary")
+  do assert_eq_u64(next_boundary(s, 2), 3, "next boundary")
+.end
+
+scn test_utf8_slice_by_codepoints
+  let s: Str
+  set s = "aéz"
+  do assert_eq_str(slice_by_codepoints(s, 0, 1), "a", "slice 0..1")
+  do assert_eq_str(slice_by_codepoints(s, 1, 1), "é", "slice 1..2")
+  do assert_eq_str(slice_by_codepoints(s, 2, 1), "z", "slice 2..3")
+  do assert_eq_str(slice_by_codepoints(s, 0, 3), "aéz", "slice all")
+.end
+
+# End of std.string.utf8

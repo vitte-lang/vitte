@@ -295,7 +295,6 @@ toolchain system
 - `cc` : string (ex: "clang", "gcc")
 - `asm` : string
 - `ld` : string
-- `rust` : string (optionnel)
 - `sysroot` : path/string
 
 ### 8.2 Sélection

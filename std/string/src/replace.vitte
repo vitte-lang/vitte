@@ -1,0 +1,461 @@
+
+
+# /Users/vincent/Documents/Github/vitte/std/string/src/replace
+# -----------------------------------------------------------------------------
+# std/string/replace
+# -----------------------------------------------------------------------------
+# Byte-wise substring search & replace utilities.
+#
+# Scope
+# - Deterministic, allocation-minimal substring replacement.
+# - Works on `str` as a byte sequence (UTF-8 safe as long as the needle/repl
+#   boundaries are also valid UTF-8 boundaries; this module does not validate).
+#
+# Assumptions about std.string
+# - std.string::len(s) -> u64
+# - std.string::byte_at(s, i) -> u8
+# - std.string::slice(s, start, len) -> str
+# - std.string::builder_with_capacity(cap) -> Builder
+# - std.string::builder_push_str(builder, str)
+# - std.string::builder_finish(builder) -> str
+#
+# If your std.string uses different names, adapt only the builder wrappers.
+#
+# Blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.string.replace
+
+use std.runtime
+use std.string
+
+# -----------------------------------------------------------------------------
+# Types
+# -----------------------------------------------------------------------------
+
+type Bool = bool
+
+type U8  = u8
+
+type U32 = u32
+
+type U64 = u64
+
+type I32 = i32
+
+type Str = str
+
+# Builder is an owned, mutable string accumulator.
+# Backed by std.string.
+
+type Builder = std.string::Builder
+
+# Sentinel for not-found indices.
+const NPOS: U64 = 0xffffffffffffffff
+
+# -----------------------------------------------------------------------------
+# Builder wrappers
+# -----------------------------------------------------------------------------
+
+fn b_new(cap: U64) -> Builder
+  ret std.string::builder_with_capacity(cap)
+.end
+
+fn b_push(b: Builder, s: Str) -> Builder
+  do std.string::builder_push_str(b, s)
+  ret b
+.end
+
+fn b_finish(b: Builder) -> Str
+  ret std.string::builder_finish(b)
+.end
+
+# -----------------------------------------------------------------------------
+# Substring search (naive, byte-wise)
+# -----------------------------------------------------------------------------
+
+fn find_sub_from(hay: Str, needle: Str, start: U64) -> U64
+  let nh = std.string::len(hay)
+  let nn = std.string::len(needle)
+
+  if start > nh
+    ret NPOS
+  .end
+
+  if nn == 0
+    # Define: empty needle matches at start.
+    ret start
+  .end
+
+  if nn > nh
+    ret NPOS
+  .end
+
+  let last = nh - nn
+  let i: U64
+  set i = start
+
+  while i <= last
+    # fast path: first byte match
+    if std.string::byte_at(hay, i) == std.string::byte_at(needle, 0)
+      let j: U64
+      set j = 1
+      while j < nn
+        if std.string::byte_at(hay, i + j) != std.string::byte_at(needle, j)
+          break
+        .end
+        set j = j + 1
+      .end
+      if j == nn
+        ret i
+      .end
+    .end
+
+    set i = i + 1
+  .end
+
+  ret NPOS
+.end
+
+fn find_sub(hay: Str, needle: Str) -> U64
+  ret find_sub_from(hay, needle, 0)
+.end
+
+fn rfind_sub(hay: Str, needle: Str) -> U64
+  let nh = std.string::len(hay)
+  let nn = std.string::len(needle)
+
+  if nn == 0
+    # Define: empty needle matches at end.
+    ret nh
+  .end
+
+  if nn > nh
+    ret NPOS
+  .end
+
+  let i: U64
+  set i = nh - nn
+
+  while true
+    # check candidate i
+    if std.string::byte_at(hay, i) == std.string::byte_at(needle, 0)
+      let j: U64
+      set j = 1
+      while j < nn
+        if std.string::byte_at(hay, i + j) != std.string::byte_at(needle, j)
+          break
+        .end
+        set j = j + 1
+      .end
+      if j == nn
+        ret i
+      .end
+    .end
+
+    if i == 0
+      break
+    .end
+    set i = i - 1
+  .end
+
+  ret NPOS
+.end
+
+fn count_sub(hay: Str, needle: Str) -> U64
+  let nn = std.string::len(needle)
+  if nn == 0
+    # defined as 0 to avoid explosive semantics
+    ret 0
+  .end
+
+  let count: U64
+  set count = 0
+
+  let i: U64
+  set i = 0
+
+  while true
+    let p = find_sub_from(hay, needle, i)
+    if p == NPOS
+      break
+    .end
+
+    set count = count + 1
+    set i = p + nn
+  .end
+
+  ret count
+.end
+
+# -----------------------------------------------------------------------------
+# Replace (substring)
+# -----------------------------------------------------------------------------
+
+fn replace_n(hay: Str, needle: Str, repl: Str, limit: U64) -> Str
+  if limit == 0
+    ret hay
+  .end
+
+  let nh = std.string::len(hay)
+  let nn = std.string::len(needle)
+  let nr = std.string::len(repl)
+
+  if nn == 0
+    # Define: do nothing for empty needle.
+    ret hay
+  .end
+
+  # Find up to limit occurrences (non-overlapping).
+  let pos: U64
+  let i: U64
+  let hits: U64
+
+  set i = 0
+  set hits = 0
+
+  while hits < limit
+    set pos = find_sub_from(hay, needle, i)
+    if pos == NPOS
+      break
+    .end
+    set hits = hits + 1
+    set i = pos + nn
+  .end
+
+  if hits == 0
+    ret hay
+  .end
+
+  # Estimate capacity: nh + hits*(nr-nn) (saturating)
+  let cap: U64
+  set cap = nh
+  if nr >= nn
+    # cap += hits*(nr-nn)
+    let delta = nr - nn
+    if delta != 0
+      # overflow-safe
+      if hits > 0 && delta > 0
+        if cap <= 0xffffffffffffffff - (hits * delta)
+          set cap = cap + (hits * delta)
+        else
+          set cap = 0xffffffffffffffff
+        .end
+      .end
+    .end
+  else
+    # cap -= hits*(nn-nr) (cap won't underflow)
+    let delta = nn - nr
+    let sub = hits * delta
+    if cap >= sub
+      set cap = cap - sub
+    else
+      set cap = 0
+    .end
+  .end
+
+  let b = b_new(cap)
+
+  # Second pass: actually build.
+  let written: U64
+  set written = 0
+
+  set i = 0
+  set hits = 0
+
+  while hits < limit
+    set pos = find_sub_from(hay, needle, i)
+    if pos == NPOS
+      break
+    .end
+
+    # append segment [i, pos)
+    if pos > i
+      set b = b_push(b, std.string::slice(hay, i, pos - i))
+    .end
+
+    # append replacement
+    if nr != 0
+      set b = b_push(b, repl)
+    .end
+
+    set hits = hits + 1
+    set i = pos + nn
+  .end
+
+  # append remaining tail
+  if i < nh
+    set b = b_push(b, std.string::slice(hay, i, nh - i))
+  .end
+
+  ret b_finish(b)
+.end
+
+fn replace_all(hay: Str, needle: Str, repl: Str) -> Str
+  ret replace_n(hay, needle, repl, 0xffffffffffffffff)
+.end
+
+fn replace_first(hay: Str, needle: Str, repl: Str) -> Str
+  ret replace_n(hay, needle, repl, 1)
+.end
+
+fn replace_last(hay: Str, needle: Str, repl: Str) -> Str
+  let nh = std.string::len(hay)
+  let nn = std.string::len(needle)
+
+  if nn == 0
+    ret hay
+  .end
+
+  let pos = rfind_sub(hay, needle)
+  if pos == NPOS
+    ret hay
+  .end
+
+  let nr = std.string::len(repl)
+
+  # cap estimate
+  let cap: U64
+  set cap = nh
+  if nr >= nn
+    let delta = nr - nn
+    if cap <= 0xffffffffffffffff - delta
+      set cap = cap + delta
+    else
+      set cap = 0xffffffffffffffff
+    .end
+  else
+    let delta = nn - nr
+    if cap >= delta
+      set cap = cap - delta
+    else
+      set cap = 0
+    .end
+  .end
+
+  let b = b_new(cap)
+
+  # prefix
+  if pos > 0
+    set b = b_push(b, std.string::slice(hay, 0, pos))
+  .end
+
+  # replacement
+  if nr != 0
+    set b = b_push(b, repl)
+  .end
+
+  # suffix
+  let tail = pos + nn
+  if tail < nh
+    set b = b_push(b, std.string::slice(hay, tail, nh - tail))
+  .end
+
+  ret b_finish(b)
+.end
+
+# -----------------------------------------------------------------------------
+# Replace (single byte)
+# -----------------------------------------------------------------------------
+
+fn replace_byte_n(hay: Str, needle: U32, repl: U32, limit: U64) -> Str
+  if limit == 0
+    ret hay
+  .end
+
+  let nh = std.string::len(hay)
+  if nh == 0
+    ret hay
+  .end
+
+  let hits: U64
+  set hits = 0
+
+  let i: U64
+  set i = 0
+
+  while i < nh && hits < limit
+    if (std.string::byte_at(hay, i) as U32) == needle
+      set hits = hits + 1
+    .end
+    set i = i + 1
+  .end
+
+  if hits == 0
+    ret hay
+  .end
+
+  let b = b_new(nh)
+
+  set i = 0
+  set hits = 0
+
+  while i < nh
+    let c = std.string::byte_at(hay, i) as U32
+    if c == needle && hits < limit
+      # push repl as a 1-byte string
+      # Expect std.string::from_byte
+      set b = b_push(b, std.string::from_byte(repl as U8))
+      set hits = hits + 1
+    else
+      set b = b_push(b, std.string::from_byte(c as U8))
+    .end
+    set i = i + 1
+  .end
+
+  ret b_finish(b)
+.end
+
+fn replace_byte_all(hay: Str, needle: U32, repl: U32) -> Str
+  ret replace_byte_n(hay, needle, repl, 0xffffffffffffffff)
+.end
+
+# -----------------------------------------------------------------------------
+# Internal asserts for tests
+# -----------------------------------------------------------------------------
+
+fn assert_true(b: Bool, msg: Str)
+  do std.runtime::assert(b, msg)
+.end
+
+fn assert_eq_str(a: Str, b: Str, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_eq_u64(a: U64, b: U64, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+# -----------------------------------------------------------------------------
+# Tests
+# -----------------------------------------------------------------------------
+
+scn test_replace_find
+  do assert_eq_u64(find_sub("abcabc", "abc"), 0, "find_sub")
+  do assert_eq_u64(find_sub_from("abcabc", "abc", 1), 3, "find_sub_from")
+  do assert_eq_u64(find_sub("abc", "z"), NPOS, "find_sub miss")
+  do assert_eq_u64(rfind_sub("abcabc", "abc"), 3, "rfind_sub")
+  do assert_eq_u64(count_sub("aaaa", "aa"), 2, "count_sub non-overlap")
+.end
+
+scn test_replace_substring
+  do assert_eq_str(replace_all("a-b-c", "-", ":"), "a:b:c", "replace_all")
+  do assert_eq_str(replace_first("a-b-c", "-", ":"), "a:b-c", "replace_first")
+  do assert_eq_str(replace_last("a-b-c", "-", ":"), "a-b:c", "replace_last")
+  do assert_eq_str(replace_n("a-b-c", "-", ":", 2), "a:b:c", "replace_n=2")
+  do assert_eq_str(replace_n("a-b-c", "-", ":", 1), "a:b-c", "replace_n=1")
+  do assert_eq_str(replace_n("a-b-c", "-", ":", 0), "a-b-c", "replace_n=0")
+
+  # no match -> same
+  do assert_eq_str(replace_all("abc", "z", "x"), "abc", "no match")
+
+  # needle empty -> no-op (defined)
+  do assert_eq_str(replace_all("abc", "", "x"), "abc", "empty needle")
+.end
+
+scn test_replace_byte
+  do assert_eq_str(replace_byte_all("a-b-c", 0x2d, 0x3a), "a:b:c", "replace_byte_all")
+  do assert_eq_str(replace_byte_n("a-b-c", 0x2d, 0x3a, 1), "a:b-c", "replace_byte_n")
+.end
+
+# End of std.string.replace

@@ -1,3 +1,0 @@
-# module_index
-
-Stub.

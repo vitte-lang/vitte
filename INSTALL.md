@@ -75,9 +75,6 @@ brew install vitte
 
 # AUR (Arch Linux)
 yay -S vitte
-
-# Cargo (Rust ecosystem)
-cargo install vittec
 ```
 
 ## Verification

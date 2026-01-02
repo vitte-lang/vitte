@@ -1,0 +1,53 @@
+mod algo.graph.bridges
+
+use algo.graph.graph.Graph
+
+fn bridges(g: &Graph) -> [(i64, i64)]
+  let tin: [i64] = [-1; g.n]
+  let low: [i64] = [0; g.n]
+  let timer: i64 = 0
+  let out: [(i64, i64)] = []
+
+  let i: i64 = 0
+  loop
+    if i >= g.n
+      ret out
+    .end
+    if tin[i] == -1
+      do dfs(g, i, -1, &mut tin, &mut low, &mut timer, &mut out)
+    .end
+    set i = i + 1
+  .end
+.end
+
+fn dfs(g: &Graph, v: i64, p: i64, tin: &mut [i64], low: &mut [i64], timer: &mut i64, out: &mut [(i64, i64)]) -> void
+  set tin[v] = *timer
+  set low[v] = *timer
+  set *timer = *timer + 1
+
+  let i: i64 = 0
+  loop
+    if i >= g.adj[v].len
+      ret
+    .end
+    let to: i64 = g.adj[v][i].to
+    if to == p
+      set i = i + 1
+      continue
+    .end
+    if tin[to] != -1
+      if tin[to] < low[v]
+        set low[v] = tin[to]
+      .end
+    else
+      do dfs(g, to, v, tin, low, timer, out)
+      if low[to] < low[v]
+        set low[v] = low[to]
+      .end
+      if low[to] > tin[v]
+        do out.push((v, to))
+      .end
+    .end
+    set i = i + 1
+  .end
+.end

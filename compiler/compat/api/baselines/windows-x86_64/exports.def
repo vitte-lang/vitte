@@ -1,0 +1,209 @@
+; exports.def (windows-x86_64)
+;
+; Canonical exported symbol baseline for the public Vitte C API on Windows.
+;
+; Notes
+; - This file is used by compat checks to ensure the exported surface stays stable.
+; - Keep names C-style (no C++ mangling). All exports must use extern "C" in code.
+; - If you add/remove/rename exports, you must update the matching API surface
+;   reports under compiler/compat/api/reports/.
+;
+; Naming conventions
+; - vitte_*        : public stable API
+; - vitte_diag_*   : diagnostics subsystem
+; - vitte_fs_*     : virtual/host filesystem abstraction
+; - vitte_vm_*     : runtime VM API
+; - vitte_bc_*     : bytecode reader/writer/disassembler
+; - vitte_ir_*     : IR utilities (stable subset)
+;
+
+LIBRARY "vitte"
+
+EXPORTS
+
+; -----------------------------------------------------------------------------
+; Version / build info
+; -----------------------------------------------------------------------------
+  vitte_version_num
+  vitte_version_str
+  vitte_version_full_str
+  vitte_build_git_sha
+  vitte_build_date
+  vitte_build_time
+  vitte_build_compiler
+  vitte_build_compiler_version
+  vitte_version_info_get
+
+; -----------------------------------------------------------------------------
+; Library lifecycle
+; -----------------------------------------------------------------------------
+  vitte_init
+  vitte_shutdown
+  vitte_last_error_code
+  vitte_last_error_message
+  vitte_set_panic_hook
+
+; -----------------------------------------------------------------------------
+; Memory (stable allocator hooks)
+; -----------------------------------------------------------------------------
+  vitte_alloc
+  vitte_realloc
+  vitte_free
+  vitte_alloc_aligned
+  vitte_free_aligned
+  vitte_set_allocator
+  vitte_get_allocator
+
+; -----------------------------------------------------------------------------
+; Diagnostics
+; -----------------------------------------------------------------------------
+  vitte_diag_create
+  vitte_diag_destroy
+  vitte_diag_reset
+  vitte_diag_has_errors
+  vitte_diag_error_count
+  vitte_diag_warning_count
+  vitte_diag_note_count
+  vitte_diag_push
+  vitte_diag_pushf
+  vitte_diag_emit_json
+  vitte_diag_emit_text
+  vitte_diag_set_color
+  vitte_diag_set_paths_base
+
+; -----------------------------------------------------------------------------
+; Strings / buffers (stable helpers)
+; -----------------------------------------------------------------------------
+  vitte_str_free
+  vitte_buf_create
+  vitte_buf_destroy
+  vitte_buf_reset
+  vitte_buf_reserve
+  vitte_buf_append
+  vitte_buf_appendf
+  vitte_buf_data
+  vitte_buf_len
+
+; -----------------------------------------------------------------------------
+; Filesystem / VFS
+; -----------------------------------------------------------------------------
+  vitte_fs_create_host
+  vitte_fs_create_mem
+  vitte_fs_destroy
+  vitte_fs_read_file
+  vitte_fs_write_file
+  vitte_fs_exists
+  vitte_fs_mkdirs
+  vitte_fs_list_dir
+  vitte_fs_realpath
+  vitte_fs_set_cwd
+  vitte_fs_get_cwd
+
+; -----------------------------------------------------------------------------
+; Source manager
+; -----------------------------------------------------------------------------
+  vitte_src_create
+  vitte_src_destroy
+  vitte_src_add_file
+  vitte_src_add_string
+  vitte_src_get_text
+  vitte_src_get_path
+  vitte_src_get_line_col
+
+; -----------------------------------------------------------------------------
+; Lexer / Parser (stable subset)
+; -----------------------------------------------------------------------------
+  vitte_lex_tokens
+  vitte_tokens_free
+  vitte_parse_core
+  vitte_parse_phrase
+  vitte_ast_free
+  vitte_ast_hash
+
+; -----------------------------------------------------------------------------
+; IR (stable subset)
+; -----------------------------------------------------------------------------
+  vitte_ir_from_ast
+  vitte_ir_free
+  vitte_ir_verify
+  vitte_ir_hash
+  vitte_ir_emit_text
+  vitte_ir_emit_json
+
+; -----------------------------------------------------------------------------
+; Lowering / Sema (stable subset)
+; -----------------------------------------------------------------------------
+  vitte_sema_create
+  vitte_sema_destroy
+  vitte_sema_check
+  vitte_lower_to_bc
+  vitte_lower_to_c
+
+; -----------------------------------------------------------------------------
+; Bytecode
+; -----------------------------------------------------------------------------
+  vitte_bc_free
+  vitte_bc_hash
+  vitte_bc_emit_text
+  vitte_bc_emit_json
+  vitte_bc_disasm_text
+
+; -----------------------------------------------------------------------------
+; Toolchain / build driver (stable subset)
+; -----------------------------------------------------------------------------
+  vitte_driver_create
+  vitte_driver_destroy
+  vitte_driver_set_fs
+  vitte_driver_set_diag
+  vitte_driver_set_target_triple
+  vitte_driver_set_profile
+  vitte_driver_add_define
+  vitte_driver_add_include
+  vitte_driver_add_input
+  vitte_driver_set_output
+  vitte_driver_compile
+  vitte_driver_compile_to_bc
+  vitte_driver_compile_to_c
+
+; -----------------------------------------------------------------------------
+; Runtime VM (stable public runtime API)
+; -----------------------------------------------------------------------------
+  vitte_vm_create
+  vitte_vm_destroy
+  vitte_vm_reset
+  vitte_vm_set_diag
+  vitte_vm_load_bc
+  vitte_vm_run
+  vitte_vm_call
+  vitte_vm_stack_trace
+
+; Values
+  vitte_val_is_null
+  vitte_val_is_bool
+  vitte_val_is_i64
+  vitte_val_is_f64
+  vitte_val_is_str
+  vitte_val_is_bytes
+  vitte_val_is_obj
+  vitte_val_bool
+  vitte_val_i64
+  vitte_val_f64
+  vitte_val_str
+  vitte_val_bytes
+  vitte_val_obj
+  vitte_val_to_string
+  vitte_val_free
+
+; -----------------------------------------------------------------------------
+; FFI bridge helpers
+; -----------------------------------------------------------------------------
+  vitte_ffi_register_host_fn
+  vitte_ffi_unregister_host_fn
+  vitte_ffi_list_host_fns
+
+; -----------------------------------------------------------------------------
+; Stability / ABI markers
+; -----------------------------------------------------------------------------
+  vitte_api_surface_version
+  vitte_api_abi_version
+  vitte_api_feature_flags

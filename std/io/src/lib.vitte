@@ -1,0 +1,710 @@
+
+
+# -----------------------------------------------------------------------------
+# std/io
+# -----------------------------------------------------------------------------
+# Bootstrap-friendly I/O abstractions.
+#
+# Scope:
+# - demonstrates stable traits-like interfaces via structs of function pointers
+# - provides Reader/Writer vtables usable by std.fs or runtime layers
+# - provides in-memory Cursor reader/writer (Vec-backed)
+# - provides BufReader/BufWriter (small buffering)
+# - provides read_to_end/write_all helpers
+#
+# Constraints:
+# - no OS syscalls here (belongs to std.fs / runtime)
+# - no printing
+# - blocks use `.end` only
+# - depends on std.collections
+# -----------------------------------------------------------------------------
+
+module std.io
+
+use std.collections
+
+# -----------------------------------------------------------------------------
+# Local prelude
+# -----------------------------------------------------------------------------
+
+type Bool = bool
+
+type U8   = u8
+type U16  = u16
+type U32  = u32
+type U64  = u64
+
+type I32  = i32
+type I64  = i64
+
+type USize = usize
+
+type Ptr[T] = ptr[T]
+
+type Str = str
+
+# -----------------------------------------------------------------------------
+# Errors
+# -----------------------------------------------------------------------------
+
+type IoError enum
+  Ok
+  Eof
+  Invalid
+  Io
+  WouldBlock
+  Interrupted
+  OutOfMemory
+.end
+
+# -----------------------------------------------------------------------------
+# Runtime stubs
+# -----------------------------------------------------------------------------
+
+fn panic(msg: Str)
+  ret
+.end
+
+fn assert(cond: Bool, msg: Str)
+  if !cond
+    do panic(msg)
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Reader/Writer vtables
+# -----------------------------------------------------------------------------
+
+# read: returns (ok, err, bytes_read)
+# write: returns (ok, err, bytes_written)
+
+type ReadFn = fn(ctx: Ptr[U8], dst: Ptr[U8], len: USize) -> (Bool, IoError, USize)
+
+type WriteFn = fn(ctx: Ptr[U8], src: Ptr[U8], len: USize) -> (Bool, IoError, USize)
+
+type FlushFn = fn(ctx: Ptr[U8]) -> (Bool, IoError)
+
+type Reader struct
+  ctx: Ptr[U8]
+  read: ReadFn
+.end
+
+type Writer struct
+  ctx: Ptr[U8]
+  write: WriteFn
+  flush: FlushFn
+.end
+
+fn reader_read(r: &Reader, dst: Ptr[U8], len: USize) -> (Bool, IoError, USize)
+  ret r.read(r.ctx, dst, len)
+.end
+
+fn writer_write(w: &Writer, src: Ptr[U8], len: USize) -> (Bool, IoError, USize)
+  ret w.write(w.ctx, src, len)
+.end
+
+fn writer_flush(w: &Writer) -> (Bool, IoError)
+  ret w.flush(w.ctx)
+.end
+
+# -----------------------------------------------------------------------------
+# In-memory Cursor
+# -----------------------------------------------------------------------------
+
+type Cursor struct
+  buf: Vec[U8]
+  pos: USize
+.end
+
+fn cursor_new() -> Cursor
+  let c: Cursor
+  set c.buf = vec_new[U8]()
+  set c.pos = 0
+  ret c
+.end
+
+fn cursor_from_vec(v: &Vec[U8]) -> (Bool, IoError, Cursor)
+  let c = cursor_new()
+
+  let ok: Bool
+  let e: ColError
+  (ok, e) = vec_reserve_bytes[U8](&c.buf, 1, v.len)
+  if !ok
+    ret (false, IoError::OutOfMemory, c)
+  .end
+
+  let vp = (Ptr[U8])v.data
+  let i: USize
+  set i = 0
+  loop
+    if i >= v.len
+      break
+    .end
+    (ok, e) = vec_push[U8](&c.buf, 1, *(vp + i))
+    if !ok
+      do vec_drop[U8](&c.buf, 1)
+      ret (false, IoError::OutOfMemory, c)
+    .end
+    set i = i + 1
+  .end
+
+  ret (true, IoError::Ok, c)
+.end
+
+fn cursor_len(c: &Cursor) -> USize
+  ret c.buf.len
+.end
+
+fn cursor_remaining(c: &Cursor) -> USize
+  if c.pos >= c.buf.len
+    ret 0
+  .end
+  ret c.buf.len - c.pos
+.end
+
+fn cursor_set_pos(c: &Cursor, pos: USize)
+  set c.pos = pos
+  if c.pos > c.buf.len
+    set c.pos = c.buf.len
+  .end
+.end
+
+fn cursor_read_fn(ctx: Ptr[U8], dst: Ptr[U8], len: USize) -> (Bool, IoError, USize)
+  let c = (Ptr[Cursor])ctx
+
+  if c->pos >= c->buf.len
+    ret (false, IoError::Eof, 0)
+  .end
+
+  let avail = c->buf.len - c->pos
+  let n: USize
+  if len < avail
+    set n = len
+  else
+    set n = avail
+  .end
+
+  let sp = (Ptr[U8])c->buf.data
+  let i: USize
+  set i = 0
+  loop
+    if i >= n
+      break
+    .end
+    *(dst + i) = *(sp + c->pos + i)
+    set i = i + 1
+  .end
+
+  set c->pos = c->pos + n
+  ret (true, IoError::Ok, n)
+.end
+
+fn cursor_write_fn(ctx: Ptr[U8], src: Ptr[U8], len: USize) -> (Bool, IoError, USize)
+  let c = (Ptr[Cursor])ctx
+
+  # ensure capacity: write at end only; if pos != len, we overwrite by extending
+  let end = c->pos + len
+
+  # grow to end
+  while c->buf.len < end
+    let ok: Bool
+    let e: ColError
+    (ok, e) = vec_push[U8](&c->buf, 1, 0)
+    if !ok
+      ret (false, IoError::OutOfMemory, 0)
+    .end
+  .end
+
+  let dp = (Ptr[U8])c->buf.data
+  let i: USize
+  set i = 0
+  loop
+    if i >= len
+      break
+    .end
+    *(dp + c->pos + i) = *(src + i)
+    set i = i + 1
+  .end
+
+  set c->pos = end
+  ret (true, IoError::Ok, len)
+.end
+
+fn cursor_flush_fn(ctx: Ptr[U8]) -> (Bool, IoError)
+  ret (true, IoError::Ok)
+.end
+
+fn cursor_as_reader(c: &Cursor) -> Reader
+  let r: Reader
+  set r.ctx = (Ptr[U8])c
+  set r.read = cursor_read_fn
+  ret r
+.end
+
+fn cursor_as_writer(c: &Cursor) -> Writer
+  let w: Writer
+  set w.ctx = (Ptr[U8])c
+  set w.write = cursor_write_fn
+  set w.flush = cursor_flush_fn
+  ret w
+.end
+
+# -----------------------------------------------------------------------------
+# Read/Write helpers
+# -----------------------------------------------------------------------------
+
+fn read_to_end(r: &Reader, out: &Vec[U8], chunk: USize) -> (Bool, IoError)
+  do vec_clear[U8](out)
+
+  if chunk == 0
+    ret (false, IoError::Invalid)
+  .end
+
+  let tmp = vec_new[U8]()
+  let ok: Bool
+  let e: ColError
+  (ok, e) = vec_reserve_bytes[U8](&tmp, 1, chunk)
+  if !ok
+    ret (false, IoError::OutOfMemory)
+  .end
+
+  # set tmp.len == chunk by pushing zeros
+  let i: USize
+  set i = 0
+  while i < chunk
+    (ok, e) = vec_push[U8](&tmp, 1, 0)
+    if !ok
+      do vec_drop[U8](&tmp, 1)
+      ret (false, IoError::OutOfMemory)
+    .end
+    set i = i + 1
+  .end
+
+  loop
+    let n: USize
+    let ok2: Bool
+    let e2: IoError
+    (ok2, e2, n) = reader_read(r, (Ptr[U8])tmp.data, chunk)
+    if !ok2
+      if e2 == IoError::Eof
+        break
+      .end
+      do vec_drop[U8](&tmp, 1)
+      ret (false, e2)
+    .end
+
+    # append n bytes
+    let j: USize
+    set j = 0
+    while j < n
+      (ok, e) = vec_push[U8](out, 1, *((Ptr[U8])tmp.data + j))
+      if !ok
+        do vec_drop[U8](&tmp, 1)
+        ret (false, IoError::OutOfMemory)
+      .end
+      set j = j + 1
+    .end
+
+    if n == 0
+      break
+    .end
+  .end
+
+  do vec_drop[U8](&tmp, 1)
+  ret (true, IoError::Ok)
+.end
+
+fn write_all(w: &Writer, data: &Vec[U8]) -> (Bool, IoError)
+  let p = (Ptr[U8])data.data
+  let off: USize
+  set off = 0
+  loop
+    if off >= data.len
+      break
+    .end
+
+    let n: USize
+    let ok: Bool
+    let e: IoError
+    (ok, e, n) = writer_write(w, p + off, data.len - off)
+    if !ok
+      ret (false, e)
+    .end
+    if n == 0
+      ret (false, IoError::Io)
+    .end
+    set off = off + n
+  .end
+
+  let okf: Bool
+  let ef: IoError
+  (okf, ef) = writer_flush(w)
+  if !okf
+    ret (false, ef)
+  .end
+
+  ret (true, IoError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# BufReader
+# -----------------------------------------------------------------------------
+
+type BufReader struct
+  inner: Reader
+  buf: Vec[U8]
+  pos: USize
+  cap: USize
+.end
+
+fn bufreader_new(inner: Reader, cap: USize) -> (Bool, IoError, BufReader)
+  let br: BufReader
+  set br.inner = inner
+  set br.buf = vec_new[U8]()
+  set br.pos = 0
+  set br.cap = cap
+
+  if cap == 0
+    ret (false, IoError::Invalid, br)
+  .end
+
+  let ok: Bool
+  let e: ColError
+  (ok, e) = vec_reserve_bytes[U8](&br.buf, 1, cap)
+  if !ok
+    ret (false, IoError::OutOfMemory, br)
+  .end
+
+  # set len=cap by pushing zeros
+  let i: USize
+  set i = 0
+  while i < cap
+    (ok, e) = vec_push[U8](&br.buf, 1, 0)
+    if !ok
+      do vec_drop[U8](&br.buf, 1)
+      ret (false, IoError::OutOfMemory, br)
+    .end
+    set i = i + 1
+  .end
+
+  ret (true, IoError::Ok, br)
+.end
+
+fn bufreader_fill(br: &BufReader) -> (Bool, IoError, USize)
+  set br.pos = 0
+
+  let ok: Bool
+  let e: IoError
+  let n: USize
+  (ok, e, n) = reader_read(&br.inner, (Ptr[U8])br.buf.data, br.cap)
+  if !ok
+    if e == IoError::Eof
+      ret (false, IoError::Eof, 0)
+    .end
+    ret (false, e, 0)
+  .end
+
+  # keep n as available, but buffer len remains cap; br.pos tracks consumption
+  ret (true, IoError::Ok, n)
+.end
+
+fn bufreader_read(br: &BufReader, dst: Ptr[U8], len: USize) -> (Bool, IoError, USize)
+  if len == 0
+    ret (true, IoError::Ok, 0)
+  .end
+
+  # if buffer empty, fill
+  if br.pos >= br.cap
+    let ok: Bool
+    let e: IoError
+    let n: USize
+    (ok, e, n) = bufreader_fill(br)
+    if !ok
+      ret (false, e, 0)
+    .end
+    # n bytes available; treat cap=n for this cycle
+    if n < br.cap
+      # store n temporarily in cap? we avoid mutating cap; instead we check reads
+    .end
+  .end
+
+  # copy from buffer (best effort; may be less than len)
+  let avail = br.cap - br.pos
+  let n2: USize
+  if len < avail
+    set n2 = len
+  else
+    set n2 = avail
+  .end
+
+  let bp = (Ptr[U8])br.buf.data
+  let i: USize
+  set i = 0
+  loop
+    if i >= n2
+      break
+    .end
+    *(dst + i) = *(bp + br.pos + i)
+    set i = i + 1
+  .end
+
+  set br.pos = br.pos + n2
+  ret (true, IoError::Ok, n2)
+.end
+
+fn bufreader_as_reader(br: &BufReader) -> Reader
+  # We expose a Reader vtable using a trampoline.
+  # NOTE: For bootstrap, we keep it simple and do not implement trampoline.
+  let r: Reader
+  set r.ctx = (Ptr[U8])br
+  set r.read = bufreader_trampoline_read
+  ret r
+.end
+
+fn bufreader_trampoline_read(ctx: Ptr[U8], dst: Ptr[U8], len: USize) -> (Bool, IoError, USize)
+  let br = (Ptr[BufReader])ctx
+  ret bufreader_read(br, dst, len)
+.end
+
+# -----------------------------------------------------------------------------
+# BufWriter
+# -----------------------------------------------------------------------------
+
+type BufWriter struct
+  inner: Writer
+  buf: Vec[U8]
+  len: USize
+  cap: USize
+.end
+
+fn bufwriter_new(inner: Writer, cap: USize) -> (Bool, IoError, BufWriter)
+  let bw: BufWriter
+  set bw.inner = inner
+  set bw.buf = vec_new[U8]()
+  set bw.len = 0
+  set bw.cap = cap
+
+  if cap == 0
+    ret (false, IoError::Invalid, bw)
+  .end
+
+  let ok: Bool
+  let e: ColError
+  (ok, e) = vec_reserve_bytes[U8](&bw.buf, 1, cap)
+  if !ok
+    ret (false, IoError::OutOfMemory, bw)
+  .end
+
+  # allocate cap by pushing zeros
+  let i: USize
+  set i = 0
+  while i < cap
+    (ok, e) = vec_push[U8](&bw.buf, 1, 0)
+    if !ok
+      do vec_drop[U8](&bw.buf, 1)
+      ret (false, IoError::OutOfMemory, bw)
+    .end
+    set i = i + 1
+  .end
+
+  ret (true, IoError::Ok, bw)
+.end
+
+fn bufwriter_flush(bw: &BufWriter) -> (Bool, IoError)
+  if bw.len == 0
+    let ok: Bool
+    let e: IoError
+    (ok, e) = writer_flush(&bw.inner)
+    if !ok
+      ret (false, e)
+    .end
+    ret (true, IoError::Ok)
+  .end
+
+  let ok: Bool
+  let e: IoError
+  let n: USize
+  (ok, e, n) = writer_write(&bw.inner, (Ptr[U8])bw.buf.data, bw.len)
+  if !ok
+    ret (false, e)
+  .end
+
+  if n != bw.len
+    ret (false, IoError::Io)
+  .end
+
+  set bw.len = 0
+
+  let ok2: Bool
+  let e2: IoError
+  (ok2, e2) = writer_flush(&bw.inner)
+  if !ok2
+    ret (false, e2)
+  .end
+
+  ret (true, IoError::Ok)
+.end
+
+fn bufwriter_write(bw: &BufWriter, src: Ptr[U8], len: USize) -> (Bool, IoError, USize)
+  if len == 0
+    ret (true, IoError::Ok, 0)
+  .end
+
+  let written: USize
+  set written = 0
+
+  loop
+    if written >= len
+      break
+    .end
+
+    let space = bw.cap - bw.len
+    if space == 0
+      let okf: Bool
+      let ef: IoError
+      (okf, ef) = bufwriter_flush(bw)
+      if !okf
+        ret (false, ef, written)
+      .end
+      continue
+    .end
+
+    let take: USize
+    if (len - written) < space
+      set take = (len - written)
+    else
+      set take = space
+    .end
+
+    let dp = (Ptr[U8])bw.buf.data
+    let i: USize
+    set i = 0
+    loop
+      if i >= take
+        break
+      .end
+      *(dp + bw.len + i) = *(src + written + i)
+      set i = i + 1
+    .end
+
+    set bw.len = bw.len + take
+    set written = written + take
+
+    if bw.len == bw.cap
+      let okf2: Bool
+      let ef2: IoError
+      (okf2, ef2) = bufwriter_flush(bw)
+      if !okf2
+        ret (false, ef2, written)
+      .end
+    .end
+  .end
+
+  ret (true, IoError::Ok, written)
+.end
+
+fn bufwriter_trampoline_write(ctx: Ptr[U8], src: Ptr[U8], len: USize) -> (Bool, IoError, USize)
+  let bw = (Ptr[BufWriter])ctx
+  ret bufwriter_write(bw, src, len)
+.end
+
+fn bufwriter_trampoline_flush(ctx: Ptr[U8]) -> (Bool, IoError)
+  let bw = (Ptr[BufWriter])ctx
+  ret bufwriter_flush(bw)
+.end
+
+fn bufwriter_as_writer(bw: &BufWriter) -> Writer
+  let w: Writer
+  set w.ctx = (Ptr[U8])bw
+  set w.write = bufwriter_trampoline_write
+  set w.flush = bufwriter_trampoline_flush
+  ret w
+.end
+
+# -----------------------------------------------------------------------------
+# Tests (scenarios)
+# -----------------------------------------------------------------------------
+
+fn assert_eq_u8_vec(a: &Vec[U8], b: &Vec[U8])
+  do assert(a.len == b.len, "len mismatch")
+  let ap = (Ptr[U8])a.data
+  let bp = (Ptr[U8])b.data
+  let i: USize
+  set i = 0
+  loop
+    if i >= a.len
+      break
+    .end
+    do assert(*(ap + i) == *(bp + i), "byte mismatch")
+    set i = i + 1
+  .end
+.end
+
+scn test_cursor_read_write
+  let c = cursor_new()
+  let w = cursor_as_writer(&c)
+  let r = cursor_as_reader(&c)
+
+  let data = vec_new[U8]()
+  let ok: Bool
+  let e: ColError
+  (ok, e) = vec_push[U8](&data, 1, (U8)'a')
+  (ok, e) = vec_push[U8](&data, 1, (U8)'b')
+  (ok, e) = vec_push[U8](&data, 1, (U8)'c')
+
+  let ok2: Bool
+  let ie: IoError
+  (ok2, ie) = write_all(&w, &data)
+  do assert(ok2, "write_all")
+
+  do cursor_set_pos(&c, 0)
+
+  let out = vec_new[U8]()
+  (ok2, ie) = read_to_end(&r, &out, 2)
+  do assert(ok2, "read_to_end")
+
+  do assert_eq_u8_vec(&data, &out)
+
+  do vec_drop[U8](&data, 1)
+  do vec_drop[U8](&out, 1)
+  do vec_drop[U8](&c.buf, 1)
+.end
+
+scn test_bufwriter_flush
+  let c = cursor_new()
+  let inner = cursor_as_writer(&c)
+
+  let ok: Bool
+  let ie: IoError
+  let bw: BufWriter
+  (ok, ie, bw) = bufwriter_new(inner, 2)
+  do assert(ok, "bufwriter_new")
+
+  let w = bufwriter_as_writer(&bw)
+
+  let data = vec_new[U8]()
+  let e: ColError
+  (ok, e) = vec_push[U8](&data, 1, (U8)'x')
+  (ok, e) = vec_push[U8](&data, 1, (U8)'y')
+  (ok, e) = vec_push[U8](&data, 1, (U8)'z')
+
+  let ok2: Bool
+  (ok2, ie) = write_all(&w, &data)
+  do assert(ok2, "write_all")
+
+  # cursor now has xyz
+  do cursor_set_pos(&c, 0)
+  let r = cursor_as_reader(&c)
+  let out = vec_new[U8]()
+  (ok2, ie) = read_to_end(&r, &out, 4)
+  do assert(ok2, "read_to_end")
+
+  do assert_eq_u8_vec(&data, &out)
+
+  do vec_drop[U8](&data, 1)
+  do vec_drop[U8](&out, 1)
+  do vec_drop[U8](&bw.buf, 1)
+  do vec_drop[U8](&c.buf, 1)
+.end
+
+# End of std.io

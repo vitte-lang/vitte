@@ -1,0 +1,217 @@
+# /Users/vincent/Documents/Github/vitte/std/cli/term/src/tty.vitte
+# -----------------------------------------------------------------------------
+# std/cli/term/tty
+# -----------------------------------------------------------------------------
+# TTY / terminal capability facade (platform abstraction).
+#
+# Goals:
+# - Provide a stable API for:
+#     * is_tty(fd)
+#     * size (cols/rows)
+#     * read/write handles (opaque ids)
+#     * flush
+# - Bootstrap-friendly: no heavy deps; real impl delegated to PAL.
+#
+# Notes:
+# - This module is a facade. Real OS calls live in std.pal.* and should be
+#   wired in later. Stubs are safe no-ops returning defaults.
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.cli.term.tty
+
+use std.runtime
+
+type Bool = bool
+type U32  = u32
+type I32  = i32
+type Str  = str
+
+# -----------------------------------------------------------------------------
+# Types
+# -----------------------------------------------------------------------------
+
+type TtySize struct
+  cols: U32
+  rows: U32
+.end
+
+fn size_default() -> TtySize
+  let s: TtySize
+  set s.cols = 80
+  set s.rows = 24
+  ret s
+.end
+
+# Opaque handle ids (PAL-defined semantics)
+type TtyHandle struct
+  id: I32
+.end
+
+fn handle_invalid() -> TtyHandle
+  let h: TtyHandle
+  set h.id = -1
+  ret h
+.end
+
+fn handle_is_valid(h: &TtyHandle) -> Bool
+  ret h.id >= 0
+.end
+
+# Standard fds (portable convention)
+fn fd_stdin() -> I32  ret 0 .end
+fn fd_stdout() -> I32 ret 1 .end
+fn fd_stderr() -> I32 ret 2 .end
+
+# -----------------------------------------------------------------------------
+# PAL expected bindings (documented)
+# -----------------------------------------------------------------------------
+#
+# Expected PAL functions (to be implemented in std.pal.term / std.pal.io):
+#   fn pal_isatty(fd: I32) -> Bool
+#   fn pal_tty_size(fd: I32) -> (Bool, TtySize)
+#   fn pal_tty_open_stdin() -> (Bool, TtyHandle)
+#   fn pal_tty_open_stdout() -> (Bool, TtyHandle)
+#   fn pal_tty_open_stderr() -> (Bool, TtyHandle)
+#   fn pal_tty_write(h: &TtyHandle, s: Str) -> (Bool, U32)
+#   fn pal_tty_flush(h: &TtyHandle) -> Bool
+#
+# Until available, stubs below return conservative defaults.
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
+
+fn is_tty(fd: I32) -> Bool
+  ret pal_isatty_safe(fd)
+.end
+
+fn tty_size(fd: I32) -> (Bool, TtySize)
+  ret pal_tty_size_safe(fd)
+.end
+
+fn tty_size_stdout() -> (Bool, TtySize)
+  ret tty_size(fd_stdout())
+.end
+
+fn tty_open_stdin() -> (Bool, TtyHandle)
+  ret pal_tty_open_stdin_safe()
+.end
+
+fn tty_open_stdout() -> (Bool, TtyHandle)
+  ret pal_tty_open_stdout_safe()
+.end
+
+fn tty_open_stderr() -> (Bool, TtyHandle)
+  ret pal_tty_open_stderr_safe()
+.end
+
+fn tty_write(h: &TtyHandle, s: Str) -> (Bool, U32)
+  ret pal_tty_write_safe(h, s)
+.end
+
+fn tty_writeln(h: &TtyHandle, s: Str) -> (Bool, U32)
+  ret tty_write(h, s + "\n")
+.end
+
+fn tty_flush(h: &TtyHandle) -> Bool
+  ret pal_tty_flush_safe(h)
+.end
+
+# Convenience: write to stdout/stderr if open
+fn stdout_write(s: Str) -> (Bool, U32)
+  let ok: Bool
+  let h: TtyHandle
+  (ok, h) = tty_open_stdout()
+  if !ok
+    ret (false, 0)
+  .end
+  let ok2: Bool
+  let n: U32
+  (ok2, n) = tty_write(&h, s)
+  do tty_flush(&h)
+  ret (ok2, n)
+.end
+
+fn stderr_write(s: Str) -> (Bool, U32)
+  let ok: Bool
+  let h: TtyHandle
+  (ok, h) = tty_open_stderr()
+  if !ok
+    ret (false, 0)
+  .end
+  let ok2: Bool
+  let n: U32
+  (ok2, n) = tty_write(&h, s)
+  do tty_flush(&h)
+  ret (ok2, n)
+.end
+
+# -----------------------------------------------------------------------------
+# Safe PAL wrappers (stubs by default)
+# -----------------------------------------------------------------------------
+
+fn pal_isatty_safe(fd: I32) -> Bool
+  # TODO: wire to std.pal.term::isatty(fd)
+  ret false
+.end
+
+fn pal_tty_size_safe(fd: I32) -> (Bool, TtySize)
+  # TODO: wire to std.pal.term::winsize(fd)
+  # Conservative default; ok=false to signal unknown.
+  ret (false, size_default())
+.end
+
+fn pal_tty_open_stdin_safe() -> (Bool, TtyHandle)
+  # TODO: wire to std.pal.io
+  ret (false, handle_invalid())
+.end
+
+fn pal_tty_open_stdout_safe() -> (Bool, TtyHandle)
+  # TODO: wire to std.pal.io
+  ret (false, handle_invalid())
+.end
+
+fn pal_tty_open_stderr_safe() -> (Bool, TtyHandle)
+  # TODO: wire to std.pal.io
+  ret (false, handle_invalid())
+.end
+
+fn pal_tty_write_safe(h: &TtyHandle, s: Str) -> (Bool, U32)
+  # TODO: wire to std.pal.io write
+  # Stub: pretend nothing was written
+  ret (false, 0)
+.end
+
+fn pal_tty_flush_safe(h: &TtyHandle) -> Bool
+  # TODO: wire to std.pal.io flush
+  ret false
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests (scenarios)
+# -----------------------------------------------------------------------------
+
+scn test_tty_types
+  let s = size_default()
+  do std.runtime::assert(s.cols == 80, "cols")
+  do std.runtime::assert(s.rows == 24, "rows")
+
+  let h = handle_invalid()
+  do std.runtime::assert(!handle_is_valid(&h), "invalid handle")
+.end
+
+scn test_tty_calls_stub
+  # In stub mode, is_tty should be false
+  let b = is_tty(fd_stdout())
+  do std.runtime::assert(b == false, "isatty stub")
+
+  let ok: Bool
+  let s: TtySize
+  (ok, s) = tty_size_stdout()
+  do std.runtime::assert(ok == false, "size unknown stub")
+  do std.runtime::assert(s.cols == 80, "default cols")
+.end
+
+# End of std.cli.term.tty

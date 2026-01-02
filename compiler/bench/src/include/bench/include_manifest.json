@@ -1,0 +1,136 @@
+
+
+{
+  "schema": "vitte.bench.include_manifest.v1",
+  "schema_version": 1,
+  "package": {
+    "name": "vitte-bench",
+    "component": "compiler/bench",
+    "language": "c17",
+    "namespace": "bench",
+    "description": "Benchmark harness public include surface for the Vitte compiler repository."
+  },
+  "include_root": "compiler/bench/src/include",
+  "rules": {
+    "path_style": "posix",
+    "encoding": "utf-8",
+    "sorting": "stable",
+    "stable_order": "kind_then_path"
+  },
+  "exports": {
+    "public": [
+      {
+        "path": "bench/bench.h",
+        "kind": "api",
+        "summary": "Public benchmark harness API: cases/suites, stats, runner config, reporters (text/json).",
+        "depends_on": [
+          "bench/config.h",
+          "bench/compiler.h",
+          "bench/diag.h"
+        ]
+      },
+      {
+        "path": "bench/compiler.h",
+        "kind": "platform",
+        "summary": "Compiler/arch feature detection and low-level helpers (inline/noinline, prefetch, relax, assume/trap).",
+        "depends_on": []
+      },
+      {
+        "path": "bench/config.h",
+        "kind": "config",
+        "summary": "Build-time configuration macros for bench runner, clock source, stats policy, output and limits.",
+        "depends_on": []
+      },
+      {
+        "path": "bench/cpu.h",
+        "kind": "platform",
+        "summary": "Best-effort CPU probing + jitter reduction hooks (pin thread, set priority).",
+        "depends_on": [
+          "bench/compiler.h",
+          "bench/detail/compat.h"
+        ]
+      },
+      {
+        "path": "bench/diag.h",
+        "kind": "core",
+        "summary": "Deterministic diagnostics object + helpers + JSON/text formatting glue.",
+        "depends_on": [
+          "bench/detail/format.h"
+        ]
+      },
+      {
+        "path": "bench/fileset.h",
+        "kind": "core",
+        "summary": "Arena-backed fileset abstraction + I/O vtable for corpora, golden files, reports/baselines.",
+        "depends_on": [
+          "bench/arena.h",
+          "bench/diag.h",
+          "bench/detail/format.h"
+        ]
+      },
+      {
+        "path": "bench/hash.h",
+        "kind": "core",
+        "summary": "Non-cryptographic hashing utilities (fnv1a64, murmur3_32, hash64_bytes, combine).",
+        "depends_on": [
+          "bench/compiler.h"
+        ]
+      },
+      {
+        "path": "bench/arena.h",
+        "kind": "core",
+        "summary": "Arena allocator used by bench subsystems (strings, arrays, buffers).",
+        "depends_on": [
+          "bench/diag.h"
+        ]
+      }
+    ],
+    "internal": [
+      {
+        "path": "bench/detail/compat.h",
+        "kind": "detail",
+        "summary": "Portability glue (OS shims, types, small wrappers) for bench.",
+        "depends_on": [
+          "bench/compiler.h"
+        ]
+      },
+      {
+        "path": "bench/detail/format.h",
+        "kind": "detail",
+        "summary": "vitte_buf formatting utilities + JSON emission helpers used by reporters and diag.",
+        "depends_on": [
+          "bench/compiler.h"
+        ]
+      },
+      {
+        "path": "bench/detail/fs.h",
+        "kind": "detail",
+        "summary": "Default filesystem I/O backend implementing vitte_fileset_io (read/write/stat/list/mkdirs).",
+        "depends_on": [
+          "bench/diag.h",
+          "bench/arena.h"
+        ]
+      },
+      {
+        "path": "bench/detail/time.h",
+        "kind": "detail",
+        "summary": "Timing primitives (monotonic clocks, rdtsc calibration if enabled).",
+        "depends_on": [
+          "bench/compiler.h",
+          "bench/diag.h"
+        ]
+      }
+    ]
+  },
+  "conventions": {
+    "public_include": "#include <bench/bench.h>",
+    "preferred_entrypoints": [
+      "bench/bench.h",
+      "bench/config.h"
+    ],
+    "visibility": {
+      "public": "stable",
+      "internal": "unstable"
+    }
+  }
+}

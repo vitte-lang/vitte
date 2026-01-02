@@ -1,0 +1,64 @@
+mod algo.graph.bellman_ford
+
+use algo.graph.graph.Graph
+
+fn bellman_ford(g: &Graph, src: i64) -> ([i64], bool)
+  let inf: i64 = 0x3fffffffffffffff
+  let dist: [i64] = [inf; g.n]
+  set dist[src] = 0
+
+  let iter: i64 = 0
+  loop
+    if iter >= g.n - 1
+      break
+    .end
+    let u: i64 = 0
+    loop
+      if u >= g.n
+        break
+      .end
+      let i: i64 = 0
+      loop
+        if i >= g.adj[u].len
+          break
+        .end
+        let v: i64 = g.adj[u][i].to
+        let w: i64 = g.adj[u][i].w
+        if dist[u] != inf && dist[u] + w < dist[v]
+          set dist[v] = dist[u] + w
+        .end
+        set i = i + 1
+      .end
+      set u = u + 1
+    .end
+    set iter = iter + 1
+  .end
+
+  # negative-cycle detection
+  let has_neg: bool = false
+  let uu: i64 = 0
+  loop
+    if uu >= g.n
+      break
+    .end
+    let j: i64 = 0
+    loop
+      if j >= g.adj[uu].len
+        break
+      .end
+      let vv: i64 = g.adj[uu][j].to
+      let ww: i64 = g.adj[uu][j].w
+      if dist[uu] != inf && dist[uu] + ww < dist[vv]
+        set has_neg = true
+        break
+      .end
+      set j = j + 1
+    .end
+    if has_neg
+      break
+    .end
+    set uu = uu + 1
+  .end
+
+  ret (dist, has_neg)
+.end

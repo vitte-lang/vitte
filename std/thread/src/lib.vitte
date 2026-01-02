@@ -1,0 +1,397 @@
+# -----------------------------------------------------------------------------
+# std/thread
+# -----------------------------------------------------------------------------
+# Threading utilities.
+#
+# This module provides a small, bootstrap-friendly surface for native threads.
+# - spawn / join / detach
+# - yield
+# - current thread id (best-effort)
+# - convenience helpers (spawn_join, detach_if_valid, join_if_valid)
+#
+# Design notes:
+# - The API is built over `std.runtime` low-level hooks (rt_thread_*).
+# - Error handling is explicit (Bool + ThreadError).
+# - Thread entry is a plain function pointer with a `Ptr[U8]` context.
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.thread
+
+use std.runtime
+use std.sys
+
+# -----------------------------------------------------------------------------
+# Types / errors
+# -----------------------------------------------------------------------------
+
+type Bool = bool
+
+type U8    = u8
+type U32   = u32
+type U64   = u64
+
+type I32   = i32
+
+type USize = usize
+
+type Ptr[T] = ptr[T]
+
+type Str = str
+
+type SysError = std.sys::SysError
+
+# Thread entry function signature.
+# Returns an exit code (I32).
+
+type ThreadFn = fn(ctx: Ptr[U8]) -> I32
+
+# Common thread error set.
+
+type ThreadError enum
+  Ok
+  Invalid
+  OutOfMemory
+  Unsupported
+  Busy
+  Timeout
+  Io
+  Unexpected
+.end
+
+fn thread_error_ok(e: ThreadError) -> Bool
+  ret e == ThreadError::Ok
+.end
+
+fn thread_error_from_rt(rc: I32) -> ThreadError
+  let e = rt_err(rc)
+  if e == RtError::Ok
+    ret ThreadError::Ok
+  .end
+  if e == RtError::Invalid
+    ret ThreadError::Invalid
+  .end
+  if e == RtError::OutOfMemory
+    ret ThreadError::OutOfMemory
+  .end
+  if e == RtError::Unsupported
+    ret ThreadError::Unsupported
+  .end
+  if e == RtError::Busy
+    ret ThreadError::Busy
+  .end
+  if e == RtError::Timeout
+    ret ThreadError::Timeout
+  .end
+  if e == RtError::Io
+    ret ThreadError::Io
+  .end
+  ret ThreadError::Unexpected
+.end
+
+fn thread_error_from_sys(e: SysError) -> ThreadError
+  if e == SysError::Ok
+    ret ThreadError::Ok
+  .end
+  if e == SysError::Invalid
+    ret ThreadError::Invalid
+  .end
+  if e == SysError::OutOfMemory
+    ret ThreadError::OutOfMemory
+  .end
+  if e == SysError::Unsupported
+    ret ThreadError::Unsupported
+  .end
+  if e == SysError::Busy
+    ret ThreadError::Busy
+  .end
+  if e == SysError::Timeout
+    ret ThreadError::Timeout
+  .end
+  if e == SysError::Io
+    ret ThreadError::Io
+  .end
+  ret ThreadError::Unexpected
+.end
+
+# Opaque thread handle.
+# `raw == 0` means invalid.
+
+type ThreadHandle struct
+  raw: U64
+.end
+
+fn thread_handle_invalid() -> ThreadHandle
+  let h: ThreadHandle
+  set h.raw = 0
+  ret h
+.end
+
+fn thread_handle_is_valid(h: &ThreadHandle) -> Bool
+  ret h.raw != 0
+.end
+
+# Thread id.
+
+type ThreadId = U64
+
+# -----------------------------------------------------------------------------
+# Core API
+# -----------------------------------------------------------------------------
+
+# Spawn a new thread.
+# Returns (ok, err, handle).
+#
+# Runtime contract for rt_thread_spawn:
+# - rc == 0: success, out_handle set
+# - rc <  0: error
+fn thread_spawn(entry: ThreadFn, ctx: Ptr[U8]) -> (Bool, ThreadError, ThreadHandle)
+  let h: ThreadHandle
+  set h.raw = 0
+
+  let rc = rt_thread_spawn(entry, ctx, &h.raw)
+  if rc != 0
+    ret (false, thread_error_from_rt(rc), thread_handle_invalid())
+  .end
+
+  if h.raw == 0
+    ret (false, ThreadError::Unexpected, thread_handle_invalid())
+  .end
+
+  ret (true, ThreadError::Ok, h)
+.end
+
+# Join a thread.
+# Returns (ok, err, exit_code).
+#
+# Runtime contract for rt_thread_join:
+# - rc == 0: success, out_code set and handle becomes invalid
+# - rc <  0: error
+fn thread_join(h: &ThreadHandle) -> (Bool, ThreadError, I32)
+  if h.raw == 0
+    ret (false, ThreadError::Invalid, 0)
+  .end
+
+  let code: I32
+  set code = 0
+
+  let rc = rt_thread_join(h.raw, &code)
+  if rc != 0
+    ret (false, thread_error_from_rt(rc), 0)
+  .end
+
+  # Invalidate handle after join.
+  set h.raw = 0
+  ret (true, ThreadError::Ok, code)
+.end
+
+# Detach a thread.
+# Returns (ok, err). Detaching invalidates the handle.
+fn thread_detach(h: &ThreadHandle) -> (Bool, ThreadError)
+  if h.raw == 0
+    ret (false, ThreadError::Invalid)
+  .end
+
+  let rc = rt_thread_detach(h.raw)
+  if rc != 0
+    ret (false, thread_error_from_rt(rc))
+  .end
+
+  set h.raw = 0
+  ret (true, ThreadError::Ok)
+.end
+
+# Yield execution to scheduler.
+fn thread_yield() -> (Bool, ThreadError)
+  let rc = rt_thread_yield()
+  if rc != 0
+    ret (false, thread_error_from_rt(rc))
+  .end
+  ret (true, ThreadError::Ok)
+.end
+
+# Current thread id (best-effort).
+# Returns Unsupported if the runtime does not expose thread ids.
+fn thread_current_id() -> (Bool, ThreadError, ThreadId)
+  let id: U64
+  set id = 0
+
+  let rc = rt_thread_current_id(&id)
+  if rc != 0
+    ret (false, thread_error_from_rt(rc), 0)
+  .end
+
+  ret (true, ThreadError::Ok, id)
+.end
+
+# Convenience: sleep via std.sys.
+fn thread_sleep_ms(ms: U32) -> (Bool, ThreadError)
+  let ok: Bool
+  let e: SysError
+  (ok, e) = std.sys::sleep_ms(ms)
+  if !ok
+    ret (false, thread_error_from_sys(e))
+  .end
+  ret (true, ThreadError::Ok)
+.end
+
+# Convenience: spawn + join.
+fn thread_spawn_join(entry: ThreadFn, ctx: Ptr[U8]) -> (Bool, ThreadError, I32)
+  let ok: Bool
+  let e: ThreadError
+  let h: ThreadHandle
+
+  (ok, e, h) = thread_spawn(entry, ctx)
+  if !ok
+    ret (false, e, 0)
+  .end
+
+  let code: I32
+  (ok, e, code) = thread_join(&h)
+  ret (ok, e, code)
+.end
+
+# Convenience: detach only if handle is valid.
+# - If invalid, returns (true, Ok).
+fn thread_detach_if_valid(h: &ThreadHandle) -> (Bool, ThreadError)
+  if h.raw == 0
+    ret (true, ThreadError::Ok)
+  .end
+  ret thread_detach(h)
+.end
+
+# Convenience: join only if handle is valid.
+# - If invalid, returns (false, Invalid, 0).
+fn thread_join_if_valid(h: &ThreadHandle) -> (Bool, ThreadError, I32)
+  if h.raw == 0
+    ret (false, ThreadError::Invalid, 0)
+  .end
+  ret thread_join(h)
+.end
+
+# -----------------------------------------------------------------------------
+# Test helpers
+# -----------------------------------------------------------------------------
+
+fn _skip_if_unsupported(ok: Bool, e: ThreadError) -> Bool
+  if ok
+    ret false
+  .end
+  if e == ThreadError::Unsupported
+    ret true
+  .end
+  do std.runtime::assert(false, "std.thread: unexpected error")
+  ret true
+.end
+
+fn _thread_test_fn_read_i32(ctx: Ptr[U8]) -> I32
+  # ctx points to an I32.
+  ret *((Ptr[I32])ctx)
+.end
+
+fn _thread_test_fn_return_7(ctx: Ptr[U8]) -> I32
+  ret 7
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests (scenarios)
+# -----------------------------------------------------------------------------
+
+scn test_thread_basic_spawn_join
+  let ok: Bool
+  let e: ThreadError
+  let h: ThreadHandle
+
+  let v: I32
+  set v = 42
+
+  (ok, e, h) = thread_spawn(_thread_test_fn_read_i32, (Ptr[U8])&v)
+  if _skip_if_unsupported(ok, e)
+    ret
+  .end
+
+  do std.runtime::assert(ok && thread_handle_is_valid(&h), "spawn")
+
+  let code: I32
+  (ok, e, code) = thread_join(&h)
+  do std.runtime::assert(ok, "join")
+  do std.runtime::assert(code == 42, "exit code")
+  do std.runtime::assert(!thread_handle_is_valid(&h), "handle invalid")
+.end
+
+scn test_thread_spawn_join_helper
+  let ok: Bool
+  let e: ThreadError
+  let code: I32
+
+  (ok, e, code) = thread_spawn_join(_thread_test_fn_return_7, (Ptr[U8])0)
+  if _skip_if_unsupported(ok, e)
+    ret
+  .end
+
+  do std.runtime::assert(ok, "spawn_join")
+  do std.runtime::assert(code == 7, "spawn_join code")
+.end
+
+scn test_thread_detach
+  let ok: Bool
+  let e: ThreadError
+  let h: ThreadHandle
+
+  (ok, e, h) = thread_spawn(_thread_test_fn_return_7, (Ptr[U8])0)
+  if _skip_if_unsupported(ok, e)
+    ret
+  .end
+
+  do std.runtime::assert(ok, "spawn")
+
+  (ok, e) = thread_detach(&h)
+  do std.runtime::assert(ok, "detach")
+  do std.runtime::assert(!thread_handle_is_valid(&h), "handle invalid")
+.end
+
+scn test_thread_invalid_handle_ops
+  let ok: Bool
+  let e: ThreadError
+  let code: I32
+
+  let h = thread_handle_invalid()
+
+  (ok, e, code) = thread_join_if_valid(&h)
+  do std.runtime::assert(!ok && e == ThreadError::Invalid, "join invalid")
+
+  (ok, e) = thread_detach_if_valid(&h)
+  do std.runtime::assert(ok, "detach_if_valid on invalid")
+.end
+
+scn test_thread_yield_and_id
+  let ok: Bool
+  let e: ThreadError
+
+  (ok, e) = thread_yield()
+  if _skip_if_unsupported(ok, e)
+    ret
+  .end
+  do std.runtime::assert(ok, "yield")
+
+  let id: ThreadId
+  (ok, e, id) = thread_current_id()
+  if !ok && e == ThreadError::Unsupported
+    ret
+  .end
+  do std.runtime::assert(ok && id != 0, "thread id")
+.end
+
+scn test_thread_sleep_ms
+  let ok: Bool
+  let e: ThreadError
+
+  (ok, e) = thread_sleep_ms(0)
+  # sleep may be supported even if threads are not.
+  if !ok && e == ThreadError::Unsupported
+    ret
+  .end
+  do std.runtime::assert(ok, "sleep")
+.end
+
+# End of std.thread

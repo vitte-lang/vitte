@@ -1,0 +1,132 @@
+mod fuzz.unicode
+
+# -----------------------------------------------------------------------------
+# fuzz/unicode.vitte
+# Purpose: stress lexer/parser with Unicode identifiers + Unicode string literals.
+# - non-ASCII identifiers (Latin-1 accents, Greek, Cyrillic, CJK)
+# - string literals covering:
+#   - CJK, emoji (incl. ZWJ sequences), combining marks
+#   - RTL markers and mixed-direction text
+# - deterministic, minimal runtime work, no required output
+# -----------------------------------------------------------------------------
+
+fn is_digit_ascii(c: i32) -> bool
+  ret c >= 48 && c <= 57
+.end
+
+fn checksum_unicode_string(s: str) -> i32
+  # Walk the string by index and fold ord values.
+  # Assumes: indexing yields a 1-char string; ord() returns codepoint.
+  let n = len(s)
+  let i = 0
+  let acc = 0
+
+  loop
+    when i >= n
+      break
+    .end
+
+    let ch = s[i]
+    let oc = ord(ch)
+
+    # fold with a cheap avalanche
+    set acc = acc ^ (oc + (acc << 5) + (acc >> 2))
+
+    # extra branchy logic to stress CFG
+    when is_digit_ascii(oc)
+      set acc = acc + (oc - 48)
+    .end
+
+    when (oc % 7) == 0
+      set acc = acc ^ 0x9e3779b9
+    .end
+
+    set i = i + 1
+  .end
+
+  ret acc
+.end
+
+fn mix(a: i32, b: i32) -> i32
+  let x = a
+  set x = x ^ (b + 0x7f4a7c15 + (x << 6) + (x >> 2))
+  ret x
+.end
+
+fn unicode_state_machine(entrée: str, приветствие: str, 日本語テキスト: str) -> i32
+  # Unicode parameter identifiers
+  let r = 0
+
+  let c1 = checksum_unicode_string(entrée)
+  let c2 = checksum_unicode_string(приветствие)
+  let c3 = checksum_unicode_string(日本語テキスト)
+
+  set r = mix(c1, c2)
+  set r = mix(r, c3)
+
+  # Stress match on folded value
+  match (r % 9)
+    0 => do
+      set r = r + 1
+    .end
+    1 => do
+      set r = r + 2
+    .end
+    2 => do
+      set r = r + 3
+    .end
+    3 => do
+      set r = r ^ 0x55aa55aa
+    .end
+    4 => do
+      set r = r ^ 0xaa55aa55
+    .end
+    5 => do
+      set r = r - 7
+    .end
+    6 => do
+      set r = r + (c1 & 255)
+    .end
+    7 => do
+      set r = r + (c2 & 255)
+    .end
+    _ => do
+      set r = r + (c3 & 255)
+    .end
+  .end
+
+  ret r
+.end
+
+prog unicode
+  # Unicode local identifiers
+  let café = 1
+  let naïve = 2
+  let π = 3
+  let привет = 4
+  let 变量 = 5
+
+  # Unicode string literals (keep them as literals to exercise lexer)
+  let s_fr = "café naïve déjà-vu"
+  let s_jp = "こんにちは世界"
+  let s_emoji = "🐦‍⬛ 🧠✨ 👩‍💻🚀"          # includes ZWJ sequence
+  let s_combining = "e\u0301 a\u0308 o\u0302"  # combining marks shown as escapes
+  let s_rtl = "مرحبا بالعالم \u202BRTL\u202C mix"
+  let s_mixed = "Русский + 日本語 + English 123"
+
+  # Fold all strings deterministically
+  let r = unicode_state_machine(s_fr, s_jp, s_emoji)
+  set r = mix(r, checksum_unicode_string(s_combining))
+  set r = mix(r, checksum_unicode_string(s_rtl))
+  set r = mix(r, checksum_unicode_string(s_mixed))
+
+  # Use locals to avoid trivial elimination
+  set r = r + café + naïve + π + привет + 变量
+
+  # Normalize to a small exit range for fuzz harness
+  when r < 0
+    ret 1
+  .end
+
+  ret (r % 4)
+.end

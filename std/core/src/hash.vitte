@@ -1,0 +1,321 @@
+# std/core/hash.vitte
+# -----------------------------------------------------------------------------
+# std/core/hash
+# -----------------------------------------------------------------------------
+# Hash primitives for stdlib.
+#
+# MAX goals:
+# - Provide stable, portable hashing primitives.
+# - Minimal deps: std.runtime + std.string only.
+# - Expose canonical hashes used across std collections (hashmap/hashset).
+#
+# Coverage:
+# - Hash64 type + helpers
+# - FNV-1a 64-bit
+# - Mix / avalanche helpers
+# - Hashing for: u32/u64/i32/bool/str (best-effort)
+#
+# Notes:
+# - String hashing should use byte-level iteration when std.string exposes it.
+#   This file includes a conservative fallback using slice(…,1) + ASCII map.
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.core.hash
+
+use std.runtime
+use std.string
+
+type Bool = bool
+type U8   = u8
+type U32  = u32
+type U64  = u64
+type I32  = i32
+type I64  = i64
+type Str  = str
+
+type Hash64 = U64
+
+fn hash64_zero() -> Hash64
+  ret 0
+.end
+
+fn hash64_from_u64(x: U64) -> Hash64
+  ret x
+.end
+
+# -----------------------------------------------------------------------------
+# FNV-1a 64-bit
+# -----------------------------------------------------------------------------
+
+fn fnv1a_offset() -> U64
+  ret 14695981039346656037
+.end
+
+fn fnv1a_prime() -> U64
+  ret 1099511628211
+.end
+
+fn fnv1a_step(h: U64, b: U8) -> U64
+  let x = h ^ (U64)b
+  ret x * fnv1a_prime()
+.end
+
+# -----------------------------------------------------------------------------
+# Byte access fallback (ASCII best-effort)
+# -----------------------------------------------------------------------------
+
+fn str_len(s: Str) -> U32
+  ret std.string::len(s)
+.end
+
+fn str_slice(s: Str, start: U32, len: U32) -> Str
+  ret std.string::slice(s, start, len)
+.end
+
+fn _ascii_byte(ch: Str) -> U8
+  # Common ASCII (expand later if needed)
+  if ch == "\x00" ret 0 .end
+  if ch == "\x01" ret 1 .end
+  if ch == "\x02" ret 2 .end
+  if ch == "\x03" ret 3 .end
+  if ch == "\x04" ret 4 .end
+  if ch == "\x05" ret 5 .end
+  if ch == "\x06" ret 6 .end
+  if ch == "\x07" ret 7 .end
+  if ch == "\x08" ret 8 .end
+  if ch == "\x09" ret 9 .end
+  if ch == "\x0a" ret 10 .end
+  if ch == "\x0b" ret 11 .end
+  if ch == "\x0c" ret 12 .end
+  if ch == "\x0d" ret 13 .end
+  if ch == "\x0e" ret 14 .end
+  if ch == "\x0f" ret 15 .end
+  if ch == " " ret 32 .end
+  if ch == "!" ret 33 .end
+  if ch == "\"" ret 34 .end
+  if ch == "#" ret 35 .end
+  if ch == "$" ret 36 .end
+  if ch == "%" ret 37 .end
+  if ch == "&" ret 38 .end
+  if ch == "'" ret 39 .end
+  if ch == "(" ret 40 .end
+  if ch == ")" ret 41 .end
+  if ch == "*" ret 42 .end
+  if ch == "+" ret 43 .end
+  if ch == "," ret 44 .end
+  if ch == "-" ret 45 .end
+  if ch == "." ret 46 .end
+  if ch == "/" ret 47 .end
+  if ch == "0" ret 48 .end
+  if ch == "1" ret 49 .end
+  if ch == "2" ret 50 .end
+  if ch == "3" ret 51 .end
+  if ch == "4" ret 52 .end
+  if ch == "5" ret 53 .end
+  if ch == "6" ret 54 .end
+  if ch == "7" ret 55 .end
+  if ch == "8" ret 56 .end
+  if ch == "9" ret 57 .end
+  if ch == ":" ret 58 .end
+  if ch == ";" ret 59 .end
+  if ch == "<" ret 60 .end
+  if ch == "=" ret 61 .end
+  if ch == ">" ret 62 .end
+  if ch == "?" ret 63 .end
+  if ch == "@" ret 64 .end
+  if ch == "A" ret 65 .end
+  if ch == "B" ret 66 .end
+  if ch == "C" ret 67 .end
+  if ch == "D" ret 68 .end
+  if ch == "E" ret 69 .end
+  if ch == "F" ret 70 .end
+  if ch == "G" ret 71 .end
+  if ch == "H" ret 72 .end
+  if ch == "I" ret 73 .end
+  if ch == "J" ret 74 .end
+  if ch == "K" ret 75 .end
+  if ch == "L" ret 76 .end
+  if ch == "M" ret 77 .end
+  if ch == "N" ret 78 .end
+  if ch == "O" ret 79 .end
+  if ch == "P" ret 80 .end
+  if ch == "Q" ret 81 .end
+  if ch == "R" ret 82 .end
+  if ch == "S" ret 83 .end
+  if ch == "T" ret 84 .end
+  if ch == "U" ret 85 .end
+  if ch == "V" ret 86 .end
+  if ch == "W" ret 87 .end
+  if ch == "X" ret 88 .end
+  if ch == "Y" ret 89 .end
+  if ch == "Z" ret 90 .end
+  if ch == "[" ret 91 .end
+  if ch == "\\" ret 92 .end
+  if ch == "]" ret 93 .end
+  if ch == "^" ret 94 .end
+  if ch == "_" ret 95 .end
+  if ch == "`" ret 96 .end
+  if ch == "a" ret 97 .end
+  if ch == "b" ret 98 .end
+  if ch == "c" ret 99 .end
+  if ch == "d" ret 100 .end
+  if ch == "e" ret 101 .end
+  if ch == "f" ret 102 .end
+  if ch == "g" ret 103 .end
+  if ch == "h" ret 104 .end
+  if ch == "i" ret 105 .end
+  if ch == "j" ret 106 .end
+  if ch == "k" ret 107 .end
+  if ch == "l" ret 108 .end
+  if ch == "m" ret 109 .end
+  if ch == "n" ret 110 .end
+  if ch == "o" ret 111 .end
+  if ch == "p" ret 112 .end
+  if ch == "q" ret 113 .end
+  if ch == "r" ret 114 .end
+  if ch == "s" ret 115 .end
+  if ch == "t" ret 116 .end
+  if ch == "u" ret 117 .end
+  if ch == "v" ret 118 .end
+  if ch == "w" ret 119 .end
+  if ch == "x" ret 120 .end
+  if ch == "y" ret 121 .end
+  if ch == "z" ret 122 .end
+  if ch == "{" ret 123 .end
+  if ch == "|" ret 124 .end
+  if ch == "}" ret 125 .end
+  if ch == "~" ret 126 .end
+  ret 0
+.end
+
+# -----------------------------------------------------------------------------
+# Mix / avalanche (SplitMix64 finalizer)
+# -----------------------------------------------------------------------------
+
+fn mix64(x: U64) -> U64
+  let z: U64
+  set z = x
+  set z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9
+  set z = (z ^ (z >> 27)) * 0x94d049bb133111eb
+  ret z ^ (z >> 31)
+.end
+
+# Combine two hashes (order-sensitive)
+fn hash64_combine(a: U64, b: U64) -> U64
+  # similar to boost::hash_combine but 64-bit + mix
+  let x = a ^ (b + 0x9e3779b97f4a7c15 + (a << 6) + (a >> 2))
+  ret mix64(x)
+.end
+
+# -----------------------------------------------------------------------------
+# Hashing primitives for scalars
+# -----------------------------------------------------------------------------
+
+fn hash_u32(x: U32) -> Hash64
+  ret mix64((U64)x)
+.end
+
+fn hash_u64(x: U64) -> Hash64
+  ret mix64(x)
+.end
+
+fn hash_i32(x: I32) -> Hash64
+  ret mix64((U64)(I64)x)
+.end
+
+fn hash_bool(x: Bool) -> Hash64
+  if x
+    ret mix64(1)
+  .end
+  ret mix64(0)
+.end
+
+# -----------------------------------------------------------------------------
+# Hashing strings (FNV-1a + mix)
+# -----------------------------------------------------------------------------
+
+fn hash_str_fnv1a(s: Str) -> Hash64
+  let h: U64
+  set h = fnv1a_offset()
+
+  let i: U32
+  set i = 0
+  while i < str_len(s)
+    let ch = str_slice(s, i, 1)
+    let b = _ascii_byte(ch)   # replace with real byte_at
+    set h = fnv1a_step(h, b)
+    set i = i + 1
+  .end
+
+  ret h
+.end
+
+fn hash_str(s: Str) -> Hash64
+  # final mix to improve distribution
+  ret mix64(hash_str_fnv1a(s))
+.end
+
+# -----------------------------------------------------------------------------
+# Streaming hasher (FNV-1a)
+# -----------------------------------------------------------------------------
+
+type Hasher64 struct
+  state: U64
+.end
+
+fn hasher64_new() -> Hasher64
+  let h: Hasher64
+  set h.state = fnv1a_offset()
+  ret h
+.end
+
+fn hasher64_write_u8(h: &Hasher64, b: U8)
+  set h.state = fnv1a_step(h.state, b)
+.end
+
+fn hasher64_write_str(h: &Hasher64, s: Str)
+  let i: U32
+  set i = 0
+  while i < str_len(s)
+    let ch = str_slice(s, i, 1)
+    do hasher64_write_u8(h, _ascii_byte(ch))
+    set i = i + 1
+  .end
+.end
+
+fn hasher64_finish(h: &Hasher64) -> Hash64
+  ret mix64(h.state)
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests (scenarios)
+# -----------------------------------------------------------------------------
+
+scn test_hash_fnv_constants
+  do std.runtime::assert(fnv1a_offset() != 0, "offset != 0")
+  do std.runtime::assert(fnv1a_prime() != 0, "prime != 0")
+.end
+
+scn test_hash_mix_properties
+  let a = mix64(0)
+  let b = mix64(1)
+  do std.runtime::assert(a != b, "mix distinguishes")
+.end
+
+scn test_hash_str_stable
+  let h1 = hash_str("abc")
+  let h2 = hash_str("abc")
+  do std.runtime::assert(h1 == h2, "stable")
+.end
+
+scn test_hash_combine
+  let a = hash_u32(1)
+  let b = hash_u32(2)
+  let c1 = hash64_combine(a, b)
+  let c2 = hash64_combine(a, b)
+  do std.runtime::assert(c1 == c2, "combine stable")
+  do std.runtime::assert(c1 != hash64_combine(b, a), "order matters (likely)")
+.end
+
+# End of std.core.hash

@@ -1,0 +1,631 @@
+# -----------------------------------------------------------------------------
+# std/runtime
+# -----------------------------------------------------------------------------
+# Runtime ABI surface for std/*.
+#
+# This module defines the canonical set of runtime hooks that the host
+# (VM / native runtime / embedding) is expected to implement.
+#
+# Goals:
+# - single place to document return conventions and error codes
+# - bootstrap-friendly: default stubs return Unsupported
+# - deterministic, allocation-aware interfaces
+# - no async, no threads assumed
+# - blocks use `.end` only
+#
+# Conventions (recommended):
+# - I32 return codes: 0 = Ok, negative = -RtErrorCode
+# - I64 for read/write: >=0 bytes, negative = -RtErrorCode
+# - Boolean style returns: 1 = true, 0 = false, negative = -RtErrorCode
+#
+# Strings/bytes:
+# - Str is NUL-terminated, read-only
+# - byte buffers use Vec[U8] (std.collections)
+#
+# Notes:
+# - Other std modules may still define local rt_* stubs; this module is the
+#   canonical interface to implement and progressively wire into std/*.
+# - Default stubs return Unsupported, enabling incremental bring-up.
+# -----------------------------------------------------------------------------
+
+module std.runtime
+
+use std.collections
+
+# -----------------------------------------------------------------------------
+# Prelude
+# -----------------------------------------------------------------------------
+
+type Bool  = bool
+
+type U8    = u8
+type U16   = u16
+type U32   = u32
+type U64   = u64
+
+type I32   = i32
+type I64   = i64
+
+type USize = usize
+
+type Ptr[T] = ptr[T]
+
+type Str = str
+
+# -----------------------------------------------------------------------------
+# Error model
+# -----------------------------------------------------------------------------
+# Numeric mapping is aligned with other std modules:
+# - Unsupported = -9
+# - OutOfMemory = -12
+# Additional codes can be extended by runtime.
+
+const RT_E_OK:          I32 = 0
+const RT_E_INVALID:     I32 = -1
+const RT_E_WOULD_BLOCK: I32 = -2
+const RT_E_TIMED_OUT:   I32 = -3
+const RT_E_UNSUPPORTED: I32 = -9
+const RT_E_NOT_FOUND:   I32 = -10
+const RT_E_PERMISSION:  I32 = -11
+const RT_E_OOM:         I32 = -12
+const RT_E_IO:          I32 = -20
+const RT_E_INTERNAL:    I32 = -50
+
+type RtError enum
+  Ok
+  Invalid
+  WouldBlock
+  TimedOut
+  Unsupported
+  NotFound
+  Permission
+  OutOfMemory
+  Io
+  Internal
+.end
+
+fn rt_ok(rc: I32) -> Bool
+  ret rc == 0
+.end
+
+fn rt_err(rc: I32) -> RtError
+  if rc == RT_E_OK
+    ret RtError::Ok
+  .end
+  if rc == RT_E_INVALID
+    ret RtError::Invalid
+  .end
+  if rc == RT_E_WOULD_BLOCK
+    ret RtError::WouldBlock
+  .end
+  if rc == RT_E_TIMED_OUT
+    ret RtError::TimedOut
+  .end
+  if rc == RT_E_UNSUPPORTED
+    ret RtError::Unsupported
+  .end
+  if rc == RT_E_NOT_FOUND
+    ret RtError::NotFound
+  .end
+  if rc == RT_E_PERMISSION
+    ret RtError::Permission
+  .end
+  if rc == RT_E_OOM
+    ret RtError::OutOfMemory
+  .end
+  if rc == RT_E_IO
+    ret RtError::Io
+  .end
+  ret RtError::Internal
+.end
+
+fn rt_code(e: RtError) -> I32
+  if e == RtError::Ok
+    ret RT_E_OK
+  .end
+  if e == RtError::Invalid
+    ret RT_E_INVALID
+  .end
+  if e == RtError::WouldBlock
+    ret RT_E_WOULD_BLOCK
+  .end
+  if e == RtError::TimedOut
+    ret RT_E_TIMED_OUT
+  .end
+  if e == RtError::Unsupported
+    ret RT_E_UNSUPPORTED
+  .end
+  if e == RtError::NotFound
+    ret RT_E_NOT_FOUND
+  .end
+  if e == RtError::Permission
+    ret RT_E_PERMISSION
+  .end
+  if e == RtError::OutOfMemory
+    ret RT_E_OOM
+  .end
+  if e == RtError::Io
+    ret RT_E_IO
+  .end
+  ret RT_E_INTERNAL
+.end
+
+# -----------------------------------------------------------------------------
+# Abort / exit / panic / logging
+# -----------------------------------------------------------------------------
+
+# Abort the process/VM immediately.
+fn rt_abort() -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Exit the process/VM with `code`.
+fn rt_exit(code: I32) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Best-effort logging to stderr / console.
+fn rt_log(level: U32, msg: Str) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Convenience levels
+const RT_LOG_ERROR: U32 = 1
+const RT_LOG_WARN:  U32 = 2
+const RT_LOG_INFO:  U32 = 3
+const RT_LOG_DEBUG: U32 = 4
+
+fn panic(msg: Str)
+  do rt_log(RT_LOG_ERROR, msg)
+  do rt_abort()
+  ret
+.end
+
+fn assert(cond: Bool, msg: Str)
+  if !cond
+    do panic(msg)
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Memory / allocation
+# -----------------------------------------------------------------------------
+
+# Allocate `size` bytes aligned to `align` (power of 2). Returns NULL on failure.
+fn rt_alloc(size: USize, align: USize) -> Ptr[U8]
+  ret (Ptr[U8])0
+.end
+
+# Reallocate a previously allocated pointer.
+fn rt_realloc(p: Ptr[U8], old_size: USize, new_size: USize, align: USize) -> Ptr[U8]
+  ret (Ptr[U8])0
+.end
+
+# Free a previously allocated pointer.
+fn rt_free(p: Ptr[U8], size: USize, align: USize) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Optional memset/memcpy hooks (can be lowered to libc or VM intrinsics)
+fn rt_memset(dst: Ptr[U8], byte: U8, len: USize) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+fn rt_memcpy(dst: Ptr[U8], src: Ptr[U8], len: USize) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# -----------------------------------------------------------------------------
+# Time
+# -----------------------------------------------------------------------------
+
+# Monotonic time in milliseconds (best-effort). Returns negative error code.
+fn rt_time_now_ms() -> I64
+  ret (I64)RT_E_UNSUPPORTED
+.end
+
+# Wall-clock time (unix epoch millis). Optional.
+fn rt_time_unix_ms() -> I64
+  ret (I64)RT_E_UNSUPPORTED
+.end
+
+# Sleep for `ms` milliseconds. Returns 0 or negative error code.
+fn rt_sleep_ms(ms: U32) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# -----------------------------------------------------------------------------
+# System identity / capabilities
+# -----------------------------------------------------------------------------
+
+# Fill out OS name (e.g. "linux", "windows", "macos").
+fn rt_os_name(out: &Vec[U8]) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Fill out arch name (e.g. "x86_64", "aarch64").
+fn rt_arch_name(out: &Vec[U8]) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Fill out target triple if known.
+fn rt_target_triple(out: &Vec[U8]) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# CPU count (>=1) or negative error.
+fn rt_cpu_count() -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Feature flags (bitset) for optional runtime facilities.
+const RT_FEAT_REGEX:   U32 = 1
+const RT_FEAT_PROC:    U32 = 2
+const RT_FEAT_FS:      U32 = 4
+const RT_FEAT_NET:     U32 = 8
+const RT_FEAT_TTY:     U32 = 16
+const RT_FEAT_RAND:    U32 = 32
+
+fn rt_features() -> U32
+  ret 0
+.end
+
+# -----------------------------------------------------------------------------
+# Environment
+# -----------------------------------------------------------------------------
+
+# Get an environment variable by key.
+# - returns 1 if found and fills out_val
+# - returns 0 if not found
+# - returns <0 on error
+fn rt_env_get(key: Ptr[U8], key_len: USize, out_val: &Vec[U8]) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Set an environment variable.
+fn rt_env_set(key: Ptr[U8], key_len: USize, val: Ptr[U8], val_len: USize) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Current working directory.
+fn rt_env_cwd(out: &Vec[U8]) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Home directory (best-effort).
+fn rt_env_home(out: &Vec[U8]) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Temporary directory (best-effort).
+fn rt_env_tmp(out: &Vec[U8]) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Path of current executable (best-effort).
+fn rt_env_exe(out: &Vec[U8]) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# -----------------------------------------------------------------------------
+# Arguments
+# -----------------------------------------------------------------------------
+
+# Return argv count.
+fn rt_args_len() -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Return argv[i] bytes into out.
+fn rt_args_get(i: USize, out: &Vec[U8]) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# -----------------------------------------------------------------------------
+# Console / stdio
+# -----------------------------------------------------------------------------
+
+# Write bytes to stdout/stderr.
+# Returns bytes written or negative error code.
+fn rt_stdout_write(p: Ptr[U8], len: USize) -> I64
+  ret (I64)RT_E_UNSUPPORTED
+.end
+
+fn rt_stderr_write(p: Ptr[U8], len: USize) -> I64
+  ret (I64)RT_E_UNSUPPORTED
+.end
+
+# Read bytes from stdin.
+fn rt_stdin_read(dst: Ptr[U8], len: USize) -> I64
+  ret (I64)RT_E_UNSUPPORTED
+.end
+
+# Optional: isatty-like checks (1=true, 0=false, <0 error)
+fn rt_stdout_is_tty() -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+fn rt_stdin_is_tty() -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# -----------------------------------------------------------------------------
+# Random
+# -----------------------------------------------------------------------------
+
+# Fill buffer with random bytes (cryptographically strong if possible).
+fn rt_rand_bytes(dst: Ptr[U8], len: USize) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+fn rt_rand_u64() -> I64
+  ret (I64)RT_E_UNSUPPORTED
+.end
+
+# -----------------------------------------------------------------------------
+# Filesystem (minimal)
+# -----------------------------------------------------------------------------
+
+type FileHandle struct
+  fd: I32
+.end
+
+fn filehandle_invalid() -> FileHandle
+  let h: FileHandle
+  set h.fd = -1
+  ret h
+.end
+
+# Open flags
+const RT_O_READ:    U32 = 1
+const RT_O_WRITE:   U32 = 2
+const RT_O_RDWR:    U32 = 3
+const RT_O_CREATE:  U32 = 4
+const RT_O_TRUNC:   U32 = 8
+const RT_O_APPEND:  U32 = 16
+
+# Seek whence
+const RT_SEEK_SET: U32 = 0
+const RT_SEEK_CUR: U32 = 1
+const RT_SEEK_END: U32 = 2
+
+# Basic file stat
+
+type FileStat struct
+  size: U64
+  is_file: Bool
+  is_dir: Bool
+  mtime_unix_ms: I64
+.end
+
+fn filestat_unknown() -> FileStat
+  let s: FileStat
+  set s.size = 0
+  set s.is_file = false
+  set s.is_dir = false
+  set s.mtime_unix_ms = (I64)RT_E_UNSUPPORTED
+  ret s
+.end
+
+# Open file by path bytes.
+fn rt_fs_open(path: Ptr[U8], path_len: USize, flags: U32, out: &FileHandle) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+fn rt_fs_close(h: FileHandle) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+fn rt_fs_read(h: FileHandle, dst: Ptr[U8], len: USize) -> I64
+  ret (I64)RT_E_UNSUPPORTED
+.end
+
+fn rt_fs_write(h: FileHandle, src: Ptr[U8], len: USize) -> I64
+  ret (I64)RT_E_UNSUPPORTED
+.end
+
+fn rt_fs_seek(h: FileHandle, off: I64, whence: U32) -> I64
+  ret (I64)RT_E_UNSUPPORTED
+.end
+
+fn rt_fs_stat(path: Ptr[U8], path_len: USize, out: &FileStat) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+fn rt_fs_mkdir(path: Ptr[U8], path_len: USize) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+fn rt_fs_remove(path: Ptr[U8], path_len: USize) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+fn rt_fs_rename(old_path: Ptr[U8], old_len: USize, new_path: Ptr[U8], new_len: USize) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Directory iteration: opaque handle + next entry name.
+
+type DirHandle struct
+  h: I32
+.end
+
+fn dirhandle_invalid() -> DirHandle
+  let d: DirHandle
+  set d.h = -1
+  ret d
+.end
+
+fn rt_fs_opendir(path: Ptr[U8], path_len: USize, out: &DirHandle) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+fn rt_fs_readdir(d: DirHandle, out_name: &Vec[U8]) -> I32
+  # returns 1 if entry, 0 if end, <0 error
+  ret RT_E_UNSUPPORTED
+.end
+
+fn rt_fs_closedir(d: DirHandle) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# -----------------------------------------------------------------------------
+# Process
+# -----------------------------------------------------------------------------
+
+type Signal enum
+  Term
+  Kill
+  Int
+.end
+
+type Stdio enum
+  Inherit
+  Null
+  Piped
+.end
+
+type Child struct
+  pid: I32
+  stdin_fd: I32
+  stdout_fd: I32
+  stderr_fd: I32
+.end
+
+# Command description passed to runtime.
+# Mirrors std.process.Command but avoids EnvVar struct dependency.
+
+type ProcCommand struct
+  program: Vec[U8]
+  args: Vec[Vec[U8]]
+  cwd: Vec[U8]
+  env_keys: Vec[Vec[U8]]
+  env_vals: Vec[Vec[U8]]
+  stdin: Stdio
+  stdout: Stdio
+  stderr: Stdio
+.end
+
+fn proccommand_new() -> ProcCommand
+  let c: ProcCommand
+  set c.program = vec_new[U8]()
+  set c.args = vec_new[Vec[U8]]()
+  set c.cwd = vec_new[U8]()
+  set c.env_keys = vec_new[Vec[U8]]()
+  set c.env_vals = vec_new[Vec[U8]]()
+  set c.stdin = Stdio::Inherit
+  set c.stdout = Stdio::Inherit
+  set c.stderr = Stdio::Inherit
+  ret c
+.end
+
+fn proccommand_drop(c: &ProcCommand)
+  do vec_drop[U8](&c.program, 1)
+  do vec_drop[U8](&c.cwd, 1)
+
+  let i: USize
+  set i = 0
+  while i < c.args.len
+    let a = *((Ptr[Vec[U8]])c.args.data + i)
+    do vec_drop[U8](&a, 1)
+    set i = i + 1
+  .end
+  do vec_drop[Vec[U8]](&c.args, 0)
+
+  set i = 0
+  while i < c.env_keys.len
+    let k = *((Ptr[Vec[U8]])c.env_keys.data + i)
+    let v = *((Ptr[Vec[U8]])c.env_vals.data + i)
+    do vec_drop[U8](&k, 1)
+    do vec_drop[U8](&v, 1)
+    set i = i + 1
+  .end
+  do vec_drop[Vec[U8]](&c.env_keys, 0)
+  do vec_drop[Vec[U8]](&c.env_vals, 0)
+.end
+
+# Spawn a process.
+fn rt_proc_spawn(cmd: &ProcCommand, out_child: &Child) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Wait for exit.
+# - sets out_exited=true if exited normally and out_code
+# - else out_exited=false and out_signal
+fn rt_proc_wait(pid: I32, out_exited: &Bool, out_code: &I32, out_signal: &I32) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Try-wait.
+# - sets out_done=false if still running
+# - else same as wait
+fn rt_proc_try_wait(pid: I32, out_done: &Bool, out_exited: &Bool, out_code: &I32, out_signal: &I32) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+fn rt_proc_kill(pid: I32, sig: Signal) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+fn rt_proc_close(fd: I32) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+fn rt_proc_read(fd: I32, dst: Ptr[U8], len: USize) -> I64
+  ret (I64)RT_E_UNSUPPORTED
+.end
+
+fn rt_proc_write(fd: I32, src: Ptr[U8], len: USize) -> I64
+  ret (I64)RT_E_UNSUPPORTED
+.end
+
+fn rt_proc_getpid() -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# Compatibility shim (std.process earlier used rt_proc_sleep_ms)
+fn rt_proc_sleep_ms(ms: U32) -> I32
+  ret rt_sleep_ms(ms)
+.end
+
+# -----------------------------------------------------------------------------
+# Regex
+# -----------------------------------------------------------------------------
+
+fn rt_regex_compile(pat: Ptr[U8], pat_len: USize, flags: U32, out_handle: &I32) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+fn rt_regex_free(handle: I32) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+fn rt_regex_is_match(handle: I32, text: Ptr[U8], text_len: USize) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+fn rt_regex_find_from(handle: I32, text: Ptr[U8], text_len: USize, from: USize, out_start: &USize, out_end: &USize) -> I32
+  ret RT_E_UNSUPPORTED
+.end
+
+# -----------------------------------------------------------------------------
+# Path preferences
+# -----------------------------------------------------------------------------
+
+# Return preferred path separator (e.g. '/' or '\\').
+fn rt_path_preferred_sep() -> U8
+  ret (U8)'/'
+.end
+
+# -----------------------------------------------------------------------------
+# Tests (scenarios)
+# -----------------------------------------------------------------------------
+
+scn test_rt_err_mapping
+  do assert(rt_err(0) == RtError::Ok, "ok")
+  do assert(rt_err(-9) == RtError::Unsupported, "unsupported")
+  do assert(rt_err(-12) == RtError::OutOfMemory, "oom")
+  do assert(rt_code(RtError::NotFound) == -10, "code notfound")
+.end
+
+# End of std.runtime

@@ -1,0 +1,36 @@
+mod algo.string.manacher
+
+fn manacher_odd(s: str) -> [i64]
+  let n: i64 = s.len
+  let d: [i64] = [0; n]
+  let l: i64 = 0
+  let r: i64 = -1
+  let i: i64 = 0
+  loop
+    if i >= n
+      ret d
+    .end
+    let k: i64 = 1
+    if i <= r
+      let mir: i64 = l + r - i
+      let val: i64 = d[mir]
+      let rem: i64 = r - i + 1
+      set k = if val < rem then val else rem
+    .end
+    loop
+      if i - k < 0 || i + k >= n
+        break
+      .end
+      if s[i - k] != s[i + k]
+        break
+      .end
+      set k = k + 1
+    .end
+    set d[i] = k
+    if i + k - 1 > r
+      set l = i - k + 1
+      set r = i + k - 1
+    .end
+    set i = i + 1
+  .end
+.end

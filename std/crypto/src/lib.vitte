@@ -1,0 +1,1447 @@
+# -----------------------------------------------------------------------------
+# std/crypto
+# -----------------------------------------------------------------------------
+# Bootstrap-friendly cryptographic primitives.
+#
+# Provided (core set):
+# - Constant-time byte compare
+# - Random bytes (runtime stub)
+# - SHA-256 (streaming)
+# - HMAC-SHA256
+# - HKDF (RFC 5869) over HMAC-SHA256
+# - PBKDF2-HMAC-SHA256
+#
+# Design constraints:
+# - no hidden allocations (uses std.collections Vec)
+# - elem_size explicit where needed
+# - deterministic, self-contained; runtime provides only memory + RNG stubs
+# - blocks use `.end` only
+# -----------------------------------------------------------------------------
+
+module std.crypto
+
+use std.collections
+
+# -----------------------------------------------------------------------------
+# Local prelude (types)
+# -----------------------------------------------------------------------------
+
+type Bool = bool
+
+type U8   = u8
+type U16  = u16
+type U32  = u32
+type U64  = u64
+
+type I32  = i32
+
+type USize = usize
+
+type Ptr[T] = ptr[T]
+
+type Str = str
+
+# -----------------------------------------------------------------------------
+# Error model
+# -----------------------------------------------------------------------------
+
+type CryptoError enum
+  Ok
+  OutOfMemory
+  Invalid
+  Corrupt
+  Unsupported
+.end
+
+# -----------------------------------------------------------------------------
+# Runtime stubs (expected from platform / stage0)
+# -----------------------------------------------------------------------------
+
+fn rt_memcpy(dst: Ptr[U8], src: Ptr[U8], bytes: USize)
+  # external
+  ret
+.end
+
+fn rt_memmove(dst: Ptr[U8], src: Ptr[U8], bytes: USize)
+  # external
+  ret
+.end
+
+fn rt_memset(dst: Ptr[U8], v: U8, bytes: USize)
+  # external
+  ret
+.end
+
+fn rt_random_bytes(dst: Ptr[U8], bytes: USize) -> Bool
+  # external
+  ret false
+.end
+
+fn panic(msg: Str)
+  # external / trap
+  ret
+.end
+
+fn assert(cond: Bool, msg: Str)
+  if !cond
+    do panic(msg)
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Small helpers
+# -----------------------------------------------------------------------------
+
+fn min_usize(a: USize, b: USize) -> USize
+  if a < b
+    ret a
+  .end
+  ret b
+.end
+
+fn rotr32(x: U32, n: U32) -> U32
+  ret (x >> n) | (x << (32 - n))
+.end
+
+fn shr32(x: U32, n: U32) -> U32
+  ret x >> n
+.end
+
+fn load_u32_be(p: Ptr[U8]) -> U32
+  let b0 = (U32)(*(p + 0))
+  let b1 = (U32)(*(p + 1))
+  let b2 = (U32)(*(p + 2))
+  let b3 = (U32)(*(p + 3))
+  ret (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
+.end
+
+fn store_u32_be(p: Ptr[U8], x: U32)
+  *(p + 0) = (U8)((x >> 24) & 0xff)
+  *(p + 1) = (U8)((x >> 16) & 0xff)
+  *(p + 2) = (U8)((x >> 8) & 0xff)
+  *(p + 3) = (U8)(x & 0xff)
+.end
+
+fn store_u64_be(p: Ptr[U8], x: U64)
+  *(p + 0) = (U8)((x >> 56) & 0xff)
+  *(p + 1) = (U8)((x >> 48) & 0xff)
+  *(p + 2) = (U8)((x >> 40) & 0xff)
+  *(p + 3) = (U8)((x >> 32) & 0xff)
+  *(p + 4) = (U8)((x >> 24) & 0xff)
+  *(p + 5) = (U8)((x >> 16) & 0xff)
+  *(p + 6) = (U8)((x >> 8) & 0xff)
+  *(p + 7) = (U8)(x & 0xff)
+.end
+
+fn ct_eq_bytes(a: Ptr[U8], b: Ptr[U8], n: USize) -> Bool
+  # constant-time compare
+  let acc: U32
+  set acc = 0
+  let i: USize
+  set i = 0
+  loop
+    if i >= n
+      break
+    .end
+    set acc = acc | (U32)(*(a + i) ^ *(b + i))
+    set i = i + 1
+  .end
+  ret acc == 0
+.end
+
+fn vec_u8_reserve(v: &Vec[U8], add: USize) -> (Bool, CryptoError)
+  let ok: Bool
+  let err: ColError
+  (ok, err) = vec_reserve_bytes[U8](v, 1, add)
+  if ok
+    ret (true, CryptoError::Ok)
+  .end
+  ret (false, CryptoError::OutOfMemory)
+.end
+
+fn vec_u8_push(v: &Vec[U8], b: U8) -> (Bool, CryptoError)
+  let ok: Bool
+  let err: ColError
+  (ok, err) = vec_push[U8](v, 1, b)
+  if ok
+    ret (true, CryptoError::Ok)
+  .end
+  ret (false, CryptoError::OutOfMemory)
+.end
+
+fn vec_u32_push(v: &Vec[U32], x: U32) -> (Bool, CryptoError)
+  let ok: Bool
+  let err: ColError
+  (ok, err) = vec_push[U32](v, 4, x)
+  if ok
+    ret (true, CryptoError::Ok)
+  .end
+  ret (false, CryptoError::OutOfMemory)
+.end
+
+fn memzero(p: Ptr[U8], n: USize)
+  do rt_memset(p, 0, n)
+.end
+
+# -----------------------------------------------------------------------------
+# Random
+# -----------------------------------------------------------------------------
+
+fn random_fill(out: &Vec[U8], n: USize) -> (Bool, CryptoError)
+  do vec_clear[U8](out)
+  let ok: Bool
+  let err: CryptoError
+  (ok, err) = vec_u8_reserve(out, n)
+  if !ok
+    ret (false, err)
+  .end
+
+  # grow to n by pushing zeros, then fill
+  let i: USize
+  set i = 0
+  loop
+    if i >= n
+      break
+    .end
+    (ok, err) = vec_u8_push(out, 0)
+    if !ok
+      ret (false, err)
+    .end
+    set i = i + 1
+  .end
+
+  let p = (Ptr[U8])out.data
+  if !rt_random_bytes(p, n)
+    ret (false, CryptoError::Unsupported)
+  .end
+
+  ret (true, CryptoError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# SHA-256
+# -----------------------------------------------------------------------------
+
+type Sha256 struct
+  h0: U32
+  h1: U32
+  h2: U32
+  h3: U32
+  h4: U32
+  h5: U32
+  h6: U32
+  h7: U32
+
+  total_len: U64
+  buf: Vec[U8]
+  buf_len: USize
+.end
+
+fn sha256_init(ctx: &Sha256) -> (Bool, CryptoError)
+  set ctx.h0 = 0x6a09e667
+  set ctx.h1 = 0xbb67ae85
+  set ctx.h2 = 0x3c6ef372
+  set ctx.h3 = 0xa54ff53a
+  set ctx.h4 = 0x510e527f
+  set ctx.h5 = 0x9b05688c
+  set ctx.h6 = 0x1f83d9ab
+  set ctx.h7 = 0x5be0cd19
+
+  set ctx.total_len = 0
+  set ctx.buf = vec_new[U8]()
+  set ctx.buf_len = 0
+
+  # reserve 64 for buffer
+  let ok: Bool
+  let err: CryptoError
+  (ok, err) = vec_u8_reserve(&ctx.buf, 64)
+  if !ok
+    ret (false, err)
+  .end
+
+  ret (true, CryptoError::Ok)
+.end
+
+fn sha256_k(i: USize) -> U32
+  match i
+    0  => ret 0x428a2f98
+    1  => ret 0x71374491
+    2  => ret 0xb5c0fbcf
+    3  => ret 0xe9b5dba5
+    4  => ret 0x3956c25b
+    5  => ret 0x59f111f1
+    6  => ret 0x923f82a4
+    7  => ret 0xab1c5ed5
+    8  => ret 0xd807aa98
+    9  => ret 0x12835b01
+    10 => ret 0x243185be
+    11 => ret 0x550c7dc3
+    12 => ret 0x72be5d74
+    13 => ret 0x80deb1fe
+    14 => ret 0x9bdc06a7
+    15 => ret 0xc19bf174
+    16 => ret 0xe49b69c1
+    17 => ret 0xefbe4786
+    18 => ret 0x0fc19dc6
+    19 => ret 0x240ca1cc
+    20 => ret 0x2de92c6f
+    21 => ret 0x4a7484aa
+    22 => ret 0x5cb0a9dc
+    23 => ret 0x76f988da
+    24 => ret 0x983e5152
+    25 => ret 0xa831c66d
+    26 => ret 0xb00327c8
+    27 => ret 0xbf597fc7
+    28 => ret 0xc6e00bf3
+    29 => ret 0xd5a79147
+    30 => ret 0x06ca6351
+    31 => ret 0x14292967
+    32 => ret 0x27b70a85
+    33 => ret 0x2e1b2138
+    34 => ret 0x4d2c6dfc
+    35 => ret 0x53380d13
+    36 => ret 0x650a7354
+    37 => ret 0x766a0abb
+    38 => ret 0x81c2c92e
+    39 => ret 0x92722c85
+    40 => ret 0xa2bfe8a1
+    41 => ret 0xa81a664b
+    42 => ret 0xc24b8b70
+    43 => ret 0xc76c51a3
+    44 => ret 0xd192e819
+    45 => ret 0xd6990624
+    46 => ret 0xf40e3585
+    47 => ret 0x106aa070
+    48 => ret 0x19a4c116
+    49 => ret 0x1e376c08
+    50 => ret 0x2748774c
+    51 => ret 0x34b0bcb5
+    52 => ret 0x391c0cb3
+    53 => ret 0x4ed8aa4a
+    54 => ret 0x5b9cca4f
+    55 => ret 0x682e6ff3
+    56 => ret 0x748f82ee
+    57 => ret 0x78a5636f
+    58 => ret 0x84c87814
+    59 => ret 0x8cc70208
+    60 => ret 0x90befffa
+    61 => ret 0xa4506ceb
+    62 => ret 0xbef9a3f7
+    63 => ret 0xc67178f2
+    _  => ret 0
+  .end
+.end
+
+fn sha256_ch(x: U32, y: U32, z: U32) -> U32
+  ret (x & y) ^ ((~x) & z)
+.end
+
+fn sha256_maj(x: U32, y: U32, z: U32) -> U32
+  ret (x & y) ^ (x & z) ^ (y & z)
+.end
+
+fn sha256_big_sigma0(x: U32) -> U32
+  ret rotr32(x, 2) ^ rotr32(x, 13) ^ rotr32(x, 22)
+.end
+
+fn sha256_big_sigma1(x: U32) -> U32
+  ret rotr32(x, 6) ^ rotr32(x, 11) ^ rotr32(x, 25)
+.end
+
+fn sha256_small_sigma0(x: U32) -> U32
+  ret rotr32(x, 7) ^ rotr32(x, 18) ^ shr32(x, 3)
+.end
+
+fn sha256_small_sigma1(x: U32) -> U32
+  ret rotr32(x, 17) ^ rotr32(x, 19) ^ shr32(x, 10)
+.end
+
+fn sha256_compress(ctx: &Sha256, block: Ptr[U8]) -> (Bool, CryptoError)
+  # Build message schedule W[64]
+  let w = vec_new[U32]()
+  let ok: Bool
+  let err: CryptoError
+
+  let i: USize
+  set i = 0
+  loop
+    if i >= 64
+      break
+    .end
+    (ok, err) = vec_u32_push(&w, 0)
+    if !ok
+      ret (false, err)
+    .end
+    set i = i + 1
+  .end
+
+  let wp = (Ptr[U32])w.data
+
+  set i = 0
+  loop
+    if i >= 16
+      break
+    .end
+    *(wp + i) = load_u32_be(block + (i * 4))
+    set i = i + 1
+  .end
+
+  set i = 16
+  loop
+    if i >= 64
+      break
+    .end
+    let t = *(wp + i - 16)
+    let u = *(wp + i - 15)
+    let v = *(wp + i - 7)
+    let s = *(wp + i - 2)
+    *(wp + i) = sha256_small_sigma1(s) + v + sha256_small_sigma0(u) + t
+    set i = i + 1
+  .end
+
+  # Working variables
+  let a = ctx.h0
+  let b = ctx.h1
+  let c = ctx.h2
+  let d = ctx.h3
+  let e = ctx.h4
+  let f = ctx.h5
+  let g = ctx.h6
+  let h = ctx.h7
+
+  set i = 0
+  loop
+    if i >= 64
+      break
+    .end
+
+    let t1 = h + sha256_big_sigma1(e) + sha256_ch(e, f, g) + sha256_k(i) + *(wp + i)
+    let t2 = sha256_big_sigma0(a) + sha256_maj(a, b, c)
+
+    set h = g
+    set g = f
+    set f = e
+    set e = d + t1
+    set d = c
+    set c = b
+    set b = a
+    set a = t1 + t2
+
+    set i = i + 1
+  .end
+
+  set ctx.h0 = ctx.h0 + a
+  set ctx.h1 = ctx.h1 + b
+  set ctx.h2 = ctx.h2 + c
+  set ctx.h3 = ctx.h3 + d
+  set ctx.h4 = ctx.h4 + e
+  set ctx.h5 = ctx.h5 + f
+  set ctx.h6 = ctx.h6 + g
+  set ctx.h7 = ctx.h7 + h
+
+  # (optional) zeroize schedule
+  do memzero((Ptr[U8])w.data, 64 * 4)
+  do vec_drop[U32](&w, 4)
+
+  ret (true, CryptoError::Ok)
+.end
+
+fn sha256_update(ctx: &Sha256, data: Ptr[U8], n: USize) -> (Bool, CryptoError)
+  # Update length
+  set ctx.total_len = ctx.total_len + (U64)n
+
+  let ok: Bool
+  let err: CryptoError
+
+  let i: USize
+  set i = 0
+
+  loop
+    if i >= n
+      break
+    .end
+
+    # ensure buffer capacity for write
+    if ctx.buf_len == ctx.buf.len
+      # grow underlying Vec by pushing a dummy then backing out; simpler is reserve
+      (ok, err) = vec_u8_reserve(&ctx.buf, 64)
+      if !ok
+        ret (false, err)
+      .end
+    .end
+
+    # if buf.len < 64, ensure it has at least 64 slots by pushing zeros
+    while ctx.buf.len < 64
+      let ok2: Bool
+      let err2: CryptoError
+      (ok2, err2) = vec_u8_push(&ctx.buf, 0)
+      if !ok2
+        ret (false, err2)
+      .end
+    .end
+
+    let bp = (Ptr[U8])ctx.buf.data
+    *(bp + ctx.buf_len) = *(data + i)
+    set ctx.buf_len = ctx.buf_len + 1
+    set i = i + 1
+
+    if ctx.buf_len == 64
+      (ok, err) = sha256_compress(ctx, (Ptr[U8])ctx.buf.data)
+      if !ok
+        ret (false, err)
+      .end
+      set ctx.buf_len = 0
+    .end
+  .end
+
+  ret (true, CryptoError::Ok)
+.end
+
+fn sha256_final(ctx: &Sha256, out32: &Vec[U8]) -> (Bool, CryptoError)
+  do vec_clear[U8](out32)
+
+  let ok: Bool
+  let err: CryptoError
+
+  # Ensure ctx.buf has 64 bytes backing
+  while ctx.buf.len < 64
+    let ok2: Bool
+    let err2: CryptoError
+    (ok2, err2) = vec_u8_push(&ctx.buf, 0)
+    if !ok2
+      ret (false, err2)
+    .end
+  .end
+
+  let bp = (Ptr[U8])ctx.buf.data
+
+  # Append 0x80
+  *(bp + ctx.buf_len) = 0x80
+  set ctx.buf_len = ctx.buf_len + 1
+
+  # If not enough room for 8-byte length at end, pad with zeros and compress
+  if ctx.buf_len > 56
+    let i: USize
+    set i = ctx.buf_len
+    loop
+      if i >= 64
+        break
+      .end
+      *(bp + i) = 0
+      set i = i + 1
+    .end
+
+    (ok, err) = sha256_compress(ctx, bp)
+    if !ok
+      ret (false, err)
+    .end
+
+    set ctx.buf_len = 0
+  .end
+
+  # Pad zeros up to 56
+  let j: USize
+  set j = ctx.buf_len
+  loop
+    if j >= 56
+      break
+    .end
+    *(bp + j) = 0
+    set j = j + 1
+  .end
+
+  # Append length in bits, big-endian
+  let bit_len = ctx.total_len * 8
+  do store_u64_be(bp + 56, bit_len)
+
+  (ok, err) = sha256_compress(ctx, bp)
+  if !ok
+    ret (false, err)
+  .end
+
+  # Produce digest
+  (ok, err) = vec_u8_reserve(out32, 32)
+  if !ok
+    ret (false, err)
+  .end
+
+  # push 32 zero bytes then store
+  let k: USize
+  set k = 0
+  loop
+    if k >= 32
+      break
+    .end
+    let ok3: Bool
+    let err3: CryptoError
+    (ok3, err3) = vec_u8_push(out32, 0)
+    if !ok3
+      ret (false, err3)
+    .end
+    set k = k + 1
+  .end
+
+  let op = (Ptr[U8])out32.data
+  do store_u32_be(op + 0,  ctx.h0)
+  do store_u32_be(op + 4,  ctx.h1)
+  do store_u32_be(op + 8,  ctx.h2)
+  do store_u32_be(op + 12, ctx.h3)
+  do store_u32_be(op + 16, ctx.h4)
+  do store_u32_be(op + 20, ctx.h5)
+  do store_u32_be(op + 24, ctx.h6)
+  do store_u32_be(op + 28, ctx.h7)
+
+  ret (true, CryptoError::Ok)
+.end
+
+fn sha256_hash(in: &Vec[U8], out32: &Vec[U8]) -> (Bool, CryptoError)
+  let ctx: Sha256
+  let ok: Bool
+  let err: CryptoError
+
+  (ok, err) = sha256_init(&ctx)
+  if !ok
+    ret (false, err)
+  .end
+
+  if in.len > 0
+    (ok, err) = sha256_update(&ctx, (Ptr[U8])in.data, in.len)
+    if !ok
+      ret (false, err)
+    .end
+  .end
+
+  (ok, err) = sha256_final(&ctx, out32)
+  if !ok
+    ret (false, err)
+  .end
+
+  # best effort zeroize buffer
+  do memzero((Ptr[U8])ctx.buf.data, 64)
+  do vec_drop[U8](&ctx.buf, 1)
+
+  ret (true, CryptoError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# HMAC-SHA256
+# -----------------------------------------------------------------------------
+
+fn hmac_sha256(key: &Vec[U8], msg: &Vec[U8], out32: &Vec[U8]) -> (Bool, CryptoError)
+  do vec_clear[U8](out32)
+
+  let ok: Bool
+  let err: CryptoError
+
+  # block size = 64
+  let k0 = vec_new[U8]()
+  (ok, err) = vec_u8_reserve(&k0, 64)
+  if !ok
+    ret (false, err)
+  .end
+  let i: USize
+  set i = 0
+  loop
+    if i >= 64
+      break
+    .end
+    (ok, err) = vec_u8_push(&k0, 0)
+    if !ok
+      ret (false, err)
+    .end
+    set i = i + 1
+  .end
+
+  if key.len > 64
+    let kh = vec_new[U8]()
+    (ok, err) = sha256_hash(key, &kh)
+    if !ok
+      ret (false, err)
+    .end
+    # copy first 32 into k0
+    let kp = (Ptr[U8])k0.data
+    let hp = (Ptr[U8])kh.data
+    do rt_memcpy(kp, hp, 32)
+    do vec_drop[U8](&kh, 1)
+  else
+    let kp = (Ptr[U8])k0.data
+    let sp = (Ptr[U8])key.data
+    if key.len > 0
+      do rt_memcpy(kp, sp, key.len)
+    .end
+  .end
+
+  # ipad/opad
+  let ipad = vec_new[U8]()
+  let opad = vec_new[U8]()
+  (ok, err) = vec_u8_reserve(&ipad, 64)
+  if !ok
+    ret (false, err)
+  .end
+  (ok, err) = vec_u8_reserve(&opad, 64)
+  if !ok
+    ret (false, err)
+  .end
+
+  set i = 0
+  loop
+    if i >= 64
+      break
+    .end
+    let kb = *((Ptr[U8])k0.data + i)
+    (ok, err) = vec_u8_push(&ipad, kb ^ 0x36)
+    if !ok
+      ret (false, err)
+    .end
+    (ok, err) = vec_u8_push(&opad, kb ^ 0x5c)
+    if !ok
+      ret (false, err)
+    .end
+    set i = i + 1
+  .end
+
+  # inner = sha256(ipad || msg)
+  let inner_msg = vec_new[U8]()
+  (ok, err) = vec_u8_reserve(&inner_msg, 64 + msg.len)
+  if !ok
+    ret (false, err)
+  .end
+
+  # copy ipad
+  let ip = (Ptr[U8])ipad.data
+  set i = 0
+  loop
+    if i >= 64
+      break
+    .end
+    (ok, err) = vec_u8_push(&inner_msg, *(ip + i))
+    if !ok
+      ret (false, err)
+    .end
+    set i = i + 1
+  .end
+
+  # copy msg
+  let mp = (Ptr[U8])msg.data
+  set i = 0
+  loop
+    if i >= msg.len
+      break
+    .end
+    (ok, err) = vec_u8_push(&inner_msg, *(mp + i))
+    if !ok
+      ret (false, err)
+    .end
+    set i = i + 1
+  .end
+
+  let inner = vec_new[U8]()
+  (ok, err) = sha256_hash(&inner_msg, &inner)
+  if !ok
+    ret (false, err)
+  .end
+
+  # outer = sha256(opad || inner)
+  let outer_msg = vec_new[U8]()
+  (ok, err) = vec_u8_reserve(&outer_msg, 64 + 32)
+  if !ok
+    ret (false, err)
+  .end
+
+  let op = (Ptr[U8])opad.data
+  set i = 0
+  loop
+    if i >= 64
+      break
+    .end
+    (ok, err) = vec_u8_push(&outer_msg, *(op + i))
+    if !ok
+      ret (false, err)
+    .end
+    set i = i + 1
+  .end
+
+  let hp = (Ptr[U8])inner.data
+  set i = 0
+  loop
+    if i >= 32
+      break
+    .end
+    (ok, err) = vec_u8_push(&outer_msg, *(hp + i))
+    if !ok
+      ret (false, err)
+    .end
+    set i = i + 1
+  .end
+
+  (ok, err) = sha256_hash(&outer_msg, out32)
+  if !ok
+    ret (false, err)
+  .end
+
+  # cleanup (best effort)
+  do memzero((Ptr[U8])k0.data, 64)
+  do memzero((Ptr[U8])ipad.data, 64)
+  do memzero((Ptr[U8])opad.data, 64)
+
+  do vec_drop[U8](&k0, 1)
+  do vec_drop[U8](&ipad, 1)
+  do vec_drop[U8](&opad, 1)
+  do vec_drop[U8](&inner_msg, 1)
+  do vec_drop[U8](&outer_msg, 1)
+  do vec_drop[U8](&inner, 1)
+
+  ret (true, CryptoError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# HKDF (RFC 5869) with HMAC-SHA256
+# -----------------------------------------------------------------------------
+
+fn hkdf_extract(salt: &Vec[U8], ikm: &Vec[U8], prk32: &Vec[U8]) -> (Bool, CryptoError)
+  # PRK = HMAC(salt, ikm). If salt is empty, salt = zeros(32)
+  let z = vec_new[U8]()
+  let ok: Bool
+  let err: CryptoError
+
+  if salt.len == 0
+    (ok, err) = vec_u8_reserve(&z, 32)
+    if !ok
+      ret (false, err)
+    .end
+    let i: USize
+    set i = 0
+    loop
+      if i >= 32
+        break
+      .end
+      (ok, err) = vec_u8_push(&z, 0)
+      if !ok
+        ret (false, err)
+      .end
+      set i = i + 1
+    .end
+    (ok, err) = hmac_sha256(&z, ikm, prk32)
+    do vec_drop[U8](&z, 1)
+    ret (ok, err)
+  .end
+
+  ret hmac_sha256(salt, ikm, prk32)
+.end
+
+fn hkdf_expand(prk32: &Vec[U8], info: &Vec[U8], l: USize, okm: &Vec[U8]) -> (Bool, CryptoError)
+  do vec_clear[U8](okm)
+
+  if prk32.len != 32
+    ret (false, CryptoError::Invalid)
+  .end
+
+  if l > 255 * 32
+    ret (false, CryptoError::TooLarge)
+  .end
+
+  let ok: Bool
+  let err: CryptoError
+
+  let t = vec_new[U8]()
+  let prev = vec_new[U8]()
+
+  let counter: U8
+  set counter = 1
+
+  while okm.len < l
+    # T(i) = HMAC(PRK, T(i-1) || info || counter)
+    do vec_clear[U8](&t)
+
+    let msg = vec_new[U8]()
+    (ok, err) = vec_u8_reserve(&msg, prev.len + info.len + 1)
+    if !ok
+      ret (false, err)
+    .end
+
+    # prev
+    let i: USize
+    set i = 0
+    let pp = (Ptr[U8])prev.data
+    loop
+      if i >= prev.len
+        break
+      .end
+      (ok, err) = vec_u8_push(&msg, *(pp + i))
+      if !ok
+        ret (false, err)
+      .end
+      set i = i + 1
+    .end
+
+    # info
+    let ip = (Ptr[U8])info.data
+    set i = 0
+    loop
+      if i >= info.len
+        break
+      .end
+      (ok, err) = vec_u8_push(&msg, *(ip + i))
+      if !ok
+        ret (false, err)
+      .end
+      set i = i + 1
+    .end
+
+    (ok, err) = vec_u8_push(&msg, counter)
+    if !ok
+      ret (false, err)
+    .end
+
+    (ok, err) = hmac_sha256(prk32, &msg, &t)
+    do vec_drop[U8](&msg, 1)
+
+    if !ok
+      ret (false, err)
+    .end
+
+    # append t to okm
+    let tp = (Ptr[U8])t.data
+    set i = 0
+    loop
+      if i >= t.len
+        break
+      .end
+      if okm.len >= l
+        break
+      .end
+      (ok, err) = vec_u8_push(okm, *(tp + i))
+      if !ok
+        ret (false, err)
+      .end
+      set i = i + 1
+    .end
+
+    # prev = t
+    do vec_clear[U8](&prev)
+    (ok, err) = vec_u8_reserve(&prev, 32)
+    if !ok
+      ret (false, err)
+    .end
+    set i = 0
+    loop
+      if i >= 32
+        break
+      .end
+      (ok, err) = vec_u8_push(&prev, *(tp + i))
+      if !ok
+        ret (false, err)
+      .end
+      set i = i + 1
+    .end
+
+    set counter = counter + 1
+  .end
+
+  do vec_drop[U8](&t, 1)
+  do vec_drop[U8](&prev, 1)
+
+  ret (true, CryptoError::Ok)
+.end
+
+fn hkdf_sha256(salt: &Vec[U8], ikm: &Vec[U8], info: &Vec[U8], l: USize, okm: &Vec[U8]) -> (Bool, CryptoError)
+  let prk = vec_new[U8]()
+  let ok: Bool
+  let err: CryptoError
+  (ok, err) = hkdf_extract(salt, ikm, &prk)
+  if !ok
+    ret (false, err)
+  .end
+  (ok, err) = hkdf_expand(&prk, info, l, okm)
+  do vec_drop[U8](&prk, 1)
+  ret (ok, err)
+.end
+
+# -----------------------------------------------------------------------------
+# PBKDF2-HMAC-SHA256
+# -----------------------------------------------------------------------------
+
+fn pbkdf2_hmac_sha256(password: &Vec[U8], salt: &Vec[U8], iterations: U32, dk_len: USize, out: &Vec[U8]) -> (Bool, CryptoError)
+  do vec_clear[U8](out)
+
+  if iterations == 0
+    ret (false, CryptoError::Invalid)
+  .end
+
+  let ok: Bool
+  let err: CryptoError
+
+  let hlen: USize
+  set hlen = 32
+
+  let blocks = (dk_len + hlen - 1) / hlen
+  if blocks > 0xffffffff
+    ret (false, CryptoError::TooLarge)
+  .end
+
+  let i_block: U32
+  set i_block = 1
+
+  while (USize)i_block <= blocks
+    # U1 = HMAC(P, S || INT(i))
+    let msg = vec_new[U8]()
+    (ok, err) = vec_u8_reserve(&msg, salt.len + 4)
+    if !ok
+      ret (false, err)
+    .end
+
+    let sp = (Ptr[U8])salt.data
+    let i: USize
+    set i = 0
+    loop
+      if i >= salt.len
+        break
+      .end
+      (ok, err) = vec_u8_push(&msg, *(sp + i))
+      if !ok
+        ret (false, err)
+      .end
+      set i = i + 1
+    .end
+
+    # INT(i) big-endian
+    (ok, err) = vec_u8_push(&msg, (U8)((i_block >> 24) & 0xff))
+    if !ok
+      ret (false, err)
+    .end
+    (ok, err) = vec_u8_push(&msg, (U8)((i_block >> 16) & 0xff))
+    if !ok
+      ret (false, err)
+    .end
+    (ok, err) = vec_u8_push(&msg, (U8)((i_block >> 8) & 0xff))
+    if !ok
+      ret (false, err)
+    .end
+    (ok, err) = vec_u8_push(&msg, (U8)(i_block & 0xff))
+    if !ok
+      ret (false, err)
+    .end
+
+    let u = vec_new[U8]()
+    (ok, err) = hmac_sha256(password, &msg, &u)
+    do vec_drop[U8](&msg, 1)
+    if !ok
+      ret (false, err)
+    .end
+
+    # t = u (xor accum)
+    let t = vec_new[U8]()
+    (ok, err) = vec_u8_reserve(&t, 32)
+    if !ok
+      ret (false, err)
+    .end
+
+    set i = 0
+    let up = (Ptr[U8])u.data
+    loop
+      if i >= 32
+        break
+      .end
+      (ok, err) = vec_u8_push(&t, *(up + i))
+      if !ok
+        ret (false, err)
+      .end
+      set i = i + 1
+    .end
+
+    # iterate U2..Uc
+    let c: U32
+    set c = 2
+    while c <= iterations
+      let u2 = vec_new[U8]()
+      (ok, err) = hmac_sha256(password, &u, &u2)
+      if !ok
+        ret (false, err)
+      .end
+
+      # t ^= u2
+      let tp = (Ptr[U8])t.data
+      let u2p = (Ptr[U8])u2.data
+      set i = 0
+      loop
+        if i >= 32
+          break
+        .end
+        *(tp + i) = *(tp + i) ^ *(u2p + i)
+        set i = i + 1
+      .end
+
+      # u = u2
+      do vec_drop[U8](&u, 1)
+      set u = u2
+
+      set c = c + 1
+    .end
+
+    # append block to out
+    let need = dk_len - out.len
+    let take = min_usize(32, need)
+    let tp2 = (Ptr[U8])t.data
+    set i = 0
+    loop
+      if i >= take
+        break
+      .end
+      (ok, err) = vec_u8_push(out, *(tp2 + i))
+      if !ok
+        ret (false, err)
+      .end
+      set i = i + 1
+    .end
+
+    do vec_drop[U8](&t, 1)
+    do vec_drop[U8](&u, 1)
+
+    set i_block = i_block + 1
+  .end
+
+  ret (true, CryptoError::Ok)
+.end
+
+# -----------------------------------------------------------------------------
+# Tests (scenarios)
+# -----------------------------------------------------------------------------
+
+fn assert_eq_u8_vec(a: &Vec[U8], b: &Vec[U8])
+  do assert(a.len == b.len, "vec len mismatch")
+  let i: USize
+  set i = 0
+  let ap = (Ptr[U8])a.data
+  let bp = (Ptr[U8])b.data
+  loop
+    if i >= a.len
+      break
+    .end
+    do assert(*(ap + i) == *(bp + i), "vec byte mismatch")
+    set i = i + 1
+  .end
+.end
+
+fn vec_from_bytes_3(a: U8, b: U8, c: U8) -> Vec[U8]
+  let v = vec_new[U8]()
+  let ok: Bool
+  let err: ColError
+  (ok, err) = vec_push[U8](&v, 1, a)
+  (ok, err) = vec_push[U8](&v, 1, b)
+  (ok, err) = vec_push[U8](&v, 1, c)
+  ret v
+.end
+
+scn test_sha256_abc
+  # SHA256("abc")
+  let msg = vec_from_bytes_3((U8)'a', (U8)'b', (U8)'c')
+
+  let dig = vec_new[U8]()
+  let ok: Bool
+  let err: CryptoError
+  (ok, err) = sha256_hash(&msg, &dig)
+  do assert(ok, "sha256_hash")
+
+  let exp = vec_new[U8]()
+  # ba7816bf 8f01cfea 414140de 5dae2223 b00361a3 96177a9c b410ff61 f20015ad
+  let x: U8
+
+  set x = 0xba; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x78; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x16; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0xbf; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x8f; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x01; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0xcf; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0xea; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x41; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x41; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x40; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0xde; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x5d; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0xae; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x22; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x23; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0xb0; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x03; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x61; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0xa3; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x96; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x17; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x7a; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x9c; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0xb4; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x10; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0xff; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x61; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0xf2; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x00; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0x15; (ok, err) = vec_u8_push(&exp, x)
+  set x = 0xad; (ok, err) = vec_u8_push(&exp, x)
+
+  do assert_eq_u8_vec(&dig, &exp)
+
+  do vec_drop[U8](&msg, 1)
+  do vec_drop[U8](&dig, 1)
+  do vec_drop[U8](&exp, 1)
+.end
+
+scn test_hmac_sha256_rfc4231_case1
+  # RFC 4231 test case 1
+  # key = 0x0b repeated 20
+  # data = "Hi There"
+  # digest = b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7
+
+  let key = vec_new[U8]()
+  let ok: Bool
+  let err: CryptoError
+  let i: USize
+  set i = 0
+  loop
+    if i >= 20
+      break
+    .end
+    (ok, err) = vec_u8_push(&key, 0x0b)
+    do assert(ok, "push")
+    set i = i + 1
+  .end
+
+  let msg = vec_new[U8]()
+  (ok, err) = vec_u8_push(&msg, (U8)'H')
+  (ok, err) = vec_u8_push(&msg, (U8)'i')
+  (ok, err) = vec_u8_push(&msg, (U8)' ')
+  (ok, err) = vec_u8_push(&msg, (U8)'T')
+  (ok, err) = vec_u8_push(&msg, (U8)'h')
+  (ok, err) = vec_u8_push(&msg, (U8)'e')
+  (ok, err) = vec_u8_push(&msg, (U8)'r')
+  (ok, err) = vec_u8_push(&msg, (U8)'e')
+
+  let dig = vec_new[U8]()
+  (ok, err) = hmac_sha256(&key, &msg, &dig)
+  do assert(ok, "hmac")
+
+  let exp = vec_new[U8]()
+  let b: U8
+
+  set b = 0xb0; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x34; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x4c; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x61; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xd8; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xdb; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x38; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x53; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x5c; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xa8; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xaf; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xce; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xaf; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x0b; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xf1; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x2b; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x88; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x1d; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xc2; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x00; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xc9; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x83; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x3d; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xa7; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x26; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xe9; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x37; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x6c; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x2e; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x32; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xcf; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xf7; (ok, err) = vec_u8_push(&exp, b)
+
+  do assert_eq_u8_vec(&dig, &exp)
+
+  do vec_drop[U8](&key, 1)
+  do vec_drop[U8](&msg, 1)
+  do vec_drop[U8](&dig, 1)
+  do vec_drop[U8](&exp, 1)
+.end
+
+scn test_hkdf_sha256_rfc5869_case1
+  # RFC 5869 test case 1 (SHA-256)
+  # IKM = 0x0b * 22
+  # salt = 000102030405060708090a0b0c
+  # info = f0f1f2f3f4f5f6f7f8f9
+  # L = 42
+  # OKM = 3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865
+
+  let ikm = vec_new[U8]()
+  let ok: Bool
+  let err: CryptoError
+  let i: USize
+  set i = 0
+  loop
+    if i >= 22
+      break
+    .end
+    (ok, err) = vec_u8_push(&ikm, 0x0b)
+    do assert(ok, "push")
+    set i = i + 1
+  .end
+
+  let salt = vec_new[U8]()
+  (ok, err) = vec_u8_push(&salt, 0x00)
+  (ok, err) = vec_u8_push(&salt, 0x01)
+  (ok, err) = vec_u8_push(&salt, 0x02)
+  (ok, err) = vec_u8_push(&salt, 0x03)
+  (ok, err) = vec_u8_push(&salt, 0x04)
+  (ok, err) = vec_u8_push(&salt, 0x05)
+  (ok, err) = vec_u8_push(&salt, 0x06)
+  (ok, err) = vec_u8_push(&salt, 0x07)
+  (ok, err) = vec_u8_push(&salt, 0x08)
+  (ok, err) = vec_u8_push(&salt, 0x09)
+  (ok, err) = vec_u8_push(&salt, 0x0a)
+  (ok, err) = vec_u8_push(&salt, 0x0b)
+  (ok, err) = vec_u8_push(&salt, 0x0c)
+
+  let info = vec_new[U8]()
+  (ok, err) = vec_u8_push(&info, 0xf0)
+  (ok, err) = vec_u8_push(&info, 0xf1)
+  (ok, err) = vec_u8_push(&info, 0xf2)
+  (ok, err) = vec_u8_push(&info, 0xf3)
+  (ok, err) = vec_u8_push(&info, 0xf4)
+  (ok, err) = vec_u8_push(&info, 0xf5)
+  (ok, err) = vec_u8_push(&info, 0xf6)
+  (ok, err) = vec_u8_push(&info, 0xf7)
+  (ok, err) = vec_u8_push(&info, 0xf8)
+  (ok, err) = vec_u8_push(&info, 0xf9)
+
+  let okm = vec_new[U8]()
+  (ok, err) = hkdf_sha256(&salt, &ikm, &info, 42, &okm)
+  do assert(ok, "hkdf")
+
+  let exp = vec_new[U8]()
+  let b: U8
+  # 42 bytes
+  set b = 0x3c; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xb2; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x5f; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x25; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xfa; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xac; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xd5; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x7a; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x90; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x43; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x4f; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x64; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xd0; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x36; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x2f; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x2a; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x2d; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x2d; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x0a; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x90; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xcf; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x1a; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x5a; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x4c; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x5d; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xb0; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x2d; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x56; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xec; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xc4; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xc5; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xbf; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x34; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x00; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x72; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x08; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xd5; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xb8; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x87; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x18; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x58; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x65; (ok, err) = vec_u8_push(&exp, b)
+
+  do assert_eq_u8_vec(&okm, &exp)
+
+  do vec_drop[U8](&ikm, 1)
+  do vec_drop[U8](&salt, 1)
+  do vec_drop[U8](&info, 1)
+  do vec_drop[U8](&okm, 1)
+  do vec_drop[U8](&exp, 1)
+.end
+
+scn test_pbkdf2_hmac_sha256_known
+  # PBKDF2-HMAC-SHA256(password="password", salt="salt", iter=1, dkLen=32)
+  # dk = 120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b
+
+  let pass = vec_new[U8]()
+  let salt = vec_new[U8]()
+  let ok: Bool
+  let err: CryptoError
+
+  # "password"
+  (ok, err) = vec_u8_push(&pass, (U8)'p')
+  (ok, err) = vec_u8_push(&pass, (U8)'a')
+  (ok, err) = vec_u8_push(&pass, (U8)'s')
+  (ok, err) = vec_u8_push(&pass, (U8)'s')
+  (ok, err) = vec_u8_push(&pass, (U8)'w')
+  (ok, err) = vec_u8_push(&pass, (U8)'o')
+  (ok, err) = vec_u8_push(&pass, (U8)'r')
+  (ok, err) = vec_u8_push(&pass, (U8)'d')
+
+  # "salt"
+  (ok, err) = vec_u8_push(&salt, (U8)'s')
+  (ok, err) = vec_u8_push(&salt, (U8)'a')
+  (ok, err) = vec_u8_push(&salt, (U8)'l')
+  (ok, err) = vec_u8_push(&salt, (U8)'t')
+
+  let dk = vec_new[U8]()
+  (ok, err) = pbkdf2_hmac_sha256(&pass, &salt, 1, 32, &dk)
+  do assert(ok, "pbkdf2")
+
+  let exp = vec_new[U8]()
+  let b: U8
+  set b = 0x12; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x0f; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xb6; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xcf; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xfc; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xf8; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xb3; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x2c; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x43; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xe7; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x22; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x52; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x56; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xc4; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xf8; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x37; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xa8; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x65; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x48; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xc9; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x2c; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xcc; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x35; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x48; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x08; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x05; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x98; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x7c; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xb7; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x0b; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0xe1; (ok, err) = vec_u8_push(&exp, b)
+  set b = 0x7b; (ok, err) = vec_u8_push(&exp, b)
+
+  do assert_eq_u8_vec(&dk, &exp)
+
+  do vec_drop[U8](&pass, 1)
+  do vec_drop[U8](&salt, 1)
+  do vec_drop[U8](&dk, 1)
+  do vec_drop[U8](&exp, 1)
+.end
+
+# End of std.crypto

@@ -1,0 +1,477 @@
+# -----------------------------------------------------------------------------
+# std/core
+# -----------------------------------------------------------------------------
+# Minimal, bootstrap-friendly core primitives.
+#
+# Scope:
+# - stable type aliases (U8/I32/USize/...)
+# - Option[T] / Result[T,E]
+# - Ordering + compare helpers
+# - memory intrinsics (memcpy/memmove/memset) as runtime stubs
+# - panic/assert + basic utilities (min/max/clamp, swap, pow2 helpers)
+# - slice helpers (ptr+len) for bytes and generic T (elem_size explicit)
+#
+# Constraints:
+# - self-contained (no dependencies) to avoid bootstrap cycles
+# - blocks use `.end` only (no braces)
+# - explicit sizes where sizeof(T) would be required
+# -----------------------------------------------------------------------------
+
+module std.core
+
+# -----------------------------------------------------------------------------
+# Primitive aliases
+# -----------------------------------------------------------------------------
+
+type Bool = bool
+
+type U8   = u8
+type U16  = u16
+type U32  = u32
+type U64  = u64
+
+type I8   = i8
+type I16  = i16
+type I32  = i32
+type I64  = i64
+
+type F32  = f32
+type F64  = f64
+
+type USize = usize
+type ISize = isize
+
+type Ptr[T] = ptr[T]
+
+type Str = str
+
+type Void = void
+
+# -----------------------------------------------------------------------------
+# Runtime intrinsics (expected to be implemented by the platform / stage0)
+# -----------------------------------------------------------------------------
+
+fn rt_abort() -> Void
+  # external / trap
+  ret
+.end
+
+fn rt_panic(msg: Str) -> Void
+  # external / trap
+  ret
+.end
+
+fn rt_memcpy(dst: Ptr[U8], src: Ptr[U8], bytes: USize) -> Void
+  # external
+  ret
+.end
+
+fn rt_memmove(dst: Ptr[U8], src: Ptr[U8], bytes: USize) -> Void
+  # external
+  ret
+.end
+
+fn rt_memset(dst: Ptr[U8], v: U8, bytes: USize) -> Void
+  # external
+  ret
+.end
+
+# -----------------------------------------------------------------------------
+# Panic / assertions
+# -----------------------------------------------------------------------------
+
+fn panic(msg: Str) -> Void
+  do rt_panic(msg)
+  do rt_abort()
+  ret
+.end
+
+fn unreachable() -> Void
+  do panic("unreachable")
+.end
+
+fn assert(cond: Bool, msg: Str) -> Void
+  if !cond
+    do panic(msg)
+  .end
+  ret
+.end
+
+fn debug_assert(cond: Bool, msg: Str) -> Void
+  # in bootstrap, keep enabled (stage0 can strip later)
+  do assert(cond, msg)
+.end
+
+# -----------------------------------------------------------------------------
+# Option / Result (struct-based, payload-safe)
+# -----------------------------------------------------------------------------
+
+# Option[T] uses a presence flag + a value slot.
+# When has=false, val is unspecified.
+
+type Option[T] struct
+  has: Bool
+  val: T
+.end
+
+fn none[T]() -> Option[T]
+  let o: Option[T]
+  set o.has = false
+  ret o
+.end
+
+fn some[T](x: T) -> Option[T]
+  let o: Option[T]
+  set o.has = true
+  set o.val = x
+  ret o
+.end
+
+fn option_is_some[T](o: &Option[T]) -> Bool
+  ret o.has
+.end
+
+fn option_is_none[T](o: &Option[T]) -> Bool
+  ret !o.has
+.end
+
+fn option_unwrap_or[T](o: &Option[T], fallback: T) -> T
+  if o.has
+    ret o.val
+  .end
+  ret fallback
+.end
+
+# Result[T,E] uses ok flag + value/error slots.
+# If ok=true, err is unspecified; if ok=false, val is unspecified.
+
+type Result[T, E] struct
+  ok: Bool
+  val: T
+  err: E
+.end
+
+fn ok[T, E](x: T) -> Result[T, E]
+  let r: Result[T, E]
+  set r.ok = true
+  set r.val = x
+  ret r
+.end
+
+fn err[T, E](e: E) -> Result[T, E]
+  let r: Result[T, E]
+  set r.ok = false
+  set r.err = e
+  ret r
+.end
+
+fn result_is_ok[T, E](r: &Result[T, E]) -> Bool
+  ret r.ok
+.end
+
+fn result_is_err[T, E](r: &Result[T, E]) -> Bool
+  ret !r.ok
+.end
+
+fn result_unwrap_or[T, E](r: &Result[T, E], fallback: T) -> T
+  if r.ok
+    ret r.val
+  .end
+  ret fallback
+.end
+
+# -----------------------------------------------------------------------------
+# Ordering / comparisons
+# -----------------------------------------------------------------------------
+
+type Ordering enum
+  Less
+  Equal
+  Greater
+.end
+
+fn cmp_u32(a: U32, b: U32) -> Ordering
+  if a < b
+    ret Ordering::Less
+  .end
+  if a > b
+    ret Ordering::Greater
+  .end
+  ret Ordering::Equal
+.end
+
+fn cmp_i32(a: I32, b: I32) -> Ordering
+  if a < b
+    ret Ordering::Less
+  .end
+  if a > b
+    ret Ordering::Greater
+  .end
+  ret Ordering::Equal
+.end
+
+fn min_u32(a: U32, b: U32) -> U32
+  if a < b
+    ret a
+  .end
+  ret b
+.end
+
+fn max_u32(a: U32, b: U32) -> U32
+  if a > b
+    ret a
+  .end
+  ret b
+.end
+
+fn min_usize(a: USize, b: USize) -> USize
+  if a < b
+    ret a
+  .end
+  ret b
+.end
+
+fn max_usize(a: USize, b: USize) -> USize
+  if a > b
+    ret a
+  .end
+  ret b
+.end
+
+fn clamp_usize(x: USize, lo: USize, hi: USize) -> USize
+  if hi < lo
+    ret lo
+  .end
+  if x < lo
+    ret lo
+  .end
+  if x > hi
+    ret hi
+  .end
+  ret x
+.end
+
+# -----------------------------------------------------------------------------
+# Bit / integer helpers
+# -----------------------------------------------------------------------------
+
+fn align_up(n: USize, a: USize) -> USize
+  if a == 0
+    ret n
+  .end
+  let r = n % a
+  if r == 0
+    ret n
+  .end
+  ret n + (a - r)
+.end
+
+fn is_pow2(x: USize) -> Bool
+  if x == 0
+    ret false
+  .end
+  ret (x & (x - 1)) == 0
+.end
+
+fn next_pow2(x: USize) -> USize
+  if x <= 1
+    ret 1
+  .end
+  let v = x - 1
+  set v = v | (v >> 1)
+  set v = v | (v >> 2)
+  set v = v | (v >> 4)
+  set v = v | (v >> 8)
+  set v = v | (v >> 16)
+  set v = v | (v >> 32)
+  ret v + 1
+.end
+
+# -----------------------------------------------------------------------------
+# Swap utilities (bytewise, elem_size explicit)
+# -----------------------------------------------------------------------------
+
+fn swap_bytes(a: Ptr[U8], b: Ptr[U8], n: USize) -> Void
+  if n == 0
+    ret
+  .end
+  let i: USize
+  set i = 0
+  loop
+    if i >= n
+      break
+    .end
+    let ta = *(a + i)
+    let tb = *(b + i)
+    *(a + i) = tb
+    *(b + i) = ta
+    set i = i + 1
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Slice primitives
+# -----------------------------------------------------------------------------
+
+# Generic slice over T. elem_size must be the byte size of T.
+
+type Slice[T] struct
+  ptr: Ptr[T]
+  len: USize
+.end
+
+fn slice_new[T](ptr: Ptr[T], len: USize) -> Slice[T]
+  let s: Slice[T]
+  set s.ptr = ptr
+  set s.len = len
+  ret s
+.end
+
+fn slice_len[T](s: &Slice[T]) -> USize
+  ret s.len
+.end
+
+fn slice_is_empty[T](s: &Slice[T]) -> Bool
+  ret s.len == 0
+.end
+
+fn slice_get_ptr[T](s: &Slice[T], i: USize, elem_size: USize) -> Ptr[T]
+  if i >= s.len
+    ret (Ptr[T])0
+  .end
+  let p = (Ptr[U8])s.ptr + (i * elem_size)
+  ret (Ptr[T])p
+.end
+
+fn slice_copy_to[T](src: &Slice[T], dst: &Slice[T], elem_size: USize) -> Void
+  let n = min_usize(src.len, dst.len)
+  do rt_memmove((Ptr[U8])dst.ptr, (Ptr[U8])src.ptr, n * elem_size)
+.end
+
+fn slice_fill_u8(s: &Slice[U8], v: U8) -> Void
+  do rt_memset((Ptr[U8])s.ptr, v, s.len)
+.end
+
+# Bytes view helpers
+
+type Bytes struct
+  ptr: Ptr[U8]
+  len: USize
+.end
+
+fn bytes_new(ptr: Ptr[U8], len: USize) -> Bytes
+  let b: Bytes
+  set b.ptr = ptr
+  set b.len = len
+  ret b
+.end
+
+fn bytes_eq(a: &Bytes, b: &Bytes) -> Bool
+  if a.len != b.len
+    ret false
+  .end
+  let i: USize
+  set i = 0
+  loop
+    if i >= a.len
+      break
+    .end
+    if *(a.ptr + i) != *(b.ptr + i)
+      ret false
+    .end
+    set i = i + 1
+  .end
+  ret true
+.end
+
+fn bytes_find(a: &Bytes, needle: U8) -> Option[USize]
+  let i: USize
+  set i = 0
+  loop
+    if i >= a.len
+      break
+    .end
+    if *(a.ptr + i) == needle
+      ret some[USize](i)
+    .end
+    set i = i + 1
+  .end
+  ret none[USize]()
+.end
+
+# -----------------------------------------------------------------------------
+# Tests (scenarios)
+# -----------------------------------------------------------------------------
+
+scn test_option_result_core
+  let o0 = none[I32]()
+  do assert(option_is_none[I32](&o0), "option none")
+
+  let o1 = some[I32](7)
+  do assert(option_is_some[I32](&o1), "option some")
+  do assert(option_unwrap_or[I32](&o1, 0) == 7, "unwrap_or")
+  do assert(option_unwrap_or[I32](&o0, 9) == 9, "unwrap_or fallback")
+
+  let r0 = ok[I32, U32](3)
+  do assert(result_is_ok[I32, U32](&r0), "result ok")
+  do assert(result_unwrap_or[I32, U32](&r0, 0) == 3, "unwrap_or")
+
+  let r1 = err[I32, U32](42)
+  do assert(result_is_err[I32, U32](&r1), "result err")
+  do assert(result_unwrap_or[I32, U32](&r1, 5) == 5, "unwrap_or fallback")
+.end
+
+scn test_bytes_ops
+  # local stack arrays are assumed supported by backend; if not, stage0 can adjust.
+  let a0: U8
+  let a1: U8
+  let a2: U8
+  let a3: U8
+  let a4: U8
+  set a0 = 1
+  set a1 = 2
+  set a2 = 3
+  set a3 = 4
+  set a4 = 5
+
+  let b0: U8
+  let b1: U8
+  let b2: U8
+  let b3: U8
+  let b4: U8
+  set b0 = 1
+  set b1 = 2
+  set b2 = 3
+  set b3 = 4
+  set b4 = 5
+
+  let ba = bytes_new((Ptr[U8])&a0, 5)
+  let bb = bytes_new((Ptr[U8])&b0, 5)
+
+  do assert(bytes_eq(&ba, &bb), "bytes_eq")
+
+  let ix = bytes_find(&ba, 4)
+  do assert(option_is_some[USize](&ix), "bytes_find")
+  do assert(ix.val == 3, "bytes_find idx")
+
+  let iy = bytes_find(&ba, 9)
+  do assert(option_is_none[USize](&iy), "bytes_find none")
+.end
+
+scn test_math_helpers
+  do assert(align_up(0, 8) == 0, "align")
+  do assert(align_up(1, 8) == 8, "align")
+  do assert(align_up(8, 8) == 8, "align")
+  do assert(is_pow2(1), "pow2")
+  do assert(is_pow2(8), "pow2")
+  do assert(!is_pow2(6), "pow2")
+  do assert(next_pow2(1) == 1, "next_pow2")
+  do assert(next_pow2(2) == 2, "next_pow2")
+  do assert(next_pow2(3) == 4, "next_pow2")
+  do assert(next_pow2(9) == 16, "next_pow2")
+  do assert(clamp_usize(5, 0, 10) == 5, "clamp")
+  do assert(clamp_usize(5, 6, 10) == 6, "clamp")
+  do assert(clamp_usize(5, 0, 4) == 4, "clamp")
+.end
+
+# End of std.core

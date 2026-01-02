@@ -1,0 +1,25 @@
+mod cli.args.help
+
+use cli.ansi.style.*
+use cli.ansi.color.*
+
+fn render_help(app: str, desc: str, flags: [cli.args.args.Flag]) -> str
+  let out: str = ""
+  set out = out + bold(app) + "\n"
+  set out = out + desc + "\n\n"
+  set out = out + underline("Options") + "\n"
+  let i: i64 = 0
+  loop
+    if i >= flags.len
+      ret out
+    .end
+    let f = flags[i]
+    let line: str = "  " + cyan(f.short) + ", " + cyan(f.long)
+    if f.takes_value
+      set line = line + " " + dim("<value>")
+    .end
+    set line = line + "  " + f.help + "\n"
+    set out = out + line
+    set i = i + 1
+  .end
+.end

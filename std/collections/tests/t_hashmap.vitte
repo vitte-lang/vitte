@@ -1,0 +1,111 @@
+# /Users/vincent/Documents/Github/vitte/std/collections/tests/t_hashmap.vitte
+# -----------------------------------------------------------------------------
+# std/collections/tests/t_hashmap
+# -----------------------------------------------------------------------------
+# MAX tests for std.collections.hashmap
+#
+# Coverage:
+# - hashing stability
+# - invalid buffer behavior
+# - API surface compile/smoke: new/clear/get/contains/put/remove/iter
+#
+# Notes:
+# - The provided std.collections.hashmap is storage-abstract; SlotBuf is stubbed
+#   until wired to real storage, so runtime-functional tests are limited.
+# - These tests focus on deterministic behavior that does not require real slots,
+#   and on verifying return codes for invalid buffers.
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.collections.tests.t_hashmap
+
+use std.runtime
+use std.collections.hashmap
+
+type Bool = bool
+type Str  = str
+
+fn assert_true(b: Bool, msg: Str)
+  do std.runtime::assert(b, msg)
+.end
+
+fn assert_false(b: Bool, msg: Str)
+  do std.runtime::assert(!b, msg)
+.end
+
+fn assert_eq_str(a: Str, b: Str, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+# -----------------------------------------------------------------------------
+# Hash function stability (pure)
+# -----------------------------------------------------------------------------
+
+scn test_hashmap_hash_stability
+  let h1 = std.collections.hashmap::hash_str("abc")
+  let h2 = std.collections.hashmap::hash_str("abc")
+  do std.runtime::assert(h1 == h2, "hash stable abc")
+
+  let h3 = std.collections.hashmap::hash_str("")
+  let h4 = std.collections.hashmap::hash_str("")
+  do std.runtime::assert(h3 == h4, "hash stable empty")
+.end
+
+# -----------------------------------------------------------------------------
+# Invalid buffer behavior
+# -----------------------------------------------------------------------------
+
+scn test_hashmap_invalid_buf
+  let b = std.collections.hashmap::slotbuf_invalid()
+  let m = std.collections.hashmap::hashmap_new(b)
+
+  do assert_false(std.collections.hashmap::hashmap_is_valid(&m), "invalid map")
+
+  let g = std.collections.hashmap::hashmap_get(&m, "k")
+  do assert_false(g.ok, "get none invalid")
+
+  do assert_false(std.collections.hashmap::hashmap_contains(&m, "k"), "contains false invalid")
+
+  let pr = std.collections.hashmap::hashmap_put(&m, "k", "v")
+  do std.runtime::assert(pr == std.collections.hashmap::PutResult::Failed, "put failed invalid")
+
+  let rr = std.collections.hashmap::hashmap_remove(&m, "k")
+  do std.runtime::assert(rr == std.collections.hashmap::HashMapError::Invalid, "remove invalid")
+
+  let cr = std.collections.hashmap::hashmap_clear(&m)
+  do std.runtime::assert(cr == std.collections.hashmap::HashMapError::Invalid, "clear invalid")
+.end
+
+# -----------------------------------------------------------------------------
+# Iteration surface
+# -----------------------------------------------------------------------------
+
+scn test_hashmap_iter_surface
+  let b = std.collections.hashmap::slotbuf_invalid()
+  let m = std.collections.hashmap::hashmap_new(b)
+
+  let it = std.collections.hashmap::iter_new()
+  let ok: Bool
+  let k: Str
+  let v: Str
+  (ok, k, v) = std.collections.hashmap::hashmap_iter_next(&m, &it)
+  do assert_false(ok, "iter false invalid")
+  do assert_eq_str(k, "", "k empty")
+  do assert_eq_str(v, "", "v empty")
+.end
+
+# -----------------------------------------------------------------------------
+# API compile smoke (no assertions on functional behavior without storage)
+# -----------------------------------------------------------------------------
+
+scn test_hashmap_api_compile
+  let b = std.collections.hashmap::slotbuf_invalid()
+  let m = std.collections.hashmap::hashmap_new(b)
+
+  # accessors
+  do std.runtime::assert(std.collections.hashmap::hashmap_len(&m) == 0, "len 0")
+  do std.runtime::assert(std.collections.hashmap::hashmap_is_empty(&m) == true, "empty")
+  do std.runtime::assert(std.collections.hashmap::hashmap_cap(&m) == 0, "cap 0 invalid")
+.end
+
+# End of t_hashmap.vitte

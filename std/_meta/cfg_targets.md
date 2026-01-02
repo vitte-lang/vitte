@@ -1,3 +1,0 @@
-# cfg_targets
-
-Stub.

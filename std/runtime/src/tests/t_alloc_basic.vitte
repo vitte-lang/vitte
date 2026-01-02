@@ -1,0 +1,213 @@
+# /Users/vincent/Documents/Github/vitte/std/runtime/src/tests/t_alloc_basic.vitte
+# -----------------------------------------------------------------------------
+# std/runtime/tests/t_alloc_basic
+# -----------------------------------------------------------------------------
+# MAX unit tests for std.runtime allocation + low-level memory intrinsics.
+#
+# Goals:
+# - Verify runtime malloc/free basic correctness:
+#     * non-null on size>0 (when backend enabled)
+#     * alignment respected
+#     * writable memory (memset/memcmp/memcpy)
+#     * secure zeroing (best-effort)
+# - Keep tests deterministic and backend-agnostic.
+#
+# Notes:
+# - If your stage0/CI environment lacks a real allocator, set
+#   RT_TEST_ALLOC_REAL to false to skip backend-dependent parts.
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.runtime.tests.t_alloc_basic
+
+use std.runtime
+use std.mem
+use std.mem.ptr
+use std.string
+
+type Bool = bool
+type U32  = u32
+type U64  = u64
+type I32  = i32
+type Str  = str
+
+default const RT_TEST_ALLOC_REAL: Bool = true
+
+fn assert_true(b: Bool, msg: Str)
+  do std.runtime::assert(b, msg)
+.end
+
+fn assert_false(b: Bool, msg: Str)
+  do std.runtime::assert(!b, msg)
+.end
+
+fn assert_eq_u64(a: U64, b: U64, msg: Str)
+  do std.runtime::assert(a == b, msg)
+.end
+
+fn assert_ne_u64(a: U64, b: U64, msg: Str)
+  do std.runtime::assert(a != b, msg)
+.end
+
+fn is_pow2(x: U64) -> Bool
+  if x == 0
+    ret false
+  .end
+  ret (x & (x - 1)) == 0
+.end
+
+fn is_aligned(p: U64, align: U64) -> Bool
+  if align == 0
+    ret false
+  .end
+  ret (p % align) == 0
+.end
+
+# -----------------------------------------------------------------------------
+# Pure math sanity
+# -----------------------------------------------------------------------------
+
+scn test_runtime_alloc_math
+  do assert_true(is_pow2(1), "pow2(1)")
+  do assert_true(is_pow2(2), "pow2(2)")
+  do assert_true(is_pow2(8), "pow2(8)")
+  do assert_false(is_pow2(0), "pow2(0)=false")
+  do assert_false(is_pow2(3), "pow2(3)=false")
+
+  do assert_true(is_aligned(0x1000, 16), "aligned")
+  do assert_false(is_aligned(0x1001, 16), "unaligned")
+.end
+
+# -----------------------------------------------------------------------------
+# Allocation: basic + alignment
+# -----------------------------------------------------------------------------
+
+fn alloc_or_skip(size: U64, align: U64) -> U64
+  if !RT_TEST_ALLOC_REAL
+    ret 0
+  .end
+  do std.runtime::assert(size > 0, "alloc_or_skip: size=0")
+  do std.runtime::assert(align != 0, "alloc_or_skip: align=0")
+  do std.runtime::assert(is_pow2(align), "alloc_or_skip: align not pow2")
+  ret std.runtime::malloc(size, align)
+.end
+
+fn free_or_skip(p: U64, size: U64, align: U64)
+  if !RT_TEST_ALLOC_REAL
+    ret
+  .end
+  if p == 0
+    ret
+  .end
+  do std.runtime::free(p, size, align)
+.end
+
+scn test_runtime_malloc_alignment
+  if !RT_TEST_ALLOC_REAL
+    do assert_true(true, "skipped")
+    ret
+  .end
+
+  # sizes include small/odd and cache-line-ish
+  let sizes: U64
+  set sizes = 1
+
+  let p1 = alloc_or_skip(1, 1)
+  do assert_ne_u64(p1, 0, "malloc(1,1) non-null")
+  do assert_true(is_aligned(p1, 1), "align 1")
+  do free_or_skip(p1, 1, 1)
+
+  let p2 = alloc_or_skip(17, 8)
+  do assert_ne_u64(p2, 0, "malloc(17,8) non-null")
+  do assert_true(is_aligned(p2, 8), "align 8")
+  do free_or_skip(p2, 17, 8)
+
+  let p3 = alloc_or_skip(64, 16)
+  do assert_ne_u64(p3, 0, "malloc(64,16) non-null")
+  do assert_true(is_aligned(p3, 16), "align 16")
+  do free_or_skip(p3, 64, 16)
+
+  let p4 = alloc_or_skip(4096, 64)
+  do assert_ne_u64(p4, 0, "malloc(4096,64) non-null")
+  do assert_true(is_aligned(p4, 64), "align 64")
+  do free_or_skip(p4, 4096, 64)
+.end
+
+# -----------------------------------------------------------------------------
+# Writable memory: memset/memcmp/memcpy (runtime intrinsics)
+# -----------------------------------------------------------------------------
+
+scn test_runtime_mem_intrinsics
+  if !RT_TEST_ALLOC_REAL
+    do assert_true(true, "skipped")
+    ret
+  .end
+
+  let a = alloc_or_skip(64, 16)
+  let b = alloc_or_skip(64, 16)
+
+  do assert_ne_u64(a, 0, "alloc a")
+  do assert_ne_u64(b, 0, "alloc b")
+
+  # Fill different patterns
+  let _ = std.runtime::memset(a, 0x11, 64)
+  let _ = std.runtime::memset(b, 0x22, 64)
+
+  let c0 = std.runtime::memcmp(a, b, 64)
+  do std.runtime::assert(c0 != 0, "memcmp differs")
+
+  # Copy then compare
+  let _ = std.runtime::memcpy(b, a, 64)
+  let c1 = std.runtime::memcmp(a, b, 64)
+  do std.runtime::assert(c1 == 0, "memcmp equals after memcpy")
+
+  # Tweak one byte in b (via memset on slice)
+  let _ = std.runtime::memset(b + 10, 0x33, 1)
+  let c2 = std.runtime::memcmp(a, b, 64)
+  do std.runtime::assert(c2 != 0, "memcmp differs after tweak")
+
+  do free_or_skip(a, 64, 16)
+  do free_or_skip(b, 64, 16)
+.end
+
+# -----------------------------------------------------------------------------
+# Secure zeroing (best-effort)
+# -----------------------------------------------------------------------------
+
+scn test_runtime_memzero_secure
+  if !RT_TEST_ALLOC_REAL
+    do assert_true(true, "skipped")
+    ret
+  .end
+
+  let p = alloc_or_skip(128, 16)
+  do assert_ne_u64(p, 0, "alloc")
+
+  let _ = std.runtime::memset(p, 0xAB, 128)
+  let _ = std.runtime::memzero_secure(p, 128)
+
+  # Compare against a fresh zero buffer
+  let z = alloc_or_skip(128, 16)
+  do assert_ne_u64(z, 0, "alloc zero")
+  let _ = std.runtime::memset(z, 0, 128)
+
+  let c = std.runtime::memcmp(p, z, 128)
+  do std.runtime::assert(c == 0, "secure zero produces zeros")
+
+  do free_or_skip(p, 128, 16)
+  do free_or_skip(z, 128, 16)
+.end
+
+# -----------------------------------------------------------------------------
+# Pointer façade smoke (pure)
+# -----------------------------------------------------------------------------
+
+scn test_runtime_ptr_facade
+  let base = std.mem.ptr::from_addr(0x5000)
+  do assert_eq_u64(std.mem.ptr::addr(base), 0x5000, "ptr addr")
+  do assert_eq_u64(std.mem.ptr::add(base, 8), 0x5008, "ptr add")
+  do assert_eq_u64(std.mem.ptr::sub(base, 8), 0x4ff8, "ptr sub")
+  do assert_true(std.mem.ptr::is_aligned(0x5000, 16), "ptr aligned")
+.end
+
+# End of file

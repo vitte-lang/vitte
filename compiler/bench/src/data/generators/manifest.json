@@ -1,0 +1,231 @@
+
+
+{
+  "schema": "vitte.bench.generators.manifest.v1",
+  "version": 1,
+  "project": {
+    "name": "vitte",
+    "component": "compiler/bench/src/data/generators",
+    "language": "python",
+    "purpose": "Deterministic fixture generators for compiler + tooling benchmarks"
+  },
+  "conventions": {
+    "out_layout": {
+      "root": "<OUT>/<generator>",
+      "sets": "sets/<id>_<name>",
+      "index": "index.json",
+      "readme": "README.md",
+      "optional_index_md": "INDEX.md"
+    },
+    "exit_codes": {
+      "success": 0,
+      "usage_error": 2,
+      "io_or_internal_error": 3
+    },
+    "determinism": {
+      "seed_flag": "--seed",
+      "notes": "All generators must be deterministic for a given seed + args. Randomness must be derived from the seed only."
+    },
+    "writer": {
+      "atomic": true,
+      "normalize_lf": true,
+      "strip_trailing_ws": false
+    }
+  },
+  "common_flags": {
+    "out": {
+      "flag": "--out",
+      "type": "path",
+      "required": true
+    },
+    "seed": {
+      "flag": "--seed",
+      "type": "string",
+      "required": false,
+      "default": "0"
+    },
+    "count": {
+      "flag": "--count",
+      "type": "int",
+      "required": false,
+      "default": 0
+    },
+    "stress": {
+      "flag": "--stress",
+      "type": "int",
+      "required": false,
+      "default": 0
+    },
+    "emit_md": {
+      "flag": "--emit-md",
+      "type": "bool",
+      "required": false,
+      "default": false
+    },
+    "quiet": {
+      "flag": "--quiet",
+      "type": "bool",
+      "required": false,
+      "default": false
+    },
+    "verbose": {
+      "flag": "--verbose",
+      "type": "bool",
+      "required": false,
+      "default": false
+    }
+  },
+  "generators": [
+    {
+      "name": "stats",
+      "script": "gen_stats.py",
+      "out_subdir": "stats",
+      "contract": {
+        "name": "vitte.stats.files.v1",
+        "version": 1
+      },
+      "supports": {
+        "count": false,
+        "stress": false,
+        "emit_md": true
+      },
+      "flags": {
+        "inputs": {
+          "flag": "--inputs",
+          "type": "paths",
+          "required": false,
+          "default": ["../generated"],
+          "notes": "One or more roots to scan"
+        },
+        "include_ext": {
+          "flag": "--include-ext",
+          "type": "csv",
+          "required": false,
+          "default": "",
+          "notes": "Comma-separated extension allowlist"
+        },
+        "max_files": {
+          "flag": "--max-files",
+          "type": "int",
+          "required": false,
+          "default": 0,
+          "notes": "0 = unlimited"
+        },
+        "top": {
+          "flag": "--top",
+          "type": "int",
+          "required": false,
+          "default": 50
+        }
+      },
+      "outputs": {
+        "index": "index.json",
+        "reports": "reports/<id>_<name>/{summary.json,by_ext.json,top_files.json,meta.json}"
+      }
+    },
+    {
+      "name": "tokens",
+      "script": "gen_tokens.py",
+      "out_subdir": "tokens",
+      "contract": {
+        "name": "vitte.tokens.v1",
+        "version": 1
+      },
+      "supports": {
+        "count": true,
+        "stress": true,
+        "emit_md": true
+      },
+      "outputs": {
+        "index": "index.json",
+        "sets": "sets/<id>_<name>/{input.vitte,expected.tokens.json,meta.json}"
+      }
+    },
+    {
+      "name": "trivia",
+      "script": "gen_trivia.py",
+      "out_subdir": "trivia",
+      "contract": {
+        "name": "vitte.trivia.v1",
+        "version": 1
+      },
+      "supports": {
+        "count": true,
+        "stress": true,
+        "emit_md": true
+      },
+      "outputs": {
+        "index": "index.json",
+        "sets": "sets/<id>_<name>/{input.vitte,expected.trivia.json,meta.json}"
+      }
+    },
+    {
+      "name": "unicode",
+      "script": "gen_unicode.py",
+      "out_subdir": "unicode",
+      "contract": {
+        "name": "vitte.unicode.v1",
+        "version": 1
+      },
+      "supports": {
+        "count": true,
+        "stress": true,
+        "emit_md": true
+      },
+      "outputs": {
+        "index": "index.json",
+        "sets": "sets/<id>_<name>/{input.vitte,expected.unicode.json,meta.json}"
+      }
+    },
+    {
+      "name": "unicode_idents",
+      "script": "gen_unicode_idents.py",
+      "out_subdir": "unicode_idents",
+      "contract": {
+        "name": "vitte.unicode_idents.v1",
+        "version": 1
+      },
+      "supports": {
+        "count": true,
+        "stress": true,
+        "emit_md": true
+      },
+      "outputs": {
+        "index": "index.json",
+        "sets": "sets/<id>_<name>/{input.vitte,expected.unicode.json,meta.json}"
+      }
+    },
+    {
+      "name": "sema",
+      "script": "gen_sema.py",
+      "out_subdir": "sema",
+      "contract": {
+        "name": "vitte.sema.v1",
+        "version": 1
+      },
+      "supports": {
+        "optional": true,
+        "count": true,
+        "stress": true,
+        "emit_md": true
+      },
+      "notes": "Optional generator. If present, should follow the common CLI flags (--out/--seed/--count/--stress/etc.)."
+    }
+  ],
+  "makefile": {
+    "path": "Makefile",
+    "known_targets": [
+      "all",
+      "list",
+      "gen-stats",
+      "gen-tokens",
+      "gen-trivia",
+      "gen-unicode",
+      "gen-unicode_idents",
+      "gen-sema",
+      "run",
+      "clean",
+      "clean-all"
+    ]
+  }
+}

@@ -8,7 +8,7 @@ Objectifs :
 - Offrir une surface **minimale**, **portable** et **stable** au-dessus des OS (macOS/Linux/Windows/*BSD).
 - Isoler le runtime/VM des détails système (threads, time, fs, sockets, virtual memory, dylibs, etc.).
 - Garantir un comportement **déterministe** sur les éléments observables (erreurs, tailles, encodages).
-- Permettre une implémentation **C99** simple (et/ou Rust) sans dépendances lourdes.
+- Permettre une implémentation **C99** simple sans dépendances lourdes.
 
 Non-objectifs :
 - Fournir une API haut niveau (ça appartient à `std/*`).

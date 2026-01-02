@@ -1,0 +1,263 @@
+# /Users/vincent/Documents/Github/vitte/std/mem/src/slice.vitte
+# -----------------------------------------------------------------------------
+# std/mem/slice
+# -----------------------------------------------------------------------------
+# Generic slice façade for low-level code: pointer + length (+ element size).
+#
+# MAX goals:
+# - Provide a stable, compiler-friendly slice API without generics requirements.
+# - Keep representation ABI-friendly: base Ptr + len + elem_size (+ optional align).
+# - Provide bounds-checked element addressing and sub-slicing.
+# - Provide copy/move/fill/zero operations via std.mem (runtime-backed).
+# - Keep this module usable even during early bootstrap (stage0).
+#
+# Blocks use `.end` only (no braces).
+# -----------------------------------------------------------------------------
+
+module std.mem.slice
+
+use std.runtime
+use std.core.result
+use std.mem
+use std.mem.ptr
+
+type Bool = bool
+type U32  = u32
+type U64  = u64
+type I64  = i64
+type Str  = str
+
+# -----------------------------------------------------------------------------
+# Slice representation
+# -----------------------------------------------------------------------------
+# - base: pointer to first element
+# - len: number of elements
+# - elem_size: size in bytes of one element (must be >0 unless len==0)
+# - elem_align: alignment in bytes (pow2) for aligned access paths (optional)
+
+type Slice struct
+  base: std.mem.ptr::Ptr
+  len: U64
+  elem_size: U64
+  elem_align: U64
+.end
+
+fn slice_empty(elem_size: U64, elem_align: U64) -> Slice
+  let s: Slice
+  set s.base = std.mem.ptr::null()
+  set s.len = 0
+  set s.elem_size = elem_size
+  set s.elem_align = elem_align
+  ret s
+.end
+
+fn slice_new(base: std.mem.ptr::Ptr, len: U64, elem_size: U64, elem_align: U64) -> Slice
+  do std.runtime::assert(elem_size != 0 || len == 0, "slice_new: elem_size=0 with len>0")
+  if elem_align != 0
+    do std.runtime::assert(std.mem.ptr::is_pow2(elem_align), "slice_new: elem_align not pow2")
+    if base != 0
+      do std.runtime::assert(std.mem.ptr::is_aligned(base, elem_align), "slice_new: base unaligned")
+    .end
+  .end
+
+  let s: Slice
+  set s.base = base
+  set s.len = len
+  set s.elem_size = elem_size
+  set s.elem_align = elem_align
+  ret s
+.end
+
+fn slice_is_empty(s: &Slice) -> Bool
+  ret s.len == 0
+.end
+
+fn slice_byte_len(s: &Slice) -> U64
+  ret s.len * s.elem_size
+.end
+
+fn slice_end_ptr(s: &Slice) -> std.mem.ptr::Ptr
+  ret std.mem.ptr::add(s.base, slice_byte_len(s))
+.end
+
+fn slice_addr_of(s: &Slice, idx: U64) -> std.mem.ptr::Ptr
+  do std.runtime::assert(idx < s.len, "slice_addr_of: OOB")
+  ret std.mem.ptr::add(s.base, idx * s.elem_size)
+.end
+
+fn slice_as_buffer(s: &Slice) -> std.mem::Buffer
+  ret std.mem::buf_new(s.base, slice_byte_len(s))
+.end
+
+fn slice_sub(s: &Slice, off: U64, len: U64) -> Slice
+  do std.runtime::assert(off <= s.len, "slice_sub: off OOB")
+  do std.runtime::assert(len <= (s.len - off), "slice_sub: len OOB")
+
+  let base2 = std.mem.ptr::add(s.base, off * s.elem_size)
+  ret slice_new(base2, len, s.elem_size, s.elem_align)
+.end
+
+fn slice_prefix(s: &Slice, n: U64) -> Slice
+  do std.runtime::assert(n <= s.len, "slice_prefix: OOB")
+  ret slice_sub(s, 0, n)
+.end
+
+fn slice_suffix(s: &Slice, n: U64) -> Slice
+  do std.runtime::assert(n <= s.len, "slice_suffix: OOB")
+  ret slice_sub(s, s.len - n, n)
+.end
+
+# -----------------------------------------------------------------------------
+# Copy / move / fill operations (byte-based)
+# -----------------------------------------------------------------------------
+
+fn slice_copy_to(dst: &Slice, src: &Slice) -> U64
+  # Copies min(dst.len, src.len) elements (memcpy; overlap-unsafe).
+  do std.runtime::assert(dst.elem_size == src.elem_size, "slice_copy_to: elem_size mismatch")
+
+  let n = dst.len
+  if src.len < n
+    set n = src.len
+  .end
+  let bytes = n * dst.elem_size
+  let _ = std.mem::memcpy(dst.base, src.base, bytes)
+  ret n
+.end
+
+fn slice_move_to(dst: &Slice, src: &Slice) -> U64
+  # Copies min(dst.len, src.len) elements (memmove; overlap-safe).
+  do std.runtime::assert(dst.elem_size == src.elem_size, "slice_move_to: elem_size mismatch")
+
+  let n = dst.len
+  if src.len < n
+    set n = src.len
+  .end
+  let bytes = n * dst.elem_size
+  let _ = std.mem::memmove(dst.base, src.base, bytes)
+  ret n
+.end
+
+fn slice_fill_byte(dst: &Slice, byte: U32)
+  let bytes = slice_byte_len(dst)
+  let _ = std.mem::memset(dst.base, byte, bytes)
+.end
+
+fn slice_zero(dst: &Slice)
+  let bytes = slice_byte_len(dst)
+  let _ = std.mem::memzero(dst.base, bytes)
+.end
+
+fn slice_zero_secure(dst: &Slice)
+  let bytes = slice_byte_len(dst)
+  let _ = std.mem::memzero_secure(dst.base, bytes)
+.end
+
+fn slice_eq_bytes(a: &Slice, b: &Slice) -> Bool
+  if a.elem_size != b.elem_size
+    ret false
+  .end
+  if a.len != b.len
+    ret false
+  .end
+  let bytes = slice_byte_len(a)
+  ret std.mem::memeq(a.base, b.base, bytes)
+.end
+
+fn slice_cmp_bytes(a: &Slice, b: &Slice) -> I64
+  # Lexicographic compare by raw bytes (common prefix).
+  if a.elem_size != b.elem_size
+    # define stable ordering: smaller elem_size sorts first
+    if a.elem_size < b.elem_size
+      ret -1
+    .end
+    ret 1
+  .end
+
+  let ab = slice_as_buffer(a)
+  let bb = slice_as_buffer(b)
+
+  let n = ab.len
+  if bb.len < n
+    set n = bb.len
+  .end
+
+  let c = std.mem::memcmp(ab.ptr, bb.ptr, n)
+  if c < 0
+    ret -1
+  .end
+  if c > 0
+    ret 1
+  .end
+
+  if ab.len < bb.len
+    ret -1
+  .end
+  if ab.len > bb.len
+    ret 1
+  .end
+  ret 0
+.end
+
+# -----------------------------------------------------------------------------
+# Typed element access helpers (limited, via ptr module)
+# -----------------------------------------------------------------------------
+# These are convenience wrappers for common elem_size values.
+# For arbitrary types, prefer compiler intrinsics or explicit runtime APIs.
+
+fn slice_load_u8(s: &Slice, idx: U64) -> std.core.result::ResultU32
+  do std.runtime::assert(s.elem_size == 1, "slice_load_u8: elem_size != 1")
+  let p = slice_addr_of(s, idx)
+  ret std.mem.ptr::load_u8(p)
+.end
+
+fn slice_store_u8(s: &Slice, idx: U64, v: U32) -> std.core.result::ResultUnit
+  do std.runtime::assert(s.elem_size == 1, "slice_store_u8: elem_size != 1")
+  let p = slice_addr_of(s, idx)
+  ret std.mem.ptr::store_u8(p, v)
+.end
+
+fn slice_load_u32_le(s: &Slice, idx: U64) -> std.core.result::ResultU32
+  do std.runtime::assert(s.elem_size == 4, "slice_load_u32_le: elem_size != 4")
+  let p = slice_addr_of(s, idx)
+  ret std.mem.ptr::load_u32_le(p)
+.end
+
+fn slice_store_u32_le(s: &Slice, idx: U64, v: U32) -> std.core.result::ResultUnit
+  do std.runtime::assert(s.elem_size == 4, "slice_store_u32_le: elem_size != 4")
+  let p = slice_addr_of(s, idx)
+  ret std.mem.ptr::store_u32_le(p, v)
+.end
+
+# -----------------------------------------------------------------------------
+# Tests (pure math + bounds; backend loads/stores are smoke-only)
+# -----------------------------------------------------------------------------
+
+scn test_slice_math
+  let base = std.mem.ptr::from_addr(0x1000)
+  let s = slice_new(base, 10, 4, 4)
+
+  do std.runtime::assert(slice_byte_len(&s) == 40, "byte_len")
+  do std.runtime::assert(slice_end_ptr(&s) == 0x1028, "end_ptr")
+
+  let p3 = slice_addr_of(&s, 3)
+  do std.runtime::assert(p3 == 0x1000 + 12, "addr_of")
+
+  let sub = slice_sub(&s, 2, 4)
+  do std.runtime::assert(sub.base == 0x1000 + 8, "sub base")
+  do std.runtime::assert(sub.len == 4, "sub len")
+.end
+
+scn test_slice_prefix_suffix
+  let base = std.mem.ptr::from_addr(0x2000)
+  let s = slice_new(base, 8, 1, 1)
+
+  let pre = slice_prefix(&s, 3)
+  do std.runtime::assert(pre.len == 3, "prefix len")
+  do std.runtime::assert(pre.base == 0x2000, "prefix base")
+
+  let suf = slice_suffix(&s, 3)
+  do std.runtime::assert(suf.len == 3, "suffix len")
+  do std.runtime::assert(suf.base == 0x2000 + 5, "suffix base")
+.end
+
+# End of std.mem.slice

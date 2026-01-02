@@ -1,0 +1,301 @@
+# /Users/vincent/Documents/Github/vitte/std/mem/src/lib.vitte
+# -----------------------------------------------------------------------------
+# std/mem
+# -----------------------------------------------------------------------------
+# Low-level memory utilities (alignment, raw buffer views, memcpy/memmove/memset,
+# memcmp/eq, zeroing, swap).
+#
+# Design notes (MAX):
+# - This module is intentionally “thin”: it is a façade over runtime primitives.
+# - All memory-touching ops must be backed by std.runtime (or a dedicated
+#   intrinsic layer) for safety/perf/portability.
+# - Provides ergonomic Buffer view (ptr+len) with bounds-checked slicing.
+#
+# Blocks use `.end` only (no braces).
+# -----------------------------------------------------------------------------
+
+module std.mem
+
+use std.runtime
+use std.string
+
+type Bool = bool
+type U8   = u8
+type U32  = u32
+type U64  = u64
+type I32  = i32
+type Str  = str
+
+# -----------------------------------------------------------------------------
+# Opaque pointer model (ABI-friendly)
+# -----------------------------------------------------------------------------
+# Vitte core currently represents an address/handle as U64 in many layers.
+# If you already have a proper `ptr<T>` type in your compiler/runtime, map Ptr
+# to that and keep the public API identical.
+
+type Ptr = U64
+
+fn ptr_is_null(p: Ptr) -> Bool
+  ret p == 0
+.end
+
+fn ptr_add(p: Ptr, off: U64) -> Ptr
+  ret p + off
+.end
+
+fn ptr_sub(p: Ptr, off: U64) -> Ptr
+  ret p - off
+.end
+
+# -----------------------------------------------------------------------------
+# Alignment helpers
+# -----------------------------------------------------------------------------
+
+fn is_pow2(x: U64) -> Bool
+  if x == 0
+    ret false
+  .end
+  ret (x & (x - 1)) == 0
+.end
+
+fn is_aligned(x: U64, align: U64) -> Bool
+  if align == 0
+    ret false
+  .end
+  ret (x % align) == 0
+.end
+
+fn align_down(x: U64, align: U64) -> U64
+  do std.runtime::assert(align != 0, "align_down: align=0")
+  do std.runtime::assert(is_pow2(align), "align_down: align not pow2")
+  ret x & ~(align - 1)
+.end
+
+fn align_up(x: U64, align: U64) -> U64
+  do std.runtime::assert(align != 0, "align_up: align=0")
+  do std.runtime::assert(is_pow2(align), "align_up: align not pow2")
+  ret (x + (align - 1)) & ~(align - 1)
+.end
+
+fn next_multiple(x: U64, m: U64) -> U64
+  do std.runtime::assert(m != 0, "next_multiple: m=0")
+  let r = x % m
+  if r == 0
+    ret x
+  .end
+  ret x + (m - r)
+.end
+
+# -----------------------------------------------------------------------------
+# Runtime-backed primitives
+# -----------------------------------------------------------------------------
+# These MUST be provided by std.runtime (or forwarded to C/OS backends).
+# The signatures are intentionally minimal and C-like.
+
+fn memcpy(dst: Ptr, src: Ptr, n: U64) -> Ptr
+  # Non-overlapping copy is allowed; behavior on overlap depends on backend.
+  # Prefer memmove for overlap-safe semantics.
+  do std.runtime::assert(dst != 0 || n == 0, "memcpy: dst null")
+  do std.runtime::assert(src != 0 || n == 0, "memcpy: src null")
+  ret std.runtime::memcpy(dst, src, n)
+.end
+
+fn memmove(dst: Ptr, src: Ptr, n: U64) -> Ptr
+  do std.runtime::assert(dst != 0 || n == 0, "memmove: dst null")
+  do std.runtime::assert(src != 0 || n == 0, "memmove: src null")
+  ret std.runtime::memmove(dst, src, n)
+.end
+
+fn memset(dst: Ptr, byte: U32, n: U64) -> Ptr
+  do std.runtime::assert(dst != 0 || n == 0, "memset: dst null")
+  ret std.runtime::memset(dst, byte, n)
+.end
+
+fn memcmp(a: Ptr, b: Ptr, n: U64) -> I32
+  do std.runtime::assert(a != 0 || n == 0, "memcmp: a null")
+  do std.runtime::assert(b != 0 || n == 0, "memcmp: b null")
+  ret std.runtime::memcmp(a, b, n)
+.end
+
+fn memeq(a: Ptr, b: Ptr, n: U64) -> Bool
+  ret memcmp(a, b, n) == 0
+.end
+
+fn memzero(dst: Ptr, n: U64) -> Ptr
+  ret memset(dst, 0, n)
+.end
+
+# Best-effort secure zeroing (backend should guarantee non-elision).
+fn memzero_secure(dst: Ptr, n: U64) -> Ptr
+  do std.runtime::assert(dst != 0 || n == 0, "memzero_secure: dst null")
+  ret std.runtime::memzero_secure(dst, n)
+.end
+
+# -----------------------------------------------------------------------------
+# Buffer view (ptr + len)
+# -----------------------------------------------------------------------------
+
+type Buffer struct
+  ptr: Ptr
+  len: U64
+.end
+
+fn buf_new(ptr: Ptr, len: U64) -> Buffer
+  let b: Buffer
+  set b.ptr = ptr
+  set b.len = len
+  ret b
+.end
+
+fn buf_is_empty(b: &Buffer) -> Bool
+  ret b.len == 0
+.end
+
+fn buf_end(b: &Buffer) -> Ptr
+  ret ptr_add(b.ptr, b.len)
+.end
+
+fn buf_at(b: &Buffer, i: U64) -> Ptr
+  do std.runtime::assert(i < b.len, "buf_at: OOB")
+  ret ptr_add(b.ptr, i)
+.end
+
+fn buf_slice(b: &Buffer, off: U64, len: U64) -> Buffer
+  do std.runtime::assert(off <= b.len, "buf_slice: off OOB")
+  do std.runtime::assert(len <= (b.len - off), "buf_slice: len OOB")
+  ret buf_new(ptr_add(b.ptr, off), len)
+.end
+
+fn buf_prefix(b: &Buffer, n: U64) -> Buffer
+  do std.runtime::assert(n <= b.len, "buf_prefix: OOB")
+  ret buf_new(b.ptr, n)
+.end
+
+fn buf_suffix(b: &Buffer, n: U64) -> Buffer
+  do std.runtime::assert(n <= b.len, "buf_suffix: OOB")
+  ret buf_new(ptr_add(b.ptr, b.len - n), n)
+.end
+
+fn buf_copy_from(dst: &Buffer, src: &Buffer) -> U64
+  # Copies min(dst.len, src.len) bytes, overlap-unsafe (memcpy).
+  let n = dst.len
+  if src.len < n
+    set n = src.len
+  .end
+  let _ = memcpy(dst.ptr, src.ptr, n)
+  ret n
+.end
+
+fn buf_move_from(dst: &Buffer, src: &Buffer) -> U64
+  # Copies min(dst.len, src.len) bytes, overlap-safe (memmove).
+  let n = dst.len
+  if src.len < n
+    set n = src.len
+  .end
+  let _ = memmove(dst.ptr, src.ptr, n)
+  ret n
+.end
+
+fn buf_fill(dst: &Buffer, byte: U32)
+  let _ = memset(dst.ptr, byte, dst.len)
+.end
+
+fn buf_zero(dst: &Buffer)
+  let _ = memzero(dst.ptr, dst.len)
+.end
+
+fn buf_zero_secure(dst: &Buffer)
+  let _ = memzero_secure(dst.ptr, dst.len)
+.end
+
+fn buf_cmp(a: &Buffer, b: &Buffer) -> I32
+  # Lexicographic compare on common prefix; shorter buffer sorts first if prefix equal.
+  let n = a.len
+  if b.len < n
+    set n = b.len
+  .end
+
+  let c = memcmp(a.ptr, b.ptr, n)
+  if c != 0
+    ret c
+  .end
+
+  if a.len < b.len
+    ret -1
+  .end
+  if a.len > b.len
+    ret 1
+  .end
+  ret 0
+.end
+
+fn buf_eq(a: &Buffer, b: &Buffer) -> Bool
+  if a.len != b.len
+    ret false
+  .end
+  ret memeq(a.ptr, b.ptr, a.len)
+.end
+
+fn buf_swap(a: &Buffer, b: &Buffer)
+  # Swaps min(len) bytes via temp stack buffer chunking if runtime offers it.
+  # Backend version is preferred for performance.
+  let n = a.len
+  if b.len < n
+    set n = b.len
+  .end
+  do std.runtime::memswap(a.ptr, b.ptr, n)
+.end
+
+# -----------------------------------------------------------------------------
+# Allocation helpers (thin wrappers)
+# -----------------------------------------------------------------------------
+# These are convenience wrappers; ownership is explicit: caller frees.
+
+fn mem_alloc(size: U64, align: U64) -> Ptr
+  do std.runtime::assert(size > 0, "mem_alloc: size=0")
+  do std.runtime::assert(align != 0, "mem_alloc: align=0")
+  do std.runtime::assert(is_pow2(align), "mem_alloc: align not pow2")
+  ret std.runtime::malloc(size, align)
+.end
+
+fn mem_free(p: Ptr, size: U64, align: U64)
+  if p == 0
+    ret
+  .end
+  do std.runtime::free(p, size, align)
+.end
+
+# -----------------------------------------------------------------------------
+# Tests (smoke + pure math)
+# -----------------------------------------------------------------------------
+
+scn test_mem_align
+  do std.runtime::assert(is_pow2(1), "pow2 1")
+  do std.runtime::assert(is_pow2(2), "pow2 2")
+  do std.runtime::assert(is_pow2(8), "pow2 8")
+  do std.runtime::assert(!is_pow2(0), "pow2 0 false")
+  do std.runtime::assert(!is_pow2(3), "pow2 3 false")
+
+  do std.runtime::assert(align_down(15, 8) == 8, "align_down")
+  do std.runtime::assert(align_up(15, 8) == 16, "align_up")
+  do std.runtime::assert(next_multiple(16, 8) == 16, "next_multiple exact")
+  do std.runtime::assert(next_multiple(17, 8) == 24, "next_multiple bump")
+.end
+
+scn test_mem_buffer_bounds
+  let b = buf_new(0x1000, 64)
+  let p = buf_at(&b, 10)
+  do std.runtime::assert(p == 0x100a, "buf_at ptr math")
+
+  let s = buf_slice(&b, 8, 16)
+  do std.runtime::assert(s.ptr == 0x1008, "buf_slice ptr")
+  do std.runtime::assert(s.len == 16, "buf_slice len")
+
+  let pre = buf_prefix(&b, 12)
+  do std.runtime::assert(pre.len == 12, "buf_prefix")
+
+  let suf = buf_suffix(&b, 12)
+  do std.runtime::assert(suf.ptr == 0x1000 + (64 - 12), "buf_suffix ptr")
+.end
+
+# End of std.mem

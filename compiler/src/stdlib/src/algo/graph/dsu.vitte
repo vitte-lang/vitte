@@ -1,0 +1,47 @@
+mod algo.graph.dsu
+
+type Dsu
+  parent: [i64]
+  rank:   [i64]
+.end
+
+fn dsu_new(n: i64) -> Dsu
+  let d: Dsu
+  set d.parent = [0; n]
+  set d.rank = [0; n]
+  let i: i64 = 0
+  loop
+    if i >= n
+      ret d
+    .end
+    set d.parent[i] = i
+    set i = i + 1
+  .end
+.end
+
+fn dsu_find(d: &mut Dsu, x: i64) -> i64
+  let p: i64 = d.parent[x]
+  if p == x
+    ret x
+  .end
+  let r: i64 = dsu_find(d, p)
+  set d.parent[x] = r
+  ret r
+.end
+
+fn dsu_union(d: &mut Dsu, a: i64, b: i64) -> bool
+  let ra: i64 = dsu_find(d, a)
+  let rb: i64 = dsu_find(d, b)
+  if ra == rb
+    ret false
+  .end
+  if d.rank[ra] < d.rank[rb]
+    set d.parent[ra] = rb
+  elif d.rank[ra] > d.rank[rb]
+    set d.parent[rb] = ra
+  else
+    set d.parent[rb] = ra
+    set d.rank[ra] = d.rank[ra] + 1
+  .end
+  ret true
+.end

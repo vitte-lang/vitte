@@ -1,0 +1,123 @@
+
+
+# fuzz/invalid: invalid_garbage_tokens.vitte
+# Purpose: stress lexer+parser with garbage / unexpected tokens.
+# This file is intentionally NOT valid Vitte.
+
+# --- random punctuation / operators ------------------------------------------
+!!!!
+???
+<<< >>>
+<<= >>=
+:= :: :::
+=> ->> -->>
+** **=
+&&& |||
+.. ... ....
+,, ,,,
+;; ;;;
+@@ @@@
+$$$
+` ` `
+
+# --- invalid identifiers / keywords usage ------------------------------------
+fn 123bad_name(x: i32) -> i32
+  ret x
+.end
+
+let fn = 1
+const while = 2
+set match = 3
+say else
+
+# invalid path separators / module path
+mod std//cli..term
+use /std//cli/args
+export from std///io: { read, write }
+
+# --- malformed types ----------------------------------------------------------
+type 9Lives = i32
+
+type struct = struct
+  field: i32
+.end
+
+struct Point[
+  x: i32
+  y: i32
+.end
+
+enum Color =
+  Red
+  Green
+  Blue
+.end
+
+# --- unbalanced delimiters ----------------------------------------------------
+let a = (1 + 2
+let b = [1, 2, 3
+let c = { x: 1, y: 2
+let d = ( ( ( )
+
+# --- malformed literals -------------------------------------------------------
+let n1 = 00xFF
+let n2 = 0xZZ
+let n3 = 123_.45
+let n4 = 1e+
+let n5 = 9__9
+let n6 = 0b2101
+
+let s1 = "unterminated string
+let s2 = 'unterminated char
+let s3 = "bad escape: \\q"
+let s4 = "bad hex: \\xG1"
+let s5 = "bad unicode: \\uD800"
+let s6 = "mismatched quote'
+
+# --- stray dots / .end misuse -------------------------------------------------
+.end .end .end
+..end
+.endend
+.
+..
+...
+
+# --- invalid statements / missing tokens -------------------------------------
+ret
+ret = 1
+break 123
+continue =>
+
+if
+  let x = 1
+elif x == 2
+  let y = 2
+else
+  let z = 3
+# missing .end on purpose
+
+match x
+  1 => ret 1
+  _ => ret 0
+.end extra_token
+
+# --- random unicode / non-ascii glyphs ---------------------------------------
+let café = 1
+let smile = "😀"
+let euro = €
+let snow = ☃
+
+# --- garbage mixed with plausible constructs ---------------------------------
+fn okish(a: i32, b: i32) -> i32
+  let x = a + b ???
+  ret x
+.end
+
+program my/app
+  do build --release --unknown-flag
+  say "done"
+.end
+
+# --- trailing junk ------------------------------------------------------------
+# The following line should produce lexer error(s):
+\u0000 \x00 \xGG \u{110000}

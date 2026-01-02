@@ -1,0 +1,422 @@
+# -----------------------------------------------------------------------------
+# std/cli/prompt
+# -----------------------------------------------------------------------------
+# Prompt formatting utilities (pure rendering + parsing helpers).
+#
+# Goals:
+# - Bootstrap-friendly: no IO dependencies required.
+# - Pure functions: build prompt strings, parse user input strings.
+# - Optional ANSI styling via std.cli.ansi, controllable by theme.
+#
+# Surface (MAX):
+# - PromptKind + PromptTheme
+# - Renderers:
+#     * msg_info/msg_warn/msg_error/msg_success
+#     * prompt_ask, prompt_confirm, prompt_input
+#     * hint helpers (default markers)
+# - Parsers:
+#     * parse_yes_no
+#     * parse_u32
+#     * parse_i32
+#     * parse_choice_index (1-based)
+#     * parse_nonempty
+#
+# Notes:
+# - This module does NOT read from stdin; caller reads a line then calls parse_*.
+# - String facilities are intentionally minimal: comparisons are exact.
+# - All blocks use `.end` only.
+# -----------------------------------------------------------------------------
+
+module std.cli.prompt
+
+use std.runtime
+use std.string
+use std.cli.ansi
+
+type Bool = bool
+
+type U32 = u32
+type I32 = i32
+
+type Str = str
+
+# -----------------------------------------------------------------------------
+# Thin string wrappers
+# -----------------------------------------------------------------------------
+
+fn str_len(s: Str) -> U32
+  ret std.string::len(s)
+.end
+
+fn str_is_empty(s: Str) -> Bool
+  ret str_len(s) == 0
+.end
+
+fn str_eq(a: Str, b: Str) -> Bool
+  ret a == b
+.end
+
+fn str_starts_with(s: Str, prefix: Str) -> Bool
+  ret std.string::starts_with(s, prefix)
+.end
+
+fn str_slice(s: Str, start: U32, len: U32) -> Str
+  ret std.string::slice(s, start, len)
+.end
+
+# -----------------------------------------------------------------------------
+# Basic numeric parsing (ASCII, best-effort)
+# -----------------------------------------------------------------------------
+
+fn _digit_val(ch: Str) -> (Bool, U32)
+  if ch == "0"
+    ret (true, 0)
+  .end
+  if ch == "1"
+    ret (true, 1)
+  .end
+  if ch == "2"
+    ret (true, 2)
+  .end
+  if ch == "3"
+    ret (true, 3)
+  .end
+  if ch == "4"
+    ret (true, 4)
+  .end
+  if ch == "5"
+    ret (true, 5)
+  .end
+  if ch == "6"
+    ret (true, 6)
+  .end
+  if ch == "7"
+    ret (true, 7)
+  .end
+  if ch == "8"
+    ret (true, 8)
+  .end
+  if ch == "9"
+    ret (true, 9)
+  .end
+  ret (false, 0)
+.end
+
+fn parse_u32_ascii(s: Str) -> (Bool, U32)
+  if str_is_empty(s)
+    ret (false, 0)
+  .end
+
+  let i: U32
+  set i = 0
+
+  let acc: U32
+  set acc = 0
+
+  while i < str_len(s)
+    let ch = str_slice(s, i, 1)
+    let ok: Bool
+    let dv: U32
+    (ok, dv) = _digit_val(ch)
+    if !ok
+      ret (false, 0)
+    .end
+
+    set acc = acc * 10 + dv
+    set i = i + 1
+  .end
+
+  ret (true, acc)
+.end
+
+fn parse_i32_ascii(s: Str) -> (Bool, I32)
+  if str_is_empty(s)
+    ret (false, 0)
+  .end
+
+  if s == "-"
+    ret (false, 0)
+  .end
+
+  if str_starts_with(s, "+")
+    let rest = str_slice(s, 1, str_len(s) - 1)
+    let ok: Bool
+    let v: U32
+    (ok, v) = parse_u32_ascii(rest)
+    if !ok
+      ret (false, 0)
+    .end
+    ret (true, (I32)v)
+  .end
+
+  if str_starts_with(s, "-")
+    let rest = str_slice(s, 1, str_len(s) - 1)
+    let ok: Bool
+    let v: U32
+    (ok, v) = parse_u32_ascii(rest)
+    if !ok
+      ret (false, 0)
+    .end
+    ret (true, -((I32)v))
+  .end
+
+  let ok2: Bool
+  let v2: U32
+  (ok2, v2) = parse_u32_ascii(s)
+  if !ok2
+    ret (false, 0)
+  .end
+  ret (true, (I32)v2)
+.end
+
+# -----------------------------------------------------------------------------
+# Theme model
+# -----------------------------------------------------------------------------
+
+type PromptKind enum
+  Info
+  Warn
+  Error
+  Success
+  Ask
+  Confirm
+  Input
+.end
+
+type PromptTheme struct
+  use_color: Bool
+
+  # prefixes include trailing space
+  p_info: Str
+  p_warn: Str
+  p_error: Str
+  p_success: Str
+  p_ask: Str
+
+  s_reset: Str
+.end
+
+fn theme_plain() -> PromptTheme
+  let t: PromptTheme
+  set t.use_color = false
+  set t.p_info = "[info] "
+  set t.p_warn = "[warn] "
+  set t.p_error = "[error] "
+  set t.p_success = "[ok] "
+  set t.p_ask = "> "
+  set t.s_reset = ""
+  ret t
+.end
+
+fn theme_color() -> PromptTheme
+  let t: PromptTheme
+  set t.use_color = true
+
+  set t.p_info = std.cli.ansi::paint("[info] ", std.cli.ansi::cyan())
+  set t.p_warn = std.cli.ansi::paint("[warn] ", std.cli.ansi::yellow())
+  set t.p_error = std.cli.ansi::paint("[error] ", std.cli.ansi::red())
+  set t.p_success = std.cli.ansi::paint("[ok] ", std.cli.ansi::green())
+  set t.p_ask = std.cli.ansi::paint("> ", std.cli.ansi::bright_blue())
+
+  set t.s_reset = std.cli.ansi::reset()
+  ret t
+.end
+
+fn theme_prefix(t: &PromptTheme, k: PromptKind) -> Str
+  if k == PromptKind::Info
+    ret t.p_info
+  .end
+  if k == PromptKind::Warn
+    ret t.p_warn
+  .end
+  if k == PromptKind::Error
+    ret t.p_error
+  .end
+  if k == PromptKind::Success
+    ret t.p_success
+  .end
+  if k == PromptKind::Ask
+    ret t.p_ask
+  .end
+  if k == PromptKind::Confirm
+    ret t.p_ask
+  .end
+  if k == PromptKind::Input
+    ret t.p_ask
+  .end
+  ret t.p_ask
+.end
+
+# -----------------------------------------------------------------------------
+# Rendering
+# -----------------------------------------------------------------------------
+
+fn _msg(t: &PromptTheme, k: PromptKind, s: Str) -> Str
+  ret theme_prefix(t, k) + s
+.end
+
+fn msg_info(t: &PromptTheme, s: Str) -> Str
+  ret _msg(t, PromptKind::Info, s)
+.end
+
+fn msg_warn(t: &PromptTheme, s: Str) -> Str
+  ret _msg(t, PromptKind::Warn, s)
+.end
+
+fn msg_error(t: &PromptTheme, s: Str) -> Str
+  ret _msg(t, PromptKind::Error, s)
+.end
+
+fn msg_success(t: &PromptTheme, s: Str) -> Str
+  ret _msg(t, PromptKind::Success, s)
+.end
+
+fn hint_default(value: Str) -> Str
+  if value == ""
+    ret ""
+  .end
+  ret " [default: " + value + "]"
+.end
+
+fn hint_confirm(default_yes: Bool, has_default: Bool) -> Str
+  if !has_default
+    ret " [y/n]"
+  .end
+
+  if default_yes
+    ret " [Y/n]"
+  .end
+  ret " [y/N]"
+.end
+
+fn prompt_line(t: &PromptTheme, label: Str, hint: Str) -> Str
+  let s: Str
+  set s = theme_prefix(t, PromptKind::Ask) + label
+  if hint != ""
+    set s = s + hint
+  .end
+  ret s + ": "
+.end
+
+fn prompt_input(t: &PromptTheme, label: Str, default_value: Str) -> Str
+  ret prompt_line(t, label, hint_default(default_value))
+.end
+
+fn prompt_ask(t: &PromptTheme, label: Str) -> Str
+  ret prompt_line(t, label, "")
+.end
+
+fn prompt_confirm(t: &PromptTheme, label: Str, default_yes: Bool, has_default: Bool) -> Str
+  ret prompt_line(t, label, hint_confirm(default_yes, has_default))
+.end
+
+fn prompt_choice_header(t: &PromptTheme, label: Str) -> Str
+  ret prompt_line(t, label, " [choose #]")
+.end
+
+fn prompt_inplace(line: Str) -> Str
+  ret "\r" + std.cli.ansi::clear_line() + "\r" + line
+.end
+
+# -----------------------------------------------------------------------------
+# Parsing helpers
+# -----------------------------------------------------------------------------
+
+fn parse_yes_no(input: Str, default_yes: Bool, has_default: Bool) -> (Bool, Bool)
+  if input == "" && has_default
+    ret (true, default_yes)
+  .end
+
+  if input == "y" || input == "Y" || input == "yes" || input == "YES" || input == "1" || input == "true" || input == "TRUE"
+    ret (true, true)
+  .end
+
+  if input == "n" || input == "N" || input == "no" || input == "NO" || input == "0" || input == "false" || input == "FALSE"
+    ret (true, false)
+  .end
+
+  ret (false, false)
+.end
+
+fn parse_u32(input: Str, default_value: U32, has_default: Bool) -> (Bool, U32)
+  if input == "" && has_default
+    ret (true, default_value)
+  .end
+  ret parse_u32_ascii(input)
+.end
+
+fn parse_i32(input: Str, default_value: I32, has_default: Bool) -> (Bool, I32)
+  if input == "" && has_default
+    ret (true, default_value)
+  .end
+  ret parse_i32_ascii(input)
+.end
+
+fn parse_choice_index(input: Str, count: U32) -> (Bool, U32)
+  let ok: Bool
+  let idx: U32
+  (ok, idx) = parse_u32_ascii(input)
+  if !ok
+    ret (false, 0)
+  .end
+  if idx < 1 || idx > count
+    ret (false, 0)
+  .end
+  ret (true, idx)
+.end
+
+fn parse_nonempty(input: Str) -> (Bool, Str)
+  if input == ""
+    ret (false, "")
+  .end
+  ret (true, input)
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests (scenarios)
+# -----------------------------------------------------------------------------
+
+scn test_prompt_rendering
+  let t = theme_plain()
+  let c = theme_color()
+
+  let a = msg_info(&t, "hello")
+  do std.runtime::assert(a != "", "plain info")
+
+  let b = msg_error(&c, "boom")
+  do std.runtime::assert(b != "", "color error")
+
+  let p1 = prompt_input(&t, "name", "vincent")
+  do std.runtime::assert(p1 != "", "prompt input")
+
+  let p2 = prompt_confirm(&t, "continue", true, true)
+  do std.runtime::assert(p2 != "", "prompt confirm")
+.end
+
+scn test_prompt_parsing
+  let ok: Bool
+  let v: Bool
+
+  (ok, v) = parse_yes_no("", true, true)
+  do std.runtime::assert(ok && v, "default yes")
+
+  (ok, v) = parse_yes_no("n", true, true)
+  do std.runtime::assert(ok && !v, "n")
+
+  let ok2: Bool
+  let u: U32
+  (ok2, u) = parse_u32("42", 0, false)
+  do std.runtime::assert(ok2 && u == 42, "u32")
+
+  let ok3: Bool
+  let i: I32
+  (ok3, i) = parse_i32("-7", 0, false)
+  do std.runtime::assert(ok3 && i == -7, "i32")
+
+  let ok4: Bool
+  let idx: U32
+  (ok4, idx) = parse_choice_index("2", 3)
+  do std.runtime::assert(ok4 && idx == 2, "choice")
+.end
+
+# End of std.cli.prompt
