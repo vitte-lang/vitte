@@ -1,3 +1,0 @@
-# lex
-
-Benchmarks for lex.

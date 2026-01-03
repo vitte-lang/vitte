@@ -1,3 +1,0 @@
-# threat-model.md
-
-placeholder

@@ -1,3 +1,0 @@
-# ir
-
-Benchmarks for ir.

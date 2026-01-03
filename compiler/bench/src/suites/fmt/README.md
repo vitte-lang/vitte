@@ -1,3 +1,0 @@
-# fmt
-
-Benchmarks for fmt.

@@ -1,4 +1,0 @@
-[package]
-name = "modules_example"
-version = "0.1.0"
-edition = "2024"

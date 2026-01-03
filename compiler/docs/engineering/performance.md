@@ -1,3 +1,0 @@
-# performance.md
-
-placeholder

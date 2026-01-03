@@ -1,3 +1,0 @@
-# vision.md
-
-placeholder

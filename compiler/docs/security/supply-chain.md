@@ -1,3 +1,0 @@
-# supply-chain.md
-
-placeholder

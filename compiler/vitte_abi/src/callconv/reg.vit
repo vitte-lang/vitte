@@ -1,0 +1,344 @@
+
+
+# reg.vit (Vitte) — MAX
+#
+# ABI callconv register description.
+#
+# Design goals:
+#   - Mirror rustc ABI concepts (RegKind + Reg(size)).
+#   - Keep a compact value type.
+#   - Provide a rich constructor + query API.
+#   - Compute alignment from target DataLayout via HasDataLayout.
+#
+# Notes:
+#   - This module assumes the existence of:
+#       type Size with: from_bits(u32) -> Size, bits() -> u32, bytes() -> u64
+#       type Align (value type)
+#       trait HasDataLayout with: data_layout() -> DataLayout-like record
+#     where the returned layout exposes:
+#       i1_align/i8_align/i16_align/i32_align/i64_align/i128_align,
+#       f16_align/f32_align/f64_align/f128_align,
+#       and llvmlike_vector_align(Size) -> Align
+#
+#   - This file uses `.end`-terminated blocks only.
+
+use crate.Align
+use crate.HasDataLayout
+use crate.Size
+
+#------------------------------------------------------------------------------
+# RegKind
+#------------------------------------------------------------------------------
+
+enum RegKind
+  Integer
+  Float
+  Vector
+.end
+
+fn RegKind.is_integer(self) -> bool
+  ret self == RegKind::Integer
+.end
+
+fn RegKind.is_float(self) -> bool
+  ret self == RegKind::Float
+.end
+
+fn RegKind.is_vector(self) -> bool
+  ret self == RegKind::Vector
+.end
+
+fn RegKind.to_string(self) -> string
+  if self == RegKind::Integer
+    ret "Integer"
+  elif self == RegKind::Float
+    ret "Float"
+  else
+    ret "Vector"
+  .end
+.end
+
+#------------------------------------------------------------------------------
+# Reg
+#------------------------------------------------------------------------------
+
+type Reg
+  kind RegKind
+  size Size
+.end
+
+# Basic ctor (preferred internal primitive).
+fn Reg.of(kind: RegKind, size: Size) -> Reg
+  ret Reg(kind: kind, size: size)
+.end
+
+# Convenience ctors by bits.
+fn Reg.int_bits(bits: u32) -> Reg
+  ret Reg.of(RegKind::Integer, Size::from_bits(bits))
+.end
+
+fn Reg.float_bits(bits: u32) -> Reg
+  ret Reg.of(RegKind::Float, Size::from_bits(bits))
+.end
+
+fn Reg.vec_bits(bits: u32) -> Reg
+  ret Reg.of(RegKind::Vector, Size::from_bits(bits))
+.end
+
+#------------------------------------------------------------------------------
+# Canonical integer regs
+#------------------------------------------------------------------------------
+
+fn Reg.i1() -> Reg
+  ret Reg.int_bits(1)
+.end
+
+fn Reg.i8() -> Reg
+  ret Reg.int_bits(8)
+.end
+
+fn Reg.i16() -> Reg
+  ret Reg.int_bits(16)
+.end
+
+fn Reg.i32() -> Reg
+  ret Reg.int_bits(32)
+.end
+
+fn Reg.i64() -> Reg
+  ret Reg.int_bits(64)
+.end
+
+fn Reg.i128() -> Reg
+  ret Reg.int_bits(128)
+.end
+
+#------------------------------------------------------------------------------
+# Canonical float regs
+#------------------------------------------------------------------------------
+
+fn Reg.f16() -> Reg
+  ret Reg.float_bits(16)
+.end
+
+fn Reg.f32() -> Reg
+  ret Reg.float_bits(32)
+.end
+
+fn Reg.f64() -> Reg
+  ret Reg.float_bits(64)
+.end
+
+fn Reg.f128() -> Reg
+  ret Reg.float_bits(128)
+.end
+
+#------------------------------------------------------------------------------
+# Canonical vector regs
+#------------------------------------------------------------------------------
+
+fn Reg.v64() -> Reg
+  ret Reg.vec_bits(64)
+.end
+
+fn Reg.v128() -> Reg
+  ret Reg.vec_bits(128)
+.end
+
+fn Reg.v256() -> Reg
+  ret Reg.vec_bits(256)
+.end
+
+fn Reg.v512() -> Reg
+  ret Reg.vec_bits(512)
+.end
+
+#------------------------------------------------------------------------------
+# Queries
+#------------------------------------------------------------------------------
+
+fn Reg.is_integer(self) -> bool
+  ret self.kind == RegKind::Integer
+.end
+
+fn Reg.is_float(self) -> bool
+  ret self.kind == RegKind::Float
+.end
+
+fn Reg.is_vector(self) -> bool
+  ret self.kind == RegKind::Vector
+.end
+
+fn Reg.bits(self) -> u32
+  ret self.size.bits()
+.end
+
+fn Reg.bytes(self) -> u64
+  ret self.size.bytes()
+.end
+
+fn Reg.is_valid(self) -> bool
+  let b = self.bits()
+
+  if self.kind == RegKind::Integer
+    # rustc supports arbitrary integer widths in some places, but in the ABI layer
+    # we generally keep it within 1..=128 for direct regs.
+    ret b == 1 || b == 8 || b == 16 || b == 32 || b == 64 || b == 128
+  elif self.kind == RegKind::Float
+    ret b == 16 || b == 32 || b == 64 || b == 128
+  else
+    # vectors: allow typical SIMD widths; keep open-ended
+    ret b >= 64
+  .end
+.end
+
+fn Reg.assert_valid(self)
+  if !self.is_valid()
+    panic("invalid Reg(kind=" + self.kind.to_string() + ", bits=" + self.bits().to_string() + ")")
+  .end
+.end
+
+fn Reg.equals(self, other: Reg) -> bool
+  ret self.kind == other.kind && self.bits() == other.bits()
+.end
+
+fn Reg.to_string(self) -> string
+  let k = self.kind
+  let b = self.bits()
+
+  if k == RegKind::Integer
+    ret "i" + b.to_string()
+  elif k == RegKind::Float
+    ret "f" + b.to_string()
+  else
+    ret "v" + b.to_string()
+  .end
+.end
+
+#------------------------------------------------------------------------------
+# Alignment
+#------------------------------------------------------------------------------
+
+# Compute alignment for the register type on a given target.
+# Matches the intent of rustc's Reg::align.
+fn Reg.align<C: HasDataLayout>(self, cx: &C) -> Align
+  self.assert_valid()
+
+  let dl = cx.data_layout()
+
+  if self.kind == RegKind::Integer
+    let b = self.bits()
+
+    if b == 1
+      ret dl.i1_align
+    elif b >= 2 && b <= 8
+      ret dl.i8_align
+    elif b >= 9 && b <= 16
+      ret dl.i16_align
+    elif b >= 17 && b <= 32
+      ret dl.i32_align
+    elif b >= 33 && b <= 64
+      ret dl.i64_align
+    elif b >= 65 && b <= 128
+      ret dl.i128_align
+    else
+      panic("unsupported integer register bits")
+    .end
+
+  elif self.kind == RegKind::Float
+    let b = self.bits()
+
+    if b == 16
+      ret dl.f16_align
+    elif b == 32
+      ret dl.f32_align
+    elif b == 64
+      ret dl.f64_align
+    elif b == 128
+      ret dl.f128_align
+    else
+      panic("unsupported float register bits")
+    .end
+
+  else
+    # Vector
+    ret dl.llvmlike_vector_align(self.size)
+  .end
+.end
+
+#------------------------------------------------------------------------------
+# Helpers for ABI lowering
+#------------------------------------------------------------------------------
+
+# Returns a register that can hold at least `bits` bits of an integer value.
+# Rounds up to the next canonical integer reg (1/8/16/32/64/128).
+fn Reg.int_round_up(bits: u32) -> Reg
+  if bits <= 1
+    ret Reg.i1()
+  elif bits <= 8
+    ret Reg.i8()
+  elif bits <= 16
+    ret Reg.i16()
+  elif bits <= 32
+    ret Reg.i32()
+  elif bits <= 64
+    ret Reg.i64()
+  elif bits <= 128
+    ret Reg.i128()
+  else
+    panic("int_round_up: unsupported bits")
+  .end
+.end
+
+# Returns a register for a float payload by bits (16/32/64/128).
+fn Reg.float_exact(bits: u32) -> Reg
+  if bits == 16
+    ret Reg.f16()
+  elif bits == 32
+    ret Reg.f32()
+  elif bits == 64
+    ret Reg.f64()
+  elif bits == 128
+    ret Reg.f128()
+  else
+    panic("float_exact: unsupported bits")
+  .end
+.end
+
+# Returns a vector register for at least `bits` bits.
+# Rounds up to typical SIMD sizes (64/128/256/512), else uses exact.
+fn Reg.vec_round_up(bits: u32) -> Reg
+  if bits <= 64
+    ret Reg.v64()
+  elif bits <= 128
+    ret Reg.v128()
+  elif bits <= 256
+    ret Reg.v256()
+  elif bits <= 512
+    ret Reg.v512()
+  else
+    ret Reg.vec_bits(bits)
+  .end
+.end
+
+#------------------------------------------------------------------------------
+# Smoke scenarios (kept lightweight; no external harness required)
+#------------------------------------------------------------------------------
+
+scenario reg_smoke
+  let a = Reg.i32()
+  let b = Reg.f64()
+  let c = Reg.v128()
+
+  if !a.is_integer() || a.bits() != 32
+    panic("reg_smoke: i32 broken")
+  .end
+
+  if !b.is_float() || b.to_string() != "f64"
+    panic("reg_smoke: f64 broken")
+  .end
+
+  if !c.is_vector() || c.bits() != 128
+    panic("reg_smoke: v128 broken")
+  .end
+.end

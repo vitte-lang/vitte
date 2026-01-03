@@ -1,3 +1,0 @@
-# supported-platforms.md
-
-placeholder

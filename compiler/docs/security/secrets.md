@@ -1,3 +1,0 @@
-# secrets.md
-
-placeholder

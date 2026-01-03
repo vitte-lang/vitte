@@ -1,3 +1,0 @@
-# audit trail
-
-placeholder

@@ -1,3 +1,0 @@
-# observability.md
-
-placeholder

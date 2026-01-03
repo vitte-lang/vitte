@@ -1,3 +1,0 @@
-# stability-policy.md
-
-placeholder

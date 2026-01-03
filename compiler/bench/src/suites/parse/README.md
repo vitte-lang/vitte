@@ -1,3 +1,0 @@
-# parse
-
-Benchmarks for parse.

@@ -1,3 +1,0 @@
-# diag
-
-Benchmarks for diag.

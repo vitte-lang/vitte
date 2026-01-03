@@ -1,3 +1,0 @@
-# embedding-sdk.md
-
-placeholder

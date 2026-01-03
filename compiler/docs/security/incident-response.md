@@ -1,3 +1,0 @@
-# incident-response.md
-
-placeholder

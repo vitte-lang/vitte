@@ -1,3 +1,0 @@
-# gc
-
-Benchmarks for gc.

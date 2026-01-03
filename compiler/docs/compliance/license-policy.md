@@ -1,3 +1,0 @@
-# license-policy.md
-
-placeholder
