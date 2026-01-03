@@ -1,3 +1,0 @@
-# golden
-
-placeholder

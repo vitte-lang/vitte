@@ -1,3 +1,0 @@
-# completion
-
-shell completion generators

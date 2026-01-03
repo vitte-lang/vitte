@@ -1,3 +1,0 @@
-# numeric
-
-math/numeric algorithms

@@ -95,129 +95,77 @@ spec/
 
 ```
 src/compiler/
-├── lexer/
-│   ├── mod.rs (ou .c)             # Interface publique
-│   ├── scanner.rs                 # State machine
-│   ├── token_type.rs              # Token enumeration
-│   ├── literal.rs                 # Number/string parsing
-│   └── tests/                     # Unit tests
-│
-├── parser/
-│   ├── mod.rs                     # Public interface
-│   ├── expr.rs                    # Expression parsing (Pratt)
-│   ├── stmt.rs                    # Statement parsing
-│   ├── decl.rs                    # Declaration parsing
-│   ├── recovery.rs                # Error recovery
-│   └── tests/
-│
-├── ast/
-│   ├── mod.rs                     # AST node definitions
-│   ├── expr.rs                    # Expression nodes
-│   ├── stmt.rs                    # Statement nodes
-│   ├── types.rs                   # Type annotations
-│   ├── visitor.rs                 # AST visitor pattern
-│   └── printer.rs                 # AST pretty-printing
-│
-├── resolver/
-│   ├── mod.rs                     # Symbol resolution phase
-│   ├── scopes.rs                  # Scope tables & visibility
-│   ├── symbol.rs                  # Symbol metadata
-│   └── imports.rs                 # Module/import handling
-│
-├── typer/
-│   ├── mod.rs                     # Type checker entry
-│   ├── constraints.rs             # Constraint generation
-│   ├── unify.rs                   # Unification algorithm
-│   ├── inference.rs               # Type inference
-│   ├── builtin.rs                 # Built-in types & ops
-│   └── diagnostic.rs              # Type error messages
-│
-├── hir/
-│   ├── mod.rs                     # High-level IR definition
-│   ├── builder.rs                 # AST → HIR lowering
-│   ├── visitor.rs                 # HIR visitor
-│   └── printer.rs                 # HIR debug output
-│
-├── ir/
-│   ├── mod.rs                     # Low-level IR definition
-│   ├── builder.rs                 # HIR → IR lowering
-│   ├── const_fold.rs              # Constant folding pass
-│   ├── dce.rs                     # Dead code elimination
-│   ├── inlining.rs                # Function inlining
-│   └── visitor.rs                 # IR visitor
+├── ast.c                          # AST nodes + helpers
+├── lexer.c                        # Tokenization
+├── parser.c                       # Parsing
+├── resolver.c                     # Symbol resolution
+├── types.c                        # Type definitions
+├── typecheck.c                    # Type checking
+├── hir_build.c                    # AST → HIR
+├── ir_build.c                     # HIR → IR
+├── passes.c                       # IR passes
+├── symtab.c                       # Symbol tables
+├── interner.c                     # String interning
 │
 ├── backend_c/
-│   ├── mod.rs                     # C17 backend entry
-│   ├── emitter.rs                 # IR → C code generation
-│   ├── cgen_expr.rs               # Expression code gen
-│   ├── cgen_stmt.rs               # Statement code gen
-│   ├── names.rs                   # C name mangling/mapping
-│   ├── runtime_calls.rs           # Runtime interface calls
-│   └── header.rs                  # Generated #include's
+│   ├── c_emit.c                   # IR → C emission
+│   ├── c_name_mangle.c            # Name mangling
+│   └── c_runtime_shim.c           # Runtime shims
 │
-└── driver.rs                       # Compilation pipeline orchestrator
+└── driver/
+    ├── compile_unit.c             # Per-unit compile
+    ├── pipeline.c                 # Driver pipeline
+    └── link_step.c                # Link step
 ```
 
 ### 🐍 **src/runtime/** — Runtime & ABI
 
 ```
 src/runtime/
-├── mod.rs                         # Runtime initialization
-├── alloc.rs                       # Memory allocation interface
-├── gc.rs                          # (Optionnel) GC support
-├── panic.rs                       # Panic/unwinding
-├── handles.rs                     # Handle management (for refs)
-├── slice.rs                       # Slice representation
-├── string.rs                      # String representation
-├── atomics.rs                     # Atomic operations
-└── pal_interface.rs               # Interface à PAL
+├── rt_alloc.c                     # Allocation helpers
+├── rt_handles.c                   # Handle management
+├── rt_panic.c                     # Panic/diagnostic glue
+├── rt_slice.c                     # Slice helpers
+└── rt_string.c                    # String helpers
 ```
 
 ### 🛠️ **src/pal/** — Platform Abstraction Layer
 
 ```
 src/pal/
-├── mod.rs                         # PAL public interface
-├── fs.rs                          # File system ops
-├── os.rs                          # OS-level primitives
-├── mem.rs                         # Memory primitives (mmap, etc.)
-├── thread.rs                      # Thread primitives
-├── time.rs                        # Time/clock operations
-│
 ├── posix/
-│   ├── mod.rs
-│   ├── fs.rs
-│   ├── os.rs
-│   └── ...
+│   ├── pal_posix.c
+│   ├── pal_posix_fs.c
+│   ├── pal_posix_net.c
+│   ├── pal_posix_proc.c
+│   ├── pal_posix_thread.c
+│   ├── pal_posix_time.c
+│   └── pal_posix_dynload.c
 │
 └── win32/
-    ├── mod.rs
-    ├── fs.rs
-    ├── os.rs
-    └── ...
+    ├── pal_win32.c
+    ├── pal_win32_fs.c
+    ├── pal_win32_net.c
+    ├── pal_win32_proc.c
+    ├── pal_win32_thread.c
+    ├── pal_win32_time.c
+    └── pal_win32_dynload.c
 ```
 
 ### 📚 **include/** — Headers C/C++
 
 ```
 include/
-├── steel/
-│   ├── config.h                   # Build config (VITTE_DEBUG, etc.)
-│   ├── platform.h                 # Platform-specific defines
-│   ├── version.h                  # Version info
-│   │
-│   ├── compiler/
-│   │   ├── ast.h                  # AST node types (C)
-│   │   ├── ir.h                   # IR node types (C)
-│   │   └── ...
-│   │
-│   ├── runtime/
-│   │   ├── alloc.h                # Memory allocation
-│   │   ├── abi.h                  # ABI/runtime interface
-│   │   └── ...
-│   │
-│   └── diag/
-│       ├── codes.h                # Error codes enum
+└── vitte/
+    ├── vitte.h                    # Public umbrella header
+    ├── runtime.h                  # Runtime interface
+    ├── lexer.h                    # Lexer API
+    ├── parser_phrase.h            # Parser API
+    ├── desugar_phrase.h           # Desugaring API
+    ├── codegen.h                  # Codegen API
+    ├── diag.h                     # Diagnostics
+    ├── cpu.h                      # CPU feature detection
+    └── asm_verify.h               # ASM verification
 │       ├── span.h                 # Source location
 │       └── messages.h             # Error message templates
 ```
@@ -249,39 +197,11 @@ std/
 │       └── env.vitte              # Environment
 ```
 
-### 🧪 **tests/** — Suite de tests
+### 🧪 Tests
 
-```
-tests/
-├── unit/
-│   ├── lexer/
-│   ├── parser/
-│   ├── typer/
-│   ├── ir_gen/
-│   └── backend_c/
-│
-├── integration/
-│   ├── hello_world/
-│   ├── fibonacci/
-│   ├── string_ops/
-│   ├── module_system/
-│   └── error_cases/
-│
-├── fixtures/
-│   ├── valid/
-│   │   ├── simple_expr.vitte
-│   │   ├── fn_call.vitte
-│   │   └── ...
-│   └── invalid/
-│       ├── type_mismatch.vitte
-│       ├── undefined_var.vitte
-│       └── ...
-│
-└── golden/                        # Golden files (expected output)
-    ├── lexer_tokens.txt
-    ├── ast_dump.txt
-    └── ir_dump.txt
-```
+- Compiler/tests: `compiler/` via CMake/ctest (`make test`).
+- Stdlib tests: `std/scripts/test_std.sh` (wrapper `muffin test`).
+- `tests/` au niveau racine est un placeholder (peu ou pas de cas aujourd'hui).
 
 ### 📖 **docs/** — Documentation utilisateur
 
@@ -429,4 +349,3 @@ lto = true
 ✅ **Golden test files** pour output cmpare  
 ✅ **Well-documented passes** avec algorithmes  
 ✅ **Runtime unifies all platforms** via PAL  
-

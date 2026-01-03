@@ -1,3 +1,0 @@
-# tcp
-
-TCP sockets (thin)

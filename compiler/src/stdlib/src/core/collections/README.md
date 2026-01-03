@@ -1,3 +1,0 @@
-# collections
-
-small datastructures

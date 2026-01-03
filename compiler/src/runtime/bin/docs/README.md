@@ -1,3 +1,0 @@
-# docs
-
-runtime CLI documentation

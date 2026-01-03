@@ -1,3 +1,0 @@
-# http
-
-HTTP layer (stubs)

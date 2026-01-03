@@ -1,3 +1,0 @@
-# mem
-
-memory helpers (pure)

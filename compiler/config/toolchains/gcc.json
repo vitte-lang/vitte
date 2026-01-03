@@ -1,3 +1,208 @@
 {
   "toolchain": "gcc"
 }
+
+{
+  "schema": "vitte.toolchain.config",
+  "schema_version": 1,
+
+  "toolchain": "gcc",
+  "display_name": "GCC (GNU Compiler Collection)",
+  "notes": [
+    "Toolchain definition consumed by Vitte build/compiler drivers.",
+    "GCC toolchain is primarily intended for Linux/BSD environments.",
+    "Wrappers/templates live under compiler/build/toolchain/."
+  ],
+
+  "capabilities": {
+    "languages": ["c", "c++"],
+    "supports_response_files": true,
+    "supports_lto": true,
+    "supports_sanitizers": true,
+    "supports_thinlto": false,
+    "supports_pie": true,
+    "supports_build_id": true,
+    "supports_deterministic": true
+  },
+
+  "binaries": {
+    "cc": {
+      "preferred": ["gcc"],
+      "fallback": ["cc", "clang"],
+      "env": ["CC"]
+    },
+    "cxx": {
+      "preferred": ["g++"],
+      "fallback": ["c++", "clang++"],
+      "env": ["CXX"]
+    },
+    "ar": {
+      "preferred": ["gcc-ar"],
+      "fallback": ["ar"],
+      "env": ["AR"]
+    },
+    "ranlib": {
+      "preferred": ["gcc-ranlib"],
+      "fallback": ["ranlib"],
+      "env": ["RANLIB"]
+    },
+    "ld": {
+      "preferred": ["g++", "gcc"],
+      "fallback": ["ld", "ld.gold", "ld.lld"],
+      "env": ["LD"]
+    },
+    "nm": {
+      "preferred": ["gcc-nm"],
+      "fallback": ["nm"],
+      "env": ["NM"]
+    },
+    "objdump": {
+      "preferred": ["objdump"],
+      "fallback": ["llvm-objdump"],
+      "env": ["OBJDUMP"]
+    },
+    "readelf": {
+      "preferred": ["readelf"],
+      "fallback": ["llvm-readelf"],
+      "env": ["READELF"]
+    }
+  },
+
+  "wrappers": {
+    "cc": {
+      "path": "compiler/build/toolchain/wrappers/ccwrap.sh",
+      "mode": "shim",
+      "notes": "Selects gcc/g++ drivers and injects best-effort determinism flags when requested."
+    },
+    "ld": {
+      "path": "compiler/build/toolchain/wrappers/ldwrap.sh",
+      "mode": "shim",
+      "notes": "Uses gcc/g++ driver by default; injects optional PIE/LTO/strip/build-id flags."
+    },
+    "ar": {
+      "path": "compiler/build/toolchain/wrappers/arwrap.sh",
+      "mode": "shim",
+      "notes": "Selects gcc-ar/ar and enables deterministic archive mode when supported."
+    }
+  },
+
+  "response_files": {
+    "compile": {
+      "template": "compiler/build/toolchain/response_files/clang.rsp.tmpl",
+      "prefix": "@",
+      "notes": "GCC accepts response files; template is compatible (args-per-line)."
+    },
+    "link": {
+      "template": "compiler/build/toolchain/response_files/lld.rsp.tmpl",
+      "prefix": "@",
+      "notes": "Link response template is compatible; wrapper adapts for driver vs raw ld."
+    }
+  },
+
+  "defaults": {
+    "lang": {
+      "c": {
+        "std": "c17",
+        "pic": true,
+        "exceptions": false,
+        "rtti": false
+      },
+      "c++": {
+        "std": "c++20",
+        "pic": true,
+        "exceptions": true,
+        "rtti": true
+      }
+    },
+
+    "warnings": {
+      "base": [
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic"
+      ],
+      "disable": [
+        "-Wno-unused-parameter"
+      ],
+      "werror": false
+    },
+
+    "optimization": {
+      "level": "2",
+      "debug": false,
+      "lto": "off"
+    },
+
+    "determinism": {
+      "enabled": true,
+      "env": {
+        "TZ": "UTC",
+        "LC_ALL": "C"
+      },
+      "compiler_flags": [
+        "-ffile-prefix-map=${PWD}=.",
+        "-fmacro-prefix-map=${PWD}=.",
+        "-fdebug-prefix-map=${PWD}=.",
+        "-fno-record-gcc-switches"
+      ],
+      "notes": "Best-effort; some flags may be unsupported depending on GCC version."
+    },
+
+    "link": {
+      "pie": true,
+      "build_id": "sha1",
+      "gc_sections": true,
+      "strip": false
+    }
+  },
+
+  "platform": {
+    "linux": {
+      "notes": [
+        "GCC is the primary toolchain for GNU/Linux.",
+        "Linking via gcc/g++ is preferred for runtime discovery.",
+        "Gold or LLD may be used when configured (LD=ld.gold or LD=ld.lld)."
+      ],
+      "link_driver_preferred": true
+    },
+    "darwin": {
+      "notes": [
+        "GCC on macOS is typically a clang wrapper; prefer clang toolchain config instead.",
+        "If using a real GCC, ensure SDK flags are provided explicitly."
+      ],
+      "link_driver_preferred": true
+    }
+  },
+
+  "env_overrides": {
+    "verbose": "VITTE_VERBOSE",
+    "deterministic": "VITTE_DETERMINISTIC",
+    "lang": "VITTE_LANG",
+    "std": "VITTE_STD",
+    "opt": "VITTE_OPT",
+    "debug": "VITTE_DEBUG",
+    "sanitize": "VITTE_SANITIZE",
+    "werror": "VITTE_WERROR",
+    "pie": "VITTE_PIE",
+    "lto": "VITTE_LTO",
+    "strip": "VITTE_STRIP",
+    "build_id": "VITTE_BUILD_ID",
+    "ar_deterministic": "VITTE_AR_DETERMINISTIC"
+  },
+
+  "probes": {
+    "version": {
+      "command": ["${cc}", "--version"],
+      "parse": "first_line"
+    },
+    "target_triple": {
+      "command": ["${cc}", "-dumpmachine"],
+      "parse": "trim"
+    },
+    "supports_flag": {
+      "command": ["${cc}", "-Werror", "-x", "c", "-", "-c"],
+      "stdin": "int main(void){return 0;}",
+      "notes": "Generic probe; tooling may wrap to test a candidate flag."
+    }
+  }
+}

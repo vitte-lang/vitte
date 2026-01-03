@@ -1,3 +1,0 @@
-# term
-
-terminal IO helpers

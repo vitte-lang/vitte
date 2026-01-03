@@ -1,3 +1,0 @@
-# str
-
-string helpers

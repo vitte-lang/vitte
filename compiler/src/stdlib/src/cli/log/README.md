@@ -1,3 +1,0 @@
-# log
-
-structured logging helpers

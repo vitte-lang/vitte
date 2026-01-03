@@ -1,3 +1,0 @@
-# traits
-
-reader/writer protocols

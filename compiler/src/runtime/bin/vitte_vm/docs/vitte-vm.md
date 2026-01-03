@@ -1,3 +1,0 @@
-# vitte-vm
-
-placeholder

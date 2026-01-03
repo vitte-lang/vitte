@@ -1,3 +1,0 @@
-# vitte-disasm
-
-disassembler tool

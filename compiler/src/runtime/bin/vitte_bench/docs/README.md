@@ -1,3 +1,0 @@
-# vitte-bench docs
-
-placeholder

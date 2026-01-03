@@ -1,3 +1,0 @@
-# vitte-pack
-
-placeholder

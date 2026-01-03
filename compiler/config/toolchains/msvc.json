@@ -1,3 +1,187 @@
 {
   "toolchain": "msvc"
 }
+
+{
+  "schema": "vitte.toolchain.config",
+  "schema_version": 1,
+
+  "toolchain": "msvc",
+  "display_name": "MSVC (Microsoft Visual C++)",
+  "notes": [
+    "Toolchain definition consumed by Vitte build/compiler drivers.",
+    "This config targets Windows x64 with the MSVC ABI.",
+    "Wrappers/templates live under compiler/build/toolchain/."
+  ],
+
+  "capabilities": {
+    "languages": ["c", "c++"],
+    "supports_response_files": true,
+    "supports_lto": true,
+    "supports_sanitizers": false,
+    "supports_thinlto": false,
+    "supports_pie": false,
+    "supports_build_id": false,
+    "supports_deterministic": true
+  },
+
+  "binaries": {
+    "cc": {
+      "preferred": ["cl"],
+      "fallback": [],
+      "env": ["CC", "CL"]
+    },
+    "cxx": {
+      "preferred": ["cl"],
+      "fallback": [],
+      "env": ["CXX", "CL"]
+    },
+    "ar": {
+      "preferred": ["lib"],
+      "fallback": [],
+      "env": ["AR", "LIB"]
+    },
+    "ld": {
+      "preferred": ["link"],
+      "fallback": [],
+      "env": ["LD", "LINK"]
+    },
+    "rc": {
+      "preferred": ["rc"],
+      "fallback": [],
+      "env": ["RC"]
+    },
+    "mt": {
+      "preferred": ["mt"],
+      "fallback": [],
+      "env": ["MT"]
+    },
+    "dumpbin": {
+      "preferred": ["dumpbin"],
+      "fallback": [],
+      "env": ["DUMPBIN"]
+    }
+  },
+
+  "wrappers": {
+    "cc": {
+      "path": "compiler/build/toolchain/wrappers/ccwrap.ps1",
+      "mode": "shim",
+      "notes": "PowerShell wrapper for cl.exe to normalize args and response files."
+    },
+    "ld": {
+      "path": "compiler/build/toolchain/wrappers/ldwrap.ps1",
+      "mode": "shim",
+      "notes": "PowerShell wrapper for link.exe; injects optional deterministic flags when requested."
+    },
+    "ar": {
+      "path": "compiler/build/toolchain/wrappers/arwrap.ps1",
+      "mode": "shim",
+      "notes": "PowerShell wrapper for lib.exe; deterministic mode best-effort."
+    }
+  },
+
+  "response_files": {
+    "compile": {
+      "template": "compiler/build/toolchain/response_files/msvc.rsp.tmpl",
+      "prefix": "@",
+      "notes": "cl.exe supports @response.rsp; template is args-per-line."
+    },
+    "link": {
+      "template": "compiler/build/toolchain/response_files/msvc.rsp.tmpl",
+      "prefix": "@",
+      "notes": "link.exe supports @response.rsp; some flags are /LINK options."
+    }
+  },
+
+  "defaults": {
+    "lang": {
+      "c": {
+        "std": "c17",
+        "exceptions": false,
+        "rtti": false
+      },
+      "c++": {
+        "std": "c++20",
+        "exceptions": true,
+        "rtti": true
+      }
+    },
+
+    "warnings": {
+      "base": [
+        "/W4"
+      ],
+      "disable": [
+        "/wd4100"
+      ],
+      "werror": false
+    },
+
+    "optimization": {
+      "level": "2",
+      "debug": false,
+      "lto": "off"
+    },
+
+    "determinism": {
+      "enabled": true,
+      "env": {
+        "TZ": "UTC",
+        "LC_ALL": "C"
+      },
+      "compiler_flags": [
+        "/Brepro"
+      ],
+      "linker_flags": [
+        "/Brepro"
+      ],
+      "notes": "MSVC /Brepro requests deterministic output where supported; still best-effort."
+    },
+
+    "link": {
+      "subsystem": "console",
+      "incremental": false,
+      "debug": false
+    }
+  },
+
+  "platform": {
+    "windows": {
+      "notes": [
+        "Requires a Visual Studio Developer Command Prompt (vcvars) or equivalent environment.",
+        "Prefer invoking via 'vsdevcmd.bat'/'vcvars64.bat' in CI before running scripts."
+      ],
+      "abi": "msvc",
+      "arch": "x86_64"
+    }
+  },
+
+  "env_overrides": {
+    "verbose": "VITTE_VERBOSE",
+    "deterministic": "VITTE_DETERMINISTIC",
+    "lang": "VITTE_LANG",
+    "std": "VITTE_STD",
+    "opt": "VITTE_OPT",
+    "debug": "VITTE_DEBUG",
+    "werror": "VITTE_WERROR",
+    "lto": "VITTE_LTO",
+    "strip": "VITTE_STRIP"
+  },
+
+  "probes": {
+    "version": {
+      "command": ["${cc}", "/Bv"],
+      "parse": "msvc_bv"
+    },
+    "target": {
+      "command": ["${cc}", "/?"],
+      "parse": "msvc_help"
+    },
+    "supports_flag": {
+      "command": ["${cc}", "/nologo", "/TC", "/c", "-"] ,
+      "stdin": "int main(void){return 0;}",
+      "notes": "Generic probe; tooling may wrap to test a candidate flag (via response files)."
+    }
+  }
+}

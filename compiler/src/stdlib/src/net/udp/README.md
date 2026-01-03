@@ -1,3 +1,0 @@
-# udp
-
-UDP sockets (thin)

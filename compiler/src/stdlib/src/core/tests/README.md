@@ -1,3 +1,0 @@
-# tests
-
-core unit tests

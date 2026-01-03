@@ -1,3 +1,0 @@
-# unicode
-
-unicode helpers (stubs)

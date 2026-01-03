@@ -1,3 +1,0 @@
-# vitte-run
-
-runner entrypoint

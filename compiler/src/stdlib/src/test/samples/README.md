@@ -1,3 +1,0 @@
-# samples
-
-example tests

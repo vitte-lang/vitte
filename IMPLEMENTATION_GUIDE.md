@@ -477,60 +477,26 @@ void emit_header(Backend* b) {
 
 ## 🧪 Testing Strategy
 
-### Unit tests (chaque phase)
-```bash
-tests/unit/lexer/
-  ├── test_numbers.c      # 0x, 0b, floats, exponents
-  ├── test_strings.c      # Escape sequences, raw strings
-  ├── test_identifiers.c  # Keywords vs identifiers
-  └── test_error_cases.c  # Invalid tokens
-
-tests/unit/parser/
-  ├── test_expressions.c  # Precedence, associativity
-  ├── test_statements.c   # If, loops, blocks
-  ├── test_declarations.c # Functions, structs, enums
-  └── test_error_recovery.c # Partial parse on errors
-
-tests/unit/typer/
-  ├── test_inference.c    # Type variable solving
-  ├── test_builtins.c     # Primitive type ops
-  ├── test_generics.c     # Parametric polymorphism
-  └── test_error_messages.c
-```
-
-### Integration tests (end-to-end)
-```bash
-tests/integration/
-  ├── hello_world/
-  │   ├── input.vitte
-  │   ├── expected.c
-  │   └── expected_output.txt
-  ├── fibonacci/
-  ├── module_system/
-  └── error_cases/
-```
-
-### Golden file testing
-```bash
-tests/golden/
-  ├── lexer_tokens.txt    # Expected token stream
-  ├── ast_dump.txt        # Expected AST pretty-print
-  └── ir_dump.txt         # Expected IR
-```
-
 ### Test execution
 ```bash
-# Unit test each phase
-cargo test --lib lexer
-cargo test --lib parser
-cargo test --lib typer
-# ...
+# Build + run all compiler tests
+cd compiler
+make debug
+make test
 
-# Integration tests
-cargo test --test integration
+# Run a single test binary
+cd compiler/build/debug && ./test_lexer
 
-# Golden tests (compare output)
-./run_golden_tests.sh
+# Run ctest (all tests, or filtered)
+cd compiler/build/debug && ctest --output-on-failure
+cd compiler/build/debug && ctest -R test_lexer --output-on-failure
+
+# Example programs (smoke)
+cd compiler
+make examples
+
+# Stdlib tests (from repo root)
+./std/scripts/test_std.sh
 ```
 
 ---

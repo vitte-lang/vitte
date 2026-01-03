@@ -42,7 +42,6 @@ Vitte's type system provides compile-time guarantees:
 ### Dependency Security
 
 - Regular security audits of dependencies
-- Vulnerability monitoring with tools like `cargo audit`
 - Timely updates for critical security patches
 
 ## Security Best Practices for Users

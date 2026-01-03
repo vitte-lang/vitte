@@ -531,6 +531,7 @@ git checkout -b feat/<sujet>
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure || true
+./std/scripts/test_std.sh
 ```
 
 ---

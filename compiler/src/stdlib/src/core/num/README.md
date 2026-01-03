@@ -1,3 +1,0 @@
-# num
-
-numeric helpers

@@ -1,3 +1,0 @@
-# Config reference
-
-placeholder

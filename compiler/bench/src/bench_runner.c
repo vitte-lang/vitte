@@ -1,204 +1,395 @@
-\
-/*
-  bench_runner.c - runs registered cases and collects samples
-*/
-#include "bench/bench.h"
-#include "suites/suites_init.h"
+
+
+// SPDX-License-Identifier: MIT
+// bench_runner.c - benchmark runner (C17)
+//
+// Minimal bench executable entrypoint wiring:
+//  - bench_registry (discovery / selection)
+//  - bench_report   (stats + output)
+//
+// This file is intentionally self-contained (no internal project headers). If you
+// already have a bench public header, move the shared types/prototypes there and
+// include it from bench_registry.c / bench_report.c / bench_runner.c.
 
 #include <errno.h>
+#include <inttypes.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* simple reusable arena */
-typedef struct arena_blk {
-  struct arena_blk *next;
-  size_t used;
-  size_t cap;
-  unsigned char data[1];
-} arena_blk;
+#if defined(_WIN32)
+  #define WIN32_LEAN_AND_MEAN
+  #include <windows.h>
+#else
+  #include <time.h>
+#endif
 
-struct bench_ctx {
-  arena_blk *head;
-  uint32_t rng;
-  unsigned char *cache_buf;
-  size_t cache_buf_sz;
-};
+//------------------------------------------------------------------------------
+// Shared types (must match bench_registry.c / bench_report.c)
+//------------------------------------------------------------------------------
 
-static arena_blk *arena_new_blk(size_t cap) {
-  arena_blk *b = (arena_blk *)malloc(sizeof(arena_blk) + cap);
-  if (!b) abort();
-  b->next = NULL;
-  b->used = 0;
-  b->cap  = cap;
-  return b;
-}
+typedef struct bench_ctx {
+    // Runner-provided per-run context.
+    uint64_t iterations;   // logical iterations executed in the benchmark call
+    uint64_t bytes;        // bytes processed (optional)
+    uint64_t sample_index; // which sample is being executed
 
-static void arena_reset(bench_ctx *ctx) {
-  for (arena_blk *b = ctx->head; b; b = b->next) b->used = 0;
-}
+    // Optional scratch for benchmarks.
+    void*    user;
+} bench_ctx;
 
-static void arena_free_all(bench_ctx *ctx) {
-  arena_blk *b = ctx->head;
-  while (b) {
-    arena_blk *n = b->next;
-    free(b);
-    b = n;
-  }
-  ctx->head = NULL;
-}
+typedef void (*bench_fn)(bench_ctx* ctx);
 
-void *bench_alloc(bench_ctx *ctx, size_t n) {
-  if (n == 0) n = 1;
+typedef struct bench_entry {
+    char*    name;   // owned by registry
+    char*    group;  // owned by registry (optional)
+    bench_fn fn;
+} bench_entry;
 
-  arena_blk *b = ctx->head;
-  if (!b) {
-    size_t cap = (n < (1u<<16)) ? (1u<<16) : n;
-    ctx->head = arena_new_blk(cap);
-    b = ctx->head;
-  }
+typedef struct bench_registry {
+    bench_entry* entries;
+    size_t       len;
+    size_t       cap;
+} bench_registry;
 
-  /* find a block with room */
-  while (b && (b->used + n > b->cap)) {
-    if (!b->next) {
-      size_t cap = (n < (1u<<16)) ? (1u<<16) : n;
-      b->next = arena_new_blk(cap);
+typedef enum bench_report_format {
+    BENCH_REPORT_HUMAN = 0,
+    BENCH_REPORT_JSON  = 1,
+} bench_report_format;
+
+typedef struct bench_report_config {
+    bench_report_format format;       // default: HUMAN
+    bool                show_header;  // default: true
+    bool                sort_by_mean; // default: false (sort by name)
+} bench_report_config;
+
+typedef struct bench_case_stats {
+    uint64_t n;
+    uint64_t min_ns;
+    uint64_t max_ns;
+    double   mean_ns;
+    double   stdev_ns;
+    uint64_t p50_ns;
+    uint64_t p95_ns;
+} bench_case_stats;
+
+typedef struct bench_case_result {
+    char* name;
+    char* group;
+
+    uint64_t iterations;
+    uint64_t bytes;
+
+    bench_case_stats stats;
+} bench_case_result;
+
+typedef struct bench_report {
+    bench_report_config cfg;
+    bench_case_result*  cases;
+    size_t              len;
+    size_t              cap;
+} bench_report;
+
+//------------------------------------------------------------------------------
+// External API (implemented by bench_registry.c / bench_report.c)
+//------------------------------------------------------------------------------
+
+void bench_registry_init(bench_registry* r);
+void bench_registry_destroy(bench_registry* r);
+int  bench_registry_register_builtins(bench_registry* r);
+void bench_registry_sort_by_name(bench_registry* r);
+const bench_entry* bench_registry_entries(const bench_registry* r, size_t* out_count);
+const bench_entry* bench_registry_find(const bench_registry* r, const char* name);
+bench_registry* bench_registry_global(void);
+void bench_registry_global_shutdown(void);
+
+void bench_report_init(bench_report* r, const bench_report_config* cfg);
+void bench_report_destroy(bench_report* r);
+int  bench_report_add_case(bench_report* r,
+                           const char* name,
+                           const char* group,
+                           uint64_t iterations,
+                           uint64_t bytes,
+                           const uint64_t* samples_ns,
+                           size_t samples_count);
+void bench_report_sort(bench_report* r);
+const bench_case_result* bench_report_cases(const bench_report* r, size_t* out_count);
+void bench_report_print(FILE* out, bench_report* r);
+bench_report* bench_report_global(void);
+void bench_report_global_shutdown(void);
+
+//------------------------------------------------------------------------------
+// Time
+//------------------------------------------------------------------------------
+
+static uint64_t bench_now_ns(void) {
+#if defined(_WIN32)
+    static LARGE_INTEGER freq;
+    static bool inited = false;
+    if (!inited) {
+        QueryPerformanceFrequency(&freq);
+        inited = true;
     }
-    b = b->next;
-  }
-
-  void *p = b->data + b->used;
-  b->used += n;
-  return p;
+    LARGE_INTEGER c;
+    QueryPerformanceCounter(&c);
+    // Convert to ns with 128-bit intermediate
+    uint64_t ticks = (uint64_t)c.QuadPart;
+    uint64_t f     = (uint64_t)freq.QuadPart;
+    return (uint64_t)(((__int128)ticks * 1000000000) / (__int128)f);
+#else
+    struct timespec ts;
+  #if defined(CLOCK_MONOTONIC_RAW)
+    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+  #else
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+  #endif
+    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+#endif
 }
 
-void bench_free_all(bench_ctx *ctx) {
-  arena_reset(ctx);
+static uint64_t bench_elapsed_ns(uint64_t start_ns, uint64_t end_ns) {
+    return (end_ns >= start_ns) ? (end_ns - start_ns) : 0;
 }
 
-static uint32_t xorshift32(uint32_t *s) {
-  uint32_t x = *s;
-  x ^= x << 13;
-  x ^= x >> 17;
-  x ^= x << 5;
-  *s = x;
-  return x;
+//------------------------------------------------------------------------------
+// CLI
+//------------------------------------------------------------------------------
+
+typedef struct bench_cli {
+    const char* filter_substr; // substring filter (optional)
+    const char* exact_name;    // run only this exact benchmark (optional)
+    bool        list_only;
+    bool        json;
+    bool        sort_mean;
+    bool        no_header;
+
+    size_t      warmup;
+    size_t      samples;
+
+    uint64_t    iterations; // iterations per sample (runner-defined)
+} bench_cli;
+
+static void bench_usage(FILE* out, const char* argv0) {
+    fprintf(out,
+        "Usage: %s [options]\n"
+        "\n"
+        "Options:\n"
+        "  --list                 List available benchmarks\n"
+        "  --filter <substr>      Run only benchmarks whose name contains <substr>\n"
+        "  --name <exact>         Run only the benchmark named <exact>\n"
+        "  --warmup <N>           Warmup runs per benchmark (default: 5)\n"
+        "  --samples <N>          Measured samples per benchmark (default: 30)\n"
+        "  --iters <N>            Iterations per sample (default: 1)\n"
+        "  --json                 JSON output\n"
+        "  --sort-mean            Sort output by mean time (ascending)\n"
+        "  --no-header            Do not print table header (human format)\n"
+        "  -h, --help             Show this help\n",
+        argv0);
 }
 
-uint32_t bench_rand_u32(bench_ctx *ctx) {
-  return xorshift32(&ctx->rng);
+static bool bench_streq(const char* a, const char* b) {
+    return a && b && strcmp(a, b) == 0;
 }
 
-static bool match_filter(const bench_opts *opts, const bench_case *c) {
-  if (!opts || !opts->filter || !*opts->filter) return true;
-  if (strstr(c->name, opts->filter)) return true;
-  if (strstr(c->suite, opts->filter)) return true;
-  return false;
+static bool bench_has_substr(const char* s, const char* sub) {
+    if (!sub || !*sub) return true;
+    if (!s) return false;
+    return strstr(s, sub) != NULL;
 }
 
-static FILE *open_out(const bench_opts *opts) {
-  if (!opts || !opts->out_path || !*opts->out_path) return stdout;
-  return fopen(opts->out_path, "wb");
+static int bench_parse_u64(const char* s, uint64_t* out) {
+    if (!s || !*s || !out) return -EINVAL;
+    char* end = NULL;
+    errno = 0;
+    unsigned long long v = strtoull(s, &end, 10);
+    if (errno != 0 || end == s || (end && *end != '\0')) return -EINVAL;
+    *out = (uint64_t)v;
+    return 0;
 }
 
-static void ensure_cache_buf(bench_ctx *ctx) {
-  if (ctx->cache_buf) return;
-  /* touch ~8 MiB (best-effort) */
-  size_t sz = 8u * 1024u * 1024u;
-  ctx->cache_buf = (unsigned char *)malloc(sz);
-  if (!ctx->cache_buf) return;
-  ctx->cache_buf_sz = sz;
-  memset(ctx->cache_buf, 0, sz);
+static int bench_parse_size(const char* s, size_t* out) {
+    uint64_t v = 0;
+    int rc = bench_parse_u64(s, &v);
+    if (rc != 0) return rc;
+    *out = (size_t)v;
+    return 0;
 }
 
-static void flush_cache_best_effort(bench_ctx *ctx) {
-  if (!ctx->cache_buf) return;
-  volatile unsigned acc = 0;
-  for (size_t i = 0; i < ctx->cache_buf_sz; i += 64) acc += ctx->cache_buf[i];
-  (void)acc;
-}
+static int bench_cli_parse(bench_cli* cli, int argc, char** argv) {
+    memset(cli, 0, sizeof(*cli));
+    cli->warmup = 5;
+    cli->samples = 30;
+    cli->iterations = 1;
 
-int bench_run_all(const bench_opts *opts) {
-  bench_register_all_suites();
-
-  if (opts && opts->pin_cpu >= 0) {
-    (void)bench_pin_to_cpu(opts->pin_cpu);
-  }
-
-  size_t n = 0;
-  const bench_case *cases = bench_cases(&n);
-  if (!cases || n == 0) return 0;
-
-  bench_ctx ctx;
-  memset(&ctx, 0, sizeof(ctx));
-  ctx.rng = opts ? opts->seed : 1;
-
-  if (opts && opts->flush_cache) ensure_cache_buf(&ctx);
-
-  bench_result *results = (bench_result *)malloc(sizeof(bench_result) * n);
-  if (!results) abort();
-  size_t out_count = 0;
-
-  for (size_t i = 0; i < n; ++i) {
-    const bench_case *c = &cases[i];
-    if (!match_filter(opts, c)) continue;
-
-    /* warmup */
-    uint32_t warm = opts ? opts->warmup : 0;
-    for (uint32_t w = 0; w < warm; ++w) {
-      c->fn(&ctx);
-      bench_free_all(&ctx);
-      if (opts && opts->flush_cache) flush_cache_best_effort(&ctx);
+    for (int i = 1; i < argc; ++i) {
+        const char* a = argv[i];
+        if (bench_streq(a, "-h") || bench_streq(a, "--help")) {
+            return 1; // help
+        } else if (bench_streq(a, "--list")) {
+            cli->list_only = true;
+        } else if (bench_streq(a, "--json")) {
+            cli->json = true;
+        } else if (bench_streq(a, "--sort-mean")) {
+            cli->sort_mean = true;
+        } else if (bench_streq(a, "--no-header")) {
+            cli->no_header = true;
+        } else if (bench_streq(a, "--filter")) {
+            if (i + 1 >= argc) return -EINVAL;
+            cli->filter_substr = argv[++i];
+        } else if (bench_streq(a, "--name")) {
+            if (i + 1 >= argc) return -EINVAL;
+            cli->exact_name = argv[++i];
+        } else if (bench_streq(a, "--warmup")) {
+            if (i + 1 >= argc) return -EINVAL;
+            int rc = bench_parse_size(argv[++i], &cli->warmup);
+            if (rc != 0) return rc;
+        } else if (bench_streq(a, "--samples")) {
+            if (i + 1 >= argc) return -EINVAL;
+            int rc = bench_parse_size(argv[++i], &cli->samples);
+            if (rc != 0) return rc;
+        } else if (bench_streq(a, "--iters")) {
+            if (i + 1 >= argc) return -EINVAL;
+            int rc = bench_parse_u64(argv[++i], &cli->iterations);
+            if (rc != 0) return rc;
+        } else {
+            return -EINVAL;
+        }
     }
 
-    uint32_t iters = opts ? opts->iters : 1;
-    if (iters == 0) iters = 1;
+    if (cli->samples == 0) return -EINVAL;
+    if (cli->iterations == 0) cli->iterations = 1;
+    return 0;
+}
 
-    bench_sample *samples = (bench_sample *)malloc(sizeof(bench_sample) * iters);
-    if (!samples) abort();
+//------------------------------------------------------------------------------
+// Runner
+//------------------------------------------------------------------------------
 
-    for (uint32_t k = 0; k < iters; ++k) {
-      double t0 = bench_now_s();
-      c->fn(&ctx);
-      double t1 = bench_now_s();
-      samples[k].seconds = (t1 - t0);
-      bench_free_all(&ctx);
-      if (opts && opts->flush_cache) flush_cache_best_effort(&ctx);
+static int bench_list(const bench_registry* reg, const bench_cli* cli) {
+    size_t n = 0;
+    const bench_entry* es = bench_registry_entries(reg, &n);
+    for (size_t i = 0; i < n; ++i) {
+        const bench_entry* e = &es[i];
+        const char* name = e->name ? e->name : "";
+        if (cli->exact_name && !bench_streq(name, cli->exact_name)) continue;
+        if (!bench_has_substr(name, cli->filter_substr)) continue;
+        if (e->group && *e->group) {
+            printf("%s\t[%s]\n", name, e->group);
+        } else {
+            printf("%s\n", name);
+        }
+    }
+    return 0;
+}
+
+static int bench_run_one(const bench_entry* e, const bench_cli* cli, bench_report* rep) {
+    if (!e || !e->fn || !e->name) return -EINVAL;
+
+    // Warmup
+    bench_ctx ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.iterations = cli->iterations;
+
+    for (size_t i = 0; i < cli->warmup; ++i) {
+        ctx.sample_index = i;
+        ctx.bytes = 0;
+        e->fn(&ctx);
     }
 
-    bench_compute_result(&results[out_count], c->suite, c->name, iters, samples, iters);
-    out_count++;
+    // Samples
+    uint64_t* samples = (uint64_t*)malloc(cli->samples * sizeof(uint64_t));
+    if (!samples) return -ENOMEM;
+
+    // Record bytes observed on the *last* measured sample (best-effort).
+    uint64_t last_bytes = 0;
+
+    for (size_t i = 0; i < cli->samples; ++i) {
+        ctx.sample_index = i;
+        ctx.bytes = 0;
+
+        uint64_t t0 = bench_now_ns();
+        e->fn(&ctx);
+        uint64_t t1 = bench_now_ns();
+
+        samples[i] = bench_elapsed_ns(t0, t1);
+        last_bytes = ctx.bytes;
+    }
+
+    int rc = bench_report_add_case(rep,
+                                  e->name,
+                                  e->group,
+                                  ctx.iterations,
+                                  last_bytes,
+                                  samples,
+                                  cli->samples);
 
     free(samples);
-  }
+    return rc;
+}
 
-  FILE *fp = open_out(opts);
-  if (!fp) {
-    free(results);
-    arena_free_all(&ctx);
-    free(ctx.cache_buf);
-    return 2;
-  }
+static int bench_run_all(const bench_registry* reg, const bench_cli* cli, bench_report* rep) {
+    size_t n = 0;
+    const bench_entry* es = bench_registry_entries(reg, &n);
+    int rc = 0;
 
-  const char *fmt = (opts && opts->format) ? opts->format : "text";
-  if (strcmp(fmt, "json") == 0) {
-    bench_report_json(fp, results, out_count, opts);
-  } else if (strcmp(fmt, "csv") == 0) {
-    bench_report_csv(fp, results, out_count, opts);
-  } else {
-    bench_report_text(fp, results, out_count, opts);
-  }
+    for (size_t i = 0; i < n; ++i) {
+        const bench_entry* e = &es[i];
+        const char* name = e->name ? e->name : "";
+        if (cli->exact_name && !bench_streq(name, cli->exact_name)) continue;
+        if (!bench_has_substr(name, cli->filter_substr)) continue;
 
-  /* baseline compare (writes to stderr for CI readability) */
-  int brc = bench_compare_with_baseline(results, out_count,
-                                       opts ? opts->baseline_json : NULL,
-                                       opts ? opts->fail_above_pct : 0.0,
-                                       stderr);
+        rc = bench_run_one(e, cli, rep);
+        if (rc != 0) {
+            fprintf(stderr, "bench: '%s' failed (rc=%d)\n", name, rc);
+            return rc;
+        }
+    }
 
-  if (fp != stdout) fclose(fp);
+    return 0;
+}
 
-  free(results);
-  arena_free_all(&ctx);
-  free(ctx.cache_buf);
+//------------------------------------------------------------------------------
+// Entrypoint
+//------------------------------------------------------------------------------
 
-  return (brc != 0) ? brc : 0;
+int main(int argc, char** argv) {
+    bench_cli cli;
+    int prc = bench_cli_parse(&cli, argc, argv);
+    if (prc == 1) {
+        bench_usage(stdout, argv[0]);
+        return 0;
+    }
+    if (prc != 0) {
+        bench_usage(stderr, argv[0]);
+        return 2;
+    }
+
+    bench_registry* reg = bench_registry_global();
+
+    if (cli.list_only) {
+        int rc = bench_list(reg, &cli);
+        bench_registry_global_shutdown();
+        return (rc == 0) ? 0 : 3;
+    }
+
+    bench_report_config cfg;
+    cfg.format = cli.json ? BENCH_REPORT_JSON : BENCH_REPORT_HUMAN;
+    cfg.show_header = !cli.no_header;
+    cfg.sort_by_mean = cli.sort_mean;
+
+    bench_report rep;
+    bench_report_init(&rep, &cfg);
+
+    int rc = bench_run_all(reg, &cli, &rep);
+    if (rc == 0) {
+        bench_report_print(stdout, &rep);
+    }
+
+    bench_report_destroy(&rep);
+    bench_registry_global_shutdown();
+
+    return (rc == 0) ? 0 : 4;
 }

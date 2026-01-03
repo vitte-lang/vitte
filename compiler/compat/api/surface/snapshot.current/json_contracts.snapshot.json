@@ -1,0 +1,128 @@
+
+
+{
+  "schema": "vitte.compat.json_contracts.snapshot",
+  "schema_version": 1,
+  "generated_utc": "2026-01-02T20:59:00Z",
+  "notes": [
+    "Raw (un-normalized) JSON contracts snapshot.",
+    "Tracks the JSON shapes emitted/consumed by vittec and related tools.",
+    "This file preserves extractor output (ordering, comments, tool-specific fields) as-is.",
+    "A normalized representation lives in normalized/json_contracts.normalized.json for stable diffing."
+  ],
+  "tool": {
+    "name": "vittec",
+    "version": "0.0.0",
+    "channel": "dev",
+    "commit": "",
+    "target": {
+      "os": "linux",
+      "arch": "x86_64",
+      "triple": "x86_64-unknown-linux-gnu",
+      "abi": "sysv"
+    }
+  },
+  "capture": {
+    "mode": "template",
+    "source": {
+      "kind": "unknown",
+      "path": "",
+      "command": "",
+      "stdout_sha256": "",
+      "stderr_sha256": ""
+    },
+    "environment": {
+      "tz": "UTC",
+      "lc_all": "C",
+      "source_date_epoch": "",
+      "extra": {}
+    }
+  },
+  "raw": {
+    "conventions": {
+      "naming": "snake_case",
+      "string_encoding": "utf-8",
+      "unknown_fields": "ignore",
+      "required_fields": "strict",
+      "date_time": {
+        "format": "rfc3339",
+        "timezone": "UTC"
+      },
+      "envelope": {
+        "kind_field": "kind",
+        "version_field": "schema_version",
+        "error_field": "error",
+        "data_field": "data"
+      }
+    },
+    "contracts": []
+  },
+  "templates": {
+    "contract": {
+      "id": "diagnostic",
+      "title": "Compiler diagnostic",
+      "direction": "emit",
+      "since": null,
+      "deprecated": null,
+      "notes": "Template entry. Do not ship as-is.",
+      "source": {
+        "origin": "help_text|docs|code",
+        "path": "",
+        "line": 0
+      },
+      "schema": {
+        "type": "object",
+        "required": ["kind", "schema_version", "data"],
+        "properties": {
+          "kind": { "type": "string", "const": "diagnostic" },
+          "schema_version": { "type": "integer", "minimum": 1 },
+          "data": {
+            "type": "object",
+            "required": ["severity", "message", "span"],
+            "properties": {
+              "severity": { "type": "string", "enum": ["error", "warning", "note", "help"] },
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "span": {
+                "type": "object",
+                "required": ["file", "line", "col"],
+                "properties": {
+                  "file": { "type": "string" },
+                  "line": { "type": "integer", "minimum": 1 },
+                  "col": { "type": "integer", "minimum": 1 },
+                  "end_line": { "type": "integer", "minimum": 1 },
+                  "end_col": { "type": "integer", "minimum": 1 }
+                },
+                "additionalProperties": false
+              },
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["message", "span"],
+                  "properties": {
+                    "message": { "type": "string" },
+                    "span": { "$ref": "#/templates/contract/schema/properties/data/properties/span" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "details": { "type": "object" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

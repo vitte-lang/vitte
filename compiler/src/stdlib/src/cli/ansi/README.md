@@ -1,3 +1,0 @@
-# ansi
-
-ANSI helpers

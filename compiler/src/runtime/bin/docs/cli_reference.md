@@ -1,3 +1,0 @@
-# CLI reference
-
-placeholder

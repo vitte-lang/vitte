@@ -1,3 +1,0 @@
-# prompt
-
-interactive prompts

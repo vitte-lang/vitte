@@ -1,3 +1,0 @@
-# error
-
-core error primitives

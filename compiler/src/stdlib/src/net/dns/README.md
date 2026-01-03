@@ -1,3 +1,0 @@
-# dns
-
-DNS resolution (stub)

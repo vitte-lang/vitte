@@ -1,3 +1,0 @@
-# buf
-
-buffered I/O

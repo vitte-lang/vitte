@@ -1,3 +1,0 @@
-# vitte-test
-
-placeholder
