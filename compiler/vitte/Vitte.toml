@@ -1,0 +1,156 @@
+# /Users/vincent/Documents/Github/vitte/compiler/vitte/Vitte.toml
+# Vitte manifest (TOML) — repo: vitte-lang/vitte
+
+format_version = 1
+
+[package]
+name        = "vitte-compiler"
+version     = "0.1.0"
+edition     = "2025"
+description = "Vitte compiler package (frontend + driver) for the Vitte toolchain."
+license     = "MIT OR Apache-2.0"
+authors     = ["Vincent <vincent@local>"]
+readme      = "README.md"
+repository  = "https://github.com/vitte-lang/vitte"
+homepage    = "https://github.com/vitte-lang/vitte"
+keywords    = ["vitte", "compiler", "language", "toolchain"]
+categories  = ["compilers", "development-tools"]
+publish     = false
+
+[package.metadata]
+issues            = "https://github.com/vitte-lang/vitte/issues"
+min_steel_version = "0.1.0"
+api_stability     = "unstable"
+doc_langs         = ["fr", "en"]
+
+[layout]
+root_dir     = "."
+src_dir      = "src"
+tests_dir    = "tests"
+benches_dir  = "bench"
+examples_dir = "examples"
+assets_dir   = "assets"
+out_dir      = "target"
+cache_dir    = ".vitte"
+include_dir  = "include"
+
+[entrypoints]
+main_module = "vitte/cli"
+lib_module  = "vitte/compiler"
+
+[targets]
+
+  [targets.lib]
+  kind        = "lib"
+  name        = "vitte_compiler"
+  crate_type  = ["rlib"]
+  path        = "src/lib.vitte"
+  module_root = "vitte/compiler"
+
+  [targets.vittec]
+  kind        = "bin"
+  name        = "vittec"
+  path        = "src/main.vitte"
+  module_root = "vitte/cli"
+  default_args = ["--help"]
+
+  [targets.tests]
+  kind = "test"
+  name = "vitte-compiler-tests"
+  path = "tests/main.vitte"
+
+  [targets.bench]
+  kind = "bench"
+  name = "vitte-compiler-bench"
+  path = "bench/main.vitte"
+
+[dependencies]
+# Monorepo (ajuste si tes paths réels diffèrent)
+vitte-core    = { path = "../../core",    version = "0.1.0" }
+vitte-runtime = { path = "../../runtime", version = "0.1.0" }
+vitte-std     = { path = "../../std",     version = "0.1.0" }
+
+# Sous-crates compiler (optionnels si tu split)
+vitte-lexer   = { path = "../lexer",   version = "0.1.0", optional = true }
+vitte-parser  = { path = "../parser",  version = "0.1.0", optional = true }
+vitte-ir      = { path = "../ir",      version = "0.1.0", optional = true }
+vitte-codegen = { path = "../codegen", version = "0.1.0", optional = true }
+
+[dev-dependencies]
+vitte-testkit = { path = "../testkit", version = "0.1.0" }
+
+[build-dependencies]
+vitte-build = { path = "../build", version = "0.1.0", optional = true }
+
+[features]
+default  = ["frontend"]
+frontend = ["vitte-lexer", "vitte-parser"]
+backend  = ["vitte-ir", "vitte-codegen"]
+
+trace    = []
+sanitize = []
+unstable = []
+vendored = []
+
+[profiles]
+
+  [profiles.dev]
+  opt_level       = 0
+  debug           = true
+  debug_symbols   = true
+  lto             = false
+  codegen_units   = 16
+  overflow_checks = true
+  incremental     = true
+  panic           = "unwind"
+  strip           = "none"
+
+  [profiles.release]
+  opt_level       = 3
+  debug           = false
+  debug_symbols   = false
+  lto             = "thin"
+  codegen_units   = 1
+  overflow_checks = false
+  incremental     = false
+  panic           = "abort"
+  strip           = "symbols"
+
+  [profiles.test]
+  inherits        = "dev"
+  opt_level       = 1
+  overflow_checks = true
+
+  [profiles.bench]
+  inherits        = "release"
+  debug           = true
+  debug_symbols   = true
+
+[toolchain]
+compiler       = "steel"
+compiler_min   = "0.1.0"
+runtime        = "vitte-runtime"
+stdlib         = "vitte-std"
+
+clang          = "clang"
+lld            = "lld"
+ar             = "llvm-ar"
+strip          = "llvm-strip"
+
+compiler_flags = ["-Wall", "-Wextra"]
+linker_flags   = []
+defines        = { VITTE_BUILD = "1" }
+
+[toolchain.bootstrap]
+enabled         = true
+stage0_bin      = "../../bootstrap/stage0/steel0"
+stage1_out      = "../../bootstrap/stage1"
+stage2_out      = "../../bootstrap/stage2"
+verify_selfhost = true
+
+[scripts]
+fmt   = ["vitte", "fmt", "--workspace"]
+lint  = ["vitte", "lint", "--workspace"]
+build = ["vitte", "build", "--profile", "dev"]
+test  = ["vitte", "test", "--profile", "test"]
+bench = ["vitte", "bench", "--profile", "bench"]

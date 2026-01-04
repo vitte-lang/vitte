@@ -1,246 +1,575 @@
-extern crate test;
-use std::cell::Cell;
 
-use test::Bencher;
 
-use super::TypedArena;
+# vitte_arena/src/tests.vit
+#
+# Unit-style tests for vitte_arena.
+#
+# Goals
+# - Pure tests (no I/O) returning bool.
+# - Minimal runtime assumptions.
+# - No `{}` blocks; `.end` only.
+#
+# How to use
+# - Call `vitte_arena.tests.tests_all()` from your test runner.
 
-#[allow(dead_code)]
-#[derive(Debug, Eq, PartialEq)]
-struct Point {
-    x: i32,
-    y: i32,
-    z: i32,
-}
+mod vitte_arena.tests
 
-impl<T> TypedArena<T> {
-    /// Clears the arena. Deallocates all but the longest chunk which may be reused.
-    fn clear(&mut self) {
-        unsafe {
-            // Clear the last chunk, which is partially filled.
-            let mut chunks_borrow = self.chunks.borrow_mut();
-            if let Some(last_chunk) = chunks_borrow.last_mut() {
-                self.clear_last_chunk(last_chunk);
-                let len = chunks_borrow.len();
-                // If `T` is ZST, code below has no effect.
-                for mut chunk in chunks_borrow.drain(..len - 1) {
-                    chunk.destroy(chunk.entries);
-                }
-            }
-        }
-    }
-}
+use vitte_arena
 
-#[test]
-fn test_unused() {
-    let arena: TypedArena<Point> = TypedArena::default();
-    assert!(arena.chunks.borrow().is_empty());
-}
+# -----------------------------------------------------------------------------
+# Minimal assertion helpers
+# -----------------------------------------------------------------------------
 
-#[test]
-fn test_arena_alloc_nested() {
-    struct Inner {
-        value: u8,
-    }
-    struct Outer<'a> {
-        inner: &'a Inner,
-    }
-    enum EI<'e> {
-        I(Inner),
-        O(Outer<'e>),
-    }
+fn t_require(cond: bool) -> bool
+    if !cond
+        ret false
+    .end
+    ret true
+.end
 
-    struct Wrap<'a>(TypedArena<EI<'a>>);
+fn t_eq_usize(a: usize, b: usize) -> bool
+    ret a == b
+.end
 
-    impl<'a> Wrap<'a> {
-        fn alloc_inner<F: Fn() -> Inner>(&self, f: F) -> &Inner {
-            match self.0.alloc(EI::I(f())) {
-                EI::I(i) => i,
-                _ => panic!("mismatch"),
-            }
-        }
-        fn alloc_outer<F: Fn() -> Outer<'a>>(&self, f: F) -> &Outer<'_> {
-            match self.0.alloc(EI::O(f())) {
-                EI::O(o) => o,
-                _ => panic!("mismatch"),
-            }
-        }
-    }
+fn t_ne_ptr(a: *u8, b: *u8) -> bool
+    ret a != b
+.end
 
-    let arena = Wrap(TypedArena::default());
+fn t_eq_ptr(a: *u8, b: *u8) -> bool
+    ret a == b
+.end
 
-    let result = arena.alloc_outer(|| Outer { inner: arena.alloc_inner(|| Inner { value: 10 }) });
+# -----------------------------------------------------------------------------
+# Static buffers (avoid malloc)
+# -----------------------------------------------------------------------------
 
-    assert_eq!(result.inner.value, 10);
-}
+# A small static-like buffer block. The caller must ensure it lives long enough.
+# NOTE: We model it as repeated bytes for contiguity.
 
-#[test]
-fn test_copy() {
-    let arena = TypedArena::default();
-    #[cfg(not(miri))]
-    const N: usize = 100000;
-    #[cfg(miri)]
-    const N: usize = 1000;
-    for _ in 0..N {
-        arena.alloc(Point { x: 1, y: 2, z: 3 });
-    }
-}
+type _ByteBuf256 struct
+    b000: u8
+    b001: u8
+    b002: u8
+    b003: u8
+    b004: u8
+    b005: u8
+    b006: u8
+    b007: u8
+    b008: u8
+    b009: u8
+    b010: u8
+    b011: u8
+    b012: u8
+    b013: u8
+    b014: u8
+    b015: u8
+    b016: u8
+    b017: u8
+    b018: u8
+    b019: u8
+    b020: u8
+    b021: u8
+    b022: u8
+    b023: u8
+    b024: u8
+    b025: u8
+    b026: u8
+    b027: u8
+    b028: u8
+    b029: u8
+    b030: u8
+    b031: u8
+    b032: u8
+    b033: u8
+    b034: u8
+    b035: u8
+    b036: u8
+    b037: u8
+    b038: u8
+    b039: u8
+    b040: u8
+    b041: u8
+    b042: u8
+    b043: u8
+    b044: u8
+    b045: u8
+    b046: u8
+    b047: u8
+    b048: u8
+    b049: u8
+    b050: u8
+    b051: u8
+    b052: u8
+    b053: u8
+    b054: u8
+    b055: u8
+    b056: u8
+    b057: u8
+    b058: u8
+    b059: u8
+    b060: u8
+    b061: u8
+    b062: u8
+    b063: u8
+    b064: u8
+    b065: u8
+    b066: u8
+    b067: u8
+    b068: u8
+    b069: u8
+    b070: u8
+    b071: u8
+    b072: u8
+    b073: u8
+    b074: u8
+    b075: u8
+    b076: u8
+    b077: u8
+    b078: u8
+    b079: u8
+    b080: u8
+    b081: u8
+    b082: u8
+    b083: u8
+    b084: u8
+    b085: u8
+    b086: u8
+    b087: u8
+    b088: u8
+    b089: u8
+    b090: u8
+    b091: u8
+    b092: u8
+    b093: u8
+    b094: u8
+    b095: u8
+    b096: u8
+    b097: u8
+    b098: u8
+    b099: u8
+    b100: u8
+    b101: u8
+    b102: u8
+    b103: u8
+    b104: u8
+    b105: u8
+    b106: u8
+    b107: u8
+    b108: u8
+    b109: u8
+    b110: u8
+    b111: u8
+    b112: u8
+    b113: u8
+    b114: u8
+    b115: u8
+    b116: u8
+    b117: u8
+    b118: u8
+    b119: u8
+    b120: u8
+    b121: u8
+    b122: u8
+    b123: u8
+    b124: u8
+    b125: u8
+    b126: u8
+    b127: u8
+    b128: u8
+    b129: u8
+    b130: u8
+    b131: u8
+    b132: u8
+    b133: u8
+    b134: u8
+    b135: u8
+    b136: u8
+    b137: u8
+    b138: u8
+    b139: u8
+    b140: u8
+    b141: u8
+    b142: u8
+    b143: u8
+    b144: u8
+    b145: u8
+    b146: u8
+    b147: u8
+    b148: u8
+    b149: u8
+    b150: u8
+    b151: u8
+    b152: u8
+    b153: u8
+    b154: u8
+    b155: u8
+    b156: u8
+    b157: u8
+    b158: u8
+    b159: u8
+    b160: u8
+    b161: u8
+    b162: u8
+    b163: u8
+    b164: u8
+    b165: u8
+    b166: u8
+    b167: u8
+    b168: u8
+    b169: u8
+    b170: u8
+    b171: u8
+    b172: u8
+    b173: u8
+    b174: u8
+    b175: u8
+    b176: u8
+    b177: u8
+    b178: u8
+    b179: u8
+    b180: u8
+    b181: u8
+    b182: u8
+    b183: u8
+    b184: u8
+    b185: u8
+    b186: u8
+    b187: u8
+    b188: u8
+    b189: u8
+    b190: u8
+    b191: u8
+    b192: u8
+    b193: u8
+    b194: u8
+    b195: u8
+    b196: u8
+    b197: u8
+    b198: u8
+    b199: u8
+    b200: u8
+    b201: u8
+    b202: u8
+    b203: u8
+    b204: u8
+    b205: u8
+    b206: u8
+    b207: u8
+    b208: u8
+    b209: u8
+    b210: u8
+    b211: u8
+    b212: u8
+    b213: u8
+    b214: u8
+    b215: u8
+    b216: u8
+    b217: u8
+    b218: u8
+    b219: u8
+    b220: u8
+    b221: u8
+    b222: u8
+    b223: u8
+    b224: u8
+    b225: u8
+    b226: u8
+    b227: u8
+    b228: u8
+    b229: u8
+    b230: u8
+    b231: u8
+    b232: u8
+    b233: u8
+    b234: u8
+    b235: u8
+    b236: u8
+    b237: u8
+    b238: u8
+    b239: u8
+    b240: u8
+    b241: u8
+    b242: u8
+    b243: u8
+    b244: u8
+    b245: u8
+    b246: u8
+    b247: u8
+    b248: u8
+    b249: u8
+    b250: u8
+    b251: u8
+    b252: u8
+    b253: u8
+    b254: u8
+    b255: u8
+.end
 
-#[bench]
-fn bench_copy(b: &mut Bencher) {
-    let arena = TypedArena::default();
-    b.iter(|| arena.alloc(Point { x: 1, y: 2, z: 3 }))
-}
+fn _buf_ptr(b: *_ByteBuf256) -> *u8
+    ret &b.b000
+.end
 
-#[bench]
-fn bench_copy_nonarena(b: &mut Bencher) {
-    b.iter(|| {
-        let _: Box<_> = Box::new(Point { x: 1, y: 2, z: 3 });
-    })
-}
+# -----------------------------------------------------------------------------
+# Tests
+# -----------------------------------------------------------------------------
 
-#[allow(dead_code)]
-struct Noncopy {
-    string: String,
-    array: Vec<i32>,
-}
+fn test_align_up() -> bool
+    if !t_eq_usize(vitte_arena.arena_align_up(0, 8), 0)
+        ret false
+    .end
+    if !t_eq_usize(vitte_arena.arena_align_up(1, 8), 8)
+        ret false
+    .end
+    if !t_eq_usize(vitte_arena.arena_align_up(8, 8), 8)
+        ret false
+    .end
+    if !t_eq_usize(vitte_arena.arena_align_up(9, 8), 16)
+        ret false
+    .end
 
-#[test]
-fn test_noncopy() {
-    let arena = TypedArena::default();
-    #[cfg(not(miri))]
-    const N: usize = 100000;
-    #[cfg(miri)]
-    const N: usize = 1000;
-    for _ in 0..N {
-        arena.alloc(Noncopy { string: "hello world".to_string(), array: vec![1, 2, 3, 4, 5] });
-    }
-}
+    # non pow2
+    if !t_eq_usize(vitte_arena.arena_align_up(10, 6), 12)
+        ret false
+    .end
 
-#[test]
-fn test_typed_arena_zero_sized() {
-    let arena = TypedArena::default();
-    #[cfg(not(miri))]
-    const N: usize = 100000;
-    #[cfg(miri)]
-    const N: usize = 1000;
-    for _ in 0..N {
-        arena.alloc(());
-    }
-}
+    ret true
+.end
 
-#[test]
-fn test_typed_arena_clear() {
-    let mut arena = TypedArena::default();
-    for _ in 0..10 {
-        arena.clear();
-        #[cfg(not(miri))]
-        const N: usize = 10000;
-        #[cfg(miri)]
-        const N: usize = 100;
-        for _ in 0..N {
-            arena.alloc(Point { x: 1, y: 2, z: 3 });
-        }
-    }
-}
+fn test_segment_remaining_cursor() -> bool
+    let buf: _ByteBuf256
+    let seg: vitte_arena.ArenaSegment
 
-#[bench]
-fn bench_typed_arena_clear(b: &mut Bencher) {
-    let mut arena = TypedArena::default();
-    b.iter(|| {
-        arena.alloc(Point { x: 1, y: 2, z: 3 });
-        arena.clear();
-    })
-}
+    let r = vitte_arena.arena_segment_init(&seg, _buf_ptr(&buf), 256)
+    if !r.ok
+        ret false
+    .end
 
-#[bench]
-fn bench_typed_arena_clear_100(b: &mut Bencher) {
-    let mut arena = TypedArena::default();
-    b.iter(|| {
-        for _ in 0..100 {
-            arena.alloc(Point { x: 1, y: 2, z: 3 });
-        }
-        arena.clear();
-    })
-}
+    if !t_eq_usize(vitte_arena.arena_segment_remaining(seg), 256)
+        ret false
+    .end
 
-// Drop tests
+    let c0 = vitte_arena.arena_segment_cursor(seg)
+    if !t_eq_ptr(c0, _buf_ptr(&buf))
+        ret false
+    .end
 
-struct DropCounter<'a> {
-    count: &'a Cell<u32>,
-}
+    seg.used = 10
+    if !t_eq_usize(vitte_arena.arena_segment_remaining(seg), 246)
+        ret false
+    .end
 
-impl Drop for DropCounter<'_> {
-    fn drop(&mut self) {
-        self.count.set(self.count.get() + 1);
-    }
-}
+    let c1 = vitte_arena.arena_segment_cursor(seg)
+    if !t_ne_ptr(c1, c0)
+        ret false
+    .end
 
-#[test]
-fn test_typed_arena_drop_count() {
-    let counter = Cell::new(0);
-    {
-        let arena: TypedArena<DropCounter<'_>> = TypedArena::default();
-        for _ in 0..100 {
-            // Allocate something with drop glue to make sure it doesn't leak.
-            arena.alloc(DropCounter { count: &counter });
-        }
-    };
-    assert_eq!(counter.get(), 100);
-}
+    ret true
+.end
 
-#[test]
-fn test_typed_arena_drop_on_clear() {
-    let counter = Cell::new(0);
-    let mut arena: TypedArena<DropCounter<'_>> = TypedArena::default();
-    for i in 0..10 {
-        for _ in 0..100 {
-            // Allocate something with drop glue to make sure it doesn't leak.
-            arena.alloc(DropCounter { count: &counter });
-        }
-        arena.clear();
-        assert_eq!(counter.get(), i * 100 + 100);
-    }
-}
+fn test_arena_one_basic_alloc_reset() -> bool
+    let mem: _ByteBuf256
+    let a: vitte_arena.ArenaOne
 
-thread_local! {
-    static DROP_COUNTER: Cell<u32> = Cell::new(0)
-}
+    let r0 = vitte_arena.arena_one_init(&a, _buf_ptr(&mem), 256, 8, false)
+    if !r0.ok
+        ret false
+    .end
 
-struct SmallDroppable;
+    let p1 = vitte_arena.arena_alloc(&a.arena, 16)
+    if p1 == 0
+        ret false
+    .end
 
-impl Drop for SmallDroppable {
-    fn drop(&mut self) {
-        DROP_COUNTER.with(|c| c.set(c.get() + 1));
-    }
-}
+    let p2 = vitte_arena.arena_alloc(&a.arena, 16)
+    if p2 == 0
+        ret false
+    .end
 
-#[test]
-fn test_typed_arena_drop_small_count() {
-    DROP_COUNTER.with(|c| c.set(0));
-    {
-        let arena: TypedArena<SmallDroppable> = TypedArena::default();
-        for _ in 0..100 {
-            // Allocate something with drop glue to make sure it doesn't leak.
-            arena.alloc(SmallDroppable);
-        }
-        // dropping
-    };
-    assert_eq!(DROP_COUNTER.with(|c| c.get()), 100);
-}
+    if !t_ne_ptr(p1, p2)
+        ret false
+    .end
 
-#[bench]
-fn bench_noncopy(b: &mut Bencher) {
-    let arena = TypedArena::default();
-    b.iter(|| {
-        arena.alloc(Noncopy { string: "hello world".to_string(), array: vec![1, 2, 3, 4, 5] })
-    })
-}
+    # After reset, first alloc should reuse the same address.
+    let _ = vitte_arena.arena_one_reset(&a)
+    let p3 = vitte_arena.arena_alloc(&a.arena, 16)
+    if p3 == 0
+        ret false
+    .end
 
-#[bench]
-fn bench_noncopy_nonarena(b: &mut Bencher) {
-    b.iter(|| {
-        let _: Box<_> =
-            Box::new(Noncopy { string: "hello world".to_string(), array: vec![1, 2, 3, 4, 5] });
-    })
-}
+    # p3 should match p1 (since arena reset to base)
+    if !t_eq_ptr(p3, p1)
+        ret false
+    .end
+
+    ret true
+.end
+
+fn test_arena_alloc_aligned() -> bool
+    let mem: _ByteBuf256
+    let a: vitte_arena.ArenaOne
+
+    let r0 = vitte_arena.arena_one_init(&a, _buf_ptr(&mem), 256, 1, false)
+    if !r0.ok
+        ret false
+    .end
+
+    let p = vitte_arena.arena_alloc_aligned(&a.arena, 1, 16)
+    if p == 0
+        ret false
+    .end
+
+    # Check alignment via ptr->usize conversion.
+    let u = vitte_arena.arena_ptr_to_usize(p)
+    if (u % 16) != 0
+        ret false
+    .end
+
+    ret true
+.end
+
+fn test_arena_mark_rollback() -> bool
+    let mem: _ByteBuf256
+    let a: vitte_arena.ArenaOne
+
+    let r0 = vitte_arena.arena_one_init(&a, _buf_ptr(&mem), 256, 8, false)
+    if !r0.ok
+        ret false
+    .end
+
+    let p1 = vitte_arena.arena_alloc(&a.arena, 32)
+    if p1 == 0
+        ret false
+    .end
+
+    let m = vitte_arena.arena_mark(a.arena)
+
+    let p2 = vitte_arena.arena_alloc(&a.arena, 32)
+    if p2 == 0
+        ret false
+    .end
+
+    let p3 = vitte_arena.arena_alloc(&a.arena, 32)
+    if p3 == 0
+        ret false
+    .end
+
+    if !t_ne_ptr(p2, p3)
+        ret false
+    .end
+
+    let rrb = vitte_arena.arena_rollback(&a.arena, m)
+    if !rrb.ok
+        ret false
+    .end
+
+    # After rollback, allocation should reuse p2.
+    let p4 = vitte_arena.arena_alloc(&a.arena, 32)
+    if p4 == 0
+        ret false
+    .end
+
+    if !t_eq_ptr(p4, p2)
+        ret false
+    .end
+
+    ret true
+.end
+
+fn test_arena_out_of_memory() -> bool
+    let mem: _ByteBuf256
+    let a: vitte_arena.ArenaOne
+
+    let r0 = vitte_arena.arena_one_init(&a, _buf_ptr(&mem), 64, 8, false)
+    if !r0.ok
+        ret false
+    .end
+
+    let p1 = vitte_arena.arena_alloc(&a.arena, 32)
+    if p1 == 0
+        ret false
+    .end
+
+    let p2 = vitte_arena.arena_alloc(&a.arena, 40)
+    # Should fail (out_of_segments) in current implementation because single segment.
+    if p2 != 0
+        ret false
+    .end
+
+    # Try explicit try_alloc to get an error code.
+    let out: *u8 = 0
+    let rr = vitte_arena.arena_try_alloc(&a.arena, 40, 8, &out)
+    if rr.ok
+        ret false
+    .end
+    if rr.err != vitte_arena.ArenaError.out_of_segments
+        ret false
+    .end
+
+    ret true
+.end
+
+fn test_arena_zeroed() -> bool
+    let mem: _ByteBuf256
+    let a: vitte_arena.ArenaOne
+
+    let r0 = vitte_arena.arena_one_init(&a, _buf_ptr(&mem), 256, 8, false)
+    if !r0.ok
+        ret false
+    .end
+
+    let p = vitte_arena.arena_alloc_zeroed(&a.arena, 32, 8)
+    if p == 0
+        ret false
+    .end
+
+    let i: usize = 0
+    while i < 32
+        if p[i] != 0
+            ret false
+        .end
+        i = i + 1
+    .end
+
+    ret true
+.end
+
+# -----------------------------------------------------------------------------
+# Aggregate
+# -----------------------------------------------------------------------------
+
+fn tests_all() -> bool
+    if !test_align_up()
+        ret false
+    .end
+
+    if !test_segment_remaining_cursor()
+        ret false
+    .end
+
+    if !test_arena_one_basic_alloc_reset()
+        ret false
+    .end
+
+    if !test_arena_alloc_aligned()
+        ret false
+    .end
+
+    if !test_arena_mark_rollback()
+        ret false
+    .end
+
+    if !test_arena_out_of_memory()
+        ret false
+    .end
+
+    if !test_arena_zeroed()
+        ret false
+    .end
+
+    # Also run module smoke
+    if !vitte_arena.arena_smoke_all()
+        ret false
+    .end
+
+    ret true
+.end

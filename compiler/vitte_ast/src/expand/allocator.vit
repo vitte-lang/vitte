@@ -1,92 +1,631 @@
-use rustc_macros::HashStable_Generic;
-use rustc_span::{Symbol, sym};
 
-#[derive(Clone, Debug, Copy, Eq, PartialEq, HashStable_Generic)]
-pub enum AllocatorKind {
-    /// Use `#[global_allocator]` as global allocator.
-    Global,
-    /// Use the default implementation in libstd as global allocator.
-    Default,
-}
 
-pub fn global_fn_name(base: Symbol) -> String {
-    format!("__rust_{base}")
-}
+# vitte_ast/src/expand/allocator.vit
+#
+# Expand allocator
+#
+# Purpose
+# - Small, deterministic allocator used by the "expand" pipeline (macro/attr
+#   expansion, token rewriting, lowering helpers).
+# - Built on top of `vitte_arena` (segment bump arena).
+#
+# Goals
+# - std-free (no collections required here)
+# - caller-provided memory
+# - mark/rollback for speculative expansions
+# - lightweight ID generation for expanded nodes
+#
+# Conventions
+# - No `{}` blocks; `.end` only.
 
-pub fn default_fn_name(base: Symbol) -> String {
-    format!("__rdl_{base}")
-}
+mod vitte_ast.expand.allocator
 
-pub const ALLOC_ERROR_HANDLER: Symbol = sym::alloc_error_handler;
-pub const NO_ALLOC_SHIM_IS_UNSTABLE: &str = "__rust_no_alloc_shim_is_unstable_v2";
+use vitte_arena
 
-/// Argument or return type for methods in the allocator shim
-#[derive(Copy, Clone)]
-pub enum AllocatorTy {
-    Layout,
-    Never,
-    Ptr,
-    ResultPtr,
-    Unit,
-    Usize,
-}
+# -----------------------------------------------------------------------------
+# Errors / results
+# -----------------------------------------------------------------------------
 
-/// Some allocator methods are known to the compiler: they act more like
-/// intrinsics/language primitives than library-defined functions.
-/// FIXME: ideally this would be derived from attributes like `#[rustc_allocator]`,
-/// so we don't have two sources of truth.
-#[derive(Copy, Clone, Debug)]
-pub enum SpecialAllocatorMethod {
-    Alloc,
-    AllocZeroed,
-    Dealloc,
-    Realloc,
-}
+type ExpandAllocError enum
+    ok
+    invalid_args
+    out_of_memory
+.end
 
-/// A method that will be codegened in the allocator shim.
-#[derive(Copy, Clone)]
-pub struct AllocatorMethod {
-    pub name: Symbol,
-    pub special: Option<SpecialAllocatorMethod>,
-    pub inputs: &'static [AllocatorMethodInput],
-    pub output: AllocatorTy,
-}
+type ExpandAllocResult struct
+    ok: bool
+    err: ExpandAllocError
+.end
 
-pub struct AllocatorMethodInput {
-    pub name: &'static str,
-    pub ty: AllocatorTy,
-}
+fn expand_ok() -> ExpandAllocResult
+    let r: ExpandAllocResult
+    r.ok = true
+    r.err = ExpandAllocError.ok
+    ret r
+.end
 
-pub static ALLOCATOR_METHODS: &[AllocatorMethod] = &[
-    AllocatorMethod {
-        name: sym::alloc,
-        special: Some(SpecialAllocatorMethod::Alloc),
-        inputs: &[AllocatorMethodInput { name: "layout", ty: AllocatorTy::Layout }],
-        output: AllocatorTy::ResultPtr,
-    },
-    AllocatorMethod {
-        name: sym::dealloc,
-        special: Some(SpecialAllocatorMethod::Dealloc),
-        inputs: &[
-            AllocatorMethodInput { name: "ptr", ty: AllocatorTy::Ptr },
-            AllocatorMethodInput { name: "layout", ty: AllocatorTy::Layout },
-        ],
-        output: AllocatorTy::Unit,
-    },
-    AllocatorMethod {
-        name: sym::realloc,
-        special: Some(SpecialAllocatorMethod::Realloc),
-        inputs: &[
-            AllocatorMethodInput { name: "ptr", ty: AllocatorTy::Ptr },
-            AllocatorMethodInput { name: "layout", ty: AllocatorTy::Layout },
-            AllocatorMethodInput { name: "new_size", ty: AllocatorTy::Usize },
-        ],
-        output: AllocatorTy::ResultPtr,
-    },
-    AllocatorMethod {
-        name: sym::alloc_zeroed,
-        special: Some(SpecialAllocatorMethod::AllocZeroed),
-        inputs: &[AllocatorMethodInput { name: "layout", ty: AllocatorTy::Layout }],
-        output: AllocatorTy::ResultPtr,
-    },
-];
+fn expand_err(e: ExpandAllocError) -> ExpandAllocResult
+    let r: ExpandAllocResult
+    r.ok = false
+    r.err = e
+    ret r
+.end
+
+# -----------------------------------------------------------------------------
+# IDs
+# -----------------------------------------------------------------------------
+
+# A monotonically increasing identifier for expanded artifacts.
+# NOTE: this is purely local; do not serialize across compilation units.
+
+type ExpandId struct
+    raw: u32
+.end
+
+fn expand_id_zero() -> ExpandId
+    let id: ExpandId
+    id.raw = 0
+    ret id
+.end
+
+fn expand_id_is_valid(id: ExpandId) -> bool
+    ret id.raw != 0
+.end
+
+# -----------------------------------------------------------------------------
+# Allocator core
+# -----------------------------------------------------------------------------
+
+type ExpandAllocator struct
+    a1: vitte_arena.ArenaOne
+
+    # next id for synthesized nodes/tokens
+    next_id: u32
+
+    # sticky error state (first failure wins)
+    failed: bool
+    fail_err: ExpandAllocError
+.end
+
+# Mark is a direct arena mark + id snapshot.
+
+type ExpandMark struct
+    mark: vitte_arena.ArenaMark
+    next_id: u32
+.end
+
+fn expand_allocator_init(al: *ExpandAllocator, base: *u8, cap: usize, default_align: usize) -> ExpandAllocResult
+    if al == 0
+        ret expand_err(ExpandAllocError.invalid_args)
+    .end
+
+    al.next_id = 1
+    al.failed = false
+    al.fail_err = ExpandAllocError.ok
+
+    let r = vitte_arena.arena_one_init(&al.a1, base, cap, default_align, false)
+    if !r.ok
+        al.failed = true
+        al.fail_err = ExpandAllocError.out_of_memory
+        ret expand_err(ExpandAllocError.out_of_memory)
+    .end
+
+    ret expand_ok()
+.end
+
+fn expand_allocator_reset(al: *ExpandAllocator) -> ExpandAllocResult
+    if al == 0
+        ret expand_err(ExpandAllocError.invalid_args)
+    .end
+
+    al.next_id = 1
+    al.failed = false
+    al.fail_err = ExpandAllocError.ok
+
+    let r = vitte_arena.arena_one_reset(&al.a1)
+    if !r.ok
+        al.failed = true
+        al.fail_err = ExpandAllocError.out_of_memory
+        ret expand_err(ExpandAllocError.out_of_memory)
+    .end
+
+    ret expand_ok()
+.end
+
+fn expand_allocator_failed(al: ExpandAllocator) -> bool
+    ret al.failed
+.end
+
+fn expand_allocator_fail_err(al: ExpandAllocator) -> ExpandAllocError
+    ret al.fail_err
+.end
+
+fn expand_allocator_remaining(al: ExpandAllocator) -> usize
+    ret vitte_arena.arena_remaining_total(al.a1.arena)
+.end
+
+fn expand_allocator_used(al: ExpandAllocator) -> usize
+    ret vitte_arena.arena_used_total(al.a1.arena)
+.end
+
+# -----------------------------------------------------------------------------
+# Marks (speculative expand)
+# -----------------------------------------------------------------------------
+
+fn expand_mark(al: ExpandAllocator) -> ExpandMark
+    let m: ExpandMark
+    m.mark = vitte_arena.arena_mark(al.a1.arena)
+    m.next_id = al.next_id
+    ret m
+.end
+
+fn expand_rollback(al: *ExpandAllocator, m: ExpandMark) -> ExpandAllocResult
+    if al == 0
+        ret expand_err(ExpandAllocError.invalid_args)
+    .end
+
+    let r = vitte_arena.arena_rollback(&al.a1.arena, m.mark)
+    if !r.ok
+        al.failed = true
+        al.fail_err = ExpandAllocError.out_of_memory
+        ret expand_err(ExpandAllocError.out_of_memory)
+    .end
+
+    al.next_id = m.next_id
+    ret expand_ok()
+.end
+
+# -----------------------------------------------------------------------------
+# ID generation
+# -----------------------------------------------------------------------------
+
+fn expand_next_id(al: *ExpandAllocator) -> ExpandId
+    let id: ExpandId
+
+    if al == 0
+        id.raw = 0
+        ret id
+    .end
+
+    if al.failed
+        id.raw = 0
+        ret id
+    .end
+
+    # Saturate at u32::MAX (0 reserved) => failure.
+    if al.next_id == 0
+        al.failed = true
+        al.fail_err = ExpandAllocError.out_of_memory
+        id.raw = 0
+        ret id
+    .end
+
+    id.raw = al.next_id
+    al.next_id = al.next_id + 1
+
+    # wrap detection
+    if al.next_id == 0
+        al.failed = true
+        al.fail_err = ExpandAllocError.out_of_memory
+    .end
+
+    ret id
+.end
+
+# -----------------------------------------------------------------------------
+# Memory helpers (std-free)
+# -----------------------------------------------------------------------------
+
+fn expand_memset(dst: *u8, value: u8, len: usize)
+    if dst == 0
+        ret
+    .end
+
+    let i: usize = 0
+    while i < len
+        dst[i] = value
+        i = i + 1
+    .end
+.end
+
+fn expand_memcpy(dst: *u8, src: *u8, len: usize)
+    if dst == 0 || src == 0
+        ret
+    .end
+
+    let i: usize = 0
+    while i < len
+        dst[i] = src[i]
+        i = i + 1
+    .end
+.end
+
+# -----------------------------------------------------------------------------
+# Raw allocation API
+# -----------------------------------------------------------------------------
+
+fn expand_alloc_bytes(al: *ExpandAllocator, size: usize, align: usize) -> *u8
+    if al == 0
+        ret 0
+    .end
+
+    if al.failed
+        ret 0
+    .end
+
+    let p = vitte_arena.arena_alloc_aligned(&al.a1.arena, size, align)
+    if p == 0 && size != 0
+        al.failed = true
+        al.fail_err = ExpandAllocError.out_of_memory
+    .end
+
+    ret p
+.end
+
+fn expand_alloc_zeroed(al: *ExpandAllocator, size: usize, align: usize) -> *u8
+    if al == 0
+        ret 0
+    .end
+
+    if al.failed
+        ret 0
+    .end
+
+    let p = vitte_arena.arena_alloc_zeroed(&al.a1.arena, size, align)
+    if p == 0 && size != 0
+        al.failed = true
+        al.fail_err = ExpandAllocError.out_of_memory
+    .end
+
+    ret p
+.end
+
+fn expand_alloc_copy(al: *ExpandAllocator, src: *u8, len: usize, align: usize) -> *u8
+    let p = expand_alloc_bytes(al, len, align)
+    if p == 0 && len != 0
+        ret 0
+    .end
+
+    expand_memcpy(p, src, len)
+    ret p
+.end
+
+# Allocate a NUL-terminated C-string copy of `s`.
+# Returns pointer to bytes; `0` on failure.
+
+fn expand_alloc_cstr(al: *ExpandAllocator, s: str) -> *u8
+    # len + 1 for NUL
+    let n: usize = s.len
+    let p = expand_alloc_bytes(al, n + 1, 1)
+    if p == 0
+        ret 0
+    .end
+
+    let i: usize = 0
+    while i < n
+        p[i] = s[i]
+        i = i + 1
+    .end
+
+    p[n] = 0
+    ret p
+.end
+
+# Allocate an array of `count` elements of size `elem_size`.
+# Returns base pointer; `0` on failure.
+
+fn expand_alloc_array(al: *ExpandAllocator, elem_size: usize, elem_align: usize, count: usize, zeroed: bool) -> *u8
+    if count == 0
+        ret 0
+    .end
+
+    # total = elem_size * count (checked)
+    let total: usize = 0
+    let i: usize = 0
+    while i < count
+        let new_total: usize = 0
+        if !vitte_arena.arena_checked_add(total, elem_size, &new_total)
+            if al != 0
+                al.failed = true
+                al.fail_err = ExpandAllocError.out_of_memory
+            .end
+            ret 0
+        .end
+        total = new_total
+        i = i + 1
+    .end
+
+    if zeroed
+        ret expand_alloc_zeroed(al, total, elem_align)
+    .end
+
+    ret expand_alloc_bytes(al, total, elem_align)
+.end
+
+# -----------------------------------------------------------------------------
+# Small utilities used by expand passes
+# -----------------------------------------------------------------------------
+
+# Duplicate a byte slice into arena memory.
+# Returns (ptr, len). If allocation fails: (0,0).
+
+type ByteSlice struct
+    ptr: *u8
+    len: usize
+.end
+
+fn expand_dup_bytes(al: *ExpandAllocator, src: *u8, len: usize) -> ByteSlice
+    let s: ByteSlice
+    s.ptr = 0
+    s.len = 0
+
+    if len == 0
+        ret s
+    .end
+
+    let p = expand_alloc_copy(al, src, len, 1)
+    if p == 0
+        ret s
+    .end
+
+    s.ptr = p
+    s.len = len
+    ret s
+.end
+
+# Duplicate a string to arena memory as raw bytes (NOT NUL-terminated).
+
+type StrBytes struct
+    ptr: *u8
+    len: usize
+.end
+
+fn expand_dup_str_bytes(al: *ExpandAllocator, s: str) -> StrBytes
+    let out: StrBytes
+    out.ptr = 0
+    out.len = 0
+
+    let n = s.len
+    if n == 0
+        ret out
+    .end
+
+    let p = expand_alloc_bytes(al, n, 1)
+    if p == 0
+        ret out
+    .end
+
+    let i: usize = 0
+    while i < n
+        p[i] = s[i]
+        i = i + 1
+    .end
+
+    out.ptr = p
+    out.len = n
+    ret out
+.end
+
+# -----------------------------------------------------------------------------
+# Pure smoke tests
+# -----------------------------------------------------------------------------
+
+# 128 bytes static-like buffer for smoke tests.
+
+type _ByteBuf128 struct
+    b000: u8
+    b001: u8
+    b002: u8
+    b003: u8
+    b004: u8
+    b005: u8
+    b006: u8
+    b007: u8
+    b008: u8
+    b009: u8
+    b010: u8
+    b011: u8
+    b012: u8
+    b013: u8
+    b014: u8
+    b015: u8
+    b016: u8
+    b017: u8
+    b018: u8
+    b019: u8
+    b020: u8
+    b021: u8
+    b022: u8
+    b023: u8
+    b024: u8
+    b025: u8
+    b026: u8
+    b027: u8
+    b028: u8
+    b029: u8
+    b030: u8
+    b031: u8
+    b032: u8
+    b033: u8
+    b034: u8
+    b035: u8
+    b036: u8
+    b037: u8
+    b038: u8
+    b039: u8
+    b040: u8
+    b041: u8
+    b042: u8
+    b043: u8
+    b044: u8
+    b045: u8
+    b046: u8
+    b047: u8
+    b048: u8
+    b049: u8
+    b050: u8
+    b051: u8
+    b052: u8
+    b053: u8
+    b054: u8
+    b055: u8
+    b056: u8
+    b057: u8
+    b058: u8
+    b059: u8
+    b060: u8
+    b061: u8
+    b062: u8
+    b063: u8
+    b064: u8
+    b065: u8
+    b066: u8
+    b067: u8
+    b068: u8
+    b069: u8
+    b070: u8
+    b071: u8
+    b072: u8
+    b073: u8
+    b074: u8
+    b075: u8
+    b076: u8
+    b077: u8
+    b078: u8
+    b079: u8
+    b080: u8
+    b081: u8
+    b082: u8
+    b083: u8
+    b084: u8
+    b085: u8
+    b086: u8
+    b087: u8
+    b088: u8
+    b089: u8
+    b090: u8
+    b091: u8
+    b092: u8
+    b093: u8
+    b094: u8
+    b095: u8
+    b096: u8
+    b097: u8
+    b098: u8
+    b099: u8
+    b100: u8
+    b101: u8
+    b102: u8
+    b103: u8
+    b104: u8
+    b105: u8
+    b106: u8
+    b107: u8
+    b108: u8
+    b109: u8
+    b110: u8
+    b111: u8
+    b112: u8
+    b113: u8
+    b114: u8
+    b115: u8
+    b116: u8
+    b117: u8
+    b118: u8
+    b119: u8
+    b120: u8
+    b121: u8
+    b122: u8
+    b123: u8
+    b124: u8
+    b125: u8
+    b126: u8
+    b127: u8
+.end
+
+fn _buf_ptr(b: *_ByteBuf128) -> *u8
+    ret &b.b000
+.end
+
+fn expand_allocator_smoke_all() -> bool
+    let mem: _ByteBuf128
+    let al: ExpandAllocator
+
+    let r0 = expand_allocator_init(&al, _buf_ptr(&mem), 128, 8)
+    if !r0.ok
+        ret false
+    .end
+
+    # Allocate a few blocks
+    let p1 = expand_alloc_bytes(&al, 16, 8)
+    if p1 == 0
+        ret false
+    .end
+
+    let m = expand_mark(al)
+
+    let p2 = expand_alloc_zeroed(&al, 16, 8)
+    if p2 == 0
+        ret false
+    .end
+
+    # ensure zeroed
+    let i: usize = 0
+    while i < 16
+        if p2[i] != 0
+            ret false
+        .end
+        i = i + 1
+    .end
+
+    # rollback should reuse p2
+    let rb = expand_rollback(&al, m)
+    if !rb.ok
+        ret false
+    .end
+
+    let p3 = expand_alloc_bytes(&al, 16, 8)
+    if p3 != p2
+        ret false
+    .end
+
+    # id generation
+    let id1 = expand_next_id(&al)
+    let id2 = expand_next_id(&al)
+    if !expand_id_is_valid(id1)
+        ret false
+    .end
+    if !expand_id_is_valid(id2)
+        ret false
+    .end
+    if id1.raw == id2.raw
+        ret false
+    .end
+
+    # cstr alloc
+    let cs = expand_alloc_cstr(&al, "abc")
+    if cs == 0
+        ret false
+    .end
+    if cs[0] != 'a'
+        ret false
+    .end
+    if cs[1] != 'b'
+        ret false
+    .end
+    if cs[2] != 'c'
+        ret false
+    .end
+    if cs[3] != 0
+        ret false
+    .end
+
+    # reset should make p1 reusable
+    let _ = expand_allocator_reset(&al)
+    let p4 = expand_alloc_bytes(&al, 16, 8)
+    if p4 != p1
+        ret false
+    .end
+
+    ret true
+.end

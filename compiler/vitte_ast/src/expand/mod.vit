@@ -1,7 +1,77 @@
-//! Definitions shared by macros / syntax extensions and e.g. `rustc_middle`.
+# mod.vit
+# -----------------------------------------------------------------------------
+# AST expansion passes.
+#
+# This folder hosts AST-to-AST transformations that run after parsing (and any
+# desugaring of the surface syntax) but before lowering to IR.
+#
+# Goals
+# -----
+#  - deterministic ordering of expansions
+#  - diagnostics-first (no panics)
+#  - opt-in generation (attach metadata vs generate new items)
+#
+# Current passes
+# --------------
+#  - autodiff_attrs: parses @autodiff(...) attributes, validates, attaches
+#    metadata and (optionally) generates derivative entrypoints.
+# -----------------------------------------------------------------------------
 
-use rustc_macros::{Decodable, Encodable, HashStable_Generic};
+use vitte/ast
+use vitte/ast/diag
 
-pub mod allocator;
-pub mod autodiff_attrs;
-pub mod typetree;
+# Submodules
+mod autodiff_attrs
+
+# -----------------------------------------------------------------------------
+# Options (aggregate)
+# -----------------------------------------------------------------------------
+
+struct ExpandOptions
+  autodiff_generate: bool
+.end
+
+fn expand_options_default() -> ExpandOptions
+  ret ExpandOptions(
+    autodiff_generate=true,
+  )
+.end
+
+# -----------------------------------------------------------------------------
+# Pipeline
+# -----------------------------------------------------------------------------
+
+# Expand all passes in a stable order.
+fn expand_all_in_module(di: &mut diag::DiagSink, m: &mut ast::Module, opt: ExpandOptions)
+  # Pass: autodiff
+  let ad_opt = autodiff_attrs::AutoDiffExpandOptions(generate=opt.autodiff_generate)
+  autodiff_attrs::expand_autodiff_in_module(di, m, ad_opt)
+.end
+
+# Convenience: expand all modules in a crate/package.
+fn expand_all_in_crate(di: &mut diag::DiagSink, c: &mut ast::Crate, opt: ExpandOptions)
+  let i = 0
+  while i < c.modules.len()
+    expand_all_in_module(di, &mut c.modules[i], opt)
+    i = i + 1
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests
+# -----------------------------------------------------------------------------
+
+fn t_expand_all_no_panic_smoke()
+  let di = diag::DiagSink::new()
+
+  let m = ast::Module::new(
+    name=ast::Ident(name="m", span=ast::Span::dummy()),
+    items=Vec::new(),
+    span=ast::Span::dummy(),
+  )
+
+  expand_all_in_module(&mut di, &mut m, expand_options_default())
+  ast::assert(true)
+.end
+
+# End of file.

@@ -1,70 +1,675 @@
-use super::*;
 
-#[test]
-fn align_constants() {
-    assert_eq!(Align::ONE, Align::from_bytes(1).unwrap());
-    assert_eq!(Align::EIGHT, Align::from_bytes(8).unwrap());
-}
 
-#[test]
-fn wrapping_range_contains_range() {
-    let size16 = Size::from_bytes(16);
+# vitte_abi/src/tests.vit
+#
+# Unit-style tests for vitte_abi.
+#
+# Design goals
+# - Pure tests (no I/O) returning bool.
+# - Works with minimal runtime: no std collections required.
+# - Avoid `{}` blocks; use `.end` only.
+#
+# How to use
+# - Call `vitte_abi.tests.tests_all()` from your test runner.
+# - Or call individual `test_*()` functions.
 
-    let a = WrappingRange { start: 10, end: 20 };
-    assert!(a.contains_range(a, size16));
-    assert!(a.contains_range(WrappingRange { start: 11, end: 19 }, size16));
-    assert!(a.contains_range(WrappingRange { start: 10, end: 10 }, size16));
-    assert!(a.contains_range(WrappingRange { start: 20, end: 20 }, size16));
-    assert!(!a.contains_range(WrappingRange { start: 10, end: 21 }, size16));
-    assert!(!a.contains_range(WrappingRange { start: 9, end: 20 }, size16));
-    assert!(!a.contains_range(WrappingRange { start: 4, end: 6 }, size16));
-    assert!(!a.contains_range(WrappingRange { start: 24, end: 26 }, size16));
+mod vitte_abi.tests
 
-    assert!(!a.contains_range(WrappingRange { start: 16, end: 14 }, size16));
+use vitte_abi.extern_abi
+use vitte_abi.layout
 
-    let b = WrappingRange { start: 20, end: 10 };
-    assert!(b.contains_range(b, size16));
-    assert!(b.contains_range(WrappingRange { start: 20, end: 20 }, size16));
-    assert!(b.contains_range(WrappingRange { start: 10, end: 10 }, size16));
-    assert!(b.contains_range(WrappingRange { start: 0, end: 10 }, size16));
-    assert!(b.contains_range(WrappingRange { start: 20, end: 30 }, size16));
-    assert!(b.contains_range(WrappingRange { start: 20, end: 9 }, size16));
-    assert!(b.contains_range(WrappingRange { start: 21, end: 10 }, size16));
-    assert!(b.contains_range(WrappingRange { start: 999, end: 9999 }, size16));
-    assert!(b.contains_range(WrappingRange { start: 999, end: 9 }, size16));
-    assert!(!b.contains_range(WrappingRange { start: 19, end: 19 }, size16));
-    assert!(!b.contains_range(WrappingRange { start: 11, end: 11 }, size16));
-    assert!(!b.contains_range(WrappingRange { start: 19, end: 11 }, size16));
-    assert!(!b.contains_range(WrappingRange { start: 11, end: 19 }, size16));
+# -----------------------------------------------------------------------------
+# Minimal assertion helpers
+# -----------------------------------------------------------------------------
 
-    let f = WrappingRange { start: 0, end: u128::MAX };
-    assert!(f.contains_range(WrappingRange { start: 10, end: 20 }, size16));
-    assert!(f.contains_range(WrappingRange { start: 20, end: 10 }, size16));
+fn t_fail_if(cond: bool) -> bool
+    if cond
+        ret false
+    .end
+    ret true
+.end
 
-    let g = WrappingRange { start: 2, end: 1 };
-    assert!(g.contains_range(WrappingRange { start: 10, end: 20 }, size16));
-    assert!(g.contains_range(WrappingRange { start: 20, end: 10 }, size16));
+fn t_require(cond: bool) -> bool
+    if !cond
+        ret false
+    .end
+    ret true
+.end
 
-    let size1 = Size::from_bytes(1);
-    let u8r = WrappingRange { start: 0, end: 255 };
-    let i8r = WrappingRange { start: 128, end: 127 };
-    assert!(u8r.contains_range(i8r, size1));
-    assert!(i8r.contains_range(u8r, size1));
-    assert!(!u8r.contains_range(i8r, size16));
-    assert!(i8r.contains_range(u8r, size16));
+fn t_eq_usize(a: usize, b: usize) -> bool
+    ret a == b
+.end
 
-    let boolr = WrappingRange { start: 0, end: 1 };
-    assert!(u8r.contains_range(boolr, size1));
-    assert!(i8r.contains_range(boolr, size1));
-    assert!(!boolr.contains_range(u8r, size1));
-    assert!(!boolr.contains_range(i8r, size1));
+fn t_eq_bool(a: bool, b: bool) -> bool
+    ret a == b
+.end
 
-    let cmpr = WrappingRange { start: 255, end: 1 };
-    assert!(u8r.contains_range(cmpr, size1));
-    assert!(i8r.contains_range(cmpr, size1));
-    assert!(!cmpr.contains_range(u8r, size1));
-    assert!(!cmpr.contains_range(i8r, size1));
+# -----------------------------------------------------------------------------
+# Helpers: contiguous fixed buffers (same-type) without arrays
+# -----------------------------------------------------------------------------
 
-    assert!(!boolr.contains_range(cmpr, size1));
-    assert!(cmpr.contains_range(boolr, size1));
-}
+# NOTE
+# - We build structs of repeated identical items. For same-type fields, compilers
+#   do not insert padding between fields, so pointer indexing is safe.
+# - This avoids depending on array literals or std Vec.
+
+type _FieldLayoutBuf4 struct
+    f0: vitte_abi.layout.FieldLayout
+    f1: vitte_abi.layout.FieldLayout
+    f2: vitte_abi.layout.FieldLayout
+    f3: vitte_abi.layout.FieldLayout
+.end
+
+type _ExternFieldBuf4 struct
+    f0: vitte_abi.extern_abi.ExternField
+    f1: vitte_abi.extern_abi.ExternField
+    f2: vitte_abi.extern_abi.ExternField
+    f3: vitte_abi.extern_abi.ExternField
+.end
+
+type _ExternParamBuf4 struct
+    p0: vitte_abi.extern_abi.ExternParam
+    p1: vitte_abi.extern_abi.ExternParam
+    p2: vitte_abi.extern_abi.ExternParam
+    p3: vitte_abi.extern_abi.ExternParam
+.end
+
+# -----------------------------------------------------------------------------
+# Tests: layout module
+# -----------------------------------------------------------------------------
+
+fn test_layout_align_up() -> bool
+    if !t_eq_usize(vitte_abi.layout.abi_align_up(0, 8), 0)
+        ret false
+    .end
+    if !t_eq_usize(vitte_abi.layout.abi_align_up(1, 8), 8)
+        ret false
+    .end
+    if !t_eq_usize(vitte_abi.layout.abi_align_up(8, 8), 8)
+        ret false
+    .end
+    if !t_eq_usize(vitte_abi.layout.abi_align_up(9, 8), 16)
+        ret false
+    .end
+
+    # Non power-of-two align
+    if !t_eq_usize(vitte_abi.layout.abi_align_up(10, 6), 12)
+        ret false
+    .end
+
+    ret true
+.end
+
+fn test_layout_primitives_ptr_slice() -> bool
+    let t = vitte_abi.layout.abi_triple_default()
+
+    let ps = vitte_abi.layout.abi_size_of_ptr(t)
+    let p = vitte_abi.layout.abi_layout_ptr(t)
+    if !t_eq_usize(p.size, ps)
+        ret false
+    .end
+    if !t_eq_usize(p.align, ps)
+        ret false
+    .end
+
+    let s = vitte_abi.layout.abi_layout_slice(t)
+    if !t_eq_usize(s.size, ps + ps)
+        ret false
+    .end
+    if !t_eq_usize(s.align, ps)
+        ret false
+    .end
+
+    ret true
+.end
+
+fn test_layout_record_basic() -> bool
+    let t = vitte_abi.layout.abi_triple_default()
+
+    # struct S { u8 a; u32 b; u8 c; }
+    # Expected (conservative):
+    # a@0
+    # b@4
+    # c@8
+    # size=12, align=4
+
+    let buf: _FieldLayoutBuf4
+    buf.f0 = vitte_abi.layout.field_layout("a", 1, 1, 0)
+    buf.f1 = vitte_abi.layout.field_layout("b", 4, 4, 0)
+    buf.f2 = vitte_abi.layout.field_layout("c", 1, 1, 0)
+    buf.f3 = vitte_abi.layout.field_layout("pad", 0, 1, 0)
+
+    let fl: vitte_abi.layout.FieldLayoutList
+    fl.data = &buf.f0
+    fl.len = 3
+
+    let (rr, e) = vitte_abi.layout.record_layout_compute(t, fl, false)
+    if e.kind != vitte_abi.layout.LayoutErrorKind.ok
+        ret false
+    .end
+
+    if !t_eq_usize(fl.data[0].offset, 0)
+        ret false
+    .end
+    if !t_eq_usize(fl.data[1].offset, 4)
+        ret false
+    .end
+    if !t_eq_usize(fl.data[2].offset, 8)
+        ret false
+    .end
+
+    if !t_eq_usize(rr.layout.align, 4)
+        ret false
+    .end
+    if !t_eq_usize(rr.layout.size, 12)
+        ret false
+    .end
+
+    ret true
+.end
+
+fn test_layout_record_packed() -> bool
+    let t = vitte_abi.layout.abi_triple_default()
+
+    # packed struct S { u8 a; u32 b; u8 c; }
+    # a@0, b@1, c@5, size=6, align=1
+
+    let buf: _FieldLayoutBuf4
+    buf.f0 = vitte_abi.layout.field_layout("a", 1, 1, 0)
+    buf.f1 = vitte_abi.layout.field_layout("b", 4, 4, 0)
+    buf.f2 = vitte_abi.layout.field_layout("c", 1, 1, 0)
+    buf.f3 = vitte_abi.layout.field_layout("pad", 0, 1, 0)
+
+    let fl: vitte_abi.layout.FieldLayoutList
+    fl.data = &buf.f0
+    fl.len = 3
+
+    let (rr, e) = vitte_abi.layout.record_layout_compute(t, fl, true)
+    if e.kind != vitte_abi.layout.LayoutErrorKind.ok
+        ret false
+    .end
+
+    if !t_eq_usize(fl.data[0].offset, 0)
+        ret false
+    .end
+    if !t_eq_usize(fl.data[1].offset, 1)
+        ret false
+    .end
+    if !t_eq_usize(fl.data[2].offset, 5)
+        ret false
+    .end
+
+    if !t_eq_usize(rr.layout.align, 1)
+        ret false
+    .end
+    if !t_eq_usize(rr.layout.size, 6)
+        ret false
+    .end
+
+    ret true
+.end
+
+fn test_layout_record_explicit_offsets() -> bool
+    let t = vitte_abi.layout.abi_triple_default()
+
+    # struct S { u8 a; u32 b @ offset 16; }
+    # a@0
+    # b@16
+    # size aligned to 4 => 20
+
+    let buf: _FieldLayoutBuf4
+    buf.f0 = vitte_abi.layout.field_layout("a", 1, 1, 0)
+    buf.f1 = vitte_abi.layout.field_layout("b", 4, 4, 16)
+    buf.f2 = vitte_abi.layout.field_layout("pad", 0, 1, 0)
+    buf.f3 = vitte_abi.layout.field_layout("pad2", 0, 1, 0)
+
+    let fl: vitte_abi.layout.FieldLayoutList
+    fl.data = &buf.f0
+    fl.len = 2
+
+    let (rr, e) = vitte_abi.layout.record_layout_compute(t, fl, false)
+    if e.kind != vitte_abi.layout.LayoutErrorKind.ok
+        ret false
+    .end
+
+    if !t_eq_usize(fl.data[0].offset, 0)
+        ret false
+    .end
+    if !t_eq_usize(fl.data[1].offset, 16)
+        ret false
+    .end
+
+    if !t_eq_usize(rr.layout.align, 4)
+        ret false
+    .end
+    if !t_eq_usize(rr.layout.size, 20)
+        ret false
+    .end
+
+    ret true
+.end
+
+fn test_layout_record_explicit_overlap_rejected() -> bool
+    let t = vitte_abi.layout.abi_triple_default()
+
+    # Overlap: b explicit offset smaller than current off.
+    let buf: _FieldLayoutBuf4
+    buf.f0 = vitte_abi.layout.field_layout("a", 8, 8, 0)
+    buf.f1 = vitte_abi.layout.field_layout("b", 4, 4, 4)
+    buf.f2 = vitte_abi.layout.field_layout("pad", 0, 1, 0)
+    buf.f3 = vitte_abi.layout.field_layout("pad2", 0, 1, 0)
+
+    let fl: vitte_abi.layout.FieldLayoutList
+    fl.data = &buf.f0
+    fl.len = 2
+
+    let (_rr, e) = vitte_abi.layout.record_layout_compute(t, fl, false)
+    ret e.kind == vitte_abi.layout.LayoutErrorKind.bad_explicit_offset
+.end
+
+# -----------------------------------------------------------------------------
+# Tests: extern_abi module – identifiers
+# -----------------------------------------------------------------------------
+
+fn test_extern_identifiers() -> bool
+    if !vitte_abi.extern_abi.c_ident_is_valid("hello")
+        ret false
+    .end
+
+    if vitte_abi.extern_abi.c_ident_is_valid("9nope")
+        ret false
+    .end
+
+    if !vitte_abi.extern_abi.symbol_name_is_valid("_errno")
+        ret false
+    .end
+
+    if vitte_abi.extern_abi.symbol_name_is_valid("bad name")
+        ret false
+    .end
+
+    if vitte_abi.extern_abi.symbol_name_is_valid("")
+        ret false
+    .end
+
+    ret true
+.end
+
+# -----------------------------------------------------------------------------
+# Tests: extern_abi – callconv defaults
+# -----------------------------------------------------------------------------
+
+fn test_extern_callconv_defaults() -> bool
+    let t: vitte_abi.extern_abi.AbiTriple
+
+    # windows + 64 => win64
+    t = vitte_abi.extern_abi.abi_triple_default()
+    t.os = vitte_abi.extern_abi.AbiOs.windows
+    t.ptr_width = vitte_abi.extern_abi.AbiPointerWidth.pw64
+    if vitte_abi.extern_abi.callconv_default_for(t) != vitte_abi.extern_abi.AbiCallConv.win64
+        ret false
+    .end
+
+    # windows + 32 => c
+    t.ptr_width = vitte_abi.extern_abi.AbiPointerWidth.pw32
+    if vitte_abi.extern_abi.callconv_default_for(t) != vitte_abi.extern_abi.AbiCallConv.c
+        ret false
+    .end
+
+    # wasi => wasm
+    t = vitte_abi.extern_abi.abi_triple_default()
+    t.os = vitte_abi.extern_abi.AbiOs.wasi
+    if vitte_abi.extern_abi.callconv_default_for(t) != vitte_abi.extern_abi.AbiCallConv.wasm
+        ret false
+    .end
+
+    # wasm arch => wasm
+    t = vitte_abi.extern_abi.abi_triple_default()
+    t.arch = vitte_abi.extern_abi.AbiArch.wasm32
+    if vitte_abi.extern_abi.callconv_default_for(t) != vitte_abi.extern_abi.AbiCallConv.wasm
+        ret false
+    .end
+
+    # linux 64 => sysv64
+    t = vitte_abi.extern_abi.abi_triple_default()
+    t.os = vitte_abi.extern_abi.AbiOs.linux
+    t.ptr_width = vitte_abi.extern_abi.AbiPointerWidth.pw64
+    if vitte_abi.extern_abi.callconv_default_for(t) != vitte_abi.extern_abi.AbiCallConv.sysv64
+        ret false
+    .end
+
+    ret true
+.end
+
+# -----------------------------------------------------------------------------
+# Tests: extern_abi – type layouts
+# -----------------------------------------------------------------------------
+
+fn _extern_type_u8() -> vitte_abi.extern_abi.ExternType
+    # Builder convenience: extern_abi doesn’t expose u8 builder yet.
+    let t = vitte_abi.extern_abi.extern_type_u32()
+    t.kind = vitte_abi.extern_abi.ExternTypeKind.u8
+    ret t
+.end
+
+fn _extern_type_u16() -> vitte_abi.extern_abi.ExternType
+    let t = vitte_abi.extern_abi.extern_type_u32()
+    t.kind = vitte_abi.extern_abi.ExternTypeKind.u16
+    ret t
+.end
+
+fn test_extern_type_layout_scalars() -> bool
+    let triple = vitte_abi.extern_abi.abi_triple_default()
+
+    let u8t = _extern_type_u8()
+    let l0 = vitte_abi.extern_abi.extern_type_layout(triple, u8t)
+    if !t_eq_usize(l0.size, 1)
+        ret false
+    .end
+    if !t_eq_usize(l0.align, 1)
+        ret false
+    .end
+
+    let u16t = _extern_type_u16()
+    let l1 = vitte_abi.extern_abi.extern_type_layout(triple, u16t)
+    if !t_eq_usize(l1.size, 2)
+        ret false
+    .end
+    if !t_eq_usize(l1.align, 2)
+        ret false
+    .end
+
+    let i32t = vitte_abi.extern_abi.extern_type_i32()
+    let l2 = vitte_abi.extern_abi.extern_type_layout(triple, i32t)
+    if !t_eq_usize(l2.size, 4)
+        ret false
+    .end
+    if !t_eq_usize(l2.align, 4)
+        ret false
+    .end
+
+    let f64t = vitte_abi.extern_abi.extern_type_f64()
+    let l3 = vitte_abi.extern_abi.extern_type_layout(triple, f64t)
+    if !t_eq_usize(l3.size, 8)
+        ret false
+    .end
+    if !t_eq_usize(l3.align, 8)
+        ret false
+    .end
+
+    let ps = vitte_abi.extern_abi.abi_size_of_ptr(triple)
+    let p = vitte_abi.extern_abi.extern_type_ptr(&i32t, vitte_abi.extern_abi.ExternMut.const)
+    let lp = vitte_abi.extern_abi.extern_type_layout(triple, p)
+    if !t_eq_usize(lp.size, ps)
+        ret false
+    .end
+    if !t_eq_usize(lp.align, ps)
+        ret false
+    .end
+
+    let sl = vitte_abi.extern_abi.extern_type_slice(&u8t, vitte_abi.extern_abi.ExternMut.mut)
+    let ls = vitte_abi.extern_abi.extern_type_layout(triple, sl)
+    if !t_eq_usize(ls.size, ps + ps)
+        ret false
+    .end
+    if !t_eq_usize(ls.align, ps)
+        ret false
+    .end
+
+    ret true
+.end
+
+# -----------------------------------------------------------------------------
+# Tests: extern_abi – record layout (packed, explicit offsets)
+# -----------------------------------------------------------------------------
+
+fn test_extern_record_layout_basic() -> bool
+    let triple = vitte_abi.extern_abi.abi_triple_default()
+
+    # record R { u8 a; u32 b; u8 c; } => size=12 align=4
+
+    let u8t = _extern_type_u8()
+    let u32t = vitte_abi.extern_abi.extern_type_u32()
+
+    let buf: _ExternFieldBuf4
+    buf.f0.name = "a"
+    buf.f0.ty = u8t
+    buf.f0.offset = 0
+
+    buf.f1.name = "b"
+    buf.f1.ty = u32t
+    buf.f1.offset = 0
+
+    buf.f2.name = "c"
+    buf.f2.ty = u8t
+    buf.f2.offset = 0
+
+    buf.f3.name = "pad"
+    buf.f3.ty = u8t
+    buf.f3.offset = 0
+
+    let fields: vitte_abi.extern_abi.ExternFieldList
+    fields.data = &buf.f0
+    fields.len = 3
+
+    let ty = vitte_abi.extern_abi.extern_type_record("R", fields, false)
+    let l = vitte_abi.extern_abi.extern_type_layout(triple, ty)
+
+    if !t_eq_usize(l.align, 4)
+        ret false
+    .end
+    if !t_eq_usize(l.size, 12)
+        ret false
+    .end
+
+    ret true
+.end
+
+fn test_extern_record_layout_packed() -> bool
+    let triple = vitte_abi.extern_abi.abi_triple_default()
+
+    # packed => size=6 align=1
+
+    let u8t = _extern_type_u8()
+    let u32t = vitte_abi.extern_abi.extern_type_u32()
+
+    let buf: _ExternFieldBuf4
+    buf.f0.name = "a"
+    buf.f0.ty = u8t
+    buf.f0.offset = 0
+
+    buf.f1.name = "b"
+    buf.f1.ty = u32t
+    buf.f1.offset = 0
+
+    buf.f2.name = "c"
+    buf.f2.ty = u8t
+    buf.f2.offset = 0
+
+    buf.f3.name = "pad"
+    buf.f3.ty = u8t
+    buf.f3.offset = 0
+
+    let fields: vitte_abi.extern_abi.ExternFieldList
+    fields.data = &buf.f0
+    fields.len = 3
+
+    let ty = vitte_abi.extern_abi.extern_type_record("R", fields, true)
+    let l = vitte_abi.extern_abi.extern_type_layout(triple, ty)
+
+    if !t_eq_usize(l.align, 1)
+        ret false
+    .end
+    if !t_eq_usize(l.size, 6)
+        ret false
+    .end
+
+    ret true
+.end
+
+fn test_extern_record_layout_explicit_offsets() -> bool
+    let triple = vitte_abi.extern_abi.abi_triple_default()
+
+    # record R { u8 a; u32 b @ offset 16; } => size=20 align=4
+
+    let u8t = _extern_type_u8()
+    let u32t = vitte_abi.extern_abi.extern_type_u32()
+
+    let buf: _ExternFieldBuf4
+    buf.f0.name = "a"
+    buf.f0.ty = u8t
+    buf.f0.offset = 0
+
+    buf.f1.name = "b"
+    buf.f1.ty = u32t
+    buf.f1.offset = 16
+
+    buf.f2.name = "pad"
+    buf.f2.ty = u8t
+    buf.f2.offset = 0
+
+    buf.f3.name = "pad2"
+    buf.f3.ty = u8t
+    buf.f3.offset = 0
+
+    let fields: vitte_abi.extern_abi.ExternFieldList
+    fields.data = &buf.f0
+    fields.len = 2
+
+    let ty = vitte_abi.extern_abi.extern_type_record("R", fields, false)
+    let l = vitte_abi.extern_abi.extern_type_layout(triple, ty)
+
+    if !t_eq_usize(l.align, 4)
+        ret false
+    .end
+    if !t_eq_usize(l.size, 20)
+        ret false
+    .end
+
+    ret true
+.end
+
+# -----------------------------------------------------------------------------
+# Tests: extern_abi – symbol validation/normalization
+# -----------------------------------------------------------------------------
+
+fn test_extern_symbol_normalize_and_validate() -> bool
+    let triple = vitte_abi.extern_abi.abi_triple_default()
+
+    # Build: int puts(const char*);
+    let buf: _ExternParamBuf4
+    buf.p0.name = "s"
+    buf.p0.ty = vitte_abi.extern_abi.extern_type_cstr()
+
+    buf.p1.name = "pad"
+    buf.p1.ty = vitte_abi.extern_abi.extern_type_i32()
+
+    buf.p2.name = "pad2"
+    buf.p2.ty = vitte_abi.extern_abi.extern_type_i32()
+
+    buf.p3.name = "pad3"
+    buf.p3.ty = vitte_abi.extern_abi.extern_type_i32()
+
+    let params: vitte_abi.extern_abi.ExternParamList
+    params.data = &buf.p0
+    params.len = 1
+
+    let sig = vitte_abi.extern_abi.extern_fn_sig(vitte_abi.extern_abi.AbiCallConv.system, params, vitte_abi.extern_abi.extern_type_i32(), false)
+
+    # Intentionally empty link_name, then normalize.
+    let sym = vitte_abi.extern_abi.extern_symbol_init_fn("puts", "", "c", sig)
+
+    let n = vitte_abi.extern_abi.extern_symbol_normalize(triple, sym)
+
+    # After normalize: link_name defaults to name.
+    if n.link_name != "puts"
+        ret false
+    .end
+
+    # system => default_for(triple)
+    if n.fn_sig.cc == vitte_abi.extern_abi.AbiCallConv.system
+        ret false
+    .end
+
+    let e = vitte_abi.extern_abi.extern_symbol_validate(triple, n)
+    ret e.kind == vitte_abi.extern_abi.AbiErrorKind.ok
+.end
+
+fn test_extern_symbol_rejects_bad_names() -> bool
+    let triple = vitte_abi.extern_abi.abi_triple_default()
+
+    let params: vitte_abi.extern_abi.ExternParamList
+    params.data = 0
+    params.len = 0
+
+    let sig = vitte_abi.extern_abi.extern_fn_sig(vitte_abi.extern_abi.AbiCallConv.c, params, vitte_abi.extern_abi.extern_type_void(), false)
+
+    # Bad symbol name: contains space
+    let sym = vitte_abi.extern_abi.extern_symbol_init_fn("bad name", "bad name", "c", sig)
+    let e = vitte_abi.extern_abi.extern_symbol_validate(triple, sym)
+
+    ret e.kind == vitte_abi.extern_abi.AbiErrorKind.invalid_symbol
+.end
+
+# -----------------------------------------------------------------------------
+# Aggregate
+# -----------------------------------------------------------------------------
+
+fn tests_all() -> bool
+    # layout
+    if !test_layout_align_up()
+        ret false
+    .end
+    if !test_layout_primitives_ptr_slice()
+        ret false
+    .end
+    if !test_layout_record_basic()
+        ret false
+    .end
+    if !test_layout_record_packed()
+        ret false
+    .end
+    if !test_layout_record_explicit_offsets()
+        ret false
+    .end
+    if !test_layout_record_explicit_overlap_rejected()
+        ret false
+    .end
+
+    # extern_abi
+    if !test_extern_identifiers()
+        ret false
+    .end
+    if !test_extern_callconv_defaults()
+        ret false
+    .end
+    if !test_extern_type_layout_scalars()
+        ret false
+    .end
+    if !test_extern_record_layout_basic()
+        ret false
+    .end
+    if !test_extern_record_layout_packed()
+        ret false
+    .end
+    if !test_extern_record_layout_explicit_offsets()
+        ret false
+    .end
+    if !test_extern_symbol_normalize_and_validate()
+        ret false
+    .end
+    if !test_extern_symbol_rejects_bad_names()
+        ret false
+    .end
+
+    # module-level smokes (if any)
+    if !vitte_abi.extern_abi.extern_abi_smoke_all()
+        ret false
+    .end
+
+    if !vitte_abi.layout.layout_smoke_all()
+        ret false
+    .end
+
+    ret true
+.end

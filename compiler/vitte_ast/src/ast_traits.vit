@@ -1,356 +1,575 @@
-//! A set of traits implemented for various AST nodes,
-//! typically those used in AST fragments during macro expansion.
-//! The traits are not implemented exhaustively, only when actually necessary.
 
-use std::fmt;
-use std::marker::PhantomData;
 
-use crate::tokenstream::LazyAttrTokenStream;
-use crate::{
-    Arm, AssocItem, AttrItem, AttrKind, AttrVec, Attribute, Block, Crate, Expr, ExprField,
-    FieldDef, ForeignItem, GenericParam, Item, NodeId, Param, Pat, PatField, Path, Stmt, StmtKind,
-    Ty, Variant, Visibility, WherePredicate,
-};
+# ast_traits.vit
+# -----------------------------------------------------------------------------
+# AST Traits & Extensions for Vitte
+#
+# Purpose
+# -------
+# Centralize lightweight “traits” (interfaces) and extension methods used across
+# compiler passes (expand, validate, lower) without pulling heavy dependencies.
+#
+# This file is meant to provide:
+#  - core traits (HasSpan, HasAttrs, HasName, HasNodeId)
+#  - robust identifier validation helpers
+#  - Item/TypeExpr/Attribute extension helpers (is_*, as_*, getters)
+#  - visitor + walk utilities (immutable + mutable)
+#
+# Notes
+# -----
+# The exact AST shapes may evolve. Keep this module as the *compat layer*:
+#  - Prefer small wrappers + best-effort defaults.
+#  - Avoid panics; return Option and let callers diagnose.
+#  - Keep behavior deterministic.
+# -----------------------------------------------------------------------------
 
-/// A trait for AST nodes having an ID.
-pub trait HasNodeId {
-    fn node_id(&self) -> NodeId;
-    fn node_id_mut(&mut self) -> &mut NodeId;
-}
+use vitte/ast
+use vitte/ast/diag
 
-macro_rules! impl_has_node_id {
-    ($($T:ty),+ $(,)?) => {
-        $(
-            impl HasNodeId for $T {
-                fn node_id(&self) -> NodeId {
-                    self.id
-                }
-                fn node_id_mut(&mut self) -> &mut NodeId {
-                    &mut self.id
-                }
-            }
-        )+
-    };
-}
+# -----------------------------------------------------------------------------
+# Core small traits
+# -----------------------------------------------------------------------------
 
-impl_has_node_id!(
-    Arm,
-    AssocItem,
-    Crate,
-    Expr,
-    ExprField,
-    FieldDef,
-    ForeignItem,
-    GenericParam,
-    Item,
-    Param,
-    Pat,
-    PatField,
-    Stmt,
-    Ty,
-    Variant,
-    WherePredicate,
-);
+# Stable node identifier used by caches and incremental passes.
+# Keep it small (u32) unless you need >4B nodes.
 
-impl<T: HasNodeId> HasNodeId for Box<T> {
-    fn node_id(&self) -> NodeId {
-        (**self).node_id()
-    }
-    fn node_id_mut(&mut self) -> &mut NodeId {
-        (**self).node_id_mut()
-    }
-}
+type NodeId = u32
 
-/// A trait for AST nodes having (or not having) collected tokens.
-pub trait HasTokens {
-    fn tokens(&self) -> Option<&LazyAttrTokenStream>;
-    fn tokens_mut(&mut self) -> Option<&mut Option<LazyAttrTokenStream>>;
-}
+trait HasNodeId
+  fn node_id(&self) -> NodeId
+.end
 
-macro_rules! impl_has_tokens {
-    ($($T:ty),+ $(,)?) => {
-        $(
-            impl HasTokens for $T {
-                fn tokens(&self) -> Option<&LazyAttrTokenStream> {
-                    self.tokens.as_ref()
-                }
-                fn tokens_mut(&mut self) -> Option<&mut Option<LazyAttrTokenStream>> {
-                    Some(&mut self.tokens)
-                }
-            }
-        )+
-    };
-}
+trait HasSpan
+  fn span(&self) -> ast::Span
+.end
 
-macro_rules! impl_has_tokens_none {
-    ($($T:ty),+ $(,)?) => {
-        $(
-            impl HasTokens for $T {
-                fn tokens(&self) -> Option<&LazyAttrTokenStream> {
-                    None
-                }
-                fn tokens_mut(&mut self) -> Option<&mut Option<LazyAttrTokenStream>> {
-                    None
-                }
-            }
-        )+
-    };
-}
+trait HasAttrs
+  fn attrs(&self) -> &Vec[ast::Attribute]
+  fn attrs_mut(&mut self) -> &mut Vec[ast::Attribute]
+.end
 
-impl_has_tokens!(AssocItem, AttrItem, Block, Expr, ForeignItem, Item, Pat, Path, Ty, Visibility);
-impl_has_tokens_none!(
-    Arm,
-    ExprField,
-    FieldDef,
-    GenericParam,
-    Param,
-    PatField,
-    Variant,
-    WherePredicate
-);
+trait HasName
+  fn name_ident(&self) -> ast::Ident
+.end
 
-impl<T: HasTokens> HasTokens for Option<T> {
-    fn tokens(&self) -> Option<&LazyAttrTokenStream> {
-        self.as_ref().and_then(|inner| inner.tokens())
-    }
-    fn tokens_mut(&mut self) -> Option<&mut Option<LazyAttrTokenStream>> {
-        self.as_mut().and_then(|inner| inner.tokens_mut())
-    }
-}
+# -----------------------------------------------------------------------------
+# Identifier helpers
+# -----------------------------------------------------------------------------
 
-impl<T: HasTokens> HasTokens for Box<T> {
-    fn tokens(&self) -> Option<&LazyAttrTokenStream> {
-        (**self).tokens()
-    }
-    fn tokens_mut(&mut self) -> Option<&mut Option<LazyAttrTokenStream>> {
-        (**self).tokens_mut()
-    }
-}
+# Strict but practical identifier validation.
+# Rules (current):
+#  - non-empty
+#  - starts with [_A-Za-z]
+#  - continues with [_A-Za-z0-9]
+#  - not a keyword (best-effort set)
 
-impl HasTokens for StmtKind {
-    fn tokens(&self) -> Option<&LazyAttrTokenStream> {
-        match self {
-            StmtKind::Let(local) => local.tokens.as_ref(),
-            StmtKind::Item(item) => item.tokens(),
-            StmtKind::Expr(expr) | StmtKind::Semi(expr) => expr.tokens(),
-            StmtKind::Empty => None,
-            StmtKind::MacCall(mac) => mac.tokens.as_ref(),
-        }
-    }
-    fn tokens_mut(&mut self) -> Option<&mut Option<LazyAttrTokenStream>> {
-        match self {
-            StmtKind::Let(local) => Some(&mut local.tokens),
-            StmtKind::Item(item) => item.tokens_mut(),
-            StmtKind::Expr(expr) | StmtKind::Semi(expr) => expr.tokens_mut(),
-            StmtKind::Empty => None,
-            StmtKind::MacCall(mac) => Some(&mut mac.tokens),
-        }
-    }
-}
+fn is_ascii_alpha(c: char) -> bool
+  ret (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+.end
 
-impl HasTokens for Stmt {
-    fn tokens(&self) -> Option<&LazyAttrTokenStream> {
-        self.kind.tokens()
-    }
-    fn tokens_mut(&mut self) -> Option<&mut Option<LazyAttrTokenStream>> {
-        self.kind.tokens_mut()
-    }
-}
+fn is_ascii_digit(c: char) -> bool
+  ret c >= '0' && c <= '9'
+.end
 
-impl HasTokens for Attribute {
-    fn tokens(&self) -> Option<&LazyAttrTokenStream> {
-        match &self.kind {
-            AttrKind::Normal(normal) => normal.tokens.as_ref(),
-            kind @ AttrKind::DocComment(..) => {
-                panic!("Called tokens on doc comment attr {kind:?}")
-            }
-        }
-    }
-    fn tokens_mut(&mut self) -> Option<&mut Option<LazyAttrTokenStream>> {
-        Some(match &mut self.kind {
-            AttrKind::Normal(normal) => &mut normal.tokens,
-            kind @ AttrKind::DocComment(..) => {
-                panic!("Called tokens_mut on doc comment attr {kind:?}")
-            }
-        })
-    }
-}
+fn is_ident_start(c: char) -> bool
+  ret c == '_' || is_ascii_alpha(c)
+.end
 
-/// A trait for AST nodes having (or not having) attributes.
-pub trait HasAttrs {
-    /// This is `true` if this `HasAttrs` might support 'custom' (proc-macro) inner
-    /// attributes. Attributes like `#![cfg]` and `#![cfg_attr]` are not
-    /// considered 'custom' attributes.
-    ///
-    /// If this is `false`, then this `HasAttrs` definitely does
-    /// not support 'custom' inner attributes, which enables some optimizations
-    /// during token collection.
-    const SUPPORTS_CUSTOM_INNER_ATTRS: bool;
-    fn attrs(&self) -> &[Attribute];
-    fn visit_attrs(&mut self, f: impl FnOnce(&mut AttrVec));
-}
+fn is_ident_continue(c: char) -> bool
+  ret c == '_' || is_ascii_alpha(c) || is_ascii_digit(c)
+.end
 
-macro_rules! impl_has_attrs {
-    (const SUPPORTS_CUSTOM_INNER_ATTRS: bool = $inner:literal, $($T:ty),+ $(,)?) => {
-        $(
-            impl HasAttrs for $T {
-                const SUPPORTS_CUSTOM_INNER_ATTRS: bool = $inner;
+fn is_keyword(s: &str) -> bool
+  # Keep synchronized with the language grammar.
+  if s == "mod" || s == "use" || s == "export"
+    ret true
+  .end
+  if s == "type" || s == "struct" || s == "enum" || s == "union"
+    ret true
+  .end
+  if s == "fn" || s == "scn" || s == "prog" || s == "ret"
+    ret true
+  .end
+  if s == "let" || s == "const" || s == "if" || s == "elif" || s == "else"
+    ret true
+  .end
+  if s == "while" || s == "for" || s == "match" || s == "break" || s == "continue"
+    ret true
+  .end
+  if s == "true" || s == "false" || s == "null"
+    ret true
+  .end
+  if s == "do" || s == "when" || s == "loop" || s == "set" || s == "say"
+    ret true
+  .end
+  ret false
+.end
 
-                #[inline]
-                fn attrs(&self) -> &[Attribute] {
-                    &self.attrs
-                }
+fn is_valid_ident(s: &str) -> bool
+  let t = s.trim()
+  if t.len() == 0
+    ret false
+  .end
 
-                fn visit_attrs(&mut self, f: impl FnOnce(&mut AttrVec)) {
-                    f(&mut self.attrs)
-                }
-            }
-        )+
-    };
-}
+  if is_keyword(t)
+    ret false
+  .end
 
-macro_rules! impl_has_attrs_none {
-    ($($T:ty),+ $(,)?) => {
-        $(
-            impl HasAttrs for $T {
-                const SUPPORTS_CUSTOM_INNER_ATTRS: bool = false;
-                fn attrs(&self) -> &[Attribute] {
-                    &[]
-                }
-                fn visit_attrs(&mut self, _f: impl FnOnce(&mut AttrVec)) {}
-            }
-        )+
-    };
-}
+  let c0 = t.char_at(0)
+  if !is_ident_start(c0)
+    ret false
+  .end
 
-impl_has_attrs!(
-    const SUPPORTS_CUSTOM_INNER_ATTRS: bool = true,
-    AssocItem,
-    ForeignItem,
-    Item,
-);
-impl_has_attrs!(
-    const SUPPORTS_CUSTOM_INNER_ATTRS: bool = false,
-    Arm,
-    Crate,
-    Expr,
-    ExprField,
-    FieldDef,
-    GenericParam,
-    Param,
-    PatField,
-    Variant,
-    WherePredicate,
-);
-impl_has_attrs_none!(Attribute, AttrItem, Block, Pat, Path, Ty, Visibility);
+  let i = 1
+  while i < t.len()
+    let c = t.char_at(i)
+    if !is_ident_continue(c)
+      ret false
+    .end
+    i = i + 1
+  .end
 
-impl<T: HasAttrs> HasAttrs for Box<T> {
-    const SUPPORTS_CUSTOM_INNER_ATTRS: bool = T::SUPPORTS_CUSTOM_INNER_ATTRS;
-    fn attrs(&self) -> &[Attribute] {
-        (**self).attrs()
-    }
-    fn visit_attrs(&mut self, f: impl FnOnce(&mut AttrVec)) {
-        (**self).visit_attrs(f);
-    }
-}
+  ret true
+.end
 
-impl<T: HasAttrs> HasAttrs for Option<T> {
-    const SUPPORTS_CUSTOM_INNER_ATTRS: bool = T::SUPPORTS_CUSTOM_INNER_ATTRS;
-    fn attrs(&self) -> &[Attribute] {
-        self.as_ref().map(|inner| inner.attrs()).unwrap_or(&[])
-    }
-    fn visit_attrs(&mut self, f: impl FnOnce(&mut AttrVec)) {
-        if let Some(inner) = self.as_mut() {
-            inner.visit_attrs(f);
-        }
-    }
-}
+fn diag_expect_ident(di: &mut diag::DiagSink, span: ast::Span, s: &str) -> Option[ast::Ident]
+  if is_valid_ident(s)
+    ret Option::some(ast::Ident(name=s.to_string(), span=span))
+  .end
+  di.error(span, "invalid identifier: '" + s + "'")
+  ret Option::none()
+.end
 
-impl HasAttrs for StmtKind {
-    // This might be a `StmtKind::Item`, which contains
-    // an item that supports inner attrs.
-    const SUPPORTS_CUSTOM_INNER_ATTRS: bool = true;
+# -----------------------------------------------------------------------------
+# Item kind tagging
+# -----------------------------------------------------------------------------
 
-    fn attrs(&self) -> &[Attribute] {
-        match self {
-            StmtKind::Let(local) => &local.attrs,
-            StmtKind::Expr(expr) | StmtKind::Semi(expr) => expr.attrs(),
-            StmtKind::Item(item) => item.attrs(),
-            StmtKind::Empty => &[],
-            StmtKind::MacCall(mac) => &mac.attrs,
-        }
-    }
+enum ItemTag
+  Unknown
+  Module
+  Use
+  Export
+  Struct
+  Enum
+  Union
+  TypeAlias
+  Fn
+  Scenario
+  Global
+.end
 
-    fn visit_attrs(&mut self, f: impl FnOnce(&mut AttrVec)) {
-        match self {
-            StmtKind::Let(local) => f(&mut local.attrs),
-            StmtKind::Expr(expr) | StmtKind::Semi(expr) => expr.visit_attrs(f),
-            StmtKind::Item(item) => item.visit_attrs(f),
-            StmtKind::Empty => {}
-            StmtKind::MacCall(mac) => f(&mut mac.attrs),
-        }
-    }
-}
+fn item_tag(it: &ast::Item) -> ItemTag
+  # Best-effort: relies on common `is_*` methods or fields.
+  if it.is_struct()
+    ret ItemTag::Struct
+  .end
+  if it.is_enum()
+    ret ItemTag::Enum
+  .end
+  if it.is_union()
+    ret ItemTag::Union
+  .end
+  if it.is_type_alias()
+    ret ItemTag::TypeAlias
+  .end
+  if it.is_fn()
+    ret ItemTag::Fn
+  .end
+  if it.is_scenario()
+    ret ItemTag::Scenario
+  .end
+  ret ItemTag::Unknown
+.end
 
-impl HasAttrs for Stmt {
-    const SUPPORTS_CUSTOM_INNER_ATTRS: bool = StmtKind::SUPPORTS_CUSTOM_INNER_ATTRS;
-    fn attrs(&self) -> &[Attribute] {
-        self.kind.attrs()
-    }
-    fn visit_attrs(&mut self, f: impl FnOnce(&mut AttrVec)) {
-        self.kind.visit_attrs(f);
-    }
-}
+# -----------------------------------------------------------------------------
+# Extension traits for common AST nodes
+# -----------------------------------------------------------------------------
 
-/// A newtype around an AST node that implements the traits above if the node implements them.
-#[repr(transparent)]
-pub struct AstNodeWrapper<Wrapped, Tag> {
-    pub wrapped: Wrapped,
-    pub tag: PhantomData<Tag>,
-}
+trait ItemExt
+  fn tag(&self) -> ItemTag
 
-impl<Wrapped, Tag> AstNodeWrapper<Wrapped, Tag> {
-    pub fn new(wrapped: Wrapped, _tag: Tag) -> AstNodeWrapper<Wrapped, Tag> {
-        AstNodeWrapper { wrapped, tag: Default::default() }
-    }
+  fn is_fn(&self) -> bool
+  fn as_fn(&self) -> &ast::ItemFn
+  fn as_fn_mut(&mut self) -> &mut ast::ItemFn
 
-    pub fn from_mut(wrapped: &mut Wrapped, _tag: Tag) -> &mut AstNodeWrapper<Wrapped, Tag> {
-        // SAFETY: `AstNodeWrapper` is `repr(transparent)` w.r.t `Wrapped`
-        unsafe { &mut *<*mut Wrapped>::cast(wrapped) }
-    }
-}
+  fn is_struct(&self) -> bool
+  fn as_struct(&self) -> &ast::ItemStruct
 
-// FIXME: remove after `stmt_expr_attributes` is stabilized.
-impl<T, Tag> From<AstNodeWrapper<Box<T>, Tag>> for AstNodeWrapper<T, Tag> {
-    fn from(value: AstNodeWrapper<Box<T>, Tag>) -> Self {
-        AstNodeWrapper { wrapped: *value.wrapped, tag: value.tag }
-    }
-}
+  fn is_enum(&self) -> bool
+  fn as_enum(&self) -> &ast::ItemEnum
 
-impl<Wrapped: HasNodeId, Tag> HasNodeId for AstNodeWrapper<Wrapped, Tag> {
-    fn node_id(&self) -> NodeId {
-        self.wrapped.node_id()
-    }
-    fn node_id_mut(&mut self) -> &mut NodeId {
-        self.wrapped.node_id_mut()
-    }
-}
+  fn is_union(&self) -> bool
+  fn as_union(&self) -> &ast::ItemUnion
 
-impl<Wrapped: HasAttrs, Tag> HasAttrs for AstNodeWrapper<Wrapped, Tag> {
-    const SUPPORTS_CUSTOM_INNER_ATTRS: bool = Wrapped::SUPPORTS_CUSTOM_INNER_ATTRS;
-    fn attrs(&self) -> &[Attribute] {
-        self.wrapped.attrs()
-    }
-    fn visit_attrs(&mut self, f: impl FnOnce(&mut AttrVec)) {
-        self.wrapped.visit_attrs(f);
-    }
-}
+  fn is_type_alias(&self) -> bool
+  fn as_type_alias(&self) -> &ast::ItemTypeAlias
+.end
 
-impl<Wrapped: fmt::Debug, Tag> fmt::Debug for AstNodeWrapper<Wrapped, Tag> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AstNodeWrapper")
-            .field("wrapped", &self.wrapped)
-            .field("tag", &self.tag)
-            .finish()
-    }
-}
+# Implementations should adapt to your real AST enums.
+# These bodies assume your `ast::Item` exposes helper methods (preferred).
+
+impl ItemExt for ast::Item
+  fn tag(&self) -> ItemTag
+    ret item_tag(self)
+  .end
+
+  fn is_fn(&self) -> bool
+    ret self.kind == "fn" || self.is_fn_kind()
+  .end
+
+  fn as_fn(&self) -> &ast::ItemFn
+    ret self.unwrap_fn()
+  .end
+
+  fn as_fn_mut(&mut self) -> &mut ast::ItemFn
+    ret self.unwrap_fn_mut()
+  .end
+
+  fn is_struct(&self) -> bool
+    ret self.kind == "struct" || self.is_struct_kind()
+  .end
+
+  fn as_struct(&self) -> &ast::ItemStruct
+    ret self.unwrap_struct()
+  .end
+
+  fn is_enum(&self) -> bool
+    ret self.kind == "enum" || self.is_enum_kind()
+  .end
+
+  fn as_enum(&self) -> &ast::ItemEnum
+    ret self.unwrap_enum()
+  .end
+
+  fn is_union(&self) -> bool
+    ret self.kind == "union" || self.is_union_kind()
+  .end
+
+  fn as_union(&self) -> &ast::ItemUnion
+    ret self.unwrap_union()
+  .end
+
+  fn is_type_alias(&self) -> bool
+    ret self.kind == "type_alias" || self.is_type_alias_kind()
+  .end
+
+  fn as_type_alias(&self) -> &ast::ItemTypeAlias
+    ret self.unwrap_type_alias()
+  .end
+.end
+
+# NOTE: If your AST does not provide `kind/is_*_kind/unwrap_*`, switch to match
+# on the enum variants here.
+
+# -----------------------------------------------------------------------------
+# TypeExpr helpers
+# -----------------------------------------------------------------------------
+
+trait TypeExprExt
+  fn is_named(&self) -> bool
+  fn as_named(&self) -> ast::TypeName
+
+  fn is_path(&self) -> bool
+  fn as_path(&self) -> ast::TypePath
+
+  fn is_primitive(&self, name: &str) -> bool
+  fn is_named_str(&self, name: &str) -> bool
+
+  fn has_generics(&self) -> bool
+  fn generics_len(&self) -> usize
+  fn generic_at(&self, idx: usize) -> ast::TypeExpr
+.end
+
+impl TypeExprExt for ast::TypeExpr
+  fn is_named(&self) -> bool
+    ret self.kind == "named" || self.is_named_kind()
+  .end
+
+  fn as_named(&self) -> ast::TypeName
+    ret self.unwrap_named()
+  .end
+
+  fn is_path(&self) -> bool
+    ret self.kind == "path" || self.is_path_kind()
+  .end
+
+  fn as_path(&self) -> ast::TypePath
+    ret self.unwrap_path()
+  .end
+
+  fn is_primitive(&self, name: &str) -> bool
+    if self.is_named()
+      ret self.as_named().name == name
+    .end
+    ret false
+  .end
+
+  fn is_named_str(&self, name: &str) -> bool
+    if self.is_named()
+      ret self.as_named().name == name
+    .end
+    if self.is_path()
+      let p = self.as_path()
+      if p.segments.len() > 0
+        ret p.segments[p.segments.len() - 1].name == name
+      .end
+    .end
+    ret false
+  .end
+
+  fn has_generics(&self) -> bool
+    ret self.generics.is_some()
+  .end
+
+  fn generics_len(&self) -> usize
+    if self.generics.is_some()
+      ret self.generics.unwrap().args.len()
+    .end
+    ret 0
+  .end
+
+  fn generic_at(&self, idx: usize) -> ast::TypeExpr
+    ret self.generics.unwrap().args[idx]
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Attribute helpers
+# -----------------------------------------------------------------------------
+
+trait AttributeExt
+  fn is_named(&self, name: &str) -> bool
+  fn args_text_or_empty(&self) -> String
+.end
+
+impl AttributeExt for ast::Attribute
+  fn is_named(&self, name: &str) -> bool
+    ret self.name == name
+  .end
+
+  fn args_text_or_empty(&self) -> String
+    if self.args_text.is_some()
+      ret self.args_text.unwrap()
+    .end
+    ret ""
+  .end
+.end
+
+# Convenience: search in an attribute list.
+fn attrs_find(attrs: &Vec[ast::Attribute], name: &str) -> Option[ast::Attribute]
+  let i = 0
+  while i < attrs.len()
+    if attrs[i].name == name
+      ret Option::some(attrs[i])
+    .end
+    i = i + 1
+  .end
+  ret Option::none()
+.end
+
+fn attrs_has(attrs: &Vec[ast::Attribute], name: &str) -> bool
+  ret attrs_find(attrs, name).is_some()
+.end
+
+# -----------------------------------------------------------------------------
+# Minimal visitors (immutable)
+# -----------------------------------------------------------------------------
+
+trait Visitor
+  fn diags(&mut self) -> &mut diag::DiagSink
+
+  # Override points
+  fn visit_crate(&mut self, c: &ast::Crate)
+  fn visit_module(&mut self, m: &ast::Module)
+  fn visit_item(&mut self, it: &ast::Item)
+  fn visit_fn(&mut self, f: &ast::ItemFn)
+  fn visit_type_expr(&mut self, t: &ast::TypeExpr)
+.end
+
+# Default visitor implementations = walk.
+fn visitor_walk_crate(v: &mut Visitor, c: &ast::Crate)
+  let i = 0
+  while i < c.modules.len()
+    v.visit_module(&c.modules[i])
+    i = i + 1
+  .end
+.end
+
+fn visitor_walk_module(v: &mut Visitor, m: &ast::Module)
+  let i = 0
+  while i < m.items.len()
+    v.visit_item(&m.items[i])
+    i = i + 1
+  .end
+.end
+
+fn visitor_walk_item(v: &mut Visitor, it: &ast::Item)
+  if it.is_fn()
+    v.visit_fn(it.as_fn())
+    ret
+  .end
+
+  if it.is_type_alias()
+    let a = it.as_type_alias()
+    v.visit_type_expr(&a.to_ty)
+    ret
+  .end
+
+  if it.is_struct()
+    let s = it.as_struct()
+    let i = 0
+    while i < s.fields.len()
+      v.visit_type_expr(&s.fields[i].ty)
+      i = i + 1
+    .end
+    ret
+  .end
+
+  if it.is_enum()
+    let e = it.as_enum()
+    let j = 0
+    while j < e.variants.len()
+      let v0 = e.variants[j]
+      let k = 0
+      while k < v0.payload.len()
+        v.visit_type_expr(&v0.payload[k])
+        k = k + 1
+      .end
+      j = j + 1
+    .end
+    ret
+  .end
+
+  if it.is_union()
+    let u = it.as_union()
+    let i2 = 0
+    while i2 < u.fields.len()
+      v.visit_type_expr(&u.fields[i2].ty)
+      i2 = i2 + 1
+    .end
+    ret
+  .end
+.end
+
+fn visitor_walk_fn(v: &mut Visitor, f: &ast::ItemFn)
+  let i = 0
+  while i < f.params.len()
+    v.visit_type_expr(&f.params[i].ty)
+    i = i + 1
+  .end
+
+  if f.ret_ty.is_some()
+    v.visit_type_expr(&f.ret_ty.unwrap())
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Minimal visitors (mutable)
+# -----------------------------------------------------------------------------
+
+trait VisitorMut
+  fn diags(&mut self) -> &mut diag::DiagSink
+
+  fn visit_crate_mut(&mut self, c: &mut ast::Crate)
+  fn visit_module_mut(&mut self, m: &mut ast::Module)
+  fn visit_item_mut(&mut self, it: &mut ast::Item)
+  fn visit_fn_mut(&mut self, f: &mut ast::ItemFn)
+  fn visit_type_expr_mut(&mut self, t: &mut ast::TypeExpr)
+.end
+
+fn visitor_walk_crate_mut(v: &mut VisitorMut, c: &mut ast::Crate)
+  let i = 0
+  while i < c.modules.len()
+    v.visit_module_mut(&mut c.modules[i])
+    i = i + 1
+  .end
+.end
+
+fn visitor_walk_module_mut(v: &mut VisitorMut, m: &mut ast::Module)
+  let i = 0
+  while i < m.items.len()
+    v.visit_item_mut(&mut m.items[i])
+    i = i + 1
+  .end
+.end
+
+fn visitor_walk_item_mut(v: &mut VisitorMut, it: &mut ast::Item)
+  if it.is_fn()
+    v.visit_fn_mut(it.as_fn_mut())
+    ret
+  .end
+
+  if it.is_type_alias()
+    let a = it.as_type_alias_mut()
+    v.visit_type_expr_mut(&mut a.to_ty)
+    ret
+  .end
+
+  if it.is_struct()
+    let s = it.as_struct_mut()
+    let i = 0
+    while i < s.fields.len()
+      v.visit_type_expr_mut(&mut s.fields[i].ty)
+      i = i + 1
+    .end
+    ret
+  .end
+
+  if it.is_enum()
+    let e = it.as_enum_mut()
+    let j = 0
+    while j < e.variants.len()
+      let k = 0
+      while k < e.variants[j].payload.len()
+        v.visit_type_expr_mut(&mut e.variants[j].payload[k])
+        k = k + 1
+      .end
+      j = j + 1
+    .end
+    ret
+  .end
+
+  if it.is_union()
+    let u = it.as_union_mut()
+    let i2 = 0
+    while i2 < u.fields.len()
+      v.visit_type_expr_mut(&mut u.fields[i2].ty)
+      i2 = i2 + 1
+    .end
+    ret
+  .end
+.end
+
+fn visitor_walk_fn_mut(v: &mut VisitorMut, f: &mut ast::ItemFn)
+  let i = 0
+  while i < f.params.len()
+    v.visit_type_expr_mut(&mut f.params[i].ty)
+    i = i + 1
+  .end
+
+  if f.ret_ty.is_some()
+    let t = f.ret_ty.unwrap_mut()
+    v.visit_type_expr_mut(t)
+  .end
+.end
+
+# -----------------------------------------------------------------------------
+# Diagnostics helpers
+# -----------------------------------------------------------------------------
+
+fn diag_unsupported_attr_target(di: &mut diag::DiagSink, a: &ast::Attribute, expected: &str, got: &str)
+  di.error(a.span, "attribute '" + a.name + "' expects target " + expected + ", got " + got)
+.end
+
+# -----------------------------------------------------------------------------
+# Smoke tests (compilation-level)
+# -----------------------------------------------------------------------------
+
+fn t_is_valid_ident_smoke()
+  ast::assert(is_valid_ident("hello"))
+  ast::assert(is_valid_ident("_x1"))
+  ast::assert(!is_valid_ident("1x"))
+  ast::assert(!is_valid_ident("fn"))
+.end
+
+# End of file.

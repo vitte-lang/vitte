@@ -1,0 +1,163 @@
+
+
+# /Users/vincent/Documents/Github/vitte/compiler/vitte_abi/Vitte.toml
+# Vitte manifest (TOML) — ABI package (FFI/C surface) — repo: vitte-lang/vitte
+
+format_version = 1
+
+[package]
+name        = "vitte-abi"
+version     = "0.1.0"
+edition     = "2025"
+description = "Stable ABI surface for Vitte (C/FFI headers, symbols, and compatibility layer)."
+license     = "MIT OR Apache-2.0"
+authors     = ["Vincent <vincent@local>"]
+readme      = "README.md"
+repository  = "https://github.com/vitte-lang/vitte"
+homepage    = "https://github.com/vitte-lang/vitte"
+keywords    = ["vitte", "abi", "ffi", "c", "stability"]
+categories  = ["development-tools", "external-ffi-bindings"]
+publish     = false
+
+[package.metadata]
+issues            = "https://github.com/vitte-lang/vitte/issues"
+api_stability     = "unstable"   # passer à "stable" quand tu gèles l’ABI
+abi_version       = "0"          # incrémente quand la surface ABI change
+min_steel_version = "0.1.0"
+doc_langs         = ["fr", "en"]
+
+[layout]
+root_dir     = "."
+src_dir      = "src"
+include_dir  = "include"          # headers publics
+internal_inc = "include/internal" # headers privés
+assets_dir   = "assets"
+tests_dir    = "tests"
+examples_dir = "examples"
+out_dir      = "target"
+cache_dir    = ".vitte"
+
+[entrypoints]
+# module_root logique (si ton resolver le supporte)
+lib_module = "vitte/abi"
+
+[targets]
+
+  [targets.lib]
+  kind        = "lib"
+  name        = "vitte_abi"
+  # Exposition FFI: en général on veut au moins un cdylib (shared) et souvent un staticlib.
+  crate_type  = ["cdylib", "staticlib"]
+  path        = "src/lib.vitte"
+  module_root = "vitte/abi"
+
+  [targets.tests]
+  kind = "test"
+  name = "vitte-abi-tests"
+  path = "tests/main.vitte"
+
+[dependencies]
+# L’ABI dépend typiquement du cœur (types, alloc, error codes) mais évite les dépendances lourdes.
+vitte-core = { path = "../../core", version = "0.1.0" }
+
+# Optionnel: si ton ABI wrappe des types runtime/VM.
+vitte-runtime = { path = "../../runtime", version = "0.1.0", optional = true }
+
+[dev-dependencies]
+vitte-testkit = { path = "../testkit", version = "0.1.0", optional = true }
+
+[features]
+# `default` minimal: headers + symbol map + layer de compat
+# Active `runtime` uniquement si tu exposes des handles runtime dans l’ABI.
+default = ["headers", "symver"]
+
+# Génération headers C (ou validation) — scripts/outils externes
+headers = []
+
+# Versioning des symboles (Linux ELF): map/ld-script, compat
+symver = []
+
+# Exposer des entrypoints runtime
+runtime = ["vitte-runtime"]
+
+# Mode strict: aucune API expérimentale exportée
+strict = []
+
+# Debug/trace
+trace = []
+
+[profiles]
+
+  [profiles.dev]
+  opt_level       = 0
+  debug           = true
+  debug_symbols   = true
+  lto             = false
+  codegen_units   = 16
+  overflow_checks = true
+  incremental     = true
+  panic           = "unwind"
+  strip           = "none"
+
+  [profiles.release]
+  opt_level       = 3
+  debug           = false
+  debug_symbols   = false
+  lto             = "thin"
+  codegen_units   = 1
+  overflow_checks = false
+  incremental     = false
+  panic           = "abort"
+  strip           = "symbols"
+
+  [profiles.test]
+  inherits        = "dev"
+  opt_level       = 1
+  overflow_checks = true
+
+[toolchain]
+compiler       = "steel"
+compiler_min   = "0.1.0"
+
+# Toolchain C pour la partie link/export
+clang          = "clang"
+lld            = "lld"
+ar             = "llvm-ar"
+strip          = "llvm-strip"
+
+# ABI conventions
+c_std          = "c17"
+visibility     = "hidden"          # exports via macro/def + map file
+
+# Flags: à adapter (OS/arch)
+compiler_flags = ["-Wall", "-Wextra"]
+linker_flags   = []
+
+defines = {
+  VITTE_ABI_BUILD = "1",
+  VITTE_ABI_VERSION = "0"
+}
+
+[toolchain.abi]
+# Fichiers liés à la stabilité ABI (optionnels, mais pratiques)
+# - include/vitte_abi.h: header principal
+# - assets/abi/symbols.map: version script (ELF)
+# - assets/abi/exports.def: exports Windows
+header_main      = "include/vitte_abi.h"
+header_version   = "include/vitte_abi_version.h"
+symbols_map_elf  = "assets/abi/symbols.map"
+exports_def_win  = "assets/abi/exports.def"
+
+[scripts]
+# Conventions de commandes (si ton runner les supporte)
+# - `abi:gen` : génère headers/version (si tu as un générateur)
+# - `abi:check` : vérifie exports vs liste attendue
+# - `abi:dump` : dump des symbols pour CI
+
+fmt        = ["vitte", "fmt", "--workspace"]
+lint       = ["vitte", "lint", "--workspace"]
+build      = ["vitte", "build", "--profile", "release", "-p", "vitte-abi"]
+test       = ["vitte", "test", "--profile", "test", "-p", "vitte-abi"]
+abi_gen    = ["vitte", "abi", "gen", "--package", "vitte-abi"]
+abi_check  = ["vitte", "abi", "check", "--package", "vitte-abi"]
+abi_dump   = ["vitte", "abi", "dump", "--package", "vitte-abi"]
