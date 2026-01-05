@@ -189,3 +189,136 @@ ast_lowering_yield = yield syntax is experimental
 ast_lowering_yield_in_closure =
     `yield` can only be used in `#[coroutine]` closures, or `gen` blocks
     .suggestion = use `#[coroutine]` to make this closure a coroutine
+
+## vitte_ast_lowering/messages.ftl
+##
+## Diagnostics strings for the Vitte lowering layer (AST_IR -> ASM).
+##
+## Conventions:
+## - Prefix: `vitte_lowering_` for this crate
+## - Variables: {$name}, {$kind}, {$details}, {$label}, etc.
+## - Keep messages short, deterministic and backend-agnostic.
+
+# ------------------------------------------------------------
+# Generic lowering errors
+# ------------------------------------------------------------
+
+vitte_lowering_internal_error =
+    erreur interne du lowering: {$details}
+    .note = ceci est un bug du compilateur (vitte_ast_lowering)
+
+vitte_lowering_unhandled_construct =
+    construction non supportée par le lowering: {$what}
+    .help = simplifier l'expression ou attendre l'implémentation complète du lowering
+
+vitte_lowering_out_of_range =
+    index hors limites dans l'IR ({$table}): {$id}
+    .note = l'IR est invalide ou corrompu
+
+# ------------------------------------------------------------
+# Delegation / pipeline
+# ------------------------------------------------------------
+
+vitte_lowering_delegation_cycle_in_signature_resolution =
+    cycle détecté lors de la résolution de signature (delegation)
+    .note = vérifier les renvois récursifs de signatures
+
+vitte_lowering_delegation_unresolved_callee =
+    impossible de résoudre le callee de delegation
+    .help = vérifier le nom, le module, et les exports visibles
+
+vitte_lowering_invalid_lowering_mode =
+    mode de lowering invalide: {$mode}
+
+# ------------------------------------------------------------
+# CFG / builder (block.vit)
+# ------------------------------------------------------------
+
+vitte_lowering_no_current_block =
+    aucun block courant pour émettre une instruction
+    .note = le builder n'est pas positionné sur un label actif
+
+vitte_lowering_unknown_label =
+    label inconnu: {$label}
+    .help = vérifier que le label cible a été alloué
+
+vitte_lowering_block_sealed =
+    le block {$label} est déjà terminé (terminator présent)
+    .note = aucune instruction ne peut être ajoutée après un terminator
+
+# ------------------------------------------------------------
+# Contract / invariants (contract.vit)
+# ------------------------------------------------------------
+
+vitte_lowering_empty_function =
+    fonction vide: aucune block / aucune instruction
+
+vitte_lowering_duplicate_label =
+    label dupliqué: {$label}
+    .note = chaque label doit être unique dans une fonction
+
+vitte_lowering_unknown_target_label =
+    cible de branchement inconnue: {$label}
+    .help = vérifier les `jmp` / `br` et les labels générés
+
+vitte_lowering_inst_after_terminator =
+    instruction après terminator dans {$label}
+    .note = un block doit terminer par un seul terminator (jmp/br/ret)
+
+# ------------------------------------------------------------
+# Patterns / match (pat.vit + expr.vit)
+# ------------------------------------------------------------
+
+vitte_lowering_pattern_unhandled =
+    pattern non supporté par le lowering: {$pattern}
+    .help = utiliser `_`, un bind simple, ou un littéral
+
+vitte_lowering_match_test_chain_todo =
+    tests de `match` non implémentés (chaîne de tests)
+    .note = le lowering actuel utilise un fallback déterministe
+
+vitte_lowering_tuple_pattern_test_todo =
+    test de pattern tuple non implémenté
+
+# ------------------------------------------------------------
+# Path / symbols (path.vit)
+# ------------------------------------------------------------
+
+vitte_lowering_path_requires_resolution =
+    impossible de lower un chemin non résolu: {$path}
+    .help = exécuter la résolution de noms (Res) avant le lowering
+
+vitte_lowering_local_operand_requires_context =
+    un `local` ne peut pas être abaissé en opérande sans contexte de fonction
+
+vitte_lowering_symbol_not_a_value =
+    le symbole n'est pas une valeur: {$kind}
+    .help = seules les fonctions et globales sont abaissées en opérandes de valeur
+
+vitte_lowering_variant_not_implemented =
+    lowering des variants non implémenté
+
+# ------------------------------------------------------------
+# Globals
+# ------------------------------------------------------------
+
+vitte_lowering_global_initializer_not_constant =
+    l'initialiseur de globale doit être constant
+    .help = remplacer par un littéral / une constante évaluée à la compilation
+
+# ------------------------------------------------------------
+# Formatting / debug
+# ------------------------------------------------------------
+
+vitte_lowering_formatting_failed =
+    échec du formatage du programme lowered
+
+# ------------------------------------------------------------
+# Misc helpers / labels used by diagnostics
+# ------------------------------------------------------------
+
+vitte_lowering_previous_definition =
+    précédemment défini ici
+
+vitte_lowering_here =
+    ici

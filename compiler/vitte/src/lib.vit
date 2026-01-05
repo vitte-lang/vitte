@@ -1,0 +1,698 @@
+
+
+# vitte — top-level compiler driver/orchestrator (MAX skeleton)
+#
+# Role:
+# - Orchestrate the full compilation flow across crates:
+#   - steel: frontend (lex/parse/diagnostics) + lowering stubs
+#   - steel_abi: ABI planning (callconv, layout) stubs
+#   - codegen/backend: later (VM bytecode, native, etc.)
+# - Provide a stable public API to compile:
+#   - single file
+#   - multiple files (module graph)
+#   - workspace / packages (manifest)
+# - Provide artifact emission plumbing (tokens/ast/hir/ir/bytecode/native)
+#
+# This file is a "max" scaffold and intentionally contains many placeholders.
+# Replace Vec/Option/fs with your std/runtime.
+
+module compiler.vitte
+
+# =============================================================
+# Prelude (Option/Result/Vec placeholders)
+# =============================================================
+
+enum Option[T]
+  None
+  Some(T)
+.end
+
+enum Result[T]
+  Ok(T)
+  Err(CompilerError)
+.end
+
+struct Vec[T]
+  _opaque: int
+.end
+
+fn vec_new[T]() -> Vec[T]
+  let v: Vec[T]
+  v._opaque = 0
+  ret v
+.end
+
+fn vec_len[T](v: &Vec[T]) -> int
+  _ = v
+  ret 0
+.end
+
+fn vec_push[T](v: &mut Vec[T], x: T)
+  _ = v
+  _ = x
+.end
+
+fn vec_get[T](v: &Vec[T], i: int) -> Option[T]
+  _ = v
+  _ = i
+  ret Option::None
+.end
+
+fn ok[T](x: T) -> Result[T]
+  ret Result::Ok(x)
+.end
+
+fn err[T](e: CompilerError) -> Result[T]
+  ret Result::Err(e)
+.end
+
+# =============================================================
+# Version / identity
+# =============================================================
+
+const VITTEC_NAME: string = "vittec"
+const VITTEC_VERSION: string = "0.1.0"
+
+# =============================================================
+# Diagnostics surface
+# =============================================================
+
+enum Severity
+  Info
+  Warning
+  Error
+.end
+
+struct Span
+  file_id: int
+  lo: int
+  hi: int
+.end
+
+fn span_new(file_id: int, lo: int, hi: int) -> Span
+  let s: Span
+  s.file_id = file_id
+  s.lo = lo
+  s.hi = hi
+  ret s
+.end
+
+struct CompilerError
+  code: int
+  message: string
+  span: Span
+.end
+
+fn compiler_error(code: int, message: string, span: Span) -> CompilerError
+  let e: CompilerError
+  e.code = code
+  e.message = message
+  e.span = span
+  ret e
+.end
+
+struct Diagnostic
+  severity: Severity
+  code: int
+  message: string
+  span: Span
+.end
+
+struct Diagnostics
+  items: Vec[Diagnostic]
+  had_error: bool
+  warnings_as_errors: bool
+.end
+
+fn diagnostics_new() -> Diagnostics
+  let d: Diagnostics
+  d.items = vec_new()
+  d.had_error = false
+  d.warnings_as_errors = false
+  ret d
+.end
+
+fn diagnostics_set_warnings_as_errors(diags: &mut Diagnostics, enabled: bool)
+  diags.warnings_as_errors = enabled
+.end
+
+fn diagnostics_push(diags: &mut Diagnostics, sev: Severity, code: int, msg: string, sp: Span)
+  let s = sev
+  if sev == Severity::Warning && diags.warnings_as_errors
+    s = Severity::Error
+  .end
+
+  let it: Diagnostic
+  it.severity = s
+  it.code = code
+  it.message = msg
+  it.span = sp
+
+  vec_push(&mut diags.items, it)
+  if s == Severity::Error
+    diags.had_error = true
+  .end
+.end
+
+fn diag_err(diags: &mut Diagnostics, code: int, msg: string, sp: Span)
+  diagnostics_push(diags, Severity::Error, code, msg, sp)
+.end
+
+fn diag_warn(diags: &mut Diagnostics, code: int, msg: string, sp: Span)
+  diagnostics_push(diags, Severity::Warning, code, msg, sp)
+.end
+
+fn diag_info(diags: &mut Diagnostics, code: int, msg: string, sp: Span)
+  diagnostics_push(diags, Severity::Info, code, msg, sp)
+.end
+
+# =============================================================
+# Inputs / sources
+# =============================================================
+
+struct SourceFile
+  id: int
+  path: string
+  text: string
+.end
+
+struct SourceMap
+  files: Vec[SourceFile]
+.end
+
+fn sourcemap_new() -> SourceMap
+  let sm: SourceMap
+  sm.files = vec_new()
+  ret sm
+.end
+
+fn sourcemap_add(sm: &mut SourceMap, path: string, text: string) -> int
+  let f: SourceFile
+  f.id = vec_len(&sm.files)
+  f.path = path
+  f.text = text
+  vec_push(&mut sm.files, f)
+  ret f.id
+.end
+
+struct InputFile
+  path: string
+  file_id: int
+.end
+
+struct Inputs
+  files: Vec[InputFile]
+.end
+
+fn inputs_new() -> Inputs
+  let i: Inputs
+  i.files = vec_new()
+  ret i
+.end
+
+fn inputs_add_text(inputs: &mut Inputs, sm: &mut SourceMap, path: string, text: string) -> int
+  let fid = sourcemap_add(sm, path, text)
+  let it: InputFile
+  it.path = path
+  it.file_id = fid
+  vec_push(&mut inputs.files, it)
+  ret fid
+.end
+
+# =============================================================
+# Target / backend selection
+# =============================================================
+
+enum BackendKind
+  Vm
+  Native
+  Wasm
+.end
+
+enum OptLevel
+  O0
+  O1
+  O2
+  O3
+  Os
+  Oz
+.end
+
+struct Target
+  triple: string
+  backend: BackendKind
+.end
+
+fn target_default() -> Target
+  let t: Target
+  t.triple = "x86_64-unknown-linux-gnu"
+  t.backend = BackendKind::Vm
+  ret t
+.end
+
+# =============================================================
+# Emission / artifacts
+# =============================================================
+
+enum EmitKind
+  None
+  Tokens
+  Ast
+  Hir
+  Ir
+  Bytecode
+  Object
+  Executable
+.end
+
+struct Artifact
+  kind: EmitKind
+  name: string
+  text: string
+  bytes: Vec[int]
+.end
+
+fn artifact_new(kind: EmitKind, name: string) -> Artifact
+  let a: Artifact
+  a.kind = kind
+  a.name = name
+  a.text = ""
+  a.bytes = vec_new()
+  ret a
+.end
+
+struct Outputs
+  artifacts: Vec[Artifact]
+.end
+
+fn outputs_new() -> Outputs
+  let o: Outputs
+  o.artifacts = vec_new()
+  ret o
+.end
+
+fn outputs_push(out: &mut Outputs, a: Artifact)
+  vec_push(&mut out.artifacts, a)
+.end
+
+# =============================================================
+# Config
+# =============================================================
+
+struct Config
+  emit: EmitKind
+  target: Target
+  opt: OptLevel
+  warnings_as_errors: bool
+  debug_symbols: bool
+  dump_timings: bool
+  dump_graph: bool
+.end
+
+fn config_default() -> Config
+  let c: Config
+  c.emit = EmitKind::Executable
+  c.target = target_default()
+  c.opt = OptLevel::O0
+  c.warnings_as_errors = false
+  c.debug_symbols = false
+  c.dump_timings = false
+  c.dump_graph = false
+  ret c
+.end
+
+# =============================================================
+# Package/workspace (manifest) — placeholder
+# =============================================================
+
+enum ManifestKind
+  None
+  VitteToml
+  ModToml
+  MuffinMuf
+.end
+
+struct Manifest
+  kind: ManifestKind
+  path: string
+  raw: string
+.end
+
+fn manifest_none() -> Manifest
+  let m: Manifest
+  m.kind = ManifestKind::None
+  m.path = ""
+  m.raw = ""
+  ret m
+.end
+
+struct Package
+  name: string
+  version: string
+  root: string
+  manifest: Manifest
+.end
+
+fn package_new(name: string, version: string, root: string) -> Package
+  let p: Package
+  p.name = name
+  p.version = version
+  p.root = root
+  p.manifest = manifest_none()
+  ret p
+.end
+
+struct Workspace
+  root: string
+  packages: Vec[Package]
+.end
+
+fn workspace_new(root: string) -> Workspace
+  let w: Workspace
+  w.root = root
+  w.packages = vec_new()
+  ret w
+.end
+
+# =============================================================
+# Frontend bridge (steel)
+# =============================================================
+
+# Expected external modules:
+# - compiler.steel (frontend)
+# - compiler.steel_abi.callconv (ABI planner)
+# These are declared as 'use' for intent; wire to your real module system.
+
+use compiler.steel
+use compiler.steel_abi.callconv
+
+struct FrontendUnit
+  file_id: int
+  # opaque handles to AST/HIR/IR etc.
+  ast_opaque: int
+  hir_opaque: int
+  ir_opaque: int
+.end
+
+fn frontend_unit_new(file_id: int) -> FrontendUnit
+  let u: FrontendUnit
+  u.file_id = file_id
+  u.ast_opaque = 0
+  u.hir_opaque = 0
+  u.ir_opaque = 0
+  ret u
+.end
+
+# =============================================================
+# Module graph (dependency resolution) — placeholder
+# =============================================================
+
+struct ModuleId
+  idx: int
+.end
+
+struct ModuleNode
+  id: ModuleId
+  name: string
+  file_id: int
+  deps: Vec[ModuleId]
+.end
+
+struct ModuleGraph
+  nodes: Vec[ModuleNode]
+.end
+
+fn module_graph_new() -> ModuleGraph
+  let g: ModuleGraph
+  g.nodes = vec_new()
+  ret g
+.end
+
+fn module_id(idx: int) -> ModuleId
+  let m: ModuleId
+  m.idx = idx
+  ret m
+.end
+
+fn module_graph_add(g: &mut ModuleGraph, name: string, file_id: int) -> ModuleId
+  let id = module_id(vec_len(&g.nodes))
+  let n: ModuleNode
+  n.id = id
+  n.name = name
+  n.file_id = file_id
+  n.deps = vec_new()
+  vec_push(&mut g.nodes, n)
+  ret id
+.end
+
+# =============================================================
+# Pass pipeline (high-level)
+# =============================================================
+
+enum Phase
+  Load
+  Lex
+  Parse
+  LowerAst
+  LowerHir
+  LowerIr
+  Codegen
+  Link
+.end
+
+struct Timing
+  phase: Phase
+  nanos: int
+.end
+
+struct Timings
+  items: Vec[Timing]
+.end
+
+fn timings_new() -> Timings
+  let t: Timings
+  t.items = vec_new()
+  ret t
+.end
+
+fn timings_push(ts: &mut Timings, ph: Phase, nanos: int)
+  let x: Timing
+  x.phase = ph
+  x.nanos = nanos
+  vec_push(&mut ts.items, x)
+.end
+
+# =============================================================
+# Driver
+# =============================================================
+
+struct Driver
+  cfg: Config
+  diags: Diagnostics
+  sm: SourceMap
+  inputs: Inputs
+  graph: ModuleGraph
+  outputs: Outputs
+  timings: Timings
+.end
+
+fn driver_new(cfg: Config) -> Driver
+  let d: Driver
+  d.cfg = cfg
+  d.diags = diagnostics_new()
+  diagnostics_set_warnings_as_errors(&mut d.diags, cfg.warnings_as_errors)
+  d.sm = sourcemap_new()
+  d.inputs = inputs_new()
+  d.graph = module_graph_new()
+  d.outputs = outputs_new()
+  d.timings = timings_new()
+  ret d
+.end
+
+fn driver_add_source_text(d: &mut Driver, path: string, text: string) -> int
+  let fid = inputs_add_text(&mut d.inputs, &mut d.sm, path, text)
+  _ = module_graph_add(&mut d.graph, path, fid)
+  ret fid
+.end
+
+fn driver_frontend_one(d: &mut Driver, file_id: int) -> Option[FrontendUnit]
+  # In reality, call steel.compile_text and map diagnostics.
+  let u = frontend_unit_new(file_id)
+  ret Option::Some(u)
+.end
+
+fn driver_codegen_all(_d: &mut Driver, _units: &Vec[FrontendUnit])
+  # TODO:
+  # - for VM backend: emit bytecode module
+  # - for native backend: emit object + link
+  # - for wasm: emit wasm module
+  0
+.end
+
+fn driver_link(_d: &mut Driver)
+  # TODO: link objects, or assemble bytecode bundle.
+  0
+.end
+
+fn driver_run(d: &mut Driver) -> Result[Outputs]
+  # Phase: frontend on all inputs
+  let units: Vec[FrontendUnit] = vec_new()
+
+  let i = 0
+  while i < vec_len(&d.inputs.files)
+    let fopt = vec_get(&d.inputs.files, i)
+    match fopt
+      Option::Some(f) =>
+        let uopt = driver_frontend_one(d, f.file_id)
+        match uopt
+          Option::Some(u) => vec_push(&mut units, u)
+          _ => 0
+        .end
+      _ => 0
+    .end
+    i = i + 1
+  .end
+
+  if d.diags.had_error
+    ret err(compiler_error(9001, "compilation aborted due to previous errors", span_new(0, 0, 0)))
+  .end
+
+  driver_codegen_all(d, &units)
+
+  if d.cfg.emit == EmitKind::Tokens
+    outputs_push(&mut d.outputs, artifact_new(EmitKind::Tokens, "tokens"))
+  .end
+
+  if d.cfg.emit == EmitKind::Ast
+    outputs_push(&mut d.outputs, artifact_new(EmitKind::Ast, "ast"))
+  .end
+
+  if d.cfg.emit == EmitKind::Hir
+    outputs_push(&mut d.outputs, artifact_new(EmitKind::Hir, "hir"))
+  .end
+
+  if d.cfg.emit == EmitKind::Ir
+    outputs_push(&mut d.outputs, artifact_new(EmitKind::Ir, "ir"))
+  .end
+
+  if d.cfg.emit == EmitKind::Bytecode
+    outputs_push(&mut d.outputs, artifact_new(EmitKind::Bytecode, "bytecode"))
+  .end
+
+  if d.cfg.emit == EmitKind::Object
+    outputs_push(&mut d.outputs, artifact_new(EmitKind::Object, "obj"))
+  .end
+
+  if d.cfg.emit == EmitKind::Executable
+    driver_link(d)
+    outputs_push(&mut d.outputs, artifact_new(EmitKind::Executable, "a.out"))
+  .end
+
+  ret ok(d.outputs)
+.end
+
+# =============================================================
+# Public API surface
+# =============================================================
+
+struct CompileReport
+  ok: bool
+  outputs: Outputs
+  diags: Diagnostics
+.end
+
+fn compile_sources(cfg: Config, sources: Vec[(string,string)]) -> CompileReport
+  let d = driver_new(cfg)
+
+  # load all sources
+  let i = 0
+  while i < vec_len(&sources)
+    let opt = vec_get(&sources, i)
+    match opt
+      Option::Some(p) =>
+        # tuple access is placeholder; wire to real tuple handling
+        _ = p
+      _ => 0
+    .end
+    i = i + 1
+  .end
+
+  let out = outputs_new()
+  let rep: CompileReport
+  rep.ok = !d.diags.had_error
+  rep.outputs = out
+  rep.diags = d.diags
+  ret rep
+.end
+
+fn compile_text(path: string, text: string, cfg: Config) -> CompileReport
+  let d = driver_new(cfg)
+  _ = driver_add_source_text(&mut d, path, text)
+
+  let r = driver_run(&mut d)
+  match r
+    Result::Ok(o) =>
+      let rep: CompileReport
+      rep.ok = true
+      rep.outputs = o
+      rep.diags = d.diags
+      ret rep
+    _ =>
+      let rep: CompileReport
+      rep.ok = false
+      rep.outputs = d.outputs
+      rep.diags = d.diags
+      ret rep
+  .end
+.end
+
+# =============================================================
+# CLI glue (optional)
+# =============================================================
+
+struct CliArgs
+  input_paths: Vec[string]
+  emit: EmitKind
+  opt: OptLevel
+  target_triple: string
+  backend: BackendKind
+  warnings_as_errors: bool
+.end
+
+fn cli_args_default() -> CliArgs
+  let a: CliArgs
+  a.input_paths = vec_new()
+  a.emit = EmitKind::Executable
+  a.opt = OptLevel::O0
+  a.target_triple = ""
+  a.backend = BackendKind::Vm
+  a.warnings_as_errors = false
+  ret a
+.end
+
+fn parse_args(_argv: Vec[string]) -> CliArgs
+  # TODO: real argument parsing
+  ret cli_args_default()
+.end
+
+fn config_from_cli(a: &CliArgs) -> Config
+  let c = config_default()
+  c.emit = a.emit
+  c.opt = a.opt
+  c.warnings_as_errors = a.warnings_as_errors
+  if a.target_triple != ""
+    c.target.triple = a.target_triple
+  .end
+  c.target.backend = a.backend
+  ret c
+.end
+
+# =============================================================
+# Smoke tests (manual)
+# =============================================================
+
+fn smoke_compile()
+  let cfg = config_default()
+  let rep = compile_text("main.vit", "module app\nfn main()\n.end\n", cfg)
+  _ = rep
+.end

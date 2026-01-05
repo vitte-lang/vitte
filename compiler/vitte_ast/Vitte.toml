@@ -1,20 +1,87 @@
+
+
+# Vitte.toml — vitte_ast
+#
+# Manifest du crate `vitte_ast` (AST canonique du compilateur Vitte).
+#
+# Objectif: fournir une surface stable et réutilisable pour le lexer/parser
+# et toutes les passes (lowering, resolve, typecheck, etc.).
+
+[manifest]
+format = "vitte"
+version = 1
+
 [package]
-name = "rustc_ast"
-version = "0.0.0"
-edition = "2024"
+name = "vitte_ast"
+version = "0.1.0"
+description = "Vitte compiler AST crate (tokens, tokenstream, visitors, format args)."
+license = "MIT"
+readme = "README.md"
+# repository = "..."   # optionnel: URL du dépôt
+# homepage   = "..."   # optionnel
+authors = ["Vincent"]
+
+[layout]
+src_dir = "src"
+include = [
+  "Vitte.toml",
+  "README.md",
+  "src/**/*.vit",
+]
+exclude = [
+  "target/**",
+  ".git/**",
+]
+
+# ------------------------------------------------------------
+# Targets
+# ------------------------------------------------------------
+
+[target.lib]
+# Point d’entrée public du crate.
+path = "src/lib.vit"
+module = "vitte_ast"
+
+# Arbre des modules (utile tooling / IDE), si ton build le consomme.
+# Sinon: tu peux le retirer.
+module_tree = "src/mod.vit"
+
+# ------------------------------------------------------------
+# Build profile (valeurs indicatives)
+# ------------------------------------------------------------
+
+[profile.dev]
+opt_level = 0
+debug = true
+
+[profile.release]
+opt_level = 2
+debug = false
+lto = true
+
+# ------------------------------------------------------------
+# Dependencies
+# ------------------------------------------------------------
+#
+# NOTE: laisse vide tant que la convention workspace/path n’est pas figée.
+# Exemple (si tu as un workspace mono-repo):
+#
+# [dependencies]
+# vitte_core = { path = "../vitte_core" }
+# vitte_diag = { path = "../vitte_diag" }
+#
 
 [dependencies]
-# tidy-alphabetical-start
-bitflags = "2.4.1"
-memchr = "2.7.6"
-rustc-literal-escaper = "0.0.5"
-rustc_ast_ir = { path = "../rustc_ast_ir" }
-rustc_data_structures = { path = "../rustc_data_structures" }
-rustc_index = { path = "../rustc_index" }
-rustc_macros = { path = "../rustc_macros" }
-rustc_serialize = { path = "../rustc_serialize" }
-rustc_span = { path = "../rustc_span" }
-smallvec = { version = "1.8.1", features = ["union", "may_dangle"] }
-thin-vec = "0.2.12"
-tracing = "0.1"
-# tidy-alphabetical-end
+
+[dev-dependencies]
+
+# ------------------------------------------------------------
+# Features
+# ------------------------------------------------------------
+
+[features]
+default = []
+
+# Exemple:
+# debug_spans = []
+# trace_visit = []

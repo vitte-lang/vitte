@@ -1,90 +1,132 @@
-name: Build
+
+
+name: build
 
 on:
   push:
-    branches: [ main, develop ]
+    branches:
+      - "**"
   pull_request:
-    branches: [ main, develop ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  build-debug:
-    name: Build Debug
+  build:
+    name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Install deps (Linux)
-      if: runner.os == 'Linux'
-      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang cmake ninja-build
+      # -----------------------------
+      # Rust toolchain (only if Rust is present)
+      # -----------------------------
+      - name: Setup Rust
+        if: ${{ hashFiles('**/Cargo.toml') != '' }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
-    - name: Install deps (macOS)
-      if: runner.os == 'macOS'
-      run: brew install cmake ninja
+      - name: Cache Cargo
+        if: ${{ hashFiles('**/Cargo.toml') != '' }}
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ runner.os }}
 
-    - name: Install deps (Windows)
-      if: runner.os == 'Windows'
-      run: choco install -y cmake ninja
+      - name: Rust format (rustfmt)
+        if: ${{ hashFiles('**/Cargo.toml') != '' }}
+        run: cargo fmt --all -- --check
 
-    - name: Configure (compiler)
-      run: |
-        cmake -S compiler -B compiler/build/debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+      - name: Rust lint (clippy)
+        if: ${{ hashFiles('**/Cargo.toml') != '' }}
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
-    - name: Build (compiler)
-      run: cmake --build compiler/build/debug --target vittec
+      - name: Rust tests
+        if: ${{ hashFiles('**/Cargo.toml') != '' }}
+        run: cargo test --workspace --all-features
 
-    - name: Run compiler smoke tests
-      if: runner.os != 'Windows'
-      run: cd compiler && ./scripts/run_tests.sh
+      - name: Rust build (release)
+        if: ${{ hashFiles('**/Cargo.toml') != '' }}
+        run: cargo build --workspace --release
 
-  build-release:
-    name: Build Release
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+      # -----------------------------
+      # Optional repo-specific CI scripts
+      # -----------------------------
+      - name: Run scripts/ci.sh
+        if: ${{ runner.os != 'Windows' && hashFiles('scripts/ci.sh') != '' }}
+        run: |
+          chmod +x scripts/ci.sh
+          ./scripts/ci.sh
 
-    steps:
-    - uses: actions/checkout@v4
+      - name: Run scripts/ci.ps1
+        if: ${{ runner.os == 'Windows' && hashFiles('scripts/ci.ps1') != '' }}
+        shell: pwsh
+        run: ./scripts/ci.ps1
 
-    - name: Install deps (Linux)
-      if: runner.os == 'Linux'
-      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang cmake ninja-build
+      # -----------------------------
+      # Artifact packaging (best-effort)
+      # - Packs release binaries if they exist
+      # -----------------------------
+      - name: Package artifacts (unix)
+        if: ${{ runner.os != 'Windows' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
 
-    - name: Install deps (macOS)
-      if: runner.os == 'macOS'
-      run: brew install cmake ninja
+          if [ -d target/release ]; then
+            # Copy likely binaries (exclude .d and build artifacts)
+            find target/release -maxdepth 1 -type f -perm -111 \
+              ! -name "*.d" \
+              -exec cp -f {} dist/ \; || true
+          fi
 
-    - name: Configure (compiler)
-      run: cmake -S compiler -B compiler/build/release -G Ninja -DCMAKE_BUILD_TYPE=Release
+          # If nothing was copied, still emit an empty marker so artifact upload works.
+          if [ -z "$(ls -A dist 2>/dev/null || true)" ]; then
+            echo "(no binaries found)" > dist/README.txt
+          fi
 
-    - name: Build (compiler)
-      run: cmake --build compiler/build/release --target vittec
+          tar -czf vitte-${{ runner.os }}.tar.gz -C dist .
 
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: vittec-${{ matrix.os }}
-        path: |
-          compiler/build/release/vittec
-          compiler/build/release/vittec.exe
+      - name: Package artifacts (windows)
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
 
-  check-documentation:
-    name: Check Documentation Build
-    runs-on: ubuntu-latest
+          if (Test-Path -Path target\release) {
+            Get-ChildItem target\release -File | Where-Object {
+              $_.Extension -notin @('.d', '.pdb')
+            } | ForEach-Object {
+              Copy-Item $_.FullName -Destination dist -Force
+            }
+          }
 
-    steps:
-    - uses: actions/checkout@v4
+          if (-not (Get-ChildItem dist -File -ErrorAction SilentlyContinue)) {
+            Set-Content -Path dist\README.txt -Value "(no binaries found)"
+          }
 
-    - name: Check docs structure
-      run: |
-        test -d docs/tutorials || exit 1
-        test -d docs/api || exit 1
-        test -d docs/architecture || exit 1
-        test -d docs/language-spec || exit 1
-        test -f docs/README.md || exit 1
-        test -f INSTALL.md || exit 1
-        echo "Documentation structure OK"
+          Compress-Archive -Path dist\* -DestinationPath "vitte-${{ runner.os }}.zip" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitte-${{ runner.os }}
+          path: |
+            vitte-${{ runner.os }}.tar.gz
+            vitte-${{ runner.os }}.zip
+          if-no-files-found: ignore

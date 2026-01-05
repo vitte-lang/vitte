@@ -1,29 +1,64 @@
-[package]
-name = "rustc_ast_lowering"
-version = "0.0.0"
-edition = "2024"
+# Vitte.toml — vitte_ast_lowering
+#
+# Manifest du crate `vitte_ast_lowering`.
+# Lowering: vitte_ast_ir -> vitte_ast_lowering.asm
 
-[lib]
-doctest = false
+[manifest]
+format = "vitte"
+version = 1
+
+[package]
+name = "vitte_ast_lowering"
+version = "0.1.0"
+description = "Vitte compiler lowering crate (AST_IR -> ASM)."
+license = "MIT"
+readme = "README.md"
+authors = ["Vincent"]
+
+[layout]
+src_dir = "src"
+include = [
+  "Vitte.toml",
+  "README.md",
+  "messages.ftl",
+  "src/**/*.vit",
+]
+exclude = [
+  "target/**",
+  ".git/**",
+]
+
+[target.lib]
+# Entrypoint du crate
+path = "src/lib.vit"
+module = "vitte_ast_lowering"
+# Arbre des sous-modules (pour builds/outils)
+module_tree = "src/mod.vit"
+
+[profile.dev]
+opt_level = 0
+debug = true
+
+[profile.release]
+opt_level = 2
+debug = false
+lto = true
 
 [dependencies]
-# tidy-alphabetical-start
-rustc_abi = { path = "../rustc_abi" }
-rustc_ast = { path = "../rustc_ast" }
-rustc_ast_pretty = { path = "../rustc_ast_pretty" }
-rustc_attr_parsing = { path = "../rustc_attr_parsing" }
-rustc_data_structures = { path = "../rustc_data_structures" }
-rustc_errors = { path = "../rustc_errors" }
-rustc_feature = { path = "../rustc_feature" }
-rustc_fluent_macro = { path = "../rustc_fluent_macro" }
-rustc_hir = { path = "../rustc_hir" }
-rustc_index = { path = "../rustc_index" }
-rustc_macros = { path = "../rustc_macros" }
-rustc_middle = { path = "../rustc_middle" }
-rustc_session = { path = "../rustc_session" }
-rustc_span = { path = "../rustc_span" }
-rustc_target = { path = "../rustc_target" }
-smallvec = { version = "1.8.1", features = ["union", "may_dangle"] }
-thin-vec = "0.2.12"
-tracing = "0.1"
-# tidy-alphabetical-end
+vitte_ast = { path = "../vitte_ast" }
+vitte_ast_ir = { path = "../vitte_ast_ir" }
+
+[dev-dependencies]
+
+[features]
+# Features volontairement minimalistes.
+# Ajoute ici des hooks de debug, traces, etc.
+default = []
+
+# Exemple:
+# trace_lowering = []
+# verify_all = []
+
+[diagnostics]
+# Fichier Fluent (si ton pipeline diag l'utilise)
+fluent = "messages.ftl"
