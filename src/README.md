@@ -1,8 +1,15 @@
-This directory contains some source code for the Rust project, including:
+This directory contains source code for the Vitte language project, including:
 
-- The bootstrapping build system
-- Various submodules for tools, like cargo, tidy, etc.
+- **bootstrap/**: Bootstrapping build system
+- **build_helper/**: Build helper utilities
+- **ci/**: Continuous Integration scripts and configurations
+- **config/**: Configuration files for Vitte build
+- **doc/**: Vitte documentation and guides
+- **etc/**: Miscellaneous support files
+- **external/**: External dependencies (gcc, llvm-project)
+- **runtime/**: Runtime utilities and documentation tools (vittedoc, vitte-std-workspace)
+- **tools/**: Vitte development tools (cargo, clippy, rustfmt, etc.)
 
-For more information on how various parts of the compiler work, see the [rustc dev guide].
+For more information on how various parts of the Vitte compiler work, see the [vittec dev guide].
 
-[rustc dev guide]: https://rustc-dev-guide.rust-lang.org/about-this-guide.html
+[vittec dev guide]: https://vittec-dev-guide.vitte-lang.org/about-this-guide.html
