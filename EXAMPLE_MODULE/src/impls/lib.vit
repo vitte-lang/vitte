@@ -1,0 +1,52 @@
+//! Implémentations pour le module Example
+
+use crate::types::*;
+
+impl ExampleStruct {
+    /// Créer une nouvelle instance
+    pub fn new(id: u32, name: String) -> Self {
+        Self { id, name }
+    }
+
+    /// Obtenir la représentation textuelle
+    pub fn describe(&self) -> String {
+        format!("ExampleStruct {{ id: {}, name: \"{}\" }}", self.id, self.name)
+    }
+}
+
+impl Default for ExampleStruct {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            name: String::from("default"),
+        }
+    }
+}
+
+impl Processable for ExampleStruct {
+    fn process(&self) -> String {
+        format!("Processing: {}", self.describe())
+    }
+}
+
+impl Processable for ExampleEnum {
+    fn process(&self) -> String {
+        match self {
+            ExampleEnum::Simple => "Processing simple variant".to_string(),
+            ExampleEnum::WithData(s) => format!("Processing with data: {}", s),
+            ExampleEnum::WithStruct { field } => format!("Processing with struct: {}", field),
+        }
+    }
+}
+
+impl ExampleEnum {
+    /// Vérifier si c'est la variante Simple
+    pub fn is_simple(&self) -> bool {
+        matches!(self, ExampleEnum::Simple)
+    }
+}
+
+/// Fonction utilitaire globale
+pub fn process_both<T: Processable>(a: &T, b: &T) -> String {
+    format!("{}\n{}", a.process(), b.process())
+}
