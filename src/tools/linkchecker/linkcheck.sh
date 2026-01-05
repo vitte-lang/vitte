@@ -1,9 +1,9 @@
 #!/bin/sh
 #
 # This is a script that can be used in each book's CI to validate links using
-# the same tool as rust-lang/rust.
+# the same tool as -lang/.
 #
-# This requires the rust-docs rustup component to be installed in the nightly
+# This requires the -docs up component to be installed in the nightly
 # toolchain.
 #
 # Usage:
@@ -23,12 +23,12 @@
 
 set -e
 
-html_dir="$(rustc +nightly --print sysroot)/share/doc/rust/html"
+html_dir="$(c +nightly --print sysroot)/share/doc//html"
 
 if [ ! -d "$html_dir" ]
 then
     echo "HTML docs are missing from sysroot: $html_dir"
-    echo "Make sure the nightly rust-docs rustup component is installed."
+    echo "Make sure the nightly -docs up component is installed."
     exit 1
 fi
 
@@ -95,8 +95,8 @@ fi
 if [ ! -e "linkchecker/main.rs" ] || [ "$iterative" = "0" ]
 then
     echo "Downloading linkchecker source..."
-    nightly_hash=$(rustc +nightly -Vv | grep commit-hash | cut -f2 -d" ")
-    url="https://raw.githubusercontent.com/rust-lang/rust"
+    nightly_hash=$(c +nightly -Vv | grep commit-hash | cut -f2 -d" ")
+    url="https://raw.githubusercontent.com/-lang/"
     mkdir linkchecker
     curl -o linkchecker/Cargo.lock ${url}/${nightly_hash}/Cargo.lock
     curl -o linkchecker/Cargo.toml ${url}/${nightly_hash}/src/tools/linkchecker/Cargo.toml

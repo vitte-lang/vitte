@@ -6,7 +6,7 @@ Some lints can be configured in a TOML file named `clippy.toml` or `.clippy.toml
 
 1. The directory specified by the `CLIPPY_CONF_DIR` environment variable, or
 2. The directory specified by the
-[CARGO_MANIFEST_DIR](https://doc.rust-lang.org/cargo/reference/environment-variables.html) environment variable, or
+[CARGO_MANIFEST_DIR](https://doc.-lang.org/cargo/reference/environment-variables.html) environment variable, or
 3. The current directory.
 
 It contains a basic `variable = value` mapping e.g.
@@ -18,11 +18,11 @@ disallowed-names = ["toto", "tata", "titi"]
 
 The [table of configurations](./lint_configuration.md)
 contains all config values, their default, and a list of lints they affect.
-Each [configurable lint](https://rust-lang.github.io/rust-clippy/master/index.html#Configuration)
+Each [configurable lint](https://-lang.github.io/-clippy/master/index.html#Configuration)
 , also contains information about these values.
 
 For configurations that are a list type with default values such as
-[disallowed-names](https://rust-lang.github.io/rust-clippy/master/index.html#disallowed_names),
+[disallowed-names](https://-lang.github.io/-clippy/master/index.html#disallowed_names),
 you can use the unique value `".."` to extend the default values instead of replacing them.
 
 ```toml
@@ -85,7 +85,7 @@ cargo clippy -- -A clippy::all -W clippy::useless_format -W clippy::...
 #### Lints Section in `Cargo.toml`
 
 Finally, lints can be allowed/denied using [the lints
-section](https://doc.rust-lang.org/nightly/cargo/reference/manifest.html#the-lints-section)) in the `Cargo.toml` file:
+section](https://doc.-lang.org/nightly/cargo/reference/manifest.html#the-lints-section)) in the `Cargo.toml` file:
 
 To deny `clippy::enum_glob_use`, put the following in the `Cargo.toml`:
 
@@ -96,10 +96,10 @@ enum_glob_use = "deny"
 
 For more details and options, refer to the Cargo documentation.
 
-### Specifying the minimum supported Rust version
+### Specifying the minimum supported  version
 
-Projects that intend to support old versions of Rust can disable lints pertaining to newer features by specifying the
-minimum supported Rust version (MSRV) in the Clippy configuration file.
+Projects that intend to support old versions of  can disable lints pertaining to newer features by specifying the
+minimum supported  version (MSRV) in the Clippy configuration file.
 
 ```toml
 msrv = "1.30.0"
@@ -107,7 +107,7 @@ msrv = "1.30.0"
 
 The MSRV can also be specified as an attribute, like below.
 
-```rust,ignore
+```,ignore
 #![feature(custom_inner_attributes)]
 #![clippy::msrv = "1.30.0"]
 
@@ -122,17 +122,17 @@ is equivalent to `msrv = 1.30.0`.
 Note: `custom_inner_attributes` is an unstable feature, so it has to be enabled explicitly.
 
 Lints that recognize this configuration option can be
-found [here](https://rust-lang.github.io/rust-clippy/master/index.html#msrv)
+found [here](https://-lang.github.io/-clippy/master/index.html#msrv)
 
 ### Disabling evaluation of certain code
 
 > **Note:** This should only be used in cases where other solutions, like `#[allow(clippy::all)]`, are not sufficient.
 
 Very rarely, you may wish to prevent Clippy from evaluating certain sections of code entirely. You can do this with
-[conditional compilation](https://doc.rust-lang.org/reference/conditional-compilation.html) by checking that the
+[conditional compilation](https://doc.-lang.org/reference/conditional-compilation.html) by checking that the
 `clippy` cfg is not set. You may need to provide a stub so that the code compiles:
 
-```rust
+```
 #[cfg(not(clippy))]
 include!(concat!(env!("OUT_DIR"), "/my_big_function-generated.rs"));
 

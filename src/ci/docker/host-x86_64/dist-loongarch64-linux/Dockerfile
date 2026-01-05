@@ -6,8 +6,8 @@ RUN sh /scripts/cross-apt-packages.sh
 COPY scripts/crosstool-ng.sh /scripts/
 RUN sh /scripts/crosstool-ng.sh
 
-COPY scripts/rustbuild-setup.sh /scripts/
-RUN sh /scripts/rustbuild-setup.sh
+COPY scripts/build-setup.sh /scripts/
+RUN sh /scripts/build-setup.sh
 WORKDIR /tmp
 
 COPY scripts/crosstool-ng-build.sh /scripts/
@@ -45,7 +45,7 @@ ENV TARGETS=$HOSTS
 ENV TARGETS=$TARGETS,loongarch64-unknown-none
 ENV TARGETS=$TARGETS,loongarch64-unknown-none-softfloat
 
-ENV RUST_CONFIGURE_ARGS \
+ENV _CONFIGURE_ARGS \
       --enable-extended \
       --enable-full-tools \
       --enable-profiler \

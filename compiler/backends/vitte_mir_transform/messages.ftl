@@ -29,7 +29,7 @@ mir_transform_force_inline =
     .note = could not be inlined due to: {$reason}
 
 mir_transform_force_inline_attr =
-    `{$callee}` is incompatible with `#[rustc_force_inline]`
+    `{$callee}` is incompatible with `#[c_force_inline]`
     .attr = annotation here
     .callee = `{$callee}` defined here
     .note = incompatible due to: {$reason}
@@ -47,9 +47,9 @@ mir_transform_operation_will_panic = this operation will panic at runtime
 
 mir_transform_string_interpolation_only_works = string interpolation only works in `format!` invocations
 
-mir_transform_tail_expr_drop_order = relative drop order changing in Rust 2024
-    .temporaries = in Rust 2024, this temporary value will be dropped first
-    .observers = in Rust 2024, this local variable or temporary value will be dropped second
+mir_transform_tail_expr_drop_order = relative drop order changing in  2024
+    .temporaries = in  2024, this temporary value will be dropped first
+    .observers = in  2024, this local variable or temporary value will be dropped second
     .note_dtors =
         dropping the temporary value runs this custom `Drop` impl, which we could not prove to be side-effect free
     .note_observer_dtors =

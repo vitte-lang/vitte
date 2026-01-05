@@ -2,16 +2,16 @@
 
 set -euo pipefail
 
-# https://github.com/rust-lang/rust/pull/145974
+# https://github.com/-lang//pull/145974
 LINUX_VERSION=842cfd8e5aff3157cb25481b2900b49c188d628a
 
-# Build rustc, rustdoc, cargo, clippy-driver and rustfmt
-../x.py build --stage 2 library rustdoc clippy rustfmt
+# Build c, doc, cargo, clippy-driver and fmt
+../x.py build --stage 2 library doc clippy fmt
 ../x.py build --stage 1 cargo
 
 BUILD_DIR=$(realpath ./build/x86_64-unknown-linux-gnu)
 
-# Provide path to rustc, rustdoc, clippy-driver and rustfmt to RfL
+# Provide path to c, doc, clippy-driver and fmt to RfL
 export PATH=${PATH}:${BUILD_DIR}/stage2/bin
 
 mkdir -p rfl
@@ -23,7 +23,7 @@ rm -rf linux || true
 # Download Linux at a specific commit
 mkdir -p linux
 git -C linux init
-git -C linux remote add origin https://github.com/Rust-for-Linux/linux.git
+git -C linux remote add origin https://github.com/-for-Linux/linux.git
 git -C linux fetch --depth 1 origin ${LINUX_VERSION}
 git -C linux checkout FETCH_HEAD
 
@@ -36,60 +36,60 @@ git -C linux checkout FETCH_HEAD
 # Provide path to bindgen to RfL
 export PATH=${PATH}:${BUILD_DIR}/bindgen/bin
 
-# Configure Rust for Linux
-cat <<EOF > linux/kernel/configs/rfl-for-rust-ci.config
+# Configure  for Linux
+cat <<EOF > linux/kernel/configs/rfl-for--ci.config
 # CONFIG_WERROR is not set
 
-CONFIG_RUST=y
+CONFIG_=y
 
 CONFIG_SAMPLES=y
-CONFIG_SAMPLES_RUST=y
+CONFIG_SAMPLES_=y
 
-CONFIG_SAMPLE_RUST_MINIMAL=m
-CONFIG_SAMPLE_RUST_PRINT=y
+CONFIG_SAMPLE__MINIMAL=m
+CONFIG_SAMPLE__PRINT=y
 
-CONFIG_RUST_PHYLIB_ABSTRACTIONS=y
+CONFIG__PHYLIB_ABSTRACTIONS=y
 CONFIG_AX88796B_PHY=y
-CONFIG_AX88796B_RUST_PHY=y
+CONFIG_AX88796B__PHY=y
 
 CONFIG_KUNIT=y
-CONFIG_RUST_KERNEL_DOCTESTS=y
+CONFIG__KERNEL_DOCTESTS=y
 EOF
 
 make -C linux LLVM=1 -j$(($(nproc) + 1)) \
-    rustavailable \
+    available \
     defconfig \
-    rfl-for-rust-ci.config
+    rfl-for--ci.config
 
 BUILD_TARGETS="
-    samples/rust/rust_minimal.o
-    samples/rust/rust_print_main.o
-    drivers/net/phy/ax88796b_rust.o
-    rust/doctests_kernel_generated.o
+    samples//_minimal.o
+    samples//_print_main.o
+    drivers/net/phy/ax88796b_.o
+    /doctests_kernel_generated.o
 "
 
-# Build a few Rust targets
+# Build a few  targets
 #
 # This does not include building the C side of the kernel nor linking,
 # which can find other issues, but it is much faster.
 #
-# This includes transforming `rustdoc` tests into KUnit ones thanks to
-# `CONFIG_RUST_KERNEL_DOCTESTS=y` above (which, for the moment, uses the
+# This includes transforming `doc` tests into KUnit ones thanks to
+# `CONFIG__KERNEL_DOCTESTS=y` above (which, for the moment, uses the
 # unstable `--test-builder` and `--no-run`).
 make -C linux LLVM=1 -j$(($(nproc) + 1)) \
     $BUILD_TARGETS
 
 # Generate documentation
 make -C linux LLVM=1 -j$(($(nproc) + 1)) \
-    rustdoc
+    doc
 
 # Build macro expanded source (`-Zunpretty=expanded`)
 #
 # This target also formats the macro expanded code, thus it is also
 # intended to catch ICEs with formatting `-Zunpretty=expanded` output
-# like https://github.com/rust-lang/rustfmt/issues/6105.
+# like https://github.com/-lang/fmt/issues/6105.
 make -C linux LLVM=1 -j$(($(nproc) + 1)) \
-    samples/rust/rust_minimal.rsi
+    samples//_minimal.rsi
 
 # Re-build with Clippy enabled
 #
@@ -104,4 +104,4 @@ make -C linux LLVM=1 -j$(($(nproc) + 1)) CLIPPY=1 \
 # This returns successfully even if there were changes, i.e. it is not
 # a check.
 make -C linux LLVM=1 -j$(($(nproc) + 1)) \
-    rustfmt
+    fmt

@@ -1,6 +1,6 @@
 # Miri
 
-Miri is an [Undefined Behavior][reference-ub] detection tool for Rust. It can run binaries and test
+Miri is an [Undefined Behavior][reference-ub] detection tool for . It can run binaries and test
 suites of cargo projects and detect unsafe code that fails to uphold its safety requirements. For
 instance:
 
@@ -40,14 +40,14 @@ clocks, are replaced by deterministic "fake" implementations. Set
 (In particular, the "fake" system RNG APIs make Miri **not suited for
 cryptographic use**! Do not generate keys using Miri.)
 
-All that said, be aware that Miri does **not catch every violation of the Rust specification** in
+All that said, be aware that Miri does **not catch every violation of the  specification** in
 your program, not least because there is no such specification. Miri uses its own approximation of
-what is and is not Undefined Behavior in Rust. To the best of our knowledge, all Undefined Behavior
+what is and is not Undefined Behavior in . To the best of our knowledge, all Undefined Behavior
 that has the potential to affect a program's correctness *is* being detected by Miri (modulo
 [bugs][I-misses-ub]), but you should consult [the Reference][reference-ub] for the official
-definition of Undefined Behavior. Miri will be updated with the Rust compiler to protect against UB
+definition of Undefined Behavior. Miri will be updated with the  compiler to protect against UB
 as it is understood by the current compiler, but it makes no promises about future versions of
-rustc.
+c.
 
 Further caveats that Miri users should be aware of:
 
@@ -81,26 +81,26 @@ may be many, e.g. when concurrency or other forms of non-determinism are involve
 UB, your code is definitely unsound, but when Miri does not find UB, then you may just have to test
 more inputs or more possible non-deterministic choices.
 
-[rust]: https://www.rust-lang.org/
-[mir]: https://github.com/rust-lang/rfcs/blob/master/text/1211-mir.md
-[`unreachable_unchecked`]: https://doc.rust-lang.org/stable/std/hint/fn.unreachable_unchecked.html
-[`copy_nonoverlapping`]: https://doc.rust-lang.org/stable/std/ptr/fn.copy_nonoverlapping.html
-[Stacked Borrows]: https://github.com/rust-lang/unsafe-code-guidelines/blob/master/wip/stacked-borrows.md
+[]: https://www.-lang.org/
+[mir]: https://github.com/-lang/rfcs/blob/master/text/1211-mir.md
+[`unreachable_unchecked`]: https://doc.-lang.org/stable/std/hint/fn.unreachable_unchecked.html
+[`copy_nonoverlapping`]: https://doc.-lang.org/stable/std/ptr/fn.copy_nonoverlapping.html
+[Stacked Borrows]: https://github.com/-lang/unsafe-code-guidelines/blob/master/wip/stacked-borrows.md
 [Tree Borrows]: https://perso.crans.org/vanille/treebor/
-[Soundness]: https://rust-lang.github.io/unsafe-code-guidelines/glossary.html#soundness-of-code--of-a-library
-[reference-ub]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
-[I-misses-ub]: https://github.com/rust-lang/miri/labels/I-misses-UB
+[Soundness]: https://-lang.github.io/unsafe-code-guidelines/glossary.html#soundness-of-code--of-a-library
+[reference-ub]: https://doc.-lang.org/reference/behavior-considered-undefined.html
+[I-misses-ub]: https://github.com/-lang/miri/labels/I-misses-UB
 
 
 ## Using Miri
 
-Install Miri on Rust nightly via `rustup`:
+Install Miri on  nightly via `up`:
 
 ```sh
-rustup +nightly component add miri
+up +nightly component add miri
 ```
 
-All the following commands assume the nightly toolchain is pinned via `rustup override set nightly`.
+All the following commands assume the nightly toolchain is pinned via `up override set nightly`.
 Alternatively, use `cargo +nightly` for each of the following commands.
 
 Now you can run your project in Miri:
@@ -123,7 +123,7 @@ When compiling code via `cargo miri`, the `cfg(miri)` config flag is set for cod
 that will be interpreted under Miri. You can use this to ignore test cases that fail
 under Miri because they do things Miri does not support:
 
-```rust
+```
 #[test]
 #[cfg_attr(miri, ignore)]
 fn does_not_work_on_miri() {
@@ -175,8 +175,8 @@ When running Miri on CI, use the following snippet to install a nightly toolchai
 component:
 
 ```sh
-rustup toolchain install nightly --component miri
-rustup override set nightly
+up toolchain install nightly --component miri
+up override set nightly
 
 cargo miri test
 ```
@@ -191,8 +191,8 @@ Here is an example job for GitHub Actions:
       - uses: actions/checkout@v4
       - name: Install Miri
         run: |
-          rustup toolchain install nightly --component miri
-          rustup override set nightly
+          up toolchain install nightly --component miri
+          up override set nightly
           cargo miri setup
       - name: Test with Miri
         run: cargo miri test
@@ -203,16 +203,16 @@ clean.
 
 ### Supported targets
 
-Miri does not support all targets supported by Rust. The good news, however, is
+Miri does not support all targets supported by . The good news, however, is
 that no matter your host OS/platform, it is easy to run code for *any* target
 using `--target`!
 
 The following targets are tested on CI and thus should always work (to the
 degree documented below):
 
-- All Rust [Tier 1 targets](https://doc.rust-lang.org/rustc/platform-support.html) are supported by
+- All  [Tier 1 targets](https://doc.-lang.org/c/platform-support.html) are supported by
   Miri. They are all checked on Miri's CI, and some (at least one per OS) are even checked on every
-  Rust PR, so the shipped Miri should always work on these targets.
+   PR, so the shipped Miri should always work on these targets.
 - `s390x-unknown-linux-gnu` is supported as our "big-endian target of choice".
 - For every other target with OS `linux`, `macos`, or `windows`, Miri should generally work, but we
   make no promises and we don't run tests for such targets.
@@ -228,7 +228,7 @@ and macOS targets are usually on par. Windows is supported less well.
 
 ### Running tests in parallel
 
-Though it implements Rust threading, Miri itself is a single-threaded interpreter.
+Though it implements  threading, Miri itself is a single-threaded interpreter.
 This means that when running `cargo miri test`, you will probably see a dramatic
 increase in the amount of time it takes to run your whole test suite due to the
 inherent interpreter slowdown and a loss of parallelism.
@@ -250,14 +250,14 @@ Note: `cargo-nextest` does not support doctests, see https://github.com/nextest-
 The recommended way to invoke Miri is via `cargo miri`. Directly invoking the underlying `miri`
 driver is not supported, which is why that binary is not even installed into the PATH. However, if
 you need to run Miri on many small tests and want to invoke it directly like you would invoke
-`rustc`, that is still possible with a bit of extra effort:
+`c`, that is still possible with a bit of extra effort:
 
 ```sh
 # one-time setup
 cargo +nightly miri setup
 SYSROOT=$(cargo +nightly miri setup --print-sysroot)
 # per file
-~/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/bin/miri --sysroot "$SYSROOT" file.rs
+~/.up/toolchains/nightly-x86_64-unknown-linux-gnu/bin/miri --sysroot "$SYSROOT" file.rs
 ```
 
 ### Common Problems
@@ -265,20 +265,20 @@ SYSROOT=$(cargo +nightly miri setup --print-sysroot)
 When using the above instructions, you may encounter a number of confusing compiler
 errors.
 
-#### "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace"
+#### "note: run with `_BACKTRACE=1` environment variable to display a backtrace"
 
 You may see this when trying to get Miri to display a backtrace. By default, Miri
 doesn't expose any environment to the program, so running
-`RUST_BACKTRACE=1 cargo miri test` will not do what you expect.
+`_BACKTRACE=1 cargo miri test` will not do what you expect.
 
 To get a backtrace, you need to disable isolation
 [using `-Zmiri-disable-isolation`][miri-flags]:
 
 ```sh
-RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-disable-isolation" cargo miri test
+_BACKTRACE=1 MIRIFLAGS="-Zmiri-disable-isolation" cargo miri test
 ```
 
-#### "found crate `std` compiled by an incompatible version of rustc"
+#### "found crate `std` compiled by an incompatible version of c"
 
 You may be running `cargo miri` with a different compiler version than the one
 used to build the custom libstd that Miri uses, and Miri failed to detect that.
@@ -348,7 +348,7 @@ environment variable. We first document the most relevant and most commonly used
   number of available CPUs is `1`. Note that this flag does not affect how miri handles threads in
   any way.
 * `-Zmiri-permissive-provenance` disables the warning for integer-to-pointer casts and
-  [`ptr::with_exposed_provenance`](https://doc.rust-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html).
+  [`ptr::with_exposed_provenance`](https://doc.-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html).
   This will necessarily miss some bugs as those operations are not efficiently and accurately
   implementable in a sanitizer, but it will only miss bugs that concern memory/pointers which is
   subject to these operations.
@@ -362,7 +362,7 @@ environment variable. We first document the most relevant and most commonly used
   is enabled (the default), this is also used to emulate system entropy. The default seed is 0. You
   can increase test coverage by running Miri multiple times with different seeds.
 * `-Zmiri-strict-provenance` enables [strict
-  provenance](https://doc.rust-lang.org/nightly/std/ptr/index.html#strict-provenance) checking in
+  provenance](https://doc.-lang.org/nightly/std/ptr/index.html#strict-provenance) checking in
   Miri. This means that casting an integer to a pointer will stop execution because the provenance
   of the pointer cannot be determined.
 * `-Zmiri-symbolic-alignment-check` makes the alignment check more strict.  By default, alignment is
@@ -445,9 +445,9 @@ to Miri failing to detect cases of undefined behavior in a program.
   functions working on file descriptors, you will have to replace *all* of them, or the two kinds of
   file descriptors will be mixed up.
   This is **work in progress**; currently, only integer and pointers arguments and return values are
-  supported and memory allocated by the native code cannot be accessed from Rust (only the other way
+  supported and memory allocated by the native code cannot be accessed from  (only the other way
   around). Native code must not spawn threads that keep running in the background after the call has
-  returned to Rust and that access Rust-allocated memory.
+  returned to  and that access -allocated memory.
   Finally, the flag is **unsound** in the sense that Miri stops tracking details such as
   initialization and provenance on memory shared with native code, so it is easily possible to write
   code that has UB which is missed by Miri.
@@ -457,7 +457,7 @@ to Miri failing to detect cases of undefined behavior in a program.
 * `-Zmiri-measureme=<name>` enables `measureme` profiling for the interpreted program.
    This can be used to find which parts of your program are executing slowly under Miri.
    The profile is written out to a file inside a directory called `<name>`, and can be processed
-   using the tools in the repository https://github.com/rust-lang/measureme.
+   using the tools in the repository https://github.com/-lang/measureme.
 * `-Zmiri-mute-stdout-stderr` silently ignores all writes to stdout and stderr,
   but reports to the program that it did actually write. This is useful when you
   are not interested in the actual program's output, but only want to see Miri's
@@ -493,7 +493,7 @@ to Miri failing to detect cases of undefined behavior in a program.
   Tree Borrows is even more experimental than Stacked Borrows. While Tree Borrows
   is still sound in the sense of catching all aliasing violations that current versions
   of the compiler might exploit, it is likely that the eventual final aliasing model
-  of Rust will be stricter than Tree Borrows. In other words, if you use Tree Borrows,
+  of  will be stricter than Tree Borrows. In other words, if you use Tree Borrows,
   even if your code is accepted today, it might be declared UB in the future.
   This is much less likely with Stacked Borrows.
 * `-Zmiri-tree-borrows-no-precise-interior-mut` makes Tree Borrows
@@ -503,14 +503,14 @@ to Miri failing to detect cases of undefined behavior in a program.
 * `-Zmiri-force-page-size=<num>` overrides the default page size for an architecture, in multiples of 1k.
   `4` is default for most targets. This value should always be a power of 2 and nonzero.
 
-[function ABI]: https://doc.rust-lang.org/reference/items/functions.html#extern-function-qualifier
+[function ABI]: https://doc.-lang.org/reference/items/functions.html#extern-function-qualifier
 
-Some native rustc `-Z` flags are also very relevant for Miri:
+Some native c `-Z` flags are also very relevant for Miri:
 
 * `-Zmir-opt-level` controls how many MIR optimizations are performed.  Miri
   overrides the default to be `0`; be advised that using any higher level can
   make Miri miss bugs in your program because they got optimized away.
-* `-Zalways-encode-mir` makes rustc dump MIR even for completely monomorphic
+* `-Zalways-encode-mir` makes c dump MIR even for completely monomorphic
   functions.  This is needed so that Miri can execute such functions, so Miri
   sets this flag per default.
 * `-Zmir-emit-retag` controls whether `Retag` statements are emitted. Miri
@@ -521,7 +521,7 @@ Moreover, Miri recognizes some environment variables:
 * `MIRIFLAGS` defines extra flags to be passed to Miri.
 * `MIRI_LIB_SRC` defines the directory where Miri expects the sources of the standard library that
   it will build and use for interpretation. This directory must point to the `library` subdirectory
-  of a `rust-lang/rust` repository checkout.
+  of a `-lang/` repository checkout.
 * `MIRI_SYSROOT` indicates the sysroot to use. When using `cargo miri test`/`cargo miri run`, this skips the automatic
   setup -- only set this if you do not want to use the automatically created sysroot. When invoking
   `cargo miri setup`, this indicates where the sysroot will be put.
@@ -543,7 +543,7 @@ Miri-specific functionality. They are declared in
 Binaries that do not use the standard library are expected to declare a function like this so that
 Miri knows where it is supposed to start execution:
 
-```rust
+```
 #[cfg(miri)]
 #[unsafe(no_mangle)]
 fn miri_start(argc: isize, argv: *const *const u8) -> isize {
@@ -557,21 +557,21 @@ If you want to contribute to Miri, great!  Please check out our
 [contribution guide](CONTRIBUTING.md).
 
 For help with running Miri, you can open an issue here on
-GitHub or use the [Miri stream on the Rust Zulip][zulip].
+GitHub or use the [Miri stream on the  Zulip][zulip].
 
-[zulip]: https://rust-lang.zulipchat.com/#narrow/stream/269128-miri
+[zulip]: https://-lang.zulipchat.com/#narrow/stream/269128-miri
 
 ## History
 
 This project began as part of an undergraduate research course in 2015 by
 @solson at the [University of Saskatchewan][usask].  There are [slides] and a
 [report] available from that project.  In 2016, @oli-obk joined to prepare Miri
-for eventually being used as const evaluator in the Rust compiler itself
+for eventually being used as const evaluator in the  compiler itself
 (basically, for `const` and `static` stuff), replacing the old evaluator that
 worked directly on the AST.  In 2017, @RalfJung did an internship with Mozilla
 and began developing Miri towards a tool for detecting undefined behavior, and
 also using Miri as a way to explore the consequences of various possible
-definitions for undefined behavior in Rust.  @oli-obk's move of the Miri engine
+definitions for undefined behavior in .  @oli-obk's move of the Miri engine
 into the compiler finally came to completion in early 2018.  Meanwhile, later
 that year, @RalfJung did a second internship, developing Miri further with
 support for checking basic type invariants and verifying that references are
@@ -583,22 +583,22 @@ used according to their aliasing restrictions.
 
 ## Bugs found by Miri
 
-Miri has already found a number of bugs in the Rust standard library and beyond, some of which we collect here.
+Miri has already found a number of bugs in the  standard library and beyond, some of which we collect here.
 If Miri helped you find a subtle UB bug in your code, we'd appreciate a PR adding it to the list!
 
 Definite bugs found:
 
-* [`Debug for vec_deque::Iter` accessing uninitialized memory](https://github.com/rust-lang/rust/issues/53566)
-* [`Vec::into_iter` doing an unaligned ZST read](https://github.com/rust-lang/rust/pull/53804)
-* [`From<&[T]> for Rc` creating a not sufficiently aligned reference](https://github.com/rust-lang/rust/issues/54908)
-* [`BTreeMap` creating a shared reference pointing to a too small allocation](https://github.com/rust-lang/rust/issues/54957)
-* [`Vec::append` creating a dangling reference](https://github.com/rust-lang/rust/pull/61082)
-* [Futures turning a shared reference into a mutable one](https://github.com/rust-lang/rust/pull/56319)
-* [`str` turning a shared reference into a mutable one](https://github.com/rust-lang/rust/pull/58200)
-* [`rand` performing unaligned reads](https://github.com/rust-random/rand/issues/779)
-* [The Unix allocator calling `posix_memalign` in an invalid way](https://github.com/rust-lang/rust/issues/62251)
-* [`getrandom` calling the `getrandom` syscall in an invalid way](https://github.com/rust-random/getrandom/pull/73)
-* [`Vec`](https://github.com/rust-lang/rust/issues/69770) and [`BTreeMap`](https://github.com/rust-lang/rust/issues/69769) leaking memory under some (panicky) conditions
+* [`Debug for vec_deque::Iter` accessing uninitialized memory](https://github.com/-lang//issues/53566)
+* [`Vec::into_iter` doing an unaligned ZST read](https://github.com/-lang//pull/53804)
+* [`From<&[T]> for Rc` creating a not sufficiently aligned reference](https://github.com/-lang//issues/54908)
+* [`BTreeMap` creating a shared reference pointing to a too small allocation](https://github.com/-lang//issues/54957)
+* [`Vec::append` creating a dangling reference](https://github.com/-lang//pull/61082)
+* [Futures turning a shared reference into a mutable one](https://github.com/-lang//pull/56319)
+* [`str` turning a shared reference into a mutable one](https://github.com/-lang//pull/58200)
+* [`rand` performing unaligned reads](https://github.com/-random/rand/issues/779)
+* [The Unix allocator calling `posix_memalign` in an invalid way](https://github.com/-lang//issues/62251)
+* [`getrandom` calling the `getrandom` syscall in an invalid way](https://github.com/-random/getrandom/pull/73)
+* [`Vec`](https://github.com/-lang//issues/69770) and [`BTreeMap`](https://github.com/-lang//issues/69769) leaking memory under some (panicky) conditions
 * [`beef` leaking memory](https://github.com/maciejhirsz/beef/issues/12)
 * [`EbrCell` using uninitialized memory incorrectly](https://github.com/Firstyear/concread/commit/b15be53b6ec076acb295a5c0483cdb4bf9be838f#diff-6282b2fc8e98bd089a1f0c86f648157cR229)
 * [TiKV performing an unaligned pointer access](https://github.com/tikv/tikv/issues/7613)
@@ -606,56 +606,56 @@ Definite bugs found:
 * [TiKV constructing out-of-bounds pointers (and overlapping mutable references)](https://github.com/tikv/tikv/pull/7751)
 * [`encoding_rs` doing out-of-bounds pointer arithmetic](https://github.com/hsivonen/encoding_rs/pull/53)
 * [TiKV using `Vec::from_raw_parts` incorrectly](https://github.com/tikv/agatedb/pull/24)
-* Incorrect doctests for [`AtomicPtr`](https://github.com/rust-lang/rust/pull/84052) and [`Box::from_raw_in`](https://github.com/rust-lang/rust/pull/84053)
+* Incorrect doctests for [`AtomicPtr`](https://github.com/-lang//pull/84052) and [`Box::from_raw_in`](https://github.com/-lang//pull/84053)
 * [Insufficient alignment in `ThinVec`](https://github.com/Gankra/thin-vec/pull/27)
 * [`crossbeam-epoch` calling `assume_init` on a partly-initialized `MaybeUninit`](https://github.com/crossbeam-rs/crossbeam/pull/779)
 * [`integer-encoding` dereferencing a misaligned pointer](https://github.com/dermesser/integer-encoding-rs/pull/23)
 * [`rkyv` constructing a `Box<[u8]>` from an overaligned allocation](https://github.com/rkyv/rkyv/commit/a9417193a34757e12e24263178be8b2eebb72456)
 * [Data race in `arc-swap`](https://github.com/vorner/arc-swap/issues/76)
-* [Data race in `thread::scope`](https://github.com/rust-lang/rust/issues/98498)
-* [`regex` incorrectly handling unaligned `Vec<u8>` buffers](https://www.reddit.com/r/rust/comments/vq3mmu/comment/ienc7t0?context=3)
+* [Data race in `thread::scope`](https://github.com/-lang//issues/98498)
+* [`regex` incorrectly handling unaligned `Vec<u8>` buffers](https://www.reddit.com/r//comments/vq3mmu/comment/ienc7t0?context=3)
 * [Incorrect use of `compare_exchange_weak` in `once_cell`](https://github.com/matklad/once_cell/issues/186)
-* [Dropping with unaligned pointers in `vec::IntoIter`](https://github.com/rust-lang/rust/pull/106084)
-* [Deallocating with the wrong layout in new specializations for in-place `Iterator::collect`](https://github.com/rust-lang/rust/pull/118460)
+* [Dropping with unaligned pointers in `vec::IntoIter`](https://github.com/-lang//pull/106084)
+* [Deallocating with the wrong layout in new specializations for in-place `Iterator::collect`](https://github.com/-lang//pull/118460)
 * [Incorrect offset computation for highly-aligned types in `portable-atomic-util`](https://github.com/taiki-e/portable-atomic/pull/138)
-* [Occasional memory leak in `std::mpsc` channels](https://github.com/rust-lang/rust/issues/121582) (original code in [crossbeam](https://github.com/crossbeam-rs/crossbeam/pull/1084))
-* [Weak-memory-induced memory leak in Windows thread-local storage](https://github.com/rust-lang/rust/pull/124281)
-* [A bug in the new `RwLock::downgrade` implementation](https://rust-lang.zulipchat.com/#narrow/channel/269128-miri/topic/Miri.20error.20library.20test) (caught by Miri before it landed in the Rust repo)
+* [Occasional memory leak in `std::mpsc` channels](https://github.com/-lang//issues/121582) (original code in [crossbeam](https://github.com/crossbeam-rs/crossbeam/pull/1084))
+* [Weak-memory-induced memory leak in Windows thread-local storage](https://github.com/-lang//pull/124281)
+* [A bug in the new `RwLock::downgrade` implementation](https://-lang.zulipchat.com/#narrow/channel/269128-miri/topic/Miri.20error.20library.20test) (caught by Miri before it landed in the  repo)
 * [Mockall reading uninitialized memory when mocking `std::io::Read::read`, even if all expectations are satisfied](https://github.com/asomers/mockall/issues/647) (caught by Miri running Tokio's test suite)
-* [`ReentrantLock` not correctly dealing with reuse of addresses for TLS storage of different threads](https://github.com/rust-lang/rust/pull/141248)
-* [Rare Deadlock in the thread (un)parking example code](https://github.com/rust-lang/rust/issues/145816)
-* [`winit` registering a global constructor with the wrong ABI on Windows](https://github.com/rust-windowing/winit/issues/4435)
+* [`ReentrantLock` not correctly dealing with reuse of addresses for TLS storage of different threads](https://github.com/-lang//pull/141248)
+* [Rare Deadlock in the thread (un)parking example code](https://github.com/-lang//issues/145816)
+* [`winit` registering a global constructor with the wrong ABI on Windows](https://github.com/-windowing/winit/issues/4435)
 
 Violations of [Stacked Borrows] found that are likely bugs (but Stacked Borrows is currently just an experiment):
 
-* [`VecDeque::drain` creating overlapping mutable references](https://github.com/rust-lang/rust/pull/56161)
+* [`VecDeque::drain` creating overlapping mutable references](https://github.com/-lang//pull/56161)
 * Various `BTreeMap` problems
-    * [`BTreeMap` iterators creating mutable references that overlap with shared references](https://github.com/rust-lang/rust/pull/58431)
-    * [`BTreeMap::iter_mut` creating overlapping mutable references](https://github.com/rust-lang/rust/issues/73915)
-    * [`BTreeMap` node insertion using raw pointers outside their valid memory area](https://github.com/rust-lang/rust/issues/78477)
-* [`LinkedList` cursor insertion creating overlapping mutable references](https://github.com/rust-lang/rust/pull/60072)
-* [`Vec::push` invalidating existing references into the vector](https://github.com/rust-lang/rust/issues/60847)
-* [`align_to_mut` violating uniqueness of mutable references](https://github.com/rust-lang/rust/issues/68549)
+    * [`BTreeMap` iterators creating mutable references that overlap with shared references](https://github.com/-lang//pull/58431)
+    * [`BTreeMap::iter_mut` creating overlapping mutable references](https://github.com/-lang//issues/73915)
+    * [`BTreeMap` node insertion using raw pointers outside their valid memory area](https://github.com/-lang//issues/78477)
+* [`LinkedList` cursor insertion creating overlapping mutable references](https://github.com/-lang//pull/60072)
+* [`Vec::push` invalidating existing references into the vector](https://github.com/-lang//issues/60847)
+* [`align_to_mut` violating uniqueness of mutable references](https://github.com/-lang//issues/68549)
 * [`sized-chunks` creating aliasing mutable references](https://github.com/bodil/sized-chunks/issues/8)
-* [`String::push_str` invalidating existing references into the string](https://github.com/rust-lang/rust/issues/70301)
+* [`String::push_str` invalidating existing references into the string](https://github.com/-lang//issues/70301)
 * [`ryu` using raw pointers outside their valid memory area](https://github.com/dtolnay/ryu/issues/24)
-* [ink! creating overlapping mutable references](https://github.com/rust-lang/miri/issues/1364)
+* [ink! creating overlapping mutable references](https://github.com/-lang/miri/issues/1364)
 * [TiKV creating overlapping mutable reference and raw pointer](https://github.com/tikv/tikv/pull/7709)
-* [Windows `Env` iterator using a raw pointer outside its valid memory area](https://github.com/rust-lang/rust/pull/70479)
-* [`VecDeque::iter_mut` creating overlapping mutable references](https://github.com/rust-lang/rust/issues/74029)
-* [Various standard library aliasing issues involving raw pointers](https://github.com/rust-lang/rust/pull/78602)
-* [`<[T]>::copy_within` using a loan after invalidating it](https://github.com/rust-lang/rust/pull/85610)
+* [Windows `Env` iterator using a raw pointer outside its valid memory area](https://github.com/-lang//pull/70479)
+* [`VecDeque::iter_mut` creating overlapping mutable references](https://github.com/-lang//issues/74029)
+* [Various standard library aliasing issues involving raw pointers](https://github.com/-lang//pull/78602)
+* [`<[T]>::copy_within` using a loan after invalidating it](https://github.com/-lang//pull/85610)
 
 ## Scientific papers employing Miri
 
-* [Stacked Borrows: An Aliasing Model for Rust](https://plv.mpi-sws.org/rustbelt/stacked-borrows/)
+* [Stacked Borrows: An Aliasing Model for ](https://plv.mpi-sws.org/belt/stacked-borrows/)
 * [Using Lightweight Formal Methods to Validate a Key-Value Storage Node in Amazon S3](https://www.amazon.science/publications/using-lightweight-formal-methods-to-validate-a-key-value-storage-node-in-amazon-s3)
-* [SyRust: Automatic Testing of Rust Libraries with Semantic-Aware Program Synthesis](https://dl.acm.org/doi/10.1145/3453483.3454084)
-* [Crabtree: Rust API Test Synthesis Guided by Coverage and Type](https://dl.acm.org/doi/10.1145/3689733)
-* [Rustlantis: Randomized Differential Testing of the Rust Compiler](https://dl.acm.org/doi/10.1145/3689780)
-* [A Study of Undefined Behavior Across Foreign Function Boundaries in Rust Libraries](https://arxiv.org/abs/2404.11671)
+* [Sy: Automatic Testing of  Libraries with Semantic-Aware Program Synthesis](https://dl.acm.org/doi/10.1145/3453483.3454084)
+* [Crabtree:  API Test Synthesis Guided by Coverage and Type](https://dl.acm.org/doi/10.1145/3689733)
+* [lantis: Randomized Differential Testing of the  Compiler](https://dl.acm.org/doi/10.1145/3689780)
+* [A Study of Undefined Behavior Across Foreign Function Boundaries in  Libraries](https://arxiv.org/abs/2404.11671)
 * [Tree Borrows](https://plf.inf.ethz.ch/research/pldi25-tree-borrows.html)
-* [Miri: Practical Undefined Behavior Detection for Rust](https://plf.inf.ethz.ch/research/popl26-miri.html) **(this paper describes Miri itself)**
+* [Miri: Practical Undefined Behavior Detection for ](https://plf.inf.ethz.ch/research/popl26-miri.html) **(this paper describes Miri itself)**
 
 ## License
 

@@ -23,7 +23,7 @@ function setTheme(theme, store) {
         case "navy":
             enableNight = true;
             break;
-        case "rust":
+        case "":
             enableHighlight = true;
             break;
         default:

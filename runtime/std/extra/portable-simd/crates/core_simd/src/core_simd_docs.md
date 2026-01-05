@@ -10,7 +10,7 @@ This module provides a SIMD implementation that is fast and predictable on any t
 ### Portable SIMD works on every target
 
 Unlike target-specific SIMD in `std::arch`, portable SIMD compiles for every target.
-In this regard, it is just like "regular" Rust.
+In this regard, it is just like "regular" .
 
 ### Portable SIMD is consistent between targets
 

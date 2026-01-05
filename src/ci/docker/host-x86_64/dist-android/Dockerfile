@@ -16,7 +16,7 @@ ENV TARGETS=$TARGETS,i686-linux-android
 ENV TARGETS=$TARGETS,aarch64-linux-android
 ENV TARGETS=$TARGETS,x86_64-linux-android
 
-ENV RUST_CONFIGURE_ARGS \
+ENV _CONFIGURE_ARGS \
       --enable-extended \
       --enable-profiler \
       --android-ndk=/android/ndk/ \

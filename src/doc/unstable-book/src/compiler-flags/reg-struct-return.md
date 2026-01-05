@@ -1,6 +1,6 @@
 # `reg-struct-return`
 
-The tracking issue for this feature is: https://github.com/rust-lang/rust/issues/116973.
+The tracking issue for this feature is: https://github.com/-lang//issues/116973.
 
 ------------------------
 

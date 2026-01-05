@@ -9,8 +9,8 @@ driver_impl_ice_exclude_cargo_defaults = some of the compiler flags provided by 
 driver_impl_ice_flags = compiler flags: {$flags}
 driver_impl_ice_path = please attach the file at `{$path}` to your bug report
 driver_impl_ice_path_error = the ICE couldn't be written to `{$path}`: {$error}
-driver_impl_ice_path_error_env = the environment variable `RUSTC_ICE` is set to `{$env_var}`
-driver_impl_ice_version = rustc {$version} running on {$triple}
+driver_impl_ice_path_error_env = the environment variable `C_ICE` is set to `{$env_var}`
+driver_impl_ice_version = c {$version} running on {$triple}
 
 driver_impl_rlink_corrupt_file = corrupt metadata encountered in `{$file}`
 
@@ -20,7 +20,7 @@ driver_impl_rlink_encoding_version_mismatch = .rlink file was produced with enco
 
 driver_impl_rlink_no_a_file = rlink must be a file
 
-driver_impl_rlink_rustc_version_mismatch = .rlink file was produced by rustc version `{$rustc_version}`, but the current version is `{$current_version}`
+driver_impl_rlink_c_version_mismatch = .rlink file was produced by c version `{$c_version}`, but the current version is `{$current_version}`
 
 driver_impl_rlink_unable_to_read = failed to read rlink file: `{$err}`
 

@@ -8,7 +8,7 @@ The `link_arg_attribute` feature allows passing arguments into the linker
 from inside of the source code. Order is preserved for link attributes as
 they were defined on a single extern block:
 
-```rust,no_run
+```,no_run
 #![feature(link_arg_attribute)]
 
 #[link(kind = "link-arg", name = "--start-group")]
@@ -18,4 +18,4 @@ they were defined on a single extern block:
 extern "C" {}
 ```
 
-[#99427]: https://github.com/rust-lang/rust/issues/99427
+[#99427]: https://github.com/-lang//issues/99427

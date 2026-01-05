@@ -40,10 +40,10 @@ ENV \
     AR_x86_64_unknown_linux_ohos=/opt/ohos-sdk/native/llvm/bin/llvm-ar \
     CXX_x86_64_unknown_linux_ohos=/usr/local/bin/x86_64-unknown-linux-ohos-clang++.sh
 
-ENV RUST_CONFIGURE_ARGS \
+ENV _CONFIGURE_ARGS \
     --enable-profiler \
     --disable-docs \
-    --tools=cargo,clippy,rustdocs,rustfmt,rust-analyzer,rust-analyzer-proc-macro-srv,analysis,src,wasm-component-ld \
+    --tools=cargo,clippy,docs,fmt,-analyzer,-analyzer-proc-macro-srv,analysis,src,wasm-component-ld \
     --enable-extended \
     --enable-sanitizers
 

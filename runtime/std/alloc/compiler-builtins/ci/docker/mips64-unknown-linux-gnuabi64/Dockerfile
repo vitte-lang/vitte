@@ -17,4 +17,4 @@ ENV CARGO_TARGET_MIPS64_UNKNOWN_LINUX_GNUABI64_LINKER="$TOOLCHAIN_PREFIX"gcc \
     AR_mips64_unknown_linux_gnuabi64="$TOOLCHAIN_PREFIX"ar \
     CC_mips64_unknown_linux_gnuabi64="$TOOLCHAIN_PREFIX"gcc \
     QEMU_LD_PREFIX=/usr/mips64-linux-gnuabi64 \
-    RUST_TEST_THREADS=1
+    _TEST_THREADS=1

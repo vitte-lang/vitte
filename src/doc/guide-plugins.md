@@ -1,3 +1,3 @@
-% The (old) Rust Compiler Plugins Guide
+% The (old)  Compiler Plugins Guide
 
 Support for plugins has been removed.

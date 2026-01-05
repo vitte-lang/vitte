@@ -15,8 +15,8 @@ The calendar file is also available for download: [clippy.ics]
 Everyone, including you, is welcome to join discussions and contribute in other
 ways, like PRs.
 
-You also have some triage rights, using `@rustbot` to add labels and claim
-issues. See [labeling with @rustbot].
+You also have some triage rights, using `@bot` to add labels and claim
+issues. See [labeling with @bot].
 
 A rule for everyone should be to keep a healthy work-life balance. Take a break
 when you need one.
@@ -33,7 +33,7 @@ this group to help with triaging, which can include:
 
 1. **Labeling issues**
 
-    For the `good first issue` label, it can still be good to use `@rustbot` to
+    For the `good first issue` label, it can still be good to use `@bot` to
     subscribe to the issue and help interested parties, if they post questions
     in the comments. 
 
@@ -51,7 +51,7 @@ this group to help with triaging, which can include:
     busy or wants to abandon it. If the reviewer is busy, the PR can be
     reassigned to someone else.
 
-    Checkout: https://triage.rust-lang.org/triage/rust-lang/rust-clippy to
+    Checkout: https://triage.-lang.org/triage/-lang/-clippy to
     monitor PRs.
 
 While not part of their duties, contributors are encouraged to review PRs
@@ -72,7 +72,7 @@ you to the alumni group. You're always welcome to come back.
 
 ## The Clippy Team
 
-[The Clippy team](https://www.rust-lang.org/governance/teams/dev-tools#team-clippy)
+[The Clippy team](https://www.-lang.org/governance/teams/dev-tools#team-clippy)
 is responsible for maintaining Clippy.
 
 ### Duties
@@ -96,7 +96,7 @@ is responsible for maintaining Clippy.
     meetings, every two weeks. The meeting dates are tracked in the [calendar repository].
     
 
-4. **Sync Clippy with the rust-lang/rust repo**
+4. **Sync Clippy with the -lang/ repo**
 
     This is done every two weeks, usually by @flip1995.
 
@@ -124,6 +124,6 @@ onboarding phase typically takes a couple of weeks to a few months.
 If you have been inactive in Clippy for over three months, we'll probably move
 you to the alumni group. You're always welcome to come back.
 
-[calendar repository]: https://github.com/rust-lang/calendar/blob/main/clippy.toml
-[clippy.ics]: https://rust-lang.github.io/calendar/clippy.ics
-[labeling with @rustbot]: https://forge.rust-lang.org/triagebot/labeling.html
+[calendar repository]: https://github.com/-lang/calendar/blob/main/clippy.toml
+[clippy.ics]: https://-lang.github.io/calendar/clippy.ics
+[labeling with @bot]: https://forge.-lang.org/triagebot/labeling.html

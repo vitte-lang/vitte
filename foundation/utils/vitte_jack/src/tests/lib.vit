@@ -1,0 +1,65 @@
+// Tests for configuration and knowledge
+
+#[test]
+fn test_config_creation() {
+    let config = Config::new();
+    assert!(!config.has(&"key".to_string()));
+}
+
+#[test]
+fn test_config_set_get() {
+    let mut config = Config::new();
+    config.set("opt_level".to_string(), ConfigValue::Integer(2));
+    assert!(config.has(&"opt_level".to_string()));
+}
+
+#[test]
+fn test_config_bool_value() {
+    let mut config = Config::new();
+    config.set("debug".to_string(), ConfigValue::Boolean(true));
+    let val = config.get(&"debug".to_string());
+    assert!(val.is_some());
+}
+
+#[test]
+fn test_compiler_options() {
+    let opts = CompilerOptions::new()
+        .with_optimization()
+        .with_target("arm64".to_string());
+    assert!(opts.optimize);
+    assert_eq!(opts.target, "arm64");
+}
+
+#[test]
+fn test_knowledge_base() {
+    let mut kb = KnowledgeBase::new();
+    let fact = Fact::new("type".to_string(), "int".to_string(), "32-bit".to_string());
+    kb.add_fact(fact);
+    let results = kb.query(&"type".to_string());
+    assert_eq!(results.len(), 1);
+}
+
+#[test]
+fn test_metadata_store() {
+    let mut store = MetadataStore::new();
+    store.store("version".to_string(), "0.0.1".to_string());
+    let val = store.retrieve(&"version".to_string());
+    assert_eq!(val, Some("0.0.1".to_string()));
+}
+
+#[test]
+fn test_config_value_conversions() {
+    let cv = ConfigValue::String("test".to_string());
+    assert_eq!(cv.as_string(), Some("test".to_string()));
+    assert_eq!(cv.as_bool(), None);
+}
+
+#[test]
+fn test_fact_creation() {
+    let fact = Fact::new(
+        "property".to_string(),
+        "variable".to_string(),
+        "mutable".to_string()
+    );
+    assert_eq!(fact.predicate, "property");
+}

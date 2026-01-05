@@ -2,7 +2,7 @@
 
 The tracking issue for this feature is: [#44874]
 
-[#44874]: https://github.com/rust-lang/rust/issues/44874
+[#44874]: https://github.com/-lang//issues/44874
 
 ------------------------
 
@@ -11,7 +11,7 @@ of `self` in a method belonging to `T`.
 
 For example,
 
-```rust
+```
 #![feature(arbitrary_self_types)]
 
 struct A;
@@ -35,7 +35,7 @@ fn main() {
 The `Receiver` trait has a blanket implementation for all `T: Deref`, so in fact
 things like this work too:
 
-```rust
+```
 #![feature(arbitrary_self_types)]
 
 use std::rc::Rc;
@@ -77,7 +77,7 @@ The full chain (via `Receiver` hops) is used for the first purpose
 (identifying relevant `impl` blocks and traits); whereas the shorter
 list (reachable via `Deref`) is used for the second purpose. That's
 because, to convert the method target (`a` in `a.b()`) to the self
-type, Rust may need to be able to use `Deref::deref`. Type conversions,
+type,  may need to be able to use `Deref::deref`. Type conversions,
 then, can only proceed as far as the end of the `Deref` chain whereas
 the longer `Receiver` chain can be used to explore more places where
 useful methods might reside.
@@ -95,17 +95,17 @@ aiming for a method on the pointer, or on the referent.
 
 Best practice is therefore to put smart pointer functionality into
 associated functions instead - that's what's done in all the smart pointer
-types within Rust's standard library which implement `Receiver`.
+types within 's standard library which implement `Receiver`.
 
 If you choose to add any methods to your smart pointer type, your users
 may run into errors from deshadowing, as described in the next section.
 
 ## Avoiding shadowing
 
-With or without this feature, Rust emits an error if it finds two method
+With or without this feature,  emits an error if it finds two method
 candidates, like this:
 
-```rust,compile_fail
+```,compile_fail
 use std::pin::Pin;
 use std::pin::pin;
 
@@ -122,13 +122,13 @@ fn main() {
 }
 ```
 
-(this is why Rust's smart pointers are mostly carefully designed to avoid
+(this is why 's smart pointers are mostly carefully designed to avoid
 having methods at all, and shouldn't add new methods in future.)
 
 With `arbitrary_self_types`, we take care to spot some other kinds of
 conflict:
 
-```rust,compile_fail
+```,compile_fail
 #![feature(arbitrary_self_types)]
 
 use std::pin::Pin;

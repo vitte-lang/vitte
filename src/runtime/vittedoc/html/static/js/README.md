@@ -1,6 +1,6 @@
-# Rustdoc JS
+# doc JS
 
-These JavaScript files are incorporated into the rustdoc binary at build time,
+These JavaScript files are incorporated into the doc binary at build time,
 and are minified and written to the filesystem as part of the doc build process.
 
 We use the [TypeScript Compiler](https://www.typescriptlang.org/docs/handbook/jsdoc-supported-types.html)

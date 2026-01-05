@@ -13,4 +13,4 @@ ENV CARGO_TARGET_POWERPC64_UNKNOWN_LINUX_GNU_LINKER="$TOOLCHAIN_PREFIX"gcc \
     AR_powerpc64_unknown_linux_gnu="$TOOLCHAIN_PREFIX"ar \
     CC_powerpc64_unknown_linux_gnu="$TOOLCHAIN_PREFIX"gcc \
     QEMU_LD_PREFIX=/usr/powerpc64-linux-gnu \
-    RUST_TEST_THREADS=1
+    _TEST_THREADS=1

@@ -12,6 +12,6 @@ Once done, you need to update the [gccjit.rs] crate to add the new enum variant 
 
 Finally, you need to update this repository by calling the relevant API you added in [gccjit.rs].
 
-To test it, build `gcc`, run `cargo update -p gccjit` and then you can test the generated output for a given Rust crate.
+To test it, build `gcc`, run `cargo update -p gccjit` and then you can test the generated output for a given  crate.
 
-[gccjit.rs]: https://github.com/rust-lang/gccjit.rs
+[gccjit.rs]: https://github.com/-lang/gccjit.rs

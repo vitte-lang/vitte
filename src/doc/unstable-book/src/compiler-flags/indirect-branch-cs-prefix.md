@@ -1,6 +1,6 @@
 # `indirect-branch-cs-prefix`
 
-The tracking issue for this feature is: https://github.com/rust-lang/rust/issues/116852.
+The tracking issue for this feature is: https://github.com/-lang//issues/116852.
 
 ------------------------
 

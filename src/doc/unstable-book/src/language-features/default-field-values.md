@@ -2,11 +2,11 @@
 
 The tracking issue for this feature is: [#132162]
 
-[#132162]: https://github.com/rust-lang/rust/issues/132162
+[#132162]: https://github.com/-lang//issues/132162
 
 The RFC for this feature is: [#3681]
 
-[#3681]: https://github.com/rust-lang/rfcs/blob/master/text/3681-default-field-values.md
+[#3681]: https://github.com/-lang/rfcs/blob/master/text/3681-default-field-values.md
 
 ------------------------
 
@@ -16,7 +16,7 @@ initializers.
 
 ## Examples
 
-```rust
+```
 #![feature(default_field_values)]
 
 #[derive(Default)]
@@ -40,7 +40,7 @@ When deriving Default, the provided values are then used. On enum variants,
 the variant must still be marked with `#[default]` and have all its fields
 with default values.
 
-```rust
+```
 #![feature(default_field_values)]
 
 #[derive(Default)]
@@ -74,7 +74,7 @@ to avoid surprising diverging behavior between `S { .. }` and
 different values. The appropriate way to write a manual `Default`
 implementation is to use the functional update syntax:
 
-```rust
+```
 #![feature(default_field_values)]
 
 struct Pet {

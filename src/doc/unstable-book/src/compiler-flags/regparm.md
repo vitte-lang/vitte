@@ -1,6 +1,6 @@
 # `regparm`
 
-The tracking issue for this feature is: https://github.com/rust-lang/rust/issues/131749.
+The tracking issue for this feature is: https://github.com/-lang//issues/131749.
 
 ------------------------
 

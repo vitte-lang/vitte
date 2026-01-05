@@ -27,9 +27,9 @@ hide_output make install
 
 # It doesn't seem to be possible to move destination directory
 # of the `make install` above. We thus copy the built artifacts
-# manually to our custom rustroot, so that it can be found through
+# manually to our custom root, so that it can be found through
 # LD_LIBRARY_PATH.
-cp /usr/local/lib/libzstd* /rustroot/lib64
+cp /usr/local/lib/libzstd* /root/lib64
 
 cd ..
 rm -rf zstd-$ZSTD

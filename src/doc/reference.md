@@ -1,4 +1,4 @@
-% The Rust Reference has moved
+% The  Reference has moved
 
 We've split up the reference into chapters. Please find it at its new
-home [here](https://doc.rust-lang.org/stable/reference/introduction.html).
+home [here](https://doc.-lang.org/stable/reference/introduction.html).

@@ -2,14 +2,14 @@
 
 The tracking issue for this feature is: [#44874]
 
-[#38788]: https://github.com/rust-lang/rust/issues/44874
+[#38788]: https://github.com/-lang//issues/44874
 
 ------------------------
 
 This extends the [arbitrary self types] feature to allow methods to
 receive `self` by pointer. For example:
 
-```rust
+```
 #![feature(arbitrary_self_types_pointers)]
 
 struct A;
@@ -29,7 +29,7 @@ In general this is not advised: it's thought to be better practice to wrap
 raw pointers in a newtype wrapper which implements the `core::ops::Receiver`
 trait, then you need "only" the `arbitrary_self_types` feature. For example:
 
-```rust
+```
 #![feature(arbitrary_self_types)]
 #![allow(dead_code)]
 

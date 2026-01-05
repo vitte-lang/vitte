@@ -2,7 +2,7 @@ session_apple_deployment_target_invalid =
     failed to parse deployment target specified in {$env_var}: {$error}
 
 session_apple_deployment_target_too_low =
-    deployment target in {$env_var} was set to {$version}, but the minimum supported by `rustc` is {$os_min}
+    deployment target in {$env_var} was set to {$version}, but the minimum supported by `c` is {$os_min}
 
 session_binary_float_literal_not_supported = binary float literal is not supported
 session_branch_protection_requires_aarch64 = `-Zbranch-protection` is only supported on aarch64
@@ -25,7 +25,7 @@ session_expr_parentheses_needed = parentheses are required to parse this as an e
 session_failed_to_create_profiler = failed to create profiler: {$err}
 
 session_feature_diagnostic_for_issue =
-    see issue #{$n} <https://github.com/rust-lang/rust/issues/{$n}> for more information
+    see issue #{$n} <https://github.com/-lang//issues/{$n}> for more information
 
 session_feature_diagnostic_help =
     add `#![feature({$feature})]` to the crate attributes to enable
@@ -115,12 +115,12 @@ session_skipping_const_checks = skipping const checks
 
 session_soft_float_deprecated =
     `-Csoft-float` is unsound and deprecated; use a corresponding *eabi target instead
-    .note = it will be removed or ignored in a future version of Rust
-session_soft_float_deprecated_issue = see issue #129893 <https://github.com/rust-lang/rust/issues/129893> for more information
+    .note = it will be removed or ignored in a future version of 
+session_soft_float_deprecated_issue = see issue #129893 <https://github.com/-lang//issues/129893> for more information
 
 session_soft_float_ignored =
     `-Csoft-float` is ignored on this target; it only has an effect on *eabihf targets
-    .note = this may become a hard error in a future version of Rust
+    .note = this may become a hard error in a future version of 
 
 session_split_debuginfo_unstable_platform = `-Csplit-debuginfo={$debuginfo}` is unstable on this platform
 

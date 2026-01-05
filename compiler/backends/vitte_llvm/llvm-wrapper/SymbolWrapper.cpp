@@ -35,8 +35,8 @@ static bool isArchiveSymbol(const object::BasicSymbolRef &S) {
   return true;
 }
 
-typedef void *(*LLVMRustGetSymbolsCallback)(void *, const char *);
-typedef void *(*LLVMRustGetSymbolsErrorCallback)(const char *);
+typedef void *(*LLVMGetSymbolsCallback)(void *, const char *);
+typedef void *(*LLVMGetSymbolsErrorCallback)(const char *);
 
 // This function is copied from ArchiveWriter.cpp.
 static Expected<std::unique_ptr<SymbolicFile>>
@@ -59,15 +59,15 @@ getSymbolicFile(MemoryBufferRef Buf, LLVMContext &Context) {
   }
 }
 
-// Note: This is implemented in C++ instead of using the C api from Rust as
+// Note: This is implemented in C++ instead of using the C api from  as
 // IRObjectFile doesn't implement getSymbolName, only printSymbolName, which is
 // inaccessible from the C api.
 extern "C" void *
-LLVMRustGetSymbols(char *BufPtr, size_t BufLen, void *State,
-                   LLVMRustGetSymbolsCallback Callback,
-                   LLVMRustGetSymbolsErrorCallback ErrorCallback) {
+LLVMGetSymbols(char *BufPtr, size_t BufLen, void *State,
+                   LLVMGetSymbolsCallback Callback,
+                   LLVMGetSymbolsErrorCallback ErrorCallback) {
   std::unique_ptr<MemoryBuffer> Buf = MemoryBuffer::getMemBuffer(
-      StringRef(BufPtr, BufLen), StringRef("LLVMRustGetSymbolsObject"), false);
+      StringRef(BufPtr, BufLen), StringRef("LLVMGetSymbolsObject"), false);
   SmallString<0> SymNameBuf;
   auto SymName = raw_svector_ostream(SymNameBuf);
 
@@ -107,7 +107,7 @@ bool withBufferAsSymbolicFile(
     char *BufPtr, size_t BufLen,
     std::function<bool(object::SymbolicFile &)> Callback) {
   std::unique_ptr<MemoryBuffer> Buf = MemoryBuffer::getMemBuffer(
-      StringRef(BufPtr, BufLen), StringRef("LLVMRustGetSymbolsObject"), false);
+      StringRef(BufPtr, BufLen), StringRef("LLVMGetSymbolsObject"), false);
   SmallString<0> SymNameBuf;
   auto SymName = raw_svector_ostream(SymNameBuf);
 
@@ -126,12 +126,12 @@ bool withBufferAsSymbolicFile(
   return Callback(*Obj);
 }
 
-extern "C" bool LLVMRustIs64BitSymbolicFile(char *BufPtr, size_t BufLen) {
+extern "C" bool LLVMIs64BitSymbolicFile(char *BufPtr, size_t BufLen) {
   return withBufferAsSymbolicFile(
       BufPtr, BufLen, [](object::SymbolicFile &Obj) { return Obj.is64Bit(); });
 }
 
-extern "C" bool LLVMRustIsECObject(char *BufPtr, size_t BufLen) {
+extern "C" bool LLVMIsECObject(char *BufPtr, size_t BufLen) {
   return withBufferAsSymbolicFile(
       BufPtr, BufLen, [](object::SymbolicFile &Obj) {
         // Code starting from this line is copied from isECObject in
@@ -157,7 +157,7 @@ extern "C" bool LLVMRustIsECObject(char *BufPtr, size_t BufLen) {
       });
 }
 
-extern "C" bool LLVMRustIsAnyArm64Coff(char *BufPtr, size_t BufLen) {
+extern "C" bool LLVMIsAnyArm64Coff(char *BufPtr, size_t BufLen) {
   return withBufferAsSymbolicFile(
       BufPtr, BufLen, [](object::SymbolicFile &Obj) {
         // Code starting from this line is copied from isAnyArm64COFF in

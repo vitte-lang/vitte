@@ -90,7 +90,7 @@ if (!Promise.withResolvers) {
 
 // ==================== Core search logic begin ====================
 // This mapping table should match the discriminants of
-// `rustdoc::formats::item_type::ItemType` type in Rust.
+// `doc::formats::item_type::ItemType` type in .
 const itemTypes = Object.freeze({
     keyword: 0,
     primitive: 1,
@@ -167,7 +167,7 @@ const NO_TYPE_FILTER = -1;
 
 /*
  * This function was translated, mostly line-for-line, from
- * https://github.com/rust-lang/rust/blob/ff4b772f805ec1e/compiler/rustc_span/src/edit_distance.rs
+ * https://github.com/-lang//blob/ff4b772f805ec1e/compiler/c_span/src/edit_distance.rs
  *
  * The current implementation is the restricted Damerau-Levenshtein algorithm. It is restricted
  * because it does not permit modifying characters that have already been transposed. The specific
@@ -299,7 +299,7 @@ function isEndCharacter(c) {
 /**
  * Same thing as ItemType::is_fn_like in item_type.rs
  *
- * @param {rustdoc.ItemType} ty
+ * @param {doc.ItemType} ty
  * @returns
  */
 function isFnLikeTy(ty) {
@@ -320,7 +320,7 @@ function isSeparatorCharacter(c) {
 /**
  * Returns `true` if the current parser position is starting with "->".
  *
- * @param {rustdoc.ParserState} parserState
+ * @param {doc.ParserState} parserState
  *
  * @return {boolean}
  */
@@ -331,7 +331,7 @@ function isReturnArrow(parserState) {
 /**
  * Increase current parser position until it doesn't find a whitespace anymore.
  *
- * @param {rustdoc.ParserState} parserState
+ * @param {doc.ParserState} parserState
  */
 function skipWhitespace(parserState) {
     while (parserState.pos < parserState.userQuery.length) {
@@ -346,7 +346,7 @@ function skipWhitespace(parserState) {
 /**
  * Returns `true` if the previous character is `lookingFor`.
  *
- * @param {rustdoc.ParserState} parserState
+ * @param {doc.ParserState} parserState
  * @param {String} lookingFor
  *
  * @return {boolean}
@@ -368,8 +368,8 @@ function prevIs(parserState, lookingFor) {
 /**
  * Returns `true` if the last element in the `elems` argument has generics.
  *
- * @param {Array<rustdoc.ParserQueryElement>} elems
- * @param {rustdoc.ParserState} parserState
+ * @param {Array<doc.ParserQueryElement>} elems
+ * @param {doc.ParserState} parserState
  *
  * @return {boolean}
  */
@@ -380,9 +380,9 @@ function isLastElemGeneric(elems, parserState) {
 
 /**
  *
- * @param {rustdoc.ParsedQuery<rustdoc.ParserQueryElement>} query
- * @param {rustdoc.ParserState} parserState
- * @param {rustdoc.ParserQueryElement[]} elems
+ * @param {doc.ParsedQuery<doc.ParserQueryElement>} query
+ * @param {doc.ParserState} parserState
+ * @param {doc.ParserQueryElement[]} elems
  * @param {boolean} isInGenerics
  */
 function getFilteredNextElem(query, parserState, elems, isInGenerics) {
@@ -426,9 +426,9 @@ function getFilteredNextElem(query, parserState, elems, isInGenerics) {
  * If there is no `endChar`, this function will implicitly stop at the end
  * without raising an error.
  *
- * @param {rustdoc.ParsedQuery<rustdoc.ParserQueryElement>} query
- * @param {rustdoc.ParserState} parserState
- * @param {Array<rustdoc.ParserQueryElement>} elems
+ * @param {doc.ParsedQuery<doc.ParserQueryElement>} query
+ * @param {doc.ParserState} parserState
+ * @param {Array<doc.ParserQueryElement>} elems
  *     - This is where the new {QueryElement} will be added.
  * @param {string} endChar - This function will stop when it'll encounter this
  *                           character.
@@ -454,7 +454,7 @@ function getItemsBefore(query, parserState, elems, endChar) {
     //     `option<t>, (t -> u) -> option<u>`
     //                  ^^^^^^
     //
-    // The Rust-style closure notation is implemented in getNextElem
+    // The -style closure notation is implemented in getNextElem
     let hofParameters = null;
 
     let extra = "";
@@ -582,14 +582,14 @@ function getItemsBefore(query, parserState, elems, endChar) {
 }
 
 /**
- * @param {rustdoc.ParsedQuery<rustdoc.ParserQueryElement>} query
- * @param {rustdoc.ParserState} parserState
- * @param {Array<rustdoc.ParserQueryElement>} elems
+ * @param {doc.ParsedQuery<doc.ParserQueryElement>} query
+ * @param {doc.ParserState} parserState
+ * @param {Array<doc.ParserQueryElement>} elems
  *     - This is where the new {QueryElement} will be added.
  * @param {boolean} isInGenerics
  */
 function getNextElem(query, parserState, elems, isInGenerics) {
-    /** @type {rustdoc.ParserQueryElement[]} */
+    /** @type {doc.ParserQueryElement[]} */
     const generics = [];
 
     /** @type {function(string, string): void} */
@@ -774,7 +774,7 @@ function getNextElem(query, parserState, elems, isInGenerics) {
  * if empty).
  *
  * @param {number} start
- * @param {rustdoc.ParserState} parserState
+ * @param {doc.ParserState} parserState
  */
 function checkExtraTypeFilterCharacters(start, parserState) {
     const query = parserState.userQuery.slice(start, parserState.pos).trim();
@@ -792,13 +792,13 @@ function checkExtraTypeFilterCharacters(start, parserState) {
 }
 
 /**
- * @param {rustdoc.ParsedQuery<rustdoc.ParserQueryElement>} query
- * @param {rustdoc.ParserState} parserState
+ * @param {doc.ParsedQuery<doc.ParserQueryElement>} query
+ * @param {doc.ParserState} parserState
  * @param {string} name - Name of the query element.
- * @param {Array<rustdoc.ParserQueryElement>} generics - List of generics of this query element.
+ * @param {Array<doc.ParserQueryElement>} generics - List of generics of this query element.
  * @param {boolean} isInGenerics
  *
- * @return {rustdoc.ParserQueryElement} - The newly created `QueryElement`.
+ * @return {doc.ParserQueryElement} - The newly created `QueryElement`.
  */
 function createQueryElement(query, parserState, name, generics, isInGenerics) {
     const path = name.trim();
@@ -894,8 +894,8 @@ function createQueryElement(query, parserState, name, generics, isInGenerics) {
 /**
  *
  * @param {string|null} name
- * @param {rustdoc.ParserQueryElementFields=} extra
- * @returns {rustdoc.ParserQueryElement}
+ * @param {doc.ParserQueryElementFields=} extra
+ * @returns {doc.ParserQueryElement}
  */
 function makePrimitiveElement(name, extra) {
     return Object.assign({
@@ -922,8 +922,8 @@ function makePrimitiveElement(name, extra) {
  * * There is more than one element.
  * * There is no closing `"`.
  *
- * @param {rustdoc.ParsedQuery<rustdoc.ParserQueryElement>} query
- * @param {rustdoc.ParserState} parserState
+ * @param {doc.ParsedQuery<doc.ParserQueryElement>} query
+ * @param {doc.ParserState} parserState
  * @param {boolean} isInGenerics
  */
 function getStringElem(query, parserState, isInGenerics) {
@@ -954,7 +954,7 @@ function getStringElem(query, parserState, isInGenerics) {
  * character or the end of the query. It returns the position of the last
  * character of the ident.
  *
- * @param {rustdoc.ParserState} parserState
+ * @param {doc.ParserState} parserState
  *
  * @return {number}
  */
@@ -1042,7 +1042,7 @@ function isSpecialStartCharacter(c) {
 /**
  * Returns `true` if the current parser position is starting with "::".
  *
- * @param {rustdoc.ParserState} parserState
+ * @param {doc.ParserState} parserState
  *
  * @return {boolean}
  */
@@ -1054,7 +1054,7 @@ function isPathStart(parserState) {
  * If the current parser position is at the beginning of an identifier,
  * move the position to the end of it and return `true`. Otherwise, return `false`.
  *
- * @param {rustdoc.ParserState} parserState
+ * @param {doc.ParserState} parserState
  *
  * @return {boolean}
  */
@@ -1114,7 +1114,7 @@ function removeIdxListAsc(a, idxList) {
 class VlqHexDecoder {
     /**
      * @param {string} string
-     * @param {function(rustdoc.VlqData): T} cons
+     * @param {function(doc.VlqData): T} cons
      */
     constructor(string, cons) {
         this.string = string;
@@ -1126,7 +1126,7 @@ class VlqHexDecoder {
     }
     /**
      * call after consuming `{`
-     * @returns {rustdoc.VlqData[]}
+     * @returns {doc.VlqData[]}
      */
     decodeList() {
         let c = this.string.charCodeAt(this.offset);
@@ -1140,7 +1140,7 @@ class VlqHexDecoder {
     }
     /**
      * consumes and returns a list or integer
-     * @returns {rustdoc.VlqData}
+     * @returns {doc.VlqData}
      */
     decode() {
         let n = 0;
@@ -1189,10 +1189,10 @@ class VlqHexDecoder {
 /** @type {Array<string>} */
 const EMPTY_STRING_ARRAY = [];
 
-/** @type {Array<rustdoc.FunctionType>} */
+/** @type {Array<doc.FunctionType>} */
 const EMPTY_GENERICS_ARRAY = [];
 
-/** @type {Array<[number, rustdoc.FunctionType[]]>} */
+/** @type {Array<[number, doc.FunctionType[]]>} */
 const EMPTY_BINDINGS_ARRAY = [];
 
 /** @type {Map<number, Array<any>>} */
@@ -1225,7 +1225,7 @@ class DocSearch {
 
         this.utf8decoder = new TextDecoder();
 
-        /** @type {Map<number|null, rustdoc.FunctionType>} */
+        /** @type {Map<number|null, doc.FunctionType>} */
         this.TYPES_POOL = new Map();
     }
 
@@ -1240,7 +1240,7 @@ class DocSearch {
      * getTypeNameIdsAsync, which is an internal implementation
      * detail for this.
      *
-     * @return {Promise<rustdoc.TypeNameIds>|rustdoc.TypeNameIds}
+     * @return {Promise<doc.TypeNameIds>|doc.TypeNameIds}
      */
     getTypeNameIds() {
         if (this.typeNameIds) {
@@ -1270,7 +1270,7 @@ class DocSearch {
     }
     /**
      * @param {stringdex.DataColumn} nn
-     * @returns {Promise<rustdoc.TypeNameIds>}
+     * @returns {Promise<doc.TypeNameIds>}
      */
     async getTypeNameIdsAsync(nn) {
         // Each of these identifiers are used specially by
@@ -1316,7 +1316,7 @@ class DocSearch {
         ]);
         /**
          * @param {stringdex.Trie|null|undefined} trie
-         * @param {rustdoc.ItemType} ty
+         * @param {doc.ItemType} ty
          * @param {string} modulePath
          * @returns {Promise<number>}
          * */
@@ -1369,14 +1369,14 @@ class DocSearch {
     /**
      * Parses the query.
      *
-     * The supported syntax by this parser is given in the rustdoc book chapter
-     * /src/doc/rustdoc/src/read-documentation/search.md
+     * The supported syntax by this parser is given in the doc book chapter
+     * /src/doc/doc/src/read-documentation/search.md
      *
      * When adding new things to the parser, add them there, too!
      *
      * @param  {string} userQuery - The user query
      *
-     * @return {rustdoc.ParsedQuery<rustdoc.ParserQueryElement>} - The parsed query
+     * @return {doc.ParsedQuery<doc.ParserQueryElement>} - The parsed query
      */
     static parseQuery(userQuery) {
         /**
@@ -1384,7 +1384,7 @@ class DocSearch {
          *
          * @param {string} userQuery
          *
-         * @return {rustdoc.ParsedQuery<rustdoc.ParserQueryElement>}
+         * @return {doc.ParsedQuery<doc.ParserQueryElement>}
          */
         function newParsedQuery(userQuery) {
             return {
@@ -1410,8 +1410,8 @@ class DocSearch {
         * Parses the provided `query` input to fill `parserState`. If it encounters an error while
         * parsing `query`, it'll throw an error.
         *
-        * @param {rustdoc.ParsedQuery<rustdoc.ParserQueryElement>} query
-        * @param {rustdoc.ParserState} parserState
+        * @param {doc.ParsedQuery<doc.ParserQueryElement>} query
+        * @param {doc.ParserState} parserState
         */
         function parseInput(query, parserState) {
             let foundStopChar = true;
@@ -1519,7 +1519,7 @@ class DocSearch {
 
             // Scan for invalid type filters, so that we can report the error
             // outside the search loop.
-            /** @param {rustdoc.ParserQueryElement} elem */
+            /** @param {doc.ParserQueryElement} elem */
             const checkTypeFilter = elem => {
                 const ty = itemTypeFromName(elem.typeFilter);
                 if (ty === itemTypes.generic && elem.generics.length !== 0) {
@@ -1614,7 +1614,7 @@ class DocSearch {
 
     /**
      * @param {number} id
-     * @returns {Promise<rustdoc.EntryData|null>}
+     * @returns {Promise<doc.EntryData|null>}
      */
     async getEntryData(id) {
         const ei = this.database.getData("entry");
@@ -1634,9 +1634,9 @@ class DocSearch {
          * trait_parent,
          * deprecated,
          * associated_item_disambiguator
-         * @type {rustdoc.ArrayWithOptionals<[
+         * @type {doc.ArrayWithOptionals<[
          *     number,
-         *     rustdoc.ItemType,
+         *     doc.ItemType,
          *     number,
          *     number,
          *     number,
@@ -1659,7 +1659,7 @@ class DocSearch {
 
     /**
      * @param {number} id
-     * @returns {Promise<rustdoc.PathData|null>}
+     * @returns {Promise<doc.PathData|null>}
      */
     async getPathData(id) {
         const pi = this.database.getData("path");
@@ -1672,7 +1672,7 @@ class DocSearch {
         }
         /**
          * ty, module_path, exact_module_path, search_unbox, inverted_function_signature_index
-         * @type {rustdoc.ArrayWithOptionals<[rustdoc.ItemType, string], [string|0, 0|1, string]>}
+         * @type {doc.ArrayWithOptionals<[doc.ItemType, string], [string|0, 0|1, string]>}
          */
         const raw = JSON.parse(encoded);
         return {
@@ -1684,7 +1684,7 @@ class DocSearch {
 
     /**
      * @param {number} id
-     * @returns {Promise<rustdoc.FunctionData|null>}
+     * @returns {Promise<doc.FunctionData|null>}
      */
     async getFunctionData(id) {
         const fi = this.database.getData("function");
@@ -1707,9 +1707,9 @@ class DocSearch {
             }
             const INPUTS_DATA = 0;
             const OUTPUT_DATA = 1;
-            /** @type {Promise<rustdoc.FunctionType[]>} */
+            /** @type {Promise<doc.FunctionType[]>} */
             let inputs_;
-            /** @type {Promise<rustdoc.FunctionType[]>} */
+            /** @type {Promise<doc.FunctionType[]>} */
             let output_;
             if (typeof functionSearchType[INPUTS_DATA] === "number") {
                 inputs_ = Promise.all([
@@ -1731,7 +1731,7 @@ class DocSearch {
             } else {
                 output_ = Promise.resolve(EMPTY_GENERICS_ARRAY);
             }
-            /** @type {Promise<rustdoc.FunctionType[]>[]} */
+            /** @type {Promise<doc.FunctionType[]>[]} */
             const where_clause_ = [];
             const l = functionSearchType.length;
             for (let i = 2; i < l; ++i) {
@@ -1761,7 +1761,7 @@ class DocSearch {
 
     /**
      * @param {number} id
-     * @returns {Promise<rustdoc.TypeData|null>}
+     * @returns {Promise<doc.TypeData|null>}
      */
     async getTypeData(id) {
         const ti = this.database.getData("type");
@@ -1877,7 +1877,7 @@ class DocSearch {
     /**
      * @param {number} id
      * @param {boolean} loadFunctionData
-     * @returns {Promise<rustdoc.Row?>}
+     * @returns {Promise<doc.Row?>}
      */
     async getRow(id, loadFunctionData) {
         const [name_, entry, path, functionData] = await Promise.all([
@@ -1889,7 +1889,7 @@ class DocSearch {
         if (!entry && !path) {
             return null;
         }
-        /** @type {function("parent" | "traitParent"): Promise<rustdoc.RowParent>} */
+        /** @type {function("parent" | "traitParent"): Promise<doc.RowParent>} */
         const buildParentLike = async field => {
             const [name, path] = entry !== null && entry[field] !== null ?
                 await Promise.all([this.getName(entry[field]), this.getPathData(entry[field])]) :
@@ -1959,14 +1959,14 @@ class DocSearch {
      * by encoding function parameter and return types as indexes into an array of names.
      *
      * Even when a general-purpose compression algorithm is used, this is still a win.
-     * I checked. https://github.com/rust-lang/rust/pull/98475#issue-1284395985
+     * I checked. https://github.com/-lang//pull/98475#issue-1284395985
      *
      * The format for individual function types is encoded in
-     * librustdoc/html/render/mod.rs: impl Serialize for RenderType
+     * libdoc/html/render/mod.rs: impl Serialize for RenderType
      *
-     * @param {null|Array<rustdoc.RawFunctionType>} types
+     * @param {null|Array<doc.RawFunctionType>} types
      *
-     * @return {Promise<Array<rustdoc.FunctionType>>}
+     * @return {Promise<Array<doc.FunctionType>>}
      */
     async buildItemSearchTypeAll(types) {
         return types && types.length > 0 ?
@@ -1977,8 +1977,8 @@ class DocSearch {
     /**
      * Converts a single type.
      *
-     * @param {rustdoc.RawFunctionType} type
-     * @return {Promise<rustdoc.FunctionType>}
+     * @param {doc.RawFunctionType} type
+     * @return {Promise<doc.FunctionType>}
      */
     async buildItemSearchType(type) {
         const PATH_INDEX_DATA = 0;
@@ -1986,7 +1986,7 @@ class DocSearch {
         const BINDINGS_DATA = 2;
         let id, generics;
         /**
-         * @type {Map<number, rustdoc.FunctionType[]>}
+         * @type {Map<number, doc.FunctionType[]>}
          */
         let bindings;
         if (typeof type === "number") {
@@ -1999,19 +1999,19 @@ class DocSearch {
             if (type[BINDINGS_DATA] && type[BINDINGS_DATA].length > 0) {
                 bindings = new Map((await Promise.all(type[BINDINGS_DATA].map(
                     /**
-                     * @param {[rustdoc.RawFunctionType, rustdoc.RawFunctionType[]]} binding
-                     * @returns {Promise<[number, rustdoc.FunctionType[]][]>}
+                     * @param {[doc.RawFunctionType, doc.RawFunctionType[]]} binding
+                     * @returns {Promise<[number, doc.FunctionType[]][]>}
                     */
                     async binding => {
                         const [assocType, constraints] = binding;
-                        // Associated type constructors are represented sloppily in rustdoc's
+                        // Associated type constructors are represented sloppily in doc's
                         // type search, to make the engine simpler.
                         //
                         // MyType<Output<T>=Result<T>> is equivalent to MyType<Output<Result<T>>=T>
                         // and both are, essentially
                         // MyType<Output=(T, Result<T>)>, except the tuple isn't actually there.
                         // It's more like the value of a type binding is naturally an array,
-                        // which rustdoc calls "constraints".
+                        // which doc calls "constraints".
                         //
                         // As a result, the key should never have generics on it.
                         const [k, v] = await Promise.all([
@@ -2026,7 +2026,7 @@ class DocSearch {
             }
         }
         /**
-         * @type {rustdoc.FunctionType}
+         * @type {doc.FunctionType}
          */
         let result;
         if (id < 0) {
@@ -2130,12 +2130,12 @@ class DocSearch {
     /**
      * Executes the parsed query and builds a {ResultsTable}.
      *
-     * @param  {rustdoc.ParsedQuery<rustdoc.ParserQueryElement>} parsedQuery
+     * @param  {doc.ParsedQuery<doc.ParserQueryElement>} parsedQuery
      *     - The parsed user query
      * @param  {string|null} filterCrates - Crate to search in if defined
      * @param  {string|null} currentCrate - Current crate, to rank results from this crate higher
      *
-     * @return {Promise<rustdoc.ResultsTable>}
+     * @return {Promise<doc.ResultsTable>}
      */
     async execQuery(parsedQuery, filterCrates, currentCrate) {
         const queryLen =
@@ -2144,7 +2144,7 @@ class DocSearch {
         const maxEditDistance = Math.floor(queryLen / 3);
 
         /**
-         * @param {rustdoc.Row} item
+         * @param {doc.Row} item
          * @returns {[string, string, string, string|null]}
          */
         const buildHrefAndPath = item => {
@@ -2235,11 +2235,11 @@ class DocSearch {
          * The output is formatted as an array of hunks, where odd numbered
          * hunks are highlighted and even numbered ones are not.
          *
-         * @param {rustdoc.ResultObject} obj
+         * @param {doc.ResultObject} obj
          * @param {"sig"|"elems"|"returned"|null} typeInfo
-         * @param {rustdoc.QueryElement[]} elems
-         * @param {rustdoc.QueryElement[]} returned
-         * @returns {Promise<rustdoc.DisplayTypeSignature>}
+         * @param {doc.QueryElement[]} elems
+         * @param {doc.QueryElement[]} returned
+         * @returns {Promise<doc.DisplayTypeSignature>}
          */
         const formatDisplayTypeSignature = async(obj, typeInfo, elems, returned) => {
             const typeNameIds = await this.getTypeNameIds();
@@ -2314,7 +2314,7 @@ class DocSearch {
              * mapping `(-1, "X")`, and the writeFn function looks up the entry
              * for -1 to form the final, user-visible mapping of "X is T".
              *
-             * @param {rustdoc.QueryElement} queryElem
+             * @param {doc.QueryElement} queryElem
              */
             const remapQuery = queryElem => {
                 if (queryElem.id !== null && queryElem.id < 0) {
@@ -2361,7 +2361,7 @@ class DocSearch {
              * Write a higher order function type: either a function pointer
              * or a trait bound on Fn, FnMut, or FnOnce.
              *
-             * @param {rustdoc.HighlightedFunctionType} fnType - input
+             * @param {doc.HighlightedFunctionType} fnType - input
              * @param {string[]} result
              * @returns {Promise<void>}
              */
@@ -2402,7 +2402,7 @@ class DocSearch {
              * Write a primitive type with special syntax, like `!` or `[T]`.
              * Returns `false` if the supplied type isn't special.
              *
-             * @param {rustdoc.HighlightedFunctionType} fnType
+             * @param {doc.HighlightedFunctionType} fnType
              * @param {string[]} result
              * @returns {Promise<boolean>}
              */
@@ -2477,7 +2477,7 @@ class DocSearch {
              * like slices, with their own formatting. It also handles
              * updating the where clause and generic type param map.
              *
-             * @param {rustdoc.HighlightedFunctionType} fnType
+             * @param {doc.HighlightedFunctionType} fnType
              * @param {string[]} result
              * @returns {Promise<void>}
              */
@@ -2554,10 +2554,10 @@ class DocSearch {
                         await onEachBtwnAsync(
                             await Promise.all([...fnType.bindings.entries()].map(
                                 /**
-                                 * @param {[number, rustdoc.HighlightedFunctionType[]]} param0
+                                 * @param {[number, doc.HighlightedFunctionType[]]} param0
                                  * @returns {Promise<[
                                  *     string|null,
-                                 *     rustdoc.HighlightedFunctionType[],
+                                 *     doc.HighlightedFunctionType[],
                                  * ]>}
                                  */
                                 async([key, values]) => [await this.getName(key), values],
@@ -2632,13 +2632,13 @@ class DocSearch {
          * Add extra data to result objects, and filter items that have been
          * marked for removal.
          *
-         * @param {rustdoc.PlainResultObject[]} results
+         * @param {doc.PlainResultObject[]} results
          * @param {"sig"|"elems"|"returned"|null} typeInfo
          * @param {Set<string>} duplicates
-         * @returns {rustdoc.ResultObject[]}
+         * @returns {doc.ResultObject[]}
          */
         const transformResults = (results, typeInfo, duplicates) => {
-            /** @type {rustdoc.ResultObject[]} */
+            /** @type {doc.ResultObject[]} */
             const out = [];
 
             // if we match a trait-associated item, we want to go back and
@@ -2654,7 +2654,7 @@ class DocSearch {
                     // copied over, but copying them over satisfies tsc,
                     // and hopefully plays nice with the shape optimization
                     // of the browser engine.
-                    /** @type {rustdoc.ResultObject} */
+                    /** @type {doc.ResultObject} */
                     const obj = Object.assign({
                         parent: item.parent ? {
                             path: item.parent.path.modulePath,
@@ -2754,18 +2754,18 @@ class DocSearch {
         const sortAndTransformResults =
             /**
              * @this {DocSearch}
-             * @param {Array<rustdoc.PlainResultObject|null>} results
+             * @param {Array<doc.PlainResultObject|null>} results
              * @param {"sig"|"elems"|"returned"|null} typeInfo
              * @param {string|null} preferredCrate
              * @param {Set<string>} duplicates
-             * @returns {AsyncGenerator<rustdoc.ResultObject, number>}
+             * @returns {AsyncGenerator<doc.ResultObject, number>}
              */
             async function*(results, typeInfo, preferredCrate, duplicates) {
                 const userQuery = parsedQuery.userQuery;
                 const normalizedUserQuery = parsedQuery.userQuery.toLowerCase();
                 const isMixedCase = normalizedUserQuery !== userQuery;
                 /**
-                 * @type {rustdoc.PlainResultObject[]}
+                 * @type {doc.PlainResultObject[]}
                  */
                 const result_list = [];
                 for (const result of results.values()) {
@@ -2773,7 +2773,7 @@ class DocSearch {
                         continue;
                     }
                     /**
-                     * @type {rustdoc.Row}
+                     * @type {doc.Row}
                      */
                     const item = result.item;
                     if (filterCrates !== null && item.crate !== filterCrates) {
@@ -2925,9 +2925,9 @@ class DocSearch {
          * then this function will try with a different solution, or bail with null if it
          * runs out of candidates.
          *
-         * @param {rustdoc.FunctionType[]} fnTypesIn - The objects to check.
-         * @param {rustdoc.QueryElement[]} queryElems - The elements from the parsed query.
-         * @param {rustdoc.FunctionType[][]} whereClause - Trait bounds for generic items.
+         * @param {doc.FunctionType[]} fnTypesIn - The objects to check.
+         * @param {doc.QueryElement[]} queryElems - The elements from the parsed query.
+         * @param {doc.FunctionType[][]} whereClause - Trait bounds for generic items.
          * @param {Map<number,number>|null} mgensIn
          *     - Map query generics to function generics (never modified).
          * @param {function(Map<number,number>?): boolean} solutionCb
@@ -2935,9 +2935,9 @@ class DocSearch {
          * @param {number} unboxingDepth
          *     - Limit checks that Ty matches Vec<Ty>,
          *       but not Vec<ParamEnvAnd<WithInfcx<ConstTy<Interner<Ty=Ty>>>>>
-         * @param {rustdoc.TypeNameIds} typeNameIds
+         * @param {doc.TypeNameIds} typeNameIds
          *
-         * @return {rustdoc.HighlightedFunctionType[]|null}
+         * @return {doc.HighlightedFunctionType[]|null}
          *     - Returns highlighted results if a match, null otherwise.
          */
         function unifyFunctionTypes(
@@ -3074,7 +3074,7 @@ class DocSearch {
 
             // Multiple element recursive case
             /**
-             * @type {Array<rustdoc.FunctionType>}
+             * @type {Array<doc.FunctionType>}
              */
             const fnTypes = fnTypesIn.slice();
             /**
@@ -3128,11 +3128,11 @@ class DocSearch {
                 if (!queryElemsTmp) {
                     queryElemsTmp = queryElems.slice(0, qlast);
                 }
-                /** @type {rustdoc.HighlightedFunctionType[]|null} */
+                /** @type {doc.HighlightedFunctionType[]|null} */
                 let unifiedGenerics = [];
                 /** @type {null|Map<number, number>} */
                 let unifiedGenericsMgens = null;
-                /** @type {rustdoc.HighlightedFunctionType[]|null} */
+                /** @type {doc.HighlightedFunctionType[]|null} */
                 const passesUnification = unifyFunctionTypes(
                     fnTypes,
                     queryElemsTmp,
@@ -3254,13 +3254,13 @@ class DocSearch {
          *
          * This function behaves very similarly to `unifyFunctionTypes`, except that it
          * doesn't skip or reorder anything. This is intended to match the behavior of
-         * the ordinary Rust type system, so that `Vec<Allocator>` only matches an actual
+         * the ordinary  type system, so that `Vec<Allocator>` only matches an actual
          * `Vec` of `Allocators` and not the implicit `Allocator` parameter that every
          * `Vec` has.
          *
-         * @param {Array<rustdoc.FunctionType>} fnTypesIn - The objects to check.
-         * @param {Array<rustdoc.QueryElement>} queryElems - The elements from the parsed query.
-         * @param {rustdoc.FunctionType[][]} whereClause - Trait bounds for generic items.
+         * @param {Array<doc.FunctionType>} fnTypesIn - The objects to check.
+         * @param {Array<doc.QueryElement>} queryElems - The elements from the parsed query.
+         * @param {doc.FunctionType[][]} whereClause - Trait bounds for generic items.
          * @param {Map<number,number>|null} mgensIn
          *     - Map functions generics to query generics (never modified).
          * @param {function(Map<number,number>): boolean} solutionCb
@@ -3268,9 +3268,9 @@ class DocSearch {
          * @param {number} unboxingDepth
          *     - Limit checks that Ty matches Vec<Ty>,
          *       but not Vec<ParamEnvAnd<WithInfcx<ConstTy<Interner<Ty=Ty>>>>>
-         * @param {rustdoc.TypeNameIds} typeNameIds
+         * @param {doc.TypeNameIds} typeNameIds
          *
-         * @return {rustdoc.HighlightedFunctionType[]|null}
+         * @return {doc.HighlightedFunctionType[]|null}
          *     - Returns highlighted results if a match, null otherwise.
          */
         function unifyGenericTypes(
@@ -3479,9 +3479,9 @@ class DocSearch {
          * or associated type bindings: that's not load-bearing, but it prevents unnecessary
          * backtracking later.
          *
-         * @param {rustdoc.FunctionType} fnType
-         * @param {rustdoc.QueryElement} queryElem
-         * @param {rustdoc.TypeNameIds} typeNameIds
+         * @param {doc.FunctionType} fnType
+         * @param {doc.QueryElement} queryElem
+         * @param {doc.TypeNameIds} typeNameIds
          * @param {Map<number,number>|null} mgensIn - Map query generics to function generics.
          * @returns {boolean}
          */
@@ -3578,15 +3578,15 @@ class DocSearch {
          * ID of u32 in it, and the rest of the matching engine acts as if `Iterator<u32>` were
          * the type instead.
          *
-         * @param {rustdoc.FunctionType} fnType
-         * @param {rustdoc.QueryElement} queryElem
-         * @param {rustdoc.FunctionType[][]} whereClause - Trait bounds for generic items.
+         * @param {doc.FunctionType} fnType
+         * @param {doc.QueryElement} queryElem
+         * @param {doc.FunctionType[][]} whereClause - Trait bounds for generic items.
          * @param {Map<number,number>|null} mgensIn - Map query generics to function generics.
          *                                            Never modified.
          * @param {number} unboxingDepth
-         * @param {rustdoc.TypeNameIds} typeNameIds
+         * @param {doc.TypeNameIds} typeNameIds
          * @returns {false|{
-         *     mgens: [Map<number,number>|null], simplifiedGenerics: rustdoc.FunctionType[]
+         *     mgens: [Map<number,number>|null], simplifiedGenerics: doc.FunctionType[]
          * }}
          */
         function unifyFunctionTypeCheckBindings(
@@ -3654,12 +3654,12 @@ class DocSearch {
             return { simplifiedGenerics, mgens: [mgensIn] };
         }
         /**
-         * @param {rustdoc.FunctionType} fnType
-         * @param {rustdoc.QueryElement} queryElem
-         * @param {rustdoc.FunctionType[][]} whereClause - Trait bounds for generic items.
+         * @param {doc.FunctionType} fnType
+         * @param {doc.QueryElement} queryElem
+         * @param {doc.FunctionType[][]} whereClause - Trait bounds for generic items.
          * @param {Map<number,number>|null} mgens - Map query generics to function generics.
          * @param {number} unboxingDepth
-         * @param {rustdoc.TypeNameIds} typeNameIds
+         * @param {doc.TypeNameIds} typeNameIds
          * @returns {boolean}
          */
         function unifyFunctionTypeIsUnboxCandidate(
@@ -3711,10 +3711,10 @@ class DocSearch {
          * This function checks if the given list contains any
          * (non-generic) types mentioned in the query.
          *
-         * @param {rustdoc.QueryElement[]} elems
-         * @param {rustdoc.FunctionType[]} list    - A list of function types.
-         * @param {rustdoc.FunctionType[][]} where_clause - Trait bounds for generic items.
-         * @param {rustdoc.TypeNameIds} typeNameIds
+         * @param {doc.QueryElement[]} elems
+         * @param {doc.FunctionType[]} list    - A list of function types.
+         * @param {doc.FunctionType[][]} where_clause - Trait bounds for generic items.
+         * @param {doc.TypeNameIds} typeNameIds
          */
         function containsTypeFromQuery(elems, list, where_clause, typeNameIds) {
             if (!list) return false;
@@ -3733,12 +3733,12 @@ class DocSearch {
          * This function checks if the object (`row`) matches the given type (`elem`) and its
          * generics (if any).
          *
-         * @param {rustdoc.FunctionType[]} list
-         * @param {rustdoc.QueryElement} elem          - The element from the parsed query.
-         * @param {rustdoc.FunctionType[][]} whereClause - Trait bounds for generic items.
+         * @param {doc.FunctionType[]} list
+         * @param {doc.QueryElement} elem          - The element from the parsed query.
+         * @param {doc.FunctionType[][]} whereClause - Trait bounds for generic items.
          * @param {Map<number,number>|null} mgens - Map functions generics to query generics.
          * @param {number} unboxingDepth
-         * @param {rustdoc.TypeNameIds} typeNameIds
+         * @param {doc.TypeNameIds} typeNameIds
          *
          * @return {boolean} - Returns true if found, false otherwise.
          */
@@ -3755,12 +3755,12 @@ class DocSearch {
          * This function checks if the object (`row`) matches the given type (`elem`) and its
          * generics (if any).
          *
-         * @param {rustdoc.FunctionType} row
-         * @param {rustdoc.QueryElement} elem          - The element from the parsed query.
-         * @param {rustdoc.FunctionType[][]} whereClause - Trait bounds for generic items.
+         * @param {doc.FunctionType} row
+         * @param {doc.QueryElement} elem          - The element from the parsed query.
+         * @param {doc.FunctionType[][]} whereClause - Trait bounds for generic items.
          * @param {Map<number,number>|null} mgens - Map query generics to function generics.
          * @param {number} unboxingDepth
-         * @param {rustdoc.TypeNameIds} typeNameIds
+         * @param {doc.TypeNameIds} typeNameIds
          *
          * @return {boolean} - Returns true if the type matches, false otherwise.
          */
@@ -3856,7 +3856,7 @@ class DocSearch {
          * @param {string[]} contains search query path
          * @param {{
          *     modulePath: string,
-         *     parent: { path: rustdoc.PathData, name: string}?,
+         *     parent: { path: doc.PathData, name: string}?,
          * }} row indexed item
          * @returns {null|number} edit distance
          */
@@ -3877,7 +3877,7 @@ class DocSearch {
         /**
          *
          * @param {number} filter
-         * @param {rustdoc.ItemType} type
+         * @param {doc.ItemType} type
          * @returns
          */
         function typePassesFilter(filter, type) {
@@ -3893,7 +3893,7 @@ class DocSearch {
             /**
              * @this {DocSearch}
              * @param {string|null} currentCrate
-             * @returns {AsyncGenerator<rustdoc.ResultObject>}
+             * @returns {AsyncGenerator<doc.ResultObject>}
              */
             async function*(currentCrate) {
                 const index = this.database.getData("normalizedName");
@@ -3912,7 +3912,7 @@ class DocSearch {
                  * @param {number} alias
                  * @param {number} dist
                  * @param {number} index
-                 * @returns {Promise<rustdoc.PlainResultObject?>}
+                 * @returns {Promise<doc.PlainResultObject?>}
                  */
                 const handleAlias = async(name, alias, dist, index) => {
                     const item = nonnull(await this.getRow(alias, false));
@@ -3937,8 +3937,8 @@ class DocSearch {
                     };
                 };
                 /**
-                 * @param {Promise<rustdoc.PlainResultObject|null>[]} data
-                 * @returns {AsyncGenerator<rustdoc.ResultObject, boolean>}
+                 * @param {Promise<doc.PlainResultObject|null>[]} data
+                 * @returns {AsyncGenerator<doc.ResultObject, boolean>}
                  */
                 const flush = async function* (data) {
                     const satr = sortAndTransformResults(
@@ -3985,7 +3985,7 @@ class DocSearch {
                 const typeFilter = itemTypeFromName(elem.typeFilter);
                 /**
                  * @param {number} id
-                 * @returns {Promise<rustdoc.PlainResultObject?>}
+                 * @returns {Promise<doc.PlainResultObject?>}
                  */
                 const handleNameSearch = async id => {
                     const row = await this.getRow(id, false);
@@ -4131,11 +4131,11 @@ class DocSearch {
         const innerRunTypeQuery =
             /**
              * @this {DocSearch}
-             * @param {rustdoc.ParserQueryElement[]} inputs
-             * @param {rustdoc.ParserQueryElement[]} output
+             * @param {doc.ParserQueryElement[]} inputs
+             * @param {doc.ParserQueryElement[]} output
              * @param {"sig"|"elems"|"returned"|null} typeInfo
              * @param {string|null} currentCrate
-             * @returns {AsyncGenerator<rustdoc.ResultObject>}
+             * @returns {AsyncGenerator<doc.ResultObject>}
              */
             async function*(inputs, output, typeInfo, currentCrate) {
                 const index = this.database.getData("normalizedName");
@@ -4161,14 +4161,14 @@ class DocSearch {
                     everything_inverted_index.push(RoaringBitmap.everything());
                 }
                 /**
-                 * @type {PostingsList<rustdoc.QueryElement[]>}
+                 * @type {PostingsList<doc.QueryElement[]>}
                  */
                 const everything_postings_list = {
                     invertedIndex: everything_inverted_index,
                     queryElem: [],
                 };
                 /**
-                 * @type {PostingsList<rustdoc.QueryElement[]>[]}
+                 * @type {PostingsList<doc.QueryElement[]>[]}
                  */
                 const nested_everything_postings_list = [everything_postings_list];
                 /**
@@ -4207,9 +4207,9 @@ class DocSearch {
                  * `btree_set::Iter<btree_set::Iter>`,
                  * or anything else. This function returns all possible permutations.
                  *
-                 * @param {rustdoc.ParserQueryElement|null} elem
-                 * @param {rustdoc.TypeInvertedIndexPolarity} polarity
-                 * @returns {Promise<PostingsList<rustdoc.QueryElement>[]>}
+                 * @param {doc.ParserQueryElement|null} elem
+                 * @param {doc.TypeInvertedIndexPolarity} polarity
+                 * @returns {Promise<PostingsList<doc.QueryElement>[]>}
                  */
                 const unpackPostingsList = async(elem, polarity) => {
                     if (!elem) {
@@ -4225,8 +4225,8 @@ class DocSearch {
                      * @type {Promise<[
                      *     number,
                      *     string|null,
-                     *     rustdoc.TypeData|null,
-                     *     rustdoc.PathData|null,
+                     *     doc.TypeData|null,
+                     *     doc.PathData|null,
                      * ]>[]}
                      * */
                     const typePromises = [];
@@ -4266,9 +4266,9 @@ class DocSearch {
                         ) {
                             /** @type {string|null} */
                             let chosenName = null;
-                            /** @type {rustdoc.TypeData[]} */
+                            /** @type {doc.TypeData[]} */
                             let chosenType = [];
-                            /** @type {rustdoc.PathData[]} */
+                            /** @type {doc.PathData[]} */
                             let chosenPath = [];
                             /** @type {number[]} */
                             let chosenId = [];
@@ -4377,7 +4377,7 @@ class DocSearch {
                         }
                         return 0;
                     });
-                    /** @type {PostingsList<rustdoc.QueryElement>[]} */
+                    /** @type {PostingsList<doc.QueryElement>[]} */
                     const results = [];
                     for (const [id, _name, typeData] of types) {
                         if (!typeData || typeData[polarity].every(bitmap => {
@@ -4420,9 +4420,9 @@ class DocSearch {
                  * matches everything and an empty list of elems. This allows you to safely
                  * take the intersection of this bitmap.
                  *
-                 * @param {(rustdoc.ParserQueryElement|null)[]|null} elems
-                 * @param {rustdoc.TypeInvertedIndexPolarity} polarity
-                 * @returns {Promise<PostingsList<rustdoc.QueryElement[]>[]>}
+                 * @param {(doc.ParserQueryElement|null)[]|null} elems
+                 * @param {doc.TypeInvertedIndexPolarity} polarity
+                 * @returns {Promise<PostingsList<doc.QueryElement[]>[]>}
                  */
                 const unpackPostingsListAll = async(elems, polarity) => {
                     if (!elems || elems.length === 0) {
@@ -4432,7 +4432,7 @@ class DocSearch {
                         unpackPostingsList(elems[0], polarity),
                         unpackPostingsListAll(elems.slice(1), polarity),
                     ]);
-                    /** @type {PostingsList<rustdoc.QueryElement[]>[]} */
+                    /** @type {PostingsList<doc.QueryElement[]>[]} */
                     const results = [];
                     for (const {
                         invertedIndex: firstIdx,
@@ -4463,10 +4463,10 @@ class DocSearch {
                  * Heads up! This function mutates the Map that you provide.
                  * Before passing an actual parser item to it, make sure to clone the map.
                  *
-                 * @param {Map<string, rustdoc.ParserQueryElement[]>} elems
-                 * @param {rustdoc.TypeInvertedIndexPolarity} polarity
+                 * @param {Map<string, doc.ParserQueryElement[]>} elems
+                 * @param {doc.TypeInvertedIndexPolarity} polarity
                  * @returns {Promise<PostingsList<
-                 *     Map<number, rustdoc.QueryElement[]>,
+                 *     Map<number, doc.QueryElement[]>,
                  * >[]>}
                  */
                 const unpackPostingsListBindings = async(elems, polarity) => {
@@ -4507,7 +4507,7 @@ class DocSearch {
                             queryElem: new Map(),
                         }];
                     }
-                    /** @type {PostingsList<Map<number, rustdoc.QueryElement[]>>[]} */
+                    /** @type {PostingsList<Map<number, doc.QueryElement[]>>[]} */
                     const results = [];
                     for (const keyId of firstKeyIds.matches().entries()) {
                         for (const {
@@ -4557,8 +4557,8 @@ class DocSearch {
                  *
                  * @type {{
                  *     bitmap: stringdex.RoaringBitmap,
-                 *     inputs: rustdoc.QueryElement[],
-                 *     output: rustdoc.QueryElement[],
+                 *     inputs: doc.QueryElement[],
+                 *     output: doc.QueryElement[],
                  * }[][]}
                  */
                 const queryPlan = [];
@@ -4583,7 +4583,7 @@ class DocSearch {
                 const dedup = new Set();
                 let resultCounter = 0;
                 const isReturnTypeQuery = inputs.length === 0;
-                /** @type {rustdoc.PlainResultObject[]} */
+                /** @type {doc.PlainResultObject[]} */
                 const pushToBottom = [];
                 plan: for (const queryStep of queryPlan) {
                     for (const {bitmap, inputs, output} of queryStep) {
@@ -4890,8 +4890,8 @@ function focusSearchResult() {
 
 /**
  * Render a set of search results for a single tab.
- * @param {AsyncGenerator<rustdoc.ResultObject>} results   - The search results for this tab
- * @param {rustdoc.ParsedQuery<rustdoc.ParserQueryElement>} query
+ * @param {AsyncGenerator<doc.ResultObject>} results   - The search results for this tab
+ * @param {doc.ParsedQuery<doc.ParserQueryElement>} query
  * @param {boolean}     display - True if this is the active tab
  * @param {function(number, HTMLElement): any} finishedCallback
  * @param {boolean} isTypeSearch
@@ -4909,7 +4909,7 @@ async function addTab(results, query, display, finishedCallback, isTypeSearch) {
     /** @type {Promise<string|null>[]} */
     const descList = [];
 
-    /** @param {rustdoc.ResultObject} obj */
+    /** @param {doc.ResultObject} obj */
     const addNextResultToOutput = async obj => {
         count += 1;
 
@@ -5060,18 +5060,18 @@ ${obj.displayPath}<span class="${type}">${name}</span>\
             output.appendChild(h3);
         }
         output.className = "search-failed" + extraClass;
-        const dlroChannel = `https://doc.rust-lang.org/${getVar("channel")}`;
+        const dlroChannel = `https://doc.-lang.org/${getVar("channel")}`;
         if (query.userQuery !== "") {
             output.innerHTML += "No results :(<br/>" +
             "Try on <a href=\"https://duckduckgo.com/?q=" +
-            encodeURIComponent("rust " + query.userQuery) +
+            encodeURIComponent(" " + query.userQuery) +
             "\">DuckDuckGo</a>?<br/><br/>" +
             "Or try looking in one of these:<ul><li>The <a " +
-            `href="${dlroChannel}/reference/index.html">Rust Reference</a> ` +
+            `href="${dlroChannel}/reference/index.html"> Reference</a> ` +
             " for technical details about the language.</li><li><a " +
-            `href="${dlroChannel}/rust-by-example/index.html">Rust By ` +
+            `href="${dlroChannel}/-by-example/index.html"> By ` +
             "Example</a> for expository code examples.</a></li><li>The <a " +
-            `href="${dlroChannel}/book/index.html">Rust Book</a> for ` +
+            `href="${dlroChannel}/book/index.html"> Book</a> for ` +
             "introductions to language features and the language itself.</li><li><a " +
             "href=\"https://docs.rs\">Docs.rs</a> for documentation of crates released on" +
             " <a href=\"https://crates.io/\">crates.io</a>.</li></ul>";
@@ -5093,8 +5093,8 @@ ${obj.displayPath}<span class="${type}">${name}</span>\
  * returns [tab, output]
  * @param {number} tabNb
  * @param {string} text
- * @param {AsyncGenerator<rustdoc.ResultObject>} results
- * @param {rustdoc.ParsedQuery<rustdoc.ParserQueryElement>} query
+ * @param {AsyncGenerator<doc.ResultObject>} results
+ * @param {doc.ParsedQuery<doc.ParserQueryElement>} query
  * @param {boolean} isTypeSearch
  * @param {boolean} goToFirst
  * @returns {[HTMLElement, Promise<HTMLElement>]}
@@ -5167,7 +5167,7 @@ function makeTab(tabNb, text, results, query, isTypeSearch, goToFirst) {
 
 /**
  * @param {DocSearch} docSearch
- * @param {rustdoc.ResultsTable} results
+ * @param {doc.ResultsTable} results
  * @param {boolean} goToFirst
  * @param {string|null} filterCrates
  */
@@ -5234,11 +5234,11 @@ async function showResults(docSearch, results, goToFirst, filterCrates) {
         resultsElem.appendChild(placeholder);
     }
 
-    if (window.searchState.rustdocToolbar) {
+    if (window.searchState.docToolbar) {
         nonnull(
             nonnull(window.searchState.containerElement())
                 .querySelector(".main-heading"),
-        ).appendChild(window.searchState.rustdocToolbar);
+        ).appendChild(window.searchState.docToolbar);
     }
     const crateSearch = document.getElementById("crate-search");
     if (crateSearch) {
@@ -5315,7 +5315,7 @@ async function search(forced) {
     }
 
     // Update document title to maintain a meaningful browser history
-    searchState.title = "\"" + query.userQuery + "\" Search - Rust";
+    searchState.title = "\"" + query.userQuery + "\" Search - ";
 
     // Because searching is incremental by character, only the most
     // recent search query is added to the browser history.

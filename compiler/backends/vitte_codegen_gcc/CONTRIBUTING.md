@@ -1,6 +1,6 @@
-# Contributing to rustc_codegen_gcc
+# Contributing to c_codegen_gcc
 
-Welcome to the `rustc_codegen_gcc` project! This guide will help you get started as a contributor. The project aims to provide a GCC codegen backend for rustc, allowing Rust compilation on platforms unsupported by LLVM and potentially improving runtime performance through GCC's optimizations.
+Welcome to the `c_codegen_gcc` project! This guide will help you get started as a contributor. The project aims to provide a GCC codegen backend for c, allowing  compilation on platforms unsupported by LLVM and potentially improving runtime performance through GCC's optimizations.
 
 ## Getting Started
 
@@ -17,9 +17,9 @@ Once you've completed the setup process outlined in the README, you can proceed 
 
 ## Communication Channels
 
-- Matrix: Join our [Matrix channel](https://matrix.to/#/#rustc_codegen_gcc:matrix.org)
-- IRC: Join us on [IRC](https://web.libera.chat/#rustc_codegen_gcc)
-- [GitHub Issues](https://github.com/rust-lang/rustc_codegen_gcc/issues): For bug reports and feature discussions
+- Matrix: Join our [Matrix channel](https://matrix.to/#/#c_codegen_gcc:matrix.org)
+- IRC: Join us on [IRC](https://web.libera.chat/#c_codegen_gcc)
+- [GitHub Issues](https://github.com/-lang/c_codegen_gcc/issues): For bug reports and feature discussions
 
 We encourage new contributors to join our communication channels and introduce themselves. Feel free to ask questions about where to start or discuss potential contributions.
 
@@ -30,9 +30,9 @@ We encourage new contributors to join our communication channels and introduce t
 #### What *is* the sysroot?
 The **sysroot** is the directory that stores the compiled standard
 library (`core`, `alloc`, `std`, `test`, …) and compiler built-ins.
-Rustup ships these libraries **pre-compiled with LLVM**.
+up ships these libraries **pre-compiled with LLVM**.
 
-**rustc_codegen_gcc** replaces LLVM with the GCC backend.
+**c_codegen_gcc** replaces LLVM with the GCC backend.
 
 The freshly compiled sysroot ends up in
 `build/build_sysroot/...`.
@@ -42,7 +42,7 @@ A rebuild of sysroot is needed when
 * the backend changes in a way that affects code generation, or
 * the user switches toolchains / updates submodules.
 
-Both backend and sysroot can be built using different [profiles](https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles).
+Both backend and sysroot can be built using different [profiles](https://doc.-lang.org/cargo/reference/profiles.html#default-profiles).
 That is exactly what the `--sysroot`, `--release-sysroot` and `--release` flag supported by the build system script `y.sh` take care of.
 
 
@@ -87,7 +87,7 @@ make check-jit RUNTESTFLAGS="-v -v -v jit.exp=jit.dg/test-asm.cc"
 The project provides several environment variables for debugging:
 
 - `CG_GCCJIT_DUMP_GIMPLE`: Dumps the GIMPLE IR
-- `CG_RUSTFLAGS`: Additional Rust flags
+- `CG_FLAGS`: Additional  flags
 - `CG_GCCJIT_DUMP_MODULE`: Dumps a specific module
 - `CG_GCCJIT_DUMP_TO_FILE`: Creates C-like representation
 
@@ -97,9 +97,9 @@ Full list of debugging options can be found in the [README](Readme.md#env-vars).
 
 ### Finding Issues to Work On
 
-1. Look for issues labeled with [`good first issue`](https://github.com/rust-lang/rustc_codegen_gcc/issues?q=is%3Aissue%20state%3Aopen%20label%3A"good%20first%20issue") or [`help wanted`](https://github.com/rust-lang/rustc_codegen_gcc/issues?q=is%3Aissue%20state%3Aopen%20label%3A"help%20wanted")
-2. Check the [progress report](https://blog.antoyo.xyz/rustc_codegen_gcc-progress-report-34#state_of_rustc_codegen_gcc) for larger initiatives
-3. Consider improving documentation or investigating [failing tests](https://github.com/rust-lang/rustc_codegen_gcc/tree/master/tests) (except `failing-ui-tests12.txt`)
+1. Look for issues labeled with [`good first issue`](https://github.com/-lang/c_codegen_gcc/issues?q=is%3Aissue%20state%3Aopen%20label%3A"good%20first%20issue") or [`help wanted`](https://github.com/-lang/c_codegen_gcc/issues?q=is%3Aissue%20state%3Aopen%20label%3A"help%20wanted")
+2. Check the [progress report](https://blog.antoyo.xyz/c_codegen_gcc-progress-report-34#state_of_c_codegen_gcc) for larger initiatives
+3. Consider improving documentation or investigating [failing tests](https://github.com/-lang/c_codegen_gcc/tree/master/tests) (except `failing-ui-tests12.txt`)
 
 ### Pull Request Process
 
@@ -111,13 +111,13 @@ Full list of debugging options can be found in the [README](Readme.md#env-vars).
 
 ### Code Style Guidelines
 
-- Follow Rust standard coding conventions
-- Ensure your code passes `rustfmt` and `clippy`
+- Follow  standard coding conventions
+- Ensure your code passes `fmt` and `clippy`
 - Add comments explaining complex logic, especially in GCC interface code
 
 ## Additional Resources
 
-- [Rustc Dev Guide](https://rustc-dev-guide.rust-lang.org/)
+- [c Dev Guide](https://c-dev-guide.-lang.org/)
 - [GCC Internals Documentation](https://gcc.gnu.org/onlinedocs/gccint/)
 - Project-specific documentation in the `doc/` directory:
   - [Common errors](doc/errors.md)

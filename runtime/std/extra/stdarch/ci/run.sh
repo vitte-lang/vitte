@@ -6,12 +6,12 @@ set -ex
 
 # Tests are all super fast anyway, and they fault often enough on travis that
 # having only one thread increases debuggability to be worth it.
-#export RUST_BACKTRACE=full
-#export RUST_TEST_NOCAPTURE=1
-#export RUST_TEST_THREADS=1
+#export _BACKTRACE=full
+#export _TEST_NOCAPTURE=1
+#export _TEST_THREADS=1
 
-export RUSTFLAGS="${RUSTFLAGS} -D warnings -Z merge-functions=disabled -Z verify-llvm-ir"
-export HOST_RUSTFLAGS="${RUSTFLAGS}"
+export FLAGS="${FLAGS} -D warnings -Z merge-functions=disabled -Z verify-llvm-ir"
+export HOST_FLAGS="${FLAGS}"
 export PROFILE="${PROFILE:="release"}"
 
 case ${TARGET} in
@@ -20,7 +20,7 @@ case ${TARGET} in
     # with our instruction assertions just like LLVM's MergeFunctions pass so
     # we disable it.
     *-pc-windows-msvc)
-        export RUSTFLAGS="${RUSTFLAGS} -Clink-args=/OPT:NOICF"
+        export FLAGS="${FLAGS} -Clink-args=/OPT:NOICF"
         ;;
     # On 32-bit use a static relocation model which avoids some extra
     # instructions when dealing with static data, notably allowing some
@@ -28,31 +28,31 @@ case ${TARGET} in
     # this is the default, dynamic, then too many instructions are generated
     # when we assert the instruction for a function and it causes tests to fail.
     i686-* | i586-*)
-        export RUSTFLAGS="${RUSTFLAGS} -C relocation-model=static"
+        export FLAGS="${FLAGS} -C relocation-model=static"
         ;;
     # Some x86_64 targets enable by default more features beyond SSE2,
     # which cause some instruction assertion checks to fail.
     x86_64-*)
-        export RUSTFLAGS="${RUSTFLAGS} -C target-feature=-sse3"
+        export FLAGS="${FLAGS} -C target-feature=-sse3"
         ;;
     #Unoptimized build uses fast-isel which breaks with msa
     mips-* | mipsel-*)
-	export RUSTFLAGS="${RUSTFLAGS} -C llvm-args=-fast-isel=false"
+	export FLAGS="${FLAGS} -C llvm-args=-fast-isel=false"
 	;;
     armv7-*eabihf | thumbv7-*eabihf)
-        export RUSTFLAGS="${RUSTFLAGS} -Ctarget-feature=+neon"
+        export FLAGS="${FLAGS} -Ctarget-feature=+neon"
         ;;
     amdgcn-*)
-        export RUSTFLAGS="${RUSTFLAGS} -Ctarget-cpu=gfx1200"
+        export FLAGS="${FLAGS} -Ctarget-cpu=gfx1200"
         ;;
     # Some of our test dependencies use the deprecated `gcc` crates which
     # doesn't detect RISC-V compilers automatically, so do it manually here.
     riscv*)
-        export RUSTFLAGS="${RUSTFLAGS} -Ctarget-feature=+zk,+zks,+zbb,+zbc"
+        export FLAGS="${FLAGS} -Ctarget-feature=+zk,+zks,+zbb,+zbc"
         ;;
 esac
 
-echo "RUSTFLAGS=${RUSTFLAGS}"
+echo "FLAGS=${FLAGS}"
 echo "OBJDUMP=${OBJDUMP}"
 echo "STDARCH_DISABLE_ASSERT_INSTR=${STDARCH_DISABLE_ASSERT_INSTR}"
 echo "STDARCH_TEST_EVERYTHING=${STDARCH_TEST_EVERYTHING}"
@@ -101,32 +101,32 @@ case ${TARGET} in
     x86_64* | i686*)
         export STDARCH_DISABLE_ASSERT_INSTR=1
 
-        export RUSTFLAGS="${RUSTFLAGS} -C target-feature=+avx"
+        export FLAGS="${FLAGS} -C target-feature=+avx"
         cargo_test 
         ;;
     # FIXME: don't build anymore
     #mips-*gnu* | mipsel-*gnu*)
-    #    export RUSTFLAGS="${RUSTFLAGS} -C target-feature=+msa,+fp64,+mips32r5"
+    #    export FLAGS="${FLAGS} -C target-feature=+msa,+fp64,+mips32r5"
     #    cargo_test 
 	  #    ;;
     mips64*)
-        export RUSTFLAGS="${RUSTFLAGS} -C target-feature=+msa"
+        export FLAGS="${FLAGS} -C target-feature=+msa"
         cargo_test 
 	      ;;
     s390x*)
-        export RUSTFLAGS="${RUSTFLAGS} -C target-feature=+vector-enhancements-1"
+        export FLAGS="${FLAGS} -C target-feature=+vector-enhancements-1"
         cargo_test 
 	      ;;
     powerpc64*)
-        export RUSTFLAGS="${RUSTFLAGS} -C target-feature=+altivec"
+        export FLAGS="${FLAGS} -C target-feature=+altivec"
         cargo_test 
 
-        export RUSTFLAGS="${RUSTFLAGS} -C target-feature=+vsx"
+        export FLAGS="${FLAGS} -C target-feature=+vsx"
         cargo_test 
         ;;
     powerpc*)
         # qemu has a bug in PPC32 which leads to a crash when compiled with `vsx`
-        export RUSTFLAGS="${RUSTFLAGS} -C target-feature=+altivec"
+        export FLAGS="${FLAGS} -C target-feature=+altivec"
         cargo_test 
         ;;
     *)

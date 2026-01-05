@@ -20,7 +20,7 @@ Do not put space around parentheses used in types, e.g., `(Foo)`
 
 Avoid breaking lines in types where possible. Prefer breaking at outermost scope, e.g., prefer
 
-```rust
+```
 Foo<
     Bar,
     Baz<Type1, Type2>,
@@ -29,7 +29,7 @@ Foo<
 
 to
 
-```rust
+```
 Foo<Bar, Baz<
     Type1,
     Type2,
@@ -48,7 +48,7 @@ Break generic types following the rules for generics.
 Break types with `+` by breaking before the `+` and block-indenting the
 subsequent lines. When breaking such a type, break before *every* `+`:
 
-```rust
+```
 impl Clone
     + Copy
     + Debug
@@ -64,7 +64,7 @@ Box<
 
 A `use<'a, T>` precise capturing bound is formatted as if it were a single path segment with non-turbofished angle-bracketed args, like a trait bound whose identifier is `use`.
 
-```rust
+```
 fn foo() -> impl Sized + use<'a> {}
 
 // is formatted analogously to:

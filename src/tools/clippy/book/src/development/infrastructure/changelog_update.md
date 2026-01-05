@@ -7,37 +7,37 @@ If you want to help with updating the [changelog], you're in the right place.
 Typos and other small fixes/additions are _always_ welcome.
 
 Special care needs to be taken when it comes to updating the changelog for a new
-Rust release. For that purpose, the changelog is ideally updated during the week
-before an upcoming stable release. You can find the release dates on the [Rust
+ release. For that purpose, the changelog is ideally updated during the week
+before an upcoming stable release. You can find the release dates on the [
 Forge][forge].
 
-Most of the time we only need to update the changelog for minor Rust releases.
+Most of the time we only need to update the changelog for minor  releases.
 It's been very rare that Clippy changes were included in a patch release.
 
 ## Changelog update walkthrough
 
 ### 1. Finding the relevant Clippy commits
 
-Each Rust release ships with its own version of Clippy. The Clippy subtree can
-be found in the `tools` directory of the Rust repository.
+Each  release ships with its own version of Clippy. The Clippy subtree can
+be found in the `tools` directory of the  repository.
 
 Depending on the current time and what exactly you want to update, the following
 bullet points might be helpful:
 
 * When writing the release notes for the **upcoming stable release** you need to
-  check out the Clippy commit of the current Rust `beta` branch.
-  [Link][rust_beta_tools]
+  check out the Clippy commit of the current  `beta` branch.
+  [Link][_beta_tools]
 * When writing the release notes for the **upcoming beta release**, you need to
-  check out the Clippy commit of the current Rust `master`.
-  [Link][rust_master_tools]
+  check out the Clippy commit of the current  `master`.
+  [Link][_master_tools]
 * When writing the (forgotten) release notes for a **past stable release**, you
-  need to check out the Rust release tag of the stable release.
-  [Link][rust_stable_tools]
+  need to check out the  release tag of the stable release.
+  [Link][_stable_tools]
 
 Usually you want to write the changelog of the **upcoming stable release**. Make
-sure though, that `beta` was already branched in the Rust repository.
+sure though, that `beta` was already branched in the  repository.
 
-To find the commit hash, issue the following command when in a `rust-lang/rust`
+To find the commit hash, issue the following command when in a `-lang/`
 checkout (most of the time on the `upstream/beta` branch):
 ```
 git log --oneline -- src/tools/clippy/ | grep -o "Merge commit '[a-f0-9]*' into .*" | head -1 | sed -e "s/Merge commit '\([a-f0-9]*\)' into .*/\1/g"
@@ -84,8 +84,8 @@ The sections order should roughly be:
 ### Others
 ```
 
-Please also be sure to update [the `Unreleased/Beta/In Rust Nightly` section][beta_section] at the top with the
-relevant commits ranges and to add the `Rust <version>` section with release date and PR ranges.
+Please also be sure to update [the `Unreleased/Beta/In  Nightly` section][beta_section] at the top with the
+relevant commits ranges and to add the ` <version>` section with release date and PR ranges.
 
 ### 4. Include `beta-accepted` PRs
 
@@ -110,10 +110,10 @@ grep -rB1 "pub $LINT_NAME" .
 The version shown should match the version of the release the changelog is 
 written for. If not, update the version to the changelog version.
 
-[changelog]: https://github.com/rust-lang/rust-clippy/blob/master/CHANGELOG.md
-[forge]: https://forge.rust-lang.org/
-[rust_master_tools]: https://github.com/rust-lang/rust/tree/HEAD/src/tools/clippy
-[rust_beta_tools]: https://github.com/rust-lang/rust/tree/beta/src/tools/clippy
-[rust_stable_tools]: https://github.com/rust-lang/rust/releases
-[`beta-accepted`]: https://github.com/rust-lang/rust-clippy/issues?q=label%3Abeta-accepted+
-[beta_section]: https://github.com/rust-lang/rust-clippy/blob/master/CHANGELOG.md#unreleased--beta--in-rust-nightly
+[changelog]: https://github.com/-lang/-clippy/blob/master/CHANGELOG.md
+[forge]: https://forge.-lang.org/
+[_master_tools]: https://github.com/-lang//tree/HEAD/src/tools/clippy
+[_beta_tools]: https://github.com/-lang//tree/beta/src/tools/clippy
+[_stable_tools]: https://github.com/-lang//releases
+[`beta-accepted`]: https://github.com/-lang/-clippy/issues?q=label%3Abeta-accepted+
+[beta_section]: https://github.com/-lang/-clippy/blob/master/CHANGELOG.md#unreleased--beta--in--nightly

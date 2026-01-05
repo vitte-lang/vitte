@@ -6,21 +6,21 @@ be useful.
 ### How to send arguments to the GCC linker
 
 ```
-CG_RUSTFLAGS="-Clink-args=-save-temps -v" ../y.sh cargo build
+CG_FLAGS="-Clink-args=-save-temps -v" ../y.sh cargo build
 ```
 
 ### How to send arguments to GCC
 
-The `-Cllvm-args` `rustc` flag is repurposed by `rustc_codegen_gcc` to pass arguments directly to the GCC backend. You can use it via the `CG_RUSTFLAGS` environment variable. For example, to pass a `-f` flag to GCC:
+The `-Cllvm-args` `c` flag is repurposed by `c_codegen_gcc` to pass arguments directly to the GCC backend. You can use it via the `CG_FLAGS` environment variable. For example, to pass a `-f` flag to GCC:
 
 ```
-CG_RUSTFLAGS="-Cllvm-args=-fflag-name" ../y.sh cargo build
+CG_FLAGS="-Cllvm-args=-fflag-name" ../y.sh cargo build
 ```
 
 ### How to see the personality functions in the asm dump
 
 ```
-CG_RUSTFLAGS="-Clink-arg=-save-temps -v -Clink-arg=-dA" ../y.sh cargo build
+CG_FLAGS="-Clink-arg=-save-temps -v -Clink-arg=-dA" ../y.sh cargo build
 ```
 
 ### How to see the LLVM IR for a sysroot crate
@@ -38,10 +38,10 @@ Run with:
 COLLECT_NO_DEMANGLE=1
 ```
 
-### How to use a custom-build rustc
+### How to use a custom-build c
 
- * Build the stage2 compiler (`rustup toolchain link debug-current build/x86_64-unknown-linux-gnu/stage2`).
- * Clean and rebuild the codegen with `debug-current` in the file `rust-toolchain`.
+ * Build the stage2 compiler (`up toolchain link debug-current build/x86_64-unknown-linux-gnu/stage2`).
+ * Clean and rebuild the codegen with `debug-current` in the file `-toolchain`.
 
 ### How to use a custom sysroot source path
 
@@ -53,7 +53,7 @@ If you wish to build a custom sysroot, pass the path of your sysroot source to `
 
 ### How to use [mem-trace](https://github.com/antoyo/mem-trace)
 
-`rustc` needs to be built without `jemalloc` so that `mem-trace` can overload `malloc` since `jemalloc` is linked statically, so a `LD_PRELOAD`-ed library won't a chance to intercept the calls to `malloc`.
+`c` needs to be built without `jemalloc` so that `mem-trace` can overload `malloc` since `jemalloc` is linked statically, so a `LD_PRELOAD`-ed library won't a chance to intercept the calls to `malloc`.
 
 ### How to generate GIMPLE
 
@@ -66,14 +66,14 @@ generate it in [gimple.md](./doc/gimple.md).
 
  * Follow the instructions on [this repo](https://github.com/cross-cg-gcc-tools/cross-gcc).
 
-#### Configuring rustc_codegen_gcc
+#### Configuring c_codegen_gcc
 
  * Run `./y.sh prepare --cross` so that the sysroot is patched for the cross-compiling case.
  * Set the path to the cross-compiling libgccjit in `gcc-path` (in `config.toml`).
- * Make sure you have the linker for your target (for instance `m68k-unknown-linux-gnu-gcc`) in your `$PATH`. You can specify which linker to use via `CG_RUSTFLAGS="-Clinker=<linker>"`, for instance: `CG_RUSTFLAGS="-Clinker=m68k-unknown-linux-gnu-gcc"`. Specify the target when building the sysroot: `./y.sh build --sysroot --target-triple m68k-unknown-linux-gnu`.
- * Build your project by specifying the target and the linker to use: `CG_RUSTFLAGS="-Clinker=m68k-unknown-linux-gnu-gcc" ../y.sh cargo build --target m68k-unknown-linux-gnu`.
+ * Make sure you have the linker for your target (for instance `m68k-unknown-linux-gnu-gcc`) in your `$PATH`. You can specify which linker to use via `CG_FLAGS="-Clinker=<linker>"`, for instance: `CG_FLAGS="-Clinker=m68k-unknown-linux-gnu-gcc"`. Specify the target when building the sysroot: `./y.sh build --sysroot --target-triple m68k-unknown-linux-gnu`.
+ * Build your project by specifying the target and the linker to use: `CG_FLAGS="-Clinker=m68k-unknown-linux-gnu-gcc" ../y.sh cargo build --target m68k-unknown-linux-gnu`.
 
-If the target is not yet supported by the Rust compiler, create a [target specification file](https://docs.rust-embedded.org/embedonomicon/custom-target.html) (note that the `arch` specified in this file must be supported by the rust compiler).
+If the target is not yet supported by the  compiler, create a [target specification file](https://docs.-embedded.org/embedonomicon/custom-target.html) (note that the `arch` specified in this file must be supported by the  compiler).
 Then, you can use it the following way:
 
  * Add the target specification file using `--target` as an **absolute** path to build the sysroot: `./y.sh build --sysroot --target-triple m68k-unknown-linux-gnu --target $(pwd)/m68k-unknown-linux-gnu.json`

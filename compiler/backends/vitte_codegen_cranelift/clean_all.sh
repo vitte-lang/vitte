@@ -7,4 +7,4 @@ rm -rf target/ build_system/target download/ build/ dist/
 # FIXME remove at some point in the future
 rm y.bin y.bin.dSYM y.exe y.pdb 2>/dev/null || true
 rm -rf rand/ regex/ simple-raytracer/ portable-simd/ abi-checker/ abi-cafe/
-rm -rf build_sysroot/{sysroot_src/,target/,compiler-builtins/,rustc_version}
+rm -rf build_sysroot/{sysroot_src/,target/,compiler-builtins/,c_version}

@@ -1,3 +1,3 @@
-Please read the rustc-dev-guide chapter on [Backend Agnostic Codegen][bac].
+Please read the c-dev-guide chapter on [Backend Agnostic Codegen][bac].
 
-[bac]: https://rustc-dev-guide.rust-lang.org/backend/backend-agnostic.html
+[bac]: https://c-dev-guide.-lang.org/backend/backend-agnostic.html

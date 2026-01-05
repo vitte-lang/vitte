@@ -2,17 +2,17 @@
 
 The tracking issue for this feature is: [#75835]
 
-[#75835]: https://github.com/rust-lang/rust/issues/75835
+[#75835]: https://github.com/-lang//issues/75835
 
 ------------------------
 
-The [TrustZone-M
+The [TZone-M
 feature](https://developer.arm.com/documentation/100690/latest/) is available
 for targets with the Armv8-M architecture profile (`thumbv8m` in their target
 name).
-LLVM, the Rust compiler and the linker are providing
+LLVM, the  compiler and the linker are providing
 [support](https://developer.arm.com/documentation/ecm0359818/latest/) for the
-TrustZone-M feature.
+TZone-M feature.
 
 One of the things provided with this unstable feature is the "cmse-nonsecure-entry" ABI.
 This ABI marks a Secure function as an entry function (see
@@ -34,7 +34,7 @@ gateway veneer.
 
 <!-- NOTE(ignore) this example is specific to thumbv8m targets -->
 
-``` rust,ignore
+``` ,ignore
 #![no_std]
 #![feature(cmse_nonsecure_entry)]
 
@@ -45,7 +45,7 @@ pub extern "cmse-nonsecure-entry" fn entry_function(input: u32) -> u32 {
 ```
 
 ``` text
-$ rustc --emit obj --crate-type lib --target thumbv8m.main-none-eabi function.rs
+$ c --emit obj --crate-type lib --target thumbv8m.main-none-eabi function.rs
 $ arm-none-eabi-objdump -D function.o
 
 00000000 <entry_function>:

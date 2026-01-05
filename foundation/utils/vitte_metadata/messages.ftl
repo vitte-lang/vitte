@@ -30,7 +30,7 @@ metadata_consider_building_std =
     consider building the standard library from source with `cargo build -Zbuild-std`
 
 metadata_consider_downloading_target =
-    consider downloading the target with `rustup target add {$locator_triple}`
+    consider downloading the target with `up target add {$locator_triple}`
 
 metadata_crate_dep_multiple =
     cannot satisfy dependencies so `{$crate_name}` only shows up once
@@ -39,8 +39,8 @@ metadata_crate_dep_multiple =
 metadata_crate_dep_not_static =
     `{$crate_name}` was unavailable as a static crate, preventing fully static linking
 
-metadata_crate_dep_rustc_driver =
-    `feature(rustc_private)` is needed to link to the compiler's `rustc_driver` library
+metadata_crate_dep_c_driver =
+    `feature(c_private)` is needed to link to the compiler's `c_driver` library
 
 metadata_crate_location_unknown_type =
     extern location for {$crate_name} is of an unknown type: {$path}
@@ -101,14 +101,14 @@ metadata_global_alloc_required =
 metadata_incompatible_panic_in_drop_strategy =
     the crate `{$crate_name}` is compiled with the panic-in-drop strategy `{$found_strategy}` which is incompatible with this crate's strategy of `{$desired_strategy}`
 
-metadata_incompatible_rustc =
-    found crate `{$crate_name}` compiled by an incompatible version of rustc{$add_info}
-    .help = please recompile that crate using this compiler ({$rustc_version}) (consider running `cargo clean` first)
+metadata_incompatible_c =
+    found crate `{$crate_name}` compiled by an incompatible version of c{$add_info}
+    .help = please recompile that crate using this compiler ({$c_version}) (consider running `cargo clean` first)
 
 metadata_incompatible_target_modifiers =
     mixing `{$flag_name_prefixed}` will cause an ABI mismatch in crate `{$local_crate}`
     .note = `{$flag_name_prefixed}={$local_value}` in this crate is incompatible with `{$flag_name_prefixed}={$extern_value}` in dependency `{$extern_crate}`
-    .help = the `{$flag_name_prefixed}` flag modifies the ABI so Rust crates compiled with different values of this flag cannot be used together safely
+    .help = the `{$flag_name_prefixed}` flag modifies the ABI so  crates compiled with different values of this flag cannot be used together safely
 metadata_incompatible_target_modifiers_help_allow = if you are sure this will not cause problems, you may use `-Cunsafe-allow-abi-mismatch={$flag_name}` to silence this error
 metadata_incompatible_target_modifiers_help_fix = set `{$flag_name_prefixed}={$extern_value}` in this crate or `{$flag_name_prefixed}={$local_value}` in `{$extern_crate}`
 
@@ -119,11 +119,11 @@ metadata_incompatible_target_modifiers_help_fix_r_missed = unset `{$flag_name_pr
 metadata_incompatible_target_modifiers_l_missed =
     mixing `{$flag_name_prefixed}` will cause an ABI mismatch in crate `{$local_crate}`
     .note = unset `{$flag_name_prefixed}` in this crate is incompatible with `{$flag_name_prefixed}={$extern_value}` in dependency `{$extern_crate}`
-    .help = the `{$flag_name_prefixed}` flag modifies the ABI so Rust crates compiled with different values of this flag cannot be used together safely
+    .help = the `{$flag_name_prefixed}` flag modifies the ABI so  crates compiled with different values of this flag cannot be used together safely
 metadata_incompatible_target_modifiers_r_missed =
     mixing `{$flag_name_prefixed}` will cause an ABI mismatch in crate `{$local_crate}`
     .note = `{$flag_name_prefixed}={$local_value}` in this crate is incompatible with unset `{$flag_name_prefixed}` in dependency `{$extern_crate}`
-    .help = the `{$flag_name_prefixed}` flag modifies the ABI so Rust crates compiled with different values of this flag cannot be used together safely
+    .help = the `{$flag_name_prefixed}` flag modifies the ABI so  crates compiled with different values of this flag cannot be used together safely
 
 metadata_incompatible_with_immediate_abort =
     the crate `{$crate_name}` was compiled with a panic strategy which is incompatible with `immediate-abort`
@@ -133,7 +133,7 @@ metadata_incompatible_with_immediate_abort_core =
     .help = consider building the standard library from source with `cargo build -Zbuild-std`
 
 metadata_install_missing_components =
-    maybe you need to install the missing components with: `rustup component add rust-src rustc-dev llvm-tools-preview`
+    maybe you need to install the missing components with: `up component add -src c-dev llvm-tools-preview`
 
 metadata_invalid_meta_files =
     found invalid metadata files for crate `{$crate_name}`{$add_info}
@@ -211,10 +211,10 @@ metadata_required_panic_strategy =
 metadata_rlib_required =
     crate `{$crate_name}` required to be available in rlib format, but was not found in this form
 
-metadata_rustc_lib_required =
+metadata_c_lib_required =
     crate `{$crate_name}` required to be available in {$kind} format, but was not found in this form
-    .note = only .rmeta files are distributed for `rustc_private` crates other than `rustc_driver`
-    .help = try adding `extern crate rustc_driver;` at the top level of this crate
+    .note = only .rmeta files are distributed for `c_private` crates other than `c_driver`
+    .help = try adding `extern crate c_driver;` at the top level of this crate
 
 metadata_stable_crate_id_collision =
     found crates (`{$crate_name0}` and `{$crate_name1}`) with colliding StableCrateId values
@@ -237,4 +237,4 @@ metadata_two_panic_runtimes =
 metadata_unknown_target_modifier_unsafe_allowed = unknown target modifier `{$flag_name}`, requested by `-Cunsafe-allow-abi-mismatch={$flag_name}`
 
 metadata_wasm_c_abi =
-    older versions of the `wasm-bindgen` crate are incompatible with current versions of Rust; please update to `wasm-bindgen` v0.2.88
+    older versions of the `wasm-bindgen` crate are incompatible with current versions of ; please update to `wasm-bindgen` v0.2.88

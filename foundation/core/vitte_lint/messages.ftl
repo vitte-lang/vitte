@@ -93,7 +93,7 @@ lint_builtin_global_macro_unsafety = using this macro is unsafe even though it d
 lint_builtin_impl_unsafe_method = implementation of an `unsafe` method
 
 lint_builtin_incomplete_features = the feature `{$name}` is incomplete and may not be safe to use and/or cause compiler crashes
-    .note = see issue #{$n} <https://github.com/rust-lang/rust/issues/{$n}> for more information
+    .note = see issue #{$n} <https://github.com/-lang//issues/{$n}> for more information
     .help = consider using `min_{$name}` instead, which is more stable and complete
 
 lint_builtin_internal_features = the feature `{$name}` is internal to the compiler or standard library
@@ -126,10 +126,10 @@ lint_builtin_non_shorthand_field_patterns = the `{$ident}:` in this pattern is r
     .suggestion = use shorthand field pattern
 
 lint_builtin_overridden_symbol_name =
-    the linker's behavior with multiple libraries exporting duplicate symbol names is undefined and Rust cannot provide guarantees when you manually override them
+    the linker's behavior with multiple libraries exporting duplicate symbol names is undefined and  cannot provide guarantees when you manually override them
 
 lint_builtin_overridden_symbol_section =
-    the program's behavior with overridden link sections on items is unpredictable and Rust cannot provide guarantees when you manually override them
+    the program's behavior with overridden link sections on items is unpredictable and  cannot provide guarantees when you manually override them
 
 lint_builtin_special_module_name_used_lib = found module declaration for lib.rs
     .note = lib.rs is the root of this crate's library target
@@ -143,7 +143,7 @@ lint_builtin_trivial_bounds = {$predicate_kind_name} bound {$predicate} does not
 lint_builtin_type_alias_bounds_enable_feat_help = add `#![feature(lazy_type_alias)]` to the crate attributes to enable the desired semantics
 lint_builtin_type_alias_bounds_label = will not be checked at usage sites of the type alias
 lint_builtin_type_alias_bounds_limitation_note = this is a known limitation of the type checker that may be lifted in a future edition.
-    see issue #112792 <https://github.com/rust-lang/rust/issues/112792> for more information
+    see issue #112792 <https://github.com/-lang//issues/112792> for more information
 lint_builtin_type_alias_bounds_param_bounds = bounds on generic parameters in type aliases are not enforced
     .suggestion = remove {$count ->
         [one] this bound
@@ -174,7 +174,7 @@ lint_builtin_unsafe_trait = declaration of an `unsafe` trait
 lint_builtin_unstable_features = use of an unstable feature
 
 lint_builtin_unused_doc_comment = unused doc comment
-    .label = rustdoc does not generate documentation for {$kind}
+    .label = doc does not generate documentation for {$kind}
     .plain_help = use `//` for a plain comment
     .block_help = use `/* */` for a plain comment
 
@@ -199,14 +199,14 @@ lint_const_item_interior_mutations =
     .temporary = each usage of a `const` item creates a new temporary
     .never_original = only the temporaries and never the original `const {$const_name}` will be modified
     .suggestion_static = for a shared instance of `{$const_name}`, consider making it a `static` item instead
-    .help = for more details on interior mutability see <https://doc.rust-lang.org/reference/interior-mutability.html>
+    .help = for more details on interior mutability see <https://doc.-lang.org/reference/interior-mutability.html>
 
 lint_dangling_pointers_from_locals = {$fn_kind} returns a dangling pointer to dropped local variable `{$local_var_name}`
     .ret_ty = return type is `{$ret_ty}`
     .local_var = local variable `{$local_var_name}` is dropped at the end of the {$fn_kind}
     .created_at = dangling pointer created here
     .note_safe = a dangling pointer is safe, but dereferencing one is undefined behavior
-    .note_more_info = for more information, see <https://doc.rust-lang.org/reference/destructors.html>
+    .note_more_info = for more information, see <https://doc.-lang.org/reference/destructors.html>
 
 lint_dangling_pointers_from_temporaries = this creates a dangling pointer because temporary `{$ty}` is dropped at end of statement
     .label_ptr = pointer created here
@@ -214,11 +214,11 @@ lint_dangling_pointers_from_temporaries = this creates a dangling pointer becaus
     .help_bind = bind the `{$ty}` to a variable such that it outlives the pointer returned by `{$callee}`
     .note_safe = a dangling pointer is safe, but dereferencing one is undefined behavior
     .note_return = returning a pointer to a local variable will always result in a dangling pointer
-    .note_more_info = for more information, see <https://doc.rust-lang.org/reference/destructors.html>
+    .note_more_info = for more information, see <https://doc.-lang.org/reference/destructors.html>
 
 
 lint_default_hash_types = prefer `{$preferred}` over `{$used}`, it has better performance
-    .note = a `use rustc_data_structures::fx::{$preferred}` may be necessary
+    .note = a `use c_data_structures::fx::{$preferred}` may be necessary
 
 lint_default_source = `forbid` lint level is the default for {$id}
 
@@ -228,7 +228,7 @@ lint_deprecated_lint_name =
     .help = change it to {$replace}
 
 lint_deprecated_where_clause_location = where clause not allowed here
-    .note = see issue #89122 <https://github.com/rust-lang/rust/issues/89122> for more information
+    .note = see issue #89122 <https://github.com/-lang//issues/89122> for more information
     .suggestion_move_to_end = move it to the end of the type declaration
     .suggestion_remove_where = remove this `where`
 
@@ -270,13 +270,13 @@ lint_doc_unknown_include =
 
 lint_doc_unknown_passes =
     unknown `doc` attribute `{$name}`
-    .note = `doc` attribute `{$name}` no longer functions; see issue #44136 <https://github.com/rust-lang/rust/issues/44136>
+    .note = `doc` attribute `{$name}` no longer functions; see issue #44136 <https://github.com/-lang//issues/44136>
     .label = no longer functions
     .no_op_note = `doc({$name})` is now a no-op
 
 lint_doc_unknown_plugins =
     unknown `doc` attribute `plugins`
-    .note = `doc` attribute `plugins` no longer functions; see issue #44136 <https://github.com/rust-lang/rust/issues/44136> and CVE-2018-1000622 <https://nvd.nist.gov/vuln/detail/CVE-2018-1000622>
+    .note = `doc` attribute `plugins` no longer functions; see issue #44136 <https://github.com/-lang//issues/44136> and CVE-2018-1000622 <https://nvd.nist.gov/vuln/detail/CVE-2018-1000622>
     .label = no longer functions
     .no_op_note = `doc(plugins)` is now a no-op
 
@@ -401,7 +401,7 @@ lint_impl_trait_redundant_captures = all possible in-scope parameters are alread
     .suggestion = remove the `use<...>` syntax
 
 lint_implicit_sysroot_crate_import = dangerous use of `extern crate {$name}` which is not guaranteed to exist exactly once in the sysroot
-    .help = try using a cargo dependency or using a re-export of the dependency provided by a rustc_* crate
+    .help = try using a cargo dependency or using a re-export of the dependency provided by a c_* crate
 
 lint_implicit_unsafe_autorefs = implicit autoref creates a reference to the dereference of a raw pointer
     .note = creating a reference requires the pointer target to be valid and imposes aliasing requirements
@@ -436,7 +436,7 @@ lint_improper_ctypes_enum_repr_help =
 lint_improper_ctypes_enum_repr_reason = enum has no representation hint
 lint_improper_ctypes_fnptr_help = consider using an `extern fn(...) -> ...` function pointer instead
 
-lint_improper_ctypes_fnptr_reason = this function pointer has Rust-specific calling convention
+lint_improper_ctypes_fnptr_reason = this function pointer has -specific calling convention
 lint_improper_ctypes_non_exhaustive = this enum is non-exhaustive
 lint_improper_ctypes_non_exhaustive_variant = this enum has non-exhaustive variants
 
@@ -478,8 +478,8 @@ lint_improper_gpu_kernel_arg = passing type `{$ty}` to a function with "gpu-kern
 lint_int_to_ptr_transmutes = transmuting an integer to a pointer creates a pointer without provenance
     .note = this is dangerous because dereferencing the resulting pointer is undefined behavior
     .note_exposed_provenance = exposed provenance semantics can be used to create a pointer based on some previously exposed provenance
-    .help_transmute = for more information about transmute, see <https://doc.rust-lang.org/std/mem/fn.transmute.html#transmutation-between-pointers-and-integers>
-    .help_exposed_provenance = for more information about exposed provenance, see <https://doc.rust-lang.org/std/ptr/index.html#exposed-provenance>
+    .help_transmute = for more information about transmute, see <https://doc.-lang.org/std/mem/fn.transmute.html#transmutation-between-pointers-and-integers>
+    .help_exposed_provenance = for more information about exposed provenance, see <https://doc.-lang.org/std/ptr/index.html#exposed-provenance>
     .suggestion_with_exposed_provenance = use `std::ptr::with_exposed_provenance{$suffix}` instead to use a previously exposed provenance
     .suggestion_without_provenance_mut = if you truly mean to create a pointer without provenance, use `std::ptr::without_provenance_mut`
 
@@ -492,10 +492,10 @@ lint_invalid_asm_label_binary = avoid using labels containing only the digits `0
 lint_invalid_asm_label_format_arg = avoid using named labels in inline assembly
     .help = only local labels of the form `<number>:` should be used in inline asm
     .note1 = format arguments may expand to a non-numeric value
-    .note2 = see the asm section of Rust By Example <https://doc.rust-lang.org/nightly/rust-by-example/unsafe/asm.html#labels> for more information
+    .note2 = see the asm section of  By Example <https://doc.-lang.org/nightly/-by-example/unsafe/asm.html#labels> for more information
 lint_invalid_asm_label_named = avoid using named labels in inline assembly
     .help = only local labels of the form `<number>:` should be used in inline asm
-    .note = see the asm section of Rust By Example <https://doc.rust-lang.org/nightly/rust-by-example/unsafe/asm.html#labels> for more information
+    .note = see the asm section of  By Example <https://doc.-lang.org/nightly/-by-example/unsafe/asm.html#labels> for more information
 lint_invalid_asm_label_no_span = the label may be declared in the expansion of a macro
 
 # FIXME: we should ordinalize $valid_up_to when we add support for doing so
@@ -513,7 +513,7 @@ lint_invalid_nan_comparisons_lt_le_gt_ge = incorrect NaN comparison, NaN is not 
 
 lint_invalid_null_arguments = calling this function with a null pointer is undefined behavior, even if the result of the function is unused
     .origin = null pointer originates from here
-    .doc = for more information, visit <https://doc.rust-lang.org/std/ptr/index.html> and <https://doc.rust-lang.org/reference/behavior-considered-undefined.html>
+    .doc = for more information, visit <https://doc.-lang.org/std/ptr/index.html> and <https://doc.-lang.org/reference/behavior-considered-undefined.html>
 
 lint_invalid_reference_casting_assign_to_ref = assigning to `&T` is undefined behavior, consider using an `UnsafeCell`
     .label = casting happened here
@@ -526,7 +526,7 @@ lint_invalid_reference_casting_bigger_layout = casting references to a bigger me
 lint_invalid_reference_casting_borrow_as_mut = casting `&T` to `&mut T` is undefined behavior, even if the reference is unused, consider instead using an `UnsafeCell`
     .label = casting happened here
 
-lint_invalid_reference_casting_note_book = for more information, visit <https://doc.rust-lang.org/book/ch15-05-interior-mutability.html>
+lint_invalid_reference_casting_note_book = for more information, visit <https://doc.-lang.org/book/ch15-05-interior-mutability.html>
 
 lint_invalid_reference_casting_note_ty_has_interior_mutability = even for types with interior mutability, the only legal way to obtain a mutable pointer from a shared reference is through `UnsafeCell::get`
 
@@ -641,8 +641,8 @@ lint_non_camel_case_type = {$sort} `{$name}` should have an upper camel case nam
     .label = should have an UpperCamelCase name
 
 lint_non_fmt_panic = panic message is not a string literal
-    .note = this usage of `{$name}!()` is deprecated; it will be a hard error in Rust 2021
-    .more_info_note = for more information, see <https://doc.rust-lang.org/edition-guide/rust-2021/panic-macro-consistency.html>
+    .note = this usage of `{$name}!()` is deprecated; it will be a hard error in  2021
+    .more_info_note = for more information, see <https://doc.-lang.org/edition-guide/-2021/panic-macro-consistency.html>
     .supports_fmt_note = the `{$name}!()` macro supports formatting, so there's no need for the `format!()` macro here
     .supports_fmt_suggestion = remove the `format!(..)` macro call
     .display_suggestion = add a "{"{"}{"}"}" format string to `Display` the message
@@ -658,7 +658,7 @@ lint_non_fmt_panic_braces =
         [one] a brace
         *[other] braces
     }
-    .note = this message is not used as a format string, but will be in Rust 2021
+    .note = this message is not used as a format string, but will be in  2021
     .suggestion = add a "{"{"}{"}"}" format string to use the message literally
 
 lint_non_fmt_panic_unused =
@@ -669,14 +669,14 @@ lint_non_fmt_panic_unused =
         [one] placeholder
         *[other] placeholders
     }
-    .note = this message is not used as a format string when given without arguments, but will be in Rust 2021
+    .note = this message is not used as a format string when given without arguments, but will be in  2021
     .add_args_suggestion = add the missing {$count ->
         [one] argument
         *[other] arguments
     }
     .add_fmt_suggestion = or add a "{"{"}{"}"}" format string to use the message literally
 
-lint_non_glob_import_type_ir_inherent = non-glob import of `rustc_type_ir::inherent`
+lint_non_glob_import_type_ir_inherent = non-glob import of `c_type_ir::inherent`
     .suggestion = try using a glob import instead
 
 lint_non_local_definitions_cargo_update = the {$macro_kind} `{$macro_name}` may come from an old version of the `{$crate_name}` crate, try updating your dependency with `cargo update -p {$crate_name}`
@@ -777,7 +777,7 @@ lint_range_use_inclusive_range = use an inclusive range instead
 
 lint_raw_prefix = prefix `'r` is reserved
     .label = reserved prefix
-    .suggestion = insert whitespace here to avoid this being parsed as a prefix in Rust 2021
+    .suggestion = insert whitespace here to avoid this being parsed as a prefix in  2021
 
 lint_reason_must_be_string_literal = reason must be a string literal
 
@@ -810,18 +810,18 @@ lint_renamed_lint = lint `{$name}` has been renamed to `{$replace}`
 
 lint_requested_level = requested on the command line with `{$level} {$lint_name}`
 
-lint_reserved_multihash = reserved token in Rust 2024
-    .suggestion = insert whitespace here to avoid this being parsed as a forbidden token in Rust 2024
+lint_reserved_multihash = reserved token in  2024
+    .suggestion = insert whitespace here to avoid this being parsed as a forbidden token in  2024
 
 lint_reserved_prefix = prefix `{$prefix}` is unknown
     .label = unknown prefix
-    .suggestion = insert whitespace here to avoid this being parsed as a prefix in Rust 2021
+    .suggestion = insert whitespace here to avoid this being parsed as a prefix in  2021
 
-lint_reserved_string = will be parsed as a guarded string in Rust 2024
-    .suggestion = insert whitespace here to avoid this being parsed as a guarded string in Rust 2024
+lint_reserved_string = will be parsed as a guarded string in  2024
+    .suggestion = insert whitespace here to avoid this being parsed as a guarded string in  2024
 
 lint_shadowed_into_iter =
-    this method call resolves to `<&{$target} as IntoIterator>::into_iter` (due to backwards compatibility), but will resolve to `<{$target} as IntoIterator>::into_iter` in Rust {$edition}
+    this method call resolves to `<&{$target} as IntoIterator>::into_iter` (due to backwards compatibility), but will resolve to `<{$target} as IntoIterator>::into_iter` in  {$edition}
     .use_iter_suggestion = use `.iter()` instead of `.into_iter()` to avoid ambiguity
     .remove_into_iter_suggestion = or remove `.into_iter()` to iterate by value
     .use_explicit_into_iter_suggestion =
@@ -856,7 +856,7 @@ lint_suspicious_double_ref_deref =
     using `.deref()` on a double reference, which returns `{$ty}` instead of dereferencing the inner type
 
 lint_symbol_intern_string_literal = using `Symbol::intern` on a string literal
-    .help = consider adding the symbol to `compiler/rustc_span/src/symbol.rs`
+    .help = consider adding the symbol to `compiler/c_span/src/symbol.rs`
 
 lint_too_large_char_cast = value exceeds maximum `char` value
     .note = maximum valid `char` value is `0x10FFFF`
@@ -870,19 +870,19 @@ lint_tykind = usage of `ty::TyKind`
 lint_tykind_kind = usage of `ty::TyKind::<kind>`
     .suggestion = try using `ty::<kind>` directly
 
-lint_type_ir_direct_use = do not use `rustc_type_ir` unless you are implementing type system internals
-    .note = use `rustc_middle::ty` instead
+lint_type_ir_direct_use = do not use `c_type_ir` unless you are implementing type system internals
+    .note = use `c_middle::ty` instead
 
-lint_type_ir_inherent_usage = do not use `rustc_type_ir::inherent` unless you're inside of the trait solver
+lint_type_ir_inherent_usage = do not use `c_type_ir::inherent` unless you're inside of the trait solver
     .note = the method or struct you're looking for is likely defined somewhere else downstream in the compiler
 
-lint_type_ir_trait_usage = do not use `rustc_type_ir::Interner` or `rustc_type_ir::InferCtxtLike` unless you're inside of the trait solver
+lint_type_ir_trait_usage = do not use `c_type_ir::Interner` or `c_type_ir::InferCtxtLike` unless you're inside of the trait solver
     .note = the method or struct you're looking for is likely defined somewhere else downstream in the compiler
 
 lint_undefined_transmute = pointers cannot be transmuted to integers during const eval
     .note = at compile-time, pointers do not have an integer value
     .note2 = avoiding this restriction via `union` or raw pointers leads to compile-time undefined behavior
-    .help = for more information, see https://doc.rust-lang.org/std/mem/fn.transmute.html
+    .help = for more information, see https://doc.-lang.org/std/mem/fn.transmute.html
 
 lint_undropped_manually_drops = calls to `std::mem::drop` with `std::mem::ManuallyDrop` instead of the inner value does nothing
     .label = argument has type `{$arg_ty}`
@@ -896,8 +896,8 @@ lint_unexpected_cfg_boolean = you may have meant to use `{$literal}` (notice the
 lint_unexpected_cfg_cargo_update = the {$macro_kind} `{$macro_name}` may come from an old version of the `{$crate_name}` crate, try updating your dependency with `cargo update -p {$crate_name}`
 
 lint_unexpected_cfg_define_features = consider defining some features in `Cargo.toml`
-lint_unexpected_cfg_doc_cargo = see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
-lint_unexpected_cfg_doc_rustc = see <https://doc.rust-lang.org/nightly/rustc/check-cfg.html> for more information about checking conditional configuration
+lint_unexpected_cfg_doc_cargo = see <https://doc.-lang.org/nightly/c/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+lint_unexpected_cfg_doc_c = see <https://doc.-lang.org/nightly/c/check-cfg.html> for more information about checking conditional configuration
 
 lint_unexpected_cfg_from_external_macro_origin = using a cfg inside a {$macro_kind} will use the cfgs from the destination crate and not the ones from the defining crate
 lint_unexpected_cfg_from_external_macro_refer = try referring to `{$macro_name}` crate for guidance on how handle this unexpected cfg
@@ -955,12 +955,12 @@ lint_unknown_gated_lint =
 
 lint_unknown_lint =
     unknown lint: `{$name}`
-    .suggestion = {$from_rustc ->
-        [true] a lint with a similar name exists in `rustc` lints
+    .suggestion = {$from_c ->
+        [true] a lint with a similar name exists in `c` lints
         *[false] did you mean
     }
-    .help = {$from_rustc ->
-        [true] a lint with a similar name exists in `rustc` lints: `{$replace}`
+    .help = {$from_c ->
+        [true] a lint with a similar name exists in `c` lints: `{$replace}`
         *[false] did you mean: `{$replace}`
     }
 
@@ -973,7 +973,7 @@ lint_unnecessary_qualification = unnecessary qualification
 lint_unpredictable_fn_pointer_comparisons = function pointer comparisons do not produce meaningful results since their addresses are not guaranteed to be unique
     .note_duplicated_fn = the address of the same function can vary between different codegen units
     .note_deduplicated_fn = furthermore, different functions could have the same address after being merged together
-    .note_visit_fn_addr_eq = for more information visit <https://doc.rust-lang.org/nightly/core/ptr/fn.fn_addr_eq.html>
+    .note_visit_fn_addr_eq = for more information visit <https://doc.-lang.org/nightly/core/ptr/fn.fn_addr_eq.html>
     .fn_addr_eq_suggestion = refactor your code, or use `std::ptr::fn_addr_eq` to suppress the lint
 
 lint_unqualified_local_imports = `use` of a local item without leading `self::`, `super::`, or `crate::`

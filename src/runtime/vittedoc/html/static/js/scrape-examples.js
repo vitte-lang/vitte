@@ -7,7 +7,7 @@
     // DEFAULT is the first example shown by default, while HIDDEN is
     // the examples hidden beneath the "More examples" toggle.
     //
-    // NOTE: these values MUST be synchronized with certain rules in rustdoc.css!
+    // NOTE: these values MUST be synchronized with certain rules in doc.css!
     const DEFAULT_MAX_LINES = 5;
     const HIDDEN_MAX_LINES = 10;
 
@@ -41,7 +41,7 @@
         }
 
         nonnull(lines[0].parentElement).scrollTo(0, scrollOffset);
-        nonnull(elt.querySelector(".rust")).scrollTo(0, scrollOffset);
+        nonnull(elt.querySelector(".")).scrollTo(0, scrollOffset);
     }
 
     /**
@@ -123,7 +123,7 @@
     /**
      * Initialize the `locs` field
      *
-     * @param {HTMLElement & {locs?: rustdoc.ScrapedLoc[]}} example
+     * @param {HTMLElement & {locs?: doc.ScrapedLoc[]}} example
      * @param {boolean} isHidden
      */
     function setupLoc(example, isHidden) {

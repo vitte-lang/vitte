@@ -1,6 +1,6 @@
 # `crate-attr`
 
-The tracking issue for this feature is: [#138287](https://github.com/rust-lang/rust/issues/138287).
+The tracking issue for this feature is: [#138287](https://github.com/-lang//issues/138287).
 
 ------------------------
 

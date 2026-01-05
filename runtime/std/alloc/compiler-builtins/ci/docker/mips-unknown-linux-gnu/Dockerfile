@@ -13,4 +13,4 @@ ENV CARGO_TARGET_MIPS_UNKNOWN_LINUX_GNU_LINKER="$TOOLCHAIN_PREFIX"gcc \
     AR_mips_unknown_linux_gnu="$TOOLCHAIN_PREFIX"ar \
     CC_mips_unknown_linux_gnu="$TOOLCHAIN_PREFIX"gcc \
     QEMU_LD_PREFIX=/usr/mips-linux-gnu \
-    RUST_TEST_THREADS=1
+    _TEST_THREADS=1

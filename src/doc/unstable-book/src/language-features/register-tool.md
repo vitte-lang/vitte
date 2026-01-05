@@ -2,7 +2,7 @@
 
 The tracking issue for this feature is: [#66079]
 
-[#66079]: https://github.com/rust-lang/rust/issues/66079
+[#66079]: https://github.com/-lang//issues/66079
 
 ------------------------
 
@@ -17,8 +17,8 @@ Tool attributes are only meant for ignorable attributes. If your code *changes* 
 `#![register_tool(tool)]` is an attribute, and is only valid at the crate root.
 Attributes using the registered tool are checked for valid syntax, and lint attributes are checked to be in a valid format. However, the compiler cannot validate the semantics of the attribute, nor can it tell whether the configured lint is present in the external tool.
 
-Semantically, `clippy::*`, `rustdoc::*`, and `rustfmt::*` lints and attributes all behave as if `#![register_tool(clippy, rustdoc, rustfmt)]` were injected into the crate root, except that the `rustdoc` namespace can only be used for lints, not for attributes.
-When compiling with `-Z unstable-features`, `rustc::*` lints can also be used. Like `rustdoc`, the `rustc` namespace can only be used with lints, not attributes.
+Semantically, `clippy::*`, `doc::*`, and `fmt::*` lints and attributes all behave as if `#![register_tool(clippy, doc, fmt)]` were injected into the crate root, except that the `doc` namespace can only be used for lints, not for attributes.
+When compiling with `-Z unstable-features`, `c::*` lints can also be used. Like `doc`, the `c` namespace can only be used with lints, not attributes.
 
 The compiler will emit an error if it encounters a lint/attribute whose namespace isn't a registered tool.
 
@@ -28,17 +28,17 @@ Tool namespaces cannot be nested; `register_tool(main_tool::subtool)` is an erro
 
 Tool attributes:
 
-```rust
+```
 #![feature(register_tool)]
-#![register_tool(c2rust)]
+#![register_tool(c2)]
 
 // Mark which C header file this module was generated from.
-#[c2rust::header_src = "operations.h"]
+#[c2::header_src = "operations.h"]
 pub mod operations_h {
     use std::ffi::c_int;
 
     // Mark which source line this struct was generated from.
-    #[c2rust::src_loc = "11:0"]
+    #[c2::src_loc = "11:0"]
     pub struct Point {
         pub x: c_int,
         pub y: c_int,

@@ -36,21 +36,21 @@ parse_assignment_else_not_allowed = <assignment> ... else {"{"} ... {"}"} is not
 
 parse_associated_static_item_not_allowed = associated `static` items are not allowed
 
-parse_async_block_in_2015 = `async` blocks are only allowed in Rust 2018 or later
+parse_async_block_in_2015 = `async` blocks are only allowed in  2018 or later
 
-parse_async_bound_modifier_in_2015 = `async` trait bounds are only allowed in Rust 2018 or later
+parse_async_bound_modifier_in_2015 = `async` trait bounds are only allowed in  2018 or later
 
-parse_async_fn_in_2015 = `async fn` is not permitted in Rust 2015
-    .label = to use `async fn`, switch to Rust 2018 or later
+parse_async_fn_in_2015 = `async fn` is not permitted in  2015
+    .label = to use `async fn`, switch to  2018 or later
 
 parse_async_impl = `async` trait implementations are unsupported
 
-parse_async_move_block_in_2015 = `async move` blocks are only allowed in Rust 2018 or later
+parse_async_move_block_in_2015 = `async move` blocks are only allowed in  2018 or later
 
 parse_async_move_order_incorrect = the order of `move` and `async` is incorrect
     .suggestion = try switching the order
 
-parse_async_use_block_in_2015 = `async use` blocks are only allowed in Rust 2018 or later
+parse_async_use_block_in_2015 = `async use` blocks are only allowed in  2018 or later
 
 parse_async_use_order_incorrect = the order of `use` and `async` is incorrect
     .suggestion = try switching the order
@@ -296,7 +296,7 @@ parse_extern_crate_name_with_dashes = crate name using dashes are not valid in `
 
 parse_extern_item_cannot_be_const = extern items cannot be `const`
     .suggestion = try using a static value
-    .note = for more information, visit https://doc.rust-lang.org/std/keyword.extern.html
+    .note = for more information, visit https://doc.-lang.org/std/keyword.extern.html
 
 parse_extra_if_in_let_else = remove the `if` if you meant to write a `let...else` statement
 
@@ -364,7 +364,7 @@ parse_generic_parameters_without_angle_brackets = generic parameters without sur
 parse_generics_in_path = unexpected generic arguments in path
 
 parse_help_set_edition_cargo = set `edition = "{$edition}"` in `Cargo.toml`
-parse_help_set_edition_standalone = pass `--edition {$edition}` to `rustc`
+parse_help_set_edition_standalone = pass `--edition {$edition}` to `c`
 
 parse_hidden_unicode_codepoints = unicode codepoint changing visible direction of text present in {$label}
     .label = this {$label} contains {$count ->
@@ -534,7 +534,7 @@ parse_leading_underscore_unicode_escape_label = invalid start of unicode escape
 parse_left_arrow_operator = unexpected token: `<-`
     .suggestion = if you meant to write a comparison against a negative value, add a space in between `<` and `-`
 
-parse_let_chain_pre_2024 = let chains are only allowed in Rust 2024 or later
+parse_let_chain_pre_2024 = let chains are only allowed in  2024 or later
 
 parse_lifetime_after_mut = lifetime must precede `mut`
     .suggestion = place the lifetime before `mut`
@@ -723,7 +723,7 @@ parse_nonterminal_expected_lifetime = expected a lifetime, found `{$token}`
 
 parse_nonterminal_expected_statement = expected a statement
 
-parse_note_edition_guide = for more on editions, read https://doc.rust-lang.org/edition-guide
+parse_note_edition_guide = for more on editions, read https://doc.-lang.org/edition-guide
 
 parse_note_mut_pattern_usage = `mut` may be followed by `variable` and `variable @ pattern`
 
@@ -790,11 +790,11 @@ parse_require_colon_after_labeled_expression = labeled expression must be follow
     .suggestion = add `:` after the label
 
 parse_reserved_multihash = reserved multi-hash token is forbidden
-    .note = sequences of two or more # are reserved for future use since Rust 2024
+    .note = sequences of two or more # are reserved for future use since  2024
     .suggestion_whitespace = consider inserting whitespace here
 
 parse_reserved_string = invalid string literal
-    .note = unprefixed guarded string literals are reserved for future use since Rust 2024
+    .note = unprefixed guarded string literals are reserved for future use since  2024
     .suggestion_whitespace = consider inserting whitespace here
 
 parse_return_types_use_thin_arrow = return types are denoted using `->`
@@ -852,7 +852,7 @@ parse_switch_mut_let_order =
 parse_switch_ref_box_order = switch the order of `ref` and `box`
     .suggestion = swap them
 
-parse_ternary_operator = Rust has no ternary operator
+parse_ternary_operator =  has no ternary operator
 
 parse_tilde_is_not_unary_operator = `~` cannot be used as a unary operator
     .suggestion = use `!` to perform bitwise not
@@ -897,7 +897,7 @@ parse_unexpected_expr_in_pat =
     }, found an expression
 
     .label = not a pattern
-    .note = arbitrary expressions are not allowed in patterns: <https://doc.rust-lang.org/book/ch19-00-patterns.html>
+    .note = arbitrary expressions are not allowed in patterns: <https://doc.-lang.org/book/ch19-00-patterns.html>
 
 parse_unexpected_expr_in_pat_const_sugg = consider extracting the expression into a `const`
 
@@ -957,7 +957,7 @@ parse_unknown_builtin_construct = unknown `builtin #` construct `{$name}`
 
 parse_unknown_prefix = prefix `{$prefix}` is unknown
     .label = unknown prefix
-    .note =  prefixed identifiers and literals are reserved since Rust 2021
+    .note =  prefixed identifiers and literals are reserved since  2021
     .suggestion_br = use `br` for a raw byte string
     .suggestion_cr = use `cr` for a raw C-string
     .suggestion_str = if you meant to write a string literal, use double quotes

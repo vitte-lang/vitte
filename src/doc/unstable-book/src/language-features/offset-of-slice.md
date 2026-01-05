@@ -2,7 +2,7 @@
 
 The tracking issue for this feature is: [#126151]
 
-[#126151]: https://github.com/rust-lang/rust/issues/126151
+[#126151]: https://github.com/-lang//issues/126151
 
 ------------------------
 
@@ -13,7 +13,7 @@ In general, fields whose type is dynamically sized do not have statically known 
 they do not have statically known alignments. However, `[T]` has the same alignment as `T`, so
 it specifically may be allowed.
 
-```rust
+```
 #![feature(offset_of_slice)]
 
 #[repr(C)]

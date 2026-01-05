@@ -1,14 +1,14 @@
 # Docker images for CI
 
 This folder contains a bunch of docker images used by the continuous integration
-(CI) of Rust. A script is accompanied (`run.sh`) with these images to actually
+(CI) of . A script is accompanied (`run.sh`) with these images to actually
 execute them.
 
 Note that a single Docker image can be used by multiple CI jobs, so the job name
 is the important thing that you should know. You can examine the existing CI jobs in
 the [`jobs.yml`](../github-actions/jobs.yml) file.
 
-To run a specific CI job locally, you can use the `citool` Rust crate:
+To run a specific CI job locally, you can use the `citool`  crate:
 
 ```
 cargo run --manifest-path src/ci/citool/Cargo.toml run-local <job-name>
@@ -35,7 +35,7 @@ DOCKER_SCRIPT=x86_64-gnu-llvm3.sh ./src/ci/docker/run.sh x86_64-gnu-llvm-20
 
 ## Local Development
 
-Refer to the [dev guide](https://rustc-dev-guide.rust-lang.org/tests/docker.html) for more information on testing locally.
+Refer to the [dev guide](https://c-dev-guide.-lang.org/tests/docker.html) for more information on testing locally.
 
 ## Filesystem layout
 
@@ -53,8 +53,8 @@ a Docker image.
 
 1. Stop the virtual machine from the terminal with `docker-machine stop`
 
-2. If your Rust source is placed outside of `C:\Users\**`, e.g. if you place the
-    repository in the `E:\rust` folder, please add a shared folder from
+2. If your  source is placed outside of `C:\Users\**`, e.g. if you place the
+    repository in the `E:\` folder, please add a shared folder from
     VirtualBox by:
 
     1. Select the "default" virtual machine inside VirtualBox, then click
@@ -62,8 +62,8 @@ a Docker image.
     2. Go to "Shared Folders", click "Add shared folder" (the folder icon with
         a plus sign), fill in the following information, then click "OK":
 
-        * Folder path: `E:\rust`
-        * Folder name: `e/rust`
+        * Folder path: `E:\`
+        * Folder name: `e/`
         * Read-only: ☐ *unchecked*
         * Auto-mount: ☑ *checked*
         * Make Permanent: ☑ *checked*
@@ -73,7 +73,7 @@ a Docker image.
 
     ```bat
     cd "C:\Program Files\Oracle\VirtualBox"
-    VBoxManage setextradata default VBoxInternal2/SharedFoldersEnableSymlinksCreate/e/rust 1
+    VBoxManage setextradata default VBoxInternal2/SharedFoldersEnableSymlinksCreate/e/ 1
     ::                                                                              ^~~~~~
     ::                                                                              folder name
     ```
@@ -175,7 +175,7 @@ For targets: `arm-unknown-linux-gnueabi`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
 - Path and misc options > Use a mirror = ENABLE
-- Path and misc options > Base URL = https://ci-mirrors.rust-lang.org/rustc
+- Path and misc options > Base URL = https://ci-mirrors.-lang.org/c
 - Target options > Target Architecture = arm
 - Target options > Architecture level = armv6 -- (+)
 - Target options > Floating point = software (no FPU) -- (\*)
@@ -192,7 +192,7 @@ For targets: `arm-unknown-linux-gnueabihf`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
 - Path and misc options > Use a mirror = ENABLE
-- Path and misc options > Base URL = https://ci-mirrors.rust-lang.org/rustc
+- Path and misc options > Base URL = https://ci-mirrors.-lang.org/c
 - Target options > Target Architecture = arm
 - Target options > Architecture level = armv6 -- (+)
 - Target options > Use specific FPU = vfp -- (+)
@@ -211,7 +211,7 @@ For targets: `armv7-unknown-linux-gnueabihf`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
 - Path and misc options > Use a mirror = ENABLE
-- Path and misc options > Base URL = https://ci-mirrors.rust-lang.org/rustc
+- Path and misc options > Base URL = https://ci-mirrors.-lang.org/c
 - Target options > Target Architecture = arm
 - Target options > Suffix to the arch-part = v7
 - Target options > Architecture level = armv7-a -- (+)
@@ -229,7 +229,7 @@ For targets: `armv7-unknown-linux-gnueabihf`
       toolchains shipped with Ubuntu 15.10
 (+) These options have been selected to match the gcc flags we use to compile C
     libraries like jemalloc. See the mk/cfg/arm(v7)-unknown-linux-gnueabi{,hf}.mk
-    file in Rust's source code.
+    file in 's source code.
 
 ### `aarch64-linux-gnu.defconfig`
 
@@ -237,7 +237,7 @@ For targets: `aarch64-unknown-linux-gnu`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
 - Path and misc options > Use a mirror = ENABLE
-- Path and misc options > Base URL = https://ci-mirrors.rust-lang.org/rustc
+- Path and misc options > Base URL = https://ci-mirrors.-lang.org/c
 - Target options > Target Architecture = arm
 - Target options > Bitness = 64-bit
 - Operating System > Target OS = linux
@@ -272,7 +272,7 @@ For targets: `loongarch64-unknown-linux-gnu`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
 - Path and misc options > Use a mirror = ENABLE
-- Path and misc options > Base URL = https://ci-mirrors.rust-lang.org/rustc
+- Path and misc options > Base URL = https://ci-mirrors.-lang.org/c
 - Target options > Target Architecture = loongarch
 - Target options > Bitness = 64-bit
 - Operating System > Target OS = linux
@@ -288,7 +288,7 @@ For targets: `loongarch64-unknown-linux-musl`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
 - Path and misc options > Use a mirror = ENABLE
-- Path and misc options > Base URL = https://ci-mirrors.rust-lang.org/rustc
+- Path and misc options > Base URL = https://ci-mirrors.-lang.org/c
 - Target options > Target Architecture = loongarch
 - Target options > Bitness = 64-bit
 - Operating System > Target OS = linux
@@ -304,7 +304,7 @@ For targets: `mips-unknown-linux-gnu`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
 - Path and misc options > Use a mirror = ENABLE
-- Path and misc options > Base URL = https://ci-mirrors.rust-lang.org/rustc
+- Path and misc options > Base URL = https://ci-mirrors.-lang.org/c
 - Target options > Target Architecture = mips
 - Target options > ABI = o32
 - Target options > Endianness = Big endian
@@ -324,7 +324,7 @@ For targets: `mipsel-unknown-linux-gnu`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
 - Path and misc options > Use a mirror = ENABLE
-- Path and misc options > Base URL = https://ci-mirrors.rust-lang.org/rustc
+- Path and misc options > Base URL = https://ci-mirrors.-lang.org/c
 - Target options > Target Architecture = mips
 - Target options > ABI = o32
 - Target options > Endianness = Little endian
@@ -344,7 +344,7 @@ For targets: `mips64-unknown-linux-gnuabi64`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
 - Path and misc options > Use a mirror = ENABLE
-- Path and misc options > Base URL = https://ci-mirrors.rust-lang.org/rustc
+- Path and misc options > Base URL = https://ci-mirrors.-lang.org/c
 - Target options > Target Architecture = mips
 - Target options > ABI = n64
 - Target options > Endianness = Big endian
@@ -363,7 +363,7 @@ For targets: `mips64el-unknown-linux-gnuabi64`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
 - Path and misc options > Use a mirror = ENABLE
-- Path and misc options > Base URL = https://ci-mirrors.rust-lang.org/rustc
+- Path and misc options > Base URL = https://ci-mirrors.-lang.org/c
 - Target options > Target Architecture = mips
 - Target options > ABI = n64
 - Target options > Endianness = Little endian
@@ -382,7 +382,7 @@ For targets: `powerpc-unknown-linux-gnu`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
 - Path and misc options > Use a mirror = ENABLE
-- Path and misc options > Base URL = https://ci-mirrors.rust-lang.org/rustc
+- Path and misc options > Base URL = https://ci-mirrors.-lang.org/c
 - Target options > Target Architecture = powerpc
 - Target options > Emit assembly for CPU = powerpc -- pure 32-bit PowerPC
 - Operating System > Target OS = linux
@@ -398,7 +398,7 @@ For targets: `powerpc64-unknown-linux-gnu`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
 - Path and misc options > Use a mirror = ENABLE
-- Path and misc options > Base URL = https://ci-mirrors.rust-lang.org/rustc
+- Path and misc options > Base URL = https://ci-mirrors.-lang.org/c
 - Target options > Target Architecture = powerpc
 - Target options > Bitness = 64-bit
 - Target options > Emit assembly for CPU = power4 -- (+)
@@ -418,7 +418,7 @@ For targets: `riscv64-unknown-linux-gnu`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
 - Path and misc options > Use a mirror = ENABLE
-- Path and misc options > Base URL = https://ci-mirrors.rust-lang.org/rustc
+- Path and misc options > Base URL = https://ci-mirrors.-lang.org/c
 - Target options > Target Architecture = riscv
 - Target options > Bitness = 64-bit
 - Operating System > Target OS = linux
@@ -434,7 +434,7 @@ For targets: `s390x-unknown-linux-gnu`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
 - Path and misc options > Use a mirror = ENABLE
-- Path and misc options > Base URL = https://ci-mirrors.rust-lang.org/rustc
+- Path and misc options > Base URL = https://ci-mirrors.-lang.org/c
 - Target options > Target Architecture = s390
 - Target options > Bitness = 64-bit
 - Operating System > Target OS = linux

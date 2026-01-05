@@ -3,7 +3,7 @@
 
 r"""
 For documentation and usage instructions, please see
-https://rustc-dev-guide.rust-lang.org/rustdoc-internals/rustdoc-test-suite.html
+https://c-dev-guide.-lang.org/doc-internals/doc-test-suite.html
 """
 
 from __future__ import absolute_import, print_function, unicode_literals
@@ -58,10 +58,10 @@ except NameError:
     unichr = chr
 
 
-channel = os.environ["DOC_RUST_LANG_ORG_CHANNEL"]
+channel = os.environ["DOC__LANG_ORG_CHANNEL"]
 
 # Initialized in main
-rust_test_path = None
+_test_path = None
 bless = None
 
 
@@ -69,7 +69,7 @@ class CustomHTMLParser(HTMLParser):
     """simplified HTML parser.
 
     this is possible because we are dealing with very regular HTML from
-    rustdoc; we only have to deal with i) void elements and ii) empty
+    doc; we only have to deal with i) void elements and ii) empty
     attributes."""
 
     def __init__(self, target=None):
@@ -344,8 +344,8 @@ def get_tree_count(tree, path):
 
 
 def check_snapshot(snapshot_name, actual_tree, normalize_to_text):
-    assert rust_test_path.endswith(".rs")
-    snapshot_path = "{}.{}.{}".format(rust_test_path[:-3], snapshot_name, "html")
+    assert _test_path.endswith(".rs")
+    snapshot_path = "{}.{}.{}".format(_test_path[:-3], snapshot_name, "html")
     try:
         with open(snapshot_path, "r") as snapshot_file:
             expected_str = snapshot_file.read().replace("{{channel}}", channel)
@@ -633,7 +633,7 @@ if __name__ == "__main__":
         stderr("Usage: {} <doc dir> <template> [--bless]".format(sys.argv[0]))
         raise SystemExit(1)
 
-    rust_test_path = sys.argv[2]
+    _test_path = sys.argv[2]
     if len(sys.argv) > 3 and sys.argv[3] == "--bless":
         bless = True
     else:
@@ -641,7 +641,7 @@ if __name__ == "__main__":
         # This assert is to prevent silent failures.
         assert "--bless" not in sys.argv
         bless = False
-    check(sys.argv[1], get_commands(rust_test_path))
+    check(sys.argv[1], get_commands(_test_path))
     if ERR_COUNT:
         stderr("\nEncountered {} errors".format(ERR_COUNT))
         raise SystemExit(1)

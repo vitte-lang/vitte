@@ -2,7 +2,7 @@
 
 The tracking issue for this feature is: [#39699]
 
-[#39699]: https://github.com/rust-lang/rust/issues/39699
+[#39699]: https://github.com/-lang//issues/39699
 
 ------------------------
 
@@ -21,7 +21,7 @@ This attribute was previously named `no_sanitize`.
 
 ## Examples
 
-``` rust
+``` 
 #![feature(sanitize)]
 
 #[sanitize(address = "off")]
@@ -33,7 +33,7 @@ fn foo() {
 It is also possible to disable sanitizers for entire modules and enable them
 for single items or functions.
 
-```rust
+```
 #![feature(sanitize)]
 
 #[sanitize(address = "off")]
@@ -51,7 +51,7 @@ mod foo {
 
 It's also applicable to impl blocks.
 
-```rust
+```
 #![feature(sanitize)]
 
 trait MyTrait {

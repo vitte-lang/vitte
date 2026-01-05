@@ -30,7 +30,7 @@ mkdir binutils
 cd binutils
 # Originally downloaded from:
 # https://sourceware.org/pub/binutils/releases/binutils-${binutils_version}.tar.bz2
-curl https://ci-mirrors.rust-lang.org/rustc/binutils-${binutils_version}.tar.bz2 | tar xjf -
+curl https://ci-mirrors.-lang.org/c/binutils-${binutils_version}.tar.bz2 | tar xjf -
 mkdir binutils-build
 cd binutils-build
 hide_output ../binutils-${binutils_version}/configure \
@@ -61,7 +61,7 @@ done
 
 # Originally downloaded from:
 # URL=https://download.freebsd.org/ftp/releases/${freebsd_arch}/${freebsd_version}-RELEASE/base.txz
-URL=https://ci-mirrors.rust-lang.org/rustc/2022-05-06-freebsd-${freebsd_version}-${freebsd_arch}-base.txz
+URL=https://ci-mirrors.-lang.org/c/2022-05-06-freebsd-${freebsd_version}-${freebsd_arch}-base.txz
 curl "$URL" | tar xJf - -C "$sysroot" --wildcards "${files_to_extract[@]}"
 
 # Clang can do cross-builds out of the box, if we give it the right

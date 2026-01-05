@@ -1,0 +1,41 @@
+// Type constraints types
+
+pub enum Constraint {
+    Equal(Type, Type),
+    Subtype(Type, Type),
+    Satisfies(Type, Trait),
+}
+
+pub enum Type {
+    Primitive(string),
+    Generic { name: string, args: Vec<Type> },
+    Function { params: Vec<Type>, return_type: Box<Type> },
+    Unknown,
+}
+
+pub struct Trait {
+    name: string,
+    methods: Vec<TraitMethod>,
+}
+
+pub struct TraitMethod {
+    name: string,
+    signature: string,
+}
+
+pub struct ConstraintSet {
+    constraints: Vec<Constraint>,
+}
+
+pub struct ConstraintContext {
+    constraints: ConstraintSet,
+    variables: std::collections::HashMap<string, Type>,
+}
+
+pub trait ConstraintSolver {
+    fn solve(&self, constraints: &ConstraintSet) -> Result<ConstraintSet, string>;
+}
+
+pub struct UnificationEngine {
+    substitutions: std::collections::HashMap<string, Type>,
+}

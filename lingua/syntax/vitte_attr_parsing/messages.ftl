@@ -116,7 +116,7 @@ attr_parsing_invalid_repr_hint_no_value =
     invalid representation hint: `{$name}` does not take a value
 
 attr_parsing_invalid_since =
-    'since' must be a Rust version number, such as "1.31.0"
+    'since' must be a  version number, such as "1.31.0"
 
 attr_parsing_invalid_target = `#[{$name}]` attribute cannot be used on {$target}
     .help = `#[{$name}]` can {$only}be applied to {$applied}
@@ -194,13 +194,13 @@ attr_parsing_raw_dylib_only_windows =
 attr_parsing_repr_ident =
     meta item in `repr` must be an identifier
 
-attr_parsing_rustc_allowed_unstable_pairing =
-    `rustc_allowed_through_unstable_modules` attribute must be paired with a `stable` attribute
+attr_parsing_c_allowed_unstable_pairing =
+    `c_allowed_through_unstable_modules` attribute must be paired with a `stable` attribute
 
-attr_parsing_rustc_promotable_pairing =
-    `rustc_promotable` attribute must be paired with either a `rustc_const_unstable` or a `rustc_const_stable` attribute
+attr_parsing_c_promotable_pairing =
+    `c_promotable` attribute must be paired with either a `c_const_unstable` or a `c_const_stable` attribute
 
-attr_parsing_rustc_scalable_vector_count_out_of_range = element count in `rustc_scalable_vector` is too large: `{$n}`
+attr_parsing_c_scalable_vector_count_out_of_range = element count in `c_scalable_vector` is too large: `{$n}`
     .note = the value may not exceed `u16::MAX`
 
 attr_parsing_soft_no_args =
@@ -216,8 +216,8 @@ attr_parsing_unknown_version_literal =
 
 attr_parsing_unrecognized_repr_hint =
     unrecognized representation hint
-    .help = valid reprs are `Rust` (default), `C`, `align`, `packed`, `transparent`, `simd`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize`, `usize`
-    .note = for more information, visit <https://doc.rust-lang.org/reference/type-layout.html?highlight=repr#representations>
+    .help = valid reprs are `` (default), `C`, `align`, `packed`, `transparent`, `simd`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize`, `usize`
+    .note = for more information, visit <https://doc.-lang.org/reference/type-layout.html?highlight=repr#representations>
 
 attr_parsing_unsafe_attr_outside_unsafe = unsafe attribute used without unsafe
     .label = usage of unsafe attribute

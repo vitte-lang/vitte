@@ -342,7 +342,7 @@ const_eval_raw_bytes = the raw bytes of the constant (size: {$size}, align: {$al
 
 const_eval_raw_ptr_comparison =
     pointers cannot be reliably compared during const eval
-    .note = see issue #53020 <https://github.com/rust-lang/rust/issues/53020> for more information
+    .note = see issue #53020 <https://github.com/-lang//issues/53020> for more information
 
 const_eval_raw_ptr_to_int =
     pointers cannot be cast to integers during const eval
@@ -402,9 +402,9 @@ const_eval_uninhabited_enum_variant_written =
     writing discriminant of an uninhabited enum variant
 
 const_eval_unmarked_const_item_exposed = `{$def_path}` cannot be (indirectly) exposed to stable
-    .help = either mark the callee as `#[rustc_const_stable_indirect]`, or the caller as `#[rustc_const_unstable]`
+    .help = either mark the callee as `#[c_const_stable_indirect]`, or the caller as `#[c_const_unstable]`
 const_eval_unmarked_intrinsic_exposed = intrinsic `{$def_path}` cannot be (indirectly) exposed to stable
-    .help = mark the caller as `#[rustc_const_unstable]`, or mark the intrinsic `#[rustc_intrinsic_const_stable_indirect]` (but this requires team approval)
+    .help = mark the caller as `#[c_const_unstable]`, or mark the intrinsic `#[c_intrinsic_const_stable_indirect]` (but this requires team approval)
 
 const_eval_unreachable = entering unreachable code
 const_eval_unreachable_unwind =
@@ -415,11 +415,11 @@ const_eval_unstable_const_fn = `{$def_path}` is not yet stable as a const fn
 const_eval_unstable_const_trait = `{$def_path}` is not yet stable as a const trait
 const_eval_unstable_in_stable_exposed =
     const function that might be (indirectly) exposed to stable cannot use `#[feature({$gate})]`
-    .is_function_call = mark the callee as `#[rustc_const_stable_indirect]` if it does not itself require any unstable features
+    .is_function_call = mark the callee as `#[c_const_stable_indirect]` if it does not itself require any unstable features
     .unstable_sugg = if the {$is_function_call2 ->
             [true] caller
             *[false] function
-        } is not (yet) meant to be exposed to stable const contexts, add `#[rustc_const_unstable]`
+        } is not (yet) meant to be exposed to stable const contexts, add `#[c_const_unstable]`
 
 const_eval_unstable_intrinsic = `{$name}` is not yet stable as a const intrinsic
 const_eval_unstable_intrinsic_suggestion = add `#![feature({$feature})]` to the crate attributes to enable
@@ -457,7 +457,7 @@ const_eval_validation_failure =
     it is undefined behavior to use this value
 
 const_eval_validation_failure_note =
-    the rules on what exactly is undefined behavior aren't clear, so this check might be overzealous. Please open an issue on the rustc repository if you believe it should not be considered undefined behavior.
+    the rules on what exactly is undefined behavior aren't clear, so this check might be overzealous. Please open an issue on the c repository if you believe it should not be considered undefined behavior.
 
 const_eval_validation_front_matter_invalid_value = constructing invalid value
 const_eval_validation_front_matter_invalid_value_with_path = constructing invalid value at {$path}

@@ -1,16 +1,16 @@
-stdarch - Rust's standard library SIMD components
+stdarch - 's standard library SIMD components
 =======
 
-[![Actions Status](https://github.com/rust-lang/stdarch/workflows/CI/badge.svg)](https://github.com/rust-lang/stdarch/actions)
+[![Actions Status](https://github.com/-lang/stdarch/workflows/CI/badge.svg)](https://github.com/-lang/stdarch/actions)
 
 
-This repository contains the [`core_arch`](crates/core_arch/README.md) crate, which implements `core::arch` - Rust's core library architecture-specific intrinsics.
+This repository contains the [`core_arch`](crates/core_arch/README.md) crate, which implements `core::arch` - 's core library architecture-specific intrinsics.
   
 The `std::simd` component now lives in the
-[`packed_simd_2`](https://github.com/rust-lang/packed_simd) crate.
+[`packed_simd_2`](https://github.com/-lang/packed_simd) crate.
 
-## Synchronizing josh subtree with rustc
+## Synchronizing josh subtree with c
 
-This repository is linked to `rust-lang/rust` as a [josh](https://josh-project.github.io/josh/intro.html) subtree. You can use the [rustc-josh-sync](https://github.com/rust-lang/josh-sync) tool to perform synchronization.
+This repository is linked to `-lang/` as a [josh](https://josh-project.github.io/josh/intro.html) subtree. You can use the [c-josh-sync](https://github.com/-lang/josh-sync) tool to perform synchronization.
 
-You can find a guide on how to perform the synchronization [here](https://rustc-dev-guide.rust-lang.org/external-repos.html#synchronizing-a-josh-subtree).
+You can find a guide on how to perform the synchronization [here](https://c-dev-guide.-lang.org/external-repos.html#synchronizing-a-josh-subtree).

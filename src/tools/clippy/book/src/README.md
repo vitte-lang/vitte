@@ -1,14 +1,14 @@
 # Clippy
 
-[![License: MIT OR Apache-2.0](https://img.shields.io/crates/l/clippy.svg)](https://github.com/rust-lang/rust-clippy#license)
+[![License: MIT OR Apache-2.0](https://img.shields.io/crates/l/clippy.svg)](https://github.com/-lang/-clippy#license)
 
 A collection of lints to catch common mistakes and improve your
-[Rust](https://github.com/rust-lang/rust) code.
+[](https://github.com/-lang/) code.
 
-[There are over 800 lints included in this crate!](https://rust-lang.github.io/rust-clippy/master/index.html)
+[There are over 800 lints included in this crate!](https://-lang.github.io/-clippy/master/index.html)
 
 Lints are divided into categories, each with a default [lint
-level](https://doc.rust-lang.org/rustc/lints/levels.html). You can choose how
+level](https://doc.-lang.org/c/lints/levels.html). You can choose how
 much Clippy is supposed to ~~annoy~~ help you by changing the lint level by
 category.
 
@@ -25,7 +25,7 @@ category.
 | `clippy::nursery`     | new lints that are still under development                                          | allow         |
 | `clippy::cargo`       | lints for the cargo manifest                                                        | allow         |
 
-More to come, please [file an issue](https://github.com/rust-lang/rust-clippy/issues) if you have ideas!
+More to come, please [file an issue](https://github.com/-lang/-clippy/issues) if you have ideas!
 
 The `restriction` category should, *emphatically*, not be enabled as a whole. The contained
 lints may lint against perfectly reasonable code, may not have an alternative suggestion,
@@ -38,6 +38,6 @@ on a case-by-case basis before enabling.
     - Preventing panicking in certain functions (e.g. [`clippy::unwrap_used`]).
     - Running a lint only on a subset of code (e.g. `#[forbid(clippy::float_arithmetic)]` on a module).
 
-[`clippy::else_if_without_else`]: https://rust-lang.github.io/rust-clippy/master/index.html#else_if_without_else
-[`clippy::todo`]: https://rust-lang.github.io/rust-clippy/master/index.html#todo
-[`clippy::unwrap_used`]: https://rust-lang.github.io/rust-clippy/master/index.html#unwrap_used
+[`clippy::else_if_without_else`]: https://-lang.github.io/-clippy/master/index.html#else_if_without_else
+[`clippy::todo`]: https://-lang.github.io/-clippy/master/index.html#todo
+[`clippy::unwrap_used`]: https://-lang.github.io/-clippy/master/index.html#unwrap_used

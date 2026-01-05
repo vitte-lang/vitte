@@ -8,7 +8,7 @@ that we want to examine has a [diagnostic item][diagnostic_items],
 
 ## Using Diagnostic Items
 
-As explained in the [Rust Compiler Development Guide][rustc_dev_guide], diagnostic items
+As explained in the [ Compiler Development Guide][c_dev_guide], diagnostic items
 are introduced for identifying types via [Symbols][symbol].
 
 For instance, if we want to examine whether an expression implements
@@ -16,11 +16,11 @@ the `Iterator` trait, we could simply write the following code,
 providing the `LateContext` (`cx`), our expression at hand, and
 the symbol of the trait in question:
 
-```rust
+```
 use clippy_utils::sym;
 use clippy_utils::ty::implements_trait;
-use rustc_hir::Expr;
-use rustc_lint::{LateContext, LateLintPass};
+use c_hir::Expr;
+use c_lint::{LateContext, LateLintPass};
 
 impl LateLintPass<'_> for CheckIteratorTraitLint {
     fn check_expr(&mut self, cx: &LateContext<'_>, expr: &Expr<'_>) {
@@ -44,7 +44,7 @@ all language items defined in the compiler.
 
 Using one of its `*_trait` method, we could obtain the [DefId] of any
 specific item, such as `Clone`, `Copy`, `Drop`, `Eq`, which are familiar
-to many Rustaceans.
+to many aceans.
 
 For instance, if we want to examine whether an expression `expr` implements
 `Drop` trait, we could access `LanguageItems` via our `LateContext`'s
@@ -52,10 +52,10 @@ For instance, if we want to examine whether an expression `expr` implements
 `Drop` trait to us. Then, by calling Clippy utils function `implements_trait`
 we can check that the `Ty` of the `expr` implements the trait:
 
-```rust
+```
 use clippy_utils::ty::implements_trait;
-use rustc_hir::Expr;
-use rustc_lint::{LateContext, LateLintPass};
+use c_hir::Expr;
+use c_lint::{LateContext, LateLintPass};
 
 impl LateLintPass<'_> for CheckDropTraitLint {
     fn check_expr(&mut self, cx: &LateContext<'_>, expr: &Expr<'_>) {
@@ -74,15 +74,15 @@ impl LateLintPass<'_> for CheckDropTraitLint {
 If neither diagnostic item nor a language item is available, we can use
 [`clippy_utils::paths`][paths] to determine get a trait's `DefId`.
 
-> **Note**: This approach should be avoided if possible, the best thing to do would be to make a PR to [`rust-lang/rust`][rust] adding a diagnostic item.
+> **Note**: This approach should be avoided if possible, the best thing to do would be to make a PR to [`-lang/`][] adding a diagnostic item.
 
-Below, we check if the given `expr` implements [`core::iter::Step`](https://doc.rust-lang.org/std/iter/trait.Step.html):
+Below, we check if the given `expr` implements [`core::iter::Step`](https://doc.-lang.org/std/iter/trait.Step.html):
 
-```rust
+```
 use clippy_utils::paths;
 use clippy_utils::ty::implements_trait;
-use rustc_hir::Expr;
-use rustc_lint::{LateContext, LateLintPass};
+use c_hir::Expr;
+use c_lint::{LateContext, LateLintPass};
 
 impl LateLintPass<'_> for CheckIterStep {
     fn check_expr(&mut self, cx: &LateContext<'_>, expr: &Expr<'_>) {
@@ -99,7 +99,7 @@ impl LateLintPass<'_> for CheckIterStep {
 ## Creating Types Programmatically
 
 Traits are often generic over a type parameter, e.g. `Borrow<T>` is generic
-over `T`. Rust allows us to implement a trait for a specific type. For example,
+over `T`.  allows us to implement a trait for a specific type. For example,
 we can implement `Borrow<[u8]>` for a hypothetical type `Foo`. Let's suppose
 that we would like to find whether our type actually implements `Borrow<[u8]>`.
 
@@ -114,7 +114,7 @@ have access to all the primitive types, such as `Ty::new_char`,
 such as slices, tuples, and references out of these basic building blocks.
 
 For trait checking, it is not enough to create the types, we need to convert
-them into [GenericArg]. In rustc, a generic is an entity that the compiler
+them into [GenericArg]. In c, a generic is an entity that the compiler
 understands and has three kinds, type, const and lifetime. By calling
 `.into()` on a constructed [Ty], we wrap the type into a generic which can
 then be used by the query system to decide whether the specialized trait
@@ -122,9 +122,9 @@ is implemented.
 
 The following code demonstrates how to do this:
 
-```rust
+```
 
-use rustc_middle::ty::Ty;
+use c_middle::ty::Ty;
 use clippy_utils::sym;
 use clippy_utils::ty::implements_trait;
 
@@ -139,19 +139,19 @@ if implements_trait(cx, ty, borrow_id, &[generic_param]) {
 
 In essence, the [Ty] struct allows us to create types programmatically in a
 representation that can be used by the compiler and the query engine. We then
-use the `rustc_middle::Ty` of the type we are interested in, and query the
+use the `c_middle::Ty` of the type we are interested in, and query the
 compiler to see if it indeed implements the trait we are interested in.
 
 
-[DefId]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_hir/def_id/struct.DefId.html
-[diagnostic_items]: https://rustc-dev-guide.rust-lang.org/diagnostics/diagnostic-items.html
-[lang_items]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_hir/lang_items/struct.LanguageItems.html
-[paths]: https://github.com/rust-lang/rust-clippy/blob/master/clippy_utils/src/paths.rs
-[rustc_dev_guide]: https://rustc-dev-guide.rust-lang.org/
-[symbol]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_span/symbol/struct.Symbol.html
-[symbol_index]: https://doc.rust-lang.org/beta/nightly-rustc/rustc_span/symbol/sym/index.html
-[TyCtxt]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/ty/context/struct.TyCtxt.html
-[Ty]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/ty/struct.Ty.html
-[rust]: https://github.com/rust-lang/rust
-[new_slice]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/ty/struct.Ty.html#method.new_slice
-[GenericArg]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/ty/struct.GenericArg.html
+[DefId]: https://doc.-lang.org/nightly/nightly-c/c_hir/def_id/struct.DefId.html
+[diagnostic_items]: https://c-dev-guide.-lang.org/diagnostics/diagnostic-items.html
+[lang_items]: https://doc.-lang.org/nightly/nightly-c/c_hir/lang_items/struct.LanguageItems.html
+[paths]: https://github.com/-lang/-clippy/blob/master/clippy_utils/src/paths.rs
+[c_dev_guide]: https://c-dev-guide.-lang.org/
+[symbol]: https://doc.-lang.org/nightly/nightly-c/c_span/symbol/struct.Symbol.html
+[symbol_index]: https://doc.-lang.org/beta/nightly-c/c_span/symbol/sym/index.html
+[TyCtxt]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/context/struct.TyCtxt.html
+[Ty]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.Ty.html
+[]: https://github.com/-lang/
+[new_slice]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.Ty.html#method.new_slice
+[GenericArg]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.GenericArg.html

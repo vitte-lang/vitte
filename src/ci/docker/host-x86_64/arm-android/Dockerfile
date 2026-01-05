@@ -32,7 +32,7 @@ ENV PATH=$PATH:/android/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin
 
 ENV TARGETS=arm-linux-androideabi
 
-ENV RUST_CONFIGURE_ARGS --android-ndk=/android/ndk/
+ENV _CONFIGURE_ARGS --android-ndk=/android/ndk/
 
 ENV SCRIPT python3 ../x.py --stage 2 test --host='' --target $TARGETS
 

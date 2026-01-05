@@ -2,10 +2,10 @@
     this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
 
 -passes_see_issue =
-    see issue #{$issue} <https://github.com/rust-lang/rust/issues/{$issue}> for more information
+    see issue #{$issue} <https://github.com/-lang//issues/{$issue}> for more information
 
 passes_abi_invalid_attribute =
-    `#[rustc_abi]` can only be applied to function items, type aliases, and associated functions
+    `#[c_abi]` can only be applied to function items, type aliases, and associated functions
 passes_abi_ne =
     ABIs are not compatible
     left ABI = {$left}
@@ -32,7 +32,7 @@ passes_attr_application_struct_union =
 passes_attr_crate_level =
     this attribute can only be applied at the crate level
     .suggestion = to apply to the crate, use an inner attribute
-    .note = read <https://doc.rust-lang.org/nightly/rustdoc/the-doc-attribute.html#at-the-crate-level> for more information
+    .note = read <https://doc.-lang.org/nightly/doc/the-doc-attribute.html#at-the-crate-level> for more information
 
 passes_autodiff_attr =
     `#[autodiff]` should be applied to a function
@@ -64,7 +64,7 @@ passes_const_continue_attr =
     .label = not a break expression
 
 passes_const_stable_not_stable =
-    attribute `#[rustc_const_stable]` can only be applied to functions that are declared `#[stable]`
+    attribute `#[c_const_stable]` can only be applied to functions that are declared `#[stable]`
     .label = attribute specified here
 
 passes_custom_mir_incompatible_dialect_and_phase =
@@ -132,7 +132,7 @@ passes_doc_inline_only_use =
     this attribute can only be applied to a `use` item
     .label = only applicable on `use` items
     .not_a_use_item_label = not a `use` item
-    .note = read <https://doc.rust-lang.org/nightly/rustdoc/the-doc-attribute.html#inline-and-no_inline> for more information
+    .note = read <https://doc.-lang.org/nightly/doc/the-doc-attribute.html#inline-and-no_inline> for more information
 
 passes_doc_keyword_attribute_empty_mod =
     `#[doc({$attr_name} = "...")]` should be used on empty modules
@@ -152,10 +152,10 @@ passes_doc_masked_only_extern_crate =
     this attribute can only be applied to an `extern crate` item
     .label = only applicable on `extern crate` items
     .not_an_extern_crate_label = not an `extern crate` item
-    .note = read <https://doc.rust-lang.org/unstable-book/language-features/doc-masked.html> for more information
+    .note = read <https://doc.-lang.org/unstable-book/language-features/doc-masked.html> for more information
 
-passes_doc_rust_logo =
-    the `#[doc(rust_logo)]` attribute is used for Rust branding
+passes_doc__logo =
+    the `#[doc(_logo)]` attribute is used for  branding
 
 passes_doc_search_unbox_invalid =
     `#[doc(search_unbox)]` should be used on generic structs and enums
@@ -242,10 +242,10 @@ passes_function_not_have_default_implementation = function doesn't have a defaul
     .note = required by this annotation
 
 passes_functions_names_duplicated = functions names are duplicated
-    .note = all `#[rustc_must_implement_one_of]` arguments must be unique
+    .note = all `#[c_must_implement_one_of]` arguments must be unique
 
 passes_has_incoherent_inherent_impl =
-    `rustc_has_incoherent_inherent_impls` attribute should be applied to types or traits
+    `c_has_incoherent_inherent_impls` attribute should be applied to types or traits
     .label = only adts, extern types and traits are supported
 
 passes_ignored_derived_impls =
@@ -282,7 +282,7 @@ passes_incorrect_target =
     }
 
 passes_ineffective_unstable_impl = an `#[unstable]` annotation here has no effect
-    .note = see issue #55436 <https://github.com/rust-lang/rust/issues/55436> for more information
+    .note = see issue #55436 <https://github.com/-lang//issues/55436> for more information
 
 passes_inline_ignored_for_exported =
     `#[inline]` is ignored on externally exported functions
@@ -322,14 +322,14 @@ passes_layout_align =
 passes_layout_homogeneous_aggregate =
     homogeneous_aggregate: {$homogeneous_aggregate}
 passes_layout_invalid_attribute =
-    `#[rustc_layout]` can only be applied to `struct`/`enum`/`union` declarations and type aliases
+    `#[c_layout]` can only be applied to `struct`/`enum`/`union` declarations and type aliases
 passes_layout_of =
     layout_of({$normalized_ty}) = {$ty_layout}
 passes_layout_size =
     size: {$size}
 
 passes_link =
-    attribute should be applied to an `extern` block with non-Rust ABI
+    attribute should be applied to an `extern` block with non- ABI
     .warn = {-passes_previously_accepted}
     .label = not an `extern` block
 
@@ -349,7 +349,7 @@ passes_may_dangle =
     `#[may_dangle]` must be applied to a lifetime or type generic parameter in `Drop` impl
 
 passes_missing_const_err =
-    attributes `#[rustc_const_unstable]`, `#[rustc_const_stable]` and `#[rustc_const_stable_indirect]` require the function or method to be `const`
+    attributes `#[c_const_unstable]`, `#[c_const_stable]` and `#[c_const_stable_indirect]` require the function or method to be `const`
     .help = make the function or method const
 
 passes_missing_const_stab_attr =
@@ -373,14 +373,14 @@ passes_mixed_export_name_and_no_mangle = `{$no_mangle_attr}` attribute may not b
     .note = `{$export_name_attr}` takes precedence
     .suggestion = remove the `{$no_mangle_attr}` attribute
 
-passes_multiple_rustc_main =
-    multiple functions with a `#[rustc_main]` attribute
-    .first = first `#[rustc_main]` function
-    .additional = additional `#[rustc_main]` function
+passes_multiple_c_main =
+    multiple functions with a `#[c_main]` attribute
+    .first = first `#[c_main]` function
+    .additional = additional `#[c_main]` function
 
 passes_must_implement_not_function = not a function
 
-passes_must_implement_not_function_note = all `#[rustc_must_implement_one_of]` arguments must be associated function names
+passes_must_implement_not_function_note = all `#[c_must_implement_one_of]` arguments must be associated function names
 
 passes_must_implement_not_function_span_note = required by this annotation
 
@@ -399,7 +399,7 @@ passes_no_main_function =
     }
     .consider_adding_main_to_file = consider adding a `main` function to `{$filename}`
     .consider_adding_main_at_crate = consider adding a `main` function at the crate level
-    .teach_note = If you don't know the basics of Rust, you can go look to the Rust Book to get started: https://doc.rust-lang.org/book/
+    .teach_note = If you don't know the basics of , you can go look to the  Book to get started: https://doc.-lang.org/book/
     .non_function_main = non-function item at `crate::main` is found
 
 passes_non_exhaustive_with_default_field_values =
@@ -447,33 +447,33 @@ passes_repr_align_greater_than_target_max =
 
 passes_repr_align_should_be_align =
     `#[repr(align(...))]` is not supported on {$item}
-    .help = use `#[rustc_align(...)]` instead
+    .help = use `#[c_align(...)]` instead
 
 passes_repr_align_should_be_align_static =
     `#[repr(align(...))]` is not supported on {$item}
-    .help = use `#[rustc_align_static(...)]` instead
+    .help = use `#[c_align_static(...)]` instead
 
 passes_repr_conflicting =
     conflicting representation hints
 
-passes_rustc_allow_const_fn_unstable =
+passes_c_allow_const_fn_unstable =
     attribute should be applied to `const fn`
     .label = not a `const fn`
 
-passes_rustc_const_stable_indirect_pairing =
-    `const_stable_indirect` attribute does not make sense on `rustc_const_stable` function, its behavior is already implied
-passes_rustc_dirty_clean =
+passes_c_const_stable_indirect_pairing =
+    `const_stable_indirect` attribute does not make sense on `c_const_stable` function, its behavior is already implied
+passes_c_dirty_clean =
     attribute requires -Z query-dep-graph to be enabled
 
-passes_rustc_force_inline_coro =
+passes_c_force_inline_coro =
     attribute cannot be applied to a `async`, `gen` or `async gen` function
     .label = `async`, `gen` or `async gen` function
 
-passes_rustc_legacy_const_generics_index =
-    #[rustc_legacy_const_generics] must have one index for each generic parameter
+passes_c_legacy_const_generics_index =
+    #[c_legacy_const_generics] must have one index for each generic parameter
     .label = generic parameters
 
-passes_rustc_legacy_const_generics_index_exceed =
+passes_c_legacy_const_generics_index_exceed =
     index exceeds number of arguments
     .label = there {$arg_count ->
         [one] is
@@ -483,12 +483,12 @@ passes_rustc_legacy_const_generics_index_exceed =
         *[other] arguments
     }
 
-passes_rustc_legacy_const_generics_only =
-    #[rustc_legacy_const_generics] functions must only have const generics
+passes_c_legacy_const_generics_only =
+    #[c_legacy_const_generics] functions must only have const generics
     .label = non-const generic parameter
 
 
-passes_rustc_pub_transparent =
+passes_c_pub_transparent =
     attribute should be applied to `#[repr(transparent)]` types
     .label = not a `#[repr(transparent)]` type
 
@@ -506,7 +506,7 @@ passes_trait_impl_const_stability_mismatch_trait_unstable = ...but the trait is 
 
 passes_trait_impl_const_stable =
     trait implementations cannot be const stable yet
-    .note = see issue #143874 <https://github.com/rust-lang/rust/issues/143874> for more information
+    .note = see issue #143874 <https://github.com/-lang//issues/143874> for more information
 
 passes_transparent_incompatible =
     transparent {$target} cannot have other repr hints

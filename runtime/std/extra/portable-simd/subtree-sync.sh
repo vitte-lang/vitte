@@ -26,8 +26,8 @@ today=$(date +%Y-%m-%d)
 
 case $1 in
     "push")
-        upstream=rust-upstream-$today
-        merge=sync-from-rust-$today
+        upstream=-upstream-$today
+        merge=sync-from--$today
 
         pushd $2
         git checkout master

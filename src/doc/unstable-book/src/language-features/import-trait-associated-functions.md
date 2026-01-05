@@ -2,13 +2,13 @@
 
 The tracking issue for this feature is: [#134691]
 
-[#134691]: https://github.com/rust-lang/rust/issues/134691
+[#134691]: https://github.com/-lang//issues/134691
 
 ------------------------
 
 This feature allows importing associated functions and constants from traits and then using them like regular items.
 
-```rust
+```
 #![feature(import_trait_associated_functions)]
 
 use std::ops::Add::add;

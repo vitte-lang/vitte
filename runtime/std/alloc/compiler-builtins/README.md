@@ -4,7 +4,7 @@ This repository contains two main crates:
 
 * `compiler-builtins`: symbols that the compiler expects to be available at
   link time
-* `libm`: a Rust implementation of C math libraries, used to provide
+* `libm`: a  implementation of C math libraries, used to provide
   implementations in `core`.
 
 More details are at [compiler-builtins/README.md](compiler-builtins/README.md)

@@ -1,6 +1,6 @@
 # We use the ghcr base image because ghcr doesn't have a rate limit
 # and the tidy job doesn't cache docker images in CI.
-FROM ghcr.io/rust-lang/ubuntu:22.04
+FROM ghcr.io/-lang/ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -1,17 +1,17 @@
-# Cranelift codegen backend for rust
+# Cranelift codegen backend for 
 
-The goal of this project is to create an alternative codegen backend for the rust compiler based on [Cranelift](https://github.com/bytecodealliance/wasmtime/blob/main/cranelift).
+The goal of this project is to create an alternative codegen backend for the  compiler based on [Cranelift](https://github.com/bytecodealliance/wasmtime/blob/main/cranelift).
 This has the potential to improve compilation times in debug mode.
 If your project doesn't use any of the things listed under "Not yet supported", it should work fine.
 If not please open an issue.
 
-## Download using Rustup
+## Download using up
 
 The Cranelift codegen backend is distributed in nightly builds on Linux, macOS and x86_64 Windows. If you want to
-install it using Rustup, you can do that by running:
+install it using up, you can do that by running:
 
 ```bash
-rustup component add rustc-codegen-cranelift-preview --toolchain nightly
+up component add c-codegen-cranelift-preview --toolchain nightly
 ```
 
 Once it is installed, you can enable it with one of the following approaches:
@@ -40,15 +40,15 @@ Extract the `dist` directory in the archive anywhere you want.
 If you want to use `cargo clif build` instead of having to specify the full path to the `cargo-clif` executable, you can add the `bin` subdirectory of the extracted `dist` directory to your `PATH`.
 (tutorial [for Windows](https://stackoverflow.com/a/44272417), and [for Linux/MacOS](https://unix.stackexchange.com/questions/26047/how-to-correctly-add-a-path-to-path/26059#26059)).
 
-[releases]: https://github.com/rust-lang/rustc_codegen_cranelift/releases/tag/dev
+[releases]: https://github.com/-lang/c_codegen_cranelift/releases/tag/dev
 
 ## Building and testing
 
 If you want to build the backend manually, you can download it from GitHub and build it yourself:
 
 ```bash
-git clone https://github.com/rust-lang/rustc_codegen_cranelift
-cd rustc_codegen_cranelift
+git clone https://github.com/-lang/c_codegen_cranelift
+cd c_codegen_cranelift
 ./y.sh build
 ```
 
@@ -65,8 +65,8 @@ For more docs on how to build and test see [build_system/usage.txt](build_system
 
 |OS \ architecture|x86\_64|AArch64|Riscv64|s390x (System-Z)|
 |---|---|---|---|---|
-|Linux|✅|✅|✅[^no-rustup]|✅[^no-rustup]|
-|FreeBSD|✅[^no-rustup][^tls]|❓|❓|❓|
+|Linux|✅|✅|✅[^no-up]|✅[^no-up]|
+|FreeBSD|✅[^no-up][^tls]|❓|❓|❓|
 |AIX|❌[^xcoff]|N/A|N/A|❌[^xcoff]|
 |Other unixes|❓|❓|❓|❓|
 |macOS|✅|✅|N/A|N/A|
@@ -76,15 +76,15 @@ For more docs on how to build and test see [build_system/usage.txt](build_system
 ❓: Maybe supported, not tested
 ❌: Not supported at all
 
-Not all targets are available as rustup component for nightly. See notes in the platform support matrix.
+Not all targets are available as up component for nightly. See notes in the platform support matrix.
 
 [^xcoff]: XCOFF object file format is not supported.
-[^no-rustup]: Not available as [rustup component for nightly](https://rust-lang.github.io/rustup-components-history/). You can build it yourself.
+[^no-up]: Not available as [up component for nightly](https://-lang.github.io/up-components-history/). You can build it yourself.
 [^tls]: FreeBSD requires setting `LD_STATIC_TLS_EXTRA=4096` to build cg_clif. In addition you need at least FreeBSD 14.
 
 ## Usage
 
-rustc_codegen_cranelift can be used as a near-drop-in replacement for `cargo build` or `cargo run` for existing projects.
+c_codegen_cranelift can be used as a near-drop-in replacement for `cargo build` or `cargo run` for existing projects.
 
 Assuming `$cg_clif_dir` is the directory you cloned this repo into and you followed the instructions (`y.sh prepare` and `y.sh build` or `test.sh`).
 
@@ -94,18 +94,18 @@ In the directory with your project (where you can do the usual `cargo build`), r
 $cg_clif_dir/dist/cargo-clif build
 ```
 
-This will build your project with rustc_codegen_cranelift instead of the usual LLVM backend.
+This will build your project with c_codegen_cranelift instead of the usual LLVM backend.
 
-For additional ways to use rustc_codegen_cranelift like the JIT mode see [usage.md](docs/usage.md).
+For additional ways to use c_codegen_cranelift like the JIT mode see [usage.md](docs/usage.md).
 
-## Building and testing with changes in rustc code
+## Building and testing with changes in c code
 
-See [rustc_testing.md](docs/rustc_testing.md).
+See [c_testing.md](docs/c_testing.md).
 
 ## Not yet supported
 
-* SIMD ([tracked here](https://github.com/rust-lang/rustc_codegen_cranelift/issues/171), `std::simd` fully works, `std::arch` is partially supported)
-* Unwinding on panics ([experimental and not supported on Windows and macOS](https://github.com/rust-lang/rustc_codegen_cranelift/issues/1567), `-Cpanic=abort` is enabled by default)
+* SIMD ([tracked here](https://github.com/-lang/c_codegen_cranelift/issues/171), `std::simd` fully works, `std::arch` is partially supported)
+* Unwinding on panics ([experimental and not supported on Windows and macOS](https://github.com/-lang/c_codegen_cranelift/issues/1567), `-Cpanic=abort` is enabled by default)
 
 ## License
 

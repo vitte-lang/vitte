@@ -8,7 +8,7 @@ This directory contains source code for the Vitte language project, including:
 - **etc/**: Miscellaneous support files
 - **external/**: External dependencies (gcc, llvm-project)
 - **runtime/**: Runtime utilities and documentation tools (vittedoc, vitte-std-workspace)
-- **tools/**: Vitte development tools (cargo, clippy, rustfmt, etc.)
+- **tools/**: Vitte development tools (cargo, clippy, fmt, etc.)
 
 For more information on how various parts of the Vitte compiler work, see the [vittec dev guide].
 

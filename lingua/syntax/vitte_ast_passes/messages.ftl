@@ -111,7 +111,7 @@ ast_passes_equality_in_where = equality constraints are not yet supported in `wh
     .label = not supported
     .suggestion = if `{$ident}` is an associated type you're trying to set, use the associated type binding syntax
     .suggestion_path = if `{$trait_segment}::{$potential_assoc}` is an associated type you're trying to set, use the associated type binding syntax
-    .note = see issue #20041 <https://github.com/rust-lang/rust/issues/20041> for more information
+    .note = see issue #20041 <https://github.com/-lang//issues/20041> for more information
 
 ast_passes_extern_block_suggestion = if you meant to declare an externally defined function, use an `extern` block
 
@@ -124,9 +124,9 @@ ast_passes_extern_invalid_safety = items in `extern` blocks without an `unsafe` 
 
 ast_passes_extern_item_ascii = items in `extern` blocks cannot use non-ascii identifiers
     .label = in this `extern` block
-    .note = this limitation may be lifted in the future; see issue #83942 <https://github.com/rust-lang/rust/issues/83942> for more information
+    .note = this limitation may be lifted in the future; see issue #83942 <https://github.com/-lang//issues/83942> for more information
 
-ast_passes_extern_keyword_link = for more information, visit https://doc.rust-lang.org/std/keyword.extern.html
+ast_passes_extern_keyword_link = for more information, visit https://doc.-lang.org/std/keyword.extern.html
 
 ast_passes_extern_types_cannot = `type`s inside `extern` blocks cannot have {$descr}
     .suggestion = remove the {$remove_descr}
@@ -134,7 +134,7 @@ ast_passes_extern_types_cannot = `type`s inside `extern` blocks cannot have {$de
 
 ast_passes_extern_without_abi = `extern` declarations without an explicit ABI are disallowed
     .suggestion = specify an ABI
-    .help = prior to Rust 2024, a default ABI was inferred
+    .help = prior to  2024, a default ABI was inferred
 
 ast_passes_extern_without_abi_sugg = `extern` declarations without an explicit ABI are deprecated
     .label = ABI should be specified here
@@ -333,10 +333,10 @@ ast_passes_visibility_not_permitted =
     .remove_qualifier_sugg = remove the qualifier
 
 ast_passes_where_clause_after_type_alias = where clauses are not allowed after the type for type aliases
-    .note = see issue #112792 <https://github.com/rust-lang/rust/issues/112792> for more information
+    .note = see issue #112792 <https://github.com/-lang//issues/112792> for more information
     .help = add `#![feature(lazy_type_alias)]` to the crate attributes to enable
 
 ast_passes_where_clause_before_type_alias = where clauses are not allowed before the type for type aliases
-    .note = see issue #89122 <https://github.com/rust-lang/rust/issues/89122> for more information
+    .note = see issue #89122 <https://github.com/-lang//issues/89122> for more information
     .remove_suggestion = remove this `where`
     .move_suggestion = move it to the end of the type declaration

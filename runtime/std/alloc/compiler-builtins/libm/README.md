@@ -1,10 +1,10 @@
 # `libm`
 
-A Rust implementations of the C math library.
+A  implementations of the C math library.
 
 ## Usage
 
-`libm` provides fallback implementations for Rust's [float math functions] in
+`libm` provides fallback implementations for 's [float math functions] in
 `core`, and the [`core_float_math`] feature. If what is available suits your
 needs, there is no need to add `libm` as a dependency.
 
@@ -15,16 +15,16 @@ If more functionality is needed, this crate can also be used directly:
 libm = "0.2.11"
 ```
 
-[float math functions]: https://doc.rust-lang.org/std/primitive.f32.html
-[`core_float_math`]: https://github.com/rust-lang/rust/issues/137578
+[float math functions]: https://doc.-lang.org/std/primitive.f32.html
+[`core_float_math`]: https://github.com/-lang//issues/137578
 
 ## Contributing
 
 Please check [CONTRIBUTING.md](../CONTRIBUTING.md)
 
-## Minimum Rust version policy
+## Minimum  version policy
 
-This crate supports rustc 1.63 and newer.
+This crate supports c 1.63 and newer.
 
 ## License
 

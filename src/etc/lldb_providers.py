@@ -11,7 +11,7 @@ from lldb import (
     eFormatChar,
 )
 
-from rust_types import is_tuple_fields
+from _types import is_tuple_fields
 
 if TYPE_CHECKING:
     from lldb import SBValue, SBType, SBTypeStaticField, SBTarget
@@ -82,10 +82,10 @@ class ValueBuilder:
 
 
 def unwrap_unique_or_non_null(unique_or_nonnull: SBValue) -> SBValue:
-    # BACKCOMPAT: rust 1.32
-    # https://github.com/rust-lang/rust/commit/7a0911528058e87d22ea305695f4047572c5e067
-    # BACKCOMPAT: rust 1.60
-    # https://github.com/rust-lang/rust/commit/2a91eeac1a2d27dd3de1bf55515d765da20fd86f
+    # BACKCOMPAT:  1.32
+    # https://github.com/-lang//commit/7a0911528058e87d22ea305695f4047572c5e067
+    # BACKCOMPAT:  1.60
+    # https://github.com/-lang//commit/2a91eeac1a2d27dd3de1bf55515d765da20fd86f
     ptr = unique_or_nonnull.GetChildMemberWithName("pointer")
     return ptr if ptr.TypeIsPointerType() else ptr.GetChildAtIndex(0)
 
@@ -571,7 +571,7 @@ class MSVCEnumSyntheticProvider:
     Synthetic provider for sum-type enums on MSVC. For a detailed explanation of the internals,
     see:
 
-    https://github.com/rust-lang/rust/blob/HEAD/compiler/rustc_codegen_llvm/src/debuginfo/metadata/enums/cpp_like.rs
+    https://github.com/-lang//blob/HEAD/compiler/c_codegen_llvm/src/debuginfo/metadata/enums/cpp_like.rs
     """
 
     valobj: SBValue
@@ -739,7 +739,7 @@ class MSVCEnumSyntheticProvider:
         # remove "enum2$<", str.removeprefix() is python 3.9+
         name = name[7:]
 
-        # MSVC misinterprets ">>" as a shift operator, so spaces are inserted by rust to
+        # MSVC misinterprets ">>" as a shift operator, so spaces are inserted by  to
         # avoid that
         if name.endswith(" >"):
             name = name[:-2]
@@ -869,11 +869,11 @@ class StdVecSyntheticProvider:
     """Pretty-printer for alloc::vec::Vec<T>
 
     struct Vec<T> { buf: RawVec<T>, len: usize }
-    rust 1.75: struct RawVec<T> { ptr: Unique<T>, cap: usize, ... }
-    rust 1.76: struct RawVec<T> { ptr: Unique<T>, cap: Cap(usize), ... }
-    rust 1.31.1: struct Unique<T: ?Sized> { pointer: NonZero<*const T>, ... }
-    rust 1.33.0: struct Unique<T: ?Sized> { pointer: *const T, ... }
-    rust 1.62.0: struct Unique<T: ?Sized> { pointer: NonNull<T>, ... }
+     1.75: struct RawVec<T> { ptr: Unique<T>, cap: usize, ... }
+     1.76: struct RawVec<T> { ptr: Unique<T>, cap: Cap(usize), ... }
+     1.31.1: struct Unique<T: ?Sized> { pointer: NonZero<*const T>, ... }
+     1.33.0: struct Unique<T: ?Sized> { pointer: *const T, ... }
+     1.62.0: struct Unique<T: ?Sized> { pointer: NonNull<T>, ... }
     struct NonZero<T>(T)
     struct NonNull<T> { pointer: *const T }
     """
@@ -1043,7 +1043,7 @@ class StdVecDequeSyntheticProvider:
         return True
 
 
-# BACKCOMPAT: rust 1.35
+# BACKCOMPAT:  1.35
 class StdOldHashMapSyntheticProvider:
     """Pretty-printer for std::collections::hash::map::HashMap<K, V, S>
 
@@ -1222,7 +1222,7 @@ class StdHashMapSyntheticProvider:
         if self.show_values:
             hashbrown_hashmap = self.valobj.GetChildMemberWithName("base")
         else:
-            # BACKCOMPAT: rust 1.47
+            # BACKCOMPAT:  1.47
             # HashSet wraps either std HashMap or hashbrown::HashSet, which both
             # wrap hashbrown::HashMap, so either way we "unwrap" twice.
             hashbrown_hashmap = self.valobj.GetChildAtIndex(0).GetChildAtIndex(0)
@@ -1242,8 +1242,8 @@ class StdRcSyntheticProvider:
     """Pretty-printer for alloc::rc::Rc<T> and alloc::sync::Arc<T>
 
     struct Rc<T> { ptr: NonNull<RcInner<T>>, ... }
-    rust 1.31.1: struct NonNull<T> { pointer: NonZero<*const T> }
-    rust 1.33.0: struct NonNull<T> { pointer: *const T }
+     1.31.1: struct NonNull<T> { pointer: NonZero<*const T> }
+     1.33.0: struct NonNull<T> { pointer: *const T }
     struct NonZero<T>(T)
     struct RcInner<T> { strong: Cell<usize>, weak: Cell<usize>, value: T }
     struct Cell<T> { value: UnsafeCell<T> }

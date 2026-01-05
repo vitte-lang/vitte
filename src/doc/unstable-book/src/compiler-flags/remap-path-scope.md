@@ -1,10 +1,10 @@
 # `remap-path-scope`
 
-The tracking issue for this feature is: [#111540](https://github.com/rust-lang/rust/issues/111540).
+The tracking issue for this feature is: [#111540](https://github.com/-lang//issues/111540).
 
 ------------------------
 
-When the `--remap-path-prefix` option is passed to rustc, source path prefixes in all output will be affected by default.
+When the `--remap-path-prefix` option is passed to c, source path prefixes in all output will be affected by default.
 The `--remap-path-scope` argument can be used in conjunction with `--remap-path-prefix` to determine paths in which output context should be affected.
 This flag accepts a comma-separated list of values and may be specified multiple times, in which case the scopes are aggregated together. The valid scopes are:
 
@@ -19,5 +19,5 @@ This flag accepts a comma-separated list of values and may be specified multiple
 ```sh
 # This would produce an absolute path to main.rs in build outputs of
 # "./main.rs".
-rustc --remap-path-prefix=$(PWD)=/remapped -Zremap-path-scope=object main.rs
+c --remap-path-prefix=$(PWD)=/remapped -Zremap-path-scope=object main.rs
 ```

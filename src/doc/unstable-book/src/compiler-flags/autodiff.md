@@ -1,6 +1,6 @@
 # `autodiff`
 
-The tracking issue for this feature is: [#124509](https://github.com/rust-lang/rust/issues/124509).
+The tracking issue for this feature is: [#124509](https://github.com/-lang//issues/124509).
 
 ------------------------
 
@@ -10,7 +10,7 @@ Multiple options can be separated with a comma.
 
 ## Syntax
 ```bash
-rustc -Z autodiff=Enable[,options]
+c -Z autodiff=Enable[,options]
 ```
 
 Where `options` can be:
@@ -32,11 +32,11 @@ Where `options` can be:
 
 ```bash
 # Enable autodiff via cargo, assuming `enzyme` being a toolchain that supports autodiff
-"RUSTFLAGS=-Zautodiff=Enable" cargo +enzyme build
+"FLAGS=-Zautodiff=Enable" cargo +enzyme build
 
-# Enable autodiff directly via rustc
-rustc -Z autodiff=Enable
+# Enable autodiff directly via c
+c -Z autodiff=Enable
 
 # Print TypeAnalysis updates for the function `foo`, as well as Activity Analysis for all differentiated code.
-rustc -Z autodiff=Enable,PrintTAFn=foo,PrintAA
+c -Z autodiff=Enable,PrintTAFn=foo,PrintAA
 ```

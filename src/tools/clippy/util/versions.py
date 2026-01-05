@@ -14,10 +14,10 @@ def key(v):
         return sys.maxsize - 2
     if v == "pre-1.29.0":
         return -1
-    if not v.startswith("rust-"):
+    if not v.startswith("-"):
         return None
 
-    v = v.replace("rust-", "")
+    v = v.replace("-", "")
 
     s = 0
     for i, val in enumerate(v.split(".")[::-1]):

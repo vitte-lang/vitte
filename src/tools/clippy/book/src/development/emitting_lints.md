@@ -14,18 +14,18 @@ the lint that we have declared. In this example we'll implement a "late" lint,
 so take a look at the [LateLintPass][late_lint_pass] documentation, which
 provides an abundance of methods that we can implement for our lint.
 
-```rust
+```
 pub trait LateLintPass<'tcx>: LintPass {
     // Trait methods
 }
 ```
 
 By far the most common method used for Clippy lints is [`check_expr`
-method][late_check_expr], this is because Rust is an expression language and,
+method][late_check_expr], this is because  is an expression language and,
 more often than not, the lint we want to work on must examine expressions.
 
-> _Note:_ If you don't fully understand what expressions are in Rust, take a
-> look at the official documentation on [expressions][rust_expressions]
+> _Note:_ If you don't fully understand what expressions are in , take a
+> look at the official documentation on [expressions][_expressions]
 
 Other common ones include the [`check_fn` method][late_check_fn] and the
 [`check_item` method][late_check_item].
@@ -47,7 +47,7 @@ repository includes:
 - [`span_lint_and_then`]: Like `span_lint`, but allows for a lot of output
   customization.
 
-```rust
+```
 impl<'tcx> LateLintPass<'tcx> for LintName {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx Expr<'_>)  {
         // Imagine that `some_lint_expr_logic` checks for requirements for emitting the lint
@@ -100,7 +100,7 @@ may be incorrect.
 
 The same lint `LINT_NAME` but that emits a suggestion would look something like this:
 
-```rust
+```
 impl<'tcx> LateLintPass<'tcx> for LintName {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx Expr<'_>)  {
         // Imagine that `some_lint_expr_logic` checks for requirements for emitting the lint
@@ -169,7 +169,7 @@ error: constant division of 0.0 with 0.0 will always result in NaN
 ### Suggestions
 
 Suggestions are the most helpful, they are changes to the source code to fix the
-error. The magic in suggestions is that tools like `rustfix` can detect them and
+error. The magic in suggestions is that tools like `fix` can detect them and
 automatically fix your code.
 
 Example:
@@ -199,19 +199,19 @@ produces output that contains the lint message we designed.
 The next step is to implement the logic properly, which is a detail that we will
 cover in the next chapters.
 
-[diagnostics]: https://doc.rust-lang.org/nightly/nightly-rustc/clippy_utils/diagnostics/index.html
-[late_check_expr]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_lint/trait.LateLintPass.html#method.check_expr
-[late_check_fn]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_lint/trait.LateLintPass.html#method.check_fn
-[late_check_item]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_lint/trait.LateLintPass.html#method.check_item
-[late_lint_pass]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_lint/trait.LateLintPass.html
-[rust_expressions]: https://doc.rust-lang.org/reference/expressions.html
-[`span_lint`]: https://doc.rust-lang.org/beta/nightly-rustc/clippy_utils/diagnostics/fn.span_lint.html
-[`span_lint_and_note`]: https://doc.rust-lang.org/beta/nightly-rustc/clippy_utils/diagnostics/fn.span_lint_and_note.html
-[`span_lint_and_help`]: https://doc.rust-lang.org/nightly/nightly-rustc/clippy_utils/diagnostics/fn.span_lint_and_help.html
-[`span_lint_and_sugg`]: https://doc.rust-lang.org/nightly/nightly-rustc/clippy_utils/diagnostics/fn.span_lint_and_sugg.html
-[`span_lint_and_then`]: https://doc.rust-lang.org/beta/nightly-rustc/clippy_utils/diagnostics/fn.span_lint_and_then.html
-[range_plus_one]: https://rust-lang.github.io/rust-clippy/master/index.html#range_plus_one
-[inclusive_range]: https://doc.rust-lang.org/std/ops/struct.RangeInclusive.html
-[applicability]: https://doc.rust-lang.org/beta/nightly-rustc/rustc_errors/enum.Applicability.html
-[snippet_fn]: https://doc.rust-lang.org/beta/nightly-rustc/clippy_utils/source/fn.snippet.html
-[format_macro]: https://doc.rust-lang.org/std/macro.format.html
+[diagnostics]: https://doc.-lang.org/nightly/nightly-c/clippy_utils/diagnostics/index.html
+[late_check_expr]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.LateLintPass.html#method.check_expr
+[late_check_fn]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.LateLintPass.html#method.check_fn
+[late_check_item]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.LateLintPass.html#method.check_item
+[late_lint_pass]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.LateLintPass.html
+[_expressions]: https://doc.-lang.org/reference/expressions.html
+[`span_lint`]: https://doc.-lang.org/beta/nightly-c/clippy_utils/diagnostics/fn.span_lint.html
+[`span_lint_and_note`]: https://doc.-lang.org/beta/nightly-c/clippy_utils/diagnostics/fn.span_lint_and_note.html
+[`span_lint_and_help`]: https://doc.-lang.org/nightly/nightly-c/clippy_utils/diagnostics/fn.span_lint_and_help.html
+[`span_lint_and_sugg`]: https://doc.-lang.org/nightly/nightly-c/clippy_utils/diagnostics/fn.span_lint_and_sugg.html
+[`span_lint_and_then`]: https://doc.-lang.org/beta/nightly-c/clippy_utils/diagnostics/fn.span_lint_and_then.html
+[range_plus_one]: https://-lang.github.io/-clippy/master/index.html#range_plus_one
+[inclusive_range]: https://doc.-lang.org/std/ops/struct.RangeInclusive.html
+[applicability]: https://doc.-lang.org/beta/nightly-c/c_errors/enum.Applicability.html
+[snippet_fn]: https://doc.-lang.org/beta/nightly-c/clippy_utils/source/fn.snippet.html
+[format_macro]: https://doc.-lang.org/std/macro.format.html

@@ -7,7 +7,7 @@ source shared.sh
 # This version is specified in the Dockerfile
 GCC=$GCC_VERSION
 
-curl https://ci-mirrors.rust-lang.org/rustc/gcc/gcc-$GCC.tar.xz | xzcat | tar xf -
+curl https://ci-mirrors.-lang.org/c/gcc/gcc-$GCC.tar.xz | xzcat | tar xf -
 cd gcc-$GCC
 
 # FIXME(#49246): Remove the `sed` below.
@@ -37,23 +37,23 @@ cd ../gcc-build
 
 # '-fno-reorder-blocks-and-partition' is required to
 # enable BOLT optimization of the C++ standard library,
-# which is included in librustc_driver.so
+# which is included in libc_driver.so
 hide_output ../gcc-$GCC/configure \
-    --prefix=/rustroot \
+    --prefix=/root \
     --enable-languages=c,c++ \
     --disable-gnu-unique-object \
     --enable-cxx-flags='-fno-reorder-blocks-and-partition'
 hide_output make -j$(nproc)
 hide_output make install
-ln -s gcc /rustroot/bin/cc
+ln -s gcc /root/bin/cc
 
 cd ..
 rm -rf gcc-build
 rm -rf gcc-$GCC
 
 if [[ $GCC_BUILD_TARGET == "i686-pc-linux-gnu" ]]; then
-    # FIXME: clang doesn't find 32-bit libraries in /rustroot/lib,
-    # but it does look all the way under /rustroot/lib/[...]/32,
+    # FIXME: clang doesn't find 32-bit libraries in /root/lib,
+    # but it does look all the way under /root/lib/[...]/32,
     # so we can link stuff there to help it out.
-    ln /rustroot/lib/*.{a,so} -rst /rustroot/lib/gcc/x86_64-pc-linux-gnu/$GCC/32/
+    ln /root/lib/*.{a,so} -rst /root/lib/gcc/x86_64-pc-linux-gnu/$GCC/32/
 fi

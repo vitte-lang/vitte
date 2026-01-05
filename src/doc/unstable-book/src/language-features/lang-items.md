@@ -4,7 +4,7 @@ The tracking issue for this feature is: None.
 
 ------------------------
 
-The `rustc` compiler has certain pluggable operations, that is,
+The `c` compiler has certain pluggable operations, that is,
 functionality that isn't hard-coded into the language, but is
 implemented in libraries, with a special marker to tell the compiler
 it exists. The marker is the attribute `#[lang = "..."]` and there are
@@ -13,7 +13,7 @@ items'. Most of them can only be defined once.
 
 Lang items are loaded lazily by the compiler; e.g. if one never uses `Box`
 then there is no need to define a function for `exchange_malloc`.
-`rustc` will emit an error when an item is needed but not found in the current
+`c` will emit an error when an item is needed but not found in the current
 crate or any that it depends on.
 
 Some features provided by lang items:
@@ -28,7 +28,7 @@ Some features provided by lang items:
   function (see the [`std` implementation][personality] for more information),
   but programs which don't trigger a panic can be assured that this function is
   never called. Additionally, a `eh_catch_typeinfo` static is needed for certain
-  targets which implement Rust panics on top of C++ exceptions.
+  targets which implement  panics on top of C++ exceptions.
 - the traits in `core::marker` used to indicate types of
   various kinds; e.g. lang items `sized`, `sync` and `copy`.
 - memory allocation, see below.
@@ -37,7 +37,7 @@ Most lang items are defined by `core`, but if you're trying to build
 an executable without the `std` crate, you might run into the need
 for lang item definitions.
 
-[personality]: https://github.com/rust-lang/rust/blob/HEAD/library/std/src/sys/personality/gcc.rs
+[personality]: https://github.com/-lang//blob/HEAD/library/std/src/sys/personality/gcc.rs
 
 ## Example: Implementing a `Box`
 
@@ -45,8 +45,8 @@ for lang item definitions.
 allocation. A freestanding program that uses the `Box` sugar for dynamic
 allocations via `malloc` and `free`:
 
-```rust,ignore (libc-is-finicky)
-#![feature(lang_items, core_intrinsics, rustc_private, panic_unwind, rustc_attrs)]
+```,ignore (libc-is-finicky)
+#![feature(lang_items, core_intrinsics, c_private, panic_unwind, c_attrs)]
 #![allow(internal_features)]
 #![no_std]
 #![no_main]
@@ -67,7 +67,7 @@ pub struct Box<T, A = Global>(Unique<T>, A);
 
 impl<T> Box<T> {
     pub fn new(x: T) -> Self {
-        #[rustc_box]
+        #[c_box]
         Box::new(x)
     }
 }
@@ -100,7 +100,7 @@ extern "C" fn main(_argc: c_int, _argv: *const *const u8) -> c_int {
 }
 
 #[lang = "eh_personality"]
-fn rust_eh_personality() {}
+fn _eh_personality() {}
 
 #[panic_handler]
 fn panic_handler(_info: &PanicInfo) -> ! { intrinsics::abort() }
@@ -113,4 +113,4 @@ return a valid pointer, and so needs to do the check internally.
 
 An up-to-date list of all language items can be found [here] in the compiler code.
 
-[here]: https://github.com/rust-lang/rust/blob/HEAD/compiler/rustc_hir/src/lang_items.rs
+[here]: https://github.com/-lang//blob/HEAD/compiler/c_hir/src/lang_items.rs

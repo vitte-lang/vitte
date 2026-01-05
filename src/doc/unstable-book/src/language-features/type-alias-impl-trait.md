@@ -10,7 +10,7 @@ The tracking issue for this feature is: [#63063]
 
 `impl Trait` in return position is useful for declaring types that are constrained by traits, but whose concrete type should be hidden:
 
-```rust
+```
 use std::fmt::Debug;
 
 fn new() -> impl Debug {
@@ -34,7 +34,7 @@ This can be useful in libraries where you want to hide implementation details.
 
 The `#[define_opaque]` attribute must be used to explicitly list opaque items constrained by the item it's on.
 
-```rust
+```
 #![feature(type_alias_impl_trait)]
 # #![allow(unused_variables, dead_code)]
 trait Trait {}
@@ -70,7 +70,7 @@ In this example, the concrete type referred to by `Alias` is guaranteed to be th
 
 Note that using `Alias` as an argument type is *not* the same as argument-position `impl Trait`, as `Alias` refers to a unique type, whereas the concrete type for argument-position `impl Trait` is chosen by the caller.
 
-```rust
+```
 # #![feature(type_alias_impl_trait)]
 # #![allow(unused_variables)]
 # pub mod x {
@@ -100,7 +100,7 @@ pub fn take_impl(x: impl Trait) {
 # fn main(){}
 ```
 
-```rust,compile_fail,E0308
+```,compile_fail,E0308
 # #![feature(type_alias_impl_trait)]
 # #![allow(unused_variables)]
 # pub mod x {
@@ -152,8 +152,8 @@ take_impl(x);
 
 Note that the user cannot use `#[define_opaque(Alias)]` to reify the opaque type because only the crate where the type alias is declared may do so. But if this happened in the same crate and the opaque type was reified, they'd get a familiar error: "expected `MyType`, got `UserType`".
 
-[#63063]: https://github.com/rust-lang/rust/issues/63063
-[#110237]: https://github.com/rust-lang/rust/pull/110237
-[reference]: https://doc.rust-lang.org/stable/reference/types/impl-trait.html#abstract-return-types
+[#63063]: https://github.com/-lang//issues/63063
+[#110237]: https://github.com/-lang//pull/110237
+[reference]: https://doc.-lang.org/stable/reference/types/impl-trait.html#abstract-return-types
 [`trait_alias`]: ./trait-alias.md
 [`impl_trait_in_assoc_type`]: ./impl-trait-in-assoc-type.md

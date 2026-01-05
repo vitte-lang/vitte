@@ -1,5 +1,5 @@
 {
-  description = "rustc dev shell";
+  description = "c dev shell";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 

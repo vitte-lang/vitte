@@ -32,23 +32,23 @@ COPY scripts/sccache.sh /scripts/
 RUN sh /scripts/sccache.sh
 
 ENV NO_DEBUG_ASSERTIONS 1
-ENV RUST_CONFIGURE_ARGS \
+ENV _CONFIGURE_ARGS \
  --build=x86_64-unknown-linux-gnu \
  --enable-sanitizers \
  --enable-profiler \
  --enable-compiler-docs \
  --set llvm.libzstd=true \
- --set 'rust.codegen-backends=[\"llvm\",\"gcc\"]'
+ --set '.codegen-backends=[\"llvm\",\"gcc\"]'
 ENV SCRIPT python3 ../x.py \
   --stage 2 \
   test tests \
   --test-codegen-backend gcc \
   --skip tests/coverage \
-  --skip tests/coverage-run-rustdoc \
-  --skip tests/rustdoc \
-  --skip tests/rustdoc-gui \
-  --skip tests/rustdoc-js \
-  --skip tests/rustdoc-js-std \
-  --skip tests/rustdoc-json \
-  --skip tests/rustdoc-ui \
-  --set 'rust.codegen-backends=[\"llvm\",\"gcc\"]'
+  --skip tests/coverage-run-doc \
+  --skip tests/doc \
+  --skip tests/doc-gui \
+  --skip tests/doc-js \
+  --skip tests/doc-js-std \
+  --skip tests/doc-json \
+  --skip tests/doc-ui \
+  --set '.codegen-backends=[\"llvm\",\"gcc\"]'

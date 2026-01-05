@@ -17,11 +17,11 @@ if isWindows && isKnownToBeMingwBuild; then
             mingw_dir="clangarm64"
             mingw_archive="${LLVM_MINGW_ARCHIVE_AARCH64}"
             arch="aarch64"
-            # Rustup defaults to AArch64 MSVC which has a hard time building Ring crate
+            # up defaults to AArch64 MSVC which has a hard time building Ring crate
             # for citool. MSVC jobs install special Clang build to solve that, but here
             # it would be an overkill. So we just use toolchain that doesn't have this
             # issue.
-            rustup default stable-aarch64-pc-windows-gnullvm
+            up default stable-aarch64-pc-windows-gnullvm
             ;;
         *x86_64-llvm*)
             mingw_dir="clang64"

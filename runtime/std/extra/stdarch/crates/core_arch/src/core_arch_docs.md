@@ -2,18 +2,18 @@ SIMD and vendor intrinsics module.
 
 This module is intended to be the gateway to architecture-specific
 intrinsic functions, typically related to SIMD (but not always!). Each
-architecture that Rust compiles to may contain a submodule here, which
+architecture that  compiles to may contain a submodule here, which
 means that this is not a portable module! If you're writing a portable
 library take care when using these APIs!
 
 Under this module you'll find an architecture-named module, such as
-`x86_64`. Each `#[cfg(target_arch)]` that Rust can compile to may have a
+`x86_64`. Each `#[cfg(target_arch)]` that  can compile to may have a
 module entry here, only present on that particular target. For example the
 `i686-pc-windows-msvc` target will have an `x86` module here, whereas
 `x86_64-pc-windows-msvc` has `x86_64`.
 
-[rfc]: https://github.com/rust-lang/rfcs/pull/2325
-[tracked]: https://github.com/rust-lang/rust/issues/48556
+[rfc]: https://github.com/-lang/rfcs/pull/2325
+[tracked]: https://github.com/-lang//issues/48556
 
 # Overview
 
@@ -86,13 +86,13 @@ target-feature` or `-C target-cpu` flags to the compiler. For example if
 your local CPU supports AVX2 then you can compile the above function with:
 
 ```sh
-$ RUSTFLAGS='-C target-cpu=native' cargo build
+$ FLAGS='-C target-cpu=native' cargo build
 ```
 
 Or otherwise you can specifically enable just the AVX2 feature:
 
 ```sh
-$ RUSTFLAGS='-C target-feature=+avx2' cargo build
+$ FLAGS='-C target-feature=+avx2' cargo build
 ```
 
 Note that when you compile a binary with a particular feature enabled it's
@@ -174,7 +174,7 @@ The primary purpose of this module is to enable stable crates on crates.io
 to build up much more ergonomic abstractions which end up using SIMD under
 the hood. Over time these abstractions may also move into the standard
 library itself, but for now this module is tasked with providing the bare
-minimum necessary to use vendor intrinsics on stable Rust.
+minimum necessary to use vendor intrinsics on stable .
 
 # Other architectures
 
@@ -221,7 +221,7 @@ First let's take a look at not actually using any intrinsics but instead
 using LLVM's auto-vectorization to produce optimized vectorized code for
 AVX2 and also for the default platform.
 
-```rust
+```
 fn main() {
     let mut dst = [0];
     add_quickly(&[1], &[2], &mut dst);

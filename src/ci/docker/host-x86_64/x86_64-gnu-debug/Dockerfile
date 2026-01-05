@@ -29,16 +29,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY scripts/sccache.sh /scripts/
 RUN sh /scripts/sccache.sh
 
-ENV RUSTBUILD_FORCE_CLANG_BASED_TESTS 1
+ENV BUILD_FORCE_CLANG_BASED_TESTS 1
 
 # llvm.use-linker conflicts with downloading CI LLVM
 ENV NO_DOWNLOAD_CI_LLVM 1
 
-ENV RUST_CONFIGURE_ARGS \
+ENV _CONFIGURE_ARGS \
       --build=x86_64-unknown-linux-gnu \
       --enable-debug \
       --enable-lld \
-      --set rust.debuginfo-level-tests=2 \
+      --set .debuginfo-level-tests=2 \
       --set llvm.use-linker=lld \
       --set target.x86_64-unknown-linux-gnu.linker=clang \
       --set target.x86_64-unknown-linux-gnu.cc=clang \
@@ -51,7 +51,7 @@ ENV RUST_CONFIGURE_ARGS \
 # - That we can build the compiler with `--enable-debug`
 #   (without necessarily testing the result).
 # - That the tests with `//@ needs-force-clang-based-tests` pass, since they
-#   don't run by default unless RUSTBUILD_FORCE_CLANG_BASED_TESTS is set.
+#   don't run by default unless BUILD_FORCE_CLANG_BASED_TESTS is set.
 
 ENV SCRIPT \
   python3 ../x.py --stage 2 build && \

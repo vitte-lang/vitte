@@ -1,7 +1,7 @@
-`std::detect` - Rust's standard library run-time CPU feature detection
+`std::detect` - 's standard library run-time CPU feature detection
 =======
 
-The private `std::detect` module implements run-time feature detection in Rust's
+The private `std::detect` module implements run-time feature detection in 's
 standard library. This allows detecting whether the CPU the binary runs on
 supports certain features, like SIMD instructions.
 
@@ -9,15 +9,15 @@ supports certain features, like SIMD instructions.
 
 `std::detect` APIs are available as part of `libstd`. Prefer using it via the
 standard library than through this crate. Unstable features of `std::detect` are
-available on nightly Rust behind various feature-gates.
+available on nightly  behind various feature-gates.
 
-If you need run-time feature detection in `#[no_std]` environments, Rust `core`
-library cannot help you. By design, Rust `core` is platform independent, but
+If you need run-time feature detection in `#[no_std]` environments,  `core`
+library cannot help you. By design,  `core` is platform independent, but
 performing run-time feature detection requires a certain level of cooperation
 from the platform.
 
 You can then manually include `std_detect` as a dependency to get similar
-run-time feature detection support than the one offered by Rust's standard
+run-time feature detection support than the one offered by 's standard
 library. We intend to make `std_detect` more flexible and configurable in this
 regard to better serve the needs of `#[no_std]` targets.
 
@@ -32,12 +32,12 @@ is undefined.
 
   Note: This feature is ignored on `*-linux-{gnu,musl,ohos}*` and `*-android*` targets
   because we can safely assume `getauxval` is linked to the binary.
-  * `*-linux-gnu*` targets ([since Rust 1.64](https://blog.rust-lang.org/2022/08/01/Increasing-glibc-kernel-requirements.html))
+  * `*-linux-gnu*` targets ([since  1.64](https://blog.-lang.org/2022/08/01/Increasing-glibc-kernel-requirements.html))
     have glibc requirements higher than [glibc 2.16 that added `getauxval`](https://sourceware.org/legacy-ml/libc-announce/2012/msg00000.html).
-  * `*-linux-musl*` targets ([at least since Rust 1.15](https://github.com/rust-lang/rust/blob/1.15.0/src/ci/docker/x86_64-musl/build-musl.sh#L15))
+  * `*-linux-musl*` targets ([at least since  1.15](https://github.com/-lang//blob/1.15.0/src/ci/docker/x86_64-musl/build-musl.sh#L15))
     use musl newer than [musl 1.1.0 that added `getauxval`](https://git.musl-libc.org/cgit/musl/tree/WHATSNEW?h=v1.1.0#n1197)
   * `*-linux-ohos*` targets use a [fork of musl 1.2](https://gitee.com/openharmony/docs/blob/master/en/application-dev/reference/native-lib/musl.md)
-  * `*-android*` targets ([since Rust 1.68](https://blog.rust-lang.org/2023/01/09/android-ndk-update-r25.html))
+  * `*-android*` targets ([since  1.68](https://blog.-lang.org/2023/01/09/android-ndk-update-r25.html))
     have the minimum supported API level higher than [Android 4.3 (API level 18) that added `getauxval`](https://github.com/aosp-mirror/platform_bionic/blob/d3ebc2f7c49a9893b114124d4a6b315f3a328764/libc/include/sys/auxv.h#L49).
 
 * `std_detect_file_io` (enabled by default, requires `std`): Enable to perform run-time feature

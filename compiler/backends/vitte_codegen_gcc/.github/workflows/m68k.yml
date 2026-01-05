@@ -13,7 +13,7 @@ permissions:
 
 env:
   # Enable backtraces for easier debugging
-  RUST_BACKTRACE: 1
+  _BACKTRACE: 1
 
 jobs:
   build:
@@ -29,20 +29,20 @@ jobs:
           #"--extended-rand-tests",
           #"--extended-regex-example-tests",
           #"--extended-regex-tests",
-          #"--test-successful-rustc --nb-parts 2 --current-part 0",
-          #"--test-successful-rustc --nb-parts 2 --current-part 1",
-          #"--test-failing-rustc",
+          #"--test-successful-c --nb-parts 2 --current-part 0",
+          #"--test-successful-c --nb-parts 2 --current-part 1",
+          #"--test-failing-c",
         ]
 
     steps:
     - uses: actions/checkout@v4
 
-    # `rustup show` installs from rust-toolchain.toml
-    - name: Setup rust toolchain
-      run: rustup show
+    # `up show` installs from -toolchain.toml
+    - name: Setup  toolchain
+      run: up show
 
-    - name: Setup rust cache
-      uses: Swatinem/rust-cache@v2
+    - name: Setup  cache
+      uses: Swatinem/-cache@v2
 
     - name: Install packages
       run: |
@@ -64,14 +64,14 @@ jobs:
       run: |
         echo "workspace="$GITHUB_WORKSPACE >> $GITHUB_ENV
 
-    #- name: Cache rust repository
-      ## We only clone the rust repository for rustc tests
-      #if: ${{ contains(matrix.commands, 'rustc') }}
+    #- name: Cache  repository
+      ## We only clone the  repository for c tests
+      #if: ${{ contains(matrix.commands, 'c') }}
       #uses: actions/cache@v3
-      #id: cache-rust-repository
+      #id: cache--repository
       #with:
-        #path: rust
-        #key: ${{ runner.os }}-packages-${{ hashFiles('rust/.git/HEAD') }}
+        #path: 
+        #key: ${{ runner.os }}-packages-${{ hashFiles('/.git/HEAD') }}
 
     - name: Prepare VM
       run: |
@@ -83,7 +83,7 @@ jobs:
       run: |
         ./y.sh prepare --only-libcore --cross
         ./y.sh build --sysroot --target-triple m68k-unknown-linux-gnu --target ${{ github.workspace }}/target_specs/m68k-unknown-linux-gnu.json
-        CG_RUSTFLAGS="-Clinker=m68k-unknown-linux-gnu-gcc" ./y.sh cargo build --manifest-path=./tests/hello-world/Cargo.toml --target ${{ github.workspace }}/target_specs/m68k-unknown-linux-gnu.json
+        CG_FLAGS="-Clinker=m68k-unknown-linux-gnu-gcc" ./y.sh cargo build --manifest-path=./tests/hello-world/Cargo.toml --target ${{ github.workspace }}/target_specs/m68k-unknown-linux-gnu.json
         ./y.sh clean all
 
     - name: Build
@@ -110,7 +110,7 @@ jobs:
 
         vm_dir=$(pwd)/vm
         cd tests/hello-world
-        CG_RUSTFLAGS="-Clinker=m68k-unknown-linux-gnu-gcc" ../../y.sh cargo build --target m68k-unknown-linux-gnu
+        CG_FLAGS="-Clinker=m68k-unknown-linux-gnu-gcc" ../../y.sh cargo build --target m68k-unknown-linux-gnu
         sudo cp target/m68k-unknown-linux-gnu/debug/hello_world $vm_dir/home/
         sudo chroot $vm_dir qemu-m68k-static /home/hello_world > hello_world_stdout
         expected_output="40"

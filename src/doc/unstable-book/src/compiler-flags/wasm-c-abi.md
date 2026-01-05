@@ -1,6 +1,6 @@
 # `wasm-c-abi`
 
-This option controls whether Rust uses the spec-compliant C ABI when compiling
+This option controls whether  uses the spec-compliant C ABI when compiling
 for the `wasm32-unknown-unknown` target.
 
 This makes it possible to be ABI-compatible with all other spec-compliant Wasm targets

@@ -4,8 +4,8 @@ set -ex
 
 : "${TARGET?The TARGET environment variable must be set.}"
 
-export RUSTFLAGS="${RUSTFLAGS} -D warnings -Z merge-functions=disabled -Z verify-llvm-ir"
-export HOST_RUSTFLAGS="${RUSTFLAGS}"
+export FLAGS="${FLAGS} -D warnings -Z merge-functions=disabled -Z verify-llvm-ir"
+export HOST_FLAGS="${FLAGS}"
 export PROFILE="${PROFILE:="release"}"
 
 case ${TARGET} in
@@ -15,28 +15,28 @@ case ${TARGET} in
     # this is the default, dynamic, then too many instructions are generated
     # when we assert the instruction for a function and it causes tests to fail.
     i686-* | i586-*)
-        export RUSTFLAGS="${RUSTFLAGS} -C relocation-model=static"
+        export FLAGS="${FLAGS} -C relocation-model=static"
         ;;
     # Some x86_64 targets enable by default more features beyond SSE2,
     # which cause some instruction assertion checks to fail.
     x86_64-*)
-        export RUSTFLAGS="${RUSTFLAGS} -C target-feature=-sse3"
+        export FLAGS="${FLAGS} -C target-feature=-sse3"
         ;;
     #Unoptimized build uses fast-isel which breaks with msa
     mips-* | mipsel-*)
-	export RUSTFLAGS="${RUSTFLAGS} -C llvm-args=-fast-isel=false"
+	export FLAGS="${FLAGS} -C llvm-args=-fast-isel=false"
 	;;
     armv7-*eabihf | thumbv7-*eabihf)
-        export RUSTFLAGS="${RUSTFLAGS} -Ctarget-feature=+neon"
+        export FLAGS="${FLAGS} -Ctarget-feature=+neon"
         ;;
     # Some of our test dependencies use the deprecated `gcc` crates which
     # doesn't detect RISC-V compilers automatically, so do it manually here.
     riscv*)
-        export RUSTFLAGS="${RUSTFLAGS} -Ctarget-feature=+zk,+zks,+zbb,+zbc"
+        export FLAGS="${FLAGS} -Ctarget-feature=+zk,+zks,+zbb,+zbc"
         ;;
 esac
 
-echo "RUSTFLAGS=${RUSTFLAGS}"
+echo "FLAGS=${FLAGS}"
 echo "OBJDUMP=${OBJDUMP}"
 echo "PROFILE=${PROFILE}"
 
@@ -85,7 +85,7 @@ esac
 # Arm specific
 case "${TARGET}" in
     aarch64-unknown-linux-gnu*|armv7-unknown-linux-gnueabihf*)
-        CPPFLAGS="${TEST_CPPFLAGS}" RUSTFLAGS="${HOST_RUSTFLAGS}" RUST_LOG=warn \
+        CPPFLAGS="${TEST_CPPFLAGS}" FLAGS="${HOST_FLAGS}" _LOG=warn \
             cargo run "${INTRINSIC_TEST}" --release  \
             --bin intrinsic-test -- intrinsics_data/arm_intrinsics.json \
             --runner "${TEST_RUNNER}" \
@@ -97,7 +97,7 @@ case "${TARGET}" in
         ;;
 
     aarch64_be-unknown-linux-gnu*)
-        CPPFLAGS="${TEST_CPPFLAGS}" RUSTFLAGS="${HOST_RUSTFLAGS}" RUST_LOG=warn \
+        CPPFLAGS="${TEST_CPPFLAGS}" FLAGS="${HOST_FLAGS}" _LOG=warn \
             cargo run "${INTRINSIC_TEST}" --release  \
             --bin intrinsic-test -- intrinsics_data/arm_intrinsics.json \
             --runner "${TEST_RUNNER}" \
@@ -115,8 +115,8 @@ case "${TARGET}" in
         # because the binary needs to run directly on the host.
         # Hence the use of `env -u`.
         env -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER \
-            CPPFLAGS="${TEST_CPPFLAGS}" RUSTFLAGS="${HOST_RUSTFLAGS}" \
-            RUST_LOG=warn RUST_BACKTRACE=1 \
+            CPPFLAGS="${TEST_CPPFLAGS}" FLAGS="${HOST_FLAGS}" \
+            _LOG=warn _BACKTRACE=1 \
             cargo run "${INTRINSIC_TEST}" --release \
             --bin intrinsic-test -- intrinsics_data/x86-intel.xml \
             --runner "${TEST_RUNNER}" \

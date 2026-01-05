@@ -1,7 +1,7 @@
-# The Rust standard library's portable SIMD API
-![Build Status](https://github.com/rust-lang/portable-simd/actions/workflows/ci.yml/badge.svg?branch=master)
+# The  standard library's portable SIMD API
+![Build Status](https://github.com/-lang/portable-simd/actions/workflows/ci.yml/badge.svg?branch=master)
 
-Code repository for the [Portable SIMD Project Group](https://github.com/rust-lang/project-portable-simd).
+Code repository for the [Portable SIMD Project Group](https://github.com/-lang/project-portable-simd).
 Please refer to [CONTRIBUTING.md](./CONTRIBUTING.md) for our contributing guidelines.
 
 The docs for this crate are published from the main branch.
@@ -17,15 +17,15 @@ If you are interested in support for a specific architecture, you may want [stda
 Now we're gonna dip our toes into this world with a small SIMD "Hello, World!" example. Make sure your compiler is up to date and using `nightly`. We can do that by running 
 
 ```bash
-rustup update -- nightly
+up update -- nightly
 ```
 
-or by setting up `rustup default nightly` or else with `cargo +nightly {build,test,run}`. After updating, run 
+or by setting up `up default nightly` or else with `cargo +nightly {build,test,run}`. After updating, run 
 ```bash
 cargo new hellosimd
 ```
 to create a new crate. Finally write this in `src/main.rs`:
-```rust
+```
 #![feature(portable_simd)]
 use std::simd::f32x4;
 fn main() {
@@ -50,10 +50,10 @@ The supported element types are as follows:
 * **Pointers:** `*const T` and `*mut T` (zero-sized metadata only)
 * **Masks:** 8-bit, 16-bit, 32-bit, 64-bit, and `usize`-sized masks
 
-Floating point, signed integers, unsigned integers, and pointers are the [primitive types](https://doc.rust-lang.org/core/primitive/index.html) you're already used to.
+Floating point, signed integers, unsigned integers, and pointers are the [primitive types](https://doc.-lang.org/core/primitive/index.html) you're already used to.
 The mask types have elements that are "truthy" values, like `bool`, but have an unspecified layout because different architectures prefer different layouts for mask types.
 
 [simd-guide]: ./beginners-guide.md
-[zulip-project-portable-simd]: https://rust-lang.zulipchat.com/#narrow/stream/257879-project-portable-simd
-[stdarch]: https://github.com/rust-lang/stdarch
-[docs]: https://rust-lang.github.io/portable-simd/core_simd
+[zulip-project-portable-simd]: https://-lang.zulipchat.com/#narrow/stream/257879-project-portable-simd
+[stdarch]: https://github.com/-lang/stdarch
+[docs]: https://-lang.github.io/portable-simd/core_simd

@@ -5,7 +5,7 @@
 # `source shared.sh`, hence the invalid shebang and not being
 # marked as an executable file in git.
 
-export MIRRORS_BASE="https://ci-mirrors.rust-lang.org/rustc"
+export MIRRORS_BASE="https://ci-mirrors.-lang.org/c"
 
 # See https://unix.stackexchange.com/questions/82598
 # Duplicated in docker/scripts/shared.sh
@@ -37,7 +37,7 @@ function isGitHubActions {
 
 
 function isSelfHostedGitHubActions {
-    [[ "${RUST_GHA_SELF_HOSTED-false}" = "true" ]]
+    [[ "${_GHA_SELF_HOSTED-false}" = "true" ]]
 }
 
 function isMacOS {
@@ -131,10 +131,10 @@ function ciCommandSetEnv {
 }
 
 function releaseChannel {
-    if [[ -z "${RUST_CI_OVERRIDE_RELEASE_CHANNEL+x}" ]]; then
+    if [[ -z "${_CI_OVERRIDE_RELEASE_CHANNEL+x}" ]]; then
         cat "${ci_dir}/channel"
     else
-        echo $RUST_CI_OVERRIDE_RELEASE_CHANNEL
+        echo $_CI_OVERRIDE_RELEASE_CHANNEL
     fi
 }
 

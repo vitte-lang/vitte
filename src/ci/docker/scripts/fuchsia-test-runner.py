@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 """
-The Rust toolchain test runner for Fuchsia.
+The  toolchain test runner for Fuchsia.
 
 For instructions on running the compiler test suite, see
-https://doc.rust-lang.org/stable/rustc/platform-support/fuchsia.html#aarch64-unknown-fuchsia-and-x86_64-unknown-fuchsia
+https://doc.-lang.org/stable/c/platform-support/fuchsia.html#aarch64-unknown-fuchsia-and-x86_64-unknown-fuchsia
 """
 
 import argparse
@@ -110,7 +110,7 @@ def atomic_link(link: Path, target: Path):
 
 @dataclass
 class TestEnvironment:
-    rust_build_dir: Path
+    _build_dir: Path
     sdk_dir: Path
     target: str
     toolchain_dir: Path
@@ -153,7 +153,7 @@ class TestEnvironment:
             local_pb_path = Path(local_pb_path).absolute()
 
         return cls(
-            rust_build_dir=Path(args.rust_build).absolute(),
+            _build_dir=Path(args._build).absolute(),
             sdk_dir=Path(args.sdk).absolute(),
             target=args.target,
             toolchain_dir=Path(args.toolchain_dir).absolute(),
@@ -171,7 +171,7 @@ class TestEnvironment:
                 local_pb_path = Path(local_pb_path)
 
             return cls(
-                rust_build_dir=Path(test_env["rust_build_dir"]),
+                _build_dir=Path(test_env["_build_dir"]),
                 sdk_dir=Path(test_env["sdk_dir"]),
                 target=test_env["target"],
                 toolchain_dir=Path(test_env["toolchain_dir"]),
@@ -265,7 +265,7 @@ class TestEnvironment:
 
             json.dump(
                 {
-                    "rust_build_dir": str(self.rust_build_dir),
+                    "_build_dir": str(self._build_dir),
                     "sdk_dir": str(self.sdk_dir),
                     "target": self.target,
                     "toolchain_dir": str(self.toolchain_dir),
@@ -307,21 +307,21 @@ class TestEnvironment:
             meta_json = json.load(f)
             return meta_json["id"]
 
-    TEST_REPO_NAME: ClassVar[str] = "rust-testing"
+    TEST_REPO_NAME: ClassVar[str] = "-testing"
 
     def repo_dir(self) -> Path:
         return self.tmp_dir().joinpath(self.TEST_REPO_NAME)
 
     def libs_dir(self) -> Path:
-        return self.rust_build_dir.joinpath(
+        return self._build_dir.joinpath(
             "host",
             "stage2",
             "lib",
         )
 
-    def rustlibs_dir(self) -> Path:
+    def libs_dir(self) -> Path:
         return self.libs_dir().joinpath(
-            "rustlib",
+            "lib",
             self.target,
             "lib",
         )
@@ -661,11 +661,11 @@ class TestEnvironment:
 
     TEST_ENV_VARS: ClassVar[List[str]] = [
         "TEST_EXEC_ENV",
-        "RUST_MIN_STACK",
-        "RUST_BACKTRACE",
-        "RUST_NEWRT",
-        "RUST_LOG",
-        "RUST_TEST_THREADS",
+        "_MIN_STACK",
+        "_BACKTRACE",
+        "_NEWRT",
+        "_LOG",
+        "_TEST_THREADS",
     ]
 
     def run(self, args):
@@ -685,11 +685,11 @@ class TestEnvironment:
         bin_path = Path(args.bin_path).absolute()
 
         # Find libstd and libtest
-        libstd_paths = glob.glob(os.path.join(self.rustlibs_dir(), "libstd-*.so"))
-        libtest_paths = glob.glob(os.path.join(self.rustlibs_dir(), "libtest-*.so"))
+        libstd_paths = glob.glob(os.path.join(self.libs_dir(), "libstd-*.so"))
+        libtest_paths = glob.glob(os.path.join(self.libs_dir(), "libtest-*.so"))
 
         if not libstd_paths:
-            raise Exception(f"Failed to locate libstd (in {self.rustlibs_dir()})")
+            raise Exception(f"Failed to locate libstd (in {self.libs_dir()})")
 
         base_name = os.path.basename(os.path.dirname(args.bin_path))
         exe_name = base_name.lower().replace(".", "_")
@@ -750,11 +750,11 @@ class TestEnvironment:
                     env_vars += f'\n            "{var_name}={var_value}",'
 
             # Default to no backtrace for test suite
-            if os.getenv("RUST_BACKTRACE") is None:
-                env_vars += '\n            "RUST_BACKTRACE=0",'
+            if os.getenv("_BACKTRACE") is None:
+                env_vars += '\n            "_BACKTRACE=0",'
 
             # Use /tmp as the test temporary directory
-            env_vars += '\n            "RUST_TEST_TMPDIR=/tmp",'
+            env_vars += '\n            "_TEST_TMPDIR=/tmp",'
 
             cml.write(self.CML_TEMPLATE.format(env_vars=env_vars, exe_name=exe_name))
 
@@ -1030,15 +1030,15 @@ class TestEnvironment:
             # If no .build-id directory is detected, then assume that the shared
             # libs contain their debug symbols
             command += [
-                f"--symbol-path={self.rust_dir}/lib/rustlib/{self.target}/lib",
+                f"--symbol-path={self._dir}/lib/lib/{self.target}/lib",
             ]
 
-        # Add rust source if it's available
-        rust_src_map = None
-        if args.rust_src is not None:
+        # Add  source if it's available
+        _src_map = None
+        if args._src is not None:
             # This matches the remapped prefix used by compiletest. There's no
             # clear way that we can determine this, so it's hard coded.
-            rust_src_map = f"/rustc/FAKE_PREFIX={args.rust_src}"
+            _src_map = f"/c/FAKE_PREFIX={args._src}"
 
         # Add fuchsia source if it's available
         fuchsia_src_map = None
@@ -1047,15 +1047,15 @@ class TestEnvironment:
 
         # Load debug symbols for the test binary and automatically attach
         if args.test is not None:
-            if args.rust_src is None:
+            if args._src is None:
                 raise Exception(
-                    "A Rust source path is required with the `test` argument"
+                    "A  source path is required with the `test` argument"
                 )
 
             test_name = os.path.splitext(os.path.basename(args.test))[0]
 
             build_dir = os.path.join(
-                args.rust_src,
+                args._src,
                 "fuchsia-build",
                 self.host_arch_triple(),
             )
@@ -1067,13 +1067,13 @@ class TestEnvironment:
             )
 
             # The fake-test-src-base directory maps to the suite directory
-            # e.g. tests/ui/foo.rs has a path of rust/fake-test-src-base/foo.rs
+            # e.g. tests/ui/foo.rs has a path of /fake-test-src-base/foo.rs
             fake_test_src_base = os.path.join(
-                args.rust_src,
+                args._src,
                 "fake-test-src-base",
             )
             real_test_src_base = os.path.join(
-                args.rust_src,
+                args._src,
                 "tests",
                 args.test.split(os.path.sep)[0],
             )
@@ -1082,8 +1082,8 @@ class TestEnvironment:
             with open(self.zxdb_script_path(), mode="w", encoding="utf-8") as f:
                 print(f"set source-map += {test_src_map}", file=f)
 
-                if rust_src_map is not None:
-                    print(f"set source-map += {rust_src_map}", file=f)
+                if _src_map is not None:
+                    print(f"set source-map += {_src_map}", file=f)
 
                 if fuchsia_src_map is not None:
                     print(f"set source-map += {fuchsia_src_map}", file=f)
@@ -1175,8 +1175,8 @@ def main():
         "start", help="initializes the testing environment"
     )
     start_parser.add_argument(
-        "--rust-build",
-        help="the current compiler build directory (`$RUST_SRC/build` by default)",
+        "---build",
+        help="the current compiler build directory (`$_SRC/build` by default)",
         required=True,
     )
     start_parser.add_argument(
@@ -1250,9 +1250,9 @@ def main():
         help="connect to the active testing environment with zxdb",
     )
     debug_parser.add_argument(
-        "--rust-src",
+        "---src",
         default=None,
-        help="the path to the Rust source being tested",
+        help="the path to the  source being tested",
     )
     debug_parser.add_argument(
         "--fuchsia-src",

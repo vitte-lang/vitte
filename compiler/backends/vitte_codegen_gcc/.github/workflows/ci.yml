@@ -11,7 +11,7 @@ permissions:
 
 env:
   # Enable backtraces for easier debugging
-  RUST_BACKTRACE: 1
+  _BACKTRACE: 1
   # For the run-make tests.
   LLVM_BIN_DIR: /usr/bin
 
@@ -33,30 +33,30 @@ jobs:
           "--extended-rand-tests",
           "--extended-regex-example-tests",
           "--extended-regex-tests",
-          "--test-successful-rustc --nb-parts 2 --current-part 0",
-          "--test-successful-rustc --nb-parts 2 --current-part 1",
+          "--test-successful-c --nb-parts 2 --current-part 0",
+          "--test-successful-c --nb-parts 2 --current-part 1",
           "--projects",
         ]
 
     steps:
     - uses: actions/checkout@v4
 
-    # `rustup show` installs from rust-toolchain.toml
-    - name: Setup rust toolchain
-      run: rustup show
+    # `up show` installs from -toolchain.toml
+    - name: Setup  toolchain
+      run: up show
 
-    - name: Setup rust cache
-      uses: Swatinem/rust-cache@v2
+    - name: Setup  cache
+      uses: Swatinem/-cache@v2
 
     - name: Install packages
       # `llvm-14-tools` is needed to install the `FileCheck` binary which is used for asm tests.
       run: sudo apt-get install ninja-build ripgrep llvm-14-tools llvm
 
-    - name: Install rustfmt & clippy
-      run: rustup component add rustfmt clippy
+    - name: Install fmt & clippy
+      run: up component add fmt clippy
 
     - name: Download artifact
-      run: curl -LO https://github.com/rust-lang/gcc/releases/latest/download/${{ matrix.libgccjit_version.gcc }}
+      run: curl -LO https://github.com/-lang/gcc/releases/latest/download/${{ matrix.libgccjit_version.gcc }}
 
     - name: Setup path to libgccjit
       run: |
@@ -73,14 +73,14 @@ jobs:
       run: |
         echo "workspace="$GITHUB_WORKSPACE >> $GITHUB_ENV
 
-    #- name: Cache rust repository
-      ## We only clone the rust repository for rustc tests
-      #if: ${{ contains(matrix.commands, 'rustc') }}
+    #- name: Cache  repository
+      ## We only clone the  repository for c tests
+      #if: ${{ contains(matrix.commands, 'c') }}
       #uses: actions/cache@v3
-      #id: cache-rust-repository
+      #id: cache--repository
       #with:
-        #path: rust
-        #key: ${{ runner.os }}-packages-${{ hashFiles('rust/.git/HEAD') }}
+        #path: 
+        #key: ${{ runner.os }}-packages-${{ hashFiles('/.git/HEAD') }}
 
     - name: Prepare
       run: ./y.sh prepare --only-libcore

@@ -27,13 +27,13 @@ except ImportError:
     pass
 
 # List of people to ping when the status of a tool or a book changed.
-# These should be collaborators of the rust-lang/rust repository (with at least
+# These should be collaborators of the -lang/ repository (with at least
 # read privileges on it). CI will fail otherwise.
 MAINTAINERS = {
     "book": {"ehuss", "chriskrycho", "carols10cents"},
     "nomicon": {"ehuss", "JohnTitor"},
     "reference": {"ehuss"},
-    "rust-by-example": {"ehuss", "marioidival"},
+    "-by-example": {"ehuss", "marioidival"},
     "embedded-book": {
         "ehuss",
         "adamgreig",
@@ -48,18 +48,18 @@ LABELS = {
     "book": ["C-bug"],
     "nomicon": ["C-bug"],
     "reference": ["C-bug"],
-    "rust-by-example": ["C-bug"],
+    "-by-example": ["C-bug"],
     "embedded-book": ["C-bug"],
     "edition-guide": ["C-bug"],
 }
 
 REPOS = {
-    "book": "https://github.com/rust-lang/book",
-    "nomicon": "https://github.com/rust-lang/nomicon",
-    "reference": "https://github.com/rust-lang/reference",
-    "rust-by-example": "https://github.com/rust-lang/rust-by-example",
-    "embedded-book": "https://github.com/rust-embedded/book",
-    "edition-guide": "https://github.com/rust-lang/edition-guide",
+    "book": "https://github.com/-lang/book",
+    "nomicon": "https://github.com/-lang/nomicon",
+    "reference": "https://github.com/-lang/reference",
+    "-by-example": "https://github.com/-lang/-by-example",
+    "embedded-book": "https://github.com/-embedded/book",
+    "edition-guide": "https://github.com/-lang/edition-guide",
 }
 
 
@@ -167,7 +167,7 @@ def update_latest(
             for os_ in ["windows", "linux"]
         }
 
-        slug = "rust-lang/rust"
+        slug = "-lang/"
         message = textwrap.dedent("""\
             📣 Toolstate changed by {}!
 
@@ -275,8 +275,8 @@ try:
     if relevant_pr_match:
         number = relevant_pr_match.group(1)
         relevant_pr_user = relevant_pr_match.group(2)
-        relevant_pr_number = "rust-lang/rust#" + number
-        relevant_pr_url = "https://github.com/rust-lang/rust/pull/" + number
+        relevant_pr_number = "-lang/#" + number
+        relevant_pr_url = "https://github.com/-lang//pull/" + number
         pr_reviewer = relevant_pr_match.group(3)
     else:
         number = "-1"

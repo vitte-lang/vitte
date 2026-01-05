@@ -1,5 +1,5 @@
 # `windows_net`
 
-This feature is internal to the Rust compiler and is not intended for general use.
+This feature is internal to the  compiler and is not intended for general use.
 
 ------------------------

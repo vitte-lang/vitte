@@ -2,11 +2,11 @@
 
 The tracking issue for this feature is: [#38788]
 
-[#38788]: https://github.com/rust-lang/rust/issues/38788
+[#38788]: https://github.com/-lang//issues/38788
 
 ------------------------
 
-When emitting PTX code, all vanilla Rust functions (`fn`) get translated to
+When emitting PTX code, all vanilla  functions (`fn`) get translated to
 "device" functions. These functions are *not* callable from the host via the
 CUDA API so a crate with only device functions is not too useful!
 
@@ -16,7 +16,7 @@ as the real public API of your crate. To produce a global function use the
 
 <!-- NOTE(ignore) this example is specific to the nvptx targets -->
 
-``` rust,ignore
+``` ,ignore
 #![feature(abi_ptx)]
 #![no_std]
 
@@ -30,7 +30,7 @@ pub fn device_function() {
 ```
 
 ``` text
-$ xargo rustc --target nvptx64-nvidia-cuda --release -- --emit=asm
+$ xargo c --target nvptx64-nvidia-cuda --release -- --emit=asm
 
 $ cat $(find -name '*.s')
 //

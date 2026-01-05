@@ -121,12 +121,12 @@ def compress_normal(normal):
 
 
 def print_singletons(uppers, lowers, uppersname, lowersname):
-    print("#[rustfmt::skip]")
+    print("#[fmt::skip]")
     print("const {}: &[(u8, u8)] = &[".format(uppersname))
     for u, c in uppers:
         print("    ({:#04x}, {}),".format(u, c))
     print("];")
-    print("#[rustfmt::skip]")
+    print("#[fmt::skip]")
     print("const {}: &[u8] = &[".format(lowersname))
     for i in range(0, len(lowers), 8):
         print(
@@ -136,7 +136,7 @@ def print_singletons(uppers, lowers, uppersname, lowersname):
 
 
 def print_normal(normal, normalname):
-    print("#[rustfmt::skip]")
+    print("#[fmt::skip]")
     print("const {}: &[u8] = &[".format(normalname))
     for v in normal:
         print("    {}".format(" ".join("{:#04x},".format(i) for i in v)))

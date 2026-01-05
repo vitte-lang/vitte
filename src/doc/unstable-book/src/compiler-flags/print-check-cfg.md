@@ -1,6 +1,6 @@
 # `print=check-cfg`
 
-The tracking issue for this feature is: [#125704](https://github.com/rust-lang/rust/issues/125704).
+The tracking issue for this feature is: [#125704](https://github.com/-lang//issues/125704).
 
 ------------------------
 
@@ -25,7 +25,7 @@ This print option works similarly to `--print=cfg` (modulo check-cfg specifics).
 To be used like this:
 
 ```bash
-rustc --print=check-cfg -Zunstable-options lib.rs
+c --print=check-cfg -Zunstable-options lib.rs
 ```
 
-[check-cfg]: https://doc.rust-lang.org/nightly/rustc/check-cfg.html
+[check-cfg]: https://doc.-lang.org/nightly/c/check-cfg.html

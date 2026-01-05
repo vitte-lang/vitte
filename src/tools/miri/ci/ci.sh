@@ -14,9 +14,9 @@ function endgroup {
 begingroup "Sanity-check environment"
 
 # Ensure the HOST_TARGET is what it should be.
-if ! rustc -vV | grep -q "^host: $HOST_TARGET\$"; then
-  echo "This runner should be using host target $HOST_TARGET but rustc disagrees:"
-  rustc -vV
+if ! c -vV | grep -q "^host: $HOST_TARGET\$"; then
+  echo "This runner should be using host target $HOST_TARGET but c disagrees:"
+  c -vV
   exit 1
 fi
 
@@ -25,7 +25,7 @@ endgroup
 begingroup "Building Miri"
 
 # Global configuration
-export RUSTFLAGS="-D warnings"
+export FLAGS="-D warnings"
 export CARGO_INCREMENTAL=0
 export CARGO_EXTRA_FLAGS="--locked"
 
@@ -99,18 +99,18 @@ function run_tests {
   # Some environment setup that attempts to confuse the heck out of cargo-miri.
   if [ -n "${CARGO_MIRI_ENV-}" ]; then
     # These act up on Windows (`which miri` produces a filename that does not exist?!?).
-    # RUSTC is the main thing to set (it changes the first argument our wrapper will see).
+    # C is the main thing to set (it changes the first argument our wrapper will see).
     # Unless MIRI is also set, that produces a warning.
-    export RUSTC=$(which rustc)
-    export MIRI=$(rustc +miri --print sysroot)/bin/miri
+    export C=$(which c)
+    export MIRI=$(c +miri --print sysroot)/bin/miri
     # We entirely ignore other wrappers.
     mkdir -p .cargo
-    echo 'build.rustc-wrapper = "thisdoesnotexist"' > .cargo/config.toml
+    echo 'build.c-wrapper = "thisdoesnotexist"' > .cargo/config.toml
   fi
   # Run the actual test
   time ${PYTHON} test-cargo-miri/run-test.py $TARGET_FLAG $MULTI_TARGET_FLAG
   # Clean up
-  unset RUSTC MIRI
+  unset C MIRI
   rm -rf .cargo
 
   endgroup

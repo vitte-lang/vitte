@@ -8,10 +8,10 @@ find useful.
 Check out the issues on this GitHub repository for some ideas. In particular,
 look for the green `E-*` labels which mark issues that should be rather
 well-suited for onboarding. For more ideas or help with hacking on Miri, you can
-contact us on the [Rust Zulip]. See the [Rust website](https://www.rust-lang.org/governance/teams/compiler#team-miri)
+contact us on the [ Zulip]. See the [ website](https://www.-lang.org/governance/teams/compiler#team-miri)
 for a list of Miri maintainers.
 
-[Rust Zulip]: https://rust-lang.zulipchat.com
+[ Zulip]: https://-lang.zulipchat.com
 
 ### PR review process
 
@@ -31,7 +31,7 @@ upstream commit.
 Most PRs bounce back and forth between the reviewer and the author several times, so it is good to
 keep track of who is expected to take the next step. We are using the `S-waiting-for-review` and
 `S-waiting-for-author` labels for that. If a reviewer asked you to do some changes and you think
-they are all taken care of, post a comment saying `@rustbot ready` to mark a PR as ready for the
+they are all taken care of, post a comment saying `@bot ready` to mark a PR as ready for the
 next round of review.
 
 ### Larger-scale contributions
@@ -54,7 +54,7 @@ process for such contributions:
    change how the final implementation looks like.
 
     The design should be reasonably concrete, i.e. for new global state or methods the corresponding
-   Rust types and method signatures should be spelled out. We realize that it can be hard to make a
+    types and method signatures should be spelled out. We realize that it can be hard to make a
    design without doing implementation work, in particular if you are not yet familiar with the
    codebase. Doing draft implementations in phase 2 of this process is perfectly fine, just please
    be aware that we might request fundamental changes that can require significantly reworking what
@@ -68,26 +68,26 @@ Please get in touch with us if you have any questions!
 
 ## Preparing the build environment
 
-Miri heavily relies on internal and unstable rustc interfaces to execute MIR,
-which means it is important that you install a version of rustc that Miri
+Miri heavily relies on internal and unstable c interfaces to execute MIR,
+which means it is important that you install a version of c that Miri
 actually works with.
 
-The `rust-version` file contains the commit hash of rustc that Miri is currently
+The `-version` file contains the commit hash of c that Miri is currently
 tested against. Other versions will likely not work. After installing
-[`rustup-toolchain-install-master`], you can run the following command to
-install that exact version of rustc as a toolchain:
+[`up-toolchain-install-master`], you can run the following command to
+install that exact version of c as a toolchain:
 ```
 ./miri toolchain
 ```
-This will set up a rustup toolchain called `miri` and set it as an override for
+This will set up a up toolchain called `miri` and set it as an override for
 the current directory.
 
 You can also create a `.auto-everything` file (contents don't matter, can be empty), which
-will cause any `./miri` command to automatically call `./miri toolchain`, `clippy` and `rustfmt`
+will cause any `./miri` command to automatically call `./miri toolchain`, `clippy` and `fmt`
 for you. If you don't want all of these to happen, you can add individual `.auto-toolchain`,
 `.auto-clippy` and `.auto-fmt` files respectively.
 
-[`rustup-toolchain-install-master`]: https://github.com/kennytm/rustup-toolchain-install-master
+[`up-toolchain-install-master`]: https://github.com/kennytm/up-toolchain-install-master
 
 ## Building and testing Miri
 
@@ -105,8 +105,8 @@ supports.
 ### Testing the Miri driver
 
 The Miri driver compiled from `src/bin/miri.rs` is the "heart" of Miri: it is
-basically a version of `rustc` that, instead of compiling your code, runs it.
-It accepts all the same flags as `rustc` (though the ones only affecting code
+basically a version of `c` that, instead of compiling your code, runs it.
+It accepts all the same flags as `c` (though the ones only affecting code
 generation and linking obviously will have no effect) [and more][miri-flags].
 
 [miri-flags]: README.md#miri--z-flags-and-environment-variables
@@ -145,12 +145,12 @@ MIRI_LOG=info ./miri run tests/pass/vec.rs
 ```
 
 Setting `MIRI_LOG` like this will configure logging for Miri itself as well as
-the `rustc_middle::mir::interpret` and `rustc_mir::interpret` modules in rustc. You
+the `c_middle::mir::interpret` and `c_mir::interpret` modules in c. You
 can also do more targeted configuration, e.g. the following helps debug the
 stacked borrows implementation:
 
 ```sh
-MIRI_LOG=rustc_mir::interpret=info,miri::stacked_borrows ./miri run tests/pass/vec.rs
+MIRI_LOG=c_mir::interpret=info,miri::stacked_borrows ./miri run tests/pass/vec.rs
 ```
 
 Note that you will only get `info`, `warn` or `error` messages if you use a prebuilt compiler.
@@ -197,10 +197,10 @@ development version of Miri using
 ./miri install
 ```
 
-and then you can use it as if it was installed by `rustup` as a component of the
+and then you can use it as if it was installed by `up` as a component of the
 `miri` toolchain. Note that the `miri` and `cargo-miri` executables are placed
 in the `miri` toolchain's sysroot to prevent conflicts with other toolchains.
-The Miri binaries in the `cargo` bin directory (usually `~/.cargo/bin`) are managed by rustup.
+The Miri binaries in the `cargo` bin directory (usually `~/.cargo/bin`) are managed by up.
 
 There's a test for the cargo wrapper in the `test-cargo-miri` directory; run `./run-test.py` in
 there to execute it. You can pass `--target` to execute the test for another target.
@@ -209,13 +209,13 @@ there to execute it. You can pass `--target` to execute the test for another tar
 
 Miri re-builds the standard library into a custom sysroot, so it is fairly easy
 to test Miri against a modified standard library -- you do not even have to
-build Miri yourself, the Miri shipped by `rustup` will work. All you have to do
+build Miri yourself, the Miri shipped by `up` will work. All you have to do
 is set the `MIRI_LIB_SRC` environment variable to the `library` folder of a
-`rust-lang/rust` repository checkout. Note that changing files in that directory
+`-lang/` repository checkout. Note that changing files in that directory
 does not automatically trigger a re-build of the standard library; you have to
 clear the Miri build cache manually (on Linux, `rm -rf ~/.cache/miri`;
-on Windows, `rmdir /S "%LOCALAPPDATA%\rust-lang\miri\cache"`;
-and on macOS, `rm -rf ~/Library/Caches/org.rust-lang.miri`).
+on Windows, `rmdir /S "%LOCALAPPDATA%\-lang\miri\cache"`;
+and on macOS, `rm -rf ~/Library/Caches/org.-lang.miri`).
 
 ### Benchmarking
 
@@ -232,62 +232,62 @@ To compare the benchmark results with a baseline, do the following:
 You can run only some of the benchmarks by listing them, e.g. `./miri bench mse`.
 The names refer to the folders in `bench-cargo-miri`.
 
-## Configuring `rust-analyzer`
+## Configuring `-analyzer`
 
-To configure `rust-analyzer` and the IDE for working on Miri, copy one of the provided
+To configure `-analyzer` and the IDE for working on Miri, copy one of the provided
 configuration files according to the instructions below. You can also set up a symbolic
 link to keep the configuration in sync with our recommendations.
 
 ### Visual Studio Code
 
-Copy [`etc/rust_analyzer_vscode.json`] to `.vscode/settings.json` in the project root directory.
+Copy [`etc/_analyzer_vscode.json`] to `.vscode/settings.json` in the project root directory.
 
-[`etc/rust_analyzer_vscode.json`]: https://github.com/rust-lang/miri/blob/master/etc/rust_analyzer_vscode.json
+[`etc/_analyzer_vscode.json`]: https://github.com/-lang/miri/blob/master/etc/_analyzer_vscode.json
 
 ### Helix
 
-Copy [`etc/rust_analyzer_helix.toml`] to `.helix/languages.toml` in the project root directory.
+Copy [`etc/_analyzer_helix.toml`] to `.helix/languages.toml` in the project root directory.
 
 Since working on Miri requires a custom toolchain, and Helix requires the language server
-to be installed with the toolchain, you have to run `./miri toolchain -c rust-analyzer`
-when installing the Miri toolchain. Alternatively, set the `RUSTUP_TOOLCHAIN` environment variable according to
-[the documentation](https://rust-analyzer.github.io/manual.html#toolchain).
+to be installed with the toolchain, you have to run `./miri toolchain -c -analyzer`
+when installing the Miri toolchain. Alternatively, set the `UP_TOOLCHAIN` environment variable according to
+[the documentation](https://-analyzer.github.io/manual.html#toolchain).
 
-[`etc/rust_analyzer_helix.toml`]: https://github.com/rust-lang/miri/blob/master/etc/rust_analyzer_helix.toml
+[`etc/_analyzer_helix.toml`]: https://github.com/-lang/miri/blob/master/etc/_analyzer_helix.toml
 
 ### Zed
 
-Copy [`etc/rust_analyzer_zed.json`] to `.zed/settings.json` in the project root directory.
+Copy [`etc/_analyzer_zed.json`] to `.zed/settings.json` in the project root directory.
 
-[`etc/rust_analyzer_zed.json`]: https://github.com/rust-lang/miri/blob/master/etc/rust_analyzer_zed.json
+[`etc/_analyzer_zed.json`]: https://github.com/-lang/miri/blob/master/etc/_analyzer_zed.json
 
 ### Advanced configuration
 
-If you are building Miri with a locally built rustc, set
-`rust-analyzer.rustcSource` to the relative path from your Miri clone to the
-root `Cargo.toml` of the locally built rustc. For example, the path might look
-like `../rust/Cargo.toml`. In addition to that, replace `clippy` by `check`
-in the `rust-analyzer.check.overrideCommand` setting.
+If you are building Miri with a locally built c, set
+`-analyzer.cSource` to the relative path from your Miri clone to the
+root `Cargo.toml` of the locally built c. For example, the path might look
+like `..//Cargo.toml`. In addition to that, replace `clippy` by `check`
+in the `-analyzer.check.overrideCommand` setting.
 
-See the rustc-dev-guide's docs on ["Configuring `rust-analyzer` for `rustc`"][rdg-r-a]
-for more information about configuring the IDE and `rust-analyzer`.
+See the c-dev-guide's docs on ["Configuring `-analyzer` for `c`"][rdg-r-a]
+for more information about configuring the IDE and `-analyzer`.
 
-[rdg-r-a]: https://rustc-dev-guide.rust-lang.org/building/suggested.html#configuring-rust-analyzer-for-rustc
+[rdg-r-a]: https://c-dev-guide.-lang.org/building/suggested.html#configuring--analyzer-for-c
 
-## Advanced topic: Working on Miri in the rustc tree
+## Advanced topic: Working on Miri in the c tree
 
 We described above the simplest way to get a working build environment for Miri,
-which is to use the version of rustc indicated by `rustc-version`. But
+which is to use the version of c indicated by `c-version`. But
 sometimes, that is not enough.
 
-A big part of the Miri driver is shared with rustc, so working on Miri will
-sometimes require also working on rustc itself. In this case, you should *not*
+A big part of the Miri driver is shared with c, so working on Miri will
+sometimes require also working on c itself. In this case, you should *not*
 work in a clone of the Miri repository, but in a clone of the
-[main Rust repository](https://github.com/rust-lang/rust/). There is a copy of
+[main  repository](https://github.com/-lang//). There is a copy of
 Miri located at `src/tools/miri` that you can work on directly. A maintainer
 will eventually sync those changes back into this repository.
 
-When working on Miri in the rustc tree, here's how you can run tests:
+When working on Miri in the c tree, here's how you can run tests:
 
 ```
 ./x.py test miri
@@ -295,58 +295,58 @@ When working on Miri in the rustc tree, here's how you can run tests:
 
 `--bless` will work, too.
 
-You can also directly run Miri on a Rust source file:
+You can also directly run Miri on a  source file:
 
 ```
 ./x.py run miri --stage 1 --args src/tools/miri/tests/pass/hello.rs
 ```
 
-## Advanced topic: Syncing with the rustc repo
+## Advanced topic: Syncing with the c repo
 
-We use the [`josh-sync`](https://github.com/rust-lang/josh-sync) tool to transmit changes between the
-rustc and Miri repositories. You can install it as follows:
+We use the [`josh-sync`](https://github.com/-lang/josh-sync) tool to transmit changes between the
+c and Miri repositories. You can install it as follows:
 
 ```sh
-cargo install --locked --git https://github.com/rust-lang/josh-sync
+cargo install --locked --git https://github.com/-lang/josh-sync
 ```
 
 The commands below will automatically install and manage the [Josh](https://github.com/josh-project/josh) proxy that performs the actual work.
 
-### Importing changes from the rustc repo
+### Importing changes from the c repo
 
 *Note: this usually happens automatically, so these steps rarely have to be done by hand.*
 
 We assume we start on an up-to-date master branch in the Miri repo.
 
-1) First, create a branch for the pull, e.g. `git checkout -b rustup`
+1) First, create a branch for the pull, e.g. `git checkout -b up`
 2) Then run the following:
 ```sh
-# Fetch and merge rustc side of the history. Takes ca 5 min the first time.
-# This will also update the `rustc-version` file.
-rustc-josh-sync pull
+# Fetch and merge c side of the history. Takes ca 5 min the first time.
+# This will also update the `c-version` file.
+c-josh-sync pull
 # Update local toolchain and apply formatting.
 ./miri toolchain && ./miri fmt
-git commit -am "rustup"
+git commit -am "up"
 ```
 
 Now push this to a new branch in your Miri fork, and create a PR. It is worth
 running `./miri test` locally in parallel, since the test suite in the Miri repo
-is stricter than the one on the rustc side, so some small tweaks might be
+is stricter than the one on the c side, so some small tweaks might be
 needed.
 
-### Exporting changes to the rustc repo
+### Exporting changes to the c repo
 
-We will use the `josh-sync` tool to push to your fork of rustc. Run the following in the Miri repo,
+We will use the `josh-sync` tool to push to your fork of c. Run the following in the Miri repo,
 assuming we are on an up-to-date master branch:
 
 ```sh
-# Push the Miri changes to your rustc fork (substitute your github handle for YOUR_NAME).
-rustc-josh-sync push miri YOUR_NAME
+# Push the Miri changes to your c fork (substitute your github handle for YOUR_NAME).
+c-josh-sync push miri YOUR_NAME
 ```
 
 This will create a new branch called `miri` in your fork, and the output should include a link that
-creates a rustc PR to integrate those changes into the main repository. If that PR has conflicts,
-you need to pull rustc changes into Miri first, and then re-do the rustc push.
+creates a c PR to integrate those changes into the main repository. If that PR has conflicts,
+you need to pull c changes into Miri first, and then re-do the c push.
 
 If this fails due to authentication problems, it can help to make josh push via ssh instead of
 https. Add the following to your `.gitconfig`:
@@ -361,7 +361,7 @@ https. Add the following to your `.gitconfig`:
 The following environment variables are relevant to `./miri`:
 
 * `CARGO` sets the binary used to execute Cargo; if none is specified, defaults to `cargo`.
-* `MIRI_AUTO_OPS` indicates whether the automatic execution of rustfmt, clippy and toolchain setup
+* `MIRI_AUTO_OPS` indicates whether the automatic execution of fmt, clippy and toolchain setup
   (as controlled by the `./auto-*` files) should be skipped. If it is set to `no`, they are skipped.
   This is used to allow automated IDE actions to avoid the auto ops.
 * `MIRI_LOG`, `MIRI_BACKTRACE` control logging and backtrace printing during Miri executions.
@@ -380,17 +380,17 @@ binaries, and as such worth documenting:
 
 * `CARGO_EXTRA_FLAGS` is understood by `./miri` and passed to all host cargo invocations.
   It is reserved for CI usage; setting the wrong flags this way can easily confuse the script.
-* `MIRI_BE_RUSTC` can be set to `host` or `target`. It tells the Miri driver to
-  actually not interpret the code but compile it like rustc would. With `target`, Miri sets
+* `MIRI_BE_C` can be set to `host` or `target`. It tells the Miri driver to
+  actually not interpret the code but compile it like c would. With `target`, Miri sets
   some compiler flags to prepare the code for interpretation; with `host`, this is not done.
   This environment variable is useful to be sure that the compiled `rlib`s are compatible
   with Miri.
 * `MIRI_CALLED_FROM_SETUP` is set during the Miri sysroot build,
-  which will re-invoke `cargo-miri` as the `rustc` to use for this build.
-* `MIRI_CALLED_FROM_RUSTDOC` when set to any value tells `cargo-miri` that it is
-  running as a child process of `rustdoc`, which invokes it twice for each doc-test
+  which will re-invoke `cargo-miri` as the `c` to use for this build.
+* `MIRI_CALLED_FROM_DOC` when set to any value tells `cargo-miri` that it is
+  running as a child process of `doc`, which invokes it twice for each doc-test
   and requires special treatment, most notably a check-only build before interpretation.
-  This is set by `cargo-miri` itself when running as a `rustdoc`-wrapper.
+  This is set by `cargo-miri` itself when running as a `doc`-wrapper.
 * `MIRI_CWD` when set to any value tells the Miri driver to change to the given
   directory after loading all the source files, but before commencing
   interpretation. This is useful if the interpreted program wants a different
@@ -398,8 +398,8 @@ binaries, and as such worth documenting:
 * `MIRI_LOCAL_CRATES` is set by `cargo-miri` to tell the Miri driver which
   crates should be given special treatment in diagnostics, in addition to the
   crate currently being compiled.
-* `MIRI_ORIG_RUSTDOC` is set and read by different phases of `cargo-miri` to remember the
-  value of `RUSTDOC` from before it was overwritten.
+* `MIRI_ORIG_DOC` is set and read by different phases of `cargo-miri` to remember the
+  value of `DOC` from before it was overwritten.
 * `MIRI_REPLACE_LIBRS_IF_NOT_TEST` when set to any value enables a hack that helps bootstrap
   run the standard library tests in Miri.
 * `MIRI_TEST_TARGET` is set by `./miri test` (and `./x.py test miri`) to tell the test harness about
@@ -408,5 +408,5 @@ binaries, and as such worth documenting:
   perform verbose logging.
 * `MIRI_HOST_SYSROOT` is set by bootstrap to tell `cargo-miri` which sysroot to use for *host*
   operations.
-* `RUSTC_BLESS` is set by `./miri test` (and `./x.py test miri`) to indicate bless-mode to the test
+* `C_BLESS` is set by `./miri test` (and `./x.py test miri`) to indicate bless-mode to the test
   harness.

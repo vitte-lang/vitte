@@ -6,22 +6,22 @@
 
 set -ex
 
-export RUSTDOCFLAGS="-D warnings"
+export DOCFLAGS="-D warnings"
 
 dox() {
   if [ "$CI" != "" ]; then
-    rustup target add "${1}" || true
+    up target add "${1}" || true
   fi
 
   cargo clean --target "${1}"
 
   if [ "${1}" == "amdgcn-amd-amdhsa" ]; then
     if [ "$CI" != "" ]; then
-      rustup component add rust-src
+      up component add -src
     fi
     export CARGO_UNSTABLE_BUILD_STD=core
     # amdgpu needs a target-cpu, any is fine
-    export RUSTFLAGS="${RUSTFLAGS} -Ctarget-cpu=gfx900"
+    export FLAGS="${FLAGS} -Ctarget-cpu=gfx900"
   fi
 
   cargo build --verbose --target "${1}" --manifest-path crates/core_arch/Cargo.toml
@@ -37,7 +37,7 @@ if [ -z "$1" ]; then
   dox powerpc64le-unknown-linux-gnu
   dox loongarch64-unknown-linux-gnu
   # MIPS targets disabled since they are dropped to tier 3.
-  # See https://github.com/rust-lang/compiler-team/issues/648
+  # See https://github.com/-lang/compiler-team/issues/648
   #dox mips-unknown-linux-gnu
   #dox mips64-unknown-linux-gnuabi64
   dox wasm32-unknown-unknown

@@ -1,0 +1,66 @@
+// Memory and runtime implementations
+
+impl MemoryPool {
+    pub fn new(capacity: u64) -> Self {
+        MemoryPool {
+            capacity,
+            allocated: 0,
+        }
+    }
+
+    pub fn allocate(&mut self, size: u64) -> bool {
+        if self.allocated + size <= self.capacity {
+            self.allocated += size;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn deallocate(&mut self, size: u64) {
+        if self.allocated >= size {
+            self.allocated -= size;
+        }
+    }
+
+    pub fn available(&self) -> u64 {
+        self.capacity - self.allocated
+    }
+}
+
+impl MemoryAllocator {
+    pub fn new(strategy: MemoryStrategy, capacity: u64) -> Self {
+        MemoryAllocator {
+            strategy,
+            pool: MemoryPool::new(capacity),
+        }
+    }
+
+    pub fn allocate(&mut self, size: u64) -> bool {
+        self.pool.allocate(size)
+    }
+}
+
+impl RuntimeAttribute {
+    pub fn new(name: string, value: string) -> Self {
+        RuntimeAttribute { name, value }
+    }
+
+    pub fn get_value(&self) -> string {
+        self.value.clone()
+    }
+}
+
+impl Lifetime {
+    pub fn new(start: u64, end: u64) -> Self {
+        Lifetime { start, end }
+    }
+
+    pub fn duration(&self) -> u64 {
+        self.end - self.start
+    }
+
+    pub fn is_active(&self, now: u64) -> bool {
+        now >= self.start && now <= self.end
+    }
+}

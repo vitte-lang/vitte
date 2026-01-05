@@ -8,8 +8,8 @@
 // revealing a tooltip.
 //
 // https://www.nngroup.com/articles/timing-exposing-content/
-window.RUSTDOC_TOOLTIP_HOVER_MS = 300;
-window.RUSTDOC_TOOLTIP_HOVER_EXIT_MS = 450;
+window.DOC_TOOLTIP_HOVER_MS = 300;
+window.DOC_TOOLTIP_HOVER_EXIT_MS = 450;
 
 /**
  * Given a basename (e.g. "storage") and an extension (e.g. ".js"), return a URL
@@ -37,13 +37,13 @@ function showMain() {
     }
     removeClass(main, "hidden");
     const mainHeading = main.querySelector(".main-heading");
-    if (mainHeading && window.searchState.rustdocToolbar) {
-        if (window.searchState.rustdocToolbar.parentElement) {
-            window.searchState.rustdocToolbar.parentElement.removeChild(
-                window.searchState.rustdocToolbar,
+    if (mainHeading && window.searchState.docToolbar) {
+        if (window.searchState.docToolbar.parentElement) {
+            window.searchState.docToolbar.parentElement.removeChild(
+                window.searchState.docToolbar,
             );
         }
-        mainHeading.appendChild(window.searchState.rustdocToolbar);
+        mainHeading.appendChild(window.searchState.docToolbar);
     }
     const toggle = document.getElementById("toggle-all-docs");
     if (toggle) {
@@ -167,13 +167,13 @@ function switchDisplayedElement(elemToDisplay) {
     removeClass(el, "hidden");
 
     const mainHeading = elemToDisplay.querySelector(".main-heading");
-    if (mainHeading && window.searchState.rustdocToolbar) {
-        if (window.searchState.rustdocToolbar.parentElement) {
-            window.searchState.rustdocToolbar.parentElement.removeChild(
-                window.searchState.rustdocToolbar,
+    if (mainHeading && window.searchState.docToolbar) {
+        if (window.searchState.docToolbar.parentElement) {
+            window.searchState.docToolbar.parentElement.removeChild(
+                window.searchState.docToolbar,
             );
         }
-        mainHeading.appendChild(window.searchState.rustdocToolbar);
+        mainHeading.appendChild(window.searchState.docToolbar);
     }
 }
 
@@ -245,7 +245,7 @@ function preLoadCss(cssUrl) {
     });
 
     window.searchState = {
-        rustdocToolbar: document.querySelector("rustdoc-toolbar"),
+        docToolbar: document.querySelector("doc-toolbar"),
         loadingText: "Loading search results...",
         inputElement: () => {
             let el = document.getElementsByClassName("search-input")[0];
@@ -385,7 +385,7 @@ function preLoadCss(cssUrl) {
             const params = {};
             window.location.search.substring(1).split("&").
                 map(s => {
-                    // https://github.com/rust-lang/rust/issues/119219
+                    // https://github.com/-lang//issues/119219
                     const pair = s.split("=").map(x => x.replace(/\+/g, " "));
                     params[decodeURIComponent(pair[0])] =
                         typeof pair[1] === "undefined" ? null : decodeURIComponent(pair[1]);
@@ -713,7 +713,7 @@ function preLoadCss(cssUrl) {
         if (!window.SIDEBAR_ITEMS) {
             return;
         }
-        const sidebar = document.getElementById("rustdoc-modnav");
+        const sidebar = document.getElementById("doc-modnav");
 
         /**
          * Append to the sidebar a "block" of links - a heading along with a list (`<ul>`) of items.
@@ -730,7 +730,7 @@ function preLoadCss(cssUrl) {
                 return;
             }
 
-            const modpath = hasClass(document.querySelector(".rustdoc"), "mod") ? "../" : "";
+            const modpath = hasClass(document.querySelector(".doc"), "mod") ? "../" : "";
 
             const h3 = document.createElement("h3");
             h3.innerHTML = `<a href="${modpath}index.html#${id}">${longty}</a>`;
@@ -798,7 +798,7 @@ function preLoadCss(cssUrl) {
         }
     }
 
-    // <https://github.com/search?q=repo%3Arust-lang%2Frust+[RUSTDOCIMPL]+trait.impl&type=code>
+    // <https://github.com/search?q=repo%3A-lang%2F+[DOCIMPL]+trait.impl&type=code>
     window.register_implementors = imp => {
         /** Takes an ID as input and returns a list of two elements. The first element is the DOM
          * element with the given ID and the second is the "negative marker", meaning the location
@@ -922,9 +922,9 @@ function preLoadCss(cssUrl) {
     }
 
     /**
-     * <https://github.com/search?q=repo%3Arust-lang%2Frust+[RUSTDOCIMPL]+type.impl&type=code>
+     * <https://github.com/search?q=repo%3A-lang%2F+[DOCIMPL]+type.impl&type=code>
      *
-     * [RUSTDOCIMPL] type.impl
+     * [DOCIMPL] type.impl
      *
      * This code inlines implementations into the type alias docs at runtime. It's done at
      * runtime because some crates have many type aliases and many methods, and we don't want
@@ -934,7 +934,7 @@ function preLoadCss(cssUrl) {
      * - It only includes docs generated for the current crate. This function accepts an
      *   object mapping crate names to the set of impls.
      *
-     * - It filters down to the set of applicable impls. The Rust type checker is used to
+     * - It filters down to the set of applicable impls. The  type checker is used to
      *   tag each HTML blob with the set of type aliases that can actually use it, so the
      *   JS only needs to consult the attached list of type aliases.
      *
@@ -950,7 +950,7 @@ function preLoadCss(cssUrl) {
      *
      * - After processing all of the impls, it sorts the sidebar items by name.
      *
-     * @param {rustdoc.TypeImpls} imp
+     * @param {doc.TypeImpls} imp
      */
     window.register_type_impls = imp => {
         // @ts-expect-error
@@ -1152,7 +1152,7 @@ function preLoadCss(cssUrl) {
         if (!window.ALL_CRATES) {
             return;
         }
-        const sidebarElems = document.getElementById("rustdoc-modnav");
+        const sidebarElems = document.getElementById("doc-modnav");
         if (!sidebarElems) {
             return;
         }
@@ -1260,14 +1260,14 @@ function preLoadCss(cssUrl) {
         });
     }());
 
-    window.rustdoc_add_line_numbers_to_examples = () => {
+    window.doc_add_line_numbers_to_examples = () => {
         // @ts-expect-error
         function generateLine(nb) {
             return `<span data-nosnippet>${nb}</span>`;
         }
 
         onEachLazy(document.querySelectorAll(
-            ".rustdoc:not(.src) :not(.scraped-example) > .example-wrap > pre > code",
+            ".doc:not(.src) :not(.scraped-example) > .example-wrap > pre > code",
         ), code => {
             if (hasClass(code.parentElement.parentElement, "hide-lines")) {
                 removeClass(code.parentElement.parentElement, "hide-lines");
@@ -1281,15 +1281,15 @@ function preLoadCss(cssUrl) {
         });
     };
 
-    window.rustdoc_remove_line_numbers_from_examples = () => {
+    window.doc_remove_line_numbers_from_examples = () => {
         onEachLazy(
-            document.querySelectorAll(".rustdoc:not(.src) :not(.scraped-example) > .example-wrap"),
+            document.querySelectorAll(".doc:not(.src) :not(.scraped-example) > .example-wrap"),
             x => addClass(x, "hide-lines"),
         );
     };
 
     if (getSettingValue("line-numbers") === "true") {
-        window.rustdoc_add_line_numbers_to_examples();
+        window.doc_add_line_numbers_to_examples();
     }
 
     function showSidebar() {
@@ -1472,7 +1472,7 @@ function preLoadCss(cssUrl) {
             } else if (!element.TOOLTIP_FORCE_VISIBLE) {
                 hideTooltip(false);
             }
-        }, show ? window.RUSTDOC_TOOLTIP_HOVER_MS : window.RUSTDOC_TOOLTIP_HOVER_EXIT_MS);
+        }, show ? window.DOC_TOOLTIP_HOVER_MS : window.DOC_TOOLTIP_HOVER_EXIT_MS);
     }
 
     /**
@@ -1582,7 +1582,7 @@ function preLoadCss(cssUrl) {
                 //
                 // * When the mouse pointer enters a tooltip anchor point, its hitbox is grown
                 //   on the bottom, where the popover is/will appear. Search "hover tunnel" in
-                //   rustdoc.css for the implementation.
+                //   doc.css for the implementation.
                 // * There's a delay when the mouse pointer enters the popover base anchor, in
                 //   case the mouse pointer was just passing through and the user didn't want
                 //   to open it.
@@ -1596,7 +1596,7 @@ function preLoadCss(cssUrl) {
                 //   to interact with an element while it's in the middle of fading in: either
                 //   they're allowed to interact with it while it's fading in, meaning it can't
                 //   serve as mistake-proofing for the popover, or they can't, but
-                //   they might try and be frustrated.
+                //   they might try and be frated.
                 //
                 // See also:
                 // * https://www.nngroup.com/articles/timing-exposing-content/
@@ -1636,10 +1636,10 @@ function preLoadCss(cssUrl) {
 
     function buildHelpMenu() {
         const book_info = document.createElement("span");
-        const drloChannel = `https://doc.rust-lang.org/${getVar("channel")}`;
+        const drloChannel = `https://doc.-lang.org/${getVar("channel")}`;
         book_info.className = "top";
         book_info.innerHTML = `You can find more information in \
-<a href="${drloChannel}/rustdoc/">the rustdoc book</a>.`;
+<a href="${drloChannel}/doc/">the doc book</a>.`;
 
         const shortcuts = [
             ["?", "Show this help dialog"],
@@ -1664,7 +1664,7 @@ function preLoadCss(cssUrl) {
 
         const infos = [
             `For a full list of all search features, take a look \
-             <a href="${drloChannel}/rustdoc/read-documentation/search.html">here</a>.`,
+             <a href="${drloChannel}/doc/read-documentation/search.html">here</a>.`,
             "Prefix searches with a type followed by a colon (e.g., <code>fn:</code>) to \
              restrict the search to a given item kind.",
             "Accepted kinds are: <code>fn</code>, <code>mod</code>, <code>struct</code>, \
@@ -1684,11 +1684,11 @@ function preLoadCss(cssUrl) {
         addClass(div_infos, "infos");
         div_infos.innerHTML = "<h2>Search Tricks</h2>" + infos;
 
-        const rustdoc_version = document.createElement("span");
-        rustdoc_version.className = "bottom";
-        const rustdoc_version_code = document.createElement("code");
-        rustdoc_version_code.innerText = "rustdoc " + getVar("rustdoc-version");
-        rustdoc_version.appendChild(rustdoc_version_code);
+        const doc_version = document.createElement("span");
+        doc_version.className = "bottom";
+        const doc_version_code = document.createElement("code");
+        doc_version_code.innerText = "doc " + getVar("doc-version");
+        doc_version.appendChild(doc_version_code);
 
         const container = document.createElement("div");
         if (!isHelpPage) {
@@ -1703,7 +1703,7 @@ function preLoadCss(cssUrl) {
 
         container.appendChild(book_info);
         container.appendChild(side_by_side);
-        container.appendChild(rustdoc_version);
+        container.appendChild(doc_version);
 
         if (isHelpPage) {
             const help_section = document.createElement("section");
@@ -1817,19 +1817,19 @@ function preLoadCss(cssUrl) {
     const SIDEBAR_MAX = 500;
     // Don't let the body (including the gutter) get smaller than this
     //
-    // WARNING: RUSTDOC_MOBILE_BREAKPOINT MEDIA QUERY
+    // WARNING: DOC_MOBILE_BREAKPOINT MEDIA QUERY
     // Acceptable values for BODY_MIN are constrained by the mobile breakpoint
     // (which is the minimum size of the whole page where the sidebar exists)
     // and the default sidebar width:
     //
-    //     BODY_MIN <= RUSTDOC_MOBILE_BREAKPOINT - DEFAULT_SIDEBAR_WIDTH
+    //     BODY_MIN <= DOC_MOBILE_BREAKPOINT - DEFAULT_SIDEBAR_WIDTH
     //
     // At the time of this writing, the DEFAULT_SIDEBAR_WIDTH on src pages is
-    // 300px, and the RUSTDOC_MOBILE_BREAKPOINT is 700px, so BODY_MIN must be
+    // 300px, and the DOC_MOBILE_BREAKPOINT is 700px, so BODY_MIN must be
     // at most 400px. Otherwise, it would start out at the default size, then
     // grabbing the resize handle would suddenly cause it to jank to
     // its constraint-generated maximum.
-    const RUSTDOC_MOBILE_BREAKPOINT = 700;
+    const DOC_MOBILE_BREAKPOINT = 700;
     const BODY_MIN = 400;
     // At half-way past the minimum size, vanish the sidebar entirely
     const SIDEBAR_VANISH_THRESHOLD = SIDEBAR_MIN / 2;
@@ -1854,8 +1854,8 @@ function preLoadCss(cssUrl) {
         sidebarButton.addEventListener("click", e => {
             removeClass(document.documentElement, "hide-sidebar");
             updateLocalStorage("hide-sidebar", "false");
-            if (window.rustdocToggleSrcSidebar) {
-                window.rustdocToggleSrcSidebar();
+            if (window.docToggleSrcSidebar) {
+                window.docToggleSrcSidebar();
             }
             e.preventDefault();
         });
@@ -1915,9 +1915,9 @@ function preLoadCss(cssUrl) {
     // through that size when using the shrink-to-nothing gesture.
     const hideSidebar = function() {
         if (isSrcPage) {
-            window.rustdocCloseSourceSidebar();
+            window.docCloseSourceSidebar();
             updateLocalStorage("src-sidebar-width", null);
-            // [RUSTDOCIMPL] CSS variable fast path
+            // [DOCIMPL] CSS variable fast path
             //
             // The sidebar width variable is attached to the <html> element by
             // storage.js, because the sidebar and resizer don't exist yet.
@@ -1948,7 +1948,7 @@ function preLoadCss(cssUrl) {
     // remains visible all the time on there.
     const showSidebar = function() {
         if (isSrcPage) {
-            window.rustdocShowSourceSidebar();
+            window.docShowSourceSidebar();
         } else {
             removeClass(document.documentElement, "hide-sidebar");
             updateLocalStorage("hide-sidebar", "false");
@@ -1964,7 +1964,7 @@ function preLoadCss(cssUrl) {
     const changeSidebarSize = function(size) {
         if (isSrcPage) {
             updateLocalStorage("src-sidebar-width", size.toString());
-            // [RUSTDOCIMPL] CSS variable fast path
+            // [DOCIMPL] CSS variable fast path
             //
             // While this property is set on the HTML element at load time,
             // because the sidebar isn't actually loaded yet,
@@ -2028,7 +2028,7 @@ function preLoadCss(cssUrl) {
     };
     // Respond to the window resize event.
     window.addEventListener("resize", () => {
-        if (window.innerWidth < RUSTDOC_MOBILE_BREAKPOINT) {
+        if (window.innerWidth < DOC_MOBILE_BREAKPOINT) {
             return;
         }
         stopResize();
@@ -2138,12 +2138,12 @@ function preLoadCss(cssUrl) {
         return;
     }
     but.onclick = () => {
-        // Most page titles are '<Item> in <path::to::module> - Rust', except
+        // Most page titles are '<Item> in <path::to::module> - ', except
         // modules (which don't have the first part) and keywords/primitives
         // (which don't have a module path)
         const titleElement = document.querySelector("title");
         const title = titleElement && titleElement.textContent ?
-                      titleElement.textContent.replace(" - Rust", "") : "";
+                      titleElement.textContent.replace(" - ", "") : "";
         const [item, module] = title.split(" in ");
         const path = [item];
         if (module !== undefined) {
@@ -2269,12 +2269,12 @@ function preLoadCss(cssUrl) {
 // * In Firefox, copying text that includes elements with `user-select: none`
 //   inserts extra blank lines.
 //   - Firefox issue: https://bugzilla.mozilla.org/show_bug.cgi?id=1273836
-//   - Rust issue: https://github.com/rust-lang/rust/issues/141464
+//   -  issue: https://github.com/-lang//issues/141464
 //
 // * In Chromium-based browsers, `document.getSelection()` includes elements
 //   with `user-select: none`, causing unwanted line numbers to be copied.
 //   - Chromium issue: https://issues.chromium.org/issues/446539520
-//   - Rust issue: https://github.com/rust-lang/rust/issues/146816
+//   -  issue: https://github.com/-lang//issues/146816
 (function() {
     document.body.addEventListener("copy", event => {
         let target = nonnull(event.target);

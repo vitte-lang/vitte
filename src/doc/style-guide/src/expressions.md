@@ -10,7 +10,7 @@ A keyword before the block (such as `unsafe` or `async`) must be on the same
 line as the opening brace, with a single space between the keyword and the
 opening brace. Indent the contents of the block.
 
-```rust
+```
 fn block_as_stmt() {
     a_call();
 
@@ -45,7 +45,7 @@ fn unsafe_block_as_stmt() {
 
 If a block has an attribute, put it on its own line before the block:
 
-```rust
+```
 fn block_as_stmt() {
     #[an_attribute]
     {
@@ -73,7 +73,7 @@ closing brace.
 
 Examples:
 
-```rust
+```
 fn main() {
     // Single line
     let _ = { a_call() };
@@ -128,7 +128,7 @@ a return type, when there are statements, when there are comments inside the
 closure, or when the body expression is a control-flow expression that spans
 multiple lines. If using braces, follow the rules above for blocks. Examples:
 
-```rust
+```
 |arg1, arg2| expr
 
 move |arg1: i32, arg2: i32| -> i32 {
@@ -165,7 +165,7 @@ For each `field: value` entry, put a space after the colon only.
 Put a space before the opening brace. In the single-line form, put spaces after
 the opening brace and before the closing brace.
 
-```rust
+```
 Foo { field1, field2: 0 }
 let f = Foo {
     field1,
@@ -176,7 +176,7 @@ let f = Foo {
 Functional record update syntax is treated like a field, but it must never have
 a trailing comma. Do not put a space after `..`.
 
-```rust
+```
 let f = Foo {
     field1,
     ..an_expr
@@ -197,7 +197,7 @@ Where a single-line form is not possible, write the tuple across
 multiple lines, with each element of the tuple on its own block-indented line,
 and use a trailing comma.
 
-```rust
+```
 (a, b, c)
 
 let x = (
@@ -211,7 +211,7 @@ let x = (
 Do not put space between the identifier and the opening parenthesis. Otherwise,
 follow the rules for tuple literals:
 
-```rust
+```
 Foo(a, b, c)
 
 let x = Foo(
@@ -225,7 +225,7 @@ let x = Foo(
 Follow the formatting rules for the various struct literals. Prefer using the
 name of the enum as a qualifying name, unless the enum is in the prelude:
 
-```rust
+```
 Foo::Bar(a, b)
 Foo::Baz {
     field1,
@@ -246,7 +246,7 @@ only.
 Apply the same rules if using `vec!` or similar array-like macros; always use
 square brackets with such macros. Examples:
 
-```rust
+```
 fn main() {
     let x = [1, 2, 3];
     let y = vec![a, b, c, d];
@@ -260,7 +260,7 @@ for function calls. In any case, block-indent the contents of the initializer,
 and put line breaks after the opening square bracket and before the closing
 square bracket:
 
-```rust
+```
 fn main() {
     [
         a_long_expression();
@@ -285,7 +285,7 @@ bracket:
 
 Examples:
 
-```rust
+```
 fn main() {
     foo[42];
     &foo[..10];
@@ -321,7 +321,7 @@ If line-breaking, block-indent each subsequent line. For assignment operators,
 break after the operator; for all other operators, put the operator on the
 subsequent line. Put each sub-expression on its own line:
 
-```rust
+```
 foo_bar
     + bar
     + baz
@@ -344,7 +344,7 @@ that require line-breaking, and line-breaking before the first `as` suffices to
 make the remainder fit on the next line, don't break before any subsequent
 `as`; instead, leave the series of types all on the same line:
 
-```rust
+```
 let cstr = very_long_expression()
     as *const str as *const [u8] as *const std::os::raw::c_char;
 ```
@@ -356,14 +356,14 @@ before each `as` as with other binary operators.
 
 Do not include extraneous parentheses for `if` and `while` expressions.
 
-```rust
+```
 if true {
 }
 ```
 
 is better than
 
-```rust
+```
 if (true) {
 }
 ```
@@ -393,7 +393,7 @@ paren and the first argument, or between the last argument and the close paren.
 
 Do not put a comma after the last argument.
 
-```rust
+```
 foo(x, y, z)
 ```
 
@@ -405,7 +405,7 @@ multiple lines. In this case, put each argument on its own block-indented line,
 break after the opening parenthesis and before the closing parenthesis,
 and use a trailing comma:
 
-```rust
+```
 a_function_call(
     arg1,
     a_nested_call(a, b),
@@ -418,7 +418,7 @@ Follow the function rules for calling.
 
 Do not put any spaces around the `.`.
 
-```rust
+```
 x.foo().bar().baz(x, y, z);
 ```
 
@@ -442,7 +442,7 @@ format the arguments after the format string on a single line if they fit, with
 the format string on its own line. If the arguments are not small or do not
 fit, put each on its own line as with a function. For example:
 
-```rust
+```
 println!(
     "Hello {} and {}",
     name1, name2,
@@ -465,7 +465,7 @@ If formatting on multiple lines, put each field access or method call in the
 chain on its own line, with the line-break before the `.` and after any `?`.
 Block-indent each subsequent line:
 
-```rust
+```
 let foo = bar
     .baz?
     .qux();
@@ -475,7 +475,7 @@ If the length of the last line of the first element plus its indentation is
 less than or equal to the indentation of the second line, then combine the
 first and second lines if they fit. Apply this rule recursively.
 
-```rust
+```
 x.baz?
     .qux()
 
@@ -498,7 +498,7 @@ foo(
 If any element in a chain is formatted across multiple lines, put that element
 and any later elements on their own lines.
 
-```rust
+```
 a.b.c()?
     .foo(
         an_expr,
@@ -515,7 +515,7 @@ Prefer formatting the whole chain in multi-line style and each element on one
 line, rather than putting some elements on multiple lines and some on a single
 line, e.g.,
 
-```rust
+```
 // Better
 self.pre_comment
     .as_ref()
@@ -544,7 +544,7 @@ If there is an `else` component, then put the closing brace, `else`, any
 following clause, and the opening brace all on the same line, with a single
 space before and after the `else` keyword:
 
-```rust
+```
 if ... {
     ...
 } else {
@@ -566,7 +566,7 @@ and before `in` in a `for` expression; the following line should be block indent
 If the control line is broken for any reason, then the opening brace should be on its
 own line and not indented. Examples:
 
-```rust
+```
 while let Some(foo)
     = a_long_expression
 {
@@ -617,7 +617,7 @@ it only consists of two clauses, with the first, left-hand side operand being a 
 and the second, right-hand side operand being a single-line `let` clause. Otherwise,
 the control line must be broken and formatted according to the above rules. For example:
 
-```rust
+```
 if a && let Some(b) = foo() {
     // ...
 }
@@ -655,7 +655,7 @@ line, and that line is not indented beyond the indent on the first line of the
 control flow expression, then put the opening brace of the block on the same
 line with a preceding space. For example:
 
-```rust
+```
 if !self.config.file_lines().intersects(
     &self.codemap.lookup_line_range(
         stmt.span,
@@ -671,7 +671,7 @@ Put an `if else` or `if let else` on a single line if it occurs in expression
 context (i.e., is not a standalone statement), it contains a single `else`
 clause, and is *small*:
 
-```rust
+```
 let y = if x { 0 } else { 1 };
 
 // Examples that must be multi-line.
@@ -694,7 +694,7 @@ Prefer not to line-break inside the discriminant expression. Always break after
 the opening brace and before the closing brace. Block-indent the match arms
 once:
 
-```rust
+```
 match foo {
     // arms
 }
@@ -708,7 +708,7 @@ Use a trailing comma for a match arm if and only if not using a block.
 
 Never start a match arm pattern with `|`:
 
-```rust
+```
 match foo {
     // Don't do this.
     | foo => bar,
@@ -724,7 +724,7 @@ match foo {
 
 Prefer:
 
-```rust
+```
 match foo {
     foo => bar,
     a_very_long_pattern
@@ -749,7 +749,7 @@ Block-indent the body of a block arm.
 
 Examples:
 
-```rust
+```
 match foo {
     foo => bar,
     a_very_long_pattern | another_pattern if an_expression() => {
@@ -777,7 +777,7 @@ If the body is a single expression with no line comments and not a control flow
 expression, start it on the same line as the left-hand side. If not, then it
 must be in a block. Example:
 
-```rust
+```
 match foo {
     // A combinable expression.
     foo => a_function_call(another_call(
@@ -802,7 +802,7 @@ match foo {
 If using a block form on the right-hand side of a match arm makes it possible
 to avoid breaking on the left-hand side, do that:
 
-```rust
+```
     // Assuming the following line does not fit in the max width
     a_very_long_pattern | another_pattern => ALongStructName {
         ...
@@ -822,7 +822,7 @@ If the left-hand side must be split and there is an `if` clause, break before
 the `if` and block indent. In this case, always use a block body and start the
 body on a new line:
 
-```rust
+```
     a_very_long_pattern | another_pattern
         if expr =>
     {
@@ -834,7 +834,7 @@ If required to break the pattern, put each clause of the pattern on its own
 line with no additional indent, breaking before the `|`. If there is an `if`
 clause, use the above form:
 
-```rust
+```
     a_very_long_pattern
     | another_pattern
     | yet_another_pattern
@@ -854,7 +854,7 @@ clause, use the above form:
 If the pattern is multi-line, and the last line is less wide than the indent, do
 not put the `if` clause on a new line. E.g.,
 
-```rust
+```
     Token::Dimension {
          value,
          ref unit,
@@ -868,7 +868,7 @@ If every clause in a pattern is *small*, but the whole pattern does not fit on
 one line, then format the pattern across multiple lines with as many clauses
 per line as possible. Again, break before a `|`:
 
-```rust
+```
     foo | bar | baz
     | qux => {
         ...
@@ -899,7 +899,7 @@ if the result fits. Apply the same combining behaviour to any similar
 expressions which have multi-line, block-indented lists of sub-expressions
 delimited by parentheses (e.g., macros or tuple struct literals). E.g.,
 
-```rust
+```
 foo(bar(
     an_expr,
     another_expr,
@@ -932,7 +932,7 @@ closure with an explicit block, there are no other closure arguments, and all
 the arguments and the first line of the closure fit on the first line, use the
 same combining behavior:
 
-```rust
+```
 foo(first_arg, x, |param| {
     action();
     foo(param)
@@ -947,7 +947,7 @@ When writing a range with both upper and lower bounds, if the line must be
 broken within the range, break before the range operator and block indent the
 second line:
 
-```rust
+```
 a_long_expression
     ..another_long_expression
 ```

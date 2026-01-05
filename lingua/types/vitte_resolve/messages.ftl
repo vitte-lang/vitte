@@ -38,8 +38,8 @@ resolve_attempt_to_use_non_constant_value_in_constant_with_suggestion =
 resolve_attempt_to_use_non_constant_value_in_constant_without_suggestion =
     this would need to be a `{$suggestion}`
 
-resolve_attributes_starting_with_rustc_are_reserved =
-    attributes starting with `rustc` are reserved for use by the `rustc` compiler
+resolve_attributes_starting_with_c_are_reserved =
+    attributes starting with `c` are reserved for use by the `c` compiler
 
 resolve_binding_in_never_pattern =
     never patterns cannot contain variable bindings

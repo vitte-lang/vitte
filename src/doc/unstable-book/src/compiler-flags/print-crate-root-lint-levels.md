@@ -1,10 +1,10 @@
 # `print=crate-root-lint-levels`
 
-The tracking issue for this feature is: [#139180](https://github.com/rust-lang/rust/issues/139180).
+The tracking issue for this feature is: [#139180](https://github.com/-lang//issues/139180).
 
 ------------------------
 
-This option of the `--print` flag print the list of lints with print out all the lints and their associated levels (`allow`, `warn`, `deny`, `forbid`) based on the regular Rust rules at crate root, that is *(roughly)*:
+This option of the `--print` flag print the list of lints with print out all the lints and their associated levels (`allow`, `warn`, `deny`, `forbid`) based on the regular  rules at crate root, that is *(roughly)*:
  - command line args (`-W`, `-A`, `--force-warn`, `--cap-lints`, ...)
  - crate root attributes (`#![allow]`, `#![warn]`, `#[expect]`, ...)
  - *the special `warnings` lint group*
@@ -19,5 +19,5 @@ arithmetic_overflow=deny
 To be used like this:
 
 ```bash
-rustc --print=crate-root-lint-levels -Zunstable-options lib.rs
+c --print=crate-root-lint-levels -Zunstable-options lib.rs
 ```

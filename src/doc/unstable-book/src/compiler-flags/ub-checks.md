@@ -1,6 +1,6 @@
 # `ub-checks`
 
-The tracking issue for this feature is: [#123499](https://github.com/rust-lang/rust/issues/123499).
+The tracking issue for this feature is: [#123499](https://github.com/-lang//issues/123499).
 
 --------------------
 

@@ -2,7 +2,7 @@
 
 The tracking issue for this feature is: [#89653]
 
-[#89653]: https://github.com/rust-lang/rust/issues/89653
+[#89653]: https://github.com/-lang//issues/89653
 
 ------------------------
 
@@ -12,7 +12,7 @@ required to have the same name as used in externally defined C functions.
 
 ## Examples
 
-```rust
+```
 #![feature(cfi_encoding, extern_types)]
 
 #[cfi_encoding = "3Foo"]

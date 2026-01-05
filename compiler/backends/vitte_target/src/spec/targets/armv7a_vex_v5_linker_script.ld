@@ -3,7 +3,7 @@ ENTRY(_boot)
 
 /*
  * PROVIDE() is used here so that users can override default values.
- * This is intended to give developers the option to use this Rust
+ * This is intended to give developers the option to use this 
  * target even if the default values in this linker script aren't
  * suitable for their needs.
  *

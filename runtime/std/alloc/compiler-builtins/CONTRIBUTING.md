@@ -18,25 +18,25 @@
 
 ## Porting Reminders
 
-1. [Rust][prec-rust] and [C][prec-c] have slightly different operator
+1. [][prec-] and [C][prec-c] have slightly different operator
    precedence. C evaluates comparisons (`== !=`) before bitwise operations
-   (`& | ^`), while Rust evaluates the other way.
-2. C assumes wrapping operations everywhere. Rust panics on overflow when in
+   (`& | ^`), while  evaluates the other way.
+2. C assumes wrapping operations everywhere.  panics on overflow when in
    debug mode. Consider using the [Wrapping][wrap-ty] type or the explicit
    [wrapping_*][wrap-fn] functions where applicable.
-3. Note [C implicit casts][casts], especially integer promotion. Rust is much
+3. Note [C implicit casts][casts], especially integer promotion.  is much
    more explicit about casting, so be sure that any cast which affects the
-   output is ported to the Rust implementation.
-4. Rust has [many functions][i32] for integer or floating point manipulation in
+   output is ported to the  implementation.
+4.  has [many functions][i32] for integer or floating point manipulation in
    the standard library. Consider using one of these functions rather than
    porting a new one.
 
-[prec-rust]: https://doc.rust-lang.org/reference/expressions.html#expression-precedence
+[prec-]: https://doc.-lang.org/reference/expressions.html#expression-precedence
 [prec-c]: http://en.cppreference.com/w/c/language/operator_precedence
-[wrap-ty]: https://doc.rust-lang.org/core/num/struct.Wrapping.html
-[wrap-fn]: https://doc.rust-lang.org/std/primitive.i32.html#method.wrapping_add
+[wrap-ty]: https://doc.-lang.org/core/num/struct.Wrapping.html
+[wrap-fn]: https://doc.-lang.org/std/primitive.i32.html#method.wrapping_add
 [casts]: http://en.cppreference.com/w/cpp/language/implicit_conversion
-[i32]: https://doc.rust-lang.org/std/primitive.i32.html
+[i32]: https://doc.-lang.org/std/primitive.i32.html
 
 ## Tips and tricks
 
@@ -51,21 +51,21 @@
 - To reinterpret an integer as a float use the `f32::from_bits` constructor. The
   MUSL code uses the `SET_FLOAT_WORD` macro, or a union, to do this operation.
 - You may use other methods from core like `f64::is_nan`, etc. as appropriate.
-- Rust does not have hex float literals. This crate provides two `hf16!`,
+-  does not have hex float literals. This crate provides two `hf16!`,
   `hf32!`, `hf64!`, and `hf128!` which convert string literals to floats at
   compile time.
 
-  ```rust
+  ```
   assert_eq!(hf32!("0x1.ffep+8").to_bits(), 0x43fff000);
   assert_eq!(hf64!("0x1.ffep+8").to_bits(), 0x407ffe0000000000);
   ```
 
-- Rust code panics on arithmetic overflows when not optimized. You may need to
+-  code panics on arithmetic overflows when not optimized. You may need to
   use the [`Wrapping`] newtype to avoid this problem, or individual methods like
   [`wrapping_add`].
 
-[`Wrapping`]: https://doc.rust-lang.org/std/num/struct.Wrapping.html
-[`wrapping_add`]: https://doc.rust-lang.org/std/primitive.u32.html#method.wrapping_add
+[`Wrapping`]: https://doc.-lang.org/std/num/struct.Wrapping.html
+[`wrapping_add`]: https://doc.-lang.org/std/primitive.u32.html#method.wrapping_add
 
 ## Testing
 
@@ -169,8 +169,8 @@ cargo bench --no-default-features \
 ## Subtree synchronization
 
 `compiler-builtins` is included as a [Josh subtree] in the main compiler
-repository (`rust-lang/rust`). You can find a guide on how to create synchronization
-(pull and push) PRs at the [`rustc-dev-guide` page].
+repository (`-lang/`). You can find a guide on how to create synchronization
+(pull and push) PRs at the [`c-dev-guide` page].
 
-[Josh subtree]: https://rustc-dev-guide.rust-lang.org/external-repos.html#josh-subtrees
-[`rustc-dev-guide` page]: https://rustc-dev-guide.rust-lang.org/external-repos.html#synchronizing-a-josh-subtree
+[Josh subtree]: https://c-dev-guide.-lang.org/external-repos.html#josh-subtrees
+[`c-dev-guide` page]: https://c-dev-guide.-lang.org/external-repos.html#synchronizing-a-josh-subtree

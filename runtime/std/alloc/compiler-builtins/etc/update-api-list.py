@@ -24,7 +24,7 @@ ROOT_DIR = ETC_DIR.parent
 IGNORED_SOURCES = ["libm/src/libm_helper.rs", "libm/src/math/support/float_traits.rs"]
 
 IndexTy: TypeAlias = dict[str, dict[str, Any]]
-"""Type of the `index` item in rustdoc's JSON output"""
+"""Type of the `index` item in doc's JSON output"""
 
 
 def eprint(*args, **kwargs):
@@ -53,19 +53,19 @@ class Crate:
         self.defs = {}
         self.types = {}
 
-        j = self.get_rustdoc_json()
+        j = self.get_doc_json()
         index: IndexTy = j["index"]
         self._init_function_list(index)
         self._init_defs(index)
         self._init_types()
 
     @staticmethod
-    def get_rustdoc_json() -> dict[Any, Any]:
-        """Get rustdoc's JSON output for the `libm` crate."""
+    def get_doc_json() -> dict[Any, Any]:
+        """Get doc's JSON output for the `libm` crate."""
 
         j = sp.check_output(
             [
-                "rustdoc",
+                "doc",
                 "libm/src/lib.rs",
                 "--edition=2021",
                 "--document-private-items",
@@ -82,7 +82,7 @@ class Crate:
         return j
 
     def _init_function_list(self, index: IndexTy) -> None:
-        """Get a list of public functions from rustdoc JSON output.
+        """Get a list of public functions from doc JSON output.
 
         Note that this only finds functions that are reexported in `lib.rs`, this will
         need to be adjusted if we need to account for functions that are defined there, or
@@ -304,7 +304,7 @@ def diff_and_exit(actual: str, expected: str, name: str):
 
 
 def base_name(name: str) -> tuple[str, str]:
-    """Return the basename and type from a full function name. Keep in sync with Rust's
+    """Return the basename and type from a full function name. Keep in sync with 's
     `fn base_name`.
     """
     known_mappings = [

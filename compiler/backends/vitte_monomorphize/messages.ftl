@@ -24,7 +24,7 @@ monomorphize_abi_error_unsupported_unsized_parameter =
     [true] called
     *[false] defined
   } here
-  .help = only rustic ABIs support unsized parameters
+  .help = only ic ABIs support unsized parameters
 
 monomorphize_abi_error_unsupported_vector_type =
   this function {$is_call ->
@@ -73,6 +73,6 @@ monomorphize_recursion_limit =
     .note = `{$def_path_str}` defined here
 
 monomorphize_start_not_found = using `fn main` requires the standard library
-    .help = use `#![no_main]` to bypass the Rust generated entrypoint and declare a platform specific entrypoint yourself, usually with `#[no_mangle]`
+    .help = use `#![no_main]` to bypass the  generated entrypoint and declare a platform specific entrypoint yourself, usually with `#[no_mangle]`
 
 monomorphize_symbol_already_defined = symbol `{$symbol}` is already defined

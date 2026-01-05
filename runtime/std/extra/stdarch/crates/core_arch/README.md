@@ -1,4 +1,4 @@
-`core::arch` - Rust's core library architecture-specific intrinsics
+`core::arch` - 's core library architecture-specific intrinsics
 =======
 
 The `core::arch` module implements architecture-dependent intrinsics (e.g. SIMD).
@@ -8,7 +8,7 @@ The `core::arch` module implements architecture-dependent intrinsics (e.g. SIMD)
 `core::arch` is available as part of `libcore` and it is re-exported by
 `libstd`. Prefer using it via `core::arch` or `std::arch` than via this crate.
 
-Using `core::arch` via this crate requires nightly Rust, and it can (and does)
+Using `core::arch` via this crate requires nightly , and it can (and does)
 break often. The only cases in which you should consider using it via this crate
 are:
 
@@ -18,9 +18,9 @@ are:
   `xargo` and re-compiling `libcore`/`libstd` as appropriate instead of using
   this crate.
 
-* using some features that might not be available even behind unstable Rust
+* using some features that might not be available even behind unstable 
   features. We try to keep these to a minimum. If you need to use some of these
-  features, please open an issue so that we can expose them in nightly Rust and
+  features, please open an issue so that we can expose them in nightly  and
   you can use them from there.
 
 # Documentation
@@ -34,14 +34,14 @@ are:
 * [How to get started][contrib]
 * [How to help implement intrinsics][help-implement]
 
-[contrib]: https://github.com/rust-lang/stdarch/blob/HEAD/CONTRIBUTING.md
-[help-implement]: https://github.com/rust-lang/stdarch/issues/40
-[i686]: https://rust-lang.github.io/stdarch/i686/core_arch/
-[x86_64]: https://rust-lang.github.io/stdarch/x86_64/core_arch/
-[arm]: https://rust-lang.github.io/stdarch/arm/core_arch/
-[aarch64]: https://rust-lang.github.io/stdarch/aarch64/core_arch/
-[powerpc]: https://rust-lang.github.io/stdarch/powerpc/core_arch/
-[powerpc64]: https://rust-lang.github.io/stdarch/powerpc64/core_arch/
+[contrib]: https://github.com/-lang/stdarch/blob/HEAD/CONTRIBUTING.md
+[help-implement]: https://github.com/-lang/stdarch/issues/40
+[i686]: https://-lang.github.io/stdarch/i686/core_arch/
+[x86_64]: https://-lang.github.io/stdarch/x86_64/core_arch/
+[arm]: https://-lang.github.io/stdarch/arm/core_arch/
+[aarch64]: https://-lang.github.io/stdarch/aarch64/core_arch/
+[powerpc]: https://-lang.github.io/stdarch/powerpc/core_arch/
+[powerpc64]: https://-lang.github.io/stdarch/powerpc64/core_arch/
 
 # License
 

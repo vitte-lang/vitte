@@ -46,7 +46,7 @@ expand_feature_not_allowed =
 expand_feature_removed =
     feature has been removed
     .label = feature has been removed
-    .note = removed in {$removed_rustc_version}{$pull_note}
+    .note = removed in {$removed_c_version}{$pull_note}
     .reason = {$reason}
 
 expand_file_modules_in_proc_macro_input_are_unstable =
@@ -84,7 +84,7 @@ expand_macro_body_stability =
     .label2 = body stability attribute affects this macro
 
 expand_macro_call_unused_doc_comment = unused doc comment
-    .label = rustdoc does not generate documentation for macro invocations
+    .label = doc does not generate documentation for macro invocations
     .help = to document an item produced by a macro, the macro must produce the documentation as part of its expansion
 
 expand_macro_const_stability =
@@ -161,7 +161,7 @@ expand_mve_unrecognized_expr =
 expand_mve_unrecognized_var =
     variable `{$key}` is not recognized in meta-variable expression
 
-expand_or_patterns_back_compat = the meaning of the `pat` fragment specifier is changing in Rust 2021, which may affect this macro
+expand_or_patterns_back_compat = the meaning of the `pat` fragment specifier is changing in  2021, which may affect this macro
     .suggestion = use pat_param to preserve semantics
 
 expand_proc_macro_back_compat = using an old version of `{$crate_name}`

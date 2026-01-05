@@ -1,8 +1,8 @@
 # We document platform support for minimum glibc 2.17 and kernel 3.2.
 # CentOS 7 has headers for kernel 3.10, but that's fine as long as we don't
-# actually use newer APIs in rustc or std without a fallback. It's more
+# actually use newer APIs in c or std without a fallback. It's more
 # important that we match glibc for ELF symbol versioning.
-FROM ghcr.io/rust-lang/centos:7
+FROM ghcr.io/-lang/centos:7
 
 WORKDIR /build
 
@@ -42,11 +42,11 @@ RUN yum upgrade -y && \
       zlib-devel.x86_64 \
       && yum clean all
 
-RUN mkdir -p /rustroot/bin
+RUN mkdir -p /root/bin
 
-ENV PATH=/rustroot/bin:$PATH
-ENV LD_LIBRARY_PATH=/rustroot/lib64:/rustroot/lib32:/rustroot/lib
-ENV PKG_CONFIG_PATH=/rustroot/lib/pkgconfig
+ENV PATH=/root/bin:$PATH
+ENV LD_LIBRARY_PATH=/root/lib64:/root/lib32:/root/lib
+ENV PKG_CONFIG_PATH=/root/lib/pkgconfig
 # Clang needs to access GCC headers to enable linker plugin LTO
 WORKDIR /tmp
 RUN mkdir /home/user
@@ -80,21 +80,21 @@ ENV PGO_HOST=x86_64-unknown-linux-gnu
 
 ENV HOSTS=x86_64-unknown-linux-gnu
 
-ENV RUST_CONFIGURE_ARGS \
+ENV _CONFIGURE_ARGS \
       --enable-full-tools \
       --enable-sanitizers \
       --enable-profiler \
       --enable-compiler-docs \
       --set target.x86_64-unknown-linux-gnu.linker=clang \
-      --set target.x86_64-unknown-linux-gnu.ar=/rustroot/bin/llvm-ar \
-      --set target.x86_64-unknown-linux-gnu.ranlib=/rustroot/bin/llvm-ranlib \
+      --set target.x86_64-unknown-linux-gnu.ar=/root/bin/llvm-ar \
+      --set target.x86_64-unknown-linux-gnu.ranlib=/root/bin/llvm-ranlib \
       --set llvm.thin-lto=true \
       --set llvm.ninja=false \
       --set llvm.libzstd=true \
-      --set rust.jemalloc \
-      --set rust.bootstrap-override-lld=true \
-      --set rust.lto=thin \
-      --set rust.codegen-units=1
+      --set .jemalloc \
+      --set .bootstrap-override-lld=true \
+      --set .lto=thin \
+      --set .codegen-units=1
 
 COPY host-x86_64/dist-x86_64-linux/dist.sh /scripts/
 COPY host-x86_64/dist-x86_64-linux/dist-alt.sh /scripts/
@@ -114,4 +114,4 @@ ENV DIST_REQUIRE_ALL_TOOLS 1
 
 # FIXME: Without this, LLVMgold.so incorrectly resolves to the system
 # libstdc++, instead of the one we build.
-ENV LD_PRELOAD=/rustroot/lib64/libstdc++.so.6
+ENV LD_PRELOAD=/root/lib64/libstdc++.so.6

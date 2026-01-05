@@ -27,9 +27,9 @@ runners:
     <<: *base-job
 envs:
   env-x86_64-apple-tests: &env-x86_64-apple-tests
-    SCRIPT: ./x.py check compiletest && ./x.py --stage 2 test --skip tests/ui --skip tests/rustdoc -- --exact
-    RUST_CONFIGURE_ARGS: --build=x86_64-apple-darwin --enable-sanitizers --enable-profiler --set rust.jemalloc
-    RUSTC_RETRY_LINKER_ON_SEGFAULT: 1
+    SCRIPT: ./x.py check compiletest && ./x.py --stage 2 test --skip tests/ui --skip tests/doc -- --exact
+    _CONFIGURE_ARGS: --build=x86_64-apple-darwin --enable-sanitizers --enable-profiler --set .jemalloc
+    C_RETRY_LINKER_ON_SEGFAULT: 1
     # Ensure that host tooling is tested on our minimum supported macOS version.
     MACOSX_DEPLOYMENT_TARGET: 10.12
     MACOSX_STD_DEPLOYMENT_TARGET: 10.12
@@ -40,7 +40,7 @@ envs:
 
   production:
     &production
-    DEPLOY_BUCKET: rust-lang-ci2
+    DEPLOY_BUCKET: -lang-ci2
     # AWS_SECRET_ACCESS_KEYs are stored in GitHub's secrets storage, named
     # AWS_SECRET_ACCESS_KEY_<keyid>. Including the key id in the name allows to
     # rotate them in a single branch while keeping the old key in another
@@ -93,7 +93,7 @@ auto:
   # x86_64-gnu-llvm-18-1 skips tests that run in x86_64-gnu-llvm-18-{2,3}.
   - name: x86_64-gnu-llvm-18-1
     env:
-      RUST_BACKTRACE: 1
+      _BACKTRACE: 1
       READ_ONLY_SRC: "0"
       IMAGE: x86_64-gnu-llvm-18
       DOCKER_SCRIPT: stage_2_test_set1.sh
@@ -107,11 +107,11 @@ auto:
   - name: aarch64-apple
     env:
       SCRIPT: ./x.py --stage 2 test --host=aarch64-apple-darwin --target=aarch64-apple-darwin
-      RUST_CONFIGURE_ARGS: >-
+      _CONFIGURE_ARGS: >-
         --enable-sanitizers
         --enable-profiler
-        --set rust.jemalloc
-      RUSTC_RETRY_LINKER_ON_SEGFAULT: 1
+        --set .jemalloc
+      C_RETRY_LINKER_ON_SEGFAULT: 1
       SELECT_XCODE: /Applications/Xcode_15.4.app
       USE_XCODE_CLANG: 1
       # Aarch64 tooling only needs to support macOS 11.0 and up as nothing else
@@ -129,7 +129,7 @@ auto:
 
   - name: dist-i686-msvc
     env:
-      RUST_CONFIGURE_ARGS: >-
+      _CONFIGURE_ARGS: >-
         --build=i686-pc-windows-msvc
         --host=i686-pc-windows-msvc
         --target=i686-pc-windows-msvc,i586-pc-windows-msvc

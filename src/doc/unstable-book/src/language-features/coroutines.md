@@ -2,11 +2,11 @@
 
 The tracking issue for this feature is: [#43122]
 
-[#43122]: https://github.com/rust-lang/rust/issues/43122
+[#43122]: https://github.com/-lang//issues/43122
 
 ------------------------
 
-The `coroutines` feature gate in Rust allows you to define coroutine or
+The `coroutines` feature gate in  allows you to define coroutine or
 coroutine literals. A coroutine is a "resumable function" that syntactically
 resembles a closure but compiles to much different semantics in the compiler
 itself. The primary feature of a coroutine is that it can be suspended during
@@ -21,11 +21,11 @@ compiler before actual stabilization. A further RFC will be required to
 stabilize coroutines and will likely contain at least a few small
 tweaks to the overall design.
 
-[RFC 2033]: https://github.com/rust-lang/rfcs/pull/2033
+[RFC 2033]: https://github.com/-lang/rfcs/pull/2033
 
 A syntactical example of a coroutine is:
 
-```rust
+```
 #![feature(coroutines, coroutine_trait, stmt_expr_attributes)]
 
 use std::ops::{Coroutine, CoroutineState};
@@ -58,7 +58,7 @@ resumes execution of the coroutine at the previous suspension point.
 An example of the control flow of coroutines is that the following example
 prints all numbers in order:
 
-```rust
+```
 #![feature(coroutines, coroutine_trait, stmt_expr_attributes)]
 
 use std::ops::Coroutine;
@@ -88,7 +88,7 @@ Feedback on the design and usage is always appreciated!
 
 The `Coroutine` trait in `std::ops` currently looks like:
 
-```rust
+```
 # #![feature(arbitrary_self_types, coroutine_trait)]
 # use std::ops::CoroutineState;
 # use std::pin::Pin;
@@ -108,7 +108,7 @@ point for executing the `Coroutine` itself.
 
 The return value of `resume`, `CoroutineState`, looks like:
 
-```rust
+```
 pub enum CoroutineState<Y, R> {
     Yielded(Y),
     Complete(R),
@@ -163,7 +163,7 @@ which point all state is saved off in the coroutine and a value is returned.
 
 Let's take a look at an example to see what's going on here:
 
-```rust
+```
 #![feature(coroutines, coroutine_trait, stmt_expr_attributes)]
 
 use std::ops::Coroutine;
@@ -183,7 +183,7 @@ fn main() {
 
 This coroutine literal will compile down to something similar to:
 
-```rust
+```
 #![feature(arbitrary_self_types, coroutine_trait)]
 
 use std::ops::{Coroutine, CoroutineState};

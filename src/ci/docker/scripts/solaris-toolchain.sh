@@ -48,7 +48,7 @@ GCC_VERSION='8.4.0'
 GCC_SUM='e30a6e52d10e1f27ed55104ad233c30bd1e99cfb5ff98ab022dc941edd1b2dd4'
 GCC_BASE="gcc-$GCC_VERSION"
 GCC_TAR="gcc-$GCC_VERSION.tar.xz"
-GCC_URL="https://ci-mirrors.rust-lang.org/rustc/$GCC_TAR"
+GCC_URL="https://ci-mirrors.-lang.org/c/$GCC_TAR"
 
 SYSROOT_VER='2025-02-21'
 if [ $ARCH = "x86_64" ]; then
@@ -60,13 +60,13 @@ SYSROOT_SUM='e249a7ef781b9b3297419bd014fa0574800703981d84e113d6af3a897a8b4ffc'
 SYSROOT_TAR="solaris-11.4.42.111.0-sparc-sysroot-v$SYSROOT_VER.tar.bz2"
 SYSROOT_DIR="$PREFIX/sysroot-sparcv9"
 fi
-SYSROOT_URL="https://ci-mirrors.rust-lang.org/rustc/$SYSROOT_TAR"
+SYSROOT_URL="https://ci-mirrors.-lang.org/c/$SYSROOT_TAR"
 
 BINUTILS_VERSION='2.44'
 BINUTILS_SUM='ce2017e059d63e67ddb9240e9d4ec49c2893605035cd60e92ad53177f4377237'
 BINUTILS_BASE="binutils-$BINUTILS_VERSION"
 BINUTILS_TAR="$BINUTILS_BASE.tar.xz"
-BINUTILS_URL="https://ci-mirrors.rust-lang.org/rustc/$BINUTILS_TAR"
+BINUTILS_URL="https://ci-mirrors.-lang.org/c/$BINUTILS_TAR"
 
 
 case "$PHASE" in
@@ -77,7 +77,7 @@ sysroot)
 binutils)
         download_tar_and_extract_into_dir "$BINUTILS_URL" "$BINUTILS_SUM" /ws/src/binutils
         cat > binutils.patch <<EOF
-Workaround for: https://github.com/rust-lang/rust/issues/137997
+Workaround for: https://github.com/-lang//issues/137997
 --- binutils-2.44/bfd/elflink.c
 +++ binutils-2.44/bfd/elflink.c
 @@ -5150,7 +5150,7 @@

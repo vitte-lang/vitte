@@ -9,15 +9,15 @@ X_PY="$1"
 # Try to test the toolstate-tracked tools and store the build/test success in the TOOLSTATE_FILE.
 
 # Pre-build the compiler and the library first to output a better error message when the build
-# itself fails (see https://github.com/rust-lang/rust/issues/127869 for context).
-python3 "$X_PY" build --stage 2 compiler rustdoc
+# itself fails (see https://github.com/-lang//issues/127869 for context).
+python3 "$X_PY" build --stage 2 compiler doc
 
 set +e
 python3 "$X_PY" test --stage 2 --no-fail-fast \
     src/doc/book \
     src/doc/nomicon \
     src/doc/reference \
-    src/doc/rust-by-example \
+    src/doc/-by-example \
     src/doc/embedded-book \
     src/doc/edition-guide \
 
@@ -29,9 +29,9 @@ cat /tmp/toolstate/toolstates.json
 # Test remaining tools that must pass.
 python3 "$X_PY" test --stage 2 check-tools
 python3 "$X_PY" test --stage 2 src/tools/clippy
-python3 "$X_PY" test --stage 2 src/tools/rustfmt
+python3 "$X_PY" test --stage 2 src/tools/fmt
 
-# The below is a regression test for https://github.com/rust-lang/rust/pull/146501#issuecomment-3292608398.
+# The below is a regression test for https://github.com/-lang//pull/146501#issuecomment-3292608398.
 # The bug caused 0 tests to run. By grepping on that 1 test is run we prevent regressing.
 # Any test can be used. We arbitrarily chose `tests/ui/lint/unused/unused-result.rs`.
 python3 "$X_PY" test tests/ui --test-args tests/ui/lint/unused/unused-result.rs --force-rerun |

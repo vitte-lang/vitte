@@ -1,4 +1,4 @@
-FROM ghcr.io/rust-lang/ubuntu:22.04
+FROM ghcr.io/-lang/ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -67,7 +67,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY scripts/sccache.sh /scripts/
 RUN sh /scripts/sccache.sh
 
-# Fix rustc_codegen_gcc lto issues.
+# Fix c_codegen_gcc lto issues.
 ENV GCC_EXEC_PREFIX="/usr/lib/gcc/"
 
 COPY host-x86_64/x86_64-gnu-tools/checktools.sh /tmp/
@@ -76,18 +76,18 @@ COPY scripts/nodejs.sh /scripts/
 RUN sh /scripts/nodejs.sh /node
 ENV PATH="/node/bin:${PATH}"
 
-ENV RUST_CONFIGURE_ARGS \
+ENV _CONFIGURE_ARGS \
   --build=x86_64-unknown-linux-gnu \
   --save-toolstates=/tmp/toolstate/toolstates.json \
   --enable-new-symbol-mangling
 
 ENV HOST_TARGET x86_64-unknown-linux-gnu
 
-# FIXME(#133381): currently rustc alt builds do *not* have rustc debug
-# assertions enabled! Therefore, we cannot force download CI rustc.
-#ENV FORCE_CI_RUSTC 1
+# FIXME(#133381): currently c alt builds do *not* have c debug
+# assertions enabled! Therefore, we cannot force download CI c.
+#ENV FORCE_CI_C 1
 
 COPY scripts/shared.sh /scripts/
 
 ENV SCRIPT /tmp/checktools.sh ../x.py && \
-  python3 ../x.py test tests/rustdoc-gui --stage 2 --test-args "'--jobs 1'"
+  python3 ../x.py test tests/doc-gui --stage 2 --test-args "'--jobs 1'"

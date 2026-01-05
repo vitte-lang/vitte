@@ -232,7 +232,7 @@ hir_analysis_inherent_primitive_ty_note = you could also try moving the referenc
 
 hir_analysis_inherent_ty_outside = cannot define inherent `impl` for a type outside of the crate where the type is defined
     .help = consider moving this inherent impl into the crate defining the type if possible
-    .span_help = alternatively add `#[rustc_has_incoherent_inherent_impls]` to the type and `#[rustc_allow_incoherent_impl]` to the relevant impl items
+    .span_help = alternatively add `#[c_has_incoherent_inherent_impls]` to the type and `#[c_allow_incoherent_impl]` to the relevant impl items
 
 hir_analysis_inherent_ty_outside_new = cannot define inherent `impl` for a type outside of the crate where the type is defined
     .label = impl for type defined outside of crate
@@ -240,11 +240,11 @@ hir_analysis_inherent_ty_outside_new = cannot define inherent `impl` for a type 
 
 hir_analysis_inherent_ty_outside_primitive = cannot define inherent `impl` for primitive types outside of `core`
     .help = consider moving this inherent impl into `core` if possible
-    .span_help = alternatively add `#[rustc_allow_incoherent_impl]` to the relevant impl items
+    .span_help = alternatively add `#[c_allow_incoherent_impl]` to the relevant impl items
 
 hir_analysis_inherent_ty_outside_relevant = cannot define inherent `impl` for a type outside of the crate where the type is defined
     .help = consider moving this inherent impl into the crate defining the type if possible
-    .span_help = alternatively add `#[rustc_allow_incoherent_impl]` to the relevant impl items
+    .span_help = alternatively add `#[c_allow_incoherent_impl]` to the relevant impl items
 
 hir_analysis_invalid_generic_receiver_ty = invalid generic `self` parameter type: `{$receiver_ty}`
     .note = type of `self` must not be a method generic parameter type
@@ -388,7 +388,7 @@ hir_analysis_only_current_traits_name = this is not defined in the current crate
 
 hir_analysis_only_current_traits_note = define and implement a trait or new type instead
 
-hir_analysis_only_current_traits_note_more_info = for more information see https://doc.rust-lang.org/reference/items/implementations.html#orphan-rules
+hir_analysis_only_current_traits_note_more_info = for more information see https://doc.-lang.org/reference/items/implementations.html#orphan-rules
 
 hir_analysis_only_current_traits_note_uncovered = impl doesn't have any local type before any uncovered type parameters
 
@@ -428,7 +428,7 @@ hir_analysis_param_not_captured = `impl Trait` must mention all {$kind} paramete
     .label = {$kind} parameter is implicitly captured by this `impl Trait`
     .note = currently, all {$kind} parameters are required to be mentioned in the precise captures list
 
-hir_analysis_paren_sugar_attribute = the `#[rustc_paren_sugar]` attribute is a temporary means of controlling which traits can use parenthetical notation
+hir_analysis_paren_sugar_attribute = the `#[c_paren_sugar]` attribute is a temporary means of controlling which traits can use parenthetical notation
     .help = add `#![feature(unboxed_closures)]` to the crate attributes to use it
 
 hir_analysis_parenthesized_fn_trait_expansion =
@@ -469,12 +469,12 @@ hir_analysis_rpitit_refined = impl trait in impl method signature does not match
     .label = return type from trait method defined here
     .unmatched_bound_label = this bound is stronger than that defined on the trait
     .note = add `#[allow(refining_impl_trait)]` if it is intended for this to be part of the public API of this crate
-    .feedback_note = we are soliciting feedback, see issue #121718 <https://github.com/rust-lang/rust/issues/121718> for more information
+    .feedback_note = we are soliciting feedback, see issue #121718 <https://github.com/-lang//issues/121718> for more information
 
 hir_analysis_rpitit_refined_lifetimes = impl trait in impl method captures fewer lifetimes than in trait
     .suggestion = modify the `use<..>` bound to capture the same lifetimes that the trait does
     .note = add `#[allow(refining_impl_trait)]` if it is intended for this to be part of the public API of this crate
-    .feedback_note = we are soliciting feedback, see issue #121718 <https://github.com/rust-lang/rust/issues/121718> for more information
+    .feedback_note = we are soliciting feedback, see issue #121718 <https://github.com/-lang//issues/121718> for more information
 
 hir_analysis_self_in_impl_self =
     `Self` is not valid in the self type of an impl block
@@ -490,7 +490,7 @@ hir_analysis_self_ty_not_captured = `impl Trait` must mention the `Self` type of
 hir_analysis_simd_ffi_highly_experimental = use of SIMD type{$snip} in FFI is highly experimental and may result in invalid code
     .help = add `#![feature(simd_ffi)]` to the crate attributes to enable
 
-hir_analysis_specialization_trait = implementing `rustc_specialization_trait` traits is unstable
+hir_analysis_specialization_trait = implementing `c_specialization_trait` traits is unstable
     .help = add `#![feature(min_specialization)]` to the crate attributes to enable
 
 hir_analysis_static_specialize = cannot specialize on `'static` lifetime

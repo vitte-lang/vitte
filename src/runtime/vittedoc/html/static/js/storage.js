@@ -1,4 +1,4 @@
-// storage.js is loaded in the `<head>` of all rustdoc pages and doesn't
+// storage.js is loaded in the `<head>` of all doc pages and doesn't
 // use `async` or `defer`. That means it blocks further parsing and rendering
 // of the page: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script.
 // This makes it the correct place to act on settings that affect the display of
@@ -6,7 +6,7 @@
 "use strict";
 
 /**
- * @import * as rustdoc from "./rustdoc.d.ts";
+ * @import * as doc from "./doc.d.ts";
  * @import * as stringdex from "./stringdex.d.ts";
  */
 
@@ -76,7 +76,7 @@ function getSettingValue(settingName) {
     const current = getCurrentValue(settingName);
     if (current === null && settingsDataset !== null) {
         // See the comment for `default_settings.into_iter()` etc. in
-        // `Options::from_matches` in `librustdoc/config.rs`.
+        // `Options::from_matches` in `libdoc/config.rs`.
         const def = settingsDataset[settingName.replace(/-/g,"_")];
         if (def !== undefined) {
             return def;
@@ -159,7 +159,7 @@ function onEachLazy(lazyArray, func) {
 
 /**
  * Set a configuration value. This uses localstorage,
- * with a `rustdoc-` prefix, to avoid clashing with other
+ * with a `doc-` prefix, to avoid clashing with other
  * web apps that may be running in the same domain (for example, mdBook).
  * If localStorage is disabled, this function does nothing.
  *
@@ -169,9 +169,9 @@ function onEachLazy(lazyArray, func) {
 function updateLocalStorage(name, value) {
     try {
         if (value === null) {
-            window.localStorage.removeItem("rustdoc-" + name);
+            window.localStorage.removeItem("doc-" + name);
         } else {
-            window.localStorage.setItem("rustdoc-" + name, value);
+            window.localStorage.setItem("doc-" + name, value);
         }
     } catch {
         // localStorage is not accessible, do nothing
@@ -189,21 +189,21 @@ function updateLocalStorage(name, value) {
  */
 function getCurrentValue(name) {
     try {
-        return window.localStorage.getItem("rustdoc-" + name);
+        return window.localStorage.getItem("doc-" + name);
     } catch {
         return null;
     }
 }
 
 /**
- * Get a value from the rustdoc-vars div, which is used to convey data from
- * Rust to the JS. If there is no such element, return null.
+ * Get a value from the doc-vars div, which is used to convey data from
+ *  to the JS. If there is no such element, return null.
  *
  * @param {string} name
  * @returns {string|null}
  */
 function getVar(name) {
-    const el = document.querySelector("head > meta[name='rustdoc-vars']");
+    const el = document.querySelector("head > meta[name='doc-vars']");
     return el ? el.getAttribute("data-" + name) : null;
 }
 
@@ -297,7 +297,7 @@ const updateTheme = (function() {
 // @ts-ignore
 if (getSettingValue("use-system-theme") !== "false" && window.matchMedia) {
     // update the preferred dark theme if the user is already using a dark theme
-    // See https://github.com/rust-lang/rust/pull/77809#issuecomment-707875732
+    // See https://github.com/-lang//pull/77809#issuecomment-707875732
     if (getSettingValue("use-system-theme") === null
         && getSettingValue("preferred-dark-theme") === null
         && localStoredTheme !== null
@@ -368,7 +368,7 @@ window.addEventListener("pageshow", ev => {
     }
 });
 
-// Custom elements are used to insert some JS-dependent features into Rustdoc,
+// Custom elements are used to insert some JS-dependent features into doc,
 // because the [parser] runs the connected callback
 // synchronously. It needs to be added synchronously so that nothing below it
 // becomes visible until after it's done. Otherwise, you get layout jank.
@@ -376,7 +376,7 @@ window.addEventListener("pageshow", ev => {
 // That's also why this is in storage.js and not main.js.
 //
 // [parser]: https://html.spec.whatwg.org/multipage/parsing.html
-class RustdocToolbarElement extends HTMLElement {
+class docToolbarElement extends HTMLElement {
     constructor() {
         super();
     }
@@ -402,8 +402,8 @@ title="Collapse sections (shift-click to also collapse impl blocks)"><span
 class="label">Summary</span></button>`;
     }
 }
-window.customElements.define("rustdoc-toolbar", RustdocToolbarElement);
-class RustdocTopBarElement extends HTMLElement {
+window.customElements.define("doc-toolbar", docToolbarElement);
+class docTopBarElement extends HTMLElement {
     constructor() {
         super();
     }
@@ -430,4 +430,4 @@ class RustdocTopBarElement extends HTMLElement {
         `;
     }
 }
-window.customElements.define("rustdoc-topbar", RustdocTopBarElement);
+window.customElements.define("doc-topbar", docTopBarElement);

@@ -13,19 +13,19 @@ const NAME_OFFSET = 0;
 const DIRS_OFFSET = 1;
 const FILES_OFFSET = 2;
 
-// WARNING: RUSTDOC_MOBILE_BREAKPOINT MEDIA QUERY
+// WARNING: DOC_MOBILE_BREAKPOINT MEDIA QUERY
 // If you update this line, then you also need to update the media query with the same
-// warning in rustdoc.css
-const RUSTDOC_MOBILE_BREAKPOINT = 700;
+// warning in doc.css
+const DOC_MOBILE_BREAKPOINT = 700;
 
 function closeSidebarIfMobile() {
-    if (window.innerWidth < RUSTDOC_MOBILE_BREAKPOINT) {
+    if (window.innerWidth < DOC_MOBILE_BREAKPOINT) {
         updateLocalStorage("source-sidebar-show", "false");
     }
 }
 
 /**
- * @param {rustdoc.Dir} elem
+ * @param {doc.Dir} elem
  * @param {HTMLElement} parent
  * @param {string} fullPath
  * @param {boolean} hasFoundFile
@@ -77,21 +77,21 @@ function createDirEntry(elem, parent, fullPath, hasFoundFile) {
     return hasFoundFile;
 }
 
-window.rustdocCloseSourceSidebar = () => {
+window.docCloseSourceSidebar = () => {
     removeClass(document.documentElement, "src-sidebar-expanded");
     updateLocalStorage("source-sidebar-show", "false");
 };
 
-window.rustdocShowSourceSidebar = () => {
+window.docShowSourceSidebar = () => {
     addClass(document.documentElement, "src-sidebar-expanded");
     updateLocalStorage("source-sidebar-show", "true");
 };
 
-window.rustdocToggleSrcSidebar = () => {
+window.docToggleSrcSidebar = () => {
     if (document.documentElement.classList.contains("src-sidebar-expanded")) {
-        window.rustdocCloseSourceSidebar();
+        window.docCloseSourceSidebar();
     } else {
-        window.rustdocShowSourceSidebar();
+        window.docShowSourceSidebar();
     }
 };
 

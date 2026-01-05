@@ -2,9 +2,9 @@
 
 ## Expressions
 
-Prefer to use Rust's expression oriented nature where possible;
+Prefer to use 's expression oriented nature where possible;
 
-```rust
+```
 // use
 let x = if y { 1 } else { 0 };
 // not

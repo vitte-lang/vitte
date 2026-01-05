@@ -33,7 +33,7 @@ the 200 recently most downloaded crates:
 cargo lintcheck popular -n 200 custom.toml
 ```
 
-> Note: Lintcheck isn't sandboxed. Only use it to check crates that you trust or
+> Note: Lintcheck isn't sandboxed. Only use it to check crates that you t or
 > sandbox it manually.
 
 ### Configuring the Crate Sources

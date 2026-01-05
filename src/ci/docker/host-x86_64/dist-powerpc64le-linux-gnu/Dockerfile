@@ -6,8 +6,8 @@ RUN sh /scripts/cross-apt-packages.sh
 COPY scripts/crosstool-ng.sh /scripts/
 RUN sh /scripts/crosstool-ng.sh
 
-COPY scripts/rustbuild-setup.sh /scripts/
-RUN sh /scripts/rustbuild-setup.sh
+COPY scripts/build-setup.sh /scripts/
+RUN sh /scripts/build-setup.sh
 
 WORKDIR /tmp
 
@@ -27,7 +27,7 @@ ENV \
 
 ENV HOSTS=powerpc64le-unknown-linux-gnu
 
-ENV RUST_CONFIGURE_ARGS \
+ENV _CONFIGURE_ARGS \
     --enable-extended \
     --enable-full-tools \
     --enable-profiler \

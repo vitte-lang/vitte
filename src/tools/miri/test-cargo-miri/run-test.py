@@ -201,8 +201,8 @@ ARGS = args_parser.parse_args()
 
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 os.environ["CARGO_TARGET_DIR"] = "target" # this affects the location of the target directory that we need to check
-os.environ["RUST_TEST_NOCAPTURE"] = "0" # this affects test output, so make sure it is not set
-os.environ["RUST_TEST_THREADS"] = "1" # avoid non-deterministic output due to concurrent test runs
+os.environ["_TEST_NOCAPTURE"] = "0" # this affects test output, so make sure it is not set
+os.environ["_TEST_THREADS"] = "1" # avoid non-deterministic output due to concurrent test runs
 
 target_str = " for target {}".format(ARGS.target) if ARGS.target else ""
 print(CGREEN + CBOLD + "## Running `cargo miri` tests{}".format(target_str) + CEND)

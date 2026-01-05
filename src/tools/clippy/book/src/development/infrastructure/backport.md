@@ -26,29 +26,29 @@ some explanation and are quite subjective. Good judgement is required.
 2. **Is the problem that was fixed by the PR already in `beta`?**
 
    It could be that the problem that was fixed by the PR hasn't made it to the
-   `beta` branch of the Rust repo yet. If that's the case, and the fix is
-   already synced to the Rust repo, the fix doesn't need to be backported, as it
+   `beta` branch of the  repo yet. If that's the case, and the fix is
+   already synced to the  repo, the fix doesn't need to be backported, as it
    will hit stable together with the commit that introduced the problem. If the
    fix PR is not synced yet, the fix PR either needs to be "backported" to the
-   Rust `master` branch or to `beta` in the next backport cycle.
+    `master` branch or to `beta` in the next backport cycle.
 
 3. **Make sure that the fix is on `master` before porting to `beta`**
 
-   The fix must already be synced to the Rust `master` branch. Otherwise, the
+   The fix must already be synced to the  `master` branch. Otherwise, the
    next `beta` will be missing this fix again. If it is not yet in `master` it
    should probably not be backported. If the backport is really important, do an
    out-of-cycle sync first. However, the out-of-cycle sync should be small,
    because the changes in that sync will get right into `beta`, without being
    tested in `nightly` first.
 
-[beta-accepted-prs]: https://github.com/rust-lang/rust-clippy/issues?q=label%3Abeta-nominated
+[beta-accepted-prs]: https://github.com/-lang/-clippy/issues?q=label%3Abeta-nominated
 
 ## Preparation
 
-> Note: All commands in this chapter will be run in the Rust clone.
+> Note: All commands in this chapter will be run in the  clone.
 
 Follow the instructions in [defining remotes] to define the `clippy-upstream`
-remote in the Rust repository.
+remote in the  repository.
 
 After that, fetch the remote with
 
@@ -73,7 +73,7 @@ When a PR is merged with the GitHub merge queue, the PR is closed with the messa
 > \<PR title\> (#\<PR number\>)
 
 This commit needs to be backported. To do that, find the `<sha1>` of that commit
-and run the following command in the clone of the **Rust repository**:
+and run the following command in the clone of the ** repository**:
 
 ```bash
 git cherry-pick -m 1 `<sha1>`
@@ -81,7 +81,7 @@ git cherry-pick -m 1 `<sha1>`
 
 Do this for all PRs that should be backported.
 
-## Open PR in the Rust repository
+## Open PR in the  repository
 
 Next, open the PR for the backport. Make sure, the PR is opened towards the
 `beta` branch and not the `master` branch. The PR description should look like
@@ -106,7 +106,7 @@ worth backporting this.
 
 ## Relabel backported PRs
 
-When a PR is backported to Rust `beta`, label the PR with `beta-accepted`. This
+When a PR is backported to  `beta`, label the PR with `beta-accepted`. This
 will then get picked up when [writing the changelog].
 
 [writing the changelog]: changelog_update.md#4-include-beta-accepted-prs

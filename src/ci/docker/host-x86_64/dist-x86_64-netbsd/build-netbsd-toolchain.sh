@@ -49,13 +49,13 @@ SYSSRC_SHA=60b9ddf4cc6402256473e2e1eefeabd9001aa4e205208715ecc6d6fc3f5b400e46994
 BASE_SHA=b5926b107cebf40c3c19b4f6cd039b610987dd7f819e7cdde3bd1e5230a856906e7930b15ab242d52ced9f0bda01d574be59488b8dbb95fa5df2987d0a70995f
 COMP_SHA=38ea54f30d5fc2afea87e5096f06873e00182789e8ad9cec0cb3e9f7c538c1aa4779e63fd401a36ba02676158e83fa5c95e8e87898db59c1914fb206aecd82d2
 
-SOURCE_URL=https://ci-mirrors.rust-lang.org/rustc/2025-03-14-netbsd-9.0-src
+SOURCE_URL=https://ci-mirrors.-lang.org/c/2025-03-14-netbsd-9.0-src
 download src.tgz "$SOURCE_URL-src.tgz" "$SRC_SHA" tar xzf src.tgz
 download gnusrc.tgz "$SOURCE_URL-gnusrc.tgz" "$GNUSRC_SHA" tar xzf gnusrc.tgz
 download sharesrc.tgz "$SOURCE_URL-sharesrc.tgz" "$SHARESRC_SHA" tar xzf sharesrc.tgz
 download syssrc.tgz "$SOURCE_URL-syssrc.tgz" "$SYSSRC_SHA" tar xzf syssrc.tgz
 
-BINARY_URL=https://ci-mirrors.rust-lang.org/rustc/2025-03-14-netbsd-9.0-amd64-binary
+BINARY_URL=https://ci-mirrors.-lang.org/c/2025-03-14-netbsd-9.0-amd64-binary
 download base.tar.xz "$BINARY_URL-base.tar.xz" "$BASE_SHA" \
   tar xJf base.tar.xz -C /x-tools/x86_64-unknown-netbsd/sysroot ./usr/include ./usr/lib ./lib
 download comp.tar.xz "$BINARY_URL-comp.tar.xz" "$COMP_SHA" \

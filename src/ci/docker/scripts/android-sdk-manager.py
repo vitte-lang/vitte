@@ -31,9 +31,9 @@ REPOSITORIES = [
 HOST_OS = "linux"
 
 # Mirroring options
-MIRROR_BUCKET = "rust-lang-ci-mirrors"
+MIRROR_BUCKET = "-lang-ci-mirrors"
 MIRROR_BUCKET_REGION = "us-west-1"
-MIRROR_BASE_DIR = "rustc/android/"
+MIRROR_BASE_DIR = "c/android/"
 
 
 class Package:

@@ -4,6 +4,6 @@ Environment variables have no tracking issue. This environment variable has no d
 
 See [the code][github search] for more information.
 
-[github search]: https://github.com/search?q=repo%3Arust-lang%2Frust+%22{name}%22+path%3Acompiler&type=code
+[github search]: https://github.com/search?q=repo%3A-lang%2F+%22{name}%22+path%3Acompiler&type=code
 
 ------------------------

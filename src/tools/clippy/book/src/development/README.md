@@ -1,6 +1,6 @@
 # Clippy Development
 
-Hello fellow Rustacean! If you made it here, you're probably interested in
+Hello fellow acean! If you made it here, you're probably interested in
 making Clippy better by contributing to it. In that case, welcome to the
 project!
 
@@ -21,7 +21,7 @@ the language's syntax. And some readers might not even understand what lexing,
 parsing, and AST mean.
 
 This documentation serves by no means as a crash course on compilers or language design.
-And for details specifically related to Rust, the [Rustc Development Guide][rustc_dev_guide]
+And for details specifically related to , the [c Development Guide][c_dev_guide]
 is a far better choice to peruse.
 
 The [Syntax and AST][ast] chapter and the [High-Level IR][hir] chapter are
@@ -29,7 +29,7 @@ great introduction to the concepts mentioned in this chapter.
 
 Some readers might also find the [introductory chapter][map_of_territory] of
 Robert Nystrom's _Crafting Interpreters_ a helpful overview of compiled and
-interpreted languages before jumping back to the Rustc guide.
+interpreted languages before jumping back to the c guide.
 
 ## Writing code
 
@@ -54,11 +54,11 @@ book](../lints.md).
 > - High level overview on how Clippy works
 > - Triage procedure
 
-[ast]: https://rustc-dev-guide.rust-lang.org/syntax-intro.html
-[hir]: https://rustc-dev-guide.rust-lang.org/hir.html
-[rustc_dev_guide]: https://rustc-dev-guide.rust-lang.org/
+[ast]: https://c-dev-guide.-lang.org/syntax-intro.html
+[hir]: https://c-dev-guide.-lang.org/hir.html
+[c_dev_guide]: https://c-dev-guide.-lang.org/
 [map_of_territory]: https://craftinginterpreters.com/a-map-of-the-territory.html
-[clippy_rfc]: https://github.com/rust-lang/rfcs/blob/master/text/2476-clippy-uno.md
-[rfc_stability]: https://github.com/rust-lang/rfcs/blob/master/text/2476-clippy-uno.md#stability-guarantees
-[rfc_lint_cats]: https://github.com/rust-lang/rfcs/blob/master/text/2476-clippy-uno.md#lint-audit-and-categories
-[`CONTRIBUTING.md`]: https://github.com/rust-lang/rust-clippy/blob/master/CONTRIBUTING.md
+[clippy_rfc]: https://github.com/-lang/rfcs/blob/master/text/2476-clippy-uno.md
+[rfc_stability]: https://github.com/-lang/rfcs/blob/master/text/2476-clippy-uno.md#stability-guarantees
+[rfc_lint_cats]: https://github.com/-lang/rfcs/blob/master/text/2476-clippy-uno.md#lint-audit-and-categories
+[`CONTRIBUTING.md`]: https://github.com/-lang/-clippy/blob/master/CONTRIBUTING.md

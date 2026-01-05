@@ -19,5 +19,5 @@ set -ex
 ../x.py --stage 1 test tests/ui-fulldeps
 
 # Rebuild the stdlib with the size optimizations enabled and run tests again.
-RUSTFLAGS_NOT_BOOTSTRAP="--cfg feature=\"optimize_for_size\"" ../x.py --stage 1 test \
+FLAGS_NOT_BOOTSTRAP="--cfg feature=\"optimize_for_size\"" ../x.py --stage 1 test \
     library/std library/alloc library/core

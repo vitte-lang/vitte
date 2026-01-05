@@ -7,36 +7,36 @@
 
 using namespace llvm;
 
-struct RustLinker {
+struct Linker {
   Linker L;
   LLVMContext &Ctx;
 
-  RustLinker(Module &M) : L(M), Ctx(M.getContext()) {}
+  Linker(Module &M) : L(M), Ctx(M.getContext()) {}
 };
 
-extern "C" RustLinker *LLVMRustLinkerNew(LLVMModuleRef DstRef) {
+extern "C" Linker *LLVMLinkerNew(LLVMModuleRef DstRef) {
   Module *Dst = unwrap(DstRef);
 
-  return new RustLinker(*Dst);
+  return new Linker(*Dst);
 }
 
-extern "C" void LLVMRustLinkerFree(RustLinker *L) { delete L; }
+extern "C" void LLVMLinkerFree(Linker *L) { delete L; }
 
-extern "C" bool LLVMRustLinkerAdd(RustLinker *L, char *BC, size_t Len) {
+extern "C" bool LLVMLinkerAdd(Linker *L, char *BC, size_t Len) {
   std::unique_ptr<MemoryBuffer> Buf =
       MemoryBuffer::getMemBufferCopy(StringRef(BC, Len));
 
   Expected<std::unique_ptr<Module>> SrcOrError =
       llvm::getLazyBitcodeModule(Buf->getMemBufferRef(), L->Ctx);
   if (!SrcOrError) {
-    LLVMRustSetLastError(toString(SrcOrError.takeError()).c_str());
+    LLVMSetLastError(toString(SrcOrError.takeError()).c_str());
     return false;
   }
 
   auto Src = std::move(*SrcOrError);
 
   if (L->L.linkInModule(std::move(Src))) {
-    LLVMRustSetLastError("");
+    LLVMSetLastError("");
     return false;
   }
   return true;

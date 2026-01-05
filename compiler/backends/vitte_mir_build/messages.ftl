@@ -123,25 +123,25 @@ mir_build_deref_raw_pointer_requires_unsafe_unsafe_op_in_unsafe_fn_allowed =
 
 mir_build_extern_static_requires_unsafe =
     use of extern static is unsafe and requires unsafe block
-    .note = extern statics are not controlled by the Rust type system: invalid data, aliasing violations or data races will cause undefined behavior
+    .note = extern statics are not controlled by the  type system: invalid data, aliasing violations or data races will cause undefined behavior
     .label = use of extern static
 
 mir_build_extern_static_requires_unsafe_unsafe_op_in_unsafe_fn_allowed =
     use of extern static is unsafe and requires unsafe function or block
-    .note = extern statics are not controlled by the Rust type system: invalid data, aliasing violations or data races will cause undefined behavior
+    .note = extern statics are not controlled by the  type system: invalid data, aliasing violations or data races will cause undefined behavior
     .label = use of extern static
 
 mir_build_inform_irrefutable = `let` bindings require an "irrefutable pattern", like a `struct` or an `enum` with only one variant
 
 mir_build_initializing_type_with_requires_unsafe =
-    initializing type with `rustc_layout_scalar_valid_range` attr is unsafe and requires unsafe block
+    initializing type with `c_layout_scalar_valid_range` attr is unsafe and requires unsafe block
     .note = initializing a layout restricted type's field with a value outside the valid range is undefined behavior
-    .label = initializing type with `rustc_layout_scalar_valid_range` attr
+    .label = initializing type with `c_layout_scalar_valid_range` attr
 
 mir_build_initializing_type_with_requires_unsafe_unsafe_op_in_unsafe_fn_allowed =
-    initializing type with `rustc_layout_scalar_valid_range` attr is unsafe and requires unsafe function or block
+    initializing type with `c_layout_scalar_valid_range` attr is unsafe and requires unsafe function or block
     .note = initializing a layout restricted type's field with a value outside the valid range is undefined behavior
-    .label = initializing type with `rustc_layout_scalar_valid_range` attr
+    .label = initializing type with `c_layout_scalar_valid_range` attr
 
 mir_build_initializing_type_with_unsafe_field_requires_unsafe =
     initializing type with an unsafe field is unsafe and requires unsafe block
@@ -256,7 +256,7 @@ mir_build_lower_range_bound_must_be_less_than_or_equal_to_upper =
 
 mir_build_lower_range_bound_must_be_less_than_upper = lower bound for range pattern must be less than upper bound
 
-mir_build_more_information = for more information, visit https://doc.rust-lang.org/book/ch19-02-refutability.html
+mir_build_more_information = for more information, visit https://doc.-lang.org/book/ch19-02-refutability.html
 
 mir_build_moved = value is moved into `{$name}` here
 
@@ -318,7 +318,7 @@ mir_build_pattern_not_covered = refutable pattern in {$origin}
 
 mir_build_pointer_pattern = function pointers and raw pointers not derived from integers in patterns behave unpredictably and should not be relied upon
     .label = can't be used in patterns
-    .note = see https://github.com/rust-lang/rust/issues/70861 for details
+    .note = see https://github.com/-lang//issues/70861 for details
 
 mir_build_privately_uninhabited = pattern `{$witness_1}` is currently uninhabited, but this variant contains private fields which may become inhabited in the future
 
@@ -355,9 +355,9 @@ mir_build_trailing_irrefutable_let_patterns = trailing irrefutable {$count ->
 mir_build_type_not_structural = constant of non-structural type `{$ty}` in a pattern
     .label = constant of non-structural type
 mir_build_type_not_structural_def = `{$ty}` must be annotated with `#[derive(PartialEq)]` to be usable in patterns
-mir_build_type_not_structural_more_info = see https://doc.rust-lang.org/stable/std/marker/trait.StructuralPartialEq.html for details
+mir_build_type_not_structural_more_info = see https://doc.-lang.org/stable/std/marker/trait.StructuralPartialEq.html for details
 mir_build_type_not_structural_tip =
-    the `PartialEq` trait must be derived, manual `impl`s are not sufficient; see https://doc.rust-lang.org/stable/std/marker/trait.StructuralPartialEq.html for details
+    the `PartialEq` trait must be derived, manual `impl`s are not sufficient; see https://doc.-lang.org/stable/std/marker/trait.StructuralPartialEq.html for details
 
 mir_build_union_field_requires_unsafe =
     access to union field is unsafe and requires unsafe block
@@ -386,7 +386,7 @@ mir_build_unreachable_matches_same_values = matches some of the same values
 mir_build_unreachable_pattern = unreachable pattern
     .label = no value can reach this
     .unreachable_matches_no_values = matches no values because `{$matches_no_values_ty}` is uninhabited
-    .unreachable_uninhabited_note = to learn more about uninhabited types, see https://doc.rust-lang.org/nomicon/exotic-sizes.html#empty-types
+    .unreachable_uninhabited_note = to learn more about uninhabited types, see https://doc.-lang.org/nomicon/exotic-sizes.html#empty-types
     .unreachable_covered_by_catchall = matches any value
     .unreachable_covered_by_one = matches all the relevant values
     .unreachable_covered_by_many = multiple earlier patterns match some of the same values
@@ -461,13 +461,13 @@ mir_build_unsafe_op_in_unsafe_fn_deref_raw_pointer_requires_unsafe =
 
 mir_build_unsafe_op_in_unsafe_fn_extern_static_requires_unsafe =
     use of extern static is unsafe and requires unsafe block
-    .note = extern statics are not controlled by the Rust type system: invalid data, aliasing violations or data races will cause undefined behavior
+    .note = extern statics are not controlled by the  type system: invalid data, aliasing violations or data races will cause undefined behavior
     .label = use of extern static
 
 mir_build_unsafe_op_in_unsafe_fn_initializing_type_with_requires_unsafe =
-    initializing type with `rustc_layout_scalar_valid_range` attr is unsafe and requires unsafe block
+    initializing type with `c_layout_scalar_valid_range` attr is unsafe and requires unsafe block
     .note = initializing a layout restricted type's field with a value outside the valid range is undefined behavior
-    .label = initializing type with `rustc_layout_scalar_valid_range` attr
+    .label = initializing type with `c_layout_scalar_valid_range` attr
 
 mir_build_unsafe_op_in_unsafe_fn_initializing_type_with_unsafe_field_requires_unsafe =
     initializing type with an unsafe field is unsafe and requires unsafe block

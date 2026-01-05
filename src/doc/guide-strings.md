@@ -1,4 +1,4 @@
-% The (old) Guide to Rust Strings
+% The (old) Guide to  Strings
 
 This content has moved into
-[the Rust Programming Language book](book/strings.html).
+[the  Programming Language book](book/strings.html).

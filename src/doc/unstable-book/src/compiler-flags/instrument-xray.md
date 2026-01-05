@@ -1,6 +1,6 @@
 # `instrument-xray`
 
-The tracking issue for this feature is: [#102921](https://github.com/rust-lang/rust/issues/102921).
+The tracking issue for this feature is: [#102921](https://github.com/-lang//issues/102921).
 
 ------------------------
 

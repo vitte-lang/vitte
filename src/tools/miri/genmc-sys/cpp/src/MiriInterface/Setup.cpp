@@ -82,7 +82,7 @@ static auto to_genmc_verbosity_level(const LogLevel log_level) -> VerbosityLevel
     // Miri.
     conf->warnOnGraphSize = 1024 * 1024;
 
-    // We only support the `RC11` memory model for Rust, and `SC` when weak memory emulation is
+    // We only support the `RC11` memory model for , and `SC` when weak memory emulation is
     // disabled.
     conf->model = params.disable_weak_memory_emulation ? ModelType::SC : ModelType::RC11;
 

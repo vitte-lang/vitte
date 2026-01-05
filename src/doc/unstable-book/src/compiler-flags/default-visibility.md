@@ -1,11 +1,11 @@
 # `default-visibility`
 
-The tracking issue for this feature is: https://github.com/rust-lang/rust/issues/131090
+The tracking issue for this feature is: https://github.com/-lang//issues/131090
 
 ------------------------
 
 This flag can be used to override the target's
-[`default_visibility`](https://doc.rust-lang.org/beta/nightly-rustc/rustc_target/spec/struct.TargetOptions.html#structfield.default_visibility)
+[`default_visibility`](https://doc.-lang.org/beta/nightly-c/c_target/spec/struct.TargetOptions.html#structfield.default_visibility)
 setting.
 
 This option only affects building of shared objects and should have no effect on executables.
@@ -25,7 +25,7 @@ referenced from other shared objects or from executables.
 
 ## Protected visibility
 
-Using `-Zdefault-visibility=protected` will cause rust-mangled symbols to be emitted with
+Using `-Zdefault-visibility=protected` will cause -mangled symbols to be emitted with
 "protected" visibility. This signals the compiler, the linker and the runtime linker that these
 symbols cannot be overridden by the executable or by other shared objects earlier in the load order.
 

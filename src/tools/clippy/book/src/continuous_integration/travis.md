@@ -3,12 +3,12 @@
 You can add Clippy to Travis CI in the same way you use it locally:
 
 ```yml
-language: rust
-rust:
+language: 
+:
   - stable
   - beta
 before_script:
-  - rustup component add clippy
+  - up component add clippy
 script:
   - cargo clippy
   # if you want the build job to fail when encountering warnings, use

@@ -11,7 +11,7 @@ By making the ABI explicit, it becomes much clearer that "C" is just one of the
 possible choices, rather than the "standard" way for external functions.
 Removing the default makes it easier to add a new ABI on equal footing as "C".
 
-```rust,editionfuture,compile_fail
+```,editionfuture,compile_fail
 #![feature(explicit_extern_abis)]
 
 extern fn function1() {}  // ERROR `extern` declarations without an explicit ABI
@@ -22,4 +22,4 @@ extern "C" fn function2() {} // compiles
 extern "aapcs" fn function3() {} // compiles
 ```
 
-[#134986]: https://github.com/rust-lang/rust/issues/134986
+[#134986]: https://github.com/-lang//issues/134986

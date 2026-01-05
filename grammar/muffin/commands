@@ -1,0 +1,70 @@
+	•	build muffin : exécute le plan par défaut (ex: default)
+	•	build muffin <plan> : exécute un plan nommé (ex: release, ci, package)
+
+Flags suggérés (alignés avec ton exemple)
+	•	build muffin -all
+Construit tous les “bakes” marqués exportables (ou tout le workspace du buildfile).
+	•	build muffin -debug
+Force profile debug (symboles, opt 0, checks).
+	•	build muffin -release
+Force profile release (opt 3, stripping éventuel).
+	•	build muffin -clean
+Purge le cache/artifacts (avec confirmation/guard selon policy).
+	•	build muffin -j 16
+Parallélisme (scheduler).
+	•	build muffin -watch
+Mode dev : rebuild incrémental sur FS events.
+	•	build muffin -why <artifact>
+Explique la chaîne de dépendances et l’invalidation.
+	•	build muffin -graph
+Dump du DAG (texte ou .dot).
+	•	build muffin -D KEY=VALUE
+Overrides variables (ex: -D target=x86_64-apple-darwin).
+
+⸻
+	bake : un nœud du DAG (une unité de calcul).
+	•	in / out ports : entrées/sorties typées d’un bake.
+	•	wire : connexion explicite d’un port out vers un port in.
+	•	tool : exécutable déclaratif (versionné, sandboxable).
+	•	capsule : environnement hermétique (env/FS/time/network).
+	•	store : cache d’artefacts (content-addressed).
+	•	plan : scénario d’exécution (ce que lance build muffin ...).
+2) Concept clé : “bake graph” (différent de Make)
+⸻
+Make = règles target: deps + shell.
+Muffin = graph typé d’actions avec :
+	•	Entrées (“ingredients”) : fichiers, globs, valeurs, artefacts d’autres bakes
+	•	Actions (“call”) : outils déclarés (avec sandbox/env)
+	•	Sorties (“yields”) : artefacts nommés, typés
+	•	Cache : par défaut content-addressed (hash des inputs + args + toolchain)
+	•	Scheduler : parallélisation sûre via graph, pas via heuristiques
+
+⸻
+
+3) Syntaxe Muffin Buildfile (proposition “jamais vue”)
+
+Nom du fichier : Muffinfile (ou build.muf si tu veux).
+Header :
+Constructs (uniques Muffin)
+	•	profile <name> ... .end : profils
+	•	tool <name> ... .end : définition d’un outil exécutable
+	•	ingredient <name> ... .end : entrée (glob, file, text, env, etc.)
+	•	bake <name> ... .end : unité de build (node du DAG)
+	•	export ... : ce qui est “buildable” par -all
+	•	plan <name> ... .end : pipeline de haut niveau (enchaînements)
+	•	switch : mapping des flags CLI (optionnel mais très ergonomique)
+
+    	•	Build normal :
+	•	build muffin
+	•	Tout builder :
+	•	build muffin -all
+	•	Mode debug :
+	•	build muffin -debug
+	•	Release :
+	•	build muffin -release
+	•	Override variable (sans modifier le fichier) :
+	•	build muffin -D profile=release
+	•	Comprendre un rebuild :
+	•	build muffin -why vittec_driver::vittec
+
+⸻

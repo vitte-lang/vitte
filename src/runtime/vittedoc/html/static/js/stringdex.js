@@ -3691,7 +3691,7 @@ ParametricDescription.prototype.MASKS = new Int32Array([
 // This package is available under the MIT License, see NOTICE.txt
 // for more details.
 // This class is auto-generated, Please do not modify it directly.
-// You should modify https://gitlab.com/notriddle/moman-rustdoc instead.
+// You should modify https://gitlab.com/notriddle/moman-doc instead.
 
 class Lev2TParametricDescription extends ParametricDescription {
     /**

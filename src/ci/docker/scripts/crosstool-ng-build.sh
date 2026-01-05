@@ -3,7 +3,7 @@
 set -ex
 
 if [ $UID -eq 0 ]; then
-    exec su rustbuild -c "$0"
+    exec su build -c "$0"
 fi
 
 hide_output() {

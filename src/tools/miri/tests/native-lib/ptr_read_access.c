@@ -19,7 +19,7 @@ typedef struct Simple {
 EXPORT int32_t access_simple(const Simple *s_ptr) {
   return s_ptr->field;
 }
-// Some copies so Rust can import them at different types.
+// Some copies so  can import them at different types.
 EXPORT int32_t access_simple2(const Simple *s_ptr) {
   return s_ptr->field;
 }

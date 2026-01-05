@@ -1,0 +1,96 @@
+// Configuration and knowledge implementations
+
+impl Config {
+    pub fn new() -> Self {
+        Config {
+            values: std::collections::HashMap::new(),
+        }
+    }
+
+    pub fn set(&mut self, key: string, value: ConfigValue) {
+        self.values.insert(key, value);
+    }
+
+    pub fn get(&self, key: &string) -> Option<ConfigValue> {
+        self.values.get(key).cloned()
+    }
+
+    pub fn has(&self, key: &string) -> bool {
+        self.values.contains_key(key)
+    }
+}
+
+impl CompilerOptions {
+    pub fn new() -> Self {
+        CompilerOptions {
+            optimize: false,
+            debug: true,
+            target: "x86_64".to_string(),
+        }
+    }
+
+    pub fn with_optimization(mut self) -> Self {
+        self.optimize = true;
+        self
+    }
+
+    pub fn with_target(mut self, target: string) -> Self {
+        self.target = target;
+        self
+    }
+}
+
+impl KnowledgeBase {
+    pub fn new() -> Self {
+        KnowledgeBase { facts: Vec::new() }
+    }
+
+    pub fn add_fact(&mut self, fact: Fact) {
+        self.facts.push(fact);
+    }
+
+    pub fn query(&self, predicate: &string) -> Vec<Fact> {
+        self.facts.iter()
+            .filter(|f| f.predicate == *predicate)
+            .cloned()
+            .collect()
+    }
+}
+
+impl Fact {
+    pub fn new(predicate: string, subject: string, object: string) -> Self {
+        Fact { predicate, subject, object }
+    }
+}
+
+impl MetadataStore {
+    pub fn new() -> Self {
+        MetadataStore {
+            metadata: std::collections::HashMap::new(),
+        }
+    }
+
+    pub fn store(&mut self, key: string, value: string) {
+        self.metadata.insert(key, value);
+    }
+
+    pub fn retrieve(&self, key: &string) -> Option<string> {
+        self.metadata.get(key).cloned()
+    }
+}
+
+impl ConfigValue {
+    pub fn as_string(&self) -> Option<string> {
+        match self {
+            ConfigValue::String(s) => Some(s.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            ConfigValue::Boolean(b) => Some(*b),
+            _ => None,
+        }
+    }
+}

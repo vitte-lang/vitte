@@ -1,11 +1,11 @@
 # `compiler-builtins`
 
 This crate provides external symbols that the compiler expects to be available
-when building Rust projects, typically software routines for basic operations
+when building  projects, typically software routines for basic operations
 that do not have hardware support. It is largely a port of LLVM's
 [`compiler-rt`].
 
-It is distributed as part of Rust's sysroot. `compiler-builtins` does not need
+It is distributed as part of 's sysroot. `compiler-builtins` does not need
 to be added as an explicit dependency in `Cargo.toml`.
 
 [`compiler-rt`]: https://github.com/llvm/llvm-project/tree/1b1dc505057322f4fa1110ef4f53c44347f52986/compiler-rt
@@ -16,7 +16,7 @@ to be added as an explicit dependency in `Cargo.toml`.
 is enabled:
 
 - `LLVM_COMPILER_RT_LIB`
-- `RUST_COMPILER_RT_ROOT`
+- `_COMPILER_RT_ROOT`
 
 See `build.rs` for details.
 
@@ -144,7 +144,7 @@ These builtins are needed to support 128-bit integers.
 - [x] umodti3.c
 
 These builtins are needed to support `f16` and `f128`, which are in the process
-of being added to Rust.
+of being added to .
 
 - [x] addtf3.c
 - [x] comparetf2.c
@@ -207,7 +207,7 @@ These builtins are used by the Hexagon DSP
 ## Unimplemented functions
 
 These builtins are for x87 `f80` floating-point numbers that are not supported
-by Rust.
+by .
 
 - ~~extendxftf2.c~~
 - ~~fixunsxfdi.c~~
@@ -242,14 +242,14 @@ numbers.
 - ~~ppc/multc3.c~~
 
 These builtins are for 16-bit brain floating-point numbers that are not
-supported by Rust.
+supported by .
 
 - ~~truncdfbf2.c~~
 - ~~truncsfbf2.c~~
 - ~~trunctfxf2.c~~
 
 These builtins involve complex floating-point types that are not supported by
-Rust.
+.
 
 - ~~divdc3.c~~
 - ~~divsc3.c~~
@@ -318,9 +318,9 @@ These builtins are never called by LLVM.
 - ~~ucmpti2.c~~
 - ~~udivmodti4.c~~
 
-[jemalloc-fail]: https://travis-ci.org/rust-lang/rust/jobs/249772758
+[jemalloc-fail]: https://travis-ci.org/-lang//jobs/249772758
 
-Rust only exposes atomic types on platforms that support them, and therefore does not need to fall back to software implementations.
+ only exposes atomic types on platforms that support them, and therefore does not need to fall back to software implementations.
 
 - ~~arm/sync_fetch_and_add_4.S~~
 - ~~arm/sync_fetch_and_add_8.S~~
@@ -351,7 +351,7 @@ Rust only exposes atomic types on platforms that support them, and therefore doe
 - ~~atomic_signal_fence.c~~
 - ~~atomic_thread_fence.c~~
 
-Miscellaneous functionality that is not used by Rust.
+Miscellaneous functionality that is not used by .
 
 - ~~aarch64/fp_mode.c~~
 - ~~aarch64/lse.S~~ (LSE atomics)

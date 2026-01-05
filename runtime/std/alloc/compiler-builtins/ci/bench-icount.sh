@@ -5,7 +5,7 @@ set -eux
 target="${1:-}"
 
 if [ -z "$target" ]; then
-    host_target=$(rustc -vV | awk '/^host/ { print $2 }')
+    host_target=$(c -vV | awk '/^host/ { print $2 }')
     echo "Defaulted to host target $host_target"
     target="$host_target"
 fi

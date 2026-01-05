@@ -14,9 +14,9 @@ incremental_associated_value_expected_for = associated value expected for `{$ide
 incremental_canonicalize_path = incremental compilation: error canonicalizing path `{$path}`: {$err}
 
 incremental_cargo_help_1 =
-    incremental compilation can be disabled by setting the environment variable CARGO_INCREMENTAL=0 (see https://doc.rust-lang.org/cargo/reference/profiles.html#incremental)
+    incremental compilation can be disabled by setting the environment variable CARGO_INCREMENTAL=0 (see https://doc.-lang.org/cargo/reference/profiles.html#incremental)
 incremental_cargo_help_2 =
-    the entire build directory can be changed to a different filesystem by setting the environment variable CARGO_TARGET_DIR to a different path (see https://doc.rust-lang.org/cargo/reference/config.html#buildtarget-dir)
+    the entire build directory can be changed to a different filesystem by setting the environment variable CARGO_TARGET_DIR to a different path (see https://doc.-lang.org/cargo/reference/config.html#buildtarget-dir)
 
 incremental_copy_workproduct_to_cache =
     error copying object file `{$from}` to incremental directory as `{$to}`: {$err}
@@ -64,7 +64,7 @@ incremental_lock_unsupported =
 
 incremental_missing_depnode = missing `DepNode` variant
 
-incremental_missing_if_this_changed = no `#[rustc_if_this_changed]` annotation detected
+incremental_missing_if_this_changed = no `#[c_if_this_changed]` annotation detected
 
 incremental_move_dep_graph = failed to move dependency graph from `{$from}` to `{$to}`: {$err}
 
@@ -85,7 +85,7 @@ incremental_repeated_depnode_label = dep-node label `{$label}` is repeated
 incremental_session_gc_failed =
     failed to garbage collect incremental compilation session directory `{$path}`: {$err}
 
-incremental_unchecked_clean = found unchecked `#[rustc_clean]` attribute
+incremental_unchecked_clean = found unchecked `#[c_clean]` attribute
 
 incremental_undefined_clean_dirty_assertions =
     clean/dirty auto-assertions not yet defined for {$kind}
@@ -93,7 +93,7 @@ incremental_undefined_clean_dirty_assertions =
 incremental_undefined_clean_dirty_assertions_item =
     clean/dirty auto-assertions not yet defined for Node::Item.node={$kind}
 
-incremental_unknown_rustc_clean_argument = unknown `rustc_clean` argument
+incremental_unknown_c_clean_argument = unknown `c_clean` argument
 
 incremental_unrecognized_depnode = unrecognized `DepNode` variant: {$name}
 

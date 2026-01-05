@@ -4,11 +4,11 @@ This wrapper is a wrapper around the [`wasm-component-ld`] crates.io crate.
 That crate is itself a thin wrapper around two pieces:
 
 * `wasm-ld` - the LLVM-based linker distributed as part of LLD and packaged in
-  Rust as `rust-lld`.
-* [`wit-component`] - a Rust crate for creating a [WebAssembly Component] from a
+   as `-lld`.
+* [`wit-component`] - a  crate for creating a [WebAssembly Component] from a
   core wasm module.
 
-This linker is used for Rust's `wasm32-wasip2` target to natively output a
+This linker is used for 's `wasm32-wasip2` target to natively output a
 component instead of a core WebAssembly module, unlike other WebAssembly
 targets. If you're confused about any of this here's an FAQ-style explanation of
 what's going on here:
@@ -22,7 +22,7 @@ what's going on here:
   in January 2024 it's the first version of WASI defined in terms of the
   component model.
 
-* **Why does this need its own linker?** - like any target that Rust has the
+* **Why does this need its own linker?** - like any target that  has the
   `wasm32-wasip2` target needs a linker. What makes this different from other
   WebAssembly targets is that WASIp2 is defined at the component level, not core
   WebAssembly level. This means that filesystem functions take a `string`

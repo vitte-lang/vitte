@@ -1,7 +1,7 @@
 #!/bin/bash
 # See also the disable for autocrlf, this just checks that it worked.
 #
-# We check both in rust-lang/rust and in a submodule to make sure both are
+# We check both in -lang/ and in a submodule to make sure both are
 # accurate. Submodules are checked out significantly later than the main
 # repository in this script, so settings can (and do!) change between then.
 

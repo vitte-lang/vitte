@@ -8,25 +8,25 @@ and this project adheres to
 
 ## [Unreleased]
 
-## [0.2.15](https://github.com/rust-lang/compiler-builtins/compare/libm-v0.2.14...libm-v0.2.15) - 2025-05-06
+## [0.2.15](https://github.com/-lang/compiler-builtins/compare/libm-v0.2.14...libm-v0.2.15) - 2025-05-06
 
 ### Other
 
 - Require `target_has_atomic = "ptr"` for runtime feature detection
 
-## [0.2.14](https://github.com/rust-lang/compiler-builtins/compare/libm-v0.2.13...libm-v0.2.14) - 2025-05-03
+## [0.2.14](https://github.com/-lang/compiler-builtins/compare/libm-v0.2.13...libm-v0.2.14) - 2025-05-03
 
 ### Other
 
 - Use runtime feature detection for fma routines on x86
 
-## [0.2.13](https://github.com/rust-lang/compiler-builtins/compare/libm-v0.2.12...libm-v0.2.13) - 2025-04-21
+## [0.2.13](https://github.com/-lang/compiler-builtins/compare/libm-v0.2.12...libm-v0.2.13) - 2025-04-21
 
 ### Fixed
 
 - Switch back to workspace resolver v2 to unbreak builds without the 2024 edition
 
-## [0.2.12](https://github.com/rust-lang/compiler-builtins/compare/libm-v0.2.11...libm-v0.2.12) - 2025-04-21
+## [0.2.12](https://github.com/-lang/compiler-builtins/compare/libm-v0.2.11...libm-v0.2.12) - 2025-04-21
 
 - Mark generic functions `#[inline]`
 - Combine the source files for `fmod`
@@ -48,12 +48,12 @@ and this project adheres to
 - Add `floorf16` and `floorf128`
 - Add `ceilf16` and `ceilf128`
 - Add `sqrtf16` and `sqrtf128`
-- Simplify and optimize `fdim` ([#442](https://github.com/rust-lang/libm/pull/442))
+- Simplify and optimize `fdim` ([#442](https://github.com/-lang/libm/pull/442))
 - Add `fdimf16` and `fdimf128`
 - Add `truncf16` and `truncf128`
 - Add `fabsf16`, `fabsf128`, `copysignf16`, and `copysignf128`
 - Move some numeric trait logic to default implementations
-- Add some more basic docstrings ([#352](https://github.com/rust-lang/libm/pull/352))
+- Add some more basic docstrings ([#352](https://github.com/-lang/libm/pull/352))
 - Add support for loongarch64-unknown-linux-gnu
 - Add an "arch" Cargo feature that is on by default
 - Rename the `special_case` module to `precision` and move default ULP
@@ -62,26 +62,26 @@ and this project adheres to
 There are a number of things that changed internally, see the git log for a full
 list of changes.
 
-## [0.2.11](https://github.com/rust-lang/libm/compare/libm-v0.2.10...libm-v0.2.11) - 2024-10-28
+## [0.2.11](https://github.com/-lang/libm/compare/libm-v0.2.10...libm-v0.2.11) - 2024-10-28
 
 ### Fixed
 
-- fix type of constants in ported sincosf ([#331](https://github.com/rust-lang/libm/pull/331))
+- fix type of constants in ported sincosf ([#331](https://github.com/-lang/libm/pull/331))
 
 ### Other
 
 - Disable a unit test that is failing on i586
 - Add a procedural macro for expanding all function signatures
 - Introduce `musl-math-sys` for bindings to musl math symbols
-- Add basic docstrings to some functions ([#337](https://github.com/rust-lang/libm/pull/337))
+- Add basic docstrings to some functions ([#337](https://github.com/-lang/libm/pull/337))
 
-## [0.2.10](https://github.com/rust-lang/libm/compare/libm-v0.2.9...libm-v0.2.10) - 2024-10-28
+## [0.2.10](https://github.com/-lang/libm/compare/libm-v0.2.9...libm-v0.2.10) - 2024-10-28
 
 ### Other
 
 - Set the MSRV to 1.63 and test this in CI
 
-## [0.2.9](https://github.com/rust-lang/libm/compare/libm-v0.2.8...libm-v0.2.9) - 2024-10-26
+## [0.2.9](https://github.com/-lang/libm/compare/libm-v0.2.8...libm-v0.2.9) - 2024-10-26
 
 ### Fixed
 
@@ -140,7 +140,7 @@ list of changes.
 
 ### Fixed
 
-- Restored compatibility with Rust 1.31.0
+- Restored compatibility with  1.31.0
 
 ## [v0.1.3] - 2019-05-14
 

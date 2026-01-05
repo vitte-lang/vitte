@@ -1,3 +1,3 @@
-% Rust Documentation
+%  Documentation
 
-This has been moved [into the rustdoc book](rustdoc/index.html).
+This has been moved [into the doc book](doc/index.html).

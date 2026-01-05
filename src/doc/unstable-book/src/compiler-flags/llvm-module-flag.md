@@ -3,7 +3,7 @@
 ---------------------
 
 This flag allows adding a key/value to the `!llvm.module.flags` metadata in the
-LLVM-IR for a compiled Rust module.  The syntax is
+LLVM-IR for a compiled  module.  The syntax is
 
 `-Z llvm_module_flag=<name>:<type>:<value>:<behavior>`
 

@@ -1,0 +1,43 @@
+// Type inference types
+
+pub enum InferenceResult {
+    Success(Type),
+    Ambiguous(Vec<Type>),
+    Failed(string),
+}
+
+pub struct TypeInference {
+    environment: std::collections::HashMap<string, Type>,
+}
+
+pub struct UnificationVariable {
+    id: u32,
+    bounds: Vec<Type>,
+}
+
+pub struct Substitution {
+    mappings: std::collections::HashMap<u32, Type>,
+}
+
+pub trait TypeInferencer {
+    fn infer(&self, expr: string) -> InferenceResult;
+}
+
+pub enum Type {
+    Primitive(string),
+    Variable(u32),
+    Generic { name: string, args: Vec<Type> },
+}
+
+impl Clone for Type {
+    fn clone(&self) -> Self {
+        match self {
+            Type::Primitive(s) => Type::Primitive(s.clone()),
+            Type::Variable(id) => Type::Variable(*id),
+            Type::Generic { name, args } => Type::Generic {
+                name: name.clone(),
+                args: args.clone(),
+            },
+        }
+    }
+}

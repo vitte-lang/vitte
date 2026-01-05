@@ -11,8 +11,8 @@ hir_typeck_add_return_type_missing_here = a return type might be missing here
 hir_typeck_address_of_temporary_taken = cannot take address of a temporary
     .label = temporary value
 
-hir_typeck_arg_mismatch_indeterminate = argument type mismatch was detected, but rustc had trouble determining where
-    .note = we would appreciate a bug report: https://github.com/rust-lang/rust/issues/new
+hir_typeck_arg_mismatch_indeterminate = argument type mismatch was detected, but c had trouble determining where
+    .note = we would appreciate a bug report: https://github.com/-lang//issues/new
 
 hir_typeck_as_deref_suggestion = consider using `as_deref` here
 hir_typeck_base_expression_double_dot = base expression required after `..`
@@ -69,7 +69,7 @@ hir_typeck_cast_thin_pointer_to_wide_pointer = cannot cast thin pointer `{$expr_
         pointers.
 
         For more information about casts, take a look at The Book:
-        https://doc.rust-lang.org/reference/expressions/operator-expr.html#type-cast-expressions",
+        https://doc.-lang.org/reference/expressions/operator-expr.html#type-cast-expressions",
 
 hir_typeck_cast_unknown_pointer = cannot cast {$to ->
     [true] to
@@ -119,7 +119,7 @@ hir_typeck_field_multiply_specified_in_initializer =
 hir_typeck_fn_item_to_variadic_function = can't pass a function item to a variadic function
     .suggestion = use a function pointer instead
     .help = a function item is zero-sized and needs to be cast into a function pointer to be used in FFI
-    .note = for more information on function items, visit https://doc.rust-lang.org/reference/types/function-item.html
+    .note = for more information on function items, visit https://doc.-lang.org/reference/types/function-item.html
 
 hir_typeck_fru_expr = this expression does not end in a comma...
 hir_typeck_fru_expr2 = ... so this is interpreted as a `..` range expression, instead of functional record update syntax
@@ -138,7 +138,7 @@ hir_typeck_gpu_kernel_abi_cannot_be_called =
     .note = an `extern "gpu-kernel"` function must be launched on the GPU by the runtime
 
 hir_typeck_help_set_edition_cargo = set `edition = "{$edition}"` in `Cargo.toml`
-hir_typeck_help_set_edition_standalone = pass `--edition {$edition}` to `rustc`
+hir_typeck_help_set_edition_standalone = pass `--edition {$edition}` to `c`
 
 hir_typeck_int_to_fat = cannot cast `{$expr_ty}` to a pointer that {$known_wide ->
     [true] is
@@ -204,7 +204,7 @@ hir_typeck_no_patterns =
 
 hir_typeck_note_caller_chooses_ty_for_ty_param = the caller chooses a type for `{$ty_param_name}` which can be different from `{$found_ty}`
 
-hir_typeck_note_edition_guide = for more on editions, read https://doc.rust-lang.org/edition-guide
+hir_typeck_note_edition_guide = for more on editions, read https://doc.-lang.org/edition-guide
 
 hir_typeck_option_result_asref = use `{$def_path}::as_ref` to convert `{$expected_ty}` to `{$expr_ty}`
 hir_typeck_option_result_cloned = use `{$def_path}::cloned` to clone the value inside the `{$def_path}`
@@ -263,8 +263,8 @@ hir_typeck_rpit_box_return_expr = if you change the return type to expect trait 
 
 hir_typeck_rpit_change_return_type = you could change the return type to be a boxed trait object
 
-hir_typeck_rustcall_incorrect_args =
-    functions with the "rust-call" ABI must take a single non-self tuple argument
+hir_typeck_call_incorrect_args =
+    functions with the "-call" ABI must take a single non-self tuple argument
 
 hir_typeck_self_ctor_from_outer_item = can't reference `Self` constructor from outer item
     .label = the inner item doesn't inherit generics from this impl, so `Self` is invalid to reference
@@ -277,7 +277,7 @@ hir_typeck_slicing_suggestion = consider slicing here
 hir_typeck_struct_expr_non_exhaustive =
     cannot create non-exhaustive {$what} using struct expression
 
-hir_typeck_suggest_boxing_note = for more on the distinction between the stack and the heap, read https://doc.rust-lang.org/book/ch15-01-box.html, https://doc.rust-lang.org/rust-by-example/std/box.html, and https://doc.rust-lang.org/std/boxed/index.html
+hir_typeck_suggest_boxing_note = for more on the distinction between the stack and the heap, read https://doc.-lang.org/book/ch15-01-box.html, https://doc.-lang.org/-by-example/std/box.html, and https://doc.-lang.org/std/boxed/index.html
 
 hir_typeck_suggest_boxing_when_appropriate = store this in the heap by calling `Box::new`
 

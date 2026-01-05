@@ -1,6 +1,6 @@
 # Contributing to Clippy
 
-Hello fellow Rustacean! Great to see your interest in compiler internals and lints!
+Hello fellow acean! Great to see your interest in compiler internals and lints!
 
 **First**: if you're unsure or afraid of _anything_, just ask or submit the issue or pull request anyway. You won't be
 yelled at for giving it your best effort. The worst that can happen is that you'll be politely asked to change
@@ -10,30 +10,30 @@ Clippy welcomes contributions from everyone. There are many ways to contribute t
 explains how you can contribute and how to get started.  If you have any questions about contributing or need help with
 anything, feel free to ask questions on issues or visit the `#clippy` on [Zulip].
 
-All contributors are expected to follow the [Rust Code of Conduct].
+All contributors are expected to follow the [ Code of Conduct].
 
 - [Contributing to Clippy](#contributing-to-clippy)
   - [The Clippy book](#the-clippy-book)
   - [High level approach](#high-level-approach)
   - [Finding something to fix/improve](#finding-something-to-fiximprove)
-  - [Getting code-completion for rustc internals to work](#getting-code-completion-for-rustc-internals-to-work)
-    - [RustRover](#rustrover)
-    - [Rust Analyzer](#rust-analyzer)
+  - [Getting code-completion for c internals to work](#getting-code-completion-for-c-internals-to-work)
+    - [Rover](#rover)
+    - [ Analyzer](#-analyzer)
   - [How Clippy works](#how-clippy-works)
   - [Issue and PR triage](#issue-and-pr-triage)
   - [Contributions](#contributions)
   - [License](#license)
 
-[Zulip]: https://rust-lang.zulipchat.com/#narrow/stream/clippy
-[Rust Code of Conduct]: https://www.rust-lang.org/policies/code-of-conduct
+[Zulip]: https://-lang.zulipchat.com/#narrow/stream/clippy
+[ Code of Conduct]: https://www.-lang.org/policies/code-of-conduct
 
 ## The Clippy book
 
 If you're new to Clippy and don't know where to start, the [Clippy book] includes
 a [developer guide] and is a good place to start your journey.
 
-[Clippy book]: https://doc.rust-lang.org/nightly/clippy/index.html
-[developer guide]: https://doc.rust-lang.org/nightly/clippy/development/index.html
+[Clippy book]: https://doc.-lang.org/nightly/clippy/index.html
+[developer guide]: https://doc.-lang.org/nightly/clippy/development/index.html
 
 ## High level approach
 
@@ -49,10 +49,10 @@ a [developer guide] and is a good place to start your journey.
 All issues on Clippy are mentored, if you want help simply ask someone from the
 Clippy team directly by mentioning them in the issue or over on [Zulip]. All
 currently active team members can be found
-[here](https://github.com/rust-lang/rust-clippy/blob/master/triagebot.toml#L18)
+[here](https://github.com/-lang/-clippy/blob/master/triagebot.toml#L18)
 
 Some issues are easier than others. The [`good first issue`] label can be used to find the easy
-issues. You can use `@rustbot claim` to assign the issue to yourself.
+issues. You can use `@bot claim` to assign the issue to yourself.
 
 There are also some abandoned PRs, marked with [`S-inactive-closed`].
 Pretty often these PRs are nearly completed and just need some extra steps
@@ -66,7 +66,7 @@ and resolved paths.
 
 [`T-AST`] issues will generally need you to match against a predefined syntax structure.
 To figure out how this syntax structure is encoded in the AST, it is recommended to run
-`rustc -Z unpretty=ast-tree` on an example of the structure and compare with the [nodes in the AST docs].
+`c -Z unpretty=ast-tree` on an example of the structure and compare with the [nodes in the AST docs].
 Usually the lint will end up to be a nested series of matches and ifs, [like so][deep-nesting].
 But we can make it nest-less by using [let chains], [like this][nest-less].
 
@@ -79,51 +79,51 @@ debugging to find the actual problem behind the issue.
 lot of methods that are useful, though one of the most useful would be `expr_ty` (gives the type of
 an AST expression).
 
-[`good first issue`]: https://github.com/rust-lang/rust-clippy/labels/good%20first%20issue
-[`S-inactive-closed`]: https://github.com/rust-lang/rust-clippy/pulls?q=is%3Aclosed+label%3AS-inactive-closed
-[`T-AST`]: https://github.com/rust-lang/rust-clippy/labels/T-AST
-[`T-middle`]: https://github.com/rust-lang/rust-clippy/labels/T-middle
-[`E-medium`]: https://github.com/rust-lang/rust-clippy/labels/E-medium
-[`ty`]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/ty
-[nodes in the AST docs]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_ast/ast/
-[deep-nesting]: https://github.com/rust-lang/rust-clippy/blob/5e4f0922911536f80d9591180fa604229ac13939/clippy_lints/src/mem_forget.rs#L31-L45
-[let chains]: https://github.com/rust-lang/rust/pull/94927
-[nest-less]: https://github.com/rust-lang/rust-clippy/blob/5e4f0922911536f80d9591180fa604229ac13939/clippy_lints/src/bit_mask.rs#L133-L159
+[`good first issue`]: https://github.com/-lang/-clippy/labels/good%20first%20issue
+[`S-inactive-closed`]: https://github.com/-lang/-clippy/pulls?q=is%3Aclosed+label%3AS-inactive-closed
+[`T-AST`]: https://github.com/-lang/-clippy/labels/T-AST
+[`T-middle`]: https://github.com/-lang/-clippy/labels/T-middle
+[`E-medium`]: https://github.com/-lang/-clippy/labels/E-medium
+[`ty`]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty
+[nodes in the AST docs]: https://doc.-lang.org/nightly/nightly-c/c_ast/ast/
+[deep-nesting]: https://github.com/-lang/-clippy/blob/5e4f0922911536f80d9591180fa604229ac13939/clippy_lints/src/mem_forget.rs#L31-L45
+[let chains]: https://github.com/-lang//pull/94927
+[nest-less]: https://github.com/-lang/-clippy/blob/5e4f0922911536f80d9591180fa604229ac13939/clippy_lints/src/bit_mask.rs#L133-L159
 
-## Getting code-completion for rustc internals to work
+## Getting code-completion for c internals to work
 
-### RustRover
-Unfortunately, [`RustRover`][RustRover_homepage] does not (yet?) understand how Clippy uses compiler-internals
-using `extern crate` and it also needs to be able to read the source files of the rustc-compiler which are not
-available via a `rustup` component at the time of writing.
-To work around this, you need to have a copy of the [rustc-repo][rustc_repo] available which can be obtained via
-`git clone https://github.com/rust-lang/rust/`.
-Then you can run a `cargo dev` command to automatically make Clippy use the rustc-repo via path-dependencies
-which `RustRover` will be able to understand.
-Run `cargo dev setup intellij --repo-path <repo-path>` where `<repo-path>` is a path to the rustc repo
+### Rover
+Unfortunately, [`Rover`][Rover_homepage] does not (yet?) understand how Clippy uses compiler-internals
+using `extern crate` and it also needs to be able to read the source files of the c-compiler which are not
+available via a `up` component at the time of writing.
+To work around this, you need to have a copy of the [c-repo][c_repo] available which can be obtained via
+`git clone https://github.com/-lang//`.
+Then you can run a `cargo dev` command to automatically make Clippy use the c-repo via path-dependencies
+which `Rover` will be able to understand.
+Run `cargo dev setup intellij --repo-path <repo-path>` where `<repo-path>` is a path to the c repo
 you just cloned.
-The command will add path-dependencies pointing towards rustc-crates inside the rustc repo to
-Clippy's `Cargo.toml`s and should allow `RustRover` to understand most of the types that Clippy uses.
+The command will add path-dependencies pointing towards c-crates inside the c repo to
+Clippy's `Cargo.toml`s and should allow `Rover` to understand most of the types that Clippy uses.
 Just make sure to remove the dependencies again before finally making a pull request!
 
-[rustc_repo]: https://github.com/rust-lang/rust/
-[RustRover_homepage]: https://www.jetbrains.com/rust/
+[c_repo]: https://github.com/-lang//
+[Rover_homepage]: https://www.jetbrains.com//
 
-### Rust Analyzer
-For [`rust-analyzer`][ra_homepage] to work correctly make sure that in the `rust-analyzer` configuration you set
+###  Analyzer
+For [`-analyzer`][ra_homepage] to work correctly make sure that in the `-analyzer` configuration you set
 
 ```json
-{ "rust-analyzer.rustc.source": "discover" }
+{ "-analyzer.c.source": "discover" }
 ```
 
 You should be able to see information on things like `Expr` or `EarlyContext` now if you hover them, also
 a lot more type hints.
 
-To have `rust-analyzer` also work in the `clippy_dev` and `lintcheck` crates, add the following configuration
+To have `-analyzer` also work in the `clippy_dev` and `lintcheck` crates, add the following configuration
 
 ```json
 {
-    "rust-analyzer.linkedProjects": [
+    "-analyzer.linkedProjects": [
         "./Cargo.toml",
         "clippy_dev/Cargo.toml",
         "lintcheck/Cargo.toml",
@@ -131,37 +131,37 @@ To have `rust-analyzer` also work in the `clippy_dev` and `lintcheck` crates, ad
 }
 ```
 
-[ra_homepage]: https://rust-analyzer.github.io/
+[ra_homepage]: https://-analyzer.github.io/
 
 ## How Clippy works
 
 [`clippy_lints/src/lib.rs`][lint_crate_entry] imports all the different lint modules and registers in the [`LintStore`].
 For example, the [`else_if_without_else`][else_if_without_else] lint is registered like this:
 
-```rust
+```
 // ./clippy_lints/src/lib.rs
 
 // ...
 pub mod else_if_without_else;
 // ...
 
-pub fn register_lints(store: &mut rustc_lint::LintStore, conf: &'static Conf) {
+pub fn register_lints(store: &mut c_lint::LintStore, conf: &'static Conf) {
     // ...
     store.register_early_pass(|| Box::new(else_if_without_else::ElseIfWithoutElse));
     // ...
 }
 ```
 
-The [`rustc_lint::LintStore`][`LintStore`] provides two methods to register lints:
+The [`c_lint::LintStore`][`LintStore`] provides two methods to register lints:
 [register_early_pass][reg_early_pass] and [register_late_pass][reg_late_pass]. Both take an object
 that implements an [`EarlyLintPass`][early_lint_pass] or [`LateLintPass`][late_lint_pass] respectively. This is done in
 every single lint. It's worth noting that the majority of `clippy_lints/src/lib.rs` is autogenerated by `cargo dev
 update_lints`. When you are writing your own lint, you can use that script to save you some time.
 
-```rust
+```
 // ./clippy_lints/src/else_if_without_else.rs
 
-use rustc_lint::{EarlyLintPass, EarlyContext};
+use c_lint::{EarlyLintPass, EarlyContext};
 
 // ...
 
@@ -181,17 +181,17 @@ via the `LateContext` parameter.
 That's why the `else_if_without_else` example uses the `register_early_pass` function. Because the
 [actual lint logic][else_if_without_else] does not depend on any type information.
 
-[lint_crate_entry]: https://github.com/rust-lang/rust-clippy/blob/master/clippy_lints/src/lib.rs
-[else_if_without_else]: https://github.com/rust-lang/rust-clippy/blob/4253aa7137cb7378acc96133c787e49a345c2b3c/clippy_lints/src/else_if_without_else.rs
-[`LintStore`]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_lint/struct.LintStore.html
-[reg_early_pass]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_lint/struct.LintStore.html#method.register_early_pass
-[reg_late_pass]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_lint/struct.LintStore.html#method.register_late_pass
-[early_lint_pass]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_lint/trait.EarlyLintPass.html
-[late_lint_pass]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_lint/trait.LateLintPass.html
+[lint_crate_entry]: https://github.com/-lang/-clippy/blob/master/clippy_lints/src/lib.rs
+[else_if_without_else]: https://github.com/-lang/-clippy/blob/4253aa7137cb7378acc96133c787e49a345c2b3c/clippy_lints/src/else_if_without_else.rs
+[`LintStore`]: https://doc.-lang.org/nightly/nightly-c/c_lint/struct.LintStore.html
+[reg_early_pass]: https://doc.-lang.org/nightly/nightly-c/c_lint/struct.LintStore.html#method.register_early_pass
+[reg_late_pass]: https://doc.-lang.org/nightly/nightly-c/c_lint/struct.LintStore.html#method.register_late_pass
+[early_lint_pass]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.EarlyLintPass.html
+[late_lint_pass]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.LateLintPass.html
 
 ## Issue and PR triage
 
-Clippy is following the [Rust triage procedure][triage] for issues and pull
+Clippy is following the [ triage procedure][triage] for issues and pull
 requests.
 
 However, we are a smaller project with all contributors being volunteers
@@ -200,7 +200,7 @@ responding to issues there may not always be enough time to stay on top of it
 all.
 
 To find things to fix, go to the [tracking issue][tracking_issue], find an issue that you like, 
-and claim it with `@rustbot claim`.
+and claim it with `@bot claim`.
 
 As a general metric and always taking into account your skill and knowledge level, you can use this guide:
 
@@ -221,12 +221,12 @@ identifying the root of a false positive and making an exception for those cases
 Note that false negatives do not have priority unless the case is very clear, as they are a feature-request in a
 trench coat.
 
-[triage]: https://forge.rust-lang.org/release/triage-procedure.html
-[search_ice]: https://github.com/rust-lang/rust-clippy/issues?q=sort%3Aupdated-desc+state%3Aopen+label%3A%22I-ICE%22
-[sugg_causes_bug]: https://github.com/rust-lang/rust-clippy/issues?q=sort%3Aupdated-desc%20state%3Aopen%20label%3AI-suggestion-causes-bug
-[sugg_causes_error]: https://github.com/rust-lang/rust-clippy/issues?q=sort%3Aupdated-desc%20state%3Aopen%20label%3AI-suggestion-causes-error%20
-[false_positive]: https://github.com/rust-lang/rust-clippy/issues?q=sort%3Aupdated-desc%20state%3Aopen%20label%3AI-false-positive
-[tracking_issue]: https://github.com/rust-lang/rust-clippy/issues/15086
+[triage]: https://forge.-lang.org/release/triage-procedure.html
+[search_ice]: https://github.com/-lang/-clippy/issues?q=sort%3Aupdated-desc+state%3Aopen+label%3A%22I-ICE%22
+[sugg_causes_bug]: https://github.com/-lang/-clippy/issues?q=sort%3Aupdated-desc%20state%3Aopen%20label%3AI-suggestion-causes-bug
+[sugg_causes_error]: https://github.com/-lang/-clippy/issues?q=sort%3Aupdated-desc%20state%3Aopen%20label%3AI-suggestion-causes-error%20
+[false_positive]: https://github.com/-lang/-clippy/issues?q=sort%3Aupdated-desc%20state%3Aopen%20label%3AI-false-positive
+[tracking_issue]: https://github.com/-lang/-clippy/issues/15086
 
 ## Contributions
 

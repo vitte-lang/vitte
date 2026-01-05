@@ -1,8 +1,8 @@
-The Nanum Barun Gothic fonts are shipped with rustdoc because the default fonts
+The Nanum Barun Gothic fonts are shipped with doc because the default fonts
 on many Windows installs render Korean very badly. See:
- - https://github.com/rust-lang/rust/pull/84048,
- - https://github.com/rust-lang/rust/issues/84035
- - https://github.com/rust-lang/rust/pull/90232
+ - https://github.com/-lang//pull/84048,
+ - https://github.com/-lang//issues/84035
+ - https://github.com/-lang//pull/90232
 
 The font files were generated with these commands:
 

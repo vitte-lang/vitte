@@ -2,7 +2,7 @@
 
 The tracking issue for this feature is: [#130351]
 
-[#130351]: https://github.com/rust-lang/rust/issues/130351
+[#130351]: https://github.com/-lang//issues/130351
 -----
 
 The `strict_provenance_lints` feature allows to enable the `fuzzy_provenance_casts` and `lossy_provenance_casts` lints.
@@ -10,7 +10,7 @@ These lint on casts between integers and pointers, that are recommended against 
 
 ## Example
 
-```rust
+```
 #![feature(strict_provenance_lints)]
 #![warn(fuzzy_provenance_casts)]
 

@@ -1,6 +1,6 @@
 # `verbose-asm`
 
-The tracking issue for this feature is: [#126802](https://github.com/rust-lang/rust/issues/126802).
+The tracking issue for this feature is: [#126802](https://github.com/-lang//issues/126802).
 
 ------------------------
 
@@ -8,7 +8,7 @@ This enables passing `-Zverbose-asm` to get contextual comments added by LLVM.
 
 Sample code:
 
-```rust
+```
 #[no_mangle]
 pub fn foo(a: i32, b: i32) -> i32 {
     a + b

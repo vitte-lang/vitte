@@ -11,8 +11,8 @@ highest level of software quality and security.
 
 The tracking issues for this feature are:
 
-* [#39699](https://github.com/rust-lang/rust/issues/39699).
-* [#89653](https://github.com/rust-lang/rust/issues/89653).
+* [#39699](https://github.com/-lang//issues/39699).
+* [#89653](https://github.com/-lang//issues/89653).
 
 ------------------------
 
@@ -53,7 +53,7 @@ the section on [working with other languages](#working-with-other-languages).
 
 Example:
 ```shell
-$ RUSTFLAGS=-Zsanitizer=address cargo build -Zbuild-std --target x86_64-unknown-linux-gnu
+$ FLAGS=-Zsanitizer=address cargo build -Zbuild-std --target x86_64-unknown-linux-gnu
 ```
 
 Additional options for sanitizers can be passed to LLVM command line argument
@@ -96,7 +96,7 @@ See the [Clang AddressSanitizer documentation][clang-asan] for more details.
 
 Stack buffer overflow:
 
-```rust
+```
 fn main() {
     let xs = [0, 1, 2, 3];
     let _y = unsafe { *xs.as_ptr().offset(4) };
@@ -104,7 +104,7 @@ fn main() {
 ```
 
 ```shell
-$ export RUSTFLAGS=-Zsanitizer=address RUSTDOCFLAGS=-Zsanitizer=address
+$ export FLAGS=-Zsanitizer=address DOCFLAGS=-Zsanitizer=address
 $ cargo run -Zbuild-std --target x86_64-unknown-linux-gnu
 ==37882==ERROR: AddressSanitizer: stack-buffer-overflow on address 0x7ffe400e6250 at pc 0x5609a841fb20 bp 0x7ffe400e6210 sp 0x7ffe400e6208
 READ of size 4 at 0x7ffe400e6250 thread T0
@@ -156,7 +156,7 @@ Shadow byte legend (one shadow byte represents 8 application bytes):
 
 Use of a stack object after its scope has already ended:
 
-```rust
+```
 static mut P: *mut usize = std::ptr::null_mut();
 
 fn main() {
@@ -171,12 +171,12 @@ fn main() {
 ```
 
 ```shell
-$ export RUSTFLAGS=-Zsanitizer=address RUSTDOCFLAGS=-Zsanitizer=address
+$ export FLAGS=-Zsanitizer=address DOCFLAGS=-Zsanitizer=address
 $ cargo run -Zbuild-std --target x86_64-unknown-linux-gnu
 =================================================================
 ==39249==ERROR: AddressSanitizer: stack-use-after-scope on address 0x7ffc7ed3e1a0 at pc 0x55c98b262a8e bp 0x7ffc7ed3e050 sp 0x7ffc7ed3e048
 WRITE of size 8 at 0x7ffc7ed3e1a0 thread T0
-    #0 0x55c98b262a8d in core::ptr::write_volatile::he21f1df5a82f329a /.../src/rust/src/libcore/ptr/mod.rs:1048:5
+    #0 0x55c98b262a8d in core::ptr::write_volatile::he21f1df5a82f329a /.../src//src/libcore/ptr/mod.rs:1048:5
     #1 0x55c98b262cd2 in example::main::h628ffc6626ed85b2 /.../src/main.rs:9:9
     ...
 
@@ -187,7 +187,7 @@ Address 0x7ffc7ed3e1a0 is located in stack of thread T0 at offset 32 in frame
     [32, 40) 'x' (line 6) <== Memory access at offset 32 is inside this variable
 HINT: this may be a false positive if your program uses some custom stack unwind mechanism, swapcontext or vfork
       (longjmp and C++ exceptions *are* supported)
-SUMMARY: AddressSanitizer: stack-use-after-scope /.../src/rust/src/libcore/ptr/mod.rs:1048:5 in core::ptr::write_volatile::he21f1df5a82f329a
+SUMMARY: AddressSanitizer: stack-use-after-scope /.../src//src/libcore/ptr/mod.rs:1048:5 in core::ptr::write_volatile::he21f1df5a82f329a
 Shadow bytes around the buggy address:
   0x10000fd9fbe0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
   0x10000fd9fbf0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
@@ -225,10 +225,10 @@ Shadow byte legend (one shadow byte represents 8 application bytes):
 
 # ControlFlowIntegrity
 
-The LLVM CFI support in the Rust compiler provides forward-edge control flow
-protection for both Rust-compiled code only and for C or C++ and Rust -compiled
+The LLVM CFI support in the  compiler provides forward-edge control flow
+protection for both -compiled code only and for C or C++ and  -compiled
 code mixed-language binaries, also known as “mixed binaries” (i.e., for when C
-or C++ and Rust -compiled code share the same virtual address space), by
+or C++ and  -compiled code share the same virtual address space), by
 aggregating function pointers in groups identified by their return and parameter
 types.
 
@@ -236,7 +236,7 @@ LLVM CFI can be enabled with `-Zsanitizer=cfi` and requires LTO (i.e.,
 `-Clinker-plugin-lto` or `-Clto`). Cross-language LLVM CFI can be enabled with
 `-Zsanitizer=cfi`, and requires the `-Zsanitizer-cfi-normalize-integers` option
 to be used with Clang `-fsanitize-cfi-icall-experimental-normalize-integers`
-option for cross-language LLVM CFI support, and proper (i.e., non-rustc) LTO
+option for cross-language LLVM CFI support, and proper (i.e., non-c) LTO
 (i.e., `-Clinker-plugin-lto`).
 
 It is recommended to rebuild the standard library with CFI enabled by using the
@@ -246,7 +246,7 @@ See the [Clang ControlFlowIntegrity documentation][clang-cfi] for more details.
 
 ## Example 1: Redirecting control flow using an indirect branch/call to an invalid destination
 
-```rust
+```
 fn add_one(x: i32) -> i32 {
     x + 1
 }
@@ -300,9 +300,9 @@ destination (i.e., within the body of the function).
 
 ```shell
 $ cargo run --release
-   Compiling rust-cfi-1 v0.1.0 (/home/rcvalle/rust-cfi-1)
+   Compiling -cfi-1 v0.1.0 (/home/rcvalle/-cfi-1)
     Finished release [optimized] target(s) in 0.42s
-     Running `target/release/rust-cfi-1`
+     Running `target/release/-cfi-1`
 The answer is: 12
 With CFI enabled, you should not see the next answer
 The next answer is: 14
@@ -311,11 +311,11 @@ $
 Fig. 2. Build and execution of Fig. 1 with LLVM CFI disabled.
 
 ```shell
-$ RUSTFLAGS="-Clinker-plugin-lto -Clinker=clang -Clink-arg=-fuse-ld=lld -Zsanitizer=cfi" cargo run -Zbuild-std -Zbuild-std-features --release --target x86_64-unknown-linux-gnu
+$ FLAGS="-Clinker-plugin-lto -Clinker=clang -Clink-arg=-fuse-ld=lld -Zsanitizer=cfi" cargo run -Zbuild-std -Zbuild-std-features --release --target x86_64-unknown-linux-gnu
    ...
-   Compiling rust-cfi-1 v0.1.0 (/home/rcvalle/rust-cfi-1)
+   Compiling -cfi-1 v0.1.0 (/home/rcvalle/-cfi-1)
     Finished release [optimized] target(s) in 1m 08s
-     Running `target/x86_64-unknown-linux-gnu/release/rust-cfi-1`
+     Running `target/x86_64-unknown-linux-gnu/release/-cfi-1`
 The answer is: 12
 With CFI enabled, you should not see the next answer
 Illegal instruction
@@ -329,7 +329,7 @@ terminated (see Fig. 3).
 
 ## Example 2: Redirecting control flow using an indirect branch/call to a function with a different number of parameters
 
-```rust
+```
 use std::mem;
 
 fn add_one(x: i32) -> i32 {
@@ -363,9 +363,9 @@ call/branch site.
 
 ```shell
 $ cargo run --release
-   Compiling rust-cfi-2 v0.1.0 (/home/rcvalle/rust-cfi-2)
+   Compiling -cfi-2 v0.1.0 (/home/rcvalle/-cfi-2)
     Finished release [optimized] target(s) in 0.43s
-     Running `target/release/rust-cfi-2`
+     Running `target/release/-cfi-2`
 The answer is: 12
 With CFI enabled, you should not see the next answer
 The next answer is: 14
@@ -374,11 +374,11 @@ $
 Fig. 5. Build and execution of Fig. 4 with LLVM CFI disabled.
 
 ```shell
-$ RUSTFLAGS="-Clinker-plugin-lto -Clinker=clang -Clink-arg=-fuse-ld=lld -Zsanitizer=cfi" cargo run -Zbuild-std -Zbuild-std-features --release --target x86_64-unknown-linux-gnu
+$ FLAGS="-Clinker-plugin-lto -Clinker=clang -Clink-arg=-fuse-ld=lld -Zsanitizer=cfi" cargo run -Zbuild-std -Zbuild-std-features --release --target x86_64-unknown-linux-gnu
    ...
-   Compiling rust-cfi-2 v0.1.0 (/home/rcvalle/rust-cfi-2)
+   Compiling -cfi-2 v0.1.0 (/home/rcvalle/-cfi-2)
     Finished release [optimized] target(s) in 1m 08s
-     Running `target/x86_64-unknown-linux-gnu/release/rust-cfi-2`
+     Running `target/x86_64-unknown-linux-gnu/release/-cfi-2`
 The answer is: 12
 With CFI enabled, you should not see the next answer
 Illegal instruction
@@ -393,7 +393,7 @@ execution is also terminated (see Fig. 6).
 
 ## Example 3: Redirecting control flow using an indirect branch/call to a function with different return and parameter types
 
-```rust
+```
 use std::mem;
 
 fn add_one(x: i32) -> i32 {
@@ -427,9 +427,9 @@ arguments intended/passed at the call/branch site.
 
 ```shell
 $ cargo run --release
-   Compiling rust-cfi-3 v0.1.0 (/home/rcvalle/rust-cfi-3)
+   Compiling -cfi-3 v0.1.0 (/home/rcvalle/-cfi-3)
     Finished release [optimized] target(s) in 0.44s
-     Running `target/release/rust-cfi-3`
+     Running `target/release/-cfi-3`
 The answer is: 12
 With CFI enabled, you should not see the next answer
 The next answer is: 14
@@ -438,11 +438,11 @@ $
 Fig. 8. Build and execution of Fig. 7 with LLVM CFI disabled.
 
 ```shell
-$ RUSTFLAGS="-Clinker-plugin-lto -Clinker=clang -Clink-arg=-fuse-ld=lld -Zsanitizer=cfi" cargo run -Zbuild-std -Zbuild-std-features --release --target x86_64-unknown-linux-gnu
+$ FLAGS="-Clinker-plugin-lto -Clinker=clang -Clink-arg=-fuse-ld=lld -Zsanitizer=cfi" cargo run -Zbuild-std -Zbuild-std-features --release --target x86_64-unknown-linux-gnu
    ...
-   Compiling rust-cfi-3 v0.1.0 (/home/rcvalle/rust-cfi-3)
+   Compiling -cfi-3 v0.1.0 (/home/rcvalle/-cfi-3)
     Finished release [optimized] target(s) in 1m 07s
-     Running `target/x86_64-unknown-linux-gnu/release/rust-cfi-3`
+     Running `target/x86_64-unknown-linux-gnu/release/-cfi-3`
 The answer is: 12
 With CFI enabled, you should not see the next answer
 Illegal instruction
@@ -505,10 +505,10 @@ $ make
 mkdir -p target/release
 clang -I. -Isrc -Wall -c src/foo.c -o target/release/libfoo.o
 llvm-ar rcs target/release/libfoo.a target/release/libfoo.o
-RUSTFLAGS="-L./target/release -Clinker=clang -Clink-arg=-fuse-ld=lld" cargo build --release
-   Compiling rust-cfi-4 v0.1.0 (/home/rcvalle/rust-cfi-4)
+FLAGS="-L./target/release -Clinker=clang -Clink-arg=-fuse-ld=lld" cargo build --release
+   Compiling -cfi-4 v0.1.0 (/home/rcvalle/-cfi-4)
     Finished release [optimized] target(s) in 0.49s
-$ ./target/release/rust-cfi-4
+$ ./target/release/-cfi-4
 The answer is: 12
 With CFI enabled, you should not see the next answer
 The next answer is: 14
@@ -521,11 +521,11 @@ $ make
 mkdir -p target/release
 clang -I. -Isrc -Wall -flto -fsanitize=cfi -fsanitize-cfi-icall-experimental-normalize-integers -fvisibility=hidden -c -emit-llvm src/foo.c -o target/release/libfoo.bc
 llvm-ar rcs target/release/libfoo.a target/release/libfoo.bc
-RUSTFLAGS="-L./target/release -Clinker-plugin-lto -Clinker=clang -Clink-arg=-fuse-ld=lld -Zsanitizer=cfi -Zsanitizer-cfi-normalize-integers" cargo build -Zbuild-std -Zbuild-std-features --release --target x86_64-unknown-linux-gnu
+FLAGS="-L./target/release -Clinker-plugin-lto -Clinker=clang -Clink-arg=-fuse-ld=lld -Zsanitizer=cfi -Zsanitizer-cfi-normalize-integers" cargo build -Zbuild-std -Zbuild-std-features --release --target x86_64-unknown-linux-gnu
    ...
-   Compiling rust-cfi-4 v0.1.0 (/home/rcvalle/rust-cfi-4)
+   Compiling -cfi-4 v0.1.0 (/home/rcvalle/-cfi-4)
     Finished release [optimized] target(s) in 1m 06s
-$ ./target/x86_64-unknown-linux-gnu/release/rust-cfi-4
+$ ./target/x86_64-unknown-linux-gnu/release/-cfi-4
 The answer is: 12
 With CFI enabled, you should not see the next answer
 Illegal instruction
@@ -560,7 +560,7 @@ See the [Clang HWAddressSanitizer documentation][clang-hwasan] for more details.
 
 Heap buffer overflow:
 
-```rust
+```
 fn main() {
     let xs = vec![0, 1, 2, 3];
     let _y = unsafe { *xs.as_ptr().offset(4) };
@@ -568,7 +568,7 @@ fn main() {
 ```
 
 ```shell
-$ rustc main.rs -Zsanitizer=hwaddress -C target-feature=+tagged-globals -C
+$ c main.rs -Zsanitizer=hwaddress -C target-feature=+tagged-globals -C
 linker=aarch64-linux-gnu-gcc -C link-arg=-fuse-ld=lld --target
 aarch64-unknown-linux-gnu
 ```
@@ -624,17 +624,17 @@ SUMMARY: HWAddressSanitizer: tag-mismatch (/.../main+0x54a94)
 
 # KernelControlFlowIntegrity
 
-The LLVM Kernel Control Flow Integrity (CFI) support to the Rust compiler
+The LLVM Kernel Control Flow Integrity (CFI) support to the  compiler
 initially provides forward-edge control flow protection for operating systems
-kernels for Rust-compiled code only by aggregating function pointers in groups
+kernels for -compiled code only by aggregating function pointers in groups
 identified by their return and parameter types. (See [LLVM commit cff5bef "KCFI
 sanitizer"](https://github.com/llvm/llvm-project/commit/cff5bef948c91e4919de8a5fb9765e0edc13f3de).)
 
-Forward-edge control flow protection for C or C++ and Rust -compiled code "mixed
-binaries" (i.e., for when C or C++ and Rust -compiled code share the same
+Forward-edge control flow protection for C or C++ and  -compiled code "mixed
+binaries" (i.e., for when C or C++ and  -compiled code share the same
 virtual address space) will be provided in later work by defining and using
 compatible type identifiers (see Type metadata in the design document in the
-tracking issue [#89653](https://github.com/rust-lang/rust/issues/89653)).
+tracking issue [#89653](https://github.com/-lang//issues/89653)).
 
 LLVM KCFI can be enabled with `-Zsanitizer=kcfi`.
 
@@ -716,7 +716,7 @@ instruments the standard library, and is strictly necessary for the correct
 operation of the tool. The `-Zsanitizer-memory-track-origins` enables tracking
 of the origins of uninitialized memory:
 
-```rust
+```
 use std::mem::MaybeUninit;
 
 fn main() {
@@ -730,15 +730,15 @@ fn main() {
 
 ```shell
 $ export \
-  RUSTFLAGS='-Zsanitizer=memory -Zsanitizer-memory-track-origins' \
-  RUSTDOCFLAGS='-Zsanitizer=memory -Zsanitizer-memory-track-origins'
+  FLAGS='-Zsanitizer=memory -Zsanitizer-memory-track-origins' \
+  DOCFLAGS='-Zsanitizer=memory -Zsanitizer-memory-track-origins'
 $ cargo clean
 $ cargo run -Zbuild-std --target x86_64-unknown-linux-gnu
 ==9416==WARNING: MemorySanitizer: use-of-uninitialized-value
-    #0 0x560c04f7488a in core::fmt::num::imp::fmt_u64::haa293b0b098501ca $RUST/build/x86_64-unknown-linux-gnu/stage1/lib/rustlib/src/rust/src/libcore/fmt/num.rs:202:16
+    #0 0x560c04f7488a in core::fmt::num::imp::fmt_u64::haa293b0b098501ca $/build/x86_64-unknown-linux-gnu/stage1/lib/lib/src//src/libcore/fmt/num.rs:202:16
 ...
   Uninitialized value was stored to memory at
-    #0 0x560c04ae898a in __msan_memcpy.part.0 $RUST/src/llvm-project/compiler-rt/lib/msan/msan_interceptors.cc:1558:3
+    #0 0x560c04ae898a in __msan_memcpy.part.0 $/src/llvm-project/compiler-rt/lib/msan/msan_interceptors.cc:1558:3
     #1 0x560c04b2bf88 in memory::main::hd2333c1899d997f5 $CWD/src/main.rs:6:16
 
   Uninitialized value was created by an allocation of 'a' in the stack frame of function '_ZN6memory4main17hd2333c1899d997f5E'
@@ -837,7 +837,7 @@ See the [Clang ThreadSanitizer documentation][clang-tsan] for more details.
 
 ## Example
 
-```rust
+```
 static mut A: usize = 0;
 
 fn main() {
@@ -851,7 +851,7 @@ fn main() {
 ```
 
 ```shell
-$ export RUSTFLAGS=-Zsanitizer=thread RUSTDOCFLAGS=-Zsanitizer=thread
+$ export FLAGS=-Zsanitizer=thread DOCFLAGS=-Zsanitizer=thread
 $ cargo run -Zbuild-std --target x86_64-unknown-linux-gnu
 ==================
 WARNING: ThreadSanitizer: data race (pid=10574)
@@ -884,14 +884,14 @@ function again the program will get sanitized.
 The santizer checks can be disabled using the external functions `__rtsan_disable()` and `__rtsan_enable()`.
 Each call to `__rtsan_disable()` must be paired with one following call to `__rtsan_enable()`, otherwise the behaviour is undefined.
 
-```rust
+```
 unsafe extern "C" {
   fn __rtsan_disable();
   fn __rtsan_enable();
 }
 ```
 
-```rust,ignore (log is just a example and doesn't exist)
+```,ignore (log is just a example and doesn't exist)
 // in a real-time context
 #[cfg(debug_assertions)]
 {
@@ -905,7 +905,7 @@ See the [Clang RealtimeSanitizer documentation][clang-rtsan] for more details.
 
 ## Example
 
-```rust,no_run
+```,no_run
 #![feature(sanitize)]
 #[sanitize(realtime = "nonblocking")]
 fn real_time() {
@@ -921,7 +921,7 @@ Intercepted call to real-time unsafe function `malloc` in real-time context!
     #2 0x000100d94d90 in alloc::alloc::exchange_malloc::hd45b5788339eb5c8+0x48 (realtime_vec:arm64+0x100000d90)
     #3 0x000100d95020 in realtime_vec::main::hea6bd69b03eb9ca1+0x24 (realtime_vec:arm64+0x100001020)
     #4 0x000100d94a28 in core::ops::function::FnOnce::call_once::h493b6cb9dd87d87c+0xc (realtime_vec:arm64+0x100000a28)
-    #5 0x000100d949b8 in std::sys::backtrace::__rust_begin_short_backtrace::hfcddb06c73c19eea+0x8 (realtime_vec:arm64+0x1000009b8)
+    #5 0x000100d949b8 in std::sys::backtrace::___begin_short_backtrace::hfcddb06c73c19eea+0x8 (realtime_vec:arm64+0x1000009b8)
     #6 0x000100d9499c in std::rt::lang_start::_$u7b$$u7b$closure$u7d$$u7d$::h202288c05a2064f0+0xc (realtime_vec:arm64+0x10000099c)
     #7 0x000100d9fa34 in std::rt::lang_start_internal::h6c763158a05ac05f+0x6c (realtime_vec:arm64+0x10000ba34)
     #8 0x000100d94980 in std::rt::lang_start::h1c29cc56df0598b4+0x38 (realtime_vec:arm64+0x100000980)
@@ -947,13 +947,13 @@ functionality][build-std].
 
 # Working with other languages
 
-Sanitizers rely on compiler runtime libraries to function properly. Rust links
+Sanitizers rely on compiler runtime libraries to function properly.  links
 in its own compiler runtime which might conflict with runtimes required by
-languages such as C++. Since Rust's runtime doesn't always contain the symbols
+languages such as C++. Since 's runtime doesn't always contain the symbols
 required by C++ instrumented code, you might need to skip linking it so another
 runtime can be linked instead.
 
-A separate unstable option `-Zexternal-clangrt` can be used to make rustc skip
+A separate unstable option `-Zexternal-clangrt` can be used to make c skip
 linking the compiler runtime for the sanitizer. This will require you to link
 in an external runtime, such as from clang instead.
 
@@ -962,10 +962,10 @@ in an external runtime, such as from clang instead.
 Use of sanitizers together with build scripts and procedural macros is
 technically possible, but in almost all cases it would be best avoided.  This
 is especially true for procedural macros which would require an instrumented
-version of rustc.
+version of c.
 
 In more practical terms when using cargo always remember to pass `--target`
-flag, so that rustflags will not be applied to build scripts and procedural
+flag, so that flags will not be applied to build scripts and procedural
 macros.
 
 # Symbolizing the Reports

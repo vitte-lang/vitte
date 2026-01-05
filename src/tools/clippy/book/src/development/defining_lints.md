@@ -26,7 +26,7 @@ besides the numerous standalone lints living under `clippy_lints/src/`:
 
 These types group together lints that share some common behaviors. For instance,
 `functions` groups together lints that deal with some aspects of functions in
-Rust, like definitions, signatures and attributes.
+, like definitions, signatures and attributes.
 
 For more information, feel free to compare the lint files under any category
 with [All Clippy lints][all_lints] or ask one of the maintainers.
@@ -146,7 +146,7 @@ lint, and it will be in `mod.rs` if you defined a type-specific lint.
 
 The macro looks something like this:
 
-```rust
+```
 declare_clippy_lint! {
     /// ### What it does
     ///
@@ -161,11 +161,11 @@ declare_clippy_lint! {
     /// It can lead to...
     ///
     /// ### Example
-    /// ```rust
+    /// ```
     /// // example code where Clippy issues a warning
     /// ```
     /// Use instead:
-    /// ```rust
+    /// ```
     /// // example code which does not raise Clippy warning
     /// ```
     #[clippy::version = "1.70.0"] // <- In which version was this implemented, keep it up to date!
@@ -186,7 +186,7 @@ we'd use `cargo dev update_lints` command afterwards.
 When a lint is manually declared, we might need to register the lint pass
 manually in the `register_lints` function in `clippy_lints/src/lib.rs`:
 
-```rust
+```
 store.register_late_pass(|_| Box::new(foo_functions::FooFunctions));
 ```
 
@@ -198,6 +198,6 @@ Without a call to one of `register_early_pass` or `register_late_pass`, the lint
 pass in question will not be run.
 
 
-[all_lints]: https://rust-lang.github.io/rust-clippy/master/
-[lint_naming]: https://rust-lang.github.io/rfcs/0344-conventions-galore.html#lints
+[all_lints]: https://-lang.github.io/-clippy/master/
+[lint_naming]: https://-lang.github.io/rfcs/0344-conventions-galore.html#lints
 [Lint Passes]: lint_passes.md

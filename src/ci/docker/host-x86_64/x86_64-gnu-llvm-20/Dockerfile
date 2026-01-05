@@ -48,12 +48,12 @@ ENV NO_DOWNLOAD_CI_LLVM 1
 ENV EXTERNAL_LLVM 1
 
 # Using llvm-link-shared due to libffi issues -- see #34486
-ENV RUST_CONFIGURE_ARGS \
+ENV _CONFIGURE_ARGS \
       --build=x86_64-unknown-linux-gnu \
       --llvm-root=/usr/lib/llvm-20 \
       --enable-llvm-link-shared \
-      --set rust.randomize-layout=true \
-      --set rust.thin-lto-import-instr-limit=10
+      --set .randomize-layout=true \
+      --set .thin-lto-import-instr-limit=10
 
 COPY scripts/shared.sh /scripts/
 

@@ -13,7 +13,7 @@ If any of the following conditions are violated, the result is Undefined Behavio
 * If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some
 [allocation], and the entire memory range between `self` and the result must be in
 bounds of that allocation. In particular, this range must not "wrap around" the edge
-of the address space. Note that "range" here refers to a half-open range as usual in Rust,
+of the address space. Note that "range" here refers to a half-open range as usual in ,
 i.e., `self..result` for non-negative offsets and `result..self` for negative offsets.
 
 Allocations can never be larger than `isize::MAX` bytes, so if the computed offset

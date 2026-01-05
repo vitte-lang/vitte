@@ -29,7 +29,7 @@ def serialize_and_parse(configure_args, bootstrap_args=None):
     section_order, sections, targets = configure.parse_args(configure_args)
     buffer = StringIO()
     configure.write_config_toml(buffer, section_order, targets, sections)
-    build = bootstrap.RustBuild(config_toml=buffer.getvalue(), args=bootstrap_args)
+    build = bootstrap.Build(config_toml=buffer.getvalue(), args=bootstrap_args)
 
     try:
         import tomllib
@@ -78,10 +78,10 @@ class ProgramOutOfDate(unittest.TestCase):
     def setUp(self):
         self.container = tempfile.mkdtemp()
         os.mkdir(os.path.join(self.container, "stage0"))
-        self.build = bootstrap.RustBuild()
+        self.build = bootstrap.Build()
         self.build.date = "2017-06-15"
         self.build.build_dir = self.container
-        self.rustc_stamp_path = os.path.join(self.container, "stage0", ".rustc-stamp")
+        self.c_stamp_path = os.path.join(self.container, "stage0", ".c-stamp")
         self.key = self.build.date + str(None)
 
     def tearDown(self):
@@ -89,22 +89,22 @@ class ProgramOutOfDate(unittest.TestCase):
 
     def test_stamp_path_does_not_exist(self):
         """Return True when the stamp file does not exist"""
-        if os.path.exists(self.rustc_stamp_path):
-            os.unlink(self.rustc_stamp_path)
-        self.assertTrue(self.build.program_out_of_date(self.rustc_stamp_path, self.key))
+        if os.path.exists(self.c_stamp_path):
+            os.unlink(self.c_stamp_path)
+        self.assertTrue(self.build.program_out_of_date(self.c_stamp_path, self.key))
 
     def test_dates_are_different(self):
         """Return True when the dates are different"""
-        with open(self.rustc_stamp_path, "w") as rustc_stamp:
-            rustc_stamp.write("2017-06-14None")
-        self.assertTrue(self.build.program_out_of_date(self.rustc_stamp_path, self.key))
+        with open(self.c_stamp_path, "w") as c_stamp:
+            c_stamp.write("2017-06-14None")
+        self.assertTrue(self.build.program_out_of_date(self.c_stamp_path, self.key))
 
     def test_same_dates(self):
         """Return False both dates match"""
-        with open(self.rustc_stamp_path, "w") as rustc_stamp:
-            rustc_stamp.write("2017-06-15None")
+        with open(self.c_stamp_path, "w") as c_stamp:
+            c_stamp.write("2017-06-15None")
         self.assertFalse(
-            self.build.program_out_of_date(self.rustc_stamp_path, self.key)
+            self.build.program_out_of_date(self.c_stamp_path, self.key)
         )
 
 
@@ -178,11 +178,11 @@ class GenerateAndParseConfig(unittest.TestCase):
         self.assertEqual(build.get_toml("profile"), "compiler")
 
     def test_set_codegen_backends(self):
-        build = serialize_and_parse(["--set", "rust.codegen-backends=cranelift"])
+        build = serialize_and_parse(["--set", ".codegen-backends=cranelift"])
         self.assertNotEqual(
             build.config_toml.find("codegen-backends = ['cranelift']"), -1
         )
-        build = serialize_and_parse(["--set", "rust.codegen-backends=cranelift,llvm"])
+        build = serialize_and_parse(["--set", ".codegen-backends=cranelift,llvm"])
         self.assertNotEqual(
             build.config_toml.find("codegen-backends = ['cranelift', 'llvm']"), -1
         )
@@ -216,9 +216,9 @@ class BuildBootstrap(unittest.TestCase):
         cargo_bin = os.environ.get("BOOTSTRAP_TEST_CARGO_BIN")
         if cargo_bin is not None:
             configure_args += ["--set", "build.cargo=" + cargo_bin]
-        rustc_bin = os.environ.get("BOOTSTRAP_TEST_RUSTC_BIN")
-        if rustc_bin is not None:
-            configure_args += ["--set", "build.rustc=" + rustc_bin]
+        c_bin = os.environ.get("BOOTSTRAP_TEST_C_BIN")
+        if c_bin is not None:
+            configure_args += ["--set", "build.c=" + c_bin]
 
         env = env.copy()
         env["PATH"] = os.environ["PATH"]
@@ -242,7 +242,7 @@ class BuildBootstrap(unittest.TestCase):
         for toml_warnings in ["false", "true", None]:
             configure_args = []
             if toml_warnings is not None:
-                configure_args = ["--set", "rust.deny-warnings=" + toml_warnings]
+                configure_args = ["--set", ".deny-warnings=" + toml_warnings]
 
             args, env = self.build_args(configure_args, args=["--warnings=warn"])
             self.assertFalse("CARGO_BUILD_WARNINGS" in env)

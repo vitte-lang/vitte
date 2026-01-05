@@ -6,8 +6,8 @@ RUN sh /scripts/cross-apt-packages.sh
 COPY scripts/crosstool-ng.sh /scripts/
 RUN sh /scripts/crosstool-ng.sh
 
-COPY scripts/rustbuild-setup.sh /scripts/
-RUN sh /scripts/rustbuild-setup.sh
+COPY scripts/build-setup.sh /scripts/
+RUN sh /scripts/build-setup.sh
 WORKDIR /tmp
 
 COPY scripts/crosstool-ng-build.sh /scripts/
@@ -30,5 +30,5 @@ ENV CC_riscv64gc_unknown_linux_gnu=riscv64-unknown-linux-gnu-gcc \
 ENV HOSTS=riscv64gc-unknown-linux-gnu
 ENV TARGETS=riscv64gc-unknown-linux-gnu,riscv64a23-unknown-linux-gnu
 
-ENV RUST_CONFIGURE_ARGS --enable-extended --enable-profiler --disable-docs
+ENV _CONFIGURE_ARGS --enable-extended --enable-profiler --disable-docs
 ENV SCRIPT python3 ../x.py dist --target $TARGETS --host $HOSTS

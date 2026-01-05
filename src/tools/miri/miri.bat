@@ -9,6 +9,6 @@ cargo +stable build %CARGO_EXTRA_FLAGS% -q --target-dir %MIRI_SCRIPT_TARGET_DIR%
   || (echo Failed to build miri-script. Is the 'stable' toolchain installed? & exit /b)
 
 :: Forwards all arguments to this file to the executable.
-:: We invoke the binary directly to avoid going through rustup, which would set some extra
+:: We invoke the binary directly to avoid going through up, which would set some extra
 :: env vars that we do not want.
 %MIRI_SCRIPT_TARGET_DIR%\debug\miri-script %*

@@ -1,6 +1,6 @@
 # We document platform support for minimum glibc 2.17 and kernel 3.2.
 # CentOS 7 has headers for kernel 3.10, but that's fine as long as we don't
-# actually use newer APIs in rustc or std without a fallback. It's more
+# actually use newer APIs in c or std without a fallback. It's more
 # important that we match glibc for ELF symbol versioning.
 FROM centos:7
 
@@ -37,11 +37,11 @@ RUN yum upgrade -y && \
       zlib-devel \
       && yum clean all
 
-RUN mkdir -p /rustroot/bin
+RUN mkdir -p /root/bin
 
-ENV PATH=/rustroot/bin:$PATH
-ENV LD_LIBRARY_PATH=/rustroot/lib64:/rustroot/lib32:/rustroot/lib
-ENV PKG_CONFIG_PATH=/rustroot/lib/pkgconfig
+ENV PATH=/root/bin:$PATH
+ENV LD_LIBRARY_PATH=/root/lib64:/root/lib32:/root/lib
+ENV PKG_CONFIG_PATH=/root/lib/pkgconfig
 WORKDIR /tmp
 RUN mkdir /home/user
 COPY scripts/shared.sh /tmp/
@@ -76,26 +76,26 @@ ENV HOSTS=aarch64-unknown-linux-gnu
 
 ENV CPATH=/usr/include/aarch64-linux-gnu/:$CPATH
 
-ENV RUST_CONFIGURE_ARGS \
+ENV _CONFIGURE_ARGS \
       --build=aarch64-unknown-linux-gnu \
       --enable-full-tools \
       --enable-profiler \
       --enable-sanitizers \
       --enable-compiler-docs \
       --set target.aarch64-unknown-linux-gnu.linker=clang \
-      --set target.aarch64-unknown-linux-gnu.ar=/rustroot/bin/llvm-ar \
-      --set target.aarch64-unknown-linux-gnu.ranlib=/rustroot/bin/llvm-ranlib \
+      --set target.aarch64-unknown-linux-gnu.ar=/root/bin/llvm-ar \
+      --set target.aarch64-unknown-linux-gnu.ranlib=/root/bin/llvm-ranlib \
       --set llvm.link-shared=true \
       --set llvm.thin-lto=true \
       --set llvm.libzstd=true \
       --set llvm.ninja=false \
-      --set rust.debug-assertions=false \
-      --set rust.jemalloc \
-      --set rust.bootstrap-override-lld=true \
-      --set rust.lto=thin \
-      --set rust.codegen-units=1
+      --set .debug-assertions=false \
+      --set .jemalloc \
+      --set .bootstrap-override-lld=true \
+      --set .lto=thin \
+      --set .codegen-units=1
 
-ENV SCRIPT python3 ../x.py build --set rust.debug=true opt-dist && \
+ENV SCRIPT python3 ../x.py build --set .debug=true opt-dist && \
       ./build/$HOSTS/stage1-tools-bin/opt-dist linux-ci --  python3 ../x.py dist \
       --host $HOSTS --target $HOSTS --include-default-paths build-manifest bootstrap
 

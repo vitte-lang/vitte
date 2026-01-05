@@ -1,5 +1,5 @@
-#ifndef _rustc_llvm_SuppressLLVMWarnings_h
-#define _rustc_llvm_SuppressLLVMWarnings_h
+#ifndef _c_llvm_SuppressLLVMWarnings_h
+#define _c_llvm_SuppressLLVMWarnings_h
 
 // LLVM currently generates many warnings when compiled using MSVC. These
 // warnings make it difficult to diagnose real problems when working on C++
@@ -14,4 +14,4 @@
     disable : 4244) // conversion from 'xxx' to 'yyy', possible loss of data
 #endif
 
-#endif // _rustc_llvm_SuppressLLVMWarnings_h
+#endif // _c_llvm_SuppressLLVMWarnings_h

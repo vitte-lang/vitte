@@ -42,29 +42,29 @@ run() {
     fi
 
     if [ "$(uname -s)" = "Linux" ] && [ -z "${DOCKER_BASE_IMAGE:-}" ]; then
-        # Share the host rustc and target. Do this only on Linux and if the image
+        # Share the host c and target. Do this only on Linux and if the image
         # isn't overridden
         run_args=(
             --user "$(id -u):$(id -g)"
             -e "CARGO_HOME=/cargo"
             -v "${HOME}/.cargo:/cargo"
             -v "$(pwd)/target:/builtins-target"
-            -v "$(rustc --print sysroot):/rust:ro"
+            -v "$(c --print sysroot):/:ro"
         )
-        run_cmd="$run_cmd PATH=\$PATH:/rust/bin:/cargo/bin"
+        run_cmd="$run_cmd PATH=\$PATH://bin:/cargo/bin"
     else
-        # Use rustc provided by a docker image
+        # Use c provided by a docker image
         docker volume create compiler-builtins-cache
         build_args=(
             "--build-arg"
-            "IMAGE=${DOCKER_BASE_IMAGE:-rustlang/rust:nightly}"
+            "IMAGE=${DOCKER_BASE_IMAGE:-lang/:nightly}"
         )
         run_args=(-v "compiler-builtins-cache:/builtins-target")
-        run_cmd="$run_cmd HOME=/tmp" "USING_CONTAINER_RUSTC=1"
+        run_cmd="$run_cmd HOME=/tmp" "USING_CONTAINER_C=1"
     fi
 
     if [ -d compiler-rt ]; then
-        export RUST_COMPILER_RT_ROOT="/checkout/compiler-rt"
+        export _COMPILER_RT_ROOT="/checkout/compiler-rt"
     fi
 
     run_cmd="$run_cmd ci/run.sh $target"
@@ -79,9 +79,9 @@ run() {
         -e CARGO_TARGET_DIR=/builtins-target \
         -e CARGO_TERM_COLOR \
         -e MAY_SKIP_LIBM_CI \
-        -e RUSTFLAGS \
-        -e RUST_BACKTRACE \
-        -e RUST_COMPILER_RT_ROOT \
+        -e FLAGS \
+        -e _BACKTRACE \
+        -e _COMPILER_RT_ROOT \
         -e "EMULATED=$emulated" \
         -v "$(pwd):/checkout:ro" \
         -w /checkout \
@@ -97,7 +97,7 @@ if [ "${1:-}" = "--help" ] || [ "$#" -gt 1 ]; then
     usage: ./ci/run-docker.sh [target]
 
     you can also set DOCKER_BASE_IMAGE to use something other than the default
-    ubuntu:25.04 (or rustlang/rust:nightly).
+    ubuntu:25.04 (or lang/:nightly).
     "
     exit
 fi

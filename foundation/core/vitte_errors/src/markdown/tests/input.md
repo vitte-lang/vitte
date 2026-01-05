@@ -38,8 +38,8 @@ Or ordered:
 
 Both `inline code` and code blocks are supported:
 
-```rust
-/// A rust enum
+```
+/// A  enum
 #[derive(Debug, PartialEq, Clone)]
 enum Foo {
     /// Start of line

@@ -4,7 +4,7 @@ The tracking issue for this feature is: [#124225]
 
 ------------------------
 
-In stable Rust, there is no way to create new identifiers by joining identifiers to literals or other identifiers without using procedural macros such as [`paste`].
+In stable , there is no way to create new identifiers by joining identifiers to literals or other identifiers without using procedural macros such as [`paste`].
  `#![feature(macro_metavar_expr_concat)]` introduces a way to do this, using the concat metavariable expression.
 
 > This feature uses the syntax from [`macro_metavar_expr`] but is otherwise
@@ -18,7 +18,7 @@ In stable Rust, there is no way to create new identifiers by joining identifiers
 
 `#![feature(macro_metavar_expr_concat)]` provides the `concat` metavariable expression for creating new identifiers:
 
-```rust
+```
 #![feature(macro_metavar_expr_concat)]
 
 macro_rules! create_some_structs {
@@ -34,7 +34,7 @@ create_some_structs!(Thing);
 
 This macro invocation expands to:
 
-```rust
+```
 pub struct FirstThing;
 pub struct SecondThing;
 pub struct ThirdThing;
@@ -49,7 +49,7 @@ This feature builds upon the metavariable expression syntax `${ .. }` as specifi
 
 #### Create a function or method with a concatenated name
 
-```rust
+```
 #![feature(macro_metavar_expr_concat)]
 
 macro_rules! make_getter {
@@ -71,7 +71,7 @@ make_getter!(Thing, description, String);
 
 This expands to:
 
-```rust
+```
 pub struct Thing {
     description: String,
 }
@@ -85,7 +85,7 @@ impl Thing {
 
 #### Create names for macro generated tests
 
-```rust
+```
 #![feature(macro_metavar_expr_concat)]
 
 macro_rules! test_math {
@@ -126,8 +126,8 @@ test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 ```
 
 [`paste`]: https://crates.io/crates/paste
-[RFC 3086]: https://rust-lang.github.io/rfcs/3086-macro-metavar-expr.html
+[RFC 3086]: https://-lang.github.io/rfcs/3086-macro-metavar-expr.html
 [`macro_metavar_expr`]: ../language-features/macro-metavar-expr.md
-[`concat_idents`]: https://github.com/rust-lang/rust/issues/29599
-[#124225]: https://github.com/rust-lang/rust/issues/124225
-[declarative macros]: https://doc.rust-lang.org/stable/reference/macros-by-example.html
+[`concat_idents`]: https://github.com/-lang//issues/29599
+[#124225]: https://github.com/-lang//issues/124225
+[declarative macros]: https://doc.-lang.org/stable/reference/macros-by-example.html

@@ -1,3 +1,3 @@
-To learn more about how dependency tracking works in rustc, see the [rustc dev guide].
+To learn more about how dependency tracking works in c, see the [c dev guide].
 
-[rustc dev guide]: https://rustc-dev-guide.rust-lang.org/query.html
+[c dev guide]: https://c-dev-guide.-lang.org/query.html

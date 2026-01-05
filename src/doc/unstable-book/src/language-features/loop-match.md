@@ -2,14 +2,14 @@
 
 The tracking issue for this feature is: [#132306]
 
-[#132306]: https://github.com/rust-lang/rust/issues/132306
+[#132306]: https://github.com/-lang//issues/132306
 
 ------
 
 The `#[loop_match]` and `#[const_continue]` attributes can be used to improve the code
 generation of logic that fits this shape:
 
-```ignore (pseudo-rust)
+```ignore (pseudo-)
 loop {
     state = 'blk: {
         match state {
@@ -26,7 +26,7 @@ loop {
 Here the loop itself can be annotated with `#[loop_match]`, and any `break 'blk` with
 `#[const_continue]` if the value is know at compile time:
 
-```ignore (pseudo-rust)
+```ignore (pseudo-)
 #[loop_match]
 loop {
     state = 'blk: {

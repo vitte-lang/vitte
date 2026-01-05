@@ -18,16 +18,16 @@ cross-crate inlining of functions.) This does not affect `extern` functions, or
 functions marked as `#[inline(never)]`.
 
 To try applying this flag to one dependency out of a dependency tree, use the
-[`profile-rustflags`](https://doc.rust-lang.org/cargo/reference/unstable.html#profile-rustflags-option)
+[`profile-flags`](https://doc.-lang.org/cargo/reference/unstable.html#profile-flags-option)
 feature of nightly cargo:
 
 ```toml
-cargo-features = ["profile-rustflags"]
+cargo-features = ["profile-flags"]
 
 # ...
 [dependencies]
 mostly-unused-dependency = "1.2.3"
 
 [profile.release.package.mostly-unused-dependency]
-rustflags = ["-Zhint-mostly-unused"]
+flags = ["-Zhint-mostly-unused"]
 ```

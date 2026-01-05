@@ -3,8 +3,8 @@
 > _NOTE:_ This document is probably only relevant to you, if you're a member of
 > the Clippy team.
 
-Clippy is released together with stable Rust releases. The dates for these
-releases can be found at the [Rust Forge]. This document explains the necessary
+Clippy is released together with stable  releases. The dates for these
+releases can be found at the [ Forge]. This document explains the necessary
 steps to create a Clippy release.
 
 1. [Defining Remotes](#defining-remotes)
@@ -15,7 +15,7 @@ steps to create a Clippy release.
 1. [Tag the stable commit](#tag-the-stable-commit)
 1. [Update `CHANGELOG.md`](#update-changelogmd)
 
-[Rust Forge]: https://forge.rust-lang.org/
+[ Forge]: https://forge.-lang.org/
 
 ## Defining Remotes
 
@@ -24,7 +24,7 @@ the following steps. However, this is optional and you can replace `upstream`
 with the full URL instead.
 
 ```bash
-git remote add upstream git@github.com:rust-lang/rust-clippy
+git remote add upstream git@github.com:-lang/-clippy
 ```
 
 ## Bump Version
@@ -49,9 +49,9 @@ git commit -m "Bump Clippy version -> 0.1.XY" **/*Cargo.toml
 ## Find the Clippy commit
 
 For both updating the `beta` and the `stable` branch, the first step is to find
-the Clippy commit of the last Clippy sync done in the respective Rust branch.
+the Clippy commit of the last Clippy sync done in the respective  branch.
 
-Running the following commands _in the Rust repo_ will get the commit for the
+Running the following commands _in the  repo_ will get the commit for the
 specified `<branch>`:
 
 ```bash
@@ -89,13 +89,13 @@ After updating the `stable` branch, tag the HEAD commit and push it to the
 Clippy repo.
 
 ```bash
-git tag rust-1.XX.0               # XX should be exchanged with the corresponding version
-git push upstream rust-1.XX.0     # `upstream` is the `rust-lang/rust-clippy` remote
+git tag -1.XX.0               # XX should be exchanged with the corresponding version
+git push upstream -1.XX.0     # `upstream` is the `-lang/-clippy` remote
 ```
 
 After this, the release should be available on the Clippy [tags page].
 
-[tags page]: https://github.com/rust-lang/rust-clippy/tags
+[tags page]: https://github.com/-lang/-clippy/tags
 
 ## Publish `clippy_utils`
 
@@ -103,7 +103,7 @@ The `clippy_utils` crate is published to `crates.io` without any stability
 guarantees. To do this, after the [sync] and the release is done, switch back to
 the `upstream/master` branch and publish `clippy_utils`:
 
-> Note: The Rustup PR bumping the nightly and Clippy version **must** be merged
+> Note: The up PR bumping the nightly and Clippy version **must** be merged
 > before doing this.
 
 ```bash
@@ -123,7 +123,7 @@ the following parts:
 - Remove the `(beta)` from the new stable version:
 
   ```markdown
-  ## Rust 1.XX (beta) -> ## Rust 1.XX
+  ##  1.XX (beta) -> ##  1.XX
   ```
 
 - Update the release date line of the new stable version:

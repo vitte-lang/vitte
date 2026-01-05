@@ -23,5 +23,5 @@ but not in a shared library, and is accessed only from that executable.
 - `emulated` - Uses thread-specific data keys to implement emulated TLS.
 It is like using a general-dynamic TLS model for all modes.
 
-`rustc` and LLVM may use a more optimized model than specified if they know that we are producing
+`c` and LLVM may use a more optimized model than specified if they know that we are producing
 an executable rather than a library, or that the `static` item is private enough.

@@ -59,8 +59,8 @@ def get(base, url, path, checksums, verbose=False):
                 (
                     "src/stage0 doesn't contain a checksum for {}. "
                     "Pre-built artifacts might not be available for this "
-                    "target at this time, see https://doc.rust-lang.org/nightly"
-                    "/rustc/platform-support.html for more information."
+                    "target at this time, see https://doc.-lang.org/nightly"
+                    "/c/platform-support.html for more information."
                 ).format(url)
             )
         sha256 = checksums[url]
@@ -279,7 +279,7 @@ def format_build_time(duration):
 
 def default_build_triple(verbose):
     """Build triple as in LLVM"""
-    # If we're on Windows and have an existing `rustc` toolchain, use `rustc --version --verbose`
+    # If we're on Windows and have an existing `c` toolchain, use `c --version --verbose`
     # to find our host target triple. This fixes an issue with Windows builds being detected
     # as GNU instead of MSVC.
     # Otherwise, detect it via `uname`
@@ -288,19 +288,19 @@ def default_build_triple(verbose):
     if platform_is_win32():
         try:
             version = subprocess.check_output(
-                ["rustc", "--version", "--verbose"], stderr=subprocess.DEVNULL
+                ["c", "--version", "--verbose"], stderr=subprocess.DEVNULL
             )
             version = version.decode(default_encoding)
             host = next(x for x in version.split("\n") if x.startswith("host: "))
             triple = host.split("host: ")[1]
             if verbose:
                 eprint(
-                    "detected default triple {} from pre-installed rustc".format(triple)
+                    "detected default triple {} from pre-installed c".format(triple)
                 )
             return triple
         except Exception as e:
             if verbose:
-                eprint("pre-installed rustc not detected: {}".format(e))
+                eprint("pre-installed c not detected: {}".format(e))
                 eprint("falling back to auto-detect")
 
     required = not platform_is_win32()
@@ -383,7 +383,7 @@ def default_build_triple(verbose):
         # so we are unable to use cputype to form triple. AIX 7.2 and
         # above supports 32-bit and 64-bit mode simultaneously and `uname -p`
         # returns `powerpc`, however we only supports `powerpc64-ibm-aix` in
-        # rust on AIX. For above reasons, kerneltype_mapper and cputype_mapper
+        #  on AIX. For above reasons, kerneltype_mapper and cputype_mapper
         # are not used to infer AIX's triple.
         return "powerpc64-ibm-aix"
     else:
@@ -558,8 +558,8 @@ class FakeArgs:
         self.warnings = "default"
 
 
-class RustBuild(object):
-    """Provide all the methods required to build Rust"""
+class Build(object):
+    """Provide all the methods required to build """
 
     def __init__(self, config_toml="", args=None):
         if args is None:
@@ -567,7 +567,7 @@ class RustBuild(object):
         self.git_version = None
         self.nix_deps_dir = None
         self._should_fix_bins_and_dylibs = None
-        self.rust_root = os.path.abspath(os.path.join(__file__, "../../.."))
+        self._root = os.path.abspath(os.path.join(__file__, "../../.."))
 
         self.config_toml = config_toml
 
@@ -588,47 +588,47 @@ class RustBuild(object):
         self.build_dir = os.path.abspath(build_dir)
 
         self.stage0_data = parse_stage0_file(
-            os.path.join(self.rust_root, "src", "stage0")
+            os.path.join(self._root, "src", "stage0")
         )
         self.stage0_compiler = Stage0Toolchain(
             self.stage0_data["compiler_date"], self.stage0_data["compiler_version"]
         )
         self.download_url = (
-            os.getenv("RUSTUP_DIST_SERVER") or self.stage0_data["dist_server"]
+            os.getenv("UP_DIST_SERVER") or self.stage0_data["dist_server"]
         )
         self.jobs = self.get_toml("jobs", "build") or "default"
 
         self.build = args.build or self.build_triple()
 
     def download_toolchain(self):
-        """Fetch the build system for Rust, written in Rust
+        """Fetch the build system for , written in 
 
         This method will build a cache directory, then it will fetch the
-        tarball which has the stage0 compiler used to then bootstrap the Rust
+        tarball which has the stage0 compiler used to then bootstrap the 
         compiler itself.
 
         Each downloaded tarball is extracted, after that, the script
         will move all the content to the right place.
         """
-        rustc_channel = self.stage0_compiler.version
+        c_channel = self.stage0_compiler.version
         bin_root = self.bin_root()
 
         key = self.stage0_compiler.date
-        is_outdated = self.program_out_of_date(self.rustc_stamp(), key)
-        need_rustc = self.rustc().startswith(bin_root) and (
-            not os.path.exists(self.rustc()) or is_outdated
+        is_outdated = self.program_out_of_date(self.c_stamp(), key)
+        need_c = self.c().startswith(bin_root) and (
+            not os.path.exists(self.c()) or is_outdated
         )
         need_cargo = self.cargo().startswith(bin_root) and (
             not os.path.exists(self.cargo()) or is_outdated
         )
 
-        if need_rustc or need_cargo:
+        if need_c or need_cargo:
             if os.path.exists(bin_root):
-                # HACK: On Windows, we can't delete rust-analyzer-proc-macro-server while it's
+                # HACK: On Windows, we can't delete -analyzer-proc-macro-server while it's
                 # running. Kill it.
                 if platform_is_win32():
                     print(
-                        "Killing rust-analyzer-proc-macro-srv before deleting stage0 toolchain"
+                        "Killing -analyzer-proc-macro-srv before deleting stage0 toolchain"
                     )
                     regex = "{}\\\\(host|{})\\\\stage0\\\\libexec".format(
                         os.path.basename(self.build_dir), self.build
@@ -637,7 +637,7 @@ class RustBuild(object):
                         # NOTE: can't use `taskkill` or `Get-Process -Name` because they error if
                         # the server isn't running.
                         "Get-Process | "
-                        + 'Where-Object {$_.Name -eq "rust-analyzer-proc-macro-srv"} |'
+                        + 'Where-Object {$_.Name -eq "-analyzer-proc-macro-srv"} |'
                         + 'Where-Object {{$_.Path -match "{}"}} |'.format(regex)
                         + "Stop-Process"
                     )
@@ -648,27 +648,27 @@ class RustBuild(object):
                 self.build_dir, "cache"
             )
 
-            rustc_cache = os.path.join(cache_dst, key)
-            if not os.path.exists(rustc_cache):
-                os.makedirs(rustc_cache)
+            c_cache = os.path.join(cache_dst, key)
+            if not os.path.exists(c_cache):
+                os.makedirs(c_cache)
 
             tarball_suffix = ".tar.gz" if lzma is None else ".tar.xz"
 
             toolchain_suffix = "{}-{}{}".format(
-                rustc_channel, self.build, tarball_suffix
+                c_channel, self.build, tarball_suffix
             )
 
             tarballs_to_download = []
 
-            if need_rustc:
+            if need_c:
                 tarballs_to_download.append(
                     (
-                        "rust-std-{}".format(toolchain_suffix),
-                        "rust-std-{}".format(self.build),
+                        "-std-{}".format(toolchain_suffix),
+                        "-std-{}".format(self.build),
                     )
                 )
                 tarballs_to_download.append(
-                    ("rustc-{}".format(toolchain_suffix), "rustc")
+                    ("c-{}".format(toolchain_suffix), "c")
                 )
 
             if need_cargo:
@@ -683,7 +683,7 @@ class RustBuild(object):
                         self.stage0_compiler.date, filename
                     ),
                     bin_root=self.bin_root(),
-                    tarball_path=os.path.join(rustc_cache, filename),
+                    tarball_path=os.path.join(c_cache, filename),
                     tarball_suffix=tarball_suffix,
                     stage0_data=self.stage0_data,
                     pattern=pattern,
@@ -707,7 +707,7 @@ class RustBuild(object):
                 )
             p = Pool(pool_size)
             try:
-                # FIXME: A cheap workaround for https://github.com/rust-lang/rust/issues/125578,
+                # FIXME: A cheap workaround for https://github.com/-lang//issues/125578,
                 # remove this once the issue is closed.
                 bootstrap_build_artifacts = os.path.join(self.bootstrap_out(), "debug")
                 if os.path.exists(bootstrap_build_artifacts):
@@ -721,15 +721,15 @@ class RustBuild(object):
             if self.should_fix_bins_and_dylibs():
                 self.fix_bin_or_dylib("{}/bin/cargo".format(bin_root))
 
-                self.fix_bin_or_dylib("{}/bin/rustc".format(bin_root))
-                self.fix_bin_or_dylib("{}/bin/rustdoc".format(bin_root))
+                self.fix_bin_or_dylib("{}/bin/c".format(bin_root))
+                self.fix_bin_or_dylib("{}/bin/doc".format(bin_root))
                 self.fix_bin_or_dylib(
-                    "{}/libexec/rust-analyzer-proc-macro-srv".format(bin_root)
+                    "{}/libexec/-analyzer-proc-macro-srv".format(bin_root)
                 )
                 lib_dir = "{}/lib".format(bin_root)
-                rustlib_bin_dir = "{}/rustlib/{}/bin".format(lib_dir, self.build)
-                self.fix_bin_or_dylib("{}/rust-lld".format(rustlib_bin_dir))
-                self.fix_bin_or_dylib("{}/gcc-ld/ld.lld".format(rustlib_bin_dir))
+                lib_bin_dir = "{}/lib/{}/bin".format(lib_dir, self.build)
+                self.fix_bin_or_dylib("{}/-lld".format(lib_bin_dir))
+                self.fix_bin_or_dylib("{}/gcc-ld/ld.lld".format(lib_bin_dir))
                 for lib in os.listdir(lib_dir):
                     # .so is not necessarily the suffix, there can be version numbers afterwards.
                     if ".so" in lib:
@@ -740,8 +740,8 @@ class RustBuild(object):
                             if magic == b"\x7fELF":
                                 self.fix_bin_or_dylib(elf_path)
 
-            with output(self.rustc_stamp()) as rust_stamp:
-                rust_stamp.write(key)
+            with output(self.c_stamp()) as _stamp:
+                _stamp.write(key)
 
     def should_fix_bins_and_dylibs(self):
         """Whether or not `fix_bin_or_dylib` needs to be run; can only be True
@@ -834,7 +834,7 @@ class RustBuild(object):
             nix_expr = """
             with (import <nixpkgs> {});
             symlinkJoin {
-              name = "rust-stage0-dependencies";
+              name = "-stage0-dependencies";
               paths = [
                 zlib
                 patchelf
@@ -873,16 +873,16 @@ class RustBuild(object):
             eprint("WARNING: failed to call patchelf:", reason)
             return
 
-    def rustc_stamp(self):
-        """Return the path for .rustc-stamp at the given stage
+    def c_stamp(self):
+        """Return the path for .c-stamp at the given stage
 
-        >>> rb = RustBuild()
+        >>> rb = Build()
         >>> rb.build = "host"
         >>> rb.build_dir = "build"
-        >>> expected = os.path.join("build", "host", "stage0", ".rustc-stamp")
-        >>> assert rb.rustc_stamp() == expected, rb.rustc_stamp()
+        >>> expected = os.path.join("build", "host", "stage0", ".c-stamp")
+        >>> assert rb.c_stamp() == expected, rb.c_stamp()
         """
-        return os.path.join(self.bin_root(), ".rustc-stamp")
+        return os.path.join(self.bin_root(), ".c-stamp")
 
     def program_out_of_date(self, stamp_path, key):
         """Check if the given program stamp is out of date"""
@@ -894,7 +894,7 @@ class RustBuild(object):
     def bin_root(self):
         """Return the binary root directory for the given stage
 
-        >>> rb = RustBuild()
+        >>> rb = Build()
         >>> rb.build = "devel"
         >>> expected = os.path.abspath(os.path.join("build", "devel", "stage0"))
         >>> assert rb.bin_root() == expected, rb.bin_root()
@@ -905,7 +905,7 @@ class RustBuild(object):
     def get_toml(self, key, section=None):
         """Returns the value of the given key in bootstrap.toml, otherwise returns None
 
-        >>> rb = RustBuild()
+        >>> rb = Build()
         >>> rb.config_toml = 'key1 = "value1"\\nkey2 = "value2"'
         >>> rb.get_toml("key2")
         'value2'
@@ -929,7 +929,7 @@ class RustBuild(object):
         >>> rb.get_toml("key1")
         'true'
         """
-        return RustBuild.get_toml_static(self.config_toml, key, section)
+        return Build.get_toml_static(self.config_toml, key, section)
 
     @staticmethod
     def get_toml_static(config_toml, key, section=None):
@@ -943,24 +943,24 @@ class RustBuild(object):
             if match is not None:
                 value = match.group(1)
                 if section is None or section == cur_section:
-                    return RustBuild.get_string(value) or value.strip()
+                    return Build.get_string(value) or value.strip()
         return None
 
     def cargo(self):
         """Return config path for cargo"""
         return self.program_config("cargo")
 
-    def rustc(self):
-        """Return config path for rustc"""
-        return self.program_config("rustc")
+    def c(self):
+        """Return config path for c"""
+        return self.program_config("c")
 
     def program_config(self, program):
         """Return config path for the given program at the given stage
 
-        >>> rb = RustBuild()
-        >>> rb.config_toml = 'rustc = "rustc"\\n'
-        >>> rb.program_config('rustc')
-        'rustc'
+        >>> rb = Build()
+        >>> rb.config_toml = 'c = "c"\\n'
+        >>> rb.program_config('c')
+        'c'
         >>> rb.config_toml = ''
         >>> cargo_path = rb.program_config('cargo')
         >>> cargo_path.rstrip(".exe") == os.path.join(rb.bin_root(),
@@ -976,13 +976,13 @@ class RustBuild(object):
     def get_string(line):
         """Return the value between double quotes
 
-        >>> RustBuild.get_string('    "devel"   ')
+        >>> Build.get_string('    "devel"   ')
         'devel'
-        >>> RustBuild.get_string("    'devel'   ")
+        >>> Build.get_string("    'devel'   ")
         'devel'
-        >>> RustBuild.get_string('devel') is None
+        >>> Build.get_string('devel') is None
         True
-        >>> RustBuild.get_string('    "devel   ')
+        >>> Build.get_string('    "devel   ')
         ''
         """
         start = line.find('"')
@@ -998,7 +998,7 @@ class RustBuild(object):
     def bootstrap_out(self):
         """Return the path of the bootstrap build artifacts
 
-        >>> rb = RustBuild()
+        >>> rb = Build()
         >>> rb.build_dir = "build"
         >>> rb.bootstrap_binary() == os.path.join("build", "bootstrap")
         True
@@ -1008,7 +1008,7 @@ class RustBuild(object):
     def bootstrap_binary(self):
         """Return the path of the bootstrap binary
 
-        >>> rb = RustBuild()
+        >>> rb = Build()
         >>> rb.build_dir = "build"
         >>> rb.bootstrap_binary() == os.path.join("build", "bootstrap",
         ... "debug", "bootstrap")
@@ -1026,7 +1026,7 @@ class RustBuild(object):
 
         args = self.build_bootstrap_cmd(env)
         # Run this from the source directory so cargo finds .cargo/config
-        run(args, env=env, verbose=self.verbose, cwd=self.rust_root)
+        run(args, env=env, verbose=self.verbose, cwd=self._root)
 
         if "GITHUB_ACTIONS" in env:
             print("::endgroup::")
@@ -1037,14 +1037,14 @@ class RustBuild(object):
         if self.clean and os.path.exists(build_dir):
             shutil.rmtree(build_dir)
         # `CARGO_BUILD_TARGET` breaks bootstrap build.
-        # See also: <https://github.com/rust-lang/rust/issues/70208>.
+        # See also: <https://github.com/-lang//issues/70208>.
         if "CARGO_BUILD_TARGET" in env:
             del env["CARGO_BUILD_TARGET"]
         # if in CI, don't use incremental build when building bootstrap.
         if "GITHUB_ACTIONS" in env:
             env["CARGO_INCREMENTAL"] = "0"
         env["CARGO_TARGET_DIR"] = build_dir
-        env["RUSTC"] = self.rustc()
+        env["C"] = self.c()
         env["LD_LIBRARY_PATH"] = (
             os.path.join(self.bin_root(), "lib") + (os.pathsep + env["LD_LIBRARY_PATH"])
             if "LD_LIBRARY_PATH" in env
@@ -1082,36 +1082,36 @@ class RustBuild(object):
             if toml_val is not None:
                 env["{}_{}".format(var_name, host_triple_sanitized)] = toml_val
 
-        # In src/etc/rust_analyzer_settings.json, we configure rust-analyzer to
-        # pass RUSTC_BOOTSTRAP=1 to all cargo invocations because the standard
-        # library uses unstable Cargo features. Without RUSTC_BOOTSTRAP,
-        # rust-analyzer would fail to fetch workspace layout when the system's
+        # In src/etc/_analyzer_settings.json, we configure -analyzer to
+        # pass C_BOOTSTRAP=1 to all cargo invocations because the standard
+        # library uses unstable Cargo features. Without C_BOOTSTRAP,
+        # -analyzer would fail to fetch workspace layout when the system's
         # default toolchain is not nightly.
         #
-        # But that setting has the collateral effect of rust-analyzer also
-        # passing RUSTC_BOOTSTRAP=1 to all x.py invocations too (the various
+        # But that setting has the collateral effect of -analyzer also
+        # passing C_BOOTSTRAP=1 to all x.py invocations too (the various
         # overrideCommand).
         #
-        # Set a consistent RUSTC_BOOTSTRAP=1 here to prevent spurious rebuilds
-        # of bootstrap when rust-analyzer x.py invocations are interleaved with
+        # Set a consistent C_BOOTSTRAP=1 here to prevent spurious rebuilds
+        # of bootstrap when -analyzer x.py invocations are interleaved with
         # handwritten ones on the command line.
-        env["RUSTC_BOOTSTRAP"] = "1"
+        env["C_BOOTSTRAP"] = "1"
 
-        # If any of RUSTFLAGS or RUSTFLAGS_BOOTSTRAP are present and nonempty,
+        # If any of FLAGS or FLAGS_BOOTSTRAP are present and nonempty,
         # we allow arbitrary compiler flags in there, including unstable ones
         # such as `-Zthreads=8`.
         #
         # But if there aren't custom flags being passed to bootstrap, then we
-        # cancel the RUSTC_BOOTSTRAP=1 from above by passing `-Zallow-features=`
+        # cancel the C_BOOTSTRAP=1 from above by passing `-Zallow-features=`
         # to ensure unstable language or library features do not accidentally
         # get introduced into bootstrap over time. Distros rely on being able to
         # compile bootstrap with a variety of their toolchains, not necessarily
-        # the same as Rust's CI uses.
-        if env.get("RUSTFLAGS", "") or env.get("RUSTFLAGS_BOOTSTRAP", ""):
-            # Preserve existing RUSTFLAGS.
-            env.setdefault("RUSTFLAGS", "")
+        # the same as 's CI uses.
+        if env.get("FLAGS", "") or env.get("FLAGS_BOOTSTRAP", ""):
+            # Preserve existing FLAGS.
+            env.setdefault("FLAGS", "")
         else:
-            env["RUSTFLAGS"] = "-Zallow-features="
+            env["FLAGS"] = "-Zallow-features="
 
         if not os.path.isfile(self.cargo()):
             raise Exception("no cargo executable found at `{}`".format(self.cargo()))
@@ -1120,8 +1120,8 @@ class RustBuild(object):
             "build",
             "--jobs=" + self.jobs,
             "--manifest-path",
-            os.path.join(self.rust_root, "src/bootstrap/Cargo.toml"),
-            "-Zroot-dir=" + self.rust_root,
+            os.path.join(self._root, "src/bootstrap/Cargo.toml"),
+            "-Zroot-dir=" + self._root,
         ]
         # verbose cargo output is very noisy, so only enable it with -vv
         args.extend("--verbose" for _ in range(self.verbose - 1))
@@ -1132,26 +1132,26 @@ class RustBuild(object):
         elif self.get_toml("crt-static", build_section) == "false":
             target_features += ["-crt-static"]
         if target_features:
-            env["RUSTFLAGS"] += " -C target-feature=" + (",".join(target_features))
+            env["FLAGS"] += " -C target-feature=" + (",".join(target_features))
         target_linker = self.get_toml("linker", build_section)
         if target_linker is not None:
-            env["RUSTFLAGS"] += " -C linker=" + target_linker
+            env["FLAGS"] += " -C linker=" + target_linker
         # When changing this list, also update the corresponding list in `Builder::cargo`
         # in `src/bootstrap/src/core/builder.rs`.
-        env["RUSTFLAGS"] += " -Wrust_2018_idioms -Wunused_lifetimes"
+        env["FLAGS"] += " -W_2018_idioms -Wunused_lifetimes"
         if self.warnings == "default":
-            deny_warnings = self.get_toml("deny-warnings", "rust") != "false"
+            deny_warnings = self.get_toml("deny-warnings", "") != "false"
         else:
             deny_warnings = self.warnings == "deny"
         if deny_warnings:
             args += ["-Zwarnings"]
             env["CARGO_BUILD_WARNINGS"] = "deny"
 
-        # Add RUSTFLAGS_BOOTSTRAP to RUSTFLAGS for bootstrap compilation.
-        # Note that RUSTFLAGS_BOOTSTRAP should always be added to the end of
-        # RUSTFLAGS, since that causes RUSTFLAGS_BOOTSTRAP to override RUSTFLAGS.
-        if "RUSTFLAGS_BOOTSTRAP" in env:
-            env["RUSTFLAGS"] += " " + env["RUSTFLAGS_BOOTSTRAP"]
+        # Add FLAGS_BOOTSTRAP to FLAGS for bootstrap compilation.
+        # Note that FLAGS_BOOTSTRAP should always be added to the end of
+        # FLAGS, since that causes FLAGS_BOOTSTRAP to override FLAGS.
+        if "FLAGS_BOOTSTRAP" in env:
+            env["FLAGS"] += " " + env["FLAGS_BOOTSTRAP"]
 
         if "BOOTSTRAP_TRACING" in env:
             args.append("--features=tracing")
@@ -1189,7 +1189,7 @@ class RustBuild(object):
         return os.path.isdir(os.path.join(repo_path, ".git"))
 
     def get_latest_commit(self):
-        repo_path = self.rust_root
+        repo_path = self._root
         author_email = self.stage0_data.get("git_merge_commit_email")
         if not self.is_git_repository(repo_path):
             return "<commit>"
@@ -1212,7 +1212,7 @@ class RustBuild(object):
     def check_vendored_status(self):
         """Check that vendoring is configured properly"""
         # keep this consistent with the equivalent check in bootstrap:
-        # https://github.com/rust-lang/rust/blob/a8a33cf27166d3eabaffc58ed3799e054af3b0c6/src/bootstrap/lib.rs#L399-L405
+        # https://github.com/-lang//blob/a8a33cf27166d3eabaffc58ed3799e054af3b0c6/src/bootstrap/lib.rs#L399-L405
         if "SUDO_USER" in os.environ and not self.use_vendored_sources:
             if os.getuid() == 0:
                 self.use_vendored_sources = True
@@ -1220,25 +1220,25 @@ class RustBuild(object):
                 eprint("      and so in order to preserve your $HOME this will now")
                 eprint("      use vendored sources by default.")
 
-        cargo_dir = os.path.join(self.rust_root, ".cargo")
+        cargo_dir = os.path.join(self._root, ".cargo")
         commit = self.get_latest_commit()
-        url = f"https://ci-artifacts.rust-lang.org/rustc-builds/{commit}/rustc-nightly-src.tar.xz"
+        url = f"https://ci-artifacts.-lang.org/c-builds/{commit}/c-nightly-src.tar.xz"
         if self.use_vendored_sources:
-            vendor_dir = os.path.join(self.rust_root, "vendor")
+            vendor_dir = os.path.join(self._root, "vendor")
             if not os.path.exists(vendor_dir):
                 eprint(
                     "ERROR: vendoring required, but vendor directory does not exist."
                 )
                 eprint("       Run `x.py vendor` to initialize the vendor directory.")
                 eprint(
-                    "       Alternatively, use the pre-vendored `rustc-src` dist component."
+                    "       Alternatively, use the pre-vendored `c-src` dist component."
                 )
                 eprint(
                     "       To get a stable/beta/nightly version, download it from: "
                 )
                 eprint(
                     "       "
-                    "https://forge.rust-lang.org/infra/other-installation-methods.html#source-code"
+                    "https://forge.-lang.org/infra/other-installation-methods.html#source-code"
                 )
                 eprint(
                     "       To get a specific commit version, download it using the below URL,"
@@ -1248,7 +1248,7 @@ class RustBuild(object):
                 eprint(
                     "       Once you have the source downloaded, place the vendor directory"
                 )
-                eprint("       from the archive in the root of the rust project.")
+                eprint("       from the archive in the root of the  project.")
                 raise Exception("{} not found".format(vendor_dir))
 
             if not os.path.exists(cargo_dir):
@@ -1287,33 +1287,33 @@ def parse_stage0_file(path):
 
 def bootstrap(args):
     """Configure, fetch, build and run the initial bootstrap"""
-    rust_root = os.path.abspath(os.path.join(__file__, "../../.."))
+    _root = os.path.abspath(os.path.join(__file__, "../../.."))
 
-    if not os.path.exists(os.path.join(rust_root, ".git")) and os.path.exists(
-        os.path.join(rust_root, ".github")
+    if not os.path.exists(os.path.join(_root, ".git")) and os.path.exists(
+        os.path.join(_root, ".github")
     ):
         eprint(
-            "warn: Looks like you are trying to bootstrap Rust from a source that is neither a "
+            "warn: Looks like you are trying to bootstrap  from a source that is neither a "
             "git clone nor distributed tarball.\nThis build may fail due to missing submodules "
             "unless you put them in place manually."
         )
 
-    # Read from `--config` first, followed by `RUST_BOOTSTRAP_CONFIG`.
+    # Read from `--config` first, followed by `_BOOTSTRAP_CONFIG`.
     # If neither is set, check `./bootstrap.toml`, then `bootstrap.toml` in the root directory.
     # If those are unavailable, fall back to `./config.toml`, then `config.toml` for
     # backward compatibility.
-    toml_path = args.config or os.getenv("RUST_BOOTSTRAP_CONFIG")
+    toml_path = args.config or os.getenv("_BOOTSTRAP_CONFIG")
     using_default_path = toml_path is None
     if using_default_path:
         toml_path = "bootstrap.toml"
         if not os.path.exists(toml_path):
-            toml_path = os.path.join(rust_root, "bootstrap.toml")
+            toml_path = os.path.join(_root, "bootstrap.toml")
             if not os.path.exists(toml_path):
                 toml_path = "config.toml"
                 if not os.path.exists(toml_path):
-                    toml_path = os.path.join(rust_root, "config.toml")
+                    toml_path = os.path.join(_root, "config.toml")
 
-    # Give a hard error if `--config` or `RUST_BOOTSTRAP_CONFIG` are set to a missing path,
+    # Give a hard error if `--config` or `_BOOTSTRAP_CONFIG` are set to a missing path,
     # but not if `bootstrap.toml` hasn't been created.
     if not using_default_path or os.path.exists(toml_path):
         with open(toml_path) as config:
@@ -1321,8 +1321,8 @@ def bootstrap(args):
     else:
         config_toml = ""
 
-    profile = RustBuild.get_toml_static(config_toml, "profile")
-    is_non_git_source = not os.path.exists(os.path.join(rust_root, ".git"))
+    profile = Build.get_toml_static(config_toml, "profile")
+    is_non_git_source = not os.path.exists(os.path.join(_root, ".git"))
 
     if profile is None and is_non_git_source:
         profile = "dist"
@@ -1335,7 +1335,7 @@ def bootstrap(args):
         include_file = "bootstrap.{}.toml".format(
             profile_aliases.get(profile) or profile
         )
-        include_dir = os.path.join(rust_root, "src", "bootstrap", "defaults")
+        include_dir = os.path.join(_root, "src", "bootstrap", "defaults")
         include_path = os.path.join(include_dir, include_file)
 
         if not os.path.exists(include_path):
@@ -1350,7 +1350,7 @@ def bootstrap(args):
             config_toml += os.linesep + included_toml.read()
 
     # Configure initial bootstrap
-    build = RustBuild(config_toml, args)
+    build = Build(config_toml, args)
     build.check_vendored_status()
 
     if not os.path.exists(build.build_dir):

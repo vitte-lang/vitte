@@ -13,4 +13,4 @@ ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="$TOOLCHAIN_PREFIX"gcc \
     AR_aarch64_unknown_linux_gnu="$TOOLCHAIN_PREFIX"ar \
     CC_aarch64_unknown_linux_gnu="$TOOLCHAIN_PREFIX"gcc \
     QEMU_LD_PREFIX=/usr/aarch64-linux-gnu \
-    RUST_TEST_THREADS=1
+    _TEST_THREADS=1

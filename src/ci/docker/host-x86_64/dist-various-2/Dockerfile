@@ -96,12 +96,12 @@ COPY scripts/sccache.sh /scripts/
 RUN sh /scripts/sccache.sh
 
 ENV CARGO_TARGET_X86_64_UNKNOWN_FUCHSIA_AR /usr/local/bin/llvm-ar
-ENV CARGO_TARGET_X86_64_UNKNOWN_FUCHSIA_RUSTFLAGS \
+ENV CARGO_TARGET_X86_64_UNKNOWN_FUCHSIA_FLAGS \
 -C link-arg=--sysroot=/usr/local/core-linux-amd64-fuchsia-sdk/arch/x64/sysroot \
 -Lnative=/usr/local/core-linux-amd64-fuchsia-sdk/arch/x64/sysroot/lib \
 -Lnative=/usr/local/core-linux-amd64-fuchsia-sdk/arch/x64/lib
 ENV CARGO_TARGET_AARCH64_UNKNOWN_FUCHSIA_AR /usr/local/bin/llvm-ar
-ENV CARGO_TARGET_AARCH64_UNKNOWN_FUCHSIA_RUSTFLAGS \
+ENV CARGO_TARGET_AARCH64_UNKNOWN_FUCHSIA_FLAGS \
 -C link-arg=--sysroot=/usr/local/core-linux-amd64-fuchsia-sdk/arch/arm64/sysroot \
 -Lnative=/usr/local/core-linux-amd64-fuchsia-sdk/arch/arm64/sysroot/lib \
 -Lnative=/usr/local/core-linux-amd64-fuchsia-sdk/arch/arm64/lib
@@ -134,7 +134,7 @@ RUN ln -s /usr/include/x86_64-linux-gnu/asm /usr/local/include/asm
 # musl-gcc can't find libgcc_s.so.1 since it doesn't use the standard search paths.
 RUN ln -s /usr/riscv64-linux-gnu/lib/libgcc_s.so.1 /usr/lib/gcc-cross/riscv64-linux-gnu/11/
 
-ENV RUST_CONFIGURE_ARGS --enable-extended --enable-lld --enable-llvm-bitcode-linker --disable-docs \
+ENV _CONFIGURE_ARGS --enable-extended --enable-lld --enable-llvm-bitcode-linker --disable-docs \
   --musl-root-armv7=/musl-armv7 \
   --musl-root-riscv64gc=/musl-riscv64gc
 

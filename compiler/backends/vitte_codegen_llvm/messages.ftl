@@ -1,4 +1,4 @@
-codegen_llvm_autodiff_component_unavailable = failed to load our autodiff backend. Did you install it via rustup?
+codegen_llvm_autodiff_component_unavailable = failed to load our autodiff backend. Did you install it via up?
 
 codegen_llvm_autodiff_without_enable = using the autodiff feature requires -Z autodiff=Enable
 codegen_llvm_autodiff_without_lto = using the autodiff feature requires setting `lto="fat"` in your Cargo.toml
@@ -17,7 +17,7 @@ codegen_llvm_load_bitcode_with_llvm_err = failed to load bitcode of module "{$na
 codegen_llvm_lto_bitcode_from_rlib = failed to get bitcode from object file for LTO ({$err})
 
 codegen_llvm_mismatch_data_layout =
-    data-layout for target `{$rustc_target}`, `{$rustc_layout}`, differs from LLVM target's `{$llvm_target}` default layout, `{$llvm_layout}`
+    data-layout for target `{$c_target}`, `{$c_layout}`, differs from LLVM target's `{$llvm_target}` default layout, `{$llvm_layout}`
 
 codegen_llvm_offload_bundleimages_failed = call to BundleImages failed, `host.out` was not created
 codegen_llvm_offload_embed_failed = call to EmbedBufferInModule failed, `host.o` was not created

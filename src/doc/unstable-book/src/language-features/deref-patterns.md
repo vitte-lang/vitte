@@ -2,7 +2,7 @@
 
 The tracking issue for this feature is: [#87121]
 
-[#87121]: https://github.com/rust-lang/rust/issues/87121
+[#87121]: https://github.com/-lang//issues/87121
 
 ------------------------
 
@@ -13,7 +13,7 @@ This feature permits pattern matching on [smart pointers in the standard library
 `Deref` target types, either implicitly or with explicit `deref!(_)` patterns (the syntax of which
 is currently a placeholder).
 
-```rust
+```
 #![feature(deref_patterns)]
 #![allow(incomplete_features)]
 
@@ -39,7 +39,7 @@ assert_eq!(v, [Box::new(Some(2))]);
 Without this feature, it may be necessary to introduce temporaries to represent dereferenced places
 when matching on nested structures:
 
-```rust
+```
 let mut v = vec![Box::new(Some(0))];
 if let [b] = &mut *v {
     if let Some(x) = &mut **b {
@@ -56,7 +56,7 @@ assert_eq!(v, [Box::new(Some(2))]);
 
 Like [`box_patterns`], deref patterns may move out of boxes:
 
-```rust
+```
 # #![feature(deref_patterns)]
 # #![allow(incomplete_features)]
 struct NoCopy;
@@ -67,7 +67,7 @@ drop::<NoCopy>(x);
 Additionally, `deref_patterns` implements changes to string and byte string literal patterns,
 allowing then to be used in deref patterns:
 
-```rust
+```
 # #![feature(deref_patterns)]
 # #![allow(incomplete_features)]
 match ("test".to_string(), Box::from("test"), b"test".to_vec()) {
@@ -103,4 +103,4 @@ match *(b"test" as &[u8]) {
 ```
 
 [`box_patterns`]: ./box-patterns.md
-[smart pointers in the standard library]: https://doc.rust-lang.org/std/ops/trait.DerefPure.html#implementors
+[smart pointers in the standard library]: https://doc.-lang.org/std/ops/trait.DerefPure.html#implementors

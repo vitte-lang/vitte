@@ -62,7 +62,7 @@ middle_deprecated = use of deprecated {$kind} `{$path}`{$has_note ->
         [true] : {$note}
         *[other] {""}
     }
-middle_deprecated_in_future = use of {$kind} `{$path}` that will be deprecated in a future Rust version{$has_note ->
+middle_deprecated_in_future = use of {$kind} `{$path}` that will be deprecated in a future  version{$has_note ->
         [true] : {$note}
         *[other] {""}
     }

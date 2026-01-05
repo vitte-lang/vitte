@@ -35,7 +35,7 @@ ENV \
 
 ENV HOSTS=x86_64-unknown-freebsd
 
-ENV RUST_CONFIGURE_ARGS \
+ENV _CONFIGURE_ARGS \
     --enable-full-tools \
     --enable-extended \
     --enable-profiler \

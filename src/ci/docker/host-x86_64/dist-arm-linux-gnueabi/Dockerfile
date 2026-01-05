@@ -1,4 +1,4 @@
-FROM ghcr.io/rust-lang/ubuntu:22.04
+FROM ghcr.io/-lang/ubuntu:22.04
 
 COPY scripts/cross-apt-packages.sh /scripts/
 RUN sh /scripts/cross-apt-packages.sh
@@ -8,8 +8,8 @@ RUN sh /scripts/crosstool-ng.sh
 
 WORKDIR /build
 
-COPY scripts/rustbuild-setup.sh /scripts/
-RUN sh /scripts/rustbuild-setup.sh
+COPY scripts/build-setup.sh /scripts/
+RUN sh /scripts/build-setup.sh
 WORKDIR /tmp
 
 COPY scripts/crosstool-ng-build.sh /scripts/
@@ -27,7 +27,7 @@ ENV CC_arm_unknown_linux_gnueabi=arm-unknown-linux-gnueabi-gcc \
 
 ENV HOSTS=arm-unknown-linux-gnueabi
 
-ENV RUST_CONFIGURE_ARGS \
+ENV _CONFIGURE_ARGS \
       --enable-full-tools \
       --disable-docs \
       --enable-sanitizers \

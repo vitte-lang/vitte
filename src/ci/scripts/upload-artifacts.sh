@@ -1,7 +1,7 @@
 #!/bin/bash
 # Upload all the artifacts to our S3 bucket. All the files inside ${upload_dir}
 # will be uploaded to the deploy bucket and eventually signed and released in
-# static.rust-lang.org.
+# static.-lang.org.
 
 set -euo pipefail
 IFS=$'\n\t'
@@ -24,15 +24,15 @@ if [[ "${DEPLOY-0}" -eq "1" ]] || [[ "${DEPLOY_ALT-0}" -eq "1" ]]; then
 fi
 
 # We write the release channel into the output so that
-# `rustup-toolchain-install-master` or other, similar, tools can automatically
+# `up-toolchain-install-master` or other, similar, tools can automatically
 # detect the appropriate name to use for downloading artifacts.
 #
 # For nightly and beta this isn't strictly necessary as just trying both is
 # enough, but stable builds produce artifacts with a version (e.g.,
-# rust-src-1.92.0.tar.xz) which can't be easily guessed otherwise.
+# -src-1.92.0.tar.xz) which can't be easily guessed otherwise.
 channel=$(releaseChannel)
 if [[ "$channel" = "stable" ]]; then
-    # On stable, artifacts use the version number. See rust_package_vers in
+    # On stable, artifacts use the version number. See _package_vers in
     # src/bootstrap/src/lib.rs.
     cat "$ci_dir/../version" > "${upload_dir}/package-version"
 else
@@ -54,16 +54,16 @@ echo "Files that will be uploaded:"
 ls -lah "${upload_dir}"
 echo
 
-deploy_dir="rustc-builds"
+deploy_dir="c-builds"
 if [[ "${DEPLOY_ALT-0}" -eq "1" ]]; then
-    deploy_dir="rustc-builds-alt"
+    deploy_dir="c-builds-alt"
 fi
 deploy_url="s3://${DEPLOY_BUCKET}/${deploy_dir}/$(ciCommit)"
 
 retry aws s3 cp --storage-class INTELLIGENT_TIERING \
     --no-progress --recursive --acl public-read "${upload_dir}" "${deploy_url}"
 
-access_url="https://ci-artifacts.rust-lang.org/${deploy_dir}/$(ciCommit)"
+access_url="https://ci-artifacts.-lang.org/${deploy_dir}/$(ciCommit)"
 
 # Output URLs to the uploaded artifacts to GitHub summary (if it is available)
 # to make them easily accessible.

@@ -2,7 +2,7 @@
 #define GENMC_MIRI_INTERFACE_HPP
 
 // CXX.rs generated headers:
-#include "rust/cxx.h"
+#include "/cxx.h"
 
 // GenMC generated headers:
 #include "config.h"
@@ -23,7 +23,7 @@
 #include <iomanip>
 #include <memory>
 
-/**** Types available to both Rust and C++ ****/
+/**** Types available to both  and C++ ****/
 
 struct GenmcParams;
 enum class LogLevel : std::uint8_t;
@@ -165,12 +165,12 @@ struct MiriGenmcShim : private GenMCDriver {
 
     /**** Result querying functionality. ****/
 
-    // NOTE: We don't want to share the `VerificationResult` type with the Rust side, since it
+    // NOTE: We don't want to share the `VerificationResult` type with the  side, since it
     // is very large, uses features that CXX.rs doesn't support and may change as GenMC changes.
     // Instead, we only use the result on the C++ side, and only expose these getter function to
-    // the Rust side.
+    // the  side.
 
-    // Note that CXX.rs doesn't support returning a C++ string to Rust by value,
+    // Note that CXX.rs doesn't support returning a C++ string to  by value,
     // it must be behind an indirection like a `unique_ptr` (tested with CXX 1.0.170).
 
     /// Get the number of blocked executions encountered by GenMC (cast into a fixed with

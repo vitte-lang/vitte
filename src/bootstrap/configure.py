@@ -8,17 +8,17 @@ import sys
 import os
 import re
 
-rust_dir = os.path.dirname(os.path.abspath(__file__))
-rust_dir = os.path.dirname(rust_dir)
-rust_dir = os.path.dirname(rust_dir)
-sys.path.append(os.path.join(rust_dir, "src", "bootstrap"))
+_dir = os.path.dirname(os.path.abspath(__file__))
+_dir = os.path.dirname(_dir)
+_dir = os.path.dirname(_dir)
+sys.path.append(os.path.join(_dir, "src", "bootstrap"))
 import bootstrap  # noqa: E402
 
 
 class Option(object):
-    def __init__(self, name, rustbuild, desc, value):
+    def __init__(self, name, build, desc, value):
         self.name = name
-        self.rustbuild = rustbuild
+        self.build = build
         self.desc = desc
         self.value = value
 
@@ -36,29 +36,29 @@ def v(*args):
 
 o(
     "debug",
-    "rust.debug",
+    ".debug",
     "enables debugging environment; does not affect optimization of bootstrapped code",
 )
 o("docs", "build.docs", "build standard library documentation")
 o("compiler-docs", "build.compiler-docs", "build compiler documentation")
-o("optimize-tests", "rust.optimize-tests", "build tests with optimizations")
-o("verbose-tests", "rust.verbose-tests", "enable verbose output when running tests")
+o("optimize-tests", ".optimize-tests", "build tests with optimizations")
+o("verbose-tests", ".verbose-tests", "enable verbose output when running tests")
 o(
     "ccache",
     "build.ccache",
-    "invoke gcc/clang/rustc via ccache to reuse object files between builds",
+    "invoke gcc/clang/c via ccache to reuse object files between builds",
 )
 o(
     "sccache",
     None,
-    "invoke gcc/clang/rustc via sccache to reuse object files between builds",
+    "invoke gcc/clang/c via sccache to reuse object files between builds",
 )
-o("local-rust", None, "use an installed rustc rather than downloading a snapshot")
-v("local-rust-root", None, "set prefix for local rust binary")
+o("local-", None, "use an installed c rather than downloading a snapshot")
+v("local--root", None, "set prefix for local  binary")
 o(
     "local-rebuild",
     "build.local-rebuild",
-    "assume local-rust matches the current version, for rebuilds; implies local-rust, and is implied if local-rust already matches the current version",
+    "assume local- matches the current version, for rebuilds; implies local-, and is implied if local- already matches the current version",
 )
 o(
     "llvm-static-stdcpp",
@@ -70,15 +70,15 @@ o(
     "llvm.link-shared",
     "prefer shared linking to LLVM (llvm-config --link-shared)",
 )
-o("rpath", "rust.rpath", "build rpaths into rustc itself")
-o("codegen-tests", "rust.codegen-tests", "run the tests/codegen tests")
+o("rpath", ".rpath", "build rpaths into c itself")
+o("codegen-tests", ".codegen-tests", "run the tests/codegen tests")
 o(
     "ninja",
     "llvm.ninja",
     "build LLVM using the Ninja generator (for MSVC, requires building in the correct environment)",
 )
 o("locked-deps", "build.locked-deps", "force Cargo.lock to be up to date")
-o("vendor", "build.vendor", "enable usage of vendored Rust crates")
+o("vendor", "build.vendor", "enable usage of vendored  crates")
 o(
     "sanitizers",
     "build.sanitizers",
@@ -86,7 +86,7 @@ o(
 )
 o(
     "dist-src",
-    "rust.dist-src",
+    ".dist-src",
     "when building tarballs enables building a source tarball",
 )
 o(
@@ -96,23 +96,23 @@ o(
 )
 o("profiler", "build.profiler", "build the profiler runtime")
 o("full-tools", None, "enable all tools")
-o("lld", "rust.lld", "build lld")
-o("llvm-bitcode-linker", "rust.llvm-bitcode-linker", "build llvm bitcode linker")
+o("lld", ".lld", "build lld")
+o("llvm-bitcode-linker", ".llvm-bitcode-linker", "build llvm bitcode linker")
 o("clang", "llvm.clang", "build clang")
 o("use-libcxx", "llvm.use-libcxx", "build LLVM with libc++")
-o("control-flow-guard", "rust.control-flow-guard", "Enable Control Flow Guard")
+o("control-flow-guard", ".control-flow-guard", "Enable Control Flow Guard")
 o(
     "patch-binaries-for-nix",
     "build.patch-binaries-for-nix",
     "whether patch binaries for usage with Nix toolchains",
 )
-o("new-symbol-mangling", "rust.new-symbol-mangling", "use symbol-mangling-version v0")
+o("new-symbol-mangling", ".new-symbol-mangling", "use symbol-mangling-version v0")
 
 v("llvm-cflags", "llvm.cflags", "build LLVM with these extra compiler flags")
 v("llvm-cxxflags", "llvm.cxxflags", "build LLVM with these extra compiler flags")
 v("llvm-ldflags", "llvm.ldflags", "build LLVM with these extra linker flags")
 
-v("llvm-libunwind", "rust.llvm-libunwind", "use LLVM libunwind")
+v("llvm-libunwind", ".llvm-libunwind", "use LLVM libunwind")
 
 # Optimization and debugging options. These may be overridden by the release
 # channel, etc.
@@ -126,16 +126,16 @@ o(
     "pass the absolute directory of ClangConfig.cmake",
 )
 o("llvm-plugins", "llvm.plugins", "build LLVM with plugin interface")
-o("debug-assertions", "rust.debug-assertions", "build with debugging assertions")
+o("debug-assertions", ".debug-assertions", "build with debugging assertions")
 o(
     "debug-assertions-std",
-    "rust.debug-assertions-std",
+    ".debug-assertions-std",
     "build the standard library with debugging assertions",
 )
-o("overflow-checks", "rust.overflow-checks", "build with overflow checks")
+o("overflow-checks", ".overflow-checks", "build with overflow checks")
 o(
     "overflow-checks-std",
-    "rust.overflow-checks-std",
+    ".overflow-checks-std",
     "build the standard library with overflow checks",
 )
 o(
@@ -143,30 +143,30 @@ o(
     "llvm.release-debuginfo",
     "build LLVM with debugger metadata",
 )
-v("debuginfo-level", "rust.debuginfo-level", "debuginfo level for Rust code")
+v("debuginfo-level", ".debuginfo-level", "debuginfo level for  code")
 v(
-    "debuginfo-level-rustc",
-    "rust.debuginfo-level-rustc",
+    "debuginfo-level-c",
+    ".debuginfo-level-c",
     "debuginfo level for the compiler",
 )
 v(
     "debuginfo-level-std",
-    "rust.debuginfo-level-std",
+    ".debuginfo-level-std",
     "debuginfo level for the standard library",
 )
 v(
     "debuginfo-level-tools",
-    "rust.debuginfo-level-tools",
+    ".debuginfo-level-tools",
     "debuginfo level for the tools",
 )
 v(
     "debuginfo-level-tests",
-    "rust.debuginfo-level-tests",
+    ".debuginfo-level-tests",
     "debuginfo level for the test suites run with compiletest",
 )
 v(
     "save-toolstates",
-    "rust.save-toolstates",
+    ".save-toolstates",
     "save build and test status of external tools into this file",
 )
 
@@ -305,7 +305,7 @@ v(
     "llvm.experimental-targets",
     "experimental LLVM targets to build",
 )
-v("release-channel", "rust.channel", "the name of the release channel to build")
+v("release-channel", ".channel", "the name of the release channel to build")
 v(
     "release-description",
     "build.description",
@@ -314,7 +314,7 @@ v(
 v("dist-compression-formats", None, "List of compression formats to use")
 
 # Used on systems where "cc" is unavailable
-v("default-linker", "rust.default-linker", "the default linker")
+v("default-linker", ".default-linker", "the default linker")
 
 # Many of these are saved below during the "writing configuration" step
 # (others are conditionally saved).
@@ -324,7 +324,7 @@ o(
     "build.full-bootstrap",
     "build three compilers instead of two (not recommended except for testing reproducible builds)",
 )
-o("extended", "build.extended", "build an extended rust tool set")
+o("extended", "build.extended", "build an extended  tool set")
 
 v("bootstrap-cache-path", None, "use provided path for the bootstrap cache")
 v("tools", None, "List of extended tools will be installed")
@@ -347,8 +347,8 @@ o(
 v("set", None, "set arbitrary key/value pairs in TOML configuration")
 v(
     "parallel-frontend-threads",
-    "rust.parallel-frontend-threads",
-    "number of parallel threads for rustc compilation",
+    ".parallel-frontend-threads",
+    "number of parallel threads for c compilation",
 )
 
 
@@ -525,9 +525,9 @@ def apply_args(known_args, option_checking, config):
             err("Option '{}' provided more than once".format(key))
         option, value = arr[-1]
 
-        # If we have a clear avenue to set our value in rustbuild, do so
-        if option.rustbuild is not None:
-            set(option.rustbuild, value, config)
+        # If we have a clear avenue to set our value in build, do so
+        if option.build is not None:
+            set(option.build, value, config)
             continue
 
         # Otherwise we're a "special" option and need some extra handling, so do
@@ -536,17 +536,17 @@ def apply_args(known_args, option_checking, config):
 
         if option.name == "sccache":
             set("build.ccache", "sccache", config)
-        elif option.name == "local-rust":
+        elif option.name == "local-":
             for path in os.environ["PATH"].split(os.pathsep):
-                if os.path.exists(path + "/rustc"):
-                    set("build.rustc", path + "/rustc", config)
+                if os.path.exists(path + "/c"):
+                    set("build.c", path + "/c", config)
                     break
             for path in os.environ["PATH"].split(os.pathsep):
                 if os.path.exists(path + "/cargo"):
                     set("build.cargo", path + "/cargo", config)
                     break
-        elif option.name == "local-rust-root":
-            set("build.rustc", value + "/bin/rustc", config)
+        elif option.name == "local--root":
+            set("build.c", value + "/bin/c", config)
             set("build.cargo", value + "/bin/cargo", config)
         elif option.name == "llvm-root":
             set(
@@ -563,16 +563,16 @@ def apply_args(known_args, option_checking, config):
         elif option.name == "bootstrap-cache-path":
             set("build.bootstrap-cache-path", value, config)
         elif option.name == "codegen-backends":
-            set("rust.codegen-backends", value.split(","), config)
+            set(".codegen-backends", value.split(","), config)
         elif option.name == "host":
             set("build.host", value.split(","), config)
         elif option.name == "target":
             set("build.target", value.split(","), config)
         elif option.name == "full-tools":
-            set("rust.codegen-backends", ["llvm"], config)
-            set("rust.lld", True, config)
-            set("rust.llvm-tools", True, config)
-            set("rust.llvm-bitcode-linker", True, config)
+            set(".codegen-backends", ["llvm"], config)
+            set(".lld", True, config)
+            set(".llvm-tools", True, config)
+            set(".llvm-bitcode-linker", True, config)
             set("build.extended", True, config)
         elif option.name in ["option-checking", "verbose-configure"]:
             # this was handled above
@@ -598,7 +598,7 @@ def parse_example_config(known_args, config):
     top_level_keys = []
     comment_lines = []
 
-    with open(rust_dir + "/bootstrap.example.toml", encoding="utf-8") as example_config:
+    with open(_dir + "/bootstrap.example.toml", encoding="utf-8") as example_config:
         example_lines = example_config.read().split("\n")
     for line in example_lines:
         if line.count("=") >= 1 and not line.startswith("# "):
@@ -816,13 +816,13 @@ if __name__ == "__main__":
         write_config_toml(f, section_order, targets, sections)
 
     with bootstrap.output("Makefile") as f:
-        contents = os.path.join(rust_dir, "src", "bootstrap", "mk", "Makefile.in")
+        contents = os.path.join(_dir, "src", "bootstrap", "mk", "Makefile.in")
         contents = open(contents).read()
-        contents = contents.replace("$(CFG_SRC_DIR)", rust_dir + "/")
+        contents = contents.replace("$(CFG_SRC_DIR)", _dir + "/")
         contents = contents.replace("$(CFG_PYTHON)", sys.executable)
         f.write(contents)
 
     p("")
-    p("run `{} {}/x.py --help`".format(os.path.basename(sys.executable), rust_dir))
+    p("run `{} {}/x.py --help`".format(os.path.basename(sys.executable), _dir))
     if "GITHUB_ACTIONS" in os.environ:
         print("::endgroup::")

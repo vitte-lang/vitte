@@ -1,0 +1,46 @@
+// Error handling implementations
+
+impl Logger {
+    pub fn new(enabled: bool) -> Self {
+        Logger {
+            enabled,
+            level_threshold: ErrorLevel::Warning,
+        }
+    }
+
+    pub fn set_threshold(&mut self, level: ErrorLevel) {
+        self.level_threshold = level;
+    }
+
+    pub fn report(&self, error: ErrorReport) {
+        if self.enabled {
+            println!("[{}] [{}] {}", format_level(&error.level), error.code, error.message);
+        }
+    }
+}
+
+fn format_level(level: &ErrorLevel) -> string {
+    match level {
+        ErrorLevel::Debug => "DEBUG".to_string(),
+        ErrorLevel::Info => "INFO".to_string(),
+        ErrorLevel::Warning => "WARN".to_string(),
+        ErrorLevel::Error => "ERR".to_string(),
+        ErrorLevel::Critical => "CRIT".to_string(),
+    }
+}
+
+impl ErrorReport {
+    pub fn new(level: ErrorLevel, code: u32, message: string) -> Self {
+        ErrorReport {
+            level,
+            code,
+            message,
+            context: "".to_string(),
+        }
+    }
+
+    pub fn with_context(mut self, ctx: string) -> Self {
+        self.context = ctx;
+        self
+    }
+}

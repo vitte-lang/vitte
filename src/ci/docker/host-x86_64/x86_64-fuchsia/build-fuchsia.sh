@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Downloads and builds the Fuchsia operating system using a toolchain installed
-# in $RUST_INSTALL_DIR.
+# in $_INSTALL_DIR.
 #
 # You may run this script locally using Docker with the following command:
 #
@@ -14,8 +14,8 @@
 # docker# git config --global --add safe.directory /checkout/obj/fuchsia
 # docker# ../src/ci/docker/host-x86_64/x86_64-fuchsia/build-fuchsia.sh
 #
-# Also see the docs in the rustc-dev-guide for more info:
-# https://github.com/rust-lang/rustc-dev-guide/pull/1989
+# Also see the docs in the c-dev-guide for more info:
+# https://github.com/-lang/c-dev-guide/pull/1989
 
 set -euf -o pipefail
 
@@ -84,5 +84,5 @@ fi
 
 # Run the script inside the Fuchsia checkout responsible for building Fuchsia.
 # You can change arguments to the build by setting KEEP_CHECKOUT=1 above and
-# modifying them in build_fuchsia_from_rust_ci.sh.
-bash scripts/rust/build_fuchsia_from_rust_ci.sh
+# modifying them in build_fuchsia_from__ci.sh.
+bash scripts//build_fuchsia_from__ci.sh

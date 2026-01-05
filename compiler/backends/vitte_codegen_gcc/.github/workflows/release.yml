@@ -11,7 +11,7 @@ permissions:
 
 env:
   # Enable backtraces for easier debugging
-  RUST_BACKTRACE: 1
+  _BACKTRACE: 1
   # For the run-make tests.
   LLVM_BIN_DIR: /usr/bin
 
@@ -23,26 +23,26 @@ jobs:
       fail-fast: false
       matrix:
         commands: [
-          "--test-successful-rustc --nb-parts 2 --current-part 0",
-          "--test-successful-rustc --nb-parts 2 --current-part 1",
+          "--test-successful-c --nb-parts 2 --current-part 0",
+          "--test-successful-c --nb-parts 2 --current-part 1",
         ]
 
     steps:
     - uses: actions/checkout@v4
 
-    # `rustup show` installs from rust-toolchain.toml
-    - name: Setup rust toolchain
-      run: rustup show
+    # `up show` installs from -toolchain.toml
+    - name: Setup  toolchain
+      run: up show
 
-    - name: Setup rust cache
-      uses: Swatinem/rust-cache@v2
+    - name: Setup  cache
+      uses: Swatinem/-cache@v2
 
     - name: Install packages
       # `llvm-14-tools` is needed to install the `FileCheck` binary which is used for run-make tests.
       run: sudo apt-get install ninja-build ripgrep llvm-14-tools llvm
 
     - name: Download artifact
-      run: curl -LO https://github.com/rust-lang/gcc/releases/latest/download/gcc-15.deb
+      run: curl -LO https://github.com/-lang/gcc/releases/latest/download/gcc-15.deb
 
     - name: Setup path to libgccjit
       run: |
@@ -78,7 +78,7 @@ jobs:
     - name: Run tests
       run: |
         # FIXME(antoyo): we cannot enable LTO for stdarch tests currently because of some failing LTO tests using proc-macros.
-        CG_RUSTFLAGS="-Cembed-bitcode=yes" ./y.sh test --release --clean --release-sysroot --build-sysroot --keep-lto-tests ${{ matrix.commands }}
+        CG_FLAGS="-Cembed-bitcode=yes" ./y.sh test --release --clean --release-sysroot --build-sysroot --keep-lto-tests ${{ matrix.commands }}
 
     - name: LTO test
       run: |
@@ -97,7 +97,7 @@ jobs:
         ar rcs libadd.a add.o
         popd
 
-        CHANNEL="release" CG_RUSTFLAGS="-L native=. -Clinker-plugin-lto -Clinker=gcc" ./y.sh cargo build --release --manifest-path tests/cross_lang_lto/Cargo.toml
+        CHANNEL="release" CG_FLAGS="-L native=. -Clinker-plugin-lto -Clinker=gcc" ./y.sh cargo build --release --manifest-path tests/cross_lang_lto/Cargo.toml
         call_found=$(objdump -dj .text tests/cross_lang_lto/target/release/cross_lang_lto | grep -c "call .*my_add" ) ||:
         if [ $call_found -gt 0 ]; then
           echo "ERROR: call my_add found in asm"

@@ -12,7 +12,7 @@ permissions:
 
 env:
   # Enable backtraces for easier debugging
-  RUST_BACKTRACE: 1
+  _BACKTRACE: 1
 
 jobs:
   build:
@@ -36,12 +36,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # `rustup show` installs from rust-toolchain.toml
-    - name: Setup rust toolchain
-      run: rustup show
+    # `up show` installs from -toolchain.toml
+    - name: Setup  toolchain
+      run: up show
 
-    - name: Setup rust cache
-      uses: Swatinem/rust-cache@v2
+    - name: Setup  cache
+      uses: Swatinem/-cache@v2
 
     - name: Install packages
       run: sudo apt-get install ninja-build ripgrep
@@ -57,7 +57,7 @@ jobs:
 
     - name: Download artifact
       if: matrix.libgccjit_version.gcc != 'libgccjit12.so'
-      run: curl -LO https://github.com/rust-lang/gcc/releases/latest/download/gcc-15.deb
+      run: curl -LO https://github.com/-lang/gcc/releases/latest/download/gcc-15.deb
 
     - name: Setup path to libgccjit
       if: matrix.libgccjit_version.gcc != 'libgccjit12.so'
@@ -71,12 +71,12 @@ jobs:
       run: |
         echo "workspace="$GITHUB_WORKSPACE >> $GITHUB_ENV
 
-    #- name: Cache rust repository
+    #- name: Cache  repository
       #uses: actions/cache@v3
-      #id: cache-rust-repository
+      #id: cache--repository
       #with:
-        #path: rust
-        #key: ${{ runner.os }}-packages-${{ hashFiles('rust/.git/HEAD') }}
+        #path: 
+        #key: ${{ runner.os }}-packages-${{ hashFiles('/.git/HEAD') }}
 
     - name: Git config
       run: |
@@ -96,7 +96,7 @@ jobs:
       if: matrix.libgccjit_version.gcc != 'libgccjit12.so'
       id: tests
       run: |
-        ${{ matrix.libgccjit_version.env_extra }} ./y.sh test --release --clean --build-sysroot --test-failing-rustc ${{ matrix.libgccjit_version.extra }} 2>&1 | tee output_log
+        ${{ matrix.libgccjit_version.env_extra }} ./y.sh test --release --clean --build-sysroot --test-failing-c ${{ matrix.libgccjit_version.extra }} 2>&1 | tee output_log
         rg --text "test result" output_log >> $GITHUB_STEP_SUMMARY
 
     - name: Run failing ui pattern tests for ICE

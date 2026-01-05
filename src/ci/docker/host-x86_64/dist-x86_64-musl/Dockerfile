@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /build/
 
 COPY scripts/musl-toolchain.sh /build/
-# We need to mitigate rust-lang/rust#34978 when compiling musl itself as well
+# We need to mitigate -lang/#34978 when compiling musl itself as well
 RUN CFLAGS="-Wa,-mrelax-relocations=no -Wa,--compress-debug-sections=none -Wl,--compress-debug-sections=none" \
     CXXFLAGS="-Wa,-mrelax-relocations=no -Wa,--compress-debug-sections=none -Wl,--compress-debug-sections=none" \
     REPLACE_CC=1 bash musl-toolchain.sh x86_64 && rm -rf build
@@ -35,7 +35,7 @@ RUN sh /scripts/sccache.sh
 
 ENV HOSTS=x86_64-unknown-linux-musl
 
-ENV RUST_CONFIGURE_ARGS \
+ENV _CONFIGURE_ARGS \
       --musl-root-x86_64=/usr/local/x86_64-linux-musl \
       --enable-extended \
       --enable-sanitizers \
@@ -48,8 +48,8 @@ ENV RUST_CONFIGURE_ARGS \
 # unknown relocs disabled by the following flag), so we need to go out of our
 # way to produce "super compatible" binaries.
 #
-# See: https://github.com/rust-lang/rust/issues/34978
-# And: https://github.com/rust-lang/rust/issues/59411
+# See: https://github.com/-lang//issues/34978
+# And: https://github.com/-lang//issues/59411
 ENV CFLAGS_x86_64_unknown_linux_musl="-Wa,-mrelax-relocations=no -Wa,--compress-debug-sections=none \
     -Wl,--compress-debug-sections=none"
 

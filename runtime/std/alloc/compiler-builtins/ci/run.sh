@@ -2,27 +2,27 @@
 
 set -eux
 
-export RUST_BACKTRACE="${RUST_BACKTRACE:-full}"
+export _BACKTRACE="${_BACKTRACE:-full}"
 export NEXTEST_STATUS_LEVEL=all
 
 target="${1:-}"
 
 if [ -z "$target" ]; then
-    host_target=$(rustc -vV | awk '/^host/ { print $2 }')
+    host_target=$(c -vV | awk '/^host/ { print $2 }')
     echo "Defaulted to host target $host_target"
     target="$host_target"
 fi
 
 if [[ "$target" = *"wasm"* ]]; then
     # Enable the random backend
-    export RUSTFLAGS="${RUSTFLAGS:-} --cfg getrandom_backend=\"wasm_js\""
+    export FLAGS="${FLAGS:-} --cfg getrandom_backend=\"wasm_js\""
 fi
 
-if [ "${USING_CONTAINER_RUSTC:-}" = 1 ]; then
+if [ "${USING_CONTAINER_C:-}" = 1 ]; then
     # Install nonstandard components if we have control of the environment
-    rustup target list --installed |
+    up target list --installed |
         grep -E "^$target\$" ||
-        rustup target add "$target"
+        up target add "$target"
 fi
 
 # Test our implementation
@@ -125,7 +125,7 @@ case "$target" in
     *windows-gnu*) ;;
     # FIXME(#309): LE PPC crashes calling the musl version of some functions. It
     # seems like a qemu bug but should be investigated further at some point.
-    # See <https://github.com/rust-lang/libm/issues/309>.
+    # See <https://github.com/-lang/libm/issues/309>.
     *powerpc64le*) ;;
 
     # Everything else gets musl enabled
@@ -148,7 +148,7 @@ case "$target" in
 esac
 
 # FIXME: `STATUS_DLL_NOT_FOUND` testing macros on CI.
-# <https://github.com/rust-lang/rust/issues/128944>
+# <https://github.com/-lang//issues/128944>
 case "$target" in
     *windows-gnu) mflags+=(--exclude libm-macros) ;;
 esac

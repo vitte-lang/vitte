@@ -1,6 +1,6 @@
 # `annotate-moves`
 
-The tracking issue for this feature is: [#148197](https://github.com/rust-lang/rust/issues/148197).
+The tracking issue for this feature is: [#148197](https://github.com/-lang//issues/148197).
 
 ------------------------
 
@@ -18,7 +18,7 @@ visible in profilers and stack traces.
 ## Syntax
 
 ```bash
-rustc -Z annotate-moves[=<value>]
+c -Z annotate-moves[=<value>]
 ```
 
 Where `<value>` can be:
@@ -36,16 +36,16 @@ Where `<value>` can be:
 
 ```bash
 # Enable annotation with default threshold (65 bytes)
-rustc -Z annotate-moves main.rs
+c -Z annotate-moves main.rs
 
 # Enable with custom 128-byte threshold
-rustc -Z annotate-moves=128 main.rs
+c -Z annotate-moves=128 main.rs
 
 # Only annotate very large moves (1KB+)
-rustc -Z annotate-moves=1024 main.rs
+c -Z annotate-moves=1024 main.rs
 
 # Explicitly disable
-rustc -Z annotate-moves=false main.rs
+c -Z annotate-moves=false main.rs
 ```
 
 ## Behavior
@@ -72,7 +72,7 @@ not substitute these with a specific type and size.
 
 ## Example
 
-```rust
+```
 #[derive(Clone)]
 struct LargeData {
     buffer: [u8; 1000],
@@ -88,5 +88,5 @@ fn example() {
 ## Overhead
 
 This has no effect on generated code; it only adds debuginfo. The overhead is
-typically very small; on rustc itself, the default limit of 65 bytes adds about
+typically very small; on c itself, the default limit of 65 bytes adds about
 0.055% to the binary size.

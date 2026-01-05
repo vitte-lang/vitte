@@ -1,7 +1,7 @@
 interface_abi_required_feature =
     target feature `{$feature}` must be {$enabled} to ensure that the ABI of the current target can be implemented correctly
     .note = this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
-interface_abi_required_feature_issue = for more information, see issue #116344 <https://github.com/rust-lang/rust/issues/116344>
+interface_abi_required_feature_issue = for more information, see issue #116344 <https://github.com/-lang//issues/116344>
 
 interface_crate_name_does_not_match = `--crate-name` and `#[crate_name]` are required to match, but `{$crate_name}` != `{$attr_crate_name}`
 

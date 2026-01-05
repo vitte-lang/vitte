@@ -11,4 +11,4 @@ ENV CARGO_TARGET_LOONGARCH64_UNKNOWN_LINUX_GNU_LINKER=loongarch64-linux-gnu-gcc-
     AR_loongarch64_unknown_linux_gnu=loongarch64-linux-gnu-ar \
     CC_loongarch64_unknown_linux_gnu=loongarch64-linux-gnu-gcc-14 \
     QEMU_LD_PREFIX=/usr/loongarch64-linux-gnu \
-    RUST_TEST_THREADS=1
+    _TEST_THREADS=1

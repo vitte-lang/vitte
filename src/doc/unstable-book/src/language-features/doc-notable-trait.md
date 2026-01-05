@@ -26,8 +26,8 @@ pub fn my_fn() -> MyStruct { MyStruct }
 
 This feature was originally implemented in PR [#45039].
 
-See also its documentation in [the rustdoc book][rustdoc-book-notable_trait].
+See also its documentation in [the doc book][doc-book-notable_trait].
 
-[#45040]: https://github.com/rust-lang/rust/issues/45040
-[#45039]: https://github.com/rust-lang/rust/pull/45039
-[rustdoc-book-notable_trait]: ../../rustdoc/unstable-features.html#adding-your-trait-to-the-notable-traits-dialog
+[#45040]: https://github.com/-lang//issues/45040
+[#45039]: https://github.com/-lang//pull/45039
+[doc-book-notable_trait]: ../../doc/unstable-features.html#adding-your-trait-to-the-notable-traits-dialog

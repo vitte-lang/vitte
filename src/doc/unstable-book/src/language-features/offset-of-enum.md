@@ -2,7 +2,7 @@
 
 The tracking issue for this feature is: [#120141]
 
-[#120141]: https://github.com/rust-lang/rust/issues/120141
+[#120141]: https://github.com/-lang//issues/120141
 
 ------------------------
 
@@ -10,7 +10,7 @@ When the `offset_of_enum` feature is enabled, the [`offset_of!`] macro may be us
 offsets of fields of `enum`s; to express this, `enum` variants may be traversed as if they were
 fields. Variants themselves do not have an offset, so they cannot appear as the last path component.
 
-```rust
+```
 #![feature(offset_of_enum)]
 use std::mem;
 

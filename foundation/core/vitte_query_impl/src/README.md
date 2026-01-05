@@ -1,3 +1,3 @@
-For more information about how the query system works, see the [rustc dev guide].
+For more information about how the query system works, see the [c dev guide].
 
-[rustc dev guide]: https://rustc-dev-guide.rust-lang.org/query.html
+[c dev guide]: https://c-dev-guide.-lang.org/query.html

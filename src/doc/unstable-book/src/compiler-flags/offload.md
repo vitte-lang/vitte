@@ -1,6 +1,6 @@
 # `offload`
 
-The tracking issue for this feature is: [#131513](https://github.com/rust-lang/rust/issues/131513).
+The tracking issue for this feature is: [#131513](https://github.com/-lang//issues/131513).
 
 ------------------------
 

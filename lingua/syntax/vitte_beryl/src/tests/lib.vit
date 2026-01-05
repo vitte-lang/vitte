@@ -1,0 +1,70 @@
+// Tests for lexer and tokenization
+
+#[test]
+fn test_token_creation() {
+    let token = Token::new(
+        TokenType::Identifier,
+        "variable".to_string(),
+        1,
+        1
+    );
+    assert_eq!(token.get_value(), "variable");
+    assert_eq!(token.get_line(), 1);
+}
+
+#[test]
+fn test_lexer_creation() {
+    let lexer = Lexer::new("x = 42".to_string());
+    assert_eq!(lexer.position, 0);
+}
+
+#[test]
+fn test_lexer_tokenization() {
+    let mut lexer = Lexer::new("hello world".to_string());
+    let tokens = lexer.tokenize();
+    assert!(tokens.len() > 0);
+}
+
+#[test]
+fn test_bytecode_emission() {
+    let mut bc = Bytecode::new();
+    bc.emit(BytecodeOp::Load(0));
+    bc.emit(BytecodeOp::Add);
+    bc.emit(BytecodeOp::Store(1));
+    assert_eq!(bc.len(), 3);
+}
+
+#[test]
+fn test_token_buffer_add() {
+    let mut buf = TokenBuffer::new();
+    let token = Token::new(TokenType::Identifier, "x".to_string(), 1, 1);
+    buf.add_token(token);
+    assert!(buf.peek().is_some());
+}
+
+#[test]
+fn test_token_buffer_next() {
+    let mut buf = TokenBuffer::new();
+    let token = Token::new(TokenType::Number, "42".to_string(), 1, 1);
+    buf.add_token(token);
+    let result = buf.next();
+    assert!(result.is_some());
+}
+
+#[test]
+fn test_token_buffer_peek() {
+    let mut buf = TokenBuffer::new();
+    let token = Token::new(TokenType::Keyword, "if".to_string(), 1, 1);
+    buf.add_token(token);
+    let peeked = buf.peek();
+    assert_eq!(peeked.unwrap().get_value(), "if");
+}
+
+#[test]
+fn test_bytecode_ops() {
+    let mut bc = Bytecode::new();
+    bc.emit(BytecodeOp::Load(5));
+    bc.emit(BytecodeOp::Multiply);
+    bc.emit(BytecodeOp::Return);
+    assert_eq!(bc.len(), 3);
+}

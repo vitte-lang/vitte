@@ -1,7 +1,7 @@
-# The Rust Programming Language
+# The  Programming Language
 
-This is a compiler for Rust, including standard libraries, tools and
-documentation. Rust is a systems programming language that is fast,
+This is a compiler for , including standard libraries, tools and
+documentation.  is a systems programming language that is fast,
 memory safe and multithreaded, but does not employ a garbage collector
 or otherwise impose significant runtime overhead.
 
@@ -11,17 +11,17 @@ To install to /usr/local (the default), run the included `install.sh` script:
 
 To uninstall:
 
-    $ sudo /usr/local/lib/rustlib/uninstall.sh
+    $ sudo /usr/local/lib/lib/uninstall.sh
 
 `install.sh` has a few options, including the possibility to set an installation
 prefix. You can display these options by running:
 
     $ sudo ./install.sh --help
 
-Read [The Book](https://doc.rust-lang.org/book/index.html) to learn how
-to use Rust.
+Read [The Book](https://doc.-lang.org/book/index.html) to learn how
+to use .
 
-Rust is primarily distributed under the terms of both the MIT license
+ is primarily distributed under the terms of both the MIT license
 and the Apache License (Version 2.0), with portions covered by various
 BSD-like licenses.
 

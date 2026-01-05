@@ -1,11 +1,11 @@
 query_system_cycle = cycle detected when {$stack_bottom}
-    .note = see https://rustc-dev-guide.rust-lang.org/overview.html#queries and https://rustc-dev-guide.rust-lang.org/query.html for more information
+    .note = see https://c-dev-guide.-lang.org/overview.html#queries and https://c-dev-guide.-lang.org/query.html for more information
 
 query_system_cycle_recursive_trait_alias = trait aliases cannot be recursive
 
 query_system_cycle_recursive_ty_alias = type aliases cannot be recursive
 query_system_cycle_recursive_ty_alias_help1 = consider using a struct, enum, or union instead to break the cycle
-query_system_cycle_recursive_ty_alias_help2 = see <https://doc.rust-lang.org/reference/types.html#recursive-types> for more information
+query_system_cycle_recursive_ty_alias_help2 = see <https://doc.-lang.org/reference/types.html#recursive-types> for more information
 
 query_system_cycle_stack_middle = ...which requires {$desc}...
 

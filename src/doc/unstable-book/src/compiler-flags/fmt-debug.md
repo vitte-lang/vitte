@@ -1,6 +1,6 @@
 # `fmt-debug`
 
-The tracking issue for this feature is: [#129709](https://github.com/rust-lang/rust/issues/129709).
+The tracking issue for this feature is: [#129709](https://github.com/-lang//issues/129709).
 
 ------------------------
 

@@ -32,12 +32,12 @@
                 break;
             case "line-numbers":
                 if (value === true) {
-                    const f = window.rustdoc_add_line_numbers_to_examples;
+                    const f = window.doc_add_line_numbers_to_examples;
                     if (f !== undefined) {
                         f();
                     }
                 } else {
-                    const f = window.rustdoc_remove_line_numbers_from_examples;
+                    const f = window.doc_remove_line_numbers_from_examples;
                     if (f !== undefined) {
                         f();
                     }
@@ -143,7 +143,7 @@
      * as argument which describes each setting and how to render it. It returns a string
      * representing the raw HTML.
      *
-     * @param {Array<rustdoc.Setting>} settings
+     * @param {Array<doc.Setting>} settings
      *
      * @return {string}
      */

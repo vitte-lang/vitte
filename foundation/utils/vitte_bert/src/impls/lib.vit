@@ -1,0 +1,95 @@
+// Data structure implementations
+
+impl<T> Stack<T> {
+    pub fn new() -> Self {
+        Stack { items: Vec::new() }
+    }
+
+    pub fn push(&mut self, item: T) {
+        self.items.push(item);
+    }
+
+    pub fn pop(&mut self) -> Option<T> {
+        self.items.pop()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    pub fn len(&self) -> u64 {
+        self.items.len() as u64
+    }
+}
+
+impl<T> Queue<T> {
+    pub fn new() -> Self {
+        Queue { items: Vec::new() }
+    }
+
+    pub fn enqueue(&mut self, item: T) {
+        self.items.push(item);
+    }
+
+    pub fn dequeue(&mut self) -> Option<T> {
+        if self.items.is_empty() {
+            None
+        } else {
+            Some(self.items.remove(0))
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+}
+
+impl BitVector {
+    pub fn new(len: u64) -> Self {
+        let byte_len = ((len + 7) / 8) as usize;
+        BitVector {
+            bits: vec![0; byte_len],
+            len,
+        }
+    }
+
+    pub fn set(&mut self, index: u64, value: bool) {
+        let byte_idx = (index / 8) as usize;
+        let bit_idx = (index % 8) as u8;
+        if value {
+            self.bits[byte_idx] |= 1 << bit_idx;
+        } else {
+            self.bits[byte_idx] &= !(1 << bit_idx);
+        }
+    }
+
+    pub fn get(&self, index: u64) -> bool {
+        let byte_idx = (index / 8) as usize;
+        let bit_idx = (index % 8) as u8;
+        (self.bits[byte_idx] & (1 << bit_idx)) != 0
+    }
+}
+
+impl Symbol {
+    pub fn new(id: u32, name: string) -> Self {
+        Symbol { id, name }
+    }
+
+    pub fn get_name(&self) -> string {
+        self.name.clone()
+    }
+}
+
+impl<K, V> IndexMap<K, V> {
+    pub fn new() -> Self {
+        IndexMap { pairs: Vec::new() }
+    }
+
+    pub fn insert(&mut self, key: K, value: V) {
+        self.pairs.push((key, value));
+    }
+
+    pub fn len(&self) -> u64 {
+        self.pairs.len() as u64
+    }
+}

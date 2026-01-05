@@ -2,7 +2,7 @@
 
 The tracking issue for this feature is: [#29641]
 
-[#29641]: https://github.com/rust-lang/rust/issues/29641
+[#29641]: https://github.com/-lang//issues/29641
 
 ------------------------
 
@@ -11,7 +11,7 @@ The tracking issue for this feature is: [#29641]
 Box patterns let you match on `Box<T>`s:
 
 
-```rust
+```
 #![feature(box_patterns)]
 
 fn main() {

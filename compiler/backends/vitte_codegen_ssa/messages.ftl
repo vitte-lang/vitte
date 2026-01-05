@@ -71,7 +71,7 @@ codegen_ssa_field_associated_value_expected = associated value expected for `{$n
 codegen_ssa_forbidden_ctarget_feature =
     target feature `{$feature}` cannot be {$enabled} with `-Ctarget-feature`: {$reason}
     .note = this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
-codegen_ssa_forbidden_ctarget_feature_issue = for more information, see issue #116344 <https://github.com/rust-lang/rust/issues/116344>
+codegen_ssa_forbidden_ctarget_feature_issue = for more information, see issue #116344 <https://github.com/-lang//issues/116344>
 
 codegen_ssa_forbidden_target_feature_attr =
     target feature `{$feature}` cannot be enabled with `#[target_feature]`: {$reason}
@@ -212,7 +212,7 @@ codegen_ssa_msvc_missing_linker = the msvc targets depend on the msvc linker but
 codegen_ssa_multiple_external_func_decl = multiple declarations of external function `{$function}` from library `{$library_name}` have different calling conventions
 
 codegen_ssa_multiple_main_functions = entry symbol `main` declared multiple times
-    .help = did you use `#[no_mangle]` on `fn main`? Use `#![no_main]` to suppress the usual Rust-generated entry point
+    .help = did you use `#[no_mangle]` on `fn main`? Use `#![no_main]` to suppress the usual -generated entry point
 
 codegen_ssa_no_field = no field `{$name}`
 
@@ -233,7 +233,7 @@ codegen_ssa_read_file = failed to read file: {$message}
 
 codegen_ssa_repair_vs_build_tools = the Visual Studio build tools may need to be repaired using the Visual Studio installer
 
-codegen_ssa_requires_rust_abi = `#[track_caller]` requires Rust ABI
+codegen_ssa_requires__abi = `#[track_caller]` requires  ABI
 
 codegen_ssa_rlib_archive_build_failure = failed to build archive from rlib at `{$path}`: {$error}
 
@@ -247,7 +247,7 @@ codegen_ssa_rlib_only_rmeta_found = could not find rlib for: `{$crate_name}`, fo
 
 codegen_ssa_select_cpp_build_tool_workload = in the Visual Studio installer, ensure the "C++ build tools" workload is selected
 
-codegen_ssa_self_contained_linker_missing = the self-contained linker was requested, but it wasn't found in the target's sysroot, or in rustc's sysroot
+codegen_ssa_self_contained_linker_missing = the self-contained linker was requested, but it wasn't found in the target's sysroot, or in c's sysroot
 
 codegen_ssa_shuffle_indices_evaluation = could not evaluate shuffle_indices at compile time
 
@@ -364,7 +364,7 @@ codegen_ssa_unknown_archive_kind =
 codegen_ssa_unknown_ctarget_feature =
     unknown and unstable feature specified for `-Ctarget-feature`: `{$feature}`
     .note = it is still passed through to the codegen backend, but use of this feature might be unsound and the behavior of this feature can change in the future
-    .possible_feature = you might have meant: `{$rust_feature}`
+    .possible_feature = you might have meant: `{$_feature}`
     .consider_filing_feature_request = consider filing a feature request
 
 codegen_ssa_unknown_ctarget_feature_prefix =
@@ -379,7 +379,7 @@ codegen_ssa_unstable_ctarget_feature =
 
 codegen_ssa_unsupported_link_self_contained = option `-C link-self-contained` is not supported on this target
 
-codegen_ssa_use_cargo_directive = use the `cargo:rustc-link-lib` directive to specify the native libraries to link with Cargo (see https://doc.rust-lang.org/cargo/reference/build-scripts.html#rustc-link-lib)
+codegen_ssa_use_cargo_directive = use the `cargo:c-link-lib` directive to specify the native libraries to link with Cargo (see https://doc.-lang.org/cargo/reference/build-scripts.html#c-link-lib)
 
 codegen_ssa_version_script_write_failure = failed to write version script: {$error}
 

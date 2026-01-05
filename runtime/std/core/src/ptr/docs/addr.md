@@ -11,7 +11,7 @@ If using those APIs is not possible because there is no way to preserve a pointe
 required provenance, then Strict Provenance might not be for you. Use pointer-integer casts
 or [`expose_provenance`][pointer::expose_provenance] and [`with_exposed_provenance`][with_exposed_provenance]
 instead. However, note that this makes your code less portable and less amenable to tools
-that check for compliance with the Rust memory model.
+that check for compliance with the  memory model.
 
 On most platforms this will produce a value with the same bytes as the original
 pointer, because all the bytes are dedicated to describing the address.

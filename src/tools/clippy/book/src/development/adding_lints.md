@@ -16,18 +16,18 @@ because that's clearly a non-descriptive name.
       - [Tests Location](#tests-location)
   - [Testing](#testing)
     - [Cargo lints](#cargo-lints)
-  - [Rustfix tests](#rustfix-tests)
+  - [fix tests](#fix-tests)
   - [Testing manually](#testing-manually)
   - [Lint declaration](#lint-declaration)
   - [Lint registration](#lint-registration)
   - [Lint passes](#lint-passes)
   - [Emitting a lint](#emitting-a-lint)
   - [Adding the lint logic](#adding-the-lint-logic)
-  - [Specifying the lint's minimum supported Rust version (MSRV)](#specifying-the-lints-minimum-supported-rust-version-msrv)
+  - [Specifying the lint's minimum supported  version (MSRV)](#specifying-the-lints-minimum-supported--version-msrv)
   - [Author lint](#author-lint)
   - [Print HIR lint](#print-hir-lint)
   - [Documentation](#documentation)
-  - [Running rustfmt](#running-rustfmt)
+  - [Running fmt](#running-fmt)
   - [Debugging](#debugging)
   - [Conflicting lints](#conflicting-lints)
   - [PR Checklist](#pr-checklist)
@@ -81,7 +81,7 @@ Next, we'll open up these files and add our lint!
 Let's write some tests first that we can execute while we iterate on our lint.
 
 Clippy uses UI tests for testing. UI tests check that the output of Clippy is
-exactly as expected. Each test is just a plain Rust file that contains the code
+exactly as expected. Each test is just a plain  file that contains the code
 we want to check. The output of Clippy is compared against a `.stderr` file.
 Note that you don't have to create this file yourself, we'll get to generating
 the `.stderr` files further down.
@@ -90,7 +90,7 @@ We start by opening the test file created at `tests/ui/foo_functions.rs`.
 
 Update the file with some examples to get started:
 
-```rust
+```
 #![allow(unused)]
 #![warn(clippy::foo_functions)]
 
@@ -168,18 +168,18 @@ If you need more cases, you can copy one of those crates (under
 The process of generating the `.stderr` file is the same, and prepending the
 `TESTNAME` variable to `cargo uitest` works too.
 
-## Rustfix tests
+## fix tests
 
 If the lint you are working on is making use of structured suggestions, the test
-will create a `.fixed` file by running [rustfix] for that test.
-Rustfix will apply the suggestions
+will create a `.fixed` file by running [fix] for that test.
+fix will apply the suggestions
 from the lint to the code of the test file and compare that to the contents of a
 `.fixed` file.
 
 Use `cargo bless` to automatically generate the `.fixed` file while running
 the tests.
 
-[rustfix]: https://github.com/rust-lang/cargo/tree/master/crates/rustfix
+[fix]: https://github.com/-lang/cargo/tree/master/crates/fix
 
 ## Testing manually
 
@@ -197,7 +197,7 @@ To run Clippy on an existing project rather than a single file you can use
 cargo dev lint /path/to/project
 ```
 
-Or set up a rustup toolchain that points to the local Clippy binaries
+Or set up a up toolchain that points to the local Clippy binaries
 
 ```bash
 cargo dev setup toolchain
@@ -212,10 +212,10 @@ Let's start by opening the new file created in the `clippy_lints` crate at
 `clippy_lints/src/foo_functions.rs`. That's the crate where all the lint code
 is. This file has already imported some initial things we will need:
 
-```rust
-use rustc_lint::{EarlyLintPass, EarlyContext};
-use rustc_session::declare_lint_pass;
-use rustc_ast::ast::*;
+```
+use c_lint::{EarlyLintPass, EarlyContext};
+use c_session::declare_lint_pass;
+use c_ast::ast::*;
 ```
 
 The next step is to update the lint declaration. Lints are declared using the
@@ -223,14 +223,14 @@ The next step is to update the lint declaration. Lints are declared using the
 the auto-generated lint declaration to have a real description, something like
 this:
 
-```rust
+```
 declare_clippy_lint! {
     /// ### What it does
     ///
     /// ### Why is this bad?
     ///
     /// ### Example
-    /// ```rust
+    /// ```
     /// // example code
     /// ```
     #[clippy::version = "1.29.0"]
@@ -245,9 +245,9 @@ declare_clippy_lint! {
   this][example_lint_page]. To render and open this documentation locally in a
   browser, run `cargo dev serve`.
 * The `#[clippy::version]` attribute will be rendered as part of the lint
-  documentation. The value should be set to the current Rust version that the
-  lint is developed in, it can be retrieved by running `rustc -vV` in the
-  rust-clippy directory. The version is listed under *release*. (Use the version
+  documentation. The value should be set to the current  version that the
+  lint is developed in, it can be retrieved by running `c -vV` in the
+  -clippy directory. The version is listed under *release*. (Use the version
   without the `-nightly`) suffix.
 * `FOO_FUNCTIONS` is the name of our lint. Be sure to follow the [lint naming
   guidelines][lint_naming] here when naming your lint. In short, the name should
@@ -261,7 +261,7 @@ declare_clippy_lint! {
 The rest of this file contains an empty implementation for our lint pass, which
 in this case is `EarlyLintPass` and should look like this:
 
-```rust
+```
 // clippy_lints/src/foo_functions.rs
 
 // .. imports and lint declaration ..
@@ -271,9 +271,9 @@ declare_lint_pass!(FooFunctions => [FOO_FUNCTIONS]);
 impl EarlyLintPass for FooFunctions {}
 ```
 
-[declare_clippy_lint]: https://github.com/rust-lang/rust-clippy/blob/557f6848bd5b7183f55c1e1522a326e9e1df6030/clippy_lints/src/lib.rs#L60
-[example_lint_page]: https://rust-lang.github.io/rust-clippy/master/index.html#redundant_closure
-[lint_naming]: https://rust-lang.github.io/rfcs/0344-conventions-galore.html#lints
+[declare_clippy_lint]: https://github.com/-lang/-clippy/blob/557f6848bd5b7183f55c1e1522a326e9e1df6030/clippy_lints/src/lib.rs#L60
+[example_lint_page]: https://-lang.github.io/-clippy/master/index.html#redundant_closure
+[lint_naming]: https://-lang.github.io/rfcs/0344-conventions-galore.html#lints
 [category_level_mapping]: ../index.html
 
 ## Lint registration
@@ -285,7 +285,7 @@ When declaring a new lint by hand and `cargo dev update_lints` is used, the lint
 pass may have to be registered manually in the `register_lints` function in
 `clippy_lints/src/lib.rs`:
 
-```rust,ignore
+```,ignore
 store.register_early_pass(|| Box::new(foo_functions::FooFunctions));
 ```
 
@@ -310,7 +310,7 @@ We have to make this decision with every new Clippy lint. It boils down to using
 either [`EarlyLintPass`][early_lint_pass] or [`LateLintPass`][late_lint_pass].
 
 `EarlyLintPass` runs before type checking and
-[HIR](https://rustc-dev-guide.rust-lang.org/hir.html) lowering, while `LateLintPass`
+[HIR](https://c-dev-guide.-lang.org/hir.html) lowering, while `LateLintPass`
 runs after these stages, providing access to type information. The `cargo dev new_lint` command
 defaults to the recommended `LateLintPass`, but you can specify `--pass=early` if your lint
 only needs AST level analysis.
@@ -319,8 +319,8 @@ Since we don't need type information for checking the function name, we used
 `--pass=early` when running the new lint automation and all the imports were
 added accordingly.
 
-[early_lint_pass]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_lint/trait.EarlyLintPass.html
-[late_lint_pass]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_lint/trait.LateLintPass.html
+[early_lint_pass]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.EarlyLintPass.html
+[late_lint_pass]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.LateLintPass.html
 
 ## Emitting a lint
 
@@ -329,7 +329,7 @@ implementation of the lint logic.
 
 Let's start by implementing the `EarlyLintPass` for our `FooFunctions`:
 
-```rust,ignore
+```,ignore
 impl EarlyLintPass for FooFunctions {
     fn check_fn(&mut self, cx: &EarlyContext<'_>, fn_kind: FnKind<'_>, span: Span, _: NodeId) {
         // TODO: Emit lint here
@@ -351,7 +351,7 @@ variety of lint emission functions. They can all be found in
 provide an extra help message, and we can't really suggest a better name
 automatically. This is how it looks:
 
-```rust,ignore
+```,ignore
 impl EarlyLintPass for FooFunctions {
     fn check_fn(&mut self, cx: &EarlyContext<'_>, fn_kind: FnKind<'_>, span: Span, _: NodeId) {
         span_lint_and_help(
@@ -368,14 +368,14 @@ impl EarlyLintPass for FooFunctions {
 
 Running our UI test should now produce output that contains the lint message.
 
-According to [the rustc-dev-guide], the text should be matter of fact and avoid
+According to [the c-dev-guide], the text should be matter of fact and avoid
 capitalization and periods, unless multiple sentences are needed. When code or
 an identifier must appear in a message or label, it should be surrounded with
 single grave accents \`.
 
-[check_fn]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_lint/trait.EarlyLintPass.html#method.check_fn
-[diagnostics]: https://github.com/rust-lang/rust-clippy/blob/master/clippy_utils/src/diagnostics.rs
-[the rustc-dev-guide]: https://rustc-dev-guide.rust-lang.org/diagnostics.html
+[check_fn]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.EarlyLintPass.html#method.check_fn
+[diagnostics]: https://github.com/-lang/-clippy/blob/master/clippy_utils/src/diagnostics.rs
+[the c-dev-guide]: https://c-dev-guide.-lang.org/diagnostics.html
 
 ## Adding the lint logic
 
@@ -388,7 +388,7 @@ function/method via an [`Ident`][ident].
 
 With that we can expand our `check_fn` method to:
 
-```rust
+```
 impl EarlyLintPass for FooFunctions {
     fn check_fn(&mut self, cx: &EarlyContext<'_>, fn_kind: FnKind<'_>, span: Span, _: NodeId) {
         if is_foo_fn(fn_kind) {
@@ -411,7 +411,7 @@ write some unit tests (as opposed to only UI tests) for the separate function.
 
 In our example, `is_foo_fn` looks like:
 
-```rust
+```
 // use statements, impl EarlyLintPass, check_fn, ..
 
 fn is_foo_fn(fn_kind: FnKind<'_>) -> bool {
@@ -436,23 +436,23 @@ implementation is not violating any Clippy lints itself.
 That should be it for the lint implementation. Running `cargo test` should now
 pass.
 
-[fn_kind]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_ast/visit/enum.FnKind.html
-[`FnKind::Fn`]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_ast/visit/enum.FnKind.html#variant.Fn
-[ident]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_span/symbol/struct.Ident.html
+[fn_kind]: https://doc.-lang.org/nightly/nightly-c/c_ast/visit/enum.FnKind.html
+[`FnKind::Fn`]: https://doc.-lang.org/nightly/nightly-c/c_ast/visit/enum.FnKind.html#variant.Fn
+[ident]: https://doc.-lang.org/nightly/nightly-c/c_span/symbol/struct.Ident.html
 
-## Specifying the lint's minimum supported Rust version (MSRV)
+## Specifying the lint's minimum supported  version (MSRV)
 
-Sometimes a lint makes suggestions that require a certain version of Rust. For
+Sometimes a lint makes suggestions that require a certain version of . For
 example, the `manual_strip` lint suggests using `str::strip_prefix` and
-`str::strip_suffix` which is only available after Rust 1.45. In such cases, you
+`str::strip_suffix` which is only available after  1.45. In such cases, you
 need to ensure that the MSRV configured for the project is >= the MSRV of the
-required Rust feature. If multiple features are required, just use the one with
+required  feature. If multiple features are required, just use the one with
 a lower MSRV.
 
 First, add an MSRV alias for the required feature in [`clippy_utils::msrvs`].
 This can be accessed later as `msrvs::STR_STRIP_PREFIX`, for example.
 
-```rust
+```
 msrv_aliases! {
     ..
     1,45,0 { STR_STRIP_PREFIX }
@@ -463,7 +463,7 @@ In order to access the project-configured MSRV, you need to have an `msrv` field
 in the LintPass struct, and a constructor to initialize the field. The `msrv`
 value is passed to the constructor in `clippy_lints/lib.rs`.
 
-```rust
+```
 pub struct ManualStrip {
     msrv: Msrv,
 }
@@ -478,7 +478,7 @@ impl ManualStrip {
 The project's MSRV can then be matched against the feature MSRV in the LintPass
 using the `Msrv::meets` method.
 
-``` rust
+``` 
 if !self.msrv.meets(cx, msrvs::STR_STRIP_PREFIX) {
     return;
 }
@@ -492,7 +492,7 @@ the lint's test file, `tests/ui/manual_strip.rs` in this example. It should
 have a case for the version below the MSRV and one with the same contents but
 for the MSRV version itself.
 
-```rust,ignore
+```,ignore
 ...
 
 #[clippy::msrv = "1.44"]
@@ -509,7 +509,7 @@ fn msrv_1_45() {
 As a last step, the lint should be added to the lint documentation. This is done
 in `clippy_config/src/conf.rs`:
 
-```rust
+```
 define_Conf! {
     #[lints(
         allow_attributes,
@@ -525,7 +525,7 @@ define_Conf! {
 }
 ```
 
-[`clippy_utils::msrvs`]: https://doc.rust-lang.org/nightly/nightly-rustc/clippy_config/msrvs/index.html
+[`clippy_utils::msrvs`]: https://doc.-lang.org/nightly/nightly-c/clippy_config/msrvs/index.html
 
 Afterwards update the documentation for the book as described in [Adding configuration to a lint](#adding-configuration-to-a-lint).
 
@@ -533,10 +533,10 @@ Afterwards update the documentation for the book as described in [Adding configu
 
 If you have trouble implementing your lint, there is also the internal `author`
 lint to generate Clippy code that detects the offending pattern. It does not
-work for all the Rust syntax, but can give a good starting point.
+work for all the  syntax, but can give a good starting point.
 
-The quickest way to use it, is the [Rust playground:
-play.rust-lang.org][author_example]. Put the code you want to lint into the
+The quickest way to use it, is the [ playground:
+play.-lang.org][author_example]. Put the code you want to lint into the
 editor and add the `#[clippy::author]` attribute above the item. Then run Clippy
 via `Tools -> Clippy` and you should see the generated code in the output below.
 
@@ -545,12 +545,12 @@ via `Tools -> Clippy` and you should see the generated code in the output below.
 If the command was executed successfully, you can copy the code over to where
 you are implementing your lint.
 
-[author_example]: https://play.rust-lang.org/?version=nightly&mode=debug&edition=2024&gist=9a12cb60e5c6ad4e3003ac6d5e63cf55
+[author_example]: https://play.-lang.org/?version=nightly&mode=debug&edition=2024&gist=9a12cb60e5c6ad4e3003ac6d5e63cf55
 
 ## Print HIR lint
 
 To implement a lint, it's helpful to first understand the internal
-representation that rustc uses. Clippy has the `#[clippy::dump]` attribute that
+representation that c uses. Clippy has the `#[clippy::dump]` attribute that
 prints the [_High-Level Intermediate Representation (HIR)_] of the item,
 statement, or expression that the attribute is attached to. To attach the
 attribute to expressions you often need to enable
@@ -559,8 +559,8 @@ attribute to expressions you often need to enable
 [Here][print_hir_example] you can find an example, just select _Tools_ and run
 _Clippy_.
 
-[_High-Level Intermediate Representation (HIR)_]: https://rustc-dev-guide.rust-lang.org/hir.html
-[print_hir_example]: https://play.rust-lang.org/?version=nightly&mode=debug&edition=2024&gist=daf14db3a7f39ca467cd1b86c34b9afb
+[_High-Level Intermediate Representation (HIR)_]: https://c-dev-guide.-lang.org/hir.html
+[print_hir_example]: https://play.-lang.org/?version=nightly&mode=debug&edition=2024&gist=daf14db3a7f39ca467cd1b86c34b9afb
 
 ## Documentation
 
@@ -569,7 +569,7 @@ lint declaration.
 
 Please document your lint with a doc comment akin to the following:
 
-```rust
+```
 declare_clippy_lint! {
     /// ### What it does
     /// Checks for ... (describe what the lint matches).
@@ -579,12 +579,12 @@ declare_clippy_lint! {
     ///
     /// ### Example
     ///
-    /// ```rust,ignore
+    /// ```,ignore
     /// // A short example of code that triggers the lint
     /// ```
     ///
     /// Use instead:
-    /// ```rust,ignore
+    /// ```,ignore
     /// // A short example of improved code that doesn't trigger the lint
     /// ```
     #[clippy::version = "1.29.0"]
@@ -602,24 +602,24 @@ necessarily “bad” but are more of a style choice, then replace the
 Once your lint is merged, this documentation will show up in the [lint
 list][lint_list].
 
-[lint_list]: https://rust-lang.github.io/rust-clippy/master/index.html
+[lint_list]: https://-lang.github.io/-clippy/master/index.html
 
-## Running rustfmt
+## Running fmt
 
-[Rustfmt] is a tool for formatting Rust code according to style guidelines. Your
-code has to be formatted by `rustfmt` before a PR can be merged. Clippy uses
-nightly `rustfmt` in the CI.
+[fmt] is a tool for formatting  code according to style guidelines. Your
+code has to be formatted by `fmt` before a PR can be merged. Clippy uses
+nightly `fmt` in the CI.
 
-It can be installed via `rustup`:
+It can be installed via `up`:
 
 ```bash
-rustup component add rustfmt --toolchain=nightly
+up component add fmt --toolchain=nightly
 ```
 
-Use `cargo dev fmt` to format the whole codebase. Make sure that `rustfmt` is
+Use `cargo dev fmt` to format the whole codebase. Make sure that `fmt` is
 installed for the nightly toolchain.
 
-[Rustfmt]: https://github.com/rust-lang/rustfmt
+[fmt]: https://github.com/-lang/fmt
 
 ## Debugging
 
@@ -627,7 +627,7 @@ If you want to debug parts of your lint implementation, you can use the [`dbg!`]
 macro anywhere in your code. Running the tests should then include the debug
 output in the `stdout` part.
 
-[`dbg!`]: https://doc.rust-lang.org/std/macro.dbg.html
+[`dbg!`]: https://doc.-lang.org/std/macro.dbg.html
 
 ## Conflicting lints
 
@@ -666,7 +666,7 @@ Clippy supports the configuration of lints values using a `clippy.toml` file whi
 
 1. The directory specified by the `CLIPPY_CONF_DIR` environment variable, or
 2. The directory specified by the
-[CARGO_MANIFEST_DIR](https://doc.rust-lang.org/cargo/reference/environment-variables.html) environment variable, or
+[CARGO_MANIFEST_DIR](https://doc.-lang.org/cargo/reference/environment-variables.html) environment variable, or
 3. The current directory.
 
 Adding a configuration to a lint can be useful for
@@ -675,7 +675,7 @@ for some users. Adding a configuration is done in the following steps:
 
 1. Adding a new configuration entry to [`clippy_config::conf`] like this:
 
-   ```rust,ignore
+   ```,ignore
    /// Lint: LINT_NAME.
    ///
    /// <The configuration field doc comment>
@@ -689,7 +689,7 @@ for some users. Adding a configuration is done in the following steps:
     1. This first requires the definition of a lint impl struct. Lint impl
        structs are usually generated with the `declare_lint_pass!` macro. This
        struct needs to be defined manually to add some kind of metadata to it:
-       ```rust
+       ```
        // Generated struct definition
        declare_lint_pass!(StructName => [
            LINT_NAME
@@ -705,7 +705,7 @@ for some users. Adding a configuration is done in the following steps:
 
     2. Next add the configuration value and a corresponding creation method like
        this:
-       ```rust
+       ```
        pub struct StructName {
            configuration_ident: Type,
        }
@@ -726,7 +726,7 @@ for some users. Adding a configuration is done in the following steps:
    configuration value is now cloned or copied into a local value that is then
    passed to the impl struct like this:
 
-   ```rust,ignore
+   ```,ignore
    // Default generated registration:
    store.register_*_pass(|| box module::StructName);
 
@@ -742,17 +742,17 @@ for some users. Adding a configuration is done in the following steps:
        [`tests/ui`].
     2. The configuration itself will be tested separately in [`tests/ui-toml`].
        Simply add a new subfolder with a fitting name. This folder contains a
-       `clippy.toml` file with the configuration value and a rust file that
+       `clippy.toml` file with the configuration value and a  file that
        should be linted by Clippy. The test can otherwise be written as usual.
 
 5. Update [Lint Configuration](../lint_configuration.md)
 
    Run `cargo bless --test config-metadata` to generate documentation changes for the book.
 
-[`clippy_config::conf`]: https://github.com/rust-lang/rust-clippy/blob/master/clippy_config/src/conf.rs
-[`clippy_lints` lib file]: https://github.com/rust-lang/rust-clippy/blob/master/clippy_lints/src/lib.rs
-[`tests/ui`]: https://github.com/rust-lang/rust-clippy/blob/master/tests/ui
-[`tests/ui-toml`]: https://github.com/rust-lang/rust-clippy/blob/master/tests/ui-toml
+[`clippy_config::conf`]: https://github.com/-lang/-clippy/blob/master/clippy_config/src/conf.rs
+[`clippy_lints` lib file]: https://github.com/-lang/-clippy/blob/master/clippy_lints/src/lib.rs
+[`tests/ui`]: https://github.com/-lang/-clippy/blob/master/tests/ui
+[`tests/ui-toml`]: https://github.com/-lang/-clippy/blob/master/tests/ui-toml
 
 ## Cheat Sheet
 
@@ -768,36 +768,36 @@ Here are some pointers to things you are likely going to need for every lint:
 * [`Applicability`][applicability]
 * [Common tools for writing lints](common_tools_writing_lints.md) helps with
   common operations
-* [The rustc-dev-guide][rustc-dev-guide] explains a lot of internal compiler
+* [The c-dev-guide][c-dev-guide] explains a lot of internal compiler
   concepts
-* [The nightly rustc docs][nightly_docs] which has been linked to throughout
+* [The nightly c docs][nightly_docs] which has been linked to throughout
   this guide
 
 For `EarlyLintPass` lints:
 
 * [`EarlyLintPass`][early_lint_pass]
-* [`rustc_ast::ast`][ast]
+* [`c_ast::ast`][ast]
 
 For `LateLintPass` lints:
 
 * [`LateLintPass`][late_lint_pass]
 * [`Ty::TyKind`][ty]
 
-While most of Clippy's lint utils are documented, most of rustc's internals lack
+While most of Clippy's lint utils are documented, most of c's internals lack
 documentation currently. This is unfortunate, but in most cases you can probably
 get away with copying things from existing similar lints. If you are stuck,
 don't hesitate to ask on [Zulip] or in the issue/PR.
 
-[utils]: https://doc.rust-lang.org/nightly/nightly-rustc/clippy_utils/index.html
-[`implements_trait`]: https://doc.rust-lang.org/nightly/nightly-rustc/clippy_utils/ty/fn.implements_trait.html
-[`snippet`]: https://doc.rust-lang.org/nightly/nightly-rustc/clippy_utils/source/fn.snippet.html
-[let-chains]: https://github.com/rust-lang/rust/pull/94927
-[from_expansion]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_span/struct.Span.html#method.from_expansion
-[in_external_macro]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_span/struct.Span.html#method.in_external_macro
-[span]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_span/struct.Span.html
-[applicability]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_errors/enum.Applicability.html
-[rustc-dev-guide]: https://rustc-dev-guide.rust-lang.org/
-[nightly_docs]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/
-[ast]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_ast/ast/index.html
-[ty]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/ty/sty/index.html
-[Zulip]: https://rust-lang.zulipchat.com/#narrow/stream/clippy
+[utils]: https://doc.-lang.org/nightly/nightly-c/clippy_utils/index.html
+[`implements_trait`]: https://doc.-lang.org/nightly/nightly-c/clippy_utils/ty/fn.implements_trait.html
+[`snippet`]: https://doc.-lang.org/nightly/nightly-c/clippy_utils/source/fn.snippet.html
+[let-chains]: https://github.com/-lang//pull/94927
+[from_expansion]: https://doc.-lang.org/nightly/nightly-c/c_span/struct.Span.html#method.from_expansion
+[in_external_macro]: https://doc.-lang.org/nightly/nightly-c/c_span/struct.Span.html#method.in_external_macro
+[span]: https://doc.-lang.org/nightly/nightly-c/c_span/struct.Span.html
+[applicability]: https://doc.-lang.org/nightly/nightly-c/c_errors/enum.Applicability.html
+[c-dev-guide]: https://c-dev-guide.-lang.org/
+[nightly_docs]: https://doc.-lang.org/nightly/nightly-c/c_middle/
+[ast]: https://doc.-lang.org/nightly/nightly-c/c_ast/ast/index.html
+[ty]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/sty/index.html
+[Zulip]: https://-lang.zulipchat.com/#narrow/stream/clippy

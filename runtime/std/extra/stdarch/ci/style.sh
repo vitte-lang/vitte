@@ -2,13 +2,13 @@
 
 set -ex
 
-if rustup component add rustfmt-preview ; then
-    command -v rustfmt
-    rustfmt -V
+if up component add fmt-preview ; then
+    command -v fmt
+    fmt -V
     cargo fmt --all -- --check
 fi
 
-# if rustup component add clippy-preview ; then
+# if up component add clippy-preview ; then
 #     cargo clippy -V
 #     cargo clippy --all -- -D clippy::pedantic
 # fi

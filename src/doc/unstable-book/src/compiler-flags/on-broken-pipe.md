@@ -6,7 +6,7 @@ The tracking issue for this feature is: [#97889]
 
 Note: The ui for this feature was previously an attribute named `#[unix_sigpipe = "..."]`.
 
-[#97889]: https://github.com/rust-lang/rust/issues/97889
+[#97889]: https://github.com/-lang//issues/97889
 
 ---
 
@@ -25,7 +25,7 @@ The `-Zon-broken-pipe=...` compiler flag can be used to specify how libstd shall
 
 ## `-Zon-broken-pipe` not used
 
-If `-Zon-broken-pipe` is not used, libstd will behave in the manner it has since 2014, before Rust 1.0. `SIGPIPE` will be set to `SIG_IGN` before `fn main()` and result in `EPIPE` errors which are converted to `std::io::ErrorKind::BrokenPipe`.
+If `-Zon-broken-pipe` is not used, libstd will behave in the manner it has since 2014, before  1.0. `SIGPIPE` will be set to `SIG_IGN` before `fn main()` and result in `EPIPE` errors which are converted to `std::io::ErrorKind::BrokenPipe`.
 
 When spawning child processes, `SIGPIPE` will be set to `SIG_DFL` before doing the underlying `exec()` syscall.
 
@@ -38,7 +38,7 @@ When spawning child processes, `SIGPIPE` will not be touched. This normally mean
 
 ### Example
 
-```rust,no_run
+```,no_run
 fn main() {
     loop {
         println!("hello world");
@@ -47,7 +47,7 @@ fn main() {
 ```
 
 ```console
-$ rustc -Zon-broken-pipe=kill main.rs
+$ c -Zon-broken-pipe=kill main.rs
 $ ./main | head -n1
 hello world
 ```
@@ -60,7 +60,7 @@ When spawning child processes, `SIGPIPE` will not be touched. This normally mean
 
 ### Example
 
-```rust,no_run
+```,no_run
 fn main() {
     loop {
         println!("hello world");
@@ -69,12 +69,12 @@ fn main() {
 ```
 
 ```console
-$ rustc -Zon-broken-pipe=error main.rs
+$ c -Zon-broken-pipe=error main.rs
 $ ./main | head -n1
 hello world
 thread 'main' panicked at library/std/src/io/stdio.rs:1118:9:
 failed printing to stdout: Broken pipe (os error 32)
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+note: run with `_BACKTRACE=1` environment variable to display a backtrace
 ```
 
 ## `-Zon-broken-pipe=inherit`

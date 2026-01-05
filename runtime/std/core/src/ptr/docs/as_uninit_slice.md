@@ -24,7 +24,7 @@ all of the following is true:
 * The total size `ptr.len() * size_of::<T>()` of the slice must be no larger than `isize::MAX`.
   See the safety documentation of [`pointer::offset`].
 
-* You must enforce Rust's aliasing rules, since the returned lifetime `'a` is
+* You must enforce 's aliasing rules, since the returned lifetime `'a` is
   arbitrarily chosen and does not necessarily reflect the actual lifetime of the data.
   In particular, while this reference exists, the memory the pointer points to must
   not get mutated (except inside `UnsafeCell`).

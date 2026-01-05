@@ -1,6 +1,6 @@
-Lexical Region Resolution was removed in https://github.com/rust-lang/rust/pull/64790.
+Lexical Region Resolution was removed in https://github.com/-lang//pull/64790.
 
-Rust now uses Non-lexical lifetimes. For more info, please see the [borrowck
-chapter][bc] in the rustc-dev-guide.
+ now uses Non-lexical lifetimes. For more info, please see the [borrowck
+chapter][bc] in the c-dev-guide.
 
-[bc]: https://rustc-dev-guide.rust-lang.org/borrow_check/region_inference.html
+[bc]: https://c-dev-guide.-lang.org/borrow_check/region_inference.html

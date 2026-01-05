@@ -2,7 +2,7 @@
 #define GENMC_RESULT_HANDLING_HPP
 
 // CXX.rs generated headers:
-#include "rust/cxx.h"
+#include "/cxx.h"
 
 // GenMC headers:
 #include "Verification/VerificationError.hpp"
@@ -13,7 +13,7 @@
 #include <string>
 
 /** Information about an error, formatted as a string to avoid having to share an error enum and
- * printing functionality with the Rust side. */
+ * printing functionality with the  side. */
 static auto format_error(VerificationError err) -> std::unique_ptr<std::string> {
     std::stringstream s;
     s << std::format("{}", err);

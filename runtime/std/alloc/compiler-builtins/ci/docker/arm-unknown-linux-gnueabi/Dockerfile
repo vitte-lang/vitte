@@ -12,4 +12,4 @@ ENV CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABI_LINKER="$TOOLCHAIN_PREFIX"gcc \
     AR_arm_unknown_linux_gnueabi="$TOOLCHAIN_PREFIX"ar \
     CC_arm_unknown_linux_gnueabi="$TOOLCHAIN_PREFIX"gcc \
     QEMU_LD_PREFIX=/usr/arm-linux-gnueabi \
-    RUST_TEST_THREADS=1
+    _TEST_THREADS=1

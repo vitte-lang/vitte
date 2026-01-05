@@ -1,0 +1,58 @@
+// Tests for type constraints
+
+#[test]
+fn test_constraint_set_creation() {
+    let cs = ConstraintSet::new();
+    assert!(cs.is_empty());
+}
+
+#[test]
+fn test_constraint_set_add() {
+    let mut cs = ConstraintSet::new();
+    let c = Constraint::Equal(Type::Primitive("i32".to_string()), Type::Primitive("i32".to_string()));
+    cs.add(c);
+    assert_eq!(cs.len(), 1);
+}
+
+#[test]
+fn test_type_primitive() {
+    let ty = Type::primitive("i32".to_string());
+    assert!(!ty.is_unknown());
+}
+
+#[test]
+fn test_type_unknown() {
+    let ty = Type::Unknown;
+    assert!(ty.is_unknown());
+}
+
+#[test]
+fn test_constraint_context() {
+    let mut ctx = ConstraintContext::new();
+    ctx.bind_variable("x".to_string(), Type::Primitive("i32".to_string()));
+    assert!(ctx.lookup_variable(&"x".to_string()).is_some());
+}
+
+#[test]
+fn test_trait_creation() {
+    let mut tr = Trait::new("Iterator".to_string());
+    let method = TraitMethod::new("next".to_string(), "fn next() -> Option".to_string());
+    tr.add_method(method);
+    assert_eq!(tr.len(), 1);
+}
+
+#[test]
+fn test_unification_engine() {
+    let mut engine = UnificationEngine::new();
+    let t1 = Type::Primitive("i32".to_string());
+    let t2 = Type::Primitive("i32".to_string());
+    assert!(engine.unify(t1, t2));
+}
+
+#[test]
+fn test_function_type() {
+    let params = vec![Type::Primitive("i32".to_string())];
+    let return_type = Type::Primitive("bool".to_string());
+    let fn_type = Type::function(params, return_type);
+    assert!(!fn_type.is_unknown());
+}

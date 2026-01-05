@@ -50,7 +50,7 @@ if [ -d "$root_dir/.git" ]; then
     IS_GIT_SOURCE=1
 fi
 
-CACHE_DOMAIN="${CACHE_DOMAIN:-ci-caches.rust-lang.org}"
+CACHE_DOMAIN="${CACHE_DOMAIN:-ci-caches.-lang.org}"
 
 if [ -f "$docker_dir/$image/Dockerfile" ]; then
     hash_key=/tmp/.docker-hash-key.txt
@@ -97,32 +97,32 @@ if [ -f "$docker_dir/$image/Dockerfile" ]; then
     docker --version
 
     REGISTRY=ghcr.io
-    # Default to `rust-lang` to allow reusing the cache for local builds
-    REGISTRY_USERNAME=${GITHUB_REPOSITORY_OWNER:-rust-lang}
-    # Tag used to push the final Docker image, so that it can be pulled by e.g. rustup
-    IMAGE_TAG=${REGISTRY}/${REGISTRY_USERNAME}/rust-ci:${cksum}
+    # Default to `-lang` to allow reusing the cache for local builds
+    REGISTRY_USERNAME=${GITHUB_REPOSITORY_OWNER:--lang}
+    # Tag used to push the final Docker image, so that it can be pulled by e.g. up
+    IMAGE_TAG=${REGISTRY}/${REGISTRY_USERNAME}/-ci:${cksum}
     # Tag used to cache the Docker build
     # It seems that it cannot be the same as $IMAGE_TAG, otherwise it overwrites the cache
-    CACHE_IMAGE_TAG=${REGISTRY}/${REGISTRY_USERNAME}/rust-ci-cache:${cksum}
+    CACHE_IMAGE_TAG=${REGISTRY}/${REGISTRY_USERNAME}/-ci-cache:${cksum}
 
     # Docker build arguments.
     build_args=(
         "build"
         "--rm"
-        "-t" "rust-ci"
+        "-t" "-ci"
         "-f" "$dockerfile"
         "$context"
     )
 
-    GHCR_BUILDKIT_IMAGE="ghcr.io/rust-lang/buildkit:buildx-stable-1"
-    # On non-CI jobs, we try to download a pre-built image from the rust-lang-ci
+    GHCR_BUILDKIT_IMAGE="ghcr.io/-lang/buildkit:buildx-stable-1"
+    # On non-CI jobs, we try to download a pre-built image from the -lang-ci
     # ghcr.io registry. If it is not possible, we fall back to building the image
     # locally.
     if ! isCI;
     then
         if docker pull "${IMAGE_TAG}"; then
             echo "Downloaded Docker image from CI"
-            docker tag "${IMAGE_TAG}" rust-ci
+            docker tag "${IMAGE_TAG}" -ci
         else
             echo "Building local Docker image"
             retry docker "${build_args[@]}"
@@ -166,10 +166,10 @@ if [ -f "$docker_dir/$image/Dockerfile" ]; then
         docker images
 
         # Tag the built image and push it to the registry
-        docker tag rust-ci "${IMAGE_TAG}"
+        docker tag -ci "${IMAGE_TAG}"
         docker push "${IMAGE_TAG}"
 
-        # Record the container registry tag/url for reuse, e.g. by rustup.rs builds
+        # Record the container registry tag/url for reuse, e.g. by up.rs builds
         # It should be possible to run `docker pull <$IMAGE_TAG>` to download the image
         info="$dist/image-$image.txt"
         mkdir -p "$dist"
@@ -188,7 +188,7 @@ elif [ -f "$docker_dir/disabled/$image/Dockerfile" ]; then
     tar --transform 's#disabled/#./#' -C $script_dir -c . | docker \
       build \
       --rm \
-      -t rust-ci \
+      -t -ci \
       -f "host-${machine}/$image/Dockerfile" \
       -
 else
@@ -279,7 +279,7 @@ args="$args --privileged"
 # `LOCAL_USER_ID` (recognized in `src/ci/run.sh`) to ensure that files are all
 # read/written as the same user as the bare-metal user.
 if [ -f /.dockerenv ]; then
-  docker create -v /checkout --name checkout ghcr.io/rust-lang/alpine:3.4 /bin/true
+  docker create -v /checkout --name checkout ghcr.io/-lang/alpine:3.4 /bin/true
   docker cp . checkout:/checkout
   args="$args --volumes-from checkout"
 else
@@ -317,7 +317,7 @@ if isCI; then
   #
   # This command gets the last merge commit which we'll use as base to list
   # deleted files since then.
-  BASE_COMMIT="$(git log --author=bors@rust-lang.org -n 2 --pretty=format:%H | tail -n 1)"
+  BASE_COMMIT="$(git log --author=bors@-lang.org -n 2 --pretty=format:%H | tail -n 1)"
 else
   BASE_COMMIT=""
 fi
@@ -328,7 +328,7 @@ touch $objdir/${SUMMARY_FILE}
 extra_env=""
 if [ "$ENABLE_GCC_CODEGEN" = "1" ]; then
   extra_env="$extra_env --env ENABLE_GCC_CODEGEN=1"
-  # Fix rustc_codegen_gcc lto issues.
+  # Fix c_codegen_gcc lto issues.
   extra_env="$extra_env --env GCC_EXEC_PREFIX=/usr/lib/gcc/"
   echo "Setting extra environment values for docker: $extra_env"
 fi
@@ -352,11 +352,11 @@ docker \
   --env GITHUB_STEP_SUMMARY="/checkout/obj/${SUMMARY_FILE}" \
   --env GITHUB_WORKFLOW_RUN_ID \
   --env GITHUB_REPOSITORY \
-  --env RUST_BACKTRACE \
+  --env _BACKTRACE \
   --env TOOLSTATE_REPO_ACCESS_TOKEN \
   --env TOOLSTATE_REPO \
   --env TOOLSTATE_PUBLISH \
-  --env RUST_CI_OVERRIDE_RELEASE_CHANNEL \
+  --env _CI_OVERRIDE_RELEASE_CHANNEL \
   --env CI_JOB_NAME="${CI_JOB_NAME-$image}" \
   --env CI_JOB_DOC_URL="${CI_JOB_DOC_URL}" \
   --env BASE_COMMIT="$BASE_COMMIT" \
@@ -364,10 +364,10 @@ docker \
   --env PR_CI_JOB \
   --env OBJDIR_ON_HOST="$objdir" \
   --env CODEGEN_BACKENDS \
-  --env DISABLE_CI_RUSTC_IF_INCOMPATIBLE="$DISABLE_CI_RUSTC_IF_INCOMPATIBLE" \
+  --env DISABLE_CI_C_IF_INCOMPATIBLE="$DISABLE_CI_C_IF_INCOMPATIBLE" \
   --init \
   --rm \
-  rust-ci \
+  -ci \
   "${command[@]}"
 
 if isCI; then

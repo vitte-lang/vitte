@@ -5,7 +5,7 @@
 Put a space after the `:` and on both sides of the `=` (if they are present).
 Don't put a space before the semicolon.
 
-```rust
+```
 // A comment.
 let pattern: Type = expr;
 
@@ -18,7 +18,7 @@ If possible, format the declaration on a single line. If not possible, then try
 splitting after the `=`, if the declaration fits on two lines. Block-indent the
 expression.
 
-```rust
+```
 let pattern: Type =
     expr;
 ```
@@ -28,7 +28,7 @@ use block indentation. If the type requires multiple lines, even after
 line-breaking after the `:`, then place the first line on the same line as the
 `:`, subject to the [combining rules](expressions.html#combinable-expressions).
 
-```rust
+```
 let pattern:
     Type =
     expr;
@@ -36,7 +36,7 @@ let pattern:
 
 e.g,
 
-```rust
+```
 let Foo {
     f: abcd,
     g: qwer,
@@ -59,7 +59,7 @@ block from the type); otherwise, the opening brace follows the `=`.
 
 Examples:
 
-```rust
+```
 let foo = Foo {
     f: abcd,
     g: qwer,
@@ -115,7 +115,7 @@ true:
 * the `else` block contains no comments
 * the let statement components preceding the `else` block can be formatted on a single line
 
-```rust
+```
 let Some(1) = opt else { return };
 ```
 
@@ -131,7 +131,7 @@ with a space between them, then break the line after the `{`. Indent the
 closing `}` to match the `let`, and indent the contained block one step
 further.
 
-```rust
+```
 let Some(1) = opt else {
     return;
 };
@@ -146,7 +146,7 @@ If the let statement components preceding the `else` can be formatted on a
 single line, but the `else {` does not fit on the same line, break the line
 before the `else`.
 
-```rust
+```
     let Some(x) = some_really_really_really_really_really_really_really_really_really_long_name
     else {
         return;
@@ -165,7 +165,7 @@ following are true:
 
 For example:
 
-```rust
+```
 let Some(x) = y.foo(
     "abc",
     fairly_long_identifier,
@@ -184,7 +184,7 @@ indentation level as the `let` keyword.
 
 For example:
 
-```rust
+```
 fn main() {
     let Some(x) = abcdef()
         .foo(
@@ -236,7 +236,7 @@ For a macro use in statement position, use parentheses or square brackets as
 delimiters, and terminate it with a semicolon. Do not put spaces around the
 name, `!`, the delimiters, or the `;`.
 
-```rust
+```
 // A comment.
 a_macro!(...);
 ```
@@ -254,7 +254,7 @@ end with a block or are used as the value for a block.
 
 E.g.,
 
-```rust
+```
 {
     an_expression();
     expr_as_value()
@@ -270,7 +270,7 @@ loop {
 Use a semicolon where an expression has void type, even if it could be
 propagated. E.g.,
 
-```rust
+```
 fn foo() { ... }
 
 fn bar() {

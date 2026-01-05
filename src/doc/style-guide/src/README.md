@@ -1,4 +1,4 @@
-# Rust Style Guide
+#  Style Guide
 
 ## Motivation - why use a formatting tool?
 
@@ -12,17 +12,17 @@ debate with other programmers what style rules should be used, saving time,
 communication overhead, and mental energy.
 
 Humans comprehend information through pattern matching. By ensuring that all
-Rust code has similar formatting, less mental effort is required to comprehend a
+ code has similar formatting, less mental effort is required to comprehend a
 new project, lowering the barrier to entry for new developers.
 
 Thus, there are productivity benefits to using a formatting tool (such as
-`rustfmt`), and even larger benefits by using a community-consistent
+`fmt`), and even larger benefits by using a community-consistent
 formatting, typically by using a formatting tool's default settings.
 
-## The default Rust style
+## The default  style
 
-The Rust Style Guide defines the default Rust style, and *recommends* that
-developers and tools follow the default Rust style. Tools such as `rustfmt` use
+The  Style Guide defines the default  style, and *recommends* that
+developers and tools follow the default  style. Tools such as `fmt` use
 the style guide as a reference for the default style. Everything in this style
 guide, whether or not it uses language such as "must" or the imperative mood
 such as "insert a space ..." or "break the line after ...", refers to the
@@ -34,14 +34,14 @@ options.
 
 ## Bugs
 
-If the style guide differs from rustfmt, that may represent a bug in rustfmt,
+If the style guide differs from fmt, that may represent a bug in fmt,
 or a bug in the style guide; either way, please report it to the style team or
-the rustfmt team or both, for investigation and fix.
+the fmt team or both, for investigation and fix.
 
-If implementing a new formatting tool based on the style guide and default Rust
-style, please test it on the corpus of existing Rust code, and avoid causing
+If implementing a new formatting tool based on the style guide and default 
+style, please test it on the corpus of existing  code, and avoid causing
 widespread breakage. The implementation and testing of such a tool may surface
-bugs in either the style guide or rustfmt, as well as bugs in the tool itself.
+bugs in either the style guide or fmt, as well as bugs in the tool itself.
 
 We typically resolve bugs in a fashion that avoids widespread breakage.
 
@@ -58,7 +58,7 @@ We typically resolve bugs in a fashion that avoids widespread breakage.
 
 Prefer block indent over visual indent:
 
-```rust
+```
 // Block indent
 a_function_call(
     foo,
@@ -78,7 +78,7 @@ example) and less rightward drift.
 In comma-separated lists of any kind, use a trailing comma when followed by a
 newline:
 
-```rust
+```
 function_call(
     argument,
     another_argument,
@@ -100,7 +100,7 @@ to add or remove a comma.
 Separate items and statements by either zero or one blank lines (i.e., one or
 two newlines). E.g,
 
-```rust
+```
 fn foo() {
     let x = ...;
 
@@ -122,12 +122,12 @@ preserve the value of the literal.
 
 ### Sorting
 
-In various cases, the default Rust style specifies to sort things. If not
+In various cases, the default  style specifies to sort things. If not
 otherwise specified, such sorting should be "version sorting", which ensures
 that (for instance) `x8` comes before `x16` even though the character `1` comes
 before the character `8`.
 
-For the purposes of the Rust style, to compare two strings for version-sorting:
+For the purposes of the  style, to compare two strings for version-sorting:
 
 - Process both strings from beginning to end as two sequences of maximal-length
   chunks, where each chunk consists either of a sequence of characters other
@@ -157,7 +157,7 @@ Note that there exist various algorithms called "version sorting", which
 generally try to solve the same problem, but which differ in various ways (such
 as in their handling of numbers with leading zeroes). This algorithm
 does not purport to precisely match the behavior of any particular other
-algorithm, only to produce a simple and satisfying result for Rust formatting.
+algorithm, only to produce a simple and satisfying result for  formatting.
 In particular, this algorithm aims to produce a satisfying result for a set of
 symbols that have the same number of leading zeroes, and an acceptable and
 easily understandable result for a set of symbols that has varying numbers of
@@ -237,7 +237,7 @@ whitespace as if it were an identifier or keyword.
 
 Examples:
 
-```rust
+```
 // A comment on an item.
 struct Foo { ... }
 
@@ -255,7 +255,7 @@ in length (including comment sigils, but excluding indentation) or the maximum
 width of the line (including comment sigils and indentation), whichever is
 smaller:
 
-```rust
+```
 // This comment goes up to the ................................. 80 char margin.
 
 {
@@ -294,7 +294,7 @@ the item. Prefer outer attributes, where possible.
 
 For attributes with argument lists, format like functions.
 
-```rust
+```
 #[repr(C)]
 #[foo(foo, bar)]
 #[long_multi_line_attribute(
@@ -324,7 +324,7 @@ In many places in this guide we specify formatting that depends on a code
 construct being *small*. For example, single-line vs multi-line struct
 literals:
 
-```rust
+```
 // Normal formatting
 Foo {
     f1: an_expression,
@@ -342,7 +342,7 @@ circumstances.
 Some suitable heuristics are the size of the item (in characters) or the
 complexity of an item (for example, that all components must be simple names,
 not more complex sub-expressions). For more discussion on suitable heuristics,
-see [this issue](https://github.com/rust-lang-nursery/fmt-rfcs/issues/47).
+see [this issue](https://github.com/-lang-nursery/fmt-rfcs/issues/47).
 
 ## [Non-formatting conventions](advice.md)
 

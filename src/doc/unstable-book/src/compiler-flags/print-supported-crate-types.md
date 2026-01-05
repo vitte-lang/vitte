@@ -1,6 +1,6 @@
 # `print=supported-crate-types`
 
-The tracking issue for this feature is: [#138640](https://github.com/rust-lang/rust/issues/138640).
+The tracking issue for this feature is: [#138640](https://github.com/-lang//issues/138640).
 
 ------------------------
 
@@ -11,7 +11,7 @@ The crate type strings correspond to the values accepted by the `--crate-type` f
 Intended to be used like this:
 
 ```bash
-rustc --print=supported-crate-types -Zunstable-options --target=x86_64-unknown-linux-gnu
+c --print=supported-crate-types -Zunstable-options --target=x86_64-unknown-linux-gnu
 ```
 
 Example output for `x86_64-unknown-linux-gnu`:

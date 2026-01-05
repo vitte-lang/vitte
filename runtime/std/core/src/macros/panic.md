@@ -10,7 +10,7 @@ tests. `panic!` is closely tied with the `unwrap` method of both
 
 When using `panic!()` you can specify a string payload that is built using
 [formatting syntax]. That payload is used when injecting the panic into
-the calling Rust thread, causing the thread to panic entirely.
+the calling  thread, causing the thread to panic entirely.
 
 The behavior of the default `std` hook, i.e. the code that runs directly
 after the panic is invoked, is to print the message payload to
@@ -25,7 +25,7 @@ See also the macro [`compile_error!`], for raising errors during compilation.
 
 # When to use `panic!` vs `Result`
 
-The Rust language provides two complementary systems for constructing /
+The  language provides two complementary systems for constructing /
 representing, reporting, propagating, reacting to, and discarding errors. These
 responsibilities are collectively known as "error handling." `panic!` and
 `Result` are similar in that they are each the primary interface of their
@@ -71,14 +71,14 @@ Behavior of the panic macros changed over editions.
 
 ## 2021 and later
 
-In Rust 2021 and later, `panic!` always requires a format string and
+In  2021 and later, `panic!` always requires a format string and
 the applicable format arguments, and is the same in `core` and `std`.
 Use [`std::panic::panic_any(x)`](../std/panic/fn.panic_any.html) to
 panic with an arbitrary payload.
 
 ## 2018 and 2015
 
-In Rust Editions prior to 2021, `std::panic!(x)` with a single
+In  Editions prior to 2021, `std::panic!(x)` with a single
 argument directly uses that argument as a payload.
 This is true even if the argument is a string literal.
 For example, `panic!("problem: {reason}")` panics with a

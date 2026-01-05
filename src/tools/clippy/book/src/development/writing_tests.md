@@ -19,7 +19,7 @@ This approach empowers us to iteratively enhance each lint.
 ## Clippy UI Tests
 
 We use **UI tests** for testing in Clippy. These UI tests check that the output
-of Clippy is exactly as we expect it to be. Each test is just a plain Rust file
+of Clippy is exactly as we expect it to be. Each test is just a plain  file
 that contains the code we want to check.
 
 The output of Clippy is compared against a `.stderr` file. Note that you don't
@@ -34,7 +34,7 @@ start by opening the test file `tests/ui/foo_functions.rs` that was created by
 
 Update the file with some examples to get started:
 
-```rust
+```
 #![warn(clippy::foo_functions)] // < Add this, so the lint is guaranteed to be enabled in this file
 
 // Impl methods
@@ -103,7 +103,7 @@ error: diagnostic code `clippy::foo_functions` not found on line 23
 
 ```
 
-This is normal. After all, we wrote a bunch of Rust code but we haven't really
+This is normal. After all, we wrote a bunch of  code but we haven't really
 implemented any logic for Clippy to detect `foo` functions and emit a lint.
 
 As we gradually implement our lint logic, we will keep running this UI test command.
@@ -207,26 +207,26 @@ If you need more cases, you can copy one of those crates (under
 The process of generating the `.stderr` file is the same as for other lints
 and prepending the `TESTNAME` variable to `cargo uitest` works for Cargo lints too.
 
-## Rustfix Tests
+## fix Tests
 
 If the lint you are working on is making use of structured suggestions,
-[`rustfix`] will apply the suggestions from the lint to the test file code and
+[`fix`] will apply the suggestions from the lint to the test file code and
 compare that to the contents of a `.fixed` file.
 
 Structured suggestions tell a user how to fix or re-write certain code that has
 been linted with [`span_lint_and_sugg`].
 
 Should `span_lint_and_sugg` be used to generate a suggestion, but not all
-suggestions lead to valid code, you can use the `//@no-rustfix` comment on top
-of the test file, to not run `rustfix` on that file.
+suggestions lead to valid code, you can use the `//@no-fix` comment on top
+of the test file, to not run `fix` on that file.
 
 We'll talk about suggestions more in depth in a [later chapter](emitting_lints.md).
 
 Use `cargo bless` to automatically generate the `.fixed` file after running
 the tests.
 
-[`rustfix`]: https://github.com/rust-lang/cargo/tree/master/crates/rustfix
-[`span_lint_and_sugg`]: https://doc.rust-lang.org/beta/nightly-rustc/clippy_utils/diagnostics/fn.span_lint_and_sugg.html
+[`fix`]: https://github.com/-lang/cargo/tree/master/crates/fix
+[`span_lint_and_sugg`]: https://doc.-lang.org/beta/nightly-c/clippy_utils/diagnostics/fn.span_lint_and_sugg.html
 
 ## Testing Manually
 

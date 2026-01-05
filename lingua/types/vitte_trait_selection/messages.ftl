@@ -274,7 +274,7 @@ trait_selection_precise_capturing_overcaptures = use the precise capturing `use<
 
 trait_selection_prlf_defined_with_sub = the lifetime `{$sub_symbol}` defined here...
 trait_selection_prlf_defined_without_sub = the lifetime defined here...
-trait_selection_prlf_known_limitation = this is a known limitation that will be removed in the future (see issue #100013 <https://github.com/rust-lang/rust/issues/100013> for more information)
+trait_selection_prlf_known_limitation = this is a known limitation that will be removed in the future (see issue #100013 <https://github.com/-lang//issues/100013> for more information)
 
 trait_selection_prlf_must_outlive_with_sup = ...must outlive the lifetime `{$sup_symbol}` defined here
 trait_selection_prlf_must_outlive_without_sup = ...must outlive the lifetime defined here
@@ -327,22 +327,22 @@ trait_selection_ril_introduced_by = requirement introduced by this return type
 trait_selection_ril_introduced_here = `'static` requirement introduced here
 trait_selection_ril_static_introduced_by = "`'static` lifetime requirement introduced by the return type
 
-trait_selection_rustc_on_unimplemented_empty_on_clause = empty `on`-clause in `#[rustc_on_unimplemented]`
+trait_selection_c_on_unimplemented_empty_on_clause = empty `on`-clause in `#[c_on_unimplemented]`
     .label = empty `on`-clause here
-trait_selection_rustc_on_unimplemented_expected_identifier = expected an identifier inside this `on`-clause
+trait_selection_c_on_unimplemented_expected_identifier = expected an identifier inside this `on`-clause
     .label = expected an identifier here, not `{$path}`
-trait_selection_rustc_on_unimplemented_expected_one_predicate_in_not = expected a single predicate in `not(..)`
+trait_selection_c_on_unimplemented_expected_one_predicate_in_not = expected a single predicate in `not(..)`
     .label = unexpected quantity of predicates here
-trait_selection_rustc_on_unimplemented_invalid_flag = invalid flag in `on`-clause
+trait_selection_c_on_unimplemented_invalid_flag = invalid flag in `on`-clause
     .label = expected one of the `crate_local`, `direct` or `from_desugaring` flags, not `{$invalid_flag}`
-trait_selection_rustc_on_unimplemented_invalid_name = invalid name in `on`-clause
+trait_selection_c_on_unimplemented_invalid_name = invalid name in `on`-clause
     .label = expected one of `cause`, `from_desugaring`, `Self` or any generic parameter of the trait, not `{$invalid_name}`
-trait_selection_rustc_on_unimplemented_invalid_predicate = this predicate is invalid
+trait_selection_c_on_unimplemented_invalid_predicate = this predicate is invalid
     .label = expected one of `any`, `all` or `not` here, not `{$invalid_pred}`
-trait_selection_rustc_on_unimplemented_missing_value = this attribute must have a value
+trait_selection_c_on_unimplemented_missing_value = this attribute must have a value
     .label = expected value here
-    .note = e.g. `#[rustc_on_unimplemented(message="foo")]`
-trait_selection_rustc_on_unimplemented_unsupported_literal_in_on = literals inside `on`-clauses are not supported
+    .note = e.g. `#[c_on_unimplemented(message="foo")]`
+trait_selection_c_on_unimplemented_unsupported_literal_in_on = literals inside `on`-clauses are not supported
     .label = unexpected literal here
 
 trait_selection_source_kind_closure_return =

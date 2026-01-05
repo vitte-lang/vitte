@@ -1,7 +1,7 @@
 # Items
 
 Items consist of the set of things permitted at the top level of a module.
-However, Rust also allows some items to appear within some other types of
+However,  also allows some items to appear within some other types of
 items, such as within a function. The same formatting conventions apply whether
 an item appears at module level or within another item.
 
@@ -18,12 +18,12 @@ since that might change semantics.
 
 ## Function definitions
 
-In Rust, people often find functions by searching for `fn [function-name]`, so
+In , people often find functions by searching for `fn [function-name]`, so
 the formatting of function definitions must enable this.
 
 The proper ordering and spacing is:
 
-```rust
+```
 [pub] [unsafe] [extern ["ABI"]] fn foo(arg1: i32, arg2: i32) -> i32 {
     ...
 }
@@ -35,7 +35,7 @@ If the function signature does not fit on one line, then break after the opening
 parenthesis and before the closing parenthesis and put each argument on its own
 block-indented line. For example,
 
-```rust
+```
 fn foo(
     arg1: i32,
     arg2: i32,
@@ -54,7 +54,7 @@ Build a tuple or tuple struct as you would call a function.
 
 ### Single-line
 
-```rust
+```
 struct Bar(Type1, Type2);
 
 let x = Bar(11, 22);
@@ -69,7 +69,7 @@ Format each variant accordingly as either a struct (but without the `struct`
 keyword), a tuple struct, or an identifier (which doesn't require special
 formatting):
 
-```rust
+```
 enum FooBar {
     First(u32),
     Second,
@@ -84,7 +84,7 @@ If a struct variant is [*small*](index.html#small-items), format it on one
 line. In this case, do not use a trailing comma for the field list, but do put
 spaces around each brace:
 
-```rust
+```
 enum FooBar {
     Error { err: Box<Error>, line: u32 },
 }
@@ -102,7 +102,7 @@ brace on the same line when it fits within the right margin. All struct fields
 are indented once and end with a trailing comma. The closing brace is not
 indented and appears on its own line.
 
-```rust
+```
 struct Foo {
     a: A,
     b: B,
@@ -112,7 +112,7 @@ struct Foo {
 If and only if the type of a field does not fit within the right margin, it is
 pulled down to its own line and indented again.
 
-```rust
+```
 struct Foo {
     a: A,
     long_name:
@@ -127,7 +127,7 @@ space between the braces: `struct Foo();` or `struct Foo {}`.
 
 The same guidelines are used for untagged union declarations.
 
-```rust
+```
 union Foo {
     a: A,
     b: B,
@@ -142,7 +142,7 @@ Put the whole struct on one line if possible. Separate types within the
 parentheses using a comma and space. Don't use a trailing comma for a
 single-line tuple struct. Don't put spaces around the parentheses or semicolon:
 
-```rust
+```
 pub struct Foo(String, u8);
 ```
 
@@ -155,7 +155,7 @@ one line), prefer a proper struct with named fields.
 For a multi-line tuple struct, block-format the fields with a field on each
 line and a trailing comma:
 
-```rust
+```
 pub struct Foo(
     String,
     u8,
@@ -168,7 +168,7 @@ Use block-indent for trait items. If there are no items, format the trait (inclu
 on a single line. Otherwise, break after the opening brace and before
 the closing brace:
 
-```rust
+```
 trait Foo {}
 
 pub trait Bar {
@@ -179,7 +179,7 @@ pub trait Bar {
 If the trait has bounds, put a space after the colon but not before,
 and put spaces around each `+`, e.g.,
 
-```rust
+```
 trait Foo: Debug + Bar {}
 ```
 
@@ -189,7 +189,7 @@ you must break the bounds, put each bound (including the first) on its own
 block-indented line, break before the `+` and put the opening brace on its own
 line:
 
-```rust
+```
 pub trait IndexRanges:
     Index<Range<usize>, Output=Self>
     + Index<RangeTo<usize>, Output=Self>
@@ -206,7 +206,7 @@ Use block-indent for impl items. If there are no items, format the impl
 (including its `{}`) on a single line. Otherwise, break after the opening brace
 and before the closing brace:
 
-```rust
+```
 impl Foo {}
 
 impl Bar for Foo {
@@ -218,7 +218,7 @@ Avoid line-breaking in the signature if possible. If a line break is required in
 a non-inherent impl, break immediately before `for`, block indent the concrete type
 and put the opening brace on its own line:
 
-```rust
+```
 impl Bar
     for Foo
 {
@@ -234,12 +234,12 @@ Use spaces around keywords, no spaces around the semicolon.
 
 ## Modules
 
-```rust
+```
 mod foo {
 }
 ```
 
-```rust
+```
 mod foo;
 ```
 
@@ -250,7 +250,7 @@ semicolon.
 
 Use `{}` for the full definition of the macro.
 
-```rust
+```
 macro_rules! foo {
 }
 ```
@@ -266,7 +266,7 @@ Do not put spaces before or after `<` nor before `>`. Only put a space after
 Put a space after each comma. Do not use a trailing comma for a single-line
 generics clause.
 
-```rust
+```
 fn foo<T: Display, U: Debug>(x: Vec<T>, y: Vec<U>) ...
 
 impl<T: Display, U: Debug> SomeType<T, U> { ...
@@ -276,7 +276,7 @@ If the generics clause must be formatted across multiple lines, put each
 parameter on its own block-indented line, break after the opening `<` and
 before the closing `>`, and use a trailing comma.
 
-```rust
+```
 fn foo<
     T: Display,
     U: Debug,
@@ -285,7 +285,7 @@ fn foo<
 
 If an associated type is bound in a generic type, put spaces around the `=`:
 
-```rust
+```
 <T: Example<Item = u32>>
 ```
 
@@ -304,7 +304,7 @@ comma, unless the clause is terminated with a semicolon. If the `where` clause
 is followed by a block (or assignment), start that block on a new line.
 Examples:
 
-```rust
+```
 fn function<T, U>(args)
 where
     T: Bound,
@@ -353,7 +353,7 @@ If a component of a `where` clause does not fit and contains `+`, break it
 before each `+` and block-indent the continuation lines. Put each bound on its
 own line. E.g.,
 
-```rust
+```
 impl<T: ?Sized, Idx> IndexRanges<Idx> for T
 where
     T: Index<Range<Idx>, Output = Self::Output>
@@ -369,7 +369,7 @@ where
 Keep type aliases on one line when they fit. If necessary to break the line, do
 so before the `=`, and block-indent the right-hand side:
 
-```rust
+```
 pub type Foo = Bar<T>;
 
 // If multi-line is required
@@ -381,7 +381,7 @@ When there is a trailing `where` clause after the type, and no `where` clause
 present before the type, break before the `=` and indent. Then break before the
 `where` keyword and format the clauses normally, e.g.,
 
-```rust
+```
 // With only a trailing where clause
 type VeryLongType<T, U>
     = AnEvenLongerType<T, U, Foo<T>>
@@ -396,7 +396,7 @@ distinct from the indented clauses that precede it. If there is additionally a
 `where` clause after the type, break before the `where` keyword and format the
 clauses normally.
 
-```rust
+```
 // With only a preceding where clause.
 type WithPrecedingWC<T, U>
 where
@@ -420,7 +420,7 @@ where
 Format associated types like type aliases. Where an associated type has a
 bound, put a space after the colon but not before:
 
-```rust
+```
 pub type Foo: Bar;
 ```
 
@@ -434,7 +434,7 @@ and avoid `extern fn foo ...` and `unsafe extern { ... }`.
 
 Format imports on one line where possible. Don't put spaces around braces.
 
-```rust
+```
 use a::b::c;
 use a::b::d::*;
 use a::b::{foo, bar, baz};
@@ -450,7 +450,7 @@ does not fit within the max width, or because of the rules for nested imports
 below), then break after the opening brace and before the closing brace, use a
 trailing comma, and block indent the names.
 
-```rust
+```
 // Prefer
 foo::{long, list, of, imports};
 foo::{more, imports};
@@ -472,7 +472,7 @@ must not be merged or re-ordered.
 
 E.g., input:
 
-```rust
+```
 use d;
 use c;
 
@@ -482,7 +482,7 @@ use a;
 
 output:
 
-```rust
+```
 use c;
 use d;
 
@@ -522,7 +522,7 @@ but non-nested imports must be grouped on as few lines as possible.
 
 For example,
 
-```rust
+```
 use a::b::{
     x, y, z,
     u::{...},
@@ -534,7 +534,7 @@ use a::b::{
 
 An example:
 
-```rust
+```
 // Un-merged
 use a::b;
 use a::c::d;

@@ -1,5 +1,5 @@
 # Optimized build pipeline
-This binary implements a heavily optimized build pipeline for `rustc` and `LLVM` artifacts that are used for both for
+This binary implements a heavily optimized build pipeline for `c` and `LLVM` artifacts that are used for both for
 benchmarking using the perf. bot and for final distribution to users.
 
 It uses LTO, PGO and BOLT to optimize the compiler and LLVM as much as possible.

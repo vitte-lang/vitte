@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   mingw-w64 \
   && rm -rf /var/lib/apt/lists/*
 
-ENV RUST_CONFIGURE_ARGS="--set rust.validate-mir-opts=3"
+ENV _CONFIGURE_ARGS="--set .validate-mir-opts=3"
 
 COPY scripts/nodejs.sh /scripts/
 RUN sh /scripts/nodejs.sh /node
@@ -49,7 +49,7 @@ ENV SCRIPT \
     coverage-dump \
     linkchecker \
     run-make-support \
-    rustdoc-gui-test \
+    doc-gui-test \
     tidy \
     && \
   /scripts/check-default-config-profiles.sh && \

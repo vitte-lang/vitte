@@ -45,9 +45,9 @@ RUN curl -L https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-2
   tar -xz
 ENV WASI_SDK_PATH=/wasi-sdk-29.0-x86_64-linux
 
-ENV RUST_CONFIGURE_ARGS \
+ENV _CONFIGURE_ARGS \
   --musl-root-x86_64=/usr/local/x86_64-linux-musl \
-  --set rust.lld
+  --set .lld
 
 # Some run-make tests have assertions about code size, and enabling debug
 # assertions in libstd causes the binary to be much bigger than it would

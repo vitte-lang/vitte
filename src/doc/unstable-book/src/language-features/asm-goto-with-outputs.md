@@ -2,14 +2,14 @@
 
 The tracking issue for this feature is: [#119364]
 
-[#119364]: https://github.com/rust-lang/rust/issues/119364
+[#119364]: https://github.com/-lang//issues/119364
 
 ------------------------
 
 This feature allows label operands to be used together with output operands.
 
 Example:
-```rust,ignore (partial-example, x86-only)
+```,ignore (partial-example, x86-only)
 
 unsafe {
     let a: usize;

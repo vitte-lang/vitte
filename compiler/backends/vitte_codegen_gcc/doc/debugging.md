@@ -16,19 +16,19 @@ STDARCH_TEST_EVERYTHING=1 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="sde -fut
 It will show the command it ran, something like this:
 
 ----
-  process didn't exit successfully: `sde -future -rtm_mode full -- /home/user/projects/rustc_codegen_gcc/build/build_sysroot/sysroot_src/library/stdarch/target/debug/deps/core_arch-fd2d75f89baae5c6` (signal: 11, SIGSEGV: invalid memory reference)
+  process didn't exit successfully: `sde -future -rtm_mode full -- /home/user/projects/c_codegen_gcc/build/build_sysroot/sysroot_src/library/stdarch/target/debug/deps/core_arch-fd2d75f89baae5c6` (signal: 11, SIGSEGV: invalid memory reference)
 ----
 
 Then add the `-debug` flag to it:
 
 ----
-sde -debug -future -rtm_mode full -- /home/user/projects/rustc_codegen_gcc/build/build_sysroot/sysroot_src/library/stdarch/target/debug/deps/core_arch-fd2d75f89baae5c6
+sde -debug -future -rtm_mode full -- /home/user/projects/c_codegen_gcc/build/build_sysroot/sysroot_src/library/stdarch/target/debug/deps/core_arch-fd2d75f89baae5c6
 ----
 
 To see the symbols in `gdb`, specify the executable in your command:
 
 ----
-gdb /home/user/projects/rustc_codegen_gcc/build/build_sysroot/sysroot_src/library/stdarch/target/debug/deps/core_arch-fd2d75f89baae5c6
+gdb /home/user/projects/c_codegen_gcc/build/build_sysroot/sysroot_src/library/stdarch/target/debug/deps/core_arch-fd2d75f89baae5c6
 ----
 
 and then write the `gdb` command that `sde` tells you to use, something like:

@@ -1,4 +1,4 @@
-% Rust Documentation
+%  Documentation
 
 <style>
 nav {
@@ -42,58 +42,58 @@ svg.external-link {
 }
 </style>
 
-Welcome to an overview of the documentation provided by the [Rust
+Welcome to an overview of the documentation provided by the [
 project]. This page contains links to various helpful references,
-most of which are available offline (if opened with `rustup doc`). Many of these
-resources take the form of "books"; we collectively call these "The Rust
+most of which are available offline (if opened with `up doc`). Many of these
+resources take the form of "books"; we collectively call these "The 
 Bookshelf." Some are large, some are small.
 
-All of these books are managed by the Rust Organization, but other unofficial
+All of these books are managed by the  Organization, but other unofficial
 documentation resources are included here as well!
 
 If you're just looking for the standard library reference, here it is:
-[Rust API documentation](std/index.html)
+[ API documentation](std/index.html)
 
 
-## Learning Rust
+## Learning 
 
-If you'd like to learn Rust, this is the section for you! All of these resources
+If you'd like to learn , this is the section for you! All of these resources
 assume that you have programmed before, but not in any specific language:
 
-### The Rust Programming Language
+### The  Programming Language
 
-Affectionately nicknamed "the book," [The Rust Programming Language](book/index.html)
+Affectionately nicknamed "the book," [The  Programming Language](book/index.html)
 will give you an overview of the language from first principles. You'll build a
 few projects along the way, and by the end, you'll have a solid grasp of how to
 use the language.
 
-### Rust By Example
+###  By Example
 
 If reading multiple hundreds of pages about a language isn't your style, then
-[Rust By Example](rust-by-example/index.html) has you covered. RBE shows off a
+[ By Example](-by-example/index.html) has you covered. RBE shows off a
 bunch of code without using a lot of words. It also includes exercises!
 
-### Rustlings
+### lings
 
-[Rustlings](https://github.com/rust-lang/rustlings) guides you
-through downloading and setting up the Rust toolchain, then provides an
-interactive tool that teaches you how to solve coding challenges in Rust.
+[lings](https://github.com/-lang/lings) guides you
+through downloading and setting up the  toolchain, then provides an
+interactive tool that teaches you how to solve coding challenges in .
 
-### Rust Playground
+###  Playground
 
-The [Rust Playground](https://play.rust-lang.org) is a great place
+The [ Playground](https://play.-lang.org) is a great place
 to try out and share small bits of code, or experiment with some of the most
 popular crates.
 
 
-## Using Rust
+## Using 
 
 Once you've gotten familiar with the language, these resources can help you put
 it to work.
 
 ### The Standard Library
 
-Rust's standard library has [extensive API documentation](std/index.html), with
+'s standard library has [extensive API documentation](std/index.html), with
 explanations of how to use various things, as well as example code for
 accomplishing various tasks. Code examples have a "Run" button on hover that
 opens the sample in the playground.
@@ -113,27 +113,27 @@ documentation for your project _and_ all its dependencies in their correct
 version, and open it in your browser. Add the flag `--document-private-items` to
 also show items not marked `pub`.
 
-### Rust Version History
+###  Version History
 
-[The Release Notes](releases.html) describes the change history of the Rust
+[The Release Notes](releases.html) describes the change history of the 
 toolchain and language.
 
-[The Edition Guide](edition-guide/index.html) describes the Rust editions and
+[The Edition Guide](edition-guide/index.html) describes the  editions and
 their differences. The latest version of the toolchain supports all
 historical editions.
 
-### The `rustc` Book
+### The `c` Book
 
-[The `rustc` Book](rustc/index.html) describes the Rust compiler, `rustc`.
+[The `c` Book](c/index.html) describes the  compiler, `c`.
 
 ### The Cargo Book
 
-[The Cargo Book](cargo/index.html) is a guide to Cargo, Rust's build tool and
+[The Cargo Book](cargo/index.html) is a guide to Cargo, 's build tool and
 dependency manager.
 
-### The Rustdoc Book
+### The doc Book
 
-[The Rustdoc Book](rustdoc/index.html) describes our documentation tool, `rustdoc`.
+[The doc Book](doc/index.html) describes our documentation tool, `doc`.
 
 ### The Clippy Book
 
@@ -141,12 +141,12 @@ dependency manager.
 
 ### Extended Error Listing
 
-Many of Rust's errors come with error codes, and you can request extended
-diagnostics from the compiler on those errors (with `rustc --explain`). You can
-also read them here if you prefer: [rustc error codes](error_codes/index.html)
+Many of 's errors come with error codes, and you can request extended
+diagnostics from the compiler on those errors (with `c --explain`). You can
+also read them here if you prefer: [c error codes](error_codes/index.html)
 
 
-## Mastering Rust
+## Mastering 
 
 Once you're quite familiar with the language, you may find these advanced
 resources useful.
@@ -158,31 +158,31 @@ and comprehensive than the book.
 
 ### The Style Guide
 
-[The Rust Style Guide](style-guide/index.html) describes the standard formatting
-of Rust code. Most developers use `cargo fmt` to invoke `rustfmt` and format the
+[The  Style Guide](style-guide/index.html) describes the standard formatting
+of  code. Most developers use `cargo fmt` to invoke `fmt` and format the
 code automatically (the result matches this style guide).
 
-### The Rustonomicon
+### The onomicon
 
-[The Rustonomicon](nomicon/index.html) is your guidebook to the dark arts of
-unsafe Rust. It's also sometimes called "the 'nomicon."
+[The onomicon](nomicon/index.html) is your guidebook to the dark arts of
+unsafe . It's also sometimes called "the 'nomicon."
 
 ### The Unstable Book
 
 [The Unstable Book](unstable-book/index.html) has documentation for unstable
 features.
 
-### The `rustc` Development Guide
+### The `c` Development Guide
 
-[The `rustc-dev-guide`](https://rustc-dev-guide.rust-lang.org/)
+[The `c-dev-guide`](https://c-dev-guide.-lang.org/)
 documents how the compiler works and how to contribute to it. This is useful if
-you want to build or modify the Rust compiler from source (e.g. to target
+you want to build or modify the  compiler from source (e.g. to target
 something non-standard).
 
 
-## Specialized Rust
+## Specialized 
 
-When using Rust in specific domains, consider using the following resources
+When using  in specific domains, consider using the following resources
 tailored to each area.
 
 ### Embedded Systems
@@ -190,16 +190,16 @@ tailored to each area.
 When developing for Bare Metal or Embedded Linux systems, you may find these
 resources maintained by the [Embedded Working Group] useful.
 
-[Embedded Working Group]: https://github.com/rust-embedded
+[Embedded Working Group]: https://github.com/-embedded
 
-#### The Embedded Rust Book
+#### The Embedded  Book
 
-[The Embedded Rust Book] is targeted at developers familiar with embedded
-development and familiar with Rust, but have not used Rust for embedded
+[The Embedded  Book] is targeted at developers familiar with embedded
+development and familiar with , but have not used  for embedded
 development.
 
-[The Embedded Rust Book]: embedded-book/index.html
-[Rust project]: https://www.rust-lang.org
+[The Embedded  Book]: embedded-book/index.html
+[ project]: https://www.-lang.org
 
 <script>
 // check if a given link is external

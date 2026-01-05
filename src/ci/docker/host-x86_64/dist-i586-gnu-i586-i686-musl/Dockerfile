@@ -24,8 +24,8 @@ RUN sh /scripts/cross-apt-packages.sh
 COPY scripts/crosstool-ng.sh /scripts/
 RUN sh /scripts/crosstool-ng.sh
 
-COPY scripts/rustbuild-setup.sh /scripts/
-RUN sh /scripts/rustbuild-setup.sh
+COPY scripts/build-setup.sh /scripts/
+RUN sh /scripts/build-setup.sh
 WORKDIR /tmp
 
 COPY scripts/crosstool-ng-build.sh /scripts/
@@ -51,13 +51,13 @@ RUN CC=gcc CFLAGS="-m32 -Wa,-mrelax-relocations=no" \
 # but it's required by tests/ui/proc-macro/crt-static.rs. Ubuntu:16.04 gcc-5
 # had libgcc_s.so as a symlink to the absolute libgcc_s.so.1, but now it's an
 # ld-script that expects to find libgcc_s.so.1 in the library search path.
-# See also https://github.com/rust-lang/rust/issues/82521
+# See also https://github.com/-lang//issues/82521
 RUN ln -s /usr/lib32/libgcc_s.so.1 /musl-i686/lib/
 
 COPY scripts/sccache.sh /scripts/
 RUN sh /scripts/sccache.sh
 
-ENV RUST_CONFIGURE_ARGS \
+ENV _CONFIGURE_ARGS \
       --musl-root-i586=/musl-i586 \
       --musl-root-i686=/musl-i686 \
       --disable-docs
@@ -66,7 +66,7 @@ ENV RUST_CONFIGURE_ARGS \
 # unknown relocs disabled by the following flag), so we need to go out of our
 # way to produce "super compatible" binaries.
 #
-# See: https://github.com/rust-lang/rust/issues/34978
+# See: https://github.com/-lang//issues/34978
 ENV CFLAGS_i686_unknown_linux_musl=-Wa,-mrelax-relocations=no
 ENV CFLAGS_i586_unknown_linux_gnu=-Wa,-mrelax-relocations=no
 ENV CFLAGS_i586_unknown_linux_musl=-Wa,-mrelax-relocations=no

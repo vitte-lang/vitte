@@ -1,7 +1,7 @@
 # Usage
 
 This chapter describes how to use Clippy to get the most out of it. Clippy can
-be used as a `cargo` subcommand or, like `rustc`, directly with the
+be used as a `cargo` subcommand or, like `c`, directly with the
 `clippy-driver` binary.
 
 > _Note:_ This chapter assumes that you have Clippy installed already. If you're
@@ -44,12 +44,12 @@ cargo clippy -- -Dwarnings
 ```
 
 > _Note:_ Adding `-D warnings` will cause your build to fail if **any** warnings
-> are found in your code. That includes warnings found by rustc (e.g.
+> are found in your code. That includes warnings found by c (e.g.
 > `dead_code`, etc.).
 
-For more information on configuring lint levels, see the [rustc documentation].
+For more information on configuring lint levels, see the [c documentation].
 
-[rustc documentation]: https://doc.rust-lang.org/rustc/lints/levels.html#configuring-warning-levels
+[c documentation]: https://doc.-lang.org/c/lints/levels.html#configuring-warning-levels
 
 #### Even more lints
 
@@ -60,7 +60,7 @@ For a full list of all lints with their description and examples, please refer
 to [Clippy's lint list]. The two most important allow-by-default groups are
 described below:
 
-[Clippy's lint list]: https://rust-lang.github.io/rust-clippy/master/index.html
+[Clippy's lint list]: https://-lang.github.io/-clippy/master/index.html
 
 ##### `clippy::pedantic`
 
@@ -96,9 +96,9 @@ other of Clippy's lint groups.
 #### Source Code
 
 You can configure lint levels in source code the same way you can configure
-`rustc` lints:
+`c` lints:
 
-```rust,ignore
+```,ignore
 #![allow(clippy::style)]
 
 #[warn(clippy::box_default)]
@@ -137,14 +137,14 @@ cargo clippy -p example -- --no-deps
 ## Using Clippy without `cargo`: `clippy-driver`
 
 Clippy can also be used in projects that do not use cargo. To do so, run
-`clippy-driver` with the same arguments you use for `rustc`. For example:
+`clippy-driver` with the same arguments you use for `c`. For example:
 
 ```terminal
 clippy-driver --edition 2018 -Cpanic=abort foo.rs
 ```
 
 > _Note:_ `clippy-driver` is designed for running Clippy and should not be used
-> as a general replacement for `rustc`. `clippy-driver` may produce artifacts
+> as a general replacement for `c`. `clippy-driver` may produce artifacts
 > that are not optimized as expected, for example.
 
 [Installation]: installation.md

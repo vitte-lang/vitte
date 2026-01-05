@@ -1,17 +1,17 @@
-# Bootstrapping Rust
+# Bootstrapping 
 
-This README is aimed at helping to explain how Rust is bootstrapped,
+This README is aimed at helping to explain how  is bootstrapped,
 and some of the technical details of the bootstrap build system.
 
 Note that this README only covers internal information, not how to use the tool.
 Please check [bootstrapping dev guide][bootstrapping-dev-guide] for further information.
 
-[bootstrapping-dev-guide]: https://rustc-dev-guide.rust-lang.org/building/bootstrapping/intro.html
+[bootstrapping-dev-guide]: https://c-dev-guide.-lang.org/building/bootstrapping/intro.html
 
 ## Introduction
 
 The build system defers most of the complicated logic of managing invocations
-of rustc and rustdoc to Cargo itself. However, moving through various stages
+of c and doc to Cargo itself. However, moving through various stages
 and copying artifacts is still necessary for it to do. Each time bootstrap
 is invoked, it will iterate through the list of predefined steps and execute
 each serially in turn if it matches the paths passed or is a default rule.
@@ -28,7 +28,7 @@ compiler. What actually happens when you invoke bootstrap is:
    `x.py` cross-platform) is run. This script is responsible for downloading the stage0
    compiler/Cargo binaries, and it then compiles the build system itself (this folder).
    Finally, it then invokes the actual `bootstrap` binary build system.
-2. In Rust, the bootstrap binary reads all configuration, performs a number of sanity
+2. In , the bootstrap binary reads all configuration, performs a number of sanity
    checks (for example, verifying toolchains and paths), and then prepares to build the
    stage 1 compiler and libraries using the prebuilt stage 0 compiler.
 3. The stage 0 compiler and standard library, downloaded earlier, are used to build the
@@ -38,7 +38,7 @@ compiler. What actually happens when you invoke bootstrap is:
    stage 1 standard library.
 
 The goal of each stage is to (a) leverage Cargo as much as possible and failing
-that (b) leverage Rust as much as possible!
+that (b) leverage  as much as possible!
 
 ## Directory Layout
 
@@ -58,7 +58,7 @@ build/
     ...
 
   # Output directory for building this build system itself. The stage0
-  # cargo/rustc are used to build the build system into this location.
+  # cargo/c are used to build the build system into this location.
   bootstrap/
     debug/
     release/
@@ -78,7 +78,7 @@ build/
   package.json
   yarn.lock
 
-  # Output of the dist-related steps like dist-std, dist-rustc, and dist-docs
+  # Output of the dist-related steps like dist-std, dist-c, and dist-docs
   dist/
 
   # Temporary directory used for various input/output as part of various stages
@@ -124,7 +124,7 @@ build/
     # are stored here.
     bootstrap-tools/
 
-    # Location where the stage0 Cargo and Rust compiler are unpacked. This
+    # Location where the stage0 Cargo and  compiler are unpacked. This
     # directory is purely an extracted and overlaid tarball of these two (done
     # by the bootstrap Python script). In theory, the build system does not
     # modify anything under this directory afterwards.
@@ -141,7 +141,7 @@ build/
     # with the right variables to ensure that these are filled in correctly.
     stageN-std/
     stageN-test/
-    stageN-rustc/
+    stageN-c/
     stageN-tools/
 
     # This is a special case of the above directories, **not** filled in via
@@ -160,10 +160,10 @@ build/
 
     # These output directories are intended to be standalone working
     # implementations of the compiler (corresponding to each stage). The build
-    # system will link (using hard links) output from stageN-{std,rustc} into
+    # system will link (using hard links) output from stageN-{std,c} into
     # each of these directories.
     #
-    # In theory these are working rustc sysroot directories, meaning there is
+    # In theory these are working c sysroot directories, meaning there is
     # no extra build output in these directories.
     stage1/
     stage2/
@@ -173,9 +173,9 @@ build/
 
 When you use bootstrap, you'll call it through the entry point script
 (`x`, `x.ps1`, or `x.py`). However, most of the code lives in `src/bootstrap`.
-`bootstrap` has a difficult problem: it is written in Rust, but yet it is run
-before the Rust compiler is built! To work around this, there are two components
-of bootstrap: the main one written in rust, and `bootstrap.py`. `bootstrap.py`
+`bootstrap` has a difficult problem: it is written in , but yet it is run
+before the  compiler is built! To work around this, there are two components
+of bootstrap: the main one written in , and `bootstrap.py`. `bootstrap.py`
 is what gets run by entry point script. It takes care of downloading the prebuilt
 stage 0 compiler, std and Cargo binaries, which are then used to build the
 bootstrap binary.
@@ -210,14 +210,14 @@ A 'major change' includes
 * A change in the default options.
 
 Changes that do not affect contributors to the compiler or users
-building rustc from source don't need an update to `CONFIG_CHANGE_HISTORY`.
+building c from source don't need an update to `CONFIG_CHANGE_HISTORY`.
 
 If you have any questions, feel free to reach out on the `#t-infra/bootstrap` channel
-at [Rust Bootstrap Zulip server][rust-bootstrap-zulip]. When you encounter bugs,
-please file issues on the [Rust issue tracker][rust-issue-tracker].
+at [ Bootstrap Zulip server][-bootstrap-zulip]. When you encounter bugs,
+please file issues on the [ issue tracker][-issue-tracker].
 
-[rust-bootstrap-zulip]: https://rust-lang.zulipchat.com/#narrow/stream/t-infra.2Fbootstrap
-[rust-issue-tracker]: https://github.com/rust-lang/rust/issues
+[-bootstrap-zulip]: https://-lang.zulipchat.com/#narrow/stream/t-infra.2Fbootstrap
+[-issue-tracker]: https://github.com/-lang//issues
 
 ## Testing
 

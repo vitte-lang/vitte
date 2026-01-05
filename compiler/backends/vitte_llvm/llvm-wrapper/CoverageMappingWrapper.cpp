@@ -11,35 +11,35 @@
 using namespace llvm;
 
 // FFI equivalent of enum `llvm::coverage::Counter::CounterKind`
-// https://github.com/rust-lang/llvm-project/blob/ea6fa9c2/llvm/include/llvm/ProfileData/Coverage/CoverageMapping.h#L97-L99
-enum class LLVMRustCounterKind {
+// https://github.com/-lang/llvm-project/blob/ea6fa9c2/llvm/include/llvm/ProfileData/Coverage/CoverageMapping.h#L97-L99
+enum class LLVMCounterKind {
   Zero = 0,
   CounterValueReference = 1,
   Expression = 2,
 };
 
 // FFI equivalent of struct `llvm::coverage::Counter`
-// https://github.com/rust-lang/llvm-project/blob/ea6fa9c2/llvm/include/llvm/ProfileData/Coverage/CoverageMapping.h#L94-L149
-struct LLVMRustCounter {
-  LLVMRustCounterKind CounterKind;
+// https://github.com/-lang/llvm-project/blob/ea6fa9c2/llvm/include/llvm/ProfileData/Coverage/CoverageMapping.h#L94-L149
+struct LLVMCounter {
+  LLVMCounterKind CounterKind;
   uint32_t ID;
 };
 
-static coverage::Counter fromRust(LLVMRustCounter Counter) {
+static coverage::Counter from(LLVMCounter Counter) {
   switch (Counter.CounterKind) {
-  case LLVMRustCounterKind::Zero:
+  case LLVMCounterKind::Zero:
     return coverage::Counter::getZero();
-  case LLVMRustCounterKind::CounterValueReference:
+  case LLVMCounterKind::CounterValueReference:
     return coverage::Counter::getCounter(Counter.ID);
-  case LLVMRustCounterKind::Expression:
+  case LLVMCounterKind::Expression:
     return coverage::Counter::getExpression(Counter.ID);
   }
-  report_fatal_error("Bad LLVMRustCounterKind!");
+  report_fatal_error("Bad LLVMCounterKind!");
 }
 
 // Must match the layout of
-// `rustc_codegen_llvm::coverageinfo::ffi::CoverageSpan`.
-struct LLVMRustCoverageSpan {
+// `c_codegen_llvm::coverageinfo::ffi::CoverageSpan`.
+struct LLVMCoverageSpan {
   uint32_t FileID;
   uint32_t LineStart;
   uint32_t ColumnStart;
@@ -47,60 +47,60 @@ struct LLVMRustCoverageSpan {
   uint32_t ColumnEnd;
 };
 
-// Must match the layout of `rustc_codegen_llvm::coverageinfo::ffi::CodeRegion`.
-struct LLVMRustCoverageCodeRegion {
-  LLVMRustCoverageSpan Span;
-  LLVMRustCounter Count;
+// Must match the layout of `c_codegen_llvm::coverageinfo::ffi::CodeRegion`.
+struct LLVMCoverageCodeRegion {
+  LLVMCoverageSpan Span;
+  LLVMCounter Count;
 };
 
 // Must match the layout of
-// `rustc_codegen_llvm::coverageinfo::ffi::ExpansionRegion`.
-struct LLVMRustCoverageExpansionRegion {
-  LLVMRustCoverageSpan Span;
+// `c_codegen_llvm::coverageinfo::ffi::ExpansionRegion`.
+struct LLVMCoverageExpansionRegion {
+  LLVMCoverageSpan Span;
   uint32_t ExpandedFileID;
 };
 
 // Must match the layout of
-// `rustc_codegen_llvm::coverageinfo::ffi::BranchRegion`.
-struct LLVMRustCoverageBranchRegion {
-  LLVMRustCoverageSpan Span;
-  LLVMRustCounter TrueCount;
-  LLVMRustCounter FalseCount;
+// `c_codegen_llvm::coverageinfo::ffi::BranchRegion`.
+struct LLVMCoverageBranchRegion {
+  LLVMCoverageSpan Span;
+  LLVMCounter TrueCount;
+  LLVMCounter FalseCount;
 };
 
 // FFI equivalent of enum `llvm::coverage::CounterExpression::ExprKind`
-// https://github.com/rust-lang/llvm-project/blob/ea6fa9c2/llvm/include/llvm/ProfileData/Coverage/CoverageMapping.h#L154
-enum class LLVMRustCounterExprKind {
+// https://github.com/-lang/llvm-project/blob/ea6fa9c2/llvm/include/llvm/ProfileData/Coverage/CoverageMapping.h#L154
+enum class LLVMCounterExprKind {
   Subtract = 0,
   Add = 1,
 };
 
 // FFI equivalent of struct `llvm::coverage::CounterExpression`
-// https://github.com/rust-lang/llvm-project/blob/ea6fa9c2/llvm/include/llvm/ProfileData/Coverage/CoverageMapping.h#L151-L160
-struct LLVMRustCounterExpression {
-  LLVMRustCounterExprKind Kind;
-  LLVMRustCounter LHS;
-  LLVMRustCounter RHS;
+// https://github.com/-lang/llvm-project/blob/ea6fa9c2/llvm/include/llvm/ProfileData/Coverage/CoverageMapping.h#L151-L160
+struct LLVMCounterExpression {
+  LLVMCounterExprKind Kind;
+  LLVMCounter LHS;
+  LLVMCounter RHS;
 };
 
 static coverage::CounterExpression::ExprKind
-fromRust(LLVMRustCounterExprKind Kind) {
+from(LLVMCounterExprKind Kind) {
   switch (Kind) {
-  case LLVMRustCounterExprKind::Subtract:
+  case LLVMCounterExprKind::Subtract:
     return coverage::CounterExpression::Subtract;
-  case LLVMRustCounterExprKind::Add:
+  case LLVMCounterExprKind::Add:
     return coverage::CounterExpression::Add;
   }
-  report_fatal_error("Bad LLVMRustCounterExprKind!");
+  report_fatal_error("Bad LLVMCounterExprKind!");
 }
 
-extern "C" void LLVMRustCoverageWriteFilenamesToBuffer(
+extern "C" void LLVMCoverageWriteFilenamesToBuffer(
     const char *const Filenames[], size_t FilenamesLen, // String start pointers
     const size_t *const Lengths, size_t LengthsLen,     // Corresponding lengths
-    RustStringRef BufferOut) {
+    StringRef BufferOut) {
   if (FilenamesLen != LengthsLen) {
     report_fatal_error(
-        "Mismatched lengths in LLVMRustCoverageWriteFilenamesToBuffer");
+        "Mismatched lengths in LLVMCoverageWriteFilenamesToBuffer");
   }
 
   SmallVector<std::string, 32> FilenameRefs;
@@ -110,28 +110,28 @@ extern "C" void LLVMRustCoverageWriteFilenamesToBuffer(
   }
   auto FilenamesWriter = coverage::CoverageFilenamesSectionWriter(
       ArrayRef<std::string>(FilenameRefs));
-  auto OS = RawRustStringOstream(BufferOut);
+  auto OS = RawStringOstream(BufferOut);
   FilenamesWriter.write(OS);
 }
 
-extern "C" void LLVMRustCoverageWriteFunctionMappingsToBuffer(
+extern "C" void LLVMCoverageWriteFunctionMappingsToBuffer(
     const unsigned *VirtualFileMappingIDs, size_t NumVirtualFileMappingIDs,
-    const LLVMRustCounterExpression *RustExpressions, size_t NumExpressions,
-    const LLVMRustCoverageCodeRegion *CodeRegions, size_t NumCodeRegions,
-    const LLVMRustCoverageExpansionRegion *ExpansionRegions,
+    const LLVMCounterExpression *Expressions, size_t NumExpressions,
+    const LLVMCoverageCodeRegion *CodeRegions, size_t NumCodeRegions,
+    const LLVMCoverageExpansionRegion *ExpansionRegions,
     size_t NumExpansionRegions,
-    const LLVMRustCoverageBranchRegion *BranchRegions, size_t NumBranchRegions,
-    RustStringRef BufferOut) {
+    const LLVMCoverageBranchRegion *BranchRegions, size_t NumBranchRegions,
+    StringRef BufferOut) {
   // Convert from FFI representation to LLVM representation.
 
   // Expressions:
   std::vector<coverage::CounterExpression> Expressions;
   Expressions.reserve(NumExpressions);
   for (const auto &Expression :
-       ArrayRef<LLVMRustCounterExpression>(RustExpressions, NumExpressions)) {
-    Expressions.emplace_back(fromRust(Expression.Kind),
-                             fromRust(Expression.LHS),
-                             fromRust(Expression.RHS));
+       ArrayRef<LLVMCounterExpression>(Expressions, NumExpressions)) {
+    Expressions.emplace_back(from(Expression.Kind),
+                             from(Expression.LHS),
+                             from(Expression.RHS));
   }
 
   std::vector<coverage::CounterMappingRegion> MappingRegions;
@@ -141,7 +141,7 @@ extern "C" void LLVMRustCoverageWriteFunctionMappingsToBuffer(
   // Code regions:
   for (const auto &Region : ArrayRef(CodeRegions, NumCodeRegions)) {
     MappingRegions.push_back(coverage::CounterMappingRegion::makeRegion(
-        fromRust(Region.Count), Region.Span.FileID, Region.Span.LineStart,
+        from(Region.Count), Region.Span.FileID, Region.Span.LineStart,
         Region.Span.ColumnStart, Region.Span.LineEnd, Region.Span.ColumnEnd));
   }
 
@@ -155,7 +155,7 @@ extern "C" void LLVMRustCoverageWriteFunctionMappingsToBuffer(
   // Branch regions:
   for (const auto &Region : ArrayRef(BranchRegions, NumBranchRegions)) {
     MappingRegions.push_back(coverage::CounterMappingRegion::makeBranchRegion(
-        fromRust(Region.TrueCount), fromRust(Region.FalseCount),
+        from(Region.TrueCount), from(Region.FalseCount),
         Region.Span.FileID, Region.Span.LineStart, Region.Span.ColumnStart,
         Region.Span.LineEnd, Region.Span.ColumnEnd));
   }
@@ -164,18 +164,18 @@ extern "C" void LLVMRustCoverageWriteFunctionMappingsToBuffer(
   auto CoverageMappingWriter = coverage::CoverageMappingWriter(
       ArrayRef<unsigned>(VirtualFileMappingIDs, NumVirtualFileMappingIDs),
       Expressions, MappingRegions);
-  auto OS = RawRustStringOstream(BufferOut);
+  auto OS = RawStringOstream(BufferOut);
   CoverageMappingWriter.write(OS);
 }
 
 extern "C" LLVMValueRef
-LLVMRustCoverageCreatePGOFuncNameVar(LLVMValueRef F, const char *FuncName,
+LLVMCoverageCreatePGOFuncNameVar(LLVMValueRef F, const char *FuncName,
                                      size_t FuncNameLen) {
   auto FuncNameRef = StringRef(FuncName, FuncNameLen);
   return wrap(createPGOFuncNameVar(*cast<Function>(unwrap(F)), FuncNameRef));
 }
 
-extern "C" uint64_t LLVMRustCoverageHashBytes(const char *Bytes,
+extern "C" uint64_t LLVMCoverageHashBytes(const char *Bytes,
                                               size_t NumBytes) {
   return IndexedInstrProf::ComputeHash(StringRef(Bytes, NumBytes));
 }
@@ -183,35 +183,35 @@ extern "C" uint64_t LLVMRustCoverageHashBytes(const char *Bytes,
 // Private helper function for getting the covmap and covfun section names.
 static void writeInstrProfSectionNameToString(LLVMModuleRef M,
                                               InstrProfSectKind SectKind,
-                                              RustStringRef OutStr) {
+                                              StringRef OutStr) {
   auto TargetTriple = Triple(unwrap(M)->getTargetTriple());
   auto name = getInstrProfSectionName(SectKind, TargetTriple.getObjectFormat());
-  auto OS = RawRustStringOstream(OutStr);
+  auto OS = RawStringOstream(OutStr);
   OS << name;
 }
 
 extern "C" void
-LLVMRustCoverageWriteCovmapSectionNameToString(LLVMModuleRef M,
-                                               RustStringRef OutStr) {
+LLVMCoverageWriteCovmapSectionNameToString(LLVMModuleRef M,
+                                               StringRef OutStr) {
   writeInstrProfSectionNameToString(M, IPSK_covmap, OutStr);
 }
 
 extern "C" void
-LLVMRustCoverageWriteCovfunSectionNameToString(LLVMModuleRef M,
-                                               RustStringRef OutStr) {
+LLVMCoverageWriteCovfunSectionNameToString(LLVMModuleRef M,
+                                               StringRef OutStr) {
   writeInstrProfSectionNameToString(M, IPSK_covfun, OutStr);
 }
 
 extern "C" void
-LLVMRustCoverageWriteCovmapVarNameToString(RustStringRef OutStr) {
+LLVMCoverageWriteCovmapVarNameToString(StringRef OutStr) {
   auto name = getCoverageMappingVarName();
-  auto OS = RawRustStringOstream(OutStr);
+  auto OS = RawStringOstream(OutStr);
   OS << name;
 }
 
-extern "C" uint32_t LLVMRustCoverageMappingVersion() {
+extern "C" uint32_t LLVMCoverageMappingVersion() {
   // This should always be `CurrentVersion`, because that's the version LLVM
   // will use when encoding the data we give it. If for some reason we ever
-  // want to override the version number we _emit_, do it on the Rust side.
+  // want to override the version number we _emit_, do it on the  side.
   return coverage::CovMapVersion::CurrentVersion;
 }

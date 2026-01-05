@@ -15,7 +15,7 @@ before the format string, and these will be ignored.
 
 ### Example
 
-```rust
+```
 /// A macro that prints a message if a condition is true.
 #[macro_export]
 #[clippy::format_args]
@@ -39,7 +39,7 @@ block, which may be surprising.
 
 ### Example
 
-```rust
+```
 #[clippy::has_significant_drop]
 struct CounterWrapper<'a> {
     counter: &'a Counter,
