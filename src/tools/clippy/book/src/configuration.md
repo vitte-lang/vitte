@@ -6,7 +6,6 @@ Some lints can be configured in a TOML file named `clippy.toml` or `.clippy.toml
 
 1. The directory specified by the `CLIPPY_CONF_DIR` environment variable, or
 2. The directory specified by the
-[CARGO_MANIFEST_DIR](https://doc.-lang.org/cargo/reference/environment-variables.html) environment variable, or
 3. The current directory.
 
 It contains a basic `variable = value` mapping e.g.
@@ -18,11 +17,9 @@ disallowed-names = ["toto", "tata", "titi"]
 
 The [table of configurations](./lint_configuration.md)
 contains all config values, their default, and a list of lints they affect.
-Each [configurable lint](https://-lang.github.io/-clippy/master/index.html#Configuration)
 , also contains information about these values.
 
 For configurations that are a list type with default values such as
-[disallowed-names](https://-lang.github.io/-clippy/master/index.html#disallowed_names),
 you can use the unique value `".."` to extend the default values instead of replacing them.
 
 ```toml
@@ -85,7 +82,6 @@ cargo clippy -- -A clippy::all -W clippy::useless_format -W clippy::...
 #### Lints Section in `Cargo.toml`
 
 Finally, lints can be allowed/denied using [the lints
-section](https://doc.-lang.org/nightly/cargo/reference/manifest.html#the-lints-section)) in the `Cargo.toml` file:
 
 To deny `clippy::enum_glob_use`, put the following in the `Cargo.toml`:
 
@@ -122,14 +118,12 @@ is equivalent to `msrv = 1.30.0`.
 Note: `custom_inner_attributes` is an unstable feature, so it has to be enabled explicitly.
 
 Lints that recognize this configuration option can be
-found [here](https://-lang.github.io/-clippy/master/index.html#msrv)
 
 ### Disabling evaluation of certain code
 
 > **Note:** This should only be used in cases where other solutions, like `#[allow(clippy::all)]`, are not sufficient.
 
 Very rarely, you may wish to prevent Clippy from evaluating certain sections of code entirely. You can do this with
-[conditional compilation](https://doc.-lang.org/reference/conditional-compilation.html) by checking that the
 `clippy` cfg is not set. You may need to provide a stub so that the code compiles:
 
 ```

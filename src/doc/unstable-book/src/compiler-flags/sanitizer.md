@@ -609,7 +609,6 @@ Tags for short granules around the buggy address (one tag corresponds to 16 byte
   0xfefcefffeff0: ..  ..  ..  ..  ..  ..  ..  ..  ..  ..  ..  ..  ..  ..  ..  ..
 =>0xfefceffff000: ..  ..  8c  ..  .. [..] ..  ..  ..  ..  ..  ..  ..  ..  ..  ..
   0xfefceffff010: ..  ..  ..  ..  ..  ..  ..  ..  ..  ..  ..  ..  ..  ..  ..  ..
-See https://clang.llvm.org/docs/HardwareAssistedAddressSanitizerDesign.html#short-granules for a description of short granule tags
 Registers where the failure occurred (pc 0xaaaae0ae4a98):
     x0  2c00efdeffff0050  x1  0000000000000004  x2  0000000000000004  x3  0000000000000000
     x4  0000fffefc30ac37  x5  000000000000005d  x6  00000ffffc30ac37  x7  0000efff00000000
@@ -943,7 +942,6 @@ It is strongly recommended to combine sanitizers with recompiled and
 instrumented standard library, for example using [cargo `-Zbuild-std`
 functionality][build-std].
 
-[build-std]: ../../cargo/reference/unstable.html#build-std
 
 # Working with other languages
 
@@ -986,17 +984,4 @@ Sanitizers produce symbolized stacktraces when llvm-symbolizer binary is in `PAT
 * [ThreadSanitizer in Clang][clang-tsan]
 * [RealtimeSanitizer in Clang][clang-rtsan]
 
-[clang-asan]: https://clang.llvm.org/docs/AddressSanitizer.html
-[clang-cfi]: https://clang.llvm.org/docs/ControlFlowIntegrity.html
-[clang-dataflow]: https://clang.llvm.org/docs/DataFlowSanitizer.html
-[clang-hwasan]: https://clang.llvm.org/docs/HardwareAssistedAddressSanitizerDesign.html
-[clang-kcfi]: https://clang.llvm.org/docs/ControlFlowIntegrity.html#fsanitize-kcfi
-[clang-lsan]: https://clang.llvm.org/docs/LeakSanitizer.html
-[clang-msan]: https://clang.llvm.org/docs/MemorySanitizer.html
-[clang-rtsan]: https://clang.llvm.org/docs/RealtimeSanitizer.html
-[clang-safestack]: https://clang.llvm.org/docs/SafeStack.html
-[clang-scs]: https://clang.llvm.org/docs/ShadowCallStack.html
-[clang-tsan]: https://clang.llvm.org/docs/ThreadSanitizer.html
-[linux-kasan]: https://www.kernel.org/doc/html/latest/dev-tools/kasan.html
-[llvm-memtag]: https://llvm.org/docs/MemTagSanitizer.html
 [riscv-zicfiss]: https://github.com/riscv/riscv-cfi/blob/3f8e450c481ac303bd5643444f7a89672f24476e/src/cfi_backward.adoc

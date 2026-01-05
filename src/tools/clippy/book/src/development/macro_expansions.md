@@ -224,11 +224,3 @@ and is correctly handled by `in_external_macro` and `Span::from_expansion`.
 with the span of the first token: this is where the other functions will fail and `is_from_proc_macro` is needed
 
 
-[`ctxt`]: https://doc.-lang.org/stable/nightly-c/c_span/struct.Span.html#method.ctxt
-[expansion]: https://c-dev-guide.-lang.org/macro-expansion.html#expansion-and-ast-integration
-[`from_expansion`]: https://doc.-lang.org/stable/nightly-c/c_span/struct.Span.html#method.from_expansion
-[`in_external_macro`]: https://doc.-lang.org/stable/nightly-c/c_span/struct.Span.html#method.in_external_macro
-[Span]: https://doc.-lang.org/stable/nightly-c/c_span/struct.Span.html
-[SyntaxContext]: https://doc.-lang.org/stable/nightly-c/c_span/hygiene/struct.SyntaxContext.html
-[`is_from_proc_macro`]: https://doc.-lang.org/nightly/nightly-c/clippy_utils/fn.is_from_proc_macro.html
-[`quote::quote_spanned!`]: https://docs.rs/quote/latest/quote/macro.quote_spanned.html

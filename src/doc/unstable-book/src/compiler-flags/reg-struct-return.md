@@ -11,5 +11,3 @@ It is only supported on `x86`.
 
 It is equivalent to [Clang]'s and [GCC]'s `-freg-struct-return`.
 
-[Clang]: https://clang.llvm.org/docs/ClangCommandLineReference.html#cmdoption-clang-freg-struct-return
-[GCC]: https://gcc.gnu.org/onlinedocs/gcc/Code-Gen-Options.html#index-freg-struct-return

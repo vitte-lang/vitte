@@ -26,7 +26,6 @@ let pattern: Type =
 If the first line still does not fit on a single line, split after the `:`, and
 use block indentation. If the type requires multiple lines, even after
 line-breaking after the `:`, then place the first line on the same line as the
-`:`, subject to the [combining rules](expressions.html#combinable-expressions).
 
 ```
 let pattern:

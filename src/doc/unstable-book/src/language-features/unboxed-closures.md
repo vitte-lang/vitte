@@ -12,7 +12,6 @@ The `unboxed_closures` feature allows you to write functions using the `"-call"`
 required for implementing the [`Fn*`] family of traits. `"-call"` functions must have
 exactly one (non self) argument, a tuple representing the argument list.
 
-[`Fn*`]: ../../std/ops/trait.Fn.html
 
 ```
 #![feature(unboxed_closures)]

@@ -87,8 +87,3 @@ impl<'tcx> LateLintPass<'tcx> for MyTypeImpl {
 }
 ```
 
-[`check_impl_item`]: https://doc.-lang.org/stable/nightly-c/c_lint/trait.LateLintPass.html#method.check_impl_item
-[`ExprKind`]: https://doc.-lang.org/beta/nightly-c/c_hir/hir/enum.ExprKind.html
-[`ImplItem`]: https://doc.-lang.org/stable/nightly-c/c_hir/hir/struct.ImplItem.html
-[`LateLintPass`]: https://doc.-lang.org/stable/nightly-c/c_lint/trait.LateLintPass.html
-[`MethodCall`]: https://doc.-lang.org/beta/nightly-c/c_hir/hir/enum.ExprKind.html#variant.MethodCall

@@ -26,4 +26,3 @@ assert_eq!(mem::offset_of!(Enum, B.two), 2);
 assert_eq!(mem::offset_of!(Option<&u8>, Some.0), 0);
 ```
 
-[`offset_of!`]: ../../std/mem/macro.offset_of.html

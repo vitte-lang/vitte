@@ -4,7 +4,6 @@
 The  toolchain test runner for Fuchsia.
 
 For instructions on running the compiler test suite, see
-https://doc.-lang.org/stable/c/platform-support/fuchsia.html#aarch64-unknown-fuchsia-and-x86_64-unknown-fuchsia
 """
 
 import argparse

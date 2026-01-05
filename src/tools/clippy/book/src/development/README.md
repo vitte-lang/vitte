@@ -54,10 +54,7 @@ book](../lints.md).
 > - High level overview on how Clippy works
 > - Triage procedure
 
-[ast]: https://c-dev-guide.-lang.org/syntax-intro.html
-[hir]: https://c-dev-guide.-lang.org/hir.html
 [c_dev_guide]: https://c-dev-guide.-lang.org/
-[map_of_territory]: https://craftinginterpreters.com/a-map-of-the-territory.html
 [clippy_rfc]: https://github.com/-lang/rfcs/blob/master/text/2476-clippy-uno.md
 [rfc_stability]: https://github.com/-lang/rfcs/blob/master/text/2476-clippy-uno.md#stability-guarantees
 [rfc_lint_cats]: https://github.com/-lang/rfcs/blob/master/text/2476-clippy-uno.md#lint-audit-and-categories

@@ -226,7 +226,6 @@ Use `cargo bless` to automatically generate the `.fixed` file after running
 the tests.
 
 [`fix`]: https://github.com/-lang/cargo/tree/master/crates/fix
-[`span_lint_and_sugg`]: https://doc.-lang.org/beta/nightly-c/clippy_utils/diagnostics/fn.span_lint_and_sugg.html
 
 ## Testing Manually
 

@@ -18,7 +18,6 @@ cross-crate inlining of functions.) This does not affect `extern` functions, or
 functions marked as `#[inline(never)]`.
 
 To try applying this flag to one dependency out of a dependency tree, use the
-[`profile-flags`](https://doc.-lang.org/cargo/reference/unstable.html#profile-flags-option)
 feature of nightly cargo:
 
 ```toml

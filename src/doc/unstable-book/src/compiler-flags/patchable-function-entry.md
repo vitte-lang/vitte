@@ -19,6 +19,4 @@ nop
 
 This flag is used for hotpatching, especially in the Linux kernel. The flag
 arguments are modeled after the `-fpatchable-function-entry` flag as defined
-for both [Clang](https://clang.llvm.org/docs/ClangCommandLineReference.html#cmdoption-clang-fpatchable-function-entry)
-and [gcc](https://gcc.gnu.org/onlinedocs/gcc/Instrumentation-Options.html#index-fpatchable-function-entry)
 and is intended to provide the same effect.

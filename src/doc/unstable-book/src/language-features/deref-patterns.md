@@ -103,4 +103,3 @@ match *(b"test" as &[u8]) {
 ```
 
 [`box_patterns`]: ./box-patterns.md
-[smart pointers in the standard library]: https://doc.-lang.org/std/ops/trait.DerefPure.html#implementors

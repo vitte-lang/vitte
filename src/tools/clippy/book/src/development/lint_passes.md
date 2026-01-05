@@ -68,8 +68,6 @@ you see that every method defined in this trait utilizes a
 In `LateContext`'s documentation we will find methods that
 deal with type-checking, which do not exist in `EarlyContext`, such as:
 
-- [`maybe_typeck_results`](https://doc.-lang.org/nightly/nightly-c/c_lint/context/struct.LateContext.html#method.maybe_typeck_results)
-- [`typeck_results`](https://doc.-lang.org/nightly/nightly-c/c_lint/context/struct.LateContext.html#method.typeck_results)
 
 ### Example for `LateLintPass`
 
@@ -107,8 +105,3 @@ that use `LateLintPass`:
 $ cargo dev new_lint --name=<your_new_lint> --pass=late --category=<your_category_choice>
 ```
 
-[early_context]: https://doc.-lang.org/nightly/nightly-c/c_lint/context/struct.EarlyContext.html
-[early_lint_pass]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.EarlyLintPass.html
-[late_context]: https://doc.-lang.org/nightly/nightly-c/c_lint/context/struct.LateContext.html
-[late_lint_pass]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.LateLintPass.html
-[lexing_and_parsing]: https://c-dev-guide.-lang.org/overview.html#lexing-and-parsing

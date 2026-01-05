@@ -12,7 +12,6 @@ CET is available [here]. Similar to `clang`, this flag takes one of the followin
 - `return` - Enable shadow stack (`SHSTK`).
 - `full` - Enable both `branch` and `return`.
 
-[here]: https://www.intel.com/content/www/us/en/develop/articles/technical-look-control-flow-enforcement-technology.html
 
 This flag only applies to the LLVM backend: it sets the `cf-protection-branch` and
 `cf-protection-return` flags on LLVM modules. Note, however, that all compiled modules linked

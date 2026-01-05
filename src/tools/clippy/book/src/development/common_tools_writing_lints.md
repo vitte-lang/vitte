@@ -11,10 +11,6 @@ You may need following tooltips to catch up with common operations.
   - [Dealing with macros](#dealing-with-macros-and-expansions)
 
 Useful c dev guide links:
-- [Stages of compilation](https://c-dev-guide.-lang.org/compiler-src.html#the-main-stages-of-compilation)
-- [Diagnostic items](https://c-dev-guide.-lang.org/diagnostics/diagnostic-items.html)
-- [Type checking](https://c-dev-guide.-lang.org/type-checking.html)
-- [Ty module](https://c-dev-guide.-lang.org/ty.html)
 
 ## Retrieving the type of expression
 
@@ -265,11 +261,3 @@ functions to deal with macros:
    assert_eq!(x_is_some_span.ctxt(), x_unwrap_span.ctxt());
    ```
 
-[Ty]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.Ty.html
-[TyKind]: https://doc.-lang.org/nightly/nightly-c/c_type_ir/ty_kind/enum.TyKind.html
-[TypeckResults]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.TypeckResults.html
-[expr_ty]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.TypeckResults.html#method.expr_ty
-[LateContext]: https://doc.-lang.org/nightly/nightly-c/c_lint/struct.LateContext.html
-[TyCtxt]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/context/struct.TyCtxt.html
-[pat_ty]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.TypeckResults.html#method.pat_ty
-[paths]: https://doc.-lang.org/nightly/nightly-c/clippy_utils/paths/index.html

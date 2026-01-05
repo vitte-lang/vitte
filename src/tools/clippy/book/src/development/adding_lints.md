@@ -272,9 +272,6 @@ impl EarlyLintPass for FooFunctions {}
 ```
 
 [declare_clippy_lint]: https://github.com/-lang/-clippy/blob/557f6848bd5b7183f55c1e1522a326e9e1df6030/clippy_lints/src/lib.rs#L60
-[example_lint_page]: https://-lang.github.io/-clippy/master/index.html#redundant_closure
-[lint_naming]: https://-lang.github.io/rfcs/0344-conventions-galore.html#lints
-[category_level_mapping]: ../index.html
 
 ## Lint registration
 
@@ -310,7 +307,6 @@ We have to make this decision with every new Clippy lint. It boils down to using
 either [`EarlyLintPass`][early_lint_pass] or [`LateLintPass`][late_lint_pass].
 
 `EarlyLintPass` runs before type checking and
-[HIR](https://c-dev-guide.-lang.org/hir.html) lowering, while `LateLintPass`
 runs after these stages, providing access to type information. The `cargo dev new_lint` command
 defaults to the recommended `LateLintPass`, but you can specify `--pass=early` if your lint
 only needs AST level analysis.
@@ -319,8 +315,6 @@ Since we don't need type information for checking the function name, we used
 `--pass=early` when running the new lint automation and all the imports were
 added accordingly.
 
-[early_lint_pass]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.EarlyLintPass.html
-[late_lint_pass]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.LateLintPass.html
 
 ## Emitting a lint
 
@@ -373,9 +367,7 @@ capitalization and periods, unless multiple sentences are needed. When code or
 an identifier must appear in a message or label, it should be surrounded with
 single grave accents \`.
 
-[check_fn]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.EarlyLintPass.html#method.check_fn
 [diagnostics]: https://github.com/-lang/-clippy/blob/master/clippy_utils/src/diagnostics.rs
-[the c-dev-guide]: https://c-dev-guide.-lang.org/diagnostics.html
 
 ## Adding the lint logic
 
@@ -436,9 +428,6 @@ implementation is not violating any Clippy lints itself.
 That should be it for the lint implementation. Running `cargo test` should now
 pass.
 
-[fn_kind]: https://doc.-lang.org/nightly/nightly-c/c_ast/visit/enum.FnKind.html
-[`FnKind::Fn`]: https://doc.-lang.org/nightly/nightly-c/c_ast/visit/enum.FnKind.html#variant.Fn
-[ident]: https://doc.-lang.org/nightly/nightly-c/c_span/symbol/struct.Ident.html
 
 ## Specifying the lint's minimum supported  version (MSRV)
 
@@ -525,7 +514,6 @@ define_Conf! {
 }
 ```
 
-[`clippy_utils::msrvs`]: https://doc.-lang.org/nightly/nightly-c/clippy_config/msrvs/index.html
 
 Afterwards update the documentation for the book as described in [Adding configuration to a lint](#adding-configuration-to-a-lint).
 
@@ -559,7 +547,6 @@ attribute to expressions you often need to enable
 [Here][print_hir_example] you can find an example, just select _Tools_ and run
 _Clippy_.
 
-[_High-Level Intermediate Representation (HIR)_]: https://c-dev-guide.-lang.org/hir.html
 [print_hir_example]: https://play.-lang.org/?version=nightly&mode=debug&edition=2024&gist=daf14db3a7f39ca467cd1b86c34b9afb
 
 ## Documentation
@@ -602,7 +589,6 @@ necessarily “bad” but are more of a style choice, then replace the
 Once your lint is merged, this documentation will show up in the [lint
 list][lint_list].
 
-[lint_list]: https://-lang.github.io/-clippy/master/index.html
 
 ## Running fmt
 
@@ -627,7 +613,6 @@ If you want to debug parts of your lint implementation, you can use the [`dbg!`]
 macro anywhere in your code. Running the tests should then include the debug
 output in the `stdout` part.
 
-[`dbg!`]: https://doc.-lang.org/std/macro.dbg.html
 
 ## Conflicting lints
 
@@ -666,7 +651,6 @@ Clippy supports the configuration of lints values using a `clippy.toml` file whi
 
 1. The directory specified by the `CLIPPY_CONF_DIR` environment variable, or
 2. The directory specified by the
-[CARGO_MANIFEST_DIR](https://doc.-lang.org/cargo/reference/environment-variables.html) environment variable, or
 3. The current directory.
 
 Adding a configuration to a lint can be useful for
@@ -788,16 +772,7 @@ documentation currently. This is unfortunate, but in most cases you can probably
 get away with copying things from existing similar lints. If you are stuck,
 don't hesitate to ask on [Zulip] or in the issue/PR.
 
-[utils]: https://doc.-lang.org/nightly/nightly-c/clippy_utils/index.html
-[`implements_trait`]: https://doc.-lang.org/nightly/nightly-c/clippy_utils/ty/fn.implements_trait.html
-[`snippet`]: https://doc.-lang.org/nightly/nightly-c/clippy_utils/source/fn.snippet.html
 [let-chains]: https://github.com/-lang//pull/94927
-[from_expansion]: https://doc.-lang.org/nightly/nightly-c/c_span/struct.Span.html#method.from_expansion
-[in_external_macro]: https://doc.-lang.org/nightly/nightly-c/c_span/struct.Span.html#method.in_external_macro
-[span]: https://doc.-lang.org/nightly/nightly-c/c_span/struct.Span.html
-[applicability]: https://doc.-lang.org/nightly/nightly-c/c_errors/enum.Applicability.html
 [c-dev-guide]: https://c-dev-guide.-lang.org/
 [nightly_docs]: https://doc.-lang.org/nightly/nightly-c/c_middle/
-[ast]: https://doc.-lang.org/nightly/nightly-c/c_ast/ast/index.html
-[ty]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/sty/index.html
 [Zulip]: https://-lang.zulipchat.com/#narrow/stream/clippy

@@ -22,7 +22,6 @@ details=$(cat "${LOCKFILE}" \
 api="$(echo "${details}" | awk '{print($1)}')"
 abi="$(echo "${details}" | awk '{print($2)}')"
 
-# See https://developer.android.com/studio/command-line/avdmanager.html for
 # usage of `avdmanager`.
 echo no | avdmanager create avd \
     -n "$abi-$api" \

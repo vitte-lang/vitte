@@ -2,4 +2,3 @@
 
 This introduction is now deprecated. Please see [the introduction to the book][intro].
 
-[intro]: book/README.html

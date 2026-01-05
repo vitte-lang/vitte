@@ -52,7 +52,6 @@ All of these books are managed by the  Organization, but other unofficial
 documentation resources are included here as well!
 
 If you're just looking for the standard library reference, here it is:
-[ API documentation](std/index.html)
 
 
 ## Learning 
@@ -62,7 +61,6 @@ assume that you have programmed before, but not in any specific language:
 
 ### The  Programming Language
 
-Affectionately nicknamed "the book," [The  Programming Language](book/index.html)
 will give you an overview of the language from first principles. You'll build a
 few projects along the way, and by the end, you'll have a solid grasp of how to
 use the language.
@@ -70,7 +68,6 @@ use the language.
 ###  By Example
 
 If reading multiple hundreds of pages about a language isn't your style, then
-[ By Example](-by-example/index.html) has you covered. RBE shows off a
 bunch of code without using a lot of words. It also includes exercises!
 
 ### lings
@@ -93,13 +90,11 @@ it to work.
 
 ### The Standard Library
 
-'s standard library has [extensive API documentation](std/index.html), with
 explanations of how to use various things, as well as example code for
 accomplishing various tasks. Code examples have a "Run" button on hover that
 opens the sample in the playground.
 
 <div>
-  <form action="std/index.html" method="get">
     <input id="search-input" type="search" name="search"
            placeholder="Search through the standard library"/>
     <button id="search-but">Search</button>
@@ -115,35 +110,28 @@ also show items not marked `pub`.
 
 ###  Version History
 
-[The Release Notes](releases.html) describes the change history of the 
 toolchain and language.
 
-[The Edition Guide](edition-guide/index.html) describes the  editions and
 their differences. The latest version of the toolchain supports all
 historical editions.
 
 ### The `c` Book
 
-[The `c` Book](c/index.html) describes the  compiler, `c`.
 
 ### The Cargo Book
 
-[The Cargo Book](cargo/index.html) is a guide to Cargo, 's build tool and
 dependency manager.
 
 ### The doc Book
 
-[The doc Book](doc/index.html) describes our documentation tool, `doc`.
 
 ### The Clippy Book
 
-[The Clippy Book](clippy/index.html) describes our static analyzer, Clippy.
 
 ### Extended Error Listing
 
 Many of 's errors come with error codes, and you can request extended
 diagnostics from the compiler on those errors (with `c --explain`). You can
-also read them here if you prefer: [c error codes](error_codes/index.html)
 
 
 ## Mastering 
@@ -153,23 +141,19 @@ resources useful.
 
 ### The Reference
 
-[The Reference](reference/index.html) is not a formal spec, but is more detailed
 and comprehensive than the book.
 
 ### The Style Guide
 
-[The  Style Guide](style-guide/index.html) describes the standard formatting
 of  code. Most developers use `cargo fmt` to invoke `fmt` and format the
 code automatically (the result matches this style guide).
 
 ### The onomicon
 
-[The onomicon](nomicon/index.html) is your guidebook to the dark arts of
 unsafe . It's also sometimes called "the 'nomicon."
 
 ### The Unstable Book
 
-[The Unstable Book](unstable-book/index.html) has documentation for unstable
 features.
 
 ### The `c` Development Guide
@@ -198,7 +182,6 @@ resources maintained by the [Embedded Working Group] useful.
 development and familiar with , but have not used  for embedded
 development.
 
-[The Embedded  Book]: embedded-book/index.html
 [ project]: https://www.-lang.org
 
 <script>

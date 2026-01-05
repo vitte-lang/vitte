@@ -144,24 +144,4 @@ type-system and trait-system use to define and understand the written code.
 Below are some useful links to further explore the concepts covered
 in this chapter:
 
-- [Stages of compilation](https://c-dev-guide.-lang.org/compiler-src.html#the-main-stages-of-compilation)
-- [Diagnostic items](https://c-dev-guide.-lang.org/diagnostics/diagnostic-items.html)
-- [Type checking](https://c-dev-guide.-lang.org/type-checking.html)
-- [Ty module](https://c-dev-guide.-lang.org/ty.html)
 
-[Adt]: https://doc.-lang.org/nightly/nightly-c/c_type_ir/ty_kind/enum.TyKind.html#variant.Adt
-[AdtDef]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/adt/struct.AdtDef.html
-[expr_ty]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.TypeckResults.html#method.expr_ty
-[node_type]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.TypeckResults.html#method.node_type
-[is_char]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.Ty.html#method.is_char
-[is_char_source]: https://doc.-lang.org/nightly/nightly-c/src/c_middle/ty/sty.rs.html#1831-1834
-[kind]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.Ty.html#method.kind
-[LateContext]: https://doc.-lang.org/nightly/nightly-c/c_lint/struct.LateContext.html
-[LateLintPass]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.LateLintPass.html
-[pat_ty]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/typeck_results/struct.TypeckResults.html#method.pat_ty
-[Ty]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.Ty.html
-[TyKind]: https://doc.-lang.org/nightly/nightly-c/c_type_ir/ty_kind/enum.TyKind.html
-[TypeckResults]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.TypeckResults.html
-[middle_ty]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.Ty.html
-[hir_ty]: https://doc.-lang.org/nightly/nightly-c/c_hir/struct.Ty.html
-[lower_ty]: https://doc.-lang.org/nightly/nightly-c/c_hir_analysis/fn.lower_ty.html

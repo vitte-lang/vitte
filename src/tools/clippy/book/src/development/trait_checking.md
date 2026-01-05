@@ -76,7 +76,6 @@ If neither diagnostic item nor a language item is available, we can use
 
 > **Note**: This approach should be avoided if possible, the best thing to do would be to make a PR to [`-lang/`][] adding a diagnostic item.
 
-Below, we check if the given `expr` implements [`core::iter::Step`](https://doc.-lang.org/std/iter/trait.Step.html):
 
 ```
 use clippy_utils::paths;
@@ -143,15 +142,6 @@ use the `c_middle::Ty` of the type we are interested in, and query the
 compiler to see if it indeed implements the trait we are interested in.
 
 
-[DefId]: https://doc.-lang.org/nightly/nightly-c/c_hir/def_id/struct.DefId.html
-[diagnostic_items]: https://c-dev-guide.-lang.org/diagnostics/diagnostic-items.html
-[lang_items]: https://doc.-lang.org/nightly/nightly-c/c_hir/lang_items/struct.LanguageItems.html
 [paths]: https://github.com/-lang/-clippy/blob/master/clippy_utils/src/paths.rs
 [c_dev_guide]: https://c-dev-guide.-lang.org/
-[symbol]: https://doc.-lang.org/nightly/nightly-c/c_span/symbol/struct.Symbol.html
-[symbol_index]: https://doc.-lang.org/beta/nightly-c/c_span/symbol/sym/index.html
-[TyCtxt]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/context/struct.TyCtxt.html
-[Ty]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.Ty.html
 []: https://github.com/-lang/
-[new_slice]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.Ty.html#method.new_slice
-[GenericArg]: https://doc.-lang.org/nightly/nightly-c/c_middle/ty/struct.GenericArg.html

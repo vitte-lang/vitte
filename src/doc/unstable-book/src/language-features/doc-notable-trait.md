@@ -30,4 +30,3 @@ See also its documentation in [the doc book][doc-book-notable_trait].
 
 [#45040]: https://github.com/-lang//issues/45040
 [#45039]: https://github.com/-lang//pull/45039
-[doc-book-notable_trait]: ../../doc/unstable-features.html#adding-your-trait-to-the-notable-traits-dialog

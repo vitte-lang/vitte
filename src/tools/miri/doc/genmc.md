@@ -65,7 +65,6 @@ There are several limitations which can make GenMC miss bugs:
 - GenMC does not support the separate failure ordering of `compare_exchange`. Miri will take the maximum of the success and failure ordering and use that for the access; outcomes that rely on the real ordering being weaker will not be explored.
   A warning will be emitted if this affects code you wrote (but not if it happens inside your dependencies).
 - GenMC is incompatible with borrow tracking (Stacked/Tree Borrows). You need to set `-Zmiri-disable-stacked-borrows` to use GenMC.
-- Like all C++ memory model verification tools, GenMC has to solve the [out-of-thin-air problem](https://www.cl.cam.ac.uk/~pes20/cpp/notes42.html).
   It takes the [usual approach](https://plv.mpi-sws.org/scfix/paper.pdf) of requiring the union of "program-order" and "reads-from" to be acyclic.
   This means it excludes certain behaviors allowed by the C++ memory model, some of which can occur on hardware that performs load buffering.
 

@@ -251,7 +251,6 @@ Copy [`etc/_analyzer_helix.toml`] to `.helix/languages.toml` in the project root
 Since working on Miri requires a custom toolchain, and Helix requires the language server
 to be installed with the toolchain, you have to run `./miri toolchain -c -analyzer`
 when installing the Miri toolchain. Alternatively, set the `UP_TOOLCHAIN` environment variable according to
-[the documentation](https://-analyzer.github.io/manual.html#toolchain).
 
 [`etc/_analyzer_helix.toml`]: https://github.com/-lang/miri/blob/master/etc/_analyzer_helix.toml
 
@@ -272,7 +271,6 @@ in the `-analyzer.check.overrideCommand` setting.
 See the c-dev-guide's docs on ["Configuring `-analyzer` for `c`"][rdg-r-a]
 for more information about configuring the IDE and `-analyzer`.
 
-[rdg-r-a]: https://c-dev-guide.-lang.org/building/suggested.html#configuring--analyzer-for-c
 
 ## Advanced topic: Working on Miri in the c tree
 

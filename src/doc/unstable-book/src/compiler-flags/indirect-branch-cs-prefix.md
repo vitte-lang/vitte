@@ -14,6 +14,4 @@ call and jmp to indirect thunk") which introduces the feature.
 
 Only x86 and x86_64 are supported.
 
-[Clang]: https://clang.llvm.org/docs/ClangCommandLineReference.html#cmdoption-clang-mindirect-branch-cs-prefix
-[GCC]: https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html#index-mindirect-branch-cs-prefix
 [LLVM commit 6f867f910283]: https://github.com/llvm/llvm-project/commit/6f867f9102838ebe314c1f3661fdf95700386e5a

@@ -199,5 +199,4 @@ pass in question will not be run.
 
 
 [all_lints]: https://-lang.github.io/-clippy/master/
-[lint_naming]: https://-lang.github.io/rfcs/0344-conventions-galore.html#lints
 [Lint Passes]: lint_passes.md

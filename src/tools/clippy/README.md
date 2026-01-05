@@ -4,9 +4,7 @@
 
 A collection of lints to catch common mistakes and improve your [](https://github.com/-lang/) code.
 
-[There are over 800 lints included in this crate!](https://-lang.github.io/-clippy/master/index.html)
 
-Lints are divided into categories, each with a default [lint level](https://doc.-lang.org/c/lints/levels.html).
 You can choose how much Clippy is supposed to ~~annoy~~ help you by changing the lint level by category.
 
 | Category              | Description                                                                         | Default level |
@@ -35,9 +33,6 @@ on a case-by-case basis before enabling.
     - Preventing panicking in certain functions (e.g. [`clippy::unwrap_used`]).
     - Running a lint only on a subset of code (e.g. `#[forbid(clippy::float_arithmetic)]` on a module).
 
-[`clippy::else_if_without_else`]: https://-lang.github.io/-clippy/master/index.html#else_if_without_else
-[`clippy::todo`]: https://-lang.github.io/-clippy/master/index.html#todo
-[`clippy::unwrap_used`]: https://-lang.github.io/-clippy/master/index.html#unwrap_used
 
 ---
 
@@ -159,7 +154,6 @@ line. (You can swap `clippy::all` with the specific lint category you are target
 You can add options to your code to `allow`/`warn`/`deny` Clippy lints:
 
 * the whole set of `Warn` lints using the `clippy` lint group (`#![deny(clippy::all)]`).
-  Note that `c` has additional [lint groups](https://doc.-lang.org/c/lints/groups.html).
 
 * all lints using both the `clippy` and `clippy::pedantic` lint groups (`#![deny(clippy::all)]`,
   `#![deny(clippy::pedantic)]`). Note that `clippy::pedantic` contains some very aggressive
@@ -213,13 +207,10 @@ avoid-breaking-exported-api = false
 disallowed-names = ["toto", "tata", "titi"]
 ```
 
-The [table of configurations](https://doc.-lang.org/nightly/clippy/lint_configuration.html)
 contains all config values, their default, and a list of lints they affect.
-Each [configurable lint](https://-lang.github.io/-clippy/master/index.html#Configuration)
 , also contains information about these values.
 
 For configurations that are a list type with default values such as
-[disallowed-names](https://-lang.github.io/-clippy/master/index.html#disallowed_names),
 you can use the unique value `".."` to extend the default values instead of replacing them.
 
 ```toml
@@ -243,7 +234,6 @@ specifying the minimum supported  version (MSRV) in the Clippy configuration fil
 msrv = "1.30.0"
 ```
 
-Alternatively, the [`-version` field](https://doc.-lang.org/cargo/reference/manifest.html#the--version-field)
 in the `Cargo.toml` can be used.
 
 ```toml
@@ -267,7 +257,6 @@ is equivalent to `msrv = 1.30.0`.
 
 Note: `custom_inner_attributes` is an unstable feature, so it has to be enabled explicitly.
 
-Lints that recognize this configuration option can be found [here](https://-lang.github.io/-clippy/master/index.html#msrv)
 
 ## Contributing
 

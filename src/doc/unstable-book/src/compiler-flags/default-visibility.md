@@ -5,7 +5,6 @@ The tracking issue for this feature is: https://github.com/-lang//issues/131090
 ------------------------
 
 This flag can be used to override the target's
-[`default_visibility`](https://doc.-lang.org/beta/nightly-c/c_target/spec/struct.TargetOptions.html#structfield.default_visibility)
 setting.
 
 This option only affects building of shared objects and should have no effect on executables.
@@ -19,7 +18,6 @@ Visibility an be set to one of three options:
 ## Hidden visibility
 
 Using `-Zdefault-visibility=hidden` is roughly equivalent to Clang's
-[`-fvisibility=hidden`](https://clang.llvm.org/docs/ClangCommandLineReference.html#cmdoption-clang-fvisibility)
 cmdline flag. Hidden symbols will not be exported from the created shared object, so cannot be
 referenced from other shared objects or from executables.
 

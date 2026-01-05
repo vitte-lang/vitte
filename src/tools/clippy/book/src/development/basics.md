@@ -75,7 +75,6 @@ or if you modify a test file to add a test case.
 > _Note:_ This command may update more files than you intended. In that case
 > only commit the files you wanted to update.
 
-[UI test]: https://c-dev-guide.-lang.org/tests/adding.html#ui-test-walkthrough
 
 ## `cargo dev`
 
@@ -120,7 +119,6 @@ Refer to the tools [README] for more details.
 ## PR
 
 We follow a c no merge-commit policy. See
-<https://c-dev-guide.-lang.org/contributing.html#opening-a-pr>.
 
 ## Common Abbreviations
 
@@ -175,9 +173,7 @@ up toolchain uninstall clippy
 
 > **DO NOT** install using `cargo install --path . --force` since this will
 > overwrite up
-> [proxies](https://-lang.github.io/up/concepts/proxies.html). That is,
 > `~/.cargo/bin/cargo-clippy` and `~/.cargo/bin/clippy-driver` should be hard or
 > soft links to `~/.cargo/bin/up`. You can repair these by running `up
 > update`.
 
-[glossary]: https://c-dev-guide.-lang.org/appendix/glossary.html

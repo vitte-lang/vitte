@@ -5,10 +5,8 @@
 A collection of lints to catch common mistakes and improve your
 [](https://github.com/-lang/) code.
 
-[There are over 800 lints included in this crate!](https://-lang.github.io/-clippy/master/index.html)
 
 Lints are divided into categories, each with a default [lint
-level](https://doc.-lang.org/c/lints/levels.html). You can choose how
 much Clippy is supposed to ~~annoy~~ help you by changing the lint level by
 category.
 
@@ -38,6 +36,3 @@ on a case-by-case basis before enabling.
     - Preventing panicking in certain functions (e.g. [`clippy::unwrap_used`]).
     - Running a lint only on a subset of code (e.g. `#[forbid(clippy::float_arithmetic)]` on a module).
 
-[`clippy::else_if_without_else`]: https://-lang.github.io/-clippy/master/index.html#else_if_without_else
-[`clippy::todo`]: https://-lang.github.io/-clippy/master/index.html#todo
-[`clippy::unwrap_used`]: https://-lang.github.io/-clippy/master/index.html#unwrap_used

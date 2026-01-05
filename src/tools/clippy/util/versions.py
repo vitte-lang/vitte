@@ -27,7 +27,6 @@ def key(v):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("input", help="path to the versions.html template", type=argparse.FileType("r"))
     parser.add_argument("outdir", help="path to write the output HTML")
     args = parser.parse_args()
 
@@ -37,12 +36,10 @@ def main():
         if key(dir) is not None
     ]
     versions.sort(key=key, reverse=True)
-    links = [f'<a class="list-group-item" href="./{version}/index.html">{version}</a>' for version in versions]
 
     template = Template(args.input.read())
     html = template.substitute(list="\n".join(links))
 
-    path = os.path.join(args.outdir, "index.html")
     with open(path, "w") as out:
         out.write(html)
         print(f"wrote HTML to {path}")

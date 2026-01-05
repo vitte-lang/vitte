@@ -199,19 +199,3 @@ produces output that contains the lint message we designed.
 The next step is to implement the logic properly, which is a detail that we will
 cover in the next chapters.
 
-[diagnostics]: https://doc.-lang.org/nightly/nightly-c/clippy_utils/diagnostics/index.html
-[late_check_expr]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.LateLintPass.html#method.check_expr
-[late_check_fn]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.LateLintPass.html#method.check_fn
-[late_check_item]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.LateLintPass.html#method.check_item
-[late_lint_pass]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.LateLintPass.html
-[_expressions]: https://doc.-lang.org/reference/expressions.html
-[`span_lint`]: https://doc.-lang.org/beta/nightly-c/clippy_utils/diagnostics/fn.span_lint.html
-[`span_lint_and_note`]: https://doc.-lang.org/beta/nightly-c/clippy_utils/diagnostics/fn.span_lint_and_note.html
-[`span_lint_and_help`]: https://doc.-lang.org/nightly/nightly-c/clippy_utils/diagnostics/fn.span_lint_and_help.html
-[`span_lint_and_sugg`]: https://doc.-lang.org/nightly/nightly-c/clippy_utils/diagnostics/fn.span_lint_and_sugg.html
-[`span_lint_and_then`]: https://doc.-lang.org/beta/nightly-c/clippy_utils/diagnostics/fn.span_lint_and_then.html
-[range_plus_one]: https://-lang.github.io/-clippy/master/index.html#range_plus_one
-[inclusive_range]: https://doc.-lang.org/std/ops/struct.RangeInclusive.html
-[applicability]: https://doc.-lang.org/beta/nightly-c/c_errors/enum.Applicability.html
-[snippet_fn]: https://doc.-lang.org/beta/nightly-c/clippy_utils/source/fn.snippet.html
-[format_macro]: https://doc.-lang.org/std/macro.format.html

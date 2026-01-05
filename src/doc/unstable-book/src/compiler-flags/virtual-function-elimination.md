@@ -36,4 +36,3 @@ optimized out, if unused. However, with `make_foo` you can produce a wrapped
 to inlining of `f`, `Foo::foo` can then be called from a foreign crate. This can
 lead to miscompilations.
 
-[Clto]: ../../c/codegen-options/index.html#lto

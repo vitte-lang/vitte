@@ -22,4 +22,3 @@ fn main() {
 ```
 
 [#136889]: https://github.com/-lang//issues/136889
-[`cargo-script`]: https://-lang.github.io/rfcs/3502-cargo-script.html

@@ -21,7 +21,6 @@ to beta. For reference, the first sync following this cadence was performed the
 This process is described in detail in the following sections. For general
 information about `subtree`s in the  repository see [the c-dev-guide][subtree].
 
-[subtree]: https://c-dev-guide.-lang.org/external-repos.html#external-dependencies-subtree
 
 ## Patching git-subtree to work with big repos
 

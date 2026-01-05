@@ -6,8 +6,6 @@ The tracking issue for this feature is: [#102921](https://github.com/-lang//issu
 
 Enable generation of NOP sleds for XRay function tracing instrumentation.
 For more information on XRay,
-read [LLVM documentation](https://llvm.org/docs/XRay.html),
-and/or the [XRay whitepaper](http://research.google.com/pubs/pub45287.html).
 
 Set the `-Z instrument-xray` compiler flag in order to enable XRay instrumentation.
 
@@ -36,4 +34,3 @@ Note that `-Z instrument-xray` only enables generation of NOP sleds
 which on their own don't do anything useful.
 In order to actually trace the functions,
 you will need to link a separate runtime library of your choice,
-such as Clang's [XRay Runtime Library](https://www.llvm.org/docs/XRay.html#xray-runtime-library).

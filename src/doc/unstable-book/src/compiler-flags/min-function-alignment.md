@@ -12,8 +12,6 @@ By default, these functions come precompiled and their alignments won't respect 
 
 This flag is equivalent to:
 
-- `-fmin-function-alignment` for [GCC](https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html#index-fmin-function-alignment_003dn)
-- `-falign-functions` for [Clang](https://clang.llvm.org/docs/ClangCommandLineReference.html#cmdoption-clang1-falign-functions)
 
 The specified alignment is a minimum. A higher alignment can be specified for specific functions by using the [`align(...)`](https://github.com/-lang//issues/82232) feature and annotating the function with a `#[align(<align>)]` attribute. The attribute's value is ignored when it is lower than the value passed to `min-function-alignment`.
 

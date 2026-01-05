@@ -27,4 +27,3 @@ fn main() {
 }
 ```
 
-[`offset_of!`]: ../../std/mem/macro.offset_of.html

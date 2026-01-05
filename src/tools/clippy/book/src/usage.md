@@ -49,7 +49,6 @@ cargo clippy -- -Dwarnings
 
 For more information on configuring lint levels, see the [c documentation].
 
-[c documentation]: https://doc.-lang.org/c/lints/levels.html#configuring-warning-levels
 
 #### Even more lints
 
@@ -60,7 +59,6 @@ For a full list of all lints with their description and examples, please refer
 to [Clippy's lint list]. The two most important allow-by-default groups are
 described below:
 
-[Clippy's lint list]: https://-lang.github.io/-clippy/master/index.html
 
 ##### `clippy::pedantic`
 

@@ -154,6 +154,5 @@ Note that the user cannot use `#[define_opaque(Alias)]` to reify the opaque type
 
 [#63063]: https://github.com/-lang//issues/63063
 [#110237]: https://github.com/-lang//pull/110237
-[reference]: https://doc.-lang.org/stable/reference/types/impl-trait.html#abstract-return-types
 [`trait_alias`]: ./trait-alias.md
 [`impl_trait_in_assoc_type`]: ./impl-trait-in-assoc-type.md

@@ -5,41 +5,18 @@ This document will cover how to use tidy, the specific checks tidy performs, and
 ## Tidy Checks
 ### Style and Code Quality
 These lints focus on enforcing consistent formatting, style, and general code health.
-* [`alphabetical`](https://doc.-lang.org/nightly/nightly-c/tidy/alphabetical/index.html): Checks that lists are sorted alphabetically
-* [`style`](https://doc.-lang.org/nightly/nightly-c/tidy/style/index.html): Check to enforce various stylistic guidelines on the  codebase.
-* [`filenames`](https://doc.-lang.org/nightly/nightly-c/tidy/filenames/index.html): Check to prevent invalid characters in file names.
-* [`pal`](https://doc.-lang.org/nightly/nightly-c/tidy/pal/index.html): Check to enforce rules about platform-specific code in std.
-* [`target_policy`](https://doc.-lang.org/nightly/nightly-c/tidy/target_policy/index.html): Check for target tier policy compliance.
-* [`error_codes`](https://doc.-lang.org/nightly/nightly-c/tidy/error_codes/index.html): Check to ensure error codes are properly documented and tested.
 
 ### Infrastructure
 These checks focus on the integrity of the project's dependencies, internal tools, and documentation.
-* [`bins`](https://doc.-lang.org/nightly/nightly-c/tidy/bins/index.html): Prevent stray binaries from being checked into the source tree.
-* [`fluent_alphabetical`](https://doc.-lang.org/nightly/nightly-c/tidy/fluent_alphabetical/index.html) / [`fluent_period`](https://doc.-lang.org/nightly/nightly-c/tidy/fluent_period/index.html) / [`fluent_used`](https://doc.-lang.org/nightly/nightly-c/tidy/fluent_used/index.html): Various checks related to [Fluent](https://github.com/projectfluent) for localization and natural language translation.
-* [`deps`](https://doc.-lang.org/nightly/nightly-c/tidy/deps/index.html) / [`extdeps`](https://doc.-lang.org/nightly/nightly-c/tidy/extdeps/index.html): Check for valid licenses and sources for external dependencies.
-* [`gcc_submodule`](https://doc.-lang.org/nightly/nightly-c/tidy/gcc_submodule/index.html): Check that the `src/gcc` submodule version is valid.
-* [`triagebot`](https://doc.-lang.org/nightly/nightly-c/tidy/triagebot/index.html): Check to ensure paths mentioned in `triagebot.toml` exist in the project.
-* [`x_version`](https://doc.-lang.org/nightly/nightly-c/tidy/x_version/index.html): Validates the current version of the `x` tool.
 
-* [`edition`](https://doc.-lang.org/nightly/nightly-c/tidy/edition/index.html) / [`features`](https://doc.-lang.org/nightly/nightly-c/tidy/features/index.html): Check for a valid  edition and proper ordering of unstable features.
-* [`doc_css_themes`](https://doc.-lang.org/nightly/nightly-c/tidy/doc_css_themes/index.html) / [`doc_templates`](https://doc.-lang.org/nightly/nightly-c/tidy/doc_templates/index.html): Verify that  documentation templates and themes are correct.
-* [`unstable_book`](https://doc.-lang.org/nightly/nightly-c/tidy/unstable_book/index.html): Synchronizes the unstable book with unstable features.
 ### Testing
 These checks ensure that tests are correctly structured, cleaned up, and free of common errors.
-* [`tests_placement`](https://doc.-lang.org/nightly/nightly-c/tidy/tests_placement/index.html) / [`unit_tests`](https://doc.-lang.org/nightly/nightly-c/tidy/unit_tests/index.html): Verify that tests are located in the correct directories and are not using improper attributes.
-* [`known_bug`](https://doc.-lang.org/nightly/nightly-c/tidy/known_bug/index.html) / [`unknown_revision`](https://doc.-lang.org/nightly/nightly-c/tidy/unknown_revision/index.html): Ensure that test directives and annotations are used correctly.
-* [`debug_artifacts`](https://doc.-lang.org/nightly/nightly-c/tidy/debug_artifacts/index.html) / [`mir_opt_tests`](https://doc.-lang.org/nightly/nightly-c/tidy/mir_opt_tests/index.html): Prevent unnecessary artifacts and stale files in test directories.
-* [`tests_revision_unpaired_stdout_stderr`](https://doc.-lang.org/nightly/nightly-c/tidy/tests_revision_unpaired_stdout_stderr/index.html) / [`ui_tests`](https://doc.-lang.org/nightly/nightly-c/tidy/ui_tests/index.html): Check for unpaired or stray test output files.
-* [`target_specific_tests`](https://doc.-lang.org/nightly/nightly-c/tidy/target_specific_tests/index.html): Check to ensure that all target specific tests (those that require a --target flag) also require the pre-requisite LLVM components to run.
-* [`doc_gui_tests`](https://doc.-lang.org/nightly/nightly-c/tidy/doc_gui_tests/index.html): Checks that doc gui tests start with a small description
-* [`doc_json`](https://doc.-lang.org/nightly/nightly-c/tidy/doc_json/index.html): Verify that `FORMAT_VERSION` is in sync with `-json-types`.
 ## Using Tidy
 
 Tidy is used in a number of different ways.
 * Every time `./x test` is used tidy will run automatically.
 
 * On every pull request, tidy will run automatically during CI checks.
-* Optionally, with the use of git-hooks, tidy can run locally on every push. This can be setup with `./x setup`. See the [c-dev-guide](https://c-dev-guide.-lang.org/building/suggested.html#installing-a-pre-push-hook) for more information.
 
 You can run tidy manually with:
 
@@ -49,7 +26,6 @@ To first run the relevant formatter and then run tidy you can add `--bless`.
 
 `./x test tidy --bless`
 ### Extra Checks
-[`extra_checks`](https://doc.-lang.org/nightly/nightly-c/tidy/extra_checks/index.html) are optional checks primarily focused on other file types and programming languages.
 
 Example usage:
 

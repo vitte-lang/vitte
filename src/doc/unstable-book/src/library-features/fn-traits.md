@@ -11,7 +11,6 @@ See Also: [`unboxed_closures`](../language-features/unboxed-closures.md)
 The `fn_traits` feature allows for implementation of the [`Fn*`] traits
 for creating custom closure-like types.
 
-[`Fn*`]: ../../std/ops/trait.Fn.html
 
 ```
 #![feature(unboxed_closures)]

@@ -38,4 +38,3 @@ For alternative experimental match ergonomics, see the feature
 
 [Editions 2021 and earlier]: https://nadrieril.github.io/typing--patterns/?compare=false&opts1=AQEBAQIBAQABAAAAAQEBAAEBAAABAAA%3D&mode=rules&do_cmp=false
 [Editions 2024 and later]: https://nadrieril.github.io/typing--patterns/?compare=false&opts1=AQEBAAABAQABAgIAAQEBAAEBAAABAAA%3D&mode=rules&do_cmp=false
-[The  Reference]: https://doc.-lang.org/reference/patterns.html#binding-modes

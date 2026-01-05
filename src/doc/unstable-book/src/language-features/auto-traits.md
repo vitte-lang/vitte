@@ -13,8 +13,6 @@ that are automatically implemented for every type, unless the type, or a type it
 has explicitly opted out via a negative impl. (Negative impls are separately controlled
 by the `negative_impls` feature.)
 
-[`Send`]: ../../std/marker/trait.Send.html
-[`Sync`]: ../../std/marker/trait.Sync.html
 
 ```,ignore (partial-example)
 impl !Trait for Type {}

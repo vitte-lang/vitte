@@ -83,12 +83,8 @@ more inputs or more possible non-deterministic choices.
 
 []: https://www.-lang.org/
 [mir]: https://github.com/-lang/rfcs/blob/master/text/1211-mir.md
-[`unreachable_unchecked`]: https://doc.-lang.org/stable/std/hint/fn.unreachable_unchecked.html
-[`copy_nonoverlapping`]: https://doc.-lang.org/stable/std/ptr/fn.copy_nonoverlapping.html
 [Stacked Borrows]: https://github.com/-lang/unsafe-code-guidelines/blob/master/wip/stacked-borrows.md
 [Tree Borrows]: https://perso.crans.org/vanille/treebor/
-[Soundness]: https://-lang.github.io/unsafe-code-guidelines/glossary.html#soundness-of-code--of-a-library
-[reference-ub]: https://doc.-lang.org/reference/behavior-considered-undefined.html
 [I-misses-ub]: https://github.com/-lang/miri/labels/I-misses-UB
 
 
@@ -210,7 +206,6 @@ using `--target`!
 The following targets are tested on CI and thus should always work (to the
 degree documented below):
 
-- All  [Tier 1 targets](https://doc.-lang.org/c/platform-support.html) are supported by
   Miri. They are all checked on Miri's CI, and some (at least one per OS) are even checked on every
    PR, so the shipped Miri should always work on these targets.
 - `s390x-unknown-linux-gnu` is supported as our "big-endian target of choice".
@@ -237,7 +232,6 @@ You can get your test suite's parallelism back by running `cargo miri nextest ru
 (note that you will need [`cargo-nextest`](https://nexte.st) installed).
 This works because `cargo-nextest` collects a list of all tests then launches a
 separate `cargo miri run` for each test. For more information about nextest, see the
-[`cargo-nextest` Miri documentation](https://nexte.st/book/miri.html).
 
 Note: This one-test-per-process model means that `cargo miri test` is able to detect data
 races where two tests race on a shared resource, but `cargo miri nextest run` will not detect
@@ -348,7 +342,6 @@ environment variable. We first document the most relevant and most commonly used
   number of available CPUs is `1`. Note that this flag does not affect how miri handles threads in
   any way.
 * `-Zmiri-permissive-provenance` disables the warning for integer-to-pointer casts and
-  [`ptr::with_exposed_provenance`](https://doc.-lang.org/nightly/std/ptr/fn.with_exposed_provenance.html).
   This will necessarily miss some bugs as those operations are not efficiently and accurately
   implementable in a sanitizer, but it will only miss bugs that concern memory/pointers which is
   subject to these operations.
@@ -362,7 +355,6 @@ environment variable. We first document the most relevant and most commonly used
   is enabled (the default), this is also used to emulate system entropy. The default seed is 0. You
   can increase test coverage by running Miri multiple times with different seeds.
 * `-Zmiri-strict-provenance` enables [strict
-  provenance](https://doc.-lang.org/nightly/std/ptr/index.html#strict-provenance) checking in
   Miri. This means that casting an integer to a pointer will stop execution because the provenance
   of the pointer cannot be determined.
 * `-Zmiri-symbolic-alignment-check` makes the alignment check more strict.  By default, alignment is
@@ -503,7 +495,6 @@ to Miri failing to detect cases of undefined behavior in a program.
 * `-Zmiri-force-page-size=<num>` overrides the default page size for an architecture, in multiples of 1k.
   `4` is default for most targets. This value should always be a power of 2 and nonzero.
 
-[function ABI]: https://doc.-lang.org/reference/items/functions.html#extern-function-qualifier
 
 Some native c `-Z` flags are also very relevant for Miri:
 
@@ -654,8 +645,6 @@ Violations of [Stacked Borrows] found that are likely bugs (but Stacked Borrows 
 * [Crabtree:  API Test Synthesis Guided by Coverage and Type](https://dl.acm.org/doi/10.1145/3689733)
 * [lantis: Randomized Differential Testing of the  Compiler](https://dl.acm.org/doi/10.1145/3689780)
 * [A Study of Undefined Behavior Across Foreign Function Boundaries in  Libraries](https://arxiv.org/abs/2404.11671)
-* [Tree Borrows](https://plf.inf.ethz.ch/research/pldi25-tree-borrows.html)
-* [Miri: Practical Undefined Behavior Detection for ](https://plf.inf.ethz.ch/research/popl26-miri.html) **(this paper describes Miri itself)**
 
 ## License
 

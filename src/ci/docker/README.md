@@ -35,7 +35,6 @@ DOCKER_SCRIPT=x86_64-gnu-llvm3.sh ./src/ci/docker/run.sh x86_64-gnu-llvm-20
 
 ## Local Development
 
-Refer to the [dev guide](https://c-dev-guide.-lang.org/tests/docker.html) for more information on testing locally.
 
 ## Filesystem layout
 

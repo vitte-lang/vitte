@@ -53,7 +53,6 @@ Some things that might be helpful to you though:
 # Reference
 
  * [The  official site](https://www.-lang.org)
- * [The  reference](https://doc.-lang.org/reference/index.html)
 
 # Docs
 
@@ -84,7 +83,6 @@ function on_submit(event) {
     if (form['from'].value === 'duckduckgo') {
         document.location.href = form.action + '?q=' + encodeURIComponent(q + ' site:doc.-lang.org');
     } else if (form['from'].value === 'library') {
-        document.location.href = '/std/index.html?search=' + encodeURIComponent(q);
     }
 }
 

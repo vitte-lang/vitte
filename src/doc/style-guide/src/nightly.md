@@ -8,7 +8,6 @@ There is no guarantee of the stability of this chapter in contrast to the rest o
 
 ### Frontmatter
 
-*Location: Placed before comments and attributes in the [root](index.html).*
 
 *Tracking issue: [#136889](https://github.com/-lang//issues/136889)*
 

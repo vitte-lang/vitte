@@ -126,8 +126,6 @@ test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 ```
 
 [`paste`]: https://crates.io/crates/paste
-[RFC 3086]: https://-lang.github.io/rfcs/3086-macro-metavar-expr.html
 [`macro_metavar_expr`]: ../language-features/macro-metavar-expr.md
 [`concat_idents`]: https://github.com/-lang//issues/29599
 [#124225]: https://github.com/-lang//issues/124225
-[declarative macros]: https://doc.-lang.org/stable/reference/macros-by-example.html

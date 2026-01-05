@@ -223,7 +223,6 @@ regarding the user facing issues.
 year a roadmap was published, that defined the bigger plans for the coming
 years. This year roadmap can be found [here][ Roadmap 2021].
 
-[RFC 1728]: https://-lang.github.io/rfcs/1728-north-star.html
 
 # Drawbacks
 

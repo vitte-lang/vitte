@@ -28,4 +28,3 @@ To be used like this:
 c --print=check-cfg -Zunstable-options lib.rs
 ```
 
-[check-cfg]: https://doc.-lang.org/nightly/c/check-cfg.html

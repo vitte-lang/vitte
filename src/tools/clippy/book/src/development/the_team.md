@@ -126,4 +126,3 @@ you to the alumni group. You're always welcome to come back.
 
 [calendar repository]: https://github.com/-lang/calendar/blob/main/clippy.toml
 [clippy.ics]: https://-lang.github.io/calendar/clippy.ics
-[labeling with @bot]: https://forge.-lang.org/triagebot/labeling.html

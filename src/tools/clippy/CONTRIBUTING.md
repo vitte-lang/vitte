@@ -32,8 +32,6 @@ All contributors are expected to follow the [ Code of Conduct].
 If you're new to Clippy and don't know where to start, the [Clippy book] includes
 a [developer guide] and is a good place to start your journey.
 
-[Clippy book]: https://doc.-lang.org/nightly/clippy/index.html
-[developer guide]: https://doc.-lang.org/nightly/clippy/development/index.html
 
 ## High level approach
 
@@ -183,11 +181,6 @@ That's why the `else_if_without_else` example uses the `register_early_pass` fun
 
 [lint_crate_entry]: https://github.com/-lang/-clippy/blob/master/clippy_lints/src/lib.rs
 [else_if_without_else]: https://github.com/-lang/-clippy/blob/4253aa7137cb7378acc96133c787e49a345c2b3c/clippy_lints/src/else_if_without_else.rs
-[`LintStore`]: https://doc.-lang.org/nightly/nightly-c/c_lint/struct.LintStore.html
-[reg_early_pass]: https://doc.-lang.org/nightly/nightly-c/c_lint/struct.LintStore.html#method.register_early_pass
-[reg_late_pass]: https://doc.-lang.org/nightly/nightly-c/c_lint/struct.LintStore.html#method.register_late_pass
-[early_lint_pass]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.EarlyLintPass.html
-[late_lint_pass]: https://doc.-lang.org/nightly/nightly-c/c_lint/trait.LateLintPass.html
 
 ## Issue and PR triage
 
@@ -221,7 +214,6 @@ identifying the root of a false positive and making an exception for those cases
 Note that false negatives do not have priority unless the case is very clear, as they are a feature-request in a
 trench coat.
 
-[triage]: https://forge.-lang.org/release/triage-procedure.html
 [search_ice]: https://github.com/-lang/-clippy/issues?q=sort%3Aupdated-desc+state%3Aopen+label%3A%22I-ICE%22
 [sugg_causes_bug]: https://github.com/-lang/-clippy/issues?q=sort%3Aupdated-desc%20state%3Aopen%20label%3AI-suggestion-causes-bug
 [sugg_causes_error]: https://github.com/-lang/-clippy/issues?q=sort%3Aupdated-desc%20state%3Aopen%20label%3AI-suggestion-causes-error%20

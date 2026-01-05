@@ -11,4 +11,3 @@ Features are comma-separated, for example `-Z allow-features=ffi_pure,f16`.
 If the flag is present, any feature listed will be allowed and any feature not listed will be disallowed.
 Any unrecognized feature is ignored.
 
-[`C_BOOTSTRAP`]: ../compiler-environment-variables/C_BOOTSTRAP.html
