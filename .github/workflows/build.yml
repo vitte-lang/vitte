@@ -33,33 +33,33 @@ jobs:
         uses: actions/checkout@v4
 
       # -----------------------------
-      # Rust toolchain (only if Rust is present)
-      # -----------------------------
-      - name: Setup Rust
+      # Vitte toolchain (Rust dependencies for bootstrap)
+      # ------------------------------------------------
+      - name: Setup Vitte build environment
         if: ${{ hashFiles('**/Cargo.toml') != '' }}
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      - name: Cache Cargo
+      - name: Cache dependencies
         if: ${{ hashFiles('**/Cargo.toml') != '' }}
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ${{ runner.os }}
 
-      - name: Rust format (rustfmt)
+      - name: Vitte format check
         if: ${{ hashFiles('**/Cargo.toml') != '' }}
         run: cargo fmt --all -- --check
 
-      - name: Rust lint (clippy)
+      - name: Vitte lint (clippy)
         if: ${{ hashFiles('**/Cargo.toml') != '' }}
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-      - name: Rust tests
+      - name: Vitte tests
         if: ${{ hashFiles('**/Cargo.toml') != '' }}
         run: cargo test --workspace --all-features
 
-      - name: Rust build (release)
+      - name: Vitte build (release)
         if: ${{ hashFiles('**/Cargo.toml') != '' }}
         run: cargo build --workspace --release
 

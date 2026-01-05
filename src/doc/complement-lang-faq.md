@@ -1,3 +1,3 @@
-% The Rust Language FAQ
+% The Vitte Language FAQ
 
-This content has moved to [the website](https://www.rust-lang.org/).
+This content has moved to [the website](https://vitte-lang.org/).
