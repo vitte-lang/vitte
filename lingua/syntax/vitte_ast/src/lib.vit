@@ -1,0 +1,225 @@
+# vitte_ast
+#
+# Entrée principale du crate / package `vitte_ast`.
+# Objectif:
+# - Exposer une façade stable pour les sous-modules AST (attr, expand, etc.)
+# - Centraliser les exports publics (types, helpers, tests smoke)
+#
+# Contrainte projet:
+# - Pas d’accolades, uniquement `.end` pour fermer les blocs.
+
+module vitte_ast
+
+# Sous-modules
+use vitte_ast.attr
+use vitte_ast.expand
+
+# ---------------------------------------------------------------------------
+# Ré-exports (façade)
+# ---------------------------------------------------------------------------
+
+# --- attr
+
+# Génériques utilitaires (façade)
+
+type Option[T] = vitte_ast.attr.Option[T]
+
+type Result[T, E] = vitte_ast.attr.Result[T, E]
+
+type Vec[T] = vitte_ast.attr.Vec[T]
+
+# Errors / parse
+
+type MetaParseError = vitte_ast.attr.MetaParseError
+
+# Constructors bas niveau (Span/TokenStream/Path)
+
+fn span_new(lo: int, hi: int) -> Span
+  ret vitte_ast.attr.span_new(lo, hi)
+.end
+
+fn span_empty() -> Span
+  ret vitte_ast.attr.span_empty()
+.end
+
+fn span_merge(a: Span, b: Span) -> Span
+  ret vitte_ast.attr.span_merge(a, b)
+.end
+
+fn ts_new(text: str, sp: Span) -> TokenStream
+  ret vitte_ast.attr.ts_new(text, sp)
+.end
+
+fn ts_empty() -> TokenStream
+  ret vitte_ast.attr.ts_empty()
+.end
+
+fn path_from_str(s: str, sp: Span) -> Path
+  ret vitte_ast.attr.path_from_str(s, sp)
+.end
+
+fn path_to_string(p: Path) -> str
+  ret vitte_ast.attr.path_to_string(p)
+.end
+
+# Constructors attribute
+
+fn attr_outer(path: Path, tokens: TokenStream, sp: Span) -> Attribute
+  ret vitte_ast.attr.attr_outer(path, tokens, sp)
+.end
+
+fn attr_inner(path: Path, tokens: TokenStream, sp: Span) -> Attribute
+  ret vitte_ast.attr.attr_inner(path, tokens, sp)
+.end
+
+type Span = vitte_ast.attr.Span
+
+type TokenStream = vitte_ast.attr.TokenStream
+
+type Path = vitte_ast.attr.Path
+
+type Lit = vitte_ast.attr.Lit
+
+type Diag = vitte_ast.attr.Diag
+
+type DiagLevel = vitte_ast.attr.DiagLevel
+
+type Attribute = vitte_ast.attr.Attribute
+
+type AttrStyle = vitte_ast.attr.AttrStyle
+
+type Meta = vitte_ast.attr.Meta
+
+type MetaList = vitte_ast.attr.MetaList
+
+type MetaNameValue = vitte_ast.attr.MetaNameValue
+
+type NestedMeta = vitte_ast.attr.NestedMeta
+
+type Delimiter = vitte_ast.attr.Delimiter
+
+# Helpers attr (façade)
+fn attrs_has(attrs: vitte_ast.attr.Vec[Attribute], name: str) -> bool
+  ret vitte_ast.attr.attrs_has(attrs, name)
+.end
+
+fn attrs_find_first(attrs: vitte_ast.attr.Vec[Attribute], name: str) -> vitte_ast.attr.Option[Attribute]
+  ret vitte_ast.attr.attrs_find_first(attrs, name)
+.end
+
+fn attrs_filter_by_name(attrs: vitte_ast.attr.Vec[Attribute], name: str) -> vitte_ast.attr.Vec[Attribute]
+  ret vitte_ast.attr.attrs_filter_by_name(attrs, name)
+.end
+
+fn attrs_get_flag(attrs: vitte_ast.attr.Vec[Attribute], name: str) -> bool
+  ret vitte_ast.attr.attrs_get_flag(attrs, name)
+.end
+
+fn attrs_get_string(attrs: vitte_ast.attr.Vec[Attribute], name: str) -> vitte_ast.attr.Option[str]
+  ret vitte_ast.attr.attrs_get_string(attrs, name)
+.end
+
+fn attrs_get_int(attrs: vitte_ast.attr.Vec[Attribute], name: str) -> vitte_ast.attr.Option[i64]
+  ret vitte_ast.attr.attrs_get_int(attrs, name)
+.end
+
+fn parse_attr_meta(attr: Attribute) -> vitte_ast.attr.Result[Meta, vitte_ast.attr.MetaParseError]
+  ret vitte_ast.attr.parse_attr_meta(attr)
+.end
+
+# Helpers de validation
+fn attrs_validate_known(attrs: Vec[Attribute], allowed: Vec[str]) -> Result[bool, Diag]
+  ret vitte_ast.attr.attrs_validate_known(attrs, allowed)
+.end
+
+# Helpers Lit
+fn lit_as_str(l: Lit) -> Option[str]
+  ret vitte_ast.attr.lit_as_str(l)
+.end
+
+fn lit_as_int(l: Lit) -> Option[i64]
+  ret vitte_ast.attr.lit_as_int(l)
+.end
+
+fn lit_as_bool(l: Lit) -> Option[bool]
+  ret vitte_ast.attr.lit_as_bool(l)
+.end
+
+# --- expand
+
+# Constructors config / context (façade)
+
+fn expand_config_default() -> ExpandConfig
+  ret vitte_ast.expand.expand_config_default()
+.end
+
+fn target_info_default() -> TargetInfo
+  ret vitte_ast.expand.target_info_default()
+.end
+
+fn expand_context_default() -> ExpandContext
+  ret vitte_ast.expand.expand_context_default()
+.end
+
+# Macro builtins (façade)
+fn expand_macro_call_builtin(call: MacroCall, cx: ExpandContext) -> Result[TokenStream, ExpandError]
+  ret vitte_ast.expand.expand_macro_call_builtin(call, cx)
+.end
+
+# cfg predicate parsing (façade)
+fn parse_cfg_pred_from_attr(a: Attribute) -> Result[CfgPred, ExpandError]
+  ret vitte_ast.expand.parse_cfg_pred_from_attr(a)
+.end
+
+# Split robuste (utile pour tools)
+fn split_top_level_commas_strict(s: str) -> [str]
+  ret vitte_ast.expand.split_top_level_commas_strict(s)
+.end
+
+type ExpandConfig = vitte_ast.expand.ExpandConfig
+
+type TargetInfo = vitte_ast.expand.TargetInfo
+
+type ExpandContext = vitte_ast.expand.ExpandContext
+
+type ExpandError = vitte_ast.expand.ExpandError
+
+# Raw (fallback)
+
+type RawModule = vitte_ast.expand.RawModule
+
+type RawNode = vitte_ast.expand.RawNode
+
+type RawWithAttrs = vitte_ast.expand.RawWithAttrs
+
+type MacroCall = vitte_ast.expand.MacroCall
+
+type MacroDelim = vitte_ast.expand.MacroDelim
+
+# cfg
+
+type CfgPred = vitte_ast.expand.CfgPred
+
+# Helpers expand (façade)
+fn expand_raw_module(m: RawModule, cx: ExpandContext) -> vitte_ast.attr.Result[RawModule, ExpandError]
+  ret vitte_ast.expand.expand_raw_module(m, cx)
+.end
+
+fn cfg_eval(pred: CfgPred, target: TargetInfo) -> bool
+  ret vitte_ast.expand.cfg_eval(pred, target)
+.end
+
+# ---------------------------------------------------------------------------
+# Smoke tests centralisés
+# ---------------------------------------------------------------------------
+
+fn vitte_ast_smoke()
+  # attr
+  vitte_ast.attr.test_attr_parse_smoke()
+
+  # expand
+  vitte_ast.expand.test_cfg_eval_smoke()
+  vitte_ast.expand.test_split_commas_smoke()
+.end
+
+.end

@@ -1,0 +1,1240 @@
+
+
+# vitte_ast::expand
+#
+# Objectif:
+# - Fournir une couche d’expansion (macros + attributs) au niveau AST/TokenStream.
+# - API stable pour le compilateur: pipeline d’expansion, cfg/cfg_attr, macros builtins,
+#   hooks pour proc-macros / plugins.
+#
+# Philosophie:
+# - Ce module ne dépend pas d’un lexer/parser complet: il utilise des TokenStream textuels
+#   et des parses heuristiques (suffisant pour les builtins + cfg).
+# - Si ton front-end expose déjà un AST riche (Expr/Item/etc), tu peux remplacer les
+#   structures "Raw" ci-dessous par tes nœuds et conserver l’API / logique.
+#
+# Contrat:
+# - Zéro accolades, blocs terminés par `.end`.
+
+module vitte_ast.expand
+
+# --- Import: réutilise les types du module attr (Span/TokenStream/Attribute/Meta/Vec/Option/Result/Diag/Lit).
+# Si ton projet n’a pas `use`, tu peux copier/coller les types nécessaires.
+use vitte_ast.attr
+
+# ============================================================================
+# Modèles “Raw” minimalistes (fallback si ton AST n’est pas encore branché)
+# ============================================================================
+
+# Un MacroCall "fn-like": path!(...) ou path![...] ou path!{...}
+
+type MacroDelim enum
+  Paren
+  Bracket
+  Brace
+.end
+
+type MacroCall struct
+  path: Path
+  bang_span: Span
+  delim: MacroDelim
+  args: TokenStream
+  span: Span
+.end
+
+# Nœud brut: soit des tokens, soit un macro call, soit un bloc annoté d’attributs.
+
+type RawNode enum
+  Tokens(ts: TokenStream)
+  Macro(call: MacroCall)
+  WithAttrs(node: RawWithAttrs)
+.end
+
+type RawWithAttrs struct
+  attrs: Vec[Attribute]
+  inner: RawNode
+  span: Span
+.end
+
+# Un module brut (suite de nœuds). Remplaçable par ton `ModuleAst` réel.
+
+type RawModule struct
+  nodes: Vec[RawNode]
+  span: Span
+.end
+
+# ============================================================================
+# Configuration / contexte d’expansion
+# ============================================================================
+
+type ExpandConfig struct
+  max_depth: int
+  allow_io: bool
+  emit_trace: bool
+.end
+
+fn expand_config_default() -> ExpandConfig
+  let c: ExpandConfig
+  c.max_depth = 64
+  c.allow_io = true
+  c.emit_trace = false
+  ret c
+.end
+
+# Infos de target (cfg)
+
+type TargetInfo struct
+  os: str          # ex: "linux", "macos", "windows"
+  arch: str        # ex: "x86_64", "aarch64"
+  family: str      # ex: "unix", "windows"
+  env: str         # ex: "gnu", "msvc"
+  endian: str      # ex: "little", "big"
+  features: Vec[str]
+.end
+
+fn target_info_default() -> TargetInfo
+  let t: TargetInfo
+  t.os = ""
+  t.arch = ""
+  t.family = ""
+  t.env = ""
+  t.endian = ""
+  t.features = vec_new[str]()
+  ret t
+.end
+
+# Contexte: diagnos, target, environnement, fs.
+# NB: les fonctions std_* sont des stubs (voir fin).
+
+type ExpandContext struct
+  config: ExpandConfig
+  target: TargetInfo
+  cwd: str
+.end
+
+fn expand_context_default() -> ExpandContext
+  let cx: ExpandContext
+  cx.config = expand_config_default()
+  cx.target = target_info_default()
+  cx.cwd = ""
+  ret cx
+.end
+
+# ============================================================================
+# Erreurs / résultats
+# ============================================================================
+
+type ExpandError struct
+  diag: Diag
+.end
+
+fn expand_err(msg: str, sp: Span) -> ExpandError
+  let e: ExpandError
+  e.diag = diag_error(msg, sp)
+  ret e
+.end
+
+# ============================================================================
+# Pipeline public
+# ============================================================================
+
+# Expansion complète d’un RawModule:
+# - applique cfg/cfg_attr
+# - expand macros builtins
+# - (hook) proc-macros
+
+fn expand_raw_module(mut m: RawModule, cx: ExpandContext) -> Result[RawModule, ExpandError]
+  let depth = 0
+  let r1 = expand_raw_module_step(m, cx, depth)
+  ret r1
+.end
+
+fn expand_raw_module_step(mut m: RawModule, cx: ExpandContext, depth: int) -> Result[RawModule, ExpandError]
+  if depth > cx.config.max_depth
+    ret Result::Err(expand_err("macro expansion exceeded max_depth", m.span))
+  .end
+
+  # 1) cfg_attr rewriter (peut produire de nouveaux attrs)
+  let r_cfg_attr = rewrite_cfg_attr_module(m, cx)
+  match r_cfg_attr
+    Result::Ok(mm) => m = mm
+    Result::Err(e) => ret Result::Err(e)
+  .end
+
+  # 2) strip cfg (supprime nodes inactifs)
+  let r_strip = strip_cfg_module(m, cx)
+  match r_strip
+    Result::Ok(mm2) => m = mm2
+    Result::Err(e2) => ret Result::Err(e2)
+  .end
+
+  # 3) expand nodes (macros + nested)
+  let out = vec_new[RawNode]()
+  let n = vec_len[RawNode](m.nodes)
+  let i = 0
+  while i < n
+    match vec_get[RawNode](m.nodes, i)
+      Option::Some(node) =>
+        let rr = expand_raw_node(node, cx, depth)
+        match rr
+          Result::Ok(nodes2) =>
+            # nodes2 est une liste (un macro peut produire plusieurs nodes)
+            let k = vec_len[RawNode](nodes2)
+            let j = 0
+            while j < k
+              match vec_get[RawNode](nodes2, j)
+                Option::Some(nn) => vec_push[RawNode](out, nn)
+                Option::None => out = out
+              .end
+              j = j + 1
+            .end
+          Result::Err(e3) => ret Result::Err(e3)
+        .end
+      Option::None =>
+        out = out
+    .end
+    i = i + 1
+  .end
+
+  m.nodes = out
+  ret Result::Ok(m)
+.end
+
+fn expand_raw_node(node: RawNode, cx: ExpandContext, depth: int) -> Result[Vec[RawNode], ExpandError]
+  match node
+    RawNode::Tokens(ts) =>
+      let out = vec_new[RawNode]()
+      vec_push[RawNode](out, RawNode::Tokens(ts))
+      ret Result::Ok(out)
+
+    RawNode::Macro(call) =>
+      # builtins (fn-like)
+      let ts_res = expand_macro_call_builtin(call, cx)
+      match ts_res
+        Result::Ok(ts2) =>
+          # Heuristique: macro produit des tokens => nœud Tokens
+          let out = vec_new[RawNode]()
+          vec_push[RawNode](out, RawNode::Tokens(ts2))
+          ret Result::Ok(out)
+        Result::Err(e) => ret Result::Err(e)
+      .end
+
+    RawNode::WithAttrs(wa) =>
+      # 1) rewrite cfg_attr + strip cfg sur la liste d’attributs locale
+      let a1 = rewrite_cfg_attr_attrs(wa.attrs, cx, wa.span)
+      match a1
+        Result::Ok(attrs2) =>
+          let a2 = strip_cfg_attrs(attrs2, cx, wa.span)
+          match a2
+            Result::Ok(attrs3) =>
+              wa.attrs = attrs3
+              # 2) expand inner
+              let inner_res = expand_raw_node(wa.inner, cx, depth)
+              match inner_res
+                Result::Ok(nodes2) =>
+                  # 3) réattache attrs à chaque node produit (optionnel)
+                  let out = vec_new[RawNode]()
+                  let k = vec_len[RawNode](nodes2)
+                  let j = 0
+                  while j < k
+                    match vec_get[RawNode](nodes2, j)
+                      Option::Some(nn) =>
+                        let ww: RawWithAttrs
+                        ww.attrs = wa.attrs
+                        ww.inner = nn
+                        ww.span = wa.span
+                        vec_push[RawNode](out, RawNode::WithAttrs(ww))
+                      Option::None => out = out
+                    .end
+                    j = j + 1
+                  .end
+                  ret Result::Ok(out)
+                Result::Err(e2) => ret Result::Err(e2)
+              .end
+            Result::Err(e1b) => ret Result::Err(e1b)
+          .end
+        Result::Err(e1) => ret Result::Err(e1)
+      .end
+  .end
+.end
+
+# ============================================================================
+# cfg / cfg_attr
+# ============================================================================
+
+# cfg predicate: support minimal inspiré de Rust
+# - ident (unix/windows)
+# - key = "value" (target_os = "linux")
+# - any(...) / all(...) / not(...)
+
+type CfgPred enum
+  Ident(name: str)
+  KeyValue(key: str, value: str)
+  Any(items: Vec[CfgPred])
+  All(items: Vec[CfgPred])
+  Not(item: CfgPred)
+.end
+
+fn cfg_eval(pred: CfgPred, target: TargetInfo) -> bool
+  match pred
+    CfgPred::Ident(name) => ret cfg_eval_ident(name, target)
+    CfgPred::KeyValue(k, v) => ret cfg_eval_kv(k, v, target)
+    CfgPred::Any(items) =>
+      let n = vec_len[CfgPred](items)
+      let i = 0
+      while i < n
+        match vec_get[CfgPred](items, i)
+          Option::Some(p) =>
+            if cfg_eval(p, target)
+              ret true
+            .end
+          Option::None => i = i
+        .end
+        i = i + 1
+      .end
+      ret false
+    CfgPred::All(items) =>
+      let n = vec_len[CfgPred](items)
+      let i = 0
+      while i < n
+        match vec_get[CfgPred](items, i)
+          Option::Some(p) =>
+            if not cfg_eval(p, target)
+              ret false
+            .end
+          Option::None => i = i
+        .end
+        i = i + 1
+      .end
+      ret true
+    CfgPred::Not(p) => ret not cfg_eval(p, target)
+  .end
+.end
+
+fn cfg_eval_ident(name: str, target: TargetInfo) -> bool
+  if name == "unix"
+    ret target.family == "unix"
+  .end
+  if name == "windows"
+    ret target.family == "windows"
+  .end
+  if name == "test"
+    # convention: feature "test"
+    ret vec_contains_str(target.features, "test")
+  .end
+
+  # feature = name (shorthand)
+  if vec_contains_str(target.features, name)
+    ret true
+  .end
+
+  ret false
+.end
+
+fn cfg_eval_kv(k: str, v: str, target: TargetInfo) -> bool
+  if k == "target_os"
+    ret target.os == v
+  .end
+  if k == "target_arch"
+    ret target.arch == v
+  .end
+  if k == "target_family"
+    ret target.family == v
+  .end
+  if k == "target_env"
+    ret target.env == v
+  .end
+  if k == "target_endian"
+    ret target.endian == v
+  .end
+  if k == "feature"
+    ret vec_contains_str(target.features, v)
+  .end
+  ret false
+.end
+
+# -----------------------------
+# Parse cfg(...) à partir d’un Attribute
+# -----------------------------
+
+fn attr_is_name(a: Attribute, name: str) -> bool
+  ret path_is_ident(a.path, name)
+.end
+
+fn parse_cfg_pred_from_attr(a: Attribute) -> Result[CfgPred, ExpandError]
+  let mres = parse_attr_meta(a)
+  match mres
+    Result::Ok(m) =>
+      match m
+        Meta::List(ml) =>
+          # cfg(...) => liste de predicates, par défaut All([...]) si plusieurs
+          let pr = parse_cfg_pred_list(ml.nested, a.span)
+          ret pr
+        Meta::Path(_) =>
+          # #[cfg] n’a pas de sens
+          ret Result::Err(expand_err("cfg attribute requires arguments", a.span))
+        Meta::NameValue(_) =>
+          ret Result::Err(expand_err("cfg attribute cannot be name-value", a.span))
+      .end
+    Result::Err(e) =>
+      ret Result::Err(expand_err("failed to parse cfg meta: " + e.message, a.span))
+  .end
+.end
+
+fn parse_cfg_pred_list(nested: Vec[NestedMeta], sp: Span) -> Result[CfgPred, ExpandError]
+  let preds = vec_new[CfgPred]()
+  let n = vec_len[NestedMeta](nested)
+  let i = 0
+  while i < n
+    match vec_get[NestedMeta](nested, i)
+      Option::Some(nm) =>
+        let pr = parse_cfg_pred_from_nested(nm, sp)
+        match pr
+          Result::Ok(p) => vec_push[CfgPred](preds, p)
+          Result::Err(e) => ret Result::Err(e)
+        .end
+      Option::None => preds = preds
+    .end
+    i = i + 1
+  .end
+
+  if vec_len[CfgPred](preds) == 0
+    ret Result::Err(expand_err("empty cfg predicate", sp))
+  .end
+  if vec_len[CfgPred](preds) == 1
+    match vec_get[CfgPred](preds, 0)
+      Option::Some(p0) => ret Result::Ok(p0)
+      Option::None => ret Result::Err(expand_err("internal cfg parse error", sp))
+    .end
+  .end
+
+  ret Result::Ok(CfgPred::All(preds))
+.end
+
+fn parse_cfg_pred_from_nested(nm: NestedMeta, sp: Span) -> Result[CfgPred, ExpandError]
+  match nm
+    NestedMeta::Lit(l) =>
+      # cfg("unix") non supporté: forcer ident
+      match lit_as_str(l)
+        Option::Some(s) => ret Result::Ok(CfgPred::Ident(s))
+        Option::None => ret Result::Err(expand_err("cfg predicate literal must be string", sp))
+      .end
+
+    NestedMeta::Meta(m) =>
+      match m
+        Meta::Path(p) =>
+          let name = path_to_string(p)
+          ret Result::Ok(CfgPred::Ident(name))
+
+        Meta::NameValue(nv) =>
+          let k = path_to_string(nv.path)
+          match lit_as_str(nv.lit)
+            Option::Some(sv) => ret Result::Ok(CfgPred::KeyValue(k, sv))
+            Option::None => ret Result::Err(expand_err("cfg key-value expects string literal", sp))
+          .end
+
+        Meta::List(ml) =>
+          let head = path_to_string(ml.path)
+          if head == "any"
+            let pr = parse_cfg_pred_list(ml.nested, sp)
+            match pr
+              Result::Ok(p) =>
+                # si parse_cfg_pred_list a retourné All([...]) à cause de plusieurs,
+                # on doit l’emballer dans Any([...]) au lieu de Any([All])
+                match p
+                  CfgPred::All(items) => ret Result::Ok(CfgPred::Any(items))
+                  _ =>
+                    let items = vec_new[CfgPred]()
+                    vec_push[CfgPred](items, p)
+                    ret Result::Ok(CfgPred::Any(items))
+                .end
+              Result::Err(e) => ret Result::Err(e)
+            .end
+          .end
+          if head == "all"
+            let pr = parse_cfg_pred_list(ml.nested, sp)
+            match pr
+              Result::Ok(p) =>
+                match p
+                  CfgPred::All(items) => ret Result::Ok(CfgPred::All(items))
+                  _ =>
+                    let items = vec_new[CfgPred]()
+                    vec_push[CfgPred](items, p)
+                    ret Result::Ok(CfgPred::All(items))
+                .end
+              Result::Err(e) => ret Result::Err(e)
+            .end
+          .end
+          if head == "not"
+            if vec_len[NestedMeta](ml.nested) != 1
+              ret Result::Err(expand_err("not(...) expects one argument", sp))
+            .end
+            match vec_get[NestedMeta](ml.nested, 0)
+              Option::Some(one) =>
+                let inner = parse_cfg_pred_from_nested(one, sp)
+                match inner
+                  Result::Ok(p) => ret Result::Ok(CfgPred::Not(p))
+                  Result::Err(e) => ret Result::Err(e)
+                .end
+              Option::None => ret Result::Err(expand_err("internal cfg parse error", sp))
+            .end
+          .end
+
+          ret Result::Err(expand_err("unsupported cfg list predicate: " + head, sp))
+      .end
+  .end
+.end
+
+# -----------------------------
+# cfg_attr: #[cfg_attr(pred, attr1, attr2, ...)]
+# - si pred true => remplace par attr1, attr2, ...
+# - sinon => supprime l’attribut
+# -----------------------------
+
+fn rewrite_cfg_attr_attrs(attrs: Vec[Attribute], cx: ExpandContext, sp: Span) -> Result[Vec[Attribute], ExpandError]
+  let out = vec_new[Attribute]()
+  let n = vec_len[Attribute](attrs)
+  let i = 0
+  while i < n
+    match vec_get[Attribute](attrs, i)
+      Option::Some(a) =>
+        if attr_is_name(a, "cfg_attr")
+          let repl = expand_one_cfg_attr(a, cx)
+          match repl
+            Result::Ok(attrs2) =>
+              let k = vec_len[Attribute](attrs2)
+              let j = 0
+              while j < k
+                match vec_get[Attribute](attrs2, j)
+                  Option::Some(ax) => vec_push[Attribute](out, ax)
+                  Option::None => out = out
+                .end
+                j = j + 1
+              .end
+            Result::Err(e) => ret Result::Err(e)
+          .end
+        else
+          vec_push[Attribute](out, a)
+        .end
+      Option::None => out = out
+    .end
+    i = i + 1
+  .end
+
+  ret Result::Ok(out)
+.end
+
+fn expand_one_cfg_attr(a: Attribute, cx: ExpandContext) -> Result[Vec[Attribute], ExpandError]
+  let mres = parse_attr_meta(a)
+  match mres
+    Result::Ok(m) =>
+      match m
+        Meta::List(ml) =>
+          if vec_len[NestedMeta](ml.nested) < 2
+            ret Result::Err(expand_err("cfg_attr(pred, attrs...) expects at least 2 args", a.span))
+          .end
+
+          # arg0 = predicate, rest = attributes (meta path/list/namevalue)
+          match vec_get[NestedMeta](ml.nested, 0)
+            Option::Some(arg0) =>
+              let pred_res = parse_cfg_pred_from_nested(arg0, a.span)
+              match pred_res
+                Result::Ok(pred) =>
+                  let enabled = cfg_eval(pred, cx.target)
+                  if not enabled
+                    ret Result::Ok(vec_new[Attribute]())
+                  .end
+
+                  # parse remaining as Attribute list
+                  let out = vec_new[Attribute]()
+                  let i = 1
+                  let n = vec_len[NestedMeta](ml.nested)
+                  while i < n
+                    match vec_get[NestedMeta](ml.nested, i)
+                      Option::Some(nm) =>
+                        let aa = nested_to_attribute(nm, a.span)
+                        match aa
+                          Result::Ok(at) => vec_push[Attribute](out, at)
+                          Result::Err(e) => ret Result::Err(e)
+                        .end
+                      Option::None => out = out
+                    .end
+                    i = i + 1
+                  .end
+
+                  ret Result::Ok(out)
+                Result::Err(e) => ret Result::Err(e)
+              .end
+            Option::None => ret Result::Err(expand_err("internal cfg_attr parse error", a.span))
+          .end
+
+        _ => ret Result::Err(expand_err("cfg_attr must be list-form", a.span))
+      .end
+    Result::Err(e) => ret Result::Err(expand_err("failed to parse cfg_attr meta: " + e.message, a.span))
+  .end
+.end
+
+fn nested_to_attribute(nm: NestedMeta, sp: Span) -> Result[Attribute, ExpandError]
+  match nm
+    NestedMeta::Lit(_) => ret Result::Err(expand_err("cfg_attr attrs must be meta items (not literals)", sp))
+    NestedMeta::Meta(m) =>
+      # On encode en Attribute { path, tokens } :
+      # - Path => #[path]
+      # - List => #[path(tokens)]
+      # - NameValue => #[path = lit]
+      match m
+        Meta::Path(p) =>
+          let ts = ts_empty()
+          ret Result::Ok(attr_outer(p, ts, sp))
+        Meta::List(ml) =>
+          # Reconstitue tokens avec délimiteurs
+          let tokens = meta_list_to_tokens(ml)
+          ret Result::Ok(attr_outer(ml.path, tokens, sp))
+        Meta::NameValue(nv) =>
+          let tokens = meta_nv_to_tokens(nv)
+          ret Result::Ok(attr_outer(nv.path, tokens, sp))
+      .end
+  .end
+.end
+
+fn meta_list_to_tokens(ml: MetaList) -> TokenStream
+  # Heuristique: réutilise ml.tokens si présent, sinon reconstruit depuis nested.
+  if not ts_is_empty(ml.tokens)
+    # NOTE: ml.tokens n’inclut pas forcément les parens; on laisse tel quel.
+    ret ml.tokens
+  .end
+
+  let s = nested_list_to_text(ml.nested)
+  ret ts_new("(" + s + ")", ml.span)
+.end
+
+fn meta_nv_to_tokens(nv: MetaNameValue) -> TokenStream
+  let lit = lit_to_text(nv.lit)
+  ret ts_new("= " + lit, nv.span)
+.end
+
+fn nested_list_to_text(items: Vec[NestedMeta]) -> str
+  let out = ""
+  let n = vec_len[NestedMeta](items)
+  let i = 0
+  while i < n
+    match vec_get[NestedMeta](items, i)
+      Option::Some(nm) =>
+        if i != 0
+          out = out + ", "
+        .end
+        out = out + nested_to_text(nm)
+      Option::None => out = out
+    .end
+    i = i + 1
+  .end
+  ret out
+.end
+
+fn nested_to_text(nm: NestedMeta) -> str
+  match nm
+    NestedMeta::Lit(l) => ret lit_to_text(l)
+    NestedMeta::Meta(m) => ret meta_to_text(m)
+  .end
+.end
+
+fn meta_to_text(m: Meta) -> str
+  match m
+    Meta::Path(p) => ret path_to_string(p)
+    Meta::NameValue(nv) =>
+      let k = path_to_string(nv.path)
+      let v = lit_to_text(nv.lit)
+      ret k + " = " + v
+    Meta::List(ml) =>
+      let head = path_to_string(ml.path)
+      let inner = nested_list_to_text(ml.nested)
+      ret head + "(" + inner + ")"
+  .end
+.end
+
+fn lit_to_text(l: Lit) -> str
+  match l
+    Lit::Str(s) => ret "\"" + s + "\""
+    Lit::Int(v) => ret i64_to_str(v)
+    Lit::Bool(b) =>
+      if b
+        ret "true"
+      else
+        ret "false"
+      .end
+    Lit::Float(f) => ret f64_to_str(f)
+  .end
+.end
+
+# -----------------------------
+# strip cfg
+# - au niveau module: supprime RawWithAttrs / nodes si #[cfg(pred)] false
+# - au niveau attrs: retire l’attribut cfg (optionnel) et gère cfg_attr déjà appliqué.
+# -----------------------------
+
+fn strip_cfg_module(m: RawModule, cx: ExpandContext) -> Result[RawModule, ExpandError]
+  let out = vec_new[RawNode]()
+  let n = vec_len[RawNode](m.nodes)
+  let i = 0
+  while i < n
+    match vec_get[RawNode](m.nodes, i)
+      Option::Some(node) =>
+        let keep_res = node_is_cfg_enabled(node, cx)
+        match keep_res
+          Result::Ok(keep) =>
+            if keep
+              vec_push[RawNode](out, node)
+            .end
+          Result::Err(e) => ret Result::Err(e)
+        .end
+      Option::None => out = out
+    .end
+    i = i + 1
+  .end
+
+  let mm: RawModule
+  mm.nodes = out
+  mm.span = m.span
+  ret Result::Ok(mm)
+.end
+
+fn node_is_cfg_enabled(node: RawNode, cx: ExpandContext) -> Result[bool, ExpandError]
+  match node
+    RawNode::WithAttrs(wa) =>
+      # si un cfg est présent, il doit être true
+      let a = wa.attrs
+      let pred_res = find_cfg_pred_in_attrs(a)
+      match pred_res
+        Result::Ok(optp) =>
+          match optp
+            Option::Some(p) => ret Result::Ok(cfg_eval(p, cx.target))
+            Option::None => ret Result::Ok(true)
+          .end
+        Result::Err(e) => ret Result::Err(e)
+      .end
+    _ => ret Result::Ok(true)
+  .end
+.end
+
+fn find_cfg_pred_in_attrs(attrs: Vec[Attribute]) -> Result[Option[CfgPred], ExpandError]
+  let n = vec_len[Attribute](attrs)
+  let i = 0
+  while i < n
+    match vec_get[Attribute](attrs, i)
+      Option::Some(a) =>
+        if attr_is_name(a, "cfg")
+          let pr = parse_cfg_pred_from_attr(a)
+          match pr
+            Result::Ok(p) => ret Result::Ok(Option::Some(p))
+            Result::Err(e) => ret Result::Err(e)
+          .end
+        .end
+      Option::None => i = i
+    .end
+    i = i + 1
+  .end
+  ret Result::Ok(Option::None)
+.end
+
+fn strip_cfg_attrs(attrs: Vec[Attribute], cx: ExpandContext, sp: Span) -> Result[Vec[Attribute], ExpandError]
+  # retire l’attribut #[cfg(...)] lui-même (convention), garde le reste
+  let out = vec_new[Attribute]()
+  let n = vec_len[Attribute](attrs)
+  let i = 0
+  while i < n
+    match vec_get[Attribute](attrs, i)
+      Option::Some(a) =>
+        if attr_is_name(a, "cfg")
+          # drop
+          out = out
+        else
+          vec_push[Attribute](out, a)
+        .end
+      Option::None => out = out
+    .end
+    i = i + 1
+  .end
+  ret Result::Ok(out)
+.end
+
+fn rewrite_cfg_attr_module(m: RawModule, cx: ExpandContext) -> Result[RawModule, ExpandError]
+  let out = vec_new[RawNode]()
+  let n = vec_len[RawNode](m.nodes)
+  let i = 0
+  while i < n
+    match vec_get[RawNode](m.nodes, i)
+      Option::Some(node) =>
+        match node
+          RawNode::WithAttrs(wa) =>
+            let r = rewrite_cfg_attr_attrs(wa.attrs, cx, wa.span)
+            match r
+              Result::Ok(attrs2) =>
+                wa.attrs = attrs2
+                vec_push[RawNode](out, RawNode::WithAttrs(wa))
+              Result::Err(e) => ret Result::Err(e)
+            .end
+          _ => vec_push[RawNode](out, node)
+        .end
+      Option::None => out = out
+    .end
+    i = i + 1
+  .end
+
+  let mm: RawModule
+  mm.nodes = out
+  mm.span = m.span
+  ret Result::Ok(mm)
+.end
+
+# ============================================================================
+# Macros builtins (fn-like)
+# ============================================================================
+
+# Couverture (pragmatique):
+# - concat!(...)
+# - stringify!(...)
+# - env!("KEY") / option_env!("KEY")
+# - include_str!("path") / include_bytes!("path")
+# - cfg!(...)
+# - file!() / line!() / column!() / module_path!()
+
+fn expand_macro_call_builtin(call: MacroCall, cx: ExpandContext) -> Result[TokenStream, ExpandError]
+  let name = path_to_string(call.path)
+
+  if name == "concat"
+    ret expand_concat(call, cx)
+  .end
+  if name == "stringify"
+    ret expand_stringify(call, cx)
+  .end
+  if name == "env"
+    ret expand_env(call, cx, false)
+  .end
+  if name == "option_env"
+    ret expand_env(call, cx, true)
+  .end
+  if name == "include_str"
+    ret expand_include(call, cx, true)
+  .end
+  if name == "include_bytes"
+    ret expand_include(call, cx, false)
+  .end
+  if name == "cfg"
+    ret expand_cfg_macro(call, cx)
+  .end
+  if name == "file"
+    ret Result::Ok(ts_new("\"" + std_current_file() + "\"", call.span))
+  .end
+  if name == "line"
+    ret Result::Ok(ts_new(std_i64_to_str(std_current_line()), call.span))
+  .end
+  if name == "column"
+    ret Result::Ok(ts_new(std_i64_to_str(std_current_column()), call.span))
+  .end
+  if name == "module_path"
+    ret Result::Ok(ts_new("\"" + std_current_module_path() + "\"", call.span))
+  .end
+
+  ret Result::Err(expand_err("unknown builtin macro: " + name, call.span))
+.end
+
+fn expand_concat(call: MacroCall, cx: ExpandContext) -> Result[TokenStream, ExpandError]
+  let args = trim(call.args.text)
+  let parts = split_top_level_commas_strict(args)
+
+  let out = ""
+  let i = 0
+  while i < len(parts)
+    let p = trim(parts[i])
+    if p == ""
+      i = i + 1
+      continue
+    .end
+
+    # concat accepte literals string, int, bool, float
+    let lit_res = parse_lit_from_str(p, call.span)
+    match lit_res
+      Result::Ok(lit) => out = out + lit_to_concat_piece(lit)
+      Result::Err(_) =>
+        # fallback: stringify
+        out = out + p
+    .end
+
+    i = i + 1
+  .end
+
+  # retourne un literal string
+  ret Result::Ok(ts_new("\"" + out + "\"", call.span))
+.end
+
+fn lit_to_concat_piece(l: Lit) -> str
+  match l
+    Lit::Str(s) => ret s
+    Lit::Int(v) => ret i64_to_str(v)
+    Lit::Bool(b) =>
+      if b
+        ret "true"
+      else
+        ret "false"
+      .end
+    Lit::Float(f) => ret f64_to_str(f)
+  .end
+.end
+
+fn expand_stringify(call: MacroCall, cx: ExpandContext) -> Result[TokenStream, ExpandError]
+  # stringify!(tokens...) => "tokens..." (trim)
+  let s = trim(call.args.text)
+  ret Result::Ok(ts_new("\"" + s + "\"", call.span))
+.end
+
+fn expand_env(call: MacroCall, cx: ExpandContext, optional: bool) -> Result[TokenStream, ExpandError]
+  # env!("KEY")
+  let arg = trim(call.args.text)
+  let lit_res = parse_lit_from_str(arg, call.span)
+  match lit_res
+    Result::Ok(lit) =>
+      match lit_as_str(lit)
+        Option::Some(key) =>
+          let vopt = std_get_env(key)
+          match vopt
+            Option::Some(v) => ret Result::Ok(ts_new("\"" + v + "\"", call.span))
+            Option::None =>
+              if optional
+                # option_env => null / None ; ici: retourne "" et laisse au desugar de gérer
+                ret Result::Ok(ts_new("None", call.span))
+              .end
+              ret Result::Err(expand_err("env var not found: " + key, call.span))
+          .end
+        Option::None => ret Result::Err(expand_err("env! expects string literal", call.span))
+      .end
+    Result::Err(_) => ret Result::Err(expand_err("env! expects literal", call.span))
+  .end
+.end
+
+fn expand_include(call: MacroCall, cx: ExpandContext, as_str: bool) -> Result[TokenStream, ExpandError]
+  if not cx.config.allow_io
+    ret Result::Err(expand_err("include_* macros disabled by config", call.span))
+  .end
+
+  let arg = trim(call.args.text)
+  let lit_res = parse_lit_from_str(arg, call.span)
+  match lit_res
+    Result::Ok(lit) =>
+      match lit_as_str(lit)
+        Option::Some(rel) =>
+          let path = resolve_path(cx.cwd, rel)
+          if as_str
+            let r = std_read_file_utf8(path)
+            match r
+              Result::Ok(txt) => ret Result::Ok(ts_new("\"" + escape_string(txt) + "\"", call.span))
+              Result::Err(d) => ret Result::Err(ExpandError{ diag: d })
+            .end
+          else
+            let r2 = std_read_file_bytes(path)
+            match r2
+              Result::Ok(bytes) =>
+                # encode bytes as [..] textual (placeholder)
+                let s = bytes_to_array_literal(bytes)
+                ret Result::Ok(ts_new(s, call.span))
+              Result::Err(d2) => ret Result::Err(ExpandError{ diag: d2 })
+            .end
+          .end
+        Option::None => ret Result::Err(expand_err("include_* expects string literal", call.span))
+      .end
+    Result::Err(_) => ret Result::Err(expand_err("include_* expects literal", call.span))
+  .end
+.end
+
+fn expand_cfg_macro(call: MacroCall, cx: ExpandContext) -> Result[TokenStream, ExpandError]
+  # cfg!(...) => true/false
+  # On parse le contenu comme si c’était un cfg attribute list.
+  let fake_attr = attr_outer(path_from_str("cfg", call.span), ts_new("(" + call.args.text + ")", call.span), call.span)
+  let pr = parse_cfg_pred_from_attr(fake_attr)
+  match pr
+    Result::Ok(p) =>
+      if cfg_eval(p, cx.target)
+        ret Result::Ok(ts_new("true", call.span))
+      else
+        ret Result::Ok(ts_new("false", call.span))
+      .end
+    Result::Err(e) => ret Result::Err(e)
+  .end
+.end
+
+# ============================================================================
+# Utils texte: split top-level (robuste)
+# ============================================================================
+
+# split top-level par virgules, en trackant profondeur (),[],{} et strings "..".
+
+fn split_top_level_commas_strict(s: str) -> [str]
+  let parts = []
+  let cur = ""
+  let i = 0
+  let depth_paren = 0
+  let depth_brack = 0
+  let depth_brace = 0
+  let in_str = false
+  let esc = false
+
+  while i < len_str(s)
+    let ch = char_at_str(s, i)
+
+    if in_str
+      cur = cur + ch
+      if esc
+        esc = false
+      else
+        if ch == "\\"
+          esc = true
+        else
+          if ch == "\""
+            in_str = false
+          .end
+        .end
+      .end
+      i = i + 1
+      continue
+    .end
+
+    if ch == "\""
+      in_str = true
+      cur = cur + ch
+      i = i + 1
+      continue
+    .end
+
+    if ch == "("
+      depth_paren = depth_paren + 1
+      cur = cur + ch
+      i = i + 1
+      continue
+    .end
+    if ch == ")"
+      if depth_paren > 0
+        depth_paren = depth_paren - 1
+      .end
+      cur = cur + ch
+      i = i + 1
+      continue
+    .end
+
+    if ch == "["
+      depth_brack = depth_brack + 1
+      cur = cur + ch
+      i = i + 1
+      continue
+    .end
+    if ch == "]"
+      if depth_brack > 0
+        depth_brack = depth_brack - 1
+      .end
+      cur = cur + ch
+      i = i + 1
+      continue
+    .end
+
+    if ch == "{"
+      depth_brace = depth_brace + 1
+      cur = cur + ch
+      i = i + 1
+      continue
+    .end
+    if ch == "}"
+      if depth_brace > 0
+        depth_brace = depth_brace - 1
+      .end
+      cur = cur + ch
+      i = i + 1
+      continue
+    .end
+
+    if ch == "," and depth_paren == 0 and depth_brack == 0 and depth_brace == 0
+      parts = parts + [cur]
+      cur = ""
+      i = i + 1
+      continue
+    .end
+
+    cur = cur + ch
+    i = i + 1
+  .end
+
+  parts = parts + [cur]
+  ret parts
+.end
+
+# ============================================================================
+# Misc helpers
+# ============================================================================
+
+fn resolve_path(cwd: str, rel: str) -> str
+  if cwd == ""
+    ret rel
+  .end
+  if starts_with(rel, "/")
+    ret rel
+  .end
+  ret cwd + "/" + rel
+.end
+
+fn escape_string(s: str) -> str
+  # minimal: escape backslash and quote and newlines
+  let out = ""
+  let i = 0
+  while i < len_str(s)
+    let ch = char_at_str(s, i)
+    if ch == "\\"
+      out = out + "\\\\"
+    elif ch == "\""
+      out = out + "\\\""
+    elif ch == "\n"
+      out = out + "\\n"
+    elif ch == "\r"
+      out = out + "\\r"
+    elif ch == "\t"
+      out = out + "\\t"
+    else
+      out = out + ch
+    .end
+    i = i + 1
+  .end
+  ret out
+.end
+
+fn bytes_to_array_literal(bytes: [u8]) -> str
+  # format: [0, 1, 2]
+  let out = "["
+  let i = 0
+  while i < len_bytes(bytes)
+    if i != 0
+      out = out + ", "
+    .end
+    out = out + u8_to_str(bytes[i])
+    i = i + 1
+  .end
+  out = out + "]"
+  ret out
+.end
+
+# ============================================================================
+# Conversions (stubs)
+# ============================================================================
+
+fn i64_to_str(v: i64) -> str
+  ret std_i64_to_str(v)
+.end
+
+fn f64_to_str(v: f64) -> str
+  ret std_f64_to_str(v)
+.end
+
+# ============================================================================
+# String primitives (stubs)
+# ============================================================================
+
+fn len_str(s: str) -> int
+  ret std_len_str(s)
+.end
+
+fn char_at_str(s: str, i: int) -> str
+  ret std_char_at_str(s, i)
+.end
+
+fn trim(s: str) -> str
+  ret std_trim(s)
+.end
+
+fn starts_with(s: str, prefix: str) -> bool
+  ret std_starts_with(s, prefix)
+.end
+
+# ============================================================================
+# Vec helpers
+# ============================================================================
+
+fn vec_contains_str(v: Vec[str], needle: str) -> bool
+  let n = vec_len[str](v)
+  let i = 0
+  while i < n
+    match vec_get[str](v, i)
+      Option::Some(s) =>
+        if s == needle
+          ret true
+        .end
+      Option::None => ret false
+    .end
+    i = i + 1
+  .end
+  ret false
+.end
+
+# ============================================================================
+# IO / env / location stubs
+# ============================================================================
+
+# Retourne Option[str]
+fn std_get_env(key: str) -> Option[str]
+  ret std_env_get(key)
+.end
+
+# read file as utf8
+fn std_read_file_utf8(path: str) -> Result[str, Diag]
+  # Résultat attendu: Ok(text) ou Err(Diag)
+  ret std_fs_read_to_string(path)
+.end
+
+# read file bytes
+fn std_read_file_bytes(path: str) -> Result[[u8], Diag]
+  ret std_fs_read_to_bytes(path)
+.end
+
+fn std_current_file() -> str
+  ret std_loc_file()
+.end
+
+fn std_current_line() -> i64
+  ret std_loc_line()
+.end
+
+fn std_current_column() -> i64
+  ret std_loc_column()
+.end
+
+fn std_current_module_path() -> str
+  ret std_loc_module_path()
+.end
+
+# ============================================================================
+# Self-tests (smoke)
+# ============================================================================
+
+fn _assert(cond: bool, msg: str)
+  if not cond
+    panic(msg)
+  .end
+.end
+
+fn test_cfg_eval_smoke()
+  let t = target_info_default()
+  t.family = "unix"
+  t.os = "linux"
+  vec_push[str](t.features, "test")
+
+  let p1 = CfgPred::Ident("unix")
+  _assert(cfg_eval(p1, t), "unix should be true")
+
+  let items = vec_new[CfgPred]()
+  vec_push[CfgPred](items, CfgPred::KeyValue("target_os", "linux"))
+  vec_push[CfgPred](items, CfgPred::Ident("test"))
+  let p2 = CfgPred::All(items)
+  _assert(cfg_eval(p2, t), "all(...) should be true")
+.end
+
+fn test_split_commas_smoke()
+  let s = "a, b(1,2), \"x,y\", c{d,e}, f[g,h]"
+  let parts = split_top_level_commas_strict(s)
+  _assert(len(parts) == 5, "split_top_level_commas_strict count")
+.end
+
+.end

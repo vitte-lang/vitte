@@ -1,0 +1,975 @@
+
+
+# vitte_ast::attr
+#
+# Objectif: définir un modèle d’attributs (style Rust-like) portable dans l’AST.
+# - Représentation: #[path], #[path(...)] et #[path = lit]
+# - API: helpers de lookup / validation / extraction
+#
+# Note: ce fichier est volontairement auto-suffisant (types utilitaires Option/Result/Vec,
+# Span/Path/TokenStream/Lit/Diag). Si le projet possède déjà ces types dans d’autres modules,
+# ce fichier peut être trivially adapté (remplacer les types locaux par `use ...`).
+
+module vitte_ast.attr
+
+# -----------------------------
+# Types utilitaires minimaux
+# -----------------------------
+
+type Option[T] enum
+  None
+  Some(value: T)
+.end
+
+fn opt_none[T]() -> Option[T]
+  ret Option::None
+.end
+
+fn opt_some[T](value: T) -> Option[T]
+  ret Option::Some(value)
+.end
+
+fn opt_is_some[T](o: Option[T]) -> bool
+  match o
+    Option::Some(_) => ret true
+    Option::None => ret false
+  .end
+.end
+
+fn opt_unwrap_or[T](o: Option[T], fallback: T) -> T
+  match o
+    Option::Some(v) => ret v
+    Option::None => ret fallback
+  .end
+.end
+
+type Result[T, E] enum
+  Ok(value: T)
+  Err(error: E)
+.end
+
+fn ok[T, E](value: T) -> Result[T, E]
+  ret Result::Ok(value)
+.end
+
+fn err[T, E](error: E) -> Result[T, E]
+  ret Result::Err(error)
+.end
+
+# Vec ultra-minimal (backed by array)
+# - Les opérations sont volontairement petites; étendre si besoin.
+
+type Vec[T] struct
+  items: [T]
+.end
+
+fn vec_new[T]() -> Vec[T]
+  let v: Vec[T]
+  v.items = []
+  ret v
+.end
+
+fn vec_len[T](v: Vec[T]) -> int
+  ret len(v.items)
+.end
+
+fn vec_is_empty[T](v: Vec[T]) -> bool
+  ret len(v.items) == 0
+.end
+
+fn vec_push[T](mut v: Vec[T], value: T)
+  v.items = v.items + [value]
+.end
+
+fn vec_get[T](v: Vec[T], idx: int) -> Option[T]
+  if idx < 0
+    ret Option::None
+  .end
+  if idx >= len(v.items)
+    ret Option::None
+  .end
+  ret Option::Some(v.items[idx])
+.end
+
+# -----------------------------
+# Position / spans
+# -----------------------------
+
+type Span struct
+  lo: int
+  hi: int
+.end
+
+fn span_new(lo: int, hi: int) -> Span
+  let s: Span
+  s.lo = lo
+  s.hi = hi
+  ret s
+.end
+
+fn span_empty() -> Span
+  ret span_new(0, 0)
+.end
+
+fn span_merge(a: Span, b: Span) -> Span
+  let lo = a.lo
+  if b.lo < lo
+    lo = b.lo
+  .end
+  let hi = a.hi
+  if b.hi > hi
+    hi = b.hi
+  .end
+  ret span_new(lo, hi)
+.end
+
+# -----------------------------
+# Diagnostics
+# -----------------------------
+
+type DiagLevel enum
+  Note
+  Warning
+  Error
+.end
+
+type Diag struct
+  level: DiagLevel
+  message: str
+  span: Span
+.end
+
+fn diag_error(message: str, span: Span) -> Diag
+  let d: Diag
+  d.level = DiagLevel::Error
+  d.message = message
+  d.span = span
+  ret d
+.end
+
+fn diag_warning(message: str, span: Span) -> Diag
+  let d: Diag
+  d.level = DiagLevel::Warning
+  d.message = message
+  d.span = span
+  ret d
+.end
+
+# -----------------------------
+# Tokens / path / literals
+# -----------------------------
+
+# TokenStream minimal: représente la portion source de l’attribut.
+# Dans une vraie implémentation, c’est un flux de tokens lexés; ici on garde du texte.
+
+type TokenStream struct
+  text: str
+  span: Span
+.end
+
+fn ts_new(text: str, span: Span) -> TokenStream
+  let t: TokenStream
+  t.text = text
+  t.span = span
+  ret t
+.end
+
+fn ts_empty() -> TokenStream
+  ret ts_new("", span_empty())
+.end
+
+fn ts_is_empty(ts: TokenStream) -> bool
+  ret ts.text == ""
+.end
+
+fn ts_trim(ts: TokenStream) -> TokenStream
+  # NOTE: trim() supposé exister; sinon remplacer.
+  let s = trim(ts.text)
+  ret ts_new(s, ts.span)
+.end
+
+fn ts_starts_with(ts: TokenStream, prefix: str) -> bool
+  ret starts_with(ts.text, prefix)
+.end
+
+fn ts_contains(ts: TokenStream, needle: str) -> bool
+  ret contains(ts.text, needle)
+.end
+
+fn ts_strip_prefix(ts: TokenStream, prefix: str) -> TokenStream
+  if starts_with(ts.text, prefix)
+    let s = slice(ts.text, len(prefix), len(ts.text))
+    ret ts_new(s, ts.span)
+  .end
+  ret ts_new(ts.text, ts.span)
+.end
+
+fn ts_strip_suffix(ts: TokenStream, suffix: str) -> TokenStream
+  if ends_with(ts.text, suffix)
+    let s = slice(ts.text, 0, len(ts.text) - len(suffix))
+    ret ts_new(s, ts.span)
+  .end
+  ret ts_new(ts.text, ts.span)
+.end
+
+# Path minimal: segments séparés par '::'
+
+type Path struct
+  segments: Vec[str]
+  span: Span
+.end
+
+fn path_new_single(ident: str, span: Span) -> Path
+  let p: Path
+  p.segments = vec_new[str]()
+  vec_push[str](p.segments, ident)
+  p.span = span
+  ret p
+.end
+
+fn path_from_str(s: str, span: Span) -> Path
+  let p: Path
+  p.segments = vec_new[str]()
+  p.span = span
+
+  # split("::") supposé exister.
+  let parts = split(s, "::")
+  for part in parts
+    let seg = trim(part)
+    if seg != ""
+      vec_push[str](p.segments, seg)
+    .end
+  .end
+
+  ret p
+.end
+
+fn path_is_ident(p: Path, ident: str) -> bool
+  if vec_len[str](p.segments) != 1
+    ret false
+  .end
+  match vec_get[str](p.segments, 0)
+    Option::Some(s) => ret s == ident
+    Option::None => ret false
+  .end
+.end
+
+fn path_to_string(p: Path) -> str
+  let out = ""
+  let n = vec_len[str](p.segments)
+  let i = 0
+  while i < n
+    match vec_get[str](p.segments, i)
+      Option::Some(seg) =>
+        if i == 0
+          out = seg
+        else
+          out = out + "::" + seg
+        .end
+      Option::None =>
+        # impossible
+        out = out
+      .end
+    .end
+    i = i + 1
+  .end
+  ret out
+.end
+
+# Literals
+
+type Lit enum
+  Str(value: str)
+  Int(value: i64)
+  Bool(value: bool)
+  Float(value: f64)
+.end
+
+fn lit_as_str(l: Lit) -> Option[str]
+  match l
+    Lit::Str(s) => ret Option::Some(s)
+    _ => ret Option::None
+  .end
+.end
+
+fn lit_as_int(l: Lit) -> Option[i64]
+  match l
+    Lit::Int(v) => ret Option::Some(v)
+    _ => ret Option::None
+  .end
+.end
+
+fn lit_as_bool(l: Lit) -> Option[bool]
+  match l
+    Lit::Bool(v) => ret Option::Some(v)
+    _ => ret Option::None
+  .end
+.end
+
+# -----------------------------
+# AST: attributes et méta-items
+# -----------------------------
+
+type AttrStyle enum
+  Outer
+  Inner
+.end
+
+# Délimiteurs potentiels pour les listes
+
+type Delimiter enum
+  Paren
+  Bracket
+  Brace
+  None
+.end
+
+# #[path]
+# #[path(...)]
+# #[path = lit]
+
+type Attribute struct
+  style: AttrStyle
+  path: Path
+  tokens: TokenStream
+  span: Span
+.end
+
+# Représentation normalisée de l’attribut (meta)
+
+type Meta enum
+  Path(path: Path)
+  List(list: MetaList)
+  NameValue(nv: MetaNameValue)
+.end
+
+type MetaList struct
+  path: Path
+  delimiter: Delimiter
+  tokens: TokenStream
+  nested: Vec[NestedMeta]
+  span: Span
+.end
+
+type MetaNameValue struct
+  path: Path
+  lit: Lit
+  span: Span
+.end
+
+type NestedMeta enum
+  Meta(meta: Meta)
+  Lit(lit: Lit)
+.end
+
+# -----------------------------
+# Helpers: construction
+# -----------------------------
+
+fn attr_outer(path: Path, tokens: TokenStream, span: Span) -> Attribute
+  let a: Attribute
+  a.style = AttrStyle::Outer
+  a.path = path
+  a.tokens = tokens
+  a.span = span
+  ret a
+.end
+
+fn attr_inner(path: Path, tokens: TokenStream, span: Span) -> Attribute
+  let a: Attribute
+  a.style = AttrStyle::Inner
+  a.path = path
+  a.tokens = tokens
+  a.span = span
+  ret a
+.end
+
+# -----------------------------
+# Helpers: recherche
+# -----------------------------
+
+fn attrs_has(attrs: Vec[Attribute], name: str) -> bool
+  let n = vec_len[Attribute](attrs)
+  let i = 0
+  while i < n
+    match vec_get[Attribute](attrs, i)
+      Option::Some(a) =>
+        if path_is_ident(a.path, name)
+          ret true
+        .end
+      Option::None =>
+        # impossible
+        ret false
+      .end
+    .end
+    i = i + 1
+  .end
+  ret false
+.end
+
+fn attrs_find_first(attrs: Vec[Attribute], name: str) -> Option[Attribute]
+  let n = vec_len[Attribute](attrs)
+  let i = 0
+  while i < n
+    match vec_get[Attribute](attrs, i)
+      Option::Some(a) =>
+        if path_is_ident(a.path, name)
+          ret Option::Some(a)
+        .end
+      Option::None =>
+        # impossible
+        i = i + 1
+      .end
+    .end
+    i = i + 1
+  .end
+  ret Option::None
+.end
+
+fn attrs_filter_by_name(attrs: Vec[Attribute], name: str) -> Vec[Attribute]
+  let out = vec_new[Attribute]()
+  let n = vec_len[Attribute](attrs)
+  let i = 0
+  while i < n
+    match vec_get[Attribute](attrs, i)
+      Option::Some(a) =>
+        if path_is_ident(a.path, name)
+          vec_push[Attribute](out, a)
+        .end
+      Option::None =>
+        # impossible
+        out = out
+      .end
+    .end
+    i = i + 1
+  .end
+  ret out
+.end
+
+# -----------------------------
+# Parsing méta (heuristique texte)
+# -----------------------------
+
+# Cette section fournit un parser *heuristique* basé sur le texte.
+# Objectif: exposer une API stable à l’AST sans dépendre du lexer complet.
+# Dans une vraie implémentation, remplacer par un parse sur tokens.
+
+type MetaParseError struct
+  message: str
+  span: Span
+.end
+
+fn meta_parse_error(message: str, span: Span) -> MetaParseError
+  let e: MetaParseError
+  e.message = message
+  e.span = span
+  ret e
+.end
+
+fn parse_attr_meta(attr: Attribute) -> Result[Meta, MetaParseError]
+  let ts = ts_trim(attr.tokens)
+
+  # #[path]
+  if ts_is_empty(ts)
+    ret Result::Ok(Meta::Path(attr.path))
+  .end
+
+  # Cas #[path = ...]
+  if ts_contains(ts, "=")
+    # split_once("=") supposé exister.
+    let parts = split_once(ts.text, "=")
+    if len(parts) != 2
+      ret Result::Err(meta_parse_error("invalid name-value meta", ts.span))
+    .end
+    let rhs = trim(parts[1])
+    let lit_res = parse_lit_from_str(rhs, ts.span)
+    match lit_res
+      Result::Ok(lit) =>
+        let nv: MetaNameValue
+        nv.path = attr.path
+        nv.lit = lit
+        nv.span = span_merge(attr.path.span, ts.span)
+        ret Result::Ok(Meta::NameValue(nv))
+      Result::Err(e) => ret Result::Err(e)
+    .end
+  .end
+
+  # Cas #[path(...)] / #[path {...}] / #[path [...]]
+  let del = detect_delimiter(ts)
+  let inner = strip_outer_delimiters(ts, del)
+  let nested_res = parse_nested_meta_list_text(inner)
+  match nested_res
+    Result::Ok(nested) =>
+      let ml: MetaList
+      ml.path = attr.path
+      ml.delimiter = del
+      ml.tokens = inner
+      ml.nested = nested
+      ml.span = span_merge(attr.path.span, ts.span)
+      ret Result::Ok(Meta::List(ml))
+    Result::Err(e) => ret Result::Err(e)
+  .end
+.end
+
+fn detect_delimiter(ts: TokenStream) -> Delimiter
+  let s = ts_trim(ts).text
+  if starts_with(s, "(") and ends_with(s, ")")
+    ret Delimiter::Paren
+  .end
+  if starts_with(s, "[") and ends_with(s, "]")
+    ret Delimiter::Bracket
+  .end
+  if starts_with(s, "{") and ends_with(s, "}")
+    ret Delimiter::Brace
+  .end
+  ret Delimiter::None
+.end
+
+fn strip_outer_delimiters(ts: TokenStream, del: Delimiter) -> TokenStream
+  let s = ts_trim(ts).text
+  match del
+    Delimiter::Paren =>
+      let inner = slice(s, 1, len(s) - 1)
+      ret ts_new(inner, ts.span)
+    Delimiter::Bracket =>
+      let inner = slice(s, 1, len(s) - 1)
+      ret ts_new(inner, ts.span)
+    Delimiter::Brace =>
+      let inner = slice(s, 1, len(s) - 1)
+      ret ts_new(inner, ts.span)
+    Delimiter::None =>
+      ret ts_new(s, ts.span)
+  .end
+.end
+
+# Parse de nested meta items séparés par ',' au niveau top.
+# Support:
+# - ident / path
+# - ident = lit
+# - lit
+# - path(list...)
+
+fn parse_nested_meta_list_text(ts: TokenStream) -> Result[Vec[NestedMeta], MetaParseError]
+  let out = vec_new[NestedMeta]()
+  let s = trim(ts.text)
+  if s == ""
+    ret Result::Ok(out)
+  .end
+
+  # split_top_level_commas(...) suppose gérer parenthèses; ici heuristique simple.
+  # Si besoin d’un vrai parse: brancher sur un tokenizeur.
+  let parts = split_top_level_commas(s)
+  for part in parts
+    let item = trim(part)
+    if item == ""
+      continue
+    .end
+
+    # Si literal direct
+    let lit_try = parse_lit_from_str(item, ts.span)
+    match lit_try
+      Result::Ok(lit) =>
+        let nm: NestedMeta
+        nm = NestedMeta::Lit(lit)
+        vec_push[NestedMeta](out, nm)
+        continue
+      Result::Err(_) =>
+        # pas un lit; continue parsing
+        item = item
+      .end
+    .end
+
+    # name-value au niveau nested
+    if contains(item, "=")
+      let kv = split_once(item, "=")
+      if len(kv) != 2
+        ret Result::Err(meta_parse_error("invalid nested name-value", ts.span))
+      .end
+      let k = trim(kv[0])
+      let v = trim(kv[1])
+      let p = path_from_str(k, ts.span)
+      let lit2_res = parse_lit_from_str(v, ts.span)
+      match lit2_res
+        Result::Ok(lit2) =>
+          let nv: MetaNameValue
+          nv.path = p
+          nv.lit = lit2
+          nv.span = span_merge(p.span, ts.span)
+
+          let m: Meta
+          m = Meta::NameValue(nv)
+          let nm: NestedMeta
+          nm = NestedMeta::Meta(m)
+          vec_push[NestedMeta](out, nm)
+        Result::Err(e) => ret Result::Err(e)
+      .end
+      continue
+    .end
+
+    # list: foo(...)
+    if contains(item, "(") and ends_with(item, ")")
+      # split_once("(")
+      let parts2 = split_once(item, "(")
+      if len(parts2) != 2
+        ret Result::Err(meta_parse_error("invalid nested list", ts.span))
+      .end
+      let head = trim(parts2[0])
+      let tail = parts2[1]
+      # remove last ')'
+      let inner = slice(tail, 0, len(tail) - 1)
+
+      let p2 = path_from_str(head, ts.span)
+      let nested2_res = parse_nested_meta_list_text(ts_new(inner, ts.span))
+      match nested2_res
+        Result::Ok(nested2) =>
+          let ml: MetaList
+          ml.path = p2
+          ml.delimiter = Delimiter::Paren
+          ml.tokens = ts_new(inner, ts.span)
+          ml.nested = nested2
+          ml.span = span_merge(p2.span, ts.span)
+
+          let m2: Meta
+          m2 = Meta::List(ml)
+          let nm2: NestedMeta
+          nm2 = NestedMeta::Meta(m2)
+          vec_push[NestedMeta](out, nm2)
+        Result::Err(e) => ret Result::Err(e)
+      .end
+      continue
+    .end
+
+    # path simple
+    let p3 = path_from_str(item, ts.span)
+    let m3: Meta
+    m3 = Meta::Path(p3)
+    let nm3: NestedMeta
+    nm3 = NestedMeta::Meta(m3)
+    vec_push[NestedMeta](out, nm3)
+  .end
+
+  ret Result::Ok(out)
+.end
+
+# -----------------------------
+# Parsing literals (heuristique)
+# -----------------------------
+
+fn parse_lit_from_str(s: str, span: Span) -> Result[Lit, MetaParseError]
+  let t = trim(s)
+  if t == "true"
+    ret Result::Ok(Lit::Bool(true))
+  .end
+  if t == "false"
+    ret Result::Ok(Lit::Bool(false))
+  .end
+
+  # string: "..." (sans escapes avancés)
+  if starts_with(t, "\"") and ends_with(t, "\"")
+    if len(t) < 2
+      ret Result::Err(meta_parse_error("invalid string literal", span))
+    .end
+    let inner = slice(t, 1, len(t) - 1)
+    ret Result::Ok(Lit::Str(inner))
+  .end
+
+  # int (simple)
+  if is_int_literal(t)
+    let v = parse_i64(t)
+    ret Result::Ok(Lit::Int(v))
+  .end
+
+  # float (simple)
+  if is_float_literal(t)
+    let v = parse_f64(t)
+    ret Result::Ok(Lit::Float(v))
+  .end
+
+  ret Result::Err(meta_parse_error("not a literal", span))
+.end
+
+fn is_int_literal(s: str) -> bool
+  # accepte +/-?digits
+  if s == ""
+    ret false
+  .end
+  let i = 0
+  if starts_with(s, "+") or starts_with(s, "-")
+    if len(s) == 1
+      ret false
+    .end
+    i = 1
+  .end
+  while i < len(s)
+    let c = char_at(s, i)
+    if c < '0' or c > '9'
+      ret false
+    .end
+    i = i + 1
+  .end
+  ret true
+.end
+
+fn is_float_literal(s: str) -> bool
+  # accepte +/-?digits '.' digits
+  if not contains(s, ".")
+    ret false
+  .end
+  # heuristique
+  let parts = split(s, ".")
+  if len(parts) != 2
+    ret false
+  .end
+  let a = parts[0]
+  let b = parts[1]
+  if a == "" or b == ""
+    ret false
+  .end
+  ret is_int_literal(a) and is_unsigned_int_literal(b)
+.end
+
+fn is_unsigned_int_literal(s: str) -> bool
+  if s == ""
+    ret false
+  .end
+  let i = 0
+  while i < len(s)
+    let c = char_at(s, i)
+    if c < '0' or c > '9'
+      ret false
+    .end
+    i = i + 1
+  .end
+  ret true
+.end
+
+# Ces parse_* supposent des helpers; sinon brancher sur std.
+fn parse_i64(s: str) -> i64
+  # placeholder
+  ret to_i64(s)
+.end
+
+fn parse_f64(s: str) -> f64
+  # placeholder
+  ret to_f64(s)
+.end
+
+# -----------------------------
+# API: extraction d’infos courantes
+# -----------------------------
+
+# - bool flag: #[foo]
+fn attrs_get_flag(attrs: Vec[Attribute], name: str) -> bool
+  let aopt = attrs_find_first(attrs, name)
+  match aopt
+    Option::Some(a) =>
+      let mres = parse_attr_meta(a)
+      match mres
+        Result::Ok(m) =>
+          match m
+            Meta::Path(_) => ret true
+            _ => ret true # présent = activé
+          .end
+        Result::Err(_) => ret true # présent mais non parsable => activé
+      .end
+    Option::None => ret false
+  .end
+.end
+
+# - string value: #[name = "x"] ou #[name("x")]
+fn attrs_get_string(attrs: Vec[Attribute], name: str) -> Option[str]
+  let aopt = attrs_find_first(attrs, name)
+  match aopt
+    Option::Some(a) =>
+      let mres = parse_attr_meta(a)
+      match mres
+        Result::Ok(m) =>
+          match m
+            Meta::NameValue(nv) => ret lit_as_str(nv.lit)
+            Meta::List(ml) =>
+              # prend le 1er nested literal string
+              let n = vec_len[NestedMeta](ml.nested)
+              let i = 0
+              while i < n
+                match vec_get[NestedMeta](ml.nested, i)
+                  Option::Some(nm) =>
+                    match nm
+                      NestedMeta::Lit(l) =>
+                        match lit_as_str(l)
+                          Option::Some(s) => ret Option::Some(s)
+                          Option::None => i = i + 1
+                        .end
+                      _ => i = i + 1
+                    .end
+                  Option::None => i = i + 1
+                .end
+              .end
+              ret Option::None
+            _ => ret Option::None
+          .end
+        Result::Err(_) => ret Option::None
+      .end
+    Option::None => ret Option::None
+  .end
+.end
+
+# - int value: #[name = 12] ou #[name(12)]
+fn attrs_get_int(attrs: Vec[Attribute], name: str) -> Option[i64]
+  let aopt = attrs_find_first(attrs, name)
+  match aopt
+    Option::Some(a) =>
+      let mres = parse_attr_meta(a)
+      match mres
+        Result::Ok(m) =>
+          match m
+            Meta::NameValue(nv) => ret lit_as_int(nv.lit)
+            Meta::List(ml) =>
+              let n = vec_len[NestedMeta](ml.nested)
+              let i = 0
+              while i < n
+                match vec_get[NestedMeta](ml.nested, i)
+                  Option::Some(nm) =>
+                    match nm
+                      NestedMeta::Lit(l) =>
+                        match lit_as_int(l)
+                          Option::Some(v) => ret Option::Some(v)
+                          Option::None => i = i + 1
+                        .end
+                      _ => i = i + 1
+                    .end
+                  Option::None => i = i + 1
+                .end
+              .end
+              ret Option::None
+            _ => ret Option::None
+          .end
+        Result::Err(_) => ret Option::None
+      .end
+    Option::None => ret Option::None
+  .end
+.end
+
+# -----------------------------
+# API: validation
+# -----------------------------
+
+fn attrs_validate_known(attrs: Vec[Attribute], allowed: Vec[str]) -> Result[bool, Diag]
+  let n = vec_len[Attribute](attrs)
+  let i = 0
+  while i < n
+    match vec_get[Attribute](attrs, i)
+      Option::Some(a) =>
+        let name = path_to_string(a.path)
+        if not vec_contains_str(allowed, name)
+          ret Result::Err(diag_error("unknown attribute: " + name, a.span))
+        .end
+      Option::None =>
+        # impossible
+        i = i + 1
+      .end
+    .end
+    i = i + 1
+  .end
+  ret Result::Ok(true)
+.end
+
+fn vec_contains_str(v: Vec[str], needle: str) -> bool
+  let n = vec_len[str](v)
+  let i = 0
+  while i < n
+    match vec_get[str](v, i)
+      Option::Some(s) =>
+        if s == needle
+          ret true
+        .end
+      Option::None => ret false
+    .end
+    i = i + 1
+  .end
+  ret false
+.end
+
+# -----------------------------
+# String utils (fallback)
+# -----------------------------
+
+# Les helpers suivants sont des stubs: si ton std expose déjà ces primitives,
+# supprime cette section et `use` la version std.
+
+fn trim(s: str) -> str
+  ret std_trim(s)
+.end
+
+fn starts_with(s: str, prefix: str) -> bool
+  ret std_starts_with(s, prefix)
+.end
+
+fn ends_with(s: str, suffix: str) -> bool
+  ret std_ends_with(s, suffix)
+.end
+
+fn contains(s: str, needle: str) -> bool
+  ret std_contains(s, needle)
+.end
+
+fn len[T](xs: [T]) -> int
+  ret std_len(xs)
+.end
+
+fn slice(s: str, lo: int, hi: int) -> str
+  ret std_slice(s, lo, hi)
+.end
+
+fn split(s: str, sep: str) -> [str]
+  ret std_split(s, sep)
+.end
+
+fn split_once(s: str, sep: str) -> [str]
+  ret std_split_once(s, sep)
+.end
+
+fn char_at(s: str, i: int) -> char
+  ret std_char_at(s, i)
+.end
+
+fn to_i64(s: str) -> i64
+  ret std_to_i64(s)
+.end
+
+fn to_f64(s: str) -> f64
+  ret std_to_f64(s)
+.end
+
+fn split_top_level_commas(s: str) -> [str]
+  # Heuristique: split(',') sans gérer nesting.
+  # Pour un parse correct, remplacer par algo qui track depth parens/brackets/braces.
+  ret std_split(s, ",")
+.end
+
+# -----------------------------
+# Self-tests (smoke)
+# -----------------------------
+
+fn _assert(cond: bool, msg: str)
+  if not cond
+    panic(msg)
+  .end
+.end
+
+fn test_attr_parse_smoke()
+  let p = path_from_str("cfg", span_new(1, 4))
+  let a = attr_outer(p, ts_new("(unix, target_os = \"linux\")", span_new(4, 30)), span_new(0, 30))
+  let mres = parse_attr_meta(a)
+  match mres
+    Result::Ok(m) =>
+      match m
+        Meta::List(ml) =>
+          _assert(path_is_ident(ml.path, "cfg"), "path mismatch")
+          _assert(vec_len[NestedMeta](ml.nested) >= 1, "nested empty")
+        _ => panic("expected list")
+      .end
+    Result::Err(e) => panic("parse failed: " + e.message)
+  .end
+.end
+
+.end
