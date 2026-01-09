@@ -1,0 +1,623 @@
+# File: C:\Users\gogin\Documents\GitHub\vitte\lingua\syntax\vitte_macros\src\master.vit
+space lingua/syntax/vitte_macros/master
+
+<<< master
+  vitte_macros/master.vit — Macro system front-door (MAX)
+
+  Purpose:
+    - Provide the compiler-facing macro subsystem entrypoint:
+        * registry of builtin macros
+        * MBE macro driver (macro_rules style)
+        * attribute/derive hooks (optional)
+        * expansion context (hygiene IDs, gensym, call-site span)
+        * deterministic diagnostics routing + localization keys
+        * recursion limits + cycle detection
+        * token-tree interfaces (TT in/out)
+
+  Boundaries:
+    - This crate does NOT parse full AST; it consumes TokenTree (tt.Tt) and
+      emits TokenTree; integration layer in parser ties TT to AST nodes.
+
+  Components:
+    - diagnostics: macro diagnostic helpers
+    - registry: builtin lookup by path/name
+    - expander:
+        * mbe: macro-by-example matcher/transcriber
+        * builtin: special compiler macros (printf, include, env, cfg, etc.)
+    - driver:
+        * expand_one (single call)
+        * expand_all (walk TT/AST skeleton)
+        * recursion limits / tracing
+
+  Notes:
+    - "vitte vit" blocks end with ".end"
+    - Avoid global mutable state; everything is explicit via ExpandCtx
+>>>
+
+pull std/text as text
+pull std/collections/list as list
+pull std/collections/map as map
+
+pull lingua/syntax/vitte_ast/span as span
+pull lingua/syntax/vitte_ast/diag as ast_diag
+
+pull lingua/syntax/vitte_token_tree/master as tt
+
+pull lingua/syntax/vitte_macros/diagnostics/master as mdiag
+pull lingua/syntax/vitte_expand/mbe/master as mbe
+
+# Builtins (add more as you implement)
+pull lingua/syntax/vitte_builtin_macros/format_foreign/printf/master as builtin_printf
+
+share all
+
+bond Text means String
+
+
+<<< =========================================================
+  0) CORE TYPES
+========================================================= >>>
+
+pick MacroKind
+case Builtin()
+case Mbe()          # macro_rules-like
+case Attr()         # #[attr] style (optional)
+case Derive()       # #[derive(X)] (optional)
+.end
+
+form MacroId
+field name as Text = ""
+field path as Text = ""          # e.g. "core/println"
+field kind as MacroKind = MacroKind.Builtin()
+.end
+
+form MacroCall
+field name as Text = ""          # callee name as written
+field path as Text = ""          # resolved path (if any)
+field input as List of tt.Tt = []
+field call_span as span.Span = span.Span()
+field call_site as span.Span = span.Span()
+field trace as Bool = false
+.end
+
+form MacroDefMbe
+field rules as List of mbe.MbeRule = []
+field def_span as span.Span = span.Span()
+.end
+
+form MacroDefBuiltin
+field name as Text = ""
+field def_span as span.Span = span.Span()
+.end
+
+form MacroDef
+field id as MacroId = MacroId()
+field mbe as MacroDefMbe = MacroDefMbe()
+field builtin as MacroDefBuiltin = MacroDefBuiltin()
+.end
+
+form ExpandLimits
+field max_depth as Int = 128
+field max_tokens_in as Int = 2_000_000
+field max_tokens_out as Int = 2_000_000
+field max_steps as Int = 10_000_000
+.end
+
+form HygieneCtx
+field next_mark as Int = 1
+field next_gensym as Int = 1
+.end
+
+form ExpandCtx
+field limits as ExpandLimits = ExpandLimits()
+field depth as Int = 0
+field steps as Int = 0
+field hyg as HygieneCtx = HygieneCtx()
+
+# Macro registry is immutable for a compile session
+field registry as MacroRegistry = MacroRegistry()
+
+# Diagnostics sink is the compiler's canonical diag buffer (AST diag type)
+field diags as List of ast_diag.Diagnostic = []
+
+# Optional trace log for debugging (strings only)
+field trace_log as List of Text = []
+.end
+
+
+<<< =========================================================
+  1) REGISTRY
+========================================================= >>>
+
+pick MacroEntry
+case Builtin(def=MacroDefBuiltin)
+case Mbe(def=MacroDefMbe)
+case Attr(def=MacroDefBuiltin)
+case Derive(def=MacroDefBuiltin)
+.end
+
+form MacroRegistry
+field map as Map of Text to MacroEntry = map.new()  # key: resolved path/name
+.end
+
+proc registry_new() gives MacroRegistry
+give MacroRegistry()
+.end
+
+proc registry_add_builtin(reg as MacroRegistry, path as Text, name as Text, def_span as span.Span)
+make d as MacroDefBuiltin = MacroDefBuiltin()
+set d.name = name
+set d.def_span = def_span
+map.set(reg.map, path, MacroEntry.Builtin(d))
+.end
+
+proc registry_add_mbe(reg as MacroRegistry, path as Text, rules as List of mbe.MbeRule, def_span as span.Span)
+make d as MacroDefMbe = MacroDefMbe()
+set d.rules = rules
+set d.def_span = def_span
+map.set(reg.map, path, MacroEntry.Mbe(d))
+.end
+
+proc registry_has(reg as MacroRegistry, path as Text) gives Bool
+give map.has(reg.map, path)
+.end
+
+proc registry_get(reg as MacroRegistry, path as Text) gives MacroEntry
+give map.get(reg.map, path)
+.end
+
+
+<<< =========================================================
+  2) CONTEXT HELPERS (LIMITS / HYGIENE / TRACE)
+========================================================= >>>
+
+proc ctx_new(diags as List of ast_diag.Diagnostic) gives ExpandCtx
+make c as ExpandCtx = ExpandCtx()
+set c.limits = ExpandLimits()
+set c.depth = 0
+set c.steps = 0
+set c.hyg = HygieneCtx()
+set c.registry = registry_new()
+set c.diags = diags
+set c.trace_log = []
+give c
+.end
+
+proc ctx_trace(c as ExpandCtx, msg as Text)
+list.push(c.trace_log, msg)
+.end
+
+proc _step(c as ExpandCtx, n as Int, sp as span.Span)
+set c.steps = c.steps + n
+if c.steps > c.limits.max_steps
+  _push_err(c, "vitte-macro-driver", "vitte-macros-e-step-limit", sp)
+.end
+.end
+
+proc _enter(c as ExpandCtx, sp as span.Span)
+set c.depth = c.depth + 1
+if c.depth > c.limits.max_depth
+  _push_err(c, "vitte-macro-driver", "vitte-macros-e-recursion-limit", sp)
+.end
+.end
+
+proc _leave(c as ExpandCtx)
+if c.depth > 0
+  set c.depth = c.depth - 1
+.end
+.end
+
+proc gensym(c as ExpandCtx, prefix as Text) gives Text
+make n as Int = c.hyg.next_gensym
+set c.hyg.next_gensym = n + 1
+give prefix + "__" + text.from_int(n)
+.end
+
+proc fresh_mark(c as ExpandCtx) gives Int
+make m as Int = c.hyg.next_mark
+set c.hyg.next_mark = m + 1
+give m
+.end
+
+
+<<< =========================================================
+  3) DEFAULT BUILTIN REGISTRATION
+========================================================= >>>
+
+proc register_default_builtins(c as ExpandCtx)
+# printf-format macro family (example)
+registry_add_builtin(c.registry, "vitte/printf", "printf", span.Span())
+registry_add_builtin(c.registry, "vitte/println", "println", span.Span())
+registry_add_builtin(c.registry, "vitte/print", "print", span.Span())
+
+# Add more builtins as they land:
+# include, include_bytes, env, cfg, concat, file, line, column, panic, assert, etc.
+.end
+
+
+<<< =========================================================
+  4) DISPATCH: EXPAND ONE CALL
+========================================================= >>>
+
+form ExpandOneResult
+field ok as Bool = true
+field output as List of tt.Tt = []
+.end
+
+proc expand_one(c as ExpandCtx, call as MacroCall) gives ExpandOneResult
+make r as ExpandOneResult = ExpandOneResult()
+set r.ok = false
+set r.output = []
+
+_step(c, 1, call.call_span)
+_enter(c, call.call_span)
+
+if call.trace
+  ctx_trace(c, "trace: expanding `" + call.name + "` path=`" + call.path + "`")
+.end
+
+# size guard
+if list.len(call.input) > c.limits.max_tokens_in
+  _push_err(c, "vitte-macro-driver", "vitte-macros-e-input-too-large", call.call_span)
+  _leave(c)
+  give r
+.end
+
+# resolve entry
+make key as Text = call.path
+if key == ""
+  set key = call.name
+.end
+
+if registry_has(c.registry, key) == false
+  _push_err(c, "vitte-macro-driver", "vitte-macros-e-unknown-macro", call.call_span)
+  _leave(c)
+  give r
+.end
+
+make ent as MacroEntry = registry_get(c.registry, key)
+
+# builtin
+if ent is MacroEntry.Builtin()
+  make out as List of tt.Tt = _expand_builtin(c, ent.def, call)
+  if list.len(out) > c.limits.max_tokens_out
+    _push_err(c, "vitte-macro-driver", "vitte-macros-e-output-too-large", call.call_span)
+    _leave(c)
+    give r
+  .end
+  set r.ok = true
+  set r.output = out
+  _leave(c)
+  give r
+.end
+
+# mbe
+if ent is MacroEntry.Mbe()
+  make req as mbe.ExpandRequest = mbe.ExpandRequest()
+  set req.rules = ent.def.rules
+  set req.input = call.input
+  set req.call_span = call.call_span
+  set req.macro_name = key
+  set req.trace = call.trace
+
+  make mbe_diags as List of ast_diag.Diagnostic = []
+  # mbe expects diag.Diagnostic type from ast_diag; ensure adaptor exists or push translated diags.
+  make out2 as mbe.ExpandResult = mbe.expand(req, _diag_bridge(c, call.call_span))
+  if out2.ok == false
+    _leave(c)
+    give r
+  .end
+
+  if list.len(out2.output) > c.limits.max_tokens_out
+    _push_err(c, "vitte-macro-driver", "vitte-macros-e-output-too-large", call.call_span)
+    _leave(c)
+    give r
+  .end
+
+  set r.ok = true
+  set r.output = out2.output
+  _leave(c)
+  give r
+.end
+
+# Attr/Derive not implemented (yet)
+_push_err(c, "vitte-macro-driver", "vitte-macros-e-kind-not-supported", call.call_span)
+_leave(c)
+give r
+.end
+
+
+<<< =========================================================
+  5) BUILTIN EXPANDERS
+========================================================= >>>
+
+proc _expand_builtin(c as ExpandCtx, def as MacroDefBuiltin, call as MacroCall) gives List of tt.Tt
+# Dispatch by resolved builtin name/path.
+make key as Text = call.path
+if key == ""
+  set key = call.name
+.end
+
+if key == "vitte/printf" or def.name == "printf"
+  give _builtin_printf(c, call)
+.end
+
+if key == "vitte/println" or def.name == "println"
+  give _builtin_println(c, call)
+.end
+
+if key == "vitte/print" or def.name == "print"
+  give _builtin_print(c, call)
+.end
+
+_push_err(c, "vitte-macro-builtin", "vitte-macros-e-builtin-not-implemented", call.call_span)
+give []
+.end
+
+proc _builtin_printf(c as ExpandCtx, call as MacroCall) gives List of tt.Tt
+# Expected input TT shape (example):
+#   ("fmt %d", arg1, arg2, ...)
+# This driver only validates format string and emits a call TT that backend will lower.
+make parsed as BuiltinCall = _parse_builtin_call_args(call, c.diags)
+if parsed.ok == false
+  give []
+.end
+if list.len(parsed.args) < 1
+  _push_err(c, "vitte-macro-printf", "vitte-macros-e-printf-missing-format", call.call_span)
+  give []
+.end
+
+make fmt as Text = _extract_string_lit(parsed.args[0])
+if fmt == ""
+  _push_err(c, "vitte-macro-printf", "vitte-macros-e-printf-format-not-string", call.call_span)
+  give []
+.end
+
+make ir_args as List of ir.Expr = []  # placeholder; real pipeline passes IR
+make printf_diags as List of diag.Diagnostic = []
+make analysis as builtin_printf.PrintfAnalysis = builtin_printf.analyze_printf_format(fmt, call.call_span, builtin_printf.printf_policy_default(), printf_diags)
+
+# bridge builtin printf diags → ast diags
+_bridge_printf_diags(c, printf_diags, call.call_span)
+
+if analysis.ok == false
+  give []
+.end
+
+# Return TT that represents a foreign call; actual lowering is later.
+give _emit_builtin_call_tt("foreign_printf", parsed.args, call.call_span)
+.end
+
+proc _builtin_println(c as ExpandCtx, call as MacroCall) gives List of tt.Tt
+# sugar: println("x=%d", a) -> printf("x=%d\n", a)
+make parsed as BuiltinCall = _parse_builtin_call_args(call, c.diags)
+if parsed.ok == false
+  give []
+.end
+if list.len(parsed.args) < 1
+  _push_err(c, "vitte-macro-builtin", "vitte-macros-e-println-missing-format", call.call_span)
+  give []
+.end
+
+make fmt as Text = _extract_string_lit(parsed.args[0])
+if fmt == ""
+  _push_err(c, "vitte-macro-builtin", "vitte-macros-e-println-format-not-string", call.call_span)
+  give []
+.end
+
+make new_fmt as Text = fmt + "\n"
+set parsed.args[0] = _make_string_lit_tt(new_fmt, call.call_span)
+
+# reuse printf path
+make c2 as MacroCall = call
+set c2.name = "printf"
+set c2.path = "vitte/printf"
+set c2.input = _rebuild_call_input(parsed.args)
+give _builtin_printf(c, c2)
+.end
+
+proc _builtin_print(c as ExpandCtx, call as MacroCall) gives List of tt.Tt
+# alias to printf without newline (same as printf)
+make c2 as MacroCall = call
+set c2.name = "printf"
+set c2.path = "vitte/printf"
+give _builtin_printf(c, c2)
+.end
+
+
+<<< =========================================================
+  6) EXPAND ALL (DRIVER OVER TOKEN TREES)
+========================================================= >>>
+
+proc expand_all_tt(c as ExpandCtx, input as List of tt.Tt) gives List of tt.Tt
+# Walk TT and expand macro-call nodes.
+# This is intentionally simplistic; real integration uses parser hooks.
+make out as List of tt.Tt = []
+make i as Int = 0
+loop while i < list.len(input)
+  _step(c, 1, tt.tt_span(input[i]))
+
+  if _is_macro_call_tt(input[i])
+    make call as MacroCall = _decode_macro_call_tt(input[i])
+    make r as ExpandOneResult = expand_one(c, call)
+    if r.ok
+      _tt_extend(out, r.output)
+    else
+      # keep original token to avoid cascading
+      list.push(out, input[i])
+    .end
+  else
+    list.push(out, input[i])
+  .end
+
+  set i += 1
+.end
+give out
+.end
+
+
+<<< =========================================================
+  7) DIAGNOSTIC BRIDGE
+========================================================= >>>
+
+proc _push_err(c as ExpandCtx, code as Text, key as Text, sp as span.Span)
+make d as mdiag.Diagnostic = mdiag.error(code, key, sp)
+list.push(c.diags, mdiag.to_ast(d))
+.end
+
+proc _push_warn(c as ExpandCtx, code as Text, key as Text, sp as span.Span)
+make d as mdiag.Diagnostic = mdiag.warn(code, key, sp)
+list.push(c.diags, mdiag.to_ast(d))
+.end
+
+proc _diag_bridge(c as ExpandCtx, sp as span.Span) gives List of ast_diag.Diagnostic
+# In the "MAX" skeleton, MBE directly wants List<ast_diag.Diagnostic>.
+# We just return c.diags so MBE pushes into the shared sink.
+give c.diags
+.end
+
+proc _bridge_printf_diags(c as ExpandCtx, ds as List of diag.Diagnostic, sp as span.Span)
+# Convert builtin printf diag type into macro ast diag.
+# If diag.Diagnostic already equals ast_diag.Diagnostic in your tree, replace with direct push.
+make i as Int = 0
+loop while i < list.len(ds)
+  # Best-effort mapping:
+  make d as mdiag.Diagnostic = mdiag.error("vitte-macro-printf", ds[i].message_key, sp)
+  list.push(c.diags, mdiag.to_ast(d))
+  set i += 1
+.end
+.end
+
+
+<<< =========================================================
+  8) TOKEN-TREE UTILITIES (PLACEHOLDERS)
+========================================================= >>>
+
+# Builtin call argument parse representation
+form BuiltinCall
+field ok as Bool = true
+field args as List of tt.Tt = []
+.end
+
+proc _parse_builtin_call_args(call as MacroCall, diags as List of ast_diag.Diagnostic) gives BuiltinCall
+# Expect call.input to already be inside (...) group: [DelimParen(inner=[arg, ',', arg...])]
+make out as BuiltinCall = BuiltinCall()
+set out.ok = false
+
+if list.len(call.input) == 0
+  list.push(diags, mdiag.to_ast(mdiag.error("vitte-macro-builtin", "vitte-macros-e-call-empty", call.call_span)))
+  give out
+.end
+
+# Accept either raw inner list or a single paren group node; keep generic.
+if tt.tt_is_delim_paren(call.input[0])
+  make d as tt.Delim = tt.tt_as_delim(call.input[0])
+  set out.args = _split_args_by_comma(d.inner)
+  set out.ok = true
+  give out
+.end
+
+# Otherwise treat as already split list (best-effort)
+set out.args = _split_args_by_comma(call.input)
+set out.ok = true
+give out
+.end
+
+proc _split_args_by_comma(xs as List of tt.Tt) gives List of tt.Tt
+# Extremely simplified: split on leaf punct "," at top level.
+make out as List of tt.Tt = []
+make cur as List of tt.Tt = []
+make i as Int = 0
+loop while i < list.len(xs)
+  if tt.tt_is_leaf_punct(xs[i], ",")
+    if list.len(cur) > 0
+      list.push(out, _wrap_arg(cur))
+      set cur = []
+    .end
+  else
+    list.push(cur, xs[i])
+  .end
+  set i += 1
+.end
+if list.len(cur) > 0
+  list.push(out, _wrap_arg(cur))
+.end
+give out
+.end
+
+proc _wrap_arg(xs as List of tt.Tt) gives tt.Tt
+# Keep as a synthetic "arg" group for stability.
+give tt.tt_delim_paren(xs)
+.end
+
+proc _extract_string_lit(x as tt.Tt) gives Text
+# Best-effort: if arg is a paren group with one StringLit leaf, return its unescaped text.
+if tt.tt_is_delim_paren(x)
+  make d as tt.Delim = tt.tt_as_delim(x)
+  if list.len(d.inner) == 1 and tt.tt_is_leaf_string(d.inner[0])
+    give tt.tt_leaf_unescaped_string(d.inner[0])
+  .end
+.end
+if tt.tt_is_leaf_string(x)
+  give tt.tt_leaf_unescaped_string(x)
+.end
+give ""
+.end
+
+proc _make_string_lit_tt(s as Text, sp as span.Span) gives tt.Tt
+give tt.tt_leaf_string(text.quote(s), sp)
+.end
+
+proc _rebuild_call_input(args as List of tt.Tt) gives List of tt.Tt
+# Build a paren group containing args separated by commas.
+make inner as List of tt.Tt = []
+make i as Int = 0
+loop while i < list.len(args)
+  if i > 0
+    list.push(inner, tt.tt_leaf_punct(",", span.Span()))
+  .end
+  # unwrap synthetic arg
+  if tt.tt_is_delim_paren(args[i])
+    make d as tt.Delim = tt.tt_as_delim(args[i])
+    _tt_extend(inner, d.inner)
+  else
+    list.push(inner, args[i])
+  .end
+  set i += 1
+.end
+give [tt.tt_delim_paren(inner)]
+.end
+
+proc _emit_builtin_call_tt(name as Text, args as List of tt.Tt, sp as span.Span) gives List of tt.Tt
+# Emit TT representing: name(args...)
+# This is intentionally simplistic.
+make out as List of tt.Tt = []
+list.push(out, tt.tt_leaf_ident(name, sp))
+_tt_extend(out, _rebuild_call_input(args))
+give out
+.end
+
+proc _tt_extend(dst as List of tt.Tt, src as List of tt.Tt)
+make i as Int = 0
+loop while i < list.len(src)
+  list.push(dst, src[i])
+  set i += 1
+.end
+.end
+
+proc _is_macro_call_tt(x as tt.Tt) gives Bool
+# Placeholder: detect a special TT node; real system uses parser.
+give tt.tt_is_macro_call(x)
+.end
+
+proc _decode_macro_call_tt(x as tt.Tt) gives MacroCall
+# Placeholder decoder; real system uses parser-resolved path, spans, etc.
+make c as MacroCall = MacroCall()
+set c.name = tt.tt_macro_name(x)
+set c.path = tt.tt_macro_path(x)
+set c.input = tt.tt_macro_args(x)
+set c.call_span = tt.tt_span(x)
+set c.call_site = tt.tt_span(x)
+set c.trace = false
+give c
+.end

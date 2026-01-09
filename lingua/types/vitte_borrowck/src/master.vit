@@ -1,0 +1,440 @@
+# File: C:\Users\gogin\Documents\GitHub\vitte\lingua\types\vitte_borrowck\src\master.vit
+space lingua/types/vitte_borrowck/master
+
+<<< master
+  vitte_borrowck/master.vit — Borrow checker (MAX)
+
+  Scope:
+    - This crate implements Vitte's borrow checking as a *type/analysis* stage:
+        * build MIR-like CFG from typed AST/IR
+        * compute liveness / move paths
+        * infer loans (shared vs mutable)
+        * enforce aliasing rules (no mutable alias, no use-after-move)
+        * produce diagnostics with spans
+    - The design is Rust-inspired, but adapted to Vitte surface:
+        * forms/picks/bonds
+        * explicit `make`, `keep`, `set`
+        * `.end` blocks
+        * optional `mark` attributes on procs
+    - This module is "master" wiring: types + entry API + pass runner.
+      Individual algorithms can live in submodules.
+
+  Intended pipeline position:
+    parse -> passes (macros/resolve/desugar) -> typecheck -> borrowck -> lower
+
+  Notes:
+    - Borrowck requires a stable intermediate representation:
+        * local variables have IDs
+        * assignments / reads are explicit nodes
+        * control-flow edges known
+    - Here we provide a generic MIR-ish model, plus the checker skeleton.
+>>>
+
+pull std/text as text
+pull std/collections/list as list
+pull std/collections/map as map
+
+pull lingua/syntax/vitte_ast/span as span
+pull lingua/syntax/vitte_ast/diag as diag
+
+share all
+
+bond Text means String
+
+
+<<< =========================================================
+  0) CORE IR (MIR-LIKE) — MINIMAL
+========================================================= >>>
+
+bond LocalId means Int
+bond BlockId means Int
+bond StmtId means Int
+
+pick LoanKind
+case Shared()     # &T
+case Mut()        # &mut T
+.end
+
+pick AccessKind
+case Read()
+case Write()
+case Move()
+case Borrow(kind=LoanKind)
+case Drop()
+.end
+
+form Place
+# A "place" is a base local + projections.
+field base as LocalId = 0
+field proj as List of Text = []          # e.g. [".field", "[idx]", ".*", ...] — keep textual for now
+.end
+
+proc place(base as LocalId) gives Place
+make p as Place = Place()
+set p.base = base
+set p.proj = []
+give p
+.end
+
+form Access
+field kind as AccessKind = AccessKind.Read()
+field place as Place = Place()
+field sp as span.Span = span.Span()
+.end
+
+form Stmt
+field id as StmtId = 0
+field accesses as List of Access = []    # all accesses in this stmt (reads/writes/moves/borrows)
+field sp as span.Span = span.Span()
+.end
+
+form Block
+field id as BlockId = 0
+field stmts as List of Stmt = []
+field succs as List of BlockId = []      # CFG edges
+.end
+
+form Body
+field locals_count as Int = 0
+field blocks as List of Block = []
+field entry as BlockId = 0
+field name as Text = ""
+.end
+
+
+<<< =========================================================
+  1) BORROW MODEL
+========================================================= >>>
+
+# A loan is created by a Borrow access. It is live over a region (range of CFG points).
+bond LoanId means Int
+
+form Loan
+field id as LoanId = 0
+field kind as LoanKind = LoanKind.Shared()
+field place as Place = Place()
+field origin_stmt as StmtId = 0
+field origin_sp as span.Span = span.Span()
+.end
+
+form Point
+# A program point is (block, stmt_index) at stmt boundary.
+field block as BlockId = 0
+field index as Int = 0
+.end
+
+form LiveRange
+field start as Point = Point()
+field end as Point = Point()      # exclusive end (best-effort)
+.end
+
+form LoanLive
+field loan as Loan = Loan()
+field range as LiveRange = LiveRange()
+.end
+
+form BorrowckReport
+field ok as Bool = true
+field loans as List of LoanLive = []
+field moved as Map of LocalId to Bool = map.new()
+.end
+
+
+<<< =========================================================
+  2) ERRORS (DIAGNOSTICS KEYS)
+========================================================= >>>
+
+# Key namespace recommendation (messages.ftl in this crate):
+#   vitte-borrowck-e-use-after-move
+#   vitte-borrowck-e-move-while-borrowed
+#   vitte-borrowck-e-mutable-alias
+#   vitte-borrowck-e-write-while-shared-borrow
+#   vitte-borrowck-e-borrow-outlives-owner
+#   vitte-borrowck-w-unused-borrow
+
+proc push_err(diags as List of diag.Diagnostic, key as Text, sp as span.Span)
+list.push(diags, diag.error(key, sp))
+.end
+
+proc push_warn(diags as List of diag.Diagnostic, key as Text, sp as span.Span)
+list.push(diags, diag.warn(key, sp))
+.end
+
+
+<<< =========================================================
+  3) ENTRY API
+========================================================= >>>
+
+form BorrowckOptions
+field enable as Bool = true
+field treat_warnings_as_errors as Bool = false
+field trace as Bool = false
+.end
+
+proc borrowck_options_default() gives BorrowckOptions
+give BorrowckOptions()
+.end
+
+form BorrowckResult
+field ok as Bool = true
+field report as BorrowckReport = BorrowckReport()
+.end
+
+proc run_borrowck(body as Body, opts as BorrowckOptions, diags as List of diag.Diagnostic) gives BorrowckResult
+make r as BorrowckResult = BorrowckResult()
+set r.ok = true
+set r.report = BorrowckReport()
+set r.report.ok = true
+set r.report.loans = []
+set r.report.moved = map.new()
+
+if opts.enable == false
+  give r
+.end
+
+# Phase 1: collect loans
+make loans as List of Loan = _collect_loans(body)
+# Phase 2: compute naive liveness (placeholder)
+make lives as List of LoanLive = _compute_liveness_naive(body, loans)
+
+# Phase 3: check rules
+_check_aliasing(body, lives, r.report, opts, diags)
+_check_moves(body, lives, r.report, opts, diags)
+_check_use_after_move(body, r.report, opts, diags)
+
+set r.report.loans = lives
+set r.report.ok = (diag.count_errors(diags) == 0)
+set r.ok = r.report.ok
+give r
+.end
+
+
+<<< =========================================================
+  4) PHASE 1 — COLLECT LOANS
+========================================================= >>>
+
+proc _collect_loans(body as Body) gives List of Loan
+make out as List of Loan = []
+make next_id as Int = 1
+
+make bi as Int = 0
+loop while bi < list.len(body.blocks)
+  make b as Block = body.blocks[bi]
+  make si as Int = 0
+  loop while si < list.len(b.stmts)
+    make st as Stmt = b.stmts[si]
+
+    make ai as Int = 0
+    loop while ai < list.len(st.accesses)
+      if st.accesses[ai].kind is AccessKind.Borrow()
+        make ln as Loan = Loan()
+        set ln.id = next_id
+        set next_id = next_id + 1
+        set ln.kind = st.accesses[ai].kind.kind
+        set ln.place = st.accesses[ai].place
+        set ln.origin_stmt = st.id
+        set ln.origin_sp = st.accesses[ai].sp
+        list.push(out, ln)
+      .end
+      set ai += 1
+    .end
+
+    set si += 1
+  .end
+  set bi += 1
+.end
+
+give out
+.end
+
+
+<<< =========================================================
+  5) PHASE 2 — LIVENESS (NAIVE PLACEHOLDER)
+========================================================= >>>
+
+proc _compute_liveness_naive(body as Body, loans as List of Loan) gives List of LoanLive
+# Placeholder liveness:
+#   - assume each loan is live from its origin to end of the containing block.
+# Real impl will compute region via dataflow/liveness on CFG.
+make out as List of LoanLive = []
+
+# map stmt_id -> (block, index)
+make pos as Map of Int to Point = map.new()
+make bi as Int = 0
+loop while bi < list.len(body.blocks)
+  make b as Block = body.blocks[bi]
+  make si as Int = 0
+  loop while si < list.len(b.stmts)
+    make p as Point = Point()
+    set p.block = b.id
+    set p.index = si
+    map.set(pos, b.stmts[si].id, p)
+    set si += 1
+  .end
+  set bi += 1
+.end
+
+make li as Int = 0
+loop while li < list.len(loans)
+  make lv as LoanLive = LoanLive()
+  set lv.loan = loans[li]
+
+  make p0 as Point = map.get(pos, loans[li].origin_stmt)
+  set lv.range.start = p0
+
+  # end = end of block (exclusive)
+  make b as Block = _block_by_id(body, p0.block)
+  make pend as Point = Point()
+  set pend.block = p0.block
+  set pend.index = list.len(b.stmts)
+  set lv.range.end = pend
+
+  list.push(out, lv)
+  set li += 1
+.end
+
+give out
+.end
+
+proc _block_by_id(body as Body, id as BlockId) gives Block
+make i as Int = 0
+loop while i < list.len(body.blocks)
+  if body.blocks[i].id == id
+    give body.blocks[i]
+  .end
+  set i += 1
+.end
+give Block()
+.end
+
+
+<<< =========================================================
+  6) PHASE 3 — CHECKS
+========================================================= >>>
+
+proc _check_aliasing(body as Body, lives as List of LoanLive, rep as BorrowckReport, opts as BorrowckOptions, diags as List of diag.Diagnostic)
+# Rules:
+#   - no two mutable loans overlap on same place (or overlapping places)
+#   - no mutable loan overlaps with any shared loan on same place
+#
+# This placeholder uses simple "same base local" overlap; refine with projections later.
+make i as Int = 0
+loop while i < list.len(lives)
+  make j as Int = i + 1
+  loop while j < list.len(lives)
+    if _overlap(lives[i].range, lives[j].range) and _same_base(lives[i].loan.place, lives[j].loan.place)
+      if lives[i].loan.kind is LoanKind.Mut() and lives[j].loan.kind is LoanKind.Mut()
+        push_err(diags, "vitte-borrowck-e-mutable-alias", lives[j].loan.origin_sp)
+        set rep.ok = false
+      .end
+      if (lives[i].loan.kind is LoanKind.Mut() and lives[j].loan.kind is LoanKind.Shared()) or (lives[i].loan.kind is LoanKind.Shared() and lives[j].loan.kind is LoanKind.Mut())
+        push_err(diags, "vitte-borrowck-e-mutable-alias", lives[j].loan.origin_sp)
+        set rep.ok = false
+      .end
+    .end
+    set j += 1
+  .end
+  set i += 1
+.end
+.end
+
+proc _check_moves(body as Body, lives as List of LoanLive, rep as BorrowckReport, opts as BorrowckOptions, diags as List of diag.Diagnostic)
+# Rule:
+#   - cannot move a place while it is borrowed (shared or mut)
+#
+# We scan statements and if a Move happens for a base local, check active loans at that point.
+make bi as Int = 0
+loop while bi < list.len(body.blocks)
+  make b as Block = body.blocks[bi]
+  make si as Int = 0
+  loop while si < list.len(b.stmts)
+    make st as Stmt = b.stmts[si]
+    make ai as Int = 0
+    loop while ai < list.len(st.accesses)
+      if st.accesses[ai].kind is AccessKind.Move()
+        if _has_active_loan(lives, b.id, si, st.accesses[ai].place.base)
+          push_err(diags, "vitte-borrowck-e-move-while-borrowed", st.accesses[ai].sp)
+          set rep.ok = false
+        .end
+        map.set(rep.moved, st.accesses[ai].place.base, true)
+      .end
+      set ai += 1
+    .end
+    set si += 1
+  .end
+  set bi += 1
+.end
+.end
+
+proc _check_use_after_move(body as Body, rep as BorrowckReport, opts as BorrowckOptions, diags as List of diag.Diagnostic)
+# Rule:
+#   - once moved, cannot read/write/drop unless reinitialized.
+# Placeholder:
+#   - if local is marked moved at any prior point in same block, reject read/write/drop.
+# Real implementation must be CFG-sensitive.
+make bi as Int = 0
+loop while bi < list.len(body.blocks)
+  make b as Block = body.blocks[bi]
+  make moved_here as Map of LocalId to Bool = map.new()
+
+  make si as Int = 0
+  loop while si < list.len(b.stmts)
+    make st as Stmt = b.stmts[si]
+    make ai as Int = 0
+    loop while ai < list.len(st.accesses)
+      make a as Access = st.accesses[ai]
+
+      if a.kind is AccessKind.Move()
+        map.set(moved_here, a.place.base, true)
+      .end
+
+      if (a.kind is AccessKind.Read()) or (a.kind is AccessKind.Write()) or (a.kind is AccessKind.Drop())
+        if map.has(moved_here, a.place.base)
+          push_err(diags, "vitte-borrowck-e-use-after-move", a.sp)
+          set rep.ok = false
+        .end
+      .end
+
+      set ai += 1
+    .end
+    set si += 1
+  .end
+
+  set bi += 1
+.end
+.end
+
+
+<<< =========================================================
+  7) HELPERS (RANGES / ACTIVE LOANS)
+========================================================= >>>
+
+proc _same_base(a as Place, b as Place) gives Bool
+give a.base == b.base
+.end
+
+proc _overlap(a as LiveRange, b as LiveRange) gives Bool
+# same block overlap only (placeholder)
+if a.start.block != b.start.block
+  give false
+.end
+# [a.start.index, a.end.index) overlaps [b.start.index, b.end.index)
+if a.end.index <= b.start.index give false .end
+if b.end.index <= a.start.index give false .end
+give true
+.end
+
+proc _has_active_loan(lives as List of LoanLive, block as BlockId, idx as Int, base as LocalId) gives Bool
+make i as Int = 0
+loop while i < list.len(lives)
+  if lives[i].loan.place.base == base
+    if lives[i].range.start.block == block and lives[i].range.end.block == block
+      if lives[i].range.start.index <= idx and idx < lives[i].range.end.index
+        give true
+      .end
+    .end
+  .end
+  set i += 1
+.end
+give false
+.end

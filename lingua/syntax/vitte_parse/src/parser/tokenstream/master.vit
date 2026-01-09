@@ -1,0 +1,262 @@
+# File: C:\Users\gogin\Documents\GitHub\vitte\lingua\syntax\vitte_parse\src\parser\tokenstream\master.vit
+space lingua/syntax/vitte_parse/parser/tokenstream/master
+
+<<< master
+  vitte_parse/parser/tokenstream/master.vit — TokenStream (MAX)
+
+  Purpose:
+    - Parser utility over lexer Cursor with:
+        * checkpoint/rewind (for backtracking)
+        * mark/commit (transactional parsing)
+        * bounded lookahead helpers
+        * error recovery helpers (sync sets)
+        * lightweight "eat" APIs (optional tokens)
+
+  This layer is intended to be used by all parsing modules (toplevel, types,
+  expr, stmts) without duplicating Cursor logic.
+
+  Dependencies:
+    - vitte_parse/lexer/master for Cursor + PxTok.
+>>>
+
+pull std/text as text
+pull std/collections/list as list
+
+pull lingua/syntax/vitte_ast/span as span
+pull lingua/syntax/vitte_ast/diag as diag
+
+pull lingua/syntax/vitte_parse/lexer/master as lex
+
+share all
+
+bond Text means String
+
+
+<<< =========================================================
+  0) TOKENSTREAM STATE
+========================================================= >>>
+
+form Checkpoint
+field i as Int = 0
+.end
+
+form TokenStream
+field cur as lex.Cursor = lex.Cursor()
+field diags as List of diag.Diagnostic = []
+.end
+
+proc ts_new(src as Text, skip_trivia as Bool, diags as List of diag.Diagnostic) gives TokenStream
+make ts as TokenStream = TokenStream()
+set ts.cur = lex.cursor_new(src, skip_trivia, diags)
+set ts.diags = diags
+give ts
+.end
+
+
+<<< =========================================================
+  1) BASIC ACCESS
+========================================================= >>>
+
+proc peek(ts as TokenStream) gives lex.PxTok
+give lex.peek(ts.cur)
+.end
+
+proc look(ts as TokenStream, n as Int) gives lex.PxTok
+give lex.look(ts.cur, n)
+.end
+
+proc bump(ts as TokenStream) gives lex.PxTok
+give lex.bump(ts.cur)
+.end
+
+proc at_eof(ts as TokenStream) gives Bool
+give lex.at_eof(ts.cur)
+.end
+
+proc pos_span(ts as TokenStream) gives span.Span
+give lex.pos_span(ts.cur)
+.end
+
+
+<<< =========================================================
+  2) CHECKPOINT / REWIND
+========================================================= >>>
+
+proc checkpoint(ts as TokenStream) gives Checkpoint
+make cp as Checkpoint = Checkpoint()
+set cp.i = ts.cur.i
+give cp
+.end
+
+proc rewind(ts as TokenStream, cp as Checkpoint)
+set ts.cur.i = cp.i
+if ts.cur.skip_trivia
+  lex._skip(ts.cur)      # internal helper; keep it in lib or expose a safe alias
+.end
+.end
+
+
+<<< =========================================================
+  3) TRANSACTIONAL PARSING (MARK / COMMIT / ROLLBACK)
+========================================================= >>>
+
+form Mark
+field cp as Checkpoint = Checkpoint()
+field diag_len as Int = 0
+.end
+
+proc mark(ts as TokenStream) gives Mark
+make m as Mark = Mark()
+set m.cp = checkpoint(ts)
+set m.diag_len = list.len(ts.diags)
+give m
+.end
+
+proc commit(ts as TokenStream, m as Mark)
+# nothing to do; parsing succeeded
+give
+.end
+
+proc rollback(ts as TokenStream, m as Mark)
+# rewind cursor
+rewind(ts, m.cp)
+
+# drop diags produced since mark (best effort)
+loop while list.len(ts.diags) > m.diag_len
+  list.pop(ts.diags)
+.end
+.end
+
+
+<<< =========================================================
+  4) EAT HELPERS (OPTIONAL CONSUME)
+========================================================= >>>
+
+proc eat_kw(ts as TokenStream, kw as Text) gives Bool
+if lex.is_kw(peek(ts), kw)
+  bump(ts)
+  give true
+.end
+give false
+.end
+
+proc eat_punct(ts as TokenStream, p as Text) gives Bool
+if lex.is_punct(peek(ts), p)
+  bump(ts)
+  give true
+.end
+give false
+.end
+
+proc eat_ident(ts as TokenStream) gives Option of lex.PxTok
+if lex.is_ident(peek(ts))
+  give Option.Some(bump(ts))
+.end
+give Option.None()
+.end
+
+proc eat_lit(ts as TokenStream) gives Option of lex.PxTok
+if lex.is_lit(peek(ts))
+  give Option.Some(bump(ts))
+.end
+give Option.None()
+.end
+
+
+<<< =========================================================
+  5) REQUIRE HELPERS (DIAGNOSTIC ON FAILURE)
+========================================================= >>>
+
+proc req_kw(ts as TokenStream, kw as Text) gives Bool
+give lex.expect_kw(ts.cur, kw)
+.end
+
+proc req_punct(ts as TokenStream, p as Text) gives Bool
+give lex.expect_punct(ts.cur, p)
+.end
+
+proc req_ident(ts as TokenStream) gives Option of lex.PxTok
+give lex.expect_ident(ts.cur)
+.end
+
+proc req_lit(ts as TokenStream) gives Option of lex.PxTok
+give lex.expect_lit(ts.cur)
+.end
+
+
+<<< =========================================================
+  6) RECOVERY HELPERS (SYNC)
+========================================================= >>>
+
+proc sync_to_kw(ts as TokenStream, kw as Text, max_steps as Int) gives Bool
+make steps as Int = 0
+loop while steps < max_steps and at_eof(ts) == false
+  if lex.is_kw(peek(ts), kw)
+    give true
+  .end
+  bump(ts)
+  set steps += 1
+.end
+give false
+.end
+
+proc sync_to_punct(ts as TokenStream, p as Text, max_steps as Int) gives Bool
+make steps as Int = 0
+loop while steps < max_steps and at_eof(ts) == false
+  if lex.is_punct(peek(ts), p)
+    give true
+  .end
+  bump(ts)
+  set steps += 1
+.end
+give false
+.end
+
+proc sync_to_any_kw(ts as TokenStream, kws as List of Text, max_steps as Int) gives Bool
+make steps as Int = 0
+loop while steps < max_steps and at_eof(ts) == false
+  make i as Int = 0
+  loop while i < list.len(kws)
+    if lex.is_kw(peek(ts), kws[i])
+      give true
+    .end
+    set i += 1
+  .end
+  bump(ts)
+  set steps += 1
+.end
+give false
+.end
+
+proc sync_to_any_punct(ts as TokenStream, ps as List of Text, max_steps as Int) gives Bool
+make steps as Int = 0
+loop while steps < max_steps and at_eof(ts) == false
+  make i as Int = 0
+  loop while i < list.len(ps)
+    if lex.is_punct(peek(ts), ps[i])
+      give true
+    .end
+    set i += 1
+  .end
+  bump(ts)
+  set steps += 1
+.end
+give false
+.end
+
+
+<<< =========================================================
+  7) DEBUG
+========================================================= >>>
+
+proc dbg_here(ts as TokenStream) gives Text
+give lex.debug_tok(peek(ts))
+.end
+
+proc dbg_next(ts as TokenStream) gives Text
+give lex.debug_tok(look(ts, 1))
+.end
+
+proc dbg_slice(ts as TokenStream, sp as span.Span) gives Text
+give lex.slice_src(ts.cur, sp)
+.end

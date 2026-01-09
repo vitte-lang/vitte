@@ -1,0 +1,299 @@
+# File: C:\Users\gogin\Documents\GitHub\vitte\lingua\syntax\vitte_passes\src\master.vit
+space lingua/syntax/vitte_passes/master
+
+<<< master
+  vitte_passes/master.vit — Syntax/AST passes pipeline (MAX)
+
+  Purpose:
+    - Define the canonical "passes" stage that runs after parsing and before
+      lowering/codegen:
+        * doc-zone extraction / attachment
+        * name resolution (paths, imports, shadowing)
+        * macro expansion orchestration (TT↔AST bridge)
+        * desugaring (surface -> core)
+        * type collection (forms/picks/bonds)
+        * basic validation (duplicate defs, missing .end, etc.)
+        * lints (optional)
+    - Provide a deterministic pipeline runner with stable diagnostics.
+
+  This module is intentionally compiler-facing: it wires the passes together.
+  Each pass is expected to be pure w.r.t. input AST (or return a new AST),
+  taking an explicit context object (arena, interner, diag sink, options).
+
+  Suggested layout:
+    passes/
+      master.vit
+      ctx.vit
+      options.vit
+      pipeline.vit
+      pass_doc.vit
+      pass_macros.vit
+      pass_resolve.vit
+      pass_desugar.vit
+      pass_types.vit
+      pass_validate.vit
+>>>
+
+pull std/text as text
+pull std/collections/list as list
+pull std/collections/map as map
+
+pull lingua/syntax/vitte_ast/span as span
+pull lingua/syntax/vitte_ast/diag as diag
+pull lingua/syntax/vitte_ast/master as ast
+
+pull lingua/syntax/vitte_parse/master as parse
+pull lingua/syntax/vitte_macros/master as macros
+
+share all
+
+bond Text means String
+
+
+<<< =========================================================
+  0) OPTIONS / CONTEXT
+========================================================= >>>
+
+form PassOptions
+field enable_macros as Bool = true
+field enable_desugar as Bool = true
+field enable_resolve as Bool = true
+field enable_type_collect as Bool = true
+field enable_validate as Bool = true
+field enable_lints as Bool = false
+
+field trace_passes as Bool = false
+field trace_macros as Bool = false
+
+field max_macro_depth as Int = 128
+field max_macro_steps as Int = 10_000_000
+.end
+
+proc pass_options_default() gives PassOptions
+give PassOptions()
+.end
+
+form PassCtx
+field opts as PassOptions = PassOptions()
+field diags as List of diag.Diagnostic = []
+field files as Map of Text to Text = map.new()        # virtual FS: path -> source
+field current_file as Text = ""
+.end
+
+proc ctx_new(opts as PassOptions, diags as List of diag.Diagnostic) gives PassCtx
+make c as PassCtx = PassCtx()
+set c.opts = opts
+set c.diags = diags
+set c.files = map.new()
+set c.current_file = ""
+give c
+.end
+
+proc ctx_trace(c as PassCtx, msg as Text)
+if c.opts.trace_passes
+  # Prefer real logger later; for now use diag note or side channel
+  list.push(c.diags, diag.note("pass-trace", span.Span(), msg))
+.end
+.end
+
+
+<<< =========================================================
+  1) PIPELINE API
+========================================================= >>>
+
+form PassResult
+field ok as Bool = true
+field module as ast.Module = ast.Module()
+.end
+
+proc run_file(path as Text, src as Text, opts as PassOptions, diags as List of diag.Diagnostic) gives PassResult
+make ctx as PassCtx = ctx_new(opts, diags)
+set ctx.current_file = path
+map.set(ctx.files, path, src)
+give run_module(ctx, path, src)
+.end
+
+proc run_module(ctx as PassCtx, path as Text, src as Text) gives PassResult
+make r as PassResult = PassResult()
+set r.ok = true
+
+ctx_trace(ctx, "parse: " + path)
+make p as parse.ParseResult = parse.parse_file(src, ctx.diags)
+if p.ok == false
+  set r.ok = false
+  set r.module = p.module
+  give r
+.end
+set r.module = p.module
+
+# Pass: doc zones
+ctx_trace(ctx, "pass: doc")
+_pass_doc(ctx, r.module)
+
+# Pass: macros
+if ctx.opts.enable_macros
+  ctx_trace(ctx, "pass: macros")
+  _pass_macros(ctx, r.module)
+.end
+
+# Pass: resolve
+if ctx.opts.enable_resolve
+  ctx_trace(ctx, "pass: resolve")
+  _pass_resolve(ctx, r.module)
+.end
+
+# Pass: desugar
+if ctx.opts.enable_desugar
+  ctx_trace(ctx, "pass: desugar")
+  _pass_desugar(ctx, r.module)
+.end
+
+# Pass: type collect
+if ctx.opts.enable_type_collect
+  ctx_trace(ctx, "pass: types")
+  _pass_types(ctx, r.module)
+.end
+
+# Pass: validate
+if ctx.opts.enable_validate
+  ctx_trace(ctx, "pass: validate")
+  _pass_validate(ctx, r.module)
+.end
+
+# Lints (optional)
+if ctx.opts.enable_lints
+  ctx_trace(ctx, "pass: lints")
+  _pass_lints(ctx, r.module)
+.end
+
+# overall ok if no errors
+set r.ok = (diag.count_errors(ctx.diags) == 0)
+give r
+.end
+
+
+<<< =========================================================
+  2) PASS: DOC ZONES
+========================================================= >>>
+
+proc _pass_doc(ctx as PassCtx, m as ast.Module)
+# Attach doc zones / doc lines to nearest following item.
+# Placeholder: depends on AST representation.
+# Implementation idea:
+#   - module.items already include Doc nodes, or lexer produced doc tokens
+#   - collect pending docs, then attach to next non-doc item.
+give
+.end
+
+
+<<< =========================================================
+  3) PASS: MACROS
+========================================================= >>>
+
+proc _pass_macros(ctx as PassCtx, m as ast.Module)
+# Strategy:
+#   - Convert macro call sites into TT (token-tree)
+#   - Use macros.expand_one / expand_all_tt
+#   - Re-parse emitted TT back into AST nodes OR splice TT into token stream then reparse region
+#
+# Placeholder wiring only.
+make mc_diags as List of diag.Diagnostic = ctx.diags
+make ex as macros.ExpandCtx = macros.ctx_new(mc_diags)
+macros.register_default_builtins(ex)
+
+set ex.limits.max_depth = ctx.opts.max_macro_depth
+set ex.limits.max_steps = ctx.opts.max_macro_steps
+
+# Example: if AST contains a list of macro calls, expand them.
+# for each call:
+#   macros.expand_one(ex, call)
+#   splice results
+
+give
+.end
+
+
+<<< =========================================================
+  4) PASS: RESOLVE (NAMES / IMPORTS)
+========================================================= >>>
+
+form ResolveReport
+field ok as Bool = true
+field unresolved as List of Text = []
+.end
+
+proc _pass_resolve(ctx as PassCtx, m as ast.Module)
+# Placeholder. Real pass will:
+#   - build module scope (space/pull/share)
+#   - resolve paths in types/exprs
+#   - detect shadowing and duplicates
+#   - assign symbol IDs
+give
+.end
+
+
+<<< =========================================================
+  5) PASS: DESUGAR
+========================================================= >>>
+
+proc _pass_desugar(ctx as PassCtx, m as ast.Module)
+# Placeholder. Desugaring examples:
+#   - surface "each" -> core loop + iterator protocol
+#   - "select" -> match core representation
+#   - implicit returns, short forms, etc.
+give
+.end
+
+
+<<< =========================================================
+  6) PASS: TYPE COLLECTION
+========================================================= >>>
+
+form TypeIndex
+field forms as Map of Text to span.Span = map.new()
+field picks as Map of Text to span.Span = map.new()
+field bonds as Map of Text to span.Span = map.new()
+.end
+
+proc _pass_types(ctx as PassCtx, m as ast.Module)
+# Build a module-level type index; record duplicates.
+# Placeholder: depends on AST.
+give
+.end
+
+
+<<< =========================================================
+  7) PASS: VALIDATION
+========================================================= >>>
+
+proc _pass_validate(ctx as PassCtx, m as ast.Module)
+# Basic checks:
+#   - missing `.end` should be caught by parser, but validate invariants
+#   - duplicate toplevel items
+#   - illegal constructs (e.g. foreign inside forbidden scope)
+# Placeholder.
+give
+.end
+
+
+<<< =========================================================
+  8) PASS: LINTS
+========================================================= >>>
+
+proc _pass_lints(ctx as PassCtx, m as ast.Module)
+# Optional, non-fatal style checks.
+give
+.end
+
+
+<<< =========================================================
+  9) SMALL HELPERS
+========================================================= >>>
+
+proc push_err(ctx as PassCtx, key as Text, sp as span.Span)
+list.push(ctx.diags, diag.error(key, sp))
+.end
+
+proc push_warn(ctx as PassCtx, key as Text, sp as span.Span)
+list.push(ctx.diags, diag.warn(key, sp))
+.end
