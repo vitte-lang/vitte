@@ -1,0 +1,744 @@
+vitte 1.0
+space lingua/syntax/vitte_ast_ir/master
+
+<<< master
+  vitte_ast_ir/master.vit — AST-IR bridge layer (MAX)
+
+  Scope:
+    - Defines an intermediate representation between parsed AST and later compiler stages.
+    - Designed for:
+        * stable lowering target from "vitte_ast" (surface AST)
+        * easier semantic passes (name/resolve/typecheck) without syntax noise
+        * multiple backends (VM bytecode, C emitter, IR textual, etc.)
+    - Emphasizes:
+        * explicit blocks, explicit control flow
+        * normalized constructs (loop_until already rewritten, each desugared)
+        * typed attribute sets
+        * stable IDs and spans
+
+  Model:
+    - IR is still "tree-ish" (not SSA), but normalized and explicit.
+    - Later passes can convert IR -> MIR/SSA/Bytecode.
+
+  Alignment:
+    - Vitte Full: .end blocks, make/keep/set, give/emit/defer, select/when/otherwise
+>>>
+
+pull std/text as text
+pull std/collections/list as list
+pull std/collections/map as map
+
+pull lingua/syntax/vitte_ast/span as span
+pull lingua/syntax/vitte_ast/symbol as symbol
+pull lingua/syntax/vitte_ast/diag as diag
+pull lingua/syntax/vitte_ast/attr/master as attr
+
+share all
+
+bond Text means String
+
+
+<<< =========================================================
+  0) STABLE IDS (file-local) AND BASIC NAMES
+========================================================= >>>
+
+form FileId
+field raw as U32 = 0u32
+.end
+
+form ItemId
+field raw as U32 = 0u32
+.end
+
+form BlockId
+field raw as U32 = 0u32
+.end
+
+form StmtId
+field raw as U32 = 0u32
+.end
+
+form ExprId
+field raw as U32 = 0u32
+.end
+
+form TypeId
+field raw as U32 = 0u32
+.end
+
+form LocalId
+field raw as U32 = 0u32
+.end
+
+form ParamId
+field raw as U32 = 0u32
+.end
+
+form LabelId
+field raw as U32 = 0u32
+.end
+
+proc file_id(x as U32) gives FileId make v=FileId() set v.raw=x give v .end .end
+proc item_id(x as U32) gives ItemId make v=ItemId() set v.raw=x give v .end .end
+proc block_id(x as U32) gives BlockId make v=BlockId() set v.raw=x give v .end .end
+proc stmt_id(x as U32) gives StmtId make v=StmtId() set v.raw=x give v .end .end
+proc expr_id(x as U32) gives ExprId make v=ExprId() set v.raw=x give v .end .end
+proc type_id(x as U32) gives TypeId make v=TypeId() set v.raw=x give v .end .end
+proc local_id(x as U32) gives LocalId make v=LocalId() set v.raw=x give v .end .end
+proc param_id(x as U32) gives ParamId make v=ParamId() set v.raw=x give v .end .end
+proc label_id(x as U32) gives LabelId make v=LabelId() set v.raw=x give v .end .end
+
+
+form Name
+field sym as symbol.Symbol = symbol.Symbol()
+.end
+
+proc name_from_text(t as Text) gives Name
+make n as Name = Name()
+set n.sym = symbol.from_text(t)
+give n
+.end
+
+proc name_text(n as Name) gives Text
+give symbol.to_text(n.sym)
+.end
+
+
+<<< =========================================================
+  1) PATHS / VISIBILITY / ATTRS
+========================================================= >>>
+
+pick Vis
+case Pub()
+case Hid()
+.end
+
+form Path
+field parts as List of Name = []
+.end
+
+proc path_from_text(p as Text) gives Path
+# Very small parser: split on '/' '.' '::' (best-effort).
+# Replace with your canonical path parser.
+make out as Path = Path()
+set out.parts = []
+make buf as Text = ""
+make i as Int = 0
+loop while i < text.len(p)
+  make ch as Text = text.char_at(p, i)
+  if ch == "/" or ch == "." or ch == ":"
+    if buf != ""
+      list.push(out.parts, name_from_text(buf))
+      set buf = ""
+    .end
+  else
+    set buf = buf + ch
+  .end
+  set i += 1
+.end
+if buf != ""
+  list.push(out.parts, name_from_text(buf))
+.end
+give out
+.end
+
+proc path_to_text(p as Path) gives Text
+if list.len(p.parts) == 0
+  give ""
+.end
+make out as Text = name_text(p.parts[0])
+make i as Int = 1
+loop while i < list.len(p.parts)
+  set out = out + "/" + name_text(p.parts[i])
+  set i += 1
+.end
+give out
+.end
+
+
+form Attrs
+field set as attr.AttrSet = attr.AttrSet()
+.end
+
+proc attrs_empty() gives Attrs
+make a as Attrs = Attrs()
+set a.set = attr.attr_set_new()
+give a
+.end
+
+proc attrs_from_list(xs as List of attr.Attribute) gives Attrs
+make s as attr.AttrSet = attr.attr_set_new()
+make i as Int = 0
+loop while i < list.len(xs)
+  set s = attr.attr_set_add(s, xs[i])
+  set i += 1
+.end
+make a as Attrs = Attrs()
+set a.set = s
+give a
+.end
+
+
+<<< =========================================================
+  2) TYPES (Normalized, referencing builtins via Path/Name)
+========================================================= >>>
+
+pick TypeRef
+case Builtin(name as Name)                # e.g. F32, I64, Bool
+case Named(path as Path, args as List of TypeRef)
+case ListOf(inner as TypeRef)
+case MapOf(key as TypeRef, value as TypeRef)
+case PackOf(items as List of TypeRef)
+case Or(left as TypeRef, right as TypeRef)
+case Hole()                               # for error recovery
+.end
+
+proc type_builtin(t as Text) gives TypeRef
+give TypeRef.Builtin(name_from_text(t))
+.end
+
+proc type_list_of(t as TypeRef) gives TypeRef
+give TypeRef.ListOf(t)
+.end
+
+proc type_map_of(k as TypeRef, v as TypeRef) gives TypeRef
+give TypeRef.MapOf(k, v)
+.end
+
+proc type_or(a as TypeRef, b as TypeRef) gives TypeRef
+give TypeRef.Or(a, b)
+.end
+
+proc type_to_text(t as TypeRef) gives Text
+select t
+when TypeRef.Builtin(n)
+  give name_text(n)
+.end
+when TypeRef.Named(p, _)
+  give path_to_text(p)
+.end
+when TypeRef.ListOf(x)
+  give "List of " + type_to_text(x)
+.end
+when TypeRef.MapOf(k, v)
+  give "Map of " + type_to_text(k) + " to " + type_to_text(v)
+.end
+when TypeRef.PackOf(_)
+  give "Pack(...)"
+.end
+when TypeRef.Or(a, b)
+  give type_to_text(a) + " or " + type_to_text(b)
+.end
+otherwise
+  give "?"
+.end
+.end
+.end
+
+
+<<< =========================================================
+  3) LITERALS / OPERATORS
+========================================================= >>>
+
+pick IntSuffix
+case None()
+case I8() case I16() case I32() case I64()
+case U8() case U16() case U32() case U64()
+case ISize() case USize()
+.end
+
+pick FloatSuffix
+case None()
+case F32()
+case F64()
+.end
+
+pick Literal
+case Null()
+case Bool(value as Bool)
+case Int(text as Text, suffix as IntSuffix)       # store raw text for exactness
+case Float(text as Text, suffix as FloatSuffix)
+case Text(value as Text)
+.end
+
+pick UnaryOp
+case Neg()
+case Not()
+.end
+
+pick BinaryOp
+case Add() case Sub() case Mul() case Div() case Rem()
+case Eq()  case Ne()
+case Lt()  case Le()
+case Gt()  case Ge()
+case And()
+case Or()
+.end
+
+proc binop_text(op as BinaryOp) gives Text
+select op
+when BinaryOp.Add() give "+" .end
+when BinaryOp.Sub() give "-" .end
+when BinaryOp.Mul() give "*" .end
+when BinaryOp.Div() give "/" .end
+when BinaryOp.Rem() give "%" .end
+when BinaryOp.Eq()  give "==" .end
+when BinaryOp.Ne()  give "!=" .end
+when BinaryOp.Lt()  give "<" .end
+when BinaryOp.Le()  give "<=" .end
+when BinaryOp.Gt()  give ">" .end
+when BinaryOp.Ge()  give ">=" .end
+when BinaryOp.And() give "and" .end
+otherwise           give "or" .end
+.end
+.end
+
+
+<<< =========================================================
+  4) EXPRESSIONS (IR)
+========================================================= >>>
+
+pick ExprKind
+case Lit(value as Literal)
+case NameRef(name as Name)
+case PathRef(path as Path)
+case Call(callee as Expr, args as List of Arg)
+case Index(base as Expr, index as Expr)
+case Field(base as Expr, field as Name)
+case Unary(op as UnaryOp, inner as Expr)
+case Binary(op as BinaryOp, left as Expr, right as Expr)
+case Group(inner as Expr)
+case ListLit(items as List of Expr)
+case MapLit(items as List of MapEntry)
+case PackLit(items as List of Expr)
+case IfExpr(cond as Expr, then_block as Block, else_block as Block)     # optional
+case SelectExpr(scrut as Expr, arms as List of WhenArm, otherwise as Block)
+case Hole()
+.end
+
+form Expr
+field id as ExprId = ExprId()
+field span as span.Span = span.Span()
+field attrs as Attrs = Attrs()
+field kind as ExprKind = ExprKind.Hole()
+field ty as TypeRef = TypeRef.Hole()          # filled by typecheck later
+.end
+
+form Arg
+field name as Name = Name()
+field has_name as Bool = false
+field value as Expr = Expr()
+.end
+
+form MapEntry
+field key as Expr = Expr()
+field value as Expr = Expr()
+.end
+
+form WhenArm
+field pat as Pattern = Pattern()
+field body as Block = Block()
+.end
+
+
+<<< =========================================================
+  5) PATTERNS (IR)
+========================================================= >>>
+
+pick PatternKind
+case Wild()
+case Lit(value as Literal)
+case NameBind(name as Name)
+case Tuple(items as List of Pattern)
+case List(items as List of Pattern)
+case Variant(ty as Path, case_name as Name, payload as List of Pattern)
+case Hole()
+.end
+
+form Pattern
+field span as span.Span = span.Span()
+field kind as PatternKind = PatternKind.Hole()
+.end
+
+
+<<< =========================================================
+  6) STATEMENTS / BLOCKS (IR)
+========================================================= >>>
+
+pick SetOp
+case Assign()
+case AddAssign()
+case SubAssign()
+case MulAssign()
+case DivAssign()
+case RemAssign()
+.end
+
+form Target
+field base as Expr = Expr()          # must be NameRef/Field/Index etc.
+.end
+
+pick StmtKind
+case Make(name as Name, ty as TypeRef, has_ty as Bool, init as Expr, has_init as Bool)
+case Keep(name as Name, ty as TypeRef, has_ty as Bool, init as Expr)
+case Set(target as Target, op as SetOp, value as Expr)
+case If(cond as Expr, then_block as Block, elifs as List of ElifPart, else_block as Block, has_else as Bool)
+case LoopWhile(cond as Expr, body as Block, label as LabelId)
+case LoopEach(item as Name, index as Name, has_index as Bool, iterable as Expr, body as Block, label as LabelId) # from desugared each
+case Select(scrut as Expr, arms as List of WhenArm, otherwise as Block, has_otherwise as Bool)
+case Give(value as Expr, has_value as Bool)
+case Emit(value as Expr)
+case Defer(action as DeferAction)
+case Assert(cond as Expr, msg as Expr, has_msg as Bool)
+case Halt()
+case Next()
+case ExprStmt(expr as Expr)
+case Hole()
+.end
+
+form Stmt
+field id as StmtId = StmtId()
+field span as span.Span = span.Span()
+field attrs as Attrs = Attrs()
+field kind as StmtKind = StmtKind.Hole()
+.end
+
+form ElifPart
+field cond as Expr = Expr()
+field body as Block = Block()
+.end
+
+pick DeferAction
+case Call(expr as Expr)
+case SetInline(target as Target, op as SetOp, value as Expr)
+case EmitInline(value as Expr)
+case Hole()
+.end
+
+form Block
+field id as BlockId = BlockId()
+field span as span.Span = span.Span()
+field stmts as List of Stmt = []
+.end
+
+
+<<< =========================================================
+  7) ITEMS (TOPLEVEL IR)
+========================================================= >>>
+
+pick EntryKind
+case App()
+case Service()
+case Tool()
+case Pipeline()
+case Driver()
+case Kernel()
+.end
+
+form Param
+field id as ParamId = ParamId()
+field name as Name = Name()
+field ty as TypeRef = TypeRef.Hole()
+field has_ty as Bool = false
+field default as Expr = Expr()
+field has_default as Bool = false
+field span as span.Span = span.Span()
+field attrs as Attrs = Attrs()
+.end
+
+form Sig
+field params as List of Param = []
+field ret as TypeRef = TypeRef.Hole()
+field has_ret as Bool = false
+.end
+
+form ProcItem
+field name as Name = Name()
+field vis as Vis = Vis.Hid()
+field sig as Sig = Sig()
+field body as Block = Block()
+field attrs as Attrs = Attrs()
+field span as span.Span = span.Span()
+.end
+
+form FlowItem
+field name as Name = Name()
+field vis as Vis = Vis.Hid()
+field sig as Sig = Sig()
+field body as Block = Block()
+field attrs as Attrs = Attrs()
+field span as span.Span = span.Span()
+.end
+
+form EntryItem
+field kind as EntryKind = EntryKind.Tool()
+field at as Path = Path()
+field body as Block = Block()
+field attrs as Attrs = Attrs()
+field span as span.Span = span.Span()
+.end
+
+form Field
+field name as Name = Name()
+field vis as Vis = Vis.Hid()
+field ty as TypeRef = TypeRef.Hole()
+field has_init as Bool = false
+field init as Expr = Expr()
+field span as span.Span = span.Span()
+field attrs as Attrs = Attrs()
+.end
+
+form FormItem
+field name as Name = Name()
+field vis as Vis = Vis.Hid()
+field type_params as List of Name = []
+field fields as List of Field = []
+field attrs as Attrs = Attrs()
+field span as span.Span = span.Span()
+.end
+
+form Case
+field name as Name = Name()
+field vis as Vis = Vis.Hid()
+field payload as List of TypeRef = []
+field attrs as Attrs = Attrs()
+field span as span.Span = span.Span()
+.end
+
+form PickItem
+field name as Name = Name()
+field vis as Vis = Vis.Hid()
+field type_params as List of Name = []
+field cases as List of Case = []
+field attrs as Attrs = Attrs()
+field span as span.Span = span.Span()
+.end
+
+form BondItem
+field name as Name = Name()
+field vis as Vis = Vis.Hid()
+field type_params as List of Name = []
+field target as TypeRef = TypeRef.Hole()
+field attrs as Attrs = Attrs()
+field span as span.Span = span.Span()
+.end
+
+form PullItem
+field path as Path = Path()
+field as_name as Name = Name()
+field has_as as Bool = false
+field only as List of Name = []
+field has_only as Bool = false
+field attrs as Attrs = Attrs()
+field span as span.Span = span.Span()
+.end
+
+form ShareItem
+field all as Bool = false
+field names as List of Name = []
+field attrs as Attrs = Attrs()
+field span as span.Span = span.Span()
+.end
+
+form SpaceItem
+field path as Path = Path()
+field attrs as Attrs = Attrs()
+field span as span.Span = span.Span()
+.end
+
+form BuildItem
+field key as Text = ""
+field value as Literal = Literal.Text("")
+field attrs as Attrs = Attrs()
+field span as span.Span = span.Span()
+.end
+
+form GlobalItem
+field is_const as Bool = false
+field name as Name = Name()
+field has_ty as Bool = false
+field ty as TypeRef = TypeRef.Hole()
+field has_init as Bool = false
+field init as Expr = Expr()
+field vis as Vis = Vis.Hid()
+field attrs as Attrs = Attrs()
+field span as span.Span = span.Span()
+.end
+
+pick ItemKind
+case Space(item as SpaceItem)
+case Pull(item as PullItem)
+case Share(item as ShareItem)
+case Build(item as BuildItem)
+case Form(item as FormItem)
+case Pick(item as PickItem)
+case Bond(item as BondItem)
+case Proc(item as ProcItem)
+case Flow(item as FlowItem)
+case Entry(item as EntryItem)
+case Global(item as GlobalItem)
+case Hole()
+.end
+
+form Item
+field id as ItemId = ItemId()
+field span as span.Span = span.Span()
+field kind as ItemKind = ItemKind.Hole()
+.end
+
+form IrFile
+field id as FileId = FileId()
+field items as List of Item = []
+field span as span.Span = span.Span()
+field attrs as Attrs = Attrs()
+.end
+
+
+<<< =========================================================
+  8) BUILDERS / HELPERS (MAX)
+========================================================= >>>
+
+form IdGen
+field next_item as U32 = 1u32
+field next_block as U32 = 1u32
+field next_stmt as U32 = 1u32
+field next_expr as U32 = 1u32
+field next_local as U32 = 1u32
+field next_param as U32 = 1u32
+field next_label as U32 = 1u32
+.end
+
+proc idgen_new() gives IdGen
+give IdGen()
+.end
+
+proc idgen_item(g as IdGen) gives ItemId
+make id as ItemId = item_id(g.next_item)
+set g.next_item += 1u32
+give id
+.end
+
+proc idgen_block(g as IdGen) gives BlockId
+make id as BlockId = block_id(g.next_block)
+set g.next_block += 1u32
+give id
+.end
+
+proc idgen_stmt(g as IdGen) gives StmtId
+make id as StmtId = stmt_id(g.next_stmt)
+set g.next_stmt += 1u32
+give id
+.end
+
+proc idgen_expr(g as IdGen) gives ExprId
+make id as ExprId = expr_id(g.next_expr)
+set g.next_expr += 1u32
+give id
+.end
+
+proc idgen_label(g as IdGen) gives LabelId
+make id as LabelId = label_id(g.next_label)
+set g.next_label += 1u32
+give id
+.end
+
+
+proc block_new(g as IdGen, sp as span.Span) gives Block
+make b as Block = Block()
+set b.id = idgen_block(g)
+set b.span = sp
+set b.stmts = []
+give b
+.end
+
+proc stmt_expr(g as IdGen, e as Expr, sp as span.Span) gives Stmt
+make s as Stmt = Stmt()
+set s.id = idgen_stmt(g)
+set s.span = sp
+set s.attrs = attrs_empty()
+set s.kind = StmtKind.ExprStmt(e)
+give s
+.end
+
+proc expr_lit(g as IdGen, lit as Literal, sp as span.Span) gives Expr
+make e as Expr = Expr()
+set e.id = idgen_expr(g)
+set e.span = sp
+set e.attrs = attrs_empty()
+set e.kind = ExprKind.Lit(lit)
+set e.ty = TypeRef.Hole()
+give e
+.end
+
+proc expr_name(g as IdGen, n as Text, sp as span.Span) gives Expr
+make e as Expr = Expr()
+set e.id = idgen_expr(g)
+set e.span = sp
+set e.attrs = attrs_empty()
+set e.kind = ExprKind.NameRef(name_from_text(n))
+set e.ty = TypeRef.Hole()
+give e
+.end
+
+
+<<< =========================================================
+  9) SERIALIZE / DEBUG PRINT (optional)
+========================================================= >>>
+
+proc item_kind_tag(k as ItemKind) gives Text
+select k
+when ItemKind.Space(_)  give "space" .end
+when ItemKind.Pull(_)   give "pull" .end
+when ItemKind.Share(_)  give "share" .end
+when ItemKind.Build(_)  give "build" .end
+when ItemKind.Form(_)   give "form" .end
+when ItemKind.Pick(_)   give "pick" .end
+when ItemKind.Bond(_)   give "bond" .end
+when ItemKind.Proc(_)   give "proc" .end
+when ItemKind.Flow(_)   give "flow" .end
+when ItemKind.Entry(_)  give "entry" .end
+when ItemKind.Global(_) give "global" .end
+otherwise               give "hole" .end
+.end
+.end
+
+proc ir_file_summary(f as IrFile) gives Text
+make out as Text = ""
+set out = "IrFile(items=" + text.from_int(list.len(f.items)) + ")"
+give out
+.end
+
+
+<<< =========================================================
+  10) SMOKE TESTS (structure)
+========================================================= >>>
+
+proc _test_build_small()
+make g as IdGen = idgen_new()
+make f as IrFile = IrFile()
+set f.id = file_id(1u32)
+set f.items = []
+
+# space a/b
+make sp_item as Item = Item()
+set sp_item.id = idgen_item(g)
+set sp_item.kind = ItemKind.Space(SpaceItem())
+list.push(f.items, sp_item)
+
+# proc main() .end
+make pr as ProcItem = ProcItem()
+set pr.name = name_from_text("main")
+set pr.vis = Vis.Pub()
+set pr.sig = Sig()
+set pr.body = block_new(g, span.Span())
+set pr.attrs = attrs_empty()
+set pr.span = span.Span()
+
+make it as Item = Item()
+set it.id = idgen_item(g)
+set it.kind = ItemKind.Proc(pr)
+list.push(f.items, it)
+
+emit ir_file_summary(f)
+give
+.end

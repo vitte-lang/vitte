@@ -1,0 +1,465 @@
+vitte 1.0
+space lingua/syntax/vitte_builtin_macros/format_foreign/printf/master
+
+<<< master
+  vitte_builtin_macros/format_foreign/printf/master.vit — Printf foreign-format system (MAX)
+
+  Purpose:
+    - Provide a full compiler-facing subsystem around C printf-family formatting:
+        * parse format strings
+        * validate arity + expectations
+        * detect hazardous forms (%n, mixing positional/non-positional)
+        * decide lowering strategy (varargs ABI vs typed wrapper)
+        * optionally generate wrapper stubs or IR intrinsics
+    - Designed for compilation robustness:
+        * deterministic
+        * linear-time parse
+        * stable diagnostics with offsets
+        * clean separation between parser, validator, and lowering hints
+
+  This file is the "module master" that wires:
+    - plan parsing (main.vit)
+    - policy and validation
+    - lowering hints for IR/codegen
+    - small helper APIs used by the builtin macro dispatcher
+
+  Expected directory:
+    format_foreign/printf/
+      master.vit
+      main.vit
+
+  Notes:
+    - Actual C ABI varargs lowering is target-specific; this module emits abstract
+      plan + expectations so backend can implement per target (SysV, Win64, etc.).
+>>>
+
+pull std/text as text
+pull std/collections/list as list
+pull std/collections/map as map
+
+pull lingua/syntax/vitte_ast/span as span
+pull lingua/syntax/vitte_ast/diag as diag
+pull lingua/syntax/vitte_ast_ir/master as ir
+
+pull lingua/syntax/vitte_builtin_macros/format_foreign/printf/main as printf_main
+
+share all
+
+bond Text means String
+
+
+<<< =========================================================
+  0) RE-EXPORT CORE TYPES
+========================================================= >>>
+
+# re-export for convenience
+bond FormatPlan means printf_main.FormatPlan
+bond PrintfSpec means printf_main.PrintfSpec
+bond PrintfTok means printf_main.PrintfTok
+bond ValidationReport means printf_main.ValidationReport
+bond ArgExpectation means printf_main.ArgExpectation
+
+bond PrintfConv means printf_main.PrintfConv
+bond PrintfLength means printf_main.PrintfLength
+
+
+<<< =========================================================
+  1) POLICY (SECURITY + COMPILER MODE)
+========================================================= >>>
+
+pick PrintfPolicyLevel
+case Permissive()     # warn on hazards, still allow
+case DefaultSafe()    # error on hazards (%n), error on mixed positional
+case Strict()         # error on unknown conv, error on width/prec star, etc.
+.end
+
+form PrintfPolicy
+field level as PrintfPolicyLevel = PrintfPolicyLevel.DefaultSafe()
+field forbid_percent_n as Bool = true
+field forbid_mixed_positional as Bool = true
+field forbid_unknown_conv as Bool = false
+field forbid_star as Bool = false
+field max_specs as Int = 256
+field max_fmt_len as Int = 65536
+field allow_long_double as Bool = true
+field allow_grouping_flag as Bool = true      # '
+field allow_i18n_flag as Bool = true          # I
+.end
+
+proc printf_policy_default() gives PrintfPolicy
+give PrintfPolicy()
+.end
+
+proc printf_policy_strict() gives PrintfPolicy
+make p as PrintfPolicy = PrintfPolicy()
+set p.level = PrintfPolicyLevel.Strict()
+set p.forbid_percent_n = true
+set p.forbid_mixed_positional = true
+set p.forbid_unknown_conv = true
+set p.forbid_star = true
+set p.max_specs = 128
+set p.max_fmt_len = 8192
+give p
+.end
+
+
+<<< =========================================================
+  2) LOWERING STRATEGY HINTS
+========================================================= >>>
+
+pick PrintfLowering
+case VarargsDirect()       # call foreign printf with varargs directly
+case WrapperTyped()        # generate typed wrapper with fixed signature
+case IntrinsicPrintf()     # lower to internal intrinsic (backend decides ABI)
+case Disabled()            # compile-time error (policy)
+.end
+
+form PrintfLoweringHint
+field lowering as PrintfLowering = PrintfLowering.VarargsDirect()
+field reason as Text = ""
+field wrapper_name as Text = ""     # if WrapperTyped
+field fixed_params as List of Text = []  # expected param types text
+field uses_varargs as Bool = true
+field needs_int_promotions as Bool = true
+field span as span.Span = span.Span()
+.end
+
+proc hint_varargs(reason as Text, sp as span.Span) gives PrintfLoweringHint
+make h as PrintfLoweringHint = PrintfLoweringHint()
+set h.lowering = PrintfLowering.VarargsDirect()
+set h.reason = reason
+set h.uses_varargs = true
+set h.span = sp
+give h
+.end
+
+proc hint_wrapper(name as Text, params as List of Text, reason as Text, sp as span.Span) gives PrintfLoweringHint
+make h as PrintfLoweringHint = PrintfLoweringHint()
+set h.lowering = PrintfLowering.WrapperTyped()
+set h.wrapper_name = name
+set h.fixed_params = params
+set h.reason = reason
+set h.uses_varargs = false
+set h.span = sp
+give h
+.end
+
+proc hint_intrinsic(reason as Text, sp as span.Span) gives PrintfLoweringHint
+make h as PrintfLoweringHint = PrintfLoweringHint()
+set h.lowering = PrintfLowering.IntrinsicPrintf()
+set h.reason = reason
+set h.uses_varargs = true
+set h.span = sp
+give h
+.end
+
+proc hint_disabled(reason as Text, sp as span.Span) gives PrintfLoweringHint
+make h as PrintfLoweringHint = PrintfLoweringHint()
+set h.lowering = PrintfLowering.Disabled()
+set h.reason = reason
+set h.uses_varargs = false
+set h.span = sp
+give h
+.end
+
+
+<<< =========================================================
+  3) HIGH-LEVEL API (PARSE + POLICY + HINT)
+========================================================= >>>
+
+form PrintfAnalysis
+field plan as FormatPlan = FormatPlan()
+field report as ValidationReport = ValidationReport()
+field hint as PrintfLoweringHint = PrintfLoweringHint()
+field ok as Bool = true
+.end
+
+proc analyze_printf_format(fmt as Text, call_span as span.Span, policy as PrintfPolicy, diags as List of diag.Diagnostic) gives PrintfAnalysis
+make a as PrintfAnalysis = PrintfAnalysis()
+set a.ok = true
+
+# length guard
+if text.len(fmt) > policy.max_fmt_len
+  list.push(diags, diag.error("printf-format-too-long", call_span))
+  set a.ok = false
+  set a.hint = hint_disabled("format too long", call_span)
+  give a
+.end
+
+# parse
+set a.plan = printf_main.printf_parse_plan(fmt, diags)
+
+# spec count guard
+if list.len(a.plan.specs) > policy.max_specs
+  list.push(diags, diag.error("printf-too-many-specs", call_span))
+  set a.ok = false
+  set a.hint = hint_disabled("too many format specs", call_span)
+  give a
+.end
+
+# validate base rules
+set a.report = printf_main.printf_validate(fmt, call_span, diags)
+if a.report.ok == false
+  set a.ok = false
+.end
+
+# apply policy overlays
+_apply_policy(a, fmt, call_span, policy, diags)
+
+# decide lowering hint
+set a.hint = decide_lowering(a.plan, a.report, call_span, policy, diags)
+
+if a.hint.lowering is PrintfLowering.Disabled()
+  set a.ok = false
+.end
+
+give a
+.end
+
+
+proc _apply_policy(a as PrintfAnalysis, fmt as Text, call_span as span.Span, policy as PrintfPolicy, diags as List of diag.Diagnostic)
+# enforce additional policy rules beyond base validator
+if policy.forbid_mixed_positional
+  if printf_main._mixes_positional(a.plan)
+    list.push(diags, diag.error("printf-policy-mixed-positional", call_span))
+    set a.ok = false
+  .end
+.end
+
+if policy.forbid_percent_n and a.plan.has_n
+  list.push(diags, diag.error("printf-policy-percent-n", call_span))
+  set a.ok = false
+.end
+
+if policy.forbid_star and a.plan.uses_star
+  if policy.level is PrintfPolicyLevel.Strict()
+    list.push(diags, diag.error("printf-policy-star-forbidden", call_span))
+    set a.ok = false
+  else
+    list.push(diags, diag.warn("printf-policy-star-discouraged", call_span))
+  .end
+.end
+
+if policy.forbid_unknown_conv
+  make i as Int = 0
+  loop while i < list.len(a.plan.specs)
+    if a.plan.specs[i].conv is PrintfConv.Unknown()
+      list.push(diags, diag.error("printf-policy-unknown-conv", call_span))
+      set a.ok = false
+    .end
+    set i += 1
+  .end
+.end
+.end
+
+
+proc decide_lowering(plan as FormatPlan, rep as ValidationReport, call_span as span.Span, policy as PrintfPolicy, diags as List of diag.Diagnostic) gives PrintfLoweringHint
+# Heuristic:
+# - If strict policy or backend wants typed calls: WrapperTyped.
+# - If any "unknown" expectations or star/positional: prefer IntrinsicPrintf.
+# - Default: VarargsDirect.
+if rep.ok == false
+  give hint_disabled("validation failed", call_span)
+.end
+
+if policy.level is PrintfPolicyLevel.Strict()
+  # typed wrapper prevents ABI mistakes; but only if no stars/positional
+  if plan.uses_star or plan.uses_positional
+    give hint_intrinsic("strict policy requires intrinsic due to star/positional", call_span)
+  .end
+  give hint_wrapper(_wrapper_name_for(call_span), _wrapper_params_from(rep), "strict policy typed wrapper", call_span)
+.end
+
+# DefaultSafe:
+if plan.uses_positional
+  give hint_intrinsic("positional printf requires intrinsic lowering", call_span)
+.end
+
+if plan.uses_star
+  give hint_intrinsic("star width/precision consumes extra ints; prefer intrinsic", call_span)
+.end
+
+# Unknown expectations? prefer intrinsic to avoid wrong ABI
+if _has_unknown_expect(rep.expects)
+  give hint_intrinsic("unknown printf expectation; prefer intrinsic", call_span)
+.end
+
+# otherwise direct varargs is acceptable
+give hint_varargs("safe printf plan", call_span)
+.end
+
+
+proc _has_unknown_expect(xs as List of ArgExpectation) gives Bool
+make i as Int = 0
+loop while i < list.len(xs)
+  if xs[i].expected == "unknown"
+    give true
+  .end
+  set i += 1
+.end
+give false
+.end
+
+
+proc _wrapper_params_from(rep as ValidationReport) gives List of Text
+# Return a stable list of expected types in argument order (1..N).
+# This is for generated wrapper signature: (fmt: cstring, a1: T1, a2: T2, ...)
+make out as List of Text = []
+make max_idx as Int = 0
+
+make i as Int = 0
+loop while i < list.len(rep.expects)
+  if rep.expects[i].index > max_idx
+    set max_idx = rep.expects[i].index
+  .end
+  set i += 1
+.end
+
+make idx as Int = 1
+loop while idx <= max_idx
+  make ty as Text = "unknown"
+  # take the first expectation for that index (they can repeat if format references same index; keep first)
+  set i = 0
+  loop while i < list.len(rep.expects)
+    if rep.expects[i].index == idx
+      set ty = rep.expects[i].expected
+      loop while false .end
+    .end
+    set i += 1
+  .end
+  list.push(out, ty)
+  set idx += 1
+.end
+
+give out
+.end
+
+
+proc _wrapper_name_for(sp as span.Span) gives Text
+# stable name; actual symbol mangling happens later
+give "printf_wrapper"
+.end
+
+
+<<< =========================================================
+  4) MACRO-FACING HELPERS
+========================================================= >>>
+
+proc printf_checked(fmt as Text, args as List of ir.Expr, call_span as span.Span, diags as List of diag.Diagnostic) gives PrintfAnalysis
+# Uses default safe policy
+make pol as PrintfPolicy = printf_policy_default()
+make a as PrintfAnalysis = analyze_printf_format(fmt, call_span, pol, diags)
+if a.ok == false
+  give a
+.end
+
+# arity check against provided args (excluding format itself)
+make need as Int = 0
+make i as Int = 0
+loop while i < list.len(a.report.expects)
+  if a.report.expects[i].index > need
+    set need = a.report.expects[i].index
+  .end
+  set i += 1
+.end
+
+if list.len(args) < need
+  list.push(diags, diag.error("printf-call-not-enough-args", call_span))
+  set a.ok = false
+  set a.hint = hint_disabled("not enough arguments", call_span)
+.end
+
+give a
+.end
+
+
+proc printf_plan_only(fmt as Text, call_span as span.Span, diags as List of diag.Diagnostic) gives FormatPlan
+# Convenience wrapper
+give printf_main.printf_parse_plan(fmt, diags)
+.end
+
+
+<<< =========================================================
+  5) OPTIONAL: IR LOWERING HELPERS
+========================================================= >>>
+
+proc lower_printf_call_to_ir(fn_name as Text, fmt as Text, args as List of ir.Expr, call_span as span.Span, policy as PrintfPolicy, diags as List of diag.Diagnostic) gives ir.Expr
+# This returns an IR Expr representing the call, possibly rewritten.
+# Backend decision:
+# - VarargsDirect: ir.call(foreign_printf, [fmt] + args)
+# - WrapperTyped:  ir.call(wrapper_symbol, [fmt] + args)
+# - Intrinsic:     ir.intrinsic_printf(plan, [fmt] + args)
+# - Disabled:      ir.error_expr
+
+make analysis as PrintfAnalysis = analyze_printf_format(fmt, call_span, policy, diags)
+if analysis.ok == false
+  give ir.expr_error("printf analysis failed", call_span)
+.end
+
+if analysis.hint.lowering is PrintfLowering.VarargsDirect()
+  make callee as ir.Expr = ir.expr_path(ir.path_from_text(fn_name))
+  make all as List of ir.CallArg = []
+  list.push(all, ir.call_arg_pos(ir.expr_lit_text(fmt)))
+  make i as Int = 0
+  loop while i < list.len(args)
+    list.push(all, ir.call_arg_pos(args[i]))
+    set i += 1
+  .end
+  give ir.expr_call(callee, all)
+.end
+
+if analysis.hint.lowering is PrintfLowering.WrapperTyped()
+  make callee as ir.Expr = ir.expr_path(ir.path_from_text(analysis.hint.wrapper_name))
+  make all as List of ir.CallArg = []
+  list.push(all, ir.call_arg_pos(ir.expr_lit_text(fmt)))
+  make i as Int = 0
+  loop while i < list.len(args)
+    list.push(all, ir.call_arg_pos(args[i]))
+    set i += 1
+  .end
+  give ir.expr_call(callee, all)
+.end
+
+if analysis.hint.lowering is PrintfLowering.IntrinsicPrintf()
+  # if IR supports embedding plan metadata, use intrinsic call
+  give ir.expr_intrinsic_printf(analysis.plan, fmt, args, call_span)
+.end
+
+give ir.expr_error("printf disabled by policy", call_span)
+.end
+
+
+<<< =========================================================
+  6) TEXT HELPERS (debug)
+========================================================= >>>
+
+proc plan_to_text(plan as FormatPlan) gives Text
+make s as Text = "PrintfPlan(specs=" + text.from_int(list.len(plan.specs)) + ", args=" + text.from_int(plan.arg_count_min) + ")"
+give s
+.end
+
+proc expectations_to_text(xs as List of ArgExpectation) gives Text
+make lines as List of Text = []
+make i as Int = 0
+loop while i < list.len(xs)
+  list.push(lines, "#" + text.from_int(xs[i].index) + ": " + xs[i].expected + " (" + xs[i].reason + ")")
+  set i += 1
+.end
+give text.join(lines, "\n")
+.end
+
+
+<<< =========================================================
+  7) SMOKE TEST
+========================================================= >>>
+
+proc _test(diags as List of diag.Diagnostic)
+make fmt as Text = "x=%d y=%08x s=%s%%\n"
+make pol as PrintfPolicy = printf_policy_default()
+make a as PrintfAnalysis = analyze_printf_format(fmt, span.Span(), pol, diags)
+
+emit plan_to_text(a.plan)
+emit expectations_to_text(a.report.expects)
+emit (if a.ok then "ok" else "fail")
+give
+.end

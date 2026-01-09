@@ -1,0 +1,424 @@
+vitte 1.0
+space lingua/syntax/vitte_builtin_macros/lib
+
+<<< lib
+  vitte_builtin_macros/src/lib.vit — Builtin macro registry and dispatch (MAX)
+
+  Responsibilities:
+    - Expose a compiler-facing entrypoint to expand builtin macros.
+    - Provide registries for:
+        * statement-like macros (assert, defer, emit, etc.)
+        * derive macros (cmp, debug, clone, default, ...)
+        * foreign format checkers (printf, shell, ...)
+    - Keep behavior deterministic:
+        * stable macro resolution
+        * stable diagnostics
+        * no runtime side effects
+    - Allow multi-stage usage:
+        * AST expansion stage (expanded AST nodes)
+        * IR lowering stage (IR statements/expr)
+    - Centralize policy knobs (assert mode, printf policy, shell policy).
+
+  Imports:
+    - vitte_ast: Node, Span, Diagnostics, Attributes
+    - vitte_ast_expand: utilities to edit/replace nodes
+    - vitte_ast_ir: IR structures and builders
+>>>
+
+pull std/text as text
+pull std/collections/list as list
+pull std/collections/map as map
+
+pull lingua/syntax/vitte_ast/span as span
+pull lingua/syntax/vitte_ast/diag as diag
+pull lingua/syntax/vitte_ast/attr/master as attr
+pull lingua/syntax/vitte_ast/expand/master as expand
+pull lingua/syntax/vitte_ast_ir/master as ir
+
+pull lingua/syntax/vitte_builtin_macros/assert/master as macro_assert
+pull lingua/syntax/vitte_builtin_macros/deriving/generic/master as derive_generic
+pull lingua/syntax/vitte_builtin_macros/format_foreign/printf/master as fmt_printf
+pull lingua/syntax/vitte_builtin_macros/format_foreign/shell/master as fmt_shell
+
+share all
+
+bond Text means String
+
+
+<<< =========================================================
+  0) GLOBAL CONFIG
+========================================================= >>>
+
+form BuiltinMacrosConfig
+field enable_assert as Bool = true
+field enable_derives as Bool = true
+field enable_format_printf as Bool = true
+field enable_format_shell as Bool = true
+
+field assert_cfg as macro_assert.AssertConfig = macro_assert.assert_config_default()
+
+field printf_policy as fmt_printf.PrintfPolicy = fmt_printf.printf_policy_default()
+field shell_policy as fmt_shell.ShellPolicy = fmt_shell.shell_policy_default()
+
+# If true, builtin macros may emit warnings instead of hard errors where possible
+field soft_mode as Bool = false
+
+# If true, unknown macros become errors; else they are ignored with note
+field unknown_is_error as Bool = true
+.end
+
+proc builtin_macros_config_default() gives BuiltinMacrosConfig
+give BuiltinMacrosConfig()
+.end
+
+
+<<< =========================================================
+  1) DISPATCH RESULT TYPES
+========================================================= >>>
+
+pick MacroStage
+case ExpandAst()
+case LowerIr()
+.end
+
+pick MacroKind
+case Stmt()
+case Item()
+case Expr()
+.end
+
+form MacroRequest
+field stage as MacroStage = MacroStage.ExpandAst()
+field kind as MacroKind = MacroKind.Stmt()
+field name as Text = ""              # "assert" / "derive" / "foreign.printf" / ...
+field span as span.Span = span.Span()
+
+# payloads (only one is used depending on stage/kind)
+field ast_node as expand.Node = expand.Node()
+field ir_stmt as ir.Stmt = ir.Stmt()
+field ir_expr as ir.Expr = ir.Expr()
+
+# for foreign format
+field foreign_target as Text = ""    # "printf" / "shell"
+field foreign_format as Text = ""    # format string or script
+field foreign_args as List of ir.Expr = []
+.end
+
+form MacroResponse
+field ok as Bool = true
+field replaced as Bool = false
+
+# stage-specific outputs
+field ast_out as expand.Node = expand.Node()
+field ir_stmts_out as List of ir.Stmt = []
+field ir_expr_out as ir.Expr = ir.Expr()
+
+field diags as List of diag.Diagnostic = []
+.end
+
+proc macro_response_ok() gives MacroResponse
+make r as MacroResponse = MacroResponse()
+set r.ok = true
+set r.replaced = false
+set r.diags = []
+set r.ir_stmts_out = []
+give r
+.end
+
+proc macro_response_err() gives MacroResponse
+make r as MacroResponse = macro_response_ok()
+set r.ok = false
+give r
+.end
+
+
+<<< =========================================================
+  2) MAIN ENTRYPOINT
+========================================================= >>>
+
+proc expand_builtin(req as MacroRequest, cfg as BuiltinMacrosConfig, diags as List of diag.Diagnostic) gives MacroResponse
+# Central dispatcher called by compiler passes.
+make out as MacroResponse = macro_response_ok()
+
+# local diag sink
+set out.diags = []
+
+if req.stage is MacroStage.ExpandAst()
+  if req.kind is MacroKind.Stmt()
+    give _dispatch_expand_stmt(req, cfg, diags)
+  .end
+  if req.kind is MacroKind.Item()
+    give _dispatch_expand_item(req, cfg, diags)
+  .end
+  if req.kind is MacroKind.Expr()
+    give _dispatch_expand_expr(req, cfg, diags)
+  .end
+.end
+
+if req.stage is MacroStage.LowerIr()
+  if req.kind is MacroKind.Stmt()
+    give _dispatch_lower_stmt(req, cfg, diags)
+  .end
+  if req.kind is MacroKind.Expr()
+    give _dispatch_lower_expr(req, cfg, diags)
+  .end
+.end
+
+# unsupported
+list.push(diags, diag.error("builtin-macro-unsupported-request", req.span))
+set out.ok = false
+give out
+.end
+
+
+<<< =========================================================
+  3) AST EXPANSION DISPATCH
+========================================================= >>>
+
+proc _dispatch_expand_stmt(req as MacroRequest, cfg as BuiltinMacrosConfig, diags as List of diag.Diagnostic) gives MacroResponse
+make out as MacroResponse = macro_response_ok()
+set out.ast_out = req.ast_node
+
+if req.name == "assert"
+  if cfg.enable_assert == false
+    list.push(diags, _disabled("assert", req.span))
+    set out.ok = false
+    give out
+  .end
+  set out.ast_out = macro_assert.expand_assert_stmt(req.ast_node, cfg.assert_cfg, diags)
+  set out.replaced = true
+  give out
+.end
+
+if req.name == "foreign.printf" or (req.name == "foreign" and req.foreign_target == "printf")
+  if cfg.enable_format_printf == false
+    list.push(diags, _disabled("foreign.printf", req.span))
+    set out.ok = false
+    give out
+  .end
+
+  # For AST stage: we only validate the format string if available as literal in req.foreign_format.
+  # The caller (parser/expander) should fill foreign_format when it is a literal.
+  make analysis as fmt_printf.PrintfAnalysis = fmt_printf.analyze_printf_format(req.foreign_format, req.span, cfg.printf_policy, diags)
+  if analysis.ok == false
+    set out.ok = false
+  .end
+  # No AST replacement here unless you choose to lower to intrinsic; leave as-is
+  give out
+.end
+
+if req.name == "foreign.shell" or (req.name == "foreign" and req.foreign_target == "shell")
+  if cfg.enable_format_shell == false
+    list.push(diags, _disabled("foreign.shell", req.span))
+    set out.ok = false
+    give out
+  .end
+  make analysis as fmt_shell.ShellAnalysis = fmt_shell.shell_analyze(req.foreign_format, req.span, cfg.shell_policy, diags)
+  if analysis.ok == false
+    set out.ok = false
+  .end
+  give out
+.end
+
+# unknown
+give _handle_unknown(req, cfg, diags)
+.end
+
+
+proc _dispatch_expand_item(req as MacroRequest, cfg as BuiltinMacrosConfig, diags as List of diag.Diagnostic) gives MacroResponse
+make out as MacroResponse = macro_response_ok()
+set out.ast_out = req.ast_node
+
+if req.name == "derive"
+  if cfg.enable_derives == false
+    list.push(diags, _disabled("derive", req.span))
+    set out.ok = false
+    give out
+  .end
+  make ecfg as derive_generic.DeriveEngineConfig = derive_generic.derive_engine_config_default()
+  make res as derive_generic.DeriveEngineResult = derive_generic.apply_derives_to_item(req.ast_node, ecfg, diags)
+
+  # return "extra items" encoded as an item-list node, or keep in response? Here: store in ast_out as "item_bundle"
+  make bundle as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.Item(), "item_bundle", req.span)
+  set bundle.kids = res.extra_items
+
+  set out.ast_out = bundle
+  set out.replaced = true
+  give out
+.end
+
+# unknown
+give _handle_unknown(req, cfg, diags)
+.end
+
+
+proc _dispatch_expand_expr(req as MacroRequest, cfg as BuiltinMacrosConfig, diags as List of diag.Diagnostic) gives MacroResponse
+# reserved for future (format macros as expressions)
+make out as MacroResponse = macro_response_ok()
+set out.ast_out = req.ast_node
+give _handle_unknown(req, cfg, diags)
+.end
+
+
+<<< =========================================================
+  4) IR LOWERING DISPATCH
+========================================================= >>>
+
+proc _dispatch_lower_stmt(req as MacroRequest, cfg as BuiltinMacrosConfig, diags as List of diag.Diagnostic) gives MacroResponse
+make out as MacroResponse = macro_response_ok()
+
+if req.name == "assert"
+  if cfg.enable_assert == false
+    list.push(diags, _disabled("assert", req.span))
+    set out.ok = false
+    give out
+  .end
+  set out.ir_stmts_out = macro_assert.lower_ir_assert(req.ir_stmt, cfg.assert_cfg, diags)
+  set out.replaced = true
+  give out
+.end
+
+give _handle_unknown(req, cfg, diags)
+.end
+
+
+proc _dispatch_lower_expr(req as MacroRequest, cfg as BuiltinMacrosConfig, diags as List of diag.Diagnostic) gives MacroResponse
+make out as MacroResponse = macro_response_ok()
+
+if req.name == "foreign.printf" or (req.name == "foreign" and req.foreign_target == "printf")
+  if cfg.enable_format_printf == false
+    list.push(diags, _disabled("foreign.printf", req.span))
+    set out.ok = false
+    give out
+  .end
+  # Lower to IR call using analysis/hint
+  set out.ir_expr_out = fmt_printf.lower_printf_call_to_ir("printf", req.foreign_format, req.foreign_args, req.span, cfg.printf_policy, diags)
+  set out.replaced = true
+  give out
+.end
+
+if req.name == "foreign.shell" or (req.name == "foreign" and req.foreign_target == "shell")
+  if cfg.enable_format_shell == false
+    list.push(diags, _disabled("foreign.shell", req.span))
+    set out.ok = false
+    give out
+  .end
+  set out.ir_expr_out = fmt_shell.shell_lower_to_ir(req.foreign_format, req.span, cfg.shell_policy, diags)
+  set out.replaced = true
+  give out
+.end
+
+give _handle_unknown(req, cfg, diags)
+.end
+
+
+<<< =========================================================
+  5) UNKNOWN / DISABLED HELPERS
+========================================================= >>>
+
+proc _disabled(name as Text, sp as span.Span) gives diag.Diagnostic
+give diag.error("builtin-macro-disabled: " + name, sp)
+.end
+
+proc _handle_unknown(req as MacroRequest, cfg as BuiltinMacrosConfig, diags as List of diag.Diagnostic) gives MacroResponse
+make out as MacroResponse = macro_response_ok()
+
+if cfg.unknown_is_error
+  list.push(diags, diag.error("builtin-macro-unknown: " + req.name, req.span))
+  set out.ok = false
+  give out
+.end
+
+if cfg.soft_mode
+  list.push(diags, diag.note("builtin-macro-ignored: " + req.name, req.span))
+.end
+set out.ok = true
+give out
+.end
+
+
+<<< =========================================================
+  6) SMALL BUILDERS FOR REQUESTS
+========================================================= >>>
+
+proc req_expand_stmt(name as Text, node as expand.Node) gives MacroRequest
+make r as MacroRequest = MacroRequest()
+set r.stage = MacroStage.ExpandAst()
+set r.kind = MacroKind.Stmt()
+set r.name = name
+set r.span = node.span
+set r.ast_node = node
+give r
+.end
+
+proc req_expand_item(name as Text, node as expand.Node) gives MacroRequest
+make r as MacroRequest = MacroRequest()
+set r.stage = MacroStage.ExpandAst()
+set r.kind = MacroKind.Item()
+set r.name = name
+set r.span = node.span
+set r.ast_node = node
+give r
+.end
+
+proc req_lower_assert(stmt as ir.Stmt, sp as span.Span) gives MacroRequest
+make r as MacroRequest = MacroRequest()
+set r.stage = MacroStage.LowerIr()
+set r.kind = MacroKind.Stmt()
+set r.name = "assert"
+set r.span = sp
+set r.ir_stmt = stmt
+give r
+.end
+
+proc req_lower_printf(fmt as Text, args as List of ir.Expr, sp as span.Span) gives MacroRequest
+make r as MacroRequest = MacroRequest()
+set r.stage = MacroStage.LowerIr()
+set r.kind = MacroKind.Expr()
+set r.name = "foreign.printf"
+set r.span = sp
+set r.foreign_target = "printf"
+set r.foreign_format = fmt
+set r.foreign_args = args
+give r
+.end
+
+proc req_lower_shell(script as Text, sp as span.Span) gives MacroRequest
+make r as MacroRequest = MacroRequest()
+set r.stage = MacroStage.LowerIr()
+set r.kind = MacroKind.Expr()
+set r.name = "foreign.shell"
+set r.span = sp
+set r.foreign_target = "shell"
+set r.foreign_format = script
+set r.foreign_args = []
+give r
+.end
+
+
+<<< =========================================================
+  7) SMOKE TEST
+========================================================= >>>
+
+proc _test(diags as List of diag.Diagnostic)
+make cfg as BuiltinMacrosConfig = builtin_macros_config_default()
+
+# assert expand
+make st as expand.Node = expand.node_make(expand.node_id_make(1u32), expand.NodeKind.Stmt(), "assert", span.Span())
+set st.tag = "assert"
+make cond as expand.Node = expand.node_make(expand.node_id_make(2u32), expand.NodeKind.Expr(), "name", span.Span())
+set cond.text = "ok"
+list.push(st.kids, cond)
+
+make req as MacroRequest = req_expand_stmt("assert", st)
+make res as MacroResponse = expand_builtin(req, cfg, diags)
+emit res.ast_out.tag
+
+# printf lowering
+make args as List of ir.Expr = [ir.expr_lit_int(12), ir.expr_lit_text("hi")]
+make reqp as MacroRequest = req_lower_printf("x=%d s=%s\n", args, span.Span())
+make resp as MacroResponse = expand_builtin(reqp, cfg, diags)
+emit "printf_replaced=" + (if resp.replaced then "true" else "false")
+
+give
+.end

@@ -1,0 +1,415 @@
+vitte 1.0
+space lingua/syntax/vitte_ast_passes/master
+
+<<< master
+  vitte_ast_passes/master.vit — AST pipeline orchestration (MAX)
+
+  Goal:
+    - Provide a single "front-end pipeline" entrypoint that composes:
+        1) comment/doc handling
+        2) attribute normalization
+        3) expansion (AST -> expanded AST)
+        4) lowering (AST -> AST-IR)
+    - Manage diagnostics and pass stats consistently.
+    - Offer strictness profiles for compiler modes:
+        * fast (tooling)
+        * normal (default)
+        * strict (CI)
+    - Keep the pipeline deterministic and compilation-friendly.
+
+  Modules used:
+    - vitte_ast/util/comments/master
+    - vitte_ast/attr/master
+    - vitte_ast/expand/master
+    - vitte_ast_lowering/master
+    - vitte_ast_ir/master
+
+  Notes:
+    - This orchestrator does not parse text; it consumes an AST produced by parser.
+    - To integrate with real AST types, adapt into expand/master's Node or lowering's AstNode.
+>>>
+
+pull std/text as text
+pull std/collections/list as list
+pull std/collections/map as map
+
+pull lingua/syntax/vitte_ast/span as span
+pull lingua/syntax/vitte_ast/diag as diag
+pull lingua/syntax/vitte_ast/attr/master as attr
+pull lingua/syntax/vitte_ast/expand/master as expand
+pull lingua/syntax/vitte_ast/util/comments/master as comments
+
+pull lingua/syntax/vitte_ast_lowering/master as lowering
+pull lingua/syntax/vitte_ast_ir/master as ir
+
+share all
+
+bond Text means String
+
+
+<<< =========================================================
+  0) PIPELINE MODES / CONFIG
+========================================================= >>>
+
+pick PassMode
+case Fast()
+case Normal()
+case Strict()
+.end
+
+form PassConfig
+field mode as PassMode = PassMode.Normal()
+
+# comments/docs
+field keep_doc_nodes as Bool = false
+field store_docs as Bool = true
+field attach_docs as Bool = true          # attach doc chunks to nodes (if caller wants)
+field comment_attach as comments.AttachConfig = comments.attach_config_default()
+
+# attributes
+field attr_registry as attr.AttrRegistry = attr.default_registry()
+field normalize_attrs as Bool = true
+
+# expansion
+field expand_enabled as Bool = true
+field expand_cfg_enabled as Bool = true
+field expand_cfg_default as Bool = true
+field expand_strict_cfg as Bool = false
+field expand_desugar_loop_until as Bool = true
+field expand_desugar_each as Bool = true
+field expand_desugar_select as Bool = false
+field expand_desugar_pack as Bool = false
+field expand_strict_shape as Bool = false
+field expand_trace as Bool = false
+
+# lowering
+field lowering_enabled as Bool = true
+field lowering_strict as Bool = false
+field lowering_desugar_loop_until as Bool = true
+field lowering_desugar_each as Bool = true
+field lowering_desugar_select as Bool = false
+
+# diagnostics behavior
+field treat_warnings_as_errors as Bool = false
+field stop_on_first_error as Bool = false
+.end
+
+proc pass_config_fast() gives PassConfig
+make c as PassConfig = PassConfig()
+set c.mode = PassMode.Fast()
+set c.expand_trace = false
+set c.expand_strict_shape = false
+set c.lowering_strict = false
+set c.stop_on_first_error = false
+give c
+.end
+
+proc pass_config_normal() gives PassConfig
+make c as PassConfig = PassConfig()
+set c.mode = PassMode.Normal()
+set c.expand_trace = false
+set c.expand_strict_shape = false
+set c.lowering_strict = false
+give c
+.end
+
+proc pass_config_strict() gives PassConfig
+make c as PassConfig = PassConfig()
+set c.mode = PassMode.Strict()
+set c.expand_strict_shape = true
+set c.expand_strict_cfg = true
+set c.lowering_strict = true
+set c.treat_warnings_as_errors = true
+set c.stop_on_first_error = false
+give c
+.end
+
+
+<<< =========================================================
+  1) PIPELINE INPUT/OUTPUT TYPES
+========================================================= >>>
+
+form PipelineInput
+field file_node as expand.Node = expand.Node()     # generic expandable AST
+field cfg_env as expand.CfgEnv = expand.CfgEnv()   # cfg environment for pruning
+field diags as List of diag.Diagnostic = []
+.end
+
+form PassStats
+field comment_units as U64 = 0u64
+field doc_chunks as U64 = 0u64
+
+field expand_nodes_in as U64 = 0u64
+field expand_nodes_out as U64 = 0u64
+field expand_removed_docs as U64 = 0u64
+field expand_removed_cfg as U64 = 0u64
+field expand_rewritten as U64 = 0u64
+field expand_attr_normalized as U64 = 0u64
+
+field lowering_items_out as U64 = 0u64
+field lowering_blocks_out as U64 = 0u64
+field lowering_stmts_out as U64 = 0u64
+field lowering_exprs_out as U64 = 0u64
+
+field errors as U64 = 0u64
+field warnings as U64 = 0u64
+.end
+
+proc stats_new() gives PassStats
+give PassStats()
+.end
+
+form PipelineOutput
+field expanded as expand.Node = expand.Node()
+field docs as comments.DocStore = comments.DocStore()
+field ir_file as ir.IrFile = ir.IrFile()
+field stats as PassStats = PassStats()
+field diags as List of diag.Diagnostic = []
+.end
+
+
+<<< =========================================================
+  2) DIAGNOSTIC UTILITIES
+========================================================= >>>
+
+proc _count_diags(diags as List of diag.Diagnostic) gives (U64, U64)
+make errs as U64 = 0u64
+make warns as U64 = 0u64
+make i as Int = 0
+loop while i < list.len(diags)
+  if diag.is_error(diags[i]) set errs += 1u64 .end
+  if diag.is_warning(diags[i]) set warns += 1u64 .end
+  set i += 1
+.end
+give (errs, warns)
+.end
+
+proc _stop_if_needed(cfg as PassConfig, diags as List of diag.Diagnostic) gives Bool
+if cfg.stop_on_first_error == false
+  give false
+.end
+make (e, _) = _count_diags(diags)
+give e > 0u64
+.end
+
+proc _promote_warnings(cfg as PassConfig, diags as List of diag.Diagnostic)
+if cfg.treat_warnings_as_errors == false
+  give
+.end
+diag.promote_warnings(diags)
+give
+.end
+
+
+<<< =========================================================
+  3) PUBLIC ENTRYPOINT: RUN PIPELINE
+========================================================= >>>
+
+proc run_pipeline(inp as PipelineInput, cfg as PassConfig) gives PipelineOutput
+make out as PipelineOutput = PipelineOutput()
+set out.diags = inp.diags
+set out.stats = stats_new()
+set out.docs = comments.doc_store_new()
+
+# --- step 0: comment/doc extraction (optional) ---
+# The AST expander can strip doc nodes, but this step provides independent doc scanning.
+# In a real compiler, parser produces comment tokens; here we only accept doc nodes or raw lines.
+if cfg.store_docs
+  # If caller already extracted docs externally, they can supply them; otherwise this store stays empty.
+  # Provide a placeholder count: number of stored free chunks.
+  set out.stats.doc_chunks = list.len(out.docs.free)
+.end
+
+# early stop check
+if _stop_if_needed(cfg, out.diags)
+  set out.expanded = inp.file_node
+  set out.ir_file = ir.IrFile()
+  set out.stats.errors = _count_diags(out.diags).0
+  set out.stats.warnings = _count_diags(out.diags).1
+  give out
+.end
+
+# --- step 1: expansion (optional) ---
+make expanded as expand.Node = inp.file_node
+if cfg.expand_enabled
+  make ecfg as expand.ExpandConfig = expand.expand_config_default()
+  set ecfg.enable_trace = cfg.expand_trace
+  set ecfg.keep_doc_nodes = cfg.keep_doc_nodes
+  set ecfg.store_docs = cfg.store_docs
+  set ecfg.cfg_enabled = cfg.expand_cfg_enabled
+  set ecfg.cfg_default = cfg.expand_cfg_default
+  set ecfg.strict_cfg = cfg.expand_strict_cfg
+  set ecfg.desugar_loop_until = cfg.expand_desugar_loop_until
+  set ecfg.desugar_each = cfg.expand_desugar_each
+  set ecfg.desugar_select = cfg.expand_desugar_select
+  set ecfg.desugar_pack = cfg.expand_desugar_pack
+  set ecfg.strict_shape = cfg.expand_strict_shape
+  set ecfg.attr_registry = cfg.attr_registry
+
+  make res as expand.ExpandResult = expand.expand_file(expanded, ecfg, inp.cfg_env, out.diags)
+  set expanded = res.root
+
+  # merge docs from expand into pipeline docs (if desired)
+  # NOTE: expand.DocStore differs from comments.DocStore; keep separate unless you unify.
+  # Here we just expose comments.DocStore for stable API, and keep expand docs in expanded nodes.
+  set out.stats.expand_nodes_in = res.stats.nodes_in
+  set out.stats.expand_nodes_out = res.stats.nodes_out
+  set out.stats.expand_removed_docs = res.stats.removed_docs
+  set out.stats.expand_removed_cfg = res.stats.removed_cfg
+  set out.stats.expand_rewritten = res.stats.rewritten
+  set out.stats.expand_attr_normalized = res.stats.attr_normalized
+.end
+
+set out.expanded = expanded
+
+_promote_warnings(cfg, out.diags)
+if _stop_if_needed(cfg, out.diags)
+  set out.ir_file = ir.IrFile()
+  set out.stats.errors = _count_diags(out.diags).0
+  set out.stats.warnings = _count_diags(out.diags).1
+  give out
+.end
+
+# --- step 2: lowering (expanded AST -> IR) ---
+if cfg.lowering_enabled
+  make lcfg as lowering.LowerConfig = lowering.lower_config_default()
+  set lcfg.attr_registry = cfg.attr_registry
+  set lcfg.normalize_attrs = cfg.normalize_attrs
+  set lcfg.desugar_loop_until = cfg.lowering_desugar_loop_until
+  set lcfg.desugar_each = cfg.lowering_desugar_each
+  set lcfg.desugar_select = cfg.lowering_desugar_select
+  set lcfg.strict = cfg.lowering_strict
+
+  # Bridge: convert expand.Node -> lowering.AstNode using adapter
+  make lowered_ast as lowering.AstNode = node_to_lower_ast(expanded)
+  make lres as lowering.LowerResult = lowering.lower_file(lowered_ast, lcfg, out.diags)
+  set out.ir_file = lres.file
+
+  set out.stats.lowering_items_out = list.len(lres.file.items)
+  set out.stats.lowering_blocks_out = lres.stats.blocks_out
+  set out.stats.lowering_stmts_out = lres.stats.stmts_out
+  set out.stats.lowering_exprs_out = lres.stats.exprs_out
+else
+  set out.ir_file = ir.IrFile()
+.end
+
+make (e, w) = _count_diags(out.diags)
+set out.stats.errors = e
+set out.stats.warnings = w
+
+give out
+.end
+
+
+<<< =========================================================
+  4) BRIDGE: expand.Node -> lowering.AstNode (generic)
+========================================================= >>>
+
+proc node_kind_to_ast_kind(k as expand.NodeKind) gives lowering.AstNodeKind
+select k
+when expand.NodeKind.File()   give lowering.AstNodeKind.File() .end
+when expand.NodeKind.Item()   give lowering.AstNodeKind.Item() .end
+when expand.NodeKind.Stmt()   give lowering.AstNodeKind.Stmt() .end
+when expand.NodeKind.Expr()   give lowering.AstNodeKind.Expr() .end
+when expand.NodeKind.Type()   give lowering.AstNodeKind.Type() .end
+otherwise                     give lowering.AstNodeKind.Expr() .end
+.end
+.end
+
+proc node_to_lower_ast(n as expand.Node) gives lowering.AstNode
+make out as lowering.AstNode = lowering.AstNode()
+set out.kind = node_kind_to_ast_kind(n.kind)
+set out.tag = n.tag
+set out.text = n.text
+set out.span = n.span
+set out.attrs = n.attrs
+set out.kids = []
+
+make i as Int = 0
+loop while i < list.len(n.kids)
+  list.push(out.kids, node_to_lower_ast(n.kids[i]))
+  set i += 1
+.end
+
+give out
+.end
+
+
+<<< =========================================================
+  5) PRESET BUILDERS (for compiler driver)
+========================================================= >>>
+
+proc pipeline_fast(inp as PipelineInput) gives PipelineOutput
+give run_pipeline(inp, pass_config_fast())
+.end
+
+proc pipeline_normal(inp as PipelineInput) gives PipelineOutput
+give run_pipeline(inp, pass_config_normal())
+.end
+
+proc pipeline_strict(inp as PipelineInput) gives PipelineOutput
+give run_pipeline(inp, pass_config_strict())
+.end
+
+
+<<< =========================================================
+  6) PRETTY SUMMARY (for logs)
+========================================================= >>>
+
+proc pipeline_summary(out as PipelineOutput) gives Text
+make s as Text = ""
+set s = s + "passes: "
+set s = s + "expand nodes " + text.from_u64(out.stats.expand_nodes_in) + " -> " + text.from_u64(out.stats.expand_nodes_out)
+set s = s + ", lower items " + text.from_u64(out.stats.lowering_items_out)
+set s = s + ", errors " + text.from_u64(out.stats.errors)
+set s = s + ", warnings " + text.from_u64(out.stats.warnings)
+give s
+.end
+
+
+<<< =========================================================
+  7) SMOKE TESTS (pipeline wiring)
+========================================================= >>>
+
+proc _mk_doc_zone(tag as Text, body as Text) gives expand.Node
+make n as expand.Node = expand.node_make(expand.node_id_make(100u32), expand.NodeKind.DocZone(), tag, span.Span())
+set n.text = body
+give n
+.end
+
+proc _mk_proc(name as Text) gives expand.Node
+make it as expand.Node = expand.node_make(expand.node_id_make(1u32), expand.NodeKind.Item(), "proc", span.Span())
+set it.text = name
+
+# add a block with one emit statement
+make blk as expand.Node = expand.node_make(expand.node_id_make(2u32), expand.NodeKind.Item(), "block", span.Span())
+
+make st as expand.Node = expand.node_make(expand.node_id_make(3u32), expand.NodeKind.Stmt(), "emit", span.Span())
+make lit as expand.Node = expand.node_make(expand.node_id_make(4u32), expand.NodeKind.Expr(), "text", span.Span())
+set lit.text = "hello"
+list.push(st.kids, lit)
+
+list.push(blk.kids, st)
+list.push(it.kids, blk)
+
+give it
+.end
+
+proc _test_pipeline(diags as List of diag.Diagnostic)
+make file as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.File(), "file", span.Span())
+list.push(file.kids, _mk_doc_zone("docs", "doc text"))
+list.push(file.kids, _mk_proc("main"))
+
+make env as expand.CfgEnv = expand.cfg_env_new()
+make inp as PipelineInput = PipelineInput()
+set inp.file_node = file
+set inp.cfg_env = env
+set inp.diags = diags
+
+make cfg as PassConfig = pass_config_normal()
+set cfg.expand_trace = true
+
+make out as PipelineOutput = run_pipeline(inp, cfg)
+emit pipeline_summary(out)
+give
+.end

@@ -1,0 +1,1129 @@
+vitte 1.0
+space lingua/syntax/vitte_attr_parsing/attributes/master
+
+<<< master
+  vitte_attr_parsing/attributes/master.vit — Attribute parsing (MAX)
+
+  Scope:
+    - Parse attribute syntax from tokens / AST nodes into normalized Attribute values.
+    - Provide:
+        * registry-friendly attribute model (name + args)
+        * argument parsing (positional + named)
+        * target validation hooks
+        * canonicalization (stable ordering, dedup)
+        * cfg parsing helpers (cfg/os/arch/feature)
+    - Compilation-friendly:
+        * no complex reflection
+        * no dynamic eval
+        * deterministic, linear-time parsing (per attribute)
+
+  Expected surface:
+    - Attribute forms (generic):
+        @name
+        @name()
+        @name(key = value)
+        @name(value1, value2)
+        @name(key1 = v1, key2 = v2, v3)
+
+    - Doc zones remain separate (<<< >>>), not attributes.
+
+  Integration points:
+    - Parser produces attribute nodes or token streams; this module accepts either:
+        1) AttrTokens (from lexer)
+        2) AttrAst   (from AST nodes tagged "attr")
+    - Downstream:
+        * lingua/syntax/vitte_ast/attr/master (registry + validation)
+        * lingua/syntax/vitte_ast_expand/master (attr normalization)
+        * lingua/syntax/vitte_ast_lowering/master (attr normalization + IR tags)
+>>>
+
+pull std/text as text
+pull std/collections/list as list
+pull std/collections/map as map
+
+pull lingua/syntax/vitte_ast/span as span
+pull lingua/syntax/vitte_ast/diag as diag
+
+share all
+
+bond Text means String
+
+
+<<< =========================================================
+  0) CORE DATA MODEL
+========================================================= >>>
+
+pick AttrValueKind
+case Null()
+case Bool()
+case Int()
+case Float()
+case Text()
+case Name()
+case Path()
+case List()
+case Map()
+.end
+
+form AttrValue
+field kind as AttrValueKind = AttrValueKind.Null()
+field text as Text = ""                 # for scalar text, name/path, numeric lexeme
+field items as List of AttrValue = []   # list payload
+field pairs as List of AttrPair = []    # map payload (stable list for deterministic order)
+.end
+
+form AttrPair
+field key as Text = ""
+field value as AttrValue = AttrValue()
+.end
+
+form Attribute
+field name as Text = ""                  # attribute name (identifier-ish)
+field args as List of AttrValue = []     # positional args
+field named as List of AttrPair = []     # named args (stable list)
+field span as span.Span = span.Span()
+.end
+
+proc attr_value_null() gives AttrValue
+give AttrValue()
+.end
+
+proc attr_value_bool(b as Bool) gives AttrValue
+make v as AttrValue = AttrValue()
+set v.kind = AttrValueKind.Bool()
+set v.text = if b then "true" else "false"
+give v
+.end
+
+proc attr_value_int(lex as Text) gives AttrValue
+make v as AttrValue = AttrValue()
+set v.kind = AttrValueKind.Int()
+set v.text = lex
+give v
+.end
+
+proc attr_value_float(lex as Text) gives AttrValue
+make v as AttrValue = AttrValue()
+set v.kind = AttrValueKind.Float()
+set v.text = lex
+give v
+.end
+
+proc attr_value_text(s as Text) gives AttrValue
+make v as AttrValue = AttrValue()
+set v.kind = AttrValueKind.Text()
+set v.text = s
+give v
+.end
+
+proc attr_value_name(s as Text) gives AttrValue
+make v as AttrValue = AttrValue()
+set v.kind = AttrValueKind.Name()
+set v.text = s
+give v
+.end
+
+proc attr_value_path(s as Text) gives AttrValue
+make v as AttrValue = AttrValue()
+set v.kind = AttrValueKind.Path()
+set v.text = s
+give v
+.end
+
+proc attr_value_list(xs as List of AttrValue) gives AttrValue
+make v as AttrValue = AttrValue()
+set v.kind = AttrValueKind.List()
+set v.items = xs
+give v
+.end
+
+proc attr_value_map(ps as List of AttrPair) gives AttrValue
+make v as AttrValue = AttrValue()
+set v.kind = AttrValueKind.Map()
+set v.pairs = ps
+give v
+.end
+
+proc attr_pair(key as Text, value as AttrValue) gives AttrPair
+make p as AttrPair = AttrPair()
+set p.key = key
+set p.value = value
+give p
+.end
+
+proc attribute_new(name as Text, sp as span.Span) gives Attribute
+make a as Attribute = Attribute()
+set a.name = name
+set a.span = sp
+set a.args = []
+set a.named = []
+give a
+.end
+
+
+<<< =========================================================
+  1) TOKENS FOR ATTRIBUTE PARSING
+========================================================= >>>
+
+pick AttrTokKind
+case At()           # '@'
+case Name()         # identifier
+case Int()          # int literal (as text)
+case Float()        # float literal (as text)
+case Text()         # string literal (already unescaped)
+case True()
+case False()
+case Null()
+
+case LParen()       # '('
+case RParen()       # ')'
+case LBrack()       # '['
+case RBrack()       # ']'
+case LBrace()       # '{'
+case RBrace()       # '}'
+
+case Comma()        # ','
+case Colon()        # ':'
+case Eq()           # '='
+
+case Dot()          # '.'
+case Slash()        # '/'
+case DColon()       # '::'
+
+case Eof()
+.end
+
+form AttrTok
+field kind as AttrTokKind = AttrTokKind.Eof()
+field text as Text = ""
+field span as span.Span = span.Span()
+.end
+
+form AttrTokens
+field toks as List of AttrTok = []
+field pos as Int = 0
+.end
+
+proc tokens_new(toks as List of AttrTok) gives AttrTokens
+make t as AttrTokens = AttrTokens()
+set t.toks = toks
+set t.pos = 0
+give t
+.end
+
+proc _peek(ts as AttrTokens) gives AttrTok
+if ts.pos >= list.len(ts.toks)
+  give AttrTok()
+.end
+give ts.toks[ts.pos]
+.end
+
+proc _peek_kind(ts as AttrTokens) gives AttrTokKind
+give _peek(ts).kind
+.end
+
+proc _next(ts as AttrTokens) gives (AttrTokens, AttrTok)
+make out as AttrTokens = ts
+make t as AttrTok = _peek(out)
+set out.pos += 1
+give (out, t)
+.end
+
+proc _eat(ts as AttrTokens, k as AttrTokKind) gives (AttrTokens, Bool)
+if _peek_kind(ts) is k
+  make (ts2, _) = _next(ts)
+  give (ts2, true)
+.end
+give (ts, false)
+.end
+
+proc _expect(ts as AttrTokens, k as AttrTokKind, diags as List of diag.Diagnostic, msg_id as Text) gives AttrTokens
+if _peek_kind(ts) is k
+  make (ts2, _) = _next(ts)
+  give ts2
+.end
+list.push(diags, diag.error(msg_id, _peek(ts).span))
+give ts
+.end
+
+
+<<< =========================================================
+  2) AST INPUT ADAPTER (attribute nodes)
+========================================================= >>>
+
+# Some parsers store attributes as AST nodes. This small adapter lets you parse without token access.
+
+form AttrAst
+field name as Text = ""
+field args as List of AttrAstValue = []
+field named as List of AttrAstPair = []
+field span as span.Span = span.Span()
+.end
+
+pick AttrAstValueKind
+case Null()
+case Bool()
+case Int()
+case Float()
+case Text()
+case Name()
+case Path()
+case List()
+case Map()
+.end
+
+form AttrAstValue
+field kind as AttrAstValueKind = AttrAstValueKind.Null()
+field text as Text = ""
+field items as List of AttrAstValue = []
+field pairs as List of AttrAstPair = []
+field span as span.Span = span.Span()
+.end
+
+form AttrAstPair
+field key as Text = ""
+field value as AttrAstValue = AttrAstValue()
+field span as span.Span = span.Span()
+.end
+
+proc ast_to_value(v as AttrAstValue) gives AttrValue
+select v.kind
+when AttrAstValueKind.Null() give attr_value_null() .end
+when AttrAstValueKind.Bool() give attr_value_bool(v.text == "true") .end
+when AttrAstValueKind.Int()  give attr_value_int(v.text) .end
+when AttrAstValueKind.Float() give attr_value_float(v.text) .end
+when AttrAstValueKind.Text() give attr_value_text(v.text) .end
+when AttrAstValueKind.Name() give attr_value_name(v.text) .end
+when AttrAstValueKind.Path() give attr_value_path(v.text) .end
+when AttrAstValueKind.List()
+  make xs as List of AttrValue = []
+  make i as Int = 0
+  loop while i < list.len(v.items)
+    list.push(xs, ast_to_value(v.items[i]))
+    set i += 1
+  .end
+  give attr_value_list(xs)
+.end
+when AttrAstValueKind.Map()
+  make ps as List of AttrPair = []
+  make i as Int = 0
+  loop while i < list.len(v.pairs)
+    list.push(ps, attr_pair(v.pairs[i].key, ast_to_value(v.pairs[i].value)))
+    set i += 1
+  .end
+  give attr_value_map(ps)
+.end
+otherwise
+  give attr_value_null()
+.end
+.end
+.end
+
+proc ast_to_attribute(a as AttrAst) gives Attribute
+make out as Attribute = attribute_new(a.name, a.span)
+
+make i as Int = 0
+loop while i < list.len(a.args)
+  list.push(out.args, ast_to_value(a.args[i]))
+  set i += 1
+.end
+
+set i = 0
+loop while i < list.len(a.named)
+  list.push(out.named, attr_pair(a.named[i].key, ast_to_value(a.named[i].value)))
+  set i += 1
+.end
+
+give out
+.end
+
+
+<<< =========================================================
+  3) PARSE API
+========================================================= >>>
+
+form ParseStats
+field attrs as U64 = 0u64
+field values as U64 = 0u64
+field pairs as U64 = 0u64
+field recovered as U64 = 0u64
+.end
+
+form ParseResult
+field attrs as List of Attribute = []
+field stats as ParseStats = ParseStats()
+.end
+
+proc parse_attributes_tokens(ts as AttrTokens, diags as List of diag.Diagnostic) gives ParseResult
+make res as ParseResult = ParseResult()
+set res.attrs = []
+set res.stats = ParseStats()
+
+make cur as AttrTokens = ts
+loop while true
+  if _peek_kind(cur) is AttrTokKind.Eof()
+    give res
+  .end
+
+  # expect '@'
+  if _peek_kind(cur) is AttrTokKind.At()
+    make (cur2, _) = _next(cur)
+    set cur = cur2
+  else
+    # skip unexpected token
+    list.push(diags, diag.error("attr-expected-at", _peek(cur).span))
+    set res.stats.recovered += 1u64
+    make (cur2, _) = _next(cur)
+    set cur = cur2
+    loop while false .end
+  .end
+
+  # name
+  if _peek_kind(cur) is AttrTokKind.Name()
+    make (cur2, nt) = _next(cur)
+    set cur = cur2
+    make a as Attribute = attribute_new(nt.text, nt.span)
+
+    # optional args: '(' ... ')'
+    if _peek_kind(cur) is AttrTokKind.LParen()
+      make (cur3, _) = _next(cur)
+      set cur = cur3
+      make (cur4, a2) = _parse_attr_arg_list(cur, a, res, diags)
+      set cur = cur4
+      set a = a2
+      set cur = _expect(cur, AttrTokKind.RParen(), diags, "attr-expected-rparen")
+    .end
+
+    list.push(res.attrs, a)
+    set res.stats.attrs += 1u64
+  else
+    list.push(diags, diag.error("attr-expected-name", _peek(cur).span))
+    set res.stats.recovered += 1u64
+    make (cur2, _) = _next(cur)
+    set cur = cur2
+  .end
+.end
+.end
+
+
+proc parse_attributes_ast(xs as List of AttrAst) gives List of Attribute
+make out as List of Attribute = []
+make i as Int = 0
+loop while i < list.len(xs)
+  list.push(out, ast_to_attribute(xs[i]))
+  set i += 1
+.end
+give out
+.end
+
+
+<<< =========================================================
+  4) ARGUMENT LIST PARSER (positional + named)
+========================================================= >>>
+
+proc _parse_attr_arg_list(ts as AttrTokens, a as Attribute, res as ParseResult, diags as List of diag.Diagnostic) gives (AttrTokens, Attribute)
+make cur as AttrTokens = ts
+make out as Attribute = a
+
+# allow empty: ')'
+if _peek_kind(cur) is AttrTokKind.RParen()
+  give (cur, out)
+.end
+
+loop while true
+  # Parse either:
+  #   name '=' value     (named)
+  #   value              (positional)
+  make start as AttrTok = _peek(cur)
+
+  if _peek_kind(cur) is AttrTokKind.Name()
+    # lookahead for '='
+    make tname as AttrTok = _peek(cur)
+    make (tmp, _) = _next(cur)
+    if _peek_kind(tmp) is AttrTokKind.Eq()
+      # named
+      make (tmp2, _) = _next(tmp) # consume '='
+      make (tmp3, v) = _parse_value(tmp2, res, diags)
+      list.push(out.named, attr_pair(tname.text, v))
+      set res.stats.pairs += 1u64
+      set cur = tmp3
+    else
+      # positional (rewind by reconstructing; simplest: treat as value name)
+      # We already consumed the name; interpret it as Name value.
+      list.push(out.args, attr_value_name(tname.text))
+      set res.stats.values += 1u64
+      set cur = tmp
+    .end
+  else
+    # positional value
+    make (cur2, v) = _parse_value(cur, res, diags)
+    list.push(out.args, v)
+    set res.stats.values += 1u64
+    set cur = cur2
+  .end
+
+  # comma?
+  if _peek_kind(cur) is AttrTokKind.Comma()
+    make (cur2, _) = _next(cur)
+    set cur = cur2
+    # allow trailing comma before ')'
+    if _peek_kind(cur) is AttrTokKind.RParen()
+      give (cur, out)
+    .end
+    loop while true
+      # continue
+      loop while false .end
+    .end
+  .end
+
+  give (cur, out)
+.end
+.end
+
+
+<<< =========================================================
+  5) VALUE PARSER
+========================================================= >>>
+
+proc _parse_value(ts as AttrTokens, res as ParseResult, diags as List of diag.Diagnostic) gives (AttrTokens, AttrValue)
+make cur as AttrTokens = ts
+make t as AttrTok = _peek(cur)
+
+select t.kind
+when AttrTokKind.Null()
+  make (c2, _) = _next(cur)
+  give (c2, attr_value_null())
+.end
+when AttrTokKind.True()
+  make (c2, _) = _next(cur)
+  give (c2, attr_value_bool(true))
+.end
+when AttrTokKind.False()
+  make (c2, _) = _next(cur)
+  give (c2, attr_value_bool(false))
+.end
+when AttrTokKind.Int()
+  make (c2, tk) = _next(cur)
+  give (c2, attr_value_int(tk.text))
+.end
+when AttrTokKind.Float()
+  make (c2, tk) = _next(cur)
+  give (c2, attr_value_float(tk.text))
+.end
+when AttrTokKind.Text()
+  make (c2, tk) = _next(cur)
+  give (c2, attr_value_text(tk.text))
+.end
+when AttrTokKind.Name()
+  # could be a path (name / name / name) or (name::name)
+  make (c2, v) = _parse_name_or_path(cur, diags)
+  give (c2, v)
+.end
+when AttrTokKind.LBrack()
+  make (c2, _) = _next(cur)
+  make (c3, xs) = _parse_list_values(c2, res, diags)
+  set c3 = _expect(c3, AttrTokKind.RBrack(), diags, "attr-expected-rbrack")
+  give (c3, attr_value_list(xs))
+.end
+when AttrTokKind.LBrace()
+  make (c2, _) = _next(cur)
+  make (c3, ps) = _parse_map_pairs(c2, res, diags)
+  set c3 = _expect(c3, AttrTokKind.RBrace(), diags, "attr-expected-rbrace")
+  give (c3, attr_value_map(ps))
+.end
+otherwise
+  list.push(diags, diag.error("attr-expected-value", t.span))
+  set res.stats.recovered += 1u64
+  make (c2, _) = _next(cur)
+  give (c2, attr_value_null())
+.end
+.end
+.end
+
+
+proc _parse_name_or_path(ts as AttrTokens, diags as List of diag.Diagnostic) gives (AttrTokens, AttrValue)
+make cur as AttrTokens = ts
+make parts as List of Text = []
+
+# read first name
+make (c2, first) = _next(cur)
+set cur = c2
+list.push(parts, first.text)
+
+# accept /, ., ::
+loop while true
+if _peek_kind(cur) is AttrTokKind.Slash()
+  make (c3, _) = _next(cur)
+  set cur = c3
+  if _peek_kind(cur) is AttrTokKind.Name()
+    make (c4, nm) = _next(cur)
+    set cur = c4
+    list.push(parts, nm.text)
+  else
+    list.push(diags, diag.error("attr-expected-name-after-slash", _peek(cur).span))
+    give (cur, attr_value_name(first.text))
+  .end
+elif _peek_kind(cur) is AttrTokKind.Dot()
+  make (c3, _) = _next(cur)
+  set cur = c3
+  if _peek_kind(cur) is AttrTokKind.Name()
+    make (c4, nm) = _next(cur)
+    set cur = c4
+    # dot-path encoded as "a.b"
+    make last as Text = parts[list.len(parts) - 1]
+    set parts[list.len(parts) - 1] = last + "." + nm.text
+  else
+    list.push(diags, diag.error("attr-expected-name-after-dot", _peek(cur).span))
+    give (cur, attr_value_name(first.text))
+  .end
+elif _peek_kind(cur) is AttrTokKind.DColon()
+  make (c3, _) = _next(cur)
+  set cur = c3
+  if _peek_kind(cur) is AttrTokKind.Name()
+    make (c4, nm) = _next(cur)
+    set cur = c4
+    # dcolon-path encoded as "a::b"
+    make last as Text = parts[list.len(parts) - 1]
+    set parts[list.len(parts) - 1] = last + "::" + nm.text
+  else
+    list.push(diags, diag.error("attr-expected-name-after-dcolon", _peek(cur).span))
+    give (cur, attr_value_name(first.text))
+  .end
+else
+  loop while false .end
+.end
+.end
+.end
+
+# Decide:
+# - If it contains '/' => Path (module-like)
+# - Otherwise Name
+make joined as Text = _join(parts, "/")
+if text.contains(joined, "/")
+  give (cur, attr_value_path(joined))
+.end
+give (cur, attr_value_name(joined))
+.end
+
+
+proc _parse_list_values(ts as AttrTokens, res as ParseResult, diags as List of diag.Diagnostic) gives (AttrTokens, List of AttrValue)
+make cur as AttrTokens = ts
+make xs as List of AttrValue = []
+
+if _peek_kind(cur) is AttrTokKind.RBrack()
+  give (cur, xs)
+.end
+
+loop while true
+  make (c2, v) = _parse_value(cur, res, diags)
+  set cur = c2
+  list.push(xs, v)
+  set res.stats.values += 1u64
+
+  if _peek_kind(cur) is AttrTokKind.Comma()
+    make (c3, _) = _next(cur)
+    set cur = c3
+    if _peek_kind(cur) is AttrTokKind.RBrack()
+      give (cur, xs)
+    .end
+    loop while true
+      loop while false .end
+    .end
+  .end
+
+  give (cur, xs)
+.end
+.end
+
+
+proc _parse_map_pairs(ts as AttrTokens, res as ParseResult, diags as List of diag.Diagnostic) gives (AttrTokens, List of AttrPair)
+make cur as AttrTokens = ts
+make ps as List of AttrPair = []
+
+if _peek_kind(cur) is AttrTokKind.RBrace()
+  give (cur, ps)
+.end
+
+loop while true
+  # key: must be Name or Text
+  if _peek_kind(cur) is AttrTokKind.Name()
+    make (c2, kt) = _next(cur)
+    set cur = c2
+    set cur = _expect(cur, AttrTokKind.Colon(), diags, "attr-expected-colon")
+    make (c3, v) = _parse_value(cur, res, diags)
+    set cur = c3
+    list.push(ps, attr_pair(kt.text, v))
+    set res.stats.pairs += 1u64
+  elif _peek_kind(cur) is AttrTokKind.Text()
+    make (c2, kt) = _next(cur)
+    set cur = c2
+    set cur = _expect(cur, AttrTokKind.Colon(), diags, "attr-expected-colon")
+    make (c3, v) = _parse_value(cur, res, diags)
+    set cur = c3
+    list.push(ps, attr_pair(kt.text, v))
+    set res.stats.pairs += 1u64
+  else
+    list.push(diags, diag.error("attr-expected-map-key", _peek(cur).span))
+    set res.stats.recovered += 1u64
+    make (c2, _) = _next(cur)
+    set cur = c2
+  .end
+
+  if _peek_kind(cur) is AttrTokKind.Comma()
+    make (c3, _) = _next(cur)
+    set cur = c3
+    if _peek_kind(cur) is AttrTokKind.RBrace()
+      give (cur, ps)
+    .end
+    loop while true
+      loop while false .end
+    .end
+  .end
+
+  give (cur, ps)
+.end
+.end
+
+
+<<< =========================================================
+  6) NORMALIZATION / CANONICALIZATION
+========================================================= >>>
+
+form NormalizeOptions
+field sort_named as Bool = true
+field sort_positional as Bool = false
+field dedup_named_keys as Bool = false
+field dedup_full as Bool = false
+field trim_text as Bool = true
+.end
+
+proc normalize_attributes(xs as List of Attribute, opt as NormalizeOptions, diags as List of diag.Diagnostic) gives List of Attribute
+make out as List of Attribute = []
+make i as Int = 0
+loop while i < list.len(xs)
+  list.push(out, normalize_attribute(xs[i], opt, diags))
+  set i += 1
+.end
+give out
+.end
+
+proc normalize_attribute(a as Attribute, opt as NormalizeOptions, diags as List of diag.Diagnostic) gives Attribute
+make out as Attribute = a
+
+# trim attribute name
+if opt.trim_text and out.name != ""
+  set out.name = text.trim(out.name)
+.end
+
+# normalize positional values
+make i as Int = 0
+loop while i < list.len(out.args)
+  set out.args[i] = normalize_value(out.args[i], opt, diags)
+  set i += 1
+.end
+
+# normalize named
+set i = 0
+loop while i < list.len(out.named)
+  set out.named[i].key = if opt.trim_text then text.trim(out.named[i].key) else out.named[i].key
+  set out.named[i].value = normalize_value(out.named[i].value, opt, diags)
+  set i += 1
+.end
+
+# sort named keys for stable output
+if opt.sort_named
+  set out.named = _sort_pairs_by_key(out.named)
+.end
+
+# dedup named keys (keep last by default)
+if opt.dedup_named_keys
+  set out.named = _dedup_pairs_keep_last(out.named)
+.end
+
+# optional full dedup (name + args + named)
+# (caller can handle by a higher-level pass)
+give out
+.end
+
+proc normalize_value(v as AttrValue, opt as NormalizeOptions, diags as List of diag.Diagnostic) gives AttrValue
+make out as AttrValue = v
+if opt.trim_text
+  if out.kind is AttrValueKind.Text() or out.kind is AttrValueKind.Name() or out.kind is AttrValueKind.Path()
+    set out.text = text.trim(out.text)
+  .end
+.end
+
+if out.kind is AttrValueKind.List()
+  make i as Int = 0
+  loop while i < list.len(out.items)
+    set out.items[i] = normalize_value(out.items[i], opt, diags)
+    set i += 1
+  .end
+.end
+
+if out.kind is AttrValueKind.Map()
+  make i as Int = 0
+  loop while i < list.len(out.pairs)
+    set out.pairs[i].key = if opt.trim_text then text.trim(out.pairs[i].key) else out.pairs[i].key
+    set out.pairs[i].value = normalize_value(out.pairs[i].value, opt, diags)
+    set i += 1
+  .end
+  if opt.sort_named
+    set out.pairs = _sort_pairs_by_key(out.pairs)
+  .end
+  if opt.dedup_named_keys
+    set out.pairs = _dedup_pairs_keep_last(out.pairs)
+  .end
+.end
+
+give out
+.end
+
+
+proc _sort_pairs_by_key(ps as List of AttrPair) gives List of AttrPair
+# deterministic O(n^2) sort (small lists); replace with std sort when available
+make out as List of AttrPair = ps
+make n as Int = list.len(out)
+make i as Int = 0
+loop while i < n
+  make j as Int = i + 1
+  loop while j < n
+    if out[j].key < out[i].key
+      make tmp as AttrPair = out[i]
+      set out[i] = out[j]
+      set out[j] = tmp
+    .end
+    set j += 1
+  .end
+  set i += 1
+.end
+give out
+.end
+
+proc _dedup_pairs_keep_last(ps as List of AttrPair) gives List of AttrPair
+make out as List of AttrPair = []
+make seen as Map of Text to Int = map.new()
+
+make i as Int = 0
+loop while i < list.len(ps)
+  set seen[ps[i].key] = i
+  set i += 1
+.end
+
+set i = 0
+loop while i < list.len(ps)
+  if seen[ps[i].key] == i
+    list.push(out, ps[i])
+  .end
+  set i += 1
+.end
+give out
+.end
+
+
+<<< =========================================================
+  7) CFG HELPERS (commonly used attribute)
+========================================================= >>>
+
+pick CfgOp
+case Any()
+case All()
+case Not()
+case KeyEq()
+case Has()
+.end
+
+form CfgExpr
+field op as CfgOp = CfgOp.Has()
+field key as Text = ""            # KeyEq/Has
+field value as Text = ""          # KeyEq
+field items as List of CfgExpr = []  # Any/All/Not
+field span as span.Span = span.Span()
+.end
+
+proc cfg_has(key as Text) gives CfgExpr
+make c as CfgExpr = CfgExpr()
+set c.op = CfgOp.Has()
+set c.key = key
+give c
+.end
+
+proc cfg_key_eq(key as Text, value as Text) gives CfgExpr
+make c as CfgExpr = CfgExpr()
+set c.op = CfgOp.KeyEq()
+set c.key = key
+set c.value = value
+give c
+.end
+
+proc cfg_any(xs as List of CfgExpr) gives CfgExpr
+make c as CfgExpr = CfgExpr()
+set c.op = CfgOp.Any()
+set c.items = xs
+give c
+.end
+
+proc cfg_all(xs as List of CfgExpr) gives CfgExpr
+make c as CfgExpr = CfgExpr()
+set c.op = CfgOp.All()
+set c.items = xs
+give c
+.end
+
+proc cfg_not(x as CfgExpr) gives CfgExpr
+make c as CfgExpr = CfgExpr()
+set c.op = CfgOp.Not()
+set c.items = [x]
+give c
+.end
+
+proc parse_cfg_from_attribute(a as Attribute, diags as List of diag.Diagnostic) gives CfgExpr
+# Supported:
+#   @cfg(os = "linux")
+#   @cfg(arch = "x86_64")
+#   @cfg(feature = "foo")
+#   @cfg(any(os="linux", os="macos"))
+#   @cfg(all(feature="a", feature="b"))
+#   @cfg(not(feature="test"))
+#
+# Representation uses Attribute arguments; nested cfg(...) should appear as Name "any"/"all"/"not" with list/map args.
+if a.name != "cfg"
+  give cfg_has("true") # neutral
+.end
+
+# If named args present: treat as all(key=value, ...)
+if list.len(a.named) > 0
+  make xs as List of CfgExpr = []
+  make i as Int = 0
+  loop while i < list.len(a.named)
+    list.push(xs, cfg_key_eq(a.named[i].key, _cfg_value_text(a.named[i].value)))
+    set i += 1
+  .end
+  give cfg_all(xs)
+.end
+
+# If positional: could be any/all/not with map/list payload or direct key=value expressed as map
+if list.len(a.args) == 0
+  give cfg_has("true")
+.end
+
+# interpret first positional as function-like operator or as map
+make first as AttrValue = a.args[0]
+
+if first.kind is AttrValueKind.Name()
+  if first.text == "any" or first.text == "all" or first.text == "not"
+    # remaining positional values are expressions encoded as map entries or (key=value) pairs
+    make inner as List of CfgExpr = []
+    make i as Int = 1
+    loop while i < list.len(a.args)
+      list.push(inner, _cfg_from_value(a.args[i], diags))
+      set i += 1
+    .end
+    if first.text == "any" give cfg_any(inner) .end
+    if first.text == "all" give cfg_all(inner) .end
+    if list.len(inner) == 1 give cfg_not(inner[0]) .end
+    list.push(diags, diag.error("attr-cfg-not-arity", a.span))
+    give cfg_not(cfg_has("true"))
+  .end
+.end
+
+# fallback: interpret value as one condition
+give _cfg_from_value(first, diags)
+.end
+
+
+proc _cfg_from_value(v as AttrValue, diags as List of diag.Diagnostic) gives CfgExpr
+# Accept map { key: value } or name "feature" with text payload, or list interpreted as all(...)
+if v.kind is AttrValueKind.Map()
+  make xs as List of CfgExpr = []
+  make i as Int = 0
+  loop while i < list.len(v.pairs)
+    list.push(xs, cfg_key_eq(v.pairs[i].key, _cfg_value_text(v.pairs[i].value)))
+    set i += 1
+  .end
+  give cfg_all(xs)
+.end
+
+if v.kind is AttrValueKind.Name()
+  # plain name means "has(name)"
+  give cfg_has(v.text)
+.end
+
+if v.kind is AttrValueKind.Text()
+  # text literal treated as has("text") (rare)
+  give cfg_has(v.text)
+.end
+
+if v.kind is AttrValueKind.List()
+  make xs as List of CfgExpr = []
+  make i as Int = 0
+  loop while i < list.len(v.items)
+    list.push(xs, _cfg_from_value(v.items[i], diags))
+    set i += 1
+  .end
+  give cfg_all(xs)
+.end
+
+list.push(diags, diag.error("attr-cfg-invalid", v.span))
+give cfg_has("false")
+.end
+
+proc _cfg_value_text(v as AttrValue) gives Text
+if v.kind is AttrValueKind.Text() or v.kind is AttrValueKind.Name() or v.kind is AttrValueKind.Path()
+  give v.text
+.end
+give v.text
+.end
+
+
+<<< =========================================================
+  8) STRINGIFY (debug / snapshots)
+========================================================= >>>
+
+proc value_to_text(v as AttrValue) gives Text
+select v.kind
+when AttrValueKind.Null() give "null" .end
+when AttrValueKind.Bool() give v.text .end
+when AttrValueKind.Int() give v.text .end
+when AttrValueKind.Float() give v.text .end
+when AttrValueKind.Text() give "\"" + v.text + "\"" .end
+when AttrValueKind.Name() give v.text .end
+when AttrValueKind.Path() give v.text .end
+when AttrValueKind.List()
+  make xs as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(v.items)
+    list.push(xs, value_to_text(v.items[i]))
+    set i += 1
+  .end
+  give "[" + _join(xs, ", ") + "]"
+.end
+when AttrValueKind.Map()
+  make xs as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(v.pairs)
+    list.push(xs, v.pairs[i].key + ": " + value_to_text(v.pairs[i].value))
+    set i += 1
+  .end
+  give "{ " + _join(xs, ", ") + " }"
+.end
+otherwise
+  give "<value>"
+.end
+.end
+.end
+
+proc attribute_to_text(a as Attribute) gives Text
+make s as Text = "@" + a.name
+if list.len(a.args) == 0 and list.len(a.named) == 0
+  give s
+.end
+make xs as List of Text = []
+make i as Int = 0
+loop while i < list.len(a.args)
+  list.push(xs, value_to_text(a.args[i]))
+  set i += 1
+.end
+set i = 0
+loop while i < list.len(a.named)
+  list.push(xs, a.named[i].key + " = " + value_to_text(a.named[i].value))
+  set i += 1
+.end
+give s + "(" + _join(xs, ", ") + ")"
+.end
+
+proc attributes_to_text(xs as List of Attribute) gives Text
+if list.len(xs) == 0
+  give ""
+.end
+make lines as List of Text = []
+make i as Int = 0
+loop while i < list.len(xs)
+  list.push(lines, attribute_to_text(xs[i]))
+  set i += 1
+.end
+give _join(lines, "\n")
+.end
+
+
+<<< =========================================================
+  9) SMOKE TESTS (token path)
+========================================================= >>>
+
+proc _tok(k as AttrTokKind, t as Text) gives AttrTok
+make x as AttrTok = AttrTok()
+set x.kind = k
+set x.text = t
+give x
+.end
+
+proc _test_parse_simple(diags as List of diag.Diagnostic)
+make toks as List of AttrTok = []
+list.push(toks, _tok(AttrTokKind.At(), "@"))
+list.push(toks, _tok(AttrTokKind.Name(), "cfg"))
+list.push(toks, _tok(AttrTokKind.LParen(), "("))
+list.push(toks, _tok(AttrTokKind.Name(), "os"))
+list.push(toks, _tok(AttrTokKind.Eq(), "="))
+list.push(toks, _tok(AttrTokKind.Text(), "linux"))
+list.push(toks, _tok(AttrTokKind.Comma(), ","))
+list.push(toks, _tok(AttrTokKind.Name(), "feature"))
+list.push(toks, _tok(AttrTokKind.Eq(), "="))
+list.push(toks, _tok(AttrTokKind.Text(), "fast"))
+list.push(toks, _tok(AttrTokKind.RParen(), ")"))
+list.push(toks, _tok(AttrTokKind.Eof(), ""))
+
+make ts as AttrTokens = tokens_new(toks)
+make res as ParseResult = parse_attributes_tokens(ts, diags)
+
+make i as Int = 0
+loop while i < list.len(res.attrs)
+  emit attribute_to_text(res.attrs[i])
+  make c as CfgExpr = parse_cfg_from_attribute(res.attrs[i], diags)
+  emit cfg_to_text(c)
+  set i += 1
+.end
+give
+.end
+
+
+<<< =========================================================
+  10) CFG STRINGIFY (debug)
+========================================================= >>>
+
+proc cfg_to_text(c as CfgExpr) gives Text
+select c.op
+when CfgOp.Has()
+  give "has(" + c.key + ")"
+.end
+when CfgOp.KeyEq()
+  give c.key + "==" + "\"" + c.value + "\""
+.end
+when CfgOp.Any()
+  make xs as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(c.items)
+    list.push(xs, cfg_to_text(c.items[i]))
+    set i += 1
+  .end
+  give "any(" + _join(xs, ", ") + ")"
+.end
+when CfgOp.All()
+  make xs as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(c.items)
+    list.push(xs, cfg_to_text(c.items[i]))
+    set i += 1
+  .end
+  give "all(" + _join(xs, ", ") + ")"
+.end
+when CfgOp.Not()
+  if list.len(c.items) == 1
+    give "not(" + cfg_to_text(c.items[0]) + ")"
+  .end
+  give "not(?)"
+.end
+otherwise
+  give "cfg(?)"
+.end
+.end
+.end

@@ -1,0 +1,1486 @@
+vitte 1.0
+space lingua/syntax/vitte_ast_pretty/master
+
+<<< master
+  vitte_ast_pretty/master.vit — Pretty printer for Vitte AST + AST-IR (MAX)
+
+  Purpose:
+    - Deterministic pretty-printing for:
+        * generic expandable AST nodes (expand.Node)
+        * lowered AST-IR (ir.IrFile)
+    - Used by:
+        * formatter (future)
+        * debug dumps in compiler pipeline
+        * snapshot tests (golden files)
+        * error reports with context excerpts
+
+  Design:
+    - Two printers:
+        1) PrettyAst: prints expand.Node tree as Vitte Full surface text
+        2) PrettyIr:  prints ir tree as normalized Vitte-ish IR text
+    - Both share:
+        * DocWriter (indent + line building)
+        * stable ordering rules
+        * configurable verbosity
+        * safe fallbacks for unknown nodes
+
+  Formatting policy:
+    - Blocks end with ".end"
+    - Keep "space/pull/share/build/form/pick/bond/proc/flow/entry"
+    - Statements: make/keep/set/if/elif/else/loop while/each/select/when/otherwise/give/emit/defer/assert
+    - Comments:
+        * doc zones: <<< tag ... >>>
+        * line comment: # ...
+    - Keep '_' in identifiers (allowed)
+>>>
+
+pull std/text as text
+pull std/collections/list as list
+pull std/collections/map as map
+
+pull lingua/syntax/vitte_ast/span as span
+pull lingua/syntax/vitte_ast/attr/master as attr
+pull lingua/syntax/vitte_ast/expand/master as expand
+pull lingua/syntax/vitte_ast_ir/master as ir
+
+share all
+
+bond Text means String
+
+
+<<< =========================================================
+  0) DOC WRITER (core pretty infrastructure)
+========================================================= >>>
+
+form DocWriter
+field lines as List of Text = []
+field indent_level as Int = 0
+field indent_unit as Text = "  "
+field pending as Text = ""
+.end
+
+proc writer_new() gives DocWriter
+make w as DocWriter = DocWriter()
+set w.lines = []
+set w.indent_level = 0
+set w.indent_unit = "  "
+set w.pending = ""
+give w
+.end
+
+proc writer_set_indent_unit(w as DocWriter, unit as Text) gives DocWriter
+make out as DocWriter = w
+set out.indent_unit = unit
+give out
+.end
+
+proc _indent_prefix(w as DocWriter) gives Text
+make p as Text = ""
+make i as Int = 0
+loop while i < w.indent_level
+  set p = p + w.indent_unit
+  set i += 1
+.end
+give p
+.end
+
+proc writer_push(w as DocWriter, s as Text) gives DocWriter
+make out as DocWriter = w
+set out.pending = out.pending + s
+give out
+.end
+
+proc writer_line(w as DocWriter, s as Text) gives DocWriter
+make out as DocWriter = w
+make ln as Text = _indent_prefix(out) + s
+list.push(out.lines, ln)
+give out
+.end
+
+proc writer_blank(w as DocWriter) gives DocWriter
+make out as DocWriter = w
+list.push(out.lines, "")
+give out
+.end
+
+proc writer_flush(w as DocWriter) gives DocWriter
+make out as DocWriter = w
+if out.pending != ""
+  set out = writer_line(out, out.pending)
+  set out.pending = ""
+.end
+give out
+.end
+
+proc writer_indent(w as DocWriter) gives DocWriter
+make out as DocWriter = w
+set out.indent_level += 1
+give out
+.end
+
+proc writer_dedent(w as DocWriter) gives DocWriter
+make out as DocWriter = w
+if out.indent_level > 0
+  set out.indent_level -= 1
+.end
+give out
+.end
+
+proc writer_text(w as DocWriter) gives Text
+make out as Text = ""
+if list.len(w.lines) == 0
+  give ""
+.end
+set out = w.lines[0]
+make i as Int = 1
+loop while i < list.len(w.lines)
+  set out = out + "\n" + w.lines[i]
+  set i += 1
+.end
+give out
+.end
+
+
+<<< =========================================================
+  1) PRETTY OPTIONS
+========================================================= >>>
+
+pick PrettyTarget
+case Ast()
+case Ir()
+.end
+
+form PrettyOptions
+field target as PrettyTarget = PrettyTarget.Ast()
+field include_spans as Bool = false
+field include_attrs as Bool = false
+field include_ids as Bool = false
+field include_types as Bool = false
+field include_doc_nodes as Bool = true
+field stable_sort_children as Bool = false
+field max_depth as Int = 10_000
+field max_list_preview as Int = 50
+field indent_unit as Text = "  "
+field compact_blocks as Bool = false
+field trailing_newline as Bool = true
+.end
+
+proc pretty_options_ast() gives PrettyOptions
+make o as PrettyOptions = PrettyOptions()
+set o.target = PrettyTarget.Ast()
+give o
+.end
+
+proc pretty_options_ir() gives PrettyOptions
+make o as PrettyOptions = PrettyOptions()
+set o.target = PrettyTarget.Ir()
+set o.include_types = true
+give o
+.end
+
+
+<<< =========================================================
+  2) HELPERS (escape, join, safe text)
+========================================================= >>>
+
+proc _escape_text(s as Text) gives Text
+# basic escaping for quote-safe output
+make out as Text = ""
+make i as Int = 0
+loop while i < text.len(s)
+  make ch as Text = text.char_at(s, i)
+  if ch == "\""
+    set out = out + "\\\""
+  elif ch == "\\"
+    set out = out + "\\\\"
+  elif ch == "\n"
+    set out = out + "\\n"
+  elif ch == "\r"
+    set out = out + "\\r"
+  elif ch == "\t"
+    set out = out + "\\t"
+  else
+    set out = out + ch
+  .end
+  set i += 1
+.end
+give out
+.end
+
+proc _join(xs as List of Text, sep as Text) gives Text
+if list.len(xs) == 0
+  give ""
+.end
+make out as Text = xs[0]
+make i as Int = 1
+loop while i < list.len(xs)
+  set out = out + sep + xs[i]
+  set i += 1
+.end
+give out
+.end
+
+proc _bool_text(b as Bool) gives Text
+if b give "true" .end
+give "false"
+.end
+
+proc _maybe_span(o as PrettyOptions, sp as span.Span) gives Text
+if o.include_spans == false
+  give ""
+.end
+# fallback: Span formatting is project-specific
+give "  #span"
+.end
+
+proc _attrs_text(o as PrettyOptions, xs as List of attr.Attribute) gives Text
+if o.include_attrs == false
+  give ""
+.end
+if list.len(xs) == 0
+  give ""
+.end
+give "  #attrs(" + text.from_int(list.len(xs)) + ")"
+.end
+
+proc _id_suffix(o as PrettyOptions, idtxt as Text) gives Text
+if o.include_ids == false
+  give ""
+.end
+give "  #id(" + idtxt + ")"
+.end
+
+proc _type_suffix(o as PrettyOptions, t as ir.TypeRef) gives Text
+if o.include_types == false
+  give ""
+.end
+give " : " + ir.type_to_text(t)
+.end
+
+
+<<< =========================================================
+  3) PUBLIC API
+========================================================= >>>
+
+proc pretty_ast(root as expand.Node, opt as PrettyOptions) gives Text
+make o as PrettyOptions = opt
+set o.target = PrettyTarget.Ast()
+make w as DocWriter = writer_new()
+set w = writer_set_indent_unit(w, o.indent_unit)
+set w = _print_ast_node(w, root, o, 0)
+set w = writer_flush(w)
+make s as Text = writer_text(w)
+if o.trailing_newline and s != ""
+  set s = s + "\n"
+.end
+give s
+.end
+
+proc pretty_ir(file as ir.IrFile, opt as PrettyOptions) gives Text
+make o as PrettyOptions = opt
+set o.target = PrettyTarget.Ir()
+make w as DocWriter = writer_new()
+set w = writer_set_indent_unit(w, o.indent_unit)
+set w = _print_ir_file(w, file, o)
+set w = writer_flush(w)
+make s as Text = writer_text(w)
+if o.trailing_newline and s != ""
+  set s = s + "\n"
+.end
+give s
+.end
+
+
+<<< =========================================================
+  4) AST (expand.Node) PRINTER
+========================================================= >>>
+
+proc _print_ast_node(w as DocWriter, n as expand.Node, o as PrettyOptions, depth as Int) gives DocWriter
+if depth > o.max_depth
+  give writer_line(w, "# pretty: max depth reached")
+.end
+
+# optionally hide doc nodes
+if o.include_doc_nodes == false
+  if n.kind is expand.NodeKind.DocLine() or n.kind is expand.NodeKind.DocZone()
+    give w
+  .end
+.end
+
+# dispatch by node kind + tag
+select n.kind
+when expand.NodeKind.File()
+  give _print_ast_file(w, n, o, depth)
+.end
+when expand.NodeKind.Item()
+  give _print_ast_item(w, n, o, depth)
+.end
+when expand.NodeKind.Stmt()
+  give _print_ast_stmt(w, n, o, depth)
+.end
+when expand.NodeKind.Expr()
+  give _print_ast_expr(w, n, o, depth)
+.end
+when expand.NodeKind.Type()
+  give _print_ast_type(w, n, o, depth)
+.end
+when expand.NodeKind.Pattern()
+  give _print_ast_pattern(w, n, o, depth)
+.end
+when expand.NodeKind.DocLine()
+  give _print_ast_doc_line(w, n, o, depth)
+.end
+when expand.NodeKind.DocZone()
+  give _print_ast_doc_zone(w, n, o, depth)
+.end
+otherwise
+  give writer_line(w, "# pretty: unknown node kind " + n.tag)
+.end
+.end
+.end
+
+proc _print_ast_file(w as DocWriter, n as expand.Node, o as PrettyOptions, depth as Int) gives DocWriter
+make out as DocWriter = w
+set out = writer_line(out, "vitte 1.0")
+# space may appear as first item; we print children in order
+make i as Int = 0
+loop while i < list.len(n.kids)
+  set out = _print_ast_node(out, n.kids[i], o, depth + 1)
+  set i += 1
+.end
+give out
+.end
+
+proc _print_ast_item(w as DocWriter, n as expand.Node, o as PrettyOptions, depth as Int) gives DocWriter
+make out as DocWriter = w
+
+# Special case: item tag drives syntax keyword
+if n.tag == "space"
+  give writer_line(out, "space " + n.text + _attrs_text(o, n.attrs) + _maybe_span(o, n.span))
+.end
+if n.tag == "pull"
+  # pattern: pull path, optional as child tagged "as", optional only child tagged "only"
+  make line as Text = "pull " + n.text
+  make as_txt as Text = ""
+  make only_txt as Text = ""
+  make i as Int = 0
+  loop while i < list.len(n.kids)
+    make k as expand.Node = n.kids[i]
+    if k.tag == "as"
+      set as_txt = " as " + k.text
+    .end
+    if k.tag == "only"
+      make names as List of Text = []
+      make j as Int = 0
+      loop while j < list.len(k.kids)
+        list.push(names, k.kids[j].text)
+        set j += 1
+      .end
+      set only_txt = " only " + _join(names, ", ")
+    .end
+    set i += 1
+  .end
+  set line = line + as_txt + only_txt
+  set line = line + _attrs_text(o, n.attrs) + _maybe_span(o, n.span)
+  give writer_line(out, line)
+.end
+if n.tag == "share" or n.tag == "share_all" or n.tag == "share_list"
+  make line as Text = "share "
+  if n.text == "all" or n.tag == "share_all"
+    set line = line + "all"
+  else
+    # kids are names
+    make names as List of Text = []
+    make i as Int = 0
+    loop while i < list.len(n.kids)
+      list.push(names, n.kids[i].text)
+      set i += 1
+    .end
+    set line = line + _join(names, ", ")
+  .end
+  set line = line + _attrs_text(o, n.attrs) + _maybe_span(o, n.span)
+  give writer_line(out, line)
+.end
+if n.tag == "build"
+  # key in text, first child literal in kids[0]
+  make v as Text = ""
+  if list.len(n.kids) > 0
+    set v = _print_ast_expr_inline(n.kids[0], o)
+  .end
+  give writer_line(out, "build " + n.text + " = " + v + _attrs_text(o, n.attrs))
+.end
+
+# form/pick/bond/proc/flow/entry/global follow block style
+if n.tag == "form"
+  set out = writer_line(out, "form " + n.text + _attrs_text(o, n.attrs) + _maybe_span(o, n.span))
+  set out = writer_indent(out)
+  set out = _print_ast_item_body(out, n, o, depth)
+  set out = writer_dedent(out)
+  set out = writer_line(out, ".end")
+  give out
+.end
+
+if n.tag == "pick"
+  set out = writer_line(out, "pick " + n.text + _attrs_text(o, n.attrs) + _maybe_span(o, n.span))
+  set out = writer_indent(out)
+  set out = _print_ast_item_body(out, n, o, depth)
+  set out = writer_dedent(out)
+  set out = writer_line(out, ".end")
+  give out
+.end
+
+if n.tag == "bond"
+  # typically: bond Name means Type
+  make target as Text = ""
+  make i as Int = 0
+  loop while i < list.len(n.kids)
+    if n.kids[i].kind is expand.NodeKind.Type()
+      set target = _print_ast_type_inline(n.kids[i], o)
+    .end
+    set i += 1
+  .end
+  make line as Text = "bond " + n.text + " means " + target
+  set line = line + _attrs_text(o, n.attrs) + _maybe_span(o, n.span)
+  give writer_line(out, line)
+.end
+
+if n.tag == "proc" or n.tag == "flow"
+  make kw as Text = n.tag
+  # kids can include params/ret/block
+  make head as Text = kw + " " + n.text
+  make params as Text = _print_ast_params_inline(n, o)
+  make ret as Text = _print_ast_ret_inline(n, o)
+  set out = writer_line(out, head + params + ret + _attrs_text(o, n.attrs))
+  set out = writer_indent(out)
+  make blk as expand.Node = _find_child(n, "block")
+  if blk.tag != ""
+    set out = _print_ast_node(out, blk, o, depth + 1)
+  .end
+  set out = writer_dedent(out)
+  set out = writer_line(out, ".end")
+  give out
+.end
+
+if n.tag == "entry"
+  # n.text = kind, kid[0]=path, kid[1]=block
+  make kind as Text = n.text
+  make at as Text = if list.len(n.kids)>0 then n.kids[0].text else ""
+  set out = writer_line(out, "entry " + kind + " " + at + _attrs_text(o, n.attrs))
+  set out = writer_indent(out)
+  if list.len(n.kids) > 1
+    set out = _print_ast_node(out, n.kids[1], o, depth + 1)
+  .end
+  set out = writer_dedent(out)
+  set out = writer_line(out, ".end")
+  give out
+.end
+
+if n.tag == "global" or n.tag == "const" or n.tag == "var"
+  make kw as Text = if n.tag == "const" then "keep" else "make"
+  # print as a top-level global with make/keep style
+  make ty as Text = ""
+  make init as Text = ""
+  make i as Int = 0
+  loop while i < list.len(n.kids)
+    if n.kids[i].kind is expand.NodeKind.Type()
+      set ty = " as " + _print_ast_type_inline(n.kids[i], o)
+    .end
+    if n.kids[i].kind is expand.NodeKind.Expr()
+      set init = " = " + _print_ast_expr_inline(n.kids[i], o)
+    .end
+    set i += 1
+  .end
+  give writer_line(out, kw + " " + n.text + ty + init + _attrs_text(o, n.attrs))
+.end
+
+# fallback generic block-ish
+set out = writer_line(out, "# item " + n.tag + " " + n.text + _attrs_text(o, n.attrs))
+set out = writer_indent(out)
+set out = _print_ast_item_body(out, n, o, depth)
+set out = writer_dedent(out)
+give out
+.end
+
+proc _print_ast_item_body(w as DocWriter, n as expand.Node, o as PrettyOptions, depth as Int) gives DocWriter
+make out as DocWriter = w
+make i as Int = 0
+loop while i < list.len(n.kids)
+  make k as expand.Node = n.kids[i]
+  # for form: field nodes; for pick: case nodes
+  set out = _print_ast_node(out, k, o, depth + 1)
+  set i += 1
+.end
+give out
+.end
+
+
+proc _print_ast_stmt(w as DocWriter, n as expand.Node, o as PrettyOptions, depth as Int) gives DocWriter
+# Statement node usually prints on a single line or as a block
+make out as DocWriter = w
+
+if n.tag == "block"
+  # children are statements
+  make i as Int = 0
+  loop while i < list.len(n.kids)
+    set out = _print_ast_node(out, n.kids[i], o, depth + 1)
+    set i += 1
+  .end
+  give out
+.end
+
+if n.tag == "make" or n.tag == "keep"
+  make nm as Text = n.text
+  make ty as Text = ""
+  make init as Text = ""
+  make i as Int = 0
+  loop while i < list.len(n.kids)
+    if n.kids[i].kind is expand.NodeKind.Type()
+      set ty = " as " + _print_ast_type_inline(n.kids[i], o)
+    .end
+    if n.kids[i].kind is expand.NodeKind.Expr()
+      set init = " = " + _print_ast_expr_inline(n.kids[i], o)
+    .end
+    set i += 1
+  .end
+  give writer_line(out, n.tag + " " + nm + ty + init + _attrs_text(o, n.attrs))
+.end
+
+if n.tag == "set"
+  # kids: target, op node (text), value
+  make tgt as Text = if list.len(n.kids)>0 then _print_ast_expr_inline(n.kids[0], o) else "<?>"
+  make op as Text = if list.len(n.kids)>1 then n.kids[1].text else "="
+  make val as Text = if list.len(n.kids)>2 then _print_ast_expr_inline(n.kids[2], o) else "<?>"
+  give writer_line(out, "set " + tgt + " " + op + " " + val + _attrs_text(o, n.attrs))
+.end
+
+if n.tag == "emit"
+  make v as Text = if list.len(n.kids)>0 then _print_ast_expr_inline(n.kids[0], o) else ""
+  give writer_line(out, "emit " + v + _attrs_text(o, n.attrs))
+.end
+
+if n.tag == "give"
+  if list.len(n.kids) > 0
+    give writer_line(out, "give " + _print_ast_expr_inline(n.kids[0], o) + _attrs_text(o, n.attrs))
+  .end
+  give writer_line(out, "give" + _attrs_text(o, n.attrs))
+.end
+
+if n.tag == "assert"
+  make c as Text = if list.len(n.kids)>0 then _print_ast_expr_inline(n.kids[0], o) else "<?>"
+  if list.len(n.kids) > 1
+    give writer_line(out, "assert " + c + ", " + _print_ast_expr_inline(n.kids[1], o) + _attrs_text(o, n.attrs))
+  .end
+  give writer_line(out, "assert " + c + _attrs_text(o, n.attrs))
+.end
+
+if n.tag == "defer"
+  # kid[0] action: call/set/emit
+  if list.len(n.kids) == 0
+    give writer_line(out, "defer" + _attrs_text(o, n.attrs))
+  .end
+  make act as expand.Node = n.kids[0]
+  if act.tag == "call"
+    give writer_line(out, "defer call " + _print_ast_expr_inline(act.kids[0], o) + _attrs_text(o, n.attrs))
+  .end
+  if act.tag == "emit"
+    give writer_line(out, "defer emit " + _print_ast_expr_inline(act.kids[0], o) + _attrs_text(o, n.attrs))
+  .end
+  if act.tag == "set"
+    make tgt as Text = _print_ast_expr_inline(act.kids[0], o)
+    make op as Text = act.kids[1].text
+    make val as Text = _print_ast_expr_inline(act.kids[2], o)
+    give writer_line(out, "defer set " + tgt + " " + op + " " + val + _attrs_text(o, n.attrs))
+  .end
+  give writer_line(out, "defer" + _attrs_text(o, n.attrs))
+.end
+
+if n.tag == "halt" or n.tag == "next"
+  give writer_line(out, n.tag + _attrs_text(o, n.attrs))
+.end
+
+if n.tag == "if"
+  # kids: cond, then block, elif*, else?
+  make cond as Text = if list.len(n.kids)>0 then _print_ast_expr_inline(n.kids[0], o) else "<?>"
+  set out = writer_line(out, "if " + cond + _attrs_text(o, n.attrs))
+  set out = writer_indent(out)
+  if list.len(n.kids) > 1
+    set out = _print_ast_node(out, n.kids[1], o, depth + 1)
+  .end
+  set out = writer_dedent(out)
+
+  make i as Int = 2
+  loop while i < list.len(n.kids)
+    make k as expand.Node = n.kids[i]
+    if k.tag == "elif"
+      make c2 as Text = if list.len(k.kids)>0 then _print_ast_expr_inline(k.kids[0], o) else "<?>"
+      set out = writer_line(out, "elif " + c2)
+      set out = writer_indent(out)
+      if list.len(k.kids) > 1
+        set out = _print_ast_node(out, k.kids[1], o, depth + 1)
+      .end
+      set out = writer_dedent(out)
+    elif k.tag == "else"
+      set out = writer_line(out, "else")
+      set out = writer_indent(out)
+      if list.len(k.kids) > 0
+        set out = _print_ast_node(out, k.kids[0], o, depth + 1)
+      .end
+      set out = writer_dedent(out)
+    .end
+    set i += 1
+  .end
+
+  set out = writer_line(out, ".end")
+  give out
+.end
+
+if n.tag == "loop_while" or n.tag == "loop_until"
+  make kw as Text = if n.tag == "loop_until" then "loop until " else "loop while "
+  make cond as Text = if list.len(n.kids)>0 then _print_ast_expr_inline(n.kids[0], o) else "<?>"
+  set out = writer_line(out, kw + cond + _attrs_text(o, n.attrs))
+  set out = writer_indent(out)
+  if list.len(n.kids) > 1
+    set out = _print_ast_node(out, n.kids[1], o, depth + 1)
+  .end
+  set out = writer_dedent(out)
+  set out = writer_line(out, ".end")
+  give out
+.end
+
+if n.tag == "each"
+  # text=item name, kids[0]=iterable, kids[1]=block, optional index child
+  make item as Text = n.text
+  make iter as Text = if list.len(n.kids)>0 then _print_ast_expr_inline(n.kids[0], o) else "<?>"
+  make idx as Text = ""
+  make i as Int = 2
+  loop while i < list.len(n.kids)
+    if n.kids[i].tag == "index"
+      set idx = " index " + n.kids[i].text
+    .end
+    set i += 1
+  .end
+  set out = writer_line(out, "each " + item + " in " + iter + idx + _attrs_text(o, n.attrs))
+  set out = writer_indent(out)
+  if list.len(n.kids) > 1
+    set out = _print_ast_node(out, n.kids[1], o, depth + 1)
+  .end
+  set out = writer_dedent(out)
+  set out = writer_line(out, ".end")
+  give out
+.end
+
+if n.tag == "select"
+  make scrut as Text = if list.len(n.kids)>0 then _print_ast_expr_inline(n.kids[0], o) else "<?>"
+  set out = writer_line(out, "select " + scrut + _attrs_text(o, n.attrs))
+  set out = writer_indent(out)
+
+  make i as Int = 1
+  loop while i < list.len(n.kids)
+    make k as expand.Node = n.kids[i]
+    if k.tag == "when"
+      make pat as Text = if list.len(k.kids)>0 then _print_ast_pattern_inline(k.kids[0], o) else "_"
+      set out = writer_line(out, "when " + pat)
+      set out = writer_indent(out)
+      if list.len(k.kids) > 1
+        set out = _print_ast_node(out, k.kids[1], o, depth + 1)
+      .end
+      set out = writer_dedent(out)
+    elif k.tag == "otherwise"
+      set out = writer_line(out, "otherwise")
+      set out = writer_indent(out)
+      if list.len(k.kids) > 0
+        set out = _print_ast_node(out, k.kids[0], o, depth + 1)
+      .end
+      set out = writer_dedent(out)
+    .end
+    set i += 1
+  .end
+
+  set out = writer_dedent(out)
+  set out = writer_line(out, ".end")
+  give out
+.end
+
+# fallback: print as inline expr stmt if possible
+if n.kind is expand.NodeKind.Stmt()
+  give writer_line(out, "# stmt " + n.tag + " " + n.text)
+.end
+give out
+.end
+
+
+proc _print_ast_expr(w as DocWriter, n as expand.Node, o as PrettyOptions, depth as Int) gives DocWriter
+give writer_line(w, _print_ast_expr_inline(n, o) + _attrs_text(o, n.attrs) + _maybe_span(o, n.span))
+.end
+
+proc _print_ast_expr_inline(n as expand.Node, o as PrettyOptions) gives Text
+if n.tag == "text" or n.tag == "string"
+  give "\"" + _escape_text(n.text) + "\""
+.end
+if n.tag == "int" or n.tag == "float" or n.tag == "bool" or n.tag == "null"
+  give n.text
+.end
+if n.tag == "name"
+  give n.text
+.end
+if n.tag == "path"
+  give n.text
+.end
+if n.tag == "call"
+  make cal as Text = if list.len(n.kids)>0 then _print_ast_expr_inline(n.kids[0], o) else "<?>"
+  make args as List of Text = []
+  make i as Int = 1
+  loop while i < list.len(n.kids)
+    list.push(args, _print_ast_expr_inline(n.kids[i], o))
+    set i += 1
+  .end
+  give cal + "(" + _join(args, ", ") + ")"
+.end
+if n.tag == "field"
+  # kids[0]=base, text=field
+  make base as Text = if list.len(n.kids)>0 then _print_ast_expr_inline(n.kids[0], o) else "<?>"
+  give base + "." + n.text
+.end
+if n.tag == "index"
+  make base as Text = _print_ast_expr_inline(n.kids[0], o)
+  make idx as Text = _print_ast_expr_inline(n.kids[1], o)
+  give base + "[" + idx + "]"
+.end
+if n.tag == "unary"
+  make op as Text = if list.len(n.kids)>0 then n.kids[0].text else "<?>"
+  make inner as Text = if list.len(n.kids)>1 then _print_ast_expr_inline(n.kids[1], o) else "<?>"
+  if op == "not"
+    give "not " + inner
+  .end
+  give op + inner
+.end
+if n.tag == "binary"
+  make l as Text = _print_ast_expr_inline(n.kids[0], o)
+  make op as Text = n.kids[1].text
+  make r as Text = _print_ast_expr_inline(n.kids[2], o)
+  give l + " " + op + " " + r
+.end
+if n.tag == "list"
+  make items as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(n.kids)
+    if i >= o.max_list_preview
+      list.push(items, "...")
+      loop while false .end
+    .end
+    list.push(items, _print_ast_expr_inline(n.kids[i], o))
+    set i += 1
+  .end
+  give "[" + _join(items, ", ") + "]"
+.end
+if n.tag == "pack"
+  make items as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(n.kids)
+    if i >= o.max_list_preview
+      list.push(items, "...")
+      loop while false .end
+    .end
+    list.push(items, _print_ast_expr_inline(n.kids[i], o))
+    set i += 1
+  .end
+  give "(" + _join(items, ", ") + ")"
+.end
+if n.tag == "map"
+  make items as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(n.kids)
+    if i >= o.max_list_preview
+      list.push(items, "...")
+      loop while false .end
+    .end
+    # each kid is entry with kids[0]=k kids[1]=v
+    make e as expand.Node = n.kids[i]
+    if list.len(e.kids) >= 2
+      list.push(items, _print_ast_expr_inline(e.kids[0], o) + " : " + _print_ast_expr_inline(e.kids[1], o))
+    else
+      list.push(items, "<?> :<?>")
+    .end
+    set i += 1
+  .end
+  give "{ " + _join(items, ", ") + " }"
+.end
+
+# fallback
+if n.text != ""
+  give n.tag + "(" + n.text + ")"
+.end
+give n.tag
+.end
+
+
+proc _print_ast_type(w as DocWriter, n as expand.Node, o as PrettyOptions, depth as Int) gives DocWriter
+give writer_line(w, _print_ast_type_inline(n, o))
+.end
+
+proc _print_ast_type_inline(n as expand.Node, o as PrettyOptions) gives Text
+if n.tag == "builtin"
+  give n.text
+.end
+if n.tag == "named"
+  # text path, kids are args
+  make args as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(n.kids)
+    list.push(args, _print_ast_type_inline(n.kids[i], o))
+    set i += 1
+  .end
+  if list.len(args) == 0
+    give n.text
+  .end
+  give n.text + "[" + _join(args, ", ") + "]"
+.end
+if n.tag == "list_of"
+  if list.len(n.kids) > 0
+    give "List of " + _print_ast_type_inline(n.kids[0], o)
+  .end
+  give "List of ?"
+.end
+if n.tag == "map_of"
+  if list.len(n.kids) >= 2
+    give "Map of " + _print_ast_type_inline(n.kids[0], o) + " to " + _print_ast_type_inline(n.kids[1], o)
+  .end
+  give "Map of ? to ?"
+.end
+if n.tag == "or"
+  if list.len(n.kids) >= 2
+    give _print_ast_type_inline(n.kids[0], o) + " or " + _print_ast_type_inline(n.kids[1], o)
+  .end
+  give "? or ?"
+.end
+if n.text != ""
+  give n.text
+.end
+give "?"
+.end
+
+
+proc _print_ast_pattern(w as DocWriter, n as expand.Node, o as PrettyOptions, depth as Int) gives DocWriter
+give writer_line(w, _print_ast_pattern_inline(n, o))
+.end
+
+proc _print_ast_pattern_inline(n as expand.Node, o as PrettyOptions) gives Text
+if n.tag == "_"
+  give "_"
+.end
+if n.tag == "name"
+  give n.text
+.end
+if n.tag == "lit"
+  give _print_ast_expr_inline(n, o)
+.end
+if n.tag == "tuple"
+  make items as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(n.kids)
+    list.push(items, _print_ast_pattern_inline(n.kids[i], o))
+    set i += 1
+  .end
+  give "(" + _join(items, ", ") + ")"
+.end
+if n.tag == "list"
+  make items as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(n.kids)
+    list.push(items, _print_ast_pattern_inline(n.kids[i], o))
+    set i += 1
+  .end
+  give "[" + _join(items, ", ") + "]"
+.end
+if n.tag == "variant"
+  # text=type path, kid0=case name, rest payload
+  make ty as Text = n.text
+  make cn as Text = if list.len(n.kids)>0 then n.kids[0].text else "<?>"
+  make pay as List of Text = []
+  make i as Int = 1
+  loop while i < list.len(n.kids)
+    list.push(pay, _print_ast_pattern_inline(n.kids[i], o))
+    set i += 1
+  .end
+  if list.len(pay) == 0
+    give ty + "::" + cn
+  .end
+  give ty + "::" + cn + "(" + _join(pay, ", ") + ")"
+.end
+
+if n.text != ""
+  give n.text
+.end
+give "_"
+.end
+
+
+proc _print_ast_doc_line(w as DocWriter, n as expand.Node, o as PrettyOptions, depth as Int) gives DocWriter
+# expects doc content in text
+give writer_line(w, "doc " + n.text)
+.end
+
+proc _print_ast_doc_zone(w as DocWriter, n as expand.Node, o as PrettyOptions, depth as Int) gives DocWriter
+make out as DocWriter = w
+make tag as Text = n.tag
+if tag == "" set tag = "docs" .end
+set out = writer_line(out, "<<< " + tag)
+
+set out = writer_indent(out)
+# content may live in text or in kids lines (project-dependent)
+if n.text != ""
+  # split by '\n'
+  make parts as List of Text = text.split(n.text, "\n")
+  make i as Int = 0
+  loop while i < list.len(parts)
+    set out = writer_line(out, parts[i])
+    set i += 1
+  .end
+else
+  make i as Int = 0
+  loop while i < list.len(n.kids)
+    set out = writer_line(out, n.kids[i].text)
+    set i += 1
+  .end
+.end
+set out = writer_dedent(out)
+
+set out = writer_line(out, ">>>")
+give out
+.end
+
+
+proc _find_child(n as expand.Node, tag as Text) gives expand.Node
+make i as Int = 0
+loop while i < list.len(n.kids)
+  if n.kids[i].tag == tag
+    give n.kids[i]
+  .end
+  set i += 1
+.end
+give expand.Node()
+.end
+
+proc _print_ast_params_inline(n as expand.Node, o as PrettyOptions) gives Text
+make params as expand.Node = _find_child(n, "params")
+if params.tag == ""
+  give "()"
+.end
+make xs as List of Text = []
+make i as Int = 0
+loop while i < list.len(params.kids)
+  # param node: text=name, kid[0]=type optional, kid[1]=default optional
+  make p as expand.Node = params.kids[i]
+  make s as Text = p.text
+  make j as Int = 0
+  loop while j < list.len(p.kids)
+    if p.kids[j].kind is expand.NodeKind.Type()
+      set s = s + " as " + _print_ast_type_inline(p.kids[j], o)
+    .end
+    if p.kids[j].kind is expand.NodeKind.Expr()
+      set s = s + " = " + _print_ast_expr_inline(p.kids[j], o)
+    .end
+    set j += 1
+  .end
+  list.push(xs, s)
+  set i += 1
+.end
+give "(" + _join(xs, ", ") + ")"
+.end
+
+proc _print_ast_ret_inline(n as expand.Node, o as PrettyOptions) gives Text
+make r as expand.Node = _find_child(n, "ret")
+if r.tag == "" or list.len(r.kids) == 0
+  give ""
+.end
+give " gives " + _print_ast_type_inline(r.kids[0], o)
+.end
+
+
+<<< =========================================================
+  5) IR (vitte_ast_ir) PRINTER
+========================================================= >>>
+
+proc _print_ir_file(w as DocWriter, f as ir.IrFile, o as PrettyOptions) gives DocWriter
+make out as DocWriter = w
+set out = writer_line(out, "vitte 1.0  # ir")
+make i as Int = 0
+loop while i < list.len(f.items)
+  set out = _print_ir_item(out, f.items[i], o)
+  set i += 1
+.end
+give out
+.end
+
+proc _print_ir_item(w as DocWriter, it as ir.Item, o as PrettyOptions) gives DocWriter
+make out as DocWriter = w
+make tag as Text = ir.item_kind_tag(it.kind)
+# attempt structured print for common kinds
+select it.kind
+when ir.ItemKind.Space(s)
+  give writer_line(out, "space " + ir.path_to_text(s.path) + _id_suffix(o, text.from_u32(it.id.raw)))
+.end
+when ir.ItemKind.Pull(p)
+  make line as Text = "pull " + ir.path_to_text(p.path)
+  if p.has_as set line = line + " as " + ir.name_text(p.as_name) .end
+  if p.has_only
+    make names as List of Text = []
+    make i as Int = 0
+    loop while i < list.len(p.only)
+      list.push(names, ir.name_text(p.only[i]))
+      set i += 1
+    .end
+    set line = line + " only " + _join(names, ", ")
+  .end
+  give writer_line(out, line + _id_suffix(o, text.from_u32(it.id.raw)))
+.end
+when ir.ItemKind.Share(s)
+  if s.all
+    give writer_line(out, "share all" + _id_suffix(o, text.from_u32(it.id.raw)))
+  .end
+  make names as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(s.names)
+    list.push(names, ir.name_text(s.names[i]))
+    set i += 1
+  .end
+  give writer_line(out, "share " + _join(names, ", ") + _id_suffix(o, text.from_u32(it.id.raw)))
+.end
+when ir.ItemKind.Build(b)
+  give writer_line(out, "build " + b.key + " = " + _print_ir_lit_inline(b.value) + _id_suffix(o, text.from_u32(it.id.raw)))
+.end
+when ir.ItemKind.Bond(b)
+  give writer_line(out, "bond " + ir.name_text(b.name) + " means " + _type_ref_inline(b.target) + _id_suffix(o, text.from_u32(it.id.raw)))
+.end
+when ir.ItemKind.Form(fm)
+  set out = writer_line(out, "form " + ir.name_text(fm.name) + _id_suffix(o, text.from_u32(it.id.raw)))
+  set out = writer_indent(out)
+  make i as Int = 0
+  loop while i < list.len(fm.fields)
+    set out = _print_ir_field(out, fm.fields[i], o)
+    set i += 1
+  .end
+  set out = writer_dedent(out)
+  set out = writer_line(out, ".end")
+  give out
+.end
+when ir.ItemKind.Pick(pk)
+  set out = writer_line(out, "pick " + ir.name_text(pk.name) + _id_suffix(o, text.from_u32(it.id.raw)))
+  set out = writer_indent(out)
+  make i as Int = 0
+  loop while i < list.len(pk.cases)
+    set out = _print_ir_case(out, pk.cases[i], o)
+    set i += 1
+  .end
+  set out = writer_dedent(out)
+  set out = writer_line(out, ".end")
+  give out
+.end
+when ir.ItemKind.Proc(p)
+  set out = writer_line(out, "proc " + ir.name_text(p.name) + _print_ir_sig_inline(p.sig, o) + _id_suffix(o, text.from_u32(it.id.raw)))
+  set out = writer_indent(out)
+  set out = _print_ir_block(out, p.body, o)
+  set out = writer_dedent(out)
+  set out = writer_line(out, ".end")
+  give out
+.end
+when ir.ItemKind.Flow(p)
+  set out = writer_line(out, "flow " + ir.name_text(p.name) + _print_ir_sig_inline(p.sig, o) + _id_suffix(o, text.from_u32(it.id.raw)))
+  set out = writer_indent(out)
+  set out = _print_ir_block(out, p.body, o)
+  set out = writer_dedent(out)
+  set out = writer_line(out, ".end")
+  give out
+.end
+when ir.ItemKind.Entry(e)
+  set out = writer_line(out, "entry " + _entry_kind_text(e.kind) + " " + ir.path_to_text(e.at) + _id_suffix(o, text.from_u32(it.id.raw)))
+  set out = writer_indent(out)
+  set out = _print_ir_block(out, e.body, o)
+  set out = writer_dedent(out)
+  set out = writer_line(out, ".end")
+  give out
+.end
+when ir.ItemKind.Global(g)
+  make kw as Text = if g.is_const then "keep" else "make"
+  make line as Text = kw + " " + ir.name_text(g.name)
+  if g.has_ty set line = line + " as " + _type_ref_inline(g.ty) .end
+  if g.has_init set line = line + " = " + _print_ir_expr_inline(g.init, o) .end
+  give writer_line(out, line + _id_suffix(o, text.from_u32(it.id.raw)))
+.end
+otherwise
+  give writer_line(out, "# ir item " + tag + _id_suffix(o, text.from_u32(it.id.raw)))
+.end
+.end
+.end
+
+proc _print_ir_field(w as DocWriter, f as ir.Field, o as PrettyOptions) gives DocWriter
+make line as Text = "field " + ir.name_text(f.name) + " as " + _type_ref_inline(f.ty)
+if f.has_init
+  set line = line + " = " + _print_ir_expr_inline(f.init, o)
+.end
+give writer_line(w, line)
+.end
+
+proc _print_ir_case(w as DocWriter, c as ir.Case, o as PrettyOptions) gives DocWriter
+if list.len(c.payload) == 0
+  give writer_line(w, "case " + ir.name_text(c.name))
+.end
+make tys as List of Text = []
+make i as Int = 0
+loop while i < list.len(c.payload)
+  list.push(tys, _type_ref_inline(c.payload[i]))
+  set i += 1
+.end
+give writer_line(w, "case " + ir.name_text(c.name) + "(" + _join(tys, ", ") + ")")
+.end
+
+proc _print_ir_sig_inline(sig as ir.Sig, o as PrettyOptions) gives Text
+make xs as List of Text = []
+make i as Int = 0
+loop while i < list.len(sig.params)
+  make p as ir.Param = sig.params[i]
+  make s as Text = ir.name_text(p.name)
+  if p.has_ty set s = s + " as " + _type_ref_inline(p.ty) .end
+  if p.has_default set s = s + " = " + _print_ir_expr_inline(p.default, o) .end
+  list.push(xs, s)
+  set i += 1
+.end
+make out as Text = "(" + _join(xs, ", ") + ")"
+if sig.has_ret
+  set out = out + " gives " + _type_ref_inline(sig.ret)
+.end
+give out
+.end
+
+proc _print_ir_block(w as DocWriter, b as ir.Block, o as PrettyOptions) gives DocWriter
+make out as DocWriter = w
+make i as Int = 0
+loop while i < list.len(b.stmts)
+  set out = _print_ir_stmt(out, b.stmts[i], o)
+  set i += 1
+.end
+give out
+.end
+
+proc _print_ir_stmt(w as DocWriter, s as ir.Stmt, o as PrettyOptions) gives DocWriter
+select s.kind
+when ir.StmtKind.Make(nm, ty, has_ty, init, has_init)
+  make line as Text = "make " + ir.name_text(nm)
+  if has_ty set line = line + " as " + _type_ref_inline(ty) .end
+  if has_init set line = line + " = " + _print_ir_expr_inline(init, o) .end
+  give writer_line(w, line + _id_suffix(o, text.from_u32(s.id.raw)))
+.end
+when ir.StmtKind.Keep(nm, ty, has_ty, init)
+  make line as Text = "keep " + ir.name_text(nm)
+  if has_ty set line = line + " as " + _type_ref_inline(ty) .end
+  set line = line + " = " + _print_ir_expr_inline(init, o)
+  give writer_line(w, line + _id_suffix(o, text.from_u32(s.id.raw)))
+.end
+when ir.StmtKind.Set(tgt, op, val)
+  give writer_line(w, "set " + _print_ir_expr_inline(tgt.base, o) + " " + _setop_text(op) + " " + _print_ir_expr_inline(val, o) + _id_suffix(o, text.from_u32(s.id.raw)))
+.end
+when ir.StmtKind.Emit(e)
+  give writer_line(w, "emit " + _print_ir_expr_inline(e, o) + _id_suffix(o, text.from_u32(s.id.raw)))
+.end
+when ir.StmtKind.Give(v, has_v)
+  if has_v
+    give writer_line(w, "give " + _print_ir_expr_inline(v, o) + _id_suffix(o, text.from_u32(s.id.raw)))
+  .end
+  give writer_line(w, "give" + _id_suffix(o, text.from_u32(s.id.raw)))
+.end
+when ir.StmtKind.Assert(c, m, has_m)
+  if has_m
+    give writer_line(w, "assert " + _print_ir_expr_inline(c, o) + ", " + _print_ir_expr_inline(m, o) + _id_suffix(o, text.from_u32(s.id.raw)))
+  .end
+  give writer_line(w, "assert " + _print_ir_expr_inline(c, o) + _id_suffix(o, text.from_u32(s.id.raw)))
+.end
+when ir.StmtKind.Defer(a)
+  give writer_line(w, "defer " + _defer_text(a, o) + _id_suffix(o, text.from_u32(s.id.raw)))
+.end
+when ir.StmtKind.If(cond, then_b, elifs, else_b, has_else)
+  make out as DocWriter = writer_line(w, "if " + _print_ir_expr_inline(cond, o) + _id_suffix(o, text.from_u32(s.id.raw)))
+  set out = writer_indent(out)
+  set out = _print_ir_block(out, then_b, o)
+  set out = writer_dedent(out)
+
+  make i as Int = 0
+  loop while i < list.len(elifs)
+    set out = writer_line(out, "elif " + _print_ir_expr_inline(elifs[i].cond, o))
+    set out = writer_indent(out)
+    set out = _print_ir_block(out, elifs[i].body, o)
+    set out = writer_dedent(out)
+    set i += 1
+  .end
+
+  if has_else
+    set out = writer_line(out, "else")
+    set out = writer_indent(out)
+    set out = _print_ir_block(out, else_b, o)
+    set out = writer_dedent(out)
+  .end
+
+  set out = writer_line(out, ".end")
+  give out
+.end
+when ir.StmtKind.LoopWhile(cond, body, _)
+  make out as DocWriter = writer_line(w, "loop while " + _print_ir_expr_inline(cond, o) + _id_suffix(o, text.from_u32(s.id.raw)))
+  set out = writer_indent(out)
+  set out = _print_ir_block(out, body, o)
+  set out = writer_dedent(out)
+  set out = writer_line(out, ".end")
+  give out
+.end
+when ir.StmtKind.LoopEach(item, index, has_index, iter, body, _)
+  make head as Text = "each " + ir.name_text(item) + " in " + _print_ir_expr_inline(iter, o)
+  if has_index
+    set head = head + " index " + ir.name_text(index)
+  .end
+  make out as DocWriter = writer_line(w, head + _id_suffix(o, text.from_u32(s.id.raw)))
+  set out = writer_indent(out)
+  set out = _print_ir_block(out, body, o)
+  set out = writer_dedent(out)
+  set out = writer_line(out, ".end")
+  give out
+.end
+when ir.StmtKind.Select(scrut, arms, other, has_other)
+  make out as DocWriter = writer_line(w, "select " + _print_ir_expr_inline(scrut, o) + _id_suffix(o, text.from_u32(s.id.raw)))
+  set out = writer_indent(out)
+  make i as Int = 0
+  loop while i < list.len(arms)
+    set out = writer_line(out, "when " + _print_ir_pat_inline(arms[i].pat, o))
+    set out = writer_indent(out)
+    set out = _print_ir_block(out, arms[i].body, o)
+    set out = writer_dedent(out)
+    set i += 1
+  .end
+  if has_other
+    set out = writer_line(out, "otherwise")
+    set out = writer_indent(out)
+    set out = _print_ir_block(out, other, o)
+    set out = writer_dedent(out)
+  .end
+  set out = writer_dedent(out)
+  set out = writer_line(out, ".end")
+  give out
+.end
+when ir.StmtKind.Halt()
+  give writer_line(w, "halt" + _id_suffix(o, text.from_u32(s.id.raw)))
+.end
+when ir.StmtKind.Next()
+  give writer_line(w, "next" + _id_suffix(o, text.from_u32(s.id.raw)))
+.end
+when ir.StmtKind.ExprStmt(e)
+  give writer_line(w, _print_ir_expr_inline(e, o) + _id_suffix(o, text.from_u32(s.id.raw)))
+.end
+otherwise
+  give writer_line(w, "# ir stmt hole" + _id_suffix(o, text.from_u32(s.id.raw)))
+.end
+.end
+.end
+
+proc _print_ir_expr_inline(e as ir.Expr, o as PrettyOptions) gives Text
+select e.kind
+when ir.ExprKind.Lit(l)
+  give _print_ir_lit_inline(l)
+.end
+when ir.ExprKind.NameRef(nm)
+  give ir.name_text(nm) + _type_suffix(o, e.ty)
+.end
+when ir.ExprKind.PathRef(p)
+  give ir.path_to_text(p) + _type_suffix(o, e.ty)
+.end
+when ir.ExprKind.Call(cal, args)
+  make a as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(args)
+    if args[i].has_name
+      list.push(a, ir.name_text(args[i].name) + " = " + _print_ir_expr_inline(args[i].value, o))
+    else
+      list.push(a, _print_ir_expr_inline(args[i].value, o))
+    .end
+    set i += 1
+  .end
+  give _print_ir_expr_inline(cal, o) + "(" + _join(a, ", ") + ")" + _type_suffix(o, e.ty)
+.end
+when ir.ExprKind.Field(b, f)
+  give _print_ir_expr_inline(b, o) + "." + ir.name_text(f) + _type_suffix(o, e.ty)
+.end
+when ir.ExprKind.Index(b, i2)
+  give _print_ir_expr_inline(b, o) + "[" + _print_ir_expr_inline(i2, o) + "]" + _type_suffix(o, e.ty)
+.end
+when ir.ExprKind.Unary(op, inner)
+  make t as Text = if op is ir.UnaryOp.Not() then "not " else "-"
+  give t + _print_ir_expr_inline(inner, o) + _type_suffix(o, e.ty)
+.end
+when ir.ExprKind.Binary(op, l, r)
+  give _print_ir_expr_inline(l, o) + " " + ir.binop_text(op) + " " + _print_ir_expr_inline(r, o) + _type_suffix(o, e.ty)
+.end
+when ir.ExprKind.ListLit(xs)
+  make items as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(xs)
+    if i >= o.max_list_preview
+      list.push(items, "...")
+      loop while false .end
+    .end
+    list.push(items, _print_ir_expr_inline(xs[i], o))
+    set i += 1
+  .end
+  give "[" + _join(items, ", ") + "]" + _type_suffix(o, e.ty)
+.end
+when ir.ExprKind.PackLit(xs)
+  make items as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(xs)
+    if i >= o.max_list_preview
+      list.push(items, "...")
+      loop while false .end
+    .end
+    list.push(items, _print_ir_expr_inline(xs[i], o))
+    set i += 1
+  .end
+  give "(" + _join(items, ", ") + ")" + _type_suffix(o, e.ty)
+.end
+when ir.ExprKind.MapLit(xs)
+  make items as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(xs)
+    if i >= o.max_list_preview
+      list.push(items, "...")
+      loop while false .end
+    .end
+    list.push(items, _print_ir_expr_inline(xs[i].key, o) + " : " + _print_ir_expr_inline(xs[i].value, o))
+    set i += 1
+  .end
+  give "{ " + _join(items, ", ") + " }" + _type_suffix(o, e.ty)
+.end
+when ir.ExprKind.Hole()
+  give "<?>"
+.end
+otherwise
+  give "<expr>"
+.end
+.end
+.end
+
+proc _print_ir_lit_inline(l as ir.Literal) gives Text
+select l
+when ir.Literal.Null() give "null" .end
+when ir.Literal.Bool(b) give if b then "true" else "false" .end
+when ir.Literal.Text(t) give "\"" + _escape_text(t) + "\"" .end
+when ir.Literal.Int(t, _) give t .end
+when ir.Literal.Float(t, _) give t .end
+otherwise give "<lit>" .end
+.end
+.end
+
+proc _print_ir_pat_inline(p as ir.Pattern, o as PrettyOptions) gives Text
+select p.kind
+when ir.PatternKind.Wild() give "_" .end
+when ir.PatternKind.NameBind(nm) give ir.name_text(nm) .end
+when ir.PatternKind.Lit(l) give _print_ir_lit_inline(l) .end
+when ir.PatternKind.Tuple(xs)
+  make items as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(xs)
+    list.push(items, _print_ir_pat_inline(xs[i], o))
+    set i += 1
+  .end
+  give "(" + _join(items, ", ") + ")"
+.end
+when ir.PatternKind.List(xs)
+  make items as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(xs)
+    list.push(items, _print_ir_pat_inline(xs[i], o))
+    set i += 1
+  .end
+  give "[" + _join(items, ", ") + "]"
+.end
+when ir.PatternKind.Variant(ty, cn, payload)
+  make ps as List of Text = []
+  make i as Int = 0
+  loop while i < list.len(payload)
+    list.push(ps, _print_ir_pat_inline(payload[i], o))
+    set i += 1
+  .end
+  if list.len(ps) == 0
+    give ir.path_to_text(ty) + "::" + ir.name_text(cn)
+  .end
+  give ir.path_to_text(ty) + "::" + ir.name_text(cn) + "(" + _join(ps, ", ") + ")"
+.end
+otherwise
+  give "_"
+.end
+.end
+.end
+
+proc _type_ref_inline(t as ir.TypeRef) gives Text
+give ir.type_to_text(t)
+.end
+
+proc _setop_text(op as ir.SetOp) gives Text
+select op
+when ir.SetOp.Assign() give "=" .end
+when ir.SetOp.AddAssign() give "+=" .end
+when ir.SetOp.SubAssign() give "-=" .end
+when ir.SetOp.MulAssign() give "*=" .end
+when ir.SetOp.DivAssign() give "/=" .end
+otherwise give "%=" .end
+.end
+.end
+
+proc _defer_text(a as ir.DeferAction, o as PrettyOptions) gives Text
+select a
+when ir.DeferAction.Call(e) give "call " + _print_ir_expr_inline(e, o) .end
+when ir.DeferAction.EmitInline(e) give "emit " + _print_ir_expr_inline(e, o) .end
+when ir.DeferAction.SetInline(t, op, v) give "set " + _print_ir_expr_inline(t.base, o) + " " + _setop_text(op) + " " + _print_ir_expr_inline(v, o) .end
+otherwise give "<defer>" .end
+.end
+.end
+
+proc _entry_kind_text(k as ir.EntryKind) gives Text
+select k
+when ir.EntryKind.App() give "app" .end
+when ir.EntryKind.Service() give "service" .end
+when ir.EntryKind.Tool() give "tool" .end
+when ir.EntryKind.Pipeline() give "pipeline" .end
+when ir.EntryKind.Driver() give "driver" .end
+otherwise give "kernel" .end
+.end
+.end
+
+
+<<< =========================================================
+  6) CONVENIENCE: DUMP
+========================================================= >>>
+
+proc dump_ast(root as expand.Node) gives Text
+give pretty_ast(root, pretty_options_ast())
+.end
+
+proc dump_ir(file as ir.IrFile) gives Text
+give pretty_ir(file, pretty_options_ir())
+.end
+
+
+<<< =========================================================
+  7) SMOKE TESTS
+========================================================= >>>
+
+proc _test_pretty_ast()
+make f as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.File(), "file", span.Span())
+make sp as expand.Node = expand.node_make(expand.node_id_make(1u32), expand.NodeKind.Item(), "space", span.Span())
+set sp.text = "lingua/demo"
+list.push(f.kids, sp)
+emit pretty_ast(f, pretty_options_ast())
+give
+.end
+
+proc _test_pretty_ir()
+make file as ir.IrFile = ir.IrFile()
+set file.id = ir.file_id(1u32)
+set file.items = []
+emit pretty_ir(file, pretty_options_ir())
+give
+.end

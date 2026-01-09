@@ -1,0 +1,568 @@
+vitte 1.0
+space lingua/syntax/vitte_ast/util/comments/master
+
+<<< master
+  util/comments/master.vit — Comment utilities (MAX)
+
+  Supports:
+    - line comments: '# ...'
+    - doc lines: 'doc ...'
+    - doc zones: '<<< [tag] ... >>>'
+    - normalization utilities:
+        * strip markers
+        * keep raw vs cooked text
+        * trim indentation
+        * detect fenced sections
+        * join lines and preserve spans
+    - attachment strategies:
+        * attach to nearest following node (outer docs)
+        * attach to containing node (inner docs)
+        * file-level docs (no following node)
+    - lightweight parsing helpers:
+        * detect doc zone boundaries in token streams
+        * split into DocChunk records
+
+  Alignment:
+    - Vitte Full grammar: blocks end with .end
+    - '_' allowed in identifiers
+>>>
+
+pull std/text as text
+pull std/collections/list as list
+pull std/collections/map as map
+
+pull lingua/syntax/vitte_ast/span as span
+pull lingua/syntax/vitte_ast/diag as diag
+
+share all
+
+bond Text means String
+
+
+<<< =========================================================
+  0) COMMENT KINDS / RAW UNITS
+========================================================= >>>
+
+pick CommentKind
+case Line()          # '# ...'
+case DocLine()       # 'doc ...'
+case DocZone()       # '<<< ... >>>'
+.end
+
+pick CommentRole
+case Outer()         # attaches to next item/stmt
+case Inner()         # attaches to containing item/file
+case Free()          # unattached (kept in store only)
+.end
+
+form CommentId
+field raw as U32 = 0u32
+.end
+
+proc comment_id_make(x as U32) gives CommentId
+make id as CommentId = CommentId()
+set id.raw = x
+give id
+.end
+
+
+<<< =========================================================
+  1) COMMENT PIECES (lines & zones)
+========================================================= >>>
+
+form CommentLine
+field id as CommentId = CommentId()
+field kind as CommentKind = CommentKind.Line()
+field span as span.Span = span.Span()
+field raw as Text = ""          # raw line excluding newline
+field cooked as Text = ""       # normalized content (no markers, trimmed)
+.end
+
+form DocZone
+field id as CommentId = CommentId()
+field span_open as span.Span = span.Span()
+field span_close as span.Span = span.Span()
+field tag as Text = ""          # optional tag after '<<<'
+field raw_lines as List of Text = []
+field cooked_lines as List of Text = []
+.end
+
+form CommentUnit
+field kind as CommentKind = CommentKind.Line()
+field role as CommentRole = CommentRole.Outer()
+field line as CommentLine = CommentLine()
+field zone as DocZone = DocZone()
+.end
+
+proc unit_from_line(role as CommentRole, ln as CommentLine) gives CommentUnit
+make u as CommentUnit = CommentUnit()
+set u.kind = ln.kind
+set u.role = role
+set u.line = ln
+give u
+.end
+
+proc unit_from_zone(role as CommentRole, z as DocZone) gives CommentUnit
+make u as CommentUnit = CommentUnit()
+set u.kind = CommentKind.DocZone()
+set u.role = role
+set u.zone = z
+give u
+.end
+
+
+<<< =========================================================
+  2) DOC CHUNKS (attachment-ready)
+========================================================= >>>
+
+form DocChunk
+field owner_id as U32 = 0u32              # 0 => file-level
+field role as CommentRole = CommentRole.Outer()
+field tag as Text = ""                    # tag for zones, "doc" for doc-line
+field text as Text = ""                   # joined cooked text
+field raw_text as Text = ""               # joined raw text
+field span as span.Span = span.Span()     # best-effort span coverage
+.end
+
+form DocStore
+field by_owner as Map of U32 to List of DocChunk = {}
+field free as List of DocChunk = []
+.end
+
+proc doc_store_new() gives DocStore
+make s as DocStore = DocStore()
+set s.by_owner = map.new()
+set s.free = []
+give s
+.end
+
+proc doc_store_add(store as DocStore, chunk as DocChunk) gives DocStore
+make out as DocStore = store
+if chunk.owner_id == 0u32
+  list.push(out.free, chunk)
+  give out
+.end
+
+if map.has(out.by_owner, chunk.owner_id) == false
+  map.put(out.by_owner, chunk.owner_id, [])
+.end
+
+make xs as List of DocChunk = map.get(out.by_owner, chunk.owner_id)
+list.push(xs, chunk)
+map.put(out.by_owner, chunk.owner_id, xs)
+give out
+.end
+
+proc doc_store_get(store as DocStore, owner_id as U32) gives List of DocChunk
+if map.has(store.by_owner, owner_id)
+  give map.get(store.by_owner, owner_id)
+.end
+give []
+.end
+
+
+<<< =========================================================
+  3) NORMALIZATION UTILITIES
+========================================================= >>>
+
+proc _trim_left(s as Text) gives Text
+# placeholder; replace with your std/text trim if exists
+give text.trim_left(s)
+.end
+
+proc _trim_right(s as Text) gives Text
+give text.trim_right(s)
+.end
+
+proc _trim(s as Text) gives Text
+give text.trim(s)
+.end
+
+proc _starts_with(s as Text, prefix as Text) gives Bool
+give text.starts_with(s, prefix)
+.end
+
+proc _strip_prefix(s as Text, prefix as Text) gives Text
+if _starts_with(s, prefix)
+  give text.slice(s, text.len(prefix), text.len(s))
+.end
+give s
+.end
+
+proc _strip_comment_marker(raw as Text) gives Text
+# Remove leading '#', then one optional space.
+make s as Text = raw
+set s = _strip_prefix(s, "#")
+if _starts_with(s, " ")
+  set s = _strip_prefix(s, " ")
+.end
+give s
+.end
+
+proc _strip_doc_marker(raw as Text) gives Text
+# Remove leading 'doc', then one optional space.
+make s as Text = raw
+if _starts_with(s, "doc")
+  set s = text.slice(s, 3, text.len(s))
+  if _starts_with(s, " ")
+    set s = _strip_prefix(s, " ")
+  .end
+.end
+give s
+.end
+
+proc _min_indent(lines as List of Text) gives Int
+make min as Int = 1_000_000
+make i as Int = 0
+loop while i < list.len(lines)
+  make ln as Text = lines[i]
+  if _trim(ln) == ""
+    set i += 1
+    loop while false .end
+  .end
+
+  make c as Int = 0
+  loop while c < text.len(ln)
+    make ch as Text = text.char_at(ln, c)
+    if ch == " "
+      set c += 1
+    elif ch == "\t"
+      set c += 1
+    else
+      loop while false .end
+    .end
+  .end
+
+  if c < min
+    set min = c
+  .end
+  set i += 1
+.end
+
+if min == 1_000_000
+  give 0
+.end
+give min
+.end
+
+proc _dedent(lines as List of Text) gives List of Text
+make n as Int = _min_indent(lines)
+if n == 0
+  give lines
+.end
+
+make out as List of Text = []
+make i as Int = 0
+loop while i < list.len(lines)
+  make ln as Text = lines[i]
+  if text.len(ln) <= n
+    list.push(out, "")
+  else
+    list.push(out, text.slice(ln, n, text.len(ln)))
+  .end
+  set i += 1
+.end
+give out
+.end
+
+proc _join_lines(lines as List of Text) gives Text
+# join with '\n' without trailing newline
+if list.len(lines) == 0
+  give ""
+.end
+make out as Text = lines[0]
+make i as Int = 1
+loop while i < list.len(lines)
+  set out = out + "\n" + lines[i]
+  set i += 1
+.end
+give out
+.end
+
+proc normalize_doc_zone_lines(raw_lines as List of Text) gives List of Text
+# 1) dedent
+# 2) trim right
+make d as List of Text = _dedent(raw_lines)
+make out as List of Text = []
+make i as Int = 0
+loop while i < list.len(d)
+  list.push(out, _trim_right(d[i]))
+  set i += 1
+.end
+give out
+.end
+
+proc normalize_doc_line(raw as Text) gives Text
+give _trim_right(_strip_doc_marker(raw))
+.end
+
+proc normalize_line_comment(raw as Text) gives Text
+give _trim_right(_strip_comment_marker(raw))
+.end
+
+
+<<< =========================================================
+  4) BUILDING COMMENT UNITS (from tokens or raw lines)
+========================================================= >>>
+
+proc make_doc_line(id as CommentId, sp as span.Span, raw as Text) gives CommentLine
+make ln as CommentLine = CommentLine()
+set ln.id = id
+set ln.kind = CommentKind.DocLine()
+set ln.span = sp
+set ln.raw = raw
+set ln.cooked = normalize_doc_line(raw)
+give ln
+.end
+
+proc make_line_comment(id as CommentId, sp as span.Span, raw as Text) gives CommentLine
+make ln as CommentLine = CommentLine()
+set ln.id = id
+set ln.kind = CommentKind.Line()
+set ln.span = sp
+set ln.raw = raw
+set ln.cooked = normalize_line_comment(raw)
+give ln
+.end
+
+proc make_doc_zone(id as CommentId, sp_open as span.Span, sp_close as span.Span, tag as Text, raw_lines as List of Text) gives DocZone
+make z as DocZone = DocZone()
+set z.id = id
+set z.span_open = sp_open
+set z.span_close = sp_close
+set z.tag = tag
+set z.raw_lines = raw_lines
+set z.cooked_lines = normalize_doc_zone_lines(raw_lines)
+give z
+.end
+
+
+<<< =========================================================
+  5) ATTACHMENT STRATEGIES
+========================================================= >>>
+
+pick AttachStrategy
+case ToNext()         # attach to next non-doc node
+case ToOwner()        # attach to current owner (file/item/block)
+case Free()           # store but do not attach automatically
+.end
+
+form AttachConfig
+field default_role as CommentRole = CommentRole.Outer()
+field doc_zone_strategy as AttachStrategy = AttachStrategy.ToNext()
+field doc_line_strategy as AttachStrategy = AttachStrategy.ToNext()
+field line_comment_strategy as AttachStrategy = AttachStrategy.Free()
+field merge_adjacent as Bool = true
+field merge_separator as Text = "\n"
+.end
+
+proc attach_config_default() gives AttachConfig
+give AttachConfig()
+.end
+
+
+<<< =========================================================
+  6) MERGING / COALESCING CHUNKS
+========================================================= >>>
+
+proc coalesce_chunks(chunks as List of DocChunk, sep as Text) gives List of DocChunk
+# Merge adjacent chunks with same owner_id + role + tag.
+if list.len(chunks) <= 1
+  give chunks
+.end
+
+make out as List of DocChunk = []
+make cur as DocChunk = chunks[0]
+
+make i as Int = 1
+loop while i < list.len(chunks)
+  make nxt as DocChunk = chunks[i]
+  if nxt.owner_id == cur.owner_id and nxt.role is cur.role and nxt.tag == cur.tag
+    set cur.text = cur.text + sep + nxt.text
+    set cur.raw_text = cur.raw_text + sep + nxt.raw_text
+    # span: keep cur.span (best-effort)
+  else
+    list.push(out, cur)
+    set cur = nxt
+  .end
+  set i += 1
+.end
+
+list.push(out, cur)
+give out
+.end
+
+
+<<< =========================================================
+  7) HIGH-LEVEL API: UNITS -> DOC CHUNKS -> STORE
+========================================================= >>>
+
+proc unit_to_chunk(u as CommentUnit, owner_id as U32) gives DocChunk
+make c as DocChunk = DocChunk()
+set c.owner_id = owner_id
+set c.role = u.role
+
+select u.kind
+when CommentKind.DocLine()
+  set c.tag = "doc"
+  set c.text = u.line.cooked
+  set c.raw_text = u.line.raw
+  set c.span = u.line.span
+.end
+when CommentKind.DocZone()
+  set c.tag = u.zone.tag
+  set c.text = _join_lines(u.zone.cooked_lines)
+  set c.raw_text = _join_lines(u.zone.raw_lines)
+  set c.span = u.zone.span_open
+.end
+otherwise
+  set c.tag = "comment"
+  set c.text = u.line.cooked
+  set c.raw_text = u.line.raw
+  set c.span = u.line.span
+.end
+.end
+.end
+
+give c
+.end
+
+proc store_units(store as DocStore, units as List of CommentUnit, owner_id as U32, cfg as AttachConfig) gives DocStore
+make out as DocStore = store
+make chunks as List of DocChunk = []
+
+make i as Int = 0
+loop while i < list.len(units)
+  list.push(chunks, unit_to_chunk(units[i], owner_id))
+  set i += 1
+.end
+
+if cfg.merge_adjacent
+  set chunks = coalesce_chunks(chunks, cfg.merge_separator)
+.end
+
+set i = 0
+loop while i < list.len(chunks)
+  set out = doc_store_add(out, chunks[i])
+  set i += 1
+.end
+
+give out
+.end
+
+
+<<< =========================================================
+  8) DETECTING DOC ZONES IN A RAW LINE STREAM (fallback parser)
+========================================================= >>>
+
+pick ScanState
+case Normal()
+case InZone(tag as Text)
+.end
+
+form ScanResult
+field units as List of CommentUnit = []
+field diags as List of diag.Diagnostic = []
+.end
+
+proc scan_raw_lines_for_docs(lines as List of Text) gives ScanResult
+make res as ScanResult = ScanResult()
+set res.units = []
+set res.diags = []
+
+make st as ScanState = ScanState.Normal()
+make buf as List of Text = []
+make tag as Text = ""
+make zone_open as span.Span = span.Span()
+make next_id as U32 = 1u32
+
+make i as Int = 0
+loop while i < list.len(lines)
+  make ln as Text = lines[i]
+
+  select st
+  when ScanState.Normal()
+    if text.starts_with(_trim_left(ln), "<<<")
+      # parse optional tag: "<<< tag"
+      make after as Text = _trim(_strip_prefix(_trim_left(ln), "<<<"))
+      set tag = after
+      set buf = []
+      set zone_open = span.Span()
+      set st = ScanState.InZone(tag)
+    elif text.starts_with(_trim_left(ln), "doc ")
+      make cl as CommentLine = make_doc_line(comment_id_make(next_id), span.Span(), ln)
+      set next_id += 1u32
+      list.push(res.units, unit_from_line(CommentRole.Outer(), cl))
+    elif text.starts_with(_trim_left(ln), "doc")
+      # allow bare 'doc'
+      make cl as CommentLine = make_doc_line(comment_id_make(next_id), span.Span(), ln)
+      set next_id += 1u32
+      list.push(res.units, unit_from_line(CommentRole.Outer(), cl))
+    elif text.starts_with(_trim_left(ln), "#")
+      # regular line comment, default role Free
+      make cl as CommentLine = make_line_comment(comment_id_make(next_id), span.Span(), ln)
+      set next_id += 1u32
+      list.push(res.units, unit_from_line(CommentRole.Free(), cl))
+    else
+      # non-comment line, ignore
+    .end
+  .end
+
+  when ScanState.InZone(_)
+    if text.starts_with(_trim_left(ln), ">>>")
+      make z as DocZone = make_doc_zone(comment_id_make(next_id), zone_open, span.Span(), tag, buf)
+      set next_id += 1u32
+      list.push(res.units, unit_from_zone(CommentRole.Outer(), z))
+      set st = ScanState.Normal()
+      set buf = []
+      set tag = ""
+    else
+      list.push(buf, ln)
+    .end
+  .end
+
+  otherwise
+  .end
+  .end
+
+  set i += 1
+.end
+
+# if zone not closed, emit diagnostic
+select st
+when ScanState.InZone(_)
+  diag.error(res.diags, "unclosed doc zone (missing >>>)", span.Span())
+.end
+otherwise
+.end
+.end
+.end
+
+give res
+.end
+
+
+<<< =========================================================
+  9) SMOKE TESTS
+========================================================= >>>
+
+proc _test_zone_normalize()
+make raw as List of Text = ["  line1  ", "    line2", "", "  line3"]
+make cooked as List of Text = normalize_doc_zone_lines(raw)
+assert list.len(cooked) == 4
+give
+.end
+
+proc _test_scan()
+make lines as List of Text = [
+  "<<< tag",
+  "  hello",
+  "  world",
+  ">>>",
+  "doc short line",
+  "# regular comment"
+]
+make res as ScanResult = scan_raw_lines_for_docs(lines)
+assert list.len(res.units) >= 2
+give
+.end

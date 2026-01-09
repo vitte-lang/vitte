@@ -1,0 +1,550 @@
+vitte 1.0
+space lingua/syntax/vitte_builtin_macros/format_foreign/shell/master
+
+<<< master
+  vitte_builtin_macros/format_foreign/shell/master.vit — Shell command formatting (MAX)
+
+  Purpose:
+    - Provide compiler-side safety for building shell commands.
+    - Prevent injection by design:
+        * distinguish literal segments vs argument segments
+        * enforce quoting/escaping policy per target shell
+        * optionally forbid "raw" interpolation
+    - Output a lowering plan that can map to:
+        * execve-like API (argv list)
+        * or shell -c (only if explicitly allowed)
+    - Suitable for builtin macro:
+        foreign shell("git", ["status", "-sb"])
+        foreign shell_plan("git status -sb")        # parsed into argv (best-effort)
+        foreign shell_checked("echo {x}", x)        # format with escaping
+
+  Key idea:
+    - ShellPlan = program + argv (safe)
+    - ShellScript = raw script (unsafe, gated by policy)
+
+  Notes:
+    - This module does not execute anything.
+    - It only parses/validates and emits IR-friendly plans.
+>>>
+
+pull std/text as text
+pull std/collections/list as list
+pull std/collections/map as map
+
+pull lingua/syntax/vitte_ast/span as span
+pull lingua/syntax/vitte_ast/diag as diag
+pull lingua/syntax/vitte_ast_ir/master as ir
+
+share all
+
+bond Text means String
+
+
+<<< =========================================================
+  0) POLICY
+========================================================= >>>
+
+pick ShellDialect
+case PosixSh()
+case Bash()
+case Zsh()
+case Fish()
+case PowerShell()
+case CmdExe()
+.end
+
+pick ShellLowering
+case ExecArgv()        # exec-like argv call (safe)
+case SpawnArgv()       # spawn process with argv (safe)
+case ShellDashC()      # shell -c "script" (unsafe)
+case Disabled()
+.end
+
+form ShellPolicy
+field dialect as ShellDialect = ShellDialect.PosixSh()
+field allow_raw_script as Bool = false
+field allow_shell_dash_c as Bool = false
+field allow_glob as Bool = false
+field allow_env_expansion as Bool = false
+field forbid_backticks as Bool = true
+field forbid_dollar_paren as Bool = true
+field forbid_pipe as Bool = false
+field forbid_redirect as Bool = false
+field max_tokens as Int = 512
+field max_script_len as Int = 65536
+.end
+
+proc shell_policy_default() gives ShellPolicy
+give ShellPolicy()
+.end
+
+proc shell_policy_strict() gives ShellPolicy
+make p as ShellPolicy = ShellPolicy()
+set p.allow_raw_script = false
+set p.allow_shell_dash_c = false
+set p.allow_glob = false
+set p.allow_env_expansion = false
+set p.forbid_pipe = true
+set p.forbid_redirect = true
+set p.max_tokens = 256
+set p.max_script_len = 8192
+give p
+.end
+
+
+<<< =========================================================
+  1) PLAN MODEL
+========================================================= >>>
+
+pick ShellTokKind
+case Lit()
+case Arg()
+case Op()
+.end
+
+form ShellTok
+field kind as ShellTokKind = ShellTokKind.Lit()
+field text as Text = ""
+field start as Int = 0
+field end as Int = 0
+.end
+
+form ShellPlan
+field program as Text = ""
+field argv as List of Text = []
+field toks as List of ShellTok = []      # parsed view (optional)
+field uses_shell_ops as Bool = false     # pipes, redirects, subshell, etc.
+field is_raw_script as Bool = false
+.end
+
+form ShellAnalysis
+field ok as Bool = true
+field plan as ShellPlan = ShellPlan()
+field lowering as ShellLowering = ShellLowering.SpawnArgv()
+field reason as Text = ""
+.end
+
+
+<<< =========================================================
+  2) PUBLIC API
+========================================================= >>>
+
+proc shell_make_argv(program as Text, argv as List of Text) gives ShellPlan
+make p as ShellPlan = ShellPlan()
+set p.program = program
+set p.argv = argv
+set p.toks = []
+set p.uses_shell_ops = false
+set p.is_raw_script = false
+give p
+.end
+
+proc shell_parse_script_best_effort(script as Text, diags as List of diag.Diagnostic) gives ShellPlan
+# Best-effort split into argv (POSIX-like rules):
+# - whitespace separates tokens unless inside quotes
+# - supports single and double quotes minimally
+# - recognizes basic operators (|, ;, &&, ||, >, <) as "ops"
+# This is NOT a full shell parser; policy may reject complex scripts.
+make plan as ShellPlan = ShellPlan()
+set plan.program = ""
+set plan.argv = []
+set plan.toks = []
+set plan.uses_shell_ops = false
+set plan.is_raw_script = false
+
+make toks as List of ShellTok = _tokenize_posix(script, diags)
+set plan.toks = toks
+
+# Build argv if no ops; otherwise mark uses_shell_ops
+make i as Int = 0
+loop while i < list.len(toks)
+  if toks[i].kind is ShellTokKind.Op()
+    set plan.uses_shell_ops = true
+  .end
+  set i += 1
+.end
+
+if plan.uses_shell_ops
+  # cannot safely reduce to argv
+  set plan.is_raw_script = true
+  set plan.program = ""
+  set plan.argv = []
+  give plan
+.end
+
+# argv from Lit tokens
+make words as List of Text = []
+set i = 0
+loop while i < list.len(toks)
+  if toks[i].kind is ShellTokKind.Lit()
+    if toks[i].text != ""
+      list.push(words, toks[i].text)
+    .end
+  .end
+  set i += 1
+.end
+
+if list.len(words) > 0
+  set plan.program = words[0]
+  set plan.argv = words
+.end
+
+give plan
+.end
+
+
+proc shell_analyze(script as Text, call_span as span.Span, policy as ShellPolicy, diags as List of diag.Diagnostic) gives ShellAnalysis
+make a as ShellAnalysis = ShellAnalysis()
+set a.ok = true
+set a.plan = ShellPlan()
+set a.lowering = ShellLowering.SpawnArgv()
+set a.reason = ""
+
+if text.len(script) > policy.max_script_len
+  list.push(diags, diag.error("shell-script-too-long", call_span))
+  set a.ok = false
+  set a.lowering = ShellLowering.Disabled()
+  set a.reason = "script too long"
+  give a
+.end
+
+set a.plan = shell_parse_script_best_effort(script, diags)
+
+# policy checks
+_apply_policy(a, script, call_span, policy, diags)
+
+# lowering decision
+set a.lowering = _decide_lowering(a.plan, policy, call_span, diags)
+
+if a.lowering is ShellLowering.Disabled()
+  set a.ok = false
+.end
+
+give a
+.end
+
+
+proc shell_lower_to_ir(script as Text, call_span as span.Span, policy as ShellPolicy, diags as List of diag.Diagnostic) gives ir.Expr
+# Lower to IR:
+# - SpawnArgv/ExecArgv => intrinsic/process.spawn(argv)
+# - ShellDashC => process.shell_c(script)
+# - Disabled => error expr
+make a as ShellAnalysis = shell_analyze(script, call_span, policy, diags)
+if a.ok == false
+  give ir.expr_error("shell analysis failed", call_span)
+.end
+
+if a.lowering is ShellLowering.SpawnArgv() or a.lowering is ShellLowering.ExecArgv()
+  if a.plan.program == "" or list.len(a.plan.argv) == 0
+    give ir.expr_error("shell argv plan empty", call_span)
+  .end
+  give ir.expr_intrinsic_spawn(a.plan.argv, call_span)
+.end
+
+if a.lowering is ShellLowering.ShellDashC()
+  give ir.expr_intrinsic_shell_c(script, call_span)
+.end
+
+give ir.expr_error("shell disabled by policy", call_span)
+.end
+
+
+<<< =========================================================
+  3) POLICY ENFORCEMENT
+========================================================= >>>
+
+proc _apply_policy(a as ShellAnalysis, script as Text, call_span as span.Span, policy as ShellPolicy, diags as List of diag.Diagnostic)
+# If plan uses shell ops, treat as raw script candidate
+if a.plan.uses_shell_ops
+  set a.plan.is_raw_script = true
+.end
+
+# forbid operators by policy
+if policy.forbid_pipe
+  if _contains_op(a.plan.toks, "|")
+    list.push(diags, diag.error("shell-pipe-forbidden", call_span))
+    set a.ok = false
+    set a.reason = "pipe forbidden"
+  .end
+.end
+if policy.forbid_redirect
+  if _contains_op(a.plan.toks, ">") or _contains_op(a.plan.toks, "<")
+    list.push(diags, diag.error("shell-redirect-forbidden", call_span))
+    set a.ok = false
+    set a.reason = "redirect forbidden"
+  .end
+.end
+
+# forbid backticks and $() (subshell)
+if policy.forbid_backticks and text.contains(script, "`")
+  list.push(diags, diag.error("shell-backticks-forbidden", call_span))
+  set a.ok = false
+  set a.reason = "backticks forbidden"
+.end
+if policy.forbid_dollar_paren and text.contains(script, "$(")
+  list.push(diags, diag.error("shell-dollar-paren-forbidden", call_span))
+  set a.ok = false
+  set a.reason = "subshell forbidden"
+.end
+
+# env expansion
+if policy.allow_env_expansion == false
+  if _looks_like_env_expansion(script, policy.dialect)
+    list.push(diags, diag.warn("shell-env-expansion-detected", call_span))
+  .end
+.end
+
+# glob
+if policy.allow_glob == false
+  if _looks_like_glob(script)
+    list.push(diags, diag.warn("shell-glob-detected", call_span))
+  .end
+.end
+
+# raw scripts
+if a.plan.is_raw_script and policy.allow_raw_script == false
+  list.push(diags, diag.error("shell-raw-script-forbidden", call_span))
+  set a.ok = false
+  set a.reason = "raw script forbidden"
+.end
+
+# token count
+if list.len(a.plan.toks) > policy.max_tokens
+  list.push(diags, diag.error("shell-too-many-tokens", call_span))
+  set a.ok = false
+  set a.reason = "too many tokens"
+.end
+.end
+
+
+proc _decide_lowering(plan as ShellPlan, policy as ShellPolicy, call_span as span.Span, diags as List of diag.Diagnostic) gives ShellLowering
+if plan.is_raw_script
+  if policy.allow_shell_dash_c
+    give ShellLowering.ShellDashC()
+  .end
+  give ShellLowering.Disabled()
+.end
+
+# argv plan
+if plan.program == "" or list.len(plan.argv) == 0
+  list.push(diags, diag.error("shell-empty-command", call_span))
+  give ShellLowering.Disabled()
+.end
+
+give ShellLowering.SpawnArgv()
+.end
+
+
+<<< =========================================================
+  4) TOKENIZER (POSIX BEST-EFFORT)
+========================================================= >>>
+
+proc _tokenize_posix(s as Text, diags as List of diag.Diagnostic) gives List of ShellTok
+make out as List of ShellTok = []
+make i as Int = 0
+make n as Int = text.len(s)
+
+make buf as Text = ""
+make buf_start as Int = 0
+
+proc flush()
+  if buf != ""
+    make t as ShellTok = ShellTok()
+    set t.kind = ShellTokKind.Lit()
+    set t.text = buf
+    set t.start = buf_start
+    set t.end = i
+    list.push(out, t)
+    set buf = ""
+  .end
+.end
+
+loop while i < n
+  make c as Text = text.at(s, i)
+
+  # whitespace splits
+  if c == " " or c == "\t" or c == "\n" or c == "\r"
+    flush()
+    set i += 1
+    loop while false .end
+  .end
+
+  # operators (minimal)
+  if c == "|" or c == ";" or c == ">" or c == "<"
+    flush()
+    make t as ShellTok = ShellTok()
+    set t.kind = ShellTokKind.Op()
+    set t.text = c
+    set t.start = i
+    set t.end = i + 1
+    list.push(out, t)
+    set i += 1
+    loop while false .end
+  .end
+
+  # quotes
+  if c == "'"
+    flush()
+    make (j, lit, ok) = _scan_single_quote(s, i)
+    if ok == false
+      list.push(diags, diag.error("shell-unclosed-quote", span.Span()))
+      set i += 1
+    else
+      make t as ShellTok = ShellTok()
+      set t.kind = ShellTokKind.Lit()
+      set t.text = lit
+      set t.start = i
+      set t.end = j
+      list.push(out, t)
+      set i = j
+    .end
+    loop while false .end
+  .end
+
+  if c == "\""
+    flush()
+    make (j, lit, ok) = _scan_double_quote(s, i)
+    if ok == false
+      list.push(diags, diag.error("shell-unclosed-quote", span.Span()))
+      set i += 1
+    else
+      make t as ShellTok = ShellTok()
+      set t.kind = ShellTokKind.Lit()
+      set t.text = lit
+      set t.start = i
+      set t.end = j
+      list.push(out, t)
+      set i = j
+    .end
+    loop while false .end
+  .end
+
+  # normal character accumulation
+  if buf == ""
+    set buf_start = i
+  .end
+  set buf = buf + c
+  set i += 1
+.end
+
+flush()
+give out
+.end
+
+
+proc _scan_single_quote(s as Text, i as Int) gives (Int, Text, Bool)
+# reads ' ... ' no escapes
+make j as Int = i + 1
+make n as Int = text.len(s)
+make buf as Text = ""
+loop while j < n
+  if text.at(s, j) == "'"
+    give (j + 1, buf, true)
+  .end
+  set buf = buf + text.at(s, j)
+  set j += 1
+.end
+give (j, buf, false)
+.end
+
+proc _scan_double_quote(s as Text, i as Int) gives (Int, Text, Bool)
+# reads " ... " with minimal escapes \" \\ \n \t
+make j as Int = i + 1
+make n as Int = text.len(s)
+make buf as Text = ""
+loop while j < n
+  make c as Text = text.at(s, j)
+  if c == "\""
+    give (j + 1, buf, true)
+  .end
+  if c == "\\"
+    if j + 1 >= n
+      give (j + 1, buf, false)
+    .end
+    make d as Text = text.at(s, j + 1)
+    if d == "n" set buf = buf + "\n"
+    elif d == "t" set buf = buf + "\t"
+    elif d == "\"" set buf = buf + "\""
+    elif d == "\\" set buf = buf + "\\"
+    else set buf = buf + d
+    .end
+    set j += 2
+  else
+    set buf = buf + c
+    set j += 1
+  .end
+.end
+give (j, buf, false)
+.end
+
+
+<<< =========================================================
+  5) DETECTORS
+========================================================= >>>
+
+proc _contains_op(toks as List of ShellTok, op as Text) gives Bool
+make i as Int = 0
+loop while i < list.len(toks)
+  if toks[i].kind is ShellTokKind.Op() and toks[i].text == op
+    give true
+  .end
+  set i += 1
+.end
+give false
+.end
+
+proc _looks_like_env_expansion(s as Text, dialect as ShellDialect) gives Bool
+# heuristic: $NAME or ${NAME} or %NAME% for cmd.exe
+if dialect is ShellDialect.CmdExe()
+  give text.contains(s, "%") and text.contains(s, "%")
+.end
+# posix
+make i as Int = 0
+loop while i < text.len(s) - 1
+  if text.at(s, i) == "$"
+    make c as Text = text.at(s, i + 1)
+    if c == "{" or _is_name_start(c)
+      give true
+    .end
+  .end
+  set i += 1
+.end
+give false
+.end
+
+proc _looks_like_glob(s as Text) gives Bool
+# heuristic: * ? [ ... ]
+if text.contains(s, "*") or text.contains(s, "?") or text.contains(s, "[")
+  give true
+.end
+give false
+.end
+
+proc _is_name_start(c as Text) gives Bool
+give (c >= "A" and c <= "Z") or (c >= "a" and c <= "z") or c == "_"
+.end
+
+
+<<< =========================================================
+  6) DEBUG / STRINGIFY
+========================================================= >>>
+
+proc plan_to_text(p as ShellPlan) gives Text
+if p.is_raw_script
+  give "ShellPlan(raw_script=true)"
+.end
+give "ShellPlan(argv=" + text.from_int(list.len(p.argv)) + " program=" + p.program + ")"
+.end
+
+
+<<< =========================================================
+  7) SMOKE TEST
+========================================================= >>>
+
+proc _test(diags as List of diag.Diagnostic)
+make policy as ShellPolicy = shell_policy_strict()
+make a as ShellAnalysis = shell_analyze("git status -sb", span.Span(), policy, diags)
+emit plan_to_text(a.plan)
+emit (if a.ok then "ok" else "fail")
+give
+.end

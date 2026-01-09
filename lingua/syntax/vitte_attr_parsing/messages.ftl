@@ -1,243 +1,228 @@
-attr_parsing_as_needed_compatibility =
-    linking modifier `as-needed` is only compatible with `dylib`, `framework` and `raw-dylib` linking kinds
+# lingua/syntax/vitte_attr_parsing/messages.ftl
+# Diagnostic messages for attribute parsing (token + AST adapters).
+# Language: English
+#
+# Conventions:
+# - Message IDs are kebab-case with prefix "attr-".
+# - Use { $var } placeables for dynamic content.
+# - Keep primary messages short; put actionable guidance in *.help.
 
-attr_parsing_bundle_needs_static =
-    linking modifier `bundle` is only compatible with `static` linking kind
+attr-stage-name =
+    Attribute Parsing
 
-attr_parsing_cfg_attr_bad_delim = wrong `cfg_attr` delimiters
 
-attr_parsing_deprecated_item_suggestion =
-    suggestions on deprecated items are unstable
-    .help = add `#![feature(deprecated_suggestion)]` to the crate root
-    .note = see #94785 for more details
+### Core expectations
 
-attr_parsing_doc_alias_bad_char =
-    {$char_} character isn't allowed in {$attr_str}
+attr-expected-at =
+    Expected '@' to start an attribute.
 
-attr_parsing_doc_alias_empty =
-    {$attr_str} attribute cannot have empty value
+attr-expected-name =
+    Expected an attribute name after '@'.
+attr-expected-name.help =
+    Example: @inline, @cfg(os="linux"), @deprecated(note="...")
 
-attr_parsing_doc_alias_malformed =
-    doc alias attribute expects a string `#[doc(alias = "a")]` or a list of strings `#[doc(alias("a", "b"))]`
+attr-expected-lparen =
+    Expected '(' after attribute name.
 
-attr_parsing_doc_alias_start_end =
-    {$attr_str} cannot start or end with ' '
+attr-expected-rparen =
+    Expected ')' to close attribute arguments.
+attr-expected-rparen.help =
+    Ensure parentheses are balanced; remove stray commas before ')'.
 
-attr_parsing_doc_attribute_not_attribute =
-    nonexistent builtin attribute `{$attribute}` used in `#[doc(attribute = "...")]`
-    .help = only existing builtin attributes are allowed in core/std
+attr-expected-rbrack =
+    Expected ']' to close list literal in attribute arguments.
 
-attr_parsing_doc_keyword_not_keyword =
-    nonexistent keyword `{$keyword}` used in `#[doc(keyword = "...")]`
-    .help = only existing keywords are allowed in core/std
+attr-expected-rbrace =
+    Expected '}' to close map literal in attribute arguments.
 
-attr_parsing_empty_confusables =
-    expected at least one confusable name
+attr-expected-colon =
+    Expected ':' in map literal entry (key: value).
+attr-expected-colon.help =
+    Map entries must be written as { key: value, ... }.
 
-attr_parsing_empty_link_name =
-    link name must not be empty
-    .label = empty link name
+attr-expected-eq =
+    Expected '=' for named argument assignment (key = value).
 
-attr_parsing_expected_single_version_literal =
-    expected single version literal
+attr-expected-comma-or-close =
+    Expected ',' or closing delimiter.
 
-attr_parsing_expected_version_literal =
-    expected a version literal
+attr-expected-value =
+    Expected a value in attribute arguments.
+attr-expected-value.help =
+    Supported values: null, true/false, int, float, "text", name/path, [list], {map}.
 
-attr_parsing_expects_feature_list =
-    `{$name}` expects a list of feature names
 
-attr_parsing_expects_features =
-    `{$name}` expects feature names
+### Names / paths
 
-attr_parsing_import_name_type_raw =
-    import name type can only be used with link kind `raw-dylib`
+attr-expected-name-after-slash =
+    Expected a name after '/' in a path value.
+attr-expected-name-after-slash.help =
+    Use clean path segments, e.g. os/linux, arch/x86_64.
 
-attr_parsing_import_name_type_x86 =
-    import name type is only supported on x86
+attr-expected-name-after-dot =
+    Expected a name after '.' in a dotted name value.
 
-attr_parsing_incompatible_wasm_link =
-    `wasm_import_module` is incompatible with other arguments in `#[link]` attributes
+attr-expected-name-after-dcolon =
+    Expected a name after '::' in a qualified name value.
 
-attr_parsing_incorrect_repr_format_align_one_arg =
-    incorrect `repr(align)` attribute format: `align` takes exactly one argument in parentheses
+attr-name-invalid =
+    Attribute name is invalid: { $name }.
+attr-name-invalid.help =
+    Attribute names should be identifiers; avoid spaces and punctuation.
 
-attr_parsing_incorrect_repr_format_expect_literal_integer =
-    incorrect `repr(align)` attribute format: `align` expects a literal integer as argument
+attr-name-empty =
+    Attribute name is empty.
 
-attr_parsing_incorrect_repr_format_generic =
-    incorrect `repr({$repr_arg})` attribute format
-    .suggestion = use parentheses instead
+attr-path-invalid =
+    Path value is invalid: { $path }.
+attr-path-invalid.help =
+    Use non-empty segments separated by '/', without trailing '/'.
 
-attr_parsing_incorrect_repr_format_packed_expect_integer =
-    incorrect `repr(packed)` attribute format: `packed` expects a literal integer as argument
+attr-map-key-invalid =
+    Map key is invalid: { $key }.
+attr-map-key-invalid.help =
+    Map keys must be a name or a string literal.
 
-attr_parsing_incorrect_repr_format_packed_one_or_zero_arg =
-    incorrect `repr(packed)` attribute format: `packed` takes exactly one parenthesized argument, or no parentheses at all
+attr-expected-map-key =
+    Expected a map key (name or "text") inside '{ }'.
 
-attr_parsing_invalid_alignment_value =
-    invalid alignment value: {$error_part}
 
-attr_parsing_invalid_attr_unsafe = `{$name}` is not an unsafe attribute
-    .label = this is not an unsafe attribute
-    .suggestion = remove the `unsafe(...)`
-    .note = extraneous unsafe is not allowed in attributes
+### Values
 
-attr_parsing_invalid_issue_string =
-    `issue` must be a non-zero numeric string or "none"
-    .must_not_be_zero = `issue` must not be "0", use "none" instead
-    .empty = cannot parse integer from empty string
-    .invalid_digit = invalid digit found in string
-    .pos_overflow = number too large to fit in target type
-    .neg_overflow = number too small to fit in target type
+attr-int-invalid =
+    Invalid integer literal: { $lex }.
 
-attr_parsing_invalid_link_modifier =
-    invalid linking modifier syntax, expected '+' or '-' prefix before one of: bundle, verbatim, whole-archive, as-needed
+attr-float-invalid =
+    Invalid float literal: { $lex }.
 
-attr_parsing_invalid_meta_item = expected a literal (`1u8`, `1.0f32`, `"string"`, etc.) here, found {$descr}
-    .remove_neg_sugg = negative numbers are not literals, try removing the `-` sign
-    .quote_ident_sugg = surround the identifier with quotation marks to make it into a string literal
-    .label = {$descr}s are not allowed here
+attr-text-invalid =
+    Invalid string literal.
 
-attr_parsing_invalid_predicate =
-    invalid predicate `{$predicate}`
+attr-bool-invalid =
+    Invalid boolean literal: { $lex }.
 
-attr_parsing_invalid_repr_align_need_arg =
-    invalid `repr(align)` attribute: `align` needs an argument
-    .suggestion = supply an argument here
+attr-null-invalid =
+    Invalid null literal: { $lex }.
 
-attr_parsing_invalid_repr_generic =
-    invalid `repr({$repr_arg})` attribute: {$error_part}
+attr-list-item-invalid =
+    Invalid list item in attribute arguments.
 
-attr_parsing_invalid_repr_hint_no_paren =
-    invalid representation hint: `{$name}` does not take a parenthesized argument list
+attr-map-entry-invalid =
+    Invalid map entry in attribute arguments.
+attr-map-entry-invalid.help =
+    Each entry must be key: value, separated by commas.
 
-attr_parsing_invalid_repr_hint_no_value =
-    invalid representation hint: `{$name}` does not take a value
+attr-trailing-comma =
+    Trailing comma in attribute arguments.
 
-attr_parsing_invalid_since =
-    'since' must be a  version number, such as "1.31.0"
 
-attr_parsing_invalid_target = `#[{$name}]` attribute cannot be used on {$target}
-    .help = `#[{$name}]` can {$only}be applied to {$applied}
-    .suggestion = remove the attribute
+### Argument rules
 
-attr_parsing_limit_invalid =
-    `limit` must be a non-negative integer
-    .label = {$error_str}
-attr_parsing_link_arg_unstable =
-    link kind `link-arg` is unstable
+attr-arg-duplicate-named =
+    Duplicate named argument: { $key }.
+attr-arg-duplicate-named.help =
+    Remove the duplicate or merge the arguments. If dedup is enabled, the last value may win.
 
-attr_parsing_link_cfg_unstable =
-    link cfg is unstable
+attr-arg-mixed-forms =
+    Mixed argument forms detected.
+attr-arg-mixed-forms.help =
+    Mixing positional and named arguments is allowed, but keep it intentional and consistent.
 
-attr_parsing_link_framework_apple =
-    link kind `framework` is only supported on Apple targets
+attr-arg-empty =
+    Attribute argument list is empty.
 
-attr_parsing_link_ordinal_out_of_range = ordinal value in `link_ordinal` is too large: `{$ordinal}`
-    .note = the value may not exceed `u16::MAX`
+attr-arg-too-many =
+    Too many arguments for attribute { $name }.
+attr-arg-too-many.help =
+    Verify the attribute schema; remove unused arguments.
 
-attr_parsing_link_requires_name =
-    `#[link]` attribute requires a `name = "string"` argument
-    .label = missing `name` argument
+attr-arg-missing-required =
+    Missing required argument { $key } for attribute { $name }.
 
-attr_parsing_meta_bad_delim = wrong meta list delimiters
-attr_parsing_meta_bad_delim_suggestion = the delimiters should be `(` and `)`
+attr-arg-unknown-key =
+    Unknown named argument { $key } for attribute { $name }.
+attr-arg-unknown-key.help =
+    Check spelling or update the registry/schema for this attribute.
 
-attr_parsing_missing_feature =
-    missing 'feature'
+attr-arg-type-mismatch =
+    Attribute { $name } argument { $key } has wrong type: expected { $expected }, got { $got }.
 
-attr_parsing_missing_issue =
-    missing 'issue'
 
-attr_parsing_missing_note =
-    missing 'note'
+### Normalization
 
-attr_parsing_missing_since =
-    missing 'since'
+attr-normalize-trimmed =
+    Trimmed whitespace in attribute { $name }.
 
-attr_parsing_multiple_modifiers =
-    multiple `{$modifier}` modifiers in a single `modifiers` argument
+attr-normalize-sorted-named =
+    Sorted named arguments for attribute { $name }.
 
-attr_parsing_multiple_stability_levels =
-    multiple stability levels
+attr-normalize-dedup-named =
+    Deduplicated named arguments for attribute { $name }.
 
-attr_parsing_naked_functions_incompatible_attribute =
-    attribute incompatible with `#[unsafe(naked)]`
-    .label = the `{$attr}` attribute is incompatible with `#[unsafe(naked)]`
-    .naked_attribute = function marked with `#[unsafe(naked)]` here
+attr-normalize-sorted-map =
+    Sorted map keys in attribute { $name } value.
 
-attr_parsing_non_ident_feature =
-    'feature' is not an identifier
+attr-normalize-dedup-map =
+    Deduplicated map keys in attribute { $name } value.
 
-attr_parsing_null_on_export = `export_name` may not contain null characters
 
-attr_parsing_null_on_link_section = `link_section` may not contain null characters
+### cfg attribute helpers
 
-attr_parsing_null_on_objc_class = `objc::class!` may not contain null characters
+attr-cfg-invalid =
+    Invalid cfg expression in @cfg(...).
+attr-cfg-invalid.help =
+    Supported:
+      @cfg(os="linux")
+      @cfg(arch="x86_64")
+      @cfg(feature="foo")
+      @cfg(any(os="linux", os="macos"))
+      @cfg(all(feature="a", feature="b"))
+      @cfg(not(feature="test"))
 
-attr_parsing_null_on_objc_selector = `objc::selector!` may not contain null characters
+attr-cfg-unknown-op =
+    Unknown cfg operator: { $op }.
+attr-cfg-unknown-op.help =
+    Use any, all, or not.
 
-attr_parsing_objc_class_expected_string_literal = `objc::class!` expected a string literal
+attr-cfg-not-arity =
+    cfg not(...) expects exactly one inner condition.
 
-attr_parsing_objc_selector_expected_string_literal = `objc::selector!` expected a string literal
+attr-cfg-empty =
+    cfg expression is empty.
 
-attr_parsing_raw_dylib_elf_unstable =
-    link kind `raw-dylib` is unstable on ELF platforms
+attr-cfg-unknown-key =
+    Unknown cfg key: { $key }.
+attr-cfg-unknown-key.help =
+    Common keys: os, arch, feature.
 
-attr_parsing_raw_dylib_no_nul =
-    link name must not contain NUL characters if link kind is `raw-dylib`
+attr-cfg-value-invalid =
+    cfg value is invalid for key { $key }.
+attr-cfg-value-invalid.help =
+    Use a string literal, e.g. os="linux".
 
-attr_parsing_raw_dylib_only_windows =
-    link kind `raw-dylib` is only supported on Windows targets
+attr-cfg-feature-empty =
+    cfg feature name is empty.
 
-attr_parsing_repr_ident =
-    meta item in `repr` must be an identifier
+attr-cfg-os-empty =
+    cfg os name is empty.
 
-attr_parsing_c_allowed_unstable_pairing =
-    `c_allowed_through_unstable_modules` attribute must be paired with a `stable` attribute
+attr-cfg-arch-empty =
+    cfg arch name is empty.
 
-attr_parsing_c_promotable_pairing =
-    `c_promotable` attribute must be paired with either a `c_const_unstable` or a `c_const_stable` attribute
 
-attr_parsing_c_scalable_vector_count_out_of_range = element count in `c_scalable_vector` is too large: `{$n}`
-    .note = the value may not exceed `u16::MAX`
+### Recovery / internal
 
-attr_parsing_soft_no_args =
-    `soft` should not have any arguments
+attr-recovery-skip-token =
+    Skipping unexpected token during attribute parsing.
 
-attr_parsing_stability_outside_std = stability attributes may not be used outside of the standard library
+attr-recovery-insert-null =
+    Inserted null value for recovery.
 
-attr_parsing_suffixed_literal_in_attribute = suffixed literals are not allowed in attributes
-    .help = instead of using a suffixed literal (`1u8`, `1.0f32`, etc.), use an unsuffixed version (`1`, `1.0`, etc.)
+attr-recovery-continue =
+    Continuing after attribute parsing error.
 
-attr_parsing_unknown_version_literal =
-    unknown version literal format, assuming it refers to a future version
+attr-internal-error =
+    Internal attribute parsing error: { $detail }.
 
-attr_parsing_unrecognized_repr_hint =
-    unrecognized representation hint
-    .help = valid reprs are `` (default), `C`, `align`, `packed`, `transparent`, `simd`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize`, `usize`
-    .note = for more information, visit <https://doc.-lang.org/reference/type-layout.html?highlight=repr#representations>
-
-attr_parsing_unsafe_attr_outside_unsafe = unsafe attribute used without unsafe
-    .label = usage of unsafe attribute
-attr_parsing_unsafe_attr_outside_unsafe_suggestion = wrap the attribute in `unsafe(...)`
-
-attr_parsing_unstable_cfg_target_compact =
-    compact `cfg(target(..))` is experimental and subject to change
-
-attr_parsing_unstable_feature_bound_incompatible_stability = item annotated with `#[unstable_feature_bound]` should not be stable
-    .help = If this item is meant to be stable, do not use any functions annotated with `#[unstable_feature_bound]`. Otherwise, mark this item as unstable with `#[unstable]`
-
-attr_parsing_unsupported_instruction_set = target `{$current_target}` does not support `#[instruction_set({$instruction_set}::*)]`
-
-attr_parsing_unsupported_literal_suggestion =
-    consider removing the prefix
-
-attr_parsing_unused_multiple =
-    multiple `{$name}` attributes
-    .suggestion = remove this attribute
-    .note = attribute also specified here
-
-attr_parsing_whole_archive_needs_static =
-    linking modifier `whole-archive` is only compatible with `static` linking kind
+attr-summary =
+    Parsed { $attrs } attribute(s): { $values } value(s), { $pairs } pair(s), { $recovered } recovery step(s).

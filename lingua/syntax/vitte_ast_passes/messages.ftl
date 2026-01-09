@@ -1,342 +1,296 @@
-ast_passes_abi_cannot_be_coroutine =
-    functions with the {$abi} ABI cannot be `{$coroutine_kind_str}`
-    .suggestion = remove the `{$coroutine_kind_str}` keyword from this definition
+# lingua/syntax/vitte_ast_passes/messages.ftl
+# Diagnostic messages for the AST front-end pipeline orchestrator.
+# Language: English
+#
+# Conventions:
+# - Message IDs are kebab-case with prefix "passes-".
+# - Use { $var } placeables for dynamic content.
+# - Keep primary messages concise; add actionable hints in *.help.
 
-ast_passes_abi_custom_safe_foreign_function =
-    foreign functions with the "custom" ABI cannot be safe
-    .suggestion = remove the `safe` keyword from this definition
+passes-stage-name =
+    AST Passes
 
-ast_passes_abi_custom_safe_function =
-    functions with the "custom" ABI must be unsafe
-    .suggestion = add the `unsafe` keyword to this definition
+passes-mode-fast =
+    Pipeline mode: fast
+passes-mode-normal =
+    Pipeline mode: normal
+passes-mode-strict =
+    Pipeline mode: strict
 
-ast_passes_abi_must_not_have_parameters_or_return_type=
-    invalid signature for `extern {$abi}` function
-    .note = functions with the {$abi} ABI cannot have any parameters or return type
-    .suggestion = remove the parameters and return type
 
-ast_passes_abi_must_not_have_return_type=
-    invalid signature for `extern {$abi}` function
-    .note = functions with the {$abi} ABI cannot have a return type
-    .help = remove the return type
+### Pipeline input / setup
 
-ast_passes_abi_x86_interrupt =
-    invalid signature for `extern "x86-interrupt"` function
-    .note = functions with the "x86-interrupt" ABI must be have either 1 or 2 parameters (but found {$param_count})
+passes-input-missing-file =
+    Pipeline input is missing the file node.
+passes-input-missing-file.help =
+    Provide a valid file node produced by the parser (or a compatible adapter node).
 
-ast_passes_assoc_const_without_body =
-    associated constant in `impl` without body
-    .suggestion = provide a definition for the constant
+passes-input-invalid-file-kind =
+    File node has invalid kind: expected { $expected }, got { $got }.
+passes-input-invalid-file-kind.help =
+    Ensure the root node is a file-level node containing only top-level items and doc nodes.
 
-ast_passes_assoc_fn_without_body =
-    associated function in `impl` without body
-    .suggestion = provide a definition for the function
+passes-input-missing-cfg-env =
+    Pipeline input is missing the cfg environment.
+passes-input-missing-cfg-env.help =
+    Provide a cfg environment (even empty) to allow cfg pruning and feature gates.
 
-ast_passes_assoc_type_without_body =
-    associated type in `impl` without body
-    .suggestion = provide a definition for the type
+passes-input-diags-null =
+    Pipeline input diagnostics list is missing.
+passes-input-diags-null.help =
+    Provide a diagnostics sink list to collect errors and warnings.
 
-ast_passes_async_fn_in_const_trait_or_trait_impl =
-    async functions are not allowed in `const` {$context ->
-        [trait_impl] trait impls
-        [impl] impls
-        *[trait] traits
-    }
-    .label = associated functions of `const` cannot be declared `async`
 
-ast_passes_at_least_one_trait = at least one trait must be specified
+### Pipeline configuration
 
-ast_passes_auto_generic = auto traits cannot have generic parameters
-    .label = auto trait cannot have generic parameters
-    .suggestion = remove the parameters
+passes-config-invalid =
+    Pipeline configuration is invalid.
+passes-config-invalid.help =
+    Verify pass toggles and strictness settings.
 
-ast_passes_auto_items = auto traits cannot have associated items
-    .label = {ast_passes_auto_items}
-    .suggestion = remove the associated items
+passes-config-inconsistent =
+    Pipeline configuration is inconsistent: { $reason }.
+passes-config-inconsistent.help =
+    Fix the configuration: for example, disabling expansion while keeping expansion-only features enabled.
 
-ast_passes_auto_super_lifetime = auto traits cannot have super traits or lifetime bounds
-    .label = {ast_passes_auto_super_lifetime}
-    .suggestion = remove the super traits or lifetime bounds
+passes-config-unknown-mode =
+    Unknown pipeline mode: { $mode }.
 
-ast_passes_body_in_extern = incorrect `{$kind}` inside `extern` block
-    .cannot_have = cannot have a body
-    .invalid = the invalid body
-    .existing = `extern` blocks define existing foreign {$kind}s and {$kind}s inside of them cannot have a body
+passes-config-stop-on-first-error =
+    stop_on_first_error is enabled; pipeline will halt after the first error.
 
-ast_passes_bound_in_context = bounds on `type`s in {$ctx} have no effect
+passes-config-warnings-as-errors =
+    warnings-as-errors is enabled; warnings will be promoted to errors.
 
-ast_passes_c_variadic_bad_extern = `...` is not supported for `extern "{$abi}"` functions
-    .label = `extern "{$abi}"` because of this
-    .help = only `extern "C"` and `extern "C-unwind"` functions may have a C variable argument list
 
-ast_passes_c_variadic_bad_naked_extern = `...` is not supported for `extern "{$abi}"` naked functions
-    .label = `extern "{$abi}"` because of this
-    .help = C-variadic function must have a compatible calling convention
+### Comment / doc handling
 
-ast_passes_c_variadic_must_be_unsafe =
-    functions with a C variable argument list must be unsafe
-    .suggestion = add the `unsafe` keyword to this definition
+passes-doc-store-disabled =
+    Doc store is disabled; documentation will not be collected.
 
-ast_passes_c_variadic_no_extern = `...` is not supported for non-extern functions
-    .help = only `extern "C"` and `extern "C-unwind"` functions may have a C variable argument list
+passes-doc-store-enabled =
+    Doc store is enabled; documentation will be collected.
 
-ast_passes_c_variadic_not_supported = the `{$target}` target does not support c-variadic functions
+passes-doc-attach-disabled =
+    Doc attachment is disabled; docs will not be attached to nodes.
 
-ast_passes_const_and_c_variadic = functions cannot be both `const` and C-variadic
-    .const = `const` because of this
-    .variadic = C-variadic because of this
+passes-doc-attach-enabled =
+    Doc attachment is enabled; docs may be attached to nodes.
 
-ast_passes_const_and_coroutine = functions cannot be both `const` and `{$coroutine_kind}`
-    .const = `const` because of this
-    .coroutine = `{$coroutine_kind}` because of this
-    .label = {""}
+passes-docs-imported-from-expansion =
+    Imported documentation from expansion results.
 
-ast_passes_const_auto_trait = auto traits cannot be const
-    .help = remove the `const` keyword
+passes-doc-zone-unclosed =
+    Unclosed doc zone (missing >>>).
+passes-doc-zone-unclosed.help =
+    Close the doc zone with a line containing >>>.
 
-ast_passes_const_bound_trait_object = const trait bounds are not allowed in trait object types
+passes-doc-zone-nested =
+    Nested doc zones are not allowed.
+passes-doc-zone-nested.help =
+    Close the outer doc zone (>>>) before opening another.
 
-ast_passes_const_without_body =
-    free constant item without body
-    .suggestion = provide a definition for the constant
+passes-doc-zone-empty =
+    Doc zone is empty.
 
-ast_passes_constraint_on_negative_bound =
-    associated type constraints not allowed on negative bounds
+passes-doc-line-empty =
+    Doc line is empty.
 
-ast_passes_coroutine_and_c_variadic = functions cannot be both `{$coroutine_kind}` and C-variadic
-    .const = `{$coroutine_kind}` because of this
-    .variadic = C-variadic because of this
-
-ast_passes_equality_in_where = equality constraints are not yet supported in `where` clauses
-    .label = not supported
-    .suggestion = if `{$ident}` is an associated type you're trying to set, use the associated type binding syntax
-    .suggestion_path = if `{$trait_segment}::{$potential_assoc}` is an associated type you're trying to set, use the associated type binding syntax
-    .note = see issue #20041 <https://github.com/-lang//issues/20041> for more information
-
-ast_passes_extern_block_suggestion = if you meant to declare an externally defined function, use an `extern` block
-
-ast_passes_extern_fn_qualifiers = functions in `extern` blocks cannot have `{$kw}` qualifier
-    .label = in this `extern` block
-    .suggestion = remove the `{$kw}` qualifier
+passes-doc-chunk-merge =
+    Merged adjacent doc chunks.
 
-ast_passes_extern_invalid_safety = items in `extern` blocks without an `unsafe` qualifier cannot have safety qualifiers
-    .suggestion = add `unsafe` to this `extern` block
+passes-doc-chunk-orphan =
+    Orphan doc chunk could not be attached.
+passes-doc-chunk-orphan.help =
+    Ensure documentation precedes a valid declaration, or treat it as file-level docs.
 
-ast_passes_extern_item_ascii = items in `extern` blocks cannot use non-ascii identifiers
-    .label = in this `extern` block
-    .note = this limitation may be lifted in the future; see issue #83942 <https://github.com/-lang//issues/83942> for more information
+passes-docs-summary =
+    Docs: { $units } unit(s), { $chunks } chunk(s).
 
-ast_passes_extern_keyword_link = for more information, visit https://doc.-lang.org/std/keyword.extern.html
-
-ast_passes_extern_types_cannot = `type`s inside `extern` blocks cannot have {$descr}
-    .suggestion = remove the {$remove_descr}
-    .label = `extern` block begins here
 
-ast_passes_extern_without_abi = `extern` declarations without an explicit ABI are disallowed
-    .suggestion = specify an ABI
-    .help = prior to  2024, a default ABI was inferred
+### Attribute normalization
 
-ast_passes_extern_without_abi_sugg = `extern` declarations without an explicit ABI are deprecated
-    .label = ABI should be specified here
-    .suggestion = explicitly specify the {$default_abi} ABI
+passes-attr-normalization-disabled =
+    Attribute normalization is disabled.
 
-ast_passes_feature_on_non_nightly = `#![feature]` may not be used on the {$channel} release channel
-    .suggestion = remove the attribute
-    .stable_since = the feature `{$name}` has been stable since `{$since}` and no longer requires an attribute to enable
+passes-attr-normalization-enabled =
+    Attribute normalization is enabled.
 
-ast_passes_fieldless_union = unions cannot have zero fields
+passes-attr-registry-missing =
+    Attribute registry is missing.
+passes-attr-registry-missing.help =
+    Provide a registry so attributes can be validated and normalized.
 
-ast_passes_fn_body_extern = incorrect function inside `extern` block
-    .cannot_have = cannot have a body
-    .suggestion = remove the invalid body
-    .help = you might have meant to write a function accessible through FFI, which can be done by writing `extern fn` outside of the `extern` block
-    .label = `extern` blocks define existing foreign functions and functions inside of them cannot have a body
+passes-attr-normalized =
+    Normalized attributes for { $target }.
 
-ast_passes_fn_param_c_var_args_not_last =
-    `...` must be the last argument of a C-variadic function
+passes-attr-normalization-failed =
+    Failed to normalize attributes for { $target }.
 
-ast_passes_fn_param_doc_comment =
-    documentation comments cannot be applied to function parameters
-    .label = doc comments are not allowed here
+passes-attr-summary =
+    Attributes: normalized { $count } time(s).
 
-ast_passes_fn_param_forbidden_attr =
-    allow, cfg, cfg_attr, deny, expect, forbid, and warn are the only allowed built-in attributes in function parameters
 
-ast_passes_fn_param_forbidden_self =
-    `self` parameter is only allowed in associated functions
-    .label = not semantically valid as function parameter
-    .note = associated functions are those in `impl` or `trait` definitions
+### Expansion stage
 
-ast_passes_fn_param_too_many =
-    function can not have more than {$max_num_args} arguments
+passes-expand-disabled =
+    Expansion is disabled.
 
-ast_passes_fn_ptr_invalid_safety = function pointers cannot be declared with `safe` safety qualifier
-    .suggestion = remove safe from this item
+passes-expand-enabled =
+    Expansion is enabled.
 
-ast_passes_fn_without_body =
-    free function without a body
-    .suggestion = provide a definition for the function
+passes-expand-start =
+    Starting expansion.
 
-ast_passes_forbidden_bound =
-    bounds cannot be used in this context
+passes-expand-finished =
+    Finished expansion.
 
-ast_passes_forbidden_const_param =
-    late-bound const parameters cannot be used currently
+passes-expand-failed =
+    Expansion failed.
+passes-expand-failed.help =
+    Inspect diagnostics produced by expansion; enable tracing for more details.
 
-ast_passes_forbidden_default =
-    `default` is only allowed on items in trait impls
-    .label = `default` because of this
+passes-expand-trace-enabled =
+    Expansion trace enabled.
 
-ast_passes_forbidden_non_lifetime_param =
-    only lifetime parameters can be used in this context
+passes-expand-trace-disabled =
+    Expansion trace disabled.
 
-ast_passes_generic_before_constraints = generic arguments must come before the first constraint
-    .constraints = {$constraint_len ->
-    [one] constraint
-    *[other] constraints
-    }
-    .args = generic {$args_len ->
-    [one] argument
-    *[other] arguments
-    }
-    .empty_string = {""},
-    .suggestion = move the {$constraint_len ->
-    [one] constraint
-    *[other] constraints
-    } after the generic {$args_len ->
-    [one] argument
-    *[other] arguments
-    }
-
-ast_passes_generic_default_trailing = generic parameters with a default must be trailing
-
-ast_passes_impl_fn_const =
-    redundant `const` fn marker in const impl
-    .parent_constness = this declares all associated functions implicitly const
-    .label = remove the `const`
-
-ast_passes_incompatible_features = `{$f1}` and `{$f2}` are incompatible, using them at the same time is not allowed
-    .help = remove one of these features
+passes-expand-strict-shape-enabled =
+    Expansion strict shape enabled.
 
-ast_passes_item_invalid_safety = items outside of `unsafe extern {"{ }"}` cannot be declared with `safe` safety qualifier
-    .suggestion = remove safe from this item
-
-ast_passes_item_underscore = `{$kind}` items in this context need a name
-    .label = `_` is not a valid name for this `{$kind}` item
-
-ast_passes_match_arm_with_no_body =
-    `match` arm with no body
-    .suggestion = add a body after the pattern
-
-ast_passes_missing_unsafe_on_extern = extern blocks must be unsafe
-    .suggestion = needs `unsafe` before the extern keyword
-
-ast_passes_missing_unsafe_on_extern_lint = extern blocks should be unsafe
-    .suggestion = needs `unsafe` before the extern keyword
-
-ast_passes_module_nonascii = trying to load file for module `{$name}` with non-ascii identifier name
-    .help = consider using the `#[path]` attribute to specify filesystem path
-
-ast_passes_negative_bound_not_supported =
-    negative bounds are not supported
-
-ast_passes_negative_bound_with_parenthetical_notation =
-    parenthetical notation may not be used for negative bounds
-
-ast_passes_nested_impl_trait = nested `impl Trait` is not allowed
-    .outer = outer `impl Trait`
-    .inner = nested `impl Trait` here
-
-ast_passes_nested_lifetimes = nested quantification of lifetimes
-
-ast_passes_nomangle_ascii = `#[no_mangle]` requires ASCII identifier
-
-ast_passes_obsolete_auto = `impl Trait for .. {"{}"}` is an obsolete syntax
-    .help = use `auto trait Trait {"{}"}` instead
-
-ast_passes_out_of_order_params = {$param_ord} parameters must be declared prior to {$max_param} parameters
-    .suggestion = reorder the parameters: lifetimes, then consts and types
-
-ast_passes_pattern_in_bodiless = patterns aren't allowed in functions without bodies
-    .label = pattern not allowed in function without body
-
-ast_passes_pattern_in_fn_pointer = patterns aren't allowed in function pointer types
-
-ast_passes_pattern_in_foreign = patterns aren't allowed in foreign function declarations
-    .label = pattern not allowed in foreign function
-
-ast_passes_precise_capturing_duplicated = duplicate `use<...>` precise capturing syntax
-    .label = second `use<...>` here
-
-ast_passes_precise_capturing_not_allowed_here = `use<...>` precise capturing syntax not allowed in {$loc}
-
-ast_passes_scalable_vector_not_tuple_struct = scalable vectors must be tuple structs
-
-ast_passes_static_without_body =
-    free static item without body
-    .suggestion = provide a definition for the static
-
-ast_passes_tilde_const_disallowed = `[const]` is not allowed here
-    .closure = closures cannot have `[const]` trait bounds
-    .function = this function is not `const`, so it cannot have `[const]` trait bounds
-    .trait = this trait is not `const`, so it cannot have `[const]` trait bounds
-    .trait_impl = this impl is not `const`, so it cannot have `[const]` trait bounds
-    .impl = inherent impls cannot have `[const]` trait bounds
-    .trait_assoc_ty = associated types in non-`const` traits cannot have `[const]` trait bounds
-    .trait_impl_assoc_ty = associated types in non-const impls cannot have `[const]` trait bounds
-    .inherent_assoc_ty = inherent associated types cannot have `[const]` trait bounds
-    .struct = structs cannot have `[const]` trait bounds
-    .enum = enums cannot have `[const]` trait bounds
-    .union = unions cannot have `[const]` trait bounds
-    .anon_const = anonymous constants cannot have `[const]` trait bounds
-    .object = trait objects cannot have `[const]` trait bounds
-    .item = this item cannot have `[const]` trait bounds
-
-ast_passes_trait_fn_const =
-    functions in {$in_impl ->
-        [true] trait impls
-        *[false] traits
-    } cannot be declared const
-    .label = functions in {$in_impl ->
-        [true] trait impls
-        *[false] traits
-    } cannot be const
-    .const_context_label = this declares all associated functions implicitly const
-    .remove_const_sugg = remove the `const`{$requires_multiple_changes ->
-        [true] {" ..."}
-        *[false] {""}
-    }
-    .make_impl_const_sugg = ... and declare the impl to be const instead
-    .make_trait_const_sugg = ... and declare the trait to be const instead
-
-ast_passes_trait_object_single_bound = only a single explicit lifetime bound is permitted
-
-ast_passes_ty_alias_without_body =
-    free type alias without body
-    .suggestion = provide a definition for the type
-
-ast_passes_unsafe_item = {$kind} cannot be declared unsafe
-
-ast_passes_unsafe_negative_impl = negative impls cannot be unsafe
-    .negative = negative because of this
-    .unsafe = unsafe because of this
-
-ast_passes_unsafe_static =
-    static items cannot be declared with `unsafe` safety qualifier outside of `extern` block
-
-ast_passes_visibility_not_permitted =
-    visibility qualifiers are not permitted here
-    .enum_variant = enum variants and their fields always share the visibility of the enum they are in
-    .trait_impl = trait items always share the visibility of their trait
-    .individual_impl_items = place qualifiers on individual impl items instead
-    .individual_foreign_items = place qualifiers on individual foreign items instead
-    .remove_qualifier_sugg = remove the qualifier
-
-ast_passes_where_clause_after_type_alias = where clauses are not allowed after the type for type aliases
-    .note = see issue #112792 <https://github.com/-lang//issues/112792> for more information
-    .help = add `#![feature(lazy_type_alias)]` to the crate attributes to enable
-
-ast_passes_where_clause_before_type_alias = where clauses are not allowed before the type for type aliases
-    .note = see issue #89122 <https://github.com/-lang//issues/89122> for more information
-    .remove_suggestion = remove this `where`
-    .move_suggestion = move it to the end of the type declaration
+passes-expand-strict-shape-disabled =
+    Expansion strict shape disabled.
+
+passes-expand-strict-cfg-enabled =
+    Expansion strict cfg enabled.
+
+passes-expand-strict-cfg-disabled =
+    Expansion strict cfg disabled.
+
+passes-expand-cfg-disabled =
+    cfg pruning is disabled; cfg gates will be ignored.
+
+passes-expand-cfg-enabled =
+    cfg pruning is enabled.
+
+passes-expand-cfg-default-true =
+    cfg default is true.
+
+passes-expand-cfg-default-false =
+    cfg default is false.
+
+passes-expand-desugar-loop-until-enabled =
+    Desugaring enabled: loop until -> loop while not.
+
+passes-expand-desugar-each-enabled =
+    Desugaring enabled: each -> loop each.
+
+passes-expand-desugar-select-enabled =
+    Desugaring enabled: select normalization enabled.
+
+passes-expand-desugar-pack-enabled =
+    Desugaring enabled: pack normalization enabled.
+
+passes-expand-removed-docs =
+    Removed { $count } doc node(s) during expansion.
+
+passes-expand-removed-cfg =
+    Removed { $count } cfg-gated node(s) during expansion.
+
+passes-expand-rewritten =
+    Rewrote { $count } node(s) during expansion.
+
+passes-expand-attr-normalized =
+    Normalized attributes on { $count } node(s) during expansion.
+
+passes-expand-stats =
+    Expansion stats: nodes { $in } -> { $out }, rewritten { $rewritten }, cfg removed { $cfg }, docs removed { $docs }.
+
+
+### Lowering stage
+
+passes-lowering-disabled =
+    Lowering is disabled.
+
+passes-lowering-enabled =
+    Lowering is enabled.
+
+passes-lowering-start =
+    Starting lowering (AST -> AST-IR).
+
+passes-lowering-finished =
+    Finished lowering.
+
+passes-lowering-failed =
+    Lowering failed.
+passes-lowering-failed.help =
+    Inspect diagnostics produced by lowering; ensure the AST shape matches the lowering adapter expectations.
+
+passes-lowering-bridge-failed =
+    Failed to bridge expanded AST to lowering AST.
+
+passes-lowering-strict-enabled =
+    Lowering strict mode enabled.
+
+passes-lowering-strict-disabled =
+    Lowering strict mode disabled.
+
+passes-lowering-desugar-loop-until-enabled =
+    Lowering desugaring enabled: loop until -> loop while not.
+
+passes-lowering-desugar-each-enabled =
+    Lowering desugaring enabled: each -> loop each.
+
+passes-lowering-desugar-select-enabled =
+    Lowering desugaring enabled: select normalization enabled.
+
+passes-lowering-stats =
+    Lowering stats: items { $items }, blocks { $blocks }, stmts { $stmts }, exprs { $exprs }.
+
+
+### Diagnostics and control flow
+
+passes-stop-early =
+    Stopping pipeline early due to configuration.
+
+passes-stop-early-error =
+    Stopping pipeline early due to errors.
+passes-stop-early-error.help =
+    Disable stop_on_first_error to collect more errors in one run.
+
+passes-warnings-promoted =
+    Warnings were promoted to errors.
+
+passes-diags-summary =
+    Diagnostics: { $errors } error(s), { $warnings } warning(s).
+
+passes-stage-summary =
+    Pipeline summary: expand { $expand_in }->{ $expand_out }, lower items { $items }, errors { $errors }, warnings { $warnings }.
+
+
+### General / internal
+
+passes-internal-error =
+    Internal pipeline error: { $detail }.
+
+passes-internal-missing-stage-result =
+    Internal error: missing stage result: { $stage }.
+
+passes-internal-unsupported =
+    Unsupported pipeline operation: { $op }.
+
+passes-hint-enable-trace =
+    Hint: enable expansion tracing to see rewrite steps.
+passes-hint-enable-trace.help =
+    Set expand_trace=true in PassConfig to get per-node expansion logs.
+
+passes-hint-run-strict =
+    Hint: run strict mode to catch structural errors early.
+passes-hint-run-strict.help =
+    Use pass_config_strict() for CI or compiler regression tests.
+
+passes-hint-disable-stage =
+    Hint: disable a stage to isolate issues.
+passes-hint-disable-stage.help =
+    For example, disable expansion to test lowering-only behavior (or vice versa).

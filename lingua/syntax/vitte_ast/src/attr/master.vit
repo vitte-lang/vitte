@@ -1,0 +1,1101 @@
+vitte 1.0
+space lingua/syntax/vitte_ast/attr/master
+
+<<< master
+  master.vit — Vitte AST Attribute System (MAX)
+
+  Design goals:
+    - canonical AST representation for attributes (typed values, args, style, span)
+    - spec/registry system for validation (targets, args, arity, conflicts, repeat rules, gates)
+    - query helpers (find, filter, read args)
+    - merge/normalize helpers (dedupe, last-wins, repeatable keep-all, conflict detection)
+    - formatting helpers (stable text rendering for debug/tests)
+    - policy knobs (unknown attr handling, strictness, feature gates)
+
+  Notes:
+    - This file is compiler-friendly: it avoids fancy syntax, uses .end everywhere.
+    - Comment zones are <<< ... >>> and are ignored by the compiler frontend.
+    - '_' is allowed in identifiers.
+>>>
+
+pull std/io as io
+pull std/text as text
+pull std/collections/list as list
+pull std/collections/map as map
+
+pull lingua/syntax/vitte_ast/span as span
+pull lingua/syntax/vitte_ast/symbol as symbol
+pull lingua/syntax/vitte_ast/diag as diag
+
+share all
+
+bond Text means String
+
+
+<<< =========================================================
+  0) SMALL UTIL HELPERS (local wrappers)
+  These wrappers keep this module stable even if std/list/map APIs evolve.
+========================================================= >>>
+
+proc _list_len(xs as List of Any) gives Int
+give list.len(xs)
+.end
+
+proc _list_push(xs as List of Any, x as Any)
+list.push(xs, x)
+give
+.end
+
+proc _map_has(m as Map of Text to Any, k as Text) gives Bool
+give map.has(m, k)
+.end
+
+proc _map_put(m as Map of Text to Any, k as Text, v as Any)
+map.put(m, k, v)
+give
+.end
+
+proc _map_get(m as Map of Text to Any, k as Text) gives Any
+give map.get(m, k)
+.end
+
+proc _map_remove(m as Map of Text to Any, k as Text)
+map.remove(m, k)
+give
+.end
+
+proc _text_eq(a as Text, b as Text) gives Bool
+give a == b
+.end
+
+proc _list_contains_text(xs as List of Text, needle as Text) gives Bool
+make i as Int = 0
+loop while i < list.len(xs)
+  if xs[i] == needle
+    give true
+  .end
+  set i += 1
+.end
+give false
+.end
+
+
+<<< =========================================================
+  1) CORE IDS / STYLE / TARGETS
+========================================================= >>>
+
+form AttrId
+field raw as U32 = 0u32
+.end
+
+proc attr_id_make(x as U32) gives AttrId
+make id as AttrId = AttrId()
+set id.raw = x
+give id
+.end
+
+
+pick AttrStyle
+case Outer()
+case Inner()
+.end
+
+
+pick AttrTarget
+case File()
+case Space()
+case Pull()
+case Share()
+case Build()
+case Type()
+case Form()
+case Pick()
+case Bond()
+case Field()
+case Proc()
+case Flow()
+case Entry()
+case Param()
+case Local()
+case Stmt()
+case Expr()
+case Pattern()
+case Any()
+.end
+
+proc attr_target_key(t as AttrTarget) gives Text
+select t
+when AttrTarget.File()     give "file" .end
+when AttrTarget.Space()    give "space" .end
+when AttrTarget.Pull()     give "pull" .end
+when AttrTarget.Share()    give "share" .end
+when AttrTarget.Build()    give "build" .end
+when AttrTarget.Type()     give "type" .end
+when AttrTarget.Form()     give "form" .end
+when AttrTarget.Pick()     give "pick" .end
+when AttrTarget.Bond()     give "bond" .end
+when AttrTarget.Field()    give "field" .end
+when AttrTarget.Proc()     give "proc" .end
+when AttrTarget.Flow()     give "flow" .end
+when AttrTarget.Entry()    give "entry" .end
+when AttrTarget.Param()    give "param" .end
+when AttrTarget.Local()    give "local" .end
+when AttrTarget.Stmt()     give "stmt" .end
+when AttrTarget.Expr()     give "expr" .end
+when AttrTarget.Pattern()  give "pattern" .end
+otherwise                  give "any" .end
+.end
+.end
+
+
+<<< =========================================================
+  2) TYPED VALUES / ARGS / ATTRIBUTE
+========================================================= >>>
+
+pick AttrValue
+case None()
+case Bool(value as Bool)
+case Int(value as I64)
+case UInt(value as U64)
+case F32(value as F32)
+case F64(value as F64)
+case Text(value as Text)
+case Symbol(value as symbol.Symbol)
+case Path(value as Text)
+case List(items as List of AttrValue)
+case Map(items as Map of Text to AttrValue)
+.end
+
+proc attr_value_is_none(v as AttrValue) gives Bool
+select v
+when AttrValue.None()
+  give true
+.end
+otherwise
+  give false
+.end
+.end
+.end
+
+proc attr_value_as_text(v as AttrValue) gives Text
+select v
+when AttrValue.Text(s)
+  give s
+.end
+otherwise
+  give ""
+.end
+.end
+.end
+
+proc attr_value_as_symbol(v as AttrValue) gives symbol.Symbol
+select v
+when AttrValue.Symbol(s)
+  give s
+.end
+otherwise
+  give symbol.Symbol()
+.end
+.end
+.end
+
+
+pick AttrArg
+case Pos(value as AttrValue)
+case Named(name as Text, value as AttrValue)
+.end
+
+proc attr_arg_is_named(a as AttrArg) gives Bool
+select a
+when AttrArg.Named(_, _)
+  give true
+.end
+otherwise
+  give false
+.end
+.end
+.end
+
+proc attr_arg_name(a as AttrArg) gives Text
+select a
+when AttrArg.Named(n, _)
+  give n
+.end
+otherwise
+  give ""
+.end
+.end
+.end
+
+proc attr_arg_value(a as AttrArg) gives AttrValue
+select a
+when AttrArg.Pos(v)
+  give v
+.end
+when AttrArg.Named(_, v)
+  give v
+.end
+otherwise
+  give AttrValue.None()
+.end
+.end
+.end
+
+
+form Attribute
+field id as AttrId = AttrId()
+field name as symbol.Symbol = symbol.Symbol()
+field span as span.Span = span.Span()
+field style as AttrStyle = AttrStyle.Outer()
+field target_hint as AttrTarget = AttrTarget.Any()
+field args as List of AttrArg = []
+field raw_text as Text = ""
+.end
+
+proc attr_make(id as AttrId, name as symbol.Symbol, sp as span.Span, style as AttrStyle) gives Attribute
+make a as Attribute = Attribute()
+set a.id = id
+set a.name = name
+set a.span = sp
+set a.style = style
+set a.target_hint = AttrTarget.Any()
+set a.args = []
+set a.raw_text = ""
+give a
+.end
+
+proc attr_with_target(a as Attribute, t as AttrTarget) gives Attribute
+make out as Attribute = a
+set out.target_hint = t
+give out
+.end
+
+proc attr_with_raw(a as Attribute, raw as Text) gives Attribute
+make out as Attribute = a
+set out.raw_text = raw
+give out
+.end
+
+proc attr_push_pos(a as Attribute, v as AttrValue) gives Attribute
+make out as Attribute = a
+list.push(out.args, AttrArg.Pos(v))
+give out
+.end
+
+proc attr_push_named(a as Attribute, k as Text, v as AttrValue) gives Attribute
+make out as Attribute = a
+list.push(out.args, AttrArg.Named(k, v))
+give out
+.end
+
+proc attr_name_text(a as Attribute) gives Text
+give symbol.to_text(a.name)
+.end
+
+proc attr_is(a as Attribute, name as Text) gives Bool
+give symbol.eq_text(a.name, name)
+.end
+
+proc attr_has_args(a as Attribute) gives Bool
+give list.len(a.args) > 0
+.end
+
+
+<<< =========================================================
+  3) QUERY HELPERS
+========================================================= >>>
+
+proc attr_count_positional(a as Attribute) gives Int
+make n as Int = 0
+make i as Int = 0
+loop while i < list.len(a.args)
+  select a.args[i]
+  when AttrArg.Pos(_)
+    set n += 1
+  .end
+  otherwise
+  .end
+  .end
+  set i += 1
+.end
+give n
+.end
+
+proc attr_get_named(a as Attribute, key as Text) gives AttrValue
+make i as Int = 0
+loop while i < list.len(a.args)
+  select a.args[i]
+  when AttrArg.Named(k, v)
+    if k == key
+      give v
+    .end
+  .end
+  otherwise
+  .end
+  .end
+  set i += 1
+.end
+give AttrValue.None()
+.end
+
+proc attr_has_named(a as Attribute, key as Text) gives Bool
+make v as AttrValue = attr_get_named(a, key)
+if attr_value_is_none(v)
+  give false
+.end
+give true
+.end
+
+proc attr_get_pos(a as Attribute, index as Int) gives AttrValue
+if index < 0
+  give AttrValue.None()
+.end
+if index >= attr_count_positional(a)
+  give AttrValue.None()
+.end
+
+make seen as Int = 0
+make i as Int = 0
+loop while i < list.len(a.args)
+  select a.args[i]
+  when AttrArg.Pos(v)
+    if seen == index
+      give v
+    .end
+    set seen += 1
+  .end
+  otherwise
+  .end
+  .end
+  set i += 1
+.end
+
+give AttrValue.None()
+.end
+
+proc attr_has_flag(a as Attribute, flag as Text) gives Bool
+# Accept:
+#   #[flag]
+#   #[flag(true)]
+#   #[x(flag)]
+#   #[x(flag=true)]
+if attr_is(a, flag)
+  give true
+.end
+
+# check args for positional text/symbol or named bool
+make i as Int = 0
+loop while i < list.len(a.args)
+  select a.args[i]
+  when AttrArg.Pos(AttrValue.Symbol(s))
+    if symbol.eq_text(s, flag)
+      give true
+    .end
+  .end
+  when AttrArg.Pos(AttrValue.Text(t))
+    if t == flag
+      give true
+    .end
+  .end
+  when AttrArg.Named(k, AttrValue.Bool(b))
+    if k == flag and b == true
+      give true
+    .end
+  .end
+  otherwise
+  .end
+  .end
+  set i += 1
+.end
+
+give false
+.end
+
+proc find_attr_first(attrs as List of Attribute, name as Text) gives Attribute
+make i as Int = 0
+loop while i < list.len(attrs)
+  if attr_is(attrs[i], name)
+    give attrs[i]
+  .end
+  set i += 1
+.end
+give Attribute()
+.end
+
+proc has_attr(attrs as List of Attribute, name as Text) gives Bool
+make i as Int = 0
+loop while i < list.len(attrs)
+  if attr_is(attrs[i], name)
+    give true
+  .end
+  set i += 1
+.end
+give false
+.end
+
+
+<<< =========================================================
+  4) SPECS / REGISTRY / POLICY
+========================================================= >>>
+
+pick UnknownAttrAction
+case Allow()
+case Warn()
+case Error()
+.end
+
+form AttrPolicy
+field unknown_action as UnknownAttrAction = UnknownAttrAction.Warn()
+field strict_named_args as Bool = true
+field strict_positional as Bool = true
+field strict_targets as Bool = true
+field strict_conflicts as Bool = true
+field strict_gates as Bool = true
+field allow_unknown_named_when_allow_list_empty as Bool = false
+.end
+
+proc policy_default() gives AttrPolicy
+give AttrPolicy()
+.end
+
+
+form AttrSpec
+field name as Text = ""
+field allow_any_target as Bool = false
+field targets as List of AttrTarget = []
+field repeatable as Bool = false
+field last_wins as Bool = true           # if not repeatable: keep last by default
+field conflict_group as Text = ""        # non-empty => mutual exclusion group
+field require_named as List of Text = [] # required named keys
+field allow_named as List of Text = []   # allowed named keys
+field allow_positional as Bool = false
+field min_pos as Int = 0
+field max_pos as Int = 0                # 0 means "unbounded" when allow_positional=true
+field allow_empty as Bool = true
+field feature_gate as Text = ""         # optional gate name
+.end
+
+proc attr_spec_make(name as Text) gives AttrSpec
+make s as AttrSpec = AttrSpec()
+set s.name = name
+set s.allow_any_target = false
+set s.targets = []
+set s.repeatable = false
+set s.last_wins = true
+set s.conflict_group = ""
+set s.require_named = []
+set s.allow_named = []
+set s.allow_positional = false
+set s.min_pos = 0
+set s.max_pos = 0
+set s.allow_empty = true
+set s.feature_gate = ""
+give s
+.end
+
+proc attr_spec_any_target(s as AttrSpec) gives AttrSpec
+make out as AttrSpec = s
+set out.allow_any_target = true
+give out
+.end
+
+proc attr_spec_targets(s as AttrSpec, ts as List of AttrTarget) gives AttrSpec
+make out as AttrSpec = s
+set out.targets = ts
+give out
+.end
+
+proc attr_spec_repeatable(s as AttrSpec) gives AttrSpec
+make out as AttrSpec = s
+set out.repeatable = true
+set out.last_wins = false
+give out
+.end
+
+proc attr_spec_first_wins(s as AttrSpec) gives AttrSpec
+make out as AttrSpec = s
+set out.repeatable = false
+set out.last_wins = false
+give out
+.end
+
+proc attr_spec_conflicts(s as AttrSpec, group as Text) gives AttrSpec
+make out as AttrSpec = s
+set out.conflict_group = group
+give out
+.end
+
+proc attr_spec_require_named(s as AttrSpec, keys as List of Text) gives AttrSpec
+make out as AttrSpec = s
+set out.require_named = keys
+give out
+.end
+
+proc attr_spec_allow_named(s as AttrSpec, keys as List of Text) gives AttrSpec
+make out as AttrSpec = s
+set out.allow_named = keys
+give out
+.end
+
+proc attr_spec_positional(s as AttrSpec, min_pos as Int, max_pos as Int) gives AttrSpec
+make out as AttrSpec = s
+set out.allow_positional = true
+set out.min_pos = min_pos
+set out.max_pos = max_pos
+give out
+.end
+
+proc attr_spec_no_empty(s as AttrSpec) gives AttrSpec
+make out as AttrSpec = s
+set out.allow_empty = false
+give out
+.end
+
+proc attr_spec_gate(s as AttrSpec, gate as Text) gives AttrSpec
+make out as AttrSpec = s
+set out.feature_gate = gate
+give out
+.end
+
+
+form AttrRegistry
+field specs as Map of Text to AttrSpec = {}
+field policy as AttrPolicy = AttrPolicy()
+field enabled_gates as Map of Text to Bool = {}
+.end
+
+proc attr_registry_new() gives AttrRegistry
+make r as AttrRegistry = AttrRegistry()
+set r.specs = map.new()
+set r.policy = policy_default()
+set r.enabled_gates = map.new()
+give r
+.end
+
+proc attr_registry_with_policy(r as AttrRegistry, p as AttrPolicy) gives AttrRegistry
+make out as AttrRegistry = r
+set out.policy = p
+give out
+.end
+
+proc attr_registry_enable_gate(r as AttrRegistry, name as Text) gives AttrRegistry
+make out as AttrRegistry = r
+map.put(out.enabled_gates, name, true)
+give out
+.end
+
+proc attr_registry_disable_gate(r as AttrRegistry, name as Text) gives AttrRegistry
+make out as AttrRegistry = r
+map.put(out.enabled_gates, name, false)
+give out
+.end
+
+proc attr_registry_gate_enabled(r as AttrRegistry, name as Text) gives Bool
+if name == ""
+  give true
+.end
+if map.has(r.enabled_gates, name)
+  give map.get(r.enabled_gates, name)
+.end
+give false
+.end
+
+proc attr_registry_add(r as AttrRegistry, s as AttrSpec) gives AttrRegistry
+make out as AttrRegistry = r
+map.put(out.specs, s.name, s)
+give out
+.end
+
+proc attr_registry_has(r as AttrRegistry, name as Text) gives Bool
+give map.has(r.specs, name)
+.end
+
+proc attr_registry_spec(r as AttrRegistry, name as Text) gives AttrSpec
+if map.has(r.specs, name)
+  give map.get(r.specs, name)
+.end
+give AttrSpec()
+.end
+
+
+<<< =========================================================
+  5) DEFAULT REGISTRY (toolchain baseline)
+========================================================= >>>
+
+proc default_registry() gives AttrRegistry
+make r as AttrRegistry = attr_registry_new()
+
+# doc("text")
+make s_doc as AttrSpec = attr_spec_make("doc")
+set s_doc = attr_spec_any_target(s_doc)
+set s_doc = attr_spec_positional(s_doc, 1, 1)
+set s_doc = attr_spec_no_empty(s_doc)
+set r = attr_registry_add(r, s_doc)
+
+# cfg(os="linux", arch="x86_64", feature="x", debug=true, test=true)
+make s_cfg as AttrSpec = attr_spec_make("cfg")
+set s_cfg = attr_spec_any_target(s_cfg)
+set s_cfg.allow_empty = false
+set s_cfg.allow_positional = false
+set s_cfg.allow_named = ["os", "arch", "feature", "debug", "test"]
+set r = attr_registry_add(r, s_cfg)
+
+# inline / no_inline (proc/flow)
+make s_inline as AttrSpec = attr_spec_make("inline")
+set s_inline.targets = [AttrTarget.Proc(), AttrTarget.Flow()]
+set s_inline.conflict_group = "inline_group"
+set r = attr_registry_add(r, s_inline)
+
+make s_no_inline as AttrSpec = attr_spec_make("no_inline")
+set s_no_inline.targets = [AttrTarget.Proc(), AttrTarget.Flow()]
+set s_no_inline.conflict_group = "inline_group"
+set r = attr_registry_add(r, s_no_inline)
+
+# derive(Trait, Trait2, ...)
+make s_derive as AttrSpec = attr_spec_make("derive")
+set s_derive.targets = [AttrTarget.Form(), AttrTarget.Pick()]
+set s_derive.allow_positional = true
+set s_derive.min_pos = 1
+set s_derive.max_pos = 128
+set s_derive.allow_empty = false
+set r = attr_registry_add(r, s_derive)
+
+# repr(kind="c", align=8, pack=1)
+make s_repr as AttrSpec = attr_spec_make("repr")
+set s_repr.targets = [AttrTarget.Form(), AttrTarget.Pick()]
+set s_repr.allow_named = ["kind", "align", "pack"]
+set s_repr.allow_empty = false
+set r = attr_registry_add(r, s_repr)
+
+# unstable(name="x") gated by "unstable_attrs"
+make s_unstable as AttrSpec = attr_spec_make("unstable")
+set s_unstable = attr_spec_any_target(s_unstable)
+set s_unstable.allow_named = ["name", "since"]
+set s_unstable.allow_empty = false
+set s_unstable = attr_spec_gate(s_unstable, "unstable_attrs")
+set r = attr_registry_add(r, s_unstable)
+
+give r
+.end
+
+
+<<< =========================================================
+  6) VALIDATION
+========================================================= >>>
+
+proc attr_target_allowed(spec as AttrSpec, t as AttrTarget) gives Bool
+if spec.allow_any_target
+  give true
+.end
+
+make i as Int = 0
+loop while i < list.len(spec.targets)
+  if attr_target_key(spec.targets[i]) == attr_target_key(t)
+    give true
+  .end
+  set i += 1
+.end
+
+give false
+.end
+
+proc _unknown_attr_report(r as AttrRegistry, a as Attribute, diags as List of diag.Diagnostic)
+select r.policy.unknown_action
+when UnknownAttrAction.Allow()
+  give
+.end
+when UnknownAttrAction.Warn()
+  # if you later add diag.warn, swap here
+  diag.error(diags, text.join("unknown attribute (warn): ", attr_name_text(a)), a.span)
+  give
+.end
+otherwise
+  diag.error(diags, text.join("unknown attribute: ", attr_name_text(a)), a.span)
+  give
+.end
+.end
+.end
+
+proc _gate_check(r as AttrRegistry, spec as AttrSpec, a as Attribute, diags as List of diag.Diagnostic)
+if spec.feature_gate == ""
+  give
+.end
+if attr_registry_gate_enabled(r, spec.feature_gate)
+  give
+.end
+if r.policy.strict_gates
+  diag.error(diags, text.join("attribute gated by feature: ", spec.feature_gate), a.span)
+.end
+give
+.end
+
+proc _named_allowed(r as AttrRegistry, spec as AttrSpec, a as Attribute, diags as List of diag.Diagnostic)
+# If allow_named is empty:
+# - default: allow none (strict_named_args=true)
+# - unless policy allows unknown named when allow list empty
+make i as Int = 0
+loop while i < list.len(a.args)
+  select a.args[i]
+  when AttrArg.Named(k, _)
+    if list.len(spec.allow_named) == 0
+      if r.policy.allow_unknown_named_when_allow_list_empty
+        give
+      .end
+      if r.policy.strict_named_args
+        diag.error(diags, text.join("attribute does not accept named args: ", spec.name), a.span)
+      .end
+    else
+      if _list_contains_text(spec.allow_named, k) == false
+        if r.policy.strict_named_args
+          diag.error(diags, text.join("unknown named arg '", k + "' for attribute " + spec.name), a.span)
+        .end
+      .end
+    .end
+  .end
+  otherwise
+  .end
+  .end
+  set i += 1
+.end
+give
+.end
+
+proc _named_required(spec as AttrSpec, a as Attribute, diags as List of diag.Diagnostic)
+make i as Int = 0
+loop while i < list.len(spec.require_named)
+  make key as Text = spec.require_named[i]
+  make v as AttrValue = attr_get_named(a, key)
+  if attr_value_is_none(v)
+    diag.error(diags, text.join("missing required named arg '", key + "' for attribute " + spec.name), a.span)
+  .end
+  set i += 1
+.end
+give
+.end
+
+proc _positional_check(r as AttrRegistry, spec as AttrSpec, a as Attribute, diags as List of diag.Diagnostic)
+make npos as Int = attr_count_positional(a)
+
+if spec.allow_positional == false
+  if npos > 0
+    if r.policy.strict_positional
+      diag.error(diags, text.join("attribute does not accept positional args: ", spec.name), a.span)
+    .end
+  .end
+  give
+.end
+
+if npos < spec.min_pos
+  diag.error(diags, text.join("not enough positional args for attribute: ", spec.name), a.span)
+.end
+
+if spec.max_pos > 0
+  if npos > spec.max_pos
+    diag.error(diags, text.join("too many positional args for attribute: ", spec.name), a.span)
+  .end
+.end
+
+give
+.end
+
+proc validate_attribute(r as AttrRegistry, a as Attribute, actual_target as AttrTarget, diags as List of diag.Diagnostic)
+make name as Text = attr_name_text(a)
+
+if map.has(r.specs, name) == false
+  _unknown_attr_report(r, a, diags)
+  give
+.end
+
+make spec as AttrSpec = map.get(r.specs, name)
+
+_gate_check(r, spec, a, diags)
+
+if r.policy.strict_targets
+  if attr_target_allowed(spec, actual_target) == false
+    diag.error(diags, text.join("attribute not allowed on target: ", name), a.span)
+  .end
+.end
+
+if spec.allow_empty == false
+  if list.len(a.args) == 0
+    diag.error(diags, text.join("attribute requires arguments: ", name), a.span)
+  .end
+.end
+
+_named_allowed(r, spec, a, diags)
+_named_required(spec, a, diags)
+_positional_check(r, spec, a, diags)
+
+give
+.end
+
+
+<<< =========================================================
+  7) ATTR SETS / MERGE / NORMALIZE (dedupe, conflicts)
+========================================================= >>>
+
+form AttrSet
+field items as List of Attribute = []
+.end
+
+proc attr_set_new() gives AttrSet
+make s as AttrSet = AttrSet()
+set s.items = []
+give s
+.end
+
+proc attr_set_add(s as AttrSet, a as Attribute) gives AttrSet
+make out as AttrSet = s
+list.push(out.items, a)
+give out
+.end
+
+proc attr_set_merge(a as AttrSet, b as AttrSet) gives AttrSet
+make out as AttrSet = AttrSet()
+set out.items = []
+
+make i as Int = 0
+loop while i < list.len(a.items)
+  list.push(out.items, a.items[i])
+  set i += 1
+.end
+
+set i = 0
+loop while i < list.len(b.items)
+  list.push(out.items, b.items[i])
+  set i += 1
+.end
+
+give out
+.end
+
+proc _conflict_check(r as AttrRegistry, spec as AttrSpec, seen_group as Map of Text to Text, a as Attribute, diags as List of diag.Diagnostic)
+if spec.conflict_group == ""
+  give
+.end
+if map.has(seen_group, spec.conflict_group)
+  if r.policy.strict_conflicts
+    diag.error(diags, text.join("conflicting attributes in group: ", spec.conflict_group), a.span)
+  .end
+else
+  map.put(seen_group, spec.conflict_group, spec.name)
+.end
+give
+.end
+
+proc attr_set_normalize(r as AttrRegistry, s as AttrSet, target as AttrTarget, diags as List of diag.Diagnostic) gives AttrSet
+make out as AttrSet = AttrSet()
+set out.items = []
+
+# Track non-repeatable winners by name (for last_wins/first_wins)
+make win_by_name as Map of Text to Attribute = map.new()
+make have_by_name as Map of Text to Bool = map.new()
+
+# Track conflict groups
+make seen_group as Map of Text to Text = map.new()
+
+# Pass 1: validate + compute winners / push repeatables
+make i as Int = 0
+loop while i < list.len(s.items)
+  make a as Attribute = s.items[i]
+  make name as Text = attr_name_text(a)
+
+  validate_attribute(r, a, target, diags)
+
+  if map.has(r.specs, name)
+    make spec as AttrSpec = map.get(r.specs, name)
+    _conflict_check(r, spec, seen_group, a, diags)
+
+    if spec.repeatable
+      list.push(out.items, a)
+    else
+      if spec.last_wins
+        map.put(win_by_name, name, a)
+        map.put(have_by_name, name, true)
+      else
+        if map.has(have_by_name, name) == false
+          map.put(win_by_name, name, a)
+          map.put(have_by_name, name, true)
+        .end
+      .end
+    .end
+  else
+    # unknown attribute policy: keep it as-is
+    list.push(out.items, a)
+  .end
+
+  set i += 1
+.end
+
+# Pass 2: append winners in stable order (first appearance order)
+# Emit each winner once, deterministically.
+set i = 0
+loop while i < list.len(s.items)
+  make a as Attribute = s.items[i]
+  make name as Text = attr_name_text(a)
+
+  if map.has(win_by_name, name)
+    # compare by AttrId.raw (stable)
+    if map.get(win_by_name, name).id.raw == a.id.raw
+      list.push(out.items, a)
+      map.remove(win_by_name, name)
+    .end
+  .end
+
+  set i += 1
+.end
+
+give out
+.end
+
+
+<<< =========================================================
+  8) FORMAT / DEBUG RENDERING (stable)
+========================================================= >>>
+
+proc _bool_to_text(b as Bool) gives Text
+if b
+  give "true"
+.end
+give "false"
+.end
+
+proc attr_value_to_text(v as AttrValue) gives Text
+select v
+when AttrValue.None()
+  give "none"
+.end
+when AttrValue.Bool(b)
+  give _bool_to_text(b)
+.end
+when AttrValue.Int(n)
+  give text.from_int(n)
+.end
+when AttrValue.UInt(n)
+  give text.from_int(n)
+.end
+when AttrValue.F32(_)
+  give "f32"
+.end
+when AttrValue.F64(_)
+  give "f64"
+.end
+when AttrValue.Text(s)
+  give text.join("\"", s + "\"")
+.end
+when AttrValue.Symbol(s)
+  give symbol.to_text(s)
+.end
+when AttrValue.Path(p)
+  give p
+.end
+when AttrValue.List(_)
+  give "[...]"
+.end
+when AttrValue.Map(_)
+  give "{...}"
+.end
+otherwise
+  give "?"
+.end
+.end
+.end
+
+proc attr_arg_to_text(a as AttrArg) gives Text
+select a
+when AttrArg.Pos(v)
+  give attr_value_to_text(v)
+.end
+when AttrArg.Named(k, v)
+  give k + "=" + attr_value_to_text(v)
+.end
+otherwise
+  give "?"
+.end
+.end
+.end
+
+proc attr_to_text(a as Attribute) gives Text
+make out as Text = ""
+set out = "#[" + attr_name_text(a)
+
+if list.len(a.args) > 0
+  set out = out + "("
+  make i as Int = 0
+  loop while i < list.len(a.args)
+    if i > 0
+      set out = out + ", "
+    .end
+    set out = out + attr_arg_to_text(a.args[i])
+    set i += 1
+  .end
+  set out = out + ")"
+.end
+
+set out = out + "]"
+give out
+.end
+
+proc attr_set_to_text(s as AttrSet) gives Text
+make out as Text = ""
+make i as Int = 0
+loop while i < list.len(s.items)
+  if i > 0
+    set out = out + " "
+  .end
+  set out = out + attr_to_text(s.items[i])
+  set i += 1
+.end
+give out
+.end
+
+
+<<< =========================================================
+  9) SMOKE TESTS (structure-only; swap to real harness later)
+========================================================= >>>
+
+proc _test_registry_contains_defaults()
+make r as AttrRegistry = default_registry()
+assert attr_registry_has(r, "doc")
+assert attr_registry_has(r, "cfg")
+assert attr_registry_has(r, "derive")
+assert attr_registry_has(r, "inline")
+assert attr_registry_has(r, "no_inline")
+give
+.end
+
+proc _test_validate_doc_ok(diags as List of diag.Diagnostic)
+make r as AttrRegistry = default_registry()
+make id as AttrId = attr_id_make(1u32)
+make nm as symbol.Symbol = symbol.from_text("doc")
+make a as Attribute = attr_make(id, nm, span.Span(), AttrStyle.Outer())
+set a = attr_push_pos(a, AttrValue.Text("hello"))
+validate_attribute(r, a, AttrTarget.Proc(), diags)
+give
+.end
+
+proc _test_validate_derive_fail(diags as List of diag.Diagnostic)
+make r as AttrRegistry = default_registry()
+make id as AttrId = attr_id_make(2u32)
+make nm as symbol.Symbol = symbol.from_text("derive")
+make a as Attribute = attr_make(id, nm, span.Span(), AttrStyle.Outer())
+# derive requires at least 1 positional arg
+validate_attribute(r, a, AttrTarget.Form(), diags)
+give
+.end
+
+proc _test_normalize_last_wins(diags as List of diag.Diagnostic)
+make r as AttrRegistry = default_registry()
+
+make a1 as Attribute = attr_make(attr_id_make(10u32), symbol.from_text("inline"), span.Span(), AttrStyle.Outer())
+make a2 as Attribute = attr_make(attr_id_make(11u32), symbol.from_text("no_inline"), span.Span(), AttrStyle.Outer())
+
+make s as AttrSet = attr_set_new()
+set s = attr_set_add(s, a1)
+set s = attr_set_add(s, a2)
+
+# conflict group should trigger diagnostic when strict_conflicts=true
+make out as AttrSet = attr_set_normalize(r, s, AttrTarget.Proc(), diags)
+emit attr_set_to_text(out)
+give
+.end

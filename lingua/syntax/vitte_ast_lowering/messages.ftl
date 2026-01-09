@@ -1,324 +1,569 @@
-ast_lowering_abi_specified_multiple_times =
-    `{$prev_name}` ABI specified multiple times
-    .label = previously specified here
-    .note = these ABIs are equivalent on the current target
+# lingua/syntax/vitte_ast_lowering/messages.ftl
+# Diagnostic messages for the AST -> AST-IR lowering stage.
+# Language: English
+#
+# Conventions:
+# - Message IDs are kebab-case with prefix "lowering-".
+# - Use { $var } placeables for dynamic content.
+# - Keep primary messages short; put actionable guidance in *.help where useful.
 
-ast_lowering_arbitrary_expression_in_pattern =
-    arbitrary expressions aren't allowed in patterns
-    .pattern_from_macro_note = the `expr` fragment specifier forces the metavariable's content to be an expression
-    .const_block_in_pattern_help = use a named `const`-item or an `if`-guard (`x if x == const {"{ ... }"}`) instead
+lowering-stage-name =
+    AST Lowering
 
-ast_lowering_argument = argument
+lowering-note-adapter-mode =
+    Using adapter-based lowering (generic AST nodes).
 
-ast_lowering_assoc_ty_binding_in_dyn =
-    associated type bounds are not allowed in `dyn` types
-    .suggestion = use `impl Trait` to introduce a type instead
+lowering-note-typed-mode =
+    Using typed AST lowering (project-provided nodes).
 
-ast_lowering_assoc_ty_parentheses =
-    parenthesized generic arguments cannot be used in associated type constraints
 
-ast_lowering_async_bound_not_on_trait =
-    `async` bound modifier only allowed on trait, not `{$descr}`
+### File / top-level
 
-ast_lowering_async_bound_only_for_fn_traits =
-    `async` bound modifier only allowed on `Fn`/`FnMut`/`FnOnce` traits
+lowering-unexpected-non-item-toplevel =
+    Unexpected node at file top-level: expected an item, got { $kind }.
+lowering-unexpected-non-item-toplevel.help =
+    Ensure the parser produces only top-level items under the file node (space/pull/share/build/form/pick/bond/proc/flow/entry/global).
 
-ast_lowering_async_coroutines_not_supported =
-    `async` coroutines are not yet supported
+lowering-file-missing-items =
+    File node contains no items.
+lowering-file-missing-items.help =
+    If this is intentional (empty module), suppress this warning; otherwise verify the parser output.
 
-ast_lowering_att_syntax_only_x86 =
-    the `att_syntax` option is only supported on x86
+lowering-file-attrs-invalid =
+    Invalid attribute(s) on file node.
+lowering-file-attrs-invalid.help =
+    Check attribute spelling and allowed targets (file-level attributes only).
 
-ast_lowering_await_only_in_async_fn_and_blocks =
-    `await` is only allowed inside `async` functions and blocks
-    .label = only allowed inside `async` functions and blocks
+lowering-file-attrs-normalized =
+    File attributes were normalized.
 
-ast_lowering_bad_return_type_notation_inputs =
-    argument types not allowed with return type notation
-    .suggestion = remove the input types
 
-ast_lowering_bad_return_type_notation_needs_dots = return type notation arguments must be elided with `..`
-    .suggestion = use the correct syntax by adding `..` to the arguments
+### Item dispatch
 
-ast_lowering_bad_return_type_notation_output =
-    return type not allowed with return type notation
-ast_lowering_bad_return_type_notation_output_suggestion = use the right argument notation and remove the return type
+lowering-unknown-item-tag =
+    Unknown item tag: { $tag }.
+lowering-unknown-item-tag.help =
+    Expected one of: space, pull, share, build, form, pick, bond, proc, flow, entry, global.
 
-ast_lowering_bad_return_type_notation_position = return type notation not allowed in this position yet
+lowering-item-missing-tag =
+    Item node is missing a tag.
+lowering-item-missing-tag.help =
+    The parser must set a stable tag identifying the item kind.
 
-ast_lowering_clobber_abi_not_supported =
-    `clobber_abi` is not supported on this target
+lowering-item-missing-name =
+    Item is missing a name.
+lowering-item-missing-name.help =
+    Provide a name in node.text for named items (form/pick/bond/proc/flow/global).
 
-ast_lowering_closure_cannot_be_static = closures cannot be static
+lowering-item-attrs-invalid =
+    Invalid attribute(s) on item { $item }.
+lowering-item-attrs-invalid.help =
+    Attributes must be valid for the specific item target (e.g. Proc/Form/Bond).
 
-ast_lowering_coroutine_too_many_parameters =
-    too many parameters for a coroutine (expected 0 or 1 parameters)
+lowering-item-attrs-normalized =
+    Attributes on item { $item } were normalized.
 
-ast_lowering_default_field_in_tuple = default fields are not supported in tuple structs
-    .label = default fields are only supported on structs
+lowering-item-duplicate =
+    Duplicate item name in the same scope: { $name }.
+lowering-item-duplicate.help =
+    Rename one of the items or move it into a different space/module.
 
-ast_lowering_delegation_cycle_in_signature_resolution = encountered a cycle during delegation signature resolution
-ast_lowering_delegation_unresolved_callee = failed to resolve delegation callee
-ast_lowering_does_not_support_modifiers =
-    the `{$class_name}` register class does not support template modifiers
+lowering-item-reserved-name =
+    Reserved item name: { $name }.
+lowering-item-reserved-name.help =
+    Pick a different name; reserved words are not allowed as item identifiers.
 
-ast_lowering_extra_double_dot =
-    `..` can only be used once per {$ctx} pattern
-    .label = can only be used once per {$ctx} pattern
 
-ast_lowering_functional_record_update_destructuring_assignment =
-    functional record updates are not allowed in destructuring assignments
-    .suggestion = consider removing the trailing pattern
+### space
 
-ast_lowering_generic_param_default_in_binder =
-    defaults for generic parameters are not allowed in `for<...>` binders
+lowering-space-missing-path =
+    space item is missing its path.
+lowering-space-missing-path.help =
+    Provide the module path in node.text, e.g. "space a/b/c".
 
-ast_lowering_generic_type_with_parentheses =
-    parenthesized type parameters may only be used with a `Fn` trait
-    .label = only `Fn` traits may use parentheses
+lowering-space-path-invalid =
+    space path is invalid: { $path }.
+lowering-space-path-invalid.help =
+    Use a clean path with segments separated by '/', without empty segments.
 
-ast_lowering_inclusive_range_with_no_end = inclusive range with no end
+lowering-space-multiple =
+    Multiple space declarations in the same file.
+lowering-space-multiple.help =
+    Keep only one space declaration per file (or ensure later declarations are explicitly allowed by the language rules).
 
-ast_lowering_inline_asm_unsupported_target =
-    inline assembly is unsupported on this target
 
-ast_lowering_invalid_abi =
-    invalid ABI: found `{$abi}`
-    .label = invalid ABI
-    .note = invoke `{$command}` for a full list of supported calling conventions
+### pull
 
-ast_lowering_invalid_abi_clobber_abi =
-    invalid ABI for `clobber_abi`
-    .note = the following ABIs are supported on this target: {$supported_abis}
+lowering-pull-missing-path =
+    pull item is missing its path.
+lowering-pull-missing-path.help =
+    Provide the pulled module path in node.text, e.g. "pull std/text as text".
 
-ast_lowering_invalid_abi_suggestion = there's a similarly named valid ABI `{$suggestion}`
+lowering-pull-path-invalid =
+    pull path is invalid: { $path }.
 
-ast_lowering_invalid_asm_template_modifier_const =
-    asm template modifiers are not allowed for `const` arguments
+lowering-pull-as-missing-name =
+    pull alias is missing a name.
+lowering-pull-as-missing-name.help =
+    Provide the alias identifier in the child node tagged "as".
 
-ast_lowering_invalid_asm_template_modifier_label =
-    asm template modifiers are not allowed for `label` arguments
+lowering-pull-only-empty =
+    pull only-list is empty.
+lowering-pull-only-empty.help =
+    Either remove the "only" clause or specify at least one imported name.
 
-ast_lowering_invalid_asm_template_modifier_reg_class =
-    invalid asm template modifier for this register class
+lowering-pull-only-invalid-name =
+    pull only-list contains an invalid name: { $name }.
 
-ast_lowering_invalid_asm_template_modifier_sym =
-    asm template modifiers are not allowed for `sym` arguments
+lowering-pull-duplicate-alias =
+    pull alias duplicates an existing name in scope: { $name }.
+lowering-pull-duplicate-alias.help =
+    Choose a different alias to avoid shadowing.
 
-ast_lowering_invalid_legacy_const_generic_arg =
-    invalid argument to a legacy const generic: cannot have const blocks, closures, async blocks or items
 
-ast_lowering_invalid_legacy_const_generic_arg_suggestion =
-    try using a const generic argument instead
+### share
 
-ast_lowering_invalid_register =
-    invalid register `{$reg}`: {$error}
+lowering-share-empty =
+    share item exports nothing.
+lowering-share-empty.help =
+    Use "share all" or provide at least one name to share.
 
-ast_lowering_invalid_register_class =
-    invalid register class `{$reg_class}`: unknown register class
-    .note = the following register classes are supported on this target: {$supported_register_classes}
+lowering-share-name-invalid =
+    share item contains an invalid name: { $name }.
 
-ast_lowering_match_arm_with_no_body =
-    `match` arm with no body
-    .suggestion = add a body after the pattern
+lowering-share-duplicate-name =
+    share item contains a duplicate name: { $name }.
 
-ast_lowering_misplaced_double_dot =
-    `..` patterns are not allowed here
-    .note = only allowed in tuple, tuple struct, and slice patterns
+lowering-share-all-with-names =
+    share all cannot be combined with an explicit name list.
+lowering-share-all-with-names.help =
+    Use either "share all" or "share name1, name2, ...", not both.
 
-ast_lowering_misplaced_impl_trait =
-    `impl Trait` is not allowed in {$position}
-    .note = `impl Trait` is only allowed in arguments and return types of functions and methods
 
-ast_lowering_never_pattern_with_body =
-    a never pattern is always unreachable
-    .label = this will never be executed
-    .suggestion = remove this expression
+### build
 
-ast_lowering_never_pattern_with_guard =
-    a guard on a never pattern will never be run
-    .suggestion = remove this guard
+lowering-build-missing-key =
+    build item is missing its key.
+lowering-build-missing-key.help =
+    Provide the key in node.text, e.g. "build target = ...".
 
-ast_lowering_no_precise_captures_on_apit = `use<...>` precise capturing syntax not allowed in argument-position `impl Trait`
+lowering-build-missing-value =
+    build item is missing its value.
+lowering-build-missing-value.help =
+    Provide a literal value node as the first child (string, int, bool, ...).
 
-ast_lowering_previously_used_here = previously used here
+lowering-build-non-literal-value =
+    build item value must be a literal, got { $kind }.
+lowering-build-non-literal-value.help =
+    Use a literal value (text/int/float/bool/null) in build declarations.
 
-ast_lowering_register1 = register `{$reg1_name}`
+lowering-build-unknown-key =
+    build key is not recognized: { $key }.
+lowering-build-unknown-key.help =
+    Verify the key name or register it as a supported build directive.
 
-ast_lowering_register2 = register `{$reg2_name}`
 
-ast_lowering_register_class_only_clobber =
-    register class `{$reg_class_name}` can only be used as a clobber, not as an input or output
-ast_lowering_register_class_only_clobber_stable =
-    register class `{$reg_class_name}` can only be used as a clobber in stable
+### form (struct-like)
 
-ast_lowering_register_conflict =
-    register `{$reg1_name}` conflicts with register `{$reg2_name}`
-    .help = use `lateout` instead of `out` to avoid conflict
+lowering-form-missing-name =
+    form item is missing its name.
+lowering-form-missing-name.help =
+    Provide the form name in node.text.
 
-ast_lowering_remove_parentheses = remove these parentheses
+lowering-form-duplicate-field =
+    Duplicate field name in form { $form }: { $field }.
+lowering-form-duplicate-field.help =
+    Each field must have a unique name.
 
-ast_lowering_sub_tuple_binding =
-    `{$ident_name} @` is not allowed in a {$ctx}
-    .label = this is only allowed in slice patterns
-    .help = remove this and bind each tuple field independently
+lowering-form-field-missing-type =
+    Field { $field } in form { $form } is missing its type.
+lowering-form-field-missing-type.help =
+    Provide a type node as a child of the field node.
 
-ast_lowering_sub_tuple_binding_suggestion = if you don't need to use the contents of {$ident}, discard the tuple's remaining fields
+lowering-form-field-invalid-init =
+    Field { $field } initializer is invalid.
+lowering-form-field-invalid-init.help =
+    Field initializers must be valid expressions.
 
-ast_lowering_support_modifiers =
-    the `{$class_name}` register class supports the following template modifiers: {$modifiers}
+lowering-form-type-params-duplicate =
+    Duplicate type parameter in form { $form }: { $name }.
 
-ast_lowering_template_modifier = template modifier
+lowering-form-type-params-empty =
+    form type parameter list is empty.
 
-ast_lowering_this_not_async = this is not `async`
+lowering-form-visibility-invalid =
+    form visibility is invalid: { $vis }.
+lowering-form-visibility-invalid.help =
+    Use "pub" or omit for hidden visibility.
 
-ast_lowering_underscore_expr_lhs_assign =
-    in expressions, `_` can only be used on the left-hand side of an assignment
-    .label = `_` not allowed here
+lowering-form-field-attrs-invalid =
+    Invalid attribute(s) on field { $field } in form { $form }.
 
-ast_lowering_union_default_field_values = unions cannot have default field values
 
-ast_lowering_unstable_inline_assembly = inline assembly is not stable yet on this architecture
-ast_lowering_unstable_inline_assembly_label_operand_with_outputs =
-    using both label and output operands for inline assembly is unstable
-ast_lowering_unstable_may_unwind = the `may_unwind` option is unstable
+### pick (enum-like)
 
-ast_lowering_use_angle_brackets = use angle brackets instead
+lowering-pick-missing-name =
+    pick item is missing its name.
 
-ast_lowering_yield = yield syntax is experimental
-ast_lowering_yield_in_closure =
-    `yield` can only be used in `#[coroutine]` closures, or `gen` blocks
-    .suggestion = use `#[coroutine]` to make this closure a coroutine
+lowering-pick-empty =
+    pick { $pick } contains no cases.
+lowering-pick-empty.help =
+    Add at least one "case" to the pick.
 
-## vitte_ast_lowering/messages.ftl
-##
-## Diagnostics strings for the Vitte lowering layer (AST_IR -> ASM).
-##
-## Conventions:
-## - Prefix: `vitte_lowering_` for this crate
-## - Variables: {$name}, {$kind}, {$details}, {$label}, etc.
-## - Keep messages short, deterministic and backend-agnostic.
+lowering-pick-duplicate-case =
+    Duplicate case name in pick { $pick }: { $case }.
 
-# ------------------------------------------------------------
-# Generic lowering errors
-# ------------------------------------------------------------
+lowering-pick-case-invalid =
+    Invalid case declaration in pick { $pick }.
+lowering-pick-case-invalid.help =
+    A case must provide a case name and optional payload types.
 
-vitte_lowering_internal_error =
-    erreur interne du lowering: {$details}
-    .note = ceci est un bug du compilateur (vitte_ast_lowering)
+lowering-pick-case-payload-invalid =
+    Case { $case } payload type is invalid.
 
-vitte_lowering_unhandled_construct =
-    construction non supportée par le lowering: {$what}
-    .help = simplifier l'expression ou attendre l'implémentation complète du lowering
+lowering-pick-type-params-duplicate =
+    Duplicate type parameter in pick { $pick }: { $name }.
 
-vitte_lowering_out_of_range =
-    index hors limites dans l'IR ({$table}): {$id}
-    .note = l'IR est invalide ou corrompu
 
-# ------------------------------------------------------------
-# Delegation / pipeline
-# ------------------------------------------------------------
+### bond (type alias / builtin bind)
 
-vitte_lowering_delegation_cycle_in_signature_resolution =
-    cycle détecté lors de la résolution de signature (delegation)
-    .note = vérifier les renvois récursifs de signatures
+lowering-bond-missing-name =
+    bond item is missing its name.
 
-vitte_lowering_delegation_unresolved_callee =
-    impossible de résoudre le callee de delegation
-    .help = vérifier le nom, le module, et les exports visibles
+lowering-bond-missing-target =
+    bond { $bond } is missing its target type.
+lowering-bond-missing-target.help =
+    Provide a type node child describing the bound target (e.g. builtin_f32).
 
-vitte_lowering_invalid_lowering_mode =
-    mode de lowering invalide: {$mode}
+lowering-bond-target-invalid =
+    bond { $bond } target type is invalid.
 
-# ------------------------------------------------------------
-# CFG / builder (block.vit)
-# ------------------------------------------------------------
+lowering-bond-duplicate =
+    Duplicate bond name: { $name }.
 
-vitte_lowering_no_current_block =
-    aucun block courant pour émettre une instruction
-    .note = le builder n'est pas positionné sur un label actif
 
-vitte_lowering_unknown_label =
-    label inconnu: {$label}
-    .help = vérifier que le label cible a été alloué
+### proc / flow
 
-vitte_lowering_block_sealed =
-    le block {$label} est déjà terminé (terminator présent)
-    .note = aucune instruction ne peut être ajoutée après un terminator
+lowering-proc-missing-name =
+    proc item is missing its name.
 
-# ------------------------------------------------------------
-# Contract / invariants (contract.vit)
-# ------------------------------------------------------------
+lowering-flow-missing-name =
+    flow item is missing its name.
 
-vitte_lowering_empty_function =
-    fonction vide: aucune block / aucune instruction
+lowering-proc-missing-body =
+    proc { $name } is missing its body block.
+lowering-proc-missing-body.help =
+    Ensure the parser produces a child node tagged "block" for proc bodies.
 
-vitte_lowering_duplicate_label =
-    label dupliqué: {$label}
-    .note = chaque label doit être unique dans une fonction
+lowering-flow-missing-body =
+    flow { $name } is missing its body block.
 
-vitte_lowering_unknown_target_label =
-    cible de branchement inconnue: {$label}
-    .help = vérifier les `jmp` / `br` et les labels générés
+lowering-proc-params-invalid =
+    proc { $name } parameters are invalid.
 
-vitte_lowering_inst_after_terminator =
-    instruction après terminator dans {$label}
-    .note = un block doit terminer par un seul terminator (jmp/br/ret)
+lowering-flow-params-invalid =
+    flow { $name } parameters are invalid.
 
-# ------------------------------------------------------------
-# Patterns / match (pat.vit + expr.vit)
-# ------------------------------------------------------------
+lowering-param-missing-name =
+    Parameter is missing its name.
 
-vitte_lowering_pattern_unhandled =
-    pattern non supporté par le lowering: {$pattern}
-    .help = utiliser `_`, un bind simple, ou un littéral
+lowering-param-type-invalid =
+    Parameter { $name } type is invalid.
 
-vitte_lowering_match_test_chain_todo =
-    tests de `match` non implémentés (chaîne de tests)
-    .note = le lowering actuel utilise un fallback déterministe
+lowering-param-default-invalid =
+    Parameter { $name } default value is invalid.
 
-vitte_lowering_tuple_pattern_test_todo =
-    test de pattern tuple non implémenté
+lowering-return-type-invalid =
+    Return type is invalid.
 
-# ------------------------------------------------------------
-# Path / symbols (path.vit)
-# ------------------------------------------------------------
+lowering-proc-visibility-invalid =
+    proc visibility is invalid: { $vis }.
 
-vitte_lowering_path_requires_resolution =
-    impossible de lower un chemin non résolu: {$path}
-    .help = exécuter la résolution de noms (Res) avant le lowering
+lowering-flow-visibility-invalid =
+    flow visibility is invalid: { $vis }.
 
-vitte_lowering_local_operand_requires_context =
-    un `local` ne peut pas être abaissé en opérande sans contexte de fonction
 
-vitte_lowering_symbol_not_a_value =
-    le symbole n'est pas une valeur: {$kind}
-    .help = seules les fonctions et globales sont abaissées en opérandes de valeur
+### entry
 
-vitte_lowering_variant_not_implemented =
-    lowering des variants non implémenté
+lowering-entry-kind-unknown =
+    entry kind is unknown: { $kind }.
+lowering-entry-kind-unknown.help =
+    Supported entry kinds: app, service, tool, pipeline, driver, kernel.
 
-# ------------------------------------------------------------
-# Globals
-# ------------------------------------------------------------
+lowering-entry-missing-path =
+    entry is missing its target path.
+lowering-entry-missing-path.help =
+    Provide the target path in the first child node (node.text), e.g. "entry tool a/b".
 
-vitte_lowering_global_initializer_not_constant =
-    l'initialiseur de globale doit être constant
-    .help = remplacer par un littéral / une constante évaluée à la compilation
+lowering-entry-missing-body =
+    entry is missing its body block.
 
-# ------------------------------------------------------------
-# Formatting / debug
-# ------------------------------------------------------------
+lowering-entry-path-invalid =
+    entry path is invalid: { $path }.
 
-vitte_lowering_formatting_failed =
-    échec du formatage du programme lowered
 
-# ------------------------------------------------------------
-# Misc helpers / labels used by diagnostics
-# ------------------------------------------------------------
+### global
 
-vitte_lowering_previous_definition =
-    précédemment défini ici
+lowering-global-missing-name =
+    global item is missing its name.
 
-vitte_lowering_here =
-    ici
+lowering-global-missing-init =
+    global { $name } is missing an initializer.
+lowering-global-missing-init.help =
+    Provide an expression node for the initializer.
+
+lowering-global-type-invalid =
+    global { $name } type is invalid.
+
+lowering-global-init-invalid =
+    global { $name } initializer is invalid.
+
+lowering-global-visibility-invalid =
+    global visibility is invalid: { $vis }.
+
+
+### Type lowering
+
+lowering-type-unknown-tag =
+    Unknown type node tag: { $tag }.
+lowering-type-unknown-tag.help =
+    Expected type tags like builtin, named, list_of, map_of, pack_of, or.
+
+lowering-type-missing-text =
+    Type node is missing its textual payload.
+
+lowering-type-named-path-invalid =
+    Named type path is invalid: { $path }.
+
+lowering-type-args-invalid =
+    Type argument list is invalid.
+
+lowering-type-map-arity =
+    map_of requires exactly two type children (key, value).
+
+lowering-type-or-arity =
+    or requires exactly two type children (left, right).
+
+
+### Statement lowering
+
+lowering-unknown-stmt-tag =
+    Unknown statement tag: { $tag }.
+lowering-unknown-stmt-tag.help =
+    Ensure statement tags match the surface grammar (make/keep/set/if/loop_while/loop_until/each/select/give/emit/defer/assert/halt/next).
+
+lowering-make-missing-name =
+    make statement is missing its name.
+lowering-make-missing-name.help =
+    Provide the local name in node.text.
+
+lowering-make-missing-init =
+    make { $name } is missing its initializer.
+lowering-make-missing-init.help =
+    Provide an expression node as initializer or omit if allowed.
+
+lowering-make-type-invalid =
+    make { $name } type is invalid.
+
+lowering-keep-missing-name =
+    keep statement is missing its name.
+
+lowering-keep-missing-init =
+    keep { $name } is missing its initializer.
+
+lowering-keep-type-invalid =
+    keep { $name } type is invalid.
+
+lowering-set-missing-target =
+    set statement is missing its target.
+
+lowering-set-missing-value =
+    set statement is missing its value.
+
+lowering-set-op-invalid =
+    set operator is invalid: { $op }.
+lowering-set-op-invalid.help =
+    Supported operators: =, +=, -=, *=, /=, %=.
+
+lowering-if-missing-cond =
+    if statement is missing its condition.
+
+lowering-if-missing-then =
+    if statement is missing its then-block.
+
+lowering-elif-invalid =
+    elif clause is invalid.
+lowering-elif-invalid.help =
+    An elif must contain (condition, block).
+
+lowering-else-invalid =
+    else clause is invalid.
+lowering-else-invalid.help =
+    An else must contain exactly one block.
+
+lowering-loop-missing-cond =
+    loop is missing its condition.
+
+lowering-loop-missing-body =
+    loop is missing its body block.
+
+lowering-each-missing-item =
+    each is missing its item binding name.
+
+lowering-each-missing-iterable =
+    each is missing its iterable expression.
+
+lowering-each-missing-body =
+    each is missing its body block.
+
+lowering-select-missing-scrutinee =
+    select is missing its scrutinee expression.
+
+lowering-select-when-invalid =
+    when arm is invalid.
+lowering-select-when-invalid.help =
+    A when must contain (pattern, block).
+
+lowering-select-otherwise-invalid =
+    otherwise arm is invalid.
+lowering-select-otherwise-invalid.help =
+    otherwise must contain exactly one block.
+
+lowering-give-value-invalid =
+    give value is invalid.
+
+lowering-emit-value-invalid =
+    emit value is invalid.
+
+lowering-defer-missing-action =
+    defer is missing its action.
+lowering-defer-missing-action.help =
+    Provide an action node (call/set/emit) as the first child.
+
+lowering-defer-action-invalid =
+    defer action is invalid: { $action }.
+lowering-defer-action-invalid.help =
+    Supported defer actions: call(expr), set(target, op, value), emit(expr).
+
+lowering-assert-missing-cond =
+    assert is missing its condition.
+
+lowering-assert-message-invalid =
+    assert message is invalid.
+
+
+### Expression lowering
+
+lowering-unknown-expr-tag =
+    Unknown expression tag: { $tag }.
+
+lowering-expr-missing-text =
+    Expression node is missing its textual payload.
+
+lowering-expr-literal-invalid =
+    Literal is invalid: { $lit }.
+
+lowering-expr-name-invalid =
+    Name reference is invalid: { $name }.
+
+lowering-expr-path-invalid =
+    Path reference is invalid: { $path }.
+
+lowering-expr-call-missing-callee =
+    call expression is missing its callee.
+
+lowering-expr-call-arg-invalid =
+    call argument is invalid.
+
+lowering-expr-index-arity =
+    index expression requires (base, index).
+
+lowering-expr-field-arity =
+    field expression requires (base) and a field name.
+
+lowering-expr-unary-arity =
+    unary expression requires (op, expr).
+
+lowering-expr-unary-op-invalid =
+    unary operator is invalid: { $op }.
+lowering-expr-unary-op-invalid.help =
+    Supported unary operators: '-', 'not'.
+
+lowering-expr-binary-arity =
+    binary expression requires (left, op, right).
+
+lowering-expr-binary-op-invalid =
+    binary operator is invalid: { $op }.
+
+lowering-expr-list-item-invalid =
+    list literal contains an invalid item.
+
+lowering-expr-map-entry-invalid =
+    map literal entry is invalid.
+lowering-expr-map-entry-invalid.help =
+    Each map entry must have exactly (key, value).
+
+lowering-expr-pack-item-invalid =
+    pack literal contains an invalid item.
+
+
+### Pattern lowering
+
+lowering-unknown-pattern-tag =
+    Unknown pattern tag: { $tag }.
+
+lowering-pattern-variant-invalid =
+    Variant pattern is invalid.
+lowering-pattern-variant-invalid.help =
+    Provide a type path, a case name, and optional payload patterns.
+
+lowering-pattern-tuple-item-invalid =
+    Tuple pattern contains an invalid item.
+
+lowering-pattern-list-item-invalid =
+    List pattern contains an invalid item.
+
+
+### Attribute normalization / targets
+
+lowering-attr-unknown =
+    Unknown attribute: { $name }.
+
+lowering-attr-disallowed-target =
+    Attribute { $name } is not allowed on { $target }.
+lowering-attr-disallowed-target.help =
+    Move the attribute to a compatible declaration or remove it.
+
+lowering-attr-duplicate =
+    Duplicate attribute: { $name }.
+lowering-attr-duplicate.help =
+    Remove the duplicate or merge the attribute arguments.
+
+lowering-attr-args-invalid =
+    Attribute { $name } has invalid arguments.
+
+lowering-attr-cfg-invalid =
+    cfg attribute is invalid.
+
+lowering-attr-cfg-unknown-key =
+    cfg attribute uses unknown key: { $key }.
+lowering-attr-cfg-unknown-key.help =
+    If strict cfg is enabled, only registered keys are allowed (e.g. os, arch, feature).
+
+
+### Recovery / internal
+
+lowering-internal-unreachable =
+    Internal error: unreachable lowering path.
+
+lowering-internal-missing-child =
+    Internal error: expected child { $index } but it was missing.
+
+lowering-recovery-insert-hole =
+    Inserted a hole node for recovery.
+
+lowering-recovery-continue =
+    Continuing lowering after error(s).
+
+lowering-summary =
+    Lowering completed: { $items } item(s), { $stmts } stmt(s), { $exprs } expr(s), { $errors } error(s).

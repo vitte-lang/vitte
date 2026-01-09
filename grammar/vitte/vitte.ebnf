@@ -1,0 +1,406 @@
+# ============================================================
+# vitte.ebnf — VITTE FULL (surface, compiler-friendly)
+# - Blocks end ONLY with ".end"
+# - Identifiers may contain "_" (underscore)
+# - Comment zones: <<< [tag] ... >>>
+# - Modules: space / pull / share / build
+# - Types: form / pick / bond
+# - Runnables: proc / flow / entry
+# - Statements: make / keep / set / if / elif / else / loop / each / select
+#               give / emit / defer / assert / foreign
+# ============================================================
+
+
+# ----------------------------
+# 0) FILE
+# ----------------------------
+
+file              ::= WS? header? NL* { toplevel } WS? EOF ;
+
+header            ::= "vitte" WS1 version? NL ;
+version           ::= integer { "." integer } ;
+
+
+# ----------------------------
+# 1) TOPLEVEL ITEMS
+# ----------------------------
+
+toplevel          ::= doc_zone
+                    | doc_line
+                    | space_decl
+                    | pull_decl
+                    | share_decl
+                    | build_decl
+                    | type_decl
+                    | proc_decl
+                    | flow_decl
+                    | entry_decl
+                    | global_decl
+                    | NL
+                    ;
+
+doc_line          ::= "doc" WS line_text? NL ;
+
+# Comment zone usable anywhere (top-level or inside blocks)
+doc_zone          ::= "<<<" doc_tag? NL { doc_zone_line } ">>>" NL ;
+doc_tag           ::= WS ident ;
+doc_zone_line     ::= { ~NL } NL ;
+
+
+# ----------------------------
+# 2) MODULES / IMPORTS / EXPORTS / BUILD
+# ----------------------------
+
+space_decl        ::= "space" WS path NL ;
+
+pull_decl         ::= "pull" WS path pull_as? pull_only? NL ;
+pull_as           ::= WS "as" WS ident ;
+pull_only         ::= WS "only" WS "(" WS? ident_list WS? ")" ;
+
+share_decl        ::= "share" WS ("all" | "(" WS? ident_list WS? ")") NL ;
+
+build_decl        ::= "build" WS build_key WS "is" WS build_value NL ;
+build_key         ::= ident { "-" ident } ;
+build_value       ::= string | ident | integer | float | "true" | "false" ;
+
+ident_list        ::= ident { WS? "," WS? ident } ;
+
+
+# ----------------------------
+# 3) TYPES (form / pick / bond)
+# ----------------------------
+
+type_decl         ::= form_decl | pick_decl | bond_decl ;
+
+vis               ::= "pub" WS | "hid" WS ;          # public / hidden(module-private)
+
+form_decl         ::= vis? "form" WS ident type_params? NL
+                      { field_decl }
+                      ".end" NL ;
+
+field_decl        ::= vis? "field" WS ident WS "as" WS type_expr field_init? NL ;
+field_init        ::= WS "=" WS expr ;
+
+pick_decl         ::= vis? "pick" WS ident type_params? NL
+                      { case_decl }
+                      ".end" NL ;
+
+case_decl         ::= vis? "case" WS ident case_payload? NL ;
+case_payload      ::= WS "(" WS? type_list WS? ")" ;
+
+bond_decl         ::= vis? "bond" WS ident type_params? WS "means" WS type_expr NL ;
+
+type_params       ::= "[" WS? ident_list WS? "]" ;
+type_list         ::= type_expr { WS? "," WS? type_expr } ;
+
+
+# ----------------------------
+# 4) GLOBALS (top-level vars/consts)
+# ----------------------------
+
+global_decl       ::= const_decl | var_decl ;
+
+const_decl        ::= vis? "const" WS ident (WS "as" WS type_expr)? WS "=" WS expr NL ;
+var_decl          ::= vis? "var"   WS ident (WS "as" WS type_expr)? (WS "=" WS expr)? NL ;
+
+
+# ----------------------------
+# 5) RUNNABLES (proc / flow / entry)
+# ----------------------------
+
+proc_decl         ::= proc_head NL block ".end" NL ;
+proc_head         ::= vis? "proc" WS ident "(" WS? params? WS? ")" ret_sig? proc_marks? ;
+
+flow_decl         ::= flow_head NL block ".end" NL ;
+flow_head         ::= vis? "flow" WS ident "(" WS? params? WS? ")" ret_sig? ;
+
+entry_decl        ::= entry_head NL block ".end" NL ;
+entry_head        ::= "entry" WS entry_kind WS "at" WS path ;
+
+entry_kind        ::= "app" | "service" | "tool" | "pipeline" | "driver" | "kernel" ;
+
+params            ::= param { WS? "," WS? param } ;
+param             ::= ident (WS "as" WS type_expr)? param_default? ;
+param_default     ::= WS "=" WS expr ;
+
+ret_sig           ::= WS "gives" WS type_expr ;
+
+# Optional attributes/marks (kept simple)
+proc_marks        ::= { WS "mark" WS mark_key (WS mark_value)? } ;
+mark_key          ::= ident ;
+mark_value        ::= string | ident | integer | float | "true" | "false" ;
+
+
+# ----------------------------
+# 6) BLOCKS / STATEMENTS
+# ----------------------------
+
+block             ::= { stmt } ;
+
+stmt              ::= doc_zone
+                    | make_stmt
+                    | keep_stmt
+                    | set_stmt
+                    | if_stmt
+                    | loop_while_stmt
+                    | loop_until_stmt
+                    | each_stmt
+                    | select_stmt
+                    | give_stmt
+                    | emit_stmt
+                    | defer_stmt
+                    | assert_stmt
+                    | foreign_stmt
+                    | break_stmt
+                    | next_stmt
+                    | expr_stmt
+                    | NL
+                    ;
+
+# locals
+make_stmt         ::= "make" WS ident (WS "as" WS type_expr)? (WS "=" WS expr)? NL ;
+keep_stmt         ::= "keep" WS ident (WS "as" WS type_expr)? WS "=" WS expr NL ;
+
+# assignment
+set_stmt          ::= "set" WS target WS set_op WS expr NL ;
+set_op            ::= "=" | "+=" | "-=" | "*=" | "/=" | "%=" ;
+
+# branching
+if_stmt           ::= "if" WS expr NL
+                      block
+                      { elif_part }
+                      else_part?
+                      ".end" NL ;
+
+elif_part         ::= "elif" WS expr NL block ;
+else_part         ::= "else" NL block ;
+
+# loops
+loop_while_stmt   ::= "loop" WS "while" WS expr NL block ".end" NL ;
+loop_until_stmt   ::= "loop" WS "until" WS expr NL block ".end" NL ;
+
+# foreach (optionally with index)
+each_stmt         ::= "each" WS ident (WS "," WS ident)? WS "in" WS expr NL
+                      block
+                      ".end" NL ;
+
+# match/select
+select_stmt       ::= "select" WS expr NL
+                      { when_arm }
+                      otherwise_arm?
+                      ".end" NL ;
+
+when_arm          ::= "when" WS pattern NL block ;
+otherwise_arm     ::= "otherwise" NL block ;
+
+# control flow
+give_stmt         ::= "give" (WS expr)? NL ;
+break_stmt        ::= "halt" NL ;                      # breaks the nearest loop
+next_stmt         ::= "next" NL ;                      # continues the nearest loop
+
+# output/log
+emit_stmt         ::= "emit" WS expr NL ;
+
+# defer (runs at scope end)
+defer_stmt        ::= "defer" WS deferred NL ;
+deferred          ::= call_expr
+                    | set_inline
+                    | emit_inline
+                    ;
+set_inline        ::= "set" WS target WS set_op WS expr ;
+emit_inline       ::= "emit" WS expr ;
+
+# assertions
+assert_stmt       ::= "assert" WS expr (WS "," WS expr)? NL ;
+
+# FFI declarations inside blocks (optional feature)
+foreign_stmt      ::= "foreign" WS foreign_item NL ;
+foreign_item      ::= foreign_proc | foreign_form ;
+foreign_proc      ::= "proc" WS ident "(" WS? params? WS? ")" ret_sig? WS "abi" WS string ;
+foreign_form      ::= "form" WS ident WS "abi" WS string ;
+
+expr_stmt         ::= expr NL ;
+
+
+# ----------------------------
+# 7) TARGETS / ACCESS / CALL
+# ----------------------------
+
+target            ::= access ;
+
+access            ::= primary { access_step } ;
+access_step       ::= dot_step | index_step | call_step ;
+
+dot_step          ::= WS? "." WS? ident ;
+index_step        ::= WS? "[" WS? expr WS? "]" ;
+call_step         ::= WS? "(" WS? args? WS? ")" ;
+
+call_expr         ::= access ;
+
+args              ::= arg { WS? "," WS? arg } ;
+arg               ::= named_arg | expr ;
+named_arg         ::= ident WS? "=" WS? expr ;
+
+
+# ----------------------------
+# 8) PATTERNS (for select)
+# ----------------------------
+
+pattern           ::= "_" | literal | ident | tuple_pat | list_pat | variant_pat ;
+
+tuple_pat         ::= "(" WS? pat_list? WS? ")" ;
+list_pat          ::= "[" WS? pat_list? WS? "]" ;
+pat_list          ::= pattern { WS? "," WS? pattern } ;
+
+# Variant pattern: TypeName.Case(...)
+# (uses path + dot + ident, so it does not require "::")
+variant_pat       ::= path WS? "." WS? ident tuple_pat? ;
+
+
+# ----------------------------
+# 9) TYPE EXPRESSIONS
+# ----------------------------
+
+type_expr         ::= type_or ;
+type_or           ::= type_atom { WS "or" WS type_atom } ;
+
+type_atom         ::= type_named
+                    | type_group
+                    | type_list
+                    | type_map
+                    | type_pack
+                    ;
+
+type_named        ::= path type_args? ;
+type_args         ::= "[" WS? type_args_list? WS? "]" ;
+type_args_list    ::= type_expr { WS? "," WS? type_expr } ;
+
+type_group        ::= "(" WS? type_expr WS? ")" ;
+
+# readable collection spellings
+type_list         ::= "List" WS "of" WS type_expr ;
+type_map          ::= "Map"  WS "of" WS type_expr WS "to" WS type_expr ;
+
+# small tuple-like types (optional)
+type_pack         ::= "Pack" WS "of" WS type_expr { WS "and" WS type_expr } ;
+
+
+# ----------------------------
+# 10) EXPRESSIONS
+# ----------------------------
+
+expr              ::= logic_or ;
+
+logic_or          ::= logic_and { WS "or" WS logic_and } ;
+logic_and         ::= equality { WS "and" WS equality } ;
+
+equality          ::= compare { WS ( "==" | "!=" ) WS compare } ;
+compare           ::= add { WS ( "<" | "<=" | ">" | ">=" ) WS add } ;
+
+add               ::= mul { WS ( "+" | "-" ) WS mul } ;
+mul               ::= unary { WS ( "*" | "/" | "%" ) WS unary } ;
+
+unary             ::= ( "not" WS unary )
+                    | ( "-" WS unary )
+                    | access
+                    ;
+
+primary           ::= literal
+                    | ident
+                    | "(" WS? expr WS? ")"
+                    | list_lit
+                    | map_lit
+                    | pack_lit
+                    ;
+
+list_lit          ::= "[" WS? expr_list? WS? "]" ;
+expr_list         ::= expr { WS? "," WS? expr } ;
+
+# Map literal uses a distinctive arrow "=>"
+# (kept simple; if you want "no braces anywhere", replace with map(...) form later)
+map_lit           ::= "{" WS? map_entries? WS? "}" ;
+map_entries       ::= map_entry { WS? "," WS? map_entry } ;
+map_entry         ::= expr WS? "=>" WS? expr ;
+
+# Tuple-like value literal with a keyword
+pack_lit          ::= "pack" WS "(" WS? expr_list? WS? ")" ;
+
+
+# ----------------------------
+# 11) PATHS / IDENTIFIERS
+# ----------------------------
+
+path              ::= ident { ("/" | "." | "::") ident } ;
+
+ident             ::= ident_start { ident_continue } ;
+ident_start       ::= "_" | letter ;
+ident_continue    ::= ident_start | digit ;
+
+letter            ::= "A".."Z" | "a".."z" ;
+digit             ::= "0".."9" ;
+
+
+# ----------------------------
+# 12) LITERALS (with optional numeric suffixes)
+# ----------------------------
+
+literal           ::= integer_lit | float_lit | string | boolean | null ;
+
+boolean           ::= "true" | "false" ;
+null              ::= "null" ;
+
+# Integer literals:
+# - bases: 0b, 0o, 0x
+# - underscores allowed in digits for readability
+# - optional suffix (e.g. 42i32, 0xffu8)
+integer_lit       ::= int_prefix? int_digits int_suffix? ;
+int_prefix        ::= "0b" | "0o" | "0x" ;
+int_digits        ::= int_digit { int_digit | "_" } ;
+int_digit         ::= digit | "a".."f" | "A".."F" ;
+
+int_suffix        ::= "i8" | "i16" | "i32" | "i64"
+                    | "u8" | "u16" | "u32" | "u64"
+                    | "isize" | "usize"
+                    ;
+
+# Float literals:
+# - optional exponent
+# - optional suffix (f32/f64)
+float_lit         ::= float_core float_suffix? ;
+float_core        ::= digits "." digits exp_part?
+                    | digits exp_part
+                    ;
+float_suffix      ::= "f32" | "f64" ;
+
+exp_part          ::= ("e"|"E") sign? digits ;
+sign              ::= "+" | "-" ;
+
+digits            ::= digit { digit | "_" } ;
+
+# Strings
+string            ::= dq_string | sq_string ;
+dq_string         ::= "\"" { dq_char } "\"" ;
+sq_string         ::= "'"  { sq_char }  "'"  ;
+
+dq_char           ::= escape | ~("\"" | NL) ;
+sq_char           ::= escape | ~("'"  | NL) ;
+
+escape            ::= "\\" ( "\\" | "\"" | "'" | "n" | "r" | "t" | "0"
+                          | "u" hex hex hex hex ) ;
+hex               ::= digit | "A".."F" | "a".."f" ;
+
+line_text         ::= { ~NL } ;
+
+
+# ----------------------------
+# 13) WHITESPACE / COMMENTS
+# ----------------------------
+
+NL                ::= "\n" | "\r\n" ;
+WS                ::= { " " | "\t" | comment } ;
+WS1               ::= ( " " | "\t" ) { " " | "\t" } ;
+
+# Single-line comment (kept simple; zone comments use <<< >>>)
+comment           ::= "#" { ~NL } ;
+
+EOF               ::= ? end of input ? ;

@@ -1,0 +1,455 @@
+vitte 1.0
+space lingua/syntax/vitte_builtin_macros/assert/master
+
+<<< master
+  vitte_builtin_macros/assert/master.vit — Builtin macro: assert (MAX)
+
+  Goal:
+    - Provide a compiler-friendly, deterministic lowering for "assert" usage.
+    - Work at AST / expanded AST / IR boundary:
+        * Accept an expanded AST statement node tagged "assert"
+        * Or accept an IR assert statement (already lowered)
+    - Expand into:
+        * optional message formatting
+        * panic/abort emission (or diagnostic-only in tooling mode)
+        * source context capture: file/line/col (if available)
+    - Must not allocate complex runtime structures in the compiler stage.
+
+  Surface forms:
+    assert condition
+    assert condition, "message"
+    assert condition, "message {x}", x
+    assert condition, code = "E123", note = "..."
+
+  Resulting normalized IR intent:
+    if not(condition)
+      emit panic("assert failed", meta...)
+    .end
+
+  Integration:
+    - called from vitte_ast_expand or vitte_ast_lowering (depending on architecture)
+    - requires:
+        * diag for compile-time errors
+        * span to locate context
+        * optional fmt helper (minimal)
+>>>
+
+pull std/text as text
+pull std/collections/list as list
+pull std/collections/map as map
+
+pull lingua/syntax/vitte_ast/span as span
+pull lingua/syntax/vitte_ast/diag as diag
+pull lingua/syntax/vitte_ast/expand/master as expand
+pull lingua/syntax/vitte_ast_ir/master as ir
+
+share all
+
+bond Text means String
+
+
+<<< =========================================================
+  0) CONFIG / RESULT TYPES
+========================================================= >>>
+
+pick AssertMode
+case RuntimePanic()      # emit runtime panic/abort on failure
+case RuntimeTrap()       # emit runtime trap (no message)
+case CompileTimeOnly()   # only produce diagnostics, no runtime emission
+.end
+
+form AssertConfig
+field mode as AssertMode = AssertMode.RuntimePanic()
+field include_span as Bool = true
+field include_condition_text as Bool = false
+field default_code as Text = "ASSERT"
+field default_note as Text = "assertion failed"
+field panic_symbol as Text = "builtin.panic"
+field trap_symbol as Text = "builtin.trap"
+field max_message_args as Int = 16
+.end
+
+proc assert_config_default() gives AssertConfig
+give AssertConfig()
+.end
+
+form AssertExpandStats
+field asserts_seen as U64 = 0u64
+field asserts_rewritten as U64 = 0u64
+field asserts_dropped as U64 = 0u64
+field errors as U64 = 0u64
+.end
+
+form AssertExpandResult
+field out_stmt as expand.Node = expand.Node()
+field diags as List of diag.Diagnostic = []
+field stats as AssertExpandStats = AssertExpandStats()
+.end
+
+
+<<< =========================================================
+  1) ENTRYPOINTS
+========================================================= >>>
+
+proc expand_assert_stmt(stmt as expand.Node, cfg as AssertConfig, diags as List of diag.Diagnostic) gives expand.Node
+# Input: stmt is a statement node tagged "assert"
+# Output: a normalized statement node:
+#   - If cfg.mode is CompileTimeOnly => may become a no-op statement
+#   - Else => becomes an "if not(cond) ... .end" block with panic/trap emit inside
+make stats as AssertExpandStats = AssertExpandStats()
+set stats.asserts_seen = 1u64
+
+if stmt.tag != "assert"
+  list.push(diags, diag.error("macro-assert-expected-assert", stmt.span))
+  set stats.errors += 1u64
+  give stmt
+.end
+
+make cond as expand.Node = _assert_get_cond(stmt, diags)
+if cond.tag == ""
+  list.push(diags, diag.error("macro-assert-missing-cond", stmt.span))
+  set stats.errors += 1u64
+  give stmt
+.end
+
+# parse optional message + metadata
+make msg as expand.Node = _assert_get_msg(stmt)
+make meta as AssertMeta = _assert_parse_meta(stmt, cfg, diags)
+
+# If CompileTimeOnly: keep assert node but mark; or drop into "emit" diagnostics
+if cfg.mode is AssertMode.CompileTimeOnly()
+  # turn into a diagnostic-only pseudo statement:
+  #   assert cond  => keep as "assert_ct" so pipeline can handle it, or no-op
+  make nop as expand.Node = expand.node_make(stmt.id, expand.NodeKind.Stmt(), "noop", stmt.span)
+  set stats.asserts_dropped = 1u64
+  give nop
+.end
+
+# Build: if not(cond) { emit panic(...) } .end
+make ifs as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.Stmt(), "if", stmt.span)
+
+# cond becomes: unary not cond
+make un as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.Expr(), "unary", cond.span)
+make op as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.Expr(), "op", cond.span)
+set op.text = "not"
+list.push(un.kids, op)
+list.push(un.kids, cond)
+
+# then block
+make then_blk as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.Stmt(), "block", stmt.span)
+make fail_stmt as expand.Node = _assert_build_fail_stmt(stmt, msg, meta, cfg, diags)
+
+list.push(then_blk.kids, fail_stmt)
+
+# attach kids: cond, then block
+list.push(ifs.kids, un)
+list.push(ifs.kids, then_blk)
+
+set stats.asserts_rewritten = 1u64
+give ifs
+.end
+
+
+proc lower_ir_assert(stmt as ir.Stmt, cfg as AssertConfig, diags as List of diag.Diagnostic) gives List of ir.Stmt
+# Input: an IR assert statement (StmtKind.Assert).
+# Output: list of IR statements, typically:
+#   if not(cond) { emit panic(...) } .end
+# If cfg.mode CompileTimeOnly => empty list
+if stmt.kind is ir.StmtKind.Assert(_, _, _)
+  if cfg.mode is AssertMode.CompileTimeOnly()
+    give []
+  .end
+  give _ir_expand_assert(stmt, cfg, diags)
+.end
+# not an assert => return as-is
+give [stmt]
+.end
+
+
+<<< =========================================================
+  2) META PARSING (message, code, note)
+========================================================= >>>
+
+form AssertMeta
+field code as Text = ""
+field note as Text = ""
+field has_code as Bool = false
+field has_note as Bool = false
+field has_span as Bool = false
+field span_text as Text = ""        # serialized span context
+field cond_text as Text = ""        # optional source of condition (if provided)
+.end
+
+proc _assert_parse_meta(stmt as expand.Node, cfg as AssertConfig, diags as List of diag.Diagnostic) gives AssertMeta
+make m as AssertMeta = AssertMeta()
+set m.code = cfg.default_code
+set m.note = cfg.default_note
+set m.has_code = false
+set m.has_note = false
+
+# named meta args are encoded as child nodes tagged "named" (implementation-dependent).
+# Here we accept convention:
+#   stmt.kids: [cond, msg?, named_kv*]
+# where named kv node has:
+#   kv.text = key, kv.kids[0] = value expr
+make i as Int = 0
+loop while i < list.len(stmt.kids)
+  make k as expand.Node = stmt.kids[i]
+  if k.tag == "named"
+    make key as Text = k.text
+    if list.len(k.kids) > 0
+      make vtxt as Text = _expr_as_text(k.kids[0])
+      if key == "code"
+        set m.code = vtxt
+        set m.has_code = true
+      elif key == "note"
+        set m.note = vtxt
+        set m.has_note = true
+      .end
+    else
+      list.push(diags, diag.error("macro-assert-named-missing-value", k.span))
+    .end
+  .end
+  set i += 1
+.end
+
+# span text
+if cfg.include_span
+  set m.has_span = true
+  set m.span_text = _span_to_text(stmt.span)
+.end
+
+# condition text (best-effort)
+if cfg.include_condition_text
+  make cond as expand.Node = _assert_get_cond(stmt, diags)
+  set m.cond_text = _expr_as_text(cond)
+.end
+
+give m
+.end
+
+
+proc _assert_get_cond(stmt as expand.Node, diags as List of diag.Diagnostic) gives expand.Node
+if list.len(stmt.kids) == 0
+  give expand.Node()
+.end
+give stmt.kids[0]
+.end
+
+proc _assert_get_msg(stmt as expand.Node) gives expand.Node
+# msg is optional; must be an Expr after cond
+if list.len(stmt.kids) < 2
+  give expand.Node()
+.end
+make n as expand.Node = stmt.kids[1]
+if n.kind is expand.NodeKind.Expr()
+  give n
+.end
+give expand.Node()
+.end
+
+
+<<< =========================================================
+  3) BUILD FAILURE STATEMENT (expanded AST)
+========================================================= >>>
+
+proc _assert_build_fail_stmt(stmt as expand.Node, msg as expand.Node, meta as AssertMeta, cfg as AssertConfig, diags as List of diag.Diagnostic) gives expand.Node
+# build:
+#   emit builtin.panic("assert failed", message?, code?, note?, span?, cond?)
+# or:
+#   emit builtin.trap()
+if cfg.mode is AssertMode.RuntimeTrap()
+  make call as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.Expr(), "call", stmt.span)
+  make callee as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.Expr(), "path", stmt.span)
+  set callee.text = cfg.trap_symbol
+  list.push(call.kids, callee)
+
+  make em as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.Stmt(), "emit", stmt.span)
+  list.push(em.kids, call)
+  give em
+.end
+
+# panic path
+make call as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.Expr(), "call", stmt.span)
+make callee as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.Expr(), "path", stmt.span)
+set callee.text = cfg.panic_symbol
+list.push(call.kids, callee)
+
+# positional args to panic:
+#   0: "assert failed"
+#   1: user msg (optional)
+#   named: code/note/span/cond
+make base as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.Expr(), "text", stmt.span)
+set base.text = "assert failed"
+list.push(call.kids, base)
+
+if msg.tag != ""
+  list.push(call.kids, msg)
+.end
+
+# attach named meta arguments as nodes tagged "named"
+list.push(call.kids, _named("code", _lit_text(meta.code), stmt.span))
+list.push(call.kids, _named("note", _lit_text(meta.note), stmt.span))
+
+if meta.has_span
+  list.push(call.kids, _named("span", _lit_text(meta.span_text), stmt.span))
+.end
+if meta.cond_text != ""
+  list.push(call.kids, _named("cond", _lit_text(meta.cond_text), stmt.span))
+.end
+
+make em as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.Stmt(), "emit", stmt.span)
+list.push(em.kids, call)
+give em
+.end
+
+
+proc _named(key as Text, value as expand.Node, sp as span.Span) gives expand.Node
+make n as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.Expr(), "named", sp)
+set n.text = key
+list.push(n.kids, value)
+give n
+.end
+
+proc _lit_text(s as Text, sp as span.Span) gives expand.Node
+make n as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.Expr(), "text", sp)
+set n.text = s
+give n
+.end
+
+proc _lit_text(s as Text) gives expand.Node
+make n as expand.Node = expand.node_make(expand.node_id_make(0u32), expand.NodeKind.Expr(), "text", span.Span())
+set n.text = s
+give n
+.end
+
+
+<<< =========================================================
+  4) IR EXPANSION (StmtKind.Assert -> If + Emit)
+========================================================= >>>
+
+proc _ir_expand_assert(stmt as ir.Stmt, cfg as AssertConfig, diags as List of diag.Diagnostic) gives List of ir.Stmt
+# stmt.kind: Assert(cond, msg, has_msg)
+make cond as ir.Expr = ir.Expr()
+make msg as ir.Expr = ir.Expr()
+make has_msg as Bool = false
+
+select stmt.kind
+when ir.StmtKind.Assert(c, m, hm)
+  set cond = c
+  set msg = m
+  set has_msg = hm
+.end
+otherwise
+  give [stmt]
+.end
+.end
+
+# not(cond)
+make notc as ir.Expr = ir.expr_unary(ir.UnaryOp.Not(), cond)
+
+# fail action emit
+make fail as ir.Stmt = _ir_build_fail(stmt, msg, has_msg, cfg)
+
+# then block
+make tb as ir.Block = ir.block_new()
+set tb.stmts = [fail]
+
+# if statement
+make ifs as ir.Stmt = ir.stmt_if(notc, tb, [], ir.block_new(), false)
+give [ifs]
+.end
+
+
+proc _ir_build_fail(src as ir.Stmt, msg as ir.Expr, has_msg as Bool, cfg as AssertConfig) gives ir.Stmt
+if cfg.mode is AssertMode.RuntimeTrap()
+  make callee as ir.Expr = ir.expr_path(ir.path_from_text(cfg.trap_symbol))
+  make call as ir.Expr = ir.expr_call(callee, [])
+  give ir.stmt_emit(call)
+.end
+
+make callee as ir.Expr = ir.expr_path(ir.path_from_text(cfg.panic_symbol))
+make args as List of ir.CallArg = []
+list.push(args, ir.call_arg_pos(ir.expr_lit_text("assert failed")))
+
+if has_msg
+  list.push(args, ir.call_arg_pos(msg))
+.end
+
+# named
+list.push(args, ir.call_arg_named("code", ir.expr_lit_text(cfg.default_code)))
+list.push(args, ir.call_arg_named("note", ir.expr_lit_text(cfg.default_note)))
+
+# span info is not available here without extra metadata plumbing
+make call as ir.Expr = ir.expr_call(callee, args)
+give ir.stmt_emit(call)
+.end
+
+
+<<< =========================================================
+  5) SOURCE HELPERS
+========================================================= >>>
+
+proc _span_to_text(sp as span.Span) gives Text
+# project-specific; keep compact
+give "span"
+.end
+
+proc _expr_as_text(e as expand.Node) gives Text
+# best-effort, stable, non-recursive heavy formatting
+if e.tag == "name" or e.tag == "path" or e.tag == "int" or e.tag == "float" or e.tag == "bool"
+  give e.text
+.end
+if e.tag == "text"
+  give "\"" + e.text + "\""
+.end
+if e.tag == "call"
+  if list.len(e.kids) > 0
+    give _expr_as_text(e.kids[0]) + "(...)"
+  .end
+  give "call(...)"
+.end
+if e.tag == "binary"
+  if list.len(e.kids) >= 3
+    give _expr_as_text(e.kids[0]) + " " + e.kids[1].text + " " + _expr_as_text(e.kids[2])
+  .end
+  give "<?>"
+.end
+if e.tag == "unary"
+  if list.len(e.kids) >= 2
+    give e.kids[0].text + " " + _expr_as_text(e.kids[1])
+  .end
+  give "<?>"
+.end
+give e.tag
+.end
+
+
+<<< =========================================================
+  6) SMOKE TESTS (AST)
+========================================================= >>>
+
+proc _mk_assert(cond_name as Text, msg_text as Text) gives expand.Node
+make st as expand.Node = expand.node_make(expand.node_id_make(10u32), expand.NodeKind.Stmt(), "assert", span.Span())
+
+make c as expand.Node = expand.node_make(expand.node_id_make(11u32), expand.NodeKind.Expr(), "name", span.Span())
+set c.text = cond_name
+list.push(st.kids, c)
+
+if msg_text != ""
+  make m as expand.Node = expand.node_make(expand.node_id_make(12u32), expand.NodeKind.Expr(), "text", span.Span())
+  set m.text = msg_text
+  list.push(st.kids, m)
+.end
+
+give st
+.end
+
+proc _test_expand(diags as List of diag.Diagnostic)
+make cfg as AssertConfig = assert_config_default()
+make st as expand.Node = _mk_assert("ok", "must hold")
+
+make out as expand.Node = expand_assert_stmt(st, cfg, diags)
+emit out.tag
+give
+.end
