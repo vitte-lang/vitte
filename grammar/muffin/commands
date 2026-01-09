@@ -54,6 +54,59 @@ Constructs (uniques Muffin)
 	•	plan <name> ... .end : pipeline de haut niveau (enchaînements)
 	•	switch : mapping des flags CLI (optionnel mais très ergonomique)
 
+Extension C (sources en “bakes”)
+	•	make <name> c "<file.c>" : source C unique (type src.c)
+	•	make <name> cglob "<glob>": groupe de sources C (type src.c)
+
+Patron d’outil conseillé (tool + run)
+	•	tool clang
+		exec "clang"
+		# options typiques: set "-I" "...", set "-D" "..."
+	•	bake c_obj
+		in  src : src.c
+		out obj : bin.obj
+		run tool clang
+			takes src as ""
+			set "-c" "true"
+			set "-o" "obj.o"
+		.end
+	.end
+
+Exemple complet (compile + link, façon Makefile)
+	muffin bake 1
+
+	tool clang
+		exec "clang"
+	.end
+
+	bake c_sources
+		out srcs: src.c
+		make srcs cglob "src/**/*.c"
+	.end
+
+	bake c_objects
+		in  srcs: src.c
+		out objs: bin.obj
+		run tool clang
+			takes srcs as ""
+			set "-c" "true"
+			set "-o" "build/obj"
+		.end
+	.end
+
+	bake c_link
+		in  objs: bin.obj
+		out exe: bin.exe
+		run tool clang
+			takes objs as ""
+			set "-o" "build/app"
+		.end
+	.end
+
+	plan default
+		run c_link
+	.end
+
     	•	Build normal :
 	•	build muffin
 	•	Tout builder :
