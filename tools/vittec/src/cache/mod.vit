@@ -1,1 +1,63 @@
-// vittec src ULTRA MAX skeleton
+# =========================================================
+# vittec — Cache / Module
+# =========================================================
+
+space vittec/cache
+
+share all
+
+<<< doc
+Module racine du système de cache du compilateur vittec.
+
+Ce module fournit une façade unique et stable pour toutes
+les fonctionnalités liées au cache et à la compilation
+incrémentale.
+
+Responsabilités globales du sous-système cache :
+- fingerprint des entrées de compilation
+- stockage des fingerprints et artefacts
+- graphe de dépendances
+- décisions de recompilation incrémentale
+
+Règle d’architecture :
+👉 Aucun autre module ne doit importer directement
+   fingerprint / storage / graph / incremental.
+   Tout passe par `vittec/cache`.
+>>>
+
+# ---------------------------------------------------------
+# Sous-modules internes
+# ---------------------------------------------------------
+
+pull vittec/cache/fingerprint as fingerprint
+pull vittec/cache/storage as storage
+pull vittec/cache/graph as graph
+pull vittec/cache/incremental as incremental
+
+# ---------------------------------------------------------
+# Ré-export public (API cache officielle)
+# ---------------------------------------------------------
+
+share
+    # --- Fingerprint ---
+    Fingerprint,
+    FingerprintHash,
+    FingerprintUnit,
+    FingerprintVersion,
+
+    # --- Storage ---
+    CacheKey,
+    CacheEntry,
+    CacheStore,
+    CacheError,
+
+    # --- Graph ---
+    DependencyGraph,
+    DependencyNode,
+    DependencyEdge,
+
+    # --- Incremental ---
+    IncrementalUnit,
+    UnitState,
+    IncrementalDecision,
+    IncrementalPlan

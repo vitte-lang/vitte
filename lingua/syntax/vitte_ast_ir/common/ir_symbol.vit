@@ -1,1 +1,181 @@
-// vitte_ast_ir skeleton
+# ============================================================
+# vitte — ir_symbol.vit
+# AST-IR Symbol & Name Resolution System (ULTRA MAX)
+# ============================================================
+
+space vitte/ast_ir/common
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vitte/ast_ir/common/ir_id
+pull vitte/ast_ir/common/ir_span
+pull vitte/ast_ir/attribute
+pull vitte/collections/map
+pull vitte/collections/set
+pull vitte/collections/list
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Symbol kind
+# ----------------------------
+
+type SymbolKind
+    Value
+    Block
+    Function
+    Parameter
+    Global
+    Temp
+.end
+
+# ----------------------------
+# IR Symbol
+# ----------------------------
+
+type IrSymbol
+    name        : String
+    kind        : SymbolKind
+    value       : ValueId?
+    block       : BlockId?
+    span        : IrSpan?
+    attrs       : AttributeBundle
+.end
+
+# ----------------------------
+# Symbol table
+# ----------------------------
+
+type SymbolTable
+    by_name     : Map[String, IrSymbol]
+    by_value    : Map[ValueId, IrSymbol]
+    by_block    : Map[BlockId, IrSymbol]
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc SymbolTable.new() -> SymbolTable
+    return SymbolTable {
+        by_name  = Map.new(),
+        by_value = Map.new(),
+        by_block = Map.new()
+    }
+.end
+
+proc IrSymbol.new(name: String, kind: SymbolKind) -> IrSymbol
+    return IrSymbol {
+        name   = name,
+        kind   = kind,
+        value  = none,
+        block  = none,
+        span   = none,
+        attrs  = AttributeBundle.new()
+    }
+.end
+
+# ----------------------------
+# Definition helpers
+# ----------------------------
+
+proc define_value(tab: SymbolTable, name: String, v: ValueId, sp: IrSpan?)
+    let sym = IrSymbol.new(name, SymbolKind::Value)
+    sym.value = some(v)
+    sym.span  = sp
+
+    tab.by_name[name] = sym
+    tab.by_value[v]   = sym
+.end
+
+proc define_block(tab: SymbolTable, name: String, b: BlockId, sp: IrSpan?)
+    let sym = IrSymbol.new(name, SymbolKind::Block)
+    sym.block = some(b)
+    sym.span  = sp
+
+    tab.by_name[name] = sym
+    tab.by_block[b]   = sym
+.end
+
+# ----------------------------
+# Queries
+# ----------------------------
+
+proc has_name(tab: SymbolTable, name: String) -> bool
+    return tab.by_name.contains(name)
+.end
+
+proc get_by_name(tab: SymbolTable, name: String) -> IrSymbol?
+    if tab.by_name.contains(name)
+        return some(tab.by_name[name])
+    .end
+    return none
+.end
+
+proc get_by_value(tab: SymbolTable, v: ValueId) -> IrSymbol?
+    if tab.by_value.contains(v)
+        return some(tab.by_value[v])
+    .end
+    return none
+.end
+
+proc get_by_block(tab: SymbolTable, b: BlockId) -> IrSymbol?
+    if tab.by_block.contains(b)
+        return some(tab.by_block[b])
+    .end
+    return none
+.end
+
+# ----------------------------
+# Rename / SSA helpers
+# ----------------------------
+
+proc rename_value(tab: SymbolTable, v: ValueId, new_name: String)
+    let sym? = get_by_value(tab, v)
+    if sym?
+        tab.by_name.remove(sym?.name)
+        sym?.name = new_name
+        tab.by_name[new_name] = sym?
+    .end
+.end
+
+# ----------------------------
+# Merge
+# ----------------------------
+
+proc merge(dst: SymbolTable, src: SymbolTable)
+    for (n, s) in src.by_name
+        dst.by_name[n] = s
+    .end
+
+    for (v, s) in src.by_value
+        dst.by_value[v] = s
+    .end
+
+    for (b, s) in src.by_block
+        dst.by_block[b] = s
+    .end
+.end
+
+# ----------------------------
+# Debug / Dump
+# ----------------------------
+
+proc dump(tab: SymbolTable)
+    say "SymbolTable"
+    for (name, sym) in tab.by_name
+        say " ", name, " kind=", sym.kind,
+            " value=", sym.value,
+            " block=", sym.block
+    .end
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

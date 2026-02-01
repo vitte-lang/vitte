@@ -1,1 +1,112 @@
-// vitte_ast_ir skeleton
+# ============================================================
+# vitte — ir_expr.vit
+# AST-IR Unified Expression Enum — ULTRA MAX
+# ============================================================
+
+space vitte/ast_ir/expr
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vitte/ast_ir/common
+pull vitte/ast_ir/attribute
+pull vitte/ast_ir/expr/ir_assign
+pull vitte/ast_ir/expr/ir_binary
+pull vitte/ast_ir/expr/ir_unary
+pull vitte/ast_ir/expr/ir_call
+pull vitte/ast_ir/expr/ir_cast
+pull vitte/collections/set
+pull vitte/collections/list
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# IR Expression (sum type)
+# ----------------------------
+
+type IrExpr
+    Assign(assign: IrAssign)
+    Binary(bin: IrBinary)
+    Unary(unary: IrUnary)
+    Call(call: IrCall)
+    Cast(cast: IrCast)
+.end
+
+# ----------------------------
+# Dataflow helpers
+# ----------------------------
+
+proc used_values(expr: IrExpr) -> Set[ValueId]
+    match expr
+        IrExpr::Assign(a) => ir_assign.used_values(a)
+        IrExpr::Binary(b) => ir_binary.used_values(b)
+        IrExpr::Unary(u)  => ir_unary.used_values(u)
+        IrExpr::Call(c)   => ir_call.used_values(c)
+        IrExpr::Cast(c)   => ir_cast.used_values(c)
+    .end
+.end
+
+proc defined_values(expr: IrExpr) -> Set[ValueId]
+    match expr
+        IrExpr::Assign(a) => ir_assign.defined_values(a)
+        IrExpr::Binary(b) => ir_binary.defined_values(b)
+        IrExpr::Unary(u)  => ir_unary.defined_values(u)
+        IrExpr::Call(c)   => ir_call.defined_values(c)
+        IrExpr::Cast(c)   => ir_cast.defined_values(c)
+    .end
+.end
+
+# ----------------------------
+# Purity / side-effect helpers
+# ----------------------------
+
+proc has_side_effect(expr: IrExpr) -> bool
+    match expr
+        IrExpr::Assign(a) => ir_assign.has_side_effect(a)
+        IrExpr::Binary(b) => ir_binary.has_side_effect(b)
+        IrExpr::Unary(u)  => ir_unary.has_side_effect(u)
+        IrExpr::Call(c)   => ir_call.has_side_effect(c)
+        IrExpr::Cast(c)   => ir_cast.has_side_effect(c)
+    .end
+.end
+
+proc is_pure(expr: IrExpr) -> bool
+    return !has_side_effect(expr)
+.end
+
+# ----------------------------
+# Validation
+# ----------------------------
+
+proc validate(expr: IrExpr, ctx: DiagnosticCtx)
+    match expr
+        IrExpr::Assign(a) => ir_assign.validate(a, ctx)
+        IrExpr::Binary(b) => ir_binary.validate(b, ctx)
+        IrExpr::Unary(u)  => ir_unary.validate(u, ctx)
+        IrExpr::Call(c)   => ir_call.validate(c, ctx)
+        IrExpr::Cast(c)   => ir_cast.validate(c, ctx)
+    .end
+.end
+
+# ----------------------------
+# Debug / Dump
+# ----------------------------
+
+proc dump(expr: IrExpr)
+    match expr
+        IrExpr::Assign(a) => a.dump()
+        IrExpr::Binary(b) => b.dump()
+        IrExpr::Unary(u)  => u.dump()
+        IrExpr::Call(c)   => c.dump()
+        IrExpr::Cast(c)   => c.dump()
+    .end
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

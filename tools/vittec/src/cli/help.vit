@@ -1,1 +1,103 @@
 // vittec src ULTRA MAX skeleton
+# =========================================================
+# vittec — CLI / Help
+# =========================================================
+
+space vittec/cli/help
+
+share all
+
+<<< doc
+Ce module définit l’affichage de l’aide CLI du compilateur vittec.
+
+Responsabilités :
+- fournir le texte d’aide officiel
+- documenter les commandes et options
+- centraliser la documentation CLI
+
+Ce module :
+- NE parse PAS les arguments
+- NE décide PAS de l’exécution
+- NE dépend PAS du compilateur interne
+
+Il est utilisé par :
+- cli/commands.vit
+- --help
+- commande `help`
+>>>
+
+# ---------------------------------------------------------
+# Texte d’aide principal
+# ---------------------------------------------------------
+
+proc help_text() gives string
+
+    give
+"
+vittec — Vitte Compiler
+======================
+
+USAGE:
+    vittec <command> [options] [input]
+
+COMMANDS:
+    build       Compile un projet ou un fichier Vitte
+    check       Analyse syntaxique et sémantique sans générer de code
+    run         Compile puis exécute le programme
+    bench       Exécute les benchmarks du compilateur
+    clean       Nettoie les artefacts de compilation
+    help        Affiche cette aide
+    --version   Affiche la version du compilateur
+
+OPTIONS COMMUNES:
+    -v, --verbose        Mode verbeux
+    -q, --quiet          Réduit la sortie au minimum
+    --no-color           Désactive la coloration ANSI
+    -j, --jobs <n>       Nombre de jobs parallèles
+
+OPTIONS BUILD / CHECK / RUN:
+    -O0                  Aucune optimisation (par défaut)
+    -O1                  Optimisations légères
+    -O2                  Optimisations standard
+    -O3                  Optimisations agressives
+    -Os                  Optimisation taille
+    -Oz                  Optimisation taille extrême
+
+    --llvm               Backend LLVM
+    --vm                 Backend VM interne
+    --c                  Backend C
+
+    --no-incremental     Désactive la compilation incrémentale
+    --emit-ir            Émet l’IR intermédiaire
+    --emit-ast           Émet l’AST
+
+OPTIONS BENCH:
+    --bench-kind <name>  Type de benchmark
+    --iterations <n>     Nombre d’itérations
+    --warmup <n>         Nombre d’itérations de warmup
+
+OPTIONS CLEAN:
+    --all                Nettoyage complet
+
+EXEMPLES:
+    vittec build main.vit
+    vittec check src/
+    vittec run app.vit
+    vittec bench compile
+    vittec clean --all
+
+DOCUMENTATION:
+    https://github.com/vitte-lang/vitte
+
+"
+.end
+
+# ---------------------------------------------------------
+# Impression de l’aide
+# ---------------------------------------------------------
+
+proc print()
+
+    emit help_text()
+
+.end

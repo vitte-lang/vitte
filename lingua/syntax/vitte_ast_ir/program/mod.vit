@@ -1,1 +1,102 @@
 // vitte_ast_ir skeleton
+
+# ============================================================
+# vitte — program/mod.vit
+# AST-IR Program Aggregator (Compilation Root) — ULTRA MAX
+# ============================================================
+
+space vitte/ast_ir/program
+
+# ----------------------------
+# Submodules
+# ----------------------------
+
+pull vitte/ast_ir/program/ir_program
+pull vitte/ast_ir/program/ir_source_file
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Program bundle
+# ----------------------------
+
+type ProgramBundle
+    program     : IrProgram
+    sources     : List[IrSourceFile]
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc ProgramBundle.new() -> ProgramBundle
+    return ProgramBundle {
+        program = IrProgram.new(),
+        sources = List.new()
+    }
+.end
+
+# ----------------------------
+# Source management
+# ----------------------------
+
+proc add_source(b: ProgramBundle, f: IrSourceFile)
+    b.sources.push(f)
+
+    # auto-register module if present
+    if f.module?
+        b.program.add_module(f.module?)
+    .end
+.end
+
+# ----------------------------
+# Queries
+# ----------------------------
+
+proc all_sources(b: ProgramBundle) -> List[IrSourceFile]
+    return b.sources
+.end
+
+proc has_entry(b: ProgramBundle) -> bool
+    return b.program.has_entry()
+.end
+
+# ----------------------------
+# Global analysis helpers
+# ----------------------------
+
+proc build_ssa(b: ProgramBundle)
+    b.program.build_all_ssa()
+.end
+
+proc validate(b: ProgramBundle, ctx: DiagnosticCtx)
+    for f in b.sources
+        f.validate(ctx)
+    .end
+
+    b.program.validate(ctx)
+.end
+
+# ----------------------------
+# Debug / Dump
+# ----------------------------
+
+proc dump(b: ProgramBundle)
+    say "=== ProgramBundle ==="
+
+    say "-- Sources"
+    for f in b.sources
+        f.dump()
+    .end
+
+    say "-- Program"
+    b.program.dump()
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

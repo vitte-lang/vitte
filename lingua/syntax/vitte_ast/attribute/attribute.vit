@@ -1,1 +1,167 @@
-// vitte_ast skeleton
+# =========================================================
+# Vitte 1.0 — AST / Attribute
+# =========================================================
+
+space vitte/ast/attribute
+
+share all
+
+<<< doc
+Ce module définit la représentation AST complète
+des attributs syntaxiques Vitte.
+
+Les attributs sont des annotations légères, purement
+syntaxiques à ce stade.
+
+Ils sont :
+- attachables aux déclarations top-level
+- attachables aux procédures
+- analysés sémantiquement en HIR
+
+Exemples source :
+    #[inline]
+    #[test]
+    #[ffi]
+>>>
+
+# ---------------------------------------------------------
+# Position source (pour diagnostics)
+# ---------------------------------------------------------
+
+form Span
+    field file as string
+    field line_start as u32
+    field line_end as u32
+    field column_start as u32
+    field column_end as u32
+.end
+
+# ---------------------------------------------------------
+# Identifiant AST
+# ---------------------------------------------------------
+
+form Ident
+    field name as string
+    field span as Span
+.end
+
+# ---------------------------------------------------------
+# Attribut simple #[ident]
+# ---------------------------------------------------------
+
+form Attribute
+    field ident as Ident
+    field span as Span
+.end
+
+# ---------------------------------------------------------
+# Liste d’attributs
+# ---------------------------------------------------------
+
+form AttributeList
+    field items as List[Attribute]
+.end
+
+# ---------------------------------------------------------
+# Nœuds AST pouvant porter des attributs
+# ---------------------------------------------------------
+
+pick AttributeTarget
+    case Proc
+    case Type
+    case Entry
+    case Module
+.end
+
+# ---------------------------------------------------------
+# Attribut résolu (post-lookup HIR)
+# ---------------------------------------------------------
+
+form ResolvedAttribute
+    field name as string
+    field target as AttributeTarget
+    field span as Span
+.end
+
+# ---------------------------------------------------------
+# Attributs builtin reconnus par le langage
+# (niveau AST, pas de sémantique ici)
+# ---------------------------------------------------------
+
+pick BuiltinAttribute
+    case Inline
+    case Test
+    case Ffi
+    case NoMangle
+    case Cold
+    case Hot
+    case Deprecated(message as string)
+.end
+
+# ---------------------------------------------------------
+# Erreurs liées aux attributs
+# ---------------------------------------------------------
+
+pick AttributeError
+    case UnknownAttribute(name as string, span as Span)
+    case DuplicateAttribute(name as string, span as Span)
+    case InvalidTarget(name as string, target as AttributeTarget, span as Span)
+.end
+
+# ---------------------------------------------------------
+# Table des attributs
+# ---------------------------------------------------------
+
+form AttributeTable
+    field resolved as List[ResolvedAttribute]
+    field errors as List[AttributeError]
+.end
+
+# ---------------------------------------------------------
+# Conversion builtin -> attribut résolu
+# ---------------------------------------------------------
+
+proc builtin_to_resolved(
+    attr as BuiltinAttribute,
+    target as AttributeTarget,
+    span as Span
+) gives ResolvedAttribute
+    select attr
+        when Inline
+            give ResolvedAttribute("inline", target, span)
+        when Test
+            give ResolvedAttribute("test", target, span)
+        when Ffi
+            give ResolvedAttribute("ffi", target, span)
+        when NoMangle
+            give ResolvedAttribute("no_mangle", target, span)
+        when Cold
+            give ResolvedAttribute("cold", target, span)
+        when Hot
+            give ResolvedAttribute("hot", target, span)
+        when Deprecated(msg)
+            give ResolvedAttribute("deprecated", target, span)
+    .end
+.end
+
+# ---------------------------------------------------------
+# Résolution d’une liste d’attributs
+# ---------------------------------------------------------
+
+proc resolve_attributes(
+    attrs as AttributeList,
+    target as AttributeTarget
+) gives AttributeTable
+
+    make table as AttributeTable =
+        AttributeTable([], [])
+
+    select attrs.items
+        when []
+            give table
+    otherwise
+        emit attrs.items
+    .end
+
+    give table
+.end

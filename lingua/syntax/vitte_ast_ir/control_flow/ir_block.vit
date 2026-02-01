@@ -1,1 +1,183 @@
-// vitte_ast_ir skeleton
+# ============================================================
+# vitte — ir_block.vit
+# AST-IR Basic Block Definition (ULTRA MAX)
+# ============================================================
+
+space vitte/ast_ir/control_flow
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vitte/ast_ir/common
+pull vitte/ast_ir/attribute
+pull vitte/ast_ir/instruction
+pull vitte/collections/list
+pull vitte/collections/set
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Terminator kind
+# ----------------------------
+
+type TerminatorKind
+    Jump
+    Branch
+    Return
+    Unreachable
+.end
+
+# ----------------------------
+# Terminator
+# ----------------------------
+
+type Terminator
+    kind        : TerminatorKind
+    targets     : List[BlockId]
+    value       : ValueId?
+    attrs       : AttributeBundle
+.end
+
+# ----------------------------
+# IR Basic Block
+# ----------------------------
+
+type IrBlock
+    id          : BlockId
+    name        : String
+    instrs      : List[Instruction]
+    terminator  : Terminator?
+    preds       : Set[BlockId]
+    succs       : Set[BlockId]
+    attrs       : AttributeBundle
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc IrBlock.new(id: BlockId, name: String) -> IrBlock
+    return IrBlock {
+        id         = id,
+        name       = name,
+        instrs     = List.new(),
+        terminator = none,
+        preds      = Set.new(),
+        succs      = Set.new(),
+        attrs      = AttributeBundle.new()
+    }
+.end
+
+proc Terminator.jump(target: BlockId) -> Terminator
+    return Terminator {
+        kind    = TerminatorKind::Jump,
+        targets = List.of(target),
+        value   = none,
+        attrs   = AttributeBundle.new()
+    }
+.end
+
+proc Terminator.branch(t: BlockId, f: BlockId, cond: ValueId) -> Terminator
+    return Terminator {
+        kind    = TerminatorKind::Branch,
+        targets = List.of(t, f),
+        value   = some(cond),
+        attrs   = AttributeBundle.new()
+    }
+.end
+
+proc Terminator.ret(v: ValueId?) -> Terminator
+    return Terminator {
+        kind    = TerminatorKind::Return,
+        targets = List.new(),
+        value   = v,
+        attrs   = AttributeBundle.new()
+    }
+.end
+
+proc Terminator.unreachable() -> Terminator
+    return Terminator {
+        kind    = TerminatorKind::Unreachable,
+        targets = List.new(),
+        value   = none,
+        attrs   = AttributeBundle.new()
+    }
+.end
+
+# ----------------------------
+# Instruction management
+# ----------------------------
+
+proc push_instr(b: IrBlock, inst: Instruction)
+    b.instrs.push(inst)
+.end
+
+proc instructions(b: IrBlock) -> List[Instruction]
+    return b.instrs
+.end
+
+# ----------------------------
+# Terminator management
+# ----------------------------
+
+proc set_terminator(b: IrBlock, term: Terminator)
+    b.terminator = some(term)
+
+    # update successors
+    for t in term.targets
+        b.succs.insert(t)
+    .end
+.end
+
+# ----------------------------
+# CFG helpers
+# ----------------------------
+
+proc add_pred(b: IrBlock, pred: BlockId)
+    b.preds.insert(pred)
+.end
+
+proc is_terminated(b: IrBlock) -> bool
+    return b.terminator?
+.end
+
+# ----------------------------
+# Queries
+# ----------------------------
+
+proc has_terminator(b: IrBlock) -> bool
+    return b.terminator?
+.end
+
+proc successors(b: IrBlock) -> Set[BlockId]
+    return b.succs
+.end
+
+proc predecessors(b: IrBlock) -> Set[BlockId]
+    return b.preds
+.end
+
+# ----------------------------
+# Debug / Dump
+# ----------------------------
+
+proc dump(b: IrBlock)
+    say "block ", b.name, " (", b.id, ")"
+
+    for inst in b.instrs
+        inst.dump()
+    .end
+
+    if b.terminator?
+        say "  terminator ", b.terminator?.kind, " -> ", b.terminator?.targets
+    .end
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

@@ -1,1 +1,154 @@
-// vittec src ULTRA MAX skeleton
+# =========================================================
+# vittec — CLI / Commands
+# =========================================================
+
+space vittec/cli/commands
+
+share all
+
+<<< doc
+Ce module implémente le dispatch des commandes CLI du compilateur vittec.
+
+Responsabilités :
+- interpréter CliArgs
+- appeler le bon pipeline du driver
+- gérer les commandes haut niveau (build, check, run, bench, clean)
+- centraliser la logique de commande CLI
+
+Ce module :
+- NE parse PAS les arguments (voir cli/args)
+- NE compile PAS directement (voir driver)
+- NE gère PAS le cache bas niveau
+
+Il est le point de jonction CLI → Driver.
+>>>
+
+# ---------------------------------------------------------
+# Dépendances
+# ---------------------------------------------------------
+
+pull vittec/cli/args
+pull vittec/driver/build
+pull vittec/driver/check
+pull vittec/driver/run
+pull vittec/driver/bench
+pull vittec/driver/clean
+pull vittec/driver/version
+pull vittec/driver/help
+
+# ---------------------------------------------------------
+# Résultat d’exécution de commande
+# ---------------------------------------------------------
+
+pick CommandResult
+    case Ok
+    case Error(code as i32)
+.end
+
+# ---------------------------------------------------------
+# Dispatch principal
+# ---------------------------------------------------------
+
+proc dispatch(args as CliArgs) gives CommandResult
+
+    select args.command
+
+        when Build
+            give run_build(args)
+
+        when Check
+            give run_check(args)
+
+        when Run
+            give run_run(args)
+
+        when Bench
+            give run_bench(args)
+
+        when Clean
+            give run_clean(args)
+
+        when Version
+            give run_version()
+
+        when Help
+            give run_help()
+
+    .end
+.end
+
+# ---------------------------------------------------------
+# Commandes individuelles
+# ---------------------------------------------------------
+
+proc run_build(args as CliArgs) gives CommandResult
+
+    select args.build
+        when some(cfg)
+            emit build.execute(cfg, args.common)
+            give Ok
+    otherwise
+        emit "build: missing configuration"
+        give Error(1)
+    .end
+.end
+
+proc run_check(args as CliArgs) gives CommandResult
+
+    select args.build
+        when some(cfg)
+            emit check.execute(cfg, args.common)
+            give Ok
+    otherwise
+        emit "check: missing configuration"
+        give Error(1)
+    .end
+.end
+
+proc run_run(args as CliArgs) gives CommandResult
+
+    select args.build
+        when some(cfg)
+            emit run.execute(cfg, args.common)
+            give Ok
+    otherwise
+        emit "run: missing configuration"
+        give Error(1)
+    .end
+.end
+
+proc run_bench(args as CliArgs) gives CommandResult
+
+    select args.bench
+        when some(cfg)
+            emit bench.execute(cfg, args.common)
+            give Ok
+    otherwise
+        emit "bench: missing configuration"
+        give Error(1)
+    .end
+.end
+
+proc run_clean(args as CliArgs) gives CommandResult
+
+    select args.clean
+        when some(cfg)
+            emit clean.execute(cfg, args.common)
+            give Ok
+    otherwise
+        emit "clean: missing configuration"
+        give Error(1)
+    .end
+.end
+
+proc run_version() gives CommandResult
+
+    emit version.print()
+    give Ok
+.end
+
+proc run_help() gives CommandResult
+
+    emit help.print()
+    give Ok
+.end

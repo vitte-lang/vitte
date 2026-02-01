@@ -1,1 +1,132 @@
 // vittec src ULTRA MAX skeleton
+
+# =========================================================
+# vittec — Config / Global Configuration
+# =========================================================
+
+space vittec/config
+
+share all
+
+<<< doc
+Ce module définit la configuration globale du compilateur vittec.
+
+Il regroupe :
+- la configuration projet (fichiers, chemins)
+- la configuration compilation (options par défaut)
+- la configuration cache
+- la configuration outils (backend, linker, runner)
+
+Ce module est :
+- chargé très tôt (avant la compilation)
+- sérialisable (TOML / JSON plus tard)
+- utilisé par le driver et la session
+
+Aucune logique de compilation ici.
+>>>
+
+# ---------------------------------------------------------
+# Dépendances
+# ---------------------------------------------------------
+
+pull vittec/compiler/options
+pull vittec/cache
+pull vitte/ast/common/path
+
+# ---------------------------------------------------------
+# Chemins projet
+# ---------------------------------------------------------
+
+form ProjectPaths
+    field root as string
+    field src as string
+    field build as string
+    field cache as string
+.end
+
+# ---------------------------------------------------------
+# Métadonnées projet
+# ---------------------------------------------------------
+
+form ProjectMeta
+    field name as string
+    field version as string
+    field authors as List[string]
+.end
+
+# ---------------------------------------------------------
+# Configuration backend
+# ---------------------------------------------------------
+
+form BackendConfig
+    field kind as BackendKind
+    field linker as Option[string]
+    field runner as Option[string]
+.end
+
+# ---------------------------------------------------------
+# Configuration cache
+# ---------------------------------------------------------
+
+form CacheConfig
+    field enabled as bool
+    field path as string
+.end
+
+# ---------------------------------------------------------
+# Configuration globale vittec
+# ---------------------------------------------------------
+
+form VittecConfig
+    field project as ProjectMeta
+    field paths as ProjectPaths
+    field compiler as CompilerOptions
+    field backend as BackendConfig
+    field cache as CacheConfig
+.end
+
+# ---------------------------------------------------------
+# Valeurs par défaut
+# ---------------------------------------------------------
+
+proc default_paths() gives ProjectPaths
+    give ProjectPaths(
+        ".",
+        "src",
+        "build",
+        ".vittec-cache"
+    )
+.end
+
+proc default_project() gives ProjectMeta
+    give ProjectMeta(
+        "unnamed",
+        "0.1.0",
+        []
+    )
+.end
+
+proc default_backend() gives BackendConfig
+    give BackendConfig(
+        Auto,
+        none,
+        none
+    )
+.end
+
+proc default_cache() gives CacheConfig
+    give CacheConfig(
+        true,
+        ".vittec-cache"
+    )
+.end
+
+proc default_config() gives VittecConfig
+    give VittecConfig(
+        default_project(),
+        default_paths(),
+        default_compiler_options(),
+        default_backend(),
+        default_cache()
+    )
+.end

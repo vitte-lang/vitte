@@ -1,1 +1,74 @@
-// vitte_ast skeleton
+# =========================================================
+# Vitte 1.0 — AST / Comment / Module
+# =========================================================
+
+space vitte/ast/comment
+
+share all
+
+<<< doc
+Module racine des commentaires AST Vitte.
+
+Ce module agrège toutes les représentations de commentaires :
+- commentaires de ligne (# ...)
+- commentaires de zone (<<< >>>)
+
+Rôle :
+- point d’entrée unique pour `pull vitte/ast/comment`
+- exposition d’une API stable pour le parser, le formatter,
+  la documentation et les outils (LSP, lint)
+- aucune logique sémantique ou de transformation
+>>>
+
+# ---------------------------------------------------------
+# Sous-modules
+# ---------------------------------------------------------
+
+pull vitte/ast/comment/line as line
+pull vitte/ast/comment/zone as zone
+
+# ---------------------------------------------------------
+# Union logique des commentaires
+# ---------------------------------------------------------
+
+pick Comment
+    case Line(value as LineComment)
+    case Zone(value as ZoneComment)
+.end
+
+# ---------------------------------------------------------
+# Commentaire annoté (attachable à l’AST)
+# ---------------------------------------------------------
+
+pick AnnotatedComment
+    case Line(value as AnnotatedLineComment)
+    case Zone(value as AnnotatedZoneComment)
+.end
+
+# ---------------------------------------------------------
+# Groupe de commentaires (générique)
+# ---------------------------------------------------------
+
+form CommentGroup
+    field leading as List[Comment]
+    field trailing as List[Comment]
+.end
+
+# ---------------------------------------------------------
+# Ré-export public (API stable)
+# ---------------------------------------------------------
+
+share
+    # --- Commentaires bruts ---
+    LineComment,
+    LineCommentList,
+    ZoneComment,
+    ZoneCommentList,
+
+    # --- Commentaires unifiés ---
+    Comment,
+    AnnotatedComment,
+    CommentGroup,
+
+    # --- Positions ---
+    CommentPosition

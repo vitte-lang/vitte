@@ -1,1 +1,145 @@
-// vitte_ast_ir skeleton
+# ============================================================
+# vitte — liveness.vit
+# Liveness Analysis (Live-In / Live-Out) — ULTRA MAX
+# ============================================================
+
+space vitte/ast_ir/analysis
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vitte/ast_ir/cfg
+pull vitte/ast_ir/block
+pull vitte/ast_ir/value
+pull vitte/collections/map
+pull vitte/collections/set
+pull vitte/collections/list
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Types
+# ----------------------------
+
+type Liveness
+    live_in     : Map[BlockId, Set[ValueId]]
+    live_out    : Map[BlockId, Set[ValueId]]
+    uses        : Map[BlockId, Set[ValueId]]
+    defs        : Map[BlockId, Set[ValueId]]
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc Liveness.new() -> Liveness
+    return Liveness {
+        live_in  = Map.new(),
+        live_out = Map.new(),
+        uses     = Map.new(),
+        defs     = Map.new()
+    }
+.end
+
+# ----------------------------
+# Initialization (uses / defs)
+# ----------------------------
+
+proc compute_uses_defs(cfg: Cfg, lv: Liveness)
+    for b in cfg.blocks()
+        let use = Set.new()
+        let def = Set.new()
+
+        for inst in cfg.block(b).instructions()
+            # operands first
+            for v in inst.operands()
+                if !def.contains(v)
+                    use.insert(v)
+                .end
+            .end
+
+            # result value
+            if inst.result?
+                def.insert(inst.result?)
+            .end
+        .end
+
+        lv.uses[b] = use
+        lv.defs[b] = def
+        lv.live_in[b]  = Set.new()
+        lv.live_out[b] = Set.new()
+    .end
+.end
+
+# ----------------------------
+# Liveness computation (backward dataflow)
+# ----------------------------
+
+proc compute(cfg: Cfg) -> Liveness
+    let lv = Liveness.new()
+    compute_uses_defs(cfg, lv)
+
+    let changed = true
+    while changed
+        changed = false
+
+        for b in cfg.blocks_rev()
+            let out = Set.new()
+            for s in cfg.successors(b)
+                out = out.union(lv.live_in[s])
+            .end
+
+            let inn = lv.uses[b].union(out.minus(lv.defs[b]))
+
+            if inn != lv.live_in[b] || out != lv.live_out[b]
+                lv.live_in[b]  = inn
+                lv.live_out[b] = out
+                changed = true
+            .end
+        .end
+    .end
+
+    return lv
+.end
+
+# ----------------------------
+# Queries
+# ----------------------------
+
+proc is_live_in(lv: Liveness, b: BlockId, v: ValueId) -> bool
+    return lv.live_in[b].contains(v)
+.end
+
+proc is_live_out(lv: Liveness, b: BlockId, v: ValueId) -> bool
+    return lv.live_out[b].contains(v)
+.end
+
+proc kill(lv: Liveness, b: BlockId) -> Set[ValueId]
+    return lv.defs[b]
+.end
+
+proc gen(lv: Liveness, b: BlockId) -> Set[ValueId]
+    return lv.uses[b]
+.end
+
+# ----------------------------
+# Debug / Dump
+# ----------------------------
+
+proc dump(lv: Liveness)
+    say "Liveness"
+    for b in lv.live_in.keys()
+        say " block ", b
+        say "  live_in  = ", lv.live_in[b]
+        say "  live_out = ", lv.live_out[b]
+    .end
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

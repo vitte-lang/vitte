@@ -1,1 +1,175 @@
-// vitte_ast_ir skeleton
+# ============================================================
+# vitte — ir_binary.vit
+# AST-IR Binary Expressions — ULTRA MAX
+# ============================================================
+
+space vitte/ast_ir/expr
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vitte/ast_ir/common
+pull vitte/ast_ir/attribute
+pull vitte/ast_ir/common/diagnostics
+pull vitte/collections/set
+pull vitte/collections/list
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Binary operator kind
+# ----------------------------
+
+type BinaryOp
+    Add        # +
+    Sub        # -
+    Mul        # *
+    Div        # /
+    Rem        # %
+
+    And        # &
+    Or         # |
+    Xor        # ^
+    Shl        # <<
+    Shr        # >>
+
+    Eq         # ==
+    Ne         # !=
+    Lt         # <
+    Le         # <=
+    Gt         # >
+    Ge         # >=
+
+    LogAnd     # &&
+    LogOr      # ||
+.end
+
+# ----------------------------
+# IR Binary expression
+# ----------------------------
+
+type IrBinary
+    op          : BinaryOp
+    lhs         : ValueId
+    rhs         : ValueId
+    result      : ValueId
+    attrs       : AttributeBundle
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc IrBinary.new(op: BinaryOp, lhs: ValueId, rhs: ValueId, result: ValueId) -> IrBinary
+    return IrBinary {
+        op     = op,
+        lhs    = lhs,
+        rhs    = rhs,
+        result = result,
+        attrs  = AttributeBundle.new()
+    }
+.end
+
+# ----------------------------
+# Queries
+# ----------------------------
+
+proc is_arithmetic(bin: IrBinary) -> bool
+    match bin.op
+        BinaryOp::Add => true
+        BinaryOp::Sub => true
+        BinaryOp::Mul => true
+        BinaryOp::Div => true
+        BinaryOp::Rem => true
+        _             => false
+    .end
+.end
+
+proc is_bitwise(bin: IrBinary) -> bool
+    match bin.op
+        BinaryOp::And => true
+        BinaryOp::Or  => true
+        BinaryOp::Xor => true
+        BinaryOp::Shl => true
+        BinaryOp::Shr => true
+        _             => false
+    .end
+.end
+
+proc is_comparison(bin: IrBinary) -> bool
+    match bin.op
+        BinaryOp::Eq => true
+        BinaryOp::Ne => true
+        BinaryOp::Lt => true
+        BinaryOp::Le => true
+        BinaryOp::Gt => true
+        BinaryOp::Ge => true
+        _            => false
+    .end
+.end
+
+proc is_logical(bin: IrBinary) -> bool
+    return bin.op == BinaryOp::LogAnd || bin.op == BinaryOp::LogOr
+.end
+
+# ----------------------------
+# Dataflow helpers
+# ----------------------------
+
+proc used_values(bin: IrBinary) -> Set[ValueId]
+    let out = Set.new()
+    out.insert(bin.lhs)
+    out.insert(bin.rhs)
+    return out
+.end
+
+proc defined_values(bin: IrBinary) -> Set[ValueId]
+    let out = Set.new()
+    out.insert(bin.result)
+    return out
+.end
+
+# ----------------------------
+# Validation
+# ----------------------------
+
+proc validate(bin: IrBinary, ctx: DiagnosticCtx)
+    # logical ops typically short-circuit at higher level
+    match bin.op
+        BinaryOp::LogAnd => ()
+        BinaryOp::LogOr  => ()
+        _                => ()
+    .end
+
+    # sanity: result must differ from operands
+    if bin.result == bin.lhs || bin.result == bin.rhs
+        let err = error.error(ErrorCode::Validate, "binary result aliases operand")
+        emit_error(ctx, err)
+    .end
+.end
+
+# ----------------------------
+# Side-effect analysis
+# ----------------------------
+
+proc has_side_effect(bin: IrBinary) -> bool
+    # pure computation
+    return false
+.end
+
+# ----------------------------
+# Debug / Dump
+# ----------------------------
+
+proc dump(bin: IrBinary)
+    say "IrBinary ", bin.result, " = ", bin.lhs, " ", bin.op, " ", bin.rhs
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

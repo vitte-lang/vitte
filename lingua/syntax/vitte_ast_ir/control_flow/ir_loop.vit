@@ -1,1 +1,209 @@
-// vitte_ast_ir skeleton
+# ============================================================
+# vitte — ir_loop.vit
+# AST-IR Loop Representation & Analysis — ULTRA MAX
+# ============================================================
+
+space vitte/ast_ir/control_flow
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vitte/ast_ir/common
+pull vitte/ast_ir/control_flow/ir_cfg
+pull vitte/ast_ir/control_flow/ir_block
+pull vitte/ast_ir/analysis/dominance
+pull vitte/collections/map
+pull vitte/collections/set
+pull vitte/collections/list
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Loop kind
+# ----------------------------
+
+type LoopKind
+    While
+    DoWhile
+    For
+    Infinite
+    Unknown
+.end
+
+# ----------------------------
+# Loop structure
+# ----------------------------
+
+type IrLoop
+    header      : BlockId
+    latch       : BlockId?
+    body        : Set[BlockId]
+    exits       : Set[BlockId]
+    parent      : BlockId?
+    children    : List[BlockId]
+    kind        : LoopKind
+.end
+
+# ----------------------------
+# Loop forest
+# ----------------------------
+
+type LoopForest
+    loops       : Map[BlockId, IrLoop]
+    roots       : List[BlockId]
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc IrLoop.new(header: BlockId) -> IrLoop
+    return IrLoop {
+        header   = header,
+        latch    = none,
+        body     = Set.new(),
+        exits    = Set.new(),
+        parent   = none,
+        children = List.new(),
+        kind     = LoopKind::Unknown
+    }
+.end
+
+proc LoopForest.new() -> LoopForest
+    return LoopForest {
+        loops = Map.new(),
+        roots = List.new()
+    }
+.end
+
+# ----------------------------
+# Natural loop detection
+# ----------------------------
+
+proc find_natural_loops(cfg: Cfg, dom: DominatorTree) -> LoopForest
+    let forest = LoopForest.new()
+
+    # back-edges: b -> h where h dominates b
+    for b in cfg.blocks()
+        for s in cfg.successors(b)
+            if dominance.dominates(dom, s, b)
+                # s is loop header
+                let loop = forest.loops.get_or_insert(s, IrLoop.new(s))
+                loop.latch = some(b)
+
+                # collect body
+                let stack = List.of(b)
+                loop.body.insert(s)
+                loop.body.insert(b)
+
+                while !stack.is_empty()
+                    let x = stack.pop()
+                    for p in cfg.predecessors(x)
+                        if !loop.body.contains(p)
+                            loop.body.insert(p)
+                            stack.push(p)
+                        .end
+                    .end
+                .end
+
+                forest.loops[s] = loop
+            .end
+        .end
+    .end
+
+    # compute exits
+    for (_, lp) in forest.loops
+        for b in lp.body
+            for s in cfg.successors(b)
+                if !lp.body.contains(s)
+                    lp.exits.insert(s)
+                .end
+            .end
+        .end
+    .end
+
+    # parent / child relations
+    for (h1, l1) in forest.loops
+        for (h2, l2) in forest.loops
+            if h1 != h2 && l2.body.contains(h1)
+                l1.parent = some(h2)
+                l2.children.push(h1)
+            .end
+        .end
+    .end
+
+    # roots
+    for (h, l) in forest.loops
+        if !l.parent?
+            forest.roots.push(h)
+        .end
+    .end
+
+    return forest
+.end
+
+# ----------------------------
+# Classification heuristics
+# ----------------------------
+
+proc classify(cfg: Cfg, lp: IrLoop)
+    # infinite loop: no exits
+    if lp.exits.is_empty()
+        lp.kind = LoopKind::Infinite
+        return
+    .end
+
+    # simple heuristic based on header terminator
+    let hblk = cfg.block(lp.header)
+    if hblk.terminator?
+        match hblk.terminator?.kind
+            TerminatorKind::Branch => lp.kind = LoopKind::While
+            TerminatorKind::Jump   => lp.kind = LoopKind::DoWhile
+            _                      => lp.kind = LoopKind::Unknown
+        .end
+    .end
+.end
+
+# ----------------------------
+# Queries
+# ----------------------------
+
+proc is_loop_header(forest: LoopForest, b: BlockId) -> bool
+    return forest.loops.contains(b)
+.end
+
+proc loop_of(forest: LoopForest, b: BlockId) -> BlockId?
+    for (h, lp) in forest.loops
+        if lp.body.contains(b)
+            return some(h)
+        .end
+    .end
+    return none
+.end
+
+# ----------------------------
+# Debug / Dump
+# ----------------------------
+
+proc dump_loop(lp: IrLoop)
+    say "Loop header=", lp.header, " kind=", lp.kind
+    say " body=", lp.body
+    say " exits=", lp.exits
+    say " parent=", lp.parent, " children=", lp.children
+.end
+
+proc dump(forest: LoopForest)
+    say "LoopForest"
+    for (h, lp) in forest.loops
+        dump_loop(lp)
+    .end
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

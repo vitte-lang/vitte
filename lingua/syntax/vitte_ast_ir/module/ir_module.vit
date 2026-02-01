@@ -1,1 +1,187 @@
-// vitte_ast_ir skeleton
+# ============================================================
+# vitte — ir_module.vit
+# AST-IR Compilation Unit / Module — ULTRA MAX
+# ============================================================
+
+space vitte/ast_ir/module
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vitte/ast_ir/common
+pull vitte/ast_ir/attribute
+pull vitte/ast_ir/control_flow
+pull vitte/ast_ir/expr
+pull vitte/ast_ir/analysis
+pull vitte/ast_ir/module/ir_import
+pull vitte/collections/map
+pull vitte/collections/list
+pull vitte/collections/set
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Function IR
+# ----------------------------
+
+type IrFunction
+    name        : String
+    params      : List[ValueId]
+    returns     : String?
+    cfg         : Cfg
+    attrs       : AttributeBundle
+.end
+
+# ----------------------------
+# Global variable IR
+# ----------------------------
+
+type IrGlobal
+    name        : String
+    ty          : String
+    init        : ValueId?
+    mutable     : bool
+    attrs       : AttributeBundle
+.end
+
+# ----------------------------
+# Module IR (compilation unit)
+# ----------------------------
+
+type IrModule
+    name        : String
+    imports     : ImportTable
+    globals     : Map[String, IrGlobal]
+    functions   : Map[String, IrFunction]
+    attrs       : AttributeBundle
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc IrFunction.new(name: String, params: List[ValueId], returns: String, cfg: Cfg) -> IrFunction
+    return IrFunction {
+        name    = name,
+        params  = params,
+        returns = some(returns),
+        cfg     = cfg,
+        attrs   = AttributeBundle.new()
+    }
+.end
+
+proc IrGlobal.new(name: String, ty: String, init: ValueId?, mutable: bool) -> IrGlobal
+    return IrGlobal {
+        name    = name,
+        ty      = ty,
+        init    = init,
+        mutable = mutable,
+        attrs   = AttributeBundle.new()
+    }
+.end
+
+proc IrModule.new(name: String) -> IrModule
+    return IrModule {
+        name      = name,
+        imports   = ImportTable.new(),
+        globals   = Map.new(),
+        functions = Map.new(),
+        attrs     = AttributeBundle.new()
+    }
+.end
+
+# ----------------------------
+# Registration helpers
+# ----------------------------
+
+proc add_function(m: IrModule, f: IrFunction)
+    m.functions[f.name] = f
+.end
+
+proc add_global(m: IrModule, g: IrGlobal)
+    m.globals[g.name] = g
+.end
+
+proc add_import(m: IrModule, imp: IrImport)
+    ir_import.add_import(m.imports, imp)
+.end
+
+# ----------------------------
+# Queries
+# ----------------------------
+
+proc has_function(m: IrModule, name: String) -> bool
+    return m.functions.contains(name)
+.end
+
+proc has_global(m: IrModule, name: String) -> bool
+    return m.globals.contains(name)
+.end
+
+proc all_cfgs(m: IrModule) -> List[Cfg]
+    let out = List.new()
+    for (_, f) in m.functions
+        out.push(f.cfg)
+    .end
+    return out
+.end
+
+# ----------------------------
+# Analysis helpers
+# ----------------------------
+
+proc build_ssa(m: IrModule, ctx: CommonContext)
+    for (_, f) in m.functions
+        let dom  = dominance.build(f.cfg)
+        let live = liveness.compute(f.cfg)
+        let _ssa = ssa.build(f.cfg, dom, live, ctx)
+    .end
+.end
+
+# ----------------------------
+# Validation
+# ----------------------------
+
+proc validate(m: IrModule, ctx: DiagnosticCtx)
+    ir_import.validate(m.imports, ctx)
+
+    for (_, g) in m.globals
+        if !g.mutable && g.init?
+            ()
+        .end
+    .end
+
+    for (_, f) in m.functions
+        f.cfg.validate(ctx)
+    .end
+.end
+
+# ----------------------------
+# Debug / Dump
+# ----------------------------
+
+proc dump(m: IrModule)
+    say "=== IrModule ", m.name, " ==="
+
+    m.imports.dump()
+
+    say "-- Globals"
+    for (_, g) in m.globals
+        say " global ", g.name, ": ", g.ty, " mutable=", g.mutable
+    .end
+
+    say "-- Functions"
+    for (_, f) in m.functions
+        say " fn ", f.name
+        f.cfg.dump()
+    .end
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

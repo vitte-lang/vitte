@@ -1,1 +1,181 @@
-// vitte_ast_ir skeleton
+# ============================================================
+# vitte — ir_assign.vit
+# AST-IR Assignment & Store Expressions — ULTRA MAX
+# ============================================================
+
+space vitte/ast_ir/expr
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vitte/ast_ir/common
+pull vitte/ast_ir/attribute
+pull vitte/ast_ir/common/diagnostics
+pull vitte/collections/list
+pull vitte/collections/set
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Assignment kind
+# ----------------------------
+
+type AssignKind
+    Simple          # x = y
+    Add             # x += y
+    Sub             # x -= y
+    Mul             # x *= y
+    Div             # x /= y
+    And             # x &= y
+    Or              # x |= y
+    Xor             # x ^= y
+    Shl             # x <<= y
+    Shr             # x >>= y
+.end
+
+# ----------------------------
+# Assignment target
+# ----------------------------
+
+type AssignTarget
+    Local(value: ValueId)
+    Global(name: String)
+    Field(base: ValueId, field: String)
+    Index(base: ValueId, index: ValueId)
+    Deref(ptr: ValueId)
+.end
+
+# ----------------------------
+# IR Assignment
+# ----------------------------
+
+type IrAssign
+    kind        : AssignKind
+    target      : AssignTarget
+    value       : ValueId
+    attrs       : AttributeBundle
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc IrAssign.simple(target: AssignTarget, value: ValueId) -> IrAssign
+    return IrAssign {
+        kind   = AssignKind::Simple,
+        target = target,
+        value  = value,
+        attrs  = AttributeBundle.new()
+    }
+.end
+
+proc IrAssign.compound(kind: AssignKind, target: AssignTarget, value: ValueId) -> IrAssign
+    return IrAssign {
+        kind   = kind,
+        target = target,
+        value  = value,
+        attrs  = AttributeBundle.new()
+    }
+.end
+
+# ----------------------------
+# Queries
+# ----------------------------
+
+proc is_compound(assign: IrAssign) -> bool
+    return assign.kind != AssignKind::Simple
+.end
+
+proc target_value(assign: IrAssign) -> ValueId?
+    match assign.target
+        AssignTarget::Local(v)        => some(v)
+        AssignTarget::Field(base, _)  => some(base)
+        AssignTarget::Index(base, _)  => some(base)
+        AssignTarget::Deref(ptr)      => some(ptr)
+        _                             => none
+    .end
+.end
+
+# ----------------------------
+# Side-effect analysis
+# ----------------------------
+
+proc has_side_effect(assign: IrAssign) -> bool
+    match assign.target
+        AssignTarget::Local(_)   => false
+        _                        => true
+    .end
+.end
+
+# ----------------------------
+# Validation
+# ----------------------------
+
+proc validate(assign: IrAssign, ctx: DiagnosticCtx)
+    match assign.target
+        AssignTarget::Local(_) => ()
+        AssignTarget::Global(_) => ()
+        AssignTarget::Field(_, _) => ()
+        AssignTarget::Index(_, _) => ()
+        AssignTarget::Deref(_) => ()
+    .end
+
+    # compound assignment requires readable target
+    if assign.kind != AssignKind::Simple
+        let tv? = target_value(assign)
+        if !tv?
+            let err = error.error(ErrorCode::Validate, "invalid compound assignment target")
+            emit_error(ctx, err)
+        .end
+    .end
+.end
+
+# ----------------------------
+# Lowering helpers
+# ----------------------------
+
+proc used_values(assign: IrAssign) -> Set[ValueId]
+    let out = Set.new()
+    out.insert(assign.value)
+
+    match assign.target
+        AssignTarget::Local(v)        => out.insert(v)
+        AssignTarget::Field(base, _)  => out.insert(base)
+        AssignTarget::Index(base, i)  =>
+            out.insert(base)
+            out.insert(i)
+        .end
+        AssignTarget::Deref(ptr)      => out.insert(ptr)
+        _                             => ()
+    .end
+
+    return out
+.end
+
+proc defined_values(assign: IrAssign) -> Set[ValueId]
+    let out = Set.new()
+    match assign.target
+        AssignTarget::Local(v) => out.insert(v)
+        _                      => ()
+    .end
+    return out
+.end
+
+# ----------------------------
+# Debug / Dump
+# ----------------------------
+
+proc dump(assign: IrAssign)
+    say "IrAssign kind=", assign.kind
+    say " target=", assign.target
+    say " value=", assign.value
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

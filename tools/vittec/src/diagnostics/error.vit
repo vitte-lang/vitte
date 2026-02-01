@@ -1,1 +1,151 @@
-// vittec src ULTRA MAX skeleton
+# ============================================================
+# vittec — diagnostics/error.vit
+# Diagnostics & Error system (ULTRA MAX)
+# ============================================================
+
+space vittec/diagnostics
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vittec/diagnostics/span
+pull vittec/diagnostics/level
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Error Level
+# ----------------------------
+
+type ErrorLevel
+    Info
+    Warning
+    Error
+    Fatal
+.end
+
+# ----------------------------
+# Error Code
+# ----------------------------
+
+type ErrorCode
+    Unknown
+    Io
+    Parse
+    Type
+    Resolve
+    Validate
+    Config
+    Internal
+.end
+
+# ----------------------------
+# Diagnostic Error
+# ----------------------------
+
+type DiagnosticError
+    code        : ErrorCode
+    level       : ErrorLevel
+    message     : String
+    span        : Span?
+    notes       : List[String]
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc DiagnosticError.new(
+    code: ErrorCode,
+    level: ErrorLevel,
+    message: String
+) -> DiagnosticError
+    return DiagnosticError {
+        code    = code,
+        level   = level,
+        message = message,
+        span    = none,
+        notes   = List.new()
+    }
+.end
+
+proc DiagnosticError.with_span(err: DiagnosticError, span: Span) -> DiagnosticError
+    err.span = some(span)
+    return err
+.end
+
+proc DiagnosticError.note(err: DiagnosticError, text: String) -> DiagnosticError
+    err.notes.push(text)
+    return err
+.end
+
+# ----------------------------
+# Shortcuts
+# ----------------------------
+
+proc info(code: ErrorCode, msg: String) -> DiagnosticError
+    return DiagnosticError.new(code, ErrorLevel::Info, msg)
+.end
+
+proc warning(code: ErrorCode, msg: String) -> DiagnosticError
+    return DiagnosticError.new(code, ErrorLevel::Warning, msg)
+.end
+
+proc error(code: ErrorCode, msg: String) -> DiagnosticError
+    return DiagnosticError.new(code, ErrorLevel::Error, msg)
+.end
+
+proc fatal(code: ErrorCode, msg: String) -> DiagnosticError
+    return DiagnosticError.new(code, ErrorLevel::Fatal, msg)
+.end
+
+# ----------------------------
+# Formatting
+# ----------------------------
+
+proc level_name(level: ErrorLevel) -> String
+    match level
+        ErrorLevel::Info     => "info"
+        ErrorLevel::Warning  => "warning"
+        ErrorLevel::Error    => "error"
+        ErrorLevel::Fatal    => "fatal"
+    .end
+.end
+
+proc code_name(code: ErrorCode) -> String
+    match code
+        ErrorCode::Unknown   => "E000"
+        ErrorCode::Io        => "E100"
+        ErrorCode::Parse     => "E200"
+        ErrorCode::Type      => "E300"
+        ErrorCode::Resolve   => "E400"
+        ErrorCode::Validate  => "E500"
+        ErrorCode::Config    => "E600"
+        ErrorCode::Internal  => "E900"
+    .end
+.end
+
+# ----------------------------
+# Display
+# ----------------------------
+
+proc display(err: DiagnosticError)
+    say level_name(err.level), "[", code_name(err.code), "]: ", err.message
+
+    if err.span?
+        say " --> ", err.span
+    .end
+
+    for note in err.notes
+        say " note: ", note
+    .end
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

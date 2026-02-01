@@ -1,1 +1,185 @@
-// vitte_ast skeleton
+# =========================================================
+# Vitte 1.0 — AST / Expr / Unary
+# =========================================================
+
+space vitte/ast/expr/unary
+
+share all
+
+<<< doc
+Ce module définit la représentation AST des expressions unaire
+dans le langage Vitte.
+
+Une expression unaire :
+- applique un opérateur préfixe à une expression
+- ne modifie pas la structure de contrôle
+- est validée sémantiquement en HIR
+
+Syntaxe conceptuelle :
+    -x
+    not x
+    +x
+
+Aucune priorité opératoire n’est imposée ici.
+>>>
+
+# ---------------------------------------------------------
+# Dépendances communes
+# ---------------------------------------------------------
+
+pull vitte/ast/common/span
+pull vitte/ast/common/ident
+
+# ---------------------------------------------------------
+# Opérateurs unaires
+# ---------------------------------------------------------
+
+pick UnaryOp
+    case Plus        # +x
+    case Minus       # -x
+    case Not         # not x
+.end
+
+# ---------------------------------------------------------
+# Expression unaire
+# ---------------------------------------------------------
+
+form UnaryExpr
+    field op as UnaryOp
+    field expr as Expr
+    field span as Span
+.end
+
+# ---------------------------------------------------------
+# Référence minimale vers Expr
+# ---------------------------------------------------------
+
+pick Expr
+    case Ident(name as Ident)
+    case Literal(value as Literal)
+
+    case Unary(expr as UnaryExpr)
+    case Binary(expr as BinaryExpr)
+    case Assign(expr as AssignExpr)
+    case Call(expr as CallExpr)
+    case Cast(expr as CastExpr)
+    case Block(expr as BlockExpr)
+
+    case Group(expr as Expr)
+.end
+
+# ---------------------------------------------------------
+# Expressions support minimales
+# ---------------------------------------------------------
+
+form BinaryExpr
+    field left as Expr
+    field op as BinaryOp
+    field right as Expr
+    field span as Span
+.end
+
+pick BinaryOp
+    case Add
+    case Sub
+    case Mul
+    case Div
+    case Eq
+    case Ne
+    case Lt
+    case Le
+    case Gt
+    case Ge
+    case And
+    case Or
+.end
+
+form AssignExpr
+    field target as LValue
+    field value as Expr
+    field span as Span
+.end
+
+pick LValue
+    case Ident(name as Ident)
+    case Field(base as Expr, field as Ident)
+.end
+
+form CallExpr
+    field callee as Expr
+    field args as List[Expr]
+    field span as Span
+.end
+
+form CastExpr
+    field value as Expr
+    field target_type as TypeExpr
+    field span as Span
+.end
+
+form BlockExpr
+    field block as Block
+    field span as Span
+.end
+
+form Block
+    field statements as List[Stmt]
+    field span as Span
+.end
+
+pick Stmt
+    case Make(stmt as MakeStmt)
+    case Give(stmt as GiveStmt)
+    case Emit(stmt as EmitStmt)
+    case Expr(stmt as ExprStmt)
+.end
+
+form MakeStmt
+    field name as Ident
+    field ty as TypeExpr
+    field value as Expr
+    field span as Span
+.end
+
+form GiveStmt
+    field value as Expr
+    field span as Span
+.end
+
+form EmitStmt
+    field value as Expr
+    field span as Span
+.end
+
+form ExprStmt
+    field expr as Expr
+    field span as Span
+.end
+
+# ---------------------------------------------------------
+# Types (référence minimale)
+# ---------------------------------------------------------
+
+pick TypeExpr
+    case Simple(name as Ident)
+    case Generic(name as Ident, args as List[TypeExpr])
+.end
+
+# ---------------------------------------------------------
+# Littéraux
+# ---------------------------------------------------------
+
+pick Literal
+    case Bool(value as bool)
+    case Int(value as string)
+    case String(value as string)
+.end
+
+# ---------------------------------------------------------
+# Erreurs AST liées aux expressions unaires (pré-HIR)
+# ---------------------------------------------------------
+
+pick UnaryError
+    case InvalidOperand(op as UnaryOp, span as Span)
+    case UnsupportedOperator(op as UnaryOp, span as Span)
+.end

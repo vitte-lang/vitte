@@ -1,1 +1,85 @@
 // vitte_ast skeleton
+# =========================================================
+# Vitte 1.0 — AST / Expr / Module
+# =========================================================
+
+space vitte/ast/expr
+
+share all
+
+<<< doc
+Module racine des expressions AST du langage Vitte.
+
+Ce module joue le rôle de façade unique pour toutes les
+expressions syntaxiques.
+
+Rôle :
+- point d’entrée unique : `pull vitte/ast/expr`
+- agrégation de tous les sous-modules d’expressions
+- stabilité d’API pour parser, HIR, MIR et backend
+- éviter toute dépendance directe aux fichiers internes
+
+Aucune logique n’est définie ici.
+>>>
+
+# ---------------------------------------------------------
+# Sous-modules d’expressions
+# ---------------------------------------------------------
+
+pull vitte/ast/expr/assign as assign
+pull vitte/ast/expr/binary as binary
+pull vitte/ast/expr/call as call
+pull vitte/ast/expr/cast as cast
+pull vitte/ast/expr/block_expr as block_expr
+
+# ---------------------------------------------------------
+# Expression unifiée (façade AST)
+# ---------------------------------------------------------
+
+pick Expr
+    case Ident(name as Ident)
+    case Literal(value as Literal)
+
+    case Assign(expr as AssignExpr)
+    case Binary(expr as BinaryExpr)
+    case Call(expr as CallExpr)
+    case Cast(expr as CastExpr)
+    case Block(expr as BlockExpr)
+
+    case Group(expr as Expr)
+.end
+
+# ---------------------------------------------------------
+# Ré-export public (API stable)
+# ---------------------------------------------------------
+
+share
+    # --- Expression racine ---
+    Expr,
+
+    # --- Assign ---
+    AssignExpr,
+    AssignStmt,
+    LValue,
+    AssignError,
+
+    # --- Binary ---
+    BinaryExpr,
+    BinaryOp,
+    BinaryError,
+
+    # --- Call ---
+    CallExpr,
+    Argument,
+    ArgumentList,
+    CallError,
+
+    # --- Cast ---
+    CastExpr,
+    CastKind,
+    AnnotatedCast,
+    CastError,
+
+    # --- Block expression ---
+    BlockExpr,
+    BlockExprError

@@ -1,1 +1,166 @@
 // vittec src ULTRA MAX skeleton
+# ============================================================
+# vittec — driver/build.vit
+# Compiler Build Driver — ULTRA MAX
+# ============================================================
+
+space vittec/driver
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vittec/cli
+pull vittec/diagnostics
+pull vitte/ast_ir/program
+pull vitte/ast_ir/module
+pull vitte/ast_ir/runnable
+pull vitte/collections/list
+pull vitte/collections/map
+pull vitte/fs
+pull vitte/path
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Build result
+# ----------------------------
+
+type BuildResult
+    success     : bool
+    output      : String?
+.end
+
+# ----------------------------
+# Build options
+# ----------------------------
+
+type BuildOptions
+    optimize    : bool
+    emit_ir     : bool
+    emit_ast    : bool
+    target      : String
+.end
+
+# ----------------------------
+# Entry
+# ----------------------------
+
+proc build(ctx: CliContext) -> int
+    let diag = DiagnosticContext.new()
+
+    # --------------------------------
+    # 1. Load sources
+    # --------------------------------
+
+    let sources = load_sources(ctx, diag)
+    if diag.has_errors()
+        print(diagnostics.render_all(diag))
+        return 1
+    .end
+
+    # --------------------------------
+    # 2. Build IR program
+    # --------------------------------
+
+    let bundle = ProgramBundle.new()
+    for s in sources
+        bundle.add_source(s)
+    .end
+
+    bundle.validate(diag)
+    if diag.has_errors()
+        print(diagnostics.render_all(diag))
+        return 1
+    .end
+
+    # --------------------------------
+    # 3. SSA + analysis
+    # --------------------------------
+
+    bundle.build_ssa()
+
+    # --------------------------------
+    # 4. Optional IR dump
+    # --------------------------------
+
+    if ctx.args.flag("emit-ir")
+        dump_ir(bundle)
+    .end
+
+    # --------------------------------
+    # 5. Backend / codegen (stub)
+    # --------------------------------
+
+    let out = backend_codegen(bundle, ctx, diag)
+    if diag.has_errors()
+        print(diagnostics.render_all(diag))
+        return 1
+    .end
+
+    say "Build succeeded: ", out
+    return 0
+.end
+
+# ----------------------------
+# Source loading
+# ----------------------------
+
+proc load_sources(ctx: CliContext, diag: DiagnosticContext) -> List[IrSourceFile]
+    let out = List.new()
+
+    for p in ctx.args.inputs
+        if !fs.exists(p)
+            diagnostics.error(diag, DiagnosticCode::Parse, "input file not found", none)
+            continue
+        .end
+
+        let src = parse_source(p, diag)
+        if src?
+            out.push(src?)
+        .end
+    .end
+
+    return out
+.end
+
+proc parse_source(path: String, diag: DiagnosticContext) -> IrSourceFile?
+    # frontend hook (parser not yet implemented)
+    let meta = SourceMeta.new(path, SourceKind::Module)
+    let file = IrSourceFile.new(meta)
+
+    # TODO: parser → AST → IR lowering
+    return some(file)
+.end
+
+# ----------------------------
+# Backend stub
+# ----------------------------
+
+proc backend_codegen(bundle: ProgramBundle, ctx: CliContext, diag: DiagnosticContext) -> String
+    # placeholder backend
+    let out = ctx.config.output
+    if out == ""
+        out = "a.out"
+    .end
+
+    # TODO: real backend implementation
+    return out
+.end
+
+# ----------------------------
+# IR dump
+# ----------------------------
+
+proc dump_ir(bundle: ProgramBundle)
+    say "=== IR DUMP ==="
+    bundle.dump()
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

@@ -1,1 +1,123 @@
-// vitte_ast_ir skeleton
+# ============================================================
+# vitte — ir_unary.vit
+# AST-IR Unary Expressions — ULTRA MAX
+# ============================================================
+
+space vitte/ast_ir/expr
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vitte/ast_ir/common
+pull vitte/ast_ir/attribute
+pull vitte/ast_ir/common/diagnostics
+pull vitte/collections/set
+pull vitte/collections/list
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Unary operator kind
+# ----------------------------
+
+type UnaryOp
+    Neg         # -x
+    Not         # !x
+    BitNot      # ~x
+    Ref         # &x
+    Deref       # *x
+.end
+
+# ----------------------------
+# IR Unary expression
+# ----------------------------
+
+type IrUnary
+    op          : UnaryOp
+    operand     : ValueId
+    result      : ValueId
+    attrs       : AttributeBundle
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc IrUnary.new(op: UnaryOp, operand: ValueId, result: ValueId) -> IrUnary
+    return IrUnary {
+        op      = op,
+        operand = operand,
+        result  = result,
+        attrs   = AttributeBundle.new()
+    }
+.end
+
+# ----------------------------
+# Queries
+# ----------------------------
+
+proc is_pure(u: IrUnary) -> bool
+    match u.op
+        UnaryOp::Ref   => false
+        UnaryOp::Deref => false
+        _              => true
+    .end
+.end
+
+# ----------------------------
+# Dataflow helpers
+# ----------------------------
+
+proc used_values(u: IrUnary) -> Set[ValueId]
+    let out = Set.new()
+    out.insert(u.operand)
+    return out
+.end
+
+proc defined_values(u: IrUnary) -> Set[ValueId]
+    let out = Set.new()
+    out.insert(u.result)
+    return out
+.end
+
+# ----------------------------
+# Validation
+# ----------------------------
+
+proc validate(u: IrUnary, ctx: DiagnosticCtx)
+    # sanity: result must differ from operand
+    if u.result == u.operand
+        let err = error.error(ErrorCode::Validate, "unary result aliases operand")
+        emit_error(ctx, err)
+    .end
+.end
+
+# ----------------------------
+# Side-effect analysis
+# ----------------------------
+
+proc has_side_effect(u: IrUnary) -> bool
+    # ref/deref may touch memory
+    match u.op
+        UnaryOp::Ref   => true
+        UnaryOp::Deref => true
+        _              => false
+    .end
+.end
+
+# ----------------------------
+# Debug / Dump
+# ----------------------------
+
+proc dump(u: IrUnary)
+    say "IrUnary ", u.result, " = ", u.op, " ", u.operand
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

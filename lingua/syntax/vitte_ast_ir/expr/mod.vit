@@ -1,1 +1,200 @@
-// vitte_ast_ir skeleton
+# ============================================================
+# vitte — analysis/ssa.vit
+# Static Single Assignment (SSA) Construction — ULTRA MAX
+# ============================================================
+
+space vitte/ast_ir/analysis
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vitte/ast_ir/common
+pull vitte/ast_ir/control_flow
+pull vitte/ast_ir/expr
+pull vitte/ast_ir/analysis/dominance
+pull vitte/ast_ir/analysis/liveness
+pull vitte/collections/map
+pull vitte/collections/set
+pull vitte/collections/list
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Phi node
+# ----------------------------
+
+type Phi
+    result      : ValueId
+    incomings   : Map[BlockId, ValueId]
+.end
+
+# ----------------------------
+# SSA Block extension
+# ----------------------------
+
+type SsaBlock
+    phis        : List[Phi]
+.end
+
+# ----------------------------
+# SSA form
+# ----------------------------
+
+type SsaForm
+    cfg         : Cfg
+    phis        : Map[BlockId, List[Phi]]
+    renamed     : Map[ValueId, List[ValueId]]
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc SsaForm.new(cfg: Cfg) -> SsaForm
+    return SsaForm {
+        cfg     = cfg,
+        phis    = Map.new(),
+        renamed = Map.new()
+    }
+.end
+
+# ----------------------------
+# Phi placement (Cytron et al.)
+# ----------------------------
+
+proc place_phis(cfg: Cfg, dom: DominatorTree, live: Liveness) -> Map[BlockId, List[Phi]]
+    let phis = Map.new()
+
+    # variables defined in multiple blocks
+    let defsites = Map[ValueId, Set[BlockId]].new()
+
+    for b in cfg.blocks()
+        for inst in cfg.block(b).instructions()
+            for v in inst.defined_values()
+                defsites.get_or_insert(v, Set.new()).insert(b)
+            .end
+        .end
+    .end
+
+    # worklist algorithm
+    for (v, blocks) in defsites
+        let work = List.from(blocks)
+        let placed = Set.new()
+
+        while !work.is_empty()
+            let n = work.pop()
+            for y in dominance.frontier(dom, n)
+                if !placed.contains(y) && live.is_live_in(y, v)
+                    let phi = Phi {
+                        result    = v,
+                        incomings = Map.new()
+                    }
+                    phis.get_or_insert(y, List.new()).push(phi)
+                    placed.insert(y)
+                    if !blocks.contains(y)
+                        work.push(y)
+                    .end
+                .end
+            .end
+        .end
+    .end
+
+    return phis
+.end
+
+# ----------------------------
+# Renaming
+# ----------------------------
+
+proc rename(cfg: Cfg, dom: DominatorTree, phis: Map[BlockId, List[Phi]], ctx: CommonContext)
+    let stacks = Map[ValueId, List[ValueId]].new()
+
+    proc fresh(v: ValueId) -> ValueId
+        let nv = fresh_value(ctx)
+        stacks.get_or_insert(v, List.new()).push(nv)
+        return nv
+    .end
+
+    proc current(v: ValueId) -> ValueId
+        if stacks.contains(v) && !stacks[v].is_empty()
+            return stacks[v].last()
+        .end
+        return v
+    .end
+
+    proc dfs(b: BlockId)
+        # rename phi results
+        if phis.contains(b)
+            for p in phis[b]
+                let nv = fresh(p.result)
+                p.result = nv
+            .end
+        .end
+
+        # rename instructions
+        for inst in cfg.block(b).instructions()
+            inst.rename_uses(current)
+            for d in inst.defined_values()
+                let nv = fresh(d)
+                inst.rename_def(d, nv)
+            .end
+        .end
+
+        # add incoming edges
+        for s in cfg.successors(b)
+            if phis.contains(s)
+                for p in phis[s]
+                    p.incomings[b] = current(p.result)
+                .end
+            .end
+        .end
+
+        # recurse on dominator tree
+        for c in dominance.children(dom, b)
+            dfs(c)
+        .end
+
+        # pop stack
+        if phis.contains(b)
+            for p in phis[b]
+                stacks[p.result].pop()
+            .end
+        .end
+    .end
+
+    dfs(cfg.entry())
+.end
+
+# ----------------------------
+# Main entry
+# ----------------------------
+
+proc build(cfg: Cfg, dom: DominatorTree, live: Liveness, ctx: CommonContext) -> SsaForm
+    let ssa = SsaForm.new(cfg)
+    ssa.phis = place_phis(cfg, dom, live)
+    rename(cfg, dom, ssa.phis, ctx)
+    return ssa
+.end
+
+# ----------------------------
+# Debug / Dump
+# ----------------------------
+
+proc dump(ssa: SsaForm)
+    say "=== SSA Form ==="
+    for (b, ps) in ssa.phis
+        say " block ", b
+        for p in ps
+            say "  phi ", p.result, " <- ", p.incomings
+        .end
+    .end
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

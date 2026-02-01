@@ -1,1 +1,200 @@
-// vitte_ast_ir skeleton
+# ============================================================
+# vitte — ir_flow.vit
+# AST-IR Flow / Service / Pipeline Definition — ULTRA MAX
+# ============================================================
+
+space vitte/ast_ir/runnable
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vitte/ast_ir/common
+pull vitte/ast_ir/module
+pull vitte/ast_ir/control_flow
+pull vitte/ast_ir/analysis
+pull vitte/ast_ir/attribute
+pull vitte/collections/map
+pull vitte/collections/list
+pull vitte/collections/set
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Flow kind
+# ----------------------------
+
+type FlowKind
+    Service         # long-running background flow
+    Pipeline        # staged data pipeline
+    Reactor         # event-driven reactor
+.end
+
+# ----------------------------
+# Flow stage
+# ----------------------------
+
+type FlowStage
+    name        : String
+    cfg         : Cfg
+    inputs      : List[String]
+    outputs     : List[String]
+    attrs       : AttributeBundle
+.end
+
+# ----------------------------
+# IR Flow
+# ----------------------------
+
+type IrFlow
+    kind        : FlowKind
+    name        : String
+    module      : String
+    stages      : List[FlowStage]
+    attrs       : AttributeBundle
+.end
+
+# ----------------------------
+# Flow table
+# ----------------------------
+
+type FlowTable
+    flows       : Map[String, IrFlow]
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc FlowStage.new(name: String, cfg: Cfg, inputs: List[String], outputs: List[String]) -> FlowStage
+    return FlowStage {
+        name    = name,
+        cfg     = cfg,
+        inputs  = inputs,
+        outputs = outputs,
+        attrs   = AttributeBundle.new()
+    }
+.end
+
+proc IrFlow.new(kind: FlowKind, name: String, module: String) -> IrFlow
+    return IrFlow {
+        kind    = kind,
+        name    = name,
+        module  = module,
+        stages  = List.new(),
+        attrs   = AttributeBundle.new()
+    }
+.end
+
+proc FlowTable.new() -> FlowTable
+    return FlowTable {
+        flows = Map.new()
+    }
+.end
+
+# ----------------------------
+# Registration helpers
+# ----------------------------
+
+proc add_stage(f: IrFlow, s: FlowStage)
+    f.stages.push(s)
+.end
+
+proc register(tab: FlowTable, f: IrFlow)
+    tab.flows[f.name] = f
+.end
+
+proc has_flow(tab: FlowTable, name: String) -> bool
+    return tab.flows.contains(name)
+.end
+
+proc get(tab: FlowTable, name: String) -> IrFlow?
+    if tab.flows.contains(name)
+        return some(tab.flows[name])
+    .end
+    return none
+.end
+
+# ----------------------------
+# Queries
+# ----------------------------
+
+proc all_flows(tab: FlowTable) -> List[IrFlow]
+    let out = List.new()
+    for (_, f) in tab.flows
+        out.push(f)
+    .end
+    return out
+.end
+
+proc stage_names(f: IrFlow) -> List[String]
+    let out = List.new()
+    for s in f.stages
+        out.push(s.name)
+    .end
+    return out
+.end
+
+# ----------------------------
+# Analysis helpers
+# ----------------------------
+
+proc build_ssa(f: IrFlow, ctx: CommonContext)
+    for s in f.stages
+        let dom  = dominance.build(s.cfg)
+        let live = liveness.compute(s.cfg)
+        let _ssa = ssa.build(s.cfg, dom, live, ctx)
+    .end
+.end
+
+# ----------------------------
+# Validation
+# ----------------------------
+
+proc validate(f: IrFlow, ctx: DiagnosticCtx)
+    if f.stages.is_empty()
+        let err = error.error(ErrorCode::Validate, "flow without stages")
+        emit_error(ctx, err)
+    .end
+
+    for s in f.stages
+        s.cfg.validate(ctx)
+    .end
+.end
+
+proc validate_all(tab: FlowTable, ctx: DiagnosticCtx)
+    for (_, f) in tab.flows
+        validate(f, ctx)
+    .end
+.end
+
+# ----------------------------
+# Debug / Dump
+# ----------------------------
+
+proc dump_stage(s: FlowStage)
+    say " Stage ", s.name, " inputs=", s.inputs, " outputs=", s.outputs
+    s.cfg.dump()
+.end
+
+proc dump_flow(f: IrFlow)
+    say "IrFlow ", f.kind, " ", f.module, "::", f.name
+    for s in f.stages
+        dump_stage(s)
+    .end
+.end
+
+proc dump(tab: FlowTable)
+    say "=== FlowTable ==="
+    for (_, f) in tab.flows
+        dump_flow(f)
+    .end
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

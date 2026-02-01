@@ -1,1 +1,102 @@
-// vittec src ULTRA MAX skeleton
+# =========================================================
+# vittec — CLI / Version
+# =========================================================
+
+space vittec/cli/version
+
+share all
+
+<<< doc
+Ce module définit l’affichage et la représentation de la version
+du compilateur vittec.
+
+Responsabilités :
+- fournir les informations de version
+- centraliser les métadonnées build
+- afficher la version via la CLI (--version)
+
+Ce module :
+- NE parse PAS les arguments
+- NE dépend PAS du driver
+- NE déclenche AUCUNE compilation
+
+Il est appelé par :
+- cli/commands.vit
+- option --version
+>>>
+
+# ---------------------------------------------------------
+# Informations de version (statiques)
+# ---------------------------------------------------------
+
+form VersionInfo
+    field name as string
+    field version as string
+    field commit as Option[string]
+    field build_date as Option[string]
+    field target as Option[string]
+.end
+
+# ---------------------------------------------------------
+# Version courante
+# ---------------------------------------------------------
+
+proc current() gives VersionInfo
+
+    give VersionInfo(
+        "vittec",
+        "0.1.0",
+        none,           # commit (injectable au build)
+        none,           # date de build
+        none            # target triple
+    )
+.end
+
+# ---------------------------------------------------------
+# Représentation courte
+# ---------------------------------------------------------
+
+proc short() gives string
+
+    make v as VersionInfo = current()
+    give v.name + " " + v.version
+.end
+
+# ---------------------------------------------------------
+# Représentation longue
+# ---------------------------------------------------------
+
+proc long() gives string
+
+    make v as VersionInfo = current()
+
+    make out as string =
+        v.name + " " + v.version + "\n"
+
+    select v.commit
+        when some(c)
+            set out = out + "commit: " + c + "\n"
+    .end
+
+    select v.build_date
+        when some(d)
+            set out = out + "built:  " + d + "\n"
+    .end
+
+    select v.target
+        when some(t)
+            set out = out + "target: " + t + "\n"
+    .end
+
+    give out
+.end
+
+# ---------------------------------------------------------
+# Impression CLI
+# ---------------------------------------------------------
+
+proc print()
+
+    emit long()
+
+.end

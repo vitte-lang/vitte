@@ -1,1 +1,129 @@
-// vitte_ast_ir skeleton
+# ============================================================
+# vitte — ir_span.vit
+# AST-IR Span & Source Mapping System (ULTRA MAX)
+# ============================================================
+
+space vitte/ast_ir/common
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vittec/diagnostics/span
+pull vitte/collections/map
+pull vitte/collections/list
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# IR Span
+# ----------------------------
+
+type IrSpan
+    file        : String
+    line        : int
+    column      : int
+    length      : int
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc IrSpan.new(file: String, line: int, column: int, length: int) -> IrSpan
+    return IrSpan {
+        file   = file,
+        line   = line,
+        column = column,
+        length = length
+    }
+.end
+
+proc IrSpan.from_span(sp: Span) -> IrSpan
+    return IrSpan {
+        file   = sp.file,
+        line   = sp.line,
+        column = sp.column,
+        length = sp.length
+    }
+.end
+
+# ----------------------------
+# Conversion
+# ----------------------------
+
+proc to_span(ir: IrSpan) -> Span
+    return Span.from(ir.file, ir.line, ir.column)
+.end
+
+# ----------------------------
+# Span table (ID -> span)
+# ----------------------------
+
+type SpanTable
+    table   : Map[int, IrSpan]
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc SpanTable.new() -> SpanTable
+    return SpanTable {
+        table = Map.new()
+    }
+.end
+
+# ----------------------------
+# Operations
+# ----------------------------
+
+proc insert(tbl: SpanTable, id: int, span: IrSpan)
+    tbl.table[id] = span
+.end
+
+proc get(tbl: SpanTable, id: int) -> IrSpan?
+    if tbl.table.contains(id)
+        return some(tbl.table[id])
+    .end
+    return none
+.end
+
+proc has(tbl: SpanTable, id: int) -> bool
+    return tbl.table.contains(id)
+.end
+
+proc remove(tbl: SpanTable, id: int)
+    if tbl.table.contains(id)
+        tbl.table.remove(id)
+    .end
+.end
+
+# ----------------------------
+# Merge
+# ----------------------------
+
+proc merge(dst: SpanTable, src: SpanTable)
+    for (k, v) in src.table
+        dst.table[k] = v
+    .end
+.end
+
+# ----------------------------
+# Debug / Dump
+# ----------------------------
+
+proc dump(tbl: SpanTable)
+    say "SpanTable"
+    for (id, sp) in tbl.table
+        say " ", id, " -> ", sp.file, ":", sp.line, ":", sp.column
+    .end
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

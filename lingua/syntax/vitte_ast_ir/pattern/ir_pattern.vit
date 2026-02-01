@@ -1,1 +1,188 @@
-// vitte_ast_ir skeleton
+# ============================================================
+# vitte — ir_pattern.vit
+# AST-IR Core Pattern System — ULTRA MAX
+# ============================================================
+
+space vitte/ast_ir/pattern
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vitte/ast_ir/common
+pull vitte/ast_ir/attribute
+pull vitte/collections/list
+pull vitte/collections/set
+pull vitte/collections/map
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Pattern category
+# ----------------------------
+
+type PatternCategory
+    Value       # matches a value
+    Binding     # introduces a binding
+    Structural  # destructuring / variant
+.end
+
+# ----------------------------
+# Pattern kind
+# ----------------------------
+
+type PatternKind
+    Wildcard                        # _
+    LiteralInt(value: int)
+    LiteralBool(value: bool)
+    LiteralString(value: String)
+    RangeInt(lo: int, hi: int)
+
+    Bind(name: String)              # let x
+    BindTyped(name: String, ty: String)
+
+    Tuple(parts: List[Pattern])
+    Struct(type: String, fields: Map[String, Pattern])
+    Variant(type: String, case: String, fields: List[Pattern])
+.end
+
+# ----------------------------
+# Pattern
+# ----------------------------
+
+type Pattern
+    kind        : PatternKind
+    category    : PatternCategory
+    attrs       : AttributeBundle
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc Pattern.wildcard() -> Pattern
+    return Pattern {
+        kind     = PatternKind::Wildcard,
+        category = PatternCategory::Value,
+        attrs    = AttributeBundle.new()
+    }
+.end
+
+proc Pattern.literal_int(v: int) -> Pattern
+    return Pattern {
+        kind     = PatternKind::LiteralInt(v),
+        category = PatternCategory::Value,
+        attrs    = AttributeBundle.new()
+    }
+.end
+
+proc Pattern.bind(name: String) -> Pattern
+    return Pattern {
+        kind     = PatternKind::Bind(name),
+        category = PatternCategory::Binding,
+        attrs    = AttributeBundle.new()
+    }
+.end
+
+proc Pattern.bind_typed(name: String, ty: String) -> Pattern
+    return Pattern {
+        kind     = PatternKind::BindTyped(name, ty),
+        category = PatternCategory::Binding,
+        attrs    = AttributeBundle.new()
+    }
+.end
+
+proc Pattern.tuple(parts: List[Pattern]) -> Pattern
+    return Pattern {
+        kind     = PatternKind::Tuple(parts),
+        category = PatternCategory::Structural,
+        attrs    = AttributeBundle.new()
+    }
+.end
+
+proc Pattern.variant(ty: String, case: String, fields: List[Pattern]) -> Pattern
+    return Pattern {
+        kind     = PatternKind::Variant(ty, case, fields),
+        category = PatternCategory::Structural,
+        attrs    = AttributeBundle.new()
+    }
+.end
+
+# ----------------------------
+# Analysis helpers
+# ----------------------------
+
+proc bindings(p: Pattern) -> Set[String]
+    let out = Set.new()
+    match p.kind
+        PatternKind::Bind(n) => out.insert(n)
+        PatternKind::BindTyped(n, _) => out.insert(n)
+        PatternKind::Tuple(ps) =>
+            for x in ps
+                out = out.union(bindings(x))
+            .end
+        .end
+        PatternKind::Struct(_, fs) =>
+            for (_, v) in fs
+                out = out.union(bindings(v))
+            .end
+        .end
+        PatternKind::Variant(_, _, fs) =>
+            for f in fs
+                out = out.union(bindings(f))
+            .end
+        .end
+        _ => ()
+    .end
+    return out
+.end
+
+proc is_irrefutable(p: Pattern) -> bool
+    match p.kind
+        PatternKind::Wildcard => true
+        PatternKind::Bind(_) => true
+        PatternKind::BindTyped(_, _) => true
+        PatternKind::Tuple(ps) =>
+            for x in ps
+                if !is_irrefutable(x)
+                    return false
+                .end
+            .end
+            return true
+        .end
+        _ => false
+    .end
+.end
+
+# ----------------------------
+# Validation
+# ----------------------------
+
+proc validate(p: Pattern, ctx: DiagnosticCtx)
+    # ranges sanity
+    match p.kind
+        PatternKind::RangeInt(lo, hi) =>
+            if lo > hi
+                let err = error.error(ErrorCode::Validate, "invalid range pattern")
+                emit_error(ctx, err)
+            .end
+        .end
+        _ => ()
+    .end
+.end
+
+# ----------------------------
+# Debug / Dump
+# ----------------------------
+
+proc dump(p: Pattern)
+    say "Pattern ", p.kind, " category=", p.category
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

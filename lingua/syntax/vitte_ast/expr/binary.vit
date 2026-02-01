@@ -1,1 +1,115 @@
-// vitte_ast skeleton
+# =========================================================
+# Vitte 1.0 — AST / Expr / Binary
+# =========================================================
+
+space vitte/ast/expr/binary
+
+share all
+
+<<< doc
+Ce module définit la représentation AST des expressions binaires
+dans le langage Vitte.
+
+Caractéristiques importantes :
+- aucune précédence opératoire n’est codée ici
+- l’ordre est strictement celui produit par le parser
+- l’association et la validation sont traitées en HIR
+
+Syntaxe concernée :
+    expr ::= primary { bin_op primary }
+
+Exemples :
+    a + b
+    x < y and z != 0
+    (a + b) * c
+>>>
+
+# ---------------------------------------------------------
+# Dépendances communes
+# ---------------------------------------------------------
+
+pull vitte/ast/common/span
+pull vitte/ast/common/ident
+
+# ---------------------------------------------------------
+# Opérateurs binaires (surface syntax)
+# ---------------------------------------------------------
+
+pick BinaryOp
+    case Add        # +
+    case Sub        # -
+    case Mul        # *
+    case Div        # /
+    case Eq         # ==
+    case Ne         # !=
+    case Lt         # <
+    case Le         # <=
+    case Gt         # >
+    case Ge         # >=
+    case And        # and
+    case Or         # or
+.end
+
+# ---------------------------------------------------------
+# Expression binaire AST
+# ---------------------------------------------------------
+
+form BinaryExpr
+    field left as Expr
+    field op as BinaryOp
+    field right as Expr
+    field span as Span
+.end
+
+# ---------------------------------------------------------
+# Référence minimale vers Expr (évite dépendance circulaire)
+# ---------------------------------------------------------
+
+pick Expr
+    case Ident(name as Ident)
+    case Literal(value as Literal)
+    case Call(expr as CallExpr)
+    case Binary(expr as BinaryExpr)
+    case Assign(expr as AssignExpr)
+    case Group(expr as Expr)
+.end
+
+# ---------------------------------------------------------
+# Expressions support minimales
+# ---------------------------------------------------------
+
+form CallExpr
+    field callee as Expr
+    field args as List[Expr]
+    field span as Span
+.end
+
+form AssignExpr
+    field target as LValue
+    field value as Expr
+    field span as Span
+.end
+
+pick LValue
+    case Ident(name as Ident)
+    case Field(base as Expr, field as Ident)
+.end
+
+# ---------------------------------------------------------
+# Littéraux (référence minimale)
+# ---------------------------------------------------------
+
+pick Literal
+    case Bool(value as bool)
+    case Int(value as string)
+    case String(value as string)
+.end
+
+# ---------------------------------------------------------
+# Erreurs AST potentielles (pré-HIR)
+# ---------------------------------------------------------
+
+pick BinaryError
+    case InvalidOperand(op as BinaryOp, span as Span)
+    case InvalidCombination(op as BinaryOp, left as Span, right as Span)
+.end

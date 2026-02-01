@@ -1,1 +1,99 @@
-// vitte_ast_ir skeleton
+# ============================================================
+# vitte — diagnostics.vit
+# AST-IR Diagnostics Bridge (ULTRA MAX)
+# ============================================================
+
+space vitte/ast_ir/common
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vittec/diagnostics/error
+pull vittec/diagnostics/report
+pull vittec/diagnostics/span
+pull vitte/ast_ir/attribute
+pull vitte/collections/list
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# IR Diagnostic
+# ----------------------------
+
+type IrDiagnostic
+    error       : DiagnosticError
+    attrs       : AttributeBundle?
+.end
+
+# ----------------------------
+# Diagnostic context
+# ----------------------------
+
+type DiagnosticCtx
+    report      : DiagnosticReport
+    current_pass: String
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc DiagnosticCtx.new(pass: String) -> DiagnosticCtx
+    return DiagnosticCtx {
+        report       = DiagnosticReport.new(),
+        current_pass = pass
+    }
+.end
+
+# ----------------------------
+# Emission helpers
+# ----------------------------
+
+proc emit_error(ctx: DiagnosticCtx, err: DiagnosticError)
+    ctx.report.add(err)
+.end
+
+proc emit_ir_error(ctx: DiagnosticCtx, err: DiagnosticError, attrs: AttributeBundle)
+    # attach metadata if available
+    if attrs.meta.has("source.file")
+        let file? = attrs.meta.get_string("source.file")
+        let line? = attrs.meta.get_int("source.line")
+        let col?  = attrs.meta.get_int("source.column")
+
+        if file? && line? && col?
+            let sp = Span.from(file?, line?, col?)
+            err = DiagnosticError.with_span(err, sp)
+        .end
+    .end
+
+    ctx.report.add(err)
+.end
+
+# ----------------------------
+# Queries
+# ----------------------------
+
+proc has_errors(ctx: DiagnosticCtx) -> bool
+    return !ctx.report.is_ok()
+.end
+
+proc has_fatal(ctx: DiagnosticCtx) -> bool
+    return ctx.report.is_fatal()
+.end
+
+# ----------------------------
+# Finalization
+# ----------------------------
+
+proc finish(ctx: DiagnosticCtx)
+    ctx.report.emit()
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

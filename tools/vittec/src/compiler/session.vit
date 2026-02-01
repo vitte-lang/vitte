@@ -1,1 +1,137 @@
-// vittec src ULTRA MAX skeleton
+
+# =========================================================
+# vittec — Compiler / Session
+# =========================================================
+
+space vittec/compiler/session
+
+share all
+
+<<< doc
+Ce module définit la notion de *session de compilation*
+dans le compilateur vittec.
+
+Une session :
+- représente une invocation complète du compilateur
+- transporte les options, diagnostics et états globaux
+- sert de contexte partagé entre toutes les phases
+
+Inspiré de :
+- rustc Session
+- clang CompilerInstance
+>>>
+
+# ---------------------------------------------------------
+# Dépendances
+# ---------------------------------------------------------
+
+pull vittec/compiler/options
+pull vittec/diagnostics as diags
+pull vittec/cache
+pull vittec/fs as fs
+pull vitte/ast/common/span
+
+# ---------------------------------------------------------
+# Identifiant de session
+# ---------------------------------------------------------
+
+form SessionId
+    field value as u64
+.end
+
+# ---------------------------------------------------------
+# Environnement de compilation
+# ---------------------------------------------------------
+
+form SessionEnv
+    field cwd as string
+    field target as string
+    field host as string
+.end
+
+# ---------------------------------------------------------
+# État global de session
+# ---------------------------------------------------------
+
+form SessionState
+    field start_time_ms as u64
+    field finished as bool
+.end
+
+# ---------------------------------------------------------
+# Session de compilation
+# ---------------------------------------------------------
+
+form Session
+    field id as SessionId
+    field options as CompilerOptions
+    field env as SessionEnv
+    field diagnostics as diags.DiagnosticBag
+    field cache as Option[cache.CacheStore]
+    field state as SessionState
+.end
+
+# ---------------------------------------------------------
+# Création de session
+# ---------------------------------------------------------
+
+proc new_session(
+    opts as CompilerOptions
+) gives Session
+
+    make id as SessionId =
+        SessionId(fs.random_u64())
+
+    make env as SessionEnv =
+        SessionEnv(
+            fs.cwd(),
+            fs.target_triple(),
+            fs.host_triple()
+        )
+
+    make state as SessionState =
+        SessionState(
+            fs.now_ms(),
+            false
+        )
+
+    give Session(
+        id,
+        opts,
+        env,
+        diags.new_bag(),
+        none,
+        state
+    )
+.end
+
+# ---------------------------------------------------------
+# Accès diagnostics
+# ---------------------------------------------------------
+
+proc emit_error(
+    sess as Session,
+    message as string,
+    span as Option[Span]
+)
+
+    emit diags.error(sess.diagnostics, message, span)
+.end
+
+proc emit_warning(
+    sess as Session,
+    message as string,
+    span as Option[Span]
+)
+
+    emit diags.warning(sess.diagnostics, message, span)
+.end
+
+# ---------------------------------------------------------
+# Fin de session
+# ---------------------------------------------------------
+
+proc finish(sess as Session)
+
+    set sess.state.finished = true
+.end

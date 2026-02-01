@@ -1,1 +1,143 @@
 // vittec src ULTRA MAX skeleton
+
+# =========================================================
+# vittec — Compiler / Options
+# =========================================================
+
+space vittec/compiler/options
+
+share all
+
+<<< doc
+Ce module définit l’ensemble des options de compilation
+internes du compilateur vittec.
+
+Rôle :
+- représenter les options normalisées issues de la CLI
+- servir de contrat stable entre driver, invoke et backend
+- centraliser les choix de compilation
+
+Aucune logique de compilation n’est implémentée ici.
+>>>
+
+# ---------------------------------------------------------
+# Niveaux d’optimisation
+# ---------------------------------------------------------
+
+pick OptLevel
+    case O0        # aucune optimisation
+    case O1        # optimisations légères
+    case O2        # optimisations standard
+    case O3        # optimisations agressives
+    case Os        # optimisation taille
+    case Oz        # optimisation taille extrême
+.end
+
+# ---------------------------------------------------------
+# Backend de compilation
+# ---------------------------------------------------------
+
+pick BackendKind
+    case Auto
+    case LLVM
+    case VM
+    case C
+.end
+
+# ---------------------------------------------------------
+# Options frontend
+# ---------------------------------------------------------
+
+form FrontendOptions
+    field emit_ast as bool
+    field dump_tokens as bool
+    field dump_parse as bool
+.end
+
+# ---------------------------------------------------------
+# Options HIR / sémantique
+# ---------------------------------------------------------
+
+form HirOptions
+    field validate as bool
+    field dump_hir as bool
+.end
+
+# ---------------------------------------------------------
+# Options backend
+# ---------------------------------------------------------
+
+form BackendOptions
+    field kind as BackendKind
+    field emit_ir as bool
+    field emit_object as bool
+    field emit_binary as bool
+.end
+
+# ---------------------------------------------------------
+# Options cache / incrémental
+# ---------------------------------------------------------
+
+form CacheOptions
+    field incremental as bool
+    field reuse_cache as bool
+    field write_cache as bool
+.end
+
+# ---------------------------------------------------------
+# Options globales compilateur
+# ---------------------------------------------------------
+
+form CompilerOptions
+    field opt_level as OptLevel
+    field frontend as FrontendOptions
+    field hir as HirOptions
+    field backend as BackendOptions
+    field cache as CacheOptions
+.end
+
+# ---------------------------------------------------------
+# Valeurs par défaut
+# ---------------------------------------------------------
+
+proc default_frontend() gives FrontendOptions
+    give FrontendOptions(
+        false,
+        false,
+        false
+    )
+.end
+
+proc default_hir() gives HirOptions
+    give HirOptions(
+        true,
+        false
+    )
+.end
+
+proc default_backend() gives BackendOptions
+    give BackendOptions(
+        Auto,
+        false,
+        true,
+        true
+    )
+.end
+
+proc default_cache() gives CacheOptions
+    give CacheOptions(
+        true,
+        true,
+        true
+    )
+.end
+
+proc default_compiler_options() gives CompilerOptions
+    give CompilerOptions(
+        O0,
+        default_frontend(),
+        default_hir(),
+        default_backend(),
+        default_cache()
+    )
+.end

@@ -1,1 +1,224 @@
-// vitte_ast_ir skeleton
+# ============================================================
+# vitte — ir_call.vit
+# AST-IR Function / Method Call Expressions — ULTRA MAX
+# ============================================================
+
+space vitte/ast_ir/expr
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vitte/ast_ir/common
+pull vitte/ast_ir/attribute
+pull vitte/ast_ir/common/diagnostics
+pull vitte/collections/list
+pull vitte/collections/set
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Call kind
+# ----------------------------
+
+type CallKind
+    Direct          # direct function call
+    Method          # method call (with receiver)
+    Indirect        # function pointer / closure
+    Intrinsic       # compiler intrinsic
+.end
+
+# ----------------------------
+# IR Call
+# ----------------------------
+
+type IrCall
+    kind        : CallKind
+    callee      : String?        # direct / intrinsic name
+    func        : ValueId?       # indirect call target
+    receiver    : ValueId?       # method receiver
+    args        : List[ValueId]
+    result      : ValueId?
+    attrs       : AttributeBundle
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc IrCall.direct(name: String, args: List[ValueId], result: ValueId?) -> IrCall
+    return IrCall {
+        kind     = CallKind::Direct,
+        callee   = some(name),
+        func     = none,
+        receiver = none,
+        args     = args,
+        result   = result,
+        attrs    = AttributeBundle.new()
+    }
+.end
+
+proc IrCall.method(name: String, receiver: ValueId, args: List[ValueId], result: ValueId?) -> IrCall
+    return IrCall {
+        kind     = CallKind::Method,
+        callee   = some(name),
+        func     = none,
+        receiver = some(receiver),
+        args     = args,
+        result   = result,
+        attrs    = AttributeBundle.new()
+    }
+.end
+
+proc IrCall.indirect(func: ValueId, args: List[ValueId], result: ValueId?) -> IrCall
+    return IrCall {
+        kind     = CallKind::Indirect,
+        callee   = none,
+        func     = some(func),
+        receiver = none,
+        args     = args,
+        result   = result,
+        attrs    = AttributeBundle.new()
+    }
+.end
+
+proc IrCall.intrinsic(name: String, args: List[ValueId], result: ValueId?) -> IrCall
+    return IrCall {
+        kind     = CallKind::Intrinsic,
+        callee   = some(name),
+        func     = none,
+        receiver = none,
+        args     = args,
+        result   = result,
+        attrs    = AttributeBundle.new()
+    }
+.end
+
+# ----------------------------
+# Queries
+# ----------------------------
+
+proc has_result(call: IrCall) -> bool
+    return call.result?
+.end
+
+proc is_pure(call: IrCall) -> bool
+    # intrinsics and calls explicitly marked pure
+    if call.attrs.is_pure()
+        return true
+    .end
+
+    match call.kind
+        CallKind::Intrinsic => true
+        _                   => false
+    .end
+.end
+
+proc may_throw(call: IrCall) -> bool
+    # conservative default
+    return !call.attrs.has("nothrow")
+.end
+
+# ----------------------------
+# Dataflow helpers
+# ----------------------------
+
+proc used_values(call: IrCall) -> Set[ValueId]
+    let out = Set.new()
+
+    for a in call.args
+        out.insert(a)
+    .end
+
+    if call.func?
+        out.insert(call.func?)
+    .end
+
+    if call.receiver?
+        out.insert(call.receiver?)
+    .end
+
+    return out
+.end
+
+proc defined_values(call: IrCall) -> Set[ValueId]
+    let out = Set.new()
+    if call.result?
+        out.insert(call.result?)
+    .end
+    return out
+.end
+
+# ----------------------------
+# Validation
+# ----------------------------
+
+proc validate(call: IrCall, ctx: DiagnosticCtx)
+    match call.kind
+        CallKind::Direct =>
+            if !call.callee?
+                let err = error.error(ErrorCode::Validate, "direct call missing callee")
+                emit_error(ctx, err)
+            .end
+        .end
+
+        CallKind::Method =>
+            if !call.callee? || !call.receiver?
+                let err = error.error(ErrorCode::Validate, "method call missing receiver or name")
+                emit_error(ctx, err)
+            .end
+        .end
+
+        CallKind::Indirect =>
+            if !call.func?
+                let err = error.error(ErrorCode::Validate, "indirect call missing function value")
+                emit_error(ctx, err)
+            .end
+        .end
+
+        CallKind::Intrinsic =>
+            if !call.callee?
+                let err = error.error(ErrorCode::Validate, "intrinsic call missing name")
+                emit_error(ctx, err)
+            .end
+        .end
+    .end
+.end
+
+# ----------------------------
+# Side-effect analysis
+# ----------------------------
+
+proc has_side_effect(call: IrCall) -> bool
+    # calls are impure by default unless marked pure
+    return !is_pure(call)
+.end
+
+# ----------------------------
+# Debug / Dump
+# ----------------------------
+
+proc dump(call: IrCall)
+    say "IrCall kind=", call.kind
+    if call.callee?
+        say " callee=", call.callee?
+    .end
+    if call.func?
+        say " func=", call.func?
+    .end
+    if call.receiver?
+        say " receiver=", call.receiver?
+    .end
+    say " args=", call.args
+    if call.result?
+        say " result=", call.result?
+    .end
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------
