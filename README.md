@@ -1,4 +1,4 @@
-# Vitte Language Architecture - Option 3
+# Vitte Language Architecture 
 
 Welcome to the **Vitte Programming Language** repository !
 
