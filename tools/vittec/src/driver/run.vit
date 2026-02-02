@@ -1,1 +1,71 @@
-// vittec src ULTRA MAX skeleton
+# ============================================================
+# vittec — driver/run.vit
+# Compiler Run Driver (compile + execute) — ULTRA MAX
+# ============================================================
+
+space vittec/driver
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vittec/cli
+pull vittec/diagnostics
+pull vittec/driver/compile
+pull vitte/fs
+pull vitte/process
+pull vitte/path
+pull vitte/collections/list
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Entry
+# ----------------------------
+
+proc run(ctx: CliContext) -> int
+    let diag = DiagnosticContext.new()
+
+    # --------------------------------
+    # 1. Compile first
+    # --------------------------------
+
+    let code = compile(ctx)
+    if code != 0
+        return code
+    .end
+
+    # --------------------------------
+    # 2. Determine executable path
+    # --------------------------------
+
+    let exe = ctx.config.output
+    if exe == ""
+        exe = "a.out"
+    .end
+
+    if !fs.exists(exe)
+        diagnostics.error(diag, DiagnosticCode::Backend, "compiled binary not found", none)
+        print(diagnostics.render_all(diag))
+        return 1
+    .end
+
+    # --------------------------------
+    # 3. Execute
+    # --------------------------------
+
+    say "Running ", exe
+
+    let args = List.new()
+    let status = process.spawn(exe, args)
+
+    return status
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

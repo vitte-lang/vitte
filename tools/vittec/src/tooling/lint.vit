@@ -1,1 +1,182 @@
-// vittec src ULTRA MAX skeleton
+# ============================================================
+# vittec — tooling/lint.vit
+# Static Linter (AST / IR aware) — ULTRA MAX
+# ============================================================
+
+space vittec/tooling
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vittec/diagnostics
+pull vitte/ast_ir/program
+pull vitte/ast_ir/module
+pull vitte/ast_ir/runnable
+pull vitte/ast_ir/control_flow
+pull vitte/ast_ir/analysis
+pull vitte/collections/list
+pull vitte/collections/map
+pull vitte/fs
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Lint level
+# ----------------------------
+
+type LintLevel
+    Allow
+    Warn
+    Deny
+.end
+
+# ----------------------------
+# Lint rule id
+# ----------------------------
+
+type LintRuleId
+    UnusedVariable
+    UnusedFunction
+    DeadCode
+    EmptyBlock
+    UnreachableCode
+    MissingEntry
+    Shadowing
+    ComplexityHigh
+.end
+
+# ----------------------------
+# Lint rule
+# ----------------------------
+
+type LintRule
+    id          : LintRuleId
+    level       : LintLevel
+    message     : String
+.end
+
+# ----------------------------
+# Lint options
+# ----------------------------
+
+type LintOptions
+    rules       : Map[LintRuleId, LintRule]
+    deny_warnings : bool
+.end
+
+# ----------------------------
+# Lint context
+# ----------------------------
+
+type LintContext
+    program     : ProgramBundle
+    options     : LintOptions
+.end
+
+# ----------------------------
+# Constructors
+# ----------------------------
+
+proc LintRule.new(id: LintRuleId, level: LintLevel, msg: String) -> LintRule
+    return LintRule {
+        id      = id,
+        level   = level,
+        message = msg
+    }
+.end
+
+proc default_rules() -> Map[LintRuleId, LintRule]
+    let m = Map.new()
+
+    m[LintRuleId::UnusedVariable] = LintRule.new(LintRuleId::UnusedVariable, LintLevel::Warn, "unused variable")
+    m[LintRuleId::UnusedFunction] = LintRule.new(LintRuleId::UnusedFunction, LintLevel::Warn, "unused function")
+    m[LintRuleId::DeadCode]       = LintRule.new(LintRuleId::DeadCode,       LintLevel::Warn, "dead code detected")
+    m[LintRuleId::EmptyBlock]     = LintRule.new(LintRuleId::EmptyBlock,     LintLevel::Warn, "empty block")
+    m[LintRuleId::UnreachableCode]= LintRule.new(LintRuleId::UnreachableCode, LintLevel::Warn, "unreachable code")
+    m[LintRuleId::MissingEntry]   = LintRule.new(LintRuleId::MissingEntry,   LintLevel::Deny, "missing program entry")
+    m[LintRuleId::Shadowing]      = LintRule.new(LintRuleId::Shadowing,      LintLevel::Warn, "variable shadowing")
+    m[LintRuleId::ComplexityHigh] = LintRule.new(LintRuleId::ComplexityHigh, LintLevel::Warn, "high cyclomatic complexity")
+
+    return m
+.end
+
+proc LintOptions.default() -> LintOptions
+    return LintOptions {
+        rules = default_rules(),
+        deny_warnings = false
+    }
+.end
+
+# ----------------------------
+# Entry
+# ----------------------------
+
+proc run(ctx: LintContext, diag: DiagnosticContext)
+    # --------------------------------
+    # 1. Global checks
+    # --------------------------------
+
+    if !ctx.program.has_entry()
+        emit_rule(ctx, diag, LintRuleId::MissingEntry, none)
+    .end
+
+    # --------------------------------
+    # 2. Module-level checks
+    # --------------------------------
+
+    for (_, m) in ctx.program.program.modules.modules
+        lint_module(m, ctx, diag)
+    .end
+
+    # --------------------------------
+    # 3. Final severity handling
+    # --------------------------------
+
+    if ctx.options.deny_warnings
+        for d in diag.diagnostics
+            if d.severity == Severity::Warning
+                d.severity = Severity::Error
+            .end
+        .end
+    .end
+.end
+
+# ----------------------------
+# Module linting
+# ----------------------------
+
+proc lint_module(m: IrModule, ctx: LintContext, diag: DiagnosticContext)
+    # unused functions (stub)
+    for (_, f) in m.functions
+        if f.cfg.is_empty()
+            emit_rule(ctx, diag, LintRuleId::UnusedFunction, none)
+        .end
+    .end
+.end
+
+# ----------------------------
+# Emit helper
+# ----------------------------
+
+proc emit_rule(ctx: LintContext, diag: DiagnosticContext, id: LintRuleId, loc: SourceLocation?)
+    if !ctx.options.rules.contains(id)
+        return
+    .end
+
+    let rule = ctx.options.rules[id]
+
+    match rule.level
+        LintLevel::Allow => ()
+        LintLevel::Warn  => diagnostics.warning(diag, DiagnosticCode::Validate, rule.message, loc)
+        LintLevel::Deny  => diagnostics.error(diag, DiagnosticCode::Validate, rule.message, loc)
+    .end
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

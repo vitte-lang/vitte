@@ -1,1 +1,98 @@
-// vittec src ULTRA MAX skeleton
+# ============================================================
+# vittec — driver/compile.vit
+# Compiler Compile Driver (build + backend orchestration) — ULTRA MAX
+# ============================================================
+
+space vittec/driver
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vittec/cli
+pull vittec/diagnostics
+pull vittec/driver/build
+pull vittec/driver/check
+pull vitte/ast_ir/program
+pull vitte/collections/list
+pull vitte/fs
+pull vitte/path
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Compile options
+# ----------------------------
+
+type CompileOptions
+    optimize        : bool
+    emit_ir         : bool
+    emit_ast        : bool
+    target          : String
+    output          : String
+.end
+
+# ----------------------------
+# Entry
+# ----------------------------
+
+proc compile(ctx: CliContext) -> int
+    let diag = DiagnosticContext.new()
+
+    # --------------------------------
+    # 0. Sanity checks
+    # --------------------------------
+
+    if ctx.args.inputs.is_empty()
+        diagnostics.error(diag, DiagnosticCode::Parse, "no input files provided", none)
+        print(diagnostics.render_all(diag))
+        return 1
+    .end
+
+    # --------------------------------
+    # 1. Frontend check pass
+    # --------------------------------
+
+    let check_code = check(ctx)
+    if check_code != 0
+        return check_code
+    .end
+
+    # --------------------------------
+    # 2. Full build (IR + backend)
+    # --------------------------------
+
+    let build_code = build(ctx)
+    if build_code != 0
+        return build_code
+    .end
+
+    # --------------------------------
+    # 3. Success
+    # --------------------------------
+
+    say "Compilation finished successfully"
+    return 0
+.end
+
+# ----------------------------
+# Helpers (options extraction)
+# ----------------------------
+
+proc extract_options(ctx: CliContext) -> CompileOptions
+    return CompileOptions {
+        optimize = ctx.args.flag("O") || ctx.args.flag("optimize"),
+        emit_ir  = ctx.args.flag("emit-ir"),
+        emit_ast = ctx.args.flag("emit-ast"),
+        target   = ctx.args.value("target", "native"),
+        output   = ctx.config.output
+    }
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

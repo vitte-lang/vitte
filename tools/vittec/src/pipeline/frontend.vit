@@ -1,1 +1,93 @@
 // vittec src ULTRA MAX skeleton
+
+# ============================================================
+# vittec — pipeline/frontend.vit
+# Frontend Pipeline (Parse → AST → IR) — ULTRA MAX
+# ============================================================
+
+space vittec/pipeline
+
+# ----------------------------
+# Imports
+# ----------------------------
+
+pull vittec/diagnostics
+pull vitte/ast_ir/program
+pull vitte/ast_ir/module
+pull vitte/ast_ir/pattern
+pull vitte/ast_ir/expr
+pull vitte/collections/list
+pull vitte/fs
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Frontend options
+# ----------------------------
+
+type FrontendOptions
+    emit_ast    : bool
+    emit_ir     : bool
+.end
+
+# ----------------------------
+# Frontend context
+# ----------------------------
+
+type FrontendContext
+    sources     : List[String]
+    options     : FrontendOptions
+.end
+
+# ----------------------------
+# Entry
+# ----------------------------
+
+proc run(ctx: FrontendContext, diag: DiagnosticContext) -> ProgramBundle
+    let bundle = ProgramBundle.new()
+
+    for path in ctx.sources
+        if !fs.exists(path)
+            diagnostics.error(diag, DiagnosticCode::Parse, "source file not found", none)
+            continue
+        .end
+
+        let file = parse_and_lower(path, ctx, diag)
+        if file?
+            bundle.add_source(file?)
+        .end
+    .end
+
+    return bundle
+.end
+
+# ----------------------------
+# Parse + Lowering (stubs)
+# ----------------------------
+
+proc parse_and_lower(path: String, ctx: FrontendContext, diag: DiagnosticContext) -> IrSourceFile?
+    # TODO: real lexer + parser
+    # TODO: AST construction
+    # TODO: AST → IR lowering
+
+    let meta = SourceMeta.new(path, SourceKind::Module)
+    let file = IrSourceFile.new(meta)
+
+    if ctx.options.emit_ast
+        say "[frontend] AST emitted for ", path
+    .end
+
+    if ctx.options.emit_ir
+        say "[frontend] IR emitted for ", path
+    .end
+
+    return some(file)
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------

@@ -1,1 +1,112 @@
-// vittec src ULTRA MAX skeleton
+# ============================================================
+# vittec — pipeline/mod.vit
+# Compiler Pipeline Aggregator (Frontend / Middle / Backend) — ULTRA MAX
+# ============================================================
+
+space vittec/pipeline
+
+# ----------------------------
+# Submodules
+# ----------------------------
+
+pull vittec/pipeline/frontend
+pull vittec/pipeline/middle
+pull vittec/pipeline/backend
+pull vittec/diagnostics
+pull vitte/ast_ir/program
+pull vitte/ast_ir/runnable
+
+# ----------------------------
+# Public API
+# ----------------------------
+
+share all
+
+# ----------------------------
+# Global pipeline options
+# ----------------------------
+
+type PipelineOptions
+    emit_ast        : bool
+    emit_ir         : bool
+    optimize        : bool
+    opt_level       : int
+    target          : BackendTarget
+    output          : String
+.end
+
+# ----------------------------
+# Pipeline context
+# ----------------------------
+
+type PipelineContext
+    sources         : List[String]
+    options         : PipelineOptions
+.end
+
+# ----------------------------
+# Entry
+# ----------------------------
+
+proc run(ctx: PipelineContext, diag: DiagnosticContext) -> String
+    # --------------------------------
+    # 1. Frontend
+    # --------------------------------
+
+    let fe_opts = FrontendOptions {
+        emit_ast = ctx.options.emit_ast,
+        emit_ir  = ctx.options.emit_ir
+    }
+
+    let fe_ctx = FrontendContext {
+        sources = ctx.sources,
+        options = fe_opts
+    }
+
+    let program = frontend.run(fe_ctx, diag)
+    if diag.has_errors()
+        return ""
+    .end
+
+    # --------------------------------
+    # 2. Middle-end
+    # --------------------------------
+
+    let mid_opts = MiddleOptions {
+        optimize   = ctx.options.optimize,
+        level      = ctx.options.opt_level,
+        dump_after = ctx.options.emit_ir
+    }
+
+    let mid_ctx = MiddleContext {
+        program = program,
+        options = mid_opts
+    }
+
+    middle.run(mid_ctx, diag)
+    if diag.has_errors()
+        return ""
+    .end
+
+    # --------------------------------
+    # 3. Backend
+    # --------------------------------
+
+    let be_opts = BackendOptions {
+        target   = ctx.options.target,
+        optimize = ctx.options.optimize,
+        output   = ctx.options.output
+    }
+
+    let be_ctx = BackendContext {
+        program   = program,
+        runnables = RunnableBundle.new(),
+        options   = be_opts
+    }
+
+    return backend.run(be_ctx, diag)
+.end
+
+# ----------------------------
+# End of module
+# ----------------------------
