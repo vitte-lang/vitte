@@ -1,5 +1,238 @@
-form CodegenContext
-    session: sess::Session
-    target: TargetDesc
-    gcc: GccDriver
+# ============================================================
+# vitte_codegen_gcc::context
+# Contexte central du backend GCC
+# ============================================================
+
+space vitte/compiler/backends/vitte_codegen_gcc
+
+pull vitte/compiler/mir/ast as mir
+pull vitte/compiler/mir/types as mir_ty
+
+pull vitte/compiler/backends/vitte_codegen_gcc/errors as gcc_err
+pull vitte/compiler/backends/vitte_codegen_gcc/types as gcc_ty
+
+pull std/collections/map as Map
+pull std/collections/list as List
+
+
+# ------------------------------------------------------------
+# Types GCC opaques (wrappers)
+# ------------------------------------------------------------
+
+# Ces types représentent des pointeurs vers les structures GCC
+# (tree, gimple, location_t, etc.)
+
+form Tree
+    raw: ptr
+.end
+
+form GimpleSeq
+    raw: ptr
+.end
+
+form FunctionDecl
+    raw: ptr
+.end
+
+
+# ------------------------------------------------------------
+# Contexte global de codegen GCC
+# ------------------------------------------------------------
+
+form CodegenCtx
+    functions: Map<mir::FnId, FunctionDecl>
+    function_types: Map<mir::FnId, Tree>
+
+    global_scope: Tree
+.end
+
+
+proc CodegenCtx::new
+    global_scope: Tree
+-> CodegenCtx
+    give CodegenCtx
+        functions = Map::new()
+        function_types = Map::new()
+        global_scope = global_scope
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Contexte local par fonction
+# ------------------------------------------------------------
+
+form LowerCtx
+    fn_id: mir::FnId
+    fn_decl: FunctionDecl
+
+    body: GimpleSeq
+
+    locals: Map<mir::LocalId, Tree>
+
+    source_name: string
+    panic_on_error: bool
+.end
+
+
+# ------------------------------------------------------------
+# Entrée dans une fonction
+# ------------------------------------------------------------
+
+proc CodegenCtx::enter_function
+    self: &mut CodegenCtx
+    fn_id: mir::FnId
+    source_name: string
+-> LowerCtx
+
+    let decl = self.functions.get(fn_id)
+    if decl.is_none()
+        gcc_err::panic(
+            "enter_function on undeclared function"
+        )
+    .end
+
+    let body = gcc_create_gimple_seq()
+
+    give LowerCtx
+        fn_id = fn_id
+        fn_decl = decl.unwrap()
+        body = body
+        locals = Map::new()
+        source_name = source_name
+        panic_on_error = true
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Déclaration de fonction (phase globale)
+# ------------------------------------------------------------
+
+proc CodegenCtx::declare_function
+    self: &mut CodegenCtx
+    fn_id: mir::FnId
+    sig: &mir::FnSig
+-> FunctionDecl
+
+    let fn_type = gcc_ty::lower_fn_type(sig)
+
+    let fn_decl = gcc_create_function_decl(
+        sig.mangled_name,
+        fn_type,
+        self.global_scope
+    )
+
+    self.functions.insert(fn_id, fn_decl)
+    self.function_types.insert(fn_id, fn_type)
+
+    give fn_decl
+.end
+
+
+# ------------------------------------------------------------
+# Gestion des variables locales
+# ------------------------------------------------------------
+
+proc LowerCtx::declare_local
+    self: &mut LowerCtx
+    local_id: mir::LocalId
+    ty: &mir_ty::Type
+-> Tree
+
+    let tree_ty = gcc_ty::lower_type(ty)
+
+    let var_decl = gcc_create_var_decl(
+        tree_ty,
+        self.fn_decl
+    )
+
+    self.locals.insert(local_id, var_decl)
+
+    give var_decl
+.end
+
+
+proc LowerCtx::get_local
+    self: &LowerCtx
+    local_id: mir::LocalId
+-> Tree
+
+    let v = self.locals.get(local_id)
+    if v.is_none()
+        gcc_err::fatal_ctx(
+            self,
+            "use of undeclared local variable"
+        )
+    .end
+
+    give v.unwrap()
+.end
+
+
+# ------------------------------------------------------------
+# Émission de statements GIMPLE
+# ------------------------------------------------------------
+
+proc LowerCtx::emit
+    self: &mut LowerCtx
+    stmt: Tree
+-> ()
+
+    gcc_gimple_seq_add_stmt(
+        self.body,
+        stmt
+    )
+.end
+
+
+# ------------------------------------------------------------
+# Finalisation de fonction
+# ------------------------------------------------------------
+
+proc LowerCtx::finalize
+    self: &mut LowerCtx
+-> ()
+
+    gcc_finish_function(
+        self.fn_decl,
+        self.body
+    )
+.end
+
+
+# ------------------------------------------------------------
+# Helpers GCC externes (FFI)
+# ------------------------------------------------------------
+
+# Les fonctions suivantes représentent des appels FFI vers GCC
+# Elles sont volontairement abstraites ici
+
+proc gcc_create_function_decl
+    name: string
+    fn_type: Tree
+    scope: Tree
+-> FunctionDecl
+.end
+
+proc gcc_create_var_decl
+    ty: Tree
+    fn_decl: FunctionDecl
+-> Tree
+.end
+
+proc gcc_create_gimple_seq
+-> GimpleSeq
+.end
+
+proc gcc_gimple_seq_add_stmt
+    seq: GimpleSeq
+    stmt: Tree
+-> ()
+.end
+
+proc gcc_finish_function
+    fn_decl: FunctionDecl
+    body: GimpleSeq
+-> ()
 .end

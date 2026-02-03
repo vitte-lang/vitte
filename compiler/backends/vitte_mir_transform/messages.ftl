@@ -1,114 +1,119 @@
-mir_transform_arithmetic_overflow = this arithmetic operation will overflow
+# ============================================================
+# vitte_mir_transform — messages.ftl
+# Diagnostics & messages du sous-système MIR transform
+# ============================================================
 
-mir_transform_asm_unwind_call = call to inline assembly that may unwind
 
-mir_transform_const_defined_here = `const` item defined here
+# ------------------------------------------------------------
+# Général
+# ------------------------------------------------------------
 
-mir_transform_const_modify = attempting to modify a `const` item
-    .note = each usage of a `const` item creates a new temporary; the original `const` item will not be modified
+mir.transform.init = Initialisation du contexte MIR transform
+mir.transform.done = Transformations MIR terminées
 
-mir_transform_const_mut_borrow = taking a mutable reference to a `const` item
-    .note = each usage of a `const` item creates a new temporary
-    .note2 = the mutable reference will refer to this temporary, not the original `const` item
-    .note3 = mutable reference created due to call to this method
+mir.transform.debug.enabled = Mode debug MIR transform activé
+mir.transform.debug.disabled = Mode debug MIR transform désactivé
 
-mir_transform_ffi_unwind_call = call to {$foreign ->
-    [true] foreign function
-    *[false] function pointer
-    } with FFI-unwind ABI
 
-mir_transform_fn_item_ref = taking a reference to a function item does not give a function pointer
-    .suggestion = cast `{$ident}` to obtain a function pointer
+# ------------------------------------------------------------
+# Pipeline
+# ------------------------------------------------------------
 
-mir_transform_force_inline =
-    `{$callee}` could not be inlined into `{$caller}` but is required to be inlined
-    .call = ...`{$callee}` called here
-    .attr = inlining due to this annotation
-    .caller = within `{$caller}`...
-    .callee = `{$callee}` defined here
-    .note = could not be inlined due to: {$reason}
+mir.transform.pipeline.start = Démarrage du pipeline MIR transform
+mir.transform.pipeline.end = Fin du pipeline MIR transform
 
-mir_transform_force_inline_attr =
-    `{$callee}` is incompatible with `#[c_force_inline]`
-    .attr = annotation here
-    .callee = `{$callee}` defined here
-    .note = incompatible due to: {$reason}
+mir.transform.pipeline.pass.start =
+    Démarrage de la passe MIR: { $pass }
 
-mir_transform_force_inline_justification =
-    `{$callee}` is required to be inlined to: {$sym}
+mir.transform.pipeline.pass.end =
+    Fin de la passe MIR: { $pass }
 
-mir_transform_maybe_string_interpolation = you might have meant to use string interpolation in this string literal
+mir.transform.pipeline.pass.skip =
+    Passe MIR ignorée: { $pass }
 
-mir_transform_must_not_suspend = {$pre}`{$def_path}`{$post} held across a suspend point, but should not be
-    .label = the value is held across this suspend point
-    .note = {$reason}
-    .help = consider using a block (`{"{ ... }"}`) to shrink the value's scope, ending before the suspend point
-mir_transform_operation_will_panic = this operation will panic at runtime
 
-mir_transform_string_interpolation_only_works = string interpolation only works in `format!` invocations
+# ------------------------------------------------------------
+# Simplify
+# ------------------------------------------------------------
 
-mir_transform_tail_expr_drop_order = relative drop order changing in  2024
-    .temporaries = in  2024, this temporary value will be dropped first
-    .observers = in  2024, this local variable or temporary value will be dropped second
-    .note_dtors =
-        dropping the temporary value runs this custom `Drop` impl, which we could not prove to be side-effect free
-    .note_observer_dtors =
-        dropping the local runs this custom `Drop` impl, which we could not prove to be side-effect free
-    .drop_location =
-        now the temporary value is dropped here, before the local variables in the block or statement
-    .note_epilogue = most of the time, changing drop order is harmless; inspect the `impl Drop`s for side effects like releasing locks or sending messages
-    .label_local_epilogue = {$is_dropped_first_edition_2024 ->
-        [true] up until Edition 2021 `{$name}` is dropped last but will be dropped earlier in Edition 2024
-        *[false] `{$name}` will be dropped later as of Edition 2024
-    }
+mir.transform.simplify.start = Simplification MIR démarrée
+mir.transform.simplify.done = Simplification MIR terminée
 
-mir_transform_tail_expr_dtor = {$dtor_kind ->
-    [dyn] `{$name}` may invoke a custom destructor because it contains a trait object
-    *[concrete] `{$name}` invokes this custom destructor
-    }
+mir.transform.simplify.fold =
+    Constant folding appliqué dans le bloc { $block }
 
-mir_transform_tail_expr_local = {$is_generated_name ->
-        [true] this value will be stored in a temporary; let us call it `{$name}`
-        *[false] `{$name}` calls a custom destructor
-    }
+mir.transform.simplify.neutral =
+    Opération neutre supprimée dans le bloc { $block }
 
-mir_transform_unaligned_packed_ref = reference to field of packed {$ty_descr} is unaligned
-    .note = this {$ty_descr} is {$align ->
-        [one] {""}
-        *[other] {"at most "}
-    }{$align}-byte aligned, but the type of this field may require higher alignment
-    .note_ub = creating a misaligned reference is undefined behavior (even if that reference is never dereferenced)
-    .help = copy the field contents to a local variable, or replace the reference with a raw pointer and use `read_unaligned`/`write_unaligned` (loads and stores via `*p` must be properly aligned even when using raw pointers)
 
-mir_transform_unconditional_recursion = function cannot return without recursing
-    .label = cannot return without recursing
-    .help = a `loop` may express intention better if this is on purpose
+# ------------------------------------------------------------
+# Unreachable
+# ------------------------------------------------------------
 
-mir_transform_unconditional_recursion_call_site_label = recursive call site
+mir.transform.unreachable.start =
+    Suppression des blocs inatteignables démarrée
 
-mir_transform_unknown_pass_name = MIR pass `{$name}` is unknown and will be ignored
+mir.transform.unreachable.done =
+    Suppression des blocs inatteignables terminée
 
-mir_transform_unused_assign = value assigned to `{$name}` is never read
-    .help = maybe it is overwritten before being read?
+mir.transform.unreachable.block.removed =
+    Bloc inatteignable supprimé: { $block }
 
-mir_transform_unused_assign_passed = value passed to `{$name}` is never read
-    .help = maybe it is overwritten before being read?
 
-mir_transform_unused_assign_suggestion =
-    you might have meant to mutate the pointed at value being passed in, instead of changing the reference in the local binding
+# ------------------------------------------------------------
+# Inlining
+# ------------------------------------------------------------
 
-mir_transform_unused_capture_maybe_capture_ref = value captured by `{$name}` is never read
-    .help = did you mean to capture by reference instead?
+mir.transform.inlining.start = Inlining MIR démarré
+mir.transform.inlining.done = Inlining MIR terminé
 
-mir_transform_unused_var_assigned_only = variable `{$name}` is assigned to, but never used
-    .note = consider using `_{$name}` instead
+mir.transform.inlining.skip.recursive =
+    Inlining ignoré (récursion): { $function }
 
-mir_transform_unused_var_underscore = if this is intentional, prefix it with an underscore
+mir.transform.inlining.skip.too_large =
+    Inlining ignoré (fonction trop grande): { $function }
 
-mir_transform_unused_variable = unused variable: `{$name}`
+mir.transform.inlining.applied =
+    Fonction inlinée: { $callee } dans { $caller }
 
-mir_transform_unused_variable_args_in_macro = `{$name}` is captured in macro and introduced a unused variable
 
-mir_transform_unused_variable_try_ignore = try ignoring the field
+# ------------------------------------------------------------
+# Cleanup
+# ------------------------------------------------------------
 
-mir_transform_unused_variable_typo = you might have meant to pattern match on the similarly named {$kind} `{$item_name}`
+mir.transform.cleanup.start = Nettoyage MIR démarré
+mir.transform.cleanup.done = Nettoyage MIR terminé
+
+mir.transform.cleanup.copy.removed =
+    Copie triviale supprimée dans le bloc { $block }
+
+mir.transform.cleanup.block.removed =
+    Bloc MIR vide supprimé: { $block }
+
+
+# ------------------------------------------------------------
+# Diagnostics
+# ------------------------------------------------------------
+
+mir.transform.warn.inlining.no_callees =
+    Inlining activé mais aucune fonction appelée fournie
+
+mir.transform.warn.non_convergent =
+    La passe MIR { $pass } n’a pas convergé après { $iterations } itérations
+
+mir.transform.error.internal =
+    Erreur interne du MIR transform: { $details }
+
+
+# ------------------------------------------------------------
+# Debug / Dump
+# ------------------------------------------------------------
+
+mir.transform.dump.function =
+    Dump MIR après transformation pour la fonction { $function }
+
+mir.transform.dump.block =
+    Bloc MIR { $block }
+
+mir.transform.dump.instr =
+    Instruction MIR: { $instr }

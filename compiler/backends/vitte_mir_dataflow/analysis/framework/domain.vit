@@ -1,5 +1,92 @@
-trait DataflowDomain
-    fn bottom()
-    fn join(a, b)
-    fn transfer(state, instr: mir::MirInstr)
+# ============================================================
+# vitte_mir_dataflow::analysis::framework::domain
+# Domaine abstrait des analyses de flot de données
+# ============================================================
+
+space vitte/compiler/backends/vitte_mir_dataflow/analysis/framework
+
+
+# ------------------------------------------------------------
+# Domaine de flot (abstrait)
+# ------------------------------------------------------------
+
+# Un domaine définit :
+# - un type d’élément (Element)
+# - une valeur bottom (⊥)
+# - une valeur top (⊤) optionnelle
+# - une opération de jointure (⊔)
+# - une égalité sémantique
+#
+# Les implémentations concrètes (Set, BitSet, Map, etc.)
+# fourniront ces opérations.
+form DataflowDomain
+    # Nom du domaine (debug / diagnostics)
+    name: string
+
+    # Valeur bottom (information nulle)
+    bottom: any
+
+    # Valeur top (information maximale, optionnelle)
+    top: Option[any]
+.end
+
+
+# ------------------------------------------------------------
+# Opérations abstraites sur le domaine
+# ------------------------------------------------------------
+
+# Jointure (merge) de deux éléments du domaine
+# Doit être :
+# - associative
+# - commutative
+# - idempotente
+proc join
+    dom: &DataflowDomain
+    a: any
+    b: any
+-> any
+
+    panic("domain join not implemented: " + dom.name)
+.end
+
+
+# ------------------------------------------------------------
+# Comparaison sémantique
+# ------------------------------------------------------------
+
+# Test d’égalité sémantique entre deux éléments du domaine
+# Utilisé pour la détection du point fixe
+proc equals
+    dom: &DataflowDomain
+    a: any
+    b: any
+-> bool
+
+    panic("domain equals not implemented: " + dom.name)
+.end
+
+
+# ------------------------------------------------------------
+# Helpers génériques
+# ------------------------------------------------------------
+
+proc is_bottom
+    dom: &DataflowDomain
+    v: any
+-> bool
+
+    give equals(dom, v, dom.bottom)
+.end
+
+
+proc is_top
+    dom: &DataflowDomain
+    v: any
+-> bool
+
+    if dom.top.is_none()
+        give false
+    .end
+
+    give equals(dom, v, dom.top.unwrap())
 .end

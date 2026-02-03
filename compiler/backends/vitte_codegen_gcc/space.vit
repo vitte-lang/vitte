@@ -1,1 +1,98 @@
+# ============================================================
+# vitte_codegen_gcc::space
+# Gestion des espaces (modules) Vitte côté GCC
+# ============================================================
+
 space vitte/compiler/backends/vitte_codegen_gcc
+
+pull vitte/compiler/mir/ast as mir
+
+pull vitte/compiler/backends/vitte_codegen_gcc/context as gcc_ctx
+pull vitte/compiler/backends/vitte_codegen_gcc/module as gcc_mod_backend
+pull vitte/compiler/backends/vitte_codegen_gcc/errors as gcc_err
+
+
+# ------------------------------------------------------------
+# Représentation backend d’un space Vitte
+# ------------------------------------------------------------
+
+form SpaceBackend
+    name: string
+    program: &mir::Program
+.end
+
+
+# ------------------------------------------------------------
+# Construction
+# ------------------------------------------------------------
+
+proc SpaceBackend::new
+    space_decl: &mir::SpaceDecl
+    program: &mir::Program
+-> SpaceBackend
+
+    give SpaceBackend
+        name = space_decl.name
+        program = program
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Validation sémantique du space
+# ------------------------------------------------------------
+
+proc SpaceBackend::validate
+    self: &SpaceBackend
+-> ()
+
+    if self.name.is_empty()
+        gcc_err::panic(
+            "space name cannot be empty"
+        )
+    .end
+
+    # Extensions futures :
+    # - résolution pull
+    # - règles de visibilité share
+    # - collisions inter-spaces
+.end
+
+
+# ------------------------------------------------------------
+# Compilation d’un space
+# ------------------------------------------------------------
+
+proc SpaceBackend::compile
+    self: &SpaceBackend
+    ctx: &mut gcc_ctx::CodegenCtx
+-> ()
+
+    self.validate()
+
+    let mut module_backend =
+        gcc_mod_backend::ModuleBackend::new(ctx)
+
+    module_backend.declare(self.program)
+    module_backend.codegen(self.program)
+    module_backend.finalize()
+.end
+
+
+# ------------------------------------------------------------
+# API haut niveau (driver / toolchain)
+# ------------------------------------------------------------
+
+proc compile_space
+    ctx: &mut gcc_ctx::CodegenCtx
+    space_decl: &mir::SpaceDecl
+    program: &mir::Program
+-> ()
+
+    let space = SpaceBackend::new(
+        space_decl,
+        program
+    )
+
+    space.compile(ctx)
+.end

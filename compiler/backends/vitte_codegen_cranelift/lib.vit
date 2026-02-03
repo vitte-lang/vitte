@@ -1,9 +1,142 @@
-pull vitte/compiler/ir as ir
-pull vitte/compiler/session as sess
+# ============================================================
+# vitte_codegen_cranelift::lib
+# Point d’entrée du backend Cranelift
+# ============================================================
 
-pull self/context
-pull self/module
-pull self/function
-pull self/errors
+space vitte/compiler/backends/vitte_codegen_cranelift
 
-share all
+# ------------------------------------------------------------
+# Sous-modules publics
+# ------------------------------------------------------------
+
+pull vitte/compiler/backends/vitte_codegen_cranelift/context
+pull vitte/compiler/backends/vitte_codegen_cranelift/errors
+pull vitte/compiler/backends/vitte_codegen_cranelift/types
+pull vitte/compiler/backends/vitte_codegen_cranelift/function
+
+pull vitte/compiler/backends/vitte_codegen_cranelift/lower/expr
+pull vitte/compiler/backends/vitte_codegen_cranelift/lower/stmt
+
+
+# ------------------------------------------------------------
+# Dépendances externes Cranelift
+# ------------------------------------------------------------
+
+pull cranelift/codegen/isa as isa
+pull cranelift/module as cl_mod
+pull cranelift/object as cl_obj
+
+
+# ------------------------------------------------------------
+# API publique du backend
+# ------------------------------------------------------------
+
+form CraneliftBackend
+    ctx: context::CodegenCtx
+.end
+
+
+# ------------------------------------------------------------
+# Création du backend
+# ------------------------------------------------------------
+
+proc CraneliftBackend::new
+    triple: string
+-> CraneliftBackend
+
+    let mut flags = isa::Flags::new()
+    let isa_builder = isa::lookup(triple)
+
+    if isa_builder.is_none()
+        errors::panic(
+            "unsupported target triple: " + triple
+        )
+    .end
+
+    let isa = isa_builder.unwrap().finish(flags)
+
+    let mut obj_builder = cl_obj::ObjectBuilder::new(
+        isa,
+        "vitte",
+        cl_obj::default_libcall_names()
+    )
+
+    let mut module = cl_obj::ObjectModule::new(
+        obj_builder
+    )
+
+    let ctx = context::CodegenCtx::new(
+        &mut module,
+        isa
+    )
+
+    give CraneliftBackend
+        ctx = ctx
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Phase 1 — Déclaration des fonctions
+# ------------------------------------------------------------
+
+proc CraneliftBackend::declare
+    self: &mut CraneliftBackend
+    program: &mir::Program
+-> ()
+
+    for func in program.functions
+        self.ctx.declare_function(
+            func.id,
+            func.sig
+        )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Phase 2 — Génération du code
+# ------------------------------------------------------------
+
+proc CraneliftBackend::codegen
+    self: &mut CraneliftBackend
+    program: &mir::Program
+-> ()
+
+    for func in program.functions
+        function::lower_fn(
+            &mut self.ctx,
+            func
+        )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Phase 3 — Finalisation et sortie objet
+# ------------------------------------------------------------
+
+proc CraneliftBackend::emit_object
+    self: &mut CraneliftBackend
+-> bytes
+
+    self.ctx.module.finish()
+.end
+
+
+# ------------------------------------------------------------
+# API convenience (tout-en-un)
+# ------------------------------------------------------------
+
+proc compile_to_object
+    program: &mir::Program
+    triple: string
+-> bytes
+
+    let mut backend = CraneliftBackend::new(triple)
+
+    backend.declare(program)
+    backend.codegen(program)
+
+    give backend.emit_object()
+.end

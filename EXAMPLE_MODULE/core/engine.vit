@@ -1,3 +1,140 @@
-proc compute(a: Int, b: Int) -> Int
-    ret a * b
+# ============================================================
+# EXAMPLE_MODULE::core::engine
+# Moteur interne – logique métier centrale
+# ============================================================
+
+space EXAMPLE_MODULE/core
+
+
+# ------------------------------------------------------------
+# Imports internes
+# ------------------------------------------------------------
+
+pull EXAMPLE_MODULE/api/public as api
+
+pull std/collections/map as Map
+pull std/collections/list as List
+
+
+# ------------------------------------------------------------
+# État interne du moteur
+# ------------------------------------------------------------
+
+form EngineState
+    next_id: u64
+    items: Map[u64, api::Item]
+.end
+
+
+proc EngineState::new
+-> EngineState
+
+    give EngineState {
+        next_id = 1
+        items = Map::new()
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Moteur principal
+# ------------------------------------------------------------
+
+form Engine
+    state: EngineState
+.end
+
+
+proc Engine::new
+-> Engine
+
+    give Engine {
+        state = EngineState::new()
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Opérations internes
+# ------------------------------------------------------------
+
+proc Engine::create_item
+    self: &mut Engine
+    name: string
+-> api::ApiResult[api::Item]
+
+    if name.len == 0
+        give api::ApiResult::Err(
+            api::ApiError::InvalidInput(
+                "name must not be empty"
+            )
+        )
+    .end
+
+    let id = self.state.next_id
+    self.state.next_id = self.state.next_id + 1
+
+    let item = api::Item {
+        id = id
+        name = name
+        enabled = true
+    }
+
+    self.state.items.insert(id, item)
+
+    give api::ApiResult::Ok(item)
+.end
+
+
+proc Engine::get_item
+    self: &Engine
+    id: u64
+-> api::ApiResult[api::Item]
+
+    if not self.state.items.contains(id)
+        give api::ApiResult::Err(
+            api::ApiError::NotFound("item")
+        )
+    .end
+
+    give api::ApiResult::Ok(
+        self.state.items.get(id)
+    )
+.end
+
+
+proc Engine::disable_item
+    self: &mut Engine
+    id: u64
+-> api::ApiResult[bool]
+
+    if not self.state.items.contains(id)
+        give api::ApiResult::Err(
+            api::ApiError::NotFound("item")
+        )
+    .end
+
+    let mut item = self.state.items.get(id)
+    item.enabled = false
+    self.state.items.insert(id, item)
+
+    give api::ApiResult::Ok(true)
+.end
+
+
+# ------------------------------------------------------------
+# Helpers internes
+# ------------------------------------------------------------
+
+proc Engine::list_items
+    self: &Engine
+-> List[api::Item]
+
+    let mut out = List::new()
+
+    for (_, item) in self.state.items.iter()
+        out.push(item)
+    .end
+
+    give out
 .end

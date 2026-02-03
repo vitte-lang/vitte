@@ -1,4 +1,198 @@
-form SsaContext
-    session: sess::Session
-    module: SsaModule
+# ============================================================
+# vitte_codegen_ssa::context
+# Contexte global du backend SSA
+# ============================================================
+
+space vitte/compiler/backends/vitte_codegen_ssa
+
+pull std/collections/map as Map
+pull std/collections/list as List
+pull std/time as time
+
+
+# ------------------------------------------------------------
+# Niveaux d’optimisation SSA
+# ------------------------------------------------------------
+
+pick OptLevel
+    case O0
+    case O1
+    case O2
+    case O3
+.end
+
+
+# ------------------------------------------------------------
+# Mode de sortie (debug / normal)
+# ------------------------------------------------------------
+
+pick EmitMode
+    case Debug      # SSA texte, assertions, logs
+    case Normal     # pipeline standard
+.end
+
+
+# ------------------------------------------------------------
+# Statistiques SSA (debug / CI)
+# ------------------------------------------------------------
+
+form SsaStats
+    functions: u32
+    blocks: u32
+    values: u32
+    instructions: u32
+.end
+
+
+proc SsaStats::new
+-> SsaStats
+
+    give SsaStats {
+        functions = 0
+        blocks = 0
+        values = 0
+        instructions = 0
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Contexte SSA principal
+# ------------------------------------------------------------
+
+form CodegenCtx
+    opt_level: OptLevel
+    emit_mode: EmitMode
+
+    start_time_ms: u64
+
+    stats: SsaStats
+
+    # Espace libre pour extensions futures
+    metadata: Map<string, string>
+.end
+
+
+# ------------------------------------------------------------
+# Construction
+# ------------------------------------------------------------
+
+proc CodegenCtx::new
+    opt_level: OptLevel
+    emit_mode: EmitMode
+-> CodegenCtx
+
+    give CodegenCtx {
+        opt_level = opt_level
+        emit_mode = emit_mode
+        start_time_ms = time::now_ms()
+        stats = SsaStats::new()
+        metadata = Map::new()
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Helpers d’optimisation
+# ------------------------------------------------------------
+
+proc CodegenCtx::is_optimized
+    self: &CodegenCtx
+-> bool
+
+    select self.opt_level
+        when OptLevel::O0
+            give false
+        otherwise
+            give true
+    .end
+.end
+
+
+proc CodegenCtx::opt_is_full
+    self: &CodegenCtx
+-> bool
+
+    select self.opt_level
+        when OptLevel::O2
+        when OptLevel::O3
+            give true
+        otherwise
+            give false
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Helpers debug / timing
+# ------------------------------------------------------------
+
+proc CodegenCtx::elapsed_ms
+    self: &CodegenCtx
+-> u64
+
+    give time::now_ms() - self.start_time_ms
+.end
+
+
+proc CodegenCtx::is_debug
+    self: &CodegenCtx
+-> bool
+
+    give self.emit_mode == EmitMode::Debug
+.end
+
+
+# ------------------------------------------------------------
+# Mise à jour des statistiques SSA
+# ------------------------------------------------------------
+
+proc CodegenCtx::inc_function
+    self: &mut CodegenCtx
+-> ()
+    self.stats.functions += 1
+.end
+
+
+proc CodegenCtx::inc_block
+    self: &mut CodegenCtx
+-> ()
+    self.stats.blocks += 1
+.end
+
+
+proc CodegenCtx::inc_value
+    self: &mut CodegenCtx
+-> ()
+    self.stats.values += 1
+.end
+
+
+proc CodegenCtx::inc_instruction
+    self: &mut CodegenCtx
+-> ()
+    self.stats.instructions += 1
+.end
+
+
+# ------------------------------------------------------------
+# Métadonnées libres
+# ------------------------------------------------------------
+
+proc CodegenCtx::set_meta
+    self: &mut CodegenCtx
+    key: string
+    value: string
+-> ()
+
+    self.metadata.insert(key, value)
+.end
+
+
+proc CodegenCtx::get_meta
+    self: &CodegenCtx
+    key: string
+-> Option<string>
+
+    give self.metadata.get(key)
 .end

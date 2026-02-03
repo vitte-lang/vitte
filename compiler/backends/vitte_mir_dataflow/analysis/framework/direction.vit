@@ -1,4 +1,67 @@
-pick FlowDirection
-    Forward
-    Backward
+# ============================================================
+# vitte_mir_dataflow::analysis::framework::direction
+# Direction des analyses de flot de données
+# ============================================================
+
+space vitte/compiler/backends/vitte_mir_dataflow/analysis/framework
+
+
+# ------------------------------------------------------------
+# Direction d’analyse
+# ------------------------------------------------------------
+
+# Détermine le sens de propagation de l’information :
+# - Forward  : entrée -> sortie (ex: reaching definitions)
+# - Backward : sortie -> entrée (ex: liveness)
+pick DataflowDirection
+    case Forward
+    case Backward
+.end
+
+
+# ------------------------------------------------------------
+# Helpers sémantiques
+# ------------------------------------------------------------
+
+proc is_forward
+    dir: DataflowDirection
+-> bool
+
+    select dir
+        when DataflowDirection::Forward  give true
+        when DataflowDirection::Backward give false
+    .end
+.end
+
+
+proc is_backward
+    dir: DataflowDirection
+-> bool
+
+    select dir
+        when DataflowDirection::Forward  give false
+        when DataflowDirection::Backward give true
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Ordre de parcours recommandé
+# ------------------------------------------------------------
+
+# Indique si l’algorithme doit préférer un ordre inverse
+# (ex: reverse postorder) pour accélérer la convergence.
+proc prefers_reverse_order
+    dir: DataflowDirection
+-> bool
+
+    # Classique :
+    # - forward  -> postorder / RPO
+    # - backward -> preorder / reverse
+    select dir
+        when DataflowDirection::Forward
+            give false
+        when DataflowDirection::Backward
+            give true
+    .end
 .end

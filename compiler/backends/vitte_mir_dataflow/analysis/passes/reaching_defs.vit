@@ -1,2 +1,163 @@
-proc analyze_reaching_defs(ctx: DataflowContext, fn: mir::MirFunction)
+# ============================================================
+# vitte_mir_dataflow::analysis::passes::reaching_defs
+# Reaching Definitions (MIR, dataflow)
+# ============================================================
+
+space vitte/compiler/backends/vitte_mir_dataflow/analysis/passes
+
+
+# ------------------------------------------------------------
+# Imports
+# ------------------------------------------------------------
+
+pull vitte/compiler/backends/vitte_mir_dataflow/analysis/framework/mod
+    as df
+
+pull vitte/compiler/backends/vitte_mir_build/mir/mod
+    as mir
+
+pull std/collections/set as Set
+pull std/collections/map as Map
+
+
+# ------------------------------------------------------------
+# Définition atteignable
+# ------------------------------------------------------------
+
+# Une définition est identifiée par :
+# - la valeur MIR définie
+# - le bloc dans lequel elle est définie
+form Definition
+    value: mir::ValueId
+    block: mir::BlockId
+.end
+
+
+# ------------------------------------------------------------
+# État dataflow : ensemble de définitions
+# ------------------------------------------------------------
+
+type DefSet = Set[Definition]
+
+
+# ------------------------------------------------------------
+# Domaine dataflow
+# ------------------------------------------------------------
+
+proc reaching_defs_domain
+-> df::DataflowDomain
+
+    give df::DataflowDomain {
+        name = "reaching-definitions"
+        bottom = Set::new()
+        top = None
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Join du domaine (union)
+# ------------------------------------------------------------
+
+proc join_defs
+    a: DefSet
+    b: DefSet
+-> DefSet
+
+    give a.union(b)
+.end
+
+
+proc equals_defs
+    a: DefSet
+    b: DefSet
+-> bool
+
+    give a == b
+.end
+
+
+# ------------------------------------------------------------
+# Helpers : GEN / KILL d’un bloc
+# ------------------------------------------------------------
+
+proc block_gen_kill
+    block: &mir::Block
+-> (DefSet, Set[mir::ValueId])
+
+    let mut gen  = Set::new()
+    let mut kill = Set::new()
+
+    for inst in block.instructions.iter()
+        if inst.defines()
+            let v = inst.def_id()
+
+            # toute nouvelle définition tue les anciennes du même ValueId
+            kill.insert(v)
+
+            gen.insert(
+                Definition {
+                    value = v
+                    block = block.id
+                }
+            )
+        .end
+    .end
+
+    give (gen, kill)
+.end
+
+
+# ------------------------------------------------------------
+# Fonction de transfert (bloc)
+# ------------------------------------------------------------
+
+# Forward:
+#   OUT[B] = GEN[B] ∪ (IN[B] − KILL[B])
+#   IN[B]  = join des OUT des prédécesseurs (géré par le solver)
+proc transfer_block
+    block: &mir::Block
+    in_state: DefSet
+-> DefSet
+
+    let (gen, kill) = block_gen_kill(block)
+
+    let mut out = Set::new()
+
+    # conserver définitions non tuées
+    for d in in_state.iter()
+        if not kill.contains(d.value)
+            out.insert(d)
+        .end
+    .end
+
+    # ajouter définitions locales
+    for d in gen.iter()
+        out.insert(d)
+    .end
+
+    give out
+.end
+
+
+# ------------------------------------------------------------
+# Description de l’analyse dataflow
+# ------------------------------------------------------------
+
+proc reaching_defs_analysis
+-> df::DataflowAnalysis
+
+    let dom = reaching_defs_domain()
+
+    let transfer =
+        df::TransferFunctions {
+            transfer_block = transfer_block
+        }
+
+    give df::DataflowAnalysis {
+        name = "reaching-definitions"
+        direction = df::DataflowDirection::Forward
+        domain = dom
+        transfer = transfer
+    }
 .end

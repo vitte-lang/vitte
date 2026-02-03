@@ -1,3 +1,187 @@
-proc mangle_itanium(fn: hir::Function)
-    # Itanium C++ ABI mangling
+# ============================================================
+# vitte_target::schemes::itanium
+# Itanium C++ ABI name mangling scheme
+# ============================================================
+
+space vitte/compiler/backends/vitte_target/schemes
+
+
+# ------------------------------------------------------------
+# ABI metadata
+# ------------------------------------------------------------
+
+form AbiScheme
+    name: string
+    version: string
 .end
+
+
+proc itanium_scheme
+-> AbiScheme
+
+    give AbiScheme {
+        name = "itanium"
+        version = "cxxabi-1.86"
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Mangling primitives
+# ------------------------------------------------------------
+
+# Encodage des types fondamentaux (Itanium ABI)
+pick ItaniumTypeCode
+    case Void        # v
+    case Bool        # b
+    case Char        # c
+    case I8          # a
+    case U8          # h
+    case I16         # s
+    case U16         # t
+    case I32         # i
+    case U32         # j
+    case I64         # l
+    case U64         # m
+    case F32         # f
+    case F64         # d
+    case Pointer     # P
+    case Reference   # R
+    case Const       # K
+.end
+
+
+proc type_code
+    code: ItaniumTypeCode
+-> string
+
+    select code
+        when ItaniumTypeCode::Void      give "v"
+        when ItaniumTypeCode::Bool      give "b"
+        when ItaniumTypeCode::Char      give "c"
+        when ItaniumTypeCode::I8        give "a"
+        when ItaniumTypeCode::U8        give "h"
+        when ItaniumTypeCode::I16       give "s"
+        when ItaniumTypeCode::U16       give "t"
+        when ItaniumTypeCode::I32       give "i"
+        when ItaniumTypeCode::U32       give "j"
+        when ItaniumTypeCode::I64       give "l"
+        when ItaniumTypeCode::U64       give "m"
+        when ItaniumTypeCode::F32       give "f"
+        when ItaniumTypeCode::F64       give "d"
+        when ItaniumTypeCode::Pointer   give "P"
+        when ItaniumTypeCode::Reference give "R"
+        when ItaniumTypeCode::Const     give "K"
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Identifiants et portées
+# ------------------------------------------------------------
+
+proc encode_identifier
+    name: string
+-> string
+
+    # <len><identifier>
+    give name.len.to_string() + name
+.end
+
+
+proc encode_nested
+    parts: [string]
+-> string
+
+    # N <id>+ E
+    let mut out = "N"
+
+    for p in parts
+        out = out + encode_identifier(p)
+    .end
+
+    out = out + "E"
+    give out
+.end
+
+
+# ------------------------------------------------------------
+# Fonctions
+# ------------------------------------------------------------
+
+form FunctionSig
+    name: string
+    namespaces: [string]
+    param_types: [ItaniumTypeCode]
+    return_type: ItaniumTypeCode
+.end
+
+
+proc mangle_function
+    sig: &FunctionSig
+-> string
+
+    let mut out = "_Z"
+
+    # Nom qualifié
+    if sig.namespaces.len > 0
+        let mut parts = sig.namespaces.clone()
+        parts.push(sig.name)
+        out = out + encode_nested(parts)
+    .end
+    otherwise
+        out = out + encode_identifier(sig.name)
+    .end
+
+    # Types des paramètres
+    if sig.param_types.len == 0
+        out = out + "v"    # void
+    .end
+    otherwise
+        for t in sig.param_types
+            out = out + type_code(t)
+        .end
+    .end
+
+    give out
+.end
+
+
+# ------------------------------------------------------------
+# Variables globales
+# ------------------------------------------------------------
+
+proc mangle_global
+    name: string
+    namespaces: [string]
+-> string
+
+    let mut out = "_Z"
+
+    if namespaces.len > 0
+        let mut parts = namespaces.clone()
+        parts.push(name)
+        out = out + encode_nested(parts)
+    .end
+    otherwise
+        out = out + encode_identifier(name)
+    .end
+
+    give out
+.end
+
+
+# ------------------------------------------------------------
+# Notes de conformité
+# ------------------------------------------------------------
+# - Conforme à l’Itanium C++ ABI (GCC / Clang / LLVM)
+# - Supporte :
+#   * fonctions libres
+#   * namespaces imbriqués
+#   * types fondamentaux
+# - Extensions futures :
+#   * templates
+#   * substitutions (S_)
+#   * qualifiers avancés
+#   * ABI tags
+# ============================================================

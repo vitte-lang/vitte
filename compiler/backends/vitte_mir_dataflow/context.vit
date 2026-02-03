@@ -1,3 +1,184 @@
+# ============================================================
+# vitte_mir_dataflow::context
+# Contexte global des analyses dataflow MIR
+# ============================================================
+
+space vitte/compiler/backends/vitte_mir_dataflow
+
+
+# ------------------------------------------------------------
+# Imports
+# ------------------------------------------------------------
+
+pull vitte/compiler/backends/vitte_mir_build/mir/mod as mir
+pull vitte/compiler/backends/vitte_mir_build/analysis/cfg as mir_cfg
+
+pull vitte/compiler/backends/vitte_mir_dataflow/graph/mod as graph
+pull vitte/compiler/backends/vitte_mir_dataflow/analysis/framework/mod as fw
+pull vitte/compiler/backends/vitte_mir_dataflow/analysis/passes/mod as passes
+
+pull std/collections/map as Map
+pull std/collections/list as List
+
+
+# ------------------------------------------------------------
+# Diagnostics dataflow
+# ------------------------------------------------------------
+
+pick DataflowDiagnosticKind
+    case Info
+    case Warning
+    case Error
+.end
+
+
+form DataflowDiagnostic
+    kind: DataflowDiagnosticKind
+    message: string
+.end
+
+
+# ------------------------------------------------------------
+# Options dataflow
+# ------------------------------------------------------------
+
+form DataflowOptions
+    enable_liveness: bool
+    enable_reaching_defs: bool
+    enable_const_prop: bool
+    debug: bool
+.end
+
+
+proc DataflowOptions::default
+-> DataflowOptions
+
+    give DataflowOptions {
+        enable_liveness = true
+        enable_reaching_defs = true
+        enable_const_prop = true
+        debug = false
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Contexte dataflow
+# ------------------------------------------------------------
+
 form DataflowContext
-    session: sess::Session
+    options: DataflowOptions
+    diagnostics: List[DataflowDiagnostic]
+
+    # cache des résultats par nom d’analyse
+    results: Map[string, fw::DataflowResult]
+.end
+
+
+# ------------------------------------------------------------
+# Constructeur
+# ------------------------------------------------------------
+
+proc DataflowContext::new
+    opts: DataflowOptions
+-> DataflowContext
+
+    give DataflowContext {
+        options = opts
+        diagnostics = List::new()
+        results = Map::new()
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Diagnostics
+# ------------------------------------------------------------
+
+proc DataflowContext::emit_diag
+    self: &mut DataflowContext
+    kind: DataflowDiagnosticKind
+    msg: string
+-> void
+
+    self.diagnostics.push(
+        DataflowDiagnostic {
+            kind = kind
+            message = msg
+        }
+    )
+.end
+
+
+# ------------------------------------------------------------
+# Construction du graphe dataflow depuis MIR
+# ------------------------------------------------------------
+
+proc build_graph
+    func: &mir::Function
+-> graph::DataflowGraph
+
+    let cfg = mir_cfg::build_cfg(func)
+    let df_cfg = graph::from_mir_cfg(&cfg)
+
+    give graph::DataflowGraph::from_cfg(df_cfg)
+.end
+
+
+# ------------------------------------------------------------
+# Exécution d’une analyse
+# ------------------------------------------------------------
+
+proc DataflowContext::run_analysis
+    self: &mut DataflowContext
+    name: string
+    analysis: fw::DataflowAnalysis
+    func: &mir::Function
+-> void
+
+    let graph = build_graph(func)
+
+    let result =
+        fw::run_analysis(&analysis, &graph)
+
+    if self.options.debug
+        fw::dump_result(&analysis, &result)
+    .end
+
+    self.results.insert(name, result)
+.end
+
+
+# ------------------------------------------------------------
+# Pipeline dataflow standard
+# ------------------------------------------------------------
+
+proc DataflowContext::run_pipeline
+    self: &mut DataflowContext
+    func: &mir::Function
+-> void
+
+    if self.options.enable_liveness
+        self.run_analysis(
+            "liveness",
+            passes::liveness_analysis(),
+            func
+        )
+    .end
+
+    if self.options.enable_reaching_defs
+        self.run_analysis(
+            "reaching-definitions",
+            passes::reaching_defs_analysis(),
+            func
+        )
+    .end
+
+    if self.options.enable_const_prop
+        self.run_analysis(
+            "constant-propagation",
+            passes::const_prop_analysis(),
+            func
+        )
+    .end
 .end

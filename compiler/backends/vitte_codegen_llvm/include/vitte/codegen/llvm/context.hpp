@@ -1,46 +1,131 @@
-#pragma once
-#include <memory>
-#include <string>
+// ============================================================
+// vitte_codegen_llvm::context
+// Contexte central du backend LLVM
+// ============================================================
 
-namespace llvm {
-    class LLVMContext;
-    class Module;
-    class IRBuilderBase;
-    class TargetMachine;
+#pragma once
+
+#include <string>
+#include <unordered_map>
+#include <memory>
+
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Function.h>
+#include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/Value.h>
+#include <llvm/IR/Type.h>
+
+namespace vitte::mir {
+struct Function;
+struct Block;
+struct Expr;
+struct Type;
+
+using FnId    = unsigned;
+using BlockId = unsigned;
+using LocalId = unsigned;
 }
 
 namespace vitte::codegen::llvm_backend {
 
-struct TargetDesc {
-    std::string triple;
-    std::string cpu;
-    std::string features;
-    bool pic = true;
+
+// ------------------------------------------------------------
+// Contexte global LLVM (module)
+// ------------------------------------------------------------
+
+struct CodegenContext {
+    llvm::LLVMContext llvmContext;
+    std::unique_ptr<llvm::Module> module;
+    llvm::IRBuilder<> builder;
+
+    // Mapping MIR → LLVM
+    std::unordered_map<mir::FnId, llvm::Function*> functions;
+    std::unordered_map<mir::FnId, llvm::FunctionType*> functionTypes;
+
+    explicit CodegenContext(const std::string& moduleName)
+        : module(std::make_unique<llvm::Module>(moduleName, llvmContext)),
+          builder(llvmContext)
+    {}
+
+    llvm::Module& getModule() { return *module; }
 };
 
-class Session;
 
-class CodegenContext {
-public:
-    CodegenContext(Session& session, const TargetDesc& target);
-    ~CodegenContext();
+// ------------------------------------------------------------
+// Contexte local par fonction
+// ------------------------------------------------------------
 
-    llvm::LLVMContext& llvmContext();
-    llvm::Module& module();
-    llvm::IRBuilderBase& builder();
-    llvm::TargetMachine& targetMachine();
+struct FunctionContext {
+    CodegenContext& cg;
 
-    void beginModule(const std::string& name);
-    void endModule();
+    llvm::Function* function;
+    llvm::BasicBlock* entryBlock;
 
-private:
-    Session& session;
-    TargetDesc target;
+    // Locaux MIR → LLVM
+    std::unordered_map<mir::LocalId, llvm::Value*> locals;
 
-    std::unique_ptr<llvm::LLVMContext> ctx;
-    std::unique_ptr<llvm::Module> mod;
-    std::unique_ptr<llvm::IRBuilderBase> irb;
-    std::unique_ptr<llvm::TargetMachine> tm;
+    // Blocs MIR → LLVM
+    std::unordered_map<mir::BlockId, llvm::BasicBlock*> blocks;
+
+    std::string sourceName;
+
+    FunctionContext(CodegenContext& cg,
+                    llvm::Function* fn,
+                    const std::string& sourceName)
+        : cg(cg),
+          function(fn),
+          sourceName(sourceName)
+    {
+        entryBlock = llvm::BasicBlock::Create(
+            cg.llvmContext,
+            "entry",
+            function
+        );
+        cg.builder.SetInsertPoint(entryBlock);
+    }
+
+    // --------------------------------------------------------
+    // Locaux
+    // --------------------------------------------------------
+
+    void declareLocal(mir::LocalId id, llvm::Type* type) {
+        auto* allocaInst =
+            cg.builder.CreateAlloca(type, nullptr, "local");
+        locals[id] = allocaInst;
+    }
+
+    llvm::Value* getLocal(mir::LocalId id) const {
+        auto it = locals.find(id);
+        if (it == locals.end())
+            return nullptr;
+        return it->second;
+    }
+
+    // --------------------------------------------------------
+    // Blocs
+    // --------------------------------------------------------
+
+    llvm::BasicBlock* getOrCreateBlock(mir::BlockId id) {
+        auto it = blocks.find(id);
+        if (it != blocks.end())
+            return it->second;
+
+        auto* bb = llvm::BasicBlock::Create(
+            cg.llvmContext,
+            "bb",
+            function
+        );
+        blocks[id] = bb;
+        return bb;
+    }
+
+    void switchToBlock(mir::BlockId id) {
+        cg.builder.SetInsertPoint(
+            getOrCreateBlock(id)
+        );
+    }
 };
 
 } // namespace vitte::codegen::llvm_backend

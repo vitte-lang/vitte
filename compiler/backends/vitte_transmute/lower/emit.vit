@@ -1,3 +1,221 @@
-proc lower_transmute(ctx: TransmuteContext, val: mir::MirValue, to_ty)
-    # MIR transmute lowering
+# ============================================================
+# vitte_transmute::lower::emit
+# Émission des transmutations après analyse
+# ============================================================
+
+space vitte/compiler/backends/vitte_transmute/lower
+
+pull vitte/compiler/backends/vitte_transmute/analysis as tm_an
+pull vitte/compiler/backends/vitte_transmute/ir/type as tm_ty
+
+pull vitte/compiler/backends/vitte_codegen_ssa/ir/mod as ssa
+pull vitte/compiler/backends/vitte_codegen_ssa/context as ssa_ctx
+
+pull std/collections/list as List
+pull std/math as math
+
+
+# ------------------------------------------------------------
+# Mode d’émission
+# ------------------------------------------------------------
+
+pick EmitKind
+    case Bitcast        # même taille, même alignement
+    case PtrCast        # pointeur -> pointeur
+    case Memcpy         # fallback sûr (copie brute)
+.end
+
+
+# ------------------------------------------------------------
+# Résultat d’émission
+# ------------------------------------------------------------
+
+form EmitResult
+    value: ssa::Value
+    kind: EmitKind
+.end
+
+
+# ------------------------------------------------------------
+# API principale
+# ------------------------------------------------------------
+
+proc emit_transmute
+    ctx: &mut ssa_ctx::CodegenCtx
+    from_ty: &tm_ty::Type
+    to_ty: &tm_ty::Type
+    src: ssa::Value
+-> EmitResult
+
+    # --------------------------------------------------------
+    # Analyse de validité
+    # --------------------------------------------------------
+
+    let vctx = tm_an::ValidityContext::default()
+    let validity =
+        tm_an::analyze_validity(
+            from_ty,
+            to_ty,
+            &vctx
+        )
+
+    select validity
+
+        when tm_an::Validity::Valid
+            give emit_fast_cast(
+                ctx,
+                from_ty,
+                to_ty,
+                src
+            )
+
+        when tm_an::Validity::Unsafe(reason)
+            # Autorisé mais nécessite une émission conservatrice
+            give emit_memcpy_cast(
+                ctx,
+                from_ty,
+                to_ty,
+                src
+            )
+
+        when tm_an::Validity::Invalid(reason)
+            panic(
+                "illegal transmute: " + reason
+            )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Fast paths
+# ------------------------------------------------------------
+
+proc emit_fast_cast
+    ctx: &mut ssa_ctx::CodegenCtx
+    from_ty: &tm_ty::Type
+    to_ty: &tm_ty::Type
+    src: ssa::Value
+-> EmitResult
+
+    # --------------------------------------------------------
+    # Pointeur -> pointeur
+    # --------------------------------------------------------
+
+    if from_ty.kind == tm_ty::TypeKind::Pointer
+       and to_ty.kind == tm_ty::TypeKind::Pointer
+
+        let v =
+            ctx.builder.ptr_cast(
+                src,
+                to_ty
+            )
+
+        give EmitResult {
+            value = v
+            kind = EmitKind::PtrCast
+        }
+    .end
+
+
+    # --------------------------------------------------------
+    # Bitcast scalaire / layout-identique
+    # --------------------------------------------------------
+
+    let size_from = tm_an::size_of(from_ty)
+    let size_to   = tm_an::size_of(to_ty)
+
+    if size_from == size_to
+
+        let v =
+            ctx.builder.bitcast(
+                src,
+                to_ty
+            )
+
+        give EmitResult {
+            value = v
+            kind = EmitKind::Bitcast
+        }
+    .end
+
+    # Fallback (ne devrait pas arriver ici)
+    give emit_memcpy_cast(
+        ctx,
+        from_ty,
+        to_ty,
+        src
+    )
+.end
+
+
+# ------------------------------------------------------------
+# Memcpy conservateur
+# ------------------------------------------------------------
+
+proc emit_memcpy_cast
+    ctx: &mut ssa_ctx::CodegenCtx
+    from_ty: &tm_ty::Type
+    to_ty: &tm_ty::Type
+    src: ssa::Value
+-> EmitResult
+
+    # --------------------------------------------------------
+    # Allocation destination
+    # --------------------------------------------------------
+
+    let dst_ptr =
+        ctx.builder.alloca(
+            to_ty,
+            "transmute.dst"
+        )
+
+    let src_ptr =
+        ctx.builder.alloca(
+            from_ty,
+            "transmute.src"
+        )
+
+    # Stockage source
+    ctx.builder.store(
+        src,
+        src_ptr
+    )
+
+    # --------------------------------------------------------
+    # Taille et alignement
+    # --------------------------------------------------------
+
+    let size =
+        tm_an::size_of(from_ty)
+
+    let align_src =
+        tm_an::alignment_of(from_ty)
+
+    let align_dst =
+        tm_an::alignment_of(to_ty)
+
+    let align =
+        math::min(align_src, align_dst)
+
+    # --------------------------------------------------------
+    # memcpy SSA
+    # --------------------------------------------------------
+
+    ctx.builder.memcpy(
+        dst_ptr,
+        src_ptr,
+        size,
+        align
+    )
+
+    let v =
+        ctx.builder.load(
+            dst_ptr,
+            to_ty
+        )
+
+    give EmitResult {
+        value = v
+        kind = EmitKind::Memcpy
+    }
 .end

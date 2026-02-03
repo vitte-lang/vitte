@@ -1,3 +1,171 @@
-proc emit_ssa(ctx: SsaContext)
-    # handoff to LLVM / Cranelift / ASM
+# ============================================================
+# vitte_codegen_ssa::emit::to_backend
+# Pont SSA -> backends concrets
+# ============================================================
+
+space vitte/compiler/backends/vitte_codegen_ssa/emit
+
+pull vitte/compiler/backends/vitte_codegen_ssa/ir as ssa
+pull vitte/compiler/backends/vitte_codegen_ssa/context as ssa_ctx
+pull vitte/compiler/backends/vitte_codegen_ssa/errors as ssa_err
+pull vitte/compiler/backends/vitte_codegen_ssa/emit/mod as ssa_emit
+
+# Backends cibles
+pull vitte/compiler/backends/vitte_codegen_llvm as llvm_be
+pull vitte/compiler/backends/vitte_codegen_cranelift as cl_be
+pull vitte/compiler/backends/vitte_codegen_gcc as gcc_be
+
+pull std/collections/map as Map
+
+
+# ------------------------------------------------------------
+# Backends supportés
+# ------------------------------------------------------------
+
+pick TargetBackend
+    case SSA        # SSA pur (debug / tests)
+    case LLVM
+    case Cranelift
+    case GCC
+.end
+
+
+# ------------------------------------------------------------
+# Options génériques d’émission
+# ------------------------------------------------------------
+
+form EmitOptions
+    backend: TargetBackend
+    output_path: string
+    emit_text: bool
+    opt_level: u8
+    target_triple: string
+.end
+
+
+# ------------------------------------------------------------
+# API principale
+# ------------------------------------------------------------
+
+proc emit_to_backend
+    ctx: &ssa_ctx::CodegenCtx
+    module: &ssa::Module
+    opts: &EmitOptions
+-> bytes
+
+    select opts.backend
+        when TargetBackend::SSA
+            if opts.emit_text
+                give ssa_emit::emit_module(
+                    ctx,
+                    module,
+                    ssa_emit::EmitFormat::Text
+                )
+            otherwise
+                give ssa_emit::emit_module(
+                    ctx,
+                    module,
+                    ssa_emit::EmitFormat::Binary
+                )
+            .end
+
+        when TargetBackend::LLVM
+            give emit_to_llvm(ctx, module, opts)
+
+        when TargetBackend::Cranelift
+            give emit_to_cranelift(ctx, module, opts)
+
+        when TargetBackend::GCC
+            give emit_to_gcc(ctx, module, opts)
+
+        otherwise
+            ssa_err::panic(
+                "unsupported target backend"
+            )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# SSA -> LLVM
+# ------------------------------------------------------------
+
+proc emit_to_llvm
+    ctx: &ssa_ctx::CodegenCtx
+    module: &ssa::Module
+    opts: &EmitOptions
+-> bytes
+
+    # Étape 1 : SSA -> LLVM IR
+    let llvm_module =
+        llvm_be::lower_from_ssa(
+            module,
+            opts.target_triple
+        )
+
+    # Étape 2 : passes + émission
+    let ok =
+        llvm_be::emit_module(
+            llvm_module,
+            opts.output_path,
+            opts.opt_level
+        )
+
+    if not ok
+        ssa_err::panic(
+            "LLVM backend emission failed"
+        )
+    .end
+
+    give io::read_file_bytes(
+        opts.output_path
+    )
+.end
+
+
+# ------------------------------------------------------------
+# SSA -> Cranelift
+# ------------------------------------------------------------
+
+proc emit_to_cranelift
+    ctx: &ssa_ctx::CodegenCtx
+    module: &ssa::Module
+    opts: &EmitOptions
+-> bytes
+
+    let obj =
+        cl_be::compile_from_ssa(
+            module,
+            opts.target_triple
+        )
+
+    give obj
+.end
+
+
+# ------------------------------------------------------------
+# SSA -> GCC
+# ------------------------------------------------------------
+
+proc emit_to_gcc
+    ctx: &ssa_ctx::CodegenCtx
+    module: &ssa::Module
+    opts: &EmitOptions
+-> bytes
+
+    let ok =
+        gcc_be::compile_from_ssa(
+            module,
+            opts.output_path
+        )
+
+    if not ok
+        ssa_err::panic(
+            "GCC backend emission failed"
+        )
+    .end
+
+    give io::read_file_bytes(
+        opts.output_path
+    )
 .end

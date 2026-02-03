@@ -1,4 +1,155 @@
-form SsaBlock
-    id: Int
-    values: List[SsaValue]
+# ============================================================
+# vitte_codegen_ssa::ir::block
+# Définition d’un bloc SSA canonique
+# ============================================================
+
+space vitte/compiler/backends/vitte_codegen_ssa/ir
+
+pull vitte/compiler/backends/vitte_codegen_ssa/ir/value as ssa_val
+pull vitte/compiler/backends/vitte_codegen_ssa/ir/instruction as ssa_inst
+pull vitte/compiler/backends/vitte_codegen_ssa/ir/terminator as ssa_term
+
+pull std/collections/list as List
+pull std/collections/set as Set
+
+
+# ------------------------------------------------------------
+# Identifiant de bloc
+# ------------------------------------------------------------
+
+form BlockId
+    id: u32
+.end
+
+
+# ------------------------------------------------------------
+# Bloc SSA
+# ------------------------------------------------------------
+
+form Block
+    id: BlockId
+    label: string
+
+    instructions: List<ssa_inst::Instruction>
+    terminator: ssa_term::Terminator
+
+    preds: Set<BlockId>
+    succs: Set<BlockId>
+.end
+
+
+# ------------------------------------------------------------
+# Construction
+# ------------------------------------------------------------
+
+proc Block::new
+    id: u32
+    label: string
+-> Block
+
+    give Block
+        id = BlockId { id = id }
+        label = label
+        instructions = List::new()
+        terminator = ssa_term::Terminator::invalid()
+        preds = Set::new()
+        succs = Set::new()
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Instructions
+# ------------------------------------------------------------
+
+proc Block::append
+    self: &mut Block
+    inst: ssa_inst::Instruction
+-> ()
+
+    self.instructions.push(inst)
+.end
+
+
+proc Block::has_terminator
+    self: &Block
+-> bool
+
+    give not self.terminator.is_invalid()
+.end
+
+
+proc Block::set_terminator
+    self: &mut Block
+    term: ssa_term::Terminator
+-> ()
+
+    self.terminator = term
+.end
+
+
+# ------------------------------------------------------------
+# CFG helpers
+# ------------------------------------------------------------
+
+proc Block::add_pred
+    self: &mut Block
+    pred: BlockId
+-> ()
+
+    self.preds.insert(pred)
+.end
+
+
+proc Block::add_succ
+    self: &mut Block
+    succ: BlockId
+-> ()
+
+    self.succs.insert(succ)
+.end
+
+
+proc Block::remove_pred
+    self: &mut Block
+    pred: BlockId
+-> ()
+
+    self.preds.remove(pred)
+.end
+
+
+proc Block::remove_succ
+    self: &mut Block
+    succ: BlockId
+-> ()
+
+    self.succs.remove(succ)
+.end
+
+
+# ------------------------------------------------------------
+# Validation SSA locale
+# ------------------------------------------------------------
+
+proc Block::validate
+    self: &Block
+-> bool
+
+    # 1) un bloc doit avoir un terminator valide
+    if self.terminator.is_invalid()
+        give false
+    .end
+
+    # 2) aucun instruction après le terminator
+    # (structurellement garanti ici)
+
+    # 3) cohérence CFG basique
+    for succ in self.succs
+        if not self.terminator.targets().contains(succ)
+            give false
+        .end
+    .end
+
+    give true
 .end

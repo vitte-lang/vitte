@@ -1,45 +1,124 @@
-#pragma once
-#include <memory>
-#include <string>
-#include <vector>
+// ============================================================
+// vitte::llvm::context
+// Contexte central du backend LLVM Vitte
+// ============================================================
 
-namespace llvm {
-    class LLVMContext;
-    class Module;
-    class IRBuilderBase;
-    class TargetMachine;
-    class Function;
-    class Value;
-}
+#pragma once
+
+#include <string>
+#include <memory>
+#include <unordered_map>
+
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/DataLayout.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/Target/TargetOptions.h>
 
 namespace vitte::llvm {
 
-struct TargetDesc {
-    std::string triple;
-    std::string cpu;
-    std::string features;
-    bool pic = true;
+
+// ------------------------------------------------------------
+// Niveaux d’optimisation LLVM
+// ------------------------------------------------------------
+
+enum class OptLevel {
+    O0,
+    O1,
+    O2,
+    O3,
+    Os,
+    Oz
 };
 
-class Session;
+
+// ------------------------------------------------------------
+// Format de sortie LLVM
+// ------------------------------------------------------------
+
+enum class EmitFormat {
+    Object,     // .o
+    Assembly,   // .s
+    Bitcode     // .bc
+};
+
+
+// ------------------------------------------------------------
+// Configuration du backend LLVM
+// ------------------------------------------------------------
+
+struct LlvmConfig {
+    std::string target_triple;
+    std::string cpu;
+    std::string features;
+
+    OptLevel opt_level = OptLevel::O2;
+    EmitFormat emit_format = EmitFormat::Object;
+
+    bool verify_module = true;
+    bool debug_ir = false;
+};
+
+
+// ------------------------------------------------------------
+// Contexte LLVM principal
+// ------------------------------------------------------------
 
 class Context {
 public:
-    Context(Session&, const TargetDesc&);
+    explicit Context(const LlvmConfig& config);
     ~Context();
 
-    llvm::LLVMContext& ctx();
-    llvm::Module& mod();
-    llvm::IRBuilderBase& ir();
-    llvm::TargetMachine& tm();
+    // --------------------------------------------------------
+    // Accesseurs LLVM
+    // --------------------------------------------------------
+
+    ::llvm::LLVMContext& llvm_context();
+    ::llvm::TargetMachine& target_machine();
+    const ::llvm::DataLayout& data_layout() const;
+
+    // --------------------------------------------------------
+    // Configuration
+    // --------------------------------------------------------
+
+    const LlvmConfig& config() const;
+
+    // --------------------------------------------------------
+    // Fabrique de modules LLVM
+    // --------------------------------------------------------
+
+    std::unique_ptr<::llvm::Module>
+    create_module(const std::string& name);
+
+    // --------------------------------------------------------
+    // Helpers
+    // --------------------------------------------------------
+
+    bool is_optimized() const;
+    unsigned llvm_opt_level() const;
 
 private:
-    Session& session;
-    TargetDesc target;
-    std::unique_ptr<llvm::LLVMContext> _ctx;
-    std::unique_ptr<llvm::Module> _mod;
-    std::unique_ptr<llvm::IRBuilderBase> _ir;
-    std::unique_ptr<llvm::TargetMachine> _tm;
+    LlvmConfig cfg;
+
+    ::llvm::LLVMContext ctx;
+    std::unique_ptr<::llvm::TargetMachine> tm;
+    ::llvm::DataLayout layout;
+
+    void init_target();
 };
 
-}
+
+// ------------------------------------------------------------
+// Helpers globaux
+// ------------------------------------------------------------
+
+::llvm::CodeGenOpt::Level
+to_llvm_opt_level(OptLevel level);
+
+std::string
+to_string(OptLevel level);
+
+std::string
+to_string(EmitFormat fmt);
+
+} // namespace vitte::llvm

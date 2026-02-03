@@ -1,3 +1,209 @@
 proc simplify_control_flow(ctx: MirTransformContext, fn: mir::MirFunction)
     # merge blocks, fold branches
 .end
+# ============================================================
+# vitte_mir_transform::passes::simplify
+# Simplifications locales du MIR
+# ============================================================
+
+space vitte/compiler/backends/vitte_mir_transform/passes
+
+
+pull vitte/compiler/backends/vitte_mir_build/mir/mod as mir
+pull vitte/compiler/backends/vitte_mir_build/analysis/cfg as cfg
+
+pull std/collections/map as Map
+pull std/collections/list as List
+pull std/collections/set as Set
+
+
+# ------------------------------------------------------------
+# Helpers : constantes et opérations neutres
+# ------------------------------------------------------------
+
+proc is_zero
+    lit
+-> bool
+    give lit == 0
+.end
+
+proc is_one
+    lit
+-> bool
+    give lit == 1
+.end
+
+
+proc eval_binop
+    op: mir::BinOp
+    a
+    b
+-> Option
+
+    select op
+        when mir::BinOp::Add give Some(a + b)
+        when mir::BinOp::Sub give Some(a - b)
+        when mir::BinOp::Mul give Some(a * b)
+        when mir::BinOp::Div
+            if b == 0
+                give None
+            .end
+            give Some(a / b)
+        otherwise
+            give None
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Simplification d’une instruction
+# ------------------------------------------------------------
+
+proc simplify_instr
+    inst: &mir::Instr
+    consts: &Map[mir::ValueId, any]
+-> Option[mir::Instr]
+
+    select inst
+
+        # dst = const
+        when mir::Instr::Const(_, _)
+            give None
+
+        # dst = src
+        when mir::Instr::Copy(dst, src)
+            if dst == src
+                give None    # copie triviale supprimée
+            .end
+            give None
+
+        # dst = lhs op rhs
+        when mir::Instr::Binary(dst, op, lhs, rhs)
+
+            if consts.contains(lhs) and consts.contains(rhs)
+                let a = consts.get(lhs)
+                let b = consts.get(rhs)
+                let r = eval_binop(op, a, b)
+                if r.is_some()
+                    give Some(
+                        mir::Instr::Const(dst, r.unwrap())
+                    )
+                .end
+            .end
+
+            # x + 0 / 0 + x
+            if op == mir::BinOp::Add
+                if consts.contains(rhs) and is_zero(consts.get(rhs))
+                    give Some(mir::Instr::Copy(dst, lhs))
+                .end
+                if consts.contains(lhs) and is_zero(consts.get(lhs))
+                    give Some(mir::Instr::Copy(dst, rhs))
+                .end
+            .end
+
+            # x * 1 / 1 * x
+            if op == mir::BinOp::Mul
+                if consts.contains(rhs) and is_one(consts.get(rhs))
+                    give Some(mir::Instr::Copy(dst, lhs))
+                .end
+                if consts.contains(lhs) and is_one(consts.get(lhs))
+                    give Some(mir::Instr::Copy(dst, rhs))
+                .end
+            .end
+
+            give None
+
+        otherwise
+            give None
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Simplification d’un bloc
+# ------------------------------------------------------------
+
+proc simplify_block
+    block: &mut mir::Block
+-> bool
+
+    let mut changed = false
+    let mut new_instrs = List::new()
+    let mut consts = Map::new()
+
+    for inst in block.instructions.iter()
+
+        # propager les constantes locales
+        select inst
+            when mir::Instr::Const(dst, lit)
+                consts.insert(dst, lit)
+            when mir::Instr::Copy(dst, src)
+                if consts.contains(src)
+                    consts.insert(dst, consts.get(src))
+                .end
+            otherwise
+                # invalider la définition si non constante
+                if inst.defines()
+                    consts.remove(inst.def_id())
+                .end
+        .end
+
+        let simp = simplify_instr(&inst, &consts)
+
+        if simp.is_some()
+            new_instrs.push(simp.unwrap())
+            changed = true
+        .end
+        otherwise
+            new_instrs.push(inst)
+        .end
+    .end
+
+    block.instructions = new_instrs
+
+    # Simplification de terminator conditionnel
+    if block.terminator.is_some()
+        let t = block.terminator.unwrap()
+
+        select t
+            when mir::Terminator::Branch(cond, t_true, t_false)
+                if consts.contains(cond)
+                    let v = consts.get(cond)
+                    if v == true
+                        block.terminator =
+                            Some(mir::Terminator::Goto(t_true))
+                        changed = true
+                    .end
+                    if v == false
+                        block.terminator =
+                            Some(mir::Terminator::Goto(t_false))
+                        changed = true
+                    .end
+                .end
+        .end
+    .end
+
+    give changed
+.end
+
+
+# ------------------------------------------------------------
+# Passe simplify complète (point fixe)
+# ------------------------------------------------------------
+
+proc run_simplify
+    func: &mut mir::Function
+-> void
+
+    let mut changed = true
+
+    while changed
+        changed = false
+
+        for b in func.blocks.iter_mut()
+            if simplify_block(b)
+                changed = true
+            .end
+        .end
+    .end
+.end

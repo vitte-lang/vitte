@@ -1,10 +1,366 @@
-proc lower_expr(ctx, builder, e)
-    select e.kind
-        when Literal
-            emit_literal(builder, e)
-        when Binary
-            emit_binary(builder, e)
+# ============================================================
+# vitte_codegen_cranelift::lower::expr
+# Lowering des expressions MIR → Cranelift IR
+# ============================================================
+
+space vitte/compiler/backends/vitte_codegen_cranelift/lower
+
+pull vitte/compiler/mir/ast as mir
+pull vitte/compiler/mir/types as mir_ty
+pull vitte/compiler/mir/value as mir_val
+
+pull vitte/compiler/backends/vitte_codegen_cranelift/context as cl_ctx
+pull vitte/compiler/backends/vitte_codegen_cranelift/types as cl_ty
+pull vitte/compiler/backends/vitte_codegen_cranelift/errors as cl_err
+
+pull cranelift/frontend as clif
+pull cranelift/codegen/ir as ir
+
+
+# ------------------------------------------------------------
+# Entrée principale
+# ------------------------------------------------------------
+
+proc lower_expr
+    ctx: &mut cl_ctx::LowerCtx
+    expr: &mir::Expr
+-> ir::Value
+
+    select expr.kind
+        when mir::ExprKind::Const
+            give lower_const(ctx, expr)
+
+        when mir::ExprKind::Local
+            give lower_local(ctx, expr)
+
+        when mir::ExprKind::Binary
+            give lower_binary(ctx, expr)
+
+        when mir::ExprKind::Unary
+            give lower_unary(ctx, expr)
+
+        when mir::ExprKind::Call
+            give lower_call(ctx, expr)
+
+        when mir::ExprKind::Cast
+            give lower_cast(ctx, expr)
+
+        when mir::ExprKind::If
+            give lower_if(ctx, expr)
+
+        when mir::ExprKind::Block
+            give lower_block_expr(ctx, expr)
+
         otherwise
-            error UnsupportedExpr(e.span)
-    end
+            cl_err::fatal_ctx(
+                ctx,
+                "unsupported MIR expression kind in Cranelift lowering"
+            )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Constantes
+# ------------------------------------------------------------
+
+proc lower_const
+    ctx: &mut cl_ctx::LowerCtx
+    expr: &mir::Expr
+-> ir::Value
+
+    let cst = expr.const_value.unwrap()
+    let ty  = cl_ty::lower_type(ctx, cst.ty)
+
+    select cst.value
+        when mir_val::ConstValue::Int
+            give ctx.builder.ins().iconst(
+                ty,
+                cst.as_i64()
+            )
+
+        when mir_val::ConstValue::Bool
+            give ctx.builder.ins().bconst(
+                ty,
+                cst.as_bool()
+            )
+
+        when mir_val::ConstValue::Float
+            give ctx.builder.ins().f64const(
+                cst.as_f64()
+            )
+
+        when mir_val::ConstValue::Null
+            give ctx.builder.ins().iconst(ty, 0)
+
+        otherwise
+            cl_err::fatal_ctx(
+                ctx,
+                "unsupported constant value in Cranelift backend"
+            )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Variables locales
+# ------------------------------------------------------------
+
+proc lower_local
+    ctx: &mut cl_ctx::LowerCtx
+    expr: &mir::Expr
+-> ir::Value
+
+    let local_id = expr.local.unwrap()
+    let var = ctx.locals.get(local_id)
+
+    if var.is_none()
+        cl_err::fatal_ctx(
+            ctx,
+            "use of undeclared local variable"
+        )
+    .end
+
+    give ctx.builder.use_var(var.unwrap())
+.end
+
+
+# ------------------------------------------------------------
+# Opérations binaires
+# ------------------------------------------------------------
+
+proc lower_binary
+    ctx: &mut cl_ctx::LowerCtx
+    expr: &mir::Expr
+-> ir::Value
+
+    let lhs = lower_expr(ctx, expr.binary.lhs)
+    let rhs = lower_expr(ctx, expr.binary.rhs)
+    let op  = expr.binary.op
+
+    select op
+        when mir::BinOp::Add
+            give ctx.builder.ins().iadd(lhs, rhs)
+
+        when mir::BinOp::Sub
+            give ctx.builder.ins().isub(lhs, rhs)
+
+        when mir::BinOp::Mul
+            give ctx.builder.ins().imul(lhs, rhs)
+
+        when mir::BinOp::Div
+            give ctx.builder.ins().sdiv(lhs, rhs)
+
+        when mir::BinOp::Eq
+            give ctx.builder.ins().icmp(
+                ir::condcodes::IntCC::Equal,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::Ne
+            give ctx.builder.ins().icmp(
+                ir::condcodes::IntCC::NotEqual,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::Lt
+            give ctx.builder.ins().icmp(
+                ir::condcodes::IntCC::SignedLessThan,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::Le
+            give ctx.builder.ins().icmp(
+                ir::condcodes::IntCC::SignedLessThanOrEqual,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::Gt
+            give ctx.builder.ins().icmp(
+                ir::condcodes::IntCC::SignedGreaterThan,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::Ge
+            give ctx.builder.ins().icmp(
+                ir::condcodes::IntCC::SignedGreaterThanOrEqual,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::And
+            give ctx.builder.ins().band(lhs, rhs)
+
+        when mir::BinOp::Or
+            give ctx.builder.ins().bor(lhs, rhs)
+
+        otherwise
+            cl_err::fatal_ctx(
+                ctx,
+                "unsupported binary operator in Cranelift lowering"
+            )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Opérations unaires
+# ------------------------------------------------------------
+
+proc lower_unary
+    ctx: &mut cl_ctx::LowerCtx
+    expr: &mir::Expr
+-> ir::Value
+
+    let val = lower_expr(ctx, expr.unary.expr)
+
+    select expr.unary.op
+        when mir::UnOp::Neg
+            give ctx.builder.ins().ineg(val)
+
+        when mir::UnOp::Not
+            let one = ctx.builder.ins().iconst(
+                ctx.builder.func.dfg.value_type(val),
+                1
+            )
+            give ctx.builder.ins().bxor(val, one)
+
+        otherwise
+            cl_err::fatal_ctx(
+                ctx,
+                "unsupported unary operator in Cranelift lowering"
+            )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Appels de fonction
+# ------------------------------------------------------------
+
+proc lower_call
+    ctx: &mut cl_ctx::LowerCtx
+    expr: &mir::Expr
+-> ir::Value
+
+    let fn_id = expr.call.fn_id
+    let func  = ctx.functions.get(fn_id)
+    let sig   = ctx.signatures.get(fn_id)
+
+    if func.is_none() or sig.is_none()
+        cl_err::fatal_ctx(
+            ctx,
+            "call to undeclared function"
+        )
+    .end
+
+    let mut args = []
+    for a in expr.call.args
+        args.push(lower_expr(ctx, a))
+    .end
+
+    let inst = ctx.builder.ins().call(
+        func.unwrap(),
+        args
+    )
+
+    if sig.unwrap().returns_void()
+        give ir::Value::invalid()
+    .end
+
+    give ctx.builder.inst_results(inst)[0]
+.end
+
+
+# ------------------------------------------------------------
+# Casts
+# ------------------------------------------------------------
+
+proc lower_cast
+    ctx: &mut cl_ctx::LowerCtx
+    expr: &mir::Expr
+-> ir::Value
+
+    let val = lower_expr(ctx, expr.cast.expr)
+    let src = cl_ty::lower_type(ctx, expr.cast.from)
+    let dst = cl_ty::lower_type(ctx, expr.cast.to)
+
+    if src == dst
+        give val
+    .end
+
+    if cl_ty::is_int(src) and cl_ty::is_int(dst)
+        give ctx.builder.ins().sextend(dst, val)
+    .end
+
+    if cl_ty::is_float(src) and cl_ty::is_float(dst)
+        give ctx.builder.ins().fpromote(dst, val)
+    .end
+
+    cl_err::fatal_ctx(
+        ctx,
+        "unsupported cast in Cranelift backend"
+    )
+.end
+
+
+# ------------------------------------------------------------
+# If-expression (valeur retournée)
+# ------------------------------------------------------------
+
+proc lower_if
+    ctx: &mut cl_ctx::LowerCtx
+    expr: &mir::Expr
+-> ir::Value
+
+    let cond = lower_expr(ctx, expr.if_expr.cond)
+
+    let then_blk  = ctx.builder.create_block()
+    let else_blk  = ctx.builder.create_block()
+    let merge_blk = ctx.builder.create_block()
+
+    ctx.builder.ins().brif(
+        cond,
+        then_blk, [],
+        else_blk, []
+    )
+
+    ctx.builder.switch_to_block(then_blk)
+    let then_val = lower_expr(ctx, expr.if_expr.then_expr)
+    ctx.builder.ins().jump(merge_blk, [then_val])
+
+    ctx.builder.switch_to_block(else_blk)
+    let else_val = lower_expr(ctx, expr.if_expr.else_expr)
+    ctx.builder.ins().jump(merge_blk, [else_val])
+
+    ctx.builder.switch_to_block(merge_blk)
+
+    let ty  = cl_ty::lower_type(ctx, expr.ty)
+    let phi = ctx.builder.append_block_param(merge_blk, ty)
+
+    give phi
+.end
+
+
+# ------------------------------------------------------------
+# Block-expression
+# ------------------------------------------------------------
+
+proc lower_block_expr
+    ctx: &mut cl_ctx::LowerCtx
+    expr: &mir::Expr
+-> ir::Value
+
+    let mut last = ir::Value::invalid()
+
+    for stmt in expr.block.stmts
+        last = cl_ctx::lower_stmt(ctx, stmt)
+    .end
+
+    give last
 .end

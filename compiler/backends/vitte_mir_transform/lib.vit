@@ -1,8 +1,103 @@
-pull vitte/compiler/backends/vitte_mir_build/mir as mir
-pull vitte/compiler/session as sess
+# ============================================================
+# vitte_mir_transform::lib
+# Façade publique du sous-système MIR transform
+# ============================================================
 
-pull self/context
-pull self/passes/mod
-pull self/utils/mod
+space vitte/compiler/backends/vitte_mir_transform
 
-share all
+
+# ------------------------------------------------------------
+# Sous-systèmes
+# ------------------------------------------------------------
+
+# Passes de transformation MIR
+pull vitte/compiler/backends/vitte_mir_transform/passes/mod as passes
+
+# Utilitaires (visiteurs, helpers)
+pull vitte/compiler/backends/vitte_mir_transform/utils/visitor as visitor
+
+# Contexte global
+pull vitte/compiler/backends/vitte_mir_transform/context as ctx
+
+# MIR
+pull vitte/compiler/backends/vitte_mir_build/mir/mod as mir
+
+
+# ------------------------------------------------------------
+# Re-exports essentiels
+# ------------------------------------------------------------
+
+# context
+use ctx::TransformContext
+use ctx::TransformOptions
+use ctx::TransformDiagnostic
+use ctx::TransformDiagnosticKind
+
+# passes
+use passes::run_simplify
+use passes::run_unreachable
+use passes::run_cleanup
+use passes::run_inlining
+use passes::InlineOptions
+
+# utils
+use visitor::MirVisitor
+use visitor::MirVisitorMut
+use visitor::walk_function
+use visitor::walk_function_mut
+
+
+# ------------------------------------------------------------
+# API haut niveau : pipeline standard MIR transform
+# ------------------------------------------------------------
+
+proc run_transform
+    func: &mut mir::Function
+    opts: TransformOptions
+-> TransformContext
+
+    let mut context =
+        TransformContext::new(opts)
+
+    context.run_pipeline(func)
+
+    give context
+.end
+
+
+# ------------------------------------------------------------
+# Helpers ciblés (accès direct)
+# ------------------------------------------------------------
+
+proc simplify
+    func: &mut mir::Function
+-> void
+
+    run_simplify(func)
+.end
+
+
+proc remove_unreachable
+    func: &mut mir::Function
+-> void
+
+    run_unreachable(func)
+.end
+
+
+proc cleanup
+    func: &mut mir::Function
+-> void
+
+    run_cleanup(func)
+.end
+
+
+proc inline_functions
+    caller: &mut mir::Function
+    callees: &Map[string, mir::Function]
+    opts: InlineOptions
+-> void
+
+    run_inlining(caller, callees, opts)
+.end

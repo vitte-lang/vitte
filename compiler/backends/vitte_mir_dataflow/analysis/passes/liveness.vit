@@ -1,3 +1,140 @@
-proc analyze_liveness(ctx: DataflowContext, fn: mir::MirFunction)
-    # backward dataflow
+# ============================================================
+# vitte_mir_dataflow::analysis::passes::liveness
+# Liveness analysis (dataflow générique)
+# ============================================================
+
+space vitte/compiler/backends/vitte_mir_dataflow/analysis/passes
+
+
+# ------------------------------------------------------------
+# Imports
+# ------------------------------------------------------------
+
+pull vitte/compiler/backends/vitte_mir_dataflow/analysis/framework/mod
+    as df
+
+pull vitte/compiler/backends/vitte_mir_build/mir/mod
+    as mir
+
+pull std/collections/set as Set
+pull std/collections/map as Map
+
+
+# ------------------------------------------------------------
+# Domaine : ensemble de valeurs vivantes
+# ------------------------------------------------------------
+
+type LiveSet = Set[mir::ValueId]
+
+
+proc liveness_domain
+-> df::DataflowDomain
+
+    give df::DataflowDomain {
+        name = "liveness"
+        bottom = Set::new()
+        top = None
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Join du domaine (union)
+# ------------------------------------------------------------
+
+proc join_live
+    a: LiveSet
+    b: LiveSet
+-> LiveSet
+
+    give a.union(b)
+.end
+
+
+proc equals_live
+    a: LiveSet
+    b: LiveSet
+-> bool
+
+    give a == b
+.end
+
+
+# ------------------------------------------------------------
+# Helpers : uses / defs d’un bloc MIR
+# ------------------------------------------------------------
+
+proc block_uses_defs
+    block: &mir::Block
+-> (LiveSet, LiveSet)
+
+    let mut uses = Set::new()
+    let mut defs = Set::new()
+
+    for inst in block.instructions.iter()
+
+        if inst.defines()
+            defs.insert(inst.def_id())
+        .end
+
+        for v in inst.uses().iter()
+            if not defs.contains(v)
+                uses.insert(v)
+            .end
+        .end
+    .end
+
+    # Terminator
+    if block.terminator.is_some()
+        for v in block.terminator.unwrap().uses().iter()
+            if not defs.contains(v)
+                uses.insert(v)
+            .end
+        .end
+    .end
+
+    give (uses, defs)
+.end
+
+
+# ------------------------------------------------------------
+# Fonction de transfert (bloc)
+# ------------------------------------------------------------
+
+# Backward:
+#   IN[B] = use[B] ∪ (OUT[B] − def[B])
+proc transfer_block
+    block: &mir::Block
+    out_state: LiveSet
+-> LiveSet
+
+    let (uses, defs) = block_uses_defs(block)
+
+    let mut in_state = out_state.difference(defs)
+    in_state = in_state.union(uses)
+
+    give in_state
+.end
+
+
+# ------------------------------------------------------------
+# Description de l’analyse dataflow
+# ------------------------------------------------------------
+
+proc liveness_analysis
+-> df::DataflowAnalysis
+
+    let dom = liveness_domain()
+
+    let transfer =
+        df::TransferFunctions {
+            transfer_block = transfer_block
+        }
+
+    give df::DataflowAnalysis {
+        name = "liveness"
+        direction = df::DataflowDirection::Backward
+        domain = dom
+        transfer = transfer
+    }
 .end

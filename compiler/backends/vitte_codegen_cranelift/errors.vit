@@ -1,4 +1,171 @@
+# ============================================================
+# vitte_codegen_cranelift::errors
+# Gestion des erreurs du backend Cranelift
+# ============================================================
+
+space vitte/compiler/backends/vitte_codegen_cranelift
+
+pull vitte/compiler/mir/ast as mir
+
+pull cranelift/codegen/ir as ir
+
+pull std/io as io
+pull std/process as process
+
+
+# ------------------------------------------------------------
+# Types d’erreurs backend
+# ------------------------------------------------------------
+
+pick CodegenErrorKind
+    case Unsupported
+    case Internal
+    case Lowering
+    case Type
+    case Symbol
+    case ControlFlow
+.end
+
+
 form CodegenError
-    span
-    message: String
+    kind: CodegenErrorKind
+    message: string
+    function: string
+.end
+
+
+# ------------------------------------------------------------
+# API bas niveau
+# ------------------------------------------------------------
+
+proc panic
+    message: string
+-> never
+
+    io::stderr.write("[vitte-cranelift] fatal error\n")
+    io::stderr.write(message)
+    io::stderr.write("\n")
+
+    process::exit(1)
+.end
+
+
+proc trap
+    builder: &mut ir::InstBuilder
+    code: i32
+-> ()
+    builder.trap(
+        ir::TrapCode::User(code)
+    )
+.end
+
+
+# ------------------------------------------------------------
+# Erreurs contextualisées (LowerCtx)
+# ------------------------------------------------------------
+
+proc fatal_ctx
+    ctx: &LowerCtx
+    message: string
+-> never
+
+    io::stderr.write("[vitte-cranelift] error\n")
+    io::stderr.write("  function: ")
+    io::stderr.write(ctx.source_name)
+    io::stderr.write("\n  message: ")
+    io::stderr.write(message)
+    io::stderr.write("\n")
+
+    process::exit(1)
+.end
+
+
+proc warn_ctx
+    ctx: &LowerCtx
+    message: string
+-> ()
+
+    io::stderr.write("[vitte-cranelift] warning\n")
+    io::stderr.write("  function: ")
+    io::stderr.write(ctx.source_name)
+    io::stderr.write("\n  message: ")
+    io::stderr.write(message)
+    io::stderr.write("\n")
+.end
+
+
+# ------------------------------------------------------------
+# Helpers de validation
+# ------------------------------------------------------------
+
+proc expect
+    cond: bool
+    message: string
+-> ()
+    if not cond
+        panic(message)
+    .end
+.end
+
+
+proc expect_ctx
+    ctx: &LowerCtx
+    cond: bool
+    message: string
+-> ()
+    if not cond
+        fatal_ctx(ctx, message)
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Erreurs spécialisées backend
+# ------------------------------------------------------------
+
+proc unsupported
+    what: string
+-> never
+    panic("unsupported backend feature: " + what)
+.end
+
+
+proc unsupported_ctx
+    ctx: &LowerCtx
+    what: string
+-> never
+    fatal_ctx(ctx, "unsupported backend feature: " + what)
+.end
+
+
+proc internal
+    message: string
+-> never
+    panic("internal backend error: " + message)
+.end
+
+
+proc internal_ctx
+    ctx: &LowerCtx
+    message: string
+-> never
+    fatal_ctx(ctx, "internal backend error: " + message)
+.end
+
+
+# ------------------------------------------------------------
+# Validation MIR / CLIF
+# ------------------------------------------------------------
+
+proc check_value_valid
+    ctx: &LowerCtx
+    val: ir::Value
+    what: string
+-> ()
+    if val == ir::Value::invalid()
+        fatal_ctx(
+            ctx,
+            "invalid Cranelift value for " + what
+        )
+    .end
 .end

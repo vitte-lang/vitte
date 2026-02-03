@@ -1,9 +1,125 @@
-pull vitte/compiler/backends/vitte_mir_build/mir as mir
-pull vitte/compiler/session as sess
+# ============================================================
+# vitte_mir_dataflow::lib
+# Façade publique du sous-système MIR dataflow
+# ============================================================
 
-pull self/context
-pull self/analysis/framework/mod
-pull self/analysis/passes/mod
-pull self/graph/mod
+space vitte/compiler/backends/vitte_mir_dataflow
 
-share all
+
+# ------------------------------------------------------------
+# Sous-systèmes
+# ------------------------------------------------------------
+
+# Graphes dataflow
+pull vitte/compiler/backends/vitte_mir_dataflow/graph/mod as graph
+
+# Framework dataflow générique
+pull vitte/compiler/backends/vitte_mir_dataflow/analysis/framework/mod as framework
+
+# Passes dataflow concrètes
+pull vitte/compiler/backends/vitte_mir_dataflow/analysis/passes/mod as passes
+
+# Contexte global
+pull vitte/compiler/backends/vitte_mir_dataflow/context as ctx
+
+
+# ------------------------------------------------------------
+# Re-exports essentiels
+# ------------------------------------------------------------
+
+# context
+use ctx::DataflowContext
+use ctx::DataflowOptions
+use ctx::DataflowDiagnostic
+use ctx::DataflowDiagnosticKind
+
+# graph
+use graph::DataflowGraph
+use graph::DataflowCFG
+use graph::from_mir_cfg
+
+# framework
+use framework::DataflowAnalysis
+use framework::DataflowResult
+use framework::DataflowDirection
+use framework::run_analysis
+
+# passes
+use passes::liveness_analysis
+use passes::reaching_defs_analysis
+use passes::const_prop_analysis
+
+use passes::LiveSet
+use passes::DefSet
+use passes::ConstState
+use passes::ConstValue
+
+
+# ------------------------------------------------------------
+# API haut niveau : exécution dataflow standard
+# ------------------------------------------------------------
+
+proc run_dataflow
+    func: &vitte/compiler/backends/vitte_mir_build/mir::Function
+    opts: DataflowOptions
+-> DataflowContext
+
+    let mut context =
+        DataflowContext::new(opts)
+
+    context.run_pipeline(func)
+
+    give context
+.end
+
+
+# ------------------------------------------------------------
+# Helpers ciblés (accès direct)
+# ------------------------------------------------------------
+
+proc run_liveness
+    func: &vitte/compiler/backends/vitte_mir_build/mir::Function
+-> framework::DataflowResult
+
+    let analysis = liveness_analysis()
+
+    let graph =
+        ctx::build_graph(func)
+
+    give framework::run_analysis(
+        &analysis,
+        &graph
+    )
+.end
+
+
+proc run_reaching_defs
+    func: &vitte/compiler/backends/vitte_mir_build/mir::Function
+-> framework::DataflowResult
+
+    let analysis = reaching_defs_analysis()
+
+    let graph =
+        ctx::build_graph(func)
+
+    give framework::run_analysis(
+        &analysis,
+        &graph
+    )
+.end
+
+
+proc run_const_prop
+    func: &vitte/compiler/backends/vitte_mir_build/mir::Function
+-> framework::DataflowResult
+
+    let analysis = const_prop_analysis()
+
+    let graph =
+        ctx::build_graph(func)
+
+    give framework::run_analysis(
+        &analysis,
+        &graph
+    )
+.end

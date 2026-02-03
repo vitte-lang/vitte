@@ -1,5 +1,104 @@
-pull self/api/mod
-pull self/core/mod
-pull self/utils/mod
+# ============================================================
+# EXAMPLE_MODULE::lib
+# Façade publique du module d’exemple
+# ============================================================
 
-share all
+space EXAMPLE_MODULE
+
+
+# ------------------------------------------------------------
+# Sous-systèmes
+# ------------------------------------------------------------
+
+# API publique
+pull EXAMPLE_MODULE/api/mod as api
+
+# Cœur métier interne
+pull EXAMPLE_MODULE/core/mod as core
+
+# Utilitaires
+pull EXAMPLE_MODULE/utils/log as log
+
+
+# ------------------------------------------------------------
+# Re-exports publics (API)
+# ------------------------------------------------------------
+
+use api::Version
+use api::API_NAME
+use api::API_VERSION
+
+use api::ApiError
+use api::ApiResult
+use api::ApiConfig
+use api::Item
+
+use api::api_name
+use api::api_version
+use api::create_item
+use api::get_item
+use api::disable_item
+
+
+# ------------------------------------------------------------
+# Façade orientée “service”
+# ------------------------------------------------------------
+
+form ExampleService
+    engine: core::Engine
+    config: api::ApiConfig
+.end
+
+
+proc ExampleService::new
+    cfg: api::ApiConfig
+-> ExampleService
+
+    log::log_info("ExampleService initialized")
+
+    give ExampleService {
+        engine = core::Engine::new()
+        config = cfg
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Méthodes haut niveau
+# ------------------------------------------------------------
+
+proc ExampleService::create_item
+    self: &mut ExampleService
+    name: string
+-> api::ApiResult[api::Item]
+
+    if self.config.enable_debug
+        log::log_debug("create_item: " + name)
+    .end
+
+    give self.engine.create_item(name)
+.end
+
+
+proc ExampleService::get_item
+    self: &ExampleService
+    id: u64
+-> api::ApiResult[api::Item]
+
+    give self.engine.get_item(id)
+.end
+
+
+proc ExampleService::disable_item
+    self: &mut ExampleService
+    id: u64
+-> api::ApiResult[bool]
+
+    if self.config.enable_debug
+        log::log_debug(
+            "disable_item: " + id.to_string()
+        )
+    .end
+
+    give self.engine.disable_item(id)
+.end

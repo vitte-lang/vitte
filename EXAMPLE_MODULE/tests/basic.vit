@@ -1,4 +1,146 @@
-proc test_basic()
-    let x = example_add(2, 3)
-    assert x == 5
+# ============================================================
+# EXAMPLE_MODULE::tests::basic
+# Tests fonctionnels de base
+# ============================================================
+
+space EXAMPLE_MODULE/tests
+
+
+# ------------------------------------------------------------
+# Imports testés
+# ------------------------------------------------------------
+
+pull EXAMPLE_MODULE/api
+pull EXAMPLE_MODULE/core
+
+
+# ------------------------------------------------------------
+# Helpers de test
+# ------------------------------------------------------------
+
+proc assert_true
+    cond: bool
+    msg: string
+-> void
+
+    if not cond
+        panic("assertion failed: " + msg)
+    .end
+.end
+
+
+proc assert_eq_u64
+    a: u64
+    b: u64
+    msg: string
+-> void
+
+    if a != b
+        panic(
+            "assertion failed: " + msg +
+            " (" + a.to_string() +
+            " != " + b.to_string() + ")"
+        )
+    .end
+.end
+
+
+proc assert_ok[T]
+    r: api::ApiResult[T]
+    msg: string
+-> T
+
+    select r
+        when api::ApiResult::Ok(v)
+            give v
+        when api::ApiResult::Err(_)
+            panic("expected Ok: " + msg)
+    .end
+.end
+
+
+proc assert_err[T]
+    r: api::ApiResult[T]
+    msg: string
+-> void
+
+    select r
+        when api::ApiResult::Err(_)
+            give
+        otherwise
+            panic("expected Err: " + msg)
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Test : création d’item
+# ------------------------------------------------------------
+
+proc test_create_item
+-> void
+
+    let cfg = api::ApiConfig::default()
+
+    let r = api::create_item("demo", &cfg)
+
+    let item = assert_ok(r, "create_item")
+
+    assert_eq_u64(item.id, 42, "id must be deterministic")
+    assert_true(item.enabled, "item must be enabled")
+.end
+
+
+# ------------------------------------------------------------
+# Test : erreur entrée invalide
+# ------------------------------------------------------------
+
+proc test_create_item_invalid
+-> void
+
+    let cfg = api::ApiConfig::default()
+
+    let r = api::create_item("", &cfg)
+
+    assert_err(r, "empty name must fail")
+.end
+
+
+# ------------------------------------------------------------
+# Test : moteur interne
+# ------------------------------------------------------------
+
+proc test_engine_flow
+-> void
+
+    let mut engine = core::Engine::new()
+
+    let r1 = engine.create_item("a")
+    let item = assert_ok(r1, "engine.create_item")
+
+    let r2 = engine.get_item(item.id)
+    let fetched = assert_ok(r2, "engine.get_item")
+
+    assert_true(fetched.enabled, "item initially enabled")
+
+    let r3 = engine.disable_item(item.id)
+    assert_ok(r3, "engine.disable_item")
+
+    let r4 = engine.get_item(item.id)
+    let fetched2 = assert_ok(r4, "engine.get_item after disable")
+
+    assert_true(not fetched2.enabled, "item must be disabled")
+.end
+
+
+# ------------------------------------------------------------
+# Entrée de test globale
+# ------------------------------------------------------------
+
+proc main
+-> void
+
+    test_create_item()
+    test_create_item_invalid()
+    test_engine_flow()
 .end

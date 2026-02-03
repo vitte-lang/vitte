@@ -1,8 +1,180 @@
-proc codegen_function(ctx: CodegenContext, f: ir::Function)
-    let sig = lower_signature(ctx, f)
-    let clif_fn = ctx.builder.create_function(sig)
+# ============================================================
+# vitte_codegen_cranelift::function
+# Lowering des fonctions MIR vers Cranelift
+# ============================================================
 
-    lower_body(ctx, clif_fn, f.body)
+space vitte/compiler/backends/vitte_codegen_cranelift
 
-    ctx.builder.finalize_function(clif_fn)
+pull vitte/compiler/mir/ast as mir
+pull vitte/compiler/mir/types as mir_ty
+
+pull vitte/compiler/backends/vitte_codegen_cranelift/context as cl_ctx
+pull vitte/compiler/backends/vitte_codegen_cranelift/errors as cl_err
+pull vitte/compiler/backends/vitte_codegen_cranelift/types as cl_ty
+
+pull vitte/compiler/backends/vitte_codegen_cranelift/lower/stmt as lower_stmt
+
+pull cranelift/frontend as clif
+pull cranelift/codegen/ir as ir
+pull cranelift/frontend/FunctionBuilderContext as FBCtx
+
+
+# ------------------------------------------------------------
+# Entrée principale : lower_fn
+# ------------------------------------------------------------
+
+proc lower_fn
+    cg: &mut cl_ctx::CodegenCtx
+    func: &mir::Function
+-> ()
+
+    # --------------------------------------------------------
+    # Création de la fonction Cranelift
+    # --------------------------------------------------------
+
+    let func_ref = cg.functions.get(func.id)
+    if func_ref.is_none()
+        cl_err::panic(
+            "lower_fn called before function declaration"
+        )
+    .end
+
+    let mut cl_func = ir::Function::new()
+    cl_func.signature = cg.signatures.get(func.id).unwrap()
+
+    let mut fb_ctx = FBCtx::new()
+    let mut builder = clif::FunctionBuilder::new(
+        &mut cl_func,
+        &mut fb_ctx
+    )
+
+    # --------------------------------------------------------
+    # Entrée dans le LowerCtx
+    # --------------------------------------------------------
+
+    let mut ctx = cg.enter_function(
+        &mut builder,
+        func.id,
+        func.name
+    )
+
+    let entry_block = builder.create_block()
+    builder.append_block_params_for_function_params(entry_block)
+    builder.switch_to_block(entry_block)
+    builder.seal_block(entry_block)
+
+    # --------------------------------------------------------
+    # Déclaration et initialisation des paramètres
+    # --------------------------------------------------------
+
+    let params = builder.block_params(entry_block)
+
+    let mut index = 0
+    for param in func.params
+        let var = ctx.declare_local(
+            param.local_id,
+            param.ty
+        )
+
+        builder.def_var(
+            var,
+            params[index]
+        )
+
+        index = index + 1
+    .end
+
+    # --------------------------------------------------------
+    # Déclaration des locaux MIR
+    # --------------------------------------------------------
+
+    for local in func.locals
+        ctx.declare_local(
+            local.id,
+            local.ty
+        )
+    .end
+
+    # --------------------------------------------------------
+    # Lowering du corps de la fonction
+    # --------------------------------------------------------
+
+    for block in func.blocks
+        lower_block(ctx, block)
+    .end
+
+    # --------------------------------------------------------
+    # Finalisation
+    # --------------------------------------------------------
+
+    ctx.finalize()
+
+    cg.module.define_function(
+        func_ref.unwrap(),
+        &mut cl_func
+    )
+.end
+
+
+# ------------------------------------------------------------
+# Lowering d’un bloc MIR
+# ------------------------------------------------------------
+
+proc lower_block
+    ctx: &mut cl_ctx::LowerCtx
+    block: &mir::Block
+-> ()
+
+    let cl_block = ctx.get_or_create_block(block.id)
+    ctx.builder.switch_to_block(cl_block)
+
+    for stmt in block.stmts
+        lower_stmt::lower_stmt(ctx, stmt)
+    .end
+
+    select block.terminator.kind
+        when mir::TerminatorKind::Return
+            if block.terminator.value.is_some()
+                let v = lower_stmt::lower_expr(
+                    ctx,
+                    block.terminator.value.unwrap()
+                )
+                ctx.builder.ins().return_([v])
+            otherwise
+                ctx.builder.ins().return_([])
+            .end
+
+        when mir::TerminatorKind::Goto
+            let target = ctx.get_or_create_block(
+                block.terminator.target
+            )
+            ctx.builder.ins().jump(target, [])
+
+        when mir::TerminatorKind::If
+            let cond = lower_stmt::lower_expr(
+                ctx,
+                block.terminator.cond
+            )
+
+            let then_blk = ctx.get_or_create_block(
+                block.terminator.then_block
+            )
+            let else_blk = ctx.get_or_create_block(
+                block.terminator.else_block
+            )
+
+            ctx.builder.ins().brif(
+                cond,
+                then_blk, [],
+                else_blk, []
+            )
+
+        otherwise
+            cl_err::fatal_ctx(
+                ctx,
+                "unsupported MIR block terminator"
+            )
+    .end
+
+    ctx.builder.seal_block(cl_block)
 .end

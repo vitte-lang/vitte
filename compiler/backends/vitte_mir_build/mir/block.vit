@@ -1,4 +1,149 @@
-form MirBlock
-    id: Int
-    instrs: List[MirInstr]
+# ============================================================
+# vitte_mir_build::mir::block
+# Définition d’un bloc MIR
+# ============================================================
+
+space vitte/compiler/backends/vitte_mir_build/mir
+
+
+pull vitte/compiler/backends/vitte_mir_build/mir/instr as mir_instr
+pull vitte/compiler/backends/vitte_mir_build/mir/value as mir_val
+
+pull std/collections/list as List
+
+
+# ------------------------------------------------------------
+# Identifiants
+# ------------------------------------------------------------
+
+type BlockId = u32
+
+
+# ------------------------------------------------------------
+# Terminators MIR
+# ------------------------------------------------------------
+
+pick Terminator
+    case Goto(target: BlockId)
+    case If(cond: mir_val::ValueId, then_bb: BlockId, else_bb: BlockId)
+    case Return(value: Option[mir_val::ValueId])
+    case Unreachable
+.end
+
+
+proc Terminator::uses
+    self: &Terminator
+-> List[mir_val::ValueId]
+
+    let mut out = List::new()
+
+    select self
+        when Terminator::If(cond, _, _)
+            out.push(cond)
+        when Terminator::Return(Some(v))
+            out.push(v)
+        otherwise
+            # aucun use
+    .end
+
+    give out
+.end
+
+
+# ------------------------------------------------------------
+# Bloc MIR
+# ------------------------------------------------------------
+
+form Block
+    id: BlockId
+    instructions: List[mir_instr::Instr]
+    terminator: Option[Terminator]
+.end
+
+
+proc Block::new
+    id: BlockId
+-> Block
+
+    give Block {
+        id = id
+        instructions = List::new()
+        terminator = None
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Manipulation des instructions
+# ------------------------------------------------------------
+
+proc Block::push
+    self: &mut Block
+    instr: mir_instr::Instr
+-> void
+
+    self.instructions.push(instr)
+.end
+
+
+proc Block::has_terminator
+    self: &Block
+-> bool
+
+    give self.terminator.is_some()
+.end
+
+
+proc Block::set_terminator
+    self: &mut Block
+    term: Terminator
+-> void
+
+    if self.terminator.is_some()
+        panic("block already has terminator")
+    .end
+
+    self.terminator = Some(term)
+.end
+
+
+# ------------------------------------------------------------
+# Analyse locale
+# ------------------------------------------------------------
+
+proc Block::uses
+    self: &Block
+-> List[mir_val::ValueId]
+
+    let mut out = List::new()
+
+    for inst in self.instructions.iter()
+        for v in inst.uses().iter()
+            out.push(v)
+        .end
+    .end
+
+    if self.terminator.is_some()
+        for v in self.terminator.unwrap().uses().iter()
+            out.push(v)
+        .end
+    .end
+
+    give out
+.end
+
+
+proc Block::defs
+    self: &Block
+-> List[mir_val::ValueId]
+
+    let mut out = List::new()
+
+    for inst in self.instructions.iter()
+        if inst.defines()
+            out.push(inst.def_id())
+        .end
+    .end
+
+    give out
 .end

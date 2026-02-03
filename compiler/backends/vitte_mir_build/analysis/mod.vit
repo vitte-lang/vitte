@@ -1,3 +1,53 @@
-pull self/cfg
-pull self/liveness
-share all
+# ============================================================
+# vitte_mir_build::analysis
+# Module racine des analyses MIR
+# ============================================================
+
+space vitte/compiler/backends/vitte_mir_build/analysis
+
+
+# ------------------------------------------------------------
+# Sous-modules d’analyse
+# ------------------------------------------------------------
+
+# Control Flow Graph
+pull vitte/compiler/backends/vitte_mir_build/analysis/cfg
+
+# Liveness analysis
+pull vitte/compiler/backends/vitte_mir_build/analysis/liveness
+
+
+# ------------------------------------------------------------
+# Re-exports publics
+# ------------------------------------------------------------
+
+# CFG
+use cfg::BlockId
+use cfg::CfgNode
+use cfg::ControlFlowGraph
+use cfg::build_cfg
+use cfg::successors
+use cfg::predecessors
+use cfg::dfs
+use cfg::unreachable_blocks
+use cfg::validate_cfg
+
+# Liveness
+use liveness::LivenessInfo
+use liveness::LivenessResult
+use liveness::analyze_liveness
+
+
+# ------------------------------------------------------------
+# Façades de commodité (optionnelles)
+# ------------------------------------------------------------
+
+proc analyze_all
+    func: &vitte/compiler/backends/vitte_mir/ir/function::Function
+-> (ControlFlowGraph, LivenessResult)
+
+    let cfg = build_cfg(func)
+    let live = analyze_liveness(func)
+
+    give (cfg, live)
+.end

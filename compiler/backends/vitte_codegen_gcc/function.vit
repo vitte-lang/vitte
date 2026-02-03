@@ -1,4 +1,211 @@
-proc codegen_function(ctx: CodegenContext, f: ir::Function)
-    let asm = lower_function(ctx, f)
-    ctx.gcc.emit_function(asm)
+# ============================================================
+# vitte_codegen_gcc::function
+# Lowering des fonctions MIR vers GCC (tree / gimple)
+# ============================================================
+
+space vitte/compiler/backends/vitte_codegen_gcc
+
+pull vitte/compiler/mir/ast as mir
+pull vitte/compiler/mir/types as mir_ty
+
+pull vitte/compiler/backends/vitte_codegen_gcc/context as gcc_ctx
+pull vitte/compiler/backends/vitte_codegen_gcc/errors as gcc_err
+pull vitte/compiler/backends/vitte_codegen_gcc/types as gcc_ty
+
+pull vitte/compiler/backends/vitte_codegen_gcc/lower/stmt as lower_stmt
+
+
+# ------------------------------------------------------------
+# Entrée principale : lowering d’une fonction
+# ------------------------------------------------------------
+
+proc lower_fn
+    cg: &mut gcc_ctx::CodegenCtx
+    func: &mir::Function
+-> ()
+
+    # --------------------------------------------------------
+    # Vérification déclaration préalable
+    # --------------------------------------------------------
+
+    let fn_decl = cg.functions.get(func.id)
+    if fn_decl.is_none()
+        gcc_err::panic(
+            "lower_fn called before function declaration"
+        )
+    .end
+
+    # --------------------------------------------------------
+    # Entrée dans le contexte local
+    # --------------------------------------------------------
+
+    let mut ctx = cg.enter_function(
+        func.id,
+        func.name
+    )
+
+    # --------------------------------------------------------
+    # Déclaration des paramètres
+    # --------------------------------------------------------
+
+    let params = gcc_get_function_params(
+        ctx.fn_decl
+    )
+
+    let mut index = 0
+    for param in func.params
+        let tree_ty = gcc_ty::lower_type(
+            param.ty
+        )
+
+        let var_decl = gcc_ctx::gcc_bind_param(
+            params[index],
+            tree_ty,
+            ctx.fn_decl
+        )
+
+        ctx.locals.insert(
+            param.local_id,
+            var_decl
+        )
+
+        index = index + 1
+    .end
+
+    # --------------------------------------------------------
+    # Déclaration des variables locales MIR
+    # --------------------------------------------------------
+
+    for local in func.locals
+        ctx.declare_local(
+            local.id,
+            local.ty
+        )
+    .end
+
+    # --------------------------------------------------------
+    # Lowering des blocs MIR
+    # --------------------------------------------------------
+
+    for block in func.blocks
+        lower_block(ctx, block)
+    .end
+
+    # --------------------------------------------------------
+    # Finalisation de la fonction
+    # --------------------------------------------------------
+
+    ctx.finalize()
+.end
+
+
+# ------------------------------------------------------------
+# Lowering d’un bloc MIR
+# ------------------------------------------------------------
+
+proc lower_block
+    ctx: &mut gcc_ctx::LowerCtx
+    block: &mir::Block
+-> ()
+
+    # Les blocs MIR sont linéarisés en GIMPLE
+    # Le contrôle de flux est porté par les statements GCC
+
+    for stmt in block.stmts
+        lower_stmt::lower_stmt(
+            ctx,
+            stmt
+        )
+    .end
+
+    # --------------------------------------------------------
+    # Terminator
+    # --------------------------------------------------------
+
+    select block.terminator.kind
+        when mir::TerminatorKind::Return
+            if block.terminator.value.is_some()
+                let val = lower_stmt::lower_expr(
+                    ctx,
+                    block.terminator.value.unwrap()
+                )
+
+                let ret_stmt =
+                    gcc_ctx::build_return(val)
+
+                ctx.emit(ret_stmt)
+            otherwise
+                ctx.emit(
+                    gcc_ctx::build_return_void()
+                )
+            .end
+
+        when mir::TerminatorKind::Goto
+            ctx.emit(
+                gcc_ctx::build_goto(
+                    block.terminator.target
+                )
+            )
+
+        when mir::TerminatorKind::If
+            let cond = lower_stmt::lower_expr(
+                ctx,
+                block.terminator.cond
+            )
+
+            ctx.emit(
+                gcc_ctx::build_if(
+                    cond,
+                    block.terminator.then_block,
+                    block.terminator.else_block
+                )
+            )
+
+        otherwise
+            gcc_err::fatal_ctx(
+                ctx,
+                "unsupported MIR terminator in GCC backend"
+            )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Helpers GCC externes (FFI)
+# ------------------------------------------------------------
+
+# Ces helpers représentent l’interface minimale attendue
+# vers GCC / libgccjit / plugin GCC
+
+proc gcc_get_function_params
+    fn_decl: gcc_ctx::FunctionDecl
+-> List<gcc_ctx::Tree>
+.end
+
+proc gcc_bind_param
+    param_tree: gcc_ctx::Tree
+    ty: gcc_ctx::Tree
+    fn_decl: gcc_ctx::FunctionDecl
+-> gcc_ctx::Tree
+.end
+
+proc build_return
+    val: gcc_ctx::Tree
+-> gcc_ctx::Tree
+.end
+
+proc build_return_void
+-> gcc_ctx::Tree
+.end
+
+proc build_goto
+    target: mir::BlockId
+-> gcc_ctx::Tree
+.end
+
+proc build_if
+    cond: gcc_ctx::Tree
+    then_block: mir::BlockId
+    else_block: mir::BlockId
+-> gcc_ctx::Tree
 .end

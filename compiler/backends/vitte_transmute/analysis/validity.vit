@@ -1,2 +1,312 @@
-proc check_value_validity(val: mir::MirValue, ty)
+# ============================================================
+# vitte_transmute::analysis::validity
+# Analyse de validité des transmutations (ABI / layout)
+# ============================================================
+
+space vitte/compiler/backends/vitte_transmute/analysis
+
+pull vitte/compiler/backends/vitte_transmute/ir/type as tm_ty
+pull vitte/compiler/backends/vitte_transmute/analysis/alignment as tm_align
+pull vitte/compiler/backends/vitte_transmute/analysis/size as tm_size
+pull vitte/compiler/backends/vitte_transmute/analysis/layout as tm_layout
+
+pull std/collections/list as List
+pull std/collections/map as Map
+pull std/math as math
+
+
+# ------------------------------------------------------------
+# Résultat de validité
+# ------------------------------------------------------------
+
+pick Validity
+    case Valid
+    case Invalid(reason: string)
+    case Unsafe(reason: string)
+.end
+
+
+proc Validity::is_ok
+    self: &Validity
+-> bool
+
+    select self
+        when Validity::Valid
+            give true
+        otherwise
+            give false
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Contexte d’analyse
+# ------------------------------------------------------------
+
+form ValidityContext
+    align_policy: tm_align::AlignPolicy
+    allow_bitcast: bool
+    allow_ptr_cast: bool
+.end
+
+
+proc ValidityContext::default
+-> ValidityContext
+
+    give ValidityContext {
+        align_policy = tm_align::AlignPolicy::default()
+        allow_bitcast = false
+        allow_ptr_cast = false
+    }
+.end
+
+
+# ------------------------------------------------------------
+# API principale
+# ------------------------------------------------------------
+
+proc analyze_validity
+    from: &tm_ty::Type
+    to: &tm_ty::Type
+    ctx: &ValidityContext
+-> Validity
+
+    # --------------------------------------------------------
+    # Identité
+    # --------------------------------------------------------
+
+    if from.id == to.id
+        give Validity::Valid
+    .end
+
+
+    # --------------------------------------------------------
+    # Taille compatible
+    # --------------------------------------------------------
+
+    let size_from = tm_size::size_of(from)
+    let size_to   = tm_size::size_of(to)
+
+    if size_from != size_to
+        give Validity::Invalid(
+            "size mismatch: " +
+            size_from.to_string() +
+            " != " +
+            size_to.to_string()
+        )
+    .end
+
+
+    # --------------------------------------------------------
+    # Alignement compatible
+    # --------------------------------------------------------
+
+    let align_from =
+        tm_align::alignment_of(from)
+
+    let align_to =
+        tm_align::alignment_of(to)
+
+    if align_to > align_from
+        give Validity::Invalid(
+            "target alignment stricter than source"
+        )
+    .end
+
+
+    # --------------------------------------------------------
+    # Catégories de type
+    # --------------------------------------------------------
+
+    give analyze_kind_validity(
+        from,
+        to,
+        ctx
+    )
+.end
+
+
+# ------------------------------------------------------------
+# Analyse par catégorie
+# ------------------------------------------------------------
+
+proc analyze_kind_validity
+    from: &tm_ty::Type
+    to: &tm_ty::Type
+    ctx: &ValidityContext
+-> Validity
+
+    select from.kind
+
+        # ----------------------------------------------------
+        # Scalaires
+        # ----------------------------------------------------
+
+        when tm_ty::TypeKind::Bool,
+             tm_ty::TypeKind::I8,
+             tm_ty::TypeKind::I16,
+             tm_ty::TypeKind::I32,
+             tm_ty::TypeKind::I64,
+             tm_ty::TypeKind::F32,
+             tm_ty::TypeKind::F64
+
+            if is_scalar(to)
+                give Validity::Valid
+            .end
+
+            give Validity::Unsafe(
+                "scalar to non-scalar transmute"
+            )
+
+
+        # ----------------------------------------------------
+        # Pointeurs
+        # ----------------------------------------------------
+
+        when tm_ty::TypeKind::Pointer
+
+            if to.kind == tm_ty::TypeKind::Pointer
+                give Validity::Valid
+            .end
+
+            if ctx.allow_ptr_cast and is_integer(to)
+                give Validity::Unsafe(
+                    "pointer to integer cast"
+                )
+            .end
+
+            give Validity::Invalid(
+                "pointer to non-pointer transmute"
+            )
+
+
+        # ----------------------------------------------------
+        # Tableaux
+        # ----------------------------------------------------
+
+        when tm_ty::TypeKind::Array
+
+            if to.kind != tm_ty::TypeKind::Array
+                give Validity::Invalid(
+                    "array to non-array transmute"
+                )
+            .end
+
+            if from.len != to.len
+                give Validity::Invalid(
+                    "array length mismatch"
+                )
+            .end
+
+            give analyze_validity(
+                from.elem,
+                to.elem,
+                ctx
+            )
+
+
+        # ----------------------------------------------------
+        # Structs
+        # ----------------------------------------------------
+
+        when tm_ty::TypeKind::Struct
+
+            if to.kind != tm_ty::TypeKind::Struct
+                give Validity::Invalid(
+                    "struct to non-struct transmute"
+                )
+            .end
+
+            let layout_from = tm_layout::layout_of(from)
+            let layout_to   = tm_layout::layout_of(to)
+
+            if layout_from.size != layout_to.size
+                give Validity::Invalid(
+                    "struct layout size mismatch"
+                )
+            .end
+
+            if layout_from.alignment != layout_to.alignment
+                give Validity::Unsafe(
+                    "struct alignment differs"
+                )
+            .end
+
+            give Validity::Unsafe(
+                "struct-to-struct transmute is ABI-sensitive"
+            )
+
+
+        # ----------------------------------------------------
+        # Unions
+        # ----------------------------------------------------
+
+        when tm_ty::TypeKind::Union
+
+            if to.kind != tm_ty::TypeKind::Union
+                give Validity::Invalid(
+                    "union to non-union transmute"
+                )
+            .end
+
+            give Validity::Unsafe(
+                "union transmute requires active variant knowledge"
+            )
+
+
+        # ----------------------------------------------------
+        # Opaque / extern
+        # ----------------------------------------------------
+
+        when tm_ty::TypeKind::Opaque
+
+            give Validity::Unsafe(
+                "opaque type transmute"
+            )
+
+
+        otherwise
+            give Validity::Invalid(
+                "unsupported type kind"
+            )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc is_scalar
+    ty: &tm_ty::Type
+-> bool
+
+    select ty.kind
+        when tm_ty::TypeKind::Bool,
+             tm_ty::TypeKind::I8,
+             tm_ty::TypeKind::I16,
+             tm_ty::TypeKind::I32,
+             tm_ty::TypeKind::I64,
+             tm_ty::TypeKind::F32,
+             tm_ty::TypeKind::F64
+            give true
+        otherwise
+            give false
+    .end
+.end
+
+
+proc is_integer
+    ty: &tm_ty::Type
+-> bool
+
+    select ty.kind
+        when tm_ty::TypeKind::I8,
+             tm_ty::TypeKind::I16,
+             tm_ty::TypeKind::I32,
+             tm_ty::TypeKind::I64
+            give true
+        otherwise
+            give false
+    .end
 .end

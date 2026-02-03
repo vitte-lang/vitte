@@ -1,2 +1,209 @@
-proc common_subexpr_elimination(ctx: SsaContext)
+# ============================================================
+# vitte_codegen_ssa::opt::cse
+# Common Subexpression Elimination (SSA)
+# ============================================================
+
+space vitte/compiler/backends/vitte_codegen_ssa/opt
+
+pull vitte/compiler/backends/vitte_codegen_ssa/ir/mod as ssa_mod
+pull vitte/compiler/backends/vitte_codegen_ssa/ir/function as ssa_fn
+pull vitte/compiler/backends/vitte_codegen_ssa/ir/block as ssa_block
+pull vitte/compiler/backends/vitte_codegen_ssa/ir/instruction as ssa_inst
+pull vitte/compiler/backends/vitte_codegen_ssa/ir/value as ssa_val
+pull vitte/compiler/backends/vitte_codegen_ssa/ir/terminator as ssa_term
+
+pull std/collections/map as Map
+pull std/collections/list as List
+
+
+# ------------------------------------------------------------
+# Clé d’expression canonique
+# ------------------------------------------------------------
+
+form ExprKey
+    opcode: u16
+    lhs: ssa_val::ValueId
+    rhs: ssa_val::ValueId
+.end
+
+
+# ------------------------------------------------------------
+# API publique — CSE module
+# ------------------------------------------------------------
+
+proc optimize_cse
+    module: &mut ssa_mod::Module
+-> ()
+
+    for (_, func) in module.functions
+        optimize_function_cse(func)
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# CSE par fonction (intra-bloc sûr)
+# ------------------------------------------------------------
+
+proc optimize_function_cse
+    func: &mut ssa_fn::Function
+-> ()
+
+    for (_, block) in func.blocks
+        eliminate_block_cse(func, block)
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# CSE intra-bloc
+# ------------------------------------------------------------
+
+proc eliminate_block_cse
+    func: &mut ssa_fn::Function
+    block: &mut ssa_block::Block
+-> ()
+
+    let mut table = Map<ExprKey, ssa_val::Value>::new()
+    let mut new_insts = List<ssa_inst::Instruction>::new()
+
+    for inst in block.instructions
+        if not is_cse_candidate(inst)
+            new_insts.push(inst)
+            continue
+        .end
+
+        let key = make_key(inst)
+
+        if table.contains(key)
+            let existing = table.get(key).unwrap()
+
+            # Remplacement SSA :
+            # résultat inst -> valeur existante
+            rewrite_uses(
+                func,
+                inst.result.unwrap(),
+                existing
+            )
+        otherwise
+            table.insert(key, inst.result.unwrap())
+            new_insts.push(inst)
+        .end
+    .end
+
+    block.instructions = new_insts
+.end
+
+
+# ------------------------------------------------------------
+# Détection des candidats CSE
+# ------------------------------------------------------------
+
+proc is_cse_candidate
+    inst: &ssa_inst::Instruction
+-> bool
+
+    # Seulement les instructions pures, déterministes
+    select inst.opcode
+        when ssa_inst::Opcode::Add
+        when ssa_inst::Opcode::Sub
+        when ssa_inst::Opcode::Mul
+        when ssa_inst::Opcode::Div
+        when ssa_inst::Opcode::And
+        when ssa_inst::Opcode::Or
+        when ssa_inst::Opcode::Xor
+            give true
+        otherwise
+            give false
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Construction de clé canonique
+# ------------------------------------------------------------
+
+proc make_key
+    inst: &ssa_inst::Instruction
+-> ExprKey
+
+    # Hypothèse : binaires strictes
+    let lhs = inst.operands[0].id
+    let rhs = inst.operands[1].id
+
+    # Canonisation des opérateurs commutatifs
+    if is_commutative(inst.opcode)
+        if lhs.id > rhs.id
+            give ExprKey {
+                opcode = inst.opcode.id
+                lhs = rhs
+                rhs = lhs
+            }
+        .end
+    .end
+
+    give ExprKey {
+        opcode = inst.opcode.id
+        lhs = lhs
+        rhs = rhs
+    }
+.end
+
+
+proc is_commutative
+    opcode: ssa_inst::Opcode
+-> bool
+
+    select opcode
+        when ssa_inst::Opcode::Add
+        when ssa_inst::Opcode::Mul
+        when ssa_inst::Opcode::And
+        when ssa_inst::Opcode::Or
+        when ssa_inst::Opcode::Xor
+            give true
+        otherwise
+            give false
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Réécriture des usages SSA
+# ------------------------------------------------------------
+
+proc rewrite_uses
+    func: &mut ssa_fn::Function
+    from: ssa_val::Value
+    to: ssa_val::Value
+-> ()
+
+    # Parcours global simple (O(n), acceptable SSA debug)
+    for (_, block) in func.blocks
+        for inst in block.instructions
+            for i in 0..inst.operands.len()
+                if inst.operands[i].id == from.id
+                    inst.operands[i] = to
+                .end
+            .end
+        .end
+
+        # Terminators
+        let term = block.terminator
+        select term.kind
+            when ssa_term::TerminatorKind::Return
+                if term.value.is_some()
+                    if term.value.unwrap().id == from.id
+                        term.value = to
+                    .end
+                .end
+
+            when ssa_term::TerminatorKind::Branch
+                if term.cond.id == from.id
+                    term.cond = to
+                .end
+
+            otherwise
+                ()
+        .end
+    .end
 .end

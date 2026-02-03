@@ -1,3 +1,197 @@
-proc example_add(a: Int, b: Int) -> Int
-    ret a + b
+# ============================================================
+# EXAMPLE_MODULE::api::public
+# API publique – surface stable du module
+# ============================================================
+
+space EXAMPLE_MODULE/api
+
+
+# ------------------------------------------------------------
+# Types publics
+# ------------------------------------------------------------
+
+# Type de version exposé publiquement
+form Version
+    major: u32
+    minor: u32
+    patch: u32
+.end
+
+
+proc Version::to_string
+    self: &Version
+-> string
+
+    give
+        self.major.to_string() + "." +
+        self.minor.to_string() + "." +
+        self.patch.to_string()
+.end
+
+
+# ------------------------------------------------------------
+# Erreurs publiques
+# ------------------------------------------------------------
+
+pick ApiError
+    case InvalidInput(message: string)
+    case NotFound(resource: string)
+    case PermissionDenied
+    case Internal(message: string)
+.end
+
+
+# ------------------------------------------------------------
+# Options / configuration
+# ------------------------------------------------------------
+
+form ApiConfig
+    enable_debug: bool
+    max_items: u32
+.end
+
+
+proc ApiConfig::default
+-> ApiConfig
+
+    give ApiConfig {
+        enable_debug = false
+        max_items = 1024
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Entités publiques
+# ------------------------------------------------------------
+
+form Item
+    id: u64
+    name: string
+    enabled: bool
+.end
+
+
+# ------------------------------------------------------------
+# Résultats standardisés
+# ------------------------------------------------------------
+
+pick ApiResult[T]
+    case Ok(value: T)
+    case Err(error: ApiError)
+.end
+
+
+# ------------------------------------------------------------
+# Constantes publiques
+# ------------------------------------------------------------
+
+const API_NAME: string = "example-module"
+const API_VERSION: Version = Version { major = 1, minor = 0, patch = 0 }
+
+
+# ------------------------------------------------------------
+# Fonctions publiques (API)
+# ------------------------------------------------------------
+
+# Retourne les métadonnées du module
+proc api_name
+-> string
+
+    give API_NAME
+.end
+
+
+proc api_version
+-> Version
+
+    give API_VERSION
+.end
+
+
+# ------------------------------------------------------------
+# Gestion des items
+# ------------------------------------------------------------
+
+# Création d’un item
+proc create_item
+    name: string
+    cfg: &ApiConfig
+-> ApiResult[Item]
+
+    if name.len == 0
+        give ApiResult::Err(
+            ApiError::InvalidInput("name must not be empty")
+        )
+    .end
+
+    let item = Item {
+        id = generate_id()
+        name = name
+        enabled = true
+    }
+
+    if cfg.enable_debug
+        log_debug("item created: " + name)
+    .end
+
+    give ApiResult::Ok(item)
+.end
+
+
+# Recherche d’un item
+proc get_item
+    id: u64
+-> ApiResult[Item]
+
+    # Implémentation factice pour l’exemple
+    if id == 0
+        give ApiResult::Err(
+            ApiError::NotFound("item")
+        )
+    .end
+
+    give ApiResult::Ok(
+        Item {
+            id = id
+            name = "example"
+            enabled = true
+        }
+    )
+.end
+
+
+# Désactivation d’un item
+proc disable_item
+    id: u64
+-> ApiResult[bool]
+
+    if id == 0
+        give ApiResult::Err(
+            ApiError::NotFound("item")
+        )
+    .end
+
+    give ApiResult::Ok(true)
+.end
+
+
+# ------------------------------------------------------------
+# Helpers internes (non exportés)
+# ------------------------------------------------------------
+
+proc generate_id
+-> u64
+
+    # Stub déterministe pour l’exemple
+    give 42
+.end
+
+
+proc log_debug
+    msg: string
+-> void
+
+    # Hook debug (stdout, logger, etc.)
+    emit msg
 .end

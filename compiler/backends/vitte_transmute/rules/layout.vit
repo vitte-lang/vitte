@@ -1,3 +1,223 @@
-proc check_layout_compatible(from_ty, to_ty, tgt: target::TargetContext)
-    # size / align / repr checks
+# ============================================================
+# vitte_transmute::rules::aggregate
+# Règles de transmutation pour types agrégés
+# ============================================================
+
+space vitte/compiler/backends/vitte_transmute/rules
+
+pull vitte/compiler/backends/vitte_transmute/ir/type as tm_ty
+pull vitte/compiler/backends/vitte_transmute/analysis/size as tm_size
+pull vitte/compiler/backends/vitte_transmute/analysis/alignment as tm_align
+pull vitte/compiler/backends/vitte_transmute/analysis/layout as tm_layout
+pull vitte/compiler/backends/vitte_transmute/analysis/validity as tm_valid
+
+pull std/collections/list as List
+pull std/math as math
+
+
+# ------------------------------------------------------------
+# API principale
+# ------------------------------------------------------------
+
+proc analyze_aggregate_validity
+    from: &tm_ty::Type
+    to: &tm_ty::Type
+    vctx: &tm_valid::ValidityContext
+-> tm_valid::Validity
+
+    # --------------------------------------------------------
+    # Taille stricte
+    # --------------------------------------------------------
+
+    let sz_from = tm_size::size_of(from)
+    let sz_to   = tm_size::size_of(to)
+
+    if sz_from != sz_to
+        give tm_valid::Validity::Invalid(
+            "aggregate size mismatch"
+        )
+    .end
+
+
+    # --------------------------------------------------------
+    # Alignement compatible
+    # --------------------------------------------------------
+
+    let a_from = tm_align::alignment_of(from)
+    let a_to   = tm_align::alignment_of(to)
+
+    if a_to > a_from
+        give tm_valid::Validity::Invalid(
+            "aggregate alignment mismatch"
+        )
+    .end
+
+
+    # --------------------------------------------------------
+    # Dispatch par genre
+    # --------------------------------------------------------
+
+    select from.kind
+
+        when tm_ty::TypeKind::Struct
+            give analyze_struct_to_struct(
+                from,
+                to,
+                vctx
+            )
+
+        when tm_ty::TypeKind::Union
+            give analyze_union_to_union(
+                from,
+                to,
+                vctx
+            )
+
+        when tm_ty::TypeKind::Array
+            give analyze_array_to_array(
+                from,
+                to,
+                vctx
+            )
+
+        otherwise
+            give tm_valid::Validity::Invalid(
+                "not an aggregate type"
+            )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Struct -> Struct
+# ------------------------------------------------------------
+
+proc analyze_struct_to_struct
+    from: &tm_ty::Type
+    to: &tm_ty::Type
+    vctx: &tm_valid::ValidityContext
+-> tm_valid::Validity
+
+    if to.kind != tm_ty::TypeKind::Struct
+        give tm_valid::Validity::Invalid(
+            "struct to non-struct transmute"
+        )
+    .end
+
+    let lf = tm_layout::layout_of(from)
+    let lt = tm_layout::layout_of(to)
+
+    # Offsets strictement identiques
+    if lf.fields.len != lt.fields.len
+        give tm_valid::Validity::Invalid(
+            "struct field count mismatch"
+        )
+    .end
+
+    let mut unsafe_flag = false
+
+    let i = 0
+    while i < lf.fields.len
+
+        let ff = lf.fields[i]
+        let tf = lt.fields[i]
+
+        if ff.offset != tf.offset
+            give tm_valid::Validity::Invalid(
+                "struct field offset mismatch"
+            )
+        .end
+
+        let v =
+            tm_valid::analyze_validity(
+                ff.ty,
+                tf.ty,
+                vctx
+            )
+
+        select v
+            when tm_valid::Validity::Invalid(reason)
+                give v
+            when tm_valid::Validity::Unsafe(reason)
+                unsafe_flag = true
+            otherwise
+                # ok
+        .end
+
+        i = i + 1
+    .end
+
+    if unsafe_flag
+        give tm_valid::Validity::Unsafe(
+            "struct fields require unsafe transmute"
+        )
+    .end
+
+    give tm_valid::Validity::Valid
+.end
+
+
+# ------------------------------------------------------------
+# Union -> Union
+# ------------------------------------------------------------
+
+proc analyze_union_to_union
+    from: &tm_ty::Type
+    to: &tm_ty::Type
+    vctx: &tm_valid::ValidityContext
+-> tm_valid::Validity
+
+    if to.kind != tm_ty::TypeKind::Union
+        give tm_valid::Validity::Invalid(
+            "union to non-union transmute"
+        )
+    .end
+
+    let lf = tm_layout::layout_of(from)
+    let lt = tm_layout::layout_of(to)
+
+    if lf.size != lt.size
+        give tm_valid::Validity::Invalid(
+            "union layout size mismatch"
+        )
+    .end
+
+    # Toute union nécessite connaissance de la variante active
+    give tm_valid::Validity::Unsafe(
+        "union transmute requires active variant guarantee"
+    )
+.end
+
+
+# ------------------------------------------------------------
+# Array -> Array
+# ------------------------------------------------------------
+
+proc analyze_array_to_array
+    from: &tm_ty::Type
+    to: &tm_ty::Type
+    vctx: &tm_valid::ValidityContext
+-> tm_valid::Validity
+
+    if to.kind != tm_ty::TypeKind::Array
+        give tm_valid::Validity::Invalid(
+            "array to non-array transmute"
+        )
+    .end
+
+    if from.len != to.len
+        give tm_valid::Validity::Invalid(
+            "array length mismatch"
+        )
+    .end
+
+    # Analyse élément par élément
+    let v =
+        tm_valid::analyze_validity(
+            from.elem,
+            to.elem,
+            vctx
+        )
+
+    give v
 .end

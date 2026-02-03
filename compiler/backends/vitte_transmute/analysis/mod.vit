@@ -1,4 +1,69 @@
-pull self/validity
-pull self/alignment
+# ============================================================
+# vitte_transmute::analysis
+# Module racine des analyses de transmutation
+# ============================================================
 
-share all
+space vitte/compiler/backends/vitte_transmute/analysis
+
+
+# ------------------------------------------------------------
+# Analyses fondamentales
+# ------------------------------------------------------------
+
+# Taille mémoire des types
+pull vitte/compiler/backends/vitte_transmute/analysis/size
+
+# Alignement ABI
+pull vitte/compiler/backends/vitte_transmute/analysis/alignment
+
+# Layout mémoire (offsets, padding)
+pull vitte/compiler/backends/vitte_transmute/analysis/layout
+
+# Validité des transmutations
+pull vitte/compiler/backends/vitte_transmute/analysis/validity
+
+
+# ------------------------------------------------------------
+# Re-exports publics
+# ------------------------------------------------------------
+
+# size
+use size::size_of
+use size::SizeInfo
+
+# alignment
+use alignment::Alignment
+use alignment::AlignPolicy
+use alignment::alignment_of
+use alignment::preferred_alignment_of
+
+# layout
+use layout::Layout
+use layout::layout_of
+
+# validity
+use validity::Validity
+use validity::ValidityContext
+use validity::analyze_validity
+
+
+# ------------------------------------------------------------
+# Facade de haut niveau
+# ------------------------------------------------------------
+
+proc can_transmute
+    from: &vitte/compiler/backends/vitte_transmute/ir/type::Type
+    to: &vitte/compiler/backends/vitte_transmute/ir/type::Type
+-> bool
+
+    let ctx = ValidityContext::default()
+
+    let v =
+        analyze_validity(
+            from,
+            to,
+            &ctx
+        )
+
+    give v.is_ok()
+.end

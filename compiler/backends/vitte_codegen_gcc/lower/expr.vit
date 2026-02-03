@@ -1,10 +1,363 @@
-proc lower_expr(ctx, out, e)
-    select e.kind
-        when Literal
-            emit_literal(out, e)
-        when Binary
-            emit_binary(out, e)
+# ============================================================
+# vitte_codegen_gcc::lower::expr
+# Lowering des expressions MIR → GCC GIMPLE/tree
+# ============================================================
+
+space vitte/compiler/backends/vitte_codegen_gcc/lower
+
+pull vitte/compiler/mir/ast as mir
+pull vitte/compiler/mir/types as mir_ty
+pull vitte/compiler/mir/value as mir_val
+
+pull vitte/compiler/backends/vitte_codegen_gcc/context as gcc_ctx
+pull vitte/compiler/backends/vitte_codegen_gcc/types as gcc_ty
+pull vitte/compiler/backends/vitte_codegen_gcc/errors as gcc_err
+
+
+# ------------------------------------------------------------
+# Entrée principale
+# ------------------------------------------------------------
+
+proc lower_expr
+    ctx: &mut gcc_ctx::LowerCtx
+    expr: &mir::Expr
+-> gcc_ctx::Tree
+
+    select expr.kind
+        when mir::ExprKind::Const
+            give lower_const(ctx, expr)
+
+        when mir::ExprKind::Local
+            give lower_local(ctx, expr)
+
+        when mir::ExprKind::Binary
+            give lower_binary(ctx, expr)
+
+        when mir::ExprKind::Unary
+            give lower_unary(ctx, expr)
+
+        when mir::ExprKind::Call
+            give lower_call(ctx, expr)
+
+        when mir::ExprKind::Cast
+            give lower_cast(ctx, expr)
+
+        when mir::ExprKind::If
+            give lower_if(ctx, expr)
+
+        when mir::ExprKind::Block
+            give lower_block_expr(ctx, expr)
+
         otherwise
-            error UnsupportedExpr(e.span)
-    end
+            gcc_err::fatal_ctx(
+                ctx,
+                "unsupported MIR expression kind in GCC backend"
+            )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Constantes
+# ------------------------------------------------------------
+
+proc lower_const
+    ctx: &mut gcc_ctx::LowerCtx
+    expr: &mir::Expr
+-> gcc_ctx::Tree
+
+    let cst = expr.const_value.unwrap()
+    let ty  = gcc_ty::lower_type(ctx, cst.ty)
+
+    select cst.value
+        when mir_val::ConstValue::Int
+            give gcc_ctx::build_int_cst(
+                ty,
+                cst.as_i64()
+            )
+
+        when mir_val::ConstValue::Bool
+            give gcc_ctx::build_bool_cst(
+                ty,
+                cst.as_bool()
+            )
+
+        when mir_val::ConstValue::Float
+            give gcc_ctx::build_float_cst(
+                ty,
+                cst.as_f64()
+            )
+
+        when mir_val::ConstValue::Null
+            give gcc_ctx::build_null_ptr(ty)
+
+        otherwise
+            gcc_err::fatal_ctx(
+                ctx,
+                "unsupported constant value in GCC backend"
+            )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Variables locales
+# ------------------------------------------------------------
+
+proc lower_local
+    ctx: &mut gcc_ctx::LowerCtx
+    expr: &mir::Expr
+-> gcc_ctx::Tree
+
+    let local_id = expr.local.unwrap()
+    let decl = ctx.locals.get(local_id)
+
+    if decl.is_none()
+        gcc_err::fatal_ctx(
+            ctx,
+            "use of undeclared local variable"
+        )
+    .end
+
+    give gcc_ctx::build_var_ref(
+        decl.unwrap()
+    )
+.end
+
+
+# ------------------------------------------------------------
+# Opérations binaires
+# ------------------------------------------------------------
+
+proc lower_binary
+    ctx: &mut gcc_ctx::LowerCtx
+    expr: &mir::Expr
+-> gcc_ctx::Tree
+
+    let lhs = lower_expr(ctx, expr.binary.lhs)
+    let rhs = lower_expr(ctx, expr.binary.rhs)
+    let ty  = gcc_ty::lower_type(ctx, expr.ty)
+
+    select expr.binary.op
+        when mir::BinOp::Add
+            give gcc_ctx::build_binary(
+                gcc_ctx::BIN_ADD,
+                ty,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::Sub
+            give gcc_ctx::build_binary(
+                gcc_ctx::BIN_SUB,
+                ty,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::Mul
+            give gcc_ctx::build_binary(
+                gcc_ctx::BIN_MUL,
+                ty,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::Div
+            give gcc_ctx::build_binary(
+                gcc_ctx::BIN_DIV,
+                ty,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::Eq
+            give gcc_ctx::build_compare(
+                gcc_ctx::CMP_EQ,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::Ne
+            give gcc_ctx::build_compare(
+                gcc_ctx::CMP_NE,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::Lt
+            give gcc_ctx::build_compare(
+                gcc_ctx::CMP_LT,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::Le
+            give gcc_ctx::build_compare(
+                gcc_ctx::CMP_LE,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::Gt
+            give gcc_ctx::build_compare(
+                gcc_ctx::CMP_GT,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::Ge
+            give gcc_ctx::build_compare(
+                gcc_ctx::CMP_GE,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::And
+            give gcc_ctx::build_binary(
+                gcc_ctx::BIN_AND,
+                ty,
+                lhs,
+                rhs
+            )
+
+        when mir::BinOp::Or
+            give gcc_ctx::build_binary(
+                gcc_ctx::BIN_OR,
+                ty,
+                lhs,
+                rhs
+            )
+
+        otherwise
+            gcc_err::fatal_ctx(
+                ctx,
+                "unsupported binary operator in GCC backend"
+            )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Opérations unaires
+# ------------------------------------------------------------
+
+proc lower_unary
+    ctx: &mut gcc_ctx::LowerCtx
+    expr: &mir::Expr
+-> gcc_ctx::Tree
+
+    let val = lower_expr(ctx, expr.unary.expr)
+
+    select expr.unary.op
+        when mir::UnOp::Neg
+            give gcc_ctx::build_unary(
+                gcc_ctx::UN_NEG,
+                val
+            )
+
+        when mir::UnOp::Not
+            give gcc_ctx::build_unary(
+                gcc_ctx::UN_NOT,
+                val
+            )
+
+        otherwise
+            gcc_err::fatal_ctx(
+                ctx,
+                "unsupported unary operator in GCC backend"
+            )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Appels de fonction
+# ------------------------------------------------------------
+
+proc lower_call
+    ctx: &mut gcc_ctx::LowerCtx
+    expr: &mir::Expr
+-> gcc_ctx::Tree
+
+    let fn_id = expr.call.fn_id
+    let fn_decl = ctx.functions.get(fn_id)
+
+    if fn_decl.is_none()
+        gcc_err::fatal_ctx(
+            ctx,
+            "call to undeclared function"
+        )
+    .end
+
+    let mut args = []
+    for a in expr.call.args
+        args.push(lower_expr(ctx, a))
+    .end
+
+    give gcc_ctx::build_call(
+        fn_decl.unwrap(),
+        args
+    )
+.end
+
+
+# ------------------------------------------------------------
+# Casts
+# ------------------------------------------------------------
+
+proc lower_cast
+    ctx: &mut gcc_ctx::LowerCtx
+    expr: &mir::Expr
+-> gcc_ctx::Tree
+
+    let val = lower_expr(ctx, expr.cast.expr)
+    let dst = gcc_ty::lower_type(ctx, expr.cast.to)
+
+    give gcc_ctx::build_cast(
+        dst,
+        val
+    )
+.end
+
+
+# ------------------------------------------------------------
+# If-expression (expressionnelle)
+# ------------------------------------------------------------
+
+proc lower_if
+    ctx: &mut gcc_ctx::LowerCtx
+    expr: &mir::Expr
+-> gcc_ctx::Tree
+
+    let cond = lower_expr(ctx, expr.if_expr.cond)
+    let then_expr = lower_expr(ctx, expr.if_expr.then_expr)
+    let else_expr = lower_expr(ctx, expr.if_expr.else_expr)
+    let ty = gcc_ty::lower_type(ctx, expr.ty)
+
+    give gcc_ctx::build_cond_expr(
+        ty,
+        cond,
+        then_expr,
+        else_expr
+    )
+.end
+
+
+# ------------------------------------------------------------
+# Block-expression
+# ------------------------------------------------------------
+
+proc lower_block_expr
+    ctx: &mut gcc_ctx::LowerCtx
+    expr: &mir::Expr
+-> gcc_ctx::Tree
+
+    let mut last = gcc_ctx::void_value()
+
+    for stmt in expr.block.stmts
+        last = gcc_ctx::lower_stmt(ctx, stmt)
+    .end
+
+    give last
 .end

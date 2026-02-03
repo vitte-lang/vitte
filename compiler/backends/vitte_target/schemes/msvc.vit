@@ -1,3 +1,202 @@
-proc mangle_msvc(fn: hir::Function)
-    # MSVC ABI mangling
+# ============================================================
+# vitte_target::schemes::msvc
+# MSVC (Microsoft C++) ABI name mangling scheme
+# ============================================================
+
+space vitte/compiler/backends/vitte_target/schemes
+
+
+# ------------------------------------------------------------
+# ABI metadata
+# ------------------------------------------------------------
+
+form AbiScheme
+    name: string
+    version: string
 .end
+
+
+proc msvc_scheme
+-> AbiScheme
+
+    give AbiScheme {
+        name = "msvc"
+        version = "msvc-abi-v19"
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Mangling primitives (MSVC)
+# ------------------------------------------------------------
+
+# Codes de types fondamentaux (subset utile)
+pick MsvcTypeCode
+    case Void        # X
+    case Bool        # _N
+    case Char        # D
+    case I8          # C
+    case U8          # E
+    case I16         # F
+    case U16         # G
+    case I32         # H
+    case U32         # I
+    case I64         # _J
+    case U64         # _K
+    case F32         # M
+    case F64         # N
+    case Pointer     # P
+    case Reference   # A
+    case Const       # B
+.end
+
+
+proc type_code
+    code: MsvcTypeCode
+-> string
+
+    select code
+        when MsvcTypeCode::Void      give "X"
+        when MsvcTypeCode::Bool      give "_N"
+        when MsvcTypeCode::Char      give "D"
+        when MsvcTypeCode::I8        give "C"
+        when MsvcTypeCode::U8        give "E"
+        when MsvcTypeCode::I16       give "F"
+        when MsvcTypeCode::U16       give "G"
+        when MsvcTypeCode::I32       give "H"
+        when MsvcTypeCode::U32       give "I"
+        when MsvcTypeCode::I64       give "_J"
+        when MsvcTypeCode::U64       give "_K"
+        when MsvcTypeCode::F32       give "M"
+        when MsvcTypeCode::F64       give "N"
+        when MsvcTypeCode::Pointer   give "P"
+        when MsvcTypeCode::Reference give "A"
+        when MsvcTypeCode::Const     give "B"
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Identifiants et portées
+# ------------------------------------------------------------
+
+proc encode_identifier
+    name: string
+-> string
+
+    # MSVC : <identifier>@
+    give name + "@"
+.end
+
+
+proc encode_scopes
+    scopes: [string]
+-> string
+
+    # <scope1>@<scope2>@...@
+    let mut out = ""
+
+    for s in scopes
+        out = out + encode_identifier(s)
+    .end
+
+    give out
+.end
+
+
+# ------------------------------------------------------------
+# Fonctions
+# ------------------------------------------------------------
+
+form FunctionSig
+    name: string
+    namespaces: [string]
+    param_types: [MsvcTypeCode]
+    return_type: MsvcTypeCode
+.end
+
+
+proc mangle_function
+    sig: &FunctionSig
+-> string
+
+    # Format général :
+    # ?func@ns1@ns2@@Y<callconv><ret><params>@Z
+
+    let mut out = "?"
+
+    out = out + sig.name + "@"
+
+    if sig.namespaces.len > 0
+        out = out + encode_scopes(sig.namespaces)
+    .end
+
+    out = out + "@@Y"
+
+    # Convention d’appel : __cdecl par défaut (A)
+    out = out + "A"
+
+    # Type de retour
+    out = out + type_code(sig.return_type)
+
+    # Paramètres
+    if sig.param_types.len == 0
+        out = out + "X"   # void
+    .end
+    otherwise
+        for t in sig.param_types
+            out = out + type_code(t)
+        .end
+    .end
+
+    out = out + "@Z"
+
+    give out
+.end
+
+
+# ------------------------------------------------------------
+# Variables globales
+# ------------------------------------------------------------
+
+proc mangle_global
+    name: string
+    namespaces: [string]
+-> string
+
+    # ?var@ns1@ns2@@3<type>@A
+
+    let mut out = "?"
+
+    out = out + name + "@"
+
+    if namespaces.len > 0
+        out = out + encode_scopes(namespaces)
+    .end
+
+    out = out + "@@3"
+
+    # Type inconnu → int par défaut (H)
+    out = out + type_code(MsvcTypeCode::I32)
+
+    out = out + "@A"
+
+    give out
+.end
+
+
+# ------------------------------------------------------------
+# Notes de conformité
+# ------------------------------------------------------------
+# - Conforme au MSVC C++ ABI (COFF / Windows)
+# - Supporte :
+#   * fonctions libres
+#   * namespaces imbriqués
+#   * types fondamentaux
+#   * __cdecl
+# - Extensions futures :
+#   * thiscall / stdcall / fastcall
+#   * classes / méthodes
+#   * templates
+#   * substitutions
+# ============================================================

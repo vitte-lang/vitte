@@ -1,10 +1,135 @@
-pull vitte/compiler/ir as ir
-pull vitte/compiler/session as sess
+# ============================================================
+# vitte_codegen_ssa::lib
+# API publique du backend SSA Vitte
+# ============================================================
 
-pull self/context
-pull self/ir/mod
-pull self/lower/mod
-pull self/opt/mod
-pull self/emit/mod
+space vitte/compiler/backends/vitte_codegen_ssa
 
-share all
+
+# ------------------------------------------------------------
+# Sous-modules publics
+# ------------------------------------------------------------
+
+# Contexte SSA
+pull vitte/compiler/backends/vitte_codegen_ssa/context
+
+# IR SSA canonique
+pull vitte/compiler/backends/vitte_codegen_ssa/ir/mod as ir
+
+# Lowering MIR -> SSA
+pull vitte/compiler/backends/vitte_codegen_ssa/lower/mod as lower
+
+# Optimisations SSA
+pull vitte/compiler/backends/vitte_codegen_ssa/opt/mod as opt
+
+# Émission SSA / pont backends
+pull vitte/compiler/backends/vitte_codegen_ssa/emit/mod as emit
+pull vitte/compiler/backends/vitte_codegen_ssa/emit/to_backend
+
+
+# ------------------------------------------------------------
+# Re-exports de confort
+# ------------------------------------------------------------
+
+# Contexte
+use context::CodegenCtx
+use context::OptLevel
+use context::EmitMode
+
+# IR
+use ir::Module
+use ir::Function
+use ir::Block
+use ir::Value
+
+# Lowering
+use lower::lower_program
+use lower::lower_program_default
+
+# Optimisation
+use opt::optimize_module
+use opt::optimize_module_full
+use opt::optimize_module_basic
+use opt::OptOptions
+
+# Émission
+use emit::emit_module
+use emit::EmitFormat
+use to_backend::emit_to_backend
+use to_backend::EmitOptions
+use to_backend::TargetBackend
+
+
+# ------------------------------------------------------------
+# Pipeline complet de compilation SSA
+# ------------------------------------------------------------
+
+proc compile_program
+    program: &vitte/compiler/mir/ast::Program
+    opt_level: OptLevel
+    backend: TargetBackend
+    output_path: string
+-> bytes
+
+    # --------------------------------------------------------
+    # 1) Contexte SSA
+    # --------------------------------------------------------
+
+    let mut ctx =
+        CodegenCtx::new(
+            opt_level,
+            EmitMode::Normal
+        )
+
+
+    # --------------------------------------------------------
+    # 2) Lowering MIR -> SSA
+    # --------------------------------------------------------
+
+    let mut module =
+        lower::lower_program_default(
+            &mut ctx,
+            program
+        )
+
+
+    # --------------------------------------------------------
+    # 3) Optimisations SSA
+    # --------------------------------------------------------
+
+    let opts =
+        select opt_level
+            when OptLevel::O0
+                opt::OptOptions::none()
+            when OptLevel::O1
+                opt::OptOptions::basic()
+            otherwise
+                opt::OptOptions::full()
+        .end
+
+    opt::optimize_module(
+        &mut ctx,
+        &mut module,
+        &opts
+    )
+
+
+    # --------------------------------------------------------
+    # 4) Émission vers backend cible
+    # --------------------------------------------------------
+
+    let emit_opts =
+        EmitOptions {
+            backend = backend
+            output_path = output_path
+            emit_text = (ctx.emit_mode == EmitMode::Debug)
+            opt_level = opt_level as u8
+            target_triple = ""
+        }
+
+    give emit_to_backend(
+        &mut ctx,
+        &module,
+        &emit_opts
+    )
+.end

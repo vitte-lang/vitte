@@ -1,4 +1,231 @@
-form SsaFunction
-    name: String
-    blocks: List[SsaBlock]
+# ============================================================
+# vitte_codegen_ssa::ir::function
+# Définition d’une fonction SSA canonique
+# ============================================================
+
+space vitte/compiler/backends/vitte_codegen_ssa/ir
+
+pull vitte/compiler/backends/vitte_codegen_ssa/ir/block as ssa_block
+pull vitte/compiler/backends/vitte_codegen_ssa/ir/value as ssa_val
+pull vitte/compiler/backends/vitte_codegen_ssa/ir/type as ssa_ty
+
+pull std/collections/map as Map
+pull std/collections/list as List
+pull std/collections/set as Set
+
+
+# ------------------------------------------------------------
+# Identifiant de fonction SSA
+# ------------------------------------------------------------
+
+form FunctionId
+    id: u32
+.end
+
+
+# ------------------------------------------------------------
+# Paramètre SSA
+# ------------------------------------------------------------
+
+form Param
+    id: u32
+    name: string
+    ty: ssa_ty::Type
+.end
+
+
+# ------------------------------------------------------------
+# Fonction SSA
+# ------------------------------------------------------------
+
+form Function
+    id: FunctionId
+    name: string
+
+    params: List<Param>
+    ret_ty: ssa_ty::Type
+
+    blocks: Map<ssa_block::BlockId, ssa_block::Block>
+    entry: ssa_block::BlockId
+
+    values: Map<u32, ssa_val::Value>
+
+    next_block_id: u32
+    next_value_id: u32
+.end
+
+
+# ------------------------------------------------------------
+# Construction
+# ------------------------------------------------------------
+
+proc Function::new
+    id: u32
+    name: string
+    params: List<Param>
+    ret_ty: ssa_ty::Type
+-> Function
+
+    let entry_block_id = 0
+
+    let mut blocks = Map::new()
+    let entry_block =
+        ssa_block::Block::new(
+            entry_block_id,
+            "entry"
+        )
+
+    blocks.insert(
+        entry_block.id,
+        entry_block
+    )
+
+    give Function
+        id = FunctionId { id = id }
+        name = name
+        params = params
+        ret_ty = ret_ty
+        blocks = blocks
+        entry = ssa_block::BlockId { id = entry_block_id }
+        values = Map::new()
+        next_block_id = 1
+        next_value_id = 0
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Gestion des blocs
+# ------------------------------------------------------------
+
+proc Function::new_block
+    self: &mut Function
+    label: string
+-> ssa_block::BlockId
+
+    let id = self.next_block_id
+    self.next_block_id = id + 1
+
+    let block =
+        ssa_block::Block::new(
+            id,
+            label
+        )
+
+    let bid = block.id
+    self.blocks.insert(bid, block)
+
+    give bid
+.end
+
+
+proc Function::get_block
+    self: &Function
+    id: ssa_block::BlockId
+-> &ssa_block::Block
+
+    give self.blocks.get(id).unwrap()
+.end
+
+
+proc Function::get_block_mut
+    self: &mut Function
+    id: ssa_block::BlockId
+-> &mut ssa_block::Block
+
+    give self.blocks.get_mut(id).unwrap()
+.end
+
+
+# ------------------------------------------------------------
+# Gestion des valeurs SSA
+# ------------------------------------------------------------
+
+proc Function::new_value
+    self: &mut Function
+    kind: ssa_val::ValueKind
+    ty: ssa_ty::Type
+    name: string
+-> ssa_val::Value
+
+    let id = self.next_value_id
+    self.next_value_id = id + 1
+
+    let val =
+        ssa_val::Value::new(
+            id,
+            kind,
+            ty,
+            name
+        )
+
+    self.values.insert(id, val)
+
+    give val
+.end
+
+
+proc Function::get_value
+    self: &Function
+    id: u32
+-> &ssa_val::Value
+
+    give self.values.get(id).unwrap()
+.end
+
+
+# ------------------------------------------------------------
+# CFG helpers
+# ------------------------------------------------------------
+
+proc Function::connect
+    self: &mut Function
+    from: ssa_block::BlockId
+    to: ssa_block::BlockId
+-> ()
+
+    let from_block =
+        self.get_block_mut(from)
+    let to_block =
+        self.get_block_mut(to)
+
+    from_block.add_succ(to)
+    to_block.add_pred(from)
+.end
+
+
+# ------------------------------------------------------------
+# Validation SSA de la fonction
+# ------------------------------------------------------------
+
+proc Function::validate
+    self: &Function
+-> bool
+
+    # 1) le bloc d’entrée doit exister
+    if not self.blocks.contains(self.entry)
+        give false
+    .end
+
+    # 2) tous les blocs doivent être valides
+    for (_, block) in self.blocks
+        if not block.validate()
+            give false
+        .end
+    .end
+
+    # 3) cohérence CFG globale
+    for (_, block) in self.blocks
+        for succ in block.succs
+            let succ_block = self.blocks.get(succ)
+            if succ_block.is_none()
+                give false
+            .end
+            if not succ_block.unwrap().preds.contains(block.id)
+                give false
+            .end
+        .end
+    .end
+
+    give true
 .end

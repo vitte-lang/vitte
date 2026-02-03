@@ -1,3 +1,221 @@
-proc build_cfg(fn: MirFunction)
-    # build control-flow graph
+# ============================================================
+# vitte_mir_build::analysis::cfg
+# Construction et analyse du Control Flow Graph (CFG)
+# ============================================================
+
+space vitte/compiler/backends/vitte_mir_build/analysis
+
+
+pull vitte/compiler/backends/vitte_mir/ir/block as mir_block
+pull vitte/compiler/backends/vitte_mir/ir/function as mir_fn
+
+pull std/collections/map as Map
+pull std/collections/set as Set
+pull std/collections/list as List
+
+
+# ------------------------------------------------------------
+# Identifiants de blocs
+# ------------------------------------------------------------
+
+type BlockId = u32
+
+
+# ------------------------------------------------------------
+# Nœud CFG
+# ------------------------------------------------------------
+
+form CfgNode
+    id: BlockId
+    block: &mir_block::Block
+    preds: Set[BlockId]
+    succs: Set[BlockId]
+.end
+
+
+proc CfgNode::new
+    id: BlockId
+    block: &mir_block::Block
+-> CfgNode
+
+    give CfgNode {
+        id = id
+        block = block
+        preds = Set::new()
+        succs = Set::new()
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Control Flow Graph
+# ------------------------------------------------------------
+
+form ControlFlowGraph
+    entry: BlockId
+    nodes: Map[BlockId, CfgNode]
+.end
+
+
+# ------------------------------------------------------------
+# Construction du CFG
+# ------------------------------------------------------------
+
+proc build_cfg
+    func: &mir_fn::Function
+-> ControlFlowGraph
+
+    let mut nodes = Map::new()
+
+    # --------------------------------------------------------
+    # 1) Création des nœuds
+    # --------------------------------------------------------
+
+    for block in func.blocks.iter()
+        let id = block.id
+        nodes.insert(
+            id,
+            CfgNode::new(id, block)
+        )
+    .end
+
+    # --------------------------------------------------------
+    # 2) Connexions successeurs / prédécesseurs
+    # --------------------------------------------------------
+
+    for block in func.blocks.iter()
+
+        let from_id = block.id
+        let node = nodes.get_mut(from_id)
+
+        select block.terminator
+
+            when mir_block::Terminator::Goto(target)
+                node.succs.insert(target)
+                nodes.get_mut(target).preds.insert(from_id)
+
+            when mir_block::Terminator::If(cond, then_bb, else_bb)
+                node.succs.insert(then_bb)
+                node.succs.insert(else_bb)
+
+                nodes.get_mut(then_bb).preds.insert(from_id)
+                nodes.get_mut(else_bb).preds.insert(from_id)
+
+            when mir_block::Terminator::Return(_)
+                # aucun successeur
+
+            when mir_block::Terminator::Unreachable
+                # aucun successeur
+        .end
+    .end
+
+    # --------------------------------------------------------
+    # 3) Entrée
+    # --------------------------------------------------------
+
+    give ControlFlowGraph {
+        entry = func.entry
+        nodes = nodes
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Parcours CFG
+# ------------------------------------------------------------
+
+proc successors
+    cfg: &ControlFlowGraph
+    id: BlockId
+-> Set[BlockId]
+
+    give cfg.nodes.get(id).succs.clone()
+.end
+
+
+proc predecessors
+    cfg: &ControlFlowGraph
+    id: BlockId
+-> Set[BlockId]
+
+    give cfg.nodes.get(id).preds.clone()
+.end
+
+
+# ------------------------------------------------------------
+# Parcours DFS
+# ------------------------------------------------------------
+
+proc dfs
+    cfg: &ControlFlowGraph
+-> List[BlockId]
+
+    let mut visited = Set::new()
+    let mut order = List::new()
+
+    dfs_visit(cfg, cfg.entry, &mut visited, &mut order)
+
+    give order
+.end
+
+
+proc dfs_visit
+    cfg: &ControlFlowGraph
+    id: BlockId
+    visited: &mut Set[BlockId]
+    order: &mut List[BlockId]
+-> void
+
+    if visited.contains(id)
+        give
+    .end
+
+    visited.insert(id)
+    order.push(id)
+
+    for succ in cfg.nodes.get(id).succs.iter()
+        dfs_visit(cfg, succ, visited, order)
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Blocs inaccessibles
+# ------------------------------------------------------------
+
+proc unreachable_blocks
+    cfg: &ControlFlowGraph
+-> Set[BlockId]
+
+    let reachable = Set::from_list(dfs(cfg))
+    let mut unreachable = Set::new()
+
+    for (id, _) in cfg.nodes.iter()
+        if not reachable.contains(id)
+            unreachable.insert(id)
+        .end
+    .end
+
+    give unreachable
+.end
+
+
+# ------------------------------------------------------------
+# Validation CFG
+# ------------------------------------------------------------
+
+proc validate_cfg
+    cfg: &ControlFlowGraph
+-> bool
+
+    # Chaque successeur doit avoir le prédécesseur inverse
+    for (id, node) in cfg.nodes.iter()
+        for succ in node.succs.iter()
+            if not cfg.nodes.get(succ).preds.contains(id)
+                give false
+            .end
+        .end
+    .end
+
+    give true
 .end

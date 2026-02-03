@@ -1,2 +1,174 @@
-proc liveness_analysis(fn: MirFunction)
+# ============================================================
+# vitte_mir_build::analysis::liveness
+# Analyse de vivacité (Live Variables Analysis)
+# ============================================================
+
+space vitte/compiler/backends/vitte_mir_build/analysis
+
+
+pull vitte/compiler/backends/vitte_mir_build/analysis/cfg as cfg
+pull vitte/compiler/backends/vitte_mir/ir/block as mir_block
+pull vitte/compiler/backends/vitte_mir/ir/function as mir_fn
+pull vitte/compiler/backends/vitte_mir/ir/value as mir_val
+
+pull std/collections/set as Set
+pull std/collections/map as Map
+pull std/collections/list as List
+
+
+# ------------------------------------------------------------
+# Types
+# ------------------------------------------------------------
+
+type BlockId = cfg::BlockId
+type ValueId = mir_val::ValueId
+
+
+form LivenessInfo
+    live_in:  Set[ValueId]
+    live_out: Set[ValueId]
+.end
+
+
+form LivenessResult
+    per_block: Map[BlockId, LivenessInfo]
+.end
+
+
+# ------------------------------------------------------------
+# Helpers : use / def d’un bloc
+# ------------------------------------------------------------
+
+proc collect_block_uses_defs
+    block: &mir_block::Block
+-> (Set[ValueId], Set[ValueId])
+
+    let mut uses = Set::new()
+    let mut defs = Set::new()
+
+    for inst in block.instructions.iter()
+
+        # Définitions
+        if inst.defines()
+            defs.insert(inst.def_id())
+        .end
+
+        # Utilisations
+        for v in inst.uses().iter()
+            if not defs.contains(v)
+                uses.insert(v)
+            .end
+        .end
+    .end
+
+    # Terminator
+    for v in block.terminator.uses().iter()
+        if not defs.contains(v)
+            uses.insert(v)
+        .end
+    .end
+
+    give (uses, defs)
+.end
+
+
+# ------------------------------------------------------------
+# Analyse principale
+# ------------------------------------------------------------
+
+proc analyze_liveness
+    func: &mir_fn::Function
+-> LivenessResult
+
+    let cfg = cfg::build_cfg(func)
+
+    let mut uses_map = Map::new()
+    let mut defs_map = Map::new()
+
+    # --------------------------------------------------------
+    # 1) Calcul uses / defs par bloc
+    # --------------------------------------------------------
+
+    for block in func.blocks.iter()
+        let (uses, defs) =
+            collect_block_uses_defs(block)
+
+        uses_map.insert(block.id, uses)
+        defs_map.insert(block.id, defs)
+    .end
+
+    # --------------------------------------------------------
+    # 2) Initialisation
+    # --------------------------------------------------------
+
+    let mut live_in  = Map::new()
+    let mut live_out = Map::new()
+
+    for block in func.blocks.iter()
+        live_in.insert(block.id, Set::new())
+        live_out.insert(block.id, Set::new())
+    .end
+
+    # --------------------------------------------------------
+    # 3) Itération jusqu’au point fixe
+    # --------------------------------------------------------
+
+    let mut changed = true
+
+    while changed
+        changed = false
+
+        # parcours inverse (meilleure convergence)
+        for id in cfg.nodes.keys().rev()
+
+            let old_in  = live_in.get(id).clone()
+            let old_out = live_out.get(id).clone()
+
+            # live_out[B] = union live_in[S] pour S successeurs
+            let mut out = Set::new()
+            for succ in cfg.successors(&cfg, id).iter()
+                out = out.union(live_in.get(succ))
+            .end
+
+            live_out.insert(id, out)
+
+            # live_in[B] = use[B] ∪ (live_out[B] − def[B])
+            let mut in_set =
+                uses_map.get(id).clone()
+
+            let diff =
+                live_out
+                    .get(id)
+                    .difference(defs_map.get(id))
+
+            in_set = in_set.union(diff)
+
+            live_in.insert(id, in_set)
+
+            if old_in != live_in.get(id) or
+               old_out != live_out.get(id)
+                changed = true
+            .end
+        .end
+    .end
+
+    # --------------------------------------------------------
+    # 4) Résultat
+    # --------------------------------------------------------
+
+    let mut per_block = Map::new()
+
+    for block in func.blocks.iter()
+        per_block.insert(
+            block.id,
+            LivenessInfo {
+                live_in  = live_in.get(block.id)
+                live_out = live_out.get(block.id)
+            }
+        )
+    .end
+
+    give LivenessResult {
+        per_block = per_block
+    }
 .end

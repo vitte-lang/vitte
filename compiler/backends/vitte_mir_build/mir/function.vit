@@ -1,4 +1,195 @@
-form MirFunction
-    name: String
-    blocks: List[MirBlock]
+# ============================================================
+# vitte_mir_build::mir::function
+# Définition d’une fonction MIR
+# ============================================================
+
+space vitte/compiler/backends/vitte_mir_build/mir
+
+
+pull vitte/compiler/backends/vitte_mir_build/mir/block as mir_block
+pull vitte/compiler/backends/vitte_mir_build/mir/value as mir_val
+
+pull std/collections/list as List
+pull std/collections/map as Map
+
+
+# ------------------------------------------------------------
+# Identifiants
+# ------------------------------------------------------------
+
+type FunctionId = u32
+type BlockId = mir_block::BlockId
+
+
+# ------------------------------------------------------------
+# Signature MIR
+# ------------------------------------------------------------
+
+form FunctionSig
+    name: string
+    params: List[mir_val::ValueId]
+    ret: Option[mir_val::ValueId]
+.end
+
+
+# ------------------------------------------------------------
+# Fonction MIR
+# ------------------------------------------------------------
+
+form Function
+    id: FunctionId
+    name: string
+    entry: BlockId
+    blocks: List[mir_block::Block]
+.end
+
+
+# ------------------------------------------------------------
+# Constructeurs
+# ------------------------------------------------------------
+
+proc Function::new
+    id: FunctionId
+    name: string
+    entry: BlockId
+-> Function
+
+    give Function {
+        id = id
+        name = name
+        entry = entry
+        blocks = List::new()
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Manipulation des blocs
+# ------------------------------------------------------------
+
+proc Function::add_block
+    self: &mut Function
+    block: mir_block::Block
+-> void
+
+    self.blocks.push(block)
+.end
+
+
+proc Function::block_count
+    self: &Function
+-> u32
+
+    give self.blocks.len
+.end
+
+
+proc Function::get_block
+    self: &Function
+    id: BlockId
+-> &mir_block::Block
+
+    for b in self.blocks.iter()
+        if b.id == id
+            give b
+        .end
+    .end
+
+    panic("block not found")
+.end
+
+
+proc Function::get_block_mut
+    self: &mut Function
+    id: BlockId
+-> &mut mir_block::Block
+
+    for b in self.blocks.iter_mut()
+        if b.id == id
+            give b
+        .end
+    .end
+
+    panic("block not found")
+.end
+
+
+# ------------------------------------------------------------
+# Analyse locale
+# ------------------------------------------------------------
+
+proc Function::all_blocks
+    self: &Function
+-> List[BlockId]
+
+    let mut out = List::new()
+
+    for b in self.blocks.iter()
+        out.push(b.id)
+    .end
+
+    give out
+.end
+
+
+proc Function::all_defs
+    self: &Function
+-> List[mir_val::ValueId]
+
+    let mut out = List::new()
+
+    for b in self.blocks.iter()
+        for v in b.defs().iter()
+            out.push(v)
+        .end
+    .end
+
+    give out
+.end
+
+
+proc Function::all_uses
+    self: &Function
+-> List[mir_val::ValueId]
+
+    let mut out = List::new()
+
+    for b in self.blocks.iter()
+        for v in b.uses().iter()
+            out.push(v)
+        .end
+    .end
+
+    give out
+.end
+
+
+# ------------------------------------------------------------
+# Validation structurelle
+# ------------------------------------------------------------
+
+proc Function::validate
+    self: &Function
+-> bool
+
+    # 1) Bloc d’entrée existant
+    let mut has_entry = false
+    for b in self.blocks.iter()
+        if b.id == self.entry
+            has_entry = true
+        .end
+    .end
+
+    if not has_entry
+        give false
+    .end
+
+    # 2) Tous les blocs ont un terminator
+    for b in self.blocks.iter()
+        if not b.has_terminator()
+            give false
+        .end
+    .end
+
+    give true
 .end

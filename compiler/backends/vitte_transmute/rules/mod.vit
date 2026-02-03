@@ -1,5 +1,84 @@
-pull self/layout
-pull self/primitive
-pull self/aggregate
+# ============================================================
+# vitte_transmute::rules
+# Module racine des règles de transmutation
+# ============================================================
 
-share all
+space vitte/compiler/backends/vitte_transmute/rules
+
+
+# ------------------------------------------------------------
+# Sous-modules de règles
+# ------------------------------------------------------------
+
+# Règles pour types primitifs (scalaires, pointeurs)
+pull vitte/compiler/backends/vitte_transmute/rules/primitive
+
+# Règles pour types agrégés (struct, union, array)
+pull vitte/compiler/backends/vitte_transmute/rules/aggregate
+
+
+# ------------------------------------------------------------
+# Re-exports publics
+# ------------------------------------------------------------
+
+use primitive::analyze_primitive_validity
+use aggregate::analyze_aggregate_validity
+
+
+# ------------------------------------------------------------
+# Dispatch central des règles
+# ------------------------------------------------------------
+
+proc analyze_rules_validity
+    from: &vitte/compiler/backends/vitte_transmute/ir/type::Type
+    to: &vitte/compiler/backends/vitte_transmute/ir/type::Type
+    vctx: &vitte/compiler/backends/vitte_transmute/analysis/validity::ValidityContext
+-> vitte/compiler/backends/vitte_transmute/analysis/validity::Validity
+
+    select from.kind
+
+        # ----------------------------------------------------
+        # Types primitifs
+        # ----------------------------------------------------
+
+        when vitte/compiler/backends/vitte_transmute/ir/type::TypeKind::Bool,
+             vitte/compiler/backends/vitte_transmute/ir/type::TypeKind::I8,
+             vitte/compiler/backends/vitte_transmute/ir/type::TypeKind::I16,
+             vitte/compiler/backends/vitte_transmute/ir/type::TypeKind::I32,
+             vitte/compiler/backends/vitte_transmute/ir/type::TypeKind::I64,
+             vitte/compiler/backends/vitte_transmute/ir/type::TypeKind::F32,
+             vitte/compiler/backends/vitte_transmute/ir/type::TypeKind::F64,
+             vitte/compiler/backends/vitte_transmute/ir/type::TypeKind::Pointer
+
+            give analyze_primitive_validity(
+                from,
+                to,
+                vctx
+            )
+
+
+        # ----------------------------------------------------
+        # Types agrégés
+        # ----------------------------------------------------
+
+        when vitte/compiler/backends/vitte_transmute/ir/type::TypeKind::Struct,
+             vitte/compiler/backends/vitte_transmute/ir/type::TypeKind::Union,
+             vitte/compiler/backends/vitte_transmute/ir/type::TypeKind::Array
+
+            give analyze_aggregate_validity(
+                from,
+                to,
+                vctx
+            )
+
+
+        # ----------------------------------------------------
+        # Autres / non supportés
+        # ----------------------------------------------------
+
+        otherwise
+            give vitte/compiler/backends/vitte_transmute/analysis/validity::Validity::Invalid(
+                "no transmute rules for this type kind"
+            )
+    .end
+.end

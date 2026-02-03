@@ -1,72 +1,156 @@
-codegen_llvm_autodiff_component_unavailable = failed to load our autodiff backend. Did you install it via up?
+# ============================================================
+# vitte_codegen_llvm — Diagnostic messages (FTL)
+# ============================================================
 
-codegen_llvm_autodiff_without_enable = using the autodiff feature requires -Z autodiff=Enable
-codegen_llvm_autodiff_without_lto = using the autodiff feature requires setting `lto="fat"` in your Cargo.toml
 
-codegen_llvm_copy_bitcode = failed to copy bitcode to object file: {$err}
+# ------------------------------------------------------------
+# Général
+# ------------------------------------------------------------
 
-codegen_llvm_fixed_x18_invalid_arch = the `-Zfixed-x18` flag is not supported on the `{$arch}` architecture
+llvm-backend-name = Backend LLVM
 
-codegen_llvm_from_llvm_diag = {$message}
+llvm-backend-init = Initialisation du backend LLVM
+llvm-backend-done = Backend LLVM initialisé avec succès
 
-codegen_llvm_from_llvm_optimization_diag = {$filename}:{$line}:{$column} {$pass_name} ({$kind}): {$message}
 
-codegen_llvm_load_bitcode = failed to load bitcode of module "{$name}"
-codegen_llvm_load_bitcode_with_llvm_err = failed to load bitcode of module "{$name}": {$llvm_err}
+# ------------------------------------------------------------
+# Erreurs générales
+# ------------------------------------------------------------
 
-codegen_llvm_lto_bitcode_from_rlib = failed to get bitcode from object file for LTO ({$err})
+llvm-error-internal =
+    Erreur interne du backend LLVM.
+    Détails : { $details }
 
-codegen_llvm_mismatch_data_layout =
-    data-layout for target `{$c_target}`, `{$c_layout}`, differs from LLVM target's `{$llvm_target}` default layout, `{$llvm_layout}`
+llvm-error-unsupported =
+    Fonctionnalité non supportée par le backend LLVM.
+    Élément : { $feature }
 
-codegen_llvm_offload_bundleimages_failed = call to BundleImages failed, `host.out` was not created
-codegen_llvm_offload_embed_failed = call to EmbedBufferInModule failed, `host.o` was not created
-codegen_llvm_offload_no_abs_path = using the `-Z offload=Host=/absolute/path/to/host.out` flag requires an absolute path
-codegen_llvm_offload_no_host_out = using the `-Z offload=Host=/absolute/path/to/host.out` flag must point to a `host.out` file
-codegen_llvm_offload_nonexisting = the given path/file to `host.out` does not exist. Did you forget to run the device compilation first?
-codegen_llvm_offload_without_enable = using the offload feature requires -Z offload=<Device or Host=/absolute/path/to/host.out>
-codegen_llvm_offload_without_fat_lto = using the offload feature requires -C lto=fat
+llvm-error-invalid-state =
+    État interne invalide du backend LLVM.
+    Contexte : { $context }
 
-codegen_llvm_parse_bitcode = failed to parse bitcode for LTO module
-codegen_llvm_parse_bitcode_with_llvm_err = failed to parse bitcode for LTO module: {$llvm_err}
 
-codegen_llvm_parse_target_machine_config =
-    failed to parse target machine config to target machine: {$error}
+# ------------------------------------------------------------
+# Cible / Target
+# ------------------------------------------------------------
 
-codegen_llvm_prepare_autodiff = failed to prepare autodiff: src: {$src}, target: {$target}, {$error}
-codegen_llvm_prepare_autodiff_with_llvm_err = failed to prepare autodiff: {$llvm_err}, src: {$src}, target: {$target}, {$error}
-codegen_llvm_prepare_thin_lto_context = failed to prepare thin LTO context
-codegen_llvm_prepare_thin_lto_context_with_llvm_err = failed to prepare thin LTO context: {$llvm_err}
+llvm-error-target-not-found =
+    Cible LLVM introuvable.
+    Triple : { $triple }
 
-codegen_llvm_prepare_thin_lto_module = failed to prepare thin LTO module
-codegen_llvm_prepare_thin_lto_module_with_llvm_err = failed to prepare thin LTO module: {$llvm_err}
+llvm-error-target-machine-failed =
+    Impossible de créer le TargetMachine LLVM.
+    Triple : { $triple }
+    CPU : { $cpu }
+    Features : { $features }
 
-codegen_llvm_run_passes = failed to run LLVM passes
-codegen_llvm_run_passes_with_llvm_err = failed to run LLVM passes: {$llvm_err}
 
-codegen_llvm_sanitizer_kcfi_arity_requires_llvm_21_0_0 = `-Zsanitizer-kcfi-arity` requires LLVM 21.0.0 or later.
+# ------------------------------------------------------------
+# Module LLVM
+# ------------------------------------------------------------
 
-codegen_llvm_sanitizer_memtag_requires_mte =
-    `-Zsanitizer=memtag` requires `-Ctarget-feature=+mte`
+llvm-error-module-verify =
+    Vérification du module LLVM échouée.
+    Le module généré est invalide.
 
-codegen_llvm_serialize_module = failed to serialize module {$name}
-codegen_llvm_serialize_module_with_llvm_err = failed to serialize module {$name}: {$llvm_err}
+llvm-info-module-verify-ok =
+    Vérification du module LLVM réussie.
 
-codegen_llvm_symbol_already_defined =
-    symbol `{$symbol_name}` is already defined
+llvm-info-module-lowering =
+    Lowering MIR → LLVM pour le module « { $module } »
 
-codegen_llvm_target_machine = could not create LLVM TargetMachine for triple: {$triple}
-codegen_llvm_target_machine_with_llvm_err = could not create LLVM TargetMachine for triple: {$triple}: {$llvm_err}
 
-codegen_llvm_unknown_debuginfo_compression = unknown debuginfo compression algorithm {$algorithm} - will fall back to uncompressed debuginfo
+# ------------------------------------------------------------
+# Fonctions
+# ------------------------------------------------------------
 
-codegen_llvm_write_bytecode = failed to write bytecode to {$path}: {$err}
+llvm-error-function-verify =
+    Vérification LLVM échouée pour la fonction « { $function } ».
 
-codegen_llvm_write_ir = failed to write LLVM IR to {$path}
-codegen_llvm_write_ir_with_llvm_err = failed to write LLVM IR to {$path}: {$llvm_err}
+llvm-error-function-undeclared =
+    Appel à une fonction non déclarée.
+    Fonction : { $function }
 
-codegen_llvm_write_output = could not write output to {$path}
-codegen_llvm_write_output_with_llvm_err = could not write output to {$path}: {$llvm_err}
+llvm-info-function-lowering =
+    Lowering de la fonction « { $function } »
 
-codegen_llvm_write_thinlto_key = error while writing ThinLTO key data: {$err}
-codegen_llvm_write_thinlto_key_with_llvm_err = error while writing ThinLTO key data: {$err}: {$llvm_err}
+llvm-info-function-done =
+    Fonction « { $function } » générée avec succès.
+
+
+# ------------------------------------------------------------
+# Expressions / Instructions
+# ------------------------------------------------------------
+
+llvm-error-expr-unsupported =
+    Expression MIR non supportée par le backend LLVM.
+    Type : { $expr }
+
+llvm-error-expr-null =
+    Le lowering d’une expression LLVM a produit une valeur nulle.
+    Expression : { $expr }
+
+
+# ------------------------------------------------------------
+# Types
+# ------------------------------------------------------------
+
+llvm-error-type-unsupported =
+    Type Vitte non supporté par le backend LLVM.
+    Type : { $type }
+
+llvm-error-type-mismatch =
+    Incohérence de types lors du lowering LLVM.
+    Attendu : { $expected }
+    Obtenu : { $actual }
+
+
+# ------------------------------------------------------------
+# Passes LLVM
+# ------------------------------------------------------------
+
+llvm-info-passes-start =
+    Démarrage du pipeline de passes LLVM.
+    Niveau d’optimisation : { $opt }
+
+llvm-info-passes-done =
+    Pipeline de passes LLVM terminé.
+
+llvm-error-passes-failed =
+    Une passe LLVM a échoué durant l’optimisation.
+
+
+# ------------------------------------------------------------
+# Émission
+# ------------------------------------------------------------
+
+llvm-info-emit-start =
+    Émission LLVM vers le fichier :
+    Chemin : { $path }
+    Format : { $format }
+
+llvm-info-emit-done =
+    Émission LLVM terminée avec succès.
+    Fichier généré : { $path }
+
+llvm-error-emit-open-failed =
+    Impossible d’ouvrir le fichier de sortie.
+    Chemin : { $path }
+
+llvm-error-emit-failed =
+    Échec de l’émission LLVM.
+    Format : { $format }
+
+
+# ------------------------------------------------------------
+# Tests / Debug
+# ------------------------------------------------------------
+
+llvm-info-smoke-start =
+    Démarrage du smoke test du backend LLVM.
+
+llvm-info-smoke-ok =
+    Smoke test du backend LLVM réussi.
+
+llvm-error-smoke-failed =
+    Échec du smoke test du backend LLVM.

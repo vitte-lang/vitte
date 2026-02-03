@@ -1,4 +1,213 @@
-trait MirVisitor
-    fn visit_block(block: mir::MirBlock)
-    fn visit_instr(instr: mir::MirInstr)
+# ============================================================
+# vitte_mir_transform::utils::visitor
+# Visiteur générique du MIR
+# ============================================================
+
+space vitte/compiler/backends/vitte_mir_transform/utils
+
+
+# ------------------------------------------------------------
+# Imports
+# ------------------------------------------------------------
+
+pull vitte/compiler/backends/vitte_mir_build/mir/mod as mir
+
+
+# ------------------------------------------------------------
+# Interface du visiteur (lecture seule)
+# ------------------------------------------------------------
+
+form MirVisitor
+
+    # Fonction
+    proc visit_function
+        self: &MirVisitor
+        func: &mir::Function
+    -> void
+    .end
+
+    # Bloc
+    proc visit_block
+        self: &MirVisitor
+        block: &mir::Block
+    -> void
+    .end
+
+    # Instruction
+    proc visit_instr
+        self: &MirVisitor
+        instr: &mir::Instr
+    -> void
+    .end
+
+    # Terminator
+    proc visit_terminator
+        self: &MirVisitor
+        term: &mir::Terminator
+    -> void
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Interface du visiteur mutable
+# ------------------------------------------------------------
+
+form MirVisitorMut
+
+    proc visit_function
+        self: &mut MirVisitorMut
+        func: &mut mir::Function
+    -> void
+    .end
+
+    proc visit_block
+        self: &mut MirVisitorMut
+        block: &mut mir::Block
+    -> void
+    .end
+
+    proc visit_instr
+        self: &mut MirVisitorMut
+        instr: &mut mir::Instr
+    -> void
+    .end
+
+    proc visit_terminator
+        self: &mut MirVisitorMut
+        term: &mut mir::Terminator
+    -> void
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Traversée standard (lecture seule)
+# ------------------------------------------------------------
+
+proc walk_function
+    visitor: &MirVisitor
+    func: &mir::Function
+-> void
+
+    visitor.visit_function(func)
+
+    for b in func.blocks.iter()
+        walk_block(visitor, b)
+    .end
+.end
+
+
+proc walk_block
+    visitor: &MirVisitor
+    block: &mir::Block
+-> void
+
+    visitor.visit_block(block)
+
+    for inst in block.instructions.iter()
+        visitor.visit_instr(inst)
+    .end
+
+    if block.terminator.is_some()
+        visitor.visit_terminator(
+            block.terminator.unwrap()
+        )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Traversée standard (mutable)
+# ------------------------------------------------------------
+
+proc walk_function_mut
+    visitor: &mut MirVisitorMut
+    func: &mut mir::Function
+-> void
+
+    visitor.visit_function(func)
+
+    for b in func.blocks.iter_mut()
+        walk_block_mut(visitor, b)
+    .end
+.end
+
+
+proc walk_block_mut
+    visitor: &mut MirVisitorMut
+    block: &mut mir::Block
+-> void
+
+    visitor.visit_block(block)
+
+    for inst in block.instructions.iter_mut()
+        visitor.visit_instr(inst)
+    .end
+
+    if block.terminator.is_some()
+        let mut t = block.terminator.unwrap()
+        visitor.visit_terminator(&mut t)
+        block.terminator = Some(t)
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Visiteur vide par défaut
+# ------------------------------------------------------------
+
+form EmptyVisitor
+
+    proc visit_function
+        self: &EmptyVisitor
+        _: &mir::Function
+    -> void
+    .end
+
+    proc visit_block
+        self: &EmptyVisitor
+        _: &mir::Block
+    -> void
+    .end
+
+    proc visit_instr
+        self: &EmptyVisitor
+        _: &mir::Instr
+    -> void
+    .end
+
+    proc visit_terminator
+        self: &EmptyVisitor
+        _: &mir::Terminator
+    -> void
+    .end
+.end
+
+
+form EmptyVisitorMut
+
+    proc visit_function
+        self: &mut EmptyVisitorMut
+        _: &mut mir::Function
+    -> void
+    .end
+
+    proc visit_block
+        self: &mut EmptyVisitorMut
+        _: &mut mir::Block
+    -> void
+    .end
+
+    proc visit_instr
+        self: &mut EmptyVisitorMut
+        _: &mut mir::Instr
+    -> void
+    .end
+
+    proc visit_terminator
+        self: &mut EmptyVisitorMut
+        _: &mut mir::Terminator
+    -> void
+    .end
 .end

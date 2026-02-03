@@ -1,2 +1,172 @@
-proc encode_type(ty)
+# ============================================================
+# vitte_target::schemes::simple
+# Simple name mangling scheme (Vitte-native)
+# ============================================================
+
+space vitte/compiler/backends/vitte_target/schemes
+
+
+# ------------------------------------------------------------
+# ABI metadata
+# ------------------------------------------------------------
+
+form AbiScheme
+    name: string
+    version: string
 .end
+
+
+proc simple_scheme
+-> AbiScheme
+
+    give AbiScheme {
+        name = "simple"
+        version = "vitte-1.0"
+    }
+.end
+
+
+# ------------------------------------------------------------
+# Utilitaires
+# ------------------------------------------------------------
+
+proc join
+    parts: [string]
+    sep: string
+-> string
+
+    let mut out = ""
+    let mut first = true
+
+    for p in parts
+        if not first
+            out = out + sep
+        .end
+        out = out + p
+        first = false
+    .end
+
+    give out
+.end
+
+
+# ------------------------------------------------------------
+# Types (représentation textuelle simple)
+# ------------------------------------------------------------
+
+pick SimpleType
+    case Void
+    case Bool
+    case I8
+    case U8
+    case I16
+    case U16
+    case I32
+    case U32
+    case I64
+    case U64
+    case F32
+    case F64
+    case Ptr
+.end
+
+
+proc type_name
+    ty: SimpleType
+-> string
+
+    select ty
+        when SimpleType::Void give "void"
+        when SimpleType::Bool give "bool"
+        when SimpleType::I8   give "i8"
+        when SimpleType::U8   give "u8"
+        when SimpleType::I16  give "i16"
+        when SimpleType::U16  give "u16"
+        when SimpleType::I32  give "i32"
+        when SimpleType::U32  give "u32"
+        when SimpleType::I64  give "i64"
+        when SimpleType::U64  give "u64"
+        when SimpleType::F32  give "f32"
+        when SimpleType::F64  give "f64"
+        when SimpleType::Ptr  give "ptr"
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Fonctions
+# ------------------------------------------------------------
+
+form FunctionSig
+    name: string
+    namespaces: [string]
+    param_types: [SimpleType]
+    return_type: SimpleType
+.end
+
+
+proc mangle_function
+    sig: &FunctionSig
+-> string
+
+    # Format :
+    # <ns>::<name>(<param1>,<param2>)-><ret>
+
+    let mut out = ""
+
+    if sig.namespaces.len > 0
+        out =
+            join(sig.namespaces, "::") +
+            "::"
+    .end
+
+    out = out + sig.name
+    out = out + "("
+
+    if sig.param_types.len == 0
+        out = out + "void"
+    .end
+    otherwise
+        let mut params = []
+        for t in sig.param_types
+            params.push(type_name(t))
+        .end
+        out = out + join(params, ",")
+    .end
+
+    out = out + ")->"
+    out = out + type_name(sig.return_type)
+
+    give out
+.end
+
+
+# ------------------------------------------------------------
+# Variables globales
+# ------------------------------------------------------------
+
+proc mangle_global
+    name: string
+    namespaces: [string]
+-> string
+
+    # Format :
+    # <ns>::<name>
+
+    if namespaces.len > 0
+        give join(namespaces, "::") + "::" + name
+    .end
+
+    give name
+.end
+
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+# - Aucune compression, aucune substitution
+# - Noms longs mais lisibles
+# - Stable entre plateformes
+# - Idéal pour debug, IR, SSA, tooling
+# - Peut servir de base pour un futur ABI Vitte officiel
+# ============================================================

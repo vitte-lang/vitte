@@ -1,5 +1,111 @@
-proc codegen_module(ctx: CodegenContext, m: ir::Module)
-    for f in m.functions
-        codegen_function(ctx, f)
-    end
+# ============================================================
+# vitte_codegen_gcc::module
+# Orchestration du codegen GCC au niveau module
+# ============================================================
+
+space vitte/compiler/backends/vitte_codegen_gcc
+
+pull vitte/compiler/mir/ast as mir
+
+pull vitte/compiler/backends/vitte_codegen_gcc/context as gcc_ctx
+pull vitte/compiler/backends/vitte_codegen_gcc/function
+pull vitte/compiler/backends/vitte_codegen_gcc/errors as gcc_err
+
+
+# ------------------------------------------------------------
+# Backend de module GCC
+# ------------------------------------------------------------
+
+form ModuleBackend
+    ctx: &mut gcc_ctx::CodegenCtx
+.end
+
+
+# ------------------------------------------------------------
+# Construction
+# ------------------------------------------------------------
+
+proc ModuleBackend::new
+    ctx: &mut gcc_ctx::CodegenCtx
+-> ModuleBackend
+    give ModuleBackend
+        ctx = ctx
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Phase 1 — Déclaration des symboles
+# ------------------------------------------------------------
+
+proc ModuleBackend::declare
+    self: &mut ModuleBackend
+    program: &mir::Program
+-> ()
+
+    for func in program.functions
+        self.ctx.declare_function(
+            func.id,
+            func.sig
+        )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Phase 2 — Génération du code
+# ------------------------------------------------------------
+
+proc ModuleBackend::codegen
+    self: &mut ModuleBackend
+    program: &mir::Program
+-> ()
+
+    for func in program.functions
+        function::lower_fn(
+            self.ctx,
+            func
+        )
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Phase 3 — Finalisation du module
+# ------------------------------------------------------------
+
+proc ModuleBackend::finalize
+    self: &mut ModuleBackend
+-> ()
+
+    # Côté GCC, la finalisation se fait au niveau de l’unité
+    # (RTL emission, asm, ou JIT selon l’implémentation)
+    gcc_finalize_module()
+.end
+
+
+# ------------------------------------------------------------
+# API compacte (module → unité GCC)
+# ------------------------------------------------------------
+
+proc compile_module
+    ctx: &mut gcc_ctx::CodegenCtx
+    program: &mir::Program
+-> ()
+
+    let mut backend = ModuleBackend::new(ctx)
+
+    backend.declare(program)
+    backend.codegen(program)
+    backend.finalize()
+.end
+
+
+# ------------------------------------------------------------
+# Helpers GCC externes (FFI)
+# ------------------------------------------------------------
+
+# Finalisation de l’unité de compilation GCC
+proc gcc_finalize_module
+-> ()
 .end
