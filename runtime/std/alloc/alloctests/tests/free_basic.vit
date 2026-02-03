@@ -1,1 +1,96 @@
-// alloc tests skeleton
+space vitte/runtime/std/alloc/alloctests/tests
+
+# ============================================================
+# Basic free / deallocation correctness tests
+# - Validates allocator behavior on drop/free paths
+# - Complements free benches with correctness checks
+# ============================================================
+
+pull vitte/runtime/std/alloc/alloctests/tests/utils
+
+# ------------------------------------------------------------
+# Tests
+# ------------------------------------------------------------
+
+proc test_free_lifo give bool
+    # Allocate blocks and free in LIFO order
+    let blocks: List of List of u8 = []
+    let i = 0
+    loop while i < 128
+        let buf: List of u8 = []
+        let j = 0
+        loop while j < 64
+            buf.push(0)
+            j = j + 1
+        .end
+        blocks.push(buf)
+        i = i + 1
+    .end
+
+    utils::assert_len(blocks, 128, "initial block count mismatch")
+
+    # Free LIFO
+    let k = blocks.len
+    loop while k > 0
+        blocks.pop()
+        k = k - 1
+    .end
+
+    utils::assert_len(blocks, 0, "blocks not fully freed (LIFO)")
+    give true
+.end
+
+proc test_free_fifo give bool
+    # Allocate blocks and free in FIFO order
+    let blocks: List of List of u8 = []
+    let i = 0
+    loop while i < 128
+        let buf: List of u8 = []
+        let j = 0
+        loop while j < 64
+            buf.push(0)
+            j = j + 1
+        .end
+        blocks.push(buf)
+        i = i + 1
+    .end
+
+    utils::assert_len(blocks, 128, "initial block count mismatch")
+
+    # Free FIFO
+    loop while blocks.len > 0
+        blocks.remove(0)
+    .end
+
+    utils::assert_len(blocks, 0, "blocks not fully freed (FIFO)")
+    give true
+.end
+
+proc test_free_reuse give bool
+    # Allocate, free, then allocate again to ensure reuse path is safe
+    let blocks1 = utils::pattern_batch_alloc(64, 128)
+    utils::assert_len(blocks1, 64, "first batch alloc failed")
+
+    # Drop all blocks
+    let i = 0
+    loop while i < blocks1.len
+        blocks1[i] = []
+        i = i + 1
+    .end
+
+    # Reallocate
+    let blocks2 = utils::pattern_batch_alloc(64, 128)
+    utils::assert_len(blocks2, 64, "second batch alloc failed")
+    give true
+.end
+
+# ------------------------------------------------------------
+# Entry
+# ------------------------------------------------------------
+
+proc free_basic_tests give bool
+    test_free_lifo()
+    test_free_fifo()
+    test_free_reuse()
+    give true
+.end

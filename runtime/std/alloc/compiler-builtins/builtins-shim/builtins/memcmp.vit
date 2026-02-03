@@ -1,1 +1,77 @@
-// compiler-builtins shim skeleton
+space vitte/runtime/std/alloc/compiler-builtins/builtins-shim/builtins
+
+# ============================================================
+# memcmp builtin shim
+# - Byte-wise memory comparison
+# - Required by compiler-builtins and runtime
+# ============================================================
+
+# ------------------------------------------------------------
+# Core implementation
+# ------------------------------------------------------------
+
+proc memcmp(a: *const u8, b: *const u8, len: usize) give i32
+    let i: usize = 0
+    loop while i < len
+        let va = a[i]
+        let vb = b[i]
+        if va < vb
+            give -1
+        .end
+        if va > vb
+            give 1
+        .end
+        i = i + 1
+    .end
+    give 0
+.end
+
+# ------------------------------------------------------------
+# Convenience wrappers (typed)
+# ------------------------------------------------------------
+
+proc memcmp_u8(a: List of u8, b: List of u8) give i32
+    let la = a.len
+    let lb = b.len
+    let n =
+        if la < lb
+            la
+        else
+            lb
+        .end
+
+    let r = memcmp(a.as_ptr(), b.as_ptr(), n)
+    if r != 0
+        give r
+    .end
+
+    if la < lb
+        give -1
+    .end
+    if la > lb
+        give 1
+    .end
+    give 0
+.end
+
+# ------------------------------------------------------------
+# Test self-check
+# ------------------------------------------------------------
+
+proc test_memcmp_basic give bool
+    let a: List of u8 = [1, 2, 3]
+    let b: List of u8 = [1, 2, 3]
+    let c: List of u8 = [1, 2, 4]
+
+    if memcmp_u8(a, b) != 0
+        panic("memcmp equal failed")
+    .end
+    if memcmp_u8(a, c) >= 0
+        panic("memcmp less-than failed")
+    .end
+    if memcmp_u8(c, a) <= 0
+        panic("memcmp greater-than failed")
+    .end
+
+    give true
+.end

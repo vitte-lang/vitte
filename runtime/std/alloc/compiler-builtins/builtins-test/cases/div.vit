@@ -1,1 +1,141 @@
-// compiler-builtins tests skeleton
+# ============================================================
+# div.vit — compiler-builtins tests
+# ============================================================
+# Tests pour :
+# - udiv
+# - urem
+#
+# Ces tests valident :
+# - exactitude arithmétique
+# - invariants fondamentaux
+# - cas limites
+# ============================================================
+
+space std/alloc/compiler_builtins/builtins_test/cases
+
+
+# ------------------------------------------------------------
+# Imports
+# ------------------------------------------------------------
+
+pull std/alloc/compiler_builtins
+pull std/test/assert
+
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc check_div(n: usize, d: usize, q: usize, r: usize)
+    assert.eq(udiv(n, d), q)
+    assert.eq(urem(n, d), r)
+
+    # invariant fondamental :
+    # n == q * d + r
+    assert.eq(q * d + r, n)
+
+    # invariant du reste
+    assert.lt(r, d)
+.end
+
+
+# ------------------------------------------------------------
+# Cas triviaux
+# ------------------------------------------------------------
+
+#[test]
+proc div_trivial()
+    check_div(0, 1, 0, 0)
+    check_div(1, 1, 1, 0)
+    check_div(5, 1, 5, 0)
+    check_div(1, 2, 0, 1)
+    check_div(2, 3, 0, 2)
+.end
+
+
+# ------------------------------------------------------------
+# Cas simples
+# ------------------------------------------------------------
+
+#[test]
+proc div_simple()
+    check_div(10, 2, 5, 0)
+    check_div(10, 3, 3, 1)
+    check_div(10, 4, 2, 2)
+    check_div(9, 3, 3, 0)
+    check_div(7, 3, 2, 1)
+.end
+
+
+# ------------------------------------------------------------
+# Puissances de deux
+# ------------------------------------------------------------
+
+#[test]
+proc div_powers_of_two()
+    check_div(8, 2, 4, 0)
+    check_div(8, 4, 2, 0)
+    check_div(8, 8, 1, 0)
+    check_div(9, 8, 1, 1)
+    check_div(15, 8, 1, 7)
+.end
+
+
+# ------------------------------------------------------------
+# Cas limites (usize)
+# ------------------------------------------------------------
+
+#[test]
+proc div_limits()
+    let max: usize = usize.max()
+
+    check_div(max, 1, max, 0)
+    check_div(max, 2, max / 2, max % 2)
+    check_div(max, 3, max / 3, max % 3)
+.end
+
+
+# ------------------------------------------------------------
+# Boucle de vérification large
+# ------------------------------------------------------------
+# Vérifie systématiquement les invariants
+# sur une plage contrôlée
+# ------------------------------------------------------------
+
+#[test]
+proc div_exhaustive_small()
+    let n: usize = 0
+    loop while n < 256
+        let d: usize = 1
+        loop while d < 16
+            let q = udiv(n, d)
+            let r = urem(n, d)
+
+            assert.eq(q * d + r, n)
+            assert.lt(r, d)
+
+            set d = d + 1
+        .end
+        set n = n + 1
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Division par zéro
+# ------------------------------------------------------------
+# Le comportement attendu est un TRAP
+# ------------------------------------------------------------
+
+#[test]
+#[should_trap]
+proc div_by_zero_udiv()
+    udiv(1, 0)
+.end
+
+
+#[test]
+#[should_trap]
+proc div_by_zero_urem()
+    urem(1, 0)
+.end

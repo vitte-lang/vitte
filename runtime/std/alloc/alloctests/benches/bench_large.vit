@@ -1,1 +1,101 @@
-// alloc tests benches skeleton
+space vitte/runtime/std/alloc/alloctests/benches
+
+# ============================================================
+# Allocator large allocation benchmark
+# - Focus on large blocks (64 KiB → several MiB)
+# - Stresses virtual memory, mmap / large arenas
+# ============================================================
+
+pull vitte/runtime/std/alloc/alloctests/benches/utils
+
+# ------------------------------------------------------------
+# Large allocation workloads
+# ------------------------------------------------------------
+
+proc alloc_large_fixed()
+    # Allocate and drop a fixed large block (1 MiB)
+    let size = 1_048_576
+    let buf: List of u8 = []
+    let i = 0
+    loop while i < size
+        buf.push(0)
+        i = i + 1
+    .end
+.end
+
+proc alloc_large_growing()
+    # Allocate growing sizes: 64 KiB → 4 MiB
+    let r = utils::rng_default()
+    let size = utils::next_range(r, 65_536, 4_194_304)
+    let buf: List of u8 = []
+    let i = 0
+    loop while i < size
+        buf.push(0)
+        i = i + 1
+    .end
+.end
+
+proc alloc_large_churn()
+    # Keep several large blocks alive, rotate allocations
+    let r = utils::rng_default()
+    let blocks: List of List of u8 = []
+
+    # Initial population
+    let i = 0
+    loop while i < 64
+        let size = utils::next_range(r, 262_144, 2_097_152)
+        let buf: List of u8 = []
+        let j = 0
+        loop while j < size
+            buf.push(0)
+            j = j + 1
+        .end
+        blocks.push(buf)
+        i = i + 1
+    .end
+
+    # Churn large blocks
+    let k = 0
+    loop while k < 256
+        let idx = utils::next_range(r, 0, blocks.len)
+        blocks[idx] = []   # drop large block
+
+        let size2 = utils::next_range(r, 262_144, 2_097_152)
+        let buf2: List of u8 = []
+        let j2 = 0
+        loop while j2 < size2
+            buf2.push(0)
+            j2 = j2 + 1
+        .end
+        blocks[idx] = buf2
+
+        k = k + 1
+    .end
+.end
+
+# ------------------------------------------------------------
+# Bench runner
+# ------------------------------------------------------------
+
+proc bench_large()
+    let cfg_fixed = utils::MeasureConfig(
+        name: "alloc_large_fixed",
+        warmup: 20,
+        iterations: 100
+    )
+    do utils::measure(cfg_fixed, alloc_large_fixed)
+
+    let cfg_grow = utils::MeasureConfig(
+        name: "alloc_large_growing",
+        warmup: 20,
+        iterations: 100
+    )
+    do utils::measure(cfg_grow, alloc_large_growing)
+
+    let cfg_churn = utils::MeasureConfig(
+        name: "alloc_large_churn",
+        warmup: 10,
+        iterations: 50
+    )
+    do utils::measure(cfg_churn, alloc_large_churn)
+.end

@@ -1,1 +1,234 @@
 // compiler-builtins shim skeleton
+# ============================================================
+# target.vit — compiler-builtins shim / config
+# ============================================================
+# Description complète de la cible d’exécution
+#
+# Objectifs :
+# - Centraliser les infos target
+# - Éviter les #ifdef dispersés
+# - Permettre décisions runtime / compile-time
+# ============================================================
+
+space std/alloc/compiler_builtins/builtins_shim/config
+
+
+# ------------------------------------------------------------
+# Types fondamentaux
+# ------------------------------------------------------------
+
+type bool  = builtin.bool
+type usize = builtin.usize
+
+
+# ------------------------------------------------------------
+# Enums structurants
+# ------------------------------------------------------------
+
+pick Endianness
+    Little
+    Big
+.end
+
+
+pick Architecture
+    X86
+    X86_64
+    ARM
+    AARCH64
+    RISCV32
+    RISCV64
+    WASM32
+    WASM64
+    UNKNOWN
+.end
+
+
+pick OperatingSystem
+    Linux
+    Darwin
+    Windows
+    FreeBSD
+    OpenBSD
+    NetBSD
+    WASI
+    BareMetal
+    UNKNOWN
+.end
+
+
+pick Abi
+    SystemV
+    MSVC
+    GNU
+    WASM
+    Embedded
+    UNKNOWN
+.end
+
+
+# ------------------------------------------------------------
+# Structure Target
+# ------------------------------------------------------------
+# Cette structure est le contrat absolu target ↔ runtime
+# ------------------------------------------------------------
+
+form Target
+    # Identification
+    arch: Architecture
+    os: OperatingSystem
+    abi: Abi
+
+    # Mémoire
+    pointer_bits: usize        # 32 / 64
+    native_word_bits: usize    # souvent == pointer_bits
+    endianness: Endianness
+
+    # Capacités CPU
+    has_unaligned_access: bool
+    has_fast_mul: bool
+    has_fast_div: bool
+    has_fast_shift: bool
+
+    # Division / modulo matériel
+    has_udiv: bool
+    has_urem: bool
+    has_sdiv: bool
+    has_srem: bool
+
+    # Largeurs étendues
+    has_u128: bool
+    has_i128: bool
+
+    # Environnement
+    is_hosted: bool        # libc / OS présents
+    is_freestanding: bool # bare metal / kernel
+.end
+
+
+# ------------------------------------------------------------
+# Target générique — STAGE0 / inconnu
+# ------------------------------------------------------------
+
+#[export]
+const GENERIC_TARGET: Target = Target(
+    arch = Architecture.UNKNOWN,
+    os   = OperatingSystem.UNKNOWN,
+    abi  = Abi.UNKNOWN,
+
+    pointer_bits     = builtin.usize_bits(),
+    native_word_bits = builtin.usize_bits(),
+    endianness       = Endianness.Little,
+
+    has_unaligned_access = false,
+    has_fast_mul         = false,
+    has_fast_div         = false,
+    has_fast_shift       = true,
+
+    has_udiv = false,
+    has_urem = false,
+    has_sdiv = false,
+    has_srem = false,
+
+    has_u128 = false,
+    has_i128 = false,
+
+    is_hosted       = false,
+    is_freestanding = true,
+)
+
+
+# ------------------------------------------------------------
+# Target x86_64 Linux (System V)
+# ------------------------------------------------------------
+
+#[export]
+const X86_64_LINUX: Target = Target(
+    arch = Architecture.X86_64,
+    os   = OperatingSystem.Linux,
+    abi  = Abi.SystemV,
+
+    pointer_bits     = 64,
+    native_word_bits = 64,
+    endianness       = Endianness.Little,
+
+    has_unaligned_access = true,
+    has_fast_mul         = true,
+    has_fast_div         = true,
+    has_fast_shift       = true,
+
+    has_udiv = true,
+    has_urem = true,
+    has_sdiv = true,
+    has_srem = true,
+
+    has_u128 = true,
+    has_i128 = true,
+
+    is_hosted       = true,
+    is_freestanding = false,
+)
+
+
+# ------------------------------------------------------------
+# Target AArch64 Darwin (macOS)
+# ------------------------------------------------------------
+
+#[export]
+const AARCH64_DARWIN: Target = Target(
+    arch = Architecture.AARCH64,
+    os   = OperatingSystem.Darwin,
+    abi  = Abi.SystemV,
+
+    pointer_bits     = 64,
+    native_word_bits = 64,
+    endianness       = Endianness.Little,
+
+    has_unaligned_access = true,
+    has_fast_mul         = true,
+    has_fast_div         = true,
+    has_fast_shift       = true,
+
+    has_udiv = true,
+    has_urem = true,
+    has_sdiv = true,
+    has_srem = true,
+
+    has_u128 = true,
+    has_i128 = true,
+
+    is_hosted       = true,
+    is_freestanding = false,
+)
+
+
+# ------------------------------------------------------------
+# Target WASM32 (WASI)
+# ------------------------------------------------------------
+
+#[export]
+const WASM32_WASI: Target = Target(
+    arch = Architecture.WASM32,
+    os   = OperatingSystem.WASI,
+    abi  = Abi.WASM,
+
+    pointer_bits     = 32,
+    native_word_bits = 32,
+    endianness       = Endianness.Little,
+
+    has_unaligned_access = true,
+    has_fast_mul         = true,
+    has_fast_div         = false,
+    has_fast_shift       = true,
+
+    has_udiv = false,
+    has_urem = false,
+    has_sdiv = false,
+    has_srem = false,
+
+    has_u128 = false,
+    has_i128 = false,
+
+    is_hosted       = true,
+    is_freestanding = false,
+)

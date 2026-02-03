@@ -1,1 +1,109 @@
-// alloc tests skeleton
+space vitte/runtime/std/alloc/alloctests/tests
+
+# ============================================================
+# Allocator fragmentation correctness tests
+# - Validates allocator stability under fragmentation patterns
+# - Uses deterministic workloads
+# ============================================================
+
+pull vitte/runtime/std/alloc/alloctests/tests/utils
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc sum_sizes(blocks: List of List of u8) give usize
+    let total: usize = 0
+    let i = 0
+    loop while i < blocks.len
+        total = total + blocks[i].len
+        i = i + 1
+    .end
+    give total
+.end
+
+# ------------------------------------------------------------
+# Tests
+# ------------------------------------------------------------
+
+proc test_fragmentation_churn give bool
+    let blocks: List of List of u8 = []
+
+    # Initial allocation
+    let i = 0
+    loop while i < 64
+        let buf: List of u8 = []
+        let j = 0
+        loop while j < 128
+            buf.push(0)
+            j = j + 1
+        .end
+        blocks.push(buf)
+        i = i + 1
+    .end
+
+    utils::assert_len(blocks, 64, "initial block count mismatch")
+
+    # Fragmentation churn
+    let k = 0
+    loop while k < 512
+        let idx = k % blocks.len
+        blocks[idx] = []     # free block
+
+        let buf2: List of u8 = []
+        let j2 = 0
+        loop while j2 < 64
+            buf2.push(0)
+            j2 = j2 + 1
+        .end
+        blocks[idx] = buf2
+        k = k + 1
+    .end
+
+    utils::assert_len(blocks, 64, "block count changed after churn")
+    give true
+.end
+
+proc test_fragmentation_stability give bool
+    let blocks = utils::pattern_batch_alloc(32, 256)
+    let before = sum_sizes(blocks)
+
+    # Drop half of the blocks
+    let i = 0
+    loop while i < blocks.len
+        if (i % 2) == 0
+            blocks[i] = []
+        .end
+        i = i + 1
+    .end
+
+    # Reallocate dropped slots
+    let j = 0
+    loop while j < blocks.len
+        if blocks[j].len == 0
+            let buf: List of u8 = []
+            let k = 0
+            loop while k < 128
+                buf.push(0)
+                k = k + 1
+            .end
+            blocks[j] = buf
+        .end
+        j = j + 1
+    .end
+
+    let after = sum_sizes(blocks)
+    utils::assert_gt(after, 0, "total size invalid after fragmentation")
+    utils::assert_ne(before, 0, "initial total size invalid")
+    give true
+.end
+
+# ------------------------------------------------------------
+# Entry
+# ------------------------------------------------------------
+
+proc alloc_fragmentation_tests give bool
+    test_fragmentation_churn()
+    test_fragmentation_stability()
+    give true
+.end

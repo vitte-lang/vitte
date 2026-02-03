@@ -1,1 +1,55 @@
-// compiler-builtins shim skeleton
+# ============================================================
+# memcpy.vit — compiler-builtins shim
+# ============================================================
+# - Implémentation bas niveau de memcpy
+# - Copie byte par byte
+# - ABI-compatible C
+# - Hypothèse : zones NON chevauchantes
+# ============================================================
+
+space std/alloc/compiler_builtins/builtins_shim/builtins
+
+
+# ------------------------------------------------------------
+# Types fondamentaux (shim minimal)
+# ------------------------------------------------------------
+
+type usize = builtin.usize
+type u8    = builtin.u8
+type ptr[T] = builtin.ptr[T]
+
+
+# ------------------------------------------------------------
+# memcpy
+# ------------------------------------------------------------
+# void* memcpy(void* dst, const void* src, size_t n)
+#
+# Règles :
+# - comportement indéfini si overlap (conforme C)
+# - si n == 0 → no-op
+# - retourne dst
+# ------------------------------------------------------------
+
+#[export]
+proc memcpy(dst: ptr[u8], src: ptr[u8], n: usize) -> ptr[u8]
+    # Cas trivial
+    if n == 0
+        give dst
+    .end
+
+    # (Optionnel mais utile pour debug/bootstrap)
+    # if dst == src → no-op
+    if dst == src
+        give dst
+    .end
+
+    # Copie linéaire AVANT → ARRIÈRE
+    let i: usize = 0
+    loop while i < n
+        let byte: u8 = builtin.load_u8(src, i)
+        builtin.store_u8(dst, i, byte)
+        set i = i + 1
+    .end
+
+    give dst
+.end

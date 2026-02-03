@@ -1,1 +1,120 @@
-// compiler-builtins shim skeleton
+# ============================================================
+# export.vit — compiler-builtins shim / link
+# ============================================================
+# Surface ABI officielle des builtins
+#
+# Objectifs :
+# - Déclarer explicitement les symboles exportés
+# - Centraliser les alias / weak symbols
+# - Offrir un point d’ancrage au linker
+# ============================================================
+
+space std/alloc/compiler_builtins/builtins_shim/link
+
+
+# ------------------------------------------------------------
+# Import des implémentations fallback
+# ------------------------------------------------------------
+
+pull std/alloc/compiler_builtins/builtins_shim/builtins
+
+
+# ------------------------------------------------------------
+# Règles générales
+# ------------------------------------------------------------
+# - Les symboles listés ici constituent l’ABI stable
+# - Le backend peut :
+#   * remplacer (intrinsic)
+#   * rediriger (alias)
+#   * ignorer (dead-strip)
+# ------------------------------------------------------------
+
+
+# ------------------------------------------------------------
+# Mémoire — ABI C / POSIX
+# ------------------------------------------------------------
+
+#[export]
+#[weak]
+proc memcpy(dst: ptr[u8], src: ptr[u8], n: usize) -> ptr[u8]
+    give builtins.memcpy(dst, src, n)
+.end
+
+
+#[export]
+#[weak]
+proc memmove(dst: ptr[u8], src: ptr[u8], n: usize) -> ptr[u8]
+    give builtins.memmove(dst, src, n)
+.end
+
+
+#[export]
+#[weak]
+proc memset(dst: ptr[u8], value: usize, n: usize) -> ptr[u8]
+    give builtins.memset(dst, value, n)
+.end
+
+
+# ------------------------------------------------------------
+# Alias POSIX / BSD
+# ------------------------------------------------------------
+
+#[export]
+#[weak]
+proc bcopy(src: ptr[u8], dst: ptr[u8], n: usize)
+    # bcopy(dst, src, n) est sémantiquement memmove
+    builtins.memmove(dst, src, n)
+.end
+
+
+#[export]
+#[weak]
+proc bzero(dst: ptr[u8], n: usize)
+    builtins.memset(dst, 0, n)
+.end
+
+
+# ------------------------------------------------------------
+# Arithmétique entière non signée
+# ------------------------------------------------------------
+
+#[export]
+#[weak]
+proc udiv(n: usize, d: usize) -> usize
+    give builtins.udiv(n, d)
+.end
+
+
+#[export]
+#[weak]
+proc urem(n: usize, d: usize) -> usize
+    give builtins.urem(n, d)
+.end
+
+
+# ------------------------------------------------------------
+# Symboles internes (optionnels)
+# ------------------------------------------------------------
+# Ces symboles peuvent être utilisés par le compilateur
+# mais ne sont pas nécessairement exposés à l’utilisateur
+# ------------------------------------------------------------
+
+#[export]
+#[weak]
+proc __vitte_memcpy(dst: ptr[u8], src: ptr[u8], n: usize) -> ptr[u8]
+    give builtins.memcpy(dst, src, n)
+.end
+
+
+#[export]
+#[weak]
+proc __vitte_memmove(dst: ptr[u8], src: ptr[u8], n: usize) -> ptr[u8]
+    give builtins.memmove(dst, src, n)
+.end
+
+
+#[export]
+#[weak]
+proc __vitte_memset(dst: ptr[u8], value: usize, n: usize) -> ptr[u8]
+    give builtins.memset(dst, value, n)
+.end

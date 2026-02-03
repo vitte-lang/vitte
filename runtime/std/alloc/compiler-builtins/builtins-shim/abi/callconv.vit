@@ -1,1 +1,126 @@
-// compiler-builtins shim skeleton
+space vitte/runtime/std/alloc/compiler-builtins/builtins-shim/abi
+
+# ============================================================
+# Call Convention ABI shim
+# - Defines canonical calling conventions for builtins
+# - Shared between compiler-builtins and runtime
+# ============================================================
+
+# ------------------------------------------------------------
+# Calling convention identifiers
+# ------------------------------------------------------------
+
+enum CallConv
+    C          # System C ABI
+    Rust       # Rust-like internal ABI
+    Vitte      # Native Vitte ABI
+    Fast       # Fastcall / optimized ABI
+    Cold       # Cold / slow-path ABI
+.end
+
+# ------------------------------------------------------------
+# ABI description
+# ------------------------------------------------------------
+
+form AbiInfo
+    conv: CallConv
+    stack_align: usize
+    arg_align: usize
+    ret_align: usize
+    preserves_fp: bool
+    preserves_vector: bool
+.end
+
+# ------------------------------------------------------------
+# Canonical ABIs
+# ------------------------------------------------------------
+
+proc abi_c give AbiInfo
+    give AbiInfo(
+        conv: CallConv::C,
+        stack_align: 16,
+        arg_align: 8,
+        ret_align: 8,
+        preserves_fp: true,
+        preserves_vector: true
+    )
+.end
+
+proc abi_rust give AbiInfo
+    give AbiInfo(
+        conv: CallConv::Rust,
+        stack_align: 16,
+        arg_align: 8,
+        ret_align: 8,
+        preserves_fp: true,
+        preserves_vector: true
+    )
+.end
+
+proc abi_vitte give AbiInfo
+    give AbiInfo(
+        conv: CallConv::Vitte,
+        stack_align: 16,
+        arg_align: 8,
+        ret_align: 8,
+        preserves_fp: false,
+        preserves_vector: false
+    )
+.end
+
+proc abi_fast give AbiInfo
+    give AbiInfo(
+        conv: CallConv::Fast,
+        stack_align: 16,
+        arg_align: 8,
+        ret_align: 8,
+        preserves_fp: false,
+        preserves_vector: false
+    )
+.end
+
+proc abi_cold give AbiInfo
+    give AbiInfo(
+        conv: CallConv::Cold,
+        stack_align: 16,
+        arg_align: 8,
+        ret_align: 8,
+        preserves_fp: true,
+        preserves_vector: true
+    )
+.end
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc is_sysv_like(abi: AbiInfo) give bool
+    give abi.stack_align == 16
+.end
+
+proc prefers_registers(abi: AbiInfo) give bool
+    if abi.conv == CallConv::Fast
+        give true
+    .end
+    give false
+.end
+
+proc is_c_compatible(abi: AbiInfo) give bool
+    give abi.conv == CallConv::C
+.end
+
+# ------------------------------------------------------------
+# Test self-check
+# ------------------------------------------------------------
+
+proc test_callconv_basic give bool
+    let c = abi_c()
+    let v = abi_vitte()
+    if not is_c_compatible(c)
+        panic("C ABI not compatible")
+    .end
+    if prefers_registers(v)
+        panic("Vitte ABI should not prefer registers")
+    .end
+    give true
+.end
