@@ -1,4 +1,59 @@
-pull self/collect
-pull self/instantiate
+# ============================================================
+# Vitte — Monomorphization Passes
+# File: mod.vit
+#
+# Role:
+#   Entry point and orchestration layer for the
+#   monomorphization pipeline.
+#
+# Pipeline order:
+#   1. collect      → discover required specializations
+#   2. instantiate  → clone concrete MIR items
+#   3. rewrite      → rewrite MIR to concrete references
+#
+# ============================================================
 
-share all
+space compiler/backends/vitte_monomorphize/passes
+
+# ------------------------------------------------------------
+# Submodules
+# ------------------------------------------------------------
+
+pull compiler/backends/vitte_monomorphize/passes/collect
+pull compiler/backends/vitte_monomorphize/passes/instantiate
+pull compiler/backends/vitte_monomorphize/passes/rewrite
+
+
+# ------------------------------------------------------------
+# Public API
+# ------------------------------------------------------------
+
+pull compiler/backends/vitte_monomorphize/context
+pull compiler/backends/vitte_mir_dataflow/mir
+
+
+# ============================================================
+# Monomorphization entry point
+# ============================================================
+
+proc run_monomorphization(
+    ctx: &mut context::MonomorphizeContext,
+    mir: &mut mir::MirModule
+)
+gives ()
+.end
+    # --------------------------------------------------------
+    # Phase 1 — Collection
+    # --------------------------------------------------------
+    collect::collect_monomorphizations(ctx, mir)
+
+    # --------------------------------------------------------
+    # Phase 2 — Instantiation
+    # --------------------------------------------------------
+    instantiate::instantiate_monomorphizations(ctx, mir)
+
+    # --------------------------------------------------------
+    # Phase 3 — Rewrite
+    # --------------------------------------------------------
+    rewrite::rewrite_monomorphized_references(ctx, mir)
+.end

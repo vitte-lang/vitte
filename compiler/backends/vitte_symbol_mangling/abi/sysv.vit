@@ -1,2 +1,257 @@
-proc apply_sysv_abi(ctx: TargetContext)
+# ============================================================
+# Vitte — Symbol Mangling ABI
+# File: abi/sysv.vit
+#
+# Target:
+#   System V AMD64 ABI
+#   (Linux, FreeBSD, macOS x86_64)
+#
+# Role:
+#   Define symbol mangling rules for functions, globals and
+#   types when targeting SysV x86_64.
+#
+# References:
+#   - System V Application Binary Interface AMD64
+#   - ELF symbol naming conventions
+#
+# Design principles:
+#   - Deterministic
+#   - Collision-free
+#   - Stable across compiler versions
+#   - Independent from C / C++ mangling
+#
+# ============================================================
+
+space compiler/backends/vitte_symbol_mangling/abi/sysv
+
+pull compiler/backends/vitte_mir_dataflow/types
+pull compiler/backends/vitte_mir_dataflow/mir
+pull compiler/backends/vitte_symbol_mangling/errors
+pull compiler/backends/vitte_symbol_mangling/utils
+
+
+# ============================================================
+# ABI constants
+# ============================================================
+
+const ABI_NAME: String = "sysv"
+const PTR_SIZE: Int = 8
+const STACK_ALIGN: Int = 16
+const ARG_REG_COUNT: Int = 6   # rdi, rsi, rdx, rcx, r8, r9
+
+
+# ============================================================
+# Public API
+# ============================================================
+
+# Mangle a function symbol for SysV
+proc mangle_function(
+    fn: &mir::MirFunction
+)
+gives String
+.end
+    let mut out = String::new()
+
+    # SysV symbols are not prefixed (ELF / Mach-O)
+    out.push_str(fn.name)
+
+    out.push_str("@")
+    out.push_str(ABI_NAME)
+
+    out.push_str("@")
+    out.push_str(mangle_signature(fn.signature))
+
+    give out
+.end
+
+
+# Mangle a global variable
+proc mangle_global(
+    name: String,
+    ty: types::Type
+)
+gives String
+.end
+    let mut out = String::new()
+
+    out.push_str(name)
+    out.push_str("@")
+    out.push_str(ABI_NAME)
+    out.push_str("@")
+    out.push_str(mangle_type(ty))
+
+    give out
+.end
+
+
+# ============================================================
+# Function signature mangling
+# ============================================================
+
+proc mangle_signature(
+    sig: mir::MirFnSignature
+)
+gives String
+.end
+    let mut out = String::new()
+
+    # Return type
+    if sig.ret_ty.is_some()
+        out.push_str(mangle_type(sig.ret_ty.unwrap()))
+    else
+        out.push_str("v")   # void
+    end
+
+    out.push_str("_")
+
+    # Parameters
+    if sig.params.is_empty()
+        out.push_str("z")
+    else
+        for i in 0 .. sig.params.len()
+            if i > 0
+                out.push('_')
+            end
+            out.push_str(
+                mangle_type(sig.params[i].ty)
+            )
+        end
+    end
+
+    give out
+.end
+
+
+# ============================================================
+# Type mangling
+# ============================================================
+
+proc mangle_type(
+    ty: types::Type
+)
+gives String
+.end
+    select ty
+
+    # --------------------------------------------------------
+    # Primitive types
+    # --------------------------------------------------------
+    when types::Type::Bool
+        give "b"
+
+    when types::Type::Int(bits, signed)
+        if signed
+            give "i" + bits.to_string()
+        else
+            give "u" + bits.to_string()
+        end
+
+    when types::Type::Float(bits)
+        give "f" + bits.to_string()
+
+    # --------------------------------------------------------
+    # Pointer / reference
+    # --------------------------------------------------------
+    when types::Type::Pointer(inner)
+        give "p" + mangle_type(inner)
+
+    when types::Type::Ref(inner, mutability)
+        if mutability
+            give "rm" + mangle_type(inner)
+        else
+            give "r" + mangle_type(inner)
+        end
+
+    # --------------------------------------------------------
+    # Arrays / slices
+    # --------------------------------------------------------
+    when types::Type::Array(inner, size)
+        give "a" + size.to_string() + "_" + mangle_type(inner)
+
+    when types::Type::Slice(inner)
+        give "s" + mangle_type(inner)
+
+    # --------------------------------------------------------
+    # Tuples
+    # --------------------------------------------------------
+    when types::Type::Tuple(items)
+        let mut out = "t".to_string()
+        out.push(items.len().to_string())
+        out.push("_")
+
+        for i in 0 .. items.len()
+            if i > 0
+                out.push('_')
+            end
+            out.push_str(mangle_type(items[i]))
+        end
+
+        give out
+
+    # --------------------------------------------------------
+    # Named / user-defined types
+    # --------------------------------------------------------
+    when types::Type::Named(id)
+        give "N" + id.to_string()
+
+    # --------------------------------------------------------
+    # Function pointer
+    # --------------------------------------------------------
+    when types::Type::Fn(params, ret)
+        let mut out = "fn".to_string()
+        out.push("_")
+
+        if ret.is_some()
+            out.push_str(mangle_type(ret.unwrap()))
+        else
+            out.push_str("v")
+        end
+
+        out.push("_")
+
+        if params.is_empty()
+            out.push_str("z")
+        else
+            for i in 0 .. params.len()
+                if i > 0
+                    out.push('_')
+                end
+                out.push_str(mangle_type(params[i]))
+            end
+        end
+
+        give out
+
+    # --------------------------------------------------------
+    # Fallback
+    # --------------------------------------------------------
+    otherwise
+        errors::unsupported_type_for_abi(ABI_NAME, ty)
+        give "ERR"
+    end
+.end
+
+
+# ============================================================
+# ABI utilities
+# ============================================================
+
+proc argument_register_count()
+gives Int
+.end
+    give ARG_REG_COUNT
+.end
+
+
+proc stack_alignment()
+gives Int
+.end
+    give STACK_ALIGN
+.end
+
+
+proc pointer_size()
+gives Int
+.end
+    give PTR_SIZE
 .end

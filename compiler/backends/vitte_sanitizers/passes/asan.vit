@@ -1,3 +1,218 @@
-proc inject_asan(ctx: SanitizerContext, fn: mir::MirFunction)
-    # address checks
+# ============================================================
+# Vitte — Sanitizers
+# File: passes/asan.vit
+#
+# Role:
+#   Inject AddressSanitizer (ASan) checks into MIR.
+#
+# Responsibilities:
+#   - Instrument memory accesses
+#   - Instrument allocations / frees
+#   - Insert runtime checks
+#
+# Non-goals:
+#   - Runtime implementation
+#   - CLI / configuration parsing
+#
+# ============================================================
+
+space compiler/backends/vitte_sanitizers/passes/asan
+
+pull compiler/backends/vitte_mir_dataflow/mir
+pull compiler/backends/vitte_mir_dataflow/types
+pull compiler/backends/vitte_mir_dataflow/context
+
+pull compiler/backends/vitte_sanitizers/config
+pull compiler/backends/vitte_sanitizers/context as san_ctx
+pull compiler/backends/vitte_sanitizers/errors
+
+
+# ============================================================
+# Public entry point
+# ============================================================
+
+proc run_asan(
+    ctx: &mut san_ctx::SanitizerContext,
+    mir: &mut mir::MirModule
+)
+gives ()
+.end
+    if !ctx.options.is_enabled()
+        ret
+    end
+
+    if !ctx.options.has(config::SanitizerKind::Address)
+        ret
+    end
+
+    let pass = AsanPass::new(ctx)
+    pass.visit_module(mir)
+.end
+
+
+# ============================================================
+# ASan Pass
+# ============================================================
+
+form AsanPass
+    ctx: &mut san_ctx::SanitizerContext
+.end
+
+
+proc AsanPass::new(
+    ctx: &mut san_ctx::SanitizerContext
+)
+gives AsanPass
+.end
+    give AsanPass { ctx }
+.end
+
+
+# ============================================================
+# Module traversal
+# ============================================================
+
+proc AsanPass::visit_module(
+    self,
+    module: &mut mir::MirModule
+)
+gives ()
+.end
+    for fn in module.functions.iter_mut()
+        self.visit_function(fn)
+    end
+.end
+
+
+proc AsanPass::visit_function(
+    self,
+    fn: &mut mir::MirFunction
+)
+gives ()
+.end
+    for block in fn.body.blocks
+        self.visit_block(block)
+    end
+.end
+
+
+proc AsanPass::visit_block(
+    self,
+    block: &mut mir::MirBlock
+)
+gives ()
+.end
+    let mut new_stmts = Vec::new()
+
+    for stmt in block.statements
+        match stmt
+        when mir::MirStatement::Load(ptr, ty)
+            new_stmts.push(
+                self.make_load_check(ptr, ty)
+            )
+            new_stmts.push(stmt)
+
+        when mir::MirStatement::Store(ptr, val)
+            new_stmts.push(
+                self.make_store_check(ptr, val.ty)
+            )
+            new_stmts.push(stmt)
+
+        when mir::MirStatement::Call(call)
+            self.maybe_instrument_alloc(call, &mut new_stmts)
+            new_stmts.push(stmt)
+
+        otherwise
+            new_stmts.push(stmt)
+        end
+    end
+
+    block.statements = new_stmts
+.end
+
+
+# ============================================================
+# Memory access checks
+# ============================================================
+
+proc AsanPass::make_load_check(
+    self,
+    ptr: mir::ValueId,
+    ty: types::Type
+)
+gives mir::MirStatement
+.end
+    let size = self.size_of(ty)
+
+    give mir::MirStatement::IntrinsicCall(
+        "__asan_check_load",
+        [ptr],
+        [size]
+    )
+.end
+
+
+proc AsanPass::make_store_check(
+    self,
+    ptr: mir::ValueId,
+    ty: types::Type
+)
+gives mir::MirStatement
+.end
+    let size = self.size_of(ty)
+
+    give mir::MirStatement::IntrinsicCall(
+        "__asan_check_store",
+        [ptr],
+        [size]
+    )
+.end
+
+
+# ============================================================
+# Allocation / deallocation
+# ============================================================
+
+proc AsanPass::maybe_instrument_alloc(
+    self,
+    call: &mir::MirCall,
+    out: &mut Vec<mir::MirStatement>
+)
+gives ()
+.end
+    if call.is_alloc()
+        out.push(
+            mir::MirStatement::IntrinsicCall(
+                "__asan_alloc",
+                call.args,
+                []
+            )
+        )
+    end
+
+    if call.is_free()
+        out.push(
+            mir::MirStatement::IntrinsicCall(
+                "__asan_free",
+                call.args,
+                []
+            )
+        )
+    end
+.end
+
+
+# ============================================================
+# Helpers
+# ============================================================
+
+proc AsanPass::size_of(
+    self,
+    ty: types::Type
+)
+gives Int
+.end
+    # NOTE: placeholder – real implementation delegates
+    # to layout / target ABI info
+    give types::sizeof(ty)
 .end

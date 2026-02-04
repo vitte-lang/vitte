@@ -1,5 +1,58 @@
-pull self/asan
-pull self/ubsan
-pull self/tsan
+# ============================================================
+# Vitte — Sanitizers Passes
+# File: passes/mod.vit
+#
+# Role:
+#   Orchestrate all sanitizer passes.
+#
+# Pipeline (order matters):
+#   1. ASan  → memory safety
+#   2. TSan  → data races
+#   3. UBSan → undefined behavior
+#
+# ============================================================
 
-share all
+space compiler/backends/vitte_sanitizers/passes
+
+# ------------------------------------------------------------
+# Sub-passes
+# ------------------------------------------------------------
+
+pull compiler/backends/vitte_sanitizers/passes/asan
+pull compiler/backends/vitte_sanitizers/passes/tsan
+pull compiler/backends/vitte_sanitizers/passes/ubsan
+
+
+# ------------------------------------------------------------
+# External dependencies
+# ------------------------------------------------------------
+
+pull compiler/backends/vitte_mir_dataflow/mir
+pull compiler/backends/vitte_sanitizers/context
+
+
+# ============================================================
+# Public entry point
+# ============================================================
+
+proc run_sanitizers(
+    ctx: &mut context::SanitizerContext,
+    mir: &mut mir::MirModule
+)
+gives ()
+.end
+    # --------------------------------------------------------
+    # AddressSanitizer
+    # --------------------------------------------------------
+    asan::run_asan(ctx, mir)
+
+    # --------------------------------------------------------
+    # ThreadSanitizer
+    # --------------------------------------------------------
+    tsan::run_tsan(ctx, mir)
+
+    # --------------------------------------------------------
+    # UndefinedBehaviorSanitizer
+    # --------------------------------------------------------
+    ubsan::run_ubsan(ctx, mir)
+.end

@@ -1,9 +1,91 @@
-pull vitte/compiler/mir as mir
-pull vitte/compiler/session as sess
+# ============================================================
+# Vitte — Sanitizers Backend
+# File: lib.vit
+#
+# Role:
+#   Public entry point for sanitizer instrumentation.
+#
+# Responsibilities:
+#   - Build SanitizerContext from options
+#   - Orchestrate sanitizer passes
+#   - Validate configuration & invariants
+#   - Hide internal structure from callers
+#
+# ============================================================
 
-pull self/context
-pull self/passes/mod
-pull self/runtime/mod
-pull self/config/mod
+space compiler/backends/vitte_sanitizers
 
-share all
+
+# ------------------------------------------------------------
+# Subsystems
+# ------------------------------------------------------------
+
+pull compiler/backends/vitte_sanitizers/config
+pull compiler/backends/vitte_sanitizers/context
+pull compiler/backends/vitte_sanitizers/passes
+pull compiler/backends/vitte_sanitizers/runtime
+pull compiler/backends/vitte_sanitizers/errors
+
+
+# ------------------------------------------------------------
+# External dependencies
+# ------------------------------------------------------------
+
+pull compiler/backends/vitte_mir_dataflow/mir
+
+
+# ============================================================
+# Public API
+# ============================================================
+
+# Standard entry point (most callers)
+proc run_sanitizers(
+    opts: config::SanitizerOptions,
+    mir: &mut mir::MirModule
+)
+gives ()
+.end
+    let mut ctx = context::SanitizerContext::new(opts)
+
+    ctx.validate()
+
+    passes::run_sanitizers(&mut ctx, mir)
+.end
+
+
+# ============================================================
+# Advanced API (explicit context)
+# ============================================================
+
+# Allows reuse of a context (debug, incremental, tests)
+proc run_sanitizers_with_context(
+    ctx: &mut context::SanitizerContext,
+    mir: &mut mir::MirModule
+)
+gives ()
+.end
+    ctx.validate()
+
+    passes::run_sanitizers(ctx, mir)
+.end
+
+
+# ============================================================
+# Optional helpers
+# ============================================================
+
+# Convenience helper for debugging / profiling
+proc run_sanitizers_and_dump(
+    opts: config::SanitizerOptions,
+    mir: &mut mir::MirModule
+)
+gives ()
+.end
+    let mut ctx = context::SanitizerContext::new(opts)
+    ctx.enable_stats()
+
+    ctx.validate()
+    passes::run_sanitizers(&mut ctx, mir)
+
+    ctx.dump_stats()
+.end

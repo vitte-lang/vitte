@@ -1,2 +1,250 @@
-proc tsan_event(thread, addr)
+# ============================================================
+# Vitte — ThreadSanitizer Runtime
+# File: runtime/tsan_runtime.vit
+#
+# Role:
+#   Provide runtime support for TSan instrumentation.
+#
+# Contract:
+#   - Called by MIR intrinsics: __tsan_*
+#   - ABI-stable
+#   - Target-specific lowering happens later
+#
+# ============================================================
+
+space compiler/backends/vitte_sanitizers/runtime/tsan_runtime
+
+pull compiler/backends/vitte_sanitizers/config
+pull compiler/backends/vitte_sanitizers/messages
+pull compiler/backends/vitte_sanitizers/context
+
+
+# ============================================================
+# Public ABI (intrinsics)
+# ============================================================
+
+# Memory read
+proc __tsan_read(
+    ptr: Ptr,
+    size: Int
+)
+gives ()
 .end
+    tsan_record_read(ptr, size)
+.end
+
+
+# Memory write
+proc __tsan_write(
+    ptr: Ptr,
+    size: Int
+)
+gives ()
+.end
+    tsan_record_write(ptr, size)
+.end
+
+
+# Thread lifecycle
+proc __tsan_thread_create(
+    tid: Ptr
+)
+gives ()
+.end
+    tsan_on_thread_create(tid)
+.end
+
+
+proc __tsan_thread_join(
+    tid: Ptr
+)
+gives ()
+.end
+    tsan_on_thread_join(tid)
+.end
+
+
+# Mutex operations
+proc __tsan_mutex_lock(
+    mtx: Ptr
+)
+gives ()
+.end
+    tsan_on_mutex_lock(mtx)
+.end
+
+
+proc __tsan_mutex_unlock(
+    mtx: Ptr
+)
+gives ()
+.end
+    tsan_on_mutex_unlock(mtx)
+.end
+
+
+# Atomic operations
+proc __tsan_atomic(
+    addr: Ptr
+)
+gives ()
+.end
+    tsan_on_atomic(addr)
+.end
+
+
+# ============================================================
+# Core logic (reference implementation)
+# ============================================================
+
+proc tsan_record_read(
+    ptr: Ptr,
+    size: Int
+)
+gives ()
+.end
+    if ptr == null
+        tsan_report_null("read")
+    end
+
+    # TODO:
+    # - consult happens-before graph
+    # - detect conflicting writes
+    ()
+.end
+
+
+proc tsan_record_write(
+    ptr: Ptr,
+    size: Int
+)
+gives ()
+.end
+    if ptr == null
+        tsan_report_null("write")
+    end
+
+    # TODO:
+    # - consult happens-before graph
+    # - detect conflicting reads/writes
+    ()
+.end
+
+
+proc tsan_on_thread_create(
+    tid: Ptr
+)
+gives ()
+.end
+    # TODO:
+    # - register new thread
+    # - establish happens-before edge
+    ()
+.end
+
+
+proc tsan_on_thread_join(
+    tid: Ptr
+)
+gives ()
+.end
+    # TODO:
+    # - merge happens-before state
+    ()
+.end
+
+
+proc tsan_on_mutex_lock(
+    mtx: Ptr
+)
+gives ()
+.end
+    # TODO:
+    # - acquire mutex
+    # - update happens-before graph
+    ()
+.end
+
+
+proc tsan_on_mutex_unlock(
+    mtx: Ptr
+)
+gives ()
+.end
+    # TODO:
+    # - release mutex
+    ()
+.end
+
+
+proc tsan_on_atomic(
+    addr: Ptr
+)
+gives ()
+.end
+    # TODO:
+    # - model atomic access
+    ()
+.end
+
+
+# ============================================================
+# Reporting
+# ============================================================
+
+proc tsan_report_race(
+    kind: String,
+    ptr: Ptr,
+    size: Int
+)
+gives ()
+.end
+    tsan_print_header("data race (" + kind + ")")
+    tsan_print_location(ptr, size)
+    tsan_abort()
+.end
+
+
+proc tsan_report_null(
+    kind: String
+)
+gives ()
+.end
+    tsan_print_header("null pointer " + kind)
+    tsan_abort()
+.end
+
+
+proc tsan_print_header(
+    msg: String
+)
+gives ()
+.end
+    runtime_println("ThreadSanitizer: " + msg)
+.end
+
+
+proc tsan_print_location(
+    ptr: Ptr,
+    size: Int
+)
+gives ()
+.end
+    runtime_println("  address: " + ptr.to_string())
+    runtime_println("  size: " + size.to_string())
+.end
+
+
+proc tsan_abort()
+gives Never
+.end
+    runtime_abort()
+.end
+
+
+# ============================================================
+# Runtime hooks (provided by platform / std)
+# ============================================================
+
+foreign proc runtime_println(msg: String) gives ()
+foreign proc runtime_abort() gives Never

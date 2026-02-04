@@ -1,3 +1,224 @@
-proc collect_monomorphizations(ctx: MonomorphizeContext, m: hir::Module)
-    # discover generic instantiations
+# ============================================================
+# Vitte — Monomorphization Pass
+# File: collect.vit
+#
+# Role:
+#   Collect ALL concrete instantiations of generic items
+#   (functions, types, methods) used in the MIR.
+#
+# This pass DOES NOT clone or rewrite code.
+# It only records specialization requests.
+#
+# ============================================================
+
+space compiler/backends/vitte_monomorphize/passes/collect
+
+pull compiler/backends/vitte_mir_dataflow/context
+pull compiler/backends/vitte_mir_dataflow/mir
+pull compiler/backends/vitte_mir_dataflow/types
+pull compiler/backends/vitte_mir_dataflow/visitor
+
+pull compiler/backends/vitte_monomorphize/context as mono_ctx
+pull compiler/backends/vitte_monomorphize/keys
+pull compiler/backends/vitte_monomorphize/errors
+
+# ------------------------------------------------------------
+# Public entry point
+# ------------------------------------------------------------
+
+proc collect_monomorphizations(
+    ctx: &mut mono_ctx::MonomorphizeContext,
+    mir: &mir::MirModule
+)
+gives ()
+.end
+    let collector = Collector::new(ctx)
+    collector.visit_module(mir)
+.end
+
+
+# ============================================================
+# Collector
+# ============================================================
+
+form Collector
+    ctx: &mut mono_ctx::MonomorphizeContext
+.end
+
+
+proc Collector::new(ctx: &mut mono_ctx::MonomorphizeContext)
+gives Collector
+.end
+    give Collector { ctx }
+.end
+
+
+# ------------------------------------------------------------
+# Visitor implementation
+# ------------------------------------------------------------
+
+proc Collector::visit_module(self, module: &mir::MirModule)
+gives ()
+.end
+    for item in module.items
+        self.visit_item(item)
+    end
+.end
+
+
+proc Collector::visit_item(self, item: &mir::MirItem)
+gives ()
+.end
+    select item
+    when mir::MirItem::Function(fn)
+        self.visit_function(fn)
+    when mir::MirItem::Struct(st)
+        self.visit_struct(st)
+    when mir::MirItem::Enum(en)
+        self.visit_enum(en)
+    otherwise
+        ()
+    end
+.end
+
+
+# ============================================================
+# Functions
+# ============================================================
+
+proc Collector::visit_function(self, fn: &mir::MirFunction)
+gives ()
+.end
+    # Traverse body
+    for block in fn.body.blocks
+        for stmt in block.statements
+            self.visit_statement(stmt)
+        end
+    end
+.end
+
+
+proc Collector::visit_statement(self, stmt: &mir::MirStatement)
+gives ()
+.end
+    select stmt
+    when mir::MirStatement::Call(call)
+        self.visit_call(call)
+    when mir::MirStatement::Assign(_, expr)
+        self.visit_expr(expr)
+    otherwise
+        ()
+    end
+.end
+
+
+proc Collector::visit_expr(self, expr: &mir::MirExpr)
+gives ()
+.end
+    select expr
+    when mir::MirExpr::Call(call)
+        self.visit_call(call)
+    when mir::MirExpr::Construct(ctor)
+        self.visit_ctor(ctor)
+    when mir::MirExpr::Cast(inner, ty)
+        self.visit_type(ty)
+        self.visit_expr(inner)
+    otherwise
+        ()
+    end
+.end
+
+
+# ============================================================
+# Calls & Constructors
+# ============================================================
+
+proc Collector::visit_call(self, call: &mir::MirCall)
+gives ()
+.end
+    # Visit arguments
+    for arg in call.args
+        self.visit_expr(arg)
+    end
+
+    # Only care about generic callees
+    if call.generic_args.is_empty()
+        ret
+    end
+
+    let key = keys::FnMonoKey::new(
+        call.fn_id,
+        call.generic_args
+    )
+
+    self.ctx.register_fn(key)
+.end
+
+
+proc Collector::visit_ctor(self, ctor: &mir::MirConstructor)
+gives ()
+.end
+    if ctor.generic_args.is_empty()
+        ret
+    end
+
+    let key = keys::TypeMonoKey::new(
+        ctor.type_id,
+        ctor.generic_args
+    )
+
+    self.ctx.register_type(key)
+.end
+
+
+# ============================================================
+# Types
+# ============================================================
+
+proc Collector::visit_struct(self, st: &mir::MirStruct)
+gives ()
+.end
+    for field in st.fields
+        self.visit_type(field.ty)
+    end
+.end
+
+
+proc Collector::visit_enum(self, en: &mir::MirEnum)
+gives ()
+.end
+    for variant in en.variants
+        for field in variant.fields
+            self.visit_type(field.ty)
+        end
+    end
+.end
+
+
+proc Collector::visit_type(self, ty: &types::Type)
+gives ()
+.end
+    select ty
+    when types::Type::GenericInstance(base, args)
+        let key = keys::TypeMonoKey::new(base, args)
+        self.ctx.register_type(key)
+
+        for arg in args
+            self.visit_type(arg)
+        end
+
+    when types::Type::Array(inner, _)
+        self.visit_type(inner)
+
+    when types::Type::Tuple(items)
+        for it in items
+            self.visit_type(it)
+        end
+
+    when types::Type::Pointer(inner)
+        self.visit_type(inner)
+
+    otherwise
+        ()
+    end
 .end

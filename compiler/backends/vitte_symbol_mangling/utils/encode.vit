@@ -1,2 +1,185 @@
-proc encode_type(ty)
+# ============================================================
+# Vitte — Symbol Mangling Utilities
+# File: utils/encode.vit
+#
+# Role:
+#   Shared low-level encoding helpers used by all mangling
+#   schemes and layout/type encoders.
+#
+# Design rules:
+#   - Pure functions
+#   - No global state
+#   - Deterministic output
+#   - Reusable across schemes
+#
+# ============================================================
+
+space compiler/backends/vitte_symbol_mangling/utils/encode
+
+
+# ============================================================
+# Identifiers
+# ============================================================
+
+# Encode an identifier with length prefix
+# Used by Itanium-like schemes
+# Example: "foo" -> "3foo"
+proc encode_len_ident(name: String)
+gives String
+.end
+    give name.len().to_string() + name
+.end
+
+
+# Encode a path using length-prefixed identifiers
+# Example: ["foo","bar"] -> "N3foo3barE"
+proc encode_len_path(path: Vec<String>)
+gives String
+.end
+    if path.is_empty()
+        give ""
+    end
+
+    let mut out = "N".to_string()
+    for p in path
+        out.push_str(encode_len_ident(p))
+    end
+    out.push('E')
+    give out
+.end
+
+
+# Encode a path using separators
+# Example: ["foo","bar"] -> "foo__bar"
+proc encode_sep_path(path: Vec<String>, sep: String)
+gives String
+.end
+    let mut out = String::new()
+    for i in 0 .. path.len()
+        if i > 0
+            out.push_str(sep)
+        end
+        out.push_str(path[i])
+    end
+    give out
+.end
+
+
+# ============================================================
+# Integers / numbers
+# ============================================================
+
+# Encode an integer in decimal
+proc encode_dec(value: Int)
+gives String
+.end
+    give value.to_string()
+.end
+
+
+# Encode an integer in hexadecimal (no prefix)
+proc encode_hex(value: Int)
+gives String
+.end
+    give value.to_hex_string()
+.end
+
+
+# ============================================================
+# Booleans & flags
+# ============================================================
+
+proc encode_bool(v: Bool)
+gives String
+.end
+    if v
+        give "1"
+    else
+        give "0"
+    end
+.end
+
+
+# Encode a list of flags with a prefix
+# Example: prefix="+", items=["avx2","fma"] -> "+avx2+fma"
+proc encode_flag_list(prefix: String, items: Vec<String>)
+gives String
+.end
+    let mut out = String::new()
+    for it in items
+        out.push_str(prefix)
+        out.push_str(it)
+    end
+    give out
+.end
+
+
+# ============================================================
+# Strings
+# ============================================================
+
+# Sanitize an identifier so it is linker-safe
+# Replaces unsupported characters with '_'
+proc sanitize_ident(name: String)
+gives String
+.end
+    let mut out = String::new()
+    for c in name.chars()
+        if is_ident_char(c)
+            out.push(c)
+        else
+            out.push('_')
+        end
+    end
+    give out
+.end
+
+
+proc is_ident_char(c: Char)
+gives Bool
+.end
+    give (c >= 'a' && c <= 'z')
+      || (c >= 'A' && c <= 'Z')
+      || (c >= '0' && c <= '9')
+      || c == '_'
+.end
+
+
+# ============================================================
+# Collections
+# ============================================================
+
+# Join strings with separator
+proc join(items: Vec<String>, sep: String)
+gives String
+.end
+    let mut out = String::new()
+    for i in 0 .. items.len()
+        if i > 0
+            out.push_str(sep)
+        end
+        out.push_str(items[i])
+    end
+    give out
+.end
+
+
+# ============================================================
+# Debug helpers
+# ============================================================
+
+# Encode a type list for debugging
+# Example: ["i32","i64"] -> "(i32,i64)"
+proc encode_debug_list(items: Vec<String>)
+gives String
+.end
+    let mut out = "(".to_string()
+    for i in 0 .. items.len()
+        if i > 0
+            out.push(',')
+        end
+        out.push_str(items[i])
+    end
+    out.push(')')
+    give out
 .end

@@ -1,3 +1,258 @@
-proc inject_ubsan(ctx: SanitizerContext, fn: mir::MirFunction)
-    # undefined behavior checks
+# ============================================================
+# Vitte — Sanitizers
+# File: passes/ubsan.vit
+#
+# Role:
+#   Inject UndefinedBehaviorSanitizer (UBSan) instrumentation
+#   into MIR.
+#
+# Responsibilities:
+#   - Instrument integer overflows
+#   - Instrument invalid divisions (div by zero)
+#   - Instrument invalid shifts
+#   - Instrument invalid casts
+#   - Instrument null pointer dereferences
+#
+# Non-goals:
+#   - Runtime implementation
+#   - Static UB analysis
+#   - Codegen-specific lowering
+#
+# ============================================================
+
+space compiler/backends/vitte_sanitizers/passes/ubsan
+
+pull compiler/backends/vitte_mir_dataflow/mir
+pull compiler/backends/vitte_mir_dataflow/types
+pull compiler/backends/vitte_mir_dataflow/context
+
+pull compiler/backends/vitte_sanitizers/config
+pull compiler/backends/vitte_sanitizers/context as san_ctx
+pull compiler/backends/vitte_sanitizers/errors
+
+
+# ============================================================
+# Public entry point
+# ============================================================
+
+proc run_ubsan(
+    ctx: &mut san_ctx::SanitizerContext,
+    mir: &mut mir::MirModule
+)
+gives ()
+.end
+    if !ctx.options.is_enabled()
+        ret
+    end
+
+    if !ctx.options.has(config::SanitizerKind::Undefined)
+        ret
+    end
+
+    let pass = UbsanPass::new(ctx)
+    pass.visit_module(mir)
+.end
+
+
+# ============================================================
+# UBSan Pass
+# ============================================================
+
+form UbsanPass
+    ctx: &mut san_ctx::SanitizerContext
+.end
+
+
+proc UbsanPass::new(
+    ctx: &mut san_ctx::SanitizerContext
+)
+gives UbsanPass
+.end
+    give UbsanPass { ctx }
+.end
+
+
+# ============================================================
+# Module traversal
+# ============================================================
+
+proc UbsanPass::visit_module(
+    self,
+    module: &mut mir::MirModule
+)
+gives ()
+.end
+    for fn in module.functions.iter_mut()
+        self.visit_function(fn)
+    end
+.end
+
+
+proc UbsanPass::visit_function(
+    self,
+    fn: &mut mir::MirFunction
+)
+gives ()
+.end
+    for block in fn.body.blocks
+        self.visit_block(block)
+    end
+.end
+
+
+proc UbsanPass::visit_block(
+    self,
+    block: &mut mir::MirBlock
+)
+gives ()
+.end
+    let mut new_stmts = Vec::new()
+
+    for stmt in block.statements
+        select stmt
+
+        # ----------------------------------------------------
+        # Arithmetic operations
+        # ----------------------------------------------------
+        when mir::MirStatement::BinaryOp(op, lhs, rhs, ty)
+            self.maybe_instrument_arith(op, lhs, rhs, ty, &mut new_stmts)
+            new_stmts.push(stmt)
+
+        # ----------------------------------------------------
+        # Division / remainder
+        # ----------------------------------------------------
+        when mir::MirStatement::Div(lhs, rhs, ty)
+            new_stmts.push(
+                self.make_div_check(lhs, rhs, ty)
+            )
+            new_stmts.push(stmt)
+
+        # ----------------------------------------------------
+        # Casts
+        # ----------------------------------------------------
+        when mir::MirStatement::Cast(val, from, to)
+            new_stmts.push(
+                self.make_cast_check(val, from, to)
+            )
+            new_stmts.push(stmt)
+
+        # ----------------------------------------------------
+        # Pointer dereference (loads/stores)
+        # ----------------------------------------------------
+        when mir::MirStatement::Load(ptr, ty)
+            new_stmts.push(
+                self.make_null_check(ptr)
+            )
+            new_stmts.push(stmt)
+
+        when mir::MirStatement::Store(ptr, val)
+            new_stmts.push(
+                self.make_null_check(ptr)
+            )
+            new_stmts.push(stmt)
+
+        otherwise
+            new_stmts.push(stmt)
+        end
+    end
+
+    block.statements = new_stmts
+.end
+
+
+# ============================================================
+# Arithmetic instrumentation
+# ============================================================
+
+proc UbsanPass::maybe_instrument_arith(
+    self,
+    op: mir::BinaryOp,
+    lhs: mir::ValueId,
+    rhs: mir::ValueId,
+    ty: types::Type,
+    out: &mut Vec<mir::MirStatement>
+)
+gives ()
+.end
+    if !types::is_integer(ty)
+        ret
+    end
+
+    if op.is_add() || op.is_sub() || op.is_mul()
+        out.push(
+            mir::MirStatement::IntrinsicCall(
+                "__ubsan_check_overflow",
+                [lhs, rhs],
+                [types::bitwidth(ty)]
+            )
+        )
+    end
+
+    if op.is_shift()
+        out.push(
+            mir::MirStatement::IntrinsicCall(
+                "__ubsan_check_shift",
+                [lhs, rhs],
+                [types::bitwidth(ty)]
+            )
+        )
+    end
+.end
+
+
+# ============================================================
+# Division checks
+# ============================================================
+
+proc UbsanPass::make_div_check(
+    self,
+    lhs: mir::ValueId,
+    rhs: mir::ValueId,
+    ty: types::Type
+)
+gives mir::MirStatement
+.end
+    give mir::MirStatement::IntrinsicCall(
+        "__ubsan_check_div",
+        [lhs, rhs],
+        [types::bitwidth(ty)]
+    )
+.end
+
+
+# ============================================================
+# Cast checks
+# ============================================================
+
+proc UbsanPass::make_cast_check(
+    self,
+    val: mir::ValueId,
+    from: types::Type,
+    to: types::Type
+)
+gives mir::MirStatement
+.end
+    give mir::MirStatement::IntrinsicCall(
+        "__ubsan_check_cast",
+        [val],
+        [types::type_id(from), types::type_id(to)]
+    )
+.end
+
+
+# ============================================================
+# Null pointer checks
+# ============================================================
+
+proc UbsanPass::make_null_check(
+    self,
+    ptr: mir::ValueId
+)
+gives mir::MirStatement
+.end
+    give mir::MirStatement::IntrinsicCall(
+        "__ubsan_check_null",
+        [ptr],
+        []
+    )
 .end

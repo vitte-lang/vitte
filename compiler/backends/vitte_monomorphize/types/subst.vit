@@ -1,2 +1,142 @@
-proc substitute_types(ty, mapping)
+# ============================================================
+# Vitte — Monomorphization
+# File: types/subst.vit
+#
+# Role:
+#   Generic type substitution engine.
+#
+# This module:
+#   - Replaces GenericParam(N) by concrete types
+#   - Recursively substitutes inside composite types
+#   - Is side-effect free and reusable
+#
+# ============================================================
+
+space compiler/backends/vitte_monomorphize/types/subst
+
+pull compiler/backends/vitte_mir_dataflow/types
+pull compiler/backends/vitte_monomorphize/errors
+
+
+# ============================================================
+# Substitution context
+# ============================================================
+
+form TypeSubst
+    args: Vec<types::Type>
+.end
+
+
+proc TypeSubst::new(args: Vec<types::Type>)
+gives TypeSubst
+.end
+    give TypeSubst { args }
+.end
+
+
+# ============================================================
+# Public API
+# ============================================================
+
+proc substitute_type(
+    ty: types::Type,
+    args: &Vec<types::Type>
+)
+gives types::Type
+.end
+    let subst = TypeSubst::new(args.clone())
+    give subst.apply(ty)
+.end
+
+
+# ============================================================
+# Core algorithm
+# ============================================================
+
+proc TypeSubst::apply(self, ty: types::Type)
+gives types::Type
+.end
+    select ty
+
+    # ----------------------------------------
+    # Generic parameter
+    # ----------------------------------------
+    when types::Type::GenericParam(idx)
+        if idx >= self.args.len()
+            errors::invalid_generic_index(idx)
+        end
+        give self.args[idx]
+
+    # ----------------------------------------
+    # Generic instance (e.g. Vec[T])
+    # ----------------------------------------
+    when types::Type::GenericInstance(base, params)
+        let mut out = Vec::new()
+        for p in params
+            out.push(self.apply(p))
+        end
+        give types::Type::GenericInstance(base, out)
+
+    # ----------------------------------------
+    # Pointer
+    # ----------------------------------------
+    when types::Type::Pointer(inner)
+        give types::Type::Pointer(
+            self.apply(inner)
+        )
+
+    # ----------------------------------------
+    # Reference
+    # ----------------------------------------
+    when types::Type::Ref(inner, mutability)
+        give types::Type::Ref(
+            self.apply(inner),
+            mutability
+        )
+
+    # ----------------------------------------
+    # Array
+    # ----------------------------------------
+    when types::Type::Array(inner, size)
+        give types::Type::Array(
+            self.apply(inner),
+            size
+        )
+
+    # ----------------------------------------
+    # Slice
+    # ----------------------------------------
+    when types::Type::Slice(inner)
+        give types::Type::Slice(
+            self.apply(inner)
+        )
+
+    # ----------------------------------------
+    # Tuple
+    # ----------------------------------------
+    when types::Type::Tuple(items)
+        let mut out = Vec::new()
+        for it in items
+            out.push(self.apply(it))
+        end
+        give types::Type::Tuple(out)
+
+    # ----------------------------------------
+    # Function pointer
+    # ----------------------------------------
+    when types::Type::Fn(params, ret)
+        let mut ps = Vec::new()
+        for p in params
+            ps.push(self.apply(p))
+        end
+        let r = self.apply(ret)
+        give types::Type::Fn(ps, r)
+
+    # ----------------------------------------
+    # Opaque / concrete / primitive
+    # ----------------------------------------
+    otherwise
+        give ty
+
+    end
 .end

@@ -1,9 +1,92 @@
-pull vitte/compiler/hir as hir
-pull vitte/compiler/session as sess
+# ============================================================
+# Vitte — Monomorphization Backend
+# File: lib.vit
+#
+# Role:
+#   Public entry point for the monomorphization backend.
+#
+# Responsibilities:
+#   - Expose a stable API
+#   - Wire internal modules (passes, context, utils, types)
+#   - Hide implementation details from callers
+#
+# ============================================================
 
-pull self/context
-pull self/passes/mod
-pull self/types/mod
-pull self/utils/mod
+space compiler/backends/vitte_monomorphize
 
-share all
+
+# ------------------------------------------------------------
+# Subsystems
+# ------------------------------------------------------------
+
+pull compiler/backends/vitte_monomorphize/context
+pull compiler/backends/vitte_monomorphize/passes
+pull compiler/backends/vitte_monomorphize/types
+pull compiler/backends/vitte_monomorphize/utils
+pull compiler/backends/vitte_monomorphize/keys
+pull compiler/backends/vitte_monomorphize/errors
+
+
+# ------------------------------------------------------------
+# External dependencies
+# ------------------------------------------------------------
+
+pull compiler/backends/vitte_mir_dataflow/mir
+
+
+# ============================================================
+# Public API
+# ============================================================
+
+proc monomorphize_module(
+    mir: &mut mir::MirModule
+)
+gives ()
+.end
+    let ctx = context::MonomorphizeContext::new()
+
+    passes::run_monomorphization(
+        &mut ctx,
+        mir
+    )
+
+    ctx.validate_complete()
+.end
+
+
+# ============================================================
+# Advanced / configurable API
+# ============================================================
+
+proc monomorphize_module_with_context(
+    ctx: &mut context::MonomorphizeContext,
+    mir: &mut mir::MirModule
+)
+gives ()
+.end
+    passes::run_monomorphization(ctx, mir)
+
+    ctx.validate_complete()
+.end
+
+
+# ============================================================
+# Optional helpers
+# ============================================================
+
+proc monomorphize_and_dump(
+    mir: &mut mir::MirModule
+)
+gives ()
+.end
+    let ctx = context::MonomorphizeContext::new()
+    ctx.enable_stats()
+
+    passes::run_monomorphization(
+        &mut ctx,
+        mir
+    )
+
+    ctx.validate_complete()
+    ctx.dump_stats()
+.end

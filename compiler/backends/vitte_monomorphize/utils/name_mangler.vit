@@ -1,3 +1,200 @@
-proc mangle_name(base: String, types)
-    # generate unique symbol name
+# ============================================================
+# Vitte — Monomorphization Utilities
+# File: utils/name_mangler.vit
+#
+# Role:
+#   Deterministic name mangling for monomorphized symbols.
+#
+# Guarantees:
+#   - Uniqueness
+#   - Stability across builds
+#   - No collisions
+#   - Human-readable (debug-friendly)
+#
+# ============================================================
+
+space compiler/backends/vitte_monomorphize/utils/name_mangler
+
+pull compiler/backends/vitte_mir_dataflow/types
+pull compiler/backends/vitte_mir_dataflow/mir
+
+pull compiler/backends/vitte_monomorphize/types/normalize
+pull compiler/backends/vitte_monomorphize/types/compare
+pull compiler/backends/vitte_monomorphize/errors
+
+
+# ============================================================
+# Public API
+# ============================================================
+
+proc mangle_function_name(
+    fn: &mir::MirFunction,
+    generic_args: &Vec<types::Type>
+)
+gives String
+.end
+    let base = fn.name
+    let args = normalize_args(generic_args)
+
+    give base + "$" + mangle_type_list(args)
+.end
+
+
+proc mangle_type_name(
+    ty: &mir::MirTypeDef,
+    generic_args: &Vec<types::Type>
+)
+gives String
+.end
+    let base = ty.name
+    let args = normalize_args(generic_args)
+
+    give base + "$" + mangle_type_list(args)
+.end
+
+
+# ============================================================
+# Internals
+# ============================================================
+
+proc normalize_args(args: &Vec<types::Type>)
+gives Vec<types::Type>
+.end
+    let mut out = Vec::new()
+    for a in args
+        out.push(normalize::normalize_type(a))
+    end
+    give out
+.end
+
+
+proc mangle_type_list(args: Vec<types::Type>)
+gives String
+.end
+    if args.is_empty()
+        give "mono"
+    end
+
+    let mut out = String::new()
+
+    for i in 0 .. args.len()
+        if i > 0
+            out.push('_')
+        end
+        out.push_str(mangle_type(args[i]))
+    end
+
+    give out
+.end
+
+
+proc mangle_type(ty: types::Type)
+gives String
+.end
+    select ty
+
+    # --------------------------------------------------------
+    # Primitive / builtin
+    # --------------------------------------------------------
+    when types::Type::Bool
+        give "b"
+
+    when types::Type::Int(bits, signed)
+        if signed
+            give "i" + bits.to_string()
+        else
+            give "u" + bits.to_string()
+        end
+
+    when types::Type::Float(bits)
+        give "f" + bits.to_string()
+
+    # --------------------------------------------------------
+    # Named / user types
+    # --------------------------------------------------------
+    when types::Type::Named(id)
+        give "T" + id.to_string()
+
+    # --------------------------------------------------------
+    # Generic instance
+    # --------------------------------------------------------
+    when types::Type::GenericInstance(base, params)
+        let mut out = "G".to_string()
+        out.push_str(base.to_string())
+        out.push('<')
+
+        for i in 0 .. params.len()
+            if i > 0
+                out.push(',')
+            end
+            out.push_str(mangle_type(params[i]))
+        end
+
+        out.push('>')
+        give out
+
+    # --------------------------------------------------------
+    # Pointer / reference
+    # --------------------------------------------------------
+    when types::Type::Pointer(inner)
+        give "P" + mangle_type(inner)
+
+    when types::Type::Ref(inner, mutability)
+        if mutability
+            give "Rmut" + mangle_type(inner)
+        else
+            give "R" + mangle_type(inner)
+        end
+
+    # --------------------------------------------------------
+    # Array / slice
+    # --------------------------------------------------------
+    when types::Type::Array(inner, size)
+        give "A" + size.to_string() + "_" + mangle_type(inner)
+
+    when types::Type::Slice(inner)
+        give "S" + mangle_type(inner)
+
+    # --------------------------------------------------------
+    # Tuple
+    # --------------------------------------------------------
+    when types::Type::Tuple(items)
+        let mut out = "Tup".to_string()
+        out.push('(')
+
+        for i in 0 .. items.len()
+            if i > 0
+                out.push(',')
+            end
+            out.push_str(mangle_type(items[i]))
+        end
+
+        out.push(')')
+        give out
+
+    # --------------------------------------------------------
+    # Function pointer
+    # --------------------------------------------------------
+    when types::Type::Fn(params, ret)
+        let mut out = "Fn(".to_string()
+
+        for i in 0 .. params.len()
+            if i > 0
+                out.push(',')
+            end
+            out.push_str(mangle_type(params[i]))
+        end
+
+        out.push(')')
+        out.push_str("->")
+        out.push_str(mangle_type(ret))
+        give out
+
+    # --------------------------------------------------------
+    # Fallback (should not happen post-mono)
+    # --------------------------------------------------------
+    otherwise
+        errors::unmangleable_type(ty)
+        give "ERR"
+    end
 .end

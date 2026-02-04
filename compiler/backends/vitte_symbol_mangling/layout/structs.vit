@@ -1,2 +1,175 @@
-proc compute_struct_layout(ctx: TargetContext, fields)
+# ============================================================
+# Vitte — Struct Layout
+# File: layout/structs.vit
+#
+# Role:
+#   Compute ABI-correct memory layout for user-defined structs.
+#
+# Used by:
+#   - Codegen (field offsets)
+#   - Symbol mangling (ABI-stable struct identity)
+#   - Sanitizers (field bounds)
+#   - Debug info (DWARF / PDB)
+#
+# ============================================================
+
+space compiler/backends/vitte_symbol_mangling/layout/structs
+
+pull compiler/backends/vitte_symbol_mangling/layout/types
+pull compiler/backends/vitte_symbol_mangling/desc
+pull compiler/backends/vitte_symbol_mangling/errors
+pull compiler/backends/vitte_mir_dataflow/types
+
+
+# ============================================================
+# Struct description (input)
+# ============================================================
+
+# Canonical description of a struct type
+form StructDesc
+    name: String
+    fields: Vec<StructField>
+    packed: Bool
+.end
+
+
+form StructField
+    name: String
+    ty: types::Type
+    explicit_align: Int   # 0 = none
+.end
+
+
+# ============================================================
+# Resulting layout
+# ============================================================
+
+form NamedStructLayout
+    name: String
+    fields: Vec<NamedFieldLayout>
+    layout: TypeLayout
+.end
+
+
+form NamedFieldLayout
+    name: String
+    offset: Int
+    layout: TypeLayout
+.end
+
+
+# ============================================================
+# Entry point
+# ============================================================
+
+proc compute_struct_layout(
+    desc: StructDesc,
+    target: desc::TargetDesc
+)
+gives NamedStructLayout
+.end
+    let mut offset = 0
+    let mut max_align = 1
+    let mut fields = Vec::new()
+
+    for field in desc.fields
+        let fl = types::compute_layout(field.ty, target)
+
+        let align =
+            if desc.packed
+                1
+            else if field.explicit_align > 0
+                field.explicit_align
+            else
+                fl.align
+            end
+
+        offset = align_to(offset, align)
+
+        fields.push(
+            NamedFieldLayout {
+                name: field.name,
+                offset,
+                layout: fl,
+            }
+        )
+
+        offset += fl.size
+        max_align = max(max_align, align)
+    end
+
+    let final_align =
+        if desc.packed
+            1
+        else
+            max_align
+        end
+
+    let final_size =
+        if desc.packed
+            offset
+        else
+            align_to(offset, final_align)
+        end
+
+    give NamedStructLayout {
+        name: desc.name,
+        fields,
+        layout: TypeLayout {
+            size: final_size,
+            stride: final_size,
+            align: final_align,
+            abi_align: final_align,
+            is_packed: desc.packed,
+        },
+    }
+.end
+
+
+# ============================================================
+# Validation
+# ============================================================
+
+proc validate_struct_layout(
+    layout: NamedStructLayout,
+    target: desc::TargetDesc
+)
+gives ()
+.end
+    if layout.layout.align > target.stack_align
+        errors::invalid_struct_layout(
+            layout.name,
+            "alignment exceeds target stack alignment"
+        )
+    end
+
+    if layout.layout.size == 0
+        errors::invalid_struct_layout(
+            layout.name,
+            "struct has zero size"
+        )
+    end
+.end
+
+
+# ============================================================
+# Helpers
+# ============================================================
+
+proc align_to(
+    value: Int,
+    align: Int
+)
+gives Int
+.end
+    if align <= 1
+        give value
+    end
+
+    let rem = value % align
+    if rem == 0
+        give value
+    end
+
+    give value + (align - rem)
 .end

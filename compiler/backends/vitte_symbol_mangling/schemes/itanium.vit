@@ -1,3 +1,293 @@
-proc mangle_itanium(fn: hir::Function)
-    # Itanium C++ ABI mangling
+# ============================================================
+# Vitte — Symbol Mangling Scheme
+# File: schemes/itanium.vit
+#
+# Scheme:
+#   Itanium-like (adapted for Vitte)
+#
+# Role:
+#   Provide a deterministic, ABI-stable mangling scheme
+#   compatible with ELF / Mach-O ecosystems.
+#
+# Design principles:
+#   - Inspired by Itanium C++ ABI, but Vitte-owned
+#   - Explicit namespaces and types
+#   - No reliance on compiler vendor mangling
+#   - Stable across compiler versions
+#
+# ============================================================
+
+space compiler/backends/vitte_symbol_mangling/schemes/itanium
+
+pull compiler/backends/vitte_mir_dataflow/mir
+pull compiler/backends/vitte_mir_dataflow/types
+pull compiler/backends/vitte_symbol_mangling/abi
+pull compiler/backends/vitte_symbol_mangling/desc
+pull compiler/backends/vitte_symbol_mangling/features
+pull compiler/backends/vitte_symbol_mangling/layout
+pull compiler/backends/vitte_symbol_mangling/errors
+
+
+# ============================================================
+# Constants
+# ============================================================
+
+const PREFIX: String = "_Z"   # Itanium-style global prefix
+
+
+# ============================================================
+# Public API
+# ============================================================
+
+# Entry point: mangle a function symbol using Itanium-like scheme
+proc mangle_function(
+    fn: &mir::MirFunction,
+    target: desc::TargetDesc,
+    cpu: features::CpuDesc,
+    ext: features::ExtensionsDesc
+)
+gives String
+.end
+    let mut out = String::new()
+    out.push_str(PREFIX)
+
+    # Encode namespace path
+    out.push_str(
+        encode_path(fn.path)
+    )
+
+    # Encode function name
+    out.push_str(
+        encode_ident(fn.name)
+    )
+
+    # Encode signature
+    out.push_str(
+        encode_signature(fn.signature, target)
+    )
+
+    # Encode CPU / extensions as vendor suffix
+    out.push_str(
+        encode_features(cpu, ext)
+    )
+
+    give out
+.end
+
+
+# Entry point: mangle a global symbol
+proc mangle_global(
+    name: String,
+    ty: types::Type,
+    target: desc::TargetDesc
+)
+gives String
+.end
+    let mut out = String::new()
+    out.push_str(PREFIX)
+    out.push_str(encode_ident(name))
+    out.push_str(encode_type(ty, target))
+    give out
+.end
+
+
+# ============================================================
+# Path & identifiers
+# ============================================================
+
+# Encode a module / namespace path
+# Example: foo::bar → N3foo3barE
+proc encode_path(
+    path: Vec<String>
+)
+gives String
+.end
+    if path.is_empty()
+        give ""
+    end
+
+    let mut out = "N".to_string()
+    for p in path
+        out.push_str(encode_ident(p))
+    end
+    out.push('E')
+    give out
+.end
+
+
+# Encode an identifier with length prefix
+# Example: "foo" → 3foo
+proc encode_ident(
+    name: String
+)
+gives String
+.end
+    give name.len().to_string() + name
+.end
+
+
+# ============================================================
+# Function signature
+# ============================================================
+
+proc encode_signature(
+    sig: mir::MirFnSignature,
+    target: desc::TargetDesc
+)
+gives String
+.end
+    let mut out = String::new()
+
+    # Parameters
+    if sig.params.is_empty()
+        out.push('v')  # void
+    else
+        for p in sig.params
+            out.push_str(
+                encode_type(p.ty, target)
+            )
+        end
+    end
+
+    give out
+.end
+
+
+# ============================================================
+# Type encoding (Itanium-like)
+# ============================================================
+
+proc encode_type(
+    ty: types::Type,
+    target: desc::TargetDesc
+)
+gives String
+.end
+    select ty
+
+    # --------------------------------------------------------
+    # Primitive types
+    # --------------------------------------------------------
+    when types::Type::Bool
+        give "b"
+
+    when types::Type::Int(bits, signed)
+        if signed
+            match bits
+            when 8   give "a"   # char
+            when 16  give "s"
+            when 32  give "i"
+            when 64  give "l"
+            otherwise
+                give "i" + bits.to_string()
+            end
+        else
+            match bits
+            when 8   give "h"
+            when 16  give "t"
+            when 32  give "j"
+            when 64  give "m"
+            otherwise
+                give "u" + bits.to_string()
+            end
+        end
+
+    when types::Type::Float(bits)
+        match bits
+        when 32 give "f"
+        when 64 give "d"
+        otherwise
+            give "f" + bits.to_string()
+        end
+
+    # --------------------------------------------------------
+    # Pointer / reference
+    # --------------------------------------------------------
+    when types::Type::Pointer(inner)
+        give "P" + encode_type(inner, target)
+
+    when types::Type::Ref(inner, mutability)
+        if mutability
+            give "R" + encode_type(inner, target)
+        else
+            give "K" + encode_type(inner, target)
+        end
+
+    # --------------------------------------------------------
+    # Arrays
+    # --------------------------------------------------------
+    when types::Type::Array(inner, size)
+        give "A" + size.to_string() + "_" + encode_type(inner, target)
+
+    # --------------------------------------------------------
+    # Slice (fat pointer)
+    # --------------------------------------------------------
+    when types::Type::Slice(inner)
+        give "S" + encode_type(inner, target)
+
+    # --------------------------------------------------------
+    # Tuple
+    # --------------------------------------------------------
+    when types::Type::Tuple(items)
+        let mut out = "T".to_string()
+        out.push(items.len().to_string())
+        out.push('_')
+        for t in items
+            out.push_str(encode_type(t, target))
+        end
+        give out
+
+    # --------------------------------------------------------
+    # Named / user-defined
+    # --------------------------------------------------------
+    when types::Type::Named(id)
+        give "U" + encode_ident(id.to_string())
+
+    # --------------------------------------------------------
+    # Function pointer
+    # --------------------------------------------------------
+    when types::Type::Fn(params, ret)
+        let mut out = "F".to_string()
+        for p in params
+            out.push_str(encode_type(p, target))
+        end
+        out.push('E')
+        if ret.is_some()
+            out.push_str(encode_type(ret.unwrap(), target))
+        else
+            out.push('v')
+        end
+        give out
+
+    otherwise
+        errors::unsupported_type_for_scheme("itanium", ty)
+        give "X"
+    end
+.end
+
+
+# ============================================================
+# Feature encoding (vendor suffix)
+# ============================================================
+
+# Encode CPU + extensions as a vendor-specific suffix
+# Example: _Z3fooIiE+avx2+glibc
+proc encode_features(
+    cpu: features::CpuDesc,
+    ext: features::ExtensionsDesc
+)
+gives String
+.end
+    let mut out = String::new()
+
+    let cpu_suf = cpu.mangle_suffix()
+    let ext_suf = ext.mangle_suffix()
+
+    if !cpu_suf.is_empty() || !ext_suf.is_empty()
+        out.push_str("_V")
+        out.push_str(cpu_suf)
+        out.push_str(ext_suf)
+    end
+
+    give out
 .end

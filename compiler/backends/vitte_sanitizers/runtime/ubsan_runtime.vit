@@ -1,2 +1,231 @@
-proc ubsan_check(kind, info)
+# ============================================================
+# Vitte — UndefinedBehaviorSanitizer Runtime
+# File: runtime/ubsan_runtime.vit
+#
+# Role:
+#   Provide runtime support for UBSan instrumentation.
+#
+# Contract:
+#   - Called by MIR intrinsics: __ubsan_*
+#   - ABI-stable
+#   - Target-specific lowering happens later
+#
+# ============================================================
+
+space compiler/backends/vitte_sanitizers/runtime/ubsan_runtime
+
+pull compiler/backends/vitte_sanitizers/config
+pull compiler/backends/vitte_sanitizers/messages
+pull compiler/backends/vitte_sanitizers/context
+
+
+# ============================================================
+# Public ABI (intrinsics)
+# ============================================================
+
+# Arithmetic overflow (+, -, *)
+proc __ubsan_check_overflow(
+    lhs: Int,
+    rhs: Int,
+    bitwidth: Int
+)
+gives ()
 .end
+    if ubsan_overflow(lhs, rhs, bitwidth)
+        ubsan_report_overflow(lhs, rhs, bitwidth)
+    end
+.end
+
+
+# Shift operations
+proc __ubsan_check_shift(
+    lhs: Int,
+    rhs: Int,
+    bitwidth: Int
+)
+gives ()
+.end
+    if ubsan_invalid_shift(lhs, rhs, bitwidth)
+        ubsan_report_shift(lhs, rhs, bitwidth)
+    end
+.end
+
+
+# Division / remainder
+proc __ubsan_check_div(
+    lhs: Int,
+    rhs: Int,
+    bitwidth: Int
+)
+gives ()
+.end
+    if rhs == 0
+        ubsan_report_div_zero(lhs, rhs, bitwidth)
+    end
+.end
+
+
+# Casts
+proc __ubsan_check_cast(
+    val: Int,
+    from_type: Int,
+    to_type: Int
+)
+gives ()
+.end
+    if !ubsan_valid_cast(val, from_type, to_type)
+        ubsan_report_cast(val, from_type, to_type)
+    end
+.end
+
+
+# Null pointer checks
+proc __ubsan_check_null(
+    ptr: Ptr
+)
+gives ()
+.end
+    if ptr == null
+        ubsan_report_null()
+    end
+.end
+
+
+# ============================================================
+# Core logic (reference implementation)
+# ============================================================
+
+proc ubsan_overflow(
+    lhs: Int,
+    rhs: Int,
+    bitwidth: Int
+)
+gives Bool
+.end
+    # Placeholder logic:
+    # real impl uses precise signed/unsigned ranges
+    let max = (1 << (bitwidth - 1)) - 1
+    let min = -(1 << (bitwidth - 1))
+    let res = lhs + rhs
+    give res > max || res < min
+.end
+
+
+proc ubsan_invalid_shift(
+    lhs: Int,
+    rhs: Int,
+    bitwidth: Int
+)
+gives Bool
+.end
+    give rhs < 0 || rhs >= bitwidth
+.end
+
+
+proc ubsan_valid_cast(
+    val: Int,
+    from_type: Int,
+    to_type: Int
+)
+gives Bool
+.end
+    # Placeholder: real impl uses type metadata
+    give true
+.end
+
+
+# ============================================================
+# Reporting
+# ============================================================
+
+proc ubsan_report_overflow(
+    lhs: Int,
+    rhs: Int,
+    bitwidth: Int
+)
+gives ()
+.end
+    ubsan_print_header("integer overflow")
+    ubsan_print_detail("lhs", lhs)
+    ubsan_print_detail("rhs", rhs)
+    ubsan_abort()
+.end
+
+
+proc ubsan_report_shift(
+    lhs: Int,
+    rhs: Int,
+    bitwidth: Int
+)
+gives ()
+.end
+    ubsan_print_header("invalid shift")
+    ubsan_print_detail("shift amount", rhs)
+    ubsan_abort()
+.end
+
+
+proc ubsan_report_div_zero(
+    lhs: Int,
+    rhs: Int,
+    bitwidth: Int
+)
+gives ()
+.end
+    ubsan_print_header("division by zero")
+    ubsan_abort()
+.end
+
+
+proc ubsan_report_cast(
+    val: Int,
+    from_type: Int,
+    to_type: Int
+)
+gives ()
+.end
+    ubsan_print_header("invalid cast")
+    ubsan_abort()
+.end
+
+
+proc ubsan_report_null()
+gives ()
+.end
+    ubsan_print_header("null pointer dereference")
+    ubsan_abort()
+.end
+
+
+proc ubsan_print_header(
+    msg: String
+)
+gives ()
+.end
+    runtime_println("UndefinedBehaviorSanitizer: " + msg)
+.end
+
+
+proc ubsan_print_detail(
+    name: String,
+    value: Int
+)
+gives ()
+.end
+    runtime_println("  " + name + ": " + value.to_string())
+.end
+
+
+proc ubsan_abort()
+gives Never
+.end
+    runtime_abort()
+.end
+
+
+# ============================================================
+# Runtime hooks (provided by platform / std)
+# ============================================================
+
+foreign proc runtime_println(msg: String) gives ()
+foreign proc runtime_abort() gives Never

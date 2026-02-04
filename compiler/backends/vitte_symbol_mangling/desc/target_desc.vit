@@ -1,7 +1,315 @@
+# ============================================================
+# Vitte — Target Description
+# File: desc/target_desc.vit
+#
+# Role:
+#   Canonical description of a compilation target.
+#
+# Used by:
+#   - Symbol mangling (ABI selection)
+#   - Code generation (calling convention, alignment)
+#   - Runtime selection (sanitizers, std)
+#   - Linker configuration
+#
+# Design goals:
+#   - Explicit
+#   - Deterministic
+#   - Extensible
+#   - Serializable
+#
+# ============================================================
+
+space compiler/backends/vitte_symbol_mangling/desc/target_desc
+
+pull compiler/backends/vitte_symbol_mangling/errors
+
+
+# ============================================================
+# Enumerations
+# ============================================================
+
+pick TargetOS
+    Windows
+    Linux
+    MacOS
+    FreeBSD
+    OpenBSD
+    NetBSD
+    Android
+    IOS
+    WASI
+    Unknown
+.end
+
+
+pick TargetArch
+    X86_64
+    X86
+    ARM64
+    ARM32
+    RISCV64
+    WASM32
+    WASM64
+    Unknown
+.end
+
+
+pick TargetABI
+    Win64
+    SysV
+    AAPCS
+    WASM
+    Unknown
+.end
+
+
+pick ObjectFormat
+    COFF
+    ELF
+    MachO
+    WASM
+    Unknown
+.end
+
+
+pick Endianness
+    Little
+    Big
+.end
+
+
+# ============================================================
+# Target descriptor
+# ============================================================
+
 form TargetDesc
-    arch: String
-    os: String
-    env: String
-    pointer_size: Int
-    endian: String
+    # ----------------------------------------
+    # Identity
+    # ----------------------------------------
+    os: TargetOS
+    arch: TargetArch
+    abi: TargetABI
+    object_format: ObjectFormat
+
+    # ----------------------------------------
+    # Data model
+    # ----------------------------------------
+    pointer_width: Int        # bits
+    pointer_align: Int        # bytes
+    stack_align: Int          # bytes
+    endianness: Endianness
+
+    # ----------------------------------------
+    # Calling convention
+    # ----------------------------------------
+    arg_registers: Int        # number of argument registers
+    return_registers: Int     # number of return registers
+
+    # ----------------------------------------
+    # Mangling / linking
+    # ----------------------------------------
+    symbol_prefix: String     # e.g. "_" on some targets
+    abi_name: String          # "win64", "sysv", "wasm"
+
+    # ----------------------------------------
+    # Feature flags
+    # ----------------------------------------
+    has_tls: Bool
+    has_exceptions: Bool
+    has_unwind: Bool
+    has_threads: Bool
+.end
+
+
+# ============================================================
+# Constructors
+# ============================================================
+
+proc TargetDesc::new(
+    os: TargetOS,
+    arch: TargetArch,
+    abi: TargetABI,
+    object_format: ObjectFormat
+)
+gives TargetDesc
+.end
+    # Conservative defaults
+    give TargetDesc {
+        os,
+        arch,
+        abi,
+        object_format,
+
+        pointer_width: 64,
+        pointer_align: 8,
+        stack_align: 16,
+        endianness: Endianness::Little,
+
+        arg_registers: 0,
+        return_registers: 1,
+
+        symbol_prefix: "",
+        abi_name: "unknown",
+
+        has_tls: false,
+        has_exceptions: false,
+        has_unwind: false,
+        has_threads: false,
+    }
+.end
+
+
+# ============================================================
+# Predefined targets
+# ============================================================
+
+# -------------------------
+# Windows x86_64
+# -------------------------
+proc TargetDesc::win64()
+gives TargetDesc
+.end
+    give TargetDesc {
+        os: TargetOS::Windows,
+        arch: TargetArch::X86_64,
+        abi: TargetABI::Win64,
+        object_format: ObjectFormat::COFF,
+
+        pointer_width: 64,
+        pointer_align: 8,
+        stack_align: 16,
+        endianness: Endianness::Little,
+
+        arg_registers: 4,          # rcx, rdx, r8, r9
+        return_registers: 1,
+
+        symbol_prefix: "",
+        abi_name: "win64",
+
+        has_tls: true,
+        has_exceptions: true,
+        has_unwind: true,
+        has_threads: true,
+    }
+.end
+
+
+# -------------------------
+# System V AMD64
+# -------------------------
+proc TargetDesc::sysv_x86_64()
+gives TargetDesc
+.end
+    give TargetDesc {
+        os: TargetOS::Linux,
+        arch: TargetArch::X86_64,
+        abi: TargetABI::SysV,
+        object_format: ObjectFormat::ELF,
+
+        pointer_width: 64,
+        pointer_align: 8,
+        stack_align: 16,
+        endianness: Endianness::Little,
+
+        arg_registers: 6,          # rdi, rsi, rdx, rcx, r8, r9
+        return_registers: 1,
+
+        symbol_prefix: "",
+        abi_name: "sysv",
+
+        has_tls: true,
+        has_exceptions: true,
+        has_unwind: true,
+        has_threads: true,
+    }
+.end
+
+
+# -------------------------
+# macOS x86_64
+# -------------------------
+proc TargetDesc::macos_x86_64()
+gives TargetDesc
+.end
+    let mut t = TargetDesc::sysv_x86_64()
+    t.os = TargetOS::MacOS
+    t.object_format = ObjectFormat::MachO
+    give t
+.end
+
+
+# -------------------------
+# WASM32
+# -------------------------
+proc TargetDesc::wasm32()
+gives TargetDesc
+.end
+    give TargetDesc {
+        os: TargetOS::WASI,
+        arch: TargetArch::WASM32,
+        abi: TargetABI::WASM,
+        object_format: ObjectFormat::WASM,
+
+        pointer_width: 32,
+        pointer_align: 4,
+        stack_align: 16,
+        endianness: Endianness::Little,
+
+        arg_registers: 0,
+        return_registers: 1,
+
+        symbol_prefix: "",
+        abi_name: "wasm",
+
+        has_tls: false,
+        has_exceptions: false,
+        has_unwind: false,
+        has_threads: false,
+    }
+.end
+
+
+# ============================================================
+# Queries & helpers
+# ============================================================
+
+proc TargetDesc::is_64bit(self)
+gives Bool
+.end
+    give self.pointer_width == 64
+.end
+
+
+proc TargetDesc::is_windows(self)
+gives Bool
+.end
+    give self.os == TargetOS::Windows
+.end
+
+
+proc TargetDesc::is_unix(self)
+gives Bool
+.end
+    give self.os == TargetOS::Linux
+        || self.os == TargetOS::MacOS
+        || self.os == TargetOS::FreeBSD
+        || self.os == TargetOS::OpenBSD
+        || self.os == TargetOS::NetBSD
+.end
+
+
+proc TargetDesc::validate(self)
+gives ()
+.end
+    if self.pointer_width != 32 && self.pointer_width != 64
+        errors::invalid_target("invalid pointer width")
+    end
+
+    if self.stack_align % 8 != 0
+        errors::invalid_target("stack alignment must be multiple of 8")
+    end
+
+    if self.abi == TargetABI::Unknown
+        errors::invalid_target("unknown ABI")
+    end
 .end

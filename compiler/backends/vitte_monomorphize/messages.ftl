@@ -1,78 +1,89 @@
-monomorphize_abi_error_disabled_vector_type =
-  this function {$is_call ->
-    [true] call
-    *[false] definition
-  } uses {$is_scalable ->
-    [true] scalable
-    *[false] SIMD
-  } vector type `{$ty}` which (with the chosen ABI) requires the `{$required_feature}` target feature, which is not enabled{$is_call ->
-    [true] {" "}in the caller
-    *[false] {""}
-  }
-  .label = function {$is_call ->
-    [true] called
-    *[false] defined
-  } here
-  .help = consider enabling it globally (`-C target-feature=+{$required_feature}`) or locally (`#[target_feature(enable="{$required_feature}")]`)
+# ============================================================
+# Vitte — Monomorphization Diagnostics
+# File: messages.ftl
+#
+# Conventions:
+# - mono-* : monomorphization errors
+# - Keys are stable (do not rename lightly)
+# - Messages are user-facing (compiler diagnostics)
+# ============================================================
 
-monomorphize_abi_error_unsupported_unsized_parameter =
-  this function {$is_call ->
-    [true] call
-    *[false] definition
-  } uses unsized type `{$ty}` which is not supported with the chosen ABI
-  .label = function {$is_call ->
-    [true] called
-    *[false] defined
-  } here
-  .help = only ic ABIs support unsized parameters
 
-monomorphize_abi_error_unsupported_vector_type =
-  this function {$is_call ->
-    [true] call
-    *[false] definition
-  } uses SIMD vector type `{$ty}` which is not currently supported with the chosen ABI
-  .label = function {$is_call ->
-    [true] called
-    *[false] defined
-  } here
+# ------------------------------------------------------------
+# Collection phase
+# ------------------------------------------------------------
 
-monomorphize_abi_required_target_feature =
-  this function {$is_call ->
-    [true] call
-    *[false] definition
-  } uses ABI "{$abi}" which requires the `{$required_feature}` target feature, which is not enabled{$is_call ->
-    [true] {" "}in the caller
-    *[false] {""}
-  }
-  .label = function {$is_call ->
-    [true] called
-    *[false] defined
-  } here
-  .help = consider enabling it globally (`-C target-feature=+{$required_feature}`) or locally (`#[target_feature(enable="{$required_feature}")]`)
+mono-collect-missing-function =
+    internal error: referenced function with id { $fn_id } was not found during monomorphization collection.
 
-monomorphize_couldnt_dump_mono_stats =
-    unexpected error occurred while dumping monomorphization stats: {$error}
+mono-collect-missing-type =
+    internal error: referenced type with id { $type_id } was not found during monomorphization collection.
 
-monomorphize_encountered_error_while_instantiating =
-    the above error was encountered while instantiating `{$kind} {$instance}`
 
-monomorphize_encountered_error_while_instantiating_global_asm =
-    the above error was encountered while instantiating `global_asm`
+# ------------------------------------------------------------
+# Instantiation phase
+# ------------------------------------------------------------
 
-monomorphize_large_assignments =
-    moving {$size} bytes
-    .label = value moved from here
-    .note = The current maximum size is {$limit}, but it can be customized with the move_size_limit attribute: `#![move_size_limit = "..."]`
+mono-instantiate-missing-function =
+    internal error: cannot instantiate function { $fn_key } because the generic definition was not found.
 
-monomorphize_no_optimized_mir =
-    missing optimized MIR for `{$instance}` in the crate `{$crate_name}`
-    .note = missing optimized MIR for this item (was the crate `{$crate_name}` compiled with `--emit=metadata`?)
+mono-instantiate-missing-type =
+    internal error: cannot instantiate type { $type_key } because the generic definition was not found.
 
-monomorphize_recursion_limit =
-    reached the recursion limit while instantiating `{$instance}`
-    .note = `{$def_path_str}` defined here
+mono-instantiate-duplicate-function =
+    internal error: function { $fn_key } was instantiated more than once.
 
-monomorphize_start_not_found = using `fn main` requires the standard library
-    .help = use `#![no_main]` to bypass the  generated entrypoint and declare a platform specific entrypoint yourself, usually with `#[no_mangle]`
+mono-instantiate-duplicate-type =
+    internal error: type { $type_key } was instantiated more than once.
 
-monomorphize_symbol_already_defined = symbol `{$symbol}` is already defined
+
+# ------------------------------------------------------------
+# Rewrite phase
+# ------------------------------------------------------------
+
+mono-rewrite-missing-function-instance =
+    internal error: no concrete instance found for function specialization { $fn_key }.
+
+mono-rewrite-missing-type-instance =
+    internal error: no concrete instance found for type specialization { $type_key }.
+
+mono-rewrite-generic-leftover =
+    internal error: generic construct { $item } survived monomorphization rewrite phase.
+
+
+# ------------------------------------------------------------
+# Type substitution
+# ------------------------------------------------------------
+
+mono-type-invalid-generic-index =
+    internal error: invalid generic parameter index { $index } during type substitution.
+
+mono-type-unmangleable =
+    internal error: cannot mangle type { $type } after monomorphization.
+
+
+# ------------------------------------------------------------
+# Context validation
+# ------------------------------------------------------------
+
+mono-context-uninstantiated-function =
+    internal error: function specialization { $fn_key } was collected but never instantiated.
+
+mono-context-uninstantiated-type =
+    internal error: type specialization { $type_key } was collected but never instantiated.
+
+
+# ------------------------------------------------------------
+# Name mangling
+# ------------------------------------------------------------
+
+mono-mangle-collision =
+    internal error: name mangling collision detected for symbol { $name }.
+
+
+# ------------------------------------------------------------
+# Fallback / unknown
+# ------------------------------------------------------------
+
+mono-internal-error =
+    internal error during monomorphization: { $details }.

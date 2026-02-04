@@ -1,3 +1,246 @@
-proc mangle_simple(fn: hir::Function)
-    # stable Vitte-internal mangling
+# ============================================================
+# Vitte — Symbol Mangling Scheme
+# File: schemes/simple.vit
+#
+# Scheme:
+#   Simple / readable / deterministic
+#
+# Role:
+#   Provide a very simple, human-readable mangling scheme.
+#
+# Intended uses:
+#   - Debugging
+#   - Tests
+#   - Bootstrap compilers
+#   - Freestanding / embedded targets
+#
+# Design principles:
+#   - No compression
+#   - Fully explicit
+#   - Deterministic
+#   - Easy to demangle by eye
+#
+# ============================================================
+
+space compiler/backends/vitte_symbol_mangling/schemes/simple
+
+pull compiler/backends/vitte_mir_dataflow/mir
+pull compiler/backends/vitte_mir_dataflow/types
+pull compiler/backends/vitte_symbol_mangling/desc
+pull compiler/backends/vitte_symbol_mangling/features
+pull compiler/backends/vitte_symbol_mangling/errors
+
+
+# ============================================================
+# Constants
+# ============================================================
+
+const SEP: String = "__"
+
+
+# ============================================================
+# Public API
+# ============================================================
+
+# Mangle a function symbol
+proc mangle_function(
+    fn: &mir::MirFunction,
+    target: desc::TargetDesc,
+    cpu: features::CpuDesc,
+    ext: features::ExtensionsDesc
+)
+gives String
+.end
+    let mut out = String::new()
+
+    # --------------------------------------------------------
+    # Path (modules / namespaces)
+    # --------------------------------------------------------
+    if !fn.path.is_empty()
+        for p in fn.path
+            out.push_str(p)
+            out.push_str(SEP)
+        end
+    end
+
+    # --------------------------------------------------------
+    # Function name
+    # --------------------------------------------------------
+    out.push_str(fn.name)
+
+    # --------------------------------------------------------
+    # ABI
+    # --------------------------------------------------------
+    out.push_str(SEP)
+    out.push_str(target.abi_name)
+
+    # --------------------------------------------------------
+    # Parameters
+    # --------------------------------------------------------
+    out.push_str(SEP)
+    if fn.signature.params.is_empty()
+        out.push_str("void")
+    else
+        for i in 0 .. fn.signature.params.len()
+            if i > 0
+                out.push('_')
+            end
+            out.push_str(
+                type_name(fn.signature.params[i].ty)
+            )
+        end
+    end
+
+    # --------------------------------------------------------
+    # Return type
+    # --------------------------------------------------------
+    out.push_str(SEP)
+    if fn.signature.ret_ty.is_some()
+        out.push_str(
+            type_name(fn.signature.ret_ty.unwrap())
+        )
+    else
+        out.push_str("void")
+    end
+
+    # --------------------------------------------------------
+    # CPU / extensions suffix
+    # --------------------------------------------------------
+    let cpu_suf = cpu.mangle_suffix()
+    let ext_suf = ext.mangle_suffix()
+
+    if !cpu_suf.is_empty() || !ext_suf.is_empty()
+        out.push_str(SEP)
+        out.push_str("feat")
+        out.push_str(cpu_suf)
+        out.push_str(ext_suf)
+    end
+
+    give out
+.end
+
+
+# Mangle a global symbol
+proc mangle_global(
+    name: String,
+    ty: types::Type,
+    target: desc::TargetDesc
+)
+gives String
+.end
+    let mut out = String::new()
+
+    out.push_str(name)
+    out.push_str(SEP)
+    out.push_str("global")
+    out.push_str(SEP)
+    out.push_str(target.abi_name)
+    out.push_str(SEP)
+    out.push_str(type_name(ty))
+
+    give out
+.end
+
+
+# ============================================================
+# Type encoding (readable)
+# ============================================================
+
+proc type_name(
+    ty: types::Type
+)
+gives String
+.end
+    select ty
+
+    # --------------------------------------------------------
+    # Primitive types
+    # --------------------------------------------------------
+    when types::Type::Bool
+        give "bool"
+
+    when types::Type::Int(bits, signed)
+        if signed
+            give "i" + bits.to_string()
+        else
+            give "u" + bits.to_string()
+        end
+
+    when types::Type::Float(bits)
+        give "f" + bits.to_string()
+
+    # --------------------------------------------------------
+    # Pointer / reference
+    # --------------------------------------------------------
+    when types::Type::Pointer(inner)
+        give "ptr_" + type_name(inner)
+
+    when types::Type::Ref(inner, mutability)
+        if mutability
+            give "refmut_" + type_name(inner)
+        else
+            give "ref_" + type_name(inner)
+        end
+
+    # --------------------------------------------------------
+    # Arrays / slices
+    # --------------------------------------------------------
+    when types::Type::Array(inner, size)
+        give "array" + size.to_string() + "_" + type_name(inner)
+
+    when types::Type::Slice(inner)
+        give "slice_" + type_name(inner)
+
+    # --------------------------------------------------------
+    # Tuple
+    # --------------------------------------------------------
+    when types::Type::Tuple(items)
+        let mut out = "tuple".to_string()
+        out.push(items.len().to_string())
+        out.push('_')
+        for i in 0 .. items.len()
+            if i > 0
+                out.push('_')
+            end
+            out.push_str(type_name(items[i]))
+        end
+        give out
+
+    # --------------------------------------------------------
+    # Named / user-defined
+    # --------------------------------------------------------
+    when types::Type::Named(id)
+        give "type_" + id.to_string()
+
+    # --------------------------------------------------------
+    # Function pointer
+    # --------------------------------------------------------
+    when types::Type::Fn(params, ret)
+        let mut out = "fnptr".to_string()
+        out.push('_')
+
+        if params.is_empty()
+            out.push_str("void")
+        else
+            for i in 0 .. params.len()
+                if i > 0
+                    out.push('_')
+                end
+                out.push_str(type_name(params[i]))
+            end
+        end
+
+        out.push_str("_to_")
+        if ret.is_some()
+            out.push_str(type_name(ret.unwrap()))
+        else
+            out.push_str("void")
+        end
+
+        give out
+
+    otherwise
+        errors::unsupported_type_for_scheme("simple", ty)
+        give "unknown"
+    end
 .end
