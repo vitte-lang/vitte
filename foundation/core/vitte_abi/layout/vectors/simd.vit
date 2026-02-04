@@ -1,2 +1,156 @@
-proc compute_simd_layout(ctx: AbiContext, ty)
+# ============================================================
+# Vitte — ABI / Layout / Vectors
+# File: layout/vectors/simd.vit
+#
+# Role:
+#   Compute ABI layout for SIMD / vector types:
+#     - total size
+#     - alignment
+#     - lane count and lane size
+#
+# Design goals:
+#   - ABI-agnostic (policy-free)
+#   - Deterministic
+#   - Reusable by calling conventions and classification
+#
+# Used by:
+#   - vitte_abi/layout
+#   - vitte_abi/classify
+#   - calling conventions (sysv / win64 / aarch64)
+#   - FFI / codegen
+#
+# ============================================================
+
+space foundation/core/vitte_abi/layout/vectors/simd
+
+pull foundation/core/vitte_abi/types
+pull foundation/core/vitte_abi/layout/common
+pull foundation/core/vitte_abi/errors
+
+
+# ============================================================
+# Data structures
+# ============================================================
+
+form SimdLayout
+    lane_ty: types::AbiType
+    lanes: Int
+    lane_size: Int
+    lane_align: Int
+    size: Int
+    align: Int
+.end
+
+
+# ============================================================
+# Entry point
+# ============================================================
+
+# Compute the ABI layout of a SIMD vector type.
+#
+# Rules (ABI-agnostic, conservative):
+#   - lane_size = size of scalar element
+#   - size = lanes * lane_size
+#   - align = max(lane_align, natural_vector_align(size))
+#
+# The final alignment may be refined by calling conventions
+# (e.g., SysV vs Win64 vs AArch64), but the base layout is stable.
+#
+proc compute_simd_layout(
+    elem_ty: types::AbiType,
+    lanes: Int
+)
+gives SimdLayout
+.end
+    if lanes <= 0
+        errors::invalid_layout("SIMD lanes must be positive")
+    end
+
+    let elem = layout::type_layout(elem_ty)
+
+    if elem.size <= 0
+        errors::invalid_layout("SIMD element size must be positive")
+    end
+
+    let total_size = elem.size * lanes
+
+    # Natural vector alignment:
+    # - at least element alignment
+    # - commonly equals total size, capped by common ABI limits
+    let natural_align = natural_vector_align(total_size)
+
+    let final_align =
+        if elem.align > natural_align
+            elem.align
+        else
+            natural_align
+        end
+
+    give SimdLayout {
+        lane_ty: elem_ty,
+        lanes: lanes,
+        lane_size: elem.size,
+        lane_align: elem.align,
+        size: total_size,
+        align: final_align,
+    }
+.end
+
+
+# ============================================================
+# Helpers
+# ============================================================
+
+# Conservative natural alignment for vectors.
+#
+# Common ABI practice:
+#   8  bytes  -> align 8
+#   16 bytes  -> align 16
+#   32 bytes  -> align 32
+#   64 bytes  -> align 64
+#
+# Larger vectors keep power-of-two alignment up to size.
+#
+proc natural_vector_align(size: Int)
+gives Int
+.end
+    if size <= 1
+        give 1
+    end
+    if size <= 2
+        give 2
+    end
+    if size <= 4
+        give 4
+    end
+    if size <= 8
+        give 8
+    end
+    if size <= 16
+        give 16
+    end
+    if size <= 32
+        give 32
+    end
+    if size <= 64
+        give 64
+    end
+
+    # Fallback: align to next power-of-two not exceeding size
+    give highest_power_of_two_leq(size)
+.end
+
+
+proc highest_power_of_two_leq(value: Int)
+gives Int
+.end
+    let mut v = value
+    v = v | (v >> 1)
+    v = v | (v >> 2)
+    v = v | (v >> 4)
+    v = v | (v >> 8)
+    v = v | (v >> 16)
+    v = v | (v >> 32)
+
+    give (v + 1) >> 1
 .end

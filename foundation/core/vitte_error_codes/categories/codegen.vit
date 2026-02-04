@@ -1,1 +1,137 @@
-const CODEGEN_ERROR_BASE = 6000
+# ============================================================
+# vitte_error_codes :: categories :: codegen
+# Code generation error codes
+# ============================================================
+
+space vitte/error_codes/categories
+
+# ------------------------------------------------------------
+# Category metadata
+# ------------------------------------------------------------
+
+const CODEGEN_CATEGORY: String = "codegen"
+const CODEGEN_PREFIX: String  = "CG"
+
+# ------------------------------------------------------------
+# CodegenError
+# ------------------------------------------------------------
+
+pick CodegenError
+
+    # --------------------------------------------------------
+    # Backend selection / loading
+    # --------------------------------------------------------
+
+    BackendNotFound            # CG001
+    BackendLoadFailed          # CG002
+    BackendInitFailed          # CG003
+    BackendUnsupportedTarget   # CG004
+
+    # --------------------------------------------------------
+    # IR / lowering
+    # --------------------------------------------------------
+
+    InvalidIR                  # CG010
+    UnsupportedIRConstruct     # CG011
+    LoweringFailed             # CG012
+
+    # --------------------------------------------------------
+    # Target / ABI
+    # --------------------------------------------------------
+
+    UnsupportedTarget          # CG020
+    UnsupportedABI             # CG021
+    InvalidCallingConvention   # CG022
+
+    # --------------------------------------------------------
+    # Code emission
+    # --------------------------------------------------------
+
+    EmitFailed                 # CG030
+    EmitObjectFailed           # CG031
+    EmitAssemblyFailed         # CG032
+
+    # --------------------------------------------------------
+    # Optimisation (backend-level)
+    # --------------------------------------------------------
+
+    OptimizationFailed         # CG040
+    InvalidOptimizationLevel   # CG041
+
+    # --------------------------------------------------------
+    # Toolchain interaction
+    # --------------------------------------------------------
+
+    ToolNotFound               # CG050
+    ToolInvocationFailed       # CG051
+    ToolReturnedError          # CG052
+
+    # --------------------------------------------------------
+    # Internal / unexpected
+    # --------------------------------------------------------
+
+    InternalError              # CG900
+    Unimplemented              # CG901
+
+.end
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc codegen_error_code(err: CodegenError)
+    gives String
+
+    match err
+        BackendNotFound            => "CG001"
+        BackendLoadFailed          => "CG002"
+        BackendInitFailed          => "CG003"
+        BackendUnsupportedTarget   => "CG004"
+
+        InvalidIR                  => "CG010"
+        UnsupportedIRConstruct     => "CG011"
+        LoweringFailed             => "CG012"
+
+        UnsupportedTarget          => "CG020"
+        UnsupportedABI             => "CG021"
+        InvalidCallingConvention   => "CG022"
+
+        EmitFailed                 => "CG030"
+        EmitObjectFailed           => "CG031"
+        EmitAssemblyFailed         => "CG032"
+
+        OptimizationFailed         => "CG040"
+        InvalidOptimizationLevel   => "CG041"
+
+        ToolNotFound               => "CG050"
+        ToolInvocationFailed       => "CG051"
+        ToolReturnedError          => "CG052"
+
+        InternalError              => "CG900"
+        Unimplemented              => "CG901"
+    .end
+.end
+
+proc codegen_error_category()
+    gives String
+    give CODEGEN_CATEGORY
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This file defines ONLY error codes.
+# - No diagnostics formatting here.
+# - Mapping to messages is done via messages.ftl.
+#
+# - Naming:
+#     CGxxx = CodeGen
+#
+# - Used by:
+#     * vitte_driver
+#     * vitte_driver_impl
+#     * backends/*
+#
+# - Keep codes stable once published.
+#

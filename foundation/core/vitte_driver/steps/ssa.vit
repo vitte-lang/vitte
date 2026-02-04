@@ -1,2 +1,164 @@
-proc step_build_ssa(ctx: DriverContext)
+# ============================================================
+# vitte_driver :: steps :: ssa
+# MIR -> SSA construction and verification step
+# ============================================================
+
+space vitte/driver/steps
+
+pull vitte/driver/context
+pull vitte/driver/diagnostics
+pull vitte/driver/options
+pull vitte/driver/targets
+
+# MIR / SSA subsystems (defined elsewhere)
+pull vitte/mir
+pull vitte/mir/cfg
+pull vitte/mir/ssa
+pull vitte/mir/verify
+
+# ------------------------------------------------------------
+# SSAConfig
+# ------------------------------------------------------------
+
+form SSAConfig
+    insert_phi: Bool
+    rename_values: Bool
+    verify: Bool
+    debug_dump: Bool
 .end
+
+proc SSAConfig::from_context(ctx: &DriverContext)
+    gives SSAConfig
+
+    give SSAConfig {
+        insert_phi: true,
+        rename_values: true,
+        verify: ctx.options.flags.debug_info != DebugInfo::None,
+        debug_dump: ctx.options.flags.debug_info == DebugInfo::Full,
+    }
+.end
+
+# ------------------------------------------------------------
+# Entry point
+# ------------------------------------------------------------
+
+proc build_ssa(ctx: &mut DriverContext)
+    gives Result<(), DriverError>
+
+    ctx.enter_phase(Optimize)
+
+    let cfg = SSAConfig::from_context(ctx)
+
+    # --------------------------------------------------------
+    # Preconditions
+    # --------------------------------------------------------
+    if !ctx.session.has_mir()
+        give Error(
+            DriverError::InternalCompilerError(
+                "SSA build requires MIR to be present"
+            )
+        )
+
+    let mir = ctx.session.mir_mut()
+
+    # --------------------------------------------------------
+    # CFG verification (required for SSA)
+    # --------------------------------------------------------
+    match cfg::verify(mir)
+        Ok(_) => ()
+        Error(e) =>
+            give Error(
+                DriverError::InternalCompilerError(
+                    format("CFG verification failed: {}", e.message())
+                )
+            )
+    .end
+
+    # --------------------------------------------------------
+    # Insert φ-nodes
+    # --------------------------------------------------------
+    if cfg.insert_phi
+        match ssa::insert_phi_nodes(mir)
+            Ok(_) => ()
+            Error(e) =>
+                give Error(
+                    DriverError::InternalCompilerError(
+                        format("SSA phi insertion failed: {}", e.message())
+                    )
+                )
+        .end
+    .end
+
+    # --------------------------------------------------------
+    # Rename values (SSA renaming)
+    # --------------------------------------------------------
+    if cfg.rename_values
+        match ssa::rename(mir)
+            Ok(_) => ()
+            Error(e) =>
+                give Error(
+                    DriverError::InternalCompilerError(
+                        format("SSA renaming failed: {}", e.message())
+                    )
+                )
+        .end
+    .end
+
+    # --------------------------------------------------------
+    # Verification
+    # --------------------------------------------------------
+    if cfg.verify
+        match ssa::verify(mir)
+            Ok(_) => ()
+            Error(e) =>
+                give Error(
+                    DriverError::InternalCompilerError(
+                        format("SSA verification failed: {}", e.message())
+                    )
+                )
+        .end
+    .end
+
+    # --------------------------------------------------------
+    # Debug dump
+    # --------------------------------------------------------
+    if cfg.debug_dump
+        ctx.diagnostics.note("dumping SSA MIR")
+        ssa::dump(mir)
+    .end
+
+    give Ok(())
+.end
+
+# ------------------------------------------------------------
+# Convenience wrapper
+# ------------------------------------------------------------
+
+proc build_ssa_or_panic(ctx: &mut DriverContext)
+    match build_ssa(ctx)
+        Ok(_) => ()
+        Error(e) =>
+            panic(e.message())
+    .end
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This step assumes:
+#     * MIR is valid and canonicalized
+#     * CFG is well-formed (single entry, explicit edges)
+#
+# - It produces:
+#     * strict SSA form
+#     * explicit φ-nodes
+#
+# - Typical following steps:
+#     * DCE
+#     * GVN
+#     * LICM
+#     * instruction scheduling
+#
+# - SSA may be destroyed later (out-of-SSA) before codegen.
+#

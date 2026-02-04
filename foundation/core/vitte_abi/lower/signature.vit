@@ -1,2 +1,145 @@
-proc lower_fn_signature(ctx: AbiContext, sig)
+# ============================================================
+# Vitte — ABI / Lowering
+# File: lower/signature.vit
+#
+# Role:
+#   Lower a high-level function signature into an ABI-aware
+#   signature:
+#     - argument placements
+#     - return placement (including sret)
+#     - final stack requirements
+#
+# Used by:
+#   - MIR lowering
+#   - Codegen (LLVM / Cranelift)
+#   - FFI boundary
+#
+# ============================================================
+
+space foundation/core/vitte_abi/lower/signature
+
+pull foundation/core/vitte_abi/desc
+pull foundation/core/vitte_abi/types
+pull foundation/core/vitte_abi/layout
+pull foundation/core/vitte_abi/classify
+pull foundation/core/vitte_abi/calling
+pull foundation/core/vitte_abi/errors
+
+
+# ============================================================
+# Lowered ABI signature model
+# ============================================================
+
+pick AbiArgKind
+    Value       # passed directly (reg or stack decided by calling)
+    SRet        # hidden sret pointer
+.end
+
+
+form AbiArg
+    kind: AbiArgKind
+    ty: types::AbiType
+    index: Int            # original parameter index, -1 for sret
+.end
+
+
+form AbiSignature
+    abi: desc::AbiDesc
+
+    # ABI-level arguments (including implicit sret)
+    args: Vec<AbiArg>
+
+    # ABI-level return (None if sret or void)
+    ret: Option<types::AbiType>
+
+    # Final stack size required for arguments
+    stack_size: Int
+.end
+
+
+# ============================================================
+# Entry point
+# ============================================================
+
+# Lower a function signature to an ABI signature.
+#
+# Parameters:
+#   - abi     : selected ABI descriptor
+#   - params  : high-level parameter types
+#   - ret_ty  : high-level return type
+#
+proc lower_signature(
+    abi: desc::AbiDesc,
+    params: Vec<types::AbiType>,
+    ret_ty: Option<types::AbiType>
+)
+gives AbiSignature
+.end
+    abi.validate()
+
+    let mut abi_args = Vec::new()
+    let mut lowered_params = Vec::new()
+
+    # --------------------------------------------------------
+    # Return classification (sret or not)
+    # --------------------------------------------------------
+    let ret_mem = classify::memory::classify_ret(ret_ty)
+
+    let mut abi_ret: Option<types::AbiType> = ret_ty
+
+    if ret_mem.kind == classify::memory::MemoryKind::Indirect
+        # Insert hidden sret pointer as first argument
+        abi_args.push(
+            AbiArg {
+                kind: AbiArgKind::SRet,
+                ty: types::AbiType::Ptr(
+                    ret_ty.unwrap()
+                ),
+                index: -1,
+            }
+        )
+
+        abi_ret = None
+    end
+
+    # --------------------------------------------------------
+    # Lower explicit parameters
+    # --------------------------------------------------------
+    let mut i = 0
+    for p in params
+        abi_args.push(
+            AbiArg {
+                kind: AbiArgKind::Value,
+                ty: p,
+                index: i,
+            }
+        )
+        lowered_params.push(p)
+        i += 1
+    end
+
+    # --------------------------------------------------------
+    # Calling convention dispatch
+    # --------------------------------------------------------
+    let stack_size =
+        match abi.kind
+        when desc::AbiKind::SysV
+            let a = calling::sysv::args::assign_args(lowered_params)
+            a.stack_size
+        when desc::AbiKind::Win64
+            let a = calling::win64::args::assign_args(lowered_params)
+            a.stack_size
+        when desc::AbiKind::AArch64
+            let a = calling::aarch64::args::assign_args(lowered_params)
+            a.stack_size
+        otherwise
+            errors::unsupported_abi("lower_signature")
+        end
+
+    give AbiSignature {
+        abi: abi,
+        args: abi_args,
+        ret: abi_ret,
+        stack_size: stack_size,
+    }
 .end

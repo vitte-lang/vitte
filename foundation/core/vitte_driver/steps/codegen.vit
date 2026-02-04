@@ -1,2 +1,216 @@
-proc step_codegen(ctx: DriverContext)
+# ============================================================
+# vitte_driver :: steps :: codegen
+# Code generation step (backend orchestration)
+# ============================================================
+
+space vitte/driver/steps
+
+pull vitte/driver/context
+pull vitte/driver/diagnostics
+pull vitte/driver/options
+pull vitte/driver/targets
+
+# Backends
+pull vitte/driver/backend
+
+# ------------------------------------------------------------
+# CodegenBackend
+# ------------------------------------------------------------
+
+pick CodegenBackend
+    Llvm
+    Cranelift
+    Gcc
+    Custom(String)
 .end
+
+# ------------------------------------------------------------
+# CodegenConfig
+# ------------------------------------------------------------
+
+form CodegenConfig
+    backend: CodegenBackend
+    emit_debug: Bool
+    emit_symbols: Bool
+    opt_level: OptLevel
+.end
+
+proc CodegenConfig::from_context(ctx: &DriverContext)
+    gives CodegenConfig
+
+    give CodegenConfig {
+        backend: select_backend(ctx),
+        emit_debug: ctx.options.flags.debug_info != DebugInfo::None,
+        emit_symbols: ctx.options.flags.debug_info == DebugInfo::Full,
+        opt_level: ctx.options.flags.opt_level,
+    }
+.end
+
+# ------------------------------------------------------------
+# Entry point
+# ------------------------------------------------------------
+
+proc codegen(ctx: &mut DriverContext)
+    gives Result<(), DriverError>
+
+    ctx.enter_phase(Codegen)
+
+    let cfg = CodegenConfig::from_context(ctx)
+
+    match cfg.backend
+        Llvm =>
+            give codegen_llvm(ctx, &cfg)
+
+        Cranelift =>
+            give codegen_cranelift(ctx, &cfg)
+
+        Gcc =>
+            give codegen_gcc(ctx, &cfg)
+
+        Custom(name) =>
+            give Error(
+                DriverError::BackendError(
+                    name,
+                    "custom backend not implemented"
+                )
+            )
+    .end
+.end
+
+# ------------------------------------------------------------
+# Backend selection
+# ------------------------------------------------------------
+
+proc select_backend(ctx: &DriverContext)
+    gives CodegenBackend
+
+    # Explicit backend selection via options (future)
+    # ctx.options.backend ?
+
+    # Target-based defaults
+    match ctx.target.arch
+        Wasm32 | Wasm64 =>
+            give Llvm
+
+        X86_64 | Aarch64 =>
+            give Cranelift
+
+        otherwise =>
+            give Llvm
+    .end
+.end
+
+# ------------------------------------------------------------
+# LLVM backend
+# ------------------------------------------------------------
+
+proc codegen_llvm(
+    ctx: &mut DriverContext,
+    cfg: &CodegenConfig
+)
+    gives Result<(), DriverError>
+
+    if !backend::llvm_available()
+        give Error(
+            DriverError::BackendError(
+                "llvm",
+                "LLVM backend not available"
+            )
+        )
+
+    ctx.diagnostics.note("running LLVM codegen")
+
+    backend::llvm_codegen(
+        ctx.session,
+        ctx.target,
+        cfg.opt_level,
+        cfg.emit_debug
+    )?;
+
+    ctx.session.register_object_file(
+        ctx.session.output_object_path()
+    )
+
+    give Ok(())
+.end
+
+# ------------------------------------------------------------
+# Cranelift backend
+# ------------------------------------------------------------
+
+proc codegen_cranelift(
+    ctx: &mut DriverContext,
+    cfg: &CodegenConfig
+)
+    gives Result<(), DriverError>
+
+    if !backend::cranelift_available()
+        give Error(
+            DriverError::BackendError(
+                "cranelift",
+                "Cranelift backend not available"
+            )
+        )
+
+    ctx.diagnostics.note("running Cranelift codegen")
+
+    backend::cranelift_codegen(
+        ctx.session,
+        ctx.target,
+        cfg.opt_level
+    )?;
+
+    ctx.session.register_object_file(
+        ctx.session.output_object_path()
+    )
+
+    give Ok(())
+.end
+
+# ------------------------------------------------------------
+# GCC backend
+# ------------------------------------------------------------
+
+proc codegen_gcc(
+    ctx: &mut DriverContext,
+    cfg: &CodegenConfig
+)
+    gives Result<(), DriverError>
+
+    if !backend::gcc_available()
+        give Error(
+            DriverError::BackendError(
+                "gcc",
+                "GCC backend not available"
+            )
+        )
+
+    ctx.diagnostics.note("running GCC codegen")
+
+    backend::gcc_codegen(
+        ctx.session,
+        ctx.target,
+        cfg.opt_level
+    )?;
+
+    ctx.session.register_object_file(
+        ctx.session.output_object_path()
+    )
+
+    give Ok(())
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This step does NOT know about MIR/HIR internals.
+# - All IR lowering happens earlier.
+# - Backends are pure producers of object files.
+# - Linking is handled separately in `backend/link.vit`.
+#
+# - Easy to extend:
+#     * NVPTX
+#     * WASM
+#     * SPIR-V
+#

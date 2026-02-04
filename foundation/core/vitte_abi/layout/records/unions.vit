@@ -1,2 +1,124 @@
-proc compute_union_layout(ctx: AbiContext, fields)
+# ============================================================
+# Vitte — ABI / Layout / Records
+# File: layout/records/unions.vit
+#
+# Role:
+#   Compute ABI layout for union records:
+#     - common storage
+#     - maximum size
+#     - maximum alignment
+#
+# Design goals:
+#   - ABI-agnostic
+#   - Deterministic
+#   - Compatible with C / FFI semantics
+#
+# Used by:
+#   - vitte_abi/layout
+#   - vitte_abi/classify
+#   - calling conventions
+#   - FFI / codegen
+#
+# ============================================================
+
+space foundation/core/vitte_abi/layout/records/unions
+
+pull foundation/core/vitte_abi/types
+pull foundation/core/vitte_abi/layout
+pull foundation/core/vitte_abi/errors
+
+
+# ============================================================
+# Data structures
+# ============================================================
+
+form UnionFieldLayout
+    name: String
+    ty: types::AbiType
+    size: Int
+    align: Int
+.end
+
+
+form UnionLayout
+    fields: Vec<UnionFieldLayout>
+    size: Int
+    align: Int
+.end
+
+
+# ============================================================
+# Entry point
+# ============================================================
+
+# Compute the ABI layout of a union type.
+#
+# Rules:
+#   - All fields start at offset 0
+#   - Union size = max(field.size)
+#   - Union alignment = max(field.align)
+#   - Total size is padded to union alignment
+#
+proc compute_union_layout(
+    fields: Vec<(String, types::AbiType)>
+)
+gives UnionLayout
+.end
+    let mut max_size = 0
+    let mut max_align = 1
+    let mut out = Vec::new()
+
+    for (name, ty) in fields
+        let layout = layout::type_layout(ty)
+
+        if layout.align <= 0
+            errors::invalid_layout("union field alignment must be positive")
+        end
+
+        out.push(
+            UnionFieldLayout {
+                name: name,
+                ty: ty,
+                size: layout.size,
+                align: layout.align,
+            }
+        )
+
+        if layout.size > max_size
+            max_size = layout.size
+        end
+
+        if layout.align > max_align
+            max_align = layout.align
+        end
+    end
+
+    # Final size aligned to union alignment
+    let total_size = align_to(max_size, max_align)
+
+    give UnionLayout {
+        fields: out,
+        size: total_size,
+        align: max_align,
+    }
+.end
+
+
+# ============================================================
+# Helpers
+# ============================================================
+
+proc align_to(value: Int, align: Int)
+gives Int
+.end
+    if align <= 1
+        give value
+    end
+
+    let rem = value % align
+    if rem == 0
+        give value
+    end
+
+    give value + (align - rem)
 .end

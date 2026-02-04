@@ -1,2 +1,240 @@
-proc run_process(cmd: List[String])
+# ============================================================
+# vitte_driver :: utils :: process
+# Process execution utilities
+# ============================================================
+
+space vitte/driver/utils
+
+pull vitte/driver/diagnostics
+pull vitte/driver/utils/fs
+
+# ------------------------------------------------------------
+# ProcessStatus
+# ------------------------------------------------------------
+
+form ProcessStatus
+    success: Bool
+    code: Int
 .end
+
+# ------------------------------------------------------------
+# ProcessOutput
+# ------------------------------------------------------------
+
+form ProcessOutput
+    status: ProcessStatus
+    stdout: String
+    stderr: String
+.end
+
+# ------------------------------------------------------------
+# Command
+# ------------------------------------------------------------
+
+form Command
+    program: String
+    args: List<String>
+    env: Map<String, String>
+    cwd: String?
+.end
+
+proc Command::new(program: String)
+    gives Command
+
+    give Command {
+        program: program,
+        args: [],
+        env: {},
+        cwd: None,
+    }
+.end
+
+# ------------------------------------------------------------
+# Builder helpers
+# ------------------------------------------------------------
+
+proc Command::arg(self: &mut Command, arg: String)
+    self.args.push(arg)
+.end
+
+proc Command::args(self: &mut Command, args: List<String>)
+    for a in args
+        self.args.push(a)
+    .end
+.end
+
+proc Command::env(self: &mut Command, key: String, value: String)
+    self.env.insert(key, value)
+.end
+
+proc Command::cwd(self: &mut Command, dir: String)
+    self.cwd = Some(dir)
+.end
+
+# ------------------------------------------------------------
+# Debug / formatting
+# ------------------------------------------------------------
+
+proc Command::debug_string(self: &Command)
+    gives String
+
+    let mut s = self.program
+
+    for a in self.args
+        s = s + " " + a
+    .end
+
+    give s
+.end
+
+# ------------------------------------------------------------
+# Execution
+# ------------------------------------------------------------
+
+proc Command::run(self: &Command)
+    gives ProcessStatus
+
+    let mut proc = process::spawn(self.program)
+
+    for a in self.args
+        proc.arg(a)
+    .end
+
+    for (k, v) in self.env
+        proc.env(k, v)
+    .end
+
+    match self.cwd
+        Some(dir) => proc.cwd(dir)
+        None => ()
+    .end
+
+    let status = proc.status()
+
+    give ProcessStatus {
+        success: status.success,
+        code: status.code,
+    }
+.end
+
+proc Command::run_capture(self: &Command)
+    gives Result<ProcessOutput, DriverError>
+
+    let mut proc = process::spawn(self.program)
+
+    for a in self.args
+        proc.arg(a)
+    .end
+
+    for (k, v) in self.env
+        proc.env(k, v)
+    .end
+
+    match self.cwd
+        Some(dir) => proc.cwd(dir)
+        None => ()
+    .end
+
+    let out = match proc.output()
+        Ok(o) => o
+        Error(e) =>
+            give Error(
+                DriverError::BackendError(
+                    "process",
+                    e.message()
+                )
+            )
+    .end
+
+    give Ok(
+        ProcessOutput {
+            status: ProcessStatus {
+                success: out.status.success,
+                code: out.status.code,
+            },
+            stdout: out.stdout,
+            stderr: out.stderr,
+        }
+    )
+.end
+
+# ------------------------------------------------------------
+# High-level helpers
+# ------------------------------------------------------------
+
+proc run_checked(cmd: &Command)
+    gives Result<(), DriverError>
+
+    let status = cmd.run()
+
+    if !status.success
+        give Error(
+            DriverError::BackendError(
+                cmd.program,
+                format(
+                    "process exited with code {}",
+                    status.code
+                )
+            )
+        )
+
+    give Ok(())
+.end
+
+proc run_capture_checked(cmd: &Command)
+    gives Result<String, DriverError>
+
+    let out = cmd.run_capture()?
+
+    if !out.status.success
+        give Error(
+            DriverError::BackendError(
+                cmd.program,
+                format(
+                    "process failed (code {}): {}",
+                    out.status.code,
+                    out.stderr
+                )
+            )
+        )
+
+    give Ok(out.stdout)
+.end
+
+# ------------------------------------------------------------
+# Tool lookup
+# ------------------------------------------------------------
+
+proc find_in_path(tool: String)
+    gives String?
+
+    let path = env::get("PATH")?
+    let parts = path.split(path::separator())
+
+    for p in parts
+        let candidate = join_path(p, tool)
+        if exists(candidate)
+            give Some(candidate)
+    .end
+
+    give None
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This module:
+#     * never panics
+#     * always reports DriverError on failure
+#
+# - Used by:
+#     * linker
+#     * backend codegen drivers
+#     * build tools
+#
+# - Designed for extension:
+#     * timeout support
+#     * async execution
+#     * process groups / job control
+#

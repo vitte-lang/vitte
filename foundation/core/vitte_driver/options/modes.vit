@@ -1,5 +1,211 @@
+# ============================================================
+# vitte_driver :: options :: modes
+# Driver operational modes and policies
+# ============================================================
+
+space vitte/driver/options
+
+pull vitte/driver/options/flags
+
+# ------------------------------------------------------------
+# DriverMode (high-level intent)
+# ------------------------------------------------------------
+
 pick DriverMode
-    Build
-    Check
-    Run
+    Compile        # full pipeline: parse -> codegen -> link
+    Check          # parse + type-check only
+    Test           # compile + run tests
+    Run            # compile + execute
+    Emit           # stop after a given emit stage
+.end
+
+# ------------------------------------------------------------
+# EmitStage (when mode == Emit)
+# ------------------------------------------------------------
+
+pick EmitStage
+    Ast
+    Hir
+    Mir
+    LlvmIr
+    Asm
+    Obj
+    Bin
+.end
+
+proc EmitStage::to_emit_kind(self: EmitStage)
+    gives EmitKind
+
+    match self
+        Ast     => EmitKind::Ast
+        Hir     => EmitKind::Hir
+        Mir     => EmitKind::Mir
+        LlvmIr  => EmitKind::LlvmIr
+        Asm     => EmitKind::Asm
+        Obj     => EmitKind::Obj
+        Bin     => EmitKind::Bin
+    .end
+.end
+
+# ------------------------------------------------------------
+# Mode configuration
+# ------------------------------------------------------------
+
+form ModeConfig
+    mode: DriverMode
+    emit_stage: EmitStage?     # only meaningful when mode == Emit
+.end
+
+# ------------------------------------------------------------
+# Defaults
+# ------------------------------------------------------------
+
+proc ModeConfig::default()
+    gives ModeConfig
+
+    give ModeConfig {
+        mode: Compile,
+        emit_stage: None,
+    }
+.end
+
+proc ModeConfig::emit(stage: EmitStage)
+    gives ModeConfig
+
+    give ModeConfig {
+        mode: Emit,
+        emit_stage: Some(stage),
+    }
+.end
+
+proc ModeConfig::check()
+    gives ModeConfig
+
+    give ModeConfig {
+        mode: Check,
+        emit_stage: None,
+    }
+.end
+
+proc ModeConfig::test()
+    gives ModeConfig
+
+    give ModeConfig {
+        mode: Test,
+        emit_stage: None,
+    }
+.end
+
+proc ModeConfig::run()
+    gives ModeConfig
+
+    give ModeConfig {
+        mode: Run,
+        emit_stage: None,
+    }
+.end
+
+# ------------------------------------------------------------
+# Apply mode to flags
+# ------------------------------------------------------------
+
+proc ModeConfig::apply_to_flags(
+    self: &ModeConfig,
+    flags: &mut DriverFlags
+)
+
+    match self.mode
+
+        Compile =>
+            () # defaults already correct
+
+        Check =>
+            flags.emit = EmitKind::Ast
+
+        Test =>
+            flags.emit = EmitKind::Bin
+
+        Run =>
+            flags.emit = EmitKind::Bin
+
+        Emit =>
+            match self.emit_stage
+                Some(stage) =>
+                    flags.emit = stage.to_emit_kind()
+                None =>
+                    () # unreachable, validated elsewhere
+            .end
+    .end
+.end
+
+# ------------------------------------------------------------
+# Validation
+# ------------------------------------------------------------
+
+proc ModeConfig::validate(self: &ModeConfig)
+    gives Result<(), String>
+
+    match self.mode
+        Emit =>
+            match self.emit_stage
+                None =>
+                    give Error("emit mode requires an explicit emit stage")
+                Some(_) =>
+                    give Ok(())
+            .end
+
+        otherwise =>
+            give Ok(())
+    .end
+.end
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc ModeConfig::is_compile(self: &ModeConfig)
+    gives Bool
+    give self.mode == Compile
+.end
+
+proc ModeConfig::is_check(self: &ModeConfig)
+    gives Bool
+    give self.mode == Check
+.end
+
+proc ModeConfig::is_emit(self: &ModeConfig)
+    gives Bool
+    give self.mode == Emit
+.end
+
+proc ModeConfig::is_run(self: &ModeConfig)
+    gives Bool
+    give self.mode == Run
+.end
+
+proc ModeConfig::is_test(self: &ModeConfig)
+    gives Bool
+    give self.mode == Test
+.end
+
+# ------------------------------------------------------------
+# Debug
+# ------------------------------------------------------------
+
+proc ModeConfig::debug_summary(self: &ModeConfig)
+    gives String
+
+    match self.emit_stage
+        Some(stage) =>
+            format(
+                "ModeConfig(mode={:?}, emit={:?})",
+                self.mode,
+                stage
+            )
+        None =>
+            format(
+                "ModeConfig(mode={:?})",
+                self.mode
+            )
+    .end
 .end

@@ -1,3 +1,230 @@
-proc impl_compile(ctx: driver::DriverContext)
-    # concrete compilation pipeline implementation
+# ============================================================
+# vitte_driver_impl :: pipeline :: compile
+# Concrete compilation pipeline implementation
+# ============================================================
+
+space vitte/driver_impl/pipeline
+
+pull vitte/driver/context
+pull vitte/driver/diagnostics
+pull vitte/driver/options
+pull vitte/driver/targets
+
+pull vitte/driver/steps
+pull vitte/driver/backend
+
+pull vitte/driver_impl/cache
+pull vitte/driver_impl/link
+
+# ------------------------------------------------------------
+# CompileImplResult
+# ------------------------------------------------------------
+
+pick CompileImplResult
+    Success
+    Failed
 .end
+
+# ------------------------------------------------------------
+# Entry point
+# ------------------------------------------------------------
+
+proc compile_impl(ctx: &mut DriverContext)
+    gives CompileImplResult
+
+    # --------------------------------------------------------
+    # Parse
+    # --------------------------------------------------------
+    match steps::parse(ctx)
+        Ok(_) => ()
+        Error(e) =>
+            ctx.emit_error(e.message())
+            give Failed
+    .end
+
+    if ctx.has_errors()
+        give Failed
+
+    # --------------------------------------------------------
+    # Lower
+    # --------------------------------------------------------
+    match steps::lower(ctx)
+        Ok(_) => ()
+        Error(e) =>
+            ctx.emit_error(e.message())
+            give Failed
+    .end
+
+    if ctx.has_errors()
+        give Failed
+
+    # --------------------------------------------------------
+    # Type checking
+    # --------------------------------------------------------
+    match steps::type_check(ctx)
+        Ok(_) => ()
+        Error(e) =>
+            ctx.emit_error(e.message())
+            give Failed
+    .end
+
+    if ctx.has_errors()
+        give Failed
+
+    # --------------------------------------------------------
+    # Monomorphization
+    # --------------------------------------------------------
+    match steps::monomorphize(ctx)
+        Ok(_) => ()
+        Error(e) =>
+            ctx.emit_error(e.message())
+            give Failed
+    .end
+
+    if ctx.has_errors()
+        give Failed
+
+    # --------------------------------------------------------
+    # MIR build
+    # --------------------------------------------------------
+    match steps::build_mir(ctx)
+        Ok(_) => ()
+        Error(e) =>
+            ctx.emit_error(e.message())
+            give Failed
+    .end
+
+    if ctx.has_errors()
+        give Failed
+
+    # --------------------------------------------------------
+    # SSA construction
+    # --------------------------------------------------------
+    match steps::build_ssa(ctx)
+        Ok(_) => ()
+        Error(e) =>
+            ctx.emit_error(e.message())
+            give Failed
+    .end
+
+    if ctx.has_errors()
+        give Failed
+
+    # --------------------------------------------------------
+    # Constant evaluation (MIR)
+    # --------------------------------------------------------
+    match steps::const_eval(ctx)
+        Ok(_) => ()
+        Error(e) =>
+            ctx.emit_error(e.message())
+            give Failed
+    .end
+
+    if ctx.has_errors()
+        give Failed
+
+    # --------------------------------------------------------
+    # Optimization
+    # --------------------------------------------------------
+    if ctx.options.flags.is_optimized()
+        match steps::optimize(ctx)
+            Ok(_) => ()
+            Error(e) =>
+                ctx.emit_error(e.message())
+                give Failed
+        .end
+    .end
+
+    if ctx.has_errors()
+        give Failed
+
+    # --------------------------------------------------------
+    # Code generation (with incremental cache)
+    # --------------------------------------------------------
+    let codegen_result =
+        with_incremental_cache(ctx, |cache| {
+
+            let key = CacheKey {
+                kind: "codegen",
+                id: ctx.session.unit_id(),
+            }
+
+            let fp = ctx.session.codegen_fingerprint()?
+
+            if cache.is_fresh(key, fp)
+                if let Some(obj) = cache.get_artifact(key)
+                    ctx.session.register_object_file(obj)
+                    give Ok(())
+                .end
+            .end
+
+            # fallback: real codegen
+            steps::codegen(ctx)?
+
+            let obj = ctx.session.last_object_file()
+            cache.update(
+                key,
+                fp,
+                ctx.session.codegen_deps(),
+                Some(obj)
+            )
+
+            give Ok(())
+        })
+
+    match codegen_result
+        Ok(_) => ()
+        Error(e) =>
+            ctx.emit_error(e.message())
+            give Failed
+    .end
+
+    if ctx.has_errors()
+        give Failed
+
+    # --------------------------------------------------------
+    # Linking
+    # --------------------------------------------------------
+    if ctx.options.flags.should_emit(EmitKind::Bin)
+        match backend::link(ctx)
+            Ok(_) => ()
+            Error(e) =>
+                ctx.emit_error(e.message())
+                give Failed
+        .end
+    .end
+
+    if ctx.has_errors()
+        give Failed
+
+    give Success
+.end
+
+# ------------------------------------------------------------
+# Convenience wrapper
+# ------------------------------------------------------------
+
+proc compile_impl_or_panic(ctx: &mut DriverContext)
+    match compile_impl(ctx)
+        Success => ()
+        Failed =>
+            panic("driver_impl compilation failed")
+    .end
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This is the *concrete* execution pipeline.
+# - All policies are already resolved in DriverContext.
+# - Uses incremental cache for expensive steps (codegen).
+# - Backend/link selection is delegated to driver + impl.
+#
+# - Relationship:
+#     vitte_driver/pipeline/compile.vit
+#         -> high-level API
+#
+#     vitte_driver_impl/impl/pipeline/compile.vit
+#         -> real execution
+#

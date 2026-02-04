@@ -1,2 +1,185 @@
-proc test_driver_impl()
+# ============================================================
+# vitte_driver_impl :: tests :: driver_impl_smoke
+# End-to-end smoke tests for driver_impl
+# ============================================================
+
+space vitte/driver_impl/tests
+
+pull vitte/driver/context
+pull vitte/driver/options
+pull vitte/driver/targets
+pull vitte/driver/diagnostics
+
+pull vitte/driver_impl/pipeline
+pull vitte/driver_impl/runtime
+
+pull vitte/driver/utils/fs
+
+# ------------------------------------------------------------
+# Test helpers
+# ------------------------------------------------------------
+
+proc make_temp_workspace()
+    gives String
+
+    let root = join_path(temp_dir(), "vitte_driver_impl_smoke")
+    ensure_dir(root)
+    give root
 .end
+
+proc write_minimal_source(dir: String)
+    gives String
+
+    let src_dir = join_path(dir, "src")
+    ensure_dir(src_dir)
+
+    let main = join_path(src_dir, "main.vit")
+
+    write_string(
+        main,
+        """
+space test/main
+
+proc main()
+    ret 0
+.end
+"""
+    )
+
+    give main
+.end
+
+proc make_context(root: String)
+    gives DriverContext
+
+    let target = Target::host()
+
+    let opts = DriverOptions::default()
+    opts.flags.emit = EmitKind::Obj     # avoid linker dependency
+    opts.flags.optimize = false
+    opts.flags.verbose = true
+
+    let mut ctx = DriverContext::new(
+        DriverMode::Compile,
+        opts,
+        target
+    )
+
+    ctx.session.set_root(root)
+    ctx.session.set_entry("src/main.vit")
+
+    give ctx
+.end
+
+# ------------------------------------------------------------
+# Smoke test
+# ------------------------------------------------------------
+
+proc test_driver_impl_compile_smoke()
+    gives Bool
+
+    let root = make_temp_workspace()
+    write_minimal_source(root)
+
+    let mut ctx = make_context(root)
+
+    match compile_impl(&mut ctx)
+        CompileImplResult::Success =>
+            ()
+        CompileImplResult::Failed =>
+            ctx.diagnostics.dump()
+            give false
+    .end
+
+    if ctx.has_errors()
+        ctx.diagnostics.dump()
+        give false
+    .end
+
+    # At least one object file must be produced
+    if ctx.session.object_files().is_empty()
+        ctx.diagnostics.error("no object files produced")
+        give false
+    .end
+
+    give true
+.end
+
+# ------------------------------------------------------------
+# Optional run test (only if binary emitted)
+# ------------------------------------------------------------
+
+proc test_driver_impl_run_smoke()
+    gives Bool
+
+    let root = make_temp_workspace()
+    write_minimal_source(root)
+
+    let target = Target::host()
+
+    let mut opts = DriverOptions::default()
+    opts.flags.emit = EmitKind::Bin
+    opts.flags.run  = true
+
+    let mut ctx = DriverContext::new(
+        DriverMode::Compile,
+        opts,
+        target
+    )
+
+    ctx.session.set_root(root)
+    ctx.session.set_entry("src/main.vit")
+
+    match compile_impl(&mut ctx)
+        CompileImplResult::Success => ()
+        CompileImplResult::Failed =>
+            ctx.diagnostics.dump()
+            give false
+    .end
+
+    if ctx.has_errors()
+        ctx.diagnostics.dump()
+        give false
+    .end
+
+    # Execute binary
+    if !run_impl_checked(&mut ctx)
+        give false
+    .end
+
+    give true
+.end
+
+# ------------------------------------------------------------
+# Test entry
+# ------------------------------------------------------------
+
+proc main()
+    let ok1 = test_driver_impl_compile_smoke()
+    let ok2 = test_driver_impl_run_smoke()
+
+    if ok1 && ok2
+        ret 0
+    else
+        ret 1
+    .end
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This is a SMOKE test:
+#     * fast
+#     * minimal
+#     * non-fragile
+#
+# - It validates:
+#     * DriverContext wiring
+#     * concrete pipeline execution
+#     * cache integration (implicitly)
+#     * object emission
+#     * optional runtime execution
+#
+# - Intended to run in CI and bootstrap.
+#

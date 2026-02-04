@@ -1,0 +1,222 @@
+# ============================================================
+# vitte_const_eval :: tests :: const_eval_smoke
+# Smoke tests for constant evaluation engine
+# ============================================================
+
+space vitte/core/const_eval/tests
+
+pull vitte/core/const_eval
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc assert_ok(res: Result<ConstValue, ConstEvalError>, expected: ConstValue)
+    match res
+        Ok(v) =>
+            if !v.eq(&expected)
+                panic(format(
+                    "assert_ok failed: expected {}, got {}",
+                    expected.to_string(),
+                    v.to_string()
+                ))
+        Error(e) =>
+            panic(format("unexpected error: {}", e.message()))
+    .end
+.end
+
+proc assert_err(res: Result<ConstValue, ConstEvalError>)
+    match res
+        Ok(v) =>
+            panic(format(
+                "expected error, got value {}",
+                v.to_string()
+            ))
+        Error(_) =>
+            () # ok
+    .end
+.end
+
+# ------------------------------------------------------------
+# Unary tests
+# ------------------------------------------------------------
+
+proc test_unary()
+    # +Int
+    assert_ok(
+        const_eval(
+            Unary(Plus, ConstValue::Int(5))
+        ),
+        ConstValue::Int(5)
+    )
+
+    # -Int
+    assert_ok(
+        const_eval(
+            Unary(Minus, ConstValue::Int(7))
+        ),
+        ConstValue::Int(-7)
+    )
+
+    # !Bool
+    assert_ok(
+        const_eval(
+            Unary(Not, ConstValue::Bool(true))
+        ),
+        ConstValue::Bool(false)
+    )
+
+    # ~UInt
+    assert_ok(
+        const_eval(
+            Unary(BitNot, ConstValue::UInt(0u))
+        ),
+        ConstValue::UInt(~0u)
+    )
+
+    # invalid unary
+    assert_err(
+        const_eval(
+            Unary(Not, ConstValue::Int(1))
+        )
+    )
+.end
+
+# ------------------------------------------------------------
+# Binary arithmetic
+# ------------------------------------------------------------
+
+proc test_binary_arith()
+    assert_ok(
+        const_eval(
+            Binary(Add,
+                ConstValue::Int(2),
+                ConstValue::Int(3)
+            )
+        ),
+        ConstValue::Int(5)
+    )
+
+    assert_ok(
+        const_eval(
+            Binary(Mul,
+                ConstValue::UInt(4u),
+                ConstValue::UInt(5u)
+            )
+        ),
+        ConstValue::UInt(20u)
+    )
+
+    assert_ok(
+        const_eval(
+            Binary(Div,
+                ConstValue::Float(10.0),
+                ConstValue::Float(2.0)
+            )
+        ),
+        ConstValue::Float(5.0)
+    )
+
+    # division by zero
+    assert_err(
+        const_eval(
+            Binary(Div,
+                ConstValue::Int(1),
+                ConstValue::Int(0)
+            )
+        )
+    )
+.end
+
+# ------------------------------------------------------------
+# Comparisons
+# ------------------------------------------------------------
+
+proc test_comparisons()
+    assert_ok(
+        const_eval(
+            Binary(Eq,
+                ConstValue::Int(3),
+                ConstValue::Int(3)
+            )
+        ),
+        ConstValue::Bool(true)
+    )
+
+    assert_ok(
+        const_eval(
+            Binary(Lt,
+                ConstValue::UInt(1u),
+                ConstValue::UInt(2u)
+            )
+        ),
+        ConstValue::Bool(true)
+    )
+
+    assert_ok(
+        const_eval(
+            Binary(Ge,
+                ConstValue::Float(3.5),
+                ConstValue::Float(3.5)
+            )
+        ),
+        ConstValue::Bool(true)
+    )
+
+    # mismatched types
+    assert_err(
+        const_eval(
+            Binary(Eq,
+                ConstValue::Int(1),
+                ConstValue::UInt(1u)
+            )
+        )
+    )
+.end
+
+# ------------------------------------------------------------
+# Logical ops
+# ------------------------------------------------------------
+
+proc test_logical()
+    assert_ok(
+        const_eval(
+            Binary(And,
+                ConstValue::Bool(true),
+                ConstValue::Bool(false)
+            )
+        ),
+        ConstValue::Bool(false)
+    )
+
+    assert_ok(
+        const_eval(
+            Binary(Or,
+                ConstValue::Bool(false),
+                ConstValue::Bool(true)
+            )
+        ),
+        ConstValue::Bool(true)
+    )
+
+    # invalid logical
+    assert_err(
+        const_eval(
+            Binary(And,
+                ConstValue::Bool(true),
+                ConstValue::Int(1)
+            )
+        )
+    )
+.end
+
+# ------------------------------------------------------------
+# Entry
+# ------------------------------------------------------------
+
+entry test at vitte/core/const_eval/tests
+    test_unary()
+    test_binary_arith()
+    test_comparisons()
+    test_logical()
+.end

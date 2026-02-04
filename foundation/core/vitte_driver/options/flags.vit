@@ -1,6 +1,209 @@
+# ============================================================
+# vitte_driver :: options :: flags
+# Driver flags and feature switches
+# ============================================================
+
+space vitte/driver/options
+
+# ------------------------------------------------------------
+# Optimization level
+# ------------------------------------------------------------
+
+pick OptLevel
+    O0        # no optimization
+    O1
+    O2
+    O3
+    Os        # optimize for size
+    Oz        # optimize aggressively for size
+.end
+
+proc OptLevel::default()
+    gives OptLevel
+    give O0
+.end
+
+# ------------------------------------------------------------
+# Warning policy
+# ------------------------------------------------------------
+
+pick WarningPolicy
+    Default        # standard warnings
+    All            # enable all warnings
+    None           # disable warnings
+    Error          # treat warnings as errors (-Werror)
+.end
+
+proc WarningPolicy::default()
+    gives WarningPolicy
+    give Default
+.end
+
+# ------------------------------------------------------------
+# Debug info level
+# ------------------------------------------------------------
+
+pick DebugInfo
+    None
+    Line
+    Full
+.end
+
+proc DebugInfo::default()
+    gives DebugInfo
+    give None
+.end
+
+# ------------------------------------------------------------
+# Emit kind
+# ------------------------------------------------------------
+
+pick EmitKind
+    Ast
+    Hir
+    Mir
+    LlvmIr
+    Asm
+    Obj
+    Bin
+.end
+
+# ------------------------------------------------------------
+# Feature flags
+# ------------------------------------------------------------
+
 form DriverFlags
-    optimize: Int
-    debug: Bool
-    emit_ir: Bool
-    emit_obj: Bool
+    # compilation
+    opt_level: OptLevel
+    debug_info: DebugInfo
+    emit: EmitKind
+
+    # diagnostics
+    warnings: WarningPolicy
+    color_diagnostics: Bool
+    verbose: Bool
+    quiet: Bool
+
+    # behavior
+    incremental: Bool
+    parallel: Bool
+    time_phases: Bool
+
+    # language / semantics
+    allow_unsafe: Bool
+    experimental: Bool
+.end
+
+# ------------------------------------------------------------
+# Defaults
+# ------------------------------------------------------------
+
+proc DriverFlags::default()
+    gives DriverFlags
+
+    give DriverFlags {
+        opt_level: OptLevel::default(),
+        debug_info: DebugInfo::default(),
+        emit: EmitKind::Bin,
+
+        warnings: WarningPolicy::default(),
+        color_diagnostics: true,
+        verbose: false,
+        quiet: false,
+
+        incremental: true,
+        parallel: true,
+        time_phases: false,
+
+        allow_unsafe: false,
+        experimental: false,
+    }
+.end
+
+# ------------------------------------------------------------
+# Presets
+# ------------------------------------------------------------
+
+proc DriverFlags::debug()
+    gives DriverFlags
+
+    let mut f = DriverFlags::default()
+    f.opt_level = O0
+    f.debug_info = Full
+    f.verbose = true
+    give f
+.end
+
+proc DriverFlags::release()
+    gives DriverFlags
+
+    let mut f = DriverFlags::default()
+    f.opt_level = O3
+    f.debug_info = None
+    give f
+.end
+
+proc DriverFlags::check_only()
+    gives DriverFlags
+
+    let mut f = DriverFlags::default()
+    f.emit = Ast
+    give f
+.end
+
+# ------------------------------------------------------------
+# Validation
+# ------------------------------------------------------------
+
+proc DriverFlags::validate(self: &DriverFlags)
+    gives Result<(), String>
+
+    if self.verbose && self.quiet
+        give Error("cannot use --verbose and --quiet together")
+
+    if self.emit == Bin && self.emit == Ast
+        give Error("invalid emit configuration")
+
+    give Ok(())
+.end
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc DriverFlags::is_optimized(self: &DriverFlags)
+    gives Bool
+
+    match self.opt_level
+        O0 => false
+        otherwise => true
+    .end
+.end
+
+proc DriverFlags::warnings_as_errors(self: &DriverFlags)
+    gives Bool
+    give self.warnings == Error
+.end
+
+proc DriverFlags::should_emit(self: &DriverFlags, kind: EmitKind)
+    gives Bool
+    give self.emit == kind
+.end
+
+# ------------------------------------------------------------
+# Debug
+# ------------------------------------------------------------
+
+proc DriverFlags::debug_summary(self: &DriverFlags)
+    gives String
+
+    give format(
+        "DriverFlags(opt={:?}, debug={:?}, emit={:?}, warnings={:?}, verbose={}, quiet={})",
+        self.opt_level,
+        self.debug_info,
+        self.emit,
+        self.warnings,
+        self.verbose,
+        self.quiet
+    )
 .end

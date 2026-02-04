@@ -1,2 +1,163 @@
-proc assert_unique(code: Int)
+# ============================================================
+# vitte_error_codes :: utils :: check
+# Consistency checks for error codes system
+# ============================================================
+
+space vitte/error_codes/utils
+
+pull vitte/error_codes/categories
+pull vitte/error_codes/registry
+
+# ------------------------------------------------------------
+# Check result
+# ------------------------------------------------------------
+
+pick CheckError
+    DuplicateCode
+    MissingRegistryEntry
+    OrphanRegistryEntry
+    InvalidCategory
 .end
+
+form CheckIssue
+    kind: CheckError
+    detail: String
+.end
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc collect_all_category_codes()
+    gives [String]
+
+    let mut codes: [String] = []
+
+    # Lex
+    codes.push(lex_error_code(LexErrorCode::InvalidUtf8))
+    codes.push(lex_error_code(LexErrorCode::UnexpectedCharacter))
+
+    # Parse
+    codes.push(parse_error_code(ParseErrorCode::UnexpectedToken))
+
+    # Type
+    codes.push(type_error_code(TypeErrorCode::TypeMismatch))
+
+    # MIR
+    codes.push(mir_error_code(MirErrorCode::BuildFailed))
+
+    # SSA
+    codes.push(ssa_error_code(SsaErrorCode::ConstructionFailed))
+
+    # Codegen
+    codes.push(codegen_error_code(CodegenError::EmitFailed))
+
+    # Driver
+    codes.push(driver_error_code(DriverErrorCode::PipelineFailed))
+
+    give codes
+.end
+
+# ------------------------------------------------------------
+# Duplicate detection
+# ------------------------------------------------------------
+
+proc find_duplicate_codes(codes: [String])
+    gives [CheckIssue]
+
+    let mut issues: [CheckIssue] = []
+
+    for i in 0 .. codes.len()
+        for j in i + 1 .. codes.len()
+            if codes[i] == codes[j]
+                issues.push(CheckIssue {
+                    kind: DuplicateCode,
+                    detail: codes[i],
+                })
+            .end
+        .end
+    .end
+
+    give issues
+.end
+
+# ------------------------------------------------------------
+# Registry consistency
+# ------------------------------------------------------------
+
+proc check_missing_registry_entries(codes: [String])
+    gives [CheckIssue]
+
+    let mut issues: [CheckIssue] = []
+
+    for c in codes
+        if lookup_error(c).is_none()
+            issues.push(CheckIssue {
+                kind: MissingRegistryEntry,
+                detail: c,
+            })
+        .end
+    .end
+
+    give issues
+.end
+
+proc check_orphan_registry_entries()
+    gives [CheckIssue]
+
+    let mut issues: [CheckIssue] = []
+
+    for e in ERROR_TABLE
+        let cat = e.category
+        if cat != "lex"
+        && cat != "parse"
+        && cat != "type"
+        && cat != "mir"
+        && cat != "ssa"
+        && cat != "codegen"
+        && cat != "driver"
+            issues.push(CheckIssue {
+                kind: InvalidCategory,
+                detail: e.code + " -> " + cat,
+            })
+        .end
+    .end
+
+    give issues
+.end
+
+# ------------------------------------------------------------
+# Entry point
+# ------------------------------------------------------------
+
+proc run_all_checks()
+    gives [CheckIssue]
+
+    let mut issues: [CheckIssue] = []
+
+    let codes = collect_all_category_codes()
+
+    issues.extend(find_duplicate_codes(codes))
+    issues.extend(check_missing_registry_entries(codes))
+    issues.extend(check_orphan_registry_entries())
+
+    give issues
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This module is intended for:
+#     * CI validation
+#     * smoke tests
+#     * bootstrap sanity checks
+#
+# - It MUST NOT emit diagnostics directly.
+# - The caller decides how to report issues.
+#
+# - Future:
+#     * auto-enumerate all category codes
+#     * verify prefix/category alignment
+#     * verify numeric ranges
+#

@@ -1,1 +1,172 @@
-const PARSE_ERROR_BASE = 2000
+# ============================================================
+# vitte_error_codes :: categories :: parse
+# Syntax parsing error codes
+# ============================================================
+
+space vitte/error_codes/categories
+
+# ------------------------------------------------------------
+# Category metadata
+# ------------------------------------------------------------
+
+const PARSE_CATEGORY: String = "parse"
+const PARSE_PREFIX: String  = "PR"
+
+# ------------------------------------------------------------
+# ParseErrorCode
+# ------------------------------------------------------------
+
+pick ParseErrorCode
+
+    # --------------------------------------------------------
+    # Tokens / stream
+    # --------------------------------------------------------
+
+    UnexpectedToken            # PR001
+    UnexpectedEndOfInput       # PR002
+    InvalidTokenSequence       # PR003
+
+    # --------------------------------------------------------
+    # Grammar / structure
+    # --------------------------------------------------------
+
+    ExpectedExpression         # PR010
+    ExpectedStatement          # PR011
+    ExpectedType               # PR012
+    ExpectedPattern            # PR013
+    ExpectedBlockEnd           # PR014
+
+    # --------------------------------------------------------
+    # Declarations
+    # --------------------------------------------------------
+
+    InvalidDeclaration         # PR020
+    DuplicateDeclaration       # PR021
+    MissingDeclarationName     # PR022
+
+    # --------------------------------------------------------
+    # Functions / procedures
+    # --------------------------------------------------------
+
+    InvalidFunctionSignature   # PR030
+    MissingParameters          # PR031
+    InvalidReturnType          # PR032
+
+    # --------------------------------------------------------
+    # Types
+    # --------------------------------------------------------
+
+    InvalidTypeExpression      # PR040
+    InvalidGenericParameter    # PR041
+    DuplicateGenericParameter  # PR042
+
+    # --------------------------------------------------------
+    # Control flow
+    # --------------------------------------------------------
+
+    InvalidIfExpression        # PR050
+    InvalidLoopExpression      # PR051
+    InvalidMatchExpression     # PR052
+    MissingMatchArm            # PR053
+
+    # --------------------------------------------------------
+    # Blocks / layout
+    # --------------------------------------------------------
+
+    UnterminatedBlock          # PR060
+    UnexpectedBlockEnd         # PR061
+    MisplacedEnd               # PR062
+
+    # --------------------------------------------------------
+    # Attributes / annotations
+    # --------------------------------------------------------
+
+    InvalidAttribute           # PR070
+    DuplicateAttribute         # PR071
+    AttributeNotAllowed        # PR072
+
+    # --------------------------------------------------------
+    # Internal / unexpected
+    # --------------------------------------------------------
+
+    InternalError              # PR900
+    Unimplemented              # PR901
+
+.end
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc parse_error_code(err: ParseErrorCode)
+    gives String
+
+    match err
+        UnexpectedToken            => "PR001"
+        UnexpectedEndOfInput       => "PR002"
+        InvalidTokenSequence       => "PR003"
+
+        ExpectedExpression         => "PR010"
+        ExpectedStatement          => "PR011"
+        ExpectedType               => "PR012"
+        ExpectedPattern            => "PR013"
+        ExpectedBlockEnd           => "PR014"
+
+        InvalidDeclaration         => "PR020"
+        DuplicateDeclaration       => "PR021"
+        MissingDeclarationName     => "PR022"
+
+        InvalidFunctionSignature   => "PR030"
+        MissingParameters          => "PR031"
+        InvalidReturnType          => "PR032"
+
+        InvalidTypeExpression      => "PR040"
+        InvalidGenericParameter    => "PR041"
+        DuplicateGenericParameter  => "PR042"
+
+        InvalidIfExpression        => "PR050"
+        InvalidLoopExpression      => "PR051"
+        InvalidMatchExpression     => "PR052"
+        MissingMatchArm            => "PR053"
+
+        UnterminatedBlock          => "PR060"
+        UnexpectedBlockEnd         => "PR061"
+        MisplacedEnd               => "PR062"
+
+        InvalidAttribute           => "PR070"
+        DuplicateAttribute         => "PR071"
+        AttributeNotAllowed        => "PR072"
+
+        InternalError              => "PR900"
+        Unimplemented              => "PR901"
+    .end
+.end
+
+proc parse_error_category()
+    gives String
+    give PARSE_CATEGORY
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This file defines ONLY parser error codes.
+# - No formatting or diagnostics text here.
+#
+# - Naming:
+#     PRxxx = PaRse
+#
+# - Ranges:
+#     001–009 : token / stream
+#     010–019 : grammar expectations
+#     020–029 : declarations
+#     030–039 : functions
+#     040–049 : types / generics
+#     050–059 : control flow
+#     060–069 : blocks / layout
+#     070–079 : attributes
+#     900+    : internal / unexpected
+#
+# - Codes must remain stable once published.
+#

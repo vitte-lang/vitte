@@ -1,2 +1,181 @@
-proc lower_varargs(ctx: AbiContext, sig)
+# ============================================================
+# Vitte — ABI / Lowering
+# File: lower/varargs.vit
+#
+# Role:
+#   Lower ABI-specific requirements for variadic functions.
+#
+# Covers:
+#   - SysV AMD64 (AL register / SSE count)
+#   - Win64 (shadow space + homed registers)
+#   - AArch64 (AAPCS64 va_list model)
+#
+# Used by:
+#   - MIR lowering
+#   - Codegen (LLVM / Cranelift)
+#   - FFI boundary
+#
+# ============================================================
+
+space foundation/core/vitte_abi/lower/varargs
+
+pull foundation/core/vitte_abi/desc
+pull foundation/core/vitte_abi/types
+pull foundation/core/vitte_abi/layout
+pull foundation/core/vitte_abi/classify
+pull foundation/core/vitte_abi/calling
+pull foundation/core/vitte_abi/errors
+
+
+# ============================================================
+# Variadic ABI model
+# ============================================================
+
+pick VarArgModel
+    SysV        # SysV AMD64 (AL = number of XMM regs used)
+    Win64       # Win64 (shadow space + homed regs)
+    AArch64     # AAPCS64 (va_list with reg save areas)
+.end
+
+
+# ============================================================
+# Lowered varargs descriptor
+# ============================================================
+
+form VarArgDesc
+    model: VarArgModel
+
+    # Number of fixed (non-variadic) parameters
+    fixed_count: Int
+
+    # SysV: number of XMM registers consumed by fixed args
+    sysv_fp_regs_used: Int
+
+    # Win64: shadow space size (bytes)
+    win64_shadow_space: Int
+
+    # AArch64: register save area sizes (bytes)
+    aarch64_gp_save: Int
+    aarch64_fp_save: Int
+.end
+
+
+# ============================================================
+# Entry point
+# ============================================================
+
+# Lower variadic ABI metadata.
+#
+# Parameters:
+#   - abi          : selected ABI descriptor
+#   - fixed_params : fixed (named) parameter types
+#
+proc lower_varargs(
+    abi: desc::AbiDesc,
+    fixed_params: Vec<types::AbiType>
+)
+gives VarArgDesc
+.end
+    abi.validate()
+
+    match abi.kind
+    when desc::AbiKind::SysV
+        give lower_sysv(fixed_params)
+    when desc::AbiKind::Win64
+        give lower_win64(fixed_params)
+    when desc::AbiKind::AArch64
+        give lower_aarch64(fixed_params)
+    otherwise
+        errors::unsupported_abi("variadic lowering")
+    end
+.end
+
+
+# ============================================================
+# SysV AMD64
+# ============================================================
+
+# SysV rule:
+#   - AL contains the number of XMM registers used
+#     to pass fixed arguments.
+#
+proc lower_sysv(
+    fixed_params: Vec<types::AbiType>
+)
+gives VarArgDesc
+.end
+    let mut fp_used = 0
+
+    for p in fixed_params
+        let cls = classify::registers::classify(
+            p,
+            classify::registers::RegUse::Arg
+        )
+
+        if cls.class == classify::registers::RegClass::FP
+            fp_used += 1
+        end
+    end
+
+    give VarArgDesc {
+        model: VarArgModel::SysV,
+        fixed_count: fixed_params.len(),
+        sysv_fp_regs_used: fp_used,
+        win64_shadow_space: 0,
+        aarch64_gp_save: 0,
+        aarch64_fp_save: 0,
+    }
+.end
+
+
+# ============================================================
+# Win64
+# ============================================================
+
+# Win64 rule:
+#   - All calls reserve 32 bytes of shadow space
+#   - All argument registers are homed in that space
+#
+proc lower_win64(
+    fixed_params: Vec<types::AbiType>
+)
+gives VarArgDesc
+.end
+    give VarArgDesc {
+        model: VarArgModel::Win64,
+        fixed_count: fixed_params.len(),
+        sysv_fp_regs_used: 0,
+        win64_shadow_space: 32,
+        aarch64_gp_save: 0,
+        aarch64_fp_save: 0,
+    }
+.end
+
+
+# ============================================================
+# AArch64 (AAPCS64)
+# ============================================================
+
+# AArch64 rule:
+#   - va_list points to register save areas:
+#       * GP: x0-x7 (8 × 8 bytes)
+#       * FP: v0-v7 (8 × 16 bytes)
+#
+proc lower_aarch64(
+    fixed_params: Vec<types::AbiType>
+)
+gives VarArgDesc
+.end
+    # AAPCS64 defines fixed register save areas
+    let gp_save = 8 * 8      # x0-x7
+    let fp_save = 8 * 16     # v0-v7 (128-bit)
+
+    give VarArgDesc {
+        model: VarArgModel::AArch64,
+        fixed_count: fixed_params.len(),
+        sysv_fp_regs_used: 0,
+        win64_shadow_space: 0,
+        aarch64_gp_save: gp_save,
+        aarch64_fp_save: fp_save,
+    }
 .end

@@ -1,8 +1,356 @@
-form ErrorCode
-    code: Int
-    name: String
-    message: String
+# ============================================================
+# vitte_error_codes :: registry :: table
+# Global error code registry table
+# ============================================================
+
+space vitte/error_codes/registry
+
+pull vitte/error_codes/categories
+pull vitte/driver/diagnostics
+
+# ------------------------------------------------------------
+# Severity alias (driver-level)
+# ------------------------------------------------------------
+
+type Severity = DiagnosticSeverity
+
+# ------------------------------------------------------------
+# ErrorEntry
+# ------------------------------------------------------------
+
+form ErrorEntry
+    code: String
+    category: String
+    severity: Severity
 .end
 
-proc register_error(code: Int, name: String, msg: String)
+# ------------------------------------------------------------
+# Registry table
+# ------------------------------------------------------------
+
+# NOTE:
+# - This table MUST contain ALL published error codes.
+# - Codes not present here are considered INTERNAL / BUG.
+#
+# - Order does not matter (lookup is linear for now).
+# - Can be optimized later (hash / map).
+
+let ERROR_TABLE: [ErrorEntry] = [
+
+    # --------------------------------------------------------
+    # Lexer (LX)
+    # --------------------------------------------------------
+
+    { code: "LX001", category: "lex", severity: Error },
+    { code: "LX002", category: "lex", severity: Error },
+    { code: "LX003", category: "lex", severity: Error },
+
+    { code: "LX010", category: "lex", severity: Error },
+    { code: "LX011", category: "lex", severity: Error },
+    { code: "LX012", category: "lex", severity: Error },
+
+    { code: "LX020", category: "lex", severity: Error },
+    { code: "LX021", category: "lex", severity: Error },
+    { code: "LX022", category: "lex", severity: Error },
+
+    { code: "LX030", category: "lex", severity: Error },
+    { code: "LX031", category: "lex", severity: Error },
+    { code: "LX032", category: "lex", severity: Error },
+    { code: "LX033", category: "lex", severity: Error },
+
+    { code: "LX040", category: "lex", severity: Error },
+    { code: "LX041", category: "lex", severity: Error },
+    { code: "LX042", category: "lex", severity: Error },
+    { code: "LX043", category: "lex", severity: Error },
+
+    { code: "LX050", category: "lex", severity: Error },
+    { code: "LX051", category: "lex", severity: Error },
+    { code: "LX052", category: "lex", severity: Error },
+
+    { code: "LX060", category: "lex", severity: Error },
+    { code: "LX061", category: "lex", severity: Error },
+    { code: "LX062", category: "lex", severity: Error },
+
+    { code: "LX070", category: "lex", severity: Error },
+    { code: "LX071", category: "lex", severity: Error },
+
+    # --------------------------------------------------------
+    # Parser (PR)
+    # --------------------------------------------------------
+
+    { code: "PR001", category: "parse", severity: Error },
+    { code: "PR002", category: "parse", severity: Error },
+    { code: "PR003", category: "parse", severity: Error },
+
+    { code: "PR010", category: "parse", severity: Error },
+    { code: "PR011", category: "parse", severity: Error },
+    { code: "PR012", category: "parse", severity: Error },
+    { code: "PR013", category: "parse", severity: Error },
+    { code: "PR014", category: "parse", severity: Error },
+
+    { code: "PR020", category: "parse", severity: Error },
+    { code: "PR021", category: "parse", severity: Error },
+    { code: "PR022", category: "parse", severity: Error },
+
+    { code: "PR030", category: "parse", severity: Error },
+    { code: "PR031", category: "parse", severity: Error },
+    { code: "PR032", category: "parse", severity: Error },
+
+    { code: "PR040", category: "parse", severity: Error },
+    { code: "PR041", category: "parse", severity: Error },
+    { code: "PR042", category: "parse", severity: Error },
+
+    { code: "PR050", category: "parse", severity: Error },
+    { code: "PR051", category: "parse", severity: Error },
+    { code: "PR052", category: "parse", severity: Error },
+    { code: "PR053", category: "parse", severity: Error },
+
+    { code: "PR060", category: "parse", severity: Error },
+    { code: "PR061", category: "parse", severity: Error },
+    { code: "PR062", category: "parse", severity: Error },
+
+    { code: "PR070", category: "parse", severity: Error },
+    { code: "PR071", category: "parse", severity: Error },
+    { code: "PR072", category: "parse", severity: Error },
+
+    # --------------------------------------------------------
+    # Type system (TY)
+    # --------------------------------------------------------
+
+    { code: "TY001", category: "type", severity: Error },
+    { code: "TY002", category: "type", severity: Error },
+    { code: "TY003", category: "type", severity: Error },
+    { code: "TY004", category: "type", severity: Error },
+
+    { code: "TY010", category: "type", severity: Error },
+    { code: "TY011", category: "type", severity: Error },
+    { code: "TY012", category: "type", severity: Error },
+    { code: "TY013", category: "type", severity: Error },
+
+    { code: "TY020", category: "type", severity: Error },
+    { code: "TY021", category: "type", severity: Error },
+    { code: "TY022", category: "type", severity: Error },
+    { code: "TY023", category: "type", severity: Error },
+
+    { code: "TY030", category: "type", severity: Error },
+    { code: "TY031", category: "type", severity: Error },
+    { code: "TY032", category: "type", severity: Error },
+    { code: "TY033", category: "type", severity: Error },
+
+    { code: "TY040", category: "type", severity: Error },
+    { code: "TY041", category: "type", severity: Error },
+    { code: "TY042", category: "type", severity: Error },
+    { code: "TY043", category: "type", severity: Error },
+
+    { code: "TY050", category: "type", severity: Error },
+    { code: "TY051", category: "type", severity: Error },
+    { code: "TY052", category: "type", severity: Error },
+    { code: "TY053", category: "type", severity: Error },
+
+    { code: "TY060", category: "type", severity: Error },
+    { code: "TY061", category: "type", severity: Error },
+    { code: "TY062", category: "type", severity: Error },
+
+    { code: "TY070", category: "type", severity: Error },
+    { code: "TY071", category: "type", severity: Error },
+    { code: "TY072", category: "type", severity: Error },
+
+    { code: "TY080", category: "type", severity: Error },
+    { code: "TY081", category: "type", severity: Error },
+
+    { code: "TY090", category: "type", severity: Error },
+    { code: "TY091", category: "type", severity: Error },
+
+    # --------------------------------------------------------
+    # MIR (MR)
+    # --------------------------------------------------------
+
+    { code: "MR001", category: "mir", severity: Error },
+    { code: "MR002", category: "mir", severity: Error },
+    { code: "MR003", category: "mir", severity: Error },
+    { code: "MR004", category: "mir", severity: Error },
+
+    { code: "MR010", category: "mir", severity: Error },
+    { code: "MR011", category: "mir", severity: Error },
+    { code: "MR012", category: "mir", severity: Error },
+    { code: "MR013", category: "mir", severity: Error },
+
+    { code: "MR020", category: "mir", severity: Error },
+    { code: "MR021", category: "mir", severity: Error },
+    { code: "MR022", category: "mir", severity: Error },
+    { code: "MR023", category: "mir", severity: Error },
+
+    { code: "MR030", category: "mir", severity: Error },
+    { code: "MR031", category: "mir", severity: Error },
+    { code: "MR032", category: "mir", severity: Error },
+
+    { code: "MR040", category: "mir", severity: Error },
+    { code: "MR041", category: "mir", severity: Error },
+    { code: "MR042", category: "mir", severity: Error },
+    { code: "MR043", category: "mir", severity: Error },
+
+    { code: "MR050", category: "mir", severity: Error },
+    { code: "MR051", category: "mir", severity: Error },
+    { code: "MR052", category: "mir", severity: Error },
+
+    { code: "MR060", category: "mir", severity: Error },
+    { code: "MR061", category: "mir", severity: Error },
+    { code: "MR062", category: "mir", severity: Error },
+
+    { code: "MR070", category: "mir", severity: Error },
+    { code: "MR071", category: "mir", severity: Error },
+
+    # --------------------------------------------------------
+    # SSA (SS)
+    # --------------------------------------------------------
+
+    { code: "SS001", category: "ssa", severity: Error },
+    { code: "SS002", category: "ssa", severity: Error },
+    { code: "SS003", category: "ssa", severity: Error },
+    { code: "SS004", category: "ssa", severity: Error },
+
+    { code: "SS010", category: "ssa", severity: Error },
+    { code: "SS011", category: "ssa", severity: Error },
+    { code: "SS012", category: "ssa", severity: Error },
+
+    { code: "SS020", category: "ssa", severity: Error },
+    { code: "SS021", category: "ssa", severity: Error },
+    { code: "SS022", category: "ssa", severity: Error },
+    { code: "SS023", category: "ssa", severity: Error },
+
+    { code: "SS030", category: "ssa", severity: Error },
+    { code: "SS031", category: "ssa", severity: Error },
+    { code: "SS032", category: "ssa", severity: Error },
+
+    { code: "SS040", category: "ssa", severity: Error },
+    { code: "SS041", category: "ssa", severity: Error },
+
+    { code: "SS050", category: "ssa", severity: Error },
+    { code: "SS051", category: "ssa", severity: Error },
+    { code: "SS052", category: "ssa", severity: Error },
+
+    { code: "SS060", category: "ssa", severity: Error },
+    { code: "SS061", category: "ssa", severity: Error },
+
+    { code: "SS070", category: "ssa", severity: Error },
+    { code: "SS071", category: "ssa", severity: Error },
+
+    # --------------------------------------------------------
+    # Codegen (CG)
+    # --------------------------------------------------------
+
+    { code: "CG001", category: "codegen", severity: Error },
+    { code: "CG002", category: "codegen", severity: Error },
+    { code: "CG003", category: "codegen", severity: Error },
+    { code: "CG004", category: "codegen", severity: Error },
+
+    { code: "CG010", category: "codegen", severity: Error },
+    { code: "CG011", category: "codegen", severity: Error },
+    { code: "CG012", category: "codegen", severity: Error },
+
+    { code: "CG020", category: "codegen", severity: Error },
+    { code: "CG021", category: "codegen", severity: Error },
+    { code: "CG022", category: "codegen", severity: Error },
+
+    { code: "CG030", category: "codegen", severity: Error },
+    { code: "CG031", category: "codegen", severity: Error },
+    { code: "CG032", category: "codegen", severity: Error },
+
+    { code: "CG040", category: "codegen", severity: Error },
+    { code: "CG041", category: "codegen", severity: Error },
+
+    { code: "CG050", category: "codegen", severity: Error },
+    { code: "CG051", category: "codegen", severity: Error },
+    { code: "CG052", category: "codegen", severity: Error },
+
+    # --------------------------------------------------------
+    # Driver (DR)
+    # --------------------------------------------------------
+
+    { code: "DR001", category: "driver", severity: Error },
+    { code: "DR002", category: "driver", severity: Error },
+    { code: "DR003", category: "driver", severity: Error },
+
+    { code: "DR010", category: "driver", severity: Error },
+    { code: "DR011", category: "driver", severity: Error },
+    { code: "DR012", category: "driver", severity: Error },
+    { code: "DR013", category: "driver", severity: Error },
+
+    { code: "DR020", category: "driver", severity: Error },
+    { code: "DR021", category: "driver", severity: Error },
+    { code: "DR022", category: "driver", severity: Error },
+    { code: "DR023", category: "driver", severity: Error },
+
+    { code: "DR030", category: "driver", severity: Error },
+    { code: "DR031", category: "driver", severity: Error },
+    { code: "DR032", category: "driver", severity: Error },
+
+    { code: "DR040", category: "driver", severity: Error },
+    { code: "DR041", category: "driver", severity: Error },
+    { code: "DR042", category: "driver", severity: Error },
+
+    { code: "DR050", category: "driver", severity: Error },
+    { code: "DR051", category: "driver", severity: Error },
+    { code: "DR052", category: "driver", severity: Error },
+
+    { code: "DR060", category: "driver", severity: Error },
+    { code: "DR061", category: "driver", severity: Error },
+    { code: "DR062", category: "driver", severity: Error },
+    { code: "DR063", category: "driver", severity: Error },
+
+    { code: "DR070", category: "driver", severity: Error },
+    { code: "DR071", category: "driver", severity: Error },
+
+]
+
+# ------------------------------------------------------------
+# Lookup helpers
+# ------------------------------------------------------------
+
+proc lookup_error(code: String)
+    gives ErrorEntry?
+
+    for e in ERROR_TABLE
+        if e.code == code
+            give Some(e)
+        .end
+    .end
+
+    give None
 .end
+
+proc error_severity(code: String)
+    gives Severity
+
+    match lookup_error(code)
+        Some(e) => e.severity
+        None    => Error   # unknown code = compiler bug
+    .end
+.end
+
+proc error_category(code: String)
+    gives String
+
+    match lookup_error(code)
+        Some(e) => e.category
+        None    => "internal"
+    .end
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This registry is the authoritative source for:
+#     * code → category
+#     * code → severity
+#
+# - Any emitted diagnostic code MUST be present here.
+#
+# - Unknown codes are treated as INTERNAL errors.
+#
+# - Future:
+#     * severity overrides via config
+#     * generated table from categories
+#     * perfect-hash lookup
+#

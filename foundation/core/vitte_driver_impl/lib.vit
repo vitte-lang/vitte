@@ -1,14 +1,93 @@
-pull vitte/foundation/core/vitte_driver as driver
-pull vitte/compiler/session as sess
-pull vitte/compiler/backends as back
-pull vitte/foundation/core/vitte_target as target
-pull vitte/foundation/core/vitte_abi as abi
+# ============================================================
+# vitte_driver_impl :: lib
+# Concrete implementation entry point for the Vitte driver
+# ============================================================
 
-pull self/impl/pipeline/mod
-pull self/impl/steps/mod
-pull self/impl/cache/mod
-pull self/impl/link/mod
-pull self/impl/runtime/mod
-pull self/utils/mod
+space vitte/driver_impl
 
-share all
+# ------------------------------------------------------------
+# Subsystems
+# ------------------------------------------------------------
+
+pull vitte/driver_impl/impl/cache
+pull vitte/driver_impl/impl/link
+pull vitte/driver_impl/impl/pipeline
+pull vitte/driver_impl/impl/runtime
+
+pull vitte/driver_impl/utils
+
+# Driver public API
+pull vitte/driver/context
+pull vitte/driver/options
+pull vitte/driver/diagnostics
+
+# ------------------------------------------------------------
+# Public re-exports (impl-level)
+# ------------------------------------------------------------
+
+# Pipeline
+share CompileImplResult
+share compile_impl
+share compile_impl_or_panic
+
+# Runtime
+share run_impl
+share run_impl_checked
+
+# Cache (advanced users / tests)
+share IncrementalCache
+share with_incremental_cache
+
+# ------------------------------------------------------------
+# Initialization
+# ------------------------------------------------------------
+
+proc init_driver_impl(ctx: &DriverContext)
+
+    # Initialize internal logger
+    init_logger_from_options(&ctx.options)
+
+    log_info("vitte_driver_impl initialized")
+.end
+
+# ------------------------------------------------------------
+# High-level convenience API
+# ------------------------------------------------------------
+
+proc compile_and_run(ctx: &mut DriverContext)
+    gives Bool
+
+    init_driver_impl(ctx)
+
+    match compile_impl(ctx)
+        CompileImplResult::Success =>
+            if ctx.options.flags.run
+                run_impl_checked(ctx)
+            else
+                true
+            .end
+        CompileImplResult::Failed =>
+            false
+    .end
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This crate contains the *real* execution logic of the driver.
+# - It is NOT intended to be used directly by end-users.
+#
+# - Layering:
+#
+#     vitte_driver            -> public API, policies
+#     vitte_driver_impl       -> concrete execution
+#
+# - Responsibilities:
+#     * execute pipeline
+#     * manage cache
+#     * invoke linkers
+#     * run binaries
+#
+# - Must remain deterministic and bootstrap-friendly.
+#

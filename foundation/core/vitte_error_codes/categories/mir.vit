@@ -1,1 +1,172 @@
-const MIR_ERROR_BASE = 4000
+# ============================================================
+# vitte_error_codes :: categories :: mir
+# MIR (Mid-level IR) error codes
+# ============================================================
+
+space vitte/error_codes/categories
+
+# ------------------------------------------------------------
+# Category metadata
+# ------------------------------------------------------------
+
+const MIR_CATEGORY: String = "mir"
+const MIR_PREFIX: String  = "MR"
+
+# ------------------------------------------------------------
+# MirErrorCode
+# ------------------------------------------------------------
+
+pick MirErrorCode
+
+    # --------------------------------------------------------
+    # MIR construction / lowering
+    # --------------------------------------------------------
+
+    BuildFailed                 # MR001
+    InvalidLoweredNode          # MR002
+    UnsupportedConstruct        # MR003
+    MissingEntryBlock           # MR004
+
+    # --------------------------------------------------------
+    # Control flow / CFG
+    # --------------------------------------------------------
+
+    InvalidBasicBlock           # MR010
+    InvalidTerminator           # MR011
+    UnreachableBlock            # MR012
+    CyclicEntry                 # MR013
+
+    # --------------------------------------------------------
+    # Types / values
+    # --------------------------------------------------------
+
+    TypeMismatch                # MR020
+    InvalidValue                # MR021
+    UseBeforeDef                # MR022
+    InvalidPlace                # MR023
+
+    # --------------------------------------------------------
+    # Borrowing / ownership (if applicable)
+    # --------------------------------------------------------
+
+    BorrowViolation             # MR030
+    MutabilityViolation         # MR031
+    LifetimeViolation           # MR032
+
+    # --------------------------------------------------------
+    # SSA / dataflow
+    # --------------------------------------------------------
+
+    SsaConstructionFailed       # MR040
+    PhiNodeMismatch             # MR041
+    DominatorTreeInvalid        # MR042
+    DataflowInconsistency       # MR043
+
+    # --------------------------------------------------------
+    # Constant evaluation (MIR-level)
+    # --------------------------------------------------------
+
+    ConstEvalFailed             # MR050
+    ConstEvalOverflow           # MR051
+    ConstEvalUnsupportedOp      # MR052
+
+    # --------------------------------------------------------
+    # Optimisation passes
+    # --------------------------------------------------------
+
+    OptimizationFailed          # MR060
+    InvalidOptimizationPass     # MR061
+    PassInvariantViolated       # MR062
+
+    # --------------------------------------------------------
+    # Serialization / debugging
+    # --------------------------------------------------------
+
+    DumpFailed                  # MR070
+    InvalidMirFormat            # MR071
+
+    # --------------------------------------------------------
+    # Internal / unexpected
+    # --------------------------------------------------------
+
+    InternalError               # MR900
+    Unimplemented               # MR901
+
+.end
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc mir_error_code(err: MirErrorCode)
+    gives String
+
+    match err
+        BuildFailed                 => "MR001"
+        InvalidLoweredNode          => "MR002"
+        UnsupportedConstruct        => "MR003"
+        MissingEntryBlock           => "MR004"
+
+        InvalidBasicBlock           => "MR010"
+        InvalidTerminator           => "MR011"
+        UnreachableBlock            => "MR012"
+        CyclicEntry                 => "MR013"
+
+        TypeMismatch                => "MR020"
+        InvalidValue                => "MR021"
+        UseBeforeDef                => "MR022"
+        InvalidPlace                => "MR023"
+
+        BorrowViolation             => "MR030"
+        MutabilityViolation         => "MR031"
+        LifetimeViolation           => "MR032"
+
+        SsaConstructionFailed       => "MR040"
+        PhiNodeMismatch             => "MR041"
+        DominatorTreeInvalid        => "MR042"
+        DataflowInconsistency       => "MR043"
+
+        ConstEvalFailed             => "MR050"
+        ConstEvalOverflow           => "MR051"
+        ConstEvalUnsupportedOp      => "MR052"
+
+        OptimizationFailed          => "MR060"
+        InvalidOptimizationPass     => "MR061"
+        PassInvariantViolated       => "MR062"
+
+        DumpFailed                  => "MR070"
+        InvalidMirFormat            => "MR071"
+
+        InternalError               => "MR900"
+        Unimplemented               => "MR901"
+    .end
+.end
+
+proc mir_error_category()
+    gives String
+    give MIR_CATEGORY
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This file defines ONLY MIR-related error codes.
+# - No diagnostics text or formatting here.
+#
+# - Naming:
+#     MRxxx = MiR
+#
+# - Ranges:
+#     001–009 : construction / lowering
+#     010–019 : control flow / CFG
+#     020–029 : types / values
+#     030–039 : borrow / ownership
+#     040–049 : SSA / dataflow
+#     050–059 : const-eval (MIR)
+#     060–069 : optimisations
+#     070–079 : serialization / dump
+#     900+    : internal / unexpected
+#
+# - Codes must remain stable once published.
+#

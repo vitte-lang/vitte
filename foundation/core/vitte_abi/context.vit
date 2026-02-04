@@ -1,6 +1,167 @@
+# ============================================================
+# Vitte — ABI / Context
+# File: context.vit
+#
+# Role:
+#   Central ABI context shared across lowering, calling,
+#   classification, and codegen.
+#
+# This context:
+#   - Owns the selected ABI descriptor
+#   - Provides unified access to ABI subsystems
+#   - Is passed explicitly (no globals)
+#
+# Used by:
+#   - MIR lowering
+#   - vitte_abi/lower/*
+#   - vitte_abi/calling/*
+#   - codegen backends
+#
+# ============================================================
+
+space foundation/core/vitte_abi/context
+
+pull foundation/core/vitte_abi/desc
+pull foundation/core/vitte_abi/layout
+pull foundation/core/vitte_abi/classify
+pull foundation/core/vitte_abi/lower
+pull foundation/core/vitte_abi/utils
+pull foundation/core/vitte_abi/errors
+
+
+# ============================================================
+# ABI Context
+# ============================================================
+
 form AbiContext
-    target: target::TargetContext
-    name: String
-    supports_varargs: Bool
-    supports_vectors: Bool
+    abi: desc::AbiDesc
+.end
+
+
+# ============================================================
+# Constructors
+# ============================================================
+
+proc AbiContext::new(abi: desc::AbiDesc)
+gives AbiContext
+.end
+    abi.validate()
+    give AbiContext { abi: abi }
+.end
+
+
+# ============================================================
+# Accessors — description
+# ============================================================
+
+proc AbiContext::desc(self)
+gives desc::AbiDesc
+.end
+    give self.abi
+.end
+
+
+proc AbiContext::kind(self)
+gives desc::AbiKind
+.end
+    give self.abi.kind
+.end
+
+
+# ============================================================
+# Accessors — layout
+# ============================================================
+
+proc AbiContext::layout_of(
+    self,
+    ty: foundation/core/vitte_abi/types::AbiType
+)
+gives layout::TypeLayout
+.end
+    give layout::type_layout(ty)
+.end
+
+
+# ============================================================
+# Accessors — classification
+# ============================================================
+
+proc AbiContext::classify_reg(
+    self,
+    ty: foundation/core/vitte_abi/types::AbiType,
+    use: classify::registers::RegUse
+)
+gives classify::registers::RegClassResult
+.end
+    give classify::registers::classify(ty, use)
+.end
+
+
+proc AbiContext::classify_arg_mem(
+    self,
+    ty: foundation/core/vitte_abi/types::AbiType
+)
+gives classify::memory::MemoryClass
+.end
+    give classify::memory::classify_arg(ty)
+.end
+
+
+proc AbiContext::classify_ret_mem(
+    self,
+    ty: Option<foundation/core/vitte_abi/types::AbiType>
+)
+gives classify::memory::MemoryClass
+.end
+    give classify::memory::classify_ret(ty)
+.end
+
+
+# ============================================================
+# Accessors — lowering
+# ============================================================
+
+proc AbiContext::lower_signature(
+    self,
+    params: Vec<foundation/core/vitte_abi/types::AbiType>,
+    ret_ty: Option<foundation/core/vitte_abi/types::AbiType>
+)
+gives lower::AbiSignature
+.end
+    give lower::lower_signature(self.abi, params, ret_ty)
+.end
+
+
+proc AbiContext::lower_varargs(
+    self,
+    fixed_params: Vec<foundation/core/vitte_abi/types::AbiType>
+)
+gives lower::VarArgDesc
+.end
+    give lower::lower_varargs(self.abi, fixed_params)
+.end
+
+
+# ============================================================
+# Accessors — utils
+# ============================================================
+
+proc AbiContext::gp_regs(self)
+gives utils::register_sets::RegSet
+.end
+    give utils::register_sets::gp_for_abi(self.abi)
+.end
+
+
+proc AbiContext::fp_regs(self)
+gives utils::register_sets::RegSet
+.end
+    give utils::register_sets::fp_for_abi(self.abi)
+.end
+
+
+proc AbiContext::new_stack_frame(self)
+gives utils::stack::StackFrame
+.end
+    give utils::stack::StackFrame::new(self.abi)
 .end

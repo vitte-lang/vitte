@@ -1,2 +1,53 @@
-pull self/incremental
-share all
+# ============================================================
+# vitte_driver_impl :: cache
+# Cache subsystem root
+# ============================================================
+
+space vitte/driver_impl/cache
+
+# ------------------------------------------------------------
+# Submodules
+# ------------------------------------------------------------
+
+pull vitte/driver_impl/cache/incremental
+
+# (future extensions)
+# pull vitte/driver_impl/cache/evict
+# pull vitte/driver_impl/cache/query
+# pull vitte/driver_impl/cache/format
+# pull vitte/driver_impl/cache/memory
+
+# ------------------------------------------------------------
+# Public re-exports
+# ------------------------------------------------------------
+
+# Incremental cache
+share IncrementalCache
+share CacheKey
+share CacheEntry
+share Fingerprint
+
+share fingerprint_path
+share with_incremental_cache
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This module contains NO cache logic itself.
+# - It aggregates cache strategies and exposes
+#   a stable API to the rest of vitte_driver_impl.
+#
+# - Design goals:
+#     * deterministic builds
+#     * fast incremental recompilation
+#     * CI- and IDE-friendly
+#
+# - Typical usage:
+#
+#       pull vitte/driver_impl/cache
+#
+#       with_incremental_cache(ctx, |cache| {
+#           ...
+#       })
+#

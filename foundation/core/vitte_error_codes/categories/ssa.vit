@@ -1,1 +1,164 @@
-const SSA_ERROR_BASE = 5000
+# ============================================================
+# vitte_error_codes :: categories :: ssa
+# SSA (Static Single Assignment) error codes
+# ============================================================
+
+space vitte/error_codes/categories
+
+# ------------------------------------------------------------
+# Category metadata
+# ------------------------------------------------------------
+
+const SSA_CATEGORY: String = "ssa"
+const SSA_PREFIX: String  = "SS"
+
+# ------------------------------------------------------------
+# SsaErrorCode
+# ------------------------------------------------------------
+
+pick SsaErrorCode
+
+    # --------------------------------------------------------
+    # SSA construction
+    # --------------------------------------------------------
+
+    ConstructionFailed         # SS001
+    MissingEntryBlock          # SS002
+    MultipleDefinitions        # SS003
+    UndefinedValue             # SS004
+
+    # --------------------------------------------------------
+    # Dominance / CFG
+    # --------------------------------------------------------
+
+    DominatorTreeBuildFailed   # SS010
+    InvalidDominatorTree       # SS011
+    DominanceViolation         # SS012
+
+    # --------------------------------------------------------
+    # Phi nodes
+    # --------------------------------------------------------
+
+    PhiPlacementFailed         # SS020
+    PhiOperandMismatch         # SS021
+    PhiTypeMismatch            # SS022
+    PhiMissingIncoming         # SS023
+
+    # --------------------------------------------------------
+    # Use / def chains
+    # --------------------------------------------------------
+
+    UseDefBuildFailed          # SS030
+    InvalidUse                 # SS031
+    InvalidDef                 # SS032
+
+    # --------------------------------------------------------
+    # Renaming
+    # --------------------------------------------------------
+
+    RenameFailed               # SS040
+    InvalidRenameTarget        # SS041
+
+    # --------------------------------------------------------
+    # Verification / validation
+    # --------------------------------------------------------
+
+    VerificationFailed         # SS050
+    NonSsaFormDetected         # SS051
+    BrokenInvariant            # SS052
+
+    # --------------------------------------------------------
+    # Optimisation interaction
+    # --------------------------------------------------------
+
+    OptimizationInterference  # SS060
+    InvalidTransform           # SS061
+
+    # --------------------------------------------------------
+    # Serialization / debugging
+    # --------------------------------------------------------
+
+    DumpFailed                 # SS070
+    InvalidSsaFormat           # SS071
+
+    # --------------------------------------------------------
+    # Internal / unexpected
+    # --------------------------------------------------------
+
+    InternalError              # SS900
+    Unimplemented              # SS901
+
+.end
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc ssa_error_code(err: SsaErrorCode)
+    gives String
+
+    match err
+        ConstructionFailed         => "SS001"
+        MissingEntryBlock          => "SS002"
+        MultipleDefinitions        => "SS003"
+        UndefinedValue             => "SS004"
+
+        DominatorTreeBuildFailed   => "SS010"
+        InvalidDominatorTree       => "SS011"
+        DominanceViolation         => "SS012"
+
+        PhiPlacementFailed         => "SS020"
+        PhiOperandMismatch         => "SS021"
+        PhiTypeMismatch            => "SS022"
+        PhiMissingIncoming         => "SS023"
+
+        UseDefBuildFailed          => "SS030"
+        InvalidUse                 => "SS031"
+        InvalidDef                 => "SS032"
+
+        RenameFailed               => "SS040"
+        InvalidRenameTarget        => "SS041"
+
+        VerificationFailed         => "SS050"
+        NonSsaFormDetected         => "SS051"
+        BrokenInvariant            => "SS052"
+
+        OptimizationInterference  => "SS060"
+        InvalidTransform           => "SS061"
+
+        DumpFailed                 => "SS070"
+        InvalidSsaFormat           => "SS071"
+
+        InternalError              => "SS900"
+        Unimplemented              => "SS901"
+    .end
+.end
+
+proc ssa_error_category()
+    gives String
+    give SSA_CATEGORY
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This file defines ONLY SSA-related error codes.
+# - No diagnostics text or formatting here.
+#
+# - Naming:
+#     SSxxx = Static Single assignment
+#
+# - Ranges:
+#     001–009 : construction
+#     010–019 : dominance / CFG
+#     020–029 : phi nodes
+#     030–039 : use/def
+#     040–049 : renaming
+#     050–059 : verification
+#     060–069 : optimisation interaction
+#     070–079 : serialization / dump
+#     900+    : internal / unexpected
+#
+# - Codes must remain stable once published.
+#

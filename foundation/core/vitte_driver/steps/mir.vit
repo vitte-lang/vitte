@@ -1,2 +1,140 @@
-proc step_build_mir(ctx: DriverContext)
+# ============================================================
+# vitte_driver :: steps :: mir
+# MIR construction and preparation step
+# ============================================================
+
+space vitte/driver/steps
+
+pull vitte/driver/context
+pull vitte/driver/diagnostics
+pull vitte/driver/options
+pull vitte/driver/targets
+
+# MIR subsystems (defined elsewhere)
+pull vitte/mir
+pull vitte/mir/build
+pull vitte/mir/verify
+pull vitte/mir/transform
+
+# ------------------------------------------------------------
+# MIRBuildConfig
+# ------------------------------------------------------------
+
+form MIRBuildConfig
+    optimize_for_size: Bool
+    enable_checks: Bool
+    debug_names: Bool
 .end
+
+proc MIRBuildConfig::from_context(ctx: &DriverContext)
+    gives MIRBuildConfig
+
+    give MIRBuildConfig {
+        optimize_for_size:
+            ctx.options.flags.opt_level == OptLevel::Os
+            || ctx.options.flags.opt_level == OptLevel::Oz,
+
+        enable_checks:
+            ctx.options.flags.debug_info != DebugInfo::None,
+
+        debug_names:
+            ctx.options.flags.debug_info == DebugInfo::Full,
+    }
+.end
+
+# ------------------------------------------------------------
+# Entry point
+# ------------------------------------------------------------
+
+proc build_mir(ctx: &mut DriverContext)
+    gives Result<(), DriverError>
+
+    ctx.enter_phase(Lower)
+
+    let cfg = MIRBuildConfig::from_context(ctx)
+
+    # --------------------------------------------------------
+    # Build MIR from HIR
+    # --------------------------------------------------------
+    match mir::build::from_hir(ctx.session, cfg.debug_names)
+        Ok(mir_module) =>
+            ctx.session.set_mir(mir_module)
+        Error(e) =>
+            give Error(
+                DriverError::BackendError(
+                    "mir-build",
+                    e.message()
+                )
+            )
+    .end
+
+    # --------------------------------------------------------
+    # Verify MIR invariants
+    # --------------------------------------------------------
+    match mir::verify::module(ctx.session.mir())
+        Ok(_) => ()
+        Error(e) =>
+            give Error(
+                DriverError::InternalCompilerError(
+                    format("MIR verification failed: {}", e.message())
+                )
+            )
+    .end
+
+    # --------------------------------------------------------
+    # Canonical MIR transforms (always-on)
+    # --------------------------------------------------------
+    match mir::transform::canonicalize(ctx.session.mir_mut())
+        Ok(_) => ()
+        Error(e) =>
+            give Error(
+                DriverError::InternalCompilerError(
+                    format("MIR canonicalization failed: {}", e.message())
+                )
+            )
+    .end
+
+    # --------------------------------------------------------
+    # Optional MIR checks (debug)
+    # --------------------------------------------------------
+    if cfg.enable_checks
+        match mir::verify::module(ctx.session.mir())
+            Ok(_) => ()
+            Error(e) =>
+                give Error(
+                    DriverError::InternalCompilerError(
+                        format("MIR post-check failed: {}", e.message())
+                    )
+                )
+        .end
+    .end
+
+    give Ok(())
+.end
+
+# ------------------------------------------------------------
+# Convenience wrapper
+# ------------------------------------------------------------
+
+proc build_mir_or_panic(ctx: &mut DriverContext)
+    match build_mir(ctx)
+        Ok(_) => ()
+        Error(e) =>
+            panic(e.message())
+    .end
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This step:
+#     * does NOT perform optimizations
+#     * does NOT lower to backend IR
+# - It guarantees MIR invariants for later passes.
+#
+# - Typical following steps:
+#     * MIR const-fold
+#     * MIR simplify / DCE
+#     * MIR -> backend IR lowering
+#

@@ -1,5 +1,310 @@
-proc load_incremental_cache()
+# ============================================================
+# vitte_driver_impl :: cache :: incremental
+# Incremental compilation cache
+# ============================================================
+
+space vitte/driver_impl/cache
+
+pull vitte/driver/diagnostics
+pull vitte/driver/utils
+pull vitte/driver/context
+pull vitte/driver/options
+
+# Hash / time helpers (expected elsewhere)
+pull vitte/driver/utils/hash
+pull vitte/driver/utils/time
+pull vitte/driver/utils/fs
+
+# ------------------------------------------------------------
+# CacheKey / Fingerprint
+# ------------------------------------------------------------
+
+form CacheKey
+    kind: String            # "source" | "module" | "hir" | "mir" | "obj"
+    id: String              # path or logical id
 .end
 
-proc save_incremental_cache()
+form Fingerprint
+    hash: String            # stable content hash
+    mtime: UInt             # last modification time (ns)
+    size: UInt              # size in bytes
 .end
+
+# ------------------------------------------------------------
+# CacheEntry
+# ------------------------------------------------------------
+
+form CacheEntry
+    key: CacheKey
+    fp: Fingerprint
+    deps: List<CacheKey>    # dependencies
+    artifact: String?       # path to cached artifact
+.end
+
+# ------------------------------------------------------------
+# IncrementalCache
+# ------------------------------------------------------------
+
+form IncrementalCache
+    root: String                    # cache directory
+    entries: Map<String, CacheEntry>
+.end
+
+# ------------------------------------------------------------
+# Construction / loading
+# ------------------------------------------------------------
+
+proc IncrementalCache::open(root: String)
+    gives Result<IncrementalCache, DriverError>
+
+    ensure_dir(root)?
+
+    let index_path = join_path(root, "index.vitte")
+
+    let entries =
+        if exists(index_path)
+            load_index(index_path)?
+        else
+            {}
+        .end
+
+    give Ok(
+        IncrementalCache {
+            root: root,
+            entries: entries,
+        }
+    )
+.end
+
+# ------------------------------------------------------------
+# Index persistence
+# ------------------------------------------------------------
+
+proc load_index(path: String)
+    gives Result<Map<String, CacheEntry>, DriverError>
+
+    let data = read_to_string(path)?
+    # simple line-based serialization (stable, bootstrap-friendly)
+    # format:
+    # key|kind|id|hash|mtime|size|artifact|deps...
+    let mut map = {}
+
+    for line in data.lines()
+        if line.trim().is_empty()
+            continue
+
+        let parts = line.split("|")
+        if parts.len() < 7
+            continue
+
+        let key = CacheKey {
+            kind: parts[1],
+            id: parts[2],
+        }
+
+        let fp = Fingerprint {
+            hash: parts[3],
+            mtime: parse_u64(parts[4]),
+            size: parse_u64(parts[5]),
+        }
+
+        let artifact =
+            if parts[6] != ""
+                Some(parts[6])
+            else
+                None
+            .end
+
+        let mut deps = []
+        for i in range(7, parts.len())
+            deps.push(CacheKey {
+                kind: "dep",
+                id: parts[i],
+            })
+        .end
+
+        let entry = CacheEntry {
+            key: key,
+            fp: fp,
+            deps: deps,
+            artifact: artifact,
+        }
+
+        map.insert(line_key(entry.key), entry)
+    .end
+
+    give Ok(map)
+.end
+
+proc save_index(cache: &IncrementalCache)
+    gives Result<(), DriverError>
+
+    let mut out = ""
+
+    for (_, e) in cache.entries
+        out = out + serialize_entry(e) + "\n"
+    .end
+
+    let path = join_path(cache.root, "index.vitte")
+    write_atomic(path, out.bytes())?
+    give Ok(())
+.end
+
+proc serialize_entry(e: CacheEntry)
+    gives String
+
+    let mut s =
+        line_key(e.key) + "|" +
+        e.key.kind + "|" +
+        e.key.id + "|" +
+        e.fp.hash + "|" +
+        e.fp.mtime.to_string() + "|" +
+        e.fp.size.to_string() + "|"
+
+    match e.artifact
+        Some(a) => s = s + a
+        None => ()
+    .end
+
+    for d in e.deps
+        s = s + "|" + d.id
+    .end
+
+    give s
+.end
+
+proc line_key(k: CacheKey)
+    gives String
+    give k.kind + ":" + k.id
+.end
+
+# ------------------------------------------------------------
+# Fingerprinting
+# ------------------------------------------------------------
+
+proc fingerprint_path(path: String)
+    gives Result<Fingerprint, DriverError>
+
+    let meta = fs::metadata(path)
+        .map_err(|e| DriverError::IoError(path, e.message()))?
+
+    let bytes = read_bytes(path)?
+    let h = hash::sha256(bytes)
+
+    give Ok(
+        Fingerprint {
+            hash: h,
+            mtime: meta.modified_ns,
+            size: meta.size,
+        }
+    )
+.end
+
+# ------------------------------------------------------------
+# Queries
+# ------------------------------------------------------------
+
+proc IncrementalCache::is_fresh(
+    self: &IncrementalCache,
+    key: CacheKey,
+    fp: Fingerprint
+)
+    gives Bool
+
+    match self.entries.get(line_key(key))
+        Some(e) =>
+            e.fp.hash == fp.hash &&
+            e.fp.mtime == fp.mtime &&
+            e.fp.size == fp.size
+        None => false
+    .end
+.end
+
+proc IncrementalCache::get_artifact(
+    self: &IncrementalCache,
+    key: CacheKey
+)
+    gives String?
+
+    match self.entries.get(line_key(key))
+        Some(e) => e.artifact
+        None => None
+    .end
+.end
+
+# ------------------------------------------------------------
+# Update / invalidation
+# ------------------------------------------------------------
+
+proc IncrementalCache::update(
+    self: &mut IncrementalCache,
+    key: CacheKey,
+    fp: Fingerprint,
+    deps: List<CacheKey>,
+    artifact: String?
+)
+
+    let entry = CacheEntry {
+        key: key,
+        fp: fp,
+        deps: deps,
+        artifact: artifact,
+    }
+
+    self.entries.insert(line_key(key), entry)
+.end
+
+proc IncrementalCache::invalidate(self: &mut IncrementalCache, key: CacheKey)
+
+    let k = line_key(key)
+    self.entries.remove(k)
+
+    # cascade invalidation
+    for (_, e) in self.entries
+        if e.deps.any(|d| line_key(d) == k)
+            self.entries.remove(line_key(e.key))
+        .end
+    .end
+.end
+
+# ------------------------------------------------------------
+# Integration helpers
+# ------------------------------------------------------------
+
+proc with_incremental_cache(
+    ctx: &mut DriverContext,
+    f: fn(&mut IncrementalCache) -> Result<(), DriverError>
+)
+    gives Result<(), DriverError>
+
+    let root = join_path(
+        ctx.session.target_dir(),
+        "incremental"
+    )
+
+    let mut cache = IncrementalCache::open(root)?
+    let res = f(&mut cache)
+
+    save_index(&cache)?
+    give res
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - Bootstrap-friendly (no JSON/TOML required)
+# - Deterministic, content-based hashing
+# - Fine-grained invalidation with dependency tracking
+# - Safe for CI and IDE incremental runs
+#
+# - Intended usage:
+#     with_incremental_cache(ctx, |cache| {
+#         if cache.is_fresh(key, fp) {
+#             reuse artifact
+#         } else {
+#             rebuild
+#             cache.update(...)
+#         }
+#     })
+#

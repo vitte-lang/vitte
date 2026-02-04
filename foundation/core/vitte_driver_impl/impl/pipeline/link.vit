@@ -1,3 +1,95 @@
-proc impl_link(ctx: driver::DriverContext)
-    # concrete link step
+# ============================================================
+# vitte_driver_impl :: pipeline :: link
+# Concrete linking step
+# ============================================================
+
+space vitte/driver_impl/pipeline
+
+pull vitte/driver/context
+pull vitte/driver/diagnostics
+pull vitte/driver/options
+pull vitte/driver/targets
+
+pull vitte/driver/backend        # linker policy / selection
+pull vitte/driver_impl/link      # concrete implementations
+
+# ------------------------------------------------------------
+# Entry point
+# ------------------------------------------------------------
+
+proc link_impl(ctx: &mut DriverContext)
+    gives Result<(), DriverError>
+
+    if ctx.session.object_files().is_empty()
+        give Error(
+            DriverError::InternalError(
+                "link",
+                "no object files to link"
+            )
+        )
+    .end
+
+    let linker = backend::selected_linker(ctx)
+
+    match linker
+
+        LinkerKind::Lld =>
+            link_lld(ctx)?
+
+        LinkerKind::System =>
+            give Error(
+                DriverError::Unimplemented(
+                    "system linker not implemented yet"
+                )
+            )
+
+        LinkerKind::Custom(name) =>
+            give Error(
+                DriverError::Unimplemented(
+                    format("custom linker '{}'", name)
+                )
+            )
+    .end
+
+    ctx.session.mark_linked()
+    give Ok(())
 .end
+
+# ------------------------------------------------------------
+# Convenience wrapper
+# ------------------------------------------------------------
+
+proc link_impl_checked(ctx: &mut DriverContext)
+    gives Bool
+
+    match link_impl(ctx)
+        Ok(_) => true
+        Error(e) =>
+            ctx.emit_error(e.message())
+            false
+    .end
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This file:
+#     * does NOT build command lines itself
+#     * does NOT inspect object contents
+#
+# - Responsibilities:
+#     * validate link preconditions
+#     * select linker via backend policy
+#     * delegate to implementation (lld, ...)
+#
+# - Layering:
+#     vitte_driver/pipeline/link.vit        (API)
+#     vitte_driver_impl/pipeline/link.vit   (execution)
+#     vitte_driver_impl/link/*.vit          (tools)
+#
+# - Future extensions:
+#     * WASM linker
+#     * response files
+#     * multi-output (bin + dylib)
+#

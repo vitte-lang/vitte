@@ -1,1 +1,200 @@
-const TYPE_ERROR_BASE = 3000
+# ============================================================
+# vitte_error_codes :: categories :: type
+# Type system / type checking error codes
+# ============================================================
+
+space vitte/error_codes/categories
+
+# ------------------------------------------------------------
+# Category metadata
+# ------------------------------------------------------------
+
+const TYPE_CATEGORY: String = "type"
+const TYPE_PREFIX: String  = "TY"
+
+# ------------------------------------------------------------
+# TypeErrorCode
+# ------------------------------------------------------------
+
+pick TypeErrorCode
+
+    # --------------------------------------------------------
+    # Basic typing
+    # --------------------------------------------------------
+
+    TypeMismatch                # TY001
+    UnknownType                 # TY002
+    AmbiguousType               # TY003
+    IncompleteType              # TY004
+
+    # --------------------------------------------------------
+    # Inference
+    # --------------------------------------------------------
+
+    InferenceFailed             # TY010
+    CannotInferType             # TY011
+    ConflictingInferredTypes    # TY012
+    RecursiveType               # TY013
+
+    # --------------------------------------------------------
+    # Declarations / usage
+    # --------------------------------------------------------
+
+    UnknownVariable             # TY020
+    UnknownFunction             # TY021
+    UnknownField                # TY022
+    UnknownMethod               # TY023
+
+    # --------------------------------------------------------
+    # Functions / calls
+    # --------------------------------------------------------
+
+    InvalidCall                 # TY030
+    InvalidArgumentCount        # TY031
+    InvalidArgumentType         # TY032
+    InvalidReturnType           # TY033
+
+    # --------------------------------------------------------
+    # Generics
+    # --------------------------------------------------------
+
+    InvalidGenericArgument      # TY040
+    MissingGenericArgument      # TY041
+    TooManyGenericArguments     # TY042
+    GenericConstraintViolation  # TY043
+
+    # --------------------------------------------------------
+    # Traits / interfaces / impls
+    # --------------------------------------------------------
+
+    TraitNotImplemented         # TY050
+    ConflictingImpl             # TY051
+    OverlappingImpl             # TY052
+    InvalidImpl                 # TY053
+
+    # --------------------------------------------------------
+    # Mutability / ownership (if applicable)
+    # --------------------------------------------------------
+
+    MutabilityMismatch          # TY060
+    MoveOutOfBorrow             # TY061
+    UseAfterMove                # TY062
+
+    # --------------------------------------------------------
+    # Lifetimes (if applicable)
+    # --------------------------------------------------------
+
+    LifetimeMismatch            # TY070
+    LifetimeInferenceFailed     # TY071
+    EscapingReference           # TY072
+
+    # --------------------------------------------------------
+    # Const / compile-time
+    # --------------------------------------------------------
+
+    InvalidConstType            # TY080
+    NonConstExpression          # TY081
+
+    # --------------------------------------------------------
+    # Limits / resources
+    # --------------------------------------------------------
+
+    TypeTooComplex              # TY090
+    TooManyTypeVariables        # TY091
+
+    # --------------------------------------------------------
+    # Internal / unexpected
+    # --------------------------------------------------------
+
+    InternalError               # TY900
+    Unimplemented               # TY901
+
+.end
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc type_error_code(err: TypeErrorCode)
+    gives String
+
+    match err
+        TypeMismatch                => "TY001"
+        UnknownType                 => "TY002"
+        AmbiguousType               => "TY003"
+        IncompleteType              => "TY004"
+
+        InferenceFailed             => "TY010"
+        CannotInferType             => "TY011"
+        ConflictingInferredTypes    => "TY012"
+        RecursiveType               => "TY013"
+
+        UnknownVariable             => "TY020"
+        UnknownFunction             => "TY021"
+        UnknownField                => "TY022"
+        UnknownMethod               => "TY023"
+
+        InvalidCall                 => "TY030"
+        InvalidArgumentCount        => "TY031"
+        InvalidArgumentType         => "TY032"
+        InvalidReturnType           => "TY033"
+
+        InvalidGenericArgument      => "TY040"
+        MissingGenericArgument      => "TY041"
+        TooManyGenericArguments     => "TY042"
+        GenericConstraintViolation  => "TY043"
+
+        TraitNotImplemented         => "TY050"
+        ConflictingImpl             => "TY051"
+        OverlappingImpl             => "TY052"
+        InvalidImpl                 => "TY053"
+
+        MutabilityMismatch          => "TY060"
+        MoveOutOfBorrow             => "TY061"
+        UseAfterMove                => "TY062"
+
+        LifetimeMismatch            => "TY070"
+        LifetimeInferenceFailed     => "TY071"
+        EscapingReference           => "TY072"
+
+        InvalidConstType            => "TY080"
+        NonConstExpression          => "TY081"
+
+        TypeTooComplex              => "TY090"
+        TooManyTypeVariables        => "TY091"
+
+        InternalError               => "TY900"
+        Unimplemented               => "TY901"
+    .end
+.end
+
+proc type_error_category()
+    gives String
+    give TYPE_CATEGORY
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This file defines ONLY type-system error codes.
+# - No diagnostics text or formatting here.
+#
+# - Naming:
+#     TYxxx = TYpe
+#
+# - Ranges:
+#     001–009 : basic typing
+#     010–019 : inference
+#     020–029 : name resolution
+#     030–039 : calls / functions
+#     040–049 : generics
+#     050–059 : traits / impls
+#     060–069 : mutability / ownership
+#     070–079 : lifetimes
+#     080–089 : const typing
+#     090–099 : limits
+#     900+    : internal / unexpected
+#
+# - Codes must remain stable once published.
+#

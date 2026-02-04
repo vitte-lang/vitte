@@ -1,3 +1,170 @@
-proc run_link_pipeline(ctx: DriverContext)
-    # object files → final binary
+# ============================================================
+# vitte_driver :: backend :: link
+# Linker orchestration
+# ============================================================
+
+space vitte/driver/backend
+
+pull vitte/driver/context
+pull vitte/driver/diagnostics
+pull vitte/driver/options
+pull vitte/driver/targets
+
+# ------------------------------------------------------------
+# LinkerKind
+# ------------------------------------------------------------
+
+pick LinkerKind
+    System      # cc / ld from system
+    Lld         # LLVM lld
+    Custom      # user-provided linker
+.end
+
+# ------------------------------------------------------------
+# LinkerConfig
+# ------------------------------------------------------------
+
+form LinkerConfig
+    kind: LinkerKind
+    path: String?           # explicit linker path
+    args: List<String>      # extra args
+    static_link: Bool
+    shared: Bool
+.end
+
+proc LinkerConfig::default()
+    gives LinkerConfig
+
+    give LinkerConfig {
+        kind: System,
+        path: None,
+        args: [],
+        static_link: false,
+        shared: false,
+    }
+.end
+
+# ------------------------------------------------------------
+# Entry point
+# ------------------------------------------------------------
+
+proc link(ctx: &mut DriverContext)
+    gives Result<(), DriverError>
+
+    let cfg = resolve_linker_config(ctx)?
+    let output = ctx.session.output_binary_path()
+
+    let mut cmd = build_link_command(ctx, &cfg, output)?
+
+    if ctx.options.flags.verbose
+        ctx.diagnostics.note(
+            format("linking with command: {}", cmd.debug_string())
+        )
+
+    let status = cmd.run()
+    if !status.success
+        give Error(
+            DriverError::LinkerFailed(
+                format("linker exited with status {}", status.code)
+            )
+        )
+
+    give Ok(())
+.end
+
+# ------------------------------------------------------------
+# Resolve linker configuration
+# ------------------------------------------------------------
+
+proc resolve_linker_config(ctx: &DriverContext)
+    gives Result<LinkerConfig, DriverError>
+
+    let mut cfg = LinkerConfig::default()
+
+    # target-specific defaults
+    match ctx.target.os
+        Windows =>
+            cfg.kind = System
+        MacOS =>
+            cfg.kind = System
+        Linux =>
+            cfg.kind = System
+        otherwise =>
+            ()
+    .end
+
+    # flags influence
+    if ctx.options.flags.experimental
+        cfg.args.push("--experimental")
+
+    # static / shared
+    if ctx.options.flags.emit == EmitKind::Obj
+        cfg.static_link = true
+
+    give Ok(cfg)
+.end
+
+# ------------------------------------------------------------
+# Build command
+# ------------------------------------------------------------
+
+proc build_link_command(
+    ctx: &DriverContext,
+    cfg: &LinkerConfig,
+    output: String
+)
+    gives Result<Command, DriverError>
+
+    let mut cmd = Command::new(resolve_linker_path(cfg)?)
+
+    # output
+    cmd.arg("-o")
+    cmd.arg(output)
+
+    # object files
+    for obj in ctx.session.object_files()
+        cmd.arg(obj)
+    .end
+
+    # static / shared
+    if cfg.static_link
+        cmd.arg("-static")
+
+    if cfg.shared
+        cmd.arg("-shared")
+
+    # target flags
+    cmd.args(ctx.target.link_args())
+
+    # user args
+    for a in cfg.args
+        cmd.arg(a)
+    .end
+
+    give Ok(cmd)
+.end
+
+# ------------------------------------------------------------
+# Resolve linker executable
+# ------------------------------------------------------------
+
+proc resolve_linker_path(cfg: &LinkerConfig)
+    gives Result<String, DriverError>
+
+    match cfg.kind
+        System =>
+            give Ok("cc")
+
+        Lld =>
+            give Ok("ld.lld")
+
+        Custom =>
+            match cfg.path
+                Some(p) => give Ok(p)
+                None =>
+                    give Error(
+                        DriverError::LinkerNotFound("custom")
+                    )
+            .end
+    .end
 .end

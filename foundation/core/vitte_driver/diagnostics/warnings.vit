@@ -1,2 +1,258 @@
-proc emit_warning(msg: String)
+# ============================================================
+# vitte_driver :: diagnostics :: warnings
+# Canonical driver warning definitions
+# ============================================================
+
+space vitte/driver/diagnostics
+
+pull vitte/core/const_eval
+pull vitte/driver/targets
+
+# ------------------------------------------------------------
+# DriverWarning
+# ------------------------------------------------------------
+
+pick DriverWarning
+
+    # --------------------------------------------------------
+    # Source / parsing
+    # --------------------------------------------------------
+
+    TrailingWhitespace(
+        path: String,
+        line: UInt
+    )
+
+    DeprecatedSyntax(
+        feature: String
+    )
+
+    UnusedImport(
+        module: String
+    )
+
+    # --------------------------------------------------------
+    # Names / visibility
+    # --------------------------------------------------------
+
+    UnusedSymbol(
+        name: String
+    )
+
+    ShadowedSymbol(
+        name: String
+    )
+
+    PrivateSymbolUnused(
+        name: String
+    )
+
+    # --------------------------------------------------------
+    # Types
+    # --------------------------------------------------------
+
+    ImplicitCast(
+        from: String,
+        to: String
+    )
+
+    LossyCast(
+        from: String,
+        to: String
+    )
+
+    UnusedTypeParameter(
+        name: String
+    )
+
+    # --------------------------------------------------------
+    # Control flow
+    # --------------------------------------------------------
+
+    UnreachableCode
+    DeadBranch
+
+    MissingElse
+    RedundantElse
+
+    # --------------------------------------------------------
+    # Const evaluation
+    # --------------------------------------------------------
+
+    ConstEvalRelaxed(
+        reason: String
+    )
+
+    ConstEvalTruncated(
+        detail: String
+    )
+
+    # --------------------------------------------------------
+    # Target / backend
+    # --------------------------------------------------------
+
+    UnsupportedOptimization(
+        opt: String,
+        target: TargetTriple
+    )
+
+    IgnoredAttribute(
+        name: String
+    )
+
+    # --------------------------------------------------------
+    # Driver / build
+    # --------------------------------------------------------
+
+    IgnoredOption(
+        option: String
+    )
+
+    ExperimentalFeature(
+        feature: String
+    )
+
+.end
+
+# ------------------------------------------------------------
+# Human-readable messages
+# ------------------------------------------------------------
+
+proc DriverWarning::message(self: &DriverWarning)
+    gives String
+
+    match self
+
+        # Source
+        TrailingWhitespace(path, line) =>
+            format(
+                "{}:{}: trailing whitespace",
+                path,
+                line
+            )
+
+        DeprecatedSyntax(feature) =>
+            format(
+                "deprecated syntax `{}`",
+                feature
+            )
+
+        UnusedImport(module) =>
+            format(
+                "unused import `{}`",
+                module
+            )
+
+        # Names
+        UnusedSymbol(name) =>
+            format(
+                "unused symbol `{}`",
+                name
+            )
+
+        ShadowedSymbol(name) =>
+            format(
+                "symbol `{}` shadows a previous definition",
+                name
+            )
+
+        PrivateSymbolUnused(name) =>
+            format(
+                "private symbol `{}` is never used",
+                name
+            )
+
+        # Types
+        ImplicitCast(from, to) =>
+            format(
+                "implicit cast from `{}` to `{}`",
+                from,
+                to
+            )
+
+        LossyCast(from, to) =>
+            format(
+                "lossy cast from `{}` to `{}`",
+                from,
+                to
+            )
+
+        UnusedTypeParameter(name) =>
+            format(
+                "unused type parameter `{}`",
+                name
+            )
+
+        # Control flow
+        UnreachableCode =>
+            "unreachable code detected"
+
+        DeadBranch =>
+            "dead branch detected"
+
+        MissingElse =>
+            "if expression without else branch"
+
+        RedundantElse =>
+            "redundant else branch"
+
+        # Const-eval
+        ConstEvalRelaxed(reason) =>
+            format(
+                "constant evaluation ran in relaxed mode: {}",
+                reason
+            )
+
+        ConstEvalTruncated(detail) =>
+            format(
+                "constant evaluation truncated: {}",
+                detail
+            )
+
+        # Target / backend
+        UnsupportedOptimization(opt, tgt) =>
+            format(
+                "optimization `{}` is not supported for target `{}`",
+                opt,
+                tgt.to_string()
+            )
+
+        IgnoredAttribute(name) =>
+            format(
+                "attribute `{}` was ignored",
+                name
+            )
+
+        # Driver
+        IgnoredOption(opt) =>
+            format(
+                "command-line option `{}` was ignored",
+                opt
+            )
+
+        ExperimentalFeature(feature) =>
+            format(
+                "experimental feature `{}` is enabled",
+                feature
+            )
+    .end
+.end
+
+# ------------------------------------------------------------
+# Warning levels
+# ------------------------------------------------------------
+
+pick DriverWarningLevel
+    Info
+    Warning
+.end
+
+proc DriverWarning::level(self: &DriverWarning)
+    gives DriverWarningLevel
+
+    match self
+        ExperimentalFeature(_) => Info
+        ConstEvalRelaxed(_)    => Info
+        otherwise              => Warning
+    .end
 .end

@@ -1,0 +1,56 @@
+# ============================================================
+# vitte_const_eval :: eval
+# Module root for constant expression evaluation
+# ============================================================
+
+space vitte/core/const_eval/eval
+
+# ------------------------------------------------------------
+# Submodules
+# ------------------------------------------------------------
+
+pull vitte/core/const_eval/eval/binary
+pull vitte/core/const_eval/eval/unary
+
+# (future)
+# pull vitte/core/const_eval/eval/cast
+# pull vitte/core/const_eval/eval/intrinsic
+# pull vitte/core/const_eval/eval/call
+# pull vitte/core/const_eval/eval/block
+
+# ------------------------------------------------------------
+# Public re-exports
+# ------------------------------------------------------------
+
+share eval_binary
+share eval_unary
+
+# ------------------------------------------------------------
+# Unified dispatcher (optional but recommended)
+# ------------------------------------------------------------
+
+pull vitte/core/const_eval/value
+pull vitte/core/const_eval/error
+pull vitte/core/const_eval/context
+pull vitte/core/const_eval/op
+
+proc eval_expr(ctx: &ConstEvalContext,
+               expr: ConstExpr)
+     gives Result<ConstValue, ConstEvalError>
+
+    match expr
+        Unary(op, v) =>
+            give eval_unary(ctx, op, v)
+
+        Binary(op, l, r) =>
+            give eval_binary(ctx, op, l, r)
+
+        Value(v) =>
+            give Ok(v)
+
+        otherwise =>
+            give Error(ConstEvalError::UnsupportedConstExpr)
+    .end
+.end
+
+share eval_expr

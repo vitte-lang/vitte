@@ -1,2 +1,142 @@
-proc step_typecheck(ctx: DriverContext)
+# ============================================================
+# vitte_driver :: steps :: typecheck
+# HIR type checking step
+# ============================================================
+
+space vitte/driver/steps
+
+pull vitte/driver/context
+pull vitte/driver/diagnostics
+pull vitte/driver/options
+pull vitte/driver/targets
+
+# Type system subsystems (defined elsewhere)
+pull vitte/hir
+pull vitte/hir/types
+pull vitte/hir/typeck
+pull vitte/hir/verify
+
+# ------------------------------------------------------------
+# TypeCheckConfig
+# ------------------------------------------------------------
+
+form TypeCheckConfig
+    allow_unsafe: Bool
+    strict: Bool
+    verify: Bool
+    debug_dump: Bool
 .end
+
+proc TypeCheckConfig::from_context(ctx: &DriverContext)
+    gives TypeCheckConfig
+
+    give TypeCheckConfig {
+        allow_unsafe: ctx.options.flags.allow_unsafe,
+        strict: !ctx.options.flags.experimental,
+        verify: ctx.options.flags.debug_info != DebugInfo::None,
+        debug_dump: ctx.options.flags.debug_info == DebugInfo::Full,
+    }
+.end
+
+# ------------------------------------------------------------
+# Entry point
+# ------------------------------------------------------------
+
+proc type_check(ctx: &mut DriverContext)
+    gives Result<(), DriverError>
+
+    ctx.enter_phase(TypeCheck)
+
+    let cfg = TypeCheckConfig::from_context(ctx)
+
+    # --------------------------------------------------------
+    # Preconditions
+    # --------------------------------------------------------
+    if !ctx.session.has_hir()
+        give Error(
+            DriverError::InternalCompilerError(
+                "type checking requires HIR to be present"
+            )
+        )
+
+    let hir = ctx.session.hir_mut()
+
+    # --------------------------------------------------------
+    # Core type checking
+    # --------------------------------------------------------
+    match typeck::check(
+        hir,
+        cfg.allow_unsafe,
+        cfg.strict
+    )
+        Ok(_) => ()
+        Error(e) =>
+            give Error(
+                DriverError::TypeMismatch(
+                    e.expected,
+                    e.found
+                )
+            )
+    .end
+
+    # --------------------------------------------------------
+    # Verify type invariants
+    # --------------------------------------------------------
+    if cfg.verify
+        match verify::types(hir)
+            Ok(_) => ()
+            Error(e) =>
+                give Error(
+                    DriverError::InternalCompilerError(
+                        format(
+                            "type verification failed: {}",
+                            e.message()
+                        )
+                    )
+                )
+        .end
+    .end
+
+    # --------------------------------------------------------
+    # Debug dump
+    # --------------------------------------------------------
+    if cfg.debug_dump
+        ctx.diagnostics.note("dumping typed HIR")
+        hir::dump(hir)
+    .end
+
+    give Ok(())
+.end
+
+# ------------------------------------------------------------
+# Convenience wrapper
+# ------------------------------------------------------------
+
+proc type_check_or_panic(ctx: &mut DriverContext)
+    match type_check(ctx)
+        Ok(_) => ()
+        Error(e) =>
+            panic(e.message())
+    .end
+.end
+
+# ------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------
+#
+# - This step assumes:
+#     * AST has been lowered to HIR
+#     * name resolution is complete
+#
+# - It guarantees:
+#     * all expressions are typed
+#     * no unresolved generics remain (after mono)
+#
+# - It does NOT:
+#     * perform monomorphization
+#     * evaluate constants
+#
+# - Typical following steps:
+#     * monomorphize
+#     * build_mir
+#

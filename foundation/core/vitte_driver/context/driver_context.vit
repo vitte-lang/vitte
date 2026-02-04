@@ -1,7 +1,250 @@
+# ============================================================
+# vitte_driver :: context :: driver_context
+# Global compiler driver context
+# ============================================================
+
+space vitte/driver/context
+
+pull vitte/driver/diagnostics
+pull vitte/driver/session
+pull vitte/driver/targets
+pull vitte/driver/options
+
+pull vitte/core/const_eval
+
+# ------------------------------------------------------------
+# DriverMode
+# ------------------------------------------------------------
+
+pick DriverMode
+    Compile        # full compilation
+    Check          # type-check only
+    EmitIR         # stop after IR
+    EmitASM        # emit assembly
+    EmitObj        # emit object file
+    EmitBin        # emit final binary
+    Test           # run tests
+.end
+
+# ------------------------------------------------------------
+# DriverPhase
+# ------------------------------------------------------------
+
+pick DriverPhase
+    Parse
+    Lower
+    TypeCheck
+    ConstEval
+    Optimize
+    Codegen
+    Link
+.end
+
+# ------------------------------------------------------------
+# DriverStats
+# ------------------------------------------------------------
+
+form DriverStats
+    files_loaded: UInt
+    modules_parsed: UInt
+    functions_compiled: UInt
+    errors: UInt
+    warnings: UInt
+.end
+
+proc DriverStats::new()
+    gives DriverStats
+    give DriverStats {
+        files_loaded: 0,
+        modules_parsed: 0,
+        functions_compiled: 0,
+        errors: 0,
+        warnings: 0,
+    }
+.end
+
+# ------------------------------------------------------------
+# DriverContext
+# ------------------------------------------------------------
+
 form DriverContext
-    session: sess::Session
-    target: target::TargetContext
-    abi: abi::AbiContext
-    inputs: List[String]
-    outputs: List[String]
+    mode: DriverMode
+    phase: DriverPhase
+
+    options: DriverOptions
+    target: TargetTriple
+
+    session: DriverSession
+    diagnostics: DiagnosticContext
+
+    const_eval: ConstEvalContext
+
+    stats: DriverStats
+.end
+
+# ------------------------------------------------------------
+# Constructors
+# ------------------------------------------------------------
+
+proc DriverContext::new(
+    mode: DriverMode,
+    options: DriverOptions,
+    target: TargetTriple
+)
+    gives DriverContext
+
+    give DriverContext {
+        mode: mode,
+        phase: Parse,
+
+        options: options,
+        target: target,
+
+        session: DriverSession::new(),
+        diagnostics: DiagnosticContext::new(),
+
+        const_eval: ConstEvalContext::strict(),
+
+        stats: DriverStats::new(),
+    }
+.end
+
+proc DriverContext::for_checking(
+    options: DriverOptions,
+    target: TargetTriple
+)
+    gives DriverContext
+
+    let mut ctx = DriverContext::new(Check, options, target)
+    ctx.const_eval = ConstEvalContext::strict()
+    give ctx
+.end
+
+proc DriverContext::for_testing(
+    options: DriverOptions,
+    target: TargetTriple
+)
+    gives DriverContext
+
+    let mut ctx = DriverContext::new(Test, options, target)
+    ctx.const_eval = ConstEvalContext::relaxed()
+    give ctx
+.end
+
+# ------------------------------------------------------------
+# Phase control
+# ------------------------------------------------------------
+
+proc DriverContext::enter_phase(
+    self: &mut DriverContext,
+    phase: DriverPhase
+)
+    self.phase = phase
+.end
+
+proc DriverContext::current_phase(
+    self: &DriverContext
+)
+    gives DriverPhase
+    give self.phase
+.end
+
+# ------------------------------------------------------------
+# Diagnostics helpers
+# ------------------------------------------------------------
+
+proc DriverContext::emit_error(
+    self: &mut DriverContext,
+    msg: String
+)
+    self.stats.errors += 1
+    self.diagnostics.error(msg)
+.end
+
+proc DriverContext::emit_warning(
+    self: &mut DriverContext,
+    msg: String
+)
+    self.stats.warnings += 1
+    self.diagnostics.warning(msg)
+.end
+
+proc DriverContext::has_errors(
+    self: &DriverContext
+)
+    gives Bool
+    give self.stats.errors > 0
+.end
+
+# ------------------------------------------------------------
+# Const-eval integration
+# ------------------------------------------------------------
+
+proc DriverContext::const_eval_expr(
+    self: &mut DriverContext,
+    expr: ConstExpr
+)
+    gives Result<ConstValue, ConstEvalError>
+
+    self.enter_phase(ConstEval)
+    give eval_expr(&mut self.const_eval, expr)
+.end
+
+# ------------------------------------------------------------
+# Stats helpers
+# ------------------------------------------------------------
+
+proc DriverContext::on_file_loaded(self: &mut DriverContext)
+    self.stats.files_loaded += 1
+.end
+
+proc DriverContext::on_module_parsed(self: &mut DriverContext)
+    self.stats.modules_parsed += 1
+.end
+
+proc DriverContext::on_function_compiled(self: &mut DriverContext)
+    self.stats.functions_compiled += 1
+.end
+
+# ------------------------------------------------------------
+# Reset / clone
+# ------------------------------------------------------------
+
+proc DriverContext::reset_stats(self: &mut DriverContext)
+    self.stats = DriverStats::new()
+.end
+
+proc DriverContext::clone_shallow(self: &DriverContext)
+    gives DriverContext
+
+    give DriverContext {
+        mode: self.mode,
+        phase: self.phase,
+
+        options: self.options,
+        target: self.target,
+
+        session: self.session.clone(),
+        diagnostics: DiagnosticContext::new(),
+
+        const_eval: self.const_eval.clone_shallow(),
+
+        stats: DriverStats::new(),
+    }
+.end
+
+# ------------------------------------------------------------
+# Debug helpers
+# ------------------------------------------------------------
+
+proc DriverContext::debug_summary(self: &DriverContext)
+    gives String
+
+    give format(
+        "DriverContext(mode={:?}, phase={:?}, errors={}, warnings={})",
+        self.mode,
+        self.phase,
+        self.stats.errors,
+        self.stats.warnings
+    )
 .end

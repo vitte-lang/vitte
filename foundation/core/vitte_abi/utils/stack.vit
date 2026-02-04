@@ -1,2 +1,194 @@
-proc compute_stack_frame(ctx: AbiContext, sig)
+# ============================================================
+# Vitte — ABI / Utils
+# File: utils/stack.vit
+#
+# Role:
+#   Provide stack computation helpers:
+#     - alignment
+#     - slot allocation
+#     - shadow space / red zone handling
+#     - final stack size computation
+#
+# Used by:
+#   - vitte_abi/calling/*
+#   - vitte_abi/lower/*
+#   - codegen backends
+#
+# Design goals:
+#   - Deterministic
+#   - ABI-agnostic helpers
+#   - No calling policy here
+#
+# ============================================================
+
+space foundation/core/vitte_abi/utils/stack
+
+pull foundation/core/vitte_abi/desc
+pull foundation/core/vitte_abi/errors
+
+
+# ============================================================
+# Stack slot descriptor
+# ============================================================
+
+form StackSlot
+    offset: Int      # offset from stack base (positive)
+    size: Int
+    align: Int
+.end
+
+
+# ============================================================
+# Stack frame builder
+# ============================================================
+
+form StackFrame
+    abi: desc::AbiDesc
+
+    # current size before final alignment
+    size: Int
+
+    # maximum alignment required by slots
+    max_align: Int
+
+    # allocated slots
+    slots: Vec<StackSlot>
+.end
+
+
+# ============================================================
+# Constructors
+# ============================================================
+
+proc StackFrame::new(abi: desc::AbiDesc)
+gives StackFrame
+.end
+    abi.validate()
+
+    give StackFrame {
+        abi: abi,
+        size: 0,
+        max_align: abi.stack_align,
+        slots: Vec::new(),
+    }
+.end
+
+
+# ============================================================
+# Allocation
+# ============================================================
+
+# Allocate a stack slot with given size and alignment.
+#
+# Returns the allocated slot descriptor.
+#
+proc StackFrame::alloc(
+    self,
+    size: Int,
+    align: Int
+)
+gives StackSlot
+.end
+    if size <= 0
+        errors::invalid_layout("stack slot size must be positive")
+    end
+
+    if align <= 0
+        errors::invalid_layout("stack slot alignment must be positive")
+    end
+
+    # Align current size to slot alignment
+    self.size = align_to(self.size, align)
+
+    let slot = StackSlot {
+        offset: self.size,
+        size: size,
+        align: align,
+    }
+
+    self.size += size
+
+    if align > self.max_align
+        self.max_align = align
+    end
+
+    self.slots.push(slot)
+
+    give slot
+.end
+
+
+# ============================================================
+# ABI-specific adjustments
+# ============================================================
+
+# Apply shadow space (Win64).
+#
+# Shadow space is reserved by the caller but may be
+# modelled here for completeness when computing total size.
+#
+proc StackFrame::apply_shadow_space(self)
+gives ()
+.end
+    if self.abi.caps.has_shadow_space
+        # Win64 shadow space: 32 bytes
+        self.size += 32
+    end
+.end
+
+
+# Apply red zone (SysV).
+#
+# Red zone does NOT increase stack size, but reduces
+# the required adjustment when generating prologue.
+#
+proc StackFrame::has_red_zone(self)
+gives Bool
+.end
+    give self.abi.caps.has_red_zone
+.end
+
+
+# ============================================================
+# Finalization
+# ============================================================
+
+# Finalize the stack frame size.
+#
+# This:
+#   - aligns the total size to ABI stack alignment
+#   - returns the final stack size
+#
+proc StackFrame::finalize(self)
+gives Int
+.end
+    let align = self.max_align
+
+    if align <= 0
+        errors::invalid_layout("invalid stack alignment")
+    end
+
+    self.size = align_to(self.size, align)
+
+    give self.size
+.end
+
+
+# ============================================================
+# Helpers
+# ============================================================
+
+proc align_to(value: Int, align: Int)
+gives Int
+.end
+    if align <= 1
+        give value
+    end
+
+    let rem = value % align
+    if rem == 0
+        give value
+    end
+
+    give value + (align - rem)
 .end
