@@ -1,130 +1,104 @@
-# ============================================================
-# active.vit — compiler-builtins / config (MAX)
-# ============================================================
-# Sélection ACTIVE des features compiler-builtins
-#
-# Rôle :
-# - Consolider TARGET + BACKEND_FEATURES
-# - Exposer une décision finale, const-foldable
-# - Fournir des profils (STRICT / HYBRID / FALLBACK)
-#
-# Politique par défaut :
-# - STRICT (intrinsic-only)
-#
-# Ce fichier ne contient AUCUNE implémentation.
-# ============================================================
+<<<
+active.vit
+compiler-builtins config
+>>>
 
 space std/alloc/compiler_builtins/builtins_shim/config
 
 
-# ------------------------------------------------------------
-# Imports
-# ------------------------------------------------------------
+<<<
+imports
+>>>
 
 pull .target
 pull .features
 
 
-# ------------------------------------------------------------
-# Profils de sélection
-# ------------------------------------------------------------
-# STRICT   : intrinsics obligatoires (LLVM / Cranelift pur)
-# HYBRID   : intrinsics si dispo, sinon fallback (non défini ici)
-# FALLBACK : tout en fallback (non autorisé dans ce shim)
-# ------------------------------------------------------------
+<<<
+profiles
+>>>
 
-pick BuiltinProfile
+pick BuiltinProfile {
     STRICT
     HYBRID
     FALLBACK
-.end
+}
 
 
-# ------------------------------------------------------------
-# Profil ACTIF (par défaut : STRICT)
-# ------------------------------------------------------------
+<<<
+active profile
+>>>
 
 #[export]
 const ACTIVE_PROFILE: BuiltinProfile = BuiltinProfile.STRICT
 
 
-# ------------------------------------------------------------
-# Sélection des FEATURES selon le profil
-# ------------------------------------------------------------
-# NOTE :
-# - HYBRID et FALLBACK sont volontairement bloqués ici.
-# - Un autre shim devra fournir ces modes.
-# ------------------------------------------------------------
+<<<
+feature selection
+>>>
 
 #[export]
 const FEATURES: BuiltinFeatures =
-    if ACTIVE_PROFILE == BuiltinProfile.STRICT
+    if ACTIVE_PROFILE == BuiltinProfile.STRICT {
         BuiltinFeatures(
             has_memcpy  = BACKEND_FEATURES.has_memcpy,
             has_memmove = BACKEND_FEATURES.has_memmove,
             has_memset  = BACKEND_FEATURES.has_memset,
+
             has_udiv    = BACKEND_FEATURES.has_udiv,
             has_urem    = BACKEND_FEATURES.has_urem,
+            has_sdiv    = BACKEND_FEATURES.has_sdiv,
+            has_srem    = BACKEND_FEATURES.has_srem,
+
+            has_u128    = BACKEND_FEATURES.has_u128,
+            has_i128    = BACKEND_FEATURES.has_i128,
+
+            supports_unaligned_access = BACKEND_FEATURES.supports_unaligned_access,
+            supports_fast_mul         = BACKEND_FEATURES.supports_fast_mul,
+            supports_fast_div         = BACKEND_FEATURES.supports_fast_div,
+            supports_fast_shift       = BACKEND_FEATURES.supports_fast_shift,
         )
-    elif ACTIVE_PROFILE == BuiltinProfile.HYBRID
-        builtin.trap("compiler-builtins: HYBRID profile not supported in intrinsic-only shim")
-    else
-        builtin.trap("compiler-builtins: FALLBACK profile not supported in intrinsic-only shim")
-    .end
+    }
+    else if ACTIVE_PROFILE == BuiltinProfile.HYBRID {
+        builtin.trap("compiler-builtins: hybrid profile not supported")
+    }
+    else {
+        builtin.trap("compiler-builtins: fallback profile not supported")
+    }
 
 
-# ------------------------------------------------------------
-# Assertions de cohérence (dures)
-# ------------------------------------------------------------
-# Appelables par :
-# - runtime startup
-# - linker
-# - tests
-# ------------------------------------------------------------
+<<<
+required features
+>>>
 
 #[export]
-proc assert_required_features()
+proc assert_required_features() {
     assert_feature(FEATURES.has_memcpy,  "memcpy")
     assert_feature(FEATURES.has_memmove, "memmove")
     assert_feature(FEATURES.has_memset,  "memset")
     assert_feature(FEATURES.has_udiv,    "udiv")
     assert_feature(FEATURES.has_urem,    "urem")
-.end
+}
 
 
-proc assert_feature(ok: bool, name: str)
-    if !ok
-        builtin.trap("compiler-builtins: required intrinsic missing: " + name)
-    .end
-.end
+proc assert_feature(ok: bool, name: string) {
+    if !ok {
+        builtin.trap("compiler-builtins: missing intrinsic: " + name)
+    }
+}
 
 
-# ------------------------------------------------------------
-# Assertions de cohérence TARGET ↔ FEATURES
-# ------------------------------------------------------------
-# Permet d’attraper des incohérences backend / target
-# ------------------------------------------------------------
+<<<
+target invariants
+>>>
 
 #[export]
-proc assert_target_compat()
-    if TARGET.pointer_bits == 32
-        # Rien de spécifique ici, point d’extension
-        give ()
-    .end
+proc assert_target_compat() {
+    if TARGET.pointer_bits != TARGET.sizes.size_ptr * 8 {
+        builtin.trap("compiler-builtins: pointer size mismatch")
+    }
 
-    if TARGET.pointer_bits == 64
-        give ()
-    .end
-.end
-
-
-# ------------------------------------------------------------
-# Notes d’architecture
-# ------------------------------------------------------------
-#
-# - Ce module est const-foldable
-# - STRICT est le seul profil valide ici
-# - HYBRID/FALLBACK nécessitent un autre shim
-# - NE JAMAIS importer builtins/*
-#
-# ============================================================
+    if TARGET.sizes.size_usize != TARGET.sizes.size_ptr {
+        builtin.trap("compiler-builtins: usize/ptr mismatch")
+    }
+}

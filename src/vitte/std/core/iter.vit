@@ -1,5 +1,181 @@
+<<<
+iter.vit
+std core iteration primitives
+>>>
+
 space std/core/iter
 
-# Itérateurs
 
-share all
+<<<
+iterator protocol
+>>>
+
+form Iterator[T] {
+    next: proc(self: *Self) -> Option[T]
+}
+
+
+<<<
+option
+>>>
+
+pick Option[T] {
+    Some(value: T)
+    None
+}
+
+
+<<<
+iterator helpers
+>>>
+
+#[inline]
+proc is_empty[T](it: *Iterator[T]) -> bool {
+    let r = it.next()
+    if r is Option.None {
+        give true
+    }
+    give false
+}
+
+
+#[inline]
+proc for_each[T](it: *Iterator[T], f: proc(T)) {
+    loop {
+        let r = it.next()
+        if r is Option.None {
+            break
+        }
+        when r is Option.Some {
+            f(r.value)
+        }
+    }
+}
+
+
+<<<
+fold
+>>>
+
+#[inline]
+proc fold[T, Acc](
+    it: *Iterator[T],
+    init: Acc,
+    f: proc(Acc, T) -> Acc
+) -> Acc {
+    let acc = init
+    loop {
+        let r = it.next()
+        if r is Option.None {
+            break
+        }
+        when r is Option.Some {
+            acc = f(acc, r.value)
+        }
+    }
+    give acc
+}
+
+
+<<<
+find
+>>>
+
+#[inline]
+proc find[T](it: *Iterator[T], pred: proc(T) -> bool) -> Option[T] {
+    loop {
+        let r = it.next()
+        if r is Option.None {
+            break
+        }
+        when r is Option.Some {
+            if pred(r.value) {
+                give r
+            }
+        }
+    }
+    give Option.None
+}
+
+
+<<<
+any / all
+>>>
+
+#[inline]
+proc any[T](it: *Iterator[T], pred: proc(T) -> bool) -> bool {
+    loop {
+        let r = it.next()
+        if r is Option.None {
+            break
+        }
+        when r is Option.Some {
+            if pred(r.value) {
+                give true
+            }
+        }
+    }
+    give false
+}
+
+
+#[inline]
+proc all[T](it: *Iterator[T], pred: proc(T) -> bool) -> bool {
+    loop {
+        let r = it.next()
+        if r is Option.None {
+            break
+        }
+        when r is Option.Some {
+            if !pred(r.value) {
+                give false
+            }
+        }
+    }
+    give true
+}
+
+
+<<<
+count
+>>>
+
+#[inline]
+proc count[T](it: *Iterator[T]) -> usize {
+    let n: usize = 0
+    loop {
+        let r = it.next()
+        if r is Option.None {
+            break
+        }
+        when r is Option.Some {
+            n = n + 1
+        }
+    }
+    give n
+}
+
+
+<<<
+collect into slice
+>>>
+
+#[inline]
+proc collect_slice[T](it: *Iterator[T], out: *[T]) -> usize {
+    let i: usize = 0
+    loop {
+        let r = it.next()
+        if r is Option.None {
+            break
+        }
+        when r is Option.Some {
+            if i >= out.len {
+                break
+            }
+            out[i] = r.value
+            i = i + 1
+        }
+    }
+    give i
+}
+

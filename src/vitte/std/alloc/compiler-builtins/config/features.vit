@@ -1,79 +1,46 @@
-
-
-# ============================================================
-# features.vit — compiler-builtins / config (MAX)
-# ============================================================
-# Déclaration des capacités FOURNIES PAR LE BACKEND
-#
-# Rôle :
-# - Décrire ce que le backend (LLVM / Cranelift / WASM / autre)
-#   sait fournir comme intrinsics / opérations natives
-# - NE PREND AUCUNE DÉCISION (voir active.vit)
-#
-# Ce fichier est :
-# - déclaratif
-# - const-foldable
-# - consommé par active.vit, le linker et les tests
-# ============================================================
+<<<
+features.vit
+compiler-builtins config
+>>>
 
 space std/alloc/compiler_builtins/builtins_shim/config
 
 
-# ------------------------------------------------------------
-# Types fondamentaux
-# ------------------------------------------------------------
+<<<
+primitive aliases
+>>>
 
 type bool  = builtin.bool
 type usize = builtin.usize
 
 
-# ------------------------------------------------------------
-# Structure des features backend
-# ------------------------------------------------------------
-# Chaque champ indique :
-# - true  : le backend fournit une intrinsic native correcte
-# - false : la fonctionnalité est absente ou volontairement désactivée
-# ------------------------------------------------------------
+<<<
+backend feature descriptor
+>>>
 
-form BuiltinFeatures
-    # ------------------------
-    # Mémoire (ABI C)
-    # ------------------------
+form BuiltinFeatures {
     has_memcpy: bool
     has_memmove: bool
     has_memset: bool
 
-    # ------------------------
-    # Arithmétique entière
-    # ------------------------
     has_udiv: bool
     has_urem: bool
     has_sdiv: bool
     has_srem: bool
 
-    # ------------------------
-    # Largeurs étendues
-    # ------------------------
     has_u128: bool
     has_i128: bool
 
-    # ------------------------
-    # Capacités générales
-    # ------------------------
     supports_unaligned_access: bool
     supports_fast_mul: bool
     supports_fast_div: bool
     supports_fast_shift: bool
-.end
+}
 
 
-# ------------------------------------------------------------
-# Backend minimal — AUCUNE intrinsic
-# ------------------------------------------------------------
-# Utilisable pour :
-# - bootstrap très bas niveau
-# - tests négatifs
-# ------------------------------------------------------------
+<<<
+backend none
+>>>
 
 #[export]
 const BACKEND_NONE: BuiltinFeatures = BuiltinFeatures(
@@ -96,9 +63,9 @@ const BACKEND_NONE: BuiltinFeatures = BuiltinFeatures(
 )
 
 
-# ------------------------------------------------------------
-# Backend LLVM (générique)
-# ------------------------------------------------------------
+<<<
+backend llvm
+>>>
 
 #[export]
 const BACKEND_LLVM: BuiltinFeatures = BuiltinFeatures(
@@ -121,9 +88,9 @@ const BACKEND_LLVM: BuiltinFeatures = BuiltinFeatures(
 )
 
 
-# ------------------------------------------------------------
-# Backend Cranelift (générique)
-# ------------------------------------------------------------
+<<<
+backend cranelift
+>>>
 
 #[export]
 const BACKEND_CRANELIFT: BuiltinFeatures = BuiltinFeatures(
@@ -133,7 +100,7 @@ const BACKEND_CRANELIFT: BuiltinFeatures = BuiltinFeatures(
 
     has_udiv    = true,
     has_urem    = true,
-    has_sdiv    = false,   # dépend de la cible
+    has_sdiv    = false,
     has_srem    = false,
 
     has_u128    = false,
@@ -146,9 +113,9 @@ const BACKEND_CRANELIFT: BuiltinFeatures = BuiltinFeatures(
 )
 
 
-# ------------------------------------------------------------
-# Backend WASM (WASI / browser)
-# ------------------------------------------------------------
+<<<
+backend wasm
+>>>
 
 #[export]
 const BACKEND_WASM: BuiltinFeatures = BuiltinFeatures(
@@ -171,45 +138,30 @@ const BACKEND_WASM: BuiltinFeatures = BuiltinFeatures(
 )
 
 
-# ------------------------------------------------------------
-# Backend ACTIF
-# ------------------------------------------------------------
-# Ce symbole DOIT être remplacé par le driver/compilateur
-# lors de la configuration finale (ex: via génération de code)
-# ------------------------------------------------------------
+<<<
+active backend
+>>>
 
 #[export]
 const BACKEND_FEATURES: BuiltinFeatures = BACKEND_NONE
 
 
-# ------------------------------------------------------------
-# Helpers d’introspection (optionnels)
-# ------------------------------------------------------------
+<<<
+introspection helpers
+>>>
 
 #[export]
-proc has_any_division() -> bool
+proc has_any_division() -> bool {
     give BACKEND_FEATURES.has_udiv
       || BACKEND_FEATURES.has_urem
       || BACKEND_FEATURES.has_sdiv
       || BACKEND_FEATURES.has_srem
-.end
+}
 
 
 #[export]
-proc has_any_mem() -> bool
+proc has_any_memory() -> bool {
     give BACKEND_FEATURES.has_memcpy
       || BACKEND_FEATURES.has_memmove
       || BACKEND_FEATURES.has_memset
-.end
-
-
-# ------------------------------------------------------------
-# Notes d’architecture
-# ------------------------------------------------------------
-#
-# - Ce fichier NE DOIT PAS importer active.vit
-# - Aucune logique de décision ici
-# - Toute extension doit commencer par un champ bool
-# - BACKEND_FEATURES est la SEULE variable attendue
-#
-# ============================================================
+}
