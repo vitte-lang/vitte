@@ -1,46 +1,53 @@
-#pragma once
+// ============================================================
+// linker.cpp — Vitte Compiler
+// High-level linker entry point
+// ============================================================
+
+#include "linker.hpp"
+
+#include "driver.hpp"
+
 #include <string>
-#include <vector>
 
 namespace vitte::linker {
 
-/* -------------------------------------------------
- * Linker output kind
- * ------------------------------------------------- */
-enum class OutputKind {
-    Executable,
-    StaticLibrary
-};
+// ------------------------------------------------------------
+// Linker
+// ------------------------------------------------------------
 
-/* -------------------------------------------------
- * Linker configuration
- * ------------------------------------------------- */
-struct LinkerConfig {
-    OutputKind kind = OutputKind::Executable;
+Linker::Linker()
+    : verbose_(false) {}
 
-    /* Output file (exe / .a / .lib) */
-    std::string output;
+// ------------------------------------------------------------
+// Configuration
+// ------------------------------------------------------------
 
-    /* Object files */
-    std::vector<std::string> objects;
+void Linker::set_verbose(bool verbose) {
+    verbose_ = verbose;
+}
 
-    /* Library search paths */
-    std::vector<std::string> library_dirs;
+void Linker::add_input(const std::string& path) {
+    inputs_.push_back(path);
+}
 
-    /* Libraries to link against */
-    std::vector<std::string> libraries;
+void Linker::set_output(const std::string& path) {
+    output_ = path;
+}
 
-    /* Tool selection */
-    bool prefer_llvm = true;
-    bool verbose = false;
-};
+// ------------------------------------------------------------
+// Run
+// ------------------------------------------------------------
 
-/* -------------------------------------------------
- * Linker API
- * -------------------------------------------------
- * Dispatches to the appropriate linker backend
- * (archive, toolchain, etc.).
- */
-bool link(const LinkerConfig& cfg);
+bool Linker::run(std::string& error) {
+    LinkerDriver driver;
+    driver.set_verbose(verbose_);
+    driver.set_output(output_);
+
+    for (const auto& in : inputs_) {
+        driver.add_input(in);
+    }
+
+    return driver.run(error);
+}
 
 } // namespace vitte::linker

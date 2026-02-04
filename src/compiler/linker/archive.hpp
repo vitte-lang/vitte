@@ -1,35 +1,70 @@
+// ============================================================
+// archive.hpp — Vitte Compiler
+// Static archive (.a) interface for linker
+// ============================================================
+
 #pragma once
+
+#include <cstdint>
 #include <string>
 #include <vector>
 
 namespace vitte::linker {
 
-/* -------------------------------------------------
- * Archive tool options
- * ------------------------------------------------- */
-struct ArchiveOptions {
-    /* Prefer llvm-ar over ar if available */
-    bool prefer_llvm = true;
+// ------------------------------------------------------------
+// Archive member
+// ------------------------------------------------------------
+//
+// Représente un membre brut d’une archive statique.
+// Aucune interprétation du contenu (ELF/Mach-O/COFF).
+//
 
-    /* Verbose command printing */
-    bool verbose = false;
+struct ArchiveMember {
+    std::string name;
+    std::vector<std::uint8_t> data;
 
-    /* Extra flags passed to the archiver */
-    std::vector<std::string> extra_flags;
+    ArchiveMember(std::string name,
+                  std::vector<std::uint8_t> data);
 };
 
-/* -------------------------------------------------
- * Create a static archive from object files
- * -------------------------------------------------
- *  - output: path to .a (Unix) or .lib (Windows)
- *  - objects: list of .o / .obj files
- *
- * Returns true on success.
- */
-bool create_archive(
-    const std::string& output,
-    const std::vector<std::string>& objects,
-    const ArchiveOptions& opts = {}
-);
+// ------------------------------------------------------------
+// Archive
+// ------------------------------------------------------------
+//
+// Format supporté :
+//  - System V ar (UNIX .a)
+//  - lecture / écriture simple
+//
+// Volontairement exclu :
+//  - table des symboles
+//  - index GNU/BSD
+//  - résolution de symboles
+//
+
+class Archive {
+public:
+    Archive();
+
+    // --------------------------------------------------------
+    // I/O
+    // --------------------------------------------------------
+
+    bool load_from_file(const std::string& path,
+                        std::string& error);
+
+    bool write_to_file(const std::string& path,
+                       std::string& error) const;
+
+    // --------------------------------------------------------
+    // Access
+    // --------------------------------------------------------
+
+    const std::vector<ArchiveMember>& members() const;
+
+    void add_member(ArchiveMember member);
+
+private:
+    std::vector<ArchiveMember> members_;
+};
 
 } // namespace vitte::linker
