@@ -1,0 +1,1 @@
+# utils/die.sh
