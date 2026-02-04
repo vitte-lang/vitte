@@ -1,1 +1,79 @@
-space vitte/std/io/print
+<<<
+print.vit
+std io printing utilities
+>>>
+
+space std/io/print
+
+
+<<<
+imports
+>>>
+
+use std/core/types.string
+use std/core/types.Unit
+use std/core/result.Result
+use std/io/error.IoError
+use std/io/error.IoResult
+
+
+<<<
+low-level output (backend)
+>>>
+
+#[extern]
+proc write_stdout(buf: string) -> IoResult[Unit]
+
+#[extern]
+proc write_stderr(buf: string) -> IoResult[Unit]
+
+
+<<<
+print helpers
+>>>
+
+#[inline]
+proc print(s: string) -> IoResult[Unit] {
+    give write_stdout(s)
+}
+
+#[inline]
+proc println(s: string) -> IoResult[Unit] {
+    give write_stdout(s + "\n")
+}
+
+
+<<<
+error output
+>>>
+
+#[inline]
+proc eprint(s: string) -> IoResult[Unit] {
+    give write_stderr(s)
+}
+
+#[inline]
+proc eprintln(s: string) -> IoResult[Unit] {
+    give write_stderr(s + "\n")
+}
+
+
+<<<
+panic-safe helpers
+>>>
+
+#[inline]
+proc print_or_panic(s: string) {
+    let r = print(s)
+    when r is Result.Err {
+        builtin.trap("print failed")
+    }
+}
+
+#[inline]
+proc println_or_panic(s: string) {
+    let r = println(s)
+    when r is Result.Err {
+        builtin.trap("println failed")
+    }
+}

@@ -1,0 +1,174 @@
+;; ============================================================
+;; steelconf — Vitte Project (MAX)
+;; Steel / Muffin v4
+;;
+;; Usage:
+;;   steel run --root . --file steelconf --bake build
+;;   steel run --root . --file steelconf --bake test
+;;   steel run --root . --file steelconf --bake fmt
+;;   steel run --root . --file steelconf --bake tidy
+;; ============================================================
+
+
+[workspace]
+  .set name "vitte"
+  .set root "."
+  .set target_dir "target"
+  .set profile "debug"
+..
+
+
+;; ------------------------------------------------------------
+;; Profiles
+;; ------------------------------------------------------------
+
+[profile debug]
+  .set opt 0
+  .set debug 1
+  .set sanitize 0
+..
+
+[profile release]
+  .set opt 2
+  .set debug 0
+  .set sanitize 0
+..
+
+[profile asan]
+  .set opt 1
+  .set debug 1
+  .set sanitize "address"
+..
+
+
+;; ------------------------------------------------------------
+;; Tools
+;; ------------------------------------------------------------
+
+[tool cc]
+  .exec "clang"
+..
+
+[tool cxx]
+  .exec "clang++"
+..
+
+[tool ar]
+  .exec "ar"
+..
+
+[tool tidy]
+  .exec "clang-tidy"
+..
+
+[tool fmt]
+  .exec "clang-format"
+..
+
+[tool sh]
+  .exec "sh"
+..
+
+
+;; ------------------------------------------------------------
+;; Paths
+;; ------------------------------------------------------------
+
+[vars]
+  .set SRC "src"
+  .set BUILD "build"
+  .set BIN "bin"
+..
+
+
+;; ------------------------------------------------------------
+;; Bake: build (compiler + runtime)
+;; ------------------------------------------------------------
+
+[bake build]
+  .make c_src  cglob "${SRC}/**/*.c"
+  .make cxx_src cglob "${SRC}/**/*.cpp"
+
+  [run cxx]
+    .set "-std=c++20" 1
+    .set "-O{opt}" 1
+    .set "-g{debug}" 1
+    .set "-Wall" 1
+    .set "-Wextra" 1
+    .set "-Werror" 1
+    .set "-c" 1
+    .set "@inputs" 1
+    .set "-o" "${BUILD}/objects.o"
+  ..
+
+  [run cxx]
+    .set "${BUILD}/objects.o" 1
+    .set "-o" "${BIN}/vitte"
+  ..
+
+  .output exe "${BIN}/vitte"
+..
+
+
+;; ------------------------------------------------------------
+;; Bake: test (std/test)
+;; ------------------------------------------------------------
+
+[bake test]
+  [run sh]
+    .set "-c" 1
+    .set "echo Running Vitte std/test && ${BIN}/vitte --test"
+  ..
+..
+
+
+;; ------------------------------------------------------------
+;; Bake: format (clang-format)
+;; ------------------------------------------------------------
+
+[bake fmt]
+  .make fmt_src cglob "${SRC}/**/*.{c,cpp,h,hpp}"
+  [run fmt]
+    .set "-i" 1
+    .set "@inputs" 1
+  ..
+..
+
+
+;; ------------------------------------------------------------
+;; Bake: tidy (clang-tidy)
+;; ------------------------------------------------------------
+
+[bake tidy]
+  .make tidy_src cglob "${SRC}/**/*.cpp"
+  [run tidy]
+    .set "@inputs" 1
+    .set "--" 1
+    .set "-std=c++20" 1
+  ..
+..
+
+
+;; ------------------------------------------------------------
+;; Bake: clean
+;; ------------------------------------------------------------
+
+[bake clean]
+  [run sh]
+    .set "-c" 1
+    .set "rm -rf target build bin"
+  ..
+..
+
+
+;; ------------------------------------------------------------
+;; Exports
+;; ------------------------------------------------------------
+
+[export]
+  build
+  test
+  fmt
+  tidy
+  clean
+..

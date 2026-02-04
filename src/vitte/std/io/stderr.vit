@@ -1,1 +1,125 @@
-space vitte/std/io/stderr
+<<<
+result.vit
+std io result helpers
+>>>
+
+space std/io/result
+
+
+<<<
+imports
+>>>
+
+use std/core/result.Result
+use std/core/option.Option
+use std/core/panic.panic
+
+use std/io/error.IoError
+use std/io/error.IoErrorKind
+use std/io/error.IoResult
+
+
+<<<
+type aliases
+>>>
+
+type ResultIo[T] = Result[T, IoError]
+
+
+<<<
+constructors
+>>>
+
+#[inline]
+proc ok[T](value: T) -> ResultIo[T] {
+    give Result.Ok(value)
+}
+
+#[inline]
+proc err[T](error: IoError) -> ResultIo[T] {
+    give Result.Err(error)
+}
+
+
+<<<
+introspection
+>>>
+
+#[inline]
+proc is_ok[T](res: ResultIo[T]) -> bool {
+    when res is Result.Ok {
+        give true
+    }
+    give false
+}
+
+#[inline]
+proc is_err[T](res: ResultIo[T]) -> bool {
+    when res is Result.Err {
+        give true
+    }
+    give false
+}
+
+
+<<<
+unwrap helpers
+>>>
+
+#[inline]
+proc unwrap[T](res: ResultIo[T]) -> T {
+    when res is Result.Ok {
+        give res.value
+    }
+    panic("called unwrap on IoResult.Err")
+}
+
+#[inline]
+proc unwrap_or[T](res: ResultIo[T], default: T) -> T {
+    when res is Result.Ok {
+        give res.value
+    }
+    give default
+}
+
+
+<<<
+mapping
+>>>
+
+#[inline]
+proc map[T, U](res: ResultIo[T], f: proc(T) -> U) -> ResultIo[U] {
+    when res is Result.Ok {
+        give Result.Ok(f(res.value))
+    }
+    give Result.Err(res.error)
+}
+
+#[inline]
+proc map_err[T](res: ResultIo[T], f: proc(IoError) -> IoError) -> ResultIo[T] {
+    when res is Result.Err {
+        give Result.Err(f(res.error))
+    }
+    give Result.Ok(res.value)
+}
+
+
+<<<
+conversions
+>>>
+
+#[inline]
+proc ok_option[T](res: ResultIo[T]) -> Option[T] {
+    when res is Result.Ok {
+        give Option.Some(res.value)
+    }
+    give Option.None
+}
+
+#[inline]
+proc err_kind[T](res: ResultIo[T]) -> Option[IoErrorKind] {
+    when res is Result.Err {
+        give Option.Some(res.error.kind)
+    }
+    give Option.None
+}

@@ -1,0 +1,149 @@
+# ============================================================
+# .clang-tidy — Vitte Project
+# Target: compiler / runtime / builtins (C/C++)
+# Philosophy: strict, deterministic, low-noise
+# ============================================================
+
+Checks: >
+  -*,
+
+  # ----------------------------------------------------------
+  # Core correctness
+  # ----------------------------------------------------------
+  bugprone-*,
+  clang-analyzer-*,
+
+  # ----------------------------------------------------------
+  # Modern C++ (safe subset)
+  # ----------------------------------------------------------
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-use-default-member-init,
+  modernize-use-using,
+  modernize-loop-convert,
+
+  # ----------------------------------------------------------
+  # Readability (very selective)
+  # ----------------------------------------------------------
+  readability-identifier-naming,
+  readability-misleading-indentation,
+  readability-redundant-control-flow,
+  readability-simplify-boolean-expr,
+
+  # ----------------------------------------------------------
+  # Performance (cheap & safe only)
+  # ----------------------------------------------------------
+  performance-for-range-copy,
+  performance-unnecessary-copy-initialization,
+  performance-move-const-arg,
+
+  # ----------------------------------------------------------
+  # Portability / UB
+  # ----------------------------------------------------------
+  portability-simd-intrinsics,
+  misc-misplaced-const,
+  misc-unused-parameters,
+  misc-redundant-expression,
+
+  # ----------------------------------------------------------
+  # Disabled noisy / dangerous checks
+  # ----------------------------------------------------------
+  -modernize-use-auto,
+  -modernize-return-braced-init-list,
+  -modernize-avoid-c-arrays,
+  -modernize-use-trailing-return-type,
+  -readability-magic-numbers,
+  -cppcoreguidelines-*,
+  -hicpp-*,
+  -llvm-*,
+  -google-*,
+  -altera-*,
+  -fuchsia-*,
+  -zircon-*
+
+WarningsAsErrors: >
+  bugprone-*,
+  clang-analyzer-*,
+  misc-misplaced-const
+
+HeaderFilterRegex: '.*'
+
+AnalyzeTemporaryDtors: false
+
+FormatStyle: file
+
+---
+
+CheckOptions:
+
+  # ----------------------------------------------------------
+  # Identifier naming (compiler-style)
+  # ----------------------------------------------------------
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+
+  - key: readability-identifier-naming.UnionCase
+    value: CamelCase
+
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+
+  - key: readability-identifier-naming.FunctionCase
+    value: lower_case
+
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+
+  - key: readability-identifier-naming.ParameterCase
+    value: lower_case
+
+  - key: readability-identifier-naming.MemberCase
+    value: lower_case
+
+  - key: readability-identifier-naming.ConstantCase
+    value: UPPER_CASE
+
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
+
+  # ----------------------------------------------------------
+  # Unused parameters (allow underscore)
+  # ----------------------------------------------------------
+  - key: misc-unused-parameters.IgnoreUnusedParameters
+    value: 'true'
+
+  # ----------------------------------------------------------
+  # Bugprone
+  # ----------------------------------------------------------
+  - key: bugprone-assert-side-effect.AssertMacros
+    value: 'assert,ASSERT,VT_ASSERT'
+
+  # ----------------------------------------------------------
+  # Analyzer tuning
+  # ----------------------------------------------------------
+  - key: clang-analyzer-core.CallAndMessage
+    value: 'true'
+
+  - key: clang-analyzer-core.DivideZero
+    value: 'true'
+
+  - key: clang-analyzer-core.NullDereference
+    value: 'true'
+
+  - key: clang-analyzer-core.UndefinedBinaryOperatorResult
+    value: 'true'
+
+  - key: clang-analyzer-security.insecureAPI.strcpy
+    value: 'true'
+
+  - key: clang-analyzer-security.insecureAPI.strcat
+    value: 'true'
+
+  - key: clang-analyzer-security.insecureAPI.sprintf
+    value: 'true'

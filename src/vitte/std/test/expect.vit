@@ -1,1 +1,120 @@
-space vitte/std/test/expect
+<<<
+expect.vit
+std test expectations
+>>>
+
+space std/test/expect
+
+
+<<<
+imports
+>>>
+
+use std/core/types.bool
+use std/core/types.string
+use std/core/types.Unit
+
+use std/core/result.Result
+use std/core/option.Option
+use std/core/panic
+use std/test/assert
+
+
+<<<
+result expectations
+>>>
+
+#[inline]
+proc expect_ok[T, E](r: Result[T, E]) -> T {
+    when r is Result.Ok {
+        give r.unwrap()
+    }
+    panic.panic("expected Result.Ok, got Result.Err")
+}
+
+#[inline]
+proc expect_ok_msg[T, E](r: Result[T, E], msg: string) -> T {
+    when r is Result.Ok {
+        give r.unwrap()
+    }
+    panic.panic(msg)
+}
+
+#[inline]
+proc expect_err[T, E](r: Result[T, E]) -> E {
+    when r is Result.Err {
+        give r.unwrap_err()
+    }
+    panic.panic("expected Result.Err, got Result.Ok")
+}
+
+#[inline]
+proc expect_err_msg[T, E](r: Result[T, E], msg: string) -> E {
+    when r is Result.Err {
+        give r.unwrap_err()
+    }
+    panic.panic(msg)
+}
+
+
+<<<
+option expectations
+>>>
+
+#[inline]
+proc expect_some[T](o: Option[T]) -> T {
+    when o is Option.Some {
+        give o.unwrap()
+    }
+    panic.panic("expected Option.Some, got Option.None")
+}
+
+#[inline]
+proc expect_some_msg[T](o: Option[T], msg: string) -> T {
+    when o is Option.Some {
+        give o.unwrap()
+    }
+    panic.panic(msg)
+}
+
+#[inline]
+proc expect_none[T](o: Option[T]) -> Unit {
+    when o is Option.None {
+        give Unit.Unit
+    }
+    panic.panic("expected Option.None, got Option.Some")
+}
+
+
+<<<
+boolean expectations
+>>>
+
+#[inline]
+proc expect_true(v: bool) -> Unit {
+    assert.assert_true(v)
+    give Unit.Unit
+}
+
+#[inline]
+proc expect_false(v: bool) -> Unit {
+    assert.assert_false(v)
+    give Unit.Unit
+}
+
+
+<<<
+equality expectations
+>>>
+
+#[inline]
+proc expect_eq[T](a: T, b: T) -> Unit {
+    assert.assert_eq(a, b)
+    give Unit.Unit
+}
+
+#[inline]
+proc expect_ne[T](a: T, b: T) -> Unit {
+    assert.assert_ne(a, b)
+    give Unit.Unit
+}

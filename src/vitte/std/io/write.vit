@@ -1,1 +1,127 @@
-space vitte/std/io/write
+<<<
+write.vit
+std io writing primitives
+>>>
+
+space std/io/write
+
+
+<<<
+imports
+>>>
+
+use std/core/types.usize
+use std/core/types.Unit
+use std/core/types.string
+use std/core/result.Result
+
+use std/io/error.IoError
+use std/io/error.IoErrorKind
+use std/io/error.IoResult
+
+
+<<<
+writer abstraction
+>>>
+
+form Writer {
+    write: proc(self: *Self, buf: *[u8]) -> IoResult[usize]
+    flush: proc(self: *Self) -> IoResult[Unit]
+}
+
+
+<<<
+low-level backend
+>>>
+
+#[extern]
+proc write_fd(fd: usize, buf: *[u8]) -> IoResult[usize]
+
+#[extern]
+proc flush_fd(fd: usize) -> IoResult[Unit]
+
+
+<<<
+file writer
+>>>
+
+form FileWriter {
+    fd: usize
+}
+
+
+#[inline]
+proc writer_from_fd(fd: usize) -> FileWriter {
+    give FileWriter(fd = fd)
+}
+
+
+#[inline]
+proc writer_as_writer(w: *FileWriter) -> Writer {
+    give Writer(
+        write = proc(self: *Writer, buf: *[u8]) -> IoResult[usize] {
+            give write_fd(w.fd, buf)
+        },
+        flush = proc(self: *Writer) -> IoResult[Unit] {
+            give flush_fd(w.fd)
+        }
+    )
+}
+
+
+<<<
+helpers
+>>>
+
+#[inline]
+proc write_all(w: *Writer, buf: *[u8]) -> IoResult[Unit] {
+    let off: usize = 0
+    loop {
+        if off >= buf.len {
+            break
+        }
+        let slice = buf.slice(off, buf.len)
+        let n = w.write(slice)
+        when n is Result.Err {
+            give n
+        }
+        let k = n.unwrap()
+        if k == 0 {
+            give Result.Err(IoError.new(IoErrorKind.BrokenPipe))
+        }
+        off = off + k
+    }
+    give Result.Ok(Unit.Unit)
+}
+
+
+#[inline]
+proc write_string(w: *Writer, s: string) -> IoResult[Unit] {
+    let bytes = s.as_bytes()
+    give write_all(w, bytes)
+}
+
+
+#[inline]
+proc flush(w: *Writer) -> IoResult[Unit] {
+    give w.flush()
+}
+
+
+<<<
+convenience
+>>>
+
+#[inline]
+proc write_all_fd(fd: usize, buf: *[u8]) -> IoResult[Unit] {
+    let fw = writer_from_fd(fd)
+    let w = writer_as_writer(&fw)
+    give write_all(&w, buf)
+}
+
+#[inline]
+proc write_string_fd(fd: usize, s: string) -> IoResult[Unit] {
+    let fw = writer_from_fd(fd)
+    let w = writer_as_writer(&fw)
+    give write_string(&w, s)
+}
