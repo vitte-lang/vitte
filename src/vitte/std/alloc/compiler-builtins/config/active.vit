@@ -1,7 +1,130 @@
+# ============================================================
+# active.vit — compiler-builtins / config (MAX)
+# ============================================================
+# Sélection ACTIVE des features compiler-builtins
+#
+# Rôle :
+# - Consolider TARGET + BACKEND_FEATURES
+# - Exposer une décision finale, const-foldable
+# - Fournir des profils (STRICT / HYBRID / FALLBACK)
+#
+# Politique par défaut :
+# - STRICT (intrinsic-only)
+#
+# Ce fichier ne contient AUCUNE implémentation.
+# ============================================================
+
 space std/alloc/compiler_builtins/builtins_shim/config
+
+
+# ------------------------------------------------------------
+# Imports
+# ------------------------------------------------------------
 
 pull .target
 pull .features
 
+
+# ------------------------------------------------------------
+# Profils de sélection
+# ------------------------------------------------------------
+# STRICT   : intrinsics obligatoires (LLVM / Cranelift pur)
+# HYBRID   : intrinsics si dispo, sinon fallback (non défini ici)
+# FALLBACK : tout en fallback (non autorisé dans ce shim)
+# ------------------------------------------------------------
+
+pick BuiltinProfile
+    STRICT
+    HYBRID
+    FALLBACK
+.end
+
+
+# ------------------------------------------------------------
+# Profil ACTIF (par défaut : STRICT)
+# ------------------------------------------------------------
+
 #[export]
-const FEATURES = INTRINSIC_ONLY
+const ACTIVE_PROFILE: BuiltinProfile = BuiltinProfile.STRICT
+
+
+# ------------------------------------------------------------
+# Sélection des FEATURES selon le profil
+# ------------------------------------------------------------
+# NOTE :
+# - HYBRID et FALLBACK sont volontairement bloqués ici.
+# - Un autre shim devra fournir ces modes.
+# ------------------------------------------------------------
+
+#[export]
+const FEATURES: BuiltinFeatures =
+    if ACTIVE_PROFILE == BuiltinProfile.STRICT
+        BuiltinFeatures(
+            has_memcpy  = BACKEND_FEATURES.has_memcpy,
+            has_memmove = BACKEND_FEATURES.has_memmove,
+            has_memset  = BACKEND_FEATURES.has_memset,
+            has_udiv    = BACKEND_FEATURES.has_udiv,
+            has_urem    = BACKEND_FEATURES.has_urem,
+        )
+    elif ACTIVE_PROFILE == BuiltinProfile.HYBRID
+        builtin.trap("compiler-builtins: HYBRID profile not supported in intrinsic-only shim")
+    else
+        builtin.trap("compiler-builtins: FALLBACK profile not supported in intrinsic-only shim")
+    .end
+
+
+# ------------------------------------------------------------
+# Assertions de cohérence (dures)
+# ------------------------------------------------------------
+# Appelables par :
+# - runtime startup
+# - linker
+# - tests
+# ------------------------------------------------------------
+
+#[export]
+proc assert_required_features()
+    assert_feature(FEATURES.has_memcpy,  "memcpy")
+    assert_feature(FEATURES.has_memmove, "memmove")
+    assert_feature(FEATURES.has_memset,  "memset")
+    assert_feature(FEATURES.has_udiv,    "udiv")
+    assert_feature(FEATURES.has_urem,    "urem")
+.end
+
+
+proc assert_feature(ok: bool, name: str)
+    if !ok
+        builtin.trap("compiler-builtins: required intrinsic missing: " + name)
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Assertions de cohérence TARGET ↔ FEATURES
+# ------------------------------------------------------------
+# Permet d’attraper des incohérences backend / target
+# ------------------------------------------------------------
+
+#[export]
+proc assert_target_compat()
+    if TARGET.pointer_bits == 32
+        # Rien de spécifique ici, point d’extension
+        give ()
+    .end
+
+    if TARGET.pointer_bits == 64
+        give ()
+    .end
+.end
+
+
+# ------------------------------------------------------------
+# Notes d’architecture
+# ------------------------------------------------------------
+#
+# - Ce module est const-foldable
+# - STRICT est le seul profil valide ici
+# - HYBRID/FALLBACK nécessitent un autre shim
+# - NE JAMAIS importer builtins/*
+#
+# ============================================================
