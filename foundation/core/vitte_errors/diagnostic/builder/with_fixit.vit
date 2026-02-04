@@ -1,2 +1,135 @@
-proc add_fixit(diag: Diagnostic, fix: FixIt)
+# ============================================================
+# vitte_errors :: diagnostic :: builder :: with_fixit
+# ------------------------------------------------------------
+# Extension du DiagnosticBuilder avec support des fix-its.
+# - Suggestions de correction structurées
+# - LSP-ready (CodeAction / TextEdit)
+# ============================================================
+
+space vitte_errors/diagnostic/builder/with_fixit
+
+pull vitte_error_codes/context
+pull vitte_errors/diagnostic/builder/core as core
+
+# ------------------------------------------------------------
+# Types
+# ------------------------------------------------------------
+
+form FixIt
+  message : string
+  file    : string
+  line    : u32
+  column  : u32
+  replace : string
+.end
+
+form DiagnosticBuilderWithFixIt
+  base   : core/DiagnosticBuilder
+  fixes  : List<FixIt>
+.end
+
+# ------------------------------------------------------------
+# Construction
+# ------------------------------------------------------------
+
+proc new(
+  code : string,
+  phase : context/ErrorPhase,
+  message : string
+) gives DiagnosticBuilderWithFixIt
+  give DiagnosticBuilderWithFixIt
+    base  = core/new(code, phase, message)
+    fixes = List<FixIt>.new()
+  end
+.end
+
+proc from_builder(
+  b : core/DiagnosticBuilder
+) gives DiagnosticBuilderWithFixIt
+  give DiagnosticBuilderWithFixIt
+    base  = b
+    fixes = List<FixIt>.new()
+  end
+.end
+
+# ------------------------------------------------------------
+# Fluent modifiers (hérités)
+# ------------------------------------------------------------
+
+proc at(
+  b : DiagnosticBuilderWithFixIt,
+  file : string,
+  line : u32,
+  column : u32
+) gives DiagnosticBuilderWithFixIt
+  let mut out = b
+  out.base = core/at(out.base, file, line, column)
+  give out
+.end
+
+proc note(
+  b : DiagnosticBuilderWithFixIt,
+  message : string
+) gives DiagnosticBuilderWithFixIt
+  let mut out = b
+  out.base = core/note(out.base, message)
+  give out
+.end
+
+# ------------------------------------------------------------
+# Fix-it API
+# ------------------------------------------------------------
+
+proc fix(
+  b : DiagnosticBuilderWithFixIt,
+  message : string,
+  file : string,
+  line : u32,
+  column : u32,
+  replace : string
+) gives DiagnosticBuilderWithFixIt
+  let mut out = b
+  out.fixes.push(FixIt
+    message = message
+    file    = file
+    line    = line
+    column  = column
+    replace = replace
+  end)
+  give out
+.end
+
+# ------------------------------------------------------------
+# Finalisation
+# ------------------------------------------------------------
+
+proc build(
+  b : DiagnosticBuilderWithFixIt
+) gives context/ErrorContext
+  # Pour l’instant, les fix-its sont convertis en notes.
+  # Les renderers LSP pourront les interpréter comme CodeAction.
+  let mut ctx = core/build(b.base)
+
+  for f in b.fixes
+    ctx = context/add_note(
+      ctx,
+      "fix-it: " + f.message +
+      " @ " + f.file +
+      ":" + f.line.to_string() +
+      ":" + f.column.to_string() +
+      " → " + f.replace
+    )
+  end
+
+  give ctx
+.end
+
+# ------------------------------------------------------------
+# Accès direct aux fix-its (pour LSP avancé)
+# ------------------------------------------------------------
+
+proc fixes(
+  b : DiagnosticBuilderWithFixIt
+) gives List<FixIt>
+  give b.fixes
 .end

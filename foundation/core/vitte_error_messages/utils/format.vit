@@ -1,2 +1,100 @@
-proc interpolate(template: String, args)
+# ============================================================
+# vitte_error_messages :: utils :: format
+# ------------------------------------------------------------
+# Primitives de formatage communes aux moteurs de rendu.
+# Aucune logique métier, aucun accès aux locales ou liens.
+# ============================================================
+
+space vitte_error_messages/utils/format
+
+# ------------------------------------------------------------
+# Chaînes utilitaires
+# ------------------------------------------------------------
+
+proc join(
+  parts : List<string>,
+  sep : string
+) gives string
+  let mut out = ""
+  let mut first = true
+
+  for p in parts
+    if not first
+      out = out + sep
+    end
+    first = false
+    out = out + p
+  end
+
+  give out
+.end
+
+proc indent(
+  text : string,
+  prefix : string
+) gives string
+  let mut out = ""
+  let lines = text.split("\n")
+  let mut first = true
+
+  for l in lines
+    if not first
+      out = out + "\n"
+    end
+    first = false
+    out = out + prefix + l
+  end
+
+  give out
+.end
+
+# ------------------------------------------------------------
+# Formatage position / localisation
+# ------------------------------------------------------------
+
+proc format_position(
+  file : string,
+  line : u32,
+  column : u32
+) gives string
+  give file + ":" + line.to_string() + ":" + column.to_string()
+.end
+
+# ------------------------------------------------------------
+# JSON helpers (bas niveau)
+# ------------------------------------------------------------
+
+proc escape_json(s : string) gives string
+  let mut out = ""
+
+  for ch in s.chars()
+    if ch == '"'
+      out = out + "\\\""
+    elif ch == '\\'
+      out = out + "\\\\"
+    elif ch == '\n'
+      out = out + "\\n"
+    elif ch == '\r'
+      out = out + "\\r"
+    elif ch == '\t'
+      out = out + "\\t"
+    else
+      out = out + ch.to_string()
+    end
+  end
+
+  give out
+.end
+
+proc json_string(s : string) gives string
+  give "\"" + escape_json(s) + "\""
+.end
+
+proc json_kv(key : string, value : string) gives string
+  give json_string(key) + ":" + json_string(value)
+.end
+
+proc json_kv_raw(key : string, raw : string) gives string
+  # raw est supposé déjà sérialisé (nombre, objet, tableau)
+  give json_string(key) + ":" + raw
 .end

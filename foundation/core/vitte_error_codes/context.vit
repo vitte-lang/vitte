@@ -1,3 +1,133 @@
-form ErrorCodeContext
-    next_code: Int
+# ============================================================
+# vitte_error_codes :: context
+# ------------------------------------------------------------
+# Contexte d’émission des erreurs (phase, localisation,
+# métadonnées). Utilisé par les émetteurs et les formateurs.
+# ============================================================
+
+space vitte_error_codes/context
+
+pull vitte_error_codes/utils
+pull vitte_error_codes/emit/format
+
+# ------------------------------------------------------------
+# Types
+# ------------------------------------------------------------
+
+pick ErrorPhase
+  Lex
+  Parse
+  Type
+  Lower
+  Codegen
+  Driver
+.end
+
+form ErrorSpan
+  file   : string
+  line   : u32
+  column : u32
+.end
+
+form ErrorNote
+  message : string
+.end
+
+form ErrorContext
+  code     : string
+  phase    : ErrorPhase
+  message  : string
+  span     : ErrorSpan?
+  notes    : List<ErrorNote>
+.end
+
+# ------------------------------------------------------------
+# Constructors
+# ------------------------------------------------------------
+
+proc new_context(
+  code : string,
+  phase : ErrorPhase,
+  message : string
+) gives ErrorContext
+  utils.assert_valid(code)
+
+  give ErrorContext
+    code    = code
+    phase   = phase
+    message = message
+    span    = none
+    notes   = List<ErrorNote>.new()
+  end
+.end
+
+proc with_span(
+  ctx : ErrorContext,
+  file : string,
+  line : u32,
+  column : u32
+) gives ErrorContext
+  let mut out = ctx
+  out.span = some ErrorSpan
+    file   = file
+    line   = line
+    column = column
+  end
+  give out
+.end
+
+proc add_note(
+  ctx : ErrorContext,
+  message : string
+) gives ErrorContext
+  let mut out = ctx
+  out.notes.push(ErrorNote
+    message = message
+  end)
+  give out
+.end
+
+# ------------------------------------------------------------
+# Formatting
+# ------------------------------------------------------------
+
+proc format(ctx : ErrorContext) gives string
+  # Message principal
+  let mut out =
+    emit.format_header(
+      ctx.code,
+      ctx.phase,
+      ctx.message
+    )
+
+  # Localisation
+  if ctx.span.is_some()
+    let s = ctx.span.unwrap()
+    out = out + "\n" +
+      emit.format_location(
+        s.file,
+        s.line,
+        s.column
+      )
+  end
+
+  # Notes additionnelles
+  for note in ctx.notes
+    out = out + "\n" + emit.format_note(note.message)
+  end
+
+  give out
+.end
+
+# ------------------------------------------------------------
+# Helpers rapides
+# ------------------------------------------------------------
+
+proc short(
+  code : string,
+  phase : ErrorPhase,
+  message : string
+) gives string
+  let ctx = new_context(code, phase, message)
+  give emit.format_header(ctx.code, ctx.phase, ctx.message)
 .end

@@ -1,2 +1,129 @@
-proc new_diagnostic(code: Int) -> Diagnostic
+# ============================================================
+# vitte_errors :: diagnostic :: builder :: core
+# ------------------------------------------------------------
+# Builder central de diagnostics.
+# - Construction progressive
+# - Zéro allocation superflue
+# - Compatible ErrorBuffer / renderers
+# ============================================================
+
+space vitte_errors/diagnostic/builder/core
+
+pull vitte_error_codes/context
+pull vitte_error_codes/utils
+
+# ------------------------------------------------------------
+# Types
+# ------------------------------------------------------------
+
+form DiagnosticBuilder
+  code    : string
+  phase   : context/ErrorPhase
+  message : string
+  span    : context/ErrorSpan?
+  notes   : List<context/ErrorNote>
+.end
+
+# ------------------------------------------------------------
+# Construction
+# ------------------------------------------------------------
+
+proc new(
+  code : string,
+  phase : context/ErrorPhase,
+  message : string
+) gives DiagnosticBuilder
+  utils.assert_valid(code)
+
+  give DiagnosticBuilder
+    code    = code
+    phase   = phase
+    message = message
+    span    = none
+    notes   = List<context/ErrorNote>.new()
+  end
+.end
+
+# ------------------------------------------------------------
+# Fluent modifiers
+# ------------------------------------------------------------
+
+proc at(
+  b : DiagnosticBuilder,
+  file : string,
+  line : u32,
+  column : u32
+) gives DiagnosticBuilder
+  let mut out = b
+  out.span = some context/ErrorSpan
+    file   = file
+    line   = line
+    column = column
+  end
+  give out
+.end
+
+proc note(
+  b : DiagnosticBuilder,
+  message : string
+) gives DiagnosticBuilder
+  let mut out = b
+  out.notes.push(context/ErrorNote
+    message = message
+  end)
+  give out
+.end
+
+proc notes(
+  b : DiagnosticBuilder,
+  items : List<string>
+) gives DiagnosticBuilder
+  let mut out = b
+  for it in items
+    out.notes.push(context/ErrorNote
+      message = it
+    end)
+  end
+  give out
+.end
+
+# ------------------------------------------------------------
+# Finalisation
+# ------------------------------------------------------------
+
+proc build(b : DiagnosticBuilder) gives context/ErrorContext
+  let mut ctx =
+    context/new_context(
+      b.code,
+      b.phase,
+      b.message
+    )
+
+  if b.span.is_some()
+    let s = b.span.unwrap()
+    ctx = context/with_span(
+      ctx,
+      s.file,
+      s.line,
+      s.column
+    )
+  end
+
+  for n in b.notes
+    ctx = context/add_note(ctx, n.message)
+  end
+
+  give ctx
+.end
+
+# ------------------------------------------------------------
+# Raccourcis statiques
+# ------------------------------------------------------------
+
+proc simple(
+  code : string,
+  phase : context/ErrorPhase,
+  message : string
+) gives context/ErrorContext
+  give build(new(code, phase, message))
 .end

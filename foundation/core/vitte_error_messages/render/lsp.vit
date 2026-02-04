@@ -1,2 +1,146 @@
-proc render_lsp(ctx: ErrorMessageContext, msg: ErrorMessage)
+# ============================================================
+# vitte_error_messages :: render :: lsp
+# ------------------------------------------------------------
+# Rendu LSP (Language Server Protocol) des erreurs Vitte.
+# Produit des objets Diagnostic JSON sérialisables.
+# ============================================================
+
+space vitte_error_messages/render/lsp
+
+pull vitte_error_codes/context
+pull vitte_error_messages/locales
+pull vitte_error_messages/links
+
+# ------------------------------------------------------------
+# LSP types (subset)
+# ------------------------------------------------------------
+
+pick DiagnosticSeverity
+  Error = 1
+  Warning = 2
+  Information = 3
+  Hint = 4
+.end
+
+form Position
+  line      : u32
+  character : u32
+.end
+
+form Range
+  start : Position
+  end   : Position
+.end
+
+form Diagnostic
+  range            : Range
+  severity         : DiagnosticSeverity
+  code             : string
+  source           : string
+  message          : string
+  related          : List<RelatedInformation>
+  doc              : string?
+.end
+
+form RelatedInformation
+  location : Range
+  message  : string
+.end
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc phase_to_source(p : context/ErrorPhase) gives string
+  give p.to_string().to_lower()
+.end
+
+proc phase_to_severity(p : context/ErrorPhase) gives DiagnosticSeverity
+  match p
+    Lex     => give DiagnosticSeverity.Error
+    Parse   => give DiagnosticSeverity.Error
+    Type    => give DiagnosticSeverity.Error
+    Lower   => give DiagnosticSeverity.Error
+    Codegen => give DiagnosticSeverity.Error
+    Driver  => give DiagnosticSeverity.Error
+  end
+.end
+
+proc make_range(
+  line : u32,
+  column : u32
+) gives Range
+  # LSP est 0-based
+  give Range
+    start = Position
+      line      = line - 1
+      character = column - 1
+    end
+    end = Position
+      line      = line - 1
+      character = column
+    end
+  end
+.end
+
+# ------------------------------------------------------------
+# Rendu principal
+# ------------------------------------------------------------
+
+proc render(ctx : context/ErrorContext) gives Diagnostic
+  # Message localisé (fallback sur ctx.message)
+  let mut message = ctx.message
+  let loc = locales.find(ctx.code)
+  if loc.is_some()
+    message = loc.unwrap().text
+  end
+
+  # Range
+  let range =
+    if ctx.span.is_some()
+      let s = ctx.span.unwrap()
+      make_range(s.line, s.column)
+    else
+      make_range(1, 1)
+    end
+
+  # Related information (notes)
+  let mut related = List<RelatedInformation>.new()
+  for n in ctx.notes
+    related.push(RelatedInformation
+      location = range
+      message  = n.message
+    end)
+  end
+
+  # Documentation link
+  let mut doc = none
+  let link = links.find_by_code(ctx.code)
+  if link.is_some()
+    doc = some link.unwrap().url
+  end
+
+  give Diagnostic
+    range    = range
+    severity = phase_to_severity(ctx.phase)
+    code     = ctx.code
+    source   = phase_to_source(ctx.phase)
+    message  = message
+    related  = related
+    doc      = doc
+  end
+.end
+
+# ------------------------------------------------------------
+# Batch helpers
+# ------------------------------------------------------------
+
+proc render_all(
+  errors : List<context/ErrorContext>
+) gives List<Diagnostic>
+  let mut out = List<Diagnostic>.new()
+  for e in errors
+    out.push(render(e))
+  end
+  give out
 .end

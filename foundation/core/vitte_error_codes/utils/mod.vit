@@ -1,2 +1,121 @@
-pull self/check
-share all
+# ============================================================
+# vitte_error_codes :: utils
+# ------------------------------------------------------------
+# Helpers transverses pour la manipulation, validation et
+# normalisation des codes d’erreur Vitte.
+# ============================================================
+
+space vitte_error_codes/utils
+
+pull vitte_error_codes/categories/codegen
+pull vitte_error_codes/categories/driver
+pull vitte_error_codes/categories/lex
+pull vitte_error_codes/categories/parse
+pull vitte_error_codes/registry/table
+
+# ------------------------------------------------------------
+# Types
+# ------------------------------------------------------------
+
+form ErrorCodeParts
+  category   : string
+  number     : u32
+.end
+
+form ErrorLocation
+  file   : string
+  line   : u32
+  column : u32
+.end
+
+# ------------------------------------------------------------
+# Constantes
+# ------------------------------------------------------------
+
+const MAX_ERROR_NUMBER : u32 = 9999
+const CODE_SEPARATOR  : string = "_"
+
+# ------------------------------------------------------------
+# Parsing / Formatting
+# ------------------------------------------------------------
+
+proc parse_error_code(code : string) gives ErrorCodeParts
+  # Format attendu: <category>_<number>
+  let idx = code.find(CODE_SEPARATOR)
+
+  if idx < 0
+    assert false, "invalid error code format"
+  end
+
+  let cat = code.slice(0, idx)
+  let num = code.slice(idx + 1).to_u32()
+
+  give ErrorCodeParts
+    category = cat
+    number   = num
+  end
+.end
+
+proc format_error_code(parts : ErrorCodeParts) gives string
+  give parts.category + CODE_SEPARATOR + parts.number.to_string()
+.end
+
+# ------------------------------------------------------------
+# Validation
+# ------------------------------------------------------------
+
+proc validate_category(cat : string) gives bool
+  if table.has_category(cat)
+    give true
+  end
+
+  give false
+.end
+
+proc validate_number(num : u32) gives bool
+  give num <= MAX_ERROR_NUMBER
+.end
+
+proc validate_error_code(code : string) gives bool
+  let parts = parse_error_code(code)
+
+  if not validate_category(parts.category)
+    give false
+  end
+
+  if not validate_number(parts.number)
+    give false
+  end
+
+  give true
+.end
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc with_location(
+  code : string,
+  message : string,
+  loc : ErrorLocation
+) gives string
+  give
+    code + ": " + message +
+    " (" + loc.file +
+    ":" + loc.line.to_string() +
+    ":" + loc.column.to_string() + ")"
+.end
+
+proc short(code : string, message : string) gives string
+  give code + ": " + message
+.end
+
+# ------------------------------------------------------------
+# Assertions internes (debug / tests)
+# ------------------------------------------------------------
+
+proc assert_valid(code : string)
+  if not validate_error_code(code)
+    assert false, "invalid vitte error code: " + code
+  end
+.end

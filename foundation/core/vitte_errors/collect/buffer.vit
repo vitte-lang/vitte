@@ -1,6 +1,156 @@
+# ============================================================
+# vitte_errors :: collect :: buffer
+# ------------------------------------------------------------
+# Buffer central de collecte des erreurs.
+# - Accumulation non bloquante
+# - Filtrage par phase
+# - Export multi-render (plain/json/lsp)
+# ============================================================
+
+space vitte_errors/collect/buffer
+
+pull vitte_error_codes/context
+pull vitte_error_messages/context as msg_ctx
+pull vitte_error_messages/render
+
+# ------------------------------------------------------------
+# Types
+# ------------------------------------------------------------
+
 form ErrorBuffer
-    items: List[Diagnostic]
+  errors : List<context/ErrorContext>
 .end
 
-proc push(buf: ErrorBuffer, diag: Diagnostic)
+# ------------------------------------------------------------
+# Construction
+# ------------------------------------------------------------
+
+proc new() gives ErrorBuffer
+  give ErrorBuffer
+    errors = List<context/ErrorContext>.new()
+  end
+.end
+
+# ------------------------------------------------------------
+# Collecte
+# ------------------------------------------------------------
+
+proc push(
+  buf : ErrorBuffer,
+  err : context/ErrorContext
+) gives ErrorBuffer
+  let mut out = buf
+  out.errors.push(err)
+  give out
+.end
+
+proc extend(
+  buf : ErrorBuffer,
+  errs : List<context/ErrorContext>
+) gives ErrorBuffer
+  let mut out = buf
+  for e in errs
+    out.errors.push(e)
+  end
+  give out
+.end
+
+# ------------------------------------------------------------
+# Inspection
+# ------------------------------------------------------------
+
+proc is_empty(buf : ErrorBuffer) gives bool
+  give buf.errors.len() == 0
+.end
+
+proc len(buf : ErrorBuffer) gives u32
+  give buf.errors.len()
+.end
+
+proc has_phase(
+  buf : ErrorBuffer,
+  phase : context/ErrorPhase
+) gives bool
+  for e in buf.errors
+    if e.phase == phase
+      give true
+    end
+  end
+  give false
+.end
+
+proc by_phase(
+  buf : ErrorBuffer,
+  phase : context/ErrorPhase
+) gives List<context/ErrorContext>
+  let mut out = List<context/ErrorContext>.new()
+  for e in buf.errors
+    if e.phase == phase
+      out.push(e)
+    end
+  end
+  give out
+.end
+
+# ------------------------------------------------------------
+# Conversion MessageContext
+# ------------------------------------------------------------
+
+proc messages(buf : ErrorBuffer) gives List<msg_ctx/MessageContext>
+  let mut out = List<msg_ctx/MessageContext>.new()
+  for e in buf.errors
+    out.push(msg_ctx/from_error_context(e))
+  end
+  give out
+.end
+
+# ------------------------------------------------------------
+# Rendus
+# ------------------------------------------------------------
+
+proc render_plain(buf : ErrorBuffer) gives string
+  give render/render_all(buf.errors)
+.end
+
+proc render_json(buf : ErrorBuffer) gives string
+  let mut out = "["
+  let mut first = true
+
+  for e in buf.errors
+    if not first
+      out = out + ","
+    end
+    first = false
+    out = out + render/json/render(e)
+  end
+
+  give out + "]"
+.end
+
+proc render_lsp(buf : ErrorBuffer)
+  gives List<render/lsp/Diagnostic>
+  give render/lsp/render_all(buf.errors)
+.end
+
+# ------------------------------------------------------------
+# Stratégies de sortie
+# ------------------------------------------------------------
+
+proc abort_if_any(buf : ErrorBuffer)
+  if not is_empty(buf)
+    assert false, render_plain(buf)
+  end
+.end
+
+proc first(buf : ErrorBuffer) gives context/ErrorContext?
+  if buf.errors.len() > 0
+    give some buf.errors[0]
+  end
+  give none
+.end
+
+proc clear(buf : ErrorBuffer) gives ErrorBuffer
+  give ErrorBuffer
+    errors = List<context/ErrorContext>.new()
+  end
 .end

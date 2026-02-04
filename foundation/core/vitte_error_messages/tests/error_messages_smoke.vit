@@ -1,2 +1,110 @@
-proc test_error_messages()
+# ============================================================
+# vitte_error_messages :: tests :: error_messages_smoke
+# ------------------------------------------------------------
+# Tests smoke pour vérifier :
+# - cohérence catalog ↔ locales ↔ links
+# - rendu plain / json / lsp
+# - absence de panic / assert
+# ============================================================
+
+space vitte_error_messages/tests/error_messages_smoke
+
+pull vitte_error_codes/context
+pull vitte_error_messages/catalog
+pull vitte_error_messages/locales
+pull vitte_error_messages/links
+pull vitte_error_messages/render
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc assert_non_empty(s : string)
+  assert s.len() > 0, "string must not be empty"
+.end
+
+# ------------------------------------------------------------
+# Smoke: catalog ↔ locales ↔ links
+# ------------------------------------------------------------
+
+proc smoke_catalog_consistency()
+  let messages = catalog/all_messages()
+  assert messages.len() > 0, "catalog must not be empty"
+
+  for m in messages
+    # locale must exist (fallback en)
+    let loc = locales.find(m.code)
+    assert loc.is_some(), "missing locale for code " + m.code
+
+    # link is optional but if present must be non-empty
+    let link = links.find_by_code(m.code)
+    if link.is_some()
+      assert_non_empty(link.unwrap().url)
+    end
+  end
+.end
+
+# ------------------------------------------------------------
+# Smoke: plain render
+# ------------------------------------------------------------
+
+proc smoke_render_plain()
+  let ctx =
+    context/new_context(
+      "PARSE_0001",
+      context/ErrorPhase.Parse,
+      "unexpected token"
+    )
+
+  let out = render/plain/render(ctx)
+  assert_non_empty(out)
+.end
+
+# ------------------------------------------------------------
+# Smoke: json render
+# ------------------------------------------------------------
+
+proc smoke_render_json()
+  let ctx =
+    context/new_context(
+      "TYPE_0001",
+      context/ErrorPhase.Type,
+      "type mismatch"
+    )
+
+  let out = render/json/render(ctx)
+  assert_non_empty(out)
+
+  # Vérification minimale de structure
+  assert out.contains("\"code\""), "json must contain code"
+  assert out.contains("\"message\""), "json must contain message"
+.end
+
+# ------------------------------------------------------------
+# Smoke: lsp render
+# ------------------------------------------------------------
+
+proc smoke_render_lsp()
+  let ctx =
+    context/new_context(
+      "LEX_0001",
+      context/ErrorPhase.Lex,
+      "unexpected character"
+    )
+
+  let diag = render/lsp/render(ctx)
+
+  assert diag.code == "LEX_0001", "lsp diagnostic code mismatch"
+  assert diag.message.len() > 0, "lsp diagnostic message empty"
+.end
+
+# ------------------------------------------------------------
+# Entry
+# ------------------------------------------------------------
+
+proc main()
+  smoke_catalog_consistency()
+  smoke_render_plain()
+  smoke_render_json()
+  smoke_render_lsp()
 .end

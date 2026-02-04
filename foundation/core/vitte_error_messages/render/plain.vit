@@ -1,2 +1,105 @@
-proc render_plain(ctx: ErrorMessageContext, msg: ErrorMessage) -> String
+# ============================================================
+# vitte_error_messages :: render :: plain
+# ------------------------------------------------------------
+# Rendu texte brut (plain) des erreurs Vitte.
+# - Lisible humain
+# - Stable pour logs / CI
+# - Sans ANSI / couleur
+# ============================================================
+
+space vitte_error_messages/render/plain
+
+pull vitte_error_codes/context
+pull vitte_error_messages/locales
+pull vitte_error_messages/links
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+
+proc phase_label(p : context/ErrorPhase) gives string
+  give p.to_string().to_upper()
+.end
+
+proc format_location(
+  file : string,
+  line : u32,
+  column : u32
+) gives string
+  give file + ":" + line.to_string() + ":" + column.to_string()
+.end
+
+# ------------------------------------------------------------
+# Rendu principal
+# ------------------------------------------------------------
+
+proc render(ctx : context/ErrorContext) gives string
+  # Message localisé (fallback sur ctx.message)
+  let mut message = ctx.message
+  let loc = locales.find(ctx.code)
+  if loc.is_some()
+    message = loc.unwrap().text
+  end
+
+  let mut out = ""
+
+  # En-tête
+  out =
+    phase_label(ctx.phase) +
+    " error[" + ctx.code + "]: " +
+    message
+
+  # Localisation
+  if ctx.span.is_some()
+    let s = ctx.span.unwrap()
+    out = out + "\n  at " +
+      format_location(s.file, s.line, s.column)
+  end
+
+  # Notes
+  for n in ctx.notes
+    out = out + "\n  note: " + n.message
+  end
+
+  # Documentation
+  let link = links.find_by_code(ctx.code)
+  if link.is_some()
+    out = out + "\n  help: " + link.unwrap().url
+  end
+
+  give out
+.end
+
+# ------------------------------------------------------------
+# API courte
+# ------------------------------------------------------------
+
+proc short(
+  code : string,
+  phase : context/ErrorPhase,
+  message : string
+) gives string
+  let ctx = context/new_context(code, phase, message)
+  give render(ctx)
+.end
+
+# ------------------------------------------------------------
+# Batch helpers
+# ------------------------------------------------------------
+
+proc render_all(
+  errors : List<context/ErrorContext>
+) gives string
+  let mut out = ""
+  let mut first = true
+
+  for e in errors
+    if not first
+      out = out + "\n\n"
+    end
+    first = false
+    out = out + render(e)
+  end
+
+  give out
 .end
