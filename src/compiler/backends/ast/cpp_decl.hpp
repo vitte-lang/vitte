@@ -1,16 +1,14 @@
 #pragma once
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
-#include <optional>
+
+#include "cpp_expr.hpp"
+#include "cpp_stmt.hpp"
+#include "cpp_type.hpp"
 
 namespace vitte::backend::ast::cpp {
-
-/* ----------------------------------------
- * Forward declarations
- * ---------------------------------------- */
-struct CppType;
-struct CppExpr;
-struct CppStmt;
 
 /* ----------------------------------------
  * Visibility / linkage
@@ -24,7 +22,7 @@ enum class Linkage {
  * Function parameter
  * ---------------------------------------- */
 struct CppParam {
-    CppType type;
+    CppType* type = nullptr;
     std::string name;
 };
 
@@ -33,9 +31,9 @@ struct CppParam {
  * ---------------------------------------- */
 struct CppFunction {
     std::string name;
-    CppType return_type;
+    CppType* return_type = nullptr;
     std::vector<CppParam> params;
-    std::vector<CppStmt> body;
+    std::vector<std::unique_ptr<CppStmt>> body;
 
     bool is_inline = false;
     bool is_extern = false;
@@ -46,9 +44,9 @@ struct CppFunction {
  * Global variable
  * ---------------------------------------- */
 struct CppGlobal {
-    CppType type;
+    CppType* type = nullptr;
     std::string name;
-    std::optional<CppExpr> init;
+    std::optional<std::unique_ptr<CppExpr>> init;
     bool is_const = false;
     Linkage linkage = Linkage::External;
 };
@@ -57,7 +55,7 @@ struct CppGlobal {
  * Struct / class field
  * ---------------------------------------- */
 struct CppField {
-    CppType type;
+    CppType* type = nullptr;
     std::string name;
 };
 

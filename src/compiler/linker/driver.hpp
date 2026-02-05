@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "archive.hpp"
+
 namespace vitte::linker {
 
 // ------------------------------------------------------------

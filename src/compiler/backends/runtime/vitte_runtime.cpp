@@ -1,4 +1,4 @@
-#include "vitte_runtime.hpp"#include "vitte_runtime.hpp"
+#include "vitte_runtime.hpp"
 
 #include <cstdlib>
 #include <cstdio>

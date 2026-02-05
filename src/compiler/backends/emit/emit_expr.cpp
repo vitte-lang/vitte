@@ -1,7 +1,4 @@
-#include "emit_expr.hpp"
-
-#include "../ast/cpp_expr.hpp"
-#include "../ast/cpp_type.hpp"
+#include "emit.hpp"
 
 #include <ostream>
 

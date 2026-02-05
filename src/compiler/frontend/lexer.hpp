@@ -1,43 +1,76 @@
 #pragma once
+#include <cstddef>
 #include <string>
 #include <vector>
-#include <cstddef>
+
+#include "ast.hpp"
 
 namespace vitte::frontend {
-
-/* -------------------------------------------------
- * Source position
- * ------------------------------------------------- */
-struct SourcePos {
-    std::size_t line = 1;
-    std::size_t column = 1;
-};
 
 /* -------------------------------------------------
  * Token kinds
  * ------------------------------------------------- */
 enum class TokenKind {
-    EndOfFile,
+    Eof,
 
-    Identifier,
-    Number,
-    String,
+    Ident,
+    IntLit,
+    StringLit,
 
-    KwFn,
+    // keywords
+    KwSpace,
+    KwPull,
+    KwShare,
+    KwForm,
+    KwField,
+    KwPick,
+    KwCase,
+    KwProc,
+    KwEntry,
+    KwAt,
+    KwMake,
+    KwSet,
+    KwGive,
+    KwEmit,
+    KwIf,
+    KwOtherwise,
+    KwSelect,
+    KwWhen,
     KwReturn,
+    KwNot,
+    KwAnd,
+    KwOr,
+    KwAs,
+    KwAll,
+    KwTrue,
+    KwFalse,
+    KwBool,
+    KwString,
+    KwInt,
 
-    LParen,     // (
-    RParen,     // )
-    LBrace,     // {
-    RBrace,     // }
-    Semicolon,  // ;
-    Comma,      // ,
-
-    Plus,       // +
-    Minus,      // -
-    Star,       // *
-    Slash,      // /
-    Equal       // =
+    // symbols
+    AttrStart, // #[
+    LParen,
+    RParen,
+    LBrace,
+    RBrace,
+    LBracket,
+    RBracket,
+    Comma,
+    Colon,
+    Dot,
+    Slash,
+    Plus,
+    Minus,
+    Star,
+    Equal,
+    EqEq,
+    NotEq,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    EndMarker
 };
 
 /* -------------------------------------------------
@@ -46,7 +79,21 @@ enum class TokenKind {
 struct Token {
     TokenKind kind;
     std::string text;
-    SourcePos pos;
+    ast::SourceSpan span;
+};
+
+/* -------------------------------------------------
+ * Lexer
+ * ------------------------------------------------- */
+class Lexer {
+public:
+    explicit Lexer(const std::string& source);
+
+    Token next();
+
+private:
+    const std::string& source_;
+    std::size_t index_ = 0;
 };
 
 /* -------------------------------------------------

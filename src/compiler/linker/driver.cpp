@@ -131,6 +131,7 @@ bool LinkerDriver::load_object(
     const std::string& path,
     std::string& error)
 {
+    (void)error;
     if (verbose_) {
         std::cerr << "[linker] loading object: " << path << "\n";
     }

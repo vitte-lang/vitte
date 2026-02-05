@@ -1,6 +1,7 @@
 #include "driver.hpp"
 
 #include "options.hpp"
+#include "passes.hpp"
 #include "pipeline.hpp"
 
 #include <iostream>
@@ -22,6 +23,11 @@ int run(int argc, char** argv) {
         std::cerr << "[driver] error: no input file provided\n";
         print_help();
         return 1;
+    }
+
+    if (opts.parse_only || opts.resolve_only || opts.hir_only || opts.mir_only) {
+        PassResult pass_result = run_passes(opts);
+        return pass_result.ok ? 0 : 1;
     }
 
     /* ---------------------------------------------

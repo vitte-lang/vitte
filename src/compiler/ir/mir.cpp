@@ -11,6 +11,8 @@
 
 namespace vitte::ir {
 
+using ::vitte::frontend::ast::SourceSpan;
+
 // ------------------------------------------------------------
 // MIR Node
 // ------------------------------------------------------------
@@ -210,6 +212,22 @@ std::string dump_to_string(const MirModule& m) {
     std::ostringstream ss;
     dump(m, ss);
     return ss.str();
+}
+
+const char* to_string(MirKind kind) {
+    switch (kind) {
+        case MirKind::NamedType: return "NamedType";
+        case MirKind::Local: return "Local";
+        case MirKind::Const: return "Const";
+        case MirKind::Assign: return "Assign";
+        case MirKind::BinaryOp: return "BinaryOp";
+        case MirKind::Call: return "Call";
+        case MirKind::Return: return "Return";
+        case MirKind::Goto: return "Goto";
+        case MirKind::CondGoto: return "CondGoto";
+        default:
+            return "Unknown";
+    }
 }
 
 } // namespace vitte::ir

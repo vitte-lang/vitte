@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-#include "ast.hpp" // SourceSpan
+#include "../frontend/ast.hpp" // SourceSpan
 
 namespace vitte::ir {
 

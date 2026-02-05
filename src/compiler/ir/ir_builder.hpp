@@ -5,9 +5,9 @@
 
 #pragma once
 
-#include <memory>
-
-#include "ast.hpp"
+#include "../frontend/ast.hpp"
+#include "../frontend/diagnostics.hpp"
+#include "../frontend/lower_hir.hpp"
 #include "hir.hpp"
 
 namespace vitte::ir {
@@ -25,52 +25,19 @@ namespace vitte::ir {
 
 class IrBuilder {
 public:
-    IrBuilder();
+    explicit IrBuilder(ir::HirContext& ctx);
 
     // --------------------------------------------------------
     // Entry
     // --------------------------------------------------------
 
-    HirModule build_module(const vitte::frontend::ast::Module& module);
+    HirModuleId build_module(
+        const vitte::frontend::ast::AstContext& ast_ctx,
+        vitte::frontend::ast::ModuleId module,
+        vitte::frontend::diag::DiagnosticEngine& diagnostics);
 
 private:
-    using namespace vitte::frontend::ast;
-
-    // --------------------------------------------------------
-    // Declarations
-    // --------------------------------------------------------
-
-    HirDeclPtr build_decl(const Decl& decl);
-    HirDeclPtr build_fn(const FnDecl& fn);
-
-    // --------------------------------------------------------
-    // Types
-    // --------------------------------------------------------
-
-    HirTypePtr build_type(const TypeNode* type);
-
-    // --------------------------------------------------------
-    // Blocks / statements
-    // --------------------------------------------------------
-
-    HirBlock build_block(const BlockStmt& block);
-
-    HirStmtPtr build_stmt(const Stmt& stmt);
-    HirStmtPtr build_let(const LetStmt& let);
-    HirStmtPtr build_return(const ReturnStmt& ret);
-    HirStmtPtr build_expr_stmt(const ExprStmt& stmt);
-
-    // --------------------------------------------------------
-    // Expressions
-    // --------------------------------------------------------
-
-    HirExprPtr build_expr(const Expr* expr);
-
-    HirExprPtr build_literal(const LiteralExpr& literal);
-    HirExprPtr build_ident(const IdentExpr& ident);
-    HirExprPtr build_unary(const UnaryExpr& unary);
-    HirExprPtr build_binary(const BinaryExpr& binary);
-    HirExprPtr build_call(const CallExpr& call);
+    ir::HirContext& hir_ctx_;
 };
 
 } // namespace vitte::ir

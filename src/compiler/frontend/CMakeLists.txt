@@ -14,6 +14,10 @@ add_library(vitte_frontend STATIC
     diagnostics.cpp
     lexer.cpp
     parser.cpp
+    disambiguate.cpp
+    resolve.cpp
+    types.cpp
+    lower_hir.cpp
 )
 
 add_library(vitte::frontend ALIAS vitte_frontend)

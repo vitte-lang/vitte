@@ -5,13 +5,10 @@
 #include "../frontend/lexer.hpp"
 #include "../frontend/parser.hpp"
 
-#include "../ir/hir.hpp"
-#include "../ir/mir.hpp"
-#include "../ir/ir_builder.hpp"
-
 #include "../backends/cpp_backend.hpp"
 #include "../backends/lower/lower_mir.hpp"
 
+#include <fstream>
 #include <iostream>
 
 namespace vitte::driver {
@@ -37,30 +34,14 @@ bool run_pipeline(const Options& opts) {
     );
 
     /* ---------------------------------------------
-     * 2. Lexing
+     * 2. Lexing + Parsing → AST
      * --------------------------------------------- */
-    auto tokens = frontend::lex(source);
-
-    /* ---------------------------------------------
-     * 3. Parsing → AST
-     * --------------------------------------------- */
-    auto ast = frontend::parse(tokens);
-
-    /* ---------------------------------------------
-     * 4. AST → HIR (placeholder)
-     * --------------------------------------------- */
-    ir::HirFunction hir_fn;
-    hir_fn.name = "main";
-
-    ir::HirExpr expr;
-    expr.repr = "0";
-    hir_fn.body.push_back(expr);
-
-    /* ---------------------------------------------
-     * 5. HIR → MIR
-     * --------------------------------------------- */
-    ir::MirFunction mir_fn =
-        ir::lower_hir_to_mir(hir_fn);
+    frontend::Lexer lexer(source);
+    frontend::diag::DiagnosticEngine diagnostics;
+    frontend::ast::AstContext ast_ctx;
+    frontend::parser::Parser parser(lexer, diagnostics, ast_ctx);
+    auto ast = parser.parse_module();
+    (void)ast;
 
     /* ---------------------------------------------
      * 6. Backend: MIR → native
@@ -73,18 +54,21 @@ bool run_pipeline(const Options& opts) {
 
     std::vector<backend::lower::MirFunction> mir_funcs;
 
-    /* Adapt IR MIR → backend MIR */
     backend::lower::MirFunction bmf;
-    bmf.name = mir_fn.name;
+    bmf.name = "main";
 
-    for (auto& ins : mir_fn.instrs) {
-        backend::lower::MirInstr bi;
-        bi.kind = backend::lower::MirInstr::Kind::Return;
-        bi.dst.name = ins.op;
-        bmf.instrs.push_back(bi);
-    }
+    backend::lower::MirInstr init;
+    init.kind = backend::lower::MirInstr::Kind::ConstI32;
+    init.dst.name = "v0";
+    init.imm = 0;
+    bmf.instrs.push_back(init);
 
-    mir_funcs.push_back(bmf);
+    backend::lower::MirInstr ret;
+    ret.kind = backend::lower::MirInstr::Kind::Return;
+    ret.dst.name = "v0";
+    bmf.instrs.push_back(ret);
+
+    mir_funcs.push_back(std::move(bmf));
 
     if (opts.emit_cpp) {
         std::cout << "[pipeline] emit-cpp only (skipping native compile)\n";

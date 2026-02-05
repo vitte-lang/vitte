@@ -6,11 +6,14 @@
 #pragma once
 
 #include <cstddef>
-#include <memory>
+#include <cstdint>
 #include <string>
+#include <ostream>
+#include <utility>
 #include <vector>
 
-#include "ast.hpp"   // SourceSpan
+#include "../frontend/ast.hpp"   // SourceSpan
+#include "../support/arena.hpp"
 
 namespace vitte::ir {
 
@@ -24,16 +27,21 @@ struct HirExpr;
 struct HirStmt;
 struct HirDecl;
 struct HirModule;
+struct HirPattern;
 
 // ------------------------------------------------------------
-// Pointer aliases
+// Handle aliases
 // ------------------------------------------------------------
 
-using HirNodePtr = std::unique_ptr<HirNode>;
-using HirTypePtr = std::unique_ptr<HirType>;
-using HirExprPtr = std::unique_ptr<HirExpr>;
-using HirStmtPtr = std::unique_ptr<HirStmt>;
-using HirDeclPtr = std::unique_ptr<HirDecl>;
+using HirId = std::uint32_t;
+static constexpr HirId kInvalidHirId = static_cast<HirId>(-1);
+
+using HirTypeId = HirId;
+using HirExprId = HirId;
+using HirStmtId = HirId;
+using HirDeclId = HirId;
+using HirPatternId = HirId;
+using HirModuleId = HirId;
 
 // ------------------------------------------------------------
 // HIR Kind
@@ -59,9 +67,16 @@ enum class HirKind {
     ExprStmt,
     ReturnStmt,
     Block,
+    IfStmt,
+    SelectStmt,
+    WhenStmt,
 
     // declarations
     FnDecl,
+
+    // patterns
+    PatternIdent,
+    PatternCtor,
 };
 
 // ------------------------------------------------------------
@@ -95,10 +110,10 @@ struct HirNamedType : HirType {
 
 struct HirGenericType : HirType {
     std::string base_name;
-    std::vector<HirTypePtr> type_args;
+    std::vector<HirTypeId> type_args;
 
     HirGenericType(std::string base_name,
-                   std::vector<HirTypePtr> type_args,
+                   std::vector<HirTypeId> type_args,
                    vitte::frontend::ast::SourceSpan span);
 };
 
@@ -155,30 +170,30 @@ struct HirVarExpr : HirExpr {
 
 struct HirUnaryExpr : HirExpr {
     HirUnaryOp op;
-    HirExprPtr expr;
+    HirExprId expr;
 
     HirUnaryExpr(HirUnaryOp op,
-                 HirExprPtr expr,
+                 HirExprId expr,
                  vitte::frontend::ast::SourceSpan span);
 };
 
 struct HirBinaryExpr : HirExpr {
     HirBinaryOp op;
-    HirExprPtr lhs;
-    HirExprPtr rhs;
+    HirExprId lhs;
+    HirExprId rhs;
 
     HirBinaryExpr(HirBinaryOp op,
-                  HirExprPtr lhs,
-                  HirExprPtr rhs,
+                  HirExprId lhs,
+                  HirExprId rhs,
                   vitte::frontend::ast::SourceSpan span);
 };
 
 struct HirCallExpr : HirExpr {
-    HirExprPtr callee;
-    std::vector<HirExprPtr> args;
+    HirExprId callee;
+    std::vector<HirExprId> args;
 
-    HirCallExpr(HirExprPtr callee,
-                std::vector<HirExprPtr> args,
+    HirCallExpr(HirExprId callee,
+                std::vector<HirExprId> args,
                 vitte::frontend::ast::SourceSpan span);
 };
 
@@ -193,34 +208,90 @@ struct HirStmt : HirNode {
 
 struct HirLetStmt : HirStmt {
     std::string name;
-    HirTypePtr type;
-    HirExprPtr init;
+    HirTypeId type;
+    HirExprId init;
 
     HirLetStmt(std::string name,
-               HirTypePtr type,
-               HirExprPtr init,
+               HirTypeId type,
+               HirExprId init,
                vitte::frontend::ast::SourceSpan span);
 };
 
 struct HirExprStmt : HirStmt {
-    HirExprPtr expr;
+    HirExprId expr;
 
-    HirExprStmt(HirExprPtr expr,
+    HirExprStmt(HirExprId expr,
                 vitte::frontend::ast::SourceSpan span);
 };
 
 struct HirReturnStmt : HirStmt {
-    HirExprPtr expr;
+    HirExprId expr;
 
-    HirReturnStmt(HirExprPtr expr,
+    HirReturnStmt(HirExprId expr,
                   vitte::frontend::ast::SourceSpan span);
 };
 
 struct HirBlock : HirStmt {
-    std::vector<HirStmtPtr> stmts;
+    std::vector<HirStmtId> stmts;
 
-    HirBlock(std::vector<HirStmtPtr> stmts,
+    HirBlock(std::vector<HirStmtId> stmts,
              vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirIf : HirStmt {
+    HirExprId cond;
+    HirStmtId then_block;
+    HirStmtId else_block;
+
+    HirIf(HirExprId cond,
+          HirStmtId then_block,
+          HirStmtId else_block,
+          vitte::frontend::ast::SourceSpan span);
+};
+
+// ------------------------------------------------------------
+// Patterns
+// ------------------------------------------------------------
+
+struct HirPattern : HirNode {
+    explicit HirPattern(HirKind kind,
+                        vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirIdentPattern : HirPattern {
+    std::string name;
+
+    HirIdentPattern(std::string name,
+                    vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirCtorPattern : HirPattern {
+    std::string name;
+    std::vector<HirPatternId> args;
+
+    HirCtorPattern(std::string name,
+                   std::vector<HirPatternId> args,
+                   vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirWhen : HirStmt {
+    HirPatternId pattern;
+    HirStmtId block;
+
+    HirWhen(HirPatternId pattern,
+            HirStmtId block,
+            vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirSelect : HirStmt {
+    HirExprId expr;
+    std::vector<HirStmtId> whens;
+    HirStmtId otherwise_block;
+
+    HirSelect(HirExprId expr,
+              std::vector<HirStmtId> whens,
+              HirStmtId otherwise_block,
+              vitte::frontend::ast::SourceSpan span);
 };
 
 // ------------------------------------------------------------
@@ -234,36 +305,63 @@ struct HirDecl : HirNode {
 
 struct HirParam {
     std::string name;
-    HirTypePtr type;
+    HirTypeId type;
 
     HirParam(std::string name,
-             HirTypePtr type);
+             HirTypeId type);
 };
 
 struct HirFnDecl : HirDecl {
     std::string name;
     std::vector<HirParam> params;
-    HirTypePtr return_type;
-    HirBlock body;
+    HirTypeId return_type;
+    HirStmtId body;
 
     HirFnDecl(std::string name,
               std::vector<HirParam> params,
-              HirTypePtr return_type,
-              HirBlock body,
+              HirTypeId return_type,
+              HirStmtId body,
+              vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirModule : HirNode {
+    std::string name;
+    std::vector<HirDeclId> decls;
+
+    HirModule(std::string name,
+              std::vector<HirDeclId> decls,
               vitte::frontend::ast::SourceSpan span);
 };
 
 // ------------------------------------------------------------
-// Module
+// HIR Context / Arena
 // ------------------------------------------------------------
 
-struct HirModule : HirNode {
-    std::string name;
-    std::vector<HirDeclPtr> decls;
+struct HirContext {
+    vitte::support::Arena<HirNode, HirId> arena;
 
-    HirModule(std::string name,
-              std::vector<HirDeclPtr> decls,
-              vitte::frontend::ast::SourceSpan span);
+    template <typename T, typename... Args>
+    HirId make(Args&&... args) {
+        return arena.template emplace<T>(std::forward<Args>(args)...);
+    }
+
+    HirNode& node(HirId id) {
+        return *arena.get(id);
+    }
+
+    const HirNode& node(HirId id) const {
+        return *arena.get(id);
+    }
+
+    template <typename T>
+    T& get(HirId id) {
+        return *static_cast<T*>(arena.get(id));
+    }
+
+    template <typename T>
+    const T& get(HirId id) const {
+        return *static_cast<const T*>(arena.get(id));
+    }
 };
 
 // ------------------------------------------------------------
@@ -272,10 +370,17 @@ struct HirModule : HirNode {
 
 const char* to_string(HirKind kind);
 
-void dump(const HirNode& node,
+void dump(const HirContext& ctx,
+          HirId node,
           std::ostream& os,
           std::size_t depth = 0);
 
-std::string dump_to_string(const HirNode& node);
+std::string dump_to_string(const HirContext& ctx, HirId node);
+
+void dump_compact(const HirContext& ctx, HirId node, std::ostream& os);
+std::string dump_compact_to_string(const HirContext& ctx, HirId node);
+
+void dump_json(const HirContext& ctx, HirId node, std::ostream& os);
+std::string dump_json_to_string(const HirContext& ctx, HirId node);
 
 } // namespace vitte::ir

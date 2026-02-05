@@ -1,9 +1,4 @@
-#include "emit_decl.hpp"
-
-#include "../ast/cpp_decl.hpp"
-#include "../ast/cpp_type.hpp"
-#include "../ast/cpp_stmt.hpp"
-#include "../context/cpp_context.hpp"
+#include "emit.hpp"
 
 #include <ostream>
 
@@ -24,20 +19,14 @@ static void indent(std::ostream& os, int level) {
 
 static void emit_type(
     std::ostream& os,
-    const ast::cpp::CppType& type
+    const ast::cpp::CppType* type
 ) {
-    os << type.name;
+    if (!type) {
+        os << "<unknown>";
+        return;
+    }
+    os << type->name;
 }
-
-/* -------------------------------------------------
- * Forward decls
- * ------------------------------------------------- */
-
-static void emit_stmt(
-    std::ostream& os,
-    const ast::cpp::CppStmt& stmt,
-    int indent_level
-);
 
 /* -------------------------------------------------
  * Function
@@ -58,7 +47,7 @@ void emit_function(
 
     for (size_t i = 0; i < fn.params.size(); ++i) {
         const auto& p = fn.params[i];
-        emit_type(os, *p.type);
+        emit_type(os, p.type);
         os << " " << p.name;
         if (i + 1 < fn.params.size())
             os << ", ";
@@ -87,12 +76,12 @@ void emit_global(
     if (g.is_const)
         os << "const ";
 
-    emit_type(os, *g.type);
+    emit_type(os, g.type);
     os << " " << g.name;
 
     if (g.init) {
         os << " = ";
-        os << (*g.init)->value;
+        emit_expr(os, *(*g.init));
     }
 
     os << ";\n";
@@ -112,7 +101,7 @@ void emit_struct(
 
     for (const auto& f : s.fields) {
         indent(os, indent_level + 1);
-        emit_type(os, *f.type);
+        emit_type(os, f.type);
         os << " " << f.name << ";\n";
     }
 
@@ -204,43 +193,6 @@ void emit_translation_unit(
 
     for (const auto& f : tu.functions)
         emit_function(os, f, 0);
-}
-
-/* -------------------------------------------------
- * Statement emission (minimal bridge)
- * ------------------------------------------------- */
-
-static void emit_stmt(
-    std::ostream& os,
-    const ast::cpp::CppStmt& stmt,
-    int indent_level
-) {
-    using K = ast::cpp::CppStmt::Kind;
-
-    indent(os, indent_level);
-
-    switch (stmt.kind) {
-        case K::Return: {
-            auto& r = static_cast<const ast::cpp::CppReturn&>(stmt);
-            os << "return";
-            if (r.value) {
-                os << " ";
-                os << (*r.value)->value;
-            }
-            os << ";\n";
-            break;
-        }
-
-        case K::Expr: {
-            auto& e = static_cast<const ast::cpp::CppExprStmt&>(stmt);
-            os << e.expr->value << ";\n";
-            break;
-        }
-
-        default:
-            os << "/* unsupported stmt */\n";
-            break;
-    }
 }
 
 } // namespace vitte::backend::emit

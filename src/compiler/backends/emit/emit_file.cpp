@@ -1,8 +1,6 @@
-#include "emit_file.hpp"
+#include "emit.hpp"
 
-#include "emit_decl.hpp"
 #include "../context/cpp_context.hpp"
-#include "../ast/cpp_decl.hpp"
 
 #include <fstream>
 #include <iostream>

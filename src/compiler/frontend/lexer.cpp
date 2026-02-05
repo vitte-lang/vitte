@@ -1,133 +1,269 @@
 #include "lexer.hpp"
-#include "diagnostics.hpp"
 
 #include <cctype>
+#include <unordered_map>
 
 namespace vitte::frontend {
 
-/* -------------------------------------------------
- * Lexer state
- * ------------------------------------------------- */
-class Lexer {
-public:
-    explicit Lexer(const std::string& src)
-        : source(src) {}
+static ast::SourceSpan make_span(std::size_t start, std::size_t end) {
+    return ast::SourceSpan(nullptr, start, end);
+}
 
-    std::vector<Token> run() {
-        std::vector<Token> tokens;
-        while (!eof()) {
-            skip_whitespace();
-            if (eof()) break;
-            tokens.push_back(next_token());
+static Token make_token(
+    TokenKind kind,
+    std::string text,
+    std::size_t start,
+    std::size_t end)
+{
+    return Token{kind, std::move(text), make_span(start, end)};
+}
+
+static bool is_ident_start(char c) {
+    return std::isalpha(static_cast<unsigned char>(c)) || c == '_';
+}
+
+static bool is_ident_continue(char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+}
+
+static bool is_digit(char c) {
+    return std::isdigit(static_cast<unsigned char>(c)) != 0;
+}
+
+static bool is_space(char c) {
+    return std::isspace(static_cast<unsigned char>(c)) != 0;
+}
+
+static bool is_suffix_start(char c) {
+    return std::isalpha(static_cast<unsigned char>(c)) != 0;
+}
+
+static TokenKind keyword_kind(const std::string& ident) {
+    static const std::unordered_map<std::string, TokenKind> kKeywords = {
+        {"space", TokenKind::KwSpace},
+        {"pull", TokenKind::KwPull},
+        {"share", TokenKind::KwShare},
+        {"form", TokenKind::KwForm},
+        {"field", TokenKind::KwField},
+        {"pick", TokenKind::KwPick},
+        {"case", TokenKind::KwCase},
+        {"proc", TokenKind::KwProc},
+        {"entry", TokenKind::KwEntry},
+        {"at", TokenKind::KwAt},
+        {"make", TokenKind::KwMake},
+        {"set", TokenKind::KwSet},
+        {"give", TokenKind::KwGive},
+        {"emit", TokenKind::KwEmit},
+        {"if", TokenKind::KwIf},
+        {"otherwise", TokenKind::KwOtherwise},
+        {"select", TokenKind::KwSelect},
+        {"when", TokenKind::KwWhen},
+        {"return", TokenKind::KwReturn},
+        {"not", TokenKind::KwNot},
+        {"and", TokenKind::KwAnd},
+        {"or", TokenKind::KwOr},
+        {"as", TokenKind::KwAs},
+        {"all", TokenKind::KwAll},
+        {"true", TokenKind::KwTrue},
+        {"false", TokenKind::KwFalse},
+        {"bool", TokenKind::KwBool},
+        {"string", TokenKind::KwString},
+        {"int", TokenKind::KwInt},
+    };
+
+    auto it = kKeywords.find(ident);
+    if (it != kKeywords.end()) {
+        return it->second;
+    }
+    return TokenKind::Ident;
+}
+
+Lexer::Lexer(const std::string& source)
+    : source_(source) {}
+
+Token Lexer::next() {
+    auto eof = [&]() {
+        return index_ >= source_.size();
+    };
+
+    auto peek = [&](std::size_t offset = 0) {
+        std::size_t pos = index_ + offset;
+        return pos < source_.size() ? source_[pos] : '\0';
+    };
+
+    auto advance = [&]() {
+        return eof() ? '\0' : source_[index_++];
+    };
+
+    auto skip_zone_comment = [&]() {
+        if (peek() == '<' && peek(1) == '<' && peek(2) == '<') {
+            index_ += 3;
+            while (!eof()) {
+                if (peek() == '>' && peek(1) == '>' && peek(2) == '>') {
+                    index_ += 3;
+                    break;
+                }
+                advance();
+            }
+            return true;
         }
+        return false;
+    };
 
-        tokens.push_back(make_token(TokenKind::EndOfFile, ""));
-        return tokens;
-    }
-
-private:
-    const std::string& source;
-    std::size_t index = 0;
-    SourcePos pos{1, 1};
-
-    /* ---------------------------------------------
-     * Helpers
-     * --------------------------------------------- */
-    bool eof() const {
-        return index >= source.size();
-    }
-
-    char peek() const {
-        return eof() ? '\0' : source[index];
-    }
-
-    char advance() {
-        char c = peek();
-        ++index;
-        if (c == '\n') {
-            ++pos.line;
-            pos.column = 1;
-        } else {
-            ++pos.column;
+    while (!eof()) {
+        if (skip_zone_comment()) {
+            continue;
         }
-        return c;
-    }
-
-    void skip_whitespace() {
-        while (!eof() && std::isspace(peek()))
+        if (is_space(peek())) {
             advance();
+            continue;
+        }
+        break;
     }
 
-    Token make_token(TokenKind kind, std::string text) {
-        return Token{kind, std::move(text), pos};
+    if (eof()) {
+        return make_token(TokenKind::Eof, "", index_, index_);
     }
 
-    /* ---------------------------------------------
-     * Token lexing
-     * --------------------------------------------- */
-    Token next_token() {
-        char c = advance();
+    std::size_t start = index_;
+    char c = advance();
 
-        /* Identifiers / keywords */
-        if (std::isalpha(c) || c == '_') {
-            std::string ident(1, c);
-            while (!eof() && (std::isalnum(peek()) || peek() == '_'))
-                ident.push_back(advance());
-
-            if (ident == "fn")     return make_token(TokenKind::KwFn, ident);
-            if (ident == "return") return make_token(TokenKind::KwReturn, ident);
-
-            return make_token(TokenKind::Identifier, ident);
+    if (is_ident_start(c)) {
+        std::string ident(1, c);
+        while (!eof() && is_ident_continue(peek())) {
+            ident.push_back(advance());
         }
+        TokenKind kind = keyword_kind(ident);
+        return make_token(kind, ident, start, index_);
+    }
 
-        /* Numbers */
-        if (std::isdigit(c)) {
-            std::string num(1, c);
-            while (!eof() && std::isdigit(peek()))
-                num.push_back(advance());
-            return make_token(TokenKind::Number, num);
+    if (c == '-' && is_digit(peek())) {
+        std::string num(1, c);
+        while (!eof() && is_digit(peek())) {
+            num.push_back(advance());
         }
+        while (!eof() && is_suffix_start(peek())) {
+            num.push_back(advance());
+        }
+        return make_token(TokenKind::IntLit, num, start, index_);
+    }
 
-        /* Strings */
-        if (c == '"') {
+    if (is_digit(c)) {
+        std::string num(1, c);
+        while (!eof() && is_digit(peek())) {
+            num.push_back(advance());
+        }
+        while (!eof() && is_suffix_start(peek())) {
+            num.push_back(advance());
+        }
+        return make_token(TokenKind::IntLit, num, start, index_);
+    }
+
+    if (c == '"') {
+        if (peek() == '"' && peek(1) == '"') {
+            index_ += 2;
             std::string value;
-            while (!eof() && peek() != '"') {
+            while (!eof()) {
+                if (peek() == '"' && peek(1) == '"' && peek(2) == '"') {
+                    index_ += 3;
+                    break;
+                }
                 value.push_back(advance());
             }
-            if (eof()) {
-                error("unterminated string literal");
-                return make_token(TokenKind::String, value);
+            return make_token(TokenKind::StringLit, value, start, index_);
+        }
+
+        std::string value;
+        while (!eof() && peek() != '"') {
+            char ch = advance();
+            if (ch == '\\' && !eof()) {
+                value.push_back(ch);
+                value.push_back(advance());
+            } else {
+                value.push_back(ch);
             }
-            advance(); // closing "
-            return make_token(TokenKind::String, value);
         }
-
-        /* Single-character tokens */
-        switch (c) {
-            case '(': return make_token(TokenKind::LParen, "(");
-            case ')': return make_token(TokenKind::RParen, ")");
-            case '{': return make_token(TokenKind::LBrace, "{");
-            case '}': return make_token(TokenKind::RBrace, "}");
-            case ';': return make_token(TokenKind::Semicolon, ";");
-            case ',': return make_token(TokenKind::Comma, ",");
-            case '+': return make_token(TokenKind::Plus, "+");
-            case '-': return make_token(TokenKind::Minus, "-");
-            case '*': return make_token(TokenKind::Star, "*");
-            case '/': return make_token(TokenKind::Slash, "/");
-            case '=': return make_token(TokenKind::Equal, "=");
+        if (!eof()) {
+            advance();
         }
-
-        error(std::string("unexpected character: '") + c + "'");
-        return make_token(TokenKind::EndOfFile, "");
+        return make_token(TokenKind::StringLit, value, start, index_);
     }
-};
 
-/* -------------------------------------------------
- * Public API
- * ------------------------------------------------- */
+    switch (c) {
+        case '#':
+            if (peek() == '[') {
+                advance();
+                return make_token(TokenKind::AttrStart, "#[", start, index_);
+            }
+            break;
+        case '(':
+            return make_token(TokenKind::LParen, "(", start, index_);
+        case ')':
+            return make_token(TokenKind::RParen, ")", start, index_);
+        case '{':
+            return make_token(TokenKind::LBrace, "{", start, index_);
+        case '}':
+            return make_token(TokenKind::RBrace, "}", start, index_);
+        case '[':
+            return make_token(TokenKind::LBracket, "[", start, index_);
+        case ']':
+            return make_token(TokenKind::RBracket, "]", start, index_);
+        case ',':
+            return make_token(TokenKind::Comma, ",", start, index_);
+        case ':':
+            return make_token(TokenKind::Colon, ":", start, index_);
+        case '.':
+            return make_token(TokenKind::Dot, ".", start, index_);
+        case '/':
+            return make_token(TokenKind::Slash, "/", start, index_);
+        case '+':
+            return make_token(TokenKind::Plus, "+", start, index_);
+        case '-':
+            return make_token(TokenKind::Minus, "-", start, index_);
+        case '*':
+            return make_token(TokenKind::Star, "*", start, index_);
+        case '=':
+            if (peek() == '=') {
+                advance();
+                return make_token(TokenKind::EqEq, "==", start, index_);
+            }
+            return make_token(TokenKind::Equal, "=", start, index_);
+        case '!':
+            if (peek() == '=') {
+                advance();
+                return make_token(TokenKind::NotEq, "!=", start, index_);
+            }
+            break;
+        case '<':
+            if (peek() == '=') {
+                advance();
+                return make_token(TokenKind::Le, "<=", start, index_);
+            }
+            return make_token(TokenKind::Lt, "<", start, index_);
+        case '>':
+            if (peek() == '=') {
+                advance();
+                return make_token(TokenKind::Ge, ">=", start, index_);
+            }
+            return make_token(TokenKind::Gt, ">", start, index_);
+        default:
+            break;
+    }
+
+    return make_token(TokenKind::Eof, "", index_, index_);
+}
+
 std::vector<Token> lex(const std::string& source) {
-    Lexer l(source);
-    return l.run();
+    Lexer lexer(source);
+    std::vector<Token> tokens;
+    while (true) {
+        Token tok = lexer.next();
+        tokens.push_back(tok);
+        if (tok.kind == TokenKind::Eof) {
+            break;
+        }
+    }
+    return tokens;
 }
 
 } // namespace vitte::frontend

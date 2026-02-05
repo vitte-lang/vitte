@@ -30,31 +30,8 @@ static CppType* builtin_i32(CppContext& ctx) {
 }
 
 /* -------------------------------------------------
- * MIR placeholders (à mapper avec ton vrai MIR)
+ * MIR placeholders live in lower_mir.hpp
  * ------------------------------------------------- */
-
-struct MirValue {
-    std::string name;
-};
-
-struct MirInstr {
-    enum class Kind {
-        ConstI32,
-        Add,
-        Return
-    };
-
-    Kind kind;
-    MirValue dst;
-    MirValue lhs;
-    MirValue rhs;
-    int32_t imm = 0;
-};
-
-struct MirFunction {
-    std::string name;
-    std::vector<MirInstr> instrs;
-};
 
 /* -------------------------------------------------
  * Value → Expr
@@ -122,7 +99,7 @@ CppFunction lower_mir_function(
 ) {
     CppFunction fn;
     fn.name = ctx.mangle(mf.name);
-    fn.return_type = *builtin_i32(ctx);
+    fn.return_type = builtin_i32(ctx);
 
     for (const auto& ins : mf.instrs) {
         fn.body.push_back(

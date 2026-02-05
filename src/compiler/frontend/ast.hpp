@@ -6,9 +6,13 @@
 #pragma once
 
 #include <cstddef>
-#include <memory>
+#include <cstdint>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
+
+#include "../support/arena.hpp"
 
 namespace vitte::frontend::ast {
 
@@ -22,16 +26,21 @@ struct Expr;
 struct Stmt;
 struct Decl;
 struct Module;
+struct Pattern;
 
 // ------------------------------------------------------------
-// Common pointer aliases
+// Handle aliases
 // ------------------------------------------------------------
 
-using AstPtr  = std::unique_ptr<AstNode>;
-using TypePtr = std::unique_ptr<TypeNode>;
-using ExprPtr = std::unique_ptr<Expr>;
-using StmtPtr = std::unique_ptr<Stmt>;
-using DeclPtr = std::unique_ptr<Decl>;
+using AstId = std::uint32_t;
+static constexpr AstId kInvalidAstId = static_cast<AstId>(-1);
+
+using TypeId = AstId;
+using ExprId = AstId;
+using StmtId = AstId;
+using DeclId = AstId;
+using PatternId = AstId;
+using ModuleId = AstId;
 
 // ------------------------------------------------------------
 // Source handling
@@ -65,16 +74,29 @@ enum class NodeKind {
     // identifiers
     Ident,
 
-    // types
+    // attributes
+    Attribute,
+
+    // module path
+    ModulePath,
+
+    // types (legacy + Vitte 1.0)
     NamedType,
     GenericType,
+    BuiltinType,
 
     // expressions
     LiteralExpr,
     IdentExpr,
     UnaryExpr,
     BinaryExpr,
-    CallExpr,
+    CallNoParenExpr,
+    InvokeExpr,
+    ListExpr,
+
+    // patterns
+    IdentPattern,
+    CtorPattern,
 
     // statements
     BlockStmt,
@@ -82,10 +104,23 @@ enum class NodeKind {
     ExprStmt,
     ReturnStmt,
     IfStmt,
+    MakeStmt,
+    SetStmt,
+    GiveStmt,
+    EmitStmt,
+    SelectStmt,
+    WhenStmt,
 
-    // declarations
+    // declarations (legacy + Vitte 1.0)
     FnDecl,
     TypeDecl,
+    SpaceDecl,
+    PullDecl,
+    ShareDecl,
+    FormDecl,
+    PickDecl,
+    ProcDecl,
+    EntryDecl,
 };
 
 // ------------------------------------------------------------
@@ -111,6 +146,26 @@ struct Ident : AstNode {
 };
 
 // ------------------------------------------------------------
+// Attribute
+// ------------------------------------------------------------
+
+struct Attribute : AstNode {
+    Ident name;
+
+    explicit Attribute(Ident name, SourceSpan span);
+};
+
+// ------------------------------------------------------------
+// Module path
+// ------------------------------------------------------------
+
+struct ModulePath : AstNode {
+    std::vector<Ident> parts;
+
+    explicit ModulePath(std::vector<Ident> parts, SourceSpan span);
+};
+
+// ------------------------------------------------------------
 // Types
 // ------------------------------------------------------------
 
@@ -126,12 +181,18 @@ struct NamedType : TypeNode {
 
 struct GenericType : TypeNode {
     Ident base_ident;
-    std::vector<TypePtr> type_args;
+    std::vector<TypeId> type_args;
 
     GenericType(
         Ident base_ident,
-        std::vector<TypePtr> type_args,
+        std::vector<TypeId> type_args,
         SourceSpan span);
+};
+
+struct BuiltinType : TypeNode {
+    std::string name;
+
+    BuiltinType(std::string name, SourceSpan span);
 };
 
 // ------------------------------------------------------------
@@ -183,24 +244,70 @@ struct IdentExpr : Expr {
 
 struct UnaryExpr : Expr {
     UnaryOp op;
-    ExprPtr expr;
+    ExprId expr;
 
-    UnaryExpr(UnaryOp op, ExprPtr expr, SourceSpan span);
+    UnaryExpr(UnaryOp op, ExprId expr, SourceSpan span);
 };
 
 struct BinaryExpr : Expr {
     BinaryOp op;
-    ExprPtr lhs;
-    ExprPtr rhs;
+    ExprId lhs;
+    ExprId rhs;
 
-    BinaryExpr(BinaryOp op, ExprPtr lhs, ExprPtr rhs, SourceSpan span);
+    BinaryExpr(BinaryOp op, ExprId lhs, ExprId rhs, SourceSpan span);
 };
 
-struct CallExpr : Expr {
-    ExprPtr callee;
-    std::vector<ExprPtr> args;
+struct CallNoParenExpr : Expr {
+    Ident callee;
+    ExprId arg;
 
-    CallExpr(ExprPtr callee, std::vector<ExprPtr> args, SourceSpan span);
+    CallNoParenExpr(Ident callee, ExprId arg, SourceSpan span);
+};
+
+struct InvokeExpr : Expr {
+    enum class Kind {
+        Unknown,
+        Call,
+        Ctor
+    };
+
+    ExprId callee_expr;
+    TypeId callee_type;
+    std::vector<ExprId> args;
+    Kind invoke_kind = Kind::Unknown;
+
+    InvokeExpr(
+        ExprId callee_expr,
+        TypeId callee_type,
+        std::vector<ExprId> args,
+        SourceSpan span);
+};
+
+struct ListExpr : Expr {
+    std::vector<ExprId> items;
+
+    explicit ListExpr(std::vector<ExprId> items, SourceSpan span);
+};
+
+// ------------------------------------------------------------
+// Patterns
+// ------------------------------------------------------------
+
+struct Pattern : AstNode {
+    explicit Pattern(NodeKind kind, SourceSpan span);
+};
+
+struct IdentPattern : Pattern {
+    Ident ident;
+
+    IdentPattern(Ident ident, SourceSpan span);
+};
+
+struct CtorPattern : Pattern {
+    TypeId type;
+    std::vector<PatternId> args;
+
+    CtorPattern(TypeId type, std::vector<PatternId> args, SourceSpan span);
 };
 
 // ------------------------------------------------------------
@@ -213,43 +320,89 @@ struct Stmt : AstNode {
 
 struct LetStmt : Stmt {
     Ident ident;
-    TypePtr type;
-    ExprPtr initializer;
+    TypeId type;
+    ExprId initializer;
 
     LetStmt(
         Ident ident,
-        TypePtr type,
-        ExprPtr initializer,
+        TypeId type,
+        ExprId initializer,
         SourceSpan span);
 };
 
-struct ExprStmt : Stmt {
-    ExprPtr expr;
+struct MakeStmt : Stmt {
+    Ident ident;
+    TypeId type;
+    ExprId value;
 
-    ExprStmt(ExprPtr expr, SourceSpan span);
+    MakeStmt(Ident ident, TypeId type, ExprId value, SourceSpan span);
+};
+
+struct SetStmt : Stmt {
+    Ident ident;
+    ExprId value;
+
+    SetStmt(Ident ident, ExprId value, SourceSpan span);
+};
+
+struct GiveStmt : Stmt {
+    ExprId value;
+
+    GiveStmt(ExprId value, SourceSpan span);
+};
+
+struct EmitStmt : Stmt {
+    ExprId value;
+
+    EmitStmt(ExprId value, SourceSpan span);
+};
+
+struct ExprStmt : Stmt {
+    ExprId expr;
+
+    ExprStmt(ExprId expr, SourceSpan span);
 };
 
 struct ReturnStmt : Stmt {
-    ExprPtr expr;
+    ExprId expr;
 
-    explicit ReturnStmt(ExprPtr expr, SourceSpan span);
+    explicit ReturnStmt(ExprId expr, SourceSpan span);
 };
 
 struct BlockStmt : Stmt {
-    std::vector<StmtPtr> stmts;
+    std::vector<StmtId> stmts;
 
-    explicit BlockStmt(std::vector<StmtPtr> stmts, SourceSpan span);
+    explicit BlockStmt(std::vector<StmtId> stmts, SourceSpan span);
 };
 
 struct IfStmt : Stmt {
-    ExprPtr cond;
-    StmtPtr then_branch;
-    StmtPtr else_branch;
+    ExprId cond;
+    StmtId then_block;
+    StmtId else_block;
 
     IfStmt(
-        ExprPtr cond,
-        StmtPtr then_branch,
-        StmtPtr else_branch,
+        ExprId cond,
+        StmtId then_block,
+        StmtId else_block,
+        SourceSpan span);
+};
+
+struct WhenStmt : Stmt {
+    PatternId pattern;
+    StmtId block;
+
+    WhenStmt(PatternId pattern, StmtId block, SourceSpan span);
+};
+
+struct SelectStmt : Stmt {
+    ExprId expr;
+    std::vector<StmtId> whens;
+    StmtId otherwise_block;
+
+    SelectStmt(
+        ExprId expr,
+        std::vector<StmtId> whens,
+        StmtId otherwise_block,
         SourceSpan span);
 };
 
@@ -259,16 +412,30 @@ struct IfStmt : Stmt {
 
 struct FieldDecl {
     Ident ident;
-    TypePtr type;
+    TypeId type;
 
-    FieldDecl(Ident ident, TypePtr type);
+    FieldDecl(Ident ident, TypeId type);
+};
+
+struct CaseField {
+    Ident ident;
+    TypeId type;
+
+    CaseField(Ident ident, TypeId type);
+};
+
+struct CaseDecl {
+    Ident ident;
+    std::vector<CaseField> fields;
+
+    CaseDecl(Ident ident, std::vector<CaseField> fields);
 };
 
 struct FnParam {
     Ident ident;
-    TypePtr type;
+    TypeId type;
 
-    FnParam(Ident ident, TypePtr type);
+    FnParam(Ident ident, TypeId type);
 };
 
 struct Decl : AstNode {
@@ -278,14 +445,14 @@ struct Decl : AstNode {
 struct FnDecl : Decl {
     Ident name;
     std::vector<FnParam> params;
-    TypePtr return_type;
-    BlockStmt body;
+    TypeId return_type;
+    StmtId body;
 
     FnDecl(
         Ident name,
         std::vector<FnParam> params,
-        TypePtr return_type,
-        BlockStmt body,
+        TypeId return_type,
+        StmtId body,
         SourceSpan span);
 };
 
@@ -299,22 +466,109 @@ struct TypeDecl : Decl {
         SourceSpan span);
 };
 
+struct SpaceDecl : Decl {
+    ModulePath path;
+
+    SpaceDecl(ModulePath path, SourceSpan span);
+};
+
+struct PullDecl : Decl {
+    ModulePath path;
+    std::optional<Ident> alias;
+
+    PullDecl(ModulePath path, std::optional<Ident> alias, SourceSpan span);
+};
+
+struct ShareDecl : Decl {
+    bool share_all;
+    std::vector<Ident> names;
+
+    ShareDecl(bool share_all, std::vector<Ident> names, SourceSpan span);
+};
+
+struct FormDecl : Decl {
+    Ident name;
+    std::vector<FieldDecl> fields;
+
+    FormDecl(Ident name, std::vector<FieldDecl> fields, SourceSpan span);
+};
+
+struct PickDecl : Decl {
+    Ident name;
+    std::vector<CaseDecl> cases;
+
+    PickDecl(Ident name, std::vector<CaseDecl> cases, SourceSpan span);
+};
+
+struct ProcDecl : Decl {
+    std::vector<Attribute> attrs;
+    Ident name;
+    std::vector<Ident> params;
+    StmtId body;
+
+    ProcDecl(
+        std::vector<Attribute> attrs,
+        Ident name,
+        std::vector<Ident> params,
+        StmtId body,
+        SourceSpan span);
+};
+
+struct EntryDecl : Decl {
+    Ident name;
+    ModulePath module;
+    StmtId body;
+
+    EntryDecl(Ident name, ModulePath module, StmtId body, SourceSpan span);
+};
+
 // ------------------------------------------------------------
 // Module
 // ------------------------------------------------------------
 
 struct Module : AstNode {
     std::string name;
-    std::vector<DeclPtr> decls;
+    std::vector<DeclId> decls;
 
     Module(
         std::string name,
-        std::vector<DeclPtr> decls,
+        std::vector<DeclId> decls,
         SourceSpan span);
 };
 
 // ------------------------------------------------------------
-// Visitor
+// AST Context / Arena
+// ------------------------------------------------------------
+
+struct AstContext {
+    support::Arena<AstNode, AstId> arena;
+
+    template <typename T, typename... Args>
+    AstId make(Args&&... args) {
+        return arena.template emplace<T>(std::forward<Args>(args)...);
+    }
+
+    AstNode& node(AstId id) {
+        return *arena.get(id);
+    }
+
+    const AstNode& node(AstId id) const {
+        return *arena.get(id);
+    }
+
+    template <typename T>
+    T& get(AstId id) {
+        return *static_cast<T*>(arena.get(id));
+    }
+
+    template <typename T>
+    const T& get(AstId id) const {
+        return *static_cast<const T*>(arena.get(id));
+    }
+};
+
+// ------------------------------------------------------------
+// Visitor (legacy)
 // ------------------------------------------------------------
 
 struct AstVisitor {
@@ -334,7 +588,7 @@ struct AstVisitor {
 
     virtual void visit_binary(BinaryExpr&) {}
     virtual void visit_unary(UnaryExpr&) {}
-    virtual void visit_call(CallExpr&) {}
+    virtual void visit_invoke(InvokeExpr&) {}
     virtual void visit_ident_expr(IdentExpr&) {}
     virtual void visit_literal(LiteralExpr&) {}
 };
