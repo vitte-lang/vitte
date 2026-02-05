@@ -12,6 +12,7 @@ struct Options {
 
     /* Parse only (no backend / codegen) */
     bool parse_only = false;
+    bool strict_parse = false;
 
     /* Resolve only (no lowering) */
     bool resolve_only = false;

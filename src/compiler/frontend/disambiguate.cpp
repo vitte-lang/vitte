@@ -25,6 +25,11 @@ static void disambiguate_expr(AstContext& ctx, ExprId expr_id) {
             disambiguate_expr(ctx, b.rhs);
             break;
         }
+        case NodeKind::ProcExpr: {
+            auto& p = static_cast<ProcExpr&>(node);
+            disambiguate_stmt(ctx, p.body);
+            break;
+        }
         case NodeKind::InvokeExpr: {
             auto& inv = static_cast<InvokeExpr&>(node);
             if (inv.callee_type != kInvalidAstId) {
@@ -38,6 +43,36 @@ static void disambiguate_expr(AstContext& ctx, ExprId expr_id) {
             for (auto arg : inv.args) {
                 disambiguate_expr(ctx, arg);
             }
+            break;
+        }
+        case NodeKind::MemberExpr: {
+            auto& m = static_cast<MemberExpr&>(node);
+            disambiguate_expr(ctx, m.base);
+            break;
+        }
+        case NodeKind::IndexExpr: {
+            auto& i = static_cast<IndexExpr&>(node);
+            disambiguate_expr(ctx, i.base);
+            disambiguate_expr(ctx, i.index);
+            break;
+        }
+        case NodeKind::IfExpr: {
+            auto& e = static_cast<IfExpr&>(node);
+            disambiguate_expr(ctx, e.cond);
+            disambiguate_stmt(ctx, e.then_block);
+            if (e.else_block != kInvalidAstId) {
+                disambiguate_stmt(ctx, e.else_block);
+            }
+            break;
+        }
+        case NodeKind::IsExpr: {
+            auto& e = static_cast<IsExpr&>(node);
+            disambiguate_expr(ctx, e.value);
+            break;
+        }
+        case NodeKind::AsExpr: {
+            auto& e = static_cast<AsExpr&>(node);
+            disambiguate_expr(ctx, e.value);
             break;
         }
         case NodeKind::ListExpr: {
@@ -115,6 +150,17 @@ static void disambiguate_stmt(AstContext& ctx, StmtId stmt_id) {
             }
             break;
         }
+        case NodeKind::LoopStmt: {
+            auto& s = static_cast<LoopStmt&>(node);
+            disambiguate_stmt(ctx, s.body);
+            break;
+        }
+        case NodeKind::ForStmt: {
+            auto& s = static_cast<ForStmt&>(node);
+            disambiguate_expr(ctx, s.iterable);
+            disambiguate_stmt(ctx, s.body);
+            break;
+        }
         case NodeKind::SelectStmt: {
             auto& s = static_cast<SelectStmt&>(node);
             disambiguate_expr(ctx, s.expr);
@@ -148,16 +194,25 @@ void disambiguate_invokes(AstContext& ctx, ModuleId module_id) {
         switch (decl.kind) {
             case NodeKind::ProcDecl: {
                 auto& d = static_cast<ProcDecl&>(decl);
-                disambiguate_stmt(ctx, d.body);
+                if (d.body != kInvalidAstId) {
+                    disambiguate_stmt(ctx, d.body);
+                }
                 break;
             }
             case NodeKind::EntryDecl: {
                 auto& d = static_cast<EntryDecl&>(decl);
-                disambiguate_stmt(ctx, d.body);
+                if (d.body != kInvalidAstId) {
+                    disambiguate_stmt(ctx, d.body);
+                }
                 break;
             }
             case NodeKind::FnDecl: {
                 auto& d = static_cast<FnDecl&>(decl);
+                disambiguate_stmt(ctx, d.body);
+                break;
+            }
+            case NodeKind::MacroDecl: {
+                auto& d = static_cast<MacroDecl&>(decl);
                 disambiguate_stmt(ctx, d.body);
                 break;
             }

@@ -17,6 +17,25 @@ Options parse_options(int argc, char** argv) {
             opts.show_help = true;
             return opts;
         }
+        else if (arg == "parse" || arg == "check" || arg == "emit" || arg == "build") {
+            if (arg == "parse") {
+                opts.parse_only = true;
+                opts.resolve_only = false;
+                opts.hir_only = false;
+                opts.mir_only = false;
+                opts.emit_cpp = false;
+            } else if (arg == "check") {
+                opts.parse_only = false;
+                opts.resolve_only = true;
+                opts.hir_only = false;
+                opts.mir_only = false;
+                opts.emit_cpp = false;
+            } else if (arg == "emit") {
+                opts.emit_cpp = true;
+            } else if (arg == "build") {
+                opts.emit_cpp = false;
+            }
+        }
         else if (arg == "-o" && i + 1 < argc) {
             opts.output = argv[++i];
         }
@@ -25,6 +44,9 @@ Options parse_options(int argc, char** argv) {
         }
         else if (arg == "--parse-only") {
             opts.parse_only = true;
+        }
+        else if (arg == "--strict-parse") {
+            opts.strict_parse = true;
         }
         else if (arg == "--resolve-only") {
             opts.resolve_only = true;
@@ -92,12 +114,19 @@ Options parse_options(int argc, char** argv) {
  * ------------------------------------------------- */
 void print_help() {
     std::cout <<
-        "vittec [options] <input>\n"
+        "vitte [command] [options] <input>\n"
+        "\n"
+        "Commands:\n"
+        "  parse            Parse only (no backend)\n"
+        "  check            Parse + resolve only\n"
+        "  emit             Emit C++ only (no native compile)\n"
+        "  build            Full build (default)\n"
         "\n"
         "Options:\n"
         "  -h, --help        Show this help message\n"
         "  -o <file>         Output executable name\n"
         "  --parse-only      Parse only (no backend)\n"
+        "  --strict-parse    Disallow keywords as identifiers\n"
         "  --resolve-only    Resolve only (no lowering)\n"
         "  --hir-only        Lower to HIR only\n"
         "  --mir-only        Lower to MIR only\n"

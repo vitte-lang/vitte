@@ -6,9 +6,11 @@
 #include "../frontend/disambiguate.hpp"
 #include "../frontend/lexer.hpp"
 #include "../frontend/parser.hpp"
+#include "../frontend/validate.hpp"
 #include "../frontend/resolve.hpp"
 #include "../frontend/lower_hir.hpp"
 #include "../ir/hir.hpp"
+#include "../ir/validate.hpp"
 
 #include <fstream>
 #include <iostream>
@@ -40,13 +42,15 @@ PassResult run_passes(const Options& opts) {
     frontend::Lexer lexer(source);
     frontend::diag::DiagnosticEngine diagnostics;
     frontend::ast::AstContext ast_ctx;
-    frontend::parser::Parser parser(lexer, diagnostics, ast_ctx);
+    frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse);
     auto module = parser.parse_module();
     frontend::passes::disambiguate_invokes(ast_ctx, module);
 
     if (opts.dump_ast) {
         std::cout << frontend::ast::dump_to_string(ast_ctx.node(module));
     }
+
+    frontend::validate::validate_module(ast_ctx, module, diagnostics);
 
     if (diagnostics.has_errors()) {
         frontend::diag::render_all(diagnostics, std::cerr);
@@ -113,6 +117,7 @@ PassResult run_passes(const Options& opts) {
         if (dump_hir_compact) {
             std::cout << ir::dump_compact_to_string(hir_ctx, hir);
         }
+        ir::validate::validate_module(hir_ctx, hir, diagnostics);
         if (diagnostics.has_errors()) {
             frontend::diag::render_all(diagnostics, std::cerr);
             std::cerr << "[driver] hir lowering failed\n";

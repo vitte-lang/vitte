@@ -15,6 +15,7 @@ add_library(vitte_frontend STATIC
     lexer.cpp
     parser.cpp
     disambiguate.cpp
+    validate.cpp
     resolve.cpp
     types.cpp
     lower_hir.cpp

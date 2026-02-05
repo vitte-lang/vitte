@@ -1,0 +1,67 @@
+<<<
+stdlib_syntax.vit
+coverage for stdlib surface syntax
+>>>
+
+space tests/stdlib_syntax
+
+use std/core/types.bool
+use std/core/types.string
+use std/core/types.i32
+use std/math/consts.*
+
+pull .local as local
+share all
+
+const ANSWER: i32 = 42
+
+type Id[T] = T
+
+type PtrInt = *i32
+
+type ProcT = proc(i32, i32) -> i32
+
+trait Eq[T] {
+    eq: proc(a: T, b: T) -> bool
+}
+
+form Pair[T] { left: T, right: T }
+
+pick Option[T] {
+    Some(value: T),
+    None
+}
+
+macro assert(expr) {
+    if not (expr) {
+        give 0
+    }
+}
+
+proc add[T](a: T, b: T, f: proc(T, T) -> T) -> T {
+    give f(a, b)
+}
+
+proc make_adder() -> proc(i32, i32) -> i32 {
+    give proc(x: i32, y: i32) -> i32 {
+        give x + y
+    }
+}
+
+proc test_ptr(p: *i32, s: [i32]) -> i32 {
+    let x = p.*
+    let y = s[0]
+    let z = if x == y { x } else { y }
+    give z
+}
+
+proc main() -> i32 {
+    let v: i32 = 1
+    let w = v as i32
+    let p = &v
+    let _ = p.*
+    loop { break }
+    for i in [1, 2, 3] { continue }
+    when w is Option.None { give 0 }
+    give w
+}

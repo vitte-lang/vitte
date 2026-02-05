@@ -27,6 +27,7 @@ struct Stmt;
 struct Decl;
 struct Module;
 struct Pattern;
+struct FnParam;
 
 // ------------------------------------------------------------
 // Handle aliases
@@ -84,12 +85,21 @@ enum class NodeKind {
     NamedType,
     GenericType,
     BuiltinType,
+    PointerType,
+    SliceType,
+    ProcType,
 
     // expressions
     LiteralExpr,
     IdentExpr,
     UnaryExpr,
     BinaryExpr,
+    MemberExpr,
+    IndexExpr,
+    ProcExpr,
+    IfExpr,
+    IsExpr,
+    AsExpr,
     CallNoParenExpr,
     InvokeExpr,
     ListExpr,
@@ -104,6 +114,10 @@ enum class NodeKind {
     ExprStmt,
     ReturnStmt,
     IfStmt,
+    LoopStmt,
+    BreakStmt,
+    ContinueStmt,
+    ForStmt,
     MakeStmt,
     SetStmt,
     GiveStmt,
@@ -114,9 +128,13 @@ enum class NodeKind {
     // declarations (legacy + Vitte 1.0)
     FnDecl,
     TypeDecl,
+    TypeAliasDecl,
     SpaceDecl,
     PullDecl,
+    UseDecl,
     ShareDecl,
+    ConstDecl,
+    MacroDecl,
     FormDecl,
     PickDecl,
     ProcDecl,
@@ -161,8 +179,9 @@ struct Attribute : AstNode {
 
 struct ModulePath : AstNode {
     std::vector<Ident> parts;
+    std::size_t relative_depth;
 
-    explicit ModulePath(std::vector<Ident> parts, SourceSpan span);
+    explicit ModulePath(std::vector<Ident> parts, std::size_t relative_depth, SourceSpan span);
 };
 
 // ------------------------------------------------------------
@@ -196,6 +215,36 @@ struct BuiltinType : TypeNode {
 };
 
 // ------------------------------------------------------------
+// Function parameters
+// ------------------------------------------------------------
+
+struct FnParam {
+    Ident ident;
+    TypeId type;
+
+    FnParam(Ident ident, TypeId type);
+};
+
+struct PointerType : TypeNode {
+    TypeId pointee;
+
+    PointerType(TypeId pointee, SourceSpan span);
+};
+
+struct SliceType : TypeNode {
+    TypeId element;
+
+    SliceType(TypeId element, SourceSpan span);
+};
+
+struct ProcType : TypeNode {
+    std::vector<TypeId> params;
+    TypeId return_type;
+
+    ProcType(std::vector<TypeId> params, TypeId return_type, SourceSpan span);
+};
+
+// ------------------------------------------------------------
 // Expressions
 // ------------------------------------------------------------
 
@@ -203,11 +252,15 @@ enum class LiteralKind {
     Bool,
     Int,
     String,
+    Float,
+    Char,
 };
 
 enum class UnaryOp {
     Not,
     Neg,
+    Addr,
+    Deref,
 };
 
 enum class BinaryOp {
@@ -215,14 +268,21 @@ enum class BinaryOp {
     Sub,
     Mul,
     Div,
+    Mod,
     Eq,
     Ne,
     Lt,
     Le,
     Gt,
     Ge,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
     And,
     Or,
+    Assign,
 };
 
 struct Expr : AstNode {
@@ -255,6 +315,50 @@ struct BinaryExpr : Expr {
     ExprId rhs;
 
     BinaryExpr(BinaryOp op, ExprId lhs, ExprId rhs, SourceSpan span);
+};
+
+struct ProcExpr : Expr {
+    std::vector<FnParam> params;
+    TypeId return_type;
+    StmtId body;
+
+    ProcExpr(std::vector<FnParam> params, TypeId return_type, StmtId body, SourceSpan span);
+};
+
+struct MemberExpr : Expr {
+    ExprId base;
+    Ident member;
+
+    MemberExpr(ExprId base, Ident member, SourceSpan span);
+};
+
+struct IndexExpr : Expr {
+    ExprId base;
+    ExprId index;
+
+    IndexExpr(ExprId base, ExprId index, SourceSpan span);
+};
+
+struct IfExpr : Expr {
+    ExprId cond;
+    StmtId then_block;
+    StmtId else_block;
+
+    IfExpr(ExprId cond, StmtId then_block, StmtId else_block, SourceSpan span);
+};
+
+struct IsExpr : Expr {
+    ExprId value;
+    PatternId pattern;
+
+    IsExpr(ExprId value, PatternId pattern, SourceSpan span);
+};
+
+struct AsExpr : Expr {
+    ExprId value;
+    TypeId type;
+
+    AsExpr(ExprId value, TypeId type, SourceSpan span);
 };
 
 struct CallNoParenExpr : Expr {
@@ -387,6 +491,28 @@ struct IfStmt : Stmt {
         SourceSpan span);
 };
 
+struct LoopStmt : Stmt {
+    StmtId body;
+
+    LoopStmt(StmtId body, SourceSpan span);
+};
+
+struct BreakStmt : Stmt {
+    explicit BreakStmt(SourceSpan span);
+};
+
+struct ContinueStmt : Stmt {
+    explicit ContinueStmt(SourceSpan span);
+};
+
+struct ForStmt : Stmt {
+    Ident ident;
+    ExprId iterable;
+    StmtId body;
+
+    ForStmt(Ident ident, ExprId iterable, StmtId body, SourceSpan span);
+};
+
 struct WhenStmt : Stmt {
     PatternId pattern;
     StmtId block;
@@ -431,13 +557,6 @@ struct CaseDecl {
     CaseDecl(Ident ident, std::vector<CaseField> fields);
 };
 
-struct FnParam {
-    Ident ident;
-    TypeId type;
-
-    FnParam(Ident ident, TypeId type);
-};
-
 struct Decl : AstNode {
     explicit Decl(NodeKind kind, SourceSpan span);
 };
@@ -466,6 +585,14 @@ struct TypeDecl : Decl {
         SourceSpan span);
 };
 
+struct TypeAliasDecl : Decl {
+    Ident name;
+    std::vector<Ident> type_params;
+    TypeId target;
+
+    TypeAliasDecl(Ident name, std::vector<Ident> type_params, TypeId target, SourceSpan span);
+};
+
 struct SpaceDecl : Decl {
     ModulePath path;
 
@@ -479,6 +606,14 @@ struct PullDecl : Decl {
     PullDecl(ModulePath path, std::optional<Ident> alias, SourceSpan span);
 };
 
+struct UseDecl : Decl {
+    ModulePath path;
+    std::optional<Ident> alias;
+    bool is_glob;
+
+    UseDecl(ModulePath path, std::optional<Ident> alias, bool is_glob, SourceSpan span);
+};
+
 struct ShareDecl : Decl {
     bool share_all;
     std::vector<Ident> names;
@@ -486,30 +621,52 @@ struct ShareDecl : Decl {
     ShareDecl(bool share_all, std::vector<Ident> names, SourceSpan span);
 };
 
+struct ConstDecl : Decl {
+    Ident name;
+    TypeId type;
+    ExprId value;
+
+    ConstDecl(Ident name, TypeId type, ExprId value, SourceSpan span);
+};
+
+struct MacroDecl : Decl {
+    Ident name;
+    std::vector<Ident> params;
+    StmtId body;
+
+    MacroDecl(Ident name, std::vector<Ident> params, StmtId body, SourceSpan span);
+};
+
 struct FormDecl : Decl {
     Ident name;
+    std::vector<Ident> type_params;
     std::vector<FieldDecl> fields;
 
-    FormDecl(Ident name, std::vector<FieldDecl> fields, SourceSpan span);
+    FormDecl(Ident name, std::vector<Ident> type_params, std::vector<FieldDecl> fields, SourceSpan span);
 };
 
 struct PickDecl : Decl {
     Ident name;
+    std::vector<Ident> type_params;
     std::vector<CaseDecl> cases;
 
-    PickDecl(Ident name, std::vector<CaseDecl> cases, SourceSpan span);
+    PickDecl(Ident name, std::vector<Ident> type_params, std::vector<CaseDecl> cases, SourceSpan span);
 };
 
 struct ProcDecl : Decl {
     std::vector<Attribute> attrs;
     Ident name;
-    std::vector<Ident> params;
+    std::vector<Ident> type_params;
+    std::vector<FnParam> params;
+    TypeId return_type;
     StmtId body;
 
     ProcDecl(
         std::vector<Attribute> attrs,
         Ident name,
-        std::vector<Ident> params,
+        std::vector<Ident> type_params,
+        std::vector<FnParam> params,
+        TypeId return_type,
         StmtId body,
         SourceSpan span);
 };

@@ -55,8 +55,10 @@ Attribute::Attribute(Ident n, SourceSpan sp)
 // Module path
 // ------------------------------------------------------------
 
-ModulePath::ModulePath(std::vector<Ident> p, SourceSpan sp)
-    : AstNode(NodeKind::ModulePath, sp), parts(std::move(p)) {}
+ModulePath::ModulePath(std::vector<Ident> p, std::size_t rel, SourceSpan sp)
+    : AstNode(NodeKind::ModulePath, sp),
+      parts(std::move(p)),
+      relative_depth(rel) {}
 
 // ------------------------------------------------------------
 // Types
@@ -78,6 +80,17 @@ GenericType::GenericType(
 
 BuiltinType::BuiltinType(std::string n, SourceSpan sp)
     : TypeNode(NodeKind::BuiltinType, sp), name(std::move(n)) {}
+
+PointerType::PointerType(TypeId p, SourceSpan sp)
+    : TypeNode(NodeKind::PointerType, sp), pointee(p) {}
+
+SliceType::SliceType(TypeId e, SourceSpan sp)
+    : TypeNode(NodeKind::SliceType, sp), element(e) {}
+
+ProcType::ProcType(std::vector<TypeId> p, TypeId r, SourceSpan sp)
+    : TypeNode(NodeKind::ProcType, sp),
+      params(std::move(p)),
+      return_type(r) {}
 
 // ------------------------------------------------------------
 // Expressions
@@ -105,6 +118,37 @@ BinaryExpr::BinaryExpr(BinaryOp o, ExprId l, ExprId r, SourceSpan sp)
       lhs(l),
       rhs(r) {}
 
+ProcExpr::ProcExpr(std::vector<FnParam> p, TypeId rt, StmtId b, SourceSpan sp)
+    : Expr(NodeKind::ProcExpr, sp),
+      params(std::move(p)),
+      return_type(rt),
+      body(b) {}
+
+MemberExpr::MemberExpr(ExprId b, Ident m, SourceSpan sp)
+    : Expr(NodeKind::MemberExpr, sp),
+      base(b),
+      member(std::move(m)) {}
+
+IndexExpr::IndexExpr(ExprId b, ExprId i, SourceSpan sp)
+    : Expr(NodeKind::IndexExpr, sp),
+      base(b),
+      index(i) {}
+
+IfExpr::IfExpr(ExprId c, StmtId t, StmtId e, SourceSpan sp)
+    : Expr(NodeKind::IfExpr, sp),
+      cond(c),
+      then_block(t),
+      else_block(e) {}
+
+IsExpr::IsExpr(ExprId v, PatternId p, SourceSpan sp)
+    : Expr(NodeKind::IsExpr, sp),
+      value(v),
+      pattern(p) {}
+
+AsExpr::AsExpr(ExprId v, TypeId t, SourceSpan sp)
+    : Expr(NodeKind::AsExpr, sp),
+      value(v),
+      type(t) {}
 CallNoParenExpr::CallNoParenExpr(Ident c, ExprId a, SourceSpan sp)
     : Expr(NodeKind::CallNoParenExpr, sp),
       callee(std::move(c)),
@@ -191,6 +235,20 @@ IfStmt::IfStmt(
       then_block(t),
       else_block(e) {}
 
+LoopStmt::LoopStmt(StmtId b, SourceSpan sp)
+    : Stmt(NodeKind::LoopStmt, sp), body(b) {}
+
+BreakStmt::BreakStmt(SourceSpan sp)
+    : Stmt(NodeKind::BreakStmt, sp) {}
+
+ContinueStmt::ContinueStmt(SourceSpan sp)
+    : Stmt(NodeKind::ContinueStmt, sp) {}
+
+ForStmt::ForStmt(Ident id, ExprId it, StmtId b, SourceSpan sp)
+    : Stmt(NodeKind::ForStmt, sp),
+      ident(std::move(id)),
+      iterable(it),
+      body(b) {}
 WhenStmt::WhenStmt(PatternId p, StmtId b, SourceSpan sp)
     : Stmt(NodeKind::WhenStmt, sp),
       pattern(p),
@@ -242,6 +300,12 @@ TypeDecl::TypeDecl(Ident n, std::vector<FieldDecl> f, SourceSpan sp)
       name(std::move(n)),
       fields(std::move(f)) {}
 
+TypeAliasDecl::TypeAliasDecl(Ident n, std::vector<Ident> tp, TypeId t, SourceSpan sp)
+    : Decl(NodeKind::TypeAliasDecl, sp),
+      name(std::move(n)),
+      type_params(std::move(tp)),
+      target(t) {}
+
 SpaceDecl::SpaceDecl(ModulePath p, SourceSpan sp)
     : Decl(NodeKind::SpaceDecl, sp), path(std::move(p)) {}
 
@@ -250,31 +314,55 @@ PullDecl::PullDecl(ModulePath p, std::optional<Ident> a, SourceSpan sp)
       path(std::move(p)),
       alias(std::move(a)) {}
 
+UseDecl::UseDecl(ModulePath p, std::optional<Ident> a, bool glob, SourceSpan sp)
+    : Decl(NodeKind::UseDecl, sp),
+      path(std::move(p)),
+      alias(std::move(a)),
+      is_glob(glob) {}
+
 ShareDecl::ShareDecl(bool all, std::vector<Ident> n, SourceSpan sp)
     : Decl(NodeKind::ShareDecl, sp),
       share_all(all),
       names(std::move(n)) {}
 
-FormDecl::FormDecl(Ident n, std::vector<FieldDecl> f, SourceSpan sp)
+ConstDecl::ConstDecl(Ident n, TypeId t, ExprId v, SourceSpan sp)
+    : Decl(NodeKind::ConstDecl, sp),
+      name(std::move(n)),
+      type(t),
+      value(v) {}
+
+MacroDecl::MacroDecl(Ident n, std::vector<Ident> p, StmtId b, SourceSpan sp)
+    : Decl(NodeKind::MacroDecl, sp),
+      name(std::move(n)),
+      params(std::move(p)),
+      body(b) {}
+
+FormDecl::FormDecl(Ident n, std::vector<Ident> tp, std::vector<FieldDecl> f, SourceSpan sp)
     : Decl(NodeKind::FormDecl, sp),
       name(std::move(n)),
+      type_params(std::move(tp)),
       fields(std::move(f)) {}
 
-PickDecl::PickDecl(Ident n, std::vector<CaseDecl> c, SourceSpan sp)
+PickDecl::PickDecl(Ident n, std::vector<Ident> tp, std::vector<CaseDecl> c, SourceSpan sp)
     : Decl(NodeKind::PickDecl, sp),
       name(std::move(n)),
+      type_params(std::move(tp)),
       cases(std::move(c)) {}
 
 ProcDecl::ProcDecl(
     std::vector<Attribute> a,
     Ident n,
-    std::vector<Ident> p,
+    std::vector<Ident> tp,
+    std::vector<FnParam> p,
+    TypeId rt,
     StmtId b,
     SourceSpan sp)
     : Decl(NodeKind::ProcDecl, sp),
       attrs(std::move(a)),
       name(std::move(n)),
+      type_params(std::move(tp)),
       params(std::move(p)),
+      return_type(rt),
       body(b) {}
 
 EntryDecl::EntryDecl(Ident n, ModulePath m, StmtId b, SourceSpan sp)
@@ -313,10 +401,19 @@ const char* to_string(NodeKind kind) {
         case NodeKind::NamedType: return "NamedType";
         case NodeKind::GenericType: return "GenericType";
         case NodeKind::BuiltinType: return "BuiltinType";
+        case NodeKind::PointerType: return "PointerType";
+        case NodeKind::SliceType: return "SliceType";
+        case NodeKind::ProcType: return "ProcType";
         case NodeKind::LiteralExpr: return "LiteralExpr";
         case NodeKind::IdentExpr: return "IdentExpr";
         case NodeKind::UnaryExpr: return "UnaryExpr";
         case NodeKind::BinaryExpr: return "BinaryExpr";
+        case NodeKind::ProcExpr: return "ProcExpr";
+        case NodeKind::MemberExpr: return "MemberExpr";
+        case NodeKind::IndexExpr: return "IndexExpr";
+        case NodeKind::IfExpr: return "IfExpr";
+        case NodeKind::IsExpr: return "IsExpr";
+        case NodeKind::AsExpr: return "AsExpr";
         case NodeKind::CallNoParenExpr: return "CallNoParenExpr";
         case NodeKind::InvokeExpr: return "InvokeExpr";
         case NodeKind::ListExpr: return "ListExpr";
@@ -327,6 +424,10 @@ const char* to_string(NodeKind kind) {
         case NodeKind::ExprStmt: return "ExprStmt";
         case NodeKind::ReturnStmt: return "ReturnStmt";
         case NodeKind::IfStmt: return "IfStmt";
+        case NodeKind::LoopStmt: return "LoopStmt";
+        case NodeKind::BreakStmt: return "BreakStmt";
+        case NodeKind::ContinueStmt: return "ContinueStmt";
+        case NodeKind::ForStmt: return "ForStmt";
         case NodeKind::MakeStmt: return "MakeStmt";
         case NodeKind::SetStmt: return "SetStmt";
         case NodeKind::GiveStmt: return "GiveStmt";
@@ -335,9 +436,13 @@ const char* to_string(NodeKind kind) {
         case NodeKind::WhenStmt: return "WhenStmt";
         case NodeKind::FnDecl: return "FnDecl";
         case NodeKind::TypeDecl: return "TypeDecl";
+        case NodeKind::TypeAliasDecl: return "TypeAliasDecl";
         case NodeKind::SpaceDecl: return "SpaceDecl";
         case NodeKind::PullDecl: return "PullDecl";
+        case NodeKind::UseDecl: return "UseDecl";
         case NodeKind::ShareDecl: return "ShareDecl";
+        case NodeKind::ConstDecl: return "ConstDecl";
+        case NodeKind::MacroDecl: return "MacroDecl";
         case NodeKind::FormDecl: return "FormDecl";
         case NodeKind::PickDecl: return "PickDecl";
         case NodeKind::ProcDecl: return "ProcDecl";

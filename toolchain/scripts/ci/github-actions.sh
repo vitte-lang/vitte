@@ -85,7 +85,7 @@ step "test"
 if [ -x "toolchain/scripts/build/test.sh" ]; then
   toolchain/scripts/build/test.sh
 elif [ -x "toolchain/scripts/test/run.sh" ]; then
-  toolchain/scripts/test/run.sh
+  CI_FAST=1 toolchain/scripts/test/run.sh
 else
   log "no test script found — skipping"
 fi

@@ -4,6 +4,8 @@
 
 #include "../frontend/lexer.hpp"
 #include "../frontend/parser.hpp"
+#include "../frontend/validate.hpp"
+#include "../frontend/diagnostics.hpp"
 
 #include "../backends/cpp_backend.hpp"
 #include "../backends/lower/lower_mir.hpp"
@@ -39,9 +41,15 @@ bool run_pipeline(const Options& opts) {
     frontend::Lexer lexer(source);
     frontend::diag::DiagnosticEngine diagnostics;
     frontend::ast::AstContext ast_ctx;
-    frontend::parser::Parser parser(lexer, diagnostics, ast_ctx);
+    frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse);
     auto ast = parser.parse_module();
     (void)ast;
+
+    frontend::validate::validate_module(ast_ctx, ast, diagnostics);
+    if (diagnostics.has_errors()) {
+        frontend::diag::render_all(diagnostics, std::cerr);
+        return false;
+    }
 
     /* ---------------------------------------------
      * 6. Backend: MIR → native

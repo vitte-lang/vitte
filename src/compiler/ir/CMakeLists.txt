@@ -13,6 +13,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(VITTE_IR_SOURCES
     hir.cpp
     hir.hpp
+    validate.cpp
+    validate.hpp
 
     mir.cpp
     mir.hpp

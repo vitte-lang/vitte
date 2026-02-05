@@ -112,6 +112,27 @@ types::TypeId Resolver::resolve_type(ast::AstContext& ctx, ast::TypeId type) {
             resolved_types_[type] = id;
             return id;
         }
+        case NodeKind::PointerType: {
+            auto& t = static_cast<const PointerType&>(node);
+            resolve_type(ctx, t.pointee);
+            resolved_types_[type] = static_cast<types::TypeId>(-1);
+            return static_cast<types::TypeId>(-1);
+        }
+        case NodeKind::SliceType: {
+            auto& t = static_cast<const SliceType&>(node);
+            resolve_type(ctx, t.element);
+            resolved_types_[type] = static_cast<types::TypeId>(-1);
+            return static_cast<types::TypeId>(-1);
+        }
+        case NodeKind::ProcType: {
+            auto& t = static_cast<const ProcType&>(node);
+            for (auto p : t.params) {
+                resolve_type(ctx, p);
+            }
+            resolve_type(ctx, t.return_type);
+            resolved_types_[type] = static_cast<types::TypeId>(-1);
+            return static_cast<types::TypeId>(-1);
+        }
         default:
             diag_.error("unsupported type", node.span);
             return static_cast<types::TypeId>(-1);
@@ -130,6 +151,13 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
             }
             break;
         }
+        case NodeKind::TypeAliasDecl: {
+            auto& d = static_cast<TypeAliasDecl&>(decl);
+            types_.add_named(d.name.name);
+            symbols_.define({d.name.name, SymbolKind::Form, d.span});
+            resolve_type(ctx, d.target);
+            break;
+        }
         case NodeKind::PickDecl: {
             auto& d = static_cast<PickDecl&>(decl);
             types_.add_named(d.name.name);
@@ -141,8 +169,15 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
             }
             break;
         }
-        case NodeKind::ProcDecl: {
-            auto& d = static_cast<ProcDecl&>(decl);
+        case NodeKind::ConstDecl: {
+            auto& d = static_cast<ConstDecl&>(decl);
+            symbols_.define({d.name.name, SymbolKind::Var, d.span});
+            resolve_type(ctx, d.type);
+            resolve_expr(ctx, d.value);
+            break;
+        }
+        case NodeKind::MacroDecl: {
+            auto& d = static_cast<MacroDecl&>(decl);
             symbols_.define({d.name.name, SymbolKind::Proc, d.span});
             symbols_.push_scope();
             for (const auto& p : d.params) {
@@ -152,11 +187,30 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
             symbols_.pop_scope();
             break;
         }
+        case NodeKind::UseDecl:
+            break;
+        case NodeKind::ProcDecl: {
+            auto& d = static_cast<ProcDecl&>(decl);
+            symbols_.define({d.name.name, SymbolKind::Proc, d.span});
+            symbols_.push_scope();
+            for (const auto& p : d.params) {
+                symbols_.define({p.ident.name, SymbolKind::Param, p.ident.span});
+                resolve_type(ctx, p.type);
+            }
+            resolve_type(ctx, d.return_type);
+            if (d.body != kInvalidAstId) {
+                resolve_stmt(ctx, d.body);
+            }
+            symbols_.pop_scope();
+            break;
+        }
         case NodeKind::EntryDecl: {
             auto& d = static_cast<EntryDecl&>(decl);
             symbols_.define({d.name.name, SymbolKind::Entry, d.span});
             symbols_.push_scope();
-            resolve_stmt(ctx, d.body);
+            if (d.body != kInvalidAstId) {
+                resolve_stmt(ctx, d.body);
+            }
             symbols_.pop_scope();
             break;
         }
@@ -247,6 +301,23 @@ void Resolver::resolve_stmt(ast::AstContext& ctx, ast::StmtId stmt_id) {
             }
             break;
         }
+        case NodeKind::LoopStmt: {
+            auto& s = static_cast<LoopStmt&>(stmt);
+            resolve_stmt(ctx, s.body);
+            break;
+        }
+        case NodeKind::ForStmt: {
+            auto& s = static_cast<ForStmt&>(stmt);
+            resolve_expr(ctx, s.iterable);
+            symbols_.push_scope();
+            symbols_.define({s.ident.name, SymbolKind::Var, s.ident.span});
+            resolve_stmt(ctx, s.body);
+            symbols_.pop_scope();
+            break;
+        }
+        case NodeKind::BreakStmt:
+        case NodeKind::ContinueStmt:
+            break;
         case NodeKind::SelectStmt: {
             auto& s = static_cast<SelectStmt&>(stmt);
             resolve_expr(ctx, s.expr);
@@ -325,6 +396,49 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
             auto& e = static_cast<BinaryExpr&>(expr);
             resolve_expr(ctx, e.lhs);
             resolve_expr(ctx, e.rhs);
+            break;
+        }
+        case NodeKind::ProcExpr: {
+            auto& e = static_cast<ProcExpr&>(expr);
+            symbols_.push_scope();
+            for (const auto& p : e.params) {
+                symbols_.define({p.ident.name, SymbolKind::Param, p.ident.span});
+                resolve_type(ctx, p.type);
+            }
+            resolve_type(ctx, e.return_type);
+            resolve_stmt(ctx, e.body);
+            symbols_.pop_scope();
+            break;
+        }
+        case NodeKind::MemberExpr: {
+            auto& e = static_cast<MemberExpr&>(expr);
+            resolve_expr(ctx, e.base);
+            break;
+        }
+        case NodeKind::IndexExpr: {
+            auto& e = static_cast<IndexExpr&>(expr);
+            resolve_expr(ctx, e.base);
+            resolve_expr(ctx, e.index);
+            break;
+        }
+        case NodeKind::IfExpr: {
+            auto& e = static_cast<IfExpr&>(expr);
+            resolve_expr(ctx, e.cond);
+            resolve_stmt(ctx, e.then_block);
+            if (e.else_block != kInvalidAstId) {
+                resolve_stmt(ctx, e.else_block);
+            }
+            break;
+        }
+        case NodeKind::IsExpr: {
+            auto& e = static_cast<IsExpr&>(expr);
+            resolve_expr(ctx, e.value);
+            break;
+        }
+        case NodeKind::AsExpr: {
+            auto& e = static_cast<AsExpr&>(expr);
+            resolve_expr(ctx, e.value);
+            resolve_type(ctx, e.type);
             break;
         }
         case NodeKind::InvokeExpr: {

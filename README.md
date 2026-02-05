@@ -1,88 +1,61 @@
-vitte/
-├── README.md
-├── LICENSE
-├── CMakeLists.txt
-├── .editorconfig
-├── .gitignore
-│
-├── docs/                         # Spécifications du langage
-│   ├── grammar/
-│   │   ├── vitte.ebnf
-│   │   └── vitte.pest
-│   ├── semantics/
-│   └── abi.md
-│
-├── src/
-│   ├── vitte/                    # 🟦 LANGAGE VITTE (PUR)
-│   │   ├── grammar/              # Syntaxe officielle
-│   │   ├── std/                  # Standard library Vitte
-│   │   │   ├── core/
-│   │   │   ├── alloc/
-│   │   │   │   └── compiler-builtins/
-│   │   │   │       ├── builtins-shim/
-│   │   │   │       │   ├── builtins/
-│   │   │   │       │   ├── config/
-│   │   │   │       │   ├── link/
-│   │   │   │       │   ├── lib.vit
-│   │   │   │       │   └── mod.vit
-│   │   │   │       └── builtins-test/
-│   │   │   │           └── cases/
-│   │   │   ├── math/
-│   │   │   ├── io/
-│   │   │   └── test/
-│   │   │
-│   │   └── runtime/              # Runtime Vitte (compilé avec le programme)
-│   │       ├── abi/
-│   │       ├── alloc/
-│   │       ├── memory/
-│   │       ├── panic/
-│   │       └── startup/
-│   │
-│   └── compiler/                 # 🟥 COMPILATEUR (C++)
-│       ├── frontend/
-│       │   ├── lexer/
-│       │   ├── parser/
-│       │   └── diagnostics/
-│       │
-│       ├── ir/
-│       │   ├── ast/
-│       │   ├── hir/
-│       │   ├── mir/
-│       │   └── passes/
-│       │
-│       ├── backends/
-│       │   ├── llvm/
-│       │   ├── cranelift/
-│       │   ├── c_backend/        # bootstrap minimal
-│       │   └── wasm/
-│       │
-│       ├── linker/
-│       │   ├── symbols.cpp
-│       │   └── driver.cpp
-│       │
-│       └── driver/
-│           └── vittec.cpp        # binaire compilateur
-│
-├── runtime/                      # Runtime prêt à linker
-│   └── std/
-│       └── alloc/
-│
-├── tests/
-│   ├── frontend/
-│   ├── ir/
-│   ├── runtime/
-│   ├── builtins/
-│   └── e2e/
-│
-├── tools/
-│   ├── vittec/                   # CLI compilateur
-│   ├── vittefmt/
-│   └── vitte-lsp/
-│
-├── toolchain/                    # Bootstrap & packaging
-│   ├── stage0/                   # C/C++ minimal
-│   ├── stage1/
-│   ├── stage2/
-│   └── scripts/
-│
-└── third_party/                  # Dépendances externes
+# Vitte
+
+**Vitte** is an experimental systems programming language and toolchain focused on **clarity, explicit structure, and deterministic builds**.
+
+It explores an alternative approach to language design, combining low-level control with a readable, structured syntax and a compiler-first architecture.
+
+---
+
+## Features
+
+- Explicit block structure using `.end`
+- Strong and structured type system
+- Deterministic and reproducible builds
+- Multi-stage compiler architecture (frontend → IR → backend)
+- Cross-platform toolchain (Linux, macOS, FreeBSD, Windows)
+- Custom build system (**Steel**)
+- Designed with self-hosting in mind
+
+---
+
+## Project Status
+
+Vitte is **experimental** and under active development.  
+Breaking changes are expected.
+
+The repository contains:
+- a compiler implementation,
+- a runtime and standard library,
+- build, test, and packaging tooling,
+- extensive automated tests.
+
+---
+
+## Repository Overview
+
+---
+
+## CLI
+
+See `docs/cli.md` for current commands and options.
+
+---
+
+## Goals
+
+- Explore alternative systems-language ergonomics
+- Build a clean, maintainable compiler toolchain
+- Favor explicitness and long-term design over shortcuts
+
+---
+
+## Non-Goals
+
+- Full compatibility with existing languages
+- API or syntax stability at this stage
+
+---
+
+## License
+
+See the `LICENSE` file for details.

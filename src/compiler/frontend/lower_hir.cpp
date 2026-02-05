@@ -123,6 +123,8 @@ static ir::HirExprId lower_expr(
                 case LiteralKind::Bool: kind = ir::HirLiteralKind::Bool; break;
                 case LiteralKind::Int: kind = ir::HirLiteralKind::Int; break;
                 case LiteralKind::String: kind = ir::HirLiteralKind::String; break;
+                case LiteralKind::Float: kind = ir::HirLiteralKind::Int; break;
+                case LiteralKind::Char: kind = ir::HirLiteralKind::Int; break;
             }
             return hir_ctx.make<ir::HirLiteralExpr>(kind, e.value, e.span);
         }
@@ -154,6 +156,7 @@ static ir::HirExprId lower_expr(
                 case BinaryOp::Ge: op = ir::HirBinaryOp::Ge; break;
                 case BinaryOp::And: op = ir::HirBinaryOp::And; break;
                 case BinaryOp::Or: op = ir::HirBinaryOp::Or; break;
+                default: break;
             }
             return hir_ctx.make<ir::HirBinaryExpr>(
                 op,
@@ -403,13 +406,15 @@ ir::HirModuleId lower_to_hir(
                 auto& d = static_cast<const ProcDecl&>(decl);
                 std::vector<ir::HirParam> params;
                 for (const auto& p : d.params) {
-                    params.emplace_back(p.name, ir::kInvalidHirId);
+                    params.emplace_back(p.ident.name, ir::kInvalidHirId);
                 }
                 decls.push_back(hir_ctx.make<ir::HirFnDecl>(
                     d.name.name,
                     std::move(params),
                     ir::kInvalidHirId,
-                    lower_block(ctx, d.body, hir_ctx, diagnostics),
+                    d.body != kInvalidAstId
+                        ? lower_block(ctx, d.body, hir_ctx, diagnostics)
+                        : ir::kInvalidHirId,
                     d.span));
                 break;
             }

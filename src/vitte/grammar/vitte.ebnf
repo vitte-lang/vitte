@@ -1,162 +1,240 @@
-<<< ========================================================= ) ( Vitte 1.0 — Grammar (surface syntax) ) ( ========================================================= >>>
+<<< ========================================================= ) ( Vitte — Grammar (surface syntax) ) ( ========================================================= >>>
 
 program ::= WS? { toplevel WS? } ;
 
 <<< ——————————————————— ) ( Top-level ) ( ——————————————————— >>>
 
-toplevel ::= space_decl | pull_decl | share_decl | type_decl | proc_decl | entry_decl | comment
-;
+toplevel ::= space_decl
+          | pull_decl
+          | use_decl
+          | share_decl
+          | const_decl
+          | type_alias_decl
+          | form_decl
+          | pick_decl
+          | proc_decl
+          | entry_decl
+          | macro_decl
+          | comment
+          ;
 
-space_decl ::= “space” WS1 module_path ;
-pull_decl ::= “pull” WS1 module_path [ WS1 “as” WS1 ident ] ;
-share_decl ::= “share” WS1 ( “all” | ident_list ) ;
+space_decl ::= "space" WS1 module_path ;
+pull_decl  ::= "pull"  WS1 module_path [ WS1 "as" WS1 ident ] ;
+use_decl   ::= "use"   WS1 module_path [ "." "*" ] [ WS1 "as" WS1 ident ] ;
+share_decl ::= "share" WS1 ( "all" | ident_list ) ;
 
-module_path ::= ident { “/” ident } ;
-ident_list ::= ident { WS? “,” WS? ident } ;
+module_path ::= relative? path_parts ;
+relative    ::= { "." } ;
+path_parts  ::= ident { ("/" | ".") ident } ;
+ident_list  ::= ident { WS? "," WS? ident } ;
 
 <<< ——————————————————— ) ( Comments ) ( ——————————————————— >>>
 
 comment ::= zone_comment ;
 
-zone_comment ::= “<<<” WS? [ ident ] WS?
-zone_body
-“>>>” ;
-
-zone_body ::= { ~“>>>” } ;
+zone_comment ::= "<<<" WS? [ ident ] WS? zone_body ">>>" ;
+zone_body ::= { ~">>>" } ;
 
 <<< ——————————————————— ) ( Attributes ) ( ——————————————————— >>>
 
-attribute ::= “#[” ident “]” ;
+attribute ::= "#[" ident "]" ;
 
 <<< ——————————————————— ) ( Types ) ( ——————————————————— >>>
 
-type_decl ::= form_decl | pick_decl ;
+type_alias_decl ::= "type" WS1 ident type_params? WS? "=" WS? type_expr ;
 
-form_decl ::= “form” WS1 ident WS?
-{ field_decl WS? }
-“.end” ;
+form_decl ::= ("form" | "trait") WS1 ident type_params? WS?
+             ( "{" WS? field_list? WS? "}" | legacy_form ) ;
 
-field_decl ::= “field” WS1 ident WS1 “as” WS1 type_expr ;
+legacy_form ::= { field_decl WS? } ".end" ;
 
-pick_decl ::= “pick” WS1 ident WS?
-{ case_decl WS? }
-“.end” ;
+field_decl ::= "field" WS1 ident WS1 "as" WS1 type_expr ;
+field_list ::= field_item { WS? "," WS? field_item } ;
+field_item ::= ident WS? ":" WS? type_expr ;
 
-case_decl ::= “case” WS1 ident
-[ “(” WS? case_payload WS? “)” ] ;
+pick_decl ::= "pick" WS1 ident type_params? WS?
+             ( "{" WS? case_list? WS? "}" | legacy_pick ) ;
 
-case_payload ::= case_field { WS? “,” WS? case_field } ;
-case_field ::= ident WS1 “as” WS1 type_expr ;
+legacy_pick ::= { case_decl WS? } ".end" ;
+
+case_list ::= case_item { WS? "," WS? case_item } ;
+case_item ::= [ "case" WS1 ] ident [ "(" WS? case_payload WS? ")" ] ;
+
+case_decl ::= "case" WS1 ident [ "(" WS? case_payload WS? ")" ] ;
+case_payload ::= case_field { WS? "," WS? case_field } ;
+case_field ::= ident ( WS? ":" WS? type_expr | WS1 "as" WS1 type_expr ) ;
 
 <<< ——————————————————— ) ( Procedures ) ( ——————————————————— >>>
 
 proc_decl ::= { attribute WS? }
-“proc” WS1 ident
-“(” WS? param_list? WS? “)”
-WS?
-block ;
+             "proc" WS1 ident type_params?
+             "(" WS? param_list? WS? ")"
+             WS? [ "->" WS? type_expr ]
+             WS? block? ;
 
-param_list ::= param { WS? “,” WS? param } ;
-param ::= ident ;
+macro_decl ::= "macro" WS1 ident
+               "(" WS? param_names? WS? ")"
+               WS? block ;
+
+param_list ::= param { WS? "," WS? param } ;
+param ::= ident [ WS? ":" WS? type_expr ] ;
+param_names ::= ident { WS? "," WS? ident } ;
+
+type_params ::= "[" WS? ident_list WS? "]" ;
 
 <<< ——————————————————— ) ( Entry point ) ( ——————————————————— >>>
 
-entry_decl ::= “entry” WS1 ident
-WS1 “at” WS1 module_path
-WS?
-block ;
+entry_decl ::= "entry" WS1 ident WS1 "at" WS1 module_path WS? block ;
 
 <<< ——————————————————— ) ( Block ) ( ——————————————————— >>>
 
-block ::= block_short ;
-
-block_short ::= “{” WS? { stmt WS? } “}” ;
+block ::= "{" WS? { stmt WS? } "}" ;
 
 <<< ——————————————————— ) ( Statements ) ( ——————————————————— >>>
 
-stmt ::= make_stmt | set_stmt | give_stmt | emit_stmt | if_stmt | select_stmt | return_stmt | expr_stmt
-;
+stmt ::= let_stmt
+       | make_stmt
+       | set_stmt
+       | give_stmt
+       | emit_stmt
+       | if_stmt
+       | loop_stmt
+       | for_stmt
+       | break_stmt
+       | continue_stmt
+       | select_stmt
+       | when_match_stmt
+       | return_stmt
+       | expr_stmt
+       ;
 
-make_stmt ::= “make” WS1 ident
-[ WS1 “as” WS1 type_expr ]
-WS? “=” WS? expr ;
+let_stmt  ::= "let"  WS1 ident [ WS? ":" WS? type_expr ] WS? "=" WS? expr ;
+make_stmt ::= "make" WS1 ident [ WS1 "as" WS1 type_expr ] WS? "=" WS? expr ;
+set_stmt  ::= "set"  WS1 ident WS? "=" WS? expr ;
 
-set_stmt ::= “set” WS1 ident
-WS? “=” WS? expr ;
+give_stmt ::= "give" WS1 expr ;
+emit_stmt ::= "emit" WS1 expr ;
+return_stmt ::= "return" [ WS1 expr ] ;
 
-give_stmt ::= “give” WS1 expr ;
-emit_stmt ::= “emit” WS1 expr ;
-return_stmt ::= “return” [ WS1 expr ] ;
+if_stmt ::= "if" WS1 expr WS? block
+            [ WS? ("else" | "otherwise") WS? ( block | if_stmt ) ] ;
 
-if_stmt ::= “if” WS1 expr WS?
-block
-[ WS? “otherwise” WS?
-block ] ;
+loop_stmt ::= "loop" WS? block ;
+for_stmt ::= "for" WS1 ident WS1 "in" WS1 expr WS? block ;
 
-select_stmt ::= “select” WS1 expr WS?
-{ when_stmt WS? }
-[ WS? “otherwise” WS?
-block ] ;
+break_stmt ::= "break" ;
+continue_stmt ::= "continue" ;
 
-when_stmt ::= “when” WS1 pattern WS?
-block ;
+select_stmt ::= "select" WS1 expr WS?
+                { when_stmt WS? }
+                [ WS? ("else" | "otherwise") WS? block ] ;
+
+when_stmt ::= "when" WS1 pattern WS? block ;
+when_match_stmt ::= "when" WS1 expr WS1 "is" WS1 pattern WS? block ;
+
+expr_stmt ::= expr ;
 
 <<< ——————————————————— ) ( Expressions ) ( ——————————————————— >>>
 
-expr ::= unary_expr { WS? bin_op WS? unary_expr } ;
+expr ::= assign_expr ;
 
-unary_expr ::= “not” WS1 unary_expr | primary ;
+assign_expr ::= or_expr [ WS? "=" WS? assign_expr ] ;
 
-primary ::= literal | call_expr | call_no_paren | ctor_expr | ident | “(” WS? expr WS? “)”
-;
+or_expr  ::= and_expr { WS? ("or" | "||") WS? and_expr } ;
+and_expr ::= bit_or_expr { WS? ("and" | "&&") WS? bit_or_expr } ;
 
-call_no_paren ::= ident WS1 expr ;
+bit_or_expr  ::= bit_xor_expr { WS? "|" WS? bit_xor_expr } ;
+bit_xor_expr ::= bit_and_expr { WS? "^" WS? bit_and_expr } ;
+bit_and_expr ::= eq_expr { WS? "&" WS? eq_expr } ;
 
-call_expr ::= primary “(” WS? arg_list? WS? “)” ;
-arg_list ::= expr { WS? “,” WS? expr } ;
+eq_expr  ::= rel_expr { WS? ("==" | "!=") WS? rel_expr } ;
+rel_expr ::= shift_expr { WS? ("<" | "<=" | ">" | ">=") WS? shift_expr } ;
 
-ctor_expr ::= type_expr “(” WS? arg_list? WS? “)” ;
+shift_expr ::= add_expr { WS? ("<<" | ">>") WS? add_expr } ;
+add_expr ::= mul_expr { WS? ("+" | "-") WS? mul_expr } ;
+mul_expr ::= cast_expr { WS? ("*" | "/" | "%") WS? cast_expr } ;
 
-bin_op ::= “+” | “-” | “*” | “/” | “==” | “!=” | “<” | “<=” | “>” | “>=” | “and” | “or”
-;
+cast_expr ::= is_expr { WS? "as" WS? type_expr } ;
+is_expr ::= unary_expr { WS? "is" WS? pattern } ;
+
+unary_expr ::= ("not" | "!" | "-" | "&" | "*") WS? unary_expr | postfix_expr ;
+
+postfix_expr ::= primary { postfix } ;
+postfix ::= call_suffix | member_suffix | index_suffix ;
+call_suffix ::= "(" WS? arg_list? WS? ")" ;
+member_suffix ::= "." ( ident | "*" ) ;
+index_suffix ::= "[" WS? expr WS? "]" ;
+
+primary ::= literal
+          | if_expr
+          | proc_expr
+          | ident
+          | list_lit
+          | "(" WS? expr WS? ")"
+          ;
+
+if_expr ::= "if" WS1 expr WS? block [ WS? ("else" | "otherwise") WS? ( block | if_expr ) ] ;
+proc_expr ::= "proc" WS? "(" WS? param_list? WS? ")" WS? [ "->" WS? type_expr ] WS? block ;
+
+arg_list ::= expr { WS? "," WS? expr } ;
 
 <<< ——————————————————— ) ( Patterns ) ( ——————————————————— >>>
 
-pattern ::= ident | type_expr “(” WS? pattern_args? WS? “)” ;
+pattern ::= ident
+          | qualified_ident [ "(" WS? pattern_args? WS? ")" ]
+          ;
 
-pattern_args ::= pattern { WS? “,” WS? pattern } ;
+pattern_args ::= pattern { WS? "," WS? pattern } ;
+
+qualified_ident ::= ident { "." ident } ;
 
 <<< ——————————————————— ) ( Types ) ( ——————————————————— >>>
 
-type_expr ::= ident | ident “[” WS? type_expr { WS? “,” WS? type_expr } WS? “]” | “bool” | “string” | “int”
-;
+type_expr ::= pointer_type | slice_type | proc_type | type_primary ;
+
+pointer_type ::= "*" WS? type_expr ;
+slice_type ::= "[" WS? type_expr WS? "]" ;
+
+proc_type ::= "proc" WS? "(" WS? type_list? WS? ")" WS?
+              [ "->" WS? type_expr ] ;
+
+type_list ::= type_expr { WS? "," WS? type_expr } ;
+
+type_primary ::= qualified_ident [ "[" WS? type_list? WS? "]" ]
+               | "bool" | "string" | "int" ;
 
 <<< ——————————————————— ) ( Literals ) ( ——————————————————— >>>
 
-literal ::= bool_lit | int_lit | string_lit | list_lit ;
+literal ::= bool_lit | int_lit | float_lit | char_lit | string_lit | list_lit ;
 
-list_lit ::= “[” WS? arg_list? WS? “]” ;
+list_lit ::= "[" WS? arg_list? WS? "]" ;
 
-bool_lit ::= “true” | “false” ;
+bool_lit ::= "true" | "false" ;
 
-int_lit ::= [ “-” ] DIGIT { DIGIT }
-[ (“u8” | “u16” | “u32” | “u64” | “i8” | “i16” | “i32” | “i64”) ] ;
+int_lit ::= [ "-" ] DIGIT { DIGIT | "_" }
+            [ ("u8" | "u16" | "u32" | "u64" | "u128" | "usize" |
+               "i8" | "i16" | "i32" | "i64" | "i128" | "isize") ]
+          | "0x" HEXDIGIT { HEXDIGIT | "_" } ;
 
-string_lit ::= “"” { string_char } “"” | raw_string_lit ;
-string_char ::= “\"” | “\\” | ~“"” ;
-raw_string_lit ::= “"""” { raw_string_char } “"""” ;
-raw_string_char ::= ~“"""” ;
+float_lit ::= DIGIT { DIGIT | "_" } "." DIGIT { DIGIT | "_" } ;
+
+char_lit ::= "'" { char_char } "'" ;
+char_char ::= "\\" | ~"'" ;
+
+string_lit ::= "\"" { string_char } "\"" | raw_string_lit ;
+string_char ::= "\\\"" | "\\\\" | ~"\"" ;
+raw_string_lit ::= "\"\"\"" { raw_string_char } "\"\"\"" ;
+raw_string_char ::= ~"\"\"\"" ;
 
 <<< ——————————————————— ) ( Lexical ) ( ——————————————————— >>>
 
-ident ::= (LETTER | “_”)
-{ LETTER | DIGIT | “_” } ;
+ident ::= (LETTER | "_") { LETTER | DIGIT | "_" } ;
 
-WS ::= { “ ” | “\t” | NEWLINE } ;
-WS1 ::= ( “ ” | “\t” | NEWLINE )
-{ “ ” | “\t” | NEWLINE } ;
+WS ::= { " " | "\t" | NEWLINE } ;
+WS1 ::= ( " " | "\t" | NEWLINE ) { " " | "\t" | NEWLINE } ;
 
-NEWLINE ::= “\n” | “\r\n” ;
+NEWLINE ::= "\n" | "\r\n" ;
 
-LETTER ::= “a”…“z” | “A”…“Z” ;
-DIGIT ::= “0”…“9” ;
+LETTER ::= "a"…"z" | "A"…"Z" ;
+DIGIT ::= "0"…"9" ;
+HEXDIGIT ::= DIGIT | "a"…"f" | "A"…"F" ;

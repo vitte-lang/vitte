@@ -17,9 +17,29 @@ if [[ ${#files[@]} -eq 0 ]]; then
   exit 1
 fi
 
-for f in "${files[@]}"; do
-  echo "[parse-tests] $f"
-  "$BIN" --parse-only "$f"
-done
+if [[ "${STRICT_ONLY:-0}" -eq 0 ]]; then
+  for f in "${files[@]}"; do
+    if [[ "$(basename "$f")" == "strict_fail.vit" ]]; then
+      continue
+    fi
+    echo "[parse-tests] $f"
+  "$BIN" parse "$f"
+  done
+fi
+
+strict_ok="$ROOT_DIR/tests/strict_ok.vit"
+if [[ -f "$strict_ok" ]]; then
+  echo "[parse-tests] $strict_ok (strict)"
+  "$BIN" parse --strict-parse "$strict_ok"
+fi
+
+strict_fail="$ROOT_DIR/tests/strict_fail.vit"
+if [[ -f "$strict_fail" ]]; then
+  echo "[parse-tests] $strict_fail (strict expected failure)"
+  if "$BIN" parse --strict-parse "$strict_fail" >/dev/null 2>&1; then
+    echo "[parse-tests] ERROR: strict parse should have failed for $strict_fail" >&2
+    exit 1
+  fi
+fi
 
 echo "[parse-tests] OK"
