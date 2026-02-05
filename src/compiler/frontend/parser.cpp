@@ -4,6 +4,7 @@
 // ============================================================
 
 #include "parser.hpp"
+#include "diagnostics_messages.hpp"
 
 #include <functional>
 #include <utility>
@@ -106,7 +107,7 @@ DeclId Parser::parse_toplevel() {
             attrs.push_back(parse_attribute());
         }
         if (current_.kind != TokenKind::KwProc) {
-            diag_.error("expected proc after attribute", current_.span);
+            diag::error(diag_, diag::DiagId::ExpectedProcAfterAttribute, current_.span);
             return ast::kInvalidAstId;
         }
         return parse_proc_decl(std::move(attrs));
@@ -115,7 +116,7 @@ DeclId Parser::parse_toplevel() {
         return parse_entry_decl();
     }
 
-    diag_.error("expected top-level declaration", current_.span);
+    diag::error(diag_, diag::DiagId::ExpectedTopLevelDeclaration, current_.span);
     return ast::kInvalidAstId;
 }
 
@@ -144,7 +145,7 @@ ModulePath Parser::parse_module_path() {
 Ident Parser::parse_ident() {
     auto policy = strict_ ? KeywordPolicy::Strict : KeywordPolicy::Permissive;
     if (!is_identifier_token(current_.kind, policy)) {
-        diag_.error("expected identifier", current_.span);
+        diag::error(diag_, diag::DiagId::ExpectedIdentifier, current_.span);
         advance();
         return Ident("<error>", current_.span);
     }
@@ -319,7 +320,7 @@ DeclId Parser::parse_form_decl() {
         }
         expect(TokenKind::Dot, "expected '.end'");
         if (!(current_.kind == TokenKind::Ident && current_.text == "end")) {
-            diag_.error("expected 'end'", current_.span);
+            diag::error(diag_, diag::DiagId::ExpectedEnd, current_.span);
         } else {
             advance();
         }
@@ -367,7 +368,7 @@ DeclId Parser::parse_pick_decl() {
         }
         expect(TokenKind::Dot, "expected '.end'");
         if (!(current_.kind == TokenKind::Ident && current_.text == "end")) {
-            diag_.error("expected 'end'", current_.span);
+            diag::error(diag_, diag::DiagId::ExpectedEnd, current_.span);
         } else {
             advance();
         }
@@ -936,7 +937,8 @@ ExprId Parser::parse_primary() {
     if (!strict_ && is_type_keyword(current_.kind)) {
         Ident ident(current_.text, current_.span);
         advance();
-        return ast_ctx_.make<IdentExpr>(std::move(ident), ident.span);
+        auto base = ast_ctx_.make<IdentExpr>(std::move(ident), ident.span);
+        return parse_postfix_expr(base);
     }
 
     if (current_.kind == TokenKind::Ident) {
@@ -945,7 +947,7 @@ ExprId Parser::parse_primary() {
         return parse_postfix_expr(base);
     }
 
-    diag_.error("expected expression", current_.span);
+    diag::error(diag_, diag::DiagId::ExpectedExpression, current_.span);
     advance();
     return ast::kInvalidAstId;
 }
@@ -1107,7 +1109,7 @@ PatternId Parser::parse_pattern() {
         return ast_ctx_.make<IdentPattern>(std::move(ident), span);
     }
 
-    diag_.error("expected pattern", current_.span);
+    diag::error(diag_, diag::DiagId::ExpectedPattern, current_.span);
     advance();
     return ast::kInvalidAstId;
 }
@@ -1186,7 +1188,7 @@ TypeId Parser::parse_type_primary() {
     }
 
     if (current_.kind != TokenKind::Ident) {
-        diag_.error("expected type", current_.span);
+        diag::error(diag_, diag::DiagId::ExpectedType, current_.span);
         return ast::kInvalidAstId;
     }
 

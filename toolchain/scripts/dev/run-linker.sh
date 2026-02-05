@@ -48,7 +48,13 @@ run() {
 # ----------------------------
 cd "$ROOT_DIR"
 
-[ -x "$LINKER_BIN" ] || die "linker not found or not executable: $LINKER_BIN"
+if [ ! -x "$LINKER_BIN" ]; then
+  if [ -x "$ROOT_DIR/bin/vitte-linker" ]; then
+    LINKER_BIN="$ROOT_DIR/bin/vitte-linker"
+  else
+    die "linker not found or not executable: $LINKER_BIN"
+  fi
+fi
 [ -d "$OBJ_DIR" ] || die "object directory not found: $OBJ_DIR"
 
 mkdir -p "$OUT_DIR"

@@ -39,7 +39,12 @@ run_fix() {
 # ----------------------------
 # Pre-flight
 # ----------------------------
-need "$SHFMT"
+if command -v "$SHFMT" >/dev/null 2>&1; then
+  SHFMT_AVAILABLE=1
+else
+  SHFMT_AVAILABLE=0
+  log "shfmt not found — skipping shell formatting"
+fi
 # prettier / clang-format are optional; detect later
 
 cd "$ROOT_DIR"
@@ -54,14 +59,16 @@ esac
 # Shell scripts
 # ----------------------------
 log "shell formatting"
-SHELL_FILES=$(git ls-files "*.sh" || true)
-if [ -n "$SHELL_FILES" ]; then
-  if [ "$MODE" = "check" ]; then
-    echo "$SHELL_FILES" | xargs -r -n 50 -P "$JOBS" \
-      "$SHFMT" -d -i 2 -ci || die "shell format check failed"
-  else
-    echo "$SHELL_FILES" | xargs -r -n 50 -P "$JOBS" \
-      "$SHFMT" -w -i 2 -ci
+if [ "$SHFMT_AVAILABLE" -eq 1 ]; then
+  SHELL_FILES=$(git ls-files "*.sh" || true)
+  if [ -n "$SHELL_FILES" ]; then
+    if [ "$MODE" = "check" ]; then
+      echo "$SHELL_FILES" | xargs -r -n 50 -P "$JOBS" \
+        "$SHFMT" -d -i 2 -ci || die "shell format check failed"
+    else
+      echo "$SHELL_FILES" | xargs -r -n 50 -P "$JOBS" \
+        "$SHFMT" -w -i 2 -ci
+    fi
   fi
 fi
 

@@ -43,6 +43,12 @@ struct Options {
     /* Input / output */
     std::string input;
     std::string output = "a.out";
+
+    /* Runtime include path */
+    std::string runtime_include;
+
+    /* Localization */
+    std::string lang;
 };
 
 /* -------------------------------------------------

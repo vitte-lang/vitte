@@ -92,7 +92,7 @@ copy_if_exists "$BUILD_DIR/dist"     "$PKG_DIR/dist"
 # ----------------------------
 ARCHIVE="$ARTIFACTS_DIR/vitte-artifacts-$STAMP-$HOST.tar.gz"
 log "creating archive: $(basename "$ARCHIVE")"
-tar -czf "$ARCHIVE" -C "$ARTIFACTS_DIR" .
+tar -czf "$ARCHIVE" --exclude="$(basename "$ARCHIVE")" -C "$ARTIFACTS_DIR" .
 
 log "done"
 echo "$ARCHIVE"

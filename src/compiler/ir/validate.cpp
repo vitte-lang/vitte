@@ -4,11 +4,13 @@
 // ============================================================
 
 #include "validate.hpp"
+#include "../frontend/diagnostics_messages.hpp"
 
 namespace vitte::ir::validate {
 
 using vitte::frontend::diag::DiagnosticEngine;
 using vitte::frontend::ast::SourceSpan;
+namespace fdiag = vitte::frontend::diag;
 
 static void error_invalid(DiagnosticEngine& diagnostics, const char* what, SourceSpan span) {
     diagnostics.error(std::string("invalid HIR ") + what, span);
@@ -56,7 +58,7 @@ static void validate_type(const HirContext& ctx,
         case HirKind::GenericType: {
             const auto& t = ctx.get<HirGenericType>(type);
             if (t.type_args.empty()) {
-                diagnostics.error("generic type requires at least one type argument", t.span);
+                fdiag::error(diagnostics, fdiag::DiagId::GenericTypeRequiresAtLeastOneTypeArgument, t.span);
             }
             for (auto arg : t.type_args) {
                 validate_type(ctx, arg, diagnostics, t.span, true);
@@ -64,7 +66,7 @@ static void validate_type(const HirContext& ctx,
             return;
         }
         default:
-            diagnostics.error("unexpected HIR type kind", node.span);
+            fdiag::error(diagnostics, fdiag::DiagId::UnexpectedHirTypeKind, node.span);
             return;
     }
 }
@@ -105,7 +107,7 @@ static void validate_expr(const HirContext& ctx,
             return;
         }
         default:
-            diagnostics.error("unexpected HIR expr kind", node.span);
+            fdiag::error(diagnostics, fdiag::DiagId::UnexpectedHirExprKind, node.span);
             return;
     }
 }
@@ -163,7 +165,7 @@ static void validate_stmt(const HirContext& ctx,
             const auto& s = ctx.get<HirSelect>(stmt);
             validate_expr(ctx, s.expr, diagnostics, s.span, true);
             if (s.whens.empty()) {
-                diagnostics.error("select requires at least one when branch", s.span);
+                fdiag::error(diagnostics, fdiag::DiagId::SelectRequiresAtLeastOneWhenBranch, s.span);
             }
             for (auto w_id : s.whens) {
                 if (w_id == kInvalidHirId) {
@@ -172,7 +174,7 @@ static void validate_stmt(const HirContext& ctx,
                 }
                 const auto& w_node = ctx.node(w_id);
                 if (w_node.kind != HirKind::WhenStmt) {
-                    diagnostics.error("select branch must be a when statement", w_node.span);
+                    fdiag::error(diagnostics, fdiag::DiagId::SelectBranchMustBeWhenStatement, w_node.span);
                 }
                 validate_stmt(ctx, w_id, diagnostics, s.span, true);
             }
@@ -180,7 +182,7 @@ static void validate_stmt(const HirContext& ctx,
             return;
         }
         default:
-            diagnostics.error("unexpected HIR stmt kind", node.span);
+            fdiag::error(diagnostics, fdiag::DiagId::UnexpectedHirStmtKind, node.span);
             return;
     }
 }
@@ -208,7 +210,7 @@ static void validate_pattern(const HirContext& ctx,
             return;
         }
         default:
-            diagnostics.error("unexpected HIR pattern kind", node.span);
+            fdiag::error(diagnostics, fdiag::DiagId::UnexpectedHirPatternKind, node.span);
             return;
     }
 }
@@ -228,7 +230,7 @@ void validate_module(const HirContext& ctx,
         }
         const auto& decl = ctx.node(decl_id);
         if (decl.kind != HirKind::FnDecl) {
-            diagnostics.error("unexpected HIR decl kind", decl.span);
+            fdiag::error(diagnostics, fdiag::DiagId::UnexpectedHirDeclKind, decl.span);
             continue;
         }
         const auto& fn = ctx.get<HirFnDecl>(decl_id);

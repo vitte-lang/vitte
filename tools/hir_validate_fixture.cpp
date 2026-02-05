@@ -37,8 +37,8 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    vitte::frontend::Lexer lexer(source);
-    DiagnosticEngine diagnostics;
+    vitte::frontend::Lexer lexer(source, path);
+    DiagnosticEngine diagnostics(std::string{});
     vitte::frontend::ast::AstContext ast_ctx;
     vitte::frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, false);
     auto module = parser.parse_module();

@@ -1,4 +1,5 @@
 #include "lower_hir.hpp"
+#include "diagnostics_messages.hpp"
 
 namespace vitte::frontend::lower {
 
@@ -97,7 +98,7 @@ static ir::HirExprId lower_invoke(
     }
 
     if (callee == ir::kInvalidHirId) {
-        diagnostics.error("invoke has no callee", inv.span);
+        diag::error(diagnostics, diag::DiagId::InvokeHasNoCallee, inv.span);
         callee = hir_ctx.make<ir::HirVarExpr>("<error>", inv.span);
     }
 
@@ -187,7 +188,7 @@ static ir::HirExprId lower_expr(
             return hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), e.span);
         }
         default:
-            diagnostics.error("unsupported expression in HIR", node.span);
+            diag::error(diagnostics, diag::DiagId::UnsupportedExpressionInHir, node.span);
             return ir::kInvalidHirId;
     }
 }
@@ -243,7 +244,7 @@ static ir::HirPatternId lower_pattern(
                 p.span);
         }
         default:
-            diagnostics.error("unsupported pattern in HIR", node.span);
+            diag::error(diagnostics, diag::DiagId::UnsupportedPatternInHir, node.span);
             return ir::kInvalidHirId;
     }
 }
@@ -378,7 +379,7 @@ static ir::HirStmtId lower_stmt(
                 w.span);
         }
         default:
-            diagnostics.error("unsupported statement in HIR", node.span);
+            diag::error(diagnostics, diag::DiagId::UnsupportedStatementInHir, node.span);
             return ir::kInvalidHirId;
     }
 }

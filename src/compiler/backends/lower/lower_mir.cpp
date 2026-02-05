@@ -76,6 +76,12 @@ static std::unique_ptr<CppStmt> lower_instr(
         );
     }
 
+    case MirInstr::Kind::PrintI32: {
+        auto call = std::make_unique<CppCall>("vitte::runtime::print_i32");
+        call->args.push_back(lower_value(ins.lhs));
+        return std::make_unique<CppExprStmt>(std::move(call));
+    }
+
     case MirInstr::Kind::Return: {
         return std::make_unique<CppReturn>(
             lower_value(ins.dst)
@@ -122,10 +128,30 @@ CppTranslationUnit lower_mir(
 
     ctx.add_include("<cstdint>");
 
+    bool has_entry = false;
+    std::string entry_mangled;
+
     for (const auto& f : functions) {
         tu.functions.push_back(
             lower_mir_function(f, ctx)
         );
+        if (f.name == "main") {
+            has_entry = true;
+            entry_mangled = ctx.mangle(f.name);
+        }
+    }
+
+    if (has_entry) {
+        CppFunction wrapper;
+        wrapper.name = "main";
+        wrapper.return_type = builtin_i32(ctx);
+
+        auto call = std::make_unique<CppCall>(entry_mangled);
+        wrapper.body.push_back(
+            std::make_unique<CppReturn>(std::move(call))
+        );
+
+        tu.functions.push_back(std::move(wrapper));
     }
 
     return tu;

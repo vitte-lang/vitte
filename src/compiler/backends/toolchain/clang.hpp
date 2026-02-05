@@ -26,6 +26,9 @@ struct ClangOptions {
 
     /* Linked libraries (without lib / extension) */
     std::vector<std::string> libraries;
+
+    /* Additional source files */
+    std::vector<std::string> extra_sources;
 };
 
 /* -------------------------------------------------

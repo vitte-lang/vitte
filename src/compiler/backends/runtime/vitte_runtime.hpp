@@ -1,5 +1,6 @@
 #pragma once
 #include <cstddef>
+#include <cstdint>
 
 namespace vitte::runtime {
 
@@ -23,6 +24,9 @@ void panic(const char* msg);
 
 /* Runtime assertion helper (used by lowered MIR) */
 void assert_true(bool cond, const char* msg);
+
+/* Simple printing helpers (temporary) */
+void print_i32(int32_t value);
 
 /* -------------------------------------------------
  * Control flow helpers

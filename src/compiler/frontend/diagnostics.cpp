@@ -5,8 +5,13 @@
 
 #include "diagnostics.hpp"
 
+#include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <cstddef>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -38,6 +43,17 @@ Diagnostic::Diagnostic(
     std::string msg,
     SourceSpan sp)
     : severity(sev),
+      code(),
+      message(std::move(msg)),
+      span(sp) {}
+
+Diagnostic::Diagnostic(
+    Severity sev,
+    std::string code,
+    std::string msg,
+    SourceSpan sp)
+    : severity(sev),
+      code(std::move(code)),
       message(std::move(msg)),
       span(sp) {}
 
@@ -46,14 +62,151 @@ void Diagnostic::add_note(std::string msg) {
 }
 
 // ------------------------------------------------------------
+// Localization
+// ------------------------------------------------------------
+
+static std::string normalize_lang(std::string lang) {
+    if (lang.empty()) {
+        return lang;
+    }
+    std::string out;
+    for (char c : lang) {
+        if (c == '.' || c == '@') {
+            break;
+        }
+        out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+    return out;
+}
+
+static std::string lang_primary(std::string lang) {
+    auto pos = lang.find('_');
+    if (pos == std::string::npos) {
+        pos = lang.find('-');
+    }
+    if (pos == std::string::npos) {
+        return lang;
+    }
+    return lang.substr(0, pos);
+}
+
+static std::string message_key(std::string_view message) {
+    std::string key;
+    bool prev_underscore = false;
+    for (char c : message) {
+        unsigned char uc = static_cast<unsigned char>(c);
+        if (std::isalnum(uc)) {
+            key.push_back(static_cast<char>(std::tolower(uc)));
+            prev_underscore = false;
+        } else if (!prev_underscore) {
+            key.push_back('_');
+            prev_underscore = true;
+        }
+    }
+    while (!key.empty() && key.front() == '_') {
+        key.erase(key.begin());
+    }
+    while (!key.empty() && key.back() == '_') {
+        key.pop_back();
+    }
+    return key;
+}
+
+bool Localization::load(const std::string& base_dir, const std::string& lang) {
+    namespace fs = std::filesystem;
+    std::string norm = normalize_lang(lang);
+    std::string primary = lang_primary(norm);
+    std::vector<std::string> candidates;
+    if (!norm.empty()) {
+        candidates.push_back(norm);
+    }
+    if (primary != norm && !primary.empty()) {
+        candidates.push_back(primary);
+    }
+
+    for (const auto& code : candidates) {
+        fs::path path = fs::path(base_dir) / code / "diagnostics.ftl";
+        std::ifstream in(path);
+        if (!in.is_open()) {
+            continue;
+        }
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.empty()) {
+                continue;
+            }
+            if (line[0] == '#') {
+                continue;
+            }
+            auto eq = line.find('=');
+            if (eq == std::string::npos) {
+                continue;
+            }
+            auto key = line.substr(0, eq);
+            auto value = line.substr(eq + 1);
+            auto ltrim = [](std::string& s) {
+                auto it = std::find_if_not(s.begin(), s.end(), ::isspace);
+                s.erase(s.begin(), it);
+            };
+            auto rtrim = [](std::string& s) {
+                auto it = std::find_if_not(s.rbegin(), s.rend(), ::isspace);
+                s.erase(it.base(), s.end());
+            };
+            ltrim(key);
+            rtrim(key);
+            ltrim(value);
+            rtrim(value);
+            if (!key.empty() && !value.empty()) {
+                table_[key] = value;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+std::string Localization::translate(std::string_view code, std::string_view message) const {
+    if (table_.empty()) {
+        return std::string(message);
+    }
+    if (!code.empty()) {
+        auto it_code = table_.find(std::string(code));
+        if (it_code != table_.end()) {
+            return it_code->second;
+        }
+    }
+    std::string key = message_key(message);
+    auto it = table_.find(key);
+    if (it == table_.end()) {
+        return std::string(message);
+    }
+    return it->second;
+}
+
+// ------------------------------------------------------------
 // DiagnosticEngine
 // ------------------------------------------------------------
 
-DiagnosticEngine::DiagnosticEngine()
+DiagnosticEngine::DiagnosticEngine(std::string lang)
     : error_count_(0),
-      warning_count_(0) {}
+      warning_count_(0) {
+    if (lang.empty()) {
+        const char* env = std::getenv("LANG");
+        if (!env || !*env) {
+            env = std::getenv("LC_ALL");
+        }
+        if (env && *env) {
+            lang = env;
+        }
+    }
+    if (lang.empty()) {
+        lang = "en";
+    }
+    localization_.load("locales", lang);
+}
 
 void DiagnosticEngine::emit(Diagnostic d) {
+    d.message = localization_.translate(d.code, d.message);
     switch (d.severity) {
         case Severity::Warning:
             ++warning_count_;
@@ -96,7 +249,8 @@ static void render_location(
         return;
     }
 
-    os << span.file->path
+    std::filesystem::path path(span.file->path);
+    os << path.filename().string()
        << ":" << span.start
        << ":" << span.end;
 }
@@ -123,7 +277,11 @@ static void render_snippet(
 // ------------------------------------------------------------
 
 void render(const Diagnostic& d, std::ostream& os) {
-    os << to_string(d.severity) << ": " << d.message;
+    os << to_string(d.severity);
+    if (!d.code.empty()) {
+        os << "[" << d.code << "]";
+    }
+    os << ": " << d.message;
 
     if (d.span.is_valid()) {
         os << "\n  --> ";
@@ -187,6 +345,54 @@ void DiagnosticEngine::fatal(
 {
     emit(Diagnostic(
         Severity::Fatal,
+        std::move(msg),
+        sp));
+}
+
+void DiagnosticEngine::note_code(
+    std::string code,
+    std::string msg,
+    SourceSpan sp)
+{
+    emit(Diagnostic(
+        Severity::Note,
+        std::move(code),
+        std::move(msg),
+        sp));
+}
+
+void DiagnosticEngine::warning_code(
+    std::string code,
+    std::string msg,
+    SourceSpan sp)
+{
+    emit(Diagnostic(
+        Severity::Warning,
+        std::move(code),
+        std::move(msg),
+        sp));
+}
+
+void DiagnosticEngine::error_code(
+    std::string code,
+    std::string msg,
+    SourceSpan sp)
+{
+    emit(Diagnostic(
+        Severity::Error,
+        std::move(code),
+        std::move(msg),
+        sp));
+}
+
+void DiagnosticEngine::fatal_code(
+    std::string code,
+    std::string msg,
+    SourceSpan sp)
+{
+    emit(Diagnostic(
+        Severity::Fatal,
+        std::move(code),
         std::move(msg),
         sp));
 }

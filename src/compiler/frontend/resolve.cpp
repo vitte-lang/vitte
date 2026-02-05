@@ -1,4 +1,5 @@
 #include "resolve.hpp"
+#include "diagnostics_messages.hpp"
 
 namespace vitte::frontend::resolve {
 
@@ -92,7 +93,7 @@ types::TypeId Resolver::resolve_type(ast::AstContext& ctx, ast::TypeId type) {
             auto& t = static_cast<const NamedType&>(node);
             auto id = types_.lookup(t.ident.name);
             if (id == static_cast<types::TypeId>(-1)) {
-                diag_.error("unknown type", t.ident.span);
+                diag::error(diag_, diag::DiagId::UnknownType, t.ident.span);
             }
             resolved_types_[type] = id;
             return id;
@@ -101,10 +102,10 @@ types::TypeId Resolver::resolve_type(ast::AstContext& ctx, ast::TypeId type) {
             auto& t = static_cast<const GenericType&>(node);
             auto id = types_.lookup(t.base_ident.name);
             if (id == static_cast<types::TypeId>(-1)) {
-                diag_.error("unknown generic base type", t.base_ident.span);
+                diag::error(diag_, diag::DiagId::UnknownGenericBaseType, t.base_ident.span);
             }
             if (t.type_args.empty()) {
-                diag_.error("generic type requires at least one argument", t.base_ident.span);
+                diag::error(diag_, diag::DiagId::GenericTypeRequiresAtLeastOneArgument, t.base_ident.span);
             }
             for (auto arg : t.type_args) {
                 resolve_type(ctx, arg);
@@ -134,7 +135,7 @@ types::TypeId Resolver::resolve_type(ast::AstContext& ctx, ast::TypeId type) {
             return static_cast<types::TypeId>(-1);
         }
         default:
-            diag_.error("unsupported type", node.span);
+            diag::error(diag_, diag::DiagId::UnsupportedType, node.span);
             return static_cast<types::TypeId>(-1);
     }
 }
@@ -260,7 +261,7 @@ void Resolver::resolve_stmt(ast::AstContext& ctx, ast::StmtId stmt_id) {
         case NodeKind::SetStmt: {
             auto& s = static_cast<SetStmt&>(stmt);
             if (!symbols_.lookup(s.ident.name)) {
-                diag_.error("unknown identifier", s.ident.span);
+                diag::error(diag_, diag::DiagId::UnknownIdentifier, s.ident.span);
             }
             resolve_expr(ctx, s.value);
             break;
@@ -337,7 +338,7 @@ void Resolver::resolve_stmt(ast::AstContext& ctx, ast::StmtId stmt_id) {
                         case NodeKind::IdentPattern: {
                             auto& ip = static_cast<const IdentPattern&>(pnode);
                             if (seen.find(ip.ident.name) != seen.end()) {
-                                diag_.error("duplicate pattern binding", ip.ident.span);
+                                diag::error(diag_, diag::DiagId::DuplicatePatternBinding, ip.ident.span);
                             } else {
                                 seen[ip.ident.name] = true;
                                 symbols_.define({ip.ident.name, SymbolKind::Var, ip.ident.span});
@@ -383,7 +384,7 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
         case NodeKind::IdentExpr: {
             auto& e = static_cast<IdentExpr&>(expr);
             if (!symbols_.lookup(e.ident.name)) {
-                diag_.error("unknown identifier", e.ident.span);
+                diag::error(diag_, diag::DiagId::UnknownIdentifier, e.ident.span);
             }
             break;
         }
@@ -454,7 +455,7 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
         case NodeKind::CallNoParenExpr: {
             auto& e = static_cast<CallNoParenExpr&>(expr);
             if (!symbols_.lookup(e.callee.name)) {
-                diag_.error("unknown identifier", e.callee.span);
+                diag::error(diag_, diag::DiagId::UnknownIdentifier, e.callee.span);
             }
             resolve_expr(ctx, e.arg);
             break;

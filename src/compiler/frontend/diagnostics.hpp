@@ -9,6 +9,7 @@
 #include <ostream>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 #include "ast.hpp"
 
@@ -35,12 +36,19 @@ const char* to_string(Severity severity);
 
 struct Diagnostic {
     Severity severity;
+    std::string code;
     std::string message;
     SourceSpan span;
     std::vector<std::string> notes;
 
     Diagnostic(
         Severity severity,
+        std::string message,
+        SourceSpan span);
+
+    Diagnostic(
+        Severity severity,
+        std::string code,
         std::string message,
         SourceSpan span);
 
@@ -51,9 +59,20 @@ struct Diagnostic {
 // Diagnostic engine
 // ------------------------------------------------------------
 
+class Localization {
+public:
+    Localization() = default;
+
+    bool load(const std::string& base_dir, const std::string& lang);
+    std::string translate(std::string_view code, std::string_view message) const;
+
+private:
+    std::unordered_map<std::string, std::string> table_;
+};
+
 class DiagnosticEngine {
 public:
-    DiagnosticEngine();
+    explicit DiagnosticEngine(std::string lang = "");
 
     // emission
     void emit(Diagnostic diagnostic);
@@ -63,6 +82,11 @@ public:
     void error(std::string message, SourceSpan span);
     void fatal(std::string message, SourceSpan span);
 
+    void note_code(std::string code, std::string message, SourceSpan span);
+    void warning_code(std::string code, std::string message, SourceSpan span);
+    void error_code(std::string code, std::string message, SourceSpan span);
+    void fatal_code(std::string code, std::string message, SourceSpan span);
+
     // state
     bool has_errors() const;
     std::size_t error_count() const;
@@ -71,6 +95,7 @@ public:
     const std::vector<Diagnostic>& all() const;
 
 private:
+    Localization localization_;
     std::vector<Diagnostic> diagnostics_;
     std::size_t error_count_;
     std::size_t warning_count_;

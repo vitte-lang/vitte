@@ -1,5 +1,7 @@
 #include "vitte_runtime.hpp"
 
+#include <cstdio>
+
 #include <cstdlib>
 #include <cstdio>
 #include <exception>
@@ -62,6 +64,10 @@ void unreachable() {
 
 void terminate() {
     panic("terminate called");
+}
+
+void print_i32(int32_t value) {
+    std::printf("%d\n", value);
 }
 
 } // namespace vitte::runtime

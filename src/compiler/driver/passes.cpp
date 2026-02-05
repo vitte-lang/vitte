@@ -39,8 +39,8 @@ PassResult run_passes(const Options& opts) {
         return result;
     }
 
-    frontend::Lexer lexer(source);
-    frontend::diag::DiagnosticEngine diagnostics;
+    frontend::Lexer lexer(source, opts.input);
+    frontend::diag::DiagnosticEngine diagnostics(opts.lang);
     frontend::ast::AstContext ast_ctx;
     frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse);
     auto module = parser.parse_module();

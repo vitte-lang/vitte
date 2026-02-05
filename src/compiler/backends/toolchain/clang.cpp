@@ -56,7 +56,10 @@ bool invoke_clang(
     /* ---------------------------------------------
      * Input / output
      * --------------------------------------------- */
-    cmd << input_cpp << " -o " << output;
+    cmd << input_cpp << " ";
+    for (const auto& src : opts.extra_sources)
+        cmd << src << " ";
+    cmd << "-o " << output;
 
     const std::string command = cmd.str();
 

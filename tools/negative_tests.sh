@@ -26,6 +26,9 @@ for src in "${files[@]}"; do
   if [ -f "$flags_file" ]; then
     flags="$(cat "$flags_file")"
   fi
+  if [[ "$flags" != *"--lang"* ]]; then
+    flags="--lang=en $flags"
+  fi
   out="$("$BIN" parse $flags "$src" 2>&1 >/dev/null || true)"
 
   if [ -z "$out" ]; then

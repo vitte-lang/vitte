@@ -18,10 +18,10 @@ VERSION="${VERSION:-0.0.0}"
 OS="${OS:-$(uname -s | tr '[:upper:]' '[:lower:]')}"
 ARCH="${ARCH:-$(uname -m)}"
 
-INCLUDE_BINS="${INCLUDE_BINS:-1}"      # 1|0
-INCLUDE_LIBS="${INCLUDE_LIBS:-1}"      # 1|0
-INCLUDE_HEADERS="${INCLUDE_HEADERS:-0}"# 1|0
-INCLUDE_SHARE="${INCLUDE_SHARE:-1}"    # 1|0
+INCLUDE_BINS="${INCLUDE_BINS:-1}"       # 1|0
+INCLUDE_LIBS="${INCLUDE_LIBS:-1}"       # 1|0
+INCLUDE_HEADERS="${INCLUDE_HEADERS:-0}" # 1|0
+INCLUDE_SHARE="${INCLUDE_SHARE:-1}"     # 1|0
 
 STRIP_BIN="${STRIP_BIN:-0}"             # 1|0 (if strip available)
 VERBOSE="${VERBOSE:-0}"

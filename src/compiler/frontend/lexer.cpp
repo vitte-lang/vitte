@@ -5,17 +5,18 @@
 
 namespace vitte::frontend {
 
-static ast::SourceSpan make_span(std::size_t start, std::size_t end) {
-    return ast::SourceSpan(nullptr, start, end);
+static ast::SourceSpan make_span(const ast::SourceFile* file, std::size_t start, std::size_t end) {
+    return ast::SourceSpan(file, start, end);
 }
 
 static Token make_token(
     TokenKind kind,
     std::string text,
+    const ast::SourceFile* file,
     std::size_t start,
     std::size_t end)
 {
-    return Token{kind, std::move(text), make_span(start, end)};
+    return Token{kind, std::move(text), make_span(file, start, end)};
 }
 
 static bool is_ident_start(char c) {
@@ -95,12 +96,20 @@ static TokenKind keyword_kind(const std::string& ident) {
     return TokenKind::Ident;
 }
 
-Lexer::Lexer(const std::string& source)
-    : source_(source) {}
+Lexer::Lexer(const std::string& source, std::string path)
+    : source_(source) {
+    source_file_.path = std::move(path);
+    source_file_.content = source_;
+}
 
 Token Lexer::next() {
     auto eof = [&]() {
         return index_ >= source_.size();
+    };
+
+    const ast::SourceFile* file = &source_file_;
+    auto make = [&](TokenKind kind, std::string text, std::size_t start, std::size_t end) {
+        return make_token(kind, std::move(text), file, start, end);
     };
 
     auto peek = [&](std::size_t offset = 0) {
@@ -139,7 +148,7 @@ Token Lexer::next() {
     }
 
     if (eof()) {
-        return make_token(TokenKind::Eof, "", index_, index_);
+        return make(TokenKind::Eof, "", index_, index_);
     }
 
     std::size_t start = index_;
@@ -151,7 +160,7 @@ Token Lexer::next() {
             ident.push_back(advance());
         }
         TokenKind kind = keyword_kind(ident);
-        return make_token(kind, ident, start, index_);
+        return make(kind, ident, start, index_);
     }
 
     auto read_number = [&](char first, bool negative) -> Token {
@@ -170,7 +179,7 @@ Token Lexer::next() {
         if (first == '0' && (peek() == 'x' || peek() == 'X')) {
             num.push_back(advance());
             read_digits(is_hex_digit);
-            return make_token(TokenKind::IntLit, num, start, index_);
+            return make(TokenKind::IntLit, num, start, index_);
         }
 
         read_digits(is_digit);
@@ -178,13 +187,13 @@ Token Lexer::next() {
         if (peek() == '.' && is_digit(peek(1))) {
             num.push_back(advance());
             read_digits(is_digit);
-            return make_token(TokenKind::FloatLit, num, start, index_);
+            return make(TokenKind::FloatLit, num, start, index_);
         }
 
         while (!eof() && is_suffix_start(peek())) {
             num.push_back(advance());
         }
-        return make_token(TokenKind::IntLit, num, start, index_);
+        return make(TokenKind::IntLit, num, start, index_);
     };
 
     if (c == '-' && is_digit(peek())) {
@@ -209,7 +218,7 @@ Token Lexer::next() {
         if (!eof()) {
             advance();
         }
-        return make_token(TokenKind::CharLit, value, start, index_);
+        return make(TokenKind::CharLit, value, start, index_);
     }
 
     if (c == '"') {
@@ -223,7 +232,7 @@ Token Lexer::next() {
                 }
                 value.push_back(advance());
             }
-            return make_token(TokenKind::StringLit, value, start, index_);
+            return make(TokenKind::StringLit, value, start, index_);
         }
 
         std::string value;
@@ -239,103 +248,103 @@ Token Lexer::next() {
         if (!eof()) {
             advance();
         }
-        return make_token(TokenKind::StringLit, value, start, index_);
+        return make(TokenKind::StringLit, value, start, index_);
     }
 
     switch (c) {
         case '#':
             if (peek() == '[') {
                 advance();
-                return make_token(TokenKind::AttrStart, "#[", start, index_);
+                return make(TokenKind::AttrStart, "#[", start, index_);
             }
             break;
         case '(':
-            return make_token(TokenKind::LParen, "(", start, index_);
+            return make(TokenKind::LParen, "(", start, index_);
         case ')':
-            return make_token(TokenKind::RParen, ")", start, index_);
+            return make(TokenKind::RParen, ")", start, index_);
         case '{':
-            return make_token(TokenKind::LBrace, "{", start, index_);
+            return make(TokenKind::LBrace, "{", start, index_);
         case '}':
-            return make_token(TokenKind::RBrace, "}", start, index_);
+            return make(TokenKind::RBrace, "}", start, index_);
         case '[':
-            return make_token(TokenKind::LBracket, "[", start, index_);
+            return make(TokenKind::LBracket, "[", start, index_);
         case ']':
-            return make_token(TokenKind::RBracket, "]", start, index_);
+            return make(TokenKind::RBracket, "]", start, index_);
         case ',':
-            return make_token(TokenKind::Comma, ",", start, index_);
+            return make(TokenKind::Comma, ",", start, index_);
         case ':':
-            return make_token(TokenKind::Colon, ":", start, index_);
+            return make(TokenKind::Colon, ":", start, index_);
         case '.':
-            return make_token(TokenKind::Dot, ".", start, index_);
+            return make(TokenKind::Dot, ".", start, index_);
         case '/':
-            return make_token(TokenKind::Slash, "/", start, index_);
+            return make(TokenKind::Slash, "/", start, index_);
         case '+':
-            return make_token(TokenKind::Plus, "+", start, index_);
+            return make(TokenKind::Plus, "+", start, index_);
         case '-':
             if (peek() == '>') {
                 advance();
-                return make_token(TokenKind::Arrow, "->", start, index_);
+                return make(TokenKind::Arrow, "->", start, index_);
             }
-            return make_token(TokenKind::Minus, "-", start, index_);
+            return make(TokenKind::Minus, "-", start, index_);
         case '*':
-            return make_token(TokenKind::Star, "*", start, index_);
+            return make(TokenKind::Star, "*", start, index_);
         case '%':
-            return make_token(TokenKind::Percent, "%", start, index_);
+            return make(TokenKind::Percent, "%", start, index_);
         case '&':
             if (peek() == '&') {
                 advance();
-                return make_token(TokenKind::AmpAmp, "&&", start, index_);
+                return make(TokenKind::AmpAmp, "&&", start, index_);
             }
-            return make_token(TokenKind::Amp, "&", start, index_);
+            return make(TokenKind::Amp, "&", start, index_);
         case '|':
             if (peek() == '|') {
                 advance();
-                return make_token(TokenKind::PipePipe, "||", start, index_);
+                return make(TokenKind::PipePipe, "||", start, index_);
             }
-            return make_token(TokenKind::Pipe, "|", start, index_);
+            return make(TokenKind::Pipe, "|", start, index_);
         case '^':
-            return make_token(TokenKind::Caret, "^", start, index_);
+            return make(TokenKind::Caret, "^", start, index_);
         case '=':
             if (peek() == '=') {
                 advance();
-                return make_token(TokenKind::EqEq, "==", start, index_);
+                return make(TokenKind::EqEq, "==", start, index_);
             }
-            return make_token(TokenKind::Equal, "=", start, index_);
+            return make(TokenKind::Equal, "=", start, index_);
         case '!':
             if (peek() == '=') {
                 advance();
-                return make_token(TokenKind::NotEq, "!=", start, index_);
+                return make(TokenKind::NotEq, "!=", start, index_);
             }
-            return make_token(TokenKind::Bang, "!", start, index_);
+            return make(TokenKind::Bang, "!", start, index_);
         case '<':
             if (peek() == '=') {
                 advance();
-                return make_token(TokenKind::Le, "<=", start, index_);
+                return make(TokenKind::Le, "<=", start, index_);
             }
             if (peek() == '<') {
                 advance();
-                return make_token(TokenKind::Shl, "<<", start, index_);
+                return make(TokenKind::Shl, "<<", start, index_);
             }
-            return make_token(TokenKind::Lt, "<", start, index_);
+            return make(TokenKind::Lt, "<", start, index_);
         case '>':
             if (peek() == '=') {
                 advance();
-                return make_token(TokenKind::Ge, ">=", start, index_);
+                return make(TokenKind::Ge, ">=", start, index_);
             }
             if (peek() == '>') {
                 advance();
-                return make_token(TokenKind::Shr, ">>", start, index_);
+                return make(TokenKind::Shr, ">>", start, index_);
             }
-            return make_token(TokenKind::Gt, ">", start, index_);
+            return make(TokenKind::Gt, ">", start, index_);
         default:
             break;
     }
 
-    return make_token(TokenKind::Eof, "", index_, index_);
+    return make(TokenKind::Eof, "", index_, index_);
 }
 
 std::vector<Token> lex(const std::string& source) {
-    Lexer lexer(source);
+    Lexer lexer(source, "<input>");
     std::vector<Token> tokens;
     while (true) {
         Token tok = lexer.next();

@@ -4,6 +4,7 @@
 // ============================================================
 
 #include "validate.hpp"
+#include "diagnostics_messages.hpp"
 
 #include <unordered_map>
 
@@ -46,10 +47,10 @@ static void validate_proc(const ProcDecl& proc, diag::DiagnosticEngine& diagnost
     bool has_body = proc.body != ast::kInvalidAstId;
 
     if (is_extern && has_body) {
-        diagnostics.error("extern proc cannot have a body", extern_span.is_valid() ? extern_span : proc.span);
+        diag::error(diagnostics, diag::DiagId::ExternProcCannotHaveBody, extern_span.is_valid() ? extern_span : proc.span);
     }
     if (!is_extern && !has_body) {
-        diagnostics.error("proc requires a body unless marked #[extern]", proc.span);
+        diag::error(diagnostics, diag::DiagId::ProcRequiresBodyUnlessExtern, proc.span);
     }
     validate_type_params(proc.type_params, diagnostics, "proc");
 }
@@ -57,7 +58,7 @@ static void validate_proc(const ProcDecl& proc, diag::DiagnosticEngine& diagnost
 static void validate_type_alias(const TypeAliasDecl& alias, diag::DiagnosticEngine& diagnostics) {
     validate_type_params(alias.type_params, diagnostics, "type alias");
     if (alias.target == ast::kInvalidAstId) {
-        diagnostics.error("type alias requires a target type", alias.span);
+        diag::error(diagnostics, diag::DiagId::TypeAliasRequiresTargetType, alias.span);
     }
 }
 

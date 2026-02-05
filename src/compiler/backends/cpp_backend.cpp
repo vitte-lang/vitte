@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <iostream>
+#include <cstdlib>
 
 namespace vitte::backend {
 
@@ -56,8 +57,52 @@ bool compile_cpp_backend(
     clang_opts.opt_level = options.opt_level;
     clang_opts.verbose = options.verbose;
 
-    clang_opts.include_dirs.push_back(options.work_dir);
     clang_opts.libraries.push_back("stdc++");
+
+    std::filesystem::path work_dir_path = options.work_dir;
+    if (std::filesystem::exists(work_dir_path / "vitte_runtime.hpp")) {
+        clang_opts.include_dirs.push_back(work_dir_path.string());
+    }
+
+    if (!options.runtime_include.empty()) {
+        std::filesystem::path p = options.runtime_include;
+        if (std::filesystem::exists(p / "vitte_runtime.hpp")) {
+            clang_opts.include_dirs.push_back(p.string());
+        }
+    }
+
+    const char* runtime_inc = std::getenv("VITTE_RUNTIME_INCLUDE");
+    if (runtime_inc && *runtime_inc) {
+        std::filesystem::path p = runtime_inc;
+        if (std::filesystem::exists(p / "vitte_runtime.hpp")) {
+            clang_opts.include_dirs.push_back(p.string());
+        }
+    } else {
+        const char* root = std::getenv("VITTE_ROOT");
+        std::filesystem::path base = root && *root
+            ? std::filesystem::path(root)
+            : std::filesystem::current_path();
+
+        std::filesystem::path src_rt = base / "src/compiler/backends/runtime";
+        if (std::filesystem::exists(src_rt / "vitte_runtime.hpp")) {
+            clang_opts.include_dirs.push_back(src_rt.string());
+        }
+
+        std::filesystem::path tgt_inc = base / "target/include";
+        if (std::filesystem::exists(tgt_inc / "vitte_runtime.hpp")) {
+            clang_opts.include_dirs.push_back(tgt_inc.string());
+        }
+    }
+
+    const char* root = std::getenv("VITTE_ROOT");
+    std::filesystem::path base = root && *root
+        ? std::filesystem::path(root)
+        : std::filesystem::current_path();
+
+    std::filesystem::path runtime_cpp = base / "src/compiler/backends/runtime/vitte_runtime.cpp";
+    if (std::filesystem::exists(runtime_cpp)) {
+        clang_opts.extra_sources.push_back(runtime_cpp.string());
+    }
 
     if (!toolchain::invoke_clang(
             cpp_path.string(),

@@ -62,33 +62,33 @@ mkdir -p "$BIN_DIR"
 # ------------------------------------------------------------
 # Build stage2 compiler
 # ------------------------------------------------------------
-#
-# vittec1 compile le compilateur Vitte écrit en Vitte
-# avec stdlib + linker complets
-#
 
-log "building final vittec using vittec1"
+if [ -f "$STAGE2_DIR/CMakeLists.txt" ]; then
+    log "building vittec via CMake"
+    cmake -S "$STAGE2_DIR" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
+    cmake --build "$BUILD_DIR" --parallel
 
-"$STAGE1_BIN" \
-    build \
-    --stage stage2 \
-    --src "$STAGE2_DIR/src" \
-    --out "$OUT_DIR" \
-    --opt "$OPT_LEVEL" \
-    --release
+    VITTEC_BIN="$BUILD_DIR/vittec"
+    [ -x "$VITTEC_BIN" ] || die "final vittec not produced"
+    log "installing vittec → $BIN_DIR"
+    cp "$VITTEC_BIN" "$BIN_DIR/vittec"
+    chmod +x "$BIN_DIR/vittec"
+else
+    log "building final vittec using vittec1"
+    "$STAGE1_BIN" \
+        build \
+        --stage stage2 \
+        --src "$STAGE2_DIR/src" \
+        --out "$OUT_DIR" \
+        --opt "$OPT_LEVEL" \
+        --release
 
-# ------------------------------------------------------------
-# Verify output
-# ------------------------------------------------------------
-
-VITTEC_BIN="$OUT_DIR/vittec"
-
-[ -x "$VITTEC_BIN" ] || die "final vittec not produced"
-
-log "installing vittec → $BIN_DIR"
-
-cp "$VITTEC_BIN" "$BIN_DIR/vittec"
-chmod +x "$BIN_DIR/vittec"
+    VITTEC_BIN="$OUT_DIR/vittec"
+    [ -x "$VITTEC_BIN" ] || die "final vittec not produced"
+    log "installing vittec → $BIN_DIR"
+    cp "$VITTEC_BIN" "$BIN_DIR/vittec"
+    chmod +x "$BIN_DIR/vittec"
+fi
 
 # ------------------------------------------------------------
 # Self-check
@@ -99,7 +99,7 @@ log "verifying final vittec"
 "$BIN_DIR/vittec" --version || die "vittec verification failed"
 
 # Optional: self-rebuild check (can be disabled in CI)
-if [ "${VITTE_SELF_CHECK:-1}" -eq 1 ]; then
+if [ "${VITTE_SELF_CHECK:-1}" -eq 1 ] && [ ! -f "$STAGE2_DIR/CMakeLists.txt" ]; then
     log "running self-hosting check (rebuild compiler)"
 
     "$BIN_DIR/vittec" \

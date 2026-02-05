@@ -39,6 +39,18 @@ Options parse_options(int argc, char** argv) {
         else if (arg == "-o" && i + 1 < argc) {
             opts.output = argv[++i];
         }
+        else if (arg == "--lang" && i + 1 < argc) {
+            opts.lang = argv[++i];
+        }
+        else if (arg.rfind("--lang=", 0) == 0) {
+            opts.lang = arg.substr(std::string("--lang=").size());
+        }
+        else if (arg == "--runtime-include" && i + 1 < argc) {
+            opts.runtime_include = argv[++i];
+        }
+        else if (arg.rfind("--runtime-include=", 0) == 0) {
+            opts.runtime_include = arg.substr(std::string("--runtime-include=").size());
+        }
         else if (arg == "--emit-cpp") {
             opts.emit_cpp = true;
         }
@@ -125,6 +137,9 @@ void print_help() {
         "Options:\n"
         "  -h, --help        Show this help message\n"
         "  -o <file>         Output executable name\n"
+        "  --lang <code>     Language for diagnostics (e.g. en, fr)\n"
+        "  --runtime-include <path>\n"
+        "                    Add include dir for vitte_runtime.hpp\n"
         "  --parse-only      Parse only (no backend)\n"
         "  --strict-parse    Disallow keywords as identifiers\n"
         "  --resolve-only    Resolve only (no lowering)\n"

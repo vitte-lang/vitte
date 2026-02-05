@@ -11,6 +11,19 @@ Commands (recommended):
 - `emit`   Emit C++ only (no native compile)
 - `build`  Full build (default)
 
+Options:
+- `--lang <code>`  Language for diagnostics (e.g. en, fr). Defaults to `LANG/LC_ALL`, then `en`.
+- Diagnostics include stable error codes (e.g. `error[E0001]: ...`).
+
+Examples:
+```
+vitte parse --lang=fr src/main.vit
+```
+
+Error Codes:
+- Diagnostics use stable codes like `E0001`. These codes are defined in `src/compiler/frontend/diagnostics_messages.hpp`.
+- The `.ftl` localization files can translate by code (preferred) or by message key.
+
 Legacy flags (still supported):
 - `--parse-only`
 - `--resolve-only`

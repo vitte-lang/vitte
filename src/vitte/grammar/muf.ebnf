@@ -1,0 +1,95 @@
+(*
+  Muffin DSL — !muf 4
+  Bracket blocks + dot directives
+  Block close marker: ".."
+*)
+
+MufFile         ::= OptShebang OptBOM Header { SpacingItem } EOF ;
+
+OptShebang      ::= [ "#!" { NotNL } NL ] ;
+OptBOM          ::= [ "\uFEFF" ] ;
+
+Header          ::= "!muf" WS1 Int WS0 NL ;
+
+SpacingItem     ::= BlankLine
+                  | CommentLine
+                  | Block
+                  ;
+
+BlankLine       ::= WS0 NL ;
+CommentLine     ::= WS0 ";;" { NotNL } NL ;
+
+(* -------------------------------------------------- *)
+(* Blocks                                             *)
+(* -------------------------------------------------- *)
+
+Block           ::= WS0 BlockHead WS0 NL
+                    { BlockItem }
+                    WS0 BlockClose WS0 NL ;
+
+BlockHead       ::= "[" WS0 Tag [ WS1 Name ] WS0 "]" ;
+BlockClose      ::= ".." ;
+
+BlockItem       ::= BlankLine
+                  | CommentLine
+                  | Directive
+                  | Block
+                  ;
+
+(* -------------------------------------------------- *)
+(* Directives                                         *)
+(* -------------------------------------------------- *)
+
+Directive       ::= WS0 "." Op { WS1 Atom } WS0 NL ;
+
+(* -------------------------------------------------- *)
+(* Atoms                                              *)
+(* -------------------------------------------------- *)
+
+Atom            ::= Ref
+                  | String
+                  | Number
+                  | Name
+                  ;
+
+Ref             ::= "~" Name "/" Name { "/" Name } ;
+
+(* -------------------------------------------------- *)
+(* Lexemes                                            *)
+(* -------------------------------------------------- *)
+
+Tag             ::= Name ;
+Op              ::= Name ;
+
+Name            ::= IdentStart { IdentCont } ;
+IdentStart      ::= Alpha | "_" ;
+IdentCont       ::= Alpha | Digit | "_" ;
+
+Number          ::= Float | Int ;
+Int             ::= [ "+" | "-" ] Digits ;
+Float           ::= [ "+" | "-" ] Digits "." Digits [ Exp ] ;
+Exp             ::= ( "e" | "E" ) [ "+" | "-" ] Digits ;
+
+String          ::= "\"" { StrChar } "\"" ;
+StrChar         ::= Escape | StrSafe ;
+Escape          ::= "\\" ( "\"" | "\\" | "n" | "r" | "t" | "0"
+                         | "x" Hex Hex
+                         | "u" Hex Hex Hex Hex ) ;
+StrSafe         ::= ? any unicode scalar except \, ", NL ? ;
+
+Digits          ::= Digit { Digit } ;
+Digit           ::= "0" | "1" | "2" | "3" | "4"
+                  | "5" | "6" | "7" | "8" | "9" ;
+
+Hex             ::= Digit
+                  | "a" | "b" | "c" | "d" | "e" | "f"
+                  | "A" | "B" | "C" | "D" | "E" | "F" ;
+
+Alpha           ::= "A".."Z" | "a".."z" ;
+
+WS0             ::= { WS } ;
+WS1             ::= WS { WS } ;
+WS              ::= " " | "\t" ;
+
+NL              ::= "\n" | "\r\n" ;
+NotNL           ::= ? any char except CR and LF ? ;

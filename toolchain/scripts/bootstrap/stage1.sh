@@ -61,32 +61,33 @@ mkdir -p "$BIN_DIR"
 # ------------------------------------------------------------
 # Build stage1 compiler
 # ------------------------------------------------------------
-#
-# vittec0 compile tout le compilateur Vitte écrit en Vitte
-#
 
-log "building vittec1 using vittec0"
+if [ -f "$STAGE1_DIR/CMakeLists.txt" ]; then
+    log "building vittec1 via CMake"
+    cmake -S "$STAGE1_DIR" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
+    cmake --build "$BUILD_DIR" --parallel
 
-"$STAGE0_BIN" \
-    build \
-    --stage stage1 \
-    --src "$STAGE1_DIR/src" \
-    --out "$OUT_DIR" \
-    --opt 0 \
-    --debug
+    VITTEC1_BIN="$BUILD_DIR/vittec1"
+    [ -x "$VITTEC1_BIN" ] || die "vittec1 not produced"
+    log "installing vittec1 → $BIN_DIR"
+    cp "$VITTEC1_BIN" "$BIN_DIR/vittec1"
+    chmod +x "$BIN_DIR/vittec1"
+else
+    log "building vittec1 using vittec0"
+    "$STAGE0_BIN" \
+        build \
+        --stage stage1 \
+        --src "$STAGE1_DIR/src" \
+        --out "$OUT_DIR" \
+        --opt 0 \
+        --debug
 
-# ------------------------------------------------------------
-# Verify output
-# ------------------------------------------------------------
-
-VITTEC1_BIN="$OUT_DIR/vittec1"
-
-[ -x "$VITTEC1_BIN" ] || die "vittec1 not produced"
-
-log "installing vittec1 → $BIN_DIR"
-
-cp "$VITTEC1_BIN" "$BIN_DIR/vittec1"
-chmod +x "$BIN_DIR/vittec1"
+    VITTEC1_BIN="$OUT_DIR/vittec1"
+    [ -x "$VITTEC1_BIN" ] || die "vittec1 not produced"
+    log "installing vittec1 → $BIN_DIR"
+    cp "$VITTEC1_BIN" "$BIN_DIR/vittec1"
+    chmod +x "$BIN_DIR/vittec1"
+fi
 
 # ------------------------------------------------------------
 # Smoke test

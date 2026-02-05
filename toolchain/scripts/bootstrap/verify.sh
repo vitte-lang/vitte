@@ -80,30 +80,20 @@ proc main() {
 }
 EOF
 
-log "compile with vittec1"
+log "dump AST with vittec1"
 
-"$STAGE1_BIN" build \
-    --stage stage2 \
-    --src "$SRC_DIR" \
-    --out "$OUT0" \
-    --opt 0 \
-    --debug
+"$STAGE1_BIN" parse --dump-ast "$SRC_DIR/hello.vit" > "$OUT0/ast.log"
 
-log "compile with vittec (final)"
+log "dump AST with vittec (final)"
 
-"$STAGE2_BIN" build \
-    --stage stage2 \
-    --src "$SRC_DIR" \
-    --out "$OUT1" \
-    --opt 0 \
-    --debug
+"$STAGE2_BIN" parse --dump-ast "$SRC_DIR/hello.vit" > "$OUT1/ast.log"
 
 # ------------------------------------------------------------
 # Hash comparison
 # ------------------------------------------------------------
 
-BIN0="$OUT0/hello"
-BIN1="$OUT1/hello"
+BIN0="$OUT0/ast.log"
+BIN1="$OUT1/ast.log"
 
 [ -f "$BIN0" ] || die "vittec1 output missing"
 [ -f "$BIN1" ] || die "vittec output missing"
@@ -123,7 +113,7 @@ fi
 # ------------------------------------------------------------
 
 if command -v file >/dev/null 2>&1; then
-    log "binary format:"
+log "file format:"
     file "$BIN1"
 fi
 

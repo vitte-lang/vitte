@@ -22,6 +22,7 @@ struct MirInstr {
     enum class Kind {
         ConstI32,
         Add,
+        PrintI32,
         Return
     };
 

@@ -24,7 +24,7 @@ using vitte::ir::validate::validate_module;
 
 static bool test_select_requires_when() {
     HirContext ctx;
-    DiagnosticEngine diagnostics;
+    DiagnosticEngine diagnostics(std::string{});
     SourceSpan span{};
 
     auto lit = ctx.make<vitte::ir::HirLiteralExpr>(HirLiteralKind::Int, "1", span);
@@ -39,7 +39,7 @@ static bool test_select_requires_when() {
 
 static bool test_generic_requires_args() {
     HirContext ctx;
-    DiagnosticEngine diagnostics;
+    DiagnosticEngine diagnostics(std::string{});
     SourceSpan span{};
 
     auto ret = ctx.make<HirGenericType>("Box", std::vector<vitte::ir::HirTypeId>{}, span);

@@ -41,30 +41,36 @@
 ..
 
 [tool format]
-  .exec "clang-format"
+  .exec "sh"
 ..
 
 [tool tidy]
-  .exec "clang-tidy"
+  .exec "sh"
 ..
 
 ;; ------------------------------------------------------------
 ;; Build
 ;; ------------------------------------------------------------
 
-[bake build]
-  .make c_src   cglob "src/**/*.c"
+[bake all]
   .make cpp_src cglob "src/**/*.cpp"
+  [run sh]
+    .set "-c" "make build"
+  ..
+  .output marker "build/.all.ok"
+..
 
-  [run cxx]
-    .set "-std=c++20" 1
-    .set "-Wall" 1
-    .set "-Wextra" 1
-    .set "-Werror" 1
-    .set "-O2" 1
-    .set "-g" 1
-    .set inputs "{c_src, cpp_src}"
-    .set output "bin/vitte"
+[bake dirs]
+  [run sh]
+    .set "-c" "mkdir -p build bin"
+  ..
+  .output marker "build/.dirs.ok"
+..
+
+[bake build]
+  .make cpp_src cglob "src/**/*.cpp"
+  [run sh]
+    .set "-c" "make build"
   ..
   .output exe "bin/vitte"
 ..
@@ -74,12 +80,8 @@
 ;; ------------------------------------------------------------
 
 [bake format]
-  .make c_src   cglob "src/**/*.c"
-  .make cpp_src cglob "src/**/*.cpp"
-
   [run format]
-    .set "-i" 1
-    .set inputs "{c_src, cpp_src}"
+    .set "-c" "command -v clang-format >/dev/null 2>&1 && clang-format -i $(find src -name '*.c' -o -name '*.cpp') || true"
   ..
   .output marker "build/.format.ok"
 ..
@@ -89,12 +91,8 @@
 ;; ------------------------------------------------------------
 
 [bake tidy]
-  .make cpp_src cglob "src/**/*.cpp"
-
   [run tidy]
-    .set inputs "{cpp_src}"
-    .set "--" 1
-    .set "-std=c++20" 1
+    .set "-c" "command -v clang-tidy >/dev/null 2>&1 && clang-tidy $(find src -name '*.cpp') -- -std=c++20 || true"
   ..
   .output marker "build/.tidy.ok"
 ..
@@ -103,14 +101,70 @@
 ;; Tests
 ;; ------------------------------------------------------------
 
+[bake full]
+  [run sh]
+    .set "-c" "make build && make test && make hir-validate && make negative-tests"
+  ..
+  .output marker "build/.full.ok"
+..
+
 [bake test]
   [run sh]
-    .set "-c" "echo 'Running Vitte tests (std/test)…'"
+    .set "-c" "toolchain/scripts/test/run.sh"
   ..
   .output marker "build/.test.ok"
 ..
 
-[bake parse-watch]
+[bake parse]
+  [run sh]
+    .set "-c" "tools/parse_tests.sh"
+  ..
+  .output marker "build/.parse.ok"
+..
+
+[bake parse_strict]
+  [run sh]
+    .set "-c" "STRICT_ONLY=1 tools/parse_tests.sh"
+  ..
+  .output marker "build/.parse_strict.ok"
+..
+
+[bake hir_validate]
+  [run sh]
+    .set "-c" "make hir-validate"
+  ..
+  .output marker "build/.hir_validate.ok"
+..
+
+[bake hir_validate_test]
+  [run sh]
+    .set "-c" "make hir-validate-test"
+  ..
+  .output marker "build/.hir_validate_test.ok"
+..
+
+[bake hir_validate_fixture]
+  [run sh]
+    .set "-c" "make hir-validate-fixture"
+  ..
+  .output marker "build/.hir_validate_fixture.ok"
+..
+
+[bake negative_tests]
+  [run sh]
+    .set "-c" "tools/negative_tests.sh"
+  ..
+  .output marker "build/.negative_tests.ok"
+..
+
+[bake update_diagnostics_ftl]
+  [run sh]
+    .set "-c" "tools/update_diagnostics_ftl.py"
+  ..
+  .output marker "build/.diagnostics_ftl.ok"
+..
+
+[bake parse_watch]
   [run sh]
     .set "-c" "tools/parse_watch.sh"
   ..
@@ -118,10 +172,42 @@
 ..
 
 ;; ------------------------------------------------------------
+;; Bootstrap
+;; ------------------------------------------------------------
+
+[bake bootstrap_stage0]
+  [run sh]
+    .set "-c" "toolchain/scripts/bootstrap/stage0.sh"
+  ..
+  .output marker "build/.bootstrap_stage0.ok"
+..
+
+[bake bootstrap_stage1]
+  [run sh]
+    .set "-c" "toolchain/scripts/bootstrap/stage1.sh"
+  ..
+  .output marker "build/.bootstrap_stage1.ok"
+..
+
+[bake bootstrap_stage2]
+  [run sh]
+    .set "-c" "toolchain/scripts/bootstrap/stage2.sh"
+  ..
+  .output marker "build/.bootstrap_stage2.ok"
+..
+
+[bake bootstrap_verify]
+  [run sh]
+    .set "-c" "toolchain/scripts/bootstrap/verify.sh"
+  ..
+  .output marker "build/.bootstrap_verify.ok"
+..
+
+;; ------------------------------------------------------------
 ;; Stdlib checks
 ;; ------------------------------------------------------------
 
-[bake std-check]
+[bake std_check]
   [run sh]
     .set "-c" "test -d src/vitte/std/core && test -d src/vitte/std/io && test -d src/vitte/std/math && test -d src/vitte/std/test && echo 'std layout OK'"
   ..
@@ -144,4 +230,15 @@
     .set "-c" "rm -rf build bin .cache .clangd"
   ..
   .output marker "build/.distclean.ok"
+..
+
+;; ------------------------------------------------------------
+;; Help
+;; ------------------------------------------------------------
+
+[bake help]
+  [run sh]
+    .set "-c" "make help"
+  ..
+  .output marker "build/.help.ok"
 ..

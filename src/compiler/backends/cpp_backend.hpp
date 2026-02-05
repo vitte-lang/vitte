@@ -22,6 +22,9 @@ struct CppBackendOptions {
 
     /* Working directory for generated files */
     std::string work_dir = ".";
+
+    /* Runtime include directory override */
+    std::string runtime_include;
 };
 
 /* -------------------------------------------------
