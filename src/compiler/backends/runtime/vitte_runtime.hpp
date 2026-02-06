@@ -217,6 +217,11 @@ struct VitteDbHandle {
     std::int64_t id;
 };
 
+struct VitteDbEntry {
+    VitteString key;
+    VitteString value;
+};
+
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wreturn-type-c-linkage"
@@ -339,6 +344,11 @@ VitteResult<VitteUnit> db_set(VitteDbHandle* db, VitteString key, VitteString va
 VitteResult<VitteOptionString> db_get(VitteDbHandle* db, VitteString key);
 VitteResult<bool> db_delete(VitteDbHandle* db, VitteString key);
 VitteResult<VitteSlice<VitteString>> db_keys(VitteDbHandle* db);
+VitteResult<VitteSlice<VitteString>> db_keys_prefix(VitteDbHandle* db, VitteString prefix);
+VitteResult<VitteUnit> db_batch_put(VitteDbHandle* db, VitteSlice<VitteDbEntry> entries);
+VitteResult<VitteUnit> db_begin(VitteDbHandle* db);
+VitteResult<VitteUnit> db_commit(VitteDbHandle* db);
+VitteResult<VitteUnit> db_rollback(VitteDbHandle* db);
 
 } // extern "C"
 #if defined(__clang__)

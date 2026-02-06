@@ -117,7 +117,11 @@ use std/db
 entry main at core/app {
   let db = open("db.kv")
   when db is Result.Ok {
+    let _ = begin(&db.value)
     let _ = put(&db.value, "hello", "world")
+    let _ = commit(&db.value)
+    let ns = namespace(&db.value, "app")
+    let _ = put(ns, "key", "value")
   }
   return 0
 }

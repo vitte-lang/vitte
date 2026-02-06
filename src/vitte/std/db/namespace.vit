@@ -1,0 +1,77 @@
+<<<
+namespace.vit
+std db namespace helpers
+>>>
+
+space std/db/namespace
+
+
+<<<
+imports
+>>>
+
+use std/core/types.string
+use std/core/types.Unit
+use std/core/result.Result
+use std/core/option.Option
+use std/core/types.usize
+use std/db/types.Db
+use std/db/types.Entry
+use std/db/kv
+
+
+<<<
+types
+>>>
+
+form Namespace {
+    db: *Db
+    prefix: string
+}
+
+
+<<<
+helpers
+>>>
+
+#[inline]
+proc namespace(db: *Db, prefix: string) -> Namespace {
+    give Namespace(db = db, prefix = prefix)
+}
+
+#[inline]
+proc ns_key(ns: Namespace, key: string) -> string {
+    give ns.prefix + ":" + key
+}
+
+#[inline]
+proc put(ns: Namespace, key: string, value: string) -> Result[Unit, string] {
+    give kv.put(ns.db, ns_key(ns, key), value)
+}
+
+#[inline]
+proc get(ns: Namespace, key: string) -> Result[Option[string], string] {
+    give kv.get(ns.db, ns_key(ns, key))
+}
+
+#[inline]
+proc del(ns: Namespace, key: string) -> Result[bool, string] {
+    give kv.del(ns.db, ns_key(ns, key))
+}
+
+#[inline]
+proc keys(ns: Namespace) -> Result[[string], string] {
+    give kv.keys_prefix(ns.db, ns.prefix + ":")
+}
+
+#[inline]
+proc batch_put(ns: Namespace, entries: [Entry]) -> Result[Unit, string] {
+    let i: usize = 0
+    let out_entries: [Entry] = []
+    while i < entries.len {
+        let e = entries[i]
+        out_entries = out_entries + [Entry(key = ns_key(ns, e.key), value = e.value)]
+        i = i + 1
+    }
+    give kv.batch_put(ns.db, out_entries)
+}

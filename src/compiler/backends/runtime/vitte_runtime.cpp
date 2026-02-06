@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <regex>
 #include <unordered_map>
+#include <unordered_set>
 #include <mutex>
 #include <fstream>
 #include <sstream>
@@ -332,6 +333,9 @@ static std::int64_t g_next_process_id = 1;
 struct DbState {
     std::string path;
     std::unordered_map<std::string, std::string> kv;
+    bool in_tx = false;
+    std::unordered_map<std::string, std::string> tx_put;
+    std::unordered_set<std::string> tx_del;
 };
 
 static std::unordered_map<std::int64_t, DbState> g_dbs;
@@ -2093,10 +2097,17 @@ VitteResult<VitteUnit> db_set(VitteDbHandle* db, VitteString key, VitteString va
     if (it == g_dbs.end()) {
         return vitte_err_string<VitteUnit>("unknown db");
     }
-    it->second.kv[vitte_to_string(key)] = vitte_to_string(value);
-    std::string err;
-    if (!db_flush(it->second, err)) {
-        return vitte_err_string_alloc<VitteUnit>(err);
+    auto k = vitte_to_string(key);
+    auto v = vitte_to_string(value);
+    if (it->second.in_tx) {
+        it->second.tx_put[k] = v;
+        it->second.tx_del.erase(k);
+    } else {
+        it->second.kv[k] = v;
+        std::string err;
+        if (!db_flush(it->second, err)) {
+            return vitte_err_string_alloc<VitteUnit>(err);
+        }
     }
     VitteUnit u{};
     return vitte_ok(u);
@@ -2112,6 +2123,15 @@ VitteResult<VitteOptionString> db_get(VitteDbHandle* db, VitteString key) {
         return vitte_err_string<VitteOptionString>("unknown db");
     }
     auto k = vitte_to_string(key);
+    if (it->second.in_tx) {
+        if (it->second.tx_del.count(k) > 0) {
+            return vitte_ok(vitte_none_string());
+        }
+        auto tp = it->second.tx_put.find(k);
+        if (tp != it->second.tx_put.end()) {
+            return vitte_ok(vitte_some_string(tp->second));
+        }
+    }
     auto kv = it->second.kv.find(k);
     if (kv == it->second.kv.end()) {
         return vitte_ok(vitte_none_string());
@@ -2129,12 +2149,19 @@ VitteResult<bool> db_delete(VitteDbHandle* db, VitteString key) {
         return vitte_err_string<bool>("unknown db");
     }
     auto k = vitte_to_string(key);
-    auto erased = it->second.kv.erase(k) > 0;
+    bool existed = false;
+    if (it->second.in_tx) {
+        existed = it->second.kv.count(k) > 0 || it->second.tx_put.count(k) > 0;
+        it->second.tx_put.erase(k);
+        it->second.tx_del.insert(k);
+        return vitte_ok(existed);
+    }
+    existed = it->second.kv.erase(k) > 0;
     std::string err;
     if (!db_flush(it->second, err)) {
         return vitte_err_string_alloc<bool>(err);
     }
-    return vitte_ok(erased);
+    return vitte_ok(existed);
 }
 
 VitteResult<VitteSlice<VitteString>> db_keys(VitteDbHandle* db) {
@@ -2146,12 +2173,125 @@ VitteResult<VitteSlice<VitteString>> db_keys(VitteDbHandle* db) {
     if (it == g_dbs.end()) {
         return vitte_err_string<VitteSlice<VitteString>>("unknown db");
     }
+    std::unordered_set<std::string> seen;
     std::vector<std::string> keys;
     keys.reserve(it->second.kv.size());
     for (const auto& kv : it->second.kv) {
-        keys.push_back(kv.first);
+        seen.insert(kv.first);
     }
+    if (it->second.in_tx) {
+        for (const auto& kv : it->second.tx_put) {
+            seen.insert(kv.first);
+        }
+        for (const auto& del : it->second.tx_del) {
+            seen.erase(del);
+        }
+    }
+    keys.assign(seen.begin(), seen.end());
     return vitte_ok(vitte_make_string_slice(keys));
+}
+
+VitteResult<VitteSlice<VitteString>> db_keys_prefix(VitteDbHandle* db, VitteString prefix) {
+    auto res = db_keys(db);
+    if (res.tag != 0) {
+        return res;
+    }
+    std::string pref = vitte_to_string(prefix);
+    std::vector<std::string> out;
+    for (std::size_t i = 0; i < res.ok.len; ++i) {
+        std::string k = vitte_to_string(res.ok.data[i]);
+        if (k.rfind(pref, 0) == 0) {
+            out.push_back(k);
+        }
+    }
+    return vitte_ok(vitte_make_string_slice(out));
+}
+
+VitteResult<VitteUnit> db_batch_put(VitteDbHandle* db, VitteSlice<VitteDbEntry> entries) {
+    if (!db) {
+        return vitte_err_string<VitteUnit>("invalid db");
+    }
+    std::lock_guard<std::mutex> lock(g_db_mutex);
+    auto it = g_dbs.find(db->id);
+    if (it == g_dbs.end()) {
+        return vitte_err_string<VitteUnit>("unknown db");
+    }
+    for (std::size_t i = 0; i < entries.len; ++i) {
+        auto k = vitte_to_string(entries.data[i].key);
+        auto v = vitte_to_string(entries.data[i].value);
+        if (it->second.in_tx) {
+            it->second.tx_put[k] = v;
+            it->second.tx_del.erase(k);
+        } else {
+            it->second.kv[k] = v;
+        }
+    }
+    if (!it->second.in_tx) {
+        std::string err;
+        if (!db_flush(it->second, err)) {
+            return vitte_err_string_alloc<VitteUnit>(err);
+        }
+    }
+    VitteUnit u{};
+    return vitte_ok(u);
+}
+
+VitteResult<VitteUnit> db_begin(VitteDbHandle* db) {
+    if (!db) {
+        return vitte_err_string<VitteUnit>("invalid db");
+    }
+    std::lock_guard<std::mutex> lock(g_db_mutex);
+    auto it = g_dbs.find(db->id);
+    if (it == g_dbs.end()) {
+        return vitte_err_string<VitteUnit>("unknown db");
+    }
+    it->second.in_tx = true;
+    it->second.tx_put.clear();
+    it->second.tx_del.clear();
+    VitteUnit u{};
+    return vitte_ok(u);
+}
+
+VitteResult<VitteUnit> db_commit(VitteDbHandle* db) {
+    if (!db) {
+        return vitte_err_string<VitteUnit>("invalid db");
+    }
+    std::lock_guard<std::mutex> lock(g_db_mutex);
+    auto it = g_dbs.find(db->id);
+    if (it == g_dbs.end()) {
+        return vitte_err_string<VitteUnit>("unknown db");
+    }
+    for (const auto& kv : it->second.tx_put) {
+        it->second.kv[kv.first] = kv.second;
+    }
+    for (const auto& del : it->second.tx_del) {
+        it->second.kv.erase(del);
+    }
+    it->second.tx_put.clear();
+    it->second.tx_del.clear();
+    it->second.in_tx = false;
+    std::string err;
+    if (!db_flush(it->second, err)) {
+        return vitte_err_string_alloc<VitteUnit>(err);
+    }
+    VitteUnit u{};
+    return vitte_ok(u);
+}
+
+VitteResult<VitteUnit> db_rollback(VitteDbHandle* db) {
+    if (!db) {
+        return vitte_err_string<VitteUnit>("invalid db");
+    }
+    std::lock_guard<std::mutex> lock(g_db_mutex);
+    auto it = g_dbs.find(db->id);
+    if (it == g_dbs.end()) {
+        return vitte_err_string<VitteUnit>("unknown db");
+    }
+    it->second.tx_put.clear();
+    it->second.tx_del.clear();
+    it->second.in_tx = false;
+    VitteUnit u{};
+    return vitte_ok(u);
 }
 
 } // extern "C"
