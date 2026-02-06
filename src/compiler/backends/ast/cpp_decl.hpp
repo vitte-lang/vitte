@@ -38,6 +38,8 @@ struct CppFunction {
     bool is_inline = false;
     bool is_extern = false;
     Linkage linkage = Linkage::External;
+    std::optional<std::string> abi;
+    std::optional<std::string> link_name;
 };
 
 /* ----------------------------------------
@@ -49,6 +51,9 @@ struct CppGlobal {
     std::optional<std::unique_ptr<CppExpr>> init;
     bool is_const = false;
     Linkage linkage = Linkage::External;
+    bool is_extern = false;
+    std::optional<std::string> abi;
+    std::optional<std::string> link_name;
 };
 
 /* ----------------------------------------

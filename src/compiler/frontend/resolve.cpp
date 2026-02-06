@@ -425,6 +425,13 @@ void Resolver::resolve_stmt(ast::AstContext& ctx, ast::StmtId stmt_id) {
             symbols_.pop_scope();
             break;
         }
+        case NodeKind::AsmStmt:
+            break;
+        case NodeKind::UnsafeStmt: {
+            auto& s = static_cast<UnsafeStmt&>(stmt);
+            resolve_stmt(ctx, s.body);
+            break;
+        }
         case NodeKind::MakeStmt: {
             auto& s = static_cast<MakeStmt&>(stmt);
             symbols_.define({s.ident.name, SymbolKind::Var, s.ident.span});

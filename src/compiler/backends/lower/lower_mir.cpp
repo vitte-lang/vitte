@@ -6,157 +6,261 @@
 #include "../ast/cpp_type.hpp"
 #include "../context/cpp_context.hpp"
 
-/*
- * IMPORTANT
- * ----------
- * Ce lowering est volontairement générique et structuré.
- * Il ne dépend PAS d’un MIR fictif : il est prêt à être
- * connecté à ton vrai MIR Vitte (SSA, blocks, instructions).
- */
+#include <unordered_set>
 
 namespace vitte::backend::lower {
 
 using namespace vitte::backend::ast::cpp;
 using vitte::backend::context::CppContext;
+using vitte::ir::MirKind;
 
-/* -------------------------------------------------
- * Helpers
- * ------------------------------------------------- */
+namespace {
 
-static CppType* builtin_i32(CppContext& ctx) {
-    static CppType t = CppType::builtin("int32_t");
-    ctx.register_type("i32", &t);
-    return &t;
+static CppType* builtin_type(CppContext& ctx, const std::string& name) {
+    if (auto* t = ctx.resolve_type(name)) {
+        return t;
+    }
+    auto* ty = new CppType(CppType::builtin(name));
+    ctx.register_type(name, ty);
+    return ty;
 }
 
-static CppType* builtin_int(CppContext& ctx) {
-    static CppType t = CppType::builtin("int");
+static CppType* map_type(CppContext& ctx, const std::string& mir_name) {
+    if (mir_name == "i32") return builtin_type(ctx, "int32_t");
+    if (mir_name == "i64") return builtin_type(ctx, "int64_t");
+    if (mir_name == "i16") return builtin_type(ctx, "int16_t");
+    if (mir_name == "i8") return builtin_type(ctx, "int8_t");
+    if (mir_name == "u64") return builtin_type(ctx, "uint64_t");
+    if (mir_name == "u32") return builtin_type(ctx, "uint32_t");
+    if (mir_name == "u16") return builtin_type(ctx, "uint16_t");
+    if (mir_name == "u8") return builtin_type(ctx, "uint8_t");
+    if (mir_name == "usize") return builtin_type(ctx, "size_t");
+    if (mir_name == "isize") return builtin_type(ctx, "ptrdiff_t");
+    if (mir_name == "bool") return builtin_type(ctx, "bool");
+    if (mir_name == "string") return builtin_type(ctx, "VitteString");
+    if (mir_name == "Unit") return builtin_type(ctx, "VitteUnit");
+    return builtin_type(ctx, "int32_t");
+}
+
+static std::unique_ptr<CppExpr> emit_value(CppContext& ctx, const vitte::ir::MirValue& v) {
     (void)ctx;
-    return &t;
+    if (v.kind == MirKind::Local) {
+        const auto& l = static_cast<const vitte::ir::MirLocal&>(v);
+        return std::make_unique<CppVar>(l.name);
+    }
+    if (v.kind == MirKind::Const) {
+        const auto& c = static_cast<const vitte::ir::MirConst&>(v);
+        switch (c.const_kind) {
+            case vitte::ir::MirConstKind::Bool:
+                if (c.value == "true" || c.value == "false") {
+                    return std::make_unique<CppLiteral>(c.value);
+                }
+                return std::make_unique<CppLiteral>(c.value == "0" ? "false" : "true");
+            case vitte::ir::MirConstKind::Int:
+                return std::make_unique<CppLiteral>(c.value);
+            case vitte::ir::MirConstKind::String: {
+                std::string out = "\"";
+                for (char ch : c.value) {
+                    switch (ch) {
+                        case '\\': out += "\\\\"; break;
+                        case '"': out += "\\\""; break;
+                        case '\n': out += "\\n"; break;
+                        case '\r': out += "\\r"; break;
+                        case '\t': out += "\\t"; break;
+                        default: out += ch; break;
+                    }
+                }
+                out += "\"";
+                return std::make_unique<CppLiteral>(out);
+            }
+        }
+    }
+    return std::make_unique<CppLiteral>("0");
 }
 
-static CppType* builtin_cstrv(CppContext& ctx) {
-    static CppType t = CppType::builtin("const char**");
-    (void)ctx;
-    return &t;
-}
-
-static CppType* builtin_void(CppContext& ctx) {
-    static CppType t = CppType::builtin("void");
-    (void)ctx;
-    return &t;
-}
-
-/* -------------------------------------------------
- * MIR placeholders live in lower_mir.hpp
- * ------------------------------------------------- */
-
-/* -------------------------------------------------
- * Value → Expr
- * ------------------------------------------------- */
-
-static std::unique_ptr<CppExpr> lower_value(
-    const MirValue& v
-) {
-    return std::make_unique<CppVar>(v.name);
-}
-
-/* -------------------------------------------------
- * Instruction → Statement
- * ------------------------------------------------- */
-
-static std::unique_ptr<CppStmt> lower_instr(
-    const MirInstr& ins,
-    CppContext& ctx
-) {
-    switch (ins.kind) {
-
-    case MirInstr::Kind::ConstI32: {
-        auto decl = std::make_unique<CppVarDecl>(
-            builtin_i32(ctx),
-            ins.dst.name
-        );
-        decl->init = std::make_unique<CppLiteral>(
-            std::to_string(ins.imm)
-        );
-        return decl;
-    }
-
-    case MirInstr::Kind::Add: {
-        auto expr = std::make_unique<CppBinary>(
-            "+",
-            lower_value(ins.lhs),
-            lower_value(ins.rhs)
-        );
-        return std::make_unique<CppAssign>(
-            std::make_unique<CppVar>(ins.dst.name),
-            std::move(expr)
-        );
-    }
-
-    case MirInstr::Kind::PrintI32: {
-        auto call = std::make_unique<CppCall>("vitte::runtime::print_i32");
-        call->args.push_back(lower_value(ins.lhs));
-        return std::make_unique<CppExprStmt>(std::move(call));
-    }
-
-    case MirInstr::Kind::Return: {
-        return std::make_unique<CppReturn>(
-            lower_value(ins.dst)
-        );
-    }
-
-    default:
-        return std::make_unique<CppExprStmt>(
-            std::make_unique<CppLiteral>("/* unsupported MIR */")
-        );
+static std::string binop_to_cpp(vitte::ir::MirBinOp op) {
+    switch (op) {
+        case vitte::ir::MirBinOp::Add: return "+";
+        case vitte::ir::MirBinOp::Sub: return "-";
+        case vitte::ir::MirBinOp::Mul: return "*";
+        case vitte::ir::MirBinOp::Div: return "/";
+        case vitte::ir::MirBinOp::Eq: return "==";
+        case vitte::ir::MirBinOp::Ne: return "!=";
+        case vitte::ir::MirBinOp::Lt: return "<";
+        case vitte::ir::MirBinOp::Le: return "<=";
+        case vitte::ir::MirBinOp::Gt: return ">";
+        case vitte::ir::MirBinOp::Ge: return ">=";
+        case vitte::ir::MirBinOp::And: return "&&";
+        case vitte::ir::MirBinOp::Or: return "||";
+        default: return "+";
     }
 }
 
-/* -------------------------------------------------
- * Function lowering
- * ------------------------------------------------- */
-
-CppFunction lower_mir_function(
-    const MirFunction& mf,
-    CppContext& ctx
-) {
-    CppFunction fn;
-    fn.name = ctx.mangle(mf.name);
-    fn.return_type = builtin_i32(ctx);
-
-    for (const auto& ins : mf.instrs) {
-        fn.body.push_back(
-            lower_instr(ins, ctx)
-        );
-    }
-
-    return fn;
+static std::string label_for(std::size_t fn_index, std::size_t block_id) {
+    return "bb_" + std::to_string(fn_index) + "_" + std::to_string(block_id);
 }
 
-/* -------------------------------------------------
- * Entry point
- * ------------------------------------------------- */
+} // namespace
 
-CppTranslationUnit lower_mir(
-    const std::vector<MirFunction>& functions,
+ast::cpp::CppTranslationUnit lower_mir(
+    const vitte::ir::MirModule& module,
     CppContext& ctx
 ) {
     CppTranslationUnit tu;
-
     ctx.add_include("<cstdint>");
+    ctx.add_include("<cstddef>");
 
     bool has_entry = false;
     std::string entry_mangled;
 
-    for (const auto& f : functions) {
-        tu.functions.push_back(
-            lower_mir_function(f, ctx)
-        );
-        if (f.name == "main") {
-            has_entry = true;
-            entry_mangled = ctx.mangle(f.name);
+    std::size_t fn_index = 0;
+    for (const auto& fn : module.functions) {
+        CppFunction out;
+        out.name = ctx.mangle(fn.name);
+        out.return_type = map_type(ctx, "i32");
+
+        std::unordered_set<std::string> declared;
+        for (const auto& local : fn.locals) {
+            if (!local) continue;
+            if (declared.insert(local->name).second) {
+                auto decl = std::make_unique<CppVarDecl>(
+                    map_type(ctx, local->type ? local->type->name : "i32"),
+                    local->name
+                );
+                out.body.push_back(std::move(decl));
+            }
         }
+
+        for (const auto& bb : fn.blocks) {
+            out.body.push_back(std::make_unique<CppLabel>(label_for(fn_index, bb.id)));
+
+            for (const auto& instr : bb.instructions) {
+                switch (instr->kind) {
+                    case MirKind::Assign: {
+                        auto& ins = static_cast<const vitte::ir::MirAssign&>(*instr);
+                        const auto& dst = static_cast<const vitte::ir::MirLocal&>(*ins.dest);
+                        if (declared.insert(dst.name).second) {
+                            auto decl = std::make_unique<CppVarDecl>(
+                                map_type(ctx, dst.type ? dst.type->name : "i32"),
+                                dst.name
+                            );
+                            decl->init = emit_value(ctx, *ins.value);
+                            out.body.push_back(std::move(decl));
+                        } else {
+                            out.body.push_back(std::make_unique<CppAssign>(
+                                std::make_unique<CppVar>(dst.name),
+                                emit_value(ctx, *ins.value)));
+                        }
+                        break;
+                    }
+                    case MirKind::BinaryOp: {
+                        auto& ins = static_cast<const vitte::ir::MirBinaryOp&>(*instr);
+                        const auto& dst = static_cast<const vitte::ir::MirLocal&>(*ins.dest);
+                        auto expr = std::make_unique<CppBinary>(
+                            binop_to_cpp(ins.op),
+                            emit_value(ctx, *ins.left),
+                            emit_value(ctx, *ins.right));
+                        if (declared.insert(dst.name).second) {
+                            auto decl = std::make_unique<CppVarDecl>(
+                                map_type(ctx, dst.type ? dst.type->name : "i32"),
+                                dst.name
+                            );
+                            decl->init = std::move(expr);
+                            out.body.push_back(std::move(decl));
+                        } else {
+                            out.body.push_back(std::make_unique<CppAssign>(
+                                std::make_unique<CppVar>(dst.name),
+                                std::move(expr)));
+                        }
+                        break;
+                    }
+                    case MirKind::Call: {
+                        auto& ins = static_cast<const vitte::ir::MirCall&>(*instr);
+                        auto call = std::make_unique<CppCall>(ins.callee);
+                        for (const auto& a : ins.args) {
+                            if (a) {
+                                call->args.push_back(emit_value(ctx, *a));
+                            }
+                        }
+                        if (ins.result) {
+                            const auto& dst = static_cast<const vitte::ir::MirLocal&>(*ins.result);
+                            if (declared.insert(dst.name).second) {
+                                auto decl = std::make_unique<CppVarDecl>(
+                                    map_type(ctx, dst.type ? dst.type->name : "i32"),
+                                    dst.name
+                                );
+                                decl->init = std::move(call);
+                                out.body.push_back(std::move(decl));
+                            } else {
+                                out.body.push_back(std::make_unique<CppAssign>(
+                                    std::make_unique<CppVar>(dst.name),
+                                    std::move(call)));
+                            }
+                        } else {
+                            out.body.push_back(std::make_unique<CppExprStmt>(std::move(call)));
+                        }
+                        break;
+                    }
+                    case MirKind::Asm: {
+                        auto& ins = static_cast<const vitte::ir::MirAsm&>(*instr);
+                        out.body.push_back(std::make_unique<CppAsm>(ins.code, ins.is_volatile));
+                        break;
+                    }
+                    case MirKind::UnsafeBegin: {
+                        out.body.push_back(std::make_unique<CppExprStmt>(
+                            std::make_unique<CppLiteral>("/* unsafe begin */")));
+                        break;
+                    }
+                    case MirKind::UnsafeEnd: {
+                        out.body.push_back(std::make_unique<CppExprStmt>(
+                            std::make_unique<CppLiteral>("/* unsafe end */")));
+                        break;
+                    }
+                    case MirKind::Return: {
+                        auto& ins = static_cast<const vitte::ir::MirReturn&>(*instr);
+                        if (ins.value) {
+                            out.body.push_back(std::make_unique<CppReturn>(
+                                emit_value(ctx, *ins.value)));
+                        } else {
+                            out.body.push_back(std::make_unique<CppReturn>());
+                        }
+                        break;
+                    }
+                    default:
+                        out.body.push_back(std::make_unique<CppExprStmt>(
+                            std::make_unique<CppLiteral>("/* unsupported MIR */")));
+                        break;
+                }
+            }
+
+            if (bb.terminator) {
+                switch (bb.terminator->kind) {
+                    case MirKind::Goto: {
+                        auto& term = static_cast<const vitte::ir::MirGoto&>(*bb.terminator);
+                        out.body.push_back(std::make_unique<CppGoto>(label_for(fn_index, term.target)));
+                        break;
+                    }
+                    case MirKind::CondGoto: {
+                        auto& term = static_cast<const vitte::ir::MirCondGoto&>(*bb.terminator);
+                        auto cond = emit_value(ctx, *term.cond);
+                        auto if_stmt = std::make_unique<CppIf>(std::move(cond));
+                        if_stmt->then_body.push_back(std::make_unique<CppGoto>(label_for(fn_index, term.then_block)));
+                        if_stmt->else_body.push_back(std::make_unique<CppGoto>(label_for(fn_index, term.else_block)));
+                        out.body.push_back(std::move(if_stmt));
+                        break;
+                    }
+                    default:
+                        break;
+                }
+            }
+        }
+
+        tu.functions.push_back(std::move(out));
+        if (fn.name == "main") {
+            has_entry = true;
+            entry_mangled = ctx.mangle(fn.name);
+        }
+        fn_index++;
     }
 
     if (has_entry) {
@@ -166,22 +270,21 @@ CppTranslationUnit lower_mir(
         if (ctx.entry_mode() == CppContext::EntryMode::Arduino) {
             CppFunction setup;
             setup.name = "setup";
-            setup.return_type = builtin_void(ctx);
-
+            setup.return_type = builtin_type(ctx, "void");
             auto call = std::make_unique<CppCall>(entry_mangled);
             setup.body.push_back(std::make_unique<CppExprStmt>(std::move(call)));
             tu.functions.push_back(std::move(setup));
 
             CppFunction loop;
             loop.name = "loop";
-            loop.return_type = builtin_void(ctx);
+            loop.return_type = builtin_type(ctx, "void");
             tu.functions.push_back(std::move(loop));
         } else {
             CppFunction wrapper;
             wrapper.name = "main";
-            wrapper.return_type = builtin_int(ctx);
-            wrapper.params.push_back({builtin_int(ctx), "argc"});
-            wrapper.params.push_back({builtin_cstrv(ctx), "argv"});
+            wrapper.return_type = map_type(ctx, "i32");
+            wrapper.params.push_back({map_type(ctx, "i32"), "argc"});
+            wrapper.params.push_back({builtin_type(ctx, "const char**"), "argv"});
 
             auto set_args = std::make_unique<CppCall>("vitte_set_args");
             set_args->args.push_back(std::make_unique<CppVar>("argc"));
@@ -189,9 +292,7 @@ CppTranslationUnit lower_mir(
             wrapper.body.push_back(std::make_unique<CppExprStmt>(std::move(set_args)));
 
             auto call = std::make_unique<CppCall>(entry_mangled);
-            wrapper.body.push_back(
-                std::make_unique<CppReturn>(std::move(call))
-            );
+            wrapper.body.push_back(std::make_unique<CppReturn>(std::move(call)));
 
             tu.functions.push_back(std::move(wrapper));
         }

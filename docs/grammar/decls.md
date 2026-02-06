@@ -14,7 +14,9 @@ Key forms:
 ```
 space_decl ::= "space" WS1 module_path ;
 pull_decl ::= "pull" WS1 module_path [ WS1 "as" WS1 ident ] ;
-use_decl  ::= "use" WS1 module_path [ WS1 "as" WS1 ident ] ;
+use_decl  ::= "use" WS1 module_path [ use_group | use_glob ] [ WS1 "as" WS1 ident ] ;
+use_glob ::= "." "*" ;
+use_group ::= "." "{" WS? ident_list WS? "}" ;
 share_decl ::= "share" WS1 ( "all" | ident_list ) ;
 
 const_decl ::= "const" WS1 ident [ ":" WS? type_expr ] WS? "=" WS? expr ;
@@ -31,4 +33,8 @@ proc_decl ::= { attribute WS? }
               [ WS? block ] ;
 
 entry_decl ::= "entry" WS1 ident WS1 "at" WS1 module_path WS? block ;
+
+attribute ::= "#[" ident [ "(" attr_args? ")" ] "]" ;
+attr_args ::= attr_arg { WS? "," WS? attr_arg } ;
+attr_arg ::= ident | string_lit | int_lit ;
 ```

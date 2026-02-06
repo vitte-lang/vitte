@@ -1,0 +1,69 @@
+<<<
+mod.vit
+std kernel syscall helpers
+>>>
+
+space std/kernel/syscall
+
+<<<
+imports
+>>>
+
+use std/core/types.u64
+use std/core/types.u8
+use std/core/types.i32
+use std/core/types.Unit
+
+<<<
+externs
+>>>
+
+#[extern]
+proc kernel_syscall(n: u64, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u64
+
+<<<
+syscall numbers
+>>>
+
+const SYS_WRITE_BYTE: u64 = 0
+const SYS_READ_KEY: u64 = 1
+const SYS_YIELD: u64 = 2
+const SYS_TICKS: u64 = 3
+const SYS_SLEEP_TICKS: u64 = 4
+
+<<<
+helpers
+>>>
+
+#[inline]
+proc syscall(n: u64, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u64 {
+  give kernel_syscall(n, a0, a1, a2, a3, a4, a5)
+}
+
+#[inline]
+proc write_byte(b: u8) -> Unit {
+  let _ = syscall(SYS_WRITE_BYTE, b as u64, 0, 0, 0, 0, 0)
+  give Unit.Unit
+}
+
+#[inline]
+proc read_key() -> i32 {
+  give syscall(SYS_READ_KEY, 0, 0, 0, 0, 0, 0) as i32
+}
+
+#[inline]
+proc yield() -> Unit {
+  let _ = syscall(SYS_YIELD, 0, 0, 0, 0, 0, 0)
+  give Unit.Unit
+}
+
+#[inline]
+proc ticks() -> u64 {
+  give syscall(SYS_TICKS, 0, 0, 0, 0, 0, 0)
+}
+
+#[inline]
+proc sleep_ticks(ticks: u64) -> Unit {
+  let _ = syscall(SYS_SLEEP_TICKS, ticks, 0, 0, 0, 0, 0)
+  give Unit.Unit
+}

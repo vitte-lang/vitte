@@ -18,8 +18,11 @@ struct CppType;
 struct CppStmt {
     enum class Kind {
         Expr,
+        Asm,
         Decl,
         Assign,
+        Label,
+        Goto,
         Return,
         If,
         While,
@@ -42,6 +45,19 @@ struct CppExprStmt : CppStmt {
 
     explicit CppExprStmt(std::unique_ptr<CppExpr> e)
         : CppStmt(Kind::Expr), expr(std::move(e)) {}
+};
+
+/* ----------------------------------------
+ * Inline asm
+ * ---------------------------------------- */
+struct CppAsm : CppStmt {
+    std::string code;
+    bool is_volatile = true;
+
+    explicit CppAsm(std::string c, bool is_volatile_in = true)
+        : CppStmt(Kind::Asm),
+          code(std::move(c)),
+          is_volatile(is_volatile_in) {}
 };
 
 /* ----------------------------------------
@@ -71,6 +87,26 @@ struct CppAssign : CppStmt {
         : CppStmt(Kind::Assign),
           lhs(std::move(l)),
           rhs(std::move(r)) {}
+};
+
+/* ----------------------------------------
+ * Label
+ * ---------------------------------------- */
+struct CppLabel : CppStmt {
+    std::string name;
+
+    explicit CppLabel(std::string n)
+        : CppStmt(Kind::Label), name(std::move(n)) {}
+};
+
+/* ----------------------------------------
+ * Goto
+ * ---------------------------------------- */
+struct CppGoto : CppStmt {
+    std::string target;
+
+    explicit CppGoto(std::string t)
+        : CppStmt(Kind::Goto), target(std::move(t)) {}
 };
 
 /* ----------------------------------------

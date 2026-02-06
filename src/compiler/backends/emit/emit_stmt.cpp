@@ -19,6 +19,21 @@ static void emit_stmt_impl(
     int indent_level
 );
 
+static void emit_cpp_string(std::ostream& os, const std::string& value) {
+    os << "\"";
+    for (char c : value) {
+        switch (c) {
+            case '\\': os << "\\\\"; break;
+            case '"': os << "\\\""; break;
+            case '\n': os << "\\n"; break;
+            case '\r': os << "\\r"; break;
+            case '\t': os << "\\t"; break;
+            default: os << c; break;
+        }
+    }
+    os << "\"";
+}
+
 /* -------------------------------------------------
  * Entry point
  * ------------------------------------------------- */
@@ -50,6 +65,19 @@ static void emit_stmt_impl(
         break;
     }
 
+    case K::Asm: {
+        auto& s = static_cast<const ast::cpp::CppAsm&>(stmt);
+        indent(os, indent_level);
+        os << "asm ";
+        if (s.is_volatile) {
+            os << "volatile ";
+        }
+        os << "(";
+        emit_cpp_string(os, s.code);
+        os << ");\n";
+        break;
+    }
+
     case K::Decl: {
         auto& s = static_cast<const ast::cpp::CppVarDecl&>(stmt);
         indent(os, indent_level);
@@ -71,6 +99,20 @@ static void emit_stmt_impl(
         os << " = ";
         emit_expr(os, *s.rhs);
         os << ";\n";
+        break;
+    }
+
+    case K::Label: {
+        auto& s = static_cast<const ast::cpp::CppLabel&>(stmt);
+        indent(os, indent_level);
+        os << s.name << ":\n";
+        break;
+    }
+
+    case K::Goto: {
+        auto& s = static_cast<const ast::cpp::CppGoto&>(stmt);
+        indent(os, indent_level);
+        os << "goto " << s.target << ";\n";
         break;
     }
 

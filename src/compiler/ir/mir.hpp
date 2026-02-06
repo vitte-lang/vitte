@@ -60,6 +60,9 @@ enum class MirKind {
     Assign,
     BinaryOp,
     Call,
+    Asm,
+    UnsafeBegin,
+    UnsafeEnd,
     Return,
 
     // control flow
@@ -184,6 +187,23 @@ struct MirCall : MirInstr {
             std::vector<MirValuePtr> args,
             MirLocalPtr result,
             vitte::frontend::ast::SourceSpan span);
+};
+
+struct MirAsm : MirInstr {
+    std::string code;
+    bool is_volatile;
+
+    MirAsm(std::string code,
+           bool is_volatile,
+           vitte::frontend::ast::SourceSpan span);
+};
+
+struct MirUnsafeBegin : MirInstr {
+    MirUnsafeBegin(vitte::frontend::ast::SourceSpan span);
+};
+
+struct MirUnsafeEnd : MirInstr {
+    MirUnsafeEnd(vitte::frontend::ast::SourceSpan span);
 };
 
 struct MirReturn : MirInstr {

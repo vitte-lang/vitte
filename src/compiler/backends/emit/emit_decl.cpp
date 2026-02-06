@@ -42,6 +42,12 @@ void emit_function(
     if (fn.is_inline)
         os << "inline ";
 
+    if (fn.abi && *fn.abi == "C") {
+        os << "extern \"C\" ";
+    } else if (fn.is_extern && fn.body.empty()) {
+        os << "extern ";
+    }
+
     emit_type(os, fn.return_type);
     os << " " << fn.name << "(";
 
@@ -53,7 +59,17 @@ void emit_function(
             os << ", ";
     }
 
-    os << ") {\n";
+    os << ")";
+    if (fn.link_name) {
+        os << " __asm__(\"" << *fn.link_name << "\")";
+    }
+
+    if (fn.is_extern && fn.body.empty()) {
+        os << ";\n\n";
+        return;
+    }
+
+    os << " {\n";
 
     for (const auto& stmt : fn.body)
         emit_stmt(os, *stmt, indent_level + 1);
@@ -73,11 +89,21 @@ void emit_global(
 ) {
     indent(os, indent_level);
 
+    if (g.abi && *g.abi == "C") {
+        os << "extern \"C\" ";
+    } else if (g.is_extern && !g.init) {
+        os << "extern ";
+    }
+
     if (g.is_const)
         os << "const ";
 
     emit_type(os, g.type);
     os << " " << g.name;
+
+    if (g.link_name) {
+        os << " __asm__(\"" << *g.link_name << "\")";
+    }
 
     if (g.init) {
         os << " = ";

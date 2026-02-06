@@ -106,6 +106,11 @@ static void disambiguate_stmt(AstContext& ctx, StmtId stmt_id) {
             }
             break;
         }
+        case NodeKind::UnsafeStmt: {
+            auto& s = static_cast<UnsafeStmt&>(node);
+            disambiguate_stmt(ctx, s.body);
+            break;
+        }
         case NodeKind::LetStmt: {
             auto& s = static_cast<LetStmt&>(node);
             disambiguate_expr(ctx, s.initializer);

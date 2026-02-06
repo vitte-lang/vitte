@@ -285,6 +285,46 @@ static ir::HirStmtId lower_stmt(
         case NodeKind::BlockStmt: {
             return lower_block(ctx, stmt, hir_ctx, diagnostics);
         }
+        case NodeKind::UnsafeStmt: {
+            auto& s = static_cast<const UnsafeStmt&>(node);
+            std::vector<ir::HirStmtId> stmts;
+            auto mk_call = [&](const char* name) {
+                auto callee = hir_ctx.make<ir::HirVarExpr>(name, s.span);
+                std::vector<ir::HirExprId> args;
+                auto call = hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), s.span);
+                return hir_ctx.make<ir::HirExprStmt>(call, s.span);
+            };
+            stmts.push_back(mk_call("unsafe_begin"));
+            auto inner_block = lower_block(ctx, s.body, hir_ctx, diagnostics);
+            if (inner_block != ir::kInvalidHirId) {
+                if (hir_ctx.node(inner_block).kind == ir::HirKind::Block) {
+                    auto& b = hir_ctx.get<ir::HirBlock>(inner_block);
+                    for (auto st : b.stmts) {
+                        stmts.push_back(st);
+                    }
+                } else {
+                    stmts.push_back(inner_block);
+                }
+            }
+            stmts.push_back(mk_call("unsafe_end"));
+            return hir_ctx.make<ir::HirBlock>(std::move(stmts), s.span);
+        }
+        case NodeKind::AsmStmt: {
+            auto& s = static_cast<const AsmStmt&>(node);
+            auto lit = hir_ctx.make<ir::HirLiteralExpr>(
+                ir::HirLiteralKind::String,
+                s.code,
+                s.span);
+            auto callee = hir_ctx.make<ir::HirVarExpr>("asm", s.span);
+            std::vector<ir::HirExprId> args;
+            args.push_back(lit);
+            auto call = hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), s.span);
+            return hir_ctx.make<ir::HirExprStmt>(call, s.span);
+        }
+        case NodeKind::UnsafeStmt: {
+            auto& s = static_cast<const UnsafeStmt&>(node);
+            return lower_block(ctx, s.body, hir_ctx, diagnostics);
+        }
         case NodeKind::LetStmt: {
             auto& s = static_cast<const LetStmt&>(node);
             return hir_ctx.make<ir::HirLetStmt>(
@@ -416,6 +456,20 @@ ir::HirModuleId lower_to_hir(
                     d.body != kInvalidAstId
                         ? lower_block(ctx, d.body, hir_ctx, diagnostics)
                         : ir::kInvalidHirId,
+                    d.span));
+                break;
+            }
+            case NodeKind::MacroDecl: {
+                auto& d = static_cast<const MacroDecl&>(decl);
+                std::vector<ir::HirParam> params;
+                for (const auto& p : d.params) {
+                    params.emplace_back(p.name, ir::kInvalidHirId);
+                }
+                decls.push_back(hir_ctx.make<ir::HirFnDecl>(
+                    d.name.name,
+                    std::move(params),
+                    ir::kInvalidHirId,
+                    lower_block(ctx, d.body, hir_ctx, diagnostics),
                     d.span));
                 break;
             }

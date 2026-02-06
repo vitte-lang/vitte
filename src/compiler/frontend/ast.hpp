@@ -110,6 +110,8 @@ enum class NodeKind {
 
     // statements
     BlockStmt,
+    AsmStmt,
+    UnsafeStmt,
     LetStmt,
     ExprStmt,
     ReturnStmt,
@@ -167,10 +169,24 @@ struct Ident : AstNode {
 // Attribute
 // ------------------------------------------------------------
 
+struct AttributeArg {
+    enum class Kind {
+        Ident,
+        String,
+        Int
+    };
+
+    Kind kind;
+    std::string value;
+
+    AttributeArg(Kind kind, std::string value);
+};
+
 struct Attribute : AstNode {
     Ident name;
+    std::vector<AttributeArg> args;
 
-    explicit Attribute(Ident name, SourceSpan span);
+    explicit Attribute(Ident name, std::vector<AttributeArg> args, SourceSpan span);
 };
 
 // ------------------------------------------------------------
@@ -420,6 +436,18 @@ struct CtorPattern : Pattern {
 
 struct Stmt : AstNode {
     explicit Stmt(NodeKind kind, SourceSpan span);
+};
+
+struct AsmStmt : Stmt {
+    std::string code;
+
+    AsmStmt(std::string code, SourceSpan span);
+};
+
+struct UnsafeStmt : Stmt {
+    StmtId body;
+
+    UnsafeStmt(StmtId body, SourceSpan span);
 };
 
 struct LetStmt : Stmt {

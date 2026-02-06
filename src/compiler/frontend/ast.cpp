@@ -48,8 +48,13 @@ Ident::Ident(std::string n, SourceSpan sp)
 // Attribute
 // ------------------------------------------------------------
 
-Attribute::Attribute(Ident n, SourceSpan sp)
-    : AstNode(NodeKind::Attribute, sp), name(std::move(n)) {}
+AttributeArg::AttributeArg(Kind k, std::string v)
+    : kind(k), value(std::move(v)) {}
+
+Attribute::Attribute(Ident n, std::vector<AttributeArg> a, SourceSpan sp)
+    : AstNode(NodeKind::Attribute, sp),
+      name(std::move(n)),
+      args(std::move(a)) {}
 
 // ------------------------------------------------------------
 // Module path
@@ -188,6 +193,14 @@ CtorPattern::CtorPattern(TypeId t, std::vector<PatternId> a, SourceSpan sp)
 
 Stmt::Stmt(NodeKind k, SourceSpan sp)
     : AstNode(k, sp) {}
+
+AsmStmt::AsmStmt(std::string c, SourceSpan sp)
+    : Stmt(NodeKind::AsmStmt, sp),
+      code(std::move(c)) {}
+
+UnsafeStmt::UnsafeStmt(StmtId b, SourceSpan sp)
+    : Stmt(NodeKind::UnsafeStmt, sp),
+      body(b) {}
 
 LetStmt::LetStmt(
     Ident id,
@@ -420,6 +433,8 @@ const char* to_string(NodeKind kind) {
         case NodeKind::IdentPattern: return "IdentPattern";
         case NodeKind::CtorPattern: return "CtorPattern";
         case NodeKind::BlockStmt: return "BlockStmt";
+        case NodeKind::AsmStmt: return "AsmStmt";
+        case NodeKind::UnsafeStmt: return "UnsafeStmt";
         case NodeKind::LetStmt: return "LetStmt";
         case NodeKind::ExprStmt: return "ExprStmt";
         case NodeKind::ReturnStmt: return "ReturnStmt";

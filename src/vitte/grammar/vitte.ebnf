@@ -20,7 +20,9 @@ toplevel ::= space_decl
 
 space_decl ::= "space" WS1 module_path ;
 pull_decl  ::= "pull"  WS1 module_path [ WS1 "as" WS1 ident ] ;
-use_decl   ::= "use"   WS1 module_path [ "." "*" ] [ WS1 "as" WS1 ident ] ;
+use_decl   ::= "use"   WS1 module_path [ use_group | use_glob ] [ WS1 "as" WS1 ident ] ;
+use_glob   ::= "." "*" ;
+use_group  ::= "." "{" WS? ident_list WS? "}" ;
 share_decl ::= "share" WS1 ( "all" | ident_list ) ;
 
 module_path ::= relative? path_parts ;
@@ -37,7 +39,9 @@ zone_body ::= { ~">>>" } ;
 
 <<< ——————————————————— ) ( Attributes ) ( ——————————————————— >>>
 
-attribute ::= "#[" ident "]" ;
+attribute ::= "#[" ident [ "(" WS? attr_args? WS? ")" ] "]" ;
+attr_args ::= attr_arg { WS? "," WS? attr_arg } ;
+attr_arg ::= ident | string_lit | int_lit ;
 
 <<< ——————————————————— ) ( Types ) ( ——————————————————— >>>
 
@@ -93,6 +97,8 @@ block ::= "{" WS? { stmt WS? } "}" ;
 <<< ——————————————————— ) ( Statements ) ( ——————————————————— >>>
 
 stmt ::= let_stmt
+       | asm_stmt
+       | unsafe_stmt
        | make_stmt
        | set_stmt
        | give_stmt
@@ -103,6 +109,7 @@ stmt ::= let_stmt
        | break_stmt
        | continue_stmt
        | select_stmt
+       | match_stmt
        | when_match_stmt
        | return_stmt
        | expr_stmt
@@ -114,6 +121,8 @@ set_stmt  ::= "set"  WS1 ident WS? "=" WS? expr ;
 
 give_stmt ::= "give" WS1 expr ;
 emit_stmt ::= "emit" WS1 expr ;
+asm_stmt ::= "asm" WS? "(" WS? string_lit WS? ")" ;
+unsafe_stmt ::= "unsafe" WS? block ;
 return_stmt ::= "return" [ WS1 expr ] ;
 
 if_stmt ::= "if" WS1 expr WS? block
@@ -128,6 +137,8 @@ continue_stmt ::= "continue" ;
 select_stmt ::= "select" WS1 expr WS?
                 { when_stmt WS? }
                 [ WS? ("else" | "otherwise") WS? block ] ;
+match_stmt ::= "match" WS1 expr WS?
+               "{" WS? { "case" WS1 pattern WS? block WS? } [ WS? ("else" | "otherwise") WS? block ] "}" ;
 
 when_stmt ::= "when" WS1 pattern WS? block ;
 when_match_stmt ::= "when" WS1 expr WS1 "is" WS1 pattern WS? block ;

@@ -75,6 +75,11 @@ ast::ModuleId Parser::parse_module() {
     std::vector<DeclId> decls;
 
     while (current_.kind != TokenKind::Eof) {
+        if (!pending_decls_.empty()) {
+            decls.push_back(pending_decls_.front());
+            pending_decls_.erase(pending_decls_.begin());
+            continue;
+        }
         auto d = parse_toplevel();
         if (d != ast::kInvalidAstId) {
             decls.push_back(d);
@@ -187,9 +192,42 @@ Attribute Parser::parse_attribute() {
     SourceSpan span = current_.span;
     expect(TokenKind::AttrStart, "expected attribute start");
     Ident name = parse_ident();
+    std::vector<AttributeArg> args;
+    if (match(TokenKind::LParen)) {
+        if (current_.kind != TokenKind::RParen) {
+            args = parse_attribute_args();
+        }
+        expect(TokenKind::RParen, "expected ')' after attribute args");
+    }
     expect(TokenKind::RBracket, "expected ']' after attribute");
     span.end = previous_.span.end;
-    return Attribute(std::move(name), span);
+    return Attribute(std::move(name), std::move(args), span);
+}
+
+std::vector<AttributeArg> Parser::parse_attribute_args() {
+    std::vector<AttributeArg> args;
+    while (current_.kind != TokenKind::RParen && current_.kind != TokenKind::Eof) {
+        if (current_.kind == TokenKind::Ident) {
+            Token tok = current_;
+            advance();
+            args.emplace_back(AttributeArg::Kind::Ident, tok.text);
+        } else if (current_.kind == TokenKind::StringLit) {
+            Token tok = current_;
+            advance();
+            args.emplace_back(AttributeArg::Kind::String, tok.text);
+        } else if (current_.kind == TokenKind::IntLit) {
+            Token tok = current_;
+            advance();
+            args.emplace_back(AttributeArg::Kind::Int, tok.text);
+        } else {
+            diag_.error("expected attribute argument", current_.span);
+            advance();
+        }
+        if (!match(TokenKind::Comma)) {
+            break;
+        }
+    }
+    return args;
 }
 
 DeclId Parser::parse_space_decl() {
@@ -226,8 +264,30 @@ DeclId Parser::parse_use_decl() {
     std::vector<Ident> parts;
     parts.push_back(parse_ident());
     bool is_glob = false;
+    bool has_group = false;
+    std::vector<Ident> group_items;
     while (current_.kind == TokenKind::Slash || current_.kind == TokenKind::Dot) {
+        bool is_dot = current_.kind == TokenKind::Dot;
         advance();
+        if (is_dot && match(TokenKind::LBrace)) {
+            has_group = true;
+            if (current_.kind != TokenKind::RBrace) {
+                if (match(TokenKind::Star)) {
+                    is_glob = true;
+                } else {
+                    group_items.push_back(parse_ident());
+                    while (match(TokenKind::Comma)) {
+                        if (match(TokenKind::Star)) {
+                            is_glob = true;
+                            break;
+                        }
+                        group_items.push_back(parse_ident());
+                    }
+                }
+            }
+            expect(TokenKind::RBrace, "expected '}' after use group");
+            break;
+        }
         if (current_.kind == TokenKind::Star) {
             is_glob = true;
             advance();
@@ -238,6 +298,27 @@ DeclId Parser::parse_use_decl() {
     if (!parts.empty()) {
         path_span.end = parts.back().span.end;
     }
+    if (has_group) {
+        std::vector<DeclId> decls;
+        if (is_glob) {
+            ModulePath path(std::vector<Ident>(parts.begin(), parts.end()), relative_depth, path_span);
+            decls.push_back(ast_ctx_.make<UseDecl>(std::move(path), std::nullopt, true, span));
+        }
+        for (const auto& item : group_items) {
+            std::vector<Ident> joined(parts.begin(), parts.end());
+            joined.push_back(item);
+            SourceSpan item_span = item.span;
+            ModulePath path(std::move(joined), relative_depth, item_span);
+            decls.push_back(ast_ctx_.make<UseDecl>(std::move(path), std::nullopt, false, span));
+        }
+        if (!decls.empty()) {
+            for (std::size_t i = 1; i < decls.size(); ++i) {
+                pending_decls_.push_back(decls[i]);
+            }
+            return decls[0];
+        }
+    }
+
     ModulePath path(std::move(parts), relative_depth, path_span);
     std::optional<Ident> alias;
     if (match(TokenKind::KwAs)) {
@@ -530,6 +611,8 @@ StmtId Parser::parse_block() {
 
 StmtId Parser::parse_stmt() {
     switch (current_.kind) {
+        case TokenKind::KwAsm: return parse_asm_stmt();
+        case TokenKind::KwUnsafe: return parse_unsafe_stmt();
         case TokenKind::KwLet: return parse_let_stmt();
         case TokenKind::KwMake: return parse_make_stmt();
         case TokenKind::KwSet: return parse_set_stmt();
@@ -541,10 +624,35 @@ StmtId Parser::parse_stmt() {
         case TokenKind::KwBreak: return parse_break_stmt();
         case TokenKind::KwContinue: return parse_continue_stmt();
         case TokenKind::KwSelect: return parse_select_stmt();
+        case TokenKind::KwMatch: return parse_match_stmt();
         case TokenKind::KwWhen: return parse_when_match_stmt();
         case TokenKind::KwReturn: return parse_return_stmt();
         default: return parse_expr_stmt();
     }
+}
+
+StmtId Parser::parse_asm_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwAsm, "expected 'asm'");
+    expect(TokenKind::LParen, "expected '(' after 'asm'");
+    std::string code;
+    if (current_.kind == TokenKind::StringLit) {
+        code = current_.text;
+        advance();
+    } else {
+        diag_.error("expected string literal in asm()", current_.span);
+    }
+    expect(TokenKind::RParen, "expected ')' after asm");
+    span.end = previous_.span.end;
+    return ast_ctx_.make<AsmStmt>(std::move(code), span);
+}
+
+StmtId Parser::parse_unsafe_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwUnsafe, "expected 'unsafe'");
+    StmtId body = parse_block();
+    span.end = ast_ctx_.get<Stmt>(body).span.end;
+    return ast_ctx_.make<UnsafeStmt>(body, span);
 }
 
 StmtId Parser::parse_let_stmt() {
@@ -686,6 +794,36 @@ StmtId Parser::parse_select_stmt() {
     if (match(TokenKind::KwOtherwise)) {
         otherwise_block = parse_block();
     }
+    span.end = previous_.span.end;
+    return ast_ctx_.make<SelectStmt>(
+        expr,
+        std::move(whens),
+        otherwise_block,
+        span);
+}
+
+StmtId Parser::parse_match_stmt() {
+    SourceSpan span = current_.span;
+    expect(TokenKind::KwMatch, "expected 'match'");
+    ExprId expr = parse_expr();
+    expect(TokenKind::LBrace, "expected '{' after match");
+    std::vector<StmtId> whens;
+    StmtId otherwise_block = ast::kInvalidAstId;
+    while (current_.kind != TokenKind::RBrace && current_.kind != TokenKind::Eof) {
+        if (match(TokenKind::KwCase)) {
+            PatternId pat = parse_pattern();
+            StmtId block = parse_block();
+            whens.push_back(ast_ctx_.make<WhenStmt>(pat, block, ast_ctx_.get<Stmt>(block).span));
+            continue;
+        }
+        if (match(TokenKind::KwOtherwise) || match(TokenKind::KwElse)) {
+            otherwise_block = parse_block();
+            continue;
+        }
+        diag_.error("expected 'case' or 'otherwise' in match", current_.span);
+        advance();
+    }
+    expect(TokenKind::RBrace, "expected '}' after match");
     span.end = previous_.span.end;
     return ast_ctx_.make<SelectStmt>(
         expr,
@@ -848,6 +986,9 @@ static const char* keyword_text(TokenKind kind) {
         case TokenKind::KwProc: return "proc";
         case TokenKind::KwEntry: return "entry";
         case TokenKind::KwAt: return "at";
+        case TokenKind::KwAsm: return "asm";
+        case TokenKind::KwUnsafe: return "unsafe";
+        case TokenKind::KwMatch: return "match";
         case TokenKind::KwLet: return "let";
         case TokenKind::KwMake: return "make";
         case TokenKind::KwSet: return "set";

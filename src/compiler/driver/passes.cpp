@@ -6,10 +6,12 @@
 #include "../frontend/disambiguate.hpp"
 #include "../frontend/lexer.hpp"
 #include "../frontend/parser.hpp"
+#include "../frontend/macro_expand.hpp"
 #include "../frontend/validate.hpp"
 #include "../frontend/resolve.hpp"
 #include "../frontend/lower_hir.hpp"
 #include "../ir/hir.hpp"
+#include "../ir/lower_mir.hpp"
 #include "../ir/validate.hpp"
 
 #include <fstream>
@@ -44,6 +46,7 @@ PassResult run_passes(const Options& opts) {
     frontend::ast::AstContext ast_ctx;
     frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse);
     auto module = parser.parse_module();
+    frontend::passes::expand_macros(ast_ctx, module, diagnostics);
     frontend::passes::disambiguate_invokes(ast_ctx, module);
 
     if (opts.dump_ast) {
@@ -131,12 +134,48 @@ PassResult run_passes(const Options& opts) {
         }
     }
 
-    if (opts.mir_only) {
-        std::cerr << "[driver] mir lowering not implemented\n";
-        if (opts.dump_mir) {
-            std::cerr << "[driver] cannot dump MIR: lowering not implemented\n";
+    if (opts.dump_mir) {
+        ir::HirContext hir_ctx;
+        auto hir = frontend::lower::lower_to_hir(ast_ctx, module, hir_ctx, diagnostics);
+        ir::validate::validate_module(hir_ctx, hir, diagnostics);
+        if (diagnostics.has_errors()) {
+            frontend::diag::render_all(diagnostics, std::cerr);
+            std::cerr << "[driver] hir lowering failed\n";
+            result.ok = false;
+            return result;
         }
-        result.ok = false;
+        auto mir = ir::lower::lower_to_mir(hir_ctx, hir, diagnostics);
+        if (diagnostics.has_errors()) {
+            frontend::diag::render_all(diagnostics, std::cerr);
+            std::cerr << "[driver] mir lowering failed\n";
+            result.ok = false;
+            return result;
+        }
+        std::cout << ir::dump_to_string(mir);
+    }
+
+    if (opts.mir_only) {
+        ir::HirContext hir_ctx;
+        auto hir = frontend::lower::lower_to_hir(ast_ctx, module, hir_ctx, diagnostics);
+        ir::validate::validate_module(hir_ctx, hir, diagnostics);
+        if (diagnostics.has_errors()) {
+            frontend::diag::render_all(diagnostics, std::cerr);
+            std::cerr << "[driver] hir lowering failed\n";
+            result.ok = false;
+            return result;
+        }
+        auto mir = ir::lower::lower_to_mir(hir_ctx, hir, diagnostics);
+        if (diagnostics.has_errors()) {
+            frontend::diag::render_all(diagnostics, std::cerr);
+            std::cerr << "[driver] mir lowering failed\n";
+            result.ok = false;
+            return result;
+        }
+        if (opts.dump_mir) {
+            std::cout << ir::dump_to_string(mir);
+        }
+        std::cout << "[driver] mir ok\n";
+        result.ok = true;
         return result;
     }
 

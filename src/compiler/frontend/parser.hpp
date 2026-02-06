@@ -45,6 +45,7 @@ private:
     ast::ModulePath parse_module_path();
     ast::Ident parse_ident();
     ast::Attribute parse_attribute();
+    std::vector<ast::AttributeArg> parse_attribute_args();
 
     DeclId parse_space_decl();
     DeclId parse_pull_decl();
@@ -65,6 +66,8 @@ private:
     // Blocks / statements
     StmtId parse_block();
     StmtId parse_stmt();
+    StmtId parse_asm_stmt();
+    StmtId parse_unsafe_stmt();
     StmtId parse_let_stmt();
     StmtId parse_make_stmt();
     StmtId parse_set_stmt();
@@ -76,6 +79,7 @@ private:
     StmtId parse_break_stmt();
     StmtId parse_continue_stmt();
     StmtId parse_select_stmt();
+    StmtId parse_match_stmt();
     StmtId parse_when_match_stmt();
     StmtId parse_return_stmt();
     StmtId parse_expr_stmt();
@@ -114,6 +118,7 @@ private:
     bool strict_;
     Token current_;
     Token previous_;
+    std::vector<DeclId> pending_decls_;
 };
 
 } // namespace vitte::frontend::parser

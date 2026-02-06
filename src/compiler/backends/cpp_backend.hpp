@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "../ir/mir.hpp"
 #include "lower/lower_mir.hpp"
 
 namespace vitte::backend {
@@ -40,7 +41,7 @@ struct CppBackendOptions {
  * Entry point: MIR → C++ → native executable
  * ------------------------------------------------- */
 bool compile_cpp_backend(
-    const std::vector<lower::MirFunction>& mir_functions,
+    const vitte::ir::MirModule& mir_module,
     const std::string& output_exe,
     const CppBackendOptions& options
 );
@@ -49,7 +50,7 @@ bool compile_cpp_backend(
  * Emit C++ to an output stream (no native compile)
  * ------------------------------------------------- */
 bool emit_cpp_backend(
-    const std::vector<lower::MirFunction>& mir_functions,
+    const vitte::ir::MirModule& mir_module,
     std::ostream& os,
     const CppBackendOptions& options
 );

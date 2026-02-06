@@ -76,22 +76,22 @@ static context::CppContext build_context(const CppBackendOptions& options) {
 }
 
 static ast::cpp::CppTranslationUnit lower_to_cpp(
-    const std::vector<lower::MirFunction>& mir_functions,
+    const vitte::ir::MirModule& mir_module,
     context::CppContext& ctx
 ) {
-    return lower::lower_mir(mir_functions, ctx);
+    return lower::lower_mir(mir_module, ctx);
 }
 
 /* -------------------------------------------------
  * Compile MIR to native executable via C++
  * ------------------------------------------------- */
 bool compile_cpp_backend(
-    const std::vector<lower::MirFunction>& mir_functions,
+    const vitte::ir::MirModule& mir_module,
     const std::string& output_exe,
     const CppBackendOptions& options
 ) {
     context::CppContext ctx = build_context(options);
-    ast::cpp::CppTranslationUnit tu = lower_to_cpp(mir_functions, ctx);
+    ast::cpp::CppTranslationUnit tu = lower_to_cpp(mir_module, ctx);
 
     /* ---------------------------------------------
      * Emit C++ file
@@ -201,6 +201,69 @@ bool compile_cpp_backend(
             std::cerr << "[cpp-backend] kernel (uefi) clang invocation failed\n";
             return false;
         }
+    } else if (options.target == "kernel-x86_64-grub") {
+        toolchain::ClangOptions clang_opts;
+        clang_opts.debug = options.debug;
+        clang_opts.optimize = options.optimize;
+        clang_opts.opt_level = options.opt_level;
+        clang_opts.verbose = options.verbose;
+        clang_opts.freestanding = true;
+        clang_opts.target = "x86_64-elf";
+        clang_opts.cxx_flags.push_back("-mno-red-zone");
+        clang_opts.cxx_flags.push_back("-fno-pic");
+        clang_opts.cxx_flags.push_back("-fno-pie");
+        clang_opts.ld_flags.push_back("-fuse-ld=lld");
+        clang_opts.ld_flags.push_back("-nostdlib");
+        clang_opts.ld_flags.push_back("-Wl,-z,notext");
+        clang_opts.ld_flags.push_back("-Wl,-z,max-page-size=0x1000");
+
+        const char* root = std::getenv("VITTE_ROOT");
+        std::filesystem::path base = root && *root
+            ? std::filesystem::path(root)
+            : std::filesystem::current_path();
+
+        std::filesystem::path rt_inc = base / "target/kernel/x86_64/grub/include";
+        std::filesystem::path rt_cpp = base / "target/kernel/x86_64/grub/runtime/vitte_runtime.cpp";
+        std::filesystem::path rt_int = base / "target/kernel/x86_64/grub/runtime/interrupts.cpp";
+        std::filesystem::path rt_int_s = base / "target/kernel/x86_64/grub/runtime/interrupts.s";
+        std::filesystem::path rt_gdt = base / "target/kernel/x86_64/grub/runtime/gdt.cpp";
+        std::filesystem::path rt_paging = base / "target/kernel/x86_64/grub/runtime/paging.cpp";
+        std::filesystem::path rt_start = base / "target/kernel/x86_64/grub/runtime/start.s";
+        std::filesystem::path ld_script = base / "target/kernel/x86_64/grub/linker/linker.ld";
+
+        if (std::filesystem::exists(rt_inc)) {
+            clang_opts.include_dirs.push_back(rt_inc.string());
+        }
+        if (std::filesystem::exists(rt_cpp)) {
+            clang_opts.extra_sources.push_back(rt_cpp.string());
+        }
+        if (std::filesystem::exists(rt_int)) {
+            clang_opts.extra_sources.push_back(rt_int.string());
+        }
+        if (std::filesystem::exists(rt_int_s)) {
+            clang_opts.extra_sources.push_back(rt_int_s.string());
+        }
+        if (std::filesystem::exists(rt_gdt)) {
+            clang_opts.extra_sources.push_back(rt_gdt.string());
+        }
+        if (std::filesystem::exists(rt_paging)) {
+            clang_opts.extra_sources.push_back(rt_paging.string());
+        }
+        if (std::filesystem::exists(rt_start)) {
+            clang_opts.extra_sources.push_back(rt_start.string());
+        }
+        if (std::filesystem::exists(ld_script)) {
+            clang_opts.ld_flags.push_back("-Wl,-T," + ld_script.string());
+        }
+
+        if (!toolchain::invoke_clang(
+                cpp_path.string(),
+                output_exe,
+                clang_opts
+            )) {
+            std::cerr << "[cpp-backend] kernel (grub) clang invocation failed\n";
+            return false;
+        }
     } else {
         /* ---------------------------------------------
          * Invoke clang++
@@ -304,12 +367,12 @@ bool compile_cpp_backend(
  * Emit MIR as C++ to an output stream
  * ------------------------------------------------- */
 bool emit_cpp_backend(
-    const std::vector<lower::MirFunction>& mir_functions,
+    const vitte::ir::MirModule& mir_module,
     std::ostream& os,
     const CppBackendOptions& options
 ) {
     context::CppContext ctx = build_context(options);
-    ast::cpp::CppTranslationUnit tu = lower_to_cpp(mir_functions, ctx);
+    ast::cpp::CppTranslationUnit tu = lower_to_cpp(mir_module, ctx);
     emit::emit_translation_unit(os, tu, ctx);
     return true;
 }

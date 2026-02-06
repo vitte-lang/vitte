@@ -4,6 +4,7 @@
 
 #include "../frontend/lexer.hpp"
 #include "../frontend/parser.hpp"
+#include "../frontend/macro_expand.hpp"
 #include "../frontend/validate.hpp"
 #include "../frontend/diagnostics.hpp"
 #include "../frontend/disambiguate.hpp"
@@ -11,62 +12,15 @@
 #include "../frontend/lower_hir.hpp"
 #include "../ir/validate.hpp"
 #include "../ir/hir.hpp"
+#include "../ir/lower_mir.hpp"
 
 #include "../backends/cpp_backend.hpp"
-#include "../backends/lower/lower_mir.hpp"
 
 #include <fstream>
 #include <iostream>
-#include <optional>
-#include <cctype>
-#include <cstdlib>
 #include <chrono>
 
 namespace vitte::driver {
-
-static bool is_ident_char(char c) {
-    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
-}
-
-static std::optional<int32_t> extract_print_i32(const std::string& src) {
-    std::size_t pos = 0;
-    while ((pos = src.find("print", pos)) != std::string::npos) {
-        if (pos > 0 && is_ident_char(src[pos - 1])) {
-            pos += 5;
-            continue;
-        }
-        std::size_t i = pos + 5;
-        while (i < src.size() && std::isspace(static_cast<unsigned char>(src[i]))) {
-            ++i;
-        }
-        if (i >= src.size() || src[i] != '(') {
-            pos += 5;
-            continue;
-        }
-        ++i;
-        while (i < src.size() && std::isspace(static_cast<unsigned char>(src[i]))) {
-            ++i;
-        }
-        bool neg = false;
-        if (i < src.size() && src[i] == '-') {
-            neg = true;
-            ++i;
-        }
-        if (i >= src.size() || !std::isdigit(static_cast<unsigned char>(src[i]))) {
-            pos += 5;
-            continue;
-        }
-        std::size_t start = i;
-        while (i < src.size() && std::isdigit(static_cast<unsigned char>(src[i]))) {
-            ++i;
-        }
-        std::string num = src.substr(start, i - start);
-        long v = std::strtol(num.c_str(), nullptr, 10);
-        if (neg) v = -v;
-        return static_cast<int32_t>(v);
-    }
-    return std::nullopt;
-}
 
 /* -------------------------------------------------
  * Run full compilation pipeline
@@ -106,6 +60,7 @@ bool run_pipeline(const Options& opts) {
     auto ast = parser.parse_module();
     (void)ast;
 
+    frontend::passes::expand_macros(ast_ctx, ast, diagnostics);
     frontend::passes::disambiguate_invokes(ast_ctx, ast);
     frontend::validate::validate_module(ast_ctx, ast, diagnostics);
     if (diagnostics.has_errors()) {
@@ -136,6 +91,21 @@ bool run_pipeline(const Options& opts) {
         return false;
     }
     auto t_ir_end = Clock::now();
+
+    auto mir = ir::lower::lower_to_mir(hir_ctx, hir, diagnostics);
+    if (diagnostics.has_errors()) {
+        frontend::diag::render_all(diagnostics, std::cerr);
+        std::cerr << "[pipeline] mir lowering failed\n";
+        return false;
+    }
+    if (opts.dump_mir) {
+        std::cout << ir::dump_to_string(mir);
+    }
+    if (opts.mir_only) {
+        std::cout << "[pipeline] mir ok\n";
+        return true;
+    }
+
     log << "[stage] backend\n";
     auto t_backend_start = Clock::now();
 
@@ -153,52 +123,9 @@ bool run_pipeline(const Options& opts) {
     be_opts.arduino_port = opts.arduino_port;
     be_opts.arduino_fqbn = opts.arduino_fqbn;
 
-    std::vector<backend::lower::MirFunction> mir_funcs;
-
-    backend::lower::MirFunction bmf;
-    bmf.name = "main";
-
-    auto print_val = extract_print_i32(source);
-    if (print_val.has_value()) {
-        backend::lower::MirInstr init;
-        init.kind = backend::lower::MirInstr::Kind::ConstI32;
-        init.dst.name = "v0";
-        init.imm = *print_val;
-        bmf.instrs.push_back(init);
-
-        backend::lower::MirInstr pr;
-        pr.kind = backend::lower::MirInstr::Kind::PrintI32;
-        pr.lhs.name = "v0";
-        bmf.instrs.push_back(pr);
-
-        backend::lower::MirInstr ret_val;
-        ret_val.kind = backend::lower::MirInstr::Kind::ConstI32;
-        ret_val.dst.name = "v1";
-        ret_val.imm = 0;
-        bmf.instrs.push_back(ret_val);
-
-        backend::lower::MirInstr ret;
-        ret.kind = backend::lower::MirInstr::Kind::Return;
-        ret.dst.name = "v1";
-        bmf.instrs.push_back(ret);
-    } else {
-        backend::lower::MirInstr init;
-        init.kind = backend::lower::MirInstr::Kind::ConstI32;
-        init.dst.name = "v0";
-        init.imm = 0;
-        bmf.instrs.push_back(init);
-
-        backend::lower::MirInstr ret;
-        ret.kind = backend::lower::MirInstr::Kind::Return;
-        ret.dst.name = "v0";
-        bmf.instrs.push_back(ret);
-    }
-
-    mir_funcs.push_back(std::move(bmf));
-
     if (opts.emit_cpp) {
         if (opts.emit_stdout) {
-            if (!backend::emit_cpp_backend(mir_funcs, std::cout, be_opts)) {
+            if (!backend::emit_cpp_backend(mir, std::cout, be_opts)) {
                 std::cerr << "[pipeline] emit-cpp failed\n";
                 return false;
             }
@@ -208,7 +135,7 @@ bool run_pipeline(const Options& opts) {
         }
     } else {
         if (!backend::compile_cpp_backend(
-                mir_funcs,
+                mir,
                 opts.output,
                 be_opts
             )) {

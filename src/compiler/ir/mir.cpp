@@ -99,6 +99,20 @@ MirCall::MirCall(
       args(std::move(args)),
       result(std::move(result)) {}
 
+MirAsm::MirAsm(
+    std::string c,
+    bool vol,
+    SourceSpan sp)
+    : MirInstr(MirKind::Asm, sp),
+      code(std::move(c)),
+      is_volatile(vol) {}
+
+MirUnsafeBegin::MirUnsafeBegin(SourceSpan sp)
+    : MirInstr(MirKind::UnsafeBegin, sp) {}
+
+MirUnsafeEnd::MirUnsafeEnd(SourceSpan sp)
+    : MirInstr(MirKind::UnsafeEnd, sp) {}
+
 MirReturn::MirReturn(
     MirValuePtr v,
     SourceSpan sp)
@@ -222,6 +236,9 @@ const char* to_string(MirKind kind) {
         case MirKind::Assign: return "Assign";
         case MirKind::BinaryOp: return "BinaryOp";
         case MirKind::Call: return "Call";
+        case MirKind::Asm: return "Asm";
+        case MirKind::UnsafeBegin: return "UnsafeBegin";
+        case MirKind::UnsafeEnd: return "UnsafeEnd";
         case MirKind::Return: return "Return";
         case MirKind::Goto: return "Goto";
         case MirKind::CondGoto: return "CondGoto";
