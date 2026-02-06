@@ -37,6 +37,7 @@ public:
     void pop_scope();
 
     const std::vector<Symbol>& symbols() const { return symbols_; }
+    std::vector<std::string> in_scope_names(std::size_t limit = 0) const;
 
 private:
     std::vector<Symbol> symbols_;

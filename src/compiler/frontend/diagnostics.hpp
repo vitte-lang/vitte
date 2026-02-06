@@ -63,8 +63,9 @@ class Localization {
 public:
     Localization() = default;
 
-    bool load(const std::string& base_dir, const std::string& lang);
+    bool load(const std::string& base_dir, const std::string& lang, const std::string& filename = "diagnostics.ftl");
     std::string translate(std::string_view code, std::string_view message) const;
+    std::string lookup(std::string_view key) const;
 
 private:
     std::unordered_map<std::string, std::string> table_;

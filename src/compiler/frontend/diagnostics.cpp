@@ -4,6 +4,7 @@
 // ============================================================
 
 #include "diagnostics.hpp"
+#include "diagnostics_messages.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -112,7 +113,7 @@ static std::string message_key(std::string_view message) {
     return key;
 }
 
-bool Localization::load(const std::string& base_dir, const std::string& lang) {
+bool Localization::load(const std::string& base_dir, const std::string& lang, const std::string& filename) {
     namespace fs = std::filesystem;
     std::string norm = normalize_lang(lang);
     std::string primary = lang_primary(norm);
@@ -125,7 +126,7 @@ bool Localization::load(const std::string& base_dir, const std::string& lang) {
     }
 
     for (const auto& code : candidates) {
-        fs::path path = fs::path(base_dir) / code / "diagnostics.ftl";
+        fs::path path = fs::path(base_dir) / code / filename;
         std::ifstream in(path);
         if (!in.is_open()) {
             continue;
@@ -179,6 +180,17 @@ std::string Localization::translate(std::string_view code, std::string_view mess
     auto it = table_.find(key);
     if (it == table_.end()) {
         return std::string(message);
+    }
+    return it->second;
+}
+
+std::string Localization::lookup(std::string_view key) const {
+    if (table_.empty()) {
+        return {};
+    }
+    auto it = table_.find(std::string(key));
+    if (it == table_.end()) {
+        return {};
     }
     return it->second;
 }
@@ -291,6 +303,16 @@ void render(const Diagnostic& d, std::ostream& os) {
 
     for (const auto& note : d.notes) {
         os << "\n  note: " << note;
+    }
+
+    if (!d.code.empty()) {
+        DiagId id{};
+        if (diag_id_from_code(d.code, &id)) {
+            const char* anchor = diag_doc_anchor(id);
+            if (anchor && *anchor) {
+                os << "\n  note: see docs/errors.md#" << anchor;
+            }
+        }
     }
 
     os << "\n";

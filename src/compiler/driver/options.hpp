@@ -9,6 +9,11 @@ namespace vitte::driver {
 struct Options {
     /* Show help and exit */
     bool show_help = false;
+    bool init_project = false;
+    std::string init_dir;
+    bool explain_diagnostic = false;
+    bool run_doctor = false;
+    bool emit_stdout = false;
 
     /* Parse only (no backend / codegen) */
     bool parse_only = false;
@@ -49,6 +54,9 @@ struct Options {
 
     /* Localization */
     std::string lang;
+
+    /* Explain diagnostic */
+    std::string explain_code;
 };
 
 /* -------------------------------------------------

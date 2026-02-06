@@ -1,4 +1,5 @@
 #pragma once
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,15 @@ struct CppBackendOptions {
 bool compile_cpp_backend(
     const std::vector<lower::MirFunction>& mir_functions,
     const std::string& output_exe,
+    const CppBackendOptions& options
+);
+
+/* -------------------------------------------------
+ * Emit C++ to an output stream (no native compile)
+ * ------------------------------------------------- */
+bool emit_cpp_backend(
+    const std::vector<lower::MirFunction>& mir_functions,
+    std::ostream& os,
     const CppBackendOptions& options
 );
 

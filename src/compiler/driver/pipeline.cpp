@@ -6,6 +6,11 @@
 #include "../frontend/parser.hpp"
 #include "../frontend/validate.hpp"
 #include "../frontend/diagnostics.hpp"
+#include "../frontend/disambiguate.hpp"
+#include "../frontend/resolve.hpp"
+#include "../frontend/lower_hir.hpp"
+#include "../ir/validate.hpp"
+#include "../ir/hir.hpp"
 
 #include "../backends/cpp_backend.hpp"
 #include "../backends/lower/lower_mir.hpp"
@@ -15,6 +20,7 @@
 #include <optional>
 #include <cctype>
 #include <cstdlib>
+#include <chrono>
 
 namespace vitte::driver {
 
@@ -66,7 +72,13 @@ static std::optional<int32_t> extract_print_i32(const std::string& src) {
  * Run full compilation pipeline
  * ------------------------------------------------- */
 bool run_pipeline(const Options& opts) {
-    std::cout << "[pipeline] input: " << opts.input << "\n";
+    using Clock = std::chrono::steady_clock;
+    auto t_total_start = Clock::now();
+
+    std::ostream& log = opts.emit_stdout ? std::cerr : std::cout;
+
+    log << "[pipeline] input: " << opts.input << "\n";
+    log << "[stage] parse\n";
 
     /* ---------------------------------------------
      * 1. Frontend: read source
@@ -82,6 +94,8 @@ bool run_pipeline(const Options& opts) {
         std::istreambuf_iterator<char>()
     );
 
+    auto t_parse_start = Clock::now();
+
     /* ---------------------------------------------
      * 2. Lexing + Parsing → AST
      * --------------------------------------------- */
@@ -92,11 +106,38 @@ bool run_pipeline(const Options& opts) {
     auto ast = parser.parse_module();
     (void)ast;
 
+    frontend::passes::disambiguate_invokes(ast_ctx, ast);
     frontend::validate::validate_module(ast_ctx, ast, diagnostics);
     if (diagnostics.has_errors()) {
         frontend::diag::render_all(diagnostics, std::cerr);
         return false;
     }
+    auto t_parse_end = Clock::now();
+
+    log << "[stage] resolve\n";
+    auto t_resolve_start = Clock::now();
+    frontend::resolve::Resolver resolver(diagnostics);
+    resolver.resolve_module(ast_ctx, ast);
+    if (diagnostics.has_errors()) {
+        frontend::diag::render_all(diagnostics, std::cerr);
+        std::cerr << "[pipeline] resolve failed\n";
+        return false;
+    }
+    auto t_resolve_end = Clock::now();
+
+    log << "[stage] ir\n";
+    auto t_ir_start = Clock::now();
+    ir::HirContext hir_ctx;
+    auto hir = frontend::lower::lower_to_hir(ast_ctx, ast, hir_ctx, diagnostics);
+    ir::validate::validate_module(hir_ctx, hir, diagnostics);
+    if (diagnostics.has_errors()) {
+        frontend::diag::render_all(diagnostics, std::cerr);
+        std::cerr << "[pipeline] hir lowering failed\n";
+        return false;
+    }
+    auto t_ir_end = Clock::now();
+    log << "[stage] backend\n";
+    auto t_backend_start = Clock::now();
 
     /* ---------------------------------------------
      * 6. Backend: MIR → native
@@ -152,7 +193,15 @@ bool run_pipeline(const Options& opts) {
     mir_funcs.push_back(std::move(bmf));
 
     if (opts.emit_cpp) {
-        std::cout << "[pipeline] emit-cpp only (skipping native compile)\n";
+        if (opts.emit_stdout) {
+            if (!backend::emit_cpp_backend(mir_funcs, std::cout, be_opts)) {
+                std::cerr << "[pipeline] emit-cpp failed\n";
+                return false;
+            }
+            std::cout << "\n";
+        } else {
+            log << "[pipeline] emit-cpp only (skipping native compile)\n";
+        }
     } else {
         if (!backend::compile_cpp_backend(
                 mir_funcs,
@@ -164,7 +213,20 @@ bool run_pipeline(const Options& opts) {
         }
     }
 
-    std::cout << "[pipeline] done\n";
+    auto t_backend_end = Clock::now();
+    auto t_total_end = Clock::now();
+
+    auto ms = [](auto dur) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(dur).count();
+    };
+
+    log << "[pipeline] stages:\n";
+    log << "  parse: " << ms(t_parse_end - t_parse_start) << " ms\n";
+    log << "  resolve: " << ms(t_resolve_end - t_resolve_start) << " ms\n";
+    log << "  ir: " << ms(t_ir_end - t_ir_start) << " ms\n";
+    log << "  backend: " << ms(t_backend_end - t_backend_start) << " ms\n";
+    log << "  total: " << ms(t_total_end - t_total_start) << " ms\n";
+    log << "[pipeline] done\n";
     return true;
 }
 

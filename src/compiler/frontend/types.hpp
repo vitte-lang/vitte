@@ -25,6 +25,7 @@ public:
     TypeId add_named(std::string name);
     const TypeInfo* get(TypeId id) const;
     TypeId lookup(const std::string& name) const;
+    const std::vector<TypeInfo>& all() const { return types_; }
 
 private:
     std::vector<TypeInfo> types_;

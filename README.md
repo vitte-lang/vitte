@@ -1,5 +1,8 @@
 # Vitte
 
+[![CI](https://github.com/vitte-lang/vitte/actions/workflows/ci.yml/badge.svg)](https://github.com/vitte-lang/vitte/actions/workflows/ci.yml)
+[![Cirrus CI](https://api.cirrus-ci.com/github/vitte-lang/vitte.svg)](https://cirrus-ci.com/github/vitte-lang/vitte)
+
 **Vitte** is an experimental systems programming language and toolchain focused on **clarity, explicit structure, and deterministic builds**.
 
 It explores an alternative approach to language design, combining low-level control with a readable, structured syntax and a compiler-first architecture.
@@ -38,6 +41,7 @@ The repository contains:
 ## CLI
 
 See `docs/cli.md` for current commands and options.
+See `docs/errors.md` for diagnostic codes and fixes.
 
 ---
 

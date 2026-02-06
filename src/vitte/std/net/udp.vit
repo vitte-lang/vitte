@@ -1,0 +1,97 @@
+<<<
+udp.vit
+std net UDP
+>>>
+
+space std/net/udp
+
+
+<<<
+imports
+>>>
+
+use std/core/types.u8
+use std/core/types.u32
+use std/core/types.usize
+use std/core/result.Result
+use std/core/types.Unit
+use std/io/error.IoError
+use std/io/error.IoErrorKind
+use std/io/error.IoResult
+use std/net/addr.SocketAddr
+
+
+<<<
+udp types
+>>>
+
+form UdpSocket {
+    fd: usize
+}
+
+form UdpRecv {
+    addr: SocketAddr
+    data: [u8]
+    size: usize
+}
+
+
+<<<
+udp operations (stubs)
+>>>
+
+#[extern]
+proc udp_bind(addr: SocketAddr) -> IoResult[UdpSocket]
+
+#[extern]
+proc udp_recv_from(sock: *UdpSocket, buf: *[u8]) -> IoResult[UdpRecv]
+
+#[extern]
+proc udp_send_to(sock: *UdpSocket, buf: *[u8], addr: SocketAddr) -> IoResult[usize]
+
+#[extern]
+proc udp_close(sock: *UdpSocket) -> IoResult[Unit]
+
+#[extern]
+proc udp_set_nonblocking(sock: *UdpSocket, enabled: bool) -> IoResult[Unit]
+
+#[extern]
+proc udp_set_read_timeout(sock: *UdpSocket, ms: u32) -> IoResult[Unit]
+
+#[extern]
+proc udp_set_write_timeout(sock: *UdpSocket, ms: u32) -> IoResult[Unit]
+
+#[inline]
+proc bind(addr: SocketAddr) -> IoResult[UdpSocket] {
+    give udp_bind(addr)
+}
+
+#[inline]
+proc recv_from(sock: *UdpSocket, buf: *[u8]) -> IoResult[UdpRecv] {
+    give udp_recv_from(sock, buf)
+}
+
+#[inline]
+proc send_to(sock: *UdpSocket, buf: *[u8], addr: SocketAddr) -> IoResult[usize] {
+    give udp_send_to(sock, buf, addr)
+}
+
+#[inline]
+proc close(sock: *UdpSocket) -> IoResult[Unit] {
+    give udp_close(sock)
+}
+
+#[inline]
+proc set_nonblocking(sock: *UdpSocket, enabled: bool) -> IoResult[Unit] {
+    give udp_set_nonblocking(sock, enabled)
+}
+
+#[inline]
+proc set_read_timeout(sock: *UdpSocket, ms: u32) -> IoResult[Unit] {
+    give udp_set_read_timeout(sock, ms)
+}
+
+#[inline]
+proc set_write_timeout(sock: *UdpSocket, ms: u32) -> IoResult[Unit] {
+    give udp_set_write_timeout(sock, ms)
+}

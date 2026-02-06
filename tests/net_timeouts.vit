@@ -1,0 +1,32 @@
+use std/core/result.Result
+use std/net/addr.IpAddr
+use std/net/addr.IpV4
+use std/net/addr.SocketAddr
+use std/net/udp.bind
+use std/net/udp.set_nonblocking
+use std/net/udp.set_read_timeout
+use std/net/udp.set_write_timeout
+use std/net/tcp.connect
+use std/net/tcp.set_nonblocking
+use std/net/tcp.set_read_timeout
+use std/net/tcp.set_write_timeout
+
+entry main at core/app {
+  let ip = IpAddr.V4(IpV4(a = 127, b = 0, c = 0, d = 1))
+  let addr = SocketAddr(ip = ip, port = 8080)
+  let res = bind(addr)
+  when res is Result.Ok {
+    let sock = res.value
+    let _ = set_nonblocking(&sock, true)
+    let _ = set_read_timeout(&sock, 100)
+    let _ = set_write_timeout(&sock, 100)
+  }
+  let tcp_res = connect(addr)
+  when tcp_res is Result.Ok {
+    let stream = tcp_res.value
+    let _ = set_nonblocking(&stream, true)
+    let _ = set_read_timeout(&stream, 100)
+    let _ = set_write_timeout(&stream, 100)
+  }
+  return 0
+}

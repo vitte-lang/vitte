@@ -13,9 +13,31 @@ Options parse_options(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
 
-        if (arg == "--help" || arg == "-h") {
+        if (arg == "--help" || arg == "-h" || arg == "help") {
             opts.show_help = true;
             return opts;
+        }
+        else if (arg == "init") {
+            opts.init_project = true;
+            if (i + 1 < argc) {
+                std::string next = argv[i + 1];
+                if (!next.empty() && next[0] != '-' &&
+                    next != "help" && next != "init" &&
+                    next != "explain" && next != "parse" &&
+                    next != "check" && next != "emit" &&
+                    next != "build") {
+                    opts.init_dir = argv[++i];
+                }
+            }
+        }
+        else if (arg == "doctor") {
+            opts.run_doctor = true;
+        }
+        else if (arg == "explain") {
+            opts.explain_diagnostic = true;
+            if (i + 1 < argc) {
+                opts.explain_code = argv[++i];
+            }
         }
         else if (arg == "parse" || arg == "check" || arg == "emit" || arg == "build") {
             if (arg == "parse") {
@@ -45,6 +67,14 @@ Options parse_options(int argc, char** argv) {
         else if (arg.rfind("--lang=", 0) == 0) {
             opts.lang = arg.substr(std::string("--lang=").size());
         }
+        else if (arg == "--explain" && i + 1 < argc) {
+            opts.explain_diagnostic = true;
+            opts.explain_code = argv[++i];
+        }
+        else if (arg.rfind("--explain=", 0) == 0) {
+            opts.explain_diagnostic = true;
+            opts.explain_code = arg.substr(std::string("--explain=").size());
+        }
         else if (arg == "--runtime-include" && i + 1 < argc) {
             opts.runtime_include = argv[++i];
         }
@@ -53,6 +83,10 @@ Options parse_options(int argc, char** argv) {
         }
         else if (arg == "--emit-cpp") {
             opts.emit_cpp = true;
+        }
+        else if (arg == "--stdout") {
+            opts.emit_cpp = true;
+            opts.emit_stdout = true;
         }
         else if (arg == "--parse-only") {
             opts.parse_only = true;
@@ -129,6 +163,10 @@ void print_help() {
         "vitte [command] [options] <input>\n"
         "\n"
         "Commands:\n"
+        "  help             Show this help message\n"
+        "  init [dir]       Create a minimal project scaffold\n"
+        "  explain <code>   Explain a diagnostic (e.g. E0001)\n"
+        "  doctor           Check toolchain prerequisites\n"
         "  parse            Parse only (no backend)\n"
         "  check            Parse + resolve only\n"
         "  emit             Emit C++ only (no native compile)\n"
@@ -138,6 +176,7 @@ void print_help() {
         "  -h, --help        Show this help message\n"
         "  -o <file>         Output executable name\n"
         "  --lang <code>     Language for diagnostics (e.g. en, fr)\n"
+        "  --explain <code>  Explain a diagnostic (e.g. E0001)\n"
         "  --runtime-include <path>\n"
         "                    Add include dir for vitte_runtime.hpp\n"
         "  --parse-only      Parse only (no backend)\n"
@@ -153,8 +192,21 @@ void print_help() {
         "  --dump-hir=pretty|compact|json\n"
         "  --dump-mir        Dump MIR after lowering\n"
         "  --emit-cpp        Emit C++ only (no native compile)\n"
+        "  --stdout          Emit C++ to stdout (implies emit)\n"
         "  --debug           Enable debug symbols\n"
         "  -O0..-O3          Optimization level\n"
+        "\n"
+        "Common tasks:\n"
+        "  vitte init\n"
+        "  vitte init app\n"
+        "  vitte build src/main.vit\n"
+        "  vitte check src/main.vit\n"
+        "  vitte emit src/main.vit\n"
+        "  vitte doctor\n"
+        "\n"
+        "Examples:\n"
+        "  vitte parse --lang=fr src/main.vit\n"
+        "  vitte explain E0001\n"
         "\n";
 }
 

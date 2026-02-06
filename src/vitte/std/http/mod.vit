@@ -1,0 +1,90 @@
+<<<
+mod.vit
+std http helpers (stubs)
+>>>
+
+space std/http
+
+
+<<<
+imports
+>>>
+
+use std/core/types.i32
+use std/core/types.u32
+use std/core/types.string
+use std/core/types.bool
+use std/core/result.Result
+
+
+<<<
+types
+>>>
+
+pick Method {
+    Get
+    Post
+    Put
+    Delete
+}
+
+form Header {
+    name: string
+    value: string
+}
+
+form Request {
+    method: Method
+    url: string
+    body: string
+    headers: [Header]
+    timeout_ms: u32
+    follow_redirects: bool
+    http2: bool
+}
+
+form Response {
+    status: i32
+    body: string
+}
+
+
+<<<
+externs
+>>>
+
+#[extern]
+proc http_request(req: Request) -> Result[Response, string]
+
+
+<<<
+helpers
+>>>
+
+#[inline]
+proc get(url: string) -> Result[Response, string] {
+    let req = Request(
+        method = Method.Get,
+        url = url,
+        body = "",
+        headers = [],
+        timeout_ms = 0,
+        follow_redirects = true,
+        http2 = true
+    )
+    give http_request(req)
+}
+
+#[inline]
+proc post(url: string, body: string) -> Result[Response, string] {
+    let req = Request(
+        method = Method.Post,
+        url = url,
+        body = body,
+        headers = [],
+        timeout_ms = 0,
+        follow_redirects = true,
+        http2 = true
+    )
+    give http_request(req)
+}

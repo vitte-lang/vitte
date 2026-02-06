@@ -7,13 +7,18 @@
 #include "diagnostics_messages.hpp"
 
 #include <functional>
+#include <algorithm>
 #include <utility>
+#include <vector>
+#include <string_view>
 
 namespace vitte::frontend::parser {
 
 using namespace vitte::frontend::ast;
 
 static int precedence(TokenKind kind);
+static int edit_distance(std::string_view a, std::string_view b);
+static const char* keyword_text(TokenKind kind);
 
 Parser::Parser(Lexer& lexer, DiagnosticEngine& diag, AstContext& ast_ctx, bool strict_parse)
     : lexer_(lexer), diag_(diag), ast_ctx_(ast_ctx), strict_(strict_parse) {
@@ -47,6 +52,18 @@ bool Parser::expect(TokenKind kind, const char* message) {
         return true;
     }
     diag_.error(message, current_.span);
+    if (kind == TokenKind::Dot && current_.kind == TokenKind::Ident && current_.text == "end") {
+        diag_.note("did you mean '.end'?", current_.span);
+    }
+    if (current_.kind == TokenKind::Ident) {
+        const char* kw = keyword_text(kind);
+        if (kw != nullptr && edit_distance(current_.text, kw) <= 2) {
+            std::string note = "did you mean '";
+            note += kw;
+            note += "'?";
+            diag_.note(std::move(note), current_.span);
+        }
+    }
     return false;
 }
 
@@ -321,6 +338,9 @@ DeclId Parser::parse_form_decl() {
         expect(TokenKind::Dot, "expected '.end'");
         if (!(current_.kind == TokenKind::Ident && current_.text == "end")) {
             diag::error(diag_, diag::DiagId::ExpectedEnd, current_.span);
+            diag_.note("did you mean '.end'?", current_.span);
+            diag_.note("block opened here", span);
+            diag_.note("parser will resume after '.end'", current_.span);
         } else {
             advance();
         }
@@ -369,6 +389,9 @@ DeclId Parser::parse_pick_decl() {
         expect(TokenKind::Dot, "expected '.end'");
         if (!(current_.kind == TokenKind::Ident && current_.text == "end")) {
             diag::error(diag_, diag::DiagId::ExpectedEnd, current_.span);
+            diag_.note("did you mean '.end'?", current_.span);
+            diag_.note("block opened here", span);
+            diag_.note("parser will resume after '.end'", current_.span);
         } else {
             advance();
         }
@@ -496,7 +519,11 @@ StmtId Parser::parse_block() {
             advance();
         }
     }
-    expect(TokenKind::RBrace, "expected '}'");
+    bool closed = expect(TokenKind::RBrace, "expected '}'");
+    if (!closed) {
+        diag_.note("block opened here", span);
+        diag_.note("parser will resume after '}'", current_.span);
+    }
     span.end = previous_.span.end;
     return ast_ctx_.make<BlockStmt>(std::move(stmts), span);
 }
@@ -784,6 +811,74 @@ static int precedence(TokenKind kind) {
     }
 }
 
+static int edit_distance(std::string_view a, std::string_view b) {
+    const std::size_t n = a.size();
+    const std::size_t m = b.size();
+    if (n == 0) return static_cast<int>(m);
+    if (m == 0) return static_cast<int>(n);
+    std::vector<int> prev(m + 1), cur(m + 1);
+    for (std::size_t j = 0; j <= m; ++j) {
+        prev[j] = static_cast<int>(j);
+    }
+    for (std::size_t i = 1; i <= n; ++i) {
+        cur[0] = static_cast<int>(i);
+        for (std::size_t j = 1; j <= m; ++j) {
+            int cost = (a[i - 1] == b[j - 1]) ? 0 : 1;
+            cur[j] = std::min({prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost});
+        }
+        prev.swap(cur);
+    }
+    return prev[m];
+}
+
+static const char* keyword_text(TokenKind kind) {
+    switch (kind) {
+        case TokenKind::KwSpace: return "space";
+        case TokenKind::KwPull: return "pull";
+        case TokenKind::KwUse: return "use";
+        case TokenKind::KwShare: return "share";
+        case TokenKind::KwForm: return "form";
+        case TokenKind::KwField: return "field";
+        case TokenKind::KwPick: return "pick";
+        case TokenKind::KwCase: return "case";
+        case TokenKind::KwTrait: return "trait";
+        case TokenKind::KwType: return "type";
+        case TokenKind::KwConst: return "const";
+        case TokenKind::KwMacro: return "macro";
+        case TokenKind::KwProc: return "proc";
+        case TokenKind::KwEntry: return "entry";
+        case TokenKind::KwAt: return "at";
+        case TokenKind::KwLet: return "let";
+        case TokenKind::KwMake: return "make";
+        case TokenKind::KwSet: return "set";
+        case TokenKind::KwGive: return "give";
+        case TokenKind::KwEmit: return "emit";
+        case TokenKind::KwIf: return "if";
+        case TokenKind::KwElse: return "else";
+        case TokenKind::KwOtherwise: return "otherwise";
+        case TokenKind::KwSelect: return "select";
+        case TokenKind::KwWhen: return "when";
+        case TokenKind::KwIs: return "is";
+        case TokenKind::KwLoop: return "loop";
+        case TokenKind::KwFor: return "for";
+        case TokenKind::KwIn: return "in";
+        case TokenKind::KwBreak: return "break";
+        case TokenKind::KwContinue: return "continue";
+        case TokenKind::KwReturn: return "return";
+        case TokenKind::KwNot: return "not";
+        case TokenKind::KwAnd: return "and";
+        case TokenKind::KwOr: return "or";
+        case TokenKind::KwAs: return "as";
+        case TokenKind::KwAll: return "all";
+        case TokenKind::KwTrue: return "true";
+        case TokenKind::KwFalse: return "false";
+        case TokenKind::KwBool: return "bool";
+        case TokenKind::KwString: return "string";
+        case TokenKind::KwInt: return "int";
+        default: return nullptr;
+    }
+}
+
 ExprId Parser::parse_expr() {
     std::function<ExprId(int)> parse_prec = [&](int min_prec) -> ExprId {
         auto lhs = parse_unary_expr();
@@ -948,6 +1043,8 @@ ExprId Parser::parse_primary() {
     }
 
     diag::error(diag_, diag::DiagId::ExpectedExpression, current_.span);
+    diag_.note("expected expression (e.g. 1, name, call(), { ... })", current_.span);
+    diag_.note("parser will resume after the next token", current_.span);
     advance();
     return ast::kInvalidAstId;
 }
@@ -1189,6 +1286,8 @@ TypeId Parser::parse_type_primary() {
 
     if (current_.kind != TokenKind::Ident) {
         diag::error(diag_, diag::DiagId::ExpectedType, current_.span);
+        diag_.note("expected type (e.g. int, string, bool, Option[T])", current_.span);
+        diag_.note("parser will resume after the next token", current_.span);
         return ast::kInvalidAstId;
     }
 

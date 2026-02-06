@@ -1,9 +1,108 @@
 #include "resolve.hpp"
 #include "diagnostics_messages.hpp"
 
+#include <algorithm>
+#include <string_view>
+#include <unordered_set>
+#include <vector>
+
 namespace vitte::frontend::resolve {
 
 using namespace vitte::frontend::ast;
+
+static int edit_distance(std::string_view a, std::string_view b) {
+    const std::size_t n = a.size();
+    const std::size_t m = b.size();
+    if (n == 0) return static_cast<int>(m);
+    if (m == 0) return static_cast<int>(n);
+    std::vector<int> prev(m + 1), cur(m + 1);
+    for (std::size_t j = 0; j <= m; ++j) {
+        prev[j] = static_cast<int>(j);
+    }
+    for (std::size_t i = 1; i <= n; ++i) {
+        cur[0] = static_cast<int>(i);
+        for (std::size_t j = 1; j <= m; ++j) {
+            int cost = (a[i - 1] == b[j - 1]) ? 0 : 1;
+            cur[j] = std::min({prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost});
+        }
+        prev.swap(cur);
+    }
+    return prev[m];
+}
+
+static std::string suggest_closest(
+    const std::string& name,
+    const std::vector<std::string>& candidates
+) {
+    if (candidates.empty()) {
+        return {};
+    }
+    int max_dist = name.size() <= 3 ? 1 : 2;
+    std::string best;
+    int best_dist = max_dist + 1;
+    for (const auto& cand : candidates) {
+        if (cand == name) {
+            continue;
+        }
+        int dist = edit_distance(name, cand);
+        if (dist < best_dist) {
+            best_dist = dist;
+            best = cand;
+        }
+    }
+    return best_dist <= max_dist ? best : std::string{};
+}
+
+static const std::unordered_map<std::string, std::string>& std_ident_suggestions() {
+    static const std::unordered_map<std::string, std::string> kMap = {
+        {"print", "use std/io/print.print"},
+        {"println", "use std/io/print.println"},
+        {"eprint", "use std/io/print.eprint"},
+        {"eprintln", "use std/io/print.eprintln"},
+        {"print_or_panic", "use std/io/print.print_or_panic"},
+        {"println_or_panic", "use std/io/print.println_or_panic"},
+        {"read_all", "use std/io/read.read_all"},
+        {"read_fd", "use std/io/read.read_fd"},
+        {"reader_from_fd", "use std/io/read.reader_from_fd"},
+        {"reader_as_reader", "use std/io/read.reader_as_reader"},
+        {"read_exact", "use std/io/read.read_exact"},
+        {"read_to_end", "use std/io/read.read_to_end"},
+        {"read_some", "use std/io/stdin.read_some"},
+        {"read_exact_all", "use std/io/stdin.read_exact_all"},
+        {"read_stdin", "use std/io/stdin.read_stdin"},
+        {"stdin", "use std/io/stdin.stdin"},
+        {"as_reader", "use std/io/stdin.as_reader"},
+        {"write_all", "use std/io/write.write_all"},
+        {"write_fd", "use std/io/write.write_fd"},
+        {"writer_from_fd", "use std/io/write.writer_from_fd"},
+        {"writer_as_writer", "use std/io/write.writer_as_writer"},
+        {"write_string", "use std/io/write.write_string"},
+        {"flush", "use std/io/write.flush"},
+        {"write", "use std/io/stdout.write"},
+        {"writeln", "use std/io/stdout.writeln"},
+        {"write_or_panic", "use std/io/stdout.write_or_panic"},
+        {"writeln_or_panic", "use std/io/stdout.writeln_or_panic"},
+        {"path", "use std/io/path"},
+        {"fs", "use std/io/fs"},
+        {"Option", "use std/core/option.Option"},
+        {"Result", "use std/core/result.Result"},
+        {"Unit", "use std/core/types.Unit"},
+        {"IoError", "use std/io/error.IoError"},
+        {"IoResult", "use std/io/error.IoResult"},
+    };
+    return kMap;
+}
+
+static const std::unordered_map<std::string, std::string>& std_type_suggestions() {
+    static const std::unordered_map<std::string, std::string> kMap = {
+        {"Option", "use std/core/option.Option"},
+        {"Result", "use std/core/result.Result"},
+        {"Unit", "use std/core/types.Unit"},
+        {"IoError", "use std/io/error.IoError"},
+        {"IoResult", "use std/io/error.IoResult"},
+    };
+    return kMap;
+}
 
 SymbolId SymbolTable::define(Symbol sym) {
     if (scopes_.empty()) {
@@ -33,6 +132,31 @@ void SymbolTable::pop_scope() {
     if (!scopes_.empty()) {
         scopes_.pop_back();
     }
+}
+
+std::vector<std::string> SymbolTable::in_scope_names(std::size_t limit) const {
+    std::vector<std::string> out;
+    if (scopes_.empty()) {
+        return out;
+    }
+    std::unordered_set<std::string> seen;
+    for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
+        std::vector<std::string> scope_names;
+        scope_names.reserve(it->size());
+        for (const auto& kv : *it) {
+            scope_names.push_back(kv.first);
+        }
+        std::sort(scope_names.begin(), scope_names.end());
+        for (const auto& name : scope_names) {
+            if (seen.insert(name).second) {
+                out.push_back(name);
+                if (limit > 0 && out.size() >= limit) {
+                    return out;
+                }
+            }
+        }
+    }
+    return out;
 }
 
 Resolver::Resolver(diag::DiagnosticEngine& diagnostics)
@@ -94,6 +218,31 @@ types::TypeId Resolver::resolve_type(ast::AstContext& ctx, ast::TypeId type) {
             auto id = types_.lookup(t.ident.name);
             if (id == static_cast<types::TypeId>(-1)) {
                 diag::error(diag_, diag::DiagId::UnknownType, t.ident.span);
+                std::vector<std::string> names;
+                names.reserve(types_.all().size());
+                for (const auto& info : types_.all()) {
+                    names.push_back(info.name);
+                }
+                if (auto suggestion = suggest_closest(t.ident.name, names); !suggestion.empty()) {
+                    diag_.note("did you mean '" + suggestion + "'?", t.ident.span);
+                }
+                std::vector<std::string> builtins;
+                for (const auto& info : types_.all()) {
+                    if (info.kind == types::TypeKind::Builtin) {
+                        builtins.push_back(info.name);
+                    }
+                }
+                if (!builtins.empty()) {
+                    std::string list = builtins.front();
+                    for (std::size_t i = 1; i < builtins.size(); ++i) {
+                        list += ", " + builtins[i];
+                    }
+                    diag_.note("built-in types: " + list, t.ident.span);
+                }
+                auto it = std_type_suggestions().find(t.ident.name);
+                if (it != std_type_suggestions().end()) {
+                    diag_.note("try: " + it->second, t.ident.span);
+                }
             }
             resolved_types_[type] = id;
             return id;
@@ -103,6 +252,31 @@ types::TypeId Resolver::resolve_type(ast::AstContext& ctx, ast::TypeId type) {
             auto id = types_.lookup(t.base_ident.name);
             if (id == static_cast<types::TypeId>(-1)) {
                 diag::error(diag_, diag::DiagId::UnknownGenericBaseType, t.base_ident.span);
+                std::vector<std::string> names;
+                names.reserve(types_.all().size());
+                for (const auto& info : types_.all()) {
+                    names.push_back(info.name);
+                }
+                if (auto suggestion = suggest_closest(t.base_ident.name, names); !suggestion.empty()) {
+                    diag_.note("did you mean '" + suggestion + "'?", t.base_ident.span);
+                }
+                std::vector<std::string> builtins;
+                for (const auto& info : types_.all()) {
+                    if (info.kind == types::TypeKind::Builtin) {
+                        builtins.push_back(info.name);
+                    }
+                }
+                if (!builtins.empty()) {
+                    std::string list = builtins.front();
+                    for (std::size_t i = 1; i < builtins.size(); ++i) {
+                        list += ", " + builtins[i];
+                    }
+                    diag_.note("built-in types: " + list, t.base_ident.span);
+                }
+                auto it = std_type_suggestions().find(t.base_ident.name);
+                if (it != std_type_suggestions().end()) {
+                    diag_.note("try: " + it->second, t.base_ident.span);
+                }
             }
             if (t.type_args.empty()) {
                 diag::error(diag_, diag::DiagId::GenericTypeRequiresAtLeastOneArgument, t.base_ident.span);
@@ -262,6 +436,22 @@ void Resolver::resolve_stmt(ast::AstContext& ctx, ast::StmtId stmt_id) {
             auto& s = static_cast<SetStmt&>(stmt);
             if (!symbols_.lookup(s.ident.name)) {
                 diag::error(diag_, diag::DiagId::UnknownIdentifier, s.ident.span);
+                auto in_scope = symbols_.in_scope_names();
+                if (auto suggestion = suggest_closest(s.ident.name, in_scope); !suggestion.empty()) {
+                    diag_.note("did you mean '" + suggestion + "'?", s.ident.span);
+                }
+                auto top = symbols_.in_scope_names(3);
+                if (!top.empty()) {
+                    std::string list = top.front();
+                    for (std::size_t i = 1; i < top.size(); ++i) {
+                        list += ", " + top[i];
+                    }
+                    diag_.note("in scope: " + list, s.ident.span);
+                }
+                auto it = std_ident_suggestions().find(s.ident.name);
+                if (it != std_ident_suggestions().end()) {
+                    diag_.note("try: " + it->second, s.ident.span);
+                }
             }
             resolve_expr(ctx, s.value);
             break;
@@ -385,6 +575,22 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
             auto& e = static_cast<IdentExpr&>(expr);
             if (!symbols_.lookup(e.ident.name)) {
                 diag::error(diag_, diag::DiagId::UnknownIdentifier, e.ident.span);
+                auto in_scope = symbols_.in_scope_names();
+                if (auto suggestion = suggest_closest(e.ident.name, in_scope); !suggestion.empty()) {
+                    diag_.note("did you mean '" + suggestion + "'?", e.ident.span);
+                }
+                auto top = symbols_.in_scope_names(3);
+                if (!top.empty()) {
+                    std::string list = top.front();
+                    for (std::size_t i = 1; i < top.size(); ++i) {
+                        list += ", " + top[i];
+                    }
+                    diag_.note("in scope: " + list, e.ident.span);
+                }
+                auto it = std_ident_suggestions().find(e.ident.name);
+                if (it != std_ident_suggestions().end()) {
+                    diag_.note("try: " + it->second, e.ident.span);
+                }
             }
             break;
         }
@@ -456,6 +662,22 @@ void Resolver::resolve_expr(ast::AstContext& ctx, ast::ExprId expr_id) {
             auto& e = static_cast<CallNoParenExpr&>(expr);
             if (!symbols_.lookup(e.callee.name)) {
                 diag::error(diag_, diag::DiagId::UnknownIdentifier, e.callee.span);
+                auto in_scope = symbols_.in_scope_names();
+                if (auto suggestion = suggest_closest(e.callee.name, in_scope); !suggestion.empty()) {
+                    diag_.note("did you mean '" + suggestion + "'?", e.callee.span);
+                }
+                auto top = symbols_.in_scope_names(3);
+                if (!top.empty()) {
+                    std::string list = top.front();
+                    for (std::size_t i = 1; i < top.size(); ++i) {
+                        list += ", " + top[i];
+                    }
+                    diag_.note("in scope: " + list, e.callee.span);
+                }
+                auto it = std_ident_suggestions().find(e.callee.name);
+                if (it != std_ident_suggestions().end()) {
+                    diag_.note("try: " + it->second, e.callee.span);
+                }
             }
             resolve_expr(ctx, e.arg);
             break;

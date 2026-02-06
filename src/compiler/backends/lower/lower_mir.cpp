@@ -29,6 +29,16 @@ static CppType* builtin_i32(CppContext& ctx) {
     return &t;
 }
 
+static CppType* builtin_int(CppContext& ctx) {
+    static CppType t = CppType::builtin("int");
+    return &t;
+}
+
+static CppType* builtin_cstrv(CppContext& ctx) {
+    static CppType t = CppType::builtin("const char**");
+    return &t;
+}
+
 /* -------------------------------------------------
  * MIR placeholders live in lower_mir.hpp
  * ------------------------------------------------- */
@@ -144,7 +154,14 @@ CppTranslationUnit lower_mir(
     if (has_entry) {
         CppFunction wrapper;
         wrapper.name = "main";
-        wrapper.return_type = builtin_i32(ctx);
+        wrapper.return_type = builtin_int(ctx);
+        wrapper.params.push_back({builtin_int(ctx), "argc"});
+        wrapper.params.push_back({builtin_cstrv(ctx), "argv"});
+
+        auto set_args = std::make_unique<CppCall>("vitte_set_args");
+        set_args->args.push_back(std::make_unique<CppVar>("argc"));
+        set_args->args.push_back(std::make_unique<CppVar>("argv"));
+        wrapper.body.push_back(std::make_unique<CppExprStmt>(std::move(set_args)));
 
         auto call = std::make_unique<CppCall>(entry_mangled);
         wrapper.body.push_back(

@@ -11,6 +11,23 @@
 
 namespace vitte::backend {
 
+static context::CppContext build_context(const CppBackendOptions& options) {
+    context::CppContext ctx;
+    ctx.set_debug(options.debug);
+    ctx.set_optimize(options.optimize);
+    ctx.add_include("<cstdint>");
+    ctx.add_include("<cstdlib>");
+    ctx.add_include("\"vitte_runtime.hpp\"");
+    return ctx;
+}
+
+static ast::cpp::CppTranslationUnit lower_to_cpp(
+    const std::vector<lower::MirFunction>& mir_functions,
+    context::CppContext& ctx
+) {
+    return lower::lower_mir(mir_functions, ctx);
+}
+
 /* -------------------------------------------------
  * Compile MIR to native executable via C++
  * ------------------------------------------------- */
@@ -19,23 +36,8 @@ bool compile_cpp_backend(
     const std::string& output_exe,
     const CppBackendOptions& options
 ) {
-    context::CppContext ctx;
-
-    /* ---------------------------------------------
-     * Configure context
-     * --------------------------------------------- */
-    ctx.set_debug(options.debug);
-    ctx.set_optimize(options.optimize);
-
-    ctx.add_include("<cstdint>");
-    ctx.add_include("<cstdlib>");
-    ctx.add_include("\"vitte_runtime.hpp\"");
-
-    /* ---------------------------------------------
-     * Lower MIR → C++ AST
-     * --------------------------------------------- */
-    ast::cpp::CppTranslationUnit tu =
-        lower::lower_mir(mir_functions, ctx);
+    context::CppContext ctx = build_context(options);
+    ast::cpp::CppTranslationUnit tu = lower_to_cpp(mir_functions, ctx);
 
     /* ---------------------------------------------
      * Emit C++ file
@@ -58,6 +60,9 @@ bool compile_cpp_backend(
     clang_opts.verbose = options.verbose;
 
     clang_opts.libraries.push_back("stdc++");
+    clang_opts.libraries.push_back("ssl");
+    clang_opts.libraries.push_back("crypto");
+    clang_opts.libraries.push_back("curl");
 
     std::filesystem::path work_dir_path = options.work_dir;
     if (std::filesystem::exists(work_dir_path / "vitte_runtime.hpp")) {
@@ -68,6 +73,32 @@ bool compile_cpp_backend(
         std::filesystem::path p = options.runtime_include;
         if (std::filesystem::exists(p / "vitte_runtime.hpp")) {
             clang_opts.include_dirs.push_back(p.string());
+        }
+    }
+
+    const char* openssl_dir = std::getenv("OPENSSL_DIR");
+    if (openssl_dir && *openssl_dir) {
+        std::filesystem::path base = openssl_dir;
+        std::filesystem::path inc = base / "include";
+        std::filesystem::path lib = base / "lib";
+        if (std::filesystem::exists(inc)) {
+            clang_opts.include_dirs.push_back(inc.string());
+        }
+        if (std::filesystem::exists(lib)) {
+            clang_opts.library_dirs.push_back(lib.string());
+        }
+    }
+
+    const char* curl_dir = std::getenv("CURL_DIR");
+    if (curl_dir && *curl_dir) {
+        std::filesystem::path base = curl_dir;
+        std::filesystem::path inc = base / "include";
+        std::filesystem::path lib = base / "lib";
+        if (std::filesystem::exists(inc)) {
+            clang_opts.include_dirs.push_back(inc.string());
+        }
+        if (std::filesystem::exists(lib)) {
+            clang_opts.library_dirs.push_back(lib.string());
         }
     }
 
@@ -113,6 +144,20 @@ bool compile_cpp_backend(
         return false;
     }
 
+    return true;
+}
+
+/* -------------------------------------------------
+ * Emit MIR as C++ to an output stream
+ * ------------------------------------------------- */
+bool emit_cpp_backend(
+    const std::vector<lower::MirFunction>& mir_functions,
+    std::ostream& os,
+    const CppBackendOptions& options
+) {
+    context::CppContext ctx = build_context(options);
+    ast::cpp::CppTranslationUnit tu = lower_to_cpp(mir_functions, ctx);
+    emit::emit_translation_unit(os, tu, ctx);
     return true;
 }
 

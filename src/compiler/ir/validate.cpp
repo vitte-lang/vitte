@@ -166,6 +166,9 @@ static void validate_stmt(const HirContext& ctx,
             validate_expr(ctx, s.expr, diagnostics, s.span, true);
             if (s.whens.empty()) {
                 fdiag::error(diagnostics, fdiag::DiagId::SelectRequiresAtLeastOneWhenBranch, s.span);
+                diagnostics.note(
+                    "example:\n  select x\n    when T(v) { ... }\n  otherwise { ... }",
+                    s.span);
             }
             for (auto w_id : s.whens) {
                 if (w_id == kInvalidHirId) {
@@ -175,6 +178,9 @@ static void validate_stmt(const HirContext& ctx,
                 const auto& w_node = ctx.node(w_id);
                 if (w_node.kind != HirKind::WhenStmt) {
                     fdiag::error(diagnostics, fdiag::DiagId::SelectBranchMustBeWhenStatement, w_node.span);
+                    diagnostics.note(
+                        "select branches must be 'when' statements",
+                        w_node.span);
                 }
                 validate_stmt(ctx, w_id, diagnostics, s.span, true);
             }
