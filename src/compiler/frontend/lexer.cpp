@@ -100,9 +100,10 @@ static TokenKind keyword_kind(const std::string& ident) {
 }
 
 Lexer::Lexer(const std::string& source, std::string path)
-    : source_(source) {
-    source_file_.path = std::move(path);
-    source_file_.content = source_;
+    : source_(source),
+      source_file_(std::make_shared<ast::SourceFile>()) {
+    source_file_->path = std::move(path);
+    source_file_->content = source_;
 }
 
 Token Lexer::next() {
@@ -110,7 +111,7 @@ Token Lexer::next() {
         return index_ >= source_.size();
     };
 
-    const ast::SourceFile* file = &source_file_;
+    const ast::SourceFile* file = source_file_.get();
     auto make = [&](TokenKind kind, std::string text, std::size_t start, std::size_t end) {
         return make_token(kind, std::move(text), file, start, end);
     };

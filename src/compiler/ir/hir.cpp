@@ -114,6 +114,10 @@ HirIf::HirIf(
       then_block(t),
       else_block(e) {}
 
+HirLoop::HirLoop(HirStmtId b, vitte::frontend::ast::SourceSpan sp)
+    : HirStmt(HirKind::LoopStmt, sp),
+      body(b) {}
+
 // ------------------------------------------------------------
 // Patterns
 // ------------------------------------------------------------
@@ -280,6 +284,11 @@ void dump(const HirContext& ctx, HirId id, std::ostream& os, std::size_t depth) 
             }
             break;
         }
+        case HirKind::LoopStmt: {
+            auto& l = static_cast<const HirLoop&>(n);
+            dump(ctx, l.body, os, depth + 1);
+            break;
+        }
         case HirKind::SelectStmt: {
             auto& s = static_cast<const HirSelect&>(n);
             dump(ctx, s.expr, os, depth + 1);
@@ -406,6 +415,11 @@ static void dump_compact_impl(const HirContext& ctx, HirId id, std::ostream& os)
             if (i.else_block != kInvalidHirId) {
                 children.push_back(i.else_block);
             }
+            break;
+        }
+        case HirKind::LoopStmt: {
+            auto& l = static_cast<const HirLoop&>(n);
+            children.push_back(l.body);
             break;
         }
         case HirKind::SelectStmt: {
@@ -644,6 +658,7 @@ const char* to_string(HirKind kind) {
         case HirKind::ReturnStmt: return "ReturnStmt";
         case HirKind::Block: return "Block";
         case HirKind::IfStmt: return "IfStmt";
+        case HirKind::LoopStmt: return "LoopStmt";
         case HirKind::SelectStmt: return "SelectStmt";
         case HirKind::WhenStmt: return "WhenStmt";
         case HirKind::FnDecl: return "FnDecl";

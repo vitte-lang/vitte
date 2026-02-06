@@ -7,6 +7,7 @@
 #include "../frontend/lexer.hpp"
 #include "../frontend/parser.hpp"
 #include "../frontend/macro_expand.hpp"
+#include "../frontend/module_loader.hpp"
 #include "../frontend/validate.hpp"
 #include "../frontend/resolve.hpp"
 #include "../frontend/lower_hir.hpp"
@@ -16,6 +17,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <cstdlib>
 
 namespace vitte::driver {
 
@@ -44,16 +46,42 @@ PassResult run_passes(const Options& opts) {
     frontend::Lexer lexer(source, opts.input);
     frontend::diag::DiagnosticEngine diagnostics(opts.lang);
     frontend::ast::AstContext ast_ctx;
+    ast_ctx.sources.push_back(lexer.source_file());
     frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse);
     auto module = parser.parse_module();
+    frontend::modules::ModuleIndex module_index;
+    frontend::modules::load_modules(ast_ctx, module, diagnostics, opts.input, module_index);
+    frontend::modules::rewrite_member_access(ast_ctx, module, module_index);
+    if (std::getenv("VITTE_TRACE_MODULES")) {
+        std::cerr << "[modules] after rewrite\n";
+    }
+
     frontend::passes::expand_macros(ast_ctx, module, diagnostics);
+    if (std::getenv("VITTE_TRACE_MODULES")) {
+        std::cerr << "[modules] after expand\n";
+    }
     frontend::passes::disambiguate_invokes(ast_ctx, module);
+    if (std::getenv("VITTE_TRACE_MODULES")) {
+        std::cerr << "[modules] after disambiguate\n";
+        const auto& mod = ast_ctx.get<frontend::ast::Module>(module);
+        std::size_t invalid = 0;
+        for (auto decl_id : mod.decls) {
+            if (decl_id == frontend::ast::kInvalidAstId) {
+                invalid++;
+            }
+        }
+        std::cerr << "[modules] decls=" << mod.decls.size()
+                  << " invalid=" << invalid << "\n";
+    }
 
     if (opts.dump_ast) {
         std::cout << frontend::ast::dump_to_string(ast_ctx.node(module));
     }
 
     frontend::validate::validate_module(ast_ctx, module, diagnostics);
+    if (std::getenv("VITTE_TRACE_MODULES")) {
+        std::cerr << "[modules] after validate\n";
+    }
 
     if (diagnostics.has_errors()) {
         frontend::diag::render_all(diagnostics, std::cerr);

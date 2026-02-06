@@ -166,13 +166,21 @@ void MirBasicBlock::set_terminator(MirTerminatorPtr term) {
 // Function
 // ------------------------------------------------------------
 
+MirParam::MirParam(std::string n, MirTypePtr t)
+    : name(std::move(n)),
+      type(std::move(t)) {}
+
 MirFunction::MirFunction(
     std::string n,
+    std::vector<MirParam> p,
+    MirTypePtr ret,
     std::vector<MirLocalPtr> locals,
     std::vector<MirBasicBlock> blocks,
     MirBlockId entry,
     SourceSpan sp)
     : name(std::move(n)),
+      params(std::move(p)),
+      return_type(std::move(ret)),
       locals(std::move(locals)),
       blocks(std::move(blocks)),
       entry_block(entry),

@@ -155,6 +155,11 @@ static void validate_stmt(const HirContext& ctx,
             validate_stmt(ctx, s.else_block, diagnostics, s.span, false);
             return;
         }
+        case HirKind::LoopStmt: {
+            const auto& s = ctx.get<HirLoop>(stmt);
+            validate_stmt(ctx, s.body, diagnostics, s.span, true);
+            return;
+        }
         case HirKind::WhenStmt: {
             const auto& s = ctx.get<HirWhen>(stmt);
             validate_pattern(ctx, s.pattern, diagnostics, s.span, true);
@@ -244,7 +249,8 @@ void validate_module(const HirContext& ctx,
             validate_type(ctx, param.type, diagnostics, fn.span, false);
         }
         validate_type(ctx, fn.return_type, diagnostics, fn.span, false);
-        validate_stmt(ctx, fn.body, diagnostics, fn.span, true);
+        bool has_body = fn.body != kInvalidHirId;
+        validate_stmt(ctx, fn.body, diagnostics, fn.span, has_body);
     }
 }
 

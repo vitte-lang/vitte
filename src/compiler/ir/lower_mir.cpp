@@ -502,6 +502,22 @@ void Builder::lower_stmt(HirStmtId stmt_id) {
             set_current(cont_bb);
             break;
         }
+        case HirKind::LoopStmt: {
+            const auto& s = hir.get<HirLoop>(stmt_id);
+            MirBlockId loop_bb = new_block(s.span);
+            MirBlockId cont_bb = new_block(s.span);
+
+            terminate(std::make_unique<MirGoto>(loop_bb, s.span));
+
+            set_current(loop_bb);
+            lower_block(s.body);
+            if (!terminated) {
+                terminate(std::make_unique<MirGoto>(loop_bb, s.span));
+            }
+
+            set_current(cont_bb);
+            break;
+        }
         case HirKind::SelectStmt: {
             const auto& s = hir.get<HirSelect>(stmt_id);
             auto sel_val = lower_expr(s.expr);
@@ -629,12 +645,17 @@ MirModule lower_to_mir(
         }
         const auto& fn = hir_ctx.get<HirFnDecl>(decl_id);
 
+        std::vector<MirParam> params;
         std::vector<MirLocalPtr> locals;
         std::vector<MirBasicBlock> blocks;
         blocks.emplace_back(0, fn.span);
 
+        MirTypePtr ret_type = std::make_unique<MirNamedType>("unknown", fn.span);
+
         MirFunction mir_fn(
             fn.name,
+            std::move(params),
+            std::move(ret_type),
             std::move(locals),
             std::move(blocks),
             0,
@@ -645,8 +666,15 @@ MirModule lower_to_mir(
         builder.fn_returns = &fn_returns;
         builder.set_current(0);
 
+        std::string ret_name = "unknown";
+        if (fn.return_type != kInvalidHirId) {
+            ret_name = builder.type_from_hir(fn.return_type, fn.span);
+        }
+        mir_fn.return_type = std::make_unique<MirNamedType>(ret_name, fn.span);
+
         for (const auto& p : fn.params) {
             std::string ty = builder.type_from_hir(p.type, fn.span);
+            mir_fn.params.emplace_back(p.name, std::make_unique<MirNamedType>(ty, fn.span));
             builder.ensure_local(p.name, ty, fn.span);
         }
 

@@ -348,11 +348,9 @@ static ir::HirStmtId lower_stmt(
         }
         case NodeKind::GiveStmt: {
             auto& s = static_cast<const GiveStmt&>(node);
-            std::vector<ir::HirExprId> args;
-            args.push_back(lower_expr(ctx, s.value, hir_ctx, diagnostics));
-            auto callee = hir_ctx.make<ir::HirVarExpr>("give", s.span);
-            auto call = hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), s.span);
-            return hir_ctx.make<ir::HirExprStmt>(call, s.span);
+            return hir_ctx.make<ir::HirReturnStmt>(
+                lower_expr(ctx, s.value, hir_ctx, diagnostics),
+                s.span);
         }
         case NodeKind::EmitStmt: {
             auto& s = static_cast<const EmitStmt&>(node);
@@ -382,6 +380,12 @@ static ir::HirStmtId lower_stmt(
                 s.else_block != kInvalidAstId
                     ? lower_block(ctx, s.else_block, hir_ctx, diagnostics)
                     : ir::kInvalidHirId,
+                s.span);
+        }
+        case NodeKind::LoopStmt: {
+            auto& s = static_cast<const LoopStmt&>(node);
+            return hir_ctx.make<ir::HirLoop>(
+                lower_block(ctx, s.body, hir_ctx, diagnostics),
                 s.span);
         }
         case NodeKind::SelectStmt: {

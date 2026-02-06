@@ -190,6 +190,25 @@ void Resolver::define_builtin_types() {
     types_.add_builtin("bool");
     types_.add_builtin("string");
     types_.add_builtin("int");
+    types_.add_builtin("builtin.bool");
+    types_.add_builtin("builtin.char");
+    types_.add_builtin("builtin.i8");
+    types_.add_builtin("builtin.i16");
+    types_.add_builtin("builtin.i32");
+    types_.add_builtin("builtin.i64");
+    types_.add_builtin("builtin.i128");
+    types_.add_builtin("builtin.u8");
+    types_.add_builtin("builtin.u16");
+    types_.add_builtin("builtin.u32");
+    types_.add_builtin("builtin.u64");
+    types_.add_builtin("builtin.u128");
+    types_.add_builtin("builtin.isize");
+    types_.add_builtin("builtin.usize");
+    types_.add_builtin("builtin.f32");
+    types_.add_builtin("builtin.f64");
+    types_.add_builtin("builtin.string");
+    types_.add_builtin("builtin.slice");
+    types_.add_builtin("builtin.mut_slice");
     symbols_.define({"bool", SymbolKind::Form, {}});
     symbols_.define({"string", SymbolKind::Form, {}});
     symbols_.define({"int", SymbolKind::Form, {}});
@@ -200,6 +219,49 @@ bool Resolver::resolve_module(ast::AstContext& ctx, ast::ModuleId module_id) {
         return false;
     }
     auto& module = ctx.get<Module>(module_id);
+    for (auto decl_id : module.decls) {
+        if (decl_id == kInvalidAstId) {
+            continue;
+        }
+        const auto& decl = ctx.get<Decl>(decl_id);
+        switch (decl.kind) {
+            case NodeKind::TypeDecl: {
+                const auto& d = static_cast<const TypeDecl&>(decl);
+                types_.add_named(d.name.name);
+                break;
+            }
+            case NodeKind::TypeAliasDecl: {
+                const auto& d = static_cast<const TypeAliasDecl&>(decl);
+                types_.add_named(d.name.name);
+                break;
+            }
+            case NodeKind::FormDecl: {
+                const auto& d = static_cast<const FormDecl&>(decl);
+                types_.add_named(d.name.name);
+                break;
+            }
+            case NodeKind::PickDecl: {
+                const auto& d = static_cast<const PickDecl&>(decl);
+                types_.add_named(d.name.name);
+                break;
+            }
+            case NodeKind::UseDecl: {
+                const auto& d = static_cast<const UseDecl&>(decl);
+                std::string name;
+                if (d.alias.has_value()) {
+                    name = d.alias->name;
+                } else if (!d.path.parts.empty()) {
+                    name = d.path.parts.back().name;
+                }
+                if (!name.empty() && (is_known_import_type(name) || path_mentions_types(d.path))) {
+                    types_.add_named(name);
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
     for (auto decl_id : module.decls) {
         if (decl_id != kInvalidAstId) {
             resolve_decl(ctx, decl_id);
@@ -341,6 +403,9 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
         case NodeKind::FormDecl: {
             auto& d = static_cast<FormDecl&>(decl);
             types_.add_named(d.name.name);
+            for (const auto& param : d.type_params) {
+                types_.add_named(param.name);
+            }
             symbols_.define({d.name.name, SymbolKind::Form, d.span});
             for (const auto& f : d.fields) {
                 resolve_type(ctx, f.type);
@@ -350,6 +415,9 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
         case NodeKind::TypeAliasDecl: {
             auto& d = static_cast<TypeAliasDecl&>(decl);
             types_.add_named(d.name.name);
+            for (const auto& param : d.type_params) {
+                types_.add_named(param.name);
+            }
             symbols_.define({d.name.name, SymbolKind::Form, d.span});
             resolve_type(ctx, d.target);
             break;
@@ -357,6 +425,9 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
         case NodeKind::PickDecl: {
             auto& d = static_cast<PickDecl&>(decl);
             types_.add_named(d.name.name);
+            for (const auto& param : d.type_params) {
+                types_.add_named(param.name);
+            }
             symbols_.define({d.name.name, SymbolKind::Pick, d.span});
             for (const auto& c : d.cases) {
                 for (const auto& f : c.fields) {
@@ -404,6 +475,9 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
             auto& d = static_cast<ProcDecl&>(decl);
             symbols_.define({d.name.name, SymbolKind::Proc, d.span});
             symbols_.push_scope();
+            for (const auto& param : d.type_params) {
+                types_.add_named(param.name);
+            }
             for (const auto& p : d.params) {
                 symbols_.define({p.ident.name, SymbolKind::Param, p.ident.span});
                 resolve_type(ctx, p.type);

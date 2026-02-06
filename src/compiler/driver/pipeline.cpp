@@ -5,6 +5,7 @@
 #include "../frontend/lexer.hpp"
 #include "../frontend/parser.hpp"
 #include "../frontend/macro_expand.hpp"
+#include "../frontend/module_loader.hpp"
 #include "../frontend/validate.hpp"
 #include "../frontend/diagnostics.hpp"
 #include "../frontend/disambiguate.hpp"
@@ -56,9 +57,14 @@ bool run_pipeline(const Options& opts) {
     frontend::Lexer lexer(source, opts.input);
     frontend::diag::DiagnosticEngine diagnostics(opts.lang);
     frontend::ast::AstContext ast_ctx;
+    ast_ctx.sources.push_back(lexer.source_file());
     frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse);
     auto ast = parser.parse_module();
     (void)ast;
+
+    frontend::modules::ModuleIndex module_index;
+    frontend::modules::load_modules(ast_ctx, ast, diagnostics, opts.input, module_index);
+    frontend::modules::rewrite_member_access(ast_ctx, ast, module_index);
 
     frontend::passes::expand_macros(ast_ctx, ast, diagnostics);
     frontend::passes::disambiguate_invokes(ast_ctx, ast);

@@ -11,6 +11,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <memory>
 
 #include "../support/arena.hpp"
 
@@ -727,6 +728,7 @@ struct Module : AstNode {
 
 struct AstContext {
     support::Arena<AstNode, AstId> arena;
+    std::vector<std::shared_ptr<SourceFile>> sources;
 
     template <typename T, typename... Args>
     AstId make(Args&&... args) {

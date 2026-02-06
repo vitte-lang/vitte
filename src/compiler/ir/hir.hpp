@@ -68,6 +68,7 @@ enum class HirKind {
     ReturnStmt,
     Block,
     IfStmt,
+    LoopStmt,
     SelectStmt,
     WhenStmt,
 
@@ -247,6 +248,13 @@ struct HirIf : HirStmt {
           HirStmtId then_block,
           HirStmtId else_block,
           vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirLoop : HirStmt {
+    HirStmtId body;
+
+    HirLoop(HirStmtId body,
+            vitte::frontend::ast::SourceSpan span);
 };
 
 // ------------------------------------------------------------

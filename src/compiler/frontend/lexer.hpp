@@ -1,5 +1,6 @@
 #pragma once
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -116,12 +117,13 @@ struct Token {
 class Lexer {
 public:
     explicit Lexer(const std::string& source, std::string path = "<input>");
+    const std::shared_ptr<ast::SourceFile>& source_file() const { return source_file_; }
 
     Token next();
 
 private:
     const std::string& source_;
-    ast::SourceFile source_file_;
+    std::shared_ptr<ast::SourceFile> source_file_;
     std::size_t index_ = 0;
 };
 

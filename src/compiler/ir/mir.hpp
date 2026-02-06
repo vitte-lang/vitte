@@ -257,18 +257,30 @@ struct MirBasicBlock {
     void set_terminator(MirTerminatorPtr term);
 };
 
+struct MirParam {
+    std::string name;
+    MirTypePtr type;
+
+    MirParam(std::string name,
+             MirTypePtr type);
+};
+
 // ------------------------------------------------------------
 // Function
 // ------------------------------------------------------------
 
 struct MirFunction {
     std::string name;
+    std::vector<MirParam> params;
+    MirTypePtr return_type;
     std::vector<MirLocalPtr> locals;
     std::vector<MirBasicBlock> blocks;
     MirBlockId entry_block;
     vitte::frontend::ast::SourceSpan span;
 
     MirFunction(std::string name,
+                std::vector<MirParam> params,
+                MirTypePtr return_type,
                 std::vector<MirLocalPtr> locals,
                 std::vector<MirBasicBlock> blocks,
                 MirBlockId entry_block,

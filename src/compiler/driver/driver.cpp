@@ -33,6 +33,27 @@ static bool command_exists(const std::string& cmd) {
     return std::system(query.c_str()) == 0;
 }
 
+static bool has_lld(std::string* out_path = nullptr) {
+    if (const char* env = std::getenv("LLD_PATH"); env && *env) {
+        std::filesystem::path p(env);
+        if (std::filesystem::exists(p)) {
+            if (out_path) {
+                *out_path = p.string();
+            }
+            return true;
+        }
+    }
+
+    if (command_exists("ld.lld")) {
+        if (out_path) {
+            *out_path = "ld.lld";
+        }
+        return true;
+    }
+
+    return false;
+}
+
 static int run_doctor() {
     bool ok = true;
 
@@ -42,10 +63,13 @@ static int run_doctor() {
     bool has_steelconf = std::filesystem::exists("steelconf");
     bool has_runtime_header = std::filesystem::exists("src/compiler/backends/runtime/vitte_runtime.hpp");
     bool has_cpp_probe = false;
+    std::string lld_path;
+    bool has_lld_tool = has_lld(&lld_path);
 
     std::cout << "[doctor] clang: " << (has_clang ? "ok" : "missing") << "\n";
     std::cout << "[doctor] clang++: " << (has_clangpp ? "ok" : "missing") << "\n";
     std::cout << "[doctor] make: " << (has_make ? "ok" : "missing") << "\n";
+    std::cout << "[doctor] lld: " << (has_lld_tool ? "ok" : "missing") << "\n";
     std::cout << "[doctor] steelconf: " << (has_steelconf ? "ok" : "missing") << "\n";
     std::cout << "[doctor] runtime header: " << (has_runtime_header ? "ok" : "missing") << "\n";
 
@@ -56,6 +80,9 @@ static int run_doctor() {
     if (!has_make) {
         std::cout << "[doctor] fix: install make and ensure it is in PATH\n";
         ok = false;
+    }
+    if (!has_lld_tool) {
+        std::cout << "[doctor] fix: install llvm (ld.lld) or set LLD_PATH\n";
     }
     if (!has_steelconf) {
         std::cout << "[doctor] note: no steelconf found in current directory\n";
@@ -308,6 +335,13 @@ int run(int argc, char** argv) {
         return 1;
     }
 
+    if (opts.target.rfind("kernel-", 0) == 0) {
+        if (!has_lld()) {
+            std::cerr << "[driver] error: lld not found; install llvm (ld.lld) or set LLD_PATH\n";
+            return 1;
+        }
+    }
+
     if (opts.parse_only || opts.resolve_only || opts.hir_only || opts.mir_only) {
         PassResult pass_result = run_passes(opts);
         return pass_result.ok ? 0 : 1;
@@ -319,7 +353,7 @@ int run(int argc, char** argv) {
     bool ok = run_pipeline(opts);
     if (!ok) {
         std::cerr << "[driver] compilation failed\n";
-        return 1;
+        std::_Exit(EXIT_FAILURE);
     }
 
     return 0;

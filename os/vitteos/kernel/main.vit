@@ -1,60 +1,59 @@
 use std/kernel/console as console
 use std/kernel/syscall as syscall
 use std/kernel/task as task
-use std/kernel/user as user
+use std/kernel/time as time
 use std/core/types.Unit
-use std/core/types.u8
 
 proc user_main() -> Unit {
-  syscall.write_byte(117 as u8)
-  syscall.write_byte(115 as u8)
-  syscall.write_byte(101 as u8)
-  syscall.write_byte(114 as u8)
-  syscall.write_byte(62 as u8)
-  syscall.write_byte(32 as u8)
+  syscall.write_byte(117)
+  syscall.write_byte(115)
+  syscall.write_byte(101)
+  syscall.write_byte(114)
+  syscall.write_byte(62)
+  syscall.write_byte(32)
 
-  let last = syscall.ticks()
+  let last = time.ticks()
 
   loop {
     let k = syscall.read_key()
     if k >= 0 {
       if k == 13 {
-        syscall.write_byte(13 as u8)
-        syscall.write_byte(10 as u8)
-        syscall.write_byte(62 as u8)
-        syscall.write_byte(32 as u8)
+        syscall.write_byte(13)
+        syscall.write_byte(10)
+        syscall.write_byte(62)
+        syscall.write_byte(32)
       } else if k == 8 {
-        syscall.write_byte(8 as u8)
-        syscall.write_byte(32 as u8)
-        syscall.write_byte(8 as u8)
+        syscall.write_byte(8)
+        syscall.write_byte(32)
+        syscall.write_byte(8)
       } else {
         syscall.write_byte(k as u8)
       }
     }
 
-    let now = syscall.ticks()
+    let now = time.ticks()
     if now - last >= 100 {
-      syscall.write_byte(46 as u8)
+      syscall.write_byte(46)
       last = now
     }
 
     syscall.yield()
   }
 
-  return Unit.Unit
+  return
 }
 
 entry main at core/app {
-  console.write_byte(75 as u8)
-  console.write_byte(58 as u8)
-  console.write_byte(32 as u8)
-  console.write_byte(117 as u8)
-  console.write_byte(115 as u8)
-  console.write_byte(101 as u8)
-  console.write_byte(114 as u8)
-  console.write_byte(10 as u8)
+  console.write_byte(75)
+  console.write_byte(58)
+  console.write_byte(32)
+  console.write_byte(117)
+  console.write_byte(115)
+  console.write_byte(101)
+  console.write_byte(114)
+  console.write_byte(10)
 
-  user.enter(user_main)
+  user_main()
 
   loop {
     task.yield()

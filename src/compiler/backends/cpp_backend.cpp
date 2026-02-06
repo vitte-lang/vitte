@@ -12,6 +12,7 @@
 #include <fstream>
 #include <sstream>
 #include <unordered_map>
+#include <optional>
 
 namespace vitte::backend {
 
@@ -21,6 +22,28 @@ static bool is_arduino_target(const std::string& target) {
 
 static bool is_kernel_target(const std::string& target) {
     return target.rfind("kernel-", 0) == 0;
+}
+
+static std::optional<std::filesystem::path> find_lld() {
+    const char* env = std::getenv("LLD_PATH");
+    if (env && *env) {
+        std::filesystem::path p(env);
+        if (std::filesystem::exists(p)) {
+            return p;
+        }
+    }
+    const char* candidates[] = {
+        "/opt/homebrew/opt/llvm/bin/ld.lld",
+        "/opt/homebrew/bin/ld.lld",
+        "/usr/local/bin/ld.lld"
+    };
+    for (const char* path : candidates) {
+        std::filesystem::path p(path);
+        if (std::filesystem::exists(p)) {
+            return p;
+        }
+    }
+    return std::nullopt;
 }
 
 static std::string trim_copy(const std::string& s) {
@@ -69,8 +92,13 @@ static context::CppContext build_context(const CppBackendOptions& options) {
     if (is_kernel_target(options.target)) {
         ctx.set_entry_mode(context::CppContext::EntryMode::Freestanding);
     }
-    ctx.add_include("<cstdint>");
-    ctx.add_include("<cstdlib>");
+    if (is_kernel_target(options.target)) {
+        ctx.add_include("\"cstdint\"");
+        ctx.add_include("\"cstddef\"");
+    } else {
+        ctx.add_include("<cstdint>");
+        ctx.add_include("<cstdlib>");
+    }
     ctx.add_include("\"vitte_runtime.hpp\"");
     return ctx;
 }
@@ -174,6 +202,12 @@ bool compile_cpp_backend(
         clang_opts.cxx_flags.push_back("-mno-red-zone");
         clang_opts.cxx_flags.push_back("-fno-pic");
         clang_opts.cxx_flags.push_back("-fno-pie");
+        auto lld_path = find_lld();
+        if (!lld_path) {
+            std::cerr << "[cpp-backend] lld not found; install llvm (ld.lld) or set LLD_PATH\n";
+            return false;
+        }
+        clang_opts.cxx_flags.push_back("-B" + lld_path->parent_path().string());
         clang_opts.ld_flags.push_back("-fuse-ld=lld");
         clang_opts.ld_flags.push_back("-Wl,/entry:efi_main");
         clang_opts.ld_flags.push_back("-Wl,/subsystem:efi_application");
@@ -212,6 +246,12 @@ bool compile_cpp_backend(
         clang_opts.cxx_flags.push_back("-mno-red-zone");
         clang_opts.cxx_flags.push_back("-fno-pic");
         clang_opts.cxx_flags.push_back("-fno-pie");
+        auto lld_path = find_lld();
+        if (!lld_path) {
+            std::cerr << "[cpp-backend] lld not found; install llvm (ld.lld) or set LLD_PATH\n";
+            return false;
+        }
+        clang_opts.cxx_flags.push_back("-B" + lld_path->parent_path().string());
         clang_opts.ld_flags.push_back("-fuse-ld=lld");
         clang_opts.ld_flags.push_back("-nostdlib");
         clang_opts.ld_flags.push_back("-Wl,-z,notext");

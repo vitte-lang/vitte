@@ -38,7 +38,7 @@ static CppType* map_type(CppContext& ctx, const std::string& mir_name) {
     if (mir_name == "isize") return builtin_type(ctx, "ptrdiff_t");
     if (mir_name == "bool") return builtin_type(ctx, "bool");
     if (mir_name == "string") return builtin_type(ctx, "VitteString");
-    if (mir_name == "Unit") return builtin_type(ctx, "VitteUnit");
+    if (mir_name == "Unit") return builtin_type(ctx, "void");
     return builtin_type(ctx, "int32_t");
 }
 
@@ -111,6 +111,15 @@ static std::string type_name(const vitte::ir::MirTypePtr& type) {
     return "i32";
 }
 
+static bool is_extern_fn(const vitte::ir::MirFunction& fn) {
+    for (const auto& bb : fn.blocks) {
+        if (!bb.instructions.empty() || bb.terminator) {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 ast::cpp::CppTranslationUnit lower_mir(
@@ -124,15 +133,34 @@ ast::cpp::CppTranslationUnit lower_mir(
     bool has_entry = false;
     std::string entry_mangled;
 
+    std::unordered_set<std::string> externs;
+    for (const auto& fn : module.functions) {
+        if (is_extern_fn(fn)) {
+            externs.insert(fn.name);
+        }
+    }
+
     std::size_t fn_index = 0;
     for (const auto& fn : module.functions) {
         CppFunction out;
-        out.name = ctx.mangle(fn.name);
-        out.return_type = map_type(ctx, "i32");
+        bool is_extern = externs.count(fn.name) > 0;
+        out.name = is_extern ? fn.name : ctx.mangle(fn.name);
+        out.return_type = map_type(ctx, type_name(fn.return_type));
+        out.is_extern = is_extern;
+
+        std::unordered_set<std::string> param_names;
+        for (const auto& p : fn.params) {
+            auto ty = map_type(ctx, type_name(p.type));
+            out.params.push_back({ty, p.name});
+            param_names.insert(p.name);
+        }
 
         std::unordered_set<std::string> declared;
         for (const auto& local : fn.locals) {
             if (!local) continue;
+            if (param_names.count(local->name) > 0) {
+                continue;
+            }
             if (declared.insert(local->name).second) {
                 auto decl = std::make_unique<CppVarDecl>(
                     map_type(ctx, type_name(local->type)),
@@ -140,6 +168,12 @@ ast::cpp::CppTranslationUnit lower_mir(
                 );
                 out.body.push_back(std::move(decl));
             }
+        }
+
+        if (is_extern) {
+            tu.functions.push_back(std::move(out));
+            ++fn_index;
+            continue;
         }
 
         for (const auto& bb : fn.blocks) {
@@ -187,7 +221,10 @@ ast::cpp::CppTranslationUnit lower_mir(
                     }
                     case MirKind::Call: {
                         auto& ins = static_cast<const vitte::ir::MirCall&>(*instr);
-                        auto call = std::make_unique<CppCall>(ins.callee);
+                        std::string callee_name = externs.count(ins.callee) > 0
+                            ? ins.callee
+                            : ctx.mangle(ins.callee);
+                        auto call = std::make_unique<CppCall>(callee_name);
                         for (const auto& a : ins.args) {
                             if (a) {
                                 call->args.push_back(emit_value(ctx, *a));
