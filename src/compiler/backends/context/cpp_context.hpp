@@ -70,6 +70,18 @@ public:
     bool is_debug() const;
     bool is_optimize() const;
 
+    /* ---------------------------------------------
+     * Entry point mode
+     * --------------------------------------------- */
+    enum class EntryMode {
+        Native,
+        Arduino,
+        Freestanding
+    };
+
+    void set_entry_mode(EntryMode mode);
+    EntryMode entry_mode() const;
+
 private:
     /* Namespace stack */
     std::vector<std::string> namespace_stack;
@@ -86,6 +98,7 @@ private:
     /* Options */
     bool debug = false;
     bool optimize = false;
+    EntryMode entry_mode = EntryMode::Native;
 };
 
 } // namespace vitte::backend::context

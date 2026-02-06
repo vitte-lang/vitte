@@ -52,6 +52,14 @@ struct Options {
     /* Runtime include path */
     std::string runtime_include;
 
+    /* Target platform */
+    std::string target;
+
+    /* Arduino options */
+    bool arduino_upload = false;
+    std::string arduino_port;
+    std::string arduino_fqbn;
+
     /* Localization */
     std::string lang;
 

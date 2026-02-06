@@ -22,6 +22,9 @@ bool invoke_clang(
      * Language / standard
      * --------------------------------------------- */
     cmd << "-std=" << opts.std << " ";
+    if (!opts.target.empty()) {
+        cmd << "--target=" << opts.target << " ";
+    }
 
     /* ---------------------------------------------
      * Debug / optimization
@@ -37,6 +40,14 @@ bool invoke_clang(
      * --------------------------------------------- */
     if (opts.warnings)
         cmd << "-Wall -Wextra ";
+
+    if (opts.freestanding) {
+        cmd << "-ffreestanding -fno-exceptions -fno-rtti -fno-builtin -fno-stack-protector ";
+    }
+
+    for (const auto& flag : opts.cxx_flags) {
+        cmd << flag << " ";
+    }
 
     /* ---------------------------------------------
      * Includes
@@ -59,7 +70,11 @@ bool invoke_clang(
     cmd << input_cpp << " ";
     for (const auto& src : opts.extra_sources)
         cmd << src << " ";
-    cmd << "-o " << output;
+    cmd << "-o " << output << " ";
+
+    for (const auto& flag : opts.ld_flags) {
+        cmd << flag << " ";
+    }
 
     const std::string command = cmd.str();
 

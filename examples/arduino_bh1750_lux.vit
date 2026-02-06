@@ -1,0 +1,22 @@
+use std/arduino/serial as serial
+use std/arduino/i2c as i2c
+use std/arduino/i2c/bh1750 as bh1750
+use std/arduino/timer as timer
+
+entry main at core/app {
+  serial.begin(9600)
+  i2c.begin()
+
+  let dev = bh1750.new_default()
+  bh1750.power_on(&dev)
+  bh1750.reset(&dev)
+
+  loop {
+    let lux = bh1750.read_lux(&dev)
+    let _ = serial.write((lux >> 8) as u8)
+    let _ = serial.write((lux & 0xFF) as u8)
+    timer.delay_ms(500)
+  }
+
+  return 0
+}

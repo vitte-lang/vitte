@@ -1,0 +1,98 @@
+<<<
+bh1750.vit
+std arduino i2c bh1750 light sensor
+>>>
+
+space std/arduino/i2c/bh1750
+
+
+<<<
+imports
+>>>
+
+use std/core/types.u8
+use std/core/types.u16
+use std/core/types.Unit
+
+use std/arduino/i2c as i2c
+use std/arduino/timer as timer
+
+
+<<<
+constants
+>>>
+
+const DEFAULT_ADDR: u8 = 0x23 as u8
+
+
+<<<
+types
+>>>
+
+form Bh1750 {
+    addr: u8
+}
+
+
+<<<
+api
+>>>
+
+#[inline]
+proc new(addr: u8) -> Bh1750 {
+    let s = Bh1750 { addr: addr }
+    give s
+}
+
+#[inline]
+proc new_default() -> Bh1750 {
+    give new(DEFAULT_ADDR)
+}
+
+#[inline]
+proc power_on(dev: *Bh1750) -> Unit {
+    i2c.begin_transmission(dev.addr)
+    let _ = i2c.write(0x01 as u8)
+    let _ = i2c.end_transmission()
+    give Unit.Unit
+}
+
+#[inline]
+proc reset(dev: *Bh1750) -> Unit {
+    i2c.begin_transmission(dev.addr)
+    let _ = i2c.write(0x07 as u8)
+    let _ = i2c.end_transmission()
+    give Unit.Unit
+}
+
+#[inline]
+proc start_continuous_high_res(dev: *Bh1750) -> Unit {
+    i2c.begin_transmission(dev.addr)
+    let _ = i2c.write(0x10 as u8)
+    let _ = i2c.end_transmission()
+    give Unit.Unit
+}
+
+#[inline]
+proc read_raw(dev: *Bh1750) -> u16 {
+    let _ = i2c.request_from(dev.addr, 2 as u8)
+    let hi = i2c.read()
+    let lo = i2c.read()
+    if hi < 0 {
+        give 0 as u16
+    }
+    if lo < 0 {
+        give 0 as u16
+    }
+    let raw = (((hi as u16) << 8) | (lo as u16))
+    give raw
+}
+
+#[inline]
+proc read_lux(dev: *Bh1750) -> u16 {
+    start_continuous_high_res(dev)
+    timer.delay_ms(180)
+    let raw = read_raw(dev)
+    # lux = raw / 1.2 (approx). Integer approximation: raw * 10 / 12
+    give (raw * 10 as u16) / 12 as u16
+}

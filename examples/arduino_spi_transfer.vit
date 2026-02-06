@@ -1,0 +1,19 @@
+use std/arduino/serial as serial
+use std/arduino/spi as spi
+use std/arduino/gpio as gpio
+use std/arduino/timer as timer
+
+entry main at core/app {
+  serial.begin(9600)
+  spi.begin()
+  gpio.pin_mode(10, gpio.PinMode.Output)
+  loop {
+    gpio.digital_write(10, gpio.PinState.Low)
+    let rx = spi.transfer(0x42)
+    gpio.digital_write(10, gpio.PinState.High)
+
+    let _ = serial.write(rx)
+    timer.delay_ms(500)
+  }
+  return 0
+}

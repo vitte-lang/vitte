@@ -11,6 +11,9 @@ struct ClangOptions {
     /* Language standard */
     std::string std = "c++20";
 
+    /* Target triple */
+    std::string target;
+
     /* Debug / optimization */
     bool debug = false;
     bool optimize = false;
@@ -19,6 +22,9 @@ struct ClangOptions {
     /* Diagnostics */
     bool warnings = true;
     bool verbose = false;
+
+    /* Freestanding build */
+    bool freestanding = false;
 
     /* Search paths */
     std::vector<std::string> include_dirs;
@@ -29,6 +35,10 @@ struct ClangOptions {
 
     /* Additional source files */
     std::vector<std::string> extra_sources;
+
+    /* Additional flags */
+    std::vector<std::string> cxx_flags;
+    std::vector<std::string> ld_flags;
 };
 
 /* -------------------------------------------------

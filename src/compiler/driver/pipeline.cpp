@@ -148,6 +148,10 @@ bool run_pipeline(const Options& opts) {
     be_opts.opt_level = opts.opt_level;
     be_opts.work_dir = ".";
     be_opts.runtime_include = opts.runtime_include;
+    be_opts.target = opts.target;
+    be_opts.arduino_upload = opts.arduino_upload;
+    be_opts.arduino_port = opts.arduino_port;
+    be_opts.arduino_fqbn = opts.arduino_fqbn;
 
     std::vector<backend::lower::MirFunction> mir_funcs;
 

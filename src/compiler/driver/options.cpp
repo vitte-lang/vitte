@@ -81,6 +81,27 @@ Options parse_options(int argc, char** argv) {
         else if (arg.rfind("--runtime-include=", 0) == 0) {
             opts.runtime_include = arg.substr(std::string("--runtime-include=").size());
         }
+        else if (arg == "--target" && i + 1 < argc) {
+            opts.target = argv[++i];
+        }
+        else if (arg.rfind("--target=", 0) == 0) {
+            opts.target = arg.substr(std::string("--target=").size());
+        }
+        else if (arg == "--upload") {
+            opts.arduino_upload = true;
+        }
+        else if (arg == "--port" && i + 1 < argc) {
+            opts.arduino_port = argv[++i];
+        }
+        else if (arg.rfind("--port=", 0) == 0) {
+            opts.arduino_port = arg.substr(std::string("--port=").size());
+        }
+        else if (arg == "--fqbn" && i + 1 < argc) {
+            opts.arduino_fqbn = argv[++i];
+        }
+        else if (arg.rfind("--fqbn=", 0) == 0) {
+            opts.arduino_fqbn = arg.substr(std::string("--fqbn=").size());
+        }
         else if (arg == "--emit-cpp") {
             opts.emit_cpp = true;
         }
@@ -179,6 +200,10 @@ void print_help() {
         "  --explain <code>  Explain a diagnostic (e.g. E0001)\n"
         "  --runtime-include <path>\n"
         "                    Add include dir for vitte_runtime.hpp\n"
+        "  --target <name>   Select target (e.g. native, arduino-uno)\n"
+        "  --upload          Upload to Arduino after build (requires --port)\n"
+        "  --port <path>     Serial port for Arduino upload\n"
+        "  --fqbn <name>     Arduino fully qualified board name\n"
         "  --parse-only      Parse only (no backend)\n"
         "  --strict-parse    Disallow keywords as identifiers\n"
         "  --resolve-only    Resolve only (no lowering)\n"

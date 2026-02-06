@@ -144,4 +144,16 @@ bool CppContext::is_optimize() const {
     return optimize;
 }
 
+/* ----------------------------------------
+ * Entry mode
+ * ---------------------------------------- */
+
+void CppContext::set_entry_mode(EntryMode mode) {
+    entry_mode = mode;
+}
+
+CppContext::EntryMode CppContext::entry_mode() const {
+    return entry_mode;
+}
+
 } // namespace vitte::backend::context

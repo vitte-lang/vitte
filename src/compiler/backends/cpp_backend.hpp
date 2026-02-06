@@ -26,6 +26,14 @@ struct CppBackendOptions {
 
     /* Runtime include directory override */
     std::string runtime_include;
+
+    /* Target triple / platform */
+    std::string target;
+
+    /* Arduino options */
+    bool arduino_upload = false;
+    std::string arduino_port;
+    std::string arduino_fqbn;
 };
 
 /* -------------------------------------------------

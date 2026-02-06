@@ -41,6 +41,12 @@ static CppType* builtin_cstrv(CppContext& ctx) {
     return &t;
 }
 
+static CppType* builtin_void(CppContext& ctx) {
+    static CppType t = CppType::builtin("void");
+    (void)ctx;
+    return &t;
+}
+
 /* -------------------------------------------------
  * MIR placeholders live in lower_mir.hpp
  * ------------------------------------------------- */
@@ -154,23 +160,41 @@ CppTranslationUnit lower_mir(
     }
 
     if (has_entry) {
-        CppFunction wrapper;
-        wrapper.name = "main";
-        wrapper.return_type = builtin_int(ctx);
-        wrapper.params.push_back({builtin_int(ctx), "argc"});
-        wrapper.params.push_back({builtin_cstrv(ctx), "argv"});
+        if (ctx.entry_mode() == CppContext::EntryMode::Freestanding) {
+            return tu;
+        }
+        if (ctx.entry_mode() == CppContext::EntryMode::Arduino) {
+            CppFunction setup;
+            setup.name = "setup";
+            setup.return_type = builtin_void(ctx);
 
-        auto set_args = std::make_unique<CppCall>("vitte_set_args");
-        set_args->args.push_back(std::make_unique<CppVar>("argc"));
-        set_args->args.push_back(std::make_unique<CppVar>("argv"));
-        wrapper.body.push_back(std::make_unique<CppExprStmt>(std::move(set_args)));
+            auto call = std::make_unique<CppCall>(entry_mangled);
+            setup.body.push_back(std::make_unique<CppExprStmt>(std::move(call)));
+            tu.functions.push_back(std::move(setup));
 
-        auto call = std::make_unique<CppCall>(entry_mangled);
-        wrapper.body.push_back(
-            std::make_unique<CppReturn>(std::move(call))
-        );
+            CppFunction loop;
+            loop.name = "loop";
+            loop.return_type = builtin_void(ctx);
+            tu.functions.push_back(std::move(loop));
+        } else {
+            CppFunction wrapper;
+            wrapper.name = "main";
+            wrapper.return_type = builtin_int(ctx);
+            wrapper.params.push_back({builtin_int(ctx), "argc"});
+            wrapper.params.push_back({builtin_cstrv(ctx), "argv"});
 
-        tu.functions.push_back(std::move(wrapper));
+            auto set_args = std::make_unique<CppCall>("vitte_set_args");
+            set_args->args.push_back(std::make_unique<CppVar>("argc"));
+            set_args->args.push_back(std::make_unique<CppVar>("argv"));
+            wrapper.body.push_back(std::make_unique<CppExprStmt>(std::move(set_args)));
+
+            auto call = std::make_unique<CppCall>(entry_mangled);
+            wrapper.body.push_back(
+                std::make_unique<CppReturn>(std::move(call))
+            );
+
+            tu.functions.push_back(std::move(wrapper));
+        }
     }
 
     return tu;
