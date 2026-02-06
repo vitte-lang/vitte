@@ -24,6 +24,19 @@ CFLAGS       := -std=c17 -Wall -Wextra -Werror -O2 -g
 CXXFLAGS     := -std=c++20 -Wall -Wextra -Werror -O2 -g
 LDFLAGS      :=
 
+# Optional dependency roots (e.g. Homebrew)
+ifdef OPENSSL_DIR
+  CXXFLAGS += -I$(OPENSSL_DIR)/include
+  LDFLAGS  += -L$(OPENSSL_DIR)/lib
+endif
+ifdef CURL_DIR
+  CXXFLAGS += -I$(CURL_DIR)/include
+  LDFLAGS  += -L$(CURL_DIR)/lib
+endif
+
+# Runtime deps
+LDFLAGS += -lssl -lcrypto -lcurl
+
 CLANG_TIDY   := clang-tidy
 FORMAT       := clang-format
 

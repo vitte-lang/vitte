@@ -86,6 +86,7 @@ struct VitteOptionString {
     VitteString value;
 };
 
+
 struct VitteIoError {
     VitteIoErrorKind kind;
     VitteOptionString message;
@@ -141,12 +142,7 @@ struct VitteUdpRecv {
     std::size_t size;
 };
 
-struct VitteJsonValue;
-
-struct VitteJsonMember {
-    VitteString key;
-    VitteJsonValue value;
-};
+struct VitteJsonMember;
 
 struct VitteJsonValue {
     std::uint8_t tag; // 0 null,1 bool,2 number,3 string,4 array,5 object
@@ -157,6 +153,11 @@ struct VitteJsonValue {
         VitteSlice<VitteJsonValue> array;
         VitteSlice<VitteJsonMember> object;
     };
+};
+
+struct VitteJsonMember {
+    VitteString key;
+    VitteJsonValue value;
 };
 
 template <typename T>
@@ -174,18 +175,52 @@ struct VitteRegex {
 
 struct VitteProcessResult {
     std::int32_t status;
-    VitteString stdout;
-    VitteString stderr;
+    VitteString out;
+    VitteString err;
+};
+
+struct VitteExitStatus {
+    std::int32_t code;
+};
+
+struct VitteProcessChild {
+    std::int64_t id;
 };
 
 struct VitteFswatchWatcher {
     VitteString path;
 };
 
-struct VitteFswatchEvent {
-    VitteString path;
+enum class VitteFswatchEventKind : std::uint8_t {
+    Modified,
+    Deleted,
+    Renamed
 };
 
+struct VitteFswatchEvent {
+    VitteString path;
+    VitteFswatchEventKind kind;
+};
+
+struct VitteRegexMatch {
+    std::size_t start;
+    std::size_t end;
+    VitteString text;
+};
+
+struct VitteOptionRegexMatch {
+    std::uint8_t tag; // 0 = None, 1 = Some
+    VitteRegexMatch value;
+};
+
+struct VitteDbHandle {
+    std::int64_t id;
+};
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wreturn-type-c-linkage"
+#endif
 extern "C" {
 
 // CLI
@@ -202,10 +237,23 @@ bool env_set(VitteString name, VitteString value);
 
 // OS
 VitteString os_platform();
+VitteString os_arch();
 VitteOptionString os_home_dir();
+VitteString os_temp_dir();
+VitteResult<VitteString> os_current_dir();
+bool os_set_current_dir(VitteString path);
+VitteResult<VitteString> os_exe_path();
+VitteString os_path_sep();
 
 // Process
 VitteResult<VitteProcessResult> process_run(VitteString cmd);
+VitteResult<VitteProcessResult> process_run_args(VitteString cmd, VitteSlice<VitteString> args);
+VitteResult<VitteProcessResult> process_run_shell(VitteString cmdline);
+VitteResult<VitteProcessChild> process_spawn(VitteString cmd, VitteSlice<VitteString> args);
+VitteResult<VitteExitStatus> process_wait(VitteProcessChild* child);
+VitteResult<VitteUnit> process_kill(VitteProcessChild* child);
+VitteResult<VitteString> process_stdout(VitteProcessChild* child);
+VitteResult<VitteString> process_stderr(VitteProcessChild* child);
 
 // JSON
 VitteResult<VitteJsonValue> json_parse(VitteString text);
@@ -275,9 +323,24 @@ VitteResultIo<VitteUnit> tcp_set_write_timeout(VitteTcpStream* stream, std::uint
 // Regex
 VitteResult<VitteRegex> regex_compile(VitteString pat);
 bool regex_is_match(VitteRegex re, VitteString text);
+VitteOptionRegexMatch regex_find(VitteRegex re, VitteString text);
+VitteString regex_replace(VitteRegex re, VitteString text, VitteString with);
+VitteSlice<VitteString> regex_split(VitteRegex re, VitteString text);
 
 // File system watch
 VitteResult<VitteFswatchWatcher> fswatch_watch(VitteString path);
 VitteResult<VitteFswatchEvent> fswatch_poll(VitteFswatchWatcher* w);
+VitteResult<VitteUnit> fswatch_close(VitteFswatchWatcher* w);
+
+// DB (simple kv)
+VitteResult<VitteDbHandle> db_open(VitteString path);
+VitteResult<VitteUnit> db_close(VitteDbHandle* db);
+VitteResult<VitteUnit> db_set(VitteDbHandle* db, VitteString key, VitteString value);
+VitteResult<VitteOptionString> db_get(VitteDbHandle* db, VitteString key);
+VitteResult<bool> db_delete(VitteDbHandle* db, VitteString key);
+VitteResult<VitteSlice<VitteString>> db_keys(VitteDbHandle* db);
 
 } // extern "C"
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif

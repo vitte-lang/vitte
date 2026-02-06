@@ -42,6 +42,7 @@ The repository contains:
 
 See `docs/cli.md` for current commands and options.
 See `docs/errors.md` for diagnostic codes and fixes.
+See `docs/stdlib.md` for standard library module docs and examples.
 
 ---
 

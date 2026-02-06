@@ -13,6 +13,9 @@
 #include <regex>
 #include <unordered_map>
 #include <mutex>
+#include <fstream>
+#include <sstream>
+#include <signal.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
@@ -36,6 +39,9 @@
 #  include <sys/socket.h>
 #  include <unistd.h>
 #  include <errno.h>
+#  if defined(__APPLE__)
+#    include <mach-o/dyld.h>
+#  endif
 #  if defined(__linux__)
 #    include <sys/inotify.h>
 #  elif defined(__APPLE__) || defined(__FreeBSD__)
@@ -134,6 +140,27 @@ static std::string vitte_to_string(VitteString s) {
     return std::string(s.data, s.len);
 }
 
+static std::vector<std::string> vitte_to_string_vec(VitteSlice<VitteString> args) {
+    std::vector<std::string> out;
+    out.reserve(args.len);
+    for (std::size_t i = 0; i < args.len; ++i) {
+        out.push_back(vitte_to_string(args.data[i]));
+    }
+    return out;
+}
+
+static VitteSlice<VitteString> vitte_make_string_slice(const std::vector<std::string>& items) {
+    if (items.empty()) {
+        return VitteSlice<VitteString>{nullptr, 0};
+    }
+    void* mem = vitte::runtime::alloc(sizeof(VitteString) * items.size());
+    auto* data = static_cast<VitteString*>(mem);
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        data[i] = vitte_make_string(items[i]);
+    }
+    return VitteSlice<VitteString>{data, items.size()};
+}
+
 static VitteSlice<std::uint8_t> vitte_make_u8_slice(const std::uint8_t* data, std::size_t len) {
     if (!data || len == 0) {
         return VitteSlice<std::uint8_t>{nullptr, 0};
@@ -154,6 +181,20 @@ static VitteOptionString vitte_some_string(const std::string& value) {
     VitteOptionString opt{};
     opt.tag = 1;
     opt.value = vitte_make_string(value);
+    return opt;
+}
+
+static VitteOptionRegexMatch vitte_none_match() {
+    VitteOptionRegexMatch opt{};
+    opt.tag = 0;
+    opt.value = VitteRegexMatch{0, 0, VitteString{nullptr, 0}};
+    return opt;
+}
+
+static VitteOptionRegexMatch vitte_some_match(const VitteRegexMatch& m) {
+    VitteOptionRegexMatch opt{};
+    opt.tag = 1;
+    opt.value = m;
     return opt;
 }
 
@@ -267,6 +308,36 @@ static void fswatch_close(FswatchState& state) {
 #endif
 }
 
+struct ProcessState {
+    std::int64_t id = 0;
+#if defined(_WIN32)
+    HANDLE process = nullptr;
+    HANDLE out_read = nullptr;
+    HANDLE err_read = nullptr;
+#else
+    pid_t pid = -1;
+    int out_fd = -1;
+    int err_fd = -1;
+#endif
+    bool done = false;
+    int exit_code = 0;
+    std::string out;
+    std::string err;
+};
+
+static std::unordered_map<std::int64_t, ProcessState> g_processes;
+static std::mutex g_process_mutex;
+static std::int64_t g_next_process_id = 1;
+
+struct DbState {
+    std::string path;
+    std::unordered_map<std::string, std::string> kv;
+};
+
+static std::unordered_map<std::int64_t, DbState> g_dbs;
+static std::mutex g_db_mutex;
+static std::int64_t g_next_db_id = 1;
+
 static VitteIoErrorKind map_io_error() {
 #if defined(_WIN32)
     int err = WSAGetLastError();
@@ -340,7 +411,6 @@ static VitteResultIo<VitteUnit> set_timeout_fd(std::size_t fd, int opt, std::uin
     return vitte_io_ok(u);
 }
 
-static bool socket_addr_to_native(VitteSocketAddr addr, sockaddr_storage& out, socklen_t& out_len) {
 static bool socket_addr_to_native(VitteSocketAddr addr, sockaddr_storage& out, socklen_t& out_len) {
     std::memset(&out, 0, sizeof(out));
     if (addr.ip.tag == 0) {
@@ -868,31 +938,364 @@ VitteOptionString os_home_dir() {
 #endif
 }
 
-VitteResult<VitteProcessResult> process_run(VitteString cmd) {
-    std::string command = vitte_to_string(cmd);
-    if (command.empty()) {
-        return vitte_err_string<VitteProcessResult>("empty command");
+VitteString os_arch() {
+#if defined(__x86_64__) || defined(_M_X64)
+    return vitte_make_string("x86_64");
+#elif defined(__aarch64__) || defined(_M_ARM64)
+    return vitte_make_string("arm64");
+#elif defined(__i386__) || defined(_M_IX86)
+    return vitte_make_string("x86");
+#else
+    return vitte_make_string("unknown");
+#endif
+}
+
+VitteString os_temp_dir() {
+    std::error_code ec;
+    auto p = std::filesystem::temp_directory_path(ec);
+    if (ec) {
+        return vitte_make_string("/tmp");
     }
-    std::string capture = command + " 2>&1";
-    FILE* pipe = vitte_popen(capture.c_str(), "r");
-    if (!pipe) {
-        return vitte_err_string<VitteProcessResult>("failed to spawn process");
+    return vitte_make_string(p.string());
+}
+
+VitteResult<VitteString> os_current_dir() {
+    std::error_code ec;
+    auto p = std::filesystem::current_path(ec);
+    if (ec) {
+        return vitte_err_string<VitteString>("failed to get current dir");
     }
-    std::string output;
+    return vitte_ok(vitte_make_string(p.string()));
+}
+
+bool os_set_current_dir(VitteString path) {
+    std::error_code ec;
+    std::filesystem::current_path(vitte_to_string(path), ec);
+    return !ec;
+}
+
+VitteResult<VitteString> os_exe_path() {
+#if defined(_WIN32)
+    char buf[MAX_PATH];
+    DWORD len = GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    if (len == 0) {
+        return vitte_err_string<VitteString>("failed to get exe path");
+    }
+    return vitte_ok(vitte_make_string(std::string(buf, len)));
+#elif defined(__APPLE__)
+    uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    std::string path(size, '\0');
+    if (_NSGetExecutablePath(path.data(), &size) != 0) {
+        return vitte_err_string<VitteString>("failed to get exe path");
+    }
+    path.resize(std::strlen(path.c_str()));
+    return vitte_ok(vitte_make_string(path));
+#else
+    char buf[4096];
+    ssize_t len = ::readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (len <= 0) {
+        return vitte_err_string<VitteString>("failed to get exe path");
+    }
+    buf[len] = '\0';
+    return vitte_ok(vitte_make_string(std::string(buf, len)));
+#endif
+}
+
+VitteString os_path_sep() {
+#if defined(_WIN32)
+    return vitte_make_string("\\");
+#else
+    return vitte_make_string("/");
+#endif
+}
+
+static void read_fd_all(int fd, std::string& out) {
     char buffer[4096];
     while (true) {
-        std::size_t n = std::fread(buffer, 1, sizeof(buffer), pipe);
-        if (n == 0) {
-            break;
+        ssize_t n = ::read(fd, buffer, sizeof(buffer));
+        if (n > 0) {
+            out.append(buffer, n);
+            continue;
         }
-        output.append(buffer, n);
+        break;
     }
-    int status = vitte_pclose(pipe);
-    VitteProcessResult res{};
-    res.status = static_cast<std::int32_t>(status);
-    res.stdout = vitte_make_string(output);
-    res.stderr = vitte_make_string(std::string());
-    return vitte_ok(res);
+}
+
+#if defined(_WIN32)
+static void read_handle_all(HANDLE h, std::string& out) {
+    char buffer[4096];
+    DWORD read = 0;
+    while (ReadFile(h, buffer, sizeof(buffer), &read, nullptr) && read > 0) {
+        out.append(buffer, buffer + read);
+    }
+}
+
+static std::string quote_win_arg(const std::string& s) {
+    if (s.find_first_of(" \t\"") == std::string::npos) {
+        return s;
+    }
+    std::string out = "\"";
+    for (char c : s) {
+        if (c == '"') {
+            out += "\\\"";
+        } else {
+            out += c;
+        }
+    }
+    out += "\"";
+    return out;
+}
+#endif
+
+static VitteResult<VitteProcessChild> process_spawn_internal(const std::string& cmd, const std::vector<std::string>& args, bool shell) {
+    if (cmd.empty()) {
+        return vitte_err_string<VitteProcessChild>("empty command");
+    }
+    ProcessState state{};
+    std::lock_guard<std::mutex> lock(g_process_mutex);
+    state.id = g_next_process_id++;
+#if defined(_WIN32)
+    SECURITY_ATTRIBUTES sa{};
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+    HANDLE out_read = nullptr;
+    HANDLE out_write = nullptr;
+    HANDLE err_read = nullptr;
+    HANDLE err_write = nullptr;
+    if (!CreatePipe(&out_read, &out_write, &sa, 0)) {
+        return vitte_err_string<VitteProcessChild>("create pipe failed");
+    }
+    if (!CreatePipe(&err_read, &err_write, &sa, 0)) {
+        CloseHandle(out_read);
+        CloseHandle(out_write);
+        return vitte_err_string<VitteProcessChild>("create pipe failed");
+    }
+    SetHandleInformation(out_read, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(err_read, HANDLE_FLAG_INHERIT, 0);
+
+    STARTUPINFOA si{};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdOutput = out_write;
+    si.hStdError = err_write;
+    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+
+    std::string cmdline;
+    if (shell) {
+        cmdline = "cmd.exe /C " + cmd;
+    } else {
+        cmdline = quote_win_arg(cmd);
+        for (const auto& a : args) {
+            cmdline += " ";
+            cmdline += quote_win_arg(a);
+        }
+    }
+
+    PROCESS_INFORMATION pi{};
+    BOOL ok = CreateProcessA(
+        nullptr,
+        cmdline.data(),
+        nullptr,
+        nullptr,
+        TRUE,
+        0,
+        nullptr,
+        nullptr,
+        &si,
+        &pi
+    );
+    CloseHandle(out_write);
+    CloseHandle(err_write);
+    if (!ok) {
+        CloseHandle(out_read);
+        CloseHandle(err_read);
+        return vitte_err_string<VitteProcessChild>("failed to spawn process");
+    }
+    CloseHandle(pi.hThread);
+    state.process = pi.hProcess;
+    state.out_read = out_read;
+    state.err_read = err_read;
+#else
+    int out_pipe[2];
+    int err_pipe[2];
+    if (::pipe(out_pipe) != 0 || ::pipe(err_pipe) != 0) {
+        return vitte_err_string<VitteProcessChild>("pipe failed");
+    }
+    pid_t pid = ::fork();
+    if (pid == 0) {
+        ::dup2(out_pipe[1], STDOUT_FILENO);
+        ::dup2(err_pipe[1], STDERR_FILENO);
+        ::close(out_pipe[0]);
+        ::close(out_pipe[1]);
+        ::close(err_pipe[0]);
+        ::close(err_pipe[1]);
+        if (shell) {
+            execl("/bin/sh", "sh", "-c", cmd.c_str(), static_cast<char*>(nullptr));
+        } else {
+            std::vector<char*> argv;
+            argv.reserve(args.size() + 2);
+            argv.push_back(const_cast<char*>(cmd.c_str()));
+            for (const auto& a : args) {
+                argv.push_back(const_cast<char*>(a.c_str()));
+            }
+            argv.push_back(nullptr);
+            execvp(cmd.c_str(), argv.data());
+        }
+        _exit(127);
+    }
+    if (pid < 0) {
+        ::close(out_pipe[0]);
+        ::close(out_pipe[1]);
+        ::close(err_pipe[0]);
+        ::close(err_pipe[1]);
+        return vitte_err_string<VitteProcessChild>("failed to spawn process");
+    }
+    ::close(out_pipe[1]);
+    ::close(err_pipe[1]);
+    state.pid = pid;
+    state.out_fd = out_pipe[0];
+    state.err_fd = err_pipe[0];
+#endif
+    g_processes.emplace(state.id, std::move(state));
+    VitteProcessChild child{state.id};
+    return vitte_ok(child);
+}
+
+static void process_collect(ProcessState& state) {
+    if (state.done) {
+        return;
+    }
+#if defined(_WIN32)
+    WaitForSingleObject(state.process, INFINITE);
+    DWORD exit_code = 1;
+    if (!GetExitCodeProcess(state.process, &exit_code)) {
+        exit_code = 1;
+    }
+    read_handle_all(state.out_read, state.out);
+    read_handle_all(state.err_read, state.err);
+    CloseHandle(state.out_read);
+    CloseHandle(state.err_read);
+    CloseHandle(state.process);
+    state.exit_code = static_cast<int>(exit_code);
+#else
+    int status = 0;
+    ::waitpid(state.pid, &status, 0);
+    read_fd_all(state.out_fd, state.out);
+    read_fd_all(state.err_fd, state.err);
+    ::close(state.out_fd);
+    ::close(state.err_fd);
+    if (WIFEXITED(status)) {
+        state.exit_code = WEXITSTATUS(status);
+    } else {
+        state.exit_code = 1;
+    }
+#endif
+    state.done = true;
+}
+
+VitteResult<VitteProcessResult> process_run(VitteString cmd) {
+    auto res = process_spawn_internal(vitte_to_string(cmd), {}, true);
+    if (res.tag != 0) {
+        return vitte_err_string_alloc<VitteProcessResult>(vitte_to_string(res.err));
+    }
+    VitteProcessChild child = res.ok;
+    auto status = process_wait(&child);
+    if (status.tag != 0) {
+        return vitte_err_string_alloc<VitteProcessResult>(vitte_to_string(status.err));
+    }
+    auto out = process_stdout(&child);
+    auto err = process_stderr(&child);
+    VitteProcessResult pr{};
+    pr.status = status.ok.code;
+    pr.out = out.tag == 0 ? out.ok : vitte_make_string(std::string());
+    pr.err = err.tag == 0 ? err.ok : vitte_make_string(std::string());
+    return vitte_ok(pr);
+}
+
+VitteResult<VitteProcessResult> process_run_args(VitteString cmd, VitteSlice<VitteString> args) {
+    auto res = process_spawn_internal(vitte_to_string(cmd), vitte_to_string_vec(args), false);
+    if (res.tag != 0) {
+        return vitte_err_string_alloc<VitteProcessResult>(vitte_to_string(res.err));
+    }
+    VitteProcessChild child = res.ok;
+    auto status = process_wait(&child);
+    if (status.tag != 0) {
+        return vitte_err_string_alloc<VitteProcessResult>(vitte_to_string(status.err));
+    }
+    auto out = process_stdout(&child);
+    auto err = process_stderr(&child);
+    VitteProcessResult pr{};
+    pr.status = status.ok.code;
+    pr.out = out.tag == 0 ? out.ok : vitte_make_string(std::string());
+    pr.err = err.tag == 0 ? err.ok : vitte_make_string(std::string());
+    return vitte_ok(pr);
+}
+
+VitteResult<VitteProcessResult> process_run_shell(VitteString cmdline) {
+    return process_run(cmdline);
+}
+
+VitteResult<VitteProcessChild> process_spawn(VitteString cmd, VitteSlice<VitteString> args) {
+    return process_spawn_internal(vitte_to_string(cmd), vitte_to_string_vec(args), false);
+}
+
+VitteResult<VitteExitStatus> process_wait(VitteProcessChild* child) {
+    if (!child) {
+        return vitte_err_string<VitteExitStatus>("invalid child");
+    }
+    std::lock_guard<std::mutex> lock(g_process_mutex);
+    auto it = g_processes.find(child->id);
+    if (it == g_processes.end()) {
+        return vitte_err_string<VitteExitStatus>("unknown child");
+    }
+    process_collect(it->second);
+    VitteExitStatus st{it->second.exit_code};
+    return vitte_ok(st);
+}
+
+VitteResult<VitteUnit> process_kill(VitteProcessChild* child) {
+    if (!child) {
+        return vitte_err_string<VitteUnit>("invalid child");
+    }
+    std::lock_guard<std::mutex> lock(g_process_mutex);
+    auto it = g_processes.find(child->id);
+    if (it == g_processes.end()) {
+        return vitte_err_string<VitteUnit>("unknown child");
+    }
+#if defined(_WIN32)
+    TerminateProcess(it->second.process, 1);
+#else
+    ::kill(it->second.pid, SIGKILL);
+#endif
+    VitteUnit u{};
+    return vitte_ok(u);
+}
+
+VitteResult<VitteString> process_stdout(VitteProcessChild* child) {
+    if (!child) {
+        return vitte_err_string<VitteString>("invalid child");
+    }
+    std::lock_guard<std::mutex> lock(g_process_mutex);
+    auto it = g_processes.find(child->id);
+    if (it == g_processes.end()) {
+        return vitte_err_string<VitteString>("unknown child");
+    }
+    process_collect(it->second);
+    return vitte_ok(vitte_make_string(it->second.out));
+}
+
+VitteResult<VitteString> process_stderr(VitteProcessChild* child) {
+    if (!child) {
+        return vitte_err_string<VitteString>("invalid child");
+    }
+    std::lock_guard<std::mutex> lock(g_process_mutex);
+    auto it = g_processes.find(child->id);
+    if (it == g_processes.end()) {
+        return vitte_err_string<VitteString>("unknown child");
+    }
+    process_collect(it->second);
+    return vitte_ok(vitte_make_string(it->second.err));
 }
 
 VitteResult<VitteJsonValue> json_parse(VitteString text) {
@@ -1403,6 +1806,54 @@ bool regex_is_match(VitteRegex re, VitteString text) {
     }
 }
 
+VitteOptionRegexMatch regex_find(VitteRegex re, VitteString text) {
+    std::string pattern = vitte_to_string(re.pattern);
+    std::string input = vitte_to_string(text);
+    try {
+        std::regex compiled(pattern);
+        std::smatch m;
+        if (!std::regex_search(input, m, compiled)) {
+            return vitte_none_match();
+        }
+        VitteRegexMatch out{};
+        out.start = static_cast<std::size_t>(m.position());
+        out.end = out.start + static_cast<std::size_t>(m.length());
+        out.text = vitte_make_string(m.str());
+        return vitte_some_match(out);
+    } catch (const std::regex_error&) {
+        return vitte_none_match();
+    }
+}
+
+VitteString regex_replace(VitteRegex re, VitteString text, VitteString with) {
+    std::string pattern = vitte_to_string(re.pattern);
+    std::string input = vitte_to_string(text);
+    std::string repl = vitte_to_string(with);
+    try {
+        std::regex compiled(pattern);
+        return vitte_make_string(std::regex_replace(input, compiled, repl));
+    } catch (const std::regex_error&) {
+        return vitte_make_string(input);
+    }
+}
+
+VitteSlice<VitteString> regex_split(VitteRegex re, VitteString text) {
+    std::string pattern = vitte_to_string(re.pattern);
+    std::string input = vitte_to_string(text);
+    try {
+        std::regex compiled(pattern);
+        std::sregex_token_iterator it(input.begin(), input.end(), compiled, -1);
+        std::sregex_token_iterator end;
+        std::vector<std::string> parts;
+        for (; it != end; ++it) {
+            parts.push_back(*it);
+        }
+        return vitte_make_string_slice(parts);
+    } catch (const std::regex_error&) {
+        return vitte_make_string_slice(std::vector<std::string>{input});
+    }
+}
+
 VitteResult<VitteFswatchWatcher> fswatch_watch(VitteString path) {
     std::string p = vitte_to_string(path);
     if (p.empty()) {
@@ -1482,12 +1933,19 @@ VitteResult<VitteFswatchEvent> fswatch_poll(VitteFswatchWatcher* w) {
         state = it->second;
     }
     bool changed = false;
+    VitteFswatchEventKind kind = VitteFswatchEventKind::Modified;
 #if defined(__linux__)
     if (state.kind == FswatchState::Kind::Inotify && state.fd >= 0) {
         char buffer[4096];
         ssize_t n = ::read(state.fd, buffer, sizeof(buffer));
         if (n > 0) {
             changed = true;
+            const auto* ev = reinterpret_cast<const inotify_event*>(buffer);
+            if (ev->mask & (IN_DELETE_SELF | IN_MOVE_SELF)) {
+                kind = (ev->mask & IN_DELETE_SELF) ? VitteFswatchEventKind::Deleted : VitteFswatchEventKind::Renamed;
+            } else {
+                kind = VitteFswatchEventKind::Modified;
+            }
         } else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
             return vitte_err_string<VitteFswatchEvent>("fswatch read failed");
         }
@@ -1504,6 +1962,13 @@ VitteResult<VitteFswatchEvent> fswatch_poll(VitteFswatchWatcher* w) {
                 return vitte_err_string<VitteFswatchEvent>("fswatch error");
             }
             changed = true;
+            if (ev.fflags & NOTE_DELETE) {
+                kind = VitteFswatchEventKind::Deleted;
+            } else if (ev.fflags & NOTE_RENAME) {
+                kind = VitteFswatchEventKind::Renamed;
+            } else {
+                kind = VitteFswatchEventKind::Modified;
+            }
         }
     }
 #endif
@@ -1532,7 +1997,161 @@ VitteResult<VitteFswatchEvent> fswatch_poll(VitteFswatchWatcher* w) {
     }
     VitteFswatchEvent ev{};
     ev.path = vitte_make_string(p);
+    ev.kind = kind;
     return vitte_ok(ev);
+}
+
+VitteResult<VitteUnit> fswatch_close(VitteFswatchWatcher* w) {
+    if (!w || !w->path.data) {
+        return vitte_err_string<VitteUnit>("invalid watcher");
+    }
+    std::string p = vitte_to_string(w->path);
+    std::lock_guard<std::mutex> lock(g_fswatch_mutex);
+    auto it = g_fswatch_states.find(p);
+    if (it == g_fswatch_states.end()) {
+        return vitte_err_string<VitteUnit>("watcher not found");
+    }
+    fswatch_close(it->second);
+    g_fswatch_states.erase(it);
+    VitteUnit u{};
+    return vitte_ok(u);
+}
+
+static bool db_load(DbState& db, std::string& err) {
+    db.kv.clear();
+    if (db.path.empty()) {
+        err = "empty db path";
+        return false;
+    }
+    std::ifstream in(db.path);
+    if (!in.is_open()) {
+        return true;
+    }
+    std::string line;
+    while (std::getline(in, line)) {
+        auto pos = line.find('=');
+        if (pos == std::string::npos) {
+            continue;
+        }
+        std::string key = line.substr(0, pos);
+        std::string val = line.substr(pos + 1);
+        db.kv[key] = val;
+    }
+    return true;
+}
+
+static bool db_flush(const DbState& db, std::string& err) {
+    std::ofstream out(db.path, std::ios::trunc);
+    if (!out.is_open()) {
+        err = "failed to write db file";
+        return false;
+    }
+    for (const auto& kv : db.kv) {
+        out << kv.first << "=" << kv.second << "\n";
+    }
+    return true;
+}
+
+VitteResult<VitteDbHandle> db_open(VitteString path) {
+    DbState state{};
+    state.path = vitte_to_string(path);
+    std::string err;
+    if (!db_load(state, err)) {
+        return vitte_err_string_alloc<VitteDbHandle>(err);
+    }
+    std::lock_guard<std::mutex> lock(g_db_mutex);
+    std::int64_t id = g_next_db_id++;
+    g_dbs.emplace(id, std::move(state));
+    VitteDbHandle handle{id};
+    return vitte_ok(handle);
+}
+
+VitteResult<VitteUnit> db_close(VitteDbHandle* db) {
+    if (!db) {
+        return vitte_err_string<VitteUnit>("invalid db");
+    }
+    std::lock_guard<std::mutex> lock(g_db_mutex);
+    auto it = g_dbs.find(db->id);
+    if (it == g_dbs.end()) {
+        return vitte_err_string<VitteUnit>("unknown db");
+    }
+    std::string err;
+    if (!db_flush(it->second, err)) {
+        return vitte_err_string_alloc<VitteUnit>(err);
+    }
+    g_dbs.erase(it);
+    VitteUnit u{};
+    return vitte_ok(u);
+}
+
+VitteResult<VitteUnit> db_set(VitteDbHandle* db, VitteString key, VitteString value) {
+    if (!db) {
+        return vitte_err_string<VitteUnit>("invalid db");
+    }
+    std::lock_guard<std::mutex> lock(g_db_mutex);
+    auto it = g_dbs.find(db->id);
+    if (it == g_dbs.end()) {
+        return vitte_err_string<VitteUnit>("unknown db");
+    }
+    it->second.kv[vitte_to_string(key)] = vitte_to_string(value);
+    std::string err;
+    if (!db_flush(it->second, err)) {
+        return vitte_err_string_alloc<VitteUnit>(err);
+    }
+    VitteUnit u{};
+    return vitte_ok(u);
+}
+
+VitteResult<VitteOptionString> db_get(VitteDbHandle* db, VitteString key) {
+    if (!db) {
+        return vitte_err_string<VitteOptionString>("invalid db");
+    }
+    std::lock_guard<std::mutex> lock(g_db_mutex);
+    auto it = g_dbs.find(db->id);
+    if (it == g_dbs.end()) {
+        return vitte_err_string<VitteOptionString>("unknown db");
+    }
+    auto k = vitte_to_string(key);
+    auto kv = it->second.kv.find(k);
+    if (kv == it->second.kv.end()) {
+        return vitte_ok(vitte_none_string());
+    }
+    return vitte_ok(vitte_some_string(kv->second));
+}
+
+VitteResult<bool> db_delete(VitteDbHandle* db, VitteString key) {
+    if (!db) {
+        return vitte_err_string<bool>("invalid db");
+    }
+    std::lock_guard<std::mutex> lock(g_db_mutex);
+    auto it = g_dbs.find(db->id);
+    if (it == g_dbs.end()) {
+        return vitte_err_string<bool>("unknown db");
+    }
+    auto k = vitte_to_string(key);
+    auto erased = it->second.kv.erase(k) > 0;
+    std::string err;
+    if (!db_flush(it->second, err)) {
+        return vitte_err_string_alloc<bool>(err);
+    }
+    return vitte_ok(erased);
+}
+
+VitteResult<VitteSlice<VitteString>> db_keys(VitteDbHandle* db) {
+    if (!db) {
+        return vitte_err_string<VitteSlice<VitteString>>("invalid db");
+    }
+    std::lock_guard<std::mutex> lock(g_db_mutex);
+    auto it = g_dbs.find(db->id);
+    if (it == g_dbs.end()) {
+        return vitte_err_string<VitteSlice<VitteString>>("unknown db");
+    }
+    std::vector<std::string> keys;
+    keys.reserve(it->second.kv.size());
+    for (const auto& kv : it->second.kv) {
+        keys.push_back(kv.first);
+    }
+    return vitte_ok(vitte_make_string_slice(keys));
 }
 
 } // extern "C"

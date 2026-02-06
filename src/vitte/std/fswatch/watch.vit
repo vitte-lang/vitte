@@ -1,0 +1,51 @@
+<<<
+watch.vit
+std fswatch operations
+>>>
+
+space std/fswatch/watch
+
+
+<<<
+imports
+>>>
+
+use std/core/types.string
+use std/core/types.Unit
+use std/core/result.Result
+use std/fswatch/types.Watcher
+use std/fswatch/types.Event
+
+
+<<<
+externs
+>>>
+
+#[extern]
+proc fswatch_watch(path: string) -> Result[Watcher, string]
+
+#[extern]
+proc fswatch_poll(w: *Watcher) -> Result[Event, string]
+
+#[extern]
+proc fswatch_close(w: *Watcher) -> Result[Unit, string]
+
+
+<<<
+helpers
+>>>
+
+#[inline]
+proc watch(path: string) -> Result[Watcher, string] {
+    give fswatch_watch(path)
+}
+
+#[inline]
+proc poll(w: *Watcher) -> Result[Event, string] {
+    give fswatch_poll(w)
+}
+
+#[inline]
+proc close(w: *Watcher) -> Result[Unit, string] {
+    give fswatch_close(w)
+}

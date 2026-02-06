@@ -1,0 +1,76 @@
+<<<
+kv.vit
+std db key/value operations
+>>>
+
+space std/db/kv
+
+
+<<<
+imports
+>>>
+
+use std/core/types.string
+use std/core/result.Result
+use std/core/option.Option
+use std/core/types.Unit
+use std/db/types.Db
+use std/db/types.Entry
+
+
+<<<
+externs
+>>>
+
+#[extern]
+proc db_open(path: string) -> Result[Db, string]
+
+#[extern]
+proc db_close(db: *Db) -> Result[Unit, string]
+
+#[extern]
+proc db_set(db: *Db, key: string, value: string) -> Result[Unit, string]
+
+#[extern]
+proc db_get(db: *Db, key: string) -> Result[Option[string], string]
+
+#[extern]
+proc db_delete(db: *Db, key: string) -> Result[bool, string]
+
+#[extern]
+proc db_keys(db: *Db) -> Result[[string], string]
+
+
+<<<
+helpers
+>>>
+
+#[inline]
+proc open(path: string) -> Result[Db, string] {
+    give db_open(path)
+}
+
+#[inline]
+proc close(db: *Db) -> Result[Unit, string] {
+    give db_close(db)
+}
+
+#[inline]
+proc put(db: *Db, key: string, value: string) -> Result[Unit, string] {
+    give db_set(db, key, value)
+}
+
+#[inline]
+proc get(db: *Db, key: string) -> Result[Option[string], string] {
+    give db_get(db, key)
+}
+
+#[inline]
+proc del(db: *Db, key: string) -> Result[bool, string] {
+    give db_delete(db, key)
+}
+
+#[inline]
+proc keys(db: *Db) -> Result[[string], string] {
+    give db_keys(db)
+}

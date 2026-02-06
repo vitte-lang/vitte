@@ -31,11 +31,13 @@ static CppType* builtin_i32(CppContext& ctx) {
 
 static CppType* builtin_int(CppContext& ctx) {
     static CppType t = CppType::builtin("int");
+    (void)ctx;
     return &t;
 }
 
 static CppType* builtin_cstrv(CppContext& ctx) {
     static CppType t = CppType::builtin("const char**");
+    (void)ctx;
     return &t;
 }
 

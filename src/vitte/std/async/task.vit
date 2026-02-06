@@ -1,0 +1,46 @@
+<<<
+task.vit
+std async task helpers
+>>>
+
+space std/async/task
+
+
+<<<
+imports
+>>>
+
+use std/async/types.Task
+use std/async/types.TaskState
+
+
+<<<
+helpers
+>>>
+
+#[inline]
+proc spawn[T](f: proc() -> T) -> Task[T] {
+    let value = f()
+    give Task(id = 0, state = TaskState.Ready(value))
+}
+
+#[inline]
+proc poll[T](t: *Task[T]) -> TaskState[T] {
+    give t.state
+}
+
+#[inline]
+proc is_ready[T](t: *Task[T]) -> bool {
+    when t.state is TaskState.Ready {
+        give true
+    }
+    give false
+}
+
+#[inline]
+proc join[T](t: *Task[T]) -> T {
+    when t.state is TaskState.Ready {
+        give t.state.value
+    }
+    loop {}
+}

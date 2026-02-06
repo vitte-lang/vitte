@@ -8,15 +8,16 @@ Standard library modules (selected)
 Run a command and capture output.
 
 Notes:
-- `stdout` captures combined output (stdout + stderr). `stderr` is empty for now.
+- `out` captures stdout and `err` captures stderr.
 
 ```vitte
 use std/process
 
 entry main at core/app {
-  let res = run("echo hello")
+  let res = run_shell("echo hello")
   when res is Result.Ok {
-    let out = res.value.stdout
+    let out = res.value.out
+    let err = res.value.err
   }
   return 0
 }
@@ -47,6 +48,7 @@ entry main at core/app {
   let re = compile("h.llo")
   when re is Result.Ok {
     let ok = is_match(re.value, "hello")
+    let m = find(re.value, "hello")
   }
   return 0
 }
@@ -79,7 +81,7 @@ entry main at core/app {
   let c = counter("requests")
   inc(&c, 1)
   let g = gauge("load")
-  set(&g, 0.75)
+  set_value(&g, 0.75)
   let t = timer("latency_ms")
   record_ms(&t, 12)
   return 0
@@ -88,7 +90,7 @@ entry main at core/app {
 
 ## std/async
 
-Minimal async stubs (no runtime executor yet).
+Synchronous task helpers (spawn runs immediately for now).
 
 ```vitte
 use std/async
@@ -107,13 +109,16 @@ entry main at core/app {
 
 ## std/db
 
-Database stubs (no runtime backend yet).
+Simple key/value database (file-backed).
 
 ```vitte
 use std/db
 
 entry main at core/app {
-  let _ = connect("db://localhost")
+  let db = open("db.kv")
+  when db is Result.Ok {
+    let _ = put(&db.value, "hello", "world")
+  }
   return 0
 }
 ```

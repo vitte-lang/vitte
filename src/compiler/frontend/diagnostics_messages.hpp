@@ -257,8 +257,8 @@ inline bool diag_id_from_code(std::string_view code, DiagId* out) {
     if (!out) {
         return false;
     }
-#define VITTE_DIAG_FROM_CODE(code, name, msg) \
-    if (code == #code) { *out = DiagId::name; return true; }
+#define VITTE_DIAG_FROM_CODE(code_id, name, msg) \
+    if (code == #code_id) { *out = DiagId::name; return true; }
     VITTE_DIAG_LIST(VITTE_DIAG_FROM_CODE)
 #undef VITTE_DIAG_FROM_CODE
     return false;

@@ -35,6 +35,9 @@ Error Codes:
 - Diagnostics use stable codes like `E0001`. These codes are defined in `src/compiler/frontend/diagnostics_messages.hpp`.
 - The `.ftl` localization files can translate by code (preferred) or by message key.
 
+Stdlib:
+- See `docs/stdlib.md` for standard library modules and examples.
+
 Legacy flags (still supported):
 - `--parse-only`
 - `--resolve-only`
