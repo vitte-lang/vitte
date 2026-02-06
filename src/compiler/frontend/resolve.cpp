@@ -104,6 +104,27 @@ static const std::unordered_map<std::string, std::string>& std_type_suggestions(
     return kMap;
 }
 
+static bool is_known_import_type(std::string_view name) {
+    static const std::unordered_set<std::string_view> kTypes = {
+        "bool", "string", "int",
+        "i8", "i16", "i32", "i64", "i128",
+        "u8", "u16", "u32", "u64", "u128",
+        "isize", "usize",
+        "f32", "f64",
+        "Unit", "Never",
+    };
+    return kTypes.count(name) > 0;
+}
+
+static bool path_mentions_types(const ast::ModulePath& path) {
+    for (const auto& part : path.parts) {
+        if (part.name == "types") {
+            return true;
+        }
+    }
+    return false;
+}
+
 SymbolId SymbolTable::define(Symbol sym) {
     if (scopes_.empty()) {
         scopes_.emplace_back();
@@ -363,7 +384,22 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
             break;
         }
         case NodeKind::UseDecl:
+        {
+            auto& d = static_cast<UseDecl&>(decl);
+            std::string name;
+            if (d.alias.has_value()) {
+                name = d.alias->name;
+            } else if (!d.path.parts.empty()) {
+                name = d.path.parts.back().name;
+            }
+            if (!name.empty()) {
+                symbols_.define({name, SymbolKind::Var, d.span});
+                if (is_known_import_type(name) || path_mentions_types(d.path)) {
+                    types_.add_named(name);
+                }
+            }
             break;
+        }
         case NodeKind::ProcDecl: {
             auto& d = static_cast<ProcDecl&>(decl);
             symbols_.define({d.name.name, SymbolKind::Proc, d.span});

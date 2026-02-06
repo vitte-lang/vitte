@@ -149,11 +149,11 @@ bool CppContext::is_optimize() const {
  * ---------------------------------------- */
 
 void CppContext::set_entry_mode(EntryMode mode) {
-    entry_mode = mode;
+    entry_mode_ = mode;
 }
 
 CppContext::EntryMode CppContext::entry_mode() const {
-    return entry_mode;
+    return entry_mode_;
 }
 
 } // namespace vitte::backend::context

@@ -17,6 +17,7 @@ struct Builder {
     bool terminated = false;
     std::size_t temp_index = 0;
     std::unordered_map<std::string, std::string> local_types;
+    const std::unordered_map<std::string, std::string>* fn_returns = nullptr;
 
     explicit Builder(const HirContext& h, DiagnosticEngine& d)
         : hir(h), diag(d) {}
@@ -71,6 +72,13 @@ struct Builder {
         func->locals.push_back(make_local(name, type_name, span));
     }
 
+    void ensure_local(const std::string& name, const std::string& type_name, vitte::frontend::ast::SourceSpan span) {
+        if (local_types.find(name) == local_types.end()) {
+            local_types[name] = type_name;
+            register_local(name, type_name, span);
+        }
+    }
+
     MirValuePtr make_const(MirConstKind kind, const std::string& value, vitte::frontend::ast::SourceSpan span) {
         return std::make_unique<MirConst>(kind, value, span);
     }
@@ -83,6 +91,9 @@ struct Builder {
         switch (node.kind) {
             case HirKind::NamedType: {
                 const auto& t = hir.get<HirNamedType>(ty);
+                if (t.name == "int") return "i32";
+                if (t.name == "bool") return "bool";
+                if (t.name == "string") return "string";
                 return t.name;
             }
             case HirKind::GenericType: {
@@ -143,7 +154,131 @@ struct Builder {
     MirValuePtr lower_expr(HirExprId expr_id);
     void lower_stmt(HirStmtId stmt_id);
     void lower_block(HirStmtId block_id);
+    MirValuePtr emit_call_value(
+        const std::string& callee,
+        std::vector<MirValuePtr> args,
+        const std::string& result_type,
+        vitte::frontend::ast::SourceSpan span);
 };
+
+struct Binding {
+    enum class Kind {
+        FromValue,
+        FromCtorField
+    };
+    Kind kind;
+    std::string name;
+    std::string base_local;
+    std::size_t field_index;
+    vitte::frontend::ast::SourceSpan span;
+};
+
+struct PatternResult {
+    MirValuePtr cond;
+    std::vector<Binding> bindings;
+};
+
+static bool is_unit_type_name(const std::string& name) {
+    return name == "Unit" || name == "unit" || name == "void";
+}
+
+MirValuePtr Builder::emit_call_value(
+    const std::string& callee,
+    std::vector<MirValuePtr> args,
+    const std::string& result_type,
+    vitte::frontend::ast::SourceSpan span) {
+    std::string tmp = next_temp();
+    auto dest = make_local(tmp, result_type, span);
+    MirLocalPtr dest_copy = make_local(tmp, result_type, span);
+    emit(std::make_unique<MirCall>(
+        callee,
+        std::move(args),
+        std::move(dest),
+        span));
+    register_local(tmp, result_type, span);
+    return dest_copy;
+}
+
+static PatternResult lower_pattern(
+    Builder& b,
+    HirPatternId pat_id,
+    const std::string& base_local) {
+    PatternResult out;
+    const auto& pnode = b.hir.node(pat_id);
+    if (pnode.kind == HirKind::PatternIdent) {
+        auto& pat = b.hir.get<HirIdentPattern>(pat_id);
+        out.cond = b.make_const(MirConstKind::Bool, "true", pat.span);
+        out.bindings.push_back(Binding{
+            Binding::Kind::FromValue,
+            pat.name,
+            base_local,
+            0,
+            pat.span
+        });
+        return out;
+    }
+    if (pnode.kind == HirKind::PatternCtor) {
+        auto& pat = b.hir.get<HirCtorPattern>(pat_id);
+        std::vector<MirValuePtr> args;
+        args.push_back(b.make_local_value(base_local, "unknown", pat.span));
+        args.push_back(b.make_const(MirConstKind::String, pat.name, pat.span));
+        out.cond = b.emit_call_value("__vitte_match_ctor", std::move(args), "bool", pat.span);
+
+        for (std::size_t i = 0; i < pat.args.size(); ++i) {
+            HirPatternId arg_pat = pat.args[i];
+            const auto& anode = b.hir.node(arg_pat);
+            if (anode.kind == HirKind::PatternIdent) {
+                auto& arg = b.hir.get<HirIdentPattern>(arg_pat);
+                out.bindings.push_back(Binding{
+                    Binding::Kind::FromCtorField,
+                    arg.name,
+                    base_local,
+                    i,
+                    arg.span
+                });
+            } else if (anode.kind == HirKind::PatternCtor) {
+                std::vector<MirValuePtr> get_args;
+                get_args.push_back(b.make_local_value(base_local, "unknown", pat.span));
+                get_args.push_back(b.make_const(MirConstKind::Int, std::to_string(i), pat.span));
+                auto field_val = b.emit_call_value("__vitte_ctor_get", std::move(get_args), "unknown", pat.span);
+                std::string field_local = static_cast<MirLocal*>(field_val.get())->name;
+                PatternResult sub = lower_pattern(b, arg_pat, field_local);
+                if (sub.cond) {
+                    std::vector<MirValuePtr> and_args;
+                    auto left = std::move(out.cond);
+                    auto right = std::move(sub.cond);
+                    if (!left) {
+                        out.cond = std::move(right);
+                    } else if (!right) {
+                        out.cond = std::move(left);
+                    } else {
+                        std::string tmp = b.next_temp();
+                        auto dest = b.make_local(tmp, "bool", pat.span);
+                        MirLocalPtr dest_copy = b.make_local(tmp, "bool", pat.span);
+                        b.emit(std::make_unique<MirBinaryOp>(
+                            MirBinOp::And,
+                            std::move(dest),
+                            std::move(left),
+                            std::move(right),
+                            pat.span));
+                        b.register_local(tmp, "bool", pat.span);
+                        out.cond = std::move(dest_copy);
+                    }
+                }
+                for (auto& bind : sub.bindings) {
+                    out.bindings.push_back(std::move(bind));
+                }
+            } else {
+                b.diag.error("unsupported pattern in ctor (only ident/ctor)", pat.span);
+            }
+        }
+        return out;
+    }
+
+    b.diag.error("unsupported pattern in select/match", pnode.span);
+    out.cond = b.make_const(MirConstKind::Bool, "false", pnode.span);
+    return out;
+}
 
 MirValuePtr Builder::lower_expr(HirExprId expr_id) {
     if (expr_id == kInvalidHirId) {
@@ -261,16 +396,22 @@ MirValuePtr Builder::lower_expr(HirExprId expr_id) {
                 emit(std::make_unique<MirUnsafeEnd>(e.span));
                 return nullptr;
             }
-            std::string tmp = next_temp();
-            auto dest = make_local(tmp, "unknown", e.span);
-            MirLocalPtr dest_copy = make_local(tmp, "unknown", e.span);
-            emit(std::make_unique<MirCall>(
-                callee,
-                std::move(args),
-                std::move(dest),
-                e.span));
-            register_local(tmp, "unknown", e.span);
-            return dest_copy;
+            std::string ret_type = "unknown";
+            if (fn_returns) {
+                auto it = fn_returns->find(callee);
+                if (it != fn_returns->end()) {
+                    ret_type = it->second;
+                }
+            }
+            if (is_unit_type_name(ret_type)) {
+                emit(std::make_unique<MirCall>(
+                    callee,
+                    std::move(args),
+                    nullptr,
+                    e.span));
+                return nullptr;
+            }
+            return emit_call_value(callee, std::move(args), ret_type, e.span);
         }
         default:
             diag.error("unsupported HIR expression in MIR lowering", node.span);
@@ -384,25 +525,32 @@ void Builder::lower_stmt(HirStmtId stmt_id) {
                 MirBlockId then_bb = new_block(w.span);
                 MirBlockId else_bb = new_block(w.span);
 
-                MirValuePtr cond;
-                const auto& pnode = hir.node(w.pattern);
-                if (pnode.kind == HirKind::PatternIdent) {
-                    auto& pat = hir.get<HirIdentPattern>(w.pattern);
-                    cond = make_const(MirConstKind::Bool, "true", w.span);
-                } else {
-                    diag.error("unsupported pattern in select/match (only ident supported)", w.span);
+                PatternResult pr = lower_pattern(*this, w.pattern, sel_tmp);
+                MirValuePtr cond = std::move(pr.cond);
+                if (!cond) {
                     cond = make_const(MirConstKind::Bool, "false", w.span);
                 }
                 terminate(std::make_unique<MirCondGoto>(std::move(cond), then_bb, else_bb, w.span));
 
                 set_current(then_bb);
-                if (pnode.kind == HirKind::PatternIdent) {
-                    auto& pat = hir.get<HirIdentPattern>(w.pattern);
-                    register_local(pat.name, "unknown", w.span);
-                    emit(std::make_unique<MirAssign>(
-                        make_local(pat.name, "unknown", w.span),
-                        make_local_value(sel_tmp, "unknown", w.span),
-                        w.span));
+                for (const auto& bind : pr.bindings) {
+                    if (bind.kind == Binding::Kind::FromValue) {
+                        ensure_local(bind.name, "unknown", bind.span);
+                        emit(std::make_unique<MirAssign>(
+                            make_local(bind.name, "unknown", bind.span),
+                            make_local_value(bind.base_local, "unknown", bind.span),
+                            bind.span));
+                    } else if (bind.kind == Binding::Kind::FromCtorField) {
+                        ensure_local(bind.name, "unknown", bind.span);
+                        std::vector<MirValuePtr> get_args;
+                        get_args.push_back(make_local_value(bind.base_local, "unknown", bind.span));
+                        get_args.push_back(make_const(MirConstKind::Int, std::to_string(bind.field_index), bind.span));
+                        emit(std::make_unique<MirCall>(
+                            "__vitte_ctor_get",
+                            std::move(get_args),
+                            make_local(bind.name, "unknown", bind.span),
+                            bind.span));
+                    }
                 }
                 lower_block(w.block);
                 if (!terminated) {
@@ -446,6 +594,31 @@ MirModule lower_to_mir(
     const auto& module = hir_ctx.get<HirModule>(module_id);
     std::vector<MirFunction> funcs;
 
+    std::unordered_map<std::string, std::string> fn_returns;
+    for (auto decl_id : module.decls) {
+        if (decl_id == kInvalidHirId) {
+            continue;
+        }
+        const auto& decl = hir_ctx.get<HirDecl>(decl_id);
+        if (decl.kind != HirKind::FnDecl) {
+            continue;
+        }
+        const auto& fn = hir_ctx.get<HirFnDecl>(decl_id);
+        std::string ret = "unknown";
+        if (fn.return_type != kInvalidHirId) {
+            const auto& tnode = hir_ctx.node(fn.return_type);
+            if (tnode.kind == HirKind::NamedType) {
+                ret = hir_ctx.get<HirNamedType>(fn.return_type).name;
+                if (ret == "int") ret = "i32";
+                if (ret == "bool") ret = "bool";
+                if (ret == "string") ret = "string";
+            } else if (tnode.kind == HirKind::GenericType) {
+                ret = hir_ctx.get<HirGenericType>(fn.return_type).base_name;
+            }
+        }
+        fn_returns[fn.name] = ret;
+    }
+
     for (auto decl_id : module.decls) {
         if (decl_id == kInvalidHirId) {
             continue;
@@ -469,11 +642,12 @@ MirModule lower_to_mir(
 
         Builder builder(hir_ctx, diagnostics);
         builder.func = &mir_fn;
+        builder.fn_returns = &fn_returns;
         builder.set_current(0);
 
         for (const auto& p : fn.params) {
             std::string ty = builder.type_from_hir(p.type, fn.span);
-            builder.local_types[p.name] = ty;
+            builder.ensure_local(p.name, ty, fn.span);
         }
 
         builder.lower_block(fn.body);

@@ -76,7 +76,7 @@ static std::string auto_detect_port(const std::string& cli_path, const std::stri
     return extract_json_field(out, "address");
 }
 
-static bool copy_file(const std::filesystem::path& src, const std::filesystem::path& dst) {
+static bool copy_file_local(const std::filesystem::path& src, const std::filesystem::path& dst) {
     std::error_code ec;
     std::filesystem::copy_file(
         src,
@@ -118,14 +118,14 @@ bool invoke_arduino_cli(
     }
 
     fs::path sketch_cpp = sketch_dir / "vitte_out.cpp";
-    if (!copy_file(input_cpp, sketch_cpp)) {
+    if (!copy_file_local(input_cpp, sketch_cpp)) {
         return false;
     }
 
     for (const auto& src : extra_sources) {
         fs::path p = src;
         fs::path dst = sketch_dir / p.filename();
-        if (!copy_file(p, dst)) {
+        if (!copy_file_local(p, dst)) {
             return false;
         }
     }
@@ -133,7 +133,7 @@ bool invoke_arduino_cli(
     if (!runtime_header.empty()) {
         fs::path hdr = runtime_header;
         fs::path dst = sketch_dir / "vitte_runtime.hpp";
-        if (!copy_file(hdr, dst)) {
+        if (!copy_file_local(hdr, dst)) {
             return false;
         }
     }
@@ -212,7 +212,7 @@ bool invoke_arduino_cli(
     }
 
     if (!output_hex.empty()) {
-        if (!copy_file(hex_out, output_hex)) {
+        if (!copy_file_local(hex_out, output_hex)) {
             return false;
         }
     }

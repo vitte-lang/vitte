@@ -321,10 +321,6 @@ static ir::HirStmtId lower_stmt(
             auto call = hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), s.span);
             return hir_ctx.make<ir::HirExprStmt>(call, s.span);
         }
-        case NodeKind::UnsafeStmt: {
-            auto& s = static_cast<const UnsafeStmt&>(node);
-            return lower_block(ctx, s.body, hir_ctx, diagnostics);
-        }
         case NodeKind::LetStmt: {
             auto& s = static_cast<const LetStmt&>(node);
             return hir_ctx.make<ir::HirLetStmt>(
@@ -447,12 +443,12 @@ ir::HirModuleId lower_to_hir(
                 auto& d = static_cast<const ProcDecl&>(decl);
                 std::vector<ir::HirParam> params;
                 for (const auto& p : d.params) {
-                    params.emplace_back(p.ident.name, ir::kInvalidHirId);
+                    params.emplace_back(p.ident.name, lower_type(ctx, p.type, hir_ctx));
                 }
                 decls.push_back(hir_ctx.make<ir::HirFnDecl>(
                     d.name.name,
                     std::move(params),
-                    ir::kInvalidHirId,
+                    lower_type(ctx, d.return_type, hir_ctx),
                     d.body != kInvalidAstId
                         ? lower_block(ctx, d.body, hir_ctx, diagnostics)
                         : ir::kInvalidHirId,

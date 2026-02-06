@@ -98,7 +98,7 @@ private:
     /* Options */
     bool debug = false;
     bool optimize = false;
-    EntryMode entry_mode = EntryMode::Native;
+    EntryMode entry_mode_ = EntryMode::Native;
 };
 
 } // namespace vitte::backend::context

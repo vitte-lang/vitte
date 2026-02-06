@@ -59,18 +59,19 @@ static std::unique_ptr<CppExpr> emit_value(CppContext& ctx, const vitte::ir::Mir
             case vitte::ir::MirConstKind::Int:
                 return std::make_unique<CppLiteral>(c.value);
             case vitte::ir::MirConstKind::String: {
-                std::string out = "\"";
+                std::string lit = "\"";
                 for (char ch : c.value) {
                     switch (ch) {
-                        case '\\': out += "\\\\"; break;
-                        case '"': out += "\\\""; break;
-                        case '\n': out += "\\n"; break;
-                        case '\r': out += "\\r"; break;
-                        case '\t': out += "\\t"; break;
-                        default: out += ch; break;
+                        case '\\': lit += "\\\\"; break;
+                        case '"': lit += "\\\""; break;
+                        case '\n': lit += "\\n"; break;
+                        case '\r': lit += "\\r"; break;
+                        case '\t': lit += "\\t"; break;
+                        default: lit += ch; break;
                     }
                 }
-                out += "\"";
+                lit += "\"";
+                std::string out = "VitteString{" + lit + ", " + std::to_string(c.value.size()) + "}";
                 return std::make_unique<CppLiteral>(out);
             }
         }
@@ -100,6 +101,16 @@ static std::string label_for(std::size_t fn_index, std::size_t block_id) {
     return "bb_" + std::to_string(fn_index) + "_" + std::to_string(block_id);
 }
 
+static std::string type_name(const vitte::ir::MirTypePtr& type) {
+    if (!type) {
+        return "i32";
+    }
+    if (type->kind == vitte::ir::MirKind::NamedType) {
+        return static_cast<const vitte::ir::MirNamedType&>(*type).name;
+    }
+    return "i32";
+}
+
 } // namespace
 
 ast::cpp::CppTranslationUnit lower_mir(
@@ -124,7 +135,7 @@ ast::cpp::CppTranslationUnit lower_mir(
             if (!local) continue;
             if (declared.insert(local->name).second) {
                 auto decl = std::make_unique<CppVarDecl>(
-                    map_type(ctx, local->type ? local->type->name : "i32"),
+                    map_type(ctx, type_name(local->type)),
                     local->name
                 );
                 out.body.push_back(std::move(decl));
@@ -141,7 +152,7 @@ ast::cpp::CppTranslationUnit lower_mir(
                         const auto& dst = static_cast<const vitte::ir::MirLocal&>(*ins.dest);
                         if (declared.insert(dst.name).second) {
                             auto decl = std::make_unique<CppVarDecl>(
-                                map_type(ctx, dst.type ? dst.type->name : "i32"),
+                                map_type(ctx, type_name(dst.type)),
                                 dst.name
                             );
                             decl->init = emit_value(ctx, *ins.value);
@@ -162,7 +173,7 @@ ast::cpp::CppTranslationUnit lower_mir(
                             emit_value(ctx, *ins.right));
                         if (declared.insert(dst.name).second) {
                             auto decl = std::make_unique<CppVarDecl>(
-                                map_type(ctx, dst.type ? dst.type->name : "i32"),
+                                map_type(ctx, type_name(dst.type)),
                                 dst.name
                             );
                             decl->init = std::move(expr);
@@ -186,7 +197,7 @@ ast::cpp::CppTranslationUnit lower_mir(
                             const auto& dst = static_cast<const vitte::ir::MirLocal&>(*ins.result);
                             if (declared.insert(dst.name).second) {
                                 auto decl = std::make_unique<CppVarDecl>(
-                                    map_type(ctx, dst.type ? dst.type->name : "i32"),
+                                    map_type(ctx, type_name(dst.type)),
                                     dst.name
                                 );
                                 decl->init = std::move(call);
