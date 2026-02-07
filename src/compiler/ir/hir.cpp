@@ -164,6 +164,16 @@ HirDecl::HirDecl(HirKind k, vitte::frontend::ast::SourceSpan sp)
 HirParam::HirParam(std::string n, HirTypeId t)
     : name(std::move(n)), type(t) {}
 
+HirConstDecl::HirConstDecl(
+    std::string n,
+    HirTypeId t,
+    HirExprId v,
+    vitte::frontend::ast::SourceSpan sp)
+    : HirDecl(HirKind::ConstDecl, sp),
+      name(std::move(n)),
+      type(t),
+      value(v) {}
+
 HirFnDecl::HirFnDecl(
     std::string n,
     std::vector<HirParam> p,
@@ -239,6 +249,9 @@ void dump(const HirContext& ctx, HirId id, std::ostream& os, std::size_t depth) 
     } else if (n.kind == HirKind::LiteralExpr) {
         auto& l = static_cast<const HirLiteralExpr&>(n);
         os << " " << l.value;
+    } else if (n.kind == HirKind::ConstDecl) {
+        auto& c = static_cast<const HirConstDecl&>(n);
+        os << " " << c.name;
     } else if (n.kind == HirKind::UnaryExpr) {
         auto& u = static_cast<const HirUnaryExpr&>(n);
         os << " " << to_string(u.op);
@@ -266,6 +279,11 @@ void dump(const HirContext& ctx, HirId id, std::ostream& os, std::size_t depth) 
         case HirKind::FnDecl: {
             auto& f = static_cast<const HirFnDecl&>(n);
             dump(ctx, f.body, os, depth + 1);
+            break;
+        }
+        case HirKind::ConstDecl: {
+            auto& c = static_cast<const HirConstDecl&>(n);
+            dump(ctx, c.value, os, depth + 1);
             break;
         }
         case HirKind::Block: {
@@ -377,6 +395,9 @@ static void dump_compact_impl(const HirContext& ctx, HirId id, std::ostream& os)
     } else if (n.kind == HirKind::LiteralExpr) {
         auto& l = static_cast<const HirLiteralExpr&>(n);
         os << "(" << l.value << ")";
+    } else if (n.kind == HirKind::ConstDecl) {
+        auto& c = static_cast<const HirConstDecl&>(n);
+        os << "(" << c.name << ")";
     } else if (n.kind == HirKind::UnaryExpr) {
         auto& u = static_cast<const HirUnaryExpr&>(n);
         os << "(" << to_string(u.op) << ")";
@@ -401,6 +422,11 @@ static void dump_compact_impl(const HirContext& ctx, HirId id, std::ostream& os)
         case HirKind::FnDecl: {
             auto& f = static_cast<const HirFnDecl&>(n);
             children.push_back(f.body);
+            break;
+        }
+        case HirKind::ConstDecl: {
+            auto& c = static_cast<const HirConstDecl&>(n);
+            children.push_back(c.value);
             break;
         }
         case HirKind::Block: {
@@ -520,6 +546,9 @@ static void dump_json_impl(const HirContext& ctx, HirId id, std::ostream& os) {
     } else if (n.kind == HirKind::LiteralExpr) {
         auto& l = static_cast<const HirLiteralExpr&>(n);
         os << ",\"value\":\"" << l.value << "\"";
+    } else if (n.kind == HirKind::ConstDecl) {
+        auto& c = static_cast<const HirConstDecl&>(n);
+        os << ",\"name\":\"" << c.name << "\"";
     } else if (n.kind == HirKind::UnaryExpr) {
         auto& u = static_cast<const HirUnaryExpr&>(n);
         os << ",\"op\":\"" << to_string(u.op) << "\"";
@@ -544,6 +573,11 @@ static void dump_json_impl(const HirContext& ctx, HirId id, std::ostream& os) {
         case HirKind::FnDecl: {
             auto& f = static_cast<const HirFnDecl&>(n);
             children.push_back(f.body);
+            break;
+        }
+        case HirKind::ConstDecl: {
+            auto& c = static_cast<const HirConstDecl&>(n);
+            children.push_back(c.value);
             break;
         }
         case HirKind::Block: {
@@ -662,6 +696,7 @@ const char* to_string(HirKind kind) {
         case HirKind::SelectStmt: return "SelectStmt";
         case HirKind::WhenStmt: return "WhenStmt";
         case HirKind::FnDecl: return "FnDecl";
+        case HirKind::ConstDecl: return "ConstDecl";
         case HirKind::Module: return "Module";
         case HirKind::PatternIdent: return "PatternIdent";
         case HirKind::PatternCtor: return "PatternCtor";

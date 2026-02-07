@@ -240,6 +240,12 @@ void validate_module(const HirContext& ctx,
             continue;
         }
         const auto& decl = ctx.node(decl_id);
+        if (decl.kind == HirKind::ConstDecl) {
+            const auto& c = ctx.get<HirConstDecl>(decl_id);
+            validate_type(ctx, c.type, diagnostics, c.span, false);
+            validate_expr(ctx, c.value, diagnostics, c.span, true);
+            continue;
+        }
         if (decl.kind != HirKind::FnDecl) {
             fdiag::error(diagnostics, fdiag::DiagId::UnexpectedHirDeclKind, decl.span);
             continue;

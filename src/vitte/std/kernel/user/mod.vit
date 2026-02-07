@@ -10,6 +10,7 @@ imports
 >>>
 
 use std/core/types.Unit
+use std/core/types.u64
 
 <<<
 externs
@@ -18,6 +19,9 @@ externs
 #[extern]
 proc kernel_enter_user(entry: proc() -> Unit) -> Unit
 
+#[extern]
+proc kernel_enter_user_addr(entry: u64, user_stack_top: u64) -> Unit
+
 <<<
 helpers
 >>>
@@ -25,5 +29,11 @@ helpers
 #[inline]
 proc enter(entry: proc() -> Unit) -> Unit {
   kernel_enter_user(entry)
+  return
+}
+
+#[inline]
+proc enter_addr(entry: u64, user_stack_top: u64) -> Unit {
+  kernel_enter_user_addr(entry, user_stack_top)
   return
 }

@@ -1,0 +1,122 @@
+use std/cli/args
+use std/core/result.Result
+use std/core/types.Unit
+use std/core/types.bool
+use std/core/types.i32
+use std/core/types.u32
+use std/core/types.u64
+use std/core/types.usize
+use std/core/types.string
+use std/io/fs
+
+const BUFSIZE: usize = 1024
+const BLOKSIZE: u64 = 1024
+
+<<<
+externs (to be provided by VitteOS libc/syscalls)
+>>>
+
+#[extern]
+proc open(path: string) -> i32
+
+#[extern]
+proc read(fd: i32, buf: *[u8]) -> i32
+
+#[extern]
+proc close(fd: i32) -> Unit
+
+#[extern]
+proc alloc_u8_slice(len: usize) -> [u8]
+
+#[extern]
+proc print_line(sum: u32, blocks: u64, path: string) -> Unit
+
+#[extern]
+proc print_err(path: string) -> Unit
+
+proc checksum(path: string, size: u64) -> Unit {
+  let fd = open(path)
+  if fd < 0 {
+    print_err(path)
+    return
+  }
+
+  let buf = alloc_u8_slice(BUFSIZE)
+  let sum: u32 = 0
+  let n = read(fd, &buf)
+  loop {
+    if n <= 0 {
+      break
+    }
+    let i: usize = 0
+    loop {
+      if i >= n as usize {
+        break
+      }
+      let b = buf[i] as u32
+      if (sum & 1) == 1 {
+        sum = (sum >> 1) + 0x8000
+      } else {
+        sum = sum >> 1
+      }
+      sum = (sum + (b & 255)) & 0xFFFF
+      i = i + 1
+    }
+    n = read(fd, &buf)
+  }
+
+  close(fd)
+  if n == 0 {
+    let blocks = (size + BLOKSIZE - 1) / BLOKSIZE
+    print_line(sum, blocks, path)
+  } else {
+    print_err(path)
+  }
+}
+
+proc walk(path: string) -> Unit {
+  let md = fs.metadata(path)
+  when md is Result.Err {
+    print_err(path)
+    return
+  }
+  when md is Result.Ok {
+    if md.value.is_file {
+      checksum(path, md.value.size as u64)
+      return
+    }
+    if md.value.is_dir {
+      let it = fs.read_dir(path)
+      when it is Result.Ok {
+        let iter = it.value
+        loop {
+          let next = iter.next()
+          if next is Option.None {
+            break
+          }
+          when next is Option.Some {
+            walk(next.value.path)
+          }
+        }
+      }
+    }
+  }
+}
+
+entry main at core/app {
+  let argv = args()
+  if argv.len < 2 {
+    walk(".")
+    return 0
+  }
+
+  let i: usize = 1
+  loop {
+    if i >= argv.len {
+      break
+    }
+    walk(argv[i])
+    i = i + 1
+  }
+  return 0
+}

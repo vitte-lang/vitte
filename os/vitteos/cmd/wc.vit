@@ -1,0 +1,128 @@
+use std/cli/args
+use std/core/types.Unit
+use std/core/types.i32
+use std/core/types.u64
+use std/core/types.usize
+use std/core/types.string
+
+<<<
+externs (VitteOS syscalls/libc)
+>>>
+
+#[extern]
+proc open_read(path: string) -> i32
+
+#[extern]
+proc read(fd: i32, buf: *[u8]) -> i32
+
+#[extern]
+proc close(fd: i32) -> Unit
+
+#[extern]
+proc alloc_u8_slice(len: usize) -> [u8]
+
+#[extern]
+proc print_wc(lines: u64, words: u64, bytes: u64, path: string) -> Unit
+
+#[extern]
+proc print_err(path: string) -> Unit
+
+#[extern]
+proc stdin_fd() -> i32
+
+const BUFSIZE: usize = 4096
+
+proc is_space(c: i32) -> bool {
+  if c == 32 { give true }
+  if c == 9 { give true }
+  if c == 10 { give true }
+  give false
+}
+
+proc count_fd(fd: i32, name: string, total: bool) -> [u64] {
+  let buf = alloc_u8_slice(BUFSIZE)
+  let lines: u64 = 0
+  let words: u64 = 0
+  let bytes: u64 = 0
+  let in_word: bool = false
+
+  let n = read(fd, &buf)
+  loop {
+    if n <= 0 {
+      break
+    }
+    let i: usize = 0
+    loop {
+      if i >= n as usize {
+        break
+      }
+      let c = buf[i] as i32
+      bytes = bytes + 1
+      if c == 10 {
+        lines = lines + 1
+      }
+      if is_space(c) {
+        in_word = false
+      } else {
+        if in_word == false {
+          words = words + 1
+          in_word = true
+        }
+      }
+      i = i + 1
+    }
+    n = read(fd, &buf)
+  }
+
+  if n < 0 {
+    print_err(name)
+  } else {
+    if total {
+      print_wc(lines, words, bytes, "total")
+    } else {
+      print_wc(lines, words, bytes, name)
+    }
+  }
+  close(fd)
+  give [lines, words, bytes]
+}
+
+entry main at core/app {
+  let argv = args()
+  let t_lines: u64 = 0
+  let t_words: u64 = 0
+  let t_bytes: u64 = 0
+  let nfiles: usize = 0
+
+  if argv.len <= 1 {
+    let fd = stdin_fd()
+    let res = count_fd(fd, "", false)
+    t_lines = t_lines + res[0]
+    t_words = t_words + res[1]
+    t_bytes = t_bytes + res[2]
+    return 0
+  }
+
+  let i: usize = 1
+  loop {
+    if i >= argv.len {
+      break
+    }
+    let fd = open_read(argv[i])
+    if fd < 0 {
+      print_err(argv[i])
+    } else {
+      let res = count_fd(fd, argv[i], false)
+      t_lines = t_lines + res[0]
+      t_words = t_words + res[1]
+      t_bytes = t_bytes + res[2]
+      nfiles = nfiles + 1
+    }
+    i = i + 1
+  }
+
+  if nfiles > 1 {
+    print_wc(t_lines, t_words, t_bytes, "total")
+  }
+  return 0
+}

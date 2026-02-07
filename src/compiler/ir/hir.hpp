@@ -74,6 +74,7 @@ enum class HirKind {
 
     // declarations
     FnDecl,
+    ConstDecl,
 
     // patterns
     PatternIdent,
@@ -309,6 +310,17 @@ struct HirSelect : HirStmt {
 struct HirDecl : HirNode {
     explicit HirDecl(HirKind kind,
                      vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirConstDecl : HirDecl {
+    std::string name;
+    HirTypeId type;
+    HirExprId value;
+
+    HirConstDecl(std::string name,
+                 HirTypeId type,
+                 HirExprId value,
+                 vitte::frontend::ast::SourceSpan span);
 };
 
 struct HirParam {

@@ -1,8 +1,13 @@
 use std/kernel/console as console
+use std/kernel/elf as elf
+use std/kernel/mem as mem
 use std/kernel/shell as shell
+use std/kernel/syscall as sys
 use std/kernel/task as task
 use std/kernel/time as time
+use std/kernel/user as user
 use std/core/types.Unit
+use std/core/types.u64
 
 proc write_prompt() -> Unit {
   console.write_byte(118)
@@ -62,6 +67,12 @@ proc write_help() -> Unit {
   console.write_byte(111)
   console.write_byte(111)
   console.write_byte(116)
+  console.write_byte(44)
+  console.write_byte(32)
+  console.write_byte(117)
+  console.write_byte(115)
+  console.write_byte(101)
+  console.write_byte(114)
   write_nl()
   return
 }
@@ -75,6 +86,41 @@ proc write_unknown() -> Unit {
   console.write_byte(119)
   console.write_byte(110)
   write_nl()
+  return
+}
+
+const USER_ELF_ADDR: u64 = 0
+const USER_ELF_SIZE: u64 = 0
+const USER_BASE: u64 = 4194304
+const USER_STACK_TOP: u64 = 8388608
+const USER_PAGE_SIZE: u64 = 2097152
+
+proc write_user_banner() -> Unit {
+  console.write_byte(117)
+  console.write_byte(115)
+  console.write_byte(101)
+  console.write_byte(114)
+  console.write_byte(32)
+  console.write_byte(109)
+  console.write_byte(111)
+  console.write_byte(100)
+  console.write_byte(101)
+  write_nl()
+  return
+}
+
+proc user_entry() -> Unit {
+  sys.write_byte(117)
+  sys.write_byte(115)
+  sys.write_byte(101)
+  sys.write_byte(114)
+  sys.write_byte(32)
+  sys.write_byte(111)
+  sys.write_byte(107)
+  sys.write_byte(10)
+  loop {
+    sys.yield()
+  }
   return
 }
 
@@ -107,6 +153,21 @@ proc shell_loop() -> Unit {
     } else if cmd == shell.CMD_REBOOT {
       loop {
         task.yield()
+      }
+    } else if cmd == shell.CMD_USER {
+      write_user_banner()
+      if USER_ELF_SIZE > 0 {
+        let entry = elf.load(USER_ELF_ADDR as *u8, USER_ELF_SIZE, USER_BASE)
+        if entry != 0 {
+          let stack_pa = mem.alloc_page()
+          if stack_pa != 0 {
+            let stack_va = USER_STACK_TOP - USER_PAGE_SIZE
+            mem.map_user_page(stack_va, stack_pa)
+            user.enter_addr(entry, USER_STACK_TOP)
+          }
+        }
+      } else {
+        user.enter(user_entry)
       }
     } else if cmd == shell.CMD_UNKNOWN {
       write_unknown()

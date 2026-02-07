@@ -18,6 +18,7 @@ struct Builder {
     std::size_t temp_index = 0;
     std::unordered_map<std::string, std::string> local_types;
     const std::unordered_map<std::string, std::string>* fn_returns = nullptr;
+    const std::unordered_map<std::string, std::pair<MirConstKind, std::string>>* consts = nullptr;
 
     explicit Builder(const HirContext& h, DiagnosticEngine& d)
         : hir(h), diag(d) {}
@@ -304,6 +305,12 @@ MirValuePtr Builder::lower_expr(HirExprId expr_id) {
         }
         case HirKind::VarExpr: {
             const auto& e = hir.get<HirVarExpr>(expr_id);
+            if (consts) {
+                auto itc = consts->find(e.name);
+                if (itc != consts->end()) {
+                    return make_const(itc->second.first, itc->second.second, e.span);
+                }
+            }
             std::string ty = "unknown";
             auto it = local_types.find(e.name);
             if (it != local_types.end()) {
@@ -616,6 +623,37 @@ MirModule lower_to_mir(
     const auto& module = hir_ctx.get<HirModule>(module_id);
     std::vector<MirFunction> funcs;
 
+    std::unordered_map<std::string, std::pair<MirConstKind, std::string>> consts;
+    for (auto decl_id : module.decls) {
+        if (decl_id == kInvalidHirId) {
+            continue;
+        }
+        const auto& decl = hir_ctx.get<HirDecl>(decl_id);
+        if (decl.kind != HirKind::ConstDecl) {
+            continue;
+        }
+        const auto& c = hir_ctx.get<HirConstDecl>(decl_id);
+        MirConstKind kind = MirConstKind::Int;
+        std::string value = "0";
+        if (c.value != kInvalidHirId) {
+            const auto& vnode = hir_ctx.node(c.value);
+            if (vnode.kind == HirKind::LiteralExpr) {
+                const auto& lit = hir_ctx.get<HirLiteralExpr>(c.value);
+                switch (lit.lit_kind) {
+                    case HirLiteralKind::Bool: kind = MirConstKind::Bool; break;
+                    case HirLiteralKind::Int: kind = MirConstKind::Int; break;
+                    case HirLiteralKind::String: kind = MirConstKind::String; break;
+                }
+                value = lit.value;
+            } else {
+                diagnostics.error("const expressions must be literals", c.span);
+            }
+        } else {
+            diagnostics.error("const declaration missing value", c.span);
+        }
+        consts[c.name] = std::make_pair(kind, value);
+    }
+
     std::unordered_map<std::string, std::string> fn_returns;
     for (auto decl_id : module.decls) {
         if (decl_id == kInvalidHirId) {
@@ -670,6 +708,7 @@ MirModule lower_to_mir(
         Builder builder(hir_ctx, diagnostics);
         builder.func = &mir_fn;
         builder.fn_returns = &fn_returns;
+        builder.consts = &consts;
         builder.set_current(0);
 
         std::string ret_name = "unknown";

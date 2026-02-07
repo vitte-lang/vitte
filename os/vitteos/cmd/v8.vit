@@ -1,0 +1,51 @@
+use std/cli/args
+use std/core/types.Unit
+use std/core/types.i32
+use std/core/types.string
+
+<<<
+externs (VitteOS syscalls/libc)
+>>>
+
+#[extern]
+proc chroot(path: string) -> i32
+
+#[extern]
+proc chdir(path: string) -> i32
+
+#[extern]
+proc umask(mask: i32) -> i32
+
+#[extern]
+proc setgid(gid: i32) -> i32
+
+#[extern]
+proc setuid(uid: i32) -> i32
+
+#[extern]
+proc exec(path: string, arg0: string) -> Unit
+
+#[extern]
+proc print_err(msg: string) -> Unit
+
+#[extern]
+proc exit(code: i32) -> Unit
+
+entry main at core/app {
+  let argv = args()
+  if chroot("/v8") < 0 {
+    print_err("v8: can't chroot")
+    exit(1)
+    return 1
+  }
+  if argv.len > 1 {
+    let _ = chdir(argv[1])
+  } else {
+    let _ = chdir("/")
+  }
+  let _ = umask(2)
+  let _ = setgid(4)
+  let _ = setuid(3)
+  exec("/bin/sh", "-")
+  return 0
+}

@@ -8,9 +8,9 @@
 #include <cstdint>
 #include <cstddef>
 
-extern void std__kernel__console__kernel_console_write_byte(int32_t b);
+extern "C" void std__kernel__console__kernel_console_write_byte(int32_t b);
 
-extern int32_t std__kernel__console__kernel_console_read_key();
+extern "C" int32_t std__kernel__console__kernel_console_read_key();
 
 void vitte__std__kernel__console__write_byte(int32_t b) {
     bb_2_0:
@@ -25,11 +25,11 @@ int32_t vitte__std__kernel__console__read_key() {
     return _t0;
 }
 
-extern int32_t std__kernel__shell__kernel_shell_read_cmd();
+extern "C" int32_t std__kernel__shell__kernel_shell_read_cmd();
 
-extern void std__kernel__shell__kernel_shell_write_arg();
+extern "C" void std__kernel__shell__kernel_shell_write_arg();
 
-extern int32_t std__kernel__shell__kernel_shell_arg_len();
+extern "C" int32_t std__kernel__shell__kernel_shell_arg_len();
 
 int32_t vitte__std__kernel__shell__read_cmd() {
     int32_t _t0;
@@ -44,7 +44,7 @@ void vitte__std__kernel__shell__write_arg() {
     return;
 }
 
-extern void std__kernel__task__kernel_yield();
+extern "C" void std__kernel__task__kernel_yield();
 
 void vitte__std__kernel__task__yield() {
     bb_10_0:
@@ -52,9 +52,9 @@ void vitte__std__kernel__task__yield() {
     return;
 }
 
-extern int32_t std__kernel__time__kernel_ticks();
+extern "C" int32_t std__kernel__time__kernel_ticks();
 
-extern void std__kernel__time__kernel_sleep_ticks(int32_t ticks);
+extern "C" void std__kernel__time__kernel_sleep_ticks(int32_t ticks);
 
 int32_t vitte__std__kernel__time__ticks() {
     int32_t _t0;
@@ -192,7 +192,7 @@ void vitte__shell_loop() {
     vitte__write_prompt();
     _t0 = vitte__std__kernel__shell__read_cmd();
     cmd = _t0;
-    _t1 = (cmd == std__kernel__shell__CMD_HELP);
+    _t1 = (cmd == 1);
     if (_t1) {
         goto bb_20_3;
     } else {
@@ -204,7 +204,7 @@ void vitte__shell_loop() {
     vitte__write_help();
     goto bb_20_5;
     bb_20_4:
-    _t2 = (cmd == std__kernel__shell__CMD_ECHO);
+    _t2 = (cmd == 3);
     if (_t2) {
         goto bb_20_6;
     } else {
@@ -217,7 +217,7 @@ void vitte__shell_loop() {
     vitte__write_nl();
     goto bb_20_8;
     bb_20_7:
-    _t3 = (cmd == std__kernel__shell__CMD_TICKS);
+    _t3 = (cmd == 2);
     if (_t3) {
         goto bb_20_9;
     } else {
@@ -231,7 +231,7 @@ void vitte__shell_loop() {
     vitte__write_nl();
     goto bb_20_11;
     bb_20_10:
-    _t5 = (cmd == std__kernel__shell__CMD_CLEAR);
+    _t5 = (cmd == 4);
     if (_t5) {
         goto bb_20_12;
     } else {
@@ -243,7 +243,7 @@ void vitte__shell_loop() {
     vitte__clear_screen();
     goto bb_20_14;
     bb_20_13:
-    _t6 = (cmd == std__kernel__shell__CMD_REBOOT);
+    _t6 = (cmd == 5);
     if (_t6) {
         goto bb_20_15;
     } else {
@@ -254,7 +254,7 @@ void vitte__shell_loop() {
     bb_20_15:
     goto bb_20_18;
     bb_20_16:
-    _t7 = (cmd == std__kernel__shell__CMD_UNKNOWN);
+    _t7 = (cmd == 6);
     if (_t7) {
         goto bb_20_20;
     } else {
@@ -276,7 +276,7 @@ void vitte__shell_loop() {
     goto bb_20_17;
 }
 
-int32_t vitte__main() {
+extern "C" int32_t vitte__main() {
     bb_21_0:
     vitte__shell_loop();
     return 0;

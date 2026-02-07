@@ -152,6 +152,12 @@ ast::cpp::CppTranslationUnit lower_mir(
         out.name = is_extern ? fn.name : ctx.mangle(fn.name);
         out.return_type = map_type(ctx, type_name(fn.return_type));
         out.is_extern = is_extern;
+        if (is_extern) {
+            out.abi = "C";
+        }
+        if (fn.name == "main") {
+            out.abi = "C";
+        }
 
         std::unordered_set<std::string> param_names;
         for (const auto& p : fn.params) {
