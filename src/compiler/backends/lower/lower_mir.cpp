@@ -84,6 +84,34 @@ static std::unique_ptr<CppExpr> emit_value(CppContext& ctx, const vitte::ir::Mir
     return std::make_unique<CppLiteral>("0");
 }
 
+static std::unique_ptr<CppExpr> emit_const_expr(const vitte::ir::MirConstKind kind, const std::string& value) {
+    switch (kind) {
+        case vitte::ir::MirConstKind::Bool:
+            if (value == "true" || value == "false") {
+                return std::make_unique<CppLiteral>(value);
+            }
+            return std::make_unique<CppLiteral>(value == "0" ? "false" : "true");
+        case vitte::ir::MirConstKind::Int:
+            return std::make_unique<CppLiteral>(value);
+        case vitte::ir::MirConstKind::String: {
+            std::string lit = "\"";
+            for (char ch : value) {
+                switch (ch) {
+                    case '\\': lit += "\\\\"; break;
+                    case '"': lit += "\\\""; break;
+                    case '\n': lit += "\\n"; break;
+                    case '\r': lit += "\\r"; break;
+                    case '\t': lit += "\\t"; break;
+                    default: lit += ch; break;
+                }
+            }
+            lit += "\"";
+            std::string out = "VitteString{" + lit + ", " + std::to_string(value.size()) + "}";
+            return std::make_unique<CppLiteral>(out);
+        }
+    }
+    return std::make_unique<CppLiteral>("0");
+}
 static std::string binop_to_cpp(vitte::ir::MirBinOp op) {
     switch (op) {
         case vitte::ir::MirBinOp::Add: return "+";
@@ -137,6 +165,17 @@ ast::cpp::CppTranslationUnit lower_mir(
 
     bool has_entry = false;
     std::string entry_mangled;
+
+    for (const auto& g : module.globals) {
+        CppGlobal glob;
+        glob.name = g.name;
+        glob.type = map_type(ctx, g.type_name);
+        glob.is_const = !g.is_mut;
+        if (g.has_init) {
+            glob.init = emit_const_expr(g.init_kind, g.init_value);
+        }
+        tu.globals.push_back(std::move(glob));
+    }
 
     std::unordered_set<std::string> externs;
     for (const auto& fn : module.functions) {

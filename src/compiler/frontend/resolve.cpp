@@ -443,6 +443,13 @@ void Resolver::resolve_decl(ast::AstContext& ctx, ast::DeclId decl_id) {
             resolve_expr(ctx, d.value);
             break;
         }
+        case NodeKind::GlobalDecl: {
+            auto& d = static_cast<GlobalDecl&>(decl);
+            symbols_.define({d.name.name, SymbolKind::Var, d.span});
+            resolve_type(ctx, d.type);
+            resolve_expr(ctx, d.value);
+            break;
+        }
         case NodeKind::MacroDecl: {
             auto& d = static_cast<MacroDecl&>(decl);
             symbols_.define({d.name.name, SymbolKind::Proc, d.span});

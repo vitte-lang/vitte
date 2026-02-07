@@ -84,6 +84,9 @@ static void collect_decl_names(
             case NodeKind::ConstDecl:
                 names.insert(static_cast<const ConstDecl&>(decl).name.name);
                 break;
+            case NodeKind::GlobalDecl:
+                names.insert(static_cast<const GlobalDecl&>(decl).name.name);
+                break;
             case NodeKind::TypeDecl:
                 names.insert(static_cast<const TypeDecl&>(decl).name.name);
                 break;
@@ -377,6 +380,13 @@ static void qualify_module(AstContext& ctx,
             }
             case NodeKind::ConstDecl: {
                 auto& d = static_cast<ConstDecl&>(decl);
+                d.name.name = prefix + d.name.name;
+                qualify_type(ctx, d.type, locals, prefix);
+                qualify_expr(ctx, d.value, locals, prefix);
+                break;
+            }
+            case NodeKind::GlobalDecl: {
+                auto& d = static_cast<GlobalDecl&>(decl);
                 d.name.name = prefix + d.name.name;
                 qualify_type(ctx, d.type, locals, prefix);
                 qualify_expr(ctx, d.value, locals, prefix);
@@ -963,6 +973,12 @@ void rewrite_member_access(ast::AstContext& ctx,
             }
             case NodeKind::ConstDecl: {
                 auto& d = static_cast<ConstDecl&>(decl);
+                rewrite_type_for_alias(ctx, d.type, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                rewrite_expr_for_alias(ctx, d.value, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                break;
+            }
+            case NodeKind::GlobalDecl: {
+                auto& d = static_cast<GlobalDecl&>(decl);
                 rewrite_type_for_alias(ctx, d.type, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
                 rewrite_expr_for_alias(ctx, d.value, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
                 break;

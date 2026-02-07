@@ -1,4 +1,0 @@
-char *
-whoami(){
-	return("general");
-}

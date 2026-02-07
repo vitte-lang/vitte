@@ -1,4 +1,0 @@
-aba
-cad
-bad
-acb

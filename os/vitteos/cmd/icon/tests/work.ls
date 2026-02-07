@@ -1,3 +1,0 @@
-speller
-permute
-mindfa

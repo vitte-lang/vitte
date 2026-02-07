@@ -52,6 +52,7 @@ private:
     DeclId parse_use_decl();
     DeclId parse_share_decl();
     DeclId parse_const_decl();
+    DeclId parse_global_decl();
     DeclId parse_type_alias_decl();
     DeclId parse_macro_decl();
     DeclId parse_form_decl();

@@ -1,9 +1,0 @@
-btrees
-kross
-diffwords
-meander
-prefix
-recogn
-roman
-sieve
-wordcount

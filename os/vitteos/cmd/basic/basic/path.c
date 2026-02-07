@@ -1,1 +1,0 @@
-char BASIC[] = "/lang/src/basic/common/src/../bin/basic";

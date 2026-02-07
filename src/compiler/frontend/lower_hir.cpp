@@ -482,6 +482,16 @@ ir::HirModuleId lower_to_hir(
                     d.span));
                 break;
             }
+            case NodeKind::GlobalDecl: {
+                auto& d = static_cast<const GlobalDecl&>(decl);
+                decls.push_back(hir_ctx.make<ir::HirGlobalDecl>(
+                    d.name.name,
+                    lower_type(ctx, d.type, hir_ctx),
+                    lower_expr(ctx, d.value, hir_ctx, diagnostics),
+                    d.is_mut,
+                    d.span));
+                break;
+            }
             case NodeKind::EntryDecl: {
                 auto& d = static_cast<const EntryDecl&>(decl);
                 std::vector<ir::HirParam> params;

@@ -617,11 +617,30 @@ MirModule lower_to_mir(
     HirModuleId module_id,
     DiagnosticEngine& diagnostics) {
     if (module_id == kInvalidHirId) {
-        return MirModule({}, {});
+        return MirModule({}, {}, {});
     }
 
     const auto& module = hir_ctx.get<HirModule>(module_id);
     std::vector<MirFunction> funcs;
+    std::vector<MirGlobal> globals;
+
+    auto type_name_from_hir = [&](HirTypeId ty) -> std::string {
+        if (ty == kInvalidHirId) {
+            return "i32";
+        }
+        const auto& tnode = hir_ctx.node(ty);
+        if (tnode.kind == HirKind::NamedType) {
+            std::string ret = hir_ctx.get<HirNamedType>(ty).name;
+            if (ret == "int") ret = "i32";
+            if (ret == "bool") ret = "bool";
+            if (ret == "string") ret = "string";
+            return ret;
+        }
+        if (tnode.kind == HirKind::GenericType) {
+            return hir_ctx.get<HirGenericType>(ty).base_name;
+        }
+        return "i32";
+    };
 
     std::unordered_map<std::string, std::pair<MirConstKind, std::string>> consts;
     for (auto decl_id : module.decls) {
@@ -652,6 +671,43 @@ MirModule lower_to_mir(
             diagnostics.error("const declaration missing value", c.span);
         }
         consts[c.name] = std::make_pair(kind, value);
+    }
+
+    for (auto decl_id : module.decls) {
+        if (decl_id == kInvalidHirId) {
+            continue;
+        }
+        const auto& decl = hir_ctx.get<HirDecl>(decl_id);
+        if (decl.kind != HirKind::GlobalDecl) {
+            continue;
+        }
+        const auto& g = hir_ctx.get<HirGlobalDecl>(decl_id);
+        MirConstKind kind = MirConstKind::Int;
+        std::string value = "0";
+        bool has_init = false;
+        if (g.value != kInvalidHirId) {
+            const auto& vnode = hir_ctx.node(g.value);
+            if (vnode.kind == HirKind::LiteralExpr) {
+                const auto& lit = hir_ctx.get<HirLiteralExpr>(g.value);
+                switch (lit.lit_kind) {
+                    case HirLiteralKind::Bool: kind = MirConstKind::Bool; break;
+                    case HirLiteralKind::Int: kind = MirConstKind::Int; break;
+                    case HirLiteralKind::String: kind = MirConstKind::String; break;
+                }
+                value = lit.value;
+                has_init = true;
+            } else {
+                diagnostics.error("global initializers must be literals (for now)", g.span);
+            }
+        }
+        globals.emplace_back(
+            g.name,
+            type_name_from_hir(g.type),
+            g.is_mut,
+            has_init,
+            kind,
+            value,
+            g.span);
     }
 
     std::unordered_map<std::string, std::string> fn_returns;
@@ -728,7 +784,7 @@ MirModule lower_to_mir(
         funcs.push_back(std::move(mir_fn));
     }
 
-    return MirModule(std::move(funcs), module.span);
+    return MirModule(std::move(globals), std::move(funcs), module.span);
 }
 
 } // namespace vitte::ir::lower

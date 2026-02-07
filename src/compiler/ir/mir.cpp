@@ -187,13 +187,35 @@ MirFunction::MirFunction(
       span(sp) {}
 
 // ------------------------------------------------------------
+// Global variable
+// ------------------------------------------------------------
+
+MirGlobal::MirGlobal(
+    std::string n,
+    std::string tn,
+    bool mut,
+    bool has_init,
+    MirConstKind k,
+    std::string v,
+    SourceSpan sp)
+    : name(std::move(n)),
+      type_name(std::move(tn)),
+      is_mut(mut),
+      has_init(has_init),
+      init_kind(k),
+      init_value(std::move(v)),
+      span(sp) {}
+
+// ------------------------------------------------------------
 // Module
 // ------------------------------------------------------------
 
 MirModule::MirModule(
+    std::vector<MirGlobal> globals,
     std::vector<MirFunction> funcs,
     SourceSpan sp)
-    : functions(std::move(funcs)),
+    : globals(std::move(globals)),
+      functions(std::move(funcs)),
       span(sp) {}
 
 // ------------------------------------------------------------
@@ -208,6 +230,17 @@ static void indent(std::ostream& os, std::size_t depth) {
 
 void dump(const MirModule& m, std::ostream& os) {
     os << "MIR Module\n";
+
+    for (const auto& g : m.globals) {
+        os << "global " << g.name << " : " << g.type_name;
+        if (g.is_mut) {
+            os << " (mut)";
+        }
+        if (g.has_init) {
+            os << " = " << g.init_value;
+        }
+        os << "\n";
+    }
 
     for (const auto& fn : m.functions) {
         os << "fn " << fn.name << " {\n";

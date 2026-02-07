@@ -246,6 +246,12 @@ void validate_module(const HirContext& ctx,
             validate_expr(ctx, c.value, diagnostics, c.span, true);
             continue;
         }
+        if (decl.kind == HirKind::GlobalDecl) {
+            const auto& g = ctx.get<HirGlobalDecl>(decl_id);
+            validate_type(ctx, g.type, diagnostics, g.span, false);
+            validate_expr(ctx, g.value, diagnostics, g.span, true);
+            continue;
+        }
         if (decl.kind != HirKind::FnDecl) {
             fdiag::error(diagnostics, fdiag::DiagId::UnexpectedHirDeclKind, decl.span);
             continue;

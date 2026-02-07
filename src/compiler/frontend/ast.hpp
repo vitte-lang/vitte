@@ -137,6 +137,7 @@ enum class NodeKind {
     UseDecl,
     ShareDecl,
     ConstDecl,
+    GlobalDecl,
     MacroDecl,
     FormDecl,
     PickDecl,
@@ -656,6 +657,15 @@ struct ConstDecl : Decl {
     ExprId value;
 
     ConstDecl(Ident name, TypeId type, ExprId value, SourceSpan span);
+};
+
+struct GlobalDecl : Decl {
+    Ident name;
+    TypeId type;
+    ExprId value;
+    bool is_mut;
+
+    GlobalDecl(Ident name, TypeId type, ExprId value, bool is_mut, SourceSpan span);
 };
 
 struct MacroDecl : Decl {

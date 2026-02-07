@@ -1,0 +1,205 @@
+<<<
+mod.vit
+std bytes helpers
+>>>
+
+space std/bytes
+
+use std/core/types.i32
+use std/core/types.u8
+use std/core/types.usize
+use std/core/types.string
+use std/core/types.bool
+
+#[extern]
+proc bytes_to_string(data: [u8]) -> string
+
+#[extern]
+proc string_to_bytes(s: string) -> [u8]
+
+const HEX_TABLE: string = "0123456789abcdef"
+const B64_TABLE: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+proc hex_encode(data: [u8]) -> string {
+    let out: string = ""
+    let i: i32 = 0
+    loop {
+        if i >= data.len as i32 { break }
+        let b = data[i as usize]
+        let hi = ((b >> 4) & 15) as i32
+        let lo = (b & 15) as i32
+        set out = out + HEX_TABLE.slice(hi as usize, (hi + 1) as usize)
+        set out = out + HEX_TABLE.slice(lo as usize, (lo + 1) as usize)
+        i = i + 1
+    }
+    give out
+}
+
+proc hex_value(b: u8) -> i32 {
+    if b >= 48 && b <= 57 { give (b - 48) as i32 }
+    if b >= 65 && b <= 70 { give (b - 55) as i32 }
+    if b >= 97 && b <= 102 { give (b - 87) as i32 }
+    give -1
+}
+
+proc hex_decode(s: string) -> [u8] {
+    let out: [u8] = []
+    let bytes = s.as_bytes()
+    let i: usize = 0
+    loop {
+        if i + 1 >= bytes.len { break }
+        let hi = hex_value(bytes[i])
+        let lo = hex_value(bytes[i + 1])
+        if hi < 0 || lo < 0 { break }
+        out = out.push(((hi << 4) | lo) as u8)
+        i = i + 2
+    }
+    give out
+}
+
+proc b64_index(b: u8) -> i32 {
+    let table = B64_TABLE.as_bytes()
+    let i: i32 = 0
+    loop {
+        if i >= table.len as i32 { break }
+        if table[i as usize] == b { give i }
+        i = i + 1
+    }
+    give -1
+}
+
+proc base64_encode(data: [u8]) -> string {
+    let out: string = ""
+    let i: usize = 0
+    loop {
+        if i >= data.len { break }
+        let b0 = data[i]
+        let b1 = if i + 1 < data.len { data[i + 1] } else { 0 }
+        let b2 = if i + 2 < data.len { data[i + 2] } else { 0 }
+
+        let n = ((b0 as i32) << 16) | ((b1 as i32) << 8) | (b2 as i32)
+        let c0 = (n >> 18) & 63
+        let c1 = (n >> 12) & 63
+        let c2 = (n >> 6) & 63
+        let c3 = n & 63
+
+        set out = out + B64_TABLE.slice(c0 as usize, (c0 + 1) as usize)
+        set out = out + B64_TABLE.slice(c1 as usize, (c1 + 1) as usize)
+        if i + 1 < data.len {
+            set out = out + B64_TABLE.slice(c2 as usize, (c2 + 1) as usize)
+        } else {
+            set out = out + "="
+        }
+        if i + 2 < data.len {
+            set out = out + B64_TABLE.slice(c3 as usize, (c3 + 1) as usize)
+        } else {
+            set out = out + "="
+        }
+        i = i + 3
+    }
+    give out
+}
+
+proc base64_decode(s: string) -> [u8] {
+    let out: [u8] = []
+    let bytes = s.as_bytes()
+    let buf: [i32] = []
+    let i: usize = 0
+    loop {
+        if i >= bytes.len { break }
+        let b = bytes[i]
+        if b == 61 { // '='
+            buf = buf.push(-2)
+        } else {
+            let v = b64_index(b)
+            if v >= 0 {
+                buf = buf.push(v)
+            }
+        }
+        if buf.len == 4 {
+            let v0 = buf[0]
+            let v1 = buf[1]
+            let v2 = buf[2]
+            let v3 = buf[3]
+            if v0 >= 0 && v1 >= 0 {
+                let n = (v0 << 18) | (v1 << 12) | ((if v2 >= 0 { v2 } else { 0 }) << 6) | (if v3 >= 0 { v3 } else { 0 })
+                out = out.push(((n >> 16) & 255) as u8)
+                if v2 >= 0 { out = out.push(((n >> 8) & 255) as u8) }
+                if v3 >= 0 { out = out.push((n & 255) as u8) }
+            }
+            buf = []
+        }
+        i = i + 1
+    }
+    give out
+}
+
+proc concat(a: [u8], b: [u8]) -> [u8] {
+    let out: [u8] = []
+    let i: i32 = 0
+    loop {
+        if i >= a.len as i32 { break }
+        out = out.push(a[i as usize])
+        i = i + 1
+    }
+    let j: i32 = 0
+    loop {
+        if j >= b.len as i32 { break }
+        out = out.push(b[j as usize])
+        j = j + 1
+    }
+    give out
+}
+
+proc eq(a: [u8], b: [u8]) -> bool {
+    if a.len != b.len { give false }
+    let i: i32 = 0
+    loop {
+        if i >= a.len as i32 { break }
+        if a[i as usize] != b[i as usize] { give false }
+        i = i + 1
+    }
+    give true
+}
+
+proc starts_with(hay: [u8], prefix: [u8]) -> bool {
+    if hay.len < prefix.len { give false }
+    let i: i32 = 0
+    loop {
+        if i >= prefix.len as i32 { break }
+        if hay[i as usize] != prefix[i as usize] { give false }
+        i = i + 1
+    }
+    give true
+}
+
+proc ends_with(hay: [u8], suffix: [u8]) -> bool {
+    if hay.len < suffix.len { give false }
+    let start = hay.len - suffix.len
+    let i: i32 = 0
+    loop {
+        if i >= suffix.len as i32 { break }
+        if hay[(start + i as usize)] != suffix[i as usize] { give false }
+        i = i + 1
+    }
+    give true
+}
+
+proc find(hay: [u8], needle: [u8]) -> i32 {
+    if needle.len == 0 { give 0 }
+    if hay.len < needle.len { give -1 }
+    let i: i32 = 0
+    loop {
+        if (i as usize) + needle.len > hay.len { break }
+        let j: i32 = 0
+        let ok: i32 = 1
+        loop {
+            if j >= needle.len as i32 { break }
+            if hay[(i + j) as usize] != needle[j as usize] { ok = 0; break }
+            j = j + 1
+        }
+        if ok != 0 { give i }
+        i = i + 1
+    }
+    give -1
+}

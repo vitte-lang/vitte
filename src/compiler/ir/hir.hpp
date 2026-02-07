@@ -75,6 +75,7 @@ enum class HirKind {
     // declarations
     FnDecl,
     ConstDecl,
+    GlobalDecl,
 
     // patterns
     PatternIdent,
@@ -321,6 +322,19 @@ struct HirConstDecl : HirDecl {
                  HirTypeId type,
                  HirExprId value,
                  vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirGlobalDecl : HirDecl {
+    std::string name;
+    HirTypeId type;
+    HirExprId value;
+    bool is_mut;
+
+    HirGlobalDecl(std::string name,
+                  HirTypeId type,
+                  HirExprId value,
+                  bool is_mut,
+                  vitte::frontend::ast::SourceSpan span);
 };
 
 struct HirParam {

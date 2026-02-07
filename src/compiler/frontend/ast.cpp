@@ -344,6 +344,13 @@ ConstDecl::ConstDecl(Ident n, TypeId t, ExprId v, SourceSpan sp)
       type(t),
       value(v) {}
 
+GlobalDecl::GlobalDecl(Ident n, TypeId t, ExprId v, bool mut, SourceSpan sp)
+    : Decl(NodeKind::GlobalDecl, sp),
+      name(std::move(n)),
+      type(t),
+      value(v),
+      is_mut(mut) {}
+
 MacroDecl::MacroDecl(Ident n, std::vector<Ident> p, StmtId b, SourceSpan sp)
     : Decl(NodeKind::MacroDecl, sp),
       name(std::move(n)),
@@ -457,6 +464,7 @@ const char* to_string(NodeKind kind) {
         case NodeKind::UseDecl: return "UseDecl";
         case NodeKind::ShareDecl: return "ShareDecl";
         case NodeKind::ConstDecl: return "ConstDecl";
+        case NodeKind::GlobalDecl: return "GlobalDecl";
         case NodeKind::MacroDecl: return "MacroDecl";
         case NodeKind::FormDecl: return "FormDecl";
         case NodeKind::PickDecl: return "PickDecl";

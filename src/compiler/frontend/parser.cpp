@@ -111,6 +111,9 @@ DeclId Parser::parse_toplevel() {
     if (current_.kind == TokenKind::KwConst) {
         return parse_const_decl();
     }
+    if (current_.kind == TokenKind::KwLet || current_.kind == TokenKind::KwMake) {
+        return parse_global_decl();
+    }
     if (current_.kind == TokenKind::KwType) {
         return parse_type_alias_decl();
     }
@@ -359,6 +362,30 @@ DeclId Parser::parse_const_decl() {
         ? ast_ctx_.get<Expr>(value).span.end
         : previous_.span.end;
     return ast_ctx_.make<ConstDecl>(std::move(name), ty, value, span);
+}
+
+DeclId Parser::parse_global_decl() {
+    SourceSpan span = current_.span;
+    bool is_mut = false;
+    if (current_.kind == TokenKind::KwLet) {
+        advance();
+    } else {
+        expect(TokenKind::KwMake, "expected 'make'");
+        is_mut = true;
+    }
+    Ident name = parse_ident();
+    TypeId ty = ast::kInvalidAstId;
+    if (match(TokenKind::Colon)) {
+        ty = parse_type_expr();
+    } else if (match(TokenKind::KwAs)) {
+        ty = parse_type_expr();
+    }
+    expect(TokenKind::Equal, "expected '='");
+    ExprId value = parse_expr();
+    span.end = value != ast::kInvalidAstId
+        ? ast_ctx_.get<Expr>(value).span.end
+        : previous_.span.end;
+    return ast_ctx_.make<GlobalDecl>(std::move(name), ty, value, is_mut, span);
 }
 
 DeclId Parser::parse_type_alias_decl() {

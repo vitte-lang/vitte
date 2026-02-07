@@ -1,0 +1,354 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Vitte",
+  "scopeName": "source.vitte",
+  "fileTypes": [
+    "vit",
+    "vitte"
+  ],
+  "uuid": "c2b8c7be-8f9a-4b1a-9152-7f2f1e0f4a33",
+  "patterns": [
+    { "include": "#shebang" },
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#bool" },
+    { "include": "#keywords" },
+    { "include": "#declarations" },
+    { "include": "#phrase" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "shebang": {
+      "name": "comment.line.shebang.vitte",
+      "match": "^(#!).*$"
+    },
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.vitte",
+          "begin": "#",
+          "end": "$",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.vitte" }
+          },
+          "patterns": [
+            { "include": "#todo" }
+          ]
+        }
+      ]
+    },
+    "todo": {
+      "name": "keyword.other.todo.vitte",
+      "match": "\\b(TODO|FIXME|BUG|HACK|NOTE)\\b"
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.vitte",
+          "begin": "\"",
+          "end": "\"",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.vitte" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.vitte" }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.vitte",
+              "match": "\\\\(?:[\"\\\\]|n|r|t|0)"
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.vitte",
+          "match": "\\b\\d+(?:\\.\\d+)\\b"
+        },
+        {
+          "name": "constant.numeric.integer.vitte",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+    "bool": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.vitte",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.language.null.vitte",
+          "match": "\\bnull\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.vitte",
+          "match": "\\b(?:module|import|export|program|service|kernel|driver|tool|scenario|pipeline|struct|union|enum|typedef|inline|fn|extern|static|sizeof|alignof|let|const|if|elif|else|while|for|in|match|break|continue|return|and|or|not|as|all|volatile|restrict|mod|use|type|field|scn|prog|set|say|do|ret|when|loop|from|to|step)\\b"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "meta.module.declaration.vitte",
+          "match": "\\b(module)\\s+([A-Za-z_][\\w]*(?:\\s*\\.\\s*[A-Za-z_][\\w]*)*)",
+          "captures": {
+            "1": { "name": "keyword.control.module.vitte" },
+            "2": { "name": "entity.name.namespace.vitte" }
+          }
+        },
+        {
+          "name": "meta.import.vitte",
+          "match": "\\b(import)\\s+([A-Za-z_][\\w]*(?:\\s*\\.\\s*[A-Za-z_][\\w]*)*)(?:\\s+(as)\\s+([A-Za-z_][\\w]*))?",
+          "captures": {
+            "1": { "name": "keyword.control.import.vitte" },
+            "2": { "name": "entity.name.namespace.vitte" },
+            "3": { "name": "keyword.control.vitte" },
+            "4": { "name": "entity.name.namespace.vitte" }
+          }
+        },
+        {
+          "name": "meta.export.vitte",
+          "match": "\\b(export)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.export.vitte" }
+          }
+        },
+        {
+          "name": "meta.struct.vitte",
+          "match": "\\b(struct)\\s+([A-Za-z_][\\w]*)",
+          "captures": {
+            "1": { "name": "storage.type.struct.vitte" },
+            "2": { "name": "entity.name.type.struct.vitte" }
+          }
+        },
+        {
+          "name": "meta.union.vitte",
+          "match": "\\b(union)\\s+([A-Za-z_][\\w]*)",
+          "captures": {
+            "1": { "name": "storage.type.union.vitte" },
+            "2": { "name": "entity.name.type.union.vitte" }
+          }
+        },
+        {
+          "name": "meta.enum.vitte",
+          "match": "\\b(enum)\\s+([A-Za-z_][\\w]*)",
+          "captures": {
+            "1": { "name": "storage.type.enum.vitte" },
+            "2": { "name": "entity.name.type.enum.vitte" }
+          }
+        },
+        {
+          "name": "meta.typedef.vitte",
+          "match": "\\b(typedef)\\s+([A-Za-z_][\\w]*(?:\\s*\\.\\s*[A-Za-z_][\\w]*)*)\\s+([A-Za-z_][\\w]*)",
+          "captures": {
+            "1": { "name": "keyword.control.vitte" },
+            "2": { "name": "storage.type.vitte" },
+            "3": { "name": "entity.name.type.alias.vitte" }
+          }
+        },
+        {
+          "name": "meta.function.vitte",
+          "match": "\\b(?:(extern|static)\\s+)?(?:(inline)\\s+)?(fn)\\s+([A-Za-z_][\\w]*)",
+          "captures": {
+            "1": { "name": "storage.modifier.vitte" },
+            "2": { "name": "storage.modifier.vitte" },
+            "3": { "name": "storage.type.function.vitte" },
+            "4": { "name": "entity.name.function.vitte" }
+          }
+        },
+        {
+          "name": "meta.scenario.vitte",
+          "match": "\\b(scenario)\\s+([A-Za-z_][\\w]*)",
+          "captures": {
+            "1": { "name": "keyword.control.vitte" },
+            "2": { "name": "entity.name.function.vitte" }
+          }
+        },
+        {
+          "name": "meta.entrypoint.vitte",
+          "match": "\\b(program|service|kernel|driver|tool|pipeline)\\s+([A-Za-z_][\\w]*(?:\\s*\\.\\s*[A-Za-z_][\\w]*)*)",
+          "captures": {
+            "1": { "name": "keyword.control.vitte" },
+            "2": { "name": "entity.name.namespace.vitte" }
+          }
+        },
+        {
+          "name": "meta.declaration.let.vitte",
+          "match": "\\b(let|const)\\s+([A-Za-z_][\\w]*)",
+          "captures": {
+            "1": { "name": "keyword.control.vitte" },
+            "2": { "name": "variable.other.readwrite.vitte" }
+          }
+        }
+      ]
+    },
+    "phrase": {
+      "patterns": [
+        {
+          "name": "meta.phrase.module.vitte",
+          "match": "\\b(mod)\\s+([A-Za-z_][\\w]*(?:/[A-Za-z_][\\w]*)*)",
+          "captures": {
+            "1": { "name": "keyword.control.vitte" },
+            "2": { "name": "entity.name.namespace.vitte" }
+          }
+        },
+        {
+          "name": "meta.phrase.use.vitte",
+          "match": "\\b(use)\\s+([A-Za-z_][\\w]*(?:/[A-Za-z_][\\w]*)*)(?:\\s+(as)\\s+([A-Za-z_][\\w]*))?",
+          "captures": {
+            "1": { "name": "keyword.control.vitte" },
+            "2": { "name": "entity.name.namespace.vitte" },
+            "3": { "name": "keyword.control.vitte" },
+            "4": { "name": "entity.name.namespace.vitte" }
+          }
+        },
+        {
+          "name": "meta.phrase.type.vitte",
+          "match": "\\b(type)\\s+([A-Za-z_][\\w]*)",
+          "captures": {
+            "1": { "name": "keyword.control.vitte" },
+            "2": { "name": "entity.name.type.struct.vitte" }
+          }
+        },
+        {
+          "name": "meta.phrase.field.vitte",
+          "match": "\\b(field)\\s+([A-Za-z_][\\w]*)",
+          "captures": {
+            "1": { "name": "keyword.control.vitte" },
+            "2": { "name": "variable.other.readwrite.vitte" }
+          }
+        },
+        {
+          "name": "meta.phrase.function.vitte",
+          "match": "\\b(fn)\\s+([A-Za-z_][\\w]*)",
+          "captures": {
+            "1": { "name": "storage.type.function.vitte" },
+            "2": { "name": "entity.name.function.vitte" }
+          }
+        },
+        {
+          "name": "meta.phrase.scenario.vitte",
+          "match": "\\b(scn)\\s+([A-Za-z_][\\w]*)",
+          "captures": {
+            "1": { "name": "keyword.control.vitte" },
+            "2": { "name": "entity.name.function.vitte" }
+          }
+        },
+        {
+          "name": "meta.phrase.program.vitte",
+          "match": "\\b(prog)\\s+([A-Za-z_][\\w]*(?:/[A-Za-z_][\\w]*)*)\\s*\\.\\s*([A-Za-z_][\\w]*)",
+          "captures": {
+            "1": { "name": "keyword.control.vitte" },
+            "2": { "name": "entity.name.namespace.vitte" },
+            "3": { "name": "entity.name.function.vitte" }
+          }
+        },
+        {
+          "name": "meta.phrase.assignment.vitte",
+          "match": "\\b(set)\\s+([A-Za-z_][\\w]*(?:\\.[A-Za-z_][\\w]*)*)",
+          "captures": {
+            "1": { "name": "keyword.control.vitte" },
+            "2": { "name": "variable.other.readwrite.vitte" }
+          }
+        },
+        {
+          "name": "meta.phrase.say.vitte",
+          "match": "\\b(say)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.vitte" }
+          }
+        },
+        {
+          "name": "meta.phrase.do.vitte",
+          "match": "\\b(do)\\s+([A-Za-z_][\\w]*(?:\\.[A-Za-z_][\\w]*)*)",
+          "captures": {
+            "1": { "name": "keyword.control.vitte" },
+            "2": { "name": "entity.name.function.vitte" }
+          }
+        },
+        {
+          "name": "meta.phrase.ret.vitte",
+          "match": "\\b(ret)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.vitte" }
+          }
+        },
+        {
+          "name": "meta.phrase.when.vitte",
+          "match": "\\b(when)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.vitte" }
+          }
+        },
+        {
+          "name": "meta.phrase.loop.vitte",
+          "match": "\\b(loop)\\s+([A-Za-z_][\\w]*)\\s+(from)\\s+([^\\s]+)\\s+(to)\\s+([^\\s]+)(?:\\s+(step)\\s+([^\\s]+))?",
+          "captures": {
+            "1": { "name": "keyword.control.vitte" },
+            "2": { "name": "variable.other.readwrite.vitte" },
+            "3": { "name": "keyword.control.vitte" },
+            "4": { "name": "meta.expression.vitte" },
+            "5": { "name": "keyword.control.vitte" },
+            "6": { "name": "meta.expression.vitte" },
+            "7": { "name": "keyword.control.vitte" },
+            "8": { "name": "meta.expression.vitte" }
+          }
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.symbol.vitte",
+          "match": "\\|>|==|!=|<=|>=|<<=|>>=|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|<<|>>|->|=>|=|\\+|-|\\*|/|%|<|>|\\.|&|\\||\\^|~"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "keyword.other.end.vitte",
+          "match": "\\b\\.end\\b"
+        },
+        {
+          "name": "punctuation.separator.comma.vitte",
+          "match": ","
+        },
+        {
+          "name": "punctuation.separator.colon.vitte",
+          "match": ":"
+        },
+        {
+          "name": "punctuation.section.group.begin.vitte",
+          "match": "\\("
+        },
+        {
+          "name": "punctuation.section.group.end.vitte",
+          "match": "\\)"
+        },
+        {
+          "name": "punctuation.section.brackets.begin.vitte",
+          "match": "\\["
+        },
+        {
+          "name": "punctuation.section.brackets.end.vitte",
+          "match": "\\]"
+        },
+        {
+          "name": "punctuation.accessor.dot.vitte",
+          "match": "\\."
+        }
+      ]
+    }
+  }
+}

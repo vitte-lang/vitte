@@ -26,6 +26,7 @@ struct MirTerminator;
 struct MirBasicBlock;
 struct MirFunction;
 struct MirModule;
+struct MirGlobal;
 
 // ------------------------------------------------------------
 // Pointer aliases
@@ -288,14 +289,38 @@ struct MirFunction {
 };
 
 // ------------------------------------------------------------
+// Global variable
+// ------------------------------------------------------------
+
+struct MirGlobal {
+    std::string name;
+    std::string type_name;
+    bool is_mut;
+    bool has_init;
+    MirConstKind init_kind;
+    std::string init_value;
+    vitte::frontend::ast::SourceSpan span;
+
+    MirGlobal(std::string name,
+              std::string type_name,
+              bool is_mut,
+              bool has_init,
+              MirConstKind init_kind,
+              std::string init_value,
+              vitte::frontend::ast::SourceSpan span);
+};
+
+// ------------------------------------------------------------
 // Module
 // ------------------------------------------------------------
 
 struct MirModule {
+    std::vector<MirGlobal> globals;
     std::vector<MirFunction> functions;
     vitte::frontend::ast::SourceSpan span;
 
-    MirModule(std::vector<MirFunction> functions,
+    MirModule(std::vector<MirGlobal> globals,
+              std::vector<MirFunction> functions,
               vitte::frontend::ast::SourceSpan span);
 };
 

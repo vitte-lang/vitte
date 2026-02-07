@@ -1,0 +1,34 @@
+<<<
+proc.vit
+std os proc helpers
+>>>
+
+space std/os/proc
+
+use std/core/types.i32
+use std/core/types.string
+
+#[extern]
+proc execv(path: string, argv: [string]) -> Unit
+
+#[extern]
+proc spawn(path: string, argv: [string]) -> i32
+
+#[extern]
+proc wait_pid(pid: i32) -> i32
+
+#[extern]
+proc env_get(key: string) -> string
+
+#[extern]
+proc env_set(key: string, value: string) -> i32
+
+proc exec(path: string, argv: [string]) -> Unit {
+    execv(path, argv)
+}
+
+proc run(path: string, argv: [string]) -> i32 {
+    let pid = spawn(path, argv)
+    if pid < 0 { give -1 }
+    give wait_pid(pid)
+}

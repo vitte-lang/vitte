@@ -1,0 +1,98 @@
+<<<
+user.vit
+std os user helpers
+>>>
+
+space std/os/user
+
+use std/core/types.i32
+use std/core/types.string
+use std/core/option.Option
+
+#[extern]
+proc open_read(path: string) -> i32
+
+#[extern]
+proc close(fd: i32) -> Unit
+
+#[extern]
+proc read_line_fd(fd: i32) -> string
+
+form User {
+    name: string
+    uid: i32
+    gid: i32
+    home: string
+}
+
+proc parse_int(s: string) -> i32 {
+    let i: i32 = 0
+    let n: i32 = 0
+    loop {
+        if i >= s.len as i32 { break }
+        let ch = s.slice(i as usize, (i + 1) as usize)
+        if ch < "0" || ch > "9" { break }
+        n = n * 10 + (ch.as_bytes()[0] as i32 - 48)
+        i = i + 1
+    }
+    give n
+}
+
+proc field_at(line: string, idx: i32) -> string {
+    let i: i32 = 0
+    let start: i32 = 0
+    let field: i32 = 0
+    loop {
+        if i >= line.len as i32 {
+            if field == idx { give line.slice(start as usize, line.len) }
+            break
+        }
+        let ch = line.slice(i as usize, (i + 1) as usize)
+        if ch == ":" {
+            if field == idx { give line.slice(start as usize, i as usize) }
+            field = field + 1
+            start = i + 1
+        }
+        i = i + 1
+    }
+    give ""
+}
+
+proc read_users() -> [User] {
+    let out: [User] = []
+    let fd = open_read("/etc/passwd")
+    if fd < 0 { give out }
+    loop {
+        let line = read_line_fd(fd)
+        if line.len == 0 { break }
+        let name = field_at(line, 0)
+        let uid = parse_int(field_at(line, 2))
+        let gid = parse_int(field_at(line, 3))
+        let home = field_at(line, 5)
+        out = out.push(User(name = name, uid = uid, gid = gid, home = home))
+    }
+    close(fd)
+    give out
+}
+
+proc get_user_by_name(name: string) -> Option[User] {
+    let list = read_users()
+    let i: i32 = 0
+    loop {
+        if i >= list.len as i32 { break }
+        if list[i as usize].name == name { give Option.Some(list[i as usize]) }
+        i = i + 1
+    }
+    give Option.None
+}
+
+proc get_user_by_uid(uid: i32) -> Option[User] {
+    let list = read_users()
+    let i: i32 = 0
+    loop {
+        if i >= list.len as i32 { break }
+        if list[i as usize].uid == uid { give Option.Some(list[i as usize]) }
+        i = i + 1
+    }
+    give Option.None
+}

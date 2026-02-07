@@ -1,0 +1,60 @@
+<<<
+ip.vit
+std net ip helpers
+>>>
+
+space std/net/ip
+
+use std/core/types.i32
+use std/core/types.u8
+use std/core/types.string
+use std/core/option.Option
+
+form Ipv4 {
+    a: u8
+    b: u8
+    c: u8
+    d: u8
+}
+
+proc parse_byte(s: string) -> i32 {
+    let i: i32 = 0
+    let n: i32 = 0
+    loop {
+        if i >= s.len as i32 { break }
+        let ch = s.slice(i as usize, (i + 1) as usize)
+        if ch < "0" || ch > "9" { break }
+        n = n * 10 + (ch.as_bytes()[0] as i32 - 48)
+        i = i + 1
+    }
+    give n
+}
+
+proc parse_ipv4(s: string) -> Option[Ipv4] {
+    let parts: [string] = []
+    let start: i32 = 0
+    let i: i32 = 0
+    loop {
+        if i >= s.len as i32 { break }
+        let ch = s.slice(i as usize, (i + 1) as usize)
+        if ch == "." {
+            parts = parts.push(s.slice(start as usize, i as usize))
+            start = i + 1
+        }
+        i = i + 1
+    }
+    parts = parts.push(s.slice(start as usize, s.len))
+    if parts.len != 4 { give Option.None }
+    let a = parse_byte(parts[0])
+    let b = parse_byte(parts[1])
+    let c = parse_byte(parts[2])
+    let d = parse_byte(parts[3])
+    if a < 0 || a > 255 || b < 0 || b > 255 || c < 0 || c > 255 || d < 0 || d > 255 {
+        give Option.None
+    }
+    give Option.Some(Ipv4(a = a as u8, b = b as u8, c = c as u8, d = d as u8))
+}
+
+proc format_ipv4(ip: Ipv4) -> string {
+    give ip.a.to_string() + "." + ip.b.to_string() + "." + ip.c.to_string() + "." + ip.d.to_string()
+}

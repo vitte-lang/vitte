@@ -1,0 +1,45 @@
+<<<
+http.vit
+std net http (minimal)
+>>>
+
+space std/net/http
+
+use std/core/types.i32
+use std/core/types.string
+use std/core/option.Option
+
+form Header {
+    name: string
+    value: string
+}
+
+form HttpRequest {
+    method: string
+    path: string
+    version: string
+    headers: [Header]
+    body: string
+}
+
+proc parse_request(text: string) -> Option[HttpRequest] {
+    // very small parser: only request line + raw body
+    let i: i32 = 0
+    let sp1: i32 = -1
+    let sp2: i32 = -1
+    loop {
+        if i >= text.len as i32 { break }
+        let ch = text.slice(i as usize, (i + 1) as usize)
+        if ch == " " && sp1 < 0 { sp1 = i }
+        else if ch == " " && sp2 < 0 { sp2 = i }
+        else if ch == "
+" { break }
+        i = i + 1
+    }
+    if sp1 < 0 || sp2 < 0 { give Option.None }
+    let method = text.slice(0, sp1 as usize)
+    let path = text.slice((sp1 + 1) as usize, sp2 as usize)
+    let version = text.slice((sp2 + 1) as usize, i as usize)
+    let body = text.slice(i as usize, text.len)
+    give Option.Some(HttpRequest(method = method, path = path, version = version, headers = [], body = body))
+}

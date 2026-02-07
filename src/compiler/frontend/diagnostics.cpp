@@ -261,10 +261,22 @@ static void render_location(
         return;
     }
 
+    const std::string& text = span.file->content;
+    std::size_t line = 1;
+    std::size_t col = 1;
+    for (std::size_t i = 0; i < span.start && i < text.size(); ++i) {
+        if (text[i] == '\n') {
+            ++line;
+            col = 1;
+        } else {
+            ++col;
+        }
+    }
+
     std::filesystem::path path(span.file->path);
     os << path.filename().string()
-       << ":" << span.start
-       << ":" << span.end;
+       << ":" << line
+       << ":" << col;
 }
 
 static void render_snippet(
@@ -280,8 +292,49 @@ static void render_snippet(
         return;
     }
 
-    os << "\n  --> ";
-    os << text.substr(span.start, span.end - span.start);
+    std::size_t line = 1;
+    std::size_t col = 1;
+    std::size_t line_start = 0;
+    for (std::size_t i = 0; i < span.start && i < text.size(); ++i) {
+        if (text[i] == '\n') {
+            ++line;
+            col = 1;
+            line_start = i + 1;
+        } else {
+            ++col;
+        }
+    }
+    std::size_t line_end = line_start;
+    while (line_end < text.size() && text[line_end] != '\n' && text[line_end] != '\r') {
+        ++line_end;
+    }
+    std::string line_text = text.substr(line_start, line_end - line_start);
+
+    std::size_t caret_start = col > 0 ? col - 1 : 0;
+    std::size_t caret_len = span.end > span.start ? (span.end - span.start) : 1;
+    if (line_start + caret_start + caret_len > line_end) {
+        if (line_end > line_start + caret_start) {
+            caret_len = line_end - (line_start + caret_start);
+        } else {
+            caret_len = 1;
+        }
+    }
+
+    auto digits = [](std::size_t n) {
+        std::size_t d = 1;
+        while (n >= 10) {
+            n /= 10;
+            ++d;
+        }
+        return d;
+    };
+    std::size_t gutter = digits(line);
+
+    os << "\n  " << std::string(gutter, ' ') << " |";
+    os << "\n  " << line << " | " << line_text;
+    os << "\n  " << std::string(gutter, ' ') << " | "
+       << std::string(caret_start, ' ')
+       << std::string(caret_len, '^');
 }
 
 // ------------------------------------------------------------

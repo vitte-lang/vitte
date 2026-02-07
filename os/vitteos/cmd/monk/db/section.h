@@ -1,6 +1,0 @@
-|REGISTER(chapter_counter, CH)
-|REGISTER(section_counter, S0)
-|REGISTER(subsection_counter, S1)
-|REGISTER(subsubsection_counter, S2)
-|REGISTER(paragraph_counter, S3)
-|REGISTER(appendix_counter, AC)
