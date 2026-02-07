@@ -2,78 +2,66 @@ name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
 
 jobs:
-  build-unix:
-    name: build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+  build:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Install dependencies (Ubuntu)
-        if: runner.os == 'Linux'
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build libssl-dev libcurl4-openssl-dev
+          sudo apt-get install -y clang libssl-dev libcurl4-openssl-dev ccache
+
       - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
+        if: matrix.os == 'macos-latest'
         run: |
           brew update
-          brew install llvm cmake ninja openssl@3 curl
-          echo "$(brew --prefix llvm)/bin" >> $GITHUB_PATH
-          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
-          echo "CURL_DIR=$(brew --prefix curl)" >> $GITHUB_ENV
-      - name: Bootstrap stage0/1/2
-        run: |
-          rm -rf toolchain/stage0/build
-          rm -rf toolchain/stage1/build
-          rm -rf toolchain/stage2/build
-          bash toolchain/scripts/bootstrap/stage0.sh
-          bash toolchain/scripts/bootstrap/stage1.sh
-          VITTE_SELF_CHECK=0 bash toolchain/scripts/bootstrap/stage2.sh
-      - name: Tests
-        run: |
-          make test
-          make parse
-          make parse_strict
-          make hir-validate
-          make negative-tests
+          brew install llvm openssl@3 curl ccache
 
-  build-windows:
-    name: build (windows-latest)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: msys2/setup-msys2@v2
+      - name: Setup ccache
+        uses: actions/cache@v4
         with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-clang
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-make
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-openssl
-            mingw-w64-x86_64-curl
-      - name: Bootstrap stage0/1/2
-        shell: msys2 {0}
-        run: |
-          rm -rf toolchain/stage0/build
-          rm -rf toolchain/stage1/build
-          rm -rf toolchain/stage2/build
-          bash toolchain/scripts/bootstrap/stage0.sh
-          bash toolchain/scripts/bootstrap/stage1.sh
-          VITTE_SELF_CHECK=0 bash toolchain/scripts/bootstrap/stage2.sh
-      - name: Tests
-        shell: msys2 {0}
-        run: |
-          make test
-          make parse
-          make parse_strict
-          make hir-validate
-          make negative-tests
+          path: |
+            ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: Build
+        env:
+          OPENSSL_DIR: /opt/homebrew/opt/openssl@3
+          CCACHE_DIR: ~/.ccache
+          CC: ccache clang
+          CXX: ccache clang++
+        run: make build
+
+      - name: Stdlib check
+        run: make std-check
+
+      - name: Parse tests
+        run: make parse
+
+      - name: HIR validate
+        run: make hir-validate
+
+      - name: Negative tests
+        run: make negative-tests
+
+      - name: Test
+        run: make test
+
+      - name: Upload artifacts (vitte)
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitte-${{ matrix.os }}
+          path: bin/vitte
+          if-no-files-found: error
