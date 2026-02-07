@@ -7,8 +7,6 @@
 #include "diagnostics_messages.hpp"
 
 #include <unordered_map>
-#include <cstdlib>
-#include <iostream>
 
 namespace vitte::frontend::validate {
 
@@ -76,9 +74,6 @@ void validate_module(ast::AstContext& ast_ctx, ast::ModuleId module, diag::Diagn
     const auto& mod = ast_ctx.get<Module>(module);
     for (const auto& decl_id : mod.decls) {
         const auto& decl = ast_ctx.get<Decl>(decl_id);
-        if (std::getenv("VITTE_TRACE_MODULES")) {
-            std::cerr << "[validate] decl kind=" << static_cast<int>(decl.kind) << "\n";
-        }
         switch (decl.kind) {
             case NodeKind::ProcDecl:
                 validate_proc(ast_ctx.get<ProcDecl>(decl_id), diagnostics);

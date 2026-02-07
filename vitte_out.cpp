@@ -8,172 +8,277 @@
 #include <cstdint>
 #include <cstddef>
 
-extern void kernel_console_write_byte(uint8_t b);
+extern void std__kernel__console__kernel_console_write_byte(int32_t b);
 
-extern int32_t kernel_console_read_key();
+extern int32_t std__kernel__console__kernel_console_read_key();
 
-extern void kernel_yield();
-
-extern uint64_t kernel_ticks();
-
-extern uint64_t kernel_syscall(uint64_t n, uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5);
-
-void vitte__console_write_byte(uint8_t b) {
-    bb_5_0:
-    kernel_console_write_byte(b);
+void vitte__std__kernel__console__write_byte(int32_t b) {
+    bb_2_0:
+    std__kernel__console__kernel_console_write_byte(b);
     return;
 }
 
-int32_t vitte__console_read_key() {
+int32_t vitte__std__kernel__console__read_key() {
     int32_t _t0;
-    bb_6_0:
-    _t0 = kernel_console_read_key();
+    bb_3_0:
+    _t0 = std__kernel__console__kernel_console_read_key();
     return _t0;
 }
 
-void vitte__task_yield() {
+extern int32_t std__kernel__shell__kernel_shell_read_cmd();
+
+extern void std__kernel__shell__kernel_shell_write_arg();
+
+extern int32_t std__kernel__shell__kernel_shell_arg_len();
+
+int32_t vitte__std__kernel__shell__read_cmd() {
+    int32_t _t0;
     bb_7_0:
-    kernel_yield();
-    return;
+    _t0 = std__kernel__shell__kernel_shell_read_cmd();
+    return _t0;
 }
 
-void vitte__syscall_write_byte(uint8_t b) {
-    int32_t _;
-    uint64_t _t0;
+void vitte__std__kernel__shell__write_arg() {
     bb_8_0:
-    _t0 = kernel_syscall(0, b, 0, 0, 0, 0, 0);
-    _ = _t0;
+    std__kernel__shell__kernel_shell_write_arg();
     return;
 }
 
-int32_t vitte__syscall_read_key() {
-    uint64_t _t0;
-    bb_9_0:
-    _t0 = kernel_syscall(1, 0, 0, 0, 0, 0, 0);
-    return _t0;
-}
+extern void std__kernel__task__kernel_yield();
 
-void vitte__syscall_yield() {
-    int32_t _;
-    uint64_t _t0;
+void vitte__std__kernel__task__yield() {
     bb_10_0:
-    _t0 = kernel_syscall(2, 0, 0, 0, 0, 0, 0);
-    _ = _t0;
+    std__kernel__task__kernel_yield();
     return;
 }
 
-uint64_t vitte__syscall_ticks() {
-    uint64_t _t0;
-    bb_11_0:
-    _t0 = kernel_syscall(3, 0, 0, 0, 0, 0, 0);
+extern int32_t std__kernel__time__kernel_ticks();
+
+extern void std__kernel__time__kernel_sleep_ticks(int32_t ticks);
+
+int32_t vitte__std__kernel__time__ticks() {
+    int32_t _t0;
+    bb_13_0:
+    _t0 = std__kernel__time__kernel_ticks();
     return _t0;
 }
 
-void vitte__user_main() {
-    int32_t last;
-    uint64_t _t0;
-    int32_t k;
+void vitte__std__kernel__time__sleep_ticks(int32_t delay) {
+    bb_14_0:
+    std__kernel__time__kernel_sleep_ticks(delay);
+    return;
+}
+
+void vitte__write_prompt() {
+    bb_15_0:
+    vitte__std__kernel__console__write_byte(118);
+    vitte__std__kernel__console__write_byte(105);
+    vitte__std__kernel__console__write_byte(116);
+    vitte__std__kernel__console__write_byte(116);
+    vitte__std__kernel__console__write_byte(101);
+    vitte__std__kernel__console__write_byte(79);
+    vitte__std__kernel__console__write_byte(83);
+    vitte__std__kernel__console__write_byte(62);
+    vitte__std__kernel__console__write_byte(32);
+    return;
+}
+
+void vitte__write_nl() {
+    bb_16_0:
+    vitte__std__kernel__console__write_byte(13);
+    vitte__std__kernel__console__write_byte(10);
+    return;
+}
+
+void vitte__write_help() {
+    bb_17_0:
+    vitte__std__kernel__console__write_byte(104);
+    vitte__std__kernel__console__write_byte(101);
+    vitte__std__kernel__console__write_byte(108);
+    vitte__std__kernel__console__write_byte(112);
+    vitte__std__kernel__console__write_byte(58);
+    vitte__std__kernel__console__write_byte(32);
+    vitte__std__kernel__console__write_byte(104);
+    vitte__std__kernel__console__write_byte(101);
+    vitte__std__kernel__console__write_byte(108);
+    vitte__std__kernel__console__write_byte(112);
+    vitte__std__kernel__console__write_byte(44);
+    vitte__std__kernel__console__write_byte(32);
+    vitte__std__kernel__console__write_byte(101);
+    vitte__std__kernel__console__write_byte(99);
+    vitte__std__kernel__console__write_byte(104);
+    vitte__std__kernel__console__write_byte(111);
+    vitte__std__kernel__console__write_byte(44);
+    vitte__std__kernel__console__write_byte(32);
+    vitte__std__kernel__console__write_byte(116);
+    vitte__std__kernel__console__write_byte(105);
+    vitte__std__kernel__console__write_byte(99);
+    vitte__std__kernel__console__write_byte(107);
+    vitte__std__kernel__console__write_byte(115);
+    vitte__std__kernel__console__write_byte(44);
+    vitte__std__kernel__console__write_byte(32);
+    vitte__std__kernel__console__write_byte(99);
+    vitte__std__kernel__console__write_byte(108);
+    vitte__std__kernel__console__write_byte(101);
+    vitte__std__kernel__console__write_byte(97);
+    vitte__std__kernel__console__write_byte(114);
+    vitte__std__kernel__console__write_byte(44);
+    vitte__std__kernel__console__write_byte(32);
+    vitte__std__kernel__console__write_byte(114);
+    vitte__std__kernel__console__write_byte(101);
+    vitte__std__kernel__console__write_byte(98);
+    vitte__std__kernel__console__write_byte(111);
+    vitte__std__kernel__console__write_byte(111);
+    vitte__std__kernel__console__write_byte(116);
+    vitte__write_nl();
+    return;
+}
+
+void vitte__write_unknown() {
+    bb_18_0:
+    vitte__std__kernel__console__write_byte(117);
+    vitte__std__kernel__console__write_byte(110);
+    vitte__std__kernel__console__write_byte(107);
+    vitte__std__kernel__console__write_byte(110);
+    vitte__std__kernel__console__write_byte(111);
+    vitte__std__kernel__console__write_byte(119);
+    vitte__std__kernel__console__write_byte(110);
+    vitte__write_nl();
+    return;
+}
+
+void vitte__clear_screen() {
+    int32_t i;
+    bool _t0;
     int32_t _t1;
+    int32_t _t2;
+    bb_19_0:
+    i = 0;
+    goto bb_19_1;
+    bb_19_1:
+    _t0 = (i >= 30);
+    if (_t0) {
+        goto bb_19_3;
+    } else {
+        goto bb_19_4;
+    }
+    bb_19_2:
+    return;
+    bb_19_3:
+    return;
+    bb_19_4:
+    goto bb_19_5;
+    bb_19_5:
+    vitte__write_nl();
+    _t1 = (i + 1);
+    _t2 = (i + _t1);
+    goto bb_19_1;
+}
+
+void vitte__shell_loop() {
+    int32_t cmd;
+    int32_t _t0;
+    bool _t1;
     bool _t2;
     bool _t3;
-    bool _t4;
-    int32_t now;
-    uint64_t _t5;
-    int32_t _t6;
+    int32_t _;
+    int32_t _t4;
+    bool _t5;
+    bool _t6;
     bool _t7;
-    int32_t _t8;
-    bb_12_0:
-    vitte__syscall_write_byte(117);
-    vitte__syscall_write_byte(115);
-    vitte__syscall_write_byte(101);
-    vitte__syscall_write_byte(114);
-    vitte__syscall_write_byte(62);
-    vitte__syscall_write_byte(32);
-    _t0 = vitte__syscall_ticks();
-    last = _t0;
-    goto bb_12_1;
-    bb_12_1:
-    _t1 = vitte__syscall_read_key();
-    k = _t1;
-    _t2 = (k >= 0);
-    if (_t2) {
-        goto bb_12_3;
+    bb_20_0:
+    goto bb_20_1;
+    bb_20_1:
+    vitte__write_prompt();
+    _t0 = vitte__std__kernel__shell__read_cmd();
+    cmd = _t0;
+    _t1 = (cmd == std__kernel__shell__CMD_HELP);
+    if (_t1) {
+        goto bb_20_3;
     } else {
-        goto bb_12_4;
+        goto bb_20_4;
     }
-    bb_12_2:
+    bb_20_2:
     return;
-    bb_12_3:
-    _t3 = (k == 13);
+    bb_20_3:
+    vitte__write_help();
+    goto bb_20_5;
+    bb_20_4:
+    _t2 = (cmd == std__kernel__shell__CMD_ECHO);
+    if (_t2) {
+        goto bb_20_6;
+    } else {
+        goto bb_20_7;
+    }
+    bb_20_5:
+    goto bb_20_1;
+    bb_20_6:
+    vitte__std__kernel__shell__write_arg();
+    vitte__write_nl();
+    goto bb_20_8;
+    bb_20_7:
+    _t3 = (cmd == std__kernel__shell__CMD_TICKS);
     if (_t3) {
-        goto bb_12_6;
+        goto bb_20_9;
     } else {
-        goto bb_12_7;
+        goto bb_20_10;
     }
-    bb_12_4:
-    goto bb_12_5;
-    bb_12_5:
-    _t5 = vitte__syscall_ticks();
-    now = _t5;
-    _t6 = (now - last);
-    _t7 = (_t6 >= 100);
+    bb_20_8:
+    goto bb_20_5;
+    bb_20_9:
+    _t4 = vitte__std__kernel__time__ticks();
+    _ = _t4;
+    vitte__write_nl();
+    goto bb_20_11;
+    bb_20_10:
+    _t5 = (cmd == std__kernel__shell__CMD_CLEAR);
+    if (_t5) {
+        goto bb_20_12;
+    } else {
+        goto bb_20_13;
+    }
+    bb_20_11:
+    goto bb_20_8;
+    bb_20_12:
+    vitte__clear_screen();
+    goto bb_20_14;
+    bb_20_13:
+    _t6 = (cmd == std__kernel__shell__CMD_REBOOT);
+    if (_t6) {
+        goto bb_20_15;
+    } else {
+        goto bb_20_16;
+    }
+    bb_20_14:
+    goto bb_20_11;
+    bb_20_15:
+    goto bb_20_18;
+    bb_20_16:
+    _t7 = (cmd == std__kernel__shell__CMD_UNKNOWN);
     if (_t7) {
-        goto bb_12_12;
+        goto bb_20_20;
     } else {
-        goto bb_12_13;
+        goto bb_20_21;
     }
-    bb_12_6:
-    vitte__syscall_write_byte(13);
-    vitte__syscall_write_byte(10);
-    vitte__syscall_write_byte(62);
-    vitte__syscall_write_byte(32);
-    goto bb_12_8;
-    bb_12_7:
-    _t4 = (k == 8);
-    if (_t4) {
-        goto bb_12_9;
-    } else {
-        goto bb_12_10;
-    }
-    bb_12_8:
-    goto bb_12_5;
-    bb_12_9:
-    vitte__syscall_write_byte(8);
-    vitte__syscall_write_byte(32);
-    vitte__syscall_write_byte(8);
-    goto bb_12_11;
-    bb_12_10:
-    vitte__syscall_write_byte(k);
-    goto bb_12_11;
-    bb_12_11:
-    goto bb_12_8;
-    bb_12_12:
-    vitte__syscall_write_byte(46);
-    _t8 = (last + now);
-    goto bb_12_14;
-    bb_12_13:
-    goto bb_12_14;
-    bb_12_14:
-    vitte__syscall_yield();
-    goto bb_12_1;
+    bb_20_17:
+    goto bb_20_14;
+    bb_20_18:
+    vitte__std__kernel__task__yield();
+    goto bb_20_18;
+    bb_20_19:
+    goto bb_20_17;
+    bb_20_20:
+    vitte__write_unknown();
+    goto bb_20_22;
+    bb_20_21:
+    goto bb_20_22;
+    bb_20_22:
+    goto bb_20_17;
 }
 
 int32_t vitte__main() {
-    bb_13_0:
-    vitte__console_write_byte(75);
-    vitte__console_write_byte(58);
-    vitte__console_write_byte(32);
-    vitte__console_write_byte(117);
-    vitte__console_write_byte(115);
-    vitte__console_write_byte(101);
-    vitte__console_write_byte(114);
-    vitte__console_write_byte(10);
-    vitte__user_main();
-    goto bb_13_1;
-    bb_13_1:
-    vitte__task_yield();
-    goto bb_13_1;
-    bb_13_2:
+    bb_21_0:
+    vitte__shell_loop();
     return 0;
 }
 

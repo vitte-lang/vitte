@@ -6,16 +6,11 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <cstdlib>
 #include <unordered_set>
 
 namespace vitte::frontend::modules {
 
 using namespace vitte::frontend::ast;
-
-static bool trace_modules() {
-    return std::getenv("VITTE_TRACE_MODULES") != nullptr;
-}
 
 static std::string join_path(const ModulePath& path, const char* sep) {
     std::string out;
@@ -359,9 +354,6 @@ static void qualify_module(AstContext& ctx,
     for (auto decl_id : module.decls) {
         if (decl_id == kInvalidAstId) continue;
         auto& decl = ctx.get<Decl>(decl_id);
-        if (trace_modules()) {
-            std::cerr << "[modules] qualify decl kind=" << static_cast<int>(decl.kind) << "\n";
-        }
         switch (decl.kind) {
             case NodeKind::ProcDecl: {
                 auto& d = static_cast<ProcDecl&>(decl);
@@ -386,13 +378,7 @@ static void qualify_module(AstContext& ctx,
             case NodeKind::ConstDecl: {
                 auto& d = static_cast<ConstDecl&>(decl);
                 d.name.name = prefix + d.name.name;
-                if (trace_modules()) {
-                    std::cerr << "[modules] const " << d.name.name << " type\n";
-                }
                 qualify_type(ctx, d.type, locals, prefix);
-                if (trace_modules()) {
-                    std::cerr << "[modules] const " << d.name.name << " value\n";
-                }
                 qualify_expr(ctx, d.value, locals, prefix);
                 break;
             }
@@ -479,11 +465,6 @@ struct Loader {
                 continue;
             }
 
-            if (trace_modules()) {
-                std::cerr << "[modules] use " << module_path_key(*path)
-                          << " -> " << file.string() << "\n";
-            }
-
             std::string key = module_path_key(module_path);
             std::string prefix = module_prefix(module_path);
             if (!prefix.empty() && index.path_to_prefix.find(key) == index.path_to_prefix.end()) {
@@ -502,9 +483,6 @@ struct Loader {
                 continue;
             }
 
-            if (trace_modules()) {
-                std::cerr << "[modules] parse " << file.string() << "\n";
-            }
             std::string source(
                 (std::istreambuf_iterator<char>(in)),
                 std::istreambuf_iterator<char>()
@@ -518,16 +496,9 @@ struct Loader {
             std::filesystem::path mod_dir = file.parent_path();
             load_recursive(mod_id, mod_dir);
 
-            if (trace_modules()) {
-                std::cerr << "[modules] qualify " << prefix << " (" << file.string() << ")\n";
-            }
             qualify_module(ctx, mod_id, prefix, index);
 
             const auto& mod = ctx.get<Module>(mod_id);
-            if (trace_modules()) {
-                std::cerr << "[modules] collect " << mod.decls.size()
-                          << " decls from " << file.string() << "\n";
-            }
             collected.insert(collected.end(), mod.decls.begin(), mod.decls.end());
         }
 
@@ -549,7 +520,21 @@ bool load_modules(AstContext& ctx,
     bool ok = loader.load_recursive(root, base_dir);
     if (ok && !loader.collected.empty()) {
         auto& module = ctx.get<Module>(root);
-        module.decls.insert(module.decls.end(),
+        auto insert_it = module.decls.begin();
+        for (; insert_it != module.decls.end(); ++insert_it) {
+            if (*insert_it == kInvalidAstId) {
+                continue;
+            }
+            const auto& decl = ctx.get<Decl>(*insert_it);
+            if (decl.kind == NodeKind::UseDecl ||
+                decl.kind == NodeKind::PullDecl ||
+                decl.kind == NodeKind::SpaceDecl ||
+                decl.kind == NodeKind::ShareDecl) {
+                continue;
+            }
+            break;
+        }
+        module.decls.insert(insert_it,
                             loader.collected.begin(),
                             loader.collected.end());
     }
@@ -911,9 +896,6 @@ static void rewrite_stmt_for_alias(
 void rewrite_member_access(ast::AstContext& ctx,
                            ast::ModuleId root,
                            const ModuleIndex& index) {
-    if (trace_modules()) {
-        std::cerr << "[modules] rewrite begin\n";
-    }
     std::unordered_map<std::string, std::string> alias_to_prefix;
     std::unordered_set<std::string> glob_aliases;
     std::unordered_map<std::string, std::string> symbol_imports;
@@ -932,9 +914,6 @@ void rewrite_member_access(ast::AstContext& ctx,
             continue;
         }
         std::string key = module_path_key(u.path);
-        if (trace_modules()) {
-            std::cerr << "[modules] use decl " << key << " alias=" << alias << "\n";
-        }
         auto it = index.path_to_prefix.find(key);
         if (it != index.path_to_prefix.end()) {
             alias_to_prefix[alias] = it->second;
@@ -958,9 +937,6 @@ void rewrite_member_access(ast::AstContext& ctx,
     for (auto decl_id : module.decls) {
         if (decl_id == kInvalidAstId) continue;
         auto& decl = ctx.get<Decl>(decl_id);
-        if (trace_modules()) {
-            std::cerr << "[modules] rewrite decl kind=" << static_cast<int>(decl.kind) << "\n";
-        }
         switch (decl.kind) {
             case NodeKind::ProcDecl: {
                 auto& d = static_cast<ProcDecl&>(decl);
@@ -999,9 +975,6 @@ void rewrite_member_access(ast::AstContext& ctx,
             default:
                 break;
         }
-    }
-    if (trace_modules()) {
-        std::cerr << "[modules] rewrite end\n";
     }
 }
 

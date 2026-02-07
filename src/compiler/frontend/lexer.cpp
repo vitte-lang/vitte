@@ -261,6 +261,10 @@ Token Lexer::next() {
                 advance();
                 return make(TokenKind::AttrStart, "#[", start, index_);
             }
+            while (!eof() && peek() != '\n') {
+                advance();
+            }
+            return next();
             break;
         case '(':
             return make(TokenKind::LParen, "(", start, index_);

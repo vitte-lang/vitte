@@ -1,0 +1,99 @@
+LIBS =
+PDIR = proto
+OPDIR = oproto
+INCL = $(PDIR)
+OINCL = $(OPDIR)
+JINCL = /usr/jerq/include
+SFLAGS =
+CFLAGS = -O -I$(INCL) -I$(JINCL) $(SFLAGS)
+OCFLAGS = -O -I$(OINCL) -I$(JINCL) $(SFLAGS)
+PHEADERS = $(PDIR)/pconfig.h $(PDIR)/packets.h $(PDIR)/proto.h $(PDIR)/pstats.h
+OPHEADERS = $(OPDIR)/pconfig.h $(OPDIR)/packets.h $(OPDIR)/proto.h \
+	    $(OPDIR)/pstats.h
+PFILES = $(PDIR)/pcheck.c $(PDIR)/pinit.c \
+	 $(PDIR)/precv.c $(PDIR)/psend.c $(PDIR)/ptimeout.c
+OPFILES = $(OPDIR)/pcheck.c $(OPDIR)/pinit.c \
+	  $(OPDIR)/precv.c $(OPDIR)/psend.c $(OPDIR)/ptimeout.c
+POBJS = pcheck.o pinit.o precv.o psend.o ptimeout.o
+OPOBJS = opcheck.o opinit.o oprecv.o opsend.o optimeout.o
+
+630mux:	630mux.o $(OPOBJS)
+	$(CC) $(LDFLAGS) -o 630mux 630mux.o $(OPOBJS) $(LIBS)
+
+630mux.o:	msgs.h $(JINCL)/tty.h $(OPHEADERS)
+		$(CC) $(OCFLAGS) -c mux.c -DT630
+		-mv mux.o 630mux.o
+
+mux:	mux.o $(POBJS)
+	$(CC) $(LDFLAGS) -o mux mux.o $(POBJS) $(LIBS)
+
+smux:	smux.o $(PFILES)
+	$(CC) $(CFLAGS) -DPSTATISTICS -DPSTATSDESC -c $(PFILES)
+	$(CC) $(LDFLAGS) -o smux smux.o $(POBJS) $(LIBS)
+	-rm -f $(POBJS)
+
+ssmux:	smux.o $(PFILES)
+	$(CC) $(CFLAGS) -DEBUG -c $(PFILES)
+	$(CC) $(LDFLAGS) -o ssmux smux.o $(POBJS) $(LIBS)
+	-rm -f $(POBJS)
+
+tmux:	tmux.o $(PFILES)
+	$(CC) $(CFLAGS) -DEBUG -c $(PFILES)
+	$(CC) $(LDFLAGS) -o tmux tmux.o $(POBJS) $(LIBS)
+	-rm -f $(POBJS)
+
+smux.o:	mux.c
+	-mv mux.o savemux.o
+	$(CC) $(CFLAGS) -DPSTATISTICS -DPSTATSDESC -c mux.c && mv mux.o smux.o
+	-mv savemux.o mux.o
+
+tmux.o:	mux.c
+	-mv mux.o smux.o
+	$(CC) $(CFLAGS) -DTRACING -DEBUG -c mux.c && mv mux.o tmux.o
+	-mv smux.o mux.o
+
+mux.o:		msgs.h $(JINCL)/tty.h $(PHEADERS)
+
+pcheck.o:	$(PDIR)/pcheck.c
+		$(CC) $(CFLAGS) -c $(PDIR)/pcheck.c
+pinit.o:	$(PDIR)/pinit.c $(PHEADERS)
+		$(CC) $(CFLAGS) -c $(PDIR)/pinit.c
+precv.o:	$(PDIR)/precv.c $(PHEADERS)
+		$(CC) $(CFLAGS) -c $(PDIR)/precv.c
+psend.o:	$(PDIR)/psend.c $(PHEADERS)
+		$(CC) $(CFLAGS) -c $(PDIR)/psend.c
+ptimeout.o:	$(PDIR)/ptimeout.c $(PHEADERS)
+		$(CC) $(CFLAGS) -c $(PDIR)/ptimeout.c
+
+opcheck.o:	$(OPDIR)/pcheck.c
+		$(CC) $(OCFLAGS) -c $(OPDIR)/pcheck.c
+		-mv pcheck.o opcheck.o
+
+opinit.o:	$(OPDIR)/pinit.c $(OPHEADERS)
+		$(CC) $(OCFLAGS) -c $(OPDIR)/pinit.c
+		-mv pinit.o opinit.o
+
+oprecv.o:	$(OPDIR)/precv.c $(OPHEADERS)
+		$(CC) $(OCFLAGS) -c $(OPDIR)/precv.c
+		-mv precv.o oprecv.o
+
+opsend.o:	$(OPDIR)/psend.c $(OPHEADERS)
+		$(CC) $(OCFLAGS) -c $(OPDIR)/psend.c
+		-mv psend.o opsend.o
+
+optimeout.o:	$(OPDIR)/ptimeout.c $(OPHEADERS)
+		$(CC) $(OCFLAGS) -c $(OPDIR)/ptimeout.c
+		-mv ptimeout.o optimeout.o
+
+print:
+	pr *.h *.c
+
+pp:
+	pp -tmux *.h *.c proto/*.? | dcan
+
+lint:
+	lint -I$(INCL) -I$(JINCL) $(SFLAGS) -DTRACING mux.c $(PDIR)/*.c
+
+clean:
+	rm -f *.o mux tmux core
+	cd term; make clean

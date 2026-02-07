@@ -1,63 +1,122 @@
 use std/kernel/console as console
-use std/kernel/syscall as syscall
+use std/kernel/shell as shell
 use std/kernel/task as task
 use std/kernel/time as time
 use std/core/types.Unit
 
-proc user_main() -> Unit {
-  syscall.write_byte(117)
-  syscall.write_byte(115)
-  syscall.write_byte(101)
-  syscall.write_byte(114)
-  syscall.write_byte(62)
-  syscall.write_byte(32)
+proc write_prompt() -> Unit {
+  console.write_byte(118)
+  console.write_byte(105)
+  console.write_byte(116)
+  console.write_byte(116)
+  console.write_byte(101)
+  console.write_byte(79)
+  console.write_byte(83)
+  console.write_byte(62)
+  console.write_byte(32)
+  return
+}
 
-  let last = time.ticks()
+proc write_nl() -> Unit {
+  console.write_byte(13)
+  console.write_byte(10)
+  return
+}
 
+proc write_help() -> Unit {
+  console.write_byte(104) # h
+  console.write_byte(101) # e
+  console.write_byte(108) # l
+  console.write_byte(112) # p
+  console.write_byte(58)
+  console.write_byte(32)
+  console.write_byte(104)
+  console.write_byte(101)
+  console.write_byte(108)
+  console.write_byte(112)
+  console.write_byte(44)
+  console.write_byte(32)
+  console.write_byte(101)
+  console.write_byte(99)
+  console.write_byte(104)
+  console.write_byte(111)
+  console.write_byte(44)
+  console.write_byte(32)
+  console.write_byte(116)
+  console.write_byte(105)
+  console.write_byte(99)
+  console.write_byte(107)
+  console.write_byte(115)
+  console.write_byte(44)
+  console.write_byte(32)
+  console.write_byte(99)
+  console.write_byte(108)
+  console.write_byte(101)
+  console.write_byte(97)
+  console.write_byte(114)
+  console.write_byte(44)
+  console.write_byte(32)
+  console.write_byte(114)
+  console.write_byte(101)
+  console.write_byte(98)
+  console.write_byte(111)
+  console.write_byte(111)
+  console.write_byte(116)
+  write_nl()
+  return
+}
+
+proc write_unknown() -> Unit {
+  console.write_byte(117)
+  console.write_byte(110)
+  console.write_byte(107)
+  console.write_byte(110)
+  console.write_byte(111)
+  console.write_byte(119)
+  console.write_byte(110)
+  write_nl()
+  return
+}
+
+proc clear_screen() -> Unit {
+  let i = 0
   loop {
-    let k = syscall.read_key()
-    if k >= 0 {
-      if k == 13 {
-        syscall.write_byte(13)
-        syscall.write_byte(10)
-        syscall.write_byte(62)
-        syscall.write_byte(32)
-      } else if k == 8 {
-        syscall.write_byte(8)
-        syscall.write_byte(32)
-        syscall.write_byte(8)
-      } else {
-        syscall.write_byte(k as u8)
-      }
+    if i >= 30 {
+      return
     }
-
-    let now = time.ticks()
-    if now - last >= 100 {
-      syscall.write_byte(46)
-      last = now
-    }
-
-    syscall.yield()
+    write_nl()
+    i = i + 1
   }
+  return
+}
 
+proc shell_loop() -> Unit {
+  loop {
+    write_prompt()
+    let cmd = shell.read_cmd()
+    if cmd == shell.CMD_HELP {
+      write_help()
+    } else if cmd == shell.CMD_ECHO {
+      shell.write_arg()
+      write_nl()
+    } else if cmd == shell.CMD_TICKS {
+      let _ = time.ticks()
+      write_nl()
+    } else if cmd == shell.CMD_CLEAR {
+      clear_screen()
+    } else if cmd == shell.CMD_REBOOT {
+      loop {
+        task.yield()
+      }
+    } else if cmd == shell.CMD_UNKNOWN {
+      write_unknown()
+    }
+  }
   return
 }
 
 entry main at core/app {
-  console.write_byte(75)
-  console.write_byte(58)
-  console.write_byte(32)
-  console.write_byte(117)
-  console.write_byte(115)
-  console.write_byte(101)
-  console.write_byte(114)
-  console.write_byte(10)
-
-  user_main()
-
-  loop {
-    task.yield()
-  }
+  shell_loop()
 
   return 0
 }

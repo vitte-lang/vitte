@@ -38,7 +38,12 @@ static CppType* map_type(CppContext& ctx, const std::string& mir_name) {
     if (mir_name == "isize") return builtin_type(ctx, "ptrdiff_t");
     if (mir_name == "bool") return builtin_type(ctx, "bool");
     if (mir_name == "string") return builtin_type(ctx, "VitteString");
-    if (mir_name == "Unit") return builtin_type(ctx, "void");
+    if (mir_name == "Unit" || mir_name == "unit" || mir_name == "void") {
+        return builtin_type(ctx, "void");
+    }
+    if (mir_name.size() >= 4 && mir_name.compare(mir_name.size() - 4, 4, "Unit") == 0) {
+        return builtin_type(ctx, "void");
+    }
     return builtin_type(ctx, "int32_t");
 }
 

@@ -1,0 +1,69 @@
+#       Copyright (c) 1987 AT&T   
+#       All Rights Reserved       
+
+#       THIS IS UNPUBLISHED PROPRIETARY SOURCE CODE OF AT&T   
+#       The copyright notice above does not evidence any     
+#       actual or intended publication of such source code.  
+
+# @(#)icon.sh	1.1.1.5	6/2/87
+
+USAGE="Usage: icon [-c] [-x m] [-y n]"
+xval="50"
+yval="50"
+cval=""
+
+#
+# Layers environment
+#
+
+if ismpx -
+then
+
+#
+# SVR2: use getopt(1)
+# SVR3: use getopts(1)
+#
+
+#   if [ # getopts exists ]
+#   then
+#	while getopts cx:y: c
+#	do
+#		case $c in
+#		x) xval=$OPTARG;;
+#		y) yval=$OPTARG;;
+#		c) cval="-c";;
+#		\?) echo $USAGE; exit 2;;
+#		esac
+#	done
+#		 
+#   else
+
+	set -- `getopt cx:y: $*`
+	if [ $? != 0 ]
+	then
+		echo $USAGE
+		exit 2
+   	fi
+   
+   	while [ true ]
+	do
+		case "$1" in
+		-x) xval=$2; shift 2;;
+		-y) yval=$2; shift 2;;
+		-c) cval=$1; shift;;
+		--) shift; break;;
+		esac
+   	done
+
+#   fi
+
+    echo $xval $yval | ${DMD}/bin/jx ${DMD}/lib/icon.m ${cval} -d ${DMD} 
+
+#
+# Non-layers environment: not supported
+#
+
+else
+   echo "icon only runs under layers"
+   exit 1
+fi

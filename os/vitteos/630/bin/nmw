@@ -1,0 +1,29 @@
+#! /bin/sh
+#
+#	mw - initiate a research-style mux window on the 630
+#
+
+case $# in
+0)	;;
+*)	echo "usage: $0"
+esac
+
+# hack to extract some interesting stty modes. This is V9-dependent.
+# first, extract current `nl' and `echo' settings...
+
+resettty=`stty | sed -n 4p | cut -f3,4 -d" "`
+
+# now, some characters of interest to the mux window (this is
+# a _real_ kludge: mw.m doesn't know if we change it after
+# this because it is not a terminal driver.)
+
+chars=`	stty		|
+	tr ';' '\012'	|
+	sed -e "/ = /!d
+		s/[ ]*\([a-z]*\) = \(.*\)/\1 \2/"`
+	
+dmdld /usr/630/mbin/nmw.m $chars
+
+trap 'stty $resettty' 0 3 13 15
+stty -echo
+exec sh

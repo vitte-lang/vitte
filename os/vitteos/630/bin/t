@@ -1,0 +1,53 @@
+#! /bin/sh
+#
+#	mw - initiate a research-style mux window on the 630
+#
+#	mw [-c] [-f fontname]
+
+font=
+fontname=
+
+while :
+do
+	case $# in
+	0)	break;;
+	esac
+
+	case "$1" in
+	-f)	font=$1;  shift;
+		case $# in
+		0)	echo "$0: fontname missing"; exit 1;;
+		*)	fontname=$1; shift
+		esac;;
+	*)	echo "usage: $0 [-c] [-f fontname]"; exit 1;;
+	esac
+done
+			
+
+# hack to extract some interesting stty modes. This is V9-dependent.
+# first, extract current `nl' and `echo' settings...
+
+resettty=`stty | sed -n 4p | cut -f3,4 -d" "`
+
+# now, some characters of interest to the mux window (this is
+# a _real_ kludge: mw.m doesn't know if we change it after
+# this because it is not a terminal driver.)
+
+chars=`	stty		|
+	tr ';' '\012'	|
+	sed -e "/ = /!d
+		s/[ ]*\([a-z]*\) = \(.*\)/\1 \2/"`
+
+case $font in
+-f)	if [ -r /usr/630/termfonts/$fontname ]
+	then
+		loadfont -c $fontname
+	else
+		(cd /usr/jerq/font; loadfont -c $fontname)
+	fi;;
+esac
+	
+
+trap 'stty $resettty' 0 3 13 15
+stty nl -echo
+exec sh

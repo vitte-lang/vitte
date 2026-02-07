@@ -179,7 +179,13 @@ struct PatternResult {
 };
 
 static bool is_unit_type_name(const std::string& name) {
-    return name == "Unit" || name == "unit" || name == "void";
+    if (name == "Unit" || name == "unit" || name == "void") {
+        return true;
+    }
+    if (name.size() >= 4 && name.compare(name.size() - 4, 4, "Unit") == 0) {
+        return true;
+    }
+    return false;
 }
 
 MirValuePtr Builder::emit_call_value(

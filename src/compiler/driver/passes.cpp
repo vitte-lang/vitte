@@ -17,7 +17,6 @@
 
 #include <fstream>
 #include <iostream>
-#include <cstdlib>
 
 namespace vitte::driver {
 
@@ -52,36 +51,15 @@ PassResult run_passes(const Options& opts) {
     frontend::modules::ModuleIndex module_index;
     frontend::modules::load_modules(ast_ctx, module, diagnostics, opts.input, module_index);
     frontend::modules::rewrite_member_access(ast_ctx, module, module_index);
-    if (std::getenv("VITTE_TRACE_MODULES")) {
-        std::cerr << "[modules] after rewrite\n";
-    }
 
     frontend::passes::expand_macros(ast_ctx, module, diagnostics);
-    if (std::getenv("VITTE_TRACE_MODULES")) {
-        std::cerr << "[modules] after expand\n";
-    }
     frontend::passes::disambiguate_invokes(ast_ctx, module);
-    if (std::getenv("VITTE_TRACE_MODULES")) {
-        std::cerr << "[modules] after disambiguate\n";
-        const auto& mod = ast_ctx.get<frontend::ast::Module>(module);
-        std::size_t invalid = 0;
-        for (auto decl_id : mod.decls) {
-            if (decl_id == frontend::ast::kInvalidAstId) {
-                invalid++;
-            }
-        }
-        std::cerr << "[modules] decls=" << mod.decls.size()
-                  << " invalid=" << invalid << "\n";
-    }
 
     if (opts.dump_ast) {
         std::cout << frontend::ast::dump_to_string(ast_ctx.node(module));
     }
 
     frontend::validate::validate_module(ast_ctx, module, diagnostics);
-    if (std::getenv("VITTE_TRACE_MODULES")) {
-        std::cerr << "[modules] after validate\n";
-    }
 
     if (diagnostics.has_errors()) {
         frontend::diag::render_all(diagnostics, std::cerr);
