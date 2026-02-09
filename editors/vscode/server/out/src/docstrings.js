@@ -25,7 +25,7 @@ function extractBlockDoc(lines, start, end) {
 function getDocstringAtLine(doc, declLine) {
     const lines = doc.getText().split(/\r?\n/);
     let i = Math.min(declLine - 1, lines.length - 1);
-    let collected = [];
+    const collected = [];
     let seenDoc = false;
     while (i >= 0) {
         const line = lines[i];

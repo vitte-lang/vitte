@@ -26,7 +26,7 @@ function extractBlockDoc(lines: string[], start: number, end: number): string {
 export function getDocstringAtLine(doc: TextDocument, declLine: number): string | null {
   const lines = doc.getText().split(/\r?\n/);
   let i = Math.min(declLine - 1, lines.length - 1);
-  let collected: string[] = [];
+  const collected: string[] = [];
   let seenDoc = false;
 
   while (i >= 0) {
@@ -62,4 +62,3 @@ export function getDocstringAtLine(doc: TextDocument, declLine: number): string 
   }
   return null;
 }
-

@@ -390,7 +390,7 @@ exports.connection.onInitialized(() => {
 // ---------------------------------------------------------------------------
 const handleConfigChange = config_1.default.makeOnDidChangeConfigurationHandler(exports.connection, {
     getOpenDocuments: () => documents.all(),
-    validateDocument: async (doc) => {
+    validateDocument: (doc) => {
         try {
             const diagnostics = (0, lint_1.lintToPublishable)(doc.getText(), doc.uri);
             void exports.connection.sendDiagnostics({ uri: doc.uri, diagnostics });
@@ -403,7 +403,7 @@ const handleConfigChange = config_1.default.makeOnDidChangeConfigurationHandler(
 exports.connection.onDidChangeConfiguration(() => {
     void handleConfigChange();
 });
-exports.connection.onDidChangeWatchedFiles(async (e) => {
+async function handleWatchedFiles(e) {
     for (const change of e.changes) {
         const uri = change.uri;
         if (!uri.startsWith("file://"))
@@ -420,6 +420,9 @@ exports.connection.onDidChangeWatchedFiles(async (e) => {
                 (0, indexer_1.indexText)(uri, text);
         }
     }
+}
+exports.connection.onDidChangeWatchedFiles((e) => {
+    void handleWatchedFiles(e);
 });
 // ---------------------------------------------------------------------------
 // Diagnostics lifecycle
@@ -431,7 +434,7 @@ documents.onDidClose((e) => {
     void exports.connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] });
     (0, indexer_1.removeDocument)(e.document.uri);
 });
-async function handleValidate(doc) {
+function handleValidate(doc) {
     try {
         const diags = (0, lint_1.lintToPublishable)(doc.getText(), doc.uri);
         void exports.connection.sendDiagnostics({ uri: doc.uri, diagnostics: diags });

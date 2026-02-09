@@ -196,7 +196,7 @@ function getVitteConfiguration(): vscode.WorkspaceConfiguration | undefined {
   try {
     return vscode.workspace.getConfiguration('vitte');
   } catch (error) {
-    console.debug('[vitte.quickActions] Unable to read vitte configuration', error);
+    console.warn('[vitte.quickActions] Unable to read vitte configuration', error);
     return undefined;
   }
 }

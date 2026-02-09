@@ -468,7 +468,6 @@ function checkStyleConventions(
   const rxFnDecl = /\b(?:fn|proc)\s+([A-Za-z_]\w*)/g;
   const rxConstDecl = /\b(?:const|static)\s+([A-Za-z_]\w*)/g;
   const rxVarDecl = /\blet\s+([A-Za-z_]\w*)/g;
-  const rxUseDecl = /\buse\s+([A-Za-z0-9_./:]+)/g;
 
   for (let i = 0; i < lines.length; i++) {
     const L = lines[i];
@@ -576,7 +575,7 @@ function checkModulePaths(
     if (!isDisabled(i, RULES.StyleUsePath, lineDisables, blockDisables)) {
       for (const m of L.matchAll(/\buse\s+([A-Za-z0-9_./:]+)/g)) {
         const name = m[1];
-        if (/::/.test(name)) {
+        if (name.includes("::")) {
           const idx = (m.index ?? 0) + m[0].lastIndexOf(name);
           diags.push(diag(i, idx, i, idx + name.length,
             "Chemin use conseillé avec '/' et '.' (éviter '::').",

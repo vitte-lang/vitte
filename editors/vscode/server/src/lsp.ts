@@ -33,7 +33,7 @@ import { logLsp, attachConnection } from './logger';
 import { provideCompletions, resolveCompletion, triggerCharacters } from './completion';
 import { getSemanticTokensLegend, buildSemanticTokens, provideHover as keywordHover } from './semantic';
 import { lintToPublishable } from './lint';
-import { definitionAtPosition, referencesAtPosition, documentSymbols } from './navigation';
+import { definitionAtPosition, documentSymbols } from './navigation';
 import { indexDocument, updateDocument, removeDocument, searchWorkspaceSymbols, toWorkspaceSymbols, getDocumentIndex, getIndex, indexText } from './indexer';
 import { getDocstringAtLine } from './docstrings';
 import { provideFormattingEdits } from './formatting';
@@ -387,7 +387,7 @@ connection.onInitialized(() => {
 
 const handleConfigChange = Config.makeOnDidChangeConfigurationHandler<TextDocument>(connection, {
   getOpenDocuments: () => documents.all(),
-  validateDocument: async (doc) => {
+  validateDocument: (doc) => {
     try {
       const diagnostics = lintToPublishable(doc.getText(), doc.uri);
       void connection.sendDiagnostics({ uri: doc.uri, diagnostics });
@@ -401,7 +401,7 @@ connection.onDidChangeConfiguration(() => {
   void handleConfigChange();
 });
 
-connection.onDidChangeWatchedFiles(async (e) => {
+async function handleWatchedFiles(e: { changes: { uri: string; type: FileChangeType }[] }) {
   for (const change of e.changes) {
     const uri = change.uri;
     if (!uri.startsWith("file://")) continue;
@@ -416,6 +416,10 @@ connection.onDidChangeWatchedFiles(async (e) => {
       if (text) indexText(uri, text);
     }
   }
+}
+
+connection.onDidChangeWatchedFiles((e) => {
+  void handleWatchedFiles(e);
 });
 
 // ---------------------------------------------------------------------------
@@ -430,7 +434,7 @@ documents.onDidClose((e) => {
   removeDocument(e.document.uri);
 });
 
-async function handleValidate(doc: TextDocument) {
+function handleValidate(doc: TextDocument) {
   try {
     const diags = lintToPublishable(doc.getText(), doc.uri);
     void connection.sendDiagnostics({ uri: doc.uri, diagnostics: diags });
