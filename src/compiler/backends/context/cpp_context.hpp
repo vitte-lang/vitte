@@ -55,6 +55,8 @@ public:
         const std::vector<std::string>& params = {}
     ) const;
 
+    std::string safe_ident(const std::string& name) const;
+
     /* ---------------------------------------------
      * Include management
      * --------------------------------------------- */

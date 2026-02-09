@@ -1,6 +1,9 @@
 #include "lower_hir.hpp"
 #include "diagnostics_messages.hpp"
 
+#include <unordered_map>
+#include <unordered_set>
+
 namespace vitte::frontend::lower {
 
 using namespace vitte::frontend::ast;
@@ -14,13 +17,17 @@ static ir::HirExprId lower_expr(
     const AstContext& ctx,
     ExprId expr,
     ir::HirContext& hir_ctx,
-    diag::DiagnosticEngine& diagnostics);
+    diag::DiagnosticEngine& diagnostics,
+    const std::unordered_set<std::string>& type_names,
+    const std::unordered_map<std::string, bool>& enum_like);
 
 static ir::HirStmtId lower_block(
     const AstContext& ctx,
     StmtId block_id,
     ir::HirContext& hir_ctx,
-    diag::DiagnosticEngine& diagnostics);
+    diag::DiagnosticEngine& diagnostics,
+    const std::unordered_set<std::string>& type_names,
+    const std::unordered_map<std::string, bool>& enum_like);
 
 static ir::HirPatternId lower_pattern(
     const AstContext& ctx,
@@ -32,7 +39,9 @@ static ir::HirStmtId lower_stmt(
     const AstContext& ctx,
     StmtId stmt,
     ir::HirContext& hir_ctx,
-    diag::DiagnosticEngine& diagnostics);
+    diag::DiagnosticEngine& diagnostics,
+    const std::unordered_set<std::string>& type_names,
+    const std::unordered_map<std::string, bool>& enum_like);
 
 static ir::HirTypeId lower_type(
     const AstContext& ctx,
@@ -64,6 +73,15 @@ static ir::HirTypeId lower_type(
                 std::move(args),
                 t.span);
         }
+        case NodeKind::ProcType: {
+            auto& t = static_cast<const ProcType&>(node);
+            std::vector<ir::HirTypeId> params;
+            for (auto p : t.params) {
+                params.push_back(lower_type(ctx, p, hir_ctx));
+            }
+            auto ret = lower_type(ctx, t.return_type, hir_ctx);
+            return hir_ctx.make<ir::HirProcType>(std::move(params), ret, t.span);
+        }
         default:
             return ir::kInvalidHirId;
     }
@@ -73,11 +91,13 @@ static ir::HirExprId lower_invoke(
     const AstContext& ctx,
     const InvokeExpr& inv,
     ir::HirContext& hir_ctx,
-    diag::DiagnosticEngine& diagnostics)
+    diag::DiagnosticEngine& diagnostics,
+    const std::unordered_set<std::string>& type_names,
+    const std::unordered_map<std::string, bool>& enum_like)
 {
     ir::HirExprId callee = ir::kInvalidHirId;
     if (inv.callee_expr != kInvalidAstId) {
-        callee = lower_expr(ctx, inv.callee_expr, hir_ctx, diagnostics);
+        callee = lower_expr(ctx, inv.callee_expr, hir_ctx, diagnostics, type_names, enum_like);
     } else if (inv.callee_type != kInvalidAstId) {
         const AstNode& tnode = ctx.node(inv.callee_type);
         if (tnode.kind == NodeKind::BuiltinType) {
@@ -94,7 +114,7 @@ static ir::HirExprId lower_invoke(
 
     std::vector<ir::HirExprId> args;
     for (auto a : inv.args) {
-        args.push_back(lower_expr(ctx, a, hir_ctx, diagnostics));
+        args.push_back(lower_expr(ctx, a, hir_ctx, diagnostics, type_names, enum_like));
     }
 
     if (callee == ir::kInvalidHirId) {
@@ -109,7 +129,9 @@ static ir::HirExprId lower_expr(
     const AstContext& ctx,
     ExprId expr,
     ir::HirContext& hir_ctx,
-    diag::DiagnosticEngine& diagnostics)
+    diag::DiagnosticEngine& diagnostics,
+    const std::unordered_set<std::string>& type_names,
+    const std::unordered_map<std::string, bool>& enum_like)
 {
     if (expr == kInvalidAstId) {
         return ir::kInvalidHirId;
@@ -135,7 +157,7 @@ static ir::HirExprId lower_expr(
         }
         case NodeKind::UnaryExpr: {
             auto& e = static_cast<const UnaryExpr&>(node);
-            auto rhs = lower_expr(ctx, e.expr, hir_ctx, diagnostics);
+            auto rhs = lower_expr(ctx, e.expr, hir_ctx, diagnostics, type_names, enum_like);
             return hir_ctx.make<ir::HirUnaryExpr>(
                 ir::HirUnaryOp::Not,
                 rhs,
@@ -161,8 +183,8 @@ static ir::HirExprId lower_expr(
             }
             return hir_ctx.make<ir::HirBinaryExpr>(
                 op,
-                lower_expr(ctx, e.lhs, hir_ctx, diagnostics),
-                lower_expr(ctx, e.rhs, hir_ctx, diagnostics),
+                lower_expr(ctx, e.lhs, hir_ctx, diagnostics, type_names, enum_like),
+                lower_expr(ctx, e.rhs, hir_ctx, diagnostics, type_names, enum_like),
                 e.span);
         }
         case NodeKind::InvokeExpr:
@@ -170,11 +192,37 @@ static ir::HirExprId lower_expr(
                 ctx,
                 static_cast<const InvokeExpr&>(node),
                 hir_ctx,
-                diagnostics);
+                diagnostics,
+                type_names,
+                enum_like);
+        case NodeKind::MemberExpr: {
+            auto& e = static_cast<const MemberExpr&>(node);
+            auto base = lower_expr(ctx, e.base, hir_ctx, diagnostics, type_names, enum_like);
+            bool base_is_type = false;
+            bool is_enum = false;
+            if (e.base != kInvalidAstId) {
+                const auto& base_node = ctx.get<Expr>(e.base);
+                if (base_node.kind == NodeKind::IdentExpr) {
+                    const auto& id = static_cast<const IdentExpr&>(base_node);
+                    base_is_type = type_names.count(id.ident.name) > 0;
+                    auto it = enum_like.find(id.ident.name);
+                    if (it != enum_like.end()) {
+                        is_enum = it->second;
+                    }
+                }
+            }
+            return hir_ctx.make<ir::HirMemberExpr>(
+                base,
+                e.member.name,
+                false,
+                base_is_type,
+                is_enum,
+                e.span);
+        }
         case NodeKind::CallNoParenExpr: {
             auto& e = static_cast<const CallNoParenExpr&>(node);
             std::vector<ir::HirExprId> args;
-            args.push_back(lower_expr(ctx, e.arg, hir_ctx, diagnostics));
+            args.push_back(lower_expr(ctx, e.arg, hir_ctx, diagnostics, type_names, enum_like));
             auto callee = hir_ctx.make<ir::HirVarExpr>(e.callee.name, e.callee.span);
             return hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), e.span);
         }
@@ -182,7 +230,7 @@ static ir::HirExprId lower_expr(
             auto& e = static_cast<const ListExpr&>(node);
             std::vector<ir::HirExprId> args;
             for (auto item : e.items) {
-                args.push_back(lower_expr(ctx, item, hir_ctx, diagnostics));
+                args.push_back(lower_expr(ctx, item, hir_ctx, diagnostics, type_names, enum_like));
             }
             auto callee = hir_ctx.make<ir::HirVarExpr>("list", e.span);
             return hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), e.span);
@@ -253,7 +301,9 @@ static ir::HirStmtId lower_block(
     const AstContext& ctx,
     StmtId block_id,
     ir::HirContext& hir_ctx,
-    diag::DiagnosticEngine& diagnostics)
+    diag::DiagnosticEngine& diagnostics,
+    const std::unordered_set<std::string>& type_names,
+    const std::unordered_map<std::string, bool>& enum_like)
 {
     if (block_id == kInvalidAstId) {
         return ir::kInvalidHirId;
@@ -262,7 +312,7 @@ static ir::HirStmtId lower_block(
     auto& block = ctx.get<BlockStmt>(block_id);
     std::vector<ir::HirStmtId> out;
     for (auto s : block.stmts) {
-        auto hs = lower_stmt(ctx, s, hir_ctx, diagnostics);
+        auto hs = lower_stmt(ctx, s, hir_ctx, diagnostics, type_names, enum_like);
         if (hs != ir::kInvalidHirId) {
             out.push_back(hs);
         }
@@ -274,7 +324,9 @@ static ir::HirStmtId lower_stmt(
     const AstContext& ctx,
     StmtId stmt,
     ir::HirContext& hir_ctx,
-    diag::DiagnosticEngine& diagnostics)
+    diag::DiagnosticEngine& diagnostics,
+    const std::unordered_set<std::string>& type_names,
+    const std::unordered_map<std::string, bool>& enum_like)
 {
     if (stmt == kInvalidAstId) {
         return ir::kInvalidHirId;
@@ -283,7 +335,7 @@ static ir::HirStmtId lower_stmt(
     const AstNode& node = ctx.node(stmt);
     switch (node.kind) {
         case NodeKind::BlockStmt: {
-            return lower_block(ctx, stmt, hir_ctx, diagnostics);
+            return lower_block(ctx, stmt, hir_ctx, diagnostics, type_names, enum_like);
         }
         case NodeKind::UnsafeStmt: {
             auto& s = static_cast<const UnsafeStmt&>(node);
@@ -295,7 +347,7 @@ static ir::HirStmtId lower_stmt(
                 return hir_ctx.make<ir::HirExprStmt>(call, s.span);
             };
             stmts.push_back(mk_call("unsafe_begin"));
-            auto inner_block = lower_block(ctx, s.body, hir_ctx, diagnostics);
+            auto inner_block = lower_block(ctx, s.body, hir_ctx, diagnostics, type_names, enum_like);
             if (inner_block != ir::kInvalidHirId) {
                 if (hir_ctx.node(inner_block).kind == ir::HirKind::Block) {
                     auto& b = hir_ctx.get<ir::HirBlock>(inner_block);
@@ -326,7 +378,7 @@ static ir::HirStmtId lower_stmt(
             return hir_ctx.make<ir::HirLetStmt>(
                 s.ident.name,
                 lower_type(ctx, s.type, hir_ctx),
-                lower_expr(ctx, s.initializer, hir_ctx, diagnostics),
+                lower_expr(ctx, s.initializer, hir_ctx, diagnostics, type_names, enum_like),
                 s.span);
         }
         case NodeKind::MakeStmt: {
@@ -334,14 +386,14 @@ static ir::HirStmtId lower_stmt(
             return hir_ctx.make<ir::HirLetStmt>(
                 s.ident.name,
                 lower_type(ctx, s.type, hir_ctx),
-                lower_expr(ctx, s.value, hir_ctx, diagnostics),
+                lower_expr(ctx, s.value, hir_ctx, diagnostics, type_names, enum_like),
                 s.span);
         }
         case NodeKind::SetStmt: {
             auto& s = static_cast<const SetStmt&>(node);
             std::vector<ir::HirExprId> args;
             args.push_back(hir_ctx.make<ir::HirVarExpr>(s.ident.name, s.ident.span));
-            args.push_back(lower_expr(ctx, s.value, hir_ctx, diagnostics));
+            args.push_back(lower_expr(ctx, s.value, hir_ctx, diagnostics, type_names, enum_like));
             auto callee = hir_ctx.make<ir::HirVarExpr>("set", s.span);
             auto call = hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), s.span);
             return hir_ctx.make<ir::HirExprStmt>(call, s.span);
@@ -349,13 +401,13 @@ static ir::HirStmtId lower_stmt(
         case NodeKind::GiveStmt: {
             auto& s = static_cast<const GiveStmt&>(node);
             return hir_ctx.make<ir::HirReturnStmt>(
-                lower_expr(ctx, s.value, hir_ctx, diagnostics),
+                lower_expr(ctx, s.value, hir_ctx, diagnostics, type_names, enum_like),
                 s.span);
         }
         case NodeKind::EmitStmt: {
             auto& s = static_cast<const EmitStmt&>(node);
             std::vector<ir::HirExprId> args;
-            args.push_back(lower_expr(ctx, s.value, hir_ctx, diagnostics));
+            args.push_back(lower_expr(ctx, s.value, hir_ctx, diagnostics, type_names, enum_like));
             auto callee = hir_ctx.make<ir::HirVarExpr>("emit", s.span);
             auto call = hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), s.span);
             return hir_ctx.make<ir::HirExprStmt>(call, s.span);
@@ -363,29 +415,29 @@ static ir::HirStmtId lower_stmt(
         case NodeKind::ExprStmt: {
             auto& s = static_cast<const ExprStmt&>(node);
             return hir_ctx.make<ir::HirExprStmt>(
-                lower_expr(ctx, s.expr, hir_ctx, diagnostics),
+                lower_expr(ctx, s.expr, hir_ctx, diagnostics, type_names, enum_like),
                 s.span);
         }
         case NodeKind::ReturnStmt: {
             auto& s = static_cast<const ReturnStmt&>(node);
             return hir_ctx.make<ir::HirReturnStmt>(
-                lower_expr(ctx, s.expr, hir_ctx, diagnostics),
+                lower_expr(ctx, s.expr, hir_ctx, diagnostics, type_names, enum_like),
                 s.span);
         }
         case NodeKind::IfStmt: {
             auto& s = static_cast<const IfStmt&>(node);
             return hir_ctx.make<ir::HirIf>(
-                lower_expr(ctx, s.cond, hir_ctx, diagnostics),
-                lower_block(ctx, s.then_block, hir_ctx, diagnostics),
+                lower_expr(ctx, s.cond, hir_ctx, diagnostics, type_names, enum_like),
+                lower_block(ctx, s.then_block, hir_ctx, diagnostics, type_names, enum_like),
                 s.else_block != kInvalidAstId
-                    ? lower_block(ctx, s.else_block, hir_ctx, diagnostics)
+                    ? lower_block(ctx, s.else_block, hir_ctx, diagnostics, type_names, enum_like)
                     : ir::kInvalidHirId,
                 s.span);
         }
         case NodeKind::LoopStmt: {
             auto& s = static_cast<const LoopStmt&>(node);
             return hir_ctx.make<ir::HirLoop>(
-                lower_block(ctx, s.body, hir_ctx, diagnostics),
+                lower_block(ctx, s.body, hir_ctx, diagnostics, type_names, enum_like),
                 s.span);
         }
         case NodeKind::SelectStmt: {
@@ -398,15 +450,15 @@ static ir::HirStmtId lower_stmt(
                 auto& w = static_cast<const WhenStmt&>(ctx.node(w_id));
                 whens.push_back(hir_ctx.make<ir::HirWhen>(
                     lower_pattern(ctx, w.pattern, hir_ctx, diagnostics),
-                    lower_block(ctx, w.block, hir_ctx, diagnostics),
+                    lower_block(ctx, w.block, hir_ctx, diagnostics, type_names, enum_like),
                     w.span));
             }
             ir::HirStmtId otherwise_block = ir::kInvalidHirId;
             if (s.otherwise_block != kInvalidAstId) {
-                otherwise_block = lower_block(ctx, s.otherwise_block, hir_ctx, diagnostics);
+                otherwise_block = lower_block(ctx, s.otherwise_block, hir_ctx, diagnostics, type_names, enum_like);
             }
             return hir_ctx.make<ir::HirSelect>(
-                lower_expr(ctx, s.expr, hir_ctx, diagnostics),
+                lower_expr(ctx, s.expr, hir_ctx, diagnostics, type_names, enum_like),
                 std::move(whens),
                 otherwise_block,
                 s.span);
@@ -415,7 +467,7 @@ static ir::HirStmtId lower_stmt(
             auto& w = static_cast<const WhenStmt&>(node);
             return hir_ctx.make<ir::HirWhen>(
                 lower_pattern(ctx, w.pattern, hir_ctx, diagnostics),
-                lower_block(ctx, w.block, hir_ctx, diagnostics),
+                lower_block(ctx, w.block, hir_ctx, diagnostics, type_names, enum_like),
                 w.span);
         }
         default:
@@ -436,6 +488,31 @@ ir::HirModuleId lower_to_hir(
 
     const auto& module = ctx.get<Module>(module_id);
     std::vector<ir::HirDeclId> decls;
+    std::unordered_set<std::string> type_names;
+    std::unordered_map<std::string, bool> enum_like;
+
+    for (auto decl_id : module.decls) {
+        if (decl_id == kInvalidAstId) {
+            continue;
+        }
+        const auto& decl = ctx.get<Decl>(decl_id);
+        if (decl.kind == NodeKind::TypeDecl) {
+            type_names.insert(static_cast<const TypeDecl&>(decl).name.name);
+        } else if (decl.kind == NodeKind::FormDecl) {
+            type_names.insert(static_cast<const FormDecl&>(decl).name.name);
+        } else if (decl.kind == NodeKind::PickDecl) {
+            const auto& p = static_cast<const PickDecl&>(decl);
+            type_names.insert(p.name.name);
+            bool is_enum = true;
+            for (const auto& c : p.cases) {
+                if (!c.fields.empty()) {
+                    is_enum = false;
+                    break;
+                }
+            }
+            enum_like[p.name.name] = is_enum;
+        }
+    }
 
     for (auto decl_id : module.decls) {
         if (decl_id == kInvalidAstId) {
@@ -454,7 +531,7 @@ ir::HirModuleId lower_to_hir(
                     std::move(params),
                     lower_type(ctx, d.return_type, hir_ctx),
                     d.body != kInvalidAstId
-                        ? lower_block(ctx, d.body, hir_ctx, diagnostics)
+                        ? lower_block(ctx, d.body, hir_ctx, diagnostics, type_names, enum_like)
                         : ir::kInvalidHirId,
                     d.span));
                 break;
@@ -469,7 +546,7 @@ ir::HirModuleId lower_to_hir(
                     d.name.name,
                     std::move(params),
                     ir::kInvalidHirId,
-                    lower_block(ctx, d.body, hir_ctx, diagnostics),
+                    lower_block(ctx, d.body, hir_ctx, diagnostics, type_names, enum_like),
                     d.span));
                 break;
             }
@@ -478,7 +555,7 @@ ir::HirModuleId lower_to_hir(
                 decls.push_back(hir_ctx.make<ir::HirConstDecl>(
                     d.name.name,
                     lower_type(ctx, d.type, hir_ctx),
-                    lower_expr(ctx, d.value, hir_ctx, diagnostics),
+                    lower_expr(ctx, d.value, hir_ctx, diagnostics, type_names, enum_like),
                     d.span));
                 break;
             }
@@ -487,7 +564,7 @@ ir::HirModuleId lower_to_hir(
                 decls.push_back(hir_ctx.make<ir::HirGlobalDecl>(
                     d.name.name,
                     lower_type(ctx, d.type, hir_ctx),
-                    lower_expr(ctx, d.value, hir_ctx, diagnostics),
+                    lower_expr(ctx, d.value, hir_ctx, diagnostics, type_names, enum_like),
                     d.is_mut,
                     d.span));
                 break;
@@ -499,7 +576,40 @@ ir::HirModuleId lower_to_hir(
                     d.name.name,
                     std::move(params),
                     ir::kInvalidHirId,
-                    lower_block(ctx, d.body, hir_ctx, diagnostics),
+                    lower_block(ctx, d.body, hir_ctx, diagnostics, type_names, enum_like),
+                    d.span));
+                break;
+            }
+            case NodeKind::FormDecl: {
+                auto& d = static_cast<const FormDecl&>(decl);
+                std::vector<ir::HirFieldDecl> fields;
+                for (const auto& f : d.fields) {
+                    fields.emplace_back(f.ident.name, lower_type(ctx, f.type, hir_ctx));
+                }
+                decls.push_back(hir_ctx.make<ir::HirFormDecl>(
+                    d.name.name,
+                    std::move(fields),
+                    d.span));
+                break;
+            }
+            case NodeKind::PickDecl: {
+                auto& d = static_cast<const PickDecl&>(decl);
+                std::vector<ir::HirPickCase> cases;
+                bool is_enum = true;
+                for (const auto& c : d.cases) {
+                    std::vector<ir::HirFieldDecl> fields;
+                    for (const auto& f : c.fields) {
+                        fields.emplace_back(f.ident.name, lower_type(ctx, f.type, hir_ctx));
+                    }
+                    if (!fields.empty()) {
+                        is_enum = false;
+                    }
+                    cases.emplace_back(c.ident.name, std::move(fields));
+                }
+                decls.push_back(hir_ctx.make<ir::HirPickDecl>(
+                    d.name.name,
+                    std::move(cases),
+                    is_enum,
                     d.span));
                 break;
             }

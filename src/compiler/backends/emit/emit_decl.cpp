@@ -53,8 +53,20 @@ void emit_function(
 
     for (size_t i = 0; i < fn.params.size(); ++i) {
         const auto& p = fn.params[i];
-        emit_type(os, p.type);
-        os << " " << p.name;
+        if (p.type && p.type->kind == ast::cpp::CppTypeKind::Function) {
+            emit_type(os, p.type->return_type);
+            os << " (*" << p.name << ")(";
+            for (size_t j = 0; j < p.type->param_types.size(); ++j) {
+                emit_type(os, p.type->param_types[j]);
+                if (j + 1 < p.type->param_types.size()) {
+                    os << ", ";
+                }
+            }
+            os << ")";
+        } else {
+            emit_type(os, p.type);
+            os << " " << p.name;
+        }
         if (i + 1 < fn.params.size())
             os << ", ";
     }
@@ -76,6 +88,48 @@ void emit_function(
 
     indent(os, indent_level);
     os << "}\n\n";
+}
+
+static void emit_function_decl(
+    std::ostream& os,
+    const ast::cpp::CppFunction& fn,
+    int indent_level
+) {
+    indent(os, indent_level);
+
+    if (fn.abi && *fn.abi == "C") {
+        os << "extern \"C\" ";
+    }
+
+    emit_type(os, fn.return_type);
+    os << " " << fn.name << "(";
+
+    for (size_t i = 0; i < fn.params.size(); ++i) {
+        const auto& p = fn.params[i];
+        if (p.type && p.type->kind == ast::cpp::CppTypeKind::Function) {
+            emit_type(os, p.type->return_type);
+            os << " (*" << p.name << ")(";
+            for (size_t j = 0; j < p.type->param_types.size(); ++j) {
+                emit_type(os, p.type->param_types[j]);
+                if (j + 1 < p.type->param_types.size()) {
+                    os << ", ";
+                }
+            }
+            os << ")";
+        } else {
+            emit_type(os, p.type);
+            os << " " << p.name;
+        }
+        if (i + 1 < fn.params.size())
+            os << ", ";
+    }
+
+    os << ")";
+    if (fn.link_name) {
+        os << " __asm__(\"" << *fn.link_name << "\")";
+    }
+
+    os << ";\n";
 }
 
 /* -------------------------------------------------
@@ -127,8 +181,20 @@ void emit_struct(
 
     for (const auto& f : s.fields) {
         indent(os, indent_level + 1);
-        emit_type(os, f.type);
-        os << " " << f.name << ";\n";
+        if (f.type && f.type->kind == ast::cpp::CppTypeKind::Function) {
+            emit_type(os, f.type->return_type);
+            os << " (*" << f.name << ")(";
+            for (size_t i = 0; i < f.type->param_types.size(); ++i) {
+                emit_type(os, f.type->param_types[i]);
+                if (i + 1 < f.type->param_types.size()) {
+                    os << ", ";
+                }
+            }
+            os << ");\n";
+        } else {
+            emit_type(os, f.type);
+            os << " " << f.name << ";\n";
+        }
     }
 
     indent(os, indent_level);
@@ -174,11 +240,17 @@ void emit_namespace(
     indent(os, indent_level);
     os << "namespace " << ns.name << " {\n\n";
 
+    for (const auto& e : ns.enums)
+        emit_enum(os, e, indent_level + 1);
+
     for (const auto& s : ns.structs)
         emit_struct(os, s, indent_level + 1);
 
-    for (const auto& e : ns.enums)
-        emit_enum(os, e, indent_level + 1);
+    if (!ns.functions.empty()) {
+        for (const auto& f : ns.functions)
+            emit_function_decl(os, f, indent_level + 1);
+        os << "\n";
+    }
 
     for (const auto& g : ns.globals)
         emit_global(os, g, indent_level + 1);
@@ -208,11 +280,17 @@ void emit_translation_unit(
     for (const auto& ns : tu.namespaces)
         emit_namespace(os, ns, 0);
 
+    for (const auto& e : tu.enums)
+        emit_enum(os, e, 0);
+
     for (const auto& s : tu.structs)
         emit_struct(os, s, 0);
 
-    for (const auto& e : tu.enums)
-        emit_enum(os, e, 0);
+    if (!tu.functions.empty()) {
+        for (const auto& f : tu.functions)
+            emit_function_decl(os, f, 0);
+        os << "\n";
+    }
 
     for (const auto& g : tu.globals)
         emit_global(os, g, 0);

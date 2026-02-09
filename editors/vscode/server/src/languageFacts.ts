@@ -6,12 +6,17 @@
 
 // 🟩 Mots-clés de base (réservés au niveau grammaire)
 export const KEYWORDS = [
-  "module", "import", "pub",
-  "struct", "enum", "union", "type",
-  "fn", "let", "mut", "const", "static",
+  "space", "module", "import", "use", "export", "pub",
+  "program", "service", "kernel", "driver", "tool", "scenario", "pipeline",
+  "struct", "enum", "union", "typedef", "type", "form",
+  "fn", "proc", "extern", "inline", "static",
+  "let", "mut", "const",
   "as", "where",
-  "if", "else", "while", "for", "in", "loop", "match",
-  "break", "continue", "return",
+  "if", "elif", "else", "while", "for", "in", "loop", "match",
+  "break", "continue", "return", "give",
+  "and", "or", "not",
+  "mod", "field", "set", "say", "do", "ret", "when", "scn", "prog",
+  "from", "to", "step",
 ] as const;
 export type Keyword = typeof KEYWORDS[number];
 
@@ -21,16 +26,17 @@ export type ContextualKeyword = typeof CONTEXTUAL_KEYWORDS[number];
 
 // 🟩 Littéraux
 export const BOOL_LITERALS = ["true", "false"] as const;
-export const NIL_LITERALS  = ["nil"] as const;
+export const NIL_LITERALS  = ["nil", "null"] as const;
 export type BoolLiteral = typeof BOOL_LITERALS[number];
 export type NilLiteral  = typeof NIL_LITERALS[number];
 
 // 🟩 Types primitifs (réservés côté type-lexer)
 export const PRIMITIVE_TYPES = [
-  "bool", "char", "str", "void",
-  "i8", "i16", "i32", "i64", "isize",
-  "u8", "u16", "u32", "u64", "usize",
-  "f32", "f64"
+  "bool", "char", "string", "str", "byte", "bytes",
+  "int", "uint", "float", "double", "void", "any", "unknown", "Unit",
+  "i8", "i16", "i32", "i64", "i128", "isize",
+  "u8", "u16", "u32", "u64", "u128", "usize",
+  "f16", "f32", "f64", "f128"
 ] as const;
 export type PrimitiveType = typeof PRIMITIVE_TYPES[number];
 

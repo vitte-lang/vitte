@@ -847,6 +847,14 @@ private:
 
 extern "C" {
 
+void vitte_builtin_trap(VitteString msg) {
+    if (msg.data) {
+        std::string s(msg.data, msg.len);
+        vitte::runtime::panic(s.c_str());
+    }
+    vitte::runtime::panic("trap");
+}
+
 void vitte_set_args(int argc, const char** argv) {
     g_cli_args.clear();
     if (!argv || argc <= 0) {

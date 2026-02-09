@@ -31,6 +31,14 @@ HirGenericType::HirGenericType(
       base_name(std::move(base)),
       type_args(std::move(args)) {}
 
+HirProcType::HirProcType(
+    std::vector<HirTypeId> params_in,
+    HirTypeId ret,
+    vitte::frontend::ast::SourceSpan sp)
+    : HirType(HirKind::ProcType, sp),
+      params(std::move(params_in)),
+      return_type(ret) {}
+
 // ------------------------------------------------------------
 // Expressions
 // ------------------------------------------------------------
@@ -74,6 +82,20 @@ HirCallExpr::HirCallExpr(
     : HirExpr(HirKind::CallExpr, sp),
       callee(c),
       args(std::move(a)) {}
+
+HirMemberExpr::HirMemberExpr(
+    HirExprId b,
+    std::string m,
+    bool ptr,
+    bool base_is_type_in,
+    bool type_is_enum_in,
+    vitte::frontend::ast::SourceSpan sp)
+    : HirExpr(HirKind::MemberExpr, sp),
+      base(b),
+      member(std::move(m)),
+      pointer(ptr),
+      base_is_type(base_is_type_in),
+      type_is_enum(type_is_enum_in) {}
 
 // ------------------------------------------------------------
 // Statements
@@ -186,6 +208,32 @@ HirGlobalDecl::HirGlobalDecl(
       value(v),
       is_mut(mut) {}
 
+HirFieldDecl::HirFieldDecl(std::string n, HirTypeId t)
+    : name(std::move(n)),
+      type(t) {}
+
+HirFormDecl::HirFormDecl(
+    std::string n,
+    std::vector<HirFieldDecl> f,
+    vitte::frontend::ast::SourceSpan sp)
+    : HirDecl(HirKind::FormDecl, sp),
+      name(std::move(n)),
+      fields(std::move(f)) {}
+
+HirPickCase::HirPickCase(std::string n, std::vector<HirFieldDecl> f)
+    : name(std::move(n)),
+      fields(std::move(f)) {}
+
+HirPickDecl::HirPickDecl(
+    std::string n,
+    std::vector<HirPickCase> c,
+    bool is_enum,
+    vitte::frontend::ast::SourceSpan sp)
+    : HirDecl(HirKind::PickDecl, sp),
+      name(std::move(n)),
+      cases(std::move(c)),
+      enum_like(is_enum) {}
+
 HirFnDecl::HirFnDecl(
     std::string n,
     std::vector<HirParam> p,
@@ -273,6 +321,9 @@ void dump(const HirContext& ctx, HirId id, std::ostream& os, std::size_t depth) 
     } else if (n.kind == HirKind::BinaryExpr) {
         auto& b = static_cast<const HirBinaryExpr&>(n);
         os << " " << to_string(b.op);
+    } else if (n.kind == HirKind::MemberExpr) {
+        auto& m = static_cast<const HirMemberExpr&>(n);
+        os << " " << (m.pointer ? "->" : ".") << m.member;
     } else if (n.kind == HirKind::PatternIdent) {
         auto& p = static_cast<const HirIdentPattern&>(n);
         os << " " << p.name;
@@ -382,6 +433,11 @@ void dump(const HirContext& ctx, HirId id, std::ostream& os, std::size_t depth) 
             }
             break;
         }
+        case HirKind::MemberExpr: {
+            auto& m = static_cast<const HirMemberExpr&>(n);
+            dump(ctx, m.base, os, depth + 1);
+            break;
+        }
         case HirKind::PatternCtor: {
             auto& p = static_cast<const HirCtorPattern&>(n);
             for (auto a : p.args) {
@@ -427,6 +483,9 @@ static void dump_compact_impl(const HirContext& ctx, HirId id, std::ostream& os)
     } else if (n.kind == HirKind::BinaryExpr) {
         auto& b = static_cast<const HirBinaryExpr&>(n);
         os << "(" << to_string(b.op) << ")";
+    } else if (n.kind == HirKind::MemberExpr) {
+        auto& m = static_cast<const HirMemberExpr&>(n);
+        os << "(" << (m.pointer ? "->" : ".") << m.member << ")";
     } else if (n.kind == HirKind::PatternIdent) {
         auto& p = static_cast<const HirIdentPattern&>(n);
         os << "(" << p.name << ")";
@@ -527,6 +586,11 @@ static void dump_compact_impl(const HirContext& ctx, HirId id, std::ostream& os)
             children.insert(children.end(), c.args.begin(), c.args.end());
             break;
         }
+        case HirKind::MemberExpr: {
+            auto& m = static_cast<const HirMemberExpr&>(n);
+            children.push_back(m.base);
+            break;
+        }
         case HirKind::PatternCtor: {
             auto& p = static_cast<const HirCtorPattern&>(n);
             children.insert(children.end(), p.args.begin(), p.args.end());
@@ -586,6 +650,10 @@ static void dump_json_impl(const HirContext& ctx, HirId id, std::ostream& os) {
     } else if (n.kind == HirKind::BinaryExpr) {
         auto& b = static_cast<const HirBinaryExpr&>(n);
         os << ",\"op\":\"" << to_string(b.op) << "\"";
+    } else if (n.kind == HirKind::MemberExpr) {
+        auto& m = static_cast<const HirMemberExpr&>(n);
+        os << ",\"member\":\"" << m.member << "\"";
+        os << ",\"pointer\":" << (m.pointer ? "true" : "false");
     } else if (n.kind == HirKind::PatternIdent) {
         auto& p = static_cast<const HirIdentPattern&>(n);
         os << ",\"name\":\"" << p.name << "\"";
@@ -681,6 +749,11 @@ static void dump_json_impl(const HirContext& ctx, HirId id, std::ostream& os) {
             children.insert(children.end(), c.args.begin(), c.args.end());
             break;
         }
+        case HirKind::MemberExpr: {
+            auto& m = static_cast<const HirMemberExpr&>(n);
+            children.push_back(m.base);
+            break;
+        }
         case HirKind::PatternCtor: {
             auto& p = static_cast<const HirCtorPattern&>(n);
             children.insert(children.end(), p.args.begin(), p.args.end());
@@ -723,6 +796,7 @@ const char* to_string(HirKind kind) {
         case HirKind::UnaryExpr: return "UnaryExpr";
         case HirKind::BinaryExpr: return "BinaryExpr";
         case HirKind::CallExpr: return "CallExpr";
+        case HirKind::MemberExpr: return "MemberExpr";
         case HirKind::LetStmt: return "LetStmt";
         case HirKind::ExprStmt: return "ExprStmt";
         case HirKind::ReturnStmt: return "ReturnStmt";
@@ -734,9 +808,12 @@ const char* to_string(HirKind kind) {
         case HirKind::FnDecl: return "FnDecl";
         case HirKind::ConstDecl: return "ConstDecl";
         case HirKind::GlobalDecl: return "GlobalDecl";
+        case HirKind::FormDecl: return "FormDecl";
+        case HirKind::PickDecl: return "PickDecl";
         case HirKind::Module: return "Module";
         case HirKind::PatternIdent: return "PatternIdent";
         case HirKind::PatternCtor: return "PatternCtor";
+        case HirKind::ProcType: return "ProcType";
         default:
             return "Unknown";
     }

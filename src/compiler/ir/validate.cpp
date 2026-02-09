@@ -65,6 +65,14 @@ static void validate_type(const HirContext& ctx,
             }
             return;
         }
+        case HirKind::ProcType: {
+            const auto& t = ctx.get<HirProcType>(type);
+            for (auto arg : t.params) {
+                validate_type(ctx, arg, diagnostics, t.span, true);
+            }
+            validate_type(ctx, t.return_type, diagnostics, t.span, false);
+            return;
+        }
         default:
             fdiag::error(diagnostics, fdiag::DiagId::UnexpectedHirTypeKind, node.span);
             return;
@@ -104,6 +112,11 @@ static void validate_expr(const HirContext& ctx,
             for (auto arg : e.args) {
                 validate_expr(ctx, arg, diagnostics, e.span, true);
             }
+            return;
+        }
+        case HirKind::MemberExpr: {
+            const auto& e = ctx.get<HirMemberExpr>(expr);
+            validate_expr(ctx, e.base, diagnostics, e.span, true);
             return;
         }
         default:
@@ -250,6 +263,9 @@ void validate_module(const HirContext& ctx,
             const auto& g = ctx.get<HirGlobalDecl>(decl_id);
             validate_type(ctx, g.type, diagnostics, g.span, false);
             validate_expr(ctx, g.value, diagnostics, g.span, true);
+            continue;
+        }
+        if (decl.kind == HirKind::FormDecl || decl.kind == HirKind::PickDecl) {
             continue;
         }
         if (decl.kind != HirKind::FnDecl) {

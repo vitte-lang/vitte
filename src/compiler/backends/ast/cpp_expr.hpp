@@ -86,10 +86,14 @@ struct CppBinary : CppExpr {
  * ---------------------------------------- */
 struct CppCall : CppExpr {
     std::string callee;
+    std::unique_ptr<CppExpr> callee_expr;
     std::vector<std::unique_ptr<CppExpr>> args;
 
     explicit CppCall(std::string c)
         : CppExpr(Kind::Call), callee(std::move(c)) {}
+
+    explicit CppCall(std::unique_ptr<CppExpr> cexpr)
+        : CppExpr(Kind::Call), callee_expr(std::move(cexpr)) {}
 };
 
 /* ----------------------------------------

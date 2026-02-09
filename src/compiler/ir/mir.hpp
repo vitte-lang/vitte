@@ -27,6 +27,9 @@ struct MirBasicBlock;
 struct MirFunction;
 struct MirModule;
 struct MirGlobal;
+struct MirStructDecl;
+struct MirEnumDecl;
+struct MirPickDecl;
 
 // ------------------------------------------------------------
 // Pointer aliases
@@ -52,15 +55,18 @@ using MirBlockId = std::size_t;
 enum class MirKind {
     // types
     NamedType,
+    ProcType,
 
     // values
     Local,
     Const,
+    Member,
 
     // instructions
     Assign,
     BinaryOp,
     Call,
+    CallIndirect,
     Asm,
     UnsafeBegin,
     UnsafeEnd,
@@ -100,6 +106,15 @@ struct MirNamedType : MirType {
                  vitte::frontend::ast::SourceSpan span);
 };
 
+struct MirProcType : MirType {
+    std::vector<std::string> params;
+    std::string ret;
+
+    MirProcType(std::vector<std::string> params,
+                std::string ret,
+                vitte::frontend::ast::SourceSpan span);
+};
+
 // ------------------------------------------------------------
 // Values
 // ------------------------------------------------------------
@@ -131,6 +146,17 @@ struct MirConst : MirValue {
     MirConst(MirConstKind kind,
              std::string value,
              vitte::frontend::ast::SourceSpan span);
+};
+
+struct MirMember : MirValue {
+    MirValuePtr base;
+    std::string member;
+    bool pointer;
+
+    MirMember(MirValuePtr base,
+              std::string member,
+              bool pointer,
+              vitte::frontend::ast::SourceSpan span);
 };
 
 // ------------------------------------------------------------
@@ -188,6 +214,17 @@ struct MirCall : MirInstr {
             std::vector<MirValuePtr> args,
             MirLocalPtr result,
             vitte::frontend::ast::SourceSpan span);
+};
+
+struct MirCallIndirect : MirInstr {
+    MirValuePtr callee;
+    std::vector<MirValuePtr> args;
+    MirLocalPtr result; // may be null
+
+    MirCallIndirect(MirValuePtr callee,
+                    std::vector<MirValuePtr> args,
+                    MirLocalPtr result,
+                    vitte::frontend::ast::SourceSpan span);
 };
 
 struct MirAsm : MirInstr {
@@ -311,15 +348,73 @@ struct MirGlobal {
 };
 
 // ------------------------------------------------------------
+// Type declarations
+// ------------------------------------------------------------
+
+struct MirFieldType {
+    enum class Kind {
+        Named,
+        Proc
+    };
+
+    Kind kind = Kind::Named;
+    std::string name;
+    std::vector<std::string> params;
+    std::string ret;
+};
+
+struct MirField {
+    std::string name;
+    MirFieldType type;
+
+    MirField(std::string name, MirFieldType type);
+};
+
+struct MirStructDecl {
+    std::string name;
+    std::vector<MirField> fields;
+
+    MirStructDecl(std::string name, std::vector<MirField> fields);
+};
+
+struct MirEnumDecl {
+    std::string name;
+    std::vector<std::string> items;
+
+    MirEnumDecl(std::string name, std::vector<std::string> items);
+};
+
+struct MirPickCase {
+    std::string name;
+    std::vector<MirField> fields;
+
+    MirPickCase(std::string name, std::vector<MirField> fields);
+};
+
+struct MirPickDecl {
+    std::string name;
+    bool enum_like = false;
+    std::vector<MirPickCase> cases;
+
+    MirPickDecl(std::string name, bool enum_like, std::vector<MirPickCase> cases);
+};
+
+// ------------------------------------------------------------
 // Module
 // ------------------------------------------------------------
 
 struct MirModule {
+    std::vector<MirStructDecl> structs;
+    std::vector<MirEnumDecl> enums;
+    std::vector<MirPickDecl> picks;
     std::vector<MirGlobal> globals;
     std::vector<MirFunction> functions;
     vitte::frontend::ast::SourceSpan span;
 
-    MirModule(std::vector<MirGlobal> globals,
+    MirModule(std::vector<MirStructDecl> structs,
+              std::vector<MirEnumDecl> enums,
+              std::vector<MirPickDecl> picks,
+              std::vector<MirGlobal> globals,
               std::vector<MirFunction> functions,
               vitte::frontend::ast::SourceSpan span);
 };

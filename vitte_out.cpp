@@ -7,13 +7,841 @@
 #include "vitte_runtime.hpp"
 #include <cstddef>
 
-extern "C" int32_t vitte__main() {
-    bb_0_0:
-    return 0;
+enum class std__core__cmp__Ordering {
+    Less,
+    Equal,
+    Greater
+};
+
+struct std__core__cmp__Eq {
+    bool (*eq)(void*, void*);
+};
+
+struct std__core__cmp__Ord {
+    std__core__cmp__Ordering (*cmp)(void*, void*);
+};
+
+struct std__core__option__Option {
+    uint8_t __tag;
+    void* value;
+};
+
+struct Result {
+    uint8_t __tag;
+    void* value;
+    void* error;
+};
+
+std__core__option__Option vitte__std__core__option__Option__Some(void* value);
+std__core__option__Option vitte__std__core__option__Option__None();
+Result vitte__Result__Ok(void* value);
+Result vitte__Result__Err(void* error);
+bool vitte__std__core__cmp__is_eq(void* a, void* b, std__core__cmp__Eq impl);
+bool vitte__std__core__cmp__is_ne(void* a, void* b, std__core__cmp__Eq impl);
+bool vitte__std__core__cmp__is_lt(void* a, void* b, std__core__cmp__Ord impl);
+bool vitte__std__core__cmp__is_le(void* a, void* b, std__core__cmp__Ord impl);
+bool vitte__std__core__cmp__is_gt(void* a, void* b, std__core__cmp__Ord impl);
+bool vitte__std__core__cmp__is_ge(void* a, void* b, std__core__cmp__Ord impl);
+void* vitte__std__core__cmp__min(void* a, void* b, std__core__cmp__Ord impl);
+void* vitte__std__core__cmp__max(void* a, void* b, std__core__cmp__Ord impl);
+void* vitte__std__core__cmp__clamp(void* value, void* low, void* high, std__core__cmp__Ord impl);
+std__core__option__Option vitte__std__core__option__some(void* value);
+std__core__option__Option vitte__std__core__option__none();
+bool vitte__std__core__option__is_some(std__core__option__Option opt);
+bool vitte__std__core__option__is_none(std__core__option__Option opt);
+void* vitte__std__core__option__unwrap(std__core__option__Option opt);
+void* vitte__std__core__option__unwrap_or(std__core__option__Option opt, void* default_);
+std__core__option__Option vitte__std__core__option__map(std__core__option__Option opt, void* (*f)(void*));
+void* vitte__std__core__option__map_or(std__core__option__Option opt, void* default_, void* (*f)(void*));
+std__core__option__Option vitte__std__core__option__and_then(std__core__option__Option opt, std__core__option__Option (*f)(void*));
+std__core__option__Option vitte__std__core__option__or_else(std__core__option__Option opt, std__core__option__Option (*f)());
+bool vitte__std__core__option__eq(std__core__option__Option a, std__core__option__Option b, std__core__cmp__Eq impl);
+void vitte__std__core__panic__panic(VitteString msg);
+void vitte__std__core__panic__abort();
+void vitte__std__core__panic__assert(bool cond);
+void vitte__std__core__panic__assert_msg(bool cond, VitteString msg);
+void vitte__std__core__panic__unreachable();
+void* vitte__std__core__panic__expect(std__core__option__Option opt, VitteString msg);
+void* vitte__std__core__panic__unwrap(std__core__option__Option opt);
+Result vitte__ok(void* value);
+Result vitte__err(void* error);
+bool vitte__is_ok(Result res);
+bool vitte__is_err(Result res);
+void* vitte__unwrap(Result res);
+void* vitte__unwrap_or(Result res, void* default_);
+void* vitte__unwrap_err(Result res);
+Result vitte__map(Result res, void* (*f)(void*));
+Result vitte__map_err(Result res, void* (*f)(void*));
+Result vitte__and_then(Result res, Result (*f)(void*));
+Result vitte__or_else(Result res, Result (*f)(void*));
+std__core__option__Option vitte__ok_option(Result res);
+std__core__option__Option vitte__err_option(Result res);
+
+const std__core__option__Option std__core__option__Option__None__value = vitte__std__core__option__Option__None();
+std__core__option__Option vitte__std__core__option__Option__Some(void* value) {
+    std__core__option__Option _v;
+    _v.__tag = 0;
+    _v.value = value;
+    return _v;
 }
 
-int32_t main(int32_t argc, const char** argv) {
-    vitte_set_args(argc, argv);
-    return vitte__main();
+std__core__option__Option vitte__std__core__option__Option__None() {
+    std__core__option__Option _v;
+    _v.__tag = 1;
+    return _v;
+}
+
+Result vitte__Result__Ok(void* value) {
+    Result _v;
+    _v.__tag = 0;
+    _v.value = value;
+    return _v;
+}
+
+Result vitte__Result__Err(void* error) {
+    Result _v;
+    _v.__tag = 1;
+    _v.error = error;
+    return _v;
+}
+
+bool vitte__std__core__cmp__is_eq(void* a, void* b, std__core__cmp__Eq impl) {
+    bool _t0;
+    bb_0_0:
+    _t0 = impl.eq(a, b);
+    return _t0;
+}
+
+bool vitte__std__core__cmp__is_ne(void* a, void* b, std__core__cmp__Eq impl) {
+    bool _t0;
+    int32_t _t1;
+    bb_1_0:
+    _t0 = impl.eq(a, b);
+    _t1 = (_t0 == 0);
+    return _t1;
+}
+
+bool vitte__std__core__cmp__is_lt(void* a, void* b, std__core__cmp__Ord impl) {
+    std__core__cmp__Ordering _t0;
+    bool _t1;
+    bb_2_0:
+    _t0 = impl.cmp(a, b);
+    _t1 = (_t0 == std__core__cmp__Ordering::Less);
+    return _t1;
+}
+
+bool vitte__std__core__cmp__is_le(void* a, void* b, std__core__cmp__Ord impl) {
+    std__core__cmp__Ordering _t0;
+    std__core__cmp__Ordering o;
+    bool _t1;
+    bool _t2;
+    bool _t3;
+    bb_3_0:
+    _t0 = impl.cmp(a, b);
+    o = _t0;
+    _t1 = (o == std__core__cmp__Ordering::Less);
+    _t2 = (o == std__core__cmp__Ordering::Equal);
+    _t3 = (_t1 || _t2);
+    return _t3;
+}
+
+bool vitte__std__core__cmp__is_gt(void* a, void* b, std__core__cmp__Ord impl) {
+    std__core__cmp__Ordering _t0;
+    bool _t1;
+    bb_4_0:
+    _t0 = impl.cmp(a, b);
+    _t1 = (_t0 == std__core__cmp__Ordering::Greater);
+    return _t1;
+}
+
+bool vitte__std__core__cmp__is_ge(void* a, void* b, std__core__cmp__Ord impl) {
+    std__core__cmp__Ordering _t0;
+    std__core__cmp__Ordering o;
+    bool _t1;
+    bool _t2;
+    bool _t3;
+    bb_5_0:
+    _t0 = impl.cmp(a, b);
+    o = _t0;
+    _t1 = (o == std__core__cmp__Ordering::Greater);
+    _t2 = (o == std__core__cmp__Ordering::Equal);
+    _t3 = (_t1 || _t2);
+    return _t3;
+}
+
+void* vitte__std__core__cmp__min(void* a, void* b, std__core__cmp__Ord impl) {
+    std__core__cmp__Ordering _t0;
+    bool _t1;
+    bb_6_0:
+    _t0 = impl.cmp(a, b);
+    _t1 = (_t0 == std__core__cmp__Ordering::Greater);
+    if (_t1) {
+        goto bb_6_1;
+    } else {
+        goto bb_6_2;
+    }
+    bb_6_1:
+    return b;
+    bb_6_2:
+    goto bb_6_3;
+    bb_6_3:
+    return a;
+}
+
+void* vitte__std__core__cmp__max(void* a, void* b, std__core__cmp__Ord impl) {
+    std__core__cmp__Ordering _t0;
+    bool _t1;
+    bb_7_0:
+    _t0 = impl.cmp(a, b);
+    _t1 = (_t0 == std__core__cmp__Ordering::Less);
+    if (_t1) {
+        goto bb_7_1;
+    } else {
+        goto bb_7_2;
+    }
+    bb_7_1:
+    return b;
+    bb_7_2:
+    goto bb_7_3;
+    bb_7_3:
+    return a;
+}
+
+void* vitte__std__core__cmp__clamp(void* value, void* low, void* high, std__core__cmp__Ord impl) {
+    std__core__cmp__Ordering _t0;
+    bool _t1;
+    std__core__cmp__Ordering _t2;
+    bool _t3;
+    bb_8_0:
+    _t0 = impl.cmp(value, low);
+    _t1 = (_t0 == std__core__cmp__Ordering::Less);
+    if (_t1) {
+        goto bb_8_1;
+    } else {
+        goto bb_8_2;
+    }
+    bb_8_1:
+    return low;
+    bb_8_2:
+    goto bb_8_3;
+    bb_8_3:
+    _t2 = impl.cmp(value, high);
+    _t3 = (_t2 == std__core__cmp__Ordering::Greater);
+    if (_t3) {
+        goto bb_8_4;
+    } else {
+        goto bb_8_5;
+    }
+    bb_8_4:
+    return high;
+    bb_8_5:
+    goto bb_8_6;
+    bb_8_6:
+    return value;
+}
+
+std__core__option__Option vitte__std__core__option__some(void* value) {
+    std__core__option__Option _t0;
+    bb_9_0:
+    _t0 = vitte__std__core__option__Option__Some(value);
+    return _t0;
+}
+
+std__core__option__Option vitte__std__core__option__none() {
+    bb_10_0:
+    return std__core__option__Option__None__value;
+}
+
+bool vitte__std__core__option__is_some(std__core__option__Option opt) {
+    std__core__option__Option _t0;
+    bool _t1;
+    bb_11_0:
+    _t0 = opt;
+    goto bb_11_2;
+    bb_11_1:
+    return false;
+    bb_11_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_11_3;
+    } else {
+        goto bb_11_4;
+    }
+    bb_11_3:
+    return true;
+    bb_11_4:
+    goto bb_11_1;
+}
+
+bool vitte__std__core__option__is_none(std__core__option__Option opt) {
+    std__core__option__Option _t0;
+    bool _t1;
+    bb_12_0:
+    _t0 = opt;
+    goto bb_12_2;
+    bb_12_1:
+    return false;
+    bb_12_2:
+    _t1 = (_t0.__tag == 1);
+    if (_t1) {
+        goto bb_12_3;
+    } else {
+        goto bb_12_4;
+    }
+    bb_12_3:
+    return true;
+    bb_12_4:
+    goto bb_12_1;
+}
+
+void* vitte__std__core__option__unwrap(std__core__option__Option opt) {
+    std__core__option__Option _t0;
+    bool _t1;
+    bb_13_0:
+    _t0 = opt;
+    goto bb_13_2;
+    bb_13_1:
+    vitte_builtin_trap(VitteString{"called unwrap on Option.None", 28});
+    bb_13_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_13_3;
+    } else {
+        goto bb_13_4;
+    }
+    bb_13_3:
+    return opt.value;
+    bb_13_4:
+    goto bb_13_1;
+}
+
+void* vitte__std__core__option__unwrap_or(std__core__option__Option opt, void* default_) {
+    std__core__option__Option _t0;
+    bool _t1;
+    bb_14_0:
+    _t0 = opt;
+    goto bb_14_2;
+    bb_14_1:
+    return default_;
+    bb_14_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_14_3;
+    } else {
+        goto bb_14_4;
+    }
+    bb_14_3:
+    return opt.value;
+    bb_14_4:
+    goto bb_14_1;
+}
+
+std__core__option__Option vitte__std__core__option__map(std__core__option__Option opt, void* (*f)(void*)) {
+    std__core__option__Option _t0;
+    bool _t1;
+    void* _t2;
+    std__core__option__Option _t3;
+    bb_15_0:
+    _t0 = opt;
+    goto bb_15_2;
+    bb_15_1:
+    return std__core__option__Option__None__value;
+    bb_15_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_15_3;
+    } else {
+        goto bb_15_4;
+    }
+    bb_15_3:
+    _t2 = f(opt.value);
+    _t3 = vitte__std__core__option__Option__Some(_t2);
+    return _t3;
+    bb_15_4:
+    goto bb_15_1;
+}
+
+void* vitte__std__core__option__map_or(std__core__option__Option opt, void* default_, void* (*f)(void*)) {
+    std__core__option__Option _t0;
+    bool _t1;
+    void* _t2;
+    bb_16_0:
+    _t0 = opt;
+    goto bb_16_2;
+    bb_16_1:
+    return default_;
+    bb_16_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_16_3;
+    } else {
+        goto bb_16_4;
+    }
+    bb_16_3:
+    _t2 = f(opt.value);
+    return _t2;
+    bb_16_4:
+    goto bb_16_1;
+}
+
+std__core__option__Option vitte__std__core__option__and_then(std__core__option__Option opt, std__core__option__Option (*f)(void*)) {
+    std__core__option__Option _t0;
+    bool _t1;
+    std__core__option__Option _t2;
+    bb_17_0:
+    _t0 = opt;
+    goto bb_17_2;
+    bb_17_1:
+    return std__core__option__Option__None__value;
+    bb_17_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_17_3;
+    } else {
+        goto bb_17_4;
+    }
+    bb_17_3:
+    _t2 = f(opt.value);
+    return _t2;
+    bb_17_4:
+    goto bb_17_1;
+}
+
+std__core__option__Option vitte__std__core__option__or_else(std__core__option__Option opt, std__core__option__Option (*f)()) {
+    std__core__option__Option _t0;
+    bool _t1;
+    std__core__option__Option _t2;
+    bb_18_0:
+    _t0 = opt;
+    goto bb_18_2;
+    bb_18_1:
+    _t2 = f();
+    return _t2;
+    bb_18_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_18_3;
+    } else {
+        goto bb_18_4;
+    }
+    bb_18_3:
+    return opt;
+    bb_18_4:
+    goto bb_18_1;
+}
+
+bool vitte__std__core__option__eq(std__core__option__Option a, std__core__option__Option b, std__core__cmp__Eq impl) {
+    std__core__option__Option _t0;
+    bool _t1;
+    std__core__option__Option _t2;
+    bool _t3;
+    bool _t4;
+    std__core__option__Option _t5;
+    bool _t6;
+    bb_19_0:
+    _t0 = a;
+    goto bb_19_2;
+    bb_19_1:
+    _t5 = b;
+    goto bb_19_10;
+    bb_19_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_19_3;
+    } else {
+        goto bb_19_4;
+    }
+    bb_19_3:
+    _t2 = b;
+    goto bb_19_6;
+    bb_19_4:
+    goto bb_19_1;
+    bb_19_5:
+    return false;
+    bb_19_6:
+    _t3 = (_t2.__tag == 0);
+    if (_t3) {
+        goto bb_19_7;
+    } else {
+        goto bb_19_8;
+    }
+    bb_19_7:
+    _t4 = impl.eq(a.value, b.value);
+    return _t4;
+    bb_19_8:
+    goto bb_19_5;
+    bb_19_9:
+    return false;
+    bb_19_10:
+    _t6 = (_t5.__tag == 1);
+    if (_t6) {
+        goto bb_19_11;
+    } else {
+        goto bb_19_12;
+    }
+    bb_19_11:
+    return true;
+    bb_19_12:
+    goto bb_19_9;
+}
+
+void vitte__std__core__panic__panic(VitteString msg) {
+    bb_20_0:
+    vitte_builtin_trap(msg);
+}
+
+void vitte__std__core__panic__abort() {
+    bb_21_0:
+    vitte_builtin_trap(VitteString{"abort", 5});
+}
+
+void vitte__std__core__panic__assert(bool cond) {
+    int32_t _t0;
+    bb_22_0:
+    _t0 = (cond == 0);
+    if (_t0) {
+        goto bb_22_1;
+    } else {
+        goto bb_22_2;
+    }
+    bb_22_1:
+    vitte__std__core__panic__panic(VitteString{"assertion failed", 16});
+    goto bb_22_3;
+    bb_22_2:
+    goto bb_22_3;
+    bb_22_3:
+}
+
+void vitte__std__core__panic__assert_msg(bool cond, VitteString msg) {
+    int32_t _t0;
+    bb_23_0:
+    _t0 = (cond == 0);
+    if (_t0) {
+        goto bb_23_1;
+    } else {
+        goto bb_23_2;
+    }
+    bb_23_1:
+    vitte__std__core__panic__panic(msg);
+    goto bb_23_3;
+    bb_23_2:
+    goto bb_23_3;
+    bb_23_3:
+}
+
+void vitte__std__core__panic__unreachable() {
+    bb_24_0:
+    vitte_builtin_trap(VitteString{"unreachable", 11});
+}
+
+void* vitte__std__core__panic__expect(std__core__option__Option opt, VitteString msg) {
+    std__core__option__Option _t0;
+    bool _t1;
+    bb_25_0:
+    _t0 = opt;
+    goto bb_25_2;
+    bb_25_1:
+    vitte__std__core__panic__panic(msg);
+    bb_25_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_25_3;
+    } else {
+        goto bb_25_4;
+    }
+    bb_25_3:
+    return opt.value;
+    bb_25_4:
+    goto bb_25_1;
+}
+
+void* vitte__std__core__panic__unwrap(std__core__option__Option opt) {
+    std__core__option__Option _t0;
+    bool _t1;
+    bb_26_0:
+    _t0 = opt;
+    goto bb_26_2;
+    bb_26_1:
+    vitte__std__core__panic__panic(VitteString{"called unwrap on None", 21});
+    bb_26_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_26_3;
+    } else {
+        goto bb_26_4;
+    }
+    bb_26_3:
+    return opt.value;
+    bb_26_4:
+    goto bb_26_1;
+}
+
+Result vitte__ok(void* value) {
+    Result _t0;
+    bb_27_0:
+    _t0 = vitte__Result__Ok(value);
+    return _t0;
+}
+
+Result vitte__err(void* error) {
+    Result _t0;
+    bb_28_0:
+    _t0 = vitte__Result__Err(error);
+    return _t0;
+}
+
+bool vitte__is_ok(Result res) {
+    Result _t0;
+    bool _t1;
+    bb_29_0:
+    _t0 = res;
+    goto bb_29_2;
+    bb_29_1:
+    return false;
+    bb_29_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_29_3;
+    } else {
+        goto bb_29_4;
+    }
+    bb_29_3:
+    return true;
+    bb_29_4:
+    goto bb_29_1;
+}
+
+bool vitte__is_err(Result res) {
+    Result _t0;
+    bool _t1;
+    bb_30_0:
+    _t0 = res;
+    goto bb_30_2;
+    bb_30_1:
+    return false;
+    bb_30_2:
+    _t1 = (_t0.__tag == 1);
+    if (_t1) {
+        goto bb_30_3;
+    } else {
+        goto bb_30_4;
+    }
+    bb_30_3:
+    return true;
+    bb_30_4:
+    goto bb_30_1;
+}
+
+void* vitte__unwrap(Result res) {
+    Result _t0;
+    bool _t1;
+    bb_31_0:
+    _t0 = res;
+    goto bb_31_2;
+    bb_31_1:
+    vitte__std__core__panic__panic(VitteString{"called unwrap on Result.Err", 27});
+    bb_31_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_31_3;
+    } else {
+        goto bb_31_4;
+    }
+    bb_31_3:
+    return res.value;
+    bb_31_4:
+    goto bb_31_1;
+}
+
+void* vitte__unwrap_or(Result res, void* default_) {
+    Result _t0;
+    bool _t1;
+    bb_32_0:
+    _t0 = res;
+    goto bb_32_2;
+    bb_32_1:
+    return default_;
+    bb_32_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_32_3;
+    } else {
+        goto bb_32_4;
+    }
+    bb_32_3:
+    return res.value;
+    bb_32_4:
+    goto bb_32_1;
+}
+
+void* vitte__unwrap_err(Result res) {
+    Result _t0;
+    bool _t1;
+    bb_33_0:
+    _t0 = res;
+    goto bb_33_2;
+    bb_33_1:
+    vitte__std__core__panic__panic(VitteString{"called unwrap_err on Result.Ok", 30});
+    bb_33_2:
+    _t1 = (_t0.__tag == 1);
+    if (_t1) {
+        goto bb_33_3;
+    } else {
+        goto bb_33_4;
+    }
+    bb_33_3:
+    return res.error;
+    bb_33_4:
+    goto bb_33_1;
+}
+
+Result vitte__map(Result res, void* (*f)(void*)) {
+    Result _t0;
+    bool _t1;
+    void* _t2;
+    Result _t3;
+    Result _t4;
+    bb_34_0:
+    _t0 = res;
+    goto bb_34_2;
+    bb_34_1:
+    _t4 = vitte__Result__Err(res.error);
+    return _t4;
+    bb_34_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_34_3;
+    } else {
+        goto bb_34_4;
+    }
+    bb_34_3:
+    _t2 = f(res.value);
+    _t3 = vitte__Result__Ok(_t2);
+    return _t3;
+    bb_34_4:
+    goto bb_34_1;
+}
+
+Result vitte__map_err(Result res, void* (*f)(void*)) {
+    Result _t0;
+    bool _t1;
+    void* _t2;
+    Result _t3;
+    Result _t4;
+    bb_35_0:
+    _t0 = res;
+    goto bb_35_2;
+    bb_35_1:
+    _t4 = vitte__Result__Ok(res.value);
+    return _t4;
+    bb_35_2:
+    _t1 = (_t0.__tag == 1);
+    if (_t1) {
+        goto bb_35_3;
+    } else {
+        goto bb_35_4;
+    }
+    bb_35_3:
+    _t2 = f(res.error);
+    _t3 = vitte__Result__Err(_t2);
+    return _t3;
+    bb_35_4:
+    goto bb_35_1;
+}
+
+Result vitte__and_then(Result res, Result (*f)(void*)) {
+    Result _t0;
+    bool _t1;
+    Result _t2;
+    Result _t3;
+    bb_36_0:
+    _t0 = res;
+    goto bb_36_2;
+    bb_36_1:
+    _t3 = vitte__Result__Err(res.error);
+    return _t3;
+    bb_36_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_36_3;
+    } else {
+        goto bb_36_4;
+    }
+    bb_36_3:
+    _t2 = f(res.value);
+    return _t2;
+    bb_36_4:
+    goto bb_36_1;
+}
+
+Result vitte__or_else(Result res, Result (*f)(void*)) {
+    Result _t0;
+    bool _t1;
+    Result _t2;
+    Result _t3;
+    bb_37_0:
+    _t0 = res;
+    goto bb_37_2;
+    bb_37_1:
+    _t3 = vitte__Result__Ok(res.value);
+    return _t3;
+    bb_37_2:
+    _t1 = (_t0.__tag == 1);
+    if (_t1) {
+        goto bb_37_3;
+    } else {
+        goto bb_37_4;
+    }
+    bb_37_3:
+    _t2 = f(res.error);
+    return _t2;
+    bb_37_4:
+    goto bb_37_1;
+}
+
+std__core__option__Option vitte__ok_option(Result res) {
+    Result _t0;
+    bool _t1;
+    std__core__option__Option _t2;
+    bb_38_0:
+    _t0 = res;
+    goto bb_38_2;
+    bb_38_1:
+    return std__core__option__Option__None__value;
+    bb_38_2:
+    _t1 = (_t0.__tag == 0);
+    if (_t1) {
+        goto bb_38_3;
+    } else {
+        goto bb_38_4;
+    }
+    bb_38_3:
+    _t2 = vitte__std__core__option__Option__Some(res.value);
+    return _t2;
+    bb_38_4:
+    goto bb_38_1;
+}
+
+std__core__option__Option vitte__err_option(Result res) {
+    Result _t0;
+    bool _t1;
+    std__core__option__Option _t2;
+    bb_39_0:
+    _t0 = res;
+    goto bb_39_2;
+    bb_39_1:
+    return std__core__option__Option__None__value;
+    bb_39_2:
+    _t1 = (_t0.__tag == 1);
+    if (_t1) {
+        goto bb_39_3;
+    } else {
+        goto bb_39_4;
+    }
+    bb_39_3:
+    _t2 = vitte__std__core__option__Option__Some(res.error);
+    return _t2;
+    bb_39_4:
+    goto bb_39_1;
 }
 

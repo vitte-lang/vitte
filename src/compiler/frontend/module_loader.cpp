@@ -124,6 +124,15 @@ static void qualify_type(AstContext& ctx,
     switch (node.kind) {
         case NodeKind::NamedType: {
             auto& t = static_cast<NamedType&>(node);
+            auto dot = t.ident.name.find('.');
+            if (dot != std::string::npos) {
+                std::string base = t.ident.name.substr(0, dot);
+                std::string member = t.ident.name.substr(dot + 1);
+                if (locals.count(base)) {
+                    t.ident.name = prefix + base + "." + member;
+                }
+                break;
+            }
             if (locals.count(t.ident.name)) {
                 t.ident.name = prefix + t.ident.name;
             }
@@ -131,7 +140,14 @@ static void qualify_type(AstContext& ctx,
         }
         case NodeKind::GenericType: {
             auto& t = static_cast<GenericType&>(node);
-            if (locals.count(t.base_ident.name)) {
+            auto dot = t.base_ident.name.find('.');
+            if (dot != std::string::npos) {
+                std::string base = t.base_ident.name.substr(0, dot);
+                std::string member = t.base_ident.name.substr(dot + 1);
+                if (locals.count(base)) {
+                    t.base_ident.name = prefix + base + "." + member;
+                }
+            } else if (locals.count(t.base_ident.name)) {
                 t.base_ident.name = prefix + t.base_ident.name;
             }
             for (auto& arg : t.type_args) {
@@ -157,6 +173,29 @@ static void qualify_type(AstContext& ctx,
             qualify_type(ctx, t.return_type, locals, prefix);
             break;
         }
+        default:
+            break;
+    }
+}
+
+static void qualify_pattern(AstContext& ctx,
+                            PatternId& pattern_id,
+                            const std::unordered_set<std::string>& locals,
+                            const std::string& prefix) {
+    if (pattern_id == kInvalidAstId) {
+        return;
+    }
+    auto& node = ctx.node(pattern_id);
+    switch (node.kind) {
+        case NodeKind::CtorPattern: {
+            auto& p = static_cast<CtorPattern&>(node);
+            qualify_type(ctx, p.type, locals, prefix);
+            for (auto& arg : p.args) {
+                qualify_pattern(ctx, arg, locals, prefix);
+            }
+            break;
+        }
+        case NodeKind::IdentPattern:
         default:
             break;
     }
@@ -241,6 +280,7 @@ static void qualify_stmt(AstContext& ctx,
         }
         case NodeKind::WhenStmt: {
             auto& s = static_cast<WhenStmt&>(node);
+            qualify_pattern(ctx, s.pattern, locals, prefix);
             qualify_stmt(ctx, s.block, locals, prefix);
             break;
         }
@@ -572,6 +612,40 @@ static void rewrite_type_for_alias(
     const std::unordered_map<std::string, std::unordered_set<std::string>>& exports,
     const std::unordered_set<std::string>& glob_aliases,
     const std::unordered_map<std::string, std::string>& symbol_imports
+);
+
+static void rewrite_pattern_for_alias(
+    AstContext& ctx,
+    PatternId& pattern_id,
+    const std::unordered_map<std::string, std::string>& alias_to_prefix,
+    const std::unordered_map<std::string, std::unordered_set<std::string>>& exports,
+    const std::unordered_set<std::string>& glob_aliases,
+    const std::unordered_map<std::string, std::string>& symbol_imports
+) {
+    if (pattern_id == kInvalidAstId) return;
+    auto& node = ctx.node(pattern_id);
+    switch (node.kind) {
+        case NodeKind::CtorPattern: {
+            auto& p = static_cast<CtorPattern&>(node);
+            rewrite_type_for_alias(ctx, p.type, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            for (auto& arg : p.args) {
+                rewrite_pattern_for_alias(ctx, arg, alias_to_prefix, exports, glob_aliases, symbol_imports);
+            }
+            break;
+        }
+        case NodeKind::IdentPattern:
+        default:
+            break;
+    }
+}
+
+static void rewrite_type_for_alias(
+    AstContext& ctx,
+    TypeId& type_id,
+    const std::unordered_map<std::string, std::string>& alias_to_prefix,
+    const std::unordered_map<std::string, std::unordered_set<std::string>>& exports,
+    const std::unordered_set<std::string>& glob_aliases,
+    const std::unordered_map<std::string, std::string>& symbol_imports
 ) {
     if (type_id == kInvalidAstId) return;
     auto& node = ctx.node(type_id);
@@ -585,6 +659,11 @@ static void rewrite_type_for_alias(
                 auto it_alias = alias_to_prefix.find(base);
                 if (it_alias != alias_to_prefix.end()) {
                     t.ident.name = it_alias->second + member;
+                    break;
+                }
+                auto it_sym = symbol_imports.find(base);
+                if (it_sym != symbol_imports.end()) {
+                    t.ident.name = it_sym->second + "." + member;
                     break;
                 }
             }
@@ -613,6 +692,10 @@ static void rewrite_type_for_alias(
                 auto it_alias = alias_to_prefix.find(base);
                 if (it_alias != alias_to_prefix.end()) {
                     t.base_ident.name = it_alias->second + member;
+                }
+                auto it_sym = symbol_imports.find(base);
+                if (it_sym != symbol_imports.end()) {
+                    t.base_ident.name = it_sym->second + "." + member;
                 }
             }
             auto it = symbol_imports.find(t.base_ident.name);
@@ -695,6 +778,11 @@ static void rewrite_expr_for_alias(
                 auto it_alias = alias_to_prefix.find(base);
                 if (it_alias != alias_to_prefix.end()) {
                     e.ident.name = it_alias->second + member;
+                    break;
+                }
+                auto it_sym = symbol_imports.find(base);
+                if (it_sym != symbol_imports.end()) {
+                    e.ident.name = it_sym->second + "." + member;
                     break;
                 }
             }
@@ -782,6 +870,11 @@ static void rewrite_expr_for_alias(
                 auto it_alias = alias_to_prefix.find(base);
                 if (it_alias != alias_to_prefix.end()) {
                     e.callee.name = it_alias->second + member;
+                    break;
+                }
+                auto it_sym = symbol_imports.find(base);
+                if (it_sym != symbol_imports.end()) {
+                    e.callee.name = it_sym->second + "." + member;
                 }
             }
             auto it_sym = symbol_imports.find(e.callee.name);
@@ -894,6 +987,7 @@ static void rewrite_stmt_for_alias(
         }
         case NodeKind::WhenStmt: {
             auto& s = static_cast<WhenStmt&>(node);
+            rewrite_pattern_for_alias(ctx, s.pattern, alias_to_prefix, exports, glob_aliases, symbol_imports);
             rewrite_stmt_for_alias(ctx, s.block, alias_to_prefix, exports, glob_aliases, symbol_imports);
             break;
         }

@@ -54,6 +54,7 @@ enum class HirKind {
     // types
     NamedType,
     GenericType,
+    ProcType,
 
     // expressions
     LiteralExpr,
@@ -61,6 +62,7 @@ enum class HirKind {
     UnaryExpr,
     BinaryExpr,
     CallExpr,
+    MemberExpr,
 
     // statements
     LetStmt,
@@ -76,6 +78,8 @@ enum class HirKind {
     FnDecl,
     ConstDecl,
     GlobalDecl,
+    FormDecl,
+    PickDecl,
 
     // patterns
     PatternIdent,
@@ -118,6 +122,15 @@ struct HirGenericType : HirType {
     HirGenericType(std::string base_name,
                    std::vector<HirTypeId> type_args,
                    vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirProcType : HirType {
+    std::vector<HirTypeId> params;
+    HirTypeId return_type;
+
+    HirProcType(std::vector<HirTypeId> params,
+                HirTypeId return_type,
+                vitte::frontend::ast::SourceSpan span);
 };
 
 // ------------------------------------------------------------
@@ -198,6 +211,21 @@ struct HirCallExpr : HirExpr {
     HirCallExpr(HirExprId callee,
                 std::vector<HirExprId> args,
                 vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirMemberExpr : HirExpr {
+    HirExprId base;
+    std::string member;
+    bool pointer = false;
+    bool base_is_type = false;
+    bool type_is_enum = false;
+
+    HirMemberExpr(HirExprId base,
+                  std::string member,
+                  bool pointer,
+                  bool base_is_type,
+                  bool type_is_enum,
+                  vitte::frontend::ast::SourceSpan span);
 };
 
 // ------------------------------------------------------------
@@ -335,6 +363,40 @@ struct HirGlobalDecl : HirDecl {
                   HirExprId value,
                   bool is_mut,
                   vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirFieldDecl {
+    std::string name;
+    HirTypeId type;
+
+    HirFieldDecl(std::string name, HirTypeId type);
+};
+
+struct HirFormDecl : HirDecl {
+    std::string name;
+    std::vector<HirFieldDecl> fields;
+
+    HirFormDecl(std::string name,
+                std::vector<HirFieldDecl> fields,
+                vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirPickCase {
+    std::string name;
+    std::vector<HirFieldDecl> fields;
+
+    HirPickCase(std::string name, std::vector<HirFieldDecl> fields);
+};
+
+struct HirPickDecl : HirDecl {
+    std::string name;
+    std::vector<HirPickCase> cases;
+    bool enum_like = false;
+
+    HirPickDecl(std::string name,
+                std::vector<HirPickCase> cases,
+                bool enum_like,
+                vitte::frontend::ast::SourceSpan span);
 };
 
 struct HirParam {

@@ -47,9 +47,9 @@ const indexer_js_1 = require("./indexer.js");
  * ========================================================================== */
 // Heuristiques de membres courants, proposées après un point.
 const COMMON_MEMBERS = [
-    { recv: /(str(ing)?|text)$/i, members: ["len()", "is_empty()", "trim()", "to_upper()", "to_lower()"] },
-    { recv: /(vec|list|array|slice)$/i, members: ["len()", "is_empty()", "push(${1:x})", "pop()", "clear()", "iter()"] },
-    { recv: /(map|dict|table)$/i, members: ["len()", "get(${1:key})", "set(${1:key}, ${2:val})", "remove(${1:key})", "keys()", "values()"] }
+    { recv: /(str(ing)?|text)$/i, members: ["len", "is_empty()", "trim()", "to_upper()", "to_lower()", "slice(${1:start}, ${2:end})", "as_bytes()"] },
+    { recv: /(vec|list|array|slice)$/i, members: ["len", "is_empty()", "push(${1:x})", "pop()", "clear()", "iter()"] },
+    { recv: /(map|dict|table)$/i, members: ["len", "get(${1:key})", "set(${1:key}, ${2:val})", "remove(${1:key})", "keys()", "values()"] }
 ];
 // Idées d’imports rapides. Utiles lorsque la ligne commence par `import `.
 const QUICK_IMPORTS = [
@@ -59,7 +59,30 @@ const QUICK_IMPORTS = [
     "std.fs",
     "std.math",
     "std.time",
-    "std.testing"
+    "std.testing",
+    "std.os",
+    "std.user"
+];
+const BUILTIN_FUNCTIONS = [
+    "print",
+    "println",
+    "len",
+    "size",
+    "slice",
+    "as_bytes",
+    "push",
+    "pop",
+    "clear",
+    "iter",
+    "map",
+    "filter",
+    "reduce",
+    "open",
+    "read",
+    "write",
+    "close",
+    "assert",
+    "panic",
 ];
 const SYMBOL_KIND_LABEL = {
     [node_1.SymbolKind.File]: "File",
@@ -94,10 +117,19 @@ const SYMBOL_KIND_LABEL = {
  * ========================================================================== */
 const SNIPPETS = [
     ciSnippet("module", "Déclare un module", "Déclare le module courant.", "module ${1:my.module};"),
+    ciSnippet("space", "Déclare un espace", "Déclare l’espace courant.", "space ${1:std/os/user}"),
     ciSnippet("import", "Importe un module", "Importe un chemin depuis un autre module.", "import ${1:std::core};"),
+    ciSnippet("use", "Importe un symbole", "Importe un chemin depuis un module.", "use ${1:std/core/types.i32}"),
     ciSnippet("fn", "Déclare une fonction", "Fonction avec paramètres et type de retour optionnel.", "fn ${1:name}(${2:params})${3: -> ${4:Type}} {\n\t$0\n}"),
+    ciSnippet("proc", "Déclare une procédure", "Procédure avec paramètres et type de retour optionnel.", "proc ${1:name}(${2:params})${3: -> ${4:Type}} {\n\t$0\n}"),
+    ciSnippet("docfn", "Doc + fonction", "Ajoute une docstring puis une fonction.", "/// ${1:Summary}\n///\n/// Params:\n/// - ${2:param}: ${3:description}\n/// Returns: ${4:description}\n/// Example:\n/// ${5:example}\nfn ${6:name}(${7:params})${8: -> ${9:Type}} {\n\t$0\n}"),
+    ciSnippet("docproc", "Doc + procédure", "Ajoute une docstring puis une procédure.", "/// ${1:Summary}\n///\n/// Params:\n/// - ${2:param}: ${3:description}\n/// Returns: ${4:description}\n/// Example:\n/// ${5:example}\nproc ${6:name}(${7:params})${8: -> ${9:Type}} {\n\t$0\n}"),
     ciSnippet("main", "Point d’entrée", "Déclare la fonction principale.", "fn main() {\n\t$0\n}"),
     ciSnippet("struct", "Déclare une struct", "Structure avec des champs typés.", "struct ${1:Name} {\n\t${2:field}: ${3:Type},\n}"),
+    ciSnippet("form", "Déclare un form", "Structure avec des champs typés.", "form ${1:Name} {\n\t${2:field}: ${3:Type},\n}"),
+    ciSnippet("docstruct", "Doc + struct", "Ajoute une docstring puis une struct.", "/// ${1:Summary}\n///\n/// Fields:\n/// - ${2:field}: ${3:description}\n/// Example:\n/// ${4:example}\nstruct ${5:Name} {\n\t${6:field}: ${7:Type},\n}"),
+    ciSnippet("docform", "Doc + form", "Ajoute une docstring puis un form.", "/// ${1:Summary}\n///\n/// Fields:\n/// - ${2:field}: ${3:description}\n/// Example:\n/// ${4:example}\nform ${5:Name} {\n\t${6:field}: ${7:Type},\n}"),
+    ciSnippet("externproc", "Procédure externe", "Déclare une procédure externe.", "#[extern]\nproc ${1:name}(${2:params})${3: -> ${4:Type}}"),
     ciSnippet("enum", "Déclare une enum", "Énumération avec variantes.", "enum ${1:Name} {\n\t${2:Variant1},\n\t${3:Variant2}\n}"),
     ciSnippet("union", "Déclare une union", "Union tagged simple.", "union ${1:Name} {\n\t${2:field}: ${3:Type},\n}"),
     ciSnippet("type", "Alias de type", "Déclare un alias de type.", "type ${1:Alias} = ${2:Existing};"),
@@ -110,14 +142,16 @@ const SNIPPETS = [
     ciSnippet("const", "Constante", "Déclare une constante globale.", "const ${1:NAME}: ${2:Type} = ${3:value};"),
     ciSnippet("static", "Statique", "Déclare un statique global.", "static ${1:NAME}: ${2:Type} = ${3:value};"),
     ciSnippet("print", "Affichage console", "Affiche un message sur la sortie standard.", "println(\"${1:msg}\");"),
-    ciSnippet("doc", "Commentaire doc", "Ajoute un commentaire de documentation.", "/// ${1:Résumé}\n///\n/// ${0:Détails}")
+    ciSnippet("doc", "Doc comment", "Insert a documentation comment.", "/// ${1:Summary}\n///\n/// ${0:Details}")
 ];
 function extractSymbols(doc) {
     const text = doc.getText();
     const rules = [
-        { rx: /^\s*module\s+([A-Za-z_][\w:]*)/gm, kind: node_1.SymbolKind.Namespace, g: 1 },
-        { rx: /^\s*(?:pub\s+)?fn\s+([A-Za-z_]\w*)/gm, kind: node_1.SymbolKind.Function, g: 1 },
+        { rx: /^\s*module\s+([A-Za-z_][\w./:]*)/gm, kind: node_1.SymbolKind.Namespace, g: 1 },
+        { rx: /^\s*space\s+([A-Za-z_][\w./:]*)/gm, kind: node_1.SymbolKind.Namespace, g: 1 },
+        { rx: /^\s*(?:pub\s+)?(?:fn|proc)\s+([A-Za-z_]\w*)/gm, kind: node_1.SymbolKind.Function, g: 1 },
         { rx: /^\s*(?:pub\s+)?struct\s+([A-Za-z_]\w*)/gm, kind: node_1.SymbolKind.Struct, g: 1 },
+        { rx: /^\s*(?:pub\s+)?form\s+([A-Za-z_]\w*)/gm, kind: node_1.SymbolKind.Struct, g: 1 },
         { rx: /^\s*(?:pub\s+)?enum\s+([A-Za-z_]\w*)/gm, kind: node_1.SymbolKind.Enum, g: 1 },
         { rx: /^\s*(?:pub\s+)?union\s+([A-Za-z_]\w*)/gm, kind: node_1.SymbolKind.Struct, g: 1 },
         { rx: /^\s*(?:pub\s+)?type\s+([A-Za-z_]\w*)/gm, kind: node_1.SymbolKind.Interface, g: 1 },
@@ -367,6 +401,34 @@ function provideCompletions(doc, position) {
                 sortText: tier(2, `~${lit}`),
                 textEdit: edit(range, lit),
                 labelDetails: { description: "literal" }
+            });
+        }
+    }
+    // Types primitifs
+    for (const ty of languageFacts_js_1.PRIMITIVE_TYPES) {
+        if (fuzzyScore(ty, token) > 0) {
+            items.push({
+                label: ty,
+                kind: node_1.CompletionItemKind.TypeParameter,
+                detail: "Type primitif",
+                documentation: md(`Type primitif \`${ty}\`.`),
+                sortText: tier(2, `type:${ty}`),
+                textEdit: edit(range, ty),
+                labelDetails: { description: "type" }
+            });
+        }
+    }
+    // Fonctions builtin
+    for (const fn of BUILTIN_FUNCTIONS) {
+        if (fuzzyScore(fn, token) > 0) {
+            items.push({
+                label: fn,
+                kind: node_1.CompletionItemKind.Function,
+                detail: "Builtin",
+                documentation: md(`Fonction builtin \`${fn}\`.`),
+                sortText: tier(2, `builtin:${fn}`),
+                textEdit: edit(range, fn),
+                labelDetails: { description: "builtin" }
             });
         }
     }

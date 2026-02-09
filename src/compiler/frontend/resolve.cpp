@@ -212,6 +212,7 @@ void Resolver::define_builtin_types() {
     symbols_.define({"bool", SymbolKind::Form, {}});
     symbols_.define({"string", SymbolKind::Form, {}});
     symbols_.define({"int", SymbolKind::Form, {}});
+    symbols_.define({"builtin", SymbolKind::Var, {}});
 }
 
 bool Resolver::resolve_module(ast::AstContext& ctx, ast::ModuleId module_id) {
@@ -243,6 +244,9 @@ bool Resolver::resolve_module(ast::AstContext& ctx, ast::ModuleId module_id) {
             case NodeKind::PickDecl: {
                 const auto& d = static_cast<const PickDecl&>(decl);
                 types_.add_named(d.name.name);
+                for (const auto& c : d.cases) {
+                    types_.add_named(d.name.name + "." + c.ident.name);
+                }
                 break;
             }
             case NodeKind::UseDecl: {

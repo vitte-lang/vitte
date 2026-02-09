@@ -50,6 +50,12 @@ function buildCodeMask(text: string): Uint8Array {
   while (i < n) {
     const c = text.charCodeAt(i);
     const c2 = i + 1 < n ? text.charCodeAt(i + 1) : 0;
+    // Line comment #... (ignore attributes #[...])
+    if (c === 0x23 /* # */ && c2 !== 0x5b /* [ */) {
+      i += 1;
+      while (i < n && text.charCodeAt(i) !== 0x0a) i++;
+      continue;
+    }
     // Line comment
     if (c === 0x2f /*/ */ && c2 === 0x2f) {
       i += 2;
@@ -108,7 +114,13 @@ function buildCodeMask(text: string): Uint8Array {
     while (i < n) {
       const a = text.charCodeAt(i);
       const b = i + 1 < n ? text.charCodeAt(i + 1) : 0;
-      if ((a === 0x2f && (b === 0x2f || b === 0x2a)) || a === 0x22 || a === 0x27 || a === 0x72) break;
+      if (
+        (a === 0x2f && (b === 0x2f || b === 0x2a)) ||
+        a === 0x22 ||
+        a === 0x27 ||
+        a === 0x72 ||
+        (a === 0x23 && b !== 0x5b)
+      ) break;
       i++;
     }
     setCode(start, i);
@@ -156,16 +168,19 @@ function isValidIdent(s: string): boolean { return /^[A-Za-z_]\w*$/.test(s); }
 // Les regex sont évaluées uniquement sur les positions mask==1
 
 const RULES: { rx: RegExp; kind: SymbolKind; nameGroup: number; containerHint?: (m: RegExpExecArray) => string | undefined }[] = [
-  { rx: /\bmodule\s+([A-Za-z_][\w:]*)/g,                                kind: SymbolKind.Namespace, nameGroup: 1 },
-  { rx: /\bimport\s+([A-Za-z_][\w:]*(?:::\*)?)/g,                       kind: SymbolKind.Namespace, nameGroup: 1 },
-  { rx: /\b(?:pub\s+)?fn\s+([A-Za-z_]\w*)\s*\(/g,                       kind: SymbolKind.Function,  nameGroup: 1 },
+  { rx: /\bmodule\s+([A-Za-z_][\w./:]*)/g,                              kind: SymbolKind.Namespace, nameGroup: 1 },
+  { rx: /\bspace\s+([A-Za-z_][\w./:]*)/g,                               kind: SymbolKind.Namespace, nameGroup: 1 },
+  { rx: /\bimport\s+([A-Za-z_][\w./:]*(?:::\*)?)/g,                     kind: SymbolKind.Namespace, nameGroup: 1 },
+  { rx: /\buse\s+([A-Za-z_][\w./:]*(?:::\*)?)/g,                        kind: SymbolKind.Namespace, nameGroup: 1 },
+  { rx: /\b(?:pub\s+)?(?:fn|proc)\s+([A-Za-z_]\w*)\s*\(/g,              kind: SymbolKind.Function,  nameGroup: 1 },
   { rx: /\b(?:pub\s+)?struct\s+([A-Za-z_]\w*)/g,                        kind: SymbolKind.Struct,    nameGroup: 1 },
+  { rx: /\b(?:pub\s+)?form\s+([A-Za-z_]\w*)/g,                          kind: SymbolKind.Struct,    nameGroup: 1 },
   { rx: /\b(?:pub\s+)?enum\s+([A-Za-z_]\w*)/g,                          kind: SymbolKind.Enum,      nameGroup: 1 },
   { rx: /\b(?:pub\s+)?union\s+([A-Za-z_]\w*)/g,                         kind: SymbolKind.Struct,    nameGroup: 1 },
   { rx: /\b(?:pub\s+)?type\s+([A-Za-z_]\w*)/g,                          kind: SymbolKind.TypeParameter, nameGroup: 1 },
   { rx: /\b(?:pub\s+)?const\s+([A-Za-z_]\w*)/g,                         kind: SymbolKind.Constant,  nameGroup: 1 },
   { rx: /\b(?:pub\s+)?static\s+([A-Za-z_]\w*)/g,                        kind: SymbolKind.Variable,  nameGroup: 1 },
-  // champs de struct: name: Type
+  // champs de struct/form: name: Type
   { rx: /(^|\s)([A-Za-z_]\w*)\s*:\s*[^;{},\n]+(?=,|\n|\r|\})/g, kind: SymbolKind.Field, nameGroup: 2 },
 ];
 

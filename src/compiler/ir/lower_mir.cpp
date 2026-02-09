@@ -17,8 +17,12 @@ struct Builder {
     bool terminated = false;
     std::size_t temp_index = 0;
     std::unordered_map<std::string, std::string> local_types;
+    std::unordered_map<std::string, MirProcType> proc_locals;
     const std::unordered_map<std::string, std::string>* fn_returns = nullptr;
     const std::unordered_map<std::string, std::pair<MirConstKind, std::string>>* consts = nullptr;
+    const std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::string>>>* pick_cases = nullptr;
+    const std::unordered_map<std::string, std::unordered_map<std::string, std::size_t>>* pick_tags = nullptr;
+    const std::unordered_map<std::string, std::unordered_map<std::string, MirFieldType>>* form_fields = nullptr;
 
     explicit Builder(const HirContext& h, DiagnosticEngine& d)
         : hir(h), diag(d) {}
@@ -80,6 +84,14 @@ struct Builder {
         }
     }
 
+    std::string type_for_local(const std::string& name) const {
+        auto it = local_types.find(name);
+        if (it != local_types.end()) {
+            return it->second;
+        }
+        return "unknown";
+    }
+
     MirValuePtr make_const(MirConstKind kind, const std::string& value, vitte::frontend::ast::SourceSpan span) {
         return std::make_unique<MirConst>(kind, value, span);
     }
@@ -95,6 +107,18 @@ struct Builder {
                 if (t.name == "int") return "i32";
                 if (t.name == "bool") return "bool";
                 if (t.name == "string") return "string";
+                if (t.name.size() <= 2) {
+                    bool all_upper = true;
+                    for (char c : t.name) {
+                        if (c < 'A' || c > 'Z') {
+                            all_upper = false;
+                            break;
+                        }
+                    }
+                    if (all_upper) {
+                        return "VitteAny";
+                    }
+                }
                 return t.name;
             }
             case HirKind::GenericType: {
@@ -106,6 +130,47 @@ struct Builder {
         }
         (void)span;
         return "unknown";
+    }
+
+    MirTypePtr type_from_hir_type(HirTypeId ty, const vitte::frontend::ast::SourceSpan& span) {
+        if (ty == kInvalidHirId) {
+            return type_named("unknown", span);
+        }
+        const auto& node = hir.node(ty);
+        if (node.kind == HirKind::ProcType) {
+            const auto& t = hir.get<HirProcType>(ty);
+            std::vector<std::string> params;
+            params.reserve(t.params.size());
+            for (auto p : t.params) {
+                params.push_back(type_from_hir(p, span));
+            }
+            std::string ret = type_from_hir(t.return_type, span);
+            return std::make_unique<MirProcType>(std::move(params), std::move(ret), span);
+        }
+        return type_named(type_from_hir(ty, span), span);
+    }
+
+    bool proc_sig_from_hir(
+        HirTypeId ty,
+        std::vector<std::string>& params,
+        std::string& ret,
+        const vitte::frontend::ast::SourceSpan& span
+    ) {
+        if (ty == kInvalidHirId) {
+            return false;
+        }
+        const auto& node = hir.node(ty);
+        if (node.kind != HirKind::ProcType) {
+            return false;
+        }
+        const auto& t = hir.get<HirProcType>(ty);
+        params.clear();
+        params.reserve(t.params.size());
+        for (auto p : t.params) {
+            params.push_back(type_from_hir(p, span));
+        }
+        ret = type_from_hir(t.return_type, span);
+        return true;
     }
 
     std::string type_from_literal(HirLiteralKind kind) {
@@ -160,6 +225,11 @@ struct Builder {
         std::vector<MirValuePtr> args,
         const std::string& result_type,
         vitte::frontend::ast::SourceSpan span);
+    MirValuePtr emit_call_value_indirect(
+        MirValuePtr callee,
+        std::vector<MirValuePtr> args,
+        const std::string& result_type,
+        vitte::frontend::ast::SourceSpan span);
 };
 
 struct Binding {
@@ -171,6 +241,7 @@ struct Binding {
     std::string name;
     std::string base_local;
     std::size_t field_index;
+    std::string field_name;
     vitte::frontend::ast::SourceSpan span;
 };
 
@@ -206,6 +277,23 @@ MirValuePtr Builder::emit_call_value(
     return dest_copy;
 }
 
+MirValuePtr Builder::emit_call_value_indirect(
+    MirValuePtr callee,
+    std::vector<MirValuePtr> args,
+    const std::string& result_type,
+    vitte::frontend::ast::SourceSpan span) {
+    std::string tmp = next_temp();
+    auto dest = make_local(tmp, result_type, span);
+    MirLocalPtr dest_copy = make_local(tmp, result_type, span);
+    emit(std::make_unique<MirCallIndirect>(
+        std::move(callee),
+        std::move(args),
+        std::move(dest),
+        span));
+    register_local(tmp, result_type, span);
+    return dest_copy;
+}
+
 static PatternResult lower_pattern(
     Builder& b,
     HirPatternId pat_id,
@@ -220,20 +308,64 @@ static PatternResult lower_pattern(
             pat.name,
             base_local,
             0,
+            "",
             pat.span
         });
         return out;
     }
     if (pnode.kind == HirKind::PatternCtor) {
         auto& pat = b.hir.get<HirCtorPattern>(pat_id);
-        std::vector<MirValuePtr> args;
-        args.push_back(b.make_local_value(base_local, "unknown", pat.span));
-        args.push_back(b.make_const(MirConstKind::String, pat.name, pat.span));
-        out.cond = b.emit_call_value("__vitte_match_ctor", std::move(args), "bool", pat.span);
+        std::string pick_name = pat.name;
+        std::string case_name = pat.name;
+        auto dot = pat.name.rfind('.');
+        if (dot != std::string::npos) {
+            pick_name = pat.name.substr(0, dot);
+            case_name = pat.name.substr(dot + 1);
+        }
+        std::size_t tag_val = 0;
+        std::vector<std::string> field_names;
+        bool found = false;
+        if (b.pick_cases && b.pick_tags) {
+            auto pit = b.pick_cases->find(pick_name);
+            auto tit = b.pick_tags->find(pick_name);
+            if (pit != b.pick_cases->end() && tit != b.pick_tags->end()) {
+                auto cit = pit->second.find(case_name);
+                auto tag_it = tit->second.find(case_name);
+                if (cit != pit->second.end() && tag_it != tit->second.end()) {
+                    field_names = cit->second;
+                    tag_val = tag_it->second;
+                    found = true;
+                }
+            }
+        }
+        if (!found || pat.args.size() > field_names.size()) {
+            b.diag.error("unknown ctor pattern or field mismatch: " + pat.name, pat.span);
+            out.cond = b.make_const(MirConstKind::Bool, "false", pat.span);
+            return out;
+        }
+
+        auto tag_member = std::make_unique<MirMember>(
+            b.make_local_value(base_local, b.type_for_local(base_local), pat.span),
+            "__tag",
+            false,
+            pat.span);
+        auto tag_const = b.make_const(MirConstKind::Int, std::to_string(tag_val), pat.span);
+        std::string tmp = b.next_temp();
+        auto dest = b.make_local(tmp, "bool", pat.span);
+        MirLocalPtr dest_copy = b.make_local(tmp, "bool", pat.span);
+        b.emit(std::make_unique<MirBinaryOp>(
+            MirBinOp::Eq,
+            std::move(dest),
+            std::move(tag_member),
+            std::move(tag_const),
+            pat.span));
+        b.register_local(tmp, "bool", pat.span);
+        out.cond = std::move(dest_copy);
 
         for (std::size_t i = 0; i < pat.args.size(); ++i) {
             HirPatternId arg_pat = pat.args[i];
             const auto& anode = b.hir.node(arg_pat);
+            std::string field_name = i < field_names.size() ? field_names[i] : "";
             if (anode.kind == HirKind::PatternIdent) {
                 auto& arg = b.hir.get<HirIdentPattern>(arg_pat);
                 out.bindings.push_back(Binding{
@@ -241,14 +373,21 @@ static PatternResult lower_pattern(
                     arg.name,
                     base_local,
                     i,
+                    field_name,
                     arg.span
                 });
             } else if (anode.kind == HirKind::PatternCtor) {
-                std::vector<MirValuePtr> get_args;
-                get_args.push_back(b.make_local_value(base_local, "unknown", pat.span));
-                get_args.push_back(b.make_const(MirConstKind::Int, std::to_string(i), pat.span));
-                auto field_val = b.emit_call_value("__vitte_ctor_get", std::move(get_args), "unknown", pat.span);
-                std::string field_local = static_cast<MirLocal*>(field_val.get())->name;
+                std::string field_local = b.next_temp();
+                auto field_val = std::make_unique<MirMember>(
+                    b.make_local_value(base_local, b.type_for_local(base_local), pat.span),
+                    field_name,
+                    false,
+                    pat.span);
+                b.emit(std::make_unique<MirAssign>(
+                    b.make_local(field_local, "unknown", pat.span),
+                    std::move(field_val),
+                    pat.span));
+                b.register_local(field_local, "unknown", pat.span);
                 PatternResult sub = lower_pattern(b, arg_pat, field_local);
                 if (sub.cond) {
                     std::vector<MirValuePtr> and_args;
@@ -318,6 +457,21 @@ MirValuePtr Builder::lower_expr(HirExprId expr_id) {
             }
             return make_local_value(e.name, ty, e.span);
         }
+        case HirKind::MemberExpr: {
+            const auto& e = hir.get<HirMemberExpr>(expr_id);
+            if (e.base_is_type) {
+                std::string name = e.type_is_enum
+                    ? (hir.get<HirVarExpr>(e.base).name + "::" + e.member)
+                    : (hir.get<HirVarExpr>(e.base).name + "__" + e.member + "__value");
+                return make_local_value(name, "unknown", e.span);
+            }
+            auto base = lower_expr(e.base);
+            if (!base) {
+                diag.error("invalid base for member expression", e.span);
+                base = make_const(MirConstKind::Int, "0", e.span);
+            }
+            return std::make_unique<MirMember>(std::move(base), e.member, e.pointer, e.span);
+        }
         case HirKind::UnaryExpr: {
             const auto& e = hir.get<HirUnaryExpr>(expr_id);
             auto rhs = lower_expr(e.expr);
@@ -380,17 +534,43 @@ MirValuePtr Builder::lower_expr(HirExprId expr_id) {
         case HirKind::CallExpr: {
             const auto& e = hir.get<HirCallExpr>(expr_id);
             std::string callee = "<unknown>";
+            std::string ctor_return;
+            bool is_direct = false;
             if (e.callee != kInvalidHirId) {
                 const auto& cnode = hir.node(e.callee);
                 if (cnode.kind == HirKind::VarExpr) {
                     callee = hir.get<HirVarExpr>(e.callee).name;
+                    if (callee == "asm" || callee == "unsafe_begin" || callee == "unsafe_end") {
+                        is_direct = true;
+                    } else if (fn_returns && fn_returns->find(callee) != fn_returns->end()) {
+                        is_direct = true;
+                    } else {
+                        is_direct = false;
+                    }
+                } else if (cnode.kind == HirKind::MemberExpr) {
+                    const auto& m = hir.get<HirMemberExpr>(e.callee);
+                    if (m.base_is_type && !m.type_is_enum) {
+                        const auto& base = hir.get<HirVarExpr>(m.base);
+                        callee = base.name + "__" + m.member;
+                        ctor_return = base.name;
+                        is_direct = true;
+                    } else if (!m.base_is_type && m.base != kInvalidHirId) {
+                        const auto& base_node = hir.node(m.base);
+                        if (base_node.kind == HirKind::VarExpr) {
+                            const auto& base = hir.get<HirVarExpr>(m.base);
+                            if (base.name == "builtin") {
+                                callee = "builtin." + m.member;
+                                is_direct = true;
+                            }
+                        }
+                    }
                 }
             }
             std::vector<MirValuePtr> args;
             for (auto a : e.args) {
                 args.push_back(lower_expr(a));
             }
-            if (callee == "asm" && !args.empty()) {
+            if (is_direct && callee == "asm" && !args.empty()) {
                 if (args[0] && args[0]->kind == MirKind::Const) {
                     auto* c = static_cast<MirConst*>(args[0].get());
                     if (c->const_kind == MirConstKind::String) {
@@ -401,30 +581,93 @@ MirValuePtr Builder::lower_expr(HirExprId expr_id) {
                 diag.error("asm(...) expects a string literal", e.span);
                 return nullptr;
             }
-            if (callee == "unsafe_begin") {
+            if (is_direct && callee == "unsafe_begin") {
                 emit(std::make_unique<MirUnsafeBegin>(e.span));
                 return nullptr;
             }
-            if (callee == "unsafe_end") {
+            if (is_direct && callee == "unsafe_end") {
                 emit(std::make_unique<MirUnsafeEnd>(e.span));
                 return nullptr;
             }
             std::string ret_type = "unknown";
             if (fn_returns) {
-                auto it = fn_returns->find(callee);
-                if (it != fn_returns->end()) {
-                    ret_type = it->second;
+                if (is_direct) {
+                    auto it = fn_returns->find(callee);
+                    if (it != fn_returns->end()) {
+                        ret_type = it->second;
+                    }
+                }
+            }
+            if (is_direct && callee == "builtin.trap") {
+                ret_type = "void";
+            }
+            if (ret_type == "unknown" && !ctor_return.empty()) {
+                ret_type = ctor_return;
+            }
+            if (!is_direct && e.callee != kInvalidHirId) {
+                const auto& cnode = hir.node(e.callee);
+                if (cnode.kind == HirKind::VarExpr) {
+                    const auto& v = hir.get<HirVarExpr>(e.callee);
+                    auto it = proc_locals.find(v.name);
+                    if (it != proc_locals.end()) {
+                        ret_type = it->second.ret;
+                    }
+                }
+            }
+            if (!is_direct && e.callee != kInvalidHirId) {
+                const auto& cnode = hir.node(e.callee);
+                if (cnode.kind == HirKind::MemberExpr) {
+                    const auto& m = hir.get<HirMemberExpr>(e.callee);
+                    if (!m.base_is_type && m.base != kInvalidHirId && form_fields) {
+                        const auto& base_node = hir.node(m.base);
+                        if (base_node.kind == HirKind::VarExpr) {
+                            const auto& base = hir.get<HirVarExpr>(m.base);
+                            auto it_base = local_types.find(base.name);
+                            if (it_base != local_types.end()) {
+                                auto it_form = form_fields->find(it_base->second);
+                                if (it_form != form_fields->end()) {
+                                    auto it_field = it_form->second.find(m.member);
+                                    if (it_field != it_form->second.end()) {
+                                        if (it_field->second.kind == MirFieldType::Kind::Proc) {
+                                            ret_type = it_field->second.ret;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             if (is_unit_type_name(ret_type)) {
-                emit(std::make_unique<MirCall>(
-                    callee,
-                    std::move(args),
-                    nullptr,
-                    e.span));
+                if (is_direct) {
+                    emit(std::make_unique<MirCall>(
+                        callee,
+                        std::move(args),
+                        nullptr,
+                        e.span));
+                } else {
+                    auto callee_val = lower_expr(e.callee);
+                    if (!callee_val) {
+                        diag.error("call target must be a value", e.span);
+                        return nullptr;
+                    }
+                    emit(std::make_unique<MirCallIndirect>(
+                        std::move(callee_val),
+                        std::move(args),
+                        nullptr,
+                        e.span));
+                }
                 return nullptr;
             }
-            return emit_call_value(callee, std::move(args), ret_type, e.span);
+            if (is_direct) {
+                return emit_call_value(callee, std::move(args), ret_type, e.span);
+            }
+            auto callee_val = lower_expr(e.callee);
+            if (!callee_val) {
+                diag.error("call target must be a value", e.span);
+                return nullptr;
+            }
+            return emit_call_value_indirect(std::move(callee_val), std::move(args), ret_type, e.span);
         }
         default:
             diag.error("unsupported HIR expression in MIR lowering", node.span);
@@ -455,10 +698,16 @@ void Builder::lower_stmt(HirStmtId stmt_id) {
     switch (node.kind) {
         case HirKind::LetStmt: {
             const auto& s = hir.get<HirLetStmt>(stmt_id);
+            auto val = lower_expr(s.init);
             std::string ty = type_from_hir(s.type, s.span);
+            if (ty == "unknown" && val && val->kind == MirKind::Local) {
+                const auto& vlocal = static_cast<const MirLocal&>(*val);
+                if (vlocal.type && vlocal.type->kind == MirKind::NamedType) {
+                    ty = static_cast<const MirNamedType&>(*vlocal.type).name;
+                }
+            }
             local_types[s.name] = ty;
             register_local(s.name, ty, s.span);
-            auto val = lower_expr(s.init);
             if (!val) {
                 diag.error("invalid initializer for let (void expression)", s.span);
                 val = make_const(MirConstKind::Int, "0", s.span);
@@ -534,9 +783,16 @@ void Builder::lower_stmt(HirStmtId stmt_id) {
         case HirKind::SelectStmt: {
             const auto& s = hir.get<HirSelect>(stmt_id);
             auto sel_val = lower_expr(s.expr);
+            std::string sel_type = "unknown";
+            if (sel_val && sel_val->kind == MirKind::Local) {
+                const auto& l = static_cast<const MirLocal&>(*sel_val);
+                if (l.type && l.type->kind == MirKind::NamedType) {
+                    sel_type = static_cast<const MirNamedType&>(*l.type).name;
+                }
+            }
             std::string sel_tmp = next_temp();
-            register_local(sel_tmp, "unknown", s.span);
-            auto sel_dst = make_local(sel_tmp, "unknown", s.span);
+            register_local(sel_tmp, sel_type, s.span);
+            auto sel_dst = make_local(sel_tmp, sel_type, s.span);
             if (sel_val) {
                 emit(std::make_unique<MirAssign>(
                     std::move(sel_dst),
@@ -564,20 +820,21 @@ void Builder::lower_stmt(HirStmtId stmt_id) {
                 set_current(then_bb);
                 for (const auto& bind : pr.bindings) {
                     if (bind.kind == Binding::Kind::FromValue) {
-                        ensure_local(bind.name, "unknown", bind.span);
+                        ensure_local(bind.name, type_for_local(bind.base_local), bind.span);
                         emit(std::make_unique<MirAssign>(
-                            make_local(bind.name, "unknown", bind.span),
-                            make_local_value(bind.base_local, "unknown", bind.span),
+                            make_local(bind.name, type_for_local(bind.base_local), bind.span),
+                            make_local_value(bind.base_local, type_for_local(bind.base_local), bind.span),
                             bind.span));
                     } else if (bind.kind == Binding::Kind::FromCtorField) {
                         ensure_local(bind.name, "unknown", bind.span);
-                        std::vector<MirValuePtr> get_args;
-                        get_args.push_back(make_local_value(bind.base_local, "unknown", bind.span));
-                        get_args.push_back(make_const(MirConstKind::Int, std::to_string(bind.field_index), bind.span));
-                        emit(std::make_unique<MirCall>(
-                            "__vitte_ctor_get",
-                            std::move(get_args),
+                        auto field_val = std::make_unique<MirMember>(
+                            make_local_value(bind.base_local, type_for_local(bind.base_local), bind.span),
+                            bind.field_name,
+                            false,
+                            bind.span);
+                        emit(std::make_unique<MirAssign>(
                             make_local(bind.name, "unknown", bind.span),
+                            std::move(field_val),
                             bind.span));
                     }
                 }
@@ -617,12 +874,34 @@ MirModule lower_to_mir(
     HirModuleId module_id,
     DiagnosticEngine& diagnostics) {
     if (module_id == kInvalidHirId) {
-        return MirModule({}, {}, {});
+        return MirModule({}, {}, {}, {}, {}, {});
     }
 
     const auto& module = hir_ctx.get<HirModule>(module_id);
+    std::vector<MirStructDecl> structs;
+    std::vector<MirEnumDecl> enums;
+    std::vector<MirPickDecl> picks;
     std::vector<MirFunction> funcs;
     std::vector<MirGlobal> globals;
+
+    auto is_type_param = [&](const std::string& name) -> bool {
+        if (name.empty() || name.size() > 2) {
+            return false;
+        }
+        for (char c : name) {
+            if (c < 'A' || c > 'Z') {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    auto normalize_type_name = [&](const std::string& name) -> std::string {
+        if (is_type_param(name)) {
+            return "VitteAny";
+        }
+        return name;
+    };
 
     auto type_name_from_hir = [&](HirTypeId ty) -> std::string {
         if (ty == kInvalidHirId) {
@@ -634,13 +913,79 @@ MirModule lower_to_mir(
             if (ret == "int") ret = "i32";
             if (ret == "bool") ret = "bool";
             if (ret == "string") ret = "string";
-            return ret;
+            return normalize_type_name(ret);
         }
         if (tnode.kind == HirKind::GenericType) {
-            return hir_ctx.get<HirGenericType>(ty).base_name;
+            return normalize_type_name(hir_ctx.get<HirGenericType>(ty).base_name);
         }
         return "i32";
     };
+
+    auto field_type_from_hir = [&](HirTypeId ty) -> MirFieldType {
+        MirFieldType out;
+        if (ty == kInvalidHirId) {
+            out.kind = MirFieldType::Kind::Named;
+            out.name = "i32";
+            return out;
+        }
+        const auto& node = hir_ctx.node(ty);
+        if (node.kind == HirKind::ProcType) {
+            const auto& t = hir_ctx.get<HirProcType>(ty);
+            out.kind = MirFieldType::Kind::Proc;
+            out.ret = normalize_type_name(type_name_from_hir(t.return_type));
+            for (auto p : t.params) {
+                out.params.push_back(normalize_type_name(type_name_from_hir(p)));
+            }
+            return out;
+        }
+        out.kind = MirFieldType::Kind::Named;
+        out.name = normalize_type_name(type_name_from_hir(ty));
+        return out;
+    };
+
+    std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::string>>> pick_cases;
+    std::unordered_map<std::string, std::unordered_map<std::string, std::size_t>> pick_tags;
+    std::unordered_map<std::string, std::unordered_map<std::string, MirFieldType>> form_fields;
+
+    for (auto decl_id : module.decls) {
+        if (decl_id == kInvalidHirId) {
+            continue;
+        }
+        const auto& decl = hir_ctx.get<HirDecl>(decl_id);
+        if (decl.kind == HirKind::FormDecl) {
+            const auto& f = hir_ctx.get<HirFormDecl>(decl_id);
+            std::vector<MirField> fields;
+            for (const auto& field : f.fields) {
+                auto ftype = field_type_from_hir(field.type);
+                form_fields[f.name][field.name] = ftype;
+                fields.emplace_back(field.name, std::move(ftype));
+            }
+            structs.emplace_back(f.name, std::move(fields));
+        } else if (decl.kind == HirKind::PickDecl) {
+            const auto& p = hir_ctx.get<HirPickDecl>(decl_id);
+            std::vector<MirPickCase> cases;
+            std::size_t tag = 0;
+            for (const auto& c : p.cases) {
+                std::vector<MirField> fields;
+                std::vector<std::string> field_names;
+                for (const auto& field : c.fields) {
+                    fields.emplace_back(field.name, field_type_from_hir(field.type));
+                    field_names.push_back(field.name);
+                }
+                pick_cases[p.name][c.name] = field_names;
+                pick_tags[p.name][c.name] = tag++;
+                cases.emplace_back(c.name, std::move(fields));
+            }
+            picks.emplace_back(p.name, p.enum_like, std::move(cases));
+            if (p.enum_like) {
+                std::vector<std::string> items;
+                for (const auto& c : p.cases) {
+                    items.push_back(c.name);
+                }
+                enums.emplace_back(p.name, std::move(items));
+            }
+        }
+    }
 
     std::unordered_map<std::string, std::pair<MirConstKind, std::string>> consts;
     for (auto decl_id : module.decls) {
@@ -720,7 +1065,7 @@ MirModule lower_to_mir(
             continue;
         }
         const auto& fn = hir_ctx.get<HirFnDecl>(decl_id);
-        std::string ret = "unknown";
+        std::string ret = "Unit";
         if (fn.return_type != kInvalidHirId) {
             const auto& tnode = hir_ctx.node(fn.return_type);
             if (tnode.kind == HirKind::NamedType) {
@@ -750,7 +1095,7 @@ MirModule lower_to_mir(
         std::vector<MirBasicBlock> blocks;
         blocks.emplace_back(0, fn.span);
 
-        MirTypePtr ret_type = std::make_unique<MirNamedType>("unknown", fn.span);
+        MirTypePtr ret_type = std::make_unique<MirNamedType>("Unit", fn.span);
 
         MirFunction mir_fn(
             fn.name,
@@ -765,18 +1110,28 @@ MirModule lower_to_mir(
         builder.func = &mir_fn;
         builder.fn_returns = &fn_returns;
         builder.consts = &consts;
+        builder.pick_cases = &pick_cases;
+        builder.pick_tags = &pick_tags;
+        builder.form_fields = &form_fields;
         builder.set_current(0);
 
-        std::string ret_name = "unknown";
+        std::string ret_name = "Unit";
         if (fn.return_type != kInvalidHirId) {
             ret_name = builder.type_from_hir(fn.return_type, fn.span);
         }
         mir_fn.return_type = std::make_unique<MirNamedType>(ret_name, fn.span);
 
         for (const auto& p : fn.params) {
-            std::string ty = builder.type_from_hir(p.type, fn.span);
-            mir_fn.params.emplace_back(p.name, std::make_unique<MirNamedType>(ty, fn.span));
-            builder.ensure_local(p.name, ty, fn.span);
+            std::string ty_name = builder.type_from_hir(p.type, fn.span);
+            mir_fn.params.emplace_back(p.name, builder.type_from_hir_type(p.type, fn.span));
+            builder.ensure_local(p.name, ty_name, fn.span);
+            std::vector<std::string> proc_params;
+            std::string proc_ret;
+            if (builder.proc_sig_from_hir(p.type, proc_params, proc_ret, fn.span)) {
+                builder.proc_locals.emplace(
+                    p.name,
+                    MirProcType(std::move(proc_params), std::move(proc_ret), fn.span));
+            }
         }
 
         builder.lower_block(fn.body);
@@ -784,7 +1139,13 @@ MirModule lower_to_mir(
         funcs.push_back(std::move(mir_fn));
     }
 
-    return MirModule(std::move(globals), std::move(funcs), module.span);
+    return MirModule(
+        std::move(structs),
+        std::move(enums),
+        std::move(picks),
+        std::move(globals),
+        std::move(funcs),
+        module.span);
 }
 
 } // namespace vitte::ir::lower

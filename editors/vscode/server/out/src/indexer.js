@@ -42,11 +42,14 @@ var SK;
 const INDEX = new Map();
 const DECLARATIONS = new Map([
     ["module", { kind: SK.Namespace, expectBody: true, allowBodyless: true }],
+    ["space", { kind: SK.Namespace, expectBody: true, allowBodyless: true }],
     ["struct", { kind: SK.Struct, expectBody: true }],
+    ["form", { kind: SK.Struct, expectBody: true }],
     ["enum", { kind: SK.Enum, expectBody: true }],
     ["union", { kind: SK.Struct, expectBody: true }],
     ["type", { kind: SK.Interface, expectBody: false }],
     ["fn", { kind: SK.Function, expectBody: true, allowBodyless: true }],
+    ["proc", { kind: SK.Function, expectBody: true, allowBodyless: true }],
     ["const", { kind: SK.Constant, expectBody: false }],
     ["static", { kind: SK.Variable, expectBody: false }],
 ]);
@@ -151,14 +154,17 @@ class SymbolParser {
     readSymbolName(keyword) {
         switch (keyword) {
             case "module":
+            case "space":
                 return this.readQualifiedName();
             case "struct":
+            case "form":
             case "enum":
             case "union":
             case "type":
                 this.skipTrivia();
                 return this.readIdentifierToken();
             case "fn":
+            case "proc":
                 this.skipTrivia();
                 return this.readFunctionName();
             case "const":
@@ -169,23 +175,18 @@ class SymbolParser {
         }
     }
     readQualifiedName() {
-        const segments = [];
-        while (true) {
-            this.skipTrivia();
-            const segment = this.readIdentifierToken();
-            if (!segment)
-                break;
-            segments.push(segment);
-            const saved = this.pos;
-            this.skipTrivia();
-            if (this.masked[this.pos] === ":" && this.masked[this.pos + 1] === ":") {
-                this.pos += 2;
+        this.skipTrivia();
+        const start = this.pos;
+        while (this.pos < this.length) {
+            const ch = this.masked[this.pos];
+            if (isIdentifierPart(ch) || ch === ":" || ch === "/" || ch === ".") {
+                this.pos++;
                 continue;
             }
-            this.pos = saved;
             break;
         }
-        return segments.length ? segments.join("::") : undefined;
+        const raw = this.text.slice(start, this.pos).trim();
+        return raw ? raw : undefined;
     }
     readFunctionName() {
         return this.readIdentifierToken();
@@ -592,6 +593,15 @@ function maskNonCode(src) {
     };
     while (i < len) {
         const ch = chars[i];
+        if (ch === "#" && i + 1 < len && chars[i + 1] !== "[") {
+            blank(i);
+            i += 1;
+            while (i < len && chars[i] !== "\n") {
+                blank(i);
+                i++;
+            }
+            continue;
+        }
         if (ch === "/" && i + 1 < len && chars[i + 1] === "/") {
             blank(i);
             blank(i + 1);

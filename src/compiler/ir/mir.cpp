@@ -35,6 +35,14 @@ MirNamedType::MirNamedType(
     : MirType(MirKind::NamedType, sp),
       name(std::move(n)) {}
 
+MirProcType::MirProcType(
+    std::vector<std::string> params,
+    std::string ret,
+    SourceSpan sp)
+    : MirType(MirKind::ProcType, sp),
+      params(std::move(params)),
+      ret(std::move(ret)) {}
+
 // ------------------------------------------------------------
 // Values
 // ------------------------------------------------------------
@@ -57,6 +65,18 @@ MirConst::MirConst(
     : MirValue(MirKind::Const, sp),
       const_kind(k),
       value(std::move(v)) {}
+
+MirMember::MirMember(
+    MirValuePtr b,
+    std::string m,
+    bool ptr,
+    SourceSpan sp)
+    : MirValue(MirKind::Member, sp),
+      base(std::move(b)),
+      member(std::move(m)),
+      pointer(ptr) {
+    assert(base);
+}
 
 // ------------------------------------------------------------
 // Instructions
@@ -98,6 +118,18 @@ MirCall::MirCall(
       callee(std::move(callee)),
       args(std::move(args)),
       result(std::move(result)) {}
+
+MirCallIndirect::MirCallIndirect(
+    MirValuePtr callee,
+    std::vector<MirValuePtr> args,
+    MirLocalPtr result,
+    SourceSpan sp)
+    : MirInstr(MirKind::CallIndirect, sp),
+      callee(std::move(callee)),
+      args(std::move(args)),
+      result(std::move(result)) {
+    assert(this->callee);
+}
 
 MirAsm::MirAsm(
     std::string c,
@@ -207,14 +239,45 @@ MirGlobal::MirGlobal(
       span(sp) {}
 
 // ------------------------------------------------------------
+// Type declarations
+// ------------------------------------------------------------
+
+MirField::MirField(std::string n, MirFieldType t)
+    : name(std::move(n)),
+      type(std::move(t)) {}
+
+MirStructDecl::MirStructDecl(std::string n, std::vector<MirField> f)
+    : name(std::move(n)),
+      fields(std::move(f)) {}
+
+MirEnumDecl::MirEnumDecl(std::string n, std::vector<std::string> items_in)
+    : name(std::move(n)),
+      items(std::move(items_in)) {}
+
+MirPickCase::MirPickCase(std::string n, std::vector<MirField> f)
+    : name(std::move(n)),
+      fields(std::move(f)) {}
+
+MirPickDecl::MirPickDecl(std::string n, bool is_enum, std::vector<MirPickCase> c)
+    : name(std::move(n)),
+      enum_like(is_enum),
+      cases(std::move(c)) {}
+
+// ------------------------------------------------------------
 // Module
 // ------------------------------------------------------------
 
 MirModule::MirModule(
+    std::vector<MirStructDecl> structs,
+    std::vector<MirEnumDecl> enums,
+    std::vector<MirPickDecl> picks,
     std::vector<MirGlobal> globals,
     std::vector<MirFunction> funcs,
     SourceSpan sp)
-    : globals(std::move(globals)),
+    : structs(std::move(structs)),
+      enums(std::move(enums)),
+      picks(std::move(picks)),
+      globals(std::move(globals)),
       functions(std::move(funcs)),
       span(sp) {}
 
@@ -272,11 +335,14 @@ std::string dump_to_string(const MirModule& m) {
 const char* to_string(MirKind kind) {
     switch (kind) {
         case MirKind::NamedType: return "NamedType";
+        case MirKind::ProcType: return "ProcType";
         case MirKind::Local: return "Local";
         case MirKind::Const: return "Const";
+        case MirKind::Member: return "Member";
         case MirKind::Assign: return "Assign";
         case MirKind::BinaryOp: return "BinaryOp";
         case MirKind::Call: return "Call";
+        case MirKind::CallIndirect: return "CallIndirect";
         case MirKind::Asm: return "Asm";
         case MirKind::UnsafeBegin: return "UnsafeBegin";
         case MirKind::UnsafeEnd: return "UnsafeEnd";

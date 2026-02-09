@@ -60,6 +60,8 @@ struct VitteUnit {
     std::uint8_t _dummy;
 };
 
+extern "C" void vitte_builtin_trap(VitteString msg);
+
 enum class VitteIoErrorKind : std::uint8_t {
     NotFound,
     PermissionDenied,

@@ -68,7 +68,8 @@ proc keys(ns: Namespace) -> Result[[string], string] {
 proc batch_put(ns: Namespace, entries: [Entry]) -> Result[Unit, string] {
     let i: usize = 0
     let out_entries: [Entry] = []
-    while i < entries.len {
+    loop {
+        if i >= entries.len { break }
         let e = entries[i]
         out_entries = out_entries + [Entry(key = ns_key(ns, e.key), value = e.value)]
         i = i + 1

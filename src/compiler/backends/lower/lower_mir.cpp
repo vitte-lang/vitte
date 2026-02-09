@@ -27,6 +27,9 @@ static CppType* builtin_type(CppContext& ctx, const std::string& name) {
 }
 
 static CppType* map_type(CppContext& ctx, const std::string& mir_name) {
+    if (auto* t = ctx.resolve_type(mir_name)) {
+        return t;
+    }
     if (mir_name == "i32") return builtin_type(ctx, "int32_t");
     if (mir_name == "i64") return builtin_type(ctx, "int64_t");
     if (mir_name == "i16") return builtin_type(ctx, "int16_t");
@@ -39,20 +42,51 @@ static CppType* map_type(CppContext& ctx, const std::string& mir_name) {
     if (mir_name == "isize") return builtin_type(ctx, "ptrdiff_t");
     if (mir_name == "bool") return builtin_type(ctx, "bool");
     if (mir_name == "string") return builtin_type(ctx, "VitteString");
+    if (mir_name == "VitteAny") return builtin_type(ctx, "void*");
+    if (mir_name == "unknown") return builtin_type(ctx, "int32_t");
     if (mir_name == "Unit" || mir_name == "unit" || mir_name == "void") {
         return builtin_type(ctx, "void");
     }
     if (mir_name.size() >= 4 && mir_name.compare(mir_name.size() - 4, 4, "Unit") == 0) {
         return builtin_type(ctx, "void");
     }
-    return builtin_type(ctx, "int32_t");
+    auto* ty = new CppType(CppType::user(mir_name, CppTypeKind::Struct));
+    ctx.register_type(mir_name, ty);
+    return ty;
+}
+
+static CppType* map_type(CppContext& ctx, const vitte::ir::MirTypePtr& type) {
+    if (!type) {
+        return map_type(ctx, "i32");
+    }
+    if (type->kind == vitte::ir::MirKind::NamedType) {
+        return map_type(ctx, static_cast<const vitte::ir::MirNamedType&>(*type).name);
+    }
+    if (type->kind == vitte::ir::MirKind::ProcType) {
+        const auto& t = static_cast<const vitte::ir::MirProcType&>(*type);
+        std::vector<CppType*> params;
+        params.reserve(t.params.size());
+        for (const auto& p : t.params) {
+            params.push_back(map_type(ctx, p));
+        }
+        auto* ret = map_type(ctx, t.ret);
+        return new CppType(CppType::function(ret, params));
+    }
+    return map_type(ctx, "i32");
 }
 
 static std::unique_ptr<CppExpr> emit_value(CppContext& ctx, const vitte::ir::MirValue& v) {
-    (void)ctx;
     if (v.kind == MirKind::Local) {
         const auto& l = static_cast<const vitte::ir::MirLocal&>(v);
-        return std::make_unique<CppVar>(l.name);
+        if (l.name.find("::") != std::string::npos) {
+            return std::make_unique<CppVar>(l.name);
+        }
+        return std::make_unique<CppVar>(ctx.safe_ident(l.name));
+    }
+    if (v.kind == MirKind::Member) {
+        const auto& m = static_cast<const vitte::ir::MirMember&>(v);
+        auto base = emit_value(ctx, *m.base);
+        return std::make_unique<CppMember>(std::move(base), ctx.safe_ident(m.member), m.pointer);
     }
     if (v.kind == MirKind::Const) {
         const auto& c = static_cast<const vitte::ir::MirConst&>(v);
@@ -85,6 +119,10 @@ static std::unique_ptr<CppExpr> emit_value(CppContext& ctx, const vitte::ir::Mir
     return std::make_unique<CppLiteral>("0");
 }
 
+static bool is_unknown_type_name(const std::string& name) {
+    return name == "unknown";
+}
+
 static std::unique_ptr<CppExpr> emit_const_expr(const vitte::ir::MirConstKind kind, const std::string& value) {
     switch (kind) {
         case vitte::ir::MirConstKind::Bool:
@@ -112,6 +150,19 @@ static std::unique_ptr<CppExpr> emit_const_expr(const vitte::ir::MirConstKind ki
         }
     }
     return std::make_unique<CppLiteral>("0");
+}
+
+static CppType* map_field_type(CppContext& ctx, const vitte::ir::MirFieldType& t) {
+    if (t.kind == vitte::ir::MirFieldType::Kind::Named) {
+        return map_type(ctx, t.name);
+    }
+    std::vector<CppType*> params;
+    for (const auto& p : t.params) {
+        params.push_back(map_type(ctx, p));
+    }
+    auto* ret = map_type(ctx, t.ret);
+    auto* ty = new CppType(CppType::function(ret, params));
+    return ty;
 }
 static std::string binop_to_cpp(vitte::ir::MirBinOp op) {
     switch (op) {
@@ -141,6 +192,9 @@ static std::string type_name(const vitte::ir::MirTypePtr& type) {
     }
     if (type->kind == vitte::ir::MirKind::NamedType) {
         return static_cast<const vitte::ir::MirNamedType&>(*type).name;
+    }
+    if (type->kind == vitte::ir::MirKind::ProcType) {
+        return "proc";
     }
     return "i32";
 }
@@ -206,6 +260,104 @@ ast::cpp::CppTranslationUnit lower_mir(
     bool has_entry = false;
     std::string entry_mangled;
 
+    std::unordered_set<std::string> defined_structs;
+    std::unordered_set<std::string> defined_enums;
+
+    for (const auto& e : module.enums) {
+        if (defined_enums.insert(e.name).second) {
+            CppEnum en;
+            en.name = e.name;
+            for (const auto& it : e.items) {
+                en.items.push_back({it, std::nullopt});
+            }
+            tu.enums.push_back(std::move(en));
+            auto* ty = new CppType(CppType::user(e.name, CppTypeKind::Enum));
+            ctx.register_type(e.name, ty);
+        }
+    }
+
+    for (const auto& s : module.structs) {
+        if (defined_structs.insert(s.name).second) {
+            CppStruct st;
+            st.name = s.name;
+            for (const auto& f : s.fields) {
+                st.fields.push_back({map_field_type(ctx, f.type), ctx.safe_ident(f.name)});
+            }
+            tu.structs.push_back(std::move(st));
+            auto* ty = new CppType(CppType::user(s.name, CppTypeKind::Struct));
+            ctx.register_type(s.name, ty);
+        }
+    }
+
+    for (const auto& p : module.picks) {
+        if (p.enum_like) {
+            if (defined_enums.insert(p.name).second) {
+                CppEnum en;
+                en.name = p.name;
+                for (const auto& c : p.cases) {
+                    en.items.push_back({c.name, std::nullopt});
+                }
+                tu.enums.push_back(std::move(en));
+                auto* ty = new CppType(CppType::user(p.name, CppTypeKind::Enum));
+                ctx.register_type(p.name, ty);
+            }
+            continue;
+        }
+        if (defined_structs.insert(p.name).second) {
+            CppStruct st;
+            st.name = p.name;
+            st.fields.push_back({builtin_type(ctx, "uint8_t"), "__tag"});
+            std::unordered_set<std::string> field_names;
+            for (const auto& c : p.cases) {
+                for (const auto& f : c.fields) {
+                    if (field_names.insert(f.name).second) {
+                        st.fields.push_back({map_field_type(ctx, f.type), ctx.safe_ident(f.name)});
+                    }
+                }
+            }
+            tu.structs.push_back(std::move(st));
+            auto* ty = new CppType(CppType::user(p.name, CppTypeKind::Struct));
+            ctx.register_type(p.name, ty);
+        }
+
+        std::size_t tag = 0;
+        for (const auto& c : p.cases) {
+            CppFunction ctor;
+            ctor.name = ctx.mangle(p.name + "__" + c.name);
+            ctor.return_type = map_type(ctx, p.name);
+            for (const auto& f : c.fields) {
+                ctor.params.push_back({map_field_type(ctx, f.type), ctx.safe_ident(f.name)});
+            }
+
+            auto decl = std::make_unique<CppVarDecl>(map_type(ctx, p.name), "_v");
+            ctor.body.push_back(std::move(decl));
+
+            ctor.body.push_back(std::make_unique<CppAssign>(
+                std::make_unique<CppMember>(std::make_unique<CppVar>("_v"), "__tag"),
+                std::make_unique<CppLiteral>(std::to_string(tag))));
+
+            for (const auto& f : c.fields) {
+                ctor.body.push_back(std::make_unique<CppAssign>(
+                    std::make_unique<CppMember>(std::make_unique<CppVar>("_v"), ctx.safe_ident(f.name)),
+                    std::make_unique<CppVar>(ctx.safe_ident(f.name))));
+            }
+
+            ctor.body.push_back(std::make_unique<CppReturn>(std::make_unique<CppVar>("_v")));
+            tu.functions.push_back(std::move(ctor));
+
+            if (c.fields.empty()) {
+                CppGlobal g;
+                g.is_const = true;
+                g.name = p.name + "__" + c.name + "__value";
+                g.type = map_type(ctx, p.name);
+                g.init = std::make_unique<CppCall>(ctx.mangle(p.name + "__" + c.name));
+                tu.globals.push_back(std::move(g));
+            }
+
+            ++tag;
+        }
+    }
+
     for (const auto& g : module.globals) {
         CppGlobal glob;
         glob.name = g.name;
@@ -229,7 +381,7 @@ ast::cpp::CppTranslationUnit lower_mir(
         CppFunction out;
         bool is_extern = externs.count(fn.name) > 0;
         out.name = is_extern ? fn.name : ctx.mangle(fn.name);
-        out.return_type = map_type(ctx, type_name(fn.return_type));
+        out.return_type = map_type(ctx, fn.return_type);
         out.is_extern = is_extern;
         if (is_extern) {
             out.abi = "C";
@@ -240,20 +392,25 @@ ast::cpp::CppTranslationUnit lower_mir(
 
         std::unordered_set<std::string> param_names;
         for (const auto& p : fn.params) {
-            auto ty = map_type(ctx, type_name(p.type));
-            out.params.push_back({ty, p.name});
-            param_names.insert(p.name);
+            auto ty = map_type(ctx, p.type);
+            auto pname = ctx.safe_ident(p.name);
+            out.params.push_back({ty, pname});
+            param_names.insert(pname);
         }
 
         std::unordered_set<std::string> declared;
         for (const auto* local : ordered_locals(fn, ctx.repro_strict())) {
-            if (param_names.count(local->name) > 0) {
+            const auto lname = ctx.safe_ident(local->name);
+            if (param_names.count(lname) > 0) {
                 continue;
             }
-            if (declared.insert(local->name).second) {
+            if (is_unknown_type_name(type_name(local->type))) {
+                continue;
+            }
+            if (declared.insert(lname).second) {
                 auto decl = std::make_unique<CppVarDecl>(
-                    map_type(ctx, type_name(local->type)),
-                    local->name
+                    map_type(ctx, local->type),
+                    lname
                 );
                 out.body.push_back(std::move(decl));
             }
@@ -273,16 +430,21 @@ ast::cpp::CppTranslationUnit lower_mir(
                     case MirKind::Assign: {
                         auto& ins = static_cast<const vitte::ir::MirAssign&>(*instr);
                         const auto& dst = static_cast<const vitte::ir::MirLocal&>(*ins.dest);
-                        if (declared.insert(dst.name).second) {
+                        auto dname = ctx.safe_ident(dst.name);
+                        if (declared.insert(dname).second) {
+                            auto decl_type = map_type(ctx, dst.type);
+                            if (is_unknown_type_name(type_name(dst.type))) {
+                                decl_type = builtin_type(ctx, "auto");
+                            }
                             auto decl = std::make_unique<CppVarDecl>(
-                                map_type(ctx, type_name(dst.type)),
-                                dst.name
+                                decl_type,
+                                dname
                             );
                             decl->init = emit_value(ctx, *ins.value);
                             out.body.push_back(std::move(decl));
                         } else {
                             out.body.push_back(std::make_unique<CppAssign>(
-                                std::make_unique<CppVar>(dst.name),
+                                std::make_unique<CppVar>(dname),
                                 emit_value(ctx, *ins.value)));
                         }
                         break;
@@ -294,25 +456,31 @@ ast::cpp::CppTranslationUnit lower_mir(
                             binop_to_cpp(ins.op),
                             emit_value(ctx, *ins.left),
                             emit_value(ctx, *ins.right));
-                        if (declared.insert(dst.name).second) {
+                        auto dname = ctx.safe_ident(dst.name);
+                        if (declared.insert(dname).second) {
                             auto decl = std::make_unique<CppVarDecl>(
-                                map_type(ctx, type_name(dst.type)),
-                                dst.name
+                                map_type(ctx, dst.type),
+                                dname
                             );
                             decl->init = std::move(expr);
                             out.body.push_back(std::move(decl));
                         } else {
                             out.body.push_back(std::make_unique<CppAssign>(
-                                std::make_unique<CppVar>(dst.name),
+                                std::make_unique<CppVar>(dname),
                                 std::move(expr)));
                         }
                         break;
                     }
                     case MirKind::Call: {
                         auto& ins = static_cast<const vitte::ir::MirCall&>(*instr);
-                        std::string callee_name = externs.count(ins.callee) > 0
-                            ? ins.callee
-                            : ctx.mangle(ins.callee);
+                        std::string callee_name;
+                        if (ins.callee == "builtin.trap") {
+                            callee_name = "vitte_builtin_trap";
+                        } else if (externs.count(ins.callee) > 0) {
+                            callee_name = ins.callee;
+                        } else {
+                            callee_name = ctx.mangle(ins.callee);
+                        }
                         auto call = std::make_unique<CppCall>(callee_name);
                         for (const auto& a : ins.args) {
                             if (a) {
@@ -321,16 +489,53 @@ ast::cpp::CppTranslationUnit lower_mir(
                         }
                         if (ins.result) {
                             const auto& dst = static_cast<const vitte::ir::MirLocal&>(*ins.result);
-                            if (declared.insert(dst.name).second) {
+                            auto dname = ctx.safe_ident(dst.name);
+                            if (declared.insert(dname).second) {
+                                auto decl_type = map_type(ctx, dst.type);
+                                if (is_unknown_type_name(type_name(dst.type))) {
+                                    decl_type = builtin_type(ctx, "auto");
+                                }
                                 auto decl = std::make_unique<CppVarDecl>(
-                                    map_type(ctx, type_name(dst.type)),
-                                    dst.name
+                                    decl_type,
+                                    dname
                                 );
                                 decl->init = std::move(call);
                                 out.body.push_back(std::move(decl));
                             } else {
                                 out.body.push_back(std::make_unique<CppAssign>(
-                                    std::make_unique<CppVar>(dst.name),
+                                    std::make_unique<CppVar>(dname),
+                                    std::move(call)));
+                            }
+                        } else {
+                            out.body.push_back(std::make_unique<CppExprStmt>(std::move(call)));
+                        }
+                        break;
+                    }
+                    case MirKind::CallIndirect: {
+                        auto& ins = static_cast<const vitte::ir::MirCallIndirect&>(*instr);
+                        auto call = std::make_unique<CppCall>(emit_value(ctx, *ins.callee));
+                        for (const auto& a : ins.args) {
+                            if (a) {
+                                call->args.push_back(emit_value(ctx, *a));
+                            }
+                        }
+                        if (ins.result) {
+                            const auto& dst = static_cast<const vitte::ir::MirLocal&>(*ins.result);
+                            auto dname = ctx.safe_ident(dst.name);
+                            if (declared.insert(dname).second) {
+                                auto decl_type = map_type(ctx, dst.type);
+                                if (is_unknown_type_name(type_name(dst.type))) {
+                                    decl_type = builtin_type(ctx, "auto");
+                                }
+                                auto decl = std::make_unique<CppVarDecl>(
+                                    decl_type,
+                                    dname
+                                );
+                                decl->init = std::move(call);
+                                out.body.push_back(std::move(decl));
+                            } else {
+                                out.body.push_back(std::make_unique<CppAssign>(
+                                    std::make_unique<CppVar>(dname),
                                     std::move(call)));
                             }
                         } else {

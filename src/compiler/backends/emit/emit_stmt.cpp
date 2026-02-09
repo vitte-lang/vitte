@@ -12,6 +12,17 @@ static void indent(std::ostream& os, int level) {
         os << "    ";
 }
 
+static void emit_type(
+    std::ostream& os,
+    const ast::cpp::CppType* type
+) {
+    if (!type) {
+        os << "<unknown>";
+        return;
+    }
+    os << type->name;
+}
+
 /* Forward */
 static void emit_stmt_impl(
     std::ostream& os,
@@ -83,7 +94,19 @@ static void emit_stmt_impl(
         indent(os, indent_level);
         if (s.is_const)
             os << "const ";
-        os << s.type->name << " " << s.name;
+        if (s.type && s.type->kind == ast::cpp::CppTypeKind::Function) {
+            emit_type(os, s.type->return_type);
+            os << " (*" << s.name << ")(";
+            for (size_t i = 0; i < s.type->param_types.size(); ++i) {
+                emit_type(os, s.type->param_types[i]);
+                if (i + 1 < s.type->param_types.size()) {
+                    os << ", ";
+                }
+            }
+            os << ")";
+        } else {
+            os << s.type->name << " " << s.name;
+        }
         if (s.init) {
             os << " = ";
             emit_expr(os, *(*s.init));

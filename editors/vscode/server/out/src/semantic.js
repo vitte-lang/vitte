@@ -48,19 +48,25 @@ function getSemanticTokensLegend() {
 const HOVER_DOC = {
     module: "Déclare le module courant.",
     import: "Importe un chemin depuis un autre module.",
+    use: "Importe un symbole depuis un module.",
+    space: "Déclare l’espace courant.",
     as: "Assigne un alias à un import.",
     pub: "Rend le symbole public.",
     struct: "Définit une structure.",
+    form: "Définit une structure (form).",
     enum: "Définit une énumération.",
     union: "Définit une union.",
     type: "Déclare un alias de type.",
     fn: "Déclare une fonction.",
+    proc: "Déclare une procédure.",
+    extern: "Déclare une liaison externe.",
     let: "Déclare une variable locale.",
     mut: "Rend un binding mutable.",
     const: "Déclare une constante.",
     static: "Déclare un symbole statique.",
     where: "Contraintes de type.",
     if: "Instruction conditionnelle.",
+    elif: "Branche conditionnelle intermédiaire.",
     else: "Branche alternative.",
     match: "Branches par motifs.",
     while: "Boucle conditionnelle.",
@@ -70,18 +76,30 @@ const HOVER_DOC = {
     break: "Interrompt une boucle.",
     continue: "Passe à l’itération suivante.",
     return: "Retourne depuis une fonction.",
+    give: "Retourne depuis une procédure.",
     true: "Booléen vrai.",
     false: "Booléen faux.",
     nil: "Valeur nulle.",
+    null: "Valeur nulle.",
 };
 function provideHover(doc, position) {
     const w = wordAt(doc, position);
     if (!w)
         return null;
     const info = HOVER_DOC[w];
-    if (!info)
-        return null;
-    return { contents: { kind: node_1.MarkupKind.Markdown, value: `**${w}** — ${info}` } };
+    if (info) {
+        return { contents: { kind: node_1.MarkupKind.Markdown, value: `**${w}** — ${info}` } };
+    }
+    if (languageFacts_js_1.PRIMITIVE_TYPE_SET.has(w)) {
+        return { contents: { kind: node_1.MarkupKind.Markdown, value: `**${w}** — Type primitif.` } };
+    }
+    if (languageFacts_js_1.BOOL_LITERAL_SET.has(w)) {
+        return { contents: { kind: node_1.MarkupKind.Markdown, value: `**${w}** — Littéral booléen.` } };
+    }
+    if (languageFacts_js_1.NIL_LITERAL_SET.has(w)) {
+        return { contents: { kind: node_1.MarkupKind.Markdown, value: `**${w}** — Littéral nul.` } };
+    }
+    return null;
 }
 /* --------------------------- Semantic tokeniser --------------------------- */
 const KW = languageFacts_js_1.RESERVED_WORDS;
@@ -115,15 +133,17 @@ function buildSemanticTokens(doc) {
         insertSpan(spans, m.index, m.index + m[0].length, TYPE_INDEX.keyword);
     }
     // 4) déclarations: colorer uniquement le nom
-    addDeclSpans(text, lex.mask, /\bmodule\s+([A-Za-z_][\w:]*)/g, 1, TYPE_INDEX.namespace, spans);
+    addDeclSpans(text, lex.mask, /\bmodule\s+([A-Za-z_][\w./:]*)/g, 1, TYPE_INDEX.namespace, spans);
+    addDeclSpans(text, lex.mask, /\bspace\s+([A-Za-z_][\w./:]*)/g, 1, TYPE_INDEX.namespace, spans);
     addDeclSpans(text, lex.mask, /\bstruct\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
+    addDeclSpans(text, lex.mask, /\bform\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
     addDeclSpans(text, lex.mask, /\benum\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
     addDeclSpans(text, lex.mask, /\bunion\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
     addDeclSpans(text, lex.mask, /\btype\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
-    addDeclSpans(text, lex.mask, /\bfn\s+([A-Za-z_]\w*)\s*\(/g, 1, TYPE_INDEX.function, spans);
+    addDeclSpans(text, lex.mask, /\b(?:fn|proc)\s+([A-Za-z_]\w*)\s*\(/g, 1, TYPE_INDEX.function, spans);
     addDeclSpans(text, lex.mask, /\b(?:let|const|static)\s+(?:mut\s+)?([A-Za-z_]\w*)/g, 1, TYPE_INDEX.variable, spans);
     // 5) paramètres de fonctions
-    for (const m of matchAll(/\bfn\s+[A-Za-z_]\w*\s*\(([^)]*)\)/g, text)) {
+    for (const m of matchAll(/\b(?:fn|proc)\s+[A-Za-z_]\w*\s*\(([^)]*)\)/g, text)) {
         if (!lex.mask[m.index])
             continue; // début du fn
         const params = (m[1] ?? "").split(",");
@@ -144,7 +164,7 @@ function buildSemanticTokens(doc) {
         }
     }
     // 6) propriétés de struct
-    for (const m of matchAll(/\bstruct\s+[A-Za-z_]\w*\s*\{([\s\S]*?)\}/g, text)) {
+    for (const m of matchAll(/\b(?:struct|form)\s+[A-Za-z_]\w*\s*\{([\s\S]*?)\}/g, text)) {
         const body = m[1] ?? "";
         const bodyStart = m.index + m[0].indexOf("{") + 1;
         for (const fm of matchAll(/(^|\s)([A-Za-z_]\w*)\s*:\n?\s*[^,\n\r\}]+/g, body)) {
@@ -186,6 +206,15 @@ function scanLex(text) {
     while (i < n) {
         const c = text.charCodeAt(i);
         const c2 = i + 1 < n ? text.charCodeAt(i + 1) : 0;
+        // line comment #... (ignore attributes #[...])
+        if (c === 0x23 /* # */ && c2 !== 0x5b /* [ */) {
+            const start = i;
+            i += 1;
+            while (i < n && text.charCodeAt(i) !== 0x0a)
+                i++;
+            comments.push([start, i]);
+            continue;
+        }
         // line comment //...
         if (c === 0x2f && c2 === 0x2f) {
             const start = i;
@@ -264,7 +293,11 @@ function scanLex(text) {
         while (i < n) {
             const a = text.charCodeAt(i);
             const b = i + 1 < n ? text.charCodeAt(i + 1) : 0;
-            if ((a === 0x2f && (b === 0x2f || b === 0x2a)) || a === 0x22 || a === 0x27 || a === 0x72)
+            if ((a === 0x2f && (b === 0x2f || b === 0x2a)) ||
+                a === 0x22 ||
+                a === 0x27 ||
+                a === 0x72 ||
+                (a === 0x23 && b !== 0x5b))
                 break;
             i++;
         }

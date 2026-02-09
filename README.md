@@ -1,7 +1,5 @@
 # Vitte
 
-[![CI](https://github.com/vitte-lang/vitte/actions/workflows/ci.yml/badge.svg)](https://github.com/vitte-lang/vitte/actions/workflows/ci.yml)
-[![Cirrus CI](https://api.cirrus-ci.com/github/vitte-lang/vitte.svg)](https://cirrus-ci.com/github/vitte-lang/vitte)
 
 **Vitte** is an experimental systems language and toolchain.  
 It is designed to make low‑level code **readable**, **explicit**, and **predictable**.
@@ -45,7 +43,9 @@ If your priority is strong safety guarantees, Vitte may not be the right choice.
 ## Getting Started (Beginner)
 
 This is the minimal path to compile and run something.
-
+```sh
+brew install vitte
+```
 ### 1. Build the project
 
 From the repository root:
@@ -71,7 +71,7 @@ This takes a `.vit` file and compiles it. If the compiler reports an error, it w
 ### 3. Check syntax (no build)
 
 ```sh
-./bin/vitte check examples/syntax_features.vit
+vitte check examples/syntax_features.vit
 ```
 
 This is useful while editing because it validates syntax without producing a build.
@@ -91,7 +91,7 @@ make repro
 Or manually:
 
 ```sh
-./bin/vitte build --repro --emit-obj -o build/repro/vitte.o tests/repro/min.vit
+vitte build --repro --emit-obj -o build/repro/vitte.o tests/repro/min.vit
 ```
 
 Notes:
@@ -625,9 +625,9 @@ The repository is split into clear areas. This helps beginners navigate:
 These are the most common commands you will use while experimenting:
 
 ```sh
-./bin/vitte parse  path/to/file.vit
-./bin/vitte check  path/to/file.vit
-./bin/vitte build  path/to/file.vit
+vitte parse  path/to/file.vit
+vitte check  path/to/file.vit
+vitte build  path/to/file.vit
 ```
 
 - `parse` only checks parsing.

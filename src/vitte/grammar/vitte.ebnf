@@ -16,31 +16,37 @@ toplevel ::= space_decl
           | proc_decl
           | entry_decl
           | macro_decl
-          | comment
           ;
 
 space_decl ::= "space" WS1 module_path ;
 pull_decl  ::= "pull"  WS1 module_path [ WS1 "as" WS1 ident ] ;
-use_decl   ::= "use"   WS1 module_path [ use_group | use_glob ] [ WS1 "as" WS1 ident ] ;
+use_decl   ::= "use" WS1 use_path [ use_group | use_glob ] [ WS1 "as" WS1 ident ] ;
 use_glob   ::= "." "*" ;
-use_group  ::= "." "{" WS? ident_list WS? "}" ;
+use_group  ::= "." "{" WS? ( "*" | ident_list [ WS? "," WS? "*" ]? ) WS? "}" ;
 share_decl ::= "share" WS1 ( "all" | ident_list ) ;
 const_decl ::= "const" WS1 ident [ WS? ":" WS? type_expr ] WS? "=" WS? expr ;
-global_decl ::= ("let" | "make") WS1 ident
-                [ WS? ( ":" WS? type_expr | WS1 "as" WS1 type_expr ) ]
+global_decl ::= let_global_decl | make_global_decl ;
+let_global_decl ::= "let" WS1 ident
+                [ WS? ":" WS? type_expr ]
+                WS? "=" WS? expr ;
+make_global_decl ::= "make" WS1 ident
+                [ WS1 "as" WS1 type_expr ]
                 WS? "=" WS? expr ;
 
 module_path ::= relative? path_parts ;
+use_path    ::= relative? path_parts ;
 relative    ::= { "." } ;
 path_parts  ::= ident { ("/" | ".") ident } ;
 ident_list  ::= ident { WS? "," WS? ident } ;
 
 <<< ——————————————————— ) ( Comments ) ( ——————————————————— >>>
 
-comment ::= zone_comment ;
+comment ::= zone_comment | line_comment ;
 
 zone_comment ::= "<<<" WS? [ ident ] WS? zone_body ">>>" ;
 zone_body ::= { ~">>>" } ;
+
+line_comment ::= "#" { ~NEWLINE } ;
 
 <<< ——————————————————— ) ( Attributes ) ( ——————————————————— >>>
 
@@ -67,11 +73,13 @@ pick_decl ::= "pick" WS1 ident type_params? WS?
 legacy_pick ::= { case_decl WS? } ".end" ;
 
 case_list ::= case_item { WS? "," WS? case_item } ;
-case_item ::= [ "case" WS1 ] ident [ "(" WS? case_payload WS? ")" ] ;
+case_item ::= [ "case" WS1 ] ident [ "(" WS? case_payload_brace WS? ")" ] ;
 
-case_decl ::= "case" WS1 ident [ "(" WS? case_payload WS? ")" ] ;
-case_payload ::= case_field { WS? "," WS? case_field } ;
-case_field ::= ident ( WS? ":" WS? type_expr | WS1 "as" WS1 type_expr ) ;
+case_decl ::= "case" WS1 ident [ "(" WS? case_payload_legacy WS? ")" ] ;
+case_payload_brace ::= case_field_brace { WS? "," WS? case_field_brace } ;
+case_payload_legacy ::= case_field_legacy { WS? "," WS? case_field_legacy } ;
+case_field_brace ::= ident WS? ":" WS? type_expr ;
+case_field_legacy ::= ident WS1 "as" WS1 type_expr ;
 
 <<< ——————————————————— ) ( Procedures ) ( ——————————————————— >>>
 
@@ -141,7 +149,7 @@ continue_stmt ::= "continue" ;
 
 select_stmt ::= "select" WS1 expr WS?
                 { when_stmt WS? }
-                [ WS? ("else" | "otherwise") WS? block ] ;
+                [ WS? "otherwise" WS? block ] ;
 match_stmt ::= "match" WS1 expr WS?
                "{" WS? { "case" WS1 pattern WS? block WS? } [ WS? ("else" | "otherwise") WS? block ] "}" ;
 
@@ -170,8 +178,7 @@ shift_expr ::= add_expr { WS? ("<<" | ">>") WS? add_expr } ;
 add_expr ::= mul_expr { WS? ("+" | "-") WS? mul_expr } ;
 mul_expr ::= cast_expr { WS? ("*" | "/" | "%") WS? cast_expr } ;
 
-cast_expr ::= is_expr { WS? "as" WS? type_expr } ;
-is_expr ::= unary_expr { WS? "is" WS? pattern } ;
+cast_expr ::= unary_expr { WS? ("as" WS? type_expr | "is" WS? pattern) } ;
 
 unary_expr ::= ("not" | "!" | "-" | "&" | "*") WS? unary_expr | postfix_expr ;
 
@@ -196,11 +203,13 @@ arg_list ::= expr { WS? "," WS? expr } ;
 
 <<< ——————————————————— ) ( Patterns ) ( ——————————————————— >>>
 
-pattern ::= ident
-          | qualified_ident [ "(" WS? pattern_args? WS? ")" ]
-          ;
+pattern ::= pattern_head [ "(" WS? pattern_args? WS? ")" ] ;
 
+pattern_head ::= pattern_qualified_ident ;
 pattern_args ::= pattern { WS? "," WS? pattern } ;
+
+pattern_qualified_ident ::= pattern_ident { "." pattern_ident } ;
+pattern_ident ::= ident | keyword_ident ;
 
 qualified_ident ::= ident { "." ident } ;
 
@@ -214,7 +223,8 @@ slice_type ::= "[" WS? type_expr WS? "]" ;
 proc_type ::= "proc" WS? "(" WS? type_list? WS? ")" WS?
               [ "->" WS? type_expr ] ;
 
-type_list ::= type_expr { WS? "," WS? type_expr } ;
+type_list ::= type_param { WS? "," WS? type_param } ;
+type_param ::= ident WS? ":" WS? type_expr | type_expr ;
 
 type_primary ::= qualified_ident [ "[" WS? type_list? WS? "]" ]
                | "bool" | "string" | "int" ;
@@ -227,12 +237,10 @@ list_lit ::= "[" WS? arg_list? WS? "]" ;
 
 bool_lit ::= "true" | "false" ;
 
-int_lit ::= [ "-" ] DIGIT { DIGIT | "_" }
-            [ ("u8" | "u16" | "u32" | "u64" | "u128" | "usize" |
-               "i8" | "i16" | "i32" | "i64" | "i128" | "isize") ]
-          | "0x" HEXDIGIT { HEXDIGIT | "_" } ;
+int_lit ::= [ "-" ] DIGIT { DIGIT | "_" } [ suffix ]
+          | [ "-" ] "0x" HEXDIGIT { HEXDIGIT | "_" } ;
 
-float_lit ::= DIGIT { DIGIT | "_" } "." DIGIT { DIGIT | "_" } ;
+float_lit ::= [ "-" ] DIGIT { DIGIT | "_" } "." DIGIT { DIGIT | "_" } ;
 
 char_lit ::= "'" { char_char } "'" ;
 char_char ::= "\\" | ~"'" ;
@@ -245,6 +253,8 @@ raw_string_char ::= ~"\"\"\"" ;
 <<< ——————————————————— ) ( Lexical ) ( ——————————————————— >>>
 
 ident ::= (LETTER | "_") { LETTER | DIGIT | "_" } ;
+keyword_ident ::= "bool" | "string" | "int" | "and" | "or" | "not" | "all" ;
+suffix ::= LETTER { LETTER } ;
 
 WS ::= { " " | "\t" | NEWLINE } ;
 WS1 ::= ( " " | "\t" | NEWLINE ) { " " | "\t" | NEWLINE } ;

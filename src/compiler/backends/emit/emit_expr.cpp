@@ -64,7 +64,12 @@ static void emit_expr_impl(
 
     case K::Call: {
         auto& e = static_cast<const ast::cpp::CppCall&>(expr);
-        os << e.callee << "(";
+        if (e.callee_expr) {
+            emit_expr_impl(os, *e.callee_expr);
+        } else {
+            os << e.callee;
+        }
+        os << "(";
         for (size_t i = 0; i < e.args.size(); ++i) {
             emit_expr_impl(os, *e.args[i]);
             if (i + 1 < e.args.size())

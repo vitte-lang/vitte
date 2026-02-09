@@ -39,6 +39,7 @@ const rxChar = /'(?:\\.|[^'\\])'/g;
 const rxCommentLine = /\/\/[^\n]*/g;
 const rxCommentDoc = /\/\/![^\n]*/g;
 const rxCommentBlock = /\/\*[\s\S]*?\*\//g;
+const rxCommentHash = /#(?!\[)[^\n]*/g;
 
 /* ============================ Directives ================================== */
 /**
@@ -57,6 +58,13 @@ const RULES = {
   Number: "lex.number",
   IdentKeywordShadow: "style.ident.keywordShadow",
   Semicolon: "style.semicolon",
+  StyleTypeName: "style.typeName",
+  StyleFnName: "style.fnName",
+  StyleConstName: "style.constName",
+  StyleVarName: "style.varName",
+  StyleModulePath: "style.modulePath",
+  StyleFieldName: "style.fieldName",
+  StyleUsePath: "style.usePath",
 } as const;
 
 type RuleId = typeof RULES[keyof typeof RULES];
@@ -136,6 +144,8 @@ export function lintText(
   diags.push(...checkBrackets(stripped, uri, lineDisables, blockDisables));
   diags.push(...checkIdentifiersAndKeywords(stripped, uri, lineDisables, blockDisables));
   diags.push(...checkSemicolonHeuristics(stripped, uri, lineDisables, blockDisables));
+  diags.push(...checkStyleConventions(stripped, uri, lineDisables, blockDisables));
+  diags.push(...checkModulePaths(stripped, uri, lineDisables, blockDisables));
 
   return diags;
 }
@@ -160,6 +170,7 @@ function stripNonCode(src: string): string {
     .replace(rxCommentBlock, (m) => " ".repeat(m.length))
     .replace(rxCommentDoc, (m) => " ".repeat(m.length))
     .replace(rxCommentLine, (m) => " ".repeat(m.length))
+    .replace(rxCommentHash, (m) => " ".repeat(m.length))
     .replace(rxString, (m) => " ".repeat(m.length))
     .replace(rxChar, (m) => " ".repeat(m.length));
 }
@@ -399,6 +410,20 @@ function mapRuleAlias(name: string): RuleId {
     case "ident-shadow":
     case "keyword-shadow": return RULES.IdentKeywordShadow;
     case "semicolon": return RULES.Semicolon;
+    case "type-name":
+    case "typeName": return RULES.StyleTypeName;
+    case "fn-name":
+    case "fnName": return RULES.StyleFnName;
+    case "const-name":
+    case "constName": return RULES.StyleConstName;
+    case "var-name":
+    case "varName": return RULES.StyleVarName;
+    case "module-path":
+    case "modulePath": return RULES.StyleModulePath;
+    case "field-name":
+    case "fieldName": return RULES.StyleFieldName;
+    case "use-path":
+    case "usePath": return RULES.StyleUsePath;
     default:
       return isRuleId(name) ? name : RULES.LineLength;
   }
@@ -426,4 +451,147 @@ function isDisabled(
 
 export function lintToPublishable(text: string, uri: string, options?: LintOptions): Diagnostic[] {
   return lintText(text, uri, options);
+}
+
+/* ========================= Style conventions (Vitte) ====================== */
+
+function checkStyleConventions(
+  text: string,
+  uri: string,
+  lineDisables: DisableMap,
+  blockDisables: DisableRanges
+): Diagnostic[] {
+  const diags: Diagnostic[] = [];
+  const lines = text.split(/\r?\n/);
+
+  const rxTypeDecl = /\b(?:struct|form|enum|union|type)\s+([A-Za-z_]\w*)/g;
+  const rxFnDecl = /\b(?:fn|proc)\s+([A-Za-z_]\w*)/g;
+  const rxConstDecl = /\b(?:const|static)\s+([A-Za-z_]\w*)/g;
+  const rxVarDecl = /\blet\s+([A-Za-z_]\w*)/g;
+  const rxUseDecl = /\buse\s+([A-Za-z0-9_./:]+)/g;
+
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i];
+
+    if (!isDisabled(i, RULES.StyleTypeName, lineDisables, blockDisables)) {
+      for (const m of L.matchAll(rxTypeDecl)) {
+        const name = m[1];
+        if (!/^[A-Z][A-Za-z0-9]*$/.test(name)) {
+          const idx = (m.index ?? 0) + m[0].lastIndexOf(name);
+          diags.push(diag(i, idx, i, idx + name.length,
+            "Nom de type conseillé en PascalCase (ex: UserProfile).",
+            DiagnosticSeverity.Hint, uri, RULES.StyleTypeName));
+        }
+      }
+    }
+
+    if (!isDisabled(i, RULES.StyleFnName, lineDisables, blockDisables)) {
+      for (const m of L.matchAll(rxFnDecl)) {
+        const name = m[1];
+        if (!/^[a-z][a-z0-9_]*$/.test(name)) {
+          const idx = (m.index ?? 0) + m[0].lastIndexOf(name);
+          diags.push(diag(i, idx, i, idx + name.length,
+            "Nom de fonction conseillé en snake_case (ex: read_users).",
+            DiagnosticSeverity.Hint, uri, RULES.StyleFnName));
+        }
+      }
+    }
+
+    if (!isDisabled(i, RULES.StyleConstName, lineDisables, blockDisables)) {
+      for (const m of L.matchAll(rxConstDecl)) {
+        const name = m[1];
+        if (!/^[A-Z][A-Z0-9_]*$/.test(name)) {
+          const idx = (m.index ?? 0) + m[0].lastIndexOf(name);
+          diags.push(diag(i, idx, i, idx + name.length,
+            "Nom de constante conseillé en UPPER_SNAKE_CASE (ex: MAX_SIZE).",
+            DiagnosticSeverity.Hint, uri, RULES.StyleConstName));
+        }
+      }
+    }
+
+    if (!isDisabled(i, RULES.StyleVarName, lineDisables, blockDisables)) {
+      for (const m of L.matchAll(rxVarDecl)) {
+        const name = m[1];
+        if (!/^[a-z][a-z0-9_]*$/.test(name)) {
+          const idx = (m.index ?? 0) + m[0].lastIndexOf(name);
+          diags.push(diag(i, idx, i, idx + name.length,
+            "Nom de variable conseillé en snake_case (ex: file_count).",
+            DiagnosticSeverity.Hint, uri, RULES.StyleVarName));
+        }
+      }
+    }
+  }
+
+  return diags;
+}
+
+function checkModulePaths(
+  text: string,
+  uri: string,
+  lineDisables: DisableMap,
+  blockDisables: DisableRanges
+): Diagnostic[] {
+  const diags: Diagnostic[] = [];
+  const lines = text.split(/\r?\n/);
+  const rxSpace = /\bspace\s+([A-Za-z0-9_./-]+)/g;
+  const rxModule = /\bmodule\s+([A-Za-z0-9_./: -]+)/g;
+
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i];
+
+    if (!isDisabled(i, RULES.StyleModulePath, lineDisables, blockDisables)) {
+      for (const m of L.matchAll(rxSpace)) {
+        const name = m[1];
+        if (!/^[a-z0-9_./-]+$/.test(name)) {
+          const idx = (m.index ?? 0) + m[0].lastIndexOf(name);
+          diags.push(diag(i, idx, i, idx + name.length,
+            "Chemin d’espace conseillé en minuscules (ex: std/os/user).",
+            DiagnosticSeverity.Hint, uri, RULES.StyleModulePath));
+        }
+      }
+      for (const m of L.matchAll(rxModule)) {
+        const name = m[1].trim();
+        if (!/^[a-z0-9_./:]+$/.test(name)) {
+          const idx = (m.index ?? 0) + m[0].lastIndexOf(name);
+          diags.push(diag(i, idx, i, idx + name.length,
+            "Chemin de module conseillé en minuscules.",
+            DiagnosticSeverity.Hint, uri, RULES.StyleModulePath));
+        }
+      }
+    }
+
+    if (!isDisabled(i, RULES.StyleFieldName, lineDisables, blockDisables)) {
+      const m = /(^|\s)([A-Za-z_]\w*)\s*:\s*[^;{},\n]+/.exec(L);
+      if (m) {
+        const name = m[2];
+        if (!/^[a-z][a-z0-9_]*$/.test(name)) {
+          const idx = (m.index ?? 0) + m[0].lastIndexOf(name);
+          diags.push(diag(i, idx, i, idx + name.length,
+            "Nom de champ conseillé en snake_case (ex: user_id).",
+            DiagnosticSeverity.Hint, uri, RULES.StyleFieldName));
+        }
+      }
+    }
+
+    if (!isDisabled(i, RULES.StyleUsePath, lineDisables, blockDisables)) {
+      for (const m of L.matchAll(/\buse\s+([A-Za-z0-9_./:]+)/g)) {
+        const name = m[1];
+        if (/::/.test(name)) {
+          const idx = (m.index ?? 0) + m[0].lastIndexOf(name);
+          diags.push(diag(i, idx, i, idx + name.length,
+            "Chemin use conseillé avec '/' et '.' (éviter '::').",
+            DiagnosticSeverity.Hint, uri, RULES.StyleUsePath));
+          continue;
+        }
+        if (!/^[a-z0-9_./]+(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(name)) {
+          const idx = (m.index ?? 0) + m[0].lastIndexOf(name);
+          diags.push(diag(i, idx, i, idx + name.length,
+            "Chemin use conseillé en minuscules (ex: std/core/types.i32).",
+            DiagnosticSeverity.Hint, uri, RULES.StyleUsePath));
+        }
+      }
+    }
+  }
+
+  return diags;
 }
