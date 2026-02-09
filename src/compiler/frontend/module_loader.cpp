@@ -39,7 +39,7 @@ static std::filesystem::path resolve_module_file(
     const std::filesystem::path& repo_root
 ) {
     std::string rel_str = join_path(path, "/");
-    if (!path.parts.empty() && path.parts.front().name == "std") {
+    if (!path.parts.empty() && (path.parts.front().name == "std" || path.parts.front().name == "core")) {
         ModulePath trimmed = path;
         trimmed.parts.erase(trimmed.parts.begin());
         rel_str = join_path(trimmed, "/");
@@ -47,8 +47,13 @@ static std::filesystem::path resolve_module_file(
     std::filesystem::path rel(rel_str);
     std::vector<std::filesystem::path> candidates;
 
-    if (!path.parts.empty() && path.parts.front().name == "std") {
+    if (!path.parts.empty() && (path.parts.front().name == "std" || path.parts.front().name == "core")) {
         std::filesystem::path std_root = repo_root / "src/vitte/std";
+        if (path.parts.front().name == "core") {
+            std::filesystem::path core_root = std_root / "core";
+            candidates.push_back(core_root / (rel.string() + ".vit"));
+            candidates.push_back(core_root / rel / "mod.vit");
+        }
         candidates.push_back(std_root / (rel.string() + ".vit"));
         candidates.push_back(std_root / rel / "mod.vit");
     } else {

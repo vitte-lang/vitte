@@ -19,6 +19,11 @@ Options:
 - `--lang <code>`  Language for diagnostics (e.g. en, fr). Defaults to `LANG/LC_ALL`, then `en`.
 - `--explain <code>`  Explain a diagnostic (e.g. E0001).
 - `--stdout`  Emit C++ to stdout (implies `emit`).
+- `--emit-obj`  Emit a native object file (`.o`).
+- `--repro`  Enable reproducible object output flags.
+- `--repro-strict`  Enforce strict deterministic IR lowering order.
+- `--parse-modules`  Parse + load modules (no resolve/lowering).
+- `--parse-silent`  Suppress parse-only informational logs.
 - Diagnostics include stable error codes (e.g. `error[E0001]: ...`).
 
 Examples:

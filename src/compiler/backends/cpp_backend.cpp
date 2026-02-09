@@ -46,6 +46,34 @@ static std::optional<std::filesystem::path> find_lld() {
     return std::nullopt;
 }
 
+static void apply_repro_flags(toolchain::ClangOptions& opts, bool object_only) {
+    opts.debug = false;
+    opts.optimize = false;
+    opts.opt_level = 0;
+
+    const std::string cwd = std::filesystem::current_path().string();
+    opts.cxx_flags.push_back("-O0");
+    opts.cxx_flags.push_back("-g0");
+    opts.cxx_flags.push_back("-fno-ident");
+    opts.cxx_flags.push_back("-fno-asynchronous-unwind-tables");
+    if (object_only) {
+        opts.cxx_flags.push_back("-fno-exceptions");
+        opts.cxx_flags.push_back("-fno-rtti");
+    }
+    opts.cxx_flags.push_back("-fno-builtin");
+    opts.cxx_flags.push_back("-fno-stack-protector");
+    opts.cxx_flags.push_back("-ffile-prefix-map=" + cwd + "=.");
+    opts.cxx_flags.push_back("-fdebug-prefix-map=" + cwd + "=.");
+
+#ifdef __APPLE__
+    opts.ld_flags.push_back("-Wl,-no_uuid");
+#elif defined(__linux__) || defined(__FreeBSD__)
+    opts.ld_flags.push_back("-Wl,--build-id=none");
+#elif defined(_WIN32)
+    opts.ld_flags.push_back("-Wl,/Brepro");
+#endif
+}
+
 static std::string trim_copy(const std::string& s) {
     const char* ws = " \t\r\n";
     const auto start = s.find_first_not_of(ws);
@@ -86,6 +114,7 @@ static context::CppContext build_context(const CppBackendOptions& options) {
     context::CppContext ctx;
     ctx.set_debug(options.debug);
     ctx.set_optimize(options.optimize);
+    ctx.set_repro_strict(options.repro_strict);
     if (is_arduino_target(options.target)) {
         ctx.set_entry_mode(context::CppContext::EntryMode::Arduino);
     }
@@ -118,6 +147,11 @@ bool compile_cpp_backend(
     const std::string& output_exe,
     const CppBackendOptions& options
 ) {
+    if (options.emit_obj && (is_arduino_target(options.target) || is_kernel_target(options.target))) {
+        std::cerr << "[cpp-backend] emit-obj is not supported for arduino or kernel targets\n";
+        return false;
+    }
+
     context::CppContext ctx = build_context(options);
     ast::cpp::CppTranslationUnit tu = lower_to_cpp(mir_module, ctx);
 
@@ -313,11 +347,14 @@ bool compile_cpp_backend(
         clang_opts.optimize = options.optimize;
         clang_opts.opt_level = options.opt_level;
         clang_opts.verbose = options.verbose;
+        clang_opts.emit_obj = options.emit_obj;
 
-        clang_opts.libraries.push_back("stdc++");
-        clang_opts.libraries.push_back("ssl");
-        clang_opts.libraries.push_back("crypto");
-        clang_opts.libraries.push_back("curl");
+        if (!options.emit_obj) {
+            clang_opts.libraries.push_back("stdc++");
+            clang_opts.libraries.push_back("ssl");
+            clang_opts.libraries.push_back("crypto");
+            clang_opts.libraries.push_back("curl");
+        }
 
         std::filesystem::path work_dir_path = options.work_dir;
         if (std::filesystem::exists(work_dir_path / "vitte_runtime.hpp")) {
@@ -386,8 +423,12 @@ bool compile_cpp_backend(
             : std::filesystem::current_path();
 
         std::filesystem::path runtime_cpp = base / "src/compiler/backends/runtime/vitte_runtime.cpp";
-        if (std::filesystem::exists(runtime_cpp)) {
+        if (!options.emit_obj && std::filesystem::exists(runtime_cpp)) {
             clang_opts.extra_sources.push_back(runtime_cpp.string());
+        }
+
+        if (options.repro) {
+            apply_repro_flags(clang_opts, options.emit_obj);
         }
 
         if (!toolchain::invoke_clang(

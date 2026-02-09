@@ -65,6 +65,10 @@ bool run_pipeline(const Options& opts) {
     frontend::modules::ModuleIndex module_index;
     frontend::modules::load_modules(ast_ctx, ast, diagnostics, opts.input, module_index);
     frontend::modules::rewrite_member_access(ast_ctx, ast, module_index);
+    if (diagnostics.has_errors()) {
+        frontend::diag::render_all(diagnostics, std::cerr);
+        return false;
+    }
 
     frontend::passes::expand_macros(ast_ctx, ast, diagnostics);
     frontend::passes::disambiguate_invokes(ast_ctx, ast);
@@ -128,8 +132,16 @@ bool run_pipeline(const Options& opts) {
     be_opts.arduino_upload = opts.arduino_upload;
     be_opts.arduino_port = opts.arduino_port;
     be_opts.arduino_fqbn = opts.arduino_fqbn;
+    be_opts.emit_obj = opts.emit_obj;
+    be_opts.repro = opts.repro;
+    be_opts.repro_strict = opts.repro_strict;
 
-    if (opts.emit_cpp) {
+    std::string output = opts.output;
+    if (opts.emit_obj && output == "a.out") {
+        output = "a.o";
+    }
+
+    if (opts.emit_cpp && !opts.emit_obj) {
         if (opts.emit_stdout) {
             if (!backend::emit_cpp_backend(mir, std::cout, be_opts)) {
                 std::cerr << "[pipeline] emit-cpp failed\n";
@@ -142,7 +154,7 @@ bool run_pipeline(const Options& opts) {
     } else {
         if (!backend::compile_cpp_backend(
                 mir,
-                opts.output,
+                output,
                 be_opts
             )) {
             std::cerr << "[pipeline] backend compilation failed\n";

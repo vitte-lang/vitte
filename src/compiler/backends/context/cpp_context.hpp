@@ -70,6 +70,10 @@ public:
     bool is_debug() const;
     bool is_optimize() const;
 
+    /* Deterministic lowering */
+    void set_repro_strict(bool v);
+    bool repro_strict() const;
+
     /* ---------------------------------------------
      * Entry point mode
      * --------------------------------------------- */
@@ -98,6 +102,7 @@ private:
     /* Options */
     bool debug = false;
     bool optimize = false;
+    bool repro_strict_ = false;
     EntryMode entry_mode_ = EntryMode::Native;
 };
 

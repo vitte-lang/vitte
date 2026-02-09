@@ -45,6 +45,10 @@ bool invoke_clang(
         cmd << "-ffreestanding -fno-exceptions -fno-rtti -fno-builtin -fno-stack-protector ";
     }
 
+    if (opts.emit_obj) {
+        cmd << "-c ";
+    }
+
     for (const auto& flag : opts.cxx_flags) {
         cmd << flag << " ";
     }
@@ -56,15 +60,6 @@ bool invoke_clang(
         cmd << "-I" << inc << " ";
 
     /* ---------------------------------------------
-     * Libraries
-     * --------------------------------------------- */
-    for (const auto& lib_dir : opts.library_dirs)
-        cmd << "-L" << lib_dir << " ";
-
-    for (const auto& lib : opts.libraries)
-        cmd << "-l" << lib << " ";
-
-    /* ---------------------------------------------
      * Input / output
      * --------------------------------------------- */
     cmd << input_cpp << " ";
@@ -72,8 +67,19 @@ bool invoke_clang(
         cmd << src << " ";
     cmd << "-o " << output << " ";
 
-    for (const auto& flag : opts.ld_flags) {
-        cmd << flag << " ";
+    if (!opts.emit_obj) {
+        /* ---------------------------------------------
+         * Libraries
+         * --------------------------------------------- */
+        for (const auto& lib_dir : opts.library_dirs)
+            cmd << "-L" << lib_dir << " ";
+
+        for (const auto& lib : opts.libraries)
+            cmd << "-l" << lib << " ";
+
+        for (const auto& flag : opts.ld_flags) {
+            cmd << flag << " ";
+        }
     }
 
     const std::string command = cmd.str();

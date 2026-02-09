@@ -31,6 +31,13 @@ struct CppBackendOptions {
     /* Target triple / platform */
     std::string target;
 
+    /* Emit a native object file only */
+    bool emit_obj = false;
+
+    /* Reproducible output flags */
+    bool repro = false;
+    bool repro_strict = false;
+
     /* Arduino options */
     bool arduino_upload = false;
     std::string arduino_port;

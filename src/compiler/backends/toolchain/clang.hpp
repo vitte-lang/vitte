@@ -26,6 +26,9 @@ struct ClangOptions {
     /* Freestanding build */
     bool freestanding = false;
 
+    /* Emit object only (-c) */
+    bool emit_obj = false;
+
     /* Search paths */
     std::vector<std::string> include_dirs;
     std::vector<std::string> library_dirs;

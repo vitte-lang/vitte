@@ -115,6 +115,10 @@ test:
 parse:
 	@tools/parse_tests.sh
 
+.PHONY: parse-modules
+parse-modules:
+	@tools/parse_modules_tests.sh
+
 .PHONY: parse-strict
 parse-strict:
 	@STRICT_ONLY=1 tools/parse_tests.sh
@@ -152,6 +156,10 @@ hir-validate: hir-validate-test hir-validate-fixture
 	@$(BIN_DIR)/hir_validate_test
 	@$(BIN_DIR)/hir_validate_fixture
 
+.PHONY: check-tests
+check-tests:
+	@tools/check_tests.sh
+
 .PHONY: negative-tests
 negative-tests:
 	@tools/negative_tests.sh
@@ -159,6 +167,14 @@ negative-tests:
 .PHONY: update-diagnostics-ftl
 update-diagnostics-ftl:
 	@tools/update_diagnostics_ftl.py
+
+.PHONY: repro
+repro:
+	@tools/repro_compare.sh
+
+.PHONY: repro-generate
+repro-generate:
+	@tools/repro_generate_cpp.sh
 
 # ------------------------------------------------------------
 # Stdlib checks

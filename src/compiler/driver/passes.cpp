@@ -15,6 +15,8 @@
 #include "../ir/lower_mir.hpp"
 #include "../ir/validate.hpp"
 
+#include <cerrno>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 
@@ -23,6 +25,8 @@ namespace vitte::driver {
 static bool read_file(const std::string& path, std::string& out) {
     std::ifstream in(path);
     if (!in.is_open()) {
+        std::cerr << "[driver] error: cannot open input file: " << path
+                  << " (" << std::strerror(errno) << ")\n";
         return false;
     }
     out.assign(
@@ -37,7 +41,6 @@ PassResult run_passes(const Options& opts) {
 
     std::string source;
     if (!read_file(opts.input, source)) {
-        std::cerr << "[driver] error: cannot open input file\n";
         result.ok = false;
         return result;
     }
@@ -48,9 +51,47 @@ PassResult run_passes(const Options& opts) {
     ast_ctx.sources.push_back(lexer.source_file());
     frontend::parser::Parser parser(lexer, diagnostics, ast_ctx, opts.strict_parse);
     auto module = parser.parse_module();
+
+    if (opts.parse_only) {
+        if (opts.dump_ast) {
+            std::cout << frontend::ast::dump_to_string(ast_ctx.node(module));
+        }
+        if (opts.parse_with_modules) {
+            frontend::modules::ModuleIndex module_index;
+            frontend::modules::load_modules(ast_ctx, module, diagnostics, opts.input, module_index);
+            frontend::modules::rewrite_member_access(ast_ctx, module, module_index);
+            if (diagnostics.has_errors()) {
+                frontend::diag::render_all(diagnostics, std::cerr);
+                result.ok = false;
+                return result;
+            }
+            if (!opts.parse_silent) {
+                std::cout << "[driver] parse-only: loaded modules\n";
+            }
+        } else {
+            if (!opts.parse_silent) {
+                std::cout << "[driver] parse-only: skipped module loading\n";
+            }
+        }
+        frontend::validate::validate_module(ast_ctx, module, diagnostics);
+        if (diagnostics.has_errors()) {
+            frontend::diag::render_all(diagnostics, std::cerr);
+            result.ok = false;
+            return result;
+        }
+        std::cout << "[driver] parse ok\n";
+        result.ok = true;
+        return result;
+    }
+
     frontend::modules::ModuleIndex module_index;
     frontend::modules::load_modules(ast_ctx, module, diagnostics, opts.input, module_index);
     frontend::modules::rewrite_member_access(ast_ctx, module, module_index);
+    if (diagnostics.has_errors()) {
+        frontend::diag::render_all(diagnostics, std::cerr);
+        result.ok = false;
+        return result;
+    }
 
     frontend::passes::expand_macros(ast_ctx, module, diagnostics);
     frontend::passes::disambiguate_invokes(ast_ctx, module);
@@ -64,12 +105,6 @@ PassResult run_passes(const Options& opts) {
     if (diagnostics.has_errors()) {
         frontend::diag::render_all(diagnostics, std::cerr);
         result.ok = false;
-        return result;
-    }
-
-    if (opts.parse_only) {
-        std::cout << "[driver] parse ok\n";
-        result.ok = true;
         return result;
     }
 

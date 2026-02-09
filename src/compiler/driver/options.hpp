@@ -14,9 +14,14 @@ struct Options {
     bool explain_diagnostic = false;
     bool run_doctor = false;
     bool emit_stdout = false;
+    bool emit_obj = false;
+    bool repro = false;
+    bool repro_strict = false;
 
     /* Parse only (no backend / codegen) */
     bool parse_only = false;
+    bool parse_with_modules = false;
+    bool parse_silent = false;
     bool strict_parse = false;
 
     /* Resolve only (no lowering) */

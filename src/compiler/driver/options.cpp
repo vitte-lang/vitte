@@ -109,8 +109,24 @@ Options parse_options(int argc, char** argv) {
             opts.emit_cpp = true;
             opts.emit_stdout = true;
         }
+        else if (arg == "--emit-obj") {
+            opts.emit_obj = true;
+        }
+        else if (arg == "--repro") {
+            opts.repro = true;
+        }
+        else if (arg == "--repro-strict") {
+            opts.repro_strict = true;
+        }
         else if (arg == "--parse-only") {
             opts.parse_only = true;
+        }
+        else if (arg == "--parse-modules") {
+            opts.parse_only = true;
+            opts.parse_with_modules = true;
+        }
+        else if (arg == "--parse-silent") {
+            opts.parse_silent = true;
         }
         else if (arg == "--strict-parse") {
             opts.strict_parse = true;
@@ -173,6 +189,10 @@ Options parse_options(int argc, char** argv) {
         }
     }
 
+    if (opts.repro) {
+        opts.repro_strict = true;
+    }
+
     return opts;
 }
 
@@ -205,6 +225,8 @@ void print_help() {
         "  --port <path>     Serial port for Arduino upload\n"
         "  --fqbn <name>     Arduino fully qualified board name\n"
         "  --parse-only      Parse only (no backend)\n"
+        "  --parse-modules   Parse + load modules (no resolve/lowering)\n"
+        "  --parse-silent    Suppress parse-only informational logs\n"
         "  --strict-parse    Disallow keywords as identifiers\n"
         "  --resolve-only    Resolve only (no lowering)\n"
         "  --hir-only        Lower to HIR only\n"
@@ -218,6 +240,9 @@ void print_help() {
         "  --dump-mir        Dump MIR after lowering\n"
         "  --emit-cpp        Emit C++ only (no native compile)\n"
         "  --stdout          Emit C++ to stdout (implies emit)\n"
+        "  --emit-obj        Emit a native object file (.o)\n"
+        "  --repro           Enable reproducible object output flags\n"
+        "  --repro-strict    Enforce strict deterministic IR lowering order\n"
         "  --debug           Enable debug symbols\n"
         "  -O0..-O3          Optimization level\n"
         "\n"

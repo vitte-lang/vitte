@@ -78,6 +78,36 @@ This is useful while editing because it validates syntax without producing a bui
 
 ---
 
+## Reproducible Objects (macOS, clang)
+
+Vitte can emit deterministic `.o` files for strict byte-for-byte comparison with C/C++ outputs. This mode is designed for macOS and clang, and focuses on object files rather than final binaries.
+
+Build the compiler, then run:
+
+```sh
+make repro
+```
+
+Or manually:
+
+```sh
+./bin/vitte build --repro --emit-obj -o build/repro/vitte.o tests/repro/min.vit
+```
+
+Notes:
+- `--repro` forces flags that reduce non-determinism (debug off, fixed prefix maps, and linker UUID disabled where applicable).
+- `--emit-obj` produces an object file and skips linking.
+ - `--repro` also enables strict IR lowering order to reduce codegen drift.
+ - `--repro-strict` exists for explicit control, but `--repro` already implies it.
+- See `tools/repro_compare.sh` for the comparison logic and current fixtures under `tests/repro`.
+- To regenerate C++ fixtures from the current lowering, run `make repro-generate`.
+- To enable binary comparison, run `COMPARE_BIN=1 make repro`.
+- To generate binary mismatch diagnostics (otool/nm), run `COMPARE_BIN=1 DIAG_BIN=1 make repro`.
+- To treat code signatures as ignorable for binary compare, run `COMPARE_BIN=1 STRIP_CODESIG=1 make repro`.
+- To compare against hand-written C++ fixtures (best-effort), run `COMPARE_MANUAL_CPP=1 make repro`.
+
+---
+
 ## Detailed Installation
 
 Use this section if you want a clean, repeatable setup.

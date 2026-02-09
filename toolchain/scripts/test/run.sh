@@ -21,6 +21,12 @@ fi
 log "parse"
 make parse
 
+log "parse-modules"
+make parse-modules
+
+log "check-tests"
+make check-tests
+
 log "hir-validate"
 make hir-validate
 

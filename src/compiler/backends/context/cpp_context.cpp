@@ -144,6 +144,14 @@ bool CppContext::is_optimize() const {
     return optimize;
 }
 
+void CppContext::set_repro_strict(bool v) {
+    repro_strict_ = v;
+}
+
+bool CppContext::repro_strict() const {
+    return repro_strict_;
+}
+
 /* ----------------------------------------
  * Entry mode
  * ---------------------------------------- */

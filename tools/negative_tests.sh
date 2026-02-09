@@ -19,9 +19,14 @@ for src in "${files[@]}"; do
   name="$(basename "$src" .vit)"
   expect="$TEST_DIR/$name.expect"
   flags_file="$TEST_DIR/$name.flags"
+  cmd_file="$TEST_DIR/$name.cmd"
   [ -f "$expect" ] || die "missing expect file: $expect"
 
   log "$name"
+  cmd="parse"
+  if [ -f "$cmd_file" ]; then
+    cmd="$(cat "$cmd_file" | tr -d '\n')"
+  fi
   flags=""
   if [ -f "$flags_file" ]; then
     flags="$(cat "$flags_file")"
@@ -29,7 +34,7 @@ for src in "${files[@]}"; do
   if [[ "$flags" != *"--lang"* ]]; then
     flags="--lang=en $flags"
   fi
-  out="$("$BIN" parse $flags "$src" 2>&1 >/dev/null || true)"
+  out="$("$BIN" "$cmd" $flags "$src" 2>&1 >/dev/null || true)"
 
   if [ -z "$out" ]; then
     die "$name: expected errors, got none"

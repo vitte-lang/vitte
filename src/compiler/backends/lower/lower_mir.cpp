@@ -6,6 +6,7 @@
 #include "../ast/cpp_type.hpp"
 #include "../context/cpp_context.hpp"
 
+#include <algorithm>
 #include <unordered_set>
 
 namespace vitte::backend::lower {
@@ -153,6 +154,45 @@ static bool is_extern_fn(const vitte::ir::MirFunction& fn) {
     return true;
 }
 
+static std::vector<const vitte::ir::MirBasicBlock*> ordered_blocks(
+    const vitte::ir::MirFunction& fn,
+    bool repro_strict
+) {
+    std::vector<const vitte::ir::MirBasicBlock*> blocks;
+    blocks.reserve(fn.blocks.size());
+    for (const auto& bb : fn.blocks) {
+        blocks.push_back(&bb);
+    }
+    if (repro_strict) {
+        std::stable_sort(
+            blocks.begin(),
+            blocks.end(),
+            [](const auto* a, const auto* b) { return a->id < b->id; }
+        );
+    }
+    return blocks;
+}
+
+static std::vector<const vitte::ir::MirLocal*> ordered_locals(
+    const vitte::ir::MirFunction& fn,
+    bool repro_strict
+) {
+    std::vector<const vitte::ir::MirLocal*> locals;
+    locals.reserve(fn.locals.size());
+    for (const auto& local : fn.locals) {
+        if (!local) continue;
+        locals.push_back(local.get());
+    }
+    if (repro_strict) {
+        std::stable_sort(
+            locals.begin(),
+            locals.end(),
+            [](const auto* a, const auto* b) { return a->name < b->name; }
+        );
+    }
+    return locals;
+}
+
 } // namespace
 
 ast::cpp::CppTranslationUnit lower_mir(
@@ -206,8 +246,7 @@ ast::cpp::CppTranslationUnit lower_mir(
         }
 
         std::unordered_set<std::string> declared;
-        for (const auto& local : fn.locals) {
-            if (!local) continue;
+        for (const auto* local : ordered_locals(fn, ctx.repro_strict())) {
             if (param_names.count(local->name) > 0) {
                 continue;
             }
@@ -226,10 +265,10 @@ ast::cpp::CppTranslationUnit lower_mir(
             continue;
         }
 
-        for (const auto& bb : fn.blocks) {
-            out.body.push_back(std::make_unique<CppLabel>(label_for(fn_index, bb.id)));
+        for (const auto* bb : ordered_blocks(fn, ctx.repro_strict())) {
+            out.body.push_back(std::make_unique<CppLabel>(label_for(fn_index, bb->id)));
 
-            for (const auto& instr : bb.instructions) {
+            for (const auto& instr : bb->instructions) {
                 switch (instr->kind) {
                     case MirKind::Assign: {
                         auto& ins = static_cast<const vitte::ir::MirAssign&>(*instr);
@@ -331,15 +370,15 @@ ast::cpp::CppTranslationUnit lower_mir(
                 }
             }
 
-            if (bb.terminator) {
-                switch (bb.terminator->kind) {
+            if (bb->terminator) {
+                switch (bb->terminator->kind) {
                     case MirKind::Goto: {
-                        auto& term = static_cast<const vitte::ir::MirGoto&>(*bb.terminator);
+                        auto& term = static_cast<const vitte::ir::MirGoto&>(*bb->terminator);
                         out.body.push_back(std::make_unique<CppGoto>(label_for(fn_index, term.target)));
                         break;
                     }
                     case MirKind::CondGoto: {
-                        auto& term = static_cast<const vitte::ir::MirCondGoto&>(*bb.terminator);
+                        auto& term = static_cast<const vitte::ir::MirCondGoto&>(*bb->terminator);
                         auto cond = emit_value(ctx, *term.cond);
                         auto if_stmt = std::make_unique<CppIf>(std::move(cond));
                         if_stmt->then_body.push_back(std::make_unique<CppGoto>(label_for(fn_index, term.then_block)));
