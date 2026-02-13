@@ -171,6 +171,70 @@ static VitteSlice<std::uint8_t> vitte_make_u8_slice(const std::uint8_t* data, st
     return VitteSlice<std::uint8_t>{static_cast<std::uint8_t*>(mem), len};
 }
 
+VitteSlice<std::int32_t> vitte_empty_slice_i32() {
+    return VitteSlice<std::int32_t>{nullptr, 0};
+}
+
+VitteSlice<VitteString> vitte_empty_slice_string() {
+    return VitteSlice<VitteString>{nullptr, 0};
+}
+
+VitteSlice<std::int32_t> vitte_slice_push_i32(VitteSlice<std::int32_t> base, std::int32_t value) {
+    std::size_t next_len = base.len + 1;
+    void* mem = vitte::runtime::alloc(sizeof(std::int32_t) * next_len);
+    auto* out = static_cast<std::int32_t*>(mem);
+    for (std::size_t i = 0; i < base.len; ++i) {
+        out[i] = base.data[i];
+    }
+    out[base.len] = value;
+    return VitteSlice<std::int32_t>{out, next_len};
+}
+
+VitteSlice<VitteString> vitte_slice_push_string(VitteSlice<VitteString> base, VitteString value) {
+    std::size_t next_len = base.len + 1;
+    void* mem = vitte::runtime::alloc(sizeof(VitteString) * next_len);
+    auto* out = static_cast<VitteString*>(mem);
+    for (std::size_t i = 0; i < base.len; ++i) {
+        out[i] = base.data[i];
+    }
+    out[base.len] = value;
+    return VitteSlice<VitteString>{out, next_len};
+}
+
+VitteSlice<std::int32_t> vitte__vitte_empty_slice_i32() {
+    return vitte_empty_slice_i32();
+}
+
+VitteSlice<VitteString> vitte__vitte_empty_slice_string() {
+    return vitte_empty_slice_string();
+}
+
+VitteSlice<std::int32_t> vitte__vitte_slice_push_i32(VitteSlice<std::int32_t> base, std::int32_t value) {
+    return vitte_slice_push_i32(base, value);
+}
+
+VitteSlice<VitteString> vitte__vitte_slice_push_string(VitteSlice<VitteString> base, VitteString value) {
+    return vitte_slice_push_string(base, value);
+}
+
+VitteString vitte_string_concat(VitteString a, VitteString b) {
+    std::string sa = vitte_to_string(a);
+    std::string sb = vitte_to_string(b);
+    return vitte_make_string(sa + sb);
+}
+
+VitteString vitte_i32_to_string(std::int32_t v) {
+    return vitte_make_string(std::to_string(v));
+}
+
+VitteString vitte__vitte_string_concat(VitteString a, VitteString b) {
+    return vitte_string_concat(a, b);
+}
+
+VitteString vitte__vitte_i32_to_string(std::int32_t v) {
+    return vitte_i32_to_string(v);
+}
+
 static VitteOptionString vitte_none_string() {
     VitteOptionString opt{};
     opt.tag = 0;

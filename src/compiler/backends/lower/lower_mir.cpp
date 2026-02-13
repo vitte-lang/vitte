@@ -17,6 +17,22 @@ using vitte::ir::MirKind;
 
 namespace {
 
+static std::string normalized_type_name(const std::string& name) {
+    if (name.rfind("builtin.", 0) == 0) {
+        return name.substr(8);
+    }
+    if (name.rfind("std/core/types.", 0) == 0) {
+        return name.substr(15);
+    }
+    if (name.rfind("std::core::types::", 0) == 0) {
+        return name.substr(18);
+    }
+    if (name.rfind("std__core__types__", 0) == 0) {
+        return name.substr(18);
+    }
+    return name;
+}
+
 static CppType* builtin_type(CppContext& ctx, const std::string& name) {
     if (auto* t = ctx.resolve_type(name)) {
         return t;
@@ -27,28 +43,39 @@ static CppType* builtin_type(CppContext& ctx, const std::string& name) {
 }
 
 static CppType* map_type(CppContext& ctx, const std::string& mir_name) {
+    const std::string name = normalized_type_name(mir_name);
+    if (name.rfind("slice<", 0) == 0 && name.size() > 7 && name.back() == '>') {
+        const std::string inner = name.substr(6, name.size() - 7);
+        CppType* elem = map_type(ctx, inner);
+        return builtin_type(ctx, "VitteSlice<" + elem->name + ">");
+    }
+    if (name == "i32") return builtin_type(ctx, "int32_t");
+    if (name == "i64") return builtin_type(ctx, "int64_t");
+    if (name == "i16") return builtin_type(ctx, "int16_t");
+    if (name == "i8") return builtin_type(ctx, "int8_t");
+    if (name == "u64") return builtin_type(ctx, "uint64_t");
+    if (name == "u32") return builtin_type(ctx, "uint32_t");
+    if (name == "u16") return builtin_type(ctx, "uint16_t");
+    if (name == "u8") return builtin_type(ctx, "uint8_t");
+    if (name == "usize") return builtin_type(ctx, "size_t");
+    if (name == "isize") return builtin_type(ctx, "ptrdiff_t");
+    if (name == "bool") return builtin_type(ctx, "bool");
+    if (name == "string") return builtin_type(ctx, "VitteString");
+    if (name == "VitteAny") return builtin_type(ctx, "void*");
+    if (name == "unknown") return builtin_type(ctx, "int32_t");
+    if (name == "Unit" || name == "unit" || name == "void") {
+        return builtin_type(ctx, "void");
+    }
+    if (name.size() >= 4 && name.compare(name.size() - 4, 4, "Unit") == 0) {
+        return builtin_type(ctx, "void");
+    }
     if (auto* t = ctx.resolve_type(mir_name)) {
         return t;
     }
-    if (mir_name == "i32") return builtin_type(ctx, "int32_t");
-    if (mir_name == "i64") return builtin_type(ctx, "int64_t");
-    if (mir_name == "i16") return builtin_type(ctx, "int16_t");
-    if (mir_name == "i8") return builtin_type(ctx, "int8_t");
-    if (mir_name == "u64") return builtin_type(ctx, "uint64_t");
-    if (mir_name == "u32") return builtin_type(ctx, "uint32_t");
-    if (mir_name == "u16") return builtin_type(ctx, "uint16_t");
-    if (mir_name == "u8") return builtin_type(ctx, "uint8_t");
-    if (mir_name == "usize") return builtin_type(ctx, "size_t");
-    if (mir_name == "isize") return builtin_type(ctx, "ptrdiff_t");
-    if (mir_name == "bool") return builtin_type(ctx, "bool");
-    if (mir_name == "string") return builtin_type(ctx, "VitteString");
-    if (mir_name == "VitteAny") return builtin_type(ctx, "void*");
-    if (mir_name == "unknown") return builtin_type(ctx, "int32_t");
-    if (mir_name == "Unit" || mir_name == "unit" || mir_name == "void") {
-        return builtin_type(ctx, "void");
-    }
-    if (mir_name.size() >= 4 && mir_name.compare(mir_name.size() - 4, 4, "Unit") == 0) {
-        return builtin_type(ctx, "void");
+    if (name != mir_name) {
+        if (auto* t = ctx.resolve_type(name)) {
+            return t;
+        }
     }
     auto* ty = new CppType(CppType::user(mir_name, CppTypeKind::Struct));
     ctx.register_type(mir_name, ty);
@@ -87,6 +114,12 @@ static std::unique_ptr<CppExpr> emit_value(CppContext& ctx, const vitte::ir::Mir
         const auto& m = static_cast<const vitte::ir::MirMember&>(v);
         auto base = emit_value(ctx, *m.base);
         return std::make_unique<CppMember>(std::move(base), ctx.safe_ident(m.member), m.pointer);
+    }
+    if (v.kind == MirKind::Index) {
+        const auto& i = static_cast<const vitte::ir::MirIndex&>(v);
+        auto base = emit_value(ctx, *i.base);
+        auto index = emit_value(ctx, *i.index);
+        return std::make_unique<CppIndex>(std::move(base), std::move(index));
     }
     if (v.kind == MirKind::Const) {
         const auto& c = static_cast<const vitte::ir::MirConst&>(v);
@@ -199,6 +232,16 @@ static std::string type_name(const vitte::ir::MirTypePtr& type) {
     return "i32";
 }
 
+static bool is_void_cpp_type(const CppType* type) {
+    if (!type) {
+        return false;
+    }
+    if (type->name == "void") {
+        return true;
+    }
+    return type->kind == CppTypeKind::Builtin && type->name == "void";
+}
+
 static bool is_extern_fn(const vitte::ir::MirFunction& fn) {
     for (const auto& bb : fn.blocks) {
         if (!bb.instructions.empty() || bb.terminator) {
@@ -259,6 +302,7 @@ ast::cpp::CppTranslationUnit lower_mir(
 
     bool has_entry = false;
     std::string entry_mangled;
+    bool entry_returns_void = false;
 
     std::unordered_set<std::string> defined_structs;
     std::unordered_set<std::string> defined_enums;
@@ -560,7 +604,9 @@ ast::cpp::CppTranslationUnit lower_mir(
                     }
                     case MirKind::Return: {
                         auto& ins = static_cast<const vitte::ir::MirReturn&>(*instr);
-                        if (ins.value) {
+                        if (is_void_cpp_type(out.return_type)) {
+                            out.body.push_back(std::make_unique<CppReturn>());
+                        } else if (ins.value) {
                             out.body.push_back(std::make_unique<CppReturn>(
                                 emit_value(ctx, *ins.value)));
                         } else {
@@ -601,6 +647,7 @@ ast::cpp::CppTranslationUnit lower_mir(
         if (fn.name == "main") {
             has_entry = true;
             entry_mangled = ctx.mangle(fn.name);
+            entry_returns_void = is_void_cpp_type(out.return_type);
         }
         fn_index++;
     }
@@ -634,7 +681,13 @@ ast::cpp::CppTranslationUnit lower_mir(
             wrapper.body.push_back(std::make_unique<CppExprStmt>(std::move(set_args)));
 
             auto call = std::make_unique<CppCall>(entry_mangled);
-            wrapper.body.push_back(std::make_unique<CppReturn>(std::move(call)));
+            if (entry_returns_void) {
+                wrapper.body.push_back(std::make_unique<CppExprStmt>(std::move(call)));
+                wrapper.body.push_back(std::make_unique<CppReturn>(
+                    std::make_unique<CppLiteral>("0")));
+            } else {
+                wrapper.body.push_back(std::make_unique<CppReturn>(std::move(call)));
+            }
 
             tu.functions.push_back(std::move(wrapper));
         }

@@ -160,6 +160,10 @@ hir-validate: hir-validate-test hir-validate-fixture
 check-tests:
 	@tools/check_tests.sh
 
+.PHONY: stress-alloc
+stress-alloc:
+	@tools/stress_alloc_examples.sh
+
 .PHONY: negative-tests
 negative-tests:
 	@tools/negative_tests.sh

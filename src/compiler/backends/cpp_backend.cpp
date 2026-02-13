@@ -348,9 +348,16 @@ bool compile_cpp_backend(
         clang_opts.opt_level = options.opt_level;
         clang_opts.verbose = options.verbose;
         clang_opts.emit_obj = options.emit_obj;
+        // Generated MIR->C++ often contains CFG labels and staging locals that are
+        // intentionally not consumed in final code paths.
+        clang_opts.cxx_flags.push_back("-Wno-unused-label");
+        clang_opts.cxx_flags.push_back("-Wno-unused-but-set-variable");
+        clang_opts.cxx_flags.push_back("-Wno-unused-variable");
 
         if (!options.emit_obj) {
+#if defined(__linux__) || defined(__FreeBSD__)
             clang_opts.libraries.push_back("stdc++");
+#endif
             clang_opts.libraries.push_back("ssl");
             clang_opts.libraries.push_back("crypto");
             clang_opts.libraries.push_back("curl");
@@ -369,28 +376,72 @@ bool compile_cpp_backend(
         }
 
         const char* openssl_dir = std::getenv("OPENSSL_DIR");
+        bool openssl_from_env = false;
         if (openssl_dir && *openssl_dir) {
             std::filesystem::path base = openssl_dir;
             std::filesystem::path inc = base / "include";
             std::filesystem::path lib = base / "lib";
             if (std::filesystem::exists(inc)) {
                 clang_opts.include_dirs.push_back(inc.string());
+                openssl_from_env = true;
             }
             if (std::filesystem::exists(lib)) {
                 clang_opts.library_dirs.push_back(lib.string());
             }
         }
+        if (!openssl_from_env) {
+            const std::filesystem::path candidates[] = {
+                "/opt/homebrew/opt/openssl@3",
+                "/usr/local/opt/openssl@3",
+                "/opt/homebrew/opt/openssl",
+                "/usr/local/opt/openssl"
+            };
+            for (const auto& base : candidates) {
+                std::filesystem::path inc = base / "include";
+                std::filesystem::path lib = base / "lib";
+                if (std::filesystem::exists(inc)) {
+                    clang_opts.include_dirs.push_back(inc.string());
+                }
+                if (std::filesystem::exists(lib)) {
+                    clang_opts.library_dirs.push_back(lib.string());
+                }
+                if (std::filesystem::exists(inc) || std::filesystem::exists(lib)) {
+                    break;
+                }
+            }
+        }
 
         const char* curl_dir = std::getenv("CURL_DIR");
+        bool curl_from_env = false;
         if (curl_dir && *curl_dir) {
             std::filesystem::path base = curl_dir;
             std::filesystem::path inc = base / "include";
             std::filesystem::path lib = base / "lib";
             if (std::filesystem::exists(inc)) {
                 clang_opts.include_dirs.push_back(inc.string());
+                curl_from_env = true;
             }
             if (std::filesystem::exists(lib)) {
                 clang_opts.library_dirs.push_back(lib.string());
+            }
+        }
+        if (!curl_from_env) {
+            const std::filesystem::path candidates[] = {
+                "/opt/homebrew/opt/curl",
+                "/usr/local/opt/curl"
+            };
+            for (const auto& base : candidates) {
+                std::filesystem::path inc = base / "include";
+                std::filesystem::path lib = base / "lib";
+                if (std::filesystem::exists(inc)) {
+                    clang_opts.include_dirs.push_back(inc.string());
+                }
+                if (std::filesystem::exists(lib)) {
+                    clang_opts.library_dirs.push_back(lib.string());
+                }
+                if (std::filesystem::exists(inc) || std::filesystem::exists(lib)) {
+                    break;
+                }
             }
         }
 

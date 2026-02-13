@@ -151,6 +151,8 @@ bool invoke_arduino_cli(
     cmd << opts.cli_path << " compile";
     cmd << " --fqbn " << opts.fqbn;
     cmd << " --build-path " << build_dir.string();
+    cmd << " --build-property 'compiler.cpp.extra_flags=-Wno-unused-label -Wno-unused-but-set-variable -Wno-unused-variable'";
+    cmd << " --build-property 'compiler.c.extra_flags=-Wno-unused-label -Wno-unused-but-set-variable -Wno-unused-variable'";
     cmd << " " << sketch_dir.string();
 
     std::string command = cmd.str();

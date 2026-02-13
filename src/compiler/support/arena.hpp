@@ -18,11 +18,7 @@ public:
         add_chunk(chunk_size_);
     }
 
-    ~Arena() {
-        for (auto it = nodes_.rbegin(); it != nodes_.rend(); ++it) {
-            (*it)->~Base();
-        }
-    }
+    ~Arena() = default;
 
     Arena(const Arena&) = delete;
     Arena& operator=(const Arena&) = delete;

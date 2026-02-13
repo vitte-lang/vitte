@@ -94,18 +94,18 @@ std::string CppContext::mangle(
 
     // namespace
     for (const auto& ns : namespace_stack) {
-        oss << ns << "__";
+        oss << safe_ident(ns) << "__";
     }
 
     // base symbol
-    oss << base;
+    oss << safe_ident(base);
 
     // parameters (for overloads / generics)
     if (!params.empty()) {
         oss << "__";
         for (size_t i = 0; i < params.size(); ++i) {
             if (i) oss << "_";
-            oss << params[i];
+            oss << safe_ident(params[i]);
         }
     }
 

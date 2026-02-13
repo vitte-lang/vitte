@@ -97,6 +97,14 @@ HirMemberExpr::HirMemberExpr(
       base_is_type(base_is_type_in),
       type_is_enum(type_is_enum_in) {}
 
+HirIndexExpr::HirIndexExpr(
+    HirExprId b,
+    HirExprId i,
+    vitte::frontend::ast::SourceSpan sp)
+    : HirExpr(HirKind::IndexExpr, sp),
+      base(b),
+      index(i) {}
+
 // ------------------------------------------------------------
 // Statements
 // ------------------------------------------------------------
@@ -139,6 +147,12 @@ HirIf::HirIf(
 HirLoop::HirLoop(HirStmtId b, vitte::frontend::ast::SourceSpan sp)
     : HirStmt(HirKind::LoopStmt, sp),
       body(b) {}
+
+HirBreak::HirBreak(vitte::frontend::ast::SourceSpan sp)
+    : HirStmt(HirKind::BreakStmt, sp) {}
+
+HirContinue::HirContinue(vitte::frontend::ast::SourceSpan sp)
+    : HirStmt(HirKind::ContinueStmt, sp) {}
 
 // ------------------------------------------------------------
 // Patterns
@@ -281,6 +295,7 @@ static const char* to_string(HirBinaryOp op) {
         case HirBinaryOp::Ge: return ">=";
         case HirBinaryOp::And: return "and";
         case HirBinaryOp::Or: return "or";
+        case HirBinaryOp::Assign: return "=";
         default:
             return "?";
     }
@@ -324,6 +339,8 @@ void dump(const HirContext& ctx, HirId id, std::ostream& os, std::size_t depth) 
     } else if (n.kind == HirKind::MemberExpr) {
         auto& m = static_cast<const HirMemberExpr&>(n);
         os << " " << (m.pointer ? "->" : ".") << m.member;
+    } else if (n.kind == HirKind::IndexExpr) {
+        os << " []";
     } else if (n.kind == HirKind::PatternIdent) {
         auto& p = static_cast<const HirIdentPattern&>(n);
         os << " " << p.name;
@@ -378,6 +395,9 @@ void dump(const HirContext& ctx, HirId id, std::ostream& os, std::size_t depth) 
             dump(ctx, l.body, os, depth + 1);
             break;
         }
+        case HirKind::BreakStmt:
+        case HirKind::ContinueStmt:
+            break;
         case HirKind::SelectStmt: {
             auto& s = static_cast<const HirSelect&>(n);
             dump(ctx, s.expr, os, depth + 1);
@@ -438,6 +458,12 @@ void dump(const HirContext& ctx, HirId id, std::ostream& os, std::size_t depth) 
             dump(ctx, m.base, os, depth + 1);
             break;
         }
+        case HirKind::IndexExpr: {
+            auto& i = static_cast<const HirIndexExpr&>(n);
+            dump(ctx, i.base, os, depth + 1);
+            dump(ctx, i.index, os, depth + 1);
+            break;
+        }
         case HirKind::PatternCtor: {
             auto& p = static_cast<const HirCtorPattern&>(n);
             for (auto a : p.args) {
@@ -486,6 +512,8 @@ static void dump_compact_impl(const HirContext& ctx, HirId id, std::ostream& os)
     } else if (n.kind == HirKind::MemberExpr) {
         auto& m = static_cast<const HirMemberExpr&>(n);
         os << "(" << (m.pointer ? "->" : ".") << m.member << ")";
+    } else if (n.kind == HirKind::IndexExpr) {
+        os << "([])";
     } else if (n.kind == HirKind::PatternIdent) {
         auto& p = static_cast<const HirIdentPattern&>(n);
         os << "(" << p.name << ")";
@@ -535,6 +563,9 @@ static void dump_compact_impl(const HirContext& ctx, HirId id, std::ostream& os)
             children.push_back(l.body);
             break;
         }
+        case HirKind::BreakStmt:
+        case HirKind::ContinueStmt:
+            break;
         case HirKind::SelectStmt: {
             auto& s = static_cast<const HirSelect&>(n);
             children.push_back(s.expr);
@@ -589,6 +620,12 @@ static void dump_compact_impl(const HirContext& ctx, HirId id, std::ostream& os)
         case HirKind::MemberExpr: {
             auto& m = static_cast<const HirMemberExpr&>(n);
             children.push_back(m.base);
+            break;
+        }
+        case HirKind::IndexExpr: {
+            auto& i = static_cast<const HirIndexExpr&>(n);
+            children.push_back(i.base);
+            children.push_back(i.index);
             break;
         }
         case HirKind::PatternCtor: {
@@ -654,6 +691,8 @@ static void dump_json_impl(const HirContext& ctx, HirId id, std::ostream& os) {
         auto& m = static_cast<const HirMemberExpr&>(n);
         os << ",\"member\":\"" << m.member << "\"";
         os << ",\"pointer\":" << (m.pointer ? "true" : "false");
+    } else if (n.kind == HirKind::IndexExpr) {
+        os << ",\"op\":\"index\"";
     } else if (n.kind == HirKind::PatternIdent) {
         auto& p = static_cast<const HirIdentPattern&>(n);
         os << ",\"name\":\"" << p.name << "\"";
@@ -707,6 +746,9 @@ static void dump_json_impl(const HirContext& ctx, HirId id, std::ostream& os) {
             }
             break;
         }
+        case HirKind::BreakStmt:
+        case HirKind::ContinueStmt:
+            break;
         case HirKind::WhenStmt: {
             auto& w = static_cast<const HirWhen&>(n);
             children.push_back(w.pattern);
@@ -754,6 +796,12 @@ static void dump_json_impl(const HirContext& ctx, HirId id, std::ostream& os) {
             children.push_back(m.base);
             break;
         }
+        case HirKind::IndexExpr: {
+            auto& i = static_cast<const HirIndexExpr&>(n);
+            children.push_back(i.base);
+            children.push_back(i.index);
+            break;
+        }
         case HirKind::PatternCtor: {
             auto& p = static_cast<const HirCtorPattern&>(n);
             children.insert(children.end(), p.args.begin(), p.args.end());
@@ -797,12 +845,15 @@ const char* to_string(HirKind kind) {
         case HirKind::BinaryExpr: return "BinaryExpr";
         case HirKind::CallExpr: return "CallExpr";
         case HirKind::MemberExpr: return "MemberExpr";
+        case HirKind::IndexExpr: return "IndexExpr";
         case HirKind::LetStmt: return "LetStmt";
         case HirKind::ExprStmt: return "ExprStmt";
         case HirKind::ReturnStmt: return "ReturnStmt";
         case HirKind::Block: return "Block";
         case HirKind::IfStmt: return "IfStmt";
         case HirKind::LoopStmt: return "LoopStmt";
+        case HirKind::BreakStmt: return "BreakStmt";
+        case HirKind::ContinueStmt: return "ContinueStmt";
         case HirKind::SelectStmt: return "SelectStmt";
         case HirKind::WhenStmt: return "WhenStmt";
         case HirKind::FnDecl: return "FnDecl";

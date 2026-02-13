@@ -119,6 +119,12 @@ static void validate_expr(const HirContext& ctx,
             validate_expr(ctx, e.base, diagnostics, e.span, true);
             return;
         }
+        case HirKind::IndexExpr: {
+            const auto& e = ctx.get<HirIndexExpr>(expr);
+            validate_expr(ctx, e.base, diagnostics, e.span, true);
+            validate_expr(ctx, e.index, diagnostics, e.span, true);
+            return;
+        }
         default:
             fdiag::error(diagnostics, fdiag::DiagId::UnexpectedHirExprKind, node.span);
             return;
@@ -173,6 +179,9 @@ static void validate_stmt(const HirContext& ctx,
             validate_stmt(ctx, s.body, diagnostics, s.span, true);
             return;
         }
+        case HirKind::BreakStmt:
+        case HirKind::ContinueStmt:
+            return;
         case HirKind::WhenStmt: {
             const auto& s = ctx.get<HirWhen>(stmt);
             validate_pattern(ctx, s.pattern, diagnostics, s.span, true);

@@ -61,6 +61,18 @@ struct VitteUnit {
 };
 
 extern "C" void vitte_builtin_trap(VitteString msg);
+VitteSlice<std::int32_t> vitte_empty_slice_i32();
+VitteSlice<VitteString> vitte_empty_slice_string();
+VitteSlice<std::int32_t> vitte_slice_push_i32(VitteSlice<std::int32_t> base, std::int32_t value);
+VitteSlice<VitteString> vitte_slice_push_string(VitteSlice<VitteString> base, VitteString value);
+VitteSlice<std::int32_t> vitte__vitte_empty_slice_i32();
+VitteSlice<VitteString> vitte__vitte_empty_slice_string();
+VitteSlice<std::int32_t> vitte__vitte_slice_push_i32(VitteSlice<std::int32_t> base, std::int32_t value);
+VitteSlice<VitteString> vitte__vitte_slice_push_string(VitteSlice<VitteString> base, VitteString value);
+VitteString vitte_string_concat(VitteString a, VitteString b);
+VitteString vitte_i32_to_string(std::int32_t v);
+VitteString vitte__vitte_string_concat(VitteString a, VitteString b);
+VitteString vitte__vitte_i32_to_string(std::int32_t v);
 
 enum class VitteIoErrorKind : std::uint8_t {
     NotFound,

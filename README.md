@@ -41,7 +41,9 @@ If your priority is strong safety guarantees, Vitte may not be the right choice.
 ---
 
 ## Getting Started (Beginner)
+Documentation:
 
+https://vitte.netlify.app/
 This is the minimal path to compile and run something.
 ```sh
 brew install vitte
@@ -63,7 +65,7 @@ bin/vitte
 ### 2. Run an example
 
 ```sh
-./bin/vitte build examples/syntax_features.vit
+vitte build examples/syntax_features.vit
 ```
 
 This takes a `.vit` file and compiles it. If the compiler reports an error, it will show a location in the source file.

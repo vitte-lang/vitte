@@ -78,6 +78,16 @@ MirMember::MirMember(
     assert(base);
 }
 
+MirIndex::MirIndex(
+    MirValuePtr b,
+    MirValuePtr i,
+    SourceSpan sp)
+    : MirValue(MirKind::Index, sp),
+      base(std::move(b)),
+      index(std::move(i)) {
+    assert(base && index);
+}
+
 // ------------------------------------------------------------
 // Instructions
 // ------------------------------------------------------------
@@ -339,6 +349,7 @@ const char* to_string(MirKind kind) {
         case MirKind::Local: return "Local";
         case MirKind::Const: return "Const";
         case MirKind::Member: return "Member";
+        case MirKind::Index: return "Index";
         case MirKind::Assign: return "Assign";
         case MirKind::BinaryOp: return "BinaryOp";
         case MirKind::Call: return "Call";

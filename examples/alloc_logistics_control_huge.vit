@@ -1,0 +1,2944 @@
+use std/alloc
+use std/core/types.int
+use std/core/types.usize
+use std/core/types.string
+
+# Real project example: logistics control tower (route/load scoring)
+# Stress file: large realistic project-like workload with dynamic arrays
+
+proc abs_i(x: int) -> int {
+  if x < 0 { give -x }
+  give x
+}
+
+proc clamp_load(v: int) -> int {
+  if v < 0 { give 0 }
+  if v > 100000 { give 100000 }
+  give v
+}
+
+proc synthetic_value(seed: int, t: int, salt: int) -> int {
+  let a = seed * 1103515245
+  let b = t * 12345
+  let c = salt * 265443576
+  let v = (a + b + c) % 65536
+  give abs_i(v)
+}
+
+proc build_window(seed: int, slots: int, salt: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= slots { break }
+    let v = synthetic_value(seed, i, salt)
+    out = out.push(v)
+    i = i + 1
+  }
+  give out
+}
+
+proc fold_window(data: [int], bias: int) -> int {
+  let i: usize = 0
+  let acc: int = 0
+  loop {
+    if i >= data.len { break }
+    let v = clamp_load(data[i] + bias)
+    if v % 7 == 0 {
+      acc = acc + (v / 7)
+    } else {
+      acc = acc + (v % 97)
+    }
+    i = i + 1
+  }
+  give acc
+}
+
+proc route_cluster_000(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 0, horizon + 0, 11)
+  let base = fold_window(window, 0 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 41)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (0 % 23)
+}
+
+proc route_cluster_001(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 1, horizon + 1, 14)
+  let base = fold_window(window, 1 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 42)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (1 % 23)
+}
+
+proc route_cluster_002(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 2, horizon + 2, 17)
+  let base = fold_window(window, 2 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 43)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (2 % 23)
+}
+
+proc route_cluster_003(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 3, horizon + 3, 20)
+  let base = fold_window(window, 3 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 44)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (3 % 23)
+}
+
+proc route_cluster_004(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 4, horizon + 4, 23)
+  let base = fold_window(window, 4 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 45)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (4 % 23)
+}
+
+proc route_cluster_005(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 5, horizon + 0, 26)
+  let base = fold_window(window, 5 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 46)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (5 % 23)
+}
+
+proc route_cluster_006(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 6, horizon + 1, 29)
+  let base = fold_window(window, 6 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 47)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (6 % 23)
+}
+
+proc route_cluster_007(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 7, horizon + 2, 32)
+  let base = fold_window(window, 7 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 48)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (7 % 23)
+}
+
+proc route_cluster_008(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 8, horizon + 3, 35)
+  let base = fold_window(window, 8 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 49)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (8 % 23)
+}
+
+proc route_cluster_009(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 9, horizon + 4, 38)
+  let base = fold_window(window, 9 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 50)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (9 % 23)
+}
+
+proc route_cluster_010(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 10, horizon + 0, 41)
+  let base = fold_window(window, 10 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 51)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (10 % 23)
+}
+
+proc route_cluster_011(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 11, horizon + 1, 44)
+  let base = fold_window(window, 11 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 52)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (11 % 23)
+}
+
+proc route_cluster_012(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 12, horizon + 2, 47)
+  let base = fold_window(window, 12 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 53)
+  } else {
+    penalty = (base % 41)
+  }
+  give base + penalty + (12 % 23)
+}
+
+proc route_cluster_013(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 13, horizon + 3, 50)
+  let base = fold_window(window, 13 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 54)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (13 % 23)
+}
+
+proc route_cluster_014(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 14, horizon + 4, 53)
+  let base = fold_window(window, 14 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 55)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (14 % 23)
+}
+
+proc route_cluster_015(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 15, horizon + 0, 56)
+  let base = fold_window(window, 15 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 56)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (15 % 23)
+}
+
+proc route_cluster_016(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 16, horizon + 1, 59)
+  let base = fold_window(window, 16 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 57)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (16 % 23)
+}
+
+proc route_cluster_017(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 17, horizon + 2, 62)
+  let base = fold_window(window, 17 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 41)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (17 % 23)
+}
+
+proc route_cluster_018(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 18, horizon + 3, 65)
+  let base = fold_window(window, 18 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 42)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (18 % 23)
+}
+
+proc route_cluster_019(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 19, horizon + 4, 68)
+  let base = fold_window(window, 19 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 43)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (19 % 23)
+}
+
+proc route_cluster_020(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 20, horizon + 0, 71)
+  let base = fold_window(window, 20 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 44)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (20 % 23)
+}
+
+proc route_cluster_021(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 21, horizon + 1, 74)
+  let base = fold_window(window, 21 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 45)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (21 % 23)
+}
+
+proc route_cluster_022(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 22, horizon + 2, 77)
+  let base = fold_window(window, 22 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 46)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (22 % 23)
+}
+
+proc route_cluster_023(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 23, horizon + 3, 80)
+  let base = fold_window(window, 23 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 47)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (23 % 23)
+}
+
+proc route_cluster_024(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 24, horizon + 4, 83)
+  let base = fold_window(window, 24 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 48)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (24 % 23)
+}
+
+proc route_cluster_025(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 25, horizon + 0, 86)
+  let base = fold_window(window, 25 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 49)
+  } else {
+    penalty = (base % 41)
+  }
+  give base + penalty + (25 % 23)
+}
+
+proc route_cluster_026(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 26, horizon + 1, 89)
+  let base = fold_window(window, 26 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 50)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (26 % 23)
+}
+
+proc route_cluster_027(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 27, horizon + 2, 92)
+  let base = fold_window(window, 27 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 51)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (27 % 23)
+}
+
+proc route_cluster_028(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 28, horizon + 3, 95)
+  let base = fold_window(window, 28 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 52)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (28 % 23)
+}
+
+proc route_cluster_029(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 29, horizon + 4, 98)
+  let base = fold_window(window, 29 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 53)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (29 % 23)
+}
+
+proc route_cluster_030(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 30, horizon + 0, 101)
+  let base = fold_window(window, 30 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 54)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (30 % 23)
+}
+
+proc route_cluster_031(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 31, horizon + 1, 104)
+  let base = fold_window(window, 0 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 55)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (31 % 23)
+}
+
+proc route_cluster_032(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 32, horizon + 2, 107)
+  let base = fold_window(window, 1 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 56)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (32 % 23)
+}
+
+proc route_cluster_033(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 33, horizon + 3, 110)
+  let base = fold_window(window, 2 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 57)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (33 % 23)
+}
+
+proc route_cluster_034(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 34, horizon + 4, 113)
+  let base = fold_window(window, 3 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 41)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (34 % 23)
+}
+
+proc route_cluster_035(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 35, horizon + 0, 116)
+  let base = fold_window(window, 4 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 42)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (35 % 23)
+}
+
+proc route_cluster_036(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 36, horizon + 1, 119)
+  let base = fold_window(window, 5 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 43)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (36 % 23)
+}
+
+proc route_cluster_037(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 37, horizon + 2, 122)
+  let base = fold_window(window, 6 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 44)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (37 % 23)
+}
+
+proc route_cluster_038(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 38, horizon + 3, 125)
+  let base = fold_window(window, 7 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 45)
+  } else {
+    penalty = (base % 41)
+  }
+  give base + penalty + (38 % 23)
+}
+
+proc route_cluster_039(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 39, horizon + 4, 128)
+  let base = fold_window(window, 8 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 46)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (39 % 23)
+}
+
+proc route_cluster_040(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 40, horizon + 0, 131)
+  let base = fold_window(window, 9 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 47)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (40 % 23)
+}
+
+proc route_cluster_041(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 41, horizon + 1, 134)
+  let base = fold_window(window, 10 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 48)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (41 % 23)
+}
+
+proc route_cluster_042(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 42, horizon + 2, 137)
+  let base = fold_window(window, 11 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 49)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (42 % 23)
+}
+
+proc route_cluster_043(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 43, horizon + 3, 140)
+  let base = fold_window(window, 12 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 50)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (43 % 23)
+}
+
+proc route_cluster_044(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 44, horizon + 4, 143)
+  let base = fold_window(window, 13 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 51)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (44 % 23)
+}
+
+proc route_cluster_045(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 45, horizon + 0, 146)
+  let base = fold_window(window, 14 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 52)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (45 % 23)
+}
+
+proc route_cluster_046(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 46, horizon + 1, 149)
+  let base = fold_window(window, 15 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 53)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (46 % 23)
+}
+
+proc route_cluster_047(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 47, horizon + 2, 152)
+  let base = fold_window(window, 16 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 54)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (47 % 23)
+}
+
+proc route_cluster_048(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 48, horizon + 3, 155)
+  let base = fold_window(window, 17 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 55)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (48 % 23)
+}
+
+proc route_cluster_049(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 49, horizon + 4, 158)
+  let base = fold_window(window, 18 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 56)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (49 % 23)
+}
+
+proc route_cluster_050(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 50, horizon + 0, 161)
+  let base = fold_window(window, 19 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 57)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (50 % 23)
+}
+
+proc route_cluster_051(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 51, horizon + 1, 164)
+  let base = fold_window(window, 20 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 41)
+  } else {
+    penalty = (base % 41)
+  }
+  give base + penalty + (51 % 23)
+}
+
+proc route_cluster_052(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 52, horizon + 2, 167)
+  let base = fold_window(window, 21 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 42)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (52 % 23)
+}
+
+proc route_cluster_053(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 53, horizon + 3, 170)
+  let base = fold_window(window, 22 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 43)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (53 % 23)
+}
+
+proc route_cluster_054(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 54, horizon + 4, 173)
+  let base = fold_window(window, 23 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 44)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (54 % 23)
+}
+
+proc route_cluster_055(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 55, horizon + 0, 176)
+  let base = fold_window(window, 24 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 45)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (55 % 23)
+}
+
+proc route_cluster_056(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 56, horizon + 1, 179)
+  let base = fold_window(window, 25 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 46)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (56 % 23)
+}
+
+proc route_cluster_057(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 57, horizon + 2, 182)
+  let base = fold_window(window, 26 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 47)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (57 % 23)
+}
+
+proc route_cluster_058(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 58, horizon + 3, 185)
+  let base = fold_window(window, 27 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 48)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (58 % 23)
+}
+
+proc route_cluster_059(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 59, horizon + 4, 188)
+  let base = fold_window(window, 28 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 49)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (59 % 23)
+}
+
+proc route_cluster_060(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 60, horizon + 0, 191)
+  let base = fold_window(window, 29 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 50)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (60 % 23)
+}
+
+proc route_cluster_061(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 61, horizon + 1, 194)
+  let base = fold_window(window, 30 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 51)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (61 % 23)
+}
+
+proc route_cluster_062(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 62, horizon + 2, 197)
+  let base = fold_window(window, 0 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 52)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (62 % 23)
+}
+
+proc route_cluster_063(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 63, horizon + 3, 200)
+  let base = fold_window(window, 1 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 53)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (63 % 23)
+}
+
+proc route_cluster_064(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 64, horizon + 4, 203)
+  let base = fold_window(window, 2 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 54)
+  } else {
+    penalty = (base % 41)
+  }
+  give base + penalty + (64 % 23)
+}
+
+proc route_cluster_065(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 65, horizon + 0, 206)
+  let base = fold_window(window, 3 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 55)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (65 % 23)
+}
+
+proc route_cluster_066(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 66, horizon + 1, 209)
+  let base = fold_window(window, 4 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 56)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (66 % 23)
+}
+
+proc route_cluster_067(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 67, horizon + 2, 212)
+  let base = fold_window(window, 5 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 57)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (67 % 23)
+}
+
+proc route_cluster_068(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 68, horizon + 3, 215)
+  let base = fold_window(window, 6 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 41)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (68 % 23)
+}
+
+proc route_cluster_069(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 69, horizon + 4, 218)
+  let base = fold_window(window, 7 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 42)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (69 % 23)
+}
+
+proc route_cluster_070(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 70, horizon + 0, 221)
+  let base = fold_window(window, 8 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 43)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (70 % 23)
+}
+
+proc route_cluster_071(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 71, horizon + 1, 224)
+  let base = fold_window(window, 9 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 44)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (71 % 23)
+}
+
+proc route_cluster_072(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 72, horizon + 2, 227)
+  let base = fold_window(window, 10 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 45)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (72 % 23)
+}
+
+proc route_cluster_073(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 73, horizon + 3, 230)
+  let base = fold_window(window, 11 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 46)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (73 % 23)
+}
+
+proc route_cluster_074(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 74, horizon + 4, 233)
+  let base = fold_window(window, 12 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 47)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (74 % 23)
+}
+
+proc route_cluster_075(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 75, horizon + 0, 236)
+  let base = fold_window(window, 13 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 48)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (75 % 23)
+}
+
+proc route_cluster_076(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 76, horizon + 1, 239)
+  let base = fold_window(window, 14 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 49)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (76 % 23)
+}
+
+proc route_cluster_077(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 77, horizon + 2, 242)
+  let base = fold_window(window, 15 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 50)
+  } else {
+    penalty = (base % 41)
+  }
+  give base + penalty + (77 % 23)
+}
+
+proc route_cluster_078(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 78, horizon + 3, 245)
+  let base = fold_window(window, 16 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 51)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (78 % 23)
+}
+
+proc route_cluster_079(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 79, horizon + 4, 248)
+  let base = fold_window(window, 17 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 52)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (79 % 23)
+}
+
+proc route_cluster_080(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 80, horizon + 0, 251)
+  let base = fold_window(window, 18 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 53)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (80 % 23)
+}
+
+proc route_cluster_081(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 81, horizon + 1, 254)
+  let base = fold_window(window, 19 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 54)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (81 % 23)
+}
+
+proc route_cluster_082(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 82, horizon + 2, 257)
+  let base = fold_window(window, 20 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 55)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (82 % 23)
+}
+
+proc route_cluster_083(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 83, horizon + 3, 260)
+  let base = fold_window(window, 21 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 56)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (83 % 23)
+}
+
+proc route_cluster_084(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 84, horizon + 4, 263)
+  let base = fold_window(window, 22 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 57)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (84 % 23)
+}
+
+proc route_cluster_085(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 85, horizon + 0, 266)
+  let base = fold_window(window, 23 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 41)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (85 % 23)
+}
+
+proc route_cluster_086(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 86, horizon + 1, 269)
+  let base = fold_window(window, 24 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 42)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (86 % 23)
+}
+
+proc route_cluster_087(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 87, horizon + 2, 272)
+  let base = fold_window(window, 25 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 43)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (87 % 23)
+}
+
+proc route_cluster_088(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 88, horizon + 3, 275)
+  let base = fold_window(window, 26 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 44)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (88 % 23)
+}
+
+proc route_cluster_089(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 89, horizon + 4, 278)
+  let base = fold_window(window, 27 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 45)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (89 % 23)
+}
+
+proc route_cluster_090(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 90, horizon + 0, 281)
+  let base = fold_window(window, 28 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 46)
+  } else {
+    penalty = (base % 41)
+  }
+  give base + penalty + (90 % 23)
+}
+
+proc route_cluster_091(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 91, horizon + 1, 284)
+  let base = fold_window(window, 29 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 47)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (91 % 23)
+}
+
+proc route_cluster_092(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 92, horizon + 2, 287)
+  let base = fold_window(window, 30 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 48)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (92 % 23)
+}
+
+proc route_cluster_093(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 93, horizon + 3, 290)
+  let base = fold_window(window, 0 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 49)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (93 % 23)
+}
+
+proc route_cluster_094(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 94, horizon + 4, 293)
+  let base = fold_window(window, 1 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 50)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (94 % 23)
+}
+
+proc route_cluster_095(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 95, horizon + 0, 296)
+  let base = fold_window(window, 2 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 51)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (95 % 23)
+}
+
+proc route_cluster_096(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 96, horizon + 1, 299)
+  let base = fold_window(window, 3 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 52)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (96 % 23)
+}
+
+proc route_cluster_097(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 97, horizon + 2, 302)
+  let base = fold_window(window, 4 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 53)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (97 % 23)
+}
+
+proc route_cluster_098(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 98, horizon + 3, 305)
+  let base = fold_window(window, 5 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 54)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (98 % 23)
+}
+
+proc route_cluster_099(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 99, horizon + 4, 308)
+  let base = fold_window(window, 6 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 55)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (99 % 23)
+}
+
+proc route_cluster_100(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 100, horizon + 0, 311)
+  let base = fold_window(window, 7 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 56)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (100 % 23)
+}
+
+proc route_cluster_101(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 101, horizon + 1, 314)
+  let base = fold_window(window, 8 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 57)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (101 % 23)
+}
+
+proc route_cluster_102(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 102, horizon + 2, 317)
+  let base = fold_window(window, 9 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 41)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (102 % 23)
+}
+
+proc route_cluster_103(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 103, horizon + 3, 320)
+  let base = fold_window(window, 10 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 42)
+  } else {
+    penalty = (base % 41)
+  }
+  give base + penalty + (103 % 23)
+}
+
+proc route_cluster_104(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 104, horizon + 4, 323)
+  let base = fold_window(window, 11 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 43)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (104 % 23)
+}
+
+proc route_cluster_105(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 105, horizon + 0, 326)
+  let base = fold_window(window, 12 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 44)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (105 % 23)
+}
+
+proc route_cluster_106(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 106, horizon + 1, 329)
+  let base = fold_window(window, 13 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 45)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (106 % 23)
+}
+
+proc route_cluster_107(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 107, horizon + 2, 332)
+  let base = fold_window(window, 14 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 46)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (107 % 23)
+}
+
+proc route_cluster_108(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 108, horizon + 3, 335)
+  let base = fold_window(window, 15 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 47)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (108 % 23)
+}
+
+proc route_cluster_109(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 109, horizon + 4, 338)
+  let base = fold_window(window, 16 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 48)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (109 % 23)
+}
+
+proc route_cluster_110(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 110, horizon + 0, 341)
+  let base = fold_window(window, 17 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 49)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (110 % 23)
+}
+
+proc route_cluster_111(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 111, horizon + 1, 344)
+  let base = fold_window(window, 18 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 50)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (111 % 23)
+}
+
+proc route_cluster_112(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 112, horizon + 2, 347)
+  let base = fold_window(window, 19 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 51)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (112 % 23)
+}
+
+proc route_cluster_113(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 113, horizon + 3, 350)
+  let base = fold_window(window, 20 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 52)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (113 % 23)
+}
+
+proc route_cluster_114(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 114, horizon + 4, 353)
+  let base = fold_window(window, 21 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 53)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (114 % 23)
+}
+
+proc route_cluster_115(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 115, horizon + 0, 356)
+  let base = fold_window(window, 22 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 54)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (115 % 23)
+}
+
+proc route_cluster_116(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 116, horizon + 1, 359)
+  let base = fold_window(window, 23 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 55)
+  } else {
+    penalty = (base % 41)
+  }
+  give base + penalty + (116 % 23)
+}
+
+proc route_cluster_117(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 117, horizon + 2, 362)
+  let base = fold_window(window, 24 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 56)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (117 % 23)
+}
+
+proc route_cluster_118(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 118, horizon + 3, 365)
+  let base = fold_window(window, 25 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 57)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (118 % 23)
+}
+
+proc route_cluster_119(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 119, horizon + 4, 368)
+  let base = fold_window(window, 26 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 41)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (119 % 23)
+}
+
+proc route_cluster_120(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 120, horizon + 0, 371)
+  let base = fold_window(window, 27 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 42)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (120 % 23)
+}
+
+proc route_cluster_121(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 121, horizon + 1, 374)
+  let base = fold_window(window, 28 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 43)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (121 % 23)
+}
+
+proc route_cluster_122(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 122, horizon + 2, 377)
+  let base = fold_window(window, 29 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 44)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (122 % 23)
+}
+
+proc route_cluster_123(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 123, horizon + 3, 380)
+  let base = fold_window(window, 30 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 45)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (123 % 23)
+}
+
+proc route_cluster_124(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 124, horizon + 4, 383)
+  let base = fold_window(window, 0 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 46)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (124 % 23)
+}
+
+proc route_cluster_125(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 125, horizon + 0, 386)
+  let base = fold_window(window, 1 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 47)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (125 % 23)
+}
+
+proc route_cluster_126(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 126, horizon + 1, 389)
+  let base = fold_window(window, 2 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 48)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (126 % 23)
+}
+
+proc route_cluster_127(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 127, horizon + 2, 392)
+  let base = fold_window(window, 3 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 49)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (127 % 23)
+}
+
+proc route_cluster_128(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 128, horizon + 3, 395)
+  let base = fold_window(window, 4 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 50)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (128 % 23)
+}
+
+proc route_cluster_129(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 129, horizon + 4, 398)
+  let base = fold_window(window, 5 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 51)
+  } else {
+    penalty = (base % 41)
+  }
+  give base + penalty + (129 % 23)
+}
+
+proc route_cluster_130(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 130, horizon + 0, 401)
+  let base = fold_window(window, 6 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 52)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (130 % 23)
+}
+
+proc route_cluster_131(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 131, horizon + 1, 404)
+  let base = fold_window(window, 7 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 53)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (131 % 23)
+}
+
+proc route_cluster_132(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 132, horizon + 2, 407)
+  let base = fold_window(window, 8 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 54)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (132 % 23)
+}
+
+proc route_cluster_133(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 133, horizon + 3, 410)
+  let base = fold_window(window, 9 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 55)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (133 % 23)
+}
+
+proc route_cluster_134(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 134, horizon + 4, 413)
+  let base = fold_window(window, 10 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 56)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (134 % 23)
+}
+
+proc route_cluster_135(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 135, horizon + 0, 416)
+  let base = fold_window(window, 11 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 57)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (135 % 23)
+}
+
+proc route_cluster_136(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 136, horizon + 1, 419)
+  let base = fold_window(window, 12 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 41)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (136 % 23)
+}
+
+proc route_cluster_137(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 137, horizon + 2, 422)
+  let base = fold_window(window, 13 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 42)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (137 % 23)
+}
+
+proc route_cluster_138(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 138, horizon + 3, 425)
+  let base = fold_window(window, 14 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 43)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (138 % 23)
+}
+
+proc route_cluster_139(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 139, horizon + 4, 428)
+  let base = fold_window(window, 15 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 44)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (139 % 23)
+}
+
+proc route_cluster_140(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 140, horizon + 0, 431)
+  let base = fold_window(window, 16 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 45)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (140 % 23)
+}
+
+proc route_cluster_141(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 141, horizon + 1, 434)
+  let base = fold_window(window, 17 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 46)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (141 % 23)
+}
+
+proc route_cluster_142(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 142, horizon + 2, 437)
+  let base = fold_window(window, 18 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 47)
+  } else {
+    penalty = (base % 41)
+  }
+  give base + penalty + (142 % 23)
+}
+
+proc route_cluster_143(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 143, horizon + 3, 440)
+  let base = fold_window(window, 19 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 48)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (143 % 23)
+}
+
+proc route_cluster_144(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 144, horizon + 4, 443)
+  let base = fold_window(window, 20 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 49)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (144 % 23)
+}
+
+proc route_cluster_145(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 145, horizon + 0, 446)
+  let base = fold_window(window, 21 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 50)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (145 % 23)
+}
+
+proc route_cluster_146(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 146, horizon + 1, 449)
+  let base = fold_window(window, 22 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 51)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (146 % 23)
+}
+
+proc route_cluster_147(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 147, horizon + 2, 452)
+  let base = fold_window(window, 23 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 52)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (147 % 23)
+}
+
+proc route_cluster_148(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 148, horizon + 3, 455)
+  let base = fold_window(window, 24 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 53)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (148 % 23)
+}
+
+proc route_cluster_149(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 149, horizon + 4, 458)
+  let base = fold_window(window, 25 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 54)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (149 % 23)
+}
+
+proc route_cluster_150(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 150, horizon + 0, 461)
+  let base = fold_window(window, 26 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 55)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (150 % 23)
+}
+
+proc route_cluster_151(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 151, horizon + 1, 464)
+  let base = fold_window(window, 27 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 56)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (151 % 23)
+}
+
+proc route_cluster_152(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 152, horizon + 2, 467)
+  let base = fold_window(window, 28 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 57)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (152 % 23)
+}
+
+proc route_cluster_153(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 153, horizon + 3, 470)
+  let base = fold_window(window, 29 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 41)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (153 % 23)
+}
+
+proc route_cluster_154(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 154, horizon + 4, 473)
+  let base = fold_window(window, 30 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 42)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (154 % 23)
+}
+
+proc route_cluster_155(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 155, horizon + 0, 476)
+  let base = fold_window(window, 0 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 43)
+  } else {
+    penalty = (base % 41)
+  }
+  give base + penalty + (155 % 23)
+}
+
+proc route_cluster_156(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 156, horizon + 1, 479)
+  let base = fold_window(window, 1 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 44)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (156 % 23)
+}
+
+proc route_cluster_157(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 157, horizon + 2, 482)
+  let base = fold_window(window, 2 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 45)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (157 % 23)
+}
+
+proc route_cluster_158(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 158, horizon + 3, 485)
+  let base = fold_window(window, 3 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 46)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (158 % 23)
+}
+
+proc route_cluster_159(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 159, horizon + 4, 488)
+  let base = fold_window(window, 4 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 47)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (159 % 23)
+}
+
+proc route_cluster_160(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 160, horizon + 0, 491)
+  let base = fold_window(window, 5 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 48)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (160 % 23)
+}
+
+proc route_cluster_161(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 161, horizon + 1, 494)
+  let base = fold_window(window, 6 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 49)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (161 % 23)
+}
+
+proc route_cluster_162(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 162, horizon + 2, 497)
+  let base = fold_window(window, 7 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 50)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (162 % 23)
+}
+
+proc route_cluster_163(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 163, horizon + 3, 500)
+  let base = fold_window(window, 8 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 51)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (163 % 23)
+}
+
+proc route_cluster_164(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 164, horizon + 4, 503)
+  let base = fold_window(window, 9 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 52)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (164 % 23)
+}
+
+proc route_cluster_165(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 165, horizon + 0, 506)
+  let base = fold_window(window, 10 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 53)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (165 % 23)
+}
+
+proc route_cluster_166(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 166, horizon + 1, 509)
+  let base = fold_window(window, 11 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 54)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (166 % 23)
+}
+
+proc route_cluster_167(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 167, horizon + 2, 512)
+  let base = fold_window(window, 12 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 55)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (167 % 23)
+}
+
+proc route_cluster_168(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 168, horizon + 3, 515)
+  let base = fold_window(window, 13 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 56)
+  } else {
+    penalty = (base % 41)
+  }
+  give base + penalty + (168 % 23)
+}
+
+proc route_cluster_169(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 169, horizon + 4, 518)
+  let base = fold_window(window, 14 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 57)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (169 % 23)
+}
+
+proc route_cluster_170(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 170, horizon + 0, 521)
+  let base = fold_window(window, 15 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 41)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (170 % 23)
+}
+
+proc route_cluster_171(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 171, horizon + 1, 524)
+  let base = fold_window(window, 16 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 42)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (171 % 23)
+}
+
+proc route_cluster_172(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 172, horizon + 2, 527)
+  let base = fold_window(window, 17 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 43)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (172 % 23)
+}
+
+proc route_cluster_173(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 173, horizon + 3, 530)
+  let base = fold_window(window, 18 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 44)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (173 % 23)
+}
+
+proc route_cluster_174(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 174, horizon + 4, 533)
+  let base = fold_window(window, 19 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 45)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (174 % 23)
+}
+
+proc route_cluster_175(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 175, horizon + 0, 536)
+  let base = fold_window(window, 20 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 46)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (175 % 23)
+}
+
+proc route_cluster_176(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 176, horizon + 1, 539)
+  let base = fold_window(window, 21 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 47)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (176 % 23)
+}
+
+proc route_cluster_177(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 177, horizon + 2, 542)
+  let base = fold_window(window, 22 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 48)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (177 % 23)
+}
+
+proc route_cluster_178(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 178, horizon + 3, 545)
+  let base = fold_window(window, 23 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 49)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (178 % 23)
+}
+
+proc route_cluster_179(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 179, horizon + 4, 548)
+  let base = fold_window(window, 24 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 50)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (179 % 23)
+}
+
+proc route_cluster_180(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 180, horizon + 0, 551)
+  let base = fold_window(window, 25 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 51)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (180 % 23)
+}
+
+proc route_cluster_181(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 181, horizon + 1, 554)
+  let base = fold_window(window, 26 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 52)
+  } else {
+    penalty = (base % 41)
+  }
+  give base + penalty + (181 % 23)
+}
+
+proc route_cluster_182(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 182, horizon + 2, 557)
+  let base = fold_window(window, 27 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 53)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (182 % 23)
+}
+
+proc route_cluster_183(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 183, horizon + 3, 560)
+  let base = fold_window(window, 28 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 54)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (183 % 23)
+}
+
+proc route_cluster_184(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 184, horizon + 4, 563)
+  let base = fold_window(window, 29 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 55)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (184 % 23)
+}
+
+proc route_cluster_185(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 185, horizon + 0, 566)
+  let base = fold_window(window, 30 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 56)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (185 % 23)
+}
+
+proc route_cluster_186(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 186, horizon + 1, 569)
+  let base = fold_window(window, 0 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 57)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (186 % 23)
+}
+
+proc route_cluster_187(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 187, horizon + 2, 572)
+  let base = fold_window(window, 1 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 41)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (187 % 23)
+}
+
+proc route_cluster_188(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 188, horizon + 3, 575)
+  let base = fold_window(window, 2 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 42)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (188 % 23)
+}
+
+proc route_cluster_189(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 189, horizon + 4, 578)
+  let base = fold_window(window, 3 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 43)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (189 % 23)
+}
+
+proc route_cluster_190(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 190, horizon + 0, 581)
+  let base = fold_window(window, 4 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 44)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (190 % 23)
+}
+
+proc route_cluster_191(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 191, horizon + 1, 584)
+  let base = fold_window(window, 5 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 45)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (191 % 23)
+}
+
+proc route_cluster_192(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 192, horizon + 2, 587)
+  let base = fold_window(window, 6 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 46)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (192 % 23)
+}
+
+proc route_cluster_193(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 193, horizon + 3, 590)
+  let base = fold_window(window, 7 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 47)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (193 % 23)
+}
+
+proc route_cluster_194(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 194, horizon + 4, 593)
+  let base = fold_window(window, 8 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 48)
+  } else {
+    penalty = (base % 41)
+  }
+  give base + penalty + (194 % 23)
+}
+
+proc route_cluster_195(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 195, horizon + 0, 596)
+  let base = fold_window(window, 9 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 49)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (195 % 23)
+}
+
+proc route_cluster_196(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 196, horizon + 1, 599)
+  let base = fold_window(window, 10 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 50)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (196 % 23)
+}
+
+proc route_cluster_197(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 197, horizon + 2, 602)
+  let base = fold_window(window, 11 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 51)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (197 % 23)
+}
+
+proc route_cluster_198(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 198, horizon + 3, 605)
+  let base = fold_window(window, 12 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 52)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (198 % 23)
+}
+
+proc route_cluster_199(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 199, horizon + 4, 608)
+  let base = fold_window(window, 13 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 53)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (199 % 23)
+}
+
+proc route_cluster_200(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 200, horizon + 0, 611)
+  let base = fold_window(window, 14 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 54)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (200 % 23)
+}
+
+proc route_cluster_201(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 201, horizon + 1, 614)
+  let base = fold_window(window, 15 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 55)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (201 % 23)
+}
+
+proc route_cluster_202(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 202, horizon + 2, 617)
+  let base = fold_window(window, 16 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 56)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (202 % 23)
+}
+
+proc route_cluster_203(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 203, horizon + 3, 620)
+  let base = fold_window(window, 17 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 57)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (203 % 23)
+}
+
+proc route_cluster_204(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 204, horizon + 4, 623)
+  let base = fold_window(window, 18 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 41)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (204 % 23)
+}
+
+proc route_cluster_205(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 205, horizon + 0, 626)
+  let base = fold_window(window, 19 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 42)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (205 % 23)
+}
+
+proc route_cluster_206(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 206, horizon + 1, 629)
+  let base = fold_window(window, 20 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 43)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (206 % 23)
+}
+
+proc route_cluster_207(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 207, horizon + 2, 632)
+  let base = fold_window(window, 21 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 44)
+  } else {
+    penalty = (base % 41)
+  }
+  give base + penalty + (207 % 23)
+}
+
+proc route_cluster_208(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 208, horizon + 3, 635)
+  let base = fold_window(window, 22 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 45)
+  } else {
+    penalty = (base % 29)
+  }
+  give base + penalty + (208 % 23)
+}
+
+proc route_cluster_209(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 209, horizon + 4, 638)
+  let base = fold_window(window, 23 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 46)
+  } else {
+    penalty = (base % 30)
+  }
+  give base + penalty + (209 % 23)
+}
+
+proc route_cluster_210(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 210, horizon + 0, 641)
+  let base = fold_window(window, 24 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 47)
+  } else {
+    penalty = (base % 31)
+  }
+  give base + penalty + (210 % 23)
+}
+
+proc route_cluster_211(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 211, horizon + 1, 644)
+  let base = fold_window(window, 25 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 48)
+  } else {
+    penalty = (base % 32)
+  }
+  give base + penalty + (211 % 23)
+}
+
+proc route_cluster_212(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 212, horizon + 2, 647)
+  let base = fold_window(window, 26 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 49)
+  } else {
+    penalty = (base % 33)
+  }
+  give base + penalty + (212 % 23)
+}
+
+proc route_cluster_213(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 213, horizon + 3, 650)
+  let base = fold_window(window, 27 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 50)
+  } else {
+    penalty = (base % 34)
+  }
+  give base + penalty + (213 % 23)
+}
+
+proc route_cluster_214(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 214, horizon + 4, 653)
+  let base = fold_window(window, 28 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 51)
+  } else {
+    penalty = (base % 35)
+  }
+  give base + penalty + (214 % 23)
+}
+
+proc route_cluster_215(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 215, horizon + 0, 656)
+  let base = fold_window(window, 29 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 52)
+  } else {
+    penalty = (base % 36)
+  }
+  give base + penalty + (215 % 23)
+}
+
+proc route_cluster_216(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 216, horizon + 1, 659)
+  let base = fold_window(window, 30 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 53)
+  } else {
+    penalty = (base % 37)
+  }
+  give base + penalty + (216 % 23)
+}
+
+proc route_cluster_217(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 217, horizon + 2, 662)
+  let base = fold_window(window, 0 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 54)
+  } else {
+    penalty = (base % 38)
+  }
+  give base + penalty + (217 % 23)
+}
+
+proc route_cluster_218(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 218, horizon + 3, 665)
+  let base = fold_window(window, 1 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 55)
+  } else {
+    penalty = (base % 39)
+  }
+  give base + penalty + (218 % 23)
+}
+
+proc route_cluster_219(seed: int, horizon: int) -> int {
+  let window = build_window(seed + 219, horizon + 4, 668)
+  let base = fold_window(window, 2 - 15)
+  let penalty: int = 0
+  if base % 2 == 0 {
+    penalty = (base % 56)
+  } else {
+    penalty = (base % 40)
+  }
+  give base + penalty + (219 % 23)
+}
+
+proc build_report(seed: int) -> [string] {
+  let lines_out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= 55 { break }
+    let row = "slot-" + i + ":" + synthetic_value(seed, i, 999)
+    lines_out = lines_out.push(row)
+    i = i + 1
+  }
+  give lines_out
+}
+
+proc score_report(lines_out: [string]) -> int {
+  let i: usize = 0
+  let total: int = 0
+  loop {
+    if i >= lines_out.len { break }
+    total = total + lines_out[i].len
+    i = i + 1
+  }
+  give total
+}
+
+entry main at core/app {
+  let grand_total: int = 0
+  grand_total = grand_total + route_cluster_000(1000 + 0, 48 + (0 % 7))
+  grand_total = grand_total + route_cluster_001(1000 + 1, 48 + (1 % 7))
+  grand_total = grand_total + route_cluster_002(1000 + 2, 48 + (2 % 7))
+  grand_total = grand_total + route_cluster_003(1000 + 3, 48 + (3 % 7))
+  grand_total = grand_total + route_cluster_004(1000 + 4, 48 + (4 % 7))
+  grand_total = grand_total + route_cluster_005(1000 + 5, 48 + (5 % 7))
+  grand_total = grand_total + route_cluster_006(1000 + 6, 48 + (6 % 7))
+  grand_total = grand_total + route_cluster_007(1000 + 7, 48 + (7 % 7))
+  grand_total = grand_total + route_cluster_008(1000 + 8, 48 + (8 % 7))
+  grand_total = grand_total + route_cluster_009(1000 + 9, 48 + (9 % 7))
+  grand_total = grand_total + route_cluster_010(1000 + 10, 48 + (10 % 7))
+  grand_total = grand_total + route_cluster_011(1000 + 11, 48 + (11 % 7))
+  grand_total = grand_total + route_cluster_012(1000 + 12, 48 + (12 % 7))
+  grand_total = grand_total + route_cluster_013(1000 + 13, 48 + (13 % 7))
+  grand_total = grand_total + route_cluster_014(1000 + 14, 48 + (14 % 7))
+  grand_total = grand_total + route_cluster_015(1000 + 15, 48 + (15 % 7))
+  grand_total = grand_total + route_cluster_016(1000 + 16, 48 + (16 % 7))
+  grand_total = grand_total + route_cluster_017(1000 + 17, 48 + (17 % 7))
+  grand_total = grand_total + route_cluster_018(1000 + 18, 48 + (18 % 7))
+  grand_total = grand_total + route_cluster_019(1000 + 19, 48 + (19 % 7))
+  grand_total = grand_total + route_cluster_020(1000 + 20, 48 + (20 % 7))
+  grand_total = grand_total + route_cluster_021(1000 + 21, 48 + (21 % 7))
+  grand_total = grand_total + route_cluster_022(1000 + 22, 48 + (22 % 7))
+  grand_total = grand_total + route_cluster_023(1000 + 23, 48 + (23 % 7))
+  grand_total = grand_total + route_cluster_024(1000 + 24, 48 + (24 % 7))
+  grand_total = grand_total + route_cluster_025(1000 + 25, 48 + (25 % 7))
+  grand_total = grand_total + route_cluster_026(1000 + 26, 48 + (26 % 7))
+  grand_total = grand_total + route_cluster_027(1000 + 27, 48 + (27 % 7))
+  grand_total = grand_total + route_cluster_028(1000 + 28, 48 + (28 % 7))
+  grand_total = grand_total + route_cluster_029(1000 + 29, 48 + (29 % 7))
+  grand_total = grand_total + route_cluster_030(1000 + 30, 48 + (30 % 7))
+  grand_total = grand_total + route_cluster_031(1000 + 31, 48 + (31 % 7))
+  grand_total = grand_total + route_cluster_032(1000 + 32, 48 + (32 % 7))
+  grand_total = grand_total + route_cluster_033(1000 + 33, 48 + (33 % 7))
+  grand_total = grand_total + route_cluster_034(1000 + 34, 48 + (34 % 7))
+  grand_total = grand_total + route_cluster_035(1000 + 35, 48 + (35 % 7))
+  grand_total = grand_total + route_cluster_036(1000 + 36, 48 + (36 % 7))
+  grand_total = grand_total + route_cluster_037(1000 + 37, 48 + (37 % 7))
+  grand_total = grand_total + route_cluster_038(1000 + 38, 48 + (38 % 7))
+  grand_total = grand_total + route_cluster_039(1000 + 39, 48 + (39 % 7))
+  grand_total = grand_total + route_cluster_040(1000 + 40, 48 + (40 % 7))
+  grand_total = grand_total + route_cluster_041(1000 + 41, 48 + (41 % 7))
+  grand_total = grand_total + route_cluster_042(1000 + 42, 48 + (42 % 7))
+  grand_total = grand_total + route_cluster_043(1000 + 43, 48 + (43 % 7))
+  grand_total = grand_total + route_cluster_044(1000 + 44, 48 + (44 % 7))
+  grand_total = grand_total + route_cluster_045(1000 + 45, 48 + (45 % 7))
+  grand_total = grand_total + route_cluster_046(1000 + 46, 48 + (46 % 7))
+  grand_total = grand_total + route_cluster_047(1000 + 47, 48 + (47 % 7))
+  grand_total = grand_total + route_cluster_048(1000 + 48, 48 + (48 % 7))
+  grand_total = grand_total + route_cluster_049(1000 + 49, 48 + (49 % 7))
+  grand_total = grand_total + route_cluster_050(1000 + 50, 48 + (50 % 7))
+  grand_total = grand_total + route_cluster_051(1000 + 51, 48 + (51 % 7))
+  grand_total = grand_total + route_cluster_052(1000 + 52, 48 + (52 % 7))
+  grand_total = grand_total + route_cluster_053(1000 + 53, 48 + (53 % 7))
+  grand_total = grand_total + route_cluster_054(1000 + 54, 48 + (54 % 7))
+  grand_total = grand_total + route_cluster_055(1000 + 55, 48 + (55 % 7))
+  grand_total = grand_total + route_cluster_056(1000 + 56, 48 + (56 % 7))
+  grand_total = grand_total + route_cluster_057(1000 + 57, 48 + (57 % 7))
+  grand_total = grand_total + route_cluster_058(1000 + 58, 48 + (58 % 7))
+  grand_total = grand_total + route_cluster_059(1000 + 59, 48 + (59 % 7))
+  grand_total = grand_total + route_cluster_060(1000 + 60, 48 + (60 % 7))
+  grand_total = grand_total + route_cluster_061(1000 + 61, 48 + (61 % 7))
+  grand_total = grand_total + route_cluster_062(1000 + 62, 48 + (62 % 7))
+  grand_total = grand_total + route_cluster_063(1000 + 63, 48 + (63 % 7))
+  grand_total = grand_total + route_cluster_064(1000 + 64, 48 + (64 % 7))
+  grand_total = grand_total + route_cluster_065(1000 + 65, 48 + (65 % 7))
+  grand_total = grand_total + route_cluster_066(1000 + 66, 48 + (66 % 7))
+  grand_total = grand_total + route_cluster_067(1000 + 67, 48 + (67 % 7))
+  grand_total = grand_total + route_cluster_068(1000 + 68, 48 + (68 % 7))
+  grand_total = grand_total + route_cluster_069(1000 + 69, 48 + (69 % 7))
+  grand_total = grand_total + route_cluster_070(1000 + 70, 48 + (70 % 7))
+  grand_total = grand_total + route_cluster_071(1000 + 71, 48 + (71 % 7))
+  grand_total = grand_total + route_cluster_072(1000 + 72, 48 + (72 % 7))
+  grand_total = grand_total + route_cluster_073(1000 + 73, 48 + (73 % 7))
+  grand_total = grand_total + route_cluster_074(1000 + 74, 48 + (74 % 7))
+  grand_total = grand_total + route_cluster_075(1000 + 75, 48 + (75 % 7))
+  grand_total = grand_total + route_cluster_076(1000 + 76, 48 + (76 % 7))
+  grand_total = grand_total + route_cluster_077(1000 + 77, 48 + (77 % 7))
+  grand_total = grand_total + route_cluster_078(1000 + 78, 48 + (78 % 7))
+  grand_total = grand_total + route_cluster_079(1000 + 79, 48 + (79 % 7))
+  grand_total = grand_total + route_cluster_080(1000 + 80, 48 + (80 % 7))
+  grand_total = grand_total + route_cluster_081(1000 + 81, 48 + (81 % 7))
+  grand_total = grand_total + route_cluster_082(1000 + 82, 48 + (82 % 7))
+  grand_total = grand_total + route_cluster_083(1000 + 83, 48 + (83 % 7))
+  grand_total = grand_total + route_cluster_084(1000 + 84, 48 + (84 % 7))
+  grand_total = grand_total + route_cluster_085(1000 + 85, 48 + (85 % 7))
+  grand_total = grand_total + route_cluster_086(1000 + 86, 48 + (86 % 7))
+  grand_total = grand_total + route_cluster_087(1000 + 87, 48 + (87 % 7))
+  grand_total = grand_total + route_cluster_088(1000 + 88, 48 + (88 % 7))
+  grand_total = grand_total + route_cluster_089(1000 + 89, 48 + (89 % 7))
+  grand_total = grand_total + route_cluster_090(1000 + 90, 48 + (90 % 7))
+  grand_total = grand_total + route_cluster_091(1000 + 91, 48 + (91 % 7))
+  grand_total = grand_total + route_cluster_092(1000 + 92, 48 + (92 % 7))
+  grand_total = grand_total + route_cluster_093(1000 + 93, 48 + (93 % 7))
+  grand_total = grand_total + route_cluster_094(1000 + 94, 48 + (94 % 7))
+  grand_total = grand_total + route_cluster_095(1000 + 95, 48 + (95 % 7))
+  grand_total = grand_total + route_cluster_096(1000 + 96, 48 + (96 % 7))
+  grand_total = grand_total + route_cluster_097(1000 + 97, 48 + (97 % 7))
+  grand_total = grand_total + route_cluster_098(1000 + 98, 48 + (98 % 7))
+  grand_total = grand_total + route_cluster_099(1000 + 99, 48 + (99 % 7))
+  grand_total = grand_total + route_cluster_100(1000 + 100, 48 + (100 % 7))
+  grand_total = grand_total + route_cluster_101(1000 + 101, 48 + (101 % 7))
+  grand_total = grand_total + route_cluster_102(1000 + 102, 48 + (102 % 7))
+  grand_total = grand_total + route_cluster_103(1000 + 103, 48 + (103 % 7))
+  grand_total = grand_total + route_cluster_104(1000 + 104, 48 + (104 % 7))
+  grand_total = grand_total + route_cluster_105(1000 + 105, 48 + (105 % 7))
+  grand_total = grand_total + route_cluster_106(1000 + 106, 48 + (106 % 7))
+  grand_total = grand_total + route_cluster_107(1000 + 107, 48 + (107 % 7))
+  grand_total = grand_total + route_cluster_108(1000 + 108, 48 + (108 % 7))
+  grand_total = grand_total + route_cluster_109(1000 + 109, 48 + (109 % 7))
+  grand_total = grand_total + route_cluster_110(1000 + 110, 48 + (110 % 7))
+  grand_total = grand_total + route_cluster_111(1000 + 111, 48 + (111 % 7))
+  grand_total = grand_total + route_cluster_112(1000 + 112, 48 + (112 % 7))
+  grand_total = grand_total + route_cluster_113(1000 + 113, 48 + (113 % 7))
+  grand_total = grand_total + route_cluster_114(1000 + 114, 48 + (114 % 7))
+  grand_total = grand_total + route_cluster_115(1000 + 115, 48 + (115 % 7))
+  grand_total = grand_total + route_cluster_116(1000 + 116, 48 + (116 % 7))
+  grand_total = grand_total + route_cluster_117(1000 + 117, 48 + (117 % 7))
+  grand_total = grand_total + route_cluster_118(1000 + 118, 48 + (118 % 7))
+  grand_total = grand_total + route_cluster_119(1000 + 119, 48 + (119 % 7))
+  grand_total = grand_total + route_cluster_120(1000 + 120, 48 + (120 % 7))
+  grand_total = grand_total + route_cluster_121(1000 + 121, 48 + (121 % 7))
+  grand_total = grand_total + route_cluster_122(1000 + 122, 48 + (122 % 7))
+  grand_total = grand_total + route_cluster_123(1000 + 123, 48 + (123 % 7))
+  grand_total = grand_total + route_cluster_124(1000 + 124, 48 + (124 % 7))
+  grand_total = grand_total + route_cluster_125(1000 + 125, 48 + (125 % 7))
+  grand_total = grand_total + route_cluster_126(1000 + 126, 48 + (126 % 7))
+  grand_total = grand_total + route_cluster_127(1000 + 127, 48 + (127 % 7))
+  grand_total = grand_total + route_cluster_128(1000 + 128, 48 + (128 % 7))
+  grand_total = grand_total + route_cluster_129(1000 + 129, 48 + (129 % 7))
+  grand_total = grand_total + route_cluster_130(1000 + 130, 48 + (130 % 7))
+  grand_total = grand_total + route_cluster_131(1000 + 131, 48 + (131 % 7))
+  grand_total = grand_total + route_cluster_132(1000 + 132, 48 + (132 % 7))
+  grand_total = grand_total + route_cluster_133(1000 + 133, 48 + (133 % 7))
+  grand_total = grand_total + route_cluster_134(1000 + 134, 48 + (134 % 7))
+  grand_total = grand_total + route_cluster_135(1000 + 135, 48 + (135 % 7))
+  grand_total = grand_total + route_cluster_136(1000 + 136, 48 + (136 % 7))
+  grand_total = grand_total + route_cluster_137(1000 + 137, 48 + (137 % 7))
+  grand_total = grand_total + route_cluster_138(1000 + 138, 48 + (138 % 7))
+  grand_total = grand_total + route_cluster_139(1000 + 139, 48 + (139 % 7))
+  grand_total = grand_total + route_cluster_140(1000 + 140, 48 + (140 % 7))
+  grand_total = grand_total + route_cluster_141(1000 + 141, 48 + (141 % 7))
+  grand_total = grand_total + route_cluster_142(1000 + 142, 48 + (142 % 7))
+  grand_total = grand_total + route_cluster_143(1000 + 143, 48 + (143 % 7))
+  grand_total = grand_total + route_cluster_144(1000 + 144, 48 + (144 % 7))
+  grand_total = grand_total + route_cluster_145(1000 + 145, 48 + (145 % 7))
+  grand_total = grand_total + route_cluster_146(1000 + 146, 48 + (146 % 7))
+  grand_total = grand_total + route_cluster_147(1000 + 147, 48 + (147 % 7))
+  grand_total = grand_total + route_cluster_148(1000 + 148, 48 + (148 % 7))
+  grand_total = grand_total + route_cluster_149(1000 + 149, 48 + (149 % 7))
+  grand_total = grand_total + route_cluster_150(1000 + 150, 48 + (150 % 7))
+  grand_total = grand_total + route_cluster_151(1000 + 151, 48 + (151 % 7))
+  grand_total = grand_total + route_cluster_152(1000 + 152, 48 + (152 % 7))
+  grand_total = grand_total + route_cluster_153(1000 + 153, 48 + (153 % 7))
+  grand_total = grand_total + route_cluster_154(1000 + 154, 48 + (154 % 7))
+  grand_total = grand_total + route_cluster_155(1000 + 155, 48 + (155 % 7))
+  grand_total = grand_total + route_cluster_156(1000 + 156, 48 + (156 % 7))
+  grand_total = grand_total + route_cluster_157(1000 + 157, 48 + (157 % 7))
+  grand_total = grand_total + route_cluster_158(1000 + 158, 48 + (158 % 7))
+  grand_total = grand_total + route_cluster_159(1000 + 159, 48 + (159 % 7))
+  grand_total = grand_total + route_cluster_160(1000 + 160, 48 + (160 % 7))
+  grand_total = grand_total + route_cluster_161(1000 + 161, 48 + (161 % 7))
+  grand_total = grand_total + route_cluster_162(1000 + 162, 48 + (162 % 7))
+  grand_total = grand_total + route_cluster_163(1000 + 163, 48 + (163 % 7))
+  grand_total = grand_total + route_cluster_164(1000 + 164, 48 + (164 % 7))
+  grand_total = grand_total + route_cluster_165(1000 + 165, 48 + (165 % 7))
+  grand_total = grand_total + route_cluster_166(1000 + 166, 48 + (166 % 7))
+  grand_total = grand_total + route_cluster_167(1000 + 167, 48 + (167 % 7))
+  grand_total = grand_total + route_cluster_168(1000 + 168, 48 + (168 % 7))
+  grand_total = grand_total + route_cluster_169(1000 + 169, 48 + (169 % 7))
+  grand_total = grand_total + route_cluster_170(1000 + 170, 48 + (170 % 7))
+  grand_total = grand_total + route_cluster_171(1000 + 171, 48 + (171 % 7))
+  grand_total = grand_total + route_cluster_172(1000 + 172, 48 + (172 % 7))
+  grand_total = grand_total + route_cluster_173(1000 + 173, 48 + (173 % 7))
+  grand_total = grand_total + route_cluster_174(1000 + 174, 48 + (174 % 7))
+  grand_total = grand_total + route_cluster_175(1000 + 175, 48 + (175 % 7))
+  grand_total = grand_total + route_cluster_176(1000 + 176, 48 + (176 % 7))
+  grand_total = grand_total + route_cluster_177(1000 + 177, 48 + (177 % 7))
+  grand_total = grand_total + route_cluster_178(1000 + 178, 48 + (178 % 7))
+  grand_total = grand_total + route_cluster_179(1000 + 179, 48 + (179 % 7))
+  grand_total = grand_total + route_cluster_180(1000 + 180, 48 + (180 % 7))
+  grand_total = grand_total + route_cluster_181(1000 + 181, 48 + (181 % 7))
+  grand_total = grand_total + route_cluster_182(1000 + 182, 48 + (182 % 7))
+  grand_total = grand_total + route_cluster_183(1000 + 183, 48 + (183 % 7))
+  grand_total = grand_total + route_cluster_184(1000 + 184, 48 + (184 % 7))
+  grand_total = grand_total + route_cluster_185(1000 + 185, 48 + (185 % 7))
+  grand_total = grand_total + route_cluster_186(1000 + 186, 48 + (186 % 7))
+  grand_total = grand_total + route_cluster_187(1000 + 187, 48 + (187 % 7))
+  grand_total = grand_total + route_cluster_188(1000 + 188, 48 + (188 % 7))
+  grand_total = grand_total + route_cluster_189(1000 + 189, 48 + (189 % 7))
+  grand_total = grand_total + route_cluster_190(1000 + 190, 48 + (190 % 7))
+  grand_total = grand_total + route_cluster_191(1000 + 191, 48 + (191 % 7))
+  grand_total = grand_total + route_cluster_192(1000 + 192, 48 + (192 % 7))
+  grand_total = grand_total + route_cluster_193(1000 + 193, 48 + (193 % 7))
+  grand_total = grand_total + route_cluster_194(1000 + 194, 48 + (194 % 7))
+  grand_total = grand_total + route_cluster_195(1000 + 195, 48 + (195 % 7))
+  grand_total = grand_total + route_cluster_196(1000 + 196, 48 + (196 % 7))
+  grand_total = grand_total + route_cluster_197(1000 + 197, 48 + (197 % 7))
+  grand_total = grand_total + route_cluster_198(1000 + 198, 48 + (198 % 7))
+  grand_total = grand_total + route_cluster_199(1000 + 199, 48 + (199 % 7))
+  grand_total = grand_total + route_cluster_200(1000 + 200, 48 + (200 % 7))
+  grand_total = grand_total + route_cluster_201(1000 + 201, 48 + (201 % 7))
+  grand_total = grand_total + route_cluster_202(1000 + 202, 48 + (202 % 7))
+  grand_total = grand_total + route_cluster_203(1000 + 203, 48 + (203 % 7))
+  grand_total = grand_total + route_cluster_204(1000 + 204, 48 + (204 % 7))
+  grand_total = grand_total + route_cluster_205(1000 + 205, 48 + (205 % 7))
+  grand_total = grand_total + route_cluster_206(1000 + 206, 48 + (206 % 7))
+  grand_total = grand_total + route_cluster_207(1000 + 207, 48 + (207 % 7))
+  grand_total = grand_total + route_cluster_208(1000 + 208, 48 + (208 % 7))
+  grand_total = grand_total + route_cluster_209(1000 + 209, 48 + (209 % 7))
+  grand_total = grand_total + route_cluster_210(1000 + 210, 48 + (210 % 7))
+  grand_total = grand_total + route_cluster_211(1000 + 211, 48 + (211 % 7))
+  grand_total = grand_total + route_cluster_212(1000 + 212, 48 + (212 % 7))
+  grand_total = grand_total + route_cluster_213(1000 + 213, 48 + (213 % 7))
+  grand_total = grand_total + route_cluster_214(1000 + 214, 48 + (214 % 7))
+  grand_total = grand_total + route_cluster_215(1000 + 215, 48 + (215 % 7))
+  grand_total = grand_total + route_cluster_216(1000 + 216, 48 + (216 % 7))
+  grand_total = grand_total + route_cluster_217(1000 + 217, 48 + (217 % 7))
+  grand_total = grand_total + route_cluster_218(1000 + 218, 48 + (218 % 7))
+  grand_total = grand_total + route_cluster_219(1000 + 219, 48 + (219 % 7))
+  let report = build_report(grand_total % 1000)
+  grand_total = grand_total + score_report(report)
+  return grand_total
+}

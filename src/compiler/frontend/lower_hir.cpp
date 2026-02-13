@@ -73,6 +73,15 @@ static ir::HirTypeId lower_type(
                 std::move(args),
                 t.span);
         }
+        case NodeKind::SliceType: {
+            auto& t = static_cast<const SliceType&>(node);
+            std::vector<ir::HirTypeId> args;
+            args.push_back(lower_type(ctx, t.element, hir_ctx));
+            return hir_ctx.make<ir::HirGenericType>(
+                "slice",
+                std::move(args),
+                t.span);
+        }
         case NodeKind::ProcType: {
             auto& t = static_cast<const ProcType&>(node);
             std::vector<ir::HirTypeId> params;
@@ -179,6 +188,7 @@ static ir::HirExprId lower_expr(
                 case BinaryOp::Ge: op = ir::HirBinaryOp::Ge; break;
                 case BinaryOp::And: op = ir::HirBinaryOp::And; break;
                 case BinaryOp::Or: op = ir::HirBinaryOp::Or; break;
+                case BinaryOp::Assign: op = ir::HirBinaryOp::Assign; break;
                 default: break;
             }
             return hir_ctx.make<ir::HirBinaryExpr>(
@@ -217,6 +227,13 @@ static ir::HirExprId lower_expr(
                 false,
                 base_is_type,
                 is_enum,
+                e.span);
+        }
+        case NodeKind::IndexExpr: {
+            auto& e = static_cast<const IndexExpr&>(node);
+            return hir_ctx.make<ir::HirIndexExpr>(
+                lower_expr(ctx, e.base, hir_ctx, diagnostics, type_names, enum_like),
+                lower_expr(ctx, e.index, hir_ctx, diagnostics, type_names, enum_like),
                 e.span);
         }
         case NodeKind::CallNoParenExpr: {
@@ -391,12 +408,10 @@ static ir::HirStmtId lower_stmt(
         }
         case NodeKind::SetStmt: {
             auto& s = static_cast<const SetStmt&>(node);
-            std::vector<ir::HirExprId> args;
-            args.push_back(hir_ctx.make<ir::HirVarExpr>(s.ident.name, s.ident.span));
-            args.push_back(lower_expr(ctx, s.value, hir_ctx, diagnostics, type_names, enum_like));
-            auto callee = hir_ctx.make<ir::HirVarExpr>("set", s.span);
-            auto call = hir_ctx.make<ir::HirCallExpr>(callee, std::move(args), s.span);
-            return hir_ctx.make<ir::HirExprStmt>(call, s.span);
+            auto lhs = hir_ctx.make<ir::HirVarExpr>(s.ident.name, s.ident.span);
+            auto rhs = lower_expr(ctx, s.value, hir_ctx, diagnostics, type_names, enum_like);
+            auto assign = hir_ctx.make<ir::HirBinaryExpr>(ir::HirBinaryOp::Assign, lhs, rhs, s.span);
+            return hir_ctx.make<ir::HirExprStmt>(assign, s.span);
         }
         case NodeKind::GiveStmt: {
             auto& s = static_cast<const GiveStmt&>(node);
@@ -439,6 +454,14 @@ static ir::HirStmtId lower_stmt(
             return hir_ctx.make<ir::HirLoop>(
                 lower_block(ctx, s.body, hir_ctx, diagnostics, type_names, enum_like),
                 s.span);
+        }
+        case NodeKind::BreakStmt: {
+            auto& s = static_cast<const BreakStmt&>(node);
+            return hir_ctx.make<ir::HirBreak>(s.span);
+        }
+        case NodeKind::ContinueStmt: {
+            auto& s = static_cast<const ContinueStmt&>(node);
+            return hir_ctx.make<ir::HirContinue>(s.span);
         }
         case NodeKind::SelectStmt: {
             auto& s = static_cast<const SelectStmt&>(node);

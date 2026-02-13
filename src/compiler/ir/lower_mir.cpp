@@ -1,5 +1,6 @@
 #include "lower_mir.hpp"
 
+#include <functional>
 #include <unordered_map>
 
 namespace vitte::ir::lower {
@@ -23,6 +24,8 @@ struct Builder {
     const std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::string>>>* pick_cases = nullptr;
     const std::unordered_map<std::string, std::unordered_map<std::string, std::size_t>>* pick_tags = nullptr;
     const std::unordered_map<std::string, std::unordered_map<std::string, MirFieldType>>* form_fields = nullptr;
+    std::vector<MirBlockId> break_targets;
+    std::vector<MirBlockId> continue_targets;
 
     explicit Builder(const HirContext& h, DiagnosticEngine& d)
         : hir(h), diag(d) {}
@@ -92,6 +95,30 @@ struct Builder {
         return "unknown";
     }
 
+    std::string type_of_value(const MirValuePtr& v) const {
+        if (!v) {
+            return "unknown";
+        }
+        if (v->kind == MirKind::Local) {
+            const auto& l = static_cast<const MirLocal&>(*v);
+            if (l.type && l.type->kind == MirKind::NamedType) {
+                return static_cast<const MirNamedType&>(*l.type).name;
+            }
+            return "unknown";
+        }
+        if (v->kind == MirKind::Const) {
+            const auto& c = static_cast<const MirConst&>(*v);
+            if (c.const_kind == MirConstKind::String) {
+                return "string";
+            }
+            if (c.const_kind == MirConstKind::Bool) {
+                return "bool";
+            }
+            return "i32";
+        }
+        return "unknown";
+    }
+
     MirValuePtr make_const(MirConstKind kind, const std::string& value, vitte::frontend::ast::SourceSpan span) {
         return std::make_unique<MirConst>(kind, value, span);
     }
@@ -123,6 +150,9 @@ struct Builder {
             }
             case HirKind::GenericType: {
                 const auto& t = hir.get<HirGenericType>(ty);
+                if (t.base_name == "slice" && t.type_args.size() == 1) {
+                    return "slice<" + type_from_hir(t.type_args[0], span) + ">";
+                }
                 return t.base_name;
             }
             default:
@@ -472,6 +502,32 @@ MirValuePtr Builder::lower_expr(HirExprId expr_id) {
             }
             return std::make_unique<MirMember>(std::move(base), e.member, e.pointer, e.span);
         }
+        case HirKind::IndexExpr: {
+            const auto& e = hir.get<HirIndexExpr>(expr_id);
+            auto base = lower_expr(e.base);
+            auto index = lower_expr(e.index);
+            if (!base || !index) {
+                diag.error("invalid operand for index expression", e.span);
+                if (!base) {
+                    base = make_const(MirConstKind::Int, "0", e.span);
+                }
+                if (!index) {
+                    index = make_const(MirConstKind::Int, "0", e.span);
+                }
+            }
+            if (e.base != kInvalidHirId) {
+                const auto& bnode = hir.node(e.base);
+                if (bnode.kind == HirKind::VarExpr) {
+                    const auto& bvar = hir.get<HirVarExpr>(e.base);
+                    auto ty_it = local_types.find(bvar.name);
+                    if (ty_it != local_types.end() && ty_it->second.rfind("slice<", 0) == 0) {
+                        auto data = std::make_unique<MirMember>(std::move(base), "data", false, e.span);
+                        return std::make_unique<MirIndex>(std::move(data), std::move(index), e.span);
+                    }
+                }
+            }
+            return std::make_unique<MirIndex>(std::move(base), std::move(index), e.span);
+        }
         case HirKind::UnaryExpr: {
             const auto& e = hir.get<HirUnaryExpr>(expr_id);
             auto rhs = lower_expr(e.expr);
@@ -511,12 +567,60 @@ MirValuePtr Builder::lower_expr(HirExprId expr_id) {
         }
         case HirKind::BinaryExpr: {
             const auto& e = hir.get<HirBinaryExpr>(expr_id);
+            if (e.op == HirBinaryOp::Assign) {
+                if (e.lhs == kInvalidHirId || hir.node(e.lhs).kind != HirKind::VarExpr) {
+                    diag.error("assignment target must be a local variable", e.span);
+                    return lower_expr(e.rhs);
+                }
+                const auto& lhs = hir.get<HirVarExpr>(e.lhs);
+                auto rhs = lower_expr(e.rhs);
+                if (!rhs) {
+                    diag.error("invalid rhs for assignment", e.span);
+                    rhs = make_const(MirConstKind::Int, "0", e.span);
+                }
+                std::string ty = type_for_local(lhs.name);
+                emit(std::make_unique<MirAssign>(
+                    make_local(lhs.name, ty, e.span),
+                    std::move(rhs),
+                    e.span));
+                return make_local_value(lhs.name, ty, e.span);
+            }
             auto lhs = lower_expr(e.lhs);
             auto rhs = lower_expr(e.rhs);
             if (!lhs || !rhs) {
                 diag.error("invalid operand for binary expression", e.span);
                 if (!lhs) lhs = make_const(MirConstKind::Int, "0", e.span);
                 if (!rhs) rhs = make_const(MirConstKind::Int, "0", e.span);
+            }
+            if (e.op == HirBinaryOp::Add) {
+                std::string lhs_ty = type_of_value(lhs);
+                std::string rhs_ty = type_of_value(rhs);
+                if (lhs_ty == "string" || rhs_ty == "string") {
+                    if (lhs_ty != "string") {
+                        if (lhs_ty == "i32" || lhs_ty == "int" || lhs_ty == "unknown") {
+                            std::vector<MirValuePtr> conv_args;
+                            conv_args.push_back(std::move(lhs));
+                            lhs = emit_call_value("vitte_i32_to_string", std::move(conv_args), "string", e.span);
+                        } else {
+                            diag.error("unsupported lhs type for string concat", e.span);
+                            lhs = make_const(MirConstKind::String, "", e.span);
+                        }
+                    }
+                    if (rhs_ty != "string") {
+                        if (rhs_ty == "i32" || rhs_ty == "int" || rhs_ty == "unknown") {
+                            std::vector<MirValuePtr> conv_args;
+                            conv_args.push_back(std::move(rhs));
+                            rhs = emit_call_value("vitte_i32_to_string", std::move(conv_args), "string", e.span);
+                        } else {
+                            diag.error("unsupported rhs type for string concat", e.span);
+                            rhs = make_const(MirConstKind::String, "", e.span);
+                        }
+                    }
+                    std::vector<MirValuePtr> args;
+                    args.push_back(std::move(lhs));
+                    args.push_back(std::move(rhs));
+                    return emit_call_value("vitte_string_concat", std::move(args), "string", e.span);
+                }
             }
             std::string tmp = next_temp();
             std::string ty = type_from_binop(e.op);
@@ -536,6 +640,9 @@ MirValuePtr Builder::lower_expr(HirExprId expr_id) {
             std::string callee = "<unknown>";
             std::string ctor_return;
             bool is_direct = false;
+            bool is_slice_push = false;
+            HirExprId slice_push_base = kInvalidHirId;
+            std::string forced_ret_type;
             if (e.callee != kInvalidHirId) {
                 const auto& cnode = hir.node(e.callee);
                 if (cnode.kind == HirKind::VarExpr) {
@@ -561,12 +668,32 @@ MirValuePtr Builder::lower_expr(HirExprId expr_id) {
                             if (base.name == "builtin") {
                                 callee = "builtin." + m.member;
                                 is_direct = true;
+                            } else if (m.member == "push") {
+                                auto it_base = local_types.find(base.name);
+                                if (it_base != local_types.end()) {
+                                    if (it_base->second == "slice<i32>") {
+                                        callee = "vitte_slice_push_i32";
+                                        is_direct = true;
+                                        is_slice_push = true;
+                                        slice_push_base = m.base;
+                                        forced_ret_type = it_base->second;
+                                    } else if (it_base->second == "slice<string>") {
+                                        callee = "vitte_slice_push_string";
+                                        is_direct = true;
+                                        is_slice_push = true;
+                                        slice_push_base = m.base;
+                                        forced_ret_type = it_base->second;
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
             std::vector<MirValuePtr> args;
+            if (is_slice_push && slice_push_base != kInvalidHirId) {
+                args.push_back(lower_expr(slice_push_base));
+            }
             for (auto a : e.args) {
                 args.push_back(lower_expr(a));
             }
@@ -603,6 +730,9 @@ MirValuePtr Builder::lower_expr(HirExprId expr_id) {
             }
             if (ret_type == "unknown" && !ctor_return.empty()) {
                 ret_type = ctor_return;
+            }
+            if (!forced_ret_type.empty()) {
+                ret_type = forced_ret_type;
             }
             if (!is_direct && e.callee != kInvalidHirId) {
                 const auto& cnode = hir.node(e.callee);
@@ -698,8 +828,35 @@ void Builder::lower_stmt(HirStmtId stmt_id) {
     switch (node.kind) {
         case HirKind::LetStmt: {
             const auto& s = hir.get<HirLetStmt>(stmt_id);
-            auto val = lower_expr(s.init);
             std::string ty = type_from_hir(s.type, s.span);
+            MirValuePtr val;
+            bool lowered_empty_list = false;
+            if (s.init != kInvalidHirId) {
+                const auto& init = hir.node(s.init);
+                if (init.kind == HirKind::CallExpr) {
+                    const auto& c = hir.get<HirCallExpr>(s.init);
+                    if (c.callee != kInvalidHirId && c.args.empty()) {
+                        const auto& cnode = hir.node(c.callee);
+                        if (cnode.kind == HirKind::VarExpr) {
+                            const auto& cv = hir.get<HirVarExpr>(c.callee);
+                            if (cv.name == "list") {
+                                if (ty == "slice<i32>") {
+                                    std::vector<MirValuePtr> no_args;
+                                    val = emit_call_value("vitte_empty_slice_i32", std::move(no_args), ty, s.span);
+                                    lowered_empty_list = true;
+                                } else if (ty == "slice<string>") {
+                                    std::vector<MirValuePtr> no_args;
+                                    val = emit_call_value("vitte_empty_slice_string", std::move(no_args), ty, s.span);
+                                    lowered_empty_list = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (!lowered_empty_list) {
+                val = lower_expr(s.init);
+            }
             if (ty == "unknown" && val && val->kind == MirKind::Local) {
                 const auto& vlocal = static_cast<const MirLocal&>(*val);
                 if (vlocal.type && vlocal.type->kind == MirKind::NamedType) {
@@ -772,12 +929,32 @@ void Builder::lower_stmt(HirStmtId stmt_id) {
             terminate(std::make_unique<MirGoto>(loop_bb, s.span));
 
             set_current(loop_bb);
+            break_targets.push_back(cont_bb);
+            continue_targets.push_back(loop_bb);
             lower_block(s.body);
+            continue_targets.pop_back();
+            break_targets.pop_back();
             if (!terminated) {
                 terminate(std::make_unique<MirGoto>(loop_bb, s.span));
             }
 
             set_current(cont_bb);
+            break;
+        }
+        case HirKind::BreakStmt: {
+            if (break_targets.empty()) {
+                diag.error("break used outside of loop", node.span);
+                break;
+            }
+            terminate(std::make_unique<MirGoto>(break_targets.back(), node.span));
+            break;
+        }
+        case HirKind::ContinueStmt: {
+            if (continue_targets.empty()) {
+                diag.error("continue used outside of loop", node.span);
+                break;
+            }
+            terminate(std::make_unique<MirGoto>(continue_targets.back(), node.span));
             break;
         }
         case HirKind::SelectStmt: {
@@ -903,7 +1080,7 @@ MirModule lower_to_mir(
         return name;
     };
 
-    auto type_name_from_hir = [&](HirTypeId ty) -> std::string {
+    std::function<std::string(HirTypeId)> type_name_from_hir = [&](HirTypeId ty) -> std::string {
         if (ty == kInvalidHirId) {
             return "i32";
         }
@@ -916,7 +1093,11 @@ MirModule lower_to_mir(
             return normalize_type_name(ret);
         }
         if (tnode.kind == HirKind::GenericType) {
-            return normalize_type_name(hir_ctx.get<HirGenericType>(ty).base_name);
+            const auto& gt = hir_ctx.get<HirGenericType>(ty);
+            if (gt.base_name == "slice" && gt.type_args.size() == 1) {
+                return "slice<" + normalize_type_name(type_name_from_hir(gt.type_args[0])) + ">";
+            }
+            return normalize_type_name(gt.base_name);
         }
         return "i32";
     };
@@ -1074,7 +1255,12 @@ MirModule lower_to_mir(
                 if (ret == "bool") ret = "bool";
                 if (ret == "string") ret = "string";
             } else if (tnode.kind == HirKind::GenericType) {
-                ret = hir_ctx.get<HirGenericType>(fn.return_type).base_name;
+                const auto& gt = hir_ctx.get<HirGenericType>(fn.return_type);
+                if (gt.base_name == "slice" && gt.type_args.size() == 1) {
+                    ret = "slice<" + type_name_from_hir(gt.type_args[0]) + ">";
+                } else {
+                    ret = gt.base_name;
+                }
             }
         }
         fn_returns[fn.name] = ret;

@@ -63,6 +63,7 @@ enum class HirKind {
     BinaryExpr,
     CallExpr,
     MemberExpr,
+    IndexExpr,
 
     // statements
     LetStmt,
@@ -71,6 +72,8 @@ enum class HirKind {
     Block,
     IfStmt,
     LoopStmt,
+    BreakStmt,
+    ContinueStmt,
     SelectStmt,
     WhenStmt,
 
@@ -161,6 +164,7 @@ enum class HirBinaryOp {
     Ge,
     And,
     Or,
+    Assign,
 };
 
 struct HirExpr : HirNode {
@@ -228,6 +232,15 @@ struct HirMemberExpr : HirExpr {
                   vitte::frontend::ast::SourceSpan span);
 };
 
+struct HirIndexExpr : HirExpr {
+    HirExprId base;
+    HirExprId index;
+
+    HirIndexExpr(HirExprId base,
+                 HirExprId index,
+                 vitte::frontend::ast::SourceSpan span);
+};
+
 // ------------------------------------------------------------
 // Statements
 // ------------------------------------------------------------
@@ -285,6 +298,14 @@ struct HirLoop : HirStmt {
 
     HirLoop(HirStmtId body,
             vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirBreak : HirStmt {
+    explicit HirBreak(vitte::frontend::ast::SourceSpan span);
+};
+
+struct HirContinue : HirStmt {
+    explicit HirContinue(vitte::frontend::ast::SourceSpan span);
 };
 
 // ------------------------------------------------------------

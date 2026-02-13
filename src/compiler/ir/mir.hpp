@@ -61,6 +61,7 @@ enum class MirKind {
     Local,
     Const,
     Member,
+    Index,
 
     // instructions
     Assign,
@@ -157,6 +158,15 @@ struct MirMember : MirValue {
               std::string member,
               bool pointer,
               vitte::frontend::ast::SourceSpan span);
+};
+
+struct MirIndex : MirValue {
+    MirValuePtr base;
+    MirValuePtr index;
+
+    MirIndex(MirValuePtr base,
+             MirValuePtr index,
+             vitte::frontend::ast::SourceSpan span);
 };
 
 // ------------------------------------------------------------
