@@ -24,6 +24,42 @@ static bool is_kernel_target(const std::string& target) {
     return target.rfind("kernel-", 0) == 0;
 }
 
+static std::filesystem::path detect_repo_root(const std::filesystem::path& start_dir) {
+    std::filesystem::path cur = start_dir;
+    if (cur.empty()) {
+        cur = std::filesystem::current_path();
+    }
+    if (!std::filesystem::exists(cur)) {
+        cur = std::filesystem::current_path();
+    }
+    if (std::filesystem::is_regular_file(cur)) {
+        cur = cur.parent_path();
+    }
+
+    while (true) {
+        const auto runtime = cur / "src/compiler/backends/runtime/vitte_runtime.hpp";
+        const auto stdlib = cur / "src/vitte/std";
+        if (std::filesystem::exists(runtime) || std::filesystem::exists(stdlib)) {
+            return cur;
+        }
+        const auto parent = cur.parent_path();
+        if (parent.empty() || parent == cur) {
+            break;
+        }
+        cur = parent;
+    }
+
+    return std::filesystem::current_path();
+}
+
+static std::filesystem::path resolve_repo_root(const CppBackendOptions& options) {
+    const char* root = std::getenv("VITTE_ROOT");
+    if (root && *root) {
+        return std::filesystem::path(root);
+    }
+    return detect_repo_root(std::filesystem::absolute(std::filesystem::path(options.work_dir)));
+}
+
 static std::optional<std::filesystem::path> find_lld() {
     const char* env = std::getenv("LLD_PATH");
     if (env && *env) {
@@ -154,6 +190,7 @@ bool compile_cpp_backend(
 
     context::CppContext ctx = build_context(options);
     ast::cpp::CppTranslationUnit tu = lower_to_cpp(mir_module, ctx);
+    const std::filesystem::path repo_root = resolve_repo_root(options);
 
     /* ---------------------------------------------
      * Emit C++ file
@@ -183,11 +220,7 @@ bool compile_cpp_backend(
             if (fqbn && *fqbn) {
                 arduino_opts.fqbn = fqbn;
             } else {
-                const char* root = std::getenv("VITTE_ROOT");
-                std::filesystem::path base = root && *root
-                    ? std::filesystem::path(root)
-                    : std::filesystem::current_path();
-                auto board_map = load_board_map(base);
+                auto board_map = load_board_map(repo_root);
                 auto it = board_map.find(options.target);
                 if (it != board_map.end()) {
                     arduino_opts.fqbn = it->second;
@@ -201,13 +234,8 @@ bool compile_cpp_backend(
             }
         }
 
-        const char* root = std::getenv("VITTE_ROOT");
-        std::filesystem::path base = root && *root
-            ? std::filesystem::path(root)
-            : std::filesystem::current_path();
-
-        std::filesystem::path runtime_hdr = base / "target/arduino/include/vitte_runtime.hpp";
-        std::filesystem::path runtime_cpp = base / "target/arduino/runtime/vitte_runtime.cpp";
+        std::filesystem::path runtime_hdr = repo_root / "target/arduino/include/vitte_runtime.hpp";
+        std::filesystem::path runtime_cpp = repo_root / "target/arduino/runtime/vitte_runtime.cpp";
 
         std::vector<std::string> extra_sources;
         if (std::filesystem::exists(runtime_cpp)) {
@@ -247,13 +275,8 @@ bool compile_cpp_backend(
         clang_opts.ld_flags.push_back("-Wl,/subsystem:efi_application");
         clang_opts.ld_flags.push_back("-Wl,/nodefaultlib");
 
-        const char* root = std::getenv("VITTE_ROOT");
-        std::filesystem::path base = root && *root
-            ? std::filesystem::path(root)
-            : std::filesystem::current_path();
-
-        std::filesystem::path rt_inc = base / "target/kernel/x86_64/uefi/include";
-        std::filesystem::path rt_cpp = base / "target/kernel/x86_64/uefi/runtime/vitte_runtime.cpp";
+        std::filesystem::path rt_inc = repo_root / "target/kernel/x86_64/uefi/include";
+        std::filesystem::path rt_cpp = repo_root / "target/kernel/x86_64/uefi/runtime/vitte_runtime.cpp";
         if (std::filesystem::exists(rt_inc)) {
             clang_opts.include_dirs.push_back(rt_inc.string());
         }
@@ -291,19 +314,14 @@ bool compile_cpp_backend(
         clang_opts.ld_flags.push_back("-Wl,-z,notext");
         clang_opts.ld_flags.push_back("-Wl,-z,max-page-size=0x1000");
 
-        const char* root = std::getenv("VITTE_ROOT");
-        std::filesystem::path base = root && *root
-            ? std::filesystem::path(root)
-            : std::filesystem::current_path();
-
-        std::filesystem::path rt_inc = base / "target/kernel/x86_64/grub/include";
-        std::filesystem::path rt_cpp = base / "target/kernel/x86_64/grub/runtime/vitte_runtime.cpp";
-        std::filesystem::path rt_int = base / "target/kernel/x86_64/grub/runtime/interrupts.cpp";
-        std::filesystem::path rt_int_s = base / "target/kernel/x86_64/grub/runtime/interrupts.s";
-        std::filesystem::path rt_gdt = base / "target/kernel/x86_64/grub/runtime/gdt.cpp";
-        std::filesystem::path rt_paging = base / "target/kernel/x86_64/grub/runtime/paging.cpp";
-        std::filesystem::path rt_start = base / "target/kernel/x86_64/grub/runtime/start.s";
-        std::filesystem::path ld_script = base / "target/kernel/x86_64/grub/linker/linker.ld";
+        std::filesystem::path rt_inc = repo_root / "target/kernel/x86_64/grub/include";
+        std::filesystem::path rt_cpp = repo_root / "target/kernel/x86_64/grub/runtime/vitte_runtime.cpp";
+        std::filesystem::path rt_int = repo_root / "target/kernel/x86_64/grub/runtime/interrupts.cpp";
+        std::filesystem::path rt_int_s = repo_root / "target/kernel/x86_64/grub/runtime/interrupts.s";
+        std::filesystem::path rt_gdt = repo_root / "target/kernel/x86_64/grub/runtime/gdt.cpp";
+        std::filesystem::path rt_paging = repo_root / "target/kernel/x86_64/grub/runtime/paging.cpp";
+        std::filesystem::path rt_start = repo_root / "target/kernel/x86_64/grub/runtime/start.s";
+        std::filesystem::path ld_script = repo_root / "target/kernel/x86_64/grub/linker/linker.ld";
 
         if (std::filesystem::exists(rt_inc)) {
             clang_opts.include_dirs.push_back(rt_inc.string());
@@ -453,28 +471,18 @@ bool compile_cpp_backend(
                 clang_opts.include_dirs.push_back(p.string());
             }
         } else {
-            const char* root = std::getenv("VITTE_ROOT");
-            std::filesystem::path base = root && *root
-                ? std::filesystem::path(root)
-                : std::filesystem::current_path();
-
-            std::filesystem::path src_rt = base / "src/compiler/backends/runtime";
+            std::filesystem::path src_rt = repo_root / "src/compiler/backends/runtime";
             if (std::filesystem::exists(src_rt / "vitte_runtime.hpp")) {
                 clang_opts.include_dirs.push_back(src_rt.string());
             }
 
-            std::filesystem::path tgt_inc = base / "target/include";
+            std::filesystem::path tgt_inc = repo_root / "target/include";
             if (std::filesystem::exists(tgt_inc / "vitte_runtime.hpp")) {
                 clang_opts.include_dirs.push_back(tgt_inc.string());
             }
         }
 
-        const char* root = std::getenv("VITTE_ROOT");
-        std::filesystem::path base = root && *root
-            ? std::filesystem::path(root)
-            : std::filesystem::current_path();
-
-        std::filesystem::path runtime_cpp = base / "src/compiler/backends/runtime/vitte_runtime.cpp";
+        std::filesystem::path runtime_cpp = repo_root / "src/compiler/backends/runtime/vitte_runtime.cpp";
         if (!options.emit_obj && std::filesystem::exists(runtime_cpp)) {
             clang_opts.extra_sources.push_back(runtime_cpp.string());
         }

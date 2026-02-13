@@ -40,39 +40,39 @@ proc namespace(db: *Db, prefix: string) -> Namespace {
 }
 
 #[inline]
-proc ns_key(ns: Namespace, key: string) -> string {
-    give ns.prefix + ":" + key
+proc ns_key(scope: Namespace, key: string) -> string {
+    give scope.prefix + ":" + key
 }
 
 #[inline]
-proc put(ns: Namespace, key: string, value: string) -> Result[Unit, string] {
-    give kv.put(ns.db, ns_key(ns, key), value)
+proc put(scope: Namespace, key: string, value: string) -> Result[Unit, string] {
+    give kv.put(scope.db, ns_key(scope, key), value)
 }
 
 #[inline]
-proc get(ns: Namespace, key: string) -> Result[Option[string], string] {
-    give kv.get(ns.db, ns_key(ns, key))
+proc get(scope: Namespace, key: string) -> Result[Option[string], string] {
+    give kv.get(scope.db, ns_key(scope, key))
 }
 
 #[inline]
-proc del(ns: Namespace, key: string) -> Result[bool, string] {
-    give kv.del(ns.db, ns_key(ns, key))
+proc del(scope: Namespace, key: string) -> Result[bool, string] {
+    give kv.del(scope.db, ns_key(scope, key))
 }
 
 #[inline]
-proc keys(ns: Namespace) -> Result[[string], string] {
-    give kv.keys_prefix(ns.db, ns.prefix + ":")
+proc keys(scope: Namespace) -> Result[[string], string] {
+    give kv.keys_prefix(scope.db, scope.prefix + ":")
 }
 
 #[inline]
-proc batch_put(ns: Namespace, entries: [Entry]) -> Result[Unit, string] {
+proc batch_put(scope: Namespace, entries: [Entry]) -> Result[Unit, string] {
     let i: usize = 0
     let out_entries: [Entry] = []
     loop {
         if i >= entries.len { break }
         let e = entries[i]
-        out_entries = out_entries + [Entry(key = ns_key(ns, e.key), value = e.value)]
+        out_entries = out_entries + [Entry(key = ns_key(scope, e.key), value = e.value)]
         i = i + 1
     }
-    give kv.batch_put(ns.db, out_entries)
+    give kv.batch_put(scope.db, out_entries)
 }

@@ -12,10 +12,10 @@ use std/core/types.Unit
 use std/core/result.Result
 
 #[extern]
-proc read_fd(fd: usize, buf: *[u8]) -> Result[usize, string]
+proc buffer_read_fd(fd: usize, buf: *[u8]) -> Result[usize, string]
 
 #[extern]
-proc write_fd(fd: usize, buf: *[u8]) -> Result[usize, string]
+proc buffer_write_fd(fd: usize, buf: *[u8]) -> Result[usize, string]
 
 #[extern]
 proc alloc_u8_slice(len: usize) -> [u8]
@@ -44,7 +44,7 @@ proc writer_new(fd: usize, size: usize) -> BufferedWriter {
 }
 
 proc reader_fill(r: *BufferedReader) -> Result[usize, string] {
-    let n = read_fd(r.fd, &r.buf)
+    let n = buffer_read_fd(r.fd, &r.buf)
     when n is Result.Err { give n }
     let k = n.unwrap()
     r.pos = 0
@@ -84,7 +84,7 @@ proc read_line(r: *BufferedReader) -> string {
 proc writer_flush(w: *BufferedWriter) -> Result[Unit, string] {
     if w.pos == 0 { give Result.Ok(Unit.Unit) }
     let slice = w.buf.slice(0, w.pos)
-    let n = write_fd(w.fd, &slice)
+    let n = buffer_write_fd(w.fd, &slice)
     when n is Result.Err { give Result.Err(n.unwrap_err()) }
     w.pos = 0
     give Result.Ok(Unit.Unit)

@@ -1,0 +1,13 @@
+use std/io/error
+use std/core/result as result
+
+entry main at core/app {
+  let e = error.with_message(error.IoErrorKind.NotFound, "x")
+  let r: error.IoResult[int] = result.Result.Err(e)
+  when r is result.Result.Err {
+    if error.is_not_found(r.error) {
+      return 0
+    }
+  }
+  return 1
+}

@@ -5,6 +5,8 @@ std io error definitions
 
 space std/io/error
 
+use std/core/option.Option
+use std/core/result.Result
 
 <<<
 io error kind
@@ -46,20 +48,20 @@ form IoError {
 constructors
 >>>
 
+#[extern]
+proc io_error_new(k: IoErrorKind) -> IoError
+
+#[extern]
+proc io_error_with_message(k: IoErrorKind, msg: string) -> IoError
+
 #[inline]
-proc new(kind: IoErrorKind) -> IoError {
-    give IoError(
-        kind = kind,
-        message = Option.None
-    )
+proc new(k: IoErrorKind) -> IoError {
+    give io_error_new(k)
 }
 
 #[inline]
-proc with_message(kind: IoErrorKind, msg: string) -> IoError {
-    give IoError(
-        kind = kind,
-        message = Option.Some(msg)
-    )
+proc with_message(k: IoErrorKind, msg: string) -> IoError {
+    give io_error_with_message(k, msg)
 }
 
 

@@ -168,6 +168,10 @@ stress-alloc:
 core-projects:
 	@tools/build_core_projects.sh
 
+.PHONY: test-examples
+test-examples:
+	@tools/build_examples_matrix.sh
+
 .PHONY: arduino-projects
 arduino-projects:
 	@tools/build_arduino_projects.sh
@@ -201,6 +205,39 @@ std-check:
 	@test -d $(STD_DIR)/test
 	@echo "std layout OK"
 
+.PHONY: extern-abi
+extern-abi:
+	@tools/validate_extern_abi.py --profile host --strict-warnings
+
+.PHONY: extern-abi-host
+extern-abi-host:
+	@tools/validate_extern_abi.py --profile host --strict-warnings
+
+.PHONY: extern-abi-arduino
+extern-abi-arduino:
+	@tools/validate_extern_abi.py --profile arduino --strict-warnings
+
+.PHONY: extern-abi-kernel
+extern-abi-kernel:
+	@tools/validate_extern_abi.py --profile kernel --kernel-variant grub --strict-warnings
+
+.PHONY: extern-abi-kernel-uefi
+extern-abi-kernel-uefi:
+	@tools/validate_extern_abi.py --profile kernel --kernel-variant uefi --strict-warnings
+
+.PHONY: extern-abi-all
+extern-abi-all:
+	@tools/validate_extern_abi.py --profile all
+
+.PHONY: std-core-tests
+std-core-tests:
+	@tools/test_std_core.sh
+
+.PHONY: platon-editor
+platon-editor:
+	@./bin/vitte build platon-editor/editor_core.vit -o platon-editor/editor_core
+	@platon-editor/editor_core
+
 # ------------------------------------------------------------
 # Clean
 # ------------------------------------------------------------
@@ -230,6 +267,14 @@ help:
 	@echo "  make format     run clang-format"
 	@echo "  make tidy       run clang-tidy"
 	@echo "  make test       run tests (std/test)"
+	@echo "  make test-examples build/check all examples/*.vit"
+	@echo "  make extern-abi validate #[extern] ABI (host profile)"
+	@echo "  make extern-abi-arduino validate #[extern] ABI (arduino)"
+	@echo "  make extern-abi-kernel validate #[extern] ABI (kernel grub)"
+	@echo "  make extern-abi-kernel-uefi validate #[extern] ABI (kernel uefi)"
+	@echo "  make extern-abi-all validate #[extern] ABI (all std vs host)"
+	@echo "  make std-core-tests run std/core regression tests"
+	@echo "  make platon-editor build and self-test platon editor core"
 	@echo "  make std-check  verify std layout"
 	@echo "  make clean      remove build artifacts"
 	@echo "  make distclean  full cleanup"

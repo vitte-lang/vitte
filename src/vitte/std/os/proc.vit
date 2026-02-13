@@ -18,10 +18,18 @@ proc spawn(path: string, argv: [string]) -> i32
 proc wait_pid(pid: i32) -> i32
 
 #[extern]
-proc env_get(key: string) -> string
+proc proc_env_get(key: string) -> string
 
 #[extern]
-proc env_set(key: string, value: string) -> i32
+proc proc_env_set(key: string, value: string) -> i32
+
+proc env_get(key: string) -> string {
+    give proc_env_get(key)
+}
+
+proc env_set(key: string, value: string) -> i32 {
+    give proc_env_set(key, value)
+}
 
 proc exec(path: string, argv: [string]) -> Unit {
     execv(path, argv)

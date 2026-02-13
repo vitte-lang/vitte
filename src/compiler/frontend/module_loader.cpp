@@ -70,6 +70,30 @@ static std::filesystem::path resolve_module_file(
     return {};
 }
 
+static std::filesystem::path detect_repo_root(const std::filesystem::path& start_dir) {
+    std::filesystem::path cur = start_dir;
+    if (cur.empty()) {
+        cur = std::filesystem::current_path();
+    }
+    if (!std::filesystem::exists(cur)) {
+        cur = std::filesystem::current_path();
+    }
+
+    while (true) {
+        const auto candidate = cur / "src/vitte/std";
+        if (std::filesystem::exists(candidate)) {
+            return cur;
+        }
+        const auto parent = cur.parent_path();
+        if (parent.empty() || parent == cur) {
+            break;
+        }
+        cur = parent;
+    }
+
+    return std::filesystem::current_path();
+}
+
 static void collect_decl_names(
     const AstContext& ctx,
     ModuleId module_id,
@@ -80,9 +104,20 @@ static void collect_decl_names(
         if (decl_id == kInvalidAstId) continue;
         const auto& decl = ctx.get<Decl>(decl_id);
         switch (decl.kind) {
-            case NodeKind::ProcDecl:
-                names.insert(static_cast<const ProcDecl&>(decl).name.name);
+            case NodeKind::ProcDecl: {
+                const auto& p = static_cast<const ProcDecl&>(decl);
+                bool is_extern = false;
+                for (const auto& attr : p.attrs) {
+                    if (attr.name.name == "extern") {
+                        is_extern = true;
+                        break;
+                    }
+                }
+                if (!is_extern) {
+                    names.insert(p.name.name);
+                }
                 break;
+            }
             case NodeKind::FnDecl:
                 names.insert(static_cast<const FnDecl&>(decl).name.name);
                 break;
@@ -405,7 +440,16 @@ static void qualify_module(AstContext& ctx,
         switch (decl.kind) {
             case NodeKind::ProcDecl: {
                 auto& d = static_cast<ProcDecl&>(decl);
-                d.name.name = prefix + d.name.name;
+                bool is_extern = false;
+                for (const auto& attr : d.attrs) {
+                    if (attr.name.name == "extern") {
+                        is_extern = true;
+                        break;
+                    }
+                }
+                if (!is_extern) {
+                    d.name.name = prefix + d.name.name;
+                }
                 for (auto& p : d.params) {
                     qualify_type(ctx, p.type, locals, prefix);
                 }
@@ -566,12 +610,12 @@ bool load_modules(AstContext& ctx,
                   diag::DiagnosticEngine& diagnostics,
                   const std::string& entry_path,
                   ModuleIndex& index) {
-    std::filesystem::path entry(entry_path);
+    std::filesystem::path entry = std::filesystem::absolute(std::filesystem::path(entry_path));
     std::filesystem::path base_dir = entry.has_parent_path()
         ? entry.parent_path()
         : std::filesystem::current_path();
 
-    Loader loader{ctx, diagnostics, index, {}, {}, std::filesystem::current_path()};
+    Loader loader{ctx, diagnostics, index, {}, {}, detect_repo_root(base_dir)};
     bool ok = loader.load_recursive(root, base_dir);
     if (ok && !loader.collected.empty()) {
         auto& module = ctx.get<Module>(root);
@@ -1080,6 +1124,34 @@ void rewrite_member_access(ast::AstContext& ctx,
                 auto& d = static_cast<GlobalDecl&>(decl);
                 rewrite_type_for_alias(ctx, d.type, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
                 rewrite_expr_for_alias(ctx, d.value, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                break;
+            }
+            case NodeKind::TypeDecl: {
+                auto& d = static_cast<TypeDecl&>(decl);
+                for (auto& f : d.fields) {
+                    rewrite_type_for_alias(ctx, f.type, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                }
+                break;
+            }
+            case NodeKind::TypeAliasDecl: {
+                auto& d = static_cast<TypeAliasDecl&>(decl);
+                rewrite_type_for_alias(ctx, d.target, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                break;
+            }
+            case NodeKind::FormDecl: {
+                auto& d = static_cast<FormDecl&>(decl);
+                for (auto& f : d.fields) {
+                    rewrite_type_for_alias(ctx, f.type, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                }
+                break;
+            }
+            case NodeKind::PickDecl: {
+                auto& d = static_cast<PickDecl&>(decl);
+                for (auto& c : d.cases) {
+                    for (auto& f : c.fields) {
+                        rewrite_type_for_alias(ctx, f.type, alias_to_prefix, index.exports, glob_aliases, symbol_imports);
+                    }
+                }
                 break;
             }
             case NodeKind::EntryDecl: {

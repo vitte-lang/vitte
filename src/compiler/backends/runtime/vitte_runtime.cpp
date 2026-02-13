@@ -2366,4 +2366,33 @@ VitteResult<VitteUnit> db_rollback(VitteDbHandle* db) {
     return vitte_ok(u);
 }
 
+// Host stubs for Arduino API so non-arduino builds can link examples.
+void arduino_gpio_pin_mode(std::uint8_t, std::int32_t) {}
+void arduino_gpio_digital_write(std::uint8_t, std::int32_t) {}
+std::int32_t arduino_gpio_digital_read(std::uint8_t) { return 0; }
+void arduino_gpio_analog_write(std::uint8_t, std::uint16_t) {}
+std::uint16_t arduino_gpio_analog_read(std::uint8_t) { return 0; }
+
+void arduino_serial_begin(std::uint32_t) {}
+std::uint32_t arduino_serial_available() { return 0; }
+std::int32_t arduino_serial_read() { return -1; }
+std::size_t arduino_serial_write(std::uint8_t) { return 1; }
+void arduino_serial_flush() {}
+
+void arduino_i2c_begin() {}
+void arduino_i2c_begin_transmission(std::uint8_t) {}
+std::size_t arduino_i2c_write(std::uint8_t) { return 1; }
+std::uint8_t arduino_i2c_end_transmission() { return 0; }
+std::uint8_t arduino_i2c_request_from(std::uint8_t, std::uint8_t) { return 0; }
+std::int32_t arduino_i2c_read() { return 0; }
+
+void arduino_spi_begin() {}
+std::uint8_t arduino_spi_transfer(std::uint8_t byte) { return byte; }
+void arduino_spi_end() {}
+
+void arduino_delay_ms(std::uint32_t) {}
+void arduino_delay_us(std::uint32_t) {}
+std::uint32_t arduino_millis() { return 0; }
+std::uint32_t arduino_micros() { return 0; }
+
 } // extern "C"
