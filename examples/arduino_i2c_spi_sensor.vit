@@ -1,52 +1,32 @@
-use std/arduino/serial as serial
-use std/arduino/i2c as i2c
-use std/arduino/spi as spi
-use std/arduino/gpio as gpio
-use std/arduino/timer as timer
-use std/core/types.u16
-
-# I2C: BH1750 light sensor (addr 0x23) - command 0x10 for high-res mode
-# SPI: MCP3008 ADC (channel 0)
+use std/arduino/i2c.*
+use std/arduino/spi.*
+use std/arduino/gpio.*
+use std/arduino/timer.*
 
 entry main at core/app {
-  serial.begin(9600)
-
-  # I2C init
-  i2c.begin()
-
-  # SPI init
-  spi.begin()
-  gpio.pin_mode(10, gpio.PinMode.Output)
-  gpio.digital_write(10, gpio.PinState.High)
+  begin()
+  pin_mode(10, PinMode.Output)
+  digital_write(10, PinState.High)
 
   loop {
-    # --- BH1750 read ---
-    i2c.begin_transmission(0x23 as u8)
-    let _ = i2c.write(0x10 as u8)
-    let _ = i2c.end_transmission()
-    timer.delay_ms(180)
+    begin_transmission(0x23)
+    let _ = write(0x10)
+    let _ = end_transmission()
+    delay_ms(180)
 
-    let _ = i2c.request_from(0x23 as u8, 2 as u8)
-    let hi = i2c.read()
-    let lo = i2c.read()
-    if hi >= 0 and lo >= 0 {
-      let lux_raw = (((hi as u16) << 8) | (lo as u16))
-      let _ = serial.write((lux_raw >> 8) as u8)
-      let _ = serial.write((lux_raw & 0xFF) as u8)
-    }
+    let _ = request_from(0x23, 2)
+    let hi = read()
+    let lo = read()
+    let _ = hi
+    let _ = lo
 
-    # --- MCP3008 read (channel 0) ---
-    gpio.digital_write(10, gpio.PinState.Low)
-    let _ = spi.transfer(0x01 as u8)
-    let b1 = spi.transfer(0x80 as u8)
-    let b2 = spi.transfer(0x00 as u8)
-    gpio.digital_write(10, gpio.PinState.High)
+    digital_write(10, PinState.Low)
+    let _ = transfer(0x01)
+    let _ = transfer(0x80)
+    let _ = transfer(0x00)
+    digital_write(10, PinState.High)
 
-    let adc = (((b1 & (0x03 as u8)) as u16) << 8) | (b2 as u16)
-    let _ = serial.write((adc >> 8) as u8)
-    let _ = serial.write((adc & 0xFF) as u8)
-
-    timer.delay_ms(500)
+    delay_ms(500)
   }
 
   return 0

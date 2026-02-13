@@ -1,69 +1,64 @@
-# Arduino Standard Library
+# std/arduino
 
-The Arduino standard library provides interfaces for controlling Arduino boards and compatible microcontrollers.
+Arduino facade for Vitte stdlib. This module re-exports the per-feature modules:
 
-## Modules
+- `std/arduino/gpio`
+- `std/arduino/serial`
+- `std/arduino/i2c`
+- `std/arduino/spi`
+- `std/arduino/timer`
 
-### Core Module (`arduino`)
-Basic digital and analog I/O operations for Arduino boards.
-
-**Key Types:**
-- `PinMode` - Pin configuration (Input, Output, InputPullup)
-- `PinState` - Digital pin state (Low, High)
-
-**Key Functions:**
-- `pin_mode(pin, mode)` - Configure pin mode
-- `digital_write(pin, state)` - Write digital value
-- `digital_read(pin)` - Read digital value
-- `analog_write(pin, value)` - PWM output
-- `analog_read(pin)` - Read analog value
-- `delay_ms(ms)` - Millisecond delay
-- `delay_us(us)` - Microsecond delay
-
-### I2C Module (`arduino.i2c`)
-Inter-Integrated Circuit (I2C) communication protocol support.
-
-**Key Types:**
-- `Address` - I2C device address
-
-**Key Functions:**
-- `begin(address)` - Initialize I2C
-- `write(buffer)` - Write to device
-- `read(length)` - Read from device
-- `request_from(address, quantity)` - Request data from slave
-
-### Sensors
-
-#### BH1750 Light Sensor (`arduino.i2c.bh1750`)
-ROHM BH1750 ambient light sensor over I2C.
-
-**Default Addresses:**
-- `BH1750_ADDR_LOW = 0x23` - When ADDR pin = GND
-- `BH1750_ADDR_HIGH = 0x5C` - When ADDR pin = VCC
-
-**Key Functions:**
-- `init(sensor, address, mode)` - Initialize sensor
-- `read_lux(sensor)` - Read light intensity
-- `set_mode(sensor, mode)` - Change measurement mode
-- `power_down(sensor)` - Power down
-- `power_up(sensor)` - Power up
-
-## Example Usage
+## Usage
 
 ```vitte
 use std/arduino
-use std/arduino.i2c.bh1750
 
 entry main at core/app {
   pin_mode(13, PinMode.Output)
-  
   loop {
     digital_write(13, PinState.High)
     delay_ms(500)
     digital_write(13, PinState.Low)
     delay_ms(500)
   }
-  
   return 0
 }
 ```
+
+## Build (Arduino)
+
+```sh
+vitte build --target arduino-uno -o build/firmware.hex src/main.vit
+```
+
+## Upload (Arduino)
+
+```sh
+vitte build --target arduino-uno --upload --port /dev/ttyACM0 -o build/firmware.hex src/main.vit
+```
+
+If `--port` is not provided, the toolchain tries to auto-detect a port using
+`arduino-cli board list`, filtered by the expected FQBN when possible. If an
+FQBN is known and no matching board is found, upload fails. You can also set
+`ARDUINO_PORT`.
+
+## Targets
+
+Targets are mapped in:
+
+- `/Users/vincent/Documents/Github/vitte/target/arduino/boards.txt`
+
+It includes a broad set of ESP32/ESP8266/STM32 presets and can be customized.
+
+## I2C Drivers
+
+- `std/arduino/i2c/bh1750` (light sensor)
+
+## Examples
+
+- `/Users/vincent/Documents/Github/vitte/examples/arduino_blink.vit`
+- `/Users/vincent/Documents/Github/vitte/examples/arduino_serial_echo.vit`
+- `/Users/vincent/Documents/Github/vitte/examples/arduino_i2c_scan.vit`
+- `/Users/vincent/Documents/Github/vitte/examples/arduino_spi_transfer.vit`
+- `/Users/vincent/Documents/Github/vitte/examples/arduino_i2c_spi_sensor.vit`
+- `/Users/vincent/Documents/Github/vitte/examples/arduino_bh1750_lux.vit`

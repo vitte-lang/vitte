@@ -1,0 +1,48 @@
+use std/alloc
+use std/core/types.int
+use std/core/types.usize
+use std/core/types.string
+use std/core/panic as panic
+
+# Core project example: clinic
+
+proc series(seed: int, slots: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= slots { break }
+    let v = ((seed * 13) + (i * 11) + 29) % 120
+    out = out.push(v)
+    i = i + 1
+  }
+  give out
+}
+
+proc sum(values: [int]) -> int {
+  let i: usize = 0
+  let acc: int = 0
+  loop {
+    if i >= values.len { break }
+    acc = acc + values[i]
+    i = i + 1
+  }
+  give acc
+}
+
+proc needs_action(total: int, minv: int) -> int {
+  if total % 100 < minv {
+    give minv - (total % 100)
+  }
+  give 0
+}
+
+entry main at core/app {
+  let values = series(29, 56)
+  let total = sum(values)
+  let action = needs_action(total, 14)
+  let score = total + action
+  panic.assert(score >= 0)
+  let label = "core-clinic-score:" + score
+  let _ = label.len
+  return score
+}

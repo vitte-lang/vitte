@@ -1,29 +1,26 @@
-use std/arduino/serial as serial
-use std/arduino/i2c as i2c
-use std/arduino/gpio as gpio
-use std/arduino/timer as timer
+use std/arduino/i2c.*
+use std/arduino/gpio.*
+use std/arduino/timer.*
 
 entry main at core/app {
-  serial.begin(9600)
-  i2c.begin()
-  gpio.pin_mode(13, gpio.PinMode.Output)
+  begin()
+  pin_mode(13, PinMode.Output)
   loop {
-    let addr = 1 as u8
+    let addr = 1
     loop {
-      i2c.begin_transmission(addr)
-      let err = i2c.end_transmission()
+      begin_transmission(addr)
+      let err = end_transmission()
       if err == 0 {
-        let _ = serial.write(addr)
-        gpio.digital_write(13, gpio.PinState.High)
-        timer.delay_ms(100)
-        gpio.digital_write(13, gpio.PinState.Low)
+        digital_write(13, PinState.High)
+        delay_ms(25)
+        digital_write(13, PinState.Low)
       }
-      if addr == 127 as u8 {
+      if addr == 127 {
         break
       }
-      addr = (addr + 1) as u8
+      addr = (addr + 1)
     }
-    timer.delay_ms(1000)
+    delay_ms(200)
   }
   return 0
 }

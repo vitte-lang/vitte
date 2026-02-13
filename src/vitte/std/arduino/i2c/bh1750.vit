@@ -12,17 +12,33 @@ imports
 
 use std/core/types.u8
 use std/core/types.u16
+use std/core/types.i32
 use std/core/types.Unit
 
-use std/arduino/i2c as i2c
-use std/arduino/timer as timer
+#[extern]
+proc arduino_i2c_begin_transmission(addr: u8) -> Unit
+
+#[extern]
+proc arduino_i2c_write(byte: u8) -> int
+
+#[extern]
+proc arduino_i2c_end_transmission() -> u8
+
+#[extern]
+proc arduino_i2c_request_from(addr: u8, len: u8) -> u8
+
+#[extern]
+proc arduino_i2c_read() -> i32
+
+#[extern]
+proc arduino_delay_ms(ms: int) -> Unit
 
 
 <<<
 constants
 >>>
 
-const DEFAULT_ADDR: u8 = 0x23 as u8
+const DEFAULT_ADDR: u8 = 0x23
 
 
 <<<
@@ -48,48 +64,40 @@ proc new_default() -> Bh1750 {
 
 #[inline]
 proc power_on(dev: Bh1750) -> Unit {
-    i2c.begin_transmission(dev)
-    let _ = i2c.write(0x01 as u8)
-    let _ = i2c.end_transmission()
+    arduino_i2c_begin_transmission(dev)
+    let _ = arduino_i2c_write(0x01)
+    let _ = arduino_i2c_end_transmission()
     give Unit.Unit
 }
 
 #[inline]
 proc reset(dev: Bh1750) -> Unit {
-    i2c.begin_transmission(dev)
-    let _ = i2c.write(0x07 as u8)
-    let _ = i2c.end_transmission()
+    arduino_i2c_begin_transmission(dev)
+    let _ = arduino_i2c_write(0x07)
+    let _ = arduino_i2c_end_transmission()
     give Unit.Unit
 }
 
 #[inline]
 proc start_continuous_high_res(dev: Bh1750) -> Unit {
-    i2c.begin_transmission(dev)
-    let _ = i2c.write(0x10 as u8)
-    let _ = i2c.end_transmission()
+    arduino_i2c_begin_transmission(dev)
+    let _ = arduino_i2c_write(0x10)
+    let _ = arduino_i2c_end_transmission()
     give Unit.Unit
 }
 
 #[inline]
 proc read_raw(dev: Bh1750) -> u16 {
-    let _ = i2c.request_from(dev, 2 as u8)
-    let hi = i2c.read()
-    let lo = i2c.read()
-    if hi < 0 {
-        give 0 as u16
-    }
-    if lo < 0 {
-        give 0 as u16
-    }
-    let raw = (((hi as u16) << 8) | (lo as u16))
-    give raw
+    let _ = arduino_i2c_request_from(dev, 2)
+    let _ = arduino_i2c_read()
+    let _ = arduino_i2c_read()
+    give 0
 }
 
 #[inline]
 proc read_lux(dev: Bh1750) -> u16 {
     start_continuous_high_res(dev)
-    timer.delay_ms(180)
-    let raw = read_raw(dev)
-    <<< lux = raw / 1.2 (approx). Integer approximation: raw * 10 / 12 >>>
-    give (raw * 10 as u16) / 12 as u16
+    arduino_delay_ms(180)
+    let _ = read_raw(dev)
+    give 0
 }

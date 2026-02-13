@@ -1,53 +1,88 @@
 <<<
-I2C (Inter-Integrated Circuit) communication protocol
+mod.vit
+std arduino i2c (Wire)
 >>>
 
+space std/arduino/i2c
+
+
 <<<
-I2C status result enumeration
+imports
 >>>
-pick Status {
-  Success,
-  AddressNack,
-  DataNack,
-  OtherError,
+
+use std/core/types.u8
+use std/core/types.i32
+use std/core/types.usize
+use std/core/types.Unit
+
+
+<<<
+externs
+>>>
+
+#[extern]
+proc arduino_i2c_begin() -> Unit
+
+#[extern]
+proc arduino_i2c_begin_transmission(addr: u8) -> Unit
+
+#[extern]
+proc arduino_i2c_write(byte: u8) -> usize
+
+#[extern]
+proc arduino_i2c_end_transmission() -> u8
+
+#[extern]
+proc arduino_i2c_request_from(addr: u8, len: u8) -> u8
+
+#[extern]
+proc arduino_i2c_read() -> i32
+
+
+<<<
+helpers
+>>>
+
+#[inline]
+proc begin() -> Unit {
+    arduino_i2c_begin()
 }
 
-<<<
-I2C address type
->>>
-type Address = int
+#[inline]
+proc begin_transmission(addr: u8) -> Unit {
+    arduino_i2c_begin_transmission(addr)
+}
+
+#[inline]
+proc write(byte: u8) -> usize {
+    give arduino_i2c_write(byte)
+}
+
+#[inline]
+proc end_transmission() -> u8 {
+    give arduino_i2c_end_transmission()
+}
+
+#[inline]
+proc request_from(addr: u8, len: u8) -> u8 {
+    give arduino_i2c_request_from(addr, len)
+}
+
+#[inline]
+proc read() -> i32 {
+    give arduino_i2c_read()
+}
+
 
 <<<
-Initialize I2C communication
+submodules
 >>>
-proc begin(address: Address) {}
+
+use std/arduino/i2c/bh1750
+
 
 <<<
-End I2C communication
+public reexports
 >>>
-proc end() {}
 
-<<<
-Write bytes to I2C device
->>>
-proc write(buffer: [int]) -> int {}
-
-<<<
-Read bytes from I2C device
->>>
-proc read(length: int) -> [int] {}
-
-<<<
-Request bytes from slave device
->>>
-proc request_from(address: Address, quantity: int) -> int {}
-
-<<<
-Check if data available
->>>
-proc available() -> bool {}
-
-<<<
-Receive single byte from I2C
->>>
-proc receive() -> int {}
+use bh1750.*

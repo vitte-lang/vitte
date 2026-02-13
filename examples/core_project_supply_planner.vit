@@ -1,0 +1,52 @@
+use std/alloc
+use std/core/types.int
+use std/core/types.usize
+use std/core/types.string
+use std/core/panic as panic
+
+# Core project example:
+# supply planner with core types + panic/assert + dynamic slices
+
+proc demand_score(seed: int, slots: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= slots { break }
+    let v = ((seed * 17) + (i * 9) + 31) % 100
+    out = out.push(v)
+    i = i + 1
+  }
+  give out
+}
+
+proc restock_units(current: int, minimum: int) -> int {
+  if current < minimum {
+    give minimum - current
+  }
+  give 0
+}
+
+proc fold_sum(values: [int]) -> int {
+  let i: usize = 0
+  let acc: int = 0
+  loop {
+    if i >= values.len { break }
+    acc = acc + values[i]
+    i = i + 1
+  }
+  give acc
+}
+
+entry main at core/app {
+  let forecast = demand_score(42, 48)
+  let total = fold_sum(forecast)
+
+  let restock = restock_units(total % 60, 25)
+  let budget = total + restock
+  panic.assert(budget >= 0)
+
+  let tag = "core-supply-score:" + (budget + total)
+  let _ = tag.len
+
+  return budget + total
+}

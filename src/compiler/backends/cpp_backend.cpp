@@ -353,6 +353,7 @@ bool compile_cpp_backend(
         clang_opts.cxx_flags.push_back("-Wno-unused-label");
         clang_opts.cxx_flags.push_back("-Wno-unused-but-set-variable");
         clang_opts.cxx_flags.push_back("-Wno-unused-variable");
+        clang_opts.cxx_flags.push_back("-Wno-c++23-extensions");
 
         if (!options.emit_obj) {
 #if defined(__linux__) || defined(__FreeBSD__)

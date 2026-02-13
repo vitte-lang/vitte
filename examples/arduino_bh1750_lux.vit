@@ -1,21 +1,20 @@
-use std/arduino/serial as serial
-use std/arduino/i2c as i2c
-use std/arduino/i2c/bh1750 as bh1750
-use std/arduino/timer as timer
+use std/arduino/i2c.*
+use std/arduino/timer.*
 
 entry main at core/app {
-  serial.begin(9600)
-  i2c.begin()
-
-  let dev = bh1750.new_default()
-  bh1750.power_on(dev)
-  bh1750.reset(dev)
+  begin()
 
   loop {
-    let lux = bh1750.read_lux(dev)
-    let _ = serial.write((lux >> 8) as u8)
-    let _ = serial.write((lux & 0xFF) as u8)
-    timer.delay_ms(500)
+    begin_transmission(0x23)
+    let _ = write(0x10)
+    let _ = end_transmission()
+    delay_ms(180)
+
+    let _ = request_from(0x23, 2)
+    let _ = read()
+    let _ = read()
+
+    delay_ms(500)
   }
 
   return 0

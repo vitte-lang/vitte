@@ -1,62 +1,103 @@
 <<<
-BH1750 - Light intensity sensor (I2C)
-ROHM BH1750FVI or BH1750FVITR
+bh1750.vit
+std arduino i2c bh1750 light sensor
 >>>
 
-use std/arduino.i2c
+space std/arduino/i2c/bh1750
 
-<<<
-BH1750 I2C address
->>>
-const BHpADDR_LOW: int = 0x23
-const BH1750_ADDR_HIGH: int = 0x5C
 
 <<<
-BH1750 measurement modes
+imports
 >>>
-pick Mode {
-  ContinuousHighRes,
-  ContinuousHighRes2,
-  ContinuousLowRes,
-  OneTimeHighRes,
-  OneTimeHighRes2,
-  OneTimeLowRes,
+
+use std/core/types.u8
+use std/core/types.u16
+use std/core/types.i32
+use std/core/types.Unit
+
+#[extern]
+proc arduino_i2c_begin_transmission(addr: u8) -> Unit
+
+#[extern]
+proc arduino_i2c_write(byte: u8) -> int
+
+#[extern]
+proc arduino_i2c_end_transmission() -> u8
+
+#[extern]
+proc arduino_i2c_request_from(addr: u8, len: u8) -> u8
+
+#[extern]
+proc arduino_i2c_read() -> i32
+
+#[extern]
+proc arduino_delay_ms(ms: int) -> Unit
+
+
+<<<
+constants
+>>>
+
+const DEFAULT_ADDR: u8 = 0x23
+
+
+<<<
+types
+>>>
+
+type Bh1750 = u8
+
+
+<<<
+api
+>>>
+
+#[inline]
+proc new(addr: u8) -> Bh1750 {
+    give addr
 }
 
-<<<
-BH1750 state form
->>>
-form BH1750 {
-  addr: int,
-  mode: Mode,
+#[inline]
+proc new_default() -> Bh1750 {
+    give new(DEFAULT_ADDR)
 }
 
-<<<
-Initialize BH1750 sensor
->>>
-proc init(sensor: *BH1750, address: int, mode: Mode) -> bool {}
+#[inline]
+proc power_on(dev: Bh1750) -> Unit {
+    arduino_i2c_begin_transmission(dev)
+    let _ = arduino_i2c_write(0x01)
+    let _ = arduino_i2c_end_transmission()
+    give Unit.Unit
+}
 
-<<<
-Set measurement mode
->>>
-proc set_mode(sensor: *BH1750, mode: Mode) {}
+#[inline]
+proc reset(dev: Bh1750) -> Unit {
+    arduino_i2c_begin_transmission(dev)
+    let _ = arduino_i2c_write(0x07)
+    let _ = arduino_i2c_end_transmission()
+    give Unit.Unit
+}
 
-<<<
-Read light intensity in lux
->>>
-proc read_lux(sensor: *BH1750) -> int {}
+#[inline]
+proc start_continuous_high_res(dev: Bh1750) -> Unit {
+    arduino_i2c_begin_transmission(dev)
+    let _ = arduino_i2c_write(0x10)
+    let _ = arduino_i2c_end_transmission()
+    give Unit.Unit
+}
 
-<<<
-Reset sensor
->>>
-proc reset(sensor: *BH1750) {}
+#[inline]
+proc read_raw(dev: Bh1750) -> u16 {
+    let _ = arduino_i2c_request_from(dev, 2)
+    let _ = arduino_i2c_read()
+    let _ = arduino_i2c_read()
+    give 0
+}
 
-<<<
-Power down sensor
->>>
-proc power_down(sensor: *BH1750) {}
-
-<<<
-Power up sensor
->>>
-proc power_up(sensor: *BH1750) {}
+#[inline]
+proc read_lux(dev: Bh1750) -> u16 {
+    start_continuous_high_res(dev)
+    arduino_delay_ms(180)
+    let _ = read_raw(dev)
+    give 0
+}

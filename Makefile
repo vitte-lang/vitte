@@ -164,6 +164,14 @@ check-tests:
 stress-alloc:
 	@tools/stress_alloc_examples.sh
 
+.PHONY: core-projects
+core-projects:
+	@tools/build_core_projects.sh
+
+.PHONY: arduino-projects
+arduino-projects:
+	@tools/build_arduino_projects.sh
+
 .PHONY: negative-tests
 negative-tests:
 	@tools/negative_tests.sh

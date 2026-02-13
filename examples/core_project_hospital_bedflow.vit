@@ -1,0 +1,64 @@
+use std/alloc
+use std/core/types.int
+use std/core/types.usize
+use std/core/types.string
+use std/core/panic as panic
+
+# Core project example: bedflow
+
+proc generate(seed: int, slots: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= slots { break }
+    let v = ((seed * 19) + (i * 7) + 83) % 160
+    out = out.push(v)
+    i = i + 1
+  }
+  give out
+}
+
+proc sum(values: [int]) -> int {
+  let i: usize = 0
+  let acc: int = 0
+  loop {
+    if i >= values.len { break }
+    acc = acc + values[i]
+    i = i + 1
+  }
+  give acc
+}
+
+proc peak(values: [int]) -> int {
+  if values.len == 0 { give 0 }
+  let i: usize = 1
+  let m: int = values[0]
+  loop {
+    if i >= values.len { break }
+    if values[i] > m {
+      m = values[i]
+    }
+    i = i + 1
+  }
+  give m
+}
+
+proc action(total: int, minv: int, p: int) -> int {
+  let gate = (total + p) % 100
+  if gate < minv {
+    give minv - gate
+  }
+  give 0
+}
+
+entry main at core/app {
+  let values = generate(83, 92)
+  let total = sum(values)
+  let p = peak(values)
+  let a = action(total, 31, p)
+  let score = total + p + a
+  panic.assert(score >= 0)
+  let label = "core-bedflow-score:" + score
+  let _ = label.len
+  return score
+}
