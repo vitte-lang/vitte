@@ -1,77 +1,49 @@
-# 4. Syntaxe de base
+# 4. Syntaxe essentielle
 
-La syntaxe de Vitte est volontairement sobre. Elle évite les surprises et favorise les formes régulières. Si vous venez de C, vous reconnaîtrez des formes familières, sans les angles morts historiques.
+Ce chapitre avance comme un atelier de code Vitte: on pose une idee, on la fait vivre dans le code, puis on verifie precisement ce qui se passe a l'execution.
+Ce chapitre poursuit un objectif simple: Lire et ecrire une syntaxe Vitte qui laisse le flux observable.
 
-## Valeurs et expressions
-
-Les expressions sont directes : vous lisez ce que la machine exécutera. Le style recommandé est d’écrire des expressions courtes, puis de les nommer.
+Etape 1. Signature + sortie.
 
 ```vit
-entry main at core/app {
-  let x = 1
-  let y = x + 2
-  return y
+proc add(a: int, b: int) -> int {
+  give a + b
 }
 ```
 
-## Blocs et portée
+Pourquoi cette etape est solide. Signature de type statique, sortie explicite.
 
-Les blocs définissent la portée des noms. Si vous réutilisez un identifiant, faites‑le consciemment et localement ; les variables globales sont une dette à long terme.
+Ce qui se passe a l'execution. `add(1,2)=3`.
 
-## Indentation et lisibilité
-
-Vous écrivez pour la machine, mais aussi pour un futur lecteur. L’indentation cohérente, les lignes courtes, et les noms précis sont des optimisations humaines.
-
-## Commentaires
-
-Les commentaires sont là pour expliquer une intention, pas pour répéter le code. Un bon commentaire répond à « pourquoi ? ».
-
-## Style minimal
-
-Un bon code Vitte n’est pas forcément « court », mais il est souvent « plat ». Évitez les cascades de conditions, les expressions trop imbriquées, et les effets cachés.
-
-## Densité de lecture
-
-Un lecteur humain n’a pas la patience d’un compilateur. Si un bloc demande plus d’une respiration pour être compris, il est peut‑être trop dense. Découper est un acte de respect.
-
-## À retenir
-
-Une syntaxe courte vaut mieux qu’une syntaxe clever. Nommez tôt, testez tôt, refactorez tôt. La lisibilité est une performance à long terme.
-
-
-## Exemple long : du code lisible
-
-Prenez un bloc trop dense, puis découpez‑le. Le but est d’apprendre à réduire la charge cognitive.
-
-Avant : une expression longue, imbriquée.
-Après : trois lignes avec des noms clairs.
-
-## Erreurs courantes
-
-Utiliser des noms courts pour des concepts longs. Mélanger déclaration et logique dans la même ligne. Empiler plusieurs effets dans une seule expression.
-
-## Checklist de lisibilité
-
-Une ligne, une idée. Chaque variable a un nom lisible. Les blocs ne dépassent pas une taille raisonnable.
-
-
-## Exercice : rendre lisible
-
-Prenez une fonction avec trois `if` imbriqués et refactorez‑la en retours précoces. Comparez les deux versions. La version lisible est souvent plus courte, mais surtout plus honnête.
-
-
-## Code complet (API actuelle)
+Etape 2. Condition + garde.
 
 ```vit
-entry main at core/app {
-  let x = 1
-  let y = x + 2
-  if y > 2 { return 0 }
-  return 1
+proc clamp01(v: int) -> int {
+  if v < 0 { give 0 }
+  if v > 1 { give 1 }
+  give v
 }
 ```
 
-## API idéale (future)
+Pourquoi cette etape est solide. Gardes sequentielles, chemin nominal final.
 
-Des conventions standardisées pour les blocs `match` et les guard‑clauses.
+Ce qui se passe a l'execution. `-2->0`, `0->0`, `9->1`.
 
+Etape 3. Boucle + mutation explicite.
+
+```vit
+proc count(n: int) -> int {
+  let i: int = 0
+  loop {
+    if i >= n { break }
+    set i = i + 1
+  }
+  give i
+}
+```
+
+Pourquoi cette etape est solide. Etat unique, progression monotone, sortie visible.
+
+Ce qui se passe a l'execution. `count(4)=4`.
+
+Ce que vous devez maitriser en sortie de chapitre. Signatures nettes, gardes nettes, mutations nettes.

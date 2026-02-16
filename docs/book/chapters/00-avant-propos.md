@@ -1,22 +1,59 @@
-# Avant-propos
+# 0. Avant-propos
 
-## À qui s’adresse ce livre
+Ce chapitre avance comme un atelier de code Vitte: on pose une idee, on la fait vivre dans le code, puis on verifie precisement ce qui se passe a l'execution.
+Ce chapitre poursuit un objectif simple: Poser la methode de travail de ce livre Vitte pour que chaque chapitre soit executable, verifiable et reutilisable en projet reel.
 
-Ce livre vise les développeurs et développeuses qui aiment comprendre ce que fait leur code et pourquoi il le fait. Si vous avez déjà utilisé C ou C++, si vous aimez les outils système, ou si vous voulez apprendre un langage bas niveau moderne sans céder à la complexité gratuite, vous êtes au bon endroit.
+Etape 1. Lire Vitte comme un langage de contrats explicites.
 
-## Ce que vous allez apprendre
+```vit
+proc contract_demo(x: int) -> int {
+  if x < 0 { give 0 }
+  give x
+}
+```
 
-Vous apprendrez à configurer un projet Vitte, à écrire du code clair et testable, à utiliser la bibliothèque standard, et à produire des binaires reproductibles. Vous verrez aussi comment la compilation fonctionne, ce qui aide énormément quand on débogue un projet réel.
+Pourquoi cette etape est solide. Une signature claire et des gardes visibles reduisent les interpretations implicites. Le style du livre suit cette discipline partout.
 
-## Comment lire ce livre
+Ce qui se passe a l'execution. `contract_demo(-3)=0` et `contract_demo(8)=8`.
 
-Lisez les chapitres 1 à 4 pour démarrer rapidement. Sautez ensuite vers les chapitres qui correspondent à votre besoin immédiat. Revenez aux projets complets quand vous avez besoin d’un exemple de bout en bout.
+Etape 2. Travailler en boucle courte ecriture, verification, correction.
 
-## Conventions
+```vit
+proc loop_demo(n: int) -> int {
+  let i: int = 0
+  let acc: int = 0
+  loop {
+    if i >= n { break }
+    set acc = acc + i
+    set i = i + 1
+  }
+  give acc
+}
+```
 
-Les exemples sont courts et commentés. La syntaxe Vitte évolue encore ; quand elle est volontairement indicative, je le précise. Les chapitres d’annexes complètent les détails formels.
+Pourquoi cette etape est solide. Le code est ecrit pour etre teste rapidement. La borne de boucle explicite facilite audit et debug.
 
-## Remerciements
+Ce qui se passe a l'execution. `loop_demo(4)=6`.
 
-Un langage n’est jamais l’œuvre d’une seule personne. Les retours de la communauté, même les plus critiques, ont façonné Vitte. Merci à celles et ceux qui ont préféré la clarté à la facilité, et qui ont pris le temps d’expliquer un bug au lieu de le contourner.
+Etape 3. Garder une separation stricte entre metier et projection systeme.
 
+```vit
+pick OpResult {
+  case Ok(value: int)
+  case Err(code: int)
+}
+
+proc to_exit(r: OpResult) -> int {
+  match r {
+    case Ok(_) { give 0 }
+    case Err(c) { give c }
+    otherwise { give 70 }
+  }
+}
+```
+
+Pourquoi cette etape est solide. Le metier produit des valeurs typees. La projection systeme est une etape finale et localisee.
+
+Ce qui se passe a l'execution. `to_exit(Ok(42))=0` et `to_exit(Err(64))=64`.
+
+Ce que vous devez maitriser en sortie de chapitre. Vous lisez ce livre comme un atelier technique, chaque exemple est runnable et chaque chapitre prolonge les invariants du precedent.

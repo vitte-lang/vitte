@@ -1,86 +1,47 @@
-# 6. Fonctions et procédures
+# 6. Procedures et contrats
 
-Une fonction est une promesse : « si vous me donnez ces entrées, je vous rends cette sortie ». Dans Vitte, cette promesse se veut simple, lisible, et stable. Une bonne fonction donne envie de la réutiliser.
+Ce chapitre avance comme un atelier de code Vitte: on pose une idee, on la fait vivre dans le code, puis on verifie precisement ce qui se passe a l'execution.
+Ce chapitre poursuit un objectif simple: Ecrire des procedures testables par cas de contrat.
 
-## Définir une procédure
+Etape 1. Contrat bornant.
 
 ```vit
-proc add(x: int, y: int) -> int {
-  return x + y
+proc clamp(x: int, lo: int, hi: int) -> int {
+  if x < lo { give lo }
+  if x > hi { give hi }
+  give x
 }
 ```
 
-Le nom est court et précis. Les paramètres sont explicitement typés. La signature est un point de repère important.
+Pourquoi cette etape est solide. Contrat total sur les entrees sous hypothese de bornes coherentes.
 
-## Procédures locales
+Ce qui se passe a l'execution. `(-1,0,10)->0`, `(5,0,10)->5`, `(99,0,10)->10`.
 
-Vitte autorise les procédures comme valeurs, ce qui aide à structurer un code de manière locale :
+Etape 2. Extraire la precondition.
 
 ```vit
-entry main at core/app {
-  let add = proc(x: int, y: int) -> int { return x + y }
-  return add(1, 2)
+proc validate_bounds(lo: int, hi: int) -> bool {
+  give lo <= hi
 }
 ```
 
-## Effets et lisibilité
+Pourquoi cette etape est solide. Regle de bornes centralisee, reutilisable.
 
-Une procédure qui touche l’extérieur (fichier, réseau, horloge) devrait le dire clairement. Le but est de rendre l’effet visible au lecteur. L’ambiguïté est une source de bugs.
+Ce qui se passe a l'execution. `(0,10)->true`, `(10,0)->false`.
 
-## L’interface comme contrat
-
-Une signature simple permet de changer l’implémentation sans toucher aux appelants. Plus votre interface est claire, plus votre code est durable.
-
-## Petite taille, grande clarté
-
-Une procédure courte favorise la compréhension locale. Si une fonction devient longue, posez‑vous la question : est‑ce un seul problème ou plusieurs ?
-
-## Découper au bon endroit
-
-Le bon découpage n’est pas celui qui minimise les lignes, mais celui qui minimise l’effort de compréhension. Un lecteur doit pouvoir comprendre une procédure sans sauter ailleurs toutes les trois lignes.
-
-## À retenir
-
-Les signatures sont des contrats. Une procédure courte vaut mieux qu’une procédure polyvalente. Les effets doivent être visibles.
-
-
-## Exemple guidé : clarifier une interface
-
-Partir d’une procédure “fourre‑tout”, puis découper en trois fonctions claires. Chaque fonction doit tenir en moins de 15 lignes.
-
-## Erreurs courantes
-
-Utiliser des paramètres “optionnels” sans le dire. Faire une fonction qui “fait un peu de tout”. Cacher un effet derrière une signature trop neutre.
-
-## Checklist procédures
-
-Le nom décrit l’intention. La signature est courte. Les effets sont visibles.
-
-
-## Exercice : réduire la signature
-
-Prenez une procédure avec six paramètres. Essayez de regrouper ceux qui vont ensemble dans un type dédié. La signature devient plus lisible, et les erreurs d’appel sont moins probables.
-
-
-## Code complet (API actuelle)
+Etape 3. Composer la procedure finale.
 
 ```vit
-proc parse_port(s: string) -> i32 {
-  let i: i32 = 0
-  let n: i32 = 0
-  if s.len == 0 { give -1 }
-  loop {
-    if i >= s.len as i32 { break }
-    let ch = s.slice(i as usize, (i + 1) as usize)
-    if ch < "0" || ch > "9" { give -1 }
-    n = n * 10 + (ch.as_bytes()[0] as i32 - 48)
-    i = i + 1
-  }
-  give n
+proc normalize(temp: int, lo: int, hi: int) -> int {
+  if not validate_bounds(lo, hi) { give lo }
+  if temp < lo { give lo }
+  if temp > hi { give hi }
+  give temp
 }
 ```
 
-## API idéale (future)
+Pourquoi cette etape est solide. Cas invalides traites avant nominal.
 
-Un module `std/parse` avec `parse_i32` et `parse_usize` standard.
+Ce qui se passe a l'execution. `(50,80,20)->80`, `(130,0,100)->100`, `(60,0,100)->60`.
 
+Ce que vous devez maitriser en sortie de chapitre. Precondition explicite, branches testables, sortie stable.

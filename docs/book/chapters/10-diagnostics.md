@@ -1,72 +1,54 @@
-# 10. Erreurs et diagnostics
+# 10. Diagnostics et erreurs
 
-Les diagnostics sont une partie du langage, pas un ajout. Un bon message d’erreur accélère la compréhension et évite les cycles de debugging inutiles.
+Ce chapitre avance comme un atelier de code Vitte: on pose une idee, on la fait vivre dans le code, puis on verifie precisement ce qui se passe a l'execution.
+Ce chapitre poursuit un objectif simple: Convertir les fautes en sorties diagnostiques exploitables.
 
-## Lire un diagnostic
-
-Prenez l’habitude de lire le code d’erreur. C’est un index stable, utile pour la recherche et la documentation. Un diagnostic est une carte : il vous indique où vous êtes et comment en sortir.
-
-## Réduire un problème
-
-Quand une erreur est confuse :
-
-Isolez le cas minimal. Supprimez ce qui n’est pas nécessaire. Vérifiez que l’erreur reste.
-
-Cette discipline accélère autant votre compréhension que celle des autres.
-
-## Messages utiles
-
-Un bon diagnostic répond à trois questions : où ? quoi ? pourquoi ? Le reste est secondaire.
-
-## Des erreurs actionnables
-
-L’erreur idéale ne se contente pas de dire « c’est faux ». Elle vous suggère une action simple : ajouter un type, corriger un module, ou renommer un identifiant. Ce n’est pas un luxe : c’est un outil de productivité.
-
-## Le diagnostic comme documentation
-
-Les erreurs bien formulées deviennent une documentation vivante. Elles vous apprennent la grammaire, les conventions, et les limites du langage, sans vous renvoyer systématiquement à un manuel externe.
-
-## À retenir
-
-Le meilleur diagnostic est celui qui vous pousse vers l’action suivante, pas celui qui vous explique toute l’histoire.
-
-
-## Exemple guidé : écrire un message d’erreur
-
-Créez un diagnostic avec :
-
-une description courte,. le contexte,. une action suggérée.
-
-Comparez avec un message “brut” sans action. Vous verrez la différence d’utilisabilité.
-
-## Erreurs courantes
-
-Messages trop longs sans action. Messages vagues (“error occurred”). Oubli du contexte (fichier, ligne).
-
-## Checklist diagnostics
-
-Le message dit quoi faire. Le contexte est présent. Le code d’erreur est stable.
-
-
-## Exercice : un message utile
-
-Créez un message d’erreur pour “fichier introuvable”. Comparez la version brute et une version qui inclut :
-
-le chemin,. l’action tentée,. la suggestion (“vérifiez le chemin”).
-
-
-## Code complet (API actuelle)
+Etape 1. Garde de division.
 
 ```vit
-use std/core/result.Result
-
-proc must_positive(x: i32) -> Result[i32, string] {
-  if x <= 0 { give Result.Err("expected positive") }
-  give Result.Ok(x)
+proc safe_div(num: int, den: int) -> int {
+  if den == 0 { give 0 }
+  give num / den
 }
 ```
 
-## API idéale (future)
+Pourquoi cette etape est solide. Frontiere d'erreur au plus pres de l'operation risquee.
 
-Un `Result` enrichi avec des codes d’erreur et des conseils d’action.
+Ce qui se passe a l'execution. `(12,3)->4`, `(12,0)->0`.
 
+Etape 2. Erreur typee.
+
+```vit
+pick ParsePort {
+  case Ok(value: int)
+  case Err(code: int)
+}
+
+proc parse_port(x: int) -> ParsePort {
+  if x < 0 { give Err(400) }
+  if x > 65535 { give Err(422) }
+  give Ok(x)
+}
+```
+
+Pourquoi cette etape est solide. Le diagnostic est encode dans la variante de retour.
+
+Ce qui se passe a l'execution. `-1->Err(400)`, `8080->Ok(8080)`.
+
+Etape 3. Projection technique.
+
+```vit
+proc to_exit(p: ParsePort) -> int {
+  match p {
+    case Ok(_) { give 0 }
+    case Err(c) { give c }
+    otherwise { give 70 }
+  }
+}
+```
+
+Pourquoi cette etape est solide. Separation metier/exit-code.
+
+Ce qui se passe a l'execution. `Ok->0`, `Err(422)->422`.
+
+Ce que vous devez maitriser en sortie de chapitre. Cause localisee, typee, projetee proprement.

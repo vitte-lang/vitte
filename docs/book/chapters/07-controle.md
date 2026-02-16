@@ -1,97 +1,56 @@
-# 7. Contrôle de flux
+# 7. Instructions de controle
 
-Le contrôle de flux est la grammaire de votre logique. Si elle est confuse, votre programme le sera aussi. La simplicité des branches est une forme de robustesse.
+Ce chapitre avance comme un atelier de code Vitte: on pose une idee, on la fait vivre dans le code, puis on verifie precisement ce qui se passe a l'execution.
+Ce chapitre poursuit un objectif simple: Maîtriser decisions, iterations et sorties sans ambiguité de flux.
 
-## Conditions
-
-Les conditions doivent rester lisibles. Évitez les expressions trop denses.
+Etape 1. Garde de classification.
 
 ```vit
-entry main at core/app {
-  if ready { return 0 }
-  return 1
+proc classify(temp: int) -> int {
+  if temp < 0 { give -1 }
+  if temp > 100 { give 2 }
+  give 1
 }
 ```
 
-## Boucles
+Pourquoi cette etape est solide. Retours precoces pour cas hors plage.
 
-Vitte propose des formes simples :
+Ce qui se passe a l'execution. `-2->-1`, `50->1`, `120->2`.
+
+Etape 2. Boucle somme.
 
 ```vit
-entry main at core/app {
+proc sum_to(limit: int) -> int {
+  let i: int = 0
+  let acc: int = 0
   loop {
-    if done { break }
+    if i > limit { break }
+    set acc = acc + i
+    set i = i + 1
   }
-  for item in items {
-    continue
-  }
-  return 0
+  give acc
 }
 ```
 
-## Match
+Pourquoi cette etape est solide. Invariant: `acc` est somme de `0..i-1`.
 
-`match` est utile quand plusieurs cas sont possibles. Utilisez‑le pour clarifier l’intention.
+Ce qui se passe a l'execution. `sum_to(3)=6`.
+
+Etape 3. Filtrage en parcours.
 
 ```vit
-entry main at core/app {
-  match 1 {
-    case x { }
-    otherwise { }
+proc filtered_sum(values: int[]) -> int {
+  let acc: int = 0
+  for x in values {
+    if x < 0 { continue }
+    set acc = acc + x
   }
-  return 0
+  give acc
 }
 ```
 
-## Lisibilité avant tout
+Pourquoi cette etape est solide. Filtre local, accumulation monotone.
 
-Un flux de contrôle trop dense rend les bugs invisibles. Privilégiez les branches courtes et les retours explicites.
+Ce qui se passe a l'execution. `[5,-2,7] -> 12`.
 
-## Gérer l’erreur tôt
-
-Dans un code système, les erreurs sont normales. La bonne stratégie consiste à les traiter tôt, puis à continuer sur un chemin propre. C’est moins élégant, mais beaucoup plus fiable.
-
-## Sortir proprement
-
-Un retour clair vaut mieux qu’un enchaînement de drapeaux. Le lecteur doit savoir à quel moment la fonction se termine, et pourquoi.
-
-## À retenir
-
-La clarté du flux est plus importante que la concision. Les branches doivent être lisibles en un coup d’œil. Traiter l’erreur tôt améliore tout le reste.
-
-
-## Exemple guidé : erreurs d’abord
-
-Réécrivez une fonction qui accumule des erreurs en fin de fonction. Transformez‑la pour gérer les erreurs dès qu’elles arrivent. Comparez la clarté.
-
-## Erreurs courantes
-
-Utiliser des flags multiples pour décrire l’état. Écrire des conditions imbriquées trop profondes. Oublier un cas dans `match`.
-
-## Checklist flux
-
-Les branches sont courtes. Les sorties sont explicites. Les erreurs sont gérées tôt.
-
-
-## Exercice : aplatir une logique
-
-Transformez une chaîne de `if/else` imbriqués en `match` ou en retours précoces. Lisez ensuite votre code à voix haute : est‑il plus facile à expliquer ?
-
-
-## Code complet (API actuelle)
-
-```vit
-use std/kernel/fs
-use std/core/types.i32
-
-proc open_or_fail(path: string) -> i32 {
-  let fd = fs.open_read(path)
-  if fd < 0 { give -1 }
-  give fd
-}
-```
-
-## API idéale (future)
-
-Un type `Result` pour les opérations système afin d’éviter les valeurs sentinelles.
-
+Ce que vous devez maitriser en sortie de chapitre. Sortie de boucle explicite, invariant verbalizable, effets localises.

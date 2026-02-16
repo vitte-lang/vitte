@@ -1,55 +1,42 @@
-# 15. HIR, MIR et pipeline
+# 15. Pipeline compilateur
 
-La compilation est un pipeline. La comprendre vous fait gagner un temps énorme quand vous déboguez un programme ou un bug du compilateur.
+Ce chapitre avance comme un atelier de code Vitte: on pose une idee, on la fait vivre dans le code, puis on verifie precisement ce qui se passe a l'execution.
+Ce chapitre poursuit un objectif simple: Lire un programme Vitte comme une suite d'etapes de compilation pour identifier rapidement la nature d'une erreur.
 
-## Les grandes étapes
+Etape 1. Cas qui traverse parsing, resolution et type-check.
 
-Parsing et AST : le texte devient structure. HIR : les formes sont normalisées. MIR : le programme est prêt pour la génération. Backend : le binaire est produit.
-
-## Pourquoi cela compte
-
-Quand un bug apparaît, savoir dans quel étage il se trouve réduit immédiatement l’espace de recherche. Vous pouvez poser de meilleures questions et éviter les hypothèses floues.
-
-## Méthode de diagnostic
-
-Reproduire le problème. Localiser l’étape qui change l’information. Inspecter les sorties intermédiaires.
-
-## HIR : rendre explicite
-
-Le HIR simplifie la structure pour rendre les décisions explicites. C’est la première étape où le compilateur commence à “comprendre” ce que vous avez écrit.
-
-## MIR : préparer le terrain
-
-Le MIR est le niveau où les transformations deviennent mécaniques. L’objectif est d’obtenir une forme qui se traduit proprement vers le backend.
-
-## À retenir
-
-Comprendre la pipeline, même à haut niveau, est une compétence centrale pour travailler proche de la machine.
-
-
-## Exemple guidé : diagnostiquer un bug
-
-Supposez qu’un `match` se compile mal. Essayez de localiser si le bug est dans le parsing, le HIR, ou le MIR. Cette méthode réduit drastiquement le temps de debug.
-
-## Checklist pipeline
-
-Vous savez reproduire le bug. Vous savez isoler l’étape fautive. Vous savez vérifier l’output intermédiaire.
-
-
-## Exercice : tracer une erreur
-
-Simulez une erreur de parsing, puis une erreur de type. Notez comment elles apparaissent dans le pipeline. Cette observation vous aide à classifier rapidement les bugs.
-
-
-## Code complet (API actuelle)
-
-Exemple conceptuel : compiler en mode normal, puis activer les sorties intermédiaires si votre driver les expose.
-
-```sh
-vitte build src/main.vit
+```vit
+proc add(a: int, b: int) -> int {
+  give a + b
+}
 ```
 
-## API idéale (future)
+Pourquoi cette etape est solide. La syntaxe est correcte, les symboles sont resolus et les types sont compatibles.
 
-Un mode `--explain-pipeline` qui enregistre automatiquement les étapes dans un dossier daté.
+Ce qui se passe a l'execution. Si le binaire est produit, `add(1,2)=3`.
 
+Etape 2. Cas syntaxiquement valide mais type-invalide.
+
+```vit
+proc bad(a: int) -> int {
+  give a + "x"
+}
+```
+
+Pourquoi cette etape est solide. Le parsing passe, puis le type-check echoue sur `+` heterogene. Le diagnostic est donc semantique, pas grammatical.
+
+Ce qui se passe a l'execution. Aucune execution. La compilation s'arrete avant emission.
+
+Etape 3. Cas de symbole introuvable.
+
+```vit
+proc call_unknown() -> int {
+  give missing_fn(1)
+}
+```
+
+Pourquoi cette etape est solide. L'analyse syntaxique est valide mais la resolution de symboles echoue. L'erreur est localisee au nom non defini.
+
+Ce qui se passe a l'execution. Aucune execution. Le compilateur rejette le module.
+
+Ce que vous devez maitriser en sortie de chapitre. Vous distinguez erreur de syntaxe, erreur de resolution et erreur de type avant d'ouvrir le debugger.

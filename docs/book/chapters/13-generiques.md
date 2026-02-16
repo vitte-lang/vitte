@@ -1,58 +1,47 @@
-# 13. Génériques
+# 13. Generiques
 
-Les génériques servent à écrire une logique une fois, puis à la réutiliser sans perdre la sécurité des types. Ils sont utiles, mais doivent rester lisibles.
+Ce chapitre avance comme un atelier de code Vitte: on pose une idee, on la fait vivre dans le code, puis on verifie precisement ce qui se passe a l'execution.
+Ce chapitre poursuit un objectif simple: Utiliser les generiques Vitte pour mutualiser une logique sans perdre la securite de type.
 
-## Quand les utiliser
-
-Quand une fonction est conceptuellement la même pour plusieurs types. Quand une structure a un rôle identique pour plusieurs formes de données.
-
-## Quand les éviter
-
-Quand le code devient opaque. Quand l’interface générique cache une logique trop spécifique.
-
-## Lire un code générique
-
-Le lecteur doit pouvoir comprendre l’intention sans apprendre un mini‑langage. Si un générique demande trop de contexte, c’est qu’il est trop ambitieux.
-
-## Contrainte et clarté
-
-Si votre générique nécessite des contraintes complexes, il est peut‑être trop large. Une bonne contrainte est une phrase courte : « T doit être comparable », « T doit être copiable ».
-
-## Erreurs courantes
-
-Exposer un générique quand une version concrète suffit. Trop généraliser trop tôt. Utiliser des noms de type confus.
-
-## À retenir
-
-Les génériques sont puissants, mais la clarté reste le premier objectif.
-
-
-## Exemple guidé : un générique raisonnable
-
-Implémentez une fonction `max` générique, puis une version concrète. Comparez le coût cognitif. Le but est d’apprendre quand généraliser.
-
-## Checklist génériques
-
-Le générique réduit vraiment la duplication. Les contraintes sont simples. Les noms de type sont lisibles.
-
-
-## Exercice : généraliser ou pas
-
-Écrivez deux versions d’une fonction de tri : une pour `int`, une générique. Comparez la lisibilité et la maintenance.
-
-
-## Code complet (API actuelle)
-
-Exemple : une fonction `max` générique simple.
+Etape 1. Fonction identite parametree par type.
 
 ```vit
-proc max[T](a: T, b: T, cmp: proc(T, T) -> bool) -> T {
-  if cmp(a, b) { give a }
-  give b
+proc id[T](x: T) -> T {
+  give x
 }
 ```
 
-## API idéale (future)
+Pourquoi cette etape est solide. Le meme corps est specialise a la compilation selon `T`. Le contrat entree/sortie reste invariant.
 
-Une contrainte `T: Comparable` éviterait de passer un comparateur à chaque appel.
+Ce qui se passe a l'execution. `id[int](42)=42` et `id[string]("ok")="ok"`.
 
+Etape 2. Homogeneite imposee sur plusieurs arguments.
+
+```vit
+proc first[T](a: T, b: T) -> T {
+  give a
+}
+```
+
+Pourquoi cette etape est solide. Le compilateur refuse les appels melanges. L'erreur apparait avant execution, au niveau du type-check.
+
+Ce qui se passe a l'execution. `first[int](7,9)=7`. Un appel `first(7,"x")` est rejete.
+
+Etape 3. Structure generique et transformation.
+
+```vit
+form Pair[T] {
+  left: T
+  right: T
+}
+
+proc swap_pair[T](p: Pair[T]) -> Pair[T] {
+  give Pair[T](p.right, p.left)
+}
+```
+
+Pourquoi cette etape est solide. Le type parametre est conserve apres transformation. La genericite couvre donnees et procedures.
+
+Ce qui se passe a l'execution. `swap_pair(Pair[int](1,2))` retourne `Pair[int](2,1)`.
+
+Ce que vous devez maitriser en sortie de chapitre. Le code est mutualise, les invariants de type restent garantis et les erreurs sont detectees en compilation.

@@ -1,57 +1,67 @@
-# 19. Performance et profiling
+# 19. Performance
 
-Optimiser trop tôt est une erreur, mais ignorer la performance est une dette. Ce chapitre propose une méthode simple : mesurer, comprendre, optimiser.
+Ce chapitre avance comme un atelier de code Vitte: on pose une idee, on la fait vivre dans le code, puis on verifie precisement ce qui se passe a l'execution.
+Ce chapitre poursuit un objectif simple: Comparer des variantes Vitte equivalentes pour optimiser le cout sans changer le contrat fonctionnel.
 
-## Mesurer
+Etape 1. Etablir une version de reference.
 
-Avant toute optimisation, collectez des chiffres. Un gain supposé est rarement un gain réel.
-
-## Hot paths
-
-Concentrez‑vous sur les chemins chauds. La performance est un problème de priorité, pas de perfection.
-
-## Optimisation lisible
-
-Un micro‑gain qui détruit la lisibilité n’est pas une victoire. Le meilleur code rapide est celui qui reste clair.
-
-## Règle de trois
-
-Mesurer. Comprendre. Modifier.
-
-Si vous sautez une étape, vous n’optimisez pas : vous devinez.
-
-## Erreurs courantes
-
-Optimiser une partie non critique. Cacher une allocation qui aurait pu être visible. Sacrifier la clarté pour un gain marginal.
-
-## À retenir
-
-La meilleure optimisation est celle qui simplifie le code tout en accélérant le chemin critique.
-
-
-## Exemple guidé : mesurer un hot path
-
-Choisissez une fonction lente, mesurez‑la, modifiez un point, puis mesurez à nouveau. La performance sans mesure est un mythe.
-
-## Checklist perf
-
-Mesure avant modification. Modification claire. Mesure après modification.
-
-
-## Exercice : mesurer avant d’optimiser
-
-Créez une boucle volontairement lente, mesurez‑la, puis optimisez un seul point. Si le gain n’est pas mesuré, annulez l’optimisation.
-
-
-## Code complet (API actuelle)
-
-Exemple minimal : compiler et mesurer la version de base avant toute optimisation.
-
-```sh
-vitte build src/main.vit
+```vit
+proc sum_loop(n: int) -> int {
+  let i: int = 0
+  let acc: int = 0
+  loop {
+    if i >= n { break }
+    set acc = acc + i
+    set i = i + 1
+  }
+  give acc
+}
 ```
 
-## API idéale (future)
+Pourquoi cette etape est solide. Cette baseline fixe la forme de controle et sert de repere pour les variantes.
 
-Un outil `vitte perf` qui collecte automatiquement des compteurs et produit un rapport.
+Ce qui se passe a l'execution. `sum_loop(4)` accumule `0+1+2+3` et retourne `6`.
 
+Etape 2. Variante avec branche de filtrage.
+
+```vit
+proc sum_even(n: int) -> int {
+  let i: int = 0
+  let acc: int = 0
+  loop {
+    if i >= n { break }
+    if (i % 2) != 0 {
+      set i = i + 1
+      continue
+    }
+    set acc = acc + i
+    set i = i + 1
+  }
+  give acc
+}
+```
+
+Pourquoi cette etape est solide. Le filtrage impair ajoute une branche dans la boucle. La correction est intacte mais le profil d'execution change.
+
+Ce qui se passe a l'execution. `sum_even(6)` traite `0,2,4` et retourne `6`.
+
+Etape 3. Variante sans branche de parite.
+
+```vit
+proc sum_even_step(n: int) -> int {
+  let i: int = 0
+  let acc: int = 0
+  loop {
+    if i >= n { break }
+    set acc = acc + i
+    set i = i + 2
+  }
+  give acc
+}
+```
+
+Pourquoi cette etape est solide. Le pas de `2` supprime une branche conditionnelle. Cette forme est souvent plus stable en cout.
+
+Ce qui se passe a l'execution. `sum_even_step(6)` traite aussi `0,2,4` et retourne `6`.
+
+Ce que vous devez maitriser en sortie de chapitre. Chaque optimisation preserve le resultat, change une variable de cout a la fois et reste mesurable.

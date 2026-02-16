@@ -1,6 +1,9 @@
-# Programmer en Vitte
+# Apprendre Vitte
 
-Ce livre est une invitation à écrire des systèmes clairs, prévisibles et lisibles. Il suit l'esprit des ouvrages O’Reilly : pragmatique, dense, orienté pratique, et rythmé par des exemples concrets.
+Ce livre est organise en trois couches complementaires. Les chapitres portent la progression conceptuelle complete. La section logique isole les mecanismes d'execution et les traces de code. La section mots-cles documente chaque element lexical du langage avec exemples courts.
 
-Le langage Vitte évolue encore, mais son ambition est stable : moins de magie, plus de lisibilité, et une syntaxe structurée qui facilite le tooling.
+Point d'entree principal: `docs/book/SUMMARY.md`.
 
+Point d'entree technique rapide: `docs/book/INDEX-technique.md`.
+
+Si l'objectif est l'apprentissage lineaire, suivre les chapitres `01` a `30`. Si l'objectif est de resoudre un probleme technique local, passer par l'index puis naviguer vers la page logique ou mot-cle correspondante.

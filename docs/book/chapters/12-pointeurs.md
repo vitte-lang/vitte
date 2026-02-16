@@ -1,62 +1,53 @@
-# 12. Pointeurs, références, slices
+# 12. Pointeurs, references et memoire
 
-Vitte vous laisse proche de la mémoire, mais sans vous obliger à écrire des acrobaties. La clé est de rendre les accès explicites et sûrs.
+Ce chapitre avance comme un atelier de code Vitte: on pose une idee, on la fait vivre dans le code, puis on verifie precisement ce qui se passe a l'execution.
+Ce chapitre poursuit un objectif simple: Encadrer le travail memoire en Vitte pour que chaque acces sensible soit protege par des preconditions visibles.
 
-## Pointeurs
-
-Les pointeurs donnent la puissance, mais ils demandent une discipline stricte. Utilisez‑les seulement quand vous savez pourquoi. La règle simple : si une référence suffit, restez avec une référence.
-
-## Références
-
-Les références rendent la lecture plus simple. Elles expriment une intention claire : « j’utilise cette valeur sans en prendre la propriété ».
-
-## Slices et buffers
-
-Un slice est un regard sur une portion d’un buffer. Il permet de manipuler une sous‑partie sans copier. C’est un outil simple, mais essentiel pour les traitements efficaces.
-
-## Durée de vie
-
-La plupart des bugs mémoire viennent d’une durée de vie mal comprise. Un pointeur qui “survit” à son buffer est un bug discret et coûteux.
-
-## Erreurs courantes
-
-Garder un pointeur vers un buffer temporaire. Confondre taille et capacité. Exposer un buffer mutable alors qu’une vue aurait suffi.
-
-## À retenir
-
-Un pointeur est un outil, pas une habitude. Un slice est un contrat de taille et de vue. La durée de vie est une information de premier ordre.
-
-
-## Exemple guidé : durée de vie explicite
-
-Créez un buffer dans une fonction, renvoyez un slice, puis montrez ce qui se passe si la durée de vie est mal gérée. Ajoutez ensuite une version correcte.
-
-## Checklist mémoire
-
-La durée de vie est claire. Les pointeurs ne survivent pas à leur source. Les vues sont préférées aux copies.
-
-
-## Exercice : durée de vie
-
-Créez une fonction qui retourne un pointeur vers une variable locale. Comprenez pourquoi c’est un bug, puis corrigez‑la. Cet exercice est brutal, mais formateur.
-
-
-## Code complet (API actuelle)
-
-Exemple : une fonction qui lit dans un buffer existant via un pointeur.
+Etape 1. Confiner une instruction machine dans une frontiere courte.
 
 ```vit
-proc fill(buf: *[u8], value: u8) {
-  let i: usize = 0
-  loop {
-    if i >= buf.len { break }
-    buf[i] = value
-    i = i + 1
+proc cpu_pause() {
+  unsafe {
+    asm("pause")
   }
 }
 ```
 
-## API idéale (future)
+Pourquoi cette etape est solide. La zone `unsafe` est volontairement minimale. Le reste du code ne propage pas la complexite machine.
 
-Un type `Span[u8]` avec invariants de durée de vie rendrait ce genre de code plus sûr et plus expressif.
+Ce qui se passe a l'execution. L'appel execute une pause CPU sans effet de domaine supplementaire.
 
+Etape 2. Lecture bornee dans un buffer.
+
+```vit
+form Buffer {
+  data: int[]
+}
+
+proc read_at(b: Buffer, i: int) -> int {
+  if i < 0 { give 0 }
+  if i >= b.data.len() { give 0 }
+  give b.data[i]
+}
+```
+
+Pourquoi cette etape est solide. Les bornes sont verifiees avant le dereferencement. Le retour sentinelle `0` est un contrat explicite de cette API.
+
+Ce qui se passe a l'execution. Avec `data=[10,20,30]`, `read_at(...,1)=20` et `read_at(...,9)=0`.
+
+Etape 3. Ecriture bornee avec contrat symetrique.
+
+```vit
+proc write_at(b: Buffer, i: int, v: int) -> int {
+  if i < 0 { give 0 }
+  if i >= b.data.len() { give 0 }
+  b.data[i] = v
+  give 1
+}
+```
+
+Pourquoi cette etape est solide. Lire et ecrire partagent la meme garde de bornes. Cette symetrie evite les regressions de coherence memoire.
+
+Ce qui se passe a l'execution. `write_at([10,20,30],1,99)` retourne `1` et produit `[10,99,30]`. `write_at(...,7,99)` retourne `0` sans mutation.
+
+Ce que vous devez maitriser en sortie de chapitre. Toute operation memoire est bornee, toute zone `unsafe` est courte et chaque contrat de retour est stable.

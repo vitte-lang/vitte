@@ -1,55 +1,47 @@
-# 18. Tests et outillage
+# 18. Tests et validation
 
-Un bon test est un document vivant. Il capture l’intention et vous protège contre les régressions. Dans un langage système, un test est aussi un garde‑fou de sécurité.
+Ce chapitre avance comme un atelier de code Vitte: on pose une idee, on la fait vivre dans le code, puis on verifie precisement ce qui se passe a l'execution.
+Ce chapitre poursuit un objectif simple: Ecrire des tests Vitte qui verrouillent le contrat nominal, les bornes et la non-regression.
 
-## Types de tests
+Etape 1. Tester une fonction de saturation.
 
-Tests unitaires pour les fonctions critiques. Tests d’intégration pour les flux complets. Tests de non‑régression pour les bugs corrigés.
-
-## L’outillage
-
-Le principe est simple : un test doit être rapide à lancer et facile à comprendre. Les scripts de test du repo sont pensés dans cet esprit.
-
-## Un bon test
-
-Un bon test est court, précis, et raconte une histoire. Si vous devez relire le test trois fois pour comprendre ce qu’il fait, le test est trop complexe.
-
-## Tests comme documentation
-
-Un test est une preuve. Quand vous revenez six mois plus tard, c’est souvent plus clair qu’un commentaire. Écrivez des tests comme des exemples explicites.
-
-## Erreurs courantes
-
-Tester trop de choses dans un seul test. Écrire un test qui dépend de l’ordre d’exécution. Utiliser des données aléatoires sans seed.
-
-## À retenir
-
-Les tests ne sont pas un coût, ils sont une assurance.
-
-
-## Exemple guidé : un test de bug
-
-Reproduisez un bug réel (même petit), puis écrivez un test minimal. C’est une pratique clé pour un langage en évolution.
-
-## Checklist tests
-
-Tests courts. Tests stables. Tests qui racontent une histoire.
-
-
-## Exercice : test minimal
-
-Prenez un bug corrigé et écrivez un test qui échoue avant le fix et passe après. Ce test est votre mémoire technique.
-
-
-## Code complet (API actuelle)
-
-Exemple : test de non‑régression (conceptuel) basé sur un binaire.
-
-```sh
-vitte check tests/case.vit
+```vit
+proc clamp(x: int, lo: int, hi: int) -> int {
+  if x < lo { give lo }
+  if x > hi { give hi }
+  give x
+}
 ```
 
-## API idéale (future)
+Pourquoi cette etape est solide. Trois classes de cas couvrent le contrat: sous borne, interieur, sur borne.
 
-Un framework de test intégré (assertions, fixtures, snapshots) simplifierait l’écriture de tests.
+Ce qui se passe a l'execution. `clamp(-1,0,10)=0`, `clamp(5,0,10)=5`, `clamp(99,0,10)=10`.
 
+Etape 2. Verrouiller les frontieres d'un parseur.
+
+```vit
+proc parse_port(x: int) -> int {
+  if x < 0 { give -1 }
+  if x > 65535 { give -1 }
+  give x
+}
+```
+
+Pourquoi cette etape est solide. Les tests critiques sont `-1`, `0`, `65535`, `65536`. Ils couvrent toutes les cassures de domaine.
+
+Ce qui se passe a l'execution. `parse_port(0)=0`, `parse_port(65535)=65535`, `parse_port(65536)=-1`.
+
+Etape 3. Capturer une regression sur division.
+
+```vit
+proc non_reg_demo(x: int) -> int {
+  if x == 0 { give 0 }
+  give 10 / x
+}
+```
+
+Pourquoi cette etape est solide. Le cas `x=0` est un test de securite obligatoire. Il evite le retour d'un bug historique.
+
+Ce qui se passe a l'execution. `non_reg_demo(0)=0`, `non_reg_demo(2)=5`.
+
+Ce que vous devez maitriser en sortie de chapitre. Vos tests couvrent nominal, bornes et historiques de bugs avec des attentes explicites.

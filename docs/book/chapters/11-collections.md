@@ -1,76 +1,58 @@
-# 11. Collections et itération
+# 11. Collections et iteration
 
-Les collections sont l’ossature des programmes réels. Vous manipulerez des listes, des maps, et des buffers, parfois très grands. L’objectif est d’être explicite sur ce que vous stockez et sur la manière dont vous parcourez ces données.
+Ce chapitre avance comme un atelier de code Vitte: on pose une idee, on la fait vivre dans le code, puis on verifie precisement ce qui se passe a l'execution.
+Ce chapitre poursuit un objectif simple: Construire un parcours de collection stable en Vitte en separant accumulation, filtrage et post-traitement.
 
-## Itération claire
-
-La lisibilité prime. Une boucle courte et un bon nom de variable valent mieux qu’un « truc malin ». L’itération est la partie de votre code la plus lue : elle doit être simple.
-
-## Choisir la bonne structure
-
-Liste quand l’ordre compte. Map quand la clé compte. Buffer quand la performance compte.
-
-## Coût des opérations
-
-La plupart des bugs de performance viennent d’un choix implicite de structure. Une collection n’est pas neutre : elle impose un coût de lecture, d’écriture, et de mémoire.
-
-## Slices et vues
-
-Une bonne pratique consiste à exposer des vues (slices) plutôt que des copies. Cela réduit la mémoire et évite les surprises, tant que la durée de vie est claire.
-
-## Itération et invariants
-
-Ne parcourez pas une collection sans savoir ce que vous en attendez. Une boucle qui ne décrit pas son objectif est une boucle dangereuse. Ajoutez un commentaire d’intention si nécessaire.
-
-## Erreurs courantes
-
-Muter une collection pendant l’itération sans le dire. Utiliser une liste quand une map est requise. Copier de gros buffers par accident.
-
-## À retenir
-
-Le choix d’une collection est un choix d’interface. Un mauvais choix se paye en complexité.
-
-
-## Exemple guidé : choisir la structure
-
-Vous devez compter des occurrences de mots. Écrivez d’abord avec une liste, puis avec une map. Comparez la complexité.
-
-## Checklist collections
-
-La structure correspond à l’usage dominant. Les copies sont évitées. L’itération reste lisible.
-
-
-## Exercice : éviter la copie
-
-Créez une fonction qui reçoit une liste de 10 000 éléments. Faites une version qui copie, puis une version qui utilise une vue. Comparez la mémoire.
-
-
-## Code complet (API actuelle)
-
-Exemple : compter les occurrences d’un mot avec une map naïve (ici une liste de paires, faute de map dédiée dans la stdlib).
+Etape 1. Reduction simple sur un tableau d'entiers.
 
 ```vit
-form Pair {
-  key: string
-  value: i32
-}
-
-proc inc(list: [Pair], key: string) -> [Pair] {
-  let i: i32 = 0
-  loop {
-    if i >= list.len as i32 { break }
-    if list[i as usize].key == key {
-      list[i as usize].value = list[i as usize].value + 1
-      give list
-    }
-    i = i + 1
+proc sum(values: int[]) -> int {
+  let acc: int = 0
+  for x in values {
+    set acc = acc + x
   }
-  set list = list.push(Pair(key = key, value = 1))
-  give list
+  give acc
 }
 ```
 
-## API idéale (future)
+Pourquoi cette etape est solide. La collection est lue en flux lineaire. L'etat mutable est limite a `acc`, ce qui rend la preuve de correction directe.
 
-On voudrait une `Map[string, i32]` standard, avec `get_or_default`, `insert`, et `keys`. L’exemple ci‑dessus deviendrait un one‑liner.
+Ce qui se passe a l'execution. Avec `[2,3,4]`, l'accumulateur evolue `0 -> 2 -> 5 -> 9`, puis la procedure retourne `9`.
 
+Etape 2. Moyenne entiere avec garde sur collection vide.
+
+```vit
+proc mean_floor(values: int[]) -> int {
+  let total: int = 0
+  let count: int = 0
+  for x in values {
+    set total = total + x
+    set count = count + 1
+  }
+  if count == 0 { give 0 }
+  give total / count
+}
+```
+
+Pourquoi cette etape est solide. Le contrat interdit la division invalide. Le cas vide est traite avant l'operation arithmetique, ce qui stabilise le diagnostic.
+
+Ce qui se passe a l'execution. `[]` retourne `0`. `[4,5,6]` donne `total=15` et `count=3`, donc sortie `5`.
+
+Etape 3. Filtrage positif et projection finale.
+
+```vit
+proc positive_only(values: int[]) -> int[] {
+  let out: int[] = []
+  for x in values {
+    if x <= 0 { continue }
+    out.push(x)
+  }
+  give out
+}
+```
+
+Pourquoi cette etape est solide. Le `continue` maintient une boucle peu imbriquee. Les valeurs hors contrat sont eliminees au plus pres de la source.
+
+Ce qui se passe a l'execution. `[-1,2,0,7]` construit successivement `[]`, puis `[2]`, puis `[2,7]`.
+
+Ce que vous devez maitriser en sortie de chapitre. L'iteration est lineaire, les gardes de securite sont explicites et la mutation est strictement locale.

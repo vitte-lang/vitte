@@ -1,252 +1,93 @@
-# 21. Projet 1 : CLI robuste
+# 21. Projet guide CLI
 
-Nous allons construire un outil de ligne de commande propre, avec parsing d’arguments, validation, et sorties lisibles. Ce projet sert de base à plusieurs chapitres. L’objectif n’est pas de faire un « outil parfait », mais un outil que vous pouvez expliquer et maintenir.
+Ce chapitre poursuit un objectif de terrain: construire un CLI Vitte qui reste propre quand les erreurs reelles arrivent. Le probleme d'un outil en ligne de commande n'est pas de produire un resultat dans le cas nominal. Le vrai probleme est de garder une logique lisible quand l'utilisateur oublie un argument, choisit un mode inconnu, ou enchaine des usages invalides. La methode suivie ici est stricte: typer les erreurs, segmenter les etapes, puis centraliser la projection finale vers le systeme.
 
-## Cahier des charges
-
-Notre CLI, que l’on appellera `vitte-cat`, va :
-
-Lire un fichier et l’écrire sur `stdout`. Offrir une option `--lines` pour limiter le nombre de lignes. Fournir des erreurs claires en cas de fichier manquant.
-
-## Étape 1 : définir l’interface
-
-Avant d’écrire la moindre ligne, décrivez l’interface en une phrase :
-
-`vitte-cat <path>` affiche le contenu. `vitte-cat --lines 10 <path>` affiche les 10 premières lignes.
-
-Une interface claire réduit la complexité de tout le reste.
-
-## Étape 2 : parser les arguments
-
-Utilisez la stdlib pour obtenir les arguments, puis validez :
+Etape 1. Declarer le contrat de resultat avant d'ecrire l'orchestration.
 
 ```vit
-use std/cli
+pick CliError {
+  case MissingArgs
+  case UnknownMode(mode: int)
+}
 
-entry main at core/app {
-  let args = args()
-  let _ = has_flag(args, "--help")
-  return 0
+pick CliResult {
+  case Ok(code: int)
+  case Err(e: CliError)
 }
 ```
 
-Le parsing n’est pas un détail. C’est la première interaction avec l’utilisateur, et c’est souvent là que les bugs se cachent.
+Pourquoi cette etape est solide. Ce choix fonde toute la robustesse du projet. Tant que les fautes restent des entiers disperses, le programme ment sur sa propre structure. En introduisant `CliError` et `CliResult`, vous forcez chaque fonction a assumer explicitement son issue. Cela transforme le CLI en systeme verifiable: les cas sont nommes, les transitions sont visibles, et les tests peuvent cibler une variante precise au lieu d'inferer un comportement par effet de bord.
 
-### Variante : valeurs par défaut
+Ce qui se passe a l'execution. A ce stade, rien ne roule encore, mais l'espace des sorties possibles est deja ferme. Chaque procedure future devra choisir `Ok(...)` ou `Err(...)`, sans echappatoire implicite.
 
-Décidez si `--lines` a une valeur par défaut. Si oui, documentez‑la et testez‑la. Les valeurs implicites sont utiles, mais dangereuses si elles ne sont pas expliquées.
-
-### Erreur courante
-
-Accepter `--lines -1` sans validation.
-
-## Étape 3 : lire le fichier
-
-Créez une fonction dédiée, courte, et testable. Le but est de séparer l’I/O de l’interface.
-
-### Variante : support de `stdin`
-
-Vous pouvez décider que `-` signifie « lire depuis stdin ». C’est un comportement classique, mais il doit être explicitement documenté.
-
-## Étape 4 : gérer les erreurs
-
-Chaque erreur doit expliquer :
-
-Ce qui s’est passé. Où ça s’est passé. Quelle action est possible.
-
-### Erreur courante
-
-Retourner un code d’erreur sans message.
-
-## Étape 5 : tests
-
-Écrivez au moins trois tests :
-
-Fichier existant. Fichier manquant. Option `--lines`.
-
-### Variante : tests de performance
-
-Testez un fichier volumineux pour vérifier que la mémoire n’explose pas.
-
-## Étape 6 : documentation minimale
-
-Une CLI sans `--help` est une CLI incomplète. Même une documentation courte évite des tickets et des bugs.
-
-## À retenir
-
-Un outil CLI fiable se juge à la qualité de ses erreurs. Un outil lisible est un outil qui survit à son auteur.
-
-
-## Pas‑à‑pas détaillé
-
-Écrire un parser d’arguments minimal. Définir un mode `--help` explicite. Implémenter la lecture de fichier en mode streaming. Ajouter la limite `--lines`. Ajouter des erreurs claires.
-
-## Erreurs fréquentes
-
-Ne pas valider les arguments numériques. Oublier de fermer le fichier. Écrire sur `stdout` des erreurs qui doivent aller sur `stderr`.
-
-## Variantes avancées
-
-Ajouter un mode `--bytes`. Supporter plusieurs fichiers et concaténer proprement. Ajouter des tests de performance.
-
-
-## Code complet (version pédagogique)
-
-Le code ci‑dessous est volontairement verbeux et commenté. Il privilégie la lisibilité. Les appels d’I/O sont schématiques : adaptez‑les aux APIs exactes de la stdlib.
+Etape 2. Isoler la validation des arguments.
 
 ```vit
-use std/cli
-
-proc parse_lines(args) -> int {
-  // Trouver "--lines" et lire la valeur suivante.
-  // Si absent, retourner 0 pour "pas de limite".
-  return 0
-}
-
-proc read_all(path: str) -> str {
-  // Lecture simple : à remplacer par l’API stdlib.
-  return ""
-}
-
-proc print_lines(text: str, limit: int) {
-  // Si limit == 0, tout imprimer.
-  // Sinon, imprimer les N premières lignes.
-}
-
-entry main at core/app {
-  let args = args()
-
-  if has_flag(args, "--help") {
-    // Afficher l’aide et sortir.
-    return 0
-  }
-
-  let limit = parse_lines(args)
-  let path = arg_or(args, 0, "")
-
-  if path == "" {
-    // Erreur explicite : chemin manquant.
-    return 1
-  }
-
-  let text = read_all(path)
-  print_lines(text, limit)
-  return 0
+proc parse_arg_count(argc: int) -> CliResult {
+  if argc < 2 { give Err(MissingArgs) }
+  give Ok(argc)
 }
 ```
 
-### Pourquoi ce style
+Pourquoi cette etape est solide. La validation est placee en frontiere d'entree, loin du coeur metier. Cette separation est decisive: vous pouvez tester la politique d'arite sans ouvrir le moindre code de routage. En architecture, c'est un principe fort: ce qui controle l'integrite des donnees d'entree ne doit pas etre noye dans les decisions metier.
 
-Chaque fonction fait une seule chose. Les erreurs sont gérées tôt. Les noms racontent l’intention.
+Ce qui se passe a l'execution. `parse_arg_count(1)` retourne `Err(MissingArgs)` et coupe le flux nominal. `parse_arg_count(3)` retourne `Ok(3)` et autorise la suite.
 
-### À améliorer ensuite
-
-Gestion de `stdin`. Limiter la mémoire en streaming. Codes de sortie distincts.
-
-## Atelier : durcir l’outil
-
-Ajoutez ces comportements :
-
-`--lines` doit refuser les valeurs négatives. `--lines` doit refuser les valeurs non numériques. Un message d’erreur doit aller sur `stderr`.
-
-Le but est d’apprendre que la robustesse se construit par petites décisions.
-
-
-## Code complet (API actuelle)
-
-Ce code utilise les modules `std/cli`, `std/io/print`, `std/io/buffer` et `std/kernel/fs`.
+Etape 3. Centraliser le routage de mode.
 
 ```vit
-use std/cli
-use std/io/print
-use std/io/buffer
-use std/kernel/fs
-use std/core/types.usize
-use std/core/types.i32
-
-proc parse_usize(s: string) -> i32 {
-  let i: i32 = 0
-  let n: i32 = 0
-  if s.len == 0 { give -1 }
-  loop {
-    if i >= s.len as i32 { break }
-    let ch = s.slice(i as usize, (i + 1) as usize)
-    if ch < "0" || ch > "9" { give -1 }
-    n = n * 10 + (ch.as_bytes()[0] as i32 - 48)
-    i = i + 1
-  }
-  give n
-}
-
-proc first_path(args: [string]) -> string {
-  let i: i32 = 1
-  loop {
-    if i >= args.len as i32 { break }
-    let cur = args[i as usize]
-    if cur == "--lines" {
-      i = i + 2
-      continue
-    }
-    if cur.len > 8 && cur.slice(0, 8) == "--lines=" {
-      i = i + 1
-      continue
-    }
-    if cur.len > 0 && cur.slice(0, 1) == "-" {
-      i = i + 1
-      continue
-    }
-    give cur
-  }
-  give ""
-}
-
-proc read_lines(path: string, limit: i32) -> i32 {
-  let fd = fs.open_read(path)
-  if fd < 0 {
-    let _ = eprintln("error: cannot open " + path)
-    give 1
-  }
-  let r = buffer.reader_new(fd as usize, 4096)
-  let count: i32 = 0
-  loop {
-    let line = buffer.read_line(&r)
-    if line.len == 0 { break }
-    println_or_panic(line)
-    if limit > 0 {
-      count = count + 1
-      if count >= limit { break }
-    }
-  }
-  fs.close(fd)
-  give 0
-}
-
-entry main at core/app {
-  let args = args()
-  if has_flag(args, "--help") {
-    println_or_panic("usage: vitte-cat [--lines N] <path>")
-    give 0
-  }
-  let lines_str = flag_value(args, "--lines", "")
-  let limit: i32 = 0
-  if lines_str.len > 0 {
-    let v = parse_usize(lines_str)
-    if v < 0 {
-      let _ = eprintln("error: invalid --lines value")
-      give 2
-    }
-    limit = v
-  }
-  let path = first_path(args)
-  if path.len == 0 {
-    let _ = eprintln("error: missing path")
-    give 2
-  }
-  give read_lines(path, limit)
+proc run_mode(mode: int) -> CliResult {
+  if mode == 1 { give Ok(10) }
+  if mode == 2 { give Ok(20) }
+  give Err(UnknownMode(mode))
 }
 ```
 
-## API idéale (future)
+Pourquoi cette etape est solide. Le routeur metier est isole dans une fonction pure. Le cas inconnu n'est pas aplati dans un `-1` anonyme; il conserve la valeur fautive dans `UnknownMode(mode)`. Cette conservation est precieuse pour le diagnostic, la telemetrie et les tests de non-regression: on ne sait pas seulement qu'il y a erreur, on sait laquelle.
 
-`std/fs.read_to_string(path)`. `std/cli/app` pour parser les options et générer l’aide automatiquement. `std/io/lines(reader)` pour itérer sans ambiguïté sur les lignes vides.
+Ce qui se passe a l'execution. `run_mode(1)` retourne `Ok(10)`, `run_mode(2)` retourne `Ok(20)`, `run_mode(9)` retourne `Err(UnknownMode(9))`.
 
+Etape 4. Projeter une politique systeme stable.
+
+```vit
+proc to_exit_code(r: CliResult) -> int {
+  match r {
+    case Ok(_) { give 0 }
+    case Err(MissingArgs) { give 64 }
+    case Err(UnknownMode(_)) { give 65 }
+    otherwise { give 70 }
+  }
+}
+```
+
+Pourquoi cette etape est solide. La conversion vers les exit-codes est un sujet d'integration systeme, pas un sujet metier. La sortir dans une fonction dediee vous donne une frontiere claire: vous pouvez faire evoluer la semantique interne sans casser les conventions de shell, ou inversement. Cette couture explicite est ce qui permet a un CLI de vieillir proprement.
+
+Ce qui se passe a l'execution. Un succes donne `0`, une arite manquante donne `64`, un mode inconnu donne `65`. Le `otherwise` garantit un filet de securite avec `70`.
+
+Etape 5. Orchestrer dans `entry` sans reinventer la logique.
+
+```vit
+entry main at core/app {
+  let argc: int = 2
+  let parse_res: CliResult = parse_arg_count(argc)
+
+  match parse_res {
+    case Err(e) {
+      return to_exit_code(Err(e))
+    }
+    case Ok(_) {
+      let run_res: CliResult = run_mode(1)
+      return to_exit_code(run_res)
+    }
+    otherwise {
+      return 70
+    }
+  }
+}
+```
+
+Pourquoi cette etape est solide. `main` ne pense pas a la place des modules. Il orchestre. Cette sobriete est une force structurelle: si vous lisez l'entree du programme, vous comprenez l'ordre du flux en quelques secondes. Et si vous devez modifier la politique de validation ou de routage, vous le faites dans des fonctions deja specialisees, pas dans un monolithe.
+
+Ce qui se passe a l'execution. Sur le scenario nominal `argc=2` et `mode=1`, le flux est `parse -> run -> to_exit_code` et le programme sort avec `0`. Sur `argc=1`, la validation echoue immediatement et la sortie devient `64`. Le chemin d'erreur est donc court, explicite et deterministe.
+
+Ce que vous devez maitriser en sortie de chapitre. Un CLI Vitte robuste n'est pas celui qui contient beaucoup de code, mais celui qui expose une grammaire claire de decisions. Entree validee en frontiere, metier route dans des fonctions pures, projection systeme centralisee, et `entry` reduite au role d'orchestrateur. Avec cette discipline, la complexite augmente sans detruire la lisibilite.

@@ -1,82 +1,53 @@
-# 8. Structures et enums
+# 8. Structures de donnees
 
-Les structures et enums servent à exprimer des données avec intention. Le lecteur doit comprendre « ce que c’est » avant de comprendre « ce que ça fait ».
+Ce chapitre avance comme un atelier de code Vitte: on pose une idee, on la fait vivre dans le code, puis on verifie precisement ce qui se passe a l'execution.
+Ce chapitre poursuit un objectif simple: Placer la complexite dans la modelisation plutot que dans les conditions.
 
-## Structures
-
-Une structure regroupe des champs liés. Préférez des structures petites et cohérentes.
-
-Exemple conceptuel :
+Etape 1. Structure ticket.
 
 ```vit
-struct Point {
-  x: i32
-  y: i32
+form Ticket {
+  id: int
+  priority: int
+  assignee: string
 }
 ```
 
-## Enums
+Pourquoi cette etape est solide. Entite metier explicite a trois attributs.
 
-Les enums expriment un choix fini. Ils sont utiles pour rendre les états explicites.
+Ce qui se passe a l'execution. Verification compile-time des champs.
+
+Etape 2. Etat de cycle de vie.
 
 ```vit
-enum Status {
-  Ok
-  Err
+pick TicketState {
+  case Open
+  case Assigned(user: string)
+  case Closed(code: int)
 }
 ```
 
-## Modéliser l’intention
+Pourquoi cette etape est solide. Etats exclusifs et payload cible.
 
-Un enum bien nommé vous évite des dizaines de commentaires. Il dit clairement « voici toutes les options possibles ». C’est un outil de précision, pas un gadget.
+Ce qui se passe a l'execution. Toute valeur est exactement une variante.
 
-## Pas de structures “fourre‑tout”
-
-Une structure qui finit par contenir « un peu de tout » devient vite un stockage sans intention. Quand vous sentez ce glissement, découpez‑la.
-
-## Champs dérivés
-
-Évitez de stocker des champs qui peuvent être recalculés sans coût significatif. Cela réduit les risques d’incohérence. Une structure doit rester une vérité unique.
-
-## À retenir
-
-Une structure est un nom pour un groupe d’invariants. Une enum est un nom pour un choix fini. Si la syntaxe exacte change, conservez l’intention : donner un nom à un groupe stable.
-
-
-## Exemple guidé : refactorer une structure
-
-Prenez une structure “fourre‑tout” et découpez‑la en deux structures plus petites. Ajoutez un enum pour rendre les états explicites.
-
-## Erreurs courantes
-
-Stocker des champs dérivés. Utiliser des structures énormes pour éviter de réfléchir au modèle. Mettre des valeurs optionnelles sans les signaler.
-
-## Checklist structures
-
-Chaque champ a une raison d’être. Les champs dérivés sont évités. Les invariants sont documentés.
-
-
-## Exercice : structurer un état
-
-Imaginez un downloader avec trois états : “en attente”, “en cours”, “terminé”. Écrivez un enum pour ces états, et évitez les drapeaux booléens multiples.
-
-
-## Code complet (API actuelle)
+Etape 3. Composition de regles.
 
 ```vit
-form Config {
-  port: i32
-  host: string
+proc is_critical(t: Ticket) -> bool {
+  give t.priority >= 9
 }
 
-pick State {
-  Idle
-  Running
-  Failed(code: i32)
+proc route(t: Ticket, s: TicketState) -> int {
+  if is_critical(t) and not (match s { case Closed(_) { give true } otherwise { give false } }) {
+    give 1
+  }
+  give 0
 }
 ```
 
-## API idéale (future)
+Pourquoi cette etape est solide. Regle metier composee a partir de structure + etat.
 
-Un support plus direct pour les “optionnels” (champ nullable) sans `Option` explicite.
+Ce qui se passe a l'execution. Priorite haute + non ferme -> `1`, sinon `0`.
 
+Ce que vous devez maitriser en sortie de chapitre. Donnee et etat separes, regles courtes, predicates reutilisables.

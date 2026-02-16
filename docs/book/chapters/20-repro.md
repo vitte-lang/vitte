@@ -1,49 +1,49 @@
-# 20. Reproductibilité et builds
+# 20. Reproductibilite
 
-Un build reproductible est un build fiable. Si le même code produit des binaires différents, vous perdez votre base de confiance.
+Ce chapitre avance comme un atelier de code Vitte: on pose une idee, on la fait vivre dans le code, puis on verifie precisement ce qui se passe a l'execution.
+Ce chapitre poursuit un objectif simple: Garantir qu'un programme Vitte produit le meme resultat a entree identique, sur chaque execution.
 
-## Principe
+Etape 1. Fonction pure de base.
 
-Fixer les versions d’outils. Réduire les sources d’entropie (timestamps, chemins, etc.). Comparer les artefacts.
-
-## Pourquoi c’est important
-
-La reproductibilité est une base de sécurité et de débogage. Elle facilite aussi la collaboration.
-
-## Technique simple
-
-Commencez par comparer des hashes et comprendre chaque différence. La reproductibilité est une discipline, pas un bouton magique.
-
-## Erreurs courantes
-
-Compiler sur deux machines sans aligner les outils. Comparer des binaires signés sans enlever les signatures. Ne pas documenter le pipeline de build.
-
-## À retenir
-
-Un build reproductible est un build explicable.
-
-
-## Exemple guidé : build reproductible
-
-Construisez un binaire deux fois, comparez les hashes. Puis identifiez la source de divergence (timestamp, chemin, signature). C’est un exercice fondamental.
-
-## Checklist repro
-
-Outils alignés. Sources d’entropie réduites. Comparaison systématique.
-
-
-## Exercice : identifier l’entropie
-
-Construisez deux fois, comparez les hashes, puis identifiez la source d’entropie. Documentez‑la dans le README du projet.
-
-
-## Code complet (API actuelle)
-
-```sh
-make repro
+```vit
+proc stable(x: int) -> int {
+  give x * 2 + 1
+}
 ```
 
-## API idéale (future)
+Pourquoi cette etape est solide. Aucun etat externe ni source non deterministe. Le resultat est une consequence directe de `x`.
 
-Un `vitte repro --explain` qui liste toutes les sources d’entropie détectées.
+Ce qui se passe a l'execution. `stable(10)=21` sur toute machine compatible.
 
+Etape 2. Variabilite injectee explicitement.
+
+```vit
+proc with_seed(seed: int) -> int {
+  give seed
+}
+```
+
+Pourquoi cette etape est solide. Le parametre remplace toute dependance implicite au temps ou a l'environnement.
+
+Ce qui se passe a l'execution. `with_seed(12345)=12345` de maniere stable.
+
+Etape 3. Sequence deterministic de checksum.
+
+```vit
+proc repro_checksum(seed: int, n: int) -> int {
+  let i: int = 0
+  let acc: int = seed
+  loop {
+    if i >= n { break }
+    set acc = (acc * 31 + i) % 104729
+    set i = i + 1
+  }
+  give acc
+}
+```
+
+Pourquoi cette etape est solide. La recurrence est entierement definie par les entrees et une borne de boucle explicite.
+
+Ce qui se passe a l'execution. `(5,4)` evolue `155`, `4806`, `44114`, `57592` puis retourne `57592`.
+
+Ce que vous devez maitriser en sortie de chapitre. Les entrees sont explicites, la boucle est bornee et aucune source d'aleatoire cachee n'apparait.
