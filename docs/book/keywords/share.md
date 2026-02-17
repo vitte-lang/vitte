@@ -66,6 +66,7 @@ Sortie observable:
 ## Utilisé dans les chapitres
 
 - `docs/book/chapters/09-modules.md`.
+- `docs/book/chapters/31-erreurs-build.md`.
 
 ## Voir aussi
 

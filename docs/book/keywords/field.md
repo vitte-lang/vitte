@@ -67,7 +67,10 @@ Sortie observable:
 
 ## Utilisé dans les chapitres
 
-- Aucun chapitre principal ne l’emploie encore explicitement.
+- `docs/book/chapters/09-modules.md`.
+- `docs/book/chapters/10-diagnostics.md`.
+- `docs/book/chapters/11-collections.md`.
+- `docs/book/chapters/12-pointeurs.md`.
 
 ## Voir aussi
 

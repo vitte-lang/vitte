@@ -80,6 +80,7 @@ Sortie observable:
 - `docs/book/chapters/15-pipeline.md`.
 - `docs/book/chapters/16-interop.md`.
 - `docs/book/chapters/17-stdlib.md`.
+- `docs/book/chapters/20a-architecture-globale.md`.
 - `docs/book/chapters/22-projet-http.md`.
 - `docs/book/chapters/23-projet-sys.md`.
 - `docs/book/chapters/24-projet-kv.md`.

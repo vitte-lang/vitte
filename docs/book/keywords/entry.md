@@ -73,9 +73,11 @@ Sortie observable:
 - `docs/book/chapters/02-philosophie.md`.
 - `docs/book/chapters/03-projet.md`.
 - `docs/book/chapters/21-projet-cli.md`.
+- `docs/book/chapters/22-projet-http.md`.
 - `docs/book/chapters/23-projet-sys.md`.
 - `docs/book/chapters/24-projet-kv.md`.
 - `docs/book/chapters/25-projet-arduino.md`.
+- `docs/book/chapters/26-projet-editor.md`.
 - `docs/book/chapters/27-grammaire.md`.
 - `docs/book/chapters/29-style.md`.
 

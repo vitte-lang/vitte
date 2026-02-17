@@ -67,10 +67,6 @@ Sortie observable:
 ## Utilisé dans les chapitres
 
 - `docs/book/chapters/14-macros.md`.
-- `docs/book/chapters/17-stdlib.md`.
-- `docs/book/chapters/18-tests.md`.
-- `docs/book/chapters/19-performance.md`.
-- `docs/book/chapters/20-repro.md`.
 - `docs/book/chapters/23-projet-sys.md`.
 
 

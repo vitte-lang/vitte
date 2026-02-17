@@ -69,12 +69,8 @@ Sortie observable:
 ## Utilisé dans les chapitres
 
 - `docs/book/chapters/12-pointeurs.md`.
-- `docs/book/chapters/13-generiques.md`.
-- `docs/book/chapters/14-macros.md`.
-- `docs/book/chapters/15-pipeline.md`.
 - `docs/book/chapters/16-interop.md`.
 - `docs/book/chapters/23-projet-sys.md`.
-- `docs/book/chapters/30-faq.md`.
 
 
 ## Voir aussi

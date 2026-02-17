@@ -19,6 +19,7 @@ required_global_files = [
 ]
 ebnf_source = repo / 'src/vitte/grammar/vitte.ebnf'
 ebnf_doc = root / 'grammar-surface.ebnf'
+ebnf_docs_grammar = repo / 'docs/grammar/vitte.ebnf'
 
 link_re = re.compile(r'\[[^\]]+\]\(([^)]+)\)')
 level_re = re.compile(r'^Niveau:\s*(Débutant|Intermédiaire|Avancé)\.?\s*$', re.MULTILINE)
@@ -148,9 +149,17 @@ if ebnf_source.exists() and ebnf_doc.exists():
     src_txt = ebnf_source.read_text(encoding='utf-8')
     doc_txt = ebnf_doc.read_text(encoding='utf-8')
     if src_txt != doc_txt:
-        add_issue(f"{ebnf_doc}: diverge de {ebnf_source} (copie documentaire non alignée)")
+        add_issue(f"{ebnf_doc}: diverge de {ebnf_source} (copie documentaire non alignée, exécuter sync_grammar_surface.py)")
 else:
     add_issue(f"{ebnf_source} ou {ebnf_doc}: fichier EBNF manquant")
+
+if ebnf_source.exists() and ebnf_docs_grammar.exists():
+    src_txt = ebnf_source.read_text(encoding='utf-8')
+    doc_txt = ebnf_docs_grammar.read_text(encoding='utf-8')
+    if src_txt != doc_txt:
+        add_issue(f"{ebnf_docs_grammar}: diverge de {ebnf_source} (copie docs/grammar non alignée, exécuter sync_grammar_surface.py)")
+else:
+    add_issue(f"{ebnf_source} ou {ebnf_docs_grammar}: fichier EBNF manquant")
 
 # Chapters checks.
 for p in chapters:

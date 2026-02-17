@@ -71,6 +71,8 @@ Sortie observable:
 - `docs/book/chapters/03-projet.md`.
 - `docs/book/chapters/09-modules.md`.
 - `docs/book/chapters/29-style.md`.
+- `docs/book/chapters/30-faq.md`.
+- `docs/book/chapters/31-erreurs-build.md`.
 
 ## Voir aussi
 

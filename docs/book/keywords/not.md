@@ -68,10 +68,6 @@ Sortie observable:
 
 - `docs/book/chapters/06-procedures.md`.
 - `docs/book/chapters/08-structures.md`.
-- `docs/book/chapters/17-stdlib.md`.
-- `docs/book/chapters/18-tests.md`.
-- `docs/book/chapters/19-performance.md`.
-- `docs/book/chapters/20-repro.md`.
 - `docs/book/chapters/23-projet-sys.md`.
 - `docs/book/chapters/24-projet-kv.md`.
 

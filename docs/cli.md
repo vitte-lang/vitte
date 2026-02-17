@@ -11,13 +11,21 @@ Commands (recommended):
 - `explain <code>`  Explain a diagnostic (e.g. E0001)
 - `doctor` Check toolchain prerequisites
 - `parse`  Parse only (no backend)
-- `check`  Parse + resolve only
+- `check`  Parse + resolve + IR (no backend)
 - `emit`   Emit C++ only (no native compile)
 - `build`  Full build (default)
+- `reduce` Reduce a failing file to a minimal reproducer
 
 Options:
 - `--lang <code>`  Language for diagnostics (e.g. en, fr). Defaults to `LANG/LC_ALL`, then `en`.
 - `--explain <code>`  Explain a diagnostic (e.g. E0001).
+- `--stage <name>`  Stop at `parse|resolve|ir|backend`.
+- `--diag-json`  Emit diagnostics as JSON.
+- `--diag-json-pretty`  Emit pretty JSON diagnostics (includes `diag_schema`).
+- `--dump-ast`  Dump AST after parsing.
+- `--dump-ir`  Dump IR (`--dump-mir` alias).
+- `--strict-types`  Reject compatibility aliases (`integer`, `uint32`, etc.) and enforce canonical type names.
+- `--fail-on-warning`  Treat warnings as errors.
 - `--stdout`  Emit C++ to stdout (implies `emit`).
 - `--emit-obj`  Emit a native object file (`.o`).
 - `--repro`  Enable reproducible object output flags.
@@ -37,7 +45,13 @@ vitte parse --lang=fr src/main.vit
 ```
 
 Error Codes:
-- Diagnostics use stable codes like `E0001`. These codes are defined in `src/compiler/frontend/diagnostics_messages.hpp`.
+- Diagnostics use stable layer prefixes:
+  - `E000x`: parse/grammar
+  - `E100x`: resolve
+  - `E1007`: invalid signed/unsigned cast
+  - `E200x`: IR/lowering
+  - `E300x`: backend/toolchain
+- Codes are defined in `src/compiler/frontend/diagnostics_messages.hpp`.
 - The `.ftl` localization files can translate by code (preferred) or by message key.
 
 Stdlib:

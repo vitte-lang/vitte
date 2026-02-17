@@ -36,11 +36,13 @@ Repère: voir le `Glossaire Vitte` dans `docs/book/glossaire.md` et la `Checklis
 
 Avant d'entrer dans les exemples, nous fixons ici les bases de vocabulaire. Elles ne seront plus redéfinies en détail dans chaque chapitre.
 
-- `int`: type entier générique utilisé dans les exemples de base. Exemple simple: `let age: int = 42`.
+- `int`: type entier canonique utilisé dans les exemples de base. Règle: dès qu'une largeur binaire contractuelle est requise, utiliser `i32/i64/i128/u32/u64/u128`. Exemple simple: `let age: int = 42`.
 - `i32`: entier signé 32 bits (`-2^31` à `2^31-1`), utile quand la taille doit être explicite.
 - `i64`: entier signé 64 bits, utile pour des compteurs/horodatages plus larges.
+- `i128`: entier signé 128 bits, utile pour des bornes numériques très larges.
 - `u32`: entier non signé 32 bits (`0` à `2^32-1`), utile pour tailles/indices non négatifs.
 - `u64`: entier non signé 64 bits, utile pour tailles volumineuses et compteurs monotones.
+- `u128`: entier non signé 128 bits, utile pour identifiants/compteurs très larges non négatifs.
 - `string`: type du texte, utilisé pour stocker des mots, phrases, identifiants ou messages. Exemple simple: `let name: string = "alice"`.
 - `bool`: type logique avec seulement deux valeurs possibles, `true` ou `false`, utilisé pour décider si une condition est vérifiée. Exemple simple: `let ok: bool = true`.
 - `proc`: mot-clé qui déclare une procédure (fonction) avec des paramètres d'entrée et un type de sortie annoncé. Exemple simple: `proc add(a: int, b: int) -> int { ... }`.
@@ -230,7 +232,7 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 <<< vérification rapide >>>
 - Top-level: seules les déclarations de module (`space`, `pull`, `use`, `share`, `const`, `type`, `form`, `pick`, `proc`, `entry`, `macro`) apparaissent hors bloc.
 - Statements: les instructions (`let`, `make`, `set`, `give`, `emit`, `if`, `loop`, `for`, `match`, `select`, `return`) restent dans un `block`.
-- Types primaires: `bool`, `string`, `int`, `i32`, `i64`, `u32`, `u64` sont acceptés dans `type_primary`.
+- Types primaires: `bool`, `string`, `int`, `i32`, `i64`, `i128`, `u32`, `u64`, `u128` sont acceptés dans `type_primary`.
 
 ## Keywords à revoir
 

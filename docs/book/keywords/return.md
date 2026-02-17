@@ -78,6 +78,7 @@ Sortie observable:
 - `docs/book/chapters/25-projet-arduino.md`.
 - `docs/book/chapters/27-grammaire.md`.
 - `docs/book/chapters/29-style.md`.
+- `docs/book/chapters/30-faq.md`.
 
 
 ## Voir aussi

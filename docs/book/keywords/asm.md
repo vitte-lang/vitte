@@ -72,7 +72,6 @@ Sortie observable:
 - `docs/book/chapters/15-pipeline.md`.
 - `docs/book/chapters/16-interop.md`.
 - `docs/book/chapters/23-projet-sys.md`.
-- `docs/book/chapters/30-faq.md`.
 
 
 ## Voir aussi

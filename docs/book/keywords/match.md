@@ -77,6 +77,7 @@ Sortie observable:
 - `docs/book/chapters/05-types.md`.
 - `docs/book/chapters/08-structures.md`.
 - `docs/book/chapters/10-diagnostics.md`.
+- `docs/book/chapters/20a-architecture-globale.md`.
 - `docs/book/chapters/21-projet-cli.md`.
 - `docs/book/chapters/22-projet-http.md`.
 - `docs/book/chapters/23-projet-sys.md`.

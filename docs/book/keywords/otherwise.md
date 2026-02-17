@@ -70,8 +70,6 @@ Sortie observable:
 
 - `docs/book/chapters/00-avant-propos.md`.
 - `docs/book/chapters/02-philosophie.md`.
-- `docs/book/chapters/03-projet.md`.
-- `docs/book/chapters/04-syntaxe.md`.
 - `docs/book/chapters/05-types.md`.
 - `docs/book/chapters/08-structures.md`.
 - `docs/book/chapters/10-diagnostics.md`.

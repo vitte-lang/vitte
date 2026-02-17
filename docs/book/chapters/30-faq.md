@@ -66,10 +66,13 @@ Source normative:
 
 Copie documentaire:
 - `docs/book/grammar-surface.ebnf`.
+- `docs/grammar/vitte.ebnf`.
 
 Politique d'alignement:
 - toute évolution de la grammaire source doit être répliquée dans la copie doc.
 - les exemples des chapitres doivent rester compatibles avec cette grammaire.
+- synchronisation automatique: `python3 docs/book/scripts/sync_grammar_surface.py`.
+- validation bloquante: `python3 docs/book/scripts/sync_grammar_surface.py --check`.
 
 ## 30.4 FAQ `emit` vs `return`
 
@@ -118,6 +121,11 @@ Règle: valider d'abord le contrat ABI et les symboles exportés avant d'optimis
 
 Commandes utiles:
 - `vitte build <fichier.vitte>`: pipeline complet.
+- `vitte check <fichier.vit>`: parse + resolve + IR sans backend.
+- `vitte build --stage parse|resolve|ir|backend <fichier.vit>`: isolation de couche.
+- `vitte check --diag-json <fichier.vit>`: diagnostics structurés CI/IDE.
+- `vitte check --dump-ast <fichier.vit>` et `vitte check --dump-ir <fichier.vit>`: debug déterministe.
+- `vitte reduce <fichier.vit>`: reproducer minimal automatique.
 - lire le log de stage (`parse`, `resolve`, `ir`, `backend`).
 - `python3 docs/book/scripts/qa_book.py`: QA doc standard.
 - `python3 docs/book/scripts/qa_book.py --strict`: QA CI stricte.
@@ -202,6 +210,23 @@ Statement-level (dans un bloc):
 4. Corriger une seule cause, relancer le build.
 5. Vérifier qu'aucune régression n'apparaît dans les stages précédents.
 
+## 30.12 `int` vs tailles fixes
+
+Règle éditoriale et technique de ce livre:
+- `int`: type canonique pour les exemples généraux.
+- `i32/i64/i128/u32/u64/u128`: à utiliser dès que la largeur binaire est contractuelle.
+
+Cas où il faut éviter `int`:
+- API binaire, réseau, fichiers, interop C, kernel/freestanding.
+
+## 30.13 Playbook debug: erreur -> reproducer -> fix -> rerun
+
+1. Capturer la première erreur avec son code (`E000x/E100x/E200x/E300x`).
+2. Réduire le fichier via `vitte reduce`.
+3. Corriger uniquement la cause racine.
+4. Relancer: `--stage` ciblé, puis `check`, puis `build`.
+5. Rejouer QA/tests: `grammar-check`, `book-qa-strict`, `negative-tests`, `diag-snapshots`.
+
 ## Résolution des exercices
 
 Exercice A: fichier avec `emit` top-level.
@@ -256,7 +281,7 @@ trait Pair {
 <<< vérification rapide >>>
 - Top-level: seules les déclarations de module (`space`, `pull`, `use`, `share`, `const`, `type`, `form`, `pick`, `proc`, `entry`, `macro`) apparaissent hors bloc.
 - Statements: les instructions (`let`, `make`, `set`, `give`, `emit`, `if`, `loop`, `for`, `match`, `select`, `return`) restent dans un `block`.
-- Types primaires: `bool`, `string`, `int`, `i32`, `i64`, `u32`, `u64` sont acceptés dans `type_primary`.
+- Types primaires: `bool`, `string`, `int`, `i32`, `i64`, `i128`, `u32`, `u64`, `u128` sont acceptés dans `type_primary`.
 
 ## Keywords à revoir
 

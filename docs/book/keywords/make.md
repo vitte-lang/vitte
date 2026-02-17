@@ -68,7 +68,8 @@ Sortie observable:
 
 ## Utilisé dans les chapitres
 
-- Aucun chapitre principal ne l’emploie encore explicitement.
+- `docs/book/chapters/30-faq.md`.
+- `docs/book/chapters/31-erreurs-build.md`.
 
 ## Voir aussi
 

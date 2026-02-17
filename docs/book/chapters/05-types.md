@@ -19,18 +19,33 @@ Dans un code fragile, les règles métier existent souvent "dans la tête" de l'
 
 Nous allons avancer en trois temps. D'abord, décrire une donnée composée avec un type structurel. Ensuite, représenter des états alternatifs avec un type somme. Enfin, consommer ce type somme avec un `match` qui suit sa structure. L'enjeu est simple: faire en sorte que le code dise clairement ce qui est autorisé, et ce qui ne l'est pas.
 
-## 5.0 Rappel EBNF sur les scalaires entiers
+## 5.0 Types primitifs (table canonique)
 
-La grammaire de surface accepte explicitement les primitives suivantes dans `type_primary`:
-- `int`.
-- `i32`.
-- `i64`.
-- `u32`.
-- `u64`.
+Règle explicite de ce livre:
+- `int` est le type entier canonique pour les exemples pédagogiques.
+- quand la largeur binaire fait partie du contrat, utiliser `i32/i64/i128/u32/u64/u128`.
 
-Règle pratique:
-- utiliser `int` pour les exemples généraux.
-- utiliser `i32/i64/u32/u64` quand la largeur binaire fait partie du contrat.
+| Type | Taille | Signé / non signé | Cas d’usage principal | Exemple |
+| --- | --- | --- | --- | --- |
+| `bool` | 1 bit logique (représentation backend dépendante) | non signé | conditions, garde, test | `let ok: bool = true` |
+| `string` | variable | n/a | texte et messages | `let msg: string = "ok"` |
+| `int` | dépend de l’implémentation cible | signé | calcul général en chapitre débutant | `let n: int = 42` |
+| `i32` | 32 bits | signé | protocole binaire, API bornée 32 bits | `let code: i32 = 200` |
+| `i64` | 64 bits | signé | horodatage, compteurs longs | `let ts: i64 = 1700000000` |
+| `i128` | 128 bits | signé | identifiants/calculettes très grands | `let big: i128 = 123456789` |
+| `u32` | 32 bits | non signé | tailles, masques, registres 32 bits | `let mask: u32 = 255` |
+| `u64` | 64 bits | non signé | offsets/fichiers/protocoles 64 bits | `let size: u64 = 4096` |
+| `u128` | 128 bits | non signé | IDs larges, hash partiels | `let id: u128 = 1` |
+
+## 5.0.1 Quand éviter `int`
+
+Éviter `int` quand la taille doit rester stable entre machines:
+- API binaire et interop C.
+- protocole réseau et format de fichier.
+- sérialisation persistée.
+- registres matériels et code kernel/bare-metal.
+
+Dans ces cas, imposer une largeur explicite (`i32/i64/i128/u32/u64/u128`) et conserver cette largeur de bout en bout.
 
 
 Repère: voir le `Glossaire Vitte` dans `docs/book/glossaire.md` et la `Checklist de relecture` dans `docs/book/checklist-editoriale.md`. Complément: `docs/book/erreurs-classiques.md`.
@@ -196,7 +211,7 @@ Réponse attendue: une garde explicite ou un chemin de secours déterministe doi
 <<< vérification rapide >>>
 - Top-level: seules les déclarations de module (`space`, `pull`, `use`, `share`, `const`, `type`, `form`, `pick`, `proc`, `entry`, `macro`) apparaissent hors bloc.
 - Statements: les instructions (`let`, `make`, `set`, `give`, `emit`, `if`, `loop`, `for`, `match`, `select`, `return`) restent dans un `block`.
-- Types primaires: `bool`, `string`, `int`, `i32`, `i64`, `u32`, `u64` sont acceptés dans `type_primary`.
+- Types primaires: `bool`, `string`, `int`, `i32`, `i64`, `i128`, `u32`, `u64`, `u128` sont acceptés dans `type_primary`.
 
 ## Keywords à revoir
 
