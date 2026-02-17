@@ -149,35 +149,38 @@ static std::filesystem::path resolve_module_file(
     const std::filesystem::path& base_dir,
     const std::filesystem::path& repo_root
 ) {
-    std::string rel_str = join_path(path, "/");
-    if (is_std_or_core_root(path) || is_vitte_package_root(path)) {
-        ModulePath trimmed = path;
-        const std::size_t trim_count = is_std_or_core_root(path) ? 1 : vitte_package_trim_count(path);
-        trimmed.parts.erase(trimmed.parts.begin(), trimmed.parts.begin() + static_cast<std::ptrdiff_t>(trim_count));
-        rel_str = join_path(trimmed, "/");
-    }
-    std::filesystem::path rel(rel_str);
-    std::vector<std::filesystem::path> candidates;
-
-    if (is_std_or_core_root(path)) {
-        std::filesystem::path std_root = repo_root / "src/vitte/std";
-        if (path.parts.front().name == "core") {
-            std::filesystem::path core_root = std_root / "core";
-            candidates.push_back(core_root / (rel.string() + ".vit"));
-            candidates.push_back(core_root / rel / "mod.vit");
+    auto module_file_candidates = [&](const ModulePath& target_path) {
+        std::string rel_str = join_path(target_path, "/");
+        if (is_std_or_core_root(target_path) || is_vitte_package_root(target_path)) {
+            ModulePath trimmed = target_path;
+            const std::size_t trim_count = is_std_or_core_root(target_path) ? 1 : vitte_package_trim_count(target_path);
+            trimmed.parts.erase(trimmed.parts.begin(), trimmed.parts.begin() + static_cast<std::ptrdiff_t>(trim_count));
+            rel_str = join_path(trimmed, "/");
         }
-        candidates.push_back(std_root / (rel.string() + ".vit"));
-        candidates.push_back(std_root / rel / "mod.vit");
-    } else if (is_vitte_package_root(path)) {
-        std::filesystem::path pkg_root = repo_root / "src/vitte/packages";
-        candidates.push_back(pkg_root / (rel.string() + ".vit"));
-        candidates.push_back(pkg_root / rel / "mod.vit");
-    } else {
-        candidates.push_back(base_dir / (rel.string() + ".vit"));
-        candidates.push_back(base_dir / rel / "mod.vit");
-    }
+        std::filesystem::path rel(rel_str);
+        std::vector<std::filesystem::path> candidates;
 
-    for (const auto& c : candidates) {
+        if (is_std_or_core_root(target_path)) {
+            std::filesystem::path std_root = repo_root / "src/vitte/std";
+            if (target_path.parts.front().name == "core") {
+                std::filesystem::path core_root = std_root / "core";
+                candidates.push_back(core_root / (rel.string() + ".vit"));
+                candidates.push_back(core_root / rel / "mod.vit");
+            }
+            candidates.push_back(std_root / (rel.string() + ".vit"));
+            candidates.push_back(std_root / rel / "mod.vit");
+        } else if (is_vitte_package_root(target_path)) {
+            std::filesystem::path pkg_root = repo_root / "src/vitte/packages";
+            candidates.push_back(pkg_root / (rel.string() + ".vit"));
+            candidates.push_back(pkg_root / rel / "mod.vit");
+        } else {
+            candidates.push_back(base_dir / (rel.string() + ".vit"));
+            candidates.push_back(base_dir / rel / "mod.vit");
+        }
+        return candidates;
+    };
+
+    for (const auto& c : module_file_candidates(path)) {
         if (std::filesystem::exists(c)) {
             return c;
         }
@@ -186,7 +189,7 @@ static std::filesystem::path resolve_module_file(
     return {};
 }
 
-static bool has_ambiguous_module_file(
+static std::vector<std::filesystem::path> existing_module_files(
     const ModulePath& path,
     const std::filesystem::path& base_dir,
     const std::filesystem::path& repo_root
@@ -217,13 +220,21 @@ static bool has_ambiguous_module_file(
         candidates.push_back(base_dir / (rel.string() + ".vit"));
         candidates.push_back(base_dir / rel / "mod.vit");
     }
-    std::size_t found = 0;
+    std::vector<std::filesystem::path> found;
     for (const auto& c : candidates) {
         if (std::filesystem::exists(c)) {
-            ++found;
+            found.push_back(c);
         }
     }
-    return found > 1;
+    return found;
+}
+
+static bool has_ambiguous_module_file(
+    const ModulePath& path,
+    const std::filesystem::path& base_dir,
+    const std::filesystem::path& repo_root
+) {
+    return existing_module_files(path, base_dir, repo_root).size() > 1;
 }
 
 static std::filesystem::path detect_repo_root(const std::filesystem::path& start_dir) {
@@ -749,23 +760,42 @@ struct Loader {
             }
             if (!normalized.empty() &&
                 !is_stdlib_path_allowed(module_path, options.stdlib_profile)) {
-                diagnostics.error_code(
+                diag::Diagnostic denied(
+                    diag::Severity::Error,
                     "E1010",
                     "stdlib module '" + normalized + "' is not allowed in profile '" + options.stdlib_profile + "'",
                     (*path).span
                 );
-                diagnostics.note(
-                    "allowed by this profile: core=std/core, system=std/core+std/kernel, arduino=std/core+std/arduino, desktop=all",
-                    (*path).span
+                denied.add_note(
+                    "allowed by this profile: core=std/core, system=std/core+std/kernel, arduino=std/core+std/arduino, desktop=all"
                 );
+                denied.add_note(
+                    "fix: switch profile (e.g. --runtime-profile desktop) or replace this import with a module allowed by '" + options.stdlib_profile + "'"
+                );
+                denied.add_fix("switch runtime profile", "--runtime-profile desktop", (*path).span);
+                denied.add_fix("replace denied import", "use std/core/... as core_mod", (*path).span);
+                diagnostics.emit(std::move(denied));
                 continue;
             }
             if (has_ambiguous_module_file(module_path, base_dir, repo_root)) {
-                diagnostics.error_code(
+                diag::Diagnostic ambiguous(
+                    diag::Severity::Error,
                     "E1018",
                     "ambiguous import path '" + module_path_key(module_path) + "' (both file.vit and mod.vit exist)",
                     (*path).span
                 );
+                const auto matches = existing_module_files(module_path, base_dir, repo_root);
+                if (matches.size() >= 2) {
+                    ambiguous.add_note(
+                        "candidates: '" + matches[0].filename().string() + "' and '" + matches[1].filename().string() + "'"
+                    );
+                    ambiguous.add_fix("keep file module form", "remove '" + matches[1].filename().string() + "'", (*path).span);
+                    ambiguous.add_fix("keep directory module form", "remove '" + matches[0].filename().string() + "'", (*path).span);
+                }
+                ambiguous.add_note(
+                    "fix: keep only one module layout for this path (prefer directory form '<name>/mod.vit' or file form '<name>.vit')"
+                );
+                diagnostics.emit(std::move(ambiguous));
                 continue;
             }
             std::filesystem::path file = resolve_module_file(module_path, base_dir, repo_root);
@@ -1405,6 +1435,7 @@ void rewrite_member_access(ast::AstContext& ctx,
                            const ModuleIndex& index,
                            diag::DiagnosticEngine* diagnostics) {
     std::unordered_map<std::string, std::string> alias_to_prefix;
+    std::unordered_map<std::string, SourceSpan> alias_to_span;
     std::unordered_set<std::string> glob_aliases;
     std::unordered_map<std::string, std::string> symbol_imports;
 
@@ -1425,6 +1456,7 @@ void rewrite_member_access(ast::AstContext& ctx,
         auto it = index.path_to_prefix.find(key);
         if (it != index.path_to_prefix.end()) {
             alias_to_prefix[alias] = it->second;
+            alias_to_span[alias] = u.span;
             if (u.is_glob) {
                 glob_aliases.insert(alias);
             }
@@ -1456,12 +1488,40 @@ void rewrite_member_access(ast::AstContext& ctx,
             for (const auto& sym : exp->second) {
                 auto it = seen_symbol_owner.find(sym);
                 if (it != seen_symbol_owner.end() && it->second != alias) {
-                    diagnostics->error_code(
+                    SourceSpan conflict_span{};
+                    auto current_span = alias_to_span.find(alias);
+                    if (current_span != alias_to_span.end()) {
+                        conflict_span = current_span->second;
+                    }
+                    diag::Diagnostic conflict(
+                        diag::Severity::Error,
                         "E1017",
                         "re-export symbol conflict for '" + sym + "' between aliases '" + it->second + "' and '" + alias + "'",
-                        {}
+                        conflict_span
                     );
-                    diagnostics->note("use explicit aliases or non-glob imports to disambiguate", {});
+                    auto owner_span = alias_to_span.find(it->second);
+                    if (owner_span != alias_to_span.end()) {
+                        conflict.add_note(
+                            "first conflicting glob alias '" + it->second + "' is declared here"
+                        );
+                    }
+                    conflict.add_note(
+                        "fix: replace one glob import with explicit symbols (e.g. use module.{name} as alias_name)"
+                    );
+                    conflict.add_note(
+                        "fix: keep only one glob alias exporting '" + sym + "'"
+                    );
+                    conflict.add_fix(
+                        "replace glob with explicit symbol import",
+                        "use module.{" + sym + "} as " + alias + "_" + sym,
+                        conflict_span
+                    );
+                    conflict.add_fix(
+                        "remove one conflicting glob alias",
+                        "remove alias '" + alias + "' or '" + it->second + "'",
+                        conflict_span
+                    );
+                    diagnostics->emit(std::move(conflict));
                 } else {
                     seen_symbol_owner[sym] = alias;
                 }

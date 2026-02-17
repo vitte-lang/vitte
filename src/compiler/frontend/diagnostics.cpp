@@ -62,6 +62,14 @@ void Diagnostic::add_note(std::string msg) {
     notes.emplace_back(std::move(msg));
 }
 
+void Diagnostic::add_fix(std::string title, std::string replacement, SourceSpan sp) {
+    fixes.push_back(Fix{
+        std::move(title),
+        std::move(replacement),
+        sp,
+    });
+}
+
 // ------------------------------------------------------------
 // Localization
 // ------------------------------------------------------------
@@ -300,6 +308,39 @@ static std::string location_string(const SourceSpan& span) {
     return oss.str();
 }
 
+static std::string normalized_file_for_json(const SourceSpan& span, bool deterministic) {
+    if (!span.is_valid()) {
+        return "";
+    }
+    std::filesystem::path path(span.file->path);
+    if (!deterministic) {
+        return path.filename().string();
+    }
+    std::error_code ec;
+    std::filesystem::path rel = std::filesystem::relative(path, std::filesystem::current_path(), ec);
+    if (!ec) {
+        const std::string rel_norm = rel.lexically_normal().generic_string();
+        if (!rel_norm.empty()) {
+            return rel_norm;
+        }
+    }
+    const std::string norm = path.lexically_normal().generic_string();
+    if (!norm.empty()) {
+        return norm;
+    }
+    return path.filename().string();
+}
+
+static bool matches_diag_filter(const Diagnostic& d, const std::vector<std::string>& code_filter) {
+    if (code_filter.empty()) {
+        return true;
+    }
+    if (d.code.empty()) {
+        return false;
+    }
+    return std::find(code_filter.begin(), code_filter.end(), d.code) != code_filter.end();
+}
+
 static void render_snippet(
     std::ostream& os,
     const SourceSpan& span)
@@ -395,19 +436,22 @@ void render(const Diagnostic& d, std::ostream& os) {
 void render_all(
     const DiagnosticEngine& engine,
     std::ostream& os,
-    bool deterministic)
+    bool deterministic,
+    const std::vector<std::string>& code_filter)
 {
     std::vector<std::reference_wrapper<const Diagnostic>> ordered;
     ordered.reserve(engine.all().size());
     for (const auto& d : engine.all()) {
-        ordered.push_back(std::cref(d));
+        if (matches_diag_filter(d, code_filter)) {
+            ordered.push_back(std::cref(d));
+        }
     }
     if (deterministic) {
         std::sort(ordered.begin(), ordered.end(), [](const auto& a, const auto& b) {
             const auto& da = a.get();
             const auto& db = b.get();
-            const std::string fa = da.span.is_valid() ? std::filesystem::path(da.span.file->path).filename().string() : "";
-            const std::string fb = db.span.is_valid() ? std::filesystem::path(db.span.file->path).filename().string() : "";
+            const std::string fa = normalized_file_for_json(da.span, true);
+            const std::string fb = normalized_file_for_json(db.span, true);
             if (fa != fb) return fa < fb;
             if (da.span.start != db.span.start) return da.span.start < db.span.start;
             if (da.code != db.code) return da.code < db.code;
@@ -436,7 +480,13 @@ static std::string json_escape(const std::string& in) {
     return out;
 }
 
-void render_all_json(const DiagnosticEngine& engine, std::ostream& os, bool pretty, bool deterministic) {
+void render_all_json(
+    const DiagnosticEngine& engine,
+    std::ostream& os,
+    bool pretty,
+    bool deterministic,
+    const std::vector<std::string>& code_filter)
+{
     if (pretty) {
         os << "{\n  \"diag_schema\": 1,\n  \"diagnostics\": [\n";
     } else {
@@ -445,14 +495,16 @@ void render_all_json(const DiagnosticEngine& engine, std::ostream& os, bool pret
     std::vector<std::reference_wrapper<const Diagnostic>> all;
     all.reserve(engine.all().size());
     for (const auto& d : engine.all()) {
-        all.push_back(std::cref(d));
+        if (matches_diag_filter(d, code_filter)) {
+            all.push_back(std::cref(d));
+        }
     }
     if (deterministic) {
         std::sort(all.begin(), all.end(), [](const auto& a, const auto& b) {
             const auto& da = a.get();
             const auto& db = b.get();
-            const std::string fa = da.span.is_valid() ? std::filesystem::path(da.span.file->path).filename().string() : "";
-            const std::string fb = db.span.is_valid() ? std::filesystem::path(db.span.file->path).filename().string() : "";
+            const std::string fa = normalized_file_for_json(da.span, true);
+            const std::string fb = normalized_file_for_json(db.span, true);
             if (fa != fb) return fa < fb;
             if (da.span.start != db.span.start) return da.span.start < db.span.start;
             if (da.code != db.code) return da.code < db.code;
@@ -472,24 +524,69 @@ void render_all_json(const DiagnosticEngine& engine, std::ostream& os, bool pret
                << "\",\"message\":\"" << json_escape(d.message) << "\",";
         }
         if (d.span.is_valid()) {
-            const std::string file_name = std::filesystem::path(d.span.file->path).filename().string();
+            const std::string file_name = normalized_file_for_json(d.span, deterministic);
             if (pretty) {
                 os << "      \"file\": \"" << json_escape(file_name) << "\",\n";
                 os << "      \"start\": " << d.span.start << ",\n";
-                os << "      \"end\": " << d.span.end << "\n";
+                os << "      \"end\": " << d.span.end << ",\n";
             } else {
                 os << "\"file\":\"" << json_escape(file_name) << "\","
                    << "\"start\":" << d.span.start << ","
-                   << "\"end\":" << d.span.end;
+                   << "\"end\":" << d.span.end << ",";
             }
         } else {
             if (pretty) {
                 os << "      \"file\": \"\",\n";
                 os << "      \"start\": 0,\n";
-                os << "      \"end\": 0\n";
+                os << "      \"end\": 0,\n";
             } else {
-                os << "\"file\":\"\",\"start\":0,\"end\":0";
+                os << "\"file\":\"\",\"start\":0,\"end\":0,";
             }
+        }
+        if (pretty) {
+            os << "      \"fixes\": [";
+            if (!d.fixes.empty()) {
+                os << "\n";
+                for (std::size_t j = 0; j < d.fixes.size(); ++j) {
+                    const auto& fix = d.fixes[j];
+                    const std::string fix_file = normalized_file_for_json(fix.span, deterministic);
+                    const std::size_t fix_start = fix.span.is_valid() ? fix.span.start : 0;
+                    const std::size_t fix_end = fix.span.is_valid() ? fix.span.end : 0;
+                    os << "        {\n";
+                    os << "          \"title\": \"" << json_escape(fix.title) << "\",\n";
+                    os << "          \"replacement\": \"" << json_escape(fix.replacement) << "\",\n";
+                    os << "          \"span\": {\n";
+                    os << "            \"file\": \"" << json_escape(fix_file) << "\",\n";
+                    os << "            \"start\": " << fix_start << ",\n";
+                    os << "            \"end\": " << fix_end << "\n";
+                    os << "          }\n";
+                    os << "        }";
+                    if (j + 1 < d.fixes.size()) {
+                        os << ",";
+                    }
+                    os << "\n";
+                }
+                os << "      ]\n";
+            } else {
+                os << "]\n";
+            }
+        } else {
+            os << "\"fixes\":[";
+            for (std::size_t j = 0; j < d.fixes.size(); ++j) {
+                const auto& fix = d.fixes[j];
+                const std::string fix_file = normalized_file_for_json(fix.span, deterministic);
+                const std::size_t fix_start = fix.span.is_valid() ? fix.span.start : 0;
+                const std::size_t fix_end = fix.span.is_valid() ? fix.span.end : 0;
+                os << "{\"title\":\"" << json_escape(fix.title)
+                   << "\",\"replacement\":\"" << json_escape(fix.replacement)
+                   << "\",\"span\":{\"file\":\"" << json_escape(fix_file)
+                   << "\",\"start\":" << fix_start
+                   << ",\"end\":" << fix_end << "}}";
+                if (j + 1 < d.fixes.size()) {
+                    os << ",";
+                }
+            }
+            os << "]";
         }
         if (pretty) {
             os << "    }";
@@ -510,18 +607,25 @@ void render_all_json(const DiagnosticEngine& engine, std::ostream& os, bool pret
     }
 }
 
-void render_all_code_only(const DiagnosticEngine& engine, std::ostream& os, bool deterministic) {
+void render_all_code_only(
+    const DiagnosticEngine& engine,
+    std::ostream& os,
+    bool deterministic,
+    const std::vector<std::string>& code_filter)
+{
     std::vector<std::reference_wrapper<const Diagnostic>> ordered;
     ordered.reserve(engine.all().size());
     for (const auto& d : engine.all()) {
-        ordered.push_back(std::cref(d));
+        if (matches_diag_filter(d, code_filter)) {
+            ordered.push_back(std::cref(d));
+        }
     }
     if (deterministic) {
         std::sort(ordered.begin(), ordered.end(), [](const auto& a, const auto& b) {
             const auto& da = a.get();
             const auto& db = b.get();
-            const std::string fa = da.span.is_valid() ? std::filesystem::path(da.span.file->path).filename().string() : "";
-            const std::string fb = db.span.is_valid() ? std::filesystem::path(db.span.file->path).filename().string() : "";
+            const std::string fa = normalized_file_for_json(da.span, true);
+            const std::string fb = normalized_file_for_json(db.span, true);
             if (fa != fb) return fa < fb;
             if (da.span.start != db.span.start) return da.span.start < db.span.start;
             if (da.code != db.code) return da.code < db.code;

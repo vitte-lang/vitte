@@ -1,6 +1,33 @@
 #include "options.hpp"
 
 #include <iostream>
+#include <algorithm>
+#include <cctype>
+
+namespace {
+
+static void append_diag_filter_codes(std::vector<std::string>& out, const std::string& csv) {
+    std::size_t start = 0;
+    while (start <= csv.size()) {
+        std::size_t end = csv.find(',', start);
+        if (end == std::string::npos) {
+            end = csv.size();
+        }
+        std::string code = csv.substr(start, end - start);
+        code.erase(std::remove_if(code.begin(), code.end(), [](unsigned char c) {
+            return std::isspace(c) != 0;
+        }), code.end());
+        if (!code.empty()) {
+            out.push_back(code);
+        }
+        if (end == csv.size()) {
+            break;
+        }
+        start = end + 1;
+    }
+}
+
+} // namespace
 
 namespace vitte::driver {
 
@@ -188,6 +215,12 @@ Options parse_options(int argc, char** argv) {
         else if (arg == "--diag-json-pretty") {
             opts.diag_json = true;
             opts.diag_json_pretty = true;
+        }
+        else if (arg == "--diag-filter" && i + 1 < argc) {
+            append_diag_filter_codes(opts.diag_filter_codes, argv[++i]);
+        }
+        else if (arg.rfind("--diag-filter=", 0) == 0) {
+            append_diag_filter_codes(opts.diag_filter_codes, arg.substr(std::string("--diag-filter=").size()));
         }
         else if (arg == "--diag-code-only") {
             opts.diag_code_only = true;
@@ -383,6 +416,8 @@ void print_help() {
         "  --emit-cpp        Emit C++ only (no native compile)\n"
         "  --diag-json       Emit diagnostics as JSON\n"
         "  --diag-json-pretty Emit diagnostics as pretty JSON\n"
+        "  --diag-filter <codes>\n"
+        "                    Emit only selected diagnostic codes (comma-separated)\n"
         "  --diag-code-only Emit compact diagnostics (file:line:col CODE)\n"
         "  --deterministic  Enable stable deterministic output ordering\n"
         "  --cache-report   Print parse/resolve/ir cache hit/miss report\n"

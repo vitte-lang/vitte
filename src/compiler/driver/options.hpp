@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <vector>
 
 namespace vitte::driver {
 
@@ -48,6 +49,7 @@ struct Options {
     bool emit_cpp = false;
     bool diag_json = false;
     bool diag_json_pretty = false;
+    std::vector<std::string> diag_filter_codes;
     bool strict_types = false;
     bool fail_on_warning = false;
     bool diag_code_only = false;

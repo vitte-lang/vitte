@@ -117,11 +117,12 @@ PassResult run_passes(const Options& opts) {
     frontend::diag::DiagnosticEngine diagnostics(opts.lang);
     auto emit_diags = [&](std::ostream& os = std::cerr) {
         if (opts.diag_code_only) {
-            frontend::diag::render_all_code_only(diagnostics, os, opts.deterministic);
+            frontend::diag::render_all_code_only(diagnostics, os, opts.deterministic, opts.diag_filter_codes);
         } else if (opts.diag_json) {
-            frontend::diag::render_all_json(diagnostics, os, opts.diag_json_pretty, opts.deterministic);
+            frontend::diag::render_all_json(
+                diagnostics, os, opts.diag_json_pretty, opts.deterministic, opts.diag_filter_codes);
         } else {
-            frontend::diag::render_all(diagnostics, os, opts.deterministic);
+            frontend::diag::render_all(diagnostics, os, opts.deterministic, opts.diag_filter_codes);
         }
     };
     frontend::ast::AstContext ast_ctx;

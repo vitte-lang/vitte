@@ -226,9 +226,9 @@ constexpr DiagExplain diag_explain(DiagId id) {
             };
         case DiagId::StdlibProfileImportDenied:
             return {
-                "A stdlib import is blocked by the active stdlib profile.",
-                "Switch profile (--runtime-profile, or legacy --stdlib-profile) or import a module allowed by that profile.",
-                "vitte check --runtime-profile system src/main.vit",
+                "A stdlib import is blocked because the current runtime profile is incompatible with this module.",
+                "Switch profile (--runtime-profile, or legacy --stdlib-profile) or replace the import with one allowed by the active profile.",
+                "vitte check --runtime-profile desktop src/main.vit",
             };
         case DiagId::StrictImportAliasRequired:
             return {
@@ -269,14 +269,14 @@ constexpr DiagExplain diag_explain(DiagId id) {
         case DiagId::ReexportSymbolConflict:
             return {
                 "A glob/re-export set introduces a symbol name collision.",
-                "Use explicit aliases to disambiguate imported symbols.",
-                "use std/a/mod as a_mod\nuse std/b/mod as b_mod",
+                "Replace one glob import with explicit symbols or keep only one glob alias for the colliding name.",
+                "use pkg/a.{ping} as a_ping\nuse pkg/b.{ping} as b_ping",
             };
         case DiagId::AmbiguousImportPath:
             return {
                 "Multiple module files match the same import path.",
-                "Use a canonical, explicit module path and remove duplicates.",
-                "use std/net/addr as net_addr",
+                "Keep a single module layout for the path (either <name>.vit or <name>/mod.vit) and remove the duplicate file.",
+                "use pkg/foo as foo_mod",
             };
         case DiagId::StrictModulesGlobForbidden:
             return {

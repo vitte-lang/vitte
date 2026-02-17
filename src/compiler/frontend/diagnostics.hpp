@@ -35,11 +35,18 @@ const char* to_string(Severity severity);
 // ------------------------------------------------------------
 
 struct Diagnostic {
+    struct Fix {
+        std::string title;
+        std::string replacement;
+        SourceSpan span;
+    };
+
     Severity severity;
     std::string code;
     std::string message;
     SourceSpan span;
     std::vector<std::string> notes;
+    std::vector<Fix> fixes;
 
     Diagnostic(
         Severity severity,
@@ -53,6 +60,7 @@ struct Diagnostic {
         SourceSpan span);
 
     void add_note(std::string message);
+    void add_fix(std::string title, std::string replacement, SourceSpan span);
 };
 
 // ------------------------------------------------------------
@@ -107,8 +115,18 @@ private:
 // ------------------------------------------------------------
 
 void render(const Diagnostic& diagnostic, std::ostream& os);
-void render_all(const DiagnosticEngine& engine, std::ostream& os, bool deterministic = false);
-void render_all_json(const DiagnosticEngine& engine, std::ostream& os, bool pretty = false, bool deterministic = false);
-void render_all_code_only(const DiagnosticEngine& engine, std::ostream& os, bool deterministic = false);
+void render_all(const DiagnosticEngine& engine,
+                std::ostream& os,
+                bool deterministic = false,
+                const std::vector<std::string>& code_filter = {});
+void render_all_json(const DiagnosticEngine& engine,
+                     std::ostream& os,
+                     bool pretty = false,
+                     bool deterministic = false,
+                     const std::vector<std::string>& code_filter = {});
+void render_all_code_only(const DiagnosticEngine& engine,
+                          std::ostream& os,
+                          bool deterministic = false,
+                          const std::vector<std::string>& code_filter = {});
 
 } // namespace vitte::frontend::diag
