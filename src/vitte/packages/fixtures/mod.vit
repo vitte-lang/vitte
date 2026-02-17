@@ -38,8 +38,16 @@ proc seed(fixtures: FixtureSet, count: int) -> FixtureSet {
   give FixtureSet(fixtures.name, fixtures.base_rows, out, fixtures.seed_runs + runs)
 }
 
+proc seed_once(fixtures: FixtureSet) -> FixtureSet {
+  give seed(fixtures, 1)
+}
+
 proc reset(fixtures: FixtureSet) -> FixtureSet {
   give FixtureSet(fixtures.name, fixtures.base_rows, fixtures.base_rows, 0)
+}
+
+proc clear_current(fixtures: FixtureSet) -> FixtureSet {
+  give FixtureSet(fixtures.name, fixtures.base_rows, [], fixtures.seed_runs)
 }
 
 proc append_row(fixtures: FixtureSet, row: string) -> FixtureSet {
@@ -63,12 +71,45 @@ proc remove_row(fixtures: FixtureSet, row: string) -> FixtureSet {
   give FixtureSet(fixtures.name, fixtures.base_rows, out, fixtures.seed_runs)
 }
 
+proc replace_row(fixtures: FixtureSet, old_row: string, new_row: string) -> FixtureSet {
+  let out: [string] = []
+  let replaced: bool = false
+  let i: int = 0
+  loop {
+    if i >= fixtures.current_rows.len { break }
+    let cur = fixtures.current_rows[i]
+    if !replaced && cur == old_row {
+      out = out.push(new_row)
+      replaced = true
+    } else {
+      out = out.push(cur)
+    }
+    i = i + 1
+  }
+  give FixtureSet(fixtures.name, fixtures.base_rows, out, fixtures.seed_runs)
+}
+
 proc row_count(fixtures: FixtureSet) -> int {
   give fixtures.current_rows.len
 }
 
 proc base_count(fixtures: FixtureSet) -> int {
   give fixtures.base_rows.len
+}
+
+proc row_at(fixtures: FixtureSet, index: int, fallback: string) -> string {
+  if index < 0 { give fallback }
+  if index >= fixtures.current_rows.len { give fallback }
+  give fixtures.current_rows[index]
+}
+
+proc first_row(fixtures: FixtureSet, fallback: string) -> string {
+  give row_at(fixtures, 0, fallback)
+}
+
+proc last_row(fixtures: FixtureSet, fallback: string) -> string {
+  if fixtures.current_rows.len == 0 { give fallback }
+  give fixtures.current_rows[fixtures.current_rows.len - 1]
 }
 
 proc contains_row(fixtures: FixtureSet, row: string) -> bool {
@@ -85,6 +126,58 @@ proc diff_count(fixtures: FixtureSet) -> int {
   let diff = fixtures.current_rows.len - fixtures.base_rows.len
   if diff < 0 { give -diff }
   give diff
+}
+
+proc duplicate_count(fixtures: FixtureSet) -> int {
+  let dup: int = 0
+  let i: int = 0
+  loop {
+    if i >= fixtures.current_rows.len { break }
+    let cur = fixtures.current_rows[i]
+    let j: int = 0
+    let seen: bool = false
+    loop {
+      if j >= i { break }
+      if fixtures.current_rows[j] == cur {
+        seen = true
+        break
+      }
+      j = j + 1
+    }
+    if seen { dup = dup + 1 }
+    i = i + 1
+  }
+  give dup
+}
+
+proc dedupe(fixtures: FixtureSet) -> FixtureSet {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= fixtures.current_rows.len { break }
+    let cur = fixtures.current_rows[i]
+
+    let exists: bool = false
+    let j: int = 0
+    loop {
+      if j >= out.len { break }
+      if out[j] == cur {
+        exists = true
+        break
+      }
+      j = j + 1
+    }
+
+    if !exists {
+      out = out.push(cur)
+    }
+    i = i + 1
+  }
+  give FixtureSet(fixtures.name, fixtures.base_rows, out, fixtures.seed_runs)
+}
+
+proc is_empty(fixtures: FixtureSet) -> bool {
+  give fixtures.current_rows.len == 0
 }
 
 proc checksum(fixtures: FixtureSet) -> int {
@@ -106,6 +199,7 @@ proc stats(fixtures: FixtureSet) -> string {
   give "rows=" + row_count(fixtures).to_string() +
        ",base=" + base_count(fixtures).to_string() +
        ",diff=" + diff_count(fixtures).to_string() +
+       ",dups=" + duplicate_count(fixtures).to_string() +
        ",checksum=" + checksum(fixtures).to_string()
 }
 

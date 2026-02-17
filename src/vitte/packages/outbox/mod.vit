@@ -67,12 +67,38 @@ proc mark_sent(outbox: Outbox, event_id: int) -> Outbox {
   give Outbox(outbox.next_id, out)
 }
 
+proc get_event(outbox: Outbox, event_id: int) -> OutboxEvent {
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    if outbox.events[i].id == event_id {
+      give outbox.events[i]
+    }
+    i = i + 1
+  }
+  give OutboxEvent(-1, "", "", false, false, 0)
+}
+
 proc pending_count(outbox: Outbox) -> int {
   let count: int = 0
   let i: int = 0
   loop {
     if i >= outbox.events.len { break }
     if !outbox.events[i].sent {
+      count = count + 1
+    }
+    i = i + 1
+  }
+  give count
+}
+
+proc flushed_pending_count(outbox: Outbox) -> int {
+  let count: int = 0
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    let ev = outbox.events[i]
+    if !ev.sent && ev.flushed {
       count = count + 1
     }
     i = i + 1
@@ -109,6 +135,10 @@ proc event_count(outbox: Outbox) -> int {
   give outbox.events.len
 }
 
+proc is_empty(outbox: Outbox) -> bool {
+  give event_count(outbox) == 0
+}
+
 proc sent_count(outbox: Outbox) -> int {
   let count: int = 0
   let i: int = 0
@@ -122,6 +152,31 @@ proc sent_count(outbox: Outbox) -> int {
   give count
 }
 
+proc event_ids(outbox: Outbox) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    out = out.push(outbox.events[i].id)
+    i = i + 1
+  }
+  give out
+}
+
+proc pending_ids(outbox: Outbox) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    let ev = outbox.events[i]
+    if !ev.sent {
+      out = out.push(ev.id)
+    }
+    i = i + 1
+  }
+  give out
+}
+
 proc has_event(outbox: Outbox, event_id: int) -> bool {
   let i: int = 0
   loop {
@@ -130,6 +185,18 @@ proc has_event(outbox: Outbox, event_id: int) -> bool {
     i = i + 1
   }
   give false
+}
+
+proc first_by_topic(outbox: Outbox, topic: string) -> OutboxEvent {
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    if outbox.events[i].topic == topic {
+      give outbox.events[i]
+    }
+    i = i + 1
+  }
+  give OutboxEvent(-1, "", "", false, false, 0)
 }
 
 proc attempt_of(outbox: Outbox, event_id: int) -> int {
@@ -142,6 +209,23 @@ proc attempt_of(outbox: Outbox, event_id: int) -> int {
     i = i + 1
   }
   give -1
+}
+
+proc max_attempts(outbox: Outbox) -> int {
+  let best: int = 0
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    if outbox.events[i].attempts > best {
+      best = outbox.events[i].attempts
+    }
+    i = i + 1
+  }
+  give best
+}
+
+proc payload_size(outbox: Outbox, event_id: int) -> int {
+  give replay_payload(outbox, event_id).len
 }
 
 proc next_pending(outbox: Outbox) -> OutboxEvent {
@@ -182,6 +266,23 @@ proc prune_sent(outbox: Outbox) -> Outbox {
     i = i + 1
   }
   give Outbox(outbox.next_id, out)
+}
+
+proc mark_all_sent(outbox: Outbox) -> Outbox {
+  let out: [OutboxEvent] = []
+  let i: int = 0
+  loop {
+    if i >= outbox.events.len { break }
+    let ev = outbox.events[i]
+    out = out.push(OutboxEvent(ev.id, ev.topic, ev.payload, true, false, ev.attempts))
+    i = i + 1
+  }
+  give Outbox(outbox.next_id, out)
+}
+
+proc clear(outbox: Outbox) -> Outbox {
+  let _ = outbox
+  give Outbox(0, [])
 }
 
 proc topic_count(outbox: Outbox, topic: string) -> int {

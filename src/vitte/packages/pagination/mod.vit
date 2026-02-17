@@ -57,6 +57,85 @@ proc page_count(total: int, limit: int) -> int {
   give count
 }
 
+proc normalized(pg: Page) -> Page {
+  let lim = pg.limit
+  if lim < 1 { lim = 1 }
+
+  let tot = pg.total
+  if tot < 0 { tot = 0 }
+
+  let off = pg.offset
+  if off < 0 { off = 0 }
+  if off > tot { off = tot }
+
+  if off + lim > tot && tot > 0 {
+    let last = tot - lim
+    if last < 0 { last = 0 }
+    if off > last { off = last }
+  }
+
+  give Page(off, lim, tot)
+}
+
+proc has_prev(pg: Page) -> bool {
+  give normalized(pg).offset > 0
+}
+
+proc prev_cursor(pg: Page) -> int {
+  let n = normalized(pg)
+  if n.offset <= 0 { give -1 }
+  let prev = n.offset - n.limit
+  if prev < 0 { give 0 }
+  give prev
+}
+
+proc first_page(limit: int, total: int) -> Page {
+  give normalized(Page(0, limit, total))
+}
+
+proc last_page(limit: int, total: int) -> Page {
+  let lim = limit
+  if lim < 1 { lim = 1 }
+  give normalized(Page(total - lim, lim, total))
+}
+
+proc page_index(pg: Page) -> int {
+  let n = normalized(pg)
+  if n.limit <= 0 { give 0 }
+  give n.offset / n.limit
+}
+
+proc remaining(pg: Page) -> int {
+  let n = normalized(pg)
+  let rem = n.total - (n.offset + n.limit)
+  if rem < 0 { give 0 }
+  give rem
+}
+
+proc shift(pg: Page, delta: int) -> Page {
+  let n = normalized(pg)
+  give normalized(Page(n.offset + delta, n.limit, n.total))
+}
+
+proc with_limit(pg: Page, new_limit: int) -> Page {
+  let n = normalized(pg)
+  give normalized(Page(n.offset, new_limit, n.total))
+}
+
+proc is_valid(pg: Page) -> bool {
+  let n = normalized(pg)
+  give n.limit > 0 && n.total >= 0 && n.offset >= 0
+}
+
+proc stats(pg: Page) -> string {
+  let n = normalized(pg)
+  let w = window(n)
+  give "offset=" + n.offset.to_string() +
+       ",limit=" + n.limit.to_string() +
+       ",total=" + n.total.to_string() +
+       ",size=" + w.size.to_string()
+}
+
 proc ready() -> bool {
   give true
 }

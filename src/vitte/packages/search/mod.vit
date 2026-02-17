@@ -106,6 +106,121 @@ proc query(index: SearchIndex, term: string) -> [SearchDoc] {
   give out
 }
 
+proc doc_count(index: SearchIndex) -> int {
+  give index.docs.len
+}
+
+proc active_count(index: SearchIndex) -> int {
+  let n: int = 0
+  let i: int = 0
+  loop {
+    if i >= index.docs.len { break }
+    if index.docs[i].active {
+      n = n + 1
+    }
+    i = i + 1
+  }
+  give n
+}
+
+proc has_doc(index: SearchIndex, id: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= index.docs.len { break }
+    if index.docs[i].id == id { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc get_doc(index: SearchIndex, id: string) -> SearchDoc {
+  let i: int = 0
+  loop {
+    if i >= index.docs.len { break }
+    if index.docs[i].id == id { give index.docs[i] }
+    i = i + 1
+  }
+  give SearchDoc("", "", false, 0)
+}
+
+proc reactivate(index: SearchIndex, id: string) -> SearchIndex {
+  let out: [SearchDoc] = []
+  let i: int = 0
+  loop {
+    if i >= index.docs.len { break }
+    let doc = index.docs[i]
+    if doc.id == id {
+      out = out.push(SearchDoc(doc.id, doc.text, true, doc.score_hint))
+    } else {
+      out = out.push(doc)
+    }
+    i = i + 1
+  }
+  give SearchIndex(out)
+}
+
+proc set_score_hint(index: SearchIndex, id: string, hint: int) -> SearchIndex {
+  let out: [SearchDoc] = []
+  let i: int = 0
+  loop {
+    if i >= index.docs.len { break }
+    let doc = index.docs[i]
+    if doc.id == id {
+      out = out.push(SearchDoc(doc.id, doc.text, doc.active, hint))
+    } else {
+      out = out.push(doc)
+    }
+    i = i + 1
+  }
+  give SearchIndex(out)
+}
+
+proc query_count(index: SearchIndex, term: string) -> int {
+  give query(index, term).len
+}
+
+proc query_ids(index: SearchIndex, term: string) -> [string] {
+  let rows = query(index, term)
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= rows.len { break }
+    out = out.push(rows[i].id)
+    i = i + 1
+  }
+  give out
+}
+
+proc best_match(index: SearchIndex, term: string) -> SearchDoc {
+  let rows = query(index, term)
+  if rows.len == 0 { give SearchDoc("", "", false, 0) }
+
+  let best = rows[0]
+  let i: int = 1
+  loop {
+    if i >= rows.len { break }
+    let cur = rows[i]
+    let cur_score = cur.score_hint + score(cur, term)
+    let best_score = best.score_hint + score(best, term)
+    if cur_score > best_score {
+      best = cur
+    }
+    i = i + 1
+  }
+
+  give SearchDoc(best.id, best.text, best.active, best.score_hint + score(best, term))
+}
+
+proc clear(index: SearchIndex) -> SearchIndex {
+  let _ = index
+  give SearchIndex([])
+}
+
+proc stats(index: SearchIndex) -> string {
+  give "docs=" + doc_count(index).to_string() +
+       ",active=" + active_count(index).to_string()
+}
+
 proc ready() -> bool {
   give true
 }

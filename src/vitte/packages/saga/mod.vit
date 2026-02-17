@@ -97,11 +97,84 @@ proc add_steps(saga: Saga, names: [string]) -> Saga {
   give out
 }
 
+proc get_step(saga: Saga, index: int) -> SagaStep {
+  if index < 0 { give SagaStep("", false, false) }
+  if index >= saga.steps.len { give SagaStep("", false, false) }
+  give saga.steps[index]
+}
+
+proc has_step(saga: Saga, name: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    if saga.steps[i].name == name { give true }
+    i = i + 1
+  }
+  give false
+}
+
+proc next_pending_step(saga: Saga) -> string {
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    if !saga.steps[i].done { give saga.steps[i].name }
+    i = i + 1
+  }
+  give ""
+}
+
+proc can_run(saga: Saga) -> bool {
+  if saga.state == SagaState.Draft { give true }
+  if saga.state == SagaState.Failed { give true }
+  if saga.state == SagaState.Compensated { give true }
+  give false
+}
+
+proc fail(saga: Saga, fail_idx: int) -> Saga {
+  give run(saga, fail_idx)
+}
+
+proc mark_done(saga: Saga, name: string) -> Saga {
+  let out: [SagaStep] = []
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    let step = saga.steps[i]
+    if step.name == name {
+      out = out.push(SagaStep(step.name, true, step.compensated))
+    } else {
+      out = out.push(step)
+    }
+    i = i + 1
+  }
+  give Saga(saga.id, out, saga.failed_at, saga.state)
+}
+
+proc mark_compensated(saga: Saga, name: string) -> Saga {
+  let out: [SagaStep] = []
+  let i: int = 0
+  loop {
+    if i >= saga.steps.len { break }
+    let step = saga.steps[i]
+    if step.name == name {
+      out = out.push(SagaStep(step.name, step.done, true))
+    } else {
+      out = out.push(step)
+    }
+    i = i + 1
+  }
+  give Saga(saga.id, out, saga.failed_at, saga.state)
+}
+
 proc resume(saga: Saga) -> Saga {
   if saga.state == SagaState.Failed || saga.state == SagaState.Compensated {
     give run(saga, -1)
   }
   give saga
+}
+
+proc failed_index(saga: Saga) -> int {
+  give saga.failed_at
 }
 
 proc reset(saga: Saga) -> Saga {
@@ -131,6 +204,11 @@ proc done_count(saga: Saga) -> int {
     i = i + 1
   }
   give n
+}
+
+proc progress_percent(saga: Saga) -> int {
+  if step_count(saga) == 0 { give 100 }
+  give done_count(saga) * 100 / step_count(saga)
 }
 
 proc pending_count(saga: Saga) -> int {
@@ -171,6 +249,18 @@ proc is_terminal(saga: Saga) -> bool {
   if saga.state == SagaState.Succeeded { give true }
   if saga.state == SagaState.Compensated { give true }
   give false
+}
+
+proc is_failed(saga: Saga) -> bool {
+  give saga.state == SagaState.Failed
+}
+
+proc is_succeeded(saga: Saga) -> bool {
+  give saga.state == SagaState.Succeeded
+}
+
+proc is_compensated(saga: Saga) -> bool {
+  give saga.state == SagaState.Compensated
 }
 
 proc state_name(saga: Saga) -> string {

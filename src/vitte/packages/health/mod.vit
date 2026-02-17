@@ -22,12 +22,68 @@ proc check_live(h: HealthInput) -> bool {
   give h.started
 }
 
+proc deps_ok(h: HealthInput) -> bool {
+  give h.db_ok && h.cache_ok && h.queue_ok
+}
+
 proc check_ready(h: HealthInput) -> bool {
-  give h.started && h.db_ok && h.cache_ok && h.queue_ok && h.warmed
+  give h.started && deps_ok(h) && h.warmed
 }
 
 proc check_startup(h: HealthInput) -> bool {
   give h.started && h.migrations_ok
+}
+
+proc check_operational(h: HealthInput) -> bool {
+  give check_ready(h) && check_startup(h)
+}
+
+proc status_code_live(h: HealthInput) -> int {
+  if check_live(h) { give 200 }
+  give 503
+}
+
+proc status_code_ready(h: HealthInput) -> int {
+  if check_ready(h) { give 200 }
+  give 503
+}
+
+proc status_code_startup(h: HealthInput) -> int {
+  if check_startup(h) { give 200 }
+  give 503
+}
+
+proc failing_components(h: HealthInput) -> [string] {
+  let out: [string] = []
+  if !h.db_ok { out = out.push("db") }
+  if !h.cache_ok { out = out.push("cache") }
+  if !h.queue_ok { out = out.push("queue") }
+  if !h.migrations_ok { out = out.push("migrations") }
+  if !h.warmed { out = out.push("warmed") }
+  if !h.started { out = out.push("started") }
+  give out
+}
+
+proc failing_count(h: HealthInput) -> int {
+  give failing_components(h).len
+}
+
+proc score_percent(h: HealthInput) -> int {
+  let ok: int = 0
+  if h.db_ok { ok = ok + 1 }
+  if h.cache_ok { ok = ok + 1 }
+  if h.queue_ok { ok = ok + 1 }
+  if h.migrations_ok { ok = ok + 1 }
+  if h.warmed { ok = ok + 1 }
+  if h.started { ok = ok + 1 }
+  give ok * 100 / 6
+}
+
+proc status_text(h: HealthInput) -> string {
+  if !check_live(h) { give "down" }
+  if check_operational(h) { give "ok" }
+  if check_ready(h) { give "starting" }
+  give "degraded"
 }
 
 proc report_json(h: HealthInput) -> string {

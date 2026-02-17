@@ -16,8 +16,30 @@ proc tenant_ctx(tenant_id: string, region: string, plan: string) -> TenantCtx {
   give TenantCtx(tenant_id, region, plan, true)
 }
 
+proc default_ctx() -> TenantCtx {
+  give TenantCtx("", "", "free", false)
+}
+
+proc tenant_id_of(ctx: TenantCtx) -> string {
+  give ctx.tenant_id
+}
+
+proc region_of(ctx: TenantCtx) -> string {
+  give ctx.region
+}
+
+proc plan_of(ctx: TenantCtx) -> string {
+  give ctx.plan
+}
+
 proc scope_key(ctx: TenantCtx, key: string) -> string {
   give ctx.tenant_id + ":" + key
+}
+
+proc has_scope_prefix(ctx: TenantCtx, scoped_key: string) -> bool {
+  let prefix = ctx.tenant_id + ":"
+  if scoped_key.len < prefix.len { give false }
+  give scoped_key.slice(0, prefix.len) == prefix
 }
 
 proc enforce_isolation(ctx: TenantCtx, resource_tenant: string) -> bool {
@@ -30,6 +52,24 @@ proc current(stack: [TenantCtx]) -> TenantCtx {
     give TenantCtx("", "", "", false)
   }
   give stack[stack.len - 1]
+}
+
+proc stack_depth(stack: [TenantCtx]) -> int {
+  give stack.len
+}
+
+proc stack_is_empty(stack: [TenantCtx]) -> bool {
+  give stack.len == 0
+}
+
+proc stack_contains(stack: [TenantCtx], tenant_id: string) -> bool {
+  let i: int = 0
+  loop {
+    if i >= stack.len { break }
+    if stack[i].tenant_id == tenant_id { give true }
+    i = i + 1
+  }
+  give false
 }
 
 proc deactivate(ctx: TenantCtx) -> TenantCtx {
@@ -46,6 +86,16 @@ proc with_region(ctx: TenantCtx, region: string) -> TenantCtx {
 
 proc with_plan(ctx: TenantCtx, plan: string) -> TenantCtx {
   give TenantCtx(ctx.tenant_id, ctx.region, plan, ctx.active)
+}
+
+proc normalize(ctx: TenantCtx, default_region: string, default_plan: string) -> TenantCtx {
+  let region = ctx.region
+  if region.len == 0 { region = default_region }
+
+  let plan = ctx.plan
+  if plan.len == 0 { plan = default_plan }
+
+  give TenantCtx(ctx.tenant_id, region, plan, ctx.active)
 }
 
 proc is_active(ctx: TenantCtx) -> bool {
@@ -71,6 +121,15 @@ proc plan_allows(ctx: TenantCtx, required_plan: string) -> bool {
   give plan_rank(ctx.plan) >= plan_rank(required_plan)
 }
 
+proc is_enterprise(ctx: TenantCtx) -> bool {
+  give ctx.plan == "enterprise"
+}
+
+proc can_access_region(ctx: TenantCtx, region: string) -> bool {
+  if !ctx.active { give false }
+  give ctx.region == region
+}
+
 proc same_region(left: TenantCtx, right: TenantCtx) -> bool {
   give left.region == right.region
 }
@@ -90,6 +149,22 @@ proc stack_pop(stack: [TenantCtx]) -> [TenantCtx] {
   loop {
     if i + 1 >= stack.len { break }
     out = out.push(stack[i])
+    i = i + 1
+  }
+  give out
+}
+
+proc stack_replace_top(stack: [TenantCtx], ctx: TenantCtx) -> [TenantCtx] {
+  if stack.len == 0 { give [ctx] }
+  let out: [TenantCtx] = []
+  let i: int = 0
+  loop {
+    if i >= stack.len { break }
+    if i + 1 == stack.len {
+      out = out.push(ctx)
+    } else {
+      out = out.push(stack[i])
+    }
     i = i + 1
   }
   give out

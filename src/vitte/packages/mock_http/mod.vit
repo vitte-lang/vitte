@@ -75,6 +75,10 @@ proc mock_match(mock: MockHttp, method: string, path: string) -> bool {
   give false
 }
 
+proc mock_exists(mock: MockHttp, method: string, path: string) -> bool {
+  give mock_match(mock, method, path)
+}
+
 proc mock_reply(mock: MockHttp, method: string, path: string) -> MockReply {
   let meth = canonical_method(method)
   let i: int = 0
@@ -87,6 +91,12 @@ proc mock_reply(mock: MockHttp, method: string, path: string) -> MockReply {
     i = i + 1
   }
   give MockReply(404, "mock_not_found", false)
+}
+
+proc mock_body(mock: MockHttp, method: string, path: string, fallback: string) -> string {
+  let reply = mock_reply(mock, method, path)
+  if !reply.matched { give fallback }
+  give reply.body
 }
 
 proc mock_clear(mock: MockHttp) -> MockHttp {
@@ -112,6 +122,50 @@ proc mock_count(mock: MockHttp) -> int {
   give mock.routes.len
 }
 
+proc mock_is_empty(mock: MockHttp) -> bool {
+  give mock_count(mock) == 0
+}
+
+proc mock_count_method(mock: MockHttp, method: string) -> int {
+  let meth = canonical_method(method)
+  let count: int = 0
+  let i: int = 0
+  loop {
+    if i >= mock.routes.len { break }
+    if mock.routes[i].method == meth {
+      count = count + 1
+    }
+    i = i + 1
+  }
+  give count
+}
+
+proc mock_methods(mock: MockHttp) -> [string] {
+  let out: [string] = []
+  let i: int = 0
+  loop {
+    if i >= mock.routes.len { break }
+    let meth = mock.routes[i].method
+
+    let exists: bool = false
+    let j: int = 0
+    loop {
+      if j >= out.len { break }
+      if out[j] == meth {
+        exists = true
+        break
+      }
+      j = j + 1
+    }
+
+    if !exists {
+      out = out.push(meth)
+    }
+    i = i + 1
+  }
+  give out
+}
+
 proc mock_list_paths(mock: MockHttp, method: string) -> [string] {
   let meth = canonical_method(method)
   let out: [string] = []
@@ -131,14 +185,32 @@ proc mock_status(mock: MockHttp, method: string, path: string) -> int {
   give reply.status
 }
 
+proc mock_route_at(mock: MockHttp, index: int) -> MockRoute {
+  if index < 0 { give MockRoute("", "", 404, "") }
+  if index >= mock.routes.len { give MockRoute("", "", 404, "") }
+  give mock.routes[index]
+}
+
 proc mock_verify(mock: MockHttp, method: string, path: string, expected_status: int) -> bool {
   let reply = mock_reply(mock, method, path)
   if !reply.matched { give false }
   give reply.status == expected_status
 }
 
+proc mock_update_status(mock: MockHttp, method: string, path: string, status: int) -> MockHttp {
+  let body = mock_body(mock, method, path, "")
+  give mock_add(mock, method, path, status, body)
+}
+
+proc mock_update_body(mock: MockHttp, method: string, path: string, body: string) -> MockHttp {
+  let status = mock_status(mock, method, path)
+  if status < 100 { status = 200 }
+  give mock_add(mock, method, path, status, body)
+}
+
 proc mock_stats(mock: MockHttp) -> string {
-  give "routes=" + mock_count(mock).to_string()
+  give "routes=" + mock_count(mock).to_string() +
+       ",methods=" + mock_methods(mock).len.to_string()
 }
 
 proc ready() -> bool {

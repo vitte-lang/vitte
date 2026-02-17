@@ -12,10 +12,20 @@ form SloWindow {
 }
 
 proc slo_new(target_percent: int) -> SloWindow {
-  let target = target_percent
-  if target < 1 { target = 1 }
-  if target > 100 { target = 100 }
-  give SloWindow(target, 0, 0)
+  let target_value = target_percent
+  if target_value < 1 { target_value = 1 }
+  if target_value > 100 { target_value = 100 }
+  give SloWindow(target_value, 0, 0)
+}
+
+proc target(window: SloWindow) -> int {
+  give window.target_percent
+}
+
+proc error_budget_percent(window: SloWindow) -> int {
+  let budget = 100 - window.target_percent
+  if budget < 0 { give 0 }
+  give budget
 }
 
 proc sli_record(window: SloWindow, ok: bool) -> SloWindow {
@@ -25,19 +35,46 @@ proc sli_record(window: SloWindow, ok: bool) -> SloWindow {
   give SloWindow(window.target_percent, window.total + 1, window.bad + 1)
 }
 
+proc record_success(window: SloWindow) -> SloWindow {
+  give sli_record(window, true)
+}
+
+proc record_failure(window: SloWindow) -> SloWindow {
+  give sli_record(window, false)
+}
+
 proc allowed_bad(window: SloWindow) -> int {
   if window.total <= 0 { give 0 }
   give window.total * (100 - window.target_percent) / 100
+}
+
+proc total_budget(window: SloWindow) -> int {
+  give allowed_bad(window)
 }
 
 proc slo_eval(window: SloWindow) -> bool {
   give window.bad <= allowed_bad(window)
 }
 
+proc bad_over_budget(window: SloWindow) -> int {
+  let over = window.bad - allowed_bad(window)
+  if over < 0 { give 0 }
+  give over
+}
+
 proc budget_left(window: SloWindow) -> int {
   let left = allowed_bad(window) - window.bad
   if left < 0 { give 0 }
   give left
+}
+
+proc budget_used_percent(window: SloWindow) -> int {
+  let allowed = allowed_bad(window)
+  if allowed <= 0 {
+    if window.bad > 0 { give 100 }
+    give 0
+  }
+  give window.bad * 100 / allowed
 }
 
 proc success_count(window: SloWindow) -> int {
@@ -75,6 +112,13 @@ proc health(window: SloWindow) -> string {
   give "healthy"
 }
 
+proc within_target(window: SloWindow, min_success_rate: int) -> bool {
+  let target_rate = min_success_rate
+  if target_rate < 0 { target_rate = 0 }
+  if target_rate > 100 { target_rate = 100 }
+  give success_rate(window) >= target_rate
+}
+
 proc reset(window: SloWindow) -> SloWindow {
   give SloWindow(window.target_percent, 0, 0)
 }
@@ -89,6 +133,18 @@ proc record_many(window: SloWindow, ok_count: int, bad_count: int) -> SloWindow 
 
 proc merge(left: SloWindow, right: SloWindow) -> SloWindow {
   give SloWindow(left.target_percent, left.total + right.total, left.bad + right.bad)
+}
+
+proc projected_burn(window: SloWindow, extra_total: int, extra_bad: int) -> int {
+  let total_add = extra_total
+  if total_add < 0 { total_add = 0 }
+
+  let bad_add = extra_bad
+  if bad_add < 0 { bad_add = 0 }
+  if total_add < bad_add { total_add = bad_add }
+
+  let projected = SloWindow(window.target_percent, window.total + total_add, window.bad + bad_add)
+  give burn_rate(projected)
 }
 
 proc stats(window: SloWindow) -> string {

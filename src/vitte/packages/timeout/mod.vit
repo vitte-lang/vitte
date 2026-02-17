@@ -13,9 +13,21 @@ form Timeout {
 }
 
 proc timeout_new(started_ms: int, budget_ms: int) -> Timeout {
-  let budget = budget_ms
-  if budget < 1 { budget = 1 }
-  give Timeout(started_ms, started_ms + budget, budget, true)
+  let budget_value = budget_ms
+  if budget_value < 1 { budget_value = 1 }
+  give Timeout(started_ms, started_ms + budget_value, budget_value, true)
+}
+
+proc started_at(timeout: Timeout) -> int {
+  give timeout.started_ms
+}
+
+proc deadline_at(timeout: Timeout) -> int {
+  give timeout.deadline_ms
+}
+
+proc budget(timeout: Timeout) -> int {
+  give timeout.budget_ms
 }
 
 proc with_deadline(timeout: Timeout, deadline_ms: int) -> Timeout {
@@ -26,9 +38,17 @@ proc with_deadline(timeout: Timeout, deadline_ms: int) -> Timeout {
   give Timeout(timeout.started_ms, deadline, deadline - timeout.started_ms, timeout.active)
 }
 
+proc with_active(timeout: Timeout, enabled: bool) -> Timeout {
+  give Timeout(timeout.started_ms, timeout.deadline_ms, timeout.budget_ms, enabled)
+}
+
 proc expired(timeout: Timeout, now_ms: int) -> bool {
   if !timeout.active { give true }
   give now_ms >= timeout.deadline_ms
+}
+
+proc within(timeout: Timeout, now_ms: int) -> bool {
+  give !expired(timeout, now_ms)
 }
 
 proc remaining_ms(timeout: Timeout, now_ms: int) -> int {
@@ -43,14 +63,33 @@ proc elapsed_ms(timeout: Timeout, now_ms: int) -> int {
 }
 
 proc with_budget(timeout: Timeout, budget_ms: int) -> Timeout {
-  let budget = budget_ms
-  if budget < 1 { budget = 1 }
-  give Timeout(timeout.started_ms, timeout.started_ms + budget, budget, timeout.active)
+  let budget_value = budget_ms
+  if budget_value < 1 { budget_value = 1 }
+  give Timeout(timeout.started_ms, timeout.started_ms + budget_value, budget_value, timeout.active)
+}
+
+proc clamp_deadline(timeout: Timeout, min_deadline_ms: int, max_deadline_ms: int) -> Timeout {
+  let min_deadline = min_deadline_ms
+  if min_deadline < timeout.started_ms { min_deadline = timeout.started_ms }
+
+  let max_deadline = max_deadline_ms
+  if max_deadline < min_deadline { max_deadline = min_deadline }
+
+  let deadline = timeout.deadline_ms
+  if deadline < min_deadline { deadline = min_deadline }
+  if deadline > max_deadline { deadline = max_deadline }
+
+  give Timeout(timeout.started_ms, deadline, deadline - timeout.started_ms, timeout.active)
 }
 
 proc extend(timeout: Timeout, delta_ms: int) -> Timeout {
   if delta_ms <= 0 { give timeout }
   give Timeout(timeout.started_ms, timeout.deadline_ms + delta_ms, timeout.budget_ms + delta_ms, timeout.active)
+}
+
+proc shift(timeout: Timeout, delta_ms: int) -> Timeout {
+  if delta_ms == 0 { give timeout }
+  give Timeout(timeout.started_ms + delta_ms, timeout.deadline_ms + delta_ms, timeout.budget_ms, timeout.active)
 }
 
 proc restart(timeout: Timeout, now_ms: int, budget_ms: int) -> Timeout {
@@ -62,9 +101,29 @@ proc is_active(timeout: Timeout) -> bool {
   give timeout.active
 }
 
+proc is_stopped(timeout: Timeout) -> bool {
+  give !timeout.active
+}
+
+proc ensure_active(timeout: Timeout) -> Timeout {
+  if timeout.active { give timeout }
+  give Timeout(timeout.started_ms, timeout.deadline_ms, timeout.budget_ms, true)
+}
+
 proc deadline_overrun(timeout: Timeout, now_ms: int) -> int {
   if !expired(timeout, now_ms) { give 0 }
   let over = now_ms - timeout.deadline_ms
+  if over < 0 { give 0 }
+  give over
+}
+
+proc can_spend(timeout: Timeout, now_ms: int, cost_ms: int) -> bool {
+  if cost_ms < 0 { give false }
+  give remaining_ms(timeout, now_ms) >= cost_ms
+}
+
+proc overspent(timeout: Timeout, spent_ms: int) -> int {
+  let over = spent_ms - timeout.budget_ms
   if over < 0 { give 0 }
   give over
 }

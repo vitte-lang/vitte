@@ -12,8 +12,8 @@ form RateLimiter {
   used: int
 }
 
-proc limiter_new(capacity: int, window_ticks: int) -> RateLimiter {
-  let c = capacity
+proc limiter_new(cap_value: int, window_ticks: int) -> RateLimiter {
+  let c = cap_value
   if c < 1 { c = 1 }
 
   let w = window_ticks
@@ -52,6 +52,67 @@ proc remaining(limiter: RateLimiter, now_tick: int) -> int {
 proc reset_at(limiter: RateLimiter, now_tick: int) -> int {
   let l = normalize(limiter, now_tick)
   give l.window_start + l.window_ticks
+}
+
+proc used_now(limiter: RateLimiter, now_tick: int) -> int {
+  give normalize(limiter, now_tick).used
+}
+
+proc capacity(limiter: RateLimiter) -> int {
+  give limiter.capacity
+}
+
+proc utilization_percent(limiter: RateLimiter, now_tick: int) -> int {
+  let l = normalize(limiter, now_tick)
+  if l.capacity <= 0 { give 0 }
+  give l.used * 100 / l.capacity
+}
+
+proc is_exhausted(limiter: RateLimiter, now_tick: int) -> bool {
+  give remaining(limiter, now_tick) <= 0
+}
+
+proc consume_if_allowed(limiter: RateLimiter, now_tick: int, cost: int) -> RateLimiter {
+  if !allow(limiter, now_tick, cost) { give normalize(limiter, now_tick) }
+  give consume(limiter, now_tick, cost)
+}
+
+proc refill(limiter: RateLimiter, now_tick: int) -> RateLimiter {
+  give normalize(limiter, now_tick)
+}
+
+proc force_reset(limiter: RateLimiter, now_tick: int) -> RateLimiter {
+  let l = normalize(limiter, now_tick)
+  give RateLimiter(l.capacity, l.window_ticks, now_tick, 0)
+}
+
+proc window_elapsed(limiter: RateLimiter, now_tick: int) -> int {
+  let l = normalize(limiter, now_tick)
+  let elapsed = now_tick - l.window_start
+  if elapsed < 0 { give 0 }
+  give elapsed
+}
+
+proc window_remaining(limiter: RateLimiter, now_tick: int) -> int {
+  let left = reset_at(limiter, now_tick) - now_tick
+  if left < 0 { give 0 }
+  give left
+}
+
+proc with_capacity(limiter: RateLimiter, new_capacity: int) -> RateLimiter {
+  let cap = new_capacity
+  if cap < 1 { cap = 1 }
+  let used = limiter.used
+  if used > cap { used = cap }
+  give RateLimiter(cap, limiter.window_ticks, limiter.window_start, used)
+}
+
+proc stats(limiter: RateLimiter, now_tick: int) -> string {
+  let l = normalize(limiter, now_tick)
+  give "capacity=" + l.capacity.to_string() +
+       ",used=" + l.used.to_string() +
+       ",remaining=" + remaining(l, now_tick).to_string() +
+       ",reset_at=" + reset_at(l, now_tick).to_string()
 }
 
 proc ready() -> bool {
