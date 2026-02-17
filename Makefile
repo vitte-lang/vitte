@@ -180,9 +180,39 @@ arduino-projects:
 negative-tests:
 	@tools/negative_tests.sh
 
+.PHONY: diag-snapshots
+diag-snapshots:
+	@tools/diag_snapshots.sh
+
+.PHONY: wrapper-stage-test
+wrapper-stage-test:
+	@tools/wrapper_stage_test.sh
+
+.PHONY: grammar-sync
+grammar-sync:
+	@python3 docs/book/scripts/sync_grammar_surface.py
+
+.PHONY: grammar-check
+grammar-check:
+	@python3 docs/book/scripts/sync_grammar_surface.py --check
+
+.PHONY: book-qa
+book-qa:
+	@python3 docs/book/scripts/qa_book.py
+
+.PHONY: book-qa-strict
+book-qa-strict:
+	@python3 docs/book/scripts/qa_book.py --strict
+
 .PHONY: update-diagnostics-ftl
 update-diagnostics-ftl:
 	@tools/update_diagnostics_ftl.py
+
+.PHONY: ci-strict
+ci-strict: grammar-check book-qa-strict negative-tests diag-snapshots
+
+.PHONY: ci-fast
+ci-fast: grammar-check negative-tests diag-snapshots wrapper-stage-test
 
 .PHONY: repro
 repro:
@@ -233,6 +263,39 @@ extern-abi-all:
 std-core-tests:
 	@tools/test_std_core.sh
 
+.PHONY: stdlib-api-lint
+stdlib-api-lint:
+	@tools/lint_stdlib_api.py
+
+.PHONY: stdlib-profile-snapshots
+stdlib-profile-snapshots:
+	@tools/stdlib_profile_snapshots.sh
+
+.PHONY: stdlib-abi-compat
+stdlib-abi-compat:
+	@tools/check_stdlib_abi_compat.py
+
+.PHONY: modules-tests
+modules-tests:
+	@tools/modules_tests.sh
+
+.PHONY: modules-snapshots
+modules-snapshots:
+	@tools/modules_snapshots.sh
+
+.PHONY: same-output-hash
+same-output-hash:
+	@tools/same_output_hash_test.sh
+
+.PHONY: ci-std-fast
+ci-std-fast: std-check extern-abi-host stdlib-api-lint stdlib-profile-snapshots diag-snapshots wrapper-stage-test
+
+.PHONY: ci-mod-fast
+ci-mod-fast: grammar-check diag-snapshots stdlib-profile-snapshots stdlib-abi-compat modules-tests modules-snapshots same-output-hash
+
+.PHONY: ci-bridge-compat
+ci-bridge-compat: ci-mod-fast
+
 .PHONY: platon-editor
 platon-editor:
 	@./bin/vitte build platon-editor/editor_core.vit -o platon-editor/editor_core
@@ -274,6 +337,15 @@ help:
 	@echo "  make extern-abi-kernel-uefi validate #[extern] ABI (kernel uefi)"
 	@echo "  make extern-abi-all validate #[extern] ABI (all std vs host)"
 	@echo "  make std-core-tests run std/core regression tests"
+	@echo "  make stdlib-api-lint check stable stdlib ABI surface entries"
+	@echo "  make stdlib-profile-snapshots check stdlib profile allow/deny matrix"
+	@echo "  make stdlib-abi-compat block ABI removals from v1 to v2"
+	@echo "  make ci-std-fast std-focused CI (stdlib + snapshots + wrappers)"
+	@echo "  make ci-bridge-compat alias of ci-mod-fast for native liaison compatibility"
+	@echo "  make modules-tests run module graph/doctor fixtures"
+	@echo "  make modules-snapshots assert mod graph/doctor outputs"
+	@echo "  make same-output-hash verify deterministic emit hash stability"
+	@echo "  make ci-mod-fast module-focused CI (grammar + snapshots + module tests)"
 	@echo "  make platon-editor build and self-test platon editor core"
 	@echo "  make std-check  verify std layout"
 	@echo "  make clean      remove build artifacts"
