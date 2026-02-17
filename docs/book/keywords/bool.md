@@ -1,50 +1,90 @@
-# Mot-cle `bool`
+# Mot-clé `bool`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`bool` est le type logique binaire en Vitte.
+Niveau: Débutant.
 
-Forme de base en Vitte. Valeurs associees: `true` et `false`.
+## Définition
 
-Exemple 1, construit pas a pas.
+`bool` est un mot-clé du langage Vitte. Cette fiche donne un usage opérationnel avec un contrat lisible et testable.
+
+## Syntaxe
+
+Forme canonique: `bool ...`.
+
+## Quand l’utiliser / Quand l’éviter
+
+- Quand l’utiliser: quand `bool` rend l’intention plus explicite et vérifiable.
+- Quand l’éviter: quand son usage masque le contrat ou duplique une logique déjà portée ailleurs.
+
+## Exemple nominal
+
+Entrée:
+- Cas nominal contrôlé et déterministe.
 
 ```vit
-proc is_pos(x: int) -> bool {
-  give x > 0
+proc sample() -> bool {
+  give true
 }
 ```
 
-Pourquoi cette etape est solide. Le type retour explicite rend le contrat de predicate immediate.
+Sortie observable:
+- Le flux suit la branche attendue et produit une sortie stable.
 
-Ce qui se passe a l'execution. Verifier l'exemple 1 avec un cas nominal puis un cas limite, et confirmer la branche activee ainsi que la valeur produite.
+## Exemple invalide
 
-Exemple 2, construit pas a pas.
-
-```vit
-proc gate(ready: bool, valid: bool) -> bool {
-  give ready and valid
-}
-```
-
-Pourquoi cette etape est solide. Les predicats composes restent lisibles quand ils sont courts.
-
-Ce qui se passe a l'execution. Verifier l'exemple 2 avec trois entrees contrastees pour observer clairement le flux de controle et la sortie finale.
-
-Point de vigilance. Coder des drapeaux logiques en `int` masque l'intention et fragilise les conditions.
-
-Pour prolonger la logique. Voir `docs/book/keywords/true.md` et `docs/book/keywords/false.md`.
-
-Exemple 3, construit pas a pas.
+Entrée:
+- Cas volontairement hors contrat.
 
 ```vit
-proc is_zero(x: int) -> bool {
-  give x == 0
+proc bad_bool() -> int {
+  bool
+  give 0
 }
+# invalide: usage hors grammaire attendue pour `bool`.
 ```
 
-Pourquoi cette etape est solide. Cet exemple 3 montre une forme de production du mot-cle bool dans un flux Vitte plus proche d'un module reel, avec un contrat lisible et une frontiere explicite.
+Sortie observable:
+- Le compilateur (ou la validation) doit rejeter ce cas avec un diagnostic explicite.
 
-Ce qui se passe a l'execution. Executer ce bloc avec un cas nominal et un cas limite permet de verifier la branche dominante, la valeur de sortie et l'absence de comportement implicite hors contrat.
+## Erreurs compilateur fréquentes
 
-Erreur frequente et correction Vitte. Erreur frequente. Employer bool sans contrat local clair, puis compenser en aval avec des gardes ad hoc.
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near bool` | Forme syntaxique incomplète ou mal placée. | Revenir à la forme canonique et vérifier les délimiteurs. |
+| `type mismatch` | Contrat d’entrée/sortie incohérent autour de `bool`. | Aligner les types attendus avant exécution. |
+| `unreachable or incomplete branch` | Couverture de cas incomplète ou branche morte. | Ajouter la branche manquante (`otherwise`) ou simplifier le flux. |
 
-Correction recommandee en Vitte. Fixer la responsabilite de bool au point d'usage, ajouter une verification explicite de frontiere, puis couvrir le cas nominal et le cas limite par test.
+## Mot-clé voisin
+
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `if` | `bool` et `if` se complètent, mais n’ont pas la même responsabilité de contrôle/retour. |
+
+## Pièges
+
+- Utiliser `bool` par habitude au lieu de justifier son rôle dans le flux.
+- Mélanger la logique métier et la logique de contrôle sans frontière explicite.
+- Oublier de tester un cas invalide dédié.
+
+## Utilisé dans les chapitres
+
+- `docs/book/chapters/00-avant-propos.md`.
+- `docs/book/chapters/00-preface.md`.
+- `docs/book/chapters/01-demarrer.md`.
+- `docs/book/chapters/02-philosophie.md`.
+- `docs/book/chapters/03-projet.md`.
+- `docs/book/chapters/06-procedures.md`.
+- `docs/book/chapters/08-structures.md`.
+- `docs/book/chapters/09-modules.md`.
+- `docs/book/chapters/23-projet-sys.md`.
+- `docs/book/chapters/24-projet-kv.md`.
+- `docs/book/chapters/26-projet-editor.md`.
+- `docs/book/chapters/28-conventions.md`.
+- `docs/book/chapters/29-style.md`.
+
+
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/if.md`.
+- `docs/book/glossaire.md`.
+- `docs/book/chapters/06-procedures.md`.

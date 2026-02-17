@@ -1,51 +1,87 @@
-# Mot-cle `at`
+# Mot-clé `at`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`at` associe `entry` au chemin de module cible.
+Niveau: Intermédiaire.
 
-Forme de base en Vitte. `entry nom at chemin/module { ... }`.
+## Définition
 
-Exemple 1, construit pas a pas.
+`at` est un mot-clé du langage Vitte. Cette fiche donne un usage opérationnel avec un contrat lisible et testable.
+
+## Syntaxe
+
+Forme canonique: `at ...`.
+
+## Quand l’utiliser / Quand l’éviter
+
+- Quand l’utiliser: quand `at` rend l’intention plus explicite et vérifiable.
+- Quand l’éviter: quand son usage masque le contrat ou duplique une logique déjà portée ailleurs.
+
+## Exemple nominal
+
+Entrée:
+- Cas nominal contrôlé et déterministe.
 
 ```vit
-entry main at core/app {
+entry main at app/core {
   return 0
 }
 ```
 
-Pourquoi cette etape est solide. Le chemin module est explicite au point d'entree.
+Sortie observable:
+- Le flux suit la branche attendue et produit une sortie stable.
 
-Ce qui se passe a l'execution. Verifier l'exemple 1 avec un cas nominal puis un cas limite, et confirmer la branche activee ainsi que la valeur produite.
+## Exemple invalide
 
-Exemple 2, construit pas a pas.
-
-```vit
-entry tool at app/cli {
-  let code: int = 0
-  return code
-}
-```
-
-Pourquoi cette etape est solide. Chaque entree peut cibler un chemin different selon l'organisation du projet.
-
-Ce qui se passe a l'execution. Verifier l'exemple 2 avec trois entrees contrastees pour observer clairement le flux de controle et la sortie finale.
-
-Point de vigilance. Oublier de mettre a jour `at` apres refactor de structure de modules casse la resolution.
-
-Pour prolonger la logique. Voir `docs/book/chapters/01-demarrer.md`.
-
-Exemple 3, construit pas a pas.
+Entrée:
+- Cas volontairement hors contrat.
 
 ```vit
-entry worker at app/worker {
+entry main at {
   return 0
 }
+# invalide: chemin `at` manquant.
 ```
 
-Pourquoi cette etape est solide. Cet exemple 3 montre une forme de production du mot-cle at dans un flux Vitte plus proche d'un module reel, avec un contrat lisible et une frontiere explicite.
+Sortie observable:
+- Le compilateur (ou la validation) doit rejeter ce cas avec un diagnostic explicite.
 
-Ce qui se passe a l'execution. Executer ce bloc avec un cas nominal et un cas limite permet de verifier la branche dominante, la valeur de sortie et l'absence de comportement implicite hors contrat.
+## Erreurs compilateur fréquentes
 
-Erreur frequente et correction Vitte. Erreur frequente. Employer at sans contrat local clair, puis compenser en aval avec des gardes ad hoc.
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near at` | Forme syntaxique incomplète ou mal placée. | Revenir à la forme canonique et vérifier les délimiteurs. |
+| `type mismatch` | Contrat d’entrée/sortie incohérent autour de `at`. | Aligner les types attendus avant exécution. |
+| `unreachable or incomplete branch` | Couverture de cas incomplète ou branche morte. | Ajouter la branche manquante (`otherwise`) ou simplifier le flux. |
 
-Correction recommandee en Vitte. Fixer la responsabilite de at au point d'usage, ajouter une verification explicite de frontiere, puis couvrir le cas nominal et le cas limite par test.
+## Mot-clé voisin
+
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `if` | `at` et `if` se complètent, mais n’ont pas la même responsabilité de contrôle/retour. |
+
+## Pièges
+
+- Utiliser `at` par habitude au lieu de justifier son rôle dans le flux.
+- Mélanger la logique métier et la logique de contrôle sans frontière explicite.
+- Oublier de tester un cas invalide dédié.
+
+## Utilisé dans les chapitres
+
+- `docs/book/chapters/00-avant-propos.md`.
+- `docs/book/chapters/00-preface.md`.
+- `docs/book/chapters/01-demarrer.md`.
+- `docs/book/chapters/02-philosophie.md`.
+- `docs/book/chapters/03-projet.md`.
+- `docs/book/chapters/21-projet-cli.md`.
+- `docs/book/chapters/23-projet-sys.md`.
+- `docs/book/chapters/24-projet-kv.md`.
+- `docs/book/chapters/25-projet-arduino.md`.
+- `docs/book/chapters/27-grammaire.md`.
+- `docs/book/chapters/29-style.md`.
+
+
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/if.md`.
+- `docs/book/glossaire.md`.
+- `docs/book/chapters/06-procedures.md`.

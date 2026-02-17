@@ -1,58 +1,79 @@
-# Mot-cle `select`
+# Mot-clé `select`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`select` structure une decision multi-branches lisible avec `when` et fallback.
+Niveau: Intermédiaire.
 
-Forme de base en Vitte. `select value when ... otherwise ...`.
+## Définition
 
-Exemple 1, construit pas a pas.
+`select` applique une suite de clauses `when` sur une expression, avec `otherwise` optionnel.
+
+## Syntaxe
+
+Forme canonique: `select expr {when_stmt} [otherwise block]`.
+
+## Quand l’utiliser / Quand l’éviter
+
+- Quand l’utiliser: pour exprimer des choix multi-branches lisibles.
+- Quand l’éviter: pour des cas binaires simples (`if/else`).
+
+## Exemple nominal
+
+Entrée:
+- Sélection sur variantes de pattern.
 
 ```vit
-proc status(code: int) -> int {
-  select code
-    when 1 { return 10 }
-    when 2 { return 20 }
-  otherwise { return -1 }
+pick Status { case Ok, case NotFound, case Fail }
+proc to_code(status: Status) -> int {
+  select status
+  when Ok { give 200 }
+  when NotFound { give 404 }
+  otherwise { give 500 }
 }
 ```
 
-Pourquoi cette etape est solide. Le flux est lineaire et chaque branche est nommee par une valeur de comparaison.
+Sortie observable:
+- La branche choisie dépend de la valeur `status`.
 
-Ce qui se passe a l'execution. `status(1)=10`, `status(9)=-1`.
+## Exemple invalide
 
-Exemple 2, construit pas a pas.
-
-```vit
-proc route(mode: int) -> int {
-  select mode
-    when 0 { return 200 }
-    when 9 { return 403 }
-  otherwise { return 404 }
-}
-```
-
-Pourquoi cette etape est solide. Le fallback capture tous les modes non pris en charge sans brancher sur une cascade `if`.
-
-Ce qui se passe a l'execution. `route(0)=200`, `route(9)=403`, `route(7)=404`.
-
-Exemple 3, construit pas a pas.
+Entrée:
+- Expression de sélection absente.
 
 ```vit
-proc qos(level: int) -> int {
-  select level
-    when 1 { return 100 }
-    when 2 { return 200 }
-    when 3 { return 300 }
-  otherwise { return 0 }
-}
+select
+when Ok { give 200 }
+# invalide: `select` exige une expression.
 ```
 
-Pourquoi cette etape est solide. `select` devient un mapping compact pour tables de routage petites et stables.
+Sortie observable:
+- Le parseur rejette l’instruction.
 
-Ce qui se passe a l'execution. `qos(2)=200`, `qos(4)=0`.
+## Erreurs compilateur fréquentes
 
-Erreur frequente et correction Vitte. Utiliser `select` sur des etats qui devraient etre modelises en `pick`.
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near select` | Expression absente. | Écrire `select expr`. |
+| `invalid when clause` | Clause `when` mal formée. | Respecter `when pattern block`. |
+| `incomplete selection` | Couverture métier incomplète. | Ajouter `otherwise` si nécessaire. |
 
-Correction recommandee en Vitte. Pour etats metier fermes, preferer `pick + match`; garder `select` pour routage valeur/commande.
+## Mot-clé voisin
 
-Pour prolonger la logique. Voir `docs/book/logique/matching.md`, `docs/book/keywords/when.md`, `docs/book/keywords/match.md`.
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `match` | `select` chaîne des `when`; `match` impose des `case` dans des accolades. |
+
+## Pièges
+
+- Utiliser des littéraux là où un `pattern` est attendu.
+- Oublier `otherwise` pour un flux fermé.
+- Mélanger `select` et `match` dans le même niveau sans raison.
+
+## Utilisé dans les chapitres
+
+- `docs/book/chapters/26-projet-editor.md`.
+
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/when.md`.
+- `docs/book/keywords/match.md`.
+- `docs/book/chapters/27-grammaire.md`.

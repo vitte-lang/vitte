@@ -1,58 +1,75 @@
-# Mot-cle `share`
+# Mot-clé `share`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`share` controle l'API exportee par le module courant.
+Niveau: Avancé.
 
-Forme de base en Vitte. `share all` ou `share nom1, nom2`.
+## Définition
 
-Exemple 1, construit pas a pas.
+`share` exporte explicitement des symboles top-level (`all` ou liste d’identifiants).
+
+## Syntaxe
+
+Forme canonique: `share all` ou `share id1, id2`.
+
+## Quand l’utiliser / Quand l’éviter
+
+- Quand l’utiliser: pour contrôler l’API publique d’un module.
+- Quand l’éviter: pour exporter implicitement des éléments non stabilisés.
+
+## Exemple nominal
+
+Entrée:
+- Export explicite de symboles.
 
 ```vit
-space app/math
-share add
-
+space core/math
 proc add(a: int, b: int) -> int { give a + b }
-proc hidden(a: int) -> int { give a }
+proc sub(a: int, b: int) -> int { give a - b }
+share add, sub
 ```
 
-Pourquoi cette etape est solide. Export selectif: seule `add` est publique.
+Sortie observable:
+- Seuls `add` et `sub` sont exportés.
 
-Ce qui se passe a l'execution. Un client peut appeler `app/math.add`, pas `hidden`.
+## Exemple invalide
 
-Exemple 2, construit pas a pas.
+Entrée:
+- Forme d’export hors grammaire.
 
 ```vit
-space app/api
-share all
-
-proc ping() -> int { give 1 }
-proc pong() -> int { give 2 }
+share proc add(a: int, b: int) -> int { give a + b }
+# invalide: `share` n’exporte pas une déclaration inline.
 ```
 
-Pourquoi cette etape est solide. Export complet utile pour facade stable.
+Sortie observable:
+- Le parseur rejette la forme.
 
-Ce qui se passe a l'execution. Les deux symboles sont resolvables depuis un module client.
+## Erreurs compilateur fréquentes
 
-Exemple 3, construit pas a pas.
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near share` | Forme autre que `all` ou `ident_list`. | Utiliser `share all` ou `share a, b`. |
+| `unknown symbol in share list` | Symbole non déclaré dans le module. | Déclarer le symbole avant `share`. |
+| `duplicate export` | Symbole répété. | Nettoyer la liste d’exports. |
 
-```vit
-space app/http
-share handle, validate
+## Mot-clé voisin
 
-proc validate(code: int) -> bool { give code >= 100 and code <= 599 }
-proc handle(code: int) -> int {
-  if not validate(code) { give 400 }
-  give code
-}
-proc internal_cache_key(code: int) -> int { give code * 31 }
-```
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `pull` | `share` définit ce que l’on exporte; `pull` définit ce que l’on importe. |
 
-Pourquoi cette etape est solide. On exporte l'API metier minimale et on garde les utilitaires internes hors surface publique.
+## Pièges
 
-Ce qui se passe a l'execution. Client externe voit `handle/validate`; `internal_cache_key` reste prive.
+- Exporter trop large avec `all` sans besoin.
+- Exporter un symbole interne instable.
+- Oublier d’aligner `share` avec la documentation module.
 
-Erreur frequente et correction Vitte. `share all` par defaut sur modules internes instables.
+## Utilisé dans les chapitres
 
-Correction recommandee en Vitte. Passer en export selectif et traiter `share all` comme exception documentee.
+- `docs/book/chapters/09-modules.md`.
 
-Pour prolonger la logique. Voir `docs/book/keywords/all.md`, `docs/book/chapters/09-modules.md`.
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/pull.md`.
+- `docs/book/keywords/space.md`.
+- `docs/book/chapters/09-modules.md`.

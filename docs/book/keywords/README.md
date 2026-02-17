@@ -1,9 +1,23 @@
-# Mots-cles Vitte
+# Mots-clés Vitte
 
-Ce repertoire est la reference lexicale du langage Vitte. Chaque page est construite pour un usage technique concret, pas pour une definition vague. Le mot-cle est d'abord positionne dans la grammaire, puis illustre par deux exemples utilitaires, ensuite analyse en logique technique, puis complete par un point de vigilance de maintenance.
+Ce répertoire est la référence lexicale du langage Vitte. Chaque fiche mot-clé suit une trame canonique stable et orientée exécution.
 
-Le principe de lecture est simple. Si vous travaillez un module et que vous hésitez sur une forme, vous ouvrez la page du mot-cle concerne et vous mappez directement votre code sur les deux exemples proposes. Si la forme du projet diverge, le point de vigilance indique ce qui risque de casser en revue, test ou integration.
+Trame de chaque fiche:
+- `Définition`.
+- `Syntaxe`.
+- `Quand l’utiliser / Quand l’éviter`.
+- `Exemple nominal` (entrée + sortie observable).
+- `Exemple invalide` (entrée + sortie observable).
+- `Erreurs compilateur fréquentes`.
+- `Mot-clé voisin`.
+- `Pièges`.
+- `Utilisé dans les chapitres`.
+- `Voir aussi`.
 
-La section est volontairement transversale. Les mots-cles de structure (`entry`, `proc`, `form`, `pick`) sont relies aux mots-cles de flux (`if`, `loop`, `match`, `select`) et aux mots-cles de frontiere (`as`, `unsafe`, `asm`, `share`). Cette navigation croisee permet de passer rapidement d'un probleme syntaxique a une decision d'architecture.
-
-Pour une lecture orientee execution, utiliser en parallele `docs/book/logique/`. Pour une lecture orientee progression complete, revenir a `docs/book/chapters/`.
+Navigation utile:
+- Vue synthétique: `docs/book/keywords/couverture.md`.
+- Ordre recommandé: `docs/book/keywords/parcours.md`.
+- Packs thématiques: `docs/book/keywords/packs-apprentissage.md`.
+- Priorités de couverture: `docs/book/keywords/non-utilises.md`.
+- Diagnostics partagés: `docs/book/keywords/erreurs-compilateur.md`.
+- Progression complète: `docs/book/chapters/`.

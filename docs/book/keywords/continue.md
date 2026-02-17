@@ -1,68 +1,102 @@
-# Mot-cle `continue`
+# Mot-clé `continue`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`continue` saute le reste du bloc courant et passe a l'iteration suivante.
+Niveau: Débutant.
 
-Forme de base en Vitte. Utilisable dans boucles de parcours et de calcul.
+## Définition
 
-Exemple 1, construit pas a pas.
+`continue` est un mot-clé du langage Vitte. Cette fiche donne un usage opérationnel avec un contrat lisible et testable.
+
+## Syntaxe
+
+Forme canonique: `continue`.
+
+## Quand l’utiliser / Quand l’éviter
+
+- Quand l’utiliser: quand `continue` rend l’intention plus explicite et vérifiable.
+- Quand l’éviter: quand son usage masque le contrat ou duplique une logique déjà portée ailleurs.
+
+## Exemple nominal
+
+Entrée:
+- Cas nominal contrôlé et déterministe.
 
 ```vit
-proc sum_pos(values: int[]) -> int {
-  let s: int = 0
-  for x in values {
-    if x <= 0 { continue }
-    set s = s + x
-  }
-  give s
+for x in xs {
+  if x < 0 { continue }
+  emit x
 }
 ```
 
-Pourquoi cette etape est solide. Le filtre est localise dans la boucle et evite une imbrication supplementaire.
+Sortie observable:
+- Le flux suit la branche attendue et produit une sortie stable.
 
-Ce qui se passe a l'execution. Verifier l'exemple 1 avec un cas nominal puis un cas limite, et confirmer la branche activee ainsi que la valeur produite.
+## Exemple invalide
 
-Exemple 2, construit pas a pas.
-
-```vit
-proc checksum_skip(seed: int, n: int) -> int {
-  let i: int = 0
-  let acc: int = seed
-  loop {
-    if i >= n { break }
-    if (i % 2) != 0 { set i = i + 1; continue }
-    set acc = (acc * 31 + i) % 104729
-    set i = i + 1
-  }
-  give acc
-}
-```
-
-Pourquoi cette etape est solide. `continue` permet un saut propre des cas non pertinents en conservant la progression.
-
-Ce qui se passe a l'execution. Verifier l'exemple 2 avec trois entrees contrastees pour observer clairement le flux de controle et la sortie finale.
-
-Point de vigilance. Utiliser `continue` sans progression d'index peut figer la boucle.
-
-Pour prolonger la logique. Voir `docs/book/logique/boucles.md`.
-
-Exemple 3, construit pas a pas.
+Entrée:
+- Cas volontairement hors contrat.
 
 ```vit
-proc sum_pos(values: int[]) -> int {
-  let s: int = 0
-  for x in values {
-    if x <= 0 { continue }
-    set s = s + x
-  }
-  give s
+proc bad_continue() -> int {
+  continue
+  give 0
 }
+# invalide: usage hors grammaire attendue pour `continue`.
 ```
 
-Pourquoi cette etape est solide. Cet exemple 3 montre une forme de production du mot-cle continue dans un flux Vitte plus proche d'un module reel, avec un contrat lisible et une frontiere explicite.
+Sortie observable:
+- Le compilateur (ou la validation) doit rejeter ce cas avec un diagnostic explicite.
 
-Ce qui se passe a l'execution. Executer ce bloc avec un cas nominal et un cas limite permet de verifier la branche dominante, la valeur de sortie et l'absence de comportement implicite hors contrat.
+## Erreurs compilateur fréquentes
 
-Erreur frequente et correction Vitte. Erreur frequente. Employer continue sans contrat local clair, puis compenser en aval avec des gardes ad hoc.
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near continue` | Forme syntaxique incomplète ou mal placée. | Revenir à la forme canonique et vérifier les délimiteurs. |
+| `type mismatch` | Contrat d’entrée/sortie incohérent autour de `continue`. | Aligner les types attendus avant exécution. |
+| `unreachable or incomplete branch` | Couverture de cas incomplète ou branche morte. | Ajouter la branche manquante (`otherwise`) ou simplifier le flux. |
 
-Correction recommandee en Vitte. Fixer la responsabilite de continue au point d'usage, ajouter une verification explicite de frontiere, puis couvrir le cas nominal et le cas limite par test.
+## Mot-clé voisin
+
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `if` | `continue` et `if` se complètent, mais n’ont pas la même responsabilité de contrôle/retour. |
+
+## Pièges
+
+- Utiliser `continue` par habitude au lieu de justifier son rôle dans le flux.
+- Mélanger la logique métier et la logique de contrôle sans frontière explicite.
+- Oublier de tester un cas invalide dédié.
+
+## Utilisé dans les chapitres
+
+- `docs/book/chapters/00-avant-propos.md`.
+- `docs/book/chapters/00-preface.md`.
+- `docs/book/chapters/01-demarrer.md`.
+- `docs/book/chapters/02-philosophie.md`.
+- `docs/book/chapters/04-syntaxe.md`.
+- `docs/book/chapters/06-procedures.md`.
+- `docs/book/chapters/07-controle.md`.
+- `docs/book/chapters/08-structures.md`.
+- `docs/book/chapters/10-diagnostics.md`.
+- `docs/book/chapters/11-collections.md`.
+- `docs/book/chapters/12-pointeurs.md`.
+- `docs/book/chapters/14-macros.md`.
+- `docs/book/chapters/16-interop.md`.
+- `docs/book/chapters/17-stdlib.md`.
+- `docs/book/chapters/18-tests.md`.
+- `docs/book/chapters/19-performance.md`.
+- `docs/book/chapters/20-repro.md`.
+- `docs/book/chapters/21-projet-cli.md`.
+- `docs/book/chapters/23-projet-sys.md`.
+- `docs/book/chapters/24-projet-kv.md`.
+- `docs/book/chapters/25-projet-arduino.md`.
+- `docs/book/chapters/28-conventions.md`.
+- `docs/book/chapters/29-style.md`.
+- `docs/book/chapters/30-faq.md`.
+
+
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/if.md`.
+- `docs/book/glossaire.md`.
+- `docs/book/chapters/06-procedures.md`.

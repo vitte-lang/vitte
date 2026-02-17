@@ -1,55 +1,78 @@
-# Mot-cle `pull`
+# Mot-clé `pull`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`pull` rattache un module externe en reference directe.
+Niveau: Avancé.
 
-Forme de base en Vitte. `pull chemin [as alias]`.
+## Définition
 
-Exemple 1, construit pas a pas.
+`pull` importe un module en top-level, avec alias optionnel.
+
+## Syntaxe
+
+Forme canonique: `pull module/path [as alias]`.
+
+## Quand l’utiliser / Quand l’éviter
+
+- Quand l’utiliser: pour importer un module projet clairement nommé.
+- Quand l’éviter: dans un bloc d’instructions ou avec un alias ambigu.
+
+## Exemple nominal
+
+Entrée:
+- Import top-level avec alias.
 
 ```vit
-pull app/core
-
-proc plus(x: int, y: int) -> int {
-  give app/core.add(x, y)
+space api/v1
+pull core/math as math
+proc sum(a: int, b: int) -> int {
+  give math.add(a, b)
 }
 ```
 
-Pourquoi cette etape est solide. Reutilisation directe d'un module sans copier la logique.
+Sortie observable:
+- Le module `core/math` est résolu sous l’alias `math`.
 
-Ce qui se passe a l'execution. Si `app/core.add(10,32)=42`, alors `plus(10,32)=42`.
+## Exemple invalide
 
-Exemple 2, construit pas a pas.
-
-```vit
-pull app/core as core
-
-proc plus2(x: int, y: int) -> int {
-  give core.add(x, y)
-}
-```
-
-Pourquoi cette etape est solide. Alias de module pour reduire le bruit de chemin sur appels repetes.
-
-Ce qui se passe a l'execution. `plus2(1,2)=3` via delegation `core.add`.
-
-Exemple 3, construit pas a pas.
+Entrée:
+- Ordre syntaxique invalide.
 
 ```vit
-pull app/domain/ticket as t
-
-proc urgent(id: int) -> bool {
-  let tk = t.Ticket(id, 10)
-  give t.is_critical(tk)
-}
+pull as core/math
+# invalide: `as` vient après le chemin module.
 ```
 
-Pourquoi cette etape est solide. `pull` permet de composer types et procedures d'un module metier externe en gardant une frontiere explicite.
+Sortie observable:
+- La déclaration est rejetée par le parseur.
 
-Ce qui se passe a l'execution. `urgent(5)=true` si `is_critical` est base sur seuil priorite >= 9.
+## Erreurs compilateur fréquentes
 
-Erreur frequente et correction Vitte. Melanger `pull` et `use` sans convention claire dans le meme module.
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near pull` | Ordre `pull`/chemin/alias invalide. | Respecter `pull path [as alias]`. |
+| `unknown module` | Chemin module introuvable. | Vérifier le `module_path` importé. |
+| `duplicate import alias` | Alias déjà utilisé. | Renommer l’alias pour éviter collision. |
 
-Correction recommandee en Vitte. Fixer une regle d'equipe: `pull` pour modules applicatifs, `use` pour bibliotheques et symboles cibles.
+## Mot-clé voisin
 
-Pour prolonger la logique. Voir `docs/book/keywords/use.md`, `docs/book/chapters/03-projet.md`.
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `use` | `pull` importe un module; `use` sélectionne des symboles depuis un chemin. |
+
+## Pièges
+
+- Importer avec alias trop génériques.
+- Déclarer `pull` dans un bloc.
+- Utiliser un chemin relatif non documenté.
+
+## Utilisé dans les chapitres
+
+- `docs/book/chapters/03-projet.md`.
+- `docs/book/chapters/09-modules.md`.
+- `docs/book/chapters/29-style.md`.
+
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/use.md`.
+- `docs/book/keywords/space.md`.
+- `docs/book/chapters/09-modules.md`.

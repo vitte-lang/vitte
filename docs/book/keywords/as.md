@@ -1,59 +1,85 @@
-# Mot-cle `as`
+# Mot-clé `as`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`as` sert a l'alias d'import, a l'annotation explicite de construction, et a certaines conversions explicites.
+Niveau: Intermédiaire.
 
-Forme de base en Vitte. Formes courantes: `use ... as alias`, `make x as Type = ...`, `expr as Type`.
+## Définition
 
-Exemple 1, construit pas a pas.
+`as` est un mot-clé du langage Vitte. Cette fiche donne un usage opérationnel avec un contrat lisible et testable.
+
+## Syntaxe
+
+Forme canonique: `as ...`.
+
+## Quand l’utiliser / Quand l’éviter
+
+- Quand l’utiliser: quand `as` rend l’intention plus explicite et vérifiable.
+- Quand l’éviter: quand son usage masque le contrat ou duplique une logique déjà portée ailleurs.
+
+## Exemple nominal
+
+Entrée:
+- Cas nominal contrôlé et déterministe.
 
 ```vit
-use std/core/types.int as i32
-
-proc inc(x: i32) -> i32 {
-  give x + 1
-}
-
-entry main at core/app {
-  let v: i32 = inc(41)
-  return v
+proc to_small(x: int) -> int {
+  let y: int = x as int
+  give y
 }
 ```
 
-Pourquoi cette etape est solide. L'alias d'import n'altere pas la representation machine du type, mais il fixe une convention de lecture locale. Le compilateur remplace `i32` par la resolution de symbole correspondante dans le module importe.
+Sortie observable:
+- Le flux suit la branche attendue et produit une sortie stable.
 
-Ce qui se passe a l'execution. L'appel `inc(41)` produit `42`. Le flux runtime est identique a une version sans alias.
+## Exemple invalide
 
-Exemple 2, construit pas a pas.
-
-```vit
-proc cast_demo(value: int) -> int {
-  make n as int = value as int
-  if n < 0 { give 0 }
-  give n
-}
-```
-
-Pourquoi cette etape est solide. `make ... as int` fixe la forme locale de la liaison. `value as int` laisse une trace explicite de conversion au point de frontiere.
-
-Ce qui se passe a l'execution. `cast_demo(9)=9`. `cast_demo(-3)=0`.
-
-Exemple 3, construit pas a pas.
+Entrée:
+- Cas volontairement hors contrat.
 
 ```vit
-use app/domain/user as ud
-
-proc same_user(a: ud.UserId, b: ud.UserId) -> bool {
-  give a == b
+proc bad(x: int) -> int {
+  let y: int = x as
+  give y
 }
+# invalide: type cible manquant.
 ```
 
-Pourquoi cette etape est solide. `as` permet d'eviter des chemins longs repetes et rend explicite la provenance de type dans le module local.
+Sortie observable:
+- Le compilateur (ou la validation) doit rejeter ce cas avec un diagnostic explicite.
 
-Ce qui se passe a l'execution. `same_user(7,7)=true`. `same_user(7,8)=false`.
+## Erreurs compilateur fréquentes
 
-Erreur frequente et correction Vitte. Utiliser `as` pour masquer un mauvais design de types.
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near as` | Forme syntaxique incomplète ou mal placée. | Revenir à la forme canonique et vérifier les délimiteurs. |
+| `type mismatch` | Contrat d’entrée/sortie incohérent autour de `as`. | Aligner les types attendus avant exécution. |
+| `unreachable or incomplete branch` | Couverture de cas incomplète ou branche morte. | Ajouter la branche manquante (`otherwise`) ou simplifier le flux. |
 
-Correction recommandee en Vitte. Corriger d'abord la signature et les alias de domaine, puis garder `as` comme marqueur de frontiere, pas comme rustine.
+## Mot-clé voisin
 
-Pour prolonger la logique. Voir `docs/book/logique/expressions.md`, `docs/book/keywords/type.md`, `docs/book/keywords/is.md`.
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `if` | `as` et `if` se complètent, mais n’ont pas la même responsabilité de contrôle/retour. |
+
+## Pièges
+
+- Utiliser `as` par habitude au lieu de justifier son rôle dans le flux.
+- Mélanger la logique métier et la logique de contrôle sans frontière explicite.
+- Oublier de tester un cas invalide dédié.
+
+## Utilisé dans les chapitres
+
+- `docs/book/chapters/03-projet.md`.
+- `docs/book/chapters/09-modules.md`.
+- `docs/book/chapters/13-generiques.md`.
+- `docs/book/chapters/14-macros.md`.
+- `docs/book/chapters/15-pipeline.md`.
+- `docs/book/chapters/16-interop.md`.
+- `docs/book/chapters/29-style.md`.
+
+
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/if.md`.
+- `docs/book/glossaire.md`.
+- `docs/book/chapters/06-procedures.md`.

@@ -1,60 +1,93 @@
-# Mot-cle `set`
+# Mot-clé `set`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`set` declare une mutation explicite d'etat sur une liaison deja existante. En Vitte, cette instruction rend les effets de bord visibles dans le texte et facilite l'audit des transitions d'etat.
+Niveau: Débutant.
 
-Forme de base en Vitte. `set nom = expr`.
+## Définition
 
-Exemple 1, construit pas a pas.
+`set` est un mot-clé du langage Vitte. Cette fiche donne un usage opérationnel avec un contrat lisible et testable.
+
+## Syntaxe
+
+Forme canonique: `set x = x + 1`.
+
+## Quand l’utiliser / Quand l’éviter
+
+- Quand l’utiliser: quand `set` rend l’intention plus explicite et vérifiable.
+- Quand l’éviter: quand son usage masque le contrat ou duplique une logique déjà portée ailleurs.
+
+## Exemple nominal
+
+Entrée:
+- Cas nominal contrôlé et déterministe.
 
 ```vit
-proc counter(limit: int) -> int {
+proc count3() -> int {
   let i: int = 0
-  loop {
-    if i >= limit { break }
-    set i = i + 1
-  }
+  set i = i + 3
   give i
 }
 ```
 
-Pourquoi cette etape est solide. `set` signale la mutation de `i` a chaque tour. La progression est monotone et la condition d'arret `i >= limit` garantit la terminaison du flux.
+Sortie observable:
+- Le flux suit la branche attendue et produit une sortie stable.
 
-Ce qui se passe a l'execution. `counter(0)=0`, `counter(3)=3`, `counter(7)=7`.
+## Exemple invalide
 
-Exemple 2, construit pas a pas.
-
-```vit
-proc acc(values: int[]) -> int {
-  let s: int = 0
-  for x in values {
-    set s = s + x
-  }
-  give s
-}
-```
-
-Pourquoi cette etape est solide. Le parcours `for` expose chaque element, et `set` maintient un accumulateur unique. Cette combinaison limite la complexite du raisonnement sur l'etat.
-
-Ce qui se passe a l'execution. `acc([])=0`, `acc([1,2,3])=6`, `acc([10,-5,2])=7`.
-
-Exemple 3, construit pas a pas.
+Entrée:
+- Cas volontairement hors contrat.
 
 ```vit
-proc clamp01(v0: int) -> int {
-  let v: int = v0
-  if v < 0 { set v = 0 }
-  if v > 1 { set v = 1 }
-  give v
+proc bad_set() -> int {
+  set
+  give 0
 }
+# invalide: usage hors grammaire attendue pour `set`.
 ```
 
-Pourquoi cette etape est solide. `set` exprime ici une normalisation par paliers. Les gardes portent la politique de saturation, et la mutation reste strictement locale au scope de la procedure.
+Sortie observable:
+- Le compilateur (ou la validation) doit rejeter ce cas avec un diagnostic explicite.
 
-Ce qui se passe a l'execution. `clamp01(-3)=0`, `clamp01(0)=0`, `clamp01(2)=1`.
+## Erreurs compilateur fréquentes
 
-Erreur frequente et correction Vitte. Erreur frequente. Utiliser `set` sur plusieurs variables dans un bloc long sans ordre de mutation explicite, ce qui rend les invariants illisibles.
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near set` | Forme syntaxique incomplète ou mal placée. | Revenir à la forme canonique et vérifier les délimiteurs. |
+| `type mismatch` | Contrat d’entrée/sortie incohérent autour de `set`. | Aligner les types attendus avant exécution. |
+| `unreachable or incomplete branch` | Couverture de cas incomplète ou branche morte. | Ajouter la branche manquante (`otherwise`) ou simplifier le flux. |
 
-Correction recommandee en Vitte. Conserver une mutation principale par section logique, nommer les etats intermediaires avec `let`, puis verifier chaque branche de mutation avec un test nominal et un test limite.
+## Mot-clé voisin
 
-Pour prolonger la logique. Voir `docs/book/logique/boucles.md`, `docs/book/chapters/06-procedures.md`, `docs/book/chapters/11-collections.md`.
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `let` | `set` et `let` se complètent, mais n’ont pas la même responsabilité de contrôle/retour. |
+
+## Pièges
+
+- Utiliser `set` par habitude au lieu de justifier son rôle dans le flux.
+- Mélanger la logique métier et la logique de contrôle sans frontière explicite.
+- Oublier de tester un cas invalide dédié.
+
+## Utilisé dans les chapitres
+
+- `docs/book/chapters/00-avant-propos.md`.
+- `docs/book/chapters/01-demarrer.md`.
+- `docs/book/chapters/04-syntaxe.md`.
+- `docs/book/chapters/06-procedures.md`.
+- `docs/book/chapters/07-controle.md`.
+- `docs/book/chapters/08-structures.md`.
+- `docs/book/chapters/11-collections.md`.
+- `docs/book/chapters/14-macros.md`.
+- `docs/book/chapters/17-stdlib.md`.
+- `docs/book/chapters/19-performance.md`.
+- `docs/book/chapters/20-repro.md`.
+- `docs/book/chapters/23-projet-sys.md`.
+- `docs/book/chapters/24-projet-kv.md`.
+- `docs/book/chapters/26-projet-editor.md`.
+
+
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/let.md`.
+- `docs/book/glossaire.md`.
+- `docs/book/chapters/06-procedures.md`.

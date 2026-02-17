@@ -1,58 +1,76 @@
-# Mot-cle `when`
+# Mot-clé `when`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`when` introduit chaque branche dans `select` et certaines formes de test contextuel.
+Niveau: Intermédiaire.
 
-Forme de base en Vitte. `when motif { ... }`.
+## Définition
 
-Exemple 1, construit pas a pas.
+`when` intervient dans `select` et dans la forme `when expr is pattern`.
+
+## Syntaxe
+
+Forme canonique: `when pattern block` ou `when expr is pattern block`.
+
+## Quand l’utiliser / Quand l’éviter
+
+- Quand l’utiliser: pour exprimer une branche basée sur un pattern.
+- Quand l’éviter: pour un test booléen direct simple (`if`).
+
+## Exemple nominal
+
+Entrée:
+- Forme `when expr is pattern`.
 
 ```vit
-proc map_state(s: int) -> int {
-  select s
-    when 0 { return 100 }
-    when 1 { return 200 }
-  otherwise { return -1 }
+pick Resp { case Ok, case Err }
+proc on_resp(r: Resp) -> int {
+  when r is Ok { give 0 }
+  give 1
 }
 ```
 
-Pourquoi cette etape est solide. Chaque `when` doit representer un cas metier distinct et non un doublon de condition.
+Sortie observable:
+- La branche `when` s’active seulement si le pattern correspond.
 
-Ce qui se passe a l'execution. Verifier l'exemple 1 avec un cas nominal puis un cas limite, et confirmer la branche activee ainsi que la valeur produite.
+## Exemple invalide
 
-Exemple 2, construit pas a pas.
-
-```vit
-proc action(job: int) -> int {
-  select job
-    when 10 { return 1 }
-    when 20 { return 2 }
-  otherwise { return 0 }
-}
-```
-
-Pourquoi cette etape est solide. L'ordre des `when` influence la priorite de matching en lecture.
-
-Ce qui se passe a l'execution. Verifier l'exemple 2 avec trois entrees contrastees pour observer clairement le flux de controle et la sortie finale.
-
-Point de vigilance. Empiler des dizaines de `when` peut signaler un type d'etat mal modelise.
-
-Pour prolonger la logique. Voir `docs/book/keywords/pick.md` et `docs/book/keywords/match.md`.
-
-Exemple 3, construit pas a pas.
+Entrée:
+- Clause incomplète.
 
 ```vit
-proc level(v: int) -> int {
-  select v
-    when 1 { return 10 }
-  otherwise { return 0 }
-}
+when r is { give 0 }
+# invalide: pattern manquant après `is`.
 ```
 
-Pourquoi cette etape est solide. Cet exemple 3 montre une forme de production du mot-cle when dans un flux Vitte plus proche d'un module reel, avec un contrat lisible et une frontiere explicite.
+Sortie observable:
+- Le parseur rejette la clause.
 
-Ce qui se passe a l'execution. Executer ce bloc avec un cas nominal et un cas limite permet de verifier la branche dominante, la valeur de sortie et l'absence de comportement implicite hors contrat.
+## Erreurs compilateur fréquentes
 
-Erreur frequente et correction Vitte. Erreur frequente. Employer when sans contrat local clair, puis compenser en aval avec des gardes ad hoc.
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near when` | Pattern manquant. | Fournir `when pattern { ... }` ou `when expr is pattern { ... }`. |
+| `invalid pattern` | Pattern non conforme. | Utiliser un identifiant/pattern qualifié valide. |
+| `when outside statement context` | Position invalide. | Utiliser `when` uniquement dans un contexte `stmt`. |
 
-Correction recommandee en Vitte. Fixer la responsabilite de when au point d'usage, ajouter une verification explicite de frontiere, puis couvrir le cas nominal et le cas limite par test.
+## Mot-clé voisin
+
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `select` | `select` porte la séquence; `when` porte chaque branche. |
+
+## Pièges
+
+- Écrire `when` sans bloc.
+- Mettre un littéral non valide comme pattern.
+- Confondre `when` et `case`.
+
+## Utilisé dans les chapitres
+
+- Aucun chapitre principal ne l’emploie encore explicitement.
+
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/select.md`.
+- `docs/book/keywords/is.md`.
+- `docs/book/chapters/27-grammaire.md`.

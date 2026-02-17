@@ -1,48 +1,80 @@
-# Mot-cle `space`
+# Mot-clé `space`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`space` fixe le namespace/module courant du fichier Vitte.
+Niveau: Intermédiaire.
 
-Forme de base en Vitte. `space chemin/module`.
+## Définition
 
-Exemple 1, construit pas a pas.
+`space` déclare l’espace de module courant au niveau top-level.
 
-```vit
-space app/domain
-form Ticket { id: int, priority: int }
-```
+## Syntaxe
 
-Pourquoi cette etape est solide. Le module est positionne explicitement dans l'arborescence logique.
+Forme canonique: `space module/path`.
 
-Ce qui se passe a l'execution. Verifier l'exemple 1 avec un cas nominal puis un cas limite, et confirmer la branche activee ainsi que la valeur produite.
+## Quand l’utiliser / Quand l’éviter
 
-Exemple 2, construit pas a pas.
+- Quand l’utiliser: pour fixer explicitement le module propriétaire des déclarations qui suivent.
+- Quand l’éviter: dans un bloc (`proc`, `entry`), car `space` n’est pas une instruction.
 
-```vit
-space app/service
-pull app/domain as d
-proc critical(t: d.Ticket) -> bool { give t.priority >= 9 }
-```
+## Exemple nominal
 
-Pourquoi cette etape est solide. Separation claire entre couches domaine et service.
-
-Ce qui se passe a l'execution. Verifier l'exemple 2 avec trois entrees contrastees pour observer clairement le flux de controle et la sortie finale.
-
-Point de vigilance. Des chemins `space` incoherents avec le repo rendent la resolution fragile.
-
-Pour prolonger la logique. Voir `docs/book/chapters/03-projet.md`.
-
-Exemple 3, construit pas a pas.
+Entrée:
+- Déclaration top-level valide.
 
 ```vit
-space app/metrics
-proc ping() -> int { give 1 }
+space app/core
+proc run() -> int {
+  give 0
+}
 ```
 
-Pourquoi cette etape est solide. Cet exemple 3 montre une forme de production du mot-cle space dans un flux Vitte plus proche d'un module reel, avec un contrat lisible et une frontiere explicite.
+Sortie observable:
+- Le module courant est `app/core`; les déclarations suivantes y sont rattachées.
 
-Ce qui se passe a l'execution. Executer ce bloc avec un cas nominal et un cas limite permet de verifier la branche dominante, la valeur de sortie et l'absence de comportement implicite hors contrat.
+## Exemple invalide
 
-Erreur frequente et correction Vitte. Erreur frequente. Employer space sans contrat local clair, puis compenser en aval avec des gardes ad hoc.
+Entrée:
+- Cas hors grammaire (nom manquant).
 
-Correction recommandee en Vitte. Fixer la responsabilite de space au point d'usage, ajouter une verification explicite de frontiere, puis couvrir le cas nominal et le cas limite par test.
+```vit
+space
+proc run() -> int {
+  give 0
+}
+# invalide: `space` exige un `module_path`.
+```
+
+Sortie observable:
+- Le parseur rejette la déclaration.
+
+## Erreurs compilateur fréquentes
+
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near space` | Chemin module absent ou mal formé. | Fournir un `module_path` valide (`a/b` ou `a.b`). |
+| `unexpected statement` | `space` placé dans un bloc. | Remonter la déclaration au niveau top-level. |
+| `invalid module path` | Segments invalides. | Utiliser uniquement des identifiants valides. |
+
+## Mot-clé voisin
+
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `pull` | `space` fixe le module courant; `pull` importe un autre module. |
+
+## Pièges
+
+- Écrire `space` comme un bloc.
+- Changer de module au milieu d’un fichier sans le documenter.
+- Mélanger séparateurs de chemin sans cohérence.
+
+## Utilisé dans les chapitres
+
+- `docs/book/chapters/03-projet.md`.
+- `docs/book/chapters/09-modules.md`.
+- `docs/book/chapters/29-style.md`.
+
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/pull.md`.
+- `docs/book/keywords/use.md`.
+- `docs/book/chapters/09-modules.md`.

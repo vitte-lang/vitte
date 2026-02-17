@@ -1,50 +1,78 @@
-# Mot-cle `trait`
+# Mot-clé `trait`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`trait` exprime une capacite attendue, sans imposer une representation concrete.
+Niveau: Avancé.
 
-Forme de base en Vitte. `trait Nom[T] { ... }`.
+## Définition
 
-Exemple 1, construit pas a pas.
+`trait` suit la même structure grammaticale que `form` dans la grammaire de surface.
+
+## Syntaxe
+
+Forme canonique: `trait Name { champ: type }` ou forme legacy `.end`.
+
+## Quand l’utiliser / Quand l’éviter
+
+- Quand l’utiliser: pour modéliser une forme déclarative partagée.
+- Quand l’éviter: si vous attendez une sémantique de méthodes implicites non décrite par la grammaire.
+
+## Exemple nominal
+
+Entrée:
+- Déclaration brace valide.
 
 ```vit
-trait Printable[T] {
-  display: string
+trait Pair {
+  left: int,
+  right: int
 }
 ```
 
-Pourquoi cette etape est solide. Le trait encode une interface de comportement que d'autres types peuvent satisfaire.
+Sortie observable:
+- La déclaration est conforme à `form_decl` avec `field_list`.
 
-Ce qui se passe a l'execution. Verifier l'exemple 1 avec un cas nominal puis un cas limite, et confirmer la branche activee ainsi que la valeur produite.
+## Exemple invalide
 
-Exemple 2, construit pas a pas.
+Entrée:
+- Forme hors grammaire de surface.
 
 ```vit
-trait Checkable[T] {
-  ok: bool
+trait Pair {
+  left: int,
+  right
 }
-proc pass[T](x: T) -> T { give x }
+# invalide: type manquant pour `right`.
 ```
 
-Pourquoi cette etape est solide. La genericite et le trait se combinent pour structurer des contrats transverses.
+Sortie observable:
+- Le parseur rejette la déclaration.
 
-Ce qui se passe a l'execution. Verifier l'exemple 2 avec trois entrees contrastees pour observer clairement le flux de controle et la sortie finale.
+## Erreurs compilateur fréquentes
 
-Point de vigilance. Confondre trait (capacite) et form (stockage) cree des modeles hybrides difficiles a maintenir.
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near trait` | Corps non conforme (`proc`, instruction...). | Respecter `field_list` ou legacy `field ... as ...`. |
+| `mixed declaration style` | Mélange brace/legacy. | Garder un seul style de déclaration. |
+| `missing field type` | Champ sans type. | Ajouter `: type_expr` (brace) ou `as type_expr` (legacy). |
 
-Pour prolonger la logique. Voir `docs/book/chapters/13-generiques.md`.
+## Mot-clé voisin
 
-Exemple 3, construit pas a pas.
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `form` | `trait` et `form` partagent la même forme syntaxique dans cette grammaire. |
 
-```vit
-trait Eq[T] { equal: bool }
-proc same_int(a: int, b: int) -> bool { give a == b }
-```
+## Pièges
 
-Pourquoi cette etape est solide. Cet exemple 3 montre une forme de production du mot-cle trait dans un flux Vitte plus proche d'un module reel, avec un contrat lisible et une frontiere explicite.
+- Projeter une sémantique OO non portée par la grammaire.
+- Mettre des procédures dans le corps.
+- Oublier la cohérence brace/legacy.
 
-Ce qui se passe a l'execution. Executer ce bloc avec un cas nominal et un cas limite permet de verifier la branche dominante, la valeur de sortie et l'absence de comportement implicite hors contrat.
+## Utilisé dans les chapitres
 
-Erreur frequente et correction Vitte. Erreur frequente. Employer trait sans contrat local clair, puis compenser en aval avec des gardes ad hoc.
+- Aucun chapitre principal ne l’emploie encore explicitement.
 
-Correction recommandee en Vitte. Fixer la responsabilite de trait au point d'usage, ajouter une verification explicite de frontiere, puis couvrir le cas nominal et le cas limite par test.
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/form.md`.
+- `docs/book/keywords/field.md`.
+- `docs/book/chapters/27-grammaire.md`.

@@ -1,57 +1,110 @@
-# Mot-cle `proc`
+# Mot-clé `proc`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`proc` definit une unite de comportement avec contrat d'entree et de sortie en Vitte.
+Niveau: Débutant.
 
-Forme de base en Vitte. `proc nom(params) -> type { ... }`.
+## Définition
 
-Exemple 1, construit pas a pas.
+`proc` est un mot-clé du langage Vitte. Cette fiche donne un usage opérationnel avec un contrat lisible et testable.
+
+## Syntaxe
+
+Forme canonique: `proc nom(a: int) -> int { ... }`.
+
+## Quand l’utiliser / Quand l’éviter
+
+- Quand l’utiliser: quand `proc` rend l’intention plus explicite et vérifiable.
+- Quand l’éviter: quand son usage masque le contrat ou duplique une logique déjà portée ailleurs.
+
+## Exemple nominal
+
+Entrée:
+- Cas nominal contrôlé et déterministe.
 
 ```vit
-proc clamp(x: int, lo: int, hi: int) -> int {
-  if x < lo { give lo }
-  if x > hi { give hi }
-  give x
+proc add(a: int, b: int) -> int {
+  give a + b
 }
 ```
 
-Pourquoi cette etape est solide. La procedure est pure ici: aucune mutation externe, branchement bornant, resultat deterministe.
+Sortie observable:
+- Le flux suit la branche attendue et produit une sortie stable.
 
-Ce qui se passe a l'execution. Verifier l'exemple 1 avec un cas nominal puis un cas limite, et confirmer la branche activee ainsi que la valeur produite.
+## Exemple invalide
 
-Exemple 2, construit pas a pas.
+Entrée:
+- Cas volontairement hors contrat.
 
 ```vit
-proc checksum(seed: int, n: int) -> int {
-  let i: int = 0
-  let acc: int = seed
-  loop {
-    if i >= n { break }
-    set acc = (acc * 31 + i) % 104729
-    set i = i + 1
-  }
-  give acc
+proc bad_proc() -> int {
+  proc
+  give 0
 }
+# invalide: usage hors grammaire attendue pour `proc`.
 ```
 
-Pourquoi cette etape est solide. Le contrat repose sur une progression d'etat locale et une sortie clairement borneE par la recurrence.
+Sortie observable:
+- Le compilateur (ou la validation) doit rejeter ce cas avec un diagnostic explicite.
 
-Ce qui se passe a l'execution. Verifier l'exemple 2 avec trois entrees contrastees pour observer clairement le flux de controle et la sortie finale.
+## Erreurs compilateur fréquentes
 
-Point de vigilance. Une `proc` qui lit, transforme, ecrit et journalise simultanement est un anti-pattern de couplage.
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near proc` | Forme syntaxique incomplète ou mal placée. | Revenir à la forme canonique et vérifier les délimiteurs. |
+| `type mismatch` | Contrat d’entrée/sortie incohérent autour de `proc`. | Aligner les types attendus avant exécution. |
+| `unreachable or incomplete branch` | Couverture de cas incomplète ou branche morte. | Ajouter la branche manquante (`otherwise`) ou simplifier le flux. |
 
-Pour prolonger la logique. Voir `docs/book/chapters/06-procedures.md`.
+## Mot-clé voisin
 
-Exemple 3, construit pas a pas.
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `if` | `proc` et `if` se complètent, mais n’ont pas la même responsabilité de contrôle/retour. |
 
-```vit
-proc square(x: int) -> int { give x * x }
-```
+## Pièges
 
-Pourquoi cette etape est solide. Cet exemple 3 montre une forme de production du mot-cle proc dans un flux Vitte plus proche d'un module reel, avec un contrat lisible et une frontiere explicite.
+- Utiliser `proc` par habitude au lieu de justifier son rôle dans le flux.
+- Mélanger la logique métier et la logique de contrôle sans frontière explicite.
+- Oublier de tester un cas invalide dédié.
 
-Ce qui se passe a l'execution. Executer ce bloc avec un cas nominal et un cas limite permet de verifier la branche dominante, la valeur de sortie et l'absence de comportement implicite hors contrat.
+## Utilisé dans les chapitres
 
-Erreur frequente et correction Vitte. Erreur frequente. Employer proc sans contrat local clair, puis compenser en aval avec des gardes ad hoc.
+- `docs/book/chapters/00-avant-propos.md`.
+- `docs/book/chapters/00-preface.md`.
+- `docs/book/chapters/01-demarrer.md`.
+- `docs/book/chapters/02-philosophie.md`.
+- `docs/book/chapters/03-projet.md`.
+- `docs/book/chapters/04-syntaxe.md`.
+- `docs/book/chapters/05-types.md`.
+- `docs/book/chapters/06-procedures.md`.
+- `docs/book/chapters/07-controle.md`.
+- `docs/book/chapters/08-structures.md`.
+- `docs/book/chapters/09-modules.md`.
+- `docs/book/chapters/10-diagnostics.md`.
+- `docs/book/chapters/11-collections.md`.
+- `docs/book/chapters/12-pointeurs.md`.
+- `docs/book/chapters/13-generiques.md`.
+- `docs/book/chapters/14-macros.md`.
+- `docs/book/chapters/15-pipeline.md`.
+- `docs/book/chapters/16-interop.md`.
+- `docs/book/chapters/17-stdlib.md`.
+- `docs/book/chapters/18-tests.md`.
+- `docs/book/chapters/19-performance.md`.
+- `docs/book/chapters/20-repro.md`.
+- `docs/book/chapters/20a-architecture-globale.md`.
+- `docs/book/chapters/21-projet-cli.md`.
+- `docs/book/chapters/22-projet-http.md`.
+- `docs/book/chapters/23-projet-sys.md`.
+- `docs/book/chapters/24-projet-kv.md`.
+- `docs/book/chapters/25-projet-arduino.md`.
+- `docs/book/chapters/26-projet-editor.md`.
+- `docs/book/chapters/27-grammaire.md`.
+- `docs/book/chapters/28-conventions.md`.
+- `docs/book/chapters/29-style.md`.
+- `docs/book/chapters/30-faq.md`.
 
-Correction recommandee en Vitte. Fixer la responsabilite de proc au point d'usage, ajouter une verification explicite de frontiere, puis couvrir le cas nominal et le cas limite par test.
+
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/if.md`.
+- `docs/book/glossaire.md`.
+- `docs/book/chapters/06-procedures.md`.

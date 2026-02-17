@@ -1,56 +1,93 @@
-# Mot-cle `case`
+# Mot-clé `case`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`case` declare une variante dans `pick` et une branche dans `match`.
+Niveau: Débutant.
 
-Forme de base en Vitte. `case Nom(... )` en declaration et en decomposition.
+## Définition
 
-Exemple 1, construit pas a pas.
+`case` est un mot-clé du langage Vitte. Cette fiche donne un usage opérationnel avec un contrat lisible et testable.
+
+## Syntaxe
+
+Forme canonique: `match v { case A { ... } }`.
+
+## Quand l’utiliser / Quand l’éviter
+
+- Quand l’utiliser: quand `case` rend l’intention plus explicite et vérifiable.
+- Quand l’éviter: quand son usage masque le contrat ou duplique une logique déjà portée ailleurs.
+
+## Exemple nominal
+
+Entrée:
+- Cas nominal contrôlé et déterministe.
 
 ```vit
-pick Job {
-  case Ready
-  case Failed(code: int)
+match status {
+  case Ok { give 0 }
+  otherwise { give 1 }
 }
 ```
 
-Pourquoi cette etape est solide. La declaration fixe l'espace d'etats compile-time.
+Sortie observable:
+- Le flux suit la branche attendue et produit une sortie stable.
 
-Ce qui se passe a l'execution. Verifier l'exemple 1 avec un cas nominal puis un cas limite, et confirmer la branche activee ainsi que la valeur produite.
+## Exemple invalide
 
-Exemple 2, construit pas a pas.
-
-```vit
-proc status(j: Job) -> int {
-  match j {
-    case Ready { give 0 }
-    case Failed(c) { give c }
-    otherwise { give -1 }
-  }
-}
-```
-
-Pourquoi cette etape est solide. Chaque branche `case` capture sa variante et eventuel payload.
-
-Ce qui se passe a l'execution. Verifier l'exemple 2 avec trois entrees contrastees pour observer clairement le flux de controle et la sortie finale.
-
-Point de vigilance. Oublier de traiter un `case` critique conduit a des fallbacks trompeurs.
-
-Pour prolonger la logique. Voir `docs/book/keywords/match.md`.
-
-Exemple 3, construit pas a pas.
+Entrée:
+- Cas volontairement hors contrat.
 
 ```vit
-pick Flag { case On, case Off }
-proc to_int(f: Flag) -> int {
-  match f { case On { give 1 } case Off { give 0 } otherwise { give -1 } }
+proc bad_case() -> int {
+  case
+  give 0
 }
+# invalide: usage hors grammaire attendue pour `case`.
 ```
 
-Pourquoi cette etape est solide. Cet exemple 3 montre une forme de production du mot-cle case dans un flux Vitte plus proche d'un module reel, avec un contrat lisible et une frontiere explicite.
+Sortie observable:
+- Le compilateur (ou la validation) doit rejeter ce cas avec un diagnostic explicite.
 
-Ce qui se passe a l'execution. Executer ce bloc avec un cas nominal et un cas limite permet de verifier la branche dominante, la valeur de sortie et l'absence de comportement implicite hors contrat.
+## Erreurs compilateur fréquentes
 
-Erreur frequente et correction Vitte. Erreur frequente. Employer case sans contrat local clair, puis compenser en aval avec des gardes ad hoc.
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near case` | Forme syntaxique incomplète ou mal placée. | Revenir à la forme canonique et vérifier les délimiteurs. |
+| `type mismatch` | Contrat d’entrée/sortie incohérent autour de `case`. | Aligner les types attendus avant exécution. |
+| `unreachable or incomplete branch` | Couverture de cas incomplète ou branche morte. | Ajouter la branche manquante (`otherwise`) ou simplifier le flux. |
 
-Correction recommandee en Vitte. Fixer la responsabilite de case au point d'usage, ajouter une verification explicite de frontiere, puis couvrir le cas nominal et le cas limite par test.
+## Mot-clé voisin
+
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `otherwise` | `case` et `otherwise` se complètent, mais n’ont pas la même responsabilité de contrôle/retour. |
+
+## Pièges
+
+- Utiliser `case` par habitude au lieu de justifier son rôle dans le flux.
+- Mélanger la logique métier et la logique de contrôle sans frontière explicite.
+- Oublier de tester un cas invalide dédié.
+
+## Utilisé dans les chapitres
+
+- `docs/book/chapters/00-avant-propos.md`.
+- `docs/book/chapters/02-philosophie.md`.
+- `docs/book/chapters/03-projet.md`.
+- `docs/book/chapters/04-syntaxe.md`.
+- `docs/book/chapters/05-types.md`.
+- `docs/book/chapters/08-structures.md`.
+- `docs/book/chapters/10-diagnostics.md`.
+- `docs/book/chapters/16-interop.md`.
+- `docs/book/chapters/21-projet-cli.md`.
+- `docs/book/chapters/22-projet-http.md`.
+- `docs/book/chapters/23-projet-sys.md`.
+- `docs/book/chapters/24-projet-kv.md`.
+- `docs/book/chapters/25-projet-arduino.md`.
+- `docs/book/chapters/26-projet-editor.md`.
+- `docs/book/chapters/27-grammaire.md`.
+
+
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/otherwise.md`.
+- `docs/book/glossaire.md`.
+- `docs/book/chapters/06-procedures.md`.

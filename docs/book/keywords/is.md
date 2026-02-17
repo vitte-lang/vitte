@@ -1,52 +1,77 @@
-# Mot-cle `is`
+# Mot-clé `is`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`is` sert a tester une forme ou un motif dans le flux conditionnel.
+Niveau: Intermédiaire.
 
-Forme de base en Vitte. Usage courant: `when expr is Pattern`.
+## Définition
 
-Exemple 1, construit pas a pas.
+`is` associe une expression à un `pattern` (cast/pattern test dans `cast_expr` ou `when ... is ...`).
+
+## Syntaxe
+
+Forme canonique: `expr is pattern`.
+
+## Quand l’utiliser / Quand l’éviter
+
+- Quand l’utiliser: pour tester une forme de valeur via pattern.
+- Quand l’éviter: pour un simple test d’égalité scalaire (`==`).
+
+## Exemple nominal
+
+Entrée:
+- Pattern check sur variante.
 
 ```vit
-pick Token { case Num(v: int), case End }
-proc parse(t: Token) -> int {
-  when t is Num(v) { give v }
-  give 0
+pick Resp { case Ok, case Err }
+proc is_ok(r: Resp) -> bool {
+  give r is Ok
 }
 ```
 
-Pourquoi cette etape est solide. Le test de forme se fait sans cast aveugle: la variante est verifiee avant extraction.
+Sortie observable:
+- Retourne `true` si `r` correspond au pattern `Ok`.
 
-Ce qui se passe a l'execution. Verifier l'exemple 1 avec un cas nominal puis un cas limite, et confirmer la branche activee ainsi que la valeur produite.
+## Exemple invalide
 
-Exemple 2, construit pas a pas.
+Entrée:
+- Opérande droit absent.
 
 ```vit
-proc is_end(t: Token) -> bool {
-  when t is End { give true }
-  give false
+proc bad(r: int) -> bool {
+  give r is
 }
+# invalide: pattern manquant.
 ```
 
-Pourquoi cette etape est solide. `is` fournit un predicat de structure lisible pour le controle.
+Sortie observable:
+- Le parseur rejette l’expression.
 
-Ce qui se passe a l'execution. Verifier l'exemple 2 avec trois entrees contrastees pour observer clairement le flux de controle et la sortie finale.
+## Erreurs compilateur fréquentes
 
-Point de vigilance. Confondre `is` (test de forme) et `as` (conversion/annotation) cree des bugs subtils.
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near is` | Pattern absent/invalide. | Fournir un pattern valide après `is`. |
+| `invalid pattern` | Pattern non conforme. | Utiliser identifiant qualifié ou pattern composé valide. |
+| `type mismatch` | Expression et pattern incompatibles. | Vérifier les variantes attendues. |
 
-Pour prolonger la logique. Voir `docs/book/keywords/as.md`.
+## Mot-clé voisin
 
-Exemple 3, construit pas a pas.
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `as` | `is` teste un pattern; `as` exprime un cast de type. |
 
-```vit
-pick Token { case Num(v: int), case End }
-proc is_num(t: Token) -> bool { when t is Num(_) { give true } give false }
-```
+## Pièges
 
-Pourquoi cette etape est solide. Cet exemple 3 montre une forme de production du mot-cle is dans un flux Vitte plus proche d'un module reel, avec un contrat lisible et une frontiere explicite.
+- Employer `is` pour remplacer `==` partout.
+- Utiliser un pattern non déclaré.
+- Oublier la couverture complète du flux après test.
 
-Ce qui se passe a l'execution. Executer ce bloc avec un cas nominal et un cas limite permet de verifier la branche dominante, la valeur de sortie et l'absence de comportement implicite hors contrat.
+## Utilisé dans les chapitres
 
-Erreur frequente et correction Vitte. Erreur frequente. Employer is sans contrat local clair, puis compenser en aval avec des gardes ad hoc.
+- Aucun chapitre principal ne l’emploie encore explicitement.
 
-Correction recommandee en Vitte. Fixer la responsabilite de is au point d'usage, ajouter une verification explicite de frontiere, puis couvrir le cas nominal et le cas limite par test.
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/as.md`.
+- `docs/book/keywords/when.md`.
+- `docs/book/chapters/27-grammaire.md`.

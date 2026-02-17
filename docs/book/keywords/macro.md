@@ -1,66 +1,94 @@
-# Mot-cle `macro`
+# Mot-clé `macro`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`macro` factorise un motif syntaxique repetitif.
+Niveau: Avancé.
 
-Forme de base en Vitte. `macro nom(params) { ... }`.
+## Définition
 
-Exemple 1, construit pas a pas.
+`macro` est un mot-clé du langage Vitte. Cette fiche donne un usage opérationnel avec un contrat lisible et testable.
+
+## Syntaxe
+
+Forme canonique: `macro nom(args) { ... }`.
+
+## Quand l’utiliser / Quand l’éviter
+
+- Quand l’utiliser: quand `macro` rend l’intention plus explicite et vérifiable.
+- Quand l’éviter: quand son usage masque le contrat ou duplique une logique déjà portée ailleurs.
+
+## Exemple nominal
+
+Entrée:
+- Cas nominal contrôlé et déterministe.
 
 ```vit
-macro guard_nonzero(x) {
-  if x == 0 { return -1 }
-}
-
-proc safe_div(a: int, b: int) -> int {
-  guard_nonzero(b)
-  give a / b
+macro inc(x) { x + 1 }
+proc f(v: int) -> int {
+  give inc(v)
 }
 ```
 
-Pourquoi cette etape est solide. La macro injecte une garde de sortie dans le flux appelant et supprime une duplication classique.
+Sortie observable:
+- Le flux suit la branche attendue et produit une sortie stable.
 
-Ce qui se passe a l'execution. `safe_div(10,2)=5`, `safe_div(10,0)=-1`.
+## Exemple invalide
 
-Exemple 2, construit pas a pas.
-
-```vit
-macro clamp01(v) {
-  if v < 0 { set v = 0 }
-  if v > 1 { set v = 1 }
-}
-
-proc normalize01(x: int) -> int {
-  let v: int = x
-  clamp01(v)
-  give v
-}
-```
-
-Pourquoi cette etape est solide. Macro de mutation locale, acceptable car portee courte et predictable.
-
-Ce qui se passe a l'execution. `normalize01(-3)=0`, `normalize01(2)=1`.
-
-Exemple 3, construit pas a pas.
+Entrée:
+- Cas volontairement hors contrat.
 
 ```vit
-macro early_fail(code) {
-  if code < 0 { return code }
+macro dup(x) { x + x }
+proc f(v: int) -> int {
+  give dup(v,)
 }
-
-proc pipeline_step(a: int, b: int) -> int {
-  let c: int = a - b
-  early_fail(c)
-  give c * 2
-}
+# invalide: expansion avec arguments mal formes.
 ```
 
-Pourquoi cette etape est solide. Pattern d'echec rapide reutilisable dans les pipelines numeriques.
+Sortie observable:
+- Le compilateur (ou la validation) doit rejeter ce cas avec un diagnostic explicite.
 
-Ce qui se passe a l'execution. `pipeline_step(10,3)=14`, `pipeline_step(2,5)=-3`.
+## Erreurs compilateur fréquentes
 
-Erreur frequente et correction Vitte. Cacher de la logique metier lourde dans des macros imbriquees.
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near macro` | Forme syntaxique incomplète ou mal placée. | Revenir à la forme canonique et vérifier les délimiteurs. |
+| `type mismatch` | Contrat d’entrée/sortie incohérent autour de `macro`. | Aligner les types attendus avant exécution. |
+| `unreachable or incomplete branch` | Couverture de cas incomplète ou branche morte. | Ajouter la branche manquante (`otherwise`) ou simplifier le flux. |
 
-Correction recommandee en Vitte. Garder les macros pour motifs de garde/ceremonie; laisser l'algorithme dans des `proc` explicites.
+## Mot-clé voisin
 
-Pour prolonger la logique. Voir `docs/book/chapters/14-macros.md`, `docs/book/keywords/proc.md`.
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `if` | `macro` et `if` se complètent, mais n’ont pas la même responsabilité de contrôle/retour. |
+
+## Pièges
+
+- Utiliser `macro` par habitude au lieu de justifier son rôle dans le flux.
+- Mélanger la logique métier et la logique de contrôle sans frontière explicite.
+- Oublier de tester un cas invalide dédié.
+
+## Utilisé dans les chapitres
+
+- `docs/book/chapters/13-generiques.md`.
+- `docs/book/chapters/14-macros.md`.
+- `docs/book/chapters/15-pipeline.md`.
+- `docs/book/chapters/16-interop.md`.
+
+
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/if.md`.
+- `docs/book/glossaire.md`.
+- `docs/book/chapters/06-procedures.md`.
+
+## Contre-exemple explicite
+
+```vit
+macro calc(x) { x + 1 }
+proc f() -> int {
+  give calc()
+}
+# contre-exemple: macro invoquee sans contrat d arguments stable.
+```
+
+Pourquoi c’est problématique: le code devient non total, fragile en maintenance, et plus difficile à diagnostiquer.

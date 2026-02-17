@@ -1,55 +1,80 @@
-# Mot-cle `all`
+# Mot-clé `all`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`all` est principalement utilise avec `share` pour publier l'ensemble des symboles d'un module.
+Niveau: Débutant.
 
-Forme de base en Vitte. Forme standard: `share all`.
+## Définition
 
-Exemple 1, construit pas a pas.
+`all` est un mot-clé du langage Vitte. Cette fiche donne un usage opérationnel avec un contrat lisible et testable.
 
-```vit
-space app/api
-share all
+## Syntaxe
 
-proc ping() -> int { give 1 }
-proc pong() -> int { give 2 }
-```
+Forme canonique: `all ...`.
 
-Pourquoi cette etape est solide. `share all` transforme le module en facade complete. Toute declaration exportable devient visible a l'exterieur sans liste explicite.
+## Quand l’utiliser / Quand l’éviter
 
-Ce qui se passe a l'execution. Un module client qui `pull app/api as api` peut appeler `api.ping()` et `api.pong()` sans restriction supplementaire.
+- Quand l’utiliser: quand `all` rend l’intention plus explicite et vérifiable.
+- Quand l’éviter: quand son usage masque le contrat ou duplique une logique déjà portée ailleurs.
 
-Exemple 2, construit pas a pas.
+## Exemple nominal
 
-```vit
-space app/internal
-share all
-
-const VERSION: int = 1
-proc helper() -> int { give VERSION }
-proc calc(x: int) -> int { give x + VERSION }
-```
-
-Pourquoi cette etape est solide. Techniquement valide, mais strategiquement risquE. En interne, `share all` expose aussi les symboles qui auraient du rester prives, ce qui durcit toute evolution future.
-
-Ce qui se passe a l'execution. Les appels externes peuvent desormais dependre de `helper()` et `calc()`. Un changement de signature devient une rupture publique potentielle.
-
-Point de vigilance. `share all` convient aux modules facade stables. Pour les modules en evolution, preferer `share symbol1, symbol2`.
-
-Pour prolonger la logique. Voir `docs/book/keywords/share.md`, `docs/book/chapters/09-modules.md`, `docs/book/chapters/29-style.md`.
-
-Exemple 3, construit pas a pas.
+Entrée:
+- Cas nominal contrôlé et déterministe.
 
 ```vit
-space app/public
-share all
-proc health() -> int { give 1 }
+proc all_positive(xs: int[]) -> bool {
+  for x in xs {
+    if x < 0 { give false }
+  }
+  give true
+}
 ```
 
-Pourquoi cette etape est solide. Cet exemple 3 montre une forme de production du mot-cle all dans un flux Vitte plus proche d'un module reel, avec un contrat lisible et une frontiere explicite.
+Sortie observable:
+- Le flux suit la branche attendue et produit une sortie stable.
 
-Ce qui se passe a l'execution. Executer ce bloc avec un cas nominal et un cas limite permet de verifier la branche dominante, la valeur de sortie et l'absence de comportement implicite hors contrat.
+## Exemple invalide
 
-Erreur frequente et correction Vitte. Erreur frequente. Employer all sans contrat local clair, puis compenser en aval avec des gardes ad hoc.
+Entrée:
+- Cas volontairement hors contrat.
 
-Correction recommandee en Vitte. Fixer la responsabilite de all au point d'usage, ajouter une verification explicite de frontiere, puis couvrir le cas nominal et le cas limite par test.
+```vit
+proc bad(xs: int[]) -> bool {
+  give all
+}
+# invalide: utilisation de `all` hors expression valide.
+```
+
+Sortie observable:
+- Le compilateur (ou la validation) doit rejeter ce cas avec un diagnostic explicite.
+
+## Erreurs compilateur fréquentes
+
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near all` | Forme syntaxique incomplète ou mal placée. | Revenir à la forme canonique et vérifier les délimiteurs. |
+| `type mismatch` | Contrat d’entrée/sortie incohérent autour de `all`. | Aligner les types attendus avant exécution. |
+| `unreachable or incomplete branch` | Couverture de cas incomplète ou branche morte. | Ajouter la branche manquante (`otherwise`) ou simplifier le flux. |
+
+## Mot-clé voisin
+
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `if` | `all` et `if` se complètent, mais n’ont pas la même responsabilité de contrôle/retour. |
+
+## Pièges
+
+- Utiliser `all` par habitude au lieu de justifier son rôle dans le flux.
+- Mélanger la logique métier et la logique de contrôle sans frontière explicite.
+- Oublier de tester un cas invalide dédié.
+
+## Utilisé dans les chapitres
+
+- Aucun chapitre principal ne l’emploie encore explicitement.
+
+
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/if.md`.
+- `docs/book/glossaire.md`.
+- `docs/book/chapters/06-procedures.md`.

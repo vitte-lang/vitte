@@ -1,54 +1,100 @@
-# Mot-cle `unsafe`
+# Mot-clé `unsafe`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`unsafe` ouvre une zone ou les garanties standard sont reduites. Tout bloc `unsafe` doit etre encadre.
+Niveau: Avancé.
 
-Forme de base en Vitte. `unsafe { ... }`.
+## Définition
 
-Exemple 1, construit pas a pas.
+`unsafe` est un mot-clé du langage Vitte. Cette fiche donne un usage opérationnel avec un contrat lisible et testable.
+
+## Syntaxe
+
+Forme canonique: `unsafe { ... }`.
+
+## Quand l’utiliser / Quand l’éviter
+
+- Quand l’utiliser: quand `unsafe` rend l’intention plus explicite et vérifiable.
+- Quand l’éviter: quand son usage masque le contrat ou duplique une logique déjà portée ailleurs.
+
+## Exemple nominal
+
+Entrée:
+- Cas nominal contrôlé et déterministe.
 
 ```vit
-proc nop_cpu() {
+proc cpu_nop() {
   unsafe { asm("nop") }
 }
 ```
 
-Pourquoi cette etape est solide. Zone minimale et encapsulee dans une procedure unique.
+Sortie observable:
+- Le flux suit la branche attendue et produit une sortie stable.
 
-Ce qui se passe a l'execution. L'appel execute `nop` sans effet fonctionnel visible.
+## Exemple invalide
 
-Exemple 2, construit pas a pas.
+Entrée:
+- Cas volontairement hors contrat.
 
 ```vit
-proc write_hw(addr: int, value: int) -> int {
-  if addr < 0 { give -1 }
+proc bad(flag: bool) {
   unsafe {
+    if flag { asm("hlt") }
+  }
+}
+# invalide conceptuel: validation métier placee dans `unsafe`.
+```
+
+Sortie observable:
+- Le compilateur (ou la validation) doit rejeter ce cas avec un diagnostic explicite.
+
+## Erreurs compilateur fréquentes
+
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near unsafe` | Forme syntaxique incomplète ou mal placée. | Revenir à la forme canonique et vérifier les délimiteurs. |
+| `type mismatch` | Contrat d’entrée/sortie incohérent autour de `unsafe`. | Aligner les types attendus avant exécution. |
+| `unreachable or incomplete branch` | Couverture de cas incomplète ou branche morte. | Ajouter la branche manquante (`otherwise`) ou simplifier le flux. |
+
+## Mot-clé voisin
+
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `asm` | `unsafe` et `asm` se complètent, mais n’ont pas la même responsabilité de contrôle/retour. |
+
+## Pièges
+
+- Utiliser `unsafe` par habitude au lieu de justifier son rôle dans le flux.
+- Mélanger la logique métier et la logique de contrôle sans frontière explicite.
+- Oublier de tester un cas invalide dédié.
+
+## Utilisé dans les chapitres
+
+- `docs/book/chapters/12-pointeurs.md`.
+- `docs/book/chapters/13-generiques.md`.
+- `docs/book/chapters/14-macros.md`.
+- `docs/book/chapters/15-pipeline.md`.
+- `docs/book/chapters/16-interop.md`.
+- `docs/book/chapters/23-projet-sys.md`.
+- `docs/book/chapters/30-faq.md`.
+
+
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/asm.md`.
+- `docs/book/glossaire.md`.
+- `docs/book/chapters/06-procedures.md`.
+
+## Contre-exemple explicite
+
+```vit
+proc danger(x: int) -> int {
+  unsafe {
+    if x < 0 { give 0 }
     asm("nop")
   }
-  give 0
+  give x
 }
+# contre-exemple: logique métier et zone unsafe melangees.
 ```
 
-Pourquoi cette etape est solide. Garde explicite avant entree en zone sensible.
-
-Ce qui se passe a l'execution. `write_hw(-1,9)=-1`, `write_hw(10,9)=0`.
-
-Exemple 3, construit pas a pas.
-
-```vit
-proc halt_cpu_if(flag: bool) -> int {
-  if not flag { give 0 }
-  unsafe { asm("hlt") }
-  give 1
-}
-```
-
-Pourquoi cette etape est solide. La condition metier controle strictement l'activation d'une instruction critique.
-
-Ce qui se passe a l'execution. `halt_cpu_if(false)=0`. `halt_cpu_if(true)` entre en `hlt`.
-
-Erreur frequente et correction Vitte. Etendre `unsafe` a des blocs metier entiers.
-
-Correction recommandee en Vitte. Isoler `unsafe` dans des procedures courtes, placer les gardes avant, et documenter les preconditions.
-
-Pour prolonger la logique. Voir `docs/book/chapters/12-pointeurs.md`, `docs/book/chapters/16-interop.md`, `docs/book/keywords/asm.md`.
+Pourquoi c’est problématique: le code devient non total, fragile en maintenance, et plus difficile à diagnostiquer.

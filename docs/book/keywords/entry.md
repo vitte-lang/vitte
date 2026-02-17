@@ -1,55 +1,88 @@
-# Mot-cle `entry`
+# Mot-clé `entry`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-Le mot-cle `entry` declare le point d'entree executable d'un module Vitte. C'est la racine de flux runtime.
+Niveau: Débutant.
 
-Forme de base en Vitte. `entry nom at chemin/module { ... }`.
+## Définition
 
-Exemple 1, construit pas a pas.
+`entry` est un mot-clé du langage Vitte. Cette fiche donne un usage opérationnel avec un contrat lisible et testable.
+
+## Syntaxe
+
+Forme canonique: `entry main at app/core { ... }`.
+
+## Quand l’utiliser / Quand l’éviter
+
+- Quand l’utiliser: quand `entry` rend l’intention plus explicite et vérifiable.
+- Quand l’éviter: quand son usage masque le contrat ou duplique une logique déjà portée ailleurs.
+
+## Exemple nominal
+
+Entrée:
+- Cas nominal contrôlé et déterministe.
 
 ```vit
-proc add(a: int, b: int) -> int { give a + b }
-entry main at core/app {
-  let r: int = add(20, 22)
-  return r
-}
-```
-
-Pourquoi cette etape est solide. Le compilateur verifie l'existence de l'entree, la signature des appels internes et la coherence du code de retour.
-
-Ce qui se passe a l'execution. Verifier l'exemple 1 avec un cas nominal puis un cas limite, et confirmer la branche activee ainsi que la valeur produite.
-
-Exemple 2, construit pas a pas.
-
-```vit
-entry check at core/app {
-  let code: int = 0
-  if code != 0 { return 1 }
+entry main at app/core {
   return 0
 }
 ```
 
-Pourquoi cette etape est solide. `entry` doit rester mince et deleguer au metier pour conserver une architecture testable.
+Sortie observable:
+- Le flux suit la branche attendue et produit une sortie stable.
 
-Ce qui se passe a l'execution. Verifier l'exemple 2 avec trois entrees contrastees pour observer clairement le flux de controle et la sortie finale.
+## Exemple invalide
 
-Point de vigilance. Surcharger `entry` avec la logique metier et l'I/O melangee rend le debug global et couteux.
-
-Pour prolonger la logique. Voir `docs/book/chapters/01-demarrer.md` et `docs/book/chapters/29-style.md`.
-
-Exemple 3, construit pas a pas.
+Entrée:
+- Cas volontairement hors contrat.
 
 ```vit
-entry service at app/service {
-  let code: int = 0
-  return code
+proc bad_entry() -> int {
+  entry
+  give 0
 }
+# invalide: usage hors grammaire attendue pour `entry`.
 ```
 
-Pourquoi cette etape est solide. Cet exemple 3 montre une forme de production du mot-cle entry dans un flux Vitte plus proche d'un module reel, avec un contrat lisible et une frontiere explicite.
+Sortie observable:
+- Le compilateur (ou la validation) doit rejeter ce cas avec un diagnostic explicite.
 
-Ce qui se passe a l'execution. Executer ce bloc avec un cas nominal et un cas limite permet de verifier la branche dominante, la valeur de sortie et l'absence de comportement implicite hors contrat.
+## Erreurs compilateur fréquentes
 
-Erreur frequente et correction Vitte. Erreur frequente. Employer entry sans contrat local clair, puis compenser en aval avec des gardes ad hoc.
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near entry` | Forme syntaxique incomplète ou mal placée. | Revenir à la forme canonique et vérifier les délimiteurs. |
+| `type mismatch` | Contrat d’entrée/sortie incohérent autour de `entry`. | Aligner les types attendus avant exécution. |
+| `unreachable or incomplete branch` | Couverture de cas incomplète ou branche morte. | Ajouter la branche manquante (`otherwise`) ou simplifier le flux. |
 
-Correction recommandee en Vitte. Fixer la responsabilite de entry au point d'usage, ajouter une verification explicite de frontiere, puis couvrir le cas nominal et le cas limite par test.
+## Mot-clé voisin
+
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `if` | `entry` et `if` se complètent, mais n’ont pas la même responsabilité de contrôle/retour. |
+
+## Pièges
+
+- Utiliser `entry` par habitude au lieu de justifier son rôle dans le flux.
+- Mélanger la logique métier et la logique de contrôle sans frontière explicite.
+- Oublier de tester un cas invalide dédié.
+
+## Utilisé dans les chapitres
+
+- `docs/book/chapters/00-avant-propos.md`.
+- `docs/book/chapters/00-preface.md`.
+- `docs/book/chapters/01-demarrer.md`.
+- `docs/book/chapters/02-philosophie.md`.
+- `docs/book/chapters/03-projet.md`.
+- `docs/book/chapters/21-projet-cli.md`.
+- `docs/book/chapters/23-projet-sys.md`.
+- `docs/book/chapters/24-projet-kv.md`.
+- `docs/book/chapters/25-projet-arduino.md`.
+- `docs/book/chapters/27-grammaire.md`.
+- `docs/book/chapters/29-style.md`.
+
+
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/if.md`.
+- `docs/book/glossaire.md`.
+- `docs/book/chapters/06-procedures.md`.

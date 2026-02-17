@@ -1,54 +1,79 @@
-# Mot-cle `use`
+# Mot-clé `use`
 
-Ce mot-cle prend sa valeur dans les decisions techniques qu'il impose. L'objectif ici est de montrer son usage reel, puis d'en expliquer le mecanisme sans raccourci.
-`use` importe des symboles/module paths dans le scope courant.
+Niveau: Intermédiaire.
 
-Forme de base en Vitte. `use chemin` avec options de groupe ou alias.
+## Définition
 
-Exemple 1, construit pas a pas.
+`use` importe des symboles depuis un chemin (`glob`, groupe ou alias).
 
-```vit
-use std/core/types.int
+## Syntaxe
 
-proc inc(x: int) -> int { give x + 1 }
-```
+Forme canonique: `use path[.{...}|.*] [as alias]`.
 
-Pourquoi cette etape est solide. Dependance visible en tete de fichier, resolution statique explicite.
+## Quand l’utiliser / Quand l’éviter
 
-Ce qui se passe a l'execution. `inc(1)=2`.
+- Quand l’utiliser: pour importer un sous-ensemble explicite de symboles.
+- Quand l’éviter: dans un bloc ou avec un `glob` non maîtrisé.
 
-Exemple 2, construit pas a pas.
+## Exemple nominal
 
-```vit
-use std/core/types.int as i32
-
-proc id(x: i32) -> i32 { give x }
-```
-
-Pourquoi cette etape est solide. Alias local pour simplifier la lecture sans changer le type reel.
-
-Ce qui se passe a l'execution. `id(42)=42`.
-
-Exemple 3, construit pas a pas.
+Entrée:
+- Import top-level de groupe.
 
 ```vit
-use app/domain/user.{User, UserId}
-
-proc same(a: UserId, b: UserId) -> bool {
-  give a == b
-}
-
-proc mk(id: UserId, name: string) -> User {
-  give User(id, name)
+space app/core
+use std.io.{read, write} as io
+proc ping() -> int {
+  give 0
 }
 ```
 
-Pourquoi cette etape est solide. Import cible de symboles pour limiter la surface de dependance au strict necessaire.
+Sortie observable:
+- Les symboles importés sont visibles via l’alias `io`.
 
-Ce qui se passe a l'execution. `same(7,7)=true`; `mk(7,"ana")` construit un `User` valide.
+## Exemple invalide
 
-Erreur frequente et correction Vitte. Importer large sans tri puis utiliser 5% des symboles.
+Entrée:
+- `use` placé dans une procédure.
 
-Correction recommandee en Vitte. Preferer imports cibles et alias locaux explicites.
+```vit
+proc bad() -> int {
+  use std/io
+  give 0
+}
+# invalide: `use` est top-level.
+```
 
-Pour prolonger la logique. Voir `docs/book/keywords/pull.md`, `docs/book/chapters/09-modules.md`.
+Sortie observable:
+- Le compilateur rejette la position de la déclaration.
+
+## Erreurs compilateur fréquentes
+
+| Message type | Cause | Correction |
+| --- | --- | --- |
+| `unexpected token near use` | Groupe/glob mal formé. | Utiliser `.*` ou `.{a,b}` correctement. |
+| `unexpected statement` | `use` hors top-level. | Déplacer l’import en tête de module. |
+| `unknown import symbol` | Symbole absent du module source. | Corriger la liste importée. |
+
+## Mot-clé voisin
+
+| Mot-clé | Différence opérationnelle |
+| --- | --- |
+| `pull` | `use` importe des symboles; `pull` relie un module entier. |
+
+## Pièges
+
+- Importer `*` partout sans nécessité.
+- Multiplier les alias opaques.
+- Laisser des imports morts.
+
+## Utilisé dans les chapitres
+
+- `docs/book/chapters/17-stdlib.md`.
+
+## Voir aussi
+
+- `docs/book/keywords/erreurs-compilateur.md`.
+- `docs/book/keywords/pull.md`.
+- `docs/book/keywords/space.md`.
+- `docs/book/chapters/09-modules.md`.
