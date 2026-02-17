@@ -27,9 +27,9 @@ proc policy_load(default_allow: bool) -> PolicySet {
   give PolicySet(default_allow, [])
 }
 
-proc add_rule(set: PolicySet, subject: string, action: string, resource: string, effect: Effect, reason: string) -> PolicySet {
-  let rules = set.rules.push(PolicyRule(subject, action, resource, effect, reason))
-  give PolicySet(set.default_allow, rules)
+proc add_rule(policyset: PolicySet, subject: string, action: string, resource: string, effect: Effect, reason: string) -> PolicySet {
+  let rules = policyset.rules.push(PolicyRule(subject, action, resource, effect, reason))
+  give PolicySet(policyset.default_allow, rules)
 }
 
 proc matches(rule: PolicyRule, subject: string, action: string, resource: string) -> bool {
@@ -39,24 +39,24 @@ proc matches(rule: PolicyRule, subject: string, action: string, resource: string
   give subject_ok && action_ok && resource_ok
 }
 
-proc allow(set: PolicySet, subject: string, action: string, resource: string) -> bool {
+proc allow(policyset: PolicySet, subject: string, action: string, resource: string) -> bool {
   let i: int = 0
   loop {
-    if i >= set.rules.len { break }
-    let rule = set.rules[i]
+    if i >= policyset.rules.len { break }
+    let rule = policyset.rules[i]
     if matches(rule, subject, action, resource) {
       give rule.effect == Effect.Allow
     }
     i = i + 1
   }
-  give set.default_allow
+  give policyset.default_allow
 }
 
-proc deny_reason(set: PolicySet, subject: string, action: string, resource: string) -> string {
+proc deny_reason(policyset: PolicySet, subject: string, action: string, resource: string) -> string {
   let i: int = 0
   loop {
-    if i >= set.rules.len { break }
-    let rule = set.rules[i]
+    if i >= policyset.rules.len { break }
+    let rule = policyset.rules[i]
     if matches(rule, subject, action, resource) {
       if rule.effect == Effect.Deny {
         give rule.reason
@@ -66,17 +66,17 @@ proc deny_reason(set: PolicySet, subject: string, action: string, resource: stri
     i = i + 1
   }
 
-  if set.default_allow {
+  if policyset.default_allow {
     give ""
   }
   give "default-deny"
 }
 
-proc explain(set: PolicySet, subject: string, action: string, resource: string) -> string {
+proc explain(policyset: PolicySet, subject: string, action: string, resource: string) -> string {
   let i: int = 0
   loop {
-    if i >= set.rules.len { break }
-    let rule = set.rules[i]
+    if i >= policyset.rules.len { break }
+    let rule = policyset.rules[i]
     if matches(rule, subject, action, resource) {
       if rule.effect == Effect.Allow {
         give "allow:" + rule.reason
@@ -86,7 +86,7 @@ proc explain(set: PolicySet, subject: string, action: string, resource: string) 
     i = i + 1
   }
 
-  if set.default_allow {
+  if policyset.default_allow {
     give "allow:default"
   }
   give "deny:default"

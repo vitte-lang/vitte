@@ -28,14 +28,14 @@ proc clamp_rollout(rollout: int) -> int {
   give rollout
 }
 
-proc add_flag(set: FeatureFlags, name: string, enabled: bool, rollout: int) -> FeatureFlags {
+proc add_flag(flagset: FeatureFlags, name: string, enabled: bool, rollout: int) -> FeatureFlags {
   let out: [FeatureFlag] = []
   let replaced: bool = false
   let i: int = 0
 
   loop {
-    if i >= set.flags.len { break }
-    let f = set.flags[i]
+    if i >= flagset.flags.len { break }
+    let f = flagset.flags[i]
     if f.name == name {
       out = out.push(FeatureFlag(name, enabled, clamp_rollout(rollout), "", false, false))
       replaced = true
@@ -52,14 +52,14 @@ proc add_flag(set: FeatureFlags, name: string, enabled: bool, rollout: int) -> F
   give FeatureFlags(out)
 }
 
-proc override(set: FeatureFlags, name: string, user_id: string, value: bool) -> FeatureFlags {
+proc override(flagset: FeatureFlags, name: string, user_id: string, value: bool) -> FeatureFlags {
   let out: [FeatureFlag] = []
   let found: bool = false
   let i: int = 0
 
   loop {
-    if i >= set.flags.len { break }
-    let f = set.flags[i]
+    if i >= flagset.flags.len { break }
+    let f = flagset.flags[i]
     if f.name == name {
       out = out.push(FeatureFlag(f.name, f.enabled, f.rollout, user_id, value, true))
       found = true
@@ -84,11 +84,11 @@ proc percentage_rollout(user_id: string, rollout: int) -> bool {
   give bucket < pct
 }
 
-proc flag_get(set: FeatureFlags, name: string, fallback: bool) -> bool {
+proc flag_get(flagset: FeatureFlags, name: string, fallback: bool) -> bool {
   let i: int = 0
   loop {
-    if i >= set.flags.len { break }
-    let f = set.flags[i]
+    if i >= flagset.flags.len { break }
+    let f = flagset.flags[i]
     if f.name == name {
       give f.enabled
     }
@@ -97,11 +97,11 @@ proc flag_get(set: FeatureFlags, name: string, fallback: bool) -> bool {
   give fallback
 }
 
-proc flag_for_user(set: FeatureFlags, name: string, user_id: string, fallback: bool) -> bool {
+proc flag_for_user(flagset: FeatureFlags, name: string, user_id: string, fallback: bool) -> bool {
   let i: int = 0
   loop {
-    if i >= set.flags.len { break }
-    let f = set.flags[i]
+    if i >= flagset.flags.len { break }
+    let f = flagset.flags[i]
     if f.name == name {
       if f.has_override && f.override_user == user_id { give f.override_value }
       if !f.enabled { give false }
